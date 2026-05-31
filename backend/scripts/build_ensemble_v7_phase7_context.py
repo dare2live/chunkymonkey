@@ -18,6 +18,7 @@ from services.duck_adapter import connect  # noqa: E402
 ENSEMBLE_MODEL_ID = "ensemble_v7_phase7_context_v1"
 V7_MODEL_ID = "lgbm_phase5_v7_20260523T010000Z"
 POSITIVE_CONTEXTS = {"below_zero_rebound_probe", "zero_axis_below_golden_cross"}
+KLINE_START_DATE = "2023-07-01"  # rule-compliance: ok evidence=MACD warmup 6mo before panel start 2024-01-02
 
 
 def _macd(close):
@@ -39,6 +40,86 @@ def _classify(dif, dea, p_dif, p_dea):
     return "below_zero_rebound_probe"
 
 
+def _raw_conn(conn):
+    return getattr(conn, "_con", conn)
+
+
+def _register_frame(conn, name: str, frame: pd.DataFrame):
+    raw = _raw_conn(conn)
+    raw.register(name, frame)
+    return raw
+
+
+def _unregister_frame(raw, name: str) -> None:
+    raw.unregister(name)
+
+
+def _load_kline_frame(conn, stock_codes) -> pd.DataFrame:
+    codes = sorted({str(code) for code in stock_codes if code})
+    columns = ["stock_code", "date", "close"]
+    if not codes:
+        return pd.DataFrame(columns=columns)
+    view_name = "_phase7_context_codes"
+    raw = _register_frame(conn, view_name, pd.DataFrame({"code": codes}))
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT k.code AS stock_code, k.date, k.close
+              FROM market.v_price_kline_qfq k
+              JOIN {view_name} c ON c.code = k.code
+             WHERE k.freq = 'daily'
+               AND k.adjust = 'qfq'
+               AND k.date >= ?
+             ORDER BY k.code, k.date
+            """,
+            [KLINE_START_DATE],
+        ).fetchall()
+    finally:
+        _unregister_frame(raw, view_name)
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _context_labels(close_arr) -> list[str | None]:
+    dif, dea = _macd(close_arr)
+    return [
+        _classify(dif[i], dea[i], dif[i - 1], dea[i - 1]) if i >= 1 else None
+        for i in range(len(close_arr))
+    ]
+
+
+def _contexts_for_stock(stock: str, frame: pd.DataFrame) -> dict[tuple[str, pd.Timestamp], str]:
+    if len(frame) < 30:
+        return {}
+    labels = _context_labels(frame["close"].values)
+    return {
+        (stock, date): ctx
+        for date, ctx in zip(frame["date"], labels)
+        if ctx
+    }
+
+
+def _build_contexts(kline: pd.DataFrame) -> dict[tuple[str, pd.Timestamp], str]:
+    if kline.empty:
+        return {}
+    frame = kline.copy()
+    frame["date"] = pd.to_datetime(frame["date"])
+    frame["close"] = pd.to_numeric(frame["close"], errors="coerce")
+    frame = frame.dropna(subset=["close"])
+    frame = frame.sort_values(["stock_code", "date"])
+    contexts: dict[tuple[str, pd.Timestamp], str] = {}
+    for stock, group in frame.groupby("stock_code", sort=False):
+        contexts.update(_contexts_for_stock(str(stock), group))
+    return contexts
+
+
+def _apply_context_filter(v7: pd.DataFrame, contexts: dict[tuple[str, pd.Timestamp], str]) -> pd.DataFrame:
+    out = v7.copy()
+    keys = zip(out["stock_code"], out["signal_date"])
+    out["ctx"] = [contexts.get((str(stock), signal_date)) for stock, signal_date in keys]
+    out["score_out"] = out["v7_score"].where(out["ctx"].isin(POSITIVE_CONTEXTS), None)
+    return out
+
+
 def main() -> int:
     market_db = str(REPO_ROOT / "data" / "market.duckdb")
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -55,33 +136,12 @@ def main() -> int:
         print(f"  v7 rows: {len(v7):,}, unique stocks: {v7['stock_code'].nunique()}")
 
         # Compute MACD context per (stock, signal_date)
-        print("Computing MACD context per stock (kline cache)...")
-        contexts = {}
-        for stock in v7["stock_code"].unique():
-            rows = conn.execute(
-                "SELECT date, close FROM market.v_price_kline_qfq "
-                # rule-compliance: ok evidence=MACD warmup 6mo before panel start 2024-01-02
-                "WHERE freq='daily' AND adjust='qfq' AND code=? AND date>='2023-07-01' ORDER BY date",
-                [stock],
-            ).fetchall()
-            if not rows or len(rows) < 30:
-                continue
-            df = pd.DataFrame(rows, columns=["date", "close"])
-            df["date"] = pd.to_datetime(df["date"])
-            df["close"] = pd.to_numeric(df["close"], errors="coerce")
-            close_arr = df["close"].values
-            dif, dea = _macd(close_arr)
-            df["ctx"] = [
-                _classify(dif[i], dea[i], dif[i-1], dea[i-1]) if i >= 1 else None
-                for i in range(len(df))
-            ]
-            for d, ctx in zip(df["date"], df["ctx"]):
-                if ctx: contexts[(stock, d)] = ctx
+        print("Computing MACD context (bulk kline cache)...")
+        contexts = _build_contexts(_load_kline_frame(conn, v7["stock_code"].unique()))
         print(f"  computed contexts: {len(contexts):,}")
 
         # Build ensemble: v7 score IF context in positive whitelist ELSE NULL
-        v7["ctx"] = v7.apply(lambda r: contexts.get((r["stock_code"], r["signal_date"])), axis=1)
-        v7["score_out"] = v7.apply(lambda r: r["v7_score"] if r["ctx"] in POSITIVE_CONTEXTS else None, axis=1)
+        v7 = _apply_context_filter(v7, contexts)
         n_non_null = v7["score_out"].notna().sum()
         print(f"  non-NULL (positive ctx): {n_non_null:,} / {len(v7):,} = {n_non_null/len(v7)*100:.1f}%")
 
