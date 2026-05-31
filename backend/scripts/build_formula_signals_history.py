@@ -145,7 +145,14 @@ def compute_all_signals(
     return all_signals
 
 
-def write_signals_to_db(conn, signals: list[FormulaSignal]) -> int:
+def write_signals_to_db(
+    conn,
+    signals: list[FormulaSignal],
+    *,
+    formula_ids: tuple[str, ...] | None = None,
+    start: str | None = None,
+    end: str | None = None,
+) -> int:
     """批量写入 fact_technical_trigger (DELETE+INSERT 幂等)。
 
     ⚠️ 关键: 用显式事务保证 DELETE + INSERT 原子性。
@@ -154,11 +161,34 @@ def write_signals_to_db(conn, signals: list[FormulaSignal]) -> int:
     会留下空表 + 半成品索引, 下次 DELETE 触发 FATAL Error → Python crash (macOS "Python quit unexpectedly").
     显式 BEGIN/COMMIT 后, 任何中断都自动 ROLLBACK, 索引保持一致。
     """
-    if not signals:
+    # 涉及的公式 ID 列表。显式传入 formula_ids 时,即使本窗口 0 信号也要清掉
+    # 该窗口旧行,否则 stale signals 会残留。
+    target_formula_ids = list(dict.fromkeys(formula_ids or tuple(s.formula_id for s in signals)))
+    if not target_formula_ids:
         return 0
-    # 涉及的公式 ID 列表
-    formula_ids = list({s.formula_id for s in signals})
-    placeholders = ",".join(["?"] * len(formula_ids))
+    target_formula_id_set = set(target_formula_ids)
+    unexpected_formula_ids = {s.formula_id for s in signals} - target_formula_id_set
+    if unexpected_formula_ids:
+        raise ValueError(
+            f"signals contain formula_ids outside delete scope: {sorted(unexpected_formula_ids)}"
+        )
+    out_of_window = [
+        (s.stock_code, s.date, s.formula_id)
+        for s in signals
+        if (start is not None and s.date < start) or (end is not None and s.date > end)
+    ]
+    if out_of_window:
+        raise ValueError(f"signals contain rows outside scoped refresh window: {out_of_window[:3]}")
+    placeholders = ",".join(["?"] * len(target_formula_ids))
+    delete_sql = f"DELETE FROM fact_technical_trigger WHERE formula_id IN ({placeholders})"
+    delete_params: list[str] = list(target_formula_ids)
+    if start is not None:
+        delete_sql += " AND date >= ?"
+        delete_params.append(start)
+    if end is not None:
+        delete_sql += " AND date <= ?"
+        delete_params.append(end)
+
     rows = [s.to_db_row() for s in signals]
     insert_tuples = [
         (r["stock_code"], r["date"], r["formula_id"], r["formula_variant"],
@@ -167,18 +197,16 @@ def write_signals_to_db(conn, signals: list[FormulaSignal]) -> int:
     ]
     conn.execute("BEGIN TRANSACTION")
     try:
-        conn.execute(
-            f"DELETE FROM fact_technical_trigger WHERE formula_id IN ({placeholders})",
-            formula_ids,
-        )
-        conn.executemany(
-            """
-            INSERT INTO fact_technical_trigger
-              (stock_code, date, formula_id, formula_variant, strength, state, reason_codes_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            insert_tuples,
-        )
+        conn.execute(delete_sql, delete_params)
+        if insert_tuples:
+            conn.executemany(
+                """
+                INSERT INTO fact_technical_trigger
+                  (stock_code, date, formula_id, formula_variant, strength, state, reason_codes_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                insert_tuples,
+            )
         conn.execute("COMMIT")
     except BaseException:
         # BaseException 涵盖 KeyboardInterrupt / SystemExit / BrokenPipeError 等
@@ -312,11 +340,15 @@ def compute_horizon_evidence(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--start", default="2023-01-01")
+    parser.add_argument("--start", default=None)
     parser.add_argument("--end",   default=None, help="默认 K 线最新日")
     parser.add_argument("--formula", default=None, nargs="+",
                         help="只跑指定公式 (多个用空格分隔), e.g., --formula reversal_1m_mild reversal_1m_deep")
+    parser.add_argument("--recompute-horizon-evidence", action="store_true",
+                        help="显式窗口刷新时才允许重算并替换该窗口 horizon evidence")
     args = parser.parse_args()
+    explicit_window = args.start is not None or args.end is not None
+    eval_start = args.start or "2023-01-01"  # rule-compliance: ok evidence=legacy full-history default; scoped refresh passes --start
 
     # 全程用原生 duckdb (fetchnumpy 需要)
     mkt_conn = duckdb.connect(str(MARKET_DB_PATH), read_only=True)
@@ -340,13 +372,15 @@ def main():
                     "latest_completed_trade_date 返 None — dim_trading_calendar 未 seed"
                 )
             args.end = min(kline_max, cal_max) if kline_max else cal_max
-        log.info(f"回测区间: {args.start} - {args.end}")
+        log.info(f"回测区间: {eval_start} - {args.end}")
+        if explicit_window and not args.recompute_horizon_evidence:
+            log.info("显式窗口刷新: fact_technical_trigger 按日期窗口替换, 跳过 horizon evidence")
 
         formula_ids = tuple(args.formula) if args.formula else tuple(REGISTRY.keys())
         log.info(f"公式: {formula_ids}")
 
         # 一次性 groupby K 线,供 signal 计算 + horizon evidence 共用
-        grouped = load_all_kline_grouped(mkt_conn, args.start, args.end)
+        grouped = load_all_kline_grouped(mkt_conn, eval_start, args.end)
         # 关闭 mkt_conn 释放资源 (后续不再查)
         mkt_conn.close()
         mkt_conn = None
@@ -358,11 +392,18 @@ def main():
         conn = get_conn()
         try:
             ensure_formula_tables(conn)
-            n_signals = write_signals_to_db(conn, signals)
+            n_signals = write_signals_to_db(
+                conn,
+                signals,
+                formula_ids=formula_ids,
+                start=eval_start if explicit_window else None,
+                end=args.end if explicit_window else None,
+            )
             log.info(f"写入 fact_technical_trigger: {n_signals} 行")
 
-            n_evidence = compute_horizon_evidence(conn, grouped, formula_ids, args.start, args.end)
-            log.info(f"写入 mart_formula_horizon_evidence: {n_evidence} 行")
+            if not explicit_window or args.recompute_horizon_evidence:
+                n_evidence = compute_horizon_evidence(conn, grouped, formula_ids, eval_start, args.end)
+                log.info(f"写入 mart_formula_horizon_evidence: {n_evidence} 行")
         finally:
             conn.close()
     finally:

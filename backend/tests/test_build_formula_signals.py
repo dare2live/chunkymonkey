@@ -229,6 +229,128 @@ class TestFormulaSignalCanGoThroughWriteCycle:
         finally:
             conn.close()
 
+    def test_write_signals_to_db_scoped_replace_preserves_outside_window(self):
+        """显式窗口刷新只替换该 formula/date 窗口,不能误删历史或其他公式。"""
+        from scripts.build_formula_signals_history import write_signals_to_db
+        from services.formula_engine.base import FormulaSignal
+        from services.formula_engine.ddl import ensure_formula_tables
+        from services.duck_adapter import connect as duck_connect
+
+        conn = duck_connect(":memory:")
+        try:
+            ensure_formula_tables(conn)
+            seed = [
+                FormulaSignal("600519", "2024-01-15", "macd_golden_cross",
+                              "macd_golden_cross", 0.5, "just_crossed", ()),
+                FormulaSignal("600519", "2024-02-15", "macd_golden_cross",
+                              "macd_golden_cross", 0.6, "just_crossed", ()),
+                FormulaSignal("600519", "2024-03-15", "macd_golden_cross",
+                              "macd_golden_cross", 0.7, "just_crossed", ()),
+                FormulaSignal("000001", "2024-02-10", "turtle_breakout",
+                              "turtle_breakout_20", 0.8, "breakout", ()),
+            ]
+            write_signals_to_db(conn, seed)
+
+            replacement = [
+                FormulaSignal("000002", "2024-02-20", "macd_golden_cross",
+                              "macd_golden_cross", 0.9, "just_crossed", ()),
+            ]
+            write_signals_to_db(
+                conn,
+                replacement,
+                formula_ids=("macd_golden_cross",),
+                start="2024-02-01",
+                end="2024-02-28",
+            )
+
+            rows = [tuple(row) for row in conn.execute(
+                """
+                SELECT stock_code, date, formula_id
+                  FROM fact_technical_trigger
+                 ORDER BY formula_id, date, stock_code
+                """
+            ).fetchall()]
+            assert rows == [
+                ("600519", "2024-01-15", "macd_golden_cross"),
+                ("000002", "2024-02-20", "macd_golden_cross"),
+                ("600519", "2024-03-15", "macd_golden_cross"),
+                ("000001", "2024-02-10", "turtle_breakout"),
+            ]
+        finally:
+            conn.close()
+
+    def test_write_signals_to_db_scoped_zero_signals_clears_stale_window(self):
+        """窗口内本次 0 信号也要删除旧窗口行,避免 stale signal 冒充新鲜。"""
+        from scripts.build_formula_signals_history import write_signals_to_db
+        from services.formula_engine.base import FormulaSignal
+        from services.formula_engine.ddl import ensure_formula_tables
+        from services.duck_adapter import connect as duck_connect
+
+        conn = duck_connect(":memory:")
+        try:
+            ensure_formula_tables(conn)
+            seed = [
+                FormulaSignal("600519", "2024-01-15", "macd_golden_cross",
+                              "macd_golden_cross", 0.5, "just_crossed", ()),
+                FormulaSignal("600519", "2024-02-15", "macd_golden_cross",
+                              "macd_golden_cross", 0.6, "just_crossed", ()),
+            ]
+            write_signals_to_db(conn, seed)
+
+            n = write_signals_to_db(
+                conn,
+                [],
+                formula_ids=("macd_golden_cross",),
+                start="2024-02-01",
+                end="2024-02-28",
+            )
+
+            assert n == 0
+            rows = [tuple(row) for row in conn.execute(
+                "SELECT stock_code, date FROM fact_technical_trigger ORDER BY date"
+            ).fetchall()]
+            assert rows == [("600519", "2024-01-15")]
+        finally:
+            conn.close()
+
+    def test_write_signals_to_db_rejects_rows_outside_declared_scope(self):
+        """显式窗口刷新必须拒绝公式或日期越界的 signals,避免误写未删除区间。"""
+        from scripts.build_formula_signals_history import write_signals_to_db
+        from services.formula_engine.base import FormulaSignal
+        from services.formula_engine.ddl import ensure_formula_tables
+        from services.duck_adapter import connect as duck_connect
+
+        conn = duck_connect(":memory:")
+        try:
+            ensure_formula_tables(conn)
+            out_of_window = [
+                FormulaSignal("600519", "2024-03-15", "macd_golden_cross",
+                              "macd_golden_cross", 0.5, "just_crossed", ()),
+            ]
+            with pytest.raises(ValueError, match="outside scoped refresh window"):
+                write_signals_to_db(
+                    conn,
+                    out_of_window,
+                    formula_ids=("macd_golden_cross",),
+                    start="2024-02-01",
+                    end="2024-02-28",
+                )
+
+            wrong_formula = [
+                FormulaSignal("600519", "2024-02-15", "turtle_breakout",
+                              "turtle_breakout_20", 0.5, "breakout", ()),
+            ]
+            with pytest.raises(ValueError, match="outside delete scope"):
+                write_signals_to_db(
+                    conn,
+                    wrong_formula,
+                    formula_ids=("macd_golden_cross",),
+                    start="2024-02-01",
+                    end="2024-02-28",
+                )
+        finally:
+            conn.close()
+
     def test_write_signals_rollback_on_executemany_error(self):
         """模拟 SIGPIPE/中断 = DELETE 已执行但 INSERT 抛错; 表必须保持原状 (事务回滚)。
 
