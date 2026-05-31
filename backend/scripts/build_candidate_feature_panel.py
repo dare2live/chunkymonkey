@@ -107,14 +107,20 @@ ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS express_net_pr
 """
 
 
+def _script_statements(sql: str) -> list[str]:
+    return [stmt.strip() for stmt in sql.split(";") if stmt.strip()]
+
+
+def _execute_statement(conn: Any, stmt: str) -> None:
+    conn.execute(stmt)
+
+
 def _execute_script(conn: Any, sql: str) -> None:
     if hasattr(conn, "executescript"):
         conn.executescript(sql)
         return
-    for stmt in sql.split(";"):
-        stmt = stmt.strip()
-        if stmt:
-            conn.execute(stmt)
+    for stmt in _script_statements(sql):
+        _execute_statement(conn, stmt)
 
 
 def ensure_tables(conn: Any) -> None:

@@ -14,6 +14,16 @@ SMART_DB = REPO_ROOT / "data" / "smartmoney.duckdb"
 
 log = logging.getLogger("build_dim_listing_status")
 
+DIM_LISTING_STATUS_COLUMNS = (
+    ("ts_code", "TEXT"),
+    ("listed_date", "DATE"),
+    ("delisted_date", "DATE"),
+    ("listing_status", "TEXT"),
+    ("status_reason", "TEXT"),
+    ("flag_from_date", "TEXT"),
+    ("detected_at", "TIMESTAMP"),
+)
+
 
 def _columns(conn: duckdb.DuckDBPyConnection, table_name: str) -> set[str]:
     rows = conn.execute(
@@ -39,6 +49,14 @@ def _table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
     return bool(row and row[0])
 
 
+def _missing_dim_listing_status_columns(existing_cols: set[str]) -> list[tuple[str, str]]:
+    return [(col, dtype) for col, dtype in DIM_LISTING_STATUS_COLUMNS if col not in existing_cols]
+
+
+def _add_dim_listing_status_column(conn: duckdb.DuckDBPyConnection, col: str, dtype: str) -> None:
+    conn.execute(f"ALTER TABLE dim_listing_status ADD COLUMN {col} {dtype}")
+
+
 def ensure_dim_listing_status_schema(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(
         """
@@ -55,17 +73,8 @@ def ensure_dim_listing_status_schema(conn: duckdb.DuckDBPyConnection) -> None:
         """
     )
     cols = _columns(conn, "dim_listing_status")
-    for col, dtype in [
-        ("ts_code", "TEXT"),
-        ("listed_date", "DATE"),
-        ("delisted_date", "DATE"),
-        ("listing_status", "TEXT"),
-        ("status_reason", "TEXT"),
-        ("flag_from_date", "TEXT"),
-        ("detected_at", "TIMESTAMP"),
-    ]:
-        if col not in cols:
-            conn.execute(f"ALTER TABLE dim_listing_status ADD COLUMN {col} {dtype}")
+    for col, dtype in _missing_dim_listing_status_columns(cols):
+        _add_dim_listing_status_column(conn, col, dtype)
 
 
 def _source_projection(conn: duckdb.DuckDBPyConnection) -> str:
@@ -82,7 +91,13 @@ def _source_projection(conn: duckdb.DuckDBPyConnection) -> str:
         else "NULL::DATE"
     )
     delisted_expr = "TRY_CAST(delisted_date AS DATE)" if "delisted_date" in cols else "NULL::DATE"
-    is_active_expr = "COALESCE(is_active, 1)" if "is_active" in cols else "CASE WHEN delisted_date IS NULL THEN 1 ELSE 0 END"
+    is_active_expr = (
+        "COALESCE(is_active, 1)"
+        if "is_active" in cols
+        else "CASE WHEN delisted_date IS NULL THEN 1 ELSE 0 END"
+        if "delisted_date" in cols
+        else "1"
+    )
     source_expr = "source" if "source" in cols else "'dim_all_ever_listed'"
 
     return f"""
