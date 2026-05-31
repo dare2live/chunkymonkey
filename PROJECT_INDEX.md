@@ -857,6 +857,11 @@ SELECT * FROM mart_data_source_watermark;
 - 新增 9 个 `backend/tests/scripts/test_audit_*.py` 回归, 覆盖批量查询与 helper 语义保持; test-tool registry scoped audit PASS, `python -m pytest` 34/34 PASS。
 - 清理本切片新增输出符号与静默吞错: `audit_data_completeness` 不再 `except/pass` 掉无效 code count, `audit_panel_leakage` 文件读取/NULL-year 计算失败会形成 LOW finding, `audit_stale_references` 输出统一 ASCII marker。
 
+**P1 updater split 切片**:
+- `backend/routers/updater.py` 从 5k+ 行 god-module 收敛为 723 行路由/编排壳; 后台执行、计划、状态、step 状态、连通性、日历、reset、sync、market data、机构、画像、趋势等被拆到 `backend/routers/updater_*.py`。
+- 架构 verdict: `APPROVE_WITH_NOTES`。这是符合"updater 是管家"的过渡拆分, 但不是终局; `updater_market_data.py`、`updater_execution.py`、`updater_status.py` 等仍偏大, 且预算/并发/冷却等策略常量后续应下沉到 config/service owner。
+- 验证: updater test-tool scoped PASS, `python -m pytest backend/tests/test_updater*.py` 104/104 PASS, `scripts/chunkyctl audit --run` scoped PASS, `check_universe_filter --all` CLEAN。
+
 ### 2026-05-29 市场感知数据接入 P0 接线 + 关联探索(LHB 反向重磅发现)
 
 **关联探索实证(read-only, event study 全 A 股 2022-2026)**: 项目所有"主力跟随"信号 forward 超额收益全反向或随机 —

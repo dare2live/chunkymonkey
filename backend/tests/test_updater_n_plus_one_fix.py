@@ -21,7 +21,25 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from routers import updater  # noqa: E402
+from routers import updater_profiles  # noqa: E402
 from routers.updater import _mark_steps_status, _prime_step_status_rows  # noqa: E402
+from routers.updater_steps import (  # noqa: E402
+    _mark_stale_running_steps_failed,
+    _record_step_source_state_for_domains,
+    _sync_step_status_catalog_for_steps,
+    prime_run_step_status_for_steps,
+)
+from routers.updater_trends import (  # noqa: E402
+    _group_recent_closes,
+    _monthly_price_trend,
+    _trend_str,
+)
+from routers.updater_profiles import (  # noqa: E402
+    _build_holding_median_days,
+    _build_profile_rows,
+    _median,
+    _parse_notice_date,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -73,6 +91,15 @@ class _RecordingConn:
 
     def commit(self):
         self.commits += 1
+
+
+class _ClosableRecordingConn(_RecordingConn):
+    def __init__(self, response_queue=None):
+        super().__init__(response_queue=response_queue)
+        self.closed = False
+
+    def close(self):
+        self.closed = True
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +163,22 @@ class TestMarkStepsStatusBatch:
         assert params[-1] == "sync_kline"
 
 
+class TestMarkStaleRunningStepsFailed:
+    def test_marks_only_old_running_steps_as_failed(self):
+        conn = _RecordingConn()
+
+        _mark_stale_running_steps_failed(conn)
+
+        assert len(conn.calls) == 1
+        sql, params = conn.calls[0]
+        assert "UPDATE step_status SET status = 'failed'" in sql
+        assert "error = '上次运行异常中断'" in sql
+        assert "WHERE status = 'running'" in sql
+        assert "CURRENT_TIMESTAMP - INTERVAL 1 HOUR" in sql
+        assert params == ()
+        assert conn.commits == 1
+
+
 class TestPrimeStepStatusRowsBatch:
     def test_primes_selected_and_inactive_steps_with_one_executemany(self, monkeypatch):
         steps = [
@@ -164,6 +207,266 @@ class TestPrimeStepStatusRowsBatch:
             ("c", "g", "C", 3, "skipped", "数据已是最新，无需更新", 0),
         ]
         assert conn.commits == 1
+
+    def test_all_active_steps_match_full_update_pending_shape(self, monkeypatch):
+        steps = [
+            {"id": "a", "group": "g", "name": "A", "order": 1},
+            {"id": "b", "group": "g", "name": "B", "order": 2},
+        ]
+        monkeypatch.setattr(updater, "STEPS", steps)
+        conn = _RecordingConn()
+
+        _prime_step_status_rows(conn, ["a", "b"], inactive_mode="idle")
+
+        assert len(conn.calls) == 1
+        assert "DELETE FROM step_status" in conn.calls[0][0]
+        assert len(conn.executemany_calls) == 1
+        assert conn.executemany_calls[0][1] == [
+            ("a", "g", "A", 1, "pending", None, None),
+            ("b", "g", "B", 2, "pending", None, None),
+        ]
+        assert conn.commits == 1
+
+    def test_prime_run_step_status_for_steps_closes_conn(self):
+        steps = [
+            {"id": "a", "group": "g", "name": "A", "order": 1},
+            {"id": "b", "group": "g", "name": "B", "order": 2},
+        ]
+        conn = _ClosableRecordingConn()
+        seen_timeouts = []
+
+        def get_conn(timeout: int = 0):
+            seen_timeouts.append(timeout)
+            return conn
+
+        prime_run_step_status_for_steps(
+            get_conn,
+            steps,
+            ["a"],
+            inactive_mode="skipped",
+            skip_reasons={"b": "fresh"},
+        )
+
+        assert seen_timeouts == [120]
+        assert conn.closed is True
+        assert len(conn.calls) == 1
+        assert len(conn.executemany_calls) == 1
+        assert conn.executemany_calls[0][1] == [
+            ("a", "g", "A", 1, "pending", None, None),
+            ("b", "g", "B", 2, "skipped", "fresh", 0),
+        ]
+
+
+class TestSyncStepStatusCatalog:
+    def test_removes_stale_steps_and_inserts_missing_idle_rows(self):
+        steps = [
+            {"id": "a", "group": "g", "name": "A", "order": 1},
+            {"id": "b", "group": "g", "name": "B", "order": 2},
+        ]
+        conn = _RecordingConn(response_queue=[[], [("a",)]])
+
+        _sync_step_status_catalog_for_steps(conn, steps)
+
+        assert len(conn.calls) == 2
+        assert "DELETE FROM step_status" in conn.calls[0][0]
+        assert conn.calls[0][1] == ("a", "b")
+        assert "SELECT step_id FROM step_status" in conn.calls[1][0]
+        assert len(conn.executemany_calls) == 1
+        assert conn.executemany_calls[0][1] == [
+            ("b", "g", "B", 2),
+        ]
+        assert conn.commits == 2
+
+    def test_no_missing_rows_skips_insert_commit(self):
+        steps = [
+            {"id": "a", "group": "g", "name": "A", "order": 1},
+        ]
+        conn = _RecordingConn(response_queue=[[], [("a",)]])
+
+        _sync_step_status_catalog_for_steps(conn, steps)
+
+        assert len(conn.calls) == 2
+        assert conn.executemany_calls == []
+        assert conn.commits == 1
+
+
+class TestRecordStepSourceState:
+    def test_records_failed_step_and_resolves_completed_step(self, monkeypatch):
+        calls = []
+
+        def record_source_failure(conn, **kwargs):
+            calls.append(("record", conn, kwargs))
+
+        def resolve_source_failures(conn, **kwargs):
+            calls.append(("resolve", conn, kwargs))
+
+        import services.source_watermarks as source_watermarks
+
+        monkeypatch.setattr(source_watermarks, "record_source_failure", record_source_failure)
+        monkeypatch.setattr(source_watermarks, "resolve_source_failures", resolve_source_failures)
+
+        domains = {"sync_raw": ("holders_top10_float", "tdxhub_holders", 1)}
+
+        _record_step_source_state_for_domains("conn", domains, "sync_raw", "failed", "boom")
+        _record_step_source_state_for_domains("conn", domains, "sync_raw", "completed")
+
+        assert calls == [
+            ("record", "conn", {
+                "data_domain": "holders_top10_float",
+                "source_name": "tdxhub_holders",
+                "source_tier": 1,
+                "error_type": "step_failed",
+                "last_error": "boom",
+            }),
+            ("resolve", "conn", {
+                "data_domain": "holders_top10_float",
+                "source_name": "tdxhub_holders",
+            }),
+        ]
+
+    def test_ignores_steps_without_source_domain(self, monkeypatch):
+        calls = []
+
+        import services.source_watermarks as source_watermarks
+
+        monkeypatch.setattr(source_watermarks, "record_source_failure", lambda *a, **k: calls.append("record"))
+        monkeypatch.setattr(source_watermarks, "resolve_source_failures", lambda *a, **k: calls.append("resolve"))
+
+        _record_step_source_state_for_domains("conn", {}, "calc_returns", "failed", "boom")
+
+        assert calls == []
+
+    def test_logs_and_suppresses_source_failure_update_errors(self, monkeypatch):
+        class _Logger:
+            def __init__(self):
+                self.warnings = []
+
+            def warning(self, *args):
+                self.warnings.append(args)
+
+        def record_source_failure(*args, **kwargs):
+            raise RuntimeError("queue unavailable")
+
+        import services.source_watermarks as source_watermarks
+
+        monkeypatch.setattr(source_watermarks, "record_source_failure", record_source_failure)
+        logger = _Logger()
+
+        _record_step_source_state_for_domains(
+            "conn",
+            {"sync_raw": ("holders_top10_float", "tdxhub_holders", 1)},
+            "sync_raw",
+            "failed",
+            "boom",
+            logger=logger,
+        )
+
+        assert logger.warnings
+        assert logger.warnings[0][0] == "[source_failure_queue] update failed for %s: %s"
+        assert logger.warnings[0][1] == "sync_raw"
+
+
+class TestBuildTrendsHelpers:
+    def test_group_recent_closes_keeps_ordered_top_n_per_stock(self):
+        rows = [
+            ("000001", "2026-05-27", 12.0),
+            ("000001", "2026-05-26", 11.0),
+            ("000001", "2026-05-25", 10.0),
+            ("000002", "2026-05-27", 8.0),
+            ("000002", "2026-05-26", 7.5),
+        ]
+
+        grouped = _group_recent_closes(rows, 2)
+
+        assert grouped["000001"] == [12.0, 11.0]
+        assert grouped["000002"] == [8.0, 7.5]
+
+    @pytest.mark.parametrize(
+        ("values", "expected"),
+        [
+            ([3, 2, 2], "↑→"),
+            ([1, 2, 2], "↓→"),
+            ([1], "—"),
+        ],
+    )
+    def test_trend_str_matches_legacy_symbols(self, values, expected):
+        assert _trend_str(values) == expected
+
+    @pytest.mark.parametrize(
+        ("monthly_closes", "expected"),
+        [
+            ([12, 11, 10], "连涨"),
+            ([10, 11, 12], "连跌"),
+            ([12, 10, 11], "震荡"),
+            ([12, 11], "—"),
+        ],
+    )
+    def test_monthly_price_trend_matches_legacy_labels(self, monthly_closes, expected):
+        assert _monthly_price_trend(monthly_closes) == expected
+
+
+class TestBuildProfilesHelpers:
+    def test_median_is_strict_for_even_and_odd_samples(self):
+        assert _median([1, 9, 11]) == 9
+        assert _median([1, 9]) == 5
+        assert _median([]) is None
+
+    def test_parse_notice_date_accepts_tdx_and_iso_formats(self):
+        assert _parse_notice_date("20260527").strftime("%Y-%m-%d") == "2026-05-27"
+        assert _parse_notice_date("2026-05-27").strftime("%Y-%m-%d") == "2026-05-27"
+        assert _parse_notice_date("") is None
+
+    def test_holding_median_days_uses_one_batched_query(self):
+        rows = [
+            _Row({"institution_id": "inst_a", "stock_code": "000001", "event_type": "new_entry", "notice_date": "20260501"}),
+            _Row({"institution_id": "inst_a", "stock_code": "000001", "event_type": "exit", "notice_date": "20260511"}),
+            _Row({"institution_id": "inst_a", "stock_code": "000002", "event_type": "new_entry", "notice_date": "2026-05-01"}),
+            _Row({"institution_id": "inst_a", "stock_code": "000002", "event_type": "exit", "notice_date": "2026-05-21"}),
+            _Row({"institution_id": "inst_b", "stock_code": "000003", "event_type": "new_entry", "notice_date": "20260503"}),
+            _Row({"institution_id": "inst_b", "stock_code": "000003", "event_type": "exit", "notice_date": "20260512"}),
+        ]
+        conn = _RecordingConn(response_queue=[rows])
+
+        medians = _build_holding_median_days(conn)
+
+        assert len(conn.calls) == 1
+        assert "ORDER BY institution_id, stock_code, report_date" in conn.calls[0][0]
+        assert medians == {"inst_a": 15, "inst_b": 9}
+
+    def test_profile_rows_keep_legacy_follow_rate_defaults(self, monkeypatch):
+        class _PricingPolicy:
+            policy_id = "test_policy"
+
+            def policy_hash(self):
+                return "hash"
+
+        monkeypatch.setattr(updater_profiles, "_build_inst_summaries", lambda conn: {})
+        monkeypatch.setattr(updater_profiles, "_build_inst_stats_map", lambda conn: {})
+        monkeypatch.setattr(updater_profiles, "_build_returns_map", lambda conn: {})
+        monkeypatch.setattr(updater_profiles, "_build_win_rate_map", lambda conn: {})
+        monkeypatch.setattr(updater_profiles, "_build_drawdown_medians", lambda conn, buy_only=False: {})
+        monkeypatch.setattr(updater_profiles, "_build_buy_stats_map", lambda conn: {})
+        monkeypatch.setattr(updater_profiles, "_build_exit_map", lambda conn: {})
+        monkeypatch.setattr(updater_profiles, "_build_follow_stats_map", lambda conn: {})
+        monkeypatch.setattr(updater_profiles, "_build_holding_median_days", lambda conn: {})
+        monkeypatch.setattr(updater_profiles, "_build_current_avg_held_map", lambda conn: {})
+        monkeypatch.setattr(updater_profiles, "_build_recent_event_map", lambda conn: {})
+
+        rows = _build_profile_rows(
+            conn=None,
+            institutions=[_Row({"id": "inst_no_follow", "name": "n", "display_name": "d", "type": "qfii"})],
+            pricing_policy=_PricingPolicy(),
+            now="2026-05-27T00:00:00",
+        )
+
+        row = rows[0]
+        assert row[34] == 0  # safe_follow_event_count
+        assert row[35] == 0  # safe_follow_win_rate_30d: old aggregate COALESCE default
+        assert row[39] == 0  # premium_discount_win_rate_30d
+        assert row[41] == 0  # premium_near_cost_win_rate_30d
+        assert row[43] == 0  # premium_premium_win_rate_30d
+        assert row[45] == 0  # premium_high_win_rate_30d
+        assert row[47] == "样本偏少"
 
 
 # ---------------------------------------------------------------------------
