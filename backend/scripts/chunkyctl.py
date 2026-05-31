@@ -71,7 +71,34 @@ def _aggregate_verdict(sections: list[dict[str, Any]]) -> str:
     return "WARN" if saw_warn else "PASS"
 
 
-def _next_actions(tooling_gate: dict[str, Any] | None, worktree_summary: dict[str, Any] | None = None) -> list[dict[str, str]]:
+def _storage_payload_summary(report: dict[str, Any] | None, *, max_findings: int = 20) -> dict[str, Any] | None:
+    if not report:
+        return None
+    findings = [
+        item
+        for item in report.get("findings", [])
+        if item.get("severity") in {"FAIL", "WARN"}
+    ]
+    findings.sort(
+        key=lambda item: (
+            0 if item.get("severity") == "FAIL" else 1,
+            -int(item.get("max_value_bytes") or 0),
+            str(item.get("table") or ""),
+            str(item.get("column") or ""),
+        )
+    )
+    return {
+        "verdict": report.get("verdict"),
+        "summary": report.get("summary", {}),
+        "top_findings": findings[:max_findings],
+    }
+
+
+def _next_actions(
+    tooling_gate: dict[str, Any] | None,
+    worktree_summary: dict[str, Any] | None = None,
+    storage_payload: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
     if not tooling_gate:
         return [{"priority": "P0", "action": "Fix chunkyctl/audit_tooling_gate JSON parsing before relying on doctor output"}]
     actions: list[dict[str, str]] = []
@@ -131,6 +158,14 @@ def _next_actions(tooling_gate: dict[str, Any] | None, worktree_summary: dict[st
             {
                 "priority": "P0",
                 "action": "Inspect and fix new complexity HIGH before claiming the change is clean",
+            }
+        )
+    if storage_payload and storage_payload.get("verdict") in {"FAIL", "WARN"}:
+        priority = "P0" if storage_payload.get("verdict") == "FAIL" else "P1"
+        actions.append(
+            {
+                "priority": priority,
+                "action": "Review storage payload audit findings for recursive JSON or oversized opaque DB payloads before claiming cleanup complete",
             }
         )
     return actions
@@ -195,6 +230,31 @@ def run_doctor(args: argparse.Namespace) -> int:
         }
         sections.append({"name": "universe", "verdict": universe["verdict"], "returncode": result["returncode"]})
 
+    storage_payload: dict[str, Any] | None = None
+    if not args.skip_storage_payload:
+        result = _run_command(
+            [
+                sys.executable,
+                "backend/scripts/audit_storage_payloads.py",
+                "--format",
+                "json",
+            ],
+            cwd=repo,
+        )
+        parsed = _json_from_stdout(result)
+        storage_payload = {
+            "command": _command_summary(result),
+            "report": _storage_payload_summary(parsed, max_findings=args.storage_max_findings),
+            "verdict": parsed.get("verdict") if parsed else "FAIL",
+        }
+        sections.append(
+            {
+                "name": "storage_payload",
+                "verdict": storage_payload["verdict"],
+                "returncode": result["returncode"],
+            }
+        )
+
     worktree_report = None
     worktree_summary = None
     if tooling_payload:
@@ -212,7 +272,12 @@ def run_doctor(args: argparse.Namespace) -> int:
         "worktree": worktree_summary,
         "test_tool": test_tool,
         "universe": universe,
-        "next_actions": _next_actions(tooling_payload, worktree_summary),
+        "storage_payload": storage_payload,
+        "next_actions": _next_actions(
+            tooling_payload,
+            worktree_summary,
+            storage_payload.get("report") if storage_payload else None,
+        ),
     }
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     return 1 if report["verdict"] == "FAIL" else 0
@@ -924,6 +989,8 @@ def main() -> int:
     doctor.add_argument("--fail-on-dirty-worktree", action="store_true")
     doctor.add_argument("--skip-test-tool", action="store_true")
     doctor.add_argument("--skip-universe", action="store_true")
+    doctor.add_argument("--skip-storage-payload", action="store_true")
+    doctor.add_argument("--storage-max-findings", type=int, default=20)
     doctor.set_defaults(func=run_doctor)
 
     preflight = subparsers.add_parser("preflight", help="Emit task-specific gates before editing")

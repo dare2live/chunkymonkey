@@ -75,6 +75,57 @@ def test_storage_payload_audit_fails_recursive_keyword() -> None:
     assert "recursive keyword detected" in finding["reasons"]
 
 
+def test_storage_payload_audit_ignores_scalar_varchar_columns() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute("CREATE TABLE fact_feature_panel (stock_code TEXT, built_at TEXT, payload_json TEXT)")
+        conn.executemany(
+            "INSERT INTO fact_feature_panel VALUES (?, ?, ?)",
+            [("000001", "2026-05-31T00:00:00", "{}") for _ in range(12)],
+        )
+
+        report = audit_storage_payloads.build_storage_payload_report(
+            conn,
+            policy=_policy(max_value_fail_bytes=500, total_value_fail_bytes=50),
+            tables=["fact_feature_panel"],
+        )
+    finally:
+        conn.close()
+
+    scanned_columns = {finding["column"] for finding in report["findings"]}
+    assert scanned_columns == {"payload_json"}
+    assert report["verdict"] == "PASS"
+
+
+def test_storage_payload_audit_requires_json_key_shape_for_recursive_hits() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute("CREATE TABLE mart_pipeline_run_manifest (command TEXT, perf_summary_json TEXT)")
+        conn.execute(
+            "INSERT INTO mart_pipeline_run_manifest VALUES (?, ?)",
+            (
+                'codegraph context "latest_dispatch queue_items"',
+                '{"command": "mentions latest_dispatch and queue_items as values only"}',
+            ),
+        )
+
+        report = audit_storage_payloads.build_storage_payload_report(
+            conn,
+            policy=_policy(
+                max_value_warn_bytes=500,
+                max_value_fail_bytes=1000,
+                total_value_warn_bytes=1000,
+                total_value_fail_bytes=2000,
+            ),
+            tables=["mart_pipeline_run_manifest"],
+        )
+    finally:
+        conn.close()
+
+    assert report["verdict"] == "PASS"
+    assert {finding["recursive_keyword_hits"] for finding in report["findings"]} == {0}
+
+
 def test_storage_payload_audit_warns_path_marker_and_duplicate_samples() -> None:
     conn = duckdb.connect(":memory:")
     try:

@@ -14,6 +14,28 @@ payload_audit:
   duplicate_sample_warn_count: 2
   fail_on_recursive_keyword: true
   warn_on_path_marker: true
+  payload_column_name_tokens:
+    - json
+    - payload
+    - audit
+    - evidence
+    - summary
+    - signals
+    - blob
+    - bytes
+    - raw_text
+    - raw_json
+    - raw_bytes
+    - command
+    - path
+    - url
+    - artifact
+    - details
+    - preview
+    - warning
+    - blocker
+    - reason
+    - lineage
   recursive_keywords:
     - latest_dispatch
     - queue_items

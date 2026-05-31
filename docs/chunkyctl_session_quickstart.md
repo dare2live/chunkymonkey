@@ -86,7 +86,7 @@ incomplete until this document is updated and the final handoff states whether
 | Moment | Command | Purpose |
 |---|---|---|
 | New session | Point Codex at this document | Lowest-friction default |
-| Session startup | `scripts/chunkyctl doctor --fast` | Get dirty worktree, CodeGraph, and complexity snapshot quickly |
+| Session startup | `scripts/chunkyctl doctor --fast` | Get dirty worktree, CodeGraph, complexity, and storage-payload snapshot quickly |
 | Dirty worktree reported | `scripts/chunkyctl worktree --format markdown` | Show a readable dirty-file bucket summary without mutating git |
 | Dirty bucket drilldown | `scripts/chunkyctl worktree --bucket <name> --format markdown` | Review one bucket's entries and action before staging/deleting anything |
 | Docs cleanup slice | `scripts/chunkyctl docs --format markdown` | Combine docs graph and docs/archive dirty-bucket readiness |
@@ -101,6 +101,8 @@ incomplete until this document is updated and the final handoff states whether
 | `complexity.diff.status=compared` | `new_high_count` is meaningful and blocks delivery when non-zero |
 | `data/reports/tooling/complexity_baseline.json` exists | `doctor` loads it by default; explicit `--baseline` still overrides |
 | `codegraph.pending.added` matches untracked indexable files | Review/stage by worktree bucket; do not force-sync or bulk stage to silence status |
+| `storage_payload.verdict=FAIL` | Inspect recursive JSON keys and oversized opaque DB payloads with `PYTHONPATH=backend python backend/scripts/audit_storage_payloads.py --format markdown` |
+| `--skip-storage-payload` | Use only for emergency startup when the local DuckDB is unavailable; do not claim circular-reference cleanup from a skipped audit |
 
 ## Dirty Resolution Mode
 
@@ -134,6 +136,7 @@ scripts/chunkyctl doctor --fast
 scripts/chunkyctl worktree --format markdown
 scripts/chunkyctl worktree --bucket startup_tooling --format markdown
 scripts/chunkyctl docs --format markdown
+PYTHONPATH=backend python backend/scripts/audit_storage_payloads.py --format markdown
 scripts/chunkyctl preflight "what I am about to change" path/to/file.py
 scripts/chunkyctl audit --run path/to/file.py path/to/test_file.py
 ```

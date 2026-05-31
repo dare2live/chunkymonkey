@@ -119,6 +119,7 @@ it to `analysis/`; if it is not useful, delete it.
 | Startup health | `scripts/chunkyctl doctor --fast` |
 | Dirty worktree buckets | `scripts/chunkyctl worktree --format markdown` |
 | Docs cleanup slice | `scripts/chunkyctl docs --format markdown` |
+| Storage payload / recursive JSON audit | `PYTHONPATH=backend python backend/scripts/audit_storage_payloads.py --format markdown` |
 | Pre-task gate | `scripts/chunkyctl preflight "<task>" path/to/scope.py` |
 | Docs graph | `PYTHONPATH=backend python backend/scripts/audit_docs_graph.py --format markdown` |
 | Test tool health | `PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope <scope>` |

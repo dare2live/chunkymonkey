@@ -163,6 +163,43 @@ def test_doctor_uses_default_complexity_baseline_when_present(tmp_path: Path) ->
     assert chunkyctl._doctor_baseline_arg(tmp_path / "other", None) is None
 
 
+def test_storage_payload_summary_keeps_only_top_risk_findings() -> None:
+    report = chunkyctl._storage_payload_summary(
+        {
+            "verdict": "FAIL",
+            "summary": {"fail": 2, "warn": 1, "pass": 4},
+            "findings": [
+                {"severity": "PASS", "table": "ok", "column": "payload_json", "max_value_bytes": 0},
+                {"severity": "WARN", "table": "warn", "column": "payload_json", "max_value_bytes": 9},
+                {"severity": "FAIL", "table": "small_fail", "column": "audit_json", "max_value_bytes": 10},
+                {"severity": "FAIL", "table": "large_fail", "column": "signals_json", "max_value_bytes": 100},
+            ],
+        },
+        max_findings=2,
+    )
+
+    assert report is not None
+    assert report["verdict"] == "FAIL"
+    assert [item["table"] for item in report["top_findings"]] == ["large_fail", "small_fail"]
+
+
+def test_next_actions_include_storage_payload_failures() -> None:
+    actions = chunkyctl._next_actions(
+        {
+            "git_status": {"clean": True},
+            "codegraph": {"pending": {"sync_required": False}},
+            "complexity": {"baseline": {"status": "loaded"}, "diff": {"new_high_count": 0}},
+        },
+        {"unknown_count": 0},
+        {"verdict": "FAIL"},
+    )
+
+    assert actions[-1] == {
+        "priority": "P0",
+        "action": "Review storage payload audit findings for recursive JSON or oversized opaque DB payloads before claiming cleanup complete",
+    }
+
+
 def test_worktree_report_classifies_dirty_entries_by_review_bucket(tmp_path: Path) -> None:
     report = chunkyctl.build_worktree_report(
         repo=tmp_path,

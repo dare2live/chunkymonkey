@@ -75,10 +75,10 @@ tools:
     runner: PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_chunkyctl.py
     status: active
     evidence_level: trusted_with_scope
-    truth_source: chunkyctl JSON contract, quickstart startup contract, worktree bucket contract, existing local audit scripts, CodeGraph status text fixtures
-    risk_reason: project assistant is an orchestration convenience layer; drift could hide required gates or make sessions over-trust a narrow snapshot
+    truth_source: chunkyctl JSON contract, quickstart startup contract, worktree bucket contract, storage-payload summary contract, existing local audit scripts, CodeGraph status text fixtures
+    risk_reason: project assistant is an orchestration convenience layer; drift could hide required gates, storage-payload recursion risk, or make sessions over-trust a narrow snapshot
     replacement: dedicated package/CLI if chunkyctl grows beyond thin wrappers
-    last_verified: "2026-05-27"
+    last_verified: "2026-06-01"
 
   - id: safe_commit_rule10_tests
     paths:
@@ -107,7 +107,7 @@ tools:
     truth_source: storage_retention.yaml payload_audit thresholds, DuckDB TEXT/JSON/BLOB column inventory, recursive-keyword and large-payload fixtures
     risk_reason: large JSON/TEXT payloads or recursive audit blobs can bloat DuckDB and mislead product/cache storage boundaries
     replacement: native DuckDB storage observability or a broader data artifact governance service
-    last_verified: "2026-05-31"
+    last_verified: "2026-06-01"
 
   - id: audit_script_tests
     paths:
