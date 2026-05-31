@@ -24,7 +24,7 @@ from __future__ import annotations
 import argparse
 import logging
 import time
-from datetime import datetime
+from datetime import date
 from typing import Iterator
 
 from pathlib import Path
@@ -212,10 +212,39 @@ def write_signals_to_db(
         # BaseException 涵盖 KeyboardInterrupt / SystemExit / BrokenPipeError 等
         try:
             conn.execute("ROLLBACK")
-        except Exception:
-            pass
+        except Exception as rollback_exc:
+            log.warning("ROLLBACK failed after fact_technical_trigger write error: %s", rollback_exc)
         raise
     return len(rows)
+
+
+def _iso_date(value: str, *, name: str) -> str:
+    try:
+        return date.fromisoformat(str(value)).isoformat()
+    except ValueError as exc:
+        raise ValueError(f"{name} must be ISO date YYYY-MM-DD, got {value!r}") from exc
+
+
+def _resolve_write_window(eval_start: str, eval_end: str, write_start: str | None) -> tuple[str, str]:
+    eval_start_resolved = _iso_date(eval_start, name="start")
+    eval_end_resolved = _iso_date(eval_end, name="end")
+    write_start_resolved = _iso_date(write_start or eval_start, name="write_start")
+    if eval_start_resolved > write_start_resolved:
+        raise ValueError(
+            f"compute start {eval_start_resolved} must be <= write_start {write_start_resolved}"
+        )
+    if write_start_resolved > eval_end_resolved:
+        raise ValueError(f"write_start {write_start_resolved} must be <= end {eval_end_resolved}")
+    return write_start_resolved, eval_end_resolved
+
+
+def _filter_signals_to_window(
+    signals: list[FormulaSignal],
+    *,
+    start: str,
+    end: str,
+) -> list[FormulaSignal]:
+    return [signal for signal in signals if start <= signal.date <= end]
 
 
 def compute_horizon_evidence(
@@ -342,13 +371,17 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", default=None)
     parser.add_argument("--end",   default=None, help="默认 K 线最新日")
+    parser.add_argument("--write-start", default=None,
+                        help="fact_technical_trigger 替换窗口起点；--start 仍作为公式计算预热起点")
     parser.add_argument("--formula", default=None, nargs="+",
                         help="只跑指定公式 (多个用空格分隔), e.g., --formula reversal_1m_mild reversal_1m_deep")
     parser.add_argument("--recompute-horizon-evidence", action="store_true",
                         help="显式窗口刷新时才允许重算并替换该窗口 horizon evidence")
     args = parser.parse_args()
-    explicit_window = args.start is not None or args.end is not None
+    explicit_window = args.start is not None or args.end is not None or args.write_start is not None
     eval_start = args.start or "2023-01-01"  # rule-compliance: ok evidence=legacy full-history default; scoped refresh passes --start
+    if args.write_start and args.recompute_horizon_evidence:
+        parser.error("--write-start cannot be combined with --recompute-horizon-evidence")
 
     # 全程用原生 duckdb (fetchnumpy 需要)
     mkt_conn = duckdb.connect(str(MARKET_DB_PATH), read_only=True)
@@ -372,7 +405,8 @@ def main():
                     "latest_completed_trade_date 返 None — dim_trading_calendar 未 seed"
                 )
             args.end = min(kline_max, cal_max) if kline_max else cal_max
-        log.info(f"回测区间: {eval_start} - {args.end}")
+        write_start, write_end = _resolve_write_window(eval_start, str(args.end), args.write_start)
+        log.info(f"回测区间: {eval_start} - {args.end}; write_window={write_start} - {write_end}")
         if explicit_window and not args.recompute_horizon_evidence:
             log.info("显式窗口刷新: fact_technical_trigger 按日期窗口替换, 跳过 horizon evidence")
 
@@ -387,6 +421,19 @@ def main():
 
         # 跑信号
         signals = compute_all_signals(grouped, formula_ids)
+        signals_to_write = (
+            _filter_signals_to_window(signals, start=write_start, end=write_end)
+            if explicit_window
+            else signals
+        )
+        if explicit_window:
+            log.info(
+                "窗口过滤 signals: %s -> %s (write_window=%s..%s)",
+                f"{len(signals):,}",
+                f"{len(signals_to_write):,}",
+                write_start,
+                write_end,
+            )
 
         # 写库
         conn = get_conn()
@@ -394,10 +441,10 @@ def main():
             ensure_formula_tables(conn)
             n_signals = write_signals_to_db(
                 conn,
-                signals,
+                signals_to_write,
                 formula_ids=formula_ids,
-                start=eval_start if explicit_window else None,
-                end=args.end if explicit_window else None,
+                start=write_start if explicit_window else None,
+                end=write_end if explicit_window else None,
             )
             log.info(f"写入 fact_technical_trigger: {n_signals} 行")
 

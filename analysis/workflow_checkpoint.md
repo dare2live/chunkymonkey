@@ -8,20 +8,20 @@ The model pipeline snapshot below is historical evidence for the completed
 
 ## Current Data Freshness Checkpoint
 
-- updated_at: `2026-06-01 03:51:30 CST`
+- updated_at: `2026-06-01 04:07:30 CST`
 - current_state: `architecture/data freshness repair`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
 - data audit: `audit_data_completeness.py` still exits FAIL, but
-  `price_kline_tdxhub` is now OK (`max=2026-05-29`, `n_codes=5,188`, `= cal`)
-  and `fact_alpha158_panel` is now OK (`max=2026-05-29`, `n_codes=5,183`,
-  `= cal`).
+  `price_kline_tdxhub`, `fact_alpha158_panel`, `fact_stock_technical_stage`,
+  `fact_signal_context`, and `fact_technical_trigger` now reach
+  `2026-05-29`. Remaining 7 issues are label/v3/v4/sniper/institution stale,
+  LHB stale, and trigger event-table partial coverage warning.
 - end-to-end audit: `audit_end_to_end.py` still FAIL
-  (`24 total / 18 OK / 2 WARN / 4 FAIL`), with freshness blockers in
-  `fact_technical_trigger`, `fact_signal_context`, `mart_stock_picture_daily`,
-  and `mart_stock_survey_features`.
-- next_step: follow `goal.md` 6.11; do not run narrow signal/context/trigger
-  windows until compute start and replace window are separated.
+  (`24 total / 18 OK / 4 WARN / 2 FAIL`), with freshness blockers now in
+  `mart_stock_picture_daily` and `mart_stock_survey_features`.
+- next_step: follow `goal.md` 6.11; next safe slices are picture daily
+  refresh, survey feature safety, then label/v3/v4/score marts and LHB.
 
 - generated_at: `2026-05-25T01:20:01Z`
 - model_id: `lgbm_phase5_gcp_20260520T010718`

@@ -4,7 +4,7 @@ Manual Codex checkpoint. Current operating state lives in `goal.md`; durable
 startup rules live in `AGENTS.md` and `docs/chunkyctl_session_quickstart.md`.
 This file is a short recovery note, not a replacement for those authorities.
 
-Snapshot: `2026-06-01 03:51:30 CST`
+Snapshot: `2026-06-01 04:07:30 CST`
 
 ## Risk First
 
@@ -16,15 +16,17 @@ Snapshot: `2026-06-01 03:51:30 CST`
 | Storage payload | `PASS`: 320 scanned / 0 FAIL / 0 WARN / 11 reviewed PASS | Reviewed columns are governed by `backend/config/storage_retention.yaml`; recursive or over-cap payloads still block |
 | CodeGraph | Up to date after the previous `.py` slice; this K-line refresh did not edit Python | Re-run `codegraph status .` after this docs commit |
 | Complexity | Historical HIGH remains debt; tooling diff ignores line-number drift by default | New HIGH still blocks; line drift alone should not |
-| Data freshness/PIT | **FAIL**: K-line and alpha158 are now OK, dependent marts still stale/PIT-unsafe | Continue downstream freshness in the order in `goal.md`; no strategy claim |
+| Data freshness/PIT | **FAIL**: K-line, alpha158, stage, signal_context, and technical_trigger are now at 2026-05-29; picture/survey/label/score/LHB remain stale or partial | Continue downstream freshness in the order in `goal.md`; no strategy claim |
 
 ## Latest Slice
 
 Goal: close the long-lived dirty cleanup loop, then repair real data freshness
 from the truth source outward. The K-line state-doc slice is committed as
-`3d610ab9 docs: record kline freshness catchup state`. This slice adds an
-alpha158 safe-window writer and refreshes only the local alpha158 DuckDB window;
-no GCP/Optuna/backtest work was started.
+`3d610ab9 docs: record kline freshness catchup state`; the alpha158 safety
+slice is committed as `ac596d90 fix: make alpha158 refresh window safe`. This
+open slice adds safe compute/read-window vs write-window separation for
+technical stage, signal context, and formula trigger refreshes, then refreshes
+only the local DuckDB windows. No GCP/Optuna/backtest work was started.
 
 K-line refresh commands used:
 
@@ -38,6 +40,14 @@ Alpha158 refresh command used:
 | Step | Command shape | Result |
 |---|---|---|
 | Safe window catch-up | `build_alpha158_duck.py --start 2026-03-01 --write-start 2026-05-26 --end 2026-05-29` | `replace_window`; 20,736 rows / 5,185 codes / 4 dates written; table max now 2026-05-29 |
+
+Downstream freshness refresh commands used:
+
+| Step | Command shape | Result |
+|---|---|---|
+| Technical stage window | `build_stage_formula_fitness.py --start 2024-01-01 --write-start 2026-05-20 --end 2026-05-29 --stage-only` | 25,894 rows written; `fact_stock_technical_stage` max now 2026-05-29; fitness matrix intentionally skipped |
+| Signal context window | `build_signal_context.py --start 2025-08-01 --write-start 2026-05-20 --end 2026-05-29` | 41,149 rows written; `fact_signal_context` max now 2026-05-29 |
+| Technical trigger window | `build_formula_signals_history.py --start 2025-08-01 --write-start 2026-05-20 --end 2026-05-29` | 317,540 computed -> 17,950 window signals written; `fact_technical_trigger` max now 2026-05-29; horizon evidence intentionally skipped |
 
 ## Verified So Far
 
@@ -56,15 +66,23 @@ Alpha158 refresh command used:
 | `scripts/chunkyctl audit --run --scope backend/scripts/build_alpha158_duck.py --scope backend/tests/scripts/test_build_alpha158_duck.py` | PASS |
 | `audit_data_completeness.py` after alpha158 refresh | FAIL overall; `fact_alpha158_panel` OK at 2026-05-29 / 5,183 codes / `= cal`; remaining issues = 7 |
 | alpha158 recent coverage query | 2026-05-26=5185, 05-27=5184, 05-28=5184, 05-29=5183; duplicate count in refreshed window = 0 |
+| `audit_test_tool_health.py --scope backend/scripts/build_formula_signals_history.py --scope backend/scripts/build_stage_formula_fitness.py --scope backend/scripts/build_signal_context.py --scope backend/tests/test_build_formula_signals.py` | PASS |
+| `pytest -q backend/tests/test_build_formula_signals.py` | 19 passed |
+| `scripts/chunkyctl audit --run --scope backend/scripts/build_formula_signals_history.py --scope backend/scripts/build_stage_formula_fitness.py --scope backend/scripts/build_signal_context.py --scope backend/tests/test_build_formula_signals.py` | PASS |
+| Downstream coverage query | `fact_stock_technical_stage` max 2026-05-29 / 1,429,117 rows; `fact_signal_context` max 2026-05-29 / 2,125,233 rows; `fact_technical_trigger` max 2026-05-29 / 1,381,657 rows |
+| `audit_data_completeness.py` after trigger refresh | FAIL overall; remaining 7 issues: label/v3/v4/sniper/institution 2026-05-19, LHB 2026-05-25, trigger event-table partial warn |
+| `audit_end_to_end.py` after trigger refresh | FAIL: 24 total / 18 OK / 4 WARN / 2 FAIL; FAIL now `mart_stock_picture_daily` and `mart_stock_survey_features` |
+| `audit_universe_coverage.py` after trigger refresh | PASS: 17 PASS / 5 WARN / 0 FAIL |
+| `audit_pit_integrity.py` after trigger refresh | PASS: 11 PASS / 28 WARN / 0 FAIL |
 
 ## Next Actions
 
-1. Commit this alpha158 safety/data-refresh slice with `scripts/safe_commit.sh`;
-   do not use raw `git commit`.
+1. Finish review/gates for this open stage/context/trigger safety slice, then
+   commit with `scripts/safe_commit.sh`; do not use raw `git commit`.
 2. Confirm `git status --short`, `codegraph status .`, and
    `scripts/chunkyctl doctor --fast` return clean/PASS after the commit.
-3. Continue `goal.md` 6.11 downstream freshness. Do not directly run narrow
-   `build_signal_context.py` / `build_formula_signals_history.py` windows yet:
-   their current CLIs couple compute start and DELETE window. Next safe slice is
-   stage-only freshness plus lookback-safe `fact_signal_context`, then
-   `fact_technical_trigger`, picture, labels, and score marts.
+3. Continue `goal.md` 6.11 downstream freshness. Next safe slices are
+   `mart_stock_picture_daily` single-day/window refresh, then
+   `mart_stock_survey_features` start/end/drop safety, then label/v3/v4/score
+   marts and LHB. Keep recommendation PIT coverage as FAIL/WARN evidence until
+   a fresh PIT-safe recommendation path is measured.

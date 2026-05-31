@@ -92,6 +92,26 @@ incomplete until this document is updated and the final handoff states whether
 | Docs cleanup slice | `scripts/chunkyctl docs --format markdown` | Combine docs graph and docs/archive dirty-bucket readiness |
 | Before a task | `scripts/chunkyctl preflight "task" path...` | Get required gates and scope-specific risks |
 | After edits | `scripts/chunkyctl audit --run path...` | Run scoped validation for touched files |
+| Data freshness repair | Use compute/read start plus explicit `--write-start` where available | Keep rolling lookback context separate from the DB replacement window |
+
+## Data Freshness Repair Pattern
+
+For local DuckDB freshness repair, fix the writer before running a narrow
+window. Any table with rolling indicators or formula lookback must separate the
+read/compute window from the write/delete window.
+
+| Table family | Safe command shape |
+|---|---|
+| `fact_alpha158_panel` | `PYTHONPATH=backend python backend/scripts/build_alpha158_duck.py --start <read_start> --write-start <write_start> --end <end>` |
+| `fact_stock_technical_stage` | `PYTHONPATH=backend python backend/scripts/build_stage_formula_fitness.py --start <read_start> --write-start <write_start> --end <end> --stage-only` |
+| `fact_signal_context` | `PYTHONPATH=backend python backend/scripts/build_signal_context.py --start <read_start> --write-start <write_start> --end <end>` |
+| `fact_technical_trigger` | `PYTHONPATH=backend python backend/scripts/build_formula_signals_history.py --start <read_start> --write-start <write_start> --end <end>` |
+
+Do not pass a target window as `--start` when the script needs lookback. Use a
+wider `--start` for computation and `--write-start` for replacement. After
+refreshing production DuckDB tables, rerun the relevant data gates and record
+FAIL/WARN state in `goal.md`/handoff instead of claiming readiness from row
+counts alone.
 
 ## Doctor Interpretation
 

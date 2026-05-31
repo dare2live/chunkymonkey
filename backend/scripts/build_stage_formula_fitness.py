@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import logging
 import time
+from datetime import date
 from pathlib import Path
 
 import duckdb
@@ -30,6 +31,7 @@ import numpy as np
 from services.db import get_conn
 from services.formula_engine.ddl import ensure_formula_tables
 from services.formula_engine.technical_stage import classify_technical_stage
+from services.utils import latest_completed_trade_date
 
 
 log = logging.getLogger("build_stage_formula_fitness")
@@ -44,10 +46,44 @@ HOLDING_DAYS = (5, 10, 15, 20, 30, 60, 90)
 MIN_N_SIGNALS = 30  # 形态 × 公式组合最少样本量
 
 
-def build_technical_stage_history(mkt_conn, conn, start: str, end: str) -> int:
+def _iso_date(value: str, *, name: str) -> str:
+    try:
+        return date.fromisoformat(str(value)).isoformat()
+    except ValueError as exc:
+        raise ValueError(f"{name} must be ISO date YYYY-MM-DD, got {value!r}") from exc
+
+
+def _resolve_stage_window(start: str, end: str, write_start: str | None) -> tuple[str, str, str]:
+    compute_start = _iso_date(start, name="start")
+    write_start_resolved = _iso_date(write_start or start, name="write_start")
+    end_resolved = _iso_date(end, name="end")
+    if compute_start > write_start_resolved:
+        raise ValueError(
+            f"start/read window {compute_start} must be <= write_start {write_start_resolved}"
+        )
+    if write_start_resolved > end_resolved:
+        raise ValueError(f"write_start {write_start_resolved} must be <= end {end_resolved}")
+    return compute_start, write_start_resolved, end_resolved
+
+
+def build_technical_stage_history(
+    mkt_conn,
+    conn,
+    start: str,
+    end: str,
+    *,
+    write_start: str | None = None,
+    allow_empty_window: bool = False,
+) -> int:
     """跑全市场历史 technical_stage,写 fact_stock_technical_stage。"""
+    compute_start, write_start_resolved, end_resolved = _resolve_stage_window(start, end, write_start)
     t0 = time.time()
-    log.info("加载全市场 K 线 (closes + volumes only)...")
+    log.info(
+        "加载全市场 K 线 (closes + volumes only), compute_start=%s write_start=%s end=%s...",
+        compute_start,
+        write_start_resolved,
+        end_resolved,
+    )
     arr = mkt_conn.execute(
         """
         SELECT code, date, close, volume
@@ -56,7 +92,7 @@ def build_technical_stage_history(mkt_conn, conn, start: str, end: str) -> int:
            AND date >= ? AND date <= ?
          ORDER BY code, date
         """,
-        [start, end],
+        [compute_start, end_resolved],
     ).fetchnumpy()
     log.info(f"  K 线 {len(arr['code']):,} 行, SQL {time.time()-t0:.1f}s")
 
@@ -75,35 +111,52 @@ def build_technical_stage_history(mkt_conn, conn, start: str, end: str) -> int:
         volumes = arr["volume"][s:e].astype(float)
         dates = arr["date"][s:e]
         stages = classify_technical_stage(closes, volumes)
-        # 只保留非 unknown 的行
+        # 只写入声明窗口内的非 unknown 行；compute_start 只负责给滚动指标预热。
         for di, stage in enumerate(stages):
-            if stage != "unknown":
-                all_rows.append((str(code), str(dates[di]), stage))
+            row_date = str(dates[di])
+            if stage != "unknown" and write_start_resolved <= row_date <= end_resolved:
+                all_rows.append((str(code), row_date, stage))
         if (ci + 1) % 1000 == 0:
             log.info(f"  classify {ci+1:,}/{len(unique_codes):,}")
     log.info(f"  classify 全市场 完成 {time.time()-t1:.1f}s, 有效行 {len(all_rows):,}")
+
+    if not all_rows and not allow_empty_window:
+        raise RuntimeError(
+            "technical_stage window produced 0 rows; refuse to delete existing rows "
+            f"for {write_start_resolved}..{end_resolved}. Use --allow-empty-stage-window to override."
+        )
 
     # 写入 fact_stock_technical_stage (DELETE + INSERT 全量替换, 显式事务原子)
     # 见 build_formula_signals_history.write_signals_to_db 同款 SIGPIPE 防御
     t2 = time.time()
     conn.execute("BEGIN TRANSACTION")
     try:
-        conn.execute("DELETE FROM fact_stock_technical_stage WHERE date >= ? AND date <= ?", [start, end])
-        conn.executemany(
-            """
-            INSERT INTO fact_stock_technical_stage (stock_code, date, stage)
-            VALUES (?, ?, ?)
-            """,
-            all_rows,
+        conn.execute(
+            "DELETE FROM fact_stock_technical_stage WHERE date >= ? AND date <= ?",
+            [write_start_resolved, end_resolved],
         )
+        if all_rows:
+            conn.executemany(
+                """
+                INSERT INTO fact_stock_technical_stage (stock_code, date, stage)
+                VALUES (?, ?, ?)
+                """,
+                all_rows,
+            )
         conn.execute("COMMIT")
     except BaseException:
         try:
             conn.execute("ROLLBACK")
-        except Exception:
-            pass
+        except Exception as rollback_exc:
+            log.warning("ROLLBACK failed after technical_stage write error: %s", rollback_exc)
         raise
-    log.info(f"  写入 fact_stock_technical_stage: {len(all_rows):,} 行 ({time.time()-t2:.1f}s)")
+    log.info(
+        "  写入 fact_stock_technical_stage: %s 行 window=%s..%s (%.1fs)",
+        f"{len(all_rows):,}",
+        write_start_resolved,
+        end_resolved,
+        time.time() - t2,
+    )
     return len(all_rows)
 
 
@@ -267,13 +320,33 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", default="2023-01-01")
     parser.add_argument("--end", default=None)
+    parser.add_argument("--write-start", default=None,
+                        help="technical_stage 写入替换窗口起点；--start 仍作为滚动计算预热起点")
     parser.add_argument("--skip-stage", action="store_true", help="跳过 technical_stage 重算 (复用已有)")
+    parser.add_argument("--stage-only", action="store_true",
+                        help="只刷新 fact_stock_technical_stage，不重建 mart_stage_formula_fitness")
+    parser.add_argument("--allow-empty-stage-window", action="store_true",
+                        help="允许 technical_stage 窗口 0 行时仍删除该窗口旧行")
     args = parser.parse_args()
+    if args.stage_only and args.skip_stage:
+        parser.error("--stage-only cannot be combined with --skip-stage")
+    if args.skip_stage and args.write_start:
+        parser.error("--write-start only applies when technical_stage is rebuilt")
 
     mkt_conn = duckdb.connect(str(MARKET_DB_PATH), read_only=True)
     if args.end is None:
         row = mkt_conn.execute("SELECT MAX(date) FROM v_price_kline_qfq WHERE adjust='qfq'").fetchone()
-        args.end = row[0] if row else "2026-05-08"
+        kline_max = str(row[0]) if row and row[0] else None
+        if not kline_max:
+            raise RuntimeError("v_price_kline_qfq has no qfq rows; refuse hardcoded end-date fallback")
+        cal_conn = get_conn()
+        try:
+            cal_max = latest_completed_trade_date(cal_conn)
+        finally:
+            cal_conn.close()
+        if not cal_max:
+            raise RuntimeError("latest_completed_trade_date returned None; refuse wall-clock fallback")
+        args.end = min(kline_max, str(cal_max))
     log.info(f"区间 {args.start} - {args.end}")
 
     conn = get_conn()
@@ -281,18 +354,28 @@ def main():
         ensure_formula_tables(conn)
 
         if not args.skip_stage:
-            build_technical_stage_history(mkt_conn, conn, args.start, args.end)
+            build_technical_stage_history(
+                mkt_conn,
+                conn,
+                args.start,
+                args.end,
+                write_start=args.write_start,
+                allow_empty_window=args.allow_empty_stage_window,
+            )
         else:
             n = conn.execute("SELECT COUNT(*) FROM fact_stock_technical_stage").fetchone()[0]
             log.info(f"--skip-stage: 复用现有 fact_stock_technical_stage {n} 行")
+        if args.stage_only:
+            log.info("--stage-only: 跳过 mart_stage_formula_fitness 重建")
+            return
         # Python 内存版, mkt_conn 仍需用
         build_fitness_matrix(conn, mkt_conn, args.start, args.end)
     finally:
         conn.close()
         try:
             mkt_conn.close()
-        except Exception:
-            pass
+        except Exception as close_exc:
+            log.warning("market connection close failed: %s", close_exc)
 
 
 if __name__ == "__main__":

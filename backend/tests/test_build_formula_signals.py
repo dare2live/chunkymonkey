@@ -133,6 +133,41 @@ class TestComputeAllSignalsSmokeRun:
             assert s.stock_code == "TEST"
 
 
+class TestFormulaSignalWindowPlanning:
+    """公式信号刷新 CLI 的 compute window / write window 拆分。"""
+
+    def test_filter_signals_to_write_window(self):
+        from scripts.build_formula_signals_history import _filter_signals_to_window
+        from services.formula_engine.base import FormulaSignal
+
+        signals = [
+            FormulaSignal("000001", "2026-05-19", "macd_golden_cross",
+                          "macd_golden_cross", 0.5, "old", ()),
+            FormulaSignal("000001", "2026-05-20", "macd_golden_cross",
+                          "macd_golden_cross", 0.6, "in", ()),
+            FormulaSignal("000001", "2026-05-29", "macd_golden_cross",
+                          "macd_golden_cross", 0.7, "in", ()),
+            FormulaSignal("000001", "2026-06-01", "macd_golden_cross",
+                          "macd_golden_cross", 0.8, "future", ()),
+        ]
+
+        filtered = _filter_signals_to_window(signals, start="2026-05-20", end="2026-05-29")
+
+        assert [signal.date for signal in filtered] == ["2026-05-20", "2026-05-29"]
+
+    def test_resolve_write_window_rejects_window_before_compute_start(self):
+        from scripts.build_formula_signals_history import _resolve_write_window
+
+        with pytest.raises(ValueError, match="compute start"):
+            _resolve_write_window("2026-05-20", "2026-05-29", "2026-05-19")
+
+    def test_resolve_write_window_rejects_window_after_end(self):
+        from scripts.build_formula_signals_history import _resolve_write_window
+
+        with pytest.raises(ValueError, match="must be <= end"):
+            _resolve_write_window("2026-05-01", "2026-05-29", "2026-06-01")
+
+
 class TestTechnicalStageHistorical:
     """build_stage_formula_fitness 的 technical_stage 历史回算逻辑."""
 
@@ -147,6 +182,277 @@ class TestTechnicalStageHistorical:
         out1 = classify_technical_stage(closes, volumes)
         out2 = classify_technical_stage(closes, volumes)
         assert list(out1) == list(out2), "classify 必须是纯函数,两次调用结果一致"
+
+    def test_stage_window_replacement_uses_separate_compute_and_write_start(self):
+        """stage 增量刷新要用 compute_start 预热,但只替换 write_start 之后。"""
+        from datetime import date, timedelta
+
+        import duckdb
+
+        from scripts.build_stage_formula_fitness import build_technical_stage_history
+        from services.duck_adapter import connect as duck_connect
+        from services.formula_engine.ddl import ensure_formula_tables
+
+        mkt_conn = duckdb.connect(":memory:")
+        conn = duck_connect(":memory:")
+        try:
+            start_day = date(2026, 1, 1)
+            rows = []
+            for i in range(420):
+                day = (start_day + timedelta(days=i)).isoformat()
+                close = 10.0 + i * 0.05
+                rows.append(("000001", day, close, 1000.0, "daily", "qfq"))
+            mkt_conn.execute(
+                """
+                CREATE TABLE kline (
+                    code TEXT, date TEXT, close DOUBLE, volume DOUBLE, freq TEXT, adjust TEXT
+                )
+                """
+            )
+            mkt_conn.executemany("INSERT INTO kline VALUES (?, ?, ?, ?, ?, ?)", rows)
+            mkt_conn.execute("CREATE VIEW v_price_kline_qfq AS SELECT * FROM kline")
+            ensure_formula_tables(conn)
+            conn.execute(
+                """
+                INSERT INTO fact_stock_technical_stage (stock_code, date, stage)
+                VALUES ('000001', '2026-02-01', 'OLD'), ('000001', '2026-12-20', 'DIRTY')
+                """
+            )
+
+            written = build_technical_stage_history(
+                mkt_conn,
+                conn,
+                "2026-01-01",
+                "2027-02-24",
+                write_start="2026-12-20",
+            )
+
+            assert written > 0
+            preserved = conn.execute(
+                "SELECT stage FROM fact_stock_technical_stage WHERE stock_code='000001' AND date='2026-02-01'"
+            ).fetchone()[0]
+            replaced = conn.execute(
+                "SELECT stage FROM fact_stock_technical_stage WHERE stock_code='000001' AND date='2026-12-20'"
+            ).fetchone()[0]
+            assert preserved == "OLD"
+            assert replaced != "DIRTY"
+        finally:
+            conn.close()
+            mkt_conn.close()
+
+    def test_stage_empty_window_refuses_to_delete_existing_rows(self):
+        from datetime import date, timedelta
+
+        import duckdb
+
+        from scripts.build_stage_formula_fitness import build_technical_stage_history
+        from services.duck_adapter import connect as duck_connect
+        from services.formula_engine.ddl import ensure_formula_tables
+
+        mkt_conn = duckdb.connect(":memory:")
+        conn = duck_connect(":memory:")
+        try:
+            start_day = date(2026, 1, 1)
+            rows = []
+            for i in range(10):
+                day = (start_day + timedelta(days=i)).isoformat()
+                rows.append(("000001", day, 10.0 + i, 1000.0, "daily", "qfq"))
+            mkt_conn.execute(
+                """
+                CREATE TABLE kline (
+                    code TEXT, date TEXT, close DOUBLE, volume DOUBLE, freq TEXT, adjust TEXT
+                )
+                """
+            )
+            mkt_conn.executemany("INSERT INTO kline VALUES (?, ?, ?, ?, ?, ?)", rows)
+            mkt_conn.execute("CREATE VIEW v_price_kline_qfq AS SELECT * FROM kline")
+            ensure_formula_tables(conn)
+            conn.execute(
+                """
+                INSERT INTO fact_stock_technical_stage (stock_code, date, stage)
+                VALUES ('000001', '2026-01-05', 'KEEP')
+                """
+            )
+
+            with pytest.raises(RuntimeError, match="produced 0 rows"):
+                build_technical_stage_history(
+                    mkt_conn,
+                    conn,
+                    "2026-01-01",
+                    "2026-01-10",
+                    write_start="2026-01-05",
+                )
+
+            kept = conn.execute(
+                "SELECT stage FROM fact_stock_technical_stage WHERE stock_code='000001' AND date='2026-01-05'"
+            ).fetchone()[0]
+            assert kept == "KEEP"
+        finally:
+            conn.close()
+            mkt_conn.close()
+
+
+class TestSignalContextWindowRefresh:
+    """build_signal_context 的 lookback-safe 窗口刷新。"""
+
+    @staticmethod
+    def _seed_market(path, *, days: int) -> list[str]:
+        from datetime import date, timedelta
+
+        import duckdb
+
+        start_day = date(2026, 1, 1)
+        rows = []
+        dates = []
+        for i in range(days):
+            day = (start_day + timedelta(days=i)).isoformat()
+            dates.append(day)
+            close = 10.0 + i * 0.1
+            rows.append((
+                "000001",
+                day,
+                close - 0.1,
+                close + 0.2,
+                close - 0.3,
+                close,
+                1000.0 + i,
+                100000.0 + i * 100,
+                "daily",
+                "qfq",
+            ))
+        conn = duckdb.connect(str(path))
+        try:
+            conn.execute(
+                """
+                CREATE TABLE price_kline_tdxhub (
+                    code TEXT, date TEXT, open DOUBLE, high DOUBLE, low DOUBLE,
+                    close DOUBLE, volume DOUBLE, amount DOUBLE, freq TEXT, adjust TEXT
+                )
+                """
+            )
+            conn.executemany("INSERT INTO price_kline_tdxhub VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
+            conn.execute("CREATE VIEW v_price_kline_qfq AS SELECT * FROM price_kline_tdxhub")
+        finally:
+            conn.close()
+        return dates
+
+    @staticmethod
+    def _seed_smart(path, dates: list[str]) -> None:
+        from services.duck_adapter import connect as duck_connect
+        from services.formula_engine.ddl import ensure_formula_tables
+        from services.formula_engine.signal_context_ddl import ensure_signal_context_table
+
+        conn = duck_connect(str(path))
+        try:
+            ensure_formula_tables(conn)
+            ensure_signal_context_table(conn)
+            conn.executemany(
+                "INSERT INTO fact_stock_technical_stage (stock_code, date, stage) VALUES (?, ?, ?)",
+                [("000001", day, "2") for day in dates],
+            )
+        finally:
+            conn.close()
+
+    def test_signal_context_preserves_history_and_replaces_declared_window(self, tmp_path):
+        import duckdb
+
+        from scripts.build_signal_context import build_signal_context
+        from services.duck_adapter import connect as duck_connect
+
+        market_db = tmp_path / "market.duckdb"
+        smart_db = tmp_path / "smart.duckdb"
+        dates = self._seed_market(market_db, days=140)
+        self._seed_smart(smart_db, dates)
+        outside_date = dates[124]
+        write_start = dates[125]
+        end = dates[134]
+
+        conn = duckdb.connect(str(smart_db))
+        try:
+            conn.execute(
+                """
+                INSERT INTO fact_signal_context
+                  (stock_code, date, vol_r20, amt_r20, amount_20d_avg,
+                   price_pos_60d, price_pos_120d, drawdown_60d, technical_stage)
+                VALUES
+                  ('000001', ?, 777, 1, 1, 1, 1, 0, 'OLD'),
+                  ('000001', ?, 999, 1, 1, 1, 1, 0, 'DIRTY')
+                """,
+                [outside_date, write_start],
+            )
+        finally:
+            conn.close()
+
+        summary = build_signal_context(
+            "2026-01-01",
+            end,
+            write_start=write_start,
+            market_db=market_db,
+            smart_db=smart_db,
+            connect_smart=lambda: duck_connect(str(smart_db)),
+        )
+
+        assert summary["rows"] > 0
+        conn = duckdb.connect(str(smart_db), read_only=True)
+        try:
+            preserved = conn.execute(
+                "SELECT vol_r20 FROM fact_signal_context WHERE stock_code='000001' AND date=?",
+                [outside_date],
+            ).fetchone()[0]
+            replaced = conn.execute(
+                "SELECT vol_r20, technical_stage FROM fact_signal_context WHERE stock_code='000001' AND date=?",
+                [write_start],
+            ).fetchone()
+            assert preserved == pytest.approx(777.0)
+            assert replaced[0] != pytest.approx(999.0)
+            assert replaced[1] == "2"
+        finally:
+            conn.close()
+
+    def test_signal_context_empty_window_refuses_to_delete_existing_rows(self, tmp_path):
+        import duckdb
+
+        from scripts.build_signal_context import build_signal_context
+        from services.duck_adapter import connect as duck_connect
+
+        market_db = tmp_path / "market.duckdb"
+        smart_db = tmp_path / "smart.duckdb"
+        dates = self._seed_market(market_db, days=10)
+        self._seed_smart(smart_db, dates)
+        dirty_date = dates[4]
+        conn = duckdb.connect(str(smart_db))
+        try:
+            conn.execute(
+                """
+                INSERT INTO fact_signal_context
+                  (stock_code, date, vol_r20, amt_r20, amount_20d_avg,
+                   price_pos_60d, price_pos_120d, drawdown_60d, technical_stage)
+                VALUES ('000001', ?, 999, 1, 1, 1, 1, 0, 'DIRTY')
+                """,
+                [dirty_date],
+            )
+        finally:
+            conn.close()
+
+        with pytest.raises(RuntimeError, match="produced 0 rows"):
+            build_signal_context(
+                dates[0],
+                dates[-1],
+                write_start=dirty_date,
+                market_db=market_db,
+                smart_db=smart_db,
+                connect_smart=lambda: duck_connect(str(smart_db)),
+            )
+
+        conn = duckdb.connect(str(smart_db), read_only=True)
+        try:
+            kept = conn.execute(
+                "SELECT technical_stage FROM fact_signal_context WHERE stock_code='000001' AND date=?",
+                [dirty_date],
+            ).fetchone()[0]
+            assert kept == "DIRTY"
+        finally:
+            conn.close()
 
 
 class TestFormulaSignalCanGoThroughWriteCycle:
