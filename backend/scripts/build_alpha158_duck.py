@@ -25,6 +25,7 @@ import argparse
 import logging
 import sys
 import time
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -36,20 +37,168 @@ from services.market_db import CANONICAL_KLINE_QFQ_RELATION
 logger = logging.getLogger("alpha158")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
 
+TARGET_TABLE = "fact_alpha158_panel"
+BUILD_TABLE = "__fact_alpha158_panel_build"
+WINDOWS = (5, 10, 20, 30, 60)
 
-def build(output_db: str, start_date: str):
-    market_db = str(Path(__file__).resolve().parent.parent.parent / "data" / "market.duckdb")
 
-    # 核心 windows
-    windows = [5, 10, 20, 30, 60]
+def _iso_date(value: str, *, name: str) -> str:
+    try:
+        return date.fromisoformat(str(value)).isoformat()
+    except ValueError as exc:
+        raise ValueError(f"{name} must be YYYY-MM-DD, got {value!r}") from exc
 
+
+def _quote_ident(name: str) -> str:
+    if not name.replace("_", "").isalnum() or name[0].isdigit():
+        raise ValueError(f"unsafe SQL identifier: {name!r}")
+    return f'"{name}"'
+
+
+def _table_exists(con, table: str) -> bool:
+    row = con.execute(
+        """
+        SELECT 1
+          FROM information_schema.tables
+         WHERE table_name = ?
+         LIMIT 1
+        """,
+        [table],
+    ).fetchone()
+    return row is not None
+
+
+def _table_columns(con, table: str) -> list[str]:
+    return [str(row[0]) for row in con.execute(f"DESCRIBE {_quote_ident(table)}").fetchall()]
+
+
+def _ensure_compatible_target(con) -> list[str]:
+    target_cols = _table_columns(con, TARGET_TABLE)
+    build_cols = _table_columns(con, BUILD_TABLE)
+    missing = [col for col in target_cols if col not in build_cols]
+    extra = [col for col in build_cols if col not in target_cols]
+    if missing or extra:
+        raise RuntimeError(
+            "alpha158 schema drift: refusing window replacement; "
+            f"missing_in_build={missing[:8]} extra_in_build={extra[:8]}. "
+            "Run an explicit --replace-table rebuild after review if this is intended."
+        )
+    return target_cols
+
+
+def _create_index(con) -> None:
+    con.execute(f"CREATE INDEX IF NOT EXISTS idx_a158_code_date ON {TARGET_TABLE}(stock_code, date)")
+
+
+def _resolve_end_date(end_date: str | None) -> tuple[str, str]:
     # Codex review 2026-05-19 P0: alpha158 build 从 K-line 衍生, 必须 enforce 上界 =
     # latest_completed_trade_date, 防止 K-line 表残留盘中行污染 alpha158 panel.
     # CLAUDE.md Rule 3 反例: defense-in-depth.
     # rule-compliance: ok evidence=alpha158-build-calendar-gate-upper-bound
     from services.market_db import _latest_completed_trade_date_for_write
-    last_closed = _latest_completed_trade_date_for_write()  # fail-closed
-    logger.info("alpha158 build calendar gate: upper bound = %s (latest_completed)", last_closed)
+
+    last_closed = _iso_date(_latest_completed_trade_date_for_write(), name="latest_completed_trade_date")
+    if end_date is None:
+        return last_closed, last_closed
+    requested = _iso_date(end_date, name="end_date")
+    if requested > last_closed:
+        raise ValueError(
+            f"end_date {requested} is after latest completed trading date {last_closed}; "
+            "refusing to build alpha158 from future/partial K-line rows"
+        )
+    return requested, last_closed
+
+
+def _write_panel(
+    con,
+    *,
+    write_start_date: str,
+    end_date: str,
+    replace_table: bool,
+    allow_empty_window: bool,
+) -> dict:
+    window_stats = con.execute(
+        f"""
+        SELECT COUNT(*), COUNT(DISTINCT stock_code), COUNT(DISTINCT date), MIN(date), MAX(date)
+          FROM {BUILD_TABLE}
+         WHERE date >= ? AND date <= ?
+        """,
+        [write_start_date, end_date],
+    ).fetchone()
+    window_rows = int(window_stats[0] or 0)
+    if window_rows == 0 and not allow_empty_window:
+        raise RuntimeError(
+            f"alpha158 build produced 0 rows for write window {write_start_date}..{end_date}; "
+            "refusing to delete existing panel rows"
+        )
+
+    target_exists = _table_exists(con, TARGET_TABLE)
+    mode = "replace_table" if replace_table or not target_exists else "replace_window"
+    con.execute("BEGIN TRANSACTION")
+    try:
+        if replace_table or not target_exists:
+            con.execute(f"DROP TABLE IF EXISTS {TARGET_TABLE}")
+            con.execute(f"CREATE TABLE {TARGET_TABLE} AS SELECT * FROM {BUILD_TABLE}")
+        else:
+            columns = _ensure_compatible_target(con)
+            cols_sql = ", ".join(_quote_ident(col) for col in columns)
+            con.execute(
+                f"DELETE FROM {TARGET_TABLE} WHERE date >= ? AND date <= ?",
+                [write_start_date, end_date],
+            )
+            con.execute(
+                f"""
+                INSERT INTO {TARGET_TABLE} ({cols_sql})
+                SELECT {cols_sql}
+                  FROM {BUILD_TABLE}
+                 WHERE date >= ? AND date <= ?
+                """,
+                [write_start_date, end_date],
+            )
+        _create_index(con)
+        con.execute("COMMIT")
+    except BaseException:
+        try:
+            con.execute("ROLLBACK")
+        except Exception as rollback_exc:
+            logger.warning("alpha158 transaction rollback failed: %s", rollback_exc)
+        raise
+
+    return {
+        "mode": mode,
+        "window_rows": window_rows,
+        "window_codes": int(window_stats[1] or 0),
+        "window_dates": int(window_stats[2] or 0),
+        "window_min_date": str(window_stats[3]) if window_stats[3] else None,
+        "window_max_date": str(window_stats[4]) if window_stats[4] else None,
+    }
+
+
+def build(
+    output_db: str,
+    start_date: str,
+    *,
+    end_date: str | None = None,
+    write_start_date: str | None = None,
+    replace_table: bool = False,
+    allow_empty_window: bool = False,
+    market_db: str | None = None,
+) -> dict:
+    market_db = market_db or str(Path(__file__).resolve().parent.parent.parent / "data" / "market.duckdb")
+    read_start_date = _iso_date(start_date, name="start_date")
+    end_date, last_closed = _resolve_end_date(end_date)
+    write_start_date = _iso_date(write_start_date or read_start_date, name="write_start_date")
+    if write_start_date < read_start_date:
+        raise ValueError("write_start_date must be >= start_date so rolling features have a read window")
+    if write_start_date > end_date:
+        raise ValueError("write_start_date must be <= end_date")
+    logger.info(
+        "alpha158 build calendar gate: requested_end=%s upper_bound=%s read_start=%s write_start=%s",
+        end_date,
+        last_closed,
+        read_start_date,
+        write_start_date,
+    )
 
     # 构造 Alpha158 主 SQL
     sql_parts = [f"""
@@ -63,7 +212,9 @@ def build(output_db: str, start_date: str):
                CAST(volume AS DOUBLE) AS volume,
                CAST(amount AS DOUBLE) AS amount
         FROM {CANONICAL_KLINE_QFQ_RELATION}
-        WHERE freq='daily' AND adjust='qfq' AND date >= '{start_date}' AND date <= '{last_closed}'
+        WHERE freq='daily' AND adjust='qfq'
+          AND CAST(date AS DATE) >= DATE '{read_start_date}'
+          AND CAST(date AS DATE) <= DATE '{end_date}'
     ),
     px AS (
         SELECT *,
@@ -87,7 +238,7 @@ def build(output_db: str, start_date: str):
         ((2 * close - high - low) / NULLIF(high - low, 0)) AS a158_ksft2
     """]
 
-    for w in windows:
+    for w in WINDOWS:
         sql_parts.append(f"""
         ,
         -- ═══════════════════════════════════════════════════════════
@@ -131,42 +282,83 @@ def build(output_db: str, start_date: str):
     full_sql = "".join(sql_parts)
 
     t0 = time.time()
-    logger.info("构造 Alpha158 panel (windows=%s, start=%s)", windows, start_date)
+    logger.info("构造 Alpha158 panel (windows=%s, start=%s, end=%s)", WINDOWS, read_start_date, end_date)
 
     con = duckdb.connect(output_db)
-    con.execute(f"ATTACH '{market_db}' AS market (READ_ONLY)")
+    market_attached = False
+    try:
+        con.execute(f"ATTACH '{market_db}' AS market (READ_ONLY)")
+        market_attached = True
 
-    # 目标表
-    con.execute("DROP TABLE IF EXISTS fact_alpha158_panel")
-    logger.info("运行主 SQL 计算 + 写表")
-    con.execute(f"CREATE TABLE fact_alpha158_panel AS {full_sql}")
+        logger.info("运行主 SQL 计算到临时表")
+        con.execute(f"DROP TABLE IF EXISTS {BUILD_TABLE}")
+        con.execute(f"CREATE TEMP TABLE {BUILD_TABLE} AS {full_sql}")
+        write_summary = _write_panel(
+            con,
+            write_start_date=write_start_date,
+            end_date=end_date,
+            replace_table=replace_table,
+            allow_empty_window=allow_empty_window,
+        )
 
-    # 统计
-    row = con.execute("""
-        SELECT COUNT(*), COUNT(DISTINCT stock_code), COUNT(DISTINCT date)
-        FROM fact_alpha158_panel
-    """).fetchone()
-    cols = [r[0] for r in con.execute("DESCRIBE fact_alpha158_panel").fetchall()]
-    logger.info("fact_alpha158_panel: rows=%d codes=%d dates=%d cols=%d",
-                row[0], row[1], row[2], len(cols))
-    logger.info("Alpha158 列名 (前 12): %s", cols[:12])
-    logger.info("总耗时 %.1f min", (time.time() - t0) / 60)
-
-    # 建索引 (DuckDB min-max zone map 够用, 显式建 code+date 提速 join)
-    con.execute("CREATE INDEX idx_a158_code_date ON fact_alpha158_panel(stock_code, date)")
-
-    con.execute("DETACH market")
-    con.close()
+        # 统计
+        row = con.execute("""
+            SELECT COUNT(*), COUNT(DISTINCT stock_code), COUNT(DISTINCT date)
+            FROM fact_alpha158_panel
+        """).fetchone()
+        cols = [r[0] for r in con.execute("DESCRIBE fact_alpha158_panel").fetchall()]
+        logger.info("fact_alpha158_panel: rows=%d codes=%d dates=%d cols=%d",
+                    row[0], row[1], row[2], len(cols))
+        logger.info("write_summary: %s", write_summary)
+        logger.info("Alpha158 列名 (前 12): %s", cols[:12])
+        logger.info("总耗时 %.1f min", (time.time() - t0) / 60)
+        return {
+            "rows": int(row[0] or 0),
+            "codes": int(row[1] or 0),
+            "dates": int(row[2] or 0),
+            "cols": len(cols),
+            **write_summary,
+        }
+    finally:
+        if market_attached:
+            try:
+                con.execute("DETACH market")
+            except Exception as detach_exc:
+                logger.warning("alpha158 market detach failed during cleanup: %s", detach_exc)
+        con.close()
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--start', default='2023-01-01')
+    parser.add_argument('--end', default=None, help='默认 latest_completed_trade_date; 显式未来日期会 fail-closed')
+    parser.add_argument(
+        '--write-start',
+        default=None,
+        help='仅替换该日期起的目标窗口；start 可更早以保留 rolling lookback',
+    )
+    parser.add_argument(
+        '--replace-table',
+        action='store_true',
+        help='显式整表替换；默认先建临时表再事务内按窗口 DELETE+INSERT',
+    )
+    parser.add_argument(
+        '--allow-empty-window',
+        action='store_true',
+        help='允许写入窗口 0 行并清空目标窗口；默认 fail-closed 防误删',
+    )
     parser.add_argument('--output', default=None, help='默认 data/alpha158.duckdb')
     args = parser.parse_args()
 
     output = args.output or str(Path(__file__).resolve().parent.parent.parent / "data" / "alpha158.duckdb")
-    build(output, args.start)
+    build(
+        output,
+        args.start,
+        end_date=args.end,
+        write_start_date=args.write_start,
+        replace_table=args.replace_table,
+        allow_empty_window=args.allow_empty_window,
+    )
 
 
 if __name__ == "__main__":
