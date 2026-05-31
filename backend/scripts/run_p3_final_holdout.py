@@ -148,7 +148,7 @@ def _compute_hs300_ann_ret(conn, period_start, period_end) -> float | None:
         if not r or r[2] == 0 or r[0] is None:
             return None
         # Naive: (max - min) / min annualized over period
-        # 实际 PLAN_V3 §0.1 用 HS300 完整 NAV; 此处简化版.
+        # 实际 analysis/plan_v3_20260514_archived.md §0.1 用 HS300 完整 NAV; 此处简化版.
         period_months = max(1, r[2] / 22)  # 22 trade days / month
         period_ret = (r[1] - r[0]) / r[0] if r[0] > 0 else 0
         return period_ret * (12.0 / period_months)

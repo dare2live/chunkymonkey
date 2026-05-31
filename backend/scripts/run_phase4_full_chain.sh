@@ -1,7 +1,7 @@
 #!/bin/bash
 # Phase 4 全 alpha 根因 chain orchestrator.
 #
-# 按 PLAN_V3 §72 "失败 → 回 alpha 根因, 不调目标" + Phase 4 roadmap (docs/phase4_alpha_root_cause_roadmap.md):
+# 按 PLAN_V3 §72 "失败 → 回 alpha 根因, 不调目标" + Phase 4 roadmap (docs/strategy_validation_contract.md):
 #
 # Stage 1 (current): Optuna 200 trials --full (#3) + best params 重训
 # Stage 2 (audit):   feature importance audit (#2) → 哪些 features 真带 alpha

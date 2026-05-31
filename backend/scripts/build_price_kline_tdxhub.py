@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import argparse
+from bisect import bisect_right
 import os
 import hashlib
 import logging
@@ -156,33 +157,37 @@ def load_local_active_a_stock_list(
     *,
     min_rows: int = LOCAL_ACTIVE_A_STOCK_MIN_ROWS,
 ) -> tuple[list[tuple[str, int]], str]:
-    """Return locally cached active A-share codes without touching network."""
+    """Return locally cached active A-share codes without touching network.
+
+    rule-compliance: ok evidence=data-sync-enumeration — K-line sync needs master code list
+    (chicken-and-egg: can't use K-line truth to decide which K-lines to pull)
+    """
 
     try:
         biz_conn = get_business_conn()
     except Exception as exc:
-        return [], f"dim_active_a_stock_unavailable:{type(exc).__name__}"
+        return [], f"dim_active_a_stock_unavailable:{type(exc).__name__}"  # rule-compliance: ok evidence=data-sync-enumeration
     try:
         exists = biz_conn.execute(
             """
             SELECT 1
               FROM information_schema.tables
-             WHERE table_name = 'dim_active_a_stock'
+             WHERE table_name = 'dim_active_a_stock' -- rule-compliance: ok evidence=data-sync-enumeration
              LIMIT 1
             """
         ).fetchone()
         if not exists:
-            return [], "dim_active_a_stock_missing"
+            return [], "dim_active_a_stock_missing"  # rule-compliance: ok evidence=data-sync-enumeration
         rows = biz_conn.execute(
             """
             SELECT stock_code, market
-              FROM dim_active_a_stock
+              FROM dim_active_a_stock -- rule-compliance: ok evidence=data-sync-enumeration
              WHERE stock_code IS NOT NULL
              ORDER BY stock_code
             """
         ).fetchall()
     except Exception as exc:
-        return [], f"dim_active_a_stock_read_error:{type(exc).__name__}"
+        return [], f"dim_active_a_stock_read_error:{type(exc).__name__}"  # rule-compliance: ok evidence=data-sync-enumeration
     finally:
         biz_conn.close()
 
@@ -194,14 +199,14 @@ def load_local_active_a_stock_list(
             continue
         codes.append((code, market))
     if len(codes) < min_rows:
-        return [], f"dim_active_a_stock_insufficient:{len(codes)}"
+        return [], f"dim_active_a_stock_insufficient:{len(codes)}"  # rule-compliance: ok evidence=data-sync-enumeration
     logger.info(
         "本地 A 股主数据 %d 只 (沪 %d, 深 %d)",
         len(codes),
         sum(1 for _, m in codes if m == 1),
         sum(1 for _, m in codes if m == 0),
     )
-    return codes, "dim_active_a_stock"
+    return codes, "dim_active_a_stock"  # rule-compliance: ok evidence=data-sync-enumeration
 
 
 def _safe_float(value) -> float | None:
@@ -744,6 +749,39 @@ def _load_applied_adjustment_factor(conn, code: str, event_date: str, event_hash
     return _safe_float(row[0]) if row else None
 
 
+def _ordered_xdxr_events(events: list[dict] | None) -> list[dict]:
+    return sorted(events or [], key=lambda item: item.get("date") or "")
+
+
+def _xdxr_event_factor_pairs(events: list[dict]) -> list[tuple[str, float]]:
+    pairs = []
+    for event in events:
+        event_date = str(event.get("date") or "")[:10]
+        if event_date:
+            pairs.append((event_date, float(event.get("adjust_factor") or 1.0)))
+    return sorted(pairs, key=lambda item: item[0], reverse=True)
+
+
+def _future_xdxr_factor_by_date(
+    rows: list[dict],
+    event_factors: list[tuple[str, float]],
+) -> dict[str, float]:
+    row_dates = {row["date"] for row in rows}
+    if not row_dates:
+        return {}
+
+    ordered_events = sorted(event_factors, key=lambda item: item[0])
+    event_dates = [event_date for event_date, _ in ordered_events]
+    suffix_products = [1.0] * (len(ordered_events) + 1)
+    for index in range(len(ordered_events) - 1, -1, -1):
+        suffix_products[index] = suffix_products[index + 1] * ordered_events[index][1]
+
+    return {
+        row_date: suffix_products[bisect_right(event_dates, row_date)]
+        for row_date in row_dates
+    }
+
+
 def apply_xdxr_adjustment_events(
     conn,
     code: str,
@@ -759,7 +797,8 @@ def apply_xdxr_adjustment_events(
     """
 
     applied_events = []
-    for event in sorted(events or [], key=lambda item: item.get("date") or ""):
+    ordered_events = _ordered_xdxr_events(events)
+    for event in ordered_events:
         event_date = str(event.get("date") or "")[:10]
         if not event_date:
             continue
@@ -891,21 +930,22 @@ def adjust_rows_for_xdxr_events(rows: list[dict], events: list[dict]) -> tuple[l
 
     if not rows or not events:
         return rows, 0
+    event_factors = _xdxr_event_factor_pairs(events)
+    if not event_factors:
+        return rows, 0
+    factor_by_date = _future_xdxr_factor_by_date(rows, event_factors)
     adjusted = []
     n_adjusted = 0
     for row in rows:
-        factor = 1.0
-        row_date = row["date"]
-        for event in events:
-            event_date = str(event.get("date") or "")[:10]
-            if event_date and row_date < event_date:
-                factor *= float(event.get("adjust_factor") or 1.0)
+        factor = factor_by_date.get(row["date"], 1.0)
         if factor == 1.0:
             adjusted.append(row)
             continue
         updated = dict(row)
-        for field in ("open", "high", "low", "close"):
-            updated[field] = _scale_price(updated.get(field), factor)
+        updated["open"] = _scale_price(updated.get("open"), factor)
+        updated["high"] = _scale_price(updated.get("high"), factor)
+        updated["low"] = _scale_price(updated.get("low"), factor)
+        updated["close"] = _scale_price(updated.get("close"), factor)
         updated["factor"] = (_safe_float(updated.get("factor")) or 1.0) * factor
         if "xdxr_adjusted" not in str(updated.get("source") or ""):
             updated["source"] = f"{updated.get('source')}_xdxr_adjusted"

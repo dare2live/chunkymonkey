@@ -11,6 +11,7 @@ import argparse
 import ast
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from itertools import chain
 import json
 import re
 import sys
@@ -101,6 +102,7 @@ SKIP_DIR_NAMES = {
 
 BACKEND_SUFFIXES = {".py", ".yaml", ".yml", ".toml", ".ini", ".txt"}
 FRONTEND_SUFFIXES = {".html", ".js", ".css"}
+ACTIVE_DEPENDENCY_CLASSIFICATIONS = {"compatibility_shim", "deprecated_pending_cleanup", "delete_after_tests"}
 
 SQL_READ_RE = re.compile(r"\b(?:FROM|JOIN|ASOF\s+JOIN)\s+([A-Za-z_\"`][\w\.\"`]*)", re.IGNORECASE)
 SQL_WRITE_RE = re.compile(
@@ -119,8 +121,8 @@ ROUTER_ROUTE_RE = re.compile(r"@router\.(get|post|put|delete|patch)\(\s*[\"']([^
 API_ROUTER_PREFIX_RE = re.compile(r"APIRouter\((?P<args>[^)]*)\)", re.DOTALL)
 PREFIX_ARG_RE = re.compile(r"prefix\s*=\s*[\"']([^\"']*)")
 ROUTER_IMPORT_RE = re.compile(r"from\s+routers\.([A-Za-z_]\w*)\s+import\s+router\s+as\s+([A-Za-z_]\w*)")
-INCLUDE_ROUTER_RE = re.compile(
-    r"app\.include_router\(\s*([A-Za-z_]\w*)\s*,\s*prefix\s*=\s*[\"']([^\"']*)",
+INCLUDE_ROUTER_CALL_RE = re.compile(
+    r"(?:app|router)\.include_router\(\s*(?P<alias>[A-Za-z_]\w*)(?P<args>[^)]*)\)",
     re.DOTALL,
 )
 FRONTEND_API_RE = re.compile(r"[\"'](/api/[^\"'\s)`]+)")
@@ -252,16 +254,60 @@ def _router_prefix(text: str) -> str:
     return prefix.group(1) if prefix else ""
 
 
-def _router_prefixes_from_main(main_text: str) -> dict[str, str]:
-    alias_to_module = {
+def _router_import_aliases(text: str) -> dict[str, str]:
+    return {
         alias: f"routers.{module}"
-        for module, alias in ROUTER_IMPORT_RE.findall(main_text)
+        for module, alias in ROUTER_IMPORT_RE.findall(text)
     }
+
+
+def _included_router_prefixes(text: str) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    for match in INCLUDE_ROUTER_CALL_RE.finditer(text):
+        prefix = PREFIX_ARG_RE.search(match.group("args"))
+        out.append((match.group("alias"), prefix.group(1) if prefix else ""))
+    return out
+
+
+def _router_prefixes_from_main(main_text: str) -> dict[str, str]:
+    alias_to_module = _router_import_aliases(main_text)
     out: dict[str, str] = {}
-    for alias, prefix in INCLUDE_ROUTER_RE.findall(main_text):
+    for alias, prefix in _included_router_prefixes(main_text):
         module = alias_to_module.get(alias)
         if module:
             out[module] = prefix
+    return out
+
+
+def _router_child_app_prefixes(
+    *,
+    module_text: str,
+    parent_prefix: str,
+) -> list[tuple[str, str]]:
+    alias_to_module = _router_import_aliases(module_text)
+    return [
+        (child_module, _join_api_path(parent_prefix, include_prefix))
+        for alias, include_prefix in _included_router_prefixes(module_text)
+        for child_module in [alias_to_module.get(alias)]
+        if child_module
+    ]
+
+
+def _resolve_router_app_prefixes(module_to_text: dict[str, str], main_text: str) -> dict[str, str]:
+    out = _router_prefixes_from_main(main_text)
+    pending = list(out.items())
+    while pending:
+        parent_module, parent_prefix = pending.pop(0)
+        children = [
+            (child_module, child_prefix)
+            for child_module, child_prefix in _router_child_app_prefixes(
+                module_text=module_to_text.get(parent_module, ""),
+                parent_prefix=parent_prefix,
+            )
+            if child_module not in out
+        ]
+        out.update(children)
+        pending.extend(children)
     return out
 
 
@@ -304,9 +350,25 @@ def _strip_js_comments(text: str) -> str:
     i = 0
     quote = ""
     escaped = False
+    line_comment = False
+    block_comment = False
     while i < len(text):
         ch = text[i]
         nxt = text[i + 1] if i + 1 < len(text) else ""
+        if line_comment:
+            if ch == "\r" or ch == "\n":
+                out.append(ch)
+                line_comment = False
+            i += 1
+            continue
+        if block_comment:
+            if ch == "*" and nxt == "/":
+                block_comment = False
+                i += 2
+                continue
+            out.append("\n" if ch == "\r" or ch == "\n" else " ")
+            i += 1
+            continue
         if quote:
             out.append(ch)
             if escaped:
@@ -317,21 +379,17 @@ def _strip_js_comments(text: str) -> str:
                 quote = ""
             i += 1
             continue
-        if ch in {"'", '"', "`"}:
+        if ch == "'" or ch == '"' or ch == "`":
             quote = ch
             out.append(ch)
             i += 1
             continue
         if ch == "/" and nxt == "/":
-            while i < len(text) and text[i] not in "\r\n":
-                i += 1
-            out.append("\n")
+            line_comment = True
+            i += 2
             continue
         if ch == "/" and nxt == "*":
-            i += 2
-            while i + 1 < len(text) and not (text[i] == "*" and text[i + 1] == "/"):
-                out.append("\n" if text[i] in "\r\n" else " ")
-                i += 1
+            block_comment = True
             i += 2
             continue
         out.append(ch)
@@ -490,9 +548,9 @@ def extract_python_imports(text: str, current_module: str | None = None) -> list
 def scan_backend_assets(repo: Path) -> Inventory:
     backend = repo / "backend"
     main_text = _read_text(backend / "main.py") if (backend / "main.py").exists() else ""
-    app_prefix_by_module = _router_prefixes_from_main(main_text)
     files = list(_iter_files(backend, BACKEND_SUFFIXES))
     module_to_asset: dict[str, str] = {}
+    module_to_text: dict[str, str] = {}
     path_to_text: dict[Path, str] = {}
 
     for path in files:
@@ -501,7 +559,9 @@ def scan_backend_assets(repo: Path) -> Inventory:
         module = python_module_for_path(path, repo)
         if module:
             module_to_asset[module] = f"code:{_rel(path, repo)}"
+            module_to_text[module] = text
 
+    app_prefix_by_module = _resolve_router_app_prefixes(module_to_text, main_text)
     assets: list[Asset] = []
     edges: set[Edge] = set()
     for path in files:
@@ -639,17 +699,23 @@ def _safe_latest(conn: Any, table_ref: str, columns: list[str]) -> tuple[str | N
         "ended_at",
     )
     lower_to_actual = {col.lower(): col for col in columns}
-    for candidate in candidates:
-        actual = lower_to_actual.get(candidate)
-        if not actual:
-            continue
-        try:
-            row = conn.execute(f"SELECT CAST(MAX({_quote_ident(actual)}) AS VARCHAR) AS latest FROM {table_ref}").fetchone()
-            latest = row["latest"] if row else None
-            if latest is not None:
-                return actual, str(latest)
-        except Exception:
-            continue
+    available = [(candidate, lower_to_actual[candidate]) for candidate in candidates if candidate in lower_to_actual]
+    if not available:
+        return None, None
+    select_exprs = ", ".join(
+        f"CAST(MAX({_quote_ident(actual)}) AS VARCHAR) AS {_quote_ident(f'latest_{idx}')}"
+        for idx, (_candidate, actual) in enumerate(available)
+    )
+    try:
+        row = conn.execute(f"SELECT {select_exprs} FROM {table_ref}").fetchone()
+    except Exception:
+        return None, None
+    if not row:
+        return None, None
+    for idx, (_candidate, actual) in enumerate(available):
+        latest = row[f"latest_{idx}"]
+        if latest is not None:
+            return actual, str(latest)
     return None, None
 
 
@@ -785,30 +851,40 @@ def _resolve_edges(edges: Iterable[Edge], assets: list[Asset]) -> list[Edge]:
 
 def _apply_dependency_context(assets: list[Asset], edges: list[Edge]) -> None:
     by_id = {asset.asset_id: asset for asset in assets}
-    incoming: dict[str, list[str]] = defaultdict(list)
+    incoming: dict[str, set[str]] = defaultdict(set)
+    source_blockers: dict[str, set[str]] = defaultdict(set)
+    target_blockers: dict[str, set[str]] = defaultdict(set)
     for edge in edges:
-        incoming[edge.target_asset_id].append(edge.source_asset_id)
-    for asset in assets:
-        asset.current_call_paths = sorted(set(asset.current_call_paths + incoming.get(asset.asset_id, [])))
-    for edge in edges:
+        incoming[edge.target_asset_id].add(edge.source_asset_id)
         source = by_id.get(edge.source_asset_id)
         target = by_id.get(edge.target_asset_id)
         if not source or not target:
             continue
         if source.asset_type == "test":
             continue
-        if source.classification == "production" and target.classification in {
-            "compatibility_shim",
-            "deprecated_pending_cleanup",
-            "delete_after_tests",
-        }:
-            source.blockers.append(
-                f"production asset depends on {target.classification}: {target.path}"
+        if target.classification in ACTIVE_DEPENDENCY_CLASSIFICATIONS:
+            if source.classification == "production":
+                source_blockers[source.asset_id].add(
+                    f"production asset depends on {target.classification}: {target.path}"
+                )
+            target_blockers[target.asset_id].add(
+                f"has active dependency from {source.path}"
             )
-        if target.classification in {"compatibility_shim", "deprecated_pending_cleanup", "delete_after_tests"}:
-            target.blockers.append(f"has active dependency from {source.path}")
+    call_paths_by_asset = {
+        asset.asset_id: sorted(set(asset.current_call_paths) | incoming.get(asset.asset_id, set()))
+        for asset in assets
+    }
+    blockers_by_asset = {
+        asset.asset_id: sorted(
+            set(asset.blockers)
+            | source_blockers.get(asset.asset_id, set())
+            | target_blockers.get(asset.asset_id, set())
+        )
+        for asset in assets
+    }
     for asset in assets:
-        asset.blockers = sorted(set(asset.blockers))
+        asset.current_call_paths = call_paths_by_asset[asset.asset_id]
+        asset.blockers = blockers_by_asset[asset.asset_id]
 
 
 def _path_segments(path: str) -> list[str]:
@@ -846,23 +922,69 @@ def frontend_call_matches_route(call: str, route_path: str) -> bool:
     return False
 
 
+def _backend_route_paths(backend_assets: list[Asset]) -> list[str]:
+    def route_paths(asset: Asset) -> list[str]:
+        if not (asset.path == "backend/main.py" or asset.path.startswith("backend/routers/")):
+            return []
+        return [route.split(" ", 1)[1] for route in asset.api_routes]
+
+    return list(chain.from_iterable(route_paths(asset) for asset in backend_assets))
+
+
+def _route_match_index(route_paths: Iterable[str]) -> tuple[set[str], list[str], list[str]]:
+    static_routes: set[str] = set()
+    pattern_routes: list[str] = []
+    prefix_routes: list[str] = []
+    for route_path in route_paths:
+        prefix_routes.append(route_path)
+        if "{" in route_path and "}" in route_path:
+            pattern_routes.append(route_path)
+        else:
+            static_routes.add(route_path)
+    return static_routes, pattern_routes, prefix_routes
+
+
+def _frontend_api_call_rows(frontend_assets: list[Asset]) -> list[tuple[str, str]]:
+    return list(
+        chain.from_iterable(
+            ((asset.path, call) for call in asset.frontend_api_calls)
+            for asset in frontend_assets
+        )
+    )
+
+
+def _frontend_call_is_backed(
+    call: str,
+    *,
+    static_routes: set[str],
+    pattern_routes: list[str],
+    prefix_routes: list[str],
+) -> bool:
+    raw_call = call.split("?", 1)[0].strip()
+    if raw_call in static_routes:
+        return True
+    if any(frontend_call_matches_route(raw_call, route_path) for route_path in pattern_routes):
+        return True
+    if raw_call.endswith("/"):
+        return any(frontend_call_matches_route(raw_call, route_path) for route_path in prefix_routes)
+    return False
+
+
 def frontend_route_contract_violations(
     *,
     frontend_assets: list[Asset],
     backend_assets: list[Asset],
 ) -> list[dict[str, str]]:
-    route_paths = []
-    for asset in backend_assets:
-        if not (asset.path == "backend/main.py" or asset.path.startswith("backend/routers/")):
-            continue
-        for route in asset.api_routes:
-            _method, path = route.split(" ", 1)
-            route_paths.append(path)
+    static_routes, pattern_routes, prefix_routes = _route_match_index(_backend_route_paths(backend_assets))
     out: list[dict[str, str]] = []
-    for asset in frontend_assets:
-        for call in asset.frontend_api_calls:
-            if not any(frontend_call_matches_route(call, route_path) for route_path in route_paths):
-                out.append({"path": asset.path, "api_call": call})
+    for path, call in _frontend_api_call_rows(frontend_assets):
+        if not _frontend_call_is_backed(
+            call,
+            static_routes=static_routes,
+            pattern_routes=pattern_routes,
+            prefix_routes=prefix_routes,
+        ):
+            out.append({"path": path, "api_call": call})
     return sorted(out, key=lambda item: (item["path"], item["api_call"]))
 
 
@@ -1013,11 +1135,12 @@ def persist_inventory(conn: Any, inventory: Inventory, *, run_id: str, built_at:
 
 
 def _top_frontend_api_calls(assets: list[Asset]) -> list[tuple[str, int]]:
-    counts: Counter[str] = Counter()
-    for asset in assets:
-        for call in asset.frontend_api_calls:
-            counts[call.split("?", 1)[0]] += 1
-    return counts.most_common(30)
+    calls = (
+        call.split("?", 1)[0]
+        for asset in assets
+        for call in asset.frontend_api_calls
+    )
+    return Counter(calls).most_common(30)
 
 
 def _largest_duckdb_assets(assets: list[Asset]) -> list[tuple[str, int | None, str | None]]:
@@ -1033,29 +1156,39 @@ def _largest_duckdb_assets(assets: list[Asset]) -> list[tuple[str, int | None, s
     return sorted(rows, key=lambda item: -1 if item[1] is None else -int(item[1]))[:30]
 
 
+def _module_report_asset_key(asset: Asset) -> tuple[str, bool, bool, str]:
+    return (
+        asset.module_area,
+        asset.asset_type == "test",
+        asset.classification != "production",
+        asset.path,
+    )
+
+
+def _classification_counts_dict(assets: Iterable[Asset]) -> dict[str, int]:
+    counts = Counter(asset.classification for asset in assets)
+    return dict(sorted(counts.items()))
+
+
 def _module_cut_line_rows(assets: list[Asset]) -> list[dict[str, Any]]:
     by_module: dict[str, list[Asset]] = defaultdict(list)
-    for asset in assets:
+    sorted_assets = sorted(assets, key=_module_report_asset_key)
+    module_names: list[str] = []
+    last_module: str | None = None
+    for asset in sorted_assets:
+        if asset.module_area != last_module:
+            module_names.append(asset.module_area)
+            last_module = asset.module_area
         by_module[asset.module_area].append(asset)
     rows: list[dict[str, Any]] = []
-    for module, module_assets in sorted(by_module.items()):
-        counts = Counter(asset.classification for asset in module_assets)
-        representative = [
-            asset.path
-            for asset in sorted(
-                module_assets,
-                key=lambda item: (
-                    item.asset_type == "test",
-                    item.classification != "production",
-                    item.path,
-                ),
-            )[:8]
-        ]
+    for module in module_names:
+        module_assets = by_module[module]
+        representative = [asset.path for asset in module_assets[:8]]
         rows.append(
             {
                 "module_area": module,
                 "total": len(module_assets),
-                "counts": dict(sorted(counts.items())),
+                "counts": _classification_counts_dict(module_assets),
                 "representative_paths": representative,
             }
         )
@@ -1107,7 +1240,8 @@ def write_markdown_report(
         )
 
     lines.extend(["", "## Deprecated Or Compatibility Candidates", ""])
-    for asset in sorted(deprecated, key=lambda a: (a.classification, a.path))[:60]:
+    deprecated_candidates = sorted(deprecated, key=lambda a: (a.classification, a.path))[:60]
+    for asset in deprecated_candidates:
         blocker = "; ".join(asset.blockers[:3]) if asset.blockers else "no active blocker detected by static scan"
         lines.append(f"- `{asset.classification}` `{asset.path}`: {blocker}")
 

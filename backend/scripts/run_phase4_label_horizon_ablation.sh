@@ -1,7 +1,7 @@
 #!/bin/bash
 # Phase 4 #4 label horizon ablation (5d / 10d / 20d 哪个 RankIC 最强).
 #
-# 按 Phase 4 roadmap (docs/phase4_alpha_root_cause_roadmap.md):
+# 按 Phase 4 roadmap (docs/strategy_validation_contract.md):
 # - 3 horizons × governance v1 framework
 # - 用 default LightGBM params (跳 Optuna 节省时间; 后续单独跑 Optuna best)
 # - 输出 mart_p0b_oos_predictions × 3 model_id + mart_p0b_walkforward_eval × 3

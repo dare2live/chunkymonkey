@@ -5,7 +5,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from conftest import duck_mem
 from scripts.seed_dim_data_asset import (
+    _apply_manual_asset_overrides,
     _build_backend_table_reference_index,
+    get_all_tables,
     grep_readers,
     grep_writer,
     infer_asset_contract,
@@ -171,6 +173,87 @@ def test_infer_asset_contract_marks_industry_pit_quality_as_required_gate():
     assert contract["strategy_eligibility"] == "required_gate_for_industry_concentration_parameters"
 
 
+def test_seed_dim_data_asset_preserves_manual_governance_fields():
+    auto_governance = infer_asset_contract(
+        "mart_custom_model_output",
+        layer="mart",
+        freshness="on-demand",
+        upstream_source="derived (writer: backend/scripts/custom.py)",
+    )
+    prev = {
+        "auto_discovered": False,
+        "purpose": "manual purpose",
+        "upstream_source": "manual source",
+        "source_tier": 9,
+        "expected_freshness": "manual cadence",
+        "sla_hours": 123,
+        "asset_grain": "manual grain",
+        "coverage_policy": "manual coverage",
+        "model_eligibility": "manual model eligibility",
+    }
+
+    purpose, upstream, source_tier, freshness, sla, governance = (
+        _apply_manual_asset_overrides(
+            prev,
+            force_overwrite=False,
+            purpose=None,
+            upstream="auto source",
+            source_tier=1,
+            freshness="t+0",
+            sla=24,
+            governance=auto_governance,
+        )
+    )
+
+    assert purpose == "manual purpose"
+    assert upstream == "manual source"
+    assert source_tier == 9
+    assert freshness == "manual cadence"
+    assert sla == 123
+    assert governance["asset_grain"] == "manual grain"
+    assert governance["coverage_policy"] == "manual coverage"
+    assert governance["model_eligibility"] == "manual model eligibility"
+    assert governance["pit_policy"] == auto_governance["pit_policy"]
+
+
+def test_seed_dim_data_asset_force_overwrite_keeps_auto_governance_fields():
+    auto_governance = infer_asset_contract(
+        "mart_custom_model_output",
+        layer="mart",
+        freshness="on-demand",
+        upstream_source="derived (writer: backend/scripts/custom.py)",
+    )
+    prev = {
+        "auto_discovered": False,
+        "purpose": "manual purpose",
+        "upstream_source": "manual source",
+        "source_tier": 9,
+        "expected_freshness": "manual cadence",
+        "sla_hours": 123,
+        "asset_grain": "manual grain",
+    }
+
+    purpose, upstream, source_tier, freshness, sla, governance = (
+        _apply_manual_asset_overrides(
+            prev,
+            force_overwrite=True,
+            purpose=None,
+            upstream="auto source",
+            source_tier=1,
+            freshness="t+0",
+            sla=24,
+            governance=auto_governance,
+        )
+    )
+
+    assert purpose is None
+    assert upstream == "auto source"
+    assert source_tier == 1
+    assert freshness == "t+0"
+    assert sla == 24
+    assert governance["asset_grain"] == auto_governance["asset_grain"]
+
+
 def test_seed_dim_data_asset_reuses_backend_text_index_for_writer_and_readers():
     text_index = [
         (
@@ -185,6 +268,39 @@ def test_seed_dim_data_asset_reuses_backend_text_index_for_writer_and_readers():
 
     assert grep_writer("mart_custom_asset", text_index) == "backend/scripts/build_custom_table.py"
     assert grep_readers("mart_custom_asset", text_index) == ["backend/services/custom_read.py"]
+
+
+class _Rows:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def fetchall(self):
+        return self._rows
+
+
+class _RecordingTableConn:
+    def __init__(self):
+        self.sql = []
+
+    def execute(self, sql):
+        self.sql.append(sql)
+        if "information_schema.tables" in sql:
+            return _Rows([("mart_custom_asset",), ("raw_custom_source",)])
+        if "COUNT(*) AS row_count" in sql:
+            return _Rows([("mart_custom_asset", 3), ("raw_custom_source", 2)])
+        raise AssertionError(f"unexpected SQL: {sql}")
+
+
+def test_seed_dim_data_asset_batches_table_row_counts():
+    conn = _RecordingTableConn()
+
+    assert get_all_tables(conn) == [
+        ("mart_custom_asset", 3),
+        ("raw_custom_source", 2),
+    ]
+    count_queries = [sql for sql in conn.sql if "COUNT(*) AS row_count" in sql]
+    assert len(count_queries) == 1
+    assert "UNION ALL" in count_queries[0]
 
 
 def test_seed_dim_data_asset_builds_reference_maps_in_one_pass():
@@ -212,6 +328,64 @@ def test_seed_dim_data_asset_builds_reference_maps_in_one_pass():
     assert "backend/services/schema_only.py" not in writers.values()
     assert readers["mart_custom_asset"] == ["backend/services/custom_read.py"]
     assert readers["dim_custom"] == ["backend/services/custom_read.py"]
+
+
+def test_seed_dim_data_asset_combined_reference_pattern_preserves_writer_variants():
+    text_index = [
+        (
+            "backend/services/write_variants.py",
+            "\n".join(
+                [
+                    "conn.execute('UPDATE analytics.fact_custom_asset SET x = 1')",
+                    "conn.execute('DELETE FROM raw_delete_asset WHERE x = 0')",
+                    "conn.register('raw_registered_asset', df)",
+                    "df.to_sql('mart_pandas_asset', conn)",
+                ]
+            ),
+        ),
+        (
+            "backend/scripts/copy_asset.py",
+            "conn.execute('COPY raw_copy_asset FROM \\'/tmp/raw_copy_asset.csv\\'')",
+        ),
+        (
+            "backend/scripts/create_asset.py",
+            "conn.execute('CREATE OR REPLACE TABLE mart_create_asset AS SELECT * FROM source_table')",
+        ),
+        (
+            "backend/services/custom_read.py",
+            (
+                "conn.execute('SELECT * FROM analytics.fact_custom_asset "
+                "JOIN mart_pandas_asset ON 1=1 JOIN fact_custom_asset ON 1=1')"
+            ),
+        ),
+        (
+            "backend/services/schema_only.py",
+            "conn.execute('CREATE TABLE IF NOT EXISTS mart_schema_only (id INTEGER)')",
+        ),
+    ]
+
+    writers, readers = _build_backend_table_reference_index(
+        [
+            "fact_custom_asset",
+            "raw_delete_asset",
+            "raw_registered_asset",
+            "mart_pandas_asset",
+            "raw_copy_asset",
+            "mart_create_asset",
+            "mart_schema_only",
+        ],
+        text_index,
+    )
+
+    assert writers["fact_custom_asset"] == "backend/services/write_variants.py"
+    assert writers["raw_delete_asset"] == "backend/services/write_variants.py"
+    assert writers["raw_registered_asset"] == "backend/services/write_variants.py"
+    assert writers["mart_pandas_asset"] == "backend/services/write_variants.py"
+    assert writers["raw_copy_asset"] == "backend/scripts/copy_asset.py"
+    assert writers["mart_create_asset"] == "backend/scripts/create_asset.py"
+    assert "mart_schema_only" not in writers
+    assert readers["fact_custom_asset"] == ["backend/services/custom_read.py"]
+    assert readers["mart_pandas_asset"] == ["backend/services/custom_read.py"]
 
 
 def test_workbench_data_sources_exposes_asset_governance_contracts():

@@ -210,7 +210,7 @@ def build_walk_forward_windows(
 ) -> list[WindowSpec]:
     # Fix 1 (Claude general aacdbf94, 2026-05-19): panel.signal_dates 一次性转 int64 day-epoch,
     # 后续 np.isin / assert_pit_strict 全 int 比较, 估 30-60× 加速 (15 min → 20-30 sec).
-    # 文件: docs/retrain_stall_fix1_patch_draft.md
+    # 文件: docs/strategy_validation_contract.md
     # rule-compliance: ok evidence=claude-general-aacdbf94-retrain-stall-fix1-int64
     panel_dates_str = panel.signal_dates  # original <U10 ndarray (kept for WindowSpec str fields)
     panel_dates_int = (

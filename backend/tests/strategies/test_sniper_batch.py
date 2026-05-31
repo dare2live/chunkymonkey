@@ -5,7 +5,7 @@ from pathlib import Path
 
 import duckdb
 
-from scripts.build_sniper_score_daily import build_sniper_score_daily
+from scripts.build_sniper_score_daily import _main_capital_cte, build_sniper_score_daily
 
 
 def _create_fixture_dbs(tmp_path: Path) -> tuple[Path, Path, Path]:
@@ -141,3 +141,22 @@ def test_missing_rule_inputs_decrement_eligible_count(tmp_path: Path) -> None:
     assert rows["BBB"] == (1, 2, False)
     assert rows["CCC"] == (0, 1, False)
     assert rows["DDD"] == (1, 1, False)
+
+
+def test_main_capital_cte_does_not_use_deprecated_raw_fund_flow_only() -> None:
+    con = duckdb.connect(":memory:")
+    try:
+        con.execute("""
+            CREATE TABLE raw_fund_flow_daily (
+                trade_date VARCHAR,
+                stock_code VARCHAR,
+                main_net_amount DOUBLE
+            )
+        """)
+
+        sql = _main_capital_cte(con)
+    finally:
+        con.close()
+
+    assert "raw_fund_flow_daily" not in sql
+    assert "CAST(NULL AS BOOLEAN) AS r3_main_capital_hit" in sql

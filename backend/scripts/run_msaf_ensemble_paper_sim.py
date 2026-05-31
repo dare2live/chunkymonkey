@@ -572,7 +572,7 @@ def main() -> int:
         inst_df = load_institution_scores(args.smartmoney_db, args.start, args.end)
         log.info(f"  institution scores: {len(inst_df):,} rows")
     else:
-        log.info("Institution scores SKIPPED (default OFF, opt-in --with-institution; see docs/msaf_p1b_institution_composite_20260518.md)")
+        log.info("Institution scores SKIPPED (default OFF, opt-in --with-institution; see docs/strategy_validation_contract.md)")
 
     # 3. Loop daily signals
     signal_dates = preds["signal_date"].drop_duplicates().tolist()

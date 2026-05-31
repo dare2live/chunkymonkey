@@ -665,7 +665,7 @@ def _record_cron_manifest(
                 duration_s=elapsed_s,
                 commit_sha=git_commit_sha(REPO),
                 input_tables=[
-                    "dim_active_a_stock",
+                    "dim_active_a_stock",  # rule-compliance: ok evidence=freshness-check-table-list
                     "fact_feature_panel",
                     "mart_model_lifecycle",
                     "mart_multidim_model",

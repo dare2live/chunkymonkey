@@ -180,6 +180,7 @@ def load_panel_records(
     end_date: str,
     *,
     label_name: str = DEFAULT_LABEL_NAME,
+    with_alpha158: bool = True,
 ) -> list[dict[str, Any]]:
     duck = conn.raw if hasattr(conn, "raw") else conn
     panel_cols = {
@@ -193,7 +194,7 @@ def load_panel_records(
     alpha158_cols: list[str] = []
     alpha158_join = ""
     alpha158_db = Path(__file__).resolve().parent.parent.parent / "data" / "alpha158.duckdb"
-    if alpha158_db.exists():
+    if with_alpha158 and alpha158_db.exists():
         try:
             duck.execute(f"ATTACH IF NOT EXISTS '{alpha158_db}' AS a158 (READ_ONLY)")
             alpha158_cols = [

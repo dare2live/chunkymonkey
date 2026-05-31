@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """v7 forward deploy weekly aggregate — summary per week + cumulative vs paper_sim baseline.
 
-Per docs/v7_forward_decision_framework.md.
+Per docs/strategy_validation_contract.md.
 
 Run weekly (Monday morning) to compare:
 - Last week's v7 picks actual fwd 5d return (from kline)

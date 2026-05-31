@@ -19,6 +19,7 @@ import duckdb
 import numpy as np
 
 from services.db import get_conn
+from services.universe import sql_where_active_a_share
 from services.utils import latest_completed_trade_date
 
 
@@ -88,10 +89,11 @@ def main():
                k.amount,
                COALESCE(ts.stage, '?') AS stage
           FROM v_price_kline_qfq k
-          INNER JOIN sm.dim_active_a_stock s ON k.code = s.stock_code
           LEFT JOIN sm.fact_stock_technical_stage ts
             ON ts.stock_code = k.code AND ts.date = k.date
-         WHERE k.adjust='qfq' AND k.freq='daily' AND k.date >= ? AND k.date <= ?
+         WHERE k.adjust='qfq' AND k.freq='daily'
+           AND """ + sql_where_active_a_share('k.code') + """
+           AND k.date >= ? AND k.date <= ?
          ORDER BY k.code, k.date
         """,
         [args.start, args.end],

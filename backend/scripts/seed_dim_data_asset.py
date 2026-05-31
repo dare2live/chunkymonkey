@@ -104,7 +104,7 @@ EXTRA_UPSTREAM_BY_TABLE = {
     "fact_shareholder_trade":       ("tdxhub.holders", 1),
     "raw_executive_trade":          ("aif10 / akshare", 2),
     "raw_gpcw_dividend":            ("tdxhub.affair (gpcw)", 1),
-    "dim_active_a_stock":           ("akshare tool_trade_date_hist + curated", 3),
+    "dim_active_a_stock":           ("akshare tool_trade_date_hist + curated", 3),  # rule-compliance: ok evidence=metadata-registry
     "dim_trading_calendar":         ("akshare tool_trade_date_hist_sina", 3),
     "dim_holder_alias":             ("manual seed", None),
     # derived (多源派生, 不是单 client 写)
@@ -727,6 +727,54 @@ def infer_asset_contract(
     return contract
 
 
+def _should_preserve_manual_asset(prev, force_overwrite: bool) -> bool:
+    return (
+        prev is not None
+        and not force_overwrite
+        and not bool(prev.get("auto_discovered"))
+    )
+
+
+def _apply_manual_asset_overrides(
+    prev,
+    *,
+    force_overwrite: bool,
+    purpose: object | None,
+    upstream: object | None,
+    source_tier: object | None,
+    freshness: object | None,
+    sla: object | None,
+    governance: dict[str, str],
+) -> tuple[
+    object | None,
+    object | None,
+    object | None,
+    object | None,
+    object | None,
+    dict[str, str],
+]:
+    """Preserve curator-owned dim_data_asset fields unless forced."""
+
+    merged_governance = dict(governance)
+    if not _should_preserve_manual_asset(prev, force_overwrite):
+        return purpose, upstream, source_tier, freshness, sla, merged_governance
+
+    if prev.get("purpose"):
+        purpose = prev["purpose"]
+    if prev.get("upstream_source"):
+        upstream = prev["upstream_source"]
+    if prev.get("source_tier") is not None:
+        source_tier = prev["source_tier"]
+    if prev.get("expected_freshness"):
+        freshness = prev["expected_freshness"]
+    if prev.get("sla_hours") is not None:
+        sla = prev["sla_hours"]
+    for column in GOVERNANCE_COLUMNS:
+        if prev.get(column):
+            merged_governance[column] = prev[column]
+    return purpose, upstream, source_tier, freshness, sla, merged_governance
+
+
 def _backend_python_text_index() -> list[tuple[str, str]]:
     """Read backend Python files once for writer/reader discovery."""
 
@@ -761,6 +809,56 @@ def _rank_writer_path(rel: str) -> tuple:
     return (tier, len(rel))
 
 
+_SQL_IDENTIFIER_PATTERN = r"[A-Za-z_][A-Za-z0-9_]*"
+
+
+def _qualified_table_capture(group_name: str) -> str:
+    table_capture = rf'["`\']?(?P<{group_name}>{_SQL_IDENTIFIER_PATTERN})["`\']?'
+    return rf"(?:{_SQL_IDENTIFIER_PATTERN}\.)?{table_capture}"
+
+
+_BACKEND_WRITE_TABLE_GROUPS = (
+    "write_table",
+    "create_table",
+    "register_table",
+    "to_sql_table",
+)
+_BACKEND_WRITE_REFERENCE_PATTERN = re.compile(
+    rf"\b(?:INSERT\s+(?:OR\s+(?:REPLACE|IGNORE)\s+)?INTO|UPDATE|DELETE\s+FROM|COPY)"
+    rf"\s+{_qualified_table_capture('write_table')}\b"
+    rf"|\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|TEMP\s+TABLE)"
+    rf"(?:\s+IF\s+NOT\s+EXISTS)?\s+{_qualified_table_capture('create_table')}"
+    rf"[\s\S]{{0,240}}\bAS\b"
+    rf"|register\(\s*['\"](?P<register_table>{_SQL_IDENTIFIER_PATTERN})['\"]"
+    rf"|\.to_sql\(\s*['\"](?P<to_sql_table>{_SQL_IDENTIFIER_PATTERN})['\"]",
+    re.IGNORECASE,
+)
+_BACKEND_READ_REFERENCE_PATTERN = re.compile(
+    rf"\b(?:FROM|JOIN)\s+{_qualified_table_capture('read_table')}\b",
+    re.IGNORECASE,
+)
+
+
+def _matched_table_name(match: re.Match[str], group_names: tuple[str, ...]) -> str | None:
+    groups = match.groupdict()
+    for group_name in group_names:
+        table = groups.get(group_name)
+        if table:
+            return table
+    return None
+
+
+def _iter_reference_tables(
+    pattern: re.Pattern[str],
+    group_names: tuple[str, ...],
+    text: str,
+):
+    for match in pattern.finditer(text):
+        table = _matched_table_name(match, group_names)
+        if table:
+            yield table
+
+
 def _build_backend_table_reference_index(
     table_names: list[str],
     text_index: list[tuple[str, str]],
@@ -768,38 +866,23 @@ def _build_backend_table_reference_index(
     """Build table writer/reader maps with one pass over backend files."""
 
     table_set = set(table_names)
-    table_capture = r'["`\']?(?P<table>[A-Za-z_][A-Za-z0-9_]*)["`\']?'
-    qualified_capture = rf'(?:[A-Za-z_][A-Za-z0-9_]*\.)?{table_capture}'
-    write_patterns = [
-        re.compile(rf"\bINSERT\s+(?:OR\s+(?:REPLACE|IGNORE)\s+)?INTO\s+{qualified_capture}\b", re.IGNORECASE),
-        re.compile(rf"\bUPDATE\s+{qualified_capture}\b", re.IGNORECASE),
-        re.compile(rf"\bDELETE\s+FROM\s+{qualified_capture}\b", re.IGNORECASE),
-        re.compile(
-            rf"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|TEMP\s+TABLE)"
-            rf"(?:\s+IF\s+NOT\s+EXISTS)?\s+{qualified_capture}[\s\S]{{0,240}}\bAS\b",
-            re.IGNORECASE,
-        ),
-        re.compile(rf'register\(\s*["\'](?P<table>[A-Za-z_][A-Za-z0-9_]*)["\']', re.IGNORECASE),
-        re.compile(rf'\bCOPY\s+{qualified_capture}\b', re.IGNORECASE),
-        re.compile(rf'\.to_sql\(\s*["\'](?P<table>[A-Za-z_][A-Za-z0-9_]*)["\']', re.IGNORECASE),
-    ]
-    read_patterns = [
-        re.compile(rf"\bFROM\s+{qualified_capture}\b", re.IGNORECASE),
-        re.compile(rf"\bJOIN\s+{qualified_capture}\b", re.IGNORECASE),
-    ]
     writer_hits: dict[str, list[str]] = defaultdict(list)
     reader_hits: dict[str, set[str]] = defaultdict(set)
     for rel, text in text_index:
-        for pattern in write_patterns:
-            for match in pattern.finditer(text):
-                table = match.group("table")
-                if table in table_set:
-                    writer_hits[table].append(rel)
-        for pattern in read_patterns:
-            for match in pattern.finditer(text):
-                table = match.group("table")
-                if table in table_set:
-                    reader_hits[table].add(rel)
+        for table in _iter_reference_tables(
+            _BACKEND_WRITE_REFERENCE_PATTERN,
+            _BACKEND_WRITE_TABLE_GROUPS,
+            text,
+        ):
+            if table in table_set:
+                writer_hits[table].append(rel)
+        for table in _iter_reference_tables(
+            _BACKEND_READ_REFERENCE_PATTERN,
+            ("read_table",),
+            text,
+        ):
+            if table in table_set:
+                reader_hits[table].add(rel)
     writer_map = {
         table: sorted(set(paths), key=_rank_writer_path)[0]
         for table, paths in writer_hits.items()
@@ -868,21 +951,56 @@ def grep_readers(table_name: str, text_index: list[tuple[str, str]] | None = Non
     return readers
 
 
+def _sql_string_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _quote_identifier(value: str) -> str:
+    return '"' + value.replace('"', '""') + '"'
+
+
+def _row_value(row, key: str, index: int):
+    if hasattr(row, "keys"):
+        return row[key]
+    return row[index]
+
+
+def _table_count_union_sql(table_names: list[str]) -> str:
+    return "\nUNION ALL\n".join(
+        (
+            f"SELECT {_sql_string_literal(name)} AS table_name, "
+            f"COUNT(*) AS row_count FROM {_quote_identifier(name)}"
+        )
+        for name in table_names
+    )
+
+
+def _fetch_table_row_counts(con, table_names: list[str]) -> dict[str, int]:
+    if not table_names:
+        return {}
+    try:
+        rows = con.execute(_table_count_union_sql(table_names)).fetchall()
+    except Exception:
+        log.warning(
+            "failed to batch table row counts; defaulting row_count to 0",
+            exc_info=True,
+        )
+        return {}
+    return {
+        str(_row_value(row, "table_name", 0)): int(_row_value(row, "row_count", 1) or 0)
+        for row in rows
+    }
+
+
 def get_all_tables(con) -> list[tuple[str, int]]:
     rows = con.execute(
         "SELECT table_name FROM information_schema.tables "
         "WHERE table_schema='main' AND table_type='BASE TABLE' "
         "ORDER BY table_name"
     ).fetchall()
-    out = []
-    for r in rows:
-        name = r[0]
-        try:
-            cnt = con.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0]
-        except Exception:
-            cnt = 0
-        out.append((name, cnt))
-    return out
+    table_names = [str(_row_value(row, "table_name", 0)) for row in rows]
+    row_counts = _fetch_table_row_counts(con, table_names)
+    return [(name, row_counts.get(name, 0)) for name in table_names]
 
 
 def main() -> int:
@@ -959,27 +1077,18 @@ def main() -> int:
         )
         purpose = None  # 留给人工补
 
-        prev = existing.get(tbl)
-        # 人工补的字段 (除非 --force-overwrite) 保留
-        preserve_manual = (
-            prev is not None
-            and not args.force_overwrite
-            and not bool(prev.get("auto_discovered"))
+        purpose, upstream, source_tier, freshness, sla, governance = (
+            _apply_manual_asset_overrides(
+                existing.get(tbl),
+                force_overwrite=args.force_overwrite,
+                purpose=purpose,
+                upstream=upstream,
+                source_tier=source_tier,
+                freshness=freshness,
+                sla=sla,
+                governance=governance,
+            )
         )
-        if preserve_manual:
-            if prev.get("purpose"):
-                purpose = prev["purpose"]
-            if prev.get("upstream_source"):
-                upstream = prev["upstream_source"]
-            if prev.get("source_tier") is not None:
-                source_tier = prev["source_tier"]
-            if prev.get("expected_freshness"):
-                freshness = prev["expected_freshness"]
-            if prev.get("sla_hours") is not None:
-                sla = prev["sla_hours"]
-            for column in GOVERNANCE_COLUMNS:
-                if prev.get(column):
-                    governance[column] = prev[column]
 
         readers_json = json.dumps(readers, ensure_ascii=False)
         # consumed_by_views: 简单 grep frontend 找 fetch('/api/...) 含表名 (粗略)

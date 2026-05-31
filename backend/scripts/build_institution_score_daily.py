@@ -60,7 +60,7 @@ CLASS_SPECS: tuple[ClassSpec, ...] = (
     ClassSpec(
         name="capital_flow",
         alpha_cls=CapitalFlowAlpha,
-        source_tables=("raw_fund_flow_daily", "fact_capital_flow_pit_daily"),
+        source_tables=("fact_capital_flow_pit_daily",),
         score_column="capital_flow_score",
         norm_column="capital_flow_score_norm",
         feature_columns=(

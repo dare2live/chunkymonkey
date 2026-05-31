@@ -8,6 +8,10 @@ Target table: mart_stock_formula_optuna_bestchoice_v1
 Source CSV:   bestchoice/analysis/formula_local_optuna_batch_stock_best_replacements.csv
 
 Run ID:       bestchoice_formula_optuna_20260521_v1
+
+PIT fields:
+  as_of_date = latest source data date used to produce the candidate params
+  built_at   = timestamp when the row was imported into the main project
 """
 
 from __future__ import annotations
@@ -25,16 +29,12 @@ sys.path.insert(0, str(REPO_ROOT / "backend"))
 
 from services.duck_adapter import connect  # noqa: E402
 
-DEFAULT_CSV = (
-    REPO_ROOT.parent
-    / "bestchoice"
-    / "analysis"
-    / "formula_local_optuna_batch_stock_best_replacements.csv"
-)
+DEFAULT_CSV = REPO_ROOT / "bestchoice" / "analysis" / "formula_local_optuna_batch_stock_best_replacements.csv"
 
 DEFAULT_RUN_ID = "bestchoice_formula_optuna_20260521_v1"
 # rule-compliance: ok evidence=BestChoice source CSV latest_data_date metadata
 DEFAULT_DATA_LATEST = "2026-05-19"
+TARGET_TABLE = "mart_stock_formula_optuna_bestchoice_v1"
 
 
 def _holding_days(s: str) -> int | None:
@@ -65,6 +65,69 @@ def _opt_int(s: str) -> int | None:
         return int(s)
     except ValueError:
         return None
+
+
+def _table_columns(conn, table: str) -> set[str]:
+    rows = conn.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'main'
+          AND table_name = ?
+        """,
+        [table],
+    ).fetchall()
+    return {row[0] for row in rows}
+
+
+def ensure_target_schema(conn) -> None:
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {TARGET_TABLE} (
+            run_id VARCHAR,
+            stock_code VARCHAR,
+            formula_id VARCHAR,
+            variant_id VARCHAR,
+            params_json VARCHAR,
+            params_hash VARCHAR,
+            sell_rule VARCHAR,
+            holding_days INTEGER,
+            signal_count INTEGER,
+            win_rate DOUBLE,
+            avg_ret DOUBLE,
+            avg_dd DOUBLE,
+            calmar DOUBLE,
+            delay_buy_rate DOUBLE,
+            delay_sell_rate DOUBLE,
+            score DOUBLE,
+            validation_signal_count INTEGER,
+            validation_win_rate DOUBLE,
+            validation_avg_ret DOUBLE,
+            validation_score DOUBLE,
+            score_delta DOUBLE,
+            validation_score_delta DOUBLE,
+            source_artifact VARCHAR,
+            source_data_latest_date DATE,
+            as_of_date DATE,
+            created_at TIMESTAMP,
+            built_at TIMESTAMP
+        )
+        """
+    )
+    cols = _table_columns(conn, TARGET_TABLE)
+    if "as_of_date" not in cols:
+        conn.execute(f"ALTER TABLE {TARGET_TABLE} ADD COLUMN as_of_date DATE")
+    if "built_at" not in cols:
+        conn.execute(f"ALTER TABLE {TARGET_TABLE} ADD COLUMN built_at TIMESTAMP")
+    conn.execute(
+        f"""
+        UPDATE {TARGET_TABLE}
+           SET as_of_date = COALESCE(as_of_date, source_data_latest_date),
+               built_at = COALESCE(built_at, created_at)
+         WHERE as_of_date IS NULL
+            OR built_at IS NULL
+        """
+    )
 
 
 def main() -> int:
@@ -116,6 +179,8 @@ def main() -> int:
                     _opt_float(row.get("validation_score_delta", "")),
                     str(csv_path),
                     args.data_latest,
+                    args.data_latest,
+                    now_str,
                     now_str,
                 )
             )
@@ -125,51 +190,21 @@ def main() -> int:
         return 1
 
     with connect(args.db_path, read_only=False) as conn:
+        ensure_target_schema(conn)
         conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS mart_stock_formula_optuna_bestchoice_v1 (
-                run_id VARCHAR,
-                stock_code VARCHAR,
-                formula_id VARCHAR,
-                variant_id VARCHAR,
-                params_json VARCHAR,
-                params_hash VARCHAR,
-                sell_rule VARCHAR,
-                holding_days INTEGER,
-                signal_count INTEGER,
-                win_rate DOUBLE,
-                avg_ret DOUBLE,
-                avg_dd DOUBLE,
-                calmar DOUBLE,
-                delay_buy_rate DOUBLE,
-                delay_sell_rate DOUBLE,
-                score DOUBLE,
-                validation_signal_count INTEGER,
-                validation_win_rate DOUBLE,
-                validation_avg_ret DOUBLE,
-                validation_score DOUBLE,
-                score_delta DOUBLE,
-                validation_score_delta DOUBLE,
-                source_artifact VARCHAR,
-                source_data_latest_date DATE,
-                created_at TIMESTAMP
-            )
-            """
-        )
-        conn.execute(
-            "DELETE FROM mart_stock_formula_optuna_bestchoice_v1 WHERE run_id = ?",
+            f"DELETE FROM {TARGET_TABLE} WHERE run_id = ?",
             [args.run_id],
         )
         conn.executemany(
-            """
-            INSERT INTO mart_stock_formula_optuna_bestchoice_v1 (
+            f"""
+            INSERT INTO {TARGET_TABLE} (
                 run_id, stock_code, formula_id, variant_id, params_json, params_hash,
                 sell_rule, holding_days, signal_count, win_rate, avg_ret, avg_dd, calmar,
                 delay_buy_rate, delay_sell_rate, score,
                 validation_signal_count, validation_win_rate, validation_avg_ret,
                 validation_score, score_delta, validation_score_delta,
-                source_artifact, source_data_latest_date, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                source_artifact, source_data_latest_date, as_of_date, created_at, built_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )

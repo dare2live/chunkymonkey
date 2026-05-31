@@ -790,6 +790,18 @@ def test_apply_xdxr_adjustment_events_is_idempotent_and_adjusts_history():
         conn.close()
 
 
+def test_ordered_xdxr_events_sorts_by_event_date():
+    events = [
+        {"date": "2026-04-24", "code": "000001"},
+        {"date": "", "code": "000002"},
+        {"date": "2026-04-22", "code": "000003"},
+    ]
+
+    ordered = builder._ordered_xdxr_events(events)
+
+    assert [event["code"] for event in ordered] == ["000002", "000003", "000001"]
+
+
 def test_calibrate_xdxr_factor_from_fallback_when_formula_materially_differs():
     conn = duck_mem()
     try:
@@ -917,6 +929,47 @@ def test_adjust_rows_for_xdxr_events_applies_future_event_factors_only():
     assert adjusted[0]["factor"] == 0.7
     assert adjusted[0]["source"].endswith("_xdxr_adjusted")
     assert adjusted[1]["close"] == 75.0
+
+
+def test_adjust_rows_for_xdxr_events_combines_future_event_factors_by_date():
+    rows = [
+        {"code": "000001", "date": "2026-04-23", "open": 100.0, "high": 100.0, "low": 100.0, "close": 100.0, "factor": 1.0, "source": "tdxhub_raw"},
+        {"code": "000001", "date": "2026-04-24", "open": 100.0, "high": 100.0, "low": 100.0, "close": 100.0, "factor": 1.0, "source": "tdxhub_raw"},
+        {"code": "000001", "date": "2026-04-26", "open": 100.0, "high": 100.0, "low": 100.0, "close": 100.0, "factor": 1.0, "source": "tdxhub_raw"},
+    ]
+    events = [
+        {"date": "2026-04-26", "adjust_factor": 0.5},
+        {"date": "2026-04-24", "adjust_factor": 0.7},
+    ]
+
+    adjusted, count = builder.adjust_rows_for_xdxr_events(rows, events)
+
+    assert count == 2
+    assert adjusted[0]["close"] == 35.0
+    assert adjusted[0]["factor"] == 0.35
+    assert adjusted[1]["close"] == 50.0
+    assert adjusted[1]["factor"] == 0.5
+    assert adjusted[2]["close"] == 100.0
+
+
+def test_future_xdxr_factor_by_date_uses_strict_future_events():
+    rows = [
+        {"date": "2026-04-23"},
+        {"date": "2026-04-24"},
+        {"date": "2026-04-26"},
+    ]
+    event_factors = [
+        ("2026-04-26", 0.5),
+        ("2026-04-24", 0.7),
+    ]
+
+    factors = builder._future_xdxr_factor_by_date(rows, event_factors)
+
+    assert factors == {
+        "2026-04-23": 0.35,
+        "2026-04-24": 0.5,
+        "2026-04-26": 1.0,
+    }
 
 
 def test_filter_raw_incremental_qfq_safe_drops_xdxr_gap_codes():

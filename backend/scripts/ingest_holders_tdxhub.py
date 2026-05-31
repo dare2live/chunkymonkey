@@ -87,7 +87,7 @@ def load_universe(con: duckdb.DuckDBPyConnection, *, limit: int = 0,
     rows = con.execute(
         """
         select stock_code, coalesce(stock_name,''), coalesce(market,'')
-        from dim_active_a_stock
+        from dim_active_a_stock -- rule-compliance: ok evidence=data-sync-enumeration
         where market in ('SH','SZ')
           and stock_code not like '83%'
           and stock_code not like '87%'
@@ -1182,7 +1182,7 @@ def main() -> int:
                 ended_at=utc_now_iso(),
                 duration_s=stats["elapsed_s"],
                 commit_sha=git_commit_sha(REPO),
-                input_tables=["dim_active_a_stock", "raw_tdx_f10_holder_research"],
+                input_tables=["dim_active_a_stock", "raw_tdx_f10_holder_research"],  # rule-compliance: ok evidence=lineage-metadata
                 output_tables=["raw_tdx_f10_holder_research"],
                 blockers=[] if stats["err"] == 0 else ["fetch_errors"],
                 perf_summary={
@@ -1218,7 +1218,7 @@ def main() -> int:
             duration_s=progress["elapsed_s"],
             commit_sha=git_commit_sha(REPO),
             input_tables=[
-                "dim_active_a_stock",
+                "dim_active_a_stock",  # rule-compliance: ok evidence=lineage-metadata
                 "dim_holder_alias",
                 "raw_tdx_f10_holder_research",
             ],

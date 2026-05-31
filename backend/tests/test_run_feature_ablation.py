@@ -80,6 +80,7 @@ def test_load_panel_records_adds_regime_flags_and_splits_dates():
             conn,
             "2026-04-01",
             "2026-04-10",
+            with_alpha158=False,
         )
         train, valid, holdout = subject.split_time_series_records(panel)
 

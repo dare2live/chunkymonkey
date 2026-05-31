@@ -35,6 +35,7 @@ import numpy as np
 
 from services.db import get_conn
 from services.market_db import get_market_conn
+from services.universe import get_active_universe
 from services.picture.ddl import ensure_picture_tables
 from services.picture.fundamental_stage import classify_fundamental_stage
 from services.picture.institution_signal import aggregate_institution_signal
@@ -440,10 +441,8 @@ def build_picture_daily(
         holders_by_stock = _load_holders(conn)
         log.info(f"  机构跟踪: {len(tracked_inst):,} 个名称 / 持仓股票 {len(holders_by_stock):,}")
 
-        # 全量股票池
-        codes = [r[0] for r in conn.execute(
-            "SELECT stock_code FROM dim_active_a_stock"
-        ).fetchall()]
+        # 全量股票池 — K 线真相源
+        codes = sorted(get_active_universe(conn, include_st=True, market_conn=mkt_conn))
         log.info(f"股票池 {len(codes):,} 股, 开始组装...")
 
         fund_stage_rows = []

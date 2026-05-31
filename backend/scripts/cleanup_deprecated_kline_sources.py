@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Phase 2 step 3: 物理 DELETE 退役 stock K-line source rows from price_kline.
 
-按 Codex round 16 deliver (docs/deprecation_sop.md Step 3) 实施:
+按 Codex round 16 deliver (docs/engineering_governance.md Step 3) 实施:
 - governance v1 verdict: price_kline 主表 retired except hs300 benchmark allowlist
 - forbidden_sources (configs/data_governance.yaml): mootdx / chatgpt_import / eastmoney_direct
                                                     / akshare_* (except csindex_hs300)

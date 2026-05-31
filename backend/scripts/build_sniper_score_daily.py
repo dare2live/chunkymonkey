@@ -107,45 +107,6 @@ r3 AS MATERIALIZED (
 )
 """
 
-    raw_cols = _relation_columns(conn, "raw_fund_flow_daily")
-    if {"stock_code", "trade_date", "main_net_amount"} <= raw_cols:
-        return """
-flow_source AS MATERIALIZED (
-    SELECT
-        stock_code,
-        CAST(trade_date AS DATE) AS flow_date,
-        CAST(main_net_amount AS DOUBLE) AS main_net_amount
-    FROM raw_fund_flow_daily
-    WHERE CAST(trade_date AS DATE) <= DATE '{end_date}'
-),
-flow_roll AS MATERIALIZED (
-    SELECT
-        stock_code,
-        flow_date,
-        SUM(main_net_amount) OVER (
-            PARTITION BY stock_code
-            ORDER BY flow_date
-            ROWS BETWEEN 4 PRECEDING AND CURRENT ROW
-        ) AS main_net_inflow_5d
-    FROM flow_source
-),
-r3 AS MATERIALIZED (
-    SELECT
-        u.signal_date,
-        u.stock_code,
-        CASE
-            WHEN fr.flow_date IS NULL THEN NULL
-            WHEN fr.flow_date < u.signal_date - INTERVAL 10 DAY THEN NULL
-            WHEN fr.main_net_inflow_5d IS NULL THEN NULL
-            ELSE fr.main_net_inflow_5d > 0
-        END AS r3_main_capital_hit
-    FROM universe u
-    ASOF LEFT JOIN flow_roll fr
-      ON u.stock_code = fr.stock_code
-     AND u.signal_date >= fr.flow_date
-)
-"""
-
     return """
 r3 AS MATERIALIZED (
     SELECT

@@ -844,7 +844,7 @@ SELECT * FROM mart_data_source_watermark;
 - `backend/services/recommendation_universe.py` / `backend/services/labels/universe.py`: `dim_active_a_stock` 用途补同线 rule-compliance evidence, 仅限 code-to-name/ST-name mapping 或文档引用, 不作为 active universe truth source。
 - Tests: `backend/tests/test_universe.py` 增加 K-line truth source/ST mapping fail-fast 回归; `backend/tests/scripts/test_check_universe_filter.py` 固定默认跳过 test fixture + include-tests 显式扫描行为。
 
-**剩余 dirty 分层**: `scripts/chunkyctl worktree` 显示总 dirty 从 258 降到 146, unknown=0; 下一批按 bucket 串行处理: `data_source_lineage_profiles` / `audit_gate_scripts` / `updater_split` / pipeline & services / tests。
+**剩余 dirty 分层**: `scripts/chunkyctl worktree` 显示 unknown=0; 当前按 bucket 串行处理, 已完成 docs / universe / data-source lineage / audit-gate scripts / updater split, 本切片继续收敛 pipeline build scripts; 后续剩 `backend_services_api` / tests / config_project。
 
 **P0/P1 data-source lineage 切片**:
 - `backend/config/tdx_data_need_coverage.yaml`: 新增 TDX-first 数据需求覆盖目录, 27 个 need、10 个 source priority、14 个 reassignment proposal; 每个 need 必须带 `grain`、`pit_key`、`freshness_sla`、`evidence_status`、`production_eligibility`。
@@ -861,6 +861,15 @@ SELECT * FROM mart_data_source_watermark;
 - `backend/routers/updater.py` 从 5k+ 行 god-module 收敛为 723 行路由/编排壳; 后台执行、计划、状态、step 状态、连通性、日历、reset、sync、market data、机构、画像、趋势等被拆到 `backend/routers/updater_*.py`。
 - 架构 verdict: `APPROVE_WITH_NOTES`。这是符合"updater 是管家"的过渡拆分, 但不是终局; `updater_market_data.py`、`updater_execution.py`、`updater_status.py` 等仍偏大, 且预算/并发/冷却等策略常量后续应下沉到 config/service owner。
 - 验证: updater test-tool scoped PASS, `python -m pytest backend/tests/test_updater*.py` 104/104 PASS, `scripts/chunkyctl audit --run` scoped PASS, `check_universe_filter --all` CLEAN。
+
+**P1 pipeline build scripts 切片**:
+- 本次提交不含 `backend/scripts/build_feature_panel_duck.py`: `safe_commit` leakage gate 对现有 `mart_p0a_feature_label_panel_v4` 报 20 个 HIGH (含 `dim_stock_tdx_industry` flat mapping partition、NULL-year gradient、survivorship), 该文件必须单独作为 feature-panel leakage 桶处理, 不用 SKIP 混入 pipeline 子集。
+- `backend/scripts/build_picture_daily.py`、`build_signal_context.py` 从默认依赖 `dim_active_a_stock` 改为 K-line/prefix/PIT-safe universe helper; `dim_active_a_stock` 只保留 data-sync enumeration 或 code-to-name/lineage metadata evidence。
+- `backend/scripts/build_sniper_score_daily.py` 移除 `raw_fund_flow_daily` 生产兜底, 避免把已知停更的主力资金流当生产证据; 资金流相关能力必须走 `fact_capital_flow_pit_daily` 或保持 `unknown/blocked`。
+- `backend/scripts/import_bestchoice_phase1_candidates.py` 给 BestChoice 导入目标补 `as_of_date` / `built_at`, 并迁移 legacy rows, 防止后续公式候选进入主项目时缺 PIT 证据。
+- `backend/scripts/build_architecture_inventory.py` 与 `seed_dim_data_asset.py` 批量化/索引化扫描, 修复 nested router API contract、JS 注释误报、manual data-asset governance 字段被 auto-discovery 覆盖等问题。
+- 配套测试: `backend/tests/pipeline/test_architecture_inventory.py`, `backend/tests/test_data_asset_governance.py`, `backend/tests/test_build_price_kline_tdxhub.py`, `backend/tests/strategies/test_sniper_batch.py`, `backend/tests/scripts/test_import_bestchoice_phase1_candidates.py` 等。验证: test-tool scoped PASS, py_compile PASS, scoped pytest PASS, `check_universe_filter --all` CLEAN, rule/no-emoji/diff-check PASS, staged pipeline scripts file-level complexity PASS。
+- 工具注意: `scripts/chunkyctl audit --run` 当前返回 WARN 且无 command result, 不作为 PASS 证据; pre-commit hook 存在 `grep -c ... || echo 0` 导致 `0\n0` 的本地 hook bug, 后续应作为独立 tooling bucket 修。
 
 ### 2026-05-29 市场感知数据接入 P0 接线 + 关联探索(LHB 反向重磅发现)
 

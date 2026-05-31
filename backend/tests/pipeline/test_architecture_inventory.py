@@ -134,6 +134,72 @@ def test_scan_code_inventory_extracts_routes_tables_imports_and_calls(tmp_path):
     )
 
 
+def test_frontend_api_extraction_ignores_js_comments_preserves_strings():
+    text = """
+fetch('/api/real');
+const url = "https://example.test//not-a-comment";
+const literal = '// also not a comment';
+// fetch('/api/commented-line');
+/*
+fetch('/api/commented-block');
+*/
+"""
+
+    stripped = subject._strip_js_comments(text)
+
+    assert "https://example.test//not-a-comment" in stripped
+    assert "'// also not a comment'" in stripped
+    assert "/api/commented-line" not in stripped
+    assert "/api/commented-block" not in stripped
+    assert subject.extract_frontend_api_calls(text) == ["/api/real"]
+
+
+def test_nested_router_prefixes_are_propagated(tmp_path):
+    repo = tmp_path / "repo"
+    _write(
+        repo / "backend" / "main.py",
+        """
+from fastapi import FastAPI
+from routers.updater import router as updater_router
+app = FastAPI()
+app.include_router(updater_router, prefix="/api/inst", tags=["updater"])
+""",
+    )
+    _write(
+        repo / "backend" / "routers" / "updater.py",
+        """
+from fastapi import APIRouter
+from routers.updater_lifeboat import router as lifeboat_router
+router = APIRouter()
+router.include_router(lifeboat_router)
+""",
+    )
+    _write(
+        repo / "backend" / "routers" / "updater_lifeboat.py",
+        """
+from fastapi import APIRouter
+router = APIRouter()
+@router.get("/lifeboat/report")
+def report():
+    return {}
+""",
+    )
+    _write(
+        repo / "assets" / "js" / "app.js",
+        "fetch('/api/inst/lifeboat/report');\n",
+    )
+
+    backend = subject.scan_backend_assets(repo)
+    frontend = subject.scan_frontend_assets(repo)
+    assets = {asset.path: asset for asset in backend.assets + frontend.assets}
+
+    assert "GET /api/inst/lifeboat/report" in assets["backend/routers/updater_lifeboat.py"].api_routes
+    assert subject.frontend_route_contract_violations(
+        frontend_assets=frontend.assets,
+        backend_assets=backend.assets,
+    ) == []
+
+
 def test_build_architecture_inventory_persists_tables_manifest_and_report(tmp_path):
     repo = _fake_repo(tmp_path)
     report = tmp_path / "architecture_inventory.md"
@@ -224,6 +290,182 @@ def test_build_architecture_inventory_persists_tables_manifest_and_report(tmp_pa
             "mart_architecture_inventory_asset": "v1",
             "mart_architecture_inventory_summary": "v1",
         }
+
+
+def test_report_module_rows_preserve_sorted_representative_samples():
+    assets = [
+        subject.Asset(
+            asset_id="code:backend/tests/test_model.py",
+            asset_type="test",
+            path="backend/tests/test_model.py",
+            module_area="model_research",
+            classification="production",
+        ),
+        subject.Asset(
+            asset_id="code:backend/services/z_candidate.py",
+            asset_type="service",
+            path="backend/services/z_candidate.py",
+            module_area="api_workbench",
+            classification="candidate",
+        ),
+        subject.Asset(
+            asset_id="code:backend/services/b.py",
+            asset_type="service",
+            path="backend/services/b.py",
+            module_area="api_workbench",
+            classification="production",
+        ),
+        subject.Asset(
+            asset_id="code:backend/routers/a.py",
+            asset_type="router",
+            path="backend/routers/a.py",
+            module_area="api_workbench",
+            classification="production",
+        ),
+    ]
+
+    rows = subject._module_cut_line_rows(assets)
+
+    assert [row["module_area"] for row in rows] == ["api_workbench", "model_research"]
+    assert rows[0]["counts"] == {"candidate": 1, "production": 2}
+    assert rows[0]["representative_paths"] == [
+        "backend/routers/a.py",
+        "backend/services/b.py",
+        "backend/services/z_candidate.py",
+    ]
+
+
+def test_report_frontend_api_calls_are_counted_by_static_path():
+    assets = [
+        subject.Asset(
+            asset_id="frontend:assets/js/a.js",
+            asset_type="frontend_js",
+            path="assets/js/a.js",
+            module_area="frontend",
+            classification="production",
+            frontend_api_calls=["/api/workbench?tab=data", "/api/workbench?tab=summary"],
+        ),
+        subject.Asset(
+            asset_id="frontend:assets/js/b.js",
+            asset_type="frontend_js",
+            path="assets/js/b.js",
+            module_area="frontend",
+            classification="production",
+            frontend_api_calls=["/api/status"],
+        ),
+    ]
+
+    assert subject._top_frontend_api_calls(assets) == [
+        ("/api/workbench", 2),
+        ("/api/status", 1),
+    ]
+
+
+def test_frontend_route_contract_uses_static_and_pattern_index():
+    backend_assets = [
+        subject.Asset(
+            asset_id="code:backend/routers/items.py",
+            asset_type="router",
+            path="backend/routers/items.py",
+            module_area="api",
+            classification="production",
+            api_routes=["GET /api/items/{item_id}", "GET /api/status", "GET /api/workbench/detail"],
+        )
+    ]
+    frontend_assets = [
+        subject.Asset(
+            asset_id="frontend:assets/js/app.js",
+            asset_type="frontend_js",
+            path="assets/js/app.js",
+            module_area="frontend",
+            classification="production",
+            frontend_api_calls=[
+                "/api/status?full=1",
+                "/api/items/000001",
+                "/api/workbench/",
+                "/api/missing",
+            ],
+        )
+    ]
+
+    assert subject.frontend_route_contract_violations(
+        frontend_assets=frontend_assets,
+        backend_assets=backend_assets,
+    ) == [{"path": "assets/js/app.js", "api_call": "/api/missing"}]
+
+
+def test_safe_latest_batches_candidate_columns():
+    class FakeConn:
+        def __init__(self):
+            self.queries = []
+
+        def execute(self, sql):
+            self.queries.append(sql)
+            return self
+
+        def fetchone(self):
+            return {"latest_0": None, "latest_1": "2026-05-27T09:30:00"}
+
+    conn = FakeConn()
+
+    assert subject._safe_latest(conn, "main.demo", ["date", "updated_at"]) == (
+        "updated_at",
+        "2026-05-27T09:30:00",
+    )
+    assert len(conn.queries) == 1
+    assert 'MAX("date")' in conn.queries[0]
+    assert 'MAX("updated_at")' in conn.queries[0]
+
+
+def test_dependency_context_dedupes_and_ignores_test_blockers():
+    prod = subject.Asset(
+        asset_id="code:backend/services/prod.py",
+        asset_type="service",
+        path="backend/services/prod.py",
+        module_area="service",
+        classification="production",
+        current_call_paths=["cli:manual", "cli:manual"],
+        blockers=["existing"],
+    )
+    shim = subject.Asset(
+        asset_id="code:backend/services/shim.py",
+        asset_type="service",
+        path="backend/services/shim.py",
+        module_area="service",
+        classification="compatibility_shim",
+        blockers=["legacy"],
+    )
+    test_asset = subject.Asset(
+        asset_id="code:backend/tests/test_shim.py",
+        asset_type="test",
+        path="backend/tests/test_shim.py",
+        module_area="tests",
+        classification="production",
+    )
+    assets = [prod, shim, test_asset]
+    edges = [
+        subject.Edge("code:caller.py", prod.asset_id, "python_import", "services.prod", "AST import"),
+        subject.Edge("code:caller.py", prod.asset_id, "python_import", "services.prod", "AST import"),
+        subject.Edge(prod.asset_id, shim.asset_id, "python_import", "services.shim", "AST import"),
+        subject.Edge(prod.asset_id, shim.asset_id, "python_import", "services.shim", "AST import"),
+        subject.Edge(test_asset.asset_id, shim.asset_id, "python_import", "services.shim", "AST import"),
+    ]
+
+    subject._apply_dependency_context(assets, edges)
+
+    assert prod.current_call_paths == ["cli:manual", "code:caller.py"]
+    assert prod.blockers == [
+        "existing",
+        "production asset depends on compatibility_shim: backend/services/shim.py",
+    ]
+    assert shim.current_call_paths == [
+        "code:backend/services/prod.py",
+        "code:backend/tests/test_shim.py",
+    ]
+    assert shim.blockers == [
+        "has active dependency from backend/services/prod.py",
+        "legacy",
+    ]
 
 
 def test_test_references_do_not_block_cleanup_candidates(tmp_path):
