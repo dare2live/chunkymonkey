@@ -806,15 +806,11 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
     ).fetchall()
     holding_codes = {r[0] for r in holding_code_rows}
     holding_stocks = len(holding_codes)
-    financial_universe_stocks = _scalar(
-        conn,
-        """
-        SELECT COUNT(*)
-        FROM dim_active_a_stock a
-        LEFT JOIN excluded_stocks e ON e.stock_code = a.stock_code
-        WHERE e.stock_code IS NULL
-        """,
-    )
+    from services.universe import get_active_universe
+    _active_u = get_active_universe(conn)
+    _excl = {r[0] for r in conn.execute("SELECT stock_code FROM excluded_stocks").fetchall()}
+    _active_u -= _excl
+    financial_universe_stocks = len(_active_u)
     kline_stocks = len(daily_codes)
     kline_covered = len(holding_codes & daily_codes)
     kline_missing = len(holding_codes - daily_codes)

@@ -877,6 +877,11 @@ SELECT * FROM mart_data_source_watermark;
 - 验证: test-tool scoped PASS, py_compile PASS, `python -m pytest backend/tests/test_build_feature_panel_duck.py` 9/9 PASS, file-level complexity PASS, `check_universe_filter --all` CLEAN。
 - 明确 FAIL: `backend/scripts/audit_panel_leakage.py` 对现有 `mart_p0a_feature_label_panel_v4` 仍报 20 个 HIGH, 包括 `dim_stock_tdx_industry` flat mapping partition、`inst_*` / `mcap_decile` / `beta_60d` NULL-year gradient、panel stocks 5210 vs ever-listed 7138 的 survivorship suspect。该 FAIL 是后续 feature-panel leakage P0, 不能用本切片当回测/Optuna/生产证据。
 
+**P1 backend services universe truth-source 切片**:
+- `backend/services/audit.py`, `backend/services/screening_engine.py`, `backend/services/risk_factors.py` 改为通过 K-line truth-source `get_active_universe()` 计算 active universe; `dim_active_a_stock` 只保留 code-to-name mapping。
+- 修掉本切片新增的 `excluded_stocks` silent `except/pass`: 排除名单读取失败应 fail loud, 不得悄悄把排除股票放回 universe。
+- Tests: `backend/tests/test_audit_financial.py` 改为多 K-line fixture 覆盖 financial universe, `backend/tests/test_screening_engine.py` 用相对当前日期保证 K-line truth-source 可命中。验证: test-tool scoped PASS, py_compile PASS, `python -m pytest backend/tests/test_audit_financial.py backend/tests/test_screening_engine.py backend/tests/test_universe.py` 12/12 PASS, file-level complexity PASS。
+
 ### 2026-05-29 市场感知数据接入 P0 接线 + 关联探索(LHB 反向重磅发现)
 
 **关联探索实证(read-only, event study 全 A 股 2022-2026)**: 项目所有"主力跟随"信号 forward 超额收益全反向或随机 —

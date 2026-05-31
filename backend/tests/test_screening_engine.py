@@ -43,7 +43,7 @@ def test_run_all_screens_accepts_price_records():
                  WHERE freq = 'daily' AND adjust = 'qfq';
             """
         )
-        start = date(2026, 1, 1)
+        start = date.today() - timedelta(days=34)
         price_rows = []
         for idx in range(35):
             close = 10.0 + idx * 0.1

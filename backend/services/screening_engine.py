@@ -17,6 +17,7 @@ from datetime import datetime
 from typing import Optional
 
 from services.market_db import get_canonical_kline_qfq_relation
+from services.universe import get_active_universe
 from services.utils import latest_closed_or_raise as _latest_closed
 
 logger = logging.getLogger("cm-api")
@@ -525,19 +526,21 @@ def run_all_screens(smart_conn, mkt_conn) -> int:
     """
     ensure_tables(smart_conn)
 
-    # 1. 获取活跃股票列表
-    # 真相源：dim_active_a_stock（security_master 维护的当前可交易 A 股清单）
-    # 旧 dim_stock 表已退役（曾全表为空导致 calc_screening 静默跳过）
-    stock_rows = smart_conn.execute(
-        "SELECT a.stock_code, a.stock_name "
-        "FROM dim_active_a_stock a "
-        "LEFT JOIN excluded_stocks e ON e.stock_code = a.stock_code "
-        "WHERE e.stock_code IS NULL"
+    # 1. 获取活跃股票列表 — K 线真相源 + 前缀 + ST 过滤
+    active_codes = get_active_universe(smart_conn, market_conn=mkt_conn)
+    excl = {r[0] for r in smart_conn.execute(
+        "SELECT stock_code FROM excluded_stocks"
+    ).fetchall()}
+    active_codes -= excl
+    # code→name 映射仍从 dim_active_a_stock 取 (合法 name-lookup)
+    name_rows = smart_conn.execute(
+        "SELECT stock_code, stock_name FROM dim_active_a_stock WHERE stock_code IS NOT NULL"  # rule-compliance: ok evidence=code-to-name-mapping
     ).fetchall()
-    stock_map = {r["stock_code"]: r["stock_name"] for r in stock_rows}
+    name_map = {r["stock_code"]: r["stock_name"] for r in name_rows}
+    stock_map = {c: name_map.get(c, "") for c in active_codes}
 
     if not stock_map:
-        logger.warning("[选股] dim_active_a_stock 为空，请先跑「数据获取 → 同步十大股东」让 security_master 拉取主数据")
+        logger.warning("[选股] 活跃 universe 为空 (K 线真相源)")
         return 0
 
     # 2. 批量加载财务数据（流通股本）

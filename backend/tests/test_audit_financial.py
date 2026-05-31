@@ -67,9 +67,13 @@ def test_run_quality_audit_uses_financial_universe_for_latest_snapshot_coverage(
 
                 mkt_conn = market_db.get_market_conn()
                 try:
-                    mkt_conn.execute(
-                        "INSERT INTO price_kline (code, date, freq, adjust, close) VALUES (?, ?, ?, ?, ?)",
-                        ("000001", "2026-04-14", "daily", "qfq", 10.0),
+                    mkt_conn.executemany(
+                        "INSERT INTO price_kline (code, date, freq, adjust, open, high, low, close, volume, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [
+                            ("000001", "2026-04-14", "daily", "qfq", 9.8, 10.2, 9.7, 10.0, 1000.0, 10000.0),
+                            ("000002", "2026-04-14", "daily", "qfq", 19.8, 20.2, 19.7, 20.0, 1000.0, 20000.0),
+                            ("000003", "2026-04-14", "daily", "qfq", 29.8, 30.2, 29.7, 30.0, 1000.0, 30000.0),
+                        ],
                     )
                     mkt_conn.commit()
                 finally:

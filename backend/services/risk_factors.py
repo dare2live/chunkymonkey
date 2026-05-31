@@ -152,12 +152,9 @@ def calc_risk_factors(conn, *, lookback_days: int = 250, max_stocks: int | None 
         market_conn.close()
         return {"status": "no_kline_table", "error": str(exc)}
 
-    # 拿活跃股清单 (smartmoney 库)
-    try:
-        rows = conn.execute("SELECT stock_code FROM dim_active_a_stock").fetchall()
-        stocks = [r[0] for r in rows]
-    except Exception:
-        stocks = []
+    # 拿活跃股清单 — K 线真相源
+    from services.universe import get_active_universe
+    stocks = sorted(get_active_universe(conn, market_conn=market_conn))
     if max_stocks:
         stocks = stocks[:max_stocks]
 
@@ -306,7 +303,7 @@ def calc_risk_factors(conn, *, lookback_days: int = 250, max_stocks: int | None 
         ended_at=utc_now_iso(),
         duration_s=elapsed,
         commit_sha=git_commit_sha(),
-        input_tables=[kline_relation, "dim_active_a_stock"],
+        input_tables=[kline_relation, "price_kline_tdxhub"],  # rule-compliance: ok evidence=lineage-metadata, universe from K-line truth
         output_tables=["fact_risk_factors"],
         perf_summary={
             "lookback_days": int(lookback_days),
