@@ -14,6 +14,7 @@
 - **`dim_active_a_stock` 合法用途 evidence 补齐**: route/read-model/data-sync/schema-writer/audit-config 中仍保留的 `dim_active_a_stock` 引用均需同一行 `rule-compliance` 证据；用途限定为 code-to-name/cache、data-sync enumeration、schema/table writer 或 audit config reference，不得重新作为 active-universe/tradeability 真相源。
 - **旧文档引用收束**: `PLAN_V3`、market perception handoff、deprecation SOP 等旧入口引用改为当前权威 `analysis/plan_v3_20260514_archived.md`、`docs/data_product_contract.md`、`docs/engineering_governance.md`；market status route 测试改用内存 DuckDB 与 mocked audit snapshot，不把本地生产库状态当默认测试证据。
 - **Global data-quality cleanup scan 可控化**: `record_global_data_quality_gate()` 新增 `cleanup_scan_root` 测试/调用参数，生产默认仍扫 workspace，单测改传 `tmp_path`，避免真实工作区 dirty artifact 污染测试证据；`dim_active_a_stock` 在 data-quality gate 中仅为表存在性/名称缓存审计参考。
+- **TDX 数据需求契约 schema 对齐**: `mart_tdx_data_need_coverage` 在 mart schema 中补齐 `grain`、`pit_key`、`freshness_sla`、`evidence_status`、`production_eligibility` 必填列，和 `audit_tdx_data_need_coverage.py`/`tdx_data_need_coverage.yaml` 的契约保持一致；eligible 生产数据必须有 production evidence 和非 unknown PIT key。
 
 ## [INDEX] 2026-05-26 增量
 
