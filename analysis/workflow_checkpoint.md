@@ -6,6 +6,21 @@ Current Codex architecture/worktree-governance state is tracked in `goal.md`.
 The model pipeline snapshot below is historical evidence for the completed
 2026-05 long-running pipeline and must not be used as current GCP/Optuna state.
 
+## Current Data Freshness Checkpoint
+
+- updated_at: `2026-06-01 03:40:48 CST`
+- current_state: `architecture/data freshness repair`
+- K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
+  `2026-05-29` with tdxhub incremental sync.
+- data audit: `audit_data_completeness.py` still exits FAIL, but
+  `price_kline_tdxhub` is now OK (`max=2026-05-29`, `n_codes=5,188`, `= cal`).
+- end-to-end audit: `audit_end_to_end.py` still FAIL
+  (`24 total / 18 OK / 2 WARN / 4 FAIL`), with freshness blockers in
+  `fact_technical_trigger`, `fact_signal_context`, `mart_stock_picture_daily`,
+  and `mart_stock_survey_features`.
+- next_step: follow `goal.md` 6.11; guard destructive/full-refresh builders
+  before writing downstream marts.
+
 - generated_at: `2026-05-25T01:20:01Z`
 - model_id: `lgbm_phase5_gcp_20260520T010718`
 - current_step: `all_done`
