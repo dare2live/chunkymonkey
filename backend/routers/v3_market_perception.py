@@ -573,5 +573,5 @@ async def get_health():
         "ok": True,
         "engines": engines,
         **health,
-        "handoff_doc": "docs/market_perception_codex_handoff.md",
+        "handoff_doc": "docs/data_product_contract.md",
     }

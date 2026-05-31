@@ -24,7 +24,7 @@ regime_engine:
       evidence: "P1 MVP contract: 20 trading-day realized volatility."
     breadth_p75_days:
       value: 90
-      evidence: "docs/market_perception_codex_handoff.md: breadth healthy threshold uses historical rolling p75, not hardcoded 0.6."
+      evidence: "docs/data_product_contract.md: breadth healthy threshold uses historical rolling p75, not hardcoded 0.6."
     query_days:
       value: 130
       evidence: "Operational buffer: max(60, 20, 90) plus previous-close breadth requirement."

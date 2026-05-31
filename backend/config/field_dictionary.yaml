@@ -430,7 +430,7 @@ databases:
         built_at:              {type: TEXT}
 
     mart_p3_acceptance_result:
-      description: "P3 final holdout acceptance — 4 硬验收 (用户终极目标 PLAN_V3 §0.1)"
+      description: "P3 final holdout acceptance — 4 硬验收 (用户终极目标 analysis/plan_v3_20260514_archived.md §0.1)"
       fields:
         run_id:               {type: TEXT, role: pk}
         model_id:             {type: TEXT, role: pk}

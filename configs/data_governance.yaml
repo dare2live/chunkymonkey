@@ -196,7 +196,7 @@ periodic_audit:
     alert_path: "data/audit/nightly_data_audit_latest.json plus cron stderr"
 
 deprecation:
-  sop_document: docs/deprecation_sop.md
+  sop_document: docs/engineering_governance.md
   retention_preference: delete_not_archive
   retired_sources_delete:
     - akshare_sina
