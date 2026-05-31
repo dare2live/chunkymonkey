@@ -115,10 +115,7 @@ def _execute_script(conn: Any, sql: str) -> None:
     if hasattr(conn, "executescript"):
         conn.executescript(sql)
         return
-    for stmt in sql.split(";"):
-        stmt = stmt.strip()
-        if stmt:
-            conn.execute(stmt)
+    conn.execute(sql)
 
 
 def ensure_tables(conn: Any) -> None:
@@ -280,21 +277,30 @@ def _compute_feature_label_stats(
     min_daily_count: int,
     include_deciles: bool,
     base_table: str = "__feature_assoc_base",
+    extra_where_sql: str | None = None,
+    extra_params: list[Any] | None = None,
 ) -> dict[str, Any]:
     feature_q = _quote_ident(feature)
     label_q = _quote_ident(label)
+    filter_params = list(extra_params or [])
+    base_where_sql = f" WHERE {extra_where_sql}" if extra_where_sql else ""
     valid_where = (
         f"{feature_q} IS NOT NULL AND {label_q} IS NOT NULL "
         f"AND ISFINITE(CAST({feature_q} AS DOUBLE)) "
         f"AND ISFINITE(CAST({label_q} AS DOUBLE))"
     )
+    valid_filter = f"({valid_where})"
+    if extra_where_sql:
+        valid_filter = f"({extra_where_sql}) AND {valid_filter}"
     coverage_row = conn.execute(
         f"""
         SELECT
             SUM(CASE WHEN {feature_q} IS NOT NULL AND ISFINITE(CAST({feature_q} AS DOUBLE)) THEN 1 ELSE 0 END) AS covered,
             SUM(CASE WHEN {valid_where} THEN 1 ELSE 0 END) AS valid_rows
           FROM {base_table}
-        """
+        {base_where_sql}
+        """,
+        filter_params,
     ).fetchone()
     covered = int(coverage_row["covered"] or 0)
     valid_rows = int(coverage_row["valid_rows"] or 0)
@@ -305,8 +311,9 @@ def _compute_feature_label_stats(
         f"""
         SELECT corr(CAST({feature_q} AS DOUBLE), CAST({label_q} AS DOUBLE)) AS ic
           FROM {base_table}
-         WHERE {valid_where}
-        """
+         WHERE {valid_filter}
+        """,
+        filter_params,
     ).fetchone()
     ic = _finite_float(ic_row["ic"] if ic_row else None)
 
@@ -328,7 +335,7 @@ def _compute_feature_label_stats(
                    CAST({feature_q} AS DOUBLE) AS feature_value,
                    CAST({label_q} AS DOUBLE) AS label_value
               FROM {base_table}
-             WHERE {valid_where}
+             WHERE {valid_filter}
         ),
         ranked AS (
             SELECT date,
@@ -365,7 +372,7 @@ def _compute_feature_label_stats(
                {decile_expr}
           FROM valid_daily
         """,
-        [min_daily_count],
+        [*filter_params, min_daily_count],
     ).fetchone()
     rank_ic = _finite_float(rank_row["rank_ic"] if rank_row else None)
     rank_ic_std = _finite_float(rank_row["rank_ic_std"] if rank_row else None)
@@ -398,14 +405,20 @@ def _compute_feature_label_rank_ic(
     label: str,
     min_daily_count: int,
     base_table: str = "__feature_assoc_base",
+    extra_where_sql: str | None = None,
+    extra_params: list[Any] | None = None,
 ) -> float | None:
     feature_q = _quote_ident(feature)
     label_q = _quote_ident(label)
+    filter_params = list(extra_params or [])
     valid_where = (
         f"{feature_q} IS NOT NULL AND {label_q} IS NOT NULL "
         f"AND ISFINITE(CAST({feature_q} AS DOUBLE)) "
         f"AND ISFINITE(CAST({label_q} AS DOUBLE))"
     )
+    valid_filter = f"({valid_where})"
+    if extra_where_sql:
+        valid_filter = f"({extra_where_sql}) AND {valid_filter}"
     row = conn.execute(
         f"""
         WITH valid AS (
@@ -413,7 +426,7 @@ def _compute_feature_label_rank_ic(
                    CAST({feature_q} AS DOUBLE) AS feature_value,
                    CAST({label_q} AS DOUBLE) AS label_value
               FROM {base_table}
-             WHERE {valid_where}
+             WHERE {valid_filter}
         ),
         ranked AS (
             SELECT date,
@@ -432,7 +445,7 @@ def _compute_feature_label_rank_ic(
           FROM daily
          WHERE rank_ic IS NOT NULL
         """,
-        [min_daily_count],
+        [*filter_params, min_daily_count],
     ).fetchone()
     return _finite_float(row["rank_ic"] if row else None)
 
@@ -534,6 +547,90 @@ def _fold_ranges(conn: Any, *, label: str, folds: int) -> list[dict[str, str | N
     return ranges
 
 
+def _fold_filter(fold: dict[str, str | None]) -> tuple[str, list[Any]]:
+    return "date >= ? AND date <= ?", [fold["holdout_start"], fold["holdout_end"]]
+
+
+def _fold_total_rows_by_id(conn: Any, ranges: list[dict[str, str | None]]) -> dict[str, int]:
+    if not ranges:
+        return {}
+    values_sql = ", ".join(["(?, ?, ?)"] * len(ranges))
+    params: list[Any] = []
+    for fold in ranges:
+        params.extend([fold["fold_id"], fold["holdout_start"], fold["holdout_end"]])
+    rows = conn.execute(
+        f"""
+        WITH ranges(fold_id, holdout_start, holdout_end) AS (
+            VALUES {values_sql}
+        )
+        SELECT r.fold_id, COUNT(b.date) AS total_rows
+          FROM ranges r
+          LEFT JOIN __feature_assoc_base b
+            ON b.date >= r.holdout_start
+           AND b.date <= r.holdout_end
+         GROUP BY r.fold_id
+        """,
+        params,
+    ).fetchall()
+    return {str(row["fold_id"]): int(row["total_rows"] or 0) for row in rows}
+
+
+def _fold_association_rows_for_fold(
+    conn: Any,
+    *,
+    run_id: str,
+    panel_table: str,
+    label: str,
+    features: list[str],
+    group_map: dict[str, str],
+    fold: dict[str, str | None],
+    total_rows: int,
+    min_daily_count: int,
+    built_at: str,
+) -> list[tuple[Any, ...]]:
+    extra_where_sql, extra_params = _fold_filter(fold)
+    rows: list[tuple[Any, ...]] = []
+    for feature in features:
+        stats = _compute_feature_label_stats(
+            conn,
+            feature=feature,
+            label=label,
+            total_rows=total_rows,
+            min_daily_count=min_daily_count,
+            include_deciles=True,
+            extra_where_sql=extra_where_sql,
+            extra_params=extra_params,
+        )
+        rows.append(
+            (
+                run_id,
+                panel_table,
+                label,
+                fold["fold_id"],
+                fold["train_start"],
+                fold["train_end"],
+                fold["holdout_start"],
+                fold["holdout_end"],
+                feature,
+                group_map.get(feature, "unregistered"),
+                stats["total_rows"],
+                stats["valid_rows"],
+                stats["coverage_pct"],
+                stats["missing_pct"],
+                stats["ic"],
+                stats["rank_ic"],
+                stats["rank_ic_std_by_date"],
+                stats["fold_count"],
+                stats["fold_same_sign_rate"],
+                stats["top_decile_label_mean"],
+                stats["bottom_decile_label_mean"],
+                stats["long_short_spread"],
+                built_at,
+            )
+        )
+    return rows
+
+
 def _build_fold_associations(
     conn: Any,
     *,
@@ -548,55 +645,22 @@ def _build_fold_associations(
 ) -> int:
     ranges = _fold_ranges(conn, label=label, folds=folds)
     rows = []
+    total_rows_by_fold = _fold_total_rows_by_id(conn, ranges)
     for fold in ranges:
-        conn.execute("DROP TABLE IF EXISTS __feature_assoc_fold_base")
-        conn.execute(
-            """
-            CREATE TEMP TABLE __feature_assoc_fold_base AS
-            SELECT *
-              FROM __feature_assoc_base
-             WHERE date >= ? AND date <= ?
-            """,
-            [fold["holdout_start"], fold["holdout_end"]],
-        )
-        total_rows = int(conn.execute("SELECT COUNT(*) FROM __feature_assoc_fold_base").fetchone()[0] or 0)
-        for feature in features:
-            stats = _compute_feature_label_stats(
+        rows.extend(
+            _fold_association_rows_for_fold(
                 conn,
-                feature=feature,
+                run_id=run_id,
+                panel_table=panel_table,
                 label=label,
-                total_rows=total_rows,
+                features=features,
+                group_map=group_map,
+                fold=fold,
+                total_rows=total_rows_by_fold.get(str(fold["fold_id"]), 0),
                 min_daily_count=min_daily_count,
-                include_deciles=True,
-                base_table="__feature_assoc_fold_base",
+                built_at=built_at,
             )
-            rows.append(
-                (
-                    run_id,
-                    panel_table,
-                    label,
-                    fold["fold_id"],
-                    fold["train_start"],
-                    fold["train_end"],
-                    fold["holdout_start"],
-                    fold["holdout_end"],
-                    feature,
-                    group_map.get(feature, "unregistered"),
-                    stats["total_rows"],
-                    stats["valid_rows"],
-                    stats["coverage_pct"],
-                    stats["missing_pct"],
-                    stats["ic"],
-                    stats["rank_ic"],
-                    stats["rank_ic_std_by_date"],
-                    stats["fold_count"],
-                    stats["fold_same_sign_rate"],
-                    stats["top_decile_label_mean"],
-                    stats["bottom_decile_label_mean"],
-                    stats["long_short_spread"],
-                    built_at,
-                )
-            )
+        )
     if rows:
         conn.executemany(
             """
@@ -611,13 +675,34 @@ def _build_fold_associations(
             """,
             rows,
         )
-    conn.execute("DROP TABLE IF EXISTS __feature_assoc_fold_base")
     return len(rows)
 
 
 def _feature_value_expr(feature: str) -> str:
     q = _quote_ident(feature)
     return f"CASE WHEN {q} IS NOT NULL AND ISFINITE(CAST({q} AS DOUBLE)) THEN CAST({q} AS DOUBLE) END"
+
+
+def _feature_pairs(features: list[str]) -> list[tuple[str, str]]:
+    return [
+        (left, right)
+        for left_idx, left in enumerate(features)
+        for right in features[left_idx + 1 :]
+    ]
+
+
+def _feature_corr_batch(conn: Any, batch: list[tuple[str, str]]) -> dict[tuple[str, str], float | None]:
+    if not batch:
+        return {}
+    select_exprs = [
+        f"corr({_feature_value_expr(left)}, {_feature_value_expr(right)}) AS {_quote_ident(f'c_{idx}')}"
+        for idx, (left, right) in enumerate(batch)
+    ]
+    row = conn.execute(f"SELECT {', '.join(select_exprs)} FROM __feature_assoc_base").fetchone()
+    return {
+        pair: _finite_float(row[f"c_{idx}"] if row else None)
+        for idx, pair in enumerate(batch)
+    }
 
 
 def _feature_corr_matrix(
@@ -628,24 +713,34 @@ def _feature_corr_matrix(
 ) -> dict[tuple[str, str], float | None]:
     """Compute pairwise feature correlations in DuckDB expression batches."""
 
-    pairs = [
-        (left, right)
-        for left_idx, left in enumerate(features)
-        for right in features[left_idx + 1 :]
-    ]
+    pairs = _feature_pairs(features)
     matrix: dict[tuple[str, str], float | None] = {}
     batch_size = max(int(batch_size), 1)
     for start in range(0, len(pairs), batch_size):
-        batch = pairs[start : start + batch_size]
-        select_exprs = []
-        for idx, (left, right) in enumerate(batch):
-            select_exprs.append(
-                f"corr({_feature_value_expr(left)}, {_feature_value_expr(right)}) AS {_quote_ident(f'c_{idx}')}"
-            )
-        row = conn.execute(f"SELECT {', '.join(select_exprs)} FROM __feature_assoc_base").fetchone()
-        for idx, pair in enumerate(batch):
-            matrix[pair] = _finite_float(row[f"c_{idx}"] if row else None)
+        matrix.update(_feature_corr_batch(conn, pairs[start : start + batch_size]))
     return matrix
+
+
+def _cluster_correlated_features(
+    *,
+    representative: str,
+    cluster_id: str,
+    unassigned: set[str],
+    corr_matrix: dict[tuple[str, str], float | None],
+    corr_threshold: float,
+    run_id: str,
+    panel_table: str,
+    built_at: str,
+) -> list[tuple[str, str, str, str, str, float, str]]:
+    rows = []
+    for feature in list(unassigned):
+        corr = corr_matrix.get((representative, feature))
+        if corr is None:
+            corr = corr_matrix.get((feature, representative))
+        if corr is not None and abs(corr) >= corr_threshold:
+            unassigned.remove(feature)
+            rows.append((run_id, panel_table, cluster_id, feature, representative, corr, built_at))
+    return rows
 
 
 def _build_correlation_clusters(
@@ -678,13 +773,18 @@ def _build_correlation_clusters(
         cluster_id = f"cluster_{cluster_idx:03d}"
         unassigned.remove(representative)
         rows.append((run_id, panel_table, cluster_id, representative, representative, 1.0, built_at))
-        for feature in list(unassigned):
-            corr = corr_matrix.get((representative, feature))
-            if corr is None:
-                corr = corr_matrix.get((feature, representative))
-            if corr is not None and abs(corr) >= corr_threshold:
-                unassigned.remove(feature)
-                rows.append((run_id, panel_table, cluster_id, feature, representative, corr, built_at))
+        rows.extend(
+            _cluster_correlated_features(
+                representative=representative,
+                cluster_id=cluster_id,
+                unassigned=unassigned,
+                corr_matrix=corr_matrix,
+                corr_threshold=corr_threshold,
+                run_id=run_id,
+                panel_table=panel_table,
+                built_at=built_at,
+            )
+        )
     if rows:
         conn.executemany(
             """
@@ -696,6 +796,30 @@ def _build_correlation_clusters(
             rows,
         )
     return len(rows)
+
+
+def _feature_horizon_sensitivity(
+    conn: Any,
+    *,
+    feature: str,
+    labels: list[str],
+    primary_label: str,
+    primary_rank_ic: float | None,
+    min_daily_count: int,
+) -> dict[str, float | None]:
+    sensitivity: dict[str, float | None] = {}
+    for label in labels:
+        sensitivity[label] = (
+            primary_rank_ic
+            if label == primary_label
+            else _compute_feature_label_rank_ic(
+                conn,
+                feature=feature,
+                label=label,
+                min_daily_count=min_daily_count,
+            )
+        )
+    return sensitivity
 
 
 def build_feature_association_stats(
@@ -786,18 +910,14 @@ def build_feature_association_stats(
                 min_daily_count=min_daily_count,
                 include_deciles=True,
             )
-            sensitivity = {}
-            for label in labels:
-                sensitivity[label] = (
-                    primary["rank_ic"]
-                    if label == label_name
-                    else _compute_feature_label_rank_ic(
-                        conn,
-                        feature=feature,
-                        label=label,
-                        min_daily_count=min_daily_count,
-                    )
-                )
+            sensitivity = _feature_horizon_sensitivity(
+                conn,
+                feature=feature,
+                labels=labels,
+                primary_label=label_name,
+                primary_rank_ic=primary["rank_ic"],
+                min_daily_count=min_daily_count,
+            )
             row = {
                 "feature_name": feature,
                 "feature_group": group_map.get(feature, "unregistered"),
