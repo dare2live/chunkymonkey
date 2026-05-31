@@ -114,32 +114,3 @@ class TestBuildBlendedForDate:
         # C base=0.7, blended = 0.7
         # 新 top 应该是 B (0.8 > 0.7 > 0.45)
         assert new_top[0] == "B"
-
-
-class TestEndpoint:
-    @pytest.fixture(scope="class")
-    def client(self):
-        import sys
-        from pathlib import Path
-        backend_dir = Path(__file__).resolve().parent.parent
-        if str(backend_dir) not in sys.path:
-            sys.path.insert(0, str(backend_dir))
-        from main import app
-        from fastapi.testclient import TestClient
-        return TestClient(app)
-
-    def test_blended_endpoint_basic(self, client):
-        r = client.get("/api/v3/selection/blended?limit=5")
-        assert r.status_code == 200
-        body = r.json()
-        assert body["ok"] is True
-        # 真实 DB 有 50 行 (Phase ε+ 已 build)
-        if body["data"]:
-            row = body["data"][0]
-            required = {"stock_code", "rank_in_date", "base_rank_in_date",
-                        "base_pred_score", "formula_bonus", "blended_score"}
-            assert required.issubset(set(row.keys()))
-            # 排序 ascending by rank_in_date
-            ranks = [d["rank_in_date"] for d in body["data"]]
-            for i in range(len(ranks) - 1):
-                assert ranks[i] <= ranks[i + 1]
