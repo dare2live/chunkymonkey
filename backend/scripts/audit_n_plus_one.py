@@ -93,24 +93,15 @@ class Finding:
 def iter_python_files(roots: Sequence[Path], *, include_tests: bool = False) -> list[Path]:
     files: list[Path] = []
     for root in roots:
-        if root.is_file() and root.suffix == ".py":
-            if not _is_excluded_path(root, include_tests=include_tests):
-                files.append(root)
-            continue
-        if not root.exists():
-            continue
-        for path in root.rglob("*.py"):
-            if _is_excluded_path(path, include_tests=include_tests):
-                continue
-            files.append(path)
+        files.extend(_iter_python_files_for_root(root, include_tests=include_tests))
     return sorted(set(files))
 
 
 def scan_files(files: Iterable[Path], repo_root: Path | None = None) -> list[Finding]:
     base = repo_root or REPO_ROOT
     findings: list[Finding] = []
-    seen: set[tuple[str, int, str]] = set()
-    for path in sorted(Path(p) for p in files):
+    sorted_files = sorted(Path(p) for p in files)
+    for path in sorted_files:
         if path.suffix != ".py":
             continue
         try:
@@ -118,108 +109,15 @@ def scan_files(files: Iterable[Path], repo_root: Path | None = None) -> list[Fin
         except UnicodeDecodeError:
             text = path.read_text(encoding="utf-8", errors="replace")
         rel_path = _relative_path(path, base)
-        file_findings = scan_text(text, rel_path)
-        for finding in file_findings:
-            key = (finding.file, finding.line, finding.pattern)
-            if key in seen:
-                continue
-            seen.add(key)
-            findings.append(finding)
-    return sort_findings(findings)
+        findings.extend(scan_text(text, rel_path))
+    return sort_findings(_dedupe_findings(findings))
 
 
 def scan_text(text: str, rel_path: str) -> list[Finding]:
     lines = text.splitlines()
     findings: list[Finding] = []
-    high_lines: set[int] = set()
-
-    for idx, line in enumerate(lines):
-        loop_match = FOR_LOOP_RE.match(line)
-        if not loop_match:
-            continue
-        body = _body_window(lines, idx, _indent_width(loop_match.group(1)))
-        for body_idx, body_line in body:
-            if _is_comment_only(body_line):
-                continue
-            if PATTERN3_CONNECT_RE.search(body_line):
-                findings.append(
-                    _finding(
-                        rel_path,
-                        body_idx,
-                        "DB_CONNECT_IN_FOR_LOOP",
-                        "HIGH",
-                        _snippet(lines[idx], body_line),
-                        "Open one DuckDB connection before the loop and reuse it; close it after the loop.",
-                    )
-                )
-                high_lines.add(body_idx)
-            if PATTERN1_SQL_RE.search(body_line):
-                if _is_chunked_batch_loop(lines[idx], body_line):
-                    continue
-                if _is_schema_statement_loop(lines[idx], body_line):
-                    continue
-                findings.append(
-                    _finding(
-                        rel_path,
-                        body_idx,
-                        "SQL_EXECUTE_IN_FOR_LOOP",
-                        "HIGH",
-                        _snippet(lines[idx], body_line),
-                        "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL.",
-                    )
-                )
-                high_lines.add(body_idx)
-            if PATTERN2_IO_RE.search(body_line):
-                findings.append(
-                    _finding(
-                        rel_path,
-                        body_idx,
-                        "PER_ROW_IO_IN_FOR_LOOP",
-                        "MEDIUM",
-                        _snippet(lines[idx], body_line),
-                        "Preload file/HTTP data before the loop, cache it, or batch requests outside per-row iteration.",
-                    )
-                )
-
-        for body_idx, body_line in body:
-            if body_idx in high_lines or _is_comment_only(body_line):
-                continue
-            if not GENERIC_EXECUTE_RE.search(body_line):
-                continue
-            if not _looks_read_only(body_line, lines, body_idx):
-                continue
-            findings.append(
-                _finding(
-                    rel_path,
-                    body_idx,
-                    "READ_ONLY_QUERY_IN_FOR_LOOP",
-                    "LOW",
-                    _snippet(lines[idx], body_line),
-                    "Prefetch read-only query results before the loop or join once in SQL instead of querying per iteration.",
-                )
-            )
-
-    for idx, line in enumerate(lines):
-        if not ITERROWS_RE.search(line) or _is_comment_only(line):
-            continue
-        indent = _indent_width(line) if not FOR_LOOP_RE.match(line) else _indent_width(FOR_LOOP_RE.match(line).group(1))
-        body = _body_window(lines, idx, indent)
-        for body_idx, body_line in body:
-            if _is_comment_only(body_line):
-                continue
-            if ITERROWS_IO_RE.search(body_line):
-                findings.append(
-                    _finding(
-                        rel_path,
-                        body_idx,
-                        "ITERROWS_WITH_IO",
-                        "MEDIUM",
-                        _snippet(line, body_line),
-                        "Replace iterrows with vectorized operations or collect work items and perform SQL/HTTP/file IO in batches.",
-                    )
-                )
-                break
-
+    findings.extend(_scan_for_loop_findings(lines, rel_path))
+    findings.extend(_scan_iterrows_findings(lines, rel_path))
     return sort_findings(_dedupe_findings(findings))
 
 
@@ -341,6 +239,165 @@ def _body_window(lines: Sequence[str], loop_idx: int, loop_indent: int) -> list[
             break
         body.append((idx + 1, line))
     return body
+
+
+def _iter_python_files_for_root(root: Path, *, include_tests: bool) -> list[Path]:
+    if root.is_file() and root.suffix == ".py":
+        return [] if _is_excluded_path(root, include_tests=include_tests) else [root]
+    if not root.exists():
+        return []
+    return [
+        path
+        for path in root.rglob("*.py")
+        if not _is_excluded_path(path, include_tests=include_tests)
+    ]
+
+
+def _scan_for_loop_findings(lines: Sequence[str], rel_path: str) -> list[Finding]:
+    findings: list[Finding] = []
+    high_lines: set[int] = set()
+    for idx, line in _for_loop_lines(lines):
+        loop_match = FOR_LOOP_RE.match(line)
+        assert loop_match is not None
+        body = _body_window(lines, idx, _indent_width(loop_match.group(1)))
+        body_findings, body_high_lines = _scan_loop_body(lines, idx, body, rel_path)
+        high_lines.update(body_high_lines)
+        findings.extend(body_findings)
+        findings.extend(_scan_read_only_loop_body(lines, idx, body, rel_path, high_lines))
+    return findings
+
+
+def _for_loop_lines(lines: Sequence[str]) -> list[tuple[int, str]]:
+    return [(idx, line) for idx, line in enumerate(lines) if FOR_LOOP_RE.match(line)]
+
+
+def _scan_loop_body(
+    lines: Sequence[str],
+    loop_idx: int,
+    body: Sequence[tuple[int, str]],
+    rel_path: str,
+) -> tuple[list[Finding], set[int]]:
+    findings: list[Finding] = []
+    high_lines: set[int] = set()
+    loop_line = lines[loop_idx]
+    for body_idx, body_line in body:
+        if _is_comment_only(body_line):
+            continue
+        if PATTERN3_CONNECT_RE.search(body_line):
+            findings.append(
+                _finding(
+                    rel_path,
+                    body_idx,
+                    "DB_CONNECT_IN_FOR_LOOP",
+                    "HIGH",
+                    _snippet(loop_line, body_line),
+                    "Open one DuckDB connection before the loop and reuse it; close it after the loop.",
+                )
+            )
+            high_lines.add(body_idx)
+        if PATTERN1_SQL_RE.search(body_line):
+            if _is_chunked_batch_loop(loop_line, body_line):
+                continue
+            if _is_schema_statement_loop(loop_line, body_line):
+                continue
+            findings.append(
+                _finding(
+                    rel_path,
+                    body_idx,
+                    "SQL_EXECUTE_IN_FOR_LOOP",
+                    "HIGH",
+                    _snippet(loop_line, body_line),
+                    "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL.",
+                )
+            )
+            high_lines.add(body_idx)
+        if PATTERN2_IO_RE.search(body_line):
+            findings.append(
+                _finding(
+                    rel_path,
+                    body_idx,
+                    "PER_ROW_IO_IN_FOR_LOOP",
+                    "MEDIUM",
+                    _snippet(loop_line, body_line),
+                    "Preload file/HTTP data before the loop, cache it, or batch requests outside per-row iteration.",
+                )
+            )
+    return findings, high_lines
+
+
+def _scan_read_only_loop_body(
+    lines: Sequence[str],
+    loop_idx: int,
+    body: Sequence[tuple[int, str]],
+    rel_path: str,
+    high_lines: set[int],
+) -> list[Finding]:
+    findings: list[Finding] = []
+    loop_line = lines[loop_idx]
+    for body_idx, body_line in body:
+        if body_idx in high_lines or _is_comment_only(body_line):
+            continue
+        if not GENERIC_EXECUTE_RE.search(body_line):
+            continue
+        if not _looks_read_only(body_line, lines, body_idx):
+            continue
+        findings.append(
+            _finding(
+                rel_path,
+                body_idx,
+                "READ_ONLY_QUERY_IN_FOR_LOOP",
+                "LOW",
+                _snippet(loop_line, body_line),
+                "Prefetch read-only query results before the loop or join once in SQL instead of querying per iteration.",
+            )
+        )
+    return findings
+
+
+def _scan_iterrows_findings(lines: Sequence[str], rel_path: str) -> list[Finding]:
+    findings: list[Finding] = []
+    for idx, line in _iterrows_lines(lines):
+        indent = _iterrows_loop_indent(line)
+        body = _body_window(lines, idx, indent)
+        finding = _first_iterrows_io_finding(line, body, rel_path)
+        if finding is not None:
+            findings.append(finding)
+    return findings
+
+
+def _iterrows_lines(lines: Sequence[str]) -> list[tuple[int, str]]:
+    return [
+        (idx, line)
+        for idx, line in enumerate(lines)
+        if ITERROWS_RE.search(line) and not _is_comment_only(line)
+    ]
+
+
+def _iterrows_loop_indent(line: str) -> int:
+    loop_match = FOR_LOOP_RE.match(line)
+    if loop_match:
+        return _indent_width(loop_match.group(1))
+    return _indent_width(line)
+
+
+def _first_iterrows_io_finding(
+    loop_line: str,
+    body: Sequence[tuple[int, str]],
+    rel_path: str,
+) -> Finding | None:
+    for body_idx, body_line in body:
+        if _is_comment_only(body_line):
+            continue
+        if ITERROWS_IO_RE.search(body_line):
+            return _finding(
+                rel_path,
+                body_idx,
+                "ITERROWS_WITH_IO",
+                "MEDIUM",
+                _snippet(loop_line, body_line),
+                "Replace iterrows with vectorized operations or collect work items and perform SQL/HTTP/file IO in batches.",
+            )
+    return None
 
 
 def _finding(

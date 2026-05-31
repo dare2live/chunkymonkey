@@ -26,6 +26,7 @@ import logging
 import sys
 from collections import Counter
 from dataclasses import asdict, dataclass, field
+from itertools import product
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -123,6 +124,25 @@ WALK_FORWARD_V2_LEGACY = (
     "mart_per_stock_strategy_optimal",  # v3.2 deprecated as primary; WARN not FAIL
     "mart_per_formula_stage_optimal",   # same
 )
+WALK_FORWARD_BATCH_SPECS = (
+    ("mart_per_stock_stage_strategy_optimal_pit", "FAIL", "v3.2 critical"),
+    ("mart_per_stock_stage_strategy_optimal", "WARN", "v2 legacy (deprecated as primary)"),
+    ("mart_per_stock_strategy_optimal", "WARN", "v2 legacy (deprecated as primary)"),
+    ("mart_per_formula_stage_optimal", "WARN", "v2 legacy (deprecated as primary)"),
+)
+WALK_FORWARD_OOS_SPECS = (
+    ("mart_per_stock_stage_strategy_optimal_pit", "FAIL", "v3.2 critical"),
+    ("mart_per_stock_stage_strategy_optimal", "WARN", "v2 legacy"),
+    ("mart_per_stock_strategy_optimal", "WARN", "v2 legacy"),
+    ("mart_per_formula_stage_optimal", "WARN", "v2 legacy"),
+)
+FORWARD_LEAK_SOURCES = (
+    ("fact_risk_factors", "calc_date"),
+    ("fact_financial_pit_daily", "trade_date"),
+    ("fact_capital_flow_pit_daily", "trade_date"),
+    ("fact_signal_context", "date"),
+    ("fact_technical_trigger", "date"),
+)
 
 
 @dataclass
@@ -145,6 +165,42 @@ def find_pit_column(conn, table: str) -> str | None:
         if cand in cols:
             return cand
     return None
+
+
+def _load_columns_by_table(conn, table_names: list[str]) -> dict[str, set[str]]:
+    names = sorted(set(table_names))
+    if not names:
+        return {}
+    placeholders = ", ".join(["?"] * len(names))
+    rows = conn.execute(
+        f"""
+        SELECT table_name, column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'main'
+          AND table_name IN ({placeholders})
+        """,
+        names,
+    ).fetchall()
+    columns_by_table: dict[str, set[str]] = {}
+    for table_name, column_name in rows:
+        columns_by_table.setdefault(table_name, set()).add(column_name)
+    return columns_by_table
+
+
+def _existing_tables(conn) -> set[str]:
+    return {
+        r[0] for r in conn.execute(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema='main'"
+        ).fetchall()
+    }
+
+
+def _forward_spot_specs(candidate_dates: list[str]) -> list[tuple[str, str, str]]:
+    specs = []
+    for signal_date, source in product(candidate_dates, FORWARD_LEAK_SOURCES):
+        table, pit_col = source
+        specs.append((signal_date, table, pit_col))
+    return specs
 
 
 def check_pit_column_coverage(conn) -> list[CheckResult]:
@@ -201,33 +257,12 @@ def check_batch_write_anomaly(conn) -> list[CheckResult]:
     v2 legacy tables: single-batch WARN (deprecated as primary in v3.2, used only as features).
     """
     out: list[CheckResult] = []
-    tier_specs = [
-        (table, fail_severity, tier_label)
-        for tier_tables, fail_severity, tier_label in (
-            (WALK_FORWARD_V3_CRITICAL, "FAIL", "v3.2 critical"),
-            (WALK_FORWARD_V2_LEGACY, "WARN", "v2 legacy (deprecated as primary)"),
-        )
-        for table in tier_tables
-    ]
-    existing = {
-        r[0] for r in conn.execute(
-            "SELECT table_name FROM information_schema.tables WHERE table_schema='main'"
-        ).fetchall()
-    }
+    tier_specs = list(WALK_FORWARD_BATCH_SPECS)
+    tier_tables = [table for table, _, _ in tier_specs]
+    existing = _existing_tables(conn)
     present_specs = [(table, severity, label) for table, severity, label in tier_specs if table in existing]
     metrics: dict[str, tuple[int, int, object, object]] = {}
-    column_rows = conn.execute(
-        """
-        SELECT table_name, column_name
-        FROM information_schema.columns
-        WHERE table_schema = 'main'
-          AND table_name IN ({})
-        """.format(", ".join(["?"] * len([table for table, _, _ in tier_specs]))),
-        [table for table, _, _ in tier_specs],
-    ).fetchall()
-    columns_by_table: dict[str, set[str]] = {}
-    for table_name, column_name in column_rows:
-        columns_by_table.setdefault(table_name, set()).add(column_name)
+    columns_by_table = _load_columns_by_table(conn, tier_tables)
     time_col_by_table = {
         table: ("cutoff_date" if "cutoff_date" in columns_by_table.get(table, set()) else "built_at")
         for table, _, _ in present_specs
@@ -249,49 +284,45 @@ def check_batch_write_anomaly(conn) -> list[CheckResult]:
             table: (int(n_distinct or 0), int(n_rows or 0), max_d, min_d)
             for table, n_distinct, n_rows, max_d, min_d in conn.execute(sql).fetchall()
         }
-    for tier_tables, fail_severity, tier_label in (
-        (WALK_FORWARD_V3_CRITICAL, "FAIL", "v3.2 critical"),
-        (WALK_FORWARD_V2_LEGACY, "WARN", "v2 legacy (deprecated as primary)"),
-    ):
-        for table in tier_tables:
-            if table not in existing:
-                out.append(CheckResult(
-                    section="2. Batch-write anomaly",
-                    name=table,
-                    status="WARN",
-                    detail=f"{table}: check failed: table not found",
-                ))
-                continue
-            n_distinct, n_rows, max_d, min_d = metrics.get(table, (0, 0, None, None))
-            time_col = time_col_by_table.get(table, "built_at")
-            if n_rows == 0:
-                out.append(CheckResult(
-                    section="2. Batch-write anomaly",
-                    name=table,
-                    status="WARN",
-                    detail=f"{table} [{tier_label}]: 0 rows",
-                ))
-                continue
-            if n_distinct == 1:
-                out.append(CheckResult(
-                    section="2. Batch-write anomaly",
-                    name=table,
-                    status=fail_severity,
-                    detail=(
-                        f"{table} [{tier_label}]: all {n_rows} rows share {time_col}={max_d} "
-                        "→ single-batch write, NOT walk-forward"
-                    ),
-                    rows=n_rows,
-                    extras={time_col: str(max_d), "tier": tier_label},
-                ))
-            else:
-                out.append(CheckResult(
-                    section="2. Batch-write anomaly",
-                    name=table,
-                    status="PASS",
-                    detail=f"{table} [{tier_label}]: {n_distinct} distinct {time_col} ({min_d} → {max_d}), {n_rows} rows",
-                    rows=n_rows,
-                ))
+    for table, fail_severity, tier_label in tier_specs:
+        if table not in existing:
+            out.append(CheckResult(
+                section="2. Batch-write anomaly",
+                name=table,
+                status="WARN",
+                detail=f"{table}: check failed: table not found",
+            ))
+            continue
+        n_distinct, n_rows, max_d, min_d = metrics.get(table, (0, 0, None, None))
+        time_col = time_col_by_table.get(table, "built_at")
+        if n_rows == 0:
+            out.append(CheckResult(
+                section="2. Batch-write anomaly",
+                name=table,
+                status="WARN",
+                detail=f"{table} [{tier_label}]: 0 rows",
+            ))
+            continue
+        if n_distinct == 1:
+            out.append(CheckResult(
+                section="2. Batch-write anomaly",
+                name=table,
+                status=fail_severity,
+                detail=(
+                    f"{table} [{tier_label}]: all {n_rows} rows share {time_col}={max_d} "
+                    "→ single-batch write, NOT walk-forward"
+                ),
+                rows=n_rows,
+                extras={time_col: str(max_d), "tier": tier_label},
+            ))
+        else:
+            out.append(CheckResult(
+                section="2. Batch-write anomaly",
+                name=table,
+                status="PASS",
+                detail=f"{table} [{tier_label}]: {n_distinct} distinct {time_col} ({min_d} → {max_d}), {n_rows} rows",
+                rows=n_rows,
+            ))
     return out
 
 
@@ -302,29 +333,10 @@ def check_oos_validity(conn) -> list[CheckResult]:
     (deprecated as primary; flagged for P0a feature-join PIT guard).
     """
     out: list[CheckResult] = []
-    tiers = [
-        (WALK_FORWARD_V3_CRITICAL, "FAIL", "v3.2 critical"),
-        (WALK_FORWARD_V2_LEGACY, "WARN", "v2 legacy"),
-    ]
-    tier_specs = [(table, severity, tier_label) for tables, severity, tier_label in tiers for table in tables]
+    tier_specs = list(WALK_FORWARD_OOS_SPECS)
     all_tables = [table for table, _, _ in tier_specs]
-    existing = {
-        r[0] for r in conn.execute(
-            "SELECT table_name FROM information_schema.tables WHERE table_schema='main'"
-        ).fetchall()
-    }
-    column_rows = conn.execute(
-        """
-        SELECT table_name, column_name
-        FROM information_schema.columns
-        WHERE table_schema = 'main'
-          AND table_name IN ({})
-        """.format(", ".join(["?"] * len(all_tables))),
-        all_tables,
-    ).fetchall()
-    columns_by_table: dict[str, set[str]] = {}
-    for table_name, column_name in column_rows:
-        columns_by_table.setdefault(table_name, set()).add(column_name)
+    existing = _existing_tables(conn)
+    columns_by_table = _load_columns_by_table(conn, all_tables)
     metric_parts: list[str] = []
     for table, _, _ in tier_specs:
         cols = columns_by_table.get(table, set())
@@ -351,34 +363,33 @@ def check_oos_validity(conn) -> list[CheckResult]:
             conn.execute(" UNION ALL ".join(metric_parts)).fetchall() if metric_parts else []
         )
     }
-    for tables, severity, tier_label in tiers:
-        for table in tables:
-            cols = columns_by_table.get(table, set())
-            if table not in existing or "oos_period_end" not in cols or "oos_period_start" not in cols:
-                out.append(CheckResult(
-                    section="3. OOS validity",
-                    name=table,
-                    status="WARN",
-                    detail=f"{table} [{tier_label}]: missing oos_period_start/end columns",
-                ))
-                continue
-            n_bad, n_total = metrics.get(table, (0, 0))
-            if n_bad == 0:
-                out.append(CheckResult(
-                    section="3. OOS validity",
-                    name=table,
-                    status="PASS",
-                    detail=f"{table} [{tier_label}]: 0/{n_total} rows violate OOS rules",
-                    rows=n_total,
-                ))
-            else:
-                out.append(CheckResult(
-                    section="3. OOS validity",
-                    name=table,
-                    status=severity,
-                    detail=f"{table} [{tier_label}]: {n_bad}/{n_total} rows have OOS overlapping train (forward leak)",
-                    rows=n_bad,
-                ))
+    for table, severity, tier_label in tier_specs:
+        cols = columns_by_table.get(table, set())
+        if table not in existing or "oos_period_end" not in cols or "oos_period_start" not in cols:
+            out.append(CheckResult(
+                section="3. OOS validity",
+                name=table,
+                status="WARN",
+                detail=f"{table} [{tier_label}]: missing oos_period_start/end columns",
+            ))
+            continue
+        n_bad, n_total = metrics.get(table, (0, 0))
+        if n_bad == 0:
+            out.append(CheckResult(
+                section="3. OOS validity",
+                name=table,
+                status="PASS",
+                detail=f"{table} [{tier_label}]: 0/{n_total} rows violate OOS rules",
+                rows=n_total,
+            ))
+        else:
+            out.append(CheckResult(
+                section="3. OOS validity",
+                name=table,
+                status=severity,
+                detail=f"{table} [{tier_label}]: {n_bad}/{n_total} rows have OOS overlapping train (forward leak)",
+                rows=n_bad,
+            ))
     return out
 
 
@@ -405,13 +416,7 @@ def check_forward_leak_spot_check(conn) -> list[CheckResult]:
     except Exception as e:
         log.warning(f"Cannot read latest signal_date from fact_technical_trigger: {e}")
 
-    sources = [
-        ("fact_risk_factors", "calc_date"),
-        ("fact_financial_pit_daily", "trade_date"),
-        ("fact_capital_flow_pit_daily", "trade_date"),
-        ("fact_signal_context", "date"),
-        ("fact_technical_trigger", "date"),
-    ]
+    spot_specs = _forward_spot_specs(candidate_dates)
     metric_sql = " UNION ALL ".join(
         f"""
         SELECT
@@ -422,34 +427,32 @@ def check_forward_leak_spot_check(conn) -> list[CheckResult]:
         FROM {table}
         WHERE TRY_CAST({pit_col} AS DATE) > DATE '{signal_date}'
         """
-        for signal_date in candidate_dates
-        for table, pit_col in sources
+        for signal_date, table, pit_col in spot_specs
     )
     violation_counts = {
         (signal_date, table): int(n_violating or 0)
         for signal_date, table, _pit_col, n_violating in conn.execute(metric_sql).fetchall()
     }
 
-    for signal_date in candidate_dates:
-        for table, pit_col in sources:
-            n_violating = violation_counts.get((signal_date, table), 0)
-            if n_violating == 0:
-                out.append(CheckResult(
-                    section="4. Forward leak spot-check",
-                    name=f"{table}@{signal_date}",
-                    status="PASS",
-                    detail=f"{table}: 0 rows with {pit_col} > {signal_date}",
-                ))
-            else:
-                # WARN not FAIL: future rows exist (e.g. today's data); selector
-                # must filter `WHERE pit_col <= signal_date` at query time.
-                out.append(CheckResult(
-                    section="4. Forward leak spot-check",
-                    name=f"{table}@{signal_date}",
-                    status="WARN",
-                    detail=f"{table}: {n_violating} rows with {pit_col} > {signal_date} (future-dated; selector must filter)",
-                    rows=n_violating,
-                ))
+    for signal_date, table, pit_col in spot_specs:
+        n_violating = violation_counts.get((signal_date, table), 0)
+        if n_violating == 0:
+            out.append(CheckResult(
+                section="4. Forward leak spot-check",
+                name=f"{table}@{signal_date}",
+                status="PASS",
+                detail=f"{table}: 0 rows with {pit_col} > {signal_date}",
+            ))
+        else:
+            # WARN not FAIL: future rows exist (e.g. today's data); selector
+            # must filter `WHERE pit_col <= signal_date` at query time.
+            out.append(CheckResult(
+                section="4. Forward leak spot-check",
+                name=f"{table}@{signal_date}",
+                status="WARN",
+                detail=f"{table}: {n_violating} rows with {pit_col} > {signal_date} (future-dated; selector must filter)",
+                rows=n_violating,
+            ))
     return out
 
 

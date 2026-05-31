@@ -85,7 +85,9 @@ def _load_msaf_horizon_ladder(reports_dir: Path, primary_report: dict) -> list[d
         rows.append(row)
 
     add_row(reports_dir / "msaf_ensemble_run.json", primary_report, primary=True)
-    for path in sorted(reports_dir.glob("msaf_ensemble_h*_probe_*.json")):
+    horizon_probe_paths = list(reports_dir.glob("msaf_ensemble_h*_probe_*.json"))
+    horizon_probe_paths.sort()
+    for path in horizon_probe_paths:
         try:
             payload = json.loads(path.read_text())
         except Exception as e:
@@ -93,7 +95,9 @@ def _load_msaf_horizon_ladder(reports_dir: Path, primary_report: dict) -> list[d
             continue
         add_row(path, payload)
     # 2026-05-23 加 V4+BC ensemble horizon_ladder reports (新 ensemble strategies)
-    for path in sorted(reports_dir.glob("v4_bc_ensemble_horizon_ladder*.json")):
+    v4_bc_ladder_paths = list(reports_dir.glob("v4_bc_ensemble_horizon_ladder*.json"))
+    v4_bc_ladder_paths.sort()
+    for path in v4_bc_ladder_paths:
         try:
             payload = json.loads(path.read_text())
         except Exception as e:
@@ -176,7 +180,9 @@ def _phase4_probe_gate_key(
 def _load_msaf_phase4_probe_gates(reports_dir: Path) -> dict[tuple[Any, ...], dict]:
     """Load dedicated Phase4 gates for opt-in MSAF probe candidates."""
     rows: dict[tuple[Any, ...], dict] = {}
-    for path in sorted(reports_dir.glob("phase4_gate_msaf_*probe_*.json")):
+    gate_paths = list(reports_dir.glob("phase4_gate_msaf_*probe_*.json"))
+    gate_paths.sort()
+    for path in gate_paths:
         try:
             payload = json.loads(path.read_text())
         except Exception as e:
@@ -241,7 +247,8 @@ def _load_msaf_risk_overlay_probes(reports_dir: Path, primary_report: dict) -> l
         *reports_dir.glob("msaf_ensemble_*lm*_sniper*_probe_*.json"),
         *reports_dir.glob("msaf_ensemble_*lmonly*_probe_*.json"),
     }
-    for path in sorted(probe_paths):
+    sorted_probe_paths = sorted(probe_paths)
+    for path in sorted_probe_paths:
         try:
             payload = json.loads(path.read_text())
         except Exception as e:
@@ -378,7 +385,9 @@ def _summarize_source_weight_probes(rows: list[dict]) -> dict[str, Any]:
 def _load_msaf_challenger_oos_probes(reports_dir: Path) -> list[dict]:
     """Load rejected/candidate MSAF model probes without changing live readiness."""
     rows: list[dict] = []
-    for path in sorted(reports_dir.glob("msaf_ensemble_*oos_probe_*.json")):
+    probe_paths = list(reports_dir.glob("msaf_ensemble_*oos_probe_*.json"))
+    probe_paths.sort()
+    for path in probe_paths:
         try:
             payload = json.loads(path.read_text())
         except Exception as e:
@@ -587,17 +596,25 @@ def check_strategy_model() -> dict:
             "enabled_args": {"with_institution": True, "no_institution": False},
         },
     }
-    sources_wired = {}
-    sources_available = {}
+    sources_wired = {source_name: False for source_name in SOURCES}
+    sources_available = {source_name: False for source_name in SOURCES}
+    con = None
     try:
         con = duckdb.connect(str(smart_db), read_only=True)
+        mart_tables = [spec["mart_table"] for spec in SOURCES.values()]
+        placeholders = ", ".join("?" for _ in mart_tables)
+        mart_rows = con.execute(
+            f"""
+            SELECT table_name
+              FROM information_schema.tables
+             WHERE table_name IN ({placeholders})
+            """,
+            mart_tables,
+        ).fetchall()
+        existing_marts = {str(row[0]) for row in mart_rows}
         for source_name, spec in SOURCES.items():
             mart_table = spec["mart_table"]
-            r = con.execute(
-                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?",
-                [mart_table],
-            ).fetchone()
-            has_mart = bool(r and r[0] > 0)
+            has_mart = mart_table in existing_marts
             ensemble_uses = mart_table in runner_text
             enabled_args = spec["enabled_args"]
             if enabled_args is None:
@@ -608,9 +625,11 @@ def check_strategy_model() -> dict:
                 )
             sources_available[source_name] = has_mart and ensemble_uses
             sources_wired[source_name] = has_mart and ensemble_uses and arg_enabled
-        con.close()
     except Exception as e:
         log.warning(f"source mart lookup failed: {e}")
+    finally:
+        if con is not None:
+            con.close()
 
     source_evaluations = {}
     institution_eval = _load_latest_institution_eval()

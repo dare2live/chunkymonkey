@@ -1,6 +1,6 @@
 """Phase η++++++ — 端到端系统审计 (AUDIT).
 
-⚠ 用户要求: "做完整的审计, 继续修改".
+用户要求: "做完整的审计, 继续修改".
 
 审计维度:
   1. 数据流完整性 — 每张表是否到位 + 时效性
@@ -70,13 +70,14 @@ def audit_table_completeness(conn) -> list[dict]:
             for row in conn.execute(stats_sql).fetchall()
         }
     for table, expected_n, date_col in EXPECTED:
-        if table not in stats_by_table:
+        table_stats = stats_by_table.get(table)
+        if table_stats is None:
             issues.append({
                 "category": "table_completeness", "table": table,
                 "severity": "FAIL", "note": "table missing",
             })
             continue
-        n = stats_by_table[table]["n"]
+        n = table_stats["n"]
         severity = "OK"
         note = ""
         if n < expected_n // 10:
@@ -88,7 +89,7 @@ def audit_table_completeness(conn) -> list[dict]:
         issues.append({
             "category": "table_completeness",
             "table": table, "n": n, "expected_n": expected_n,
-            "severity": severity, "note": note, "latest": stats_by_table[table]["latest"],
+            "severity": severity, "note": note, "latest": table_stats["latest"],
         })
     return issues
 
@@ -380,6 +381,42 @@ def audit_data_freshness(conn) -> list[dict]:
     return issues
 
 
+def _issues_by_severity(issues: list[dict]) -> dict[str, list[dict]]:
+    """Group audit issues by severity for stable report rendering."""
+    grouped = {"FAIL": [], "WARN": []}
+    for issue in issues:
+        severity = issue.get("severity")
+        bucket = grouped.get(severity)
+        if bucket is not None:
+            bucket.append(issue)
+    return grouped
+
+
+def _issue_header(issue: dict) -> str:
+    cat = issue.get("category", "?")
+    name = issue.get("check") or issue.get("table", "?")
+    return f"  [{cat}] {name}"
+
+
+def _issue_detail_lines(issue: dict) -> list[str]:
+    skip_keys = {"category", "check", "table", "severity"}
+    return [f"      {k}: {v}" for k, v in issue.items() if k not in skip_keys]
+
+
+def _print_issue(issue: dict) -> None:
+    print(_issue_header(issue))
+    for line in _issue_detail_lines(issue):
+        print(line)
+
+
+def _print_issue_group(severity: str, issues: list[dict]) -> None:
+    if not issues:
+        return
+    print(f"\n--- {severity} ({len(issues)}) ---")
+    for issue in issues:
+        _print_issue(issue)
+
+
 def main():
     conn = get_conn()
     try:
@@ -407,20 +444,11 @@ def main():
         n_fail = sum(1 for i in all_issues if i.get("severity") == "FAIL")
         print(f"  总: {len(all_issues)}, OK={n_ok}, WARN={n_warn}, FAIL={n_fail}")
         print()
+        grouped_issues = _issues_by_severity(all_issues)
         for sev in ("FAIL", "WARN"):
-            shown = [i for i in all_issues if i.get("severity") == sev]
-            if shown:
-                print(f"\n--- {sev} ({len(shown)}) ---")
-                for i in shown:
-                    cat = i.get("category", "?")
-                    name = i.get("check") or i.get("table", "?")
-                    print(f"  [{cat}] {name}")
-                    for k, v in i.items():
-                        if k in ("category", "check", "table", "severity"):
-                            continue
-                        print(f"      {k}: {v}")
+            _print_issue_group(sev, grouped_issues[sev])
         if n_fail == 0 and n_warn == 0:
-            print("\n  ✓ 所有检查通过")
+            print("\n  [PASS] 所有检查通过")
         sys.exit(0 if n_fail == 0 else 1)
     finally:
         conn.close()

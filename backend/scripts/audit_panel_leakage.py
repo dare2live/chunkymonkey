@@ -34,6 +34,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from bisect import bisect_right
 import json
 import re
 import sys
@@ -59,6 +60,32 @@ KNOWN_PIT_MARKER_COLS = {
     "announce_date", "trade_date", "snapshot_date", "report_date",
     "source_available_date", "as_of_date",
 }
+PIT_MARKER_COLS_LOWER = {c.lower() for c in KNOWN_PIT_MARKER_COLS}
+PIT_MARKER_COLS_NO_BUILT_AT_LOWER = {c.lower() for c in KNOWN_PIT_MARKER_COLS - {"built_at"}}
+SORTED_PIT_MARKER_COLS = sorted(KNOWN_PIT_MARKER_COLS)
+FEATURE_EXCLUDE_COLS = {"stock_code", "signal_date", "built_at", "trade_date_dt", "entry_date", "feature_version"}
+SUSPECT_MAPPING_COLS = {"tdx_l1", "tdx_l2", "tdx_l3", "sw_l1", "sw_l2", "concept_id", "theme_id"}
+SUSPECT_MAPPING_COL_RE = re.compile(
+    r"\b(" + "|".join(re.escape(c) for c in sorted(SUSPECT_MAPPING_COLS, key=len, reverse=True)) + r")\b",
+    re.IGNORECASE,
+)
+PARTITION_BY_RE = re.compile(r"PARTITION\s+BY\s+([^)]+)", re.IGNORECASE)
+JOIN_RE = re.compile(r"(LEFT|INNER|RIGHT|FULL|CROSS)?\s*JOIN\s+([\w.]+)", re.IGNORECASE)
+JOIN_SKIP_TABLES = {"panel", "panel_dates", "p", "d", "src"}
+JOIN_PIT_PREDICATES = ["<= signal_date", "<= p.date", "<= d.trade_date", "<= panel.date", "asof", "<= cutoff", "<= as_of"]
+RETRO_UNIVERSE_RE = re.compile(
+    r"WHERE\s+listed_today\s*=\s*1|WHERE\s+active\s*=\s*1\b|FROM\s+dim_active_a_stock\b|FROM\s+dim_all_ever_listed\b",  # rule-compliance: ok evidence=audit-detector-pattern-not-universe-source
+    re.IGNORECASE,
+)
+RETRO_PIT_PREDICATES = ["as_of_date", "effective_from", "effective_to", "<= signal_date"]
+FORWARD_INDEX_RE = re.compile(
+    r"\bshift\s*\(\s*-\d+|\biloc\[\s*\w+\s*\+\s*\d+|bars\[\s*\w+\s*\+\s*\d+\s*:|close_array\[\s*i\s*\+",
+    re.IGNORECASE,
+)
+MAPPING_AUDITS = [
+    ("mart_stock_industry_pit", "confidence_level", "current_label_fallback"),
+    # extensible: ("mart_stock_concept_pit", "confidence_level", "current_label_fallback"),
+]
 
 # Risk thresholds
 TEMPORAL_VARIANCE_FLAG_PCT = 0.05  # feature std < 5% of range = near constant = leakage suspect
@@ -66,42 +93,241 @@ FALLBACK_RATIO_WARN_PCT = 0.05  # mapping fallback > 5% = warn
 FALLBACK_RATIO_BLOCK_PCT = 0.50  # > 50% = block (catastrophic, CLAUDE.md §4.5 反例 99.978%)
 
 
+def _quote_ident(name: str) -> str:
+    if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", name):
+        raise ValueError(f"unsafe SQL identifier: {name!r}")
+    return f'"{name}"'
+
+
+def _quote_table_name(name: str) -> str:
+    return ".".join(_quote_ident(part) for part in name.split("."))
+
+
+def _sql_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _load_table_columns(conn, table_names: list[str] | None = None) -> dict[str, list[str]]:
+    params: list[str] = []
+    table_filter = ""
+    if table_names is None:
+        table_filter = """
+          AND (t.table_name LIKE 'fact_%' OR t.table_name LIKE 'mart_%' OR t.table_name LIKE 'dim_%')
+        """
+    else:
+        names = sorted(set(table_names))
+        if not names:
+            return {}
+        placeholders = ", ".join(["?"] * len(names))
+        table_filter = f"AND t.table_name IN ({placeholders})"
+        params.extend(names)
+
+    rows = conn.execute(
+        f"""
+        SELECT t.table_name, c.column_name
+          FROM information_schema.tables t
+          LEFT JOIN information_schema.columns c
+            ON c.table_schema = t.table_schema
+           AND c.table_name = t.table_name
+         WHERE t.table_schema = 'main'
+           {table_filter}
+         ORDER BY t.table_name, c.ordinal_position
+        """,
+        params,
+    ).fetchall()
+
+    table_cols: dict[str, list[str]] = {}
+    for table_name, column_name in rows:
+        table_cols.setdefault(table_name, [])
+        if column_name is not None:
+            table_cols[table_name].append(column_name)
+    return table_cols
+
+
+def _panel_feature_cols(cols: list[str], *, exclude_y: bool = False) -> list[str]:
+    return [
+        c for c in cols
+        if c not in FEATURE_EXCLUDE_COLS
+        and not c.startswith("fwd_")
+        and not (exclude_y and c.startswith("y_"))
+    ]
+
+
+def _mapping_table_for_partition_col(text_lower: str, col: str) -> str | None:
+    prefix = col[:3]
+    for known in KNOWN_LEAKY_MAPPINGS:
+        if known in text_lower and prefix in known:
+            return known
+    return None
+
+
+def _partition_mapping_hits(text: str) -> list[tuple[str, str, str]]:
+    hits = []
+    text_lower = text.lower()
+    for match in PARTITION_BY_RE.finditer(text):
+        col_match = SUSPECT_MAPPING_COL_RE.search(match.group(1).lower())
+        if not col_match:
+            continue
+        col = col_match.group(1).lower()
+        found_table = _mapping_table_for_partition_col(text_lower, col)
+        if found_table:
+            hits.append((col, found_table, match.group(0)[:200]))
+    return hits
+
+
+def _fallback_count_rows(conn, mapping_audits: list[tuple[str, str, str]]) -> tuple[dict[str, tuple[int, int]], list[dict]]:
+    table_columns = _load_table_columns(conn, [tbl for tbl, _, _ in mapping_audits])
+    low_findings = []
+    selects = []
+    for tbl, col, fallback_value in mapping_audits:
+        cols = table_columns.get(tbl)
+        if cols is None:
+            low_findings.append({
+                "check": "4_fallback_ratio_introspect_fail",
+                "table": tbl,
+                "risk": "LOW",
+                "reason": "table not found",
+            })
+            continue
+        if col not in cols:
+            low_findings.append({
+                "check": "4_fallback_ratio_introspect_fail",
+                "table": tbl,
+                "risk": "LOW",
+                "reason": f"column not found: {col}",
+            })
+            continue
+        selects.append(
+            "SELECT "
+            f"{_sql_literal(tbl)} AS table_name, "
+            "COUNT(*) AS n_total, "
+            f"SUM(CASE WHEN {_quote_ident(col)} = {_sql_literal(fallback_value)} THEN 1 ELSE 0 END) AS n_fallback "
+            f"FROM {_quote_table_name(tbl)}"
+        )
+
+    if not selects:
+        return {}, low_findings
+    rows = conn.execute(" UNION ALL ".join(selects)).fetchall()
+    return {str(tbl): (int(total or 0), int(fallback or 0)) for tbl, total, fallback in rows}, low_findings
+
+
+def _null_year_frame(conn, panel_table: str, feature_cols: list[str]) -> pd.DataFrame:
+    if not feature_cols:
+        return pd.DataFrame()
+    null_exprs = [
+        f"ROUND(100.0 * SUM(CASE WHEN {_quote_ident(col)} IS NULL THEN 1 ELSE 0 END) / COUNT(*), 2) AS {_quote_ident(col)}"
+        for col in feature_cols
+    ]
+    result = conn.execute(
+        f"""
+        SELECT EXTRACT(YEAR FROM signal_date) AS yr,
+               {", ".join(null_exprs)}
+          FROM {_quote_table_name(panel_table)}
+         GROUP BY yr
+         ORDER BY yr
+        """
+    )
+    rows = result.fetchall()
+    columns = [c[0] for c in result.description]
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _line_starts(text: str) -> list[int]:
+    return [0] + [idx + 1 for idx, char in enumerate(text) if char == "\n"]
+
+
+def _line_at(text: str, starts: list[int], offset: int) -> tuple[int, str]:
+    line_no = bisect_right(starts, offset)
+    line_start = starts[line_no - 1]
+    line_end = text.find("\n", offset)
+    if line_end == -1:
+        line_end = len(text)
+    return line_no, text[line_start:line_end]
+
+
+def _forward_index_findings_for_file(path: Path) -> list[dict]:
+    try:
+        text = path.read_text()
+    except OSError as exc:
+        return [{
+            "check": "7_forward_index_read_fail",
+            "file": str(path),
+            "risk": "LOW",
+            "reason": f"could not read file: {exc}",
+        }]
+    starts = _line_starts(text)
+    findings = []
+    for match in FORWARD_INDEX_RE.finditer(text):
+        line_no, line_text = _line_at(text, starts, match.start())
+        if line_text.strip().startswith("#"):
+            continue
+        findings.append({
+            "check": "7_forward_index",
+            "file": str(path),
+            "line": line_no,
+            "match": match.group(0),
+            "risk": "HIGH",
+            "reason": f"forward-index pattern detected: {match.group(0)} (Pattern 3 in catalog)",
+        })
+    return findings
+
+
+def _forward_index_targets(panel_build_sql_path: Path) -> list[Path]:
+    targets = [panel_build_sql_path]
+    services_features = Path("backend/services/features")
+    if services_features.exists():
+        targets.extend(sorted(services_features.rglob("*.py")))
+    return targets
+
+
+def _findings_by_risk(findings: list[dict]) -> dict[str, list[dict]]:
+    grouped = {"HIGH": [], "MEDIUM": [], "LOW": []}
+    for finding in findings:
+        grouped.setdefault(str(finding.get("risk")), []).append(finding)
+    return grouped
+
+
+def _print_top_risk_findings(risk: str, findings: list[dict]) -> None:
+    if not findings:
+        return
+    print(f"--- {risk} findings ---")
+    for finding in findings[:20]:
+        subject = finding.get("table", finding.get("feature", finding.get("joined_table", "?")))
+        print(f"  [{finding['check']}] {subject}: {finding['reason']}")
+    if len(findings) > 20:
+        print(f"  ... +{len(findings) - 20} more")
+    print()
+
+
 def audit_check_1_pit_markers(conn) -> list[dict]:
     """Check 1: Every fact_*/mart_*/dim_* table has PIT marker column."""
     findings = []
-    tables = [r[0] for r in conn.execute("""
-        SELECT table_name FROM information_schema.tables
-        WHERE table_schema='main'
-          AND (table_name LIKE 'fact_%' OR table_name LIKE 'mart_%' OR table_name LIKE 'dim_%')
-        ORDER BY table_name
-    """).fetchall()]
+    try:
+        table_columns = _load_table_columns(conn)
+    except Exception as e:
+        return [{
+            "check": "1_pit_markers",
+            "risk": "LOW",
+            "reason": f"could not introspect table columns: {e}",
+        }]
 
-    for tbl in tables:
-        try:
-            cols = [c[0] for c in conn.execute(f"SELECT * FROM {tbl} LIMIT 0").description]
-            pit_cols = [c for c in cols if c.lower() in {c2.lower() for c2 in KNOWN_PIT_MARKER_COLS}]
-            if not pit_cols:
-                # Risk depends on table type
-                if tbl.startswith("fact_"):
-                    risk = "HIGH"
-                elif tbl.startswith("dim_"):
-                    risk = "HIGH" if tbl in KNOWN_LEAKY_MAPPINGS else "MEDIUM"
-                else:
-                    risk = "MEDIUM"
-                findings.append({
-                    "check": "1_pit_markers",
-                    "table": tbl,
-                    "risk": risk,
-                    "reason": f"no PIT marker column found (expected one of {sorted(KNOWN_PIT_MARKER_COLS)})",
-                    "cols": cols[:10],
-                })
-        except Exception as e:
-            findings.append({
-                "check": "1_pit_markers",
-                "table": tbl,
-                "risk": "LOW",
-                "reason": f"could not introspect: {e}",
-            })
+    for tbl, cols in table_columns.items():
+        pit_cols = [c for c in cols if c.lower() in PIT_MARKER_COLS_LOWER]
+        if pit_cols:
+            continue
+        if tbl.startswith("fact_"):
+            risk = "HIGH"
+        elif tbl.startswith("dim_"):
+            risk = "HIGH" if tbl in KNOWN_LEAKY_MAPPINGS else "MEDIUM"
+        else:
+            risk = "MEDIUM"
+        findings.append({
+            "check": "1_pit_markers",
+            "table": tbl,
+            "risk": risk,
+            "reason": f"no PIT marker column found (expected one of {SORTED_PIT_MARKER_COLS})",
+            "cols": cols[:10],
+        })
     return findings
 
 
@@ -117,23 +343,20 @@ def audit_check_2_panel_join_pit(panel_build_sql_path: Path) -> list[dict]:
 
     text = panel_build_sql_path.read_text()
     # Pattern: JOIN <table_name> ... missing PIT filter
-    join_pattern = re.compile(r"(LEFT|INNER|RIGHT|FULL|CROSS)?\s*JOIN\s+([\w.]+)", re.IGNORECASE)
-    pit_predicates = ["<= signal_date", "<= p.date", "<= d.trade_date", "<= panel.date",
-                      "ASOF", "<= cutoff", "<= as_of"]
     # Get a window of context around each JOIN
     lines = text.split("\n")
     for i, line in enumerate(lines):
-        m = join_pattern.search(line)
+        m = JOIN_RE.search(line)
         if not m:
             continue
         joined_table = m.group(2)
         # Skip CTE / subquery aliases
-        if joined_table.startswith("__") or joined_table in ("panel", "panel_dates", "p", "d", "src"):
+        if joined_table.startswith("__") or joined_table in JOIN_SKIP_TABLES:
             continue
         # Check ±10 lines context for PIT predicates
         context = "\n".join(lines[max(0, i-5):min(len(lines), i+10)])
-        has_pit = any(pred.lower() in context.lower() for pred in pit_predicates) or \
-                  ".date = p.date" in context or "ASOF" in context.upper()
+        context_lower = context.lower()
+        has_pit = any(pred in context_lower for pred in JOIN_PIT_PREDICATES) or ".date = p.date" in context
         if not has_pit:
             # check if table is a known mapping table (more risky)
             risk = "HIGH" if joined_table.lower() in KNOWN_LEAKY_MAPPINGS else "MEDIUM"
@@ -155,82 +378,77 @@ def audit_check_3_flat_mapping_partition(panel_build_sql_path: Path, conn) -> li
         return []
 
     text = panel_build_sql_path.read_text()
-    # Pattern: PARTITION BY (date, <mapping_col>)
-    partition_pattern = re.compile(
-        r"PARTITION\s+BY\s+([^)]+)", re.IGNORECASE
-    )
-    suspect_mapping_cols = {"tdx_l1", "tdx_l2", "tdx_l3", "sw_l1", "sw_l2", "concept_id", "theme_id"}
+    hits = _partition_mapping_hits(text)
+    try:
+        table_columns = _load_table_columns(conn, [found_table for _, found_table, _ in hits])
+    except Exception as exc:
+        return [
+            {
+                "check": "3_flat_mapping_partition_introspect_fail",
+                "table": found_table,
+                "risk": "LOW",
+                "reason": str(exc)[:120],
+            }
+            for _, found_table, _ in hits
+        ]
 
-    for m in partition_pattern.finditer(text):
-        partition_expr = m.group(1)
-        for col in suspect_mapping_cols:
-            if col in partition_expr.lower():
-                # Found PARTITION BY with mapping col. Check if source mapping is flat.
-                # Need to inspect dim_* table characteristics.
-                found_table = None
-                for known in KNOWN_LEAKY_MAPPINGS:
-                    if known in text and col[:3] in known:
-                        found_table = known
-                        break
-                # Verify table flatness via DB
-                if found_table:
-                    try:
-                        cols = [c[0] for c in conn.execute(f"SELECT * FROM {found_table} LIMIT 0").description]
-                        has_pit = any(p in cols for p in KNOWN_PIT_MARKER_COLS - {"built_at"})
-                        if not has_pit:
-                            findings.append({
-                                "check": "3_flat_mapping_partition",
-                                "partition_col": col,
-                                "source_table": found_table,
-                                "risk": "HIGH",
-                                "reason": f"PARTITION BY {col} from {found_table} (flat current-mapping, no PIT marker) = retrospective bias leakage (CLAUDE.md §4.5 反例 pattern)",
-                                "context": m.group(0)[:200],
-                            })
-                    except Exception as exc:
-                        # rule-compliance: ok evidence=audit script tolerant of table-introspection errors
-                        findings.append({"check": "3_flat_mapping_partition_introspect_fail",
-                                         "table": found_table, "risk": "LOW", "reason": str(exc)[:120]})
-                break
+    for col, found_table, context in hits:
+        cols = table_columns.get(found_table)
+        if cols is None:
+            # rule-compliance: ok evidence=audit script tolerant of table-introspection errors
+            findings.append({
+                "check": "3_flat_mapping_partition_introspect_fail",
+                "table": found_table,
+                "risk": "LOW",
+                "reason": "table not found",
+            })
+            continue
+        has_pit = any(c.lower() in PIT_MARKER_COLS_NO_BUILT_AT_LOWER for c in cols)
+        if not has_pit:
+            findings.append({
+                "check": "3_flat_mapping_partition",
+                "partition_col": col,
+                "source_table": found_table,
+                "risk": "HIGH",
+                "reason": f"PARTITION BY {col} from {found_table} (flat current-mapping, no PIT marker) = retrospective bias leakage (CLAUDE.md §4.5 反例 pattern)",
+                "context": context,
+            })
     return findings
 
 
 def audit_check_4_fallback_ratio(conn) -> list[dict]:
     """Check 4: Mapping tables fallback ratio."""
     findings = []
-    # Check known mapping tables
-    mapping_audits = [
-        ("mart_stock_industry_pit", "confidence_level", "current_label_fallback"),
-        # extensible: ("mart_stock_concept_pit", "confidence_level", "current_label_fallback"),
-    ]
-    for tbl, col, fallback_value in mapping_audits:
-        try:
-            total = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
-            if total == 0:
-                continue
-            n_fallback = conn.execute(
-                f"SELECT COUNT(*) FROM {tbl} WHERE {col} = ?", [fallback_value]
-            ).fetchone()[0]
-            ratio = n_fallback / total
-            if ratio >= FALLBACK_RATIO_BLOCK_PCT:
-                risk = "HIGH"
-            elif ratio >= FALLBACK_RATIO_WARN_PCT:
-                risk = "MEDIUM"
-            else:
-                continue
-            findings.append({
-                "check": "4_fallback_ratio",
-                "table": tbl,
-                "fallback_value": fallback_value,
-                "fallback_ratio": round(ratio, 4),
-                "n_fallback": n_fallback,
-                "n_total": total,
-                "risk": risk,
-                "reason": f"{fallback_value} occupies {ratio*100:.2f}% of {tbl} (warn>5% block>50%, CLAUDE.md §4.5 反例 99.978%)",
-            })
-        except Exception as exc:
-            # rule-compliance: ok evidence=audit tolerant of missing mart tables (e.g. mart_stock_concept_pit not yet built)
-            findings.append({"check": "4_fallback_ratio_introspect_fail",
-                             "table": tbl, "risk": "LOW", "reason": str(exc)[:120]})
+    try:
+        counts_by_table, low_findings = _fallback_count_rows(conn, MAPPING_AUDITS)
+    except Exception as exc:
+        # rule-compliance: ok evidence=audit tolerant of missing mart tables (e.g. mart_stock_concept_pit not yet built)
+        return [{"check": "4_fallback_ratio_introspect_fail", "risk": "LOW", "reason": str(exc)[:120]}]
+
+    findings.extend(low_findings)
+    for tbl, _, fallback_value in MAPPING_AUDITS:
+        if tbl not in counts_by_table:
+            continue
+        total, n_fallback = counts_by_table[tbl]
+        if total == 0:
+            continue
+        ratio = n_fallback / total
+        if ratio >= FALLBACK_RATIO_BLOCK_PCT:
+            risk = "HIGH"
+        elif ratio >= FALLBACK_RATIO_WARN_PCT:
+            risk = "MEDIUM"
+        else:
+            continue
+        findings.append({
+            "check": "4_fallback_ratio",
+            "table": tbl,
+            "fallback_value": fallback_value,
+            "fallback_ratio": round(ratio, 4),
+            "n_fallback": n_fallback,
+            "n_total": total,
+            "risk": risk,
+            "reason": f"{fallback_value} occupies {ratio*100:.2f}% of {tbl} (warn>5% block>50%, CLAUDE.md §4.5 反例 99.978%)",
+        })
     return findings
 
 
@@ -245,19 +463,15 @@ def audit_check_5_temporal_variance(conn, panel_table: str, sample_rows: int = 5
             "risk": "LOW",
             "reason": f"panel table {panel_table} not found: {e}",
         }]
-    feature_cols = [
-        c for c in cols
-        if c not in {"stock_code", "signal_date", "built_at", "trade_date_dt", "entry_date"}
-        and not c.startswith("fwd_") and c != "feature_version"
-    ]
+    feature_cols = _panel_feature_cols(cols)
     if not feature_cols:
         return findings
 
     # Sample data
-    col_list = ", ".join(feature_cols + ["signal_date", "stock_code"])
+    col_list = ", ".join(_quote_ident(c) for c in feature_cols + ["signal_date", "stock_code"])
     df = pd.DataFrame(
         conn.execute(
-            f"SELECT {col_list} FROM {panel_table} USING SAMPLE {sample_rows} ROWS"
+            f"SELECT {col_list} FROM {_quote_table_name(panel_table)} USING SAMPLE {sample_rows} ROWS"
         ).fetchall(),
         columns=feature_cols + ["signal_date", "stock_code"],
     )
@@ -316,40 +530,44 @@ def audit_check_6_null_year_gradient(conn, panel_table: str) -> list[dict]:
     except Exception as exc:
         return [{"check": "6_null_year_gradient", "risk": "LOW", "reason": f"{panel_table} not found: {exc}"}]
 
-    feature_cols = [
-        c for c in cols
-        if c not in {"stock_code", "signal_date", "built_at", "trade_date_dt", "entry_date", "feature_version"}
-        and not c.startswith("fwd_") and not c.startswith("y_")
-    ]
+    feature_cols = _panel_feature_cols(cols, exclude_y=True)
+    try:
+        null_year = _null_year_frame(conn, panel_table, feature_cols)
+    except Exception as exc:
+        return [{
+            "check": "6_null_year_gradient",
+            "table": panel_table,
+            "risk": "LOW",
+            "reason": f"could not compute null-year frame: {exc}",
+        }]
+    if null_year.empty or len(null_year) < 2:
+        return findings
+
     for col in feature_cols:
-        try:
-            rows = conn.execute(
-                f"""
-                SELECT EXTRACT(YEAR FROM signal_date) AS yr,
-                       ROUND(100.0 * SUM(CASE WHEN {col} IS NULL THEN 1 ELSE 0 END) / COUNT(*), 2) AS np
-                  FROM {panel_table} GROUP BY yr ORDER BY yr
-                """
-            ).fetchall()
-        except Exception:
+        if col not in null_year:
             continue
-        if len(rows) < 2:
-            continue
-        nulls = [float(r[1]) for r in rows if r[1] is not None]
+        values = null_year[col].dropna().astype(float)
+        nulls = values.tolist()
         if not nulls or len(nulls) < 2:
             continue
         gradient = max(nulls) - min(nulls)
+        yearly_null_pct = {
+            int(yr): float(value)
+            for yr, value in zip(null_year["yr"], null_year[col])
+            if pd.notna(value)
+        }
         # rule-compliance: ok evidence=Phase 4 v6 IS-OOS drop 60% root cause = 4 cols with gradient > 50%
         if gradient > 50:
             findings.append({
                 "check": "6_null_year_gradient", "feature": col, "risk": "HIGH",
                 "reason": f"NULL gradient {gradient:.1f}% across years (time-availability leak)",
-                "yearly_null_pct": {int(r[0]): float(r[1]) for r in rows if r[1] is not None},
+                "yearly_null_pct": yearly_null_pct,
             })
         elif gradient > 20:
             findings.append({
                 "check": "6_null_year_gradient", "feature": col, "risk": "MEDIUM",
                 "reason": f"NULL gradient {gradient:.1f}% across years (mild time-availability bias)",
-                "yearly_null_pct": {int(r[0]): float(r[1]) for r in rows if r[1] is not None},
+                "yearly_null_pct": yearly_null_pct,
             })
     return findings
 
@@ -362,36 +580,8 @@ def audit_check_7_forward_index_grep(panel_build_sql_path: Path) -> list[dict]:
     """
     findings = []
     # Scan panel build + related feature service files
-    targets = [panel_build_sql_path]
-    services_features = Path("backend/services/features")
-    if services_features.exists():
-        targets.extend(services_features.rglob("*.py"))
-
-    forward_patterns = [
-        re.compile(r"\bshift\s*\(\s*-\d+", re.IGNORECASE),  # shift(-N)
-        re.compile(r"\biloc\[\s*\w+\s*\+\s*\d+", re.IGNORECASE),  # iloc[i+N]
-        re.compile(r"bars\[\s*\w+\s*\+\s*\d+\s*:", re.IGNORECASE),  # bars[sig_i+1:]
-        re.compile(r"close_array\[\s*i\s*\+", re.IGNORECASE),
-    ]
-    for tgt in targets:
-        try:
-            text = Path(tgt).read_text()
-        except Exception:
-            continue
-        for pat in forward_patterns:
-            for m in pat.finditer(text):
-                # Get line number
-                line_no = text[:m.start()].count("\n") + 1
-                # Check if it's in a comment (basic skip)
-                line_start = text.rfind("\n", 0, m.start()) + 1
-                line_text = text[line_start:text.find("\n", m.start())]
-                if line_text.strip().startswith("#"):
-                    continue
-                findings.append({
-                    "check": "7_forward_index", "file": str(tgt),
-                    "line": line_no, "match": m.group(0), "risk": "HIGH",
-                    "reason": f"forward-index pattern detected: {m.group(0)} (Pattern 3 in catalog)",
-                })
+    for tgt in _forward_index_targets(panel_build_sql_path):
+        findings.extend(_forward_index_findings_for_file(Path(tgt)))
     return findings
 
 
@@ -405,26 +595,19 @@ def audit_check_8_universe_pit(panel_build_sql_path: Path) -> list[dict]:
     if not panel_build_sql_path.exists():
         return findings
     text = panel_build_sql_path.read_text()
-    retro_patterns = [
-        re.compile(r"WHERE\s+listed_today\s*=\s*1", re.IGNORECASE),
-        re.compile(r"WHERE\s+active\s*=\s*1\b", re.IGNORECASE),
-        re.compile(r"FROM\s+dim_active_a_stock\b", re.IGNORECASE),
-        re.compile(r"FROM\s+dim_all_ever_listed\b", re.IGNORECASE),
-    ]
-    pit_predicates = ["as_of_date", "effective_from", "effective_to", "<= signal_date"]
     lines = text.split("\n")
     for i, line in enumerate(lines):
-        for pat in retro_patterns:
-            if pat.search(line):
-                # Check ±5 lines context for PIT predicates
-                context = "\n".join(lines[max(0, i - 3):min(len(lines), i + 8)])
-                has_pit = any(p.lower() in context.lower() for p in pit_predicates)
-                if not has_pit:
-                    findings.append({
-                        "check": "8_universe_pit", "line": i + 1, "risk": "HIGH",
-                        "reason": "universe filter without PIT predicate (survivorship bias risk)",
-                        "context": line.strip()[:200],
-                    })
+        if not RETRO_UNIVERSE_RE.search(line):
+            continue
+        # Check ±5 lines context for PIT predicates
+        context = "\n".join(lines[max(0, i - 3):min(len(lines), i + 8)])
+        has_pit = any(p in context.lower() for p in RETRO_PIT_PREDICATES)
+        if not has_pit:
+            findings.append({
+                "check": "8_universe_pit", "line": i + 1, "risk": "HIGH",
+                "reason": "universe filter without PIT predicate (survivorship bias risk)",
+                "context": line.strip()[:200],
+            })
     return findings
 
 
@@ -437,7 +620,7 @@ def audit_check_10_survivorship_bias(conn, panel_table: str = "mart_p0a_feature_
     findings = []
     try:
         r1 = conn.execute(
-            f"SELECT COUNT(DISTINCT stock_code) FROM {panel_table}"
+            f"SELECT COUNT(DISTINCT stock_code) FROM {_quote_table_name(panel_table)}"
         ).fetchone()
         panel_stocks = r1[0] if r1 else 0
         # Get ever-listed count (if dim_listing_status exists)
@@ -514,9 +697,10 @@ def main() -> int:
         print(f"[9/9] Survivorship bias (panel stocks vs ever_listed) ...")
         all_findings.extend(audit_check_10_survivorship_bias(conn, args.panel))
 
-    n_high = sum(1 for f in all_findings if f.get("risk") == "HIGH")
-    n_medium = sum(1 for f in all_findings if f.get("risk") == "MEDIUM")
-    n_low = sum(1 for f in all_findings if f.get("risk") == "LOW")
+    findings_by_risk = _findings_by_risk(all_findings)
+    n_high = len(findings_by_risk["HIGH"])
+    n_medium = len(findings_by_risk["MEDIUM"])
+    n_low = len(findings_by_risk["LOW"])
 
     # Save full report
     report = {
@@ -542,15 +726,7 @@ def main() -> int:
 
     # Print top findings per risk level
     for risk in ("HIGH", "MEDIUM"):
-        risk_findings = [f for f in all_findings if f.get("risk") == risk]
-        if not risk_findings:
-            continue
-        print(f"--- {risk} findings ---")
-        for f in risk_findings[:20]:
-            print(f"  [{f['check']}] {f.get('table', f.get('feature', f.get('joined_table', '?')))}: {f['reason']}")
-        if len(risk_findings) > 20:
-            print(f"  ... +{len(risk_findings) - 20} more")
-        print()
+        _print_top_risk_findings(risk, findings_by_risk[risk])
 
     # Exit code
     if n_high > 0:

@@ -55,6 +55,84 @@ ALLOWED_PATTERNS = (
 )
 
 
+def _prefix_values(prefixes: tuple[str, ...]) -> str:
+    return ",".join("?" for _ in prefixes)
+
+
+def _fetch_survivorship_counts(sm, label_version: str, prefixes: tuple[str, ...]) -> tuple[int, int, int]:
+    placeholders = _prefix_values(prefixes)
+    row = sm.execute(
+        f"""
+        WITH universe AS (
+          SELECT stock_code, is_active
+            FROM dim_all_ever_listed
+           WHERE SUBSTR(stock_code,1,2) IN ({placeholders})
+        ),
+        panel AS (
+          SELECT COUNT(DISTINCT stock_code) AS panel_codes
+            FROM mart_p0a_label_panel
+           WHERE label_version = ?
+        )
+        SELECT
+          COUNT(*) AS ever_listed,
+          SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) AS active,
+          (SELECT panel_codes FROM panel) AS panel_codes
+          FROM universe
+        """,
+        [*prefixes, label_version],
+    ).fetchone()
+    ever_listed, active, panel_codes = row
+    return int(ever_listed or 0), int(active or 0), int(panel_codes or 0)
+
+
+def _matched_line(text: str, match: re.Match[str]) -> tuple[int, str]:
+    line_start = text.rfind("\n", 0, match.start()) + 1
+    line_end = text.find("\n", match.end())
+    if line_end < 0:
+        line_end = len(text)
+    line = text[line_start:line_end].strip()
+    line_num = text[:match.start()].count("\n") + 1
+    return line_num, line
+
+
+def _allowed_line(line: str, allowed_patterns: tuple[str, ...]) -> bool:
+    lowered = line.lower()
+    return any(allowed in lowered for allowed in allowed_patterns)
+
+
+def _scan_is_active_issues(script_rel: str, text: str, pattern: re.Pattern[str]) -> list[str]:
+    allowed_patterns = tuple(p.lower() for p in ALLOWED_PATTERNS)
+    issues: list[str] = []
+    for match in pattern.finditer(text):
+        line_num, line = _matched_line(text, match)
+        # 跳过 Python 注释 (# 开头) — Codex Q8.3 verify code, not docs
+        if line.startswith("#") or _allowed_line(line, allowed_patterns):
+            continue
+        issues.append(f"{script_rel}:{line_num}: {line[:120]}")
+    return issues
+
+
+def _scan_training_builder(script_rel: str, pattern: re.Pattern[str]) -> tuple[list[str], bool]:
+    script_path = REPO_ROOT / script_rel
+    if not script_path.exists():
+        return [], False
+    text = script_path.read_text(encoding="utf-8")
+    return _scan_is_active_issues(script_rel, text, pattern), True
+
+
+def _scan_training_builders(pattern: re.Pattern[str]) -> tuple[list[str], int]:
+    code_issues: list[str] = []
+    missing_count = 0
+    for script_rel in TRAINING_DATA_BUILDERS:
+        issues, exists = _scan_training_builder(script_rel, pattern)
+        if not exists:
+            log.warning(f"  {script_rel} not found — skip")
+            missing_count += 1
+            continue
+        code_issues.extend(issues)
+    return code_issues, missing_count
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Survivorship gate audit (Codex Q8.3)")
     parser.add_argument("--label-version", default="p0a_v2_governance_v1",
@@ -68,26 +146,13 @@ def main() -> int:
 
     # 1. DB-side: label panel distinct stock_code 应 >= ever_listed
     sm = duckdb.connect(str(SMART_DB), read_only=True)
-    prefixes = tuple(args.universe_prefix.split(","))
-    placeholders = ",".join("?" for _ in prefixes)
-    ever_listed = sm.execute(
-        f"SELECT COUNT(*) FROM dim_all_ever_listed "
-        f"WHERE SUBSTR(stock_code,1,2) IN ({placeholders})",
-        list(prefixes),
-    ).fetchone()[0]
-    active = sm.execute(
-        f"SELECT COUNT(*) FROM dim_all_ever_listed "
-        f"WHERE SUBSTR(stock_code,1,2) IN ({placeholders}) AND is_active=1",
-        list(prefixes),
-    ).fetchone()[0]
+    prefixes = tuple(p.strip() for p in args.universe_prefix.split(",") if p.strip())
+    try:
+        ever_listed, active, panel_codes = _fetch_survivorship_counts(sm, args.label_version, prefixes)
+    finally:
+        sm.close()
     delisted = ever_listed - active
     log.info(f"  dim_all_ever_listed (KEEP universe): total={ever_listed:,} active={active:,} delisted={delisted:,}")
-
-    panel_codes = sm.execute(
-        "SELECT COUNT(DISTINCT stock_code) FROM mart_p0a_label_panel WHERE label_version=?",
-        [args.label_version],
-    ).fetchone()[0]
-    sm.close()
     log.info(f"  mart_p0a_label_panel distinct codes (label_version={args.label_version}): {panel_codes:,}")
 
     if panel_codes == 0:
@@ -103,26 +168,7 @@ def main() -> int:
 
     # 2. Code-side: scan training builder scripts 不应 hardcode is_active=1
     pat = re.compile(r"is_active\s*=\s*1", re.IGNORECASE)
-    code_issues = []
-    for script_rel in TRAINING_DATA_BUILDERS:
-        script_path = REPO_ROOT / script_rel
-        if not script_path.exists():
-            log.warning(f"  {script_rel} not found — skip")
-            continue
-        text = script_path.read_text(encoding="utf-8")
-        for m in pat.finditer(text):
-            # 取 match 上下文 line
-            line_start = text.rfind("\n", 0, m.start()) + 1
-            line_end = text.find("\n", m.end())
-            line = text[line_start:line_end if line_end > 0 else len(text)].strip()
-            # 跳过 Python 注释 (# 开头) — Codex Q8.3 verify code, not docs
-            if line.startswith("#"):
-                continue
-            # 检查 ALLOWED_PATTERNS
-            if any(allowed in line.lower() for allowed in (p.lower() for p in ALLOWED_PATTERNS)):
-                continue
-            line_num = text[:m.start()].count("\n") + 1
-            code_issues.append(f"{script_rel}:{line_num}: {line[:120]}")
+    code_issues, _missing_count = _scan_training_builders(pat)
 
     if code_issues:
         for issue in code_issues:

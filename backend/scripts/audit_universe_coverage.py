@@ -86,6 +86,10 @@ EVENT_TABLES = (
     ("fact_technical_trigger", "date", "stock_code", "main"),
 )
 
+TableSpec = tuple[str, str, str, str]
+CodesByTable = dict[TableSpec, dict[str, set[str]]]
+ErrorsByTable = dict[TableSpec, Exception]
+
 
 @dataclass
 class CheckResult:
@@ -123,14 +127,30 @@ def _month_first_trading_days(conn) -> list[str]:
 
 def _ashare_universe(conn, ref_date: str) -> set[str]:
     """K线 A-share universe on ref_date (excludes ETF/index)."""
-    return {
-        r[0]
-        for r in conn.execute(
-            f"SELECT DISTINCT code FROM {KLINE_RELATION} "
-            f"WHERE freq='daily' AND adjust='qfq' AND date=? AND regexp_matches(code, '{ASHARE_PREFIX_REGEX}')",
-            [ref_date],
-        ).fetchall()
-    }
+    return _ashare_universe_by_date(conn, [ref_date]).get(ref_date, set())
+
+
+def _ashare_universe_by_date(conn, ref_dates: list[str]) -> dict[str, set[str]]:
+    """K线 A-share universe for multiple dates, keyed by date string."""
+    out = {d: set() for d in ref_dates}
+    if not ref_dates:
+        return out
+
+    placeholders = ", ".join("?" for _ in ref_dates)
+    rows = conn.execute(
+        f"""
+        SELECT CAST(date AS VARCHAR) AS ref_date, code
+          FROM {KLINE_RELATION}
+         WHERE freq='daily'
+           AND adjust='qfq'
+           AND regexp_matches(code, '{ASHARE_PREFIX_REGEX}')
+           AND date IN ({placeholders})
+        """,
+        ref_dates,
+    ).fetchall()
+    for ref_date, code in rows:
+        out.setdefault(ref_date, set()).add(code)
+    return out
 
 
 def _filter_ashare(codes: set[str]) -> set[str]:
@@ -278,17 +298,154 @@ def _latest_full_kline_date(conn) -> str:
 
 def _query_biz_codes(conn, tbl: str, dcol: str, scol: str, db: str, ref_date: str) -> set[str]:
     """Read business-table codes on ref_date, normalize DATE→VARCHAR for alpha158."""
+    return _query_biz_codes_by_date(conn, tbl, dcol, scol, db, [ref_date]).get(ref_date, set())
+
+
+def _query_biz_codes_by_date(
+    conn,
+    tbl: str,
+    dcol: str,
+    scol: str,
+    db: str,
+    ref_dates: list[str],
+) -> dict[str, set[str]]:
+    """Read business-table codes for multiple dates in one query."""
+    out = {d: set() for d in ref_dates}
+    if not ref_dates:
+        return out
+
+    placeholders = ", ".join("?" for _ in ref_dates)
     if tbl == "fact_alpha158_panel":
-        rows = conn.execute(
-            f"SELECT DISTINCT {scol} FROM {db}.{tbl} WHERE CAST({dcol} AS VARCHAR)=?",
-            [ref_date],
-        ).fetchall()
+        where_date = f"CAST({dcol} AS VARCHAR)"
     else:
-        rows = conn.execute(
-            f"SELECT DISTINCT {scol} FROM {db}.{tbl} WHERE {dcol}=?",
-            [ref_date],
-        ).fetchall()
-    return {r[0] for r in rows}
+        where_date = dcol
+    rows = conn.execute(
+        f"""
+        SELECT DISTINCT CAST({dcol} AS VARCHAR) AS ref_date, {scol}
+          FROM {db}.{tbl}
+         WHERE {where_date} IN ({placeholders})
+        """,
+        ref_dates,
+    ).fetchall()
+    for ref_date, code in rows:
+        out.setdefault(ref_date, set()).add(code)
+    return out
+
+
+def _load_business_codes(
+    conn,
+    table_specs: tuple[TableSpec, ...],
+    ref_dates: list[str],
+) -> tuple[CodesByTable, ErrorsByTable]:
+    codes_by_table: CodesByTable = {}
+    errors_by_table: ErrorsByTable = {}
+    for spec in table_specs:
+        tbl, dcol, scol, db = spec
+        try:
+            codes_by_table[spec] = _query_biz_codes_by_date(conn, tbl, dcol, scol, db, ref_dates)
+        except Exception as e:
+            errors_by_table[spec] = e
+    return codes_by_table, errors_by_table
+
+
+def _panel_coverage_results(
+    ref_date: str,
+    kline_codes: set[str],
+    codes_by_table: CodesByTable,
+    errors_by_table: ErrorsByTable,
+) -> list[CheckResult]:
+    out: list[CheckResult] = []
+    for spec in PANEL_TABLES:
+        tbl, _dcol, _scol, _db = spec
+        if spec in errors_by_table:
+            out.append(CheckResult(
+                section="2. Panel-table coverage",
+                name=f"{tbl}@{ref_date}",
+                status="WARN",
+                detail=f"query failed: {errors_by_table[spec]}",
+            ))
+            continue
+
+        biz_codes_raw = codes_by_table.get(spec, {}).get(ref_date, set())
+        if not biz_codes_raw:
+            out.append(CheckResult(
+                section="2. Panel-table coverage",
+                name=f"{tbl}@{ref_date}",
+                status="WARN",
+                detail=f"{tbl} has 0 rows on {ref_date} (table not built / date out of range)",
+            ))
+            continue
+
+        biz_codes = _filter_ashare(biz_codes_raw)
+        covered = kline_codes & biz_codes
+        ratio = len(covered) / len(kline_codes)
+        status = "PASS" if ratio >= BUSINESS_COVERAGE_FAIL else "FAIL"
+        panel_only_ashare = biz_codes - kline_codes
+        non_ashare = biz_codes_raw - biz_codes
+        out.append(CheckResult(
+            section="2. Panel-table coverage",
+            name=f"{tbl}@{ref_date}",
+            status=status,
+            detail=(
+                f"{tbl}: {len(covered)}/{len(kline_codes)} A-share covered "
+                f"({ratio*100:.1f}%); panel-only-A-share={len(panel_only_ashare)} "
+                f"(possibly delisted-but-retained, good for PIT); non-A-share-in-panel={len(non_ashare)}"
+            ),
+            rows=len(covered),
+            extras={
+                "kline_ashare_size": len(kline_codes),
+                "panel_ashare_size": len(biz_codes),
+                "panel_total_size": len(biz_codes_raw),
+                "coverage_ratio": round(ratio, 4),
+                "panel_only_ashare_count": len(panel_only_ashare),
+                "non_ashare_in_panel_count": len(non_ashare),
+            },
+        ))
+    return out
+
+
+def _event_table_results(
+    ref_date: str,
+    kline_codes: set[str],
+    codes_by_table: CodesByTable,
+    errors_by_table: ErrorsByTable,
+) -> list[CheckResult]:
+    out: list[CheckResult] = []
+    for spec in EVENT_TABLES:
+        tbl, _dcol, _scol, _db = spec
+        if spec in errors_by_table:
+            out.append(CheckResult(
+                section="2. Panel-table coverage",
+                name=f"{tbl}@{ref_date}",
+                status="WARN",
+                detail=f"query failed: {errors_by_table[spec]}",
+            ))
+            continue
+
+        biz_codes_raw = codes_by_table.get(spec, {}).get(ref_date, set())
+        biz_codes = _filter_ashare(biz_codes_raw)
+        covered = kline_codes & biz_codes
+        ratio = len(covered) / max(len(kline_codes), 1)
+        out.append(CheckResult(
+            section="2. Panel-table coverage",
+            name=f"{tbl}@{ref_date}[event-table-info]",
+            status="PASS",
+            detail=(
+                f"{tbl} [event-trigger]: {len(covered)}/{len(kline_codes)} A-share triggered "
+                f"({ratio*100:.1f}%, informational only — events are subset by design)"
+            ),
+            rows=len(covered),
+            extras={
+                "kline_ashare_size": len(kline_codes),
+                "triggered_ashare_size": len(biz_codes),
+                "trigger_density": round(ratio, 4),
+            },
+        ))
+    return out
+
+
+def _sample_codes(codes: set[str], limit: int = 10) -> list[str]:
+    return sorted(codes)[:limit]
 
 
 def check_business_table_coverage(conn) -> list[CheckResult]:
@@ -305,9 +462,12 @@ def check_business_table_coverage(conn) -> list[CheckResult]:
     latest_full = _latest_full_kline_date(conn)
     # rule-compliance: ok evidence=cross-regime-fixed-sample (audit reference, not model param)
     ref_dates = [d for d in ["2024-01-02", "2025-01-02", latest_full] if d]
+    kline_by_date = _ashare_universe_by_date(conn, ref_dates)
+    panel_codes_by_table, panel_errors_by_table = _load_business_codes(conn, PANEL_TABLES, ref_dates)
+    event_codes_by_table, event_errors_by_table = _load_business_codes(conn, EVENT_TABLES, ref_dates)
 
     for ref_date in ref_dates:
-        kline_codes = _ashare_universe(conn, ref_date)
+        kline_codes = kline_by_date.get(ref_date, set())
         if not kline_codes:
             out.append(CheckResult(
                 section="2. Panel-table coverage",
@@ -317,86 +477,18 @@ def check_business_table_coverage(conn) -> list[CheckResult]:
             ))
             continue
 
-        # Panel tables: should mirror K线 A-share universe
-        for tbl, dcol, scol, db in PANEL_TABLES:
-            try:
-                biz_codes_raw = _query_biz_codes(conn, tbl, dcol, scol, db, ref_date)
-            except Exception as e:
-                out.append(CheckResult(
-                    section="2. Panel-table coverage",
-                    name=f"{tbl}@{ref_date}",
-                    status="WARN",
-                    detail=f"query failed: {e}",
-                ))
-                continue
-
-            if not biz_codes_raw:
-                out.append(CheckResult(
-                    section="2. Panel-table coverage",
-                    name=f"{tbl}@{ref_date}",
-                    status="WARN",
-                    detail=f"{tbl} has 0 rows on {ref_date} (table not built / date out of range)",
-                ))
-                continue
-
-            biz_codes = _filter_ashare(biz_codes_raw)
-            covered = kline_codes & biz_codes
-            ratio = len(covered) / len(kline_codes)
-            status = "PASS" if ratio >= BUSINESS_COVERAGE_FAIL else "FAIL"
-            # panel-only A-share codes are likely delisted-but-retained — that's
-            # GOOD for PIT (no survivorship), so we report as info not fail.
-            panel_only_ashare = biz_codes - kline_codes
-            non_ashare = biz_codes_raw - biz_codes
-            out.append(CheckResult(
-                section="2. Panel-table coverage",
-                name=f"{tbl}@{ref_date}",
-                status=status,
-                detail=(
-                    f"{tbl}: {len(covered)}/{len(kline_codes)} A-share covered "
-                    f"({ratio*100:.1f}%); panel-only-A-share={len(panel_only_ashare)} "
-                    f"(possibly delisted-but-retained, good for PIT); non-A-share-in-panel={len(non_ashare)}"
-                ),
-                rows=len(covered),
-                extras={
-                    "kline_ashare_size": len(kline_codes),
-                    "panel_ashare_size": len(biz_codes),
-                    "panel_total_size": len(biz_codes_raw),
-                    "coverage_ratio": round(ratio, 4),
-                    "panel_only_ashare_count": len(panel_only_ashare),
-                    "non_ashare_in_panel_count": len(non_ashare),
-                },
-            ))
-
-        # Event tables: informational only (subset by design)
-        for tbl, dcol, scol, db in EVENT_TABLES:
-            try:
-                biz_codes_raw = _query_biz_codes(conn, tbl, dcol, scol, db, ref_date)
-            except Exception as e:
-                out.append(CheckResult(
-                    section="2. Panel-table coverage",
-                    name=f"{tbl}@{ref_date}",
-                    status="WARN",
-                    detail=f"query failed: {e}",
-                ))
-                continue
-            biz_codes = _filter_ashare(biz_codes_raw)
-            covered = kline_codes & biz_codes
-            ratio = len(covered) / max(len(kline_codes), 1)
-            out.append(CheckResult(
-                section="2. Panel-table coverage",
-                name=f"{tbl}@{ref_date}[event-table-info]",
-                status="PASS",
-                detail=(
-                    f"{tbl} [event-trigger]: {len(covered)}/{len(kline_codes)} A-share triggered "
-                    f"({ratio*100:.1f}%, informational only — events are subset by design)"
-                ),
-                rows=len(covered),
-                extras={
-                    "kline_ashare_size": len(kline_codes),
-                    "triggered_ashare_size": len(biz_codes),
-                    "trigger_density": round(ratio, 4),
-                },
-            ))
+        out.extend(_panel_coverage_results(
+            ref_date,
+            kline_codes,
+            panel_codes_by_table,
+            panel_errors_by_table,
+        ))
+        out.extend(_event_table_results(
+            ref_date,
+            kline_codes,
+            event_codes_by_table,
+            event_errors_by_table,
+        ))
     return out
 
 
@@ -564,7 +656,7 @@ def check_gap_analysis(conn) -> list[CheckResult]:
         extra = panel_codes - kline_codes
         ratio = len(missing) / max(len(kline_codes), 1)
         status = "PASS" if ratio <= GAP_FAIL_RATIO else "FAIL"
-        sample_missing = sorted(missing)[:10]
+        sample_missing = _sample_codes(missing)
         out.append(CheckResult(
             section="4. Gap analysis",
             name=f"{panel_name}@{ref_date}",

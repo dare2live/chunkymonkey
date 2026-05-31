@@ -38,8 +38,10 @@ import re
 import subprocess
 import sys
 import argparse
+import ast
 from collections import defaultdict
 from dataclasses import dataclass, field, asdict
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -105,7 +107,8 @@ KNOWN_RETIRED = [
         "replaced_by": "DuckDB / services.duck_adapter",
         # 测试可以转 DuckDB, 但生产代码完全禁
         "search": [rf"^\s*import\s+{_LEGACY_DB3_TOKEN}\b", rf"^\s*from\s+{_LEGACY_DB3_TOKEN}\b"],
-        "exclude_paths": ["backend/tests/conftest.py"],  # 仅注释提到
+        # clean_stale_running.py is an Optuna SQLite-storage repair tool, not the retired app DB path.
+        "exclude_paths": ["backend/tests/conftest.py", "backend/scripts/clean_stale_running.py"],
     },
     {
         "name": "market_raw_holdings",
@@ -128,7 +131,7 @@ KNOWN_RETIRED = [
     {
         "name": "dim_stock (deprecated 2026-04-08)",
         "kind": "db_table",
-        "replaced_by": "dim_active_a_stock",
+        "replaced_by": "dim_active_a_stock",  # rule-compliance: ok evidence=audit-metadata
         "search": [r"\bdim_stock\b(?!\w)"],  # not dim_stock_xxx
         "exclude_paths": [],
     },
@@ -309,14 +312,7 @@ def phase0_scan_files() -> list[tuple[str, Path]]:
     }
     out: list[tuple[str, Path]] = []
     for project, root in PROJECT_ROOTS.items():
-        if not root.exists():
-            continue
-        for path in root.rglob("*"):
-            if not path.is_file() or _phase0_skip(path):
-                continue
-            if path.suffix not in allowed_ext and path.name not in {"requirements.txt", "Dockerfile", "Makefile"}:
-                continue
-            out.append((project, path))
+        out.extend(_phase0_project_files(project, root, allowed_ext))
     return out
 
 
@@ -337,32 +333,64 @@ def _phase0_category(group: str, kind: str) -> str:
     return group
 
 
+def _is_phase0_candidate(path: Path, allowed_ext: set[str]) -> bool:
+    if not path.is_file() or _phase0_skip(path):
+        return False
+    return path.suffix in allowed_ext or path.name in {"requirements.txt", "Dockerfile", "Makefile"}
+
+
+def _phase0_project_files(project: str, root: Path, allowed_ext: set[str]) -> list[tuple[str, Path]]:
+    if not root.exists():
+        return []
+    return [(project, path) for path in root.rglob("*") if _is_phase0_candidate(path, allowed_ext)]
+
+
+@lru_cache(maxsize=None)
+def _read_lines_cached(path_str: str) -> tuple[str, ...]:
+    return tuple(Path(path_str).read_text(encoding="utf-8", errors="ignore").splitlines())
+
+
+def _read_lines(path: Path) -> tuple[str, ...]:
+    return _read_lines_cached(str(path))
+
+
+def _clear_read_cache() -> None:
+    _read_lines_cached.cache_clear()
+
+
+def _phase0_hits_for_line(project: str, rel: str, kind: str, line_no: int, line: str) -> list[TechStackHit]:
+    hits: list[TechStackHit] = []
+    for group, marker, pattern in TECH_STACK_PATTERNS:
+        if not pattern.search(line):
+            continue
+        hits.append(TechStackHit(
+            project=project,
+            category=_phase0_category(group, kind),
+            file=rel,
+            line=line_no,
+            marker=marker,
+            text=line.strip()[:180],
+        ))
+    return hits
+
+
+def _phase0_hits_for_file(project: str, path: Path) -> list[TechStackHit]:
+    root = PROJECT_ROOTS[project]
+    kind = _kind_for_phase0(path, root)
+    rel = str(path.relative_to(ROOT))
+    hits: list[TechStackHit] = []
+    for line_no, line in enumerate(_read_lines(path), 1):
+        hits.extend(_phase0_hits_for_line(project, rel, kind, line_no, line))
+    return hits
+
+
 def phase0_stack_scan() -> dict:
     """Plan Phase 0 scan: tabular/legacy-SQL/old path/source/link baseline across three repos."""
 
     hits: list[TechStackHit] = []
     scanned = phase0_scan_files()
     for project, path in scanned:
-        root = PROJECT_ROOTS[project]
-        kind = _kind_for_phase0(path, root)
-        try:
-            lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
-        except Exception:
-            continue
-        rel = str(path.relative_to(ROOT))
-        for line_no, line in enumerate(lines, 1):
-            for group, marker, pattern in TECH_STACK_PATTERNS:
-                if not pattern.search(line):
-                    continue
-                category = _phase0_category(group, kind)
-                hits.append(TechStackHit(
-                    project=project,
-                    category=category,
-                    file=rel,
-                    line=line_no,
-                    marker=marker,
-                    text=line.strip()[:180],
-                ))
+        hits.extend(_phase0_hits_for_file(project, path))
 
     summary: dict[str, int] = defaultdict(int)
     by_project: dict[str, int] = defaultdict(int)
@@ -408,32 +436,45 @@ _LEGITIMATE_RETIREMENT_PATTERNS = (
 )
 
 
+def _is_excluded_relpath(rel: str, exclude_paths: list[str]) -> bool:
+    return any(rel.startswith(ep) or rel == ep for ep in exclude_paths)
+
+
+def _is_retirement_action(rel: str, line: str) -> bool:
+    return rel in RETIREMENT_METADATA_PATHS or any(
+        pattern.search(line) for pattern in _LEGITIMATE_RETIREMENT_PATTERNS
+    )
+
+
+def _classify_hit_kind(rel: str, line: str) -> str:
+    if _is_retirement_action(rel, line):
+        return "retirement_action"
+    if is_comment_or_docstring(line):
+        return "comment"
+    if "/tests/" in rel:
+        return "test"
+    if rel.endswith(".md"):
+        return "doc"
+    return "code"
+
+
+def _grep_file(pattern: re.Pattern, path: Path) -> list[Hit]:
+    rel = str(path.relative_to(REPO))
+    hits: list[Hit] = []
+    for i, line in enumerate(_read_lines(path), 1):
+        if pattern.search(line):
+            hits.append(Hit(file=rel, line=i, text=line.strip()[:140], kind=_classify_hit_kind(rel, line)))
+    return hits
+
+
 def grep(pattern: re.Pattern, files: list[Path], *, exclude_paths: Optional[list[str]] = None) -> list[Hit]:
     exclude_paths = list(exclude_paths or []) + list(SELF_EXCLUDE_PATHS)
     hits: list[Hit] = []
     for f in files:
         rel = str(f.relative_to(REPO))
-        if any(rel.startswith(ep) or rel == ep for ep in exclude_paths):
+        if _is_excluded_relpath(rel, exclude_paths):
             continue
-        try:
-            for i, line in enumerate(f.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
-                if pattern.search(line):
-                    # 合法的退役 DDL: 算 retirement-action, 不是 stale ref
-                    if rel in RETIREMENT_METADATA_PATHS:
-                        kind = "retirement_action"
-                    elif any(p.search(line) for p in _LEGITIMATE_RETIREMENT_PATTERNS):
-                        kind = "retirement_action"
-                    elif is_comment_or_docstring(line):
-                        kind = "comment"
-                    elif "/tests/" in rel:
-                        kind = "test"
-                    elif rel.endswith(".md"):
-                        kind = "doc"
-                    else:
-                        kind = "code"
-                    hits.append(Hit(file=rel, line=i, text=line.strip()[:140], kind=kind))
-        except Exception:
-            pass
+        hits.extend(_grep_file(pattern, f))
     return hits
 
 
@@ -445,41 +486,48 @@ def tier1_marker_scan(files: list[Path]) -> dict[str, list[Hit]]:
     """Tier 1: 收集所有 retirement 标记位置."""
     out: dict[str, list[Hit]] = defaultdict(list)
     for pat, label in MARKER_PATTERNS:
-        for h in grep(pat, files):
-            out[label].append(h)
+        out[label].extend(grep(pat, files))
     return out
+
+
+def _dedupe_hits(hits: list[Hit]) -> list[Hit]:
+    seen = set()
+    uniq = []
+    for h in hits:
+        key = (h.file, h.line)
+        if key not in seen:
+            seen.add(key)
+            uniq.append(h)
+    return uniq
+
+
+def _severity_for_hits(hits: list[Hit]) -> str:
+    live = [h for h in hits if h.kind not in ("comment", "retirement_action")]
+    if not live:
+        return "info"
+    if any(h.kind == "code" for h in live):
+        return "critical"
+    return "warn"
+
+
+def _hits_for_retired_spec(spec: dict, files: list[Path]) -> list[Hit]:
+    hits: list[Hit] = []
+    for pat_str in spec["search"]:
+        hits.extend(grep(re.compile(pat_str), files, exclude_paths=spec.get("exclude_paths")))
+    return _dedupe_hits(hits)
 
 
 def tier3_known_retired_scan(files: list[Path]) -> list[Finding]:
     """Tier 3: 对 KNOWN_RETIRED 清单逐项 grep 活引用."""
     findings: list[Finding] = []
     for spec in KNOWN_RETIRED:
-        all_hits: list[Hit] = []
-        for pat_str in spec["search"]:
-            pat = re.compile(pat_str)
-            all_hits.extend(grep(pat, files, exclude_paths=spec.get("exclude_paths")))
-        # 去重 (file, line)
-        seen = set()
-        uniq = []
-        for h in all_hits:
-            key = (h.file, h.line)
-            if key not in seen:
-                seen.add(key)
-                uniq.append(h)
-        # 算严重度: 真 stale = 排除注释/迁移说明/合法 DROP DDL/审计反模式测试 后还有引用
-        live = [h for h in uniq if h.kind not in ("comment", "retirement_action")]
-        if not live:
-            severity = "info"
-        elif any(h.kind == "code" for h in live):
-            severity = "critical"
-        else:
-            severity = "warn"  # only doc/test refs
+        uniq = _hits_for_retired_spec(spec, files)
         findings.append(Finding(
             name=spec["name"],
             kind=spec["kind"],
             replaced_by=spec["replaced_by"],
             hits=uniq,
-            severity=severity,
+            severity=_severity_for_hits(uniq),
         ))
     return findings
 
@@ -528,11 +576,97 @@ _COMMENT_ALLOWLIST_PATTERNS = [
     re.compile(r"^\s*#\s*pylint:"),
     re.compile(r"^\s*#\s*noqa"),
     re.compile(r"^\s*#\s*pragma:"),
+    re.compile(r"^\s*#\s*from\s+yaml\s*:", re.IGNORECASE),
 ]
+
+_EXPLANATORY_COMMENT_MARKERS = ("→", "≈", "×", "≤", "≥", "—", "–")
+_EXPLANATORY_ASSIGNMENT_RE = re.compile(r"^[a-zA-Z_]\w*(?:\s*\([^)]*\))?\s*=")
+_EXPLANATORY_IDENTIFIER_NOTE_RE = re.compile(r"^[a-zA-Z_]\w*\s*\([^)]*\)")
+_TITLECASE_PROSE_RE = re.compile(r"^[A-Z][a-z]+\s+")
+_SQL_COMMENT_RE = re.compile(
+    r"^(SELECT\b.+\bFROM\b|INSERT\s+INTO\b|UPDATE\b.+\bSET\b|DELETE\s+FROM\b|"
+    r"CREATE\s+(?:TABLE|VIEW|INDEX)\b|DROP\s+(?:TABLE|VIEW|INDEX)\b|ALTER\s+TABLE\b)",
+    re.IGNORECASE,
+)
 
 
 def _has_chinese(s: str) -> bool:
     return any("一" <= c <= "鿿" for c in s)
+
+
+def _comment_body(line: str) -> str:
+    stripped = line.lstrip()
+    if not stripped.startswith("#"):
+        return ""
+    return stripped[1:].strip()
+
+
+def _looks_like_explanatory_comment(line: str) -> bool:
+    body = _comment_body(line)
+    if not body:
+        return False
+    lower_body = body.lower()
+    if any(marker in body for marker in _EXPLANATORY_COMMENT_MARKERS) or "->" in body:
+        return True
+    if _TITLECASE_PROSE_RE.match(body):
+        return True
+    if _EXPLANATORY_ASSIGNMENT_RE.match(body) and (
+        "," in body or "%" in body or ":" in body or body.count("=") > 1
+    ):
+        return True
+    if _EXPLANATORY_IDENTIFIER_NOTE_RE.match(body) and (
+        "," in body or " from " in lower_body or " col" in lower_body or any(ch.isdigit() for ch in body)
+    ):
+        return True
+    return False
+
+
+def _looks_like_commented_python(body: str) -> bool:
+    candidate = body
+    if body.rstrip().endswith(":"):
+        candidate = f"{body}\n    pass"
+    try:
+        ast.parse(candidate)
+    except SyntaxError:
+        return False
+    return True
+
+
+def _looks_like_commented_code(body: str) -> bool:
+    return _looks_like_commented_python(body) or bool(_SQL_COMMENT_RE.match(body))
+
+
+def _is_self_excluded(rel: str) -> bool:
+    return any(rel.startswith(ep) for ep in SELF_EXCLUDE_PATHS)
+
+
+def _is_python_relpath(rel: str) -> bool:
+    return rel.endswith(".py")
+
+
+def _commented_code_hit(rel: str, line_no: int, line: str) -> Hit | None:
+    if any(pattern.search(line) for pattern in _COMMENT_ALLOWLIST_PATTERNS):
+        return None
+    if _has_chinese(line) or _looks_like_explanatory_comment(line):
+        return None
+    if any(pattern.match(line) for pattern in _COMMENTED_CODE_PATTERNS) and _looks_like_commented_code(
+        _comment_body(line)
+    ):
+        return Hit(file=rel, line=line_no, text=line.strip()[:140], kind="dead_code")
+    return None
+
+
+def _commented_code_hits_for_file(path: Path) -> list[Hit]:
+    rel = str(path.relative_to(REPO))
+    if _is_self_excluded(rel) or not _is_python_relpath(rel):
+        return []
+
+    hits: list[Hit] = []
+    for i, line in enumerate(_read_lines(path), 1):
+        hit = _commented_code_hit(rel, i, line)
+        if hit:
+            hits.append(hit)
+    return hits
 
 
 def tier5_commented_out_code(files: list[Path]) -> list[Hit]:
@@ -540,25 +674,7 @@ def tier5_commented_out_code(files: list[Path]) -> list[Hit]:
 
     hits: list[Hit] = []
     for f in files:
-        rel = str(f.relative_to(REPO))
-        if any(rel.startswith(ep) for ep in SELF_EXCLUDE_PATHS):
-            continue
-        if not rel.endswith(".py"):
-            continue
-        try:
-            for i, line in enumerate(
-                f.read_text(encoding="utf-8", errors="ignore").splitlines(), 1
-            ):
-                if any(p.search(line) for p in _COMMENT_ALLOWLIST_PATTERNS):
-                    continue
-                # 含中文 → 是说明性注释, 排除
-                if _has_chinese(line):
-                    continue
-                # 匹配任一 commented-code 模式
-                if any(p.match(line) for p in _COMMENTED_CODE_PATTERNS):
-                    hits.append(Hit(file=rel, line=i, text=line.strip()[:140], kind="dead_code"))
-        except Exception:
-            pass
+        hits.extend(_commented_code_hits_for_file(f))
     return hits
 
 
@@ -575,26 +691,31 @@ _DEAD_BRANCH_PATTERNS = [
 ]
 
 
+def _dead_branch_hit(rel: str, line_no: int, line: str) -> Hit | None:
+    if any(pattern.match(line) for pattern in _DEAD_BRANCH_PATTERNS):
+        return Hit(file=rel, line=line_no, text=line.strip()[:140], kind="dead_branch")
+    return None
+
+
+def _dead_branch_hits_for_file(path: Path) -> list[Hit]:
+    rel = str(path.relative_to(REPO))
+    if _is_self_excluded(rel) or not _is_python_relpath(rel):
+        return []
+
+    hits: list[Hit] = []
+    for i, line in enumerate(_read_lines(path), 1):
+        hit = _dead_branch_hit(rel, i, line)
+        if hit:
+            hits.append(hit)
+    return hits
+
+
 def tier6_dead_branches(files: list[Path]) -> list[Hit]:
     """检测 if False / if 0 / while False 这些永远不执行的死分支."""
 
     hits: list[Hit] = []
     for f in files:
-        rel = str(f.relative_to(REPO))
-        if any(rel.startswith(ep) for ep in SELF_EXCLUDE_PATHS):
-            continue
-        if not rel.endswith(".py"):
-            continue
-        try:
-            for i, line in enumerate(
-                f.read_text(encoding="utf-8", errors="ignore").splitlines(), 1
-            ):
-                for p in _DEAD_BRANCH_PATTERNS:
-                    if p.match(line):
-                        hits.append(Hit(file=rel, line=i, text=line.strip()[:140], kind="dead_branch"))
-                        break
-        except Exception:
-            pass
+        hits.extend(_dead_branch_hits_for_file(f))
     return hits
 
 
@@ -610,28 +731,133 @@ _FILE_RETIRED_MARKERS = [
 ]
 
 
+def _retired_marker_match(head: str):
+    for pattern in _FILE_RETIRED_MARKERS:
+        match = pattern.search(head)
+        if match:
+            return match
+    return None
+
+
+def _retired_file_hit_for_file(path: Path) -> Hit | None:
+    rel = str(path.relative_to(REPO))
+    if _is_self_excluded(rel) or not rel.endswith((".py", ".md")):
+        return None
+
+    head = "\n".join(_read_lines(path)[:30])
+    match = _retired_marker_match(head)
+    if not match:
+        return None
+    line_no = head[: match.start()].count("\n") + 1
+    return Hit(file=rel, line=line_no, text=match.group(0).strip()[:140], kind="retired_file")
+
+
 def tier7_retired_files(files: list[Path]) -> list[Hit]:
     """检测自我标记为退役的文件 (整文件级删除候选)."""
 
     hits: list[Hit] = []
     for f in files:
-        rel = str(f.relative_to(REPO))
-        if any(rel.startswith(ep) for ep in SELF_EXCLUDE_PATHS):
-            continue
-        if not rel.endswith((".py", ".md")):
-            continue
-        try:
-            text = f.read_text(encoding="utf-8", errors="ignore")
-            head = "\n".join(text.splitlines()[:30])
-            for p in _FILE_RETIRED_MARKERS:
-                m = p.search(head)
-                if m:
-                    line_no = head[: m.start()].count("\n") + 1
-                    hits.append(Hit(file=rel, line=line_no, text=m.group(0).strip()[:140], kind="retired_file"))
-                    break
-        except Exception:
-            pass
+        hit = _retired_file_hit_for_file(f)
+        if hit:
+            hits.append(hit)
     return hits
+
+
+def _live_hits(hits: list[Hit]) -> list[Hit]:
+    return [h for h in hits if h.kind not in ("comment", "retirement_action")]
+
+
+def _kind_counts(hits: list[Hit]) -> dict[str, int]:
+    counts: dict[str, int] = defaultdict(int)
+    for hit in hits:
+        counts[hit.kind] += 1
+    return dict(counts)
+
+
+def _findings_by_severity(findings: list[Finding], severity: str) -> list[Finding]:
+    return [finding for finding in findings if finding.severity == severity]
+
+
+def _ordered_findings(findings: list[Finding]) -> list[Finding]:
+    return (
+        _findings_by_severity(findings, "critical")
+        + _findings_by_severity(findings, "warn")
+        + _findings_by_severity(findings, "info")
+    )
+
+
+def _print_tier1_summary(tier1: dict[str, list[Hit]]) -> None:
+    print("\n=== Tier 1: retirement markers in source ===")
+    sorted_items = sorted(tier1.items())
+    for label, hits in sorted_items:
+        non_comment = [h for h in hits if h.kind != "comment"]
+        print(f"  {label}: total={len(hits)} non-comment={len(non_comment)}")
+    print(
+        f"  (full marker list: {sum(len(v) for v in tier1.values())} "
+        f"hits across {sum(1 for v in tier1.values() if v)} categories)"
+    )
+
+
+def _print_live_refs(live: list[Hit]) -> None:
+    if not live[:5]:
+        return
+    print("     [LIVE] refs need fix:")
+    for hit in live[:5]:
+        print(f"       {hit.file}:{hit.line}  ({hit.kind})  {hit.text[:100]}")
+
+
+def _print_known_retired_finding(finding: Finding) -> None:
+    sev_marker = {"critical": "[CRITICAL]", "warn": "[WARN]", "info": "[INFO]"}.get(
+        finding.severity, "[?]"
+    )
+    live = _live_hits(finding.hits)
+    print(f"  {sev_marker} {finding.name} -> {finding.replaced_by}")
+    print(f"     hits: total={len(finding.hits)}  by kind: {_kind_counts(finding.hits)}  live={len(live)}")
+    _print_live_refs(live)
+
+
+def _print_tier3_summary(tier3: list[Finding]) -> None:
+    print("\n=== Tier 3: known-retired item references ===")
+    for finding in _ordered_findings(tier3):
+        _print_known_retired_finding(finding)
+
+
+def _print_parity_entry(label: str, hits: list[Hit]) -> None:
+    print(f"  [WARN] {label}: {len(hits)} hits")
+    for hit in hits[:5]:
+        print(f"     {hit.file}:{hit.line}")
+
+
+def _print_tier4_summary(tier4: dict[str, list[Hit]]) -> None:
+    print("\n=== Tier 4: test/prod engine parity ===")
+    for label, hits in tier4.items():
+        _print_parity_entry(label, hits)
+
+
+def _hits_by_file(hits: list[Hit]) -> dict[str, list[Hit]]:
+    by_file: dict[str, list[Hit]] = defaultdict(list)
+    for hit in hits:
+        by_file[hit.file].append(hit)
+    return by_file
+
+
+def _print_file_group(file_name: str, hits: list[Hit]) -> None:
+    print(f"  [COMMENTED] {file_name}: {len(hits)} commented-code lines")
+    for hit in hits[:3]:
+        print(f"     L{hit.line}: {hit.text[:90]}")
+
+
+def _print_tier5_summary(tier5: list[Hit]) -> None:
+    print(f"\n=== Tier 5: commented-out code ({len(tier5)} hits) ===")
+    sorted_groups = sorted(_hits_by_file(tier5).items(), key=lambda item: -len(item[1]))[:15]
+    for file_name, hits in sorted_groups:
+        _print_file_group(file_name, hits)
+
+
+def _print_limited_hits(title: str, hits: list[Hit], marker: str, limit: int, text_len: int) -> None:
+    print(title)
+    for hit in hits[:limit]:
+        print(f"  {marker} {hit.file}:{hit.line}  {hit.text[:text_len]}")
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -658,8 +884,49 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _build_full_report(
+    *,
+    scanned_files: int,
+    phase0: dict,
+    tier1: dict[str, list[Hit]],
+    tier3: list[Finding],
+    tier4: dict[str, list[Hit]],
+    tier5: list[Hit],
+    tier6: list[Hit],
+    tier7: list[Hit],
+) -> dict:
+    critical = [finding for finding in tier3 if finding.severity == "critical"]
+    warn = [finding for finding in tier3 if finding.severity == "warn"]
+    tier4_hit_count = sum(len(hits) for hits in tier4.values())
+    return {
+        "scanned_files": scanned_files,
+        "summary": {
+            "critical_known_retired": len(critical),
+            "warn_known_retired": len(warn),
+            "tier4_parity_hits": tier4_hit_count,
+            "tier5_commented_out_code_hits": len(tier5),
+            "tier6_dead_branch_hits": len(tier6),
+            "tier7_retired_file_hits": len(tier7),
+        },
+        "phase0_stack_scan": phase0,
+        "tier1_markers": {
+            label: [asdict(hit) for hit in hits]
+            for label, hits in tier1.items()
+        },
+        "tier3_known_retired": [asdict(finding) for finding in tier3],
+        "tier4_parity": {
+            label: [asdict(hit) for hit in hits]
+            for label, hits in tier4.items()
+        },
+        "tier5_commented_out_code": [asdict(hit) for hit in tier5],
+        "tier6_dead_branches": [asdict(hit) for hit in tier6],
+        "tier7_retired_files": [asdict(hit) for hit in tier7],
+    }
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     args = _build_parser().parse_args(argv)
+    _clear_read_cache()
     phase0 = phase0_stack_scan()
     print(f"[SRA] phase0 stack scan: {phase0['scanned_files']} files across {len(phase0['project_roots'])} repos")
     for category, count in phase0["summary"].items():
@@ -685,67 +952,38 @@ def main(argv: Optional[list[str]] = None) -> int:
     tier7 = tier7_retired_files(files)
 
     # ── 输出摘要 ──
-    print("\n=== Tier 1: retirement markers in source ===")
-    for label, hits in sorted(tier1.items()):
-        non_comment = [h for h in hits if h.kind != "comment"]
-        print(f"  {label}: total={len(hits)} non-comment={len(non_comment)}")
-    print(f"  (full marker list: {sum(len(v) for v in tier1.values())} hits across {sum(1 for v in tier1.values() if v)} categories)")
-
-    print("\n=== Tier 3: known-retired item references ===")
     critical = [f for f in tier3 if f.severity == "critical"]
     warn = [f for f in tier3 if f.severity == "warn"]
-    info = [f for f in tier3 if f.severity == "info"]
-    for f in critical + warn + info:
-        sev_marker = {"critical": "🔴", "warn": "🟡", "info": "🟢"}.get(f.severity, "?")
-        live = [h for h in f.hits if h.kind not in ("comment", "retirement_action")]
-        # kind 分布
-        kinds = defaultdict(int)
-        for h in f.hits:
-            kinds[h.kind] += 1
-        print(f"  {sev_marker} {f.name} -> {f.replaced_by}")
-        print(f"     hits: total={len(f.hits)}  by kind: {dict(kinds)}  live={len(live)}")
-        if live[:5]:
-            print(f"     ⚠ live refs (need fix):")
-            for h in live[:5]:
-                print(f"       {h.file}:{h.line}  ({h.kind})  {h.text[:100]}")
-
-    print("\n=== Tier 4: test/prod engine parity ===")
-    for label, hits in tier4.items():
-        print(f"  🟡 {label}: {len(hits)} hits")
-        for h in hits[:5]:
-            print(f"     {h.file}:{h.line}")
-
-    print(f"\n=== Tier 5: commented-out code ({len(tier5)} hits) ===")
-    by_file = defaultdict(list)
-    for h in tier5:
-        by_file[h.file].append(h)
-    for fn, hits in sorted(by_file.items(), key=lambda x: -len(x[1]))[:15]:
-        print(f"  🟠 {fn}: {len(hits)} commented-code lines")
-        for h in hits[:3]:
-            print(f"     L{h.line}: {h.text[:90]}")
-
-    print(f"\n=== Tier 6: dead branches if False / if 0 ({len(tier6)} hits) ===")
-    for h in tier6[:20]:
-        print(f"  🟠 {h.file}:{h.line}  {h.text[:90]}")
-
-    print(f"\n=== Tier 7: retired files ({len(tier7)} hits) ===")
-    for h in tier7[:20]:
-        print(f"  🔴 {h.file}:{h.line}  {h.text[:120]}")
+    _print_tier1_summary(tier1)
+    _print_tier3_summary(tier3)
+    _print_tier4_summary(tier4)
+    _print_tier5_summary(tier5)
+    _print_limited_hits(
+        f"\n=== Tier 6: dead branches if False / if 0 ({len(tier6)} hits) ===",
+        tier6,
+        "[DEAD]",
+        20,
+        90,
+    )
+    _print_limited_hits(
+        f"\n=== Tier 7: retired files ({len(tier7)} hits) ===",
+        tier7,
+        "[RETIRED]",
+        20,
+        120,
+    )
 
     # ── JSON 报告 ──
-    report = {
-        "scanned_files": len(files),
-        "phase0_stack_scan": phase0,
-        "tier1_markers": {
-            label: [asdict(h) for h in hits]
-            for label, hits in tier1.items()
-        },
-        "tier3_known_retired": [asdict(f) for f in tier3],
-        "tier4_parity": {
-            label: [asdict(h) for h in hits]
-            for label, hits in tier4.items()
-        },
-    }
+    report = _build_full_report(
+        scanned_files=len(files),
+        phase0=phase0,
+        tier1=tier1,
+        tier3=tier3,
+        tier4=tier4,
+        tier5=tier5,
+        tier6=tier6,
+        tier7=tier7,
+    )
     out_path = args.output
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as f:
@@ -757,12 +995,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         print("\nno-fail mode: report-only baseline written.")
         return 0
     if critical:
-        print(f"\n❌ {len(critical)} critical stale references found. Fix before shipping.")
+        print(f"\n[FAIL] {len(critical)} critical stale references found. Fix before shipping.")
         return 1
     if warn or tier4:
-        print(f"\n⚠ {len(warn)} warn-level stale references; {sum(len(v) for v in tier4.values())} parity issues.")
+        print(f"\n[WARN] {len(warn)} warn-level stale references; {sum(len(v) for v in tier4.values())} parity issues.")
         return 0
-    print("\n✓ no stale references detected.")
+    print("\n[PASS] no stale references detected.")
     return 0
 
 

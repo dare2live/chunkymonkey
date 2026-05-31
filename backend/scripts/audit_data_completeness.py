@@ -14,6 +14,8 @@ rule-compliance: ok evidence=data-completeness-audit-tool
 """
 from __future__ import annotations
 
+from collections import defaultdict
+from datetime import date as _date
 import sys
 from pathlib import Path
 
@@ -42,6 +44,88 @@ TABLES = [
 ]
 
 
+def _sql_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _table_summary_select(table: str, date_col: str, has_codes: bool, code_col: str | None) -> str:
+    table_literal = _sql_literal(table)
+    if has_codes and code_col:
+        return f"""
+            SELECT
+                {table_literal} AS table_name,
+                CAST(latest.max_date AS VARCHAR) AS max_date,
+                CAST(COUNT(DISTINCT t.{code_col}) AS BIGINT) AS n_codes
+            FROM (SELECT MAX({date_col}) AS max_date FROM {table}) latest
+            LEFT JOIN {table} t ON t.{date_col} = latest.max_date
+            GROUP BY latest.max_date
+        """
+    return f"""
+        SELECT
+            {table_literal} AS table_name,
+            CAST(MAX({date_col}) AS VARCHAR) AS max_date,
+            NULL::BIGINT AS n_codes
+        FROM {table}
+    """
+
+
+def _load_table_summaries(con, specs: list[tuple[str, str, str, bool, str | None]]) -> dict[str, tuple[str, int | None]]:
+    query = "\nUNION ALL\n".join(
+        _table_summary_select(table, date_col, has_codes, code_col)
+        for _, table, date_col, has_codes, code_col in specs
+    )
+    rows = con.execute(query).fetchall()
+    return {
+        str(table): ("(empty)" if max_date is None else str(max_date), None if n_codes is None else int(n_codes))
+        for table, max_date, n_codes in rows
+    }
+
+
+def _table_verdict(
+    table: str,
+    max_date: str,
+    n_codes: str,
+    *,
+    cal_max: str | None,
+    has_codes: bool,
+    code_col: str | None,
+) -> tuple[str, str | None]:
+    if max_date == "(empty)":
+        return "EMPTY", "empty table"
+    if cal_max and max_date > cal_max:
+        return "CONTAMINATED", f"max={max_date} > cal_max={cal_max}"
+    if cal_max and max_date < cal_max:
+        d_max = _date.fromisoformat(max_date)
+        d_cal = _date.fromisoformat(cal_max)
+        gap = (d_cal - d_max).days
+        if gap == 0:
+            return "OK", None
+        if gap <= 3:
+            return f"STALE_{gap}d", None
+        return f"STALE_{gap}d_WARN", f"max={max_date} (gap={gap}d)"
+    if has_codes and code_col and max_date == cal_max:
+        try:
+            normalized_n_codes = n_codes.replace(",", "").strip()
+            if not normalized_n_codes:
+                return "PARTIAL_UNKNOWN", "missing code count"
+            n = int(normalized_n_codes)
+        except ValueError:
+            return "PARTIAL_UNKNOWN", f"invalid code count: {n_codes!r}"
+        if n < 0.5 * UNIVERSE_SIZE_HINT:
+            return "PARTIAL_WARN", f"only {n_codes} codes ({n*100//UNIVERSE_SIZE_HINT}%)"
+    return "OK", None
+
+
+def _calendar_compare(max_date: str, cal_max: str | None) -> str:
+    if not cal_max:
+        return ""
+    if max_date == cal_max:
+        return "= cal"
+    if max_date < cal_max:
+        return "< cal"
+    return "> cal!"
+
+
 def main() -> int:
     cal_max = _latest_completed_trade_date_for_write(raise_on_miss=False)
     print(f"=== Data Completeness Audit ===")
@@ -52,71 +136,47 @@ def main() -> int:
     print("-" * 110)
 
     issues = []
-    for db_file, table, date_col, has_codes, code_col in TABLES:
+    tables_by_db: dict[str, list[tuple[str, str, str, bool, str | None]]] = defaultdict(list)
+    for spec in TABLES:
+        tables_by_db[spec[0]].append(spec)
+
+    summaries_by_db: dict[str, dict[str, tuple[str, int | None]]] = {}
+    db_errors: dict[str, str] = {}
+    for db_file, specs in tables_by_db.items():
         db_path = REPO_ROOT / "data" / db_file
         if not db_path.exists():
-            print(f"{table:<48} {'(no db)':<12}")
+            db_errors[db_file] = "(no db)"
             continue
+        con = None
         try:
             con = duckdb.connect(str(db_path), read_only=True)
         except Exception as e:
-            print(f"{table:<48} ERR: {e}")
+            db_errors[db_file] = f"ERR: {e}"
             continue
         try:
-            r = con.execute(f"SELECT MAX({date_col}) FROM {table}").fetchone()
-            max_date = str(r[0]) if r[0] else "(empty)"
-            n_codes = ""
-            if has_codes and code_col and max_date != "(empty)":
-                r2 = con.execute(
-                    f"SELECT COUNT(DISTINCT {code_col}) FROM {table} WHERE {date_col} = ?",
-                    [max_date],
-                ).fetchone()
-                n_codes = f"{r2[0]:,}"
-
-            # Verdict
-            verdict = "OK"
-            if max_date == "(empty)":
-                verdict = "EMPTY"
-                issues.append((table, verdict, "empty table"))
-            elif cal_max and max_date > cal_max:
-                verdict = "CONTAMINATED"
-                issues.append((table, verdict, f"max={max_date} > cal_max={cal_max}"))
-            elif cal_max and max_date < cal_max:
-                # days stale
-                from datetime import date as _date
-                d_max = _date.fromisoformat(max_date)
-                d_cal = _date.fromisoformat(cal_max)
-                gap = (d_cal - d_max).days
-                if gap == 0:
-                    verdict = "OK"
-                elif gap <= 3:
-                    verdict = f"STALE_{gap}d"
-                else:
-                    verdict = f"STALE_{gap}d⚠"
-                    issues.append((table, verdict, f"max={max_date} (gap={gap}d)"))
-            elif has_codes and code_col and max_date == cal_max:
-                # check partial coverage
-                try:
-                    n = int(n_codes.replace(",", ""))
-                    if n < 0.5 * UNIVERSE_SIZE_HINT:
-                        verdict = "PARTIAL⚠"
-                        issues.append((table, verdict, f"only {n_codes} codes ({n*100//UNIVERSE_SIZE_HINT}%)"))
-                except Exception:
-                    # rule-compliance: ok evidence=audit-script-skip-non-stock-tables-quietly
-                    pass
-
-            cal_compare = ""
-            if cal_max:
-                if max_date == cal_max:
-                    cal_compare = "= cal"
-                elif max_date < cal_max:
-                    cal_compare = f"< cal"
-                elif max_date > cal_max:
-                    cal_compare = f"> cal!"
-
-            print(f"{table:<48} {max_date:<12} {n_codes:>10} {cal_compare:<10} {verdict}")
+            summaries_by_db[db_file] = _load_table_summaries(con, specs)
         finally:
-            con.close()
+            if con is not None:
+                con.close()
+
+    for db_file, table, date_col, has_codes, code_col in TABLES:
+        if db_file in db_errors:
+            print(f"{table:<48} {db_errors[db_file]:<12}")
+            continue
+        max_date, raw_n_codes = summaries_by_db[db_file][table]
+        n_codes = f"{raw_n_codes:,}" if has_codes and code_col and max_date != "(empty)" and raw_n_codes is not None else ""
+        verdict, issue = _table_verdict(
+            table,
+            max_date,
+            n_codes,
+            cal_max=cal_max,
+            has_codes=has_codes,
+            code_col=code_col,
+        )
+        if issue is not None:
+            issues.append((table, verdict, issue))
+        cal_compare = _calendar_compare(max_date, cal_max)
+        print(f"{table:<48} {max_date:<12} {n_codes:>10} {cal_compare:<10} {verdict}")
 
     print()
     print(f"=== Summary: {len(issues)} issues ===")

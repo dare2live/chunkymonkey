@@ -305,22 +305,39 @@ def check_limit_rule_table(conn) -> list[CheckResult]:
     return out
 
 
-def _grep_dir(repo_root: Path, sub: str, patterns: tuple) -> list[tuple[Path, int, str]]:
+def _matches_any_pattern(line: str, patterns: tuple[re.Pattern, ...]) -> bool:
+    for pat in patterns:
+        if pat.search(line):
+            return True
+    return False
+
+
+def _grep_file(fp: Path, patterns: tuple[re.Pattern, ...]) -> list[tuple[Path, int, str]]:
+    """Return grep hits for one file; lines matching multiple patterns count once."""
+    try:
+        text = fp.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        log.warning(f"could not read {fp}: {exc}")
+        return []
+    return [
+        (fp, i, line.strip())
+        for i, line in enumerate(text.splitlines(), start=1)
+        if _matches_any_pattern(line, patterns)
+    ]
+
+
+def _python_files(root: Path) -> list[Path]:
+    return sorted(root.rglob("*.py"))
+
+
+def _grep_dir(repo_root: Path, sub: str, patterns: tuple[re.Pattern, ...]) -> list[tuple[Path, int, str]]:
     """In-Python grep: return list of (file, line_no, line)."""
-    hits: list[tuple[Path, int, str]] = []
     root = repo_root / sub
     if not root.exists():
-        return hits
-    for fp in root.rglob("*.py"):
-        try:
-            text = fp.read_text(encoding="utf-8", errors="replace")
-        except Exception:
-            continue
-        for i, line in enumerate(text.splitlines(), start=1):
-            for pat in patterns:
-                if pat.search(line):
-                    hits.append((fp, i, line.strip()))
-                    break
+        return []
+    hits: list[tuple[Path, int, str]] = []
+    for fp in _python_files(root):
+        hits.extend(_grep_file(fp, patterns))
     return hits
 
 
@@ -419,6 +436,90 @@ def check_paper_sim_filter(conn) -> list[CheckResult]:
     return out
 
 
+def _fetch_spot_check_counts(mconn, dates: list[str]) -> dict[str, dict[str, tuple[int, int]]]:
+    counts = {date: {"raw": (0, 0), "view": (0, 0)} for date in dates}
+    if not dates:
+        return counts
+    placeholders = ", ".join(["(?)"] * len(dates))
+    rows = mconn.execute(
+        f"""
+        WITH target_dates(date) AS (
+          VALUES {placeholders}
+        ),
+        raw_counts AS (
+          SELECT CAST(date AS VARCHAR) AS date,
+                 COUNT(*) AS total,
+                 COUNT(*) FILTER (WHERE volume IS NULL OR volume <= 0) AS susp
+            FROM price_kline
+           WHERE adjust='qfq' AND freq='daily'
+             AND date IN (SELECT date FROM target_dates)
+           GROUP BY 1
+        ),
+        view_counts AS (
+          SELECT CAST(date AS VARCHAR) AS date,
+                 COUNT(*) AS total,
+                 COUNT(*) FILTER (WHERE volume IS NULL OR volume <= 0) AS susp
+            FROM v_price_kline_qfq
+           WHERE adjust='qfq' AND freq='daily'
+             AND date IN (SELECT date FROM target_dates)
+           GROUP BY 1
+        )
+        SELECT 'raw' AS source, date, total, susp FROM raw_counts
+        UNION ALL
+        SELECT 'view' AS source, date, total, susp FROM view_counts
+        """,
+        dates,
+    ).fetchall()
+    for source, date, total, susp in rows:
+        date_key = str(date)
+        if date_key not in counts:
+            continue
+        counts[date_key][str(source)] = (int(total or 0), int(susp or 0))
+    return counts
+
+
+def _spot_check_result_for_counts(
+    d: str,
+    raw_total: int,
+    raw_susp_n: int,
+    view_total: int,
+    view_susp_n: int,
+) -> CheckResult:
+    view_drop = raw_total - view_total  # view 比 raw 少多少行
+
+    if raw_susp_n == 0:
+        status = "WARN"
+        detail = f"日期 {d}: raw 该日 0 停牌 — 跳过"
+    elif view_susp_n > 0:
+        status = "FAIL"
+        detail = (
+            f"日期 {d}: view 含 {view_susp_n} 停牌行 — paper_sim selector 会"
+            "读到停牌样本 = ML label 用幻想收益"
+        )
+    else:
+        # view 0 停牌 → PASS (invariant 满足). view_total vs raw_total 仅作诊断
+        # (view 还从 price_kline_tdxhub primary 拉行, 跟 raw fallback 计数自然不同)
+        status = "PASS"
+        detail = (
+            f"日期 {d}: raw {raw_total} 行 (含 {raw_susp_n} 停牌); "
+            f"view {view_total} 行 (含 0 停牌) — 停牌全部 mask"
+        )
+    return CheckResult(
+        section="4. Spot check filter",
+        name=f"{d}",
+        status=status,
+        detail=detail,
+        rows=int(raw_susp_n or 0),
+        extras={
+            "raw_total": int(raw_total),
+            "raw_susp": int(raw_susp_n),
+            "view_total": int(view_total),
+            "view_susp": int(view_susp_n),
+            "view_drop": int(view_drop),
+        },
+    )
+
+
 def check_spot_check_filter(conn) -> list[CheckResult]:
     """Section 4: Spot check — paper_sim 读 v_price_kline_qfq, view 内置过滤已
     将 volume<1e-6 / amount<1e-6 行 drop 掉 (见 view DDL). 取近期高停牌日,
@@ -452,64 +553,12 @@ def check_spot_check_filter(conn) -> list[CheckResult]:
                 ))
                 return out
 
-            for d, raw_susp in top_dates:
-                # raw 该日总数 + 停牌数
-                raw = mconn.execute(
-                    """
-                    SELECT
-                      COUNT(*) AS total,
-                      COUNT(*) FILTER (WHERE volume IS NULL OR volume <= 0) AS susp
-                      FROM price_kline
-                     WHERE adjust='qfq' AND freq='daily' AND date = ?
-                    """,
-                    [str(d)],
-                ).fetchone()
-                # view 该日总数 + 停牌数 (view 内置 volume >= 1e-6 过滤)
-                view = mconn.execute(
-                    """
-                    SELECT
-                      COUNT(*) AS total,
-                      COUNT(*) FILTER (WHERE volume IS NULL OR volume <= 0) AS susp
-                      FROM v_price_kline_qfq
-                     WHERE adjust='qfq' AND freq='daily' AND date = ?
-                    """,
-                    [str(d)],
-                ).fetchone()
-                raw_total, raw_susp_n = raw
-                view_total, view_susp_n = view
-                view_drop = raw_total - view_total  # view 比 raw 少多少行
-
-                if raw_susp_n == 0:
-                    status = "WARN"
-                    detail = f"日期 {d}: raw 该日 0 停牌 — 跳过"
-                elif view_susp_n > 0:
-                    status = "FAIL"
-                    detail = (
-                        f"日期 {d}: view 含 {view_susp_n} 停牌行 — paper_sim selector 会"
-                        "读到停牌样本 = ML label 用幻想收益"
-                    )
-                else:
-                    # view 0 停牌 → PASS (invariant 满足). view_total vs raw_total 仅作诊断
-                    # (view 还从 price_kline_tdxhub primary 拉行, 跟 raw fallback 计数自然不同)
-                    status = "PASS"
-                    detail = (
-                        f"日期 {d}: raw {raw_total} 行 (含 {raw_susp_n} 停牌); "
-                        f"view {view_total} 行 (含 0 停牌) — 停牌全部 mask"
-                    )
-                out.append(CheckResult(
-                    section="4. Spot check filter",
-                    name=f"{d}",
-                    status=status,
-                    detail=detail,
-                    rows=int(raw_susp_n or 0),
-                    extras={
-                        "raw_total": int(raw_total),
-                        "raw_susp": int(raw_susp_n),
-                        "view_total": int(view_total),
-                        "view_susp": int(view_susp_n),
-                        "view_drop": int(view_drop),
-                    },
-                ))
+            dates = [str(d) for d, _raw_susp in top_dates]
+            counts_by_date = _fetch_spot_check_counts(mconn, dates)
+            for d in dates:
+                raw_total, raw_susp_n = counts_by_date[d]["raw"]
+                view_total, view_susp_n = counts_by_date[d]["view"]
+                out.append(_spot_check_result_for_counts(d, raw_total, raw_susp_n, view_total, view_susp_n))
         finally:
             mconn.close()
     except Exception as e:

@@ -852,6 +852,11 @@ SELECT * FROM mart_data_source_watermark;
 - `backend/scripts/audit_tdx_data_need_coverage.py`: Python 内嵌 NEEDS/PRIORITIES/REASSIGNMENTS 搬到 YAML, 审计脚本 exact-sync 三张治理表并清理 obsolete rows。
 - `backend/services/data_sources/data_routes.py`: 资金流路线从"整体下架"改为"重新评估但生产阻断", 防止 CYQ/画像后续需求被误删。
 
+**P1 audit-gate scripts 切片**:
+- 11 个审计脚本从逐表/逐列/逐文件 N+1 扫描改为批量查询或 helper 化: data completeness、delivery readiness、end-to-end、event timestamp、N+1 detector、panel leakage、PIT integrity、stale references、survivorship、tradeability、universe coverage。
+- 新增 9 个 `backend/tests/scripts/test_audit_*.py` 回归, 覆盖批量查询与 helper 语义保持; test-tool registry scoped audit PASS, `python -m pytest` 34/34 PASS。
+- 清理本切片新增输出符号与静默吞错: `audit_data_completeness` 不再 `except/pass` 掉无效 code count, `audit_panel_leakage` 文件读取/NULL-year 计算失败会形成 LOW finding, `audit_stale_references` 输出统一 ASCII marker。
+
 ### 2026-05-29 市场感知数据接入 P0 接线 + 关联探索(LHB 反向重磅发现)
 
 **关联探索实证(read-only, event study 全 A 股 2022-2026)**: 项目所有"主力跟随"信号 forward 超额收益全反向或随机 —

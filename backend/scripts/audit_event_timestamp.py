@@ -139,29 +139,247 @@ def _norm_date_sql(col: str) -> str:
     )
 
 
-def check_event_table_enumeration(conn) -> list[CheckResult]:
-    """Section 1: every catalog entry must exist with primary_ts column."""
-    out: list[CheckResult] = []
-    existing = {
+def _event_table_names() -> list[str]:
+    return [spec["table"] for spec in EVENT_TABLES]
+
+
+def _existing_tables(conn) -> set[str]:
+    return {
         r[0] for r in conn.execute(
             "SELECT table_name FROM information_schema.tables WHERE table_schema='main'"
         ).fetchall()
     }
-    table_names = [spec["table"] for spec in EVENT_TABLES]
-    column_rows = conn.execute(
-        """
+
+
+def _load_columns_by_table(conn, table_names: list[str]) -> dict[str, set[str]]:
+    names = sorted(set(table_names))
+    if not names:
+        return {}
+    placeholders = ", ".join(["?"] * len(names))
+    rows = conn.execute(
+        f"""
         SELECT table_name, column_name
         FROM information_schema.columns
         WHERE table_schema = 'main'
-          AND table_name IN ({})
-        """.format(", ".join(["?"] * len(table_names))),
-        table_names,
+          AND table_name IN ({placeholders})
+        """,
+        names,
     ).fetchall()
     columns_by_table: dict[str, set[str]] = {}
-    for table_name, column_name in column_rows:
+    for table_name, column_name in rows:
         columns_by_table.setdefault(table_name, set()).add(column_name)
+    return columns_by_table
+
+
+def _event_inventory(conn) -> tuple[set[str], dict[str, set[str]]]:
+    table_names = _event_table_names()
+    return _existing_tables(conn), _load_columns_by_table(conn, table_names)
+
+
+def _fetch_union_metrics(conn, metric_parts: list[str]) -> dict[str, dict]:
+    if not metric_parts:
+        return {}
+    cursor = conn.execute(" UNION ALL ".join(metric_parts))
+    rows = cursor.fetchall()
+    columns = [desc[0] for desc in cursor.description]
+    return {
+        row[0]: {columns[i]: row[i] for i in range(1, len(columns))}
+        for row in rows
+    }
+
+
+def _timestamp_metric_select(spec: dict, cols: set[str]) -> str:
+    table = spec["table"]
+    select_parts = [f"'{table}' AS table_name", "COUNT(*) AS n_total"]
+    primary = spec["primary_ts"]
+    secondary = spec["secondary_ts"]
+    if primary and primary in cols:
+        select_parts.append(
+            f"COUNT(*) FILTER (WHERE {primary} IS NULL OR CAST({primary} AS VARCHAR) = '') AS primary_null"
+        )
+    if secondary and secondary in cols:
+        select_parts.append(
+            f"COUNT(*) FILTER (WHERE {secondary} IS NULL OR CAST({secondary} AS VARCHAR) = '') AS secondary_null"
+        )
+    return f"SELECT {', '.join(select_parts)} FROM {table}"
+
+
+def _append_timestamp_rate_result(
+    out: list[CheckResult],
+    spec: dict,
+    kind: str,
+    col: str | None,
+    table_metrics: dict[str, int],
+    columns: set[str],
+) -> None:
+    if not col:
+        return
+    table = spec["table"]
+    if col not in columns:
+        out.append(CheckResult(
+            section="2. Timestamp non-null rate",
+            name=f"{table}.{col}",
+            status="WARN",
+            detail=f"{table}.{col}: check failed: column not found",
+        ))
+        return
+    n_total = int(table_metrics.get("n_total", 0) or 0)
+    n_null = int(table_metrics.get(f"{kind}_null", 0) or 0)
+    non_null_rate = 1.0 - (n_null / n_total)
+    row_label = f"{table}.{col}[{kind}]"
+    if kind == "primary":
+        if non_null_rate >= NON_NULL_THRESHOLD:
+            status = "PASS"
+        elif spec["critical"]:
+            status = "FAIL"
+        else:
+            status = "WARN"
+        detail = f"{row_label}: non-null {non_null_rate*100:.3f}% ({n_total-n_null}/{n_total}); threshold {NON_NULL_THRESHOLD*100:.1f}%"
+    else:
+        status = "PASS" if non_null_rate >= 0.50 else "WARN"
+        detail = f"{row_label}: non-null {non_null_rate*100:.3f}% (descriptive only)"
+    out.append(CheckResult(
+        section="2. Timestamp non-null rate",
+        name=row_label,
+        status=status,
+        detail=detail,
+        rows=n_total,
+        extras={
+            "non_null_rate": round(non_null_rate, 6),
+            "n_null": n_null,
+            "critical": spec["critical"],
+            "kind": kind,
+        },
+    ))
+
+
+def _missing_columns(spec: dict, columns_by_table: dict[str, set[str]]) -> list[str]:
+    cols = columns_by_table.get(spec["table"], set())
+    return [col for col in (spec["primary_ts"], spec["secondary_ts"]) if col and col not in cols]
+
+
+def _lag_metric_select(spec: dict) -> str:
+    table = spec["table"]
+    primary = spec["primary_ts"]
+    secondary = spec["secondary_ts"]
+    p_sql = _norm_date_sql(primary)
+    s_sql = _norm_date_sql(secondary)
+    return f"""
+        SELECT
+          '{table}' AS table_name,
+          COUNT(*) AS n_total,
+          COUNT(({p_sql}) - ({s_sql})) AS n_with_lag,
+          MIN(({p_sql}) - ({s_sql})) AS lag_min,
+          MAX(({p_sql}) - ({s_sql})) AS lag_max,
+          AVG(({p_sql}) - ({s_sql})) AS lag_mean,
+          MEDIAN(({p_sql}) - ({s_sql})) AS lag_median,
+          QUANTILE_CONT(({p_sql}) - ({s_sql}), 0.95) AS lag_p95
+        FROM {table}
+        WHERE {primary} IS NOT NULL AND {secondary} IS NOT NULL
+    """
+
+
+def _append_lag_result(out: list[CheckResult], spec: dict, metric: dict) -> None:
+    table = spec["table"]
+    primary = spec["primary_ts"]
+    secondary = spec["secondary_ts"]
+    n_total = int(metric.get("n_total") or 0)
+    n_lag = int(metric.get("n_with_lag") or 0)
+    lag_min = metric.get("lag_min")
+    lag_max = metric.get("lag_max")
+    lag_mean = metric.get("lag_mean")
+    lag_median = metric.get("lag_median")
+    lag_p95 = metric.get("lag_p95")
+    if n_lag == 0:
+        out.append(CheckResult(
+            section="3. PIT lag distribution",
+            name=f"{table}({primary}-{secondary})",
+            status="WARN",
+            detail=f"{table}: no rows where both {primary} and {secondary} parsable as DATE",
+            rows=n_total,
+        ))
+        return
+    unusual = table not in {"fact_shareholder_plan"} and lag_min is not None and lag_min < -365
+    status = "WARN" if unusual else "PASS"
+    extra_note = " (unusual negative tail: primary earlier than secondary by >1y)" if unusual else ""
+    out.append(CheckResult(
+        section="3. PIT lag distribution",
+        name=f"{table}({primary}-{secondary})",
+        status=status,
+        detail=(
+            f"{table}: n={n_lag} lag(days) min={lag_min} median={lag_median} "
+            f"mean={lag_mean:.2f} p95={lag_p95} max={lag_max}{extra_note}"
+            if lag_mean is not None else
+            f"{table}: n={n_lag} lag(days) min={lag_min} median={lag_median} max={lag_max}{extra_note}"
+        ),
+        rows=n_lag,
+        extras={
+            "lag_min": str(lag_min),
+            "lag_max": str(lag_max),
+            "lag_median": str(lag_median),
+            "lag_p95": str(lag_p95),
+            "lag_mean": float(lag_mean) if lag_mean is not None else None,
+        },
+    ))
+
+
+def _recent_metric_select(spec: dict) -> str:
+    table = spec["table"]
+    primary = spec["primary_ts"]
+    p_sql = _norm_date_sql(primary)
+    return f"""
+        SELECT
+          '{table}' AS table_name,
+          COUNT(*) FILTER (WHERE ({p_sql}) > CURRENT_DATE) AS n_future,
+          COUNT(*) FILTER (WHERE ({p_sql}) BETWEEN CURRENT_DATE - INTERVAL 30 DAY AND CURRENT_DATE) AS n_recent,
+          MAX({p_sql}) AS max_ts,
+          MIN({p_sql}) AS min_ts
+        FROM {table}
+        WHERE {primary} IS NOT NULL
+    """
+
+
+def _append_recent_results(out: list[CheckResult], spec: dict, metric: dict, today) -> None:
+    table = spec["table"]
+    primary = spec["primary_ts"]
+    n_future = int(metric.get("n_future") or 0)
+    n_recent = int(metric.get("n_recent") or 0)
+    max_ts = metric.get("max_ts")
+    min_ts = metric.get("min_ts")
+    if n_future > 0:
+        status = "FAIL" if spec["critical"] else "WARN"
+        out.append(CheckResult(
+            section="4. Recent-30d sanity",
+            name=f"{table}.{primary}.future",
+            status=status,
+            detail=f"{table}: {n_future} rows with {primary} > {today} (look-ahead leak risk)",
+            rows=n_future,
+            extras={"max_ts": str(max_ts), "today": str(today)},
+        ))
+    else:
+        out.append(CheckResult(
+            section="4. Recent-30d sanity",
+            name=f"{table}.{primary}.future",
+            status="PASS",
+            detail=f"{table}: 0 rows with {primary} > {today} (max_ts={max_ts})",
+        ))
+    recent_status = "PASS" if n_recent > 0 else "WARN"
+    out.append(CheckResult(
+        section="4. Recent-30d sanity",
+        name=f"{table}.{primary}.recent_30d",
+        status=recent_status,
+        detail=f"{table}: {n_recent} rows in last 30 days (max_ts={max_ts}, min_ts={min_ts})",
+        rows=n_recent,
+        extras={"max_ts": str(max_ts)},
+    ))
+
+
+def check_event_table_enumeration(conn) -> list[CheckResult]:
+    """Section 1: every catalog entry must exist with primary_ts column."""
+    out: list[CheckResult] = []
+    existing, columns_by_table = _event_inventory(conn)
     count_by_table: dict[str, int] = {}
-    present_tables = [table for table in table_names if table in existing]
+    present_tables = [table for table in _event_table_names() if table in existing]
     if present_tables:
         count_sql = " UNION ALL ".join(
             f"SELECT '{table}' AS table_name, COUNT(*) AS n FROM {table}"
@@ -208,24 +426,7 @@ def check_timestamp_non_null_rate(conn) -> list[CheckResult]:
     Secondary_ts only WARN, since it's used for PIT-lag descriptive stats.
     """
     out: list[CheckResult] = []
-    existing = {
-        r[0] for r in conn.execute(
-            "SELECT table_name FROM information_schema.tables WHERE table_schema='main'"
-        ).fetchall()
-    }
-    table_names = [spec["table"] for spec in EVENT_TABLES]
-    column_rows = conn.execute(
-        """
-        SELECT table_name, column_name
-        FROM information_schema.columns
-        WHERE table_schema = 'main'
-          AND table_name IN ({})
-        """.format(", ".join(["?"] * len(table_names))),
-        table_names,
-    ).fetchall()
-    columns_by_table: dict[str, set[str]] = {}
-    for table_name, column_name in column_rows:
-        columns_by_table.setdefault(table_name, set()).add(column_name)
+    existing, columns_by_table = _event_inventory(conn)
 
     metric_parts: list[str] = []
     for spec in EVENT_TABLES:
@@ -233,24 +434,11 @@ def check_timestamp_non_null_rate(conn) -> list[CheckResult]:
         cols = columns_by_table.get(t, set())
         if t not in existing:
             continue
-        select_parts = [f"'{t}' AS table_name", "COUNT(*) AS n_total"]
-        for kind, col in (("primary", spec["primary_ts"]), ("secondary", spec["secondary_ts"])):
-            if col and col in cols:
-                select_parts.append(
-                    f"COUNT(*) FILTER (WHERE {col} IS NULL OR CAST({col} AS VARCHAR) = '') AS {kind}_null"
-                )
-        metric_parts.append(f"SELECT {', '.join(select_parts)} FROM {t}")
-    metrics: dict[str, dict[str, int]] = {}
-    if metric_parts:
-        metric_cursor = conn.execute(" UNION ALL ".join(metric_parts))
-        metric_rows = metric_cursor.fetchall()
-        metric_cols = [desc[0] for desc in metric_cursor.description]
-        for row in metric_rows:
-            metrics[row[0]] = {
-                metric_cols[i]: int(value or 0)
-                for i, value in enumerate(row)
-                if i > 0
-            }
+        metric_parts.append(_timestamp_metric_select(spec, cols))
+    metrics = {
+        table: {key: int(value or 0) for key, value in values.items()}
+        for table, values in _fetch_union_metrics(conn, metric_parts).items()
+    }
 
     for spec in EVENT_TABLES:
         t = spec["table"]
@@ -272,46 +460,9 @@ def check_timestamp_non_null_rate(conn) -> list[CheckResult]:
                 detail=f"{t}: 0 rows (empty table)",
             ))
             continue
-        for kind, col in (("primary", spec["primary_ts"]), ("secondary", spec["secondary_ts"])):
-            if not col:
-                continue
-            if col not in columns_by_table.get(t, set()):
-                out.append(CheckResult(
-                    section="2. Timestamp non-null rate",
-                    name=f"{t}.{col}",
-                    status="WARN",
-                    detail=f"{t}.{col}: check failed: column not found",
-                ))
-                continue
-            n_null = table_metrics.get(f"{kind}_null", 0)
-            non_null_rate = 1.0 - (n_null / n_total)
-            row_label = f"{t}.{col}[{kind}]"
-            if kind == "primary":
-                # Gate: critical tables must meet 99.5%; non-critical → WARN
-                if non_null_rate >= NON_NULL_THRESHOLD:
-                    status = "PASS"
-                elif spec["critical"]:
-                    status = "FAIL"
-                else:
-                    status = "WARN"
-                detail = f"{row_label}: non-null {non_null_rate*100:.3f}% ({n_total-n_null}/{n_total}); threshold {NON_NULL_THRESHOLD*100:.1f}%"
-            else:
-                # Secondary: descriptive only
-                status = "PASS" if non_null_rate >= 0.50 else "WARN"
-                detail = f"{row_label}: non-null {non_null_rate*100:.3f}% (descriptive only)"
-            out.append(CheckResult(
-                section="2. Timestamp non-null rate",
-                name=row_label,
-                status=status,
-                detail=detail,
-                rows=n_total,
-                extras={
-                    "non_null_rate": round(non_null_rate, 6),
-                    "n_null": n_null,
-                    "critical": spec["critical"],
-                    "kind": kind,
-                },
-            ))
+        cols = columns_by_table.get(t, set())
+        _append_timestamp_rate_result(out, spec, "primary", spec["primary_ts"], table_metrics, cols)
+        _append_timestamp_rate_result(out, spec, "secondary", spec["secondary_ts"], table_metrics, cols)
     return out
 
 
@@ -323,69 +474,39 @@ def check_pit_lag_distribution(conn) -> list[CheckResult]:
     negative lag on lhb/institution (notice WAY before trade) ⇒ back-fill smell.
     """
     out: list[CheckResult] = []
+    existing, columns_by_table = _event_inventory(conn)
+    metric_parts: list[str] = []
     for spec in EVENT_TABLES:
         t = spec["table"]
         p, s = spec["primary_ts"], spec["secondary_ts"]
         if not p or not s:
             continue
-        try:
-            p_sql = _norm_date_sql(p)
-            s_sql = _norm_date_sql(s)
-            row = conn.execute(f"""
-                SELECT
-                  COUNT(*) AS n_total,
-                  COUNT(({p_sql}) - ({s_sql})) AS n_with_lag,
-                  MIN(({p_sql}) - ({s_sql})) AS lag_min,
-                  MAX(({p_sql}) - ({s_sql})) AS lag_max,
-                  AVG(({p_sql}) - ({s_sql})) AS lag_mean,
-                  MEDIAN(({p_sql}) - ({s_sql})) AS lag_median,
-                  QUANTILE_CONT(({p_sql}) - ({s_sql}), 0.95) AS lag_p95
-                FROM {t}
-                WHERE {p} IS NOT NULL AND {s} IS NOT NULL
-            """).fetchone()
-            n_total, n_lag, lag_min, lag_max, lag_mean, lag_median, lag_p95 = row
-            if n_lag == 0:
-                out.append(CheckResult(
-                    section="3. PIT lag distribution",
-                    name=f"{t}({p}-{s})",
-                    status="WARN",
-                    detail=f"{t}: no rows where both {p} and {s} parsable as DATE",
-                    rows=n_total or 0,
-                ))
-                continue
-            # Sanity: bizarre negative tails on non-plan tables = back-fill smell
-            unusual = False
-            if t not in {"fact_shareholder_plan"} and lag_min is not None and lag_min < -365:
-                unusual = True
-            status = "PASS"
-            extra_note = ""
-            if unusual:
-                status = "WARN"
-                extra_note = " (unusual negative tail: primary earlier than secondary by >1y)"
-            out.append(CheckResult(
-                section="3. PIT lag distribution",
-                name=f"{t}({p}-{s})",
-                status=status,
-                detail=(
-                    f"{t}: n={n_lag} lag(days) min={lag_min} median={lag_median} "
-                    f"mean={lag_mean:.2f} p95={lag_p95} max={lag_max}{extra_note}"
-                    if lag_mean is not None else
-                    f"{t}: n={n_lag} lag(days) min={lag_min} median={lag_median} max={lag_max}{extra_note}"
-                ),
-                rows=n_lag,
-                extras={
-                    "lag_min": str(lag_min), "lag_max": str(lag_max),
-                    "lag_median": str(lag_median), "lag_p95": str(lag_p95),
-                    "lag_mean": float(lag_mean) if lag_mean is not None else None,
-                },
-            ))
-        except Exception as e:
+        if t in existing and not _missing_columns(spec, columns_by_table):
+            metric_parts.append(_lag_metric_select(spec))
+    metrics = _fetch_union_metrics(conn, metric_parts)
+    for spec in EVENT_TABLES:
+        t = spec["table"]
+        p, s = spec["primary_ts"], spec["secondary_ts"]
+        if not p or not s:
+            continue
+        missing = _missing_columns(spec, columns_by_table)
+        if t not in existing:
             out.append(CheckResult(
                 section="3. PIT lag distribution",
                 name=f"{t}({p}-{s})",
                 status="WARN",
-                detail=f"{t}: lag computation failed: {e}",
+                detail=f"{t}: lag computation failed: table not found",
             ))
+            continue
+        if missing:
+            out.append(CheckResult(
+                section="3. PIT lag distribution",
+                name=f"{t}({p}-{s})",
+                status="WARN",
+                detail=f"{t}: lag computation failed: missing column(s) {missing}",
+            ))
+            continue
+        _append_lag_result(out, spec, metrics.get(t, {}))
     return out
 
 
@@ -398,58 +519,38 @@ def check_recent_30d_sanity(conn) -> list[CheckResult]:
     """
     out: list[CheckResult] = []
     today = conn.execute("SELECT CURRENT_DATE").fetchone()[0]
+    existing, columns_by_table = _event_inventory(conn)
+    metric_parts: list[str] = []
     for spec in EVENT_TABLES:
         t = spec["table"]
         p = spec["primary_ts"]
         if not p:
             continue
-        try:
-            p_sql = _norm_date_sql(p)
-            row = conn.execute(f"""
-                SELECT
-                  COUNT(*) FILTER (WHERE ({p_sql}) > CURRENT_DATE)              AS n_future,
-                  COUNT(*) FILTER (WHERE ({p_sql}) BETWEEN CURRENT_DATE - INTERVAL 30 DAY AND CURRENT_DATE) AS n_recent,
-                  MAX({p_sql})                                                  AS max_ts,
-                  MIN({p_sql})                                                  AS min_ts
-                FROM {t}
-                WHERE {p} IS NOT NULL
-            """).fetchone()
-            n_future, n_recent, max_ts, min_ts = row
-            # 4a: future-dated events = FAIL on critical, WARN elsewhere
-            if n_future > 0:
-                status = "FAIL" if spec["critical"] else "WARN"
-                out.append(CheckResult(
-                    section="4. Recent-30d sanity",
-                    name=f"{t}.{p}.future",
-                    status=status,
-                    detail=f"{t}: {n_future} rows with {p} > {today} (look-ahead leak risk)",
-                    rows=int(n_future),
-                    extras={"max_ts": str(max_ts), "today": str(today)},
-                ))
-            else:
-                out.append(CheckResult(
-                    section="4. Recent-30d sanity",
-                    name=f"{t}.{p}.future",
-                    status="PASS",
-                    detail=f"{t}: 0 rows with {p} > {today} (max_ts={max_ts})",
-                ))
-            # 4b: recent-30d presence = WARN if stale (informational)
-            recent_status = "PASS" if n_recent and n_recent > 0 else "WARN"
-            out.append(CheckResult(
-                section="4. Recent-30d sanity",
-                name=f"{t}.{p}.recent_30d",
-                status=recent_status,
-                detail=f"{t}: {n_recent} rows in last 30 days (max_ts={max_ts}, min_ts={min_ts})",
-                rows=int(n_recent or 0),
-                extras={"max_ts": str(max_ts)},
-            ))
-        except Exception as e:
+        if t in existing and p in columns_by_table.get(t, set()):
+            metric_parts.append(_recent_metric_select(spec))
+    metrics = _fetch_union_metrics(conn, metric_parts)
+    for spec in EVENT_TABLES:
+        t = spec["table"]
+        p = spec["primary_ts"]
+        if not p:
+            continue
+        if t not in existing:
             out.append(CheckResult(
                 section="4. Recent-30d sanity",
                 name=f"{t}.{p}",
                 status="WARN",
-                detail=f"{t}: sanity check failed: {e}",
+                detail=f"{t}: sanity check failed: table not found",
             ))
+            continue
+        if p not in columns_by_table.get(t, set()):
+            out.append(CheckResult(
+                section="4. Recent-30d sanity",
+                name=f"{t}.{p}",
+                status="WARN",
+                detail=f"{t}: sanity check failed: missing column {p}",
+            ))
+            continue
+        _append_recent_results(out, spec, metrics.get(t, {}), today)
     return out
 
 
