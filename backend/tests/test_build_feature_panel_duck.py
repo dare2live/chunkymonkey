@@ -18,6 +18,37 @@ def _yyyymmdd(day: str) -> str:
     return day.replace("-", "")
 
 
+def _market_rows_for_day(day: str, idx: int):
+    rows = []
+    for offset, code in enumerate(["000001", "000002", "510300"]):
+        close = 10.0 + idx * (0.2 + offset * 0.03) + offset
+        rows.append((
+            code,
+            day,
+            close - 0.1,
+            close + 0.2,
+            close - 0.3,
+            close,
+            1000.0 + idx * 10 + offset,
+            1_000_000.0 + idx * 1000 + offset,
+            1.0,
+            "daily",
+            "qfq",
+            "tdxhub",
+            1,
+            False,
+        ))
+    return rows
+
+
+def _margin_rows_for_day(day: str, idx: int):
+    rows = []
+    for offset, code in enumerate(["000001", "000002"]):
+        margin_day = day if idx % 2 else _yyyymmdd(day)
+        rows.append((code, margin_day, 1000.0 + idx * 5 + offset))
+    return rows
+
+
 def _seed_minimal_sources(con):
     con.execute("CREATE SCHEMA market")
     con.execute("CREATE SCHEMA smartmoney")
@@ -97,27 +128,8 @@ def _seed_minimal_sources(con):
     kline_rows = []
     margin_rows = []
     for idx, day in enumerate(days):
-        for offset, code in enumerate(["000001", "000002", "510300"]):
-            close = 10.0 + idx * (0.2 + offset * 0.03) + offset
-            kline_rows.append((
-                code,
-                day,
-                close - 0.1,
-                close + 0.2,
-                close - 0.3,
-                close,
-                1000.0 + idx * 10 + offset,
-                1_000_000.0 + idx * 1000 + offset,
-                1.0,
-                "daily",
-                "qfq",
-                "tdxhub",
-                1,
-                False,
-            ))
-            if code != "510300":
-                margin_day = day if idx % 2 else _yyyymmdd(day)
-                margin_rows.append((code, margin_day, 1000.0 + idx * 5 + offset))
+        kline_rows.extend(_market_rows_for_day(day, idx))
+        margin_rows.extend(_margin_rows_for_day(day, idx))
     con.executemany("INSERT INTO market.price_kline_tdxhub VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", kline_rows)
     con.executemany("INSERT INTO smartmoney.raw_margin_daily VALUES (?, ?, ?)", margin_rows)
     con.executemany(
@@ -250,28 +262,10 @@ def test_full_build_uses_prior_kline_buffer_but_writes_requested_start_only():
         con.close()
 
 
-def test_full_build_uses_active_a_stock_universe_when_available():
+def test_full_build_uses_a_share_prefix_universe_by_default():
     con = duckdb.connect(":memory:")
     try:
         _seed_minimal_sources(con)
-        con.execute(
-            """
-            CREATE TABLE smartmoney.dim_active_a_stock (
-                stock_code TEXT,
-                stock_name TEXT,
-                market TEXT,
-                source TEXT,
-                updated_at TEXT
-            )
-            """
-        )
-        con.executemany(
-            "INSERT INTO smartmoney.dim_active_a_stock VALUES (?, ?, ?, ?, ?)",
-            [
-                ("000001", "平安银行", "SZ", "fixture", "2026-05-06"),
-                ("000002", "万科A", "SZ", "fixture", "2026-05-06"),
-            ],
-        )
 
         subject._build_panel_with_connection(con, "2026-01-01")
         codes = {
@@ -438,18 +432,16 @@ def test_pit_universe_filter_uses_dim_all_ever_listed(monkeypatch):
         con.close()
 
 
-def test_active_a_stock_filter_default_keeps_old_behavior(monkeypatch):
-    """Default (no env var) uses dim_active_a_stock; old code paths unaffected."""
+def test_active_a_stock_filter_default_uses_prefix_filter(monkeypatch):
+    """Default (no env var) uses A-share prefixes and does not require cache tables."""
     monkeypatch.delenv("PANEL_UNIVERSE_MODE", raising=False)
     con = duckdb.connect(":memory:")
     try:
         con.execute("CREATE SCHEMA smartmoney")
-        con.execute("CREATE TABLE smartmoney.dim_active_a_stock (stock_code TEXT, stock_name TEXT)")
-        con.execute("INSERT INTO smartmoney.dim_active_a_stock VALUES ('000001', 'A')")
         sql = subject._active_a_stock_filter_sql(con, alias="kline")
-        assert "dim_active_a_stock" in sql
-        assert "EXISTS" not in sql  # old IN clause, not new EXISTS
-        assert "kline.code IN" in sql
+        assert "dim_active_a_stock" not in sql
+        assert "EXISTS" not in sql
+        assert "SUBSTR(kline.code, 1, 2) IN" in sql
     finally:
         con.close()
 

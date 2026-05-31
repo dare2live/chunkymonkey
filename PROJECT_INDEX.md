@@ -863,13 +863,19 @@ SELECT * FROM mart_data_source_watermark;
 - 验证: updater test-tool scoped PASS, `python -m pytest backend/tests/test_updater*.py` 104/104 PASS, `scripts/chunkyctl audit --run` scoped PASS, `check_universe_filter --all` CLEAN。
 
 **P1 pipeline build scripts 切片**:
-- 本次提交不含 `backend/scripts/build_feature_panel_duck.py`: `safe_commit` leakage gate 对现有 `mart_p0a_feature_label_panel_v4` 报 20 个 HIGH (含 `dim_stock_tdx_industry` flat mapping partition、NULL-year gradient、survivorship), 该文件必须单独作为 feature-panel leakage 桶处理, 不用 SKIP 混入 pipeline 子集。
+- pipeline 子集提交不含 `backend/scripts/build_feature_panel_duck.py`: `safe_commit` leakage gate 对现有 `mart_p0a_feature_label_panel_v4` 报 20 个 HIGH (含 `dim_stock_tdx_industry` flat mapping partition、NULL-year gradient、survivorship), 该文件必须单独作为 feature-panel leakage 桶处理, 不用 SKIP 混入 pipeline 子集。
 - `backend/scripts/build_picture_daily.py`、`build_signal_context.py` 从默认依赖 `dim_active_a_stock` 改为 K-line/prefix/PIT-safe universe helper; `dim_active_a_stock` 只保留 data-sync enumeration 或 code-to-name/lineage metadata evidence。
 - `backend/scripts/build_sniper_score_daily.py` 移除 `raw_fund_flow_daily` 生产兜底, 避免把已知停更的主力资金流当生产证据; 资金流相关能力必须走 `fact_capital_flow_pit_daily` 或保持 `unknown/blocked`。
 - `backend/scripts/import_bestchoice_phase1_candidates.py` 给 BestChoice 导入目标补 `as_of_date` / `built_at`, 并迁移 legacy rows, 防止后续公式候选进入主项目时缺 PIT 证据。
 - `backend/scripts/build_architecture_inventory.py` 与 `seed_dim_data_asset.py` 批量化/索引化扫描, 修复 nested router API contract、JS 注释误报、manual data-asset governance 字段被 auto-discovery 覆盖等问题。
 - 配套测试: `backend/tests/pipeline/test_architecture_inventory.py`, `backend/tests/test_data_asset_governance.py`, `backend/tests/test_build_price_kline_tdxhub.py`, `backend/tests/strategies/test_sniper_batch.py`, `backend/tests/scripts/test_import_bestchoice_phase1_candidates.py` 等。验证: test-tool scoped PASS, py_compile PASS, scoped pytest PASS, `check_universe_filter --all` CLEAN, rule/no-emoji/diff-check PASS, staged pipeline scripts file-level complexity PASS。
 - 工具注意: `scripts/chunkyctl audit --run` 当前返回 WARN 且无 command result, 不作为 PASS 证据; pre-commit hook 存在 `grep -c ... || echo 0` 导致 `0\n0` 的本地 hook bug, 后续应作为独立 tooling bucket 修。
+
+**P1/P0 feature-panel universe cleanup 切片**:
+- `backend/scripts/build_feature_panel_duck.py` 默认 universe 从 `smartmoney.dim_active_a_stock` 改为 K-line code-prefix filter; `PANEL_UNIVERSE_MODE=pit` 仍可切到 `dim_all_ever_listed` PIT 过滤。目的仅是移除 `dim_active_a_stock` 作为 universe truth source, 不是声明 panel 已可用于生产训练。
+- `backend/tests/test_build_feature_panel_duck.py` 更新为默认不依赖 `dim_active_a_stock` fixture, 并保留 PIT mode 单测。
+- 验证: test-tool scoped PASS, py_compile PASS, `python -m pytest backend/tests/test_build_feature_panel_duck.py` 9/9 PASS, file-level complexity PASS, `check_universe_filter --all` CLEAN。
+- 明确 FAIL: `backend/scripts/audit_panel_leakage.py` 对现有 `mart_p0a_feature_label_panel_v4` 仍报 20 个 HIGH, 包括 `dim_stock_tdx_industry` flat mapping partition、`inst_*` / `mcap_decile` / `beta_60d` NULL-year gradient、panel stocks 5210 vs ever-listed 7138 的 survivorship suspect。该 FAIL 是后续 feature-panel leakage P0, 不能用本切片当回测/Optuna/生产证据。
 
 ### 2026-05-29 市场感知数据接入 P0 接线 + 关联探索(LHB 反向重磅发现)
 

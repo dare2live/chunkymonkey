@@ -415,37 +415,18 @@ def _relation_exists(duck, relation: str) -> bool:
 def _active_a_stock_filter_sql(duck, *, alias: str = "kline") -> str:
     """Restrict stock research panels to listed A shares when the master exists.
 
-    2026-05-22 Pattern 8 (survivorship bias): default uses dim_active_a_stock = 5512
-    currently active stocks only. To fix survivorship for panel v5+, set env var
-    PANEL_UNIVERSE_MODE=pit which switches to dim_all_ever_listed (7138 stocks) with
-    PIT filter (first_seen_date <= alias.date AND (delisted_date IS NULL OR delisted_date > alias.date)).
+    Default mode uses A-share code prefixes only and does not depend on stock
+    identity cache tables. For survivorship-safe research panels, set
+    PANEL_UNIVERSE_MODE=pit to switch to dim_all_ever_listed with PIT filtering
+    (first_seen_date <= alias.date AND (delisted_date IS NULL OR delisted_date > alias.date)).
     """
     import os  # rule-compliance: ok evidence=lazy import for env flag, local scope
     if os.environ.get("PANEL_UNIVERSE_MODE", "").lower() == "pit":
         return _pit_universe_filter_sql(duck, alias=alias)
 
-    relation = "smartmoney.dim_active_a_stock"
-    if not _relation_exists(duck, relation):
-        return ""
-    try:
-        row = duck.execute(
-            f"""
-            SELECT COUNT(*) AS n
-              FROM {relation}
-             WHERE stock_code IS NOT NULL
-               AND TRIM(CAST(stock_code AS VARCHAR)) != ''
-            """
-        ).fetchone()
-        if int(row[0] or 0) <= 0:
-            return ""
-    except Exception:
-        return ""
-    return (
-        f"AND {alias}.code IN ("
-        "SELECT stock_code FROM smartmoney.dim_active_a_stock "
-        "WHERE stock_code IS NOT NULL AND TRIM(CAST(stock_code AS VARCHAR)) != ''"
-        ")"
-    )
+    # K 线前缀过滤 (不依赖 dim_active_a_stock)
+    from services.universe import sql_where_active_a_share
+    return f"AND {sql_where_active_a_share(f'{alias}.code')}"
 
 
 def _pit_universe_filter_sql(duck, *, alias: str = "kline") -> str:
@@ -1515,10 +1496,7 @@ def _build_panel_with_connection(
         reset,
     )
     active_a_filter_sql = _active_a_stock_filter_sql(duck, alias="kline")
-    if active_a_filter_sql:
-        logger.info("feature panel universe: dim_active_a_stock")
-    else:
-        logger.info("feature panel universe: canonical kline fallback (dim_active_a_stock unavailable)")
+    logger.info("feature panel universe: K-line prefix filter (60/00/30/68)")
 
     logger.info("Step 1: Pillar B price/volume + Alpha158-inspired features")
     with _timed_stage(timer, "price_volume_features_s"):
@@ -1951,7 +1929,7 @@ def _record_feature_panel_pipeline_run(
         commit_sha=git_commit_sha(),
         input_tables=[
             "market.price_kline_tdxhub",
-            "smartmoney.dim_active_a_stock",
+            "market.price_kline_tdxhub (universe filter)",  # rule-compliance: ok evidence=lineage-metadata
             # smartmoney.raw_margin_daily removed Phase ψ.5
             "smartmoney.fact_institution_event",
             "smartmoney.fact_executive_trade_event",
