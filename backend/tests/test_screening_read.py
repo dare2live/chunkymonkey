@@ -115,3 +115,27 @@ def test_screening_read_service_keeps_route_payload_shapes(monkeypatch):
         assert route_summary == {"ok": True, **summary}
     finally:
         conn.close()
+
+
+def test_router_to_name_keyed_renames_dict_and_list_values(monkeypatch):
+    monkeypatch.setattr(
+        screening_router,
+        "get_tdx_industry_name",
+        lambda key: {"BK001": "电子", "BK002": "金融"}.get(key),
+    )
+    source = {
+        "BK001": {"sector_name": "BK001", "candidate_count": 2},
+        "BK002": [
+            {"sector_name": "BK002", "stock_code": "600001"},
+            {"stock_code": "600002"},
+        ],
+        "": {"sector_name": ""},
+    }
+
+    renamed = screening_router._to_name_keyed(source)
+
+    assert set(renamed) == {"电子", "金融"}
+    assert renamed["电子"]["sector_name"] == "电子"
+    assert renamed["金融"][0]["sector_name"] == "金融"
+    assert renamed["金融"][1] == {"stock_code": "600002"}
+    assert source["BK001"]["sector_name"] == "BK001"

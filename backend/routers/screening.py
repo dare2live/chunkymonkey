@@ -17,6 +17,29 @@ from services.tdx_industry_names import get_tdx_industry_name
 router = APIRouter()
 
 
+def _rename_sector_in_value(value, sector_name: str):
+    if isinstance(value, list):
+        return [
+            {**row, "sector_name": sector_name}
+            if isinstance(row, dict) and "sector_name" in row
+            else row
+            for row in value
+        ]
+    if isinstance(value, dict) and "sector_name" in value:
+        return {**value, "sector_name": sector_name}
+    return value
+
+
+def _to_name_keyed(mapping: dict) -> dict:
+    out: dict = {}
+    for key, value in mapping.items():
+        if not key:
+            continue
+        name = get_tdx_industry_name(key) or key
+        out[name] = _rename_sector_in_value(value, name)
+    return out
+
+
 @router.get("/sector-momentum", include_in_schema=False)
 async def get_sector_momentum():
     """兼容查询：板块动量状态。"""
@@ -303,21 +326,6 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
                 top_stock_map.setdefault(row["sector_name"], []).append(dict(row))
         except Exception:
             top_stock_map = {}
-
-        def _to_name_keyed(m: dict) -> dict:
-            out: dict = {}
-            for key, val in m.items():
-                if not key:
-                    continue
-                name = get_tdx_industry_name(key) or key
-                if isinstance(val, list):
-                    for row in val:
-                        if isinstance(row, dict) and "sector_name" in row:
-                            row["sector_name"] = name
-                elif isinstance(val, dict) and "sector_name" in val:
-                    val["sector_name"] = name
-                out[name] = val
-            return out
 
         active_map = _to_name_keyed(active_map)
         candidate_map = _to_name_keyed(candidate_map)
