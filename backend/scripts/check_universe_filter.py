@@ -5,7 +5,7 @@ Per user push: 'Universe filter 必用 get_active_universe()' — currently doc-
 This script enforces it via lint check.
 
 Usage:
-  PYTHONPATH=backend python backend/scripts/check_universe_filter.py [--staged]
+  PYTHONPATH=backend python backend/scripts/check_universe_filter.py [--staged] [--include-tests]
 
 Exit code:
   0 = clean
@@ -25,6 +25,9 @@ EXEMPT_PREFIXES = (
     "bestchoice/",  # Track A FROZEN, original BC code
     "backend/services/bc_absorbed/",  # Track B initial copy 2026-05-24, grandfathered until Phase 2.2+ full universe wire
 )
+TEST_PREFIXES = (
+    "backend/tests/",
+)
 EXEMPT_FILES = {
     "backend/services/universe.py",  # the implementation itself
     "backend/tests/test_universe.py",  # test fixtures
@@ -41,10 +44,22 @@ SQL_PATTERN = re.compile(r"dim_active_a_stock", re.IGNORECASE)
 UNIVERSE_CALL_PATTERN = re.compile(r"get_active_universe|sql_where_active_a_share|sql_where_no_st")
 
 
-def check_file(path: Path) -> list[dict]:
+def _is_test_path(rel: str) -> bool:
+    return any(rel.startswith(prefix) for prefix in TEST_PREFIXES)
+
+
+def _filter_files(files: list[Path], *, include_tests: bool) -> list[Path]:
+    if include_tests:
+        return files
+    return [path for path in files if not _is_test_path(str(path.relative_to(REPO_ROOT)))]
+
+
+def check_file(path: Path, *, include_tests: bool = False) -> list[dict]:
     """Returns list of violation dicts."""
     rel = str(path.relative_to(REPO_ROOT))
     if rel in EXEMPT_FILES:
+        return []
+    if not include_tests and _is_test_path(rel):
         return []
     if any(rel.startswith(p) for p in EXEMPT_PREFIXES):
         return []
@@ -90,6 +105,8 @@ def main() -> int:
                    help="check only git-staged files (for pre-commit hook)")
     p.add_argument("--all", action="store_true", default=False,
                    help="check all .py files (default = changed since main)")
+    p.add_argument("--include-tests", action="store_true",
+                   help="include backend/tests fixtures in the lint scan")
     args = p.parse_args()
 
     if args.staged:
@@ -103,11 +120,12 @@ def main() -> int:
         result = subprocess.run(["git", "diff", "main", "--name-only", "--diff-filter=ACM"],
                                 capture_output=True, text=True, cwd=REPO_ROOT)
         files = [REPO_ROOT / f for f in result.stdout.strip().split("\n") if f.endswith(".py")]
+    files = _filter_files(files, include_tests=args.include_tests)
 
     all_findings = []
     for path in files:
         if path.exists():
-            all_findings.extend(check_file(path))
+            all_findings.extend(check_file(path, include_tests=args.include_tests))
 
     if not all_findings:
         print(f"[L8 universe-filter] CLEAN ({len(files)} files checked)")

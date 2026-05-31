@@ -1,6 +1,9 @@
 """Tests for backend/services/universe.py (ST filter added 2026-05-22)."""
 import sys
 from pathlib import Path
+
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from services.universe import (
     is_active_a_share, is_st_stock, sql_where_active_a_share, sql_where_no_st,
@@ -45,8 +48,9 @@ def test_sql_where_active_a_share():
 
 def test_sql_where_no_st():
     sql = sql_where_no_st("d.stock_name")
-    assert "NOT LIKE 'ST%'" in sql
-    assert "NOT LIKE '*ST%'" in sql
+    assert "NOT (" in sql
+    assert "d.stock_name LIKE 'ST%'" in sql
+    assert "d.stock_name LIKE '*ST%'" in sql
     assert "IS NULL" in sql  # tolerate missing JOIN
 
 
@@ -68,7 +72,7 @@ def test_get_active_universe(tmp_path, monkeypatch):
     """)
     conn.execute("INSERT INTO dim_all_ever_listed VALUES ('600002', 0)")  # 600002 已退市
 
-    # 创建模拟 K 线表, 让退市检查用测试数据 (不依赖真实 market.duckdb)
+    # 创建模拟 K 线关系, 让退市检查用测试数据 (不依赖真实 market.duckdb)
     conn.execute("CREATE TABLE price_kline_tdxhub (code VARCHAR, freq VARCHAR, date DATE)")
     conn.execute("""
         INSERT INTO price_kline_tdxhub VALUES
@@ -79,6 +83,7 @@ def test_get_active_universe(tmp_path, monkeypatch):
             ('600003', 'daily', CURRENT_DATE),
             ('600004', 'daily', CURRENT_DATE)
     """)
+    conn.execute("CREATE VIEW v_price_kline_qfq AS SELECT * FROM price_kline_tdxhub")
     # 600002 没有 K 线 = 真退市
 
     from services.universe import get_active_universe
@@ -93,6 +98,33 @@ def test_get_active_universe(tmp_path, monkeypatch):
     assert "600003" not in universe  # ST
     assert "600004" not in universe  # *ST
     assert "830001" not in universe  # 北交所
+    conn.close()
+
+
+def test_get_active_universe_requires_market_truth_source(monkeypatch):
+    from services.universe import UniverseDataError, get_active_universe
+
+    def fail_market_conn():
+        raise RuntimeError("missing market db")
+
+    monkeypatch.setattr("services.market_db.get_market_conn", fail_market_conn)
+
+    with pytest.raises(UniverseDataError, match="K-line market DB"):
+        get_active_universe(include_st=True)
+
+
+def test_get_active_universe_requires_st_name_mapping(tmp_path):
+    import duckdb
+    from services.universe import UniverseDataError, get_active_universe
+
+    conn = duckdb.connect(str(tmp_path / "test.duckdb"))
+    conn.execute("CREATE TABLE price_kline_tdxhub (code VARCHAR, freq VARCHAR, date DATE)")
+    conn.execute("INSERT INTO price_kline_tdxhub VALUES ('600001', 'daily', CURRENT_DATE)")
+    conn.execute("CREATE VIEW v_price_kline_qfq AS SELECT * FROM price_kline_tdxhub")
+
+    with pytest.raises(UniverseDataError, match="ST name mapping"):
+        get_active_universe(conn, market_conn=conn)
+
     conn.close()
 
 

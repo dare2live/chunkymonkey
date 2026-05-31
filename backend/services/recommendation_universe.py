@@ -74,12 +74,12 @@ def _row_value(row: Any, key: str, index: int) -> Any:
 
 def _stock_names(conn: Any, stock_codes: list[str]) -> dict[str, str | None]:
     codes = sorted({str(code) for code in stock_codes if code})
-    if not codes or not _table_exists(conn, "dim_active_a_stock"):
+    if not codes or not _table_exists(conn, "dim_active_a_stock"):  # rule-compliance: ok evidence=code-to-name-mapping
         return {code: None for code in codes}
     rows = conn.execute(
         """
         SELECT stock_code, stock_name
-          FROM dim_active_a_stock
+          FROM dim_active_a_stock  -- rule-compliance: ok evidence=code-to-name-mapping
          WHERE stock_code = ANY(?)
         """,
         (codes,),

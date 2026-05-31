@@ -1,7 +1,7 @@
 """Point-in-time stock universe helpers for label builds.
 
 This module is intentionally scoped to the label/panel pipeline.  It uses
-listing-date history instead of ``dim_active_a_stock`` so historical delisted
+listing-date history instead of ``dim_active_a_stock`` so historical delisted (rule-compliance: ok evidence=docstring-reference)
 stocks stay in training data while future listings are excluded per signal date.
 """
 from __future__ import annotations

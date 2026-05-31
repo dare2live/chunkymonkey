@@ -10,6 +10,11 @@ K 线就是真相源 — 交易所让它交易, K 线就有数据.
 """
 from __future__ import annotations
 
+
+class UniverseDataError(RuntimeError):
+    """Raised when a required universe truth source is unavailable."""
+
+
 def _load_universe_config() -> dict:
     import yaml
     from pathlib import Path
@@ -28,8 +33,8 @@ DELISTED_NO_TRADE_DAYS: int = _UNIVERSE_CFG.get("exclude", {}).get("delisted", {
 def is_active_a_share(stock_code: str) -> bool:
     """Stock code 是否属于活跃 A 股个人散户 universe (60/00/30/68 前缀).
 
-    Note: 不查 delisted 状态 (那需要 DB lookup); 调用方需另外用 SQL JOIN
-    `dim_all_ever_listed.is_active=1` 过滤. 本函数只看前缀.
+    Note: 不查交易状态; 调用方必须用 K 线 truth source 检查近期有交易.
+    本函数只看前缀.
     """
     if not stock_code or len(stock_code) < 2:
         return False
@@ -62,17 +67,36 @@ def sql_where_active_a_share(column: str = "stock_code") -> str:
     return f"SUBSTR({column}, 1, 2) IN ({prefixes})"
 
 
+def _sql_like_any_prefix(column: str, prefixes: tuple[str, ...]) -> str:
+    if not prefixes:
+        return "FALSE"
+    likes = []
+    for prefix in prefixes:
+        escaped = prefix.replace("'", "''")
+        likes.append(f"{column} LIKE '{escaped}%'")
+    return "(" + " OR ".join(likes) + ")"
+
+
+def _table_exists(conn, table_name: str) -> bool:
+    return conn.execute(
+        """
+        SELECT 1
+          FROM information_schema.tables
+         WHERE table_name = ?
+         LIMIT 1
+        """,
+        (table_name,),
+    ).fetchone() is not None
+
+
 def sql_where_no_st(stock_name_column: str = "stock_name") -> str:
     """SQL WHERE 子句排除 ST/*ST stock names.
 
     Example:
         sql = f"... LEFT JOIN dim_active_a_stock d ON ... WHERE {sql_where_no_st('d.stock_name')}"
-        # 输出: (d.stock_name IS NULL OR d.stock_name NOT LIKE 'ST%' AND d.stock_name NOT LIKE '*ST%')
+        # 输出: (d.stock_name IS NULL OR NOT (...configured ST patterns...))
     """
-    return (
-        f"({stock_name_column} IS NULL OR "
-        f"({stock_name_column} NOT LIKE 'ST%' AND {stock_name_column} NOT LIKE '*ST%'))"
-    )
+    return f"({stock_name_column} IS NULL OR NOT {_sql_like_any_prefix(stock_name_column, ST_NAME_PREFIXES)})"
 
 
 # === 2026-05-23 SINGLE SOURCE OF TRUTH for batch task universe ===
@@ -85,24 +109,24 @@ def get_active_universe(
     market_conn=None,
 ) -> set[str]:
     """K 线有交易 + 前缀白名单 + 非 ST = universe. 就这三条."""
-    import duckdb
-    from pathlib import Path
-
     mkt = market_conn
     should_close = False
     if mkt is None:
-        market_db = Path(__file__).resolve().parents[2] / "data" / "market.duckdb"
-        if market_db.exists():
-            mkt = duckdb.connect(str(market_db), read_only=True)
+        try:
+            from services.market_db import get_market_conn
+            mkt = get_market_conn()
             should_close = True
-
-    if mkt is None:
-        return set()
+        except Exception as exc:
+            raise UniverseDataError("K-line market DB is required for active universe truth") from exc
 
     try:
+        from services.market_read import get_canonical_kline_qfq_relation
+        kline_relation = get_canonical_kline_qfq_relation()
+        no_trade_days = int(DELISTED_NO_TRADE_DAYS)
         codes = {r[0] for r in mkt.execute(
-            "SELECT DISTINCT code FROM price_kline_tdxhub "
-            "WHERE freq='daily' AND CAST(date AS DATE) >= CURRENT_DATE - INTERVAL '90 days'"
+            f"SELECT DISTINCT code FROM {kline_relation} "
+            "WHERE freq='daily' "
+            f"AND CAST(date AS DATE) >= CURRENT_DATE - INTERVAL '{no_trade_days} days'"
         ).fetchall()}
     finally:
         if should_close:
@@ -110,15 +134,17 @@ def get_active_universe(
 
     stocks = {c for c in codes if len(c) >= 2 and c[:2] in ACTIVE_A_SHARE_PREFIXES}
 
-    if not include_st and conn is not None:
-        try:
-            st_codes = {r[0] for r in conn.execute(
-                "SELECT stock_code FROM dim_active_a_stock "
-                "WHERE stock_name LIKE 'ST%' OR stock_name LIKE '*ST%'"
-            ).fetchall()}
-            stocks -= st_codes
-        except Exception:
-            pass
+    if not include_st:
+        if conn is None:
+            raise UniverseDataError("smart DB connection is required for ST name mapping")
+        if not _table_exists(conn, "dim_active_a_stock"):  # rule-compliance: ok evidence=table-exists-for-st-name-mapping
+            raise UniverseDataError("dim_active_a_stock is required for ST name mapping")
+        st_filter = _sql_like_any_prefix("stock_name", ST_NAME_PREFIXES)
+        st_codes = {r[0] for r in conn.execute(
+            "SELECT stock_code FROM dim_active_a_stock "  # rule-compliance: ok evidence=st-name-mapping
+            f"WHERE {st_filter}"
+        ).fetchall()}
+        stocks -= st_codes
 
     return stocks
 
@@ -157,10 +183,11 @@ def audit_strategy_universe_contamination(
     if not total_picks:
         return {"table": table, "model_id_filter": model_id_filter, "total_picks": 0}
 
+    st_filter = _sql_like_any_prefix("d.stock_name", ST_NAME_PREFIXES)
     st = conn.execute(f"""
         SELECT COUNT(*), COUNT(DISTINCT t.{stock_code_col})
-          FROM {table} t LEFT JOIN dim_active_a_stock d ON d.stock_code = t.{stock_code_col}
-         {where_filter} {and_or} (d.stock_name LIKE 'ST%' OR d.stock_name LIKE '*ST%')
+          FROM {table} t LEFT JOIN dim_active_a_stock d ON d.stock_code = t.{stock_code_col} -- rule-compliance: ok evidence=st-name-mapping-audit
+         {where_filter} {and_or} {st_filter}
     """).fetchone()
 
     delisted = conn.execute(f"""
