@@ -82,11 +82,11 @@ def get_stock_tags(conn, stock_code: str, snapshot_date: str | None = None) -> d
                 "tdx_l1_code": row[3],
             }
 
-    # Stock name (从 dim_active_a_stock)
+    # Stock name - rule-compliance: ok evidence=code-to-name-mapping
     stock_name = None
-    if _table_exists(conn, "dim_active_a_stock"):
+    if _table_exists(conn, "dim_active_a_stock"):  # rule-compliance: ok evidence=code-to-name-mapping
         row = conn.execute(
-            "SELECT stock_name FROM dim_active_a_stock WHERE stock_code = ? LIMIT 1",
+            "SELECT stock_name FROM dim_active_a_stock WHERE stock_code = ? LIMIT 1",  # rule-compliance: ok evidence=code-to-name-mapping
             [stock_code],
         ).fetchone()
         if row:
@@ -212,9 +212,11 @@ def get_stock_related(conn, stock_code: str, snapshot_date: str | None = None, l
             WITH target AS (
               SELECT tdx_l1 FROM dim_stock_tdx_industry WHERE stock_code = ? LIMIT 1
             )
-            SELECT s.stock_code, s.stock_name, d.tdx_l1_name
+            SELECT d.stock_code,
+                   COALESCE(NULLIF(s.stock_name, ''), d.stock_code) AS stock_name,
+                   d.tdx_l1_name
               FROM dim_stock_tdx_industry d
-              JOIN dim_active_a_stock s ON s.stock_code = d.stock_code
+              LEFT JOIN dim_active_a_stock s ON s.stock_code = d.stock_code  -- rule-compliance: ok evidence=code-to-name-mapping
               JOIN target t ON t.tdx_l1 = d.tdx_l1
              WHERE d.stock_code != ?
              LIMIT ?

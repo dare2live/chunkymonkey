@@ -6,7 +6,11 @@
 > **目标**: 新接手 (无论 Claude 还是人) 读完此文档**不用看代码 / 不用查 DB** 就能理解:
 > 项目业务 / 架构 / 技术路线 / 数据资产 / 当前进度 / 已知坑 / 常用操作.
 
-最后更新: **2026-05-26** (公式工厂整改 Phase 1 GS 系列完成).
+最后更新: **2026-06-01** (dirty worktree 分桶收束: stock graph name-cache 误过滤回归).
+
+## [INDEX] 2026-06-01 增量
+
+- **Stock graph name-cache 误过滤修复**: `backend/services/stock_graph_read.py::get_stock_related` 的 same-industry related 查询把 `dim_active_a_stock` 从 `INNER JOIN` 改为 `LEFT JOIN`，该表只用于 code-to-name/cache 补名，不再过滤 `dim_stock_tdx_industry` 里的同行业关联股票。新增 `backend/tests/test_stock_graph_read.py` 回归：当关联股票不在 name cache 中时仍返回该关联，并用 stock code 作为展示名 fallback。测试登记在 `dim_active_name_cache_contract_tests`，不得作为 active-universe/tradeability 证据。
 
 ## [INDEX] 2026-05-26 增量
 

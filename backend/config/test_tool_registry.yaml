@@ -211,15 +211,16 @@ tools:
       - backend/tests/test_performance_optimization_s1.py
       - backend/tests/test_recommendation_contract.py
       - backend/tests/test_stock_detail_read.py
+      - backend/tests/test_stock_graph_read.py
     owner_module: stock_identity
     scope: unit
-    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_institution_write.py backend/tests/test_performance_optimization_s1.py backend/tests/test_recommendation_contract.py backend/tests/test_stock_detail_read.py
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_institution_write.py backend/tests/test_performance_optimization_s1.py backend/tests/test_recommendation_contract.py backend/tests/test_stock_detail_read.py backend/tests/test_stock_graph_read.py
     status: active
     evidence_level: trusted_with_scope
-    truth_source: dim_active_a_stock code-to-name/cache fixture only, with business truth coming from target service tables
-    risk_reason: verifies display/name fallback contracts; cannot be cited as active-universe or tradeability evidence
+    truth_source: dim_active_a_stock code-to-name/cache fixture only, with business truth coming from target service tables and stock graph industry facts
+    risk_reason: verifies display/name fallback contracts, including that stock graph related-stock membership is not filtered by the name cache; cannot be cited as active-universe or tradeability evidence
     replacement: security_master/name-cache service contracts when stock identity ownership is centralized
-    last_verified: "2026-05-27"
+    last_verified: "2026-06-01"
 
   - id: dim_active_data_sync_enumeration_tests
     paths:
