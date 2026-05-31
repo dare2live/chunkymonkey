@@ -882,6 +882,12 @@ SELECT * FROM mart_data_source_watermark;
 - 修掉本切片新增的 `excluded_stocks` silent `except/pass`: 排除名单读取失败应 fail loud, 不得悄悄把排除股票放回 universe。
 - Tests: `backend/tests/test_audit_financial.py` 改为多 K-line fixture 覆盖 financial universe, `backend/tests/test_screening_engine.py` 用相对当前日期保证 K-line truth-source 可命中。验证: test-tool scoped PASS, py_compile PASS, `python -m pytest backend/tests/test_audit_financial.py backend/tests/test_screening_engine.py backend/tests/test_universe.py` 12/12 PASS, file-level complexity PASS。
 
+**P1 capital-flow PIT-only 切片**:
+- `backend/services/strategies/institution_follow/capital_flow_alpha.py` 移除 `raw_fund_flow_daily` 生产 fallback; 只有 `fact_capital_flow_pit_daily` 可驱动 CapitalFlowAlpha, 否则输出空/0 特征。
+- `backend/services/data_deprecation.py` 明确 `raw_fund_flow_daily` 仍 deprecated; CYQ/order-flow 复用必须先做 fresh source probe、PIT/freshness gate, 不能因旧表存在而恢复生产。顺手把记录时间改为 timezone-aware UTC。
+- `backend/config/panel_pipeline_manifest.yaml` 同步标注 raw fund flow 仅 research/deprecated, no production fallback。
+- Tests: `backend/tests/strategies/test_institution_follow_pit.py`, `backend/tests/strategies/test_institution_batch.py`, `backend/tests/test_data_deprecation.py`。验证: test-tool scoped PASS, py_compile PASS, `python -m pytest ...` 11/11 PASS, file-level complexity PASS。
+
 ### 2026-05-29 市场感知数据接入 P0 接线 + 关联探索(LHB 反向重磅发现)
 
 **关联探索实证(read-only, event study 全 A 股 2022-2026)**: 项目所有"主力跟随"信号 forward 超额收益全反向或随机 —

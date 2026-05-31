@@ -136,7 +136,7 @@ pipelines:
       - mart_p0a_feature_label_panel_v4 (universe + lhb_inst_buy_30d + sector_ret_20d)
       - fact_alpha158_panel (a158_roc60)
       - v_price_kline_qfq (60d return + 涨停)
-      - fact_capital_flow_daily (or raw_fund_flow_daily fallback)
+      - fact_capital_flow_daily (optional; no raw_fund_flow_daily production fallback)
     rebuild_mode: INSERT_OR_REPLACE_by_date_range
     eta_min: 5
 
@@ -147,7 +147,7 @@ pipelines:
     inputs:
       - mart_p0a_feature_label_panel_v4 (universe)
       - fact_lhb_event (LHBAlpha)
-      - raw_fund_flow_daily + fact_capital_flow_pit_daily (CapitalFlowAlpha)
+      - fact_capital_flow_pit_daily (CapitalFlowAlpha PIT-only; raw_fund_flow_daily research/deprecated only)
       - raw_institution_surveys (SurveyAlpha)
       - fact_hsgt_daily (NorthboundAlpha)
     rebuild_mode: INSERT_OR_REPLACE_by_date_range

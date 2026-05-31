@@ -1,7 +1,7 @@
 """Data-asset deprecation registry and metadata writer."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -34,7 +34,7 @@ DATA_DEPRECATION_ASSETS = [
     {
         "table_name": "raw_fund_flow_daily",
         "replacement_table": None,
-        "reason": "Legacy fund-flow raw table is no longer connected; data route marks this source as undecided/deprecated.",
+        "reason": "Legacy fund-flow raw table is no longer connected and remains deprecated; CYQ/order-flow reuse requires a fresh source probe plus PIT/freshness gate before reactivation.",
     },
     {
         "table_name": "fact_hsgt_daily",
@@ -109,7 +109,7 @@ def ensure_data_deprecation_tables(conn: Any) -> None:
 
 def record_data_deprecations(conn: Any, *, dry_run: bool = False) -> dict[str, Any]:
     ensure_data_deprecation_tables(conn)
-    now = datetime.utcnow().isoformat(timespec="seconds")
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     existing = {
         row[0]
         for row in conn.execute("SELECT table_name FROM dim_data_asset").fetchall()

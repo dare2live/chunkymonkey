@@ -12,14 +12,13 @@ from services.strategies.institution_follow._common import (
     fetch_df,
     normalize_signal_date,
     open_smart_conn,
-    table_columns,
     table_exists,
     universe_clause,
 )
 
 
 class CapitalFlowAlpha:
-    """PIT capital-flow features with raw main-flow fields when available."""
+    """PIT capital-flow features; stale raw fund-flow data is not production evidence."""
 
     FEATURE_COLUMNS = [
         "main_inflow_5d",
@@ -48,9 +47,7 @@ class CapitalFlowAlpha:
 
     def get_features(self, signal_date, universe: list[str] | None = None) -> pd.DataFrame:
         signal = normalize_signal_date(signal_date)
-        if table_exists(self.conn, "raw_fund_flow_daily") and self._raw_flow_supported():
-            features = self._raw_fund_flow_features(signal, universe)
-        elif table_exists(self.conn, "fact_capital_flow_pit_daily"):
+        if table_exists(self.conn, "fact_capital_flow_pit_daily"):
             features = self._pit_proxy_features(signal, universe)
         else:
             return empty_features(universe, self.FEATURE_COLUMNS)
@@ -58,58 +55,6 @@ class CapitalFlowAlpha:
         features = complete_universe(features, universe, self.FEATURE_COLUMNS[:-1])
         features["capital_flow_score"] = self._score(features)
         return complete_universe(features, universe, self.FEATURE_COLUMNS)
-
-    def _raw_flow_supported(self) -> bool:
-        cols = table_columns(self.conn, "raw_fund_flow_daily")
-        return {
-            "main_net_amount",
-            "main_net_pct",
-            "super_large_net_amount",
-            "large_net_amount",
-            "small_net_amount",
-        }.issubset(cols)
-
-    def _raw_fund_flow_features(self, signal: str, universe: list[str] | None) -> pd.DataFrame:
-        dt = date_expr("trade_date")
-        clause, params = universe_clause(universe)
-        sql = f"""
-            WITH flow AS (
-                SELECT stock_code,
-                       {dt} AS trade_dt,
-                       COALESCE(main_net_amount, 0) AS main_net_amount,
-                       COALESCE(main_net_pct, 0) AS main_net_pct,
-                       COALESCE(super_large_net_amount, 0) + COALESCE(large_net_amount, 0) AS inst_net_amount,
-                       COALESCE(small_net_amount, 0) AS retail_net_amount
-                  FROM raw_fund_flow_daily
-                 WHERE {dt} < CAST(? AS DATE)
-                   AND {dt} > CAST(? AS DATE) - INTERVAL '10 days'
-                   {clause}
-            )
-            SELECT stock_code,
-                   SUM(CASE WHEN trade_dt > CAST(? AS DATE) - INTERVAL '5 days'
-                            THEN main_net_amount ELSE 0 END) AS capital_main_net_amount_5d,
-                   SUM(CASE WHEN trade_dt > CAST(? AS DATE) - INTERVAL '5 days'
-                             AND main_net_amount > 0
-                            THEN 1 ELSE 0 END) AS sustained_buy_count_5d,
-                   SUM(main_net_amount) AS capital_main_net_amount_10d,
-                   AVG(CASE WHEN trade_dt > CAST(? AS DATE) - INTERVAL '5 days'
-                            THEN main_net_pct END) AS capital_main_net_pct_5d,
-                   AVG(main_net_pct) AS capital_main_net_pct_10d,
-                   SUM(CASE WHEN trade_dt > CAST(? AS DATE) - INTERVAL '5 days'
-                            THEN inst_net_amount ELSE 0 END) AS capital_inst_net_amount_5d,
-                   SUM(inst_net_amount) AS capital_inst_net_amount_10d,
-                   SUM(CASE WHEN trade_dt > CAST(? AS DATE) - INTERVAL '5 days'
-                            THEN retail_net_amount ELSE 0 END) AS capital_retail_net_amount_5d,
-                   SUM(retail_net_amount) AS capital_retail_net_amount_10d
-              FROM flow
-             GROUP BY stock_code
-        """
-        df = fetch_df(
-            self.conn,
-            sql,
-            [signal, signal, *params, signal, signal, signal, signal, signal],
-        )
-        return self._add_divergence(df)
 
     def _pit_proxy_features(self, signal: str, universe: list[str] | None) -> pd.DataFrame:
         dt = date_expr("trade_date")

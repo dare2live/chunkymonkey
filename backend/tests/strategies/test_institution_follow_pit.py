@@ -82,7 +82,7 @@ def test_lhb_alpha_ignores_future_event_rows(conn):
     _assert_same(before, after)
 
 
-def test_capital_flow_alpha_ignores_future_flow_rows(conn):
+def test_capital_flow_alpha_ignores_deprecated_raw_flow_without_pit(conn):
     conn.execute("""
         CREATE TABLE raw_fund_flow_daily (
             trade_date VARCHAR,
@@ -111,6 +111,47 @@ def test_capital_flow_alpha_ignores_future_flow_rows(conn):
     after = alpha.get_features("2024-06-15", ["600000"])
 
     _assert_same(before, after)
+    assert before.iloc[0]["capital_flow_score"] == 0.0
+    assert before.iloc[0]["main_inflow_5d"] == 0.0
+
+
+def test_capital_flow_alpha_prefers_pit_proxy_over_deprecated_raw_flow(conn):
+    conn.execute("""
+        CREATE TABLE raw_fund_flow_daily (
+            trade_date VARCHAR,
+            stock_code VARCHAR,
+            main_net_amount DOUBLE,
+            main_net_pct DOUBLE,
+            super_large_net_amount DOUBLE,
+            large_net_amount DOUBLE,
+            small_net_amount DOUBLE
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE fact_capital_flow_pit_daily (
+            stock_code VARCHAR,
+            trade_date VARCHAR,
+            lhb_net_buy_pct_30d DOUBLE,
+            exec_buy_pct_60d DOUBLE,
+            exec_sell_pct_60d DOUBLE,
+            exec_net_signal DOUBLE
+        )
+    """)
+    conn.execute(
+        "INSERT INTO raw_fund_flow_daily VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ["2024-06-14", "600000", 900_000_000.0, 90.0, 500_000_000.0, 400_000_000.0, -1.0],
+    )
+    conn.execute(
+        "INSERT INTO fact_capital_flow_pit_daily VALUES (?, ?, ?, ?, ?, ?)",
+        ["600000", "2024-06-14", 3.0, 0.8, 0.2, 2.0],
+    )
+
+    features = CapitalFlowAlpha(conn=conn).get_features("2024-06-15", ["600000"])
+
+    row = features.iloc[0]
+    assert row["capital_main_net_amount_5d"] == pytest.approx(2.0)
+    assert row["capital_main_net_pct_5d"] == pytest.approx(3.0)
+    assert row["capital_inst_net_amount_5d"] == pytest.approx(0.6)
 
 
 def test_survey_alpha_ignores_future_disclosure_rows(conn):
