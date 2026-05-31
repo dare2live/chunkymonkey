@@ -3,6 +3,7 @@ import pytest
 from conftest import duck_mem
 from scripts.build_executive_trade_events import (
     _apply_forward_returns,
+    _load_prices_for_codes,
     aggregate_events,
     normalize,
     write_fact,
@@ -82,6 +83,65 @@ def test_apply_forward_returns_uses_notice_date_entry():
 
     assert enriched[0]["gain_20d"] == pytest.approx(0.2)
     assert enriched[0]["max_drawdown_20d"] == pytest.approx(-0.1)
+
+
+def test_apply_forward_returns_indexes_unsorted_prices_per_stock():
+    events = [
+        {"notice_date": "2026-04-28", "stock_code": "000001"},
+        {"notice_date": "2026-04-30", "stock_code": "000001"},
+    ]
+    prices = [
+        {"code": "000001", "date": "2026-05-07", "close": 13.0},
+        {"code": "000001", "date": "2026-04-28", "close": 9.0},
+        {"code": "000001", "date": "2026-05-06", "close": 12.0},
+        {"code": "000001", "date": "2026-04-30", "close": 9.0},
+        {"code": "000001", "date": "2026-04-29", "close": 10.0},
+    ]
+
+    enriched = _apply_forward_returns(events, prices)
+
+    assert enriched[0]["gain_20d"] == pytest.approx(0.3)
+    assert enriched[0]["max_drawdown_20d"] == pytest.approx(-0.1)
+    assert enriched[1]["gain_20d"] == pytest.approx(13.0 / 12.0 - 1)
+    assert enriched[1]["max_drawdown_20d"] == pytest.approx(13.0 / 12.0 - 1)
+
+
+def test_load_prices_for_codes_uses_bulk_code_join(monkeypatch):
+    conn = duck_mem()
+    try:
+        conn.execute(
+            """
+            CREATE TABLE test_kline (
+                code TEXT,
+                date TEXT,
+                close DOUBLE,
+                freq TEXT,
+                adjust TEXT
+            )
+            """
+        )
+        conn.executemany(
+            "INSERT INTO test_kline VALUES (?, ?, ?, ?, ?)",
+            [
+                ("000001", "2026-04-30", 9.0, "daily", "qfq"),
+                ("000001", "2026-04-29", 10.0, "daily", "qfq"),
+                ("000001", "2026-04-28", 8.0, "weekly", "qfq"),
+                ("000002", "2026-04-29", 20.0, "daily", "hfq"),
+                ("000002", "2026-04-30", 21.0, "daily", "qfq"),
+                ("000003", "2026-04-30", 31.0, "daily", "qfq"),
+            ],
+        )
+        monkeypatch.setattr("scripts.build_executive_trade_events.KLINE_DAILY_QFQ_RELATION", "test_kline")
+
+        rows = _load_prices_for_codes(conn, ["000002", "000001", "000001"])
+
+        assert [(row["code"], row["date"], row["close"]) for row in rows] == [
+            ("000001", "2026-04-29", 10.0),
+            ("000001", "2026-04-30", 9.0),
+            ("000002", "2026-04-30", 21.0),
+        ]
+    finally:
+        conn.close()
 
 
 def test_write_raw_and_fact_use_duckdb_executemany_paths():

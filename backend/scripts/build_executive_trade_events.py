@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from bisect import bisect_right
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -225,8 +226,9 @@ def aggregate_events(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
         )
         groups.setdefault(key, []).append({**row, "stock_code": key[1]})
 
+    ordered_groups = sorted(groups.items())
     agg = []
-    for (notice_date, stock_code, direction), rows in sorted(groups.items()):
+    for (notice_date, stock_code, direction), rows in ordered_groups:
         direction_norm = {"增持": "buy", "减持": "sell"}.get(direction)
         if not direction_norm:
             continue
@@ -253,18 +255,63 @@ def aggregate_events(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return agg
 
 
+def _price_code(row: dict[str, Any]) -> str:
+    raw_code = str(row.get("code") or "")
+    return raw_code.zfill(6) if raw_code else ""
+
+
+def _price_date(row: dict[str, Any]) -> str:
+    return str(row.get("date") or "")
+
+
+def _build_price_index(prices: list[dict[str, Any]]) -> dict[str, tuple[list[str], list[float | None]]]:
+    grouped: dict[str, tuple[list[str], list[float | None]]] = {}
+    ordered_prices = sorted(prices, key=lambda row: (_price_code(row), _price_date(row)))
+    for price in ordered_prices:
+        code = _price_code(price)
+        date = _price_date(price)
+        if not code or not date:
+            continue
+        dates, closes = grouped.setdefault(code, ([], []))
+        dates.append(date)
+        closes.append(_to_float(price.get("close")))
+    return grouped
+
+
+def _window_return(
+    closes: list[float | None],
+    entry_idx: int,
+    entry_price: float,
+    horizon: int,
+) -> tuple[float | None, float | None]:
+    window = closes[entry_idx + 1 : entry_idx + 1 + horizon]
+    valid_closes = [close for close in window if close is not None]
+    if not valid_closes:
+        return None, None
+    return valid_closes[-1] / entry_price - 1, min(close / entry_price - 1 for close in valid_closes)
+
+
+def _set_window_return(
+    row: dict[str, Any],
+    closes: list[float | None],
+    entry_idx: int,
+    entry_price: float,
+    horizon: int,
+    gain_col: str,
+    mdd_col: str,
+) -> None:
+    gain, max_drawdown = _window_return(closes, entry_idx, entry_price, horizon)
+    if gain is None:
+        return
+    row[gain_col] = gain
+    row[mdd_col] = max_drawdown
+
+
 def _apply_forward_returns(
     events: list[dict[str, Any]],
     prices: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    grouped: dict[str, list[dict[str, Any]]] = {}
-    for row in prices:
-        code = str(row.get("code") or "").zfill(6)
-        if not code:
-            continue
-        grouped.setdefault(code, []).append(row)
-    for code in grouped:
-        grouped[code].sort(key=lambda row: str(row.get("date") or ""))
+    price_index = _build_price_index(prices)
 
     out = []
     for event in events:
@@ -276,28 +323,45 @@ def _apply_forward_returns(
 
         code = str(row.get("stock_code") or "").zfill(6)
         notice_date = str(row.get("notice_date") or "")
-        price_rows = grouped.get(code) or []
-        after = [price for price in price_rows if str(price.get("date") or "") > notice_date]
-        if not after:
+        dates, closes = price_index.get(code, ([], []))
+        entry_idx = bisect_right(dates, notice_date)
+        if entry_idx >= len(dates):
             out.append(row)
             continue
-        entry_price = _to_float(after[0].get("close"))
+        entry_price = closes[entry_idx]
         if entry_price is None or entry_price <= 0:
             out.append(row)
             continue
-        for n, col_gain, col_mdd in [
-            (20, "gain_20d", "max_drawdown_20d"),
-            (60, "gain_60d", "max_drawdown_60d"),
-        ]:
-            window = after[1 : 1 + n]
-            closes = [_to_float(price.get("close")) for price in window]
-            closes = [close for close in closes if close is not None]
-            if not closes:
-                continue
-            row[col_gain] = closes[-1] / entry_price - 1
-            row[col_mdd] = min(close / entry_price - 1 for close in closes)
+        _set_window_return(row, closes, entry_idx, entry_price, 20, "gain_20d", "max_drawdown_20d")
+        _set_window_return(row, closes, entry_idx, entry_price, 60, "gain_60d", "max_drawdown_60d")
         out.append(row)
     return out
+
+
+def _load_prices_for_codes(mkt: Any, codes: list[str]) -> list[dict[str, Any]]:
+    unique_codes = sorted({code for code in codes if code})
+    if not unique_codes:
+        return []
+    temp_table = "tmp_executive_trade_codes"
+    mkt.execute(f"DROP TABLE IF EXISTS {temp_table}")
+    mkt.execute(f"CREATE TEMP TABLE {temp_table} (code TEXT)")
+    try:
+        mkt.executemany(
+            f"INSERT INTO {temp_table} (code) VALUES (?)",
+            [(code,) for code in unique_codes],
+        )
+        cursor = mkt.execute(
+            f"""
+            SELECT k.code, k.date, k.close
+              FROM {KLINE_DAILY_QFQ_RELATION} k
+              JOIN {temp_table} c ON c.code = k.code
+             WHERE k.freq='daily' AND k.adjust='qfq'
+             ORDER BY k.code, k.date
+            """
+        )
+        return _records_from_cursor(cursor)
+    finally:
+        mkt.execute(f"DROP TABLE IF EXISTS {temp_table}")
 
 
 def compute_forward_returns(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -306,21 +370,8 @@ def compute_forward_returns(events: list[dict[str, Any]]) -> list[dict[str, Any]
     if not codes:
         return _apply_forward_returns(events, [])
     mkt = get_market_conn()
-    # 分批查询避免 IN 列表过大
-    chunk = 500
-    prices: list[dict[str, Any]] = []
     try:
-        for i in range(0, len(codes), chunk):
-            sub = codes[i:i + chunk]
-            placeholders = ",".join(["?"] * len(sub))
-            cursor = mkt.execute(
-                f"""SELECT code, date, close
-                    FROM {KLINE_DAILY_QFQ_RELATION}
-                    WHERE freq='daily' AND adjust='qfq'
-                      AND code IN ({placeholders})""",
-                sub,
-            )
-            prices.extend(_records_from_cursor(cursor))
+        prices = _load_prices_for_codes(mkt, codes)
     finally:
         mkt.close()
     covered_codes = {row["code"] for row in prices}
