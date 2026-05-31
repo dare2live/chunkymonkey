@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from bisect import bisect_right
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -30,14 +31,12 @@ from services.duck_adapter import connect  # noqa: E402
 from formula_engine import compute_formula_signals  # noqa: E402
 
 DEFAULT_RUN_ID = "bestchoice_formula_optuna_20260521_v1"
-
-
-def _next_trading_day(d: pd.Timestamp, all_trading_days: list[pd.Timestamp]) -> pd.Timestamp | None:
-    """Return first trading day > d (T+1 buy date), or None if none."""
-    for td in all_trading_days:
-        if td > d:
-            return td
-    return None
+FEED_COLUMNS = [
+    "run_id", "signal_date", "buy_date", "stock_code", "formula_id", "variant_id",
+    "sell_rule", "holding_days", "confidence_score", "expected_return",
+    "expected_drawdown", "historical_win_rate", "validation_win_rate",
+    "rank_in_date", "created_at",
+]
 
 
 def _load_kline(conn, stock_code: str) -> pd.DataFrame:
@@ -60,6 +59,82 @@ def _load_kline(conn, stock_code: str) -> pd.DataFrame:
     for c in ["open", "high", "low", "close", "volume", "amount"]:
         df[c] = pd.to_numeric(df[c], errors="coerce").astype("float64")
     return df
+
+
+def _buy_date_after_signal(signal_date: pd.Timestamp, trading_days: list[pd.Timestamp]) -> pd.Timestamp | None:
+    pos = bisect_right(trading_days, signal_date)
+    return trading_days[pos] if pos < len(trading_days) else None
+
+
+def _entry_indices(entry: np.ndarray) -> np.ndarray:
+    return np.flatnonzero(entry)
+
+
+def _append_feed_rows_for_entries(
+    feed_rows: list[tuple],
+    entry_idx: np.ndarray,
+    df: pd.DataFrame,
+    start_dt: pd.Timestamp,
+    max_trading_day: pd.Timestamp,
+    trading_days: list[pd.Timestamp],
+    row_template: tuple,
+) -> None:
+    (
+        run_id,
+        stock_code,
+        formula_id,
+        variant_id,
+        sell_rule,
+        holding_days,
+        conf_score,
+        avg_ret,
+        avg_dd,
+        hist_win,
+        val_win,
+        now_utc,
+    ) = row_template
+    for idx in entry_idx:
+        signal_date = df.iloc[idx]["date"]
+        if signal_date < start_dt or signal_date > max_trading_day:
+            continue
+        buy_date = _buy_date_after_signal(signal_date, trading_days)
+        if buy_date is None:
+            continue
+        feed_rows.append(
+            (
+                run_id,
+                signal_date.date(),
+                buy_date.date(),
+                stock_code,
+                formula_id,
+                variant_id,
+                sell_rule,
+                holding_days,
+                conf_score,
+                avg_ret,
+                avg_dd,
+                hist_win,
+                val_win,
+                None,
+                now_utc,
+            )
+        )
+
+
+def _rank_and_deduplicate_feed_rows(feed_rows: list[tuple]) -> tuple[pd.DataFrame, int]:
+    feed_df = pd.DataFrame(feed_rows, columns=FEED_COLUMNS)
+    feed_df["rank_in_date"] = (
+        feed_df.groupby("signal_date")["confidence_score"]
+        .rank(method="dense", ascending=False)
+        .astype("int64")
+        .apply(int)
+    )
+    before_dedup = len(feed_df)
+    feed_df = (
+        feed_df.sort_values(["signal_date", "stock_code", "confidence_score"], ascending=[True, True, False])
+        .drop_duplicates(subset=["signal_date", "stock_code"], keep="first")
+    )
+    return feed_df, before_dedup - len(feed_df)
 
 
 def main() -> int:
@@ -126,7 +201,6 @@ def main() -> int:
                 "SELECT trade_date FROM dim_trading_calendar WHERE is_trading = 1 ORDER BY trade_date"
             ).fetchall()
         ]
-        trading_set = set(trading_days)
         max_trading_day = max(trading_days)
         print(f"[phase2] trading calendar: {len(trading_days)} days, max={max_trading_day.date()}")
 
@@ -183,42 +257,29 @@ def main() -> int:
                 skipped_no_entry += 1
                 continue
 
-            entry_idx = np.where(entry)[0]
-            for idx in entry_idx:
-                signal_date = df.iloc[idx]["date"]
-                if signal_date < start_dt or signal_date > max_trading_day:
-                    continue
-                # Find T+1 buy date (next trading day strictly after signal_date)
-                # Use binary search since trading_days sorted
-                lo, hi = 0, len(trading_days)
-                while lo < hi:
-                    mid = (lo + hi) // 2
-                    if trading_days[mid] <= signal_date:
-                        lo = mid + 1
-                    else:
-                        hi = mid
-                if lo >= len(trading_days):
-                    continue
-                buy_date = trading_days[lo]
-                feed_rows.append(
-                    (
-                        args.run_id,
-                        signal_date.date(),
-                        buy_date.date(),
-                        stock_code,
-                        formula_id,
-                        variant_id,
-                        sell_rule,
-                        holding_days,
-                        conf_score,
-                        avg_ret,
-                        avg_dd,
-                        hist_win,
-                        val_win,
-                        None,  # rank_in_date - filled after all signals collected
-                        now_utc,
-                    )
-                )
+            row_template = (
+                args.run_id,
+                stock_code,
+                formula_id,
+                variant_id,
+                sell_rule,
+                holding_days,
+                conf_score,
+                avg_ret,
+                avg_dd,
+                hist_win,
+                val_win,
+                now_utc,
+            )
+            _append_feed_rows_for_entries(
+                feed_rows,
+                _entry_indices(entry),
+                df,
+                start_dt,
+                max_trading_day,
+                trading_days,
+                row_template,
+            )
 
             if (i + 1) % 100 == 0:
                 print(f"  [phase2] processed {i+1}/{n_candidates} candidates, {len(feed_rows)} signals so far")
@@ -230,30 +291,9 @@ def main() -> int:
             print("[phase2] ERROR: 0 signals generated, no output")
             return 1
 
-        # Assign rank_in_date by confidence_score within each signal_date
-        feed_df = pd.DataFrame(
-            feed_rows,
-            columns=[
-                "run_id", "signal_date", "buy_date", "stock_code", "formula_id", "variant_id",
-                "sell_rule", "holding_days", "confidence_score", "expected_return",
-                "expected_drawdown", "historical_win_rate", "validation_win_rate",
-                "rank_in_date", "created_at",
-            ],
-        )
-        feed_df["rank_in_date"] = (
-            feed_df.groupby("signal_date")["confidence_score"]
-            .rank(method="dense", ascending=False)
-            .astype("int64")
-            .apply(int)
-        )
-
-        # Deduplicate: same stock multiple signals same day → keep highest confidence_score
-        before_dedup = len(feed_df)
-        feed_df = (
-            feed_df.sort_values(["signal_date", "stock_code", "confidence_score"], ascending=[True, True, False])
-            .drop_duplicates(subset=["signal_date", "stock_code"], keep="first")
-        )
-        dedup_dropped = before_dedup - len(feed_df)
+        # Assign rank before deduplicating: downstream consumers expect rank gaps when
+        # same-day duplicate stock signals occupied score slots in the raw feed.
+        feed_df, dedup_dropped = _rank_and_deduplicate_feed_rows(feed_rows)
 
         # Insert
         conn.executemany(

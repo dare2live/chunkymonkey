@@ -88,6 +88,162 @@ def _compute_sell_metrics(buy_price: float, future_closes: np.ndarray, hold_days
     return {"ret": float(ret), "max_dd": max_dd}
 
 
+def _load_kline_frames(conn, stock_codes: list[str], start_date: str) -> dict[str, pd.DataFrame]:
+    codes = sorted({code for code in stock_codes if code})
+    if not codes:
+        return {}
+    placeholders = ", ".join("?" for _ in codes)
+    rows = conn.execute(
+        f"""
+        SELECT code, date, open, high, low, close
+          FROM market.v_price_kline_qfq
+         WHERE freq='daily'
+           AND adjust='qfq'
+           AND code IN ({placeholders})
+           AND date>=?
+         ORDER BY code, date
+        """,
+        [*codes, start_date],
+    ).fetchall()
+    if not rows:
+        return {}
+    frame = pd.DataFrame(rows, columns=["code", "date", "open", "high", "low", "close"])
+    frame["date"] = pd.to_datetime(frame["date"])
+    for column in ["open", "high", "low", "close"]:
+        frame[column] = pd.to_numeric(frame[column], errors="coerce")
+    return {
+        stock_code: group.drop(columns=["code"]).reset_index(drop=True)
+        for stock_code, group in frame.groupby("code", sort=False)
+    }
+
+
+def _append_entry_metrics(
+    target: dict[str, list[dict]],
+    ctx: str,
+    buy_date_str: str,
+    buy_price: float,
+    future: np.ndarray,
+    sell_rules_to_test: list[int],
+) -> None:
+    for hold_d in sell_rules_to_test:
+        metrics = _compute_sell_metrics(buy_price, future, hold_d)
+        if metrics["ret"] is None:
+            continue
+        target.setdefault(ctx, []).append({
+            "buy_date": buy_date_str,
+            "hold_days": hold_d,
+            **metrics,
+        })
+
+
+def _trade_buckets_for_candidate(
+    df: pd.DataFrame,
+    entry: np.ndarray,
+    sell_rules_to_test: list[int],
+    train_end: str,
+    test_end: str,
+) -> tuple[dict[str, list[dict]], dict[str, list[dict]]]:
+    close = df["close"].values
+    dif, dea, _ = _macd(close)
+    train_bucket: dict[str, list[dict]] = {}
+    test_bucket: dict[str, list[dict]] = {}
+    for idx in np.flatnonzero(entry):
+        if idx < 1 or idx + 30 >= len(close):
+            continue
+        ctx = _classify_macd_context(dif[idx], dea[idx], dif[idx - 1], dea[idx - 1])
+        buy_price = close[idx + 1] if idx + 1 < len(close) else None
+        if buy_price is None or not np.isfinite(buy_price) or buy_price <= 0:
+            continue
+        buy_date_str = str(df.iloc[idx + 1]["date"].date())
+        if buy_date_str <= train_end:
+            target = train_bucket
+        elif buy_date_str <= test_end:
+            target = test_bucket
+        else:
+            continue
+        _append_entry_metrics(target, ctx, buy_date_str, buy_price, close[idx + 1:], sell_rules_to_test)
+    return train_bucket, test_bucket
+
+
+def _rows_for_hold_days(rows: list[dict], hold_days: int) -> list[dict]:
+    return [row for row in rows if row["hold_days"] == hold_days]
+
+
+def _test_metrics(test_list: list[dict], best_hd: int) -> tuple[int, float, float, float, float]:
+    selected = _rows_for_hold_days(test_list, best_hd)
+    if not selected:
+        return 0, 0.0, 0.0, 0.0, 0.0
+    df_test = pd.DataFrame(selected)
+    test_n = int(len(df_test))
+    test_ret = float(df_test["ret"].mean())
+    test_win = float((df_test["ret"] > 0).mean())
+    test_dd = float(df_test["max_dd"].mean())
+    test_std = float(df_test["ret"].std())
+    test_sharpe = test_ret / test_std * np.sqrt(252.0 / best_hd) if test_std > 0 else 0.0
+    return test_n, test_ret, test_win, test_dd, test_sharpe
+
+
+def _policy_rows_for_candidate(
+    policy_run_id: str,
+    stock: str,
+    formula_id: str,
+    train_bucket: dict[str, list[dict]],
+    test_bucket: dict[str, list[dict]],
+) -> list[dict]:
+    rows: list[dict] = []
+    for ctx in set(train_bucket) | set(test_bucket):
+        train_list = train_bucket.get(ctx, [])
+        if not train_list:
+            continue
+        df_train = pd.DataFrame(train_list)
+        train_grouped = df_train.groupby("hold_days").agg(
+            n_train=("ret", "count"),
+            train_ret=("ret", "mean"),
+            train_std=("ret", "std"),
+        ).reset_index()
+        train_grouped["train_sharpe"] = train_grouped["train_ret"] / train_grouped["train_std"].replace(0, np.nan) * np.sqrt(252.0 / train_grouped["hold_days"])
+        train_grouped = train_grouped.dropna(subset=["train_sharpe"])
+        if train_grouped.empty:
+            continue
+        best_train = train_grouped.loc[train_grouped["train_sharpe"].idxmax()]
+        best_hd = int(best_train["hold_days"])
+        test_n, test_ret, test_win, test_dd, test_sharpe = _test_metrics(test_bucket.get(ctx, []), best_hd)
+        rows.append({
+            "policy_run_id": policy_run_id,
+            "stock_code": stock,
+            "formula_id": formula_id,
+            "macd_context": ctx,
+            "best_sell_rule": f"fixed_{best_hd}",
+            "holding_days": best_hd,
+            "n_train_signals": int(best_train["n_train"]),
+            "avg_ret": test_ret,
+            "win_rate": test_win,
+            "avg_max_dd": test_dd,
+            "sharpe_like": test_sharpe,
+            "confidence": "high" if test_n >= 5 else "low",
+            "fallback_level": f"stock+formula+context (n_train={int(best_train['n_train'])}, n_test={test_n})",
+            "built_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        })
+    return rows
+
+
+def _insert_policy_rows(conn, policy_rows: list[dict]) -> None:
+    conn.executemany(
+        "INSERT INTO mart_bestchoice_context_exit_policy_v1 VALUES "
+        "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            (
+                row["policy_run_id"], row["stock_code"], row["formula_id"],
+                row["macd_context"], row["best_sell_rule"], row["holding_days"],
+                row["n_train_signals"], row["avg_ret"], row["win_rate"],
+                row["avg_max_dd"], row["sharpe_like"], row["confidence"],
+                row["fallback_level"], row["built_at"],
+            )
+            for row in policy_rows
+        ),
+    )
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--db-path", default=str(REPO_ROOT / "data" / "smartmoney.duckdb"))
@@ -138,25 +294,16 @@ def main() -> int:
 
         # rule-compliance: ok evidence=panel start_date alignment
         START_DATE = "2023-01-03"
+        kline_by_stock = _load_kline_frames(conn, [row[0] for row in cands], START_DATE)
         policy_rows = []
         for i, (stock, formula_id, params_json, _sell_rule) in enumerate(cands):
             try:
                 params = json.loads(params_json) if params_json else {}
             except Exception:
                 params = {}
-            df = pd.DataFrame(
-                conn.execute(
-                    "SELECT date, open, high, low, close FROM market.v_price_kline_qfq "
-                    "WHERE freq='daily' AND adjust='qfq' AND code=? AND date>=? ORDER BY date",
-                    [stock, START_DATE],
-                ).fetchall(),
-                columns=["date", "open", "high", "low", "close"],
-            )
+            df = kline_by_stock.get(stock, pd.DataFrame())
             if df.empty or len(df) < 60:
                 continue
-            df["date"] = pd.to_datetime(df["date"])
-            for c in ["open", "high", "low", "close"]:
-                df[c] = pd.to_numeric(df[c], errors="coerce")
             try:
                 volume_arr = np.ones(len(df), dtype=float) * 1e6
                 amount_arr = volume_arr * df["close"].fillna(0).values
@@ -171,89 +318,11 @@ def main() -> int:
             entry = np.asarray(result.get("entry", []), dtype=bool)
             if not entry.any():
                 continue
-            close = df["close"].values
-            dif, dea, _ = _macd(close)
 
             # Walk-forward: split trades into TRAIN (<= TRAIN_END) and TEST (TRAIN_END..TEST_END)
-            train_bucket: dict[str, list[dict]] = {}
-            test_bucket: dict[str, list[dict]] = {}
-            entry_idx = np.where(entry)[0]
-            for idx in entry_idx:
-                if idx < 1 or idx + 30 >= len(close):
-                    continue
-                ctx = _classify_macd_context(dif[idx], dea[idx], dif[idx - 1], dea[idx - 1])
-                buy_price = close[idx + 1] if idx + 1 < len(close) else None
-                if buy_price is None or not np.isfinite(buy_price) or buy_price <= 0:
-                    continue
-                buy_date = df.iloc[idx + 1]["date"]
-                future = close[idx + 1:]
-                # Period classification
-                buy_date_str = str(buy_date.date())
-                if buy_date_str <= TRAIN_END:
-                    target = train_bucket
-                elif buy_date_str <= TEST_END:
-                    target = test_bucket
-                else:
-                    continue
-                for hold_d in sell_rules_to_test:
-                    metrics = _compute_sell_metrics(buy_price, future, hold_d)
-                    if metrics["ret"] is None:
-                        continue
-                    target.setdefault(ctx, []).append({
-                        "buy_date": buy_date_str,
-                        "hold_days": hold_d,
-                        **metrics,
-                    })
-
+            train_bucket, test_bucket = _trade_buckets_for_candidate(df, entry, sell_rules_to_test, TRAIN_END, TEST_END)
             # Per context: pick best sell_rule on TRAIN, evaluate on TEST
-            for ctx in set(train_bucket.keys()) | set(test_bucket.keys()):
-                train_list = train_bucket.get(ctx, [])
-                test_list = test_bucket.get(ctx, [])
-                if not train_list:
-                    continue
-                df_train = pd.DataFrame(train_list)
-                # Group TRAIN by hold_days, find best
-                train_grouped = df_train.groupby("hold_days").agg(
-                    n_train=("ret", "count"),
-                    train_ret=("ret", "mean"),
-                    train_std=("ret", "std"),
-                ).reset_index()
-                train_grouped["train_sharpe"] = train_grouped["train_ret"] / train_grouped["train_std"].replace(0, np.nan) * np.sqrt(252.0 / train_grouped["hold_days"])
-                train_grouped = train_grouped.dropna(subset=["train_sharpe"])
-                if train_grouped.empty:
-                    continue
-                best_train = train_grouped.loc[train_grouped["train_sharpe"].idxmax()]
-                best_hd = int(best_train["hold_days"])
-                # Evaluate on TEST with that fixed hold_days
-                if test_list:
-                    df_test = pd.DataFrame([t for t in test_list if t["hold_days"] == best_hd])
-                    if not df_test.empty:
-                        test_n = int(len(df_test))
-                        test_ret = float(df_test["ret"].mean())
-                        test_win = float((df_test["ret"] > 0).mean())
-                        test_dd = float(df_test["max_dd"].mean())
-                        test_std = float(df_test["ret"].std())
-                        test_sharpe = test_ret / test_std * np.sqrt(252.0 / best_hd) if test_std > 0 else 0.0
-                    else:
-                        test_n, test_ret, test_win, test_dd, test_sharpe = 0, 0.0, 0.0, 0.0, 0.0
-                else:
-                    test_n, test_ret, test_win, test_dd, test_sharpe = 0, 0.0, 0.0, 0.0, 0.0
-                policy_rows.append({
-                    "policy_run_id": args.policy_run_id,
-                    "stock_code": stock,
-                    "formula_id": formula_id,
-                    "macd_context": ctx,
-                    "best_sell_rule": f"fixed_{best_hd}",
-                    "holding_days": best_hd,
-                    "n_train_signals": int(best_train["n_train"]),
-                    "avg_ret": test_ret,   # TEST metrics (not train)
-                    "win_rate": test_win,
-                    "avg_max_dd": test_dd,
-                    "sharpe_like": test_sharpe,
-                    "confidence": "high" if test_n >= 5 else "low",
-                    "fallback_level": f"stock+formula+context (n_train={int(best_train['n_train'])}, n_test={test_n})",
-                    "built_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-                })
+            policy_rows.extend(_policy_rows_for_candidate(args.policy_run_id, stock, formula_id, train_bucket, test_bucket))
             if (i + 1) % 20 == 0:
                 print(f"  processed {i+1}/{len(cands)}")
 
@@ -261,17 +330,7 @@ def main() -> int:
             print("[Phase 7 POC] 0 policy rows generated, abort")
             return 1
 
-        # Insert
-        for row in policy_rows:
-            conn.execute(
-                "INSERT INTO mart_bestchoice_context_exit_policy_v1 VALUES "
-                "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [row["policy_run_id"], row["stock_code"], row["formula_id"],
-                 row["macd_context"], row["best_sell_rule"], row["holding_days"],
-                 row["n_train_signals"], row["avg_ret"], row["win_rate"],
-                 row["avg_max_dd"], row["sharpe_like"], row["confidence"],
-                 row["fallback_level"], row["built_at"]],
-            )
+        _insert_policy_rows(conn, policy_rows)
         conn.commit()
 
         # Summary
