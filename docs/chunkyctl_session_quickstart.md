@@ -99,6 +99,7 @@ incomplete until this document is updated and the final handoff states whether
 |---|---|
 | `complexity.diff.status=baseline_unavailable` | Treat current complexity findings as historical/unclassified debt, not new regressions |
 | `complexity.diff.status=compared` | `new_high_count` is meaningful and blocks delivery when non-zero |
+| `complexity.identity_mode=path_kind_message` | Default diff ignores line-number drift and compares finding counts by file/type/message; line numbers remain locating hints |
 | `data/reports/tooling/complexity_baseline.json` exists | `doctor` loads it by default; explicit `--baseline` still overrides |
 | `codegraph.pending.added` matches untracked indexable files | Review/stage by worktree bucket; do not force-sync or bulk stage to silence status |
 | `storage_payload.verdict=FAIL` | Inspect recursive JSON keys and oversized opaque DB payloads with `PYTHONPATH=backend python backend/scripts/audit_storage_payloads.py --format markdown` |

@@ -4,56 +4,62 @@ Manual Codex checkpoint. Current operating state lives in `goal.md`; durable
 startup rules live in `AGENTS.md` and `docs/chunkyctl_session_quickstart.md`.
 This file is a short recovery note, not a replacement for those authorities.
 
-Snapshot: `2026-06-01 03:13:56 CST`
+Snapshot: `2026-06-01 03:28:52 CST`
 
 ## Risk First
 
 | Item | State | Action |
 |---|---|---|
-| Worktree | Expected clean after the formula-refresh safety slice is committed | If dirty, run `scripts/chunkyctl worktree --format markdown` and resolve by bucket |
+| Worktree | Expected clean after the current safety/tooling slice is committed | If dirty, run `scripts/chunkyctl worktree --format markdown` and resolve by bucket |
 | GCP | No GCP work started in this Codex slice | Keep stopped unless a scoped, approved cloud objective exists |
 | Optuna/backtest | Not running | Do not resume until architecture/data gates allow it |
 | Storage payload | `PASS`: 320 scanned / 0 FAIL / 0 WARN / 11 reviewed PASS | Reviewed columns are governed by `backend/config/storage_retention.yaml`; recursive or over-cap payloads still block |
-| CodeGraph | Up to date after current `.py` edits | Run `codegraph status .` before handoff |
-| Complexity | Baseline loaded; `new_high_count=0` under `chunkyctl doctor --fast` | Historical HIGH remains debt; do not treat it as current-regression proof |
-| Data freshness/PIT | **FAIL**: latest real audits still fail | Next work should fix local data freshness/PIT in scoped windows before any strategy claim |
+| CodeGraph | Synced after current `.py` edits; untracked test may still show pending until staged/committed | Run `codegraph status .` after commit |
+| Complexity | Historical HIGH remains debt; tooling diff now ignores line-number drift by default | New HIGH still blocks; line drift alone should not |
+| Data freshness/PIT | **FAIL**: latest real audits still fail | Start with K-line freshness, then dependent marts; no strategy claim |
 
 ## Latest Slice
 
-Goal: make the next data-freshness repair safe. The real audit showed
-`fact_technical_trigger` stale at 2026-05-19, but the refresh writer previously
-deleted every row for a formula even when the operator requested a narrow date
-window. That could destroy historical formula evidence while trying to repair
-freshness.
+Goal: keep the next data-freshness repair from creating new history loss or
+tooling noise. The prior formula refresh safety slice is committed. This slice
+adds two guardrails before running production refreshes:
 
-Files included in the formula-refresh safety slice:
+1. `mart_daily_position_recommendation` DDL no longer drops the whole table on
+   each run, so current-date recommendation refreshes cannot erase prior dates.
+2. `audit_tooling_gate.py` compares complexity baseline/diff by file + finding
+   identity counts by default, not by exact line number, so harmless line drift
+   does not masquerade as a new HIGH.
+
+Files included in this safety/tooling slice:
 
 | File | Purpose |
 |---|---|
-| `backend/scripts/build_formula_signals_history.py` | Scope `fact_technical_trigger` DELETE by formula and optional date window; reject formula/date out-of-scope writes; skip horizon evidence replacement during explicit narrow refresh unless explicitly requested |
-| `backend/tests/test_build_formula_signals.py` | Regression tests for scoped replace preserving outside-window rows, 0-signal windows clearing stale rows, and out-of-scope writes failing fast |
-| `goal.md` | Update current FAIL/WARN ledger and next blocker |
-| `PROJECT_INDEX.md` | Update project map increment |
-| `SESSION_HANDOFF.md` | Replace storage slice note with formula-refresh safety note |
+| `backend/scripts/build_daily_position_recommendations.py` | Preserve existing recommendation history when DDL is re-run |
+| `backend/tests/scripts/test_build_daily_position_recommendations.py` | Regression: DDL does not drop a prior recommendation date |
+| `backend/scripts/audit_tooling_gate.py` | Make complexity diff robust to line-number drift while preserving duplicate finding counts |
+| `backend/tests/scripts/test_audit_tooling_gate.py` | Regression tests for line drift and duplicate finding counts |
+| `docs/chunkyctl_session_quickstart.md` | Document default `path_kind_message` complexity identity |
+| `goal.md`, `PROJECT_INDEX.md`, `SESSION_HANDOFF.md` | Update ledger, project map, and recovery note |
 
 ## Verified So Far
 
 | Gate | Result |
 |---|---|
-| `audit_test_tool_health.py --scope ...formula...` | PASS |
-| `pytest -q backend/tests/test_build_formula_signals.py` | 12 passed |
-| `scripts/chunkyctl audit --run --scope ...formula...` | PASS |
-| `codegraph sync .` / `codegraph status .` | Synced; index up to date |
-| Full backend complexity scan | Historical HIGH listed; `doctor --fast` diff shows `new_high_count=0` |
-| `git diff --check` | PASS |
-| `scripts/chunkyctl doctor --fast` | PASS overall while current slice remains dirty |
+| `audit_test_tool_health.py --scope ...tooling/recommendation...` | PASS |
+| `py_compile ...tooling/recommendation/test scopes...` | PASS |
+| `pytest -q backend/tests/scripts/test_audit_tooling_gate.py backend/tests/scripts/test_chunkyctl.py backend/tests/scripts/test_build_daily_position_recommendations.py` | 30 passed |
+| `scripts/chunkyctl audit --run --scope ...tooling/recommendation...` | PASS |
+| `complexity-optimizer ...audit_tooling_gate.py` | No obvious hotspots |
+| `codegraph sync .` | PASS |
+| Read-only explorer on freshness builders | Confirms P0 order: K-line first; alpha158/LHB full-DROP and survey lookback need safety valves |
 
 ## Next Actions
 
-1. Commit the formula-refresh safety slice with `scripts/safe_commit.sh`; do not
+1. Commit this safety/tooling slice with `scripts/safe_commit.sh`; do not
    use raw `git commit`.
 2. Confirm `git status --short`, `codegraph status .`, and
    `scripts/chunkyctl doctor --fast` return clean/PASS after the commit.
-3. Continue the next real blockers from `goal.md`: end-to-end data freshness/PIT,
-   Survivorship/Data completeness failures, and then architecture/business
-   resumption gates.
+3. Continue the next real blocker from `goal.md`: refresh K-line to
+   `2026-05-29` first, then dependent freshness/PIT tables; do not run
+   destructive alpha158/LHB/survey refreshes until their safety boundaries are
+   explicit.

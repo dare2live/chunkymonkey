@@ -127,6 +127,72 @@ def test_parse_complexity_markdown_and_diff_baseline() -> None:
     assert diff["resolved_findings"][0]["path"] == "scripts/old.py"
 
 
+def test_complexity_diff_ignores_line_shift_for_existing_findings() -> None:
+    baseline = audit_tooling_gate.parse_complexity_markdown(
+        """
+# Complexity Hotspots
+
+## HIGH nested-loop
+- Location: `scripts/stable.py:20`
+- Finding: Nested loop may create O(n^2) or worse behavior.
+- Suggestion: batch it
+"""
+    )
+    current = audit_tooling_gate.parse_complexity_markdown(
+        """
+# Complexity Hotspots
+
+## HIGH nested-loop
+- Location: `scripts/stable.py:19`
+- Finding: Nested loop may create O(n^2) or worse behavior.
+- Suggestion: batch it
+"""
+    )
+
+    diff = audit_tooling_gate.diff_complexity_findings(current, baseline)
+
+    assert diff["new_count"] == 0
+    assert diff["resolved_count"] == 0
+    assert diff["unchanged_count"] == 1
+    assert diff["new_high_count"] == 0
+
+
+def test_complexity_diff_preserves_duplicate_identity_counts() -> None:
+    baseline = audit_tooling_gate.parse_complexity_markdown(
+        """
+# Complexity Hotspots
+
+## HIGH nested-loop
+- Location: `scripts/stable.py:20`
+- Finding: Nested loop may create O(n^2) or worse behavior.
+- Suggestion: batch it
+"""
+    )
+    current = audit_tooling_gate.parse_complexity_markdown(
+        """
+# Complexity Hotspots
+
+## HIGH nested-loop
+- Location: `scripts/stable.py:19`
+- Finding: Nested loop may create O(n^2) or worse behavior.
+- Suggestion: batch it
+
+## HIGH nested-loop
+- Location: `scripts/stable.py:40`
+- Finding: Nested loop may create O(n^2) or worse behavior.
+- Suggestion: batch it
+"""
+    )
+
+    diff = audit_tooling_gate.diff_complexity_findings(current, baseline)
+
+    assert diff["new_count"] == 1
+    assert diff["resolved_count"] == 0
+    assert diff["unchanged_count"] == 1
+    assert diff["new_high_count"] == 1
+    assert diff["new_findings"][0]["line"] == 40
+
+
 def test_complexity_diff_without_loaded_baseline_does_not_claim_new_high() -> None:
     current = audit_tooling_gate.parse_complexity_markdown(
         """

@@ -29,7 +29,6 @@ log = logging.getLogger("build_daily_position_recommendations")
 
 
 DDL = """
-DROP TABLE IF EXISTS mart_daily_position_recommendation;
 CREATE TABLE IF NOT EXISTS mart_daily_position_recommendation (
     signal_date           TEXT NOT NULL,
     buy_date              TEXT NOT NULL,

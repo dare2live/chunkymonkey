@@ -244,23 +244,34 @@ def _severity_counts(findings: list[ComplexityFinding]) -> dict[str, int]:
     return {key: value for key, value in counts.items() if value}
 
 
-def _findings_by_identity(findings: list[ComplexityFinding], mode: str) -> dict[tuple[Any, ...], ComplexityFinding]:
-    return {_finding_identity(finding, mode): finding for finding in findings}
+def _findings_by_identity(findings: list[ComplexityFinding], mode: str) -> dict[tuple[Any, ...], list[ComplexityFinding]]:
+    grouped: dict[tuple[Any, ...], list[ComplexityFinding]] = {}
+    for finding in findings:
+        grouped.setdefault(_finding_identity(finding, mode), []).append(finding)
+    return grouped
 
 
 def diff_complexity_findings(
     current: list[ComplexityFinding],
     baseline: list[ComplexityFinding],
     *,
-    identity_mode: str = "path_line_kind_message",
+    identity_mode: str = "path_kind_message",
 ) -> dict[str, Any]:
     current_by_key = _findings_by_identity(current, identity_mode)
     baseline_by_key = _findings_by_identity(baseline, identity_mode)
-    current_keys = set(current_by_key)
-    baseline_keys = set(baseline_by_key)
-    new_findings = sorted((current_by_key[key] for key in current_keys - baseline_keys), key=_finding_sort_key)
-    resolved_findings = sorted((baseline_by_key[key] for key in baseline_keys - current_keys), key=_finding_sort_key)
-    unchanged_findings = sorted((current_by_key[key] for key in current_keys & baseline_keys), key=_finding_sort_key)
+    new_findings: list[ComplexityFinding] = []
+    resolved_findings: list[ComplexityFinding] = []
+    unchanged_findings: list[ComplexityFinding] = []
+    for key in set(current_by_key) | set(baseline_by_key):
+        current_items = current_by_key.get(key, [])
+        baseline_items = baseline_by_key.get(key, [])
+        unchanged_count = min(len(current_items), len(baseline_items))
+        unchanged_findings.extend(current_items[:unchanged_count])
+        new_findings.extend(current_items[unchanged_count:])
+        resolved_findings.extend(baseline_items[unchanged_count:])
+    new_findings.sort(key=_finding_sort_key)
+    resolved_findings.sort(key=_finding_sort_key)
+    unchanged_findings.sort(key=_finding_sort_key)
     return {
         "baseline_count": len(baseline),
         "current_count": len(current),
@@ -279,7 +290,7 @@ def complexity_diff_report(
     baseline: list[ComplexityFinding],
     *,
     baseline_status: str,
-    identity_mode: str = "path_line_kind_message",
+    identity_mode: str = "path_kind_message",
 ) -> dict[str, Any]:
     if baseline_status != "loaded":
         return {
@@ -381,7 +392,7 @@ def build_tooling_gate_report(
     complexity_markdown: str,
     git_status_text: str = "",
     baseline_path: Path | None = None,
-    identity_mode: str = "path_line_kind_message",
+    identity_mode: str = "path_kind_message",
     complexity_target: Path | None = None,
     fail_on_dirty_worktree: bool = False,
 ) -> dict[str, Any]:
@@ -443,7 +454,7 @@ def main() -> int:
     parser.add_argument(
         "--identity-mode",
         choices=("path_line_kind_message", "path_kind_message"),
-        default="path_line_kind_message",
+        default="path_kind_message",
     )
     args = parser.parse_args()
 
