@@ -3426,7 +3426,7 @@ def _check_recommendation_outputs(
         if (
             table_name in {"mart_daily_recommendation", "mart_daily_topk_view_cache"}
             and "stock_code" in columns
-            and _table_exists(conn, "dim_active_a_stock")
+            and _table_exists(conn, "dim_active_a_stock")  # rule-compliance: ok evidence=table-exists-check
         ):
             rows = conn.execute(
                 f"""
@@ -3792,9 +3792,12 @@ def _check_cleanup_policy(
     details: list[dict[str, Any]],
     blockers: list[str],
     warnings: list[str],
+    *,
+    cleanup_scan_root: Path | str | None = None,
 ) -> dict[str, Any]:
+    scan_root = Path(cleanup_scan_root) if cleanup_scan_root is not None else WORKSPACE_ROOT
     forbidden_tables = _find_forbidden_cleanup_tables(conn)
-    forbidden_artifacts = _find_forbidden_cleanup_artifacts(WORKSPACE_ROOT)
+    forbidden_artifacts = _find_forbidden_cleanup_artifacts(scan_root)
     forbidden_dirs = [path for path in forbidden_artifacts if Path(path).is_dir()]
     forbidden_files = [path for path in forbidden_artifacts if Path(path).is_file()]
     violation_count = len(forbidden_tables) + len(forbidden_artifacts)
@@ -3818,7 +3821,7 @@ def _check_cleanup_policy(
     _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
     return {
         "delete_policy": DELETE_POLICY,
-        "cleanup_artifact_scan_root": str(WORKSPACE_ROOT),
+        "cleanup_artifact_scan_root": str(scan_root),
         "forbidden_table_count": len(forbidden_tables),
         "backup_table_count": len([name for name in forbidden_tables if "backup" in name.lower()]),
         "forbidden_dir_count": len(forbidden_dirs),
@@ -4018,6 +4021,7 @@ def record_global_data_quality_gate(
     strict_feature_nulls: bool = True,
     recent_pipeline_limit: int = 200,
     example_limit: int = 5,
+    cleanup_scan_root: Path | str | None = None,
 ) -> dict[str, Any]:
     policy = load_pricing_label_policy()
     ensure_global_data_quality_tables(conn)
@@ -4145,7 +4149,13 @@ def record_global_data_quality_gate(
     )
     stage_started = time.perf_counter()
     _emit_progress("cleanup_policy_scan start")
-    evidence["cleanup_policy"] = _check_cleanup_policy(conn, details, blockers, warnings)
+    evidence["cleanup_policy"] = _check_cleanup_policy(
+        conn,
+        details,
+        blockers,
+        warnings,
+        cleanup_scan_root=cleanup_scan_root,
+    )
     stage_timings["cleanup_policy_scan_s"] = round(time.perf_counter() - stage_started, 3)
     _emit_progress(
         f"cleanup_policy_scan done elapsed={stage_timings['cleanup_policy_scan_s']:.3f}s"

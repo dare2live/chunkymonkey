@@ -180,7 +180,7 @@ def test_workbench_research_exposes_industry_pit_readiness() -> None:
         assert research["industry_pit"]["fallback_signal_rows"] == 1
 
 
-def test_global_data_quality_warns_when_industry_pit_is_not_ready() -> None:
+def test_global_data_quality_warns_when_industry_pit_is_not_ready(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_industry_tables(conn)
         ensure_industry_pit_tables(conn)
@@ -218,6 +218,7 @@ def test_global_data_quality_warns_when_industry_pit_is_not_ready() -> None:
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="dq_industry_pit_warning",
             feature_tables=["fact_feature_panel"],
             include_market=False,

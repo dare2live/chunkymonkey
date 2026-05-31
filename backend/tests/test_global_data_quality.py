@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 
 from conftest import duck_mem
-import services.data_quality as data_quality
 from services.data_processing_monitor import ensure_data_processing_monitor_tables
 from services.data_quality import record_global_data_quality_gate
 from services.pipeline_manifest import record_pipeline_run
@@ -29,7 +28,7 @@ def _seed_calendar(conn) -> None:
     )
 
 
-def test_global_data_quality_gate_blocks_any_unclassified_feature_null() -> None:
+def test_global_data_quality_gate_blocks_any_unclassified_feature_null(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.execute(
@@ -46,6 +45,7 @@ def test_global_data_quality_gate_blocks_any_unclassified_feature_null() -> None
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_null_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -69,7 +69,7 @@ def test_global_data_quality_gate_blocks_any_unclassified_feature_null() -> None
         assert "not classified" in detail["reason"]
 
 
-def test_global_data_quality_gate_blocks_stale_feature_panel_kline_lineage() -> None:
+def test_global_data_quality_gate_blocks_stale_feature_panel_kline_lineage(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.executescript(
@@ -110,6 +110,7 @@ def test_global_data_quality_gate_blocks_stale_feature_panel_kline_lineage() -> 
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_kline_alignment_unit",
             feature_tables=["fact_feature_panel"],
             include_market=True,
@@ -134,7 +135,7 @@ def test_global_data_quality_gate_blocks_stale_feature_panel_kline_lineage() -> 
         assert failed_checks["panel_kline_lineage_stale"] == 1
 
 
-def test_global_data_quality_warns_on_future_institution_notice_dates() -> None:
+def test_global_data_quality_warns_on_future_institution_notice_dates(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.executescript(
@@ -162,6 +163,7 @@ def test_global_data_quality_warns_on_future_institution_notice_dates() -> None:
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_future_notice_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -186,7 +188,7 @@ def test_global_data_quality_warns_on_future_institution_notice_dates() -> None:
         assert "excluded from live signals" in detail["reason"]
 
 
-def test_global_data_quality_blocks_future_source_notice_dates() -> None:
+def test_global_data_quality_blocks_future_source_notice_dates(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.executescript(
@@ -218,6 +220,7 @@ def test_global_data_quality_blocks_future_source_notice_dates() -> None:
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_future_source_notice_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -251,7 +254,7 @@ def test_global_data_quality_blocks_future_source_notice_dates() -> None:
         assert evidence["future_notice_by_source"] == [{"notice_date_source": "source_notice", "rows": 1}]
 
 
-def test_global_data_quality_blocks_page_update_before_report_used_as_availability() -> None:
+def test_global_data_quality_blocks_page_update_before_report_used_as_availability(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.executescript(
@@ -282,6 +285,7 @@ def test_global_data_quality_blocks_page_update_before_report_used_as_availabili
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_holder_page_update_before_report_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -309,7 +313,7 @@ def test_global_data_quality_blocks_page_update_before_report_used_as_availabili
         assert "must not be used" in detail["reason"]
 
 
-def test_global_data_quality_records_page_update_before_report_when_not_used() -> None:
+def test_global_data_quality_records_page_update_before_report_when_not_used(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.executescript(
@@ -340,6 +344,7 @@ def test_global_data_quality_records_page_update_before_report_when_not_used() -
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_holder_page_update_conflict_observed_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -374,7 +379,7 @@ def test_global_data_quality_records_page_update_before_report_when_not_used() -
         assert json.loads(detail["examples_json"])[0]["stock_code"] == "000001"
 
 
-def test_global_data_quality_blocks_invalid_fetched_at_observed_availability() -> None:
+def test_global_data_quality_blocks_invalid_fetched_at_observed_availability(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.executescript(
@@ -405,6 +410,7 @@ def test_global_data_quality_blocks_invalid_fetched_at_observed_availability() -
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_holder_invalid_fetched_observed_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -432,7 +438,7 @@ def test_global_data_quality_blocks_invalid_fetched_at_observed_availability() -
         assert "on/after report_date" in detail["reason"]
 
 
-def test_global_data_quality_blocks_tdx_f10_source_available_before_fact_date() -> None:
+def test_global_data_quality_blocks_tdx_f10_source_available_before_fact_date(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.executescript(
@@ -466,6 +472,7 @@ def test_global_data_quality_blocks_tdx_f10_source_available_before_fact_date() 
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_tdx_f10_available_before_fact_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -494,7 +501,7 @@ def test_global_data_quality_blocks_tdx_f10_source_available_before_fact_date() 
         assert "cannot be earlier" in detail["reason"]
 
 
-def test_global_data_quality_blocks_missing_parsed_shareholder_plan_notice_date() -> None:
+def test_global_data_quality_blocks_missing_parsed_shareholder_plan_notice_date(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.executescript(
@@ -527,6 +534,7 @@ def test_global_data_quality_blocks_missing_parsed_shareholder_plan_notice_date(
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_tdx_f10_plan_missing_notice_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -555,7 +563,7 @@ def test_global_data_quality_blocks_missing_parsed_shareholder_plan_notice_date(
         assert "source notice date" in detail["reason"]
 
 
-def test_global_data_quality_blocks_shareholder_plan_window_as_source_date() -> None:
+def test_global_data_quality_blocks_shareholder_plan_window_as_source_date(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.executescript(
@@ -593,6 +601,7 @@ def test_global_data_quality_blocks_shareholder_plan_window_as_source_date() -> 
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_tdx_f10_plan_window_source_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -621,7 +630,7 @@ def test_global_data_quality_blocks_shareholder_plan_window_as_source_date() -> 
         assert "plan windows" in detail["reason"]
 
 
-def test_global_data_quality_blocks_invalid_shareholder_plan_source_quality() -> None:
+def test_global_data_quality_blocks_invalid_shareholder_plan_source_quality(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.executescript(
@@ -659,6 +668,7 @@ def test_global_data_quality_blocks_invalid_shareholder_plan_source_quality() ->
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_tdx_f10_plan_invalid_quality_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -687,7 +697,7 @@ def test_global_data_quality_blocks_invalid_shareholder_plan_source_quality() ->
         assert "provenance" in detail["reason"]
 
 
-def test_global_data_quality_blocks_initial_shareholder_plan_event_policy_breaks() -> None:
+def test_global_data_quality_blocks_initial_shareholder_plan_event_policy_breaks(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.executescript(
@@ -724,6 +734,7 @@ def test_global_data_quality_blocks_initial_shareholder_plan_event_policy_breaks
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_tdx_f10_initial_plan_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -758,7 +769,7 @@ def test_global_data_quality_blocks_initial_shareholder_plan_event_policy_breaks
         assert by_check["invalid_source_row_grain"]["violation_count"] == 1
 
 
-def test_candidate_contract_seed_ignores_deleted_feature_sets() -> None:
+def test_candidate_contract_seed_ignores_deleted_feature_sets(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.executescript(
@@ -783,6 +794,7 @@ def test_candidate_contract_seed_ignores_deleted_feature_sets() -> None:
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_deleted_candidate_contract_unit",
             feature_tables=["fact_feature_panel_candidate"],
             include_market=False,
@@ -797,7 +809,7 @@ def test_candidate_contract_seed_ignores_deleted_feature_sets() -> None:
         assert contract_count == 0
 
 
-def test_global_data_quality_gate_allows_only_classified_immature_follow_label_nulls() -> None:
+def test_global_data_quality_gate_allows_only_classified_immature_follow_label_nulls(tmp_path) -> None:
     policy = load_pricing_label_policy()
     with duck_mem() as conn:
         _seed_calendar(conn)
@@ -913,6 +925,7 @@ def test_global_data_quality_gate_allows_only_classified_immature_follow_label_n
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_immature_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -935,7 +948,7 @@ def test_global_data_quality_gate_allows_only_classified_immature_follow_label_n
         assert "future immature" in detail["reason"]
 
 
-def test_global_data_quality_gate_blocks_stale_follow_label_quality_counts() -> None:
+def test_global_data_quality_gate_blocks_stale_follow_label_quality_counts(tmp_path) -> None:
     policy = load_pricing_label_policy()
     with duck_mem() as conn:
         _seed_calendar(conn)
@@ -1057,6 +1070,7 @@ def test_global_data_quality_gate_blocks_stale_follow_label_quality_counts() -> 
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_stale_follow_quality_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1079,7 +1093,7 @@ def test_global_data_quality_gate_blocks_stale_follow_label_quality_counts() -> 
         assert "row_count/null_count exactly matches" in detail["reason"]
 
 
-def test_global_data_quality_gate_allows_registry_classified_optional_null() -> None:
+def test_global_data_quality_gate_allows_registry_classified_optional_null(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.execute(
@@ -1094,6 +1108,7 @@ def test_global_data_quality_gate_allows_registry_classified_optional_null() -> 
         conn.execute("INSERT INTO fact_feature_panel VALUES ('000001', '2026-01-02', NULL)")
         record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_create_registry",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1127,6 +1142,7 @@ def test_global_data_quality_gate_allows_registry_classified_optional_null() -> 
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_optional_registry",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1150,7 +1166,7 @@ def test_global_data_quality_gate_allows_registry_classified_optional_null() -> 
         assert "fixture_optional_source_absent" in detail["reason"]
 
 
-def test_global_data_quality_gate_blocks_registry_classified_train_blocking_null() -> None:
+def test_global_data_quality_gate_blocks_registry_classified_train_blocking_null(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.execute(
@@ -1165,6 +1181,7 @@ def test_global_data_quality_gate_blocks_registry_classified_train_blocking_null
         conn.execute("INSERT INTO fact_feature_panel VALUES ('000001', '2026-01-02', NULL)")
         record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_create_train_blocking_registry",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1198,6 +1215,7 @@ def test_global_data_quality_gate_blocks_registry_classified_train_blocking_null
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_train_blocking_registry",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1212,7 +1230,7 @@ def test_global_data_quality_gate_blocks_registry_classified_train_blocking_null
         ) in result["blockers"]
 
 
-def test_global_data_quality_gate_blocks_event_window_nulls_that_should_be_encoded() -> None:
+def test_global_data_quality_gate_blocks_event_window_nulls_that_should_be_encoded(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.execute(
@@ -1228,6 +1246,7 @@ def test_global_data_quality_gate_blocks_event_window_nulls_that_should_be_encod
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_event_encoded_null",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1242,7 +1261,7 @@ def test_global_data_quality_gate_blocks_event_window_nulls_that_should_be_encod
         ) in result["blockers"]
 
 
-def test_global_data_quality_gate_accepts_event_window_zero_encoding() -> None:
+def test_global_data_quality_gate_accepts_event_window_zero_encoding(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.execute(
@@ -1258,6 +1277,7 @@ def test_global_data_quality_gate_accepts_event_window_zero_encoding() -> None:
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_event_encoded_zero",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1269,7 +1289,7 @@ def test_global_data_quality_gate_accepts_event_window_zero_encoding() -> None:
         assert result["blockers"] == []
 
 
-def test_global_data_quality_gate_blocks_rolling_null_after_first_valid_value() -> None:
+def test_global_data_quality_gate_blocks_rolling_null_after_first_valid_value(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.execute(
@@ -1292,6 +1312,7 @@ def test_global_data_quality_gate_blocks_rolling_null_after_first_valid_value() 
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_rolling_post_warmup_null",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1306,7 +1327,7 @@ def test_global_data_quality_gate_blocks_rolling_null_after_first_valid_value() 
         ) in result["blockers"]
 
 
-def test_global_data_quality_gate_accepts_rolling_warmup_null_before_first_valid_value() -> None:
+def test_global_data_quality_gate_accepts_rolling_warmup_null_before_first_valid_value(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.execute(
@@ -1329,6 +1350,7 @@ def test_global_data_quality_gate_accepts_rolling_warmup_null_before_first_valid
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_rolling_warmup_null",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1340,7 +1362,7 @@ def test_global_data_quality_gate_accepts_rolling_warmup_null_before_first_valid
         assert result["blockers"] == []
 
 
-def test_global_data_quality_gate_classifies_excluded_source_gap_without_training_block() -> None:
+def test_global_data_quality_gate_classifies_excluded_source_gap_without_training_block(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.execute(
@@ -1356,6 +1378,7 @@ def test_global_data_quality_gate_classifies_excluded_source_gap_without_trainin
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_excluded_source_gap",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1378,7 +1401,7 @@ def test_global_data_quality_gate_classifies_excluded_source_gap_without_trainin
         assert "source/backfill gaps" in detail["reason"]
 
 
-def test_global_data_quality_gate_allows_industry_relative_null_when_base_is_classified() -> None:
+def test_global_data_quality_gate_allows_industry_relative_null_when_base_is_classified(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.execute(
@@ -1402,6 +1425,7 @@ def test_global_data_quality_gate_allows_industry_relative_null_when_base_is_cla
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_industry_rel_base_null",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1424,7 +1448,7 @@ def test_global_data_quality_gate_allows_industry_relative_null_when_base_is_cla
         assert "ret_20d" in detail["reason"]
 
 
-def test_global_data_quality_gate_blocks_industry_relative_null_when_base_exists() -> None:
+def test_global_data_quality_gate_blocks_industry_relative_null_when_base_exists(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.execute(
@@ -1441,6 +1465,7 @@ def test_global_data_quality_gate_blocks_industry_relative_null_when_base_exists
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_industry_rel_base_present",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1455,7 +1480,7 @@ def test_global_data_quality_gate_blocks_industry_relative_null_when_base_exists
         ) in result["blockers"]
 
 
-def test_global_data_quality_gate_blocks_slow_pipeline_without_stage_timing() -> None:
+def test_global_data_quality_gate_blocks_slow_pipeline_without_stage_timing(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.execute(
@@ -1479,6 +1504,7 @@ def test_global_data_quality_gate_blocks_slow_pipeline_without_stage_timing() ->
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_slow_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1490,7 +1516,7 @@ def test_global_data_quality_gate_blocks_slow_pipeline_without_stage_timing() ->
         assert any("pipeline_performance:slow_run_has_stage_timing" in item for item in result["blockers"])
 
 
-def test_global_data_quality_uses_dedicated_pipeline_performance_policy() -> None:
+def test_global_data_quality_uses_dedicated_pipeline_performance_policy(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.execute(
@@ -1514,6 +1540,7 @@ def test_global_data_quality_uses_dedicated_pipeline_performance_policy() -> Non
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_slow_rank_matrix_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1525,7 +1552,7 @@ def test_global_data_quality_uses_dedicated_pipeline_performance_policy() -> Non
         assert any("build_feature_rank_matrix_duck" in item for item in result["blockers"])
 
 
-def test_global_data_quality_gate_accepts_slow_pipeline_with_stage_timing() -> None:
+def test_global_data_quality_gate_accepts_slow_pipeline_with_stage_timing(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.execute(
@@ -1549,6 +1576,7 @@ def test_global_data_quality_gate_accepts_slow_pipeline_with_stage_timing() -> N
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_slow_timed_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1560,7 +1588,7 @@ def test_global_data_quality_gate_accepts_slow_pipeline_with_stage_timing() -> N
         assert result["blockers"] == []
 
 
-def test_global_data_quality_gate_accepts_slow_pipeline_with_timings_key() -> None:
+def test_global_data_quality_gate_accepts_slow_pipeline_with_timings_key(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.execute(
@@ -1584,6 +1612,7 @@ def test_global_data_quality_gate_accepts_slow_pipeline_with_timings_key() -> No
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_slow_timings_key_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1595,7 +1624,7 @@ def test_global_data_quality_gate_accepts_slow_pipeline_with_timings_key() -> No
         assert result["blockers"] == []
 
 
-def test_global_data_quality_gate_blocks_retired_primary_recommendation_output() -> None:
+def test_global_data_quality_gate_blocks_retired_primary_recommendation_output(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.executescript(
@@ -1628,6 +1657,7 @@ def test_global_data_quality_gate_blocks_retired_primary_recommendation_output()
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_retired_primary_rec_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1642,7 +1672,7 @@ def test_global_data_quality_gate_blocks_retired_primary_recommendation_output()
         ) in result["blockers"]
 
 
-def test_global_data_quality_gate_accepts_champion_primary_recommendation_output() -> None:
+def test_global_data_quality_gate_accepts_champion_primary_recommendation_output(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.executescript(
@@ -1673,6 +1703,7 @@ def test_global_data_quality_gate_accepts_champion_primary_recommendation_output
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_champion_primary_rec_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1684,7 +1715,7 @@ def test_global_data_quality_gate_accepts_champion_primary_recommendation_output
         assert result["blockers"] == []
 
 
-def test_global_data_quality_gate_blocks_non_investable_primary_recommendation() -> None:
+def test_global_data_quality_gate_blocks_non_investable_primary_recommendation(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.executescript(
@@ -1722,6 +1753,7 @@ def test_global_data_quality_gate_blocks_non_investable_primary_recommendation()
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_non_investable_primary_rec_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1736,7 +1768,7 @@ def test_global_data_quality_gate_blocks_non_investable_primary_recommendation()
         ) in result["blockers"]
 
 
-def test_global_data_quality_gate_blocks_forbidden_cleanup_tables_globally() -> None:
+def test_global_data_quality_gate_blocks_forbidden_cleanup_tables_globally(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.executescript(
@@ -1761,6 +1793,7 @@ def test_global_data_quality_gate_blocks_forbidden_cleanup_tables_globally() -> 
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_cleanup_backup_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1776,12 +1809,11 @@ def test_global_data_quality_gate_blocks_forbidden_cleanup_tables_globally() -> 
         assert {"backup_storage_cleanup_unit", "archive_candidate_unit", "model_outputs_bak"}.issubset(names)
 
 
-def test_global_data_quality_gate_blocks_workspace_cleanup_artifacts(tmp_path, monkeypatch) -> None:
+def test_global_data_quality_gate_blocks_workspace_cleanup_artifacts(tmp_path) -> None:
     (tmp_path / "old_archive").mkdir()
     deep_cleanup_file = tmp_path / "a" / "b" / "c" / "d" / "e" / "f" / "stale.orig"
     deep_cleanup_file.parent.mkdir(parents=True)
     deep_cleanup_file.write_text("obsolete", encoding="utf-8")
-    monkeypatch.setattr(data_quality, "WORKSPACE_ROOT", tmp_path)
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.executescript(
@@ -1797,6 +1829,7 @@ def test_global_data_quality_gate_blocks_workspace_cleanup_artifacts(tmp_path, m
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_cleanup_artifact_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1814,7 +1847,7 @@ def test_global_data_quality_gate_blocks_workspace_cleanup_artifacts(tmp_path, m
         assert str(deep_cleanup_file) in [item["path"] for item in cleanup["examples"]]
 
 
-def test_global_data_quality_gate_blocks_current_policy_model_bad_features() -> None:
+def test_global_data_quality_gate_blocks_current_policy_model_bad_features(tmp_path) -> None:
     policy = load_pricing_label_policy()
     with duck_mem() as conn:
         _seed_calendar(conn)
@@ -1848,6 +1881,7 @@ def test_global_data_quality_gate_blocks_current_policy_model_bad_features() -> 
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_current_model_feature_contract_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1862,7 +1896,7 @@ def test_global_data_quality_gate_blocks_current_policy_model_bad_features() -> 
         ) in result["blockers"]
 
 
-def test_global_data_quality_gate_blocks_dangling_model_lifecycle_reference() -> None:
+def test_global_data_quality_gate_blocks_dangling_model_lifecycle_reference(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.executescript(
@@ -1894,6 +1928,7 @@ def test_global_data_quality_gate_blocks_dangling_model_lifecycle_reference() ->
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_dangling_model_lifecycle_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,
@@ -1908,7 +1943,7 @@ def test_global_data_quality_gate_blocks_dangling_model_lifecycle_reference() ->
         ) in result["blockers"]
 
 
-def test_global_data_quality_gate_blocks_unclassified_processing_rejections() -> None:
+def test_global_data_quality_gate_blocks_unclassified_processing_rejections(tmp_path) -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.execute(
@@ -1937,6 +1972,7 @@ def test_global_data_quality_gate_blocks_unclassified_processing_rejections() ->
 
         result = record_global_data_quality_gate(
             conn,
+            cleanup_scan_root=tmp_path,
             gate_run_id="global_dq_processing_monitor_unit",
             feature_tables=["fact_feature_panel"],
             include_market=False,

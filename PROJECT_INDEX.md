@@ -13,6 +13,7 @@
 - **Stock graph name-cache 误过滤修复**: `backend/services/stock_graph_read.py::get_stock_related` 的 same-industry related 查询把 `dim_active_a_stock` 从 `INNER JOIN` 改为 `LEFT JOIN`，该表只用于 code-to-name/cache 补名，不再过滤 `dim_stock_tdx_industry` 里的同行业关联股票。新增 `backend/tests/test_stock_graph_read.py` 回归：当关联股票不在 name cache 中时仍返回该关联，并用 stock code 作为展示名 fallback。测试登记在 `dim_active_name_cache_contract_tests`，不得作为 active-universe/tradeability 证据。
 - **`dim_active_a_stock` 合法用途 evidence 补齐**: route/read-model/data-sync/schema-writer/audit-config 中仍保留的 `dim_active_a_stock` 引用均需同一行 `rule-compliance` 证据；用途限定为 code-to-name/cache、data-sync enumeration、schema/table writer 或 audit config reference，不得重新作为 active-universe/tradeability 真相源。
 - **旧文档引用收束**: `PLAN_V3`、market perception handoff、deprecation SOP 等旧入口引用改为当前权威 `analysis/plan_v3_20260514_archived.md`、`docs/data_product_contract.md`、`docs/engineering_governance.md`；market status route 测试改用内存 DuckDB 与 mocked audit snapshot，不把本地生产库状态当默认测试证据。
+- **Global data-quality cleanup scan 可控化**: `record_global_data_quality_gate()` 新增 `cleanup_scan_root` 测试/调用参数，生产默认仍扫 workspace，单测改传 `tmp_path`，避免真实工作区 dirty artifact 污染测试证据；`dim_active_a_stock` 在 data-quality gate 中仅为表存在性/名称缓存审计参考。
 
 ## [INDEX] 2026-05-26 增量
 
