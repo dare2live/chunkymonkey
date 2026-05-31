@@ -68,6 +68,7 @@ def test_latest_picture_by_code_empty_input_skips_query():
 
 
 class TestPaperNAV:
+    @pytest.mark.realdb
     def test_nav_returns_ok(self, client):
         r = client.get("/api/v3/paper/nav")
         assert r.status_code == 200
@@ -80,6 +81,7 @@ class TestPaperNAV:
             required = {"snapshot_date", "nav", "nav_value", "daily_ret", "cum_ret"}
             assert required.issubset(set(row.keys()))
 
+    @pytest.mark.realdb
     def test_nav_with_from_date(self, client):
         r = client.get("/api/v3/paper/nav?from=2026-01-01")
         assert r.status_code == 200
@@ -90,6 +92,7 @@ class TestPaperNAV:
 
 
 class TestPaperHoldings:
+    @pytest.mark.realdb
     def test_holdings_returns_ok(self, client):
         r = client.get("/api/v3/paper/holdings")
         assert r.status_code == 200
@@ -104,12 +107,14 @@ class TestPaperHoldings:
 
 
 class TestPaperKPIs:
+    @pytest.mark.realdb
     def test_kpis_returns_ok(self, client):
         r = client.get("/api/v3/paper/kpis")
         assert r.status_code == 200
         body = r.json()
         assert body["ok"] is True
 
+    @pytest.mark.realdb
     def test_kpis_window_bounds(self, client):
         r = client.get("/api/v3/paper/kpis?window=0")
         assert r.status_code == 422
@@ -118,6 +123,7 @@ class TestPaperKPIs:
 
 
 class TestPaperSignalIC:
+    @pytest.mark.realdb
     def test_signal_ic_returns_list(self, client):
         r = client.get("/api/v3/paper/signal-ic")
         assert r.status_code == 200
@@ -129,16 +135,19 @@ class TestPaperSignalIC:
             assert "signal" in row
             assert "ic" in row
 
+    @pytest.mark.realdb
     def test_signal_ic_window(self, client):
         r = client.get("/api/v3/paper/signal-ic?window=30&horizon=5")
         assert r.status_code == 200
 
+    @pytest.mark.realdb
     def test_signal_ic_horizon_valid(self, client):
         r = client.get("/api/v3/paper/signal-ic?horizon=10")
         assert r.status_code == 200
 
 
 class TestPaperPLAttr:
+    @pytest.mark.realdb
     def test_pl_attr_returns_by_formula(self, client):
         r = client.get("/api/v3/paper/pl-attr")
         assert r.status_code == 200

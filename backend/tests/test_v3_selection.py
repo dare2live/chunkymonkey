@@ -20,6 +20,7 @@ def client():
 
 
 class TestSelectionLog:
+    @pytest.mark.realdb
     def test_log_basic(self, client):
         r = client.get("/api/v3/selection/log?limit=10")
         assert r.status_code == 200
@@ -31,6 +32,7 @@ class TestSelectionLog:
             required = {"select_date", "stock_code", "select_source", "source_id"}
             assert required.issubset(set(row.keys()))
 
+    @pytest.mark.realdb
     def test_log_source_filter(self, client):
         r = client.get("/api/v3/selection/log?source=formula&limit=5")
         assert r.status_code == 200
@@ -38,6 +40,7 @@ class TestSelectionLog:
         for row in body["data"]:
             assert row["select_source"] == "formula"
 
+    @pytest.mark.realdb
     def test_log_from_filter(self, client):
         r = client.get("/api/v3/selection/log?from=2026-05-01&limit=20")
         assert r.status_code == 200
@@ -47,6 +50,7 @@ class TestSelectionLog:
 
 
 class TestSelectionHistory:
+    @pytest.mark.realdb
     def test_history_for_known_stock(self, client):
         # 真实 DB 中 600519 应有 selection 数据
         r = client.get("/api/v3/selection/history/600519")
@@ -60,6 +64,7 @@ class TestSelectionHistory:
             required = {"selectDate", "formula", "horizon", "retPct", "ddPct", "daysToT1", "outcome"}
             assert required.issubset(set(row.keys()))
 
+    @pytest.mark.realdb
     def test_history_for_unknown_stock(self, client):
         r = client.get("/api/v3/selection/history/999999")
         assert r.status_code == 200
@@ -68,6 +73,7 @@ class TestSelectionHistory:
 
 
 class TestSelectionSummary:
+    @pytest.mark.realdb
     def test_summary_for_one_stock(self, client):
         r = client.get("/api/v3/selection/summary?stock_code=600519")
         assert r.status_code == 200
@@ -75,6 +81,7 @@ class TestSelectionSummary:
         assert body["ok"] is True
         # 0 或 1 行 (若该股有 summary)
 
+    @pytest.mark.realdb
     def test_summary_for_codes(self, client):
         r = client.get("/api/v3/selection/summary?codes=600519,000001,300750")
         assert r.status_code == 200
@@ -87,6 +94,7 @@ class TestSelectionSummary:
 
 
 class TestSelectionBoard:
+    @pytest.mark.realdb
     def test_board_default(self, client):
         r = client.get("/api/v3/selection/board")
         assert r.status_code == 200
@@ -100,17 +108,20 @@ class TestSelectionBoard:
                         "last_outcome", "last_date", "last_formula"}
             assert required.issubset(set(row.keys()))
 
+    @pytest.mark.realdb
     def test_board_limit(self, client):
         r = client.get("/api/v3/selection/board?limit=5")
         body = r.json()
         assert len(body["data"]) <= 5
 
+    @pytest.mark.realdb
     def test_board_limit_bounds(self, client):
         r = client.get("/api/v3/selection/board?limit=0")
         assert r.status_code == 422
 
 
 class TestSelectionWeights:
+    @pytest.mark.realdb
     def test_weights_default(self, client):
         r = client.get("/api/v3/selection/weights")
         assert r.status_code == 200
@@ -128,6 +139,7 @@ class TestSelectionWeights:
             total = sum(r["weight"] for r in body["data"])
             assert abs(total - 1.0) < 0.05  # 5% 容差 (hysteresis 可能造成小偏差)
 
+    @pytest.mark.realdb
     def test_weights_sorted_desc(self, client):
         r = client.get("/api/v3/selection/weights")
         body = r.json()

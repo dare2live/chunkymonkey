@@ -1,12 +1,17 @@
 from fastapi.testclient import TestClient
-import main
-from main import app
-from routers import workbench as workbench_router
+import pytest
 
-client = TestClient(app)
+pytestmark = pytest.mark.realdb
 
 
-def test_health_check():
+@pytest.fixture
+def client():
+    from main import app
+
+    return TestClient(app)
+
+
+def test_health_check(client):
     response = client.get("/health")
 
     assert response.status_code == 200
@@ -15,7 +20,7 @@ def test_health_check():
     assert "etf" in payload["available_modules"]
 
 
-def test_inst_health_summary_alias_matches_health_contract():
+def test_inst_health_summary_alias_matches_health_contract(client):
     response = client.get("/api/inst/health/summary")
 
     assert response.status_code == 200
@@ -25,14 +30,14 @@ def test_inst_health_summary_alias_matches_health_contract():
     assert "etf" in payload["available_modules"]
 
 
-def test_root_redirects_to_v3():
+def test_root_redirects_to_v3(client):
     """Phase ζ: 根路径默认重定向到 v3 设计稿。"""
     response = client.get("/", follow_redirects=False)
     assert response.status_code in (307, 308)
     assert "v3" in response.headers.get("location", "").lower()
 
 
-def test_legacy_returns_410_gone():
+def test_legacy_returns_410_gone(client):
     """Phase ζ 收尾: 旧 vanilla 前端正式退役, /legacy 返回 410 Gone。"""
     response = client.get("/legacy", follow_redirects=False)
     assert response.status_code == 410
@@ -41,7 +46,9 @@ def test_legacy_returns_410_gone():
     assert "/v3" in body["redirect"]
 
 
-def test_toggle_modules_batches_allowed_settings(monkeypatch):
+def test_toggle_modules_batches_allowed_settings(client, monkeypatch):
+    import main
+
     class DummyConn:
         def __init__(self):
             self.rows = None
@@ -70,7 +77,9 @@ def test_toggle_modules_batches_allowed_settings(monkeypatch):
     assert conn.closed is True
 
 
-def test_workbench_storage_route_defaults_to_persisted_read_model(monkeypatch):
+def test_workbench_storage_route_defaults_to_persisted_read_model(client, monkeypatch):
+    from routers import workbench as workbench_router
+
     calls = []
 
     class DummyConn:
