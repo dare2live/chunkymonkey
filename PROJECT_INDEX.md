@@ -888,6 +888,11 @@ SELECT * FROM mart_data_source_watermark;
 - `backend/config/panel_pipeline_manifest.yaml` 同步标注 raw fund flow 仅 research/deprecated, no production fallback。
 - Tests: `backend/tests/strategies/test_institution_follow_pit.py`, `backend/tests/strategies/test_institution_batch.py`, `backend/tests/test_data_deprecation.py`。验证: test-tool scoped PASS, py_compile PASS, `python -m pytest ...` 11/11 PASS, file-level complexity PASS。
 
+**P1 portfolio regime service 切片**:
+- `backend/services/portfolio_walk_forward/regime.py` 新增 `summarize_regime_segments()`, 把 v3 portfolio API 内联 regime 统计下沉到服务函数, 输出顺序固定为 bull/bear/sideways。
+- `backend/routers/v3_portfolio_builder.py` 改为调用 service helper; `backend/services/portfolio/final_holdout.py` 只修历史文档引用到 `analysis/plan_v3_20260514_archived.md`。
+- Tests: `backend/tests/portfolio_walk_forward/test_regime_cash_liquidity.py`, `backend/tests/test_v3_portfolio_builder.py`, `backend/tests/portfolio/test_final_holdout.py`。验证: test-tool scoped PASS, py_compile PASS, `python -m pytest ...` 32/32 PASS, file-level complexity PASS。
+
 ### 2026-05-29 市场感知数据接入 P0 接线 + 关联探索(LHB 反向重磅发现)
 
 **关联探索实证(read-only, event study 全 A 股 2022-2026)**: 项目所有"主力跟随"信号 forward 超额收益全反向或随机 —

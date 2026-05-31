@@ -20,6 +20,43 @@ class TestRegime:
         assert classify_regime(0.05) == "sideways"
         assert classify_regime(-0.05) == "sideways"
 
+    def test_summarize_segments_preserves_order_and_compound_return(self):
+        from services.portfolio_walk_forward.regime import RegimeConfig, summarize_regime_segments
+
+        strategy = [1.0, 1.0, 1.10, 0.99, 1.089, 1.1979]
+        benchmark = [1.0, 1.0, 1.12, 0.88, 1.12, 0.88]
+        segments = summarize_regime_segments(
+            strategy,
+            benchmark,
+            RegimeConfig(bull_threshold=0.10, bear_threshold=-0.10, window_days=2),
+        )
+
+        assert [item["regime"] for item in segments] == ["bull", "bear", "sideways"]
+        assert segments[0]["n_days"] == 1
+        assert segments[0]["avg_daily_ret"] == pytest.approx(0.10)
+        assert segments[0]["cumulative_return"] == pytest.approx(0.10)
+        assert segments[1]["n_days"] == 1
+        assert segments[1]["avg_daily_ret"] == pytest.approx(-0.10)
+        assert segments[1]["cumulative_return"] == pytest.approx(-0.10)
+        assert segments[2]["n_days"] == 2
+        assert segments[2]["avg_daily_ret"] == pytest.approx(0.10)
+        assert segments[2]["cumulative_return"] == pytest.approx(0.21)
+
+    def test_summarize_segments_returns_empty_buckets_when_window_has_no_rows(self):
+        from services.portfolio_walk_forward.regime import RegimeConfig, summarize_regime_segments
+
+        segments = summarize_regime_segments(
+            [1.0, 1.01],
+            [1.0, 1.02],
+            RegimeConfig(window_days=5),
+        )
+
+        assert segments == [
+            {"regime": "bull", "n_days": 0, "avg_daily_ret": 0, "cumulative_return": 0},
+            {"regime": "bear", "n_days": 0, "avg_daily_ret": 0, "cumulative_return": 0},
+            {"regime": "sideways", "n_days": 0, "avg_daily_ret": 0, "cumulative_return": 0},
+        ]
+
 
 class TestCashManager:
     def test_strong_buy_full_invest(self):

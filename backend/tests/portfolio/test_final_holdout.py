@@ -13,7 +13,7 @@ from services.portfolio.final_holdout import (
 
 
 def test_target_constants_match_plan_v3():
-    """常量必须跟 PLAN_V3 §0.1 用户终极目标对齐."""
+    """常量必须跟 analysis/plan_v3_20260514_archived.md §0.1 用户终极目标对齐."""
     assert ANN_RET_TARGET == 0.30
     assert MAX_DD_TARGET == -0.20
     assert MONTHLY_WIN_RATE_TARGET == 0.55

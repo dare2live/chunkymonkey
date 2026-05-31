@@ -1,6 +1,6 @@
 """P3 Final Holdout Acceptance Gate.
 
-PLAN_V3 v3.2 P3 (硬验收):
+analysis/plan_v3_20260514_archived.md v3.2 P3 (硬验收):
 - 输入: P2 冻结代码 / 特征 / 模型 / 权重 / seed
 - 数据: 最近 6 个 OOS 月 stitched final holdout (在 P3 之前不可读)
 - 4 个硬验收 (用户终极目标):
@@ -8,7 +8,7 @@ PLAN_V3 v3.2 P3 (硬验收):
   - max_dd ≥ -20%
   - 超额 vs HS300 > 0
   - 月胜率 ≥ 55%
-- 任一失败 → 停止包装, 回到 alpha 根因, 不调目标 (PLAN_V3 §4 +30% 目标自检)
+- 任一失败 → 停止包装, 回到 alpha 根因, 不调目标 (analysis/plan_v3_20260514_archived.md §4 +30% 目标自检)
 
 输出: paper trading 候选 + 风险暴露 + 不可成交原因 + 交易回放.
 
@@ -25,7 +25,7 @@ from typing import Optional
 log = logging.getLogger("portfolio.final_holdout")
 
 
-# 用户终极目标 (PLAN_V3 §0.1):
+# 用户终极目标 (analysis/plan_v3_20260514_archived.md §0.1):
 # 短期资产最大幅度增值不缩水, 年化≥30% + max_dd≥-20% + 超额 vs HS300>0
 ANN_RET_TARGET = 0.30
 MAX_DD_TARGET = -0.20

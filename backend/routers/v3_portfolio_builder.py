@@ -296,30 +296,8 @@ async def get_portfolio_backtest(
 
     # 3. regime 分段统计 (HS300 60d 回报)
     try:
-        from services.portfolio_walk_forward.regime import classify_regime
-        regime_buckets: dict[str, list[float]] = {"bull": [], "bear": [], "sideways": []}
-        for i in range(60, len(b_navs)):
-            r60 = b_navs[i] / b_navs[i - 60] - 1
-            label = classify_regime(r60)
-            # 该日策略 vs 前 1 日的日收益
-            s_d = s_navs[i] / s_navs[i - 1] - 1
-            regime_buckets[label].append(s_d)
-        regime_segments = []
-        for label, rets in regime_buckets.items():
-            if rets:
-                # cumulative return for that regime
-                cum = 1.0
-                for r in rets:
-                    cum *= (1 + r)
-                regime_segments.append({
-                    "regime": label,
-                    "n_days": len(rets),
-                    "avg_daily_ret": sum(rets) / len(rets),
-                    "cumulative_return": cum - 1,
-                })
-            else:
-                regime_segments.append({"regime": label, "n_days": 0,
-                                         "avg_daily_ret": 0, "cumulative_return": 0})
+        from services.portfolio_walk_forward.regime import summarize_regime_segments
+        regime_segments = summarize_regime_segments(s_navs, b_navs)
     except Exception as exc:
         logger.warning("regime split failed: %s", exc)
         regime_segments = []
