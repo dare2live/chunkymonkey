@@ -221,9 +221,15 @@ async def get_formulas():
     """
     conn = get_conn()
     try:
-        out = []
+        formula_ids = [meta["id"] for meta in FORMULA_METADATA]
+        placeholders = ", ".join("?" for _ in formula_ids)
+        hit_today_by_formula: dict[str, int] = {}
+        total_by_formula: dict[str, int] = {}
+        horizon_by_formula: dict[str, tuple[int, float]] = {}
+
         # 找最新信号日
-        if _table_exists(conn, "fact_technical_trigger"):
+        has_technical_trigger = _table_exists(conn, "fact_technical_trigger")
+        if has_technical_trigger:
             latest_date_row = conn.execute(
                 "SELECT MAX(date) FROM fact_technical_trigger"
             ).fetchone()
@@ -231,51 +237,76 @@ async def get_formulas():
         else:
             latest_date = None
 
+        if has_technical_trigger and latest_date and formula_ids:
+            rows = conn.execute(
+                f"""
+                SELECT formula_id, COUNT(*) AS hit_today
+                  FROM fact_technical_trigger
+                 WHERE date = ? AND formula_id IN ({placeholders})
+                 GROUP BY formula_id
+                """,
+                (latest_date, *formula_ids),
+            ).fetchall()
+            hit_today_by_formula = {
+                str(row["formula_id"]): int(row["hit_today"] or 0)
+                for row in rows
+            }
+
+            rows = conn.execute(
+                f"""
+                SELECT formula_id, COUNT(*) AS n_signals_total
+                  FROM fact_technical_trigger
+                 WHERE formula_id IN ({placeholders})
+                 GROUP BY formula_id
+                """,
+                tuple(formula_ids),
+            ).fetchall()
+            total_by_formula = {
+                str(row["formula_id"]): int(row["n_signals_total"] or 0)
+                for row in rows
+            }
+
+        # 取每个公式最高 sharpe 的 horizon (从 mart_formula_horizon_evidence)
+        if _table_exists(conn, "mart_formula_horizon_evidence") and formula_ids:
+            rows = conn.execute(
+                f"""
+                SELECT formula_id, holding_days, win_rate
+                  FROM (
+                    SELECT formula_id,
+                           holding_days,
+                           win_rate,
+                           ROW_NUMBER() OVER (
+                             PARTITION BY formula_id
+                             ORDER BY sharpe DESC NULLS LAST
+                           ) AS rn
+                      FROM mart_formula_horizon_evidence
+                     WHERE formula_id IN ({placeholders})
+                  )
+                 WHERE rn = 1
+                """,
+                tuple(formula_ids),
+            ).fetchall()
+            horizon_by_formula = {
+                str(row["formula_id"]): (
+                    int(row["holding_days"] or 20),
+                    float(row["win_rate"] or 0),
+                )
+                for row in rows
+            }
+
+        out = []
         for meta in FORMULA_METADATA:
             fid = meta["id"]
-            hit_today = 0
-            win_rate = 0.0
-            horizon = 20
-            n_total = 0
-
-            if _table_exists(conn, "fact_technical_trigger") and latest_date:
-                row = conn.execute(
-                    """
-                    SELECT COUNT(*) FROM fact_technical_trigger
-                     WHERE formula_id = ? AND date = ?
-                    """,
-                    (fid, latest_date),
-                ).fetchone()
-                hit_today = int(row[0] or 0)
-                row = conn.execute(
-                    "SELECT COUNT(*) FROM fact_technical_trigger WHERE formula_id = ?",
-                    (fid,),
-                ).fetchone()
-                n_total = int(row[0] or 0)
-
-            # 取该公式最高 sharpe 的 horizon (从 mart_formula_horizon_evidence)
-            if _table_exists(conn, "mart_formula_horizon_evidence"):
-                row = conn.execute(
-                    """
-                    SELECT holding_days, win_rate
-                      FROM mart_formula_horizon_evidence
-                     WHERE formula_id = ?
-                     ORDER BY sharpe DESC NULLS LAST LIMIT 1
-                    """,
-                    (fid,),
-                ).fetchone()
-                if row:
-                    horizon = int(row[0] or 20)
-                    win_rate = float(row[1] or 0)
+            horizon, win_rate = horizon_by_formula.get(fid, (20, 0.0))
 
             out.append({
                 "id": fid,
                 "name": meta["name"],
                 "tag": meta["tag"],
-                "hit_today": hit_today,
+                "hit_today": hit_today_by_formula.get(fid, 0),
                 "win_rate": win_rate,
                 "horizon": horizon,
-                "n_signals_total": n_total,
+                "n_signals_total": total_by_formula.get(fid, 0),
                 "state_dist": None,
             })
 
@@ -378,7 +409,7 @@ async def get_selection_board(limit: int = Query(50, ge=1, le=500)):
                    h.n_total,
                    h.n30
               FROM today t
-              LEFT JOIN dim_active_a_stock d ON d.stock_code = t.stock_code
+              LEFT JOIN dim_active_a_stock d ON d.stock_code = t.stock_code  -- rule-compliance: ok evidence=code-to-name-mapping
               LEFT JOIN history h            ON h.stock_code = t.stock_code
              ORDER BY t.hit_count DESC, h.n_total DESC
              LIMIT ?
