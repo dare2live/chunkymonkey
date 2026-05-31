@@ -198,11 +198,11 @@ DATA_ROUTES = [
         "data_name": "个股资金流",
         "raw_table": "raw_fund_flow_*",
         "current": {"source": "retired", "protocol": "(2026-04 下架, 反爬高发)", "status": "transitional"},
-        "target": {"source": "(评估)", "protocol": "ak.stock_individual_fund_flow_em / 妙想 push2 / deprecate", "phase": "未定"},
+        "target": {"source": "(重新评估)", "protocol": "ak.stock_individual_fund_flow_em / 妙想 push2 / keep unknown", "phase": "CYQ/PIT/freshness gate"},
         "freshness": "—",
         "step_id": "(模块停用)",
         "client_module": "(fetch_fund_flow_daily.py 已删, 见 git 历史 491072d1)",
-        "notes": "用户已确认整体下架资金流模块.",
+        "notes": "raw_fund_flow_daily 已退役且停在 2026-04-24；CYQ 主力画像重新提出真实订单流需求，恢复前必须先通过 source probe、PIT availability、freshness 和反爬稳定性评估。",
     },
 
     # =================================================================

@@ -846,6 +846,12 @@ SELECT * FROM mart_data_source_watermark;
 
 **剩余 dirty 分层**: `scripts/chunkyctl worktree` 显示总 dirty 从 258 降到 146, unknown=0; 下一批按 bucket 串行处理: `data_source_lineage_profiles` / `audit_gate_scripts` / `updater_split` / pipeline & services / tests。
 
+**P0/P1 data-source lineage 切片**:
+- `backend/config/tdx_data_need_coverage.yaml`: 新增 TDX-first 数据需求覆盖目录, 27 个 need、10 个 source priority、14 个 reassignment proposal; 每个 need 必须带 `grain`、`pit_key`、`freshness_sla`、`evidence_status`、`production_eligibility`。
+- `need_027` 把"主力/超大/大/中/小单资金流向"登记为 `evidence_status=unknown`、`production_eligibility=blocked`; `raw_fund_flow_daily` 当前只可作为研究历史样本, 恢复前必须先过 source probe、PIT availability、freshness 和反爬稳定性。
+- `backend/scripts/audit_tdx_data_need_coverage.py`: Python 内嵌 NEEDS/PRIORITIES/REASSIGNMENTS 搬到 YAML, 审计脚本 exact-sync 三张治理表并清理 obsolete rows。
+- `backend/services/data_sources/data_routes.py`: 资金流路线从"整体下架"改为"重新评估但生产阻断", 防止 CYQ/画像后续需求被误删。
+
 ### 2026-05-29 市场感知数据接入 P0 接线 + 关联探索(LHB 反向重磅发现)
 
 **关联探索实证(read-only, event study 全 A 股 2022-2026)**: 项目所有"主力跟随"信号 forward 超额收益全反向或随机 —

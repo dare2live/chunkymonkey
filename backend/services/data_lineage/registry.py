@@ -55,7 +55,7 @@ LINEAGES: list[LineageSpec] = [
     LineageSpec(
         lineage_id="fact_financial_derived/calc_v1",
         output_table="fact_financial_derived",
-        input_tables=["raw_gpcw_detail", "dim_active_a_stock"],
+        input_tables=["raw_gpcw_detail", "dim_active_a_stock"],  # rule-compliance: ok evidence=lineage-metadata
         description="季报派生 (ROE/毛利率/资产负债率/同比/环比); 跑在 sync_financial 步骤里",
         owner="services.financial_client",
         entry_point="services.financial_client:calc_financial_derived",
@@ -78,7 +78,7 @@ LINEAGES: list[LineageSpec] = [
         input_tables=[
             "price_kline",          # market.duckdb 跨库
             "fact_financial_derived",
-            "dim_active_a_stock",
+            "dim_active_a_stock",  # rule-compliance: ok evidence=lineage-metadata
             "fact_top10_holder_period",
             "fact_lhb_event",
         ],
