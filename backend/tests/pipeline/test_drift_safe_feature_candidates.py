@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import math
 
+import pytest
 from conftest import duck_mem
 from scripts import build_drift_safe_feature_candidates as subject
 
@@ -155,6 +157,94 @@ def _seed_candidate_inputs(conn) -> None:
     )
 
 
+def _legacy_finite_float(value, default=None):
+    if value is None:
+        return default
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return default
+    return out if math.isfinite(out) else default
+
+
+def _legacy_mean(values):
+    return sum(values) / len(values) if values else 0.0
+
+
+def _legacy_sample_std(values):
+    if len(values) <= 1:
+        return 0.0
+    avg = _legacy_mean(values)
+    return math.sqrt(sum((value - avg) ** 2 for value in values) / (len(values) - 1))
+
+
+def _legacy_empty_fold_metrics():
+    return {
+        "fold_count": 0.0,
+        "fold_mean": 0.0,
+        "fold_min": 0.0,
+        "fold_std": 0.0,
+        "fold_coverage": 0.0,
+    }
+
+
+def _legacy_row_direction(row):
+    direction = int(_legacy_finite_float(row.get("rank_direction"), 1.0) or 1)
+    return direction if direction != 0 else 1
+
+
+def _legacy_fold_ids(rows, fold_rank_ic_by_feature):
+    fold_ids = set()
+    for row in rows:
+        feature_name = str(row["feature_name"])
+        fold_ids.update(str(fold_id) for fold_id in fold_rank_ic_by_feature.get(feature_name, {}))
+    return sorted(fold_ids)
+
+
+def _legacy_apply_fold_values(row, fold_rank_ic_by_feature, values_by_fold):
+    observations = 0
+    feature_name = str(row["feature_name"])
+    direction = _legacy_row_direction(row)
+    for fold_id, rank_ic in fold_rank_ic_by_feature.get(feature_name, {}).items():
+        values_by_fold.setdefault(str(fold_id), []).append(direction * rank_ic)
+        observations += 1
+    return observations
+
+
+def _legacy_subset_fold_metrics(rows, fold_rank_ic_by_feature):
+    folds = _legacy_fold_ids(rows, fold_rank_ic_by_feature)
+    if not rows or not folds:
+        return _legacy_empty_fold_metrics()
+    values_by_fold = {}
+    observations = 0
+    for row in rows:
+        observations += _legacy_apply_fold_values(row, fold_rank_ic_by_feature, values_by_fold)
+    fold_values = [_legacy_mean(values_by_fold[fold_id]) for fold_id in folds if values_by_fold.get(fold_id)]
+    if not fold_values:
+        return _legacy_empty_fold_metrics()
+    return {
+        "fold_count": float(len(fold_values)),
+        "fold_mean": float(_legacy_mean(fold_values)),
+        "fold_min": float(min(fold_values)),
+        "fold_std": float(_legacy_sample_std(fold_values)),
+        "fold_coverage": float(observations / max(len(rows) * len(folds), 1)),
+    }
+
+
+def _legacy_subset_fold_score(rows, fold_rank_ic_by_feature):
+    metrics = _legacy_subset_fold_metrics(rows, fold_rank_ic_by_feature)
+    if metrics["fold_count"] <= 0:
+        return 0.0
+    avg_feature_score = _legacy_mean([float(row.get("feature_score") or 0.0) for row in rows])
+    return float(
+        1.20 * metrics["fold_mean"]
+        + 0.50 * metrics["fold_min"]
+        + 0.05 * metrics["fold_coverage"]
+        + 0.15 * avg_feature_score
+        - 0.80 * metrics["fold_std"]
+    )
+
+
 def test_build_drift_safe_candidates_excludes_latest_and_historical_drift():
     conn = duck_mem()
     try:
@@ -258,5 +348,86 @@ def test_latest_critical_drift_overrides_protected_role():
         assert result["excluded_features"]["latest_critical"].startswith("latest_drift_severity")
         for features in result["selected_features_by_candidate"].values():
             assert "latest_critical" not in features
+    finally:
+        conn.close()
+
+
+def test_subset_fold_metrics_match_legacy_oracle_for_edge_cases():
+    rows = [
+        {"feature_name": "no_fold", "rank_direction": 1, "feature_score": None},
+        {"feature_name": "zero_direction", "rank_direction": 0, "feature_score": 0.3},
+        {"feature_name": "negative_direction", "rank_direction": -1, "feature_score": 0.2},
+        {"feature_name": "missing_some_folds", "rank_direction": 1, "feature_score": None},
+    ]
+    fold_rank_ic = {
+        "zero_direction": {"fold_1": 0.10},
+        "negative_direction": {"fold_1": -0.05, "fold_2": 0.02},
+        "missing_some_folds": {"fold_2": 0.04},
+    }
+    cases = [
+        [],
+        [rows[0]],
+        [rows[1]],
+        [rows[2]],
+        [rows[0], rows[1], rows[2], rows[3]],
+    ]
+
+    for case in cases:
+        assert subject._subset_fold_metrics(case, fold_rank_ic) == pytest.approx(
+            _legacy_subset_fold_metrics(case, fold_rank_ic)
+        )
+        assert subject._subset_fold_score(case, fold_rank_ic) == pytest.approx(
+            _legacy_subset_fold_score(case, fold_rank_ic)
+        )
+
+
+def test_fold_stable_variant_matches_subset_score_greedy_order():
+    conn = duck_mem()
+    try:
+        _seed_candidate_inputs(conn)
+        features, summary = subject._load_search_space(conn, "space_1")
+        fold_rank_ic = subject._load_fold_rank_ic_by_feature(conn, summary["source_association_run_id"])
+        latest_drift = subject._load_latest_feature_drift(conn, "champion_1")
+        historical_drift = subject._load_historical_feature_drift(conn, run_ids=["hist_1"])
+        eligible, _excluded = subject._eligible_pool(
+            features,
+            latest_drift=latest_drift,
+            historical_drift=historical_drift,
+            excluded_severities=subject.DEFAULT_EXCLUDED_SEVERITIES,
+            min_abs_rank_ic=0.02,
+            min_coverage_pct=60.0,
+            min_sign_stability=0.55,
+            max_latest_psi=0.25,
+            max_historical_psi=0.25,
+        )
+        protected, candidates = subject._ranked_pool(eligible)
+
+        expected = list(protected)
+        remaining = [row for row in candidates if row not in expected]
+        while remaining and len(expected) < 4:
+            current_names = {str(row["feature_name"]) for row in expected}
+            scored = [
+                (idx, _legacy_subset_fold_score(expected + [row], fold_rank_ic))
+                for idx, row in enumerate(remaining)
+                if str(row["feature_name"]) not in current_names
+            ]
+            if not scored:
+                break
+            best_idx = max(scored, key=lambda item: item[1])[0]
+            expected.append(remaining.pop(best_idx))
+
+        variants = dict(
+            subject._build_variants(
+                eligible,
+                max_features=4,
+                compact_features=3,
+                per_group_limit=4,
+                fold_rank_ic_by_feature=fold_rank_ic,
+            )
+        )
+
+        assert [row["feature_name"] for row in variants["fold_stable"]] == [
+            row["feature_name"] for row in expected
+        ]
     finally:
         conn.close()

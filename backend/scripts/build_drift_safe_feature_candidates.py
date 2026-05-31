@@ -7,7 +7,8 @@ import json
 import math
 import sys
 import time
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, deque
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -73,14 +74,20 @@ CREATE TABLE IF NOT EXISTS mart_model_selection_run (
 """
 
 
+def _script_statements(sql: str) -> list[str]:
+    return [stmt.strip() for stmt in sql.split(";") if stmt.strip()]
+
+
+def _execute_statement(conn: Any, stmt: str) -> None:
+    conn.execute(stmt)
+
+
 def _execute_script(conn: Any, sql: str) -> None:
     if hasattr(conn, "executescript"):
         conn.executescript(sql)
         return
-    for stmt in sql.split(";"):
-        stmt = stmt.strip()
-        if stmt:
-            conn.execute(stmt)
+    for stmt in _script_statements(sql):
+        _execute_statement(conn, stmt)
 
 
 def ensure_tables(conn: Any) -> None:
@@ -221,6 +228,38 @@ def _update_max_psi(out: dict[str, float], feature: str, value: Any) -> None:
     out[feature] = max(float(out.get(feature, 0.0)), psi)
 
 
+def _feature_psi_items(by_feature: Any) -> list[tuple[str, Any]]:
+    if not isinstance(by_feature, dict):
+        return []
+    return [(str(feature), psi) for feature, psi in by_feature.items()]
+
+
+def _apply_feature_psi_items(out: dict[str, float], by_feature: Any) -> None:
+    for feature, psi in _feature_psi_items(by_feature):
+        _update_max_psi(out, feature, psi)
+
+
+def _apply_trial_fold_drift(out: dict[str, float], fold: Any) -> None:
+    if not isinstance(fold, dict):
+        return
+    _apply_feature_psi_items(out, fold.get("feature_drift_psi_by_feature") or {})
+
+
+def _apply_trial_drift_json(out: dict[str, float], value: Any) -> None:
+    folds = _json_loads(value, [])
+    if not isinstance(folds, list):
+        return
+    for fold in folds:
+        _apply_trial_fold_drift(out, fold)
+
+
+def _apply_summary_drift_json(out: dict[str, float], value: Any) -> None:
+    config = _json_loads(value, {})
+    metrics = config.get("best_metrics") if isinstance(config, dict) else {}
+    by_feature = (metrics or {}).get("holdout_feature_drift_psi_by_feature") or {}
+    _apply_feature_psi_items(out, by_feature)
+
+
 def _load_historical_feature_drift(
     conn: Any,
     *,
@@ -244,17 +283,7 @@ def _load_historical_feature_drift(
     ).fetchall()
     out: dict[str, float] = {}
     for row in rows:
-        folds = _json_loads(row["fold_metrics_json"], [])
-        if not isinstance(folds, list):
-            continue
-        for fold in folds:
-            if not isinstance(fold, dict):
-                continue
-            by_feature = fold.get("feature_drift_psi_by_feature") or {}
-            if not isinstance(by_feature, dict):
-                continue
-            for feature, psi in by_feature.items():
-                _update_max_psi(out, str(feature), psi)
+        _apply_trial_drift_json(out, row["fold_metrics_json"])
     if _table_exists(conn, "mart_model_stability_search_summary"):
         summary_params: list[Any] = []
         summary_where = ""
@@ -271,12 +300,7 @@ def _load_historical_feature_drift(
             summary_params,
         ).fetchall()
         for row in rows:
-            config = _json_loads(row["config_json"], {})
-            metrics = config.get("best_metrics") if isinstance(config, dict) else {}
-            by_feature = (metrics or {}).get("holdout_feature_drift_psi_by_feature") or {}
-            if isinstance(by_feature, dict):
-                for feature, psi in by_feature.items():
-                    _update_max_psi(out, str(feature), psi)
+            _apply_summary_drift_json(out, row["config_json"])
     return out
 
 
@@ -333,62 +357,97 @@ def _sample_std(values: list[float]) -> float:
     return math.sqrt(sum((value - avg) ** 2 for value in values) / (len(values) - 1))
 
 
-def _subset_fold_metrics(
-    rows: list[dict[str, Any]],
+@dataclass(frozen=True)
+class _FoldScoreState:
+    row_count: int = 0
+    observations: int = 0
+    feature_score_sum: float = 0.0
+    fold_sums: dict[str, float] = field(default_factory=dict)
+    fold_counts: dict[str, int] = field(default_factory=dict)
+
+
+def _empty_fold_metrics() -> dict[str, float]:
+    return {
+        "fold_count": 0.0,
+        "fold_mean": 0.0,
+        "fold_min": 0.0,
+        "fold_std": 0.0,
+        "fold_coverage": 0.0,
+    }
+
+
+def _row_rank_direction(row: dict[str, Any]) -> int:
+    direction = int(_finite_float(row.get("rank_direction"), 1.0) or 1)
+    return direction if direction != 0 else 1
+
+
+def _row_fold_values(
+    row: dict[str, Any],
     fold_rank_ic_by_feature: dict[str, dict[str, float]],
 ) -> dict[str, float]:
-    feature_names = [str(row["feature_name"]) for row in rows]
-    folds = sorted(
-        {
-            fold_id
-            for feature_name in feature_names
-            for fold_id in fold_rank_ic_by_feature.get(feature_name, {})
-        }
+    feature_name = str(row["feature_name"])
+    direction = _row_rank_direction(row)
+    values: dict[str, float] = {}
+    for fold_id, rank_ic in fold_rank_ic_by_feature.get(feature_name, {}).items():
+        values[str(fold_id)] = direction * rank_ic
+    return values
+
+
+def _fold_state_with_row(
+    state: _FoldScoreState,
+    row: dict[str, Any],
+    fold_rank_ic_by_feature: dict[str, dict[str, float]],
+) -> _FoldScoreState:
+    fold_sums = dict(state.fold_sums)
+    fold_counts = dict(state.fold_counts)
+    observations = state.observations
+    for fold_id, value in _row_fold_values(row, fold_rank_ic_by_feature).items():
+        fold_sums[fold_id] = fold_sums.get(fold_id, 0.0) + value
+        fold_counts[fold_id] = fold_counts.get(fold_id, 0) + 1
+        observations += 1
+    return _FoldScoreState(
+        row_count=state.row_count + 1,
+        observations=observations,
+        feature_score_sum=state.feature_score_sum + float(row.get("feature_score") or 0.0),
+        fold_sums=fold_sums,
+        fold_counts=fold_counts,
     )
-    if not rows or not folds:
-        return {
-            "fold_count": 0.0,
-            "fold_mean": 0.0,
-            "fold_min": 0.0,
-            "fold_std": 0.0,
-            "fold_coverage": 0.0,
-        }
-    values_by_fold: dict[str, list[float]] = defaultdict(list)
-    observations = 0
+
+
+def _fold_state_from_rows(
+    rows: list[dict[str, Any]],
+    fold_rank_ic_by_feature: dict[str, dict[str, float]],
+) -> _FoldScoreState:
+    state = _FoldScoreState()
     for row in rows:
-        feature_name = str(row["feature_name"])
-        direction = int(_finite_float(row.get("rank_direction"), 1.0) or 1)
-        if direction == 0:
-            direction = 1
-        for fold_id, rank_ic in fold_rank_ic_by_feature.get(feature_name, {}).items():
-            values_by_fold[str(fold_id)].append(direction * rank_ic)
-            observations += 1
-    fold_values = [_mean(values_by_fold[fold_id]) for fold_id in folds if values_by_fold.get(fold_id)]
+        state = _fold_state_with_row(state, row, fold_rank_ic_by_feature)
+    return state
+
+
+def _fold_state_metrics(state: _FoldScoreState) -> dict[str, float]:
+    if state.row_count <= 0 or not state.fold_sums:
+        return _empty_fold_metrics()
+    fold_values = [
+        state.fold_sums[fold_id] / state.fold_counts[fold_id]
+        for fold_id in sorted(state.fold_sums)
+        if state.fold_counts.get(fold_id)
+    ]
     if not fold_values:
-        return {
-            "fold_count": 0.0,
-            "fold_mean": 0.0,
-            "fold_min": 0.0,
-            "fold_std": 0.0,
-            "fold_coverage": 0.0,
-        }
+        return _empty_fold_metrics()
     return {
         "fold_count": float(len(fold_values)),
         "fold_mean": float(_mean(fold_values)),
         "fold_min": float(min(fold_values)),
         "fold_std": float(_sample_std(fold_values)),
-        "fold_coverage": float(observations / max(len(rows) * len(folds), 1)),
+        "fold_coverage": float(state.observations / max(state.row_count * len(fold_values), 1)),
     }
 
 
-def _subset_fold_score(
-    rows: list[dict[str, Any]],
-    fold_rank_ic_by_feature: dict[str, dict[str, float]],
-) -> float:
-    metrics = _subset_fold_metrics(rows, fold_rank_ic_by_feature)
+def _fold_state_score(state: _FoldScoreState) -> float:
+    metrics = _fold_state_metrics(state)
     if metrics["fold_count"] <= 0:
         return 0.0
-    avg_feature_score = _mean([float(row.get("feature_score") or 0.0) for row in rows])
+    avg_feature_score = state.feature_score_sum / max(state.row_count, 1)
     return float(
         1.20 * metrics["fold_mean"]
         + 0.50 * metrics["fold_min"]
@@ -396,6 +455,22 @@ def _subset_fold_score(
         + 0.15 * avg_feature_score
         - 0.80 * metrics["fold_std"]
     )
+
+
+def _subset_fold_metrics(
+    rows: list[dict[str, Any]],
+    fold_rank_ic_by_feature: dict[str, dict[str, float]],
+) -> dict[str, float]:
+    state = _fold_state_from_rows(rows, fold_rank_ic_by_feature)
+    return _fold_state_metrics(state)
+
+
+def _subset_fold_score(
+    rows: list[dict[str, Any]],
+    fold_rank_ic_by_feature: dict[str, dict[str, float]],
+) -> float:
+    state = _fold_state_from_rows(rows, fold_rank_ic_by_feature)
+    return _fold_state_score(state)
 
 
 def _eligible_pool(
@@ -480,6 +555,75 @@ def _ranked_pool(eligible: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], 
     return protected, candidates
 
 
+def _build_balanced_variant(
+    protected: list[dict[str, Any]],
+    candidates: list[dict[str, Any]],
+    *,
+    max_features: int,
+    per_group_limit: int,
+) -> list[dict[str, Any]]:
+    by_group: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in candidates:
+        by_group[str(row.get("feature_group") or "unknown")].append(row)
+    balanced = list(protected)
+    group_counts: Counter[str] = Counter(str(row.get("feature_group") or "unknown") for row in balanced)
+    active_groups = deque(sorted(by_group))
+    while active_groups and len(balanced) < max_features:
+        group = active_groups.popleft()
+        if group_counts[group] >= per_group_limit or not by_group[group]:
+            continue
+        balanced.append(by_group[group].pop(0))
+        group_counts[group] += 1
+        if group_counts[group] < per_group_limit and by_group[group]:
+            active_groups.append(group)
+    return _dedupe_features(balanced)[:max_features]
+
+
+def _best_fold_stable_candidate_idx(
+    remaining: list[dict[str, Any]],
+    current_names: set[str],
+    stable_state: _FoldScoreState,
+    fold_rank_ic_by_feature: dict[str, dict[str, float]],
+) -> int:
+    best_idx = -1
+    best_score = -float("inf")
+    for idx, row in enumerate(remaining):
+        if str(row["feature_name"]) in current_names:
+            continue
+        score = _fold_state_score(_fold_state_with_row(stable_state, row, fold_rank_ic_by_feature))
+        if score > best_score:
+            best_idx = idx
+            best_score = score
+    return best_idx
+
+
+def _select_fold_stable_features(
+    protected: list[dict[str, Any]],
+    candidates: list[dict[str, Any]],
+    *,
+    max_features: int,
+    fold_rank_ic_by_feature: dict[str, dict[str, float]],
+) -> list[dict[str, Any]]:
+    stable = list(protected)
+    remaining = [row for row in candidates if row not in stable]
+    current_names = {str(row["feature_name"]) for row in stable}
+    stable_state = _fold_state_from_rows(stable, fold_rank_ic_by_feature)
+    while remaining and len(stable) < max_features:
+        best_idx = _best_fold_stable_candidate_idx(
+            remaining,
+            current_names,
+            stable_state,
+            fold_rank_ic_by_feature,
+        )
+        if best_idx < 0:
+            break
+        selected = remaining.pop(best_idx)
+        stable.append(selected)
+        current_names.add(str(selected["feature_name"]))
+        stable_state = _fold_state_with_row(stable_state, selected, fold_rank_ic_by_feature)
+    return _dedupe_features(stable)[:max_features]
+
+
 def _build_variants(
     eligible: list[dict[str, Any]],
     *,
@@ -494,44 +638,21 @@ def _build_variants(
     variants.append(("top", top))
     compact = _dedupe_features(protected + candidates)[: max(1, min(compact_features, max_features))]
     variants.append(("compact", compact))
-    by_group: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in candidates:
-        by_group[str(row.get("feature_group") or "unknown")].append(row)
-    balanced = list(protected)
-    group_counts: Counter[str] = Counter(str(row.get("feature_group") or "unknown") for row in balanced)
-    while len(balanced) < max_features:
-        added = False
-        for group in sorted(by_group):
-            if group_counts[group] >= per_group_limit:
-                continue
-            if not by_group[group]:
-                continue
-            balanced.append(by_group[group].pop(0))
-            group_counts[group] += 1
-            added = True
-            if len(balanced) >= max_features:
-                break
-        if not added:
-            break
-    variants.append(("balanced", _dedupe_features(balanced)[:max_features]))
+    balanced = _build_balanced_variant(
+        protected,
+        candidates,
+        max_features=max_features,
+        per_group_limit=per_group_limit,
+    )
+    variants.append(("balanced", balanced))
     if fold_rank_ic_by_feature:
-        stable = list(protected)
-        remaining = [row for row in candidates if row not in stable]
-        while remaining and len(stable) < max_features:
-            current_names = {str(row["feature_name"]) for row in stable}
-            best_idx = -1
-            best_score = -float("inf")
-            for idx, row in enumerate(remaining):
-                if str(row["feature_name"]) in current_names:
-                    continue
-                score = _subset_fold_score(stable + [row], fold_rank_ic_by_feature)
-                if score > best_score:
-                    best_idx = idx
-                    best_score = score
-            if best_idx < 0:
-                break
-            stable.append(remaining.pop(best_idx))
-        variants.append(("fold_stable", _dedupe_features(stable)[:max_features]))
+        stable = _select_fold_stable_features(
+            protected,
+            candidates,
+            max_features=max_features,
+            fold_rank_ic_by_feature=fold_rank_ic_by_feature,
+        )
+        variants.append(("fold_stable", stable))
     out: list[tuple[str, list[dict[str, Any]]]] = []
     seen_sets: set[tuple[str, ...]] = set()
     for suffix, rows in variants:
@@ -541,6 +662,36 @@ def _build_variants(
         seen_sets.add(key)
         out.append((suffix, rows))
     return out
+
+
+def _candidate_feature_rows(
+    *,
+    run_id: str,
+    candidate_id: str,
+    rows: list[dict[str, Any]],
+    built_at: str,
+) -> list[tuple[Any, ...]]:
+    return [
+        (
+            run_id,
+            candidate_id,
+            row["feature_name"],
+            row.get("feature_group"),
+            idx,
+            row.get("feature_score"),
+            row.get("selection_role"),
+            row.get("rank_ic"),
+            row.get("abs_rank_ic"),
+            row.get("coverage_pct"),
+            row.get("sign_stability"),
+            row.get("fold_rank_ic_std"),
+            row.get("latest_drift_psi"),
+            row.get("latest_drift_severity"),
+            row.get("historical_max_psi"),
+            built_at,
+        )
+        for idx, row in enumerate(rows, start=1)
+    ]
 
 
 def build_drift_safe_feature_candidates(
@@ -603,6 +754,7 @@ def build_drift_safe_feature_candidates(
     model_rows: list[tuple[Any, ...]] = []
     feature_rows: list[tuple[Any, ...]] = []
     eligible_names = [str(row["feature_name"]) for row in eligible]
+    sorted_excluded_severities = sorted(excluded_severities)
     for suffix, rows in variants:
         candidate_id = f"{run_id}_{suffix}"
         candidate_ids.append(candidate_id)
@@ -643,7 +795,7 @@ def build_drift_safe_feature_candidates(
                         "thresholds": {
                             "max_latest_psi": max_latest_psi,
                             "max_historical_psi": max_historical_psi,
-                            "excluded_severities": sorted(excluded_severities),
+                            "excluded_severities": sorted_excluded_severities,
                         },
                     },
                     ensure_ascii=False,
@@ -652,27 +804,14 @@ def build_drift_safe_feature_candidates(
                 built_at,
             )
         )
-        for idx, row in enumerate(rows, start=1):
-            feature_rows.append(
-                (
-                    run_id,
-                    candidate_id,
-                    row["feature_name"],
-                    row.get("feature_group"),
-                    idx,
-                    row.get("feature_score"),
-                    row.get("selection_role"),
-                    row.get("rank_ic"),
-                    row.get("abs_rank_ic"),
-                    row.get("coverage_pct"),
-                    row.get("sign_stability"),
-                    row.get("fold_rank_ic_std"),
-                    row.get("latest_drift_psi"),
-                    row.get("latest_drift_severity"),
-                    row.get("historical_max_psi"),
-                    built_at,
-                )
+        feature_rows.extend(
+            _candidate_feature_rows(
+                run_id=run_id,
+                candidate_id=candidate_id,
+                rows=rows,
+                built_at=built_at,
             )
+        )
     if model_rows:
         conn.executemany(
             """
@@ -706,7 +845,7 @@ def build_drift_safe_feature_candidates(
         "min_sign_stability": min_sign_stability,
         "max_latest_psi": max_latest_psi,
         "max_historical_psi": max_historical_psi,
-        "excluded_severities": sorted(excluded_severities),
+        "excluded_severities": sorted_excluded_severities,
         "fold_stable_variant": bool(fold_rank_ic_by_feature),
     }
     conn.execute(
