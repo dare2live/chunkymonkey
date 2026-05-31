@@ -171,7 +171,11 @@ def _execute_script(conn: Any, sql: str) -> None:
     for stmt in sql.split(";"):
         stmt = stmt.strip()
         if stmt:
-            conn.execute(stmt)
+            _execute_statement(conn, stmt)
+
+
+def _execute_statement(conn: Any, sql: str) -> None:
+    conn.execute(sql)
 
 
 def ensure_tables(conn: Any) -> None:
@@ -535,14 +539,62 @@ def extract_python_imports(text: str, current_module: str | None = None) -> list
     imports: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            for alias in node.names:
-                imports.add(alias.name)
+            imports.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
             resolved = _resolve_relative_import(current_module, node.module, node.level)
             if resolved:
                 imports.add(resolved)
     prefixes = ("services", "scripts", "routers", "backend.services", "backend.scripts", "backend.routers")
     return sorted(item for item in imports if item.startswith(prefixes))
+
+
+def _backend_table_edges(asset_id: str, reads: Iterable[str], writes: Iterable[str]) -> set[Edge]:
+    edges: set[Edge] = set()
+    for table in reads:
+        edges.add(Edge(asset_id, f"duckdb:{table}", "table_read", table, "SQL FROM/JOIN"))
+    for table in writes:
+        edges.add(Edge(asset_id, f"duckdb:{table}", "table_write", table, "SQL write DDL/DML"))
+    return edges
+
+
+def _backend_route_edges(asset_id: str, routes: Iterable[str]) -> set[Edge]:
+    return {
+        Edge(asset_id, f"api:{route.split(' ', 1)[-1]}", "api_route", route, "FastAPI decorator")
+        for route in routes
+    }
+
+
+def _resolve_import_asset(imported: str, module_to_asset: dict[str, str]) -> str | None:
+    target = imported
+    while target and target not in module_to_asset and "." in target:
+        target = target.rsplit(".", 1)[0]
+    return module_to_asset.get(target) if target else None
+
+
+def _backend_import_edges(
+    asset_id: str,
+    imports: Iterable[str],
+    module_to_asset: dict[str, str],
+) -> set[Edge]:
+    return {
+        Edge(
+            asset_id,
+            _resolve_import_asset(imported, module_to_asset) or f"module:{imported}",
+            "python_import",
+            imported,
+            "AST import",
+        )
+        for imported in imports
+    }
+
+
+def _frontend_edges(asset_id: str, calls: Iterable[str], asset_refs: Iterable[str]) -> set[Edge]:
+    edges: set[Edge] = set()
+    for call in calls:
+        edges.add(Edge(asset_id, f"api:{call.split('?', 1)[0]}", "frontend_api_call", call, "frontend /api string"))
+    for ref in asset_refs:
+        edges.add(Edge(asset_id, f"frontend:{ref}", "frontend_asset_ref", ref, "frontend asset reference"))
+    return edges
 
 
 def scan_backend_assets(repo: Path) -> Inventory:
@@ -593,19 +645,10 @@ def scan_backend_assets(repo: Path) -> Inventory:
             asset.current_call_paths.append("fastapi")
         assets.append(asset)
 
-        for table in reads:
-            edges.add(Edge(asset_id, f"duckdb:{table}", "table_read", table, "SQL FROM/JOIN"))
-        for table in writes:
-            edges.add(Edge(asset_id, f"duckdb:{table}", "table_write", table, "SQL write DDL/DML"))
-        for route in routes:
-            edges.add(Edge(asset_id, f"api:{route.split(' ', 1)[-1]}", "api_route", route, "FastAPI decorator"))
+        edges.update(_backend_table_edges(asset_id, reads, writes))
+        edges.update(_backend_route_edges(asset_id, routes))
         if path.suffix == ".py":
-            for imported in extract_python_imports(text, module):
-                target = imported
-                while target and target not in module_to_asset and "." in target:
-                    target = target.rsplit(".", 1)[0]
-                target_asset = module_to_asset.get(target) if target else None
-                edges.add(Edge(asset_id, target_asset or f"module:{imported}", "python_import", imported, "AST import"))
+            edges.update(_backend_import_edges(asset_id, extract_python_imports(text, module), module_to_asset))
 
     return Inventory(assets=assets, edges=sorted(edges, key=lambda e: (e.source_asset_id, e.dependency_type, e.target)))
 
@@ -618,9 +661,10 @@ def scan_frontend_assets(repo: Path) -> Inventory:
     if roots[0].exists():
         files.append(roots[0])
     files.extend(_iter_files(roots[1], FRONTEND_SUFFIXES))
+    unique_files = sorted(set(files))
     assets: list[Asset] = []
     edges: set[Edge] = set()
-    for path in sorted(set(files)):
+    for path in unique_files:
         text = _read_text(path)
         rel = _rel(path, repo)
         calls = extract_frontend_api_calls(text)
@@ -646,10 +690,7 @@ def scan_frontend_assets(repo: Path) -> Inventory:
             notes=notes,
         )
         assets.append(asset)
-        for call in calls:
-            edges.add(Edge(asset.asset_id, f"api:{call.split('?', 1)[0]}", "frontend_api_call", call, "frontend /api string"))
-        for ref in asset_refs:
-            edges.add(Edge(asset.asset_id, f"frontend:{ref}", "frontend_asset_ref", ref, "frontend asset reference"))
+        edges.update(_frontend_edges(asset.asset_id, calls, asset_refs))
     return Inventory(assets=assets, edges=sorted(edges, key=lambda e: (e.source_asset_id, e.target)))
 
 
@@ -805,12 +846,11 @@ def scan_duckdb_assets(conn: Any) -> Inventory:
 
 
 def _route_lookup(assets: list[Asset]) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for asset in assets:
-        for route in asset.api_routes:
-            _, path = route.split(" ", 1)
-            out[path] = asset.asset_id
-    return out
+    return dict(chain.from_iterable(_route_lookup_rows(asset) for asset in assets))
+
+
+def _route_lookup_rows(asset: Asset) -> list[tuple[str, str]]:
+    return [(route.split(" ", 1)[1], asset.asset_id) for route in asset.api_routes]
 
 
 def _table_lookup(assets: list[Asset]) -> dict[str, str]:
