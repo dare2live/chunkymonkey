@@ -333,6 +333,11 @@ class TestShortTermReversal:
         from services.formula_engine import reversal_short_term  # noqa: F401
         return REGISTRY["reversal_1m_deep"]
 
+    @pytest.fixture
+    def w1(self):
+        from services.formula_engine import reversal_short_term  # noqa: F401
+        return REGISTRY["reversal_1w"]
+
     def test_mild_variant_triggers_on_roughly_4pct_drop(self, mild):
         n = 90
         dates = np.array([f"2024-{(i // 30) + 1:02d}-{(i % 30) + 1:02d}" for i in range(n)])
@@ -380,6 +385,29 @@ class TestShortTermReversal:
 
         assert len(signals) >= 1, "11% 左右深跌应落入 reversal_1m_deep"
         assert all(s.formula_id == "reversal_1m_deep" for s in signals)
+
+    def test_weekly_variant_triggers_on_roughly_2pct_drop(self, w1):
+        n = 61
+        dates = np.array([f"2024-{(i // 30) + 1:02d}-{(i % 30) + 1:02d}" for i in range(n)])
+        closes = np.concatenate([
+            np.full(56, 100.0),
+            np.linspace(100.0, 98.0, 5),
+        ])
+        volumes = np.ones(n) * 1000
+
+        signals = w1.compute_signals(
+            "T",
+            dates,
+            closes,
+            closes,
+            closes,
+            closes,
+            volumes,
+            closes * volumes,
+        )
+
+        assert len(signals) >= 1, "2% 左右回撤应落入 reversal_1w"
+        assert all(s.formula_id == "reversal_1w" for s in signals)
 
 
 class TestTechnicalStage:

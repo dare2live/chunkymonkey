@@ -204,18 +204,18 @@ class Reversal1mDeep(_ReversalBase):
 
 @dataclass(frozen=True)
 class Reversal1w(_ReversalBase):
-    """1 周反转: 跌 3-10%, 低波动. 信号高频, 换手大, 适合短线."""
+    """1 周反转: 跌 2-10%, 低波动. 信号高频, 换手大, 适合短线."""
     metadata: FormulaMetadata = FormulaMetadata(
         formula_id="reversal_1w",
         name="1 周反转",
         tag="RW",
-        description="5 日跌 3-10% + 60 日低波 + 量比正常 → 周度反转候选",
+        description="5 日跌 2-10% + 60 日低波 + 量比正常 → 周度反转候选",
         default_horizon_days=5,
         has_variant=True,
     )
     lookback_days: int = 5
     pct_change_lo: float = -0.10
-    pct_change_hi: float = -0.03
+    pct_change_hi: float = -0.02
     rel_std_max: float = 0.06
     vol_ratio_lo: float = 0.6
     vol_ratio_hi: float = 2.0

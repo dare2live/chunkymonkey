@@ -83,7 +83,11 @@ The model pipeline snapshot below is historical evidence for the completed
   candidate-supply lever without rerunning the audit manually. If
   `macd_golden_cross` shows up in the weakest cohort, the recommendation also
   records the `fact_technical_trigger` primary-key schema limit, so a schema
-  change is not mistaken for a state-only formula tweak.
+  change is not mistaken for a state-only formula tweak. 2026-06-02 then
+  widened `reversal_1w` from 5-10% to 2-10%, and the historical rebuild
+  lifted that formula to `369,822 / 15,937 / 66.18%`; the controller still
+  points to `P1 / upstream_candidate_supply`, which means the supply gap is
+  still structural even after the loosening.
 - later in the same slice we tested whether the 2023-01-01→2023-09-11
   technical-stage hole was the missing lever: `build_stage_formula_fitness.py`
   needed a longer `compute_start` than the write window, so a second run with
