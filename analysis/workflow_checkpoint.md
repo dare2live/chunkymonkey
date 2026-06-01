@@ -21,8 +21,9 @@ The model pipeline snapshot below is historical evidence for the completed
   `mart_p0a_label_panel`, `mart_p0a_feature_label_panel_v3`,
   `mart_p0a_feature_label_panel_v4`, `mart_sniper_score_daily`, and
   `mart_institution_score_daily` now reach `2026-05-29`. The remaining WARN
-  evidence is `fact_lhb_event` event coverage only 84 codes (1%) and
-  `fact_technical_trigger` event-table sparse-event coverage.
+  evidence is `fact_lhb_event` event coverage only 84 codes (1%),
+  `fact_technical_trigger` event-table sparse-event coverage, and
+  `need_027` main-force source still blocked/unknown.
 - end-to-end audit: `audit_end_to_end.py` now exits PASS with WARN
   (`24 total / 19 OK / 5 WARN / 0 FAIL`); WARN includes recommendation PIT
   coverage 0, recommendation row count, and freshness days_behind=3 for
@@ -36,12 +37,13 @@ The model pipeline snapshot below is historical evidence for the completed
   `p0a_v2_governance_v1` gate remains available only for explicit historical
   review.
 - next_step: follow `goal.md` 6.11 from the current state; the next true
-  blocker is LHB event coverage and recommendation PIT candidate sparsity.
-  `fact_technical_trigger` remains WARN evidence, not a completeness blocker,
-  and PIT-first ranking is already in place even though current output is
-  still all cross-stage fallback. The PIT table is still underfilled for the
-  current exact candidates, so the next meaningful step is upstream PIT
-  coverage expansion rather than more ranking tweaks.
+  blocker is LHB event coverage, recommendation PIT candidate sparsity, and
+  the `need_027` source probe. `fact_technical_trigger` remains WARN
+  evidence, not a completeness blocker, and PIT-first ranking is already in
+  place even though current output is still all cross-stage fallback. The PIT
+  table is still underfilled for the current exact candidates, so the next
+  meaningful step is upstream PIT coverage expansion rather than more ranking
+  tweaks. Keep the `need_027` source probe / unknown status explicit.
 
 - generated_at: `2026-05-25T01:20:01Z`
 - model_id: `lgbm_phase5_gcp_20260520T010718`
