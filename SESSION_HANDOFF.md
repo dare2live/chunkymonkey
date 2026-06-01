@@ -25,9 +25,9 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 06:16:51 CST
+**Snapshot 时间**: 2026-06-02 06:25:27 CST
 
-- latest code/docs snapshot (2026-06-02) is commit `cec08c8e`; `reversal_1w` was widened from `2-10%` to `1-10%`, with the history rebuild lifting that formula to `222,942 / 16,610 / 72.28%`; the full stage-opt audit now reads `raw_signal_rows=5,664,501 / filtered_signal_rows=2,826,350 / unique_keys=152,554 / ready_keys=111,794 / ready coverage=73.28% / below_min_signals=40,760`, with `min_signals=4/3/2` at `78.76% / 84.74% / 91.44%` and weakest formulas now `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_mild`; controller recommendation remains `P1 / upstream_candidate_supply`, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`.
+- latest code/docs snapshot (2026-06-02) is commit `4b89332f`; `turtle_breakout_55` was split into separate 20 day / 55 day volume gates, keeping 20 day at `0.9` and lowering 55 day from `0.9` to `0.8`, with the history rebuild lifting that formula to `144,450 / 17,181 / 65.44%`; the full stage-opt audit now reads `raw_signal_rows=5,671,811 / filtered_signal_rows=2,831,747 / unique_keys=152,592 / ready_keys=111,961 / ready coverage=73.37% / below_min_signals=40,631`, with `min_signals=4/3/2` at `78.82% / 84.79% / 91.47%` and weakest formulas now `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_mild`; controller recommendation remains `P1 / upstream_candidate_supply`, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`.
 | Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
 | VM 状态 | ? |
 | VM 上次启动 |  |
@@ -58,13 +58,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `cec08c8e feat: widen reversal_1w to 1-10% and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 66 passed, audit PASS, stage-opt 73.28% ready coverage, docs graph PASS, complexity no new HIGH` |
+| HEAD | `4b89332f feat: split turtle breakout volume gates by variant and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 73.37% ready coverage, docs graph PASS, worktree 0 dirty, complexity no new HIGH` |
 | 最近 24h commits | 94 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+4b89332f feat: split turtle breakout volume gates by variant and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 73.37% ready coverage, docs graph PASS, worktree 0 dirty, complexity no new HIGH
 b560909b feat: lower turtle breakout 55 volume gate to 0.9 and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 39 passed, audit PASS, stage-opt 72.65% ready coverage, docs graph PASS, complexity no new HIGH
 cec08c8e feat: widen reversal_1w to 1-10% and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 66 passed, audit PASS, stage-opt 73.28% ready coverage, docs graph PASS, complexity no new HIGH
 da5c60d9 feat: externalize reversal_1m_mild threshold and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 39 passed, audit PASS, stage-opt 71.96% ready coverage, docs graph PASS
