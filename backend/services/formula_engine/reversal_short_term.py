@@ -23,7 +23,7 @@
   - strength: 跌幅 × 低波 score, 跌 15% 左右 + 波动低 strength 最大
 
   - variant:
-    1. reversal_1m_mild    — 跌 4-15% (温和反转, RankIC 适中)
+    1. reversal_1m_mild    — 跌 3-15% (温和反转, RankIC 适中)
     2. reversal_1m_deep    — 跌 5-30% (深度反转, RankIC 高但样本少)
     3. reversal_1w         — 1 周反转 (5 日, 信号高频但换手大)
 
@@ -51,7 +51,7 @@ DEFAULT_CONFIG: dict[str, dict[str, float | int]] = {
     "reversal_1m_mild": {
         "lookback_days": 20,
         "pct_change_lo": -0.15,
-        "pct_change_hi": -0.04,
+        "pct_change_hi": -0.03,
         "rel_std_max": 0.06,
         "vol_ratio_lo": 0.6,
         "vol_ratio_hi": 2.0,
@@ -235,12 +235,12 @@ class _ReversalBase:
 
 @dataclass(frozen=True)
 class Reversal1mMild(_ReversalBase):
-    """1 月温和反转: 跌 4-15%, 低波动. 样本多, RankIC 适中."""
+    """1 月温和反转: 跌 3-15%, 低波动. 样本多, RankIC 适中."""
     metadata: FormulaMetadata = FormulaMetadata(
         formula_id="reversal_1m_mild",
         name="1 月温和反转",
         tag="RM",
-        description="20 日跌 4-15% + 60 日低波 + 量比正常 → 短期反转候选",
+        description="20 日跌 3-15% + 60 日低波 + 量比正常 → 短期反转候选",
         default_horizon_days=10,
         has_variant=True,
     )
