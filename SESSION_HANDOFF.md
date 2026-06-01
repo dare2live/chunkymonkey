@@ -4,7 +4,7 @@ Manual Codex checkpoint. Current operating state lives in `goal.md`; durable
 startup rules live in `AGENTS.md` and `docs/chunkyctl_session_quickstart.md`.
 This file is a short recovery note, not a replacement for those authorities.
 
-Snapshot: `2026-06-01 12:49:26 CST`
+Snapshot: `2026-06-01 13:09:39 CST`
 
 ## Risk First
 
@@ -16,7 +16,7 @@ Snapshot: `2026-06-01 12:49:26 CST`
 | Storage payload | `PASS`: 320 scanned / 0 FAIL / 0 WARN / 11 reviewed PASS | Reviewed columns are governed by `backend/config/storage_retention.yaml`; recursive or over-cap payloads still block |
 | CodeGraph | Synced after the survey `.py` slice; pending may show the new untracked test until this slice is staged/committed | Re-run `codegraph status .` after this commit |
 | Complexity | Historical HIGH remains debt; tooling diff ignores line-number drift by default | New HIGH still blocks; line drift alone should not |
-| Data freshness/PIT | **WARN/MIXED but non-blocking**: end-to-end freshness PASS with WARN; data completeness PASS with WARN (0 FAIL / 2 WARN, both sparse-event evidence); survivorship gate PASS on current label_version, legacy v2 only via explicit flag；`rank_and_size()` 已改为 PIT-tier-first，但当前推荐仍全是 `cross_stage_fallback`，因为 2026-05-29 的 PIT exact 候选多数卡在 `hp/n_signals/Wilson` 门槛，coverage 0 是候选稀疏/阈值问题；2026-06-01 的 `audit_portfolio_sizer_profile_attrition.py` 再次显示 353 个 raw candidates 中短/中/长档 selected_rows 仅 5/1/2，且全是 `cross_stage_fallback`，fail reasons 主要集中在 `hp` 与 `wilson`；最新 `fail_reasons_by_match_tier` 进一步把 exact-tier attrition 拆开：`stage_pit` 主要卡 `hp/n_signals/Wilson`，`stage_pit_formula_fallback` 主要卡 `hp/n_signals`，`cross_stage_fallback` 主要卡 `hp/wilson`；新补的 `fail_holding_days_by_match_tier` 再把 hp 失败拆到 holding_days：`stage_pit` 失败集中在 20/30/60/90 这些 off-anchor 档位，`stage_pit_formula_fallback` 失败集中在 20/30/60/90，`cross_stage_fallback` 则分布在 5/10/15/20/30/60/90 全部档位；2026-06-01 的 sensitivity audit 继续验证了这一点：`base` / `hold+20` / `min_n_signals-2` / `min_wilson_win-0.05` 对 selected_rows 没有影响，短/中/长仍然是 5/1/2；targeted backfill only moved latest cutoff from 3 rows to 4；`mart_daily_position_recommendation_pit_diagnostic` 现在带 `governance_reject_count` / latest reason / latest rejected_at，方便直接看每个 `stock_missing_pit` 的治理根因；2026-06-01 还把 `need_027` 的 blocked need summary 升级成 source registration evidence：preferred `akshare` 已注册，但 declared fallback 标签 `miaoxiang` 归到 `aif10` 家族，而当前 `aif10` adapter 仍未实现 `individual_fund_flow`，所以 fallback 仍是概念路径；`need_027` 主力资金源仍 blocked/unknown；`akshare.stock_individual_fund_flow` / `stock_individual_fund_flow_rank` capability 已登记，但现场 `probe_source_capability.py` 现在已先清代理再重试，但 Eastmoney 端点仍以 `ConnectionError` / `JSONDecodeError` remote disconnect 失败，blocked probe now persists into `mart_data_source_failure_queue`；2026-06-01 又新增 stage-opt candidate supply audit：在当前审计 slice（2023-01-01→2026-05-29，limit-stocks 50）上看到 606,583 raw_signal_rows / 111,835 unique_keys / 49,586 ready_keys / 44.34% ready coverage / 62,249 below_min_signals，且 `codes_without_bars=0`，新增 blocked-reason breakdown 显示所有 blocked keys 都卡在 `below_min_signals`，其中 `macd_golden_cross` 和 stage 3/4 最弱；脚本默认 end 复用当前连接里的交易日历真相源，不再 nested `latest_closed_or_raise()` 新连接；LHB 侧最新只读核实显示 `raw_lhb_daily` 与 `fact_lhb_event` 都已到 `2026-05-29`，最新日 raw 94 rows / 84 codes、fact 84 rows / 84 codes，因此 LHB 是 source-sparse 事实，不是 ETL 落后；`audit_pit_coverage.py` 仍是 4/4 PASS，`fact_lhb_event` gain_20d coverage 83.9% > 60%，所以 PIT 安全性没问题 | Continue LHB event-coverage triage, recommendation PIT candidate-sparsity triage, and `need_027` source probe triage; no strategy claim |
+| Data freshness/PIT | **WARN/MIXED but non-blocking**: end-to-end freshness PASS with WARN; data completeness PASS with WARN (0 FAIL / 2 WARN, both sparse-event evidence); survivorship gate PASS on current label_version, legacy v2 only via explicit flag；`rank_and_size()` 已改为 PIT-tier-first，但当前推荐仍全是 `cross_stage_fallback`，因为 2026-05-29 的 PIT exact 候选多数卡在 `hp/n_signals/Wilson` 门槛，coverage 0 是候选稀疏/阈值问题；2026-06-01 的 `audit_portfolio_sizer_profile_attrition.py` 再次显示 353 个 raw candidates 中短/中/长档 selected_rows 仅 5/1/2，且全是 `cross_stage_fallback`，fail reasons 主要集中在 `hp` 与 `wilson`；最新 `fail_reasons_by_match_tier` 进一步把 exact-tier attrition 拆开：`stage_pit` 主要卡 `hp/n_signals/Wilson`，`stage_pit_formula_fallback` 主要卡 `hp/n_signals`，`cross_stage_fallback` 主要卡 `hp/wilson`；新补的 `fail_holding_days_by_match_tier` 再把 hp 失败拆到 holding_days：`stage_pit` 失败集中在 20/30/60/90 这些 off-anchor 档位，`stage_pit_formula_fallback` 失败集中在 20/30/60/90，`cross_stage_fallback` 则分布在 5/10/15/20/30/60/90 全部档位；2026-06-01 的 sensitivity audit 继续验证了这一点：`base` / `hold+20` / `min_n_signals-2` / `min_wilson_win-0.05` 对 selected_rows 没有影响，短/中/长仍然是 5/1/2；targeted backfill only moved latest cutoff from 3 rows to 4；`mart_daily_position_recommendation_pit_diagnostic` 现在带 `governance_reject_count` / latest reason / latest rejected_at，方便直接看每个 `stock_missing_pit` 的治理根因；2026-06-01 还把 `need_027` 的 blocked need summary 升级成 source registration evidence：preferred `akshare` 已注册，但 declared fallback 标签 `miaoxiang` 归到 `aif10` 家族，而当前 `aif10` adapter 仍未实现 `individual_fund_flow`，所以 fallback 仍是概念路径；`need_027` 主力资金源仍 blocked/unknown；`akshare.stock_individual_fund_flow` / `stock_individual_fund_flow_rank` capability 已登记，但现场 `probe_source_capability.py` 现在已先清代理再重试，但 Eastmoney 端点仍以 `ConnectionError` / `JSONDecodeError` remote disconnect 失败，blocked probe now persists into `mart_data_source_failure_queue`；2026-06-01 还新增 stage-opt candidate supply audit：在当前审计 slice（2023-01-01→2026-05-29，limit-stocks 50）上看到 `raw_signal_rows=1,381,657` / `filtered_signal_rows=733,083` / `unique_keys=120,273` / `ready_keys=57,986` / `48.21% ready coverage` / `62,287 below_min_signals` / `dropped_index_rows=1,355` / `dropped_unknown_stage_rows=647,219`，且 `codes_without_bars=0`；这次还修正了脚本结果里 `raw_signal_rows` 被 summary shadow 的报告 bug，所以 raw / filtered 现在分开显示；新增 blocked-reason breakdown 显示所有 blocked keys 都卡在 `below_min_signals`，其中 `macd_golden_cross` 和 stage 3/4 最弱；脚本默认 end 复用当前连接里的交易日历真相源，不再 nested `latest_closed_or_raise()` 新连接；LHB 侧最新只读核实显示 `raw_lhb_daily` 与 `fact_lhb_event` 都已到 `2026-05-29`，最新日 raw 94 rows / 84 codes、fact 84 rows / 84 codes，因此 LHB 是 source-sparse 事实，不是 ETL 落后；`audit_pit_coverage.py` 仍是 4/4 PASS，`fact_lhb_event` gain_20d coverage 83.9% > 60%，所以 PIT 安全性没问题 | Continue LHB event-coverage triage, recommendation PIT candidate-sparsity triage, and `need_027` source probe triage; no strategy claim |
 
 ## Latest Slice
 
@@ -75,11 +75,14 @@ audit now separates label vs family: `need_027`'s preferred `akshare` is
 registered, while the declared fallback label `miaoxiang` resolves to the
 registered `aif10` family but that adapter still lacks
 `individual_fund_flow`, so the fallback remains conceptual until the
-route/capability is explicit. This slice also repaired the 2025-08-01 →
-2026-05-29 `fact_stock_technical_stage` / `fact_signal_context`断档 and reran
-`audit_stage_opt_candidate_supply.py`: full-history coverage moved to
-`4929 raw_signal_rows / 1033 unique_keys / 398 ready_keys / 38.53% ready
-coverage / 635 below_min_signals`, while `2024-03-06` 起的
+route/capability is explicit. This slice also backfilled
+`fact_signal_context` from `2023-09-12` through `2024-03-05` with 552,126
+rows and fixed `audit_stage_opt_candidate_supply.py` so `raw_signal_rows`
+is no longer shadowed by filtered summary counters; the corrected audit now
+reports `raw_signal_rows=1,381,657 / filtered_signal_rows=733,083 /
+unique_keys=120,273 / ready_keys=57,986 / ready coverage=48.21% /
+below_min_signals=62,287 / dropped_index_rows=1,355 /
+dropped_unknown_stage_rows=647,219`, while `2024-03-06` 起的
 `dropped_unknown_stage_rows` 降到 `454,158`; the remaining
 `technical_stage='?'` mass is now mostly structural classifier warmup rather
 than a fresh ETL outage.
@@ -127,7 +130,7 @@ Downstream freshness refresh commands used:
 | `audit_test_tool_health.py --scope backend/scripts/build_formula_signals_history.py --scope backend/scripts/build_stage_formula_fitness.py --scope backend/scripts/build_signal_context.py --scope backend/tests/test_build_formula_signals.py` | PASS |
 | `pytest -q backend/tests/test_build_formula_signals.py` | 19 passed |
 | `scripts/chunkyctl audit --run --scope backend/scripts/build_formula_signals_history.py --scope backend/scripts/build_stage_formula_fitness.py --scope backend/scripts/build_signal_context.py --scope backend/tests/test_build_formula_signals.py` | PASS |
-| Downstream coverage query | `fact_stock_technical_stage` max 2026-05-29 / 1,429,117 rows; `fact_signal_context` max 2026-05-29 / 2,125,233 rows; `fact_technical_trigger` max 2026-05-29 / 1,381,657 rows |
+| Downstream coverage query | `fact_stock_technical_stage` max 2026-05-29 / 1,429,117 rows; `fact_signal_context` max 2026-05-29 / 3,285,715 rows; `fact_technical_trigger` max 2026-05-29 / 1,381,657 rows |
 | `audit_data_completeness.py` after main-force catch-up | PASS with WARN: 0 FAIL / 2 WARN; `fact_lhb_event` and `fact_technical_trigger` are sparse-event evidence, not blockers |
 | `audit_end_to_end.py` after trigger refresh | FAIL: 24 total / 18 OK / 4 WARN / 2 FAIL; FAIL now `mart_stock_picture_daily` and `mart_stock_survey_features` |
 | `audit_universe_coverage.py` after trigger refresh | PASS: 17 PASS / 5 WARN / 0 FAIL |

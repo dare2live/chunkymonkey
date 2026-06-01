@@ -524,6 +524,35 @@ def _render_markdown(result: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _compose_audit_result(
+    load_result: dict[str, Any],
+    summary: dict[str, Any],
+    *,
+    start: str,
+    end: str,
+    min_signals: int,
+    signal_rows: list[dict[str, Any]],
+    codes_total: int,
+    codes_with_bars: set[str],
+) -> dict[str, Any]:
+    """Compose the final audit payload without letting summary counters shadow raw counts."""
+    return {
+        **summary,
+        "start": start,
+        "end": end,
+        "min_signals": min_signals,
+        "raw_signal_rows": load_result["raw_rows"],
+        "filtered_signal_rows": len(signal_rows),
+        "dropped_index_rows": load_result["dropped_index_rows"],
+        "dropped_unknown_stage_rows": load_result["dropped_unknown_stage_rows"],
+        "dropped_unknown_stage_rows_by_formula_id": load_result["dropped_unknown_stage_rows_by_formula_id"],
+        "dropped_unknown_stage_rows_by_formula_variant": load_result["dropped_unknown_stage_rows_by_formula_variant"],
+        "dropped_unknown_stage_examples": load_result["dropped_unknown_stage_examples"],
+        "codes_with_bars": len(codes_with_bars),
+        "codes_without_bars": codes_total - len(codes_with_bars),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Audit stage-opt candidate supply and formula coverage")
     parser.add_argument(
@@ -572,21 +601,16 @@ def main() -> int:
             dropped_unknown_stage_rows_by_formula_variant=load_result["dropped_unknown_stage_rows_by_formula_variant"],
             dropped_unknown_stage_examples=load_result["dropped_unknown_stage_examples"],
         )
-        result = {
-            "start": start,
-            "end": end,
-            "min_signals": args.min_signals,
-            "raw_signal_rows": load_result["raw_rows"],
-            "filtered_signal_rows": len(signal_rows),
-            "dropped_index_rows": load_result["dropped_index_rows"],
-            "dropped_unknown_stage_rows": load_result["dropped_unknown_stage_rows"],
-            "dropped_unknown_stage_rows_by_formula_id": load_result["dropped_unknown_stage_rows_by_formula_id"],
-            "dropped_unknown_stage_rows_by_formula_variant": load_result["dropped_unknown_stage_rows_by_formula_variant"],
-            "dropped_unknown_stage_examples": load_result["dropped_unknown_stage_examples"],
-            "codes_with_bars": len(codes_with_bars),
-            "codes_without_bars": len(codes) - len(codes_with_bars),
-            **summary,
-        }
+        result = _compose_audit_result(
+            load_result,
+            summary,
+            start=start,
+            end=end,
+            min_signals=args.min_signals,
+            signal_rows=signal_rows,
+            codes_total=len(codes),
+            codes_with_bars=codes_with_bars,
+        )
 
         if args.format == "json":
             print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))

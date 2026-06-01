@@ -8,7 +8,7 @@ The model pipeline snapshot below is historical evidence for the completed
 
 ## Current Data Freshness Checkpoint
 
-- updated_at: `2026-06-01 11:44:18 CST`
+- updated_at: `2026-06-01 13:09:39 CST`
 - current_state: `architecture/data freshness repair`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
@@ -39,9 +39,13 @@ The model pipeline snapshot below is historical evidence for the completed
 - stage-opt audit: 2026-06-01 repaired the 2025-08-01→2026-05-29
   `fact_stock_technical_stage` / `fact_signal_context` discontinuity and
   reran `audit_stage_opt_candidate_supply.py`; full-history coverage is now
-  `606,583 raw_signal_rows / 111,835 unique_keys / 49,586 ready_keys / 44.34%
-  ready coverage / 62,249 below_min_signals`, with `codes_without_bars=0`.
-  The new blocked-reason breakdown shows every blocked key fails only on
+  `raw_signal_rows=1,381,657 / filtered_signal_rows=733,083 / unique_keys=120,273
+  / ready_keys=57,986 / ready coverage=48.21% / below_min_signals=62,287 /
+  dropped_index_rows=1,355 / dropped_unknown_stage_rows=647,219`,
+  with `codes_without_bars=0`. This run also fixed the reporting bug where
+  `raw_signal_rows` was being shadowed by the filtered summary counters, so
+  new sessions should read raw and filtered counts separately. The new
+  blocked-reason breakdown shows every blocked key fails only on
   `below_min_signals`; `macd_golden_cross` and stages 3/4 are the weakest
   cohorts. `2024-03-06` 起的 `dropped_unknown_stage_rows` 降到 `454,158`,
   so the remaining `technical_stage='?'` mass is still mostly structural
@@ -111,13 +115,15 @@ The model pipeline snapshot below is historical evidence for the completed
   lacks `individual_fund_flow`, so the fallback is still conceptual in the
   current wiring. 2026-06-01 also ran `audit_stage_opt_candidate_supply.py` on the
   current audited slice (2023-01-01→2026-05-29, limit-stocks 50) and found
-  `606,583 raw_signal_rows / 111,835 unique_keys / 49,586 ready_keys / 44.34%
-  ready coverage / 62,249 below_min_signals`, with `codes_without_bars=0`
-  and all blocked keys failing on `below_min_signals`; the helper now reuses
-  the current connection's calendar truth source instead of opening a nested
-  `latest_closed_or_raise()` connection. This reinforces the same conclusion:
-  upstream candidate supply / formula coverage is the next lever, not another
-  profile knob tweak. LHB side, the latest read-only check shows
+  `raw_signal_rows=1,381,657 / filtered_signal_rows=733,083 / unique_keys=120,273
+  / ready_keys=57,986 / ready coverage=48.21% / below_min_signals=62,287 /
+  dropped_index_rows=1,355 / dropped_unknown_stage_rows=647,219`, with
+  `codes_without_bars=0` and all blocked keys failing on `below_min_signals`;
+  the helper now reuses the current connection's calendar truth source instead
+  of opening a nested `latest_closed_or_raise()` connection. This reinforces
+  the same conclusion: upstream candidate supply / formula coverage is the
+  next lever, not another profile knob tweak. LHB side, the latest read-only
+  check shows
   `raw_lhb_daily` and `fact_lhb_event` both max at `2026-05-29`; latest day
   raw 94 rows / 84 codes and fact 84 rows / 84 codes, so the remaining LHB
   WARN is source sparsity, not ETL lag. `audit_pit_coverage.py` is still 4/4

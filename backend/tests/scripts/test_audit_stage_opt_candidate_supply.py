@@ -149,3 +149,50 @@ def test_latest_closed_trade_date_uses_existing_calendar_connection() -> None:
         assert audit_stage_opt_candidate_supply._latest_closed_trade_date(conn) == "2026-05-29"
     finally:
         conn.close()
+
+
+def test_compose_audit_result_preserves_raw_signal_rows() -> None:
+    load_result = {
+        "raw_rows": 10,
+        "dropped_index_rows": 1,
+        "dropped_unknown_stage_rows": 2,
+        "dropped_unknown_stage_rows_by_formula_id": {"formula_a": 2},
+        "dropped_unknown_stage_rows_by_formula_variant": {"variant_a": 2},
+        "dropped_unknown_stage_examples": [{"stock_code": "000001"}],
+    }
+    summary = {
+        "raw_signal_rows": 7,
+        "unique_keys": 2,
+        "ready_keys": 1,
+        "ready_coverage_pct": 50.0,
+        "blocked_reason_counts": {"below_min_signals": 1},
+        "blocked_reason_counts_by_formula_id": {},
+        "blocked_reason_counts_by_formula_variant": {},
+        "blocked_reason_counts_by_stage_bin": {},
+        "rows_by_formula_id": {},
+        "rows_by_formula_variant": {},
+        "rows_by_stage_bin": {},
+        "keys_by_formula_id": [],
+        "weakest_keys_by_formula_id": [],
+        "keys_by_formula_variant": [],
+        "weakest_keys_by_formula_variant": [],
+        "keys_by_stage_bin": [],
+        "weakest_keys_by_stage_bin": [],
+        "blocked_examples": [],
+    }
+
+    result = audit_stage_opt_candidate_supply._compose_audit_result(
+        load_result,
+        summary,
+        start="2023-01-01",
+        end="2026-05-29",
+        min_signals=5,
+        signal_rows=[{"stock_code": "000001"}] * 7,
+        codes_total=3,
+        codes_with_bars={"000001", "000002"},
+    )
+
+    assert result["raw_signal_rows"] == 10
+    assert result["filtered_signal_rows"] == 7
+    assert result["codes_with_bars"] == 2
+    assert result["codes_without_bars"] == 1
