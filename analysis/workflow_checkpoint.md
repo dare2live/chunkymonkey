@@ -124,6 +124,13 @@ The model pipeline snapshot below is historical evidence for the completed
   Python failure. `mart_pipeline_run_manifest.perf_summary_json` now uses
   `compact_perf_summary_payload()`, so the largest live manifest row is
   bounded at ~260,408 bytes instead of the earlier multi-megabyte log blob.
+- follow-up research-side snapshot: `build_fund_flow_rank_snapshot_daily.py`
+  was run successfully on 2026-06-01 and wrote `5,188` rows / `5,188` codes
+  for snapshot date `2026-06-01`; the corresponding
+  `mart_data_source_failure_queue` row for `stock_fund_flow_rank_snapshot`
+  moved from `open` to `resolved`. This does not change the `need_027`
+  exact-flow blocked status; it only means the research-side rank snapshot now
+  has live data and no longer sits in the open failure queue.
 - survivorship gate: current default `p0a_v3_horizon_governance` PASS; the old
   `p0a_v2_governance_v1` gate remains available only for explicit historical
   review.
