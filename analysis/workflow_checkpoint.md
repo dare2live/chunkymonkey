@@ -111,7 +111,8 @@ The model pipeline snapshot below is historical evidence for the completed
   table for cross-stage fallback instead of a nonexistent `_pit` table. The
   live `2026-06-01` run now completes without the missing-table crash; the
   current snapshot happened to return 0 candidates, which is an input-sparsity
-  result rather than a loader failure.
+  result rather than a loader failure. This slice is now landed in commit
+  `1402bc0b`, and the worktree is clean.
 - `scripts/chunkyctl doctor --fast` now also surfaces the stage-opt
   `next_action_recommendation`, so the controller sees the upstream
   candidate-supply lever without rerunning the audit manually. If

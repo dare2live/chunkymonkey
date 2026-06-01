@@ -36,7 +36,9 @@ bash scripts/install_resilience.sh --status   # check 装好没
   unions MACD `mart_macd_state_history` into the recommendation candidate pool
   and uses the existing `mart_per_stock_strategy_optimal` table for
   cross-stage fallback; the live `2026-06-01` run completes without the
-  missing-table crash, though the current DB snapshot still has 0 candidates.
+  missing-table crash, though the current DB snapshot still has 0 candidates;
+  this slice is now landed in commit `1402bc0b`, and the live result is input
+  sparsity rather than loader failure.
 
 ## 主线 retrain 状态
 
@@ -72,13 +74,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `2cb49141 docs: surface stage-opt blocked-reason counts in doctor | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate)` |
-| 最近 24h commits | 81 |
+| HEAD | `1402bc0b fix: align daily recommendation candidate loader with live tables and MACD state history | Codex-Reviewed: APPROVE_WITH_NOTES` |
+| 最近 24h commits | 82 |
 | 未 commit 文件 | 4 |
 
 ### 最近 10 commits
 
 ```
+1402bc0b fix: align daily recommendation candidate loader with live tables and MACD state history | Codex-Reviewed: APPROVE_WITH_NOTES
 2cb49141 docs: surface stage-opt blocked-reason counts in doctor | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate)
 b1bf7181 docs: sync quickstart with stage-opt and need_027 controller-visible blockers
 7c99b0af docs: sync stage-opt current audit stats and controller-state timestamps | audit docs graph PASS
@@ -93,7 +96,7 @@ cee8f95c docs: sync stage-opt MACD evidence visibility into goal and handoff | C
 
 ## NEXT ACTION (auto-computed)
 
-**4 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**0 uncommitted files — continue stage-opt upstream_candidate_supply / need_027 blocked-gap triage**
 
 ## Resilience 配置 (verified)
 

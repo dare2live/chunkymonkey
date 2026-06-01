@@ -50,7 +50,7 @@
 | 数据完整性实跑 | **PASS with WARN: 0 FAIL / 2 WARN** | 2026-06-01 已把 `price_kline_tdxhub`、`fact_alpha158_panel`、`fact_stock_technical_stage`、`fact_signal_context`、`fact_technical_trigger`、`fact_capital_flow_pit_daily`、`fact_risk_factors`、`fact_sector_momentum_daily`、`mart_stock_picture_daily`、`mart_stock_survey_features`、`mart_p0a_label_panel`、`mart_p0a_feature_label_panel_v3`、`mart_p0a_feature_label_panel_v4`、`mart_sniper_score_daily`、`mart_institution_score_daily` 补到交易日历 `2026-05-29`；2026-06-01 又额外回填 `fact_stock_technical_stage` / `fact_signal_context` 的 2025-08-01→2026-05-29 断档，stage-opt audit 里的 `technical_stage='?'` 现在更多是结构性分类/预热缺口而不是新鲜 ETL outage；`fact_lhb_event` 与 `fact_technical_trigger` 已在 `dim_data_asset` 注册为 `sparse_event_presence_only`，完整性审计只保留 WARN evidence：`fact_lhb_event` 84 个 code（raw/fact 都到 2026-05-29，最新日 raw 94 rows / fact 84 rows）、`fact_technical_trigger` 1,692 个 code，不再当缺数 blocker。 |
 | 业务推进 | 暂停 | 不做 300616 五公式、前端公式视图、GCP/Optuna 全量跑批 |
 
-- 2026-06-02 `build_daily_position_recommendations.py` 已把 MACD `mart_macd_state_history` 纳入候选池，并把 cross-stage fallback 回接到现有的 `mart_per_stock_strategy_optimal`；live 2026-06-01 运行现在不会再因错表崩溃，当前快照虽然返回 0 candidates，但这是 live DB 无匹配行，不是 loader 失败。
+- 2026-06-02 `build_daily_position_recommendations.py` 已把 MACD `mart_macd_state_history` 纳入候选池，并把 cross-stage fallback 回接到现有的 `mart_per_stock_strategy_optimal`；live 2026-06-01 运行现在不会再因错表崩溃，当前快照虽然返回 0 candidates，但这是 live DB 无匹配行，不是 loader 失败；该修复已在 commit `1402bc0b` 落地，当前 worktree clean。
 
 ### 权威文档顺序
 
