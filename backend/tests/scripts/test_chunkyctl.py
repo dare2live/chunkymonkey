@@ -399,6 +399,33 @@ def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_pa
                 ),
                 "stderr": "",
             }
+        if "audit_stage_opt_candidate_supply.py" in cmd_text:
+            return {
+                "cmd": cmd,
+                "returncode": 0,
+                "stdout": json.dumps(
+                    {
+                        "verdict": "PASS",
+                        "raw_signal_rows": 1381657,
+                        "filtered_signal_rows": 733083,
+                        "unique_keys": 120273,
+                        "ready_keys": 57986,
+                        "ready_coverage_pct": 48.21,
+                        "blocked_reason_counts": {"below_min_signals": 62287},
+                        "codes_without_bars": 0,
+                        "next_action_recommendation": {
+                            "priority": "P1",
+                            "focus": "upstream_candidate_supply",
+                            "reason": "below_min_signals dominates current blocked keys",
+                            "recommended_lever": "expand upstream formula coverage or signal density before tuning profile knobs",
+                            "weakest_formula_ids": ["macd_golden_cross", "reversal_1m_deep"],
+                            "weakest_stage_bins": ["1", "1.5"],
+                            "top_blocked_reason": "below_min_signals",
+                        },
+                    }
+                ),
+                "stderr": "",
+            }
         if cmd == ["git", "status", "--short"]:
             return {"cmd": cmd, "returncode": 0, "stdout": "", "stderr": ""}
         raise AssertionError(f"unexpected command: {cmd}")
@@ -414,6 +441,7 @@ def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_pa
         skip_test_tool=False,
         skip_universe=False,
         skip_storage_payload=False,
+        skip_stage_opt=False,
         storage_max_findings=20,
     )
     rc = chunkyctl.run_doctor(args)
@@ -422,8 +450,10 @@ def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_pa
     assert rc == 1
     assert report["data_health"]["report"]["summary"] == {"total": 3, "green": 1, "yellow": 1, "red": 1}
     assert report["data_health"]["report"]["verdict"] == "FAIL"
+    assert report["stage_opt"]["report"]["next_action_recommendation"]["focus"] == "upstream_candidate_supply"
     assert report["verdict"] == "FAIL"
     assert any("data health red tables" in action["action"] for action in report["next_actions"])
+    assert any("upstream_candidate_supply" in action["action"] for action in report["next_actions"])
 
 
 def test_doctor_prioritizes_blocking_yellow_health_items(monkeypatch, tmp_path: Path, capsys) -> None:
@@ -483,6 +513,33 @@ def test_doctor_prioritizes_blocking_yellow_health_items(monkeypatch, tmp_path: 
                 ),
                 "stderr": "",
             }
+        if "audit_stage_opt_candidate_supply.py" in cmd_text:
+            return {
+                "cmd": cmd,
+                "returncode": 0,
+                "stdout": json.dumps(
+                    {
+                        "verdict": "PASS",
+                        "raw_signal_rows": 1381657,
+                        "filtered_signal_rows": 733083,
+                        "unique_keys": 120273,
+                        "ready_keys": 57986,
+                        "ready_coverage_pct": 48.21,
+                        "blocked_reason_counts": {"below_min_signals": 62287},
+                        "codes_without_bars": 0,
+                        "next_action_recommendation": {
+                            "priority": "P1",
+                            "focus": "upstream_candidate_supply",
+                            "reason": "below_min_signals dominates current blocked keys",
+                            "recommended_lever": "expand upstream formula coverage or signal density before tuning profile knobs",
+                            "weakest_formula_ids": ["macd_golden_cross", "reversal_1m_deep"],
+                            "weakest_stage_bins": ["1", "1.5"],
+                            "top_blocked_reason": "below_min_signals",
+                        },
+                    }
+                ),
+                "stderr": "",
+            }
         if cmd == ["git", "status", "--short"]:
             return {"cmd": cmd, "returncode": 0, "stdout": "", "stderr": ""}
         raise AssertionError(f"unexpected command: {cmd}")
@@ -498,6 +555,7 @@ def test_doctor_prioritizes_blocking_yellow_health_items(monkeypatch, tmp_path: 
         skip_test_tool=False,
         skip_universe=False,
         skip_storage_payload=False,
+        skip_stage_opt=False,
         storage_max_findings=20,
     )
     rc = chunkyctl.run_doctor(args)
@@ -508,6 +566,39 @@ def test_doctor_prioritizes_blocking_yellow_health_items(monkeypatch, tmp_path: 
     assert report["data_health"]["report"]["verdict"] == "WARN"
     assert report["verdict"] == "WARN"
     assert any("quality_gate_level=blocking first" in action["action"] for action in report["next_actions"])
+
+
+def test_next_actions_include_stage_opt_recommendation() -> None:
+    actions = chunkyctl._next_actions(
+        {
+            "git_status": {"clean": True},
+            "codegraph": {"pending": {"sync_required": False}},
+            "complexity": {"baseline": {"status": "loaded"}, "diff": {"new_high_count": 0}},
+        },
+        {"unknown_count": 0},
+        {"verdict": "PASS"},
+        {"summary": {"total": 342, "green": 342, "yellow": 0, "red": 0}},
+        {
+            "next_action_recommendation": {
+                "priority": "P1",
+                "focus": "upstream_candidate_supply",
+                "reason": "below_min_signals dominates current blocked keys",
+                "recommended_lever": "expand upstream formula coverage or signal density before tuning profile knobs",
+                "weakest_formula_ids": ["macd_golden_cross", "reversal_1m_deep"],
+                "weakest_stage_bins": ["1", "1.5"],
+                "top_blocked_reason": "below_min_signals",
+            }
+        },
+    )
+
+    assert actions[-1] == {
+        "priority": "P1",
+        "action": (
+            "Stage-opt candidate supply [upstream_candidate_supply]: below_min_signals dominates current blocked keys → "
+            "expand upstream formula coverage or signal density before tuning profile knobs "
+            "(weakest formulas: macd_golden_cross, reversal_1m_deep; weakest stages: 1, 1.5)"
+        ),
+    }
 
 
 def test_docs_cleanup_report_combines_docs_graph_and_worktree_slice(tmp_path: Path) -> None:

@@ -94,11 +94,32 @@ def _storage_payload_summary(report: dict[str, Any] | None, *, max_findings: int
     }
 
 
+def _stage_opt_summary(report: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not report:
+        return None
+    recommendation = report.get("next_action_recommendation")
+    if not isinstance(recommendation, dict):
+        recommendation = None
+    return {
+        "summary": {
+            "raw_signal_rows": report.get("raw_signal_rows"),
+            "filtered_signal_rows": report.get("filtered_signal_rows"),
+            "unique_keys": report.get("unique_keys"),
+            "ready_keys": report.get("ready_keys"),
+            "ready_coverage_pct": report.get("ready_coverage_pct"),
+            "below_min_signals": (report.get("blocked_reason_counts") or {}).get("below_min_signals", 0),
+            "codes_without_bars": report.get("codes_without_bars", 0),
+        },
+        "next_action_recommendation": recommendation,
+    }
+
+
 def _next_actions(
     tooling_gate: dict[str, Any] | None,
     worktree_summary: dict[str, Any] | None = None,
     storage_payload: dict[str, Any] | None = None,
     data_health: dict[str, Any] | None = None,
+    stage_opt: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     if not tooling_gate:
         return [{"priority": "P0", "action": "Fix chunkyctl/audit_tooling_gate JSON parsing before relying on doctor output"}]
@@ -202,6 +223,28 @@ def _next_actions(
                     "action": "Review data health yellow tables and decide whether they are expected on-demand assets or writer/SLA debt",
                 }
             )
+    if stage_opt and stage_opt.get("next_action_recommendation"):
+        recommendation = stage_opt["next_action_recommendation"]
+        focus = str(recommendation.get("focus") or "upstream_candidate_supply")
+        weakest_formula_ids = ", ".join(str(item) for item in recommendation.get("weakest_formula_ids") or [])
+        weakest_stage_bins = ", ".join(str(item) for item in recommendation.get("weakest_stage_bins") or [])
+        action_text = (
+            f"Stage-opt candidate supply [{focus}]: {recommendation.get('reason') or 'review current recommendation'} "
+            f"→ {recommendation.get('recommended_lever') or 'review upstream candidate supply'}"
+        )
+        if weakest_formula_ids or weakest_stage_bins:
+            details: list[str] = []
+            if weakest_formula_ids:
+                details.append(f"weakest formulas: {weakest_formula_ids}")
+            if weakest_stage_bins:
+                details.append(f"weakest stages: {weakest_stage_bins}")
+            action_text += " (" + "; ".join(details) + ")"
+        actions.append(
+            {
+                "priority": str(recommendation.get("priority") or "P1"),
+                "action": action_text,
+            }
+        )
     return actions
 
 
@@ -314,6 +357,31 @@ def run_doctor(args: argparse.Namespace) -> int:
         }
     )
 
+    stage_opt: dict[str, Any] | None = None
+    if not args.skip_stage_opt:
+        result = _run_command(
+            [
+                sys.executable,
+                "backend/scripts/audit_stage_opt_candidate_supply.py",
+                "--format",
+                "json",
+            ],
+            cwd=repo,
+        )
+        parsed = _json_from_stdout(result)
+        stage_opt = {
+            "command": _command_summary(result),
+            "report": _stage_opt_summary(parsed),
+            "verdict": parsed.get("verdict") if parsed else "FAIL",
+        }
+        sections.append(
+            {
+                "name": "stage_opt",
+                "verdict": stage_opt["verdict"],
+                "returncode": result["returncode"],
+            }
+        )
+
     worktree_report = None
     worktree_summary = None
     if tooling_payload:
@@ -333,11 +401,13 @@ def run_doctor(args: argparse.Namespace) -> int:
         "universe": universe,
         "storage_payload": storage_payload,
         "data_health": data_health,
+        "stage_opt": stage_opt,
         "next_actions": _next_actions(
             tooling_payload,
             worktree_summary,
             storage_payload.get("report") if storage_payload else None,
             data_health.get("report") if data_health else None,
+            stage_opt.get("report") if stage_opt else None,
         ),
     }
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
@@ -1051,6 +1121,7 @@ def main() -> int:
     doctor.add_argument("--skip-test-tool", action="store_true")
     doctor.add_argument("--skip-universe", action="store_true")
     doctor.add_argument("--skip-storage-payload", action="store_true")
+    doctor.add_argument("--skip-stage-opt", action="store_true")
     doctor.add_argument("--storage-max-findings", type=int, default=20)
     doctor.set_defaults(func=run_doctor)
 

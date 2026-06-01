@@ -67,6 +67,9 @@ The model pipeline snapshot below is historical evidence for the completed
   `dropped_unknown_stage_rows` 降到 `454,158`, so the remaining
   `technical_stage='?'` mass is still mostly structural classifier warmup /
   unknown, not a fresh ETL outage.
+- `scripts/chunkyctl doctor --fast` now also surfaces the stage-opt
+  `next_action_recommendation`, so the controller sees the upstream
+  candidate-supply lever without rerunning the audit manually.
 - later in the same slice we tested whether the 2023-01-01→2023-09-11
   technical-stage hole was the missing lever: `build_stage_formula_fitness.py`
   needed a longer `compute_start` than the write window, so a second run with
