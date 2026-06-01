@@ -89,9 +89,9 @@ The model pipeline snapshot below is historical evidence for the completed
   This does not change the `need_027` exact-flow blocked status.
 -- system data-health snapshot: `scripts/chunkyctl doctor --fast` now folds in
   `backend/scripts/data_health_snapshot.py --dry-run --format json` and fails
-  closed on red tables. Current dry-run evidence is `WARN: 0 red / 13 yellow /
+  closed on red tables. Current dry-run evidence is `WARN: 0 red / 12 yellow /
   341 total`; `warning/monitor_only` assets are capped to yellow, so the red
-  set is empty and the remaining 13 yellow items are maintenance/on-demand
+  set is empty and the remaining 12 yellow items are maintenance/on-demand
   debt. `raw_margin_daily` is now a yellow monitor-only missing-table warning
   instead of a blocker. This is the startup health signal the controller has
   to read before trusting any freshness claim. Feature panel,
@@ -103,7 +103,10 @@ The model pipeline snapshot below is historical evidence for the completed
   writer was refreshed, clearing the only blocking yellow table, and
   `raw_executive_trade` / `fact_executive_trade_event` were rebuilt locally,
   and `sync_surveys` then refreshed `raw_institution_surveys` /
-  `mart_stock_survey_activity`, dropping the yellow count from 17 to 13.
+  `mart_stock_survey_activity`, dropping the yellow count from 17 to 13,
+  before a later `build_akshare_panel.py --tasks jgdy,dzjy` attempt refreshed
+  `fact_jgdy_event` and brought the current yellow count to 12 while leaving
+  `fact_dzjy_event` stale.
 - survivorship gate: current default `p0a_v3_horizon_governance` PASS; the old
   `p0a_v2_governance_v1` gate remains available only for explicit historical
   review.
