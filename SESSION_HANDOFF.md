@@ -38,8 +38,15 @@ just ranking order. This slice also added governance-reason columns to
 diagnostic rows now carry the latest governance rejection reason/count beside
 the existing `stock_missing_pit` / `formula_missing_pit` reason. `need_027`
 主力资金源仍 blocked/unknown；`akshare.stock_individual_fund_flow` /
-`stock_individual_fund_flow_rank` capability 已登记，但
-`probe_source_capability.py` 现在已先清代理再重试，但 Eastmoney 端点仍以 `ConnectionError` / `JSONDecodeError` remote disconnect 失败，blocked probe now persists into `mart_data_source_failure_queue` so future triage can resume from stored evidence. `audit_tdx_data_need_coverage.py` 现在也会把 blocked need summary 直接列出来，目前只剩 `need_027` 一个 blocked gap。2026-06-01 又对当前推荐的 7 个 stock code 以 cutoffs `2026-01-01,2026-05-19,2026-05-29` 重跑 `build_stage_opt_pit.py`，结果 latest recommendation PIT coverage 仍然 0（8 total / 0 exact / 0 same_formula / 1 same_stock / 8 cross_stage），说明 exact stage × formula 的候选供给是结构性稀疏，不是单次补表能解决。No GCP/Optuna/backtest work was started.
+`stock_individual_fund_flow_rank` / `stock_fund_flow_individual` capability 已登记，
+其中 `stock_fund_flow_individual` 只是 10jqka 研究侧排行快照，不等同 exact flow；
+`probe_source_capability.py` 现在已先清代理再重试，但 Eastmoney 端点仍以
+`ConnectionError` / `JSONDecodeError` remote disconnect 失败，blocked probe now
+persists into `mart_data_source_failure_queue` so future triage can resume from
+stored evidence. `audit_tdx_data_need_coverage.py` 现在也会把 blocked need summary
+直接列出来，目前只剩 `need_027` 一个 blocked gap。2026-06-01 又对当前推荐的 7 个
+stock code 以 cutoffs `2026-01-01,2026-05-19,2026-05-29` 重跑
+`build_stage_opt_pit.py`，结果 latest recommendation PIT coverage 仍然 0（8 total / 0 exact / 0 same_formula / 1 same_stock / 8 cross_stage），说明 exact stage × formula 的候选供给是结构性稀疏，不是单次补表能解决。No GCP/Optuna/backtest work was started.
 This slice also externalized `portfolio_sizer` short/mid/long thresholds into
 `backend/config/portfolio_sizer_profiles.yaml`, and added
 `backend/scripts/audit_portfolio_sizer_profile_attrition.py` /

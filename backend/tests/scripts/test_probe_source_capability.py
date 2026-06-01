@@ -70,6 +70,33 @@ def test_probe_source_capability_summarizes_dataframe(monkeypatch) -> None:
     assert report["date_range"] == {"field": "trade_date", "min": "2026-05-29", "max": "2026-05-29"}
 
 
+def test_probe_source_capability_summarizes_rank_snapshot(monkeypatch) -> None:
+    df = pd.DataFrame(
+        [
+            {"序号": 1, "代码": "600519", "最新价": 1234.5},
+        ]
+    )
+
+    def fake_resolve(capability: str, *, prefer_source=None, **kwargs):
+        assert capability == "individual_fund_flow_rank_snapshot"
+        assert prefer_source == "akshare"
+        assert kwargs == {"symbol": "即时"}
+        return (df, "akshare")
+
+    monkeypatch.setattr(probe, "resolve", fake_resolve)
+
+    report = probe.probe_source_capability(
+        "individual_fund_flow_rank_snapshot",
+        {"symbol": "即时"},
+        prefer_source="akshare",
+    )
+
+    assert report["status"] == "ok"
+    assert report["type"] == "DataFrame"
+    assert report["row_count"] == 1
+    assert report["columns"] == ["序号", "代码", "最新价"]
+
+
 def test_probe_source_capability_marks_blocked_on_error(monkeypatch) -> None:
     def fake_resolve(*_args, **_kwargs):
         raise RuntimeError("proxy blocked")

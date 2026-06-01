@@ -27,10 +27,12 @@ The model pipeline snapshot below is historical evidence for the completed
   84 codes, so this is source sparsity rather than ETL lag. The other WARN is
   `fact_technical_trigger` event-table sparse-event coverage, and `need_027`
   main-force source still blocked/unknown; the akshare `individual_fund_flow`
-  / `individual_fund_flow_rank` capability is registered, the live probe now
-  clears proxy env and retries but Eastmoney still fails with
-  `ConnectionError` / `JSONDecodeError` remote disconnect, and blocked probe
-  rows now persist in `mart_data_source_failure_queue` for follow-up triage.
+  / `individual_fund_flow_rank` / `stock_fund_flow_individual` capability is
+  registered, where `stock_fund_flow_individual` is only a 10jqka research-side
+  rank snapshot and not exact flow; the live probe now clears proxy env and
+  retries but Eastmoney still fails with `ConnectionError` /
+  `JSONDecodeError` remote disconnect, and blocked probe rows now persist in
+  `mart_data_source_failure_queue` for follow-up triage.
 - stage-opt audit: 2026-06-01 repaired the 2025-08-01→2026-05-29
   `fact_stock_technical_stage` / `fact_signal_context` discontinuity and
   reran `audit_stage_opt_candidate_supply.py`; full-history coverage is now

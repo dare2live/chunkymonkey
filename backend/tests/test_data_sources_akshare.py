@@ -44,8 +44,24 @@ def _make_fake_akshare_module() -> types.ModuleType:
             ]
         )
 
+    def stock_fund_flow_individual(symbol: str = "即时") -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                {
+                    "序号": 1,
+                    "代码": "600519",
+                    "名称": "贵州茅台",
+                    "最新价": 1234.5,
+                    "流入资金": 999.0,
+                    "流出资金": 123.0,
+                    "净额": 876.0,
+                }
+            ]
+        )
+
     fake.stock_individual_fund_flow = stock_individual_fund_flow
     fake.stock_individual_fund_flow_rank = stock_individual_fund_flow_rank
+    fake.stock_fund_flow_individual = stock_fund_flow_individual
     return fake
 
 
@@ -54,6 +70,7 @@ def test_akshare_source_registers_individual_fund_flow_capabilities() -> None:
 
     assert "individual_fund_flow" in caps
     assert "individual_fund_flow_rank" in caps
+    assert "individual_fund_flow_rank_snapshot" in caps
 
 
 def test_akshare_source_dispatches_individual_fund_flow(monkeypatch) -> None:
@@ -72,6 +89,24 @@ def test_akshare_source_dispatches_individual_fund_flow(monkeypatch) -> None:
             "小单净流入-净额": -10.5,
             "收盘价": 123.4,
             "涨跌幅": 1.2,
+        }
+    ]
+
+
+def test_akshare_source_dispatches_individual_fund_flow_rank_snapshot(monkeypatch) -> None:
+    monkeypatch.setitem(sys.modules, "akshare", _make_fake_akshare_module())
+
+    data = AkshareSource().fetch("individual_fund_flow_rank_snapshot", symbol="即时")
+
+    assert data == [
+        {
+            "序号": 1,
+            "代码": "600519",
+            "名称": "贵州茅台",
+            "最新价": 1234.5,
+            "流入资金": 999.0,
+            "流出资金": 123.0,
+            "净额": 876.0,
         }
     ]
 
@@ -132,3 +167,13 @@ def test_resolve_routes_individual_fund_flow_to_akshare(monkeypatch) -> None:
     assert source == "akshare"
     assert isinstance(data, list)
     assert data[0]["日期"] == "2026-05-29"
+
+
+def test_resolve_routes_individual_fund_flow_rank_snapshot_to_akshare(monkeypatch) -> None:
+    monkeypatch.setitem(sys.modules, "akshare", _make_fake_akshare_module())
+
+    data, source = resolve("individual_fund_flow_rank_snapshot", symbol="即时")
+
+    assert source == "akshare"
+    assert isinstance(data, list)
+    assert data[0]["代码"] == "600519"

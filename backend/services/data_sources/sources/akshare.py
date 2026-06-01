@@ -58,6 +58,12 @@ class AkshareSource(BaseDataSource):
                 freshness="daily",
                 notes="ak.stock_individual_fund_flow_rank — need_027 supplementary probe",
             ),
+            Capability(
+                "individual_fund_flow_rank_snapshot",
+                description="个股资金流排行快照 (同花顺)",
+                freshness="daily",
+                notes="ak.stock_fund_flow_individual — research-only, snapshot rank, not need_027 exact flow",
+            ),
 
             # ===== 妙想故障时 fallback (P0.3) =====
             Capability(
@@ -110,6 +116,12 @@ class AkshareSource(BaseDataSource):
             import akshare as ak
             indicator = kwargs.get("indicator", "5日")
             df = _call_with_retry(ak.stock_individual_fund_flow_rank, indicator=str(indicator))
+            return df.to_dict("records") if df is not None and not df.empty else []
+
+        if capability == "individual_fund_flow_rank_snapshot":
+            import akshare as ak
+            symbol = kwargs.get("symbol") or kwargs.get("indicator") or "即时"
+            df = _call_with_retry(ak.stock_fund_flow_individual, symbol=str(symbol))
             return df.to_dict("records") if df is not None and not df.empty else []
 
         # fallback 路径 (P0.3): 妙想主源故障时来这里

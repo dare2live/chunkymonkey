@@ -28,11 +28,13 @@ DATE_KEYS = (
 CAPABILITY_DATA_DOMAIN_HINTS = {
     "individual_fund_flow": "order_flow_fund_flow",
     "individual_fund_flow_rank": "order_flow_fund_flow",
+    "individual_fund_flow_rank_snapshot": "order_flow_fund_flow",
 }
 
 CAPABILITY_SOURCE_HINTS = {
     "individual_fund_flow": "akshare",
     "individual_fund_flow_rank": "akshare",
+    "individual_fund_flow_rank_snapshot": "akshare",
 }
 
 

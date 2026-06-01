@@ -213,7 +213,7 @@ for fdate, fval in float_schedule:
 | 解禁信息 | `raw_capital_unlock` | 有 | OK |
 | 股东户数 | `fact_holder_count_period` | 季报 | OK，低频 |
 
-> 2026-06-01 audit note: current `data_sources` registry exposes `tdxhub` / `aif10` / `akshare`; `need_027`'s declared fallback label `miaoxiang` maps to the `aif10` family, but the current aif10 adapter still does not expose `individual_fund_flow`, so that fallback remains conceptual until the route mapping and capability are made explicit.
+> 2026-06-01 audit note: current `data_sources` registry exposes `tdxhub` / `aif10` / `akshare`; `need_027`'s declared fallback label `miaoxiang` maps to the `aif10` family, but the current aif10 adapter still does not expose `individual_fund_flow`, so that fallback remains conceptual until the route mapping and capability are made explicit. `akshare.stock_fund_flow_individual` now exists as a 10jqka research-side rank snapshot and can supplement behavior research, but it is not an exact `need_027` replacement.
 
 ### 4.3 资金流向字段说明（`raw_fund_flow_daily`）
 
