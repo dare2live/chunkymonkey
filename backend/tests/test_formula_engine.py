@@ -408,7 +408,7 @@ class TestShortTermReversalConfig:
             "reversal_1w:\n"
             "  lookback_days: 5\n"
             "  pct_change_lo: -0.10\n"
-            "  pct_change_hi: -0.02\n"
+            "  pct_change_hi: -0.01\n"
             "  rel_std_max: 0.06\n"
             "  vol_ratio_lo: 0.6\n"
             "  vol_ratio_hi: 2.0\n",
@@ -417,6 +417,7 @@ class TestShortTermReversalConfig:
         loaded = _load_config(cfg)
         assert loaded["reversal_1m_mild"]["pct_change_hi"] == pytest.approx(-0.03)
         assert loaded["reversal_1m_deep"]["pct_change_hi"] == pytest.approx(-0.05)
+        assert loaded["reversal_1w"]["pct_change_hi"] == pytest.approx(-0.01)
         assert loaded["reversal_1w"]["lookback_days"] == 5
 
 
@@ -559,6 +560,29 @@ class TestShortTermReversal:
         )
 
         assert len(signals) >= 1, "2% 左右回撤应落入 reversal_1w"
+        assert all(s.formula_id == "reversal_1w" for s in signals)
+
+    def test_weekly_variant_triggers_on_roughly_1pct_drop(self, w1):
+        n = 61
+        dates = np.array([f"2024-{(i // 30) + 1:02d}-{(i % 30) + 1:02d}" for i in range(n)])
+        closes = np.concatenate([
+            np.full(56, 100.0),
+            np.linspace(100.0, 99.0, 5),
+        ])
+        volumes = np.ones(n) * 1000
+
+        signals = w1.compute_signals(
+            "T",
+            dates,
+            closes,
+            closes,
+            closes,
+            closes,
+            volumes,
+            closes * volumes,
+        )
+
+        assert len(signals) >= 1, "1% 左右回撤应落入 reversal_1w"
         assert all(s.formula_id == "reversal_1w" for s in signals)
 
 
