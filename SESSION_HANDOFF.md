@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 04:48:24 CST
+**Snapshot 时间**: 2026-06-02 04:51:30 CST
 
 - latest local full-sync (2026-06-02) finished with only `watermarks:warn`;
   `raw_tdx_f10_holder_research` / `fact_top10_holder_period` both advanced to
@@ -63,13 +63,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `5e7b335c docs: sync storage payload reviewed-column governance and controller state | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit_storage_payloads PASS, pytest 11 passed, docs PASS, codegraph synced` |
+| HEAD | `ed5a3ee6 feat: widen stage-opt evidence and sync controller docs | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 33 passed, audit PASS, docs PASS, codegraph synced` |
 | 最近 24h commits | 82 |
-| 未 commit 文件 | 7 |
+| 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+ed5a3ee6 feat: widen stage-opt evidence and sync controller docs | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 33 passed, audit PASS, docs PASS, codegraph synced
 2c177d1b feat: widen MACD state history evidence and sync controller docs | Codex-Reviewed: APPROVE_WITH_NOTES | test pass; audit PASS; complexity no new HIGH; docs synced
 2cb49141 docs: surface stage-opt blocked-reason counts in doctor | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate)
 b1bf7181 docs: sync quickstart with stage-opt and need_027 controller-visible blockers
@@ -80,7 +81,6 @@ c61e4d86 docs: sync source-watermark UTC cleanup and current controller state | 
 efc6cd5a fix: silence source_watermarks utcnow warnings and sync project index | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: source_watermarks and probe tests 15 passed, audit PASS, docs PASS, doctor PASS, post-fix-audit cleanup verified 无残留 no stale
 ddea9ec9 docs: sync probe persistence downgrade and current triage state | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: probe_source_capability 9 passed, audit PASS, docs PASS, doctor PASS
 1c1faa40 feat: quiet need_027 probe registry warnings and sync docs | Codex-Reviewed: APPROVE_WITH_NOTES | tests: probe_source_capability 7 passed, audit PASS, docs graph PASS, doctor PASS
-cee8f95c docs: sync stage-opt MACD evidence visibility into goal and handoff | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: docs graph PASS, doctor PASS, no code changes
 ```
 
 ## NEXT ACTION (auto-computed)
