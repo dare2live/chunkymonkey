@@ -8,7 +8,7 @@ The model pipeline snapshot below is historical evidence for the completed
 
 ## Current Data Freshness Checkpoint
 
-- updated_at: `2026-06-01 10:17:34 CST`
+- updated_at: `2026-06-01 10:26:09 CST`
 - current_state: `architecture/data freshness repair`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
@@ -73,10 +73,13 @@ The model pipeline snapshot below is historical evidence for the completed
   The new `fail_reasons_by_match_tier` breakdown makes the attrition path
   explicit: `stage_pit` mostly fails on `hp/n_signals/Wilson`,
   `stage_pit_formula_fallback` mostly fails on `hp/n_signals`, and
-  `cross_stage_fallback` mostly fails on `hp/wilson`. The new need coverage
-  audit also surfaces source registration facts: `need_027`'s preferred
-  `akshare` is registered, while the declared fallback label `miaoxiang`
-  resolves to the registered `aif10` family but that adapter still lacks
+  `cross_stage_fallback` mostly fails on `hp/wilson`; the new
+  `fail_holding_days_by_match_tier` shows those exact PIT `hp` failures
+  cluster on off-anchor holding_days 20/30/60/90, which is the most useful
+  hint for the next tuning decision. The new need coverage audit also
+  surfaces source registration facts: `need_027`'s preferred `akshare` is
+  registered, while the declared fallback label `miaoxiang` resolves to the
+  registered `aif10` family but that adapter still lacks
   `individual_fund_flow`, so the fallback is still conceptual in the current
   wiring.
 

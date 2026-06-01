@@ -282,6 +282,9 @@ class TestSizing:
         assert summary["fail_reasons_by_match_tier"] == {
             "cross_stage_fallback": {"n_signals": 1},
         }
+        assert summary["fail_holding_days_by_match_tier"] == {
+            "cross_stage_fallback": {10: 1},
+        }
         assert summary["after_filter_rows"] == 2
         assert summary["selected_rows"] == 2
         assert summary["selected_match_tiers"] == {
@@ -311,10 +314,39 @@ class TestSizing:
         assert summary["fail_reasons_by_match_tier"] == {
             "stage_pit": {"n_signals": 1},
         }
+        assert summary["fail_holding_days_by_match_tier"] == {
+            "stage_pit": {10: 1},
+        }
         assert summary["selected_match_tiers"] == {
             "cross_stage_fallback": 1,
         }
         assert [row["stock_code"] for row in summary["selected_examples"]] == ["FALLBACK_OK"]
+
+    def test_summarize_profile_attrition_records_off_anchor_hp_fail_days(self, short_profile):
+        from services.portfolio_sizer.attrition import summarize_profile_attrition
+
+        cands = [
+            # exact PIT 候选，但 holding_days 落在 short profile 的 off-anchor 区间
+            {"stock_code": "EXACT_OFF_ANCHOR", "formula_id": "macd", "formula_variant": "macd_v1",
+             "holding_days": 60, "n_signals": 20, "win_rate": 0.85, "avg_ret": 0.10,
+             "avg_dd": -0.05, "calmar": 2.0, "signal_close": 100.0,
+             "match_tier": "stage_pit"},
+            {"stock_code": "FALLBACK_OK", "formula_id": "macd", "formula_variant": "macd_v1",
+             "holding_days": 10, "n_signals": 20, "win_rate": 0.85, "avg_ret": 0.10,
+             "avg_dd": -0.05, "calmar": 2.0, "signal_close": 100.0,
+             "match_tier": "cross_stage_fallback"},
+        ]
+
+        summary = summarize_profile_attrition(cands, short_profile, max_examples=2)
+        assert summary["fail_reasons_by_match_tier"] == {
+            "stage_pit": {"hp": 1},
+        }
+        assert summary["fail_holding_days_by_match_tier"] == {
+            "stage_pit": {60: 1},
+        }
+        assert summary["selected_match_tiers"] == {
+            "cross_stage_fallback": 1,
+        }
 
 
 # ===================== Sell Rules =====================

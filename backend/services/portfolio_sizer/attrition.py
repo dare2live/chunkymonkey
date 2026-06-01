@@ -27,11 +27,13 @@ def summarize_profile_attrition(
     stage_reached = Counter()
     fail_reasons = Counter()
     fail_reasons_by_match_tier: dict[str, Counter[str]] = defaultdict(Counter)
+    fail_holding_days_by_match_tier: dict[str, Counter[int]] = defaultdict(Counter)
     enriched: list[dict[str, Any]] = []
     eligible_factors = get_eligible_factors(profile.profile_id)
 
     for candidate in candidates:
         match_tier = str(candidate.get("match_tier") or "unknown")
+        holding_days = candidate.get("holding_days")
         scored, fail_reason, trace = evaluate_candidate(candidate, profile, eligible_factors)
         for stage in ATTRITION_STAGES:
             if trace.get(stage):
@@ -39,6 +41,8 @@ def summarize_profile_attrition(
         if fail_reason:
             fail_reasons[fail_reason] += 1
             fail_reasons_by_match_tier[match_tier][fail_reason] += 1
+            if holding_days is not None:
+                fail_holding_days_by_match_tier[match_tier][int(holding_days)] += 1
             continue
         if scored is not None:
             enriched.append(scored)
@@ -55,6 +59,10 @@ def summarize_profile_attrition(
         "fail_reasons_by_match_tier": {
             tier: dict(counts)
             for tier, counts in sorted(fail_reasons_by_match_tier.items())
+        },
+        "fail_holding_days_by_match_tier": {
+            tier: dict(sorted(counts.items()))
+            for tier, counts in sorted(fail_holding_days_by_match_tier.items())
         },
         "after_filter_rows": len(enriched),
         "selected_rows": len(selected),
