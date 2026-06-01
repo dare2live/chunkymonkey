@@ -664,6 +664,50 @@ def test_next_actions_include_stage_opt_recommendation() -> None:
     }
 
 
+def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
+    summary = chunkyctl._stage_opt_summary(
+        {
+            "raw_signal_rows": 10,
+            "filtered_signal_rows": 8,
+            "unique_keys": 4,
+            "ready_keys": 2,
+            "ready_coverage_pct": 50.0,
+            "blocked_reason_counts": {"below_min_signals": 6},
+            "codes_without_bars": 0,
+            "next_action_recommendation": {
+                "priority": "P1",
+                "focus": "upstream_candidate_supply",
+                "reason": "below_min_signals dominates current blocked keys",
+                "recommended_lever": "expand upstream formula coverage or signal density before tuning profile knobs",
+                "weakest_formula_ids": ["macd_golden_cross"],
+                "weakest_stage_bins": ["1"],
+                "top_blocked_reason": "below_min_signals",
+            },
+            "min_signals_sensitivity": [
+                {
+                    "min_signals": 4,
+                    "ready_keys": 3,
+                    "ready_coverage_pct": 75.0,
+                    "delta_ready_keys": 1,
+                    "delta_ready_coverage_pct": 25.0,
+                    "below_min_signals": 5,
+                    "delta_below_min_signals": -1,
+                    "next_action_recommendation": {
+                        "priority": "P1",
+                        "focus": "upstream_candidate_supply",
+                        "reason": "below_min_signals dominates current blocked keys",
+                        "recommended_lever": "expand upstream formula coverage or signal density before tuning profile knobs",
+                        "top_blocked_reason": "below_min_signals",
+                    },
+                }
+            ],
+        }
+    )
+
+    assert summary["min_signals_sensitivity"][0]["min_signals"] == 4
+    assert summary["min_signals_sensitivity"][0]["ready_coverage_pct"] == 75.0
+
+
 def test_next_actions_include_stage_opt_structural_notes() -> None:
     actions = chunkyctl._next_actions(
         {

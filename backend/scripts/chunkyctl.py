@@ -100,6 +100,9 @@ def _stage_opt_summary(report: dict[str, Any] | None) -> dict[str, Any] | None:
     recommendation = report.get("next_action_recommendation")
     if not isinstance(recommendation, dict):
         recommendation = None
+    sensitivity = report.get("min_signals_sensitivity")
+    if not isinstance(sensitivity, list):
+        sensitivity = []
     return {
         "summary": {
             "raw_signal_rows": report.get("raw_signal_rows"),
@@ -111,6 +114,7 @@ def _stage_opt_summary(report: dict[str, Any] | None) -> dict[str, Any] | None:
             "codes_without_bars": report.get("codes_without_bars", 0),
         },
         "next_action_recommendation": recommendation,
+        "min_signals_sensitivity": sensitivity,
     }
 
 

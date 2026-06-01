@@ -360,6 +360,7 @@ def summarize_stage_opt_candidate_supply(
                 "recommended_lever": "keep monitoring upstream supply and PIT coverage",
                 "weakest_formula_ids": weakest_formula_ids,
                 "weakest_stage_bins": weakest_stage_bins,
+                "top_blocked_reason": None,
             }
         if below_min_signals >= no_kline_bars:
             recommendation = {
@@ -454,6 +455,72 @@ def summarize_stage_opt_candidate_supply(
     }
 
 
+def _build_min_signals_sensitivity(
+    signal_rows: list[dict[str, Any]],
+    codes_with_bars: set[str],
+    *,
+    baseline_min_signals: int,
+    probe_min_signals: tuple[int, ...] = (4, 3),
+    max_examples: int = 8,
+    dropped_unknown_stage_rows_by_formula_id: dict[str, int] | None = None,
+    dropped_unknown_stage_rows_by_formula_variant: dict[str, int] | None = None,
+    dropped_unknown_stage_examples: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Compare a small min_signals sweep against the baseline audit."""
+    probe_values = [value for value in probe_min_signals if value != baseline_min_signals]
+    if not probe_values:
+        return []
+
+    baseline_summary = summarize_stage_opt_candidate_supply(
+        signal_rows,
+        codes_with_bars,
+        min_signals=baseline_min_signals,
+        max_examples=max_examples,
+        dropped_unknown_stage_rows_by_formula_id=dropped_unknown_stage_rows_by_formula_id,
+        dropped_unknown_stage_rows_by_formula_variant=dropped_unknown_stage_rows_by_formula_variant,
+        dropped_unknown_stage_examples=dropped_unknown_stage_examples,
+    )
+    baseline_ready_keys = int(baseline_summary["ready_keys"])
+    baseline_ready_coverage_pct = float(baseline_summary["ready_coverage_pct"])
+    baseline_blocked = int((baseline_summary.get("blocked_reason_counts") or {}).get("below_min_signals", 0))
+
+    sensitivity_rows: list[dict[str, Any]] = []
+    for probe_min_signals_value in probe_values:
+        probe_summary = summarize_stage_opt_candidate_supply(
+            signal_rows,
+            codes_with_bars,
+            min_signals=probe_min_signals_value,
+            max_examples=max_examples,
+            dropped_unknown_stage_rows_by_formula_id=dropped_unknown_stage_rows_by_formula_id,
+            dropped_unknown_stage_rows_by_formula_variant=dropped_unknown_stage_rows_by_formula_variant,
+            dropped_unknown_stage_examples=dropped_unknown_stage_examples,
+        )
+        probe_blocked = int((probe_summary.get("blocked_reason_counts") or {}).get("below_min_signals", 0))
+        probe_recommendation = probe_summary.get("next_action_recommendation") or {}
+        sensitivity_rows.append(
+            {
+                "min_signals": probe_min_signals_value,
+                "ready_keys": probe_summary["ready_keys"],
+                "ready_coverage_pct": probe_summary["ready_coverage_pct"],
+                "delta_ready_keys": int(probe_summary["ready_keys"]) - baseline_ready_keys,
+                "delta_ready_coverage_pct": round(
+                    float(probe_summary["ready_coverage_pct"]) - baseline_ready_coverage_pct,
+                    2,
+                ),
+                "below_min_signals": probe_blocked,
+                "delta_below_min_signals": probe_blocked - baseline_blocked,
+                "next_action_recommendation": {
+                    "priority": probe_recommendation.get("priority"),
+                    "focus": probe_recommendation.get("focus"),
+                    "reason": probe_recommendation.get("reason"),
+                    "recommended_lever": probe_recommendation.get("recommended_lever"),
+                    "top_blocked_reason": probe_recommendation.get("top_blocked_reason"),
+                },
+            }
+        )
+    return sensitivity_rows
+
+
 def _render_markdown(result: dict[str, Any]) -> str:
     lines = [
         "# Stage Opt Candidate Supply",
@@ -512,6 +579,18 @@ def _render_markdown(result: dict[str, Any]) -> str:
             lines.append(
                 f"- {row['stock_code']} {row['formula_variant']} stage={row['stage_bin']} "
                 f"date={row['signal_date']} formula={row['formula_id']}"
+            )
+        lines.append("")
+    if result.get("min_signals_sensitivity"):
+        lines.append("## Min Signals Sensitivity")
+        for row in result["min_signals_sensitivity"]:
+            delta_cov = row.get("delta_ready_coverage_pct")
+            delta_keys = row.get("delta_ready_keys")
+            delta_blocked = row.get("delta_below_min_signals")
+            lines.append(
+                f"- min_signals={row['min_signals']}: ready_keys={row['ready_keys']} "
+                f"coverage={row['ready_coverage_pct']}% (Δkeys={delta_keys:+}, Δcoverage={delta_cov:+.2f}pp, "
+                f"Δbelow_min={delta_blocked:+})"
             )
         lines.append("")
     lines.append("## By Formula Variant")
@@ -661,6 +740,14 @@ def main() -> int:
             signal_rows=signal_rows,
             codes_total=len(codes),
             codes_with_bars=codes_with_bars,
+        )
+        result["min_signals_sensitivity"] = _build_min_signals_sensitivity(
+            signal_rows,
+            codes_with_bars,
+            baseline_min_signals=args.min_signals,
+            dropped_unknown_stage_rows_by_formula_id=load_result["dropped_unknown_stage_rows_by_formula_id"],
+            dropped_unknown_stage_rows_by_formula_variant=load_result["dropped_unknown_stage_rows_by_formula_variant"],
+            dropped_unknown_stage_examples=load_result["dropped_unknown_stage_examples"],
         )
 
         if args.format == "json":

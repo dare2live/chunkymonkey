@@ -195,6 +195,111 @@ def test_summarize_stage_opt_candidate_supply_emits_structural_notes_for_macd() 
     assert "fact_technical_trigger PRIMARY KEY" in markdown
 
 
+def test_min_signals_sensitivity_reports_threshold_lift() -> None:
+    signal_rows = [
+        *[
+            {
+                "stock_code": "000001",
+                "signal_date": f"2026-05-{10 + idx:02d}",
+                "formula_id": "formula_a",
+                "formula_variant": "variant_a",
+                "stage_bin": "1",
+            }
+            for idx in range(5)
+        ],
+        *[
+            {
+                "stock_code": "000002",
+                "signal_date": f"2026-05-{20 + idx:02d}",
+                "formula_id": "formula_a",
+                "formula_variant": "variant_a",
+                "stage_bin": "1",
+            }
+            for idx in range(4)
+        ],
+        *[
+            {
+                "stock_code": "000003",
+                "signal_date": f"2026-05-{30 + idx:02d}",
+                "formula_id": "formula_a",
+                "formula_variant": "variant_a",
+                "stage_bin": "1",
+            }
+            for idx in range(3)
+        ],
+    ]
+    summary = audit_stage_opt_candidate_supply.summarize_stage_opt_candidate_supply(
+        signal_rows,
+        {"000001", "000002", "000003"},
+        min_signals=5,
+    )
+    sensitivity = audit_stage_opt_candidate_supply._build_min_signals_sensitivity(
+        signal_rows,
+        {"000001", "000002", "000003"},
+        baseline_min_signals=5,
+    )
+
+    assert summary["ready_keys"] == 1
+    assert sensitivity == [
+        {
+            "min_signals": 4,
+            "ready_keys": 2,
+            "ready_coverage_pct": 66.67,
+            "delta_ready_keys": 1,
+            "delta_ready_coverage_pct": 33.34,
+            "below_min_signals": 1,
+            "delta_below_min_signals": -1,
+            "next_action_recommendation": {
+                "priority": "P1",
+                "focus": "upstream_candidate_supply",
+                "reason": "below_min_signals dominates current blocked keys",
+                "recommended_lever": "expand upstream formula coverage or signal density before tuning profile knobs",
+                "top_blocked_reason": "below_min_signals",
+            },
+        },
+        {
+            "min_signals": 3,
+            "ready_keys": 3,
+            "ready_coverage_pct": 100.0,
+            "delta_ready_keys": 2,
+            "delta_ready_coverage_pct": 66.67,
+            "below_min_signals": 0,
+            "delta_below_min_signals": -2,
+            "next_action_recommendation": {
+                "priority": "P2",
+                "focus": "candidate_supply_monitoring",
+                "reason": "no blocking reasons detected in current slice",
+                "recommended_lever": "keep monitoring upstream supply and PIT coverage",
+                "top_blocked_reason": None,
+            },
+        },
+    ]
+
+    result = audit_stage_opt_candidate_supply._compose_audit_result(
+        {
+            "raw_rows": len(signal_rows),
+            "dropped_index_rows": 0,
+            "dropped_unknown_stage_rows": 0,
+            "dropped_unknown_stage_rows_by_formula_id": {},
+            "dropped_unknown_stage_rows_by_formula_variant": {},
+            "dropped_unknown_stage_examples": [],
+        },
+        summary,
+        start="2026-05-01",
+        end="2026-05-29",
+        min_signals=5,
+        signal_rows=signal_rows,
+        codes_total=3,
+        codes_with_bars={"000001", "000002", "000003"},
+    )
+    result["min_signals_sensitivity"] = sensitivity
+    markdown = audit_stage_opt_candidate_supply._render_markdown(result)
+
+    assert "## Min Signals Sensitivity" in markdown
+    assert "min_signals=4" in markdown
+    assert "min_signals=3" in markdown
+
+
 def test_latest_closed_trade_date_uses_existing_calendar_connection() -> None:
     conn = duckdb.connect(":memory:")
     try:
