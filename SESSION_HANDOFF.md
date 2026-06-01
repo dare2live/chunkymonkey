@@ -25,14 +25,14 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 05:12:59 CST
+**Snapshot 时间**: 2026-06-02 05:19:49 CST
 
 - latest local full-sync (2026-06-02) finished with only `watermarks:warn`;
   `raw_tdx_f10_holder_research` / `fact_top10_holder_period` both advanced to
   `2026-06-01 19:14:51` / `2026-06-01T19:14:57+00:00`, and the 28-row holder
   raw smoke `parse -> write_one -> rollback` all passed, so the current Python
   evidence is crash-free.
-- current in-progress slice: stage-opt upstream candidate supply tuning (latest rebuild tightened `dynamic_ma_iterative_cross` from 2 iterations to 1, kept `reversal_1m_deep` at 8-30%, moved turtle breakout volume confirmation into `backend/config/formula_turtle_breakout.yaml`, lowered `volume_multiple` from 1.3 to 1.2, and lifted full-history audit to `69.66%` ready coverage with `dynamic_ma_iterative_cross` now at `53.67%` and `turtle_breakout_55` still at `60.17%`) plus need_027 blocked-gap triage; storage payload reviewed-column governance for `backend/config/storage_retention.yaml` and `backend/tests/scripts/test_audit_storage_payloads.py` is already complete, with `mart_macd_state_history.reason_codes_json` registered as a bounded diagnostic evidence column and `audit_storage_payloads.py` at `323 columns / 0 FAIL / 0 WARN / 12 reviewed PASS`.
+- current in-progress slice: stage-opt upstream candidate supply tuning (latest rebuild tightened `dynamic_ma_iterative_cross` from 2 iterations to 1, kept `reversal_1m_deep` at 8-30%, moved turtle breakout volume confirmation into `backend/config/formula_turtle_breakout.yaml`, lowered `volume_multiple` from 1.3 to 1.1, and lifted full-history audit to `70.20%` ready coverage with `dynamic_ma_iterative_cross` now at `53.67%` and `turtle_breakout_55` now at `62.07%`; 2026-06-02 05:17-05:18 又把 `turtle_breakout_55` 的量能确认门槛从 1.2 收到 1.1，把全局审计抬到 `70.20%` ready coverage，`turtle_breakout_20` / `turtle_breakout_55` 分别达到 `214,919 / 19,476 / 83.33%` 和 `124,226 / 17,004 / 62.07%`，`min_signals=4/3/2` 现在对应 `76.41% / 83.06% / 90.65%`（`113,174 / 123,029 / 134,264` ready keys）) plus need_027 blocked-gap triage; storage payload reviewed-column governance for `backend/config/storage_retention.yaml` and `backend/tests/scripts/test_audit_storage_payloads.py` is already complete, with `mart_macd_state_history.reason_codes_json` registered as a bounded diagnostic evidence column and `audit_storage_payloads.py` at `323 columns / 0 FAIL / 0 WARN / 12 reviewed PASS`.
 | Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
 | VM 状态 | ? |
 | VM 上次启动 |  |

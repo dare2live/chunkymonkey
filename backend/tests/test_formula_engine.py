@@ -240,7 +240,7 @@ class TestTurtleBreakout:
         assert f55.metadata.formula_id == "turtle_breakout_55"
         assert f55.metadata.default_horizon_days == 30
         from services.formula_engine import turtle_breakout as turtle_breakout_module
-        assert turtle_breakout_module.VOLUME_MULTIPLE == pytest.approx(1.2)
+        assert turtle_breakout_module.VOLUME_MULTIPLE == pytest.approx(1.1)
 
     def test_volume_multiple_loader_reads_config(self, tmp_path):
         from services.formula_engine.turtle_breakout import _load_volume_multiple
@@ -305,7 +305,7 @@ class TestTurtleBreakout:
         assert len(signals) == 0
 
     def test_moderate_volume_breakout_now_triggers(self, f55):
-        # 介于 1.2x 和 1.3x 的放量突破,用来锁住新供给阈值不会回弹到 1.3
+        # 介于 1.1x 和 1.2x 的放量突破,用来锁住新供给阈值不会回弹到 1.2
         n = 70
         dates = np.array([f"2024-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}" for i in range(n)])
         closes = np.concatenate([
