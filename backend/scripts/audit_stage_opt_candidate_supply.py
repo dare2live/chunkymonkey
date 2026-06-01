@@ -227,6 +227,9 @@ def summarize_stage_opt_candidate_supply(
     ready_keys_by_formula_variant = Counter()
     ready_keys_by_stage = Counter()
     blocked_reason_counts = Counter()
+    blocked_reason_counts_by_formula_id: defaultdict[str, Counter[str]] = defaultdict(Counter)
+    blocked_reason_counts_by_formula_variant: defaultdict[str, Counter[str]] = defaultdict(Counter)
+    blocked_reason_counts_by_stage = defaultdict(Counter)
     blocked_examples: list[dict[str, Any]] = []
 
     for row in signal_rows:
@@ -248,15 +251,21 @@ def summarize_stage_opt_candidate_supply(
         key_counts_by_formula_variant[formula_variant] += 1
         key_counts_by_stage[stage_bin] += 1
 
-        reasons: list[str] = []
+        blocked_reasons: list[str] = []
         if n_rows < min_signals:
-            reasons.append("below_min_signals")
+            blocked_reasons.append("below_min_signals")
             blocked_reason_counts["below_min_signals"] += 1
+            blocked_reason_counts_by_formula_id[formula_id]["below_min_signals"] += 1
+            blocked_reason_counts_by_formula_variant[formula_variant]["below_min_signals"] += 1
+            blocked_reason_counts_by_stage[stage_bin]["below_min_signals"] += 1
         if not has_bars:
-            reasons.append("no_kline_bars")
+            blocked_reasons.append("no_kline_bars")
             blocked_reason_counts["no_kline_bars"] += 1
+            blocked_reason_counts_by_formula_id[formula_id]["no_kline_bars"] += 1
+            blocked_reason_counts_by_formula_variant[formula_variant]["no_kline_bars"] += 1
+            blocked_reason_counts_by_stage[stage_bin]["no_kline_bars"] += 1
 
-        if reasons:
+        if blocked_reasons:
             if len(blocked_examples) < max_examples:
                 blocked_examples.append(
                     {
@@ -266,7 +275,7 @@ def summarize_stage_opt_candidate_supply(
                         "stage_bin": stage_bin,
                         "signal_rows": n_rows,
                         "has_bars": has_bars,
-                        "blocked_reasons": reasons,
+                        "blocked_reasons": blocked_reasons,
                     }
                 )
             continue
@@ -372,6 +381,18 @@ def summarize_stage_opt_candidate_supply(
         "ready_keys": ready_key_count,
         "ready_coverage_pct": _coverage(ready_key_count, total_key_count),
         "blocked_reason_counts": dict(blocked_reason_counts),
+        "blocked_reason_counts_by_formula_id": {
+            formula_id: dict(sorted(reason_counts.items()))
+            for formula_id, reason_counts in sorted(blocked_reason_counts_by_formula_id.items())
+        },
+        "blocked_reason_counts_by_formula_variant": {
+            formula_variant: dict(sorted(reason_counts.items()))
+            for formula_variant, reason_counts in sorted(blocked_reason_counts_by_formula_variant.items())
+        },
+        "blocked_reason_counts_by_stage_bin": {
+            stage_bin: dict(sorted(reason_counts.items()))
+            for stage_bin, reason_counts in sorted(blocked_reason_counts_by_stage.items())
+        },
         "rows_by_formula_id": dict(sorted(rows_by_formula_id.items())),
         "rows_by_formula_variant": dict(sorted(rows_by_formula_variant.items())),
         "rows_by_stage_bin": dict(sorted(rows_by_stage.items())),
@@ -482,6 +503,24 @@ def _render_markdown(result: dict[str, Any]) -> str:
                 f"signals={row['signal_rows']} bars={row['has_bars']} "
                 f"reasons={row['blocked_reasons']}"
             )
+    if result["blocked_reason_counts_by_formula_id"]:
+        lines.append("")
+        lines.append("## Blocked Reasons By Formula Id")
+        for formula_id, reason_counts in result["blocked_reason_counts_by_formula_id"].items():
+            reason_text = ", ".join(f"{reason}={count}" for reason, count in reason_counts.items())
+            lines.append(f"- {formula_id}: {reason_text}")
+    if result["blocked_reason_counts_by_formula_variant"]:
+        lines.append("")
+        lines.append("## Blocked Reasons By Formula Variant")
+        for formula_variant, reason_counts in result["blocked_reason_counts_by_formula_variant"].items():
+            reason_text = ", ".join(f"{reason}={count}" for reason, count in reason_counts.items())
+            lines.append(f"- {formula_variant}: {reason_text}")
+    if result["blocked_reason_counts_by_stage_bin"]:
+        lines.append("")
+        lines.append("## Blocked Reasons By Stage")
+        for stage_bin, reason_counts in result["blocked_reason_counts_by_stage_bin"].items():
+            reason_text = ", ".join(f"{reason}={count}" for reason, count in reason_counts.items())
+            lines.append(f"- stage {stage_bin}: {reason_text}")
     return "\n".join(lines).rstrip() + "\n"
 
 

@@ -76,6 +76,18 @@ def test_summarize_stage_opt_candidate_supply_tracks_ready_and_blocked_keys() ->
         "below_min_signals": 1,
         "no_kline_bars": 1,
     }
+    assert summary["blocked_reason_counts_by_formula_id"] == {
+        "formula_a": {"below_min_signals": 1},
+        "formula_b": {"no_kline_bars": 1},
+    }
+    assert summary["blocked_reason_counts_by_formula_variant"] == {
+        "variant_a": {"below_min_signals": 1},
+        "variant_b": {"no_kline_bars": 1},
+    }
+    assert summary["blocked_reason_counts_by_stage_bin"] == {
+        "1": {"below_min_signals": 1},
+        "2": {"no_kline_bars": 1},
+    }
     assert summary["rows_by_formula_id"] == {"formula_a": 9, "formula_b": 5}
     assert summary["rows_by_formula_variant"] == {"variant_a": 9, "variant_b": 5}
     assert summary["rows_by_stage_bin"] == {"1": 9, "2": 5}

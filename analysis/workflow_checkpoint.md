@@ -39,11 +39,13 @@ The model pipeline snapshot below is historical evidence for the completed
 - stage-opt audit: 2026-06-01 repaired the 2025-08-01→2026-05-29
   `fact_stock_technical_stage` / `fact_signal_context` discontinuity and
   reran `audit_stage_opt_candidate_supply.py`; full-history coverage is now
-  `4929 raw_signal_rows / 1033 unique_keys / 398 ready_keys / 38.53% ready
-  coverage / 635 below_min_signals`, while `2024-03-06` 起的
-  `dropped_unknown_stage_rows` 降到 `454,158`. The remaining
-  `technical_stage='?'` mass is now mostly structural classifier warmup /
-  unknown, not a fresh ETL outage.
+  `606,583 raw_signal_rows / 111,835 unique_keys / 49,586 ready_keys / 44.34%
+  ready coverage / 62,249 below_min_signals`, with `codes_without_bars=0`.
+  The new blocked-reason breakdown shows every blocked key fails only on
+  `below_min_signals`; `macd_golden_cross` and stages 3/4 are the weakest
+  cohorts. `2024-03-06` 起的 `dropped_unknown_stage_rows` 降到 `454,158`,
+  so the remaining `technical_stage='?'` mass is still mostly structural
+  classifier warmup / unknown, not a fresh ETL outage.
 - end-to-end audit: `audit_end_to_end.py` now exits PASS with WARN
   (`24 total / 19 OK / 5 WARN / 0 FAIL`); WARN includes recommendation PIT
   coverage 0, recommendation row count, and freshness days_behind=3 for
@@ -109,9 +111,10 @@ The model pipeline snapshot below is historical evidence for the completed
   lacks `individual_fund_flow`, so the fallback is still conceptual in the
   current wiring. 2026-06-01 also ran `audit_stage_opt_candidate_supply.py` on the
   current audited slice (2023-01-01→2026-05-29, limit-stocks 50) and found
-  3576 raw signal rows / 831 unique keys / 280 ready keys / 33.69% ready
-  coverage / 551 below_min_signals; the helper now reuses the current
-  connection's calendar truth source instead of opening a nested
+  `606,583 raw_signal_rows / 111,835 unique_keys / 49,586 ready_keys / 44.34%
+  ready coverage / 62,249 below_min_signals`, with `codes_without_bars=0`
+  and all blocked keys failing on `below_min_signals`; the helper now reuses
+  the current connection's calendar truth source instead of opening a nested
   `latest_closed_or_raise()` connection. This reinforces the same conclusion:
   upstream candidate supply / formula coverage is the next lever, not another
   profile knob tweak. LHB side, the latest read-only check shows
