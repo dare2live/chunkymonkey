@@ -103,6 +103,16 @@ def _stage_opt_summary(report: dict[str, Any] | None) -> dict[str, Any] | None:
     sensitivity = report.get("min_signals_sensitivity")
     if not isinstance(sensitivity, list):
         sensitivity = []
+    blocked_reason_counts = report.get("blocked_reason_counts")
+    if not isinstance(blocked_reason_counts, dict):
+        blocked_reason_counts = {}
+    top_blocked_reason_counts = sorted(
+        (
+            {"reason": str(reason), "count": int(count or 0)}
+            for reason, count in blocked_reason_counts.items()
+        ),
+        key=lambda item: (-item["count"], item["reason"]),
+    )[:3]
     return {
         "summary": {
             "raw_signal_rows": report.get("raw_signal_rows"),
@@ -115,6 +125,8 @@ def _stage_opt_summary(report: dict[str, Any] | None) -> dict[str, Any] | None:
             "below_min_signals": (report.get("blocked_reason_counts") or {}).get("below_min_signals", 0),
             "codes_without_bars": report.get("codes_without_bars", 0),
         },
+        "blocked_reason_counts": blocked_reason_counts,
+        "top_blocked_reason_counts": top_blocked_reason_counts,
         "next_action_recommendation": recommendation,
         "min_signals_sensitivity": sensitivity,
     }

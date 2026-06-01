@@ -482,6 +482,10 @@ def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_pa
     assert report["data_health"]["report"]["verdict"] == "FAIL"
     assert report["stage_opt"]["report"]["summary"]["raw_trigger_rows"] == 7
     assert report["stage_opt"]["report"]["summary"]["raw_state_history_rows"] == 3
+    assert report["stage_opt"]["report"]["blocked_reason_counts"] == {"below_min_signals": 62287}
+    assert report["stage_opt"]["report"]["top_blocked_reason_counts"] == [
+        {"reason": "below_min_signals", "count": 62287}
+    ]
     assert report["stage_opt"]["report"]["next_action_recommendation"]["focus"] == "upstream_candidate_supply"
     assert report["need_coverage"]["report"]["summary"]["blocked_need_count"] == 1
     assert report["verdict"] == "FAIL"
@@ -714,6 +718,10 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
 
     assert summary["min_signals_sensitivity"][0]["min_signals"] == 4
     assert summary["min_signals_sensitivity"][0]["ready_coverage_pct"] == 75.0
+    assert summary["blocked_reason_counts"] == {"below_min_signals": 6}
+    assert summary["top_blocked_reason_counts"] == [
+        {"reason": "below_min_signals", "count": 6}
+    ]
     assert summary["summary"]["raw_trigger_rows"] == 7
     assert summary["summary"]["raw_state_history_rows"] == 3
 
