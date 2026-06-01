@@ -23,7 +23,8 @@ from services.formula_engine.base import (
 
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "formula_turtle_breakout.yaml"
-DEFAULT_VOLUME_MULTIPLE = 1.2
+DEFAULT_VOLUME_MULTIPLE_20 = 0.9
+DEFAULT_VOLUME_MULTIPLE_55 = 0.8
 
 
 def _load_yaml(path: Path) -> dict[str, object]:
@@ -33,20 +34,30 @@ def _load_yaml(path: Path) -> dict[str, object]:
     return loaded
 
 
-def _load_volume_multiple(path: Path | None = None) -> float:
+def _load_volume_multiple(
+    path: Path | None = None,
+    *,
+    variant: str = "turtle_breakout_55",
+    default: float = DEFAULT_VOLUME_MULTIPLE_55,
+) -> float:
     raw_path = path or CONFIG_PATH
     try:
         raw = _load_yaml(raw_path)
     except FileNotFoundError:
-        return DEFAULT_VOLUME_MULTIPLE
-    value = raw.get("volume_multiple", DEFAULT_VOLUME_MULTIPLE)
+        return default
+    variant_raw = raw.get(variant)
+    if isinstance(variant_raw, dict):
+        value = variant_raw.get("volume_multiple", default)
+    else:
+        value = raw.get("volume_multiple", default)
     try:
         return float(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{raw_path.name}: volume_multiple must be numeric") from exc
 
 
-VOLUME_MULTIPLE = _load_volume_multiple()
+VOLUME_MULTIPLE_20 = _load_volume_multiple(variant="turtle_breakout_20", default=DEFAULT_VOLUME_MULTIPLE_20)
+VOLUME_MULTIPLE_55 = _load_volume_multiple(variant="turtle_breakout_55", default=DEFAULT_VOLUME_MULTIPLE_55)
 
 
 def _rolling_max_excluding_today(values: np.ndarray, window: int) -> np.ndarray:
@@ -90,9 +101,9 @@ class TurtleBreakout20:
         prev_max = _rolling_max_excluding_today(closes, self.window)
         breakout = closes > prev_max  # 当日 close 突破前 N 日最高
 
-        # 量能: volume > MA20(volume) × VOLUME_MULTIPLE
+        # 量能: volume > MA20(volume) × VOLUME_MULTIPLE_20
         vol_ma20 = sma(volumes, 20)
-        vol_confirm = (volumes > VOLUME_MULTIPLE * vol_ma20) & ~np.isnan(vol_ma20)
+        vol_confirm = (volumes > VOLUME_MULTIPLE_20 * vol_ma20) & ~np.isnan(vol_ma20)
 
         triggers = breakout & vol_confirm
 
@@ -153,7 +164,7 @@ class TurtleBreakout55:
         prev_max = _rolling_max_excluding_today(closes, self.window)
         breakout = closes > prev_max
         vol_ma20 = sma(volumes, 20)
-        vol_confirm = (volumes > VOLUME_MULTIPLE * vol_ma20) & ~np.isnan(vol_ma20)
+        vol_confirm = (volumes > VOLUME_MULTIPLE_55 * vol_ma20) & ~np.isnan(vol_ma20)
         triggers = breakout & vol_confirm
         signals: list[FormulaSignal] = []
         for i in np.where(triggers)[0]:

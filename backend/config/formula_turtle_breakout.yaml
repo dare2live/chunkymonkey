@@ -1,4 +1,8 @@
 # 海龟突破公式的量能确认门槛
 # 量比 > volume_multiple 才算放量确认。
-# 2026-06-02: 从 1.3 收到 0.9，以进一步恢复候选供给，同时保留明确的量能过滤。
-volume_multiple: 0.9
+# 2026-06-02: 20 日 variant 保持 0.9, 55 日 variant 从 1.3 收到 0.8, 以更精准地恢复候选供给。
+turtle_breakout_20:
+  volume_multiple: 0.9
+
+turtle_breakout_55:
+  volume_multiple: 0.8
