@@ -38,7 +38,9 @@ The model pipeline snapshot below is historical evidence for the completed
   `mart_data_source_failure_queue` for follow-up triage; if the queue write hits a DB lock/schema problem, it downgrades to structured `persisted.status=error` instead of a traceback. The probe CLI itself
   now defaults to quiet registry warnings and only prints structured blocked
   JSON; `--show-registry-warnings` re-enables the raw fallback log when we
-  explicitly want it. 2026-06-01 also
+  explicitly want it. `backend/services/source_watermarks.py` also moved to
+  timezone-aware UTC timestamps, so the probe/watermark tests no longer emit
+  `datetime.utcnow()` deprecation warnings. 2026-06-01 also
   repaired the `data_health_snapshot.py` writer timestamp insert path so the
   health gate no longer crashes on compact `YYYYMMDDTHHMMSSZ` values; the
   latest direct dry-run / official cron flow now surface `PASS: 0 red / 0
