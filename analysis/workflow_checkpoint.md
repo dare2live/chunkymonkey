@@ -79,10 +79,12 @@ The model pipeline snapshot below is historical evidence for the completed
   This does not change the `need_027` exact-flow blocked status.
 - system data-health snapshot: `scripts/chunkyctl doctor --fast` now folds in
   `backend/scripts/data_health_snapshot.py --dry-run --format json` and fails
-  closed on red tables. Current dry-run evidence is `FAIL: 32 red / 4 yellow /
-  341 total`, with `raw_margin_daily` missing and 31 stale-writer red tables.
-  This is now the startup health blocker the controller has to read before
-  trusting any freshness claim.
+  closed on red tables. Current dry-run evidence is `FAIL: 13 red / 23 yellow /
+  341 total`; `warning/monitor_only` assets are capped to yellow, so the red
+  set now contains only the 13 blocking assets. `raw_margin_daily` is now a
+  yellow monitor-only missing-table warning instead of a blocker. This is the
+  startup health blocker the controller has to read before trusting any
+  freshness claim.
 - survivorship gate: current default `p0a_v3_horizon_governance` PASS; the old
   `p0a_v2_governance_v1` gate remains available only for explicit historical
   review.

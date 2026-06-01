@@ -266,6 +266,86 @@ def test_build_health_snapshot_report_summarizes_red_and_yellow_tables():
     assert [row["table_name"] for row in report["yellow_tables"]] == ["yellow_table"]
 
 
+def test_quality_gate_level_caps_non_blocking_assets_to_yellow():
+    conn = duck_mem()
+    try:
+        conn.execute(
+            """
+            CREATE TABLE warning_asset (
+                trade_date TEXT,
+                built_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO warning_asset VALUES ('2026-05-01', '2026-05-26T00:00:00')"
+        )
+        conn.execute(
+            """
+            CREATE TABLE blocking_asset (
+                trade_date TEXT,
+                built_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO blocking_asset VALUES ('2026-05-01', '2026-05-26T00:00:00')"
+        )
+
+        warning_health = compute_health_for_table(
+            conn,
+            {
+                "table_name": "warning_asset",
+                "layer": "mart",
+                "writer_module": "backend/scripts/plan_architecture_cleanup.py",
+                "upstream_source": "derived",
+                "expected_freshness": "t+1",
+                "sla_hours": 48,
+                "asset_cadence": "event_driven",
+                "coverage_policy": "sparse_event_presence_only",
+                "quality_gate_level": "warning",
+            },
+            datetime(2026, 6, 1, 12, 0, 0),
+        )
+        blocking_health = compute_health_for_table(
+            conn,
+            {
+                "table_name": "blocking_asset",
+                "layer": "mart",
+                "writer_module": "backend/scripts/build_feature_panel_duck.py",
+                "upstream_source": "derived",
+                "expected_freshness": "t+1",
+                "sla_hours": 48,
+                "asset_cadence": "trading_day_daily",
+                "coverage_policy": "dense_active_a_stock_trading_days",
+                "quality_gate_level": "blocking",
+            },
+            datetime(2026, 6, 1, 12, 0, 0),
+        )
+        monitor_health = compute_health_for_table(
+            conn,
+            {
+                "table_name": "missing_monitor_asset",
+                "layer": "raw",
+                "writer_module": "services/margin_client.py",
+                "upstream_source": "derived",
+                "expected_freshness": "t+1",
+                "sla_hours": 48,
+                "asset_cadence": "on_demand",
+                "coverage_policy": "workflow_dependent",
+                "quality_gate_level": "monitor_only",
+            },
+            datetime(2026, 6, 1, 12, 0, 0),
+        )
+
+        assert warning_health["severity"] == "yellow"
+        assert blocking_health["severity"] == "red"
+        assert monitor_health["severity"] == "yellow"
+        assert monitor_health["issue_summary"].startswith("COUNT(*) failed:")
+    finally:
+        conn.close()
+
+
 
 def test_workbench_source_health_excludes_derived_and_deprecated_assets():
     conn = duck_mem()

@@ -75,6 +75,10 @@ NON_EXPIRING_ASSET_TOKENS = {
     "only_when_active_challenger_exists",
     "empty_allowed_without_active_challenger",
 }
+QUALITY_GATE_SEVERITY_CAPS = {
+    "monitor_only": "yellow",
+    "warning": "yellow",
+}
 
 
 def get_table_columns(con, table: str) -> list[str]:
@@ -238,6 +242,14 @@ def _is_non_expiring_asset(asset: dict) -> bool:
     return any(token in text for token in NON_EXPIRING_ASSET_TOKENS)
 
 
+def _cap_severity_by_quality_gate(asset: dict, severity: str) -> str:
+    gate = str(asset.get("quality_gate_level") or "").strip().lower()
+    cap = QUALITY_GATE_SEVERITY_CAPS.get(gate)
+    if cap is None:
+        return severity
+    return severity if _severity_rank(severity) <= _severity_rank(cap) else cap
+
+
 def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
     """对单表计算健康指标. asset 是 dim_data_asset 行 dict."""
 
@@ -271,12 +283,13 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
     try:
         row_count = con.execute(f"SELECT COUNT(*) FROM {quoted}").fetchone()[0]
     except Exception as e:
+        severity = _cap_severity_by_quality_gate(asset, "red")
         return {
             "table_name": table, "row_count": None,
             "last_data_date": None, "last_writer_at": None,
             "null_rate_pct": None, "source_tier_dist": None,
             "freshness_hours": None, "freshness_ok": False,
-            "severity": "red",
+            "severity": severity,
             "issue_summary": f"COUNT(*) failed: {type(e).__name__}: {e}",
         }
 
@@ -374,6 +387,8 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
         severity = "red"
         issues.append("stale_empty (writer registered but never produced rows)")
 
+    severity = _cap_severity_by_quality_gate(asset, severity)
+
     return {
         "table_name": table,
         "row_count": row_count,
@@ -392,6 +407,7 @@ def _snapshot_brief(snapshot: dict) -> dict[str, Any]:
     brief = {
         "table_name": snapshot.get("table_name"),
         "severity": snapshot.get("severity"),
+        "quality_gate_level": snapshot.get("quality_gate_level"),
         "issue_summary": snapshot.get("issue_summary"),
         "row_count": snapshot.get("row_count"),
         "last_data_date": snapshot.get("last_data_date"),
@@ -481,6 +497,7 @@ def main() -> int:
         asset = dict(asset_row)
         snap = compute_health_for_table(con, asset, now)
         snap["snapshot_at"] = now.isoformat(timespec="seconds")
+        snap["quality_gate_level"] = asset.get("quality_gate_level")
         snapshots.append(snap)
         severity_count[snap["severity"]] = severity_count.get(snap["severity"], 0) + 1
 
