@@ -29,8 +29,11 @@ The model pipeline snapshot below is historical evidence for the completed
   main-force source still blocked/unknown; the akshare `individual_fund_flow`
   / `individual_fund_flow_rank` / `stock_fund_flow_individual` capability is
   registered, where `stock_fund_flow_individual` is only a 10jqka research-side
-  rank snapshot and not exact flow; the live probe now clears proxy env and
-  retries but Eastmoney still fails with `ConnectionError` /
+  rank snapshot and not exact flow; the blocked audit now emits
+  `preferred_source_capabilities` and `fallback_source_capabilities`, making
+  it explicit that `akshare` carries the exact-flow capability while the
+  `aif10` family still lacks `individual_fund_flow`; the live probe now clears
+  proxy env and retries but Eastmoney still fails with `ConnectionError` /
   `JSONDecodeError` remote disconnect, and blocked probe rows now persist in
   `mart_data_source_failure_queue` for follow-up triage.
 - stage-opt audit: 2026-06-01 repaired the 2025-08-01→2026-05-29
@@ -101,11 +104,10 @@ The model pipeline snapshot below is historical evidence for the completed
   selected_rows, so the next useful tuning decision is upstream candidate
   supply / formula coverage, not profile micro-adjustment. The new need
   coverage audit also surfaces source registration facts: `need_027`'s
-  preferred `akshare` is
-  registered, while the declared fallback label `miaoxiang` resolves to the
-  registered `aif10` family but that adapter still lacks
-  `individual_fund_flow`, so the fallback is still conceptual in the current
-  wiring. 2026-06-01 also ran `audit_stage_opt_candidate_supply.py` on the
+  preferred `akshare` is registered, while the declared fallback label
+  `miaoxiang` resolves to the registered `aif10` family but that adapter still
+  lacks `individual_fund_flow`, so the fallback is still conceptual in the
+  current wiring. 2026-06-01 also ran `audit_stage_opt_candidate_supply.py` on the
   current audited slice (2023-01-01→2026-05-29, limit-stocks 50) and found
   3576 raw signal rows / 831 unique keys / 280 ready keys / 33.69% ready
   coverage / 551 below_min_signals; the helper now reuses the current

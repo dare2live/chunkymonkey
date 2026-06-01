@@ -247,6 +247,12 @@ def test_summarize_need_gaps_identifies_only_blocked_need() -> None:
     assert blocked["source_registration"]["preferred_source_family_registered"] is True
     assert blocked["source_registration"]["fallback_source_family"] == "aif10"
     assert blocked["source_registration"]["fallback_source_family_registered"] is True
+    assert "individual_fund_flow" in blocked["source_registration"]["preferred_source_capabilities"]
+    assert "individual_fund_flow_rank_snapshot" in blocked["source_registration"]["preferred_source_capabilities"]
+    assert "individual_fund_flow" not in blocked["source_registration"]["fallback_source_capabilities"]
+    assert "individual_fund_flow_rank_snapshot" not in blocked["source_registration"]["fallback_source_capabilities"]
+    assert blocked["source_registration"]["preferred_source_supports_individual_fund_flow"] is True
+    assert blocked["source_registration"]["fallback_source_supports_individual_fund_flow"] is False
     assert blocked["action"] == "probe_restore_or_keep_unknown"
     assert "CYQ 主力画像需要真实订单流" in blocked["notes"]
 
