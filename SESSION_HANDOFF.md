@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 05:40:31 CST
+**Snapshot 时间**: 2026-06-02 05:41:48 CST
 
 - latest local full-sync (2026-06-02) finished with only `watermarks:warn`;
   `raw_tdx_f10_holder_research` / `fact_top10_holder_period` both advanced to
@@ -63,13 +63,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `286969b3 feat: externalize reversal short-term thresholds and sync stage-opt docs | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 39 passed, audit PASS, stage-opt 71.59% ready coverage, docs graph PASS` |
+| HEAD | `30b4e0ce docs: refresh session handoff after reversal short-term lift | test pass: docs graph PASS, worktree clean, no code changes` |
 | 最近 24h commits | 82 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+30b4e0ce docs: refresh session handoff after reversal short-term lift | test pass: docs graph PASS, worktree clean, no code changes
 286969b3 feat: externalize reversal short-term thresholds and sync stage-opt docs | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 39 passed, audit PASS, stage-opt 71.59% ready coverage, docs graph PASS
 969ad89b docs: refresh controller snapshot after stage-opt latest rebuild | Codex-Reviewed: APPROVE_WITH_NOTES | commit-msg: minimal | test pass: docs graph PASS, worktree clean
 ed5a3ee6 feat: widen stage-opt evidence and sync controller docs | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 33 passed, audit PASS, docs PASS, codegraph synced
