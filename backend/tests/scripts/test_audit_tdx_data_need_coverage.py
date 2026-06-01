@@ -82,6 +82,20 @@ def test_read_input_inventory_fails_when_evidence_file_is_missing(tmp_path: Path
         audit_tdx_data_need_coverage._read_input_inventory([missing])
 
 
+@pytest.mark.parametrize(
+    ("source_name", "family"),
+    [
+        ("tdxhub_quote", "tdxhub"),
+        ("tdxhub_f10", "tdxhub"),
+        ("miaoxiang", "aif10"),
+        ("miaoxiang/aif10_scraper/registry.py", "aif10"),
+        ("akshare", "akshare"),
+    ],
+)
+def test_canonical_source_family_maps_family_aliases(source_name: str, family: str) -> None:
+    assert audit_tdx_data_need_coverage._canonical_source_family(source_name) == family
+
+
 def _write_config(
     path: Path,
     evidence_path: Path,
@@ -229,6 +243,10 @@ def test_summarize_need_gaps_identifies_only_blocked_need() -> None:
     assert blocked["source_registration"]["registered_source_names"] == ["aif10", "akshare", "tdxhub"]
     assert blocked["source_registration"]["preferred_source_registered"] is True
     assert blocked["source_registration"]["fallback_source_registered"] is False
+    assert blocked["source_registration"]["preferred_source_family"] == "akshare"
+    assert blocked["source_registration"]["preferred_source_family_registered"] is True
+    assert blocked["source_registration"]["fallback_source_family"] == "aif10"
+    assert blocked["source_registration"]["fallback_source_family_registered"] is True
     assert blocked["action"] == "probe_restore_or_keep_unknown"
     assert "CYQ 主力画像需要真实订单流" in blocked["notes"]
 

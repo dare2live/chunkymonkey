@@ -213,7 +213,7 @@ for fdate, fval in float_schedule:
 | 解禁信息 | `raw_capital_unlock` | 有 | OK |
 | 股东户数 | `fact_holder_count_period` | 季报 | OK，低频 |
 
-> 2026-06-01 audit note: current `data_sources` registry exposes `tdxhub` / `aif10` / `akshare`; `need_027`'s declared fallback label `miaoxiang` is not a registry source name in the current wiring, so that fallback remains conceptual until the route mapping is made explicit.
+> 2026-06-01 audit note: current `data_sources` registry exposes `tdxhub` / `aif10` / `akshare`; `need_027`'s declared fallback label `miaoxiang` maps to the `aif10` family, but the current aif10 adapter still does not expose `individual_fund_flow`, so that fallback remains conceptual until the route mapping and capability are made explicit.
 
 ### 4.3 资金流向字段说明（`raw_fund_flow_daily`）
 
@@ -480,7 +480,7 @@ def compute_chip_age(turnover_rates, periods=[5, 10, 20, 30, 60]):
 
 1. **资金流向 source probe 与契约登记**
    - `raw_fund_flow_daily` 停在 2026-04-24，且已登记 deprecated/stale
-   - 先在 `tdx_data_need_coverage.yaml` 保持主力/超大/大/中/小单资金需求, 再探测 akshare/miaoxiang 字段、PIT availability、freshness 和反爬稳定性
+   - 先在 `tdx_data_need_coverage.yaml` 保持主力/超大/大/中/小单资金需求, 再探测 akshare capability 与 miaoxiang/aif10 家族路由的字段、PIT availability、freshness 和反爬稳定性
    - 通过 gate 前, 真实订单流维度输出 `unknown`; `fact_capital_flow_pit_daily` 只能作为 proxy 辅助解释
 
 2. **编写 `backend/services/chip_distribution.py`**

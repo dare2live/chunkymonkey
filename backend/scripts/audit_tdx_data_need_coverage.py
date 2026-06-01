@@ -174,6 +174,22 @@ def _registered_source_names() -> list[str]:
     return sorted(src.name for src in registry.list_sources())
 
 
+# Source labels and registry source names are not strictly one-to-one:
+# `miaoxiang` aliases to the `aif10` family, while `tdxhub_*` labels collapse to
+# the canonical `tdxhub` registry source.
+def _canonical_source_family(source_name: Any) -> str:
+    text = _as_clean_text(source_name).lower()
+    if not text or text in UNKNOWN_VALUES:
+        return ""
+    if text.startswith("tdxhub"):
+        return "tdxhub"
+    if text.startswith("miaoxiang") or text.startswith("aif10"):
+        return "aif10"
+    if text.startswith("akshare"):
+        return "akshare"
+    return text
+
+
 def _source_name_registered(source_name: Any, registered_names: set[str]) -> bool:
     text = _as_clean_text(source_name).lower()
     return bool(text) and text not in UNKNOWN_VALUES and text in registered_names
@@ -189,6 +205,10 @@ def _summarize_need_gaps(needs: list[tuple[Any, ...]]) -> dict[str, Any]:
     for record in records:
         eligibility = _as_clean_text(record.get("production_eligibility"))
         evidence_status = _as_clean_text(record.get("evidence_status"))
+        preferred_source = record.get("preferred_source")
+        fallback_source = record.get("fallback_source")
+        preferred_family = _canonical_source_family(preferred_source)
+        fallback_family = _canonical_source_family(fallback_source)
         eligibility_counts[eligibility] = eligibility_counts.get(eligibility, 0) + 1
         if eligibility in BLOCKED_ELIGIBILITIES or evidence_status == "unknown":
             blocked_needs.append(
@@ -201,17 +221,25 @@ def _summarize_need_gaps(needs: list[tuple[Any, ...]]) -> dict[str, Any]:
                     "pit_key": record.get("pit_key"),
                     "evidence_status": evidence_status,
                     "production_eligibility": eligibility,
-                    "preferred_source": record.get("preferred_source"),
-                    "fallback_source": record.get("fallback_source"),
+                    "preferred_source": preferred_source,
+                    "fallback_source": fallback_source,
                     "source_registration": {
                         "registered_source_names": registered_source_names,
                         "preferred_source_registered": _source_name_registered(
-                            record.get("preferred_source"),
+                            preferred_source,
                             registered_source_name_set,
                         ),
+                        "preferred_source_family": preferred_family or None,
+                        "preferred_source_family_registered": bool(
+                            preferred_family and preferred_family in registered_source_name_set
+                        ),
                         "fallback_source_registered": _source_name_registered(
-                            record.get("fallback_source"),
+                            fallback_source,
                             registered_source_name_set,
+                        ),
+                        "fallback_source_family": fallback_family or None,
+                        "fallback_source_family_registered": bool(
+                            fallback_family and fallback_family in registered_source_name_set
                         ),
                     },
                     "action": record.get("action"),

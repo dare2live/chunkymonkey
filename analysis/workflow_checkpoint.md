@@ -55,8 +55,8 @@ The model pipeline snapshot below is historical evidence for the completed
   `akshare.stock_individual_fund_flow` / `stock_individual_fund_flow_rank`
   capability is registered, the live probe is still blocked by `ProxyError`,
   blocked probe rows now persist in `mart_data_source_failure_queue`, and
-  `audit_tdx_data_need_coverage.py` now emits a blocked need summary so the
-  current inventory stays explicit.
+  `audit_tdx_data_need_coverage.py` now emits a blocked need summary with
+  label-vs-family registration so the current inventory stays explicit.
 - additional PIT evidence: 2026-06-01 reran `build_stage_opt_pit.py` on the 7
   current recommendation stock codes across cutoffs `2026-01-01,2026-05-19,
   2026-05-29`; latest recommendation PIT coverage remained 0 (8 total / 0 exact
@@ -72,8 +72,9 @@ The model pipeline snapshot below is historical evidence for the completed
   `cross_stage_fallback`, with `hp` and `wilson` as the dominant fail reasons.
   The new need coverage audit also surfaces source registration facts:
   `need_027`'s preferred `akshare` is registered, while the declared fallback
-  label `miaoxiang` does not match a registry source name, so the fallback is
-  still conceptual in the current wiring.
+  label `miaoxiang` resolves to the registered `aif10` family but that
+  adapter still lacks `individual_fund_flow`, so the fallback is still
+  conceptual in the current wiring.
 
 - generated_at: `2026-05-25T01:20:01Z`
 - model_id: `lgbm_phase5_gcp_20260520T010718`

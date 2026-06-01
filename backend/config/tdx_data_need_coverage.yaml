@@ -370,7 +370,7 @@ needs:
     preferred_source: "akshare"
     fallback_source: "miaoxiang"
     action: "probe_restore_or_keep_unknown"
-    notes: "CYQ 主力画像需要真实订单流；本地 raw_fund_flow_daily 停在 2026-04-24 且已登记 deprecated。恢复前不得作为生产证据；先探测 akshare/miaoxiang 字段、PIT availability、freshness 和反爬稳定性。"
+    notes: "CYQ 主力画像需要真实订单流；本地 raw_fund_flow_daily 停在 2026-04-24 且已登记 deprecated。恢复前不得作为生产证据；当前 fallback 标签 miaoxiang 只是 aif10 家族别名，但 aif10 仍未实现 individual_fund_flow，所以还要先探测 akshare capability、source probe、PIT availability、freshness 和反爬稳定性。"
 
 priorities:
   - data_domain: "quotes_and_labels"
