@@ -87,8 +87,10 @@ The model pipeline snapshot below is historical evidence for the completed
   lifting `macd_golden_cross` coverage to `26.71%` (`8,330` ready keys) and
   the MACD-only slice to `226,822 raw_signal_rows / 123,264 filtered_signal_rows
   / 31,184 unique_keys / 8,330 ready_keys / 26.71% ready coverage /
-  22,854 below_min_signals`, but the controller recommendation still points
-  to `P1 / upstream_candidate_supply`.
+  22,854 below_min_signals`; `scripts/chunkyctl doctor --fast` now also carries
+  these `raw_trigger_rows` / `raw_state_history_rows` fields so the controller
+  can see the MACD state mart composition without rerunning the audit, but the
+  controller recommendation still points to `P1 / upstream_candidate_supply`.
 - `scripts/chunkyctl doctor --fast` now also surfaces the stage-opt
   `next_action_recommendation`, so the controller sees the upstream
   candidate-supply lever without rerunning the audit manually. If
