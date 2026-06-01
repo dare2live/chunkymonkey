@@ -245,6 +245,43 @@ def test_periodic_holder_fact_freshness_uses_writer_time_not_report_date():
         assert health["freshness_hours"] == 48
         assert health["last_data_date"] == "20260429"
         assert health["last_writer_at"].startswith("2026-05-05")
+        assert "writer=backend/scripts/ingest_holders_tdxhub.py" in health["writer_prompt"]
+        assert "source=tdxhub.holders" in health["writer_prompt"]
+    finally:
+        conn.close()
+
+
+def test_registry_owner_hint_uses_sync_step_metadata():
+    conn = duck_mem()
+    try:
+        conn.execute(
+            """
+            CREATE TABLE dim_capital_behavior_latest (
+                stock_code TEXT,
+                updated_at TEXT
+            )
+            """
+        )
+        conn.execute("INSERT INTO dim_capital_behavior_latest VALUES ('000001', '2026-05-29T08:00:00')")
+
+        health = compute_health_for_table(
+            conn,
+            {
+                "table_name": "dim_capital_behavior_latest",
+                "layer": "mart",
+                "writer_module": "services.capital_client",
+                "upstream_source": "akshare:stock_fhps_em/repurchase/lockup",
+                "expected_freshness": "t+1",
+                "sla_hours": 48,
+            },
+            datetime(2026, 5, 30, 12, 0, 0),
+        )
+
+        assert health["severity"] == "green"
+        assert health["writer_client_id"] == "capital_client"
+        assert health["writer_sync_step_id"] == "sync_capital"
+        assert "owner=capital_client" in health["writer_prompt"]
+        assert "sync_step=sync_capital" in health["writer_prompt"]
     finally:
         conn.close()
 
@@ -287,8 +324,18 @@ def test_unparseable_writer_timestamp_surfaces_yellow_issue():
 def test_build_health_snapshot_report_summarizes_red_and_yellow_tables():
     snapshots = [
         {"table_name": "green_table", "severity": "green"},
-        {"table_name": "yellow_table", "severity": "yellow", "issue_summary": "writer is 96.0h old (SLA 48h)"},
-        {"table_name": "red_table", "severity": "red", "issue_summary": "writer is 264.0h old (SLA 48h)"},
+        {
+            "table_name": "yellow_table",
+            "severity": "yellow",
+            "issue_summary": "writer is 96.0h old (SLA 48h)",
+            "writer_prompt": "owner=foo · writer=bar · sync_step=baz",
+        },
+        {
+            "table_name": "red_table",
+            "severity": "red",
+            "issue_summary": "writer is 264.0h old (SLA 48h)",
+            "writer_prompt": "owner=foo · writer=bar · sync_step=baz",
+        },
     ]
     report = build_health_snapshot_report(
         snapshots,
@@ -304,6 +351,7 @@ def test_build_health_snapshot_report_summarizes_red_and_yellow_tables():
     assert report["blockers"] == ["red_table"]
     assert [row["table_name"] for row in report["red_tables"]] == ["red_table"]
     assert [row["table_name"] for row in report["yellow_tables"]] == ["yellow_table"]
+    assert report["red_tables"][0]["writer_prompt"].startswith("owner=foo")
 
 
 def test_quality_gate_level_caps_non_blocking_assets_to_yellow():

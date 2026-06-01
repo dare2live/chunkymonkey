@@ -8,7 +8,7 @@ The model pipeline snapshot below is historical evidence for the completed
 
 ## Current Data Freshness Checkpoint
 
-- updated_at: `2026-06-01 14:53:21 CST`
+- updated_at: `2026-06-01 15:30:10 CST`
 - current_state: `architecture/data freshness repair`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
@@ -38,10 +38,11 @@ The model pipeline snapshot below is historical evidence for the completed
   `mart_data_source_failure_queue` for follow-up triage. 2026-06-01 also
   repaired the `data_health_snapshot.py` writer timestamp insert path so the
   health gate no longer crashes on compact `YYYYMMDDTHHMMSSZ` values; the
-  latest direct dry-run / official cron flow now surface `FAIL: 10 red / 20
+  latest direct dry-run / official cron flow now surface `FAIL: 9 red / 20
   yellow / 341 total` instead of failing on a timestamp parse error, and the
   official `cron_daily.py` run completed later phases after `sync_raw`
-  exceeded its 60s budget.
+  exceeded its 60s budget; red/yellow rows now carry `writer_prompt`
+  owner/sync_step hints for self-triage.
 - stage-opt audit: 2026-06-01 repaired the 2025-08-01→2026-05-29
   `fact_stock_technical_stage` / `fact_signal_context` discontinuity and
   reran `audit_stage_opt_candidate_supply.py`; full-history coverage is now

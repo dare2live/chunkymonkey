@@ -41,7 +41,9 @@ scripts/chunkyctl doctor --fast
 system data-health snapshots. The data-health snapshot respects
 `quality_gate_level`: `warning` and `monitor_only` assets are capped to yellow,
 while blocking assets remain red. Red data-health tables are startup blockers,
-so new sessions should inspect them before moving into business work.
+and the snapshot now emits `writer_prompt` / owner / sync_step hints so new
+sessions can see which writer or sync step likely owns the problem before
+moving into business work.
 
 3. If `doctor` reports a dirty worktree, run:
 

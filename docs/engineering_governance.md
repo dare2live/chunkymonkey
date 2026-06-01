@@ -121,7 +121,7 @@ it to `analysis/`; if it is not useful, delete it.
 | Purpose | Command |
 |---|---|
 | Startup health | `scripts/chunkyctl doctor --fast` |
-| System data health snapshot | `PYTHONPATH=backend python backend/scripts/data_health_snapshot.py --format markdown` |
+| System data health snapshot | `PYTHONPATH=backend python backend/scripts/data_health_snapshot.py --format markdown` (reports `writer_prompt` / owner / sync_step hints in red/yellow rows) |
 | Dirty worktree buckets | `scripts/chunkyctl worktree --format markdown` |
 | Docs cleanup slice | `scripts/chunkyctl docs --format markdown` |
 | Storage payload / recursive JSON audit | `PYTHONPATH=backend python backend/scripts/audit_storage_payloads.py --format markdown` |

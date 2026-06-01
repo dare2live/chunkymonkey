@@ -36,6 +36,7 @@ log = logging.getLogger("data-health")
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO / "backend"))
 from services.db import get_conn  # noqa: E402
+from services.data_sources.clients_registry import get_table_metadata  # noqa: E402
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso  # noqa: E402
 
 
@@ -219,6 +220,46 @@ def _coerce_db_timestamp(raw) -> Optional[datetime]:
     return parse_date_value(raw)
 
 
+def _owner_hint_for_table(table: str, asset: dict) -> dict[str, Any]:
+    meta = get_table_metadata(table)
+    if meta is not None:
+        client, write_spec = meta
+        sync_step_id = client.sync_step_id
+        prompt_parts = [
+            f"owner={client.client_id}",
+            f"writer={client.module}",
+        ]
+        if sync_step_id:
+            prompt_parts.append(f"sync_step={sync_step_id}")
+        prompt_parts.append(f"source={client.upstream_source}")
+        if write_spec and write_spec.purpose:
+            prompt_parts.append(f"purpose={write_spec.purpose}")
+        return {
+            "writer_client_id": client.client_id,
+            "writer_module": client.module,
+            "writer_sync_step_id": sync_step_id,
+            "writer_upstream_source": client.upstream_source,
+            "writer_client_description": client.description,
+            "writer_prompt": " · ".join(prompt_parts),
+        }
+
+    prompt_parts = []
+    writer_module = asset.get("writer_module")
+    upstream_source = asset.get("upstream_source")
+    source_tier = asset.get("source_tier")
+    if writer_module:
+        prompt_parts.append(f"writer={writer_module}")
+    if upstream_source:
+        prompt_parts.append(f"source={upstream_source}")
+    if source_tier is not None:
+        prompt_parts.append(f"tier={source_tier}")
+    return {
+        "writer_module": writer_module,
+        "writer_upstream_source": upstream_source,
+        "writer_prompt": " · ".join(prompt_parts) if prompt_parts else None,
+    }
+
+
 def _severity_rank(severity: str) -> int:
     return {"green": 0, "yellow": 1, "red": 2}.get(severity, 0)
 
@@ -260,6 +301,7 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
     """对单表计算健康指标. asset 是 dim_data_asset 行 dict."""
 
     table = asset["table_name"]
+    owner_hint = _owner_hint_for_table(table, asset)
     layer = asset["layer"]
     expected_freshness = asset.get("expected_freshness") or "on-demand"
     sla_hours = asset.get("sla_hours") or 48
@@ -282,6 +324,7 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
             "freshness_hours": None, "freshness_ok": True,
             "severity": "green",
             "issue_summary": f"deprecated asset{suffix}",
+            **owner_hint,
         }
 
     # 安全的表名引用
@@ -299,6 +342,7 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
             "freshness_hours": None, "freshness_ok": False,
             "severity": severity,
             "issue_summary": f"COUNT(*) failed: {type(e).__name__}: {e}",
+            **owner_hint,
         }
 
     columns = get_table_columns(con, table)
@@ -410,6 +454,7 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
         "freshness_ok": freshness_ok,
         "severity": severity,
         "issue_summary": "; ".join(issues) if issues else None,
+        **owner_hint,
     }
 
 
@@ -418,6 +463,11 @@ def _snapshot_brief(snapshot: dict) -> dict[str, Any]:
         "table_name": snapshot.get("table_name"),
         "severity": snapshot.get("severity"),
         "quality_gate_level": snapshot.get("quality_gate_level"),
+        "writer_client_id": snapshot.get("writer_client_id"),
+        "writer_sync_step_id": snapshot.get("writer_sync_step_id"),
+        "writer_upstream_source": snapshot.get("writer_upstream_source"),
+        "writer_client_description": snapshot.get("writer_client_description"),
+        "writer_prompt": snapshot.get("writer_prompt"),
         "issue_summary": snapshot.get("issue_summary"),
         "row_count": snapshot.get("row_count"),
         "last_data_date": snapshot.get("last_data_date"),
@@ -524,7 +574,9 @@ def main() -> int:
         log.info("[dry] severity counts: %s", severity_count)
         for s in snapshots:
             if s["severity"] != "green":
-                log.info("  %s %s: %s", s["severity"], s["table_name"], s["issue_summary"])
+                owner = s.get("writer_prompt")
+                suffix = f" | {owner}" if owner else ""
+                log.info("  %s %s: %s%s", s["severity"], s["table_name"], s["issue_summary"], suffix)
         con.close()
         if args.format == "json":
             print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
@@ -568,7 +620,9 @@ def main() -> int:
     if red_list:
         log.info("\n=== red tables (%d) ===", len(red_list))
         for s in red_list[:30]:
-            log.info("  🔴 %s — %s", s["table_name"], s["issue_summary"])
+            owner = s.get("writer_prompt")
+            suffix = f" | {owner}" if owner else ""
+            log.info("  [FAIL] %s — %s%s", s["table_name"], s["issue_summary"], suffix)
         if len(red_list) > 30:
             log.info("  ... +%d more", len(red_list) - 30)
 
