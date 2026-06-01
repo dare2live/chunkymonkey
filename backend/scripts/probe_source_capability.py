@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +38,17 @@ CAPABILITY_SOURCE_HINTS = {
     "individual_fund_flow_rank": "akshare",
     "individual_fund_flow_rank_snapshot": "akshare",
 }
+
+
+@contextmanager
+def _temporary_logger_level(logger_name: str, level: int):
+    logger = logging.getLogger(logger_name)
+    previous_level = logger.level
+    logger.setLevel(level)
+    try:
+        yield
+    finally:
+        logger.setLevel(previous_level)
 
 
 def _normalize_records(data: Any) -> tuple[list[dict[str, Any]], str]:
@@ -111,18 +124,45 @@ def probe_source_capability(
     source_name: str | None = None,
     source_tier: int | None = None,
     stock_code: str | None = None,
+    quiet_registry_warnings: bool = True,
 ) -> dict[str, Any]:
-    try:
-        data, source_used = resolve(capability, prefer_source=prefer_source, **kwargs)
-    except Exception as exc:
+    resolve_context = (
+        _temporary_logger_level("data_sources.registry", logging.ERROR)
+        if quiet_registry_warnings
+        else nullcontext()
+    )
+    with resolve_context:
+        try:
+            data, source_used = resolve(capability, prefer_source=prefer_source, **kwargs)
+        except Exception as exc:
+            report = {
+                "capability": capability,
+                "prefer_source": prefer_source,
+                "status": "blocked",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "kwargs": kwargs,
+            }
+            _persist_probe_status(
+                report,
+                capability=capability,
+                persist_status=persist_status,
+                prefer_source=prefer_source,
+                data_domain=data_domain,
+                source_name=source_name,
+                source_tier=source_tier,
+                stock_code=stock_code,
+            )
+            return report
+
         report = {
             "capability": capability,
             "prefer_source": prefer_source,
-            "status": "blocked",
-            "error_type": type(exc).__name__,
-            "error": str(exc),
+            "source_used": source_used,
+            "status": "ok",
             "kwargs": kwargs,
         }
+        report.update(_summarize(data))
         _persist_probe_status(
             report,
             capability=capability,
@@ -134,26 +174,6 @@ def probe_source_capability(
             stock_code=stock_code,
         )
         return report
-
-    report = {
-        "capability": capability,
-        "prefer_source": prefer_source,
-        "source_used": source_used,
-        "status": "ok",
-        "kwargs": kwargs,
-    }
-    report.update(_summarize(data))
-    _persist_probe_status(
-        report,
-        capability=capability,
-        persist_status=persist_status,
-        prefer_source=prefer_source,
-        data_domain=data_domain,
-        source_name=source_name,
-        source_tier=source_tier,
-        stock_code=stock_code,
-    )
-    return report
 
 
 def _persist_probe_status(
@@ -235,6 +255,11 @@ def main() -> int:
     parser.add_argument("--source-name", default=None, help="Optional source name for persistence; defaults from resolved/preferred source")
     parser.add_argument("--source-tier", type=int, default=None, help="Optional source tier for persistence records")
     parser.add_argument("--stock-code", default=None, help="Optional stock code to attach to persistence records")
+    parser.add_argument(
+        "--show-registry-warnings",
+        action="store_true",
+        help="Keep registry fallback warnings visible during probe",
+    )
     parser.add_argument("--kwargs-json", default="{}", help="JSON object forwarded to resolve(..., **kwargs)")
     parser.add_argument("--indent", type=int, default=2, help="JSON indentation level for stdout")
     args = parser.parse_args()
@@ -262,6 +287,7 @@ def main() -> int:
         source_name=args.source_name,
         source_tier=args.source_tier,
         stock_code=args.stock_code,
+        quiet_registry_warnings=not bool(args.show_registry_warnings),
     )
     print(json.dumps(report, ensure_ascii=False, indent=args.indent, default=str))
     return 0 if report.get("status") == "ok" else 2

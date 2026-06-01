@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import pandas as pd
 
 from conftest import duck_mem
@@ -112,6 +114,29 @@ def test_probe_source_capability_marks_blocked_on_error(monkeypatch) -> None:
     assert report["status"] == "blocked"
     assert report["error_type"] == "RuntimeError"
     assert report["error"] == "proxy blocked"
+
+
+def test_probe_source_capability_quiets_registry_warnings(monkeypatch, caplog) -> None:
+    registry_logger = logging.getLogger("data_sources.registry")
+    original_level = registry_logger.level
+
+    def fake_resolve(*_args, **_kwargs):
+        logging.getLogger("data_sources.registry").warning("[registry] noisy fallback")
+        raise RuntimeError("proxy blocked")
+
+    monkeypatch.setattr(probe, "resolve", fake_resolve)
+
+    with caplog.at_level(logging.WARNING, logger="data_sources.registry"):
+        report = probe.probe_source_capability(
+            "individual_fund_flow",
+            {"stock": "600519", "market": "sh"},
+            prefer_source="akshare",
+        )
+
+    assert report["status"] == "blocked"
+    assert report["error"] == "proxy blocked"
+    assert not any(record.name == "data_sources.registry" for record in caplog.records)
+    assert registry_logger.level == original_level
 
 
 def test_probe_source_capability_persists_blocked_status(monkeypatch) -> None:

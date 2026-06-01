@@ -35,7 +35,10 @@ The model pipeline snapshot below is historical evidence for the completed
   `aif10` family still lacks `individual_fund_flow`; the live probe now clears
   proxy env and retries but Eastmoney still fails with `ConnectionError` /
   `JSONDecodeError` remote disconnect, and blocked probe rows now persist in
-  `mart_data_source_failure_queue` for follow-up triage. 2026-06-01 also
+  `mart_data_source_failure_queue` for follow-up triage. The probe CLI itself
+  now defaults to quiet registry warnings and only prints structured blocked
+  JSON; `--show-registry-warnings` re-enables the raw fallback log when we
+  explicitly want it. 2026-06-01 also
   repaired the `data_health_snapshot.py` writer timestamp insert path so the
   health gate no longer crashes on compact `YYYYMMDDTHHMMSSZ` values; the
   latest direct dry-run / official cron flow now surface `PASS: 0 red / 0
