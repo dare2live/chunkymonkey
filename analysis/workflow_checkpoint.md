@@ -60,9 +60,13 @@ The model pipeline snapshot below is historical evidence for the completed
   new sessions should read raw and filtered counts separately. The new
   blocked-reason breakdown shows every blocked key fails only on
   `below_min_signals`; `macd_golden_cross` and stages 3/4 are the weakest
-  cohorts. `2024-03-06` 起的 `dropped_unknown_stage_rows` 降到 `454,158`,
-  so the remaining `technical_stage='?'` mass is still mostly structural
-  classifier warmup / unknown, not a fresh ETL outage.
+  cohorts. The script now also emits a `next_action_recommendation` that
+  points to `P1 / upstream_candidate_supply` and names the weakest formula ids
+  / stage bins, so future sessions can triage from the audit output instead of
+  re-deriving the same conclusion manually. `2024-03-06` 起的
+  `dropped_unknown_stage_rows` 降到 `454,158`, so the remaining
+  `technical_stage='?'` mass is still mostly structural classifier warmup /
+  unknown, not a fresh ETL outage.
 - later in the same slice we tested whether the 2023-01-01→2023-09-11
   technical-stage hole was the missing lever: `build_stage_formula_fitness.py`
   needed a longer `compute_start` than the write window, so a second run with

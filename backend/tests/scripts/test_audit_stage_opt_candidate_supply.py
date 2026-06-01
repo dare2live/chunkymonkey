@@ -88,6 +88,15 @@ def test_summarize_stage_opt_candidate_supply_tracks_ready_and_blocked_keys() ->
         "1": {"below_min_signals": 1},
         "2": {"no_kline_bars": 1},
     }
+    assert summary["next_action_recommendation"] == {
+        "priority": "P1",
+        "focus": "upstream_candidate_supply",
+        "reason": "below_min_signals dominates current blocked keys",
+        "recommended_lever": "expand upstream formula coverage or signal density before tuning profile knobs",
+        "weakest_formula_ids": ["formula_b", "formula_a"],
+        "weakest_stage_bins": ["2", "1"],
+        "top_blocked_reason": "below_min_signals",
+    }
     assert summary["rows_by_formula_id"] == {"formula_a": 9, "formula_b": 5}
     assert summary["rows_by_formula_variant"] == {"variant_a": 9, "variant_b": 5}
     assert summary["rows_by_stage_bin"] == {"1": 9, "2": 5}

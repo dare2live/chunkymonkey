@@ -347,6 +347,40 @@ def summarize_stage_opt_candidate_supply(
         key=lambda row: (row["ready_coverage_pct"], -row["keys_total"], row["stage_bin"]),
     )
 
+    def _recommend_next_action() -> dict[str, Any]:
+        below_min_signals = blocked_reason_counts.get("below_min_signals", 0)
+        no_kline_bars = blocked_reason_counts.get("no_kline_bars", 0)
+        weakest_formula_ids = [row["formula_id"] for row in weakest_formula_id_rows[:3]]
+        weakest_stage_bins = [row["stage_bin"] for row in weakest_stage_rows[:3]]
+        if below_min_signals == 0 and no_kline_bars == 0:
+            return {
+                "priority": "P2",
+                "focus": "candidate_supply_monitoring",
+                "reason": "no blocking reasons detected in current slice",
+                "recommended_lever": "keep monitoring upstream supply and PIT coverage",
+                "weakest_formula_ids": weakest_formula_ids,
+                "weakest_stage_bins": weakest_stage_bins,
+            }
+        if below_min_signals >= no_kline_bars:
+            return {
+                "priority": "P1",
+                "focus": "upstream_candidate_supply",
+                "reason": "below_min_signals dominates current blocked keys",
+                "recommended_lever": "expand upstream formula coverage or signal density before tuning profile knobs",
+                "weakest_formula_ids": weakest_formula_ids,
+                "weakest_stage_bins": weakest_stage_bins,
+                "top_blocked_reason": "below_min_signals",
+            }
+        return {
+            "priority": "P1",
+            "focus": "kline_coverage",
+            "reason": "no_kline_bars dominates current blocked keys",
+            "recommended_lever": "repair missing bars or date coverage before re-running candidate supply",
+            "weakest_formula_ids": weakest_formula_ids,
+            "weakest_stage_bins": weakest_stage_bins,
+            "top_blocked_reason": "no_kline_bars",
+        }
+
     sorted_key_rows = sorted(
         key_rows.items(),
         key=lambda item: (-len(item[1]), item[0][0], item[0][1], item[0][2], item[0][3]),
@@ -403,6 +437,7 @@ def summarize_stage_opt_candidate_supply(
         "keys_by_stage_bin": stage_rows,
         "weakest_keys_by_stage_bin": weakest_stage_rows,
         "blocked_examples": top_blocked_keys,
+        "next_action_recommendation": _recommend_next_action(),
         "dropped_unknown_stage_rows_by_formula_id": dict(sorted((dropped_unknown_stage_rows_by_formula_id or {}).items())),
         "dropped_unknown_stage_rows_by_formula_variant": dict(sorted((dropped_unknown_stage_rows_by_formula_variant or {}).items())),
         "dropped_unknown_stage_examples": (dropped_unknown_stage_examples or [])[:max_examples],
@@ -425,6 +460,7 @@ def _render_markdown(result: dict[str, Any]) -> str:
         f"- ready_keys: {result['ready_keys']}",
         f"- ready_coverage_pct: {result['ready_coverage_pct']}",
         f"- blocked_reason_counts: {result['blocked_reason_counts']}",
+        f"- next_action_recommendation: {result['next_action_recommendation']}",
         "",
         "## By Formula Id",
     ]
