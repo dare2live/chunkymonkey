@@ -78,7 +78,9 @@ The model pipeline snapshot below is historical evidence for the completed
   `defaultdict`; 2026-06-02 `min_signals` probe still shows `5→4→3` lifts
   global ready coverage to `57.15%` / `67.49%` (`72,180` / `85,246` ready
   keys, `54,129` / `41,063` below_min_signals) while `reversal_1m_deep`
-  itself reaches `50.97%` / `62.34%`; the next action still points to
+  itself reaches `50.97%` / `62.34%`; 2026-06-02 further `min_signals=2`
+  lifts global ready coverage to `82.42%` (`107,212` ready keys,
+  `22,872` below_min_signals), but the next action still points to
   upstream candidate supply. `2024-03-06` 起的
   `dropped_unknown_stage_rows` 降到 `454,158`, so the remaining
   `technical_stage='?'` mass is still mostly structural classifier warmup /
