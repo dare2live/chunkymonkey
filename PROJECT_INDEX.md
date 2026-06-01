@@ -870,6 +870,14 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-06-02 holder/gap queue crash-free + controller state sync
+
+- `backend/services/gap_queue.py`: `market_gap_queue` 现在改成 update-first / insert-second 的幂等写路径；若并发/重放场景里另一个写入刚插入同 key，会退化为 update，避免 `ON CONFLICT` 之外的重复键噪音。
+- `backend/scripts/cleanup_holder_dup.py`: holder dup 清理脚本重建 canonical `idx_t10_*` indexes，不再回填 refactor 前的 legacy `idx_fact_hp_*` 名称，和当前 schema migration 保持一致。
+- `backend/tests/test_gap_queue.py` / `backend/config/test_tool_registry.yaml`: 新增 gap queue 幂等回归并登记 root test，验证 first_seen 保留、failed -> resolved 语义、以及重复写不会把队列写坏。
+- `goal.md` / `SESSION_HANDOFF.md` / `analysis/workflow_checkpoint.md` 已同步 2026-06-02 最新证据：backend server 恢复后重跑的 `cron_daily.py --full-sync` 再次完成全流程，只剩 `watermarks:warn`；`raw_tdx_f10_holder_research` 与 `fact_top10_holder_period` 的最新 `fetched_at` 分别推进到 `2026-06-01 19:14:51` / `2026-06-01T19:14:57+00:00`，28 条最可疑 holder raw 页做事务内 `parse -> write_one -> rollback` smoke 全 PASS，说明这次 holder/gap 修复没有引入新的 Python crash。
+- `codegraph sync .` 已更新 1 个 added file；`pytest -q backend/tests/test_gap_queue.py backend/tests/test_db_health.py` 9 passed；`audit_test_tool_health.py` scoped PASS；`audit_docs_graph.py` PASS；`scripts/chunkyctl docs --format markdown` docs_graph PASS / dirty_support_entries=1（controller_state 仍在等下个 commit 收口）。
+
 ### 2026-06-01 pipeline manifest perf_summary compaction
 
 - `backend/services/pipeline_manifest.py`: added `compact_perf_summary_payload()` and now apply it before writing `perf_summary_json`, so runtime logs in `mart_pipeline_run_manifest` stay bounded instead of growing into multi-megabyte rows. The current largest live row is ~260,408 bytes.

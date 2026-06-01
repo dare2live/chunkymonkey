@@ -10,7 +10,8 @@ Codex round 14 (bl283si79) verdict 第 1 优先级:
 
 根因: UNIQUE constraint 含 share_class, share_class IS NULL 时 NULL distinct
 语义不 enforce dedup → 239 dup 累积. 修法 DROP+recreate WITHOUT UNIQUE,
-ingest dedup 防新增 (cfb35bc3).
+ingest dedup 防新增 (cfb35bc3). 重建后只保留 canonical idx_t10_*，不再回填
+refactor 前的 legacy idx_fact_hp_* 名称。
 
 执行:
     PYTHONPATH=backend python backend/scripts/cleanup_holder_dup.py
@@ -76,13 +77,13 @@ def main() -> int:
     n_after = conn.execute("SELECT COUNT(*) FROM fact_top10_holder_period").fetchone()[0]
     log.info(f"after: {n_after:,} rows (deleted {n_before - n_after})")
 
-    # 重建 5 indexes (跟 db.py CREATE INDEX 语句一致)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_fact_hp_stock_date ON fact_top10_holder_period(stock_code, report_date DESC)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_fact_hp_name ON fact_top10_holder_period(holder_name)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_fact_hp_name_norm ON fact_top10_holder_period(holder_name_norm)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_fact_hp_eff_date ON fact_top10_holder_period(effective_date)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_fact_hp_set_class ON fact_top10_holder_period(holder_set, share_class)")
-    log.info(f"5 indexes recreated")
+    # 重建 canonical 5 indexes (跟 services.schema_migrations 一致)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_t10_stock ON fact_top10_holder_period(stock_code, report_date DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_t10_holder ON fact_top10_holder_period(holder_name)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_t10_holder_norm ON fact_top10_holder_period(holder_name_norm)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_t10_effective ON fact_top10_holder_period(effective_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_t10_set_class ON fact_top10_holder_period(holder_set, share_class)")
+    log.info("5 canonical idx_t10_* indexes recreated")
 
     conn.execute("DROP TABLE _tmp_holder_clean")
 

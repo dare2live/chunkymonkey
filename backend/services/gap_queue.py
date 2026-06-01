@@ -141,38 +141,64 @@ def upsert_gap_state(conn, dataset: str, stock_code: str, *,
     payload_status = "resolved" if resolved else status
     payload_reason = reason or ("已补齐" if payload_status == "resolved" else "当前仍缺失，待下一轮补齐")
     payload_error = None if payload_status == "resolved" else last_error
-
-    conn.execute(
-        """
-        INSERT INTO market_gap_queue (
-            dataset, stock_code, stock_name, status, reason, last_error,
-            source_attempts, first_seen_at, last_attempt_at, resolved_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(dataset, stock_code) DO UPDATE SET
-            stock_name = COALESCE(excluded.stock_name, market_gap_queue.stock_name),
-            status = excluded.status,
-            reason = excluded.reason,
-            last_error = excluded.last_error,
-            source_attempts = excluded.source_attempts,
-            first_seen_at = market_gap_queue.first_seen_at,
-            last_attempt_at = COALESCE(excluded.last_attempt_at, market_gap_queue.last_attempt_at),
-            resolved_at = excluded.resolved_at,
-            updated_at = excluded.updated_at
-        """,
-        (
-            dataset,
-            stock_code,
-            name,
-            payload_status,
-            payload_reason,
-            payload_error,
-            attempts,
-            first_seen_at,
-            last_attempt_at,
-            resolved_at,
-            now,
-        ),
+    insert_values = (
+        dataset,
+        stock_code,
+        name,
+        payload_status,
+        payload_reason,
+        payload_error,
+        attempts,
+        first_seen_at,
+        last_attempt_at,
+        resolved_at,
+        now,
     )
+    update_sql = """
+        UPDATE market_gap_queue SET
+            stock_name = COALESCE(?, stock_name),
+            status = ?,
+            reason = ?,
+            last_error = ?,
+            source_attempts = ?,
+            first_seen_at = COALESCE(first_seen_at, ?),
+            last_attempt_at = COALESCE(?, last_attempt_at),
+            resolved_at = ?,
+            updated_at = ?
+        WHERE dataset = ? AND stock_code = ?
+    """
+    update_values = (
+        name,
+        payload_status,
+        payload_reason,
+        payload_error,
+        attempts,
+        first_seen_at,
+        last_attempt_at,
+        resolved_at,
+        now,
+        dataset,
+        stock_code,
+    )
+    if existing:
+        conn.execute(update_sql, update_values)
+    else:
+        try:
+            conn.execute(
+                """
+                INSERT INTO market_gap_queue (
+                    dataset, stock_code, stock_name, status, reason, last_error,
+                    source_attempts, first_seen_at, last_attempt_at, resolved_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                insert_values,
+            )
+        except Exception as exc:
+            low = str(exc).lower()
+            if "duplicate key" not in low and "primary key" not in low and "unique constraint" not in low:
+                raise
+            # 并发/重放路径下若另一写入刚插入同 key, 退化为 update 保持幂等。
+            conn.execute(update_sql, update_values)
     if commit:
         conn.commit()
 

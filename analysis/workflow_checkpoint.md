@@ -8,7 +8,7 @@ The model pipeline snapshot below is historical evidence for the completed
 
 ## Current Data Freshness Checkpoint
 
-- updated_at: `2026-06-02 02:48:26 CST`
+- updated_at: `2026-06-02 03:39:15 CST`
 - current_state: `architecture/data freshness repair`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
@@ -40,7 +40,14 @@ The model pipeline snapshot below is historical evidence for the completed
   JSON; `--show-registry-warnings` re-enables the raw fallback log when we
   explicitly want it. `backend/services/source_watermarks.py` also moved to
   timezone-aware UTC timestamps, so the probe/watermark tests no longer emit
-  `datetime.utcnow()` deprecation warnings. 2026-06-01 also
+  `datetime.utcnow()` deprecation warnings. 2026-06-02 backend server
+  recovered and reran `cron_daily.py --full-sync`; the run finished the whole
+  pipeline again with only `watermarks:warn` / `released_warn` and no new
+  Python crash. `raw_tdx_f10_holder_research` advanced to
+  `2026-06-01 19:14:51`, `fact_top10_holder_period` advanced to
+  `2026-06-01T19:14:57+00:00`, and the 28-row holder raw smoke
+  `parse -> write_one -> rollback` check all passed, so the holder/gap repair
+  stayed crash-free. 2026-06-01 also
   repaired the `data_health_snapshot.py` writer timestamp insert path so the
   health gate no longer crashes on compact `YYYYMMDDTHHMMSSZ` values; the
   latest direct dry-run / official cron flow now surface `PASS: 0 red / 0

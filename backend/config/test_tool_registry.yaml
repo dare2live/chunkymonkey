@@ -1923,6 +1923,19 @@ tools:
     replacement: source coverage audit, updater run manifest, and post-sync data_audit freshness checks
     last_verified: "2026-05-27"
 
+  - id: updater_gap_queue_root_tests
+    paths:
+      - backend/tests/test_gap_queue.py
+    owner_module: updater.gap_queue
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_gap_queue.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory market_gap_queue schema fixtures and gap state upsert/reconcile contract
+    risk_reason: validates gap queue persistence mechanics only; it does not prove live source coverage, freshness, or update-run completeness
+    replacement: updater run manifest plus post-sync data_audit and source coverage evidence
+    last_verified: "2026-06-01"
+
   - id: updater_execution_root_tests
     paths:
       - backend/tests/test_updater_execution.py
