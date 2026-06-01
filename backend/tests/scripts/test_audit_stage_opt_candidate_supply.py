@@ -55,6 +55,17 @@ def test_summarize_stage_opt_candidate_supply_tracks_ready_and_blocked_keys() ->
         codes_with_bars,
         min_signals=5,
         max_examples=3,
+        dropped_unknown_stage_rows_by_formula_id={"formula_c": 7, "formula_a": 2},
+        dropped_unknown_stage_rows_by_formula_variant={"variant_c": 7, "variant_a": 2},
+        dropped_unknown_stage_examples=[
+            {
+                "stock_code": "000004",
+                "signal_date": "2026-05-05",
+                "formula_id": "formula_c",
+                "formula_variant": "variant_c",
+                "stage_bin": "?",
+            }
+        ],
     )
 
     assert summary["raw_signal_rows"] == 14
@@ -74,6 +85,26 @@ def test_summarize_stage_opt_candidate_supply_tracks_ready_and_blocked_keys() ->
     assert by_formula["formula_a"]["keys_ready"] == 1
     assert by_formula["formula_b"]["keys_total"] == 1
     assert by_formula["formula_b"]["keys_ready"] == 0
+
+    weakest_formula_ids = summary["weakest_keys_by_formula_id"]
+    assert weakest_formula_ids[0]["formula_id"] == "formula_b"
+    assert weakest_formula_ids[-1]["formula_id"] == "formula_a"
+
+    weakest_variants = summary["weakest_keys_by_formula_variant"]
+    assert weakest_variants[0]["formula_variant"] == "variant_b"
+
+    weakest_stages = summary["weakest_keys_by_stage_bin"]
+    assert weakest_stages[0]["stage_bin"] == "2"
+
+    assert summary["dropped_unknown_stage_rows_by_formula_id"] == {
+        "formula_a": 2,
+        "formula_c": 7,
+    }
+    assert summary["dropped_unknown_stage_rows_by_formula_variant"] == {
+        "variant_a": 2,
+        "variant_c": 7,
+    }
+    assert summary["dropped_unknown_stage_examples"][0]["formula_id"] == "formula_c"
 
     blocked_examples = summary["blocked_examples"]
     assert len(blocked_examples) == 2

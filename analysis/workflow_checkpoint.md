@@ -8,7 +8,7 @@ The model pipeline snapshot below is historical evidence for the completed
 
 ## Current Data Freshness Checkpoint
 
-- updated_at: `2026-06-01 11:01:59 CST`
+- updated_at: `2026-06-01 11:44:18 CST`
 - current_state: `architecture/data freshness repair`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
@@ -30,6 +30,14 @@ The model pipeline snapshot below is historical evidence for the completed
   / `individual_fund_flow_rank` capability is registered, the live probe is
   still blocked by `ProxyError`, and blocked probe rows now persist in
   `mart_data_source_failure_queue` for follow-up triage.
+- stage-opt audit: 2026-06-01 repaired the 2025-08-01→2026-05-29
+  `fact_stock_technical_stage` / `fact_signal_context` discontinuity and
+  reran `audit_stage_opt_candidate_supply.py`; full-history coverage is now
+  `4929 raw_signal_rows / 1033 unique_keys / 398 ready_keys / 38.53% ready
+  coverage / 635 below_min_signals`, while `2024-03-06` 起的
+  `dropped_unknown_stage_rows` 降到 `454,158`. The remaining
+  `technical_stage='?'` mass is now mostly structural classifier warmup /
+  unknown, not a fresh ETL outage.
 - end-to-end audit: `audit_end_to_end.py` now exits PASS with WARN
   (`24 total / 19 OK / 5 WARN / 0 FAIL`); WARN includes recommendation PIT
   coverage 0, recommendation row count, and freshness days_behind=3 for

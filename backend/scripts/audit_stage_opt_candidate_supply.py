@@ -83,6 +83,9 @@ def _load_signal_rows(
     raw_rows = len(rows)
     dropped_index_rows = 0
     dropped_unknown_stage_rows = 0
+    dropped_unknown_stage_rows_by_formula_id: Counter[str] = Counter()
+    dropped_unknown_stage_rows_by_formula_variant: Counter[str] = Counter()
+    dropped_unknown_stage_examples: list[dict[str, Any]] = []
     signal_rows: list[dict[str, Any]] = []
     for stock_code, signal_date, formula_id, formula_variant, stage_bin in rows:
         if is_index_code(stock_code):
@@ -91,6 +94,18 @@ def _load_signal_rows(
         stage_bin = str(stage_bin or "?")
         if stage_bin not in ALLOWED_STAGES:
             dropped_unknown_stage_rows += 1
+            dropped_unknown_stage_rows_by_formula_id[str(formula_id)] += 1
+            dropped_unknown_stage_rows_by_formula_variant[str(formula_variant)] += 1
+            if len(dropped_unknown_stage_examples) < 8:
+                dropped_unknown_stage_examples.append(
+                    {
+                        "stock_code": str(stock_code),
+                        "signal_date": str(signal_date),
+                        "formula_id": str(formula_id),
+                        "formula_variant": str(formula_variant),
+                        "stage_bin": stage_bin,
+                    }
+                )
             continue
         signal_rows.append(
             {
@@ -106,6 +121,9 @@ def _load_signal_rows(
         "raw_rows": raw_rows,
         "dropped_index_rows": dropped_index_rows,
         "dropped_unknown_stage_rows": dropped_unknown_stage_rows,
+        "dropped_unknown_stage_rows_by_formula_id": dict(sorted(dropped_unknown_stage_rows_by_formula_id.items())),
+        "dropped_unknown_stage_rows_by_formula_variant": dict(sorted(dropped_unknown_stage_rows_by_formula_variant.items())),
+        "dropped_unknown_stage_examples": dropped_unknown_stage_examples,
         "signal_rows": signal_rows,
     }
 
@@ -193,6 +211,9 @@ def summarize_stage_opt_candidate_supply(
     *,
     min_signals: int = 5,
     max_examples: int = 8,
+    dropped_unknown_stage_rows_by_formula_id: dict[str, int] | None = None,
+    dropped_unknown_stage_rows_by_formula_variant: dict[str, int] | None = None,
+    dropped_unknown_stage_examples: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Summarize how much stage-opt candidate supply survives the pre-Optuna gates."""
     key_rows: dict[tuple[str, str, str, str], list[dict[str, Any]]] = defaultdict(list)
@@ -274,6 +295,10 @@ def summarize_stage_opt_candidate_supply(
                 "signal_rows": rows_by_formula_id[formula_id],
             }
         )
+    weakest_formula_id_rows = sorted(
+        formula_id_rows,
+        key=lambda row: (row["ready_coverage_pct"], -row["keys_total"], row["formula_id"]),
+    )
 
     formula_variant_rows = []
     sorted_formula_variants = sorted(key_counts_by_formula_variant)
@@ -289,6 +314,10 @@ def summarize_stage_opt_candidate_supply(
                 "signal_rows": rows_by_formula_variant[formula_variant],
             }
         )
+    weakest_formula_variant_rows = sorted(
+        formula_variant_rows,
+        key=lambda row: (row["ready_coverage_pct"], -row["keys_total"], row["formula_variant"]),
+    )
 
     stage_rows = []
     sorted_stage_bins = sorted(key_counts_by_stage)
@@ -304,6 +333,10 @@ def summarize_stage_opt_candidate_supply(
                 "signal_rows": rows_by_stage[stage_bin],
             }
         )
+    weakest_stage_rows = sorted(
+        stage_rows,
+        key=lambda row: (row["ready_coverage_pct"], -row["keys_total"], row["stage_bin"]),
+    )
 
     sorted_key_rows = sorted(
         key_rows.items(),
@@ -343,9 +376,15 @@ def summarize_stage_opt_candidate_supply(
         "rows_by_formula_variant": dict(sorted(rows_by_formula_variant.items())),
         "rows_by_stage_bin": dict(sorted(rows_by_stage.items())),
         "keys_by_formula_id": formula_id_rows,
+        "weakest_keys_by_formula_id": weakest_formula_id_rows,
         "keys_by_formula_variant": formula_variant_rows,
+        "weakest_keys_by_formula_variant": weakest_formula_variant_rows,
         "keys_by_stage_bin": stage_rows,
+        "weakest_keys_by_stage_bin": weakest_stage_rows,
         "blocked_examples": top_blocked_keys,
+        "dropped_unknown_stage_rows_by_formula_id": dict(sorted((dropped_unknown_stage_rows_by_formula_id or {}).items())),
+        "dropped_unknown_stage_rows_by_formula_variant": dict(sorted((dropped_unknown_stage_rows_by_formula_variant or {}).items())),
+        "dropped_unknown_stage_examples": (dropped_unknown_stage_examples or [])[:max_examples],
     }
 
 
@@ -375,6 +414,34 @@ def _render_markdown(result: dict[str, Any]) -> str:
             f"signal_rows={row['signal_rows']}"
         )
     lines.append("")
+    lines.append("## Weakest Formula Ids")
+    for row in result["weakest_keys_by_formula_id"][:10]:
+        lines.append(
+            f"- {row['formula_id']}: keys_total={row['keys_total']} "
+            f"ready={row['keys_ready']} coverage={row['ready_coverage_pct']}% "
+            f"signal_rows={row['signal_rows']}"
+        )
+    lines.append("")
+    if result.get("dropped_unknown_stage_rows_by_formula_id"):
+        lines.append("## Unknown Stage Drops By Formula Id")
+        for formula_id, n_rows in Counter(result["dropped_unknown_stage_rows_by_formula_id"]).most_common(10):
+            lines.append(f"- {formula_id}: dropped_unknown_stage_rows={n_rows}")
+        lines.append("")
+    if result.get("dropped_unknown_stage_rows_by_formula_variant"):
+        lines.append("## Unknown Stage Drops By Formula Variant")
+        for formula_variant, n_rows in Counter(
+            result["dropped_unknown_stage_rows_by_formula_variant"]
+        ).most_common(10):
+            lines.append(f"- {formula_variant}: dropped_unknown_stage_rows={n_rows}")
+        lines.append("")
+    if result.get("dropped_unknown_stage_examples"):
+        lines.append("## Unknown Stage Examples")
+        for row in result["dropped_unknown_stage_examples"][:10]:
+            lines.append(
+                f"- {row['stock_code']} {row['formula_variant']} stage={row['stage_bin']} "
+                f"date={row['signal_date']} formula={row['formula_id']}"
+            )
+        lines.append("")
     lines.append("## By Formula Variant")
     for row in result["keys_by_formula_variant"]:
         lines.append(
@@ -383,8 +450,24 @@ def _render_markdown(result: dict[str, Any]) -> str:
             f"signal_rows={row['signal_rows']}"
         )
     lines.append("")
+    lines.append("## Weakest Formula Variants")
+    for row in result["weakest_keys_by_formula_variant"][:10]:
+        lines.append(
+            f"- {row['formula_variant']}: keys_total={row['keys_total']} "
+            f"ready={row['keys_ready']} coverage={row['ready_coverage_pct']}% "
+            f"signal_rows={row['signal_rows']}"
+        )
+    lines.append("")
     lines.append("## By Stage")
     for row in result["keys_by_stage_bin"]:
+        lines.append(
+            f"- stage {row['stage_bin']}: keys_total={row['keys_total']} "
+            f"ready={row['keys_ready']} coverage={row['ready_coverage_pct']}% "
+            f"signal_rows={row['signal_rows']}"
+        )
+    lines.append("")
+    lines.append("## Weakest Stages")
+    for row in result["weakest_keys_by_stage_bin"][:10]:
         lines.append(
             f"- stage {row['stage_bin']}: keys_total={row['keys_total']} "
             f"ready={row['keys_ready']} coverage={row['ready_coverage_pct']}% "
@@ -446,6 +529,9 @@ def main() -> int:
             signal_rows,
             codes_with_bars,
             min_signals=args.min_signals,
+            dropped_unknown_stage_rows_by_formula_id=load_result["dropped_unknown_stage_rows_by_formula_id"],
+            dropped_unknown_stage_rows_by_formula_variant=load_result["dropped_unknown_stage_rows_by_formula_variant"],
+            dropped_unknown_stage_examples=load_result["dropped_unknown_stage_examples"],
         )
         result = {
             "start": start,
@@ -455,6 +541,9 @@ def main() -> int:
             "filtered_signal_rows": len(signal_rows),
             "dropped_index_rows": load_result["dropped_index_rows"],
             "dropped_unknown_stage_rows": load_result["dropped_unknown_stage_rows"],
+            "dropped_unknown_stage_rows_by_formula_id": load_result["dropped_unknown_stage_rows_by_formula_id"],
+            "dropped_unknown_stage_rows_by_formula_variant": load_result["dropped_unknown_stage_rows_by_formula_variant"],
+            "dropped_unknown_stage_examples": load_result["dropped_unknown_stage_examples"],
             "codes_with_bars": len(codes_with_bars),
             "codes_without_bars": len(codes) - len(codes_with_bars),
             **summary,

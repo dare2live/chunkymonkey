@@ -4,7 +4,7 @@ Manual Codex checkpoint. Current operating state lives in `goal.md`; durable
 startup rules live in `AGENTS.md` and `docs/chunkyctl_session_quickstart.md`.
 This file is a short recovery note, not a replacement for those authorities.
 
-Snapshot: `2026-06-01 11:13:40 CST`
+Snapshot: `2026-06-01 11:44:18 CST`
 
 ## Risk First
 
@@ -60,7 +60,14 @@ audit now separates label vs family: `need_027`'s preferred `akshare` is
 registered, while the declared fallback label `miaoxiang` resolves to the
 registered `aif10` family but that adapter still lacks
 `individual_fund_flow`, so the fallback remains conceptual until the
-route/capability is explicit.
+route/capability is explicit. This slice also repaired the 2025-08-01 →
+2026-05-29 `fact_stock_technical_stage` / `fact_signal_context`断档 and reran
+`audit_stage_opt_candidate_supply.py`: full-history coverage moved to
+`4929 raw_signal_rows / 1033 unique_keys / 398 ready_keys / 38.53% ready
+coverage / 635 below_min_signals`, while `2024-03-06` 起的
+`dropped_unknown_stage_rows` 降到 `454,158`; the remaining
+`technical_stage='?'` mass is now mostly structural classifier warmup rather
+than a fresh ETL outage.
 
 K-line refresh commands used:
 
