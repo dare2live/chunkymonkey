@@ -105,6 +105,13 @@ The model pipeline snapshot below is historical evidence for the completed
   these `raw_trigger_rows` / `raw_state_history_rows` fields so the controller
   can see the MACD state mart composition without rerunning the audit, but the
   controller recommendation still points to `P1 / upstream_candidate_supply`.
+- stage-opt daily recommendation candidate loader: 2026-06-02
+  `build_daily_position_recommendations.py` now unions `mart_macd_state_history`
+  into the candidate pool and uses the existing `mart_per_stock_strategy_optimal`
+  table for cross-stage fallback instead of a nonexistent `_pit` table. The
+  live `2026-06-01` run now completes without the missing-table crash; the
+  current snapshot happened to return 0 candidates, which is an input-sparsity
+  result rather than a loader failure.
 - `scripts/chunkyctl doctor --fast` now also surfaces the stage-opt
   `next_action_recommendation`, so the controller sees the upstream
   candidate-supply lever without rerunning the audit manually. If

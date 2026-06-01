@@ -2,6 +2,7 @@
 
 数据流:
   1. 找今日触发的所有 (stock × formula × variant) 信号 (fact_technical_trigger.date=T)
+     以及 MACD active-state 诊断候选 (mart_macd_state_history)
   2. 拿今日 fact_signal_context (vol_bin/amt_bin/p60_bin/stage)
   3. LOOKUP mart_stock_formula_optuna_v2 找该股该 variant 5 维桶下最佳 (is_best_hd=True)
   4. 拿今日 mart_stock_picture_daily.fundamental_stage 做风险过滤
@@ -263,6 +264,159 @@ def _build_pit_diagnostic_rows(conn, signal_date: str, all_rows: list[tuple]) ->
     return [tuple(row) for row in rows]
 
 
+def _load_candidate_rows(conn, signal_date: str) -> list[tuple]:
+    """拉取当日推荐候选,把 MACD state history 作为补充供给一起纳入。
+
+    返回 tuple 最后一列为 signal_state:
+      - 触发信号通常是 just_crossed
+      - MACD state history 可能是 holding / imminent
+    """
+    VOL_BINS  = [(0, 0.7, "缩量"), (0.7, 1.3, "平量"), (1.3, 2.0, "温量"), (2.0, 99, "爆量")]
+    AMT_BINS  = [(0, 0.7, "额减"), (0.7, 1.3, "额平"), (1.3, 2.0, "额温"), (2.0, 99, "额爆")]
+    P60_BINS  = [(0, 0.65, "深底"), (0.65, 0.85, "中位"), (0.85, 0.97, "高位"), (0.97, 99, "新高")]
+
+    def _bin_sql(col, bins):
+        cases = " ".join(
+            f"WHEN {col} IS NOT NULL AND {col} >= {lo} AND {col} < {hi} THEN '{label}'"
+            for lo, hi, label in bins
+        )
+        return f"CASE {cases} ELSE '?' END"
+
+    return conn.execute(
+        f"""
+        WITH today_signals AS (
+          SELECT
+                 t.stock_code, t.formula_id, t.formula_variant, t.strength,
+                 {_bin_sql('c.vol_r20', VOL_BINS)}    AS vol_bin,
+                 {_bin_sql('c.amt_r20', AMT_BINS)}    AS amt_bin,
+                 {_bin_sql('c.price_pos_60d', P60_BINS)} AS p60_bin,
+                 COALESCE(c.technical_stage, '?')      AS stage_bin,
+                 COALESCE(t.state, 'just_crossed')      AS signal_state
+            FROM fact_technical_trigger t
+            LEFT JOIN fact_signal_context c
+              ON c.stock_code = t.stock_code AND c.date = t.date
+           WHERE t.date = ?
+          UNION ALL
+          SELECT
+                 s.stock_code, s.formula_id, s.formula_variant, s.strength,
+                 {_bin_sql('c.vol_r20', VOL_BINS)}    AS vol_bin,
+                 {_bin_sql('c.amt_r20', AMT_BINS)}    AS amt_bin,
+                 {_bin_sql('c.price_pos_60d', P60_BINS)} AS p60_bin,
+                 COALESCE(c.technical_stage, '?')      AS stage_bin,
+                 s.state AS signal_state
+            FROM mart_macd_state_history s
+            LEFT JOIN fact_signal_context c
+              ON c.stock_code = s.stock_code AND c.date = s.date
+           WHERE s.date = ?
+             AND s.state IN ('holding', 'imminent')
+        ),
+        stage_pit_exact AS (
+          SELECT *
+          FROM (
+            SELECT p.*,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY p.stock_code, p.formula_id, p.formula_variant, p.stage_filter
+                     ORDER BY CAST(p.cutoff_date AS DATE) DESC,
+                              p.oos_sharpe DESC NULLS LAST,
+                              p.oos_n_traded DESC NULLS LAST
+                   ) AS rn
+              FROM mart_per_stock_stage_strategy_optimal_pit p
+             WHERE CAST(p.cutoff_date AS DATE) <= CAST(? AS DATE)
+               AND COALESCE(p.oos_n_traded, p.n_traded, 0) >= 3
+          )
+          WHERE rn = 1
+        ),
+        stage_pit_formula AS (
+          SELECT *
+          FROM (
+            SELECT p.*,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY p.stock_code, p.formula_id, p.formula_variant
+                     ORDER BY CAST(p.cutoff_date AS DATE) DESC,
+                              p.oos_sharpe DESC NULLS LAST,
+                              p.oos_n_traded DESC NULLS LAST
+                   ) AS rn
+              FROM mart_per_stock_stage_strategy_optimal_pit p
+             WHERE CAST(p.cutoff_date AS DATE) <= CAST(? AS DATE)
+               AND COALESCE(p.oos_n_traded, p.n_traded, 0) >= 3
+          )
+          WHERE rn = 1
+        )
+        -- η+++++++ tier-1: PIT exact stage; tier-1b: PIT same stock+formula; fallback: cross-stage optimal
+        SELECT ts.stock_code, ts.formula_id, ts.formula_variant,
+               ts.vol_bin, ts.amt_bin, ts.p60_bin, ts.stage_bin,
+               COALESCE(sopt.holding_days, sfopt.holding_days, opt.optimal_hp) AS holding_days,
+               COALESCE(sopt.oos_n_traded, sopt.n_traded,
+                        sfopt.oos_n_traded, sfopt.n_traded, opt.n_traded)      AS n_signals,
+               COALESCE(sopt.oos_win_rate, sopt.win_rate,
+                        sfopt.oos_win_rate, sfopt.win_rate, opt.win_rate)      AS win_rate,
+               COALESCE(sopt.oos_avg_ret, sopt.avg_ret,
+                        sfopt.oos_avg_ret, sfopt.avg_ret, opt.avg_ret)         AS avg_ret,
+               COALESCE(opt.avg_max_dd, sopt.optimal_stop_pct, sfopt.optimal_stop_pct) AS avg_dd,
+               COALESCE(sopt.oos_sharpe, sopt.sharpe,
+                        sfopt.oos_sharpe, sfopt.sharpe, opt.sharpe)            AS sharpe,
+               COALESCE(
+                 opt.calmar,
+                 CASE
+                   WHEN COALESCE(sopt.oos_avg_ret, sopt.avg_ret) > 0
+                    AND sopt.optimal_stop_pct < 0
+                   THEN COALESCE(sopt.oos_avg_ret, sopt.avg_ret) / abs(sopt.optimal_stop_pct)
+                   WHEN COALESCE(sfopt.oos_avg_ret, sfopt.avg_ret) > 0
+                    AND sfopt.optimal_stop_pct < 0
+                   THEN COALESCE(sfopt.oos_avg_ret, sfopt.avg_ret) / abs(sfopt.optimal_stop_pct)
+                   ELSE NULL
+                 END
+               )                                                             AS calmar,
+               CASE WHEN sopt.stock_code IS NOT NULL THEN 'stage_pit'
+                    WHEN sfopt.stock_code IS NOT NULL THEN 'stage_pit_formula_fallback'
+                    ELSE 'cross_stage_fallback' END                          AS match_tier,
+              COALESCE(sopt.optimal_stop_pct,     sfopt.optimal_stop_pct,     opt.optimal_stop_pct)     AS optimal_stop_pct,
+              COALESCE(sopt.optimal_target_pct,   sfopt.optimal_target_pct,   opt.optimal_target_pct)   AS optimal_target_pct,
+              COALESCE(sopt.optimal_trailing_pct, sfopt.optimal_trailing_pct, opt.optimal_trailing_pct) AS optimal_trailing_pct,
+               p.fundamental_stage, p.latest_close,
+               COALESCE(sf.survey_bin, '冷')     AS survey_bin,
+               COALESCE(sf.survey_count_60d, 0)  AS survey_count_60d,
+               ts.signal_state
+          FROM today_signals ts
+          LEFT JOIN stage_pit_exact sopt
+            ON sopt.stock_code      = ts.stock_code
+           AND sopt.formula_id      = ts.formula_id
+           AND sopt.formula_variant = ts.formula_variant
+           AND sopt.stage_filter    = ts.stage_bin
+           -- audit fix: filter ret/dd/sharpe 异常值
+           AND abs(COALESCE(sopt.oos_avg_ret, sopt.avg_ret, 0)) <= 0.5
+           AND sopt.optimal_stop_pct >= -0.5
+           AND abs(COALESCE(sopt.oos_sharpe, sopt.sharpe, 0)) <= 10
+          LEFT JOIN stage_pit_formula sfopt
+            ON sfopt.stock_code      = ts.stock_code
+           AND sfopt.formula_id      = ts.formula_id
+           AND sfopt.formula_variant = ts.formula_variant
+           AND sopt.stock_code IS NULL
+           AND abs(COALESCE(sfopt.oos_avg_ret, sfopt.avg_ret, 0)) <= 0.5
+           AND sfopt.optimal_stop_pct >= -0.5
+           AND abs(COALESCE(sfopt.oos_sharpe, sfopt.sharpe, 0)) <= 10
+          LEFT JOIN mart_per_stock_strategy_optimal opt
+            ON opt.stock_code      = ts.stock_code
+           AND opt.formula_id      = ts.formula_id
+           AND opt.formula_variant = ts.formula_variant
+           AND abs(opt.avg_ret) <= 0.5 AND opt.avg_max_dd >= -0.5
+           AND abs(opt.sharpe) <= 10
+        LEFT JOIN mart_stock_picture_daily p
+            ON p.stock_code = ts.stock_code
+           AND p.snapshot_date = (SELECT MAX(snapshot_date) FROM mart_stock_picture_daily)
+          LEFT JOIN mart_stock_survey_features sf
+            ON sf.stock_code = ts.stock_code
+           AND sf.as_of_date = ?
+         WHERE (
+                sopt.stock_code IS NOT NULL
+             OR sfopt.stock_code IS NOT NULL
+             OR opt.stock_code IS NOT NULL
+         )
+        """,
+        [signal_date, signal_date, signal_date, signal_date, signal_date],
+    ).fetchall()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--date", default=None, help="signal_date, default=最新")
@@ -294,147 +448,28 @@ def main():
         buy_date = nb[0] if nb else (_date.fromisoformat(signal_date) + timedelta(days=1)).isoformat()
         log.info(f"buy_date    = {buy_date} (T+1)")
 
-        # 3. 拉今日所有候选 (signal × context × per-stock 历史最佳桶 × fundamental)
-        VOL_BINS  = [(0, 0.7, "缩量"), (0.7, 1.3, "平量"), (1.3, 2.0, "温量"), (2.0, 99, "爆量")]
-        AMT_BINS  = [(0, 0.7, "额减"), (0.7, 1.3, "额平"), (1.3, 2.0, "额温"), (2.0, 99, "额爆")]
-        P60_BINS  = [(0, 0.65, "深底"), (0.65, 0.85, "中位"), (0.85, 0.97, "高位"), (0.97, 99, "新高")]
-
-        def _bin_sql(col, bins):
-            cases = " ".join(
-                f"WHEN {col} IS NOT NULL AND {col} >= {lo} AND {col} < {hi} THEN '{label}'"
-                for lo, hi, label in bins
-            )
-            return f"CASE {cases} ELSE '?' END"
-
-        log.info("加载今日触发 × PIT stage-aware Optuna 寻优结果 (ψ.2 = η+++++++ live 切换) ...")
+        log.info("加载今日触发 × MACD state history × PIT stage-aware Optuna 寻优结果 ...")
         # ψ.2 改造: tier-1 使用 mart_per_stock_stage_strategy_optimal_pit,
         # 仅取 cutoff_date <= signal_date 的参数。tier-2 fallback 仍保留旧
         # cross-stage 表, 但不再让单批 legacy stage snapshot 作为生产正向证据。
         BUCKET_MIN_N = 10  # 保留参数 (UI 展示需要)
 
-        candidates_raw = conn.execute(
-            f"""
-            WITH today_signals AS (
-              SELECT t.stock_code, t.formula_id, t.formula_variant, t.strength,
-                     {_bin_sql('c.vol_r20', VOL_BINS)}    AS vol_bin,
-                     {_bin_sql('c.amt_r20', AMT_BINS)}    AS amt_bin,
-                     {_bin_sql('c.price_pos_60d', P60_BINS)} AS p60_bin,
-                     COALESCE(c.technical_stage, '?')      AS stage_bin
-                FROM fact_technical_trigger t
-                LEFT JOIN fact_signal_context c
-                  ON c.stock_code = t.stock_code AND c.date = t.date
-               WHERE t.date = ?
-            ),
-            stage_pit_exact AS (
-              SELECT *
-              FROM (
-                SELECT p.*,
-                       ROW_NUMBER() OVER (
-                         PARTITION BY p.stock_code, p.formula_id, p.formula_variant, p.stage_filter
-                         ORDER BY CAST(p.cutoff_date AS DATE) DESC,
-                                  p.oos_sharpe DESC NULLS LAST,
-                                  p.oos_n_traded DESC NULLS LAST
-                       ) AS rn
-                  FROM mart_per_stock_stage_strategy_optimal_pit p
-                 WHERE CAST(p.cutoff_date AS DATE) <= CAST(? AS DATE)
-                   AND COALESCE(p.oos_n_traded, p.n_traded, 0) >= 3
-              )
-              WHERE rn = 1
-            ),
-            stage_pit_formula AS (
-              SELECT *
-              FROM (
-                SELECT p.*,
-                       ROW_NUMBER() OVER (
-                         PARTITION BY p.stock_code, p.formula_id, p.formula_variant
-                         ORDER BY CAST(p.cutoff_date AS DATE) DESC,
-                                  p.oos_sharpe DESC NULLS LAST,
-                                  p.oos_n_traded DESC NULLS LAST
-                       ) AS rn
-                  FROM mart_per_stock_stage_strategy_optimal_pit p
-                 WHERE CAST(p.cutoff_date AS DATE) <= CAST(? AS DATE)
-                   AND COALESCE(p.oos_n_traded, p.n_traded, 0) >= 3
-              )
-              WHERE rn = 1
-            )
-            -- η+++++++ tier-1: PIT exact stage; tier-1b: PIT same stock+formula; fallback: cross-stage optimal
-            SELECT ts.stock_code, ts.formula_id, ts.formula_variant,
-                   ts.vol_bin, ts.amt_bin, ts.p60_bin, ts.stage_bin,
-                   COALESCE(sopt.holding_days, sfopt.holding_days, opt.optimal_hp) AS holding_days,
-                   COALESCE(sopt.oos_n_traded, sopt.n_traded,
-                            sfopt.oos_n_traded, sfopt.n_traded, opt.n_traded)      AS n_signals,
-                   COALESCE(sopt.oos_win_rate, sopt.win_rate,
-                            sfopt.oos_win_rate, sfopt.win_rate, opt.win_rate)      AS win_rate,
-                   COALESCE(sopt.oos_avg_ret, sopt.avg_ret,
-                            sfopt.oos_avg_ret, sfopt.avg_ret, opt.avg_ret)         AS avg_ret,
-                   COALESCE(opt.avg_max_dd, sopt.optimal_stop_pct, sfopt.optimal_stop_pct) AS avg_dd,
-                   COALESCE(sopt.oos_sharpe, sopt.sharpe,
-                            sfopt.oos_sharpe, sfopt.sharpe, opt.sharpe)            AS sharpe,
-                   COALESCE(
-                     opt.calmar,
-                     CASE
-                       WHEN COALESCE(sopt.oos_avg_ret, sopt.avg_ret) > 0
-                        AND sopt.optimal_stop_pct < 0
-                       THEN COALESCE(sopt.oos_avg_ret, sopt.avg_ret) / abs(sopt.optimal_stop_pct)
-                       WHEN COALESCE(sfopt.oos_avg_ret, sfopt.avg_ret) > 0
-                        AND sfopt.optimal_stop_pct < 0
-                       THEN COALESCE(sfopt.oos_avg_ret, sfopt.avg_ret) / abs(sfopt.optimal_stop_pct)
-                       ELSE NULL
-                     END
-                   )                                                             AS calmar,
-                   CASE WHEN sopt.stock_code IS NOT NULL THEN 'stage_pit'
-                        WHEN sfopt.stock_code IS NOT NULL THEN 'stage_pit_formula_fallback'
-                        ELSE 'cross_stage_fallback' END                          AS match_tier,
-                  COALESCE(sopt.optimal_stop_pct,     sfopt.optimal_stop_pct,     opt.optimal_stop_pct)     AS optimal_stop_pct,
-                  COALESCE(sopt.optimal_target_pct,   sfopt.optimal_target_pct,   opt.optimal_target_pct)   AS optimal_target_pct,
-                  COALESCE(sopt.optimal_trailing_pct, sfopt.optimal_trailing_pct, opt.optimal_trailing_pct) AS optimal_trailing_pct,
-                   p.fundamental_stage, p.latest_close,
-                   COALESCE(sf.survey_bin, '冷')     AS survey_bin,
-                   COALESCE(sf.survey_count_60d, 0)  AS survey_count_60d
-              FROM today_signals ts
-              LEFT JOIN stage_pit_exact sopt
-                ON sopt.stock_code      = ts.stock_code
-               AND sopt.formula_id      = ts.formula_id
-               AND sopt.formula_variant = ts.formula_variant
-               AND sopt.stage_filter    = ts.stage_bin
-               -- audit fix: filter ret/dd/sharpe 异常值
-               AND abs(COALESCE(sopt.oos_avg_ret, sopt.avg_ret, 0)) <= 0.5
-               AND sopt.optimal_stop_pct >= -0.5
-               AND abs(COALESCE(sopt.oos_sharpe, sopt.sharpe, 0)) <= 10
-              LEFT JOIN stage_pit_formula sfopt
-                ON sfopt.stock_code      = ts.stock_code
-               AND sfopt.formula_id      = ts.formula_id
-               AND sfopt.formula_variant = ts.formula_variant
-               AND sopt.stock_code IS NULL
-               AND abs(COALESCE(sfopt.oos_avg_ret, sfopt.avg_ret, 0)) <= 0.5
-               AND sfopt.optimal_stop_pct >= -0.5
-               AND abs(COALESCE(sfopt.oos_sharpe, sfopt.sharpe, 0)) <= 10
-              LEFT JOIN mart_per_stock_strategy_optimal opt
-                ON opt.stock_code      = ts.stock_code
-               AND opt.formula_id      = ts.formula_id
-               AND opt.formula_variant = ts.formula_variant
-               AND abs(opt.avg_ret) <= 0.5 AND opt.avg_max_dd >= -0.5
-               AND abs(opt.sharpe) <= 10
-              LEFT JOIN mart_stock_picture_daily p
-                ON p.stock_code = ts.stock_code
-               AND p.snapshot_date = (SELECT MAX(snapshot_date) FROM mart_stock_picture_daily)
-              LEFT JOIN mart_stock_survey_features sf
-                ON sf.stock_code = ts.stock_code
-               AND sf.as_of_date = ?
-             WHERE (sopt.stock_code IS NOT NULL OR opt.stock_code IS NOT NULL)
-            """,
-            [signal_date, signal_date, signal_date, signal_date],
-        ).fetchall()
+        candidates_raw = _load_candidate_rows(conn, signal_date)
         # 报告 stage-aware 命中 vs fallback 占比
         n_stage_aware = sum(1 for r in candidates_raw if r[14] == "stage_pit")
         n_stage_formula = sum(1 for r in candidates_raw if r[14] == "stage_pit_formula_fallback")
         n_fallback = len(candidates_raw) - n_stage_aware - n_stage_formula
+        signal_state_counts = {}
+        for r in candidates_raw:
+            signal_state = r[-1]
+            signal_state_counts[signal_state] = signal_state_counts.get(signal_state, 0) + 1
         log.info(
             f"  原始候选: {len(candidates_raw)} 条 "
             f"(stage_pit exact = {n_stage_aware}, "
             f"stage_pit formula fallback = {n_stage_formula}, "
             f"cross_stage fallback = {n_fallback})"
         )
+        log.info(f"  原始信号态: {dict(sorted(signal_state_counts.items()))}")
 
         # 4. 转 dict, 加 signal_close 字段
         candidates = []
@@ -442,7 +477,7 @@ def main():
             (sc, fid, fvar, vb, ab, pb, sb,
              hd, n, win, ret, dd, sharpe, cal, tier,
              opt_stop, opt_target, opt_trail,
-             fund, close, survey_bin, survey_count_60d) = r
+             fund, close, survey_bin, survey_count_60d, signal_state) = r
             candidates.append({
                 "stock_code": sc,
                 "formula_id": fid,
@@ -461,6 +496,7 @@ def main():
                 "calmar": float(cal) if cal is not None else None,
                 "fundamental_stage": fund,
                 "signal_close": float(close) if close else None,
+                "signal_state": signal_state,
                 # Phase ζ: per-stock Optuna 最优策略参数 (sizing 用)
                 "optimal_stop_pct":     float(opt_stop) if opt_stop is not None else None,
                 "optimal_target_pct":   float(opt_target) if opt_target is not None else None,

@@ -32,6 +32,11 @@ bash scripts/install_resilience.sh --status   # check 装好没
   `2026-06-01 19:14:51` / `2026-06-01T19:14:57+00:00`, and the 28-row holder
   raw smoke `parse -> write_one -> rollback` all passed, so the current Python
   evidence is crash-free.
+- current in-progress slice: `build_daily_position_recommendations.py` now
+  unions MACD `mart_macd_state_history` into the recommendation candidate pool
+  and uses the existing `mart_per_stock_strategy_optimal` table for
+  cross-stage fallback; the live `2026-06-01` run completes without the
+  missing-table crash, though the current DB snapshot still has 0 candidates.
 
 ## 主线 retrain 状态
 

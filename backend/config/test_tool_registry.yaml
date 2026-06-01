@@ -2305,6 +2305,19 @@ tools:
     replacement: model validation, production data freshness, recommendation lineage, paper_sim/Phase4 evidence, and delivery gates
     last_verified: "2026-05-27"
 
+  - id: daily_position_recommendation_root_tests
+    paths:
+      - backend/tests/scripts/test_build_daily_position_recommendations.py
+    owner_module: recommendation.daily_position_recommendation
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_build_daily_position_recommendations.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB fact_technical_trigger, mart_macd_state_history, stage-PIT, and recommendation fixtures
+    risk_reason: validates candidate loader and PIT fallback wiring only; it does not prove production freshness, full universe coverage, or deployable recommendation readiness
+    replacement: production data_audit, paper_sim, and delivery-readiness evidence
+    last_verified: "2026-06-02"
+
   - id: feature_ablation_root_tests
     paths:
       - backend/tests/test_run_feature_ablation.py
