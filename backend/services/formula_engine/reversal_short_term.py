@@ -23,12 +23,12 @@
   - strength: 跌幅 × 低波 score, 跌 15% 左右 + 波动低 strength 最大
 
   - variant:
-    1. reversal_1m_mild    — 跌 5-15% (温和反转, RankIC 适中)
+    1. reversal_1m_mild    — 跌 4-15% (温和反转, RankIC 适中)
     2. reversal_1m_deep    — 跌 10-30% (深度反转, RankIC 高但样本少)
     3. reversal_1w         — 1 周反转 (5 日, 信号高频但换手大)
 
-⚠ 不调单股阈值 (留给 Phase ψ Optuna search_space 后续扩展). 当前公式阈值是
-  "经验区间", 跑出 OOS sharpe 数据后再决定是否参数化.
+⚠ 不调单股阈值 (留给 Phase ψ Optuna search_space 后续扩展). 当前公式阈值
+  是 "经验区间", 跑出 OOS sharpe 数据后再决定是否参数化.
 """
 from __future__ import annotations
 
@@ -166,18 +166,18 @@ class _ReversalBase:
 
 @dataclass(frozen=True)
 class Reversal1mMild(_ReversalBase):
-    """1 月温和反转: 跌 5-15%, 低波动. 样本多, RankIC 适中."""
+    """1 月温和反转: 跌 4-15%, 低波动. 样本多, RankIC 适中."""
     metadata: FormulaMetadata = FormulaMetadata(
         formula_id="reversal_1m_mild",
         name="1 月温和反转",
         tag="RM",
-        description="20 日跌 5-15% + 60 日低波 + 量比正常 → 短期反转候选",
+        description="20 日跌 4-15% + 60 日低波 + 量比正常 → 短期反转候选",
         default_horizon_days=10,
         has_variant=True,
     )
     lookback_days: int = 20
     pct_change_lo: float = -0.15
-    pct_change_hi: float = -0.05
+    pct_change_hi: float = -0.04
     rel_std_max: float = 0.06
     vol_ratio_lo: float = 0.6
     vol_ratio_hi: float = 2.0

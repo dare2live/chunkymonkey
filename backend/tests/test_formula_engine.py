@@ -324,9 +324,38 @@ class TestDynamicMaIterativeCross:
 
 class TestShortTermReversal:
     @pytest.fixture
+    def mild(self):
+        from services.formula_engine import reversal_short_term  # noqa: F401
+        return REGISTRY["reversal_1m_mild"]
+
+    @pytest.fixture
     def deep(self):
         from services.formula_engine import reversal_short_term  # noqa: F401
         return REGISTRY["reversal_1m_deep"]
+
+    def test_mild_variant_triggers_on_roughly_4pct_drop(self, mild):
+        n = 90
+        dates = np.array([f"2024-{(i // 30) + 1:02d}-{(i % 30) + 1:02d}" for i in range(n)])
+        closes = np.concatenate([
+            np.full(60, 100.0),
+            np.linspace(100.0, 96.0, 20),
+            np.full(10, 96.0),
+        ])
+        volumes = np.ones(n) * 1000
+
+        signals = mild.compute_signals(
+            "T",
+            dates,
+            closes,
+            closes,
+            closes,
+            closes,
+            volumes,
+            closes * volumes,
+        )
+
+        assert len(signals) >= 1, "4% 左右温和下跌应落入 reversal_1m_mild"
+        assert all(s.formula_id == "reversal_1m_mild" for s in signals)
 
     def test_deep_variant_triggers_on_roughly_11pct_drop(self, deep):
         n = 90

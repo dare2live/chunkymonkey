@@ -180,6 +180,79 @@ class TestFormulaSignalWindowPlanning:
         with pytest.raises(ValueError, match="must be <= end"):
             _resolve_write_window("2026-05-01", "2026-05-29", "2026-06-01")
 
+    def test_compute_horizon_evidence_writes_rows_without_name_error(self):
+        import duckdb
+
+        from scripts.build_formula_signals_history import compute_horizon_evidence
+        from services.duck_adapter import connect as duck_connect
+        from services.formula_engine.ddl import ensure_formula_tables
+
+        conn = duck_connect(":memory:")
+        try:
+            ensure_formula_tables(conn)
+            conn.execute(
+                """
+                INSERT INTO fact_technical_trigger
+                  (stock_code, date, formula_id, formula_variant, strength, state, reason_codes_json)
+                VALUES
+                  ('000001', '2024-01-05', 'macd_golden_cross', 'macd_golden_cross_below_zero', 0.8, 'just_crossed', '[]')
+                """
+            )
+            grouped = {
+                "000001": {
+                    "dates": np.array([
+                        "2024-01-01",
+                        "2024-01-02",
+                        "2024-01-03",
+                        "2024-01-04",
+                        "2024-01-05",
+                        "2024-01-06",
+                        "2024-01-07",
+                        "2024-01-08",
+                        "2024-01-09",
+                        "2024-01-10",
+                        "2024-01-11",
+                        "2024-01-12",
+                        "2024-01-13",
+                        "2024-01-14",
+                        "2024-01-15",
+                        "2024-01-16",
+                        "2024-01-17",
+                        "2024-01-18",
+                        "2024-01-19",
+                        "2024-01-20",
+                        "2024-01-21",
+                        "2024-01-22",
+                        "2024-01-23",
+                        "2024-01-24",
+                        "2024-01-25",
+                        "2024-01-26",
+                    ]),
+                    "opens": np.linspace(10.0, 11.0, 26),
+                    "highs": np.linspace(10.1, 11.1, 26),
+                    "lows": np.linspace(9.9, 10.9, 26),
+                    "closes": np.linspace(10.0, 11.0, 26),
+                    "volumes": np.ones(26) * 1000.0,
+                    "amounts": np.linspace(10.0, 11.0, 26) * 1000.0,
+                }
+            }
+
+            written = compute_horizon_evidence(
+                conn,
+                grouped,
+                ("macd_golden_cross",),
+                "2024-01-01",
+                "2024-01-25",
+            )
+
+            assert written >= 1
+            count = conn.execute(
+                "SELECT COUNT(*) FROM mart_formula_horizon_evidence WHERE formula_id='macd_golden_cross'"
+            ).fetchone()[0]
+            assert count >= 1
+        finally:
+            conn.close()
+
 
 class TestTechnicalStageHistorical:
     """build_stage_formula_fitness 的 technical_stage 历史回算逻辑."""

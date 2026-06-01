@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import logging
 import time
+from collections import defaultdict
 from datetime import date
 from typing import Iterator
 
