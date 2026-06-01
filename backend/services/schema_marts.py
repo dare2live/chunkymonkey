@@ -914,6 +914,29 @@ MART_SCHEMA_SQL = """
                 PRIMARY KEY (institution_id, stock_code)
             );
 
+            CREATE TABLE IF NOT EXISTS mart_stock_fund_flow_rank_snapshot_daily (
+                snapshot_date       DATE NOT NULL,
+                snapshot_symbol     TEXT NOT NULL,
+                rank_seq            INTEGER NOT NULL,
+                stock_code          TEXT NOT NULL,
+                stock_name          TEXT,
+                latest_price        DOUBLE,
+                change_pct          DOUBLE,
+                turnover_rate       DOUBLE,
+                inflow_amount       DOUBLE,
+                outflow_amount      DOUBLE,
+                net_amount          DOUBLE,
+                turnover_amount     DOUBLE,
+                source_used         TEXT NOT NULL,
+                source_capability    TEXT NOT NULL,
+                built_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (snapshot_date, snapshot_symbol, stock_code)
+            );
+            CREATE INDEX IF NOT EXISTS idx_msfrrd_date
+                ON mart_stock_fund_flow_rank_snapshot_daily(snapshot_date);
+            CREATE INDEX IF NOT EXISTS idx_msfrrd_net_amount
+                ON mart_stock_fund_flow_rank_snapshot_daily(snapshot_date, net_amount DESC);
+
             CREATE TABLE IF NOT EXISTS mart_etf_snapshot_latest (
                 code            TEXT PRIMARY KEY,
                 snapshot_id     TEXT NOT NULL,

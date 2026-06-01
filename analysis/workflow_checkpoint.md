@@ -55,6 +55,10 @@ The model pipeline snapshot below is historical evidence for the completed
   `build_daily_position_recommendations.py --date 2026-05-29`, so the latest
   diagnostic rows now show the governance reason beside each
   `stock_missing_pit` / `formula_missing_pit` row.
+- fund-flow research snapshot: `mart_stock_fund_flow_rank_snapshot_daily`
+  and `build_fund_flow_rank_snapshot_daily.py` were added as research-side
+  support only, with the new root test registered in the test registry.
+  This does not change the `need_027` exact-flow blocked status.
 - survivorship gate: current default `p0a_v3_horizon_governance` PASS; the old
   `p0a_v2_governance_v1` gate remains available only for explicit historical
   review.

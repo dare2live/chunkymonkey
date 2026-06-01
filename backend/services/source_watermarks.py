@@ -146,6 +146,15 @@ DOMAIN_SPECS = [
         "parser_version": "akshare",
         "fallback_reason": "no stable tdxhub/miaoxiang primary in current repo",
     },
+    {
+        "data_domain": "stock_fund_flow_rank_snapshot",
+        "source_name": "akshare",
+        "source_tier": 3,
+        "table": "mart_stock_fund_flow_rank_snapshot_daily",
+        "date_col": "snapshot_date",
+        "parser_version": "akshare_stock_fund_flow_individual_snapshot_v1",
+        "fallback_reason": "research-side rank snapshot only; exact need_027 flow remains blocked/unknown",
+    },
 ]
 
 

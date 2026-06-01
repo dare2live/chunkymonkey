@@ -1340,6 +1340,19 @@ tools:
     replacement: source coverage probe plus freshness/PIT audit before any production fund-flow claim
     last_verified: "2026-06-01"
 
+  - id: fund_flow_rank_snapshot_contract_tests
+    paths:
+      - backend/tests/test_build_fund_flow_rank_snapshot_daily.py
+    owner_module: market_data.fund_flow_rank_snapshot
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_build_fund_flow_rank_snapshot_daily.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB plus monkeypatched akshare research-side fund-flow rank snapshot fixtures
+    risk_reason: verifies research-side snapshot normalization, write, and watermark mechanics only; it does not prove exact need_027 flow, live source availability, or freshness
+    replacement: source coverage probe plus freshness/PIT audit before any production fund-flow claim
+    last_verified: "2026-06-01"
+
   - id: fundamental_finance_ingestion_contract_tests
     paths:
       - backend/tests/test_build_fundamental_quarterly.py

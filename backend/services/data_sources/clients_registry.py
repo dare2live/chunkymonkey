@@ -357,6 +357,22 @@ DERIVED_WRITERS: list[ClientSpec] = [
         ],
     ),
     ClientSpec(
+        client_id="build_fund_flow_rank_snapshot_daily",
+        module="scripts.build_fund_flow_rank_snapshot_daily",
+        description="个股资金流排行快照 (研究侧)",
+        upstream_source="derived: akshare:stock_fund_flow_individual",
+        source_tier=99,
+        writes=[
+            TableWriteSpec(
+                "mart_stock_fund_flow_rank_snapshot_daily",
+                "个股资金流排行快照 (研究侧)",
+                "t+0",
+                24,
+            ),
+        ],
+        sync_step_id="build_fund_flow_rank_snapshot_daily",
+    ),
+    ClientSpec(
         client_id="build_candidate_feature_panel",
         module="scripts.build_candidate_feature_panel",
         description="候选特征面板 (不替换 champion)",

@@ -47,6 +47,10 @@ stored evidence. `audit_tdx_data_need_coverage.py` 现在也会把 blocked need 
 直接列出来，目前只剩 `need_027` 一个 blocked gap。2026-06-01 又对当前推荐的 7 个
 stock code 以 cutoffs `2026-01-01,2026-05-19,2026-05-29` 重跑
 `build_stage_opt_pit.py`，结果 latest recommendation PIT coverage 仍然 0（8 total / 0 exact / 0 same_formula / 1 same_stock / 8 cross_stage），说明 exact stage × formula 的候选供给是结构性稀疏，不是单次补表能解决。No GCP/Optuna/backtest work was started.
+This slice additionally materialized `mart_stock_fund_flow_rank_snapshot_daily`
+via `build_fund_flow_rank_snapshot_daily.py` and registered the builder test,
+but it is explicitly research-side support only and does not change the
+`need_027` exact-flow blocked status.
 This slice also externalized `portfolio_sizer` short/mid/long thresholds into
 `backend/config/portfolio_sizer_profiles.yaml`, and added
 `backend/scripts/audit_portfolio_sizer_profile_attrition.py` /

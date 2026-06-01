@@ -205,6 +205,7 @@ MART_VERSIONS = {
     "mart_stock_screening": "v1",            # 选股结果
     "mart_stock_survey_activity": "v1",      # 调研活动
     "mart_stock_trend": "v1",                # 股票趋势 ⭐
+    "mart_stock_fund_flow_rank_snapshot_daily": "v1",  # 研究侧资金流排行快照
     "mart_prediction_outcome": "v1",         # P2.8 预测 outcome tracker
     "mart_ensemble_signals": "v1",           # P3.11 多策略 ensemble
     "mart_today_signal_cache": "v2",         # signals_v2 read cache summary row
