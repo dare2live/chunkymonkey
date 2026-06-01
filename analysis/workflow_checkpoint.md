@@ -8,7 +8,7 @@ The model pipeline snapshot below is historical evidence for the completed
 
 ## Current Data Freshness Checkpoint
 
-- updated_at: `2026-06-01 21:03:42 CST`
+- updated_at: `2026-06-02 02:48:26 CST`
 - current_state: `architecture/data freshness repair`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
