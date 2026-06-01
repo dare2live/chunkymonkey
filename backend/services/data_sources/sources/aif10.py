@@ -123,6 +123,14 @@ class Aif10Source(BaseDataSource):
 
         from aif10_scraper import fetch_report
 
+        if capability == "lhb_daily":
+            start = kwargs.get("start_date") or kwargs.get("start")
+            end = kwargs.get("end_date") or kwargs.get("end")
+            if start and end:
+                from services.lhb_client import _fetch_lhb_aif10
+
+                return _fetch_lhb_aif10(str(start), str(end))
+
         secucode = kwargs.get("secucode") or kwargs.get("code")
         page_size = kwargs.get("page_size", 500)
         max_pages = kwargs.get("max_pages", 0)

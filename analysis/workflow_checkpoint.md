@@ -136,9 +136,12 @@ The model pipeline snapshot below is historical evidence for the completed
   check shows
   `raw_lhb_daily` and `fact_lhb_event` both max at `2026-05-29`; latest day
   raw 94 rows / 84 codes and fact 84 rows / 84 codes, so the remaining LHB
-  WARN is source sparsity, not ETL lag. `audit_pit_coverage.py` is still 4/4
-  PASS, with `fact_lhb_event` gain_20d coverage 83.9% > 60%, so the sparse
-  LHB WARN is completeness-only, not PIT safety.
+  WARN is source sparsity, not ETL lag. 2026-06-01 also aligned registry-side
+  `lhb_daily` to the same date-bounded helper as the client path, so aif10
+  resolve/probe no longer produces the old unbounded full-history false
+  positive. `audit_pit_coverage.py` is still 4/4 PASS, with
+  `fact_lhb_event` gain_20d coverage 83.9% > 60%, so the sparse LHB WARN is
+  completeness-only, not PIT safety.
 
 - generated_at: `2026-05-25T01:20:01Z`
 - model_id: `lgbm_phase5_gcp_20260520T010718`

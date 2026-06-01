@@ -1371,16 +1371,17 @@ tools:
   - id: lhb_ingestion_contract_tests
     paths:
       - backend/tests/test_build_lhb_events.py
+      - backend/tests/test_data_sources_aif10.py
       - backend/tests/test_lhb_client.py
     owner_module: lhb
     scope: contract
-    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_build_lhb_events.py backend/tests/test_lhb_client.py
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_build_lhb_events.py backend/tests/test_data_sources_aif10.py backend/tests/test_lhb_client.py
     status: active
     evidence_level: trusted_with_scope
     truth_source: local LHB event ingestion/client fixtures
     risk_reason: forward-return labels are analysis labels, not PIT signal proof; source freshness still needs audit evidence
     replacement: LHB source coverage, PIT lineage, and freshness audits
-    last_verified: "2026-05-27"
+    last_verified: "2026-06-01"
 
   - id: orderbook_snapshot_contract_tests
     paths:

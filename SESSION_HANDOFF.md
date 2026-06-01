@@ -54,7 +54,7 @@ cutoffs `2026-01-01,2026-05-19,2026-05-29` 重跑 `build_stage_opt_pit.py`，
 This slice additionally materialized `mart_stock_fund_flow_rank_snapshot_daily`
 via `build_fund_flow_rank_snapshot_daily.py` and registered the builder test,
 but it is explicitly research-side support only and does not change the
-`need_027` exact-flow blocked status.
+`need_027` exact-flow blocked status. 2026-06-01 还把 registry-side `lhb_daily` 对齐到与 `services.lhb_client` 一致的 date-bounded helper，所以 resolve/probe 不再走旧的 aif10 全历史假象；LHB 仍是 source-sparse completeness evidence，不是 exact-flow 生产证据。
 The same session also dug into the early 2023 window: `build_signal_context.py`
 successfully backfilled `233,939` rows for `2023-01-01→2023-09-11`, moving
 `fact_signal_context` min date to `2023-07-05`, and `build_stage_formula_fitness.py`
