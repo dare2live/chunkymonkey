@@ -64,10 +64,12 @@ The model pipeline snapshot below is historical evidence for the completed
   points to `P1 / upstream_candidate_supply` and names the weakest formula ids
   / stage bins, so future sessions can triage from the audit output instead of
   re-deriving the same conclusion manually. 2026-06-02 the
-  `reversal_1m_deep` threshold was widened from 15-30% to 12-30%, and the
+  `reversal_1m_deep` threshold was widened from 15-30% to 10-30%, and the
   historical rebuild raised that formula's `rows / keys / ready coverage` to
-  `47,568 / 9,273 / 36.98%`, but the overall next action still points to
-  upstream candidate supply. `2024-03-06` 起的
+  `76,635 / 11,968 / 42.54%`; the overall audit now reads
+  `1,529,229 raw_signal_rows / 787,766 filtered_signal_rows / 126,309 unique_keys /
+  61,411 ready_keys / 48.62% ready coverage / 64,898 below_min_signals`, but the
+  next action still points to upstream candidate supply. `2024-03-06` 起的
   `dropped_unknown_stage_rows` 降到 `454,158`, so the remaining
   `technical_stage='?'` mass is still mostly structural classifier warmup /
   unknown, not a fresh ETL outage.

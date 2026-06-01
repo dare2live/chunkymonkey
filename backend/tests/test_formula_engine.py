@@ -328,13 +328,13 @@ class TestShortTermReversal:
         from services.formula_engine import reversal_short_term  # noqa: F401
         return REGISTRY["reversal_1m_deep"]
 
-    def test_deep_variant_triggers_on_roughly_13pct_drop(self, deep):
+    def test_deep_variant_triggers_on_roughly_11pct_drop(self, deep):
         n = 90
         dates = np.array([f"2024-{(i // 30) + 1:02d}-{(i % 30) + 1:02d}" for i in range(n)])
         closes = np.concatenate([
             np.full(60, 100.0),
-            np.linspace(100.0, 87.0, 20),
-            np.full(10, 87.0),
+            np.linspace(100.0, 89.0, 20),
+            np.full(10, 89.0),
         ])
         volumes = np.ones(n) * 1000
 
@@ -349,7 +349,7 @@ class TestShortTermReversal:
             closes * volumes,
         )
 
-        assert len(signals) >= 1, "13% 左右深跌应落入 reversal_1m_deep"
+        assert len(signals) >= 1, "11% 左右深跌应落入 reversal_1m_deep"
         assert all(s.formula_id == "reversal_1m_deep" for s in signals)
 
 
