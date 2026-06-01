@@ -4,7 +4,7 @@ Manual Codex checkpoint. Current operating state lives in `goal.md`; durable
 startup rules live in `AGENTS.md` and `docs/chunkyctl_session_quickstart.md`.
 This file is a short recovery note, not a replacement for those authorities.
 
-Snapshot: `2026-06-01 08:56:55 CST`
+Snapshot: `2026-06-01 10:17:34 CST`
 
 ## Risk First
 
@@ -16,7 +16,7 @@ Snapshot: `2026-06-01 08:56:55 CST`
 | Storage payload | `PASS`: 320 scanned / 0 FAIL / 0 WARN / 11 reviewed PASS | Reviewed columns are governed by `backend/config/storage_retention.yaml`; recursive or over-cap payloads still block |
 | CodeGraph | Synced after the survey `.py` slice; pending may show the new untracked test until this slice is staged/committed | Re-run `codegraph status .` after this commit |
 | Complexity | Historical HIGH remains debt; tooling diff ignores line-number drift by default | New HIGH still blocks; line drift alone should not |
-| Data freshness/PIT | **WARN/MIXED but non-blocking**: end-to-end freshness PASS with WARN; data completeness PASS with WARN (0 FAIL / 2 WARN, both sparse-event evidence); survivorship gate PASS on current label_version, legacy v2 only via explicit flag；`rank_and_size()` 已改为 PIT-tier-first，但当前推荐仍全是 `cross_stage_fallback`，因为 2026-05-29 的 PIT exact 候选多数卡在 `hp/n_signals/Wilson` 门槛，coverage 0 是候选稀疏/阈值问题；2026-06-01 的 `audit_portfolio_sizer_profile_attrition.py` 再次显示 353 个 raw candidates 中短/中/长档 selected_rows 仅 5/1/2，且全是 `cross_stage_fallback`，fail reasons 主要集中在 `hp` 与 `wilson`；targeted backfill only moved latest cutoff from 3 rows to 4；`mart_daily_position_recommendation_pit_diagnostic` 现在带 `governance_reject_count` / latest reason / latest rejected_at，方便直接看每个 `stock_missing_pit` 的治理根因；2026-06-01 还把 `need_027` 的 blocked need summary 升级成 source registration evidence：preferred `akshare` 已注册，但 declared fallback 标签 `miaoxiang` 归到 `aif10` 家族，而当前 `aif10` adapter 仍未实现 `individual_fund_flow`，所以 fallback 仍是概念路径；`need_027` 主力资金源仍 blocked/unknown；`akshare.stock_individual_fund_flow` / `stock_individual_fund_flow_rank` capability 已登记，但现场 `probe_source_capability.py` 仍因 `ProxyError` 阻断，blocked probe now persists into `mart_data_source_failure_queue` | Continue LHB event-coverage triage, recommendation PIT candidate-sparsity triage, and `need_027` source probe triage; no strategy claim |
+| Data freshness/PIT | **WARN/MIXED but non-blocking**: end-to-end freshness PASS with WARN; data completeness PASS with WARN (0 FAIL / 2 WARN, both sparse-event evidence); survivorship gate PASS on current label_version, legacy v2 only via explicit flag；`rank_and_size()` 已改为 PIT-tier-first，但当前推荐仍全是 `cross_stage_fallback`，因为 2026-05-29 的 PIT exact 候选多数卡在 `hp/n_signals/Wilson` 门槛，coverage 0 是候选稀疏/阈值问题；2026-06-01 的 `audit_portfolio_sizer_profile_attrition.py` 再次显示 353 个 raw candidates 中短/中/长档 selected_rows 仅 5/1/2，且全是 `cross_stage_fallback`，fail reasons 主要集中在 `hp` 与 `wilson`；最新 `fail_reasons_by_match_tier` 进一步把 exact-tier attrition 拆开：`stage_pit` 主要卡 `hp/n_signals/Wilson`，`stage_pit_formula_fallback` 主要卡 `hp/n_signals`，`cross_stage_fallback` 主要卡 `hp/wilson`；targeted backfill only moved latest cutoff from 3 rows to 4；`mart_daily_position_recommendation_pit_diagnostic` 现在带 `governance_reject_count` / latest reason / latest rejected_at，方便直接看每个 `stock_missing_pit` 的治理根因；2026-06-01 还把 `need_027` 的 blocked need summary 升级成 source registration evidence：preferred `akshare` 已注册，但 declared fallback 标签 `miaoxiang` 归到 `aif10` 家族，而当前 `aif10` adapter 仍未实现 `individual_fund_flow`，所以 fallback 仍是概念路径；`need_027` 主力资金源仍 blocked/unknown；`akshare.stock_individual_fund_flow` / `stock_individual_fund_flow_rank` capability 已登记，但现场 `probe_source_capability.py` 仍因 `ProxyError` 阻断，blocked probe now persists into `mart_data_source_failure_queue` | Continue LHB event-coverage triage, recommendation PIT candidate-sparsity triage, and `need_027` source probe triage; no strategy claim |
 
 ## Latest Slice
 
@@ -47,11 +47,14 @@ This slice also externalized `portfolio_sizer` short/mid/long thresholds into
 config-owned, evidence-gated, and auditable instead of hardcoded in
 `profiles.py`. The latest attrition audit on 353 raw candidates still shows
 short/mid/long selected_rows at 5/1/2, all cross-stage, with `hp` and
-`wilson` as the dominant fail reasons. The new TDX need audit now separates
-label vs family: `need_027`'s preferred `akshare` is registered, while the
-declared fallback label `miaoxiang` resolves to the registered `aif10`
-family but that adapter still lacks `individual_fund_flow`, so the fallback
-remains conceptual until the route/capability is explicit.
+`wilson` as the dominant fail reasons; the new `fail_reasons_by_match_tier`
+breakdown makes it explicit that `stage_pit` mostly dies on
+`hp/n_signals/Wilson`, `stage_pit_formula_fallback` mostly on `hp/n_signals`,
+and `cross_stage_fallback` mostly on `hp/wilson`. The new TDX need audit now
+separates label vs family: `need_027`'s preferred `akshare` is registered,
+while the declared fallback label `miaoxiang` resolves to the registered
+`aif10` family but that adapter still lacks `individual_fund_flow`, so the
+fallback remains conceptual until the route/capability is explicit.
 
 K-line refresh commands used:
 

@@ -1,7 +1,7 @@
 """Portfolio sizer profile attrition diagnostics."""
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 from typing import Any
 
 from services.portfolio_sizer.profiles import RiskProfile
@@ -26,16 +26,19 @@ def summarize_profile_attrition(
     """
     stage_reached = Counter()
     fail_reasons = Counter()
+    fail_reasons_by_match_tier: dict[str, Counter[str]] = defaultdict(Counter)
     enriched: list[dict[str, Any]] = []
     eligible_factors = get_eligible_factors(profile.profile_id)
 
     for candidate in candidates:
+        match_tier = str(candidate.get("match_tier") or "unknown")
         scored, fail_reason, trace = evaluate_candidate(candidate, profile, eligible_factors)
         for stage in ATTRITION_STAGES:
             if trace.get(stage):
                 stage_reached[stage] += 1
         if fail_reason:
             fail_reasons[fail_reason] += 1
+            fail_reasons_by_match_tier[match_tier][fail_reason] += 1
             continue
         if scored is not None:
             enriched.append(scored)
@@ -49,6 +52,10 @@ def summarize_profile_attrition(
         "input_rows": len(candidates),
         "stage_reached": dict(stage_reached),
         "fail_reasons": dict(fail_reasons),
+        "fail_reasons_by_match_tier": {
+            tier: dict(counts)
+            for tier, counts in sorted(fail_reasons_by_match_tier.items())
+        },
         "after_filter_rows": len(enriched),
         "selected_rows": len(selected),
         "selected_match_tiers": dict(selected_match_tiers),

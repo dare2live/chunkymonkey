@@ -224,6 +224,7 @@ def main() -> int:
             print(f"- input_rows: {profile['input_rows']}")
             print(f"- stage_reached: {profile['stage_reached']}")
             print(f"- fail_reasons: {profile['fail_reasons']}")
+            print(f"- fail_reasons_by_match_tier: {profile['fail_reasons_by_match_tier']}")
             print(f"- after_filter_rows: {profile['after_filter_rows']}")
             print(f"- selected_rows: {profile['selected_rows']}")
             print(f"- selected_match_tiers: {profile['selected_match_tiers']}")

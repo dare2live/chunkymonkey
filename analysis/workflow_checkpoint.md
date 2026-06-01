@@ -8,7 +8,7 @@ The model pipeline snapshot below is historical evidence for the completed
 
 ## Current Data Freshness Checkpoint
 
-- updated_at: `2026-06-01 08:56:55 CST`
+- updated_at: `2026-06-01 10:17:34 CST`
 - current_state: `architecture/data freshness repair`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
@@ -70,11 +70,15 @@ The model pipeline snapshot below is historical evidence for the completed
   gating concern rather than a ranking bug. A direct attrition audit on 353
   raw candidates found selected_rows only 5/1/2 for short/mid/long, all
   `cross_stage_fallback`, with `hp` and `wilson` as the dominant fail reasons.
-  The new need coverage audit also surfaces source registration facts:
-  `need_027`'s preferred `akshare` is registered, while the declared fallback
-  label `miaoxiang` resolves to the registered `aif10` family but that
-  adapter still lacks `individual_fund_flow`, so the fallback is still
-  conceptual in the current wiring.
+  The new `fail_reasons_by_match_tier` breakdown makes the attrition path
+  explicit: `stage_pit` mostly fails on `hp/n_signals/Wilson`,
+  `stage_pit_formula_fallback` mostly fails on `hp/n_signals`, and
+  `cross_stage_fallback` mostly fails on `hp/wilson`. The new need coverage
+  audit also surfaces source registration facts: `need_027`'s preferred
+  `akshare` is registered, while the declared fallback label `miaoxiang`
+  resolves to the registered `aif10` family but that adapter still lacks
+  `individual_fund_flow`, so the fallback is still conceptual in the current
+  wiring.
 
 - generated_at: `2026-05-25T01:20:01Z`
 - model_id: `lgbm_phase5_gcp_20260520T010718`
