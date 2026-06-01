@@ -85,9 +85,13 @@ The model pipeline snapshot below is historical evidence for the completed
   records the `fact_technical_trigger` primary-key schema limit, so a schema
   change is not mistaken for a state-only formula tweak. 2026-06-02 then
   widened `reversal_1w` from 5-10% to 2-10%, and the historical rebuild
-  lifted that formula to `369,822 / 15,937 / 66.18%`; the controller still
-  points to `P1 / upstream_candidate_supply`, which means the supply gap is
-  still structural even after the loosening.
+  lifted that formula to `369,822 / 15,937 / 66.18%`; it also compressed
+  `dynamic_ma_iterative_cross` from 10 轮到 2 轮, lifting that formula to
+  `225,783 / 20,076 / 51.63%` and the overall stage-opt audit to
+  `1,733,104 raw_signal_rows / 878,179 filtered_signal_rows / 128,437 unique_keys /
+  65,426 ready_keys / 50.94% ready coverage / 63,011 below_min_signals`.
+  The controller still points to `P1 / upstream_candidate_supply`, which means
+  the supply gap is still structural even after the loosening.
 - later in the same slice we tested whether the 2023-01-01→2023-09-11
   technical-stage hole was the missing lever: `build_stage_formula_fitness.py`
   needed a longer `compute_start` than the write window, so a second run with

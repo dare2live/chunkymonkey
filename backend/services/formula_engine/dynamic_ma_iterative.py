@@ -2,7 +2,7 @@
 
 核心思想 (开发手册 §4.2.5):
   不直接用 K 线 cross 判断买卖 (噪音大),
-  先用 10 轮迭代过滤假突破/假回落,调整基础参考线,
+  先用 2 轮迭代过滤假突破/假回落,调整基础参考线 (原始 MQL 是 10 轮,这里默认供给版做了收缩),
   最终 X_36 真上穿调整后的 X_3 才视为可信买点。
 
 MQL 公式逐行翻译:
@@ -14,7 +14,7 @@ MQL 公式逐行翻译:
   X_6: 阳线/强势 (4 种之一)     买入确认
   X_7: CROSS(X_4, X_3) AND X_5  假突破
   X_8: CROSS(X_3, X_4) AND X_6  假回落
-  X_9~X_36: 10 轮迭代调整 X_3
+  X_9~X_36: 2 轮迭代调整 X_3 (默认供给版; 原始 MQL 10 轮过度收缩候选面)
     假突破: 当前参考 × 0.98
     假回落: 当前参考 × 1.02
     否则:    保持 X_4 (重心)
@@ -74,11 +74,11 @@ class DynamicMaIterativeCross:
         formula_id="dynamic_ma_iterative_cross",
         name="动态均线迭代金叉",
         tag="DM",
-        description="10 轮 X36 迭代去噪 + CROSS(X36, X3) 触发 (用户 MQL)",
+        description="2 轮 X36 迭代去噪 + CROSS(X36, X3) 触发 (供给优化版, 原始 MQL 为 10 轮)",
         default_horizon_days=15,
     )
 
-    iterations: int = 10
+    iterations: int = 2
     multiplier_up: float = 1.02
     multiplier_down: float = 0.98
 

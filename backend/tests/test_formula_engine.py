@@ -288,6 +288,7 @@ class TestDynamicMaIterativeCross:
     def test_metadata(self, formula):
         assert formula.metadata.formula_id == "dynamic_ma_iterative_cross"
         assert formula.metadata.tag == "DM"
+        assert formula.iterations == 2
 
     def test_short_kline_no_signal(self, formula):
         n = 30  # < 50 warmup
