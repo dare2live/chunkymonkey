@@ -30,6 +30,18 @@ class AkshareSource(BaseDataSource):
                 freshness="t-0",
                 notes="ak.fund_etf_spot_ths, ETF 模块独家",
             ),
+            Capability(
+                "individual_fund_flow",
+                description="个股资金流 (近期历史窗口)",
+                freshness="daily",
+                notes="ak.stock_individual_fund_flow — need_027 probe candidate",
+            ),
+            Capability(
+                "individual_fund_flow_rank",
+                description="个股资金流排行",
+                freshness="daily",
+                notes="ak.stock_individual_fund_flow_rank — need_027 supplementary probe",
+            ),
 
             # ===== 妙想故障时 fallback (P0.3) =====
             Capability(
@@ -66,6 +78,21 @@ class AkshareSource(BaseDataSource):
             except ImportError as exc:
                 raise RuntimeError(f"akshare 未安装: {exc}")
             return ak.fund_etf_spot_ths()
+
+        if capability == "individual_fund_flow":
+            import akshare as ak
+            stock = kwargs.get("stock") or kwargs.get("symbol")
+            if not stock:
+                raise ValueError("individual_fund_flow requires stock or symbol")
+            market = kwargs.get("market", "sh")
+            df = ak.stock_individual_fund_flow(stock=str(stock), market=str(market))
+            return df.to_dict("records") if df is not None and not df.empty else []
+
+        if capability == "individual_fund_flow_rank":
+            import akshare as ak
+            indicator = kwargs.get("indicator", "5日")
+            df = ak.stock_individual_fund_flow_rank(indicator=str(indicator))
+            return df.to_dict("records") if df is not None and not df.empty else []
 
         # fallback 路径 (P0.3): 妙想主源故障时来这里
         if capability == "lhb_daily":

@@ -84,7 +84,7 @@ This boundary is the criterion for any remaining `updater.py` split.
 | Order | Priority | Work | Gate |
 |---:|---|---|---|
 | 1 | P0 | Source coverage exact-sync, including tdxhub primary and akshare/miaoxiang probe where the need requires it | `audit_tdx_data_need_coverage.py` |
-| 2 | P0/P1 | Restore or replace stale main/super-large/large/medium/small order-flow data (`need_027`) | source probe + PIT/freshness evidence before production use; keep unknown/proxy until proven |
+| 2 | P0/P1 | Restore or replace stale main/super-large/large/medium/small order-flow data (`need_027`) | source probe (registered capability + `probe_source_capability.py`) + PIT/freshness evidence before production use; keep unknown/proxy until proven |
 | 3 | P1 | CYQ implementation prerequisites | Float-share history, K-line alignment, PIT disclosure dates, validation cases |
 | 4 | P1 | Stock, institution, and main-force profile contracts | `value`, `as_of_date`, `built_at`, `source_tables`, `freshness_status`, `evidence_status`, `lineage_ref`; main-force stays unknown/proxy until source probe succeeds |
 | 5 | P2 | Stock file API | Unknown/proxy/stale states covered by contract tests |

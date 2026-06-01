@@ -1327,6 +1327,19 @@ tools:
     replacement: data-source coverage audit and post-sync data_audit freshness checks
     last_verified: "2026-05-27"
 
+  - id: akshare_source_capability_contract_tests
+    paths:
+      - backend/tests/test_data_sources_akshare.py
+    owner_module: data_sources.akshare
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_data_sources_akshare.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local source-registry capability dispatch and mocked akshare fund-flow fixtures
+    risk_reason: verifies registry wiring and capability dispatch only; it does not prove live source availability, anti-scraping stability, or production freshness
+    replacement: source coverage probe plus freshness/PIT audit before any production fund-flow claim
+    last_verified: "2026-06-01"
+
   - id: fundamental_finance_ingestion_contract_tests
     paths:
       - backend/tests/test_build_fundamental_quarterly.py

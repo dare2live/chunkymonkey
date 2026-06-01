@@ -878,6 +878,12 @@ SELECT * FROM mart_data_source_watermark;
 - `backend/scripts/audit_tdx_data_need_coverage.py`: Python 内嵌 NEEDS/PRIORITIES/REASSIGNMENTS 搬到 YAML, 审计脚本 exact-sync 三张治理表并清理 obsolete rows。
 - `backend/services/data_sources/data_routes.py`: 资金流路线从"整体下架"改为"重新评估但生产阻断", 防止 CYQ/画像后续需求被误删。
 
+**need_027 source probe 切片**:
+- `backend/services/data_sources/sources/akshare.py`: 新登记 `individual_fund_flow` / `individual_fund_flow_rank` capability, 作为 `need_027` probe candidate。
+- `backend/scripts/probe_source_capability.py`: 新增通用 capability probe CLI, 可按 capability + prefer_source 输出 JSON 摘要或 blocked 证据。
+- `backend/tests/test_data_sources_akshare.py` / `backend/tests/scripts/test_probe_source_capability.py`: 6 passed; `backend/config/test_tool_registry.yaml` 已补 root test registry。
+- 现场 `probe_source_capability.py --capability individual_fund_flow --prefer-source akshare --kwargs-json '{"stock":"600519","market":"sh"}'` 仍因 `ProxyError` 阻断, 因而 `need_027` 继续按 `unknown/proxy` 管理; 已同步 `goal.md` / `SESSION_HANDOFF.md` / `analysis/workflow_checkpoint.md` / `docs/implementation_plan.md`。
+
 **P1 audit-gate scripts 切片**:
 - 11 个审计脚本从逐表/逐列/逐文件 N+1 扫描改为批量查询或 helper 化: data completeness、delivery readiness、end-to-end、event timestamp、N+1 detector、panel leakage、PIT integrity、stale references、survivorship、tradeability、universe coverage。
 - 新增 9 个 `backend/tests/scripts/test_audit_*.py` 回归, 覆盖批量查询与 helper 语义保持; test-tool registry scoped audit PASS, `python -m pytest` 34/34 PASS。
