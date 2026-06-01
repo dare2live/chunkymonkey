@@ -168,6 +168,33 @@ def test_generate_events_preserves_notice_source_lineage():
         ]
 
 
+def test_generate_events_rebuilds_fact_institution_event_and_drops_stale_indexes():
+    with duck_mem() as conn:
+        _seed_notice_inputs(conn)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_fie_code ON fact_institution_event(stock_code)")
+
+        count = generate_events(conn)
+        indexes = conn.execute(
+            """
+            SELECT index_name
+              FROM duckdb_indexes()
+             WHERE table_name = 'fact_institution_event'
+             ORDER BY index_name
+            """
+        ).fetchall()
+        index_names = {row["index_name"] for row in indexes}
+
+        assert count == 2
+        assert "idx_fie_code" not in index_names
+        assert {
+            "idx_event_date",
+            "idx_event_notice",
+            "idx_event_type",
+            "idx_fie_holder",
+            "idx_fie_stock",
+        } <= index_names
+
+
 def test_backfill_institution_event_notice_sources_without_rebuilding_returns():
     with duck_mem() as conn:
         conn.executescript(

@@ -23,7 +23,7 @@ logger = logging.getLogger("cm-api")
 def _table_columns(conn, table_name: str) -> set[str]:
     try:
         rows = conn.execute(f"PRAGMA table_info('{table_name}')").fetchall()
-    except Exception:
+    except Exception:  # rule-compliance: ok evidence=legacy schema fallback
         return set()
     columns: set[str] = set()
     for row in rows:
@@ -32,6 +32,70 @@ def _table_columns(conn, table_name: str) -> set[str]:
         else:
             columns.add(str(row[1]))
     return columns
+
+
+def _quote_ident(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+_FACT_INSTITUTION_EVENT_INDEX_SPECS = (
+    (frozenset({"event_type"}), "CREATE INDEX IF NOT EXISTS idx_event_type ON fact_institution_event(event_type)"),
+    (frozenset({"report_date"}), "CREATE INDEX IF NOT EXISTS idx_event_date ON fact_institution_event(report_date)"),
+    (frozenset({"notice_date"}), "CREATE INDEX IF NOT EXISTS idx_event_notice ON fact_institution_event(notice_date)"),
+    (frozenset({"stock_code", "report_date"}), "CREATE INDEX IF NOT EXISTS idx_fie_stock ON fact_institution_event(stock_code, report_date DESC)"),
+    (frozenset({"holder_name", "report_date"}), "CREATE INDEX IF NOT EXISTS idx_fie_holder ON fact_institution_event(holder_name, report_date DESC)"),
+    (frozenset({"notice_date_source"}), "CREATE INDEX IF NOT EXISTS idx_fie_notice_source ON fact_institution_event(notice_date_source)"),
+)
+
+
+def _fact_institution_event_index_sqls(existing_columns: set[str]) -> tuple[str, ...]:
+    return tuple(sql for required_columns, sql in _FACT_INSTITUTION_EVENT_INDEX_SPECS if required_columns <= existing_columns)
+
+
+def _build_fact_institution_event_recreate_sql(conn) -> str:
+    """Build a fresh fact_institution_event DDL from the live schema.
+
+    We intentionally recreate the table before each full rebuild instead of
+    doing a large DELETE in-place. That clears stale ART/index state and keeps
+    the updater path resilient when the main table has accumulated historical
+    index drift.
+    """
+
+    rows = conn.execute("PRAGMA table_info('fact_institution_event')").fetchall()
+    if not rows:
+        raise RuntimeError("fact_institution_event schema unavailable")
+
+    pk_cols = {"institution_id", "stock_code", "report_date"}
+    column_defs: list[str] = []
+    for row in rows:
+        if hasattr(row, "keys"):
+            name = str(row["name"])
+            col_type = str(row["type"] or "VARCHAR")
+            notnull = bool(row["notnull"])
+            default = row["dflt_value"]
+        else:
+            name = str(row[1])
+            col_type = str(row[2] or "VARCHAR")
+            notnull = bool(row[3])
+            default = row[4]
+        pieces = [_quote_ident(name), col_type]
+        if name in pk_cols or notnull:
+            pieces.append("NOT NULL")
+        if default not in (None, ""):
+            pieces.append(f"DEFAULT {default}")
+        column_defs.append(" ".join(pieces))
+
+    column_defs.append("PRIMARY KEY (institution_id, stock_code, report_date)")
+    return "CREATE TABLE fact_institution_event (\n    " + ",\n    ".join(column_defs) + "\n)"
+
+
+def _rebuild_fact_institution_event_table(conn) -> None:
+    schema_sql = _build_fact_institution_event_recreate_sql(conn)
+    existing_columns = _table_columns(conn, "fact_institution_event")
+    conn.execute("DROP TABLE IF EXISTS fact_institution_event")
+    conn.execute(schema_sql)
+    for sql in _fact_institution_event_index_sqls(existing_columns):
+        conn.execute(sql)
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +177,7 @@ def compute_gen_events_input_signature(conn) -> tuple[str, int]:
         """).fetchall()
         for r in rows:
             h.update(f"|{r['stock_code']}:{r['report_date']}".encode("utf-8"))
-    except Exception:
+    except Exception:  # rule-compliance: ok evidence=legacy optional table fallback
         # 旧库可能没 fact_top10_holder_period, 忽略
         pass
 
@@ -124,7 +188,7 @@ def compute_gen_events_input_signature(conn) -> tuple[str, int]:
         ).fetchall()
         for r in ids:
             h.update(f"|inst:{r['id']}".encode("utf-8"))
-    except Exception:
+    except Exception:  # rule-compliance: ok evidence=legacy optional table fallback
         pass
 
     return h.hexdigest(), n_rows
@@ -308,7 +372,7 @@ def generate_events(conn) -> int:
 
     conn.execute("BEGIN TRANSACTION")
     try:
-        conn.execute("DELETE FROM fact_institution_event")
+        _rebuild_fact_institution_event_table(conn)
         if can_insert_source:
             insert_columns = [
                 "institution_id", "holder_name", "stock_code", "stock_name",
@@ -332,7 +396,7 @@ def generate_events(conn) -> int:
             [tuple(event[column] for column in insert_columns) for event in events],
         )
         conn.commit()
-    except Exception:
+    except Exception:  # rule-compliance: ok evidence=transaction rollback then re-raise
         conn.rollback()
         raise
 

@@ -38,7 +38,7 @@ The model pipeline snapshot below is historical evidence for the completed
   `mart_data_source_failure_queue` for follow-up triage. 2026-06-01 also
   repaired the `data_health_snapshot.py` writer timestamp insert path so the
   health gate no longer crashes on compact `YYYYMMDDTHHMMSSZ` values; the
-  latest direct dry-run / official cron flow now surface `WARN: 0 red / 18
+  latest direct dry-run / official cron flow now surface `WARN: 0 red / 3
   yellow / 341 total` instead of failing on a timestamp parse error, and the
   official `cron_daily.py` run completed later phases after `sync_raw`
   exceeded its 60s budget; red/yellow rows now carry `writer_prompt`
@@ -89,7 +89,7 @@ The model pipeline snapshot below is historical evidence for the completed
   This does not change the `need_027` exact-flow blocked status.
 -- system data-health snapshot: `scripts/chunkyctl doctor --fast` now folds in
   `backend/scripts/data_health_snapshot.py --dry-run --format json` and fails
-  closed on red tables. Current dry-run evidence is `WARN: 0 red / 12 yellow /
+  closed on red tables. Current dry-run evidence is `WARN: 0 red / 3 yellow /
   341 total`; `warning/monitor_only` assets are capped to yellow, so the red
   set is empty and the remaining 12 yellow items are maintenance/on-demand
   debt. `raw_margin_daily` is now a yellow monitor-only missing-table warning
@@ -104,9 +104,10 @@ The model pipeline snapshot below is historical evidence for the completed
   `raw_executive_trade` / `fact_executive_trade_event` were rebuilt locally,
   and `sync_surveys` then refreshed `raw_institution_surveys` /
   `mart_stock_survey_activity`, dropping the yellow count from 17 to 13,
-  before a later `build_akshare_panel.py --tasks jgdy,dzjy` attempt refreshed
-  `fact_jgdy_event` and brought the current yellow count to 12 while leaving
-  `fact_dzjy_event` stale.
+  before the later `fact_institution_event` safe rebuild path recovered the
+  main ART index deadlock and brought the current yellow count to 3 with only
+  `fact_paper_sim_trade`, `mart_architecture_cleanup_plan`, and
+  `raw_margin_daily` left as yellow maintenance items.
 - survivorship gate: current default `p0a_v3_horizon_governance` PASS; the old
   `p0a_v2_governance_v1` gate remains available only for explicit historical
   review.
