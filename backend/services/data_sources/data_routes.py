@@ -202,7 +202,7 @@ DATA_ROUTES = [
         "freshness": "—",
         "step_id": "(模块停用)",
         "client_module": "(fetch_fund_flow_daily.py 已删, 见 git 历史 491072d1)",
-        "notes": "raw_fund_flow_daily 已退役且停在 2026-04-24；akshare individual_fund_flow capability 已登记，但本机 live probe 仍受 proxy 阻断。CYQ 主力画像恢复前必须先通过 source probe、PIT availability、freshness 和反爬稳定性评估。",
+        "notes": "raw_fund_flow_daily 已退役且停在 2026-04-24；akshare individual_fund_flow capability 已登记，但当前 live probe 已先清代理再重试，Eastmoney 端点仍以 ConnectionError/JSONDecodeError remote disconnect 失败。CYQ 主力画像恢复前必须先通过 source probe、PIT availability、freshness 和反爬稳定性评估。",
     },
 
     # =================================================================

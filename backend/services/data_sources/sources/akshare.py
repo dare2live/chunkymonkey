@@ -4,7 +4,23 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from services.akshare_client import disable_proxy_env
+
 from ..base import BaseDataSource, Capability, Health, register_source
+
+
+def _call_with_retry(func, *args, retries: int = 2, delay_s: float = 1.0, **kwargs):
+    last_exc: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            return func(*args, **kwargs)
+        except Exception as exc:  # akshare/requests/JSON parse can all be transient
+            last_exc = exc
+            if attempt >= retries:
+                break
+            time.sleep(delay_s * (attempt + 1))
+    assert last_exc is not None
+    raise last_exc
 
 
 @register_source
@@ -65,19 +81,21 @@ class AkshareSource(BaseDataSource):
         ]
 
     def fetch(self, capability: str, **kwargs) -> Any:
+        disable_proxy_env()
+
         if capability == "trading_calendar":
             try:
                 import akshare as ak
             except ImportError as exc:
                 raise RuntimeError(f"akshare 未安装: {exc}")
-            return ak.tool_trade_date_hist_sina()
+            return _call_with_retry(ak.tool_trade_date_hist_sina)
 
         if capability == "etf_spot_ths":
             try:
                 import akshare as ak
             except ImportError as exc:
                 raise RuntimeError(f"akshare 未安装: {exc}")
-            return ak.fund_etf_spot_ths()
+            return _call_with_retry(ak.fund_etf_spot_ths)
 
         if capability == "individual_fund_flow":
             import akshare as ak
@@ -85,13 +103,13 @@ class AkshareSource(BaseDataSource):
             if not stock:
                 raise ValueError("individual_fund_flow requires stock or symbol")
             market = kwargs.get("market", "sh")
-            df = ak.stock_individual_fund_flow(stock=str(stock), market=str(market))
+            df = _call_with_retry(ak.stock_individual_fund_flow, stock=str(stock), market=str(market))
             return df.to_dict("records") if df is not None and not df.empty else []
 
         if capability == "individual_fund_flow_rank":
             import akshare as ak
             indicator = kwargs.get("indicator", "5日")
-            df = ak.stock_individual_fund_flow_rank(indicator=str(indicator))
+            df = _call_with_retry(ak.stock_individual_fund_flow_rank, indicator=str(indicator))
             return df.to_dict("records") if df is not None and not df.empty else []
 
         # fallback 路径 (P0.3): 妙想主源故障时来这里
@@ -99,25 +117,27 @@ class AkshareSource(BaseDataSource):
             import akshare as ak
             start = kwargs.get("start_date") or kwargs.get("start")
             end = kwargs.get("end_date") or kwargs.get("end")
-            df = ak.stock_lhb_detail_em(start_date=start, end_date=end)
+            df = _call_with_retry(ak.stock_lhb_detail_em, start_date=start, end_date=end)
             return df.to_dict("records") if df is not None and not df.empty else []
 
         if capability == "qfii_holding_quarterly":
             import akshare as ak
             report_date = kwargs.get("report_date")
             symbol = kwargs.get("symbol", "QFII")
-            df = ak.stock_gdfx_holding_detail_em(date=report_date, indicator=symbol)
+            df = _call_with_retry(ak.stock_gdfx_holding_detail_em, date=report_date, indicator=symbol)
             return df.to_dict("records") if df is not None and not df.empty else []
 
         if capability == "institution_survey":
             import akshare as ak
             date_str = kwargs.get("date") or kwargs.get("start_date")
-            df = ak.stock_jgdy_tj_em(date=date_str)
+            df = _call_with_retry(ak.stock_jgdy_tj_em, date=date_str)
             return df.to_dict("records") if df is not None and not df.empty else []
 
         raise NotImplementedError(f"akshare 不实现 capability '{capability}'")
 
     def healthcheck(self) -> Health:
+        disable_proxy_env()
+
         try:
             import akshare as ak  # noqa: F401
         except ImportError as exc:

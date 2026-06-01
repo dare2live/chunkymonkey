@@ -33,14 +33,18 @@ logger = logging.getLogger("cm-api")
 _MOOTDX_DEGRADED_TIMEOUT_THRESHOLD = 2
 _MOOTDX_DEGRADED_COOLDOWN_SECONDS = 180
 
-# 禁用代理，避免 akshare (requests) 走系统代理导致连接失败
-os.environ.pop("http_proxy", None)
-os.environ.pop("https_proxy", None)
-os.environ.pop("HTTP_PROXY", None)
-os.environ.pop("HTTPS_PROXY", None)
-os.environ.pop("all_proxy", None)
-os.environ.pop("ALL_PROXY", None)
-os.environ["NO_PROXY"] = "*"
+def disable_proxy_env() -> None:
+    """禁用代理，避免 akshare (requests) 走系统代理导致连接失败。"""
+    os.environ.pop("http_proxy", None)
+    os.environ.pop("https_proxy", None)
+    os.environ.pop("HTTP_PROXY", None)
+    os.environ.pop("HTTPS_PROXY", None)
+    os.environ.pop("all_proxy", None)
+    os.environ.pop("ALL_PROXY", None)
+    os.environ["NO_PROXY"] = "*"
+
+
+disable_proxy_env()
 
 
 class NetworkError(Exception):
