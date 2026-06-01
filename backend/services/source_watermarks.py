@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -316,7 +316,7 @@ def record_source_failure(
     commit: bool = False,
 ) -> str:
     ensure_source_watermark_schema(conn)
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     failure_id = _failure_id(data_domain, source_name, stock_code, error_type)
     last_error_text = (last_error or "")[:1000]
     rows = _fetch_failure_queue_rows(conn)
@@ -387,7 +387,7 @@ def resolve_source_failures(
     commit: bool = False,
 ) -> int:
     ensure_source_watermark_schema(conn)
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     rows = _fetch_failure_queue_rows(conn)
     resolved = 0
     updated_rows: list[dict[str, Any]] = []
@@ -435,7 +435,7 @@ def list_source_failures(conn, *, status: str = "open", limit: int = 200) -> lis
 
 def derive_watermark(conn, spec: dict[str, Any]) -> dict[str, Any]:
     table = spec["table"]
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     if not _table_exists(conn, table):
         return {
             **spec,
@@ -575,7 +575,7 @@ def upsert_watermark(conn, item: dict[str, Any]) -> None:
             item.get("parser_version")
             or item.get("parser_version_col")
             or "unknown",
-            item.get("updated_at") or datetime.utcnow().isoformat(),
+            item.get("updated_at") or datetime.now(timezone.utc).isoformat(),
         ),
     )
 
