@@ -129,7 +129,8 @@ def parse_date_value(raw) -> Optional[datetime]:
     if not s:
         return None
     fmts = ("%Y-%m-%d", "%Y%m%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S",
-            "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%SZ")
+            "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%SZ",
+            "%Y%m%dT%H%M%SZ", "%Y%m%dT%H%M%S")
     for fmt in fmts:
         try:
             return datetime.strptime(s[:len(fmt) + 4], fmt)
@@ -213,6 +214,11 @@ def _max_column_datetime(con, table: str, column: Optional[str]) -> tuple[Option
     return str(raw), parse_date_value(raw)
 
 
+def _coerce_db_timestamp(raw) -> Optional[datetime]:
+    """Normalize timestamp-like values before writing them into TIMESTAMP columns."""
+    return parse_date_value(raw)
+
+
 def _severity_rank(severity: str) -> int:
     return {"green": 0, "yellow": 1, "red": 2}.get(severity, 0)
 
@@ -258,6 +264,8 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
     expected_freshness = asset.get("expected_freshness") or "on-demand"
     sla_hours = asset.get("sla_hours") or 48
     non_expiring = expected_freshness in NON_EXPIRING_FRESHNESS or _is_non_expiring_asset(asset)
+    issues = []
+    severity = "green"
 
     if asset.get("deprecation_status") == "deprecated":
         row_count = None
@@ -337,6 +345,10 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
         freshness_dt = last_writer_dt
         freshness_basis = "writer"
 
+    if row_count > 0 and writer_date_col and last_writer_at is not None and last_writer_dt is None:
+        severity = _max_severity(severity, "yellow")
+        issues.append(f"writer timestamp format unsupported: {writer_date_col}={last_writer_at}")
+
     if freshness_dt is not None and not non_expiring:
         # 如果 last_data_dt 是 naive, 当作 UTC 比较
         comparable_dt = freshness_dt
@@ -353,8 +365,6 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
         freshness_ok = freshness_hours <= sla_hours
 
     # severity 判定
-    issues = []
-    severity = "green"
     if row_count == 0 and expected_freshness not in OPTIONAL_EMPTY_FRESHNESS and not non_expiring:
         severity = "red"
         issues.append("0 rows but expected to be populated")
@@ -538,7 +548,7 @@ def main() -> int:
                 issue_summary = EXCLUDED.issue_summary
         """, (
             s["table_name"], s["snapshot_at"], s["row_count"], s["last_data_date"],
-            s["last_writer_at"], s["null_rate_pct"], s["source_tier_dist"],
+            _coerce_db_timestamp(s["last_writer_at"]), s["null_rate_pct"], s["source_tier_dist"],
             s["freshness_hours"], s["freshness_ok"], s["severity"], s["issue_summary"],
         ))
 

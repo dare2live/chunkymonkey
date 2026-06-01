@@ -8,7 +8,7 @@ The model pipeline snapshot below is historical evidence for the completed
 
 ## Current Data Freshness Checkpoint
 
-- updated_at: `2026-06-01 13:09:39 CST`
+- updated_at: `2026-06-01 14:53:21 CST`
 - current_state: `architecture/data freshness repair`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
@@ -35,7 +35,13 @@ The model pipeline snapshot below is historical evidence for the completed
   `aif10` family still lacks `individual_fund_flow`; the live probe now clears
   proxy env and retries but Eastmoney still fails with `ConnectionError` /
   `JSONDecodeError` remote disconnect, and blocked probe rows now persist in
-  `mart_data_source_failure_queue` for follow-up triage.
+  `mart_data_source_failure_queue` for follow-up triage. 2026-06-01 also
+  repaired the `data_health_snapshot.py` writer timestamp insert path so the
+  health gate no longer crashes on compact `YYYYMMDDTHHMMSSZ` values; the
+  latest direct dry-run / official cron flow now surface `FAIL: 10 red / 20
+  yellow / 341 total` instead of failing on a timestamp parse error, and the
+  official `cron_daily.py` run completed later phases after `sync_raw`
+  exceeded its 60s budget.
 - stage-opt audit: 2026-06-01 repaired the 2025-08-01→2026-05-29
   `fact_stock_technical_stage` / `fact_signal_context` discontinuity and
   reran `audit_stage_opt_candidate_supply.py`; full-history coverage is now

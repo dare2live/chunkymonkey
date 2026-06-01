@@ -5,9 +5,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from conftest import duck_mem
-from scripts.data_health_snapshot import build_health_snapshot_report, compute_health_for_table
+from scripts.data_health_snapshot import build_health_snapshot_report, compute_health_for_table, parse_date_value
 from services import workbench_read
 from services.workbench_read import build_workbench_data_sources, build_workbench_storage
+
+
+def test_parse_date_value_accepts_compact_utc_timestamp():
+    parsed = parse_date_value("20260524T144042Z")
+    assert parsed == datetime(2026, 5, 24, 14, 40, 42)
 
 
 def test_raw_source_freshness_uses_writer_time_and_trading_calendar():
@@ -240,6 +245,41 @@ def test_periodic_holder_fact_freshness_uses_writer_time_not_report_date():
         assert health["freshness_hours"] == 48
         assert health["last_data_date"] == "20260429"
         assert health["last_writer_at"].startswith("2026-05-05")
+    finally:
+        conn.close()
+
+
+def test_unparseable_writer_timestamp_surfaces_yellow_issue():
+    conn = duck_mem()
+    try:
+        conn.execute(
+            """
+            CREATE TABLE mystery_asset (
+                id INTEGER,
+                built_at TEXT
+            )
+            """
+        )
+        conn.execute("INSERT INTO mystery_asset VALUES (1, '2026/05/24 14:40:42')")
+
+        health = compute_health_for_table(
+            conn,
+            {
+                "table_name": "mystery_asset",
+                "layer": "mart",
+                "writer_module": "backend/scripts/mystery_writer.py",
+                "upstream_source": "derived",
+                "expected_freshness": "on-demand",
+                "sla_hours": 720,
+                "asset_cadence": "on_demand",
+                "coverage_policy": "workflow_dependent",
+            },
+            datetime(2026, 5, 25, 12, 0, 0),
+        )
+
+        assert health["severity"] == "yellow"
+        assert "writer timestamp format unsupported" in (health["issue_summary"] or "")
+        assert health["last_writer_at"] == "2026/05/24 14:40:42"
     finally:
         conn.close()
 

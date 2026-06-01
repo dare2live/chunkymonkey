@@ -245,6 +245,64 @@ def _failure_id(data_domain: str, source_name: str, stock_code: str | None = Non
     return _stable_hash(data_domain, source_name, stock_code or "", error_type or "generic")
 
 
+def _fetch_failure_queue_rows(conn) -> list[dict[str, Any]]:
+    cursor = conn.execute(
+        """
+        SELECT failure_id, data_domain, source_name, source_tier, stock_code,
+               error_type, last_error, status, first_seen_at, last_seen_at,
+               retry_after, occurrence_count, resolved_at
+          FROM mart_data_source_failure_queue
+         ORDER BY first_seen_at, last_seen_at, failure_id
+        """
+    )
+    rows = cursor.fetchall()
+    desc = getattr(cursor, "description", None) or []
+    cols = [d[0] for d in desc]
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        if hasattr(row, "keys"):
+            out.append({k: row[k] for k in row.keys()})
+        else:
+            out.append(dict(zip(cols, row)))
+    return out
+
+
+def _rewrite_failure_queue_rows(conn, rows: list[dict[str, Any]]) -> None:
+    # This queue is tiny and ledger-like; full rewrite is safer than in-place
+    # PK mutation on DuckDB when the index has seen prior failure churn.
+    conn.execute("DROP TABLE IF EXISTS mart_data_source_failure_queue")
+    ensure_source_watermark_schema(conn)
+    if not rows:
+        return
+    conn.executemany(
+        """
+        INSERT INTO mart_data_source_failure_queue (
+            failure_id, data_domain, source_name, source_tier, stock_code,
+            error_type, last_error, status, first_seen_at, last_seen_at,
+            retry_after, occurrence_count, resolved_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                row.get("failure_id"),
+                row.get("data_domain"),
+                row.get("source_name"),
+                row.get("source_tier"),
+                row.get("stock_code"),
+                row.get("error_type"),
+                row.get("last_error"),
+                row.get("status") or "open",
+                row.get("first_seen_at"),
+                row.get("last_seen_at"),
+                row.get("retry_after"),
+                int(row.get("occurrence_count") or 0),
+                row.get("resolved_at"),
+            )
+            for row in rows
+        ],
+    )
+
+
 def record_source_failure(
     conn,
     *,
@@ -260,35 +318,61 @@ def record_source_failure(
     ensure_source_watermark_schema(conn)
     now = datetime.utcnow().isoformat()
     failure_id = _failure_id(data_domain, source_name, stock_code, error_type)
-    conn.execute(
-        """
-        INSERT INTO mart_data_source_failure_queue (
-            failure_id, data_domain, source_name, source_tier, stock_code,
-            error_type, last_error, status, first_seen_at, last_seen_at,
-            retry_after, occurrence_count, resolved_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, 1, NULL)
-        ON CONFLICT (failure_id) DO UPDATE SET
-            source_tier = EXCLUDED.source_tier,
-            last_error = EXCLUDED.last_error,
-            status = 'open',
-            last_seen_at = EXCLUDED.last_seen_at,
-            retry_after = EXCLUDED.retry_after,
-            occurrence_count = COALESCE(mart_data_source_failure_queue.occurrence_count, 0) + 1,
-            resolved_at = NULL
-        """,
-        (
-            failure_id,
-            data_domain,
-            source_name,
-            source_tier,
-            stock_code,
-            error_type,
-            (last_error or "")[:1000],
-            now,
-            now,
-            retry_after,
-        ),
-    )
+    last_error_text = (last_error or "")[:1000]
+    rows = _fetch_failure_queue_rows(conn)
+    first_seen_at = now
+    occurrence_count = 1
+    replaced = False
+    updated_rows: list[dict[str, Any]] = []
+    for row in rows:
+        if row.get("failure_id") != failure_id:
+            updated_rows.append(row)
+            continue
+        replaced = True
+        try:
+            first_seen_at = str(row.get("first_seen_at") or now)
+        except Exception:
+            first_seen_at = now
+        try:
+            occurrence_count = int(row.get("occurrence_count") or 0) + 1
+        except Exception:
+            occurrence_count = 2
+        updated_rows.append(
+            {
+                **row,
+                "data_domain": data_domain,
+                "source_name": source_name,
+                "source_tier": source_tier,
+                "stock_code": stock_code,
+                "error_type": error_type,
+                "last_error": last_error_text,
+                "status": "open",
+                "first_seen_at": first_seen_at,
+                "last_seen_at": now,
+                "retry_after": retry_after,
+                "occurrence_count": occurrence_count,
+                "resolved_at": None,
+            }
+        )
+    if not replaced:
+        updated_rows.append(
+            {
+                "failure_id": failure_id,
+                "data_domain": data_domain,
+                "source_name": source_name,
+                "source_tier": source_tier,
+                "stock_code": stock_code,
+                "error_type": error_type,
+                "last_error": last_error_text,
+                "status": "open",
+                "first_seen_at": first_seen_at,
+                "last_seen_at": now,
+                "retry_after": retry_after,
+                "occurrence_count": occurrence_count,
+                "resolved_at": None,
+            }
+        )
+    _rewrite_failure_queue_rows(conn, updated_rows)
     if commit:
         conn.commit()
     return failure_id
@@ -304,25 +388,32 @@ def resolve_source_failures(
 ) -> int:
     ensure_source_watermark_schema(conn)
     now = datetime.utcnow().isoformat()
-    where = ["data_domain = ?", "source_name = ?", "status = 'open'"]
-    params: list[Any] = [data_domain, source_name]
-    if stock_code is not None:
-        where.append("stock_code = ?")
-        params.append(stock_code)
-    cursor = conn.execute(
-        f"""
-        UPDATE mart_data_source_failure_queue
-           SET status = 'resolved', resolved_at = ?, last_seen_at = ?
-         WHERE {' AND '.join(where)}
-        """,
-        [now, now, *params],
-    )
+    rows = _fetch_failure_queue_rows(conn)
+    resolved = 0
+    updated_rows: list[dict[str, Any]] = []
+    for row in rows:
+        matches = (
+            row.get("data_domain") == data_domain
+            and row.get("source_name") == source_name
+            and row.get("status") == "open"
+            and (stock_code is None or row.get("stock_code") == stock_code)
+        )
+        if matches:
+            resolved += 1
+            updated_rows.append(
+                {
+                    **row,
+                    "status": "resolved",
+                    "resolved_at": now,
+                    "last_seen_at": now,
+                }
+            )
+        else:
+            updated_rows.append(row)
+    _rewrite_failure_queue_rows(conn, updated_rows)
     if commit:
         conn.commit()
-    try:
-        return int(cursor.rowcount or 0)
-    except Exception:
-        return 0
+    return resolved
 
 
 def list_source_failures(conn, *, status: str = "open", limit: int = 200) -> list[dict[str, Any]]:

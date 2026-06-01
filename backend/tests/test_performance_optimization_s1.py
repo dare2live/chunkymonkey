@@ -209,6 +209,52 @@ def test_source_failure_queue_records_and_resolves_failures():
         conn.close()
 
 
+def test_source_failure_queue_upsert_handles_existing_rows():
+    conn = duck_mem()
+    try:
+        ensure_source_watermark_schema(conn)
+        failure_id = "aa8ff481a68c312c"
+        conn.execute(
+            """
+            INSERT INTO mart_data_source_failure_queue (
+                failure_id, data_domain, source_name, source_tier, stock_code,
+                error_type, last_error, status, first_seen_at, last_seen_at,
+                retry_after, occurrence_count, resolved_at
+            ) VALUES (
+                ?, 'holders_top10_float', 'tdxhub_holders', 1, NULL,
+                'step_failed', 'step budget timeout after 45s', 'open',
+                '2026-05-01T00:00:00', '2026-05-01T00:00:00', NULL, 1, NULL
+            )
+            """,
+            [failure_id],
+        )
+
+        returned = record_source_failure(
+            conn,
+            data_domain="holders_top10_float",
+            source_name="tdxhub_holders",
+            source_tier=1,
+            error_type="step_failed",
+            last_error="step budget timeout after 45s",
+            commit=True,
+        )
+
+        row = conn.execute(
+            """
+            SELECT failure_id, occurrence_count, status, last_error
+              FROM mart_data_source_failure_queue
+             WHERE failure_id = ?
+            """,
+            [failure_id],
+        ).fetchone()
+        assert returned == failure_id
+        assert row["occurrence_count"] == 2
+        assert row["status"] == "open"
+        assert row["last_error"] == "step budget timeout after 45s"
+    finally:
+        conn.close()
+
+
 def test_smart_plan_budget_annotation_is_explicit():
     # Phase ψ.5 根因 3: budget 从 static 45/45 改成 base-only 估算
     # (实际跑时还会按 watermark lag 动态加, 这里 plan 预览只看 base).
