@@ -81,6 +81,43 @@ def _load_table_summaries(con, specs: list[tuple[str, str, str, bool, str | None
     }
 
 
+def _load_coverage_policies(con, specs: list[tuple[str, str, str, bool, str | None]]) -> dict[str, str]:
+    try:
+        exists = con.execute(
+            """
+            SELECT 1
+              FROM information_schema.tables
+             WHERE table_name = 'dim_data_asset'
+             LIMIT 1
+            """
+        ).fetchone()
+    except Exception:
+        return {}
+    if not exists:
+        return {}
+
+    table_names = [table for _, table, _, _, _ in specs]
+    if not table_names:
+        return {}
+    placeholders = ", ".join("?" for _ in table_names)
+    try:
+        rows = con.execute(
+            f"""
+            SELECT table_name, coverage_policy
+              FROM dim_data_asset
+             WHERE table_name IN ({placeholders})
+            """,
+            table_names,
+        ).fetchall()
+    except Exception:
+        return {}
+    return {
+        str(table): str(coverage_policy)
+        for table, coverage_policy in rows
+        if coverage_policy is not None
+    }
+
+
 def _table_verdict(
     table: str,
     max_date: str,
@@ -116,6 +153,16 @@ def _table_verdict(
     return "OK", None
 
 
+def _issue_severity(verdict: str, coverage_policy: str | None) -> str:
+    if verdict in {"EMPTY", "CONTAMINATED", "PARTIAL_UNKNOWN"}:
+        return "FAIL"
+    if verdict.startswith("STALE_") and verdict.endswith("_WARN"):
+        return "WARN"
+    if verdict == "PARTIAL_WARN":
+        return "WARN" if coverage_policy == "sparse_event_presence_only" else "FAIL"
+    return "FAIL"
+
+
 def _calendar_compare(max_date: str, cal_max: str | None) -> str:
     if not cal_max:
         return ""
@@ -132,15 +179,17 @@ def main() -> int:
     print(f"cal_max (15:05 buffer): {cal_max}")
     print(f"universe size hint: {UNIVERSE_SIZE_HINT}")
     print()
-    print(f"{'Table':<48} {'max_date':<12} {'n_codes':>10} {'vs_cal':<10} {'verdict'}")
-    print("-" * 110)
+    print(f"{'Table':<48} {'max_date':<12} {'n_codes':>10} {'policy':<28} {'vs_cal':<10} {'verdict'}")
+    print("-" * 140)
 
-    issues = []
+    fail_issues = []
+    warn_issues = []
     tables_by_db: dict[str, list[tuple[str, str, str, bool, str | None]]] = defaultdict(list)
     for spec in TABLES:
         tables_by_db[spec[0]].append(spec)
 
     summaries_by_db: dict[str, dict[str, tuple[str, int | None]]] = {}
+    coverage_policies_by_db: dict[str, dict[str, str]] = {}
     db_errors: dict[str, str] = {}
     for db_file, specs in tables_by_db.items():
         db_path = REPO_ROOT / "data" / db_file
@@ -155,6 +204,7 @@ def main() -> int:
             continue
         try:
             summaries_by_db[db_file] = _load_table_summaries(con, specs)
+            coverage_policies_by_db[db_file] = _load_coverage_policies(con, specs)
         finally:
             if con is not None:
                 con.close()
@@ -164,6 +214,7 @@ def main() -> int:
             print(f"{table:<48} {db_errors[db_file]:<12}")
             continue
         max_date, raw_n_codes = summaries_by_db[db_file][table]
+        coverage_policy = coverage_policies_by_db.get(db_file, {}).get(table)
         n_codes = f"{raw_n_codes:,}" if has_codes and code_col and max_date != "(empty)" and raw_n_codes is not None else ""
         verdict, issue = _table_verdict(
             table,
@@ -174,16 +225,25 @@ def main() -> int:
             code_col=code_col,
         )
         if issue is not None:
-            issues.append((table, verdict, issue))
+            severity = _issue_severity(verdict, coverage_policy)
+            if severity == "WARN":
+                warn_issues.append((table, verdict, issue, coverage_policy))
+            else:
+                fail_issues.append((table, verdict, issue, coverage_policy))
         cal_compare = _calendar_compare(max_date, cal_max)
-        print(f"{table:<48} {max_date:<12} {n_codes:>10} {cal_compare:<10} {verdict}")
+        policy_display = coverage_policy or ""
+        print(f"{table:<48} {max_date:<12} {n_codes:>10} {policy_display:<28} {cal_compare:<10} {verdict}")
 
     print()
-    print(f"=== Summary: {len(issues)} issues ===")
-    for t, v, desc in issues:
-        print(f"  [{v}] {t}: {desc}")
+    print(f"=== Summary: {len(fail_issues)} FAIL / {len(warn_issues)} WARN ===")
+    for t, v, desc, policy in fail_issues:
+        suffix = f" [coverage_policy={policy}]" if policy else ""
+        print(f"  [FAIL] {t}: {desc}{suffix}")
+    for t, v, desc, policy in warn_issues:
+        suffix = f" [coverage_policy={policy}]" if policy else ""
+        print(f"  [WARN] {t}: {desc}{suffix}")
 
-    return 0 if not issues else 1
+    return 0 if not fail_issues else 1
 
 
 if __name__ == "__main__":

@@ -68,3 +68,27 @@ def test_table_verdict_keeps_short_staleness_non_blocking() -> None:
 
     assert verdict == "STALE_2d"
     assert issue is None
+
+
+def test_issue_severity_treats_sparse_event_partial_as_warn() -> None:
+    assert audit_data_completeness._issue_severity("PARTIAL_WARN", "sparse_event_presence_only") == "WARN"
+    assert audit_data_completeness._issue_severity("PARTIAL_WARN", None) == "FAIL"
+
+
+def test_load_coverage_policies_reads_dim_data_asset(tmp_path: Path) -> None:
+    db_path = tmp_path / "sample.duckdb"
+    con = duckdb.connect(str(db_path))
+    try:
+        con.execute("CREATE TABLE dim_data_asset (table_name TEXT, coverage_policy TEXT)")
+        con.execute(
+            "INSERT INTO dim_data_asset VALUES ('fact_technical_trigger', 'sparse_event_presence_only')"
+        )
+
+        policies = audit_data_completeness._load_coverage_policies(
+            con,
+            [("sample.duckdb", "fact_technical_trigger", "date", True, "stock_code")],
+        )
+    finally:
+        con.close()
+
+    assert policies == {"fact_technical_trigger": "sparse_event_presence_only"}

@@ -110,6 +110,7 @@ EXTRA_UPSTREAM_BY_TABLE = {
     # derived (多源派生, 不是单 client 写)
     "fact_holder_event":            ("derived from fact_top10_holder_period", None),
     "fact_lhb_event":               ("derived from raw_lhb_daily", None),
+    "fact_technical_trigger":       ("derived from build_formula_signals_history + build_signal_context", None),
     "fact_institution_event":       ("derived (gen_events + return_engine)", None),
     "fact_fundamental_quarterly":   ("derived from raw_gpcw_*", None),
     "mart_tdx_gpcw_field_profile":  ("derived from raw_tdx_gpcw_wide", None),
@@ -228,6 +229,7 @@ EXTRA_FRESHNESS_BY_TABLE = {
     "mart_temporal_research_panel_quality": ("on-demand", 24 * 30),
     # gpcw files are quarter-end source manifests.
     "mart_tdx_gpcw_file_manifest": ("quarterly", 24 * 95),
+    "fact_technical_trigger": ("event", 48),
     # Drift is a current champion monitor, not a raw source. Empty rows should
     # be fixed by running compute_feature_drift, not source backfill.
     "mart_feature_drift": ("t+0", 25),
@@ -625,7 +627,7 @@ def infer_asset_contract(
             strategy_eligibility="scoring_and_horizon_selection",
             quality_gate_level="blocking",
         )
-    elif any(token in name for token in ("lhb", "survey", "dzjy", "event", "plan", "trade")):
+    elif any(token in name for token in ("lhb", "survey", "dzjy", "event", "plan", "trade", "trigger")):
         contract.update(
             asset_grain="stock_code+event",
             asset_cadence="event_driven",

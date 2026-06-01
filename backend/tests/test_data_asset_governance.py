@@ -39,6 +39,17 @@ def test_infer_asset_contract_distinguishes_dense_kline_and_sparse_events():
     assert lhb["model_eligibility"] == "encoded_auxiliary_only"
     assert lhb["strategy_eligibility"] == "attention_filter_context"
 
+    trigger = infer_asset_contract(
+        "fact_technical_trigger",
+        layer="fact",
+        freshness="event",
+        upstream_source="derived from build_formula_signals_history + build_signal_context",
+    )
+    assert trigger["coverage_policy"] == "sparse_event_presence_only"
+    assert trigger["null_policy"] == "no_event_is_absence_not_missing"
+    assert trigger["quality_gate_level"] == "warning"
+    assert trigger["strategy_eligibility"] == "attention_filter_context"
+
 
 def test_infer_asset_contract_freezes_initial_shareholder_plan_event_purpose():
     contract = infer_asset_contract(
