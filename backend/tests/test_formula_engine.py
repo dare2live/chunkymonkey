@@ -333,7 +333,20 @@ class TestDynamicMaIterativeCross:
     def test_metadata(self, formula):
         assert formula.metadata.formula_id == "dynamic_ma_iterative_cross"
         assert formula.metadata.tag == "DM"
-        assert formula.iterations == 2
+        assert formula.iterations == 1
+
+    def test_config_loader_reads_values(self, tmp_path):
+        from services.formula_engine.dynamic_ma_iterative import _load_config
+
+        cfg = tmp_path / "formula_dynamic_ma_iterative.yaml"
+        cfg.write_text(
+            "iterations: 3\nmultiplier_up: 1.05\nmultiplier_down: 0.95\n",
+            encoding="utf-8",
+        )
+        loaded = _load_config(cfg)
+        assert loaded["iterations"] == pytest.approx(3.0)
+        assert loaded["multiplier_up"] == pytest.approx(1.05)
+        assert loaded["multiplier_down"] == pytest.approx(0.95)
 
     def test_short_kline_no_signal(self, formula):
         n = 30  # < 50 warmup

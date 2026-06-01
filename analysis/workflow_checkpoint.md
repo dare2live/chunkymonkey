@@ -8,7 +8,7 @@ The model pipeline snapshot below is historical evidence for the completed
 
 ## Current Data Freshness Checkpoint
 
-- updated_at: `2026-06-02 03:39:15 CST`
+- updated_at: `2026-06-02 05:12:59 CST`
 - current_state: `architecture/data freshness repair`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
@@ -105,6 +105,15 @@ The model pipeline snapshot below is historical evidence for the completed
   recommendation still points to `P1 / upstream_candidate_supply`, so the
   structural conclusion remains unchanged even though the evidence density
   improved again.
+- 2026-06-02 05:07-05:08 `dynamic_ma_iterative_cross` was tightened from 2
+  iterations to 1, and the full-history audit now reads `raw_signal_rows=
+  5,145,959 / filtered_signal_rows=2,585,682 / unique_keys=147,948 /
+  ready_keys=103,056 / ready coverage=69.66% / below_min_signals=44,892`;
+  `dynamic_ma_iterative_cross` is now `248,214 signal_rows / 20,350 keys /
+  53.67% coverage`, and `min_signals=4/3/2` now lifts global ready coverage to
+  `76.02% / 82.77% / 90.50%`. Controller recommendation still points to
+  `P1 / upstream_candidate_supply`, so the structural conclusion remains the
+  same even though the evidence density improved again.
 - stage-opt MACD state mart: 2026-06-02 added
   `mart_macd_state_history` / `build_macd_state_history.py` as a separate
   MACD active-state diagnostic mart. It uses a 180-day warm-up window and

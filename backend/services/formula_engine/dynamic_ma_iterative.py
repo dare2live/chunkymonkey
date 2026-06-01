@@ -23,8 +23,10 @@ MQL 公式逐行翻译:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
+import yaml
 
 from services.formula_engine.base import (
     FormulaMetadata,
@@ -34,6 +36,38 @@ from services.formula_engine.base import (
     register_formula,
     sma,
 )
+
+CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "formula_dynamic_ma_iterative.yaml"
+DEFAULT_ITERATIONS = 1
+DEFAULT_MULTIPLIER_UP = 1.02
+DEFAULT_MULTIPLIER_DOWN = 0.98
+
+
+def _load_yaml(path: Path) -> dict[str, object]:
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(loaded, dict):
+        raise ValueError(f"{path.name} must contain a mapping")
+    return loaded
+
+
+def _load_config(path: Path | None = None) -> dict[str, float]:
+    raw_path = path or CONFIG_PATH
+    try:
+        raw = _load_yaml(raw_path)
+    except FileNotFoundError:
+        return {
+            "iterations": float(DEFAULT_ITERATIONS),
+            "multiplier_up": DEFAULT_MULTIPLIER_UP,
+            "multiplier_down": DEFAULT_MULTIPLIER_DOWN,
+        }
+    try:
+        return {
+            "iterations": float(int(raw.get("iterations", DEFAULT_ITERATIONS))),
+            "multiplier_up": float(raw.get("multiplier_up", DEFAULT_MULTIPLIER_UP)),
+            "multiplier_down": float(raw.get("multiplier_down", DEFAULT_MULTIPLIER_DOWN)),
+        }
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{raw_path.name}: iterations/multipliers must be numeric") from exc
 
 
 def _x5_bearish(opens, highs, lows, closes) -> np.ndarray:
@@ -74,13 +108,14 @@ class DynamicMaIterativeCross:
         formula_id="dynamic_ma_iterative_cross",
         name="动态均线迭代金叉",
         tag="DM",
-        description="2 轮 X36 迭代去噪 + CROSS(X36, X3) 触发 (供给优化版, 原始 MQL 为 10 轮)",
+        description="可配置 X36 迭代去噪 + CROSS(X36, X3) 触发 (供给优化版, 原始 MQL 为 10 轮)",
         default_horizon_days=15,
     )
 
-    iterations: int = 2
-    multiplier_up: float = 1.02
-    multiplier_down: float = 0.98
+    _config = _load_config()
+    iterations: int = int(_config["iterations"])
+    multiplier_up: float = _config["multiplier_up"]
+    multiplier_down: float = _config["multiplier_down"]
 
     def compute_signals(
         self,
