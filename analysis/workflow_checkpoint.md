@@ -8,7 +8,7 @@ The model pipeline snapshot below is historical evidence for the completed
 
 ## Current Data Freshness Checkpoint
 
-- updated_at: `2026-06-01 10:26:09 CST`
+- updated_at: `2026-06-01 11:01:59 CST`
 - current_state: `architecture/data freshness repair`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
@@ -85,7 +85,14 @@ The model pipeline snapshot below is historical evidence for the completed
   registered, while the declared fallback label `miaoxiang` resolves to the
   registered `aif10` family but that adapter still lacks
   `individual_fund_flow`, so the fallback is still conceptual in the current
-  wiring.
+  wiring. 2026-06-01 also ran `audit_stage_opt_candidate_supply.py` on the
+  current audited slice (2023-01-01→2026-05-29, limit-stocks 50) and found
+  3576 raw signal rows / 831 unique keys / 280 ready keys / 33.69% ready
+  coverage / 551 below_min_signals; the helper now reuses the current
+  connection's calendar truth source instead of opening a nested
+  `latest_closed_or_raise()` connection. This reinforces the same conclusion:
+  upstream candidate supply / formula coverage is the next lever, not another
+  profile knob tweak.
 
 - generated_at: `2026-05-25T01:20:01Z`
 - model_id: `lgbm_phase5_gcp_20260520T010718`
