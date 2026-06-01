@@ -348,6 +348,42 @@ class TestSizing:
             "cross_stage_fallback": 1,
         }
 
+    def test_profile_sensitivity_variants_cover_simple_knobs(self, short_profile):
+        from scripts.audit_portfolio_sizer_profile_sensitivity import build_profile_variants
+
+        variant_ids = [variant_id for variant_id, _ in build_profile_variants(short_profile)]
+
+        assert variant_ids == ["base", "hold+20", "n_signals-2", "wilson-0.05"]
+
+    def test_summarize_profile_sensitivity_reports_delta(self, short_profile):
+        from scripts.audit_portfolio_sizer_profile_sensitivity import summarize_profile_sensitivity
+
+        cands = [
+            # exact PIT 候选：只因为 short profile 的 holding_days 不含 20 而被拦
+            {"stock_code": "EXACT_HP", "formula_id": "macd", "formula_variant": "macd_v1",
+             "holding_days": 20, "n_signals": 20, "win_rate": 0.85, "avg_ret": 0.10,
+             "avg_dd": -0.05, "calmar": 2.0, "signal_close": 100.0,
+             "match_tier": "stage_pit"},
+            # cross-stage fallback 通过，作为基线对照
+            {"stock_code": "FALLBACK_OK", "formula_id": "macd", "formula_variant": "macd_v1",
+             "holding_days": 10, "n_signals": 20, "win_rate": 0.85, "avg_ret": 0.10,
+             "avg_dd": -0.05, "calmar": 2.0, "signal_close": 100.0,
+             "match_tier": "cross_stage_fallback"},
+        ]
+
+        result = summarize_profile_sensitivity(cands, short_profile, max_examples=2)
+        variants = {row["variant_id"]: row for row in result["variants"]}
+
+        assert result["baseline_selected_rows"] == 1
+        assert variants["base"]["selected_rows"] == 1
+        assert variants["base"]["delta_selected_rows_vs_base"] == 0
+        assert variants["hold+20"]["selected_rows"] == 2
+        assert variants["hold+20"]["delta_selected_rows_vs_base"] == 1
+        assert variants["n_signals-2"]["selected_rows"] == 1
+        assert variants["n_signals-2"]["delta_selected_rows_vs_base"] == 0
+        assert variants["wilson-0.05"]["selected_rows"] == 1
+        assert variants["wilson-0.05"]["delta_selected_rows_vs_base"] == 0
+
 
 # ===================== Sell Rules =====================
 class TestSellRules:

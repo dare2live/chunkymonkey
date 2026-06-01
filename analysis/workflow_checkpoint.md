@@ -76,8 +76,12 @@ The model pipeline snapshot below is historical evidence for the completed
   `cross_stage_fallback` mostly fails on `hp/wilson`; the new
   `fail_holding_days_by_match_tier` shows those exact PIT `hp` failures
   cluster on off-anchor holding_days 20/30/60/90, which is the most useful
-  hint for the next tuning decision. The new need coverage audit also
-  surfaces source registration facts: `need_027`'s preferred `akshare` is
+  hint for the next tuning decision. 2026-06-01 sensitivity auditing
+  (`base`, `hold+20`, `min_n_signals-2`, `min_wilson_win-0.05`) did not change
+  selected_rows, so the next useful tuning decision is upstream candidate
+  supply / formula coverage, not profile micro-adjustment. The new need
+  coverage audit also surfaces source registration facts: `need_027`'s
+  preferred `akshare` is
   registered, while the declared fallback label `miaoxiang` resolves to the
   registered `aif10` family but that adapter still lacks
   `individual_fund_flow`, so the fallback is still conceptual in the current
