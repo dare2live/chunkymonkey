@@ -188,6 +188,7 @@ The model pipeline snapshot below is historical evidence for the completed
   controller still points to `P1 / upstream_candidate_supply`, which means the
   supply gap is still structural even after the loosening.
 - 2026-06-02 06:58-06:59 `turtle_breakout_55` was lowered from `0.7` to `0.6`, lifting that formula to `149,966 / 17,266 / 66.01%`; the full stage-opt audit is now `raw_signal_rows=5,921,755 / filtered_signal_rows=2,944,256 / unique_keys=154,626 / ready_keys=114,651 / ready coverage=74.15% / below_min_signals=39,975`, `min_signals=4/3/2` at `79.36% / 85.06% / 91.55%`, and the weakest formulas remain `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_mild`, but the controller still points to `P1 / upstream_candidate_supply`.
+- 2026-06-02 07:03-07:04 `turtle_breakout_55` was lowered from `0.6` to `0.5`, lifting that formula to `150,941 / 17,278 / 66.15%`; the full stage-opt audit is now `raw_signal_rows=5,923,016 / filtered_signal_rows=2,945,231 / unique_keys=154,638 / ready_keys=114,682 / ready coverage=74.16% / below_min_signals=39,956`, `min_signals=4/3/2` at `79.36% / 85.06% / 91.55%`, and the weakest formulas remain `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_mild`, but the controller still points to `P1 / upstream_candidate_supply`.
 - later in the same slice we tested whether the 2023-01-01→2023-09-11
   technical-stage hole was the missing lever: `build_stage_formula_fitness.py`
   needed a longer `compute_start` than the write window, so a second run with

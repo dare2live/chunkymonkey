@@ -11,6 +11,7 @@
 ## [INDEX] 2026-06-02 增量
 
 - **stage-opt 2026-06-02 turtle 0.6 lift**: `turtle_breakout_55` 再把量能确认门槛从 `0.7` 收到 `0.6`，历史重算后该 formula 提升到 `149,966 signal_rows / 17,266 keys / 66.01% coverage`；全局审计刷新为 `raw_signal_rows=5,921,755 / filtered_signal_rows=2,944,256 / unique_keys=154,626 / ready_keys=114,651 / ready coverage=74.15% / below_min_signals=39,975`，`min_signals=4/3/2` 现在对应 `79.36% / 85.06% / 91.55%`（`122,711 / 131,519 / 141,561` ready keys）；`dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_mild` 仍是 weakest formulas，但 controller recommendation 依旧是 `P1 / upstream_candidate_supply`，说明这刀继续抬升了 supply，但结构性瓶颈仍然在上游候选供给。
+- **stage-opt 2026-06-02 turtle 0.5 lift**: `turtle_breakout_55` 再把量能确认门槛从 `0.6` 收到 `0.5`，历史重算后该 formula 提升到 `150,941 signal_rows / 17,278 keys / 66.15% coverage`；全局审计刷新为 `raw_signal_rows=5,923,016 / filtered_signal_rows=2,945,231 / unique_keys=154,638 / ready_keys=114,682 / ready coverage=74.16% / below_min_signals=39,956`，`min_signals=4/3/2` 现在对应 `79.36% / 85.06% / 91.55%`（`122,722 / 131,533 / 141,573` ready keys）；`dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_mild` 仍是 weakest formulas，但 controller recommendation 依旧是 `P1 / upstream_candidate_supply`，说明这刀继续抬升了 supply，但结构性瓶颈仍然在上游候选供给。
 
 ## [INDEX] 2026-06-01 增量
 
