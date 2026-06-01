@@ -238,6 +238,9 @@ def _next_actions(
                 details.append(f"weakest formulas: {weakest_formula_ids}")
             if weakest_stage_bins:
                 details.append(f"weakest stages: {weakest_stage_bins}")
+            structural_notes = [str(item) for item in recommendation.get("structural_notes") or [] if str(item).strip()]
+            if structural_notes:
+                details.append(f"structural notes: {'; '.join(structural_notes)}")
             action_text += " (" + "; ".join(details) + ")"
         actions.append(
             {

@@ -174,4 +174,4 @@ Downstream freshness refresh commands used:
   still underfilled for current exact candidates. The new stage-opt candidate
   supply audit again points the next tuning lever at upstream candidate supply /
   formula coverage rather than profile knobs.
-5. `scripts/chunkyctl doctor --fast` now also surfaces the stage-opt `next_action_recommendation`, so upstream candidate-supply triage is visible without rerunning the audit manually.
+5. `scripts/chunkyctl doctor --fast` now also surfaces the stage-opt `next_action_recommendation`, so upstream candidate-supply triage is visible without rerunning the audit manually; when `macd_golden_cross` appears in the weakest cohort, the controller also sees the `fact_technical_trigger` primary-key schema limit, so a schema change is not mistaken for a state-only formula tweak.

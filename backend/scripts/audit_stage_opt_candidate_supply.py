@@ -362,7 +362,7 @@ def summarize_stage_opt_candidate_supply(
                 "weakest_stage_bins": weakest_stage_bins,
             }
         if below_min_signals >= no_kline_bars:
-            return {
+            recommendation = {
                 "priority": "P1",
                 "focus": "upstream_candidate_supply",
                 "reason": "below_min_signals dominates current blocked keys",
@@ -371,6 +371,16 @@ def summarize_stage_opt_candidate_supply(
                 "weakest_stage_bins": weakest_stage_bins,
                 "top_blocked_reason": "below_min_signals",
             }
+            structural_notes: list[str] = []
+            if "macd_golden_cross" in weakest_formula_ids:
+                structural_notes.append(
+                    "macd_golden_cross is capped by fact_technical_trigger PRIMARY KEY "
+                    "(stock_code, date, formula_id); extra MACD state rows need schema evolution, "
+                    "not a state-only formula tweak"
+                )
+            if structural_notes:
+                recommendation["structural_notes"] = structural_notes
+            return recommendation
         return {
             "priority": "P1",
             "focus": "kline_coverage",
@@ -479,6 +489,11 @@ def _render_markdown(result: dict[str, Any]) -> str:
             f"signal_rows={row['signal_rows']}"
         )
     lines.append("")
+    if result.get("next_action_recommendation", {}).get("structural_notes"):
+        lines.append("## Structural Notes")
+        for note in result["next_action_recommendation"]["structural_notes"]:
+            lines.append(f"- {note}")
+        lines.append("")
     if result.get("dropped_unknown_stage_rows_by_formula_id"):
         lines.append("## Unknown Stage Drops By Formula Id")
         for formula_id, n_rows in Counter(result["dropped_unknown_stage_rows_by_formula_id"]).most_common(10):

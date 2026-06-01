@@ -601,6 +601,44 @@ def test_next_actions_include_stage_opt_recommendation() -> None:
     }
 
 
+def test_next_actions_include_stage_opt_structural_notes() -> None:
+    actions = chunkyctl._next_actions(
+        {
+            "git_status": {"clean": True},
+            "codegraph": {"pending": {"sync_required": False}},
+            "complexity": {"baseline": {"status": "loaded"}, "diff": {"new_high_count": 0}},
+        },
+        {"unknown_count": 0},
+        {"verdict": "PASS"},
+        {"summary": {"total": 342, "green": 342, "yellow": 0, "red": 0}},
+        {
+            "next_action_recommendation": {
+                "priority": "P1",
+                "focus": "upstream_candidate_supply",
+                "reason": "below_min_signals dominates current blocked keys",
+                "recommended_lever": "expand upstream formula coverage or signal density before tuning profile knobs",
+                "weakest_formula_ids": ["macd_golden_cross", "reversal_1m_deep"],
+                "weakest_stage_bins": ["1", "1.5"],
+                "top_blocked_reason": "below_min_signals",
+                "structural_notes": [
+                    "macd_golden_cross is capped by fact_technical_trigger PRIMARY KEY (stock_code, date, formula_id); extra MACD state rows need schema evolution, not a state-only formula tweak"
+                ],
+            }
+        },
+    )
+
+    assert actions[-1] == {
+        "priority": "P1",
+        "action": (
+            "Stage-opt candidate supply [upstream_candidate_supply]: below_min_signals dominates current blocked keys → "
+            "expand upstream formula coverage or signal density before tuning profile knobs "
+            "(weakest formulas: macd_golden_cross, reversal_1m_deep; weakest stages: 1, 1.5; structural notes: "
+            "macd_golden_cross is capped by fact_technical_trigger PRIMARY KEY (stock_code, date, formula_id); "
+            "extra MACD state rows need schema evolution, not a state-only formula tweak)"
+        ),
+    }
+
+
 def test_docs_cleanup_report_combines_docs_graph_and_worktree_slice(tmp_path: Path) -> None:
     (tmp_path / "docs").mkdir()
     (tmp_path / "analysis").mkdir()
