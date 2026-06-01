@@ -500,7 +500,7 @@ def _build_min_signals_sensitivity(
     codes_with_bars: set[str],
     *,
     baseline_min_signals: int,
-    probe_min_signals: tuple[int, ...] = (4, 3),
+    probe_min_signals: tuple[int, ...] = (4, 3, 2),
     max_examples: int = 8,
     dropped_unknown_stage_rows_by_formula_id: dict[str, int] | None = None,
     dropped_unknown_stage_rows_by_formula_variant: dict[str, int] | None = None,

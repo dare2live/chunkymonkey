@@ -363,6 +363,22 @@ def test_min_signals_sensitivity_reports_threshold_lift() -> None:
                 "top_blocked_reason": None,
             },
         },
+        {
+            "min_signals": 2,
+            "ready_keys": 3,
+            "ready_coverage_pct": 100.0,
+            "delta_ready_keys": 2,
+            "delta_ready_coverage_pct": 66.67,
+            "below_min_signals": 0,
+            "delta_below_min_signals": -2,
+            "next_action_recommendation": {
+                "priority": "P2",
+                "focus": "candidate_supply_monitoring",
+                "reason": "no blocking reasons detected in current slice",
+                "recommended_lever": "keep monitoring upstream supply and PIT coverage",
+                "top_blocked_reason": None,
+            },
+        },
     ]
 
     result = audit_stage_opt_candidate_supply._compose_audit_result(
@@ -388,6 +404,7 @@ def test_min_signals_sensitivity_reports_threshold_lift() -> None:
     assert "## Min Signals Sensitivity" in markdown
     assert "min_signals=4" in markdown
     assert "min_signals=3" in markdown
+    assert "min_signals=2" in markdown
 
 
 def test_latest_closed_trade_date_uses_existing_calendar_connection() -> None:
