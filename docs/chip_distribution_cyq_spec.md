@@ -206,7 +206,7 @@ for fdate, fval in float_schedule:
 |------|-----|----------|------|
 | 资金流向（主力/大单/中单/小单） | `raw_fund_flow_daily` | **2026-04-24** | **deprecated/stale，先 source probe + PIT/freshness gate，不直接恢复生产使用** |
 | 资金行为代理 | `fact_capital_flow_pit_daily` | 2026-05-26 | OK，但只是 PIT proxy/事件聚合，不等同真实订单流 |
-| 龙虎榜 | `fact_lhb_event` | 2026-05-25 | OK |
+| 龙虎榜 | `fact_lhb_event` | 2026-05-29（84 codes, sparse-event） | OK / sparse |
 | 高管增减持 | `fact_executive_trade_event` | 有 | OK |
 | 股东增减持计划 | `fact_shareholder_plan` | 有 | OK |
 | 机构调研 | `fact_jgdy_event` | 有 | OK |

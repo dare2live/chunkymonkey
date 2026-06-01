@@ -21,12 +21,15 @@ The model pipeline snapshot below is historical evidence for the completed
   `mart_p0a_label_panel`, `mart_p0a_feature_label_panel_v3`,
   `mart_p0a_feature_label_panel_v4`, `mart_sniper_score_daily`, and
   `mart_institution_score_daily` now reach `2026-05-29`. The remaining WARN
-  evidence is `fact_lhb_event` event coverage only 84 codes (1%),
-  `fact_technical_trigger` event-table sparse-event coverage, and
-  `need_027` main-force source still blocked/unknown; the akshare
-  `individual_fund_flow` / `individual_fund_flow_rank` capability is
-  registered, the live probe is still blocked by `ProxyError`, and blocked
-  probe rows now persist in `mart_data_source_failure_queue` for follow-up triage.
+  evidence is `fact_lhb_event` event coverage only 84 codes (1%);
+  read-only checks show `raw_lhb_daily` and `fact_lhb_event` both max at
+  `2026-05-29`, with latest day raw 94 rows / 84 codes and fact 84 rows /
+  84 codes, so this is source sparsity rather than ETL lag. The other WARN is
+  `fact_technical_trigger` event-table sparse-event coverage, and `need_027`
+  main-force source still blocked/unknown; the akshare `individual_fund_flow`
+  / `individual_fund_flow_rank` capability is registered, the live probe is
+  still blocked by `ProxyError`, and blocked probe rows now persist in
+  `mart_data_source_failure_queue` for follow-up triage.
 - end-to-end audit: `audit_end_to_end.py` now exits PASS with WARN
   (`24 total / 19 OK / 5 WARN / 0 FAIL`); WARN includes recommendation PIT
   coverage 0, recommendation row count, and freshness days_behind=3 for
@@ -92,7 +95,12 @@ The model pipeline snapshot below is historical evidence for the completed
   connection's calendar truth source instead of opening a nested
   `latest_closed_or_raise()` connection. This reinforces the same conclusion:
   upstream candidate supply / formula coverage is the next lever, not another
-  profile knob tweak.
+  profile knob tweak. LHB side, the latest read-only check shows
+  `raw_lhb_daily` and `fact_lhb_event` both max at `2026-05-29`; latest day
+  raw 94 rows / 84 codes and fact 84 rows / 84 codes, so the remaining LHB
+  WARN is source sparsity, not ETL lag. `audit_pit_coverage.py` is still 4/4
+  PASS, with `fact_lhb_event` gain_20d coverage 83.9% > 60%, so the sparse
+  LHB WARN is completeness-only, not PIT safety.
 
 - generated_at: `2026-05-25T01:20:01Z`
 - model_id: `lgbm_phase5_gcp_20260520T010718`
