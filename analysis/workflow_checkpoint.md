@@ -8,7 +8,7 @@ The model pipeline snapshot below is historical evidence for the completed
 
 ## Current Data Freshness Checkpoint
 
-- updated_at: `2026-06-02 05:39:20 CST`
+- updated_at: `2026-06-02 06:58:23 CST`
 - current_state: `architecture/data freshness repair / stage-opt supply tuning`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
@@ -187,6 +187,7 @@ The model pipeline snapshot below is historical evidence for the completed
   `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1w`, and the
   controller still points to `P1 / upstream_candidate_supply`, which means the
   supply gap is still structural even after the loosening.
+- 2026-06-02 06:58-06:59 `turtle_breakout_55` was lowered from `0.7` to `0.6`, lifting that formula to `149,966 / 17,266 / 66.01%`; the full stage-opt audit is now `raw_signal_rows=5,921,755 / filtered_signal_rows=2,944,256 / unique_keys=154,626 / ready_keys=114,651 / ready coverage=74.15% / below_min_signals=39,975`, `min_signals=4/3/2` at `79.36% / 85.06% / 91.55%`, and the weakest formulas remain `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_mild`, but the controller still points to `P1 / upstream_candidate_supply`.
 - later in the same slice we tested whether the 2023-01-01→2023-09-11
   technical-stage hole was the missing lever: `build_stage_formula_fitness.py`
   needed a longer `compute_start` than the write window, so a second run with

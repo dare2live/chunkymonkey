@@ -8,6 +8,10 @@
 
 最后更新: **2026-06-02** (K-line + alpha158 + stage/context/trigger + capital_flow/risk/sector + picture/survey + label/score freshness catch-up + portfolio_sizer config + dirty safety/tooling ledger).
 
+## [INDEX] 2026-06-02 增量
+
+- **stage-opt 2026-06-02 turtle 0.6 lift**: `turtle_breakout_55` 再把量能确认门槛从 `0.7` 收到 `0.6`，历史重算后该 formula 提升到 `149,966 signal_rows / 17,266 keys / 66.01% coverage`；全局审计刷新为 `raw_signal_rows=5,921,755 / filtered_signal_rows=2,944,256 / unique_keys=154,626 / ready_keys=114,651 / ready coverage=74.15% / below_min_signals=39,975`，`min_signals=4/3/2` 现在对应 `79.36% / 85.06% / 91.55%`（`122,711 / 131,519 / 141,561` ready keys）；`dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_mild` 仍是 weakest formulas，但 controller recommendation 依旧是 `P1 / upstream_candidate_supply`，说明这刀继续抬升了 supply，但结构性瓶颈仍然在上游候选供给。
+
 ## [INDEX] 2026-06-01 增量
 
 - **Daily recommendation loader live-table alignment**: `backend/scripts/build_daily_position_recommendations.py` now unions `mart_macd_state_history` into the candidate pool and routes cross-stage fallback to the existing `mart_per_stock_strategy_optimal` table instead of a nonexistent `_pit` table; the live `2026-06-01` run now finishes without the missing-table crash. The 2026-06-02 commit `1402bc0b` lands the loader fix plus its regression test / registry entry; the current snapshot still returns 0 candidates, which is input sparsity rather than loader failure.
