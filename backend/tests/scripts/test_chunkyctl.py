@@ -426,6 +426,34 @@ def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_pa
                 ),
                 "stderr": "",
             }
+        if "audit_tdx_data_need_coverage.py" in cmd_text:
+            return {
+                "cmd": cmd,
+                "returncode": 0,
+                "stdout": json.dumps(
+                    {
+                        "need_count": 27,
+                        "blocked_need_count": 1,
+                        "registered_source_names": ["aif10", "akshare"],
+                        "blocked_needs": [
+                            {
+                                "need_id": "need_027",
+                                "need_name": "主力/超大/大/中/小单资金流向",
+                                "evidence_status": "unknown",
+                                "production_eligibility": "blocked",
+                                "failure_queue_snapshot": {
+                                    "status_counts": {"open": 2, "resolved": 1},
+                                },
+                                "source_registration": {
+                                    "preferred_source_capabilities": ["individual_fund_flow", "individual_fund_flow_rank"],
+                                    "fallback_source_capabilities": ["other_capability"],
+                                },
+                            }
+                        ],
+                    }
+                ),
+                "stderr": "",
+            }
         if cmd == ["git", "status", "--short"]:
             return {"cmd": cmd, "returncode": 0, "stdout": "", "stderr": ""}
         raise AssertionError(f"unexpected command: {cmd}")
@@ -451,9 +479,12 @@ def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_pa
     assert report["data_health"]["report"]["summary"] == {"total": 3, "green": 1, "yellow": 1, "red": 1}
     assert report["data_health"]["report"]["verdict"] == "FAIL"
     assert report["stage_opt"]["report"]["next_action_recommendation"]["focus"] == "upstream_candidate_supply"
+    assert report["need_coverage"]["report"]["summary"]["blocked_need_count"] == 1
     assert report["verdict"] == "FAIL"
     assert any("data health red tables" in action["action"] for action in report["next_actions"])
     assert any("upstream_candidate_supply" in action["action"] for action in report["next_actions"])
+    assert any("need_027 blocked/unknown" in action["action"] for action in report["next_actions"])
+    assert any("failure_queue open=2 resolved=1" in action["action"] for action in report["next_actions"])
 
 
 def test_doctor_prioritizes_blocking_yellow_health_items(monkeypatch, tmp_path: Path, capsys) -> None:
@@ -540,6 +571,36 @@ def test_doctor_prioritizes_blocking_yellow_health_items(monkeypatch, tmp_path: 
                 ),
                 "stderr": "",
             }
+        if "audit_tdx_data_need_coverage.py" in cmd_text:
+            return {
+                "cmd": cmd,
+                "returncode": 0,
+                "stdout": json.dumps(
+                    {
+                        "need_gap_summary": {
+                            "need_count": 27,
+                            "blocked_need_count": 1,
+                            "registered_source_names": ["aif10", "akshare"],
+                            "blocked_needs": [
+                                {
+                                    "need_id": "need_027",
+                                    "need_name": "主力/超大/大/中/小单资金流向",
+                                    "evidence_status": "unknown",
+                                    "production_eligibility": "blocked",
+                                    "failure_queue_snapshot": {
+                                        "status_counts": {"open": 2, "resolved": 1},
+                                    },
+                                    "source_registration": {
+                                        "preferred_source_capabilities": ["individual_fund_flow", "individual_fund_flow_rank"],
+                                        "fallback_source_capabilities": ["other_capability"],
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ),
+                "stderr": "",
+            }
         if cmd == ["git", "status", "--short"]:
             return {"cmd": cmd, "returncode": 0, "stdout": "", "stderr": ""}
         raise AssertionError(f"unexpected command: {cmd}")
@@ -566,6 +627,8 @@ def test_doctor_prioritizes_blocking_yellow_health_items(monkeypatch, tmp_path: 
     assert report["data_health"]["report"]["verdict"] == "WARN"
     assert report["verdict"] == "WARN"
     assert any("quality_gate_level=blocking first" in action["action"] for action in report["next_actions"])
+    assert any("need_027 blocked/unknown" in action["action"] for action in report["next_actions"])
+    assert any("failure_queue open=2 resolved=1" in action["action"] for action in report["next_actions"])
 
 
 def test_next_actions_include_stage_opt_recommendation() -> None:
@@ -627,14 +690,51 @@ def test_next_actions_include_stage_opt_structural_notes() -> None:
         },
     )
 
-    assert actions[-1] == {
-        "priority": "P1",
-        "action": (
+    assert any(
+        action["priority"] == "P1"
+        and action["action"] == (
             "Stage-opt candidate supply [upstream_candidate_supply]: below_min_signals dominates current blocked keys → "
             "expand upstream formula coverage or signal density before tuning profile knobs "
             "(weakest formulas: macd_golden_cross, reversal_1m_deep; weakest stages: 1, 1.5; structural notes: "
             "macd_golden_cross is capped by fact_technical_trigger PRIMARY KEY (stock_code, date, formula_id); "
             "extra MACD state rows need schema evolution, not a state-only formula tweak)"
+        )
+        for action in actions
+    )
+
+
+def test_next_actions_include_need_coverage_recommendation() -> None:
+    actions = chunkyctl._next_actions(
+        {
+            "git_status": {"clean": True},
+            "codegraph": {"pending": {"sync_required": False}},
+            "complexity": {"baseline": {"status": "loaded"}, "diff": {"new_high_count": 0}},
+        },
+        {"unknown_count": 0},
+        {"verdict": "PASS"},
+        {"summary": {"total": 342, "green": 342, "yellow": 0, "red": 0}},
+        None,
+        {
+                "blocked_needs": [
+                    {
+                        "need_id": "need_027",
+                        "need_name": "主力/超大/大/中/小单资金流向",
+                        "failure_queue_snapshot": {"status_counts": {"open": 2, "resolved": 1}},
+                        "source_registration": {
+                            "preferred_source_capabilities": ["individual_fund_flow", "individual_fund_flow_rank"],
+                            "fallback_source_capabilities": [],
+                        },
+                    }
+            ]
+        },
+    )
+
+    assert actions[-1] == {
+        "priority": "P1",
+        "action": (
+            "Need coverage blocked-gap triage: review blocked needs and source evidence before treating them as production-ready "
+            "(blocked needs: need_027; names: 主力/超大/大/中/小单资金流向) "
+            "[need_027 blocked/unknown; failure_queue open=2 resolved=1]"
         ),
     }
 

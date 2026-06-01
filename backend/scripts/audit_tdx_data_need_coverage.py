@@ -2,6 +2,8 @@
 """Build the TDX-first data need coverage and source priority tables."""
 from __future__ import annotations
 
+import argparse
+import json
 import logging
 import sys
 from datetime import UTC, datetime
@@ -500,11 +502,26 @@ def audit_tdx_data_need_coverage(conn: Any, config_path: Path | None = None) -> 
     }
 
 
-def main() -> int:
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Emit a JSON summary for automation or a text log for interactive use.",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_arg_parser().parse_args(argv)
     conn = get_conn()
     try:
         result = audit_tdx_data_need_coverage(conn)
-        logger.info("tdx data need coverage: %s", result)
+        if args.format == "json":
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True, default=str))
+        else:
+            logger.info("tdx data need coverage: %s", result)
         return 0
     finally:
         conn.close()

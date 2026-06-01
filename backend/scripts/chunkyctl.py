@@ -114,12 +114,34 @@ def _stage_opt_summary(report: dict[str, Any] | None) -> dict[str, Any] | None:
     }
 
 
+def _need_coverage_summary(report: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not report:
+        return None
+    need_gap_summary = report.get("need_gap_summary") if isinstance(report.get("need_gap_summary"), dict) else None
+    source_payload = need_gap_summary or report
+    blocked_needs = source_payload.get("blocked_needs")
+    if not isinstance(blocked_needs, list):
+        blocked_needs = []
+    registered_source_names = source_payload.get("registered_source_names")
+    if not isinstance(registered_source_names, list):
+        registered_source_names = []
+    return {
+        "summary": {
+            "need_count": source_payload.get("need_count"),
+            "blocked_need_count": source_payload.get("blocked_need_count", 0),
+            "registered_source_name_count": len(registered_source_names),
+        },
+        "blocked_needs": blocked_needs,
+    }
+
+
 def _next_actions(
     tooling_gate: dict[str, Any] | None,
     worktree_summary: dict[str, Any] | None = None,
     storage_payload: dict[str, Any] | None = None,
     data_health: dict[str, Any] | None = None,
     stage_opt: dict[str, Any] | None = None,
+    need_coverage: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     if not tooling_gate:
         return [{"priority": "P0", "action": "Fix chunkyctl/audit_tooling_gate JSON parsing before relying on doctor output"}]
@@ -248,6 +270,31 @@ def _next_actions(
                 "action": action_text,
             }
         )
+    blocked_needs = (need_coverage or {}).get("blocked_needs") or []
+    if blocked_needs:
+        blocked_need_ids = [str(item.get("need_id") or "") for item in blocked_needs if str(item.get("need_id") or "").strip()]
+        blocked_need_names = [str(item.get("need_name") or "") for item in blocked_needs if str(item.get("need_name") or "").strip()]
+        action_text = (
+            "Need coverage blocked-gap triage: review blocked needs and source evidence before treating them as production-ready"
+        )
+        details: list[str] = []
+        if blocked_need_ids:
+            details.append(f"blocked needs: {', '.join(blocked_need_ids[:3])}")
+        if blocked_need_names:
+            details.append(f"names: {', '.join(blocked_need_names[:2])}")
+        if details:
+            action_text += " (" + "; ".join(details) + ")"
+        special_need = next((item for item in blocked_needs if str(item.get("need_id") or "") == "need_027"), None)
+        if special_need:
+            failure_queue_snapshot = special_need.get("failure_queue_snapshot") or {}
+            status_counts = failure_queue_snapshot.get("status_counts") or {}
+            open_count = int(status_counts.get("open") or 0)
+            resolved_count = int(status_counts.get("resolved") or 0)
+            if open_count or resolved_count:
+                action_text += f" [need_027 blocked/unknown; failure_queue open={open_count} resolved={resolved_count}]"
+            else:
+                action_text += " [need_027 blocked/unknown; failure_queue evidence unavailable]"
+        actions.append({"priority": "P1", "action": action_text})
     return actions
 
 
@@ -385,6 +432,30 @@ def run_doctor(args: argparse.Namespace) -> int:
             }
         )
 
+    need_coverage: dict[str, Any] | None = None
+    result = _run_command(
+        [
+            sys.executable,
+            "backend/scripts/audit_tdx_data_need_coverage.py",
+            "--format",
+            "json",
+        ],
+        cwd=repo,
+    )
+    parsed = _json_from_stdout(result)
+    need_coverage = {
+        "command": _command_summary(result),
+        "report": _need_coverage_summary(parsed),
+        "verdict": "PASS" if result["returncode"] == 0 else "FAIL",
+    }
+    sections.append(
+        {
+            "name": "need_coverage",
+            "verdict": need_coverage["verdict"],
+            "returncode": result["returncode"],
+        }
+    )
+
     worktree_report = None
     worktree_summary = None
     if tooling_payload:
@@ -405,12 +476,14 @@ def run_doctor(args: argparse.Namespace) -> int:
         "storage_payload": storage_payload,
         "data_health": data_health,
         "stage_opt": stage_opt,
+        "need_coverage": need_coverage,
         "next_actions": _next_actions(
             tooling_payload,
             worktree_summary,
             storage_payload.get("report") if storage_payload else None,
             data_health.get("report") if data_health else None,
             stage_opt.get("report") if stage_opt else None,
+            need_coverage.get("report") if need_coverage else None,
         ),
     }
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))

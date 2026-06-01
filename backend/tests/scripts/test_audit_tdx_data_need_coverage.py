@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import importlib.util
 import sys
 from pathlib import Path
@@ -439,3 +440,35 @@ def test_audit_tdx_data_need_coverage_exact_sync_removes_obsolete_rows(tmp_path:
         "priority": ["test_domain"],
         "reassignment": ["test_table"],
     }
+
+
+def test_main_emits_json_when_requested(monkeypatch, capsys) -> None:
+    class DummyConn:
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        audit_tdx_data_need_coverage,
+        "get_conn",
+        lambda: DummyConn(),
+    )
+    monkeypatch.setattr(
+        audit_tdx_data_need_coverage,
+        "audit_tdx_data_need_coverage",
+        lambda conn, config_path=None: {
+            "coverage_rows": 1,
+            "priority_rows": 1,
+            "reassignment_rows": 1,
+            "need_gap_summary": {"need_count": 1, "blocked_need_count": 0},
+            "config_path": "config.yaml",
+            "input_files_read": [],
+            "built_at": "2026-06-01T00:00:00+00:00",
+        },
+    )
+
+    rc = audit_tdx_data_need_coverage.main(["--format", "json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert payload["coverage_rows"] == 1
+    assert payload["need_gap_summary"] == {"need_count": 1, "blocked_need_count": 0}
