@@ -169,11 +169,17 @@ The model pipeline snapshot below is historical evidence for the completed
   widened `reversal_1w` from 5-10% to 2-10%, and the historical rebuild
   lifted that formula to `369,822 / 15,937 / 66.18%`; it also compressed
   `dynamic_ma_iterative_cross` from 10 轮到 2 轮, lifting that formula to
-  `225,783 / 20,076 / 51.63%` and the overall stage-opt audit to
-  `1,733,104 raw_signal_rows / 878,179 filtered_signal_rows / 128,437 unique_keys /
-  65,426 ready_keys / 50.94% ready coverage / 63,011 below_min_signals`.
-  The controller still points to `P1 / upstream_candidate_supply`, which means
-  the supply gap is still structural even after the loosening.
+  `225,783 / 20,076 / 51.63%`. 2026-06-02 05:51-05:52 then lowered
+  `turtle_breakout_55`'s volume confirmation gate from `1.1` to `1.0`; the
+  historical rebuild wrote `166,984` rows and moved `turtle_breakout_55` to
+  `132,024 signal_rows / 17,089 keys / 63.45% coverage`. The full stage-opt
+  audit now reads `raw_signal_rows=5,483,722 / filtered_signal_rows=2,740,702 /
+  unique_keys=151,655 / ready_keys=109,361 / ready coverage=72.11% /
+  below_min_signals=42,294`, with `min_signals=4/3/2` at `77.93% / 84.18% /
+  91.21%` (`118,186 / 127,669 / 138,331` ready keys). Weakest formulas remain
+  `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1w`, and the
+  controller still points to `P1 / upstream_candidate_supply`, which means the
+  supply gap is still structural even after the loosening.
 - later in the same slice we tested whether the 2023-01-01→2023-09-11
   technical-stage hole was the missing lever: `build_stage_formula_fitness.py`
   needed a longer `compute_start` than the write window, so a second run with
