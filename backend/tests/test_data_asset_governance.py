@@ -11,6 +11,7 @@ from scripts.seed_dim_data_asset import (
     grep_readers,
     grep_writer,
     infer_asset_contract,
+    infer_freshness,
 )
 from services.workbench_read import build_workbench_data_sources
 
@@ -182,6 +183,24 @@ def test_infer_asset_contract_marks_industry_pit_quality_as_required_gate():
     assert contract["asset_grain"] == "run_id+signal_table"
     assert contract["pit_policy"] == "documents_industry_pit_eligibility_before_strategy_use"
     assert contract["strategy_eligibility"] == "required_gate_for_industry_concentration_parameters"
+
+
+def test_infer_asset_contract_marks_architecture_cleanup_plan_as_on_demand_governance():
+    freshness = infer_freshness("mart_architecture_cleanup_plan", "mart")
+    assert freshness == ("on-demand", 24 * 30)
+
+    contract = infer_asset_contract(
+        "mart_architecture_cleanup_plan",
+        layer="mart",
+        freshness=freshness[0],
+        upstream_source="derived (writer: backend/scripts/plan_architecture_cleanup.py)",
+    )
+
+    assert contract["asset_grain"] == "run_id+asset_id"
+    assert contract["asset_cadence"] == "on_demand"
+    assert contract["coverage_policy"] == "workflow_dependent"
+    assert contract["intended_use"] == "governance_context"
+    assert contract["quality_gate_level"] == "monitor_only"
 
 
 def test_seed_dim_data_asset_preserves_manual_governance_fields():
