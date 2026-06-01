@@ -4,6 +4,7 @@ import asyncio
 import json as _json
 import logging
 from datetime import datetime, timedelta
+from typing import Callable
 
 from routers.updater_runtime import _run_blocking_db_task
 from services.update_tasks import ingest_holders_tdxhub_raw_parse, sync_gpcw_files_and_auto_features
@@ -12,7 +13,11 @@ from services.utils import latest_completed_trade_date
 logger = logging.getLogger("cm-api")
 
 
-async def _step_sync_raw(conn) -> dict:
+async def _step_sync_raw(
+    conn,
+    *,
+    touch_heartbeat: Callable | None = None,
+) -> dict:
     """十大流通股东 — 调 tdxhub raw->parse ingest.
 
     P7 起 canonical 表是 fact_top10_holder_period (替代 market_raw_holdings).
@@ -32,10 +37,29 @@ async def _step_sync_raw(conn) -> dict:
     # 解包 DuckConn 拿原生 duckdb connection (脚本里的 SQL 是原生写法).
     raw_con = conn._con if hasattr(conn, "_con") else conn
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
+
+    def _apply_raw_progress(snapshot: dict) -> None:
+        if not snapshot:
+            return
+        if touch_heartbeat is None:
+            return
+        try:
+            touch_heartbeat("sync_raw", progress=snapshot)
+        except Exception as exc:
+            logger.warning("[下载/tdxhub] progress heartbeat failed: %s", exc)
+
+    def _on_raw_progress(snapshot: dict) -> None:
+        if not snapshot:
+            return
+        loop.call_soon_threadsafe(_apply_raw_progress, dict(snapshot))
 
     def _do() -> dict:
-        raw_stats = ingest_holders_tdxhub_raw_parse(workers=4, con=raw_con)
+        raw_stats = ingest_holders_tdxhub_raw_parse(
+            workers=4,
+            con=raw_con,
+            progress_callback=_on_raw_progress,
+        )
 
         from services.tdx_f10_extra_client import sync_tdx_f10_extra_facts
 

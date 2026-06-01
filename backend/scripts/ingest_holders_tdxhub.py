@@ -150,6 +150,43 @@ def _copy_rows(rows: list[dict] | None) -> list[dict]:
     return [dict(row) for row in (rows or [])]
 
 
+def _build_raw_progress_snapshot(
+    progress: dict,
+    total: int,
+    *,
+    code: str | None = None,
+    inserted: bool | None = None,
+    elapsed: float | None = None,
+) -> dict:
+    done = int(progress.get("done") or 0)
+    elapsed_s = float(progress.get("elapsed_s") or (time.time() - float(progress.get("t0") or time.time())))
+    snapshot = {
+        "stage": "raw_fetch",
+        "status": "running",
+        "done": done,
+        "total": total,
+        "pct": round((done / max(total, 1)) * 100, 1),
+        "raw_ok": int(progress.get("raw_ok") or 0),
+        "raw_written": int(progress.get("raw_written") or 0),
+        "err": int(progress.get("err") or 0),
+        "skipped_unchanged": int(progress.get("skipped_unchanged") or 0),
+        "skipped_no_f10": int(progress.get("skipped_no_f10") or 0),
+        "elapsed_s": round(elapsed_s, 3),
+        "message": (
+            f"raw_fetch {done}/{total} · "
+            f"written={int(progress.get('raw_written') or 0)} · "
+            f"err={int(progress.get('err') or 0)}"
+        ),
+    }
+    if code:
+        snapshot["last_code"] = code
+    if inserted is not None:
+        snapshot["last_inserted"] = bool(inserted)
+    if elapsed is not None:
+        snapshot["last_item_elapsed_s"] = round(elapsed, 3)
+    return snapshot
+
+
 def _safe_float(value) -> float | None:
     if value in (None, ""):
         return None
@@ -837,21 +874,30 @@ def raw_worker(
     seen_lock: threading.Lock,
     *,
     fetcher_factory: Callable[[], Any] | None = None,
+    progress_callback: Callable[[dict], None] | None = None,
 ) -> None:
     fetcher = fetcher_factory() if fetcher_factory is not None else _make_raw_fetcher()
     while True:
         item = job_q.get()
         if item is None:
+            job_q.task_done()
             break
         _idx, total, code, stock_name, market = item
         t0 = time.time()
+        snapshot = None
         try:
             raw_text = fetcher.fetch_text(code)
             if not raw_text:
                 with progress_lock:
                     progress["skipped_no_f10"] += 1
                     progress["done"] += 1
-                job_q.task_done()
+                    if progress["done"] % 50 == 0:
+                        snapshot = _build_raw_progress_snapshot(
+                            progress,
+                            total,
+                            code=code,
+                            elapsed=time.time() - t0,
+                        )
                 continue
             raw_hash = _raw_hash(raw_text)
             key = (code, raw_hash)
@@ -861,7 +907,13 @@ def raw_worker(
                         progress["raw_ok"] += 1
                         progress["skipped_unchanged"] += 1
                         progress["done"] += 1
-                    job_q.task_done()
+                        if progress["done"] % 50 == 0:
+                            snapshot = _build_raw_progress_snapshot(
+                                progress,
+                                total,
+                                code=code,
+                                elapsed=time.time() - t0,
+                            )
                     continue
                 seen_hashes.add(key)
             fetched_at = datetime.utcnow().isoformat(timespec="seconds")
@@ -893,17 +945,39 @@ def raw_worker(
                         "[raw %4d/%d] %s %s inserted=%s %.1fs rate=%.1f/s",
                         progress["done"], total, code, name, inserted, elapsed, rate,
                     )
+                    snapshot = _build_raw_progress_snapshot(
+                        progress,
+                        total,
+                        code=code,
+                        inserted=inserted,
+                        elapsed=elapsed,
+                    )
         except Exception as e:
             with progress_lock:
                 progress["err"] += 1
                 progress["done"] += 1
                 progress["failed_items"].append((code, stock_name, market, str(e)))
                 log.warning("[raw %s] %s ERROR %s: %s", name, code, type(e).__name__, e)
-        job_q.task_done()
+                if progress["done"] % 50 == 0:
+                    snapshot = _build_raw_progress_snapshot(
+                        progress,
+                        total,
+                        code=code,
+                        elapsed=time.time() - t0,
+                    )
+        finally:
+            job_q.task_done()
+            if snapshot is not None and progress_callback is not None:
+                try:
+                    progress_callback(snapshot)
+                # rule-compliance: ok evidence=defensive-logging progress callback failure must not abort the ingest loop
+                except Exception as exc:
+                    log.warning("[raw %s] progress callback failed: %s", name, exc)
     try:
         fetcher.close()
-    except Exception:
-        pass
+    # rule-compliance: ok evidence=defensive-logging fetcher close failure should not hide the written rows
+    except Exception as exc:
+        log.warning("[raw %s] fetcher.close failed: %s", name, exc)
 
 
 def fetch_raw_records(
@@ -914,6 +988,7 @@ def fetch_raw_records(
     symbols: str = "",
     force: bool = False,
     fetcher_factory: Callable[[], Any] | None = None,
+    progress_callback: Callable[[dict], None] | None = None,
 ) -> dict:
     """Fetch TDX F10 raw pages only; canonical facts are updated by replay."""
 
@@ -950,7 +1025,10 @@ def fetch_raw_records(
         t = threading.Thread(
             target=raw_worker,
             args=(f"raw-w{i+1}", job_q, con, con_lock, progress, progress_lock, seen, seen_lock),
-            kwargs={"fetcher_factory": fetcher_factory},
+            kwargs={
+                "fetcher_factory": fetcher_factory,
+                "progress_callback": progress_callback,
+            },
             name=f"holder-raw-worker-{i+1}",
         )
         t.start()
@@ -965,6 +1043,17 @@ def fetch_raw_records(
     elapsed = time.time() - progress["t0"]
     progress["elapsed_s"] = elapsed
     progress["ok"] = progress["raw_written"]
+    if progress_callback is not None:
+        try:
+            progress_callback(
+                _build_raw_progress_snapshot(
+                    progress,
+                    len(universe),
+                )
+            )
+        # rule-compliance: ok evidence=defensive-logging final snapshot emission must not fail the raw fetch result
+        except Exception as exc:
+            log.warning("[raw fetch] final progress callback failed: %s", exc)
     log.info("=== raw fetch complete in %.1fs ===", elapsed)
     log.info("  total      : %d", progress["done"])
     log.info("  raw ok     : %d", progress["raw_ok"])
@@ -1038,6 +1127,7 @@ def run(
     no_fallback: bool = False,
     con: duckdb.DuckDBPyConnection | None = None,
     fetcher_factory: Callable[[], Any] | None = None,
+    progress_callback: Callable[[dict], None] | None = None,
 ) -> dict:
     """实际执行入口: fetch raw → replay canonical, 可被 in-process 调用.
 
@@ -1064,6 +1154,7 @@ def run(
             symbols=symbols,
             force=force,
             fetcher_factory=fetcher_factory,
+            progress_callback=progress_callback,
         )
         raw_keys = list(raw_stats.get("raw_keys") or [])
         if raw_keys:

@@ -86,6 +86,7 @@ def build_run_context(
 def touch_run_context_heartbeat(
     run_context: Optional[dict],
     step_id: Optional[str] = None,
+    progress: Optional[dict] = None,
     *,
     now: Optional[datetime] = None,
 ) -> Optional[dict]:
@@ -96,6 +97,8 @@ def touch_run_context_heartbeat(
     run_context["heartbeat_at"] = (now or datetime.now()).isoformat()
     if step_id:
         run_context["step_id"] = step_id
+    if progress is not None:
+        run_context["step_progress"] = dict(progress)
     return run_context
 
 
@@ -407,6 +410,7 @@ def _build_status_summary(rows, running: bool, stop_requested: bool,
         scoped = _scope_rows(rows, run_context)
         stat = _summarize_rows(scoped)
         activity = _activity_meta(scoped)
+        step_progress = dict(run_context.get("step_progress") or {})
         mode = run_context.get("mode")
         label = _mode_label(mode)
         if mode == "single":
@@ -417,6 +421,20 @@ def _build_status_summary(rows, running: bool, stop_requested: bool,
                 message = f"{scope_name} · {stat['done']}/{stat['total']} · {stat['pct']}%"
         else:
             message = f"{label} · {stat['done']}/{stat['total']} · {stat['pct']}%"
+        if step_progress:
+            progress_done = step_progress.get("done")
+            progress_total = step_progress.get("total")
+            progress_err = step_progress.get("err")
+            progress_msg = step_progress.get("message")
+            progress_bits = []
+            if progress_done is not None and progress_total:
+                progress_bits.append(f"{progress_done}/{progress_total}")
+            if progress_err is not None:
+                progress_bits.append(f"err={progress_err}")
+            if progress_msg:
+                progress_bits.append(str(progress_msg))
+            if progress_bits:
+                message += " · 进度：" + " / ".join(progress_bits)
         if stop_requested:
             message = "停止中 · " + message
         if activity["active_step_names"]:
@@ -428,6 +446,7 @@ def _build_status_summary(rows, running: bool, stop_requested: bool,
             "pct": stat["pct"],
             "message": message,
             "counts": stat,
+            "step_progress": step_progress,
             **activity,
         }
 

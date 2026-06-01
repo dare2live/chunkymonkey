@@ -6,6 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import routers.updater as updater  # noqa: E402
 from routers.updater import (  # noqa: E402
     _build_daily_sync_batch_summary,
     _format_sync_source_metrics,
@@ -178,6 +179,59 @@ def test_sync_raw_reports_partial_when_extra_rejects_fund_rows(monkeypatch):
     assert result["status"] == "partial"
     assert "extra_fund_rejected=2" in result["message"]
     assert "extra_skip_non_b=1" in result["message"]
+
+
+def test_sync_raw_forwards_progress_callback_to_run_context(monkeypatch):
+    fake_mod = types.ModuleType("scripts.ingest_holders_tdxhub")
+
+    def fake_run(**kwargs):
+        progress_callback = kwargs.get("progress_callback")
+        assert progress_callback is not None
+        progress_callback(
+            {
+                "stage": "raw_fetch",
+                "status": "running",
+                "done": 50,
+                "total": 100,
+                "pct": 50.0,
+                "raw_ok": 50,
+                "raw_written": 49,
+                "err": 1,
+                "skipped_unchanged": 0,
+                "skipped_no_f10": 0,
+                "elapsed_s": 12.5,
+                "message": "raw_fetch 50/100 · written=49 · err=1",
+            }
+        )
+        return {
+            "done": 100,
+            "ok": 99,
+            "err": 1,
+            "skipped_unchanged": 0,
+            "skipped_no_f10": 0,
+        }
+
+    fake_mod.run = fake_run
+    monkeypatch.setitem(sys.modules, "scripts.ingest_holders_tdxhub", fake_mod)
+
+    import services.tdx_f10_extra_client as extra_client
+
+    monkeypatch.setattr(extra_client, "sync_tdx_f10_extra_facts", lambda _conn: _stub_extra_stats())
+
+    heartbeats = []
+    monkeypatch.setattr(
+        updater,
+        "_touch_run_heartbeat",
+        lambda step_id=None, progress=None: heartbeats.append((step_id, progress)),
+    )
+
+    result = asyncio.run(_step_sync_raw(_SyncRawConn(before=10, after=10)))
+
+    assert result["status"] == "partial"
+    assert heartbeats
+    assert heartbeats[0][0] == "sync_raw"
+    assert heartbeats[0][1]["done"] == 50
+    assert heartbeats[0][1]["message"].startswith("raw_fetch 50/100")
 
 
 if __name__ == "__main__":

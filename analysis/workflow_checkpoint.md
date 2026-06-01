@@ -42,7 +42,9 @@ The model pipeline snapshot below is historical evidence for the completed
   yellow / 342 total` instead of failing on a timestamp parse error, and the
   official `cron_daily.py` run completed later phases after `sync_raw`
   exceeded its 60s budget; red/yellow rows now carry `writer_prompt`
-  owner/sync_step hints for self-triage. Feature panel lane was refreshed
+  owner/sync_step hints for self-triage, and `sync_raw` progress snapshots now
+  feed `run_context.step_progress` / `/update/status` so the long raw fetch no
+  longer looks frozen. Feature panel lane was refreshed
   successfully, removing `fact_feature_panel`,
   `mart_feature_panel_validation`, and `mart_feature_panel_prune_run` from
   red.

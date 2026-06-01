@@ -1,14 +1,19 @@
 """Service-level update task adapters used by API routers."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 
-def ingest_holders_tdxhub_raw_parse(*, workers: int, con: Any) -> dict[str, Any]:
+def ingest_holders_tdxhub_raw_parse(
+    *,
+    workers: int,
+    con: Any,
+    progress_callback: Callable[[dict], None] | None = None,
+) -> dict[str, Any]:
     """Run the tdxhub holder raw fetch and canonical replay task."""
     from scripts.ingest_holders_tdxhub import run
 
-    return run(workers=workers, con=con)
+    return run(workers=workers, con=con, progress_callback=progress_callback)
 
 
 def profile_tdx_gpcw_fields_task(conn: Any) -> dict[str, Any]:

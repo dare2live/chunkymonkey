@@ -146,10 +146,10 @@ from routers.updater_sync import (
     _step_sync_aif10_holder_count,
     _step_sync_aif10_peer_valuation,
     _step_sync_aif10_valuation_quantile,
+    _step_sync_raw as _step_sync_raw_with_hooks,
     _step_sync_financial as _step_sync_financial_with_hooks,
     _step_sync_lhb,
     _step_sync_qfii,
-    _step_sync_raw,
     _step_sync_surveys,
 )
 from routers.updater_market_data import _step_sync_market_data as _step_sync_market_data_with_hooks
@@ -241,8 +241,8 @@ def _raise_if_stop():
         raise _RunStopped("用户已停止")
 
 
-def _touch_run_heartbeat(step_id: Optional[str] = None):
-    touch_run_context_heartbeat(_run_context, step_id)
+def _touch_run_heartbeat(step_id: Optional[str] = None, progress: Optional[dict] = None):
+    touch_run_context_heartbeat(_run_context, step_id, progress)
 
 
 def _record_step_source_state(conn, step_id: str, status: str, error_text: Optional[str] = None) -> None:
@@ -431,6 +431,14 @@ async def _step_sync_market_data(conn) -> int:
         should_stop=_raise_if_stop,
         update_step=_update_step,
         stopped_exception_type=_RunStopped,
+    )
+
+
+async def _step_sync_raw(conn) -> dict:
+    """十大流通股东 — 调 tdxhub raw->parse ingest."""
+    return await _step_sync_raw_with_hooks(
+        conn,
+        touch_heartbeat=_touch_run_heartbeat,
     )
 
 

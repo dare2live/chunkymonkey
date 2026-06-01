@@ -54,7 +54,16 @@ def test_build_update_status_payload_preserves_route_shape_for_running_context()
         conn,
         running=True,
         stop_requested=False,
-        run_context={"mode": "smart", "step_ids": ["sync_raw"]},
+        run_context={
+            "mode": "smart",
+            "step_ids": ["sync_raw"],
+            "step_progress": {
+                "done": 50,
+                "total": 100,
+                "err": 1,
+                "message": "raw_fetch 50/100 · written=49 · err=1",
+            },
+        },
         last_run_context=None,
         ui_logs=[{"message": "hello"}],
         last_exception={"message": "boom"},
@@ -64,11 +73,22 @@ def test_build_update_status_payload_preserves_route_shape_for_running_context()
     assert conn.calls == [("SELECT * FROM step_status ORDER BY step_order", None)]
     assert payload["running"] is True
     assert payload["stop_requested"] is False
-    assert payload["run_context"] == {"mode": "smart", "step_ids": ["sync_raw"]}
+    assert payload["run_context"] == {
+        "mode": "smart",
+        "step_ids": ["sync_raw"],
+        "step_progress": {
+            "done": 50,
+            "total": 100,
+            "err": 1,
+            "message": "raw_fetch 50/100 · written=49 · err=1",
+        },
+    }
     assert payload["last_run_context"] is None
     assert payload["steps"][0]["records"] == 0
     assert payload["summary"]["kind"] == "running"
     assert payload["summary"]["active_step_ids"] == ["sync_raw"]
+    assert payload["summary"]["step_progress"]["done"] == 50
+    assert "进度：50/100 / err=1 / raw_fetch 50/100 · written=49 · err=1" in payload["summary"]["message"]
     assert payload["logs"] == [{"message": "hello"}]
     assert payload["last_exception"] == {"message": "boom"}
     assert payload["server_time"] == "2026-05-27T10:01:00"
@@ -116,10 +136,16 @@ def test_run_context_helpers_build_touch_and_finish_contexts():
         "heartbeat_at": "2026-05-27T10:00:00",
     }
 
-    touched = touch_run_context_heartbeat(context, "match_inst", now=heartbeat)
+    touched = touch_run_context_heartbeat(
+        context,
+        "match_inst",
+        {"done": 50, "total": 100},
+        now=heartbeat,
+    )
     assert touched is context
     assert context["step_id"] == "match_inst"
     assert context["heartbeat_at"] == "2026-05-27T10:01:00"
+    assert context["step_progress"] == {"done": 50, "total": 100}
 
     terminal = build_finished_run_context(context, {"result": "ok"}, now=finished)
     assert terminal["finished_at"] == "2026-05-27T10:02:00"
