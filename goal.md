@@ -394,6 +394,8 @@ PYTHONPATH=backend python -m pytest -q \
 | Docs | `docs/implementation_plan.md`、`goal.md`、handoff 口径一致 |
 | 用户交付 | 输出 L0-L4 架构全貌、数据流、gate 位置、改前 vs 改后 |
 
+> 2026-06-01 note: `need_027` exact-flow 已确认不是 aif10 的继续 probe 问题；`aif10` 当前没有 `individual_fund_flow` exact capability。后续只有在 registry 新增能力或 route 映射时，才重新打开 exact-flow 恢复线。
+
 ### GCP 规则保持
 
 本计划不启动 GCP。后续如恢复 GCP/Optuna，必须先说明 objective、命令族、预计 wall time/成本、输入快照、输出路径、artifact 保存、monitor/stop/rollback，并且所有 GCP 命令必须显式带:
