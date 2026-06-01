@@ -8,7 +8,7 @@ The model pipeline snapshot below is historical evidence for the completed
 
 ## Current Data Freshness Checkpoint
 
-- updated_at: `2026-06-01 17:04:33 CST`
+- updated_at: `2026-06-01 21:03:42 CST`
 - current_state: `architecture/data freshness repair`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
@@ -38,8 +38,8 @@ The model pipeline snapshot below is historical evidence for the completed
   `mart_data_source_failure_queue` for follow-up triage. 2026-06-01 also
   repaired the `data_health_snapshot.py` writer timestamp insert path so the
   health gate no longer crashes on compact `YYYYMMDDTHHMMSSZ` values; the
-  latest direct dry-run / official cron flow now surface `WARN: 0 red / 3
-  yellow / 341 total` instead of failing on a timestamp parse error, and the
+  latest direct dry-run / official cron flow now surface `PASS: 0 red / 0
+  yellow / 342 total` instead of failing on a timestamp parse error, and the
   official `cron_daily.py` run completed later phases after `sync_raw`
   exceeded its 60s budget; red/yellow rows now carry `writer_prompt`
   owner/sync_step hints for self-triage. Feature panel lane was refreshed
@@ -87,28 +87,26 @@ The model pipeline snapshot below is historical evidence for the completed
   and `build_fund_flow_rank_snapshot_daily.py` were added as research-side
   support only, with the new root test registered in the test registry.
   This does not change the `need_027` exact-flow blocked status.
--- system data-health snapshot: `scripts/chunkyctl doctor --fast` now folds in
+- system data-health snapshot: `scripts/chunkyctl doctor --fast` now folds in
   `backend/scripts/data_health_snapshot.py --dry-run --format json` and fails
-  closed on red tables. Current dry-run evidence is `WARN: 0 red / 2 yellow /
+  closed on red tables. Current dry-run evidence is `PASS: 0 red / 0 yellow /
   342 total`; `warning/monitor_only` assets are capped to yellow, so the red
-  set is empty and the remaining 12 yellow items are maintenance/on-demand
-  debt. `raw_margin_daily` is now a yellow monitor-only missing-table warning
-  instead of a blocker. This is the startup health signal the controller has
-  to read before trusting any freshness claim. Feature panel,
-  capital_behavior, and holder/shareholder-plan lanes have all been cleared
-  from red; GPCW and raw_aif10 are now yellow maintenance only, and
-  `blocking_yellow_tables` are surfaced separately so `quality_gate_level=blocking`
-  yellow assets get next-action priority before generic yellow maintenance.
-  2026-06-01 the `mart_p0b_lambdamart_v6_predictions` ensemble v7 context
-  writer was refreshed, clearing the only blocking yellow table, and
+  set is empty and there are no remaining yellow data-health items.
+  `raw_margin_daily` remains a monitor-only governance placeholder rather than
+  a blocker. This is the startup health signal the controller has to read
+  before trusting any freshness claim. Feature panel, capital_behavior, and
+  holder/shareholder-plan lanes have all been cleared from red; GPCW and
+  raw_aif10 are now green / on-demand governance, and
+  `blocking_yellow_tables` are surfaced separately so
+  `quality_gate_level=blocking` yellow assets get next-action priority before
+  generic yellow maintenance. 2026-06-01 the
+  `mart_p0b_lambdamart_v6_predictions` ensemble v7 context writer was
+  refreshed, clearing the only blocking yellow table, and
   `raw_executive_trade` / `fact_executive_trade_event` were rebuilt locally,
   and `sync_surveys` then refreshed `raw_institution_surveys` /
-  `mart_stock_survey_activity`, dropping the yellow count from 17 to 13,
-  before the later `fact_institution_event` safe rebuild path recovered the
-  main ART index deadlock and brought the current yellow count to 2 with only
-  `fact_paper_sim_trade` and `raw_margin_daily` left as yellow maintenance
-  items; `mart_architecture_cleanup_plan` was reclassified to on-demand
-  governance and is green.
+  `mart_stock_survey_activity`, before the later `fact_institution_event`
+  safe rebuild path recovered the main ART index deadlock; `mart_architecture_cleanup_plan`
+  was reclassified to on-demand governance and is green.
 - survivorship gate: current default `p0a_v3_horizon_governance` PASS; the old
   `p0a_v2_governance_v1` gate remains available only for explicit historical
   review.

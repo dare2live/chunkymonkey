@@ -7,6 +7,7 @@ from conftest import duck_mem
 from scripts.seed_dim_data_asset import (
     _apply_manual_asset_overrides,
     _build_backend_table_reference_index,
+    DEPRECATED_ASSET_BY_TABLE,
     get_all_tables,
     grep_readers,
     grep_writer,
@@ -201,6 +202,16 @@ def test_infer_asset_contract_marks_architecture_cleanup_plan_as_on_demand_gover
     assert contract["coverage_policy"] == "workflow_dependent"
     assert contract["intended_use"] == "governance_context"
     assert contract["quality_gate_level"] == "monitor_only"
+
+
+def test_raw_margin_daily_is_explicitly_retired_from_health_gate():
+    contract = DEPRECATED_ASSET_BY_TABLE["raw_margin_daily"]
+
+    assert contract["deprecation_status"] == "deprecated"
+    assert contract["quality_gate_level"] == "monitor_only"
+    assert contract["expected_freshness"] == "on-demand"
+    assert contract["replacement_table"] is None
+    assert contract["intended_use"] == "governance_context"
 
 
 def test_seed_dim_data_asset_preserves_manual_governance_fields():

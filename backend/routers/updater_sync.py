@@ -35,9 +35,32 @@ async def _step_sync_raw(conn) -> dict:
     loop = asyncio.get_event_loop()
 
     def _do() -> dict:
-        return ingest_holders_tdxhub_raw_parse(workers=4, con=raw_con)
+        raw_stats = ingest_holders_tdxhub_raw_parse(workers=4, con=raw_con)
+
+        from services.tdx_f10_extra_client import sync_tdx_f10_extra_facts
+
+        try:
+            extra_stats = sync_tdx_f10_extra_facts(raw_con)
+        except Exception as exc:
+            logger.warning("[下载/tdxhub] F10 extra parse failed: %s", exc)
+            extra_stats = {
+                "status": "failed",
+                "raw_rows": 0,
+                "holder_count_rows": 0,
+                "trade_b_rows": 0,
+                "control_rows": 0,
+                "common_major_holder_rows": 0,
+                "fund_holding_rows": 0,
+                "fund_holding_rejected_rows": 0,
+                "skipped_non_format_b": 0,
+                "skipped_no_extra_section": 0,
+                "errors": [str(exc)],
+            }
+        raw_stats["extra_stats"] = extra_stats
+        return raw_stats
 
     progress = await loop.run_in_executor(None, _do)
+    extra_stats = progress.get("extra_stats") or {}
     attempted = int(progress.get("done") or 0)
     ok_count = int(progress.get("ok") or 0)
     err_count = int(progress.get("err") or 0)
@@ -61,29 +84,6 @@ async def _step_sync_raw(conn) -> dict:
         f"SELECT COUNT(*) FROM fact_top10_holder_period WHERE {canonical_where}"
     ).fetchone()[0]
     written = max(0, after - before)
-
-    from services.tdx_f10_extra_client import sync_tdx_f10_extra_facts
-
-    try:
-        extra_stats = await loop.run_in_executor(
-            None,
-            lambda: sync_tdx_f10_extra_facts(raw_con),
-        )
-    except Exception as exc:
-        logger.warning("[下载/tdxhub] F10 extra parse failed: %s", exc)
-        extra_stats = {
-            "status": "failed",
-            "raw_rows": 0,
-            "holder_count_rows": 0,
-            "trade_b_rows": 0,
-            "control_rows": 0,
-            "common_major_holder_rows": 0,
-            "fund_holding_rows": 0,
-            "fund_holding_rejected_rows": 0,
-            "skipped_non_format_b": 0,
-            "skipped_no_extra_section": 0,
-            "errors": [str(exc)],
-        }
     if (
         (
             extra_stats.get("errors")

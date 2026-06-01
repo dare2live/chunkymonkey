@@ -278,22 +278,43 @@ def _delete_existing_fact_rows(
 
     if not raw_hash:
         return
+    for table in (
+        "fact_top10_holder_period",
+        "fact_shareholder_plan",
+        "fact_shareholder_trade",
+        "fact_controlling_shareholder",
+    ):
+        _delete_rows_by_rowid(
+            con,
+            table,
+            "stock_code = ? AND source = ? AND raw_hash = ?",
+            (stock_code, source, raw_hash),
+        )
+
+
+def _delete_rows_by_rowid(
+    con: duckdb.DuckDBPyConnection,
+    table: str,
+    where_sql: str,
+    params: tuple,
+) -> int:
+    """Delete matching rows by rowid so we do not depend on fragile delete-index walks."""
+
+    rowids = [
+        r[0]
+        for r in con.execute(
+            f"SELECT rowid FROM {table} WHERE {where_sql}",
+            params,
+        ).fetchall()
+    ]
+    if not rowids:
+        return 0
+    placeholders = ",".join("?" for _ in rowids)
     con.execute(
-        "DELETE FROM fact_top10_holder_period WHERE stock_code = ? AND source = ? AND raw_hash = ?",
-        (stock_code, source, raw_hash),
+        f"DELETE FROM {table} WHERE rowid IN ({placeholders})",
+        rowids,
     )
-    con.execute(
-        "DELETE FROM fact_shareholder_plan WHERE stock_code = ? AND source = ? AND raw_hash = ?",
-        (stock_code, source, raw_hash),
-    )
-    con.execute(
-        "DELETE FROM fact_shareholder_trade WHERE stock_code = ? AND source = ? AND raw_hash = ?",
-        (stock_code, source, raw_hash),
-    )
-    con.execute(
-        "DELETE FROM fact_controlling_shareholder WHERE stock_code = ? AND source = ? AND raw_hash = ?",
-        (stock_code, source, raw_hash),
-    )
+    return len(rowids)
 
 
 def _update_holder_availability_source(con: duckdb.DuckDBPyConnection, rows: list[dict]) -> None:
@@ -525,15 +546,13 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
             )
             holder_value_count = len(_holder_tuple(holders_for_insert[0]))
             holder_insert_sql = f"INSERT INTO fact_top10_holder_period({holder_columns}) VALUES ({', '.join('?' for _ in range(holder_value_count))})"
-            holder_delete_sql = (
-                "DELETE FROM fact_top10_holder_period "
-                "WHERE stock_code = ? AND report_date = ? AND holder_set = ? "
-                "AND source = ? AND is_exit_row = ? AND holder_rank = ? "
-                "AND row_seq = ? AND COALESCE(share_class, '') = COALESCE(?, '')"
-            )
             for row in holders_for_insert:
-                con.execute(
-                    holder_delete_sql,
+                _delete_rows_by_rowid(
+                    con,
+                    "fact_top10_holder_period",
+                    "stock_code = ? AND report_date = ? AND holder_set = ? "
+                    "AND source = ? AND is_exit_row = ? AND holder_rank = ? "
+                    "AND row_seq = ? AND COALESCE(share_class, '') = COALESCE(?, '')",
                     (
                         row.get("stock_code"),
                         row.get("report_date"),

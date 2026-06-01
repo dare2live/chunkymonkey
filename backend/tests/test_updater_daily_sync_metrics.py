@@ -32,6 +32,22 @@ class _SyncRawConn:
         return _FetchOne(self._counts.pop(0))
 
 
+def _stub_extra_stats():
+    return {
+        "status": "completed",
+        "raw_rows": 0,
+        "holder_count_rows": 0,
+        "trade_b_rows": 0,
+        "control_rows": 0,
+        "common_major_holder_rows": 0,
+        "fund_holding_rows": 0,
+        "fund_holding_rejected_rows": 0,
+        "skipped_non_format_b": 0,
+        "skipped_no_extra_section": 0,
+        "errors": [],
+    }
+
+
 class DailySyncMetricsTests(unittest.TestCase):
     def test_snapshot_and_format_include_avg_and_peak(self):
         stats = {}
@@ -94,6 +110,10 @@ def test_sync_raw_reports_failed_when_all_attempted_fetches_error(monkeypatch):
     }
     monkeypatch.setitem(sys.modules, "scripts.ingest_holders_tdxhub", fake_mod)
 
+    import services.tdx_f10_extra_client as extra_client
+
+    monkeypatch.setattr(extra_client, "sync_tdx_f10_extra_facts", lambda _conn: _stub_extra_stats())
+
     result = asyncio.run(_step_sync_raw(_SyncRawConn(before=10, after=10)))
 
     assert result["status"] == "failed"
@@ -111,6 +131,10 @@ def test_sync_raw_reports_partial_for_low_error_rate(monkeypatch):
         "skipped_no_f10": 0,
     }
     monkeypatch.setitem(sys.modules, "scripts.ingest_holders_tdxhub", fake_mod)
+
+    import services.tdx_f10_extra_client as extra_client
+
+    monkeypatch.setattr(extra_client, "sync_tdx_f10_extra_facts", lambda _conn: _stub_extra_stats())
 
     result = asyncio.run(_step_sync_raw(_SyncRawConn(before=10, after=19)))
 

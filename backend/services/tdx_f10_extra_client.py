@@ -533,9 +533,10 @@ def build_tdx_f10_capability_matrix(conn: Any) -> dict[str, Any]:
                 built_at,
             )
         )
+    conn.execute("DELETE FROM mart_tdx_f10_capability_matrix")
     conn.executemany(
         """
-        INSERT OR REPLACE INTO mart_tdx_f10_capability_matrix
+        INSERT INTO mart_tdx_f10_capability_matrix
         (module_id, module_name, endpoint, parser, raw_table, fact_table,
          raw_text_available, parsed_table_available, coverage_stock_count,
          row_count, latest_page_update_date, latest_fetched_at, parser_version,
@@ -658,6 +659,64 @@ def _records_from_payload(payload: Any, fallback: dict[str, Any]) -> list[dict[s
         rec["trade_seq"] = idx
         records.append(rec)
     return records
+
+
+def _dedupe_records_by_key(records: list[dict[str, Any]], key_fields: list[str]) -> list[dict[str, Any]]:
+    """Keep the last record for each key tuple.
+
+    DuckDB ``INSERT OR REPLACE`` has been brittle on these F10 lanes when a
+    batch carries repeated keys or replays an already-written key.  We keep
+    the last record for each key tuple before an atomic upsert.
+    """
+
+    deduped: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for rec in records:
+        key = tuple(rec.get(field) for field in key_fields)
+        deduped[key] = rec
+    return list(deduped.values())
+
+
+def _upsert_rows_on_conflict(
+    conn: Any,
+    *,
+    table: str,
+    cols: list[str],
+    key_fields: list[str],
+    records: list[dict[str, Any]],
+) -> int:
+    if not records:
+        return 0
+    deduped = _dedupe_records_by_key(records, key_fields)
+    update_cols = [c for c in cols if c not in key_fields]
+    update_clause = ", ".join(f"{col} = excluded.{col}" for col in update_cols)
+    sql = (
+        f"INSERT INTO {table} ({','.join(cols)}) "
+        f"VALUES ({','.join(['?'] * len(cols))}) "
+        f"ON CONFLICT({', '.join(key_fields)}) DO UPDATE SET {update_clause}"
+    )
+    for rec in deduped:
+        conn.execute(sql, tuple(rec.get(c) for c in cols))
+    return len(deduped)
+
+
+def _insert_rows_ignore_conflict(
+    conn: Any,
+    *,
+    table: str,
+    cols: list[str],
+    key_fields: list[str],
+    records: list[dict[str, Any]],
+) -> int:
+    if not records:
+        return 0
+    deduped = _dedupe_records_by_key(records, key_fields)
+    sql = (
+        f"INSERT OR IGNORE INTO {table} ({','.join(cols)}) "
+        f"VALUES ({','.join(['?'] * len(cols))})"
+    )
+    for rec in deduped:
+        conn.execute(sql, tuple(rec.get(c) for c in cols))
+    return len(deduped)
 
 
 def _select_raw_rows(
@@ -865,10 +924,12 @@ def _insert_holder_count_rows(conn: Any, records: list[dict[str, Any]]) -> int:
         "close_price_text", "close_price", "page_update_date", "source",
         "raw_hash", "fetched_at", "row_seq",
     ]
-    conn.executemany(
-        f"INSERT OR REPLACE INTO raw_tdx_f10_holder_count_history ({','.join(cols)}) "
-        f"VALUES ({','.join(['?'] * len(cols))})",
-        [tuple(rec.get(c) for c in cols) for rec in records],
+    inserted_raw = _insert_rows_ignore_conflict(
+        conn,
+        table="raw_tdx_f10_holder_count_history",
+        cols=cols,
+        key_fields=["stock_code", "raw_hash", "row_seq"],
+        records=records,
     )
 
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -892,12 +953,14 @@ def _insert_holder_count_rows(conn: Any, records: list[dict[str, Any]]) -> int:
         fact["updated_at"] = now
         fact_rows.append(tuple(fact.get(c) for c in fact_cols))
     if fact_rows:
-        conn.executemany(
-            f"INSERT OR REPLACE INTO fact_holder_count_period ({','.join(fact_cols)}) "
-            f"VALUES ({','.join(['?'] * len(fact_cols))})",
-            fact_rows,
+        _upsert_rows_on_conflict(
+            conn,
+            table="fact_holder_count_period",
+            cols=fact_cols,
+            key_fields=["stock_code", "report_date", "source"],
+            records=[dict(zip(fact_cols, row)) for row in fact_rows],
         )
-    return len(records)
+    return inserted_raw
 
 
 def _insert_trade_b_rows(
@@ -924,10 +987,12 @@ def _insert_trade_b_rows(
         rec["source_date_quality"] = quality
         rec["source_tier"] = 1
         rows.append(tuple(rec.get(c) for c in cols))
-    conn.executemany(
-        f"INSERT OR REPLACE INTO fact_shareholder_trade_tdx_b ({','.join(cols)}) "
-        f"VALUES ({','.join(['?'] * len(cols))})",
-        rows,
+    _upsert_rows_on_conflict(
+        conn,
+        table="fact_shareholder_trade_tdx_b",
+        cols=cols,
+        key_fields=["stock_code", "raw_hash", "trade_seq"],
+        records=[dict(zip(cols, row)) for row in rows],
     )
     return len(records)
 
@@ -967,10 +1032,12 @@ def _insert_shareholder_plan_rows(conn: Any, records: list[dict[str, Any]]) -> i
         rec["source_date_quality"] = quality
         rec["source_tier"] = 1
         rows.append(tuple(rec.get(c) for c in cols))
-    conn.executemany(
-        f"INSERT OR REPLACE INTO fact_shareholder_plan_tdx_f10 ({','.join(cols)}) "
-        f"VALUES ({','.join(['?'] * len(cols))})",
-        rows,
+    _upsert_rows_on_conflict(
+        conn,
+        table="fact_shareholder_plan_tdx_f10",
+        cols=cols,
+        key_fields=["stock_code", "raw_hash", "row_seq"],
+        records=[dict(zip(cols, row)) for row in rows],
     )
     return len(records)
 
@@ -996,10 +1063,12 @@ def _insert_common_major_holder_rows(conn: Any, records: list[dict[str, Any]]) -
         rec["source_date_quality"] = quality
         rec["source_tier"] = 1
         rows.append(tuple(rec.get(c) for c in cols))
-    conn.executemany(
-        f"INSERT OR REPLACE INTO fact_common_major_holder_stock ({','.join(cols)}) "
-        f"VALUES ({','.join(['?'] * len(cols))})",
-        rows,
+    _upsert_rows_on_conflict(
+        conn,
+        table="fact_common_major_holder_stock",
+        cols=cols,
+        key_fields=["stock_code", "major_holder_name", "peer_stock_code", "row_seq"],
+        records=[dict(zip(cols, row)) for row in rows],
     )
     return len(records)
 
@@ -1043,10 +1112,12 @@ def _insert_fund_holding_rows(conn: Any, records: list[dict[str, Any]]) -> tuple
         rec["source_tier"] = 1
         rows.append(tuple(rec.get(c) for c in cols))
     if rows:
-        conn.executemany(
-            f"INSERT OR REPLACE INTO fact_fund_holding_tdx_f10 ({','.join(cols)}) "
-            f"VALUES ({','.join(['?'] * len(cols))})",
-            rows,
+        _upsert_rows_on_conflict(
+            conn,
+            table="fact_fund_holding_tdx_f10",
+            cols=cols,
+            key_fields=["stock_code", "fund_name", "report_date", "row_seq"],
+            records=[dict(zip(cols, row)) for row in rows],
         )
     return len(rows), rejected
 
@@ -1079,10 +1150,12 @@ def _upsert_control(conn: Any, rec: dict[str, Any] | None, fallback: dict[str, A
     if not row["stock_code"] or not row["source"]:
         return 0
     cols = list(row.keys())
-    conn.execute(
-        f"INSERT OR REPLACE INTO fact_controlling_shareholder ({','.join(cols)}) "
-        f"VALUES ({','.join(['?'] * len(cols))})",
-        tuple(row[c] for c in cols),
+    _upsert_rows_on_conflict(
+        conn,
+        table="fact_controlling_shareholder",
+        cols=cols,
+        key_fields=["stock_code", "source"],
+        records=[row],
     )
     return 1
 
@@ -1213,10 +1286,12 @@ def _upsert_parse_status(
         "error": error,
     }
     cols = list(row.keys())
-    conn.execute(
-        f"INSERT OR REPLACE INTO raw_tdx_f10_extra_parse_status ({','.join(cols)}) "
-        f"VALUES ({','.join(['?'] * len(cols))})",
-        tuple(row[c] for c in cols),
+    _upsert_rows_on_conflict(
+        conn,
+        table="raw_tdx_f10_extra_parse_status",
+        cols=cols,
+        key_fields=["stock_code", "raw_hash"],
+        records=[row],
     )
 
 

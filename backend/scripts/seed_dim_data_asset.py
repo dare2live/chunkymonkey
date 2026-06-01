@@ -457,6 +457,34 @@ EXTRA_ASSET_CONTRACT_BY_TABLE = {
     },
 }
 
+EXTRA_DEPRECATED_ASSET_BY_TABLE = {
+    # Phase ψ.5 removed — dead data. Keep the ledger row for governance, but do
+    # not let the missing table stay in yellow health forever.
+    "raw_margin_daily": {
+        "purpose": "融资融券日度已退役",
+        "writer_module": "services/margin_client.py",
+        "upstream_source": "akshare:stock_margin_detail_sse/szse",
+        "source_tier": 3,
+        "expected_freshness": "on-demand",
+        "sla_hours": 24 * 30,
+        "asset_grain": "stock_code+trade_date",
+        "asset_cadence": "on_demand",
+        "coverage_policy": "workflow_dependent",
+        "null_policy": "classified_required",
+        "pit_policy": "not_model_input",
+        "intended_use": "governance_context",
+        "model_eligibility": "not_model_input",
+        "strategy_eligibility": "diagnostics_or_context",
+        "frontend_visibility": "governance_visible",
+        "quality_gate_level": "monitor_only",
+        "deprecation_status": "deprecated",
+        "deprecated_reason": "Phase ψ.5 removed — no live writer or current consumer remains",
+        "replacement_table": None,
+    },
+}
+
+DEPRECATED_ASSET_BY_TABLE = EXTRA_DEPRECATED_ASSET_BY_TABLE
+
 
 def registry_writer(table: str) -> str | None:
     found = _registry_table_metadata(table)
@@ -1029,7 +1057,13 @@ def main() -> int:
     ensure_dim_data_asset_governance_columns(con)
     log.info("scanning all tables...")
     tables = get_all_tables(con)
-    log.info("total tables: %d", len(tables))
+    deprecated_tables = [
+        tbl for tbl in EXTRA_DEPRECATED_ASSET_BY_TABLE
+        if tbl not in {name for name, _row_count in tables}
+    ]
+    if deprecated_tables:
+        tables = tables + [(tbl, 0) for tbl in deprecated_tables]
+    log.info("total tables: %d (+%d deprecated assets)", len(tables) - len(deprecated_tables), len(deprecated_tables))
     text_index = _backend_python_text_index()
     log.info("indexed %d backend python files", len(text_index))
     writer_index, reader_index = _build_backend_table_reference_index(
@@ -1057,6 +1091,9 @@ def main() -> int:
             "sla_hours",
             "consumed_by_views",
             "notes",
+            "deprecation_status",
+            "deprecated_reason",
+            "replacement_table",
             *[column for column in GOVERNANCE_COLUMNS if column in dim_cols],
         ]
         for r in con.execute(
@@ -1066,6 +1103,7 @@ def main() -> int:
     except Exception:
         pass
     log.info("existing dim_data_asset rows: %d", len(existing))
+    table_names = {tbl for tbl, _row_count in tables}
 
     upserted = 0
     skipped = 0
@@ -1074,11 +1112,20 @@ def main() -> int:
             # 自身不在自审计内 (避免循环)
             continue
         layer = detect_layer(tbl)
-        writer = registry_writer(tbl) or EXTRA_WRITER_BY_TABLE.get(tbl) or writer_index.get(tbl)
+        deprecation = EXTRA_DEPRECATED_ASSET_BY_TABLE.get(tbl, {})
+        writer = (
+            deprecation.get("writer_module")
+            or registry_writer(tbl)
+            or EXTRA_WRITER_BY_TABLE.get(tbl)
+            or writer_index.get(tbl)
+        )
         readers = list(reader_index.get(tbl) or [])
         # 排除自引用
         readers = [r for r in readers if r != writer]
         upstream, source_tier = known_upstream(tbl)
+        if deprecation:
+            upstream = deprecation.get("upstream_source", upstream)
+            source_tier = deprecation.get("source_tier", source_tier)
         # 派生表: writer 是脚本 + readers 多, upstream 通常是 derived
         if upstream is None:
             if layer in ("fact", "mart") and writer is not None:
@@ -1104,6 +1151,15 @@ def main() -> int:
                 governance=governance,
             )
         )
+        if deprecation:
+            purpose = deprecation.get("purpose", purpose)
+            upstream = deprecation.get("upstream_source", upstream)
+            source_tier = deprecation.get("source_tier", source_tier)
+            freshness = deprecation.get("expected_freshness", freshness)
+            sla = deprecation.get("sla_hours", sla)
+        deprecation_status = deprecation.get("deprecation_status", "active")
+        deprecated_reason = deprecation.get("deprecated_reason")
+        replacement_table = deprecation.get("replacement_table")
 
         readers_json = json.dumps(readers, ensure_ascii=False)
         # consumed_by_views: 简单 grep frontend 找 fetch('/api/...) 含表名 (粗略)
@@ -1140,6 +1196,9 @@ def main() -> int:
                 source_tier = EXCLUDED.source_tier,
                 expected_freshness = EXCLUDED.expected_freshness,
                 sla_hours = EXCLUDED.sla_hours,
+                deprecation_status = EXCLUDED.deprecation_status,
+                deprecated_reason = EXCLUDED.deprecated_reason,
+                replacement_table = EXCLUDED.replacement_table,
                 asset_grain = EXCLUDED.asset_grain,
                 asset_cadence = EXCLUDED.asset_cadence,
                 coverage_policy = EXCLUDED.coverage_policy,
@@ -1172,6 +1231,15 @@ def main() -> int:
                 sla_hours = CASE WHEN dim_data_asset.auto_discovered
                                  THEN EXCLUDED.sla_hours
                                  ELSE COALESCE(dim_data_asset.sla_hours, EXCLUDED.sla_hours) END,
+                deprecation_status = CASE WHEN dim_data_asset.auto_discovered
+                                          THEN EXCLUDED.deprecation_status
+                                          ELSE COALESCE(dim_data_asset.deprecation_status, EXCLUDED.deprecation_status) END,
+                deprecated_reason = CASE WHEN dim_data_asset.auto_discovered
+                                         THEN EXCLUDED.deprecated_reason
+                                         ELSE COALESCE(dim_data_asset.deprecated_reason, EXCLUDED.deprecated_reason) END,
+                replacement_table = CASE WHEN dim_data_asset.auto_discovered
+                                         THEN EXCLUDED.replacement_table
+                                         ELSE COALESCE(dim_data_asset.replacement_table, EXCLUDED.replacement_table) END,
                 asset_grain = CASE WHEN dim_data_asset.auto_discovered
                                    THEN EXCLUDED.asset_grain
                                    ELSE COALESCE(dim_data_asset.asset_grain, EXCLUDED.asset_grain) END,
@@ -1209,17 +1277,19 @@ def main() -> int:
                 table_name, layer, purpose, writer_module, reader_modules,
                 upstream_source, source_tier, expected_freshness, sla_hours,
                 consumed_by_views,
+                deprecation_status, deprecated_reason, replacement_table,
                 asset_grain, asset_cadence, coverage_policy, null_policy,
                 pit_policy, intended_use, model_eligibility,
                 strategy_eligibility, frontend_visibility, quality_gate_level,
                 auto_discovered, last_updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, now())
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, now())
             ON CONFLICT (table_name) DO UPDATE SET
                 {update_clause}
         """, (
             tbl, layer, purpose, writer, readers_json,
             upstream, source_tier, freshness, sla,
             consumed_by_views,
+            deprecation_status, deprecated_reason, replacement_table,
             governance["asset_grain"],
             governance["asset_cadence"],
             governance["coverage_policy"],

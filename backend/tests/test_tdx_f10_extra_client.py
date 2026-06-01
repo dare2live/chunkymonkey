@@ -10,6 +10,7 @@ from services.tdx_f10_extra_client import (
     backfill_tdx_f10_shareholder_plans,
     backfill_tdx_f10_source_dates,
     build_tdx_f10_capability_matrix,
+    _insert_holder_count_rows,
     _insert_fund_holding_rows,
     ensure_tables,
     sync_tdx_f10_extra_facts,
@@ -243,6 +244,7 @@ def test_build_tdx_f10_capability_matrix_records_raw_and_fact_coverage():
         )
 
         result = build_tdx_f10_capability_matrix(conn)
+        result2 = build_tdx_f10_capability_matrix(conn)
         row = conn.execute(
             """
             SELECT status, coverage_stock_count, row_count, source_date_field,
@@ -267,6 +269,7 @@ def test_build_tdx_f10_capability_matrix_records_raw_and_fact_coverage():
         ).fetchone()
 
         assert result["capability_rows"] >= 7
+        assert result2["capability_rows"] >= 7
         assert row["status"] == "ready"
         assert row["coverage_stock_count"] == 1
         assert row["row_count"] == 1
@@ -463,6 +466,246 @@ def test_sync_tdx_f10_extra_records_skipped_non_format_b_as_terminal():
         assert second["raw_rows"] == 0
         assert row["status"] == "skipped_non_format_b"
         assert row["parser_version"] == "tdx_f10_extra_v2"
+    finally:
+        conn.close()
+
+
+def test_insert_holder_count_rows_dedupes_duplicate_primary_keys():
+    conn = duck_mem()
+    try:
+        ensure_tables(conn)
+        records = [
+            {
+                "stock_code": "300124",
+                "stock_name": "汇川技术",
+                "market": "SZ",
+                "report_date": "2026-05-29",
+                "report_date_text": "2026-05-29",
+                "holder_count_text": "15.21万",
+                "holder_count": 152138,
+                "holder_count_change_text": "-8184",
+                "holder_count_change": -8184,
+                "holder_count_change_pct_text": "-5.10",
+                "holder_count_change_pct": -5.1,
+                "avg_float_shares_text": "2.38亿",
+                "avg_float_shares": 238000000,
+                "avg_float_shares_change_pct_text": "0.00",
+                "avg_float_shares_change_pct": 0.0,
+                "close_price_text": "50.12",
+                "close_price": 50.12,
+                "page_update_date": "2026-06-01",
+                "source": "tdx_f10",
+                "raw_hash": "dup_hash",
+                "fetched_at": "2026-06-01T06:46:48",
+                "row_seq": 1,
+            },
+            {
+                "stock_code": "300124",
+                "stock_name": "汇川技术",
+                "market": "SZ",
+                "report_date": "2026-05-29",
+                "report_date_text": "2026-05-29",
+                "holder_count_text": "15.21万",
+                "holder_count": 152138,
+                "holder_count_change_text": "-8184",
+                "holder_count_change": -8184,
+                "holder_count_change_pct_text": "-5.10",
+                "holder_count_change_pct": -5.1,
+                "avg_float_shares_text": "2.38亿",
+                "avg_float_shares": 238000000,
+                "avg_float_shares_change_pct_text": "0.00",
+                "avg_float_shares_change_pct": 0.0,
+                "close_price_text": "50.12",
+                "close_price": 50.12,
+                "page_update_date": "2026-06-01",
+                "source": "tdx_f10",
+                "raw_hash": "dup_hash",
+                "fetched_at": "2026-06-01T06:46:48",
+                "row_seq": 1,
+            },
+        ]
+
+        inserted = _insert_holder_count_rows(conn, records)
+        raw_count = conn.execute(
+            """
+            SELECT COUNT(*) AS n
+              FROM raw_tdx_f10_holder_count_history
+             WHERE stock_code = '300124' AND raw_hash = 'dup_hash'
+            """
+        ).fetchone()["n"]
+        fact_count = conn.execute(
+            """
+            SELECT COUNT(*) AS n
+              FROM fact_holder_count_period
+             WHERE stock_code = '300124' AND report_date = '2026-05-29'
+            """
+        ).fetchone()["n"]
+
+        assert inserted == 1
+        assert raw_count == 1
+        assert fact_count == 1
+    finally:
+        conn.close()
+
+
+def test_insert_holder_count_rows_replaces_existing_stock_snapshot():
+    conn = duck_mem()
+    try:
+        ensure_tables(conn)
+        records = [
+            {
+                "stock_code": "300183",
+                "stock_name": "东软载波",
+                "market": "SZ",
+                "report_date": "2026-05-20",
+                "report_date_text": "2026-05-20",
+                "holder_count_text": "1.23万",
+                "holder_count": 12345,
+                "holder_count_change_text": "-100",
+                "holder_count_change": -100,
+                "holder_count_change_pct_text": "-0.8",
+                "holder_count_change_pct": -0.8,
+                "avg_float_shares_text": "2.34亿",
+                "avg_float_shares": 234000000,
+                "avg_float_shares_change_pct_text": "0.1",
+                "avg_float_shares_change_pct": 0.1,
+                "close_price_text": "12.34",
+                "close_price": 12.34,
+                "page_update_date": "2026-06-01",
+                "source": "tdx_f10",
+                "raw_hash": "snap_hash",
+                "fetched_at": "2026-06-01T06:46:48",
+                "row_seq": 1,
+            },
+            {
+                "stock_code": "300183",
+                "stock_name": "东软载波",
+                "market": "SZ",
+                "report_date": "2026-03-31",
+                "report_date_text": "2026-03-31",
+                "holder_count_text": "1.25万",
+                "holder_count": 12450,
+                "holder_count_change_text": "-90",
+                "holder_count_change": -90,
+                "holder_count_change_pct_text": "-0.7",
+                "holder_count_change_pct": -0.7,
+                "avg_float_shares_text": "2.33亿",
+                "avg_float_shares": 233000000,
+                "avg_float_shares_change_pct_text": "0.0",
+                "avg_float_shares_change_pct": 0.0,
+                "close_price_text": "11.11",
+                "close_price": 11.11,
+                "page_update_date": "2026-06-01",
+                "source": "tdx_f10",
+                "raw_hash": "snap_hash",
+                "fetched_at": "2026-06-01T06:46:48",
+                "row_seq": 2,
+            },
+        ]
+
+        first = _insert_holder_count_rows(conn, records)
+        second = _insert_holder_count_rows(conn, records)
+        raw_count = conn.execute(
+            """
+            SELECT COUNT(*) AS n
+              FROM raw_tdx_f10_holder_count_history
+             WHERE stock_code = '300183' AND raw_hash = 'snap_hash'
+            """
+        ).fetchone()["n"]
+        fact_count = conn.execute(
+            """
+            SELECT COUNT(*) AS n
+              FROM fact_holder_count_period
+             WHERE stock_code = '300183'
+            """
+        ).fetchone()["n"]
+
+        assert first == 2
+        assert second == 2
+        assert raw_count == 2
+        assert fact_count == 2
+    finally:
+        conn.close()
+
+
+def test_insert_holder_count_rows_preserves_multiple_raw_snapshots_for_same_stock():
+    conn = duck_mem()
+    try:
+        ensure_tables(conn)
+        snapshot_1 = [
+            {
+                "stock_code": "300183",
+                "stock_name": "东软载波",
+                "market": "SZ",
+                "report_date": "2026-05-20",
+                "report_date_text": "2026-05-20",
+                "holder_count_text": "1.23万",
+                "holder_count": 12345,
+                "holder_count_change_text": "-100",
+                "holder_count_change": -100,
+                "holder_count_change_pct_text": "-0.8",
+                "holder_count_change_pct": -0.8,
+                "avg_float_shares_text": "2.34亿",
+                "avg_float_shares": 234000000,
+                "avg_float_shares_change_pct_text": "0.1",
+                "avg_float_shares_change_pct": 0.1,
+                "close_price_text": "12.34",
+                "close_price": 12.34,
+                "page_update_date": "2026-06-01",
+                "source": "tdx_f10",
+                "raw_hash": "snap_hash_1",
+                "fetched_at": "2026-06-01T06:46:48",
+                "row_seq": 1,
+            }
+        ]
+        snapshot_2 = [
+            {
+                "stock_code": "300183",
+                "stock_name": "东软载波",
+                "market": "SZ",
+                "report_date": "2026-05-20",
+                "report_date_text": "2026-05-20",
+                "holder_count_text": "1.30万",
+                "holder_count": 13000,
+                "holder_count_change_text": "-50",
+                "holder_count_change": -50,
+                "holder_count_change_pct_text": "-0.4",
+                "holder_count_change_pct": -0.4,
+                "avg_float_shares_text": "2.34亿",
+                "avg_float_shares": 234000000,
+                "avg_float_shares_change_pct_text": "0.1",
+                "avg_float_shares_change_pct": 0.1,
+                "close_price_text": "12.34",
+                "close_price": 12.34,
+                "page_update_date": "2026-06-01",
+                "source": "tdx_f10",
+                "raw_hash": "snap_hash_2",
+                "fetched_at": "2026-06-01T06:46:49",
+                "row_seq": 1,
+            }
+        ]
+
+        first = _insert_holder_count_rows(conn, snapshot_1)
+        second = _insert_holder_count_rows(conn, snapshot_2)
+        raw_count = conn.execute(
+            """
+            SELECT COUNT(*) AS n
+              FROM raw_tdx_f10_holder_count_history
+             WHERE stock_code = '300183'
+            """
+        ).fetchone()["n"]
+        fact_row = conn.execute(
+            """
+            SELECT holder_count
+              FROM fact_holder_count_period
+             WHERE stock_code = '300183' AND report_date = '2026-05-20'
+            """
+        ).fetchone()
+
+        assert first == 1
+        assert second == 1
+        assert raw_count == 2
+        assert fact_row["holder_count"] == 13000
     finally:
         conn.close()
 
