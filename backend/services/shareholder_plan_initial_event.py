@@ -124,9 +124,9 @@ def ensure_shareholder_plan_initial_event_table(conn: Any) -> None:
 def build_shareholder_plan_initial_event(conn: Any) -> dict[str, Any]:
     """Materialize initial plan-announcement events without latest progress leakage."""
 
+    conn.execute(f"DROP TABLE IF EXISTS {MART_TABLE}")
     ensure_shareholder_plan_initial_event_table(conn)
     if not _table_exists(conn, SOURCE_TABLE):
-        conn.execute(f"DELETE FROM {MART_TABLE}")
         conn.commit()
         record_actual_version(conn, MART_TABLE)
         return {

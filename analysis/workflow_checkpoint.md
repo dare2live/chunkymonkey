@@ -38,11 +38,14 @@ The model pipeline snapshot below is historical evidence for the completed
   `mart_data_source_failure_queue` for follow-up triage. 2026-06-01 also
   repaired the `data_health_snapshot.py` writer timestamp insert path so the
   health gate no longer crashes on compact `YYYYMMDDTHHMMSSZ` values; the
-  latest direct dry-run / official cron flow now surface `FAIL: 9 red / 20
+  latest direct dry-run / official cron flow now surface `WARN: 0 red / 18
   yellow / 341 total` instead of failing on a timestamp parse error, and the
   official `cron_daily.py` run completed later phases after `sync_raw`
   exceeded its 60s budget; red/yellow rows now carry `writer_prompt`
-  owner/sync_step hints for self-triage.
+  owner/sync_step hints for self-triage. Feature panel lane was refreshed
+  successfully, removing `fact_feature_panel`,
+  `mart_feature_panel_validation`, and `mart_feature_panel_prune_run` from
+  red.
 - stage-opt audit: 2026-06-01 repaired the 2025-08-01→2026-05-29
   `fact_stock_technical_stage` / `fact_signal_context` discontinuity and
   reran `audit_stage_opt_candidate_supply.py`; full-history coverage is now
@@ -86,12 +89,14 @@ The model pipeline snapshot below is historical evidence for the completed
   This does not change the `need_027` exact-flow blocked status.
 - system data-health snapshot: `scripts/chunkyctl doctor --fast` now folds in
   `backend/scripts/data_health_snapshot.py --dry-run --format json` and fails
-  closed on red tables. Current dry-run evidence is `FAIL: 13 red / 23 yellow /
+  closed on red tables. Current dry-run evidence is `WARN: 0 red / 18 yellow /
   341 total`; `warning/monitor_only` assets are capped to yellow, so the red
-  set now contains only the 13 blocking assets. `raw_margin_daily` is now a
-  yellow monitor-only missing-table warning instead of a blocker. This is the
-  startup health blocker the controller has to read before trusting any
-  freshness claim.
+  set is empty and the remaining 18 yellow items are maintenance/on-demand
+  debt. `raw_margin_daily` is now a yellow monitor-only missing-table warning
+  instead of a blocker. This is the startup health signal the controller has
+  to read before trusting any freshness claim. Feature panel,
+  capital_behavior, and holder/shareholder-plan lanes have all been cleared
+  from red; GPCW and raw_aif10 are now yellow maintenance only.
 - survivorship gate: current default `p0a_v3_horizon_governance` PASS; the old
   `p0a_v2_governance_v1` gate remains available only for explicit historical
   review.

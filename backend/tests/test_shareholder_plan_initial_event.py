@@ -4,6 +4,7 @@ from conftest import duck_mem
 from services.shareholder_plan_initial_event import (
     MART_TABLE,
     build_shareholder_plan_initial_event,
+    ensure_shareholder_plan_initial_event_table,
 )
 
 
@@ -94,6 +95,30 @@ def test_build_shareholder_plan_initial_event_dedupes_to_initial_notice_grain() 
         assert rows[0]["raw_hash"] == "hash_new"
         assert rows[1]["source_notice_date"] == "2025-01-10"
         assert rows[1]["source_date_quality"] == "parsed_announce_date_initial_event"
+
+
+def test_build_shareholder_plan_initial_event_rebuilds_existing_mart() -> None:
+    with duck_mem() as conn:
+        _seed_source(conn)
+        ensure_shareholder_plan_initial_event_table(conn)
+        conn.execute(
+            f"""
+            INSERT INTO {MART_TABLE} (
+                stock_code, stock_name, source_notice_date, source_available_date,
+                source_date_quality, source_row_grain, direction, built_at
+            ) VALUES ('DUMMY', '旧数据', '2024-01-01', '2024-01-01',
+                      'legacy', 'initial_shareholder_plan_notice', 'increase',
+                      '2024-01-01T00:00:00')
+            """
+        )
+
+        result = build_shareholder_plan_initial_event(conn)
+
+        assert result["status"] == "completed"
+        rows = conn.execute(
+            f"SELECT stock_code, source_notice_date FROM {MART_TABLE} ORDER BY stock_code"
+        ).fetchall()
+        assert [row["stock_code"] for row in rows] == ["000001", "000002"]
 
 
 def test_build_shareholder_plan_initial_event_handles_missing_source_table() -> None:

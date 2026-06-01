@@ -9,7 +9,7 @@
 > `docs/architecture_reform_context.md` 后形成的执行计划。`docs/implementation_plan.md`
 > 已同步为同一架构优先口径。
 
-### 当前 FAIL / 风险先记
+### 当前 WARN / 风险先记
 
 | 项 | 当前状态 | 风险/决策 |
 |---|---:|---|
@@ -21,7 +21,7 @@
 | 硬编码治理 | 已纳入 `AGENTS.md`、bootstrap、top-level design review 和 chunkymonkey skills | 业务规则/阈值/source catalog/数据源优先级默认归 config/table/service；Python 只留测试夹具、数学常量、schema/enum、SQL DDL 或有证据的例外 |
 | 删除治理 | 已纳入 `AGENTS.md`、top-level design review 和 chunkymonkey skills | 经 CodeGraph + `rg` + 测试/审计验证可删的代码必须真删；不允许用注释、隐藏开关、改名、dead branch 或空壳保留来掩饰残留 |
 | 数据需求契约 | **PASS scoped audit / 生产库未写**: `tdx_data_need_coverage.yaml` 已把 `grain`、`pit_key`、`freshness_sla`、`evidence_status`、`production_eligibility` 升级为每个 need 的必填契约；`audit_tdx_data_need_coverage.py` 缺字段/非法 enum/eligible+unknown PIT 会 FAIL，DDL 与 `schema_marts.py` 已补新列 | 当前只验证配置 loader 与临时 DuckDB 物化，未写生产 DuckDB；后续 source 增删改必须先登记 need contract，再走 source probe、PIT/freshness、exact-sync 和 consumer eligibility |
-| 系统级数据健康审计 | **FAIL: 9 red / 20 yellow / 341 total**: `scripts/chunkyctl doctor --fast` 现在把 `data_health_snapshot.py --dry-run --format json` 作为系统门禁的一部分；审计已按 `quality_gate_level` 把 `warning/monitor_only` 资产降到黄，真正 blocking 的只有 9 张红表，`raw_margin_daily` 缺表也已降为 monitor-only 黄告警；2026-06-01 还把 `last_writer_at` 写入路径做了 timestamp normalization，`data_health_snapshot.py` 不再被紧凑时间戳格式卡死，官方 `cron_daily.py` 也已跑完全流程并把 `sync_raw` 60s budget timeout、health critical 9 red / 20 yellow / 341 total 这些问题显式吐出来；红/黄条目现在还会带 `writer_prompt` / owner / sync_step，便于系统自己把问题提示到对应写入端 | 这是 fail-closed 的系统级健康信号，不是 cosmetic warning；必须按 bucket 逐个复核 9 张 blocking 红表、定位 first bad writer 或明确 evidence gap，同时把 `sync_raw` 超时当成同步层的系统提示，而不是继续沿用“局部补修就算通过”的旧口径 |
+| 系统级数据健康审计 | **WARN: 0 red / 18 yellow / 341 total**: `scripts/chunkyctl doctor --fast` 现在把 `data_health_snapshot.py --dry-run --format json` 作为系统门禁的一部分；审计已按 `quality_gate_level` 把 `warning/monitor_only` 资产降到黄，blocking 红表已清零，`raw_margin_daily` 缺表也已降为 monitor-only 黄告警；2026-06-01 还把 `last_writer_at` 写入路径做了 timestamp normalization，`data_health_snapshot.py` 不再被紧凑时间戳格式卡死，官方 `cron_daily.py` 也已跑完全流程并把 `sync_raw` 60s budget timeout、health critical 0 red / 18 yellow / 341 total 这些问题显式吐出来；红/黄条目现在还会带 `writer_prompt` / owner / sync_step，便于系统自己把问题提示到对应写入端。2026-06-01 先用 writer-lane 方式刷新了 feature panel lane，`fact_feature_panel` / `mart_feature_panel_validation` / `mart_feature_panel_prune_run` 已从红里退出，随后 `capital_behavior` lane 成功补齐 `dim_capital_behavior_latest`，holder/shareholder-plan lane 也已通过 parse-raw-only + backfill + mart 重建清出红区；GPCW 与 raw_aif10 已退回 yellow maintenance，不再是 blocker，说明按 lane triage 比逐表补修更有杠杆 | 这是 fail-closed 的系统级健康信号，不是 cosmetic warning；当前没有 blocking 红表，但仍要按 bucket 复核 18 个 yellow 维护项，区分 expected on-demand 资产和 writer/SLA debt，同时把 `sync_raw` 超时当成同步层的系统提示，而不是继续沿用“局部补修就算通过”的旧口径 |
 | 库内 artifact/cache 污染审计 | **PASS / 未发现 LifeHack 自嵌套，单行大 payload FAIL 已迁移**: `audit_storage_payloads.py` 已改为只扫 payload-like 列，并用 JSON key 形态识别递归，避免把普通 `stock_code/date/built_at` 或命令字符串误判为循环引用；`chunkyctl doctor --fast` 现在默认包含 storage payload summary。2026-06-01 已将 `mart_today_signal_cache.signals_json` 20,220,095 bytes / 9,286 signals 从主表整包 JSON 迁入 `mart_today_signal_cache_signal` 明细表，主表只留 summary/cache metadata + `signals_json='[]'` 兼容字段；随后在 `storage_retention.yaml` 为 11 个经审查的有界 raw/detail/lineage pointer 列登记 owner、classification、单条/总量上限和 path-marker 许可。最新真实库审计: 320 columns scanned / 0 FAIL / 0 WARN / 11 reviewed PASS / recursive hits 0。 | 这不是清表/VACUUM，也不是把风险静默跳过；未来若这些列出现递归 key、单条超 cap、总量超 cap 或未许可 path marker，会重新 WARN/FAIL。后续 storage 治理从“是否自嵌套”转向容量/保留期/可重算性分批治理。 |
 | 文档引用图 / 循环权威链 | **PASS scoped / 10 active docs**: `docs/` 已压缩为 10 个活文档；旧研究/RCA/spec 已迁 `analysis/docs_archive_20260531/`；`audit_docs_graph.py` 当前区分 authority edge 与 context-only edge，运行快照/dated handoff 不再参与权威 SCC。 | 最新实跑: 13 sources / 260 edges / 191 authority edges / 23 context-only edges / 0 unresolved live refs / 0 missing archive targets / 0 forbidden SCC / largest SCC 7；后续新增活文档必须同批合并/归档/删除旧文档，保持 `docs/*.md <= 10`。 |
 | 文档清理切片验收 | **PASS scoped when worktree clean / gate active**: `scripts/chunkyctl docs --format markdown` 已把 docs graph 与 docs/archive/support dirty 切片合并输出；docs_graph 当前 PASS，`docs/*.md=10`。本轮 storage-tool 切片修改期间该 gate 只因 support files dirty 显示 WARN。 | 这证明循环权威链已清且工具可用；后续 staging/commit 必须把 docs 删除、analysis 归档、docs map、goal/implementation、`audit_docs_graph.py`/tests、`chunkyctl docs` 入口作为同一 reviewed slice 处理，不能 `git add .`。 |
@@ -148,7 +148,7 @@
 
 | 阶段 | 优先级 | 目标 | 主要动作 | 验收 |
 |---:|---|---|---|---|
-| 0 | P0 | 冻结现场和 scope | `git status --short`; `scripts/chunkyctl worktree --format markdown`; 按 dirty bucket 分类 tracked dirty / untracked；不 stage data parquet / skill 目录 / 无关文档；先删可再生本地残留 | 2026-06-01 dirty entries 已清零；`scripts/chunkyctl worktree --format markdown` PASS / total=0 / unknown=0 |
+| 0 | P0 | 冻结现场和 scope | `git status --short`; `scripts/chunkyctl worktree --format markdown`; 按 dirty bucket 分类 tracked dirty / untracked；不 stage data parquet / skill 目录 / 无关文档；先删可再生本地残留 | 2026-06-01 之前 dirty entries 曾清零；当前 worktree 仍有 8 个 tracked mods（holder/shareholder-plan slice），需按 bucket 收束后再 commit；`scripts/chunkyctl worktree --format markdown` 仍应以 bucket 方式下钻 |
 | 1 | P0 | Universe lint 从误标 FAIL 变成真实剩余清单 | 修 5 处 `rule-compliance` 同行；复跑 checker；记录 non-test 剩余 | 5 处从报告消失，剩余列表可分组 |
 | 2 | P0 | Rule 10 从提醒变硬阻断 | `scripts/safe_commit.sh` 已增加 `.py staged` commit message gate，并补临时 git repo 行为测试 | 无 `Codex-Reviewed: APPROVE/APPROVE_WITH_NOTES` 或 8+ 字符 `codex-review: skipped reason=...` 时 exit 6；`REQUEST_CHANGES` 不放行 |
 | 3 | P0/P1 | 清完 non-test `dim_active_a_stock` | 合法 cache/name/data-sync/schema/meta 已加同一行 evidence；非法 universe 走 `get_active_universe()` | `check_universe_filter --all` CLEAN |
@@ -173,7 +173,7 @@
 
 | 动作 | 命令/方法 | 注意 |
 |---|---|---|
-| 查看 dirty | `scripts/chunkyctl doctor --fast` + `scripts/chunkyctl worktree --format markdown` | 以实时 gate 为准；最新快照 0 dirty entries、unknown=0、CodeGraph pending=0；若 doctor FAIL 先看 complexity/data/test gate |
+| 查看 dirty | `scripts/chunkyctl doctor --fast` + `scripts/chunkyctl worktree --format markdown` | 以实时 gate 为准；当前 worktree 为 8 个 tracked mods、unknown=0、CodeGraph pending=0；若 doctor FAIL 先看 complexity/data/test gate，再按 bucket 看 worktree |
 | 查看 tracked diff | `git diff --stat` | 区分前 session 改动和本次新增 |
 | 查看 untracked | `git ls-files --others --exclude-standard` | `data/phase5_exports/*.parquet` 不应误纳入架构 commit |
 | 计划 stage scope | 按阶段 stage | 不使用 `git add .` |

@@ -511,23 +511,41 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
                     "(parser duplicate PK; sample keys=%s)",
                     stock_code, _dup_count, len(holders), _sample,
                 )
-            con.executemany("""
-                INSERT OR REPLACE INTO fact_top10_holder_period(
-                  stock_code, stock_name, market, report_date, holder_set,
-                  holder_rank, row_seq, holder_name, holder_name_norm, share_class,
-                  is_secondary_class, is_exit_row,
-                  shares_text, shares_approx, shares_precision, hold_amount,
-                  hold_ratio_float, hold_ratio_total, hold_ratio,
-                  hold_market_cap, holder_type, share_nature,
-                  change_status, change_shares_text, change_shares_approx,
-                  hold_change, hold_change_num,
-                  notice_date, effective_date, page_update_date,
-                  source, source_tier, raw_hash, fetched_at, created_at
-                ) VALUES (
-                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            holder_columns = (
+                "stock_code, stock_name, market, report_date, holder_set, "
+                "holder_rank, row_seq, holder_name, holder_name_norm, share_class, "
+                "is_secondary_class, is_exit_row, "
+                "shares_text, shares_approx, shares_precision, hold_amount, "
+                "hold_ratio_float, hold_ratio_total, hold_ratio, "
+                "hold_market_cap, holder_type, share_nature, "
+                "change_status, change_shares_text, change_shares_approx, "
+                "hold_change, hold_change_num, "
+                "notice_date, effective_date, page_update_date, "
+                "source, source_tier, raw_hash, fetched_at, created_at"
+            )
+            holder_value_count = len(_holder_tuple(holders_for_insert[0]))
+            holder_insert_sql = f"INSERT INTO fact_top10_holder_period({holder_columns}) VALUES ({', '.join('?' for _ in range(holder_value_count))})"
+            holder_delete_sql = (
+                "DELETE FROM fact_top10_holder_period "
+                "WHERE stock_code = ? AND report_date = ? AND holder_set = ? "
+                "AND source = ? AND is_exit_row = ? AND holder_rank = ? "
+                "AND row_seq = ? AND COALESCE(share_class, '') = COALESCE(?, '')"
+            )
+            for row in holders_for_insert:
+                con.execute(
+                    holder_delete_sql,
+                    (
+                        row.get("stock_code"),
+                        row.get("report_date"),
+                        row.get("holder_set"),
+                        row.get("source") or result.source,
+                        row.get("is_exit_row"),
+                        row.get("holder_rank"),
+                        row.get("row_seq"),
+                        row.get("share_class"),
+                    ),
                 )
-            """, [_holder_tuple(row) for row in holders_for_insert])
+            con.executemany(holder_insert_sql, [_holder_tuple(row) for row in holders_for_insert])
             _update_holder_availability_source(con, holders_for_insert)
 
         if ctrl is not None:

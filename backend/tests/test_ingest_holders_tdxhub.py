@@ -28,10 +28,15 @@ class _FakeRawFetcher:
         self.closed = True
 
 
-def _make_conn():
+def _make_conn(*, include_holder_unique: bool = True):
     con = duckdb.connect(":memory:")
+    holder_unique_tail = (
+        ",\n            UNIQUE(stock_code, report_date, holder_set, source, is_exit_row, holder_rank, row_seq, share_class)"
+        if include_holder_unique
+        else ""
+    )
     con.execute(
-        """
+        f"""
         CREATE TABLE raw_tdx_f10_holder_research (
             stock_code TEXT NOT NULL,
             stock_name TEXT,
@@ -81,8 +86,7 @@ def _make_conn():
             source_tier SMALLINT NOT NULL,
             raw_hash TEXT,
             fetched_at TEXT,
-            created_at TEXT,
-            UNIQUE(stock_code, report_date, holder_set, source, is_exit_row, holder_rank, row_seq, share_class)
+            created_at TEXT{holder_unique_tail}
         );
         CREATE TABLE fact_controlling_shareholder (
             stock_code TEXT NOT NULL,
@@ -278,6 +282,38 @@ def test_write_one_persists_records_and_is_idempotent():
         assert con.execute("SELECT COUNT(*) FROM fact_top10_holder_period").fetchone()[0] == 1
         assert con.execute("SELECT COUNT(*) FROM fact_shareholder_plan").fetchone()[0] == 1
         assert con.execute("SELECT COUNT(*) FROM fact_shareholder_trade").fetchone()[0] == 1
+    finally:
+        con.close()
+
+
+def test_write_one_persists_records_without_database_unique_constraint():
+    con = _make_conn(include_holder_unique=False)
+    lock = threading.Lock()
+    try:
+        result = _make_result()
+        stats = ingest.write_one(
+            con,
+            stock_code="600519",
+            stock_name="贵州茅台",
+            market="SH",
+            result=result,
+            alias_map={"Holder A": "Holder Canon"},
+            lock=lock,
+        )
+
+        assert stats["n_holders"] == 1
+        assert con.execute("SELECT COUNT(*) FROM fact_top10_holder_period").fetchone()[0] == 1
+
+        ingest.write_one(
+            con,
+            stock_code="600519",
+            stock_name="贵州茅台",
+            market="SH",
+            result=result,
+            alias_map={"Holder A": "Holder Canon"},
+            lock=lock,
+        )
+        assert con.execute("SELECT COUNT(*) FROM fact_top10_holder_period").fetchone()[0] == 1
     finally:
         con.close()
 
