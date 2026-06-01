@@ -40,6 +40,9 @@ the existing `stock_missing_pit` / `formula_missing_pit` reason. `need_027`
 主力资金源仍 blocked/unknown；`akshare.stock_individual_fund_flow` /
 `stock_individual_fund_flow_rank` capability 已登记，但
 `probe_source_capability.py` 现场探针仍因 `ProxyError` 阻断，blocked probe now persists into `mart_data_source_failure_queue` so future triage can resume from stored evidence. 2026-06-01 又对当前推荐的 7 个 stock code 以 cutoffs `2026-01-01,2026-05-19,2026-05-29` 重跑 `build_stage_opt_pit.py`，结果 latest recommendation PIT coverage 仍然 0（8 total / 0 exact / 0 same_formula / 1 same_stock / 8 cross_stage），说明 exact stage × formula 的候选供给是结构性稀疏，不是单次补表能解决。No GCP/Optuna/backtest work was started.
+This slice also externalized `portfolio_sizer` short/mid/long thresholds into
+`backend/config/portfolio_sizer_profiles.yaml`, so future tuning stays
+config-owned instead of hardcoded in `profiles.py`.
 
 K-line refresh commands used:
 

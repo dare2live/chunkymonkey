@@ -357,6 +357,15 @@ class TestAddPosition:
 
 # ===================== Profiles =====================
 class TestProfiles:
+    def test_profile_config_loader(self):
+        from services.portfolio_sizer.config import load_portfolio_sizer_profile_specs
+
+        specs = load_portfolio_sizer_profile_specs()
+        assert list(specs.keys()) == ["short", "mid", "long"]
+        assert specs["short"].holding_days == (5, 10, 15)
+        assert specs["mid"].min_n_signals == 8
+        assert specs["long"].min_wilson_win == 0.70
+
     def test_three_profiles(self):
         from services.portfolio_sizer.profiles import PROFILES, list_profiles
         assert set(PROFILES.keys()) == {"short", "mid", "long"}
@@ -373,6 +382,7 @@ class TestProfiles:
         assert p.kelly_fraction == 0.5
         assert p.holding_days == (5, 10, 15)
         assert p.min_wilson_win == 0.60
+        assert p.min_n_signals == 5
 
     def test_long_profile_strictest(self):
         from services.portfolio_sizer.profiles import get_profile

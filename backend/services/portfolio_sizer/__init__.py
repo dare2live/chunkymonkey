@@ -3,6 +3,7 @@
 模块:
   - wilson.py        — Wilson Score 下界 (修正小样本胜率)
   - kelly.py         — Kelly Criterion 派生 + fractional Kelly
+  - config.py        — profile config loader
   - profiles.py      — 3 risk profile (短/中/长) 参数表
   - sizing.py        — 主入口: 信号 + 历史 metrics + profile → 推荐仓位
   - sell_rules.py    — 卖出规则 (trailing stop / hp 到期 / 止损)

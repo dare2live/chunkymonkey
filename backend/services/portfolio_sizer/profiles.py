@@ -11,7 +11,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from services.portfolio_sizer.evidence import (
-    CLASSIC_KELLY, CLASSIC_STOP_LOSS, ParamEvidence, UNVERIFIED, USER_PREF,
+    CLASSIC_KELLY, CLASSIC_STOP_LOSS, ParamEvidence,
+)
+from services.portfolio_sizer.config import (
+    PortfolioSizerProfileSpec,
+    load_portfolio_sizer_profile_specs,
 )
 
 
@@ -81,98 +85,56 @@ TRAIL_RATIO_EV = ParamEvidence(
 )
 
 
-# ─────────────────────────────────────────────────────────────────────
-# 3 profile
-# ─────────────────────────────────────────────────────────────────────
+def _profile_evidence(profile_id: str) -> dict[str, ParamEvidence]:
+    base = {
+        "max_positions": MAX_POS_EV,
+        "stock_cap_pct": CAP_PCT_EV,
+        "kelly_fraction": KELLY_FRAC_EV,
+        "holding_days": HP_RANGE_EV,
+        "min_wilson_win": WILSON_60_EV,
+        "min_n_signals": MIN_N_EV,
+        "trailing_pct_min": TRAIL_MIN_EV,
+        "trailing_ratio": TRAIL_RATIO_EV,
+    }
+    if profile_id == "short":
+        base["exclude_tech_stages"] = ParamEvidence(
+            kind="unverified",
+            follow_up_todo="跑 (technical_stage × forward_ret) 矩阵, "
+                           "看哪些 stage 实测负 alpha 应排除",
+        )
+    elif profile_id == "long":
+        base["exclude_fund_stages"] = ParamEvidence(
+            kind="unverified",
+            proof_summary="砍 — fundamental_stage 派生依赖 _latest 表, 历史不可重建, 无法 backtest",
+            follow_up_todo="改为 exclude_tech_stages, 用可历史化 technical_stage 验证后启用",
+        )
+        base["exclude_tech_stages"] = ParamEvidence(
+            kind="unverified",
+            follow_up_todo="跑 (technical_stage × forward_ret_60d) 验证哪些 stage 应排除",
+        )
+    return base
 
-PROFILES = {
-    "short": RiskProfile(
-        profile_id="short",
-        label="短期 (5-15d)",
-        max_positions=5,
-        stock_cap_pct=0.20,
-        kelly_fraction=0.5,
-        holding_days=(5, 10, 15),
-        min_wilson_win=0.60,
-        min_n_signals=5,
-        trailing_pct_min=0.02,
-        trailing_ratio=0.20,
-        exclude_fund_stages=(),    # 砍, 见 file docstring
-        exclude_tech_stages=(),    # 待 validate_exclusion_rules.py 决定
-        evidence={
-            "max_positions": MAX_POS_EV,
-            "stock_cap_pct": CAP_PCT_EV,
-            "kelly_fraction": KELLY_FRAC_EV,
-            "holding_days": HP_RANGE_EV,
-            "min_wilson_win": WILSON_60_EV,
-            "min_n_signals": MIN_N_EV,
-            "trailing_pct_min": TRAIL_MIN_EV,
-            "trailing_ratio": TRAIL_RATIO_EV,
-            "exclude_tech_stages": ParamEvidence(
-                kind="unverified",
-                follow_up_todo="跑 (technical_stage × forward_ret) 矩阵, "
-                               "看哪些 stage 实测负 alpha 应排除",
-            ),
-        },
-    ),
-    "mid": RiskProfile(
-        profile_id="mid",
-        label="中期 (15-30d)",
-        max_positions=10,
-        stock_cap_pct=0.10,
-        kelly_fraction=0.35,
-        holding_days=(15, 20, 30),
-        min_wilson_win=0.65,
-        min_n_signals=8,
-        trailing_pct_min=0.03,
-        trailing_ratio=0.20,
-        exclude_fund_stages=(),
-        exclude_tech_stages=(),
-        evidence={
-            "max_positions": MAX_POS_EV,
-            "stock_cap_pct": CAP_PCT_EV,
-            "kelly_fraction": KELLY_FRAC_EV,
-            "holding_days": HP_RANGE_EV,
-            "min_wilson_win": WILSON_60_EV,
-            "min_n_signals": MIN_N_EV,
-            "trailing_pct_min": TRAIL_MIN_EV,
-            "trailing_ratio": TRAIL_RATIO_EV,
-        },
-    ),
-    "long": RiskProfile(
-        profile_id="long",
-        label="长期 (30-90d)",
-        max_positions=15,
-        stock_cap_pct=0.07,
-        kelly_fraction=0.25,
-        holding_days=(30, 60, 90),
-        min_wilson_win=0.70,
-        min_n_signals=10,
-        trailing_pct_min=0.05,
-        trailing_ratio=0.20,
-        exclude_fund_stages=(),    # ← Phase η+++++ 砍, 因 fundamental_stage 历史不可重建
-        exclude_tech_stages=(),    # ← 待 validate 后决定
-        evidence={
-            "max_positions": MAX_POS_EV,
-            "stock_cap_pct": CAP_PCT_EV,
-            "kelly_fraction": KELLY_FRAC_EV,
-            "holding_days": HP_RANGE_EV,
-            "min_wilson_win": WILSON_60_EV,
-            "min_n_signals": MIN_N_EV,
-            "trailing_pct_min": TRAIL_MIN_EV,
-            "trailing_ratio": TRAIL_RATIO_EV,
-            "exclude_fund_stages": ParamEvidence(
-                kind="unverified",
-                proof_summary="砍 — fundamental_stage 派生依赖 _latest 表, 历史不可重建, 无法 backtest",
-                follow_up_todo="改为 exclude_tech_stages, 用可历史化 technical_stage 验证后启用",
-            ),
-            "exclude_tech_stages": ParamEvidence(
-                kind="unverified",
-                follow_up_todo="跑 (technical_stage × forward_ret_60d) 验证哪些 stage 应排除",
-            ),
-        },
-    ),
-}
+
+def _build_profile(profile_id: str, spec: PortfolioSizerProfileSpec) -> RiskProfile:
+    return RiskProfile(
+        profile_id=profile_id,
+        label=spec.label,
+        max_positions=spec.max_positions,
+        stock_cap_pct=spec.stock_cap_pct,
+        kelly_fraction=spec.kelly_fraction,
+        holding_days=spec.holding_days,
+        min_wilson_win=spec.min_wilson_win,
+        min_n_signals=spec.min_n_signals,
+        trailing_pct_min=spec.trailing_pct_min,
+        trailing_ratio=spec.trailing_ratio,
+        exclude_fund_stages=spec.exclude_fund_stages,
+        exclude_tech_stages=spec.exclude_tech_stages,
+        evidence=_profile_evidence(profile_id),
+    )
+
+
+_PROFILE_SPECS = load_portfolio_sizer_profile_specs()
+PROFILES = {profile_id: _build_profile(profile_id, spec) for profile_id, spec in _PROFILE_SPECS.items()}
 
 
 def get_profile(profile_id: str) -> RiskProfile:

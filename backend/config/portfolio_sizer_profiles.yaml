@@ -1,0 +1,37 @@
+profiles:
+  short:
+    label: "短期 (5-15d)"
+    max_positions: 5
+    stock_cap_pct: 0.20
+    kelly_fraction: 0.5
+    holding_days: [5, 10, 15]
+    min_wilson_win: 0.60
+    min_n_signals: 5
+    trailing_pct_min: 0.02
+    trailing_ratio: 0.20
+    exclude_fund_stages: []
+    exclude_tech_stages: []
+  mid:
+    label: "中期 (15-30d)"
+    max_positions: 10
+    stock_cap_pct: 0.10
+    kelly_fraction: 0.35
+    holding_days: [15, 20, 30]
+    min_wilson_win: 0.65
+    min_n_signals: 8
+    trailing_pct_min: 0.03
+    trailing_ratio: 0.20
+    exclude_fund_stages: []
+    exclude_tech_stages: []
+  long:
+    label: "长期 (30-90d)"
+    max_positions: 15
+    stock_cap_pct: 0.07
+    kelly_fraction: 0.25
+    holding_days: [30, 60, 90]
+    min_wilson_win: 0.70
+    min_n_signals: 10
+    trailing_pct_min: 0.05
+    trailing_ratio: 0.20
+    exclude_fund_stages: []
+    exclude_tech_stages: []
