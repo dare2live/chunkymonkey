@@ -181,6 +181,38 @@ def test_probe_source_capability_persists_blocked_status(monkeypatch) -> None:
         conn.close()
 
 
+def test_probe_source_capability_downgrades_persist_failure_on_blocked(monkeypatch) -> None:
+    conn = duck_mem()
+    try:
+        def fake_resolve(*_args, **_kwargs):
+            raise RuntimeError("proxy blocked")
+
+        def fake_record_source_failure(*_args, **_kwargs):
+            raise RuntimeError("db locked")
+
+        monkeypatch.setattr(probe, "resolve", fake_resolve)
+        monkeypatch.setattr(probe, "get_conn", lambda: _ConnProxy(conn))
+        monkeypatch.setattr(probe, "record_source_failure", fake_record_source_failure)
+
+        report = probe.probe_source_capability(
+            "individual_fund_flow",
+            {"stock": "600519", "market": "sh"},
+            prefer_source="akshare",
+            persist_status=True,
+            data_domain="order_flow_fund_flow",
+            source_name="akshare",
+            source_tier=3,
+            stock_code="600519",
+        )
+
+        assert report["status"] == "blocked"
+        assert report["persisted"]["status"] == "error"
+        assert report["persisted"]["error_type"] == "RuntimeError"
+        assert report["persisted"]["error"] == "db locked"
+    finally:
+        conn.close()
+
+
 def test_probe_source_capability_resolves_existing_failure_on_success(monkeypatch) -> None:
     conn = duck_mem()
     try:
@@ -230,5 +262,39 @@ def test_probe_source_capability_resolves_existing_failure_on_success(monkeypatc
         ).fetchone()
         assert row["status"] == "resolved"
         assert row["resolved_at"] is not None
+    finally:
+        conn.close()
+
+
+def test_probe_source_capability_downgrades_persist_failure_on_success(monkeypatch) -> None:
+    conn = duck_mem()
+    try:
+        def fake_resolve(capability: str, *, prefer_source=None, **kwargs):
+            assert capability == "individual_fund_flow"
+            assert prefer_source == "akshare"
+            return ([{"日期": "2026-05-29"}], "akshare")
+
+        def fake_resolve_source_failures(*_args, **_kwargs):
+            raise RuntimeError("db locked")
+
+        monkeypatch.setattr(probe, "get_conn", lambda: _ConnProxy(conn))
+        monkeypatch.setattr(probe, "resolve", fake_resolve)
+        monkeypatch.setattr(probe, "resolve_source_failures", fake_resolve_source_failures)
+
+        report = probe.probe_source_capability(
+            "individual_fund_flow",
+            {"stock": "600519", "market": "sh"},
+            prefer_source="akshare",
+            persist_status=True,
+            data_domain="order_flow_fund_flow",
+            source_name="akshare",
+            source_tier=3,
+            stock_code="600519",
+        )
+
+        assert report["status"] == "ok"
+        assert report["persisted"]["status"] == "error"
+        assert report["persisted"]["error_type"] == "RuntimeError"
+        assert report["persisted"]["error"] == "db locked"
     finally:
         conn.close()

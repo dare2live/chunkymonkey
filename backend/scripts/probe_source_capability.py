@@ -39,6 +39,8 @@ CAPABILITY_SOURCE_HINTS = {
     "individual_fund_flow_rank_snapshot": "akshare",
 }
 
+logger = logging.getLogger("probe_source_capability")
+
 
 @contextmanager
 def _temporary_logger_level(logger_name: str, level: int):
@@ -199,40 +201,92 @@ def _persist_probe_status(
         }
         return
 
-    conn = get_conn()
+    try:
+        conn = get_conn()
+    except Exception as exc:
+        report["persisted"] = {
+            "status": "error",
+            "table": "mart_data_source_failure_queue",
+            "data_domain": resolved_domain,
+            "source_name": resolved_source,
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
+        logger.warning(
+            "probe persistence connect failed for %s/%s: %s",
+            resolved_domain,
+            resolved_source,
+            exc,
+        )
+        return
+
     try:
         if report.get("status") == "blocked":
-            record_source_failure(
-                conn,
-                data_domain=resolved_domain,
-                source_name=resolved_source,
-                source_tier=source_tier,
-                stock_code=stock_code or str(report.get("kwargs", {}).get("stock") or report.get("kwargs", {}).get("symbol") or ""),
-                error_type=str(report.get("error_type") or "source_probe_blocked"),
-                last_error=str(report.get("error") or ""),
-                commit=True,
-            )
-            report["persisted"] = {
-                "status": "open",
-                "table": "mart_data_source_failure_queue",
-                "data_domain": resolved_domain,
-                "source_name": resolved_source,
-            }
+            try:
+                record_source_failure(
+                    conn,
+                    data_domain=resolved_domain,
+                    source_name=resolved_source,
+                    source_tier=source_tier,
+                    stock_code=stock_code or str(report.get("kwargs", {}).get("stock") or report.get("kwargs", {}).get("symbol") or ""),
+                    error_type=str(report.get("error_type") or "source_probe_blocked"),
+                    last_error=str(report.get("error") or ""),
+                    commit=True,
+                )
+            except Exception as exc:
+                report["persisted"] = {
+                    "status": "error",
+                    "table": "mart_data_source_failure_queue",
+                    "data_domain": resolved_domain,
+                    "source_name": resolved_source,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                }
+                logger.warning(
+                    "probe persistence open-row failed for %s/%s: %s",
+                    resolved_domain,
+                    resolved_source,
+                    exc,
+                )
+            else:
+                report["persisted"] = {
+                    "status": "open",
+                    "table": "mart_data_source_failure_queue",
+                    "data_domain": resolved_domain,
+                    "source_name": resolved_source,
+                }
         elif report.get("status") == "ok":
-            resolved_rows = resolve_source_failures(
-                conn,
-                data_domain=resolved_domain,
-                source_name=resolved_source,
-                stock_code=stock_code or str(report.get("kwargs", {}).get("stock") or report.get("kwargs", {}).get("symbol") or ""),
-                commit=True,
-            )
-            report["persisted"] = {
-                "status": "resolved",
-                "table": "mart_data_source_failure_queue",
-                "data_domain": resolved_domain,
-                "source_name": resolved_source,
-                "resolved_rows": resolved_rows,
-            }
+            try:
+                resolved_rows = resolve_source_failures(
+                    conn,
+                    data_domain=resolved_domain,
+                    source_name=resolved_source,
+                    stock_code=stock_code or str(report.get("kwargs", {}).get("stock") or report.get("kwargs", {}).get("symbol") or ""),
+                    commit=True,
+                )
+            except Exception as exc:
+                report["persisted"] = {
+                    "status": "error",
+                    "table": "mart_data_source_failure_queue",
+                    "data_domain": resolved_domain,
+                    "source_name": resolved_source,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                }
+                logger.warning(
+                    "probe persistence resolve failed for %s/%s: %s",
+                    resolved_domain,
+                    resolved_source,
+                    exc,
+                )
+            else:
+                report["persisted"] = {
+                    "status": "resolved",
+                    "table": "mart_data_source_failure_queue",
+                    "data_domain": resolved_domain,
+                    "source_name": resolved_source,
+                    "resolved_rows": resolved_rows,
+                }
     finally:
         conn.close()
 
