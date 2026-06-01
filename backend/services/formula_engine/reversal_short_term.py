@@ -24,7 +24,7 @@
 
   - variant:
     1. reversal_1m_mild    — 跌 5-15% (温和反转, RankIC 适中)
-    2. reversal_1m_deep    — 跌 15-30% (深度反转, RankIC 高但样本少)
+    2. reversal_1m_deep    — 跌 12-30% (深度反转, RankIC 高但样本少)
     3. reversal_1w         — 1 周反转 (5 日, 信号高频但换手大)
 
 ⚠ 不调单股阈值 (留给 Phase ψ Optuna search_space 后续扩展). 当前公式阈值是
@@ -185,18 +185,18 @@ class Reversal1mMild(_ReversalBase):
 
 @dataclass(frozen=True)
 class Reversal1mDeep(_ReversalBase):
-    """1 月深度反转: 跌 15-30%, 低波动. 样本少, RankIC 高但右尾风险大."""
+    """1 月深度反转: 跌 12-30%, 低波动. 样本少, RankIC 高但右尾风险大."""
     metadata: FormulaMetadata = FormulaMetadata(
         formula_id="reversal_1m_deep",
         name="1 月深度反转",
         tag="RD",
-        description="20 日跌 15-30% + 60 日低波 + 量比正常 → 深度超跌反转候选",
+        description="20 日跌 12-30% + 60 日低波 + 量比正常 → 深度超跌反转候选",
         default_horizon_days=15,
         has_variant=True,
     )
     lookback_days: int = 20
     pct_change_lo: float = -0.30
-    pct_change_hi: float = -0.15
+    pct_change_hi: float = -0.12
     rel_std_max: float = 0.08   # 深跌允许波动稍大
     vol_ratio_lo: float = 0.6
     vol_ratio_hi: float = 2.0

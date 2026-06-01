@@ -63,7 +63,11 @@ The model pipeline snapshot below is historical evidence for the completed
   cohorts. The script now also emits a `next_action_recommendation` that
   points to `P1 / upstream_candidate_supply` and names the weakest formula ids
   / stage bins, so future sessions can triage from the audit output instead of
-  re-deriving the same conclusion manually. `2024-03-06` 起的
+  re-deriving the same conclusion manually. 2026-06-02 the
+  `reversal_1m_deep` threshold was widened from 15-30% to 12-30%, and the
+  historical rebuild raised that formula's `rows / keys / ready coverage` to
+  `47,568 / 9,273 / 36.98%`, but the overall next action still points to
+  upstream candidate supply. `2024-03-06` 起的
   `dropped_unknown_stage_rows` 降到 `454,158`, so the remaining
   `technical_stage='?'` mass is still mostly structural classifier warmup /
   unknown, not a fresh ETL outage.
