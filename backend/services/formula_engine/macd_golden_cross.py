@@ -32,7 +32,7 @@ from services.formula_engine.base import (
 
 
 CROSS_WINDOW = 5         # 多少日内算 "刚" 金叉/死叉
-IMMINENT_DAYS = 7        # state history 持仓窗口 (诊断层可略宽于 trigger 口径)
+IMMINENT_DAYS = 10       # state history 持仓窗口 (诊断层可略宽于 trigger 口径)
 IMMINENT_GAP_RATIO = 0.012  # |gap|/close < 该值算 imminent
 
 
@@ -142,7 +142,7 @@ class MacdGoldenCross:
 
         只输出用于候选供给诊断的 active states:
           - imminent: gap 极小, 接近金叉
-          - holding:  已进入金叉后窗口, 仍在 DEA 上方
+          - holding:  已进入金叉后窗口, 仍在 DEA 上方 (诊断层窗口略宽于 trigger)
 
         cross_up 当日由 compute_signals 负责落 fact_technical_trigger,
         这里不重复写 just_crossed, 以免 stage-opt audit 双算。

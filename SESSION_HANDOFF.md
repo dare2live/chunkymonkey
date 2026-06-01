@@ -25,14 +25,14 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 03:39:15 CST
+**Snapshot 时间**: 2026-06-02 04:48:24 CST
 
 - latest local full-sync (2026-06-02) finished with only `watermarks:warn`;
   `raw_tdx_f10_holder_research` / `fact_top10_holder_period` both advanced to
   `2026-06-01 19:14:51` / `2026-06-01T19:14:57+00:00`, and the 28-row holder
   raw smoke `parse -> write_one -> rollback` all passed, so the current Python
   evidence is crash-free.
-- current in-progress slice: storage payload reviewed-column governance for `backend/config/storage_retention.yaml` and `backend/tests/scripts/test_audit_storage_payloads.py`; `mart_macd_state_history.reason_codes_json` is now registered as a bounded diagnostic evidence column, `audit_storage_payloads.py` reports `323 columns / 0 FAIL / 0 WARN / 12 reviewed PASS`, and the broader project blockers remain stage-opt upstream candidate supply and need_027 blocked-gap triage rather than storage payload hygiene.
+- current in-progress slice: stage-opt upstream candidate supply tuning (latest rebuild widened `reversal_1m_deep` to 8-30% and lifted full-history audit to `68.76%` ready coverage) plus need_027 blocked-gap triage; storage payload reviewed-column governance for `backend/config/storage_retention.yaml` and `backend/tests/scripts/test_audit_storage_payloads.py` is already complete, with `mart_macd_state_history.reason_codes_json` registered as a bounded diagnostic evidence column and `audit_storage_payloads.py` at `323 columns / 0 FAIL / 0 WARN / 12 reviewed PASS`.
 | Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
 | VM 状态 | ? |
 | VM 上次启动 |  |
@@ -63,9 +63,9 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `2c177d1b feat: widen MACD state history evidence and sync controller docs | Codex-Reviewed: APPROVE_WITH_NOTES | test pass; audit PASS; complexity no new HIGH; docs synced` |
+| HEAD | `5e7b335c docs: sync storage payload reviewed-column governance and controller state | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit_storage_payloads PASS, pytest 11 passed, docs PASS, codegraph synced` |
 | 最近 24h commits | 82 |
-| 未 commit 文件 | 5 |
+| 未 commit 文件 | 7 |
 
 ### 最近 10 commits
 
@@ -85,7 +85,7 @@ cee8f95c docs: sync stage-opt MACD evidence visibility into goal and handoff | C
 
 ## NEXT ACTION (auto-computed)
 
-**5 uncommitted files — finish storage payload reviewed-column slice, then continue stage-opt upstream_candidate_supply / need_027 blocked-gap triage**
+**0 uncommitted files — continue stage-opt upstream_candidate_supply / need_027 blocked-gap triage**
 
 ## Resilience 配置 (verified)
 

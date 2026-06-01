@@ -404,6 +404,30 @@ class TestShortTermReversal:
         assert len(signals) >= 1, "11% 左右深跌应落入 reversal_1m_deep"
         assert all(s.formula_id == "reversal_1m_deep" for s in signals)
 
+    def test_deep_variant_triggers_on_roughly_9pct_drop(self, deep):
+        n = 90
+        dates = np.array([f"2024-{(i // 30) + 1:02d}-{(i % 30) + 1:02d}" for i in range(n)])
+        closes = np.concatenate([
+            np.full(60, 100.0),
+            np.linspace(100.0, 91.0, 20),
+            np.full(10, 91.0),
+        ])
+        volumes = np.ones(n) * 1000
+
+        signals = deep.compute_signals(
+            "T",
+            dates,
+            closes,
+            closes,
+            closes,
+            closes,
+            volumes,
+            closes * volumes,
+        )
+
+        assert len(signals) >= 1, "9% 左右深跌也应落入 reversal_1m_deep"
+        assert all(s.formula_id == "reversal_1m_deep" for s in signals)
+
     def test_weekly_variant_triggers_on_roughly_2pct_drop(self, w1):
         n = 61
         dates = np.array([f"2024-{(i // 30) + 1:02d}-{(i % 30) + 1:02d}" for i in range(n)])

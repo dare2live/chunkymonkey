@@ -92,6 +92,16 @@ The model pipeline snapshot below is historical evidence for the completed
   `dropped_unknown_stage_rows` 降到 `454,158`, so the remaining
   `technical_stage='?'` mass is still mostly structural classifier warmup /
   unknown, not a fresh ETL outage.
+- 2026-06-02 04:48 CST latest rebuild: `reversal_1m_deep` widened to 8-30%
+  and `mart_macd_state_history` remained the diagnostic mart with
+  180-day warm-up; the full-history audit now reads
+  `raw_signal_rows=5,085,286 / filtered_signal_rows=2,550,775 / unique_keys=
+  147,441 / ready_keys=101,382 / ready coverage=68.76% / below_min_signals=
+  46,059`; `macd_golden_cross` is `1,714,731 signal_rows / 46,120 keys /
+  84.75% coverage`; `min_signals=4/3/2` now lifts global ready coverage to
+  `75.33% / 82.36% / 90.25%`. Controller recommendation still points to
+  `P1 / upstream_candidate_supply`, so the structural conclusion remains
+  unchanged even though the evidence density improved again.
 - stage-opt MACD state mart: 2026-06-02 added
   `mart_macd_state_history` / `build_macd_state_history.py` as a separate
   MACD active-state diagnostic mart. It uses a 180-day warm-up window and
@@ -112,7 +122,7 @@ The model pipeline snapshot below is historical evidence for the completed
   live `2026-06-01` run now completes without the missing-table crash; the
   current snapshot happened to return 0 candidates, which is an input-sparsity
   result rather than a loader failure. This slice is now landed in commit
-  `1402bc0b`, and the worktree currently has 1 modified file pending commit.
+  `1402bc0b`, and the worktree currently has this slice’s pending commit changes.
 - `scripts/chunkyctl doctor --fast` now also surfaces the stage-opt
   `next_action_recommendation`, so the controller sees the upstream
   candidate-supply lever without rerunning the audit manually. If
