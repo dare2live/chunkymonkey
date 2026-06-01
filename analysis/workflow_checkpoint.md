@@ -8,7 +8,7 @@ The model pipeline snapshot below is historical evidence for the completed
 
 ## Current Data Freshness Checkpoint
 
-- updated_at: `2026-06-01 15:30:10 CST`
+- updated_at: `2026-06-01 17:04:33 CST`
 - current_state: `architecture/data freshness repair`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
@@ -87,11 +87,11 @@ The model pipeline snapshot below is historical evidence for the completed
   and `build_fund_flow_rank_snapshot_daily.py` were added as research-side
   support only, with the new root test registered in the test registry.
   This does not change the `need_027` exact-flow blocked status.
-- system data-health snapshot: `scripts/chunkyctl doctor --fast` now folds in
+-- system data-health snapshot: `scripts/chunkyctl doctor --fast` now folds in
   `backend/scripts/data_health_snapshot.py --dry-run --format json` and fails
-  closed on red tables. Current dry-run evidence is `WARN: 0 red / 17 yellow /
+  closed on red tables. Current dry-run evidence is `WARN: 0 red / 15 yellow /
   341 total`; `warning/monitor_only` assets are capped to yellow, so the red
-  set is empty and the remaining 17 yellow items are maintenance/on-demand
+  set is empty and the remaining 15 yellow items are maintenance/on-demand
   debt. `raw_margin_daily` is now a yellow monitor-only missing-table warning
   instead of a blocker. This is the startup health signal the controller has
   to read before trusting any freshness claim. Feature panel,
@@ -100,7 +100,9 @@ The model pipeline snapshot below is historical evidence for the completed
   `blocking_yellow_tables` are surfaced separately so `quality_gate_level=blocking`
   yellow assets get next-action priority before generic yellow maintenance.
   2026-06-01 the `mart_p0b_lambdamart_v6_predictions` ensemble v7 context
-  writer was refreshed, clearing the only blocking yellow table.
+  writer was refreshed, clearing the only blocking yellow table, and
+  `raw_executive_trade` / `fact_executive_trade_event` were rebuilt locally,
+  dropping the yellow count from 17 to 15.
 - survivorship gate: current default `p0a_v3_horizon_governance` PASS; the old
   `p0a_v2_governance_v1` gate remains available only for explicit historical
   review.
