@@ -221,7 +221,72 @@ def test_default_config_points_to_existing_evidence_files() -> None:
 
 def test_summarize_need_gaps_identifies_only_blocked_need() -> None:
     config = audit_tdx_data_need_coverage.load_tdx_data_need_config()
-    summary = audit_tdx_data_need_coverage._summarize_need_gaps(config["needs"])
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute(
+            """
+            CREATE TABLE mart_data_source_failure_queue (
+                failure_id VARCHAR,
+                data_domain VARCHAR,
+                source_name VARCHAR,
+                source_tier SMALLINT,
+                stock_code VARCHAR,
+                error_type VARCHAR,
+                last_error VARCHAR,
+                status VARCHAR,
+                first_seen_at TIMESTAMP,
+                last_seen_at TIMESTAMP,
+                retry_after TIMESTAMP,
+                occurrence_count INTEGER,
+                resolved_at TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO mart_data_source_failure_queue VALUES
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                "2df0b27c9086b45e",
+                "order_flow_fund_flow",
+                "akshare",
+                3,
+                "600519",
+                "RuntimeError",
+                "ConnectionError: remote disconnect",
+                "open",
+                "2026-06-01 01:05:18",
+                "2026-06-01 03:57:25",
+                None,
+                3,
+                None,
+            ],
+        )
+        conn.execute(
+            """
+            INSERT INTO mart_data_source_failure_queue VALUES
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                "a906f9ddbdd284f1",
+                "stock_fund_flow_rank_snapshot",
+                "akshare",
+                3,
+                None,
+                "watermark_failure",
+                "research-side rank snapshot only; exact need_027 flow remains blocked/unknown",
+                "resolved",
+                "2026-06-01 06:37:29",
+                "2026-06-01 14:35:33",
+                None,
+                8,
+                "2026-06-01 14:35:33",
+            ],
+        )
+        summary = audit_tdx_data_need_coverage._summarize_need_gaps(conn, config["needs"])
+    finally:
+        conn.close()
 
     assert summary["need_count"] == 27
     assert summary["registered_source_names"] == ["aif10", "akshare", "tdxhub"]
@@ -253,6 +318,11 @@ def test_summarize_need_gaps_identifies_only_blocked_need() -> None:
     assert "individual_fund_flow_rank_snapshot" not in blocked["source_registration"]["fallback_source_capabilities"]
     assert blocked["source_registration"]["preferred_source_supports_individual_fund_flow"] is True
     assert blocked["source_registration"]["fallback_source_supports_individual_fund_flow"] is False
+    assert blocked["failure_queue_snapshot"]["row_count"] == 2
+    assert blocked["failure_queue_snapshot"]["status_counts"] == {"open": 1, "resolved": 1}
+    assert blocked["failure_queue_snapshot"]["latest_open_row"]["data_domain"] == "order_flow_fund_flow"
+    assert blocked["failure_queue_snapshot"]["latest_open_row"]["stock_code"] == "600519"
+    assert blocked["failure_queue_snapshot"]["latest_resolved_row"]["data_domain"] == "stock_fund_flow_rank_snapshot"
     assert blocked["action"] == "probe_restore_or_keep_unknown"
     assert "CYQ 主力画像需要真实订单流" in blocked["notes"]
 

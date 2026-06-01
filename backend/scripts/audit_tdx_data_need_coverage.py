@@ -51,6 +51,7 @@ EVIDENCE_STATUSES = {"production", "proxy", "research", "unknown"}
 PRODUCTION_ELIGIBILITIES = {"eligible", "blocked", "research_only", "proxy_only", "unknown"}
 UNKNOWN_VALUES = {"unknown", "n/a", "none", "null"}
 BLOCKED_ELIGIBILITIES = {"blocked", "unknown"}
+FAILURE_QUEUE_TABLE = "mart_data_source_failure_queue"
 
 
 DDL = """
@@ -117,6 +118,19 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 def _as_clean_text(value: Any) -> str:
     return str(value).strip() if value is not None else ""
+
+
+def _table_exists(conn: Any, table_name: str) -> bool:
+    row = conn.execute(
+        """
+        SELECT 1
+          FROM information_schema.tables
+         WHERE table_name = ?
+         LIMIT 1
+        """,
+        [table_name],
+    ).fetchone()
+    return row is not None
 
 
 def _validate_need(item: dict[str, Any], index: int) -> None:
@@ -219,7 +233,60 @@ def _source_capabilities(source_name: Any, registered_sources: dict[str, Any]) -
     return sorted(selected_caps)
 
 
-def _summarize_need_gaps(needs: list[tuple[Any, ...]]) -> dict[str, Any]:
+def _failure_queue_snapshot(
+    conn: Any,
+    *,
+    source_name: str | None,
+    domain_like: str | None = None,
+) -> dict[str, Any] | None:
+    if not source_name or not _table_exists(conn, FAILURE_QUEUE_TABLE):
+        return None
+
+    clauses = ["lower(source_name) = lower(?)"]
+    params: list[Any] = [source_name]
+    if domain_like:
+        clauses.append("lower(data_domain) LIKE lower(?)")
+        params.append(f"%{domain_like}%")
+
+    cursor = conn.execute(
+        f"""
+        SELECT failure_id, data_domain, source_name, source_tier, stock_code,
+               error_type, last_error, status, first_seen_at, last_seen_at,
+               retry_after, occurrence_count, resolved_at
+          FROM {FAILURE_QUEUE_TABLE}
+         WHERE {' AND '.join(clauses)}
+         ORDER BY coalesce(last_seen_at, first_seen_at, resolved_at) DESC, failure_id DESC
+        """,
+        params,
+    )
+    rows = cursor.fetchall()
+    if not rows:
+        return None
+
+    columns = [desc[0] for desc in cursor.description or []]
+    records = [dict(zip(columns, row)) for row in rows]
+    status_counts: dict[str, int] = {}
+    for record in records:
+        status = _as_clean_text(record.get("status")) or "unknown"
+        status_counts[status] = status_counts.get(status, 0) + 1
+
+    latest_open_row = next((record for record in records if _as_clean_text(record.get("status")) == "open"), None)
+    latest_resolved_row = next(
+        (record for record in records if _as_clean_text(record.get("status")) == "resolved"),
+        None,
+    )
+    return {
+        "source_name": source_name,
+        "domain_like": domain_like,
+        "row_count": len(records),
+        "status_counts": status_counts,
+        "latest_open_row": latest_open_row,
+        "latest_resolved_row": latest_resolved_row,
+        "sample_rows": records[:5],
+    }
+
+
+def _summarize_need_gaps(conn: Any, needs: list[tuple[Any, ...]]) -> dict[str, Any]:
     records = [_need_record(row) for row in needs]
     eligibility_counts = {}
     blocked_needs = []
@@ -236,6 +303,11 @@ def _summarize_need_gaps(needs: list[tuple[Any, ...]]) -> dict[str, Any]:
         fallback_family = _canonical_source_family(fallback_source)
         eligibility_counts[eligibility] = eligibility_counts.get(eligibility, 0) + 1
         if eligibility in BLOCKED_ELIGIBILITIES or evidence_status == "unknown":
+            failure_queue_snapshot = _failure_queue_snapshot(
+                conn,
+                source_name=_as_clean_text(preferred_source) or None,
+                domain_like="fund_flow" if record.get("need_id") == "need_027" else None,
+            )
             blocked_needs.append(
                 {
                     "need_id": record.get("need_id"),
@@ -283,6 +355,7 @@ def _summarize_need_gaps(needs: list[tuple[Any, ...]]) -> dict[str, Any]:
                             in _source_capabilities(fallback_source, registered_sources)
                         ),
                     },
+                    "failure_queue_snapshot": failure_queue_snapshot,
                     "action": record.get("action"),
                     "notes": record.get("notes"),
                 }
@@ -359,7 +432,7 @@ def audit_tdx_data_need_coverage(conn: Any, config_path: Path | None = None) -> 
     needs = config["needs"]
     priorities = config["priorities"]
     reassignments = config["reassignments"]
-    need_gap_summary = _summarize_need_gaps(needs)
+    need_gap_summary = _summarize_need_gaps(conn, needs)
     input_inventory = _read_input_inventory(config["input_paths"])
     built_at = datetime.now(UTC).isoformat(timespec="seconds")
     conn.execute("BEGIN TRANSACTION")

@@ -90,6 +90,11 @@ The model pipeline snapshot below is historical evidence for the completed
   and `build_fund_flow_rank_snapshot_daily.py` were added as research-side
   support only, with the new root test registered in the test registry.
   This does not change the `need_027` exact-flow blocked status.
+  The `need_027` blocked audit now also carries a live
+  `mart_data_source_failure_queue` snapshot, so the open
+  `order_flow_fund_flow` failures and the resolved research-side snapshot are
+  visible directly in the summary instead of only as abstract blocked/unknown
+  state.
 - system data-health snapshot: `scripts/chunkyctl doctor --fast` now folds in
   `backend/scripts/data_health_snapshot.py --dry-run --format json` and fails
   closed on red tables. Current dry-run evidence is `PASS: 0 red / 0 yellow /
