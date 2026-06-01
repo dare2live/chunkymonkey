@@ -9,8 +9,10 @@ ATR 不在本公式计算 (避免与 stock_turtle_engine 重复, 信号日的 AT
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
+import yaml
 
 from services.formula_engine.base import (
     FormulaMetadata,
@@ -20,7 +22,31 @@ from services.formula_engine.base import (
 )
 
 
-VOLUME_MULTIPLE = 1.3   # 量比 > 1.3 算放量确认 (海龟原版要求量增)
+CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "formula_turtle_breakout.yaml"
+DEFAULT_VOLUME_MULTIPLE = 1.2
+
+
+def _load_yaml(path: Path) -> dict[str, object]:
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(loaded, dict):
+        raise ValueError(f"{path.name} must contain a mapping")
+    return loaded
+
+
+def _load_volume_multiple(path: Path | None = None) -> float:
+    raw_path = path or CONFIG_PATH
+    try:
+        raw = _load_yaml(raw_path)
+    except FileNotFoundError:
+        return DEFAULT_VOLUME_MULTIPLE
+    value = raw.get("volume_multiple", DEFAULT_VOLUME_MULTIPLE)
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{raw_path.name}: volume_multiple must be numeric") from exc
+
+
+VOLUME_MULTIPLE = _load_volume_multiple()
 
 
 def _rolling_max_excluding_today(values: np.ndarray, window: int) -> np.ndarray:

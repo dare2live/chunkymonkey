@@ -239,6 +239,15 @@ class TestTurtleBreakout:
     def test_metadata_55(self, f55):
         assert f55.metadata.formula_id == "turtle_breakout_55"
         assert f55.metadata.default_horizon_days == 30
+        from services.formula_engine import turtle_breakout as turtle_breakout_module
+        assert turtle_breakout_module.VOLUME_MULTIPLE == pytest.approx(1.2)
+
+    def test_volume_multiple_loader_reads_config(self, tmp_path):
+        from services.formula_engine.turtle_breakout import _load_volume_multiple
+
+        cfg = tmp_path / "formula_turtle_breakout.yaml"
+        cfg.write_text("volume_multiple: 1.15\n", encoding="utf-8")
+        assert _load_volume_multiple(cfg) == pytest.approx(1.15)
 
     def test_short_kline_no_signal(self, f20):
         n = 10
@@ -294,6 +303,25 @@ class TestTurtleBreakout:
         )
         # 量不放大,应该 0 信号
         assert len(signals) == 0
+
+    def test_moderate_volume_breakout_now_triggers(self, f55):
+        # 介于 1.2x 和 1.3x 的放量突破,用来锁住新供给阈值不会回弹到 1.3
+        n = 70
+        dates = np.array([f"2024-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}" for i in range(n)])
+        closes = np.concatenate([
+            np.ones(55) * 100.0,
+            np.array([111.0, 111.5, 112.0, 112.5, 113.0, 113.5, 114.0, 114.5, 115.0, 115.5, 116.0, 116.5, 117.0, 117.5, 118.0]),
+        ])
+        volumes = np.concatenate([
+            np.ones(55) * 1000,
+            np.ones(15) * 1250,
+        ])
+        signals = f55.compute_signals(
+            "T", dates, closes, closes * 1.005, closes * 0.995, closes,
+            volumes, closes * volumes,
+        )
+        assert len(signals) >= 1
+        assert signals[0].formula_id == "turtle_breakout_55"
 
 
 class TestDynamicMaIterativeCross:

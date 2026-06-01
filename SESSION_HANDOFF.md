@@ -25,14 +25,14 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 04:54:05 CST
+**Snapshot 时间**: 2026-06-02 05:03:34 CST
 
 - latest local full-sync (2026-06-02) finished with only `watermarks:warn`;
   `raw_tdx_f10_holder_research` / `fact_top10_holder_period` both advanced to
   `2026-06-01 19:14:51` / `2026-06-01T19:14:57+00:00`, and the 28-row holder
   raw smoke `parse -> write_one -> rollback` all passed, so the current Python
   evidence is crash-free.
-- current in-progress slice: stage-opt upstream candidate supply tuning (latest rebuild widened `reversal_1m_deep` to 8-30% and lifted full-history audit to `68.76%` ready coverage) plus need_027 blocked-gap triage; storage payload reviewed-column governance for `backend/config/storage_retention.yaml` and `backend/tests/scripts/test_audit_storage_payloads.py` is already complete, with `mart_macd_state_history.reason_codes_json` registered as a bounded diagnostic evidence column and `audit_storage_payloads.py` at `323 columns / 0 FAIL / 0 WARN / 12 reviewed PASS`.
+- current in-progress slice: stage-opt upstream candidate supply tuning (latest rebuild kept `reversal_1m_deep` at 8-30%, moved turtle breakout volume confirmation into `backend/config/formula_turtle_breakout.yaml`, lowered `volume_multiple` from 1.3 to 1.2, and lifted full-history audit to `69.41%` ready coverage with `turtle_breakout_55` now at `60.17%`) plus need_027 blocked-gap triage; storage payload reviewed-column governance for `backend/config/storage_retention.yaml` and `backend/tests/scripts/test_audit_storage_payloads.py` is already complete, with `mart_macd_state_history.reason_codes_json` registered as a bounded diagnostic evidence column and `audit_storage_payloads.py` at `323 columns / 0 FAIL / 0 WARN / 12 reviewed PASS`.
 | Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
 | VM 状态 | ? |
 | VM 上次启动 |  |

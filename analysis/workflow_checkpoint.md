@@ -92,16 +92,19 @@ The model pipeline snapshot below is historical evidence for the completed
   `dropped_unknown_stage_rows` 降到 `454,158`, so the remaining
   `technical_stage='?'` mass is still mostly structural classifier warmup /
   unknown, not a fresh ETL outage.
-- 2026-06-02 04:48 CST latest rebuild: `reversal_1m_deep` widened to 8-30%
-  and `mart_macd_state_history` remained the diagnostic mart with
-  180-day warm-up; the full-history audit now reads
-  `raw_signal_rows=5,085,286 / filtered_signal_rows=2,550,775 / unique_keys=
-  147,441 / ready_keys=101,382 / ready coverage=68.76% / below_min_signals=
-  46,059`; `macd_golden_cross` is `1,714,731 signal_rows / 46,120 keys /
-  84.75% coverage`; `min_signals=4/3/2` now lifts global ready coverage to
-  `75.33% / 82.36% / 90.25%`. Controller recommendation still points to
-  `P1 / upstream_candidate_supply`, so the structural conclusion remains
-  unchanged even though the evidence density improved again.
+- 2026-06-02 05:02 CST latest rebuild: `reversal_1m_deep` is still 8-30%
+  and `mart_macd_state_history` remains the diagnostic mart with 180-day
+  warm-up; the full-history audit now reads `raw_signal_rows=5,123,528 /
+  filtered_signal_rows=2,574,836 / unique_keys=147,674 / ready_keys=102,500 /
+  ready coverage=69.41% / below_min_signals=45,174`; `turtle_breakout_20` is
+  `199,495 signal_rows / 19,413 keys / 80.81% coverage` and `turtle_breakout_55`
+  is `115,911 signal_rows / 16,898 keys / 60.17% coverage` after moving the
+  volume confirmation gate into `backend/config/formula_turtle_breakout.yaml`
+  and lowering `volume_multiple` from 1.3 to 1.2; `min_signals=4/3/2` now lifts
+  global ready coverage to `75.85% / 82.68% / 90.43%`. Controller
+  recommendation still points to `P1 / upstream_candidate_supply`, so the
+  structural conclusion remains unchanged even though the evidence density
+  improved again.
 - stage-opt MACD state mart: 2026-06-02 added
   `mart_macd_state_history` / `build_macd_state_history.py` as a separate
   MACD active-state diagnostic mart. It uses a 180-day warm-up window and
