@@ -721,6 +721,8 @@ def test_next_actions_include_need_coverage_recommendation() -> None:
                         "need_name": "主力/超大/大/中/小单资金流向",
                         "failure_queue_snapshot": {"status_counts": {"open": 2, "resolved": 1}},
                         "source_registration": {
+                            "fallback_source_family": "aif10",
+                            "fallback_source_supports_individual_fund_flow": False,
                             "preferred_source_capabilities": ["individual_fund_flow", "individual_fund_flow_rank"],
                             "fallback_source_capabilities": [],
                         },
@@ -734,7 +736,7 @@ def test_next_actions_include_need_coverage_recommendation() -> None:
         "action": (
             "Need coverage blocked-gap triage: review blocked needs and source evidence before treating them as production-ready "
             "(blocked needs: need_027; names: 主力/超大/大/中/小单资金流向) "
-            "[need_027 blocked/unknown; failure_queue open=2 resolved=1]"
+            "[need_027 blocked/unknown; failure_queue open=2 resolved=1]; aif10 exact individual_fund_flow unavailable"
         ),
     }
 

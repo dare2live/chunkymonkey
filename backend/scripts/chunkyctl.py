@@ -290,10 +290,17 @@ def _next_actions(
             status_counts = failure_queue_snapshot.get("status_counts") or {}
             open_count = int(status_counts.get("open") or 0)
             resolved_count = int(status_counts.get("resolved") or 0)
+            source_registration = special_need.get("source_registration") or {}
+            fallback_supports_individual_fund_flow = source_registration.get("fallback_source_supports_individual_fund_flow")
+            fallback_source_family = str(source_registration.get("fallback_source_family") or "aif10")
             if open_count or resolved_count:
                 action_text += f" [need_027 blocked/unknown; failure_queue open={open_count} resolved={resolved_count}]"
             else:
                 action_text += " [need_027 blocked/unknown; failure_queue evidence unavailable]"
+            if fallback_supports_individual_fund_flow is False:
+                action_text += (
+                    f"; {fallback_source_family} exact individual_fund_flow unavailable"
+                )
         actions.append({"priority": "P1", "action": action_text})
     return actions
 
