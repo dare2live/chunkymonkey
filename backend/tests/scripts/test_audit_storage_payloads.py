@@ -182,6 +182,40 @@ def test_storage_payload_reviewed_bounded_column_passes_total_warn() -> None:
     assert finding["reasons"] == ["reviewed payload: compact_reason_codes"]
 
 
+def test_storage_payload_reviewed_macd_state_history_reason_codes_passes_total_warn() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute("CREATE TABLE mart_macd_state_history (reason_codes_json TEXT)")
+        conn.executemany("INSERT INTO mart_macd_state_history VALUES (?)", [("[\"macd_state:holding\"]",) for _ in range(12)])
+
+        report = audit_storage_payloads.build_storage_payload_report(
+            conn,
+            policy=_policy(
+                total_value_warn_bytes=20,
+                total_value_fail_bytes=1000,
+                reviewed_columns=[
+                    {
+                        "table": "mart_macd_state_history",
+                        "column": "reason_codes_json",
+                        "classification": "diagnostic_state_history_evidence",
+                        "max_value_bytes": 32,
+                        "max_total_value_bytes": 1000,
+                    }
+                ],
+            ),
+            tables=["mart_macd_state_history"],
+        )
+    finally:
+        conn.close()
+
+    assert report["verdict"] == "PASS"
+    assert report["summary"]["reviewed"] == 1
+    finding = report["findings"][0]
+    assert finding["severity"] == "PASS"
+    assert finding["review"]["status"] == "accepted"
+    assert finding["reasons"] == ["reviewed payload: diagnostic_state_history_evidence"]
+
+
 def test_storage_payload_reviewed_column_never_downgrades_recursive_fail() -> None:
     conn = duckdb.connect(":memory:")
     try:

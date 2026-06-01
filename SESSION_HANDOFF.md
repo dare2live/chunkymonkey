@@ -32,7 +32,7 @@ bash scripts/install_resilience.sh --status   # check 装好没
   `2026-06-01 19:14:51` / `2026-06-01T19:14:57+00:00`, and the 28-row holder
   raw smoke `parse -> write_one -> rollback` all passed, so the current Python
   evidence is crash-free.
-- current in-progress slice: MACD state-history evidence refresh in `backend/services/formula_engine/macd_golden_cross.py` and `backend/scripts/build_macd_state_history.py`; the widened evidence window now writes `370,039` MACD state rows, `audit_stage_opt_candidate_supply.py` sees `raw_trigger_rows=161,279 / raw_state_history_rows=370,039`, and the live recommendation loader still finishes without the missing-table crash but returns 0 candidates, so the current blocker remains input sparsity rather than loader failure.
+- current in-progress slice: storage payload reviewed-column governance for `backend/config/storage_retention.yaml` and `backend/tests/scripts/test_audit_storage_payloads.py`; `mart_macd_state_history.reason_codes_json` is now registered as a bounded diagnostic evidence column, `audit_storage_payloads.py` reports `323 columns / 0 FAIL / 0 WARN / 12 reviewed PASS`, and the broader project blockers remain stage-opt upstream candidate supply and need_027 blocked-gap triage rather than storage payload hygiene.
 | Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
 | VM 状态 | ? |
 | VM 上次启动 |  |
@@ -63,14 +63,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `6fbd79f8 docs: sync controller state and daily recommendation loader evidence` |
+| HEAD | `2c177d1b feat: widen MACD state history evidence and sync controller docs | Codex-Reviewed: APPROVE_WITH_NOTES | test pass; audit PASS; complexity no new HIGH; docs synced` |
 | 最近 24h commits | 82 |
-| 未 commit 文件 | 1 |
+| 未 commit 文件 | 5 |
 
 ### 最近 10 commits
 
 ```
-6fbd79f8 docs: sync controller state and daily recommendation loader evidence
+2c177d1b feat: widen MACD state history evidence and sync controller docs | Codex-Reviewed: APPROVE_WITH_NOTES | test pass; audit PASS; complexity no new HIGH; docs synced
 2cb49141 docs: surface stage-opt blocked-reason counts in doctor | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate)
 b1bf7181 docs: sync quickstart with stage-opt and need_027 controller-visible blockers
 7c99b0af docs: sync stage-opt current audit stats and controller-state timestamps | audit docs graph PASS
@@ -85,7 +85,7 @@ cee8f95c docs: sync stage-opt MACD evidence visibility into goal and handoff | C
 
 ## NEXT ACTION (auto-computed)
 
-**1 uncommitted file — continue stage-opt upstream_candidate_supply / need_027 blocked-gap triage**
+**5 uncommitted files — finish storage payload reviewed-column slice, then continue stage-opt upstream_candidate_supply / need_027 blocked-gap triage**
 
 ## Resilience 配置 (verified)
 
