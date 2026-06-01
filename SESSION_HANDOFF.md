@@ -32,18 +32,7 @@ bash scripts/install_resilience.sh --status   # check 装好没
   `2026-06-01 19:14:51` / `2026-06-01T19:14:57+00:00`, and the 28-row holder
   raw smoke `parse -> write_one -> rollback` all passed, so the current Python
   evidence is crash-free.
-- current in-progress slice: `build_daily_position_recommendations.py` now
-  unions MACD `mart_macd_state_history` into the recommendation candidate pool
-  and uses the existing `mart_per_stock_strategy_optimal` table for
-  cross-stage fallback; the live `2026-06-01` run completes without the
-  missing-table crash, though the current DB snapshot still has 0 candidates;
-  this slice is now landed in commit `1402bc0b`, and the live result is input
-  sparsity rather than loader failure.
-
-## 主线 retrain 状态
-
-| 项 | 值 |
-|---|---|
+- current in-progress slice: MACD state-history evidence refresh in `backend/services/formula_engine/macd_golden_cross.py` and `backend/scripts/build_macd_state_history.py`; the widened evidence window now writes `370,039` MACD state rows, `audit_stage_opt_candidate_supply.py` sees `raw_trigger_rows=161,279 / raw_state_history_rows=370,039`, and the live recommendation loader still finishes without the missing-table crash but returns 0 candidates, so the current blocker remains input sparsity rather than loader failure.
 | Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
 | VM 状态 | ? |
 | VM 上次启动 |  |
@@ -74,14 +63,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `1402bc0b fix: align daily recommendation candidate loader with live tables and MACD state history | Codex-Reviewed: APPROVE_WITH_NOTES` |
+| HEAD | `6fbd79f8 docs: sync controller state and daily recommendation loader evidence` |
 | 最近 24h commits | 82 |
-| 未 commit 文件 | 4 |
+| 未 commit 文件 | 1 |
 
 ### 最近 10 commits
 
 ```
-1402bc0b fix: align daily recommendation candidate loader with live tables and MACD state history | Codex-Reviewed: APPROVE_WITH_NOTES
+6fbd79f8 docs: sync controller state and daily recommendation loader evidence
 2cb49141 docs: surface stage-opt blocked-reason counts in doctor | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate)
 b1bf7181 docs: sync quickstart with stage-opt and need_027 controller-visible blockers
 7c99b0af docs: sync stage-opt current audit stats and controller-state timestamps | audit docs graph PASS
@@ -96,7 +85,7 @@ cee8f95c docs: sync stage-opt MACD evidence visibility into goal and handoff | C
 
 ## NEXT ACTION (auto-computed)
 
-**0 uncommitted files — continue stage-opt upstream_candidate_supply / need_027 blocked-gap triage**
+**1 uncommitted file — continue stage-opt upstream_candidate_supply / need_027 blocked-gap triage**
 
 ## Resilience 配置 (verified)
 

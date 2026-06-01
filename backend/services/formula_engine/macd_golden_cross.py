@@ -10,6 +10,7 @@ variants (用 formula_variant 区分):
 state:
   just_crossed:  当日金叉
   compute_state_history() 额外导出 holding / imminent 诊断态, 写入独立 mart
+  其中 state history 的持仓窗口可以比 trigger 口径稍宽, 只影响诊断候选供给
 
 参数:
   EMA12 / EMA26 / EMA9 (通达信标准)
@@ -31,7 +32,7 @@ from services.formula_engine.base import (
 
 
 CROSS_WINDOW = 5         # 多少日内算 "刚" 金叉/死叉
-IMMINENT_DAYS = 5        # 即将金叉的窗口
+IMMINENT_DAYS = 7        # state history 持仓窗口 (诊断层可略宽于 trigger 口径)
 IMMINENT_GAP_RATIO = 0.012  # |gap|/close < 该值算 imminent
 
 
@@ -92,12 +93,7 @@ class MacdGoldenCross:
 
         signals: list[FormulaSignal] = []
 
-        # 跟踪最近一次金叉/死叉位置
-        last_up = -CROSS_WINDOW - 1
         for i in range(n):
-            if crossed_up[i]:
-                last_up = i
-
             # 触发条件: 当日金叉 (不再过滤 DIF 符号, 用 variant 区分上下轴)
             if not crossed_up[i]:
                 continue
@@ -157,7 +153,8 @@ class MacdGoldenCross:
 
         dif, dea, crossed_up, crossed_down = self._macd_components(closes)
         state_rows: list[FormulaSignal] = []
-        last_cross_up = -CROSS_WINDOW - 1
+        holding_window = max(CROSS_WINDOW, IMMINENT_DAYS)
+        last_cross_up = -holding_window - 1
 
         for i in range(n):
             if crossed_up[i]:
@@ -176,7 +173,7 @@ class MacdGoldenCross:
             variant = self._variant_for_dif(float(dif[i]))
 
             state: str | None = None
-            if last_cross_up >= 0 and i - last_cross_up <= CROSS_WINDOW and dif[i] > dea[i]:
+            if last_cross_up >= 0 and i - last_cross_up <= holding_window and dif[i] > dea[i]:
                 state = "holding"
                 strength = self._signal_strength(gap=gap, close_now=close_now, dif_value=float(dif[i]))
             elif gap_ratio <= IMMINENT_GAP_RATIO:

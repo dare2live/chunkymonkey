@@ -64,8 +64,8 @@ The model pipeline snapshot below is historical evidence for the completed
 - stage-opt audit: 2026-06-01 repaired the 2025-08-01→2026-05-29
   `fact_stock_technical_stage` / `fact_signal_context` discontinuity and
   reran `audit_stage_opt_candidate_supply.py`; full-history coverage is now
-  `raw_signal_rows=1,595,617 / filtered_signal_rows=815,640 / unique_keys=127,077
-  / ready_keys=62,561 / ready coverage=49.23% / below_min_signals=64,516`,
+  `raw_signal_rows=2,103,143 / filtered_signal_rows=1,110,280 / unique_keys=133,857
+  / ready_keys=76,480 / ready coverage=57.14% / below_min_signals=57,377`,
   with `codes_without_bars=0`. This run also fixed the reporting bug where
   `raw_signal_rows` was being shadowed by the filtered summary counters, so
   new sessions should read raw and filtered counts separately. The new
@@ -78,15 +78,15 @@ The model pipeline snapshot below is historical evidence for the completed
   `reversal_1m_deep` from 15-30% to 10-30%, lifting that formula to
   `76,635 / 11,968 / 42.54%`; then it widened `reversal_1m_mild` from 5-15%
   to 4-15%, lifting that formula to `372,661 / 9,265 / 62.43%`. The overall
-  audit now reads `1,595,617 raw_signal_rows / 815,640 filtered_signal_rows /
-  127,077 unique_keys / 62,561 ready_keys / 49.23% ready coverage /
-  64,516 below_min_signals`; `build_formula_signals_history.py
+  audit now reads `2,103,143 raw_signal_rows / 1,110,280 filtered_signal_rows /
+  133,857 unique_keys / 76,480 ready_keys / 57.14% ready coverage /
+  57,377 below_min_signals`; `build_formula_signals_history.py
   --recompute-horizon-evidence` no longer throws NameError after importing
   `defaultdict`; 2026-06-02 `min_signals` probe still shows `5→4→3` lifts
-  global ready coverage to `57.15%` / `67.49%` (`72,180` / `85,246` ready
+  global ready coverage to `64.84%` / `73.75%` (`86,796` / `98,721` ready
   keys, `54,129` / `41,063` below_min_signals) while `reversal_1m_deep`
   itself reaches `50.97%` / `62.34%`; 2026-06-02 further `min_signals=2`
-  lifts global ready coverage to `82.42%` (`107,212` ready keys,
+  lifts global ready coverage to `84.80%` (`113,506` ready keys,
   `22,872` below_min_signals), but the next action still points to
   upstream candidate supply. `2024-03-06` 起的
   `dropped_unknown_stage_rows` 降到 `454,158`, so the remaining
@@ -97,10 +97,10 @@ The model pipeline snapshot below is historical evidence for the completed
   MACD active-state diagnostic mart. It uses a 180-day warm-up window and
   then filters back to the requested write window, so the state rows are
   evidence-only and do not touch `fact_technical_trigger`. The audit now
-  counts `raw_trigger_rows=161,279` plus `raw_state_history_rows=65,543`,
-  lifting `macd_golden_cross` coverage to `26.71%` (`8,330` ready keys) and
+  counts `raw_trigger_rows=161,279` plus `raw_state_history_rows=370,039`,
+  lifting `macd_golden_cross` coverage to `47.13%` (`16,474` ready keys) and
   the MACD-only slice to `226,822 raw_signal_rows / 123,264 filtered_signal_rows
-  / 31,184 unique_keys / 8,330 ready_keys / 26.71% ready coverage /
+  / 31,184 unique_keys / 16,474 ready_keys / 47.13% ready coverage /
   22,854 below_min_signals`; `scripts/chunkyctl doctor --fast` now also carries
   these `raw_trigger_rows` / `raw_state_history_rows` fields so the controller
   can see the MACD state mart composition without rerunning the audit, but the
@@ -112,7 +112,7 @@ The model pipeline snapshot below is historical evidence for the completed
   live `2026-06-01` run now completes without the missing-table crash; the
   current snapshot happened to return 0 candidates, which is an input-sparsity
   result rather than a loader failure. This slice is now landed in commit
-  `1402bc0b`, and the worktree is clean.
+  `1402bc0b`, and the worktree currently has 1 modified file pending commit.
 - `scripts/chunkyctl doctor --fast` now also surfaces the stage-opt
   `next_action_recommendation`, so the controller sees the upstream
   candidate-supply lever without rerunning the audit manually. If
@@ -247,8 +247,8 @@ The model pipeline snapshot below is historical evidence for the completed
   lacks `individual_fund_flow`, so the fallback is still conceptual in the
   current wiring. 2026-06-01 also ran `audit_stage_opt_candidate_supply.py` on the
   current audited slice (2023-01-01→2026-05-29, limit-stocks 50) and found
-  `raw_signal_rows=1,595,617 / filtered_signal_rows=815,640 / unique_keys=127,077
-  / ready_keys=62,561 / ready coverage=49.23% / below_min_signals=64,516`, with
+  `raw_signal_rows=2,103,143 / filtered_signal_rows=1,110,280 / unique_keys=133,857
+  / ready_keys=76,480 / ready coverage=57.14% / below_min_signals=57,377`, with
   `codes_without_bars=0` and all blocked keys failing on `below_min_signals`;
   the helper now reuses the current connection's calendar truth source instead
   of opening a nested `latest_closed_or_raise()` connection, and
