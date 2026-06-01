@@ -16,6 +16,7 @@ import logging
 import sys
 
 from services.db import get_conn
+from services.market_db import _latest_completed_trade_date_for_write
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
@@ -336,16 +337,26 @@ def audit_recommendation_pit_coverage(conn) -> list[dict]:
 
 
 def audit_data_freshness(conn) -> list[dict]:
-    """6. 数据时效性 (是否到今日)."""
+    """6. 数据时效性 (是否跟最新已完成交易日对齐)."""
     issues = []
-    from datetime import date
-    today = date.today().isoformat()  # Phase ψ.5 allowlist: audit 衡量物理 today 的数据滞后天数
     checks = [
         ("fact_technical_trigger", "date"),
         ("fact_signal_context", "date"),
         ("mart_stock_picture_daily", "snapshot_date"),
         ("mart_stock_survey_features", "as_of_date"),
     ]
+    try:
+        target_date = _latest_completed_trade_date_for_write(raise_on_miss=True)
+    except Exception as e:
+        return [
+            {
+                "category": "freshness",
+                "table": table,
+                "severity": "FAIL",
+                "note": f"latest completed trade date lookup failed: {e}",
+            }
+            for table, _col in checks
+        ]
     table_names = [table for table, _col in checks]
     placeholders = ", ".join("?" for _ in table_names)
     existing = {
@@ -369,12 +380,23 @@ def audit_data_freshness(conn) -> list[dict]:
             days_behind = "N/A"
             if latest:
                 from datetime import datetime
-                days_behind = (datetime.fromisoformat(today).date() - datetime.fromisoformat(latest).date()).days
+                days_behind = (
+                    datetime.fromisoformat(target_date).date() - datetime.fromisoformat(latest).date()
+                ).days
+            if isinstance(days_behind, int) and days_behind < 0:
+                severity = "FAIL"
+            elif isinstance(days_behind, int) and days_behind == 0:
+                severity = "OK"
+            elif isinstance(days_behind, int) and days_behind <= 3:
+                severity = "WARN"
+            elif isinstance(days_behind, int):
+                severity = "FAIL"
+            else:
+                severity = "FAIL"
             issues.append({
                 "category": "freshness", "table": table,
                 "latest": latest, "days_behind": days_behind,
-                "severity": "OK" if isinstance(days_behind, int) and days_behind <= 1
-                            else ("WARN" if isinstance(days_behind, int) and days_behind <= 3 else "FAIL"),
+                "severity": severity,
             })
         except Exception as e:
             issues.append({"category": "freshness", "table": table, "severity": "FAIL", "note": str(e)})

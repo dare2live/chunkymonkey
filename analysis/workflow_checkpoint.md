@@ -61,9 +61,8 @@ The model pipeline snapshot below is historical evidence for the completed
   the candidate-supply metrics unchanged, confirming that the remaining
   bottleneck is not the early 2023 window.
 - end-to-end audit: `audit_end_to_end.py` now exits PASS with WARN
-  (`24 total / 19 OK / 5 WARN / 0 FAIL`); WARN includes recommendation PIT
-  coverage 0, recommendation row count, and freshness days_behind=3 for
-  signal/context/picture/survey marts. `rank_and_size()` is already
+  (`24 total / 23 OK / 1 WARN / 0 FAIL`); WARN now only includes recommendation PIT
+  coverage 0. `rank_and_size()` is already
   PIT-tier-first, but the current `2026-05-29` PIT exact candidates mostly
   fail `hp/n_signals/Wilson`, so final recommendations still come out as
   cross-stage fallback. Targeted PIT backfill only moved latest cutoff from 3
