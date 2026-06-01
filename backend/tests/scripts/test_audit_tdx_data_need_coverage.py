@@ -210,6 +210,7 @@ def test_summarize_need_gaps_identifies_only_blocked_need() -> None:
     summary = audit_tdx_data_need_coverage._summarize_need_gaps(config["needs"])
 
     assert summary["need_count"] == 27
+    assert summary["registered_source_names"] == ["aif10", "akshare", "tdxhub"]
     assert summary["eligibility_counts"]["eligible"] == 4
     assert summary["eligibility_counts"]["research_only"] == 22
     assert summary["eligibility_counts"]["blocked"] == 1
@@ -225,6 +226,9 @@ def test_summarize_need_gaps_identifies_only_blocked_need() -> None:
     assert blocked["production_eligibility"] == "blocked"
     assert blocked["preferred_source"] == "akshare"
     assert blocked["fallback_source"] == "miaoxiang"
+    assert blocked["source_registration"]["registered_source_names"] == ["aif10", "akshare", "tdxhub"]
+    assert blocked["source_registration"]["preferred_source_registered"] is True
+    assert blocked["source_registration"]["fallback_source_registered"] is False
     assert blocked["action"] == "probe_restore_or_keep_unknown"
     assert "CYQ 主力画像需要真实订单流" in blocked["notes"]
 

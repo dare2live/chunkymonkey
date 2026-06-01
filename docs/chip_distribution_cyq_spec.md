@@ -213,6 +213,8 @@ for fdate, fval in float_schedule:
 | 解禁信息 | `raw_capital_unlock` | 有 | OK |
 | 股东户数 | `fact_holder_count_period` | 季报 | OK，低频 |
 
+> 2026-06-01 audit note: current `data_sources` registry exposes `tdxhub` / `aif10` / `akshare`; `need_027`'s declared fallback label `miaoxiang` is not a registry source name in the current wiring, so that fallback remains conceptual until the route mapping is made explicit.
+
 ### 4.3 资金流向字段说明（`raw_fund_flow_daily`）
 
 | 字段 | 含义 |

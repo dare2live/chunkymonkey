@@ -70,6 +70,10 @@ The model pipeline snapshot below is historical evidence for the completed
   gating concern rather than a ranking bug. A direct attrition audit on 353
   raw candidates found selected_rows only 5/1/2 for short/mid/long, all
   `cross_stage_fallback`, with `hp` and `wilson` as the dominant fail reasons.
+  The new need coverage audit also surfaces source registration facts:
+  `need_027`'s preferred `akshare` is registered, while the declared fallback
+  label `miaoxiang` does not match a registry source name, so the fallback is
+  still conceptual in the current wiring.
 
 - generated_at: `2026-05-25T01:20:01Z`
 - model_id: `lgbm_phase5_gcp_20260520T010718`

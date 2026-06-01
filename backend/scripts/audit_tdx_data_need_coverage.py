@@ -12,6 +12,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from services.data_sources import get_registry  # noqa: E402
 from services.db import get_conn  # noqa: E402
 
 logger = logging.getLogger("tdx_data_need_coverage")
@@ -168,10 +169,22 @@ def _need_record(row: tuple[Any, ...]) -> dict[str, Any]:
     return dict(zip(NEED_FIELDS, row))
 
 
+def _registered_source_names() -> list[str]:
+    registry = get_registry()
+    return sorted(src.name for src in registry.list_sources())
+
+
+def _source_name_registered(source_name: Any, registered_names: set[str]) -> bool:
+    text = _as_clean_text(source_name).lower()
+    return bool(text) and text not in UNKNOWN_VALUES and text in registered_names
+
+
 def _summarize_need_gaps(needs: list[tuple[Any, ...]]) -> dict[str, Any]:
     records = [_need_record(row) for row in needs]
     eligibility_counts = {}
     blocked_needs = []
+    registered_source_names = _registered_source_names()
+    registered_source_name_set = set(registered_source_names)
 
     for record in records:
         eligibility = _as_clean_text(record.get("production_eligibility"))
@@ -190,6 +203,17 @@ def _summarize_need_gaps(needs: list[tuple[Any, ...]]) -> dict[str, Any]:
                     "production_eligibility": eligibility,
                     "preferred_source": record.get("preferred_source"),
                     "fallback_source": record.get("fallback_source"),
+                    "source_registration": {
+                        "registered_source_names": registered_source_names,
+                        "preferred_source_registered": _source_name_registered(
+                            record.get("preferred_source"),
+                            registered_source_name_set,
+                        ),
+                        "fallback_source_registered": _source_name_registered(
+                            record.get("fallback_source"),
+                            registered_source_name_set,
+                        ),
+                    },
                     "action": record.get("action"),
                     "notes": record.get("notes"),
                 }
@@ -200,6 +224,7 @@ def _summarize_need_gaps(needs: list[tuple[Any, ...]]) -> dict[str, Any]:
         "eligibility_counts": eligibility_counts,
         "blocked_need_count": len(blocked_needs),
         "blocked_needs": blocked_needs,
+        "registered_source_names": registered_source_names,
     }
 
 
