@@ -25,14 +25,9 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 05:41:48 CST
+**Snapshot 时间**: 2026-06-02 05:48:57 CST
 
-- latest local full-sync (2026-06-02) finished with only `watermarks:warn`;
-  `raw_tdx_f10_holder_research` / `fact_top10_holder_period` both advanced to
-  `2026-06-01 19:14:51` / `2026-06-01T19:14:57+00:00`, and the 28-row holder
-  raw smoke `parse -> write_one -> rollback` all passed, so the current Python
-  evidence is crash-free.
-- current in-progress slice: stage-opt upstream candidate supply tuning (latest rebuild first tightened `dynamic_ma_iterative_cross` from 2 iterations to 1, then externalized `reversal_1m_deep` thresholds into `backend/config/formula_reversal_short_term.yaml` and widened its upper bound from `8-30%` to `5-30%`; the full-history audit now reads `raw_signal_rows=5,401,248 / filtered_signal_rows=2,701,616 / unique_keys=150,866 / ready_keys=108,009 / ready coverage=71.59% / below_min_signals=42,857`, with `min_signals=4/3/2` at `77.57% / 83.92% / 91.09%` and weakest formulas now `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_mild`; plus need_027 blocked-gap triage; storage payload reviewed-column governance for `backend/config/storage_retention.yaml` and `backend/tests/scripts/test_audit_storage_payloads.py` is already complete, with `mart_macd_state_history.reason_codes_json` registered as a bounded diagnostic evidence column and `audit_storage_payloads.py` at `323 columns / 0 FAIL / 0 WARN / 12 reviewed PASS`.
+- latest code/docs snapshot (2026-06-02) is commit `da5c60d9`; `reversal_1m_mild` was externalized into `backend/config/formula_reversal_short_term.yaml` and widened from `4-15%` to `3-15%`, with the history rebuild writing `444,359` mild rows; the full stage-opt audit now reads `raw_signal_rows=5,472,946 / filtered_signal_rows=2,732,904 / unique_keys=151,570 / ready_keys=109,073 / ready coverage=71.96% / below_min_signals=42,497`, with `min_signals=4/3/2` at `77.81% / 84.08% / 91.16%` and weakest formulas now `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1w`; controller recommendation remains `P1 / upstream_candidate_supply`, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`.
 | Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
 | VM 状态 | ? |
 | VM 上次启动 |  |
@@ -63,13 +58,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `30b4e0ce docs: refresh session handoff after reversal short-term lift | test pass: docs graph PASS, worktree clean, no code changes` |
-| 最近 24h commits | 82 |
+| HEAD | `da5c60d9 feat: externalize reversal_1m_mild threshold and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 39 passed, audit PASS, stage-opt 71.96% ready coverage, docs graph PASS` |
+| 最近 24h commits | 92 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+da5c60d9 feat: externalize reversal_1m_mild threshold and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 39 passed, audit PASS, stage-opt 71.96% ready coverage, docs graph PASS
 30b4e0ce docs: refresh session handoff after reversal short-term lift | test pass: docs graph PASS, worktree clean, no code changes
 286969b3 feat: externalize reversal short-term thresholds and sync stage-opt docs | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 39 passed, audit PASS, stage-opt 71.59% ready coverage, docs graph PASS
 969ad89b docs: refresh controller snapshot after stage-opt latest rebuild | Codex-Reviewed: APPROVE_WITH_NOTES | commit-msg: minimal | test pass: docs graph PASS, worktree clean
