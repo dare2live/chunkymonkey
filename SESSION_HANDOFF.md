@@ -25,9 +25,9 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 06:02:21 CST
+**Snapshot 时间**: 2026-06-02 06:08:00 CST
 
-- latest code/docs snapshot (2026-06-02) is commit `8731d191`; `dynamic_ma_iterative_cross` was externalized into `backend/config/formula_dynamic_ma_iterative.yaml` and compressed from `1` iteration to `0`, with the history rebuild lifting that formula to `144,282 / 20,522 / 56.83%`; the full stage-opt audit now reads `raw_signal_rows=5,520,983 / filtered_signal_rows=2,758,502 / unique_keys=151,827 / ready_keys=110,102 / ready coverage=72.52% / below_min_signals=41,725`, with `min_signals=4/3/2` at `78.24% / 84.41% / 91.30%` and weakest formulas still `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1w`; controller recommendation remains `P1 / upstream_candidate_supply`, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`.
+- latest code/docs snapshot (2026-06-02) is commit `b560909b`; `turtle_breakout_55` was externalized into `backend/config/formula_turtle_breakout.yaml` and its volume confirmation gate was lowered from `1.0` to `0.9`, with the history rebuild lifting that formula to `139,053 / 17,143 / 64.62%`; the full stage-opt audit now reads `raw_signal_rows=5,530,639 / filtered_signal_rows=2,765,531 / unique_keys=151,881 / ready_keys=110,336 / ready coverage=72.65% / below_min_signals=41,545`, with `min_signals=4/3/2` at `78.35% / 84.47% / 91.32%` and weakest formulas still `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1w`; controller recommendation remains `P1 / upstream_candidate_supply`, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`.
 | Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
 | VM 状态 | ? |
 | VM 上次启动 |  |
@@ -58,14 +58,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `8731d191 feat: externalize dynamic_ma_iterative iterations to 0 and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 39 passed, audit PASS, stage-opt 72.52% ready coverage, docs graph PASS, complexity no new HIGH` |
+| HEAD | `b560909b feat: lower turtle breakout 55 volume gate to 0.9 and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 39 passed, audit PASS, stage-opt 72.65% ready coverage, docs graph PASS, complexity no new HIGH` |
 | 最近 24h commits | 94 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
-8731d191 feat: externalize dynamic_ma_iterative iterations to 0 and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 39 passed, audit PASS, stage-opt 72.52% ready coverage, docs graph PASS, complexity no new HIGH
+b560909b feat: lower turtle breakout 55 volume gate to 0.9 and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 39 passed, audit PASS, stage-opt 72.65% ready coverage, docs graph PASS, complexity no new HIGH
 da5c60d9 feat: externalize reversal_1m_mild threshold and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 39 passed, audit PASS, stage-opt 71.96% ready coverage, docs graph PASS
 30b4e0ce docs: refresh session handoff after reversal short-term lift | test pass: docs graph PASS, worktree clean, no code changes
 286969b3 feat: externalize reversal short-term thresholds and sync stage-opt docs | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 39 passed, audit PASS, stage-opt 71.59% ready coverage, docs graph PASS
