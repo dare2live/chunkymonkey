@@ -16,7 +16,7 @@ Snapshot: `2026-06-01 08:01:03 CST`
 | Storage payload | `PASS`: 320 scanned / 0 FAIL / 0 WARN / 11 reviewed PASS | Reviewed columns are governed by `backend/config/storage_retention.yaml`; recursive or over-cap payloads still block |
 | CodeGraph | Synced after the survey `.py` slice; pending may show the new untracked test until this slice is staged/committed | Re-run `codegraph status .` after this commit |
 | Complexity | Historical HIGH remains debt; tooling diff ignores line-number drift by default | New HIGH still blocks; line drift alone should not |
-| Data freshness/PIT | **WARN/MIXED but non-blocking**: end-to-end freshness PASS with WARN; data completeness PASS with WARN (0 FAIL / 2 WARN, both sparse-event evidence); survivorship gate PASS on current label_version, legacy v2 only via explicit flag | Continue LHB event-coverage triage and recommendation PIT; no strategy claim |
+| Data freshness/PIT | **WARN/MIXED but non-blocking**: end-to-end freshness PASS with WARN; data completeness PASS with WARN (0 FAIL / 2 WARN, both sparse-event evidence); survivorship gate PASS on current label_version, legacy v2 only via explicit flag；`rank_and_size()` 已改为 PIT-tier-first，但当前推荐仍全是 `cross_stage_fallback`，因为 2026-05-29 的 PIT exact 候选多数卡在 `hp/n_signals/Wilson` 门槛，coverage 0 是候选稀疏/阈值问题；targeted backfill only moved latest cutoff from 3 rows to 4 | Continue LHB event-coverage triage and recommendation PIT candidate-sparsity triage; no strategy claim |
 
 ## Latest Slice
 
@@ -28,7 +28,11 @@ version), `mart_p0a_feature_label_panel_v3`, `mart_p0a_feature_label_panel_v4`,
 version so the gate now passes. Remaining freshness blockers are the LHB event
 coverage WARN and recommendation PIT WARN; `fact_lhb_event` and
 `fact_technical_trigger` are now registered as sparse-event evidence in
-`dim_data_asset`, so completeness no longer blocks on them. No GCP/Optuna/backtest work was started.
+`dim_data_asset`, so completeness no longer blocks on them. Recommendation PIT
+was probed with a targeted `build_stage_opt_pit.py` smoke and a 2-stock
+`optimize_per_stock_stage_strategy.py --min-signals 3` smoke; neither yielded a
+useful PIT expansion, which means the gap is upstream candidate sparsity, not
+just ranking order. No GCP/Optuna/backtest work was started.
 
 K-line refresh commands used:
 
@@ -83,7 +87,7 @@ Downstream freshness refresh commands used:
 | `audit_test_tool_health.py --scope backend/scripts/build_survey_features.py --scope backend/tests/sentiment/test_build_survey_features_script.py --scope backend/tests/sentiment/test_survey_builder.py` | PASS |
 | `pytest -q backend/tests/sentiment/test_build_survey_features_script.py backend/tests/sentiment/test_survey_builder.py` | 9 passed |
 | `complexity-optimizer backend/scripts/build_survey_features.py` | No obvious hotspots in targeted scan |
-| `audit_end_to_end.py` after picture/survey refresh | PASS with WARN: 24 total / 18 OK / 6 WARN / 0 FAIL |
+| `audit_end_to_end.py` after picture/survey refresh | PASS with WARN: 24 total / 19 OK / 5 WARN / 0 FAIL |
 | `audit_data_completeness.py` after main-force catch-up | PASS with WARN: 0 FAIL / 2 WARN; `fact_lhb_event` and `fact_technical_trigger` are sparse-event evidence, not blockers |
 | `audit_universe_coverage.py` after picture/survey refresh | PASS: 17 PASS / 5 WARN / 0 FAIL |
 | `audit_pit_integrity.py` after picture/survey refresh | PASS: 11 PASS / 28 WARN / 0 FAIL |
@@ -96,6 +100,8 @@ Downstream freshness refresh commands used:
 2. Confirm `git status --short`, `codegraph status .`, and
    `scripts/chunkyctl doctor --fast` return clean/PASS after the commit.
 3. Continue `goal.md` 6.11 downstream freshness from the current state. The
-   next true blocker is LHB event coverage and recommendation PIT. Keep
-   `fact_technical_trigger` partial coverage as WARN evidence, not production
-   proof.
+  next true blocker is LHB event coverage and recommendation PIT candidate
+  sparsity; keep `fact_technical_trigger` partial coverage as WARN evidence,
+  not production proof. PIT-first ranking is already in place, but current
+  candidate quality still yields only cross-stage fallback recommendations and
+  the PIT table is still underfilled for current exact candidates.

@@ -24,15 +24,24 @@ The model pipeline snapshot below is historical evidence for the completed
   evidence is `fact_lhb_event` event coverage only 84 codes (1%) and
   `fact_technical_trigger` event-table sparse-event coverage.
 - end-to-end audit: `audit_end_to_end.py` now exits PASS with WARN
-  (`24 total / 18 OK / 6 WARN / 0 FAIL`); WARN includes recommendation PIT
+  (`24 total / 19 OK / 5 WARN / 0 FAIL`); WARN includes recommendation PIT
   coverage 0, recommendation row count, and freshness days_behind=3 for
-  signal/context/picture/survey marts.
+  signal/context/picture/survey marts. `rank_and_size()` is already
+  PIT-tier-first, but the current `2026-05-29` PIT exact candidates mostly
+  fail `hp/n_signals/Wilson`, so final recommendations still come out as
+  cross-stage fallback. Targeted PIT backfill only moved latest cutoff from 3
+  rows to 4, and a 2-stock `optimize_per_stock_stage_strategy.py --min-signals 3`
+  smoke still produced 0 governance-pass rows.
 - survivorship gate: current default `p0a_v3_horizon_governance` PASS; the old
   `p0a_v2_governance_v1` gate remains available only for explicit historical
   review.
 - next_step: follow `goal.md` 6.11 from the current state; the next true
-  blocker is LHB event coverage and recommendation PIT coverage.
-  `fact_technical_trigger` remains WARN evidence, not a completeness blocker.
+  blocker is LHB event coverage and recommendation PIT candidate sparsity.
+  `fact_technical_trigger` remains WARN evidence, not a completeness blocker,
+  and PIT-first ranking is already in place even though current output is
+  still all cross-stage fallback. The PIT table is still underfilled for the
+  current exact candidates, so the next meaningful step is upstream PIT
+  coverage expansion rather than more ranking tweaks.
 
 - generated_at: `2026-05-25T01:20:01Z`
 - model_id: `lgbm_phase5_gcp_20260520T010718`

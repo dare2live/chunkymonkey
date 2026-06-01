@@ -18,6 +18,12 @@ from services.trading_config import EXECUTION_MODEL
 from services.trading_config.buy_pricing import compute_buy_price
 
 
+MATCH_TIER_PRIORITY = {
+    "stage_pit": 2,
+    "stage_pit_formula_fallback": 1,
+}
+
+
 def confidence_tier(wilson_win: float, n_signals: int) -> int:
     """Tier 1=高信心 / 2=中 / 3=低."""
     if wilson_win >= 0.80 and n_signals >= 10:
@@ -25,6 +31,13 @@ def confidence_tier(wilson_win: float, n_signals: int) -> int:
     if wilson_win >= 0.70 and n_signals >= 5:
         return 2
     return 3
+
+
+def match_tier_priority(match_tier: str | None) -> int:
+    """PIT-safe 匹配层级优先于 cross-stage fallback."""
+    if not match_tier:
+        return 0
+    return MATCH_TIER_PRIORITY.get(match_tier, 0)
 
 
 def trailing_threshold(target_ret: float, profile: RiskProfile) -> float:
@@ -160,7 +173,13 @@ def rank_and_size(
 
     # Step 5a: dedup — per (stock_code, formula_variant) 只保留最高分一行
     # 同一只股票可能有多个 hp/variant 信号; portfolio 内只持仓一次
-    pool.sort(key=lambda x: x["score"], reverse=True)
+    pool.sort(
+        key=lambda x: (
+            match_tier_priority(x.get("match_tier")),
+            x["score"],
+        ),
+        reverse=True,
+    )
     seen_keys: set[tuple[str, str]] = set()
     deduped: list[dict] = []
     for x in pool:

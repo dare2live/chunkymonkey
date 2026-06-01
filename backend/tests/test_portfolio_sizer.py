@@ -225,6 +225,28 @@ class TestSizing:
         assert a_row["holding_days"] == 10
         assert a_row["formula_variant"] == "macd_v1"
 
+    def test_rank_and_size_prioritizes_pit_tier_over_higher_score_fallback(self, short_profile):
+        """PIT 安全候选应优先于更高分的 cross-stage fallback."""
+        from services.portfolio_sizer.sizing import rank_and_size
+
+        cands = [
+            # PIT-safe 候选，分数略低
+            {"stock_code": "PIT", "formula_id": "macd", "formula_variant": "macd_v1",
+             "holding_days": 10, "n_signals": 20, "win_rate": 0.84, "avg_ret": 0.10,
+             "avg_dd": -0.05, "calmar": 1.6, "signal_close": 100.0,
+             "match_tier": "stage_pit"},
+            # cross-stage fallback，原始 score 更高
+            {"stock_code": "XSTAGE", "formula_id": "macd", "formula_variant": "macd_v1",
+             "holding_days": 10, "n_signals": 20, "win_rate": 0.95, "avg_ret": 0.10,
+             "avg_dd": -0.05, "calmar": 2.4, "signal_close": 100.0,
+             "match_tier": "cross_stage_fallback"},
+        ]
+
+        out = rank_and_size(cands, short_profile)
+        assert [r["stock_code"] for r in out] == ["PIT", "XSTAGE"]
+        assert out[0]["match_tier"] == "stage_pit"
+        assert out[0]["score"] < out[1]["score"]
+
 
 # ===================== Sell Rules =====================
 class TestSellRules:
