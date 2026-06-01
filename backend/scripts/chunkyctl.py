@@ -106,6 +106,8 @@ def _stage_opt_summary(report: dict[str, Any] | None) -> dict[str, Any] | None:
     return {
         "summary": {
             "raw_signal_rows": report.get("raw_signal_rows"),
+            "raw_trigger_rows": report.get("raw_trigger_rows"),
+            "raw_state_history_rows": report.get("raw_state_history_rows"),
             "filtered_signal_rows": report.get("filtered_signal_rows"),
             "unique_keys": report.get("unique_keys"),
             "ready_keys": report.get("ready_keys"),

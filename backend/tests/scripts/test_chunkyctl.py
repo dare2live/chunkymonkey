@@ -407,6 +407,8 @@ def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_pa
                     {
                         "verdict": "PASS",
                         "raw_signal_rows": 1381657,
+                        "raw_trigger_rows": 7,
+                        "raw_state_history_rows": 3,
                         "filtered_signal_rows": 733083,
                         "unique_keys": 120273,
                         "ready_keys": 57986,
@@ -478,6 +480,8 @@ def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_pa
     assert rc == 1
     assert report["data_health"]["report"]["summary"] == {"total": 3, "green": 1, "yellow": 1, "red": 1}
     assert report["data_health"]["report"]["verdict"] == "FAIL"
+    assert report["stage_opt"]["report"]["summary"]["raw_trigger_rows"] == 7
+    assert report["stage_opt"]["report"]["summary"]["raw_state_history_rows"] == 3
     assert report["stage_opt"]["report"]["next_action_recommendation"]["focus"] == "upstream_candidate_supply"
     assert report["need_coverage"]["report"]["summary"]["blocked_need_count"] == 1
     assert report["verdict"] == "FAIL"
@@ -552,6 +556,8 @@ def test_doctor_prioritizes_blocking_yellow_health_items(monkeypatch, tmp_path: 
                     {
                         "verdict": "PASS",
                         "raw_signal_rows": 1381657,
+                        "raw_trigger_rows": 7,
+                        "raw_state_history_rows": 3,
                         "filtered_signal_rows": 733083,
                         "unique_keys": 120273,
                         "ready_keys": 57986,
@@ -668,6 +674,8 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
     summary = chunkyctl._stage_opt_summary(
         {
             "raw_signal_rows": 10,
+            "raw_trigger_rows": 7,
+            "raw_state_history_rows": 3,
             "filtered_signal_rows": 8,
             "unique_keys": 4,
             "ready_keys": 2,
@@ -706,6 +714,8 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
 
     assert summary["min_signals_sensitivity"][0]["min_signals"] == 4
     assert summary["min_signals_sensitivity"][0]["ready_coverage_pct"] == 75.0
+    assert summary["summary"]["raw_trigger_rows"] == 7
+    assert summary["summary"]["raw_state_history_rows"] == 3
 
 
 def test_next_actions_include_stage_opt_structural_notes() -> None:
