@@ -55,6 +55,15 @@ This slice additionally materialized `mart_stock_fund_flow_rank_snapshot_daily`
 via `build_fund_flow_rank_snapshot_daily.py` and registered the builder test,
 but it is explicitly research-side support only and does not change the
 `need_027` exact-flow blocked status.
+The same session also dug into the early 2023 window: `build_signal_context.py`
+successfully backfilled `233,939` rows for `2023-01-01→2023-09-11`, moving
+`fact_signal_context` min date to `2023-07-05`, and `build_stage_formula_fitness.py`
+needed `compute_start=2022-01-01` to backfill `427,436` early
+`fact_stock_technical_stage` rows, moving its min date to `2023-01-13`.
+Rerunning `audit_stage_opt_candidate_supply.py` after both backfills did not
+change the `1,381,657 / 733,083 / 120,273 / 57,986 / 48.21% / 62,287`
+candidate-supply metrics, so the remaining blocker is still upstream formula /
+candidate density rather than the 2023 early window.
 This slice also externalized `portfolio_sizer` short/mid/long thresholds into
 `backend/config/portfolio_sizer_profiles.yaml`, and added
 `backend/scripts/audit_portfolio_sizer_profile_attrition.py` /
@@ -130,7 +139,7 @@ Downstream freshness refresh commands used:
 | `audit_test_tool_health.py --scope backend/scripts/build_formula_signals_history.py --scope backend/scripts/build_stage_formula_fitness.py --scope backend/scripts/build_signal_context.py --scope backend/tests/test_build_formula_signals.py` | PASS |
 | `pytest -q backend/tests/test_build_formula_signals.py` | 19 passed |
 | `scripts/chunkyctl audit --run --scope backend/scripts/build_formula_signals_history.py --scope backend/scripts/build_stage_formula_fitness.py --scope backend/scripts/build_signal_context.py --scope backend/tests/test_build_formula_signals.py` | PASS |
-| Downstream coverage query | `fact_stock_technical_stage` max 2026-05-29 / 1,429,117 rows; `fact_signal_context` max 2026-05-29 / 3,285,715 rows; `fact_technical_trigger` max 2026-05-29 / 1,381,657 rows |
+| Downstream coverage query | `fact_stock_technical_stage` max 2026-05-29 / 2,633,102 rows; `fact_signal_context` max 2026-05-29 / 3,519,654 rows; `fact_technical_trigger` max 2026-05-29 / 1,381,657 rows |
 | `audit_data_completeness.py` after main-force catch-up | PASS with WARN: 0 FAIL / 2 WARN; `fact_lhb_event` and `fact_technical_trigger` are sparse-event evidence, not blockers |
 | `audit_end_to_end.py` after trigger refresh | FAIL: 24 total / 18 OK / 4 WARN / 2 FAIL; FAIL now `mart_stock_picture_daily` and `mart_stock_survey_features` |
 | `audit_universe_coverage.py` after trigger refresh | PASS: 17 PASS / 5 WARN / 0 FAIL |

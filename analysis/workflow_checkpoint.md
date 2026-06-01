@@ -50,6 +50,16 @@ The model pipeline snapshot below is historical evidence for the completed
   cohorts. `2024-03-06` 起的 `dropped_unknown_stage_rows` 降到 `454,158`,
   so the remaining `technical_stage='?'` mass is still mostly structural
   classifier warmup / unknown, not a fresh ETL outage.
+- later in the same slice we tested whether the 2023-01-01→2023-09-11
+  technical-stage hole was the missing lever: `build_stage_formula_fitness.py`
+  needed a longer `compute_start` than the write window, so a second run with
+  `compute_start=2022-01-01 / write_start=2023-01-01 / end=2023-09-11`
+  succeeded and wrote `427,436` early stage rows (fact min date now
+  `2023-01-13`), while `build_signal_context.py` had already backfilled
+  `233,939` rows for `2023-01-01→2023-09-11` (fact min date now `2023-07-05`).
+  Rerunning `audit_stage_opt_candidate_supply.py` after both backfills left
+  the candidate-supply metrics unchanged, confirming that the remaining
+  bottleneck is not the early 2023 window.
 - end-to-end audit: `audit_end_to_end.py` now exits PASS with WARN
   (`24 total / 19 OK / 5 WARN / 0 FAIL`); WARN includes recommendation PIT
   coverage 0, recommendation row count, and freshness days_behind=3 for
