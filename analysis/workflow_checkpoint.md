@@ -96,7 +96,9 @@ The model pipeline snapshot below is historical evidence for the completed
   instead of a blocker. This is the startup health signal the controller has
   to read before trusting any freshness claim. Feature panel,
   capital_behavior, and holder/shareholder-plan lanes have all been cleared
-  from red; GPCW and raw_aif10 are now yellow maintenance only.
+  from red; GPCW and raw_aif10 are now yellow maintenance only, and
+  `blocking_yellow_tables` are surfaced separately so `quality_gate_level=blocking`
+  yellow assets get next-action priority before generic yellow maintenance.
 - survivorship gate: current default `p0a_v3_horizon_governance` PASS; the old
   `p0a_v2_governance_v1` gate remains available only for explicit historical
   review.

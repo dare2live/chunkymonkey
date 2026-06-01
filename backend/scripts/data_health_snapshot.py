@@ -489,11 +489,18 @@ def build_health_snapshot_report(
 ) -> dict[str, Any]:
     red_tables = [_snapshot_brief(snapshot) for snapshot in snapshots if snapshot.get("severity") == "red"]
     yellow_tables = [_snapshot_brief(snapshot) for snapshot in snapshots if snapshot.get("severity") == "yellow"]
+    blocking_yellow_tables = [
+        _snapshot_brief(snapshot)
+        for snapshot in snapshots
+        if snapshot.get("severity") == "yellow"
+        and str(snapshot.get("quality_gate_level") or "").strip().lower() == "blocking"
+    ]
     summary = {
         "total": len(snapshots),
         "green": int(severity_count.get("green", 0)),
         "yellow": int(severity_count.get("yellow", 0)),
         "red": int(severity_count.get("red", 0)),
+        "blocking_yellow": len(blocking_yellow_tables),
     }
     verdict = "FAIL" if red_tables else ("WARN" if yellow_tables else "PASS")
     return {
@@ -507,6 +514,7 @@ def build_health_snapshot_report(
         "verdict": verdict,
         "red_tables": red_tables,
         "yellow_tables": yellow_tables,
+        "blocking_yellow_tables": blocking_yellow_tables,
         "blockers": [item["table_name"] for item in red_tables if item.get("table_name")],
     }
 
@@ -572,8 +580,24 @@ def main() -> int:
 
     if args.dry_run:
         log.info("[dry] severity counts: %s", severity_count)
+        blocking_yellow_list = [
+            s for s in snapshots
+            if s["severity"] == "yellow"
+            and str(s.get("quality_gate_level") or "").strip().lower() == "blocking"
+        ]
+        blocking_yellow_names = {str(s["table_name"]) for s in blocking_yellow_list}
+        if blocking_yellow_list:
+            log.info("\n=== blocking yellow tables (%d) ===", len(blocking_yellow_list))
+            for s in blocking_yellow_list[:30]:
+                owner = s.get("writer_prompt")
+                suffix = f" | {owner}" if owner else ""
+                log.info("  [WARN][blocking] %s — %s%s", s["table_name"], s["issue_summary"], suffix)
+            if len(blocking_yellow_list) > 30:
+                log.info("  ... +%d more", len(blocking_yellow_list) - 30)
         for s in snapshots:
-            if s["severity"] != "green":
+            if s["severity"] != "green" and not (
+                s["severity"] == "yellow" and str(s.get("table_name") or "") in blocking_yellow_names
+            ):
                 owner = s.get("writer_prompt")
                 suffix = f" | {owner}" if owner else ""
                 log.info("  %s %s: %s%s", s["severity"], s["table_name"], s["issue_summary"], suffix)

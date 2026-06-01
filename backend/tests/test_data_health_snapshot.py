@@ -347,10 +347,11 @@ def test_build_health_snapshot_report_summarizes_red_and_yellow_tables():
     )
 
     assert report["verdict"] == "FAIL"
-    assert report["summary"] == {"total": 3, "green": 1, "yellow": 1, "red": 1}
+    assert report["summary"] == {"total": 3, "green": 1, "yellow": 1, "red": 1, "blocking_yellow": 0}
     assert report["blockers"] == ["red_table"]
     assert [row["table_name"] for row in report["red_tables"]] == ["red_table"]
     assert [row["table_name"] for row in report["yellow_tables"]] == ["yellow_table"]
+    assert report["blocking_yellow_tables"] == []
     assert report["red_tables"][0]["writer_prompt"].startswith("owner=foo")
 
 
@@ -432,6 +433,36 @@ def test_quality_gate_level_caps_non_blocking_assets_to_yellow():
         assert monitor_health["issue_summary"].startswith("COUNT(*) failed:")
     finally:
         conn.close()
+
+
+def test_build_health_snapshot_report_tracks_blocking_yellow_tables():
+    snapshots = [
+        {"table_name": "green_table", "severity": "green"},
+        {
+            "table_name": "yellow_blocker",
+            "severity": "yellow",
+            "quality_gate_level": "blocking",
+            "issue_summary": "writer is 223.0h old (SLA 168h)",
+        },
+        {
+            "table_name": "yellow_warning",
+            "severity": "yellow",
+            "quality_gate_level": "warning",
+            "issue_summary": "writer is 96.0h old (SLA 48h)",
+        },
+    ]
+    report = build_health_snapshot_report(
+        snapshots,
+        {"green": 1, "yellow": 2, "red": 0},
+        now=datetime(2026, 6, 1, 13, 0, 0),
+        run_started_at="2026-06-01T13:00:00Z",
+        keep_history=30,
+        dry_run=True,
+    )
+
+    assert report["verdict"] == "WARN"
+    assert report["summary"] == {"total": 3, "green": 1, "yellow": 2, "red": 0, "blocking_yellow": 1}
+    assert [row["table_name"] for row in report["blocking_yellow_tables"]] == ["yellow_blocker"]
 
 
 

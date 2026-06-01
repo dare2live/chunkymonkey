@@ -173,6 +173,7 @@ def _next_actions(
         summary = data_health["summary"]
         red_count = int(summary.get("red", 0) or 0)
         yellow_count = int(summary.get("yellow", 0) or 0)
+        blocking_yellow_tables = data_health.get("blocking_yellow_tables") or []
         if red_count:
             actions.append(
                 {
@@ -180,6 +181,20 @@ def _next_actions(
                     "action": "Review data health red tables one bucket at a time; prioritize active writers, stale tables, and missing assets before trusting freshness claims",
                 }
             )
+        elif blocking_yellow_tables:
+            table_names = ", ".join(
+                str(item.get("table_name") or "").strip()
+                for item in blocking_yellow_tables[:3]
+                if str(item.get("table_name") or "").strip()
+            )
+            if len(blocking_yellow_tables) > 3 and table_names:
+                table_names = f"{table_names}, +{len(blocking_yellow_tables) - 3} more"
+            detail = (
+                "Review data health yellow tables with quality_gate_level=blocking first"
+                + (f" ({table_names})" if table_names else "")
+                + "; they are capped to yellow for verdict aggregation but still carry blocking gate status"
+            )
+            actions.append({"priority": "P1", "action": detail})
         elif yellow_count:
             actions.append(
                 {

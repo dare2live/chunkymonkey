@@ -426,6 +426,90 @@ def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_pa
     assert any("data health red tables" in action["action"] for action in report["next_actions"])
 
 
+def test_doctor_prioritizes_blocking_yellow_health_items(monkeypatch, tmp_path: Path, capsys) -> None:
+    def fake_run_command(cmd, cwd):
+        cmd_text = " ".join(str(part) for part in cmd)
+        if "audit_tooling_gate.py" in cmd_text:
+            return {
+                "cmd": cmd,
+                "returncode": 0,
+                "stdout": json.dumps(
+                    {
+                        "verdict": "PASS",
+                        "git_status": {"clean": True},
+                        "codegraph": {"pending": {"sync_required": False, "added": 0}},
+                        "complexity": {"baseline": {"status": "loaded"}, "diff": {"new_high_count": 0}},
+                    }
+                ),
+                "stderr": "",
+            }
+        if "audit_test_tool_health.py" in cmd_text:
+            return {"cmd": cmd, "returncode": 0, "stdout": json.dumps({"verdict": "PASS"}), "stderr": ""}
+        if "check_universe_filter.py" in cmd_text:
+            return {"cmd": cmd, "returncode": 0, "stdout": "", "stderr": ""}
+        if "audit_storage_payloads.py" in cmd_text:
+            return {
+                "cmd": cmd,
+                "returncode": 0,
+                "stdout": json.dumps({"verdict": "PASS", "summary": {"pass": 1, "warn": 0, "fail": 0}, "findings": []}),
+                "stderr": "",
+            }
+        if "data_health_snapshot.py" in cmd_text:
+            return {
+                "cmd": cmd,
+                "returncode": 0,
+                "stdout": json.dumps(
+                    {
+                        "schema_version": 1,
+                        "command": "data_health_snapshot",
+                        "run_started_at": "2026-06-01T13:57:00Z",
+                        "snapshot_at": "2026-06-01T13:57:00",
+                        "dry_run": True,
+                        "keep_history": 30,
+                        "summary": {"total": 2, "green": 1, "yellow": 1, "red": 0, "blocking_yellow": 1},
+                        "verdict": "WARN",
+                        "red_tables": [],
+                        "yellow_tables": [{"table_name": "blocking_yellow_table", "severity": "yellow"}],
+                        "blocking_yellow_tables": [
+                            {
+                                "table_name": "blocking_yellow_table",
+                                "severity": "yellow",
+                                "quality_gate_level": "blocking",
+                                "issue_summary": "writer is 223.0h old (SLA 168h)",
+                            }
+                        ],
+                        "blockers": [],
+                    }
+                ),
+                "stderr": "",
+            }
+        if cmd == ["git", "status", "--short"]:
+            return {"cmd": cmd, "returncode": 0, "stdout": "", "stderr": ""}
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    monkeypatch.setattr(chunkyctl, "_run_command", fake_run_command)
+
+    args = Namespace(
+        repo=str(tmp_path),
+        complexity_target="backend",
+        max_findings=80,
+        baseline=None,
+        fail_on_dirty_worktree=False,
+        skip_test_tool=False,
+        skip_universe=False,
+        skip_storage_payload=False,
+        storage_max_findings=20,
+    )
+    rc = chunkyctl.run_doctor(args)
+    report = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert report["data_health"]["report"]["summary"]["blocking_yellow"] == 1
+    assert report["data_health"]["report"]["verdict"] == "WARN"
+    assert report["verdict"] == "WARN"
+    assert any("quality_gate_level=blocking first" in action["action"] for action in report["next_actions"])
+
+
 def test_docs_cleanup_report_combines_docs_graph_and_worktree_slice(tmp_path: Path) -> None:
     (tmp_path / "docs").mkdir()
     (tmp_path / "analysis").mkdir()
