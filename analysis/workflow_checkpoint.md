@@ -68,8 +68,10 @@ The model pipeline snapshot below is historical evidence for the completed
   historical rebuild raised that formula's `rows / keys / ready coverage` to
   `76,635 / 11,968 / 42.54%`; the overall audit now reads
   `1,529,229 raw_signal_rows / 787,766 filtered_signal_rows / 126,309 unique_keys /
-  61,411 ready_keys / 48.62% ready coverage / 64,898 below_min_signals`, but the
-  next action still points to upstream candidate supply. `2024-03-06` 起的
+  61,411 ready_keys / 48.62% ready coverage / 64,898 below_min_signals`, and the
+  2026-06-02 `min_signals` probe further shows `5→4→3` lifts global ready coverage to
+  `57.15%` / `67.49%` (`72,180` / `85,246` ready keys, `54,129` / `41,063` below_min_signals) while
+  `reversal_1m_deep` itself reaches `50.97%` / `62.34%`; the next action still points to upstream candidate supply. `2024-03-06` 起的
   `dropped_unknown_stage_rows` 降到 `454,158`, so the remaining
   `technical_stage='?'` mass is still mostly structural classifier warmup /
   unknown, not a fresh ETL outage.
