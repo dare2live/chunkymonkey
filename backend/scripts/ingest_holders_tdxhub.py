@@ -187,6 +187,31 @@ def _build_raw_progress_snapshot(
     return snapshot
 
 
+def _maybe_emit_raw_progress_snapshot(
+    progress: dict,
+    total: int,
+    *,
+    code: str | None = None,
+    inserted: bool | None = None,
+    elapsed: float | None = None,
+    force: bool = False,
+) -> dict | None:
+    done = int(progress.get("done") or 0)
+    now = time.time()
+    last_emit = float(progress.get("last_progress_emit_t") or 0.0)
+    should_emit = force or done >= total or done % 10 == 0 or (now - last_emit) >= 30.0
+    if not should_emit:
+        return None
+    progress["last_progress_emit_t"] = now
+    return _build_raw_progress_snapshot(
+        progress,
+        total,
+        code=code,
+        inserted=inserted,
+        elapsed=elapsed,
+    )
+
+
 def _safe_float(value) -> float | None:
     if value in (None, ""):
         return None
@@ -891,13 +916,12 @@ def raw_worker(
                 with progress_lock:
                     progress["skipped_no_f10"] += 1
                     progress["done"] += 1
-                    if progress["done"] % 50 == 0:
-                        snapshot = _build_raw_progress_snapshot(
-                            progress,
-                            total,
-                            code=code,
-                            elapsed=time.time() - t0,
-                        )
+                    snapshot = _maybe_emit_raw_progress_snapshot(
+                        progress,
+                        total,
+                        code=code,
+                        elapsed=time.time() - t0,
+                    )
                 continue
             raw_hash = _raw_hash(raw_text)
             key = (code, raw_hash)
@@ -907,13 +931,12 @@ def raw_worker(
                         progress["raw_ok"] += 1
                         progress["skipped_unchanged"] += 1
                         progress["done"] += 1
-                        if progress["done"] % 50 == 0:
-                            snapshot = _build_raw_progress_snapshot(
-                                progress,
-                                total,
-                                code=code,
-                                elapsed=time.time() - t0,
-                            )
+                        snapshot = _maybe_emit_raw_progress_snapshot(
+                            progress,
+                            total,
+                            code=code,
+                            elapsed=time.time() - t0,
+                        )
                     continue
                 seen_hashes.add(key)
             fetched_at = datetime.utcnow().isoformat(timespec="seconds")
@@ -939,18 +962,18 @@ def raw_worker(
                     progress["raw_keys"].append(key)
                 else:
                     progress["skipped_unchanged"] += 1
-                if progress["done"] % 50 == 0:
+                snapshot = _maybe_emit_raw_progress_snapshot(
+                    progress,
+                    total,
+                    code=code,
+                    inserted=inserted,
+                    elapsed=elapsed,
+                )
+                if snapshot is not None:
                     rate = progress["done"] / max(time.time() - progress["t0"], 1e-3)
                     log.info(
                         "[raw %4d/%d] %s %s inserted=%s %.1fs rate=%.1f/s",
                         progress["done"], total, code, name, inserted, elapsed, rate,
-                    )
-                    snapshot = _build_raw_progress_snapshot(
-                        progress,
-                        total,
-                        code=code,
-                        inserted=inserted,
-                        elapsed=elapsed,
                     )
         except Exception as e:
             with progress_lock:
@@ -958,13 +981,12 @@ def raw_worker(
                 progress["done"] += 1
                 progress["failed_items"].append((code, stock_name, market, str(e)))
                 log.warning("[raw %s] %s ERROR %s: %s", name, code, type(e).__name__, e)
-                if progress["done"] % 50 == 0:
-                    snapshot = _build_raw_progress_snapshot(
-                        progress,
-                        total,
-                        code=code,
-                        elapsed=time.time() - t0,
-                    )
+                snapshot = _maybe_emit_raw_progress_snapshot(
+                    progress,
+                    total,
+                    code=code,
+                    elapsed=time.time() - t0,
+                )
         finally:
             job_q.task_done()
             if snapshot is not None and progress_callback is not None:
@@ -1013,6 +1035,7 @@ def fetch_raw_records(
         "err": 0,
         "skipped_unchanged": 0,
         "skipped_no_f10": 0,
+        "last_progress_emit_t": 0.0,
         "raw_keys": [],
         "failed_items": [],
         "t0": time.time(),
@@ -1046,9 +1069,10 @@ def fetch_raw_records(
     if progress_callback is not None:
         try:
             progress_callback(
-                _build_raw_progress_snapshot(
+                _maybe_emit_raw_progress_snapshot(
                     progress,
                     len(universe),
+                    force=True,
                 )
             )
         # rule-compliance: ok evidence=defensive-logging final snapshot emission must not fail the raw fetch result

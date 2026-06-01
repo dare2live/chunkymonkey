@@ -44,7 +44,8 @@ The model pipeline snapshot below is historical evidence for the completed
   exceeded its 60s budget; red/yellow rows now carry `writer_prompt`
   owner/sync_step hints for self-triage, and `sync_raw` progress snapshots now
   feed `run_context.step_progress` / `/update/status` so the long raw fetch no
-  longer looks frozen. Feature panel lane was refreshed
+  longer looks frozen. The raw ingest cadence now refreshes on a 10-count / 30s
+  threshold rather than waiting for sparse 50-row logs. Feature panel lane was refreshed
   successfully, removing `fact_feature_panel`,
   `mart_feature_panel_validation`, and `mart_feature_panel_prune_run` from
   red.

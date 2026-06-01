@@ -471,6 +471,28 @@ def test_fetch_raw_records_emits_progress_callback():
         con.close()
 
 
+def test_fetch_raw_records_emits_intermediate_progress_snapshots():
+    con = _make_conn()
+    snapshots = []
+    try:
+        codes = [f"60051{i}" for i in range(0, 10)]
+        raw_text = "☆股东研究☆◇600519 贵州茅台 更新日期：2026-05-04◇\n灵通V9.0 holder fixture"
+        stats = ingest.fetch_raw_records(
+            con,
+            workers=1,
+            symbols=",".join(codes),
+            fetcher_factory=lambda: _FakeRawFetcher({code: raw_text for code in codes}),
+            progress_callback=snapshots.append,
+        )
+
+        assert stats["raw_written"] == 10
+        assert len(snapshots) >= 2
+        assert any(snapshot["done"] == 10 for snapshot in snapshots)
+        assert snapshots[-1]["done"] == 10
+    finally:
+        con.close()
+
+
 def test_run_fetches_raw_then_replays_new_hash(monkeypatch):
     con = _make_conn()
     try:
