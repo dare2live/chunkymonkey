@@ -107,6 +107,7 @@ The model pipeline snapshot below is historical evidence for the completed
   improved again.
 - 2026-06-02 05:07-05:08 `dynamic_ma_iterative_cross` was tightened from 2
 - 2026-06-02 05:57-06:07 `dynamic_ma_iterative_cross` further tightened from 1 轮到 0 轮 and `turtle_breakout_55` volume confirmation was then lowered from `1.0` to `0.9`, lifting those formulas to `144,282 / 20,522 / 56.83%` and `139,053 / 17,143 / 64.62%`; the full stage-opt audit is now `raw_signal_rows=5,530,639 / filtered_signal_rows=2,765,531 / unique_keys=151,881 / ready_keys=110,336 / ready coverage=72.65% / below_min_signals=41,545`, `min_signals=4/3/2` at `78.35% / 84.47% / 91.32%`, but the controller still points to `P1 / upstream_candidate_supply`.
+- 2026-06-02 06:12-06:13 `reversal_1w` was widened from 2-10% to 1-10%, lifting that formula to `222,942 / 16,610 / 72.28%`; the full stage-opt audit is now `raw_signal_rows=5,664,501 / filtered_signal_rows=2,826,350 / unique_keys=152,554 / ready_keys=111,794 / ready coverage=73.28% / below_min_signals=40,760`, `min_signals=4/3/2` at `78.76% / 84.74% / 91.44%`, and the weakest formulas shifted to `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_mild`, but the controller still points to `P1 / upstream_candidate_supply`.
   iterations to 1, and the full-history audit now reads `raw_signal_rows=
   5,145,959 / filtered_signal_rows=2,585,682 / unique_keys=147,948 /
   ready_keys=103,056 / ready coverage=69.66% / below_min_signals=44,892`;
