@@ -2,7 +2,19 @@ from __future__ import annotations
 
 import pandas as pd
 
+from conftest import duck_mem
 from scripts import probe_source_capability as probe
+
+
+class _ConnProxy:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def close(self) -> None:
+        pass
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
 
 
 def test_probe_source_capability_summarizes_records(monkeypatch) -> None:
@@ -73,3 +85,98 @@ def test_probe_source_capability_marks_blocked_on_error(monkeypatch) -> None:
     assert report["status"] == "blocked"
     assert report["error_type"] == "RuntimeError"
     assert report["error"] == "proxy blocked"
+
+
+def test_probe_source_capability_persists_blocked_status(monkeypatch) -> None:
+    conn = duck_mem()
+    try:
+        def fake_resolve(*_args, **_kwargs):
+            raise RuntimeError("proxy blocked")
+
+        monkeypatch.setattr(probe, "resolve", fake_resolve)
+        monkeypatch.setattr(probe, "get_conn", lambda: _ConnProxy(conn))
+
+        report = probe.probe_source_capability(
+            "individual_fund_flow",
+            {"stock": "600519", "market": "sh"},
+            prefer_source="akshare",
+            persist_status=True,
+            data_domain="order_flow_fund_flow",
+            source_name="akshare",
+            source_tier=3,
+            stock_code="600519",
+        )
+
+        assert report["status"] == "blocked"
+        assert report["persisted"]["status"] == "open"
+        row = conn.execute(
+            """
+            SELECT data_domain, source_name, source_tier, stock_code,
+                   error_type, last_error, status
+              FROM mart_data_source_failure_queue
+            """
+        ).fetchone()
+        assert tuple(row) == (
+            "order_flow_fund_flow",
+            "akshare",
+            3,
+            "600519",
+            "RuntimeError",
+            "proxy blocked",
+            "open",
+        )
+    finally:
+        conn.close()
+
+
+def test_probe_source_capability_resolves_existing_failure_on_success(monkeypatch) -> None:
+    conn = duck_mem()
+    try:
+        def fake_blocked(*_args, **_kwargs):
+            raise RuntimeError("proxy blocked")
+
+        monkeypatch.setattr(probe, "get_conn", lambda: _ConnProxy(conn))
+        monkeypatch.setattr(probe, "resolve", fake_blocked)
+        probe.probe_source_capability(
+            "individual_fund_flow",
+            {"stock": "600519", "market": "sh"},
+            prefer_source="akshare",
+            persist_status=True,
+            data_domain="order_flow_fund_flow",
+            source_name="akshare",
+            source_tier=3,
+            stock_code="600519",
+        )
+
+        def fake_ok(capability: str, *, prefer_source=None, **kwargs):
+            assert capability == "individual_fund_flow"
+            assert prefer_source == "akshare"
+            return ([{"日期": "2026-05-29"}], "akshare")
+
+        monkeypatch.setattr(probe, "resolve", fake_ok)
+        report = probe.probe_source_capability(
+            "individual_fund_flow",
+            {"stock": "600519", "market": "sh"},
+            prefer_source="akshare",
+            persist_status=True,
+            data_domain="order_flow_fund_flow",
+            source_name="akshare",
+            source_tier=3,
+            stock_code="600519",
+        )
+
+        assert report["status"] == "ok"
+        assert report["persisted"]["status"] == "resolved"
+        row = conn.execute(
+            """
+            SELECT status, resolved_at
+              FROM mart_data_source_failure_queue
+             WHERE data_domain = 'order_flow_fund_flow'
+               AND source_name = 'akshare'
+               AND stock_code = '600519'
+            """
+        ).fetchone()
+        assert row["status"] == "resolved"
+        assert row["resolved_at"] is not None
+    finally:
+        conn.close()

@@ -25,7 +25,8 @@ The model pipeline snapshot below is historical evidence for the completed
   `fact_technical_trigger` event-table sparse-event coverage, and
   `need_027` main-force source still blocked/unknown; the akshare
   `individual_fund_flow` / `individual_fund_flow_rank` capability is
-  registered, but the live probe is still blocked by `ProxyError`.
+  registered, the live probe is still blocked by `ProxyError`, and blocked
+  probe rows now persist in `mart_data_source_failure_queue` for follow-up triage.
 - end-to-end audit: `audit_end_to_end.py` now exits PASS with WARN
   (`24 total / 19 OK / 5 WARN / 0 FAIL`); WARN includes recommendation PIT
   coverage 0, recommendation row count, and freshness days_behind=3 for
@@ -52,7 +53,8 @@ The model pipeline snapshot below is historical evidence for the completed
   meaningful step is upstream PIT coverage expansion rather than more ranking
   tweaks. Keep the `need_027` source probe / unknown status explicit; the
   `akshare.stock_individual_fund_flow` / `stock_individual_fund_flow_rank`
-  capability is registered, but the live probe is still blocked by `ProxyError`.
+  capability is registered, the live probe is still blocked by `ProxyError`,
+  and blocked probe rows now persist in `mart_data_source_failure_queue`.
 
 - generated_at: `2026-05-25T01:20:01Z`
 - model_id: `lgbm_phase5_gcp_20260520T010718`
