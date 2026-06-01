@@ -106,6 +106,7 @@ The model pipeline snapshot below is historical evidence for the completed
   structural conclusion remains unchanged even though the evidence density
   improved again.
 - 2026-06-02 05:07-05:08 `dynamic_ma_iterative_cross` was tightened from 2
+- 2026-06-02 05:57-05:58 `dynamic_ma_iterative_cross` further tightened from 1 轮到 0 轮, lifting that formula to `144,282 / 20,522 / 56.83%`; the full stage-opt audit is now `raw_signal_rows=5,520,983 / filtered_signal_rows=2,758,502 / unique_keys=151,827 / ready_keys=110,102 / ready coverage=72.52% / below_min_signals=41,725`, `min_signals=4/3/2` at `78.24% / 84.41% / 91.30%`, but the controller still points to `P1 / upstream_candidate_supply`.
   iterations to 1, and the full-history audit now reads `raw_signal_rows=
   5,145,959 / filtered_signal_rows=2,585,682 / unique_keys=147,948 /
   ready_keys=103,056 / ready coverage=69.66% / below_min_signals=44,892`;

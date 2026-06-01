@@ -333,7 +333,7 @@ class TestDynamicMaIterativeCross:
     def test_metadata(self, formula):
         assert formula.metadata.formula_id == "dynamic_ma_iterative_cross"
         assert formula.metadata.tag == "DM"
-        assert formula.iterations == 1
+        assert formula.iterations == 0
 
     def test_config_loader_reads_values(self, tmp_path):
         from services.formula_engine.dynamic_ma_iterative import _load_config
