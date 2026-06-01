@@ -92,12 +92,52 @@ CREATE TABLE IF NOT EXISTS mart_daily_position_recommendation_pit_diagnostic (
     pit_same_stock_rows      INTEGER NOT NULL DEFAULT 0,
     latest_pit_cutoff_date   TEXT,
     missing_reason           TEXT NOT NULL,
+    governance_reject_count   INTEGER NOT NULL DEFAULT 0,
+    governance_latest_reason  TEXT,
+    governance_latest_rejected_at TEXT,
     built_at                 TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (signal_date, profile_id, stock_code, formula_id, formula_variant)
 );
 CREATE INDEX IF NOT EXISTS idx_mdpr_pit_diag_date
     ON mart_daily_position_recommendation_pit_diagnostic(signal_date);
 """
+
+
+def _ensure_pit_diagnostic_columns(conn) -> None:
+    existing = {
+        row[1]
+        for row in conn.execute(
+            "PRAGMA table_info('mart_daily_position_recommendation_pit_diagnostic')"
+        ).fetchall()
+    }
+    if "governance_reject_count" not in existing:
+        conn.execute(
+            """
+            ALTER TABLE mart_daily_position_recommendation_pit_diagnostic
+            ADD COLUMN governance_reject_count INTEGER
+            """
+        )
+        conn.execute(
+            """
+            UPDATE mart_daily_position_recommendation_pit_diagnostic
+               SET governance_reject_count = 0
+             WHERE governance_reject_count IS NULL
+            """
+        )
+    if "governance_latest_reason" not in existing:
+        conn.execute(
+            """
+            ALTER TABLE mart_daily_position_recommendation_pit_diagnostic
+            ADD COLUMN governance_latest_reason TEXT
+            """
+        )
+    if "governance_latest_rejected_at" not in existing:
+        conn.execute(
+            """
+            ALTER TABLE mart_daily_position_recommendation_pit_diagnostic
+            ADD COLUMN governance_latest_rejected_at TEXT
+            """
+        )
 
 
 def _build_pit_diagnostic_rows(conn, signal_date: str, all_rows: list[tuple]) -> list[tuple]:
@@ -147,6 +187,28 @@ def _build_pit_diagnostic_rows(conn, signal_date: str, all_rows: list[tuple]) ->
              AND optimal_stop_pct >= -0.5
              AND abs(COALESCE(oos_sharpe, sharpe, 0)) <= 10
         ),
+        governance_ranked AS (
+          SELECT
+            stock_code,
+            reason,
+            rejected_at,
+            COUNT(*) OVER (PARTITION BY stock_code) AS governance_reject_count,
+            ROW_NUMBER() OVER (
+              PARTITION BY stock_code
+              ORDER BY rejected_at DESC, reason DESC
+            ) AS rn
+          FROM fact_optuna_governance_log
+          WHERE stock_code IN (SELECT DISTINCT stock_code FROM __mdpr_pit_diag_input)
+        ),
+        latest_governance AS (
+          SELECT
+            stock_code,
+            governance_reject_count,
+            reason AS governance_latest_reason,
+            CAST(rejected_at AS VARCHAR) AS governance_latest_rejected_at
+          FROM governance_ranked
+          WHERE rn = 1
+        ),
         pit_counts AS (
           SELECT i.signal_date, i.profile_id, i.rank_in_profile,
                  COUNT(*) FILTER (
@@ -184,12 +246,17 @@ def _build_pit_diagnostic_rows(conn, signal_date: str, all_rows: list[tuple]) ->
                  WHEN COALESCE(c.pit_same_formula_rows, 0) > 0 THEN 'stage_mismatch'
                  WHEN COALESCE(c.pit_same_stock_rows, 0) > 0 THEN 'formula_missing_pit'
                  ELSE 'stock_missing_pit'
-               END AS missing_reason
+               END AS missing_reason,
+               COALESCE(g.governance_reject_count, 0) AS governance_reject_count,
+               g.governance_latest_reason,
+               g.governance_latest_rejected_at
           FROM __mdpr_pit_diag_input i
           LEFT JOIN pit_counts c
             ON c.signal_date = i.signal_date
            AND c.profile_id = i.profile_id
            AND c.rank_in_profile = i.rank_in_profile
+          LEFT JOIN latest_governance g
+            ON g.stock_code = i.stock_code
          ORDER BY i.profile_id, i.rank_in_profile
     """, [signal_date]).fetchall()
     conn.execute("DROP TABLE IF EXISTS __mdpr_pit_diag_input")
@@ -205,6 +272,7 @@ def main():
     conn = get_conn()
     try:
         conn.executescript(DDL)
+        _ensure_pit_diagnostic_columns(conn)
 
         # 1. signal_date
         if args.date:
@@ -463,8 +531,9 @@ def main():
                        (signal_date, profile_id, rank_in_profile, stock_code,
                         formula_id, formula_variant, stage_bin, match_tier,
                         pit_exact_stage_rows, pit_same_formula_rows, pit_same_stock_rows,
-                        latest_pit_cutoff_date, missing_reason)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        latest_pit_cutoff_date, missing_reason,
+                        governance_reject_count, governance_latest_reason, governance_latest_rejected_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     diag_rows,
                 )
             conn.execute("COMMIT")

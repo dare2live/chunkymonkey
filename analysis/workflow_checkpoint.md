@@ -8,7 +8,7 @@ The model pipeline snapshot below is historical evidence for the completed
 
 ## Current Data Freshness Checkpoint
 
-- updated_at: `2026-06-01 08:01:03 CST`
+- updated_at: `2026-06-01 08:56:55 CST`
 - current_state: `architecture/data freshness repair`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
@@ -34,7 +34,12 @@ The model pipeline snapshot below is historical evidence for the completed
   fail `hp/n_signals/Wilson`, so final recommendations still come out as
   cross-stage fallback. Targeted PIT backfill only moved latest cutoff from 3
   rows to 4, and a 2-stock `optimize_per_stock_stage_strategy.py --min-signals 3`
-  smoke still produced 0 governance-pass rows.
+  smoke still produced 0 governance-pass rows. This slice also upgraded
+  `mart_daily_position_recommendation_pit_diagnostic` with
+  `governance_reject_count` / latest reason / latest rejected_at and reran
+  `build_daily_position_recommendations.py --date 2026-05-29`, so the latest
+  diagnostic rows now show the governance reason beside each
+  `stock_missing_pit` / `formula_missing_pit` row.
 - survivorship gate: current default `p0a_v3_horizon_governance` PASS; the old
   `p0a_v2_governance_v1` gate remains available only for explicit historical
   review.
