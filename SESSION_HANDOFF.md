@@ -25,9 +25,9 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 06:40:23 CST
+**Snapshot 时间**: 2026-06-02 06:46:42 CST
 
-- latest code/docs snapshot (2026-06-02) is commit `e4d8dae3`; `reversal_1m_deep` was lowered from `5-30%` to `4-30%`, lifting the history rebuild to `reversal_1m_deep: 248,022 / 17,814 / 70.21%`, and the full stage-opt audit to `raw_signal_rows=5,840,232 / filtered_signal_rows=2,906,972 / unique_keys=153,975 / ready_keys=113,949 / ready coverage=74.00% / below_min_signals=40,026`, with `min_signals=4/3/2` at `79.27% / 85.04% / 91.58%` and weakest formulas still `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_mild`; controller recommendation remains `P1 / upstream_candidate_supply`, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`.
+- latest code/docs snapshot (2026-06-02) is commit `199e0932`; `reversal_1m_mild` was lowered from `2-15%` to `1-15%`, lifting the history rebuild to `reversal_1m_mild: 249,394 / 16,818 / 69.95%`, and the full stage-opt audit to `raw_signal_rows=5,919,142 / filtered_signal_rows=2,942,263 / unique_keys=154,605 / ready_keys=114,597 / ready coverage=74.12% / below_min_signals=40,008`, with `min_signals=4/3/2` at `79.34% / 85.05% / 91.55%` and weakest formulas still `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_mild`; controller recommendation remains `P1 / upstream_candidate_supply`, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`.
 | Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
 | VM 状态 | ? |
 | VM 上次启动 |  |
@@ -58,13 +58,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `e4d8dae3 feat: widen reversal deep threshold and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 74.00% ready coverage, docs graph PASS` |
+| HEAD | `199e0932 feat: widen reversal mild threshold and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 74.12% ready coverage, docs graph PASS` |
 | 最近 24h commits | 94 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+199e0932 feat: widen reversal mild threshold and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 74.12% ready coverage, docs graph PASS
 e4d8dae3 feat: widen reversal deep threshold and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 74.00% ready coverage, docs graph PASS
 55e607ca feat: widen reversal mild and turtle breakout gates | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 73.61% ready coverage, docs graph PASS
 b560909b feat: lower turtle breakout 55 volume gate to 0.9 and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 39 passed, audit PASS, stage-opt 72.65% ready coverage, docs graph PASS, complexity no new HIGH
