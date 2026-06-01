@@ -55,6 +55,11 @@ The model pipeline snapshot below is historical evidence for the completed
   `akshare.stock_individual_fund_flow` / `stock_individual_fund_flow_rank`
   capability is registered, the live probe is still blocked by `ProxyError`,
   and blocked probe rows now persist in `mart_data_source_failure_queue`.
+- additional PIT evidence: 2026-06-01 reran `build_stage_opt_pit.py` on the 7
+  current recommendation stock codes across cutoffs `2026-01-01,2026-05-19,
+  2026-05-29`; latest recommendation PIT coverage remained 0 (8 total / 0 exact
+  / 0 same_formula / 1 same_stock / 8 cross_stage), confirming structural
+  candidate sparsity rather than a one-shot coverage gap.
 
 - generated_at: `2026-05-25T01:20:01Z`
 - model_id: `lgbm_phase5_gcp_20260520T010718`
