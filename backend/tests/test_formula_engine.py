@@ -395,7 +395,7 @@ class TestShortTermReversalConfig:
             "reversal_1m_mild:\n"
             "  lookback_days: 20\n"
             "  pct_change_lo: -0.15\n"
-            "  pct_change_hi: -0.02\n"
+            "  pct_change_hi: -0.01\n"
             "  rel_std_max: 0.06\n"
             "  vol_ratio_lo: 0.6\n"
             "  vol_ratio_hi: 2.0\n"
@@ -416,7 +416,7 @@ class TestShortTermReversalConfig:
             encoding="utf-8",
         )
         loaded = _load_config(cfg)
-        assert loaded["reversal_1m_mild"]["pct_change_hi"] == pytest.approx(-0.02)
+        assert loaded["reversal_1m_mild"]["pct_change_hi"] == pytest.approx(-0.01)
         assert loaded["reversal_1m_deep"]["pct_change_hi"] == pytest.approx(-0.04)
         assert loaded["reversal_1w"]["pct_change_hi"] == pytest.approx(-0.01)
         assert loaded["reversal_1w"]["lookback_days"] == 5
@@ -444,13 +444,13 @@ class TestShortTermReversal:
         assert deep.pct_change_hi == pytest.approx(-0.04)
         assert deep.rel_std_max == pytest.approx(0.08)
 
-    def test_mild_variant_triggers_on_roughly_2pct_drop(self, mild):
+    def test_mild_variant_triggers_on_roughly_1pct_drop(self, mild):
         n = 90
         dates = np.array([f"2024-{(i // 30) + 1:02d}-{(i % 30) + 1:02d}" for i in range(n)])
         closes = np.concatenate([
             np.full(60, 100.0),
-            np.linspace(100.0, 98.0, 20),
-            np.full(10, 98.0),
+            np.linspace(100.0, 99.0, 20),
+            np.full(10, 99.0),
         ])
         volumes = np.ones(n) * 1000
 
@@ -465,7 +465,7 @@ class TestShortTermReversal:
             closes * volumes,
         )
 
-        assert len(signals) >= 1, "2% 左右温和下跌应落入 reversal_1m_mild"
+        assert len(signals) >= 1, "1% 左右温和下跌应落入 reversal_1m_mild"
         assert all(s.formula_id == "reversal_1m_mild" for s in signals)
 
     def test_deep_variant_triggers_on_roughly_4pct_drop(self, deep):
