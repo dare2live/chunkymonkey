@@ -240,7 +240,7 @@ class TestTurtleBreakout:
         assert f55.metadata.formula_id == "turtle_breakout_55"
         assert f55.metadata.default_horizon_days == 30
         from services.formula_engine import turtle_breakout as turtle_breakout_module
-        assert turtle_breakout_module.VOLUME_MULTIPLE == pytest.approx(1.0)
+        assert turtle_breakout_module.VOLUME_MULTIPLE == pytest.approx(0.9)
 
     def test_volume_multiple_loader_reads_config(self, tmp_path):
         from services.formula_engine.turtle_breakout import _load_volume_multiple
@@ -288,15 +288,19 @@ class TestTurtleBreakout:
 
     def test_no_volume_no_signal(self, f20):
         # 价格突破但量能不放大,应不触发
-        np.random.seed(7)
-        n = 60
+        n = 40
         dates = np.array([f"2024-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}" for i in range(n)])
         closes = np.concatenate([
-            100 + np.random.randn(30) * 0.5,
-            np.linspace(100, 115, 30),
+            np.ones(20) * 100.0,
+            np.array([101.0]),
+            np.ones(19) * 101.0,
         ])
-        # 量能不变 (无放大)
-        volumes = np.ones(n) * 1000
+        # 突破日量能低于门槛, 且后续不再创新高
+        volumes = np.concatenate([
+            np.ones(20) * 1000,
+            np.ones(1) * 800,
+            np.ones(19) * 800,
+        ])
         signals = f20.compute_signals(
             "T", dates, closes, closes * 1.005, closes * 0.995, closes,
             volumes, closes * volumes,
@@ -305,7 +309,7 @@ class TestTurtleBreakout:
         assert len(signals) == 0
 
     def test_moderate_volume_breakout_now_triggers(self, f55):
-        # 介于 1.0x 和 1.1x 的放量突破,用来锁住新供给阈值不会回弹到 1.1
+        # 介于 0.9x 和 1.0x 的放量突破,用来锁住新供给阈值不会回弹到 1.0
         n = 70
         dates = np.array([f"2024-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}" for i in range(n)])
         closes = np.concatenate([
@@ -314,7 +318,7 @@ class TestTurtleBreakout:
         ])
         volumes = np.concatenate([
             np.ones(55) * 1000,
-            np.ones(15) * 1050,
+            np.ones(15) * 950,
         ])
         signals = f55.compute_signals(
             "T", dates, closes, closes * 1.005, closes * 0.995, closes,
