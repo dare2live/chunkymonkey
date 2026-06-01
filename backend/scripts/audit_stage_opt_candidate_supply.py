@@ -65,7 +65,7 @@ def _load_signal_rows(
         stock_filter_sql = f" AND t.stock_code IN ({placeholders})"
         stock_filter_params = stock_codes
 
-    rows = conn.execute(
+    trigger_rows = conn.execute(
         f"""
         SELECT t.stock_code, t.date, t.formula_id, t.formula_variant,
                COALESCE(c.technical_stage, '?') AS stage_bin
@@ -80,6 +80,44 @@ def _load_signal_rows(
         [start, end] + formula_filter_params + stock_filter_params,
     ).fetchall()
 
+    state_history_rows: list[tuple[str, str, str, str, str]] = []
+    include_macd_state_history = not formula or "macd_golden_cross" in formula
+    if include_macd_state_history:
+        try:
+            state_formula_sql = ""
+            state_formula_params: list[str] = []
+            if formula:
+                state_placeholders = ",".join(["?"] * len(formula))
+                state_formula_sql = f" AND s.formula_id IN ({state_placeholders})"
+                state_formula_params = list(formula)
+
+            state_stock_sql = ""
+            state_stock_params: list[str] = []
+            if stock_codes:
+                state_placeholders = ",".join(["?"] * len(stock_codes))
+                state_stock_sql = f" AND s.stock_code IN ({state_placeholders})"
+                state_stock_params = list(stock_codes)
+
+            state_history_rows = conn.execute(
+                f"""
+                SELECT s.stock_code, s.date, s.formula_id, s.formula_variant,
+                       COALESCE(c.technical_stage, '?') AS stage_bin
+                  FROM sm.mart_macd_state_history s
+                  LEFT JOIN sm.fact_signal_context c
+                    ON c.stock_code = s.stock_code AND c.date = s.date
+                 WHERE s.date >= ? AND s.date <= ?
+                   {state_formula_sql}
+                   {state_stock_sql}
+                """,
+                [start, end] + state_formula_params + state_stock_params,
+            ).fetchall()
+        except Exception:
+            state_history_rows = []
+
+    rows = trigger_rows + state_history_rows
+
+    raw_trigger_rows = len(trigger_rows)
+    raw_state_history_rows = len(state_history_rows)
     raw_rows = len(rows)
     dropped_index_rows = 0
     dropped_unknown_stage_rows = 0
@@ -119,6 +157,8 @@ def _load_signal_rows(
 
     return {
         "raw_rows": raw_rows,
+        "raw_trigger_rows": raw_trigger_rows,
+        "raw_state_history_rows": raw_state_history_rows,
         "dropped_index_rows": dropped_index_rows,
         "dropped_unknown_stage_rows": dropped_unknown_stage_rows,
         "dropped_unknown_stage_rows_by_formula_id": dict(sorted(dropped_unknown_stage_rows_by_formula_id.items())),
@@ -528,6 +568,12 @@ def _render_markdown(result: dict[str, Any]) -> str:
         f"- end: {result['end']}",
         f"- min_signals: {result['min_signals']}",
         f"- raw_signal_rows: {result['raw_signal_rows']}",
+    ]
+    if "raw_trigger_rows" in result:
+        lines.append(f"- raw_trigger_rows: {result['raw_trigger_rows']}")
+    if "raw_state_history_rows" in result:
+        lines.append(f"- raw_state_history_rows: {result['raw_state_history_rows']}")
+    lines.extend([
         f"- filtered_signal_rows: {result['filtered_signal_rows']}",
         f"- dropped_index_rows: {result['dropped_index_rows']}",
         f"- dropped_unknown_stage_rows: {result['dropped_unknown_stage_rows']}",
@@ -540,7 +586,7 @@ def _render_markdown(result: dict[str, Any]) -> str:
         f"- next_action_recommendation: {result['next_action_recommendation']}",
         "",
         "## By Formula Id",
-    ]
+    ])
     for row in result["keys_by_formula_id"]:
         lines.append(
             f"- {row['formula_id']}: keys_total={row['keys_total']} "
@@ -672,6 +718,8 @@ def _compose_audit_result(
         "end": end,
         "min_signals": min_signals,
         "raw_signal_rows": load_result["raw_rows"],
+        "raw_trigger_rows": load_result.get("raw_trigger_rows", load_result["raw_rows"]),
+        "raw_state_history_rows": load_result.get("raw_state_history_rows", 0),
         "filtered_signal_rows": len(signal_rows),
         "dropped_index_rows": load_result["dropped_index_rows"],
         "dropped_unknown_stage_rows": load_result["dropped_unknown_stage_rows"],

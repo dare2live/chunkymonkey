@@ -189,6 +189,23 @@ class TestMacdGoldenCross:
             # 既然产生了,必须 reason_codes 含 dif_above_zero
             assert any("dif_above_zero" in rc for rc in s.reason_codes)
 
+    def test_state_history_emits_holding_and_imminent_without_trigger_rows(self, formula):
+        n = 180
+        dates = np.array([f"2024-{(i // 30) + 1:02d}-{(i % 30) + 1:02d}" for i in range(n)])
+        closes = np.concatenate([
+            np.linspace(120, 78, 90),
+            np.linspace(78, 138, 90),
+        ])
+        state_rows = formula.compute_state_history(
+            "TEST", dates,
+            opens=closes, highs=closes * 1.01, lows=closes * 0.99, closes=closes,
+            volumes=np.ones(n) * 1000, amounts=closes * 1000,
+        )
+        assert state_rows, "MACD state history should emit active states on a recovery path"
+        assert all(row.state in {"holding", "imminent"} for row in state_rows)
+        assert all(row.state != "just_crossed" for row in state_rows)
+        assert any(row.state == "holding" for row in state_rows)
+
 
 class TestFormulaRegistry:
     def test_registry_contains_macd(self):

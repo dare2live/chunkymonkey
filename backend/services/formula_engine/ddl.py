@@ -23,6 +23,24 @@ CREATE INDEX IF NOT EXISTS idx_ftt_code    ON fact_technical_trigger(stock_code)
 """
 
 
+MART_MACD_STATE_HISTORY_DDL = """
+CREATE TABLE IF NOT EXISTS mart_macd_state_history (
+    stock_code         TEXT NOT NULL,
+    date               TEXT NOT NULL,
+    formula_id         TEXT NOT NULL,
+    formula_variant    TEXT NOT NULL,
+    state              TEXT NOT NULL,
+    strength           REAL NOT NULL,
+    reason_codes_json  TEXT,
+    built_at           TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (stock_code, date, formula_id, formula_variant, state)
+);
+CREATE INDEX IF NOT EXISTS idx_mmdh_date    ON mart_macd_state_history(date);
+CREATE INDEX IF NOT EXISTS idx_mmdh_formula ON mart_macd_state_history(formula_id);
+CREATE INDEX IF NOT EXISTS idx_mmdh_code    ON mart_macd_state_history(stock_code);
+"""
+
+
 MART_FORMULA_HORIZON_EVIDENCE_DDL = """
 CREATE TABLE IF NOT EXISTS mart_formula_horizon_evidence (
     formula_id            TEXT NOT NULL,
@@ -85,6 +103,7 @@ CREATE TABLE IF NOT EXISTS mart_stage_formula_fitness (
 def ensure_formula_tables(conn) -> None:
     """幂等建表。"""
     conn.executescript(FACT_TECHNICAL_TRIGGER_DDL)
+    conn.executescript(MART_MACD_STATE_HISTORY_DDL)
     conn.executescript(MART_FORMULA_HORIZON_EVIDENCE_DDL)
     conn.executescript(FACT_STOCK_TECHNICAL_STAGE_DDL)
     conn.executescript(MART_STAGE_FORMULA_FITNESS_DDL)

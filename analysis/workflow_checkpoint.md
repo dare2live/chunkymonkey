@@ -78,6 +78,17 @@ The model pipeline snapshot below is historical evidence for the completed
   `dropped_unknown_stage_rows` 降到 `454,158`, so the remaining
   `technical_stage='?'` mass is still mostly structural classifier warmup /
   unknown, not a fresh ETL outage.
+- stage-opt MACD state mart: 2026-06-02 added
+  `mart_macd_state_history` / `build_macd_state_history.py` as a separate
+  MACD active-state diagnostic mart. It uses a 180-day warm-up window and
+  then filters back to the requested write window, so the state rows are
+  evidence-only and do not touch `fact_technical_trigger`. The audit now
+  counts `raw_trigger_rows=161,279` plus `raw_state_history_rows=65,543`,
+  lifting `macd_golden_cross` coverage to `26.71%` (`8,330` ready keys) and
+  the MACD-only slice to `226,822 raw_signal_rows / 123,264 filtered_signal_rows
+  / 31,184 unique_keys / 8,330 ready_keys / 26.71% ready coverage /
+  22,854 below_min_signals`, but the controller recommendation still points
+  to `P1 / upstream_candidate_supply`.
 - `scripts/chunkyctl doctor --fast` now also surfaces the stage-opt
   `next_action_recommendation`, so the controller sees the upstream
   candidate-supply lever without rerunning the audit manually. If

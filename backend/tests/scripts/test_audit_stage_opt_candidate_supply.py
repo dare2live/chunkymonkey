@@ -195,6 +195,96 @@ def test_summarize_stage_opt_candidate_supply_emits_structural_notes_for_macd() 
     assert "fact_technical_trigger PRIMARY KEY" in markdown
 
 
+def test_load_signal_rows_includes_macd_state_history_rows() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute("CREATE SCHEMA sm")
+        conn.execute(
+            """
+            CREATE TABLE sm.fact_technical_trigger (
+                stock_code TEXT,
+                date TEXT,
+                formula_id TEXT,
+                formula_variant TEXT,
+                strength DOUBLE,
+                state TEXT,
+                reason_codes_json TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE sm.fact_signal_context (
+                stock_code TEXT,
+                date TEXT,
+                technical_stage TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE sm.mart_macd_state_history (
+                stock_code TEXT,
+                date TEXT,
+                formula_id TEXT,
+                formula_variant TEXT,
+                state TEXT,
+                strength DOUBLE,
+                reason_codes_json TEXT
+            )
+            """
+        )
+        conn.executemany(
+            """
+            INSERT INTO sm.fact_technical_trigger
+              (stock_code, date, formula_id, formula_variant, strength, state, reason_codes_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("000001", "2026-05-10", "macd_golden_cross", "macd_golden_cross_above_zero", 0.8, "just_crossed", "[]"),
+                ("000001", "2026-05-11", "macd_golden_cross", "macd_golden_cross_above_zero", 0.7, "just_crossed", "[]"),
+                ("000001", "2026-05-12", "macd_golden_cross", "macd_golden_cross_above_zero", 0.6, "just_crossed", "[]"),
+                ("000001", "2026-05-13", "macd_golden_cross", "macd_golden_cross_above_zero", 0.5, "just_crossed", "[]"),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO sm.fact_signal_context VALUES (?, ?, ?)",
+            [
+                ("000001", "2026-05-10", "1"),
+                ("000001", "2026-05-11", "1"),
+                ("000001", "2026-05-12", "1"),
+                ("000001", "2026-05-13", "1"),
+                ("000001", "2026-05-14", "1"),
+                ("000001", "2026-05-15", "1"),
+            ],
+        )
+        conn.executemany(
+            """
+            INSERT INTO sm.mart_macd_state_history
+              (stock_code, date, formula_id, formula_variant, state, strength, reason_codes_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("000001", "2026-05-14", "macd_golden_cross", "macd_golden_cross_above_zero", "holding", 0.4, "[]"),
+                ("000001", "2026-05-15", "macd_golden_cross", "macd_golden_cross_above_zero", "imminent", 0.3, "[]"),
+            ],
+        )
+
+        load_result = audit_stage_opt_candidate_supply._load_signal_rows(
+            conn,
+            start="2026-05-10",
+            end="2026-05-15",
+            formula=["macd_golden_cross"],
+        )
+        assert load_result["raw_trigger_rows"] == 4
+        assert load_result["raw_state_history_rows"] == 2
+        assert load_result["raw_rows"] == 6
+        assert len(load_result["signal_rows"]) == 6
+        assert load_result["dropped_unknown_stage_rows"] == 0
+    finally:
+        conn.close()
+
+
 def test_min_signals_sensitivity_reports_threshold_lift() -> None:
     signal_rows = [
         *[

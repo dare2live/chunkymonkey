@@ -9,7 +9,7 @@ variants (用 formula_variant 区分):
 
 state:
   just_crossed:  当日金叉
-  (其他态 (holding/imminent/just_dead) 暂留接口, 当前只发 just_crossed)
+  compute_state_history() 额外导出 holding / imminent 诊断态, 写入独立 mart
 
 参数:
   EMA12 / EMA26 / EMA9 (通达信标准)
@@ -50,6 +50,29 @@ class MacdGoldenCross:
     slow_period: int = 26
     signal_period: int = 9
 
+    def _macd_components(self, closes: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """计算 MACD 三线 + 金叉/死叉掩码。"""
+        ema_fast = ema(closes, self.fast_period)
+        ema_slow = ema(closes, self.slow_period)
+        dif = ema_fast - ema_slow
+        dea = ema(dif, self.signal_period)
+        crossed_up = cross_up(dif, dea)
+        crossed_down = cross_down(dif, dea)
+        return dif, dea, crossed_up, crossed_down
+
+    def _variant_for_dif(self, dif_value: float) -> str:
+        return (
+            "macd_golden_cross_above_zero"
+            if dif_value >= 0
+            else "macd_golden_cross_below_zero"
+        )
+
+    def _signal_strength(self, *, gap: float, close_now: float, dif_value: float) -> float:
+        """把 MACD gap / DIF 压成 0-1 强度。"""
+        gap_ratio = gap / close_now
+        dif_ratio = dif_value / close_now
+        return float(min(1.0, max(0.05, gap_ratio * 50 + dif_ratio * 20)))
+
     def compute_signals(
         self,
         code: str,
@@ -65,27 +88,15 @@ class MacdGoldenCross:
         if n < self.slow_period + self.signal_period + 1:
             return []
 
-        # MACD 三线
-        ema_fast = ema(closes, self.fast_period)
-        ema_slow = ema(closes, self.slow_period)
-        dif = ema_fast - ema_slow
-        dea = ema(dif, self.signal_period)
-
-        # 上穿 / 下穿
-        crossed_up = cross_up(dif, dea)
-        crossed_down = cross_down(dif, dea)
+        dif, dea, crossed_up, crossed_down = self._macd_components(closes)
 
         signals: list[FormulaSignal] = []
 
         # 跟踪最近一次金叉/死叉位置
         last_up = -CROSS_WINDOW - 1
-        last_down = -CROSS_WINDOW - 1
-
         for i in range(n):
             if crossed_up[i]:
                 last_up = i
-            if crossed_down[i]:
-                last_down = i
 
             # 触发条件: 当日金叉 (不再过滤 DIF 符号, 用 variant 区分上下轴)
             if not crossed_up[i]:
@@ -97,21 +108,12 @@ class MacdGoldenCross:
 
             gap = dif[i] - dea[i]
             state = "just_crossed"
-            # 0 轴判定 → variant
-            is_above = dif[i] >= 0
-            variant = (
-                "macd_golden_cross_above_zero" if is_above
-                else "macd_golden_cross_below_zero"
-            )
-
-            # strength: 基于 gap 比例 + DIF 绝对值 (下轴 DIF 负 → 减 strength)
-            gap_ratio = gap / close_now
-            dif_ratio = dif[i] / close_now  # 下轴时为负, 自然降权
-            strength = float(min(1.0, max(0.05, gap_ratio * 50 + dif_ratio * 20)))
+            variant = self._variant_for_dif(float(dif[i]))
+            strength = self._signal_strength(gap=gap, close_now=close_now, dif_value=float(dif[i]))
 
             reason_codes = (
                 f"dif_above_dea:{gap:.4f}",
-                f"dif_{'above' if is_above else 'below'}_zero:{dif[i]:.4f}",
+                f"dif_{'above' if dif[i] >= 0 else 'below'}_zero:{dif[i]:.4f}",
                 f"ema{self.fast_period}_x_ema{self.slow_period}",
             )
 
@@ -125,9 +127,83 @@ class MacdGoldenCross:
                     state=state,
                     reason_codes=reason_codes,
                 )
-            )
+                )
 
         return signals
+
+    def compute_state_history(
+        self,
+        code: str,
+        dates: np.ndarray,
+        opens: np.ndarray,
+        highs: np.ndarray,
+        lows: np.ndarray,
+        closes: np.ndarray,
+        volumes: np.ndarray,
+        amounts: np.ndarray,
+    ) -> list[FormulaSignal]:
+        """导出 MACD state history。
+
+        只输出用于候选供给诊断的 active states:
+          - imminent: gap 极小, 接近金叉
+          - holding:  已进入金叉后窗口, 仍在 DEA 上方
+
+        cross_up 当日由 compute_signals 负责落 fact_technical_trigger,
+        这里不重复写 just_crossed, 以免 stage-opt audit 双算。
+        """
+        n = len(closes)
+        if n < self.slow_period + self.signal_period + 1:
+            return []
+
+        dif, dea, crossed_up, crossed_down = self._macd_components(closes)
+        state_rows: list[FormulaSignal] = []
+        last_cross_up = -CROSS_WINDOW - 1
+
+        for i in range(n):
+            if crossed_up[i]:
+                last_cross_up = i
+                continue
+            if crossed_down[i]:
+                continue
+
+            close_now = float(closes[i])
+            if close_now <= 0:
+                continue
+
+            gap = float(dif[i] - dea[i])
+            gap_ratio = abs(gap) / close_now
+            is_above = float(dif[i]) >= 0
+            variant = self._variant_for_dif(float(dif[i]))
+
+            state: str | None = None
+            if last_cross_up >= 0 and i - last_cross_up <= CROSS_WINDOW and dif[i] > dea[i]:
+                state = "holding"
+                strength = self._signal_strength(gap=gap, close_now=close_now, dif_value=float(dif[i]))
+            elif gap_ratio <= IMMINENT_GAP_RATIO:
+                state = "imminent"
+                strength = float(min(1.0, max(0.15, 0.75 - gap_ratio * 25)))
+            else:
+                continue
+
+            reason_codes = (
+                f"macd_state:{state}",
+                f"dif_{'above' if is_above else 'below'}_zero:{dif[i]:.4f}",
+                f"gap_ratio:{gap_ratio:.4f}",
+                f"ema{self.fast_period}_x_ema{self.slow_period}",
+            )
+            state_rows.append(
+                FormulaSignal(
+                    stock_code=code,
+                    date=str(dates[i]),
+                    formula_id=self.metadata.formula_id,
+                    formula_variant=variant,
+                    strength=strength,
+                    state=state,
+                    reason_codes=reason_codes,
+                )
+            )
+
+        return state_rows
 
 
 # 注册到全局 REGISTRY
