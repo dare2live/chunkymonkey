@@ -241,14 +241,14 @@ class TestTurtleBreakout:
         assert f55.metadata.default_horizon_days == 30
         from services.formula_engine import turtle_breakout as turtle_breakout_module
         assert turtle_breakout_module.VOLUME_MULTIPLE_20 == pytest.approx(0.9)
-        assert turtle_breakout_module.VOLUME_MULTIPLE_55 == pytest.approx(0.8)
+        assert turtle_breakout_module.VOLUME_MULTIPLE_55 == pytest.approx(0.7)
 
     def test_volume_multiple_loader_reads_config(self, tmp_path):
         from services.formula_engine.turtle_breakout import _load_volume_multiple
 
         cfg = tmp_path / "formula_turtle_breakout.yaml"
         cfg.write_text("turtle_breakout_55:\n  volume_multiple: 1.05\n", encoding="utf-8")
-        assert _load_volume_multiple(cfg, variant="turtle_breakout_55", default=0.8) == pytest.approx(1.05)
+        assert _load_volume_multiple(cfg, variant="turtle_breakout_55", default=0.7) == pytest.approx(1.05)
 
     def test_short_kline_no_signal(self, f20):
         n = 10
@@ -310,7 +310,7 @@ class TestTurtleBreakout:
         assert len(signals) == 0
 
     def test_moderate_volume_breakout_now_triggers(self, f55):
-        # 介于 0.8x 和 0.9x 的放量突破,用来锁住 55 日 variant 不会回弹到 0.9
+        # 介于 0.7x 和 0.8x 的放量突破,用来锁住 55 日博弈不会回弹到 0.8
         n = 70
         dates = np.array([f"2024-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}" for i in range(n)])
         closes = np.concatenate([
@@ -319,7 +319,7 @@ class TestTurtleBreakout:
         ])
         volumes = np.concatenate([
             np.ones(55) * 1000,
-            np.ones(15) * 850,
+            np.ones(15) * 750,
         ])
         signals = f55.compute_signals(
             "T", dates, closes, closes * 1.005, closes * 0.995, closes,
@@ -395,7 +395,7 @@ class TestShortTermReversalConfig:
             "reversal_1m_mild:\n"
             "  lookback_days: 20\n"
             "  pct_change_lo: -0.15\n"
-            "  pct_change_hi: -0.03\n"
+            "  pct_change_hi: -0.02\n"
             "  rel_std_max: 0.06\n"
             "  vol_ratio_lo: 0.6\n"
             "  vol_ratio_hi: 2.0\n"
@@ -416,7 +416,7 @@ class TestShortTermReversalConfig:
             encoding="utf-8",
         )
         loaded = _load_config(cfg)
-        assert loaded["reversal_1m_mild"]["pct_change_hi"] == pytest.approx(-0.03)
+        assert loaded["reversal_1m_mild"]["pct_change_hi"] == pytest.approx(-0.02)
         assert loaded["reversal_1m_deep"]["pct_change_hi"] == pytest.approx(-0.05)
         assert loaded["reversal_1w"]["pct_change_hi"] == pytest.approx(-0.01)
         assert loaded["reversal_1w"]["lookback_days"] == 5
@@ -444,13 +444,13 @@ class TestShortTermReversal:
         assert deep.pct_change_hi == pytest.approx(-0.05)
         assert deep.rel_std_max == pytest.approx(0.08)
 
-    def test_mild_variant_triggers_on_roughly_3pct_drop(self, mild):
+    def test_mild_variant_triggers_on_roughly_2pct_drop(self, mild):
         n = 90
         dates = np.array([f"2024-{(i // 30) + 1:02d}-{(i % 30) + 1:02d}" for i in range(n)])
         closes = np.concatenate([
             np.full(60, 100.0),
-            np.linspace(100.0, 97.0, 20),
-            np.full(10, 97.0),
+            np.linspace(100.0, 98.0, 20),
+            np.full(10, 98.0),
         ])
         volumes = np.ones(n) * 1000
 
@@ -465,7 +465,7 @@ class TestShortTermReversal:
             closes * volumes,
         )
 
-        assert len(signals) >= 1, "3% 左右温和下跌应落入 reversal_1m_mild"
+        assert len(signals) >= 1, "2% 左右温和下跌应落入 reversal_1m_mild"
         assert all(s.formula_id == "reversal_1m_mild" for s in signals)
 
     def test_deep_variant_triggers_on_roughly_6pct_drop(self, deep):
