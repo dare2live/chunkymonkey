@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from conftest import duck_mem
-from scripts.data_health_snapshot import compute_health_for_table
+from scripts.data_health_snapshot import build_health_snapshot_report, compute_health_for_table
 from services import workbench_read
 from services.workbench_read import build_workbench_data_sources, build_workbench_storage
 
@@ -242,6 +242,28 @@ def test_periodic_holder_fact_freshness_uses_writer_time_not_report_date():
         assert health["last_writer_at"].startswith("2026-05-05")
     finally:
         conn.close()
+
+
+def test_build_health_snapshot_report_summarizes_red_and_yellow_tables():
+    snapshots = [
+        {"table_name": "green_table", "severity": "green"},
+        {"table_name": "yellow_table", "severity": "yellow", "issue_summary": "writer is 96.0h old (SLA 48h)"},
+        {"table_name": "red_table", "severity": "red", "issue_summary": "writer is 264.0h old (SLA 48h)"},
+    ]
+    report = build_health_snapshot_report(
+        snapshots,
+        {"green": 1, "yellow": 1, "red": 1},
+        now=datetime(2026, 6, 1, 13, 0, 0),
+        run_started_at="2026-06-01T13:00:00Z",
+        keep_history=30,
+        dry_run=True,
+    )
+
+    assert report["verdict"] == "FAIL"
+    assert report["summary"] == {"total": 3, "green": 1, "yellow": 1, "red": 1}
+    assert report["blockers"] == ["red_table"]
+    assert [row["table_name"] for row in report["red_tables"]] == ["red_table"]
+    assert [row["table_name"] for row in report["yellow_tables"]] == ["yellow_table"]
 
 
 

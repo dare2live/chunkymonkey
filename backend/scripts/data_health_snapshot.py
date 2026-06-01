@@ -388,9 +388,57 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
     }
 
 
+def _snapshot_brief(snapshot: dict) -> dict[str, Any]:
+    brief = {
+        "table_name": snapshot.get("table_name"),
+        "severity": snapshot.get("severity"),
+        "issue_summary": snapshot.get("issue_summary"),
+        "row_count": snapshot.get("row_count"),
+        "last_data_date": snapshot.get("last_data_date"),
+        "last_writer_at": snapshot.get("last_writer_at"),
+        "freshness_hours": snapshot.get("freshness_hours"),
+        "freshness_ok": snapshot.get("freshness_ok"),
+    }
+    return {key: value for key, value in brief.items() if value is not None}
+
+
+def build_health_snapshot_report(
+    snapshots: list[dict],
+    severity_count: dict[str, int],
+    *,
+    now: datetime,
+    run_started_at: str,
+    keep_history: int,
+    dry_run: bool,
+) -> dict[str, Any]:
+    red_tables = [_snapshot_brief(snapshot) for snapshot in snapshots if snapshot.get("severity") == "red"]
+    yellow_tables = [_snapshot_brief(snapshot) for snapshot in snapshots if snapshot.get("severity") == "yellow"]
+    summary = {
+        "total": len(snapshots),
+        "green": int(severity_count.get("green", 0)),
+        "yellow": int(severity_count.get("yellow", 0)),
+        "red": int(severity_count.get("red", 0)),
+    }
+    verdict = "FAIL" if red_tables else ("WARN" if yellow_tables else "PASS")
+    return {
+        "schema_version": 1,
+        "command": "data_health_snapshot",
+        "run_started_at": run_started_at,
+        "snapshot_at": now.isoformat(timespec="seconds"),
+        "dry_run": bool(dry_run),
+        "keep_history": int(keep_history),
+        "summary": summary,
+        "verdict": verdict,
+        "red_tables": red_tables,
+        "yellow_tables": yellow_tables,
+        "blockers": [item["table_name"] for item in red_tables if item.get("table_name")],
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--format", choices=["text", "json"], default="text")
     parser.add_argument("--keep-history", type=int, default=30,
                         help="保留多少天历史快照 (其余删, 默认 30)")
     args = parser.parse_args()
@@ -436,13 +484,24 @@ def main() -> int:
         snapshots.append(snap)
         severity_count[snap["severity"]] = severity_count.get(snap["severity"], 0) + 1
 
+    report = build_health_snapshot_report(
+        snapshots,
+        severity_count,
+        now=now,
+        run_started_at=run_started_at,
+        keep_history=args.keep_history,
+        dry_run=args.dry_run,
+    )
+
     if args.dry_run:
         log.info("[dry] severity counts: %s", severity_count)
         for s in snapshots:
             if s["severity"] != "green":
                 log.info("  %s %s: %s", s["severity"], s["table_name"], s["issue_summary"])
         con.close()
-        return 0
+        if args.format == "json":
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        return 1 if report["verdict"] == "FAIL" else 0
 
     # 写库
     for s in snapshots:
@@ -509,6 +568,8 @@ def main() -> int:
             "red_tables": [s["table_name"] for s in red_list[:30]],
         },
     )
+    if args.format == "json":
+        print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     con.close()
     # CI 守门: 任一 red → exit 1
     return 1 if red_list else 0

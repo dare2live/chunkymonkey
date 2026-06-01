@@ -98,6 +98,7 @@ def _next_actions(
     tooling_gate: dict[str, Any] | None,
     worktree_summary: dict[str, Any] | None = None,
     storage_payload: dict[str, Any] | None = None,
+    data_health: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     if not tooling_gate:
         return [{"priority": "P0", "action": "Fix chunkyctl/audit_tooling_gate JSON parsing before relying on doctor output"}]
@@ -168,6 +169,24 @@ def _next_actions(
                 "action": "Review storage payload audit findings for recursive JSON or oversized opaque DB payloads before claiming cleanup complete",
             }
         )
+    if data_health and data_health.get("summary"):
+        summary = data_health["summary"]
+        red_count = int(summary.get("red", 0) or 0)
+        yellow_count = int(summary.get("yellow", 0) or 0)
+        if red_count:
+            actions.append(
+                {
+                    "priority": "P0",
+                    "action": "Review data health red tables one bucket at a time; prioritize active writers, stale tables, and missing assets before trusting freshness claims",
+                }
+            )
+        elif yellow_count:
+            actions.append(
+                {
+                    "priority": "P1",
+                    "action": "Review data health yellow tables and decide whether they are expected on-demand assets or writer/SLA debt",
+                }
+            )
     return actions
 
 
@@ -255,6 +274,31 @@ def run_doctor(args: argparse.Namespace) -> int:
             }
         )
 
+    data_health: dict[str, Any] | None = None
+    result = _run_command(
+        [
+            sys.executable,
+            "backend/scripts/data_health_snapshot.py",
+            "--dry-run",
+            "--format",
+            "json",
+        ],
+        cwd=repo,
+    )
+    parsed = _json_from_stdout(result)
+    data_health = {
+        "command": _command_summary(result),
+        "report": parsed,
+        "verdict": parsed.get("verdict") if parsed else "FAIL",
+    }
+    sections.append(
+        {
+            "name": "data_health",
+            "verdict": data_health["verdict"],
+            "returncode": result["returncode"],
+        }
+    )
+
     worktree_report = None
     worktree_summary = None
     if tooling_payload:
@@ -273,10 +317,12 @@ def run_doctor(args: argparse.Namespace) -> int:
         "test_tool": test_tool,
         "universe": universe,
         "storage_payload": storage_payload,
+        "data_health": data_health,
         "next_actions": _next_actions(
             tooling_payload,
             worktree_summary,
             storage_payload.get("report") if storage_payload else None,
+            data_health.get("report") if data_health else None,
         ),
     }
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
