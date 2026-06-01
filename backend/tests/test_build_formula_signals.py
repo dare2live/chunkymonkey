@@ -48,6 +48,19 @@ class TestEnsureFormulaTables:
 class TestBuildFormulaSignalsHistoryHelpers:
     """build_formula_signals_history.py 辅助函数测试."""
 
+    def test_bootstrap_registers_all_current_formulas(self):
+        from scripts.build_formula_signals_history import REGISTRY
+
+        assert {
+            "macd_golden_cross",
+            "turtle_breakout_20",
+            "turtle_breakout_55",
+            "dynamic_ma_iterative_cross",
+            "reversal_1m_mild",
+            "reversal_1m_deep",
+            "reversal_1w",
+        }.issubset(REGISTRY.keys())
+
     def test_load_all_kline_grouped_basic(self):
         """直接构造小 K 线表测试 groupby 逻辑 (用原生 duckdb 因为需要 fetchnumpy)."""
         import duckdb

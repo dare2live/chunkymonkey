@@ -4,7 +4,7 @@ Phase β W2 D3-D5 核心交付物 (goal.md §4 / 开发手册 §4.3)。
 
 输入:
   - market.v_price_kline_qfq (历史 K 线, 2022-01-01 至今)
-  - services/formula_engine REGISTRY (当前 3 公式: MACD / 海龟20/55 / 动态迭代)
+  - services/formula_engine REGISTRY (当前公式由 bootstrap 统一加载)
 
 输出:
   - fact_technical_trigger (stock_code × date × formula_id 信号)
@@ -35,14 +35,9 @@ import numpy as np
 from services.db import get_conn
 from services.utils import latest_completed_trade_date
 from services.formula_engine import REGISTRY
+from services.formula_engine import bootstrap as _formula_bootstrap  # noqa: F401
 from services.formula_engine.base import FormulaSignal
 from services.formula_engine.ddl import ensure_formula_tables
-
-# 触发所有公式注册
-from services.formula_engine import macd_golden_cross    # noqa: F401
-from services.formula_engine import turtle_breakout      # noqa: F401
-from services.formula_engine import dynamic_ma_iterative  # noqa: F401
-from services.formula_engine import reversal_short_term  # noqa: F401  (Phase ψ.α R-α)
 
 from services.market_db import get_market_conn
 
