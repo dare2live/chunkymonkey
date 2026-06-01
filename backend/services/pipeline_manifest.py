@@ -89,6 +89,26 @@ def _json(value: Any) -> str | None:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
+_PERF_SUMMARY_MAX_STRING_LEN = 512
+
+
+def compact_perf_summary_payload(value: Any) -> Any:
+    """Keep perf_summary compact so runtime logs do not bloat the manifest row."""
+
+    if isinstance(value, str):
+        if len(value) <= _PERF_SUMMARY_MAX_STRING_LEN:
+            return value
+        truncated = len(value) - _PERF_SUMMARY_MAX_STRING_LEN
+        return f"{value[:_PERF_SUMMARY_MAX_STRING_LEN]}... [truncated {truncated} chars]"
+    if isinstance(value, dict):
+        return {str(key): compact_perf_summary_payload(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [compact_perf_summary_payload(child) for child in value]
+    if isinstance(value, tuple):
+        return [compact_perf_summary_payload(child) for child in value]
+    return value
+
+
 def _quote_table_name(name: str) -> str:
     return ".".join('"' + part.replace('"', '""') + '"' for part in name.split("."))
 
@@ -213,6 +233,7 @@ def record_pipeline_run(
         perf_summary_out["duckdb_connect_wait_s"] = round(duckdb_connect_wait_s, 6)
     if duckdb_connect_elapsed_s:
         perf_summary_out["duckdb_connect_elapsed_s"] = round(duckdb_connect_elapsed_s, 6)
+    perf_summary_out = compact_perf_summary_payload(perf_summary_out)
 
     conn.execute(
         """

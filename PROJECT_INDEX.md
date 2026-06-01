@@ -865,6 +865,12 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-06-01 pipeline manifest perf_summary compaction
+
+- `backend/services/pipeline_manifest.py`: added `compact_perf_summary_payload()` and now apply it before writing `perf_summary_json`, so runtime logs in `mart_pipeline_run_manifest` stay bounded instead of growing into multi-megabyte rows. The current largest live row is ~260,408 bytes.
+- `backend/tests/test_pipeline_manifest.py`: added a nested-log regression proving large `perf_summary` strings compact and keep the stored JSON small.
+- `goal.md` / `SESSION_HANDOFF.md` / `analysis/workflow_checkpoint.md` were synced to the bounded-manifest fact; `codegraph sync .` updated 31 nodes; `audit_test_tool_health.py` PASS and `pytest -q backend/tests/test_pipeline_manifest.py` 5 passed.
+
 ### 2026-06-01 文档治理落地 + P0 universe truth-source hardening
 
 **Current freshness / survivorship catch-up**: `fact_market_cap_decile_daily`、`fact_industry_beta_daily`、`fact_financial_pit_daily`、`fact_capital_flow_pit_daily`、`fact_risk_factors`、`fact_sector_momentum_daily`、`mart_p0a_label_panel`、`mart_p0a_feature_label_panel_v3`、`mart_p0a_feature_label_panel_v4`、`mart_sniper_score_daily`、`mart_institution_score_daily` 已补到 2026-05-29；`backend/scripts/audit_survivorship_gate.py` 默认 label_version 已切到 `p0a_v3_horizon_governance`，当前 survivorship gate PASS。`backend/services/labels/feature_join_v3.py` 已补齐 v3 schema migration，避免旧表缺列阻断重建。`audit_data_completeness.py` 现在是 PASS with WARN（0 FAIL / 2 WARN），`fact_lhb_event` / `fact_technical_trigger` 已按 sparse-event 规则降级为 WARN evidence；`audit_pit_coverage.py` 仍是 4/4 PASS，`fact_lhb_event` gain_20d coverage 83.9% > 60%，所以 LHB 只是 completeness WARN，不是 PIT 风险。`audit_end_to_end.py` 已 PASS with WARN，但仍不能把推荐 PIT coverage 0 / LHB event coverage 当生产证据。

@@ -47,6 +47,39 @@ def test_record_pipeline_run_writes_auditable_manifest():
         conn.close()
 
 
+def test_record_pipeline_run_compacts_large_perf_summary_strings():
+    conn = duck_mem()
+    try:
+        ensure_pipeline_manifest_schema(conn)
+        large_message = "x" * 1000
+
+        record_pipeline_run(
+            conn,
+            run_id="run_large_perf",
+            pipeline_name="unit_pipeline",
+            status="success",
+            perf_summary={
+                "phases": [
+                    {
+                        "phase": "sync",
+                        "status": "warn",
+                        "last_summary": {"logs": [{"message": large_message}]},
+                    }
+                ]
+            },
+        )
+
+        row = conn.execute(
+            "SELECT perf_summary_json FROM mart_pipeline_run_manifest WHERE run_id = 'run_large_perf'"
+        ).fetchone()
+        perf = row["perf_summary_json"]
+
+        assert len(perf) < 1000
+        assert "[truncated" in perf
+    finally:
+        conn.close()
+
+
 def test_table_row_counts_marks_missing_tables_as_none():
     conn = duck_mem()
     try:

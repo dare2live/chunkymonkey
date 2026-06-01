@@ -106,7 +106,9 @@ The model pipeline snapshot below is historical evidence for the completed
   and `sync_surveys` then refreshed `raw_institution_surveys` /
   `mart_stock_survey_activity`, before the later `fact_institution_event`
   safe rebuild path recovered the main ART index deadlock; `mart_architecture_cleanup_plan`
-  was reclassified to on-demand governance and is green.
+  was reclassified to on-demand governance and is green. `mart_pipeline_run_manifest.perf_summary_json`
+  now uses `compact_perf_summary_payload()`, so the largest live manifest row
+  is bounded at ~260,408 bytes instead of the earlier multi-megabyte log blob.
 - survivorship gate: current default `p0a_v3_horizon_governance` PASS; the old
   `p0a_v2_governance_v1` gate remains available only for explicit historical
   review.
