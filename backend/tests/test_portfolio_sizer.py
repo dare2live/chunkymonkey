@@ -247,6 +247,47 @@ class TestSizing:
         assert out[0]["match_tier"] == "stage_pit"
         assert out[0]["score"] < out[1]["score"]
 
+    def test_summarize_profile_attrition_counts_dropoff_and_pit_priority(self, short_profile):
+        from services.portfolio_sizer.attrition import summarize_profile_attrition
+
+        cands = [
+            # PIT-safe 候选，score 低一点但应优先保留
+            {"stock_code": "PIT", "formula_id": "macd", "formula_variant": "macd_v1",
+             "holding_days": 10, "n_signals": 20, "win_rate": 0.84, "avg_ret": 0.10,
+             "avg_dd": -0.05, "calmar": 1.6, "signal_close": 100.0,
+             "match_tier": "stage_pit"},
+            # 更高分 fallback
+            {"stock_code": "XSTAGE", "formula_id": "macd", "formula_variant": "macd_v1",
+             "holding_days": 10, "n_signals": 20, "win_rate": 0.95, "avg_ret": 0.10,
+             "avg_dd": -0.05, "calmar": 2.4, "signal_close": 100.0,
+             "match_tier": "cross_stage_fallback"},
+            # 直接在样本数门槛上被拦掉
+            {"stock_code": "LOWN", "formula_id": "macd", "formula_variant": "macd_v1",
+             "holding_days": 10, "n_signals": 2, "win_rate": 1.0, "avg_ret": 0.10,
+             "avg_dd": -0.05, "calmar": 2.0, "signal_close": 100.0,
+             "match_tier": "cross_stage_fallback"},
+        ]
+
+        summary = summarize_profile_attrition(cands, short_profile, max_examples=2)
+        assert summary["input_rows"] == 3
+        assert summary["stage_reached"] == {
+            "hp": 3,
+            "n_signals": 2,
+            "avg_ret": 2,
+            "fund_stage": 2,
+            "wilson": 2,
+            "kelly": 2,
+        }
+        assert summary["fail_reasons"] == {"n_signals": 1}
+        assert summary["after_filter_rows"] == 2
+        assert summary["selected_rows"] == 2
+        assert summary["selected_match_tiers"] == {
+            "stage_pit": 1,
+            "cross_stage_fallback": 1,
+        }
+        assert [row["stock_code"] for row in summary["selected_examples"]] == ["PIT", "XSTAGE"]
+        assert summary["selected_examples"][0]["score"] < summary["selected_examples"][1]["score"]
+
 
 # ===================== Sell Rules =====================
 class TestSellRules:

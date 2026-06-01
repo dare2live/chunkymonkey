@@ -40,6 +40,150 @@ def match_tier_priority(match_tier: str | None) -> int:
     return MATCH_TIER_PRIORITY.get(match_tier, 0)
 
 
+def evaluate_candidate(
+    candidate: dict[str, Any],
+    profile: RiskProfile,
+    eligible_factors: list[Any] | None = None,
+) -> tuple[dict[str, Any] | None, str | None, dict[str, bool]]:
+    """Evaluate one candidate against a profile and return enriched output or a fail reason.
+
+    The trace is intentionally boolean and ordered so audit tools can count
+    how many candidates reached each gate without re-implementing the ranking
+    logic.
+    """
+    trace = {
+        "hp": False,
+        "n_signals": False,
+        "avg_ret": False,
+        "fund_stage": False,
+        "wilson": False,
+        "kelly": False,
+    }
+    hp = candidate.get("holding_days")
+    if hp not in profile.holding_days:
+        return None, "hp", trace
+    trace["hp"] = True
+
+    n = int(candidate.get("n_signals") or 0)
+    if n < profile.min_n_signals:
+        return None, "n_signals", trace
+    trace["n_signals"] = True
+
+    raw_win = float(candidate.get("win_rate") or 0.0)
+    avg_ret = float(candidate.get("avg_ret") or 0.0)
+    avg_dd = float(candidate.get("avg_dd") or 0.0)
+    if avg_ret <= 0:
+        return None, "avg_ret", trace  # 历史不赚不推荐
+    trace["avg_ret"] = True
+
+    fund_stage = candidate.get("fundamental_stage")
+    if fund_stage and fund_stage in profile.exclude_fund_stages:
+        return None, "fund_stage", trace
+    trace["fund_stage"] = True
+
+    wilson_win = wilson_from_rate(raw_win, n, confidence=0.95)
+    if wilson_win < profile.min_wilson_win:
+        return None, "wilson", trace
+    trace["wilson"] = True
+
+    kelly_f = kelly_fraction(
+        win_rate=wilson_win, avg_ret=avg_ret, avg_dd=avg_dd,
+        kelly_mul=profile.kelly_fraction, max_f=profile.stock_cap_pct,
+    )
+    if kelly_f <= 0:
+        return None, "kelly", trace
+    trace["kelly"] = True
+
+    if eligible_factors is None:
+        eligible_factors = get_eligible_factors(profile.profile_id)
+    import math
+    calmar = float(candidate.get("calmar") or 0.0)
+    score_base = wilson_win * math.log(1.0 + n) * max(0.1, calmar)
+
+    sentiment_mult = 1.0
+    sentiment_trace: list[str] = []
+    for f in eligible_factors:
+        bin_val = candidate.get(f.bin_column) if f.bin_column else None
+        m = f.get_multiplier(bin_val)
+        sentiment_mult *= m
+        if m != 1.0:
+            sentiment_trace.append(f"{f.factor_id}:{bin_val}×{m:.2f}")
+    score = score_base * sentiment_mult
+
+    signal_close = candidate.get("signal_close")
+    next_open = candidate.get("next_open")
+    next_amount = candidate.get("next_amount")
+    next_volume = candidate.get("next_volume")
+    buy_price = compute_buy_price(
+        signal_close=signal_close,
+        next_open=next_open, next_amount=next_amount, next_volume=next_volume,
+        config=EXECUTION_MODEL.buy_pricing,
+    )
+    if buy_price is None and signal_close and signal_close > 0:
+        from services.trading_config.buy_pricing import BuyPricingConfig
+        fallback_cfg = BuyPricingConfig(mode="signal_close_plus_pct", signal_close_pct=0.005)
+        buy_price = compute_buy_price(signal_close=signal_close, config=fallback_cfg)
+
+    from services.backtest.strategy_defaults import DEFAULT_STRATEGY
+    opt_stop = candidate.get("optimal_stop_pct")
+    opt_target = candidate.get("optimal_target_pct")
+    opt_trail = candidate.get("optimal_trailing_pct")
+    eff_stop = opt_stop if opt_stop is not None else DEFAULT_STRATEGY.stop_pct
+    eff_target = opt_target if opt_target is not None else DEFAULT_STRATEGY.target_pct
+    eff_trail = opt_trail if opt_trail is not None else DEFAULT_STRATEGY.trailing_pct
+    if buy_price and buy_price > 0:
+        sell_target = buy_price * (1.0 + eff_target)
+        stop_price = buy_price * (1.0 + eff_stop)
+    else:
+        buy_price = sell_target = stop_price = None
+
+    enriched = {
+        **candidate,
+        "wilson_win": wilson_win,
+        "kelly_f": kelly_f,
+        "confidence_tier": confidence_tier(wilson_win, n),
+        "score": score,
+        "score_base": score_base,
+        "sentiment_mult": sentiment_mult,
+        "sentiment_trace": "; ".join(sentiment_trace) if sentiment_trace else None,
+        "buy_price": buy_price,
+        "sell_target": sell_target,
+        "stop_price": stop_price,
+        "trailing_pct": eff_trail,
+    }
+    return enriched, None, trace
+
+
+def select_candidates(pool: list[dict[str, Any]], profile: RiskProfile) -> list[dict[str, Any]]:
+    """Apply ranking and portfolio dedup rules to a scored pool."""
+    pool.sort(
+        key=lambda x: (
+            match_tier_priority(x.get("match_tier")),
+            x["score"],
+        ),
+        reverse=True,
+    )
+    seen_keys: set[tuple[str, str]] = set()
+    deduped: list[dict[str, Any]] = []
+    for x in pool:
+        key = (x.get("stock_code"), x.get("formula_variant"))
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        deduped.append(x)
+
+    seen_stocks: set[str] = set()
+    final_pool: list[dict[str, Any]] = []
+    for x in deduped:
+        sc = x.get("stock_code")
+        if sc in seen_stocks:
+            continue
+        seen_stocks.add(sc)
+        final_pool.append(x)
+
+    return final_pool[: profile.max_positions]
+
+
 def trailing_threshold(target_ret: float, profile: RiskProfile) -> float:
     """trailing = max(profile.trailing_pct_min, target_ret × ratio)."""
     if target_ret is None or target_ret <= 0:
@@ -76,130 +220,16 @@ def rank_and_size(
     # Step 0: 查注册表 — 该 profile 启用哪些 sentiment 因子加权
     eligible_factors = get_eligible_factors(profile.profile_id)
 
-    # Step 1: filter
+    # Step 1: filter + score
     pool = []
     for c in candidates:
-        # hp filter
-        hp = c.get("holding_days")
-        if hp not in profile.holding_days:
+        enriched, fail_reason, _trace = evaluate_candidate(c, profile, eligible_factors)
+        if fail_reason:
             continue
-        n = int(c.get("n_signals") or 0)
-        if n < profile.min_n_signals:
-            continue
-        raw_win = float(c.get("win_rate") or 0.0)
-        avg_ret = float(c.get("avg_ret") or 0.0)
-        avg_dd = float(c.get("avg_dd") or 0.0)
-        if avg_ret <= 0:
-            continue  # 历史不赚不推荐
-        # Step 2: fundamental_stage 排除
-        fund_stage = c.get("fundamental_stage")
-        if fund_stage and fund_stage in profile.exclude_fund_stages:
-            continue
-        # Step 3: Wilson 修正
-        wilson_win = wilson_from_rate(raw_win, n, confidence=0.95)
-        if wilson_win < profile.min_wilson_win:
-            continue
-        # Kelly
-        kelly_f = kelly_fraction(
-            win_rate=wilson_win, avg_ret=avg_ret, avg_dd=avg_dd,
-            kelly_mul=profile.kelly_fraction, max_f=profile.stock_cap_pct,
-        )
-        if kelly_f <= 0:
-            continue
-        tier = confidence_tier(wilson_win, n)
-        # Step 4: score 排序键 (base)
-        import math
-        calmar = float(c.get("calmar") or 0.0)
-        score_base = wilson_win * math.log(1.0 + n) * max(0.1, calmar)
+        if enriched is not None:
+            pool.append(enriched)
 
-        # Step 4b: sentiment 加权 — 查 registry, 逐因子乘 multiplier (架构: 无 if-profile)
-        sentiment_mult = 1.0
-        sentiment_trace: list[str] = []  # 记录各因子贡献, 供 UI / 调试
-        for f in eligible_factors:
-            bin_val = c.get(f.bin_column) if f.bin_column else None
-            m = f.get_multiplier(bin_val)
-            sentiment_mult *= m
-            if m != 1.0:
-                sentiment_trace.append(f"{f.factor_id}:{bin_val}×{m:.2f}")
-        score = score_base * sentiment_mult
-        # 价格估算 — 走 trading_config (Phase ε.2: 不再硬编码 1.005)
-        # candidate dict 应携带 T+1 OHLCV (build_*.py 注入), 优先用 VWAP; 缺数据回退 signal_close+pct
-        signal_close = c.get("signal_close")
-        next_open    = c.get("next_open")
-        next_amount  = c.get("next_amount")
-        next_volume  = c.get("next_volume")
-        buy_price = compute_buy_price(
-            signal_close=signal_close,
-            next_open=next_open, next_amount=next_amount, next_volume=next_volume,
-            config=EXECUTION_MODEL.buy_pricing,
-        )
-        # daily 推荐场景下 T+1 数据未到, 回退用 signal_close × (1 + 默认溢价 0.5%)
-        if buy_price is None and signal_close and signal_close > 0:
-            from services.trading_config.buy_pricing import BuyPricingConfig
-            fallback_cfg = BuyPricingConfig(mode="signal_close_plus_pct", signal_close_pct=0.005)
-            buy_price = compute_buy_price(signal_close=signal_close, config=fallback_cfg)
-
-        # Phase ζ: 用每股每 variant Optuna 寻优出的最佳策略参数 (不再用 DEFAULT_STRATEGY)
-        # 这些参数从 mart_per_stock_strategy_optimal 通过 candidate dict 传入.
-        # fallback 到 DEFAULT_STRATEGY 仅在 candidate 无寻优结果时 (新股 / 数据缺失).
-        from services.backtest.strategy_defaults import DEFAULT_STRATEGY
-        opt_stop   = c.get("optimal_stop_pct")
-        opt_target = c.get("optimal_target_pct")
-        opt_trail  = c.get("optimal_trailing_pct")
-        eff_stop   = opt_stop   if opt_stop   is not None else DEFAULT_STRATEGY.stop_pct
-        eff_target = opt_target if opt_target is not None else DEFAULT_STRATEGY.target_pct
-        eff_trail  = opt_trail  if opt_trail  is not None else DEFAULT_STRATEGY.trailing_pct
-        if buy_price and buy_price > 0:
-            sell_target = buy_price * (1.0 + eff_target)
-            stop_price  = buy_price * (1.0 + eff_stop)
-        else:
-            buy_price = sell_target = stop_price = None
-        trailing_pct = eff_trail
-
-        pool.append({
-            **c,
-            "wilson_win": wilson_win,
-            "kelly_f": kelly_f,
-            "confidence_tier": tier,
-            "score": score,
-            "score_base": score_base,
-            "sentiment_mult": sentiment_mult,
-            "sentiment_trace": "; ".join(sentiment_trace) if sentiment_trace else None,
-            "buy_price": buy_price,
-            "sell_target": sell_target,
-            "stop_price": stop_price,
-            "trailing_pct": trailing_pct,
-        })
-
-    # Step 5a: dedup — per (stock_code, formula_variant) 只保留最高分一行
-    # 同一只股票可能有多个 hp/variant 信号; portfolio 内只持仓一次
-    pool.sort(
-        key=lambda x: (
-            match_tier_priority(x.get("match_tier")),
-            x["score"],
-        ),
-        reverse=True,
-    )
-    seen_keys: set[tuple[str, str]] = set()
-    deduped: list[dict] = []
-    for x in pool:
-        key = (x.get("stock_code"), x.get("formula_variant"))
-        if key in seen_keys:
-            continue
-        seen_keys.add(key)
-        deduped.append(x)
-
-    # Step 5b: dedup 再做一次: 同股不同 variant 也只保留一只 (portfolio 视角)
-    seen_stocks: set[str] = set()
-    final_pool: list[dict] = []
-    for x in deduped:
-        sc = x.get("stock_code")
-        if sc in seen_stocks:
-            continue
-        seen_stocks.add(sc)
-        final_pool.append(x)
-
-    selected = final_pool[: profile.max_positions]
+    selected = select_candidates(pool, profile)
 
     # Step 6: normalize position_pct
     # 朴素策略: kelly_f 直接当 position; 但总和需 ≤ 90% (10% cash)

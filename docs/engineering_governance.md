@@ -50,6 +50,10 @@ Every new flow, feature, module, table, config file, or threshold must answer:
 Hardcoded business rules are blocked by default. Thresholds, source priority,
 dates, table catalogs, weights, strategy parameters, and resource policies
 belong in config or tables unless a documented exception is safer.
+For `portfolio_sizer` threshold tuning specifically, run
+`backend/scripts/audit_portfolio_sizer_profile_attrition.py` first and treat
+its attrition summary as the required evidence gate before changing
+`min_n_signals` / `min_wilson_win`.
 
 ## CodeGraph + Complexity
 
