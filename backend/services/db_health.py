@@ -1,15 +1,17 @@
 """Phase ψ.5 根因 2 修复 — DuckDB 索引一致性健康检查.
 
 背景:
-  raw_gpcw_financial 表上的 ART secondary index 在 ON CONFLICT DO UPDATE 时
-  偶发跟 storage 不一致 (DuckDB 已知 issue 在版本升级 / SIGTERM 中断写入时).
+  raw_gpcw_financial / fact_top10_holder_period 上的 ART secondary index 在
+  ON CONFLICT DO UPDATE / DELETE 重放时偶发跟 storage 不一致 (DuckDB 已知
+  issue 在版本升级 / SIGTERM 中断写入时).
   症状: DELETE WHERE 列条件 报 "Failed to delete all rows from index. Only
   deleted 0 out of 1 rows", 整库进入 FATAL invalidate state.
 
 策略 (3 层防御, 本文件实现层 1+2):
-  1. **删冗余索引**: 跟 PK 完全同列的 secondary index 删掉, 消除 attack surface.
+  1. **删冗余索引**: 删掉已知 legacy / redundant 的 secondary index, 消除 attack
+     surface.
   2. **启动一致性检查**: 后端启动 + cron_daily 跑 sync 前, 比对 table 行数 vs
-     index 路径行数; 不一致就 REINDEX (或 DROP+CREATE).
+     index 路径; 不一致就 REINDEX (或 DROP+CREATE).
   3. **写入路径走 rowid**: DELETE 走 rowid 而非列条件, 绕索引 (实现在
      financial_client._cleanup_snapshot_stub).
 
@@ -25,15 +27,23 @@ from typing import Iterable
 logger = logging.getLogger(__name__)
 
 
-# (table, index_name) — 已知跟 PK 重复的冗余 secondary index, 启动时如发现就删除.
+# (table, index_name) — 已知 legacy / redundant secondary index, 启动时如发现就删除.
 REDUNDANT_INDEXES: tuple[tuple[str, str], ...] = (
     ("raw_gpcw_financial", "idx_rgf_stock_report"),  # 跟 PK (stock_code, report_date) 重复
+    # fact_top10_holder_period: 旧 idx_fact_hp_* 名称是 refactor 前的 legacy 索引名;
+    # 当前 canonical 名称是 idx_t10_*，保留 canonical set，启动时清掉 legacy set。
+    ("fact_top10_holder_period", "idx_fact_hp_stock_date"),
+    ("fact_top10_holder_period", "idx_fact_hp_name"),
+    ("fact_top10_holder_period", "idx_fact_hp_name_norm"),
+    ("fact_top10_holder_period", "idx_fact_hp_eff_date"),
+    ("fact_top10_holder_period", "idx_fact_hp_set_class"),
 )
 
 
 # 重点观察的关键表 — 启动时跑 index_count vs storage_count.
 WATCHED_TABLES: tuple[str, ...] = (
     "raw_gpcw_financial",
+    "fact_top10_holder_period",
 )
 
 

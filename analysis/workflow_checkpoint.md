@@ -115,11 +115,13 @@ The model pipeline snapshot below is historical evidence for the completed
   `0/5201` to `5201/5201`, the run proceeded through `lineage / watermarks /
   topk / selection_log / selection_outcome / selection_summary /
   formula_weights / health / drift / audit`, and the whole 31/31 phase set
-  completed. The only notable warning inside that run was `F10 extra parse
-  failed` during `sync_raw`, where an old DuckDB index-delete fatal error
-  invalidated the database and then caused the source-failure-queue update to
-  fail too; keep that as a targeted triage item, not as a generalized Python
-  failure. `mart_pipeline_run_manifest.perf_summary_json` now uses
+  completed. The `F10 extra parse failed` warning surfaced during
+  `sync_raw` because an old DuckDB index-delete fatal error invalidated the
+  database and then caused the source-failure-queue update to fail too; that
+  path has since been resolved by the startup cleanup that removed the
+  legacy `fact_top10_holder_period.idx_fact_hp_*` indexes from the live DB,
+  so treat it as resolved index-debt evidence rather than a generalized
+  Python failure. `mart_pipeline_run_manifest.perf_summary_json` now uses
   `compact_perf_summary_payload()`, so the largest live manifest row is
   bounded at ~260,408 bytes instead of the earlier multi-megabyte log blob.
 - survivorship gate: current default `p0a_v3_horizon_governance` PASS; the old

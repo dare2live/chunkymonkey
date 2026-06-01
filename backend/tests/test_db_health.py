@@ -1,7 +1,7 @@
 """Phase ψ.5 根因 2 修复 — DB health check + financial_client._cleanup_snapshot_stub 回归测试.
 
 测试目标:
-  1. drop_redundant_indexes 删 idx_rgf_stock_report (跟 PK 重复)
+  1. drop_redundant_indexes 删 raw_gpcw / fact_top10 legacy indexes
   2. check_table_index_consistency 正常表返 ok
   3. run_startup_checks 在干净表上不抛
   4. _cleanup_snapshot_stub 用 rowid 路径 — 即便给的 (notice_date, report_date)
@@ -25,6 +25,34 @@ def fin_conn():
     """In-memory DuckDB with full raw_gpcw_financial schema."""
     conn = connect(":memory:")
     ensure_tables(conn)
+    conn.execute(
+        """
+        CREATE TABLE fact_top10_holder_period (
+            stock_code TEXT,
+            report_date TEXT,
+            holder_name TEXT,
+            holder_name_norm TEXT,
+            effective_date TEXT,
+            holder_set TEXT,
+            share_class TEXT
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX idx_t10_stock ON fact_top10_holder_period(stock_code, report_date DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX idx_t10_holder ON fact_top10_holder_period(holder_name)"
+    )
+    conn.execute(
+        "CREATE INDEX idx_t10_holder_norm ON fact_top10_holder_period(holder_name_norm)"
+    )
+    conn.execute(
+        "CREATE INDEX idx_t10_effective ON fact_top10_holder_period(effective_date)"
+    )
+    conn.execute(
+        "CREATE INDEX idx_t10_set_class ON fact_top10_holder_period(holder_set, share_class)"
+    )
     yield conn
     conn.close()
 
@@ -62,6 +90,32 @@ def test_drop_redundant_indexes_removes_legacy(fin_conn):
     assert "idx_rgf_stock_report" not in {r[0] for r in rows}
 
 
+def test_drop_redundant_indexes_removes_legacy_fact_top10_holder_indexes(fin_conn):
+    """fact_top10_holder_period 的 legacy idx_fact_hp_* 应在启动前被清掉."""
+    legacy_indexes = [
+        ("idx_fact_hp_stock_date", "stock_code, report_date"),
+        ("idx_fact_hp_name", "holder_name"),
+        ("idx_fact_hp_name_norm", "holder_name_norm"),
+        ("idx_fact_hp_eff_date", "effective_date"),
+        ("idx_fact_hp_set_class", "holder_set, share_class"),
+    ]
+    for idx_name, cols in legacy_indexes:
+        fin_conn.execute(
+            f"CREATE INDEX {idx_name} ON fact_top10_holder_period({cols})"
+        )
+
+    dropped = drop_redundant_indexes(fin_conn)
+    assert all(
+        f"fact_top10_holder_period.{idx_name}" in dropped for idx_name, _ in legacy_indexes
+    )
+    rows = fin_conn.execute(
+        "SELECT index_name FROM duckdb_indexes() WHERE table_name='fact_top10_holder_period'"
+    ).fetchall()
+    remaining = {r[0] for r in rows}
+    assert all(idx_name not in remaining for idx_name, _ in legacy_indexes)
+    assert {"idx_t10_stock", "idx_t10_holder", "idx_t10_holder_norm", "idx_t10_effective", "idx_t10_set_class"} <= remaining
+
+
 def test_check_table_index_consistency_passes_on_clean_table(fin_conn):
     """干净表索引一致性检查应 OK."""
     fin_conn.execute(
@@ -77,6 +131,7 @@ def test_run_startup_checks_clean(fin_conn):
     summary = run_startup_checks(fin_conn)
     assert summary["still_broken"] == []
     assert all(c.get("ok") for c in summary["checks"])
+    assert any(c.get("table") == "fact_top10_holder_period" for c in summary["checks"])
 
 
 def test_cleanup_snapshot_stub_rowid_path_no_match(fin_conn):
