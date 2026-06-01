@@ -13,8 +13,8 @@
 
 公式设计 (基于学术经验 + Rule 6 数据驱动):
   - 触发条件 (1 月反转, 多 variant, 由 backend/config/formula_reversal_short_term.yaml 管理):
-    1. 收益率: closes[t] / closes[t-20] - 1 ∈ [-0.30, -0.05] (跌 5-30%)
-       - 跌 < 5% 不算"反转候选"
+    1. 收益率: closes[t] / closes[t-20] - 1 ∈ [-0.30, -0.04] (跌 4-30%)
+       - 跌 < 4% 不算"反转候选"
        - 跌 > 30% 是崩盘 / 退市风险 (跳)
     2. 低波动过滤: 60 日 close 日 std / mean ≤ 0.06 (相对波动率 6%)
        - 高波动 = 噪音多 反转不稳定
@@ -24,7 +24,7 @@
 
   - variant:
     1. reversal_1m_mild    — 跌 2-15% (温和反转, RankIC 适中)
-    2. reversal_1m_deep    — 跌 5-30% (深度反转, RankIC 高但样本少)
+    2. reversal_1m_deep    — 跌 4-30% (深度反转, RankIC 高但样本少)
     3. reversal_1w         — 1 周反转 (5 日, 信号高频但换手大)
 
 ⚠ 不调单股阈值 (留给 Phase ψ Optuna search_space 后续扩展). 当前公式阈值
@@ -59,7 +59,7 @@ DEFAULT_CONFIG: dict[str, dict[str, float | int]] = {
     "reversal_1m_deep": {
         "lookback_days": 20,
         "pct_change_lo": -0.30,
-        "pct_change_hi": -0.05,
+        "pct_change_hi": -0.04,
         "rel_std_max": 0.08,
         "vol_ratio_lo": 0.6,
         "vol_ratio_hi": 2.0,
@@ -152,7 +152,7 @@ class _ReversalBase:
     metadata: FormulaMetadata
     lookback_days: int                # 1 月 = 20, 1 周 = 5
     pct_change_lo: float              # 跌幅下界 (负数, 例 -0.30)
-    pct_change_hi: float              # 跌幅上界 (例 -0.05)
+    pct_change_hi: float              # 跌幅上界 (例 -0.04)
     rel_std_max: float                # 相对波动率上限 (例 0.06)
     vol_ratio_lo: float = 0.6         # 量比下限
     vol_ratio_hi: float = 2.0         # 量比上限
@@ -254,12 +254,12 @@ class Reversal1mMild(_ReversalBase):
 
 @dataclass(frozen=True)
 class Reversal1mDeep(_ReversalBase):
-    """1 月深度反转: 跌 5-30%, 低波动. 样本少, RankIC 高但右尾风险大."""
+    """1 月深度反转: 跌 4-30%, 低波动. 样本少, RankIC 高但右尾风险大."""
     metadata: FormulaMetadata = FormulaMetadata(
         formula_id="reversal_1m_deep",
         name="1 月深度反转",
         tag="RD",
-        description="20 日跌 5-30% + 60 日低波 + 量比正常 → 深度超跌反转候选",
+        description="20 日跌 4-30% + 60 日低波 + 量比正常 → 深度超跌反转候选",
         default_horizon_days=15,
         has_variant=True,
     )
