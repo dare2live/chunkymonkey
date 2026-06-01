@@ -49,6 +49,7 @@ REASSIGNMENT_FIELDS = (
 EVIDENCE_STATUSES = {"production", "proxy", "research", "unknown"}
 PRODUCTION_ELIGIBILITIES = {"eligible", "blocked", "research_only", "proxy_only", "unknown"}
 UNKNOWN_VALUES = {"unknown", "n/a", "none", "null"}
+BLOCKED_ELIGIBILITIES = {"blocked", "unknown"}
 
 
 DDL = """
@@ -163,6 +164,45 @@ def _rows(raw: dict[str, Any], key: str, fields: tuple[str, ...]) -> list[tuple[
     return rows
 
 
+def _need_record(row: tuple[Any, ...]) -> dict[str, Any]:
+    return dict(zip(NEED_FIELDS, row))
+
+
+def _summarize_need_gaps(needs: list[tuple[Any, ...]]) -> dict[str, Any]:
+    records = [_need_record(row) for row in needs]
+    eligibility_counts = {}
+    blocked_needs = []
+
+    for record in records:
+        eligibility = _as_clean_text(record.get("production_eligibility"))
+        evidence_status = _as_clean_text(record.get("evidence_status"))
+        eligibility_counts[eligibility] = eligibility_counts.get(eligibility, 0) + 1
+        if eligibility in BLOCKED_ELIGIBILITIES or evidence_status == "unknown":
+            blocked_needs.append(
+                {
+                    "need_id": record.get("need_id"),
+                    "need_name": record.get("need_name"),
+                    "consumer": record.get("consumer"),
+                    "current_source": record.get("current_source"),
+                    "tdxhub_capability": record.get("tdxhub_capability"),
+                    "pit_key": record.get("pit_key"),
+                    "evidence_status": evidence_status,
+                    "production_eligibility": eligibility,
+                    "preferred_source": record.get("preferred_source"),
+                    "fallback_source": record.get("fallback_source"),
+                    "action": record.get("action"),
+                    "notes": record.get("notes"),
+                }
+            )
+
+    return {
+        "need_count": len(records),
+        "eligibility_counts": eligibility_counts,
+        "blocked_need_count": len(blocked_needs),
+        "blocked_needs": blocked_needs,
+    }
+
+
 def _resolve_input_paths(raw_paths: Any) -> list[Path]:
     if not isinstance(raw_paths, list):
         raise ValueError(f"input_paths must be a list in {CONFIG_PATH.name}")
@@ -225,6 +265,7 @@ def audit_tdx_data_need_coverage(conn: Any, config_path: Path | None = None) -> 
     needs = config["needs"]
     priorities = config["priorities"]
     reassignments = config["reassignments"]
+    need_gap_summary = _summarize_need_gaps(needs)
     input_inventory = _read_input_inventory(config["input_paths"])
     built_at = datetime.now(UTC).isoformat(timespec="seconds")
     conn.execute("BEGIN TRANSACTION")
@@ -285,6 +326,7 @@ def audit_tdx_data_need_coverage(conn: Any, config_path: Path | None = None) -> 
         "coverage_rows": len(needs),
         "priority_rows": len(priorities),
         "reassignment_rows": len(reassignments),
+        "need_gap_summary": need_gap_summary,
         "config_path": config["config_path"],
         "input_files_read": input_inventory,
         "built_at": built_at,

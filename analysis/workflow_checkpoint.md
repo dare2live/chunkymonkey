@@ -54,7 +54,9 @@ The model pipeline snapshot below is historical evidence for the completed
   tweaks. Keep the `need_027` source probe / unknown status explicit; the
   `akshare.stock_individual_fund_flow` / `stock_individual_fund_flow_rank`
   capability is registered, the live probe is still blocked by `ProxyError`,
-  and blocked probe rows now persist in `mart_data_source_failure_queue`.
+  blocked probe rows now persist in `mart_data_source_failure_queue`, and
+  `audit_tdx_data_need_coverage.py` now emits a blocked need summary so the
+  current inventory stays explicit.
 - additional PIT evidence: 2026-06-01 reran `build_stage_opt_pit.py` on the 7
   current recommendation stock codes across cutoffs `2026-01-01,2026-05-19,
   2026-05-29`; latest recommendation PIT coverage remained 0 (8 total / 0 exact

@@ -205,6 +205,30 @@ def test_default_config_points_to_existing_evidence_files() -> None:
     assert needs_by_id["need_027"][10] == "none"
 
 
+def test_summarize_need_gaps_identifies_only_blocked_need() -> None:
+    config = audit_tdx_data_need_coverage.load_tdx_data_need_config()
+    summary = audit_tdx_data_need_coverage._summarize_need_gaps(config["needs"])
+
+    assert summary["need_count"] == 27
+    assert summary["eligibility_counts"]["eligible"] == 4
+    assert summary["eligibility_counts"]["research_only"] == 22
+    assert summary["eligibility_counts"]["blocked"] == 1
+    assert summary["blocked_need_count"] == 1
+    blocked = summary["blocked_needs"][0]
+    assert blocked["need_id"] == "need_027"
+    assert blocked["need_name"] == "主力/超大/大/中/小单资金流向"
+    assert blocked["consumer"] == "cyq_position_monitor, institution_score, sniper_score"
+    assert blocked["current_source"] == "raw_fund_flow_daily deprecated/stale"
+    assert blocked["tdxhub_capability"] == "not in current TDX path"
+    assert blocked["pit_key"] == "unknown"
+    assert blocked["evidence_status"] == "unknown"
+    assert blocked["production_eligibility"] == "blocked"
+    assert blocked["preferred_source"] == "akshare"
+    assert blocked["fallback_source"] == "miaoxiang"
+    assert blocked["action"] == "probe_restore_or_keep_unknown"
+    assert "CYQ 主力画像需要真实订单流" in blocked["notes"]
+
+
 def test_audit_tdx_data_need_coverage_writes_expected_rows(tmp_path: Path) -> None:
     root = tmp_path / "root"
     evidence = root / "evidence.md"
@@ -236,6 +260,8 @@ def test_audit_tdx_data_need_coverage_writes_expected_rows(tmp_path: Path) -> No
     assert result["coverage_rows"] == 1
     assert result["priority_rows"] == 1
     assert result["reassignment_rows"] == 1
+    assert result["need_gap_summary"]["need_count"] == 1
+    assert result["need_gap_summary"]["blocked_need_count"] == 0
     assert counts == {"coverage": 1, "priority": 1, "reassignment": 1}
     assert contract_row == (
         "stock_code x trade_date",
