@@ -12,7 +12,7 @@
   - 用错方向: A 股短期反转 > 动量, 我们却用动量
 
 公式设计 (基于学术经验 + Rule 6 数据驱动):
-  - 触发条件 (1 月反转, 多 variant):
+  - 触发条件 (1 月反转, 多 variant, 由 backend/config/formula_reversal_short_term.yaml 管理):
     1. 收益率: closes[t] / closes[t-20] - 1 ∈ [-0.30, -0.05] (跌 5-30%)
        - 跌 < 5% 不算"反转候选"
        - 跌 > 30% 是崩盘 / 退市风险 (跳)
@@ -24,17 +24,19 @@
 
   - variant:
     1. reversal_1m_mild    — 跌 4-15% (温和反转, RankIC 适中)
-    2. reversal_1m_deep    — 跌 8-30% (深度反转, RankIC 高但样本少)
+    2. reversal_1m_deep    — 跌 5-30% (深度反转, RankIC 高但样本少)
     3. reversal_1w         — 1 周反转 (5 日, 信号高频但换手大)
 
 ⚠ 不调单股阈值 (留给 Phase ψ Optuna search_space 后续扩展). 当前公式阈值
-  是 "经验区间", 跑出 OOS sharpe 数据后再决定是否参数化.
+  由 config 统一管理, 跑出 OOS sharpe 数据后再决定是否参数化.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
+import yaml
 
 from services.formula_engine.base import (
     FormulaMetadata,
@@ -42,6 +44,73 @@ from services.formula_engine.base import (
     register_formula,
     sma,
 )
+
+
+CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "formula_reversal_short_term.yaml"
+DEFAULT_CONFIG: dict[str, dict[str, float | int]] = {
+    "reversal_1m_mild": {
+        "lookback_days": 20,
+        "pct_change_lo": -0.15,
+        "pct_change_hi": -0.04,
+        "rel_std_max": 0.06,
+        "vol_ratio_lo": 0.6,
+        "vol_ratio_hi": 2.0,
+    },
+    "reversal_1m_deep": {
+        "lookback_days": 20,
+        "pct_change_lo": -0.30,
+        "pct_change_hi": -0.05,
+        "rel_std_max": 0.08,
+        "vol_ratio_lo": 0.6,
+        "vol_ratio_hi": 2.0,
+    },
+    "reversal_1w": {
+        "lookback_days": 5,
+        "pct_change_lo": -0.10,
+        "pct_change_hi": -0.02,
+        "rel_std_max": 0.06,
+        "vol_ratio_lo": 0.6,
+        "vol_ratio_hi": 2.0,
+    },
+}
+
+
+def _load_yaml(path: Path) -> dict[str, object]:
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(loaded, dict):
+        raise ValueError(f"{path.name} must contain a mapping")
+    return loaded
+
+
+def _load_config(path: Path | None = None) -> dict[str, dict[str, float | int]]:
+    raw_path = path or CONFIG_PATH
+    try:
+        raw = _load_yaml(raw_path)
+    except FileNotFoundError:
+        return {name: values.copy() for name, values in DEFAULT_CONFIG.items()}
+    try:
+        loaded: dict[str, dict[str, float | int]] = {}
+        for variant_name, defaults in DEFAULT_CONFIG.items():
+            variant_raw = raw.get(variant_name, {})
+            if not isinstance(variant_raw, dict):
+                raise ValueError(f"{raw_path.name}: {variant_name} must be a mapping")
+            loaded[variant_name] = {
+                "lookback_days": int(variant_raw.get("lookback_days", defaults["lookback_days"])),
+                "pct_change_lo": float(variant_raw.get("pct_change_lo", defaults["pct_change_lo"])),
+                "pct_change_hi": float(variant_raw.get("pct_change_hi", defaults["pct_change_hi"])),
+                "rel_std_max": float(variant_raw.get("rel_std_max", defaults["rel_std_max"])),
+                "vol_ratio_lo": float(variant_raw.get("vol_ratio_lo", defaults["vol_ratio_lo"])),
+                "vol_ratio_hi": float(variant_raw.get("vol_ratio_hi", defaults["vol_ratio_hi"])),
+            }
+        return loaded
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{raw_path.name}: reversal thresholds must be numeric mappings") from exc
+
+
+REVERSAL_CONFIG = _load_config()
+MILD_CONFIG = REVERSAL_CONFIG["reversal_1m_mild"]
+DEEP_CONFIG = REVERSAL_CONFIG["reversal_1m_deep"]
+W1_CONFIG = REVERSAL_CONFIG["reversal_1w"]
 
 
 # ── 共用 helper ─────────────────────────────────────────────
@@ -175,31 +244,31 @@ class Reversal1mMild(_ReversalBase):
         default_horizon_days=10,
         has_variant=True,
     )
-    lookback_days: int = 20
-    pct_change_lo: float = -0.15
-    pct_change_hi: float = -0.04
-    rel_std_max: float = 0.06
-    vol_ratio_lo: float = 0.6
-    vol_ratio_hi: float = 2.0
+    lookback_days: int = int(MILD_CONFIG["lookback_days"])
+    pct_change_lo: float = float(MILD_CONFIG["pct_change_lo"])
+    pct_change_hi: float = float(MILD_CONFIG["pct_change_hi"])
+    rel_std_max: float = float(MILD_CONFIG["rel_std_max"])
+    vol_ratio_lo: float = float(MILD_CONFIG["vol_ratio_lo"])
+    vol_ratio_hi: float = float(MILD_CONFIG["vol_ratio_hi"])
 
 
 @dataclass(frozen=True)
 class Reversal1mDeep(_ReversalBase):
-    """1 月深度反转: 跌 8-30%, 低波动. 样本少, RankIC 高但右尾风险大."""
+    """1 月深度反转: 跌 5-30%, 低波动. 样本少, RankIC 高但右尾风险大."""
     metadata: FormulaMetadata = FormulaMetadata(
         formula_id="reversal_1m_deep",
         name="1 月深度反转",
         tag="RD",
-        description="20 日跌 8-30% + 60 日低波 + 量比正常 → 深度超跌反转候选",
+        description="20 日跌 5-30% + 60 日低波 + 量比正常 → 深度超跌反转候选",
         default_horizon_days=15,
         has_variant=True,
     )
-    lookback_days: int = 20
-    pct_change_lo: float = -0.30
-    pct_change_hi: float = -0.08
-    rel_std_max: float = 0.08   # 深跌允许波动稍大
-    vol_ratio_lo: float = 0.6
-    vol_ratio_hi: float = 2.0
+    lookback_days: int = int(DEEP_CONFIG["lookback_days"])
+    pct_change_lo: float = float(DEEP_CONFIG["pct_change_lo"])
+    pct_change_hi: float = float(DEEP_CONFIG["pct_change_hi"])
+    rel_std_max: float = float(DEEP_CONFIG["rel_std_max"])   # 深跌允许波动稍大
+    vol_ratio_lo: float = float(DEEP_CONFIG["vol_ratio_lo"])
+    vol_ratio_hi: float = float(DEEP_CONFIG["vol_ratio_hi"])
 
 
 @dataclass(frozen=True)
@@ -213,12 +282,12 @@ class Reversal1w(_ReversalBase):
         default_horizon_days=5,
         has_variant=True,
     )
-    lookback_days: int = 5
-    pct_change_lo: float = -0.10
-    pct_change_hi: float = -0.02
-    rel_std_max: float = 0.06
-    vol_ratio_lo: float = 0.6
-    vol_ratio_hi: float = 2.0
+    lookback_days: int = int(W1_CONFIG["lookback_days"])
+    pct_change_lo: float = float(W1_CONFIG["pct_change_lo"])
+    pct_change_hi: float = float(W1_CONFIG["pct_change_hi"])
+    rel_std_max: float = float(W1_CONFIG["rel_std_max"])
+    vol_ratio_lo: float = float(W1_CONFIG["vol_ratio_lo"])
+    vol_ratio_hi: float = float(W1_CONFIG["vol_ratio_hi"])
 
 
 # ── 注册 ────────────────────────────────────────────────

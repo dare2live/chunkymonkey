@@ -381,6 +381,41 @@ class TestDynamicMaIterativeCross:
         assert any("x36_cross_x3" in rc for rc in s.reason_codes)
 
 
+class TestShortTermReversalConfig:
+    def test_config_loader_reads_values(self, tmp_path):
+        from services.formula_engine.reversal_short_term import _load_config
+
+        cfg = tmp_path / "formula_reversal_short_term.yaml"
+        cfg.write_text(
+            "reversal_1m_mild:\n"
+            "  lookback_days: 20\n"
+            "  pct_change_lo: -0.15\n"
+            "  pct_change_hi: -0.04\n"
+            "  rel_std_max: 0.06\n"
+            "  vol_ratio_lo: 0.6\n"
+            "  vol_ratio_hi: 2.0\n"
+            "reversal_1m_deep:\n"
+            "  lookback_days: 20\n"
+            "  pct_change_lo: -0.30\n"
+            "  pct_change_hi: -0.05\n"
+            "  rel_std_max: 0.08\n"
+            "  vol_ratio_lo: 0.6\n"
+            "  vol_ratio_hi: 2.0\n"
+            "reversal_1w:\n"
+            "  lookback_days: 5\n"
+            "  pct_change_lo: -0.10\n"
+            "  pct_change_hi: -0.02\n"
+            "  rel_std_max: 0.06\n"
+            "  vol_ratio_lo: 0.6\n"
+            "  vol_ratio_hi: 2.0\n",
+            encoding="utf-8",
+        )
+        loaded = _load_config(cfg)
+        assert loaded["reversal_1m_mild"]["pct_change_hi"] == pytest.approx(-0.04)
+        assert loaded["reversal_1m_deep"]["pct_change_hi"] == pytest.approx(-0.05)
+        assert loaded["reversal_1w"]["lookback_days"] == 5
+
+
 class TestShortTermReversal:
     @pytest.fixture
     def mild(self):
@@ -396,6 +431,12 @@ class TestShortTermReversal:
     def w1(self):
         from services.formula_engine import reversal_short_term  # noqa: F401
         return REGISTRY["reversal_1w"]
+
+    def test_metadata_uses_config_thresholds(self, deep):
+        assert deep.lookback_days == 20
+        assert deep.pct_change_lo == pytest.approx(-0.30)
+        assert deep.pct_change_hi == pytest.approx(-0.05)
+        assert deep.rel_std_max == pytest.approx(0.08)
 
     def test_mild_variant_triggers_on_roughly_4pct_drop(self, mild):
         n = 90
@@ -420,6 +461,30 @@ class TestShortTermReversal:
 
         assert len(signals) >= 1, "4% 左右温和下跌应落入 reversal_1m_mild"
         assert all(s.formula_id == "reversal_1m_mild" for s in signals)
+
+    def test_deep_variant_triggers_on_roughly_6pct_drop(self, deep):
+        n = 90
+        dates = np.array([f"2024-{(i // 30) + 1:02d}-{(i % 30) + 1:02d}" for i in range(n)])
+        closes = np.concatenate([
+            np.full(60, 100.0),
+            np.linspace(100.0, 94.0, 20),
+            np.full(10, 94.0),
+        ])
+        volumes = np.ones(n) * 1000
+
+        signals = deep.compute_signals(
+            "T",
+            dates,
+            closes,
+            closes,
+            closes,
+            closes,
+            volumes,
+            closes * volumes,
+        )
+
+        assert len(signals) >= 1, "6% 左右深跌应落入 reversal_1m_deep"
+        assert all(s.formula_id == "reversal_1m_deep" for s in signals)
 
     def test_deep_variant_triggers_on_roughly_11pct_drop(self, deep):
         n = 90

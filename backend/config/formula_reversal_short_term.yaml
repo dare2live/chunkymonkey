@@ -1,0 +1,25 @@
+# 短期反转公式参数（配置化，避免把阈值写死在 Python 里）
+# 2026-06-02: deep variant 上界从 8% 收到 5%，以小幅恢复 stage-opt 候选供给，同时保留低波与量比过滤。
+reversal_1m_mild:
+  lookback_days: 20
+  pct_change_lo: -0.15
+  pct_change_hi: -0.04
+  rel_std_max: 0.06
+  vol_ratio_lo: 0.6
+  vol_ratio_hi: 2.0
+
+reversal_1m_deep:
+  lookback_days: 20
+  pct_change_lo: -0.30
+  pct_change_hi: -0.05
+  rel_std_max: 0.08
+  vol_ratio_lo: 0.6
+  vol_ratio_hi: 2.0
+
+reversal_1w:
+  lookback_days: 5
+  pct_change_lo: -0.10
+  pct_change_hi: -0.02
+  rel_std_max: 0.06
+  vol_ratio_lo: 0.6
+  vol_ratio_hi: 2.0

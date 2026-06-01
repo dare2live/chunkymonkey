@@ -8,8 +8,8 @@ The model pipeline snapshot below is historical evidence for the completed
 
 ## Current Data Freshness Checkpoint
 
-- updated_at: `2026-06-02 05:19:49 CST`
-- current_state: `architecture/data freshness repair`
+- updated_at: `2026-06-02 05:39:20 CST`
+- current_state: `architecture/data freshness repair / stage-opt supply tuning`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
 - data audit: `audit_data_completeness.py` now exits PASS with WARN (0 FAIL /
@@ -124,6 +124,19 @@ The model pipeline snapshot below is historical evidence for the completed
   coverage to `76.41% / 83.06% / 90.65%`. Controller recommendation still
   points to `P1 / upstream_candidate_supply`, so the structural conclusion
   remains the same even though the evidence density improved again.
+- 2026-06-02 05:33-05:35 `reversal_1m_deep` thresholds were externalized into
+  `backend/config/formula_reversal_short_term.yaml` and its upper bound was
+  widened from `8-30%` to `5-30%`; re-running history wrote `520,263`
+  reversal rows and lifted the formula to `210,293 signal_rows / 17,138 keys /
+  66.55% coverage`. The full stage-opt audit now reads `raw_signal_rows=
+  5,401,248 / filtered_signal_rows=2,701,616 / unique_keys=150,866 /
+  ready_keys=108,009 / ready coverage=71.59% / below_min_signals=42,857`, with
+  `min_signals=4/3/2` at `77.57% / 83.92% / 91.09%` (`117,029 / 126,614 /
+  137,423` ready keys). Weakest formulas shifted to
+  `dynamic_ma_iterative_cross`, `turtle_breakout_55`, and
+  `reversal_1m_mild`, but controller still points to
+  `P1 / upstream_candidate_supply`, so the structural conclusion remains the
+  same even though the evidence density improved again.
 - stage-opt MACD state mart: 2026-06-02 added
   `mart_macd_state_history` / `build_macd_state_history.py` as a separate
   MACD active-state diagnostic mart. It uses a 180-day warm-up window and
