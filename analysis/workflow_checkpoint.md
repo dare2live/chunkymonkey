@@ -67,7 +67,9 @@ The model pipeline snapshot below is historical evidence for the completed
   `backend/scripts/audit_portfolio_sizer_profile_attrition.py` is now the
   evidence-gate for any tuning; the current profile filters still eliminate
   exact PIT candidates on `hp/n_signals/Wilson`, so coverage remains a
-  gating concern rather than a ranking bug.
+  gating concern rather than a ranking bug. A direct attrition audit on 353
+  raw candidates found selected_rows only 5/1/2 for short/mid/long, all
+  `cross_stage_fallback`, with `hp` and `wilson` as the dominant fail reasons.
 
 - generated_at: `2026-05-25T01:20:01Z`
 - model_id: `lgbm_phase5_gcp_20260520T010718`
