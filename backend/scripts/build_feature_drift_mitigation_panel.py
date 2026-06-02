@@ -6,6 +6,7 @@ import argparse
 from collections import defaultdict
 import json
 import math
+from itertools import product
 import re
 import sys
 import time
@@ -363,7 +364,7 @@ def build_feature_drift_mitigation_panel(
         )
 
     copied_features = [feature for feature in original_features if feature not in mitigated or keep_original]
-    transformed_map: dict[str, list[str]] = {}
+    transformed_map: defaultdict[str, list[str]] = defaultdict(list)
     selected_features = list(copied_features)
     control_features: list[str] = []
     if include_regime_controls:
@@ -378,13 +379,11 @@ def build_feature_drift_mitigation_panel(
         control_features.extend(requested_market_controls)
     selected_features.extend(control_features)
     transform_pairs: list[tuple[str, str, str]] = []
-    for feature in mitigated:
-        transformed_map[feature] = []
-        for transform in transform_types:
-            column = _transform_column(feature, transform)
-            transformed_map[feature].append(column)
-            selected_features.append(column)
-            transform_pairs.append((feature, column, transform))
+    for feature, transform in product(mitigated, transform_types):
+        column = _transform_column(feature, transform)
+        transformed_map[feature].append(column)
+        selected_features.append(column)
+        transform_pairs.append((feature, column, transform))
 
     selected_features = list(dict.fromkeys(selected_features))
     _ensure_candidate_columns(conn, selected_features, labels=labels, has_regime=has_regime)
