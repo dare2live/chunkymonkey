@@ -65,7 +65,7 @@ The model pipeline snapshot below is historical evidence for the completed
   diagnostic windows, turtle_breakout volume confirmation gates,
   shareholder-plan walk-forward defaults, multidim walk-forward default
   model params / degenerate threshold, stock-formula optuna bucket /
-  high-conviction thresholds, and the backtest default stop/target/trailing
+  high-conviction thresholds and bins, and the backtest default stop/target/trailing
   now live in shared YAML configs
   (`formula_shared_windows.yaml`, `technical_stage.yaml`,
   `formula_macd_golden_cross.yaml`, `formula_turtle_breakout.yaml`,
