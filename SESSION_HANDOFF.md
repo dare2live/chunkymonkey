@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 04:08:30 CST
+**Snapshot 时间**: 2026-06-03 04:11:48 CST
 
 ## 主线状态
 
@@ -61,13 +61,16 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `67fa7e8f docs: record stock timeline ordering delegation | # commit-msg: minimal` |
-| 最近 24h commits | 222 |
+| HEAD | `154eb6fd docs: record data-view link overview model extraction | # commit-msg: minimal` |
+| 最近 24h commits | 225 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+154eb6fd docs: record data-view link overview model extraction | # commit-msg: minimal
+314a9bba refactor: extract data-view link overview model | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 4 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
+65a385e9 docs: refresh session handoff snapshot after stock timeline ordering delegation | # commit-msg: minimal
 67fa7e8f docs: record stock timeline ordering delegation | # commit-msg: minimal
 ed97708a refactor: move stock timeline ordering into signal adapter | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 1 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 4becedce docs: refresh session handoff snapshot after data-view cockpit panel update | # commit-msg: minimal
@@ -75,9 +78,6 @@ c8515d59 docs: record data-view cockpit panel model extraction | # commit-msg: m
 b9d9e9f8 refactor: extract data-view cockpit panel models | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 4 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 b720ab9f docs: refresh session handoff and index after pipelines model extraction | # commit-msg: minimal
 27e33c16 refactor: extract pipelines model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 22 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
-a3b18713 docs: refresh session handoff snapshot after research model extraction | # commit-msg: minimal
-29277fc8 refactor: extract research model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 21 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
-c5f356e4 docs: refresh session handoff and index after today signal cache model extraction | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
