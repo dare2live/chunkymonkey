@@ -3,6 +3,9 @@
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
 
+## 2026-06-03 — ETF workbench widget extraction
+
+- `assets/js/app.js` 里的 ETF 工作台主实现已抽到 `assets/js/widgets/etf-workbench.js`，`app.js` 现在只保留 `loadEtfWorkbench()` 薄 wrapper + 依赖注入；widget 自带 `mountEtfWorkbench` / `buildWorkbenchHtml` / `etfNum`，把 ETF 工作台总览、数据源与覆盖范围、ETF 结构与功能入口收口到单独模块，`index.html` 已调整为先加载 widget 再加载 `app.js`。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_etf_workbench_widget.py --scope backend/tests/contract/test_workbench_frontend_contract.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_etf_workbench_widget.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`node --check assets/js/widgets/etf-workbench.js assets/js/app.js` PASS，`analyze_complexity.py` 复扫后新 widget 无明显热点，`codegraph sync .` 已同步。
 ## 2026-06-03 — workbench health widget extraction
 
 - `assets/js/app.js` 里的工作台健康 / 连通性实现已抽到 `assets/js/widgets/workbench-health.js`，`app.js` 现在只保留 `refreshWorkbenchHealthBar()` / `refreshNetwork()` 薄 wrapper + 依赖注入；widget 自带 `refreshWorkbenchHealthBar` / `refreshNetwork` / `normalizeSourceName` / `setSourcePill`，把健康卡、事件成熟度、机构概览、信号概览、管线状态与 network pills 收口到单独模块，`index.html` 已调整为先加载 widget 再加载 `app.js`。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_workbench_health_widget.py --scope backend/tests/contract/test_workbench_frontend_contract.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_health_widget.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`node --check assets/js/widgets/workbench-health.js assets/js/app.js` PASS，`analyze_complexity.py` 复扫后新 widget 无明显热点，`codegraph sync .` 已同步。

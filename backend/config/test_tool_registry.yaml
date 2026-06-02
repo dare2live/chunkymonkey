@@ -164,6 +164,22 @@ tools:
     replacement: unknown
     last_verified: "2026-05-27"
 
+  - id: etf_workbench_widget_contract_tests
+    paths:
+      - assets/js/widgets/etf-workbench.js
+      - backend/tests/contract/test_etf_workbench_widget.py
+      - backend/tests/contract/test_workbench_frontend_contract.py
+      - index.html
+    owner_module: etf_research
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_etf_workbench_widget.py backend/tests/contract/test_workbench_frontend_contract.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: ETF workbench snapshot payload, entrypoint loader order, and widget render contract
+    risk_reason: if the workbench widget drifts, the ETF landing page can fall back to stale inline rendering or lose the widget entrypoint contract
+    replacement: keep ETF workbench rendering in the widget and keep app.js as a thin wrapper only
+    last_verified: "2026-06-03"
+
   - id: root_workflow_shell_tests
     paths:
       - tests/scripts

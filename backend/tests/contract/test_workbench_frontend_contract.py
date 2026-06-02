@@ -37,6 +37,7 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "'assets/js/widgets/etf-analysis.js'" in index
     assert "'assets/js/widgets/etf-list.js'" in index
     assert "'assets/js/widgets/etf-opportunity.js'" in index
+    assert "'assets/js/widgets/etf-workbench.js'" in index
     assert "'assets/js/widgets/model-monitor.js'" in index
     assert "'assets/js/widgets/workbench-health.js'" in index
     assert 'id="instScorecardFramework"' in index
@@ -57,6 +58,7 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert index.index("'assets/js/widgets/etf-analysis.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/etf-list.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/etf-opportunity.js'") < index.index("'assets/js/app.js'")
+    assert index.index("'assets/js/widgets/etf-workbench.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/model-monitor.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/workbench-health.js'") < index.index("'assets/js/app.js'")
     assert 'onclick="window.App.showView(\'data-health\')"' not in index
@@ -82,10 +84,12 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "ETFAnalysisWidget" in app_js
     assert "ETFListWidget" in app_js
     assert "ETFOpportunityWidget" in app_js
+    assert "ETFWorkbenchWidget" in app_js
     assert "ModelMonitorWidget" in app_js
     assert "WorkbenchHealthWidget" in app_js
     assert "function loadEtfList()" in app_js
     assert "function loadEtfOpportunity()" in app_js
+    assert "function loadEtfWorkbench(" in app_js
     assert "function loadModelMonitor()" in app_js
     assert "function refreshWorkbenchHealthBar()" in app_js
     assert "function refreshNetwork()" in app_js
@@ -139,6 +143,11 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "function renderRegimeChart(" not in app_js
     assert "function renderFeatureImportance(" not in app_js
     assert "function ensureFeatureLabels(" not in app_js
+    assert "function etfNum(" not in app_js
+    assert "function statusPill(" not in app_js
+    assert "function workbenchLinkCard(" not in app_js
+    assert "function strategyShortcut(" not in app_js
+    assert "function buildWorkbenchHtml(" not in app_js
     assert "window.FeatureLabels" not in app_js
     assert "modelMonitorState" not in app_js
     assert "function setText(" not in app_js
