@@ -511,12 +511,13 @@ def main():
 
         # 5. 对每个 profile 跑 sizing
         all_rows = []
+        rows_by_profile = {pid: [] for pid in PROFILES}
         for pid, prof in PROFILES.items():
             log.info(f"--- profile={pid} ({prof.label}) ---")
             sized = rank_and_size(candidates, prof)
             log.info(f"  推荐 {len(sized)} 条 (max={prof.max_positions})")
             for r in sized:
-                all_rows.append((
+                row = (
                     signal_date, buy_date, pid, r["rank_in_profile"], r["stock_code"],
                     r.get("formula_id"), r.get("formula_variant"),
                     r.get("vol_bin"), r.get("amt_bin"), r.get("price_pos_bin"), r.get("stage_bin"),
@@ -530,7 +531,9 @@ def main():
                     r.get("optimal_stop_pct"), r.get("optimal_target_pct"), r.get("optimal_trailing_pct"),
                     r.get("signal_close"), r.get("buy_price"),
                     r.get("sell_target"), r.get("stop_price"), r.get("trailing_pct"),
-                ))
+                )
+                all_rows.append(row)
+                rows_by_profile[pid].append(row)
 
         diag_rows = _build_pit_diagnostic_rows(conn, signal_date, all_rows)
         diag_reason_counts = {}
@@ -595,7 +598,7 @@ def main():
             print(f"{'rank':>4} {'股票':>8} {'公式':>30} {'阶段':>4} {'层':>4} {'调研':>4} {'×':>5} "
                   f"{'胜率':>6} {'Wilson':>7} {'预期':>7} {'预期DD':>7} {'hp':>3} {'仓位%':>6} "
                   f"{'信号价':>8} {'目标价':>8} {'止损':>8} {'tier':>4}")
-            top = [r for r in all_rows if r[2] == pid][:5]
+            top = rows_by_profile[pid][:5]
             for r in top:
                 tier_label = "A" if r[12] == "A_bucket" else "B"
                 sbin = r[13] or "?"
@@ -608,7 +611,7 @@ def main():
         # tier + 调研桶 分布统计
         from collections import Counter
         tier_dist = Counter(r[12] for r in all_rows)
-        sbin_dist = Counter(r[13] for r in all_rows if r[2] == "long")  # 仅 long profile 有意义
+        sbin_dist = Counter(r[13] for r in rows_by_profile["long"])  # 仅 long profile 有意义
         print(f"\n推荐分层分布: {dict(tier_dist)}")
         print(f"PIT 诊断原因分布: {diag_reason_counts}")
         print(f"长期 profile 调研桶分布: {dict(sbin_dist)}")
