@@ -143,6 +143,7 @@ def test_data_view_build_source_cards_model_is_stable():
             priority: 1,
             repo_url: 'https://example.com/tdxhub',
             capabilities: [
+              null,
               { name: 'kline_daily', freshness: 'daily', description: 'K线' },
               { name: 'financial_gpcw_8q', freshness: 'quarterly', description: '财务' },
             ],
@@ -163,6 +164,7 @@ def test_data_view_build_source_cards_model_is_stable():
         if (first.name !== 'tdxhub' || first.displayName !== 'TDXHub') throw new Error('display fields mismatch');
         if (first.tone !== 'ok' || first.color !== '#0a0' || first.stateLabel !== 'OK') throw new Error('healthy source meta mismatch');
         if (first.teleLine !== '2 次调用 / 1 失败 · 123.4ms 均延') throw new Error('teleLine mismatch: ' + first.teleLine);
+        if (first.capabilityCount !== 2) throw new Error('capability count mismatch: ' + first.capabilityCount);
         if (!first.hasRepoLink) throw new Error('repo link flag missing');
         if (!first.detailRowsHtml.includes('kline_daily') || !first.detailRowsHtml.includes('financial_gpcw_8q')) {
           throw new Error('detail rows html mismatch: ' + first.detailRowsHtml);

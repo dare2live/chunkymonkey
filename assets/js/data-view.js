@@ -169,19 +169,24 @@
         ? `${tele.call_count} 次调用` + (tele.fail_count ? ` / ${tele.fail_count} 失败` : '')
           + (tele.avg_latency_ms ? ` · ${tele.avg_latency_ms}ms 均延` : '')
         : '尚未通过 registry 调用';
-      const detailRowsHtml = capabilityRows.length
-        ? capabilityRows.map(c => `
+      const detailRows = [];
+      for (const c of capabilityRows) {
+        if (!c) continue;
+        detailRows.push(`
           <div style="padding:3px 0;border-bottom:1px dotted var(--cm-bg-100)">
             <code style="background:var(--cm-bg-100);padding:1px 4px;border-radius:3px">${esc(c.name || 'unknown')}</code>
             <span style="color:var(--cm-ink-500)">${esc(c.freshness || '—')}</span> · ${esc(c.description || '')}
           </div>
-        `).join('')
+        `);
+      }
+      const detailRowsHtml = detailRows.length
+        ? detailRows.join('')
         : '<div class="muted" style="font-size:11px">暂无</div>';
       return {
         name: src.name,
         displayName: src.display_name || src.name,
         priority: src.priority,
-        capabilityCount: capabilityRows.length,
+        capabilityCount: detailRows.length,
         tone: state === 'ok' ? 'ok' : state === 'degraded' ? 'warn' : state === 'down' ? 'bad' : 'info',
         color: STATE_COLORS[state || 'unknown'],
         stateLabel: STATE_LABELS[state] || 'UNKNOWN',
