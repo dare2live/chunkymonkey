@@ -25,21 +25,22 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 11:48:31 CST
+**Snapshot 时间**: 2026-06-02 12:00:29 CST
 
-- latest code snapshot is commit `3f588b98`; this handoff refresh reflects the 2026-06-02 11:48 CST config-owned backtest-defaults cleanup layered on top of the 2026-06-02 live writer refresh state, where `raw_profit_forecast_snapshot_daily` is no longer blocking, `fact_feature_panel` has been rebuilt through `2026-06-01` and no longer sits in blocking yellow, `dim_stock_tdx_industry_history` was refreshed on the main smartmoney DB and the prior warning yellow is now cleared, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`. `stage-opt` controller recommendation remains `P1 / upstream_candidate_supply`; live recommendation PIT attrition is still 5/1/3 for short/mid/long, all `cross_stage_fallback`, so exact PIT coverage remains structurally sparse. `latest_completed_trade_date` remains `2026-06-01` intraday even though these refreshes happened on `2026-06-02`.
+- latest code snapshot is commit `3086c2e3`; this handoff refresh reflects the 2026-06-02 12:00 CST config-owned shareholder-plan walkforward defaults cleanup layered on top of the 2026-06-02 live writer refresh state, where `raw_profit_forecast_snapshot_daily` is no longer blocking, `fact_feature_panel` has been rebuilt through `2026-06-01` and no longer sits in blocking yellow, `dim_stock_tdx_industry_history` was refreshed on the main smartmoney DB and the prior warning yellow is now cleared, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`. `stage-opt` controller recommendation remains `P1 / upstream_candidate_supply`; live recommendation PIT attrition is still 5/1/3 for short/mid/long, all `cross_stage_fallback`, so exact PIT coverage remains structurally sparse. `latest_completed_trade_date` remains `2026-06-01` intraday even though these refreshes happened on `2026-06-02`.
 
 - controller boundary note: `audit_stage_opt_candidate_supply.py` and `doctor --fast` now surface the live formula registry explicitly; live stage-opt supply only includes 7 formula ids (`macd_golden_cross`, `turtle_breakout_20`, `turtle_breakout_55`, `dynamic_ma_iterative_cross`, `reversal_1m_mild`, `reversal_1m_deep`, `reversal_1w`). Research challengers are now separate and list 5 formula ids (`gs_raw_buy`, `gs_pullback_confirm`, `ma_base_breakout`, `activity_breakout`, `volume_base_breakout`); they remain research-only and must not be counted as live production supply.
 - shared-config boundary note: common holding windows, stage thresholds, MACD
-  diagnostic windows, turtle_breakout volume confirmation gates, and the
-  backtest default stop/target/trailing now live in shared YAML configs
+  diagnostic windows, turtle_breakout volume confirmation gates,
+  shareholder-plan walk-forward defaults, and the backtest default
+  stop/target/trailing now live in shared YAML configs
   (`formula_shared_windows.yaml`, `technical_stage.yaml`,
   `formula_macd_golden_cross.yaml`, `formula_turtle_breakout.yaml`,
-  `strategy_defaults.yaml`) plus the shared loader; formula-specific YAMLs
-  keep only formula-owned thresholds, and per-stock best-holding
-  results stay table-backed in marts such as
-  `mart_per_stock_stage_strategy_optimal_pit` / `mart_stock_horizon_profile`
-  instead of becoming file literals.
+  `shareholder_plan_family_walkforward.yaml`, `strategy_defaults.yaml`) plus
+  the shared loader; formula-specific YAMLs keep only formula-owned
+  thresholds, and per-stock best-holding results stay table-backed in marts
+  such as `mart_per_stock_stage_strategy_optimal_pit` /
+  `mart_stock_horizon_profile` instead of becoming file literals.
 | Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
 | VM 状态 | ? |
 | VM 上次启动 |  |
@@ -70,13 +71,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `3f588b98 feat: finish config-owned backtest defaults cleanup | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate) | test pass: formula_engine and portfolio_sizer passed, audit PASS, docs graph PASS, codegraph sync PASS | post-fix-audit cleanup verified 无残留 no stale` |
+| HEAD | `3086c2e3 feat: externalize shareholder-plan walkforward defaults into config | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate) | test pass: pytest 4 passed, audit PASS, docs graph PASS, codegraph sync PASS | post-fix-audit cleanup verified 无残留 no stale` |
 | 最近 24h commits | 116 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+3086c2e3 feat: externalize shareholder-plan walkforward defaults into config | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate) | test pass: pytest 4 passed, audit PASS, docs graph PASS, codegraph sync PASS | post-fix-audit cleanup verified 无残留 no stale
 3f588b98 feat: finish config-owned backtest defaults cleanup | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate) | test pass: formula_engine and portfolio_sizer passed, audit PASS, docs graph PASS, codegraph sync PASS | post-fix-audit cleanup verified 无残留 no stale
 04044851 feat: finish config-owned formula loader cleanup | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate) | test pass: formula_engine 70 passed, audit PASS, docs graph PASS, codegraph sync PASS | post-fix-audit cleanup verified 无残留 no stale
 6e5d750f feat: externalize shared formula windows and split config ownership | Codex-Reviewed: APPROVE_WITH_NOTES | PIT neutral; OOS evidence unchanged; test pass: formula_engine 64 passed, py_compile PASS, docs graph PASS
