@@ -38,18 +38,16 @@ tools:
   - id: moth_snapshot_service_tests
     paths:
       - backend/services/moth_snapshot.py
-      - backend/services/codegraph_status.py
       - backend/services/worktree_status.py
       - backend/tests/services/test_moth_snapshot.py
-      - backend/tests/services/test_codegraph_status.py
       - backend/tests/services/test_worktree_status.py
     owner_module: governance
     scope: contract
-    runner: PYTHONPATH=backend python -m pytest -q backend/tests/services/test_moth_snapshot.py backend/tests/services/test_codegraph_status.py backend/tests/services/test_worktree_status.py
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/services/test_moth_snapshot.py backend/tests/services/test_worktree_status.py
     status: active
     evidence_level: trusted_with_scope
-    truth_source: Moth snapshot JSON contract, CodeGraph status fixtures, git status short fixtures
-    risk_reason: Moth adapter drift could hide codegraph pending changes, worktree dirtiness, or complexity snapshot mismatches
+    truth_source: Moth snapshot JSON contract, git status short fixtures
+    risk_reason: Moth adapter drift could hide worktree dirtiness or complexity snapshot mismatches
     replacement: upstream Moth JSON contract if the chunkymonkey adapter layer is deleted later
     last_verified: "2026-06-02"
 

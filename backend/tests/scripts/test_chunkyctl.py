@@ -20,8 +20,10 @@ def test_preflight_reports_dirty_pending_and_required_gates(tmp_path: Path) -> N
         repo=tmp_path,
         task="拆 updater status glue",
         scopes=["backend/routers/updater.py", "backend/tests/test_updater_status.py"],
-        git_status_text=" M backend/routers/updater.py\n?? backend/routers/updater_status.py\n",
-        codegraph_status_text="Project: /repo\nPending Changes:\n  Added: 1 file\n",
+        tooling_gate={
+            "git_status": {"clean": False},
+            "codegraph": {"pending": {"sync_required": True, "added": 1}},
+        },
     )
 
     assert report["verdict"] == "FAIL"
@@ -68,8 +70,10 @@ def test_preflight_marks_strategy_or_cloud_tasks_as_blocked(tmp_path: Path) -> N
         repo=tmp_path,
         task="run GCP Optuna backtest",
         scopes=[],
-        git_status_text="",
-        codegraph_status_text="Project: /repo\nPending Changes:\n  No pending changes\n",
+        tooling_gate={
+            "git_status": {"clean": True},
+            "codegraph": {"pending": {"sync_required": False, "added": 0}},
+        },
     )
 
     assert report["verdict"] == "FAIL"
@@ -87,8 +91,10 @@ def test_preflight_does_not_match_ui_inside_build(tmp_path: Path) -> None:
         repo=tmp_path,
         task="build architecture inventory parser scanner",
         scopes=[],
-        git_status_text="",
-        codegraph_status_text="Project: /repo\nPending Changes:\n  No pending changes\n",
+        tooling_gate={
+            "git_status": {"clean": True},
+            "codegraph": {"pending": {"sync_required": False, "added": 0}},
+        },
     )
 
     assert report["verdict"] == "PASS"
@@ -100,8 +106,10 @@ def test_preflight_matches_ui_as_own_token(tmp_path: Path) -> None:
         repo=tmp_path,
         task="frontend ui contract review",
         scopes=[],
-        git_status_text="",
-        codegraph_status_text="Project: /repo\nPending Changes:\n  No pending changes\n",
+        tooling_gate={
+            "git_status": {"clean": True},
+            "codegraph": {"pending": {"sync_required": False, "added": 0}},
+        },
     )
 
     assert report["verdict"] == "WARN"
@@ -111,6 +119,59 @@ def test_preflight_matches_ui_as_own_token(tmp_path: Path) -> None:
             "risk": "frontend_contract",
             "detail": "backend contract and Browser verification required",
         }
+    ]
+
+
+def test_run_preflight_uses_moth_snapshot(monkeypatch, tmp_path: Path, capsys) -> None:
+    payload = {
+        "schema_version": 1,
+        "generated_at": "2026-06-02T00:00:00Z",
+        "status": "WARN",
+        "profile": {"name": "chunkymonkey"},
+        "dirty_worktree": ["backend/app.py"],
+        "codegraph": {"pending": {"sync_required": True, "added": 1}},
+        "complexity": {"baseline": {"status": "loaded"}, "diff": {"new_high_count": 0}},
+        "issues": [],
+        "warnings": [],
+    }
+
+    def fake_moth_snapshot(repo, profile):
+        assert profile == "chunkymonkey"
+        return {
+            "command": ["/usr/local/bin/moth", "snapshot", "--repo", str(repo), "--profile", profile, "--format", "json"],
+            "returncode": 0,
+            "stdout": json.dumps(payload),
+            "stderr": "",
+            "payload": payload,
+            "verdict": "WARN",
+        }
+
+    monkeypatch.setattr(chunkyctl, "run_moth_snapshot", fake_moth_snapshot)
+
+    args = Namespace(
+        repo=str(tmp_path),
+        task="inspect dirty worktree",
+        task_arg=None,
+        scope=["backend/app.py"],
+        scope_arg=[],
+    )
+    rc = chunkyctl.run_preflight(args)
+    report = json.loads(capsys.readouterr().out)
+
+    assert rc == 1
+    assert report["tooling_gate_command"]["cmd"][0] == "/usr/local/bin/moth"
+    assert report["tooling_gate"]["codegraph"]["pending"]["sync_required"] is True
+    assert report["risks"] == [
+        {
+            "severity": "FAIL",
+            "risk": "dirty_worktree",
+            "detail": "classify/stage by scope; never git add .",
+        },
+        {
+            "severity": "FAIL",
+            "risk": "codegraph_pending",
+            "detail": "sync and disclose remaining untracked Added pending",
+        },
     ]
 
 

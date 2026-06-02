@@ -18,7 +18,6 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import audit_docs_graph  # noqa: E402
-from services.codegraph_status import parse_codegraph_status  # noqa: E402
 from services.moth_snapshot import build_snapshot_command as build_moth_snapshot_command  # noqa: E402
 from services.moth_snapshot import build_tooling_gate_report as build_moth_tooling_gate_report  # noqa: E402
 from services.moth_snapshot import run_snapshot as run_moth_snapshot  # noqa: E402
@@ -652,7 +651,6 @@ def _worktree_bucket(path: str, status_kind: str) -> str:
     if path in {
         "backend/scripts/chunkyctl.py",
         "backend/scripts/audit_test_tool_health.py",
-        "backend/services/codegraph_status.py",
         "backend/services/moth_snapshot.py",
         "backend/services/worktree_status.py",
         "backend/config/test_tool_registry.yaml",
@@ -1117,15 +1115,15 @@ def build_preflight_report(
     repo: Path,
     task: str,
     scopes: list[str],
-    git_status_text: str,
-    codegraph_status_text: str,
+    tooling_gate: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    git_status = parse_git_status_short(git_status_text)
-    codegraph_status = parse_codegraph_status(codegraph_status_text)
+    tooling_gate = tooling_gate or {}
+    git_status = tooling_gate.get("git_status") or {}
+    codegraph_status = tooling_gate.get("codegraph") or {}
     risks: list[dict[str, str]] = []
-    if not git_status["clean"]:
+    if not git_status.get("clean", True):
         risks.append({"severity": "FAIL", "risk": "dirty_worktree", "detail": "classify/stage by scope; never git add ."})
-    if codegraph_status["pending"]["sync_required"]:
+    if (codegraph_status.get("pending") or {}).get("sync_required"):
         risks.append({"severity": "FAIL", "risk": "codegraph_pending", "detail": "sync and disclose remaining untracked Added pending"})
     if _task_mentions(task, ("gcp", "optuna", "backtest", "paper", "strategy")):
         risks.append({"severity": "FAIL", "risk": "strategy_or_cloud_gate", "detail": "require explicit preflight gates before expensive or strategy work"})
@@ -1143,6 +1141,7 @@ def build_preflight_report(
         "verdict": verdict,
         "risks": risks,
         "required_gates": _gate_commands_for_task(task, scopes),
+        "tooling_gate": tooling_gate,
         "truth_sources": [
             "K-line is trading truth",
             "calendar is date truth",
@@ -1158,17 +1157,18 @@ def run_preflight(args: argparse.Namespace) -> int:
     if not task:
         print("ERROR: preflight requires a task, either positional or --task", file=sys.stderr)
         return 2
-    git_result = _run_command(["git", "status", "--short"], cwd=repo)
-    codegraph_result = _run_command(["codegraph", "status", str(repo)], cwd=repo)
-    report = build_preflight_report(
-        repo=repo,
-        task=task,
-        scopes=scopes,
-        git_status_text=git_result["stdout"],
-        codegraph_status_text=codegraph_result["stdout"],
+    moth_snapshot = run_moth_snapshot(repo, "chunkymonkey")
+    moth_payload = moth_snapshot.get("payload")
+    tooling_gate = build_moth_tooling_gate_report(moth_payload) if moth_payload else None
+    report = build_preflight_report(repo=repo, task=task, scopes=scopes, tooling_gate=tooling_gate)
+    report["tooling_gate_command"] = _command_summary(
+        {
+            "cmd": moth_snapshot["command"],
+            "returncode": moth_snapshot["returncode"],
+            "stdout": moth_snapshot["stdout"],
+            "stderr": moth_snapshot["stderr"],
+        }
     )
-    report["git_status_command"] = _command_summary(git_result)
-    report["codegraph_status_command"] = _command_summary(codegraph_result)
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     return 1 if report["verdict"] == "FAIL" else 0
 

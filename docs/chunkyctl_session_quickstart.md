@@ -74,6 +74,8 @@ scripts/chunkyctl docs --format markdown
 scripts/chunkyctl preflight "task" path...
 ```
 
+`preflight` now reuses the shared Moth-backed tooling gate for dirty/worktree/codegraph state, so the old local codegraph parser wrapper is retired with the gate.
+
 7. After `.py` edits, run:
 
 ```bash
