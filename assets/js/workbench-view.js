@@ -409,19 +409,20 @@
   }
 
   function renderPaperSim(data) {
-    var rows = data.data || [];
-    var latest = data.latest || rows[0] || {};
+    var model = buildPaperSimModel(data);
+    var rows = model.rows;
+    var latest = model.latest;
     setBody(
       '<section class="panel wb-panel wb-kpi-hero">' +
       '<div class="panel-head"><div><h3>Paper Sim KPI Timeseries</h3>' +
       '<div class="muted">endpoint: <code>/api/workbench/paper-sim/kpi-timeseries</code></div></div>' +
-      '<div>' + pill((data.meta || {}).source_mode || 'snapshot', 'ok') + '</div></div>' +
+      '<div>' + pill(model.sourceMode, 'ok') + '</div></div>' +
       '<div class="stats-row wb-stats-row">' +
       statCard('最新年化', fmtPct(latest.annual_return), renderMetricDelta(rows, 'annual_return', true), toneForReturn(latest.annual_return)) +
       statCard('最新 Sharpe', fmtFloat(latest.sharpe, 3), renderMetricDelta(rows, 'sharpe', false), toneForSharpe(latest.sharpe)) +
       statCard('最大回撤', fmtPct(latest.max_dd), '目标 ≥ -20%', toneForDrawdown(latest.max_dd)) +
       statCard('月胜率', fmtPct(latest.monthly_win_rate), '目标 ≥ 55%', Number(latest.monthly_win_rate) >= 0.55 ? 'ok' : 'warn') +
-      statCard('历史 runs', fmtNum((data.meta || {}).row_count || rows.length), 'latest ' + esc(latest.built_at || '-'), rows.length ? 'ok' : 'missing') +
+      statCard('历史 runs', fmtNum(model.rowCount), 'latest ' + esc(latest.built_at || '-'), rows.length ? 'ok' : 'missing') +
       '</div>' +
       '<div class="wb-kpi-spark-grid">' +
       '<div><div class="wb-kpi-spark-title">Annual Return</div>' + renderPaperSimSparkline(rows, 'annual_return') + '</div>' +
@@ -434,6 +435,22 @@
       renderPaperSimKpiTable(rows) +
       '</section>'
     );
+  }
+
+  function buildPaperSimModel(data) {
+    data = data || {};
+    var rows = Array.isArray(data.data) ? data.data : [];
+    var latest = data.latest || rows[0] || {};
+    var meta = data.meta || {};
+    var rowCount = meta.row_count != null ? Number(meta.row_count) : rows.length;
+    return {
+      rows: rows,
+      latest: latest,
+      meta: meta,
+      sourceMode: meta.source_mode || 'snapshot',
+      rowCount: rowCount,
+      isEmpty: !rows.length
+    };
   }
 
   function renderCriteriaTable(rows) {
@@ -2516,6 +2533,7 @@
     buildTemporalSynergyModel: buildTemporalSynergyModel,
     buildRankMatrixCacheModel: buildRankMatrixCacheModel,
     buildRecommendationsModel: buildRecommendationsModel,
+    buildPaperSimModel: buildPaperSimModel,
     _renderOverview: renderOverview,
     _renderDataSources: renderDataSources,
     _renderPipelines: renderPipelines,

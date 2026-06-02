@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 02:55:59 CST
+**Snapshot 时间**: 2026-06-03 03:01:37 CST
 
 ## 主线状态
 
@@ -61,13 +61,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `2aeb136f refactor: extract recommendations model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 12 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
+| HEAD | `ff7fff16 docs: refresh session handoff snapshot after recommendations model extraction | # commit-msg: minimal` |
 | 最近 24h commits | 197 |
-| 未 commit 文件 | 0 |
+| 未 commit 文件 | 4 |
 
 ### 最近 10 commits
 
 ```
+ff7fff16 docs: refresh session handoff snapshot after recommendations model extraction | # commit-msg: minimal
 2aeb136f refactor: extract recommendations model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 12 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 3c147c76 docs: refresh session handoff snapshot after overview model extraction | # commit-msg: minimal
 a2a3e928 refactor: extract overview model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 11 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
@@ -77,12 +78,11 @@ a0c4ebcb refactor: extract rank matrix cache model from workbench view | Codex-R
 f9a39da3 refactor: extract temporal synergy model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 9 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 f9a25895 docs: refresh session handoff snapshot after features model extraction | # commit-msg: minimal
 86a243dd refactor: extract features model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 8 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
-0271160d docs: refresh session handoff snapshot after data sources model extraction | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**continue current goal blockers — stage-opt structural blocker triage / need_027 blocked-gap triage**
+**4 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

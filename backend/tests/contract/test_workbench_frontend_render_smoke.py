@@ -249,19 +249,28 @@ def test_workbench_frontend_render_smoke_for_all_tabs():
           ],
           criteria: [{ criterion: '实盘 GO/NO-GO', pct: 80, verdict: 'PASS', msaf_n_obs: 22 }],
         };
+        const paperSim = {
+          meta: { source_mode: 'materialized_snapshot', row_count: 2 },
+          latest: { annual_return: 0.18, sharpe: 1.23, max_dd: -0.12, monthly_win_rate: 0.58, built_at: '2026-06-03 01:00:00' },
+          data: [
+            { annual_return: 0.12, sharpe: 1.02, max_dd: -0.18, monthly_win_rate: 0.55, built_at: '2026-06-02 01:00:00' },
+            { annual_return: 0.18, sharpe: 1.23, max_dd: -0.12, monthly_win_rate: 0.58, built_at: '2026-06-03 01:00:00' },
+          ],
+        };
 
         render('_renderOverview', overview, ['最新完成交易日', 'cron_daily', 'champion_a']);
         render('_renderDataSources', dataSources, ['K线主源', 'tdxhub_quote', '信号快照', '今日信号快照', '数据源水位', 'TDX K线服务器健康', 'TDX F10 Source-Date Audit', 'plan_window_used_as_source_date']);
         render('_renderPipelines', pipelines, ['最近运行', 'cron_daily', '最慢运行']);
         render('_renderFeatures', features, ['Registry', 'Feature Search Space', '漂移缓解候选', 'mitigation_1', 'ret_20d']);
         render('_renderDelivery', delivery, ['GO/NO-GO Delivery Board', 'NOT_READY', 'Rejected Challenger', 'PBO=0.626', 'Remaining Gaps']);
+        render('_renderPaperSim', paperSim, ['Paper Sim KPI Timeseries', 'Annual Return', '历史 KPI 与参数血缘', 'materialized_snapshot']);
         render('_renderResearch', research, ['研究队列', 'Ranker 性能', 'Rank Matrix Cache', 'rank_matrix_cache_hit', 'ranker_perf', '个股持股周期画像', 'Top 变量影响', 'ma_ratio_250', '股东计划特征家族', 'plan_family_1', 'initial_event', 'shareholder_plan_decrease_count_180d', '行业 PIT 就绪度', 'industry_pit_1', '时序协同研究', 'signal_a']);
         render('_renderChampion', champion, ['Champion 阻塞上下文', 'deployed', 'champion_a']);
         render('_renderRecommendations', recommendations, ['Primary TopK', 'tdxhub_quote', '平安银行']);
         render('_renderStorage', storage, ['清理计划', '架构清理计划', 'cleanup_1']);
 
         ['_renderOverview', '_renderDataSources', '_renderPipelines', '_renderFeatures', '_renderDelivery',
-         '_renderResearch', '_renderChampion', '_renderRecommendations', '_renderStorage'].forEach((name) => {
+         '_renderPaperSim', '_renderResearch', '_renderChampion', '_renderRecommendations', '_renderStorage'].forEach((name) => {
           elements['wb-tab-root'].innerHTML = '';
           window.WorkbenchView[name]({});
           const html = elements['wb-tab-root'].innerHTML;
@@ -377,6 +386,49 @@ def test_workbench_delivery_model_is_pure_and_stable():
         if (model.sourceAvailable.institution !== true || model.sourceWired.institution !== false) throw new Error('source wiring mismatch');
         if (model.blockers.length !== 1 || model.criteria.length !== 1) throw new Error('list normalization mismatch');
         if (view.buildDeliveryModel({}) .readyForDelivery !== false) throw new Error('default normalization mismatch');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/workbench-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+
+
+def test_workbench_paper_sim_model_is_pure_and_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.WorkbenchView;
+        if (!view || typeof view.buildPaperSimModel !== 'function') {
+          throw new Error('WorkbenchView.buildPaperSimModel missing');
+        }
+
+        const model = view.buildPaperSimModel({
+          meta: { source_mode: 'materialized_snapshot', row_count: 2 },
+          latest: { annual_return: 0.18, sharpe: 1.23, max_dd: -0.12, monthly_win_rate: 0.58, built_at: '2026-06-03 01:00:00' },
+          data: [
+            { annual_return: 0.12, sharpe: 1.02, max_dd: -0.18, monthly_win_rate: 0.55, built_at: '2026-06-02 01:00:00' },
+            { annual_return: 0.18, sharpe: 1.23, max_dd: -0.12, monthly_win_rate: 0.58, built_at: '2026-06-03 01:00:00' },
+          ],
+        });
+
+        if (!model || model.sourceMode !== 'materialized_snapshot') throw new Error('sourceMode mismatch');
+        if (model.rowCount !== 2 || model.rows.length !== 2) throw new Error('row normalization mismatch');
+        if (model.latest.built_at !== '2026-06-03 01:00:00') throw new Error('latest mismatch');
+        if (model.isEmpty !== false) throw new Error('empty flag mismatch');
+        const empty = view.buildPaperSimModel({});
+        if (empty.sourceMode !== 'snapshot' || empty.rowCount !== 0 || empty.isEmpty !== true) throw new Error('default normalization mismatch');
         """
     ).strip()
 

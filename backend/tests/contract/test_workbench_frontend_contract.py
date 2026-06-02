@@ -203,6 +203,9 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "/api/workbench/pipelines" in workbench_js
     assert "/api/workbench/features" in workbench_js
     assert "/api/workbench/delivery-readiness" in workbench_js
+    assert "renderPaperSim" in workbench_js
+    assert "buildPaperSimModel" in workbench_js
+    assert "buildPaperSimModel(data)" in workbench_js
     assert "/api/workbench/recommendations" in workbench_js
     assert "/api/workbench/storage" in workbench_js
     assert "data-wb-tab" in workbench_js
