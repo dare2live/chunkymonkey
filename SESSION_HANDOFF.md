@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 00:29:20 CST
+**Snapshot 时间**: 2026-06-03 00:39:16 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `7c16bac1 docs: record ETF list widget extraction in project index` |
-| 最近 24h commits | 164 |
+| HEAD | `1aac4845 feat: extract ETF opportunity widget and simplify ETF page | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 5 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS` |
+| 最近 24h commits | 165 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+1aac4845 feat: extract ETF opportunity widget and simplify ETF page | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 5 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS
+f795b957 docs: refresh session handoff snapshot after ETF list index update
 7c16bac1 docs: record ETF list widget extraction in project index
 89163ddd feat: externalize ETF list rendering into widget | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 4 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS
 f9587f8e docs: refresh session handoff snapshot after date rollover | # commit-msg: minimal
@@ -76,8 +78,6 @@ f9587f8e docs: refresh session handoff snapshot after date rollover | # commit-m
 9407b98b docs: clarify moth global install model and sync controller state | # commit-msg: minimal
 83202979 docs: refresh session handoff snapshot after live need_027 probe | # commit-msg: minimal
 fdb043ed docs: add moth github url to quickstart | # commit-msg: minimal
-f06d2d3e docs: refresh session handoff snapshot after controller-state sync | # commit-msg: minimal
-fe6c1eef docs: refresh session handoff snapshot after latest controller-state sync | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
