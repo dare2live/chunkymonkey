@@ -691,6 +691,7 @@
       tdxHealthSummary: tdxHealthSummary,
       tdxServerHealth: buildTdxServerHealthModel(tdxHealth),
       assetGovernanceTable: buildAssetGovernanceTableModel(assetHealth.items || []),
+      processingMonitor: buildProcessingMonitorModel(monitor),
       blockers: Array.isArray(data.blockers) ? data.blockers : [],
       watermarks: Array.isArray(data.watermarks) ? data.watermarks : [],
       tdxF10Capabilities: Array.isArray(data.tdx_f10_capabilities) ? data.tdx_f10_capabilities : [],
@@ -913,7 +914,7 @@
       statCard('Fallback', fmtNum(model.kline.fallback_active_count || 0), 'active sources', model.kline.fallback_active_count ? 'warn' : 'ok') +
       statCard('资产治理', fmtNum(((model.assetHealth.summary || {}).total) || 0), renderStatusCounts(model.qualityCounts), ((model.qualityCounts || {}).blocking || 0) ? 'ok' : 'info') +
       statCard('特征 fallback', fmtPct(model.validation.source_fallback_ratio), esc(model.validation.validation_id || '-'), model.validation.status || 'unknown') +
-      statCard('清洗拒绝', fmtNum(model.monitor.total_rejected_rows || 0), fmtNum(model.monitor.run_count || 0) + ' tool runs', (model.monitor.total_rejected_rows || 0) ? 'warn' : 'ok') +
+      statCard('清洗拒绝', fmtNum(model.processingMonitor.totalRejectedRows || 0), fmtNum(model.processingMonitor.runCount || 0) + ' tool runs', (model.processingMonitor.totalRejectedRows || 0) ? 'warn' : 'ok') +
       '</div>' +
 
       '<div class="wb-grid">' +
@@ -943,11 +944,11 @@
       '</section>' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>处理工具监控</h3><div class="muted">accepted / rejected</div></div></div>' +
-      renderProcessingMonitorTable(model.monitor.recent_runs || []) +
+      renderProcessingMonitorTable(model.processingMonitor) +
       '</section>' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>拒绝原因</h3><div class="muted">cleaning contract</div></div></div>' +
-      renderProcessingReasonTable(model.monitor.reason_counts || []) +
+      renderProcessingReasonTable(model.processingMonitor.reasonCounts) +
       '</section>' +
       '</div>' +
 
@@ -1044,20 +1045,21 @@
     };
   }
 
-  function renderProcessingMonitorTable(rows) {
-    if (!rows.length) return renderEmpty('暂无处理工具运行记录');
+  function renderProcessingMonitorTable(model) {
+    model = model || buildProcessingMonitorModel({});
+    if (!model.recentRuns.length) return renderEmpty('暂无处理工具运行记录');
     return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
       '<thead><tr><th>tool</th><th>scope</th><th>source</th><th>status</th><th>accepted</th><th>rejected</th><th>output</th><th>ended</th></tr></thead><tbody>' +
-      rows.map(function (row) {
+      model.recentRuns.map(function (row) {
         return '<tr>' +
-          '<td>' + esc(row.tool_name || '-') + '<div class="muted"><code>' + esc(row.run_id || '-') + '</code></div></td>' +
+          '<td>' + esc(row.toolName || '-') + '<div class="muted"><code>' + esc(row.runId || '-') + '</code></div></td>' +
           '<td>' + esc(row.scope || '-') + '</td>' +
-          '<td>' + esc(row.source_name || '-') + '</td>' +
+          '<td>' + esc(row.sourceName || '-') + '</td>' +
           '<td>' + pill(row.status || '-', row.status) + '</td>' +
-          '<td>' + fmtNum(row.accepted_rows || 0) + '</td>' +
-          '<td>' + fmtNum(row.rejected_rows || 0) + '</td>' +
-          '<td>' + esc(row.output_table || '-') + '</td>' +
-          '<td>' + esc(row.ended_at || '-') + '</td>' +
+          '<td>' + fmtNum(row.acceptedRows || 0) + '</td>' +
+          '<td>' + fmtNum(row.rejectedRows || 0) + '</td>' +
+          '<td>' + esc(row.outputTable || '-') + '</td>' +
+          '<td>' + esc(row.endedAt || '-') + '</td>' +
           '</tr>';
       }).join('') +
       '</tbody></table></div>';
@@ -1071,6 +1073,38 @@
         return '<tr><td>' + esc(row.reason || '-') + '</td><td>' + fmtNum(row.count || 0) + '</td></tr>';
       }).join('') +
       '</tbody></table></div>';
+  }
+
+  function buildProcessingMonitorModel(data) {
+    data = data || {};
+    var recentRuns = Array.isArray(data.recent_runs) ? data.recent_runs : [];
+    var reasonCounts = Array.isArray(data.reason_counts) ? data.reason_counts : [];
+    return {
+      recentRuns: recentRuns.map(function (row) {
+        return {
+          toolName: row.tool_name || '-',
+          runId: row.run_id || '-',
+          scope: row.scope || '-',
+          sourceName: row.source_name || '-',
+          status: row.status || '-',
+          acceptedRows: Number(row.accepted_rows || 0),
+          rejectedRows: Number(row.rejected_rows || 0),
+          outputTable: row.output_table || '-',
+          endedAt: row.ended_at || '-',
+        };
+      }),
+      reasonCounts: reasonCounts.map(function (row) {
+        return {
+          reason: row.reason || '-',
+          count: Number(row.count || 0),
+        };
+      }),
+      totalRejectedRows: Number(data.total_rejected_rows || 0),
+      runCount: Number(data.run_count || 0),
+      recentRunCount: recentRuns.length,
+      reasonCount: reasonCounts.length,
+      isEmpty: !recentRuns.length && !reasonCounts.length,
+    };
   }
 
   function renderTodaySignalCache(cache) {
@@ -2701,6 +2735,7 @@
     buildChampionModel: buildChampionModel,
     buildDataSourcesModel: buildDataSourcesModel,
     buildAssetGovernanceTableModel: buildAssetGovernanceTableModel,
+    buildProcessingMonitorModel: buildProcessingMonitorModel,
     buildTdxServerHealthModel: buildTdxServerHealthModel,
     buildFeaturesModel: buildFeaturesModel,
     buildTemporalSynergyModel: buildTemporalSynergyModel,

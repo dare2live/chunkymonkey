@@ -745,6 +745,7 @@ def test_workbench_data_sources_model_is_pure_and_stable():
         if (model.qualityCounts.blocking !== 1 || model.tdxHealthSummary.timeout_server_count !== 1) throw new Error('counts mismatch');
         if (model.tdxServerHealth.rowCount !== 1 || model.tdxServerHealth.totals.timeout !== 1) throw new Error('tdx server health model mismatch');
         if (model.assetGovernanceTable.rowCount !== 1 || model.assetGovernanceTable.rows[0].table_name !== 'fact_x') throw new Error('asset governance model mismatch');
+        if (model.processingMonitor.recentRunCount !== 1 || model.processingMonitor.reasonCount !== 1 || model.processingMonitor.totalRejectedRows !== 3) throw new Error('processing monitor model mismatch');
         if (model.blockers.length !== 1 || model.watermarks.length !== 1 || model.tdxF10Capabilities.length !== 1) throw new Error('list normalization mismatch');
         if (view.buildDataSourcesModel({}).signalCacheTone !== 'unknown') throw new Error('default normalization mismatch');
         """
@@ -788,6 +789,53 @@ def test_workbench_asset_governance_table_model_is_pure_and_stable():
         if (model.rows.some(row => row.table_name === 'fact_hidden')) throw new Error('hidden row should be filtered');
         const empty = view.buildAssetGovernanceTableModel([]);
         if (empty.rowCount !== 0 || empty.isEmpty !== true) throw new Error('default normalization mismatch');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/workbench-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+
+
+def test_workbench_processing_monitor_model_is_pure_and_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.WorkbenchView;
+        if (!view || typeof view.buildProcessingMonitorModel !== 'function') {
+          throw new Error('WorkbenchView.buildProcessingMonitorModel missing');
+        }
+
+        const model = view.buildProcessingMonitorModel({
+          total_rejected_rows: 11,
+          run_count: 5,
+          recent_runs: [
+            { tool_name: 'dq', run_id: 'run1', scope: 'data', source_name: 'tdxhub', status: 'pass', accepted_rows: 12, rejected_rows: 0, output_table: 'mart_a', ended_at: '2026-06-03 01:00:00' },
+            { tool_name: 'audit', run_id: 'run2', scope: 'data', source_name: 'akshare', status: 'warn', accepted_rows: 8, rejected_rows: 3, output_table: 'mart_b', ended_at: '2026-06-03 01:10:00' },
+          ],
+          reason_counts: [
+            { reason: 'bad row', count: 3 },
+            { reason: 'missing source', count: 8 },
+          ],
+        });
+
+        if (!model || model.recentRunCount !== 2 || model.reasonCount !== 2 || model.isEmpty !== false) throw new Error('count mismatch');
+        if (model.totalRejectedRows !== 11 || model.runCount !== 5) throw new Error('summary mismatch');
+        if (model.recentRuns[0].toolName !== 'dq' || model.recentRuns[1].status !== 'warn') throw new Error('row normalization mismatch');
+        if (model.reasonCounts[1].reason !== 'missing source' || model.reasonCounts[1].count !== 8) throw new Error('reason normalization mismatch');
+        const empty = view.buildProcessingMonitorModel({});
+        if (empty.recentRunCount !== 0 || empty.reasonCount !== 0 || empty.isEmpty !== true) throw new Error('default normalization mismatch');
         """
     ).strip()
 

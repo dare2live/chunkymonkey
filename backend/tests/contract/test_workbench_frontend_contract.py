@@ -240,6 +240,9 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "renderAssetGovernanceTable" in workbench_js
     assert "function buildAssetGovernanceTableModel(" in workbench_js
     assert "renderAssetGovernanceTable(model.assetGovernanceTable)" in workbench_js
+    assert "renderProcessingMonitorTable" in workbench_js
+    assert "function buildProcessingMonitorModel(" in workbench_js
+    assert "renderProcessingMonitorTable(model.processingMonitor)" in workbench_js
     assert "renderFeatures" in workbench_js
     assert "buildFeaturesModel" in workbench_js
     assert "buildFeaturesModel(data)" in workbench_js
