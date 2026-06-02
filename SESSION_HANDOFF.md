@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 02:39:52 CST
+**Snapshot 时间**: 2026-06-03 02:42:14 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `67b5b23d refactor: extract champion model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 189 |
+| HEAD | `2a0ac5fb refactor: extract data sources model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 7 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 190 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+2a0ac5fb refactor: extract data sources model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 7 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
+ba7e5e5f docs: refresh session handoff snapshot after champion model extraction | # commit-msg: minimal
 67b5b23d refactor: extract champion model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 29f26074 docs: refresh session handoff snapshot after delivery model extraction | # commit-msg: minimal
 11b7aec7 refactor: extract delivery model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 5 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ bash scripts/install_resilience.sh --status   # check 装好没
 53121899 docs: refresh session handoff snapshot after read model meta extraction | # commit-msg: minimal
 e3b0677c refactor: extract read model meta from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 7 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 55a28efc docs: refresh session handoff snapshot after source cards model extraction | # commit-msg: minimal
-58f483b8 refactor: extract source cards model from data view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 5 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
-69f49fc0 docs: refresh session handoff snapshot after routes table model extraction | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
