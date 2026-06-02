@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 03:02:47 CST
+**Snapshot 时间**: 2026-06-03 03:06:44 CST
 
 ## 主线状态
 
@@ -61,13 +61,16 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `b6a0a252 refactor: extract paper sim model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 13 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 198 |
+| HEAD | `30fb0acb docs: record storage model extraction in project index | # commit-msg: minimal` |
+| 最近 24h commits | 201 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+30fb0acb docs: record storage model extraction in project index | # commit-msg: minimal
+06b16fa1 refactor: extract storage model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 14 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
+a1c58852 docs: refresh session handoff snapshot after paper sim model extraction | # commit-msg: minimal
 b6a0a252 refactor: extract paper sim model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 13 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 ff7fff16 docs: refresh session handoff snapshot after recommendations model extraction | # commit-msg: minimal
 2aeb136f refactor: extract recommendations model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 12 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
@@ -75,9 +78,6 @@ ff7fff16 docs: refresh session handoff snapshot after recommendations model extr
 a2a3e928 refactor: extract overview model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 11 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 1fffa62a docs: refresh session handoff snapshot after rank matrix cache model extraction | # commit-msg: minimal
 a0c4ebcb refactor: extract rank matrix cache model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 10 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
-6f0ee1d1 docs: refresh session handoff snapshot after temporal synergy model extraction | # commit-msg: minimal
-f9a39da3 refactor: extract temporal synergy model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 9 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
-f9a25895 docs: refresh session handoff snapshot after features model extraction | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
