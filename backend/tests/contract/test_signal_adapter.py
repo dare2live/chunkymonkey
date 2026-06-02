@@ -66,6 +66,9 @@ if (grouped[0].stockCode !== '000001' || grouped[0].bestAction !== 'follow') {
 if (grouped[0].events[0].action !== 'follow' || grouped[0].events[1].action !== 'watch') {
   throw new Error('group ordering mismatch: ' + grouped[0].events.map((event) => event.action).join(','));
 }
+if (grouped[0].timelineEvents[0].noticeDate !== '2026-06-03' || grouped[0].timelineEvents[1].noticeDate !== '2026-06-02') {
+  throw new Error('timeline ordering mismatch: ' + grouped[0].timelineEvents.map((event) => event.noticeDate).join(','));
+}
 if (grouped[0].instCount !== 2 || grouped[0].eventCount !== 2) {
   throw new Error('group counts mismatch: ' + JSON.stringify({ instCount: grouped[0].instCount, eventCount: grouped[0].eventCount }));
 }

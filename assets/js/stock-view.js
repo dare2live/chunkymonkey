@@ -794,9 +794,7 @@
 
   // Tab2: 事件时间线（按公告日排序）
   function renderTabTimeline(content, s) {
-    const events = [...s.events].sort((a, b) =>
-      String(b.noticeDate || '').localeCompare(String(a.noticeDate || ''))
-    );
+    const events = s.timelineEvents || s.events || [];
     const rows = events.map(ev => `<tr>
       <td><span class="muted sv-sub">${fmtDate(ev.noticeDate)}</span><div>${noticeSourceBadge(ev.noticeDateSource, { compact: true })}</div></td>
       <td>${actionBadge(ev.action)}</td>

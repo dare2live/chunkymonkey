@@ -149,6 +149,9 @@
 
     return Array.from(groups.values()).map(g => {
       const sorted = [...g.events].sort(compareStockEvents);
+      const timelineEvents = [...sorted].sort((a, b) =>
+        String(b.noticeDate || '').localeCompare(String(a.noticeDate || ''))
+      );
       const top = g.topEvent || sorted[0] || null;
       const premiumAvg = g.premiumCount ? g.premiumSum / g.premiumCount : null;
       return {
@@ -162,6 +165,7 @@
         bestAction: top ? top.action : 'none',
         topEvent: top,
         events: sorted,
+        timelineEvents,
         premiumAvg,
         longEVBest: g.longEVBest,
         shortEVBest: g.shortEVBest,
