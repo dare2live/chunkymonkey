@@ -1495,9 +1495,10 @@
   }
 
   function renderRecommendations(data) {
-    var latest = data.latest_primary || {};
-    var source = data.source_quality || {};
-    var outcomes = data.outcomes || {};
+    var model = buildRecommendationsModel(data);
+    var latest = model.latestPrimary;
+    var source = model.sourceQuality;
+    var outcomes = model.outcomes;
     setBody(
       renderReadModelMeta(data) +
       '<div class="stats-row wb-stats-row">' +
@@ -1514,8 +1515,25 @@
       renderRecommendationSource(source) + '</section>' +
       '</div>' +
       '<section class="panel wb-panel"><div class="panel-head"><div><h3>推荐清单</h3><div class="muted">model_id: <code>' + esc(latest.model_id || '-') + '</code></div></div></div>' +
-      renderRecommendationTable(data.rows || []) + '</section>'
+      renderRecommendationTable(model.rows) + '</section>'
     );
+  }
+
+  function buildRecommendationsModel(data) {
+    data = data || {};
+    var latest = data.latest_primary || {};
+    var source = data.source_quality || {};
+    var outcomes = data.outcomes || {};
+    var rows = Array.isArray(data.rows) ? data.rows : [];
+    var risk = Array.isArray(data.risk) ? data.risk : [];
+    return {
+      latestPrimary: latest,
+      sourceQuality: source,
+      outcomes: outcomes,
+      rows: rows,
+      risk: risk,
+      isEmpty: !latest.count && !rows.length && !risk.length && !outcomes.count,
+    };
   }
 
   function renderRecommendationSource(row) {
@@ -2497,6 +2515,7 @@
     buildFeaturesModel: buildFeaturesModel,
     buildTemporalSynergyModel: buildTemporalSynergyModel,
     buildRankMatrixCacheModel: buildRankMatrixCacheModel,
+    buildRecommendationsModel: buildRecommendationsModel,
     _renderOverview: renderOverview,
     _renderDataSources: renderDataSources,
     _renderPipelines: renderPipelines,

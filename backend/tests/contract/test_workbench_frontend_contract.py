@@ -237,6 +237,9 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "renderRankMatrixCache" in workbench_js
     assert "buildRankMatrixCacheModel" in workbench_js
     assert "buildRankMatrixCacheModel(data)" in workbench_js
+    assert "renderRecommendations" in workbench_js
+    assert "buildRecommendationsModel" in workbench_js
+    assert "buildRecommendationsModel(data)" in workbench_js
     assert "推荐" in workbench_js
     assert "存储" in workbench_js
     assert "稳定性上下文" in workbench_js

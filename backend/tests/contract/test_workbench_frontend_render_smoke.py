@@ -678,3 +678,43 @@ def test_workbench_overview_model_is_pure_and_stable():
         check=False,
     )
     assert result.returncode == 0, result.stderr + result.stdout
+
+
+def test_workbench_recommendations_model_is_pure_and_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.WorkbenchView;
+        if (!view || typeof view.buildRecommendationsModel !== 'function') {
+          throw new Error('WorkbenchView.buildRecommendationsModel missing');
+        }
+
+        const model = view.buildRecommendationsModel({
+          latest_primary: { count: 8, snapshot_date: '2026-06-03', model_id: 'topk_1' },
+          source_quality: { kline_primary: 'tdxhub', kline_primary_is_tdxhub: true, source_fallback_ratio: 0.2, feature_validation_id: 'v1', source_lineage_coverage: 0.7, feature_validation_status: 'pass' },
+          outcomes: { count: 3, latest_outcome_known_at: '2026-06-03', hit_rate_5d: 0.55, avg_ret_5d: 0.12 },
+          risk: [{ track_id: 'risk_1', is_primary: true }],
+          rows: [{ stock_code: '600519', rank_in_date: 1 }],
+        });
+
+        if (!model || model.latestPrimary.count !== 8 || model.sourceQuality.kline_primary !== 'tdxhub') throw new Error('top-level mismatch');
+        if (model.outcomes.count !== 3 || model.rows.length !== 1 || model.risk.length !== 1) throw new Error('list normalization mismatch');
+        if (model.isEmpty !== false) throw new Error('empty flag mismatch');
+        if (view.buildRecommendationsModel({}).isEmpty !== true) throw new Error('default normalization mismatch');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/workbench-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
