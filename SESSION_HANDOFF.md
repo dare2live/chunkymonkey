@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 22:10:23 CST
+**Snapshot 时间**: 2026-06-02 22:26:28 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `87b3082c feat: migrate chunkyctl tooling gate to moth snapshot` |
-| 最近 24h commits | 154 |
+| HEAD | `65df4dd5 feat: migrate preflight to moth-backed tooling gate` |
+| 最近 24h commits | 155 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+65df4dd5 feat: migrate preflight to moth-backed tooling gate
+bc3ec666 docs: refresh session handoff snapshot after moth global install
 87b3082c feat: migrate chunkyctl tooling gate to moth snapshot
 efdf6c23 docs: refresh session handoff snapshot
 d67bc586 feat: remove dead stock cell helpers from app.js
@@ -76,8 +78,6 @@ f901dc96 docs: refresh session handoff snapshot after dead stock cell cleanup | 
 b9f147ff docs: refresh session handoff snapshot after stock report widget extraction | # commit-msg: minimal
 10a27ae3 feat: extract stock report widget and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check, pytest 4 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
 db727148 docs: refresh session handoff snapshot after stock list row helper extraction | # commit-msg: minimal
-19790f61 feat: extract stock list row helper and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check, pytest 7 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
-8ddcff94 docs: refresh session handoff snapshot after stock list filter metadata extraction | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
