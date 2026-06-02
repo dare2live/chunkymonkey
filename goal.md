@@ -5,6 +5,10 @@
 
 ## 2026-06-03 — data-view audit model cleanup
 
+## 2026-06-03 — today signal cache model extraction
+
+- `assets/js/workbench-view.js` 里的今日信号快照已收成 `buildTodaySignalCacheModel()` 纯 helper，`renderTodaySignalCache()` 现在只消费 model；row normalization 把 `today_signal_cache` 统一成 `status`、`statusTone`、`signalCount`、`freshnessDays`、`sourceMaxNoticeDate`、`currentSourceMaxNoticeDate`、`builtAt`、`error`、`step`、`isEmpty`，并把 dataSources 页头部的信号快照统计也切到 model 口径。`buildDataSourcesModel()` 也开始返回 `signalCacheModel`，workbench contract / smoke test 已补上 helper 导出与输入归一回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/workbench-view.js --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_workbench_frontend_render_smoke.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 20 passed，`node --check assets/js/workbench-view.js` PASS，`analyze_complexity.py` 复扫后 `assets/js/workbench-view.js` 无明显热点，`codegraph sync .` 已同步。
+
 ## 2026-06-03 — processing monitor model extraction
 
 - `assets/js/workbench-view.js` 里的处理工具监控 / 拒绝原因块已收成 `buildProcessingMonitorModel()` 纯 helper，`renderProcessingMonitorTable()` 现在只消费 model；row normalization 把 `processing_monitor` 统一成 `recentRuns`、`reasonCounts`、`totalRejectedRows`、`runCount`、`recentRunCount`、`reasonCount`、`isEmpty`，并把数据源页头部清洗拒绝统计也切到 model 口径。`buildDataSourcesModel()` 也开始返回 `processingMonitor` model，workbench contract / smoke test 已补上 helper 导出与输入归一回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/workbench-view.js --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_workbench_frontend_render_smoke.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 19 passed，`node --check assets/js/workbench-view.js` PASS，`analyze_complexity.py` 复扫后 `assets/js/workbench-view.js` 无明显热点，`codegraph sync .` 已同步。
