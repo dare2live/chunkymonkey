@@ -57,6 +57,17 @@ def legacy_snapshot_hash(
     return f"{LEGACY_HASH_NAMESPACE}:{h.hexdigest()}"
 
 
+def _section_param_diff(current_section: Any, parent_section: Any) -> dict[str, list[Any]] | None:
+    if not isinstance(current_section, dict) or not isinstance(parent_section, dict):
+        return None
+    diff = {
+        key: [parent_section.get(key), current_section.get(key)]
+        for key in (current_section.keys() | parent_section.keys())
+        if current_section.get(key) != parent_section.get(key)
+    }
+    return diff or None
+
+
 def param_diff_json(current_snapshot: str | None, parent_snapshot: str | None) -> str | None:
     """Return a compact top-level portfolio/swap diff against the parent row."""
     if not current_snapshot or not parent_snapshot:
@@ -69,14 +80,7 @@ def param_diff_json(current_snapshot: str | None, parent_snapshot: str | None) -
 
     diff: dict[str, Any] = {}
     for section in ("portfolio", "swap"):
-        section_diff: dict[str, Any] = {}
-        cur_section = current.get(section) or {}
-        parent_section = parent.get(section) or {}
-        if not isinstance(cur_section, dict) or not isinstance(parent_section, dict):
-            continue
-        for key in sorted(set(cur_section) | set(parent_section)):
-            if cur_section.get(key) != parent_section.get(key):
-                section_diff[key] = [parent_section.get(key), cur_section.get(key)]
+        section_diff = _section_param_diff(current.get(section), parent.get(section))
         if section_diff:
             diff[section] = section_diff
     if not diff:
