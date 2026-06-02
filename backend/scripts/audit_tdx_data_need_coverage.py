@@ -235,6 +235,37 @@ def _source_capabilities(source_name: Any, registered_sources: dict[str, Any]) -
     return sorted(selected_caps)
 
 
+def _source_registration_summary(
+    preferred_source: Any,
+    fallback_source: Any,
+    *,
+    registered_source_names: list[str],
+    registered_source_name_set: set[str],
+    registered_sources: dict[str, Any],
+) -> dict[str, Any]:
+    preferred_family = _canonical_source_family(preferred_source)
+    fallback_family = _canonical_source_family(fallback_source)
+    preferred_capabilities = _source_capabilities(preferred_source, registered_sources)
+    fallback_capabilities = _source_capabilities(fallback_source, registered_sources)
+    return {
+        "registered_source_names": registered_source_names,
+        "preferred_source_registered": _source_name_registered(preferred_source, registered_source_name_set),
+        "preferred_source_family": preferred_family or None,
+        "preferred_source_family_registered": bool(
+            preferred_family and preferred_family in registered_source_name_set
+        ),
+        "fallback_source_registered": _source_name_registered(fallback_source, registered_source_name_set),
+        "fallback_source_family": fallback_family or None,
+        "fallback_source_family_registered": bool(
+            fallback_family and fallback_family in registered_source_name_set
+        ),
+        "preferred_source_capabilities": preferred_capabilities,
+        "fallback_source_capabilities": fallback_capabilities,
+        "preferred_source_supports_individual_fund_flow": "individual_fund_flow" in preferred_capabilities,
+        "fallback_source_supports_individual_fund_flow": "individual_fund_flow" in fallback_capabilities,
+    }
+
+
 def _failure_queue_snapshot(
     conn: Any,
     *,
@@ -301,14 +332,19 @@ def _summarize_need_gaps(conn: Any, needs: list[tuple[Any, ...]]) -> dict[str, A
         evidence_status = _as_clean_text(record.get("evidence_status"))
         preferred_source = record.get("preferred_source")
         fallback_source = record.get("fallback_source")
-        preferred_family = _canonical_source_family(preferred_source)
-        fallback_family = _canonical_source_family(fallback_source)
         eligibility_counts[eligibility] = eligibility_counts.get(eligibility, 0) + 1
         if eligibility in BLOCKED_ELIGIBILITIES or evidence_status == "unknown":
             failure_queue_snapshot = _failure_queue_snapshot(
                 conn,
                 source_name=_as_clean_text(preferred_source) or None,
                 domain_like="fund_flow" if record.get("need_id") == "need_027" else None,
+            )
+            source_registration = _source_registration_summary(
+                preferred_source,
+                fallback_source,
+                registered_source_names=registered_source_names,
+                registered_source_name_set=registered_source_name_set,
+                registered_sources=registered_sources,
             )
             blocked_needs.append(
                 {
@@ -322,41 +358,7 @@ def _summarize_need_gaps(conn: Any, needs: list[tuple[Any, ...]]) -> dict[str, A
                     "production_eligibility": eligibility,
                     "preferred_source": preferred_source,
                     "fallback_source": fallback_source,
-                    "source_registration": {
-                        "registered_source_names": registered_source_names,
-                        "preferred_source_registered": _source_name_registered(
-                            preferred_source,
-                            registered_source_name_set,
-                        ),
-                        "preferred_source_family": preferred_family or None,
-                        "preferred_source_family_registered": bool(
-                            preferred_family and preferred_family in registered_source_name_set
-                        ),
-                        "fallback_source_registered": _source_name_registered(
-                            fallback_source,
-                            registered_source_name_set,
-                        ),
-                        "fallback_source_family": fallback_family or None,
-                        "fallback_source_family_registered": bool(
-                            fallback_family and fallback_family in registered_source_name_set
-                        ),
-                        "preferred_source_capabilities": _source_capabilities(
-                            preferred_source,
-                            registered_sources,
-                        ),
-                        "fallback_source_capabilities": _source_capabilities(
-                            fallback_source,
-                            registered_sources,
-                        ),
-                        "preferred_source_supports_individual_fund_flow": (
-                            "individual_fund_flow"
-                            in _source_capabilities(preferred_source, registered_sources)
-                        ),
-                        "fallback_source_supports_individual_fund_flow": (
-                            "individual_fund_flow"
-                            in _source_capabilities(fallback_source, registered_sources)
-                        ),
-                    },
+                    "source_registration": source_registration,
                     "failure_queue_snapshot": failure_queue_snapshot,
                     "action": record.get("action"),
                     "notes": record.get("notes"),
