@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 05:56:14 CST
+**Snapshot 时间**: 2026-06-03 05:59:08 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `763835f5 feat: clean up ETF list formatting helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 254 |
+| HEAD | `7e037323 feat: clean up screening-panel formatting helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 256 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+7e037323 feat: clean up screening-panel formatting helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
+9ee82a4b docs: refresh session handoff snapshot after ETF list formatter cleanup | # commit-msg: minimal
 763835f5 feat: clean up ETF list formatting helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 6ee6c05d docs: refresh session handoff snapshot after backtest-panel and strategy compare formatter extension | # commit-msg: minimal
 66a16dac feat: extend shared widget formatter to backtest-panel and etf-strategy-compare | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ a7b34459 feat: clean up ETF opportunity formatting helpers | Codex-Reviewed: APP
 dcdca2c1 docs: refresh session handoff and workflow checkpoint after signal panel formatter extension | # commit-msg: minimal
 a0d4e8ff feat: extend shared widget formatter to screening-panel and multidim-badge | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 de85343f docs: refresh session handoff and workflow checkpoint after signal widgets formatter extension | # commit-msg: minimal
-7c0017a9 feat: extend shared widget formatter to signal widgets | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
-45f50a6d docs: refresh session handoff and workflow checkpoint after topk-strip formatter extension | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
