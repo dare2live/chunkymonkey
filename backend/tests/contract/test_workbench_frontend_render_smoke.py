@@ -529,6 +529,51 @@ def test_workbench_tdx_f10_source_date_audit_model_is_pure_and_stable():
     assert result.returncode == 0, result.stderr + result.stdout
 
 
+def test_workbench_tdx_f10_source_date_audit_model_is_pure_and_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.WorkbenchView;
+        if (!view || typeof view.buildTdxF10SourceDateAuditModel !== 'function') {
+          throw new Error('WorkbenchView.buildTdxF10SourceDateAuditModel missing');
+        }
+
+        const model = view.buildTdxF10SourceDateAuditModel({
+          run_id: 'f10_source_v3',
+          built_at: '2026-05-07T10:00:00',
+          summary: { raw_row_count: 100, audit_rows: 2, source_notice_candidate_occurrences: 95, source_notice_candidate_future_occurrences: 0, future_occurrence_count: 3 },
+          rows: [
+            { section_id: '2', section_name: '股东增减持计划', pattern_name: 'latest_announce_date', date_role: 'source_notice_date', source_notice_candidate: true, occurrence_count: 95, future_occurrence_count: 0, min_date: '2026-01-01', max_date: '2026-05-01', stock_count: 80, raw_row_count: 100 },
+            { section_id: '2', section_name: '股东增减持计划', pattern_name: 'change_end_date', date_role: 'plan_end_date', source_notice_candidate: false, occurrence_count: 20, future_occurrence_count: 3, min_date: '2026-01-01', max_date: '2026-12-31', stock_count: 80, raw_row_count: 100 },
+          ],
+        });
+
+        if (!model || model.runId !== 'f10_source_v3') throw new Error('runId mismatch');
+        if (model.headerCounts.rawRowCount !== 100 || model.rowCount !== 2) throw new Error('summary mismatch');
+        if (model.rows[0].candidateLabel !== 'source_notice' || model.rows[1].futureTone !== 'warn') throw new Error('row normalization mismatch');
+        if (model.rows[0].dateRange !== '2026-01-01 ~ 2026-05-01') throw new Error('date range mismatch');
+        if (model.isEmpty !== false) throw new Error('empty flag mismatch');
+        const empty = view.buildTdxF10SourceDateAuditModel({});
+        if (empty.runId !== '' || empty.rowCount !== 0 || empty.isEmpty !== true) throw new Error('default normalization mismatch');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/workbench-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+
+
 def test_workbench_champion_model_is_pure_and_stable():
     script = textwrap.dedent(
         r"""
