@@ -25,9 +25,9 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 09:16:30 CST
+**Snapshot 时间**: 2026-06-02 09:28:35 CST
 
-- latest code snapshot remains commit `58d3693c`; this handoff refresh reflects the 2026-06-02 09:16 CST live writer refreshes, where `raw_profit_forecast_snapshot_daily` is no longer blocking, `fact_feature_panel` is still the only blocking yellow (`writer_at=2026-06-02`, `last_data_date=2026-05-29`), `dim_stock_tdx_industry_history` is the lone warning yellow, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`. `stage-opt` controller recommendation remains `P1 / upstream_candidate_supply`; live recommendation PIT attrition is still 5/1/3 for short/mid/long, all `cross_stage_fallback`, so exact PIT coverage remains structurally sparse.
+- latest code snapshot remains commit `58d3693c`; this handoff refresh reflects the 2026-06-02 09:28 CST live writer refreshes, where `raw_profit_forecast_snapshot_daily` is no longer blocking, `fact_feature_panel` has been rebuilt through `2026-06-01` and no longer sits in blocking yellow, `dim_stock_tdx_industry_history` is the lone warning yellow, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`. `stage-opt` controller recommendation remains `P1 / upstream_candidate_supply`; live recommendation PIT attrition is still 5/1/3 for short/mid/long, all `cross_stage_fallback`, so exact PIT coverage remains structurally sparse.
 | Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
 | VM 状态 | ? |
 | VM 上次启动 |  |

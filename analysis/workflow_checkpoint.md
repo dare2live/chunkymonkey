@@ -58,9 +58,9 @@ The model pipeline snapshot below is historical evidence for the completed
   feed `run_context.step_progress` / `/update/status` so the long raw fetch no
   longer looks frozen. The raw ingest cadence now refreshes on a 10-count / 30s
   threshold rather than waiting for sparse 50-row logs. Feature panel lane was
-  refreshed incrementally on 2026-06-02, but `fact_feature_panel` still has
-  `last_data_date=2026-05-29`, so it remains the only blocking yellow while
-  `dim_stock_tdx_industry_history` stays warning yellow.
+  refreshed incrementally on 2026-06-02 and now reaches `2026-06-01`, so
+  `fact_feature_panel` is no longer blocking; `dim_stock_tdx_industry_history`
+  remains the lone warning yellow.
 - stage-opt audit: 2026-06-01 repaired the 2025-08-01→2026-05-29
   `fact_stock_technical_stage` / `fact_signal_context` discontinuity and
   reran `audit_stage_opt_candidate_supply.py`; full-history coverage is now
@@ -230,22 +230,20 @@ The model pipeline snapshot below is historical evidence for the completed
 - system data-health snapshot: `scripts/chunkyctl doctor --fast` now folds in
   `backend/scripts/data_health_snapshot.py --dry-run --format json` and fails
   closed on red tables. Current live health after the 2026-06-02 refreshes is
-  `0 red / 2 yellow / 342 total`: `raw_profit_forecast_snapshot_daily` was
-  refreshed to `2026-06-02` and no longer blocks, `fact_feature_panel`
-  remains the only blocking yellow because `writer_at=2026-06-02` but
-  `last_data_date=2026-05-29`, and `dim_stock_tdx_industry_history` is the
-  lone warning yellow. `raw_margin_daily` remains a monitor-only governance
-  placeholder outside the yellow count. This is the startup health signal the
-  controller has to read before trusting any freshness claim. Feature panel,
-  capital_behavior, and holder/shareholder-plan lanes were cleared from red
-  earlier; GPCW and raw_aif10 are still green / on-demand governance, and
-  `blocking_yellow_tables` are surfaced separately so
+  `0 red / 1 yellow / 342 total`: `raw_profit_forecast_snapshot_daily` was
+  refreshed to `2026-06-02` and no longer blocks, `fact_feature_panel` was
+  rebuilt through `2026-06-01` and no longer appears in blocking yellow, and
+  `dim_stock_tdx_industry_history` is the lone warning yellow. `raw_margin_daily`
+  remains a monitor-only governance placeholder outside the yellow count. This
+  is the startup health signal the controller has to read before trusting any
+  freshness claim. Feature panel, capital_behavior, and holder/shareholder-plan
+  lanes were cleared from red earlier; GPCW and raw_aif10 are still green /
+  on-demand governance, and `blocking_yellow_tables` are surfaced separately so
   `quality_gate_level=blocking` yellow assets get next-action priority before
   generic yellow maintenance. `mart_p0b_lambdamart_v6_predictions` was
-  refreshed on 2026-06-01, but that did not by itself settle the current
-  feature-panel freshness lag; the 2026-06-02 `raw_profit_forecast_snapshot_daily`
-  refresh removed one blocking yellow, while the incremental feature panel
-  rebuild left `fact_feature_panel` as the remaining blocking yellow.
+  refreshed on 2026-06-01, and the 2026-06-02 `raw_profit_forecast_snapshot_daily`
+  refresh removed the last blocking yellow while the incremental feature panel
+  rebuild advanced the panel to `2026-06-01`.
   `mart_architecture_cleanup_plan` is still on-demand governance and green.
   `mart_pipeline_run_manifest.perf_summary_json` still uses
   `compact_perf_summary_payload()`, so the largest live manifest row remains
