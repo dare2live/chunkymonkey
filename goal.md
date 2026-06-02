@@ -3,6 +3,10 @@
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
 
+## 2026-06-03 — widget format utils shared helper
+
+- `assets/js/widgets/format-utils.js` 新增共享格式化 helper，`model-monitor` 和 `grid-optimizer` 现在统一复用 `WidgetFormatUtils.formatNumber()` / `formatPercent()`，去掉各自的重复 local formatter 逻辑；`index.html` 已把 helper 放在对应 widget 之前加载，`backend/tests/contract/test_model_monitor_widget.py` 也补了 helper export / format contract。验证：`node --check assets/js/widgets/format-utils.js assets/js/widgets/model-monitor.js assets/js/widgets/grid-optimizer.js assets/js/app.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_model_monitor_widget.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对两个改动文件无明显热点，`codegraph sync .` 已同步。
+
 ## 2026-06-03 — dead app.js wrapper cleanup
 
 - `assets/js/app.js` 里的薄 wrapper `loadStocks()` / `loadResearch()` 已删除，`showView()` 直接分发到 `window.StockView.load()/reload()` 与 `loadInstScorecard()`，避免重复入口和维护歧义；`backend/tests/contract/test_workbench_frontend_contract.py` 已补这两条 wrapper 不应回流的回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/app.js --scope backend/tests/contract/test_workbench_frontend_contract.py` PASS，`node --check assets/js/app.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py` 2 passed，`analyze_complexity.py` 复扫后 `assets/js/app.js` 无明显热点，`codegraph sync .` 已同步。

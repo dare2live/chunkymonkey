@@ -30,13 +30,8 @@
     return runtime.esc ? runtime.esc(value) : String(value == null ? '' : value);
   }
 
-  function formatNumber(value, digits) {
-    return value == null ? '-' : Number(value).toFixed(digits == null ? 3 : digits);
-  }
-
-  function formatPercent(value, digits) {
-    return value == null ? '-' : (Number(value) * 100).toFixed(digits == null ? 2 : digits) + '%';
-  }
+  var formatUtils = (typeof globalThis !== 'undefined' && globalThis.WidgetFormatUtils) || global.WidgetFormatUtils;
+  if (!formatUtils) throw new Error('WidgetFormatUtils missing');
 
   function initRuntime(deps) {
     deps = deps || {};
@@ -168,9 +163,9 @@
       box.innerHTML =
         '<div class="cm-action-grid cm-action-grid-tight">' +
         '<div class="cm-action-card"><div class="cm-action-title">Champion · 正式推荐</div><div style="font-weight:700;font-size:13px">' + escText(labelModelId(c.model_id || '-')) + '</div>' +
-        '<div class="muted" style="font-size:11px;margin-top:4px">默认推荐只取 lifecycle champion · RankIC ' + formatNumber(c.holdout_rank_ic) + ' · L/S ' + formatPercent(c.holdout_long_short_spread) + '</div></div>' +
+        '<div class="muted" style="font-size:11px;margin-top:4px">默认推荐只取 lifecycle champion · RankIC ' + formatUtils.formatNumber(c.holdout_rank_ic, 3) + ' · L/S ' + formatUtils.formatPercent(c.holdout_long_short_spread, 2, true) + '</div></div>' +
         '<div class="cm-action-card"><div class="cm-action-title">最新 Challenger · Shadow 实验</div><div style="font-weight:700;font-size:13px">' + escText(labelModelId(ch.model_id || '尚未训练 challenger')) + '</div>' +
-        '<div class="muted" style="font-size:11px;margin-top:4px">Not promoted · RankIC ' + formatNumber(ch.holdout_rank_ic) + ' · L/S ' + formatPercent(ch.holdout_long_short_spread) + '</div>' +
+        '<div class="muted" style="font-size:11px;margin-top:4px">Not promoted · RankIC ' + formatUtils.formatNumber(ch.holdout_rank_ic, 3) + ' · L/S ' + formatUtils.formatPercent(ch.holdout_long_short_spread, 2, true) + '</div>' +
         '<div class="muted" style="font-size:11px;margin-top:2px">shadow topK ' + (shadow.rows || shadow.row_count || 0) + ' rows · ' + (shadow.snapshot_date || shadow.latest_snapshot || '-') + '</div>' +
         (evidence.evidence_run_id ? '<div class="muted" style="font-size:11px;margin-top:2px">evidence ' + escText(evidence.status || '-') + ' · ' + escText(evidence.evidence_run_id) + '</div>' : '') + '</div>' +
         '</div>';
@@ -221,7 +216,7 @@
           (s.fallback_2 ? ' / ' + escText(s.fallback_2) : '') + '</span>';
       }).join('');
       var keepRows = keep.map(function (r) {
-        return '<tr><td>' + escText(labelFeature(r.feature_name)) + '</td><td>' + formatNumber(r.mean_rank_ic) + '</td><td>' + formatNumber(r.fold_same_sign_rate) + '</td><td>' + formatNumber(r.coverage_pct) + '%</td><td>' + (r.pit_violation_rows || 0) + '</td></tr>';
+        return '<tr><td>' + escText(labelFeature(r.feature_name)) + '</td><td>' + formatUtils.formatNumber(r.mean_rank_ic, 3) + '</td><td>' + formatUtils.formatNumber(r.fold_same_sign_rate, 3) + '</td><td>' + formatUtils.formatNumber(r.coverage_pct, 3) + '%</td><td>' + (r.pit_violation_rows || 0) + '</td></tr>';
       }).join('');
       var wdRows = watchDrop.map(function (r) {
         return '<tr><td>' + escText(r.decision) + '</td><td>' + escText(labelFeature(r.feature_name)) + '</td><td>' + escText(r.primary_reason || '-') + '</td></tr>';
@@ -278,17 +273,17 @@
       var wf = (res.walkforward && res.walkforward.summary) || {};
       var dq = res.data_quality || {};
       var liveCards =
-        '<div class="wb-card"><div class="wb-card-label">net top20（组合·扣成本）</div><div class="wb-card-value">' + formatPercent(p30.annualized_return) + '</div><div class="wb-card-sub">MaxDD ' + formatPercent(p30.max_drawdown) + ' · Sharpe ' + formatNumber(p30.sharpe, 2) + '</div><div class="wb-card-chip">30bps</div></div>' +
-        '<div class="wb-card"><div class="wb-card-label">walk-forward RankIC</div><div class="wb-card-value">' + formatNumber(wf.rank_ic_mean, 3) + '</div><div class="wb-card-sub">正折率 ' + formatPercent(wf.rank_ic_positive_ratio) + ' · 折数 ' + (wf.fold_count || '-') + '</div><div class="wb-card-chip">稳定性</div></div>' +
+        '<div class="wb-card"><div class="wb-card-label">net top20（组合·扣成本）</div><div class="wb-card-value">' + formatUtils.formatPercent(p30.annualized_return, 2, true) + '</div><div class="wb-card-sub">MaxDD ' + formatUtils.formatPercent(p30.max_drawdown, 2, true) + ' · Sharpe ' + formatUtils.formatNumber(p30.sharpe, 2) + '</div><div class="wb-card-chip">30bps</div></div>' +
+        '<div class="wb-card"><div class="wb-card-label">walk-forward RankIC</div><div class="wb-card-value">' + formatUtils.formatNumber(wf.rank_ic_mean, 3) + '</div><div class="wb-card-sub">正折率 ' + formatUtils.formatPercent(wf.rank_ic_positive_ratio, 2, true) + ' · 折数 ' + (wf.fold_count || '-') + '</div><div class="wb-card-chip">稳定性</div></div>' +
         '<div class="wb-card"><div class="wb-card-label">feature schema</div><div class="wb-card-value">' + (m.feature_schema_version || '-') + '</div><div class="wb-card-sub">label ' + (m.label_name || '-') + ' · ' + ((m.feature_cols || []).length || m.n_features || '-') + ' 列</div><div class="wb-card-chip">schema</div></div>' +
         '<div class="wb-card"><div class="wb-card-label">panel freshness</div><div class="wb-card-value">' + (dq.latest_panel_date || '-') + '</div><div class="wb-card-sub">' + (dq.codes || '-') + ' 股 · ' + (dq.dates || '-') + ' 日 · label ' + (dq.label_rows || '-') + '</div><div class="wb-card-chip">data</div></div>';
       box.innerHTML =
         liveCards +
-        '<div class="wb-card"><div class="wb-card-label">holdout_ic（持出期·IC）</div><div class="wb-card-value">' + formatNumber(m.holdout_ic, 3) + '</div><div class="wb-card-sub">门槛 优秀>0.05 良好>0.03</div>' + gradeChip(mg.holdout_ic) + '</div>' +
-        '<div class="wb-card"><div class="wb-card-label">holdout_rank_ic（持出期·Rank IC）</div><div class="wb-card-value">' + formatNumber(m.holdout_rank_ic, 3) + '</div><div class="wb-card-sub">门槛 优秀>0.08 良好>0.06</div>' + gradeChip(mg.holdout_rank_ic) + '</div>' +
-        '<div class="wb-card"><div class="wb-card-label">holdout_top_decile_avg（Top 10% 平均20日收益）</div><div class="wb-card-value">' + formatPercent(m.holdout_top_decile_avg) + '</div><div class="wb-card-sub">门槛 优秀>3% 良好>2%</div>' + gradeChip(mg.holdout_top_decile_avg) + '</div>' +
-        '<div class="wb-card"><div class="wb-card-label">holdout_long_short_spread（多空价差）</div><div class="wb-card-value">' + formatPercent(m.holdout_long_short_spread) + '</div><div class="wb-card-sub">门槛 优秀>4% 良好>2%</div>' + gradeChip(mg.holdout_long_short_spread) + '</div>' +
-        '<div class="wb-card"><div class="wb-card-label">holdout_winrate_top（Top 10% 胜率）</div><div class="wb-card-value">' + formatPercent(m.holdout_winrate_top) + '</div><div class="wb-card-sub">门槛 优秀>60% 良好>56%</div>' + gradeChip(mg.holdout_winrate_top) + '</div>';
+        '<div class="wb-card"><div class="wb-card-label">holdout_ic（持出期·IC）</div><div class="wb-card-value">' + formatUtils.formatNumber(m.holdout_ic, 3) + '</div><div class="wb-card-sub">门槛 优秀>0.05 良好>0.03</div>' + gradeChip(mg.holdout_ic) + '</div>' +
+        '<div class="wb-card"><div class="wb-card-label">holdout_rank_ic（持出期·Rank IC）</div><div class="wb-card-value">' + formatUtils.formatNumber(m.holdout_rank_ic, 3) + '</div><div class="wb-card-sub">门槛 优秀>0.08 良好>0.06</div>' + gradeChip(mg.holdout_rank_ic) + '</div>' +
+        '<div class="wb-card"><div class="wb-card-label">holdout_top_decile_avg（Top 10% 平均20日收益）</div><div class="wb-card-value">' + formatUtils.formatPercent(m.holdout_top_decile_avg, 2, true) + '</div><div class="wb-card-sub">门槛 优秀>3% 良好>2%</div>' + gradeChip(mg.holdout_top_decile_avg) + '</div>' +
+        '<div class="wb-card"><div class="wb-card-label">holdout_long_short_spread（多空价差）</div><div class="wb-card-value">' + formatUtils.formatPercent(m.holdout_long_short_spread, 2, true) + '</div><div class="wb-card-sub">门槛 优秀>4% 良好>2%</div>' + gradeChip(mg.holdout_long_short_spread) + '</div>' +
+        '<div class="wb-card"><div class="wb-card-label">holdout_winrate_top（Top 10% 胜率）</div><div class="wb-card-value">' + formatUtils.formatPercent(m.holdout_winrate_top, 2, true) + '</div><div class="wb-card-sub">门槛 优秀>60% 良好>56%</div>' + gradeChip(mg.holdout_winrate_top) + '</div>';
     } catch (e) {
       box.innerHTML = '<div class="muted">error: ' + e.message + '</div>';
     }

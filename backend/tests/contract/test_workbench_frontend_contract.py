@@ -38,6 +38,7 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "'assets/js/widgets/etf-opportunity.js'" in index
     assert "'assets/js/widgets/etf-workbench.js'" in index
     assert "'assets/js/widgets/model-monitor.js'" in index
+    assert "'assets/js/widgets/format-utils.js'" in index
     assert "'assets/js/widgets/workbench-health.js'" in index
     assert 'id="instScorecardFramework"' in index
     assert 'id="instScorecardStats"' in index
@@ -58,6 +59,8 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert index.index("'assets/js/widgets/etf-opportunity.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/etf-workbench.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/model-monitor.js'") < index.index("'assets/js/app.js'")
+    assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/model-monitor.js'")
+    assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/grid-optimizer.js'")
     assert index.index("'assets/js/widgets/workbench-health.js'") < index.index("'assets/js/app.js'")
     assert 'onclick="window.App.showView(\'data-health\')"' not in index
     assert "高级数据健康" not in index

@@ -12,15 +12,8 @@
       .replace(/"/g, '&quot;');
   }
 
-  function fmt(v, d) {
-    if (v == null || isNaN(v)) return '-';
-    return Number(v).toFixed(d == null ? 2 : d);
-  }
-  function fmtPct(v, d) {
-    if (v == null || isNaN(v)) return '-';
-    var n = Number(v);
-    return (n > 0 ? '+' : '') + n.toFixed(d == null ? 2 : d) + '%';
-  }
+  var formatUtils = (typeof globalThis !== 'undefined' && globalThis.WidgetFormatUtils) || global.WidgetFormatUtils;
+  if (!formatUtils) throw new Error('WidgetFormatUtils missing');
 
   async function api(path) {
     var r = await fetch(path);
@@ -34,16 +27,16 @@
     return '<div class="grid-opt-best">' +
       '<div class="grid-opt-best-head">推荐步长</div>' +
       '<div class="grid-opt-best-grid">' +
-        '<div class="grid-opt-metric"><span class="grid-opt-metric-label">步长</span><span class="grid-opt-metric-value">' + fmt(best.step_pct, 1) + '%</span></div>' +
-        '<div class="grid-opt-metric"><span class="grid-opt-metric-label">收益</span><span class="grid-opt-metric-value">' + fmtPct(best.return_pct) + '</span></div>' +
-        '<div class="grid-opt-metric"><span class="grid-opt-metric-label">超额</span><span class="grid-opt-metric-value">' + fmtPct(best.backtest_excess_pct) + '</span></div>' +
-        '<div class="grid-opt-metric"><span class="grid-opt-metric-label">最大回撤</span><span class="grid-opt-metric-value">' + fmtPct(best.max_drawdown_pct) + '</span></div>' +
-        '<div class="grid-opt-metric"><span class="grid-opt-metric-label">夏普</span><span class="grid-opt-metric-value">' + fmt(best.sharpe) + '</span></div>' +
+        '<div class="grid-opt-metric"><span class="grid-opt-metric-label">步长</span><span class="grid-opt-metric-value">' + formatUtils.formatNumber(best.step_pct, 1) + '%</span></div>' +
+        '<div class="grid-opt-metric"><span class="grid-opt-metric-label">收益</span><span class="grid-opt-metric-value">' + formatUtils.formatPercent(best.return_pct, 2, false, true) + '</span></div>' +
+        '<div class="grid-opt-metric"><span class="grid-opt-metric-label">超额</span><span class="grid-opt-metric-value">' + formatUtils.formatPercent(best.backtest_excess_pct, 2, false, true) + '</span></div>' +
+        '<div class="grid-opt-metric"><span class="grid-opt-metric-label">最大回撤</span><span class="grid-opt-metric-value">' + formatUtils.formatPercent(best.max_drawdown_pct, 2, false, true) + '</span></div>' +
+        '<div class="grid-opt-metric"><span class="grid-opt-metric-label">夏普</span><span class="grid-opt-metric-value">' + formatUtils.formatNumber(best.sharpe, 2) + '</span></div>' +
         '<div class="grid-opt-metric"><span class="grid-opt-metric-label">交易次数</span><span class="grid-opt-metric-value">' + (best.trade_count || 0) + '</span></div>' +
         '<div class="grid-opt-metric"><span class="grid-opt-metric-label">完整卖出</span><span class="grid-opt-metric-value">' + (best.sell_count || 0) + '</span></div>' +
         '<div class="grid-opt-metric"><span class="grid-opt-metric-label">胜率</span><span class="grid-opt-metric-value">' + (best.win_rate != null ? (best.win_rate * 100).toFixed(1) + '%' : '-') + '</span></div>' +
       '</div>' +
-      '<div class="grid-opt-baseline">基准 buy-and-hold 收益: ' + fmtPct(bhRet) + '</div>' +
+      '<div class="grid-opt-baseline">基准 buy-and-hold 收益: ' + formatUtils.formatPercent(bhRet, 2, false, true) + '</div>' +
       '</div>';
   }
 
@@ -53,11 +46,11 @@
     var rowsHtml = rows.map(function (c) {
       var cls = c.hard_gate_passed ? 'grid-opt-row--pass' : 'grid-opt-row--fail';
       return '<tr class="' + cls + '">' +
-        '<td>' + fmt(c.step_pct, 1) + '%</td>' +
-        '<td class="mono">' + fmtPct(c.return_pct) + '</td>' +
-        '<td class="mono">' + fmtPct(c.excess_pct) + '</td>' +
-        '<td class="mono">' + fmtPct(c.max_drawdown_pct) + '</td>' +
-        '<td class="mono">' + fmt(c.sharpe) + '</td>' +
+        '<td>' + formatUtils.formatNumber(c.step_pct, 1) + '%</td>' +
+        '<td class="mono">' + formatUtils.formatPercent(c.return_pct, 2, false, true) + '</td>' +
+        '<td class="mono">' + formatUtils.formatPercent(c.excess_pct, 2, false, true) + '</td>' +
+        '<td class="mono">' + formatUtils.formatPercent(c.max_drawdown_pct, 2, false, true) + '</td>' +
+        '<td class="mono">' + formatUtils.formatNumber(c.sharpe, 2) + '</td>' +
         '<td>' + (c.trade_count || 0) + ' / ' + (c.sell_count || 0) + '</td>' +
         '<td>' + (c.win_rate != null ? (c.win_rate * 100).toFixed(0) + '%' : '-') + '</td>' +
         '<td>' + (c.candidate_score != null ? c.candidate_score.toFixed(1) : '-') + '</td>' +
@@ -94,7 +87,7 @@
     var bhLine = '<line x1="' + padL + '" y1="' + Y(bhRet).toFixed(1) + '" x2="' + (w - padR) + '" y2="' + Y(bhRet).toFixed(1) +
       '" stroke="var(--cm-accent-warm)" stroke-dasharray="4 3" stroke-width="1.2"></line>' +
       '<text x="' + (w - padR - 4) + '" y="' + (Y(bhRet) - 4).toFixed(1) +
-      '" text-anchor="end" font-size="10" fill="var(--cm-accent-warm)">持有基准 ' + fmtPct(bhRet, 1) + '</text>';
+      '" text-anchor="end" font-size="10" fill="var(--cm-accent-warm)">持有基准 ' + formatUtils.formatPercent(bhRet, 1, false, true) + '</text>';
 
     // axis labels
     var xTicks = [xMin, (xMin + xMax) / 2, xMax].map(function (t) {
@@ -103,7 +96,7 @@
     }).join('');
     var yTicks = [yMin, (yMin + yMax) / 2, yMax].map(function (t) {
       return '<text x="' + (padL - 4) + '" y="' + (Y(t) + 3).toFixed(1) +
-        '" text-anchor="end" font-size="10" fill="var(--cm-ink-500)">' + fmtPct(t, 0) + '</text>';
+        '" text-anchor="end" font-size="10" fill="var(--cm-ink-500)">' + formatUtils.formatPercent(t, 0, false, true) + '</text>';
     }).join('');
 
     return '<svg viewBox="0 0 ' + w + ' ' + h + '" class="grid-opt-chart">' +
