@@ -23,6 +23,7 @@
   var InstitutionScorecardWidget = window.InstitutionScorecardWidget || null;
   var ETFListWidget = window.ETFListWidget || null;
   var ETFOpportunityWidget = window.ETFOpportunityWidget || null;
+  var WorkbenchHealthWidget = window.WorkbenchHealthWidget || null;
   var etfState = AppNav.getEtfState();
   var instListState = AppListState.inst;
   var stockListState = AppListState.stock;
@@ -289,119 +290,24 @@
     }
   }
 
-  async function refreshWorkbenchHealthBar() {
-    // 并行拉 5 个数据源拼装 5 张健康卡
-    try {
-      var [status, inst, evStats, up, sig] = await Promise.all([
-        api('/api/inst/market/status').catch(() => null),
-        api('/api/inst/institutions').catch(() => null),
-        api('/api/signals/events/stats').catch(() => null),
-        api('/api/inst/update/status').catch(() => null),
-        api('/api/signals/today?freshness_days=90&limit=2000').catch(() => null),
-      ]);
-      renderHealthFreshness(status);
-      renderHealthEvents(evStats, status);
-      renderHealthInst(inst);
-      renderHealthSignals(sig);
-      renderHealthPipeline(up);
-    } catch (e) { /* 不阻塞 */ }
-  }
-
-  function setText(id, text) { var n = el(id); if (n) n.textContent = text == null ? '—' : String(text); }
   function setHtml(id, html) { var n = el(id); if (n) n.innerHTML = html || ''; }
-  function setChip(id, text, tone) {
-    var n = el(id); if (!n) return;
-    n.textContent = text || '';
-    n.classList.remove('chip-ok', 'chip-warn', 'chip-bad');
-    if (tone) n.classList.add('chip-' + tone);
-  }
-  function daysAgoFromYmd(ymd) {
-    if (!ymd) return null;
-    var s = String(ymd).replace(/[^0-9]/g, '').slice(0, 8);
-    if (s.length !== 8) return null;
-    var dt = new Date(+s.slice(0,4), +s.slice(4,6)-1, +s.slice(6,8));
-    return Math.floor((Date.now() - dt.getTime()) / 86400000);
+  function workbenchHealthDeps() {
+    return {
+      api: api,
+      fmt: fmt,
+      fmtDate: fmtDate,
+      fmtDateTime: fmtDateTime,
+    };
   }
 
-  function renderHealthFreshness(status) {
-    if (!status) { setText('wbFreshDate', '—'); return; }
-    setText('wbFreshDate', fmtDate(status.latest_notice_date));
-    var days = daysAgoFromYmd(status.latest_notice_date);
-    setText('wbFreshAge', days == null ? '' : '距今 ' + days + ' 天');
-    if (days == null) setChip('wbFreshChip', '');
-    else if (days <= 3) setChip('wbFreshChip', '新鲜', 'ok');
-    else if (days <= 7) setChip('wbFreshChip', '稍旧', 'warn');
-    else setChip('wbFreshChip', '已过时', 'bad');
+  async function refreshWorkbenchHealthBar() {
+    if (!WorkbenchHealthWidget || typeof WorkbenchHealthWidget.refreshWorkbenchHealthBar !== 'function') return;
+    return WorkbenchHealthWidget.refreshWorkbenchHealthBar(workbenchHealthDeps());
   }
 
-  function renderHealthEvents(evStats, status) {
-    // 任务 3：事件成熟卡直接显示 /api/signals/events/stats 的真实数字
-    // buy_total 为所有 new_entry/increase 事件，buy_matured 为其中 gain_60d 已观察到的
-    if (!evStats) {
-      var fallback = (status?.total_records) || 0;
-      setText('wbEvMatured', fmt(fallback));
-      setText('wbEvTotal', '事件总数');
-      setText('wbEvPct', '');
-      return;
-    }
-    var total = evStats.buy_total || 0;
-    var matured = evStats.buy_matured || 0;
-    var pct = total ? Math.round(matured / total * 100) : 0;
-    setText('wbEvMatured', fmt(matured));
-    setText('wbEvTotal', '成熟 / 总 ' + fmt(total));
-    setText('wbEvPct', '成熟率 ' + pct + '%');
-  }
-
-  function renderHealthInst(inst) {
-    var arr = (inst && inst.data) ? inst.data : [];
-    var summary = TypeSummaryWidget && TypeSummaryWidget.collectEnabledTypeSummary
-      ? TypeSummaryWidget.collectEnabledTypeSummary(arr, 4)
-      : null;
-    var active = summary ? summary.active : arr.filter(function (i) { return i.enabled && !i.blacklisted; }).length;
-    var total = summary ? summary.total : arr.length;
-    setText('wbInstActive', fmt(active));
-    setText('wbInstTotal', '总 ' + fmt(total) + ' · 黑名单 ' + fmt(total - active));
-    // 展示全部类别，按数量降序；卡片位置有限，类别数多时展示 Top 4 + "+N类"
-    var chipLabel = summary ? summary.label : '';
-    var wbInstTypesEl = el('wbInstTypes');
-    if (wbInstTypesEl) {
-      wbInstTypesEl.textContent = chipLabel;
-      wbInstTypesEl.title = summary ? summary.title : '';
-    }
-  }
-
-  function renderHealthSignals(sig) {
-    if (!sig) { setText('wbSigFollow', '—'); return; }
-    var by = (sig.summary && sig.summary.by_action) || {};
-    setText('wbSigFollow', fmt(by.follow || 0) + ' 可跟');
-    setText('wbSigWatchSkip', fmt(by.watch || 0) + ' 观察 · ' + fmt(by.skip || 0) + ' 不跟');
-  }
-
-  function renderHealthPipeline(up) {
-    if (!up) { setText('wbPipeStatus', '—'); return; }
-    var running = up.running === true;
-    var summary = up.summary || {};
-    var counts = summary.counts || {};
-    var failedCount = counts.failed || 0;
-    var completedCount = counts.completed || 0;
-    var skippedCount = counts.skipped || 0;
-    var latestAt = counts.latest_at || summary.latest_status_at || null;
-    if (running) {
-      setText('wbPipeStatus', '运行中');
-      setChip('wbPipeChip', '进行中', 'warn');
-    } else if (failedCount > 0) {
-      setText('wbPipeStatus', failedCount + ' 步失败');
-      setChip('wbPipeChip', '需排查', 'bad');
-    } else {
-      setText('wbPipeStatus', '就绪');
-      setChip('wbPipeChip', (completedCount + '/' + (completedCount + skippedCount + failedCount)) + ' 步', 'ok');
-    }
-    if (latestAt) {
-      var d = latestAt.slice(0, 16).replace('T', ' ');
-      setText('wbPipeLast', '上次运行 ' + d);
-    } else {
-      setText('wbPipeLast', '');
-    }
+  async function refreshNetwork() {
+    if (!WorkbenchHealthWidget || typeof WorkbenchHealthWidget.refreshNetwork !== 'function') return;
+    return WorkbenchHealthWidget.refreshNetwork(workbenchHealthDeps());
   }
 
   function topCountEntries(counts, limit) {
@@ -720,77 +626,6 @@
   function instLink(id, name, type) { return '<span class="type-tag clickable-name" data-type="' + esc(type || 'other') + '" onclick="App.toggleInstDetail(\'' + esc(id) + '\',this)" style="cursor:pointer;font-size:11px">' + esc(name || '') + '</span>' }
   function typeTag(type, label) { return '<span class="type-tag" data-type="' + esc(type || 'other') + '">' + (label || esc(type || 'other')) + '</span>' }
   function evTag(type, label) { var cls = { new_entry: 'new', increase: 'up', decrease: 'down', exit: 'exit', unchanged: 'unchanged' }[type] || 'unchanged'; return '<span class="event-tag event-' + (cls) + '">' + esc(label || { new_entry: '新进', increase: '增持', decrease: '减持', exit: '退出', unchanged: '不变' }[type] || type) + '</span>' }
-
-  // ============================================================
-  // Network Connectivity Check
-  // ============================================================
-  function normalizeSourceName(detail, fallback) {
-    if (!detail) return fallback;
-    var s = String(detail).trim();
-    // 抽取实际源名，去掉 HTTP 状态码 / IP / 端口 / 括号尾注
-    if (/^HTTP\s*\d+$/i.test(s)) return fallback;
-    s = s.split(/[\s(（]/)[0];                 // 去掉括号说明
-    s = s.replace(/_[\d.]+:\d+$/, '');         // tdxhub_218.6.170.47:7709 → tdxhub
-    s = s.replace(/:\d+$/, '');                // host:port → host
-    // 项目自维护 tdxhub 源统一展示为 tdxhub（底层 python 包名仍为 tdxhub）
-    if (/^tdxhub$/i.test(s)) s = 'tdxhub';
-    return s || fallback;
-  }
-  function setSourcePill(id, name, online, detail, pending) {
-    var pill = el(id);
-    if (!pill) return;
-    pill.classList.remove('online', 'offline', 'pending');
-    pill.classList.add(pending ? 'pending' : (online ? 'online' : 'offline'));
-    var textEl = pill.querySelector('.source-pill-text');
-    if (!textEl) return;
-    var statusText = pending ? '检测中' : (online ? '在线' : '离线');
-    var text = name + ' · ' + statusText;
-    if (!pending && online && detail) text += ' · ' + detail;
-    textEl.textContent = text;
-  }
-  function primeNetworkPills() {
-    setSourcePill('sourcePillHoldings', '股东源', false, '', false);
-    setSourcePill('sourcePillKline', 'K线源', false, '', false);
-    setSourcePill('sourcePillIndustry', '行业源', false, '', false);
-  }
-  async function checkNetwork() {
-    setSourcePill('sourcePillHoldings', '股东源', false, '', true);
-    setSourcePill('sourcePillKline', 'K线源', false, '', true);
-    setSourcePill('sourcePillIndustry', '行业源', false, '', true);
-    var r = await apiCached('/api/inst/update/connectivity', 5 * 60 * 1000);
-    if (!r) {
-      primeNetworkPills();
-      return;
-    }
-    setSourcePill('sourcePillHoldings', '股东源', !!r.holdings_source,
-      normalizeSourceName(r.holdings_source_detail, 'akshare'), false);
-    setSourcePill('sourcePillKline', 'K线源', !!r.kline_source,
-      normalizeSourceName(r.kline_source_detail, 'tdxhub'), false);
-    setSourcePill('sourcePillIndustry', '行业源', !!r.industry_source,
-      normalizeSourceName(r.industry_source_detail, 'tdxhub'), false);
-  }
-
-  // 手动强制刷新连通性（绕过前后端 5 分钟缓存）
-  async function refreshNetwork() {
-    setSourcePill('sourcePillHoldings', '股东源', false, '', true);
-    setSourcePill('sourcePillKline', 'K线源', false, '', true);
-    setSourcePill('sourcePillIndustry', '行业源', false, '', true);
-    try {
-      // 清前端 apiCached 缓存
-      if (window.App && typeof window.App._api === 'function') {
-        // 直接 fetch force=1 绕过后端缓存
-        const r = await fetch('/api/inst/update/connectivity?force=1').then(x => x.json());
-        setSourcePill('sourcePillHoldings', '股东源', !!r.holdings_source,
-          normalizeSourceName(r.holdings_source_detail, 'akshare'), false);
-        setSourcePill('sourcePillKline', 'K线源', !!r.kline_source,
-          normalizeSourceName(r.kline_source_detail, 'tdxhub'), false);
-        setSourcePill('sourcePillIndustry', '行业源', !!r.industry_source,
-          normalizeSourceName(r.industry_source_detail, 'tdxhub'), false);
-      }
-    } catch (e) {
-      primeNetworkPills();
-    }
-  }
 
   // ============================================================
   // Scorecard

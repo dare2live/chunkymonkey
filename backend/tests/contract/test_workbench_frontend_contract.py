@@ -38,6 +38,7 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "'assets/js/widgets/etf-list.js'" in index
     assert "'assets/js/widgets/etf-opportunity.js'" in index
     assert "'assets/js/widgets/model-monitor.js'" in index
+    assert "'assets/js/widgets/workbench-health.js'" in index
     assert 'id="instScorecardFramework"' in index
     assert 'id="instScorecardStats"' in index
     assert 'id="instScorecardParams"' in index
@@ -57,6 +58,7 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert index.index("'assets/js/widgets/etf-list.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/etf-opportunity.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/model-monitor.js'") < index.index("'assets/js/app.js'")
+    assert index.index("'assets/js/widgets/workbench-health.js'") < index.index("'assets/js/app.js'")
     assert 'onclick="window.App.showView(\'data-health\')"' not in index
     assert "高级数据健康" not in index
     assert "window.App.showWorkbenchTab('dataSources')" in index
@@ -81,9 +83,12 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "ETFListWidget" in app_js
     assert "ETFOpportunityWidget" in app_js
     assert "ModelMonitorWidget" in app_js
+    assert "WorkbenchHealthWidget" in app_js
     assert "function loadEtfList()" in app_js
     assert "function loadEtfOpportunity()" in app_js
     assert "function loadModelMonitor()" in app_js
+    assert "function refreshWorkbenchHealthBar()" in app_js
+    assert "function refreshNetwork()" in app_js
     assert "function loadResearch()" in app_js
     assert "function loadInstMgmt" not in app_js
     assert "function buildDeepAnalysisHtml(" not in app_js
@@ -136,6 +141,17 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "function ensureFeatureLabels(" not in app_js
     assert "window.FeatureLabels" not in app_js
     assert "modelMonitorState" not in app_js
+    assert "function setText(" not in app_js
+    assert "function setChip(" not in app_js
+    assert "function normalizeSourceName(" not in app_js
+    assert "function setSourcePill(" not in app_js
+    assert "function primeNetworkPills(" not in app_js
+    assert "function checkNetwork(" not in app_js
+    assert "function renderHealthFreshness(" not in app_js
+    assert "function renderHealthEvents(" not in app_js
+    assert "function renderHealthInst(" not in app_js
+    assert "function renderHealthSignals(" not in app_js
+    assert "function renderHealthPipeline(" not in app_js
     assert "ETF 列表 widget 暂不可用" in app_js
     assert "buildStockFilterMetaByCode" in stock_list_controls_js
     assert "applyStockFilters" in stock_list_controls_js
