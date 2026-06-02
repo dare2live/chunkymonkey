@@ -103,6 +103,9 @@ def _stage_opt_summary(report: dict[str, Any] | None) -> dict[str, Any] | None:
     sensitivity = report.get("min_signals_sensitivity")
     if not isinstance(sensitivity, list):
         sensitivity = []
+    live_formula_registry = report.get("live_formula_registry")
+    if not isinstance(live_formula_registry, dict):
+        live_formula_registry = {}
     blocked_reason_counts = report.get("blocked_reason_counts")
     if not isinstance(blocked_reason_counts, dict):
         blocked_reason_counts = {}
@@ -129,6 +132,7 @@ def _stage_opt_summary(report: dict[str, Any] | None) -> dict[str, Any] | None:
         "top_blocked_reason_counts": top_blocked_reason_counts,
         "next_action_recommendation": recommendation,
         "min_signals_sensitivity": sensitivity,
+        "live_formula_registry": live_formula_registry,
     }
 
 
@@ -281,6 +285,12 @@ def _next_actions(
             structural_notes = [str(item) for item in recommendation.get("structural_notes") or [] if str(item).strip()]
             if structural_notes:
                 details.append(f"structural notes: {'; '.join(structural_notes)}")
+            live_formula_registry = stage_opt.get("live_formula_registry") or {}
+            live_formula_ids = [str(item) for item in live_formula_registry.get("formula_ids") or [] if str(item).strip()]
+            if live_formula_registry.get("formula_count") is not None:
+                details.append(f"live registry formulas: {live_formula_registry.get('formula_count')}")
+            if live_formula_ids:
+                details.append(f"live registry ids: {', '.join(live_formula_ids[:10])}")
             action_text += " (" + "; ".join(details) + ")"
         actions.append(
             {

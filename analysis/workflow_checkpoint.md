@@ -146,6 +146,13 @@ The model pipeline snapshot below is historical evidence for the completed
   controller still points to `P1 / upstream_candidate_supply`, so the
   structural conclusion remains the same even though the evidence density
   improved again.
+- controller boundary note: the live formula registry surfaced by stage-opt and
+  `doctor` contains only 7 live formula ids (`macd_golden_cross`,
+  `turtle_breakout_20`, `turtle_breakout_55`, `dynamic_ma_iterative_cross`,
+  `reversal_1m_mild`, `reversal_1m_deep`, `reversal_1w`); the `bestchoice`
+  `gs_*` / `volume_base_breakout` / `activity_breakout` / `ma_base_breakout`
+  families remain research-only challengers and are not counted as live
+  stage-opt supply.
 - stage-opt MACD state mart: 2026-06-02 added
   `mart_macd_state_history` / `build_macd_state_history.py` as a separate
   MACD active-state diagnostic mart. It uses a 180-day warm-up window and

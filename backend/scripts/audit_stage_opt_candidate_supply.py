@@ -27,6 +27,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.calendar import DEFAULT_CLOSE_HOUR, DEFAULT_CLOSE_MINUTE
 from services.backtest.filters import is_index_code
+import services.formula_engine.bootstrap  # noqa: F401
+from services.formula_engine import REGISTRY
 
 
 MARKET_DB = Path(__file__).resolve().parents[2] / "data" / "market.duckdb"
@@ -40,6 +42,14 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 def _latest_signal_date(conn) -> str | None:
     row = conn.execute("SELECT MAX(date) FROM sm.fact_technical_trigger").fetchone()
     return str(row[0]) if row and row[0] is not None else None
+
+
+def _live_formula_registry_summary() -> dict[str, Any]:
+    formula_ids = sorted(REGISTRY.keys())
+    return {
+        "formula_count": len(formula_ids),
+        "formula_ids": formula_ids,
+    }
 
 
 def _load_signal_rows(
@@ -585,6 +595,20 @@ def _render_markdown(result: dict[str, Any]) -> str:
         f"- blocked_reason_counts: {result['blocked_reason_counts']}",
         f"- next_action_recommendation: {result['next_action_recommendation']}",
         "",
+    ])
+    if result.get("live_formula_registry"):
+        registry = result["live_formula_registry"]
+        lines.extend(
+            [
+                "## Live Formula Registry",
+                f"- formula_count: {registry.get('formula_count', 0)}",
+            ]
+        )
+        formula_ids = registry.get("formula_ids") or []
+        if formula_ids:
+            lines.append(f"- formula_ids: {', '.join(str(item) for item in formula_ids)}")
+        lines.append("")
+    lines.extend([
         "## By Formula Id",
     ])
     for row in result["keys_by_formula_id"]:
@@ -728,6 +752,7 @@ def _compose_audit_result(
         "dropped_unknown_stage_examples": load_result["dropped_unknown_stage_examples"],
         "codes_with_bars": len(codes_with_bars),
         "codes_without_bars": codes_total - len(codes_with_bars),
+        "live_formula_registry": _live_formula_registry_summary(),
     }
 
 

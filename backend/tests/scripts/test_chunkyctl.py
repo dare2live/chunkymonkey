@@ -686,6 +686,18 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
             "ready_coverage_pct": 50.0,
             "blocked_reason_counts": {"below_min_signals": 6},
             "codes_without_bars": 0,
+            "live_formula_registry": {
+                "formula_count": 7,
+                "formula_ids": [
+                    "macd_golden_cross",
+                    "turtle_breakout_20",
+                    "turtle_breakout_55",
+                    "dynamic_ma_iterative_cross",
+                    "reversal_1m_mild",
+                    "reversal_1m_deep",
+                    "reversal_1w",
+                ],
+            },
             "next_action_recommendation": {
                 "priority": "P1",
                 "focus": "upstream_candidate_supply",
@@ -724,6 +736,55 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
     ]
     assert summary["summary"]["raw_trigger_rows"] == 7
     assert summary["summary"]["raw_state_history_rows"] == 3
+    assert summary["live_formula_registry"]["formula_count"] == 7
+    assert "macd_golden_cross" in summary["live_formula_registry"]["formula_ids"]
+
+
+def test_next_actions_include_stage_opt_live_registry_boundary() -> None:
+    actions = chunkyctl._next_actions(
+        {
+            "git_status": {"clean": True},
+            "codegraph": {"pending": {"sync_required": False}},
+            "complexity": {"baseline": {"status": "loaded"}, "diff": {"new_high_count": 0}},
+        },
+        {"unknown_count": 0},
+        {"verdict": "PASS"},
+        {"summary": {"total": 342, "green": 342, "yellow": 0, "red": 0}},
+        {
+            "next_action_recommendation": {
+                "priority": "P1",
+                "focus": "upstream_candidate_supply",
+                "reason": "below_min_signals dominates current blocked keys",
+                "recommended_lever": "expand upstream formula coverage or signal density before tuning profile knobs",
+                "weakest_formula_ids": ["reversal_1m_deep"],
+                "weakest_stage_bins": ["1.5"],
+                "top_blocked_reason": "below_min_signals",
+            },
+            "live_formula_registry": {
+                "formula_count": 7,
+                "formula_ids": [
+                    "macd_golden_cross",
+                    "turtle_breakout_20",
+                    "turtle_breakout_55",
+                    "dynamic_ma_iterative_cross",
+                    "reversal_1m_mild",
+                    "reversal_1m_deep",
+                    "reversal_1w",
+                ],
+            },
+        },
+    )
+
+    assert actions[-1] == {
+        "priority": "P1",
+        "action": (
+            "Stage-opt candidate supply [upstream_candidate_supply]: below_min_signals dominates current blocked keys → "
+            "expand upstream formula coverage or signal density before tuning profile knobs "
+            "(weakest formulas: reversal_1m_deep; weakest stages: 1.5; live registry formulas: 7; "
+            "live registry ids: macd_golden_cross, turtle_breakout_20, turtle_breakout_55, dynamic_ma_iterative_cross, "
+            "reversal_1m_mild, reversal_1m_deep, reversal_1w)"
+        ),
+    }
 
 
 def test_next_actions_include_stage_opt_structural_notes() -> None:
