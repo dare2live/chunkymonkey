@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 07:17:48 CST
+**Snapshot 时间**: 2026-06-03 07:21:27 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `c364240e feat: extract settings-view data source params model | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 4 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 269 |
+| HEAD | `6af8cc53 feat: extract settings-view about model | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 5 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 271 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+6af8cc53 feat: extract settings-view about model | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 5 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
+0f421ec4 docs: refresh session handoff snapshot after settings-view data source params model extraction | # commit-msg: minimal
 c364240e feat: extract settings-view data source params model | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 4 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 25a8762a docs: refresh session handoff snapshot after stock-view evidence filter cleanup | # commit-msg: minimal
 b512c0fd refactor: stock-view evidence filter single-pass cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ eaaab0a6 docs: refresh session handoff snapshot after stock-view instType cleanu
 4d2291ea docs: refresh session handoff snapshot after data-view routes event delegation cleanup | # commit-msg: minimal
 f57ff03e refactor: data-view routes event delegation cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 ddb756bb docs: refresh session handoff snapshot after data-view route table cleanup | # commit-msg: minimal
-42a8ab6b refactor: single-pass route table model cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
-0ff1b9d6 docs: refresh session handoff snapshot after turtle helper cleanup | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
