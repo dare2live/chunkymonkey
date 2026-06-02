@@ -430,3 +430,76 @@ def test_workbench_champion_model_is_pure_and_stable():
         check=False,
     )
     assert result.returncode == 0, result.stderr + result.stdout
+
+
+def test_workbench_data_sources_model_is_pure_and_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.WorkbenchView;
+        if (!view || typeof view.buildDataSourcesModel !== 'function') {
+          throw new Error('WorkbenchView.buildDataSourcesModel missing');
+        }
+
+        const model = view.buildDataSourcesModel({
+          calendar_target: '2026-06-03',
+          blockers: ['akshare down'],
+          watermarks: [{ source_name: 'tdxhub', watermark_date: '2026-06-03' }],
+          watermark_count: 1,
+          kline: {
+            primary_is_tdxhub: true,
+            fallback_active_count: 2,
+            primary: { source_name: 'tdxhub', source_tier: 1, row_count: 9, last_data_date: '2026-06-03' },
+          },
+          latest_feature_validation: {
+            validation_id: 'v1',
+            status: 'pass',
+            validated_at: '2026-06-03 02:00:00',
+            source_fallback_ratio: 0.125,
+            source_distribution: [{ source_name: 'tdxhub', row_count: 10 }],
+          },
+          processing_monitor: {
+            total_rejected_rows: 3,
+            run_count: 5,
+            recent_runs: [{ tool_name: 'dq', run_id: 'run1' }],
+            reason_counts: [{ reason: 'bad row', count: 3 }],
+          },
+          today_signal_cache: { status: 'fresh', signal_count: 12, requires_refresh: false, stale: false },
+          asset_health: {
+            summary: { total: 4 },
+            items: [{ table_name: 'fact_x', severity: 'warning', frontend_visibility: 'governance_visible' }],
+            governance_counts: {
+              quality_gate_level: { blocking: 1, warning: 2 },
+              coverage_policy: {},
+              null_policy: {},
+              model_eligibility: {},
+            },
+          },
+          tdx_server_health: { updated_at: '2026-06-03', summary: { healthy_count: 7, timeout_server_count: 1 } },
+          tdx_f10_capabilities: [{ capability: 'x' }],
+          f10_source_date_audit: { run_id: 'audit_1' },
+          tdx_f10_source_dq: { run_id: 'dq_1' },
+        });
+
+        if (!model || model.signalCacheTone !== 'fresh') throw new Error('signalCacheTone mismatch');
+        if (!model.kline.primary_is_tdxhub || model.primary.source_name !== 'tdxhub') throw new Error('kline normalization mismatch');
+        if (model.qualityCounts.blocking !== 1 || model.tdxHealthSummary.timeout_server_count !== 1) throw new Error('counts mismatch');
+        if (model.blockers.length !== 1 || model.watermarks.length !== 1 || model.tdxF10Capabilities.length !== 1) throw new Error('list normalization mismatch');
+        if (view.buildDataSourcesModel({}).signalCacheTone !== 'unknown') throw new Error('default normalization mismatch');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/workbench-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout

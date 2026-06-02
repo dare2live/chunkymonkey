@@ -632,6 +632,39 @@
     );
   }
 
+  function buildDataSourcesModel(data) {
+    data = data || {};
+    var kline = data.kline || {};
+    var primary = kline.primary || {};
+    var validation = data.latest_feature_validation || {};
+    var monitor = data.processing_monitor || {};
+    var signalCache = data.today_signal_cache || {};
+    var assetHealth = data.asset_health || {};
+    var governanceCounts = assetHealth.governance_counts || {};
+    var qualityCounts = governanceCounts.quality_gate_level || {};
+    var tdxHealth = data.tdx_server_health || {};
+    var tdxHealthSummary = tdxHealth.summary || {};
+    return {
+      kline: kline,
+      primary: primary,
+      validation: validation,
+      monitor: monitor,
+      signalCache: signalCache,
+      signalCacheTone: (signalCache.requires_refresh || signalCache.stale) ? 'warn' : (signalCache.status || 'unknown'),
+      assetHealth: assetHealth,
+      governanceCounts: governanceCounts,
+      qualityCounts: qualityCounts,
+      tdxHealth: tdxHealth,
+      tdxHealthSummary: tdxHealthSummary,
+      blockers: Array.isArray(data.blockers) ? data.blockers : [],
+      watermarks: Array.isArray(data.watermarks) ? data.watermarks : [],
+      tdxF10Capabilities: Array.isArray(data.tdx_f10_capabilities) ? data.tdx_f10_capabilities : [],
+      f10SourceDateAudit: data.f10_source_date_audit || {},
+      tdxF10SourceDq: data.tdx_f10_source_dq || {},
+      watermarkCount: Number(data.watermark_count || 0),
+    };
+  }
+
   function renderIndustryPitReadiness(data) {
     data = data || {};
     if (!data.run_id) return renderEmpty('暂无行业 PIT 质量证据');
@@ -833,85 +866,75 @@
   }
 
   function renderDataSources(data) {
-    var kline = data.kline || {};
-    var primary = kline.primary || {};
-    var validation = data.latest_feature_validation || {};
-    var monitor = data.processing_monitor || {};
-    var signalCache = data.today_signal_cache || {};
-    var assetHealth = data.asset_health || {};
-    var governanceCounts = assetHealth.governance_counts || {};
-    var qualityCounts = governanceCounts.quality_gate_level || {};
-    var tdxHealth = data.tdx_server_health || {};
-    var tdxHealthSummary = tdxHealth.summary || {};
-    var signalCacheTone = (signalCache.requires_refresh || signalCache.stale) ? 'warn' : (signalCache.status || 'unknown');
+    var model = buildDataSourcesModel(data);
     setBody(
       renderReadModelMeta(data) +
       '<div class="stats-row wb-stats-row">' +
       statCard('交易日目标', data.calendar_target || '-', 'calendar gate', data.calendar_target ? 'ok' : 'missing') +
-      statCard('K线主源', primary.source_name || '-', 'tier ' + fmt(primary.source_tier), kline.primary_is_tdxhub ? 'ok' : 'bad') +
-      statCard('主源行数', fmtNum(primary.row_count || 0), esc(primary.last_data_date || '-'), primary.row_count ? 'ok' : 'missing') +
-      statCard('TDX健康', fmtNum(tdxHealthSummary.healthy_count || 0), fmtNum(tdxHealthSummary.timeout_server_count || 0) + ' timeout servers', (tdxHealthSummary.timeout_server_count || 0) ? 'warn' : 'ok') +
-      statCard('信号快照', signalCache.status || '-', fmtNum(signalCache.signal_count || 0) + ' signals', signalCacheTone) +
-      statCard('Fallback', fmtNum(kline.fallback_active_count || 0), 'active sources', kline.fallback_active_count ? 'warn' : 'ok') +
-      statCard('资产治理', fmtNum(((assetHealth.summary || {}).total) || 0), renderStatusCounts(qualityCounts), ((qualityCounts || {}).blocking || 0) ? 'ok' : 'info') +
-      statCard('特征 fallback', fmtPct(validation.source_fallback_ratio), esc(validation.validation_id || '-'), validation.status || 'unknown') +
-      statCard('清洗拒绝', fmtNum(monitor.total_rejected_rows || 0), fmtNum(monitor.run_count || 0) + ' tool runs', (monitor.total_rejected_rows || 0) ? 'warn' : 'ok') +
+      statCard('K线主源', model.primary.source_name || '-', 'tier ' + fmt(model.primary.source_tier), model.kline.primary_is_tdxhub ? 'ok' : 'bad') +
+      statCard('主源行数', fmtNum(model.primary.row_count || 0), esc(model.primary.last_data_date || '-'), model.primary.row_count ? 'ok' : 'missing') +
+      statCard('TDX健康', fmtNum(model.tdxHealthSummary.healthy_count || 0), fmtNum(model.tdxHealthSummary.timeout_server_count || 0) + ' timeout servers', (model.tdxHealthSummary.timeout_server_count || 0) ? 'warn' : 'ok') +
+      statCard('信号快照', model.signalCache.status || '-', fmtNum(model.signalCache.signal_count || 0) + ' signals', model.signalCacheTone) +
+      statCard('Fallback', fmtNum(model.kline.fallback_active_count || 0), 'active sources', model.kline.fallback_active_count ? 'warn' : 'ok') +
+      statCard('资产治理', fmtNum(((model.assetHealth.summary || {}).total) || 0), renderStatusCounts(model.qualityCounts), ((model.qualityCounts || {}).blocking || 0) ? 'ok' : 'info') +
+      statCard('特征 fallback', fmtPct(model.validation.source_fallback_ratio), esc(model.validation.validation_id || '-'), model.validation.status || 'unknown') +
+      statCard('清洗拒绝', fmtNum(model.monitor.total_rejected_rows || 0), fmtNum(model.monitor.run_count || 0) + ' tool runs', (model.monitor.total_rejected_rows || 0) ? 'warn' : 'ok') +
       '</div>' +
 
       '<div class="wb-grid">' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>源阻塞</h3><div class="muted">failures / primary contract</div></div></div>' +
-      renderSourceBlockers(data.blockers || []) +
+      renderSourceBlockers(model.blockers) +
       '</section>' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>资产治理标签</h3><div class="muted">coverage / null / model eligibility</div></div></div>' +
-      renderAssetGovernanceCounts(governanceCounts) +
+      renderAssetGovernanceCounts(model.governanceCounts) +
       '</section>' +
       '</div>' +
 
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>资产用途与质量契约</h3><div class="muted">should it be daily / can it enter model / how nulls are interpreted</div></div></div>' +
-      renderAssetGovernanceTable(assetHealth.items || []) +
+      renderAssetGovernanceTable(model.assetHealth.items || []) +
       '</section>' +
 
       '<div class="wb-grid">' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>今日信号快照</h3><div class="muted">materialized read model</div></div></div>' +
-      renderTodaySignalCache(signalCache) +
+      renderTodaySignalCache(model.signalCache) +
       '</section>' +
       '<section class="panel wb-panel">' +
-      '<div class="panel-head"><div><h3>特征源分布</h3><div class="muted">' + esc(validation.validated_at || '-') + '</div></div></div>' +
-      renderSourceDistribution(validation.source_distribution || []) +
+      '<div class="panel-head"><div><h3>特征源分布</h3><div class="muted">' + esc(model.validation.validated_at || '-') + '</div></div></div>' +
+      renderSourceDistribution(model.validation.source_distribution || []) +
       '</section>' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>处理工具监控</h3><div class="muted">accepted / rejected</div></div></div>' +
-      renderProcessingMonitorTable(monitor.recent_runs || []) +
+      renderProcessingMonitorTable(model.monitor.recent_runs || []) +
       '</section>' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>拒绝原因</h3><div class="muted">cleaning contract</div></div></div>' +
-      renderProcessingReasonTable(monitor.reason_counts || []) +
+      renderProcessingReasonTable(model.monitor.reason_counts || []) +
       '</section>' +
       '</div>' +
 
       '<section class="panel wb-panel">' +
-      '<div class="panel-head"><div><h3>数据源水位</h3><div class="muted">' + fmtNum(data.watermark_count || 0) + ' sources</div></div></div>' +
-      renderWatermarkTable(data.watermarks || []) +
+      '<div class="panel-head"><div><h3>数据源水位</h3><div class="muted">' + fmtNum(model.watermarkCount) + ' sources</div></div></div>' +
+      renderWatermarkTable(model.watermarks) +
       '</section>' +
       '<section class="panel wb-panel">' +
-      '<div class="panel-head"><div><h3>TDX K线服务器健康</h3><div class="muted">' + esc(tdxHealth.updated_at || '-') + '</div></div></div>' +
-      renderTdxServerHealthTable(tdxHealth) +
+      '<div class="panel-head"><div><h3>TDX K线服务器健康</h3><div class="muted">' + esc(model.tdxHealth.updated_at || '-') + '</div></div></div>' +
+      renderTdxServerHealthTable(model.tdxHealth) +
       '</section>' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>TDX F10 能力矩阵</h3><div class="muted">parser / PIT source dates</div></div></div>' +
-      renderTdxF10CapabilityTable(data.tdx_f10_capabilities || []) +
+      renderTdxF10CapabilityTable(model.tdxF10Capabilities) +
       '</section>' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>TDX F10 Source-Date Audit</h3><div class="muted">section semantics / source notice candidates</div></div></div>' +
-      renderTdxF10SourceDateAudit(data.f10_source_date_audit || {}) +
+      renderTdxF10SourceDateAudit(model.f10SourceDateAudit) +
       '</section>' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>TDX/F10 Source-Date DQ</h3><div class="muted">latest global gate evidence</div></div></div>' +
-      renderTdxF10SourceDq(data.tdx_f10_source_dq || {}) +
+      renderTdxF10SourceDq(model.tdxF10SourceDq) +
       '</section>'
     );
   }
@@ -2389,6 +2412,7 @@
     buildReadModelMeta: buildReadModelMeta,
     buildDeliveryModel: buildDeliveryModel,
     buildChampionModel: buildChampionModel,
+    buildDataSourcesModel: buildDataSourcesModel,
     _renderOverview: renderOverview,
     _renderDataSources: renderDataSources,
     _renderPipelines: renderPipelines,
