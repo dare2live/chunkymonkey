@@ -503,3 +503,48 @@ def test_workbench_data_sources_model_is_pure_and_stable():
         check=False,
     )
     assert result.returncode == 0, result.stderr + result.stdout
+
+
+def test_workbench_features_model_is_pure_and_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.WorkbenchView;
+        if (!view || typeof view.buildFeaturesModel !== 'function') {
+          throw new Error('WorkbenchView.buildFeaturesModel missing');
+        }
+
+        const model = view.buildFeaturesModel({
+          registry: { feature_count: 3, model_input_count: 2, label_count: 1, group_counts: { alpha: 2 } },
+          latest_validation: { validation_id: 'v1', status: 'pass', rows: 7, source_lineage_coverage: 0.8, source_fallback_ratio: 0.25, validated_at: '2026-06-03' },
+          availability_contract: { source: 'registry', rows: [{ feature_name: 'ret_20d' }], role_counts: { model: 1 } },
+          feature_catalog: { summary: { total_features: 9, allowed_features: 7, critical_features: 1 } },
+          search_spaces: [{ feature_name: 'ret_20d' }],
+          pit_coverage: [{ feature_name: 'ret_20d' }],
+          drift_mitigation_builds: [{ run_id: 'mit_1' }],
+          top_associations: [{ feature_name: 'ret_20d' }],
+          feature_drift: { run_id: 'drift_1' },
+        });
+
+        if (!model || model.registry.feature_count !== 3 || model.validation.rows !== 7) throw new Error('base model mismatch');
+        if (model.availability.rows.length !== 1 || model.catalogSummary.total_features !== 9) throw new Error('nested normalization mismatch');
+        if (model.searchSpaces.length !== 1 || model.pitCoverage.length !== 1 || model.driftMitigationBuilds.length !== 1) throw new Error('list normalization mismatch');
+        if (model.featureDrift.run_id !== 'drift_1' || model.availability.source !== 'registry') throw new Error('passthrough mismatch');
+        if (view.buildFeaturesModel({}).availability.rows.length !== 0) throw new Error('default normalization mismatch');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/workbench-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout

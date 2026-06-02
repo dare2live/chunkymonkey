@@ -225,6 +225,9 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "renderDataSources" in workbench_js
     assert "buildDataSourcesModel" in workbench_js
     assert "buildDataSourcesModel(data)" in workbench_js
+    assert "renderFeatures" in workbench_js
+    assert "buildFeaturesModel" in workbench_js
+    assert "buildFeaturesModel(data)" in workbench_js
     assert "推荐" in workbench_js
     assert "存储" in workbench_js
     assert "稳定性上下文" in workbench_js

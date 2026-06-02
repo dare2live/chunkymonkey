@@ -1227,47 +1227,67 @@
   }
 
   function renderFeatures(data) {
+    var model = buildFeaturesModel(data);
+    setBody(
+      renderReadModelMeta(data) +
+      '<div class="stats-row wb-stats-row">' +
+      statCard('Registry', fmtNum(model.registry.feature_count || 0), 'model inputs ' + fmtNum(model.registry.model_input_count || 0), 'ok') +
+      statCard('Labels', fmtNum(model.registry.label_count || 0), 'PIT lagged labels', 'info') +
+      statCard('字段契约', fmtNum(model.availability.rows.length), esc(model.availability.source || 'registry'), model.availability.rows.length ? 'ok' : 'missing') +
+      statCard('字段资产', fmtNum(model.catalogSummary.total_features || 0), 'allowed ' + fmtNum(model.catalogSummary.allowed_features || 0), model.catalogSummary.critical_features ? 'warn' : 'ok') +
+      statCard('Panel rows', fmtNum(model.validation.rows || 0), esc(model.validation.validation_id || '-'), model.validation.status || 'unknown') +
+      statCard('Lineage', fmtPct(model.validation.source_lineage_coverage), 'source coverage', model.validation.source_lineage_coverage >= 1 ? 'ok' : 'warn') +
+      statCard('Fallback ratio', fmtPct(model.validation.source_fallback_ratio), 'feature panel', model.validation.source_fallback_ratio ? 'warn' : 'ok') +
+      '</div>' +
+      '<div class="wb-grid">' +
+      '<section class="panel wb-panel"><div class="panel-head"><div><h3>特征组</h3><div class="muted">registry groups</div></div></div>' +
+      renderKeyValueCounts(model.registry.group_counts || {}) + '</section>' +
+      '<section class="panel wb-panel"><div class="panel-head"><div><h3>字段角色</h3><div class="muted">model / auxiliary / risk / display</div></div></div>' +
+      renderKeyValueCounts(model.availability.role_counts || {}) + '</section>' +
+      '<section class="panel wb-panel"><div class="panel-head"><div><h3>Panel Validation</h3><div class="muted">' + esc(model.validation.validated_at || '-') + '</div></div></div>' +
+      renderValidationSummary(model.validation) + '</section>' +
+      '</div>' +
+      '<section class="panel wb-panel"><div class="panel-head"><div><h3>数据字段资产目录</h3><div class="muted">coverage / PIT risk / usage gate</div></div></div>' +
+      renderFeatureCatalog(model.catalog) + '</section>' +
+      '<section class="panel wb-panel"><div class="panel-head"><div><h3>字段可用性契约</h3><div class="muted">source / cadence / density / null policy / usage role</div></div></div>' +
+      renderFeatureAvailabilityContract(model.availability.rows) + '</section>' +
+      '<section class="panel wb-panel"><div class="panel-head"><div><h3>Feature Search Space</h3><div class="muted">selected / excluded</div></div></div>' +
+      renderSearchSpaceTable(model.searchSpaces) + '</section>' +
+      '<section class="panel wb-panel"><div class="panel-head"><div><h3>PIT 覆盖</h3><div class="muted">high / critical audit</div></div></div>' +
+      renderPitCoverageTable(model.pitCoverage) + '</section>' +
+      '<section class="panel wb-panel"><div class="panel-head"><div><h3>漂移缓解候选</h3><div class="muted">rank / winsor / bucket panels</div></div></div>' +
+      renderMitigationBuildTable(model.driftMitigationBuilds) + '</section>' +
+      '<div class="wb-grid">' +
+      '<section class="panel wb-panel"><div class="panel-head"><div><h3>关联性 Top</h3><div class="muted">latest association run</div></div></div>' +
+      renderAssociationTable(model.topAssociations) + '</section>' +
+      '<section class="panel wb-panel"><div class="panel-head"><div><h3>漂移根因</h3><div class="muted">feature PSI</div></div></div>' +
+      renderDriftTable(model.featureDrift) + '</section>' +
+      '</div>'
+    );
+  }
+
+  function buildFeaturesModel(data) {
+    data = data || {};
     var registry = data.registry || {};
     var validation = data.latest_validation || {};
     var availability = data.availability_contract || {};
     var catalog = data.feature_catalog || {};
-    var catalogSummary = catalog.summary || {};
-    setBody(
-      renderReadModelMeta(data) +
-      '<div class="stats-row wb-stats-row">' +
-      statCard('Registry', fmtNum(registry.feature_count || 0), 'model inputs ' + fmtNum(registry.model_input_count || 0), 'ok') +
-      statCard('Labels', fmtNum(registry.label_count || 0), 'PIT lagged labels', 'info') +
-      statCard('字段契约', fmtNum((availability.rows || []).length), esc(availability.source || 'registry'), (availability.rows || []).length ? 'ok' : 'missing') +
-      statCard('字段资产', fmtNum(catalogSummary.total_features || 0), 'allowed ' + fmtNum(catalogSummary.allowed_features || 0), catalogSummary.critical_features ? 'warn' : 'ok') +
-      statCard('Panel rows', fmtNum(validation.rows || 0), esc(validation.validation_id || '-'), validation.status || 'unknown') +
-      statCard('Lineage', fmtPct(validation.source_lineage_coverage), 'source coverage', validation.source_lineage_coverage >= 1 ? 'ok' : 'warn') +
-      statCard('Fallback ratio', fmtPct(validation.source_fallback_ratio), 'feature panel', validation.source_fallback_ratio ? 'warn' : 'ok') +
-      '</div>' +
-      '<div class="wb-grid">' +
-      '<section class="panel wb-panel"><div class="panel-head"><div><h3>特征组</h3><div class="muted">registry groups</div></div></div>' +
-      renderKeyValueCounts(registry.group_counts || {}) + '</section>' +
-      '<section class="panel wb-panel"><div class="panel-head"><div><h3>字段角色</h3><div class="muted">model / auxiliary / risk / display</div></div></div>' +
-      renderKeyValueCounts(availability.role_counts || {}) + '</section>' +
-      '<section class="panel wb-panel"><div class="panel-head"><div><h3>Panel Validation</h3><div class="muted">' + esc(validation.validated_at || '-') + '</div></div></div>' +
-      renderValidationSummary(validation) + '</section>' +
-      '</div>' +
-      '<section class="panel wb-panel"><div class="panel-head"><div><h3>数据字段资产目录</h3><div class="muted">coverage / PIT risk / usage gate</div></div></div>' +
-      renderFeatureCatalog(catalog) + '</section>' +
-      '<section class="panel wb-panel"><div class="panel-head"><div><h3>字段可用性契约</h3><div class="muted">source / cadence / density / null policy / usage role</div></div></div>' +
-      renderFeatureAvailabilityContract(availability.rows || []) + '</section>' +
-      '<section class="panel wb-panel"><div class="panel-head"><div><h3>Feature Search Space</h3><div class="muted">selected / excluded</div></div></div>' +
-      renderSearchSpaceTable(data.search_spaces || []) + '</section>' +
-      '<section class="panel wb-panel"><div class="panel-head"><div><h3>PIT 覆盖</h3><div class="muted">high / critical audit</div></div></div>' +
-      renderPitCoverageTable(data.pit_coverage || []) + '</section>' +
-      '<section class="panel wb-panel"><div class="panel-head"><div><h3>漂移缓解候选</h3><div class="muted">rank / winsor / bucket panels</div></div></div>' +
-      renderMitigationBuildTable(data.drift_mitigation_builds || []) + '</section>' +
-      '<div class="wb-grid">' +
-      '<section class="panel wb-panel"><div class="panel-head"><div><h3>关联性 Top</h3><div class="muted">latest association run</div></div></div>' +
-      renderAssociationTable(data.top_associations || []) + '</section>' +
-      '<section class="panel wb-panel"><div class="panel-head"><div><h3>漂移根因</h3><div class="muted">feature PSI</div></div></div>' +
-      renderDriftTable(data.feature_drift) + '</section>' +
-      '</div>'
-    );
+    return {
+      registry: registry,
+      validation: validation,
+      availability: {
+        source: availability.source || 'registry',
+        rows: Array.isArray(availability.rows) ? availability.rows : [],
+        role_counts: availability.role_counts || {},
+      },
+      catalog: catalog,
+      catalogSummary: catalog.summary || {},
+      searchSpaces: Array.isArray(data.search_spaces) ? data.search_spaces : [],
+      pitCoverage: Array.isArray(data.pit_coverage) ? data.pit_coverage : [],
+      driftMitigationBuilds: Array.isArray(data.drift_mitigation_builds) ? data.drift_mitigation_builds : [],
+      topAssociations: Array.isArray(data.top_associations) ? data.top_associations : [],
+      featureDrift: data.feature_drift || {},
+    };
   }
 
   function renderFeatureAvailabilityContract(rows) {
@@ -2413,6 +2433,7 @@
     buildDeliveryModel: buildDeliveryModel,
     buildChampionModel: buildChampionModel,
     buildDataSourcesModel: buildDataSourcesModel,
+    buildFeaturesModel: buildFeaturesModel,
     _renderOverview: renderOverview,
     _renderDataSources: renderDataSources,
     _renderPipelines: renderPipelines,
