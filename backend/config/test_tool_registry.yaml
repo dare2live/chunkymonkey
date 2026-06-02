@@ -188,6 +188,23 @@ tools:
     replacement: move under backend/tests/strategies when root test cleanup is scheduled
     last_verified: "2026-05-27"
 
+  - id: stock_formula_optuna_config_tests
+    paths:
+      - backend/services/stock_formula_optuna_config.py
+      - backend/config/stock_formula_optuna.yaml
+      - backend/scripts/build_stock_formula_optuna.py
+      - backend/scripts/build_stock_formula_optuna_v2.py
+      - backend/tests/test_stock_formula_optuna_config.py
+    owner_module: optimization
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_stock_formula_optuna_config.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: stock-formula optuna bucket gate config, shared grid-search loader, and test fixture YAML
+    risk_reason: if bucket / conviction thresholds drift, the optimizer can underfill buckets or overstate high-conviction rows
+    replacement: consolidated optuna governance config if these thresholds migrate into a larger shared policy bundle
+    last_verified: "2026-06-02"
+
   - id: dim_active_universe_contract_tests
     paths:
       - backend/tests/test_universe.py

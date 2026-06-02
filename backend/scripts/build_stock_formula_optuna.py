@@ -23,6 +23,7 @@ import duckdb
 import numpy as np
 
 from services.formula_engine.shared_windows import HOLDING_DAYS
+from services.stock_formula_optuna_config import DEFAULT_STOCK_FORMULA_OPTUNA_CONFIG
 
 
 log = logging.getLogger("build_stock_formula_optuna")
@@ -39,9 +40,9 @@ AMT_BINS  = [(0, 0.7, "额减"), (0.7, 1.3, "额平"), (1.3, 2.0, "额温"), (2.
 P60_BINS  = [(0, 0.65, "深底"), (0.65, 0.85, "中位"), (0.85, 0.97, "高位"), (0.97, 99, "新高")]
 
 # 最少信号过滤 (per stock × variant × hd × 5 维桶)
-MIN_N_PER_BUCKET = 3   # 该股该桶最少触发 3 次
-MIN_WIN_HIGH_CONVICTION = 0.60
-MIN_N_HIGH_CONVICTION = 5
+MIN_N_PER_BUCKET = DEFAULT_STOCK_FORMULA_OPTUNA_CONFIG.min_n_per_bucket
+MIN_WIN_HIGH_CONVICTION = DEFAULT_STOCK_FORMULA_OPTUNA_CONFIG.min_win_high_conviction
+MIN_N_HIGH_CONVICTION = DEFAULT_STOCK_FORMULA_OPTUNA_CONFIG.min_n_high_conviction
 
 
 def _bin_label(value, bins):

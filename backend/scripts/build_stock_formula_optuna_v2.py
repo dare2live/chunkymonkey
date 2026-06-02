@@ -35,6 +35,7 @@ from services.backtest.realistic_engine import Bar, backtest_signals
 from services.backtest.result import BacktestSummary
 from services.backtest.strategy_defaults import DEFAULT_STRATEGY
 from services.formula_engine.shared_windows import HOLDING_DAYS
+from services.stock_formula_optuna_config import DEFAULT_STOCK_FORMULA_OPTUNA_CONFIG
 from services.trading_config import EXECUTION_MODEL
 
 
@@ -50,7 +51,7 @@ VOL_BINS  = [(0, 0.7, "缩量"), (0.7, 1.3, "平量"), (1.3, 2.0, "温量"), (2.
 AMT_BINS  = [(0, 0.7, "额减"), (0.7, 1.3, "额平"), (1.3, 2.0, "额温"), (2.0, 99, "额爆")]
 P60_BINS  = [(0, 0.65, "深底"), (0.65, 0.85, "中位"), (0.85, 0.97, "高位"), (0.97, 99, "新高")]
 
-MIN_N_PER_BUCKET = 3
+MIN_N_PER_BUCKET = DEFAULT_STOCK_FORMULA_OPTUNA_CONFIG.min_n_per_bucket
 
 
 DDL = """
