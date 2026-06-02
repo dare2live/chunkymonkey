@@ -327,6 +327,20 @@ tools:
     replacement: make PIT/date-aware universe mode the production default when panel v5 migration is scheduled
     last_verified: "2026-05-27"
 
+  - id: feature_catalog_current_tests
+    paths:
+      - backend/scripts/build_feature_catalog_current.py
+      - backend/tests/pipeline/test_feature_catalog_current.py
+    owner_module: feature_catalog
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/pipeline/test_feature_catalog_current.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: feature catalog current table stats and PIT join plan audit
+    risk_reason: if per-table stats fall back to repeated queries, the catalog build becomes slower and the same coverage decisions become harder to keep synchronized
+    replacement: keep per-table stats batched in a single aggregate query and validate with the current feature table fixture
+    last_verified: "2026-06-02"
+
   - id: p0a_panel_v3_confidence_tests
     paths:
       - backend/scripts/audit_p0a_panel.py

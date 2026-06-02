@@ -11,6 +11,59 @@ from scripts import build_feature_catalog_current as subject
 pytestmark = pytest.mark.pipeline
 
 
+class _CountingConn:
+    def __init__(self, conn) -> None:
+        self._conn = conn
+        self.execute_calls = 0
+
+    def execute(self, *args, **kwargs):
+        self.execute_calls += 1
+        return self._conn.execute(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
+def test_table_stats_batches_count_and_date_bounds_queries() -> None:
+    with duck_mem() as conn:
+        conn.execute(
+            """
+            CREATE TABLE fact_feature_panel_candidate (
+                stock_code TEXT,
+                date TEXT,
+                ret_20d DOUBLE,
+                ret_20d_xs_rank DOUBLE,
+                shareholder_count_qoq DOUBLE
+            )
+            """
+        )
+        conn.executemany(
+            "INSERT INTO fact_feature_panel_candidate VALUES (?, ?, ?, ?, ?)",
+            [
+                ("000001", "2026-01-02", 0.1, 0.8, 0.05),
+                ("000002", "2026-01-03", 0.2, None, None),
+            ],
+        )
+        counting = _CountingConn(conn)
+
+        total_rows, min_date, max_date, counts = subject._table_stats(
+            counting,
+            "fact_feature_panel_candidate",
+            date_col="date",
+            features=["ret_20d", "ret_20d_xs_rank", "shareholder_count_qoq"],
+        )
+
+        assert counting.execute_calls == 1
+        assert total_rows == 2
+        assert min_date == "2026-01-02"
+        assert max_date == "2026-01-03"
+        assert counts == {
+            "ret_20d": 2,
+            "ret_20d_xs_rank": 1,
+            "shareholder_count_qoq": 1,
+        }
+
+
 def test_build_feature_catalog_current_records_pit_join_plan_and_exclusions():
     with duck_mem() as conn:
         conn.executescript(

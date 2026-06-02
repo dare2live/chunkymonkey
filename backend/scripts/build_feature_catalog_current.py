@@ -190,29 +190,50 @@ def _feature_family(feature: str, spec: FeatureSpec | None, registry_status: str
     return "unknown"
 
 
-def _date_bounds(conn: Any, table_name: str, date_col: str | None) -> tuple[str | None, str | None]:
-    if not date_col:
-        return None, None
+def _table_stats(
+    conn: Any,
+    table_name: str,
+    *,
+    date_col: str | None,
+    features: list[str],
+) -> tuple[int, str | None, str | None, dict[str, int]]:
+    select_parts = ["COUNT(*) AS total_rows"]
+    if date_col:
+        select_parts.extend(
+            [
+                f"MIN(CAST({_quote_ident(date_col)} AS VARCHAR)) AS min_date",
+                f"MAX(CAST({_quote_ident(date_col)} AS VARCHAR)) AS max_date",
+            ]
+        )
+    select_parts.extend(
+        f"COUNT({_quote_ident(feature)}) AS {_quote_ident(feature)}"
+        for feature in features
+    )
     row = conn.execute(
-        f"""
-        SELECT MIN(CAST({_quote_ident(date_col)} AS VARCHAR)) AS min_date,
-               MAX(CAST({_quote_ident(date_col)} AS VARCHAR)) AS max_date
-          FROM {_quote_ident(table_name)}
-        """
+        f"SELECT {', '.join(select_parts)} FROM {_quote_ident(table_name)}"
     ).fetchone()
     if not row:
-        return None, None
-    return row["min_date"], row["max_date"]
-
-
-def _count_non_null_columns(conn: Any, table_name: str, features: list[str]) -> dict[str, int]:
-    if not features:
-        return {}
-    select_sql = ", ".join(f"COUNT({_quote_ident(feature)}) AS {_quote_ident(feature)}" for feature in features)
-    row = conn.execute(f"SELECT {select_sql} FROM {_quote_ident(table_name)}").fetchone()
-    if not row:
-        return {feature: 0 for feature in features}
-    return {feature: int(row[feature] or 0) for feature in features}
+        return 0, None, None, {feature: 0 for feature in features}
+    if hasattr(row, "keys"):
+        total_rows = int(row["total_rows"] or 0)
+        min_date = str(row["min_date"]) if date_col and row["min_date"] is not None else None
+        max_date = str(row["max_date"]) if date_col and row["max_date"] is not None else None
+        non_null_counts = {feature: int(row[feature] or 0) for feature in features}
+        return total_rows, min_date, max_date, non_null_counts
+    idx = 0
+    total_rows = int(row[idx] or 0)
+    idx += 1
+    min_date = max_date = None
+    if date_col:
+        min_date = str(row[idx]) if row[idx] is not None else None
+        idx += 1
+        max_date = str(row[idx]) if row[idx] is not None else None
+        idx += 1
+    non_null_counts = {
+        feature: int(row[idx + offset] or 0)
+        for offset, feature in enumerate(features)
+    }
+    return total_rows, min_date, max_date, non_null_counts
 
 
 def _join_plan(
@@ -332,10 +353,13 @@ def build_feature_catalog_current(
         columns = _table_columns(conn, table_name)
         column_names = {str(col["column_name"]) for col in columns}
         signal_date_column = _date_column(column_names)
-        total_rows = int(conn.execute(f"SELECT COUNT(*) AS n FROM {_quote_ident(table_name)}").fetchone()["n"] or 0)
-        min_signal_date, max_signal_date = _date_bounds(conn, table_name, signal_date_column)
+        total_rows, min_signal_date, max_signal_date, non_null_counts = _table_stats(
+            conn,
+            table_name,
+            date_col=signal_date_column,
+            features=[str(col["column_name"]) for col in columns],
+        )
         table_has_signal_date = signal_date_column is not None
-        non_null_counts = _count_non_null_columns(conn, table_name, [str(col["column_name"]) for col in columns])
 
         for col in columns:
             feature = str(col["column_name"])
