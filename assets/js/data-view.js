@@ -81,14 +81,21 @@
     if (!tableName || !_state.health || !Array.isArray(_state.health.items)) return null;
     return _state.health.items.find(x => x.table_name === tableName) || null;
   }
-  function routeHealth(route) {
-    const asset = findAssetHealth(route && route.raw_table);
-    if (!asset) return { label: 'UNKNOWN', tone: 'info', title: 'health snapshot 未覆盖' };
+  function buildAssetHealthIndex(items) {
+    const index = new Map();
+    (items || []).forEach(item => {
+      if (item && item.table_name && !index.has(item.table_name)) index.set(item.table_name, item);
+    });
+    return index;
+  }
+  function routeHealth(route, asset) {
+    const resolvedAsset = asset || findAssetHealth(route && route.raw_table);
+    if (!resolvedAsset) return { label: 'UNKNOWN', tone: 'info', title: 'health snapshot 未覆盖' };
     return {
-      label: severityLabel(asset.severity),
-      tone: severityTone(asset.severity),
-      title: asset.issue_summary || '',
-      freshness: asset.freshness_hours != null ? `${asset.freshness_hours.toFixed(1)}h` : '—',
+      label: severityLabel(resolvedAsset.severity),
+      tone: severityTone(resolvedAsset.severity),
+      title: resolvedAsset.issue_summary || '',
+      freshness: resolvedAsset.freshness_hours != null ? `${resolvedAsset.freshness_hours.toFixed(1)}h` : '—',
     };
   }
   function fallbackStatus(route) {
@@ -238,13 +245,17 @@
     const statsEl = qs('ds-audit-stats');
     if (!el) return;
     const details = data.details || [];
+    const issues = [];
+    const okList = [];
+    details.forEach(r => {
+      if ((r.issues || []).length > 0) issues.push(r);
+      else okList.push(r);
+    });
     if (statsEl) {
       const errMark = data.n_error > 0 ? `<span style="color:#d33">${data.n_error} error</span> · ` : '';
       const warnMark = data.n_warn > 0 ? `<span style="color:#a40">${data.n_warn} warn</span> · ` : '';
       statsEl.innerHTML = `${errMark}${warnMark}<span style="color:#0a7">${data.n_ok} ok</span> / ${data.n_tables} 张 · ${esc(data.run_at || '').slice(0, 16)}`;
     }
-    const issues = details.filter(r => (r.issues || []).length > 0);
-    const okList = details.filter(r => !(r.issues || []).length);
     if (!issues.length && !okList.length) {
       el.innerHTML = '<div class="muted" style="padding:10px 0">无审计结果</div>';
       return;
@@ -296,6 +307,7 @@
   function renderRoutesTable() {
     const root = qs('ds-routes-table');
     if (!root) return;
+    const assetIndex = buildAssetHealthIndex((_state.health && _state.health.items) || []);
     const list = _state.routes.filter(r => {
       if (!_state.routeFilter) return true;
       const f = _state.routeFilter.toLowerCase();
@@ -334,9 +346,9 @@
         ${list.map(r => {
           const cur = r.current || {};
           const tgt = r.target || {};
-          const health = routeHealth(r);
+          const asset = assetIndex.get(r.raw_table) || null;
+          const health = routeHealth(r, asset);
           const fb = fallbackStatus(r);
-          const asset = findAssetHealth(r.raw_table);
           const freshness = health.freshness || (asset && asset.freshness_hours != null ? `${asset.freshness_hours.toFixed(1)}h` : '—');
           const repairLabel = r.step_id ? '运行 step' : '查看资产';
           return `
@@ -457,6 +469,7 @@
     const active = health.fallback_active || sourceHealth.fallback_active || [];
     const tiers = health.source_tier_distribution || sourceHealth.source_tier_distribution || {};
     const tierEntries = Object.entries(tiers);
+    const tierMax = tierEntries.reduce((max, [, count]) => Math.max(max, Number(count) || 0), 1);
     const routeFallbacks = _state.routes.filter(r => r.target || (r.current && r.current.status !== 'connected')).slice(0, 8);
     root.innerHTML = `<div class="cm-section-head">
       <div>
@@ -469,7 +482,7 @@
       <div class="cm-health-card">
         <h4>Tier 分布</h4>
         ${tierEntries.length ? tierEntries.map(([tier, count]) => `
-          <div class="cm-health-row"><span>${esc(tier)}</span>${global.CMViz ? global.CMViz.miniBar(count || 0, Math.max(...tierEntries.map(x => Number(x[1]) || 0), 1), { color: 'var(--cm-brand-500)' }) : ''}<b>${esc(count)}</b></div>
+          <div class="cm-health-row"><span>${esc(tier)}</span>${global.CMViz ? global.CMViz.miniBar(count || 0, tierMax, { color: 'var(--cm-brand-500)' }) : ''}<b>${esc(count)}</b></div>
         `).join('') : '<div class="muted" style="font-size:12px">暂无 tier 聚合</div>'}
       </div>
       <div class="cm-health-card">

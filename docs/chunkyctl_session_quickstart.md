@@ -49,6 +49,10 @@ while blocking assets remain red. Red data-health tables are startup blockers,
 and the snapshot now emits `writer_prompt` / owner / sync_step hints so new
 sessions can see which writer or sync step likely owns the problem before
 moving into business work.
+For shared tooling state, treat Moth as the canonical entrypoint: use
+`moth snapshot --repo /Users/dp/Documents/M/stock/chunkymonkey --profile chunkymonkey --format json`
+when you need the raw shared snapshot, and `moth sync ...` when you want the
+shared snapshot refreshed before any repo-local wrapper consumes it.
 When the session snapshot only has generated handoff files dirty, the computed
 `NEXT_ACTION` now points to the current goal blockers instead of the old
 retrain placeholder. Treat `SESSION_HANDOFF.md` as the startup state, but read
@@ -110,6 +114,8 @@ incomplete until this document is updated and the final handoff states whether
 | Dirty worktree reported | `scripts/chunkyctl worktree --format markdown` | Show a readable dirty-file bucket summary without mutating git |
 | Dirty bucket drilldown | `scripts/chunkyctl worktree --bucket <name> --format markdown` | Review one bucket's entries and action before staging/deleting anything |
 | Docs cleanup slice | `scripts/chunkyctl docs --format markdown` | Combine docs graph and docs/archive dirty-bucket readiness |
+| Shared tooling state | `moth snapshot --repo /Users/dp/Documents/M/stock/chunkymonkey --profile chunkymonkey --format json` | Canonical shared gate snapshot; repo-local wrappers should consume this rather than re-derive it |
+| Shared tooling refresh | `moth sync --repo /Users/dp/Documents/M/stock/chunkymonkey --profile chunkymonkey --format json` | Refresh codegraph + snapshot before relying on shared state |
 | Before a task | `scripts/chunkyctl preflight "task" path...` | Get required gates and scope-specific risks |
 | After edits | `scripts/chunkyctl audit --run path...` | Run scoped validation for touched files |
 | Data freshness repair | Use compute/read start plus explicit `--write-start` where available | Keep rolling lookback context separate from the DB replacement window |

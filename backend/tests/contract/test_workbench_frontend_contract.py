@@ -107,6 +107,13 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "/api/workbench/data-sources" in data_view_js
     assert "/api/data_health/snapshot" not in data_view_js
     assert "/api/data_health/sources" not in data_view_js
+    assert "function buildAssetHealthIndex(" in data_view_js
+    assert "function routeHealth(route, asset)" in data_view_js
+    assert "const assetIndex = buildAssetHealthIndex(" in data_view_js
+    assert "assetIndex.get(r.raw_table) || null" in data_view_js
+    assert "details.filter(r => (r.issues || []).length > 0)" not in data_view_js
+    assert "details.filter(r => !(r.issues || []).length)" not in data_view_js
+    assert "Math.max(...tierEntries.map" not in data_view_js
     assert "/api/workbench/overview" in workbench_js
     assert "/api/workbench/research" in workbench_js
     assert "/api/workbench/champion" in workbench_js

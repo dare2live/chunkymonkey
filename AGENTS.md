@@ -18,6 +18,11 @@ then apply the rules below in Codex terms.
 - Keep `docs/chunkyctl_session_quickstart.md` current when startup commands,
   gate order, controller/agent workflow, tool entrypoints, or project phase
   assumptions change. New sessions must not inherit stale startup instructions.
+- Treat Moth as the canonical shared tooling snapshot for this repo. When a
+  task asks for project state or shared gate facts, prefer `moth snapshot` /
+  `moth sync` as the source of truth; repo-local wrappers like
+  `scripts/chunkyctl doctor --fast` and `scripts/chunkyctl preflight` should
+  consume that layer rather than re-implementing their own parser.
 
 ## Codegraph + Complexity Review
 
