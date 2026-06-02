@@ -1155,37 +1155,74 @@
       '</tbody></table></div>';
   }
 
-  function renderTdxF10SourceDateAudit(audit) {
-    audit = audit || {};
-    var summary = audit.summary || {};
-    var rows = audit.rows || [];
-    if (!audit.run_id) return renderEmpty('暂无 F10 source-date section audit');
+  function renderTdxF10SourceDateAudit(data) {
+    var model = buildTdxF10SourceDateAuditModel(data);
+    var summary = model.summary;
+    var rows = model.rows;
+    if (!model.runId) return renderEmpty('暂无 F10 source-date section audit');
     var header = '<div class="wb-count-row">' +
-      '<span class="wb-count-pill">raw <b>' + fmtNum(summary.raw_row_count || 0) + '</b></span>' +
-      '<span class="wb-count-pill">audit rows <b>' + fmtNum(summary.audit_rows || 0) + '</b></span>' +
-      '<span class="wb-count-pill">source notice <b>' + fmtNum(summary.source_notice_candidate_occurrences || 0) + '</b></span>' +
-      '<span class="wb-count-pill">future source notice <b>' + fmtNum(summary.source_notice_candidate_future_occurrences || 0) + '</b></span>' +
-      '<span class="wb-count-pill">future plan/event <b>' + fmtNum(summary.future_occurrence_count || 0) + '</b></span>' +
-      '</div><div class="muted" style="margin-bottom:10px">run_id: <code>' + esc(audit.run_id || '-') + '</code> · built ' + esc(audit.built_at || '-') + '</div>';
+      '<span class="wb-count-pill">raw <b>' + fmtNum(model.headerCounts.rawRowCount) + '</b></span>' +
+      '<span class="wb-count-pill">audit rows <b>' + fmtNum(model.headerCounts.auditRows) + '</b></span>' +
+      '<span class="wb-count-pill">source notice <b>' + fmtNum(model.headerCounts.sourceNoticeCandidateOccurrences) + '</b></span>' +
+      '<span class="wb-count-pill">future source notice <b>' + fmtNum(model.headerCounts.sourceNoticeCandidateFutureOccurrences) + '</b></span>' +
+      '<span class="wb-count-pill">future plan/event <b>' + fmtNum(model.headerCounts.futureOccurrenceCount) + '</b></span>' +
+      '</div><div class="muted" style="margin-bottom:10px">run_id: <code>' + esc(model.runId || '-') + '</code> · built ' + esc(model.builtAt || '-') + '</div>';
     if (!rows.length) return header + renderEmpty('暂无审计明细');
     return header + '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
       '<thead><tr><th>section</th><th>pattern</th><th>role</th><th>candidate</th><th>occurrences</th><th>future</th><th>date range</th><th>coverage</th></tr></thead><tbody>' +
       rows.map(function (row) {
-        var candidate = !!row.source_notice_candidate;
-        var future = Number(row.future_occurrence_count || 0);
-        var roleTone = candidate ? 'ok' : future ? 'warn' : 'info';
         return '<tr>' +
           '<td><code>' + esc(row.section_id || '-') + '</code><div class="muted">' + esc(row.section_name || '-') + '</div></td>' +
           '<td><code>' + esc(row.pattern_name || '-') + '</code></td>' +
-          '<td>' + pill(row.date_role || '-', roleTone) + '</td>' +
-          '<td>' + pill(candidate ? 'source_notice' : 'no', candidate ? 'ok' : 'info') + '</td>' +
+          '<td>' + pill(row.date_role || '-', row.roleTone) + '</td>' +
+          '<td>' + pill(row.candidateLabel, row.candidateTone) + '</td>' +
           '<td>' + fmtNum(row.occurrence_count || 0) + '</td>' +
-          '<td>' + pill(fmtNum(future), future ? 'warn' : 'ok') + '</td>' +
-          '<td>' + esc((row.min_date || '-') + ' ~ ' + (row.max_date || '-')) + '</td>' +
+          '<td>' + pill(fmtNum(row.futureOccurrenceCount), row.futureTone) + '</td>' +
+          '<td>' + esc(row.dateRange) + '</td>' +
           '<td>' + fmtNum(row.stock_count || 0) + ' stocks<div class="muted">' + fmtNum(row.raw_row_count || 0) + ' raw rows</div></td>' +
           '</tr>';
       }).join('') +
       '</tbody></table></div>';
+  }
+
+  function buildTdxF10SourceDateAuditModel(audit) {
+    audit = audit || {};
+    var summary = audit.summary || {};
+    var rows = Array.isArray(audit.rows) ? audit.rows : [];
+    var normalizedRows = rows.map(function (row) {
+      var candidate = !!(row && row.source_notice_candidate);
+      var futureOccurrenceCount = Number((row && row.future_occurrence_count) || 0);
+      return {
+        section_id: (row && row.section_id) || '-',
+        section_name: (row && row.section_name) || '-',
+        pattern_name: (row && row.pattern_name) || '-',
+        date_role: (row && row.date_role) || '-',
+        candidateLabel: candidate ? 'source_notice' : 'no',
+        candidateTone: candidate ? 'ok' : 'info',
+        roleTone: candidate ? 'ok' : futureOccurrenceCount ? 'warn' : 'info',
+        futureTone: futureOccurrenceCount ? 'warn' : 'ok',
+        occurrence_count: Number((row && row.occurrence_count) || 0),
+        futureOccurrenceCount: futureOccurrenceCount,
+        dateRange: ((row && row.min_date) || '-') + ' ~ ' + ((row && row.max_date) || '-'),
+        stock_count: Number((row && row.stock_count) || 0),
+        raw_row_count: Number((row && row.raw_row_count) || 0),
+      };
+    });
+    return {
+      runId: audit.run_id || '',
+      builtAt: audit.built_at || '',
+      summary: summary,
+      rows: normalizedRows,
+      headerCounts: {
+        rawRowCount: Number(summary.raw_row_count || 0),
+        auditRows: Number(summary.audit_rows || 0),
+        sourceNoticeCandidateOccurrences: Number(summary.source_notice_candidate_occurrences || 0),
+        sourceNoticeCandidateFutureOccurrences: Number(summary.source_notice_candidate_future_occurrences || 0),
+        futureOccurrenceCount: Number(summary.future_occurrence_count || 0),
+      },
+      rowCount: normalizedRows.length,
+      isEmpty: !audit.run_id,
+    };
   }
 
   function renderTdxF10SourceDq(dq) {
@@ -2562,6 +2599,7 @@
     buildRecommendationsModel: buildRecommendationsModel,
     buildPaperSimModel: buildPaperSimModel,
     buildStorageModel: buildStorageModel,
+    buildTdxF10SourceDateAuditModel: buildTdxF10SourceDateAuditModel,
     _renderOverview: renderOverview,
     _renderDataSources: renderDataSources,
     _renderPipelines: renderPipelines,
