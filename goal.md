@@ -3,6 +3,10 @@
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
 
+## 2026-06-03 — stability context rows model extraction
+
+- `assets/js/workbench-view.js` 里的稳定性上下文已继续收成页级 model：`buildStabilityContextModel()` 现在把 `summaries` / `diagnostics` 进一步规范成 `summaryRows`、`diagnosticRows`、`summaryCount`、`diagnosticCount`、`isEmpty`，`renderStabilityContext()` 只消费 model；`buildResearchModel()` / `buildChampionModel()` 也都直接消费这个 model。`backend/tests/contract/test_workbench_frontend_contract.py` 和 `backend/tests/contract/test_workbench_frontend_render_smoke.py` 已补 helper 导出与输入归一回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/workbench-view.js --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_workbench_frontend_render_smoke.py` PASS，`node --check assets/js/workbench-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 23 passed，`analyze_complexity.py` 复扫后 `assets/js/workbench-view.js` 无明显热点，`codegraph sync .` 已同步。
+
 ## 2026-06-03 — stability context model extraction
 
 - `assets/js/workbench-view.js` 里的稳定性上下文已收成 `buildStabilityContextModel()` 纯 helper，`buildResearchModel()` / `buildChampionModel()` 现在都直接消费该 model，`renderResearch()` / `renderChampion()` 只显示 `runId` 与归一后的 summaries/diagnostics；`backend/tests/contract/test_workbench_frontend_contract.py` 和 `backend/tests/contract/test_workbench_frontend_render_smoke.py` 已补 helper 导出与输入归一回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/workbench-view.js --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_workbench_frontend_render_smoke.py` PASS，`node --check assets/js/workbench-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 23 passed，`analyze_complexity.py` 复扫后 `assets/js/workbench-view.js` 无明显热点，`codegraph sync .` 已同步。
