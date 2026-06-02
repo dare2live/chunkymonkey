@@ -164,15 +164,24 @@
       const h = src.health || {};
       const state = h.state || 'unknown';
       const tele = src.telemetry || {};
+      const capabilityRows = Array.isArray(src.capabilities) ? src.capabilities : [];
       const teleLine = tele.call_count > 0
         ? `${tele.call_count} 次调用` + (tele.fail_count ? ` / ${tele.fail_count} 失败` : '')
           + (tele.avg_latency_ms ? ` · ${tele.avg_latency_ms}ms 均延` : '')
         : '尚未通过 registry 调用';
+      const detailRowsHtml = capabilityRows.length
+        ? capabilityRows.map(c => `
+          <div style="padding:3px 0;border-bottom:1px dotted var(--cm-bg-100)">
+            <code style="background:var(--cm-bg-100);padding:1px 4px;border-radius:3px">${esc(c.name || 'unknown')}</code>
+            <span style="color:var(--cm-ink-500)">${esc(c.freshness || '—')}</span> · ${esc(c.description || '')}
+          </div>
+        `).join('')
+        : '<div class="muted" style="font-size:11px">暂无</div>';
       return {
         name: src.name,
         displayName: src.display_name || src.name,
         priority: src.priority,
-        capabilityCount: Array.isArray(src.capabilities) ? src.capabilities.length : 0,
+        capabilityCount: capabilityRows.length,
         tone: state === 'ok' ? 'ok' : state === 'degraded' ? 'warn' : state === 'down' ? 'bad' : 'info',
         color: STATE_COLORS[state || 'unknown'],
         stateLabel: STATE_LABELS[state] || 'UNKNOWN',
@@ -180,6 +189,7 @@
         teleLine,
         repoUrl: src.repo_url || '',
         hasRepoLink: !!src.repo_url,
+        detailRowsHtml,
       };
     });
   }
@@ -373,6 +383,7 @@
         </div>
       </div>`;
     const model = buildSourceCardsModel(_state.sources);
+    _state.sourceCardModelByName = new Map(model.map(src => [src.name, src]));
     root.innerHTML = tdxPriority + model.map(src => {
       const repoLink = src.hasRepoLink
         ? `<a href="${esc(src.repoUrl)}" target="_blank" style="color:var(--cm-ink-500);font-size:11px;text-decoration:none">repo↗</a>`
@@ -406,14 +417,9 @@
     if (!card) return;
     const panel = card.querySelector('.ds-detail-panel');
     if (panel.style.display === 'none' || !panel.style.display) {
-      const src = _state.sources.find(s => s.name === name);
+      const src = _state.sourceCardModelByName && _state.sourceCardModelByName.get(name);
       if (!src) return;
-      panel.innerHTML = src.capabilities.map(c => `
-        <div style="padding:3px 0;border-bottom:1px dotted var(--cm-bg-100)">
-          <code style="background:var(--cm-bg-100);padding:1px 4px;border-radius:3px">${esc(c.name)}</code>
-          <span style="color:var(--cm-ink-500)">${esc(c.freshness)}</span> · ${esc(c.description)}
-        </div>
-      `).join('');
+      panel.innerHTML = src.detailRowsHtml;
       panel.style.display = 'block';
     } else {
       panel.style.display = 'none';

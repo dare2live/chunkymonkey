@@ -142,7 +142,10 @@ def test_data_view_build_source_cards_model_is_stable():
             display_name: 'TDXHub',
             priority: 1,
             repo_url: 'https://example.com/tdxhub',
-            capabilities: [1, 2, 3],
+            capabilities: [
+              { name: 'kline_daily', freshness: 'daily', description: 'K线' },
+              { name: 'financial_gpcw_8q', freshness: 'quarterly', description: '财务' },
+            ],
             telemetry: { call_count: 2, fail_count: 1, avg_latency_ms: 123.4 },
             health: { state: 'ok', notes: 'healthy' },
           },
@@ -161,10 +164,14 @@ def test_data_view_build_source_cards_model_is_stable():
         if (first.tone !== 'ok' || first.color !== '#0a0' || first.stateLabel !== 'OK') throw new Error('healthy source meta mismatch');
         if (first.teleLine !== '2 次调用 / 1 失败 · 123.4ms 均延') throw new Error('teleLine mismatch: ' + first.teleLine);
         if (!first.hasRepoLink) throw new Error('repo link flag missing');
+        if (!first.detailRowsHtml.includes('kline_daily') || !first.detailRowsHtml.includes('financial_gpcw_8q')) {
+          throw new Error('detail rows html mismatch: ' + first.detailRowsHtml);
+        }
         const second = model[1];
         if (second.tone !== 'bad' || second.color !== '#d33' || second.stateLabel !== 'DOWN') throw new Error('down source meta mismatch');
         if (second.teleLine !== '尚未通过 registry 调用') throw new Error('fallback teleLine mismatch');
         if (second.capabilityCount !== 0) throw new Error('capability count mismatch');
+        if (!second.detailRowsHtml.includes('暂无')) throw new Error('empty detail rows fallback mismatch: ' + second.detailRowsHtml);
         """
     ).strip()
 
