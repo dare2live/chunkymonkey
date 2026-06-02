@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 02:53:24 CST
+**Snapshot 时间**: 2026-06-03 02:55:59 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `a2a3e928 refactor: extract overview model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 11 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 195 |
+| HEAD | `2aeb136f refactor: extract recommendations model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 12 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 197 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+2aeb136f refactor: extract recommendations model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 12 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
+3c147c76 docs: refresh session handoff snapshot after overview model extraction | # commit-msg: minimal
 a2a3e928 refactor: extract overview model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 11 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 1fffa62a docs: refresh session handoff snapshot after rank matrix cache model extraction | # commit-msg: minimal
 a0c4ebcb refactor: extract rank matrix cache model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 10 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ f9a39da3 refactor: extract temporal synergy model from workbench view | Codex-Re
 f9a25895 docs: refresh session handoff snapshot after features model extraction | # commit-msg: minimal
 86a243dd refactor: extract features model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 8 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 0271160d docs: refresh session handoff snapshot after data sources model extraction | # commit-msg: minimal
-2a0ac5fb refactor: extract data sources model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 7 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
-ba7e5e5f docs: refresh session handoff snapshot after champion model extraction | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
