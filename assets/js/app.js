@@ -14,6 +14,7 @@
   var AppCache = window.AppCache;
   var AppNav = window.AppNav;
   var AppListState = window.AppListState;
+  var StockListControlsWidget = window.StockListControlsWidget || null;
   var StockSummaryWidget = window.StockSummaryWidget || null;
   var ReturnsChartWidget = window.ReturnsChartWidget || null;
   var TypeSummaryWidget = window.TypeSummaryWidget || null;
@@ -595,21 +596,10 @@
   }
 
   function stockSortRows(stocks) {
-    // Step 5 任务 2：排序从 4 种（composite/turtle/attention/crowding）简化为 2 种
-    // （composite/notice）。turtle/attention/crowding 旧 mode 值仍 fall-through 到
-    // composite，不会报错，但 UI 不再暴露这些选项。
-    var mode = stockListState.getSortMode();
-    return (stocks || []).slice().sort(function (left, right) {
-      var diff = 0;
-      if (mode === 'notice') {
-        diff = String(right.latest_notice_date || '').localeCompare(String(left.latest_notice_date || ''));
-      } else {
-        diff = Number(right.composite_priority_score || -1) - Number(left.composite_priority_score || -1);
-      }
-      if (!diff) diff = Number(right.discovery_score || -1) - Number(left.discovery_score || -1);
-      if (!diff) diff = String(left.stock_code || '').localeCompare(String(right.stock_code || ''), 'zh-CN');
-      return diff;
-    });
+    if (StockListControlsWidget && StockListControlsWidget.sortStockRows) {
+      return StockListControlsWidget.sortStockRows(stocks || [], stockListState.getSortMode());
+    }
+    return (stocks || []).slice();
   }
 
   function summaryRow(label, count, tone, total) {
@@ -924,54 +914,22 @@
   }
 
   function renderStockFilters() {
-    var signals = [
-      { key: 'all', label: '全部' },
-      { key: 'a1', label: 'A1' },
-      { key: 'a2', label: 'A2' },
-      { key: 'a3', label: 'A3' },
-      { key: 'a45', label: 'A4/A5' },
-      { key: 'none', label: '无信号' }
-    ];
-    var gates = [
-      { key: 'all', label: '全部' },
-      { key: 'follow', label: '可跟' },
-      { key: 'watch', label: '关注' },
-      { key: 'observe', label: '观察' },
-      { key: 'avoid', label: '回避' }
-    ];
-    // Step 5 任务 2：筛选条瘦身。删除 8 组 legacy 分类（信号 setup / 发现 / 质量 / 阶段 / 预测 /
-    // TDX / 海龟 / 外部），保留与 signals_v2 决策流程对齐的 2 组（执行 / 排序）+ 1 组新增行业。
-    // 理由：stocks 视图定位为"深挖单只股票"，发现新股票应回到信号 v2 主视图；多维评分 legacy
-    // 筛选对 signals_v2 使用者噪音大。
-    var sorts = [
-      { key: 'composite', label: '综合优先' },
-      { key: 'notice', label: '公告最近' },
-    ];
-    // 从列表数据里实时提取 TDX L1 分布作为行业筛选胶囊
-    var tdxL1Counts = {};
-    (stockListState.getData() || []).forEach(function (s) {
-      var code = (s.tdx_l1 || '').trim();
-      if (code) tdxL1Counts[code] = (tdxL1Counts[code] || 0) + 1;
-    });
     var tdxL1Names = {
       T01: '能源', T02: '材料', T03: '日常消费', T04: '可选消费',
       T05: '商贸', T06: '社会服务', T07: '装备制造', T08: '公用事业',
       T09: '交通运输', T10: '金融', T11: '建筑地产', T12: '信息产业',
       T13: '综合类'
     };
-    var industries = [{ key: 'all', label: '全部' }].concat(
-      Object.keys(tdxL1Counts).sort().map(function (code) {
-        return { key: code, label: (tdxL1Names[code] || code) + ' ' + tdxL1Counts[code] };
-      })
-    );
-    function chip(group, key, label, active) {
-      return '<span class="type-tag stock-filter-chip' + (active ? ' active' : '') + '" data-filter-group="' + group + '" data-filter-key="' + key + '">' + label + '</span>';
+    if (StockListControlsWidget && StockListControlsWidget.buildStockFilterBar) {
+      return StockListControlsWidget.buildStockFilterBar({
+        stocks: stockListState.getData() || [],
+        activeGate: stockListState.getFilterGate(),
+        activeIndustry: stockListState.getFilterIndustry(),
+        activeSortMode: stockListState.getSortMode(),
+        tdxL1Names: tdxL1Names,
+      });
     }
-    return '<div class="stock-filter-bar">' +
-      '<div class="stock-filter-group"><span class="stock-filter-label-pill">执行</span>' + gates.map(function (f) { return chip('gate', f.key, f.label, f.key === stockListState.getFilterGate()) }).join('') + '</div>' +
-      '<div class="stock-filter-group"><span class="stock-filter-label-pill">行业</span>' + industries.map(function (f) { return chip('industry', f.key, f.label, f.key === stockListState.getFilterIndustry()) }).join('') + '</div>' +
-      '<div class="stock-filter-group"><span class="stock-filter-label-pill stock-filter-label-pill--sort">排序</span>' + sorts.map(function (f) { return chip('sort', f.key, f.label, f.key === stockListState.getSortMode()) }).join('') + '</div>' +
-      '</div>';
+    return '';
   }
 
   // Step 5 任务 2：筛选条瘦身后，本函数只处理 gate / industry / sort 三组。

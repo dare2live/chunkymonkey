@@ -29,6 +29,7 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "'assets/js/widgets/returns-chart.js'" in index
     assert "'assets/js/widgets/type-summary.js'" in index
     assert "'assets/js/widgets/stock-summary.js'" in index
+    assert "'assets/js/widgets/stock-list-controls.js'" in index
     assert 'onclick="window.App.showView(\'data-health\')"' not in index
     assert "高级数据健康" not in index
     assert "window.App.showWorkbenchTab('dataSources')" in index
@@ -43,6 +44,7 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "ReturnsChartWidget" in app_js
     assert "TypeSummaryWidget" in app_js
     assert "StockSummaryWidget" in app_js
+    assert "StockListControlsWidget" in app_js
     assert "/api/workbench/data-sources" in data_view_js
     assert "/api/data_health/snapshot" not in data_view_js
     assert "/api/data_health/sources" not in data_view_js
