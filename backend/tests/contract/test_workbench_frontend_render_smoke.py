@@ -574,6 +574,52 @@ def test_workbench_tdx_f10_source_date_audit_model_is_pure_and_stable():
     assert result.returncode == 0, result.stderr + result.stdout
 
 
+def test_workbench_tdx_f10_source_date_dq_model_is_pure_and_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.WorkbenchView;
+        if (!view || typeof view.buildTdxF10SourceDateDqModel !== 'function') {
+          throw new Error('WorkbenchView.buildTdxF10SourceDateDqModel missing');
+        }
+
+        const model = view.buildTdxF10SourceDateDqModel({
+          gate_run_id: 'dq_f10_source',
+          gate_status: 'pass',
+          blocker_count: 0,
+          warning_count: 0,
+          ended_at: '2026-05-07T10:00:13',
+          summary: { detail_count: 1 },
+          details: [
+            { table_name: 'fact_shareholder_plan_tdx_f10', column_name: 'source_available_date', check_name: 'plan_window_used_as_source_date', status: 'pass', severity: 'blocker', row_count: 12062, violation_count: 0, reason: 'ok' },
+          ],
+        });
+
+        if (!model || model.gateRunId !== 'dq_f10_source') throw new Error('gateRunId mismatch');
+        if (model.headerCounts.checkCount !== 1 || model.detailCount !== 1) throw new Error('summary mismatch');
+        if (model.details[0].statusTone !== 'ok' || model.details[0].violationCount !== 0) throw new Error('detail normalization mismatch');
+        if (model.isEmpty !== false) throw new Error('empty flag mismatch');
+        const empty = view.buildTdxF10SourceDateDqModel({});
+        if (empty.gateRunId !== '' || empty.detailCount !== 0 || empty.isEmpty !== true) throw new Error('default normalization mismatch');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/workbench-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+
+
 def test_workbench_champion_model_is_pure_and_stable():
     script = textwrap.dedent(
         r"""
