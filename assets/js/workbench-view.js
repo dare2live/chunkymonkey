@@ -2541,22 +2541,22 @@
 
   function renderStabilityContext(data) {
     data = data || {};
-    var summaries = data.summaries || [];
-    var diagnostics = data.diagnostics || [];
+    var summaries = data.summaryRows || [];
+    var diagnostics = data.diagnosticRows || [];
     if (!summaries.length && !diagnostics.length) return renderEmpty('暂无稳定性上下文诊断');
     return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
       '<thead><tr><th>source run</th><th>family</th><th>Blockers</th><th>Holdout</th><th>WF</th><th>Gates</th><th>建议</th></tr></thead><tbody>' +
       summaries.map(function (row) {
-        var blockers = row.main_blockers || [];
+        var blockers = row.blockers || [];
         return '<tr>' +
-          '<td><code>' + esc(row.source_run_id || '-') + '</code><div class="muted">' + esc(row.label_name || '-') + '</div></td>' +
-          '<td>' + esc(row.model_family || '-') + '<div class="muted">trial ' + fmtNum(row.best_trial_number) + '</div></td>' +
+          '<td><code>' + esc(row.sourceRunId || '-') + '</code><div class="muted">' + esc(row.labelName || '-') + '</div></td>' +
+          '<td>' + esc(row.modelFamily || '-') + '<div class="muted">trial ' + fmtNum(row.bestTrialNumber) + '</div></td>' +
           '<td>' + (blockers.length ? blockers.map(function (b) { return pill(b, 'bad'); }).join('') : pill('none', 'ok')) + '</td>' +
-          '<td>' + fmtFloat(row.holdout_rank_ic, 4) + (row.low_holdout_rank_ic ? '<div>' + pill('low RankIC', 'bad') + '</div>' : '') + '</td>' +
-          '<td>' + fmtFloat(row.walkforward_avg_rank_ic, 4) + ' / ' + fmtFloat(row.walkforward_std_rank_ic, 4) +
-            '<div class="muted">neg ' + fmtNum(row.negative_rank_ic_folds || 0) + ' / weak ' + fmtNum(row.weak_rank_ic_periods || 0) + '</div></td>' +
-          '<td>' + pill('drift ' + (row.drift_gate_pass ? 'pass' : 'fail'), row.drift_gate_pass ? 'pass' : 'fail') +
-            pill('dd ' + (row.drawdown_gate_pass ? 'pass' : 'fail'), row.drawdown_gate_pass ? 'pass' : 'fail') + '</td>' +
+          '<td>' + fmtFloat(row.holdoutRankIc, 4) + (row.lowHoldoutRankIc ? '<div>' + pill('low RankIC', 'bad') + '</div>' : '') + '</td>' +
+          '<td>' + fmtFloat(row.walkforwardAvgRankIc, 4) + ' / ' + fmtFloat(row.walkforwardStdRankIc, 4) +
+            '<div class="muted">neg ' + fmtNum(row.negativeRankIcFolds || 0) + ' / weak ' + fmtNum(row.weakRankIcPeriods || 0) + '</div></td>' +
+          '<td>' + pill('drift ' + (row.driftGatePass ? 'pass' : 'fail'), row.driftGatePass ? 'pass' : 'fail') +
+            pill('dd ' + (row.drawdownGatePass ? 'pass' : 'fail'), row.drawdownGatePass ? 'pass' : 'fail') + '</td>' +
           '<td>' + esc(row.recommendation || '-') + '</td>' +
           '</tr>';
       }).join('') +
@@ -2571,15 +2571,15 @@
       rows.map(function (row) {
         var diag = row.diagnosis || 'unknown';
         return '<tr>' +
-          '<td>' + esc(row.scope || '-') + ' #' + fmtNum(row.fold_id) +
-            '<div class="muted">' + esc(row.period_start || '-') + ' ~ ' + esc(row.period_end || '-') + '</div></td>' +
+          '<td>' + esc(row.scope || '-') + ' #' + fmtNum(row.foldId) +
+            '<div class="muted">' + esc(row.periodStart || '-') + ' ~ ' + esc(row.periodEnd || '-') + '</div></td>' +
           '<td>' + pill(diag, diag === 'ok' ? 'ok' : 'bad') + '</td>' +
-          '<td>' + fmtFloat(row.rank_ic, 4) + '</td>' +
+          '<td>' + fmtFloat(row.rankIc, 4) + '</td>' +
           '<td>' + fmtPct(row.spread) + '</td>' +
-          '<td>' + fmtPct(row.topk_net_return) + '<div class="muted">DD ' + fmtPct(row.topk_max_drawdown) + '</div></td>' +
-          '<td>' + fmtPct(row.label_positive_rate) + '<div class="muted">' + fmtPct(row.market_ret_mean) + '</div></td>' +
-          '<td>' + esc(row.dominant_regime || '-') + '<div class="muted">' + fmtPct(row.dominant_regime_share) + '</div></td>' +
-          '<td>' + fmtFloat(row.feature_drift_psi_max, 3) + '</td>' +
+          '<td>' + fmtPct(row.topkNetReturn) + '<div class="muted">DD ' + fmtPct(row.topkMaxDrawdown) + '</div></td>' +
+          '<td>' + fmtPct(row.labelPositiveRate) + '<div class="muted">' + fmtPct(row.marketRetMean) + '</div></td>' +
+          '<td>' + esc(row.dominantRegime || '-') + '<div class="muted">' + fmtPct(row.dominantRegimeShare) + '</div></td>' +
+          '<td>' + fmtFloat(row.featureDriftPsiMax, 3) + '</td>' +
           '</tr>';
       }).join('') +
       '</tbody></table></div>';
@@ -2593,6 +2593,43 @@
       runId: context.run_id || '',
       summaries: summaries,
       diagnostics: diagnostics,
+      summaryRows: summaries.map(function (row) {
+        var blockers = Array.isArray(row.main_blockers) ? row.main_blockers : [];
+        return {
+          sourceRunId: row.source_run_id || '',
+          labelName: row.label_name || '',
+          modelFamily: row.model_family || '',
+          bestTrialNumber: row.best_trial_number || 0,
+          blockers: blockers,
+          holdoutRankIc: row.holdout_rank_ic,
+          lowHoldoutRankIc: !!row.low_holdout_rank_ic,
+          walkforwardAvgRankIc: row.walkforward_avg_rank_ic,
+          walkforwardStdRankIc: row.walkforward_std_rank_ic,
+          negativeRankIcFolds: row.negative_rank_ic_folds || 0,
+          weakRankIcPeriods: row.weak_rank_ic_periods || 0,
+          driftGatePass: !!row.drift_gate_pass,
+          drawdownGatePass: !!row.drawdown_gate_pass,
+          recommendation: row.recommendation || '-',
+        };
+      }),
+      diagnosticRows: diagnostics.map(function (row) {
+        return {
+          scope: row.scope || '',
+          foldId: row.fold_id || 0,
+          periodStart: row.period_start || '',
+          periodEnd: row.period_end || '',
+          diagnosis: row.diagnosis || 'unknown',
+          rankIc: row.rank_ic,
+          spread: row.spread,
+          topkNetReturn: row.topk_net_return,
+          topkMaxDrawdown: row.topk_max_drawdown,
+          labelPositiveRate: row.label_positive_rate,
+          marketRetMean: row.market_ret_mean,
+          dominantRegime: row.dominant_regime || '',
+          dominantRegimeShare: row.dominant_regime_share,
+          featureDriftPsiMax: row.feature_drift_psi_max,
+        };
+      }),
       summaryCount: summaries.length,
       diagnosticCount: diagnostics.length,
       isEmpty: !context.run_id && !summaries.length && !diagnostics.length,

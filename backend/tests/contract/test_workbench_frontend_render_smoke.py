@@ -772,13 +772,15 @@ def test_workbench_stability_context_model_is_pure_and_stable():
 
         const model = view.buildStabilityContextModel({
           run_id: 'stability_1',
-          summaries: [{ source_run_id: 'run_a' }],
-          diagnostics: [{ scope: 'fold_1' }],
+          summaries: [{ source_run_id: 'run_a', label_name: 'label_a', model_family: 'family_a', main_blockers: ['b1'], best_trial_number: 3 }],
+          diagnostics: [{ scope: 'fold_1', fold_id: 2, diagnosis: 'ok' }],
         });
 
         if (model.runId !== 'stability_1') throw new Error('runId mismatch: ' + model.runId);
         if (model.summaryCount !== 1 || model.diagnosticCount !== 1) throw new Error('count mismatch');
         if (!Array.isArray(model.summaries) || !Array.isArray(model.diagnostics)) throw new Error('array normalization mismatch');
+        if (model.summaryRows[0].sourceRunId !== 'run_a' || model.summaryRows[0].blockers.length !== 1 || model.summaryRows[0].bestTrialNumber !== 3) throw new Error('summary row mismatch');
+        if (model.diagnosticRows[0].scope !== 'fold_1' || model.diagnosticRows[0].foldId !== 2 || model.diagnosticRows[0].diagnosis !== 'ok') throw new Error('diagnostic row mismatch');
         if (view.buildStabilityContextModel({}).isEmpty !== true) throw new Error('default empty mismatch');
         """
     ).strip()
