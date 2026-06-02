@@ -22,26 +22,6 @@
   var formatUtils = (typeof globalThis !== 'undefined' && globalThis.WidgetFormatUtils) || global.WidgetFormatUtils;
   if (!formatUtils) throw new Error('WidgetFormatUtils missing');
 
-  function etfNum(value, digits) {
-    if (value == null || Number.isNaN(Number(value))) return '-';
-    return Number(value).toFixed(digits == null ? 1 : digits);
-  }
-
-  function scoreNum(value) {
-    if (value == null || value === '') return '-';
-    var num = Number(value);
-    if (!Number.isFinite(num)) return '-';
-    return num.toFixed(1);
-  }
-
-  function signedPct(value) {
-    return formatUtils.formatPercent(value, 2, false, true);
-  }
-
-  function pct(value) {
-    return formatUtils.formatPercent(value, 2);
-  }
-
   function etfOverviewTone(state) {
     if (state === 'panic') return { bg: 'var(--cm-brand-50)', fg: 'var(--cm-brand-500)', label: '恐慌待托底' };
     if (state === 'cooling') return { bg: 'var(--cm-warn-100)', fg: 'var(--cm-warn-500)', label: '降温观察期' };
@@ -54,10 +34,10 @@
     return list.map(function (item) {
       var meta = tone || { bg: 'var(--cm-brand-50)', fg: 'var(--cm-brand-500)' };
       var extra = [];
-      if (item.rotation_score != null) extra.push('轮动 ' + etfNum(item.rotation_score, 1));
+      if (item.rotation_score != null) extra.push('轮动 ' + formatUtils.formatNumber(item.rotation_score, 1));
       if (item.setup_state) extra.push(item.setup_state);
       if (item.strategy_type) extra.push(item.strategy_type);
-      if (item.grid_step_pct != null) extra.push('步长 ' + etfNum(item.grid_step_pct, 1) + '%');
+      if (item.grid_step_pct != null) extra.push('步长 ' + formatUtils.formatNumber(item.grid_step_pct, 1) + '%');
       var clickable = actionMode === 'analyze' && !!item.code;
       var attr = clickable ? ' data-etf-analyze="' + escText(item.code) + '"' : '';
       return '<span' + attr + ' style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:' + meta.bg + ';color:' + meta.fg + ';font-size:11px;font-weight:600;margin:4px 6px 0 0' + (clickable ? ';cursor:pointer' : '') + '">' +
@@ -117,14 +97,14 @@
     var safeData = data || {};
     var gridCards = (safeData.grid_candidates || []).map(function (item) {
       return '<div style="padding:8px 10px;border-radius:10px;background:var(--cm-brand-100);color:var(--cm-brand-500);margin-bottom:6px;cursor:pointer" data-etf-analyze="' + escText(item.code) + '">' +
-        '<div style="font-weight:700;font-size:12px">' + escText((item.name || item.code) + ' · 步长 ' + scoreNum(item.best_step_pct) + '%') + '</div>' +
-        '<div style="font-size:11px;line-height:1.6;margin-top:3px">' + escText('收益 ' + signedPct(item.backtest_return_pct) + ' · 超额 ' + signedPct(item.backtest_excess_pct) + ' · DD ' + pct(item.backtest_max_drawdown_pct)) + ' <span style="opacity:0.6;font-size:10px">▶ 深度分析</span></div>' +
+        '<div style="font-weight:700;font-size:12px">' + escText((item.name || item.code) + ' · 步长 ' + formatUtils.formatNumber(item.best_step_pct, 1) + '%') + '</div>' +
+        '<div style="font-size:11px;line-height:1.6;margin-top:3px">' + escText('收益 ' + formatUtils.formatPercent(item.backtest_return_pct, 2, false, true) + ' · 超额 ' + formatUtils.formatPercent(item.backtest_excess_pct, 2, false, true) + ' · DD ' + formatUtils.formatPercent(item.backtest_max_drawdown_pct, 2)) + ' <span style="opacity:0.6;font-size:10px">▶ 深度分析</span></div>' +
         '</div>';
     }).join('');
     var trendCards = (safeData.trend_candidates || []).map(function (item) {
       return '<div style="padding:8px 10px;border-radius:10px;background:var(--cm-ok-100);color:var(--cm-ok-500);margin-bottom:6px;cursor:pointer" data-etf-analyze="' + escText(item.code) + '">' +
         '<div style="font-weight:700;font-size:12px">' + escText((item.name || item.code) + ' · ' + (item.action || '观察')) + '</div>' +
-        '<div style="font-size:11px;line-height:1.6;margin-top:3px">' + escText('4w ' + signedPct(item.relative_strength_4w) + ' / 12w ' + signedPct(item.relative_strength_12w) + ' · 因子 ' + etfNum(item.factor_score, 1)) + ' <span style="opacity:0.6;font-size:10px">▶ 深度分析</span></div>' +
+        '<div style="font-size:11px;line-height:1.6;margin-top:3px">' + escText('4w ' + formatUtils.formatPercent(item.relative_strength_4w, 2, false, true) + ' / 12w ' + formatUtils.formatPercent(item.relative_strength_12w, 2, false, true) + ' · 因子 ' + formatUtils.formatNumber(item.factor_score, 1)) + ' <span style="opacity:0.6;font-size:10px">▶ 深度分析</span></div>' +
         '</div>';
     }).join('');
 
@@ -160,7 +140,7 @@
       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
       '<span style="font-weight:700;font-size:15px">ETF 机会发现</span>' +
       '<span style="padding:4px 10px;border-radius:999px;background:' + tone.bg + ';color:' + tone.fg + ';font-size:12px;font-weight:700">' + escText(ov.regime_label || tone.label) + '</span>' +
-      '<span class="muted">温度 ' + escText(etfNum(ov.temperature_score, 1)) + '</span>' +
+      '<span class="muted">温度 ' + escText(formatUtils.formatNumber(ov.temperature_score, 1)) + '</span>' +
       '</div>' +
       '<div style="font-size:13px;line-height:1.7;color:var(--cm-ink-700)">' + escText(ov.regime_reason || '暂无整体判断。') + '</div>' +
       '<div style="margin-top:8px;font-size:12px;color:var(--cm-ink-900)"><strong>当前动作：</strong>' + escText(ov.action_hint || '-') + '</div>' +
@@ -171,11 +151,11 @@
       '</div>' +
       '<div style="min-width:240px;flex:1">' +
       '<div class="stats-row" style="grid-template-columns:repeat(5,minmax(0,1fr));margin-bottom:10px">' +
-      '<div class="stat-card"><div class="stat-value">' + escText(etfNum(ov.positive_20d_ratio, 0)) + '%</div><div class="stat-label">宽基上涨占比</div></div>' +
-      '<div class="stat-card"><div class="stat-value">' + escText(etfNum(ov.avg_momentum_20d, 1)) + '%</div><div class="stat-label">平均20日动量</div></div>' +
-      '<div class="stat-card"><div class="stat-value">' + escText(etfNum(ov.avg_momentum_60d, 1)) + '%</div><div class="stat-label">平均60日动量</div></div>' +
-      '<div class="stat-card"><div class="stat-value">' + escText(etfNum(ov.avg_volatility_20d, 1)) + '%</div><div class="stat-label">平均20日波动</div></div>' +
-      '<div class="stat-card"><div class="stat-value">' + escText(etfNum(ov.avg_drawdown_60d, 1)) + '%</div><div class="stat-label">平均60日回撤</div></div>' +
+      '<div class="stat-card"><div class="stat-value">' + escText(formatUtils.formatNumber(ov.positive_20d_ratio, 0)) + '%</div><div class="stat-label">宽基上涨占比</div></div>' +
+      '<div class="stat-card"><div class="stat-value">' + escText(formatUtils.formatNumber(ov.avg_momentum_20d, 1)) + '%</div><div class="stat-label">平均20日动量</div></div>' +
+      '<div class="stat-card"><div class="stat-value">' + escText(formatUtils.formatNumber(ov.avg_momentum_60d, 1)) + '%</div><div class="stat-label">平均60日动量</div></div>' +
+      '<div class="stat-card"><div class="stat-value">' + escText(formatUtils.formatNumber(ov.avg_volatility_20d, 1)) + '%</div><div class="stat-label">平均20日波动</div></div>' +
+      '<div class="stat-card"><div class="stat-value">' + escText(formatUtils.formatNumber(ov.avg_drawdown_60d, 1)) + '%</div><div class="stat-label">平均60日回撤</div></div>' +
       '</div>' +
       '<div class="stats-row" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:0">' +
       stratBtn('买入持有', ov.strategy_counts?.trend, '买入持有', 'var(--cm-ok-500)') +

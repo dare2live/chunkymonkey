@@ -52,6 +52,13 @@ const topkSrc = fs.readFileSync(process.argv[10], 'utf8');
 if (!topkSrc.includes('WidgetFormatUtils')) {
   throw new Error('TopKStripWidget should use WidgetFormatUtils');
 }
+const opportunitySrc = fs.readFileSync(process.argv[4], 'utf8');
+if (!opportunitySrc.includes('WidgetFormatUtils')) {
+  throw new Error('ETFOpportunityWidget should use WidgetFormatUtils');
+}
+if (opportunitySrc.includes('function etfNum(') || opportunitySrc.includes('function scoreNum(') || opportunitySrc.includes('function signedPct(') || opportunitySrc.includes('function pct(')) {
+  throw new Error('ETFOpportunityWidget local formatters should be removed');
+}
 const signalParamsSrc = fs.readFileSync(process.argv[11], 'utf8');
 if (!signalParamsSrc.includes('WidgetFormatUtils')) {
   throw new Error('SignalParamsWidget should use WidgetFormatUtils');
