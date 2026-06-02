@@ -35,7 +35,12 @@ The model pipeline snapshot below is historical evidence for the completed
   `aif10` family still lacks `individual_fund_flow`; the live probe now clears
   proxy env and retries but Eastmoney still fails with `ConnectionError` /
   `JSONDecodeError` remote disconnect, and blocked probe rows now persist in
-  `mart_data_source_failure_queue` for follow-up triage; if the queue write hits a DB lock/schema problem, it downgrades to structured `persisted.status=error` instead of a traceback. The probe CLI itself
+  `mart_data_source_failure_queue` for follow-up triage; the current live
+  queue remains `open=3 / resolved=5`, with `order_flow_fund_flow/akshare`
+  still open for `individual_fund_flow` and `individual_fund_flow_rank`, and
+  `northbound_holding/akshare_hsgt` still open as a separate blocked queue; if
+  the queue write hits a DB lock/schema problem, it downgrades to structured
+  `persisted.status=error` instead of a traceback. The probe CLI itself
   now defaults to quiet registry warnings and only prints structured blocked
   JSON; `--show-registry-warnings` re-enables the raw fallback log when we
   explicitly want it. `backend/services/source_watermarks.py` also moved to
