@@ -132,7 +132,7 @@ elif [[ "$VM_STATUS" == "TERMINATED" ]] && [[ -n "$F2_BEST_VALUE" ]]; then
 elif [[ "$UNCOMMITTED" != "0" ]]; then
     NEXT_ACTION="$UNCOMMITTED uncommitted files — git status 看 + bash scripts/safe_commit.sh"
 else
-    NEXT_ACTION="background autonomy active, wait retrain progress"
+    NEXT_ACTION="continue current goal blockers — stage-opt structural blocker triage / need_027 blocked-gap triage"
 fi
 
 # ============ 6. Write JSON ============
