@@ -361,31 +361,27 @@ def run_doctor(args: argparse.Namespace) -> int:
     sections: list[dict[str, Any]] = []
     sections.append({"name": "tooling_gate", "verdict": tooling_payload.get("verdict") if tooling_payload else "FAIL"})
 
-    test_tool: dict[str, Any] | None = None
-    if not args.skip_test_tool:
-        result = _run_command(
-            [sys.executable, "backend/scripts/audit_test_tool_health.py"],
-            cwd=repo,
-        )
-        parsed = _json_from_stdout(result)
-        test_tool = {
-            "command": _command_summary(result),
-            "report": parsed,
-            "verdict": parsed.get("verdict") if parsed else "FAIL",
-        }
-        sections.append({"name": "test_tool", "verdict": test_tool["verdict"], "returncode": result["returncode"]})
+    result = _run_command(
+        [sys.executable, "backend/scripts/audit_test_tool_health.py"],
+        cwd=repo,
+    )
+    parsed = _json_from_stdout(result)
+    test_tool = {
+        "command": _command_summary(result),
+        "report": parsed,
+        "verdict": parsed.get("verdict") if parsed else "FAIL",
+    }
+    sections.append({"name": "test_tool", "verdict": test_tool["verdict"], "returncode": result["returncode"]})
 
-    universe: dict[str, Any] | None = None
-    if not args.skip_universe:
-        result = _run_command(
-            [sys.executable, "backend/scripts/check_universe_filter.py", "--all"],
-            cwd=repo,
-        )
-        universe = {
-            "command": _command_summary(result, include_stdout=True),
-            "verdict": "PASS" if result["returncode"] == 0 else "FAIL",
-        }
-        sections.append({"name": "universe", "verdict": universe["verdict"], "returncode": result["returncode"]})
+    result = _run_command(
+        [sys.executable, "backend/scripts/check_universe_filter.py", "--all"],
+        cwd=repo,
+    )
+    universe = {
+        "command": _command_summary(result, include_stdout=True),
+        "verdict": "PASS" if result["returncode"] == 0 else "FAIL",
+    }
+    sections.append({"name": "universe", "verdict": universe["verdict"], "returncode": result["returncode"]})
 
     storage_payload: dict[str, Any] | None = None
     if not args.skip_storage_payload:
@@ -1225,8 +1221,6 @@ def main() -> int:
 
     doctor = subparsers.add_parser("doctor", help="Run the standard project health snapshot")
     doctor.add_argument("--fail-on-dirty-worktree", action="store_true")
-    doctor.add_argument("--skip-test-tool", action="store_true")
-    doctor.add_argument("--skip-universe", action="store_true")
     doctor.add_argument("--skip-storage-payload", action="store_true")
     doctor.add_argument("--skip-stage-opt", action="store_true")
     doctor.add_argument("--storage-max-findings", type=int, default=20)
