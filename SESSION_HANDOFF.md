@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 18:47:38 CST
+**Snapshot 时间**: 2026-06-02 19:00:20 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `e2fcbdcd feat: simplify lambdaMART train-log stability worst-window ranking | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 4 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS` |
-| 最近 24h commits | 138 |
+| HEAD | `33444c48 feat: externalize returns chart helper and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS` |
+| 最近 24h commits | 140 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+33444c48 feat: externalize returns chart helper and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS
+46cd362e docs: refresh session handoff snapshot after lambdaMART stability cleanup | # commit-msg: minimal
 e2fcbdcd feat: simplify lambdaMART train-log stability worst-window ranking | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 4 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
 e7fb9aad feat: batch feature catalog current per-table stats | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 2 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
 157c336c docs: refresh session handoff snapshot after p0a panel v3 confidence batching | # commit-msg: minimal
@@ -76,8 +78,6 @@ e7fb9aad feat: batch feature catalog current per-table stats | Codex-Reviewed: A
 80b3397a feat: simplify survivorship audit missing-code sampling | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 2 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
 81ce0633 feat: cache MACD bucket enrichment lookups | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 2 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
 5ec5b131 feat: optimize lambdaMART train-log stability return attach | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 4 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
-8d3f0d85 feat: batch feature catalog non-null counts per table and sync index | test pass: py_compile PASS, pytest 1 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate) | # commit-msg: minimal
-d01f2985 feat: simplify feature drift root cause aggregation and use timezone-aware timestamps | test pass: py_compile PASS, pytest 1 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate) | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
