@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 04:27:23 CST
+**Snapshot 时间**: 2026-06-03 04:27:46 CST
 
 ## 主线状态
 
@@ -61,13 +61,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `55a970a2 refactor: extract stability context rows model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 23 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 231 |
-| 未 commit 文件 | 3 |
+| HEAD | `959c2c52 docs: record stability context rows model extraction and refresh handoff | # commit-msg: minimal` |
+| 最近 24h commits | 232 |
+| 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+959c2c52 docs: record stability context rows model extraction and refresh handoff | # commit-msg: minimal
 55a970a2 refactor: extract stability context rows model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 23 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 5ed99be6 docs: record stability context model extraction and refresh handoff | # commit-msg: minimal
 0ba5726d refactor: extract stability context model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 23 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
@@ -77,12 +78,11 @@ a03c2219 docs: record data-view source cards detail cache and refresh handoff | 
 f36ca0d1 refactor: extract data-view link overview model and source card detail cache | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 4 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 1065c5ea docs: refresh session handoff snapshot after data-view link overview update | # commit-msg: minimal
 154eb6fd docs: record data-view link overview model extraction | # commit-msg: minimal
-314a9bba refactor: extract data-view link overview model | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 4 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**3 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**continue current goal blockers — stage-opt structural blocker triage / need_027 blocked-gap triage**
 
 ## Resilience 配置 (verified)
 
