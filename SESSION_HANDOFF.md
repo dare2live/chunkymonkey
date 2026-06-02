@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 07:00:30 CST
+**Snapshot 时间**: 2026-06-03 07:04:33 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `42a8ab6b refactor: single-pass route table model cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
+| HEAD | `f57ff03e refactor: data-view routes event delegation cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
 | 最近 24h commits | 265 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+f57ff03e refactor: data-view routes event delegation cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
+ddb756bb docs: refresh session handoff snapshot after data-view route table cleanup | # commit-msg: minimal
 42a8ab6b refactor: single-pass route table model cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 0ff1b9d6 docs: refresh session handoff snapshot after turtle helper cleanup | # commit-msg: minimal
 b53b135f refactor: remove dead turtle helper wrappers from app.js | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ b2df128a docs: refresh session handoff snapshot after source cards model cleanup
 127b2967 docs: refresh session handoff snapshot after fallback drift capability cleanup | # commit-msg: minimal
 336b483a refactor: single-pass fallback drift capability models | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 e98df8db docs: refresh session handoff snapshot after link overview manual count cleanup | # commit-msg: minimal
-c94b1ea3 refactor: single-pass link overview manual counts | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
-eaf917bc docs: record app.js industry summary helper cleanup and refresh handoff | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)

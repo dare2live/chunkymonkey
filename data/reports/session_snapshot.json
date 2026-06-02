@@ -1,9 +1,9 @@
 {
-  "snapshot_at": "2026-06-03 07:00:30 CST",
+  "snapshot_at": "2026-06-03 07:04:33 CST",
   "git": {
     "branch": "main",
-    "head_hash": "42a8ab6b",
-    "head_msg": "42a8ab6b refactor: single-pass route table model cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal",
+    "head_hash": "f57ff03e",
+    "head_msg": "f57ff03e refactor: data-view routes event delegation cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal",
     "commits_24h": 265,
     "uncommitted_files": 0
   },
