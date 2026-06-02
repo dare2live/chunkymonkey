@@ -14,6 +14,7 @@
   var AppCache = window.AppCache;
   var AppNav = window.AppNav;
   var AppListState = window.AppListState;
+  var StockSummaryWidget = window.StockSummaryWidget || null;
   var ReturnsChartWidget = window.ReturnsChartWidget || null;
   var TypeSummaryWidget = window.TypeSummaryWidget || null;
   var etfState = AppNav.getEtfState();
@@ -397,8 +398,31 @@
     }
   }
 
-  function emptyStockSummary(stocks) {
-    var summary = {
+  function topCountEntries(counts, limit) {
+    var map = counts || {};
+    var keys = Object.keys(map).sort(function (left, right) {
+      var diff = (map[right] || 0) - (map[left] || 0);
+      return diff || String(left).localeCompare(String(right), 'zh-CN');
+    });
+    var cap = Number(limit) > 0 ? Number(limit) : keys.length;
+    return keys.slice(0, cap).map(function (key) {
+      return { name: key, count: map[key] };
+    });
+  }
+
+  // Step 5d 补齐：HEAD 里 resolveStockSummary 调用点有 3 处但从未定义，导致
+  // renderStockResearchSummary 在 loadStockView 中一直静默抛 ReferenceError。
+  // 本函数合并「后端 summary」与「本地算出的 summary」两种来源：
+  //   - 后端 stockSummary 非空：优先用（缺字段回退到本地）
+  //   - 后端 stockSummary 为空：完全用本地计算
+  function resolveStockSummary(stocks, stockSummary) {
+    if (StockSummaryWidget && StockSummaryWidget.mergeStockSummary) {
+      return StockSummaryWidget.mergeStockSummary(stocks || [], stockSummary || null, {
+        stockGateInfo: stockGateInfo,
+        stockSourceName: stockSourceName,
+      });
+    }
+    var local = {
       total: (stocks || []).length,
       abTotal: 0,
       followTotal: 0,
@@ -427,34 +451,22 @@
       var gate = (stockGateInfo && stockGateInfo(s) || {}).key || '';
       var source = (typeof stockSourceName === 'function') ? stockSourceName(s) : '';
       var industry = s.setup_industry_name || s.tdx_l2 || s.tdx_l1 || '';
-      summary.pools[pool] = (summary.pools[pool] || 0) + 1;
-      if (pool === 'A池' || pool === 'B池') summary.abTotal += 1;
-      if (gate && summary.gates[gate] != null) summary.gates[gate] += 1;
-      if (gate === 'follow') summary.followTotal += 1;
+      local.pools[pool] = (local.pools[pool] || 0) + 1;
+      if (pool === 'A池' || pool === 'B池') local.abTotal += 1;
+      if (gate && local.gates[gate] != null) local.gates[gate] += 1;
+      if (gate === 'follow') local.followTotal += 1;
       if (s.setup_tag) {
-        summary.setupTotal += 1;
+        local.setupTotal += 1;
         var signalKey = 'A' + (s.setup_priority != null ? s.setup_priority : '?');
-        summary.signals[signalKey] = (summary.signals[signalKey] || 0) + 1;
+        local.signals[signalKey] = (local.signals[signalKey] || 0) + 1;
       }
-      if (industry) summary.industries[industry] = (summary.industries[industry] || 0) + 1;
-      if (source && source !== '-') summary.sources[source] = (summary.sources[source] || 0) + 1;
-      if (s._dual_confirm) summary.dualConfirm += 1;
+      if (industry) local.industries[industry] = (local.industries[industry] || 0) + 1;
+      if (source && source !== '-') local.sources[source] = (local.sources[source] || 0) + 1;
+      if (s._dual_confirm) local.dualConfirm += 1;
     });
-    if (typeof topCountEntries === 'function') {
-      summary.topIndustries = topCountEntries(summary.industries, 4);
-      summary.topSignals = topCountEntries(summary.signals, 4);
-      summary.topSources = topCountEntries(summary.sources, 3);
-    }
-    return summary;
-  }
-
-  // Step 5d 补齐：HEAD 里 resolveStockSummary 调用点有 3 处但从未定义，导致
-  // renderStockResearchSummary 在 loadStockView 中一直静默抛 ReferenceError。
-  // 本函数合并「后端 summary」与「本地算出的 summary」两种来源：
-  //   - 后端 stockSummary 非空：优先用（缺字段回退到本地）
-  //   - 后端 stockSummary 为空：完全用本地计算
-  function resolveStockSummary(stocks, stockSummary) {
-    var local = emptyStockSummary(stocks || []);
+    local.topIndustries = topCountEntries(local.industries, 4);
+    local.topSignals = topCountEntries(local.signals, 4);
+    local.topSources = topCountEntries(local.sources, 3);
     if (!stockSummary || typeof stockSummary !== 'object') return local;
     return Object.assign({}, local, stockSummary, {
       pools: Object.assign({}, local.pools, stockSummary.pools || {}),

@@ -918,6 +918,13 @@ SELECT * FROM mart_data_source_watermark;
 - `backend/tests/contract/test_returns_chart_widget.py` / `backend/tests/contract/test_workbench_frontend_contract.py`: 新增 helper 契约 smoke，并补齐 workbench frontend contract 的 script 注入断言，验证短样本与 61 点采样样本都能输出正确的 SVG label。
 - 验证: `audit_test_tool_health.py` scoped PASS；`node --check assets/js/widgets/returns-chart.js assets/js/app.js` PASS；`pytest -q backend/tests/contract/test_returns_chart_widget.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed；`codegraph sync .` 已更新 4 个文件；`complexity-optimizer` 复扫后 `assets/js/app.js` 不再是明显热点。
 
+### 2026-06-02 stock summary helper extraction
+
+- `assets/js/widgets/stock-summary.js`: 从 `assets/js/app.js` 抽出股票摘要聚合 helper，单独承载 `collectStockSummary()` / `mergeStockSummary()`，把池子、信号、产业、来源、follow / dual-confirm 汇总从 app.js 中拆出。
+- `assets/js/app.js` / `index.html`: 页面脚本在 app.js 之前加载新的 helper，股票研究摘要改为优先调用 `window.StockSummaryWidget.mergeStockSummary()`，并保留 fallback 语义以防 helper 未加载。
+- `backend/tests/contract/test_stock_summary_widget.py` / `backend/tests/contract/test_workbench_frontend_contract.py`: 新增 helper 契约 smoke，并补齐 workbench frontend contract 的 script 注入断言，验证 merge 语义、top list 和脚本注册都一致。
+- 验证: `node --check assets/js/widgets/stock-summary.js assets/js/widgets/type-summary.js assets/js/widgets/returns-chart.js assets/js/app.js` PASS；`pytest -q backend/tests/contract/test_stock_summary_widget.py backend/tests/contract/test_type_summary_widget.py backend/tests/contract/test_returns_chart_widget.py backend/tests/contract/test_workbench_frontend_contract.py` 5 passed；`audit_test_tool_health.py` scoped PASS；`complexity-optimizer` 复扫后 `assets/js/app.js` 不再是明显热点。
+
 ### 2026-06-02 feature drift mitigation shared defaults externalization
 
 - `backend/config/feature_drift_mitigation_panel.yaml` / `backend/services/feature_drift_mitigation_config.py`: feature-drift mitigation panel 的共享默认值从脚本常量外置到 config-owned policy，包含 `recommendations`、`transform_types`、`regime_controls`、`market_control_features`、`winsor_low/high`、`bucket_count`、`min_root_cause_max_psi`，并采用 strict fail-closed loader。
