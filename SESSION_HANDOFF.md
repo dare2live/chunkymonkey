@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 02:32:00 CST
+**Snapshot 时间**: 2026-06-03 02:36:54 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `24d8d61e refactor: remove dead latest gate decision helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 4 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
+| HEAD | `11b7aec7 refactor: extract delivery model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 5 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
 | 最近 24h commits | 187 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+11b7aec7 refactor: extract delivery model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 5 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
+5be03e8d docs: refresh session handoff snapshot after latest gate decision cleanup | # commit-msg: minimal
 24d8d61e refactor: remove dead latest gate decision helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 4 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 53121899 docs: refresh session handoff snapshot after read model meta extraction | # commit-msg: minimal
 e3b0677c refactor: extract read model meta from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 7 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ e3b0677c refactor: extract read model meta from workbench view | Codex-Reviewed:
 69f49fc0 docs: refresh session handoff snapshot after routes table model extraction | # commit-msg: minimal
 bafe90d4 refactor: extract routes table model from data view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 4 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 f27f9977 docs: refresh session handoff snapshot after dead stock display cleanup | # commit-msg: minimal
-1080ff52 refactor: remove dead stock display helpers | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
-c6d866dd docs: refresh session handoff snapshot after dead stock score cleanup | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
