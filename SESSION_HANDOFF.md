@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 23:48:14 CST
+**Snapshot 时间**: 2026-06-02 23:50:58 CST
 
 ## 主线状态
 
@@ -61,13 +61,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `fdb043ed docs: add moth github url to quickstart | # commit-msg: minimal` |
-| 最近 24h commits | 162 |
-| 未 commit 文件 | 0 |
+| HEAD | `83202979 docs: refresh session handoff snapshot after live need_027 probe | # commit-msg: minimal` |
+| 最近 24h commits | 163 |
+| 未 commit 文件 | 2 |
 
 ### 最近 10 commits
 
 ```
+83202979 docs: refresh session handoff snapshot after live need_027 probe | # commit-msg: minimal
 fdb043ed docs: add moth github url to quickstart | # commit-msg: minimal
 f06d2d3e docs: refresh session handoff snapshot after controller-state sync | # commit-msg: minimal
 fe6c1eef docs: refresh session handoff snapshot after latest controller-state sync | # commit-msg: minimal
@@ -77,12 +78,11 @@ fe6c1eef docs: refresh session handoff snapshot after latest controller-state sy
 cd8f492a docs: refresh session handoff snapshot after research cleanup | # commit-msg: minimal
 0ee47767 feat: remove dead institution research controls and keep scorecard only | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS | cleanup verified 无残留 no stale
 b78e5e6f docs: refresh session handoff snapshot after institution scorecard widget extraction | # commit-msg: minimal
-e4e21c7b feat: extract institution scorecard widget and wire research page | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**continue current goal blockers — stage-opt structural blocker triage / need_027 blocked-gap triage**
+**2 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

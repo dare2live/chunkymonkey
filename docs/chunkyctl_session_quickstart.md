@@ -56,6 +56,10 @@ shared snapshot refreshed before any repo-local wrapper consumes it.
 The public Moth repo lives at `https://github.com/dare2live/moth`; keep the
 local `moth` binary or `CHUNKYMONKEY_MOTH_COMMAND` pointed at a current build
 from that repo so shared tooling state stays reproducible across sessions.
+Prefer a globally installed Moth for all repos, with the repo-local wrapper
+only consuming the shared CLI. When you need a migration window or a pinned
+behavior, point `CHUNKYMONKEY_MOTH_COMMAND` at a specific installed build
+instead of copying Moth logic into the repo itself.
 When the session snapshot only has generated handoff files dirty, the computed
 `NEXT_ACTION` now points to the current goal blockers instead of the old
 retrain placeholder. Treat `SESSION_HANDOFF.md` as the startup state, but read
