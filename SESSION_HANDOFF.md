@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 19:28:08 CST
+**Snapshot 时间**: 2026-06-02 19:38:47 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `22ccdc36 feat: move stock list filter metadata into helper and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check, pytest 6 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS` |
-| 最近 24h commits | 148 |
+| HEAD | `19790f61 feat: extract stock list row helper and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check, pytest 7 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS` |
+| 最近 24h commits | 150 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+19790f61 feat: extract stock list row helper and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check, pytest 7 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
+8ddcff94 docs: refresh session handoff snapshot after stock list filter metadata extraction | # commit-msg: minimal
 22ccdc36 feat: move stock list filter metadata into helper and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check, pytest 6 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
 01aba76c docs: refresh session handoff snapshot after stock list controls extraction | # commit-msg: minimal
 8faa1b3d feat: externalize stock list controls helper and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check, pytest 6 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
@@ -76,8 +78,6 @@ ea473790 docs: refresh session handoff snapshot after stock summary helper extra
 4db37bf8 docs: refresh session handoff snapshot after type summary helper extraction | # commit-msg: minimal
 cf0aa938 feat: externalize type summary helper and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 4 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS
 bc76d489 docs: refresh session handoff snapshot after returns chart helper extraction | # commit-msg: minimal
-33444c48 feat: externalize returns chart helper and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS
-46cd362e docs: refresh session handoff snapshot after lambdaMART stability cleanup | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
