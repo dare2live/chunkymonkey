@@ -4,6 +4,7 @@ from conftest import duck_mem
 from services.shareholder_plan_family_walkforward import (
     FOLD_TABLE,
     SUMMARY_TABLE,
+    _load_defaults,
     build_shareholder_plan_family_walkforward,
 )
 
@@ -61,6 +62,34 @@ def _seed_panel_and_sources(conn) -> None:
             ('family_eval_unit', '2026-01-09T00:00:00');
         """
     )
+
+
+def test_walkforward_defaults_load_from_config(tmp_path) -> None:
+    cfg = tmp_path / "shareholder_plan_family_walkforward.yaml"
+    cfg.write_text(
+        "fold_count: 3\n"
+        "train_days: 120\n"
+        "holdout_days: 30\n",
+        encoding="utf-8",
+    )
+
+    assert _load_defaults(cfg) == (3, 120, 30)
+
+
+def test_walkforward_defaults_missing_key_fails(tmp_path) -> None:
+    cfg = tmp_path / "shareholder_plan_family_walkforward.yaml"
+    cfg.write_text(
+        "fold_count: 3\n"
+        "train_days: 120\n",
+        encoding="utf-8",
+    )
+
+    try:
+        _load_defaults(cfg)
+    except ValueError as exc:
+        assert "missing walkforward default key holdout_days" in str(exc)
+    else:
+        raise AssertionError("expected walkforward defaults loader to fail closed")
 
 
 def test_shareholder_plan_family_walkforward_records_fold_and_summary_evidence() -> None:

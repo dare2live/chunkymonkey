@@ -1,0 +1,5 @@
+# Shareholder-plan family walk-forward defaults (shared window policy)
+# Fold / train / holdout belong to the walk-forward governance layer, not to per-stock result rows.
+fold_count: 4
+train_days: 360
+holdout_days: 90

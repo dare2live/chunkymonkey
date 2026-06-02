@@ -6,9 +6,12 @@ import math
 import re
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 UTC = timezone.utc
 from typing import Any
+
+import yaml
 
 from services.schema_versions import record_actual_version
 from services.shareholder_plan_feature_family_eval import (
@@ -33,9 +36,33 @@ from services.shareholder_plan_feature_family_eval import (
 FOLD_TABLE = "mart_shareholder_plan_family_walkforward"
 SUMMARY_TABLE = "mart_shareholder_plan_family_walkforward_summary"
 
-DEFAULT_FOLD_COUNT = 4
-DEFAULT_HOLDOUT_DAYS = 90
-DEFAULT_TRAIN_DAYS = 360
+CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "shareholder_plan_family_walkforward.yaml"
+
+
+def _load_yaml(path: Path) -> dict[str, object]:
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(loaded, dict):
+        raise ValueError(f"{path.name} must contain a mapping")
+    return loaded
+
+
+def _load_defaults(path: Path | None = None) -> tuple[int, int, int]:
+    raw_path = path or CONFIG_PATH
+    raw = _load_yaml(raw_path)
+    try:
+        fold_count = int(raw["fold_count"])
+        train_days = int(raw["train_days"])
+        holdout_days = int(raw["holdout_days"])
+    except KeyError as exc:
+        raise ValueError(f"{raw_path.name}: missing walkforward default key {exc.args[0]}") from exc
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{raw_path.name}: walkforward defaults must be integer mappings") from exc
+    if fold_count <= 0 or train_days <= 0 or holdout_days <= 0:
+        raise ValueError(f"{raw_path.name}: walkforward defaults must be positive integers")
+    return fold_count, train_days, holdout_days
+
+
+DEFAULT_FOLD_COUNT, DEFAULT_TRAIN_DAYS, DEFAULT_HOLDOUT_DAYS = _load_defaults()
 
 DDL = f"""
 CREATE TABLE IF NOT EXISTS {FOLD_TABLE} (
