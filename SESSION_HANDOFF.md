@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 17:46:12 CST
+**Snapshot 时间**: 2026-06-02 17:48:21 CST
 
 ## 主线状态
 
@@ -61,13 +61,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `caaed3b1 docs: refresh session handoff snapshot after snapshot regen | # commit-msg: minimal` |
-| 最近 24h commits | 127 |
-| 未 commit 文件 | 1 |
+| HEAD | `931b31d0 docs: soften handoff retrain wording to current mainline state | # commit-msg: minimal` |
+| 最近 24h commits | 128 |
+| 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+931b31d0 docs: soften handoff retrain wording to current mainline state | # commit-msg: minimal
 caaed3b1 docs: refresh session handoff snapshot after snapshot regen | # commit-msg: minimal
 a3c85e74 docs: align quickstart with session snapshot behavior | # commit-msg: minimal
 8508c8f6 docs: refresh session handoff snapshot after snapshot next action fix
@@ -77,12 +78,11 @@ b84f8cab fix: make session snapshot ignore generated handoff files
 ec261178 docs: refresh session handoff snapshot
 55d279ad docs: tighten stage-opt blocker guidance
 3355663f docs: refresh session handoff snapshot after BestChoice pipeline defaults commit | # commit-msg: minimal
-d4884b42 feat: externalize BestChoice pipeline defaults into config | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, docs graph PASS, codegraph sync PASS
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**1 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**continue current goal blockers — stage-opt structural blocker triage / need_027 blocked-gap triage**
 
 ## Resilience 配置 (verified)
 
