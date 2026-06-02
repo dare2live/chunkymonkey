@@ -120,6 +120,8 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "sourceInstitutionCell(" not in app_js
     assert "stockReportCell(" not in app_js
     assert "function loadInstScorecard(" in app_js
+    assert "topCountEntries(" not in app_js
+    assert "local.topIndustries = topCountEntries" not in app_js
     assert "_buildEtfTradeTimelineHtml(" not in app_js
     assert "_buildNavCurveSvg(" not in app_js
     assert "function metricCard(" not in app_js

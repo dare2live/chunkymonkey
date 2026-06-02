@@ -311,23 +311,6 @@
     return WorkbenchHealthWidget.refreshNetwork(workbenchHealthDeps());
   }
 
-  function topCountEntries(counts, limit) {
-    var map = counts || {};
-    var keys = Object.keys(map).sort(function (left, right) {
-      var diff = (map[right] || 0) - (map[left] || 0);
-      return diff || String(left).localeCompare(String(right), 'zh-CN');
-    });
-    var cap = Number(limit) > 0 ? Number(limit) : keys.length;
-    return keys.slice(0, cap).map(function (key) {
-      return { name: key, count: map[key] };
-    });
-  }
-
-  // Step 5d 补齐：HEAD 里 resolveStockSummary 调用点有 3 处但从未定义，导致
-  // renderStockResearchSummary 在 loadStockView 中一直静默抛 ReferenceError。
-  // 本函数合并「后端 summary」与「本地算出的 summary」两种来源：
-  //   - 后端 stockSummary 非空：优先用（缺字段回退到本地）
-  //   - 后端 stockSummary 为空：完全用本地计算
   function resolveStockSummary(stocks, stockSummary) {
     if (StockSummaryWidget && StockSummaryWidget.mergeStockSummary) {
       return StockSummaryWidget.mergeStockSummary(stocks || [], stockSummary || null, {
@@ -335,64 +318,12 @@
         stockSourceName: stockSourceName,
       });
     }
-    var local = {
-      total: (stocks || []).length,
-      abTotal: 0,
-      followTotal: 0,
-      dualConfirm: 0,
-      setupTotal: 0,
-      pools: {},
-      gates: { follow: 0, watch: 0, observe: 0, avoid: 0 },
-      signals: {},
-      industries: {},
-      sources: {},
-      attentionCovered: 0,
-      attentionBoosted: 0,
-      attentionCrowded: 0,
-      attentionSignals: {},
-      turtleCovered: 0,
-      turtleBreakout: 0,
-      turtleWatch: 0,
-      turtleExit: 0,
-      topIndustries: [],
-      topSignals: [],
-      topSources: [],
-      topAttentionSignals: []
+    var rows = Array.isArray(stocks) ? stocks : [];
+    return {
+      total: rows.length,
+      followTotal: rows.filter(function (row) { return row && row.follow_gate === 'follow'; }).length,
+      watchlistTotal: rows.filter(function (row) { return row && row._in_watchlist; }).length
     };
-    (stocks || []).forEach(function (s) {
-      var pool = s.priority_pool || '未分池';
-      var gate = (stockGateInfo && stockGateInfo(s) || {}).key || '';
-      var source = (typeof stockSourceName === 'function') ? stockSourceName(s) : '';
-      var industry = s.setup_industry_name || s.tdx_l2 || s.tdx_l1 || '';
-      local.pools[pool] = (local.pools[pool] || 0) + 1;
-      if (pool === 'A池' || pool === 'B池') local.abTotal += 1;
-      if (gate && local.gates[gate] != null) local.gates[gate] += 1;
-      if (gate === 'follow') local.followTotal += 1;
-      if (s.setup_tag) {
-        local.setupTotal += 1;
-        var signalKey = 'A' + (s.setup_priority != null ? s.setup_priority : '?');
-        local.signals[signalKey] = (local.signals[signalKey] || 0) + 1;
-      }
-      if (industry) local.industries[industry] = (local.industries[industry] || 0) + 1;
-      if (source && source !== '-') local.sources[source] = (local.sources[source] || 0) + 1;
-      if (s._dual_confirm) local.dualConfirm += 1;
-    });
-    local.topIndustries = topCountEntries(local.industries, 4);
-    local.topSignals = topCountEntries(local.signals, 4);
-    local.topSources = topCountEntries(local.sources, 3);
-    if (!stockSummary || typeof stockSummary !== 'object') return local;
-    return Object.assign({}, local, stockSummary, {
-      pools: Object.assign({}, local.pools, stockSummary.pools || {}),
-      gates: Object.assign({}, local.gates, stockSummary.gates || {}),
-      signals: Object.assign({}, local.signals, stockSummary.signals || {}),
-      industries: Object.assign({}, local.industries, stockSummary.industries || {}),
-      sources: Object.assign({}, local.sources, stockSummary.sources || {}),
-      attentionSignals: Object.assign({}, local.attentionSignals, stockSummary.attentionSignals || {}),
-      topIndustries: stockSummary.topIndustries || local.topIndustries,
-      topSignals: stockSummary.topSignals || local.topSignals,
-      topSources: stockSummary.topSources || local.topSources,
-      topAttentionSignals: stockSummary.topAttentionSignals || local.topAttentionSignals,
-    });
   }
 
   function summaryChip(label, count, tone) {
