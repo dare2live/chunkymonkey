@@ -54,8 +54,10 @@ bash scripts/install_resilience.sh --status   # check 装好没
   same lock policy instead of hardcoding it inside the test. BestChoice 当前
   5 个公式对“`20` 个交易日内主力资金流入 + `1-2` 次倍量上涨”的形态只算
   部分覆盖（最接近的是 `volume_base_breakout` / `activity_breakout`）；
-  这类候选先记入后续接入计划，等架构 / 数据治理完成后再评估是否
-  加入 BestChoice 模块。
+  另一个已存档的研究资产是回调十字星 / `pullback_doji` /
+  `formula_limit_up_pullback` 与 CYQ 筹码分布规格；这些候选先记入
+  后续接入计划，等架构 / 数据治理完成后再一起评估是否加入 BestChoice
+  模块。
 | Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
 | VM 状态 | ? |
 | VM 上次启动 |  |
