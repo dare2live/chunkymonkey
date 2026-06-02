@@ -15,6 +15,7 @@
   var AppNav = window.AppNav;
   var AppListState = window.AppListState;
   var StockListControlsWidget = window.StockListControlsWidget || null;
+  var StockListRowsWidget = window.StockListRowsWidget || null;
   var StockSummaryWidget = window.StockSummaryWidget || null;
   var ReturnsChartWidget = window.ReturnsChartWidget || null;
   var TypeSummaryWidget = window.TypeSummaryWidget || null;
@@ -1081,63 +1082,19 @@
       T05: '商贸', T06: '社会服务', T07: '装备制造', T08: '公用事业',
       T09: '交通运输', T10: '金融', T11: '建筑地产', T12: '信息产业', T13: '综合类'
     };
-    function signalV2Cell(s) {
-      var ev = s && s._sig_v2;
-      if (!ev) return '<span class="muted" style="font-size:11px">无当期信号</span>';
-      function noticeSourceBadge(source) {
-        var map = {
-          source_notice: { text: '公告日', cls: 'sig-source-true', title: '真实源公告日' },
-          page_update_date: { text: 'F10更新', cls: 'sig-source-page', title: 'TDX/F10 页面更新日，可观测但不等同真实公告日' },
-          fetched_at_observed: { text: '抓取可见', cls: 'sig-source-fetched', title: '本地抓取时已可见，保守晚于真实公告日' },
-          regulatory_deadline: { text: '监管兜底', cls: 'sig-source-deadline', title: '监管披露期限兜底，不是真实公告日' },
-          unknown: { text: '未知来源', cls: 'sig-source-unknown', title: '公告日来源未标记' },
-        };
-        var meta = map[source || 'unknown'] || map.unknown;
-        return '<span class="sig-source-badge sig-source-badge-compact ' + meta.cls + '" title="' + esc(meta.title) + '">' + esc(meta.text) + '</span>';
-      }
-      var action = ev.action || 'skip';
-      var badgeMap = {
-        follow: { text: '可跟', bg: 'var(--cm-ok-100)', fg: 'var(--cm-ok-500)' },
-        watch:  { text: '观察', bg: 'var(--cm-warn-100)', fg: 'var(--cm-warn-500)' },
-        skip:   { text: '不跟', bg: 'var(--cm-ink-50)', fg: 'var(--cm-ink-500)' },
-      };
-      var bd = badgeMap[action] || badgeMap.skip;
-      var badge = '<span style="background:' + bd.bg + ';color:' + bd.fg + ';font-size:10px;font-weight:600;padding:2px 8px;border-radius:3px">' + bd.text + '</span>';
-      var evLong = ev.long && ev.long.stats;
-      var evShort = ev.short && ev.short.stats;
-      var evLine = '';
-      if (evLong && evLong.ev_pct != null) {
-        var sign = evLong.ev_pct >= 0 ? '+' : '';
-        var color = evLong.ev_pct >= 5 ? 'var(--cm-ok-500)' : evLong.ev_pct < 0 ? 'var(--cm-bad-500)' : 'var(--cm-ink-500)';
-        evLine = '<span style="font-size:11px;color:' + color + ';margin-left:6px">' + sign + evLong.ev_pct.toFixed(1) + '% · n=' + (evLong.n || 0) + '</span>';
-      }
-      return '<div style="line-height:1.4">' + badge + evLine + '<div class="muted" style="font-size:10px">' +
-        esc(ev.institution_name || ev.institution_id || '') + ' · ' + fmtDate(ev.notice_date) + ' ' +
-        noticeSourceBadge(ev.notice_date_source) + '</div></div>';
-    }
-    function industryCell(s) {
-      var name = TDX_L1_NAMES_TBL[(s.tdx_l1 || '').trim()] || s.tdx_l2 || s.tdx_l1 || '—';
-      // L3 缺失（约一半股票 TDX 源无 L3）时明确标注"L3未分类"，避免误读为 L2 就是最细层
-      var l3Text = s.tdx_l3 ? s.tdx_l3 : (s.tdx_l2 ? 'L3未分类' : '');
-      var subText = l3Text || s.tdx_l2 || '';
-      var sub = subText ? ('<div class="muted" style="font-size:10px">' + esc(subText) + '</div>') : '';
-      return '<div style="line-height:1.4"><div style="font-size:12px">' + esc(name) + '</div>' + sub + '</div>';
-    }
-    function watchlistButton(s) {
-      var inList = !!s._in_watchlist;
-      if (inList) return '<span class="muted" style="font-size:11px">已在自选</span>';
-      return '<button type="button" class="chip chip-ghost chip-sm stock-watch-btn" data-stock-code="' + esc(s.stock_code) + '" data-stock-name="' + esc(s.stock_name || '') + '">+ 加自选</button>';
+    if (!StockListRowsWidget || !StockListRowsWidget.buildStockListRowHtml) {
+      throw new Error('StockListRowsWidget failed to initialize');
     }
     var row = function (s, idx) {
-      return '<tr data-stock-idx="' + idx + '" data-stock-code="' + esc(s.stock_code) + '">' +
-        '<td>' + stockCell(s.stock_code, s.stock_name) + '</td>' +
-        '<td>' + signalV2Cell(s) + '</td>' +
-        '<td data-sort-value="' + esc((s.tdx_l1 || '')) + '">' + industryCell(s) + '</td>' +
-        '<td data-sort-value="' + esc(String(s.composite_priority_score != null ? s.composite_priority_score : -1)) + '">' + stockCompositeCell(s) + '</td>' +
-        '<td data-sort-value="' + esc(String(s.latest_notice_date || '')) + '">' + stockDateSummaryCell(s.latest_notice_date) + '</td>' +
-        '<td data-sort-value="' + esc(String(s.holder_total != null ? s.holder_total : (s.inst_count_t0 || 0))) + '">' + stockHolderCoverageCell(s) + '</td>' +
-        '<td>' + watchlistButton(s) + '</td>' +
-        '</tr>';
+      return StockListRowsWidget.buildStockListRowHtml(s, idx, {
+        esc: esc,
+        fmtDate: fmtDate,
+        stockCell: stockCell,
+        stockCompositeCell: stockCompositeCell,
+        stockDateSummaryCell: stockDateSummaryCell,
+        stockHolderCoverageCell: stockHolderCoverageCell,
+        tdxL1Names: TDX_L1_NAMES_TBL
+      });
     };
     var sourceData = stockListState.getData() || [];
     _stockFilterMetaByCode = StockListControlsWidget && StockListControlsWidget.buildStockFilterMetaByCode

@@ -29,7 +29,9 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "'assets/js/widgets/returns-chart.js'" in index
     assert "'assets/js/widgets/type-summary.js'" in index
     assert "'assets/js/widgets/stock-summary.js'" in index
+    assert "'assets/js/widgets/stock-list-rows.js'" in index
     assert "'assets/js/widgets/stock-list-controls.js'" in index
+    assert index.index("'assets/js/widgets/stock-list-rows.js'") < index.index("'assets/js/app.js'")
     assert 'onclick="window.App.showView(\'data-health\')"' not in index
     assert "高级数据健康" not in index
     assert "window.App.showWorkbenchTab('dataSources')" in index
@@ -44,6 +46,7 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "ReturnsChartWidget" in app_js
     assert "TypeSummaryWidget" in app_js
     assert "StockSummaryWidget" in app_js
+    assert "StockListRowsWidget" in app_js
     assert "StockListControlsWidget" in app_js
     assert "buildStockFilterMetaByCode" in app_js
     assert "applyStockFilters" in app_js

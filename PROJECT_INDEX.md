@@ -932,6 +932,13 @@ SELECT * FROM mart_data_source_watermark;
 - `backend/tests/contract/test_stock_list_controls_widget.py` / `backend/tests/contract/test_workbench_frontend_contract.py`: 新增 helper 契约 smoke，并补齐 workbench frontend contract 的 script 注入断言，验证排序顺序、筛选条 HTML、meta 生成与 apply 过滤都正确。
 - 验证: `node --check assets/js/widgets/stock-list-controls.js assets/js/widgets/stock-summary.js assets/js/widgets/type-summary.js assets/js/widgets/returns-chart.js assets/js/app.js` PASS；`pytest -q backend/tests/contract/test_stock_list_controls_widget.py backend/tests/contract/test_stock_summary_widget.py backend/tests/contract/test_type_summary_widget.py backend/tests/contract/test_returns_chart_widget.py backend/tests/contract/test_workbench_frontend_contract.py` 6 passed；`audit_test_tool_health.py` scoped PASS；`complexity-optimizer` 复扫后 `assets/js/app.js` 继续收敛。
 
+### 2026-06-02 stock list row helper extraction
+
+- `assets/js/widgets/stock-list-rows.js`: 从 `assets/js/app.js` 抽出股票列表的 row renderer，单独承载 signal badge / 行业 / 自选按钮 / row HTML 组装，把 `renderStockList()` 里最重的局部模板逻辑与 `notice_source` badge、L3 兜底说明和 watchlist 按钮拆出。
+- `assets/js/app.js` / `index.html`: 页面脚本在 app.js 之前加载新的 row helper，股票列表 row 改为优先调用 `window.StockListRowsWidget.buildStockListRowHtml()`；controls helper 继续负责排序、筛选条和过滤元数据。
+- `backend/tests/contract/test_stock_list_rows_widget.py` / `backend/tests/contract/test_workbench_frontend_contract.py`: 新增 row helper 契约 smoke，并补齐 workbench frontend contract 的 script 注入与加载顺序断言，验证 row HTML、signal badge、行业标签和自选按钮都正确。
+- 验证: `node --check assets/js/widgets/stock-list-rows.js assets/js/widgets/stock-list-controls.js assets/js/widgets/stock-summary.js assets/js/widgets/type-summary.js assets/js/widgets/returns-chart.js assets/js/app.js` PASS；`pytest -q backend/tests/contract/test_stock_list_rows_widget.py backend/tests/contract/test_stock_list_controls_widget.py backend/tests/contract/test_stock_summary_widget.py backend/tests/contract/test_type_summary_widget.py backend/tests/contract/test_returns_chart_widget.py backend/tests/contract/test_workbench_frontend_contract.py` 7 passed；`audit_test_tool_health.py` scoped PASS；`complexity-optimizer` 复扫后 `assets/js/app.js` 继续收敛。
+
 ### 2026-06-02 feature drift mitigation shared defaults externalization
 
 - `backend/config/feature_drift_mitigation_panel.yaml` / `backend/services/feature_drift_mitigation_config.py`: feature-drift mitigation panel 的共享默认值从脚本常量外置到 config-owned policy，包含 `recommendations`、`transform_types`、`regime_controls`、`market_control_features`、`winsor_low/high`、`bucket_count`、`min_root_cause_max_psi`，并采用 strict fail-closed loader。
