@@ -1,14 +1,39 @@
 // settings-view.js — 系统设置页 (P5)
 // 数据源参数 / 派生层 schema 版本 / 危险操作 / 主题 / 关于
 
-(function () {
-  if (window.SettingsView) return;
+(function (root) {
+  if (root.SettingsView) return;
 
   let _initialized = false;
 
   function esc(s) {
     if (s == null) return '';
     return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  function buildSchemaVersionsModel(data) {
+    const summary = data && data.summary ? data.summary : {};
+    const versions = Array.isArray(data && data.versions) ? data.versions : [];
+    const byLayer = { fact: 0, mart: 0, dim_derived: 0 };
+    const driftRows = [];
+    const okRows = [];
+    for (const version of versions) {
+      if (version && version.layer) {
+        byLayer[version.layer] = (byLayer[version.layer] || 0) + 1;
+      }
+      if (version && version.drift) driftRows.push(version);
+      else okRows.push(version);
+    }
+    return {
+      summary,
+      byLayer,
+      versions,
+      driftRows,
+      okRows,
+      driftCount: summary.drift_count || 0,
+      total: summary.total || 0,
+      nViews: summary.n_views || 0,
+    };
   }
 
   async function renderDataSourceParams() {
@@ -37,21 +62,15 @@
       const r = await fetch('/api/data_sources/schema_versions');
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const data = await r.json();
-      const summary = data.summary || {};
-      const versions = data.versions || [];
-      const driftCount = summary.drift_count || 0;
-      const byLayer = { fact: 0, mart: 0, dim_derived: 0 };
-      versions.forEach(v => { byLayer[v.layer] = (byLayer[v.layer] || 0) + 1; });
-
-      const driftRows = versions.filter(v => v.drift);
-      const okRows = versions.filter(v => !v.drift);
+      const model = buildSchemaVersionsModel(data);
+      const { summary, byLayer, driftRows, okRows, driftCount } = model;
 
       // 顶部摘要 + drift 列表 + ok 折叠
       el.innerHTML = `
         <div style="font-size:12px;margin-bottom:10px">
-          <strong>${summary.total || 0}</strong> 张派生表
+          <strong>${model.total}</strong> 张派生表
           (fact ${byLayer.fact} / mart ${byLayer.mart} / dim ${byLayer.dim_derived})
-          + <strong>${summary.n_views || 0}</strong> view
+          + <strong>${model.nViews}</strong> view
           ${driftCount > 0
             ? `<span style="color:#d33;margin-left:10px">WARN ${driftCount} 张漂移</span>`
             : '<span style="color:#0a7;margin-left:10px">OK 全部 actual = expected</span>'}
@@ -186,9 +205,10 @@
     renderAbout();
   }
 
-  window.SettingsView = {
+  root.SettingsView = {
     show() {
       if (!_initialized) { init(); _initialized = true; }
     },
+    buildSchemaVersionsModel,
   };
-})();
+})(typeof window !== 'undefined' ? window : globalThis);
