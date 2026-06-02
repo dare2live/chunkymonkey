@@ -79,13 +79,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `a69af7da feat: externalize shared feature bins into config and fix loader path | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: import smoke, pytest 10 passed, audit PASS, docs graph PASS, codegraph sync PASS | cleanup verified 无残留 no stale` |
+| HEAD | `1f6fb919 feat: externalize feature drift mitigation defaults into config | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: pytest 5 passed, audit PASS, docs graph PASS, worktree FAIL pre-commit slice only` |
 | 最近 24h commits | 123 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+1f6fb919 feat: externalize feature drift mitigation defaults into config | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: pytest 5 passed, audit PASS, docs graph PASS, worktree FAIL pre-commit slice only
 a69af7da feat: externalize shared feature bins into config and fix loader path | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: import smoke, pytest 10 passed, audit PASS, docs graph PASS, codegraph sync PASS | cleanup verified 无残留 no stale
 b6c29e1b feat: externalize stock formula optuna bins into config | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: pytest 3 passed, audit PASS, docs graph PASS, codegraph sync PASS
 3086c2e3 feat: externalize shareholder-plan walkforward defaults into config | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate) | test pass: pytest 4 passed, audit PASS, docs graph PASS, codegraph sync PASS | post-fix-audit cleanup verified 无残留 no stale
