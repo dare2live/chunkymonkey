@@ -927,9 +927,9 @@ SELECT * FROM mart_data_source_watermark;
 
 ### 2026-06-02 stock list controls helper extraction
 
-- `assets/js/widgets/stock-list-controls.js`: 从 `assets/js/app.js` 抽出股票列表的排序 / 筛选条 helper，单独承载 `sortStockRows()` / `buildStockFilterBar()`，把 `composite/notice` 排序和 TDX L1 行业胶囊的组装逻辑拆出。
-- `assets/js/app.js` / `index.html`: 页面脚本在 app.js 之前加载新的 helper，股票列表改为优先调用 `window.StockListControlsWidget.sortStockRows()` 与 `buildStockFilterBar()`，保留轻量 fallback 以防 helper 未加载。
-- `backend/tests/contract/test_stock_list_controls_widget.py` / `backend/tests/contract/test_workbench_frontend_contract.py`: 新增 helper 契约 smoke，并补齐 workbench frontend contract 的 script 注入断言，验证排序顺序与筛选条 HTML 都正确。
+- `assets/js/widgets/stock-list-controls.js`: 从 `assets/js/app.js` 抽出股票列表的排序 / 筛选条 / 过滤元数据 helper，单独承载 `sortStockRows()` / `buildStockFilterBar()` / `buildStockFilterMetaByCode()` / `applyStockFilters()`，把 `composite/notice` 排序、TDX L1 行业胶囊组装，以及 gate/industry/keyword 的行显隐逻辑拆出。
+- `assets/js/app.js` / `index.html`: 页面脚本在 app.js 之前加载新的 helper，股票列表改为优先调用 `window.StockListControlsWidget.sortStockRows()`、`buildStockFilterBar()`、`buildStockFilterMetaByCode()` 与 `applyStockFilters()`，保留轻量 fallback 以防 helper 未加载。
+- `backend/tests/contract/test_stock_list_controls_widget.py` / `backend/tests/contract/test_workbench_frontend_contract.py`: 新增 helper 契约 smoke，并补齐 workbench frontend contract 的 script 注入断言，验证排序顺序、筛选条 HTML、meta 生成与 apply 过滤都正确。
 - 验证: `node --check assets/js/widgets/stock-list-controls.js assets/js/widgets/stock-summary.js assets/js/widgets/type-summary.js assets/js/widgets/returns-chart.js assets/js/app.js` PASS；`pytest -q backend/tests/contract/test_stock_list_controls_widget.py backend/tests/contract/test_stock_summary_widget.py backend/tests/contract/test_type_summary_widget.py backend/tests/contract/test_returns_chart_widget.py backend/tests/contract/test_workbench_frontend_contract.py` 6 passed；`audit_test_tool_health.py` scoped PASS；`complexity-optimizer` 复扫后 `assets/js/app.js` 继续收敛。
 
 ### 2026-06-02 feature drift mitigation shared defaults externalization

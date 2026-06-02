@@ -4,6 +4,8 @@
  * Exported as window.StockListControlsWidget = {
  *   sortStockRows,
  *   buildStockFilterBar,
+ *   buildStockFilterMetaByCode,
+ *   applyStockFilters,
  * }.
  */
 (function (global) {
@@ -70,8 +72,43 @@
       '</div>';
   }
 
+  function buildStockFilterMetaByCode(stocks, deps) {
+    deps = deps || {};
+    var stockGateInfo = typeof deps.stockGateInfo === 'function' ? deps.stockGateInfo : function () { return { key: '' }; };
+    var metaByCode = Object.create(null);
+    (Array.isArray(stocks) ? stocks : []).forEach(function (s) {
+      if (!s || !s.stock_code) return;
+      var gate = stockGateInfo(s).key || '';
+      metaByCode[s.stock_code] = {
+        gate: gate,
+        industry: String(s.tdx_l1 || '').trim(),
+        search: String(s._search_blob || '').toLowerCase(),
+      };
+    });
+    return metaByCode;
+  }
+
+  function applyStockFilters(rows, metaByCode, filterState, keyword) {
+    var rowList = rows && typeof rows.forEach === 'function' ? rows : [];
+    var state = filterState || {};
+    var filterGate = state.gate || 'all';
+    var filterIndustry = state.industry || 'all';
+    var searchKeyword = String(keyword || '').trim().toLowerCase();
+    rowList.forEach(function (tr) {
+      var code = tr && tr.dataset ? tr.dataset.stockCode : '';
+      var meta = code ? (metaByCode && metaByCode[code]) : null;
+      if (!meta) { tr.style.display = 'none'; return; }
+      var show = (filterGate === 'all' || meta.gate === filterGate) &&
+        (filterIndustry === 'all' || meta.industry === filterIndustry);
+      if (show && searchKeyword) show = meta.search.includes(searchKeyword);
+      tr.style.display = show ? '' : 'none';
+    });
+  }
+
   global.StockListControlsWidget = {
     sortStockRows: sortStockRows,
     buildStockFilterBar: buildStockFilterBar,
+    buildStockFilterMetaByCode: buildStockFilterMetaByCode,
+    applyStockFilters: applyStockFilters,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

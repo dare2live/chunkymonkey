@@ -599,7 +599,18 @@
     if (StockListControlsWidget && StockListControlsWidget.sortStockRows) {
       return StockListControlsWidget.sortStockRows(stocks || [], stockListState.getSortMode());
     }
-    return (stocks || []).slice();
+    var mode = stockListState.getSortMode();
+    return (stocks || []).slice().sort(function (left, right) {
+      var diff = 0;
+      if (mode === 'notice') {
+        diff = String(right.latest_notice_date || '').localeCompare(String(left.latest_notice_date || ''));
+      } else {
+        diff = Number(right.composite_priority_score || -1) - Number(left.composite_priority_score || -1);
+      }
+      if (!diff) diff = Number(right.discovery_score || -1) - Number(left.discovery_score || -1);
+      if (!diff) diff = String(left.stock_code || '').localeCompare(String(right.stock_code || ''), 'zh-CN');
+      return diff;
+    });
   }
 
   function summaryRow(label, count, tone, total) {
@@ -929,7 +940,35 @@
         tdxL1Names: tdxL1Names,
       });
     }
-    return '';
+    var gates = [
+      { key: 'all', label: '全部' },
+      { key: 'follow', label: '可跟' },
+      { key: 'watch', label: '关注' },
+      { key: 'observe', label: '观察' },
+      { key: 'avoid', label: '回避' }
+    ];
+    var sorts = [
+      { key: 'composite', label: '综合优先' },
+      { key: 'notice', label: '公告最近' },
+    ];
+    var tdxL1Counts = {};
+    (stockListState.getData() || []).forEach(function (s) {
+      var code = (s.tdx_l1 || '').trim();
+      if (code) tdxL1Counts[code] = (tdxL1Counts[code] || 0) + 1;
+    });
+    var industries = [{ key: 'all', label: '全部' }].concat(
+      Object.keys(tdxL1Counts).sort().map(function (code) {
+        return { key: code, label: (tdxL1Names[code] || code) + ' ' + tdxL1Counts[code] };
+      })
+    );
+    function chip(group, key, label, active) {
+      return '<span class="type-tag stock-filter-chip' + (active ? ' active' : '') + '" data-filter-group="' + group + '" data-filter-key="' + key + '">' + label + '</span>';
+    }
+    return '<div class="stock-filter-bar">' +
+      '<div class="stock-filter-group"><span class="stock-filter-label-pill">执行</span>' + gates.map(function (f) { return chip('gate', f.key, f.label, f.key === stockListState.getFilterGate()) }).join('') + '</div>' +
+      '<div class="stock-filter-group"><span class="stock-filter-label-pill">行业</span>' + industries.map(function (f) { return chip('industry', f.key, f.label, f.key === stockListState.getFilterIndustry()) }).join('') + '</div>' +
+      '<div class="stock-filter-group"><span class="stock-filter-label-pill stock-filter-label-pill--sort">排序</span>' + sorts.map(function (f) { return chip('sort', f.key, f.label, f.key === stockListState.getSortMode()) }).join('') + '</div>' +
+      '</div>';
   }
 
   // Step 5 任务 2：筛选条瘦身后，本函数只处理 gate / industry / sort 三组。
@@ -990,23 +1029,17 @@
     return s;
   }
 
-  function buildStockFilterMetaByCode(data) {
-    var metaByCode = Object.create(null);
-    (data || []).forEach(function (s) {
-      if (!s || !s.stock_code) return;
-      var gate = stockGateInfo(s).key || '';
-      metaByCode[s.stock_code] = {
-        gate: gate,
-        industry: (s.tdx_l1 || '').trim(),
-        search: String(s._search_blob || '').toLowerCase()
-      };
-    });
-    return metaByCode;
-  }
-
   function applyStockFilters() {
     // Step 5 任务 2：filter 链从 9 个（signal/gate/4 scoreBand/screening/turtle/attention）
     // 简化为 2 个（gate/industry）+ keyword。
+    if (StockListControlsWidget && StockListControlsWidget.applyStockFilters) {
+      return StockListControlsWidget.applyStockFilters(
+        el('stockListContainer')?.querySelectorAll('tbody tr[data-stock-code]'),
+        _stockFilterMetaByCode,
+        { gate: stockListState.getFilterGate(), industry: stockListState.getFilterIndustry() },
+        ((el('stockSearch')?.value) || '').trim()
+      );
+    }
     var keyword = ((el('stockSearch')?.value) || '').trim().toLowerCase();
     var rows = el('stockListContainer')?.querySelectorAll('tbody tr[data-stock-code]');
     if (!rows) return;
@@ -1107,7 +1140,9 @@
         '</tr>';
     };
     var sourceData = stockListState.getData() || [];
-    _stockFilterMetaByCode = buildStockFilterMetaByCode(sourceData);
+    _stockFilterMetaByCode = StockListControlsWidget && StockListControlsWidget.buildStockFilterMetaByCode
+      ? StockListControlsWidget.buildStockFilterMetaByCode(sourceData, { stockGateInfo: stockGateInfo })
+      : Object.create(null);
     var data = stockSortRows(sourceData);
     renderStockResearchSummary(sourceData, industryViewState.getSummary(), stockListState.getSummary());
     if (!sourceData.length) {

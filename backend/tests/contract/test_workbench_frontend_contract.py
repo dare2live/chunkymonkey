@@ -45,6 +45,8 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "TypeSummaryWidget" in app_js
     assert "StockSummaryWidget" in app_js
     assert "StockListControlsWidget" in app_js
+    assert "buildStockFilterMetaByCode" in app_js
+    assert "applyStockFilters" in app_js
     assert "/api/workbench/data-sources" in data_view_js
     assert "/api/data_health/snapshot" not in data_view_js
     assert "/api/data_health/sources" not in data_view_js
