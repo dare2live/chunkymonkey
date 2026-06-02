@@ -743,6 +743,7 @@ def test_workbench_data_sources_model_is_pure_and_stable():
         if (!model || model.signalCacheTone !== 'fresh') throw new Error('signalCacheTone mismatch');
         if (!model.kline.primary_is_tdxhub || model.primary.source_name !== 'tdxhub') throw new Error('kline normalization mismatch');
         if (model.qualityCounts.blocking !== 1 || model.tdxHealthSummary.timeout_server_count !== 1) throw new Error('counts mismatch');
+        if (model.signalCacheModel.status !== 'fresh' || model.signalCacheModel.step.status !== 'not-run') throw new Error('signal cache model mismatch');
         if (model.tdxServerHealth.rowCount !== 1 || model.tdxServerHealth.totals.timeout !== 1) throw new Error('tdx server health model mismatch');
         if (model.assetGovernanceTable.rowCount !== 1 || model.assetGovernanceTable.rows[0].table_name !== 'fact_x') throw new Error('asset governance model mismatch');
         if (model.processingMonitor.recentRunCount !== 1 || model.processingMonitor.reasonCount !== 1 || model.processingMonitor.totalRejectedRows !== 3) throw new Error('processing monitor model mismatch');
@@ -836,6 +837,56 @@ def test_workbench_processing_monitor_model_is_pure_and_stable():
         if (model.reasonCounts[1].reason !== 'missing source' || model.reasonCounts[1].count !== 8) throw new Error('reason normalization mismatch');
         const empty = view.buildProcessingMonitorModel({});
         if (empty.recentRunCount !== 0 || empty.reasonCount !== 0 || empty.isEmpty !== true) throw new Error('default normalization mismatch');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/workbench-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+
+
+def test_workbench_today_signal_cache_model_is_pure_and_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.WorkbenchView;
+        if (!view || typeof view.buildTodaySignalCacheModel !== 'function') {
+          throw new Error('WorkbenchView.buildTodaySignalCacheModel missing');
+        }
+
+        const model = view.buildTodaySignalCacheModel({
+          status: 'hit',
+          signal_count: 9261,
+          freshness_days: 90,
+          source_max_notice_date: '2026-05-05',
+          current_source_max_notice_date: '2026-05-05',
+          built_at: '2026-05-07T08:00:00',
+          stale: false,
+          requires_refresh: false,
+          error: '',
+          step: { status: 'completed', records: 9261, finished_at: '2026-05-07T08:00:01' },
+        });
+
+        if (!model || model.status !== 'hit' || model.statusTone !== 'hit') throw new Error('status mismatch');
+        if (model.signalCount !== 9261 || model.freshnessDays !== 90) throw new Error('count mismatch');
+        if (model.sourceMaxNoticeDate !== '2026-05-05' || model.currentSourceMaxNoticeDate !== '2026-05-05') throw new Error('date mismatch');
+        if (model.step.status !== 'completed' || model.step.records !== 9261) throw new Error('step mismatch');
+        if (model.isEmpty !== false) throw new Error('empty flag mismatch');
+        const warn = view.buildTodaySignalCacheModel({ status: 'stale', requires_refresh: true, stale: true, step: {} });
+        if (warn.statusTone !== 'warn' || warn.step.status !== 'not-run') throw new Error('warn normalization mismatch');
+        const empty = view.buildTodaySignalCacheModel({});
+        if (empty.status !== 'unknown' || empty.isEmpty !== true) throw new Error('default normalization mismatch');
         """
     ).strip()
 

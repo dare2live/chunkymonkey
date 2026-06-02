@@ -692,12 +692,14 @@
       tdxServerHealth: buildTdxServerHealthModel(tdxHealth),
       assetGovernanceTable: buildAssetGovernanceTableModel(assetHealth.items || []),
       processingMonitor: buildProcessingMonitorModel(monitor),
+      signalCacheModel: buildTodaySignalCacheModel(signalCache),
       blockers: Array.isArray(data.blockers) ? data.blockers : [],
       watermarks: Array.isArray(data.watermarks) ? data.watermarks : [],
       tdxF10Capabilities: Array.isArray(data.tdx_f10_capabilities) ? data.tdx_f10_capabilities : [],
       f10SourceDateAudit: data.f10_source_date_audit || {},
       tdxF10SourceDq: data.tdx_f10_source_dq || {},
       watermarkCount: Number(data.watermark_count || 0),
+      signalCacheTone: (signalCache.requires_refresh || signalCache.stale) ? 'warn' : (signalCache.status || 'unknown'),
     };
   }
 
@@ -910,7 +912,7 @@
       statCard('K线主源', model.primary.source_name || '-', 'tier ' + fmt(model.primary.source_tier), model.kline.primary_is_tdxhub ? 'ok' : 'bad') +
       statCard('主源行数', fmtNum(model.primary.row_count || 0), esc(model.primary.last_data_date || '-'), model.primary.row_count ? 'ok' : 'missing') +
       statCard('TDX健康', fmtNum(model.tdxHealthSummary.healthy_count || 0), fmtNum(model.tdxHealthSummary.timeout_server_count || 0) + ' timeout servers', (model.tdxHealthSummary.timeout_server_count || 0) ? 'warn' : 'ok') +
-      statCard('信号快照', model.signalCache.status || '-', fmtNum(model.signalCache.signal_count || 0) + ' signals', model.signalCacheTone) +
+      statCard('信号快照', model.signalCacheModel.status || '-', fmtNum(model.signalCacheModel.signalCount || 0) + ' signals', model.signalCacheModel.statusTone) +
       statCard('Fallback', fmtNum(model.kline.fallback_active_count || 0), 'active sources', model.kline.fallback_active_count ? 'warn' : 'ok') +
       statCard('资产治理', fmtNum(((model.assetHealth.summary || {}).total) || 0), renderStatusCounts(model.qualityCounts), ((model.qualityCounts || {}).blocking || 0) ? 'ok' : 'info') +
       statCard('特征 fallback', fmtPct(model.validation.source_fallback_ratio), esc(model.validation.validation_id || '-'), model.validation.status || 'unknown') +
@@ -936,7 +938,7 @@
       '<div class="wb-grid">' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>今日信号快照</h3><div class="muted">materialized read model</div></div></div>' +
-      renderTodaySignalCache(model.signalCache) +
+      renderTodaySignalCache(model.signalCacheModel) +
       '</section>' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>特征源分布</h3><div class="muted">' + esc(model.validation.validated_at || '-') + '</div></div></div>' +
@@ -1107,21 +1109,44 @@
     };
   }
 
-  function renderTodaySignalCache(cache) {
+  function renderTodaySignalCache(model) {
+    model = model || buildTodaySignalCacheModel({});
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>状态</th><th>信号</th><th>freshness</th><th>source max</th><th>built</th><th>刷新步骤</th></tr></thead><tbody>' +
+      '<tr>' +
+      '<td>' + pill(model.status, model.statusTone) + (model.error ? '<div class="muted">' + esc(model.error) + '</div>' : '') + '</td>' +
+      '<td>' + fmtNum(model.signalCount || 0) + '</td>' +
+      '<td>' + (model.freshnessDays == null ? '-' : fmtNum(model.freshnessDays) + 'd') + '</td>' +
+      '<td>' + esc(model.sourceMaxNoticeDate || '-') + '<div class="muted">current ' + esc(model.currentSourceMaxNoticeDate || '-') + '</div></td>' +
+      '<td>' + esc(model.builtAt || '-') + '</td>' +
+      '<td>' + pill(model.step.status || 'not-run', model.step.statusTone || model.step.status || 'info') + '<div class="muted">' + fmtNum(model.step.records || 0) + ' rows · ' + esc(model.step.finishedAt || model.step.startedAt || '-') + '</div></td>' +
+      '</tr></tbody></table></div>';
+  }
+
+  function buildTodaySignalCacheModel(cache) {
     cache = cache || {};
     var step = cache.step || {};
     var status = cache.status || 'unknown';
     var statusTone = (cache.requires_refresh || cache.stale) ? 'warn' : status;
-    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
-      '<thead><tr><th>状态</th><th>信号</th><th>freshness</th><th>source max</th><th>built</th><th>刷新步骤</th></tr></thead><tbody>' +
-      '<tr>' +
-      '<td>' + pill(status, statusTone) + (cache.error ? '<div class="muted">' + esc(cache.error) + '</div>' : '') + '</td>' +
-      '<td>' + fmtNum(cache.signal_count || 0) + '</td>' +
-      '<td>' + (cache.freshness_days == null ? '-' : fmtNum(cache.freshness_days) + 'd') + '</td>' +
-      '<td>' + esc(cache.source_max_notice_date || '-') + '<div class="muted">current ' + esc(cache.current_source_max_notice_date || '-') + '</div></td>' +
-      '<td>' + esc(cache.built_at || '-') + '</td>' +
-      '<td>' + pill(step.status || 'not-run', step.status || 'info') + '<div class="muted">' + fmtNum(step.records || 0) + ' rows · ' + esc(step.finished_at || step.started_at || '-') + '</div></td>' +
-      '</tr></tbody></table></div>';
+    var stepStatus = step.status || 'not-run';
+    return {
+      status: status,
+      statusTone: statusTone,
+      signalCount: Number(cache.signal_count || 0),
+      freshnessDays: cache.freshness_days == null ? null : Number(cache.freshness_days),
+      sourceMaxNoticeDate: cache.source_max_notice_date || '-',
+      currentSourceMaxNoticeDate: cache.current_source_max_notice_date || '-',
+      builtAt: cache.built_at || '-',
+      error: cache.error || '',
+      step: {
+        status: stepStatus,
+        statusTone: step.status || 'info',
+        records: Number(step.records || 0),
+        finishedAt: step.finished_at || '-',
+        startedAt: step.started_at || '-',
+      },
+      isEmpty: !cache.status && !cache.signal_count && !cache.built_at,
+    };
   }
 
   function renderSourceBlockers(rows) {
@@ -2736,6 +2761,7 @@
     buildDataSourcesModel: buildDataSourcesModel,
     buildAssetGovernanceTableModel: buildAssetGovernanceTableModel,
     buildProcessingMonitorModel: buildProcessingMonitorModel,
+    buildTodaySignalCacheModel: buildTodaySignalCacheModel,
     buildTdxServerHealthModel: buildTdxServerHealthModel,
     buildFeaturesModel: buildFeaturesModel,
     buildTemporalSynergyModel: buildTemporalSynergyModel,
