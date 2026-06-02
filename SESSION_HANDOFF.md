@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 17:48:21 CST
+**Snapshot 时间**: 2026-06-02 18:40:10 CST
 
 ## 主线状态
 
@@ -61,23 +61,23 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `931b31d0 docs: soften handoff retrain wording to current mainline state | # commit-msg: minimal` |
-| 最近 24h commits | 128 |
+| HEAD | `0c7cb6aa feat: batch p0a panel v3 confidence null checks | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 2 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS` |
+| 最近 24h commits | 135 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
-931b31d0 docs: soften handoff retrain wording to current mainline state | # commit-msg: minimal
-caaed3b1 docs: refresh session handoff snapshot after snapshot regen | # commit-msg: minimal
-a3c85e74 docs: align quickstart with session snapshot behavior | # commit-msg: minimal
-8508c8f6 docs: refresh session handoff snapshot after snapshot next action fix
-b84f8cab fix: make session snapshot ignore generated handoff files
-97d9e929 fix: make session snapshot next action follow current goal
-4969f8ce docs: refresh session handoff snapshot
-ec261178 docs: refresh session handoff snapshot
-55d279ad docs: tighten stage-opt blocker guidance
-3355663f docs: refresh session handoff snapshot after BestChoice pipeline defaults commit | # commit-msg: minimal
+0c7cb6aa feat: batch p0a panel v3 confidence null checks | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 2 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
+7f77e9c7 feat: simplify paper-sim legacy diff helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 6 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
+80b3397a feat: simplify survivorship audit missing-code sampling | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 2 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
+81ce0633 feat: cache MACD bucket enrichment lookups | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 2 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
+5ec5b131 feat: optimize lambdaMART train-log stability return attach | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 4 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
+8d3f0d85 feat: batch feature catalog non-null counts per table and sync index | test pass: py_compile PASS, pytest 1 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate) | # commit-msg: minimal
+d01f2985 feat: simplify feature drift root cause aggregation and use timezone-aware timestamps | test pass: py_compile PASS, pytest 1 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate) | # commit-msg: minimal
+2e847536 feat: flatten feature drift mitigation transform loop and sync index | test pass: py_compile PASS, pytest 2 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate) | # commit-msg: minimal
+ad760409 feat: remove redundant per-profile scan in daily recommendations | test pass: audit PASS, py_compile PASS, pytest 4 passed, complexity no new HIGH, docs graph PASS, PIT safe, cleanup verified 无残留 | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate)
+48006cc0 docs: refresh session handoff snapshot after clean-state regen | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
