@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 05:17:49 CST
+**Snapshot 时间**: 2026-06-03 05:24:50 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `a06b3514 feat: extend shared widget formatter to ETF list and workbench | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 246 |
+| HEAD | `ff72191e feat: extend shared widget formatter to ETF analysis and workbench-health | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 248 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+ff72191e feat: extend shared widget formatter to ETF analysis and workbench-health | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
+a1529873 docs: refresh session handoff and workflow checkpoint after ETF list/workbench formatter extension | # commit-msg: minimal
 a06b3514 feat: extend shared widget formatter to ETF list and workbench | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 67a34d67 docs: refresh session handoff and workflow checkpoint after ETF formatter extension snapshot refresh | # commit-msg: minimal
 8a969618 docs: refresh session handoff and workflow checkpoint after ETF formatter extension | # commit-msg: minimal
@@ -76,8 +78,6 @@ a06b3514 feat: extend shared widget formatter to ETF list and workbench | Codex-
 7af849d1 feat: add shared widget format utils | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 703dccb8 docs: refresh session handoff and workflow checkpoint after model-monitor formatter cleanup | # commit-msg: minimal
 0bed79f4 refactor: hoist model-monitor format helpers | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
-53652f82 docs: refresh session handoff snapshot after inline dispatch cleanup | # commit-msg: minimal
-62e2128d refactor: inline stock and research dispatches in app.js | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 2 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
