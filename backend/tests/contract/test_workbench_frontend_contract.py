@@ -45,6 +45,8 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "'assets/js/widgets/institution-scorecard.js'" in index
     assert "'assets/js/widgets/topk-strip.js'" in index
     assert "'assets/js/widgets/workbench-health.js'" in index
+    assert "'assets/js/widgets/screening-panel.js'" in index
+    assert "'assets/js/widgets/multidim-badge.js'" in index
     assert 'id="instScorecardFramework"' in index
     assert 'id="instScorecardStats"' in index
     assert 'id="instScorecardParams"' in index
@@ -74,6 +76,8 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/signal-params.js'")
     assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/cohort-card.js'")
     assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/backtest-panel.js'")
+    assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/screening-panel.js'")
+    assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/multidim-badge.js'")
     assert index.index("'assets/js/widgets/topk-strip.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/etf-workbench.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/model-monitor.js'") < index.index("'assets/js/app.js'")

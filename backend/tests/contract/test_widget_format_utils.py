@@ -46,6 +46,8 @@ require(process.argv[10]);
 require(process.argv[11]);
 require(process.argv[12]);
 require(process.argv[13]);
+require(process.argv[14]);
+require(process.argv[15]);
 const topkSrc = fs.readFileSync(process.argv[10], 'utf8');
 if (!topkSrc.includes('WidgetFormatUtils')) {
   throw new Error('TopKStripWidget should use WidgetFormatUtils');
@@ -61,6 +63,14 @@ if (!cohortSrc.includes('WidgetFormatUtils')) {
 const backtestSrc = fs.readFileSync(process.argv[13], 'utf8');
 if (!backtestSrc.includes('WidgetFormatUtils')) {
   throw new Error('BacktestPanelWidget should use WidgetFormatUtils');
+}
+const screeningSrc = fs.readFileSync(process.argv[14], 'utf8');
+if (!screeningSrc.includes('WidgetFormatUtils')) {
+  throw new Error('ScreeningPanelWidget should use WidgetFormatUtils');
+}
+const badgeSrc = fs.readFileSync(process.argv[15], 'utf8');
+if (!badgeSrc.includes('WidgetFormatUtils')) {
+  throw new Error('MultidimBadgeWidget should use WidgetFormatUtils');
 }
 if (!globalThis.ETFSectorRotationWidget || typeof globalThis.ETFSectorRotationWidget.mount !== 'function') {
   throw new Error('ETFSectorRotationWidget exports missing');
@@ -98,6 +108,12 @@ if (!globalThis.CohortCardWidget || typeof globalThis.CohortCardWidget.mount !==
 if (!globalThis.BacktestPanelWidget || typeof globalThis.BacktestPanelWidget.mount !== 'function') {
   throw new Error('BacktestPanelWidget exports missing');
 }
+if (!globalThis.ScreeningPanelWidget || typeof globalThis.ScreeningPanelWidget.mount !== 'function') {
+  throw new Error('ScreeningPanelWidget exports missing');
+}
+if (!globalThis.MultidimBadgeWidget || typeof globalThis.MultidimBadgeWidget.mount !== 'function') {
+  throw new Error('MultidimBadgeWidget exports missing');
+}
 """
 
     result = subprocess.run(
@@ -118,6 +134,8 @@ if (!globalThis.BacktestPanelWidget || typeof globalThis.BacktestPanelWidget.mou
             str(REPO / "assets/js/widgets/signal-params.js"),
             str(REPO / "assets/js/widgets/cohort-card.js"),
             str(REPO / "assets/js/widgets/backtest-panel.js"),
+            str(REPO / "assets/js/widgets/screening-panel.js"),
+            str(REPO / "assets/js/widgets/multidim-badge.js"),
         ],
         check=False,
         text=True,

@@ -17,9 +17,11 @@
     return d.innerHTML;
   }
 
+  var formatUtils = (typeof globalThis !== 'undefined' && globalThis.WidgetFormatUtils) || global.WidgetFormatUtils;
+  if (!formatUtils) throw new Error('WidgetFormatUtils missing');
+
   function fmt(n) {
-    if (n == null || isNaN(n)) return '-';
-    return Number(n).toLocaleString('zh-CN');
+    return formatUtils.formatNumber(n, 0);
   }
 
   function fmtDate(s) {
@@ -38,7 +40,7 @@
     var f1 = s.f1_hits || 0, f3 = s.f3_hits || 0, f5 = s.f5_hits || 0;
     var any = s.any_hit || 0;
     var total = s.total_stocks || 0;
-    var hitPct = total > 0 ? Math.round(any * 1000 / total) / 10 : 0;
+    var hitPct = total > 0 ? formatUtils.formatPercent(any / total, 1, true, false, '—') : '—';
     var screenDate = fmtDate(s.screen_date);
     var turtleDate = fmtDate(s.turtle_snapshot_date);
     var turtleN = s.turtle_feature_count || 0;
@@ -50,7 +52,7 @@
         '<div class="sig-bt-card sig-bt-follow">' +
           '<div class="sig-bt-lbl">TDX 命中（任一公式）</div>' +
           '<div class="sig-bt-val">' + fmt(any) + '</div>' +
-          '<div class="sig-bt-sub">/' + fmt(total) + ' · ' + hitPct + '% · 扫描日 ' + esc(screenDate) + '</div>' +
+          '<div class="sig-bt-sub">/' + fmt(total) + ' · ' + hitPct + ' · 扫描日 ' + esc(screenDate) + '</div>' +
         '</div>' +
         '<div class="sig-bt-card">' +
           '<div class="sig-bt-lbl">F1 / F3 / F5</div>' +
@@ -182,4 +184,7 @@
   }
 
   global.ScreeningPanelWidget = { mount };
-})(window);
+  if (typeof globalThis !== 'undefined') {
+    globalThis.ScreeningPanelWidget = global.ScreeningPanelWidget;
+  }
+})(typeof window !== 'undefined' ? window : this);
