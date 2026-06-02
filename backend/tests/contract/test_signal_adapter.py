@@ -26,13 +26,14 @@ const view = adapter.eventToView({
   industry: '银行',
   institution_id: 'inst-1',
   institution_name: '机构1',
+  rule_breakdown: { checks: [{ key: 'inst_type', raw: '券商' }] },
   action: 'follow',
   notice_date: '2026-06-03',
   premium_pct: 3.4,
   short: { stats: { ev_pct: 0.8, n: 3, win_rate: 0.4 } },
   long: { stats: { ev_pct: 2.5, n: 5, win_rate: 0.6 } },
 });
-if (!view || view.stockCode !== '000001' || view.action !== 'follow' || !view.longEV || view.longEV.pct !== 2.5) {
+if (!view || view.stockCode !== '000001' || view.action !== 'follow' || !view.longEV || view.longEV.pct !== 2.5 || view.institutionType !== '券商') {
   throw new Error('SignalAdapter eventToView mapping mismatch: ' + JSON.stringify(view));
 }
 const src = fs.readFileSync(process.argv[1], 'utf8');

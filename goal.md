@@ -5,6 +5,8 @@
 
 ## 2026-06-03 — data-view routes table single-pass cleanup
 
+- `assets/js/stock-view.js` 里的股票筛选继续收口，`collectOptions()` / `applyFilters()` 现在直接读 `topEvent.institutionType`，不再重复从 `ruleChecks` 扫 `inst_type`；`backend/tests/contract/test_signal_adapter.py` 已补 `eventToView` 通过 `rule_breakdown.checks` 归一出 `institutionType` 的回归。验证：`node --check assets/js/signal-adapter.js assets/js/stock-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_signal_adapter.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对 `assets/js/stock-view.js` 无明显热点。
+
 - `assets/js/data-view.js` 里的数据视图继续收口，`renderSourceCards()` / `renderRoutesTable()` / `renderDriftQueue()` / `renderStepGrid()` 现在都改成事件委托，不再在每次渲染后 `querySelectorAll(...).forEach(...)` 逐个绑定按钮；`_setUpdateButtonsBusy()` 也改成对 step-grid 容器统一切换 busy 样式。验证：`node --check assets/js/data-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py backend/tests/contract/test_workbench_frontend_contract.py` 6 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
 
 - `assets/js/data-view.js` 里的 `buildRoutesTableModel()` 已改成单次扫描，`null` 路由会被直接跳过，`backend/tests/contract/test_data_view.py` 已补 `null` 路由不影响 route model 的回归。验证：`node --check assets/js/data-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py backend/tests/contract/test_workbench_frontend_contract.py` 6 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。

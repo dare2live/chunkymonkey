@@ -307,8 +307,7 @@
     byStock.forEach(s => {
       const ind = s.industry;
       if (ind) industries.set(ind, (industries.get(ind) || 0) + 1);
-      // instType from topEvent.ruleChecks
-      const it = (s.topEvent?.ruleChecks || []).find(c => c.key === 'inst_type')?.raw;
+      const it = s.topEvent?.institutionType;
       const itStr = it != null ? String(it) : null;
       if (itStr) instTypes.set(itStr, (instTypes.get(itStr) || 0) + 1);
     });
@@ -324,7 +323,7 @@
       if (state.filterAction !== 'all' && s.bestAction !== state.filterAction) return false;
       if (state.filterIndustry && s.industry !== state.filterIndustry) return false;
       if (state.filterInstType) {
-        const it = (s.topEvent?.ruleChecks || []).find(c => c.key === 'inst_type')?.raw;
+        const it = s.topEvent?.institutionType;
         if (it == null || String(it) !== state.filterInstType) return false;
       }
       if (state.filterAiTop) {
