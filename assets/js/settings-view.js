@@ -12,7 +12,6 @@
   }
 
   function buildSchemaVersionsModel(data) {
-    const summary = data && data.summary ? data.summary : {};
     const versions = Array.isArray(data && data.versions) ? data.versions : [];
     const byLayer = { fact: 0, mart: 0, dim_derived: 0 };
     const driftRows = [];
@@ -25,14 +24,13 @@
       else okRows.push(version);
     }
     return {
-      summary,
       byLayer,
       versions,
       driftRows,
       okRows,
-      driftCount: summary.drift_count || 0,
-      total: summary.total || 0,
-      nViews: summary.n_views || 0,
+      driftCount: Number(data && data.summary && data.summary.drift_count) || 0,
+      total: Number(data && data.summary && data.summary.total) || 0,
+      nViews: Number(data && data.summary && data.summary.n_views) || 0,
     };
   }
 
@@ -63,7 +61,7 @@
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const data = await r.json();
       const model = buildSchemaVersionsModel(data);
-      const { summary, byLayer, driftRows, okRows, driftCount } = model;
+      const { byLayer, driftRows, okRows, driftCount } = model;
 
       // 顶部摘要 + drift 列表 + ok 折叠
       el.innerHTML = `
