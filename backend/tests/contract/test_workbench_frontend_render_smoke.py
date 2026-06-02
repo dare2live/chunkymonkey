@@ -1220,6 +1220,9 @@ def test_workbench_rank_matrix_cache_model_is_pure_and_stable():
 
         if (!model || model.summary.entry_count !== 2) throw new Error('summary mismatch');
         if (model.latestBenchmarks.length !== 1 || model.cacheEntries.length !== 1) throw new Error('list normalization mismatch');
+        if (model.summaryMetrics.entryCount !== 2 || model.summaryMetrics.totalRows !== 12 || model.summaryMetrics.totalHits !== 7) throw new Error('summary metrics mismatch');
+        if (model.benchmarkRows[0].runId !== 'rank_1' || model.benchmarkRows[0].cacheStatus !== 'ready') throw new Error('benchmark row mismatch');
+        if (model.cacheEntryRows[0].tableName !== 'rank_cache_1' || model.cacheEntryRows[0].featureSetId !== 'fs_1') throw new Error('cache entry row mismatch');
         if (model.isEmpty !== false) throw new Error('empty flag mismatch');
         if (view.buildRankMatrixCacheModel({}).isEmpty !== true) throw new Error('default normalization mismatch');
         """

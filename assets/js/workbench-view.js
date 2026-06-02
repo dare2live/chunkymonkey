@@ -2477,48 +2477,44 @@
 
   function renderRankMatrixCache(data) {
     var model = buildRankMatrixCacheModel(data);
-    var summary = model.summary;
-    var benches = model.latestBenchmarks;
-    var entries = model.cacheEntries;
     if (model.isEmpty) return renderEmpty('暂无 rank matrix cache');
     var meta = '<div class="wb-kv">' +
-      '<div><span>entries</span><strong>' + fmtNum(summary.entry_count || entries.length || 0) + '</strong></div>' +
-      '<div><span>rows</span><strong>' + fmtNum(summary.total_rows || 0) + '</strong></div>' +
-      '<div><span>hits</span><strong>' + fmtNum(summary.total_hits || 0) + '</strong></div>' +
-      '<div><span>latest</span><strong>' + esc(summary.latest_used_at || '-') + '</strong></div>' +
+      '<div><span>entries</span><strong>' + fmtNum(model.summaryMetrics.entryCount || model.cacheEntryRows.length || 0) + '</strong></div>' +
+      '<div><span>rows</span><strong>' + fmtNum(model.summaryMetrics.totalRows || 0) + '</strong></div>' +
+      '<div><span>hits</span><strong>' + fmtNum(model.summaryMetrics.totalHits || 0) + '</strong></div>' +
+      '<div><span>latest</span><strong>' + esc(model.summaryMetrics.latestUsedAt || '-') + '</strong></div>' +
       '</div>';
     var benchTable = '';
-    if (benches.length) {
+    if (model.benchmarkRows.length) {
       benchTable = '<div class="wb-table-wrap" style="margin-top:12px"><table class="data-table data-table-compact wb-table">' +
         '<thead><tr><th>run</th><th>cache</th><th>label</th><th>features</th><th>rows</th><th>duration</th><th>rank build</th><th>gate</th></tr></thead><tbody>' +
-        benches.map(function (row) {
-          var cache = row.rank_matrix_cache || {};
+        model.benchmarkRows.map(function (row) {
           return '<tr>' +
-            '<td><code>' + esc(row.run_id || '-') + '</code><div class="muted">' + esc(row.built_at || '-') + '</div></td>' +
-            '<td>' + pill(cache.status || 'unknown', cache.status || 'info') + '<div class="muted"><code>' + esc(cache.table_name || '-') + '</code></div></td>' +
-            '<td>' + esc(row.label_name || '-') + '</td>' +
-            '<td>' + fmtNum(row.feature_count || 0) + ' x ' + fmtNum(row.label_count || 0) + '</td>' +
-            '<td>' + fmtNum(row.rank_matrix_rows || row.total_rows || 0) + '</td>' +
-            '<td>' + fmtDuration(row.matrix_duration_s) + '</td>' +
-            '<td>' + fmtDuration(row.rank_matrix_build_s) + '<div class="muted">proxy ' + fmtDuration(row.proxy_association_s) + '</div></td>' +
-            '<td>' + pill(row.gate_status || '-', row.gate_status || 'unknown') + '<div class="muted">delta ' + fmtFloat(row.max_abs_rank_ic_delta, 6) + '</div></td>' +
+            '<td><code>' + esc(row.runId || '-') + '</code><div class="muted">' + esc(row.builtAt || '-') + '</div></td>' +
+            '<td>' + pill(row.cacheStatus || 'unknown', row.cacheStatusTone || 'info') + '<div class="muted"><code>' + esc(row.cacheTableName || '-') + '</code></div></td>' +
+            '<td>' + esc(row.labelName || '-') + '</td>' +
+            '<td>' + esc(row.featureCountText || '-') + '</td>' +
+            '<td>' + fmtNum(row.rowCount || 0) + '</td>' +
+            '<td>' + esc(row.matrixDurationText || '-') + '</td>' +
+            '<td>' + esc(row.rankBuildDurationText || '-') + '<div class="muted">proxy ' + esc(row.proxyAssociationText || '-') + '</div></td>' +
+            '<td>' + pill(row.gateStatus || '-', row.gateStatusTone || 'unknown') + '<div class="muted">delta ' + esc(row.maxAbsRankIcDeltaText || '-') + '</div></td>' +
             '</tr>';
         }).join('') +
         '</tbody></table></div>';
     }
     var entryTable = '';
-    if (entries.length) {
+    if (model.cacheEntryRows.length) {
       entryTable = '<div class="wb-table-wrap" style="margin-top:12px"><table class="data-table data-table-compact wb-table">' +
         '<thead><tr><th>cache table</th><th>panel</th><th>rows</th><th>cols</th><th>hits</th><th>build</th><th>used</th></tr></thead><tbody>' +
-        entries.map(function (row) {
+        model.cacheEntryRows.map(function (row) {
           return '<tr>' +
-            '<td><code>' + esc(row.table_name || '-') + '</code></td>' +
-            '<td>' + esc(row.panel_table || '-') + '<div class="muted">' + esc(row.feature_set_id || '-') + '</div></td>' +
-            '<td>' + fmtNum(row.row_count || 0) + '</td>' +
-            '<td>' + fmtNum(row.rank_column_count || 0) + '</td>' +
-            '<td>' + fmtNum(row.hit_count || 0) + '</td>' +
-            '<td>' + fmtDuration(row.build_duration_s) + '</td>' +
-            '<td>' + esc(row.last_used_at || row.created_at || '-') + '</td>' +
+            '<td><code>' + esc(row.tableName || '-') + '</code></td>' +
+            '<td>' + esc(row.panelTable || '-') + '<div class="muted">' + esc(row.featureSetId || '-') + '</div></td>' +
+            '<td>' + fmtNum(row.rowCount || 0) + '</td>' +
+            '<td>' + fmtNum(row.rankColumnCount || 0) + '</td>' +
+            '<td>' + fmtNum(row.hitCount || 0) + '</td>' +
+            '<td>' + esc(row.buildDurationText || '-') + '</td>' +
+            '<td>' + esc(row.lastUsedAt || '-') + '</td>' +
             '</tr>';
         }).join('') +
         '</tbody></table></div>';
@@ -2531,10 +2527,50 @@
     var summary = data.summary || {};
     var latestBenchmarks = Array.isArray(data.latest_benchmarks) ? data.latest_benchmarks : [];
     var cacheEntries = Array.isArray(data.cache_entries) ? data.cache_entries : [];
+    var summaryMetrics = {
+      entryCount: Number(summary.entry_count || 0),
+      totalRows: Number(summary.total_rows || 0),
+      totalHits: Number(summary.total_hits || 0),
+      latestUsedAt: summary.latest_used_at || '',
+    };
+    var benchmarkRows = latestBenchmarks.map(function (row) {
+      var cache = row.rank_matrix_cache || {};
+      return {
+        runId: row.run_id || '',
+        builtAt: row.built_at || '',
+        cacheStatus: cache.status || 'unknown',
+        cacheStatusTone: cache.status || 'info',
+        cacheTableName: cache.table_name || '',
+        labelName: row.label_name || '',
+        featureCountText: fmtNum(row.feature_count || 0) + ' x ' + fmtNum(row.label_count || 0),
+        rowCount: Number(row.rank_matrix_rows || row.total_rows || 0),
+        matrixDurationText: fmtDuration(row.matrix_duration_s),
+        rankBuildDurationText: fmtDuration(row.rank_matrix_build_s),
+        proxyAssociationText: fmtDuration(row.proxy_association_s),
+        gateStatus: row.gate_status || '-',
+        gateStatusTone: row.gate_status || 'unknown',
+        maxAbsRankIcDeltaText: fmtFloat(row.max_abs_rank_ic_delta, 6),
+      };
+    });
+    var cacheEntryRows = cacheEntries.map(function (row) {
+      return {
+        tableName: row.table_name || '',
+        panelTable: row.panel_table || '',
+        featureSetId: row.feature_set_id || '',
+        rowCount: Number(row.row_count || 0),
+        rankColumnCount: Number(row.rank_column_count || 0),
+        hitCount: Number(row.hit_count || 0),
+        buildDurationText: fmtDuration(row.build_duration_s),
+        lastUsedAt: row.last_used_at || row.created_at || '',
+      };
+    });
     return {
       summary: summary,
       latestBenchmarks: latestBenchmarks,
       cacheEntries: cacheEntries,
+      summaryMetrics: summaryMetrics,
+      benchmarkRows: benchmarkRows,
+      cacheEntryRows: cacheEntryRows,
       isEmpty: !latestBenchmarks.length && !cacheEntries.length,
     };
   }
