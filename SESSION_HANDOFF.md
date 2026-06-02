@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 03:28:52 CST
+**Snapshot 时间**: 2026-06-03 03:33:42 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `579df78c refactor: extract asset governance table model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 18 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 211 |
+| HEAD | `df022714 refactor: extract processing monitor model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 19 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 213 |
 | 未 commit 文件 | 3 |
 
 ### 最近 10 commits
 
 ```
+df022714 refactor: extract processing monitor model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 19 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
+8266df16 docs: refresh session handoff and index after asset governance table model extraction | # commit-msg: minimal
 579df78c refactor: extract asset governance table model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 18 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 60e25b99 docs: refresh session handoff and index after tdx server health model extraction | # commit-msg: minimal
 9233e028 refactor: extract tdx server health model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 17 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ bash scripts/install_resilience.sh --status   # check 装好没
 79e6d435 refactor: extract tdx f10 source-date audit model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 15 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 0823c8db docs: refresh session handoff snapshot after tdx f10 audit model extraction | # commit-msg: minimal
 9053f663 docs: refresh session handoff and index after tdx f10 audit model extraction | # commit-msg: minimal
-1ffbc404 refactor: extract tdx f10 source-date audit model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 15 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
-34851ab0 docs: refresh session handoff snapshot after storage model extraction | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
