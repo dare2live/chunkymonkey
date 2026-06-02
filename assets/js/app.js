@@ -120,10 +120,16 @@
     // C6g: stocks 为主入口，signals-v2 tab 下线
     // P2-P5: 新增 data / strategy / settings 三个独立页, 通过 window.XxxView.show() 接入
     ({
-      stocks: loadStocks,
+      stocks: function () {
+        // TopK 条带由 stock-view 自己挂 TopKStripWidget, app.js 不重复注入
+        if (window.StockView) {
+          if (!_stocksLoaded) { _stocksLoaded = true; window.StockView.load(); }
+          else { window.StockView.reload(); }
+        }
+      },
       workbench: function () { window.WorkbenchView && window.WorkbenchView.show(); },
       dashboard: loadWorkbench,
-      research: loadResearch,
+      research: loadInstScorecard,
       etf: loadEtf,
       'model-monitor': loadModelMonitor,
       data: function () { window.CMDataView && window.CMDataView.show(); },
@@ -218,13 +224,6 @@
 
   // ── 股票视图（C6g 主入口）─────────────────────────────────────
   var _stocksLoaded = false;
-  function loadStocks() {
-    // TopK 条带由 stock-view 自己挂 TopKStripWidget, app.js 不重复注入
-    if (window.StockView) {
-      if (!_stocksLoaded) { _stocksLoaded = true; window.StockView.load(); }
-      else { window.StockView.reload(); }
-    }
-  }
 
   async function loadWorkbench() {
     await refreshDashboardStatus(true, true);
@@ -386,10 +385,6 @@
     setHtml('instScorecardFramework', '<div class="score-rule-card"><div class="score-rule-title">机构评分双框架</div><div class="scorecard-note">机构评分卡暂不可用</div></div>');
     setHtml('instScorecardStats', '');
     setHtml('instScorecardParams', '');
-  }
-
-  function loadResearch() {
-    loadInstScorecard();
   }
 
   // Step 5 任务 4：scorecard 入口现在只负责挂载机构评分卡 widget，不再保留旧的股票/机构评分卡双入口。
