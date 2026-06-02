@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 01:28:22 CST
+**Snapshot 时间**: 2026-06-03 01:35:51 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `7d980439 docs: refresh session handoff snapshot after ETF workbench widget extraction | # commit-msg: minimal` |
-| 最近 24h commits | 168 |
+| HEAD | `adbce7a2 fix: make doctor fast wrapper forward full gate | # commit-msg: minimal` |
+| 最近 24h commits | 170 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+adbce7a2 fix: make doctor fast wrapper forward full gate | # commit-msg: minimal
+90b9a582 docs: refresh session handoff snapshot after ETF workbench snapshot sync | # commit-msg: minimal
 7d980439 docs: refresh session handoff snapshot after ETF workbench widget extraction | # commit-msg: minimal
 bd23298e feat: extract ETF workbench widget and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 0fb48c9b docs: refresh session handoff snapshot after workbench health widget extraction | # commit-msg: minimal
@@ -76,8 +78,6 @@ bd23298e feat: extract ETF workbench widget and trim app.js hotspot | Codex-Revi
 66c2c88e feat: extract model monitor widget and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS
 d997766e docs: refresh session handoff snapshot after ETF opportunity widget extraction
 1aac4845 feat: extract ETF opportunity widget and simplify ETF page | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 5 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS
-f795b957 docs: refresh session handoff snapshot after ETF list index update
-7c16bac1 docs: record ETF list widget extraction in project index
 ```
 
 ## NEXT ACTION (auto-computed)
