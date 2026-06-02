@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 19:04:50 CST
+**Snapshot 时间**: 2026-06-02 19:14:04 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `cf0aa938 feat: externalize type summary helper and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 4 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS` |
-| 最近 24h commits | 142 |
+| HEAD | `4c1b5b89 feat: externalize stock summary helper and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check, pytest 5 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS` |
+| 最近 24h commits | 144 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+4c1b5b89 feat: externalize stock summary helper and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check, pytest 5 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
+4db37bf8 docs: refresh session handoff snapshot after type summary helper extraction | # commit-msg: minimal
 cf0aa938 feat: externalize type summary helper and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 4 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS
 bc76d489 docs: refresh session handoff snapshot after returns chart helper extraction | # commit-msg: minimal
 33444c48 feat: externalize returns chart helper and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS
@@ -76,8 +78,6 @@ e2fcbdcd feat: simplify lambdaMART train-log stability worst-window ranking | Co
 e7fb9aad feat: batch feature catalog current per-table stats | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 2 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
 157c336c docs: refresh session handoff snapshot after p0a panel v3 confidence batching | # commit-msg: minimal
 0c7cb6aa feat: batch p0a panel v3 confidence null checks | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 2 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
-7f77e9c7 feat: simplify paper-sim legacy diff helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 6 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
-80b3397a feat: simplify survivorship audit missing-code sampling | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 2 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
 ```
 
 ## NEXT ACTION (auto-computed)
