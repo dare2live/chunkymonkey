@@ -33,19 +33,49 @@
     };
   }
 
+  function buildDataSourceParamsModel(data) {
+    const sources = Array.isArray(data && data.sources) ? data.sources : [];
+    const rows = [];
+    let totalCapabilities = 0;
+    for (const src of sources) {
+      if (!src) continue;
+      const capabilities = Array.isArray(src.capabilities) ? src.capabilities : [];
+      totalCapabilities += capabilities.length;
+      rows.push({
+        name: src.name || '',
+        displayName: src.display_name || src.name || 'unknown',
+        priority: src.priority,
+        capabilityCount: capabilities.length,
+        capabilityText: `${capabilities.length} caps`,
+      });
+    }
+    return {
+      rows,
+      sourceCount: rows.length,
+      totalCapabilities,
+      isEmpty: rows.length === 0,
+    };
+  }
+
   async function renderDataSourceParams() {
     const el = document.getElementById('sys-ds-params');
     if (!el) return;
     try {
       const r = await fetch('/api/data_sources/list');
       const j = await r.json();
-      el.innerHTML = (j.sources || []).map(s => `
-        <div style="padding:6px 0;border-bottom:1px dotted var(--cm-bg-100)">
-          <span style="font-weight:600">${esc(s.display_name)}</span>
-          <span style="color:var(--cm-ink-500)">优先级 ${s.priority}</span>
-          <span style="float:right;color:var(--cm-ink-500)">${s.capabilities.length} caps</span>
+      const model = buildDataSourceParamsModel(j);
+      el.innerHTML = model.isEmpty ? '<div class="muted">无</div>' : `
+        <div style="font-size:11px;color:var(--cm-ink-500);margin-bottom:6px">
+          <strong>${model.sourceCount}</strong> 个数据源 / <strong>${model.totalCapabilities}</strong> 个 caps
         </div>
-      `).join('') || '<div class="muted">无</div>';
+        ${model.rows.map(s => `
+          <div style="padding:6px 0;border-bottom:1px dotted var(--cm-bg-100)">
+            <span style="font-weight:600">${esc(s.displayName)}</span>
+            <span style="color:var(--cm-ink-500)">优先级 ${esc(s.priority)}</span>
+            <span style="float:right;color:var(--cm-ink-500)">${s.capabilityText}</span>
+          </div>
+        `).join('')}
+      `;
     } catch (e) {
       el.innerHTML = '<div class="muted" style="color:#d33">加载失败: ' + esc(e.message) + '</div>';
     }
@@ -207,5 +237,6 @@
       if (!_initialized) { init(); _initialized = true; }
     },
     buildSchemaVersionsModel,
+    buildDataSourceParamsModel,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

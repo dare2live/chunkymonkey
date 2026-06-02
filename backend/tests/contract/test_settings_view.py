@@ -56,3 +56,43 @@ if (model.okRows[0].table_name !== 'fact_a' || model.okRows[1].table_name !== 'd
         capture_output=True,
     )
     assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_settings_view_builds_data_source_params_model_in_one_pass() -> None:
+    script = r"""
+require(process.argv[1]);
+const view = globalThis.SettingsView;
+if (!view || typeof view.buildDataSourceParamsModel !== 'function') {
+  throw new Error('SettingsView data source params exports missing');
+}
+const model = view.buildDataSourceParamsModel({
+  sources: [
+    { name: 'akshare', display_name: 'AkShare', priority: 1, capabilities: [{}, {}] },
+    { name: 'tdxhub', priority: 2 },
+    null,
+  ],
+});
+if (model.sourceCount !== 2 || model.totalCapabilities !== 2 || !model.rows.length) {
+  throw new Error('summary mismatch: ' + JSON.stringify(model));
+}
+if (model.isEmpty) {
+  throw new Error('isEmpty should be false when rows exist');
+}
+if (model.rows[0].displayName !== 'AkShare' || model.rows[0].capabilityCount !== 2) {
+  throw new Error('first row mismatch: ' + JSON.stringify(model.rows[0]));
+}
+if (model.rows[1].displayName !== 'tdxhub' || model.rows[1].capabilityCount !== 0) {
+  throw new Error('fallback row mismatch: ' + JSON.stringify(model.rows[1]));
+}
+if (model.rows[1].capabilityText !== '0 caps') {
+  throw new Error('capability text mismatch: ' + JSON.stringify(model.rows[1]));
+}
+"""
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/settings-view.js")],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout

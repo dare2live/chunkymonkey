@@ -3,6 +3,10 @@
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
 
+## 2026-06-03 — settings-view data source params model extraction
+
+- `assets/js/settings-view.js` 里的数据源参数卡已收成 `buildDataSourceParamsModel()` 纯 helper，`renderDataSourceParams()` 现在只消费 model；row normalization 把 `sources` 统一成 `rows`、`sourceCount`、`totalCapabilities`、`isEmpty`，并把 `capabilities` 缺失作为空数组兜底，不再直接在 render 里读 raw payload。`backend/tests/contract/test_settings_view.py` 已补 helper 导出与输入归一回归。验证：`node --check assets/js/settings-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_settings_view.py backend/tests/contract/test_workbench_frontend_contract.py` 4 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对 `assets/js/settings-view.js` 无明显热点。
+
 ## 2026-06-03 — data-view routes table single-pass cleanup
 
 - `assets/js/stock-view.js` 里的信号证据链继续收口，`renderTabEvidence()` 现在把 follow/watch 事件改成单次扫描，不再先 `filter()` 两遍再拼接；`backend/tests/contract/test_workbench_frontend_contract.py` 已补 `stock-view` 不应回到双 filter 版本的回归。验证：`node --check assets/js/stock-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_signal_adapter.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对 `assets/js/stock-view.js` 无明显热点。
