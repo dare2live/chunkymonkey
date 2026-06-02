@@ -3,6 +3,10 @@
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
 
+## 2026-06-03 — data-view link overview model extraction
+
+- `assets/js/data-view.js` 里的数据链路总览已收成 `buildLinkOverviewModel()` 纯 helper，`renderLinkOverview()` 现在只消费 model；row normalization 把 `summary` / `by_layer` / `tdxValidation` / `sourceHealth` 统一成 `snapshotAt`、`keep`、`watch`、`drop`、`pit`、`sourceLabel`、`nodes`，并把 `statusFromCounts` 的决策也前移到 model 层。`backend/tests/contract/test_data_view.py` 已补 link overview 的稳定性回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/data-view.js --scope backend/tests/contract/test_data_view.py` PASS，`node --check assets/js/data-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py` 4 passed，`analyze_complexity.py` 复扫后 `assets/js/data-view.js` / `assets/js/stock-view.js` 无新增明显热点，`codegraph sync .` 已同步。
+
 ## 2026-06-03 — stock timeline ordering delegation
 
 - `assets/js/signal-adapter.js` 里的股票事件聚合继续模型化，`aggregateByStockViews()` 现在除了 `events` 还预先产出 `timelineEvents`，把 `renderTabTimeline()` 的日期排序从 UI 渲染路径挪到共享数据层；`assets/js/stock-view.js` 已直接消费 `s.timelineEvents || s.events`。`backend/tests/contract/test_signal_adapter.py` 已补 timeline 顺序回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/signal-adapter.js --scope assets/js/stock-view.js --scope backend/tests/contract/test_signal_adapter.py` PASS，`node --check assets/js/signal-adapter.js assets/js/stock-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_signal_adapter.py` 1 passed，`analyze_complexity.py` 复扫后 `assets/js/signal-adapter.js` / `assets/js/stock-view.js` 无新增明显热点，`codegraph sync .` 已同步。
