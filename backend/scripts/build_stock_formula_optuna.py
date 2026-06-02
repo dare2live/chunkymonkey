@@ -22,6 +22,8 @@ from pathlib import Path
 import duckdb
 import numpy as np
 
+from services.formula_engine.shared_windows import HOLDING_DAYS
+
 
 log = logging.getLogger("build_stock_formula_optuna")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
@@ -30,8 +32,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 MARKET_DB = Path(__file__).resolve().parents[2] / "data" / "market.duckdb"
 SMART_DB  = Path(__file__).resolve().parents[2] / "data" / "smartmoney.duckdb"
 
-
-HOLDING_DAYS = (5, 10, 15, 20, 30, 60, 90)
 
 # 5 维分桶阈值 (与 analyze_macd_feature_buckets 一致)
 VOL_BINS  = [(0, 0.7, "缩量"), (0.7, 1.3, "平量"), (1.3, 2.0, "温量"), (2.0, 99, "爆量")]

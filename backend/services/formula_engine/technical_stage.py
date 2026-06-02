@@ -10,19 +10,92 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
+import yaml
 
 from services.formula_engine.base import sma
 
 
-# 周线 = 5 个交易日聚合; 实际我们直接在日线上用 5x 长度近似 (50日 ≈ 10周)
-# 简化: 直接用日线参数 50/150/250 近似周线 10/30/50
-MA_FAST_DAYS = 50    # ≈ 10 周
-MA_MID_DAYS = 150    # ≈ 30 周
-MA_SLOW_DAYS = 250   # ≈ 50 周
-RANGE_LOOKBACK = 300  # ≈ 60 周
-BREAKOUT_RECENT_DAYS = 10
-DRAWDOWN_MAX_STAGE2 = 0.15
+CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "technical_stage.yaml"
+DEFAULT_RULES: dict[str, float | int] = {
+    "ma_fast_days": 50,
+    "ma_mid_days": 150,
+    "ma_slow_days": 250,
+    "range_lookback": 300,
+    "breakout_recent_days": 10,
+    "drawdown_max_stage2": 0.15,
+    "drawdown_lookback_days": 60,
+    "stage1_pos_max": 0.30,
+    "stage1_slope_max_abs": 0.02,
+    "stage1_vol_ratio_max": 0.8,
+    "stage15_vol_ratio_min": 1.5,
+    "stage15_recent_below_min_count": 2,
+    "volume_ma_days": 20,
+    "slope_lookback_days": 20,
+    "stage3_price_above_ma_mid_multiple": 1.15,
+    "stage3_slope_min": 0.0,
+    "stage4_slope_max": -0.02,
+}
+
+
+def _load_yaml(path: Path) -> dict[str, object]:
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(loaded, dict):
+        raise ValueError(f"{path.name} must contain a mapping")
+    return loaded
+
+
+def _load_rules(path: Path | None = None) -> dict[str, float | int]:
+    raw_path = path or CONFIG_PATH
+    try:
+        raw = _load_yaml(raw_path)
+    except FileNotFoundError:
+        return DEFAULT_RULES.copy()
+
+    try:
+        return {
+            "ma_fast_days": int(raw.get("ma_fast_days", DEFAULT_RULES["ma_fast_days"])),
+            "ma_mid_days": int(raw.get("ma_mid_days", DEFAULT_RULES["ma_mid_days"])),
+            "ma_slow_days": int(raw.get("ma_slow_days", DEFAULT_RULES["ma_slow_days"])),
+            "range_lookback": int(raw.get("range_lookback", DEFAULT_RULES["range_lookback"])),
+            "breakout_recent_days": int(raw.get("breakout_recent_days", DEFAULT_RULES["breakout_recent_days"])),
+            "drawdown_max_stage2": float(raw.get("drawdown_max_stage2", DEFAULT_RULES["drawdown_max_stage2"])),
+            "drawdown_lookback_days": int(raw.get("drawdown_lookback_days", DEFAULT_RULES["drawdown_lookback_days"])),
+            "stage1_pos_max": float(raw.get("stage1_pos_max", DEFAULT_RULES["stage1_pos_max"])),
+            "stage1_slope_max_abs": float(raw.get("stage1_slope_max_abs", DEFAULT_RULES["stage1_slope_max_abs"])),
+            "stage1_vol_ratio_max": float(raw.get("stage1_vol_ratio_max", DEFAULT_RULES["stage1_vol_ratio_max"])),
+            "stage15_vol_ratio_min": float(raw.get("stage15_vol_ratio_min", DEFAULT_RULES["stage15_vol_ratio_min"])),
+            "stage15_recent_below_min_count": int(raw.get("stage15_recent_below_min_count", DEFAULT_RULES["stage15_recent_below_min_count"])),
+            "volume_ma_days": int(raw.get("volume_ma_days", DEFAULT_RULES["volume_ma_days"])),
+            "slope_lookback_days": int(raw.get("slope_lookback_days", DEFAULT_RULES["slope_lookback_days"])),
+            "stage3_price_above_ma_mid_multiple": float(raw.get("stage3_price_above_ma_mid_multiple", DEFAULT_RULES["stage3_price_above_ma_mid_multiple"])),
+            "stage3_slope_min": float(raw.get("stage3_slope_min", DEFAULT_RULES["stage3_slope_min"])),
+            "stage4_slope_max": float(raw.get("stage4_slope_max", DEFAULT_RULES["stage4_slope_max"])),
+        }
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{raw_path.name}: technical_stage rules must be numeric mappings") from exc
+
+
+TECHNICAL_STAGE_RULES = _load_rules()
+MA_FAST_DAYS = int(TECHNICAL_STAGE_RULES["ma_fast_days"])
+MA_MID_DAYS = int(TECHNICAL_STAGE_RULES["ma_mid_days"])
+MA_SLOW_DAYS = int(TECHNICAL_STAGE_RULES["ma_slow_days"])
+RANGE_LOOKBACK = int(TECHNICAL_STAGE_RULES["range_lookback"])
+BREAKOUT_RECENT_DAYS = int(TECHNICAL_STAGE_RULES["breakout_recent_days"])
+DRAWDOWN_MAX_STAGE2 = float(TECHNICAL_STAGE_RULES["drawdown_max_stage2"])
+DRAWDOWN_LOOKBACK_DAYS = int(TECHNICAL_STAGE_RULES["drawdown_lookback_days"])
+STAGE1_POS_MAX = float(TECHNICAL_STAGE_RULES["stage1_pos_max"])
+STAGE1_SLOPE_MAX_ABS = float(TECHNICAL_STAGE_RULES["stage1_slope_max_abs"])
+STAGE1_VOL_RATIO_MAX = float(TECHNICAL_STAGE_RULES["stage1_vol_ratio_max"])
+STAGE15_VOL_RATIO_MIN = float(TECHNICAL_STAGE_RULES["stage15_vol_ratio_min"])
+STAGE15_RECENT_BELOW_MIN_COUNT = int(TECHNICAL_STAGE_RULES["stage15_recent_below_min_count"])
+VOLUME_MA_DAYS = int(TECHNICAL_STAGE_RULES["volume_ma_days"])
+SLOPE_LOOKBACK_DAYS = int(TECHNICAL_STAGE_RULES["slope_lookback_days"])
+STAGE3_PRICE_ABOVE_MA_MID_MULTIPLE = float(TECHNICAL_STAGE_RULES["stage3_price_above_ma_mid_multiple"])
+STAGE3_SLOPE_MIN = float(TECHNICAL_STAGE_RULES["stage3_slope_min"])
+STAGE4_SLOPE_MAX = float(TECHNICAL_STAGE_RULES["stage4_slope_max"])
 
 
 def classify_technical_stage(
@@ -44,8 +117,8 @@ def classify_technical_stage(
 
     # 用 MA_MID 斜率近似走平判定
     slope_mid = np.full(n, np.nan)
-    for i in range(MA_MID_DAYS + 20, n):
-        slope_mid[i] = (ma_mid[i] - ma_mid[i - 20]) / max(ma_mid[i - 20], 1e-9)
+    for i in range(MA_MID_DAYS + SLOPE_LOOKBACK_DAYS, n):
+        slope_mid[i] = (ma_mid[i] - ma_mid[i - SLOPE_LOOKBACK_DAYS]) / max(ma_mid[i - SLOPE_LOOKBACK_DAYS], 1e-9)
 
     # 60 周高低区间位置
     range_pos = np.full(n, np.nan)
@@ -56,13 +129,13 @@ def classify_technical_stage(
             range_pos[i] = (closes[i] - lo) / (hi - lo)
 
     # 量比 (20 日均量)
-    vol_ma20 = sma(volumes, 20)
+    vol_ma20 = sma(volumes, VOLUME_MA_DAYS)
     vol_ratio = np.where((vol_ma20 > 0) & ~np.isnan(vol_ma20), volumes / vol_ma20, 1.0)
 
     # 60 日回撤
     drawdown_60d = np.full(n, 0.0)
-    for i in range(60, n):
-        window = closes[i - 60:i + 1]
+    for i in range(DRAWDOWN_LOOKBACK_DAYS, n):
+        window = closes[i - DRAWDOWN_LOOKBACK_DAYS:i + 1]
         peak = window.max()
         drawdown_60d[i] = (closes[i] - peak) / peak
 
@@ -75,19 +148,19 @@ def classify_technical_stage(
         pos = range_pos[i] if not np.isnan(range_pos[i]) else 0.5
 
         # Stage 4 下跌趋势: MA10 < MA30 < MA50, 价 < MA30, 斜率明显向下
-        if mf < mm < ms and c < mm and slope < -0.02:
+        if mf < mm < ms and c < mm and slope < STAGE4_SLOPE_MAX:
             out[i] = "4"
             continue
         # Stage 1 底部基础: 60 周低位 + MA30 走平 + 量能枯竭
-        if pos < 0.30 and abs(slope) < 0.02 and vol_ratio[i] < 0.8:
+        if pos < STAGE1_POS_MAX and abs(slope) < STAGE1_SLOPE_MAX_ABS and vol_ratio[i] < STAGE1_VOL_RATIO_MAX:
             out[i] = "1"
             continue
         # Stage 1.5 突破中: 突破 MA30 + 量比 > 1.5 + 最近 10 日内 (从下方上穿)
         below_ma30_recent = False
         if i >= BREAKOUT_RECENT_DAYS:
             recent_below = np.sum(closes[i - BREAKOUT_RECENT_DAYS:i] < ma_mid[i - BREAKOUT_RECENT_DAYS:i])
-            below_ma30_recent = recent_below >= 2
-        if c > mm and below_ma30_recent and vol_ratio[i] > 1.5:
+            below_ma30_recent = recent_below >= STAGE15_RECENT_BELOW_MIN_COUNT
+        if c > mm and below_ma30_recent and vol_ratio[i] > STAGE15_VOL_RATIO_MIN:
             out[i] = "1.5"
             continue
         # Stage 2 上升趋势: MA10>MA30>MA50, 价>MA30, 回撤<15%
@@ -95,7 +168,7 @@ def classify_technical_stage(
             out[i] = "2"
             continue
         # Stage 3 顶部分布: 距 MA30 偏离大 + MA10 开始下穿 MA30
-        if c > mm * 1.15 or (mf < mm and slope > 0):
+        if c > mm * STAGE3_PRICE_ABOVE_MA_MID_MULTIPLE or (mf < mm and slope > STAGE3_SLOPE_MIN):
             out[i] = "3"
             continue
         # 其他默认 unknown (兜底)

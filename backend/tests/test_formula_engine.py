@@ -86,6 +86,15 @@ class TestCrossDetection:
         assert result[0] == False
 
 
+class TestSharedFormulaWindows:
+    def test_loader_reads_values(self, tmp_path):
+        from services.formula_engine.shared_windows import load_holding_days
+
+        cfg = tmp_path / "formula_shared_windows.yaml"
+        cfg.write_text("holding_days: [3, 7, 14]\n", encoding="utf-8")
+        assert load_holding_days(cfg) == (3, 7, 14)
+
+
 # ============================================================
 # MACD 公式
 # ============================================================
@@ -104,6 +113,30 @@ class TestMacdGoldenCross:
         assert m.tag == "MA"
         assert m.default_horizon_days == 10
         assert m.has_state is True
+        assert formula.fast_period == 12
+        assert formula.slow_period == 26
+        assert formula.signal_period == 9
+
+    def test_config_loader_reads_values(self, tmp_path):
+        from services.formula_engine.macd_golden_cross import _load_config
+
+        cfg = tmp_path / "formula_macd_golden_cross.yaml"
+        cfg.write_text(
+            "fast_period: 8\n"
+            "slow_period: 17\n"
+            "signal_period: 5\n"
+            "cross_window: 4\n"
+            "imminent_days: 7\n"
+            "imminent_gap_ratio: 0.01\n",
+            encoding="utf-8",
+        )
+        loaded = _load_config(cfg)
+        assert loaded["fast_period"] == 8
+        assert loaded["slow_period"] == 17
+        assert loaded["signal_period"] == 5
+        assert loaded["cross_window"] == 4
+        assert loaded["imminent_days"] == 7
+        assert loaded["imminent_gap_ratio"] == pytest.approx(0.01)
 
     def test_short_kline_no_signals(self, formula):
         # K 线太短 (< slow + signal = 26+9 = 35),不应产生信号
@@ -597,6 +630,49 @@ class TestTechnicalStage:
     def classify(self):
         from services.formula_engine.technical_stage import classify_technical_stage
         return classify_technical_stage
+
+    def test_config_loader_reads_values(self, tmp_path):
+        from services.formula_engine.technical_stage import _load_rules
+
+        cfg = tmp_path / "technical_stage.yaml"
+        cfg.write_text(
+            "ma_fast_days: 42\n"
+            "ma_mid_days: 126\n"
+            "ma_slow_days: 252\n"
+            "range_lookback: 280\n"
+            "breakout_recent_days: 8\n"
+            "drawdown_max_stage2: 0.12\n"
+            "drawdown_lookback_days: 55\n"
+            "stage1_pos_max: 0.25\n"
+            "stage1_slope_max_abs: 0.01\n"
+            "stage1_vol_ratio_max: 0.7\n"
+            "stage15_vol_ratio_min: 1.4\n"
+            "stage15_recent_below_min_count: 3\n"
+            "volume_ma_days: 18\n"
+            "slope_lookback_days: 15\n"
+            "stage3_price_above_ma_mid_multiple: 1.12\n"
+            "stage3_slope_min: 0.02\n"
+            "stage4_slope_max: -0.03\n",
+            encoding="utf-8",
+        )
+        loaded = _load_rules(cfg)
+        assert loaded["ma_fast_days"] == 42
+        assert loaded["ma_mid_days"] == 126
+        assert loaded["ma_slow_days"] == 252
+        assert loaded["range_lookback"] == 280
+        assert loaded["breakout_recent_days"] == 8
+        assert loaded["drawdown_max_stage2"] == pytest.approx(0.12)
+        assert loaded["drawdown_lookback_days"] == 55
+        assert loaded["stage1_pos_max"] == pytest.approx(0.25)
+        assert loaded["stage1_slope_max_abs"] == pytest.approx(0.01)
+        assert loaded["stage1_vol_ratio_max"] == pytest.approx(0.7)
+        assert loaded["stage15_vol_ratio_min"] == pytest.approx(1.4)
+        assert loaded["stage15_recent_below_min_count"] == 3
+        assert loaded["volume_ma_days"] == 18
+        assert loaded["slope_lookback_days"] == 15
+        assert loaded["stage3_price_above_ma_mid_multiple"] == pytest.approx(1.12)
+        assert loaded["stage3_slope_min"] == pytest.approx(0.02)
+        assert loaded["stage4_slope_max"] == pytest.approx(-0.03)
 
     def test_short_kline_returns_unknown(self, classify):
         # < MA_SLOW_DAYS = 250 全部 unknown

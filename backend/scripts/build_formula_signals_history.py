@@ -39,6 +39,7 @@ from services.formula_engine import REGISTRY
 from services.formula_engine import bootstrap as _formula_bootstrap  # noqa: F401
 from services.formula_engine.base import FormulaSignal
 from services.formula_engine.ddl import ensure_formula_tables
+from services.formula_engine.shared_windows import HOLDING_DAYS
 
 from services.market_db import get_market_conn
 
@@ -54,8 +55,6 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
-
-HOLDING_DAYS = (5, 10, 15, 20, 30, 60, 90)
 
 
 def load_all_kline_grouped(mkt_conn, start: str, end: str) -> dict[str, dict]:

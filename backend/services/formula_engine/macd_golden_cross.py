@@ -18,8 +18,10 @@ state:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
+import yaml
 
 from services.formula_engine.base import (
     FormulaMetadata,
@@ -31,9 +33,47 @@ from services.formula_engine.base import (
 )
 
 
-CROSS_WINDOW = 5         # 多少日内算 "刚" 金叉/死叉
-IMMINENT_DAYS = 10       # state history 持仓窗口 (诊断层可略宽于 trigger 口径)
-IMMINENT_GAP_RATIO = 0.012  # |gap|/close < 该值算 imminent
+CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "formula_macd_golden_cross.yaml"
+DEFAULT_CONFIG: dict[str, float | int] = {
+    "fast_period": 12,
+    "slow_period": 26,
+    "signal_period": 9,
+    "cross_window": 5,
+    "imminent_days": 10,
+    "imminent_gap_ratio": 0.012,
+}
+
+
+def _load_yaml(path: Path) -> dict[str, object]:
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(loaded, dict):
+        raise ValueError(f"{path.name} must contain a mapping")
+    return loaded
+
+
+def _load_config(path: Path | None = None) -> dict[str, float | int]:
+    raw_path = path or CONFIG_PATH
+    try:
+        raw = _load_yaml(raw_path)
+    except FileNotFoundError:
+        return DEFAULT_CONFIG.copy()
+    try:
+        return {
+            "fast_period": int(raw.get("fast_period", DEFAULT_CONFIG["fast_period"])),
+            "slow_period": int(raw.get("slow_period", DEFAULT_CONFIG["slow_period"])),
+            "signal_period": int(raw.get("signal_period", DEFAULT_CONFIG["signal_period"])),
+            "cross_window": int(raw.get("cross_window", DEFAULT_CONFIG["cross_window"])),
+            "imminent_days": int(raw.get("imminent_days", DEFAULT_CONFIG["imminent_days"])),
+            "imminent_gap_ratio": float(raw.get("imminent_gap_ratio", DEFAULT_CONFIG["imminent_gap_ratio"])),
+        }
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{raw_path.name}: macd rules must be numeric mappings") from exc
+
+
+MACD_RULES = _load_config()
+CROSS_WINDOW = int(MACD_RULES["cross_window"])
+IMMINENT_DAYS = int(MACD_RULES["imminent_days"])
+IMMINENT_GAP_RATIO = float(MACD_RULES["imminent_gap_ratio"])
 
 
 @dataclass(frozen=True)
@@ -47,9 +87,9 @@ class MacdGoldenCross:
         has_state=True,
     )
 
-    fast_period: int = 12
-    slow_period: int = 26
-    signal_period: int = 9
+    fast_period: int = int(MACD_RULES["fast_period"])
+    slow_period: int = int(MACD_RULES["slow_period"])
+    signal_period: int = int(MACD_RULES["signal_period"])
 
     def _macd_components(self, closes: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """计算 MACD 三线 + 金叉/死叉掩码。"""

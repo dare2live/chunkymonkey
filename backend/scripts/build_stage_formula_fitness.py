@@ -31,6 +31,7 @@ import numpy as np
 from services.db import get_conn
 from services.formula_engine.ddl import ensure_formula_tables
 from services.formula_engine.technical_stage import classify_technical_stage
+from services.formula_engine.shared_windows import HOLDING_DAYS
 from services.utils import latest_completed_trade_date
 
 
@@ -42,7 +43,6 @@ logging.basicConfig(
 )
 
 MARKET_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "market.duckdb"
-HOLDING_DAYS = (5, 10, 15, 20, 30, 60, 90)
 MIN_N_SIGNALS = 30  # 形态 × 公式组合最少样本量
 
 

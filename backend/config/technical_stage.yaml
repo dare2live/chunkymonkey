@@ -1,0 +1,19 @@
+# Stan Weinstein technical_stage 共享规则参数
+# 这是一组共用的阶段识别口径，不应散落在脚本或测试里。
+ma_fast_days: 50
+ma_mid_days: 150
+ma_slow_days: 250
+range_lookback: 300
+breakout_recent_days: 10
+drawdown_max_stage2: 0.15
+drawdown_lookback_days: 60
+stage1_pos_max: 0.30
+stage1_slope_max_abs: 0.02
+stage1_vol_ratio_max: 0.8
+stage15_vol_ratio_min: 1.5
+stage15_recent_below_min_count: 2
+volume_ma_days: 20
+slope_lookback_days: 20
+stage3_price_above_ma_mid_multiple: 1.15
+stage3_slope_min: 0.0
+stage4_slope_max: -0.02
