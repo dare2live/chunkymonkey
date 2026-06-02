@@ -122,6 +122,10 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "function loadInstScorecard(" in app_js
     assert "topCountEntries(" not in app_js
     assert "local.topIndustries = topCountEntries" not in app_js
+    assert "function stockScoreValue(" not in app_js
+    assert "function stockScoreBandMeta(" not in app_js
+    assert "function stockScoreSubtext(" not in app_js
+    assert "function stockSortRows(" not in app_js
     assert "_buildEtfTradeTimelineHtml(" not in app_js
     assert "_buildNavCurveSvg(" not in app_js
     assert "function metricCard(" not in app_js

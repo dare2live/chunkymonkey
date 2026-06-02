@@ -384,40 +384,6 @@
   }
 
 
-  function stockScoreValue(s, dimension) {
-    if (!s) return null;
-    if (dimension === 'discovery') return s.discovery_score;
-    if (dimension === 'quality') return s.company_quality_score;
-    if (dimension === 'stage') return s.stage_score;
-    return null;
-  }
-
-  function stockScoreBandMeta(dimension, rawScore) {
-    if (rawScore == null || rawScore === '') return { key: 'missing', label: '缺失', tone: 'neutral' };
-    var score = Number(rawScore);
-    if (Number.isNaN(score)) return { key: 'missing', label: '缺失', tone: 'neutral' };
-    var strong = 75;
-    var mid = 60;
-    var watch = 45;
-    if (dimension === 'stage') {
-      strong = 70;
-      mid = 55;
-      watch = 40;
-    }
-    if (score >= strong) return { key: 'strong', label: '强', tone: 'good' };
-    if (score >= mid) return { key: 'mid', label: '中', tone: 'accent' };
-    if (score >= watch) return { key: 'watch', label: '观察', tone: 'warn' };
-    return { key: 'weak', label: '弱', tone: 'neutral' };
-  }
-
-  function stockScoreSubtext(s, dimension) {
-    if (!s) return '';
-    if (dimension === 'discovery') return s.display_inst_name || s.setup_inst_name || preferredIndustryLabel(s) || '机构发现';
-    if (dimension === 'quality') return s.stock_archetype || '公司质量';
-    if (dimension === 'stage') return s.path_state || s.stage_reason || '阶段过滤';
-    return '';
-  }
-
   function screeningHitCount(screen) {
     if (!screen) return 0;
     if (screen.hit_count != null) return Number(screen.hit_count || 0);
@@ -436,24 +402,6 @@
       '<div style="display:flex;flex-wrap:wrap;gap:4px">' + tags.join('') + '</div>' +
       '<div class="muted" style="font-size:11px">' + screeningHitCount(screen) + ' 式命中</div>' +
       '</div>';
-  }
-
-  function stockSortRows(stocks) {
-    if (StockListControlsWidget && StockListControlsWidget.sortStockRows) {
-      return StockListControlsWidget.sortStockRows(stocks || [], stockListState.getSortMode());
-    }
-    var mode = stockListState.getSortMode();
-    return (stocks || []).slice().sort(function (left, right) {
-      var diff = 0;
-      if (mode === 'notice') {
-        diff = String(right.latest_notice_date || '').localeCompare(String(left.latest_notice_date || ''));
-      } else {
-        diff = Number(right.composite_priority_score || -1) - Number(left.composite_priority_score || -1);
-      }
-      if (!diff) diff = Number(right.discovery_score || -1) - Number(left.discovery_score || -1);
-      if (!diff) diff = String(left.stock_code || '').localeCompare(String(right.stock_code || ''), 'zh-CN');
-      return diff;
-    });
   }
 
   function summaryRow(label, count, tone, total) {
