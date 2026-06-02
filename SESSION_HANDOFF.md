@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 07:08:35 CST
+**Snapshot 时间**: 2026-06-03 07:12:24 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `64be4af7 refactor: stock-view instType normalization cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 265 |
+| HEAD | `b512c0fd refactor: stock-view evidence filter single-pass cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 267 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+b512c0fd refactor: stock-view evidence filter single-pass cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
+eaaab0a6 docs: refresh session handoff snapshot after stock-view instType cleanup | # commit-msg: minimal
 64be4af7 refactor: stock-view instType normalization cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 4d2291ea docs: refresh session handoff snapshot after data-view routes event delegation cleanup | # commit-msg: minimal
 f57ff03e refactor: data-view routes event delegation cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ ddb756bb docs: refresh session handoff snapshot after data-view route table clea
 0ff1b9d6 docs: refresh session handoff snapshot after turtle helper cleanup | # commit-msg: minimal
 b53b135f refactor: remove dead turtle helper wrappers from app.js | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 b2df128a docs: refresh session handoff snapshot after source cards model cleanup | # commit-msg: minimal
-9e07938a refactor: single-pass source cards model cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
-127b2967 docs: refresh session handoff snapshot after fallback drift capability cleanup | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)

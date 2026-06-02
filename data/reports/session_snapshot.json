@@ -1,10 +1,10 @@
 {
-  "snapshot_at": "2026-06-03 07:08:35 CST",
+  "snapshot_at": "2026-06-03 07:12:24 CST",
   "git": {
     "branch": "main",
-    "head_hash": "64be4af7",
-    "head_msg": "64be4af7 refactor: stock-view instType normalization cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal",
-    "commits_24h": 265,
+    "head_hash": "b512c0fd",
+    "head_msg": "b512c0fd refactor: stock-view evidence filter single-pass cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal",
+    "commits_24h": 267,
     "uncommitted_files": 0
   },
   "retrain": {
