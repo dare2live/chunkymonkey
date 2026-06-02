@@ -45,7 +45,15 @@ GIT_BRANCH=$(git branch --show-current 2>/dev/null || echo "?")
 GIT_HEAD=$(git log --oneline -1 2>/dev/null || echo "?")
 GIT_HEAD_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "?")
 COMMITS_24H=$(git log --oneline --since '24 hours ago' 2>/dev/null | wc -l | tr -d ' ')
-UNCOMMITTED=$(git status --short 2>/dev/null | wc -l | tr -d ' ')
+UNCOMMITTED=$(git status --short 2>/dev/null | awk '
+{
+  path = substr($0, 4);
+  if (path != "SESSION_HANDOFF.md" && path != "data/reports/session_snapshot.json") {
+    count++;
+  }
+}
+END { print count + 0 }
+' )
 RECENT_COMMITS=$(git log --oneline -10 2>/dev/null)
 
 # ============ 2. Retrain in-flight ============
