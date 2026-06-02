@@ -819,9 +819,11 @@
 
   // Tab3: 信号证据链（遍历 ruleChecks 数据驱动渲染，后端加 D9 自动出现）
   function renderTabEvidence(content, s) {
-    const followEvents = s.events.filter(e => e.action === 'follow');
-    const watchEvents = s.events.filter(e => e.action === 'watch');
-    const candidates = [...followEvents, ...watchEvents];
+    const candidates = [];
+    for (const ev of s.events) {
+      if (!ev) continue;
+      if (ev.action === 'follow' || ev.action === 'watch') candidates.push(ev);
+    }
     if (!candidates.length) {
       content.innerHTML = '<div class="sig-empty">无 follow/watch 事件，无法展示证据链</div>';
       return;

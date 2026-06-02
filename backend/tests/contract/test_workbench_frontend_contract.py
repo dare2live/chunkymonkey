@@ -17,6 +17,7 @@ def test_workbench_frontend_entrypoint_is_registered():
     stock_list_controls_js = (REPO / "assets/js/widgets/stock-list-controls.js").read_text(encoding="utf-8")
     data_view_js = (REPO / "assets/js/data-view.js").read_text(encoding="utf-8")
     workbench_js = (REPO / "assets/js/workbench-view.js").read_text(encoding="utf-8")
+    stock_view_js = (REPO / "assets/js/stock-view.js").read_text(encoding="utf-8")
 
     assert not (REPO / "assets/js/data-health-view.js").exists()
     assert 'data-view="workbench"' in index
@@ -210,6 +211,10 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "function renderHealthSignals(" not in app_js
     assert "function renderHealthPipeline(" not in app_js
     assert "ETF 列表 widget 暂不可用" in app_js
+    assert "function renderTabEvidence(content, s)" in stock_view_js
+    assert "const followEvents = s.events.filter(e => e.action === 'follow');" not in stock_view_js
+    assert "const watchEvents = s.events.filter(e => e.action === 'watch');" not in stock_view_js
+    assert "if (ev.action === 'follow' || ev.action === 'watch') candidates.push(ev);" in stock_view_js
     assert "buildStockFilterMetaByCode" in stock_list_controls_js
     assert "applyStockFilters" in stock_list_controls_js
     assert "/api/workbench/data-sources" in data_view_js
