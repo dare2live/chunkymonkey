@@ -239,6 +239,7 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "renderReadModelMeta" in workbench_js
     assert "buildReadModelMeta" in workbench_js
     assert "buildReadModelMeta(data)" in workbench_js
+    assert "function latestGateDecision(" not in workbench_js
     assert "materialized_snapshot" in workbench_js
     assert "pipeline/job" in workbench_js
     assert "setTab: setTab" in workbench_js

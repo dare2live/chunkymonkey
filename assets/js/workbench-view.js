@@ -2198,12 +2198,6 @@
     );
   }
 
-  function latestGateDecision(rows) {
-    rows = rows || [];
-    if (!rows.length) return 'none';
-    return rows[0].decision || rows[0].promotion_status || 'unknown';
-  }
-
   function renderDeploymentSub(deployment) {
     deployment = deployment || {};
     var gate = deployment.latest_promotion_gate || {};
