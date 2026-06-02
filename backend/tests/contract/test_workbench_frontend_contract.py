@@ -126,6 +126,15 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "function stockScoreBandMeta(" not in app_js
     assert "function stockScoreSubtext(" not in app_js
     assert "function stockSortRows(" not in app_js
+    assert "function summaryChip(" not in app_js
+    assert "function hasAttentionCoverage(" not in app_js
+    assert "function hasTurtleCoverage(" not in app_js
+    assert "function attentionSummaryTone(" not in app_js
+    assert "function stockScreeningInline(" not in app_js
+    assert "function screeningHitCount(" not in app_js
+    assert "function summaryRow(" not in app_js
+    assert "function heroMetricCard(" not in app_js
+    assert "function typeTag(" not in app_js
     assert "_buildEtfTradeTimelineHtml(" not in app_js
     assert "_buildNavCurveSvg(" not in app_js
     assert "function metricCard(" not in app_js

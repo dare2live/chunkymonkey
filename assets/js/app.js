@@ -326,32 +326,6 @@
     };
   }
 
-  function summaryChip(label, count, tone) {
-    return '<span class="summary-chip summary-chip--' + tone + '">' + esc(label) + ' ' + fmt(count) + '</span>';
-  }
-
-  function hasAttentionCoverage(s) {
-    return !!(s && (
-      s.external_attention_signal ||
-      s.external_attention_score != null ||
-      s.attention_focus_index != null ||
-      s.attention_comment_trade_date ||
-      s.attention_composite_score != null
-    ));
-  }
-
-  function hasTurtleCoverage(s) {
-    return !!(s && (
-      s.turtle_setup_state ||
-      s.turtle_execution_score != null ||
-      s.turtle_breakout_score != null ||
-      s.turtle_risk_score != null ||
-      s.turtle_score_delta != null ||
-      s.turtle_reason ||
-      s.turtle_preferred_system
-    ));
-  }
-
   function turtleSystemLabel(system) {
     if (system === 'S1') return 'S1 系统';
     if (system === 'S2') return 'S2 系统';
@@ -375,50 +349,6 @@
     var meta = turtleStateMeta(state);
     if (!meta) return '';
     return '<span class="stock-attention-pill stock-attention-pill--' + meta.tone + '">' + esc(useShortLabel ? (meta.shortLabel || meta.label) : meta.label) + '</span>';
-  }
-
-  function attentionSummaryTone(signal) {
-    var meta = attentionSignalMeta(signal);
-    if (!meta) return 'neutral';
-    return meta.tone === 'warn' ? 'warning' : 'attention';
-  }
-
-
-  function screeningHitCount(screen) {
-    if (!screen) return 0;
-    if (screen.hit_count != null) return Number(screen.hit_count || 0);
-    return (screen.f1_hit ? 1 : 0) + (screen.f3_hit ? 1 : 0) + (screen.f5_hit ? 1 : 0);
-  }
-
-  function stockScreeningInline(s) {
-    var screen = s && s._screen;
-    if (!screen) return '<span class="muted">待筛选</span>';
-    var tags = [];
-    if (screen.f1_hit) tags.push('<span class="tag tag-sm" style="background:var(--cm-brand-400);color:var(--cm-surface)" title="MA突破">F1</span>');
-    if (screen.f3_hit) tags.push('<span class="tag tag-sm" style="background:var(--cm-accent-vivid);color:var(--cm-surface)" title="趋势跟踪">F3</span>');
-    if (screen.f5_hit) tags.push('<span class="tag tag-sm" style="background:var(--cm-warn-500);color:var(--cm-surface)" title="MACD金叉">F5</span>');
-    if (!tags.length) return '<span class="muted">未命中</span>';
-    return '<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start">' +
-      '<div style="display:flex;flex-wrap:wrap;gap:4px">' + tags.join('') + '</div>' +
-      '<div class="muted" style="font-size:11px">' + screeningHitCount(screen) + ' 式命中</div>' +
-      '</div>';
-  }
-
-  function summaryRow(label, count, tone, total) {
-    var pct = total > 0 ? Math.max(8, Math.round((count / total) * 100)) : 0;
-    return '<div class="summary-row">' +
-      '<div class="summary-row-main"><span class="summary-dot summary-dot--' + tone + '"></span><span>' + esc(label) + '</span></div>' +
-      '<div class="summary-row-value">' + fmt(count) + '</div>' +
-      '<div class="summary-row-track"><span style="width:' + pct + '%"></span></div>' +
-      '</div>';
-  }
-
-  function heroMetricCard(label, value, sub) {
-    return '<div class="hero-metric-card">' +
-      '<span class="hero-metric-label">' + esc(label) + '</span>' +
-      '<strong>' + esc(String(value == null ? '-' : value)) + '</strong>' +
-      '<small>' + esc(sub || '-') + '</small>' +
-      '</div>';
   }
 
   // renderDashboardOverview 已随 Step 5d 工作台重塑移除。
@@ -504,7 +434,6 @@
     return '<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:' + meta.bg + ';color:' + meta.fg + ';font-size:11px;font-weight:700">' + esc(pool || '未分池') + '</span>';
   }
   function instLink(id, name, type) { return '<span class="type-tag clickable-name" data-type="' + esc(type || 'other') + '" onclick="App.toggleInstDetail(\'' + esc(id) + '\',this)" style="cursor:pointer;font-size:11px">' + esc(name || '') + '</span>' }
-  function typeTag(type, label) { return '<span class="type-tag" data-type="' + esc(type || 'other') + '">' + (label || esc(type || 'other')) + '</span>' }
   function evTag(type, label) { var cls = { new_entry: 'new', increase: 'up', decrease: 'down', exit: 'exit', unchanged: 'unchanged' }[type] || 'unchanged'; return '<span class="event-tag event-' + (cls) + '">' + esc(label || { new_entry: '新进', increase: '增持', decrease: '减持', exit: '退出', unchanged: '不变' }[type] || type) + '</span>' }
 
   // ============================================================
