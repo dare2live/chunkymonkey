@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 06:16:00 CST
+**Snapshot 时间**: 2026-06-03 06:18:10 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `eea79efe refactor: remove dead schema summary field from settings view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
+| HEAD | `65f64cb0 refactor: remove dead versions field from settings view schema model | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
 | 最近 24h commits | 261 |
-| 未 commit 文件 | 4 |
+| 未 commit 文件 | 2 |
 
 ### 最近 10 commits
 
 ```
+65f64cb0 refactor: remove dead versions field from settings view schema model | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
+79450d96 docs: record settings-view schema summary cleanup and refresh handoff | # commit-msg: minimal
 eea79efe refactor: remove dead schema summary field from settings view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 f9719f6c docs: record signal-adapter dead wrapper cleanup and refresh handoff | # commit-msg: minimal
 b2a1f31e refactor: remove dead signal-adapter aggregateByStock wrapper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
@@ -76,13 +78,11 @@ b2a1f31e refactor: remove dead signal-adapter aggregateByStock wrapper | Codex-R
 40de46a4 docs: refresh session handoff snapshot after signal-params formatter cleanup | # commit-msg: minimal
 2538ad1e docs: record signal-params formatter cleanup in project index and workflow checkpoint | # commit-msg: minimal
 83c50d00 feat: clean up signal-params win-rate formatter | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
-4ee98411 docs: refresh session handoff snapshot after screening-panel formatter cleanup | # commit-msg: minimal
-7e037323 feat: clean up screening-panel formatting helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**4 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**2 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

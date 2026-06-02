@@ -5,6 +5,8 @@
 
 ## 2026-06-03 — widget format utils analysis/workbench-health 扩展
 
+- `assets/js/settings-view.js` 里的 `versions` 死字段已删除，schema versions model 现在只保留层级计数与漂移/对齐分组；`backend/tests/contract/test_settings_view.py` 已补 `versions` 不应再出现在 schema model 的回归。验证：`node --check assets/js/settings-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_settings_view.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
+
 - `assets/js/settings-view.js` 里的 `summary` 死字段已删除，schema versions 现在只暴露由版本列表聚合出来的层级计数与漂移分组；`backend/tests/contract/test_settings_view.py` 已补 `summary` 不应再出现在 schema model 的回归。验证：`node --check assets/js/settings-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_settings_view.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
 
 - `assets/js/signal-adapter.js` 里的旧 `aggregateByStock()` wrapper 已删除，股票视图现在只消费 `fetchSignals()` 返回的 `byStock` 聚合结果，`backend/tests/contract/test_signal_adapter.py` 也改成锁定 `eventToView` 映射与 dead wrapper 清理；`backend/tests/contract/test_workbench_frontend_contract.py` 继续确保信号适配层契约文件仍在预期加载顺序内。验证：`node --check assets/js/signal-adapter.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_signal_adapter.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
