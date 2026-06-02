@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 23:19:23 CST
+**Snapshot 时间**: 2026-06-02 23:29:59 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `0ee47767 feat: remove dead institution research controls and keep scorecard only | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS | cleanup verified 无残留 no stale` |
-| 最近 24h commits | 156 |
+| HEAD | `3d0bbbed feat: make moth canonical in process docs and trim data-view hotspots | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 2 passed, complexity no obvious hotspots, docs graph PASS, codegraph sync PASS` |
+| 最近 24h commits | 158 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+3d0bbbed feat: make moth canonical in process docs and trim data-view hotspots | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 2 passed, complexity no obvious hotspots, docs graph PASS, codegraph sync PASS
+cd8f492a docs: refresh session handoff snapshot after research cleanup | # commit-msg: minimal
 0ee47767 feat: remove dead institution research controls and keep scorecard only | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS | cleanup verified 无残留 no stale
 b78e5e6f docs: refresh session handoff snapshot after institution scorecard widget extraction | # commit-msg: minimal
 e4e21c7b feat: extract institution scorecard widget and wire research page | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS
@@ -76,8 +78,6 @@ ee546860 docs: refresh session handoff snapshot after etf analysis widget extrac
 26bf642d docs: refresh session handoff snapshot after preflight migration
 65df4dd5 feat: migrate preflight to moth-backed tooling gate
 bc3ec666 docs: refresh session handoff snapshot after moth global install
-87b3082c feat: migrate chunkyctl tooling gate to moth snapshot
-efdf6c23 docs: refresh session handoff snapshot
 ```
 
 ## NEXT ACTION (auto-computed)
