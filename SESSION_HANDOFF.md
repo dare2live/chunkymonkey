@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 05:48:39 CST
+**Snapshot 时间**: 2026-06-03 05:52:55 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `a7b34459 feat: clean up ETF opportunity formatting helpers | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
+| HEAD | `66a16dac feat: extend shared widget formatter to backtest-panel and etf-strategy-compare | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
 | 最近 24h commits | 254 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+66a16dac feat: extend shared widget formatter to backtest-panel and etf-strategy-compare | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
+b8356ea9 docs: refresh session handoff snapshot after ETF opportunity formatter cleanup | # commit-msg: minimal
 a7b34459 feat: clean up ETF opportunity formatting helpers | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 dcdca2c1 docs: refresh session handoff and workflow checkpoint after signal panel formatter extension | # commit-msg: minimal
 a0d4e8ff feat: extend shared widget formatter to screening-panel and multidim-badge | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ de85343f docs: refresh session handoff and workflow checkpoint after signal widg
 45f50a6d docs: refresh session handoff and workflow checkpoint after topk-strip formatter extension | # commit-msg: minimal
 19635389 feat: extend shared widget formatter to topk-strip | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 556f0c42 docs: refresh session handoff and workflow checkpoint after institution-scorecard formatter extension | # commit-msg: minimal
-1a5bbc31 feat: extend shared widget formatter to institution-scorecard | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 4 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
-c186e156 docs: refresh session handoff and workflow checkpoint after widget formatter extension | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
