@@ -94,6 +94,14 @@ class TestSharedFormulaWindows:
         cfg.write_text("holding_days: [3, 7, 14]\n", encoding="utf-8")
         assert load_holding_days(cfg) == (3, 7, 14)
 
+    def test_loader_missing_key_fails(self, tmp_path):
+        from services.formula_engine.shared_windows import load_holding_days
+
+        cfg = tmp_path / "formula_shared_windows.yaml"
+        cfg.write_text("other_key: [3, 7, 14]\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="missing holding_days"):
+            load_holding_days(cfg)
+
 
 # ============================================================
 # MACD 公式
@@ -137,6 +145,21 @@ class TestMacdGoldenCross:
         assert loaded["cross_window"] == 4
         assert loaded["imminent_days"] == 7
         assert loaded["imminent_gap_ratio"] == pytest.approx(0.01)
+
+    def test_config_loader_missing_key_fails(self, tmp_path):
+        from services.formula_engine.macd_golden_cross import _load_config
+
+        cfg = tmp_path / "formula_macd_golden_cross.yaml"
+        cfg.write_text(
+            "fast_period: 8\n"
+            "slow_period: 17\n"
+            "signal_period: 5\n"
+            "cross_window: 4\n"
+            "imminent_days: 7\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError, match="missing macd rule key imminent_gap_ratio"):
+            _load_config(cfg)
 
     def test_short_kline_no_signals(self, formula):
         # K 线太短 (< slow + signal = 26+9 = 35),不应产生信号
@@ -281,7 +304,23 @@ class TestTurtleBreakout:
 
         cfg = tmp_path / "formula_turtle_breakout.yaml"
         cfg.write_text("turtle_breakout_55:\n  volume_multiple: 1.05\n", encoding="utf-8")
-        assert _load_volume_multiple(cfg, variant="turtle_breakout_55", default=0.4) == pytest.approx(1.05)
+        assert _load_volume_multiple(cfg, variant="turtle_breakout_55") == pytest.approx(1.05)
+
+    def test_volume_multiple_loader_missing_key_fails(self, tmp_path):
+        from services.formula_engine.turtle_breakout import _load_volume_multiple
+
+        cfg = tmp_path / "formula_turtle_breakout.yaml"
+        cfg.write_text("turtle_breakout_55:\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="missing turtle_breakout key volume_multiple"):
+            _load_volume_multiple(cfg, variant="turtle_breakout_55")
+
+    def test_volume_multiple_loader_missing_key_fails(self, tmp_path):
+        from services.formula_engine.turtle_breakout import _load_volume_multiple
+
+        cfg = tmp_path / "formula_turtle_breakout.yaml"
+        cfg.write_text("turtle_breakout_55:\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="missing turtle_breakout key volume_multiple"):
+            _load_volume_multiple(cfg, variant="turtle_breakout_55")
 
     def test_short_kline_no_signal(self, f20):
         n = 10
@@ -386,6 +425,14 @@ class TestDynamicMaIterativeCross:
         assert loaded["multiplier_up"] == pytest.approx(1.05)
         assert loaded["multiplier_down"] == pytest.approx(0.95)
 
+    def test_config_loader_missing_key_fails(self, tmp_path):
+        from services.formula_engine.dynamic_ma_iterative import _load_config
+
+        cfg = tmp_path / "formula_dynamic_ma_iterative.yaml"
+        cfg.write_text("iterations: 3\nmultiplier_up: 1.05\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="missing dynamic_ma_iterative key multiplier_down"):
+            _load_config(cfg)
+
     def test_short_kline_no_signal(self, formula):
         n = 30  # < 50 warmup
         dates = np.array([f"2024-01-{i+1:02d}" for i in range(n)])
@@ -456,6 +503,36 @@ class TestShortTermReversalConfig:
         assert loaded["reversal_1w"]["pct_change_hi"] == pytest.approx(-0.01)
         assert loaded["reversal_1w"]["rel_std_max"] == pytest.approx(0.07)
         assert loaded["reversal_1w"]["lookback_days"] == 5
+
+    def test_config_loader_missing_key_fails(self, tmp_path):
+        from services.formula_engine.reversal_short_term import _load_config
+
+        cfg = tmp_path / "formula_reversal_short_term.yaml"
+        cfg.write_text(
+            "reversal_1m_mild:\n"
+            "  lookback_days: 20\n"
+            "  pct_change_lo: -0.15\n"
+            "  pct_change_hi: -0.01\n"
+            "  rel_std_max: 0.08\n"
+            "  vol_ratio_lo: 0.6\n"
+            "reversal_1m_deep:\n"
+            "  lookback_days: 20\n"
+            "  pct_change_lo: -0.30\n"
+            "  pct_change_hi: -0.04\n"
+            "  rel_std_max: 0.10\n"
+            "  vol_ratio_lo: 0.6\n"
+            "  vol_ratio_hi: 2.0\n"
+            "reversal_1w:\n"
+            "  lookback_days: 5\n"
+            "  pct_change_lo: -0.10\n"
+            "  pct_change_hi: -0.01\n"
+            "  rel_std_max: 0.07\n"
+            "  vol_ratio_lo: 0.6\n"
+            "  vol_ratio_hi: 2.0\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError, match="missing reversal key vol_ratio_hi"):
+            _load_config(cfg)
 
 
 class TestShortTermReversal:
@@ -673,6 +750,32 @@ class TestTechnicalStage:
         assert loaded["stage3_price_above_ma_mid_multiple"] == pytest.approx(1.12)
         assert loaded["stage3_slope_min"] == pytest.approx(0.02)
         assert loaded["stage4_slope_max"] == pytest.approx(-0.03)
+
+    def test_config_loader_missing_key_fails(self, tmp_path):
+        from services.formula_engine.technical_stage import _load_rules
+
+        cfg = tmp_path / "technical_stage.yaml"
+        cfg.write_text(
+            "ma_fast_days: 42\n"
+            "ma_mid_days: 126\n"
+            "ma_slow_days: 252\n"
+            "range_lookback: 280\n"
+            "breakout_recent_days: 8\n"
+            "drawdown_max_stage2: 0.12\n"
+            "drawdown_lookback_days: 55\n"
+            "stage1_pos_max: 0.25\n"
+            "stage1_slope_max_abs: 0.01\n"
+            "stage1_vol_ratio_max: 0.7\n"
+            "stage15_vol_ratio_min: 1.4\n"
+            "stage15_recent_below_min_count: 3\n"
+            "volume_ma_days: 18\n"
+            "slope_lookback_days: 15\n"
+            "stage3_price_above_ma_mid_multiple: 1.12\n"
+            "stage3_slope_min: 0.02\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError, match="missing technical_stage key stage4_slope_max"):
+            _load_rules(cfg)
 
     def test_short_kline_returns_unknown(self, classify):
         # < MA_SLOW_DAYS = 250 全部 unknown

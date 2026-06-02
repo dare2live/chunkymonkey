@@ -34,14 +34,6 @@ from services.formula_engine.base import (
 
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "formula_macd_golden_cross.yaml"
-DEFAULT_CONFIG: dict[str, float | int] = {
-    "fast_period": 12,
-    "slow_period": 26,
-    "signal_period": 9,
-    "cross_window": 5,
-    "imminent_days": 10,
-    "imminent_gap_ratio": 0.012,
-}
 
 
 def _load_yaml(path: Path) -> dict[str, object]:
@@ -55,17 +47,16 @@ def _load_config(path: Path | None = None) -> dict[str, float | int]:
     raw_path = path or CONFIG_PATH
     try:
         raw = _load_yaml(raw_path)
-    except FileNotFoundError:
-        return DEFAULT_CONFIG.copy()
-    try:
         return {
-            "fast_period": int(raw.get("fast_period", DEFAULT_CONFIG["fast_period"])),
-            "slow_period": int(raw.get("slow_period", DEFAULT_CONFIG["slow_period"])),
-            "signal_period": int(raw.get("signal_period", DEFAULT_CONFIG["signal_period"])),
-            "cross_window": int(raw.get("cross_window", DEFAULT_CONFIG["cross_window"])),
-            "imminent_days": int(raw.get("imminent_days", DEFAULT_CONFIG["imminent_days"])),
-            "imminent_gap_ratio": float(raw.get("imminent_gap_ratio", DEFAULT_CONFIG["imminent_gap_ratio"])),
+            "fast_period": int(raw["fast_period"]),
+            "slow_period": int(raw["slow_period"]),
+            "signal_period": int(raw["signal_period"]),
+            "cross_window": int(raw["cross_window"]),
+            "imminent_days": int(raw["imminent_days"]),
+            "imminent_gap_ratio": float(raw["imminent_gap_ratio"]),
         }
+    except KeyError as exc:
+        raise ValueError(f"{raw_path.name}: missing macd rule key {exc.args[0]}") from exc
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{raw_path.name}: macd rules must be numeric mappings") from exc
 

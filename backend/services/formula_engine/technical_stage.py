@@ -19,25 +19,6 @@ from services.formula_engine.base import sma
 
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "technical_stage.yaml"
-DEFAULT_RULES: dict[str, float | int] = {
-    "ma_fast_days": 50,
-    "ma_mid_days": 150,
-    "ma_slow_days": 250,
-    "range_lookback": 300,
-    "breakout_recent_days": 10,
-    "drawdown_max_stage2": 0.15,
-    "drawdown_lookback_days": 60,
-    "stage1_pos_max": 0.30,
-    "stage1_slope_max_abs": 0.02,
-    "stage1_vol_ratio_max": 0.8,
-    "stage15_vol_ratio_min": 1.5,
-    "stage15_recent_below_min_count": 2,
-    "volume_ma_days": 20,
-    "slope_lookback_days": 20,
-    "stage3_price_above_ma_mid_multiple": 1.15,
-    "stage3_slope_min": 0.0,
-    "stage4_slope_max": -0.02,
-}
 
 
 def _load_yaml(path: Path) -> dict[str, object]:
@@ -51,29 +32,27 @@ def _load_rules(path: Path | None = None) -> dict[str, float | int]:
     raw_path = path or CONFIG_PATH
     try:
         raw = _load_yaml(raw_path)
-    except FileNotFoundError:
-        return DEFAULT_RULES.copy()
-
-    try:
         return {
-            "ma_fast_days": int(raw.get("ma_fast_days", DEFAULT_RULES["ma_fast_days"])),
-            "ma_mid_days": int(raw.get("ma_mid_days", DEFAULT_RULES["ma_mid_days"])),
-            "ma_slow_days": int(raw.get("ma_slow_days", DEFAULT_RULES["ma_slow_days"])),
-            "range_lookback": int(raw.get("range_lookback", DEFAULT_RULES["range_lookback"])),
-            "breakout_recent_days": int(raw.get("breakout_recent_days", DEFAULT_RULES["breakout_recent_days"])),
-            "drawdown_max_stage2": float(raw.get("drawdown_max_stage2", DEFAULT_RULES["drawdown_max_stage2"])),
-            "drawdown_lookback_days": int(raw.get("drawdown_lookback_days", DEFAULT_RULES["drawdown_lookback_days"])),
-            "stage1_pos_max": float(raw.get("stage1_pos_max", DEFAULT_RULES["stage1_pos_max"])),
-            "stage1_slope_max_abs": float(raw.get("stage1_slope_max_abs", DEFAULT_RULES["stage1_slope_max_abs"])),
-            "stage1_vol_ratio_max": float(raw.get("stage1_vol_ratio_max", DEFAULT_RULES["stage1_vol_ratio_max"])),
-            "stage15_vol_ratio_min": float(raw.get("stage15_vol_ratio_min", DEFAULT_RULES["stage15_vol_ratio_min"])),
-            "stage15_recent_below_min_count": int(raw.get("stage15_recent_below_min_count", DEFAULT_RULES["stage15_recent_below_min_count"])),
-            "volume_ma_days": int(raw.get("volume_ma_days", DEFAULT_RULES["volume_ma_days"])),
-            "slope_lookback_days": int(raw.get("slope_lookback_days", DEFAULT_RULES["slope_lookback_days"])),
-            "stage3_price_above_ma_mid_multiple": float(raw.get("stage3_price_above_ma_mid_multiple", DEFAULT_RULES["stage3_price_above_ma_mid_multiple"])),
-            "stage3_slope_min": float(raw.get("stage3_slope_min", DEFAULT_RULES["stage3_slope_min"])),
-            "stage4_slope_max": float(raw.get("stage4_slope_max", DEFAULT_RULES["stage4_slope_max"])),
+            "ma_fast_days": int(raw["ma_fast_days"]),
+            "ma_mid_days": int(raw["ma_mid_days"]),
+            "ma_slow_days": int(raw["ma_slow_days"]),
+            "range_lookback": int(raw["range_lookback"]),
+            "breakout_recent_days": int(raw["breakout_recent_days"]),
+            "drawdown_max_stage2": float(raw["drawdown_max_stage2"]),
+            "drawdown_lookback_days": int(raw["drawdown_lookback_days"]),
+            "stage1_pos_max": float(raw["stage1_pos_max"]),
+            "stage1_slope_max_abs": float(raw["stage1_slope_max_abs"]),
+            "stage1_vol_ratio_max": float(raw["stage1_vol_ratio_max"]),
+            "stage15_vol_ratio_min": float(raw["stage15_vol_ratio_min"]),
+            "stage15_recent_below_min_count": int(raw["stage15_recent_below_min_count"]),
+            "volume_ma_days": int(raw["volume_ma_days"]),
+            "slope_lookback_days": int(raw["slope_lookback_days"]),
+            "stage3_price_above_ma_mid_multiple": float(raw["stage3_price_above_ma_mid_multiple"]),
+            "stage3_slope_min": float(raw["stage3_slope_min"]),
+            "stage4_slope_max": float(raw["stage4_slope_max"]),
         }
+    except KeyError as exc:
+        raise ValueError(f"{raw_path.name}: missing technical_stage key {exc.args[0]}") from exc
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{raw_path.name}: technical_stage rules must be numeric mappings") from exc
 

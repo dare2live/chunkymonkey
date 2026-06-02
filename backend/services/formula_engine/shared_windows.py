@@ -11,7 +11,6 @@ import yaml
 
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "formula_shared_windows.yaml"
-DEFAULT_HOLDING_DAYS = (5, 10, 15, 20, 30, 60, 90)
 
 
 def _load_yaml(path: Path) -> dict[str, object]:
@@ -24,12 +23,10 @@ def _load_yaml(path: Path) -> dict[str, object]:
 def load_holding_days(path: Path | None = None) -> tuple[int, ...]:
     """Load the shared holding-day tuple from YAML."""
     raw_path = path or CONFIG_PATH
-    try:
-        raw = _load_yaml(raw_path)
-    except FileNotFoundError:
-        return DEFAULT_HOLDING_DAYS
-
-    holding_days = raw.get("holding_days", DEFAULT_HOLDING_DAYS)
+    raw = _load_yaml(raw_path)
+    holding_days = raw.get("holding_days")
+    if holding_days is None:
+        raise ValueError(f"{raw_path.name}: missing holding_days")
     if not isinstance(holding_days, list):
         raise ValueError(f"{raw_path.name}: holding_days must be a list")
 

@@ -23,8 +23,6 @@ from services.formula_engine.base import (
 
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "formula_turtle_breakout.yaml"
-DEFAULT_VOLUME_MULTIPLE_20 = 0.9
-DEFAULT_VOLUME_MULTIPLE_55 = 0.4
 
 
 def _load_yaml(path: Path) -> dict[str, object]:
@@ -38,26 +36,24 @@ def _load_volume_multiple(
     path: Path | None = None,
     *,
     variant: str = "turtle_breakout_55",
-    default: float = DEFAULT_VOLUME_MULTIPLE_55,
 ) -> float:
     raw_path = path or CONFIG_PATH
-    try:
-        raw = _load_yaml(raw_path)
-    except FileNotFoundError:
-        return default
+    raw = _load_yaml(raw_path)
     variant_raw = raw.get(variant)
-    if isinstance(variant_raw, dict):
-        value = variant_raw.get("volume_multiple", default)
-    else:
-        value = raw.get("volume_multiple", default)
+    if variant_raw is None:
+        variant_raw = {}
+    if not isinstance(variant_raw, dict):
+        raise ValueError(f"{raw_path.name}: {variant} must be a mapping")
     try:
-        return float(value)
+        return float(variant_raw["volume_multiple"])
+    except KeyError as exc:
+        raise ValueError(f"{raw_path.name}: missing turtle_breakout key {exc.args[0]}") from exc
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{raw_path.name}: volume_multiple must be numeric") from exc
 
 
-VOLUME_MULTIPLE_20 = _load_volume_multiple(variant="turtle_breakout_20", default=DEFAULT_VOLUME_MULTIPLE_20)
-VOLUME_MULTIPLE_55 = _load_volume_multiple(variant="turtle_breakout_55", default=DEFAULT_VOLUME_MULTIPLE_55)
+VOLUME_MULTIPLE_20 = _load_volume_multiple(variant="turtle_breakout_20")
+VOLUME_MULTIPLE_55 = _load_volume_multiple(variant="turtle_breakout_55")
 
 
 def _rolling_max_excluding_today(values: np.ndarray, window: int) -> np.ndarray:

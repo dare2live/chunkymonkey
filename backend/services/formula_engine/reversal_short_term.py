@@ -47,32 +47,6 @@ from services.formula_engine.base import (
 
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "formula_reversal_short_term.yaml"
-DEFAULT_CONFIG: dict[str, dict[str, float | int]] = {
-    "reversal_1m_mild": {
-        "lookback_days": 20,
-        "pct_change_lo": -0.15,
-        "pct_change_hi": -0.01,
-        "rel_std_max": 0.08,
-        "vol_ratio_lo": 0.6,
-        "vol_ratio_hi": 2.0,
-    },
-    "reversal_1m_deep": {
-        "lookback_days": 20,
-        "pct_change_lo": -0.30,
-        "pct_change_hi": -0.04,
-        "rel_std_max": 0.10,
-        "vol_ratio_lo": 0.6,
-        "vol_ratio_hi": 2.0,
-    },
-    "reversal_1w": {
-        "lookback_days": 5,
-        "pct_change_lo": -0.10,
-        "pct_change_hi": -0.01,
-        "rel_std_max": 0.07,
-        "vol_ratio_lo": 0.6,
-        "vol_ratio_hi": 2.0,
-    },
-}
 
 
 def _load_yaml(path: Path) -> dict[str, object]:
@@ -85,24 +59,23 @@ def _load_yaml(path: Path) -> dict[str, object]:
 def _load_config(path: Path | None = None) -> dict[str, dict[str, float | int]]:
     raw_path = path or CONFIG_PATH
     try:
-        raw = _load_yaml(raw_path)
-    except FileNotFoundError:
-        return {name: values.copy() for name, values in DEFAULT_CONFIG.items()}
-    try:
         loaded: dict[str, dict[str, float | int]] = {}
-        for variant_name, defaults in DEFAULT_CONFIG.items():
+        raw = _load_yaml(raw_path)
+        for variant_name in ("reversal_1m_mild", "reversal_1m_deep", "reversal_1w"):
             variant_raw = raw.get(variant_name, {})
             if not isinstance(variant_raw, dict):
                 raise ValueError(f"{raw_path.name}: {variant_name} must be a mapping")
             loaded[variant_name] = {
-                "lookback_days": int(variant_raw.get("lookback_days", defaults["lookback_days"])),
-                "pct_change_lo": float(variant_raw.get("pct_change_lo", defaults["pct_change_lo"])),
-                "pct_change_hi": float(variant_raw.get("pct_change_hi", defaults["pct_change_hi"])),
-                "rel_std_max": float(variant_raw.get("rel_std_max", defaults["rel_std_max"])),
-                "vol_ratio_lo": float(variant_raw.get("vol_ratio_lo", defaults["vol_ratio_lo"])),
-                "vol_ratio_hi": float(variant_raw.get("vol_ratio_hi", defaults["vol_ratio_hi"])),
+                "lookback_days": int(variant_raw["lookback_days"]),
+                "pct_change_lo": float(variant_raw["pct_change_lo"]),
+                "pct_change_hi": float(variant_raw["pct_change_hi"]),
+                "rel_std_max": float(variant_raw["rel_std_max"]),
+                "vol_ratio_lo": float(variant_raw["vol_ratio_lo"]),
+                "vol_ratio_hi": float(variant_raw["vol_ratio_hi"]),
             }
         return loaded
+    except KeyError as exc:
+        raise ValueError(f"{raw_path.name}: missing reversal key {exc.args[0]}") from exc
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{raw_path.name}: reversal thresholds must be numeric mappings") from exc
 

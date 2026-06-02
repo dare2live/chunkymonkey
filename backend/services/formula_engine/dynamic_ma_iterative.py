@@ -2,7 +2,7 @@
 
 核心思想 (开发手册 §4.2.5):
   不直接用 K 线 cross 判断买卖 (噪音大),
-  先用 2 轮迭代过滤假突破/假回落,调整基础参考线 (原始 MQL 是 10 轮,这里默认供给版做了收缩),
+  先用配置化迭代轮数过滤假突破/假回落,调整基础参考线 (原始 MQL 是 10 轮,当前仓库默认供给版做了收缩),
   最终 X_36 真上穿调整后的 X_3 才视为可信买点。
 
 MQL 公式逐行翻译:
@@ -38,9 +38,6 @@ from services.formula_engine.base import (
 )
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "formula_dynamic_ma_iterative.yaml"
-DEFAULT_ITERATIONS = 1
-DEFAULT_MULTIPLIER_UP = 1.02
-DEFAULT_MULTIPLIER_DOWN = 0.98
 
 
 def _load_yaml(path: Path) -> dict[str, object]:
@@ -54,18 +51,13 @@ def _load_config(path: Path | None = None) -> dict[str, float]:
     raw_path = path or CONFIG_PATH
     try:
         raw = _load_yaml(raw_path)
-    except FileNotFoundError:
         return {
-            "iterations": float(DEFAULT_ITERATIONS),
-            "multiplier_up": DEFAULT_MULTIPLIER_UP,
-            "multiplier_down": DEFAULT_MULTIPLIER_DOWN,
+            "iterations": float(int(raw["iterations"])),
+            "multiplier_up": float(raw["multiplier_up"]),
+            "multiplier_down": float(raw["multiplier_down"]),
         }
-    try:
-        return {
-            "iterations": float(int(raw.get("iterations", DEFAULT_ITERATIONS))),
-            "multiplier_up": float(raw.get("multiplier_up", DEFAULT_MULTIPLIER_UP)),
-            "multiplier_down": float(raw.get("multiplier_down", DEFAULT_MULTIPLIER_DOWN)),
-        }
+    except KeyError as exc:
+        raise ValueError(f"{raw_path.name}: missing dynamic_ma_iterative key {exc.args[0]}") from exc
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{raw_path.name}: iterations/multipliers must be numeric") from exc
 
