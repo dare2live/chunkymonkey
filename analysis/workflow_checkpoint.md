@@ -8,8 +8,8 @@ The model pipeline snapshot below is historical evidence for the completed
 
 ## Current Data Freshness Checkpoint
 
-- updated_at: `2026-06-03 03:40:26 CST`
-- current_state: `architecture/data freshness repair / shared-config boundary cleanup / moth-canonical shared tooling state / workbench health widget extraction / ETF workbench widget extraction / data-view audit model cleanup / today signal cache model extraction / processing monitor model extraction / asset governance table model extraction / tdx server health model extraction / stage-opt structural blocker triage`
+- updated_at: `2026-06-03 03:46:15 CST`
+- current_state: `architecture/data freshness repair / shared-config boundary cleanup / moth-canonical shared tooling state / workbench health widget extraction / ETF workbench widget extraction / data-view audit model cleanup / today signal cache model extraction / processing monitor model extraction / asset governance table model extraction / tdx server health model extraction / research model extraction / stage-opt structural blocker triage`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
 - data audit: `audit_data_completeness.py` now exits PASS with WARN (0 FAIL /

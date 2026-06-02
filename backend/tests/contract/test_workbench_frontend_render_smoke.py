@@ -399,6 +399,59 @@ def test_workbench_delivery_model_is_pure_and_stable():
     assert result.returncode == 0, result.stderr + result.stdout
 
 
+def test_workbench_research_model_is_pure_and_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.WorkbenchView;
+        if (!view || typeof view.buildResearchModel !== 'function') {
+          throw new Error('WorkbenchView.buildResearchModel missing');
+        }
+
+        const model = view.buildResearchModel({
+          research_schedule: { run_id: 'schedule_1', status_counts: { completed: 1 }, tasks: [{ task_id: 'ranker_perf', status: 'completed', priority: 1 }] },
+          model_stability: [{ run_id: 'stable_1', model_family: 'lightgbm_ranker', best_status: 'pass' }],
+          ranker_profiles: [{ run_id: 'ranker_perf', duration_s: 11.6 }],
+          ranker_policy: { run_id: 'schedule_1', ranker_policy_deferred: 0, policy: { max_runtime_ratio_vs_regression: 2 } },
+          rank_matrix_cache: { summary: { entry_count: 1 }, latest_benchmarks: [{ run_id: 'bm_1' }], cache_entries: [{ table_name: 'cache_1' }] },
+          stability_context: { run_id: 'context_1' },
+          stock_horizon_profile: { run_id: 'stock_horizon_1', baseline_label: 'follow_net_return_60d' },
+          shareholder_plan_initial_feature_panel: { run_id: 'sp_initial_panel_1' },
+          shareholder_plan_family_eval: { run_id: 'plan_family_1', summary: { row_count: 2 } },
+          shareholder_plan_family_walkforward: { run_id: 'plan_wf_1', summary: { row_count: 2 } },
+          temporal_synergy: { run_id: 'temporal_1' },
+          industry_pit: { run_id: 'industry_pit_1' },
+          feature_drift: { run_id: 'drift_1' },
+        });
+
+        if (!model || model.schedule.run_id !== 'schedule_1') throw new Error('schedule mismatch');
+        if (model.tasks.length !== 1 || model.studies.length !== 1 || model.rankerProfiles.length !== 1) throw new Error('list normalization mismatch');
+        if (model.rankerPolicy.run_id !== 'schedule_1' || model.rankMatrixCache.summary.entry_count !== 1) throw new Error('policy/cache mismatch');
+        if (model.stabilityContext.run_id !== 'context_1' || model.stockHorizonProfile.run_id !== 'stock_horizon_1') throw new Error('context mismatch');
+        if (model.shareholderPlanInitialPanel.run_id !== 'sp_initial_panel_1' || model.shareholderPlanFamilyWalkforward.run_id !== 'plan_wf_1') throw new Error('shareholder plan mismatch');
+        if (model.temporalSynergy.run_id !== 'temporal_1' || model.industryPit.run_id !== 'industry_pit_1' || model.featureDrift.run_id !== 'drift_1') throw new Error('domain mismatch');
+        if (model.isEmpty !== false) throw new Error('empty flag mismatch');
+        const empty = view.buildResearchModel({});
+        if (empty.schedule.run_id || empty.tasks.length || empty.rankerProfiles.length || empty.isEmpty !== true) throw new Error('default normalization mismatch');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/workbench-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+
+
 def test_workbench_paper_sim_model_is_pure_and_stable():
     script = textwrap.dedent(
         r"""

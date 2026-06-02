@@ -585,19 +585,21 @@
   }
 
   function renderResearch(data) {
-    var schedule = data.research_schedule || {};
-    var tasks = schedule.tasks || [];
-    var studies = data.model_stability || [];
-    var ranker = data.ranker_profiles || [];
-    var rankerPolicy = data.ranker_policy || {};
-    var rankMatrixCache = data.rank_matrix_cache || {};
-    var stabilityContext = data.stability_context || {};
-    var stockHorizon = data.stock_horizon_profile || {};
-    var shareholderPlanInitial = data.shareholder_plan_initial_feature_panel || {};
-    var shareholderPlan = data.shareholder_plan_family_eval || {};
-    var shareholderPlanWf = data.shareholder_plan_family_walkforward || {};
-    var temporalSynergy = data.temporal_synergy || {};
-    var industryPit = data.industry_pit || {};
+    var model = buildResearchModel(data);
+    var schedule = model.schedule;
+    var tasks = model.tasks;
+    var studies = model.studies;
+    var ranker = model.rankerProfiles;
+    var rankerPolicy = model.rankerPolicy;
+    var rankMatrixCache = model.rankMatrixCache;
+    var stabilityContext = model.stabilityContext;
+    var stockHorizon = model.stockHorizonProfile;
+    var shareholderPlanInitial = model.shareholderPlanInitialPanel;
+    var shareholderPlan = model.shareholderPlanFamilyEval;
+    var shareholderPlanWf = model.shareholderPlanFamilyWalkforward;
+    var temporalSynergy = model.temporalSynergy;
+    var industryPit = model.industryPit;
+    var featureDrift = model.featureDrift;
 
     setBody(
       renderReadModelMeta(data) +
@@ -658,11 +660,46 @@
       renderRankMatrixCache(rankMatrixCache) +
       '</section>' +
       '<section class="panel wb-panel">' +
-      '<div class="panel-head"><div><h3>漂移处理优先级</h3><div class="muted">run_id: <code>' + esc(((data.feature_drift || {}).run_id) || '-') + '</code></div></div></div>' +
-      renderDriftTable(data.feature_drift) +
+      '<div class="panel-head"><div><h3>漂移处理优先级</h3><div class="muted">run_id: <code>' + esc(featureDrift.run_id || '-') + '</code></div></div></div>' +
+      renderDriftTable(featureDrift) +
       '</section>' +
       '</div>'
     );
+  }
+
+  function buildResearchModel(data) {
+    data = data || {};
+    var schedule = data.research_schedule || {};
+    var tasks = Array.isArray(schedule.tasks) ? schedule.tasks : [];
+    var studies = Array.isArray(data.model_stability) ? data.model_stability : [];
+    var rankerProfiles = Array.isArray(data.ranker_profiles) ? data.ranker_profiles : [];
+    var rankerPolicy = data.ranker_policy || {};
+    var rankMatrixCache = data.rank_matrix_cache || {};
+    var stabilityContext = data.stability_context || {};
+    var stockHorizonProfile = data.stock_horizon_profile || {};
+    var shareholderPlanInitialPanel = data.shareholder_plan_initial_feature_panel || {};
+    var shareholderPlanFamilyEval = data.shareholder_plan_family_eval || {};
+    var shareholderPlanFamilyWalkforward = data.shareholder_plan_family_walkforward || {};
+    var temporalSynergy = data.temporal_synergy || {};
+    var industryPit = data.industry_pit || {};
+    var featureDrift = data.feature_drift || {};
+    return {
+      schedule: schedule,
+      tasks: tasks,
+      studies: studies,
+      rankerProfiles: rankerProfiles,
+      rankerPolicy: rankerPolicy,
+      rankMatrixCache: rankMatrixCache,
+      stabilityContext: stabilityContext,
+      stockHorizonProfile: stockHorizonProfile,
+      shareholderPlanInitialPanel: shareholderPlanInitialPanel,
+      shareholderPlanFamilyEval: shareholderPlanFamilyEval,
+      shareholderPlanFamilyWalkforward: shareholderPlanFamilyWalkforward,
+      temporalSynergy: temporalSynergy,
+      industryPit: industryPit,
+      featureDrift: featureDrift,
+      isEmpty: !schedule.run_id && !tasks.length && !studies.length && !rankerProfiles.length && !rankerPolicy.run_id && !stabilityContext.run_id && !stockHorizonProfile.run_id && !shareholderPlanInitialPanel.run_id && !shareholderPlanFamilyEval.run_id && !shareholderPlanFamilyWalkforward.run_id && !temporalSynergy.run_id && !industryPit.run_id && !featureDrift.run_id,
+    };
   }
 
   function buildDataSourcesModel(data) {
@@ -2758,6 +2795,7 @@
     buildReadModelMeta: buildReadModelMeta,
     buildDeliveryModel: buildDeliveryModel,
     buildChampionModel: buildChampionModel,
+    buildResearchModel: buildResearchModel,
     buildDataSourcesModel: buildDataSourcesModel,
     buildAssetGovernanceTableModel: buildAssetGovernanceTableModel,
     buildProcessingMonitorModel: buildProcessingMonitorModel,
