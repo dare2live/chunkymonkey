@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 01:10:14 CST
+**Snapshot 时间**: 2026-06-03 01:23:20 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `56b61020 feat: extract workbench health widget and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS` |
-| 最近 24h commits | 167 |
+| HEAD | `bd23298e feat: extract ETF workbench widget and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 168 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+bd23298e feat: extract ETF workbench widget and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
+0fb48c9b docs: refresh session handoff snapshot after workbench health widget extraction | # commit-msg: minimal
 56b61020 feat: extract workbench health widget and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS
 05b2eb88 docs: refresh session handoff snapshot after model monitor widget extraction | # commit-msg: minimal
 66c2c88e feat: extract model monitor widget and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS
@@ -76,8 +78,6 @@ d997766e docs: refresh session handoff snapshot after ETF opportunity widget ext
 f795b957 docs: refresh session handoff snapshot after ETF list index update
 7c16bac1 docs: record ETF list widget extraction in project index
 89163ddd feat: externalize ETF list rendering into widget | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 4 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS
-f9587f8e docs: refresh session handoff snapshot after date rollover | # commit-msg: minimal
-41c096ff docs: refresh need_027 blocker evidence and stage-opt state | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
