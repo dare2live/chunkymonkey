@@ -44,6 +44,47 @@ class CheckResult:
     extras: dict[str, Any] = field(default_factory=dict)
 
 
+def _quote_ident(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+def _table_columns(conn, table_name: str) -> set[str]:
+    return {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+            [table_name],
+        ).fetchall()
+    }
+
+
+def _batch_null_counts(conn, feature_panel: str, columns: list[str]) -> tuple[int, dict[str, int], set[str]]:
+    available = _table_columns(conn, feature_panel)
+    existing = [col for col in columns if col in available]
+    missing = {col for col in columns if col not in available}
+    if not existing:
+        return 0, {}, missing
+    select_sql = ", ".join(
+        [
+            "COUNT(*) AS total_rows",
+            *[f"COUNT({_quote_ident(col)}) AS {_quote_ident(col)}" for col in existing],
+        ]
+    )
+    row = conn.execute(f"SELECT {select_sql} FROM {_quote_ident(feature_panel)}").fetchone()
+    if not row:
+        return 0, {col: 0 for col in existing}, missing
+    if hasattr(row, "keys"):
+        total_rows = int(row["total_rows"] or 0)
+        null_counts = {col: total_rows - int(row[col] or 0) for col in existing}
+    else:
+        total_rows = int(row[0] or 0)
+        null_counts = {
+            col: total_rows - int(row[index + 1] or 0)
+            for index, col in enumerate(existing)
+        }
+    return total_rows, null_counts, missing
+
+
 def check_label_panel_reproducibility(conn) -> list[CheckResult]:
     """1. label_version / built_at 填齐."""
     out: list[CheckResult] = []
@@ -307,29 +348,33 @@ def check_v3_pit_confidence(conn, feature_panel: str) -> list[CheckResult]:
         extras={"fallback_pct": fallback_pct, "by_confidence": dict(rows)},
     ))
     # 关键源 NULL 率
-    for col in ("survey_count_60d", "pe_ttm_z_1y", "sector_ret_60d",
-                "inst_quality_wavg", "inst_holder_cnt"):
-        try:
-            r = conn.execute(
-                f"SELECT COUNT(*), COUNT({col}) FROM {feature_panel}"
-            ).fetchone()
-            total_r, non_null = r[0], r[1]
-            null_pct = (total_r - non_null) / total_r if total_r else 0
-            status = "WARN" if null_pct > 0.5 else "PASS"
-            out.append(CheckResult(
-                section="7. v3 PIT confidence",
-                name=f"null_ratio_{col}",
-                status=status,
-                detail=f"{col} NULL {null_pct*100:.1f}% ({total_r - non_null:,}/{total_r:,})",
-                extras={"null_pct": null_pct},
-            ))
-        except Exception as e:
+    target_cols = [
+        "survey_count_60d",
+        "pe_ttm_z_1y",
+        "sector_ret_60d",
+        "inst_quality_wavg",
+        "inst_holder_cnt",
+    ]
+    total_r, null_counts, missing_cols = _batch_null_counts(conn, feature_panel, target_cols)
+    for col in target_cols:
+        if col in missing_cols:
             out.append(CheckResult(
                 section="7. v3 PIT confidence",
                 name=f"null_ratio_{col}",
                 status="WARN",
-                detail=f"{col} not in {feature_panel}: {e}",
+                detail=f"{col} not in {feature_panel}",
             ))
+            continue
+        null_n = null_counts.get(col, 0)
+        null_pct = null_n / total_r if total_r else 0
+        status = "WARN" if null_pct > 0.5 else "PASS"
+        out.append(CheckResult(
+            section="7. v3 PIT confidence",
+            name=f"null_ratio_{col}",
+            status=status,
+            detail=f"{col} NULL {null_pct*100:.1f}% ({null_n:,}/{total_r:,})",
+            extras={"null_pct": null_pct},
+        ))
     return out
 
 

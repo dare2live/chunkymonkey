@@ -327,6 +327,20 @@ tools:
     replacement: make PIT/date-aware universe mode the production default when panel v5 migration is scheduled
     last_verified: "2026-05-27"
 
+  - id: p0a_panel_v3_confidence_tests
+    paths:
+      - backend/scripts/audit_p0a_panel.py
+      - backend/tests/scripts/test_audit_p0a_panel.py
+    owner_module: p0a_panel
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_p0a_panel.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: P0a panel v3 PIT confidence audit and its fixture table columns
+    risk_reason: if the null-rate audit degrades to per-column queries or schema assumptions drift, the gate becomes slower and less representative of the live panel
+    replacement: keep v3 null-rate checks batched and validate with the current panel schema fixture
+    last_verified: "2026-06-02"
+
   - id: global_data_quality_contract_tests
     paths:
       - backend/tests/test_global_data_quality.py
