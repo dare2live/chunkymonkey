@@ -6,7 +6,11 @@
 > **目标**: 新接手 (无论 Claude 还是人) 读完此文档**不用看代码 / 不用查 DB** 就能理解:
 > 项目业务 / 架构 / 技术路线 / 数据资产 / 当前进度 / 已知坑 / 常用操作.
 
-最后更新: **2026-06-02** (K-line + alpha158 + stage/context/trigger + capital_flow/risk/sector + picture/survey + label/score freshness catch-up + portfolio_sizer config + dirty safety/tooling ledger).
+最后更新: **2026-06-03** (K-line + alpha158 + stage/context/trigger + capital_flow/risk/sector + picture/survey + label/score freshness catch-up + portfolio_sizer config + dirty safety/tooling ledger + model monitor widget extraction).
+
+## [INDEX] 2026-06-03 增量
+
+- **Model monitor widget extraction**: `assets/js/app.js` 里的模型监控主实现已抽到 `assets/js/widgets/model-monitor.js`，`app.js` 现在只保留 `loadModelMonitor()` 薄 wrapper + 依赖注入；widget 自带 `loadModelMonitor` / `renderModelMonitor` / `renderModelComparison` / `renderPromotionGate` / `renderTdxValidation` / `renderMetricsCards` / `renderDailyChart` / `renderRegimeChart` / `renderFeatureImportance` / `labelFeature` / `labelModelId` / `setFeatureLabels`，`index.html` 已调整为先加载 widget 再加载 `app.js`。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_model_monitor_widget.py --scope backend/tests/contract/test_workbench_frontend_contract.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_model_monitor_widget.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`node --check assets/js/widgets/model-monitor.js assets/js/app.js` PASS，`analyze_complexity.py` 复扫后新 widget 无明显热点，`codegraph sync .` 已同步。
 
 ## [INDEX] 2026-06-02 增量
 
