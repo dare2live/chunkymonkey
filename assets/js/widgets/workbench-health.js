@@ -41,9 +41,12 @@
     return runtime.esc ? runtime.esc(value) : String(value == null ? '' : value);
   }
 
+  var formatUtils = (typeof globalThis !== 'undefined' && globalThis.WidgetFormatUtils) || global.WidgetFormatUtils;
+  if (!formatUtils) throw new Error('WidgetFormatUtils missing');
+
   function fmt(value) {
     if (typeof runtime.fmt === 'function') return runtime.fmt(value);
-    return value == null ? '—' : String(value);
+    return formatUtils.formatNumber(value, 0, '—');
   }
 
   function fmtDate(value) {

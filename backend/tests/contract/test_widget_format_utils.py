@@ -38,6 +38,8 @@ require(process.argv[3]);
 require(process.argv[4]);
 require(process.argv[5]);
 require(process.argv[6]);
+require(process.argv[7]);
+require(process.argv[8]);
 if (!globalThis.ETFSectorRotationWidget || typeof globalThis.ETFSectorRotationWidget.mount !== 'function') {
   throw new Error('ETFSectorRotationWidget exports missing');
 }
@@ -53,6 +55,12 @@ if (!globalThis.ETFListWidget || typeof globalThis.ETFListWidget.mountEtfList !=
 if (!globalThis.ETFWorkbenchWidget || typeof globalThis.ETFWorkbenchWidget.mountEtfWorkbench !== 'function') {
   throw new Error('ETFWorkbenchWidget exports missing');
 }
+if (!globalThis.ETFAnalysisWidget || typeof globalThis.ETFAnalysisWidget.mountDeepAnalysis !== 'function') {
+  throw new Error('ETFAnalysisWidget exports missing');
+}
+if (!globalThis.WorkbenchHealthWidget || typeof globalThis.WorkbenchHealthWidget.refreshWorkbenchHealthBar !== 'function') {
+  throw new Error('WorkbenchHealthWidget exports missing');
+}
 """
 
     result = subprocess.run(
@@ -66,6 +74,8 @@ if (!globalThis.ETFWorkbenchWidget || typeof globalThis.ETFWorkbenchWidget.mount
             str(REPO / "assets/js/widgets/etf-opportunity.js"),
             str(REPO / "assets/js/widgets/etf-list.js"),
             str(REPO / "assets/js/widgets/etf-workbench.js"),
+            str(REPO / "assets/js/widgets/etf-analysis.js"),
+            str(REPO / "assets/js/widgets/workbench-health.js"),
         ],
         check=False,
         text=True,
