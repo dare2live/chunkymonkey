@@ -25,40 +25,12 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 15:56:10 CST
+**Snapshot 时间**: 2026-06-02 17:29:07 CST
 
-- latest code snapshot is commit `55d279ad`; this handoff refresh reflects the 2026-06-02 15:56 CST docs-only blocker-guidance slice layered on top of the 2026-06-02 live writer refresh state, where `raw_profit_forecast_snapshot_daily` is no longer blocking, `fact_feature_panel` has been rebuilt through `2026-06-01` and no longer sits in blocking yellow, `dim_stock_tdx_industry_history` was refreshed on the main smartmoney DB and the prior warning yellow is now cleared, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`. `stage-opt` controller recommendation remains `P1 / upstream_candidate_supply`; live recommendation PIT attrition is still 5/1/3 for short/mid/long, all `cross_stage_fallback`, so exact PIT coverage remains structurally sparse. `latest_completed_trade_date` remains `2026-06-01` intraday even though these refreshes happened on `2026-06-02`.
+## 主线 retrain 状态
 
-- controller boundary note: `audit_stage_opt_candidate_supply.py` and `doctor --fast` now surface the live formula registry explicitly; live stage-opt supply only includes 7 formula ids (`macd_golden_cross`, `turtle_breakout_20`, `turtle_breakout_55`, `dynamic_ma_iterative_cross`, `reversal_1m_mild`, `reversal_1m_deep`, `reversal_1w`). Research challengers are now separate and list 5 formula ids (`gs_raw_buy`, `gs_pullback_confirm`, `ma_base_breakout`, `activity_breakout`, `volume_base_breakout`); they remain research-only and must not be counted as live production supply. The 2026-06-02 config-only probe series is exhausted; there is currently no safe code slice left for stage-opt. Future work there should be treated as structural redesign or upstream-source work, not another knob-tuning pass.
-- shared-config boundary note: common holding windows, stage thresholds, MACD
-  diagnostic windows, turtle_breakout volume confirmation gates,
-  shareholder-plan walk-forward defaults, multidim walk-forward default model
-  params / degenerate threshold, stock-formula optuna bucket / high-conviction
-  thresholds live in `backend/config/stock_formula_optuna.yaml` while the shared
-  vol/amt/p60 bins live in `backend/config/shared_feature_bins.yaml`, and the
-  backtest default stop/target/trailing now live in shared YAML configs
-  (`formula_shared_windows.yaml`, `technical_stage.yaml`,
-  `formula_macd_golden_cross.yaml`, `formula_turtle_breakout.yaml`,
-  `shareholder_plan_family_walkforward.yaml`, `run_multidim_walkforward.yaml`,
-  `stock_formula_optuna.yaml`, `shared_feature_bins.yaml`,
-  `strategy_defaults.yaml`) plus the shared loader; `feature_registry.py`
-  now also serves the forward / follow label lists from the registry so the
-  same horizon columns stop reappearing as script constants; formula-specific
-  YAMLs keep only formula-owned thresholds, and per-stock best-holding
-  results stay table-backed in marts such as
-  `mart_per_stock_stage_strategy_optimal_pit` / `mart_stock_horizon_profile`
-  instead of becoming file literals. Raw
-  `duckdb.connect` allowlists are now config-owned in
-  `backend/config/duckdb_connect_policy.yaml`, with `services/duck_adapter.py`
-  handling ATTACH retry semantics so stage audits and contract tests reuse the
-  same lock policy instead of hardcoding it inside the test. BestChoice 当前
-  5 个公式对“`20` 个交易日内主力资金流入 + `1-2` 次倍量上涨”的形态只算
-  部分覆盖（最接近的是 `volume_base_breakout` / `activity_breakout`）；
-  另一个已存档的研究资产是回调十字星 / `pullback_doji` /
-  `formula_limit_up_pullback` 与 CYQ 筹码分布规格；这些候选先记入
-  后续接入计划，等架构 / 数据治理完成后再一起评估是否加入 BestChoice
-  模块。
-  BestChoice 的共享 run-id / walk-forward 日期 / ensemble train-test windows 已统一到 `backend/config/bestchoice_pipeline.yaml`，由 `backend/services/bestchoice_config.py` 严格加载，避免 import / feed / audit / paper-sim / ensemble 脚本各自复制同一套默认值。
+| 项 | 值 |
+|---|---|
 | Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
 | VM 状态 | ? |
 | VM 上次启动 |  |
@@ -89,50 +61,28 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `d4884b42 feat: externalize BestChoice pipeline defaults into config | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, docs graph PASS, codegraph sync PASS` |
-| 最近 24h commits | 123 |
-| 未 commit 文件 | 0 |
+| HEAD | `ec261178 docs: refresh session handoff snapshot` |
+| 最近 24h commits | 121 |
+| 未 commit 文件 | 1 |
 
 ### 最近 10 commits
 
 ```
+ec261178 docs: refresh session handoff snapshot
+55d279ad docs: tighten stage-opt blocker guidance
+3355663f docs: refresh session handoff snapshot after BestChoice pipeline defaults commit | # commit-msg: minimal
 d4884b42 feat: externalize BestChoice pipeline defaults into config | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, docs graph PASS, codegraph sync PASS
+77e88d8d docs: record archived pullback_doji and CYQ research assets | # commit-msg: minimal
+aa19ff1e feat: centralize shared label registry columns and record bestchoice candidate | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: pytest 9 passed, audit PASS, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
+ce46e4b1 docs: refresh session handoff snapshot after feature drift mitigation commit | # commit-msg: minimal
 1f6fb919 feat: externalize feature drift mitigation defaults into config | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: pytest 5 passed, audit PASS, docs graph PASS, worktree FAIL pre-commit slice only
-a69af7da feat: externalize shared feature bins into config and fix loader path | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: import smoke, pytest 10 passed, audit PASS, docs graph PASS, codegraph sync PASS | cleanup verified 无残留 no stale
-b6c29e1b feat: externalize stock formula optuna bins into config | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: pytest 3 passed, audit PASS, docs graph PASS, codegraph sync PASS
-3086c2e3 feat: externalize shareholder-plan walkforward defaults into config | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate) | test pass: pytest 4 passed, audit PASS, docs graph PASS, codegraph sync PASS | post-fix-audit cleanup verified 无残留 no stale
-3f588b98 feat: finish config-owned backtest defaults cleanup | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate) | test pass: formula_engine and portfolio_sizer passed, audit PASS, docs graph PASS, codegraph sync PASS | post-fix-audit cleanup verified 无残留 no stale
-04044851 feat: finish config-owned formula loader cleanup | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate) | test pass: formula_engine 70 passed, audit PASS, docs graph PASS, codegraph sync PASS | post-fix-audit cleanup verified 无残留 no stale
-6e5d750f feat: externalize shared formula windows and split config ownership | Codex-Reviewed: APPROVE_WITH_NOTES | PIT neutral; OOS evidence unchanged; test pass: formula_engine 64 passed, py_compile PASS, docs graph PASS
-d79171f4 feat: surface research challenger registry boundary in stage-opt audit | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: pytest 33 passed, audit PASS, docs graph PASS
-525fab9a feat: widen reversal 1w rel_std to 0.07 and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 75.24% ready coverage, docs graph PASS, complexity no new HIGH
-a394af81 feat: widen reversal deep rel_std and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 74.56% ready coverage, docs graph PASS
-d041862e feat: lower turtle breakout 55 volume gate to 0.5 and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 74.16% ready coverage, docs graph PASS
-2738fe56 feat: lower turtle breakout 55 volume gate to 0.6 and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 74.15% ready coverage, docs graph PASS
-199e0932 feat: widen reversal mild threshold and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 74.12% ready coverage, docs graph PASS
-e4d8dae3 feat: widen reversal deep threshold and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 74.00% ready coverage, docs graph PASS
-55e607ca feat: widen reversal mild and turtle breakout gates | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 73.61% ready coverage, docs graph PASS
-b560909b feat: lower turtle breakout 55 volume gate to 0.9 and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 39 passed, audit PASS, stage-opt 72.65% ready coverage, docs graph PASS, complexity no new HIGH
-cec08c8e feat: widen reversal_1w to 1-10% and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 66 passed, audit PASS, stage-opt 73.28% ready coverage, docs graph PASS, complexity no new HIGH
-da5c60d9 feat: externalize reversal_1m_mild threshold and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 39 passed, audit PASS, stage-opt 71.96% ready coverage, docs graph PASS
-30b4e0ce docs: refresh session handoff after reversal short-term lift | test pass: docs graph PASS, worktree clean, no code changes
-286969b3 feat: externalize reversal short-term thresholds and sync stage-opt docs | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 39 passed, audit PASS, stage-opt 71.59% ready coverage, docs graph PASS
-969ad89b docs: refresh controller snapshot after stage-opt latest rebuild | Codex-Reviewed: APPROVE_WITH_NOTES | commit-msg: minimal | test pass: docs graph PASS, worktree clean
-ed5a3ee6 feat: widen stage-opt evidence and sync controller docs | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 33 passed, audit PASS, docs PASS, codegraph synced
-2c177d1b feat: widen MACD state history evidence and sync controller docs | Codex-Reviewed: APPROVE_WITH_NOTES | test pass; audit PASS; complexity no new HIGH; docs synced
-2cb49141 docs: surface stage-opt blocked-reason counts in doctor | Codex-Reviewed: APPROVE_WITH_NOTES (chunkymonkey-review-gate)
-b1bf7181 docs: sync quickstart with stage-opt and need_027 controller-visible blockers
-7c99b0af docs: sync stage-opt current audit stats and controller-state timestamps | audit docs graph PASS
-54974968 docs: surface min_signals=2 in stage-opt doctor output | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: stage-opt audit and chunkyctl tests passed
-cb2ca58c docs: sync min_signals=2 stage-opt evidence and controller state | test pass: docs graph PASS, doctor PASS, worktree PASS
-c61e4d86 docs: sync source-watermark UTC cleanup and current controller state | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: docs PASS, doctor PASS, codegraph synced | post-fix-audit cleanup verified 无残留 no stale
-efc6cd5a fix: silence source_watermarks utcnow warnings and sync project index | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: source_watermarks and probe tests 15 passed, audit PASS, docs PASS, doctor PASS, post-fix-audit cleanup verified 无残留 no stale
-ddea9ec9 docs: sync probe persistence downgrade and current triage state | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: probe_source_capability 9 passed, audit PASS, docs PASS, doctor PASS
+8eecc25f docs: refresh controller snapshot after duckdb connect policy config externalization | # commit-msg: minimal
+aab43c0c feat: externalize duckdb connect allowlist into config and harden attach retry | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: integration contract 7 passed, stage-opt audit PASS, audit tool health PASS, docs graph PASS, codegraph sync PASS
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**0 uncommitted files — continue stage-opt upstream_candidate_supply / need_027 blocked-gap triage**
+**1 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 
