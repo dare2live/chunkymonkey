@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 01:50:31 CST
+**Snapshot 时间**: 2026-06-03 01:54:34 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `8907693a feat: streamline signal adapter aggregation and node compatibility | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 1 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 173 |
+| HEAD | `3866f770 feat: single-pass schema version summary in settings view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 1 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 175 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+3866f770 feat: single-pass schema version summary in settings view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 1 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
+6fedc802 docs: refresh session handoff snapshot after signal adapter cleanup | # commit-msg: minimal
 8907693a feat: streamline signal adapter aggregation and node compatibility | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 1 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 38a0a96d docs: refresh session handoff snapshot after doctor skip flag cleanup | # commit-msg: minimal
 b6e4ac75 fix: remove stale doctor skip flags | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 27 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ adbce7a2 fix: make doctor fast wrapper forward full gate | # commit-msg: minimal
 90b9a582 docs: refresh session handoff snapshot after ETF workbench snapshot sync | # commit-msg: minimal
 7d980439 docs: refresh session handoff snapshot after ETF workbench widget extraction | # commit-msg: minimal
 bd23298e feat: extract ETF workbench widget and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
-0fb48c9b docs: refresh session handoff snapshot after workbench health widget extraction | # commit-msg: minimal
-56b61020 feat: extract workbench health widget and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS
 ```
 
 ## NEXT ACTION (auto-computed)
