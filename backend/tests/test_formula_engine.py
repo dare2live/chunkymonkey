@@ -241,14 +241,14 @@ class TestTurtleBreakout:
         assert f55.metadata.default_horizon_days == 30
         from services.formula_engine import turtle_breakout as turtle_breakout_module
         assert turtle_breakout_module.VOLUME_MULTIPLE_20 == pytest.approx(0.9)
-        assert turtle_breakout_module.VOLUME_MULTIPLE_55 == pytest.approx(0.5)
+        assert turtle_breakout_module.VOLUME_MULTIPLE_55 == pytest.approx(0.4)
 
     def test_volume_multiple_loader_reads_config(self, tmp_path):
         from services.formula_engine.turtle_breakout import _load_volume_multiple
 
         cfg = tmp_path / "formula_turtle_breakout.yaml"
         cfg.write_text("turtle_breakout_55:\n  volume_multiple: 1.05\n", encoding="utf-8")
-        assert _load_volume_multiple(cfg, variant="turtle_breakout_55", default=0.5) == pytest.approx(1.05)
+        assert _load_volume_multiple(cfg, variant="turtle_breakout_55", default=0.4) == pytest.approx(1.05)
 
     def test_short_kline_no_signal(self, f20):
         n = 10
@@ -310,16 +310,16 @@ class TestTurtleBreakout:
         assert len(signals) == 0
 
     def test_moderate_volume_breakout_now_triggers(self, f55):
-        # 介于 0.5x 和 0.6x 的放量突破,用来锁住 55 日博弈不会回弹到 0.6
-        n = 70
+        # 介于 0.4x 和 0.5x 的放量突破,用来锁住 55 日博弈不会回弹到 0.5
+        n = 60
         dates = np.array([f"2024-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}" for i in range(n)])
         closes = np.concatenate([
             np.ones(55) * 100.0,
-            np.array([111.0, 111.5, 112.0, 112.5, 113.0, 113.5, 114.0, 114.5, 115.0, 115.5, 116.0, 116.5, 117.0, 117.5, 118.0]),
+            np.array([111.0, 111.0, 111.0, 111.0, 111.0]),
         ])
         volumes = np.concatenate([
             np.ones(55) * 1000,
-            np.ones(15) * 750,
+            np.array([450.0, 1000.0, 1000.0, 1000.0, 1000.0]),
         ])
         signals = f55.compute_signals(
             "T", dates, closes, closes * 1.005, closes * 0.995, closes,

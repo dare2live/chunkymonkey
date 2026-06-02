@@ -24,7 +24,7 @@ from services.formula_engine.base import (
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "formula_turtle_breakout.yaml"
 DEFAULT_VOLUME_MULTIPLE_20 = 0.9
-DEFAULT_VOLUME_MULTIPLE_55 = 0.5
+DEFAULT_VOLUME_MULTIPLE_55 = 0.4
 
 
 def _load_yaml(path: Path) -> dict[str, object]:
