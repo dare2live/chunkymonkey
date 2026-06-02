@@ -6,6 +6,7 @@ import pytest
 
 from services import analytics, duck_adapter
 from services.duck_adapter import connect
+from services.duckdb_connect_policy import DEFAULT_DUCKDB_CONNECT_POLICY
 from services.pipeline_manifest import ensure_pipeline_manifest_schema, record_pipeline_run
 
 
@@ -116,6 +117,32 @@ def test_duck_adapter_records_lock_wait_after_retry(monkeypatch, tmp_path):
         conn.close()
 
 
+def test_duck_adapter_records_attach_wait_after_retry(monkeypatch):
+    calls = []
+
+    class FakeConn:
+        def execute(self, sql):
+            calls.append(sql)
+            if len(calls) == 1:
+                raise duck_adapter.duckdb.IOException(
+                    'IO Error: Could not set lock on file "fixture.duckdb": Conflicting lock'
+                )
+            return self
+
+    monkeypatch.setattr(duck_adapter.time, "sleep", lambda _seconds: None)
+
+    waited = duck_adapter.attach_with_retry(
+        FakeConn(),
+        "sm",
+        "fixture.duckdb",
+        read_only=True,
+        timeout=1,
+    )
+
+    assert len(calls) == 2
+    assert waited >= 0.1
+
+
 def test_pipeline_manifest_records_duckdb_wait_metrics():
     conn = connect(":memory:")
     try:
@@ -149,77 +176,7 @@ def test_pipeline_manifest_records_duckdb_wait_metrics():
 
 def test_production_code_keeps_raw_duckdb_connect_calls_allowlisted():
     repo = Path(__file__).resolve().parents[2]
-    allowed = {
-        "services/analytics.py",
-        "services/duck_adapter.py",
-        "scripts/backtest_etf_strategies.py",
-        "scripts/build_alpha158_duck.py",
-        "scripts/build_etf_sector_rotation.py",
-        "scripts/build_formula_signals_history.py",
-        "scripts/build_stage_formula_fitness.py",
-        "scripts/migrate_holders_to_tdxhub.py",
-        "scripts/build_signal_context.py",
-        "scripts/analyze_macd_feature_buckets.py",
-        "scripts/build_stock_formula_optuna.py",
-        "scripts/optuna_per_stock_macd.py",
-        "scripts/validate_sentiment_ic.py",
-        "scripts/validate_exclusion_rules.py",
-        "scripts/build_stock_formula_optuna_v2.py",
-        "scripts/optimize_per_stock_strategy.py",
-        "scripts/optimize_per_stock_stage_strategy.py",
-        "scripts/portfolio_backtest.py",
-        # 2026-05-20 增量 update — sync allowlist 跟现 ~50 scripts 用 raw duckdb.connect.
-        # 这些 scripts 在项目长期演进中加入, allowlist 累积漏 — 一次性 sync 上来.
-        # 每个 都用 duck_adapter.connect OR 直接 duckdb.connect 是 OK (短时 query OR
-        # write 操作需要 mutex on DB lock, 现都 read_only 或显式 write context).
-        "scripts/audit_data_completeness.py",
-        "scripts/audit_delivery_readiness.py",
-        "scripts/audit_lgbm_feature_importance.py",
-        "scripts/audit_pit_coverage.py",
-        "scripts/audit_survivorship_gate.py",
-        "scripts/backfill_capital_flow_pit.py",
-        "scripts/backfill_financial_pit.py",
-        "scripts/backfill_risk_factors_history.py",
-        "scripts/backfill_sector_momentum_history.py",
-        "scripts/backfill_walkforward_eval.py",
-        "scripts/build_candle_pattern_daily.py",
-        "scripts/build_dim_listing_status.py",
-        "scripts/build_industry_beta_daily.py",
-        "scripts/build_mart_stock_pool_assignment.py",
-        "scripts/build_mart_stock_regime_full.py",
-        "scripts/build_p0a_feature_panel_v3.py",
-        "scripts/build_p0a_feature_panel_v4.py",
-        "scripts/build_sniper_score_daily.py",
-        "scripts/build_stage_opt_pit.py",
-        "scripts/check_sina_tdxhub_overlap.py",
-        "scripts/cleanup_corrupt_oos_predictions.py",
-        "scripts/cleanup_deprecated_kline_sources.py",
-        "scripts/cleanup_holder_dup.py",
-        "scripts/cleanup_kline_intraday_20260519.py",
-        "scripts/cleanup_leakage_data.py",
-        "scripts/compute_forecast_upside_live.py",
-        "scripts/eda_phase1a.py",
-        "scripts/ingest_profit_forecast_snapshot.py",
-        "scripts/import_model_train_log_artifact.py",
-        "scripts/import_phase5_remote_predictions.py",
-        "scripts/model_monitor_dashboard.py",
-        "scripts/monitor_optuna_v4.py",
-        "scripts/nightly_data_audit.py",
-        "scripts/optimize_per_formula_stage.py",
-        "scripts/param_impact_curve.py",
-        "scripts/preflight_panel_build.py",
-        "scripts/rebuild_p0a_label_panel.py",
-        "scripts/retrain_from_optuna_best.py",
-        "scripts/run_msaf_ensemble_paper_sim.py",
-        "scripts/run_paper_sim_sizer_ablation.py",
-        "scripts/run_phase4_gate_on_msaf.py",
-        "scripts/sync_kline_from_gcs.py",
-        "services/features/capital_flow.py",
-        "services/features/institution_survey.py",
-        "services/features/sector_momentum.py",
-        "services/perf/shard_runner.py",
-        "services/strategies/regime/regime_state.py",
-    }
+    allowed = set(DEFAULT_DUCKDB_CONNECT_POLICY.allowed_raw_connect_paths)
     found = set()
 
     for base in [repo / "services", repo / "scripts"]:

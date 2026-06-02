@@ -898,6 +898,14 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-06-02 DuckDB connect policy config 外置 + stage-opt audit attach retry
+
+- `backend/config/duckdb_connect_policy.yaml` / `backend/services/duckdb_connect_policy.py`: raw `duckdb.connect` 允许清单从 integration test 的硬编码 set 外置成 config-owned policy，避免 allowlist drift 只能靠改测试代码补洞；policy loader 采用 strict fail-closed，重复 / 空值 / 缺 key 直接报错。
+- `backend/services/duck_adapter.py`: 新增共享 `attach_with_retry()`，`DuckConn` 初始化与 stage-opt 审计现在复用同一套 ATTACH retry 逻辑，lock conflict 会重试并记录 wait time，不再在审计路径单独硬写 one-shot ATTACH。
+- `backend/scripts/audit_stage_opt_candidate_supply.py` / `backend/tests/integration/test_duckdb_connection_contract.py`: stage-opt audit 改走 shared attach retry；integration contract test 改为读取 config-owned policy，并确认当前 raw connect 允许清单覆盖 5 大桶（backend_services_api / audit_gate_scripts / tests / config_project / existing svc scripts）后依然 PASS。
+- 验证: `PYTHONPATH=backend python -m pytest -q backend/tests/integration/test_duckdb_connection_contract.py` 7 passed；`PYTHONPATH=backend python backend/scripts/audit_stage_opt_candidate_supply.py --format json` PASS；`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/services/duckdb_connect_policy.py --scope backend/services/duck_adapter.py --scope backend/scripts/audit_stage_opt_candidate_supply.py --scope backend/tests/integration/test_duckdb_connection_contract.py` PASS；`scripts/chunkyctl docs --format markdown` PASS；`codegraph sync .` 已更新 103 nodes。
+- 当前工作树在这刀前仍有 5 个 dirty entries, 但 bucket 已明确为 `backend_services_api` / `audit_gate_scripts` / `tests` / `config_project`; 这条线收口后继续按 `stage-opt upstream_candidate_supply` 与 `need_027 blocked-gap triage` 推进。
+
 ### 2026-06-02 holder/gap queue crash-free + controller state sync
 
 - `backend/services/gap_queue.py`: `market_gap_queue` 现在改成 update-first / insert-second 的幂等写路径；若并发/重放场景里另一个写入刚插入同 key，会退化为 update，避免 `ON CONFLICT` 之外的重复键噪音。

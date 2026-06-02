@@ -21,12 +21,11 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-import duckdb
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.calendar import DEFAULT_CLOSE_HOUR, DEFAULT_CLOSE_MINUTE
 from services.backtest.filters import is_index_code
+from services.duck_adapter import attach_with_retry, connect as duck_connect
 import services.formula_engine.bootstrap  # noqa: F401
 from services.formula_engine import REGISTRY
 
@@ -799,8 +798,8 @@ def main() -> int:
     parser.add_argument("--format", choices=["markdown", "json"], default="markdown")
     args = parser.parse_args()
 
-    conn = duckdb.connect(str(MARKET_DB), read_only=True)
-    conn.execute(f"ATTACH '{SMART_DB}' AS sm (READ_ONLY)")
+    conn = duck_connect(str(MARKET_DB), read_only=True)
+    attach_with_retry(conn.raw, "sm", str(SMART_DB), read_only=True, timeout=60)
     try:
         start = args.start
         end = args.end
