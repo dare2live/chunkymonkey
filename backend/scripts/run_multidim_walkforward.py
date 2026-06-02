@@ -12,6 +12,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import lightgbm as lgb
@@ -63,6 +65,8 @@ from scripts.train_multidim_model import (
 logger = logging.getLogger("multidim_walkforward")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
 
+CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "run_multidim_walkforward.yaml"
+
 
 DDL = """
 CREATE TABLE IF NOT EXISTS mart_model_walkforward_fold (
@@ -107,30 +111,99 @@ CREATE TABLE IF NOT EXISTS mart_model_walkforward_prediction (
 );
 """
 
+_DEFAULT_PARAM_KEYS = {
+    "objective",
+    "metric",
+    "learning_rate",
+    "num_leaves",
+    "min_data_in_leaf",
+    "feature_fraction",
+    "bagging_fraction",
+    "bagging_freq",
+    "lambda_l1",
+    "lambda_l2",
+    "max_depth",
+    "verbose",
+    "seed",
+    "feature_fraction_seed",
+    "bagging_seed",
+    "data_random_seed",
+    "feature_pre_filter",
+}
+
+
+def _load_yaml(path: Path) -> dict[str, Any]:
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(loaded, dict):
+        raise ValueError(f"{path.name} must contain a mapping")
+    return loaded
+
+
+def _require_str(raw: dict[str, Any], key: str, raw_path: Path) -> str:
+    value = raw[key]
+    if not isinstance(value, str):
+        raise ValueError(f"{raw_path.name}: {key} must be a string")
+    return value
+
+
+def _require_bool(raw: dict[str, Any], key: str, raw_path: Path) -> bool:
+    value = raw[key]
+    if not isinstance(value, bool):
+        raise ValueError(f"{raw_path.name}: {key} must be a boolean")
+    return value
+
+
+def _require_int(raw: dict[str, Any], key: str, raw_path: Path) -> int:
+    value = raw[key]
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{raw_path.name}: {key} must be an integer")
+    return value
+
+
+def _require_float(raw: dict[str, Any], key: str, raw_path: Path) -> float:
+    value = raw[key]
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{raw_path.name}: {key} must be numeric")
+    return float(value)
+
+
+def _load_defaults(path: Path | None = None) -> tuple[dict[str, Any], int]:
+    raw_path = path or CONFIG_PATH
+    raw = _load_yaml(raw_path)
+    missing = [key for key in sorted(_DEFAULT_PARAM_KEYS) if key not in raw]
+    if missing:
+        raise ValueError(f"{raw_path.name}: missing walkforward default key {missing[0]}")
+    try:
+        params = {
+            "objective": _require_str(raw, "objective", raw_path),
+            "metric": _require_str(raw, "metric", raw_path),
+            "learning_rate": _require_float(raw, "learning_rate", raw_path),
+            "num_leaves": _require_int(raw, "num_leaves", raw_path),
+            "min_data_in_leaf": _require_int(raw, "min_data_in_leaf", raw_path),
+            "feature_fraction": _require_float(raw, "feature_fraction", raw_path),
+            "bagging_fraction": _require_float(raw, "bagging_fraction", raw_path),
+            "bagging_freq": _require_int(raw, "bagging_freq", raw_path),
+            "lambda_l1": _require_float(raw, "lambda_l1", raw_path),
+            "lambda_l2": _require_float(raw, "lambda_l2", raw_path),
+            "max_depth": _require_int(raw, "max_depth", raw_path),
+            "verbose": _require_int(raw, "verbose", raw_path),
+            "seed": _require_int(raw, "seed", raw_path),
+            "feature_fraction_seed": _require_int(raw, "feature_fraction_seed", raw_path),
+            "bagging_seed": _require_int(raw, "bagging_seed", raw_path),
+            "data_random_seed": _require_int(raw, "data_random_seed", raw_path),
+            "feature_pre_filter": _require_bool(raw, "feature_pre_filter", raw_path),
+        }
+        threshold = _require_int(raw, "degenerate_daily_distinct_threshold", raw_path)
+    except KeyError as exc:
+        raise ValueError(f"{raw_path.name}: missing walkforward default key {exc.args[0]}") from exc
+    if threshold <= 0:
+        raise ValueError(f"{raw_path.name}: degenerate threshold must be positive")
+    return params, threshold
+
+
 # M8.0: distinct pred_score median 阈值. 低于此判 degenerate, 不进入下游 portfolio.
 # 5048 票 / 日的样本下, 100 是 ~2% 多样性, 已经远高于早停 bug 的 ~5-9 桶.
-DEGENERATE_DAILY_DISTINCT_THRESHOLD = 100
-
-
-DEFAULT_PARAMS = {
-    "objective": "regression",
-    "metric": "rmse",
-    "learning_rate": 0.04,
-    "num_leaves": 31,
-    "min_data_in_leaf": 200,
-    "feature_fraction": 0.8,
-    "bagging_fraction": 0.8,
-    "bagging_freq": 1,
-    "lambda_l1": 0.01,
-    "lambda_l2": 0.1,
-    "max_depth": 6,
-    "verbose": -1,
-    "seed": 42,
-    "feature_fraction_seed": 42,
-    "bagging_seed": 42,
-    "data_random_seed": 42,
-    "feature_pre_filter": False,
-}
+DEFAULT_PARAMS, DEGENERATE_DAILY_DISTINCT_THRESHOLD = _load_defaults()
 
 
 FEATURE_COLS = ordered_feature_cols(include_dense_v2=True)

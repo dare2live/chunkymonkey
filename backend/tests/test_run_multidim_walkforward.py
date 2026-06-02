@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -13,6 +14,40 @@ from services.model_feature_schema import BASE_FEATURE_COLS
 
 def _quote(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
+
+
+def test_walkforward_defaults_load_from_config(tmp_path) -> None:
+    cfg = tmp_path / "run_multidim_walkforward.yaml"
+    payload = dict(subject.DEFAULT_PARAMS)
+    payload["degenerate_daily_distinct_threshold"] = 123
+    cfg.write_text(yaml.safe_dump(payload, sort_keys=True), encoding="utf-8")
+
+    defaults, threshold = subject._load_defaults(cfg)
+
+    assert defaults == subject.DEFAULT_PARAMS
+    assert threshold == 123
+
+
+def test_walkforward_defaults_missing_key_fails(tmp_path) -> None:
+    cfg = tmp_path / "run_multidim_walkforward.yaml"
+    payload = dict(subject.DEFAULT_PARAMS)
+    payload.pop("feature_pre_filter")
+    payload["degenerate_daily_distinct_threshold"] = 100
+    cfg.write_text(yaml.safe_dump(payload, sort_keys=True), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="missing walkforward default key feature_pre_filter"):
+        subject._load_defaults(cfg)
+
+
+def test_walkforward_defaults_bad_type_fails(tmp_path) -> None:
+    cfg = tmp_path / "run_multidim_walkforward.yaml"
+    payload = dict(subject.DEFAULT_PARAMS)
+    payload["feature_pre_filter"] = "false"
+    payload["degenerate_daily_distinct_threshold"] = 100
+    cfg.write_text(yaml.safe_dump(payload, sort_keys=True), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="feature_pre_filter must be a boolean"):
+        subject._load_defaults(cfg)
 
 
 def test_walkforward_load_panel_records_and_feature_group_resolution():

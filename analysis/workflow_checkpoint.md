@@ -63,12 +63,13 @@ The model pipeline snapshot below is historical evidence for the completed
   remains the lone warning yellow.
 - shared-config boundary: common holding windows, stage thresholds, MACD
   diagnostic windows, turtle_breakout volume confirmation gates,
-  shareholder-plan walk-forward defaults, and the backtest default
+  shareholder-plan walk-forward defaults, multidim walk-forward default
+  model params / degenerate threshold, and the backtest default
   stop/target/trailing now live in shared YAML configs
   (`formula_shared_windows.yaml`, `technical_stage.yaml`,
   `formula_macd_golden_cross.yaml`, `formula_turtle_breakout.yaml`,
-  `shareholder_plan_family_walkforward.yaml`, `strategy_defaults.yaml`) plus
-  the shared loader; formula-specific YAMLs keep only formula-owned
+  `shareholder_plan_family_walkforward.yaml`, `run_multidim_walkforward.yaml`,
+  `strategy_defaults.yaml`) plus the shared loader; formula-specific YAMLs keep only formula-owned
   thresholds, and per-stock best-holding results stay table-backed in marts
   such as `mart_per_stock_stage_strategy_optimal_pit` /
   `mart_stock_horizon_profile`
