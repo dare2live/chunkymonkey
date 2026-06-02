@@ -25,9 +25,9 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 08:31:32 CST
+**Snapshot 时间**: 2026-06-02 08:38:34 CST
 
-- latest code/docs snapshot (2026-06-02) is commit `c93b991a`; `reversal_1m_deep` only loosened `rel_std_max` from `0.09` to `0.10`, lifting the history rebuild to `reversal_1m_deep: 315,555 / 18,962 / 73.29%`, and the full stage-opt audit to `raw_signal_rows=6,200,134 / filtered_signal_rows=3,071,213 / unique_keys=157,327 / ready_keys=117,547 / ready coverage=74.72% / below_min_signals=39,780`, with `min_signals=4/3/2` at `79.81% / 85.32% / 91.64%` and weakest formulas still `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_mild`; controller recommendation remains `P1 / upstream_candidate_supply`, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`.
+- latest code/docs snapshot (2026-06-02) is commit `c93b991a`; `reversal_1m_mild` only loosened `rel_std_max` from `0.07` to `0.08`, lifting the history rebuild to `reversal_1m_mild: 357,425 / 14,300 / 73.75%`, and the full stage-opt audit to `raw_signal_rows=6,305,481 / filtered_signal_rows=3,120,795 / unique_keys=158,359 / ready_keys=118,608 / ready coverage=74.90% / below_min_signals=39,751`, with `min_signals=4/3/2` at `79.90% / 85.36% / 91.68%` and weakest formulas now `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1w`; controller recommendation remains `P1 / upstream_candidate_supply`, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`.
 | Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
 | VM 状态 | ? |
 | VM 上次启动 |  |
