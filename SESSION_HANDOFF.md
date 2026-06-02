@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 23:53:03 CST
+**Snapshot 时间**: 2026-06-03 00:04:07 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `9407b98b docs: clarify moth global install model and sync controller state | # commit-msg: minimal` |
+| HEAD | `41c096ff docs: refresh need_027 blocker evidence and stage-opt state | # commit-msg: minimal` |
 | 最近 24h commits | 163 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+41c096ff docs: refresh need_027 blocker evidence and stage-opt state | # commit-msg: minimal
+502484b4 docs: refresh session handoff snapshot after clean-state regen | # commit-msg: minimal
 9407b98b docs: clarify moth global install model and sync controller state | # commit-msg: minimal
 83202979 docs: refresh session handoff snapshot after live need_027 probe | # commit-msg: minimal
 fdb043ed docs: add moth github url to quickstart | # commit-msg: minimal
@@ -76,8 +78,6 @@ fe6c1eef docs: refresh session handoff snapshot after latest controller-state sy
 8cbba59a docs: make moth canonical in goal and workflow checkpoint | # commit-msg: minimal
 6b0845e0 docs: refresh session handoff snapshot after moth process-doc update | # commit-msg: minimal
 3d0bbbed feat: make moth canonical in process docs and trim data-view hotspots | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 2 passed, complexity no obvious hotspots, docs graph PASS, codegraph sync PASS
-cd8f492a docs: refresh session handoff snapshot after research cleanup | # commit-msg: minimal
-0ee47767 feat: remove dead institution research controls and keep scorecard only | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS | cleanup verified 无残留 no stale
 ```
 
 ## NEXT ACTION (auto-computed)
