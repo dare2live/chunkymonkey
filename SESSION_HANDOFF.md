@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 00:04:07 CST
+**Snapshot 时间**: 2026-06-03 00:29:20 CST
 
 ## 主线状态
 
@@ -61,13 +61,16 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `41c096ff docs: refresh need_027 blocker evidence and stage-opt state | # commit-msg: minimal` |
-| 最近 24h commits | 163 |
+| HEAD | `7c16bac1 docs: record ETF list widget extraction in project index` |
+| 最近 24h commits | 164 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+7c16bac1 docs: record ETF list widget extraction in project index
+89163ddd feat: externalize ETF list rendering into widget | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 4 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS
+f9587f8e docs: refresh session handoff snapshot after date rollover | # commit-msg: minimal
 41c096ff docs: refresh need_027 blocker evidence and stage-opt state | # commit-msg: minimal
 502484b4 docs: refresh session handoff snapshot after clean-state regen | # commit-msg: minimal
 9407b98b docs: clarify moth global install model and sync controller state | # commit-msg: minimal
@@ -75,9 +78,6 @@ bash scripts/install_resilience.sh --status   # check 装好没
 fdb043ed docs: add moth github url to quickstart | # commit-msg: minimal
 f06d2d3e docs: refresh session handoff snapshot after controller-state sync | # commit-msg: minimal
 fe6c1eef docs: refresh session handoff snapshot after latest controller-state sync | # commit-msg: minimal
-8cbba59a docs: make moth canonical in goal and workflow checkpoint | # commit-msg: minimal
-6b0845e0 docs: refresh session handoff snapshot after moth process-doc update | # commit-msg: minimal
-3d0bbbed feat: make moth canonical in process docs and trim data-view hotspots | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 2 passed, complexity no obvious hotspots, docs graph PASS, codegraph sync PASS
 ```
 
 ## NEXT ACTION (auto-computed)
