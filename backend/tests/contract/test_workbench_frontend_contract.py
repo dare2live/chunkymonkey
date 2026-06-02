@@ -36,6 +36,7 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "'assets/js/widgets/institution-scorecard.js'" in index
     assert "'assets/js/widgets/etf-analysis.js'" in index
     assert "'assets/js/widgets/etf-list.js'" in index
+    assert "'assets/js/widgets/etf-opportunity.js'" in index
     assert 'id="instScorecardFramework"' in index
     assert 'id="instScorecardStats"' in index
     assert 'id="instScorecardParams"' in index
@@ -53,6 +54,7 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert index.index("'assets/js/widgets/institution-scorecard.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/etf-analysis.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/etf-list.js'") < index.index("'assets/js/app.js'")
+    assert index.index("'assets/js/widgets/etf-opportunity.js'") < index.index("'assets/js/app.js'")
     assert 'onclick="window.App.showView(\'data-health\')"' not in index
     assert "高级数据健康" not in index
     assert "window.App.showWorkbenchTab('dataSources')" in index
@@ -75,7 +77,9 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "InstitutionScorecardWidget" in app_js
     assert "ETFAnalysisWidget" in app_js
     assert "ETFListWidget" in app_js
+    assert "ETFOpportunityWidget" in app_js
     assert "function loadEtfList()" in app_js
+    assert "function loadEtfOpportunity()" in app_js
     assert "function loadResearch()" in app_js
     assert "function loadInstMgmt" not in app_js
     assert "function buildDeepAnalysisHtml(" not in app_js
@@ -107,6 +111,10 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "_buildNavCurveSvg(" not in app_js
     assert "function metricCard(" not in app_js
     assert "function etfPctCell(" not in app_js
+    assert "function etfOverviewTone(" not in app_js
+    assert "function etfWatchTags(" not in app_js
+    assert "function bindEtfActionLinks(" not in app_js
+    assert "function _loadEtfOpportunityMining(" not in app_js
     assert "function etfStrategyTone(" not in app_js
     assert "function etfSetupTone(" not in app_js
     assert "function etfCatColor(" not in app_js
