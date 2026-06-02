@@ -443,6 +443,35 @@
       '</tbody></table></div>';
   }
 
+  function buildDeliveryModel(data) {
+    data = data || {};
+    var live = data.live_go_no_go || {};
+    var challenger = data.challenger || {};
+    var decision = challenger.decision || {};
+    var challengerGate = challenger.gate || {};
+    var liveGate = data.live_gate || {};
+    var sources = data.sources || {};
+    var institution = sources.institution_evaluation || {};
+    var sourceAvailable = sources.available || {};
+    var sourceWired = sources.wired || {};
+    return {
+      readyForDelivery: !!data.ready_for_delivery,
+      verdict: data.verdict || 'NOT_READY',
+      avgPct: Number(data.avg_pct || 0),
+      liveGoNoGo: live,
+      liveGate: liveGate,
+      challenger: challenger,
+      challengerDecision: decision,
+      challengerGate: challengerGate,
+      sources: sources,
+      institution: institution,
+      sourceAvailable: sourceAvailable,
+      sourceWired: sourceWired,
+      blockers: Array.isArray(data.blockers) ? data.blockers : [],
+      criteria: Array.isArray(data.criteria) ? data.criteria : [],
+    };
+  }
+
   function renderDeliveryBlockers(rows) {
     rows = rows || [];
     if (!rows.length) return '<div class="wb-empty-ok">无剩余 milestone / reject reason</div>';
@@ -464,23 +493,22 @@
   }
 
   function renderDelivery(data) {
-    data = data || {};
-    var live = data.live_go_no_go || {};
-    var challenger = data.challenger || {};
-    var decision = challenger.decision || {};
-    var challengerGate = challenger.gate || {};
-    var liveGate = data.live_gate || {};
-    var sources = data.sources || {};
-    var institution = sources.institution_evaluation || {};
-    var sourceAvailable = sources.available || {};
-    var sourceWired = sources.wired || {};
+    var model = buildDeliveryModel(data);
+    var live = model.liveGoNoGo;
+    var challenger = model.challenger;
+    var decision = model.challengerDecision;
+    var challengerGate = model.challengerGate;
+    var liveGate = model.liveGate;
+    var institution = model.institution;
+    var sourceAvailable = model.sourceAvailable;
+    var sourceWired = model.sourceWired;
     setBody(
       '<section class="panel wb-panel wb-delivery-hero">' +
       '<div class="panel-head"><div><h3>GO/NO-GO Delivery Board</h3>' +
       '<div class="muted">endpoint: <code>/api/workbench/delivery-readiness</code></div></div>' +
-      '<div>' + pill(data.verdict || 'NOT_READY', data.ready_for_delivery ? 'ok' : 'bad') + '</div></div>' +
+      '<div>' + pill(model.verdict, model.readyForDelivery ? 'ok' : 'bad') + '</div></div>' +
       '<div class="stats-row wb-stats-row">' +
-      statCard('交付均值', fmtPct((data.avg_pct || 0) / 100), 'ready_for_delivery=' + esc(String(!!data.ready_for_delivery)), data.ready_for_delivery ? 'ok' : 'bad') +
+      statCard('交付均值', fmtPct(model.avgPct / 100), 'ready_for_delivery=' + esc(String(model.readyForDelivery)), model.readyForDelivery ? 'ok' : 'bad') +
       statCard('Live #6', fmtPct((live.pct || 0) / 100), live.ship_baseline_passed ? 'ship baseline PASS' : 'ship baseline BLOCK', live.ship_baseline_passed ? 'warn' : 'bad') +
       statCard('OOS obs', fmtNum(live.msaf_n_obs), 'target 30 / perfect 60', Number(live.msaf_n_obs || 0) >= 30 ? 'ok' : 'warn') +
       statCard('Sharpe', fmtFloat(live.msaf_sharpe, 2), 'target 2.0', Number(live.msaf_sharpe || 0) >= 2 ? 'ok' : 'warn') +
@@ -514,11 +542,11 @@
 
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>Remaining Gaps</h3><div class="muted">milestones + reject reasons</div></div></div>' +
-      renderDeliveryBlockers(data.blockers) +
+      renderDeliveryBlockers(model.blockers) +
       '</section>' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>Delivery Criteria</h3><div class="muted">audit_delivery_readiness.py current evidence</div></div></div>' +
-      renderCriteriaTable(data.criteria) +
+      renderCriteriaTable(model.criteria) +
       '</section>'
     );
   }
@@ -2335,6 +2363,7 @@
     show: show,
     setTab: setTab,
     buildReadModelMeta: buildReadModelMeta,
+    buildDeliveryModel: buildDeliveryModel,
     _renderOverview: renderOverview,
     _renderDataSources: renderDataSources,
     _renderPipelines: renderPipelines,

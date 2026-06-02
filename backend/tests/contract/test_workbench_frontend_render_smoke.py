@@ -326,3 +326,65 @@ def test_workbench_read_model_meta_is_pure_and_stable():
         check=False,
     )
     assert result.returncode == 0, result.stderr + result.stdout
+
+
+def test_workbench_delivery_model_is_pure_and_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.WorkbenchView;
+        if (!view || typeof view.buildDeliveryModel !== 'function') {
+          throw new Error('WorkbenchView.buildDeliveryModel missing');
+        }
+
+        const model = view.buildDeliveryModel({
+          ready_for_delivery: true,
+          verdict: 'READY',
+          avg_pct: 88.4,
+          live_go_no_go: { pct: 80, ship_baseline_passed: true, msaf_n_obs: 22, msaf_sharpe: 0.81, msaf_max_dd: -0.2428 },
+          live_gate: {
+            model_id: 'live_model',
+            promote_action: 'block',
+            pbo: { passes: true, reason: 'PBO=0.145' },
+            dsr: { passes: true, reason: 'DSR p_conf=0.9825' },
+            conservative: { passes: true, reason: 'pass' },
+            is_oos: { passes: false, reason: 'proxy fail' },
+          },
+          challenger: {
+            model_id: 'phase5_model',
+            decision: { decision: 'hold_reject', production_status: 'candidate_hold_reject' },
+            gate: { n_obs_20d: 34, n_obs_5d: 135, pbo: { passes: false, reason: 'PBO=0.626' } },
+          },
+          sources: {
+            available: { institution: true },
+            wired: { institution: false },
+            institution_evaluation: { production_decision: 'hold_reject' },
+          },
+          blockers: [{ scope: 'milestone', text: 'n_obs 22 < 30 for 85%' }],
+          criteria: [{ criterion: '实盘 GO/NO-GO', pct: 80, verdict: 'PASS' }],
+        });
+
+        if (!model || model.verdict !== 'READY' || model.readyForDelivery !== true) throw new Error('top-level model mismatch');
+        if (model.avgPct !== 88.4) throw new Error('avgPct mismatch');
+        if (model.liveGoNoGo.msaf_sharpe !== 0.81 || model.liveGate.promote_action !== 'block') throw new Error('live gate mismatch');
+        if (model.challengerDecision.decision !== 'hold_reject' || model.challengerGate.n_obs_20d !== 34) throw new Error('challenger mismatch');
+        if (model.sourceAvailable.institution !== true || model.sourceWired.institution !== false) throw new Error('source wiring mismatch');
+        if (model.blockers.length !== 1 || model.criteria.length !== 1) throw new Error('list normalization mismatch');
+        if (view.buildDeliveryModel({}) .readyForDelivery !== false) throw new Error('default normalization mismatch');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/workbench-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout

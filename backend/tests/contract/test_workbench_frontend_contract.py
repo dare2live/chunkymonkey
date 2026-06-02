@@ -217,6 +217,8 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "特征" in workbench_js
     assert "GO/NO-GO" in workbench_js
     assert "renderDelivery" in workbench_js
+    assert "buildDeliveryModel" in workbench_js
+    assert "buildDeliveryModel(data)" in workbench_js
     assert "推荐" in workbench_js
     assert "存储" in workbench_js
     assert "稳定性上下文" in workbench_js
