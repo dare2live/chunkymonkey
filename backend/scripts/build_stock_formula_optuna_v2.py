@@ -47,9 +47,9 @@ MARKET_DB = Path(__file__).resolve().parents[2] / "data" / "market.duckdb"
 SMART_DB  = Path(__file__).resolve().parents[2] / "data" / "smartmoney.duckdb"
 
 
-VOL_BINS  = [(0, 0.7, "缩量"), (0.7, 1.3, "平量"), (1.3, 2.0, "温量"), (2.0, 99, "爆量")]
-AMT_BINS  = [(0, 0.7, "额减"), (0.7, 1.3, "额平"), (1.3, 2.0, "额温"), (2.0, 99, "额爆")]
-P60_BINS  = [(0, 0.65, "深底"), (0.65, 0.85, "中位"), (0.85, 0.97, "高位"), (0.97, 99, "新高")]
+VOL_BINS  = DEFAULT_STOCK_FORMULA_OPTUNA_CONFIG.vol_bins
+AMT_BINS  = DEFAULT_STOCK_FORMULA_OPTUNA_CONFIG.amt_bins
+P60_BINS  = DEFAULT_STOCK_FORMULA_OPTUNA_CONFIG.p60_bins
 
 MIN_N_PER_BUCKET = DEFAULT_STOCK_FORMULA_OPTUNA_CONFIG.min_n_per_bucket
 
