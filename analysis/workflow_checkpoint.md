@@ -297,7 +297,10 @@ The model pipeline snapshot below is historical evidence for the completed
   exact PIT candidates on `hp/n_signals/Wilson`, so coverage remains a
   gating concern rather than a ranking bug. A direct attrition audit on 353
   raw candidates found selected_rows only 5/1/2 for short/mid/long, all
-  `cross_stage_fallback`, with `hp` and `wilson` as the dominant fail reasons.
+  `cross_stage_fallback`; the live 2026-06-02 audit after the latest
+  stage-opt supply lift moved long to 3 selected_rows while still keeping all
+  selected_rows in `cross_stage_fallback`, with `hp` and `wilson` as the
+  dominant fail reasons.
   The new `fail_reasons_by_match_tier` breakdown makes the attrition path
   explicit: `stage_pit` mostly fails on `hp/n_signals/Wilson`,
   `stage_pit_formula_fallback` mostly fails on `hp/n_signals`, and

@@ -27,7 +27,7 @@ bash scripts/install_resilience.sh --status   # check 装好没
 
 **Snapshot 时间**: 2026-06-02 08:44:50 CST
 
-- latest code/docs snapshot (2026-06-02) is commit `525fab9a`; `reversal_1w` only loosened `rel_std_max` from `0.06` to `0.07`, lifting the history rebuild to `reversal_1w: 280,065 / 13,639 / 75.54%`, and the full stage-opt audit to `raw_signal_rows=6,421,901 / filtered_signal_rows=3,177,918 / unique_keys=159,805 / ready_keys=120,242 / ready coverage=75.24% / below_min_signals=39,563`, with `min_signals=4/3/2` at `80.19% / 85.55% / 91.74%` and weakest formulas now `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_deep`; controller recommendation remains `P1 / upstream_candidate_supply`, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`.
+- latest code/docs snapshot (2026-06-02) is commit `525fab9a`; `reversal_1w` only loosened `rel_std_max` from `0.06` to `0.07`, lifting the history rebuild to `reversal_1w: 280,065 / 13,639 / 75.54%`, and the full stage-opt audit to `raw_signal_rows=6,421,901 / filtered_signal_rows=3,177,918 / unique_keys=159,805 / ready_keys=120,242 / ready coverage=75.24% / below_min_signals=39,563`, with `min_signals=4/3/2` at `80.19% / 85.55% / 91.74%` and weakest formulas now `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_deep`; controller recommendation remains `P1 / upstream_candidate_supply`, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`. Live recommendation PIT attrition is still 5/1/3 for short/mid/long, all `cross_stage_fallback`, so exact PIT coverage remains structurally sparse.
 | Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
 | VM 状态 | ? |
 | VM 上次启动 |  |
