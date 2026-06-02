@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 07:21:27 CST
+**Snapshot 时间**: 2026-06-03 07:30:56 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `6af8cc53 feat: extract settings-view about model | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 5 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 271 |
+| HEAD | `55d1eb28 refactor: chunkyctl need_027 blocker action helpers | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 27 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 273 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+55d1eb28 refactor: chunkyctl need_027 blocker action helpers | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 27 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
+2259a0be docs: refresh session handoff snapshot after settings-view about model extraction | # commit-msg: minimal
 6af8cc53 feat: extract settings-view about model | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 5 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 0f421ec4 docs: refresh session handoff snapshot after settings-view data source params model extraction | # commit-msg: minimal
 c364240e feat: extract settings-view data source params model | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 4 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ b512c0fd refactor: stock-view evidence filter single-pass cleanup | Codex-Review
 eaaab0a6 docs: refresh session handoff snapshot after stock-view instType cleanup | # commit-msg: minimal
 64be4af7 refactor: stock-view instType normalization cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 4d2291ea docs: refresh session handoff snapshot after data-view routes event delegation cleanup | # commit-msg: minimal
-f57ff03e refactor: data-view routes event delegation cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
-ddb756bb docs: refresh session handoff snapshot after data-view route table cleanup | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
