@@ -26,15 +26,16 @@ from services.buy_signal import (
 )
 from services.buy_signal.ddl import MART_STOCK_FORMULA_BUY_SIGNAL_DAILY_DDL
 from services.db import get_conn
+from services.shared_feature_bins_config import DEFAULT_SHARED_FEATURE_BINS_CONFIG
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("build_buy_signal")
 
 
-VOL_BINS  = [(0, 0.7, "缩量"), (0.7, 1.3, "平量"), (1.3, 2.0, "温量"), (2.0, 99, "爆量")]
-AMT_BINS  = [(0, 0.7, "额减"), (0.7, 1.3, "额平"), (1.3, 2.0, "额温"), (2.0, 99, "额爆")]
-P60_BINS  = [(0, 0.65, "深底"), (0.65, 0.85, "中位"), (0.85, 0.97, "高位"), (0.97, 99, "新高")]
+VOL_BINS  = DEFAULT_SHARED_FEATURE_BINS_CONFIG.vol_bins
+AMT_BINS  = DEFAULT_SHARED_FEATURE_BINS_CONFIG.amt_bins
+P60_BINS  = DEFAULT_SHARED_FEATURE_BINS_CONFIG.p60_bins
 
 
 def _bin_label(value, bins):

@@ -65,12 +65,14 @@ The model pipeline snapshot below is historical evidence for the completed
   diagnostic windows, turtle_breakout volume confirmation gates,
   shareholder-plan walk-forward defaults, multidim walk-forward default
   model params / degenerate threshold, stock-formula optuna bucket /
-  high-conviction thresholds and bins, and the backtest default stop/target/trailing
-  now live in shared YAML configs
+  high-conviction thresholds live in `backend/config/stock_formula_optuna.yaml`
+  while the shared vol/amt/p60 bins live in `backend/config/shared_feature_bins.yaml`,
+  and the backtest default stop/target/trailing now live in shared YAML configs
   (`formula_shared_windows.yaml`, `technical_stage.yaml`,
   `formula_macd_golden_cross.yaml`, `formula_turtle_breakout.yaml`,
   `shareholder_plan_family_walkforward.yaml`, `run_multidim_walkforward.yaml`,
-  `stock_formula_optuna.yaml`, `strategy_defaults.yaml`) plus the shared loader; formula-specific YAMLs keep only formula-owned
+  `stock_formula_optuna.yaml`, `shared_feature_bins.yaml`,
+  `strategy_defaults.yaml`) plus the shared loader; formula-specific YAMLs keep only formula-owned
   thresholds, and per-stock best-holding results stay table-backed in marts
   such as `mart_per_stock_stage_strategy_optimal_pit` /
   `mart_stock_horizon_profile`

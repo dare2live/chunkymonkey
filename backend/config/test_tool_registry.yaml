@@ -200,9 +200,24 @@ tools:
     runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_stock_formula_optuna_config.py
     status: active
     evidence_level: trusted_with_scope
-    truth_source: stock-formula optuna bucket gate config, shared grid-search loader, and test fixture YAML
+    truth_source: stock-formula optuna bucket gate thresholds and test fixture YAML
     risk_reason: if bucket / conviction thresholds drift, the optimizer can underfill buckets or overstate high-conviction rows
     replacement: consolidated optuna governance config if these thresholds migrate into a larger shared policy bundle
+    last_verified: "2026-06-02"
+
+  - id: shared_feature_bins_config_tests
+    paths:
+      - backend/services/shared_feature_bins_config.py
+      - backend/config/shared_feature_bins.yaml
+      - backend/tests/test_shared_feature_bins_config.py
+    owner_module: analytics
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_shared_feature_bins_config.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: shared stock feature bins loader and test fixture YAML
+    risk_reason: if the shared bins drift, multiple scripts will misclassify the same feature columns in different ways
+    replacement: keep the shared bins policy centralized in config and keep script callers thin
     last_verified: "2026-06-02"
 
   - id: dim_active_universe_contract_tests

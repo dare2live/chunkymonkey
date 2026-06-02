@@ -23,6 +23,7 @@ import duckdb
 import numpy as np
 
 from services.formula_engine.shared_windows import HOLDING_DAYS
+from services.shared_feature_bins_config import DEFAULT_SHARED_FEATURE_BINS_CONFIG
 from services.stock_formula_optuna_config import DEFAULT_STOCK_FORMULA_OPTUNA_CONFIG
 
 
@@ -35,9 +36,9 @@ SMART_DB  = Path(__file__).resolve().parents[2] / "data" / "smartmoney.duckdb"
 
 
 # 5 维分桶阈值 (与 analyze_macd_feature_buckets 一致)
-VOL_BINS  = DEFAULT_STOCK_FORMULA_OPTUNA_CONFIG.vol_bins
-AMT_BINS  = DEFAULT_STOCK_FORMULA_OPTUNA_CONFIG.amt_bins
-P60_BINS  = DEFAULT_STOCK_FORMULA_OPTUNA_CONFIG.p60_bins
+VOL_BINS  = DEFAULT_SHARED_FEATURE_BINS_CONFIG.vol_bins
+AMT_BINS  = DEFAULT_SHARED_FEATURE_BINS_CONFIG.amt_bins
+P60_BINS  = DEFAULT_SHARED_FEATURE_BINS_CONFIG.p60_bins
 
 # 最少信号过滤 (per stock × variant × hd × 5 维桶)
 MIN_N_PER_BUCKET = DEFAULT_STOCK_FORMULA_OPTUNA_CONFIG.min_n_per_bucket
