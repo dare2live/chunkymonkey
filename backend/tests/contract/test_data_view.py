@@ -281,6 +281,36 @@ def test_data_view_build_cockpit_models_are_stable():
         if (caps.list[0].fallbackChainText !== 'aif10') {
           throw new Error('capability fallback chain mismatch: ' + caps.list[0].fallbackChainText);
         }
+
+        const link = view.buildLinkOverviewModel(
+          {
+            snapshot_at: '2026-06-03 04:00',
+            summary: { green: 2, yellow: 1, red: 0, unknown: 0 },
+            by_layer: { fact: { green: 1, yellow: 0, red: 0, unknown: 0 } },
+          },
+          {
+            manual: [
+              { decision: 'keep' },
+              { decision: 'watch' },
+              { decision: 'drop' },
+            ],
+            pit: { tdx_f10_gpcw_v1: { violation_rows: 0 } },
+          },
+          {
+            sources: [
+              { upstream_source: 'tdxhub', green_count: 3, asset_count: 5 },
+              { upstream_source: 'akshare', green_count: 1, asset_count: 2 },
+            ],
+          }
+        );
+        if (link.snapshotAt !== '2026-06-03 04:00') throw new Error('link snapshot mismatch: ' + link.snapshotAt);
+        if (link.keep !== 1 || link.watch !== 1 || link.drop !== 1 || link.pit !== 0) {
+          throw new Error('link counters mismatch: ' + JSON.stringify(link));
+        }
+        if (link.sourceLabel !== 'tdxhub:3/5 · akshare:1/2') throw new Error('link source label mismatch: ' + link.sourceLabel);
+        if (link.nodes[1][2] !== 'warn' || link.nodes[2][2] !== 'ok' || link.nodes[3][2] !== 'warn') {
+          throw new Error('link nodes mismatch: ' + JSON.stringify(link.nodes));
+        }
         """
     ).strip()
 

@@ -281,38 +281,51 @@
     return { list };
   }
 
-  function renderLinkOverview() {
-    const root = qs('ds-link-overview');
-    if (!root) return;
-    const health = _state.health || {};
-    const summary = health.summary || {};
-    const tdx = _state.tdxValidation || {};
-    const manual = tdx.manual || [];
-    const keep = manual.filter(r => r.decision === 'keep').length;
-    const watch = manual.filter(r => r.decision === 'watch').length;
-    const drop = manual.filter(r => r.decision === 'drop').length;
-    const pit = (tdx.pit && tdx.pit.tdx_f10_gpcw_v1 && tdx.pit.tdx_f10_gpcw_v1.violation_rows) || 0;
-    const sourceRows = (_state.sourceHealth && _state.sourceHealth.sources) || [];
+  function buildLinkOverviewModel(health, tdxValidation, sourceHealth) {
+    const summary = (health && health.summary) || {};
+    const byLayer = (health && health.by_layer) || {};
+    const manual = (tdxValidation && tdxValidation.manual) || [];
+    const keep = manual.filter(r => r && r.decision === 'keep').length;
+    const watch = manual.filter(r => r && r.decision === 'watch').length;
+    const drop = manual.filter(r => r && r.decision === 'drop').length;
+    const pit = (tdxValidation && tdxValidation.pit && tdxValidation.pit.tdx_f10_gpcw_v1 && tdxValidation.pit.tdx_f10_gpcw_v1.violation_rows) || 0;
+    const sourceRows = (sourceHealth && sourceHealth.sources) || [];
     const sourceLabel = sourceRows.length
       ? sourceRows.slice(0, 4).map(s => `${s.upstream_source}:${s.green_count || 0}/${s.asset_count || 0}`).join(' · ')
       : '待加载';
-    const nodes = [
-      ['tdxhub', '主供 K线/复权/gpcw/F10', 'ok', 'miaoxiang 补源；akshare 兜底'],
-      ['raw', '原始层', statusFromCounts(summary), `${summary.green || 0} green / ${summary.yellow || 0} yellow / ${summary.red || 0} red`],
-      ['fact', '事实层', statusFromCounts((health.by_layer || {}).fact), '机构、行情、财务派生'],
-      ['feature panel', '特征面板', keep >= 5 && pit === 0 ? 'ok' : 'warn', `keep ${keep} / watch ${watch} / drop ${drop} · PIT ${pit}`],
-      ['model', '模型', 'info', 'champion 默认；challenger shadow'],
-      ['recommendation', '推荐', 'info', '正式 TopK 不混入 shadow'],
-    ];
+    return {
+      snapshotAt: health && health.snapshot_at ? String(health.snapshot_at) : '',
+      summary,
+      byLayer,
+      keep,
+      watch,
+      drop,
+      pit,
+      sourceLabel,
+      nodes: [
+        ['tdxhub', '主供 K线/复权/gpcw/F10', 'ok', 'miaoxiang 补源；akshare 兜底'],
+        ['raw', '原始层', statusFromCounts(summary), `${summary.green || 0} green / ${summary.yellow || 0} yellow / ${summary.red || 0} red`],
+        ['fact', '事实层', statusFromCounts(byLayer.fact || {}), '机构、行情、财务派生'],
+        ['feature panel', '特征面板', keep >= 5 && pit === 0 ? 'ok' : 'warn', `keep ${keep} / watch ${watch} / drop ${drop} · PIT ${pit}`],
+        ['model', '模型', 'info', 'champion 默认；challenger shadow'],
+        ['recommendation', '推荐', 'info', '正式 TopK 不混入 shadow'],
+      ],
+    };
+  }
+
+  function renderLinkOverview() {
+    const root = qs('ds-link-overview');
+    if (!root) return;
+    const model = buildLinkOverviewModel(_state.health || {}, _state.tdxValidation || {}, _state.sourceHealth || {});
     root.innerHTML = `<div class="cm-section-head">
       <div>
         <h3>数据链路总览</h3>
         <p class="muted">tdxhub -> raw -> fact -> feature panel -> model -> recommendation</p>
       </div>
-      <span class="cm-muted-note">快照 ${esc(health.snapshot_at || '--')}</span>
+      <span class="cm-muted-note">快照 ${esc(model.snapshotAt || '--')}</span>
     </div>
     <div class="cm-stepper">
-      ${nodes.map(n => `<div class="cm-step cm-step-${n[2]}">
+      ${model.nodes.map(n => `<div class="cm-step cm-step-${n[2]}">
         <span>${esc(n[0])}</span>
         <b>${esc(n[1])}</b>
         <small>${esc(n[3])}</small>
@@ -322,7 +335,7 @@
       <div class="cm-status-item cm-status-ok"><span>tdxhub 主供</span><b>K线 / 复权 / gpcw / 股东 F10</b></div>
       <div class="cm-status-item cm-status-info"><span>miaoxiang 补源</span><b>主营 / 估值 / 一致预期 / 调研 / 复杂事件</b></div>
       <div class="cm-status-item"><span>akshare 兜底</span><b>临时不可用和未迁出接口</b></div>
-      <div class="cm-status-item"><span>数据源健康</span><b>${esc(sourceLabel)}</b></div>
+      <div class="cm-status-item"><span>数据源健康</span><b>${esc(model.sourceLabel)}</b></div>
     </div>`;
   }
 
@@ -1000,6 +1013,7 @@
     buildFallbackPanelModel,
     buildDriftQueueModel,
     buildCapabilityTableModel,
+    buildLinkOverviewModel,
   };
 
   console.log('[DataView] module loaded');
