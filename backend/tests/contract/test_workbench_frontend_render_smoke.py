@@ -337,6 +337,46 @@ def test_workbench_read_model_meta_is_pure_and_stable():
     assert result.returncode == 0, result.stderr + result.stdout
 
 
+def test_workbench_pipelines_model_is_pure_and_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.WorkbenchView;
+        if (!view || typeof view.buildPipelinesModel !== 'function') {
+          throw new Error('WorkbenchView.buildPipelinesModel missing');
+        }
+
+        const model = view.buildPipelinesModel({
+          status_counts: { success: 1, running: 2 },
+          recent: [{ run_id: 'cron_1', pipeline_name: 'cron_daily', status: 'success', duration_s: 3.2, gate_result: 'pass' }],
+          slowest: [{ run_id: 'ranker_1', pipeline_name: 'ranker', status: 'success', duration_s: 11.6 }],
+          blockers: [{ run_id: 'blocked_1', pipeline_name: 'blocked', status: 'failed', duration_s: 1.5 }],
+        });
+
+        if (!model || model.latest.run_id !== 'cron_1') throw new Error('latest mismatch');
+        if (model.recent.length !== 1 || model.slowest.length !== 1 || model.blockers.length !== 1) throw new Error('list normalization mismatch');
+        if (model.slowestName !== 'ranker' || model.slowestDurationS !== 11.6) throw new Error('slowest summary mismatch');
+        if (model.statusCounts.success !== 1 || model.isEmpty !== false) throw new Error('counts mismatch');
+        if (view.buildPipelinesModel({}).isEmpty !== true) throw new Error('default normalization mismatch');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/workbench-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+
+
 def test_workbench_delivery_model_is_pure_and_stable():
     script = textwrap.dedent(
         r"""

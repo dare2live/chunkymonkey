@@ -1457,15 +1457,16 @@
   }
 
   function renderPipelines(data) {
-    var recent = data.recent || [];
-    var latest = recent[0] || {};
+    var model = buildPipelinesModel(data);
+    var recent = model.recent;
+    var latest = model.latest;
     setBody(
       renderReadModelMeta(data) +
       '<div class="stats-row wb-stats-row">' +
       statCard('最近运行', latest.pipeline_name || '-', esc(latest.run_id || '-'), latest.status || 'unknown') +
-      statCard('最近状态', fmtNum(recent.length), renderStatusCounts(data.status_counts), latest.status || 'unknown') +
-      statCard('最慢运行', ((data.slowest || [])[0] || {}).pipeline_name || '-', fmtDuration(((data.slowest || [])[0] || {}).duration_s), 'info') +
-      statCard('阻塞运行', fmtNum((data.blockers || []).length), 'recent window', (data.blockers || []).length ? 'bad' : 'ok') +
+      statCard('最近状态', fmtNum(recent.length), renderStatusCounts(model.statusCounts), latest.status || 'unknown') +
+      statCard('最慢运行', model.slowestName || '-', fmtDuration(model.slowestDurationS), 'info') +
+      statCard('阻塞运行', fmtNum(model.blockers.length), 'recent window', model.blockers.length ? 'bad' : 'ok') +
       statCard('Gate', latest.gate_result || '-', 'latest gate', latest.gate_result || 'unknown') +
       '</div>' +
       '<section class="panel wb-panel">' +
@@ -1474,11 +1475,29 @@
       '</section>' +
       '<div class="wb-grid">' +
       '<section class="panel wb-panel"><div class="panel-head"><div><h3>最慢运行</h3><div class="muted">duration</div></div></div>' +
-      renderPipelineTable(data.slowest || []) + '</section>' +
+      renderPipelineTable(model.slowest) + '</section>' +
       '<section class="panel wb-panel"><div class="panel-head"><div><h3>阻塞与失败</h3><div class="muted">status / blockers</div></div></div>' +
-      renderPipelineTable(data.blockers || []) + '</section>' +
+      renderPipelineTable(model.blockers) + '</section>' +
       '</div>'
     );
+  }
+
+  function buildPipelinesModel(data) {
+    data = data || {};
+    var recent = Array.isArray(data.recent) ? data.recent : [];
+    var slowest = Array.isArray(data.slowest) ? data.slowest : [];
+    var blockers = Array.isArray(data.blockers) ? data.blockers : [];
+    var latest = recent[0] || {};
+    return {
+      statusCounts: data.status_counts || {},
+      recent: recent,
+      latest: latest,
+      slowest: slowest,
+      blockers: blockers,
+      slowestName: (slowest[0] || {}).pipeline_name || '-',
+      slowestDurationS: (slowest[0] || {}).duration_s || 0,
+      isEmpty: !recent.length && !slowest.length && !blockers.length,
+    };
   }
 
   function renderPipelineTable(rows) {
@@ -2796,6 +2815,7 @@
     buildDeliveryModel: buildDeliveryModel,
     buildChampionModel: buildChampionModel,
     buildResearchModel: buildResearchModel,
+    buildPipelinesModel: buildPipelinesModel,
     buildDataSourcesModel: buildDataSourcesModel,
     buildAssetGovernanceTableModel: buildAssetGovernanceTableModel,
     buildProcessingMonitorModel: buildProcessingMonitorModel,

@@ -231,6 +231,9 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "renderDelivery" in workbench_js
     assert "buildDeliveryModel" in workbench_js
     assert "buildDeliveryModel(data)" in workbench_js
+    assert "renderPipelines" in workbench_js
+    assert "buildPipelinesModel" in workbench_js
+    assert "buildPipelinesModel(data)" in workbench_js
     assert "renderChampion" in workbench_js
     assert "buildChampionModel" in workbench_js
     assert "buildChampionModel(data)" in workbench_js
