@@ -939,6 +939,13 @@ SELECT * FROM mart_data_source_watermark;
 - `backend/tests/contract/test_stock_list_rows_widget.py` / `backend/tests/contract/test_workbench_frontend_contract.py`: 新增 row helper 契约 smoke，并补齐 workbench frontend contract 的 script 注入与加载顺序断言，验证 row HTML、signal badge、行业标签和自选按钮都正确。
 - 验证: `node --check assets/js/widgets/stock-list-rows.js assets/js/widgets/stock-list-controls.js assets/js/widgets/stock-summary.js assets/js/widgets/type-summary.js assets/js/widgets/returns-chart.js assets/js/app.js` PASS；`pytest -q backend/tests/contract/test_stock_list_rows_widget.py backend/tests/contract/test_stock_list_controls_widget.py backend/tests/contract/test_stock_summary_widget.py backend/tests/contract/test_type_summary_widget.py backend/tests/contract/test_returns_chart_widget.py backend/tests/contract/test_workbench_frontend_contract.py` 7 passed；`audit_test_tool_health.py` scoped PASS；`complexity-optimizer` 复扫后 `assets/js/app.js` 继续收敛。
 
+### 2026-06-02 stock report widget extraction
+
+- `assets/js/widgets/stock-report.js`: 从 `assets/js/app.js` 抽出股票报告 / 股票详情的核心渲染 helper，单独承载 research summary、institution coverage、hero、evidence timeline、score / data section、detail card grid，以及时间线事件 / 轨迹 / SVG 组装，避免 app.js 继续背着这段较重的 report 生成逻辑。
+- `assets/js/app.js` / `index.html`: 页面脚本在 app.js 之前加载新的 report helper，股票报告入口改为优先调用 `window.StockReportWidget`；`app.js` 只保留薄 wrappers 和依赖注入，而 `buildStockFilterMetaByCode` / `applyStockFilters` 仍然留在 `assets/js/widgets/stock-list-controls.js`，workbench contract 也已修正到正确的 helper 层。
+- `backend/tests/contract/test_stock_report_widget.py` / `backend/tests/contract/test_workbench_frontend_contract.py`: 新增 report helper 契约 smoke，并修正 workbench frontend contract 的 helper 归属断言，验证 report widget 注册、脚本注入顺序和 stock list controls 的 helper 归属都一致。
+- 验证: `node --check assets/js/widgets/stock-report.js assets/js/app.js` PASS；`pytest -q backend/tests/contract/test_stock_report_widget.py backend/tests/contract/test_stock_list_controls_widget.py backend/tests/contract/test_workbench_frontend_contract.py` 4 passed；`audit_test_tool_health.py` scoped PASS；`codegraph sync .` 已更新索引；`complexity-optimizer` 复扫后 `assets/js/app.js` 仍有遗留热点，但不再包含这段 report 生成逻辑。
+
 ### 2026-06-02 feature drift mitigation shared defaults externalization
 
 - `backend/config/feature_drift_mitigation_panel.yaml` / `backend/services/feature_drift_mitigation_config.py`: feature-drift mitigation panel 的共享默认值从脚本常量外置到 config-owned policy，包含 `recommendations`、`transform_types`、`regime_controls`、`market_control_features`、`winsor_low/high`、`bucket_count`、`min_root_cause_max_psi`，并采用 strict fail-closed loader。

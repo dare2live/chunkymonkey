@@ -14,6 +14,7 @@ REPO = Path(__file__).resolve().parents[3]
 def test_workbench_frontend_entrypoint_is_registered():
     index = (REPO / "index.html").read_text(encoding="utf-8")
     app_js = (REPO / "assets/js/app.js").read_text(encoding="utf-8")
+    stock_list_controls_js = (REPO / "assets/js/widgets/stock-list-controls.js").read_text(encoding="utf-8")
     data_view_js = (REPO / "assets/js/data-view.js").read_text(encoding="utf-8")
     workbench_js = (REPO / "assets/js/workbench-view.js").read_text(encoding="utf-8")
 
@@ -29,8 +30,10 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "'assets/js/widgets/returns-chart.js'" in index
     assert "'assets/js/widgets/type-summary.js'" in index
     assert "'assets/js/widgets/stock-summary.js'" in index
+    assert "'assets/js/widgets/stock-report.js'" in index
     assert "'assets/js/widgets/stock-list-rows.js'" in index
     assert "'assets/js/widgets/stock-list-controls.js'" in index
+    assert index.index("'assets/js/widgets/stock-report.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/stock-list-rows.js'") < index.index("'assets/js/app.js'")
     assert 'onclick="window.App.showView(\'data-health\')"' not in index
     assert "高级数据健康" not in index
@@ -46,10 +49,13 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "ReturnsChartWidget" in app_js
     assert "TypeSummaryWidget" in app_js
     assert "StockSummaryWidget" in app_js
+    assert "StockReportWidget" in app_js
+    assert "function renderStockReportSection(" not in app_js
+    assert "function renderStockReportScoreSection(" not in app_js
     assert "StockListRowsWidget" in app_js
     assert "StockListControlsWidget" in app_js
-    assert "buildStockFilterMetaByCode" in app_js
-    assert "applyStockFilters" in app_js
+    assert "buildStockFilterMetaByCode" in stock_list_controls_js
+    assert "applyStockFilters" in stock_list_controls_js
     assert "/api/workbench/data-sources" in data_view_js
     assert "/api/data_health/snapshot" not in data_view_js
     assert "/api/data_health/sources" not in data_view_js
