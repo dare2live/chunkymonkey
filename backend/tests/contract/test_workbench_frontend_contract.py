@@ -94,6 +94,11 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "function refreshWorkbenchHealthBar()" in app_js
     assert "function refreshNetwork()" in app_js
     assert "function loadResearch()" in app_js
+    assert "function renderStockResearchSummary(" not in app_js
+    assert "function renderStockInstitutionCoverageSection(" not in app_js
+    assert "function renderStockReportHero(" not in app_js
+    assert "function renderStockEvidenceTimeline(" not in app_js
+    assert "function renderStockDetailCardGrid(" not in app_js
     assert "function loadInstMgmt" not in app_js
     assert "function buildDeepAnalysisHtml(" not in app_js
     assert "function renderScoreParamCard(" not in app_js

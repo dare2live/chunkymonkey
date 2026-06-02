@@ -389,41 +389,6 @@
     };
   }
 
-  function renderStockResearchSummary(stocks, sectorSummary, stockSummary) {
-    if (!StockReportWidget || !StockReportWidget.renderStockResearchSummary) {
-      throw new Error('StockReportWidget failed to initialize');
-    }
-    return StockReportWidget.renderStockResearchSummary(stocks, sectorSummary, stockSummary, stockReportDeps());
-  }
-
-  function renderStockInstitutionCoverageSection(base, institutions) {
-    if (!StockReportWidget || !StockReportWidget.renderStockInstitutionCoverageSection) {
-      throw new Error('StockReportWidget failed to initialize');
-    }
-    return StockReportWidget.renderStockInstitutionCoverageSection(base, institutions, stockReportDeps());
-  }
-
-  function renderStockReportHero(base, attention) {
-    if (!StockReportWidget || !StockReportWidget.renderStockReportHero) {
-      throw new Error('StockReportWidget failed to initialize');
-    }
-    return StockReportWidget.renderStockReportHero(base, attention, stockReportDeps());
-  }
-
-  function renderStockEvidenceTimeline(base) {
-    if (!StockReportWidget || !StockReportWidget.renderStockEvidenceTimeline) {
-      throw new Error('StockReportWidget failed to initialize');
-    }
-    return StockReportWidget.renderStockEvidenceTimeline(base, stockReportDeps());
-  }
-
-  function renderStockDetailCardGrid(base) {
-    if (!StockReportWidget || !StockReportWidget.renderStockDetailCardGrid) {
-      throw new Error('StockReportWidget failed to initialize');
-    }
-    return StockReportWidget.renderStockDetailCardGrid(base, stockReportDeps());
-  }
-
   function priorityPoolTag(pool) {
     var meta = {
       'A池': { bg: 'var(--cm-ok-100)', fg: 'var(--cm-ok-500)' },

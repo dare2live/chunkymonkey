@@ -3,6 +3,10 @@
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
 
+## 2026-06-03 — stock report wrapper cleanup
+
+- `assets/js/app.js` 里残留的 stock report 老 wrapper 已删除：`renderStockResearchSummary()`、`renderStockInstitutionCoverageSection()`、`renderStockReportHero()`、`renderStockEvidenceTimeline()`、`renderStockDetailCardGrid()` 现在都不再挂在主入口里。`backend/tests/contract/test_workbench_frontend_contract.py` 已补这批死壳不应回流的回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/app.js --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_stock_report_widget.py` PASS，`node --check assets/js/app.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_stock_report_widget.py` 3 passed，`analyze_complexity.py` 复扫后 `assets/js/app.js` 无明显热点，`codegraph sync .` 已同步。
+
 ## 2026-06-03 — rank matrix cache rows model extraction
 
 - `assets/js/workbench-view.js` 里的 rank matrix cache 页已继续收成页级 model：`buildRankMatrixCacheModel()` 现在把 `summary` / `latest_benchmarks` / `cache_entries` 规范成 `summaryMetrics`、`benchmarkRows`、`cacheEntryRows`、`isEmpty`，`renderRankMatrixCache()` 只消费 model；`backend/tests/contract/test_workbench_frontend_render_smoke.py` 已补这组 model 的稳定性回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/workbench-view.js --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_workbench_frontend_render_smoke.py` PASS，`node --check assets/js/workbench-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 23 passed，`analyze_complexity.py` 复扫后 `assets/js/workbench-view.js` 无明显热点，`codegraph sync .` 已同步。
