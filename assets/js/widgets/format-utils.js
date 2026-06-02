@@ -25,9 +25,17 @@
     return (signed && num > 0 ? '+' : '') + num.toFixed(digits == null ? 2 : digits) + '%';
   }
 
+  function formatWinRate(value, digits, empty) {
+    var num = toFiniteNumber(value);
+    if (num == null) return empty == null ? '-' : empty;
+    if (Math.abs(num) <= 1) num *= 100;
+    return num.toFixed(digits == null ? 0 : digits) + '%';
+  }
+
   global.WidgetFormatUtils = {
     formatNumber: formatNumber,
     formatPercent: formatPercent,
+    formatWinRate: formatWinRate,
   };
   if (typeof globalThis !== 'undefined') {
     globalThis.WidgetFormatUtils = global.WidgetFormatUtils;

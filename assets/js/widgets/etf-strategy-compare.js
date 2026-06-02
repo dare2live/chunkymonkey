@@ -25,19 +25,6 @@
     return r.json();
   }
 
-  function fmtDD(v) {
-    // 回撤作为正值绝对量展示 (无 +/-)
-    if (v == null || isNaN(v)) return '-';
-    return Math.abs(Number(v)).toFixed(2) + '%';
-  }
-  function fmtWinRate(v) {
-    // 后端 win_rate 可能是比例 (0-1) 或百分比 (0-100), 兼容两种
-    if (v == null || isNaN(v)) return '-';
-    var n = Number(v);
-    if (n <= 1) n = n * 100;
-    return n.toFixed(0) + '%';
-  }
-
   function renderMetricCard(label, strat, tone) {
     if (!strat) return '<div class="esc-metric-card esc-metric-card--' + tone + '"><div class="esc-metric-head">' + label + '</div><div class="muted">无数据</div></div>';
     return '<div class="esc-metric-card esc-metric-card--' + tone + '">' +
@@ -47,13 +34,13 @@
       '<div class="esc-metric-grid">' +
         '<div><span class="esc-k">总收益</span><span class="esc-v">' + formatUtils.formatPercent(strat.return_pct, 2, false, true) + '</span></div>' +
         '<div><span class="esc-k">年化</span><span class="esc-v">' + formatUtils.formatPercent(strat.annualized_return_pct, 2, false, true) + '</span></div>' +
-        '<div><span class="esc-k">最大回撤</span><span class="esc-v">' + fmtDD(strat.max_drawdown_pct) + '</span></div>' +
+        '<div><span class="esc-k">最大回撤</span><span class="esc-v">' + (strat.max_drawdown_pct == null ? '-' : formatUtils.formatPercent(Math.abs(strat.max_drawdown_pct), 2)) + '</span></div>' +
         '<div><span class="esc-k">夏普</span><span class="esc-v">' + formatUtils.formatNumber(strat.sharpe, 2) + '</span></div>' +
         (strat.trade_count != null
           ? '<div><span class="esc-k">交易次数</span><span class="esc-v">' + strat.trade_count + '</span></div>'
           : '') +
         (strat.win_rate != null
-          ? '<div><span class="esc-k">胜率</span><span class="esc-v">' + fmtWinRate(strat.win_rate) + '</span></div>'
+          ? '<div><span class="esc-k">胜率</span><span class="esc-v">' + formatUtils.formatWinRate(strat.win_rate, 0, '-') + '</span></div>'
           : '') +
       '</div>' +
       '</div>';

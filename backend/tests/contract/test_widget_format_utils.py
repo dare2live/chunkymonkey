@@ -34,6 +34,15 @@ if (fmt.formatPercent(12.34, 1, false, true) !== '+12.3%') {
 if (fmt.formatPercent(-12.34, 1, false, true) !== '-12.3%') {
   throw new Error('formatPercent negative signed mismatch');
 }
+if (typeof fmt.formatWinRate !== 'function') {
+  throw new Error('formatWinRate export missing');
+}
+if (fmt.formatWinRate(0.612, 1) !== '61.2%') {
+  throw new Error('formatWinRate ratio mismatch');
+}
+if (fmt.formatWinRate(61.2, 1) !== '61.2%') {
+  throw new Error('formatWinRate percent mismatch');
+}
 require(process.argv[2]);
 require(process.argv[3]);
 require(process.argv[4]);
@@ -59,6 +68,13 @@ if (!opportunitySrc.includes('WidgetFormatUtils')) {
 if (opportunitySrc.includes('function etfNum(') || opportunitySrc.includes('function scoreNum(') || opportunitySrc.includes('function signedPct(') || opportunitySrc.includes('function pct(')) {
   throw new Error('ETFOpportunityWidget local formatters should be removed');
 }
+const strategyCompareSrc = fs.readFileSync(process.argv[3], 'utf8');
+if (!strategyCompareSrc.includes('WidgetFormatUtils')) {
+  throw new Error('ETFStrategyCompareWidget should use WidgetFormatUtils');
+}
+if (strategyCompareSrc.includes('function fmtDD(') || strategyCompareSrc.includes('function fmtWinRate(')) {
+  throw new Error('ETFStrategyCompareWidget local formatters should be removed');
+}
 const signalParamsSrc = fs.readFileSync(process.argv[11], 'utf8');
 if (!signalParamsSrc.includes('WidgetFormatUtils')) {
   throw new Error('SignalParamsWidget should use WidgetFormatUtils');
@@ -70,6 +86,9 @@ if (!cohortSrc.includes('WidgetFormatUtils')) {
 const backtestSrc = fs.readFileSync(process.argv[13], 'utf8');
 if (!backtestSrc.includes('WidgetFormatUtils')) {
   throw new Error('BacktestPanelWidget should use WidgetFormatUtils');
+}
+if (backtestSrc.includes('function fmtWinRate(')) {
+  throw new Error('BacktestPanelWidget local win-rate formatter should be removed');
 }
 const screeningSrc = fs.readFileSync(process.argv[14], 'utf8');
 if (!screeningSrc.includes('WidgetFormatUtils')) {

@@ -20,9 +20,6 @@
     const cls = n >= 0 ? 'sig-pos' : 'sig-neg';
     return `<span class="${cls}">${formatted}</span>`;
   }
-  function fmtWinRate(wr) {
-    return formatUtils.formatPercent(wr, 0, true, false, '-');
-  }
 
   function renderPanel(r) {
     const fp = r.follow_policy || {};
@@ -39,22 +36,22 @@
         <div class="sig-bt-card sig-bt-follow">
           <div class="sig-bt-lbl">Follow（筛选后）</div>
           <div class="sig-bt-val">${fmtPct(fp.ev_pct)}</div>
-          <div class="sig-bt-sub">胜率 ${fmtWinRate(fp.win_rate)} · n=${fp.n || 0}（${((cov.follow / (cov.total_events || 1)) * 100).toFixed(1)}%）</div>
+          <div class="sig-bt-sub">胜率 ${formatUtils.formatWinRate(fp.win_rate, 0, '-')} · n=${fp.n || 0}（${((cov.follow / (cov.total_events || 1)) * 100).toFixed(1)}%）</div>
         </div>
         <div class="sig-bt-card">
           <div class="sig-bt-lbl">Blind（盲跟对照）</div>
           <div class="sig-bt-val">${fmtPct(bp.ev_pct)}</div>
-          <div class="sig-bt-sub">胜率 ${fmtWinRate(bp.win_rate)} · n=${bp.n || 0}</div>
+          <div class="sig-bt-sub">胜率 ${formatUtils.formatWinRate(bp.win_rate, 0, '-')} · n=${bp.n || 0}</div>
         </div>
         <div class="sig-bt-card">
           <div class="sig-bt-lbl">Watch 边缘</div>
           <div class="sig-bt-val">${fmtPct(wp.ev_pct)}</div>
-          <div class="sig-bt-sub">胜率 ${fmtWinRate(wp.win_rate)} · n=${wp.n || 0}</div>
+          <div class="sig-bt-sub">胜率 ${formatUtils.formatWinRate(wp.win_rate, 0, '-')} · n=${wp.n || 0}</div>
         </div>
         <div class="sig-bt-card sig-bt-skip">
           <div class="sig-bt-lbl">Skip 被过滤</div>
           <div class="sig-bt-val">${fmtPct(sp.ev_pct)}</div>
-          <div class="sig-bt-sub">胜率 ${fmtWinRate(sp.win_rate)} · n=${sp.n || 0}</div>
+          <div class="sig-bt-sub">胜率 ${formatUtils.formatWinRate(sp.win_rate, 0, '-')} · n=${sp.n || 0}</div>
         </div>
       </div>
       <div class="sig-bt-diff">
@@ -75,7 +72,7 @@
               <td>${esc(q.quarter)}</td>
               <td class="sig-num">${q.follow_n || 0}</td>
               <td class="sig-num">${q.follow_ev_pct == null ? '-' : fmtPct(q.follow_ev_pct)}</td>
-              <td class="sig-num">${fmtWinRate(q.follow_win_rate)}</td>
+              <td class="sig-num">${formatUtils.formatWinRate(q.follow_win_rate, 0, '-')}</td>
               <td class="sig-num">${q.blind_n || 0}</td>
               <td class="sig-num">${q.blind_ev_pct == null ? '-' : fmtPct(q.blind_ev_pct)}</td>
               <td class="sig-num">${fmtPct(diff)}</td>
@@ -95,7 +92,7 @@
             <td>${esc(t.institution_id)}</td>
             <td class="sig-num">${t.n}</td>
             <td class="sig-num">${fmtPct(t.ev_pct)}</td>
-            <td class="sig-num">${fmtWinRate(t.win_rate)}</td>
+              <td class="sig-num">${formatUtils.formatWinRate(t.win_rate, 0, '-')}</td>
           </tr>`).join('')}</tbody>
         </table>
       </div>` : ''}
