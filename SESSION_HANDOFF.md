@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 00:52:37 CST
+**Snapshot 时间**: 2026-06-03 00:54:29 CST
 
 ## 主线状态
 
@@ -61,13 +61,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `d997766e docs: refresh session handoff snapshot after ETF opportunity widget extraction` |
-| 最近 24h commits | 164 |
-| 未 commit 文件 | 6 |
+| HEAD | `66c2c88e feat: extract model monitor widget and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS` |
+| 最近 24h commits | 165 |
+| 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+66c2c88e feat: extract model monitor widget and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS
 d997766e docs: refresh session handoff snapshot after ETF opportunity widget extraction
 1aac4845 feat: extract ETF opportunity widget and simplify ETF page | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 5 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS
 f795b957 docs: refresh session handoff snapshot after ETF list index update
@@ -77,12 +78,11 @@ f9587f8e docs: refresh session handoff snapshot after date rollover | # commit-m
 41c096ff docs: refresh need_027 blocker evidence and stage-opt state | # commit-msg: minimal
 502484b4 docs: refresh session handoff snapshot after clean-state regen | # commit-msg: minimal
 9407b98b docs: clarify moth global install model and sync controller state | # commit-msg: minimal
-83202979 docs: refresh session handoff snapshot after live need_027 probe | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**6 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**continue current goal blockers — stage-opt structural blocker triage / need_027 blocked-gap triage**
 
 ## Resilience 配置 (verified)
 
