@@ -35,6 +35,16 @@
     return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   }
   function qs(id) { return document.getElementById(id); }
+  function bindDelegatedClick(root, selector, handler) {
+    if (!root) return;
+    root.onclick = event => {
+      const target = event.target && typeof event.target.closest === 'function'
+        ? event.target.closest(selector)
+        : null;
+      if (!target || !root.contains(target)) return;
+      handler(target, event);
+    };
+  }
   function logLine(msg, level) {
     const ts = new Date().toLocaleTimeString();
     const prefix = level === 'err' ? 'FAIL ' : level === 'ok' ? 'OK ' : '';
@@ -441,8 +451,10 @@
       `;
     }).join('');
 
-    root.querySelectorAll('.ds-detail-btn').forEach(b => b.addEventListener('click', () => toggleDetail(b.dataset.source)));
-    root.querySelectorAll('.ds-health-btn').forEach(b => b.addEventListener('click', () => doHealthcheck(b.dataset.source)));
+    bindDelegatedClick(root, '.ds-detail-btn, .ds-health-btn', btn => {
+      if (btn.classList.contains('ds-detail-btn')) toggleDetail(btn.dataset.source);
+      else doHealthcheck(btn.dataset.source);
+    });
   }
 
   function toggleDetail(name) {
@@ -577,12 +589,10 @@
       </table>
       </div>
     `;
-    root.querySelectorAll('[data-route-repair]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const step = btn.dataset.routeRepair;
-        if (step) triggerStep(step, btn);
-        else logLine(`查看资产: ${btn.dataset.routeTable || ''}`);
-      });
+    bindDelegatedClick(root, '[data-route-repair]', btn => {
+      const step = btn.dataset.routeRepair;
+      if (step) triggerStep(step, btn);
+      else logLine(`查看资产: ${btn.dataset.routeTable || ''}`);
     });
   }
 
@@ -720,11 +730,9 @@
         `).join('') : '<tr><td colspan="6" class="muted" style="padding:16px;text-align:center">schema versions 已对齐</td></tr>'}</tbody>
       </table>
     </div>`;
-    root.querySelectorAll('[data-drift-table]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        if (window.App && typeof window.App.showView === 'function') window.App.showView('settings');
-        logLine(`schema drift: ${btn.dataset.driftTable || ''}`);
-      });
+    bindDelegatedClick(root, '[data-drift-table]', btn => {
+      if (window.App && typeof window.App.showView === 'function') window.App.showView('settings');
+      logLine(`schema drift: ${btn.dataset.driftTable || ''}`);
     });
   }
 
@@ -795,9 +803,7 @@
         <div style="color:var(--cm-ink-500);font-size:10px">${esc(s.source)}</div>
       </div>
     `).join('');
-    root.querySelectorAll('.ds-step-chip').forEach(el => {
-      el.addEventListener('click', () => triggerStep(el.dataset.step, el));
-    });
+    bindDelegatedClick(root, '.ds-step-chip', el => triggerStep(el.dataset.step, el));
   }
 
   async function triggerStep(stepId, el) {
@@ -830,10 +836,11 @@
         else el.style.opacity = '';
       }
     });
-    document.querySelectorAll('.ds-step-chip').forEach(el => {
-      el.style.pointerEvents = busy ? 'none' : '';
-      el.style.opacity = busy ? '0.4' : '';
-    });
+    const stepRoot = qs('ds-step-grid');
+    if (stepRoot) {
+      stepRoot.style.pointerEvents = busy ? 'none' : '';
+      stepRoot.style.opacity = busy ? '0.4' : '';
+    }
   }
 
   async function smartUpdate() {
