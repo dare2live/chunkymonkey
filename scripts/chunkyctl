@@ -47,7 +47,9 @@ case "$cmd" in
     while [[ $# -gt 0 ]]; do
       case "$1" in
         --fast)
-          args+=(--skip-test-tool --skip-universe --max-findings 40)
+          # `doctor --fast` is the standard startup snapshot; the shared
+          # Moth-backed gate already keeps it bounded, so do not skip any
+          # required checks here.
           shift
           ;;
         *)
