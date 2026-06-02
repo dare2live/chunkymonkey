@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-02T21:58:35Z",
+  "generated_at": "2026-06-02T22:04:20Z",
   "model_id": "lgbm_phase5_gcp_20260520T010718",
   "steps": [
     {
@@ -124,5 +124,5 @@
   "next_step": "all_done",
   "resume_command": "echo all_done",
   "blockers": [],
-  "last_verified": "2026-06-02T21:58:35Z"
+  "last_verified": "2026-06-02T22:04:20Z"
 }
