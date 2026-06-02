@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 04:45:20 CST
+**Snapshot 时间**: 2026-06-03 04:48:54 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `b9442179 refactor: remove duplicate runLifeboat overload from app.js | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 2 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 240 |
+| HEAD | `62e2128d refactor: inline stock and research dispatches in app.js | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 2 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 242 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+62e2128d refactor: inline stock and research dispatches in app.js | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 2 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
+c9b4d0fe docs: refresh session handoff snapshot after duplicate runLifeboat cleanup | # commit-msg: minimal
 b9442179 refactor: remove duplicate runLifeboat overload from app.js | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 2 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 83f6edbd docs: refresh session handoff snapshot after stock report widget removal | # commit-msg: minimal
 469f6b76 refactor: remove stock report widget and dead app.js wrapper surface | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 2 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ b6658796 refactor: remove dead stock report wrappers from app.js | Codex-Reviewe
 7936a0de docs: refresh session handoff snapshot after rank matrix cache rows model extraction | # commit-msg: minimal
 f39fe08b refactor: extract rank matrix cache rows model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 23 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 cf90ad6c docs: refresh session handoff snapshot after stability context rows model extraction | # commit-msg: minimal
-959c2c52 docs: record stability context rows model extraction and refresh handoff | # commit-msg: minimal
-55a970a2 refactor: extract stability context rows model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 23 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
