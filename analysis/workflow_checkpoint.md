@@ -229,13 +229,15 @@ The model pipeline snapshot below is historical evidence for the completed
   state.
 - system data-health snapshot: `scripts/chunkyctl doctor --fast` now folds in
   `backend/scripts/data_health_snapshot.py --dry-run --format json` and fails
-  closed on red tables. Current live health after the 2026-06-02 refreshes is
-  `0 red / 1 yellow / 342 total`: `raw_profit_forecast_snapshot_daily` was
+  closed on red tables. Current live health after the 2026-06-02 intraday
+  refreshes is `0 red / 0 yellow / 342 total` (`latest_completed_trade_date`
+  remains `2026-06-01` intraday): `raw_profit_forecast_snapshot_daily` was
   refreshed to `2026-06-02` and no longer blocks, `fact_feature_panel` was
   rebuilt through `2026-06-01` and no longer appears in blocking yellow, and
-  `dim_stock_tdx_industry_history` is the lone warning yellow. `raw_margin_daily`
-  remains a monitor-only governance placeholder outside the yellow count. This
-  is the startup health signal the controller has to read before trusting any
+  `dim_stock_tdx_industry_history` was refreshed on the main smartmoney DB so
+  the prior warning yellow is now cleared. `raw_margin_daily` remains a
+  monitor-only governance placeholder outside the yellow count. This is the
+  startup health signal the controller has to read before trusting any
   freshness claim. Feature panel, capital_behavior, and holder/shareholder-plan
   lanes were cleared from red earlier; GPCW and raw_aif10 are still green /
   on-demand governance, and `blocking_yellow_tables` are surfaced separately so
