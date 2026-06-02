@@ -401,10 +401,9 @@
 
     <!-- ==================== 机构（track record） ==================== -->
     <section class="view" id="view-research">
-      <!-- 胶囊标签：列表 | 管理 -->
+      <!-- 机构列表入口收束：列表 / 管理控件已下线，当前只保留评分卡与研究说明 -->
       <div class="chip-group inst-page-tabs">
         <button class="chip chip-primary" id="itab-btn-list" data-itab="list">机构列表</button>
-        <button class="chip chip-outline" id="itab-btn-manage" data-itab="manage">机构管理</button>
       </div>
 
       <!-- 机构评分双框架 -->
@@ -420,79 +419,20 @@
         <div id="instScorecardParams" style="margin-top:14px"></div>
       </div>
 
-      <!-- Tab: 机构列表 -->
+      <!-- 机构列表说明 -->
       <div id="itab-list">
         <div class="research-header">
           <div class="research-header-title">
             <div class="section-kicker">Institution Research</div>
             <h2 class="research-title">机构 track record</h2>
-            <p class="muted research-tagline">把每家机构过去几年每次 buy 事件的 60 日跟随收益摊开，让用户自己挑可跟的机构。</p>
+            <p class="muted research-tagline">当前只保留机构评分卡与研究边界说明；机构列表 / 管理面板已收束，后续如需重建会以独立 widget 接回。</p>
             <div style="font-size:11px;color:var(--cm-ink-500);background:var(--cm-ink-50);padding:6px 10px;border-radius:4px;margin-top:6px">
               <strong>研究边界</strong>：事件来源是<strong>十大股东披露差分</strong>（持仓报告期之间的变化推断），不是机构的真实盘中交易行为。
             </div>
           </div>
-          <input type="text" class="search-input" id="instSearch" placeholder="搜索机构名/别名" style="width:240px">
         </div>
-        <div class="type-filter" id="instTypeFilter" style="margin-bottom:8px"></div>
-        <div class="inst-dim-switch">
-          <span class="muted" style="font-size:12px">视角</span>
-          <button class="dim-btn active" data-dim="overview">综合</button>
-          <button class="dim-btn" data-dim="returns">买入表现</button>
-          <button class="dim-btn" data-dim="exits">退出表现</button>
-          <button class="dim-btn" data-dim="risk">风险</button>
-        </div>
-        <div id="instListContainer">加载中...</div>
-      </div>
-
-      <!-- Tab: 机构管理 -->
-      <div id="itab-manage" style="display:none">
-        <div class="workbench-mgmt" style="padding-top:14px">
-          <!-- 搜索添加 -->
-          <div class="panel" style="margin-bottom:14px">
-            <h4 style="margin-bottom:8px;font-size:13px">搜索并添加机构</h4>
-            <p class="muted" style="font-size:12px;margin-bottom:10px">逗号分隔 = 搜多个机构（OR）；空格分隔 = 名称同时包含（AND）。</p>
-            <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
-              <select id="searchHolderType" style="padding:6px 10px;border:1px solid var(--cm-ink-100);border-radius:6px;font-size:13px">
-                <option value="">全部分类</option>
-                <option value="QFII">QFII</option><option value="社保">社保</option>
-                <option value="保险">保险</option><option value="国家队">国家队</option>
-                <option value="基金">基金</option><option value="券商">券商</option>
-                <option value="信托">信托</option><option value="个人">个人</option>
-                <option value="其他">其他</option>
-              </select>
-              <input type="text" class="search-input" id="mgmtSearch" placeholder="多词用逗号或空格分隔" style="flex:1;min-width:200px">
-              <button class="chip chip-primary" id="btnSearchInst">搜索</button>
-            </div>
-            <div id="searchResultArea" style="display:none">
-              <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
-                <span style="font-size:13px;white-space:nowrap">本地标签：</span>
-                <select id="addInstType" style="padding:6px 10px;border:1px solid var(--cm-ink-100);border-radius:6px;font-size:13px">
-                  <option value="">-- 请选择标签（必填） --</option>
-                  <option value="QFII">QFII</option><option value="社保">社保</option>
-                  <option value="保险">保险</option><option value="国家队">国家队</option>
-                  <option value="国家大基金">国家大基金</option><option value="北向">北向</option>
-                  <option value="牛散">牛散</option><option value="基金">基金</option>
-                  <option value="券商">券商</option><option value="信托">信托</option>
-                  <option value="私募">私募</option>
-                </select>
-                <button class="chip chip-primary" id="btnImportChecked">导入选中</button>
-                <span id="searchResultCount" class="muted" style="font-size:12px;margin-left:4px"></span>
-              </div>
-              <div id="searchResults"></div>
-            </div>
-          </div>
-          <!-- 已跟踪机构批量操作 -->
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-            <div class="type-filter" id="mgmtTypeFilter" style="margin:0"></div>
-            <div class="mgmt-actions" style="display:flex;gap:6px;flex-wrap:wrap">
-              <button class="chip chip-outline" id="btnBatchAlias">批量设简称</button>
-              <button class="chip chip-outline" id="btnBatchType">批量设类型</button>
-              <button class="chip chip-outline" id="btnBatchMerge">批量合并</button>
-              <button class="chip chip-outline" id="btnBatchBlack">批量拉黑</button>
-              <button class="chip chip-danger chip-sm" id="btnBatchDelete">批量删除</button>
-            </div>
-          </div>
-          <div id="instMgmtTable" class="muted" style="font-size:12px">切换到此标签时加载...</div>
+        <div class="panel" style="margin-top:12px;padding:12px 14px">
+          <div class="muted" style="font-size:12px;line-height:1.7">机构列表 / 管理功能已移出当前前端入口；这里保留研究说明，避免误把未接线控件当作可用功能。</div>
         </div>
       </div>
     </section>

@@ -176,7 +176,7 @@
   // Dashboard sub-tabs
   // 工作台不再有 tabs，排除规则和网络检测在页面加载时一起执行
 
-  // Step 5d：机构 sub-tabs 已合并为单列表 + 抽屉（见 renderInstList）。
+  // Step 5d：机构页已收束为 scorecard + 研究说明，不再保留列表/管理子面板。
   // 批量管理挪至工作台的折叠区，首次展开时延迟加载。
 
   // Stock sub-tabs
@@ -897,8 +897,7 @@
     loadInstScorecard();
   }
 
-  // Step 5 任务 4：scorecard 入口（loadStockScorecard / calcInstScore /
-  // resetInstScore / calcStockScore / resetStockScore）已随机构/股票评分卡 UI 删除而下线。
+  // Step 5 任务 4：scorecard 入口现在只负责挂载机构评分卡 widget，不再保留旧的股票/机构评分卡双入口。
 
   // ============================================================
   // Init
@@ -918,38 +917,8 @@
     el('btnClearLog')?.addEventListener('click', () => el('updateLog').innerHTML = '');
     el('btnCopyLog')?.addEventListener('click', copyLogs);
     // Step 5d：管线折叠改由 <details> 原生处理，系统操作面板删除。
-    // 机构维度切换（overview / returns / risk）
-    document.querySelectorAll('.inst-dim-switch .dim-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () { switchInstDim(btn.dataset.dim); });
-    });
-    // 机构页面胶囊标签：列表 | 管理
-    var instMgmtLoaded = false;
-    document.querySelectorAll('#view-research .inst-page-tabs .chip').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var tab = btn.dataset.itab;
-        document.querySelectorAll('#view-research .inst-page-tabs .chip').forEach(function (b) {
-          b.classList.toggle('chip-primary', b.dataset.itab === tab);
-          b.classList.toggle('chip-outline', b.dataset.itab !== tab);
-        });
-        el('itab-list').style.display = tab === 'list' ? '' : 'none';
-        el('itab-manage').style.display = tab === 'manage' ? '' : 'none';
-        if (tab === 'manage' && !instMgmtLoaded) {
-          instMgmtLoaded = true;
-          window.loadInstMgmt && window.loadInstMgmt();
-        }
-      });
-    });
     el('btnReset')?.addEventListener('click', resetDerivedData);
-    window.searchInst && el('btnSearchInst')?.addEventListener('click', window.searchInst);
-    window.importChecked && el('btnImportChecked')?.addEventListener('click', window.importChecked);
-    window.searchInst && el('mgmtSearch')?.addEventListener('keydown', function (e) { if (e.key === 'Enter') window.searchInst(); });
-    window.batchAlias && el('btnBatchAlias')?.addEventListener('click', window.batchAlias);
-    window.batchType && el('btnBatchType')?.addEventListener('click', window.batchType);
-    window.batchMerge && el('btnBatchMerge')?.addEventListener('click', window.batchMerge);
-    window.batchBlack && el('btnBatchBlack')?.addEventListener('click', window.batchBlack);
-    window.batchDelete && el('btnBatchDelete')?.addEventListener('click', window.batchDelete);
     el('stockSearch')?.addEventListener('input', handleStockSearchInput);
-    window.filterInstList && el('instSearch')?.addEventListener('input', window.filterInstList);
     el('btnLifeboat')?.addEventListener('click', runLifeboat);
     el('btnEtfSync')?.addEventListener('click', async function () {
       var btn = this;

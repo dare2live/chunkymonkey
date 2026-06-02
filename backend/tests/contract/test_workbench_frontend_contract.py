@@ -38,6 +38,15 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert 'id="instScorecardFramework"' in index
     assert 'id="instScorecardStats"' in index
     assert 'id="instScorecardParams"' in index
+    assert 'id="itab-btn-manage"' not in index
+    assert 'id="instSearch"' not in index
+    assert 'id="instTypeFilter"' not in index
+    assert 'id="instListContainer"' not in index
+    assert 'id="instMgmtTable"' not in index
+    assert 'id="searchHolderType"' not in index
+    assert 'id="btnSearchInst"' not in index
+    assert 'id="btnImportChecked"' not in index
+    assert 'id="btnBatchAlias"' not in index
     assert index.index("'assets/js/widgets/stock-report.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/stock-list-rows.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/institution-scorecard.js'") < index.index("'assets/js/app.js'")
@@ -64,12 +73,20 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "InstitutionScorecardWidget" in app_js
     assert "ETFAnalysisWidget" in app_js
     assert "function loadResearch()" in app_js
+    assert "function loadInstMgmt" not in app_js
     assert "function buildDeepAnalysisHtml(" not in app_js
     assert "function renderScoreParamCard(" not in app_js
     assert "function renderInstFrameworkRules(" not in app_js
     assert "function renderInstScorecardStats(" not in app_js
     assert "function renderStockFrameworkLayer(" not in app_js
     assert "function renderStockFrameworkRules(" not in app_js
+    assert "searchInst" not in app_js
+    assert "importChecked" not in app_js
+    assert "batchAlias" not in app_js
+    assert "batchType" not in app_js
+    assert "batchMerge" not in app_js
+    assert "batchBlack" not in app_js
+    assert "batchDelete" not in app_js
     assert "stockCompositeSummary(" not in app_js
     assert "stockCompositeCell(" not in app_js
     assert "stockResearchCell(" not in app_js
