@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import heapq
 from bisect import bisect_left, bisect_right
 import json
 import math
@@ -174,7 +175,7 @@ def _group_breakdown(windows: list[dict[str, Any]], group_key: str) -> list[dict
         key = str(window.get(group_key) or "unknown")
         groups.setdefault(key, []).append(window)
     rows = []
-    for key, items in sorted(groups.items()):
+    for key, items in groups.items():
         oos_rank_ics = [value for value in (_safe_float(item.get("oos_rank_ic")) for item in items) if value is not None]
         rel_drops = [
             value for value in (_safe_float(item.get("rank_ic_relative_drop")) for item in items) if value is not None
@@ -213,10 +214,7 @@ def build_stability_payload(
         value = _safe_float(item.get("oos_rank_ic"))
         return value if value is not None else 999.0
 
-    worst_windows = sorted(
-        windows,
-        key=_oos_rank_ic_sort_key,
-    )[:8]
+    worst_windows = heapq.nsmallest(8, windows, key=_oos_rank_ic_sort_key)
     payload = {
         "run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "model_id": record.get("model_id"),
