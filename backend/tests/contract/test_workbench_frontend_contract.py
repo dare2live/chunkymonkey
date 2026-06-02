@@ -33,9 +33,14 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "'assets/js/widgets/stock-report.js'" in index
     assert "'assets/js/widgets/stock-list-rows.js'" in index
     assert "'assets/js/widgets/stock-list-controls.js'" in index
+    assert "'assets/js/widgets/institution-scorecard.js'" in index
     assert "'assets/js/widgets/etf-analysis.js'" in index
+    assert 'id="instScorecardFramework"' in index
+    assert 'id="instScorecardStats"' in index
+    assert 'id="instScorecardParams"' in index
     assert index.index("'assets/js/widgets/stock-report.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/stock-list-rows.js'") < index.index("'assets/js/app.js'")
+    assert index.index("'assets/js/widgets/institution-scorecard.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/etf-analysis.js'") < index.index("'assets/js/app.js'")
     assert 'onclick="window.App.showView(\'data-health\')"' not in index
     assert "高级数据健康" not in index
@@ -56,8 +61,15 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "function renderStockReportScoreSection(" not in app_js
     assert "StockListRowsWidget" in app_js
     assert "StockListControlsWidget" in app_js
+    assert "InstitutionScorecardWidget" in app_js
     assert "ETFAnalysisWidget" in app_js
+    assert "function loadResearch()" in app_js
     assert "function buildDeepAnalysisHtml(" not in app_js
+    assert "function renderScoreParamCard(" not in app_js
+    assert "function renderInstFrameworkRules(" not in app_js
+    assert "function renderInstScorecardStats(" not in app_js
+    assert "function renderStockFrameworkLayer(" not in app_js
+    assert "function renderStockFrameworkRules(" not in app_js
     assert "stockCompositeSummary(" not in app_js
     assert "stockCompositeCell(" not in app_js
     assert "stockResearchCell(" not in app_js
@@ -69,6 +81,7 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "stockExecutionCell(" not in app_js
     assert "sourceInstitutionCell(" not in app_js
     assert "stockReportCell(" not in app_js
+    assert "function loadInstScorecard(" in app_js
     assert "_buildEtfTradeTimelineHtml(" not in app_js
     assert "_buildNavCurveSvg(" not in app_js
     assert "function metricCard(" not in app_js

@@ -20,6 +20,7 @@
   var StockReportWidget = window.StockReportWidget || null;
   var ReturnsChartWidget = window.ReturnsChartWidget || null;
   var TypeSummaryWidget = window.TypeSummaryWidget || null;
+  var InstitutionScorecardWidget = window.InstitutionScorecardWidget || null;
   var etfState = AppNav.getEtfState();
   var instListState = AppListState.inst;
   var stockListState = AppListState.stock;
@@ -872,194 +873,28 @@
   // ============================================================
   // Scorecard
   // ============================================================
-  function renderScoreParamCard(containerId, framework, config, defaults) {
-    var items = framework?.editable_factors || [];
-    return '<div class="score-rule-card" id="' + esc(containerId) + '">' +
-      '<div class="score-rule-title">' + esc(framework?.title || '评分参数') + '</div>' +
-      '<div class="score-param-list">' + items.map(function (item) {
-        var current = config && config[item.key] != null ? config[item.key] : (defaults && defaults[item.key] != null ? defaults[item.key] : 0);
-        var def = defaults && defaults[item.key] != null ? defaults[item.key] : 0;
-        return '<div class="score-param-item">' +
-          '<div class="score-param-head">' +
-          '<div class="score-param-title">' + esc(item.label || item.key) + '</div>' +
-          '<input type="number" class="score-input" data-key="' + esc(item.key) + '" value="' + esc(String(current)) + '" min="0" max="100">' +
-          '</div>' +
-          '<div class="score-param-desc">' + esc(item.description || '-') + '</div>' +
-          '<div class="score-param-sub">默认 ' + esc(String(def)) + (item.source ? ' · 来源 ' + esc(item.source) : '') + '</div>' +
-          '</div>';
-      }).join('') + '</div>' +
-      '</div>';
+  function loadInstScorecard() {
+    if (InstitutionScorecardWidget && typeof InstitutionScorecardWidget.mountScorecard === 'function') {
+      return InstitutionScorecardWidget.mountScorecard({
+        frameworkId: 'instScorecardFramework',
+        statsId: 'instScorecardStats',
+        paramsId: 'instScorecardParams',
+      }, {
+        api: api,
+        esc: esc,
+        fmt: fmt,
+        fmtGain: fmtGain,
+        scoreNum: scoreNum,
+        priorityPoolTag: priorityPoolTag,
+      });
+    }
+    setHtml('instScorecardFramework', '<div class="score-rule-card"><div class="score-rule-title">机构评分双框架</div><div class="scorecard-note">机构评分卡暂不可用</div></div>');
+    setHtml('instScorecardStats', '');
+    setHtml('instScorecardParams', '');
   }
 
-  function renderInstFrameworkRules(framework) {
-    return '<div class="score-rule-grid">' +
-      '<div class="score-rule-card">' +
-      '<div class="score-rule-title">固定口径</div>' +
-      '<div class="score-rule-list">' +
-      '<div class="score-rule-item"><b>评分公式</b>：' + esc(framework?.formula || '-') + '</div>' +
-      '<div class="score-rule-item"><b>置信因子</b>：' + esc(framework?.confidence || '-') + '</div>' +
-      '</div>' +
-      '</div>' +
-      '<div class="score-rule-card">' +
-      '<div class="score-rule-title">当前定位</div>' +
-      '<div class="score-rule-list">' +
-      '<div class="score-rule-item">' + esc(framework?.summary || '-') + '</div>' +
-      '</div>' +
-      '</div>' +
-      '</div>';
-  }
-
-  function renderInstScorecardStats(stats) {
-    if (!stats) return '';
-    var summary = stats.summary || {};
-    var typeTop = Array.isArray(stats.type_top) ? stats.type_top : [];
-    var hintTop = Array.isArray(stats.hint_top) ? stats.hint_top : [];
-    var confidence = stats.confidence || {};
-
-    var summaryCards = '<div class="scorecard-stats-grid">' +
-      renderScorecardMiniCard('机构样本', fmt(summary.total || 0), '当前已生成画像的机构数') +
-      renderScorecardMiniCard('买入口径', fmt(summary.buy_basis_count || 0), 'fallback ' + fmt(summary.fallback_basis_count || 0)) +
-      renderScorecardMiniCard('高置信机构分', fmt(summary.quality_high_conf_count || 0), '均分 ' + scoreNum(summary.avg_quality_score)) +
-      renderScorecardMiniCard('高置信可跟分', fmt(summary.follow_high_conf_count || 0), '均分 ' + scoreNum(summary.avg_followability_score)) +
-      renderScorecardMiniCard('高分机构', fmt(summary.quality_strong_count || 0), 'quality ≥ 65') +
-      renderScorecardMiniCard('高可跟机构', fmt(summary.followability_strong_count || 0), 'followability ≥ 65') +
-      renderScorecardMiniCard('安全跟随机构', fmt(summary.safe_follow_inst_count || 0), '均安全样本 ' + fmt(summary.avg_safe_follow_event_count || 0)) +
-      renderScorecardMiniCard('平均溢价', fmtGain(summary.avg_premium_pct), '均买入样本 ' + fmt(summary.avg_buy_event_count || 0)) +
-      '</div>';
-
-    var typeTable = typeTop.length
-      ? '<div class="score-rule-card">' +
-      '<div class="score-rule-title">机构类型分布</div>' +
-      '<table class="score-pool-table"><thead><tr><th>类型</th><th>机构数</th><th>均机构分</th><th>均可跟分</th></tr></thead><tbody>' +
-      typeTop.map(function (item) {
-        return '<tr><td>' + esc(item.inst_type || '未分类') + '</td><td>' + fmt(item.total) + '</td><td>' + scoreNum(item.avg_quality_score) + '</td><td>' + scoreNum(item.avg_followability_score) + '</td></tr>';
-      }).join('') +
-      '</tbody></table>' +
-      '</div>'
-      : '';
-
-    var confidenceCard = '<div class="score-rule-card">' +
-      '<div class="score-rule-title">置信分层</div>' +
-      '<div class="score-rule-list">' +
-      '<div class="score-rule-item"><b>机构分</b>：' + renderConfidenceSummary(confidence.quality || []) + '</div>' +
-      '<div class="score-rule-item"><b>可跟分</b>：' + renderConfidenceSummary(confidence.followability || []) + '</div>' +
-      '</div>' +
-      '</div>';
-
-    var hintCard = hintTop.length
-      ? '<div class="score-rule-card">' +
-      '<div class="score-rule-title">可跟性提示分布</div>' +
-      '<div class="score-rule-list">' + hintTop.map(function (item) {
-        return '<div class="score-rule-item">' + esc(item.followability_hint || '未标注') + ' · ' + fmt(item.total) + ' 家</div>';
-      }).join('') + '</div>' +
-      '</div>'
-      : '';
-
-    return '<div class="score-rule-card" style="margin-bottom:12px">' +
-      '<div class="score-rule-title">当前样本摘要</div>' +
-      '<div class="scorecard-note">机构评分卡现在会直接展示真实机构画像分布，帮助判断这套机构评分与可跟性评分在当前样本中的覆盖、置信和主流提示结构。</div>' +
-      '</div>' +
-      summaryCards +
-      '<div class="score-rule-grid" style="margin-top:12px">' + typeTable + confidenceCard + '</div>' +
-      hintCard;
-  }
-
-  function renderConfidenceSummary(items) {
-    if (!items || !items.length) return '-';
-    return items.map(function (item) {
-      return (item.confidence || '未标注') + ' ' + fmt(item.total || 0);
-    }).join(' · ');
-  }
-
-  function renderStockFrameworkLayer(layer) {
-    return '<div class="score-framework-card">' +
-      '<div class="score-framework-head">' +
-      '<div class="score-framework-title">' + esc(layer.label || '-') + '</div>' +
-      '<span class="score-framework-weight">' + esc(String(layer.weight || 0)) + '%</span>' +
-      '</div>' +
-      '<div class="score-framework-role">' + esc(layer.role || '-') + '</div>' +
-      '<div class="score-framework-summary">' + esc(layer.summary || '-') + '</div>' +
-      '<div class="score-framework-list">' + (layer.items || []).map(function (item) {
-        return '<div class="score-framework-item">' + esc(item) + '</div>';
-      }).join('') + '</div>' +
-      '</div>';
-  }
-
-  function renderStockFrameworkRules(framework) {
-    var formulaCard = '<div class="score-rule-card">' +
-      '<div class="score-rule-title">固定口径</div>' +
-      '<div class="score-rule-list">' +
-      '<div class="score-rule-item"><b>综合优先分</b>：' + esc(framework.formula || '-') + '</div>' +
-      '<div class="score-rule-item"><b>' + esc((framework.effective_forecast || {}).label || '生效预测分') + '</b>：' + esc((framework.effective_forecast || {}).formula || '-') + '</div>' +
-      '<div class="score-rule-item">' + esc((framework.effective_forecast || {}).meaning || '-') + '</div>' +
-      '</div>' +
-      '</div>';
-    var capsCard = '<div class="score-rule-card">' +
-      '<div class="score-rule-title">封顶与门槛</div>' +
-      '<div class="score-rule-list">' + (framework.caps || []).map(function (item) {
-        return '<div class="score-rule-item">' + esc(item) + '</div>';
-      }).join('') + '</div>' +
-      '</div>';
-    var overlay = framework.external_overlay || {};
-    var overlayCard = (overlay.summary || (overlay.items || []).length)
-      ? '<div class="score-rule-card">' +
-      '<div class="score-rule-title">' + esc(overlay.label || '外部关注叠加层') + '</div>' +
-      '<div class="score-rule-list">' +
-      (overlay.summary ? '<div class="score-rule-item">' + esc(overlay.summary) + '</div>' : '') +
-      (overlay.items || []).map(function (item) {
-        return '<div class="score-rule-item">' + esc(item) + '</div>';
-      }).join('') +
-      '</div>' +
-      '</div>'
-      : '';
-    var poolRows = (framework.pools || []).map(function (item) {
-      return '<tr><td>' + priorityPoolTag(item.label) + '</td><td>' + esc(item.gate || '-') + '</td><td>' + esc(item.meaning || '-') + '</td></tr>';
-    }).join('');
-    var poolCard = '<div class="score-rule-card">' +
-      '<div class="score-rule-title">池子规则</div>' +
-      '<table class="score-pool-table"><thead><tr><th>池子</th><th>门槛</th><th>含义</th></tr></thead><tbody>' + poolRows + '</tbody></table>' +
-      '</div>';
-    return '<div class="score-rule-grid">' + formulaCard + capsCard + overlayCard + '</div>' + poolCard;
-  }
-
-  function renderScorecardMiniCard(label, value, sub) {
-    return '<div class="scorecard-mini-card">' +
-      '<div class="scorecard-mini-label">' + esc(label || '-') + '</div>' +
-      '<div class="scorecard-mini-value">' + value + '</div>' +
-      '<div class="scorecard-mini-sub">' + esc(sub || '-') + '</div>' +
-      '</div>';
-  }
-
-  async function loadInstScorecard() {
-    var rs = await Promise.all([
-      api('/api/inst/scoring/framework/institution'),
-      api('/api/inst/scoring/config/institution'),
-      api('/api/inst/scoring/framework/followability'),
-      api('/api/inst/scoring/config/followability')
-    ]);
-    var instFw = rs[0]?.ok ? (rs[0].data || {}) : {};
-    var instStats = rs[0]?.ok ? (rs[0].stats || {}) : {};
-    var instCfg = rs[1]?.ok ? rs[1] : {};
-    var followFw = rs[2]?.ok ? (rs[2].data || {}) : {};
-    var followCfg = rs[3]?.ok ? rs[3] : {};
-
-    el('instScorecardFramework').innerHTML =
-      '<div style="background:var(--cm-bg);border:1px solid var(--cm-ink-100);border-radius:12px;padding:14px 16px;margin-bottom:14px;font-size:12px;color:var(--cm-ink-700);line-height:1.7">' +
-      '<div style="font-size:14px;font-weight:700;color:var(--cm-ink-900);margin-bottom:6px">机构评分双框架</div>' +
-      '机构页当前同时维护“机构实力评分”和“可跟性评分”。前者回答机构信号本身好不好，后者回答普通跟随者是否容易复现。' +
-      '</div>' +
-      '<div class="score-framework-grid">' + (instFw.layers || []).map(renderStockFrameworkLayer).join('') + '</div>' +
-      renderInstFrameworkRules(instFw) +
-      '<div class="score-framework-grid" style="margin-top:14px">' + (followFw.layers || []).map(renderStockFrameworkLayer).join('') + '</div>' +
-      renderInstFrameworkRules(followFw);
-
-    el('instScorecardStats').innerHTML = renderInstScorecardStats(instStats);
-
-    el('instScorecardParams').innerHTML =
-      '<div class="score-rule-grid">' +
-      renderScoreParamCard('instInstitutionParams', instFw, instCfg.config || {}, instCfg.defaults || {}) +
-      renderScoreParamCard('instFollowabilityParams', followFw, followCfg.config || {}, followCfg.defaults || {}) +
-      '</div>';
+  function loadResearch() {
+    loadInstScorecard();
   }
 
   // Step 5 任务 4：scorecard 入口（loadStockScorecard / calcInstScore /
@@ -1100,21 +935,21 @@
         el('itab-manage').style.display = tab === 'manage' ? '' : 'none';
         if (tab === 'manage' && !instMgmtLoaded) {
           instMgmtLoaded = true;
-          loadInstMgmt && loadInstMgmt();
+          window.loadInstMgmt && window.loadInstMgmt();
         }
       });
     });
     el('btnReset')?.addEventListener('click', resetDerivedData);
-    el('btnSearchInst')?.addEventListener('click', searchInst);
-    el('btnImportChecked')?.addEventListener('click', importChecked);
-    el('mgmtSearch')?.addEventListener('keydown', function (e) { if (e.key === 'Enter') searchInst(); });
-    el('btnBatchAlias')?.addEventListener('click', batchAlias);
-    el('btnBatchType')?.addEventListener('click', batchType);
-    el('btnBatchMerge')?.addEventListener('click', batchMerge);
-    el('btnBatchBlack')?.addEventListener('click', batchBlack);
-    el('btnBatchDelete')?.addEventListener('click', batchDelete);
+    window.searchInst && el('btnSearchInst')?.addEventListener('click', window.searchInst);
+    window.importChecked && el('btnImportChecked')?.addEventListener('click', window.importChecked);
+    window.searchInst && el('mgmtSearch')?.addEventListener('keydown', function (e) { if (e.key === 'Enter') window.searchInst(); });
+    window.batchAlias && el('btnBatchAlias')?.addEventListener('click', window.batchAlias);
+    window.batchType && el('btnBatchType')?.addEventListener('click', window.batchType);
+    window.batchMerge && el('btnBatchMerge')?.addEventListener('click', window.batchMerge);
+    window.batchBlack && el('btnBatchBlack')?.addEventListener('click', window.batchBlack);
+    window.batchDelete && el('btnBatchDelete')?.addEventListener('click', window.batchDelete);
     el('stockSearch')?.addEventListener('input', handleStockSearchInput);
-    el('instSearch')?.addEventListener('input', filterInstList);
+    window.filterInstList && el('instSearch')?.addEventListener('input', window.filterInstList);
     el('btnLifeboat')?.addEventListener('click', runLifeboat);
     el('btnEtfSync')?.addEventListener('click', async function () {
       var btn = this;
