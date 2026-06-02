@@ -35,6 +35,9 @@ if (model.byLayer.fact !== 1 || model.byLayer.mart !== 1 || model.byLayer.dim_de
 if ('summary' in model) {
   throw new Error('summary should not be exposed on the schema versions model');
 }
+if ('versions' in model) {
+  throw new Error('versions should not be exposed on the schema versions model');
+}
 if (model.driftRows.length !== 1 || model.okRows.length !== 2) {
   throw new Error('row partition mismatch: ' + JSON.stringify({ driftRows: model.driftRows.length, okRows: model.okRows.length }));
 }

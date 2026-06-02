@@ -25,7 +25,6 @@
     }
     return {
       byLayer,
-      versions,
       driftRows,
       okRows,
       driftCount: Number(data && data.summary && data.summary.drift_count) || 0,
