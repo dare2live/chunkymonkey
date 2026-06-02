@@ -10,7 +10,7 @@ import json
 import math
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -263,9 +263,21 @@ def summarize_drift_rows(rows: list[DriftRow], *, built_at: str) -> list[dict[st
         grouped[(row.source_run_id, row.feature_name)].append(row)
     out: list[dict[str, Any]] = []
     for (source_run_id, feature_name), items in sorted(grouped.items()):
-        values = [item.psi_value for item in items]
-        severe_count = sum(1 for item in items if item.severity == "severe")
-        offender_count = len(items)
+        severe_count = 0
+        offender_count = 0
+        sum_psi = 0.0
+        max_psi = None
+        scopes: set[str] = set()
+        fold_ids: set[int] = set()
+        for item in items:
+            offender_count += 1
+            sum_psi += item.psi_value
+            max_psi = item.psi_value if max_psi is None or item.psi_value > max_psi else max_psi
+            if item.severity == "severe":
+                severe_count += 1
+            scopes.add(item.scope)
+            if item.fold_id is not None:
+                fold_ids.add(item.fold_id)
         threshold = items[0].psi_threshold if items else 0.25
         out.append(
             {
@@ -274,11 +286,11 @@ def summarize_drift_rows(rows: list[DriftRow], *, built_at: str) -> list[dict[st
                 "model_family": items[0].model_family,
                 "offender_count": offender_count,
                 "severe_count": severe_count,
-                "avg_psi": sum(values) / len(values) if values else None,
-                "max_psi": max(values) if values else None,
-                "scopes": sorted({item.scope for item in items}),
-                "fold_ids": sorted({item.fold_id for item in items if item.fold_id is not None}),
-                "recommendation": _recommendation(max(values) if values else None, offender_count, severe_count, threshold),
+                "avg_psi": (sum_psi / offender_count) if offender_count else None,
+                "max_psi": max_psi,
+                "scopes": sorted(scopes),
+                "fold_ids": sorted(fold_ids),
+                "recommendation": _recommendation(max_psi, offender_count, severe_count, threshold),
                 "built_at": built_at,
             }
         )
@@ -372,8 +384,9 @@ def build_feature_drift_root_cause(
 ) -> dict[str, Any]:
     started_at = utc_now_iso()
     started = time.perf_counter()
-    run_id = run_id or f"feature_drift_root_cause_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
-    built_at = datetime.utcnow().isoformat(timespec="seconds")
+    now_utc = datetime.now(timezone.utc)
+    run_id = run_id or f"feature_drift_root_cause_{now_utc.strftime('%Y%m%d_%H%M%S')}"
+    built_at = now_utc.isoformat(timespec="seconds")
     rows = collect_drift_rows(
         conn,
         source_run_ids=source_run_ids,
