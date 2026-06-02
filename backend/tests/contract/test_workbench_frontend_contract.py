@@ -33,8 +33,10 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "'assets/js/widgets/stock-report.js'" in index
     assert "'assets/js/widgets/stock-list-rows.js'" in index
     assert "'assets/js/widgets/stock-list-controls.js'" in index
+    assert "'assets/js/widgets/etf-analysis.js'" in index
     assert index.index("'assets/js/widgets/stock-report.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/stock-list-rows.js'") < index.index("'assets/js/app.js'")
+    assert index.index("'assets/js/widgets/etf-analysis.js'") < index.index("'assets/js/app.js'")
     assert 'onclick="window.App.showView(\'data-health\')"' not in index
     assert "高级数据健康" not in index
     assert "window.App.showWorkbenchTab('dataSources')" in index
@@ -54,6 +56,8 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "function renderStockReportScoreSection(" not in app_js
     assert "StockListRowsWidget" in app_js
     assert "StockListControlsWidget" in app_js
+    assert "ETFAnalysisWidget" in app_js
+    assert "function buildDeepAnalysisHtml(" not in app_js
     assert "stockCompositeSummary(" not in app_js
     assert "stockCompositeCell(" not in app_js
     assert "stockResearchCell(" not in app_js
@@ -65,6 +69,9 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "stockExecutionCell(" not in app_js
     assert "sourceInstitutionCell(" not in app_js
     assert "stockReportCell(" not in app_js
+    assert "_buildEtfTradeTimelineHtml(" not in app_js
+    assert "_buildNavCurveSvg(" not in app_js
+    assert "function metricCard(" not in app_js
     assert "buildStockFilterMetaByCode" in stock_list_controls_js
     assert "applyStockFilters" in stock_list_controls_js
     assert "/api/workbench/data-sources" in data_view_js
