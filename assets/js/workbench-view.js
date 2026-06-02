@@ -2175,21 +2175,22 @@
   }
 
   function renderChampion(data) {
-    var lifecycle = data.lifecycle || {};
-    var champions = lifecycle.champions || [];
-    var topk = data.latest_primary_topk || {};
-    var firstChampion = champions.length ? champions[0].model_id : '-';
-    var stabilityContext = data.stability_context || {};
-    var deployment = data.deployment || {};
+    var model = buildChampionModel(data);
+    var lifecycle = model.lifecycle;
+    var champions = model.champions;
+    var topk = model.topk;
+    var firstChampion = model.firstChampion;
+    var stabilityContext = model.stabilityContext;
+    var deployment = model.deployment;
 
     setBody(
       renderReadModelMeta(data) +
       '<div class="stats-row wb-stats-row">' +
       statCard('Champion', firstChampion, renderStatusCounts(lifecycle.counts), champions.length ? 'champion' : 'missing') +
-      statCard('候选模型', fmtNum((data.challengers || []).length), 'lifecycle challengers', (data.challengers || []).length ? 'running' : 'none') +
+      statCard('候选模型', fmtNum(model.challengerCount), 'lifecycle challengers', model.challengerCount ? 'running' : 'none') +
       statCard('部署状态', deployment.status || 'unknown', renderDeploymentSub(deployment), deployment.status || 'unknown') +
       statCard('Primary TopK', fmtNum(topk.count || 0), esc(topk.snapshot_date || '-') + ' / ' + esc(topk.model_id || '-'), topk.count ? 'ok' : 'missing') +
-      statCard('评估批次', fmtNum((data.candidate_evaluations || []).length), 'candidate evaluations', (data.candidate_evaluations || []).length ? 'completed' : 'none') +
+      statCard('评估批次', fmtNum(model.evaluationCount), 'candidate evaluations', model.evaluationCount ? 'completed' : 'none') +
       '</div>' +
 
       '<section class="panel wb-panel">' +
@@ -2216,7 +2217,7 @@
       '<div class="wb-grid">' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>Lifecycle 候选</h3><div class="muted">IC / drift</div></div></div>' +
-      renderChallengerTable(data.challengers || []) +
+      renderChallengerTable(model.challengers) +
       '</section>' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>最新 TopK</h3><div class="muted">' + esc(topk.snapshot_date || '-') + '</div></div></div>' +
@@ -2224,6 +2225,29 @@
       '</section>' +
       '</div>'
     );
+  }
+
+  function buildChampionModel(data) {
+    data = data || {};
+    var lifecycle = data.lifecycle || {};
+    var champions = Array.isArray(lifecycle.champions) ? lifecycle.champions : [];
+    var challengers = Array.isArray(data.challengers) ? data.challengers : [];
+    var evaluations = Array.isArray(data.candidate_evaluations) ? data.candidate_evaluations : [];
+    var topk = data.latest_primary_topk || {};
+    var stabilityContext = data.stability_context || {};
+    var deployment = data.deployment || {};
+    return {
+      lifecycle: lifecycle,
+      champions: champions,
+      firstChampion: champions.length ? champions[0].model_id : '-',
+      challengerCount: challengers.length,
+      challengers: challengers,
+      evaluationCount: evaluations.length,
+      evaluations: evaluations,
+      topk: topk,
+      stabilityContext: stabilityContext,
+      deployment: deployment,
+    };
   }
 
   function renderDeploymentSub(deployment) {
@@ -2364,6 +2388,7 @@
     setTab: setTab,
     buildReadModelMeta: buildReadModelMeta,
     buildDeliveryModel: buildDeliveryModel,
+    buildChampionModel: buildChampionModel,
     _renderOverview: renderOverview,
     _renderDataSources: renderDataSources,
     _renderPipelines: renderPipelines,

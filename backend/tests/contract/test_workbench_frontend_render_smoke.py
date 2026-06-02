@@ -388,3 +388,45 @@ def test_workbench_delivery_model_is_pure_and_stable():
         check=False,
     )
     assert result.returncode == 0, result.stderr + result.stdout
+
+
+def test_workbench_champion_model_is_pure_and_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.WorkbenchView;
+        if (!view || typeof view.buildChampionModel !== 'function') {
+          throw new Error('WorkbenchView.buildChampionModel missing');
+        }
+
+        const model = view.buildChampionModel({
+          lifecycle: { champions: [{ model_id: 'champion_a' }], counts: { ready: 3, blocked: 1 } },
+          challengers: [{ model_id: 'challenger_a' }, { model_id: 'challenger_b' }],
+          candidate_evaluations: [{ evaluation_run_id: 'eval_1' }],
+          latest_primary_topk: { count: 8, snapshot_date: '2026-06-03', model_id: 'champion_a', rows: [{ model_id: 'champion_a' }] },
+          stability_context: { run_id: 'stability_1' },
+          deployment: { status: 'deployed', latest_promotion_gate: { gate_run_id: 'gate_1' }, blockers: [] },
+        });
+
+        if (!model || model.firstChampion !== 'champion_a') throw new Error('firstChampion mismatch');
+        if (model.challengerCount !== 2 || model.evaluationCount !== 1) throw new Error('count mismatch');
+        if (!model.lifecycle || !model.champions.length || model.topk.count !== 8) throw new Error('model passthrough mismatch');
+        if (model.stabilityContext.run_id !== 'stability_1' || model.deployment.status !== 'deployed') throw new Error('context mismatch');
+        if (view.buildChampionModel({}).firstChampion !== '-') throw new Error('default normalization mismatch');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/workbench-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
