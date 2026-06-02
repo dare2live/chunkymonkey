@@ -1,0 +1,29 @@
+{
+  "snapshot_at": "2026-06-03 06:04:50 CST",
+  "git": {
+    "branch": "main",
+    "head_hash": "2538ad1e",
+    "head_msg": "2538ad1e docs: record signal-params formatter cleanup in project index and workflow checkpoint | # commit-msg: minimal",
+    "commits_24h": 257,
+    "uncommitted_files": 0
+  },
+  "retrain": {
+    "model_id": "lgbm_phase5_v9b_20260523T083000Z",
+    "vm_status": "?",
+    "vm_last_start": "",
+    "vm_last_stop": "",
+    "f2_checkpoint_path": "data/reports/optuna/lgbm_phase5_v9b_20260523T083000Z.best.json",
+    "f2_best_value": "0.3094819825339931",
+    "f2_best_trial": "32",
+    "f2_updated_at": "2026-05-23T12:24:52+00:00"
+  },
+  "background": {
+    "monitor": "dead",
+    "codex_running": 0
+  },
+  "gcp_cost": {
+    "pct_of_budget": "25.2",
+    "remaining_hours_spot": "105.9"
+  },
+  "next_action": "continue current goal blockers \u2014 stage-opt structural blocker triage / need_027 blocked-gap triage"
+}
