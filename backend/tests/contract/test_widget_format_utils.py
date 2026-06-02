@@ -68,6 +68,13 @@ if (!opportunitySrc.includes('WidgetFormatUtils')) {
 if (opportunitySrc.includes('function etfNum(') || opportunitySrc.includes('function scoreNum(') || opportunitySrc.includes('function signedPct(') || opportunitySrc.includes('function pct(')) {
   throw new Error('ETFOpportunityWidget local formatters should be removed');
 }
+const etfListSrc = fs.readFileSync(process.argv[5], 'utf8');
+if (!etfListSrc.includes('WidgetFormatUtils')) {
+  throw new Error('ETFListWidget should use WidgetFormatUtils');
+}
+if (etfListSrc.includes('function etfNum(')) {
+  throw new Error('ETFListWidget local etfNum formatter should be removed');
+}
 const strategyCompareSrc = fs.readFileSync(process.argv[3], 'utf8');
 if (!strategyCompareSrc.includes('WidgetFormatUtils')) {
   throw new Error('ETFStrategyCompareWidget should use WidgetFormatUtils');

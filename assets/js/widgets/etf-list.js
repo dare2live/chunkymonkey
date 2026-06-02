@@ -18,10 +18,6 @@
   var formatUtils = (typeof globalThis !== 'undefined' && globalThis.WidgetFormatUtils) || global.WidgetFormatUtils;
   if (!formatUtils) throw new Error('WidgetFormatUtils missing');
 
-  function etfNum(value, digits) {
-    return formatUtils.formatNumber(value, digits);
-  }
-
   function etfPctCell(value, invert) {
     var formatted = formatUtils.formatPercent(value, 2, false, true, '<span class="muted">-</span>');
     if (formatted === '<span class="muted">-</span>') return formatted;
@@ -145,7 +141,7 @@
     var trendColor = row.trend_status === '多头' ? 'var(--stock-up)' : (row.trend_status === '空头' ? 'var(--stock-down)' : 'var(--cm-ink-500)');
     var strategyTone = etfStrategyTone(row.strategy_type);
     var setupTone = etfSetupTone(row.setup_state);
-    var rotationText = row.rotation_score != null ? etfNum(row.rotation_score, 1) + (row.rotation_bucket === 'leader' ? ' · 前排' : row.rotation_bucket === 'blacklist' ? ' · 回避' : '') : '—';
+    var rotationText = row.rotation_score != null ? formatUtils.formatNumber(row.rotation_score, 1) + (row.rotation_bucket === 'leader' ? ' · 前排' : row.rotation_bucket === 'blacklist' ? ' · 回避' : '') : '—';
     var excessColor = row.backtest_excess_pct == null ? 'var(--cm-ink-500)' : (row.backtest_excess_pct >= 0 ? 'var(--cm-ok-500)' : 'var(--cm-bad-500)');
     return '<tr style="cursor:pointer" data-etf-code="' + escText(row.code) + '">' +
       '<td style="font-weight:600">' + escText(row.name) + '</td>' +
@@ -159,7 +155,7 @@
       '<td style="color:' + excessColor + ';font-weight:700">' + (row.backtest_excess_pct != null ? (row.backtest_excess_pct > 0 ? '+' : '') + Number(row.backtest_excess_pct).toFixed(2) + '%' : '<span class="muted">-</span>') + '</td>' +
       '<td><span style="padding:2px 8px;border-radius:999px;background:' + setupTone.bg + ';color:' + setupTone.fg + ';font-size:11px;font-weight:600">' + escText(row.setup_state || '-') + '</span></td>' +
       '<td><span style="padding:2px 8px;border-radius:999px;background:' + strategyTone.bg + ';color:' + strategyTone.fg + ';font-size:11px;font-weight:600" title="' + escText(row.strategy_reason || '') + '">' + escText(row.strategy_type || '-') + '</span></td>' +
-      '<td>' + (row.grid_step_pct != null ? escText(etfNum(row.grid_step_pct, 1) + '%') : '<span class="muted">-</span>') + '</td>' +
+      '<td>' + (row.grid_step_pct != null ? escText(formatUtils.formatNumber(row.grid_step_pct, 1) + '%') : '<span class="muted">-</span>') + '</td>' +
       '<td style="color:' + trendColor + '">' + escText(row.trend_status || '-') + '</td>' +
       '</tr>';
   }
