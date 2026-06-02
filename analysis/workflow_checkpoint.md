@@ -9,7 +9,7 @@ The model pipeline snapshot below is historical evidence for the completed
 ## Current Data Freshness Checkpoint
 
 - updated_at: `2026-06-02 09:00:33 CST`
-- current_state: `architecture/data freshness repair / shared-config boundary cleanup / moth-backed tooling gate migration / stage-opt structural blocker triage`
+- current_state: `architecture/data freshness repair / shared-config boundary cleanup / moth-canonical shared tooling state / stage-opt structural blocker triage`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
 - data audit: `audit_data_completeness.py` now exits PASS with WARN (0 FAIL /
@@ -198,10 +198,11 @@ The model pipeline snapshot below is historical evidence for the completed
   lifting `macd_golden_cross` coverage to `47.13%` (`16,474` ready keys) and
   the MACD-only slice to `226,822 raw_signal_rows / 123,264 filtered_signal_rows
   / 31,184 unique_keys / 16,474 ready_keys / 47.13% ready coverage /
-  22,854 below_min_signals`; `scripts/chunkyctl doctor --fast` now also carries
-  these `raw_trigger_rows` / `raw_state_history_rows` fields so the controller
-  can see the MACD state mart composition without rerunning the audit, but the
-  controller recommendation still points to `P1 / upstream_candidate_supply`.
+  22,854 below_min_signals`; the controller now consumes the Moth-backed
+  shared snapshot via `scripts/chunkyctl doctor --fast`, which carries these
+  `raw_trigger_rows` / `raw_state_history_rows` fields so the MACD state mart
+  composition is visible without rerunning the audit, but the controller
+  recommendation still points to `P1 / upstream_candidate_supply`.
 - stage-opt daily recommendation candidate loader: 2026-06-02
   `build_daily_position_recommendations.py` now unions `mart_macd_state_history`
   into the candidate pool and uses the existing `mart_per_stock_strategy_optimal`
@@ -210,9 +211,10 @@ The model pipeline snapshot below is historical evidence for the completed
   current snapshot happened to return 0 candidates, which is an input-sparsity
   result rather than a loader failure. This slice is now landed in commit
   `1402bc0b`, and the stage-opt / MACD / docs slice is now closed in `ed5a3ee6` with a clean worktree.
-- `scripts/chunkyctl doctor --fast` now also surfaces the stage-opt
-  `next_action_recommendation`, so the controller sees the upstream
-  candidate-supply lever without rerunning the audit manually. If
+- the Moth-backed shared snapshot consumed by `scripts/chunkyctl doctor --fast`
+  now also surfaces the stage-opt `next_action_recommendation`, so the
+  controller sees the upstream candidate-supply lever without rerunning the
+  audit manually. If
   `macd_golden_cross` shows up in the weakest cohort, the recommendation also
   records the `fact_technical_trigger` primary-key schema limit, so a schema
   change is not mistaken for a state-only formula tweak. 2026-06-02 then
