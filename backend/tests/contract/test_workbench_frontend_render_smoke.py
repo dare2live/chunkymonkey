@@ -711,7 +711,27 @@ def test_workbench_data_sources_model_is_pure_and_stable():
               model_eligibility: {},
             },
           },
-          tdx_server_health: { updated_at: '2026-06-03', summary: { healthy_count: 7, timeout_server_count: 1 } },
+          tdx_server_health: {
+            updated_at: '2026-06-03',
+            summary: { healthy_count: 7, timeout_server_count: 1 },
+            servers: [
+              {
+                server_host: '10.0.0.1',
+                server_port: 7709,
+                capability: 'quote',
+                health_score: 0.74,
+                success_count: 4,
+                failure_count: 1,
+                timeout_count: 1,
+                avg_success_elapsed_s: 0.42,
+                last_attempt_elapsed_s: 0.91,
+                last_success_at: '2026-06-03 01:00:00',
+                last_failure_at: '2026-06-03 00:59:00',
+                last_error_type: 'ConnectionError',
+                source_run_id: 'run_1',
+              },
+            ],
+          },
           tdx_f10_capabilities: [{ capability: 'x' }],
           f10_source_date_audit: { run_id: 'audit_1' },
           tdx_f10_source_dq: { run_id: 'dq_1' },
@@ -720,8 +740,80 @@ def test_workbench_data_sources_model_is_pure_and_stable():
         if (!model || model.signalCacheTone !== 'fresh') throw new Error('signalCacheTone mismatch');
         if (!model.kline.primary_is_tdxhub || model.primary.source_name !== 'tdxhub') throw new Error('kline normalization mismatch');
         if (model.qualityCounts.blocking !== 1 || model.tdxHealthSummary.timeout_server_count !== 1) throw new Error('counts mismatch');
+        if (model.tdxServerHealth.rowCount !== 1 || model.tdxServerHealth.totals.timeout !== 1) throw new Error('tdx server health model mismatch');
         if (model.blockers.length !== 1 || model.watermarks.length !== 1 || model.tdxF10Capabilities.length !== 1) throw new Error('list normalization mismatch');
         if (view.buildDataSourcesModel({}).signalCacheTone !== 'unknown') throw new Error('default normalization mismatch');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/workbench-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+
+
+def test_workbench_tdx_server_health_model_is_pure_and_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.WorkbenchView;
+        if (!view || typeof view.buildTdxServerHealthModel !== 'function') {
+          throw new Error('WorkbenchView.buildTdxServerHealthModel missing');
+        }
+
+        const model = view.buildTdxServerHealthModel({
+          updated_at: '2026-06-03',
+          summary: { capabilities: ['quote', 'history'], total_successes: 4, total_failures: 2, total_timeouts: 1 },
+          servers: [
+            {
+              server_host: '10.0.0.1',
+              server_port: 7709,
+              capability: 'quote',
+              health_score: 0.74,
+              success_count: 4,
+              failure_count: 1,
+              timeout_count: 0,
+              avg_success_elapsed_s: 0.42,
+              last_attempt_elapsed_s: 0.91,
+              last_success_at: '2026-06-03 01:00:00',
+              last_failure_at: '2026-06-03 00:59:00',
+              last_error_type: 'ConnectionError',
+              source_run_id: 'run_1',
+            },
+            {
+              server_host: '10.0.0.2',
+              server_port: 7710,
+              capability: 'history',
+              health_score: 0.96,
+              success_count: 2,
+              failure_count: 0,
+              timeout_count: 0,
+              avg_success_elapsed_s: 0.18,
+              last_attempt_elapsed_s: 0.30,
+              last_success_at: '2026-06-03 01:02:00',
+              last_failure_at: '2026-06-03 00:48:00',
+              last_error_type: '',
+              source_run_id: 'run_2',
+            },
+          ],
+        });
+
+        if (!model || model.rowCount !== 2 || model.isEmpty !== false) throw new Error('row normalization mismatch');
+        if (model.capabilities.join(',') !== 'quote,history' || model.totals.timeout !== 1) throw new Error('summary normalization mismatch');
+        if (model.rows[0].statusTone !== 'warn' || model.rows[1].statusTone !== 'ok') throw new Error('status tone mismatch');
+        if (model.rows[0].serverLabel !== '10.0.0.1:7709' || model.rows[1].sourceRunId !== 'run_2') throw new Error('row passthrough mismatch');
+        const empty = view.buildTdxServerHealthModel({});
+        if (empty.rowCount !== 0 || empty.isEmpty !== true || empty.capabilities.length !== 0) throw new Error('default normalization mismatch');
         """
     ).strip()
 

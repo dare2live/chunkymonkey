@@ -689,6 +689,7 @@
       qualityCounts: qualityCounts,
       tdxHealth: tdxHealth,
       tdxHealthSummary: tdxHealthSummary,
+      tdxServerHealth: buildTdxServerHealthModel(tdxHealth),
       blockers: Array.isArray(data.blockers) ? data.blockers : [],
       watermarks: Array.isArray(data.watermarks) ? data.watermarks : [],
       tdxF10Capabilities: Array.isArray(data.tdx_f10_capabilities) ? data.tdx_f10_capabilities : [],
@@ -955,7 +956,7 @@
       '</section>' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>TDX K线服务器健康</h3><div class="muted">' + esc(model.tdxHealth.updated_at || '-') + '</div></div></div>' +
-      renderTdxServerHealthTable(model.tdxHealth) +
+      renderTdxServerHealthTable(model.tdxServerHealth) +
       '</section>' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>TDX F10 能力矩阵</h3><div class="muted">parser / PIT source dates</div></div></div>' +
@@ -1107,34 +1108,79 @@
       '</tbody></table></div>';
   }
 
-  function renderTdxServerHealthTable(data) {
-    data = data || {};
-    var rows = data.servers || [];
-    var summary = data.summary || {};
-    if (!rows.length) return renderEmpty('暂无 TDX 服务器健康记录');
+  function renderTdxServerHealthTable(model) {
+    model = model || buildTdxServerHealthModel({});
+    if (model.isEmpty) return renderEmpty('暂无 TDX 服务器健康记录');
     var meta = '<div class="muted" style="margin-bottom:10px">' +
-      'capabilities: ' + esc((summary.capabilities || []).join(', ') || '-') +
-      ' · success ' + fmtNum(summary.total_successes || 0) +
-      ' / fail ' + fmtNum(summary.total_failures || 0) +
-      ' / timeout ' + fmtNum(summary.total_timeouts || 0) +
+      'capabilities: ' + esc((model.capabilities || []).join(', ') || '-') +
+      ' · success ' + fmtNum((model.totals || {}).success || 0) +
+      ' / fail ' + fmtNum((model.totals || {}).fail || 0) +
+      ' / timeout ' + fmtNum((model.totals || {}).timeout || 0) +
       '</div>';
     return meta + '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
       '<thead><tr><th>server</th><th>capability</th><th>score</th><th>attempts</th><th>latency</th><th>last ok</th><th>last fail</th><th>run</th></tr></thead><tbody>' +
-      rows.map(function (row) {
-        var failed = (row.failure_count || 0) > 0 || (row.timeout_count || 0) > 0;
-        var status = failed ? 'warn' : ((row.success_count || 0) > 0 ? 'ok' : 'info');
+      model.rows.map(function (row) {
         return '<tr>' +
-          '<td><code>' + esc((row.server_host || '-') + ':' + (row.server_port || '-')) + '</code></td>' +
+          '<td><code>' + esc(row.serverLabel || '-') + '</code></td>' +
           '<td>' + esc(row.capability || '-') + '</td>' +
-          '<td>' + pill(fmtFloat(row.health_score, 2), status) + '</td>' +
-          '<td>ok ' + fmtNum(row.success_count || 0) + '<div class="muted">fail ' + fmtNum(row.failure_count || 0) + ' · timeout ' + fmtNum(row.timeout_count || 0) + '</div></td>' +
-          '<td>' + fmtDuration(row.avg_success_elapsed_s) + '<div class="muted">last ' + fmtDuration(row.last_attempt_elapsed_s) + '</div></td>' +
-          '<td>' + esc(row.last_success_at || '-') + '</td>' +
-          '<td>' + esc(row.last_failure_at || '-') + '<div class="muted">' + esc(row.last_error_type || '') + '</div></td>' +
-          '<td><code>' + esc(row.source_run_id || '-') + '</code></td>' +
+          '<td>' + pill(fmtFloat(row.healthScore, 2), row.statusTone) + '</td>' +
+          '<td>ok ' + fmtNum(row.successCount || 0) + '<div class="muted">fail ' + fmtNum(row.failureCount || 0) + ' · timeout ' + fmtNum(row.timeoutCount || 0) + '</div></td>' +
+          '<td>' + fmtDuration(row.avgSuccessElapsedS) + '<div class="muted">last ' + fmtDuration(row.lastAttemptElapsedS) + '</div></td>' +
+          '<td>' + esc(row.lastSuccessAt || '-') + '</td>' +
+          '<td>' + esc(row.lastFailureAt || '-') + '<div class="muted">' + esc(row.lastErrorType || '') + '</div></td>' +
+          '<td><code>' + esc(row.sourceRunId || '-') + '</code></td>' +
           '</tr>';
       }).join('') +
       '</tbody></table></div>';
+  }
+
+  function buildTdxServerHealthModel(data) {
+    data = data || {};
+    var rows = Array.isArray(data.servers) ? data.servers : [];
+    var summary = data.summary || {};
+    var normalizedRows = rows.map(function (row) {
+      var successCount = Number((row && row.success_count) || 0);
+      var failureCount = Number((row && row.failure_count) || 0);
+      var timeoutCount = Number((row && row.timeout_count) || 0);
+      var failed = failureCount > 0 || timeoutCount > 0;
+      return {
+        serverLabel: ((row && row.server_host) || '-') + ':' + ((row && row.server_port) || '-'),
+        capability: (row && row.capability) || '-',
+        healthScore: Number((row && row.health_score) || 0),
+        statusTone: failed ? 'warn' : (successCount > 0 ? 'ok' : 'info'),
+        successCount: successCount,
+        failureCount: failureCount,
+        timeoutCount: timeoutCount,
+        avgSuccessElapsedS: (row && row.avg_success_elapsed_s) || null,
+        lastAttemptElapsedS: (row && row.last_attempt_elapsed_s) || null,
+        lastSuccessAt: (row && row.last_success_at) || '-',
+        lastFailureAt: (row && row.last_failure_at) || '-',
+        lastErrorType: (row && row.last_error_type) || '',
+        sourceRunId: (row && row.source_run_id) || '-',
+      };
+    });
+    var derivedSuccess = summary.total_successes != null ? Number(summary.total_successes || 0) : Number(summary.healthy_count || 0);
+    var derivedFail = summary.total_failures != null
+      ? Number(summary.total_failures || 0)
+      : normalizedRows.reduce(function (acc, row) { return acc + Number(row.failureCount || 0); }, 0);
+    var derivedTimeout = summary.total_timeouts != null
+      ? Number(summary.total_timeouts || 0)
+      : (summary.timeout_server_count != null
+        ? Number(summary.timeout_server_count || 0)
+        : normalizedRows.reduce(function (acc, row) { return acc + Number(row.timeoutCount || 0); }, 0));
+    return {
+      summary: summary,
+      capabilities: Array.isArray(summary.capabilities) ? summary.capabilities : [],
+      totals: {
+        success: derivedSuccess,
+        fail: derivedFail,
+        timeout: derivedTimeout,
+      },
+      rows: normalizedRows,
+      rowCount: normalizedRows.length,
+      updatedAt: data.updated_at || '',
+      isEmpty: !rows.length,
+    };
   }
 
   function renderTdxF10CapabilityTable(rows) {
@@ -2626,6 +2672,7 @@
     buildDeliveryModel: buildDeliveryModel,
     buildChampionModel: buildChampionModel,
     buildDataSourcesModel: buildDataSourcesModel,
+    buildTdxServerHealthModel: buildTdxServerHealthModel,
     buildFeaturesModel: buildFeaturesModel,
     buildTemporalSynergyModel: buildTemporalSynergyModel,
     buildRankMatrixCacheModel: buildRankMatrixCacheModel,
