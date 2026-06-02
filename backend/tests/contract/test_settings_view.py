@@ -96,3 +96,36 @@ if (model.rows[1].capabilityText !== '0 caps') {
         capture_output=True,
     )
     assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_settings_view_builds_about_model_in_one_pass() -> None:
+    script = r"""
+require(process.argv[1]);
+const view = globalThis.SettingsView;
+if (!view || typeof view.buildAboutModel !== 'function') {
+  throw new Error('SettingsView about exports missing');
+}
+const healthy = view.buildAboutModel({ status: 'ok', enabled_modules: ['alpha', null, 'beta'] });
+if (!healthy.isHealthy || healthy.backendLabel !== 'OK (alpha, beta)') {
+  throw new Error('healthy label mismatch: ' + JSON.stringify(healthy));
+}
+if (healthy.enabledModules.length !== 2 || healthy.enabledModules[0] !== 'alpha' || healthy.enabledModules[1] !== 'beta') {
+  throw new Error('healthy modules mismatch: ' + JSON.stringify(healthy.enabledModules));
+}
+const degraded = view.buildAboutModel({ status: 'degraded' });
+if (degraded.isHealthy || degraded.backendLabel !== 'degraded') {
+  throw new Error('degraded label mismatch: ' + JSON.stringify(degraded));
+}
+const unknown = view.buildAboutModel({});
+if (unknown.status !== 'unknown' || unknown.backendLabel !== '异常') {
+  throw new Error('unknown label mismatch: ' + JSON.stringify(unknown));
+}
+"""
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/settings-view.js")],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout

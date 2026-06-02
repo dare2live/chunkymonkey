@@ -57,6 +57,21 @@
     };
   }
 
+  function buildAboutModel(data) {
+    const summary = data && data.status === 'ok' ? 'ok' : (data && data.status) || 'unknown';
+    const enabledModules = Array.isArray(data && data.enabled_modules) ? data.enabled_modules.filter(Boolean) : [];
+    return {
+      status: summary,
+      backendLabel: summary === 'ok'
+        ? (enabledModules.length ? `OK (${enabledModules.join(', ')})` : 'OK')
+        : summary === 'unknown'
+          ? '异常'
+          : summary,
+      enabledModules,
+      isHealthy: summary === 'ok',
+    };
+  }
+
   async function renderDataSourceParams() {
     const el = document.getElementById('sys-ds-params');
     if (!el) return;
@@ -207,12 +222,8 @@
     try {
       const r = await fetch('/api/inst/health/summary');
       const j = await r.json().catch(() => ({}));
-      if (r.ok && j.status === 'ok') {
-        const enabled = Array.isArray(j.enabled_modules) ? j.enabled_modules.join(', ') : '';
-        backend = enabled ? `OK (${enabled})` : 'OK';
-      } else {
-        backend = j.status || '异常';
-      }
+      const model = buildAboutModel(j);
+      backend = model.backendLabel;
     } catch { backend = '不可达'; }
     el.innerHTML = `
       <div>chunky-monkey-v2</div>
@@ -238,5 +249,6 @@
     },
     buildSchemaVersionsModel,
     buildDataSourceParamsModel,
+    buildAboutModel,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

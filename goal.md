@@ -7,6 +7,8 @@
 
 - `assets/js/settings-view.js` 里的数据源参数卡已收成 `buildDataSourceParamsModel()` 纯 helper，`renderDataSourceParams()` 现在只消费 model；row normalization 把 `sources` 统一成 `rows`、`sourceCount`、`totalCapabilities`、`isEmpty`，并把 `capabilities` 缺失作为空数组兜底，不再直接在 render 里读 raw payload。`backend/tests/contract/test_settings_view.py` 已补 helper 导出与输入归一回归。验证：`node --check assets/js/settings-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_settings_view.py backend/tests/contract/test_workbench_frontend_contract.py` 4 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对 `assets/js/settings-view.js` 无明显热点。
 
+- `assets/js/settings-view.js` 里的 about 区块也已收成 `buildAboutModel()` 纯 helper，`renderAbout()` 现在只消费 model；row normalization 把 `status` / `enabled_modules` 统一成 `backendLabel`、`enabledModules`、`isHealthy`，并把空响应兜底成 `异常`。`backend/tests/contract/test_settings_view.py` 已补 helper 导出与输入归一回归。验证：`node --check assets/js/settings-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_settings_view.py backend/tests/contract/test_workbench_frontend_contract.py` 5 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对 `assets/js/settings-view.js` 无明显热点。
+
 ## 2026-06-03 — data-view routes table single-pass cleanup
 
 - `assets/js/stock-view.js` 里的信号证据链继续收口，`renderTabEvidence()` 现在把 follow/watch 事件改成单次扫描，不再先 `filter()` 两遍再拼接；`backend/tests/contract/test_workbench_frontend_contract.py` 已补 `stock-view` 不应回到双 filter 版本的回归。验证：`node --check assets/js/stock-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_signal_adapter.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对 `assets/js/stock-view.js` 无明显热点。
