@@ -2531,6 +2531,20 @@ tools:
     replacement: PIT/freshness audits, non-proxy validation gates, paper_sim/Phase4/PBO/DSR, and forward evidence
     last_verified: "2026-05-27"
 
+  - id: signal_adapter_contract_tests
+    paths:
+      - assets/js/signal-adapter.js
+      - backend/tests/contract/test_signal_adapter.py
+    owner_module: signals_v2
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_signal_adapter.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: signals_v2 adapter conversion, grouped aggregation order, and stock-level summary fixtures
+    risk_reason: validates frontend adapter mechanics only; it does not prove live signals payload freshness or production recommendation quality
+    replacement: live signals freshness, cohort validation, and downstream page contracts when signal UX is refactored further
+    last_verified: "2026-06-03"
+
   - id: stock_horizon_read_root_tests
     paths:
       - backend/tests/test_stock_horizon_read.py

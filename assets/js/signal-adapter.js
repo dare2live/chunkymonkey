@@ -81,47 +81,76 @@
     };
   }
 
-  // ─── 按股票聚合多个事件（股票视图主列表用）───────────
-  function aggregateByStock(rawSignals) {
+  const STOCK_ACTION_RANK = { follow: 0, watch: 1, skip: 2 };
+
+  function compareStockEvents(a, b) {
+    const ra = STOCK_ACTION_RANK[a.action] ?? 9;
+    const rb = STOCK_ACTION_RANK[b.action] ?? 9;
+    if (ra !== rb) return ra - rb;
+    return String(b.noticeDate || '').localeCompare(String(a.noticeDate || ''));
+  }
+
+  function updateStockAggregate(group, view) {
+    group.events.push(view);
+    if (view.institutionId) group.institutions.add(view.institutionId);
+    if (group.actionCounts[view.action] !== undefined) group.actionCounts[view.action] += 1;
+    const src = view.noticeDateSource || 'unknown';
+    if (group.noticeSourceCounts[src] === undefined) group.noticeSourceCounts[src] = 0;
+    group.noticeSourceCounts[src] += 1;
+
+    if (view.premiumPct != null) {
+      group.premiumSum += view.premiumPct;
+      group.premiumCount += 1;
+    }
+
+    const longPct = view.longEV?.pct;
+    if (longPct != null) {
+      group.longEVBest = group.longEVBest == null ? longPct : Math.max(group.longEVBest, longPct);
+    }
+
+    const shortPct = view.shortEV?.pct;
+    if (shortPct != null) {
+      group.shortEVBest = group.shortEVBest == null ? shortPct : Math.max(group.shortEVBest, shortPct);
+    }
+
+    if (view.noticeDate && view.noticeDate > group.latestNotice) {
+      group.latestNotice = view.noticeDate;
+    }
+
+    if (!group.topEvent || compareStockEvents(view, group.topEvent) < 0) {
+      group.topEvent = view;
+    }
+  }
+
+  function aggregateByStockViews(views) {
     const groups = new Map();
-    const actionRank = { follow: 0, watch: 1, skip: 2 };
-    (rawSignals || []).forEach(raw => {
-      const code = raw.stock_code;
-      if (!code) return;
+    (views || []).forEach(view => {
+      if (!view || !view.stockCode) return;
+      const code = view.stockCode;
       if (!groups.has(code)) {
         groups.set(code, {
           stockCode: code,
-          stockName: raw.stock_name,
-          industry: raw.industry,
+          stockName: view.stockName,
+          industry: view.industry,
           events: [],
           institutions: new Set(),
           actionCounts: { follow: 0, watch: 0, skip: 0 },
           noticeSourceCounts: { source_notice: 0, page_update_date: 0, fetched_at_observed: 0, regulatory_deadline: 0, unknown: 0 },
+          premiumSum: 0,
+          premiumCount: 0,
+          longEVBest: null,
+          shortEVBest: null,
+          latestNotice: '',
+          topEvent: null,
         });
       }
-      const g = groups.get(code);
-      const view = eventToView(raw);
-      g.events.push(view);
-      g.institutions.add(raw.institution_id);
-      if (g.actionCounts[raw.action] !== undefined) g.actionCounts[raw.action] += 1;
-      const src = raw.notice_date_source || 'unknown';
-      if (g.noticeSourceCounts[src] === undefined) g.noticeSourceCounts[src] = 0;
-      g.noticeSourceCounts[src] += 1;
+      updateStockAggregate(groups.get(code), view);
     });
 
     return Array.from(groups.values()).map(g => {
-      const sorted = [...g.events].sort((a, b) => {
-        const ra = actionRank[a.action] ?? 9;
-        const rb = actionRank[b.action] ?? 9;
-        if (ra !== rb) return ra - rb;
-        return String(b.noticeDate || '').localeCompare(String(a.noticeDate || ''));
-      });
-      const top = sorted[0];
-      const premiums = g.events.map(e => e.premiumPct).filter(v => v != null);
-      const longEVs = g.events.map(e => e.longEV?.pct).filter(v => v != null);
-      const shortEVs = g.events.map(e => e.shortEV?.pct).filter(v => v != null);
-      const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
-      const best = arr => arr.length ? Math.max(...arr) : null;
+      const sorted = [...g.events].sort(compareStockEvents);
+      const top = g.topEvent || sorted[0] || null;
+      const premiumAvg = g.premiumCount ? g.premiumSum / g.premiumCount : null;
       return {
         stockCode: g.stockCode,
         stockName: g.stockName,
@@ -133,13 +162,10 @@
         bestAction: top ? top.action : 'none',
         topEvent: top,
         events: sorted,
-        premiumAvg: avg(premiums),
-        longEVBest: best(longEVs),
-        shortEVBest: best(shortEVs),
-        latestNotice: sorted.reduce((m, e) => {
-          const d = String(e.noticeDate || '');
-          return d > m ? d : m;
-        }, ''),
+        premiumAvg,
+        longEVBest: g.longEVBest,
+        shortEVBest: g.shortEVBest,
+        latestNotice: g.latestNotice,
       };
     }).sort((a, b) => {
       if (b.actionCounts.follow !== a.actionCounts.follow) return b.actionCounts.follow - a.actionCounts.follow;
@@ -148,15 +174,21 @@
     });
   }
 
+  // ─── 按股票聚合多个事件（股票视图主列表用）───────────
+  function aggregateByStock(rawSignals) {
+    return aggregateByStockViews((rawSignals || []).map(eventToView).filter(Boolean));
+  }
+
   // ─── 公开 API ──────────────────────────────────────────
 
   async function fetchSignals(freshnessDays = 90) {
     const d = await apiGet(`/api/signals/today?freshness_days=${freshnessDays}&limit=2000`);
+    const events = (d.signals || []).map(eventToView).filter(Boolean);
     return {
       summary: d.summary || null,
-      events: (d.signals || []).map(eventToView),
+      events,
       raw: d.signals || [],        // aggregate 需要原始字段
-      byStock: aggregateByStock(d.signals || []),
+      byStock: aggregateByStockViews(events),
     };
   }
 
@@ -255,4 +287,4 @@
     eventToView,
     aggregateByStock,
   };
-})(window);
+})(typeof window !== 'undefined' ? window : globalThis);
