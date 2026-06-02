@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 06:50:30 CST
+**Snapshot 时间**: 2026-06-03 06:54:18 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `9e07938a refactor: single-pass source cards model cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 261 |
+| HEAD | `b53b135f refactor: remove dead turtle helper wrappers from app.js | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 263 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+b53b135f refactor: remove dead turtle helper wrappers from app.js | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
+b2df128a docs: refresh session handoff snapshot after source cards model cleanup | # commit-msg: minimal
 9e07938a refactor: single-pass source cards model cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 127b2967 docs: refresh session handoff snapshot after fallback drift capability cleanup | # commit-msg: minimal
 336b483a refactor: single-pass fallback drift capability models | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ c94b1ea3 refactor: single-pass link overview manual counts | Codex-Reviewed: APP
 eaf917bc docs: record app.js industry summary helper cleanup and refresh handoff | # commit-msg: minimal
 ae7e4b27 refactor: remove dead app.js industry summary helpers | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 e2913555 docs: record settings-view versions cleanup and refresh handoff | # commit-msg: minimal
-65f64cb0 refactor: remove dead versions field from settings view schema model | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
-79450d96 docs: record settings-view schema summary cleanup and refresh handoff | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
