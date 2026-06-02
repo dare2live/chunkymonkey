@@ -36,6 +36,8 @@ if (fmt.formatPercent(-12.34, 1, false, true) !== '-12.3%') {
 require(process.argv[2]);
 require(process.argv[3]);
 require(process.argv[4]);
+require(process.argv[5]);
+require(process.argv[6]);
 if (!globalThis.ETFSectorRotationWidget || typeof globalThis.ETFSectorRotationWidget.mount !== 'function') {
   throw new Error('ETFSectorRotationWidget exports missing');
 }
@@ -44,6 +46,12 @@ if (!globalThis.ETFStrategyCompareWidget || typeof globalThis.ETFStrategyCompare
 }
 if (!globalThis.ETFOpportunityWidget || typeof globalThis.ETFOpportunityWidget.mountOpportunity !== 'function') {
   throw new Error('ETFOpportunityWidget exports missing');
+}
+if (!globalThis.ETFListWidget || typeof globalThis.ETFListWidget.mountEtfList !== 'function') {
+  throw new Error('ETFListWidget exports missing');
+}
+if (!globalThis.ETFWorkbenchWidget || typeof globalThis.ETFWorkbenchWidget.mountEtfWorkbench !== 'function') {
+  throw new Error('ETFWorkbenchWidget exports missing');
 }
 """
 
@@ -56,6 +64,8 @@ if (!globalThis.ETFOpportunityWidget || typeof globalThis.ETFOpportunityWidget.m
             str(REPO / "assets/js/widgets/etf-sector-rotation.js"),
             str(REPO / "assets/js/widgets/etf-strategy-compare.js"),
             str(REPO / "assets/js/widgets/etf-opportunity.js"),
+            str(REPO / "assets/js/widgets/etf-list.js"),
+            str(REPO / "assets/js/widgets/etf-workbench.js"),
         ],
         check=False,
         text=True,

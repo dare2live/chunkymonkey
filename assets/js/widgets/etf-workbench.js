@@ -41,14 +41,16 @@
     return value == null ? '—' : String(value);
   }
 
+  var formatUtils = (typeof globalThis !== 'undefined' && globalThis.WidgetFormatUtils) || global.WidgetFormatUtils;
+  if (!formatUtils) throw new Error('WidgetFormatUtils missing');
+
   function api(path, opts) {
     if (!runtime.api) throw new Error('ETFWorkbenchWidget api missing');
     return runtime.api(path, opts);
   }
 
   function etfNum(value, digits) {
-    if (value == null || Number.isNaN(Number(value))) return '-';
-    return Number(value).toFixed(digits == null ? 1 : digits);
+    return formatUtils.formatNumber(value, digits);
   }
 
   function statusPill(label, ok, detail) {
@@ -199,4 +201,7 @@
     buildWorkbenchHtml: buildWorkbenchHtml,
     etfNum: etfNum,
   };
+  if (typeof globalThis !== 'undefined') {
+    globalThis.ETFWorkbenchWidget = global.ETFWorkbenchWidget;
+  }
 })(typeof window !== 'undefined' ? window : globalThis);

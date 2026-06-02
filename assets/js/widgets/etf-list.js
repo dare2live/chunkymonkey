@@ -15,18 +15,20 @@
       .replace(/'/g, '&#39;');
   }
 
+  var formatUtils = (typeof globalThis !== 'undefined' && globalThis.WidgetFormatUtils) || global.WidgetFormatUtils;
+  if (!formatUtils) throw new Error('WidgetFormatUtils missing');
+
   function etfNum(value, digits) {
-    if (value == null || Number.isNaN(Number(value))) return '-';
-    return Number(value).toFixed(digits == null ? 1 : digits);
+    return formatUtils.formatNumber(value, digits);
   }
 
   function etfPctCell(value, invert) {
-    if (value == null || Number.isNaN(Number(value))) return '<span class="muted">-</span>';
+    var formatted = formatUtils.formatPercent(value, 2, false, true, '<span class="muted">-</span>');
+    if (formatted === '<span class="muted">-</span>') return formatted;
     var num = Number(value);
     var positive = invert ? num <= 0 : num >= 0;
     var cls = positive ? 'gain-pos' : 'gain-neg';
-    var sign = num > 0 ? '+' : '';
-    return '<span class="' + cls + '">' + sign + num.toFixed(2) + '%</span>';
+    return '<span class="' + cls + '">' + formatted + '</span>';
   }
 
   function etfStrategyTone(kind) {

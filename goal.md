@@ -3,6 +3,10 @@
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
 
+## 2026-06-03 — widget format utils ETF list/workbench 扩展
+
+- `assets/js/widgets/format-utils.js` 的共享格式化 helper 继续向 `etf-list` / `etf-workbench` 扩展，两个 widget 现在也统一复用 `WidgetFormatUtils.formatNumber()` / `formatPercent()`，去掉各自的重复 local formatter 逻辑；`backend/tests/contract/test_widget_format_utils.py` 继续负责 helper export / widget export contract，`backend/tests/contract/test_workbench_frontend_contract.py` 也补了 `format-utils.js` 在这两个 widget 之前加载的回归。验证：`node --check assets/js/widgets/format-utils.js assets/js/widgets/etf-list.js assets/js/widgets/etf-workbench.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_widget_format_utils.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
+
 ## 2026-06-03 — widget format utils ETF 扩展
 
 - `assets/js/widgets/format-utils.js` 的共享格式化 helper 继续向 ETF widget 扩展，`etf-sector-rotation` / `etf-opportunity` / `etf-strategy-compare` 现在也统一复用 `WidgetFormatUtils.formatNumber()` / `formatPercent()`，去掉各自的重复 local formatter 逻辑；`index.html` 的加载顺序已经覆盖这些 widget，`backend/tests/contract/test_widget_format_utils.py` 补了 helper export / widget export contract，`backend/tests/contract/test_workbench_frontend_contract.py` 也补了 format-utils 在 ETF widget 之前加载的回归。验证：`node --check assets/js/widgets/format-utils.js assets/js/widgets/etf-sector-rotation.js assets/js/widgets/etf-opportunity.js assets/js/widgets/etf-strategy-compare.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_widget_format_utils.py backend/tests/contract/test_model_monitor_widget.py backend/tests/contract/test_workbench_frontend_contract.py` 4 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对三个改动文件无明显热点，`codegraph sync .` 已同步。
