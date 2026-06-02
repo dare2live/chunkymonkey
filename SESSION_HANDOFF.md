@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 20:06:52 CST
+**Snapshot 时间**: 2026-06-02 20:11:43 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `10a27ae3 feat: extract stock report widget and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check, pytest 4 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS` |
-| 最近 24h commits | 152 |
+| HEAD | `88829e4b feat: remove dead stock cell helpers from app.js | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check, pytest 5 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | cleanup verified 无残留 no stale` |
+| 最近 24h commits | 154 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+88829e4b feat: remove dead stock cell helpers from app.js | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check, pytest 5 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | cleanup verified 无残留 no stale
+b9f147ff docs: refresh session handoff snapshot after stock report widget extraction | # commit-msg: minimal
 10a27ae3 feat: extract stock report widget and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check, pytest 4 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
 db727148 docs: refresh session handoff snapshot after stock list row helper extraction | # commit-msg: minimal
 19790f61 feat: extract stock list row helper and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check, pytest 7 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
@@ -76,8 +78,6 @@ db727148 docs: refresh session handoff snapshot after stock list row helper extr
 01aba76c docs: refresh session handoff snapshot after stock list controls extraction | # commit-msg: minimal
 8faa1b3d feat: externalize stock list controls helper and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check, pytest 6 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
 ea473790 docs: refresh session handoff snapshot after stock summary helper extraction | # commit-msg: minimal
-4c1b5b89 feat: externalize stock summary helper and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check, pytest 5 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS
-4db37bf8 docs: refresh session handoff snapshot after type summary helper extraction | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
