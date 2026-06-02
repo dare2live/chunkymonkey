@@ -1,10 +1,10 @@
 {
-  "snapshot_at": "2026-06-03 07:30:56 CST",
+  "snapshot_at": "2026-06-03 07:34:16 CST",
   "git": {
     "branch": "main",
-    "head_hash": "55d1eb28",
-    "head_msg": "55d1eb28 refactor: chunkyctl need_027 blocker action helpers | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 27 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal",
-    "commits_24h": 273,
+    "head_hash": "bdef5ec5",
+    "head_msg": "bdef5ec5 refactor: need_027 source-registration summary helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 22 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal",
+    "commits_24h": 275,
     "uncommitted_files": 0
   },
   "retrain": {
