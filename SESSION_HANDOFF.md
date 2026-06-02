@@ -25,9 +25,9 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 09:35:37 CST
+**Snapshot 时间**: 2026-06-02 10:10:36 CST
 
-- latest code snapshot remains commit `58d3693c`; this handoff refresh reflects the 2026-06-02 09:35 CST live writer refreshes, where `raw_profit_forecast_snapshot_daily` is no longer blocking, `fact_feature_panel` has been rebuilt through `2026-06-01` and no longer sits in blocking yellow, `dim_stock_tdx_industry_history` was refreshed on the main smartmoney DB and the prior warning yellow is now cleared, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`. `stage-opt` controller recommendation remains `P1 / upstream_candidate_supply`; live recommendation PIT attrition is still 5/1/3 for short/mid/long, all `cross_stage_fallback`, so exact PIT coverage remains structurally sparse. `latest_completed_trade_date` remains `2026-06-01` intraday even though these refreshes happened on `2026-06-02`.
+- latest code snapshot remains commit `d79171f4`; this handoff refresh reflects the 2026-06-02 10:10 CST controller-boundary sync layered on top of the 2026-06-02 live writer refresh state, where `raw_profit_forecast_snapshot_daily` is no longer blocking, `fact_feature_panel` has been rebuilt through `2026-06-01` and no longer sits in blocking yellow, `dim_stock_tdx_industry_history` was refreshed on the main smartmoney DB and the prior warning yellow is now cleared, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`. `stage-opt` controller recommendation remains `P1 / upstream_candidate_supply`; live recommendation PIT attrition is still 5/1/3 for short/mid/long, all `cross_stage_fallback`, so exact PIT coverage remains structurally sparse. `latest_completed_trade_date` remains `2026-06-01` intraday even though these refreshes happened on `2026-06-02`.
 
 - controller boundary note: `audit_stage_opt_candidate_supply.py` and `doctor --fast` now surface the live formula registry explicitly; live stage-opt supply only includes 7 formula ids (`macd_golden_cross`, `turtle_breakout_20`, `turtle_breakout_55`, `dynamic_ma_iterative_cross`, `reversal_1m_mild`, `reversal_1m_deep`, `reversal_1w`). Research challengers are now separate and list 5 formula ids (`gs_raw_buy`, `gs_pullback_confirm`, `ma_base_breakout`, `activity_breakout`, `volume_base_breakout`); they remain research-only and must not be counted as live production supply.
 | Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
@@ -60,14 +60,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `58d3693c feat: lower turtle breakout 55 volume gate to 0.4 and lift stage-opt supply | codex-review: skipped reason=config-owned probe after manual review | test pass: formula_engine 40 passed, audit PASS, stage-opt 75.25% ready coverage, docs graph PASS, complexity no new HIGH` |
+| HEAD | `d79171f4 feat: surface research challenger registry boundary in stage-opt audit | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: pytest 33 passed, audit PASS, docs graph PASS` |
 | 最近 24h commits | 114 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
-58d3693c feat: lower turtle breakout 55 volume gate to 0.4 and lift stage-opt supply | codex-review: skipped reason=config-owned probe after manual review | test pass: formula_engine 40 passed, audit PASS, stage-opt 75.25% ready coverage, docs graph PASS, complexity no new HIGH
+d79171f4 feat: surface research challenger registry boundary in stage-opt audit | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: pytest 33 passed, audit PASS, docs graph PASS
 525fab9a feat: widen reversal 1w rel_std to 0.07 and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 75.24% ready coverage, docs graph PASS, complexity no new HIGH
 a394af81 feat: widen reversal deep rel_std and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 74.56% ready coverage, docs graph PASS
 d041862e feat: lower turtle breakout 55 volume gate to 0.5 and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 74.16% ready coverage, docs graph PASS
