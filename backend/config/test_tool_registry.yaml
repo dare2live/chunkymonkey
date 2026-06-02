@@ -220,6 +220,22 @@ tools:
     replacement: keep the shared bins policy centralized in config and keep script callers thin
     last_verified: "2026-06-02"
 
+  - id: feature_drift_mitigation_config_tests
+    paths:
+      - backend/services/feature_drift_mitigation_config.py
+      - backend/config/feature_drift_mitigation_panel.yaml
+      - backend/scripts/build_feature_drift_mitigation_panel.py
+      - backend/tests/test_feature_drift_mitigation_config.py
+    owner_module: analytics
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_feature_drift_mitigation_config.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: feature drift mitigation panel shared defaults and fixture YAML
+    risk_reason: if transform / market-control defaults drift, the same drift mitigation panel could be built with inconsistent evidence rules
+    replacement: keep the mitigation defaults centralized in config and keep the build script thin
+    last_verified: "2026-06-02"
+
   - id: dim_active_universe_contract_tests
     paths:
       - backend/tests/test_universe.py

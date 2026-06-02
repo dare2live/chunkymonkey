@@ -898,6 +898,14 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-06-02 feature drift mitigation shared defaults externalization
+
+- `backend/config/feature_drift_mitigation_panel.yaml` / `backend/services/feature_drift_mitigation_config.py`: feature-drift mitigation panel 的共享默认值从脚本常量外置到 config-owned policy，包含 `recommendations`、`transform_types`、`regime_controls`、`market_control_features`、`winsor_low/high`、`bucket_count`、`min_root_cause_max_psi`，并采用 strict fail-closed loader。
+- `backend/scripts/build_feature_drift_mitigation_panel.py`: 默认推荐 / 变换 / 市场控制 / winsor / bucket / PSI 阈值改为读 shared config，避免每个 script / call site 复制同一套默认值；`utcnow()` 也切到 timezone-aware UTC，避免新 warning。
+- `backend/tests/test_feature_drift_mitigation_config.py` / `backend/tests/pipeline/test_feature_drift_mitigation_panel.py`: 新增 loader 回归与现有 pipeline smoke 复测，验证 config 可读、缺 key fail-closed、panel 构建仍可按显式覆盖参数运行。
+- `backend/config/test_tool_registry.yaml`: 已登记 feature drift mitigation config 测试工具，`audit_test_tool_health.py` 对四个 scope PASS；`pytest` 5 passed；`audit_stage_opt_candidate_supply.py` PASS；`scripts/chunkyctl docs --format markdown` PASS；`codegraph sync .` 已更新索引。
+- 这条线继续落实“通用配置 vs 专用配置 vs 结果证据”的边界：共享规则抽 config，脚本只消费，结果仍表化；后续继续按 `stage-opt upstream_candidate_supply` 与 `need_027 blocked-gap triage` 推进。
+
 ### 2026-06-02 DuckDB connect policy config 外置 + stage-opt audit attach retry
 
 - `backend/config/duckdb_connect_policy.yaml` / `backend/services/duckdb_connect_policy.py`: raw `duckdb.connect` 允许清单从 integration test 的硬编码 set 外置成 config-owned policy，避免 allowlist drift 只能靠改测试代码补洞；policy loader 采用 strict fail-closed，重复 / 空值 / 缺 key 直接报错。

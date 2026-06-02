@@ -1,0 +1,24 @@
+version: 1
+
+recommendations:
+  - exclude_or_transform_before_next_large_study
+  - winsorize_bucket_or_regime_split
+
+transform_types:
+  - xs_rank
+  - xs_winsor
+  - xs_bucket5
+
+regime_controls:
+  - regime_up
+  - regime_flat
+  - regime_down
+
+market_control_features:
+  - hs300_ret_20d
+  - hs300_ret_60d
+
+winsor_low: 0.01
+winsor_high: 0.99
+bucket_count: 5
+min_root_cause_max_psi: 0.25

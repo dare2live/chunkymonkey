@@ -9,26 +9,24 @@ import math
 import re
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.db import get_conn  # noqa: E402
+from services.feature_drift_mitigation_config import DEFAULT_FEATURE_DRIFT_MITIGATION_PANEL_CONFIG  # noqa: E402
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso  # noqa: E402
 from services.schema_versions import record_actual_version  # noqa: E402
 from scripts.train_multidim_model import load_model_selection_run  # noqa: E402
 
 
 LABEL_COLUMNS = ["forward_ret_5d", "forward_ret_10d", "forward_ret_20d", "forward_ret_60d", "forward_ret_90d"]
-DEFAULT_RECOMMENDATIONS = {
-    "exclude_or_transform_before_next_large_study",
-    "winsorize_bucket_or_regime_split",
-}
-DEFAULT_TRANSFORMS = ["xs_rank", "xs_winsor", "xs_bucket5"]
-DEFAULT_MARKET_CONTROLS = ["hs300_ret_20d", "hs300_ret_60d"]
-REGIME_CONTROLS = ["regime_up", "regime_flat", "regime_down"]
+DEFAULT_RECOMMENDATIONS = DEFAULT_FEATURE_DRIFT_MITIGATION_PANEL_CONFIG.recommendations
+DEFAULT_TRANSFORMS = list(DEFAULT_FEATURE_DRIFT_MITIGATION_PANEL_CONFIG.transform_types)
+DEFAULT_MARKET_CONTROLS = list(DEFAULT_FEATURE_DRIFT_MITIGATION_PANEL_CONFIG.market_control_features)
+REGIME_CONTROLS = list(DEFAULT_FEATURE_DRIFT_MITIGATION_PANEL_CONFIG.regime_controls)
 
 DDL = """
 CREATE TABLE IF NOT EXISTS fact_feature_panel_candidate (
@@ -317,20 +315,21 @@ def build_feature_drift_mitigation_panel(
     market_control_features: list[str] | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
-    winsor_low: float = 0.01,
-    winsor_high: float = 0.99,
-    bucket_count: int = 5,
-    min_root_cause_max_psi: float = 0.25,
+    winsor_low: float | None = None,
+    winsor_high: float | None = None,
+    bucket_count: int | None = None,
+    min_root_cause_max_psi: float | None = None,
     recommendations: set[str] | None = None,
 ) -> dict[str, Any]:
     ensure_tables(conn)
     started_at = utc_now_iso()
     t0 = time.perf_counter()
-    built_at = datetime.utcnow().isoformat(timespec="seconds")
-    run_id = run_id or f"feature_drift_mitigation_panel_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+    cfg = DEFAULT_FEATURE_DRIFT_MITIGATION_PANEL_CONFIG
+    built_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    run_id = run_id or f"feature_drift_mitigation_panel_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
     model_selection_run_id = model_selection_run_id or run_id
-    transform_types = list(dict.fromkeys(transform_types or DEFAULT_TRANSFORMS))
-    supported = set(DEFAULT_TRANSFORMS)
+    transform_types = list(dict.fromkeys(transform_types or list(cfg.transform_types)))
+    supported = set(cfg.transform_types)
     unsupported = sorted(set(transform_types) - supported)
     if unsupported:
         raise ValueError(f"unsupported transform_types: {unsupported}")
@@ -353,7 +352,7 @@ def build_feature_drift_mitigation_panel(
         root_cause_run_id=root_cause_run_id,
         explicit_features=explicit_features,
         recommendations=recommendations,
-        min_max_psi=min_root_cause_max_psi,
+        min_max_psi=min_root_cause_max_psi if min_root_cause_max_psi is not None else cfg.min_root_cause_max_psi,
     )
     mitigated = [feature for feature in original_features if feature in root_cause_features]
     if not mitigated:
@@ -371,7 +370,7 @@ def build_feature_drift_mitigation_panel(
             raise RuntimeError("include_regime_controls requires base table regime_flag")
         control_features.extend(REGIME_CONTROLS)
     if include_market_controls:
-        requested_market_controls = market_control_features or DEFAULT_MARKET_CONTROLS
+        requested_market_controls = market_control_features or list(cfg.market_control_features)
         missing_market_controls = [feature for feature in requested_market_controls if feature not in base_cols]
         if missing_market_controls:
             raise RuntimeError(f"base table missing market control features: {missing_market_controls}")
@@ -399,6 +398,9 @@ def build_feature_drift_mitigation_panel(
         params.append(end_date)
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
 
+    winsor_low = cfg.winsor_low if winsor_low is None else winsor_low
+    winsor_high = cfg.winsor_high if winsor_high is None else winsor_high
+    bucket_count = cfg.bucket_count if bucket_count is None else bucket_count
     quantile_selects = _build_quantile_selects(mitigated, winsor_low, winsor_high)
     window_selects = _build_window_selects(mitigated, transform_types, bucket_count)
     quantile_sql = ",\n               ".join(["CAST(date AS VARCHAR) AS date_key", *quantile_selects])
@@ -553,7 +555,7 @@ def build_feature_drift_mitigation_panel(
                     "winsor_high": winsor_high,
                     "bucket_count": bucket_count,
                     "min_root_cause_max_psi": min_root_cause_max_psi,
-                    "recommendations": sorted(recommendations or DEFAULT_RECOMMENDATIONS),
+                    "recommendations": sorted(recommendations or cfg.recommendations),
                 },
                 ensure_ascii=False,
                 sort_keys=True,
@@ -641,13 +643,17 @@ def main() -> int:
     )
     parser.add_argument("--start-date", default=None)
     parser.add_argument("--end-date", default=None)
-    parser.add_argument("--winsor-low", type=float, default=0.01)
-    parser.add_argument("--winsor-high", type=float, default=0.99)
-    parser.add_argument("--bucket-count", type=int, default=5)
-    parser.add_argument("--min-root-cause-max-psi", type=float, default=0.25)
+    parser.add_argument("--winsor-low", type=float, default=DEFAULT_FEATURE_DRIFT_MITIGATION_PANEL_CONFIG.winsor_low)
+    parser.add_argument("--winsor-high", type=float, default=DEFAULT_FEATURE_DRIFT_MITIGATION_PANEL_CONFIG.winsor_high)
+    parser.add_argument("--bucket-count", type=int, default=DEFAULT_FEATURE_DRIFT_MITIGATION_PANEL_CONFIG.bucket_count)
+    parser.add_argument(
+        "--min-root-cause-max-psi",
+        type=float,
+        default=DEFAULT_FEATURE_DRIFT_MITIGATION_PANEL_CONFIG.min_root_cause_max_psi,
+    )
     parser.add_argument(
         "--recommendations",
-        default=",".join(sorted(DEFAULT_RECOMMENDATIONS)),
+        default=",".join(DEFAULT_FEATURE_DRIFT_MITIGATION_PANEL_CONFIG.recommendations),
         help="Comma-separated root-cause recommendations to transform.",
     )
     args = parser.parse_args()
