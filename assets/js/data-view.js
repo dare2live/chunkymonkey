@@ -241,17 +241,29 @@
   }
 
   function buildFallbackPanelModel(health, sourceHealth, routes) {
-    const active = ((health && health.fallback_active) || (sourceHealth && sourceHealth.fallback_active) || []).filter(Boolean);
+    const activeSource = (health && health.fallback_active) || (sourceHealth && sourceHealth.fallback_active) || [];
+    const active = [];
+    for (const row of activeSource) {
+      if (row) active.push(row);
+    }
     const tiers = (health && health.source_tier_distribution) || (sourceHealth && sourceHealth.source_tier_distribution) || {};
     const tierEntries = Object.entries(tiers);
     const tierMax = tierEntries.reduce((max, [, count]) => Math.max(max, Number(count) || 0), 1);
-    const routeFallbacks = (routes || []).filter(r => r.target || (r.current && r.current.status !== 'connected')).slice(0, 8);
-    const transitionRows = (active.length ? active : routeFallbacks).slice(0, 8).map(x => {
+    const routeFallbacks = [];
+    for (const route of routes || []) {
+      if (route && (route.target || (route.current && route.current.status !== 'connected'))) {
+        routeFallbacks.push(route);
+        if (routeFallbacks.length >= 8) break;
+      }
+    }
+    const transitionSource = active.length ? active : routeFallbacks;
+    const transitionRows = [];
+    for (const x of transitionSource.slice(0, 8)) {
       const dataName = x.data_name || x.table_name || x.asset || x.raw_table || 'unknown';
       const source = (x.current && x.current.source) || x.source || x.upstream_source || 'unknown';
       const target = (x.target && x.target.source) || x.fallback_source || x.target_source || '';
-      return { dataName, source, target };
-    });
+      transitionRows.push({ dataName, source, target });
+    }
     return {
       activeCount: active.length || routeFallbacks.length || 0,
       tierEntries,
@@ -264,7 +276,13 @@
     const data = schemaVersions || {};
     const summary = data.summary || {};
     const versions = Array.isArray(data.versions) ? data.versions : [];
-    const driftRows = versions.filter(v => v && v.drift).slice(0, 12);
+    const driftRows = [];
+    for (const version of versions) {
+      if (version && version.drift) {
+        driftRows.push(version);
+        if (driftRows.length >= 12) break;
+      }
+    }
     return {
       summary,
       driftRows,
@@ -274,20 +292,24 @@
 
   function buildCapabilityTableModel(capabilities, capFilter) {
     const filterText = String(capFilter || '').trim().toLowerCase();
-    const list = (capabilities || [])
-      .filter(c => {
-        if (!filterText) return true;
-        return (c.capability || '').toLowerCase().includes(filterText)
+    const list = [];
+    for (const c of capabilities || []) {
+      if (!c) continue;
+      if (filterText) {
+        const fallbackChain = c.fallback_chain || [];
+        const hit = (c.capability || '').toLowerCase().includes(filterText)
           || (c.description || '').toLowerCase().includes(filterText)
-          || (c.fallback_chain || []).some(s => String(s || '').includes(filterText));
-      })
-      .map(c => ({
+          || fallbackChain.some(s => String(s || '').includes(filterText));
+        if (!hit) continue;
+      }
+      list.push({
         capability: c.capability,
         freshness: c.freshness,
         primarySource: c.primary_source,
         fallbackChainText: (c.fallback_chain || []).join(' → '),
         description: c.description,
-      }));
+      });
+    }
     return { list };
   }
 

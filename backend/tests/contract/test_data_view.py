@@ -233,6 +233,7 @@ def test_data_view_build_cockpit_models_are_stable():
         const fallback = view.buildFallbackPanelModel(
           {
             fallback_active: [
+              null,
               {
                 data_name: 'fund_flow',
                 current: { source: 'akshare' },
@@ -243,6 +244,7 @@ def test_data_view_build_cockpit_models_are_stable():
           },
           {},
           [
+            null,
             { current: { source: 'tdxhub', status: 'connected' }, target: null },
             { current: { source: 'akshare', status: 'pending' }, target: { source: 'aif10' } },
           ]
@@ -258,6 +260,7 @@ def test_data_view_build_cockpit_models_are_stable():
         const drift = view.buildDriftQueueModel({
           summary: { drift_count: 1 },
           versions: [
+            null,
             { table_name: 't1', drift: true },
             { table_name: 't2', drift: false },
           ],
@@ -267,6 +270,7 @@ def test_data_view_build_cockpit_models_are_stable():
         }
 
         const caps = view.buildCapabilityTableModel([
+          null,
           {
             capability: 'individual_fund_flow',
             freshness: 'daily',
