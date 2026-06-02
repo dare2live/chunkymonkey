@@ -1641,20 +1641,20 @@
   }
 
   function renderTemporalSynergy(data) {
-    data = data || {};
-    var quality = data.quality || {};
-    var labels = data.label_summary || [];
-    var relevance = data.top_relevance || [];
-    var synergies = data.top_synergies || [];
-    var selected = data.selected_interactions || [];
-    var optuna = data.optuna_studies || [];
-    var policies = data.policy_candidates || [];
-    var gates = data.policy_gates || [];
-    var mtmGates = data.policy_mtm_gates || [];
-    var strategySweeps = data.policy_mtm_strategy_sweeps || [];
-    var clusters = data.redundancy_clusters || [];
-    var conditional = data.conditional_synergies || [];
-    if (!quality.run_id && !labels.length && !relevance.length && !synergies.length && !selected.length && !optuna.length && !policies.length && !gates.length && !mtmGates.length && !strategySweeps.length && !clusters.length && !conditional.length) return renderEmpty('暂无时序协同研究');
+    var model = buildTemporalSynergyModel(data);
+    var quality = model.quality;
+    var labels = model.labels;
+    var relevance = model.relevance;
+    var synergies = model.synergies;
+    var selected = model.selected;
+    var optuna = model.optuna;
+    var policies = model.policies;
+    var gates = model.gates;
+    var mtmGates = model.mtmGates;
+    var strategySweeps = model.strategySweeps;
+    var clusters = model.clusters;
+    var conditional = model.conditional;
+    if (model.isEmpty) return renderEmpty('暂无时序协同研究');
     return '<div class="wb-kv">' +
       '<div><span>面板行数</span><strong>' + fmtNum(quality.panel_rows || 0) + '</strong></div>' +
       '<div><span>股票数</span><strong>' + fmtNum(quality.stock_count || 0) + '</strong></div>' +
@@ -1680,6 +1680,37 @@
       '<div>' + renderTemporalRelevanceTable(relevance) + '</div>' +
       '<div>' + renderTemporalSynergyTable(synergies) + '</div>' +
       '</div>';
+  }
+
+  function buildTemporalSynergyModel(data) {
+    data = data || {};
+    var quality = data.quality || {};
+    var labels = Array.isArray(data.label_summary) ? data.label_summary : [];
+    var relevance = Array.isArray(data.top_relevance) ? data.top_relevance : [];
+    var synergies = Array.isArray(data.top_synergies) ? data.top_synergies : [];
+    var selected = Array.isArray(data.selected_interactions) ? data.selected_interactions : [];
+    var optuna = Array.isArray(data.optuna_studies) ? data.optuna_studies : [];
+    var policies = Array.isArray(data.policy_candidates) ? data.policy_candidates : [];
+    var gates = Array.isArray(data.policy_gates) ? data.policy_gates : [];
+    var mtmGates = Array.isArray(data.policy_mtm_gates) ? data.policy_mtm_gates : [];
+    var strategySweeps = Array.isArray(data.policy_mtm_strategy_sweeps) ? data.policy_mtm_strategy_sweeps : [];
+    var clusters = Array.isArray(data.redundancy_clusters) ? data.redundancy_clusters : [];
+    var conditional = Array.isArray(data.conditional_synergies) ? data.conditional_synergies : [];
+    return {
+      quality: quality,
+      labels: labels,
+      relevance: relevance,
+      synergies: synergies,
+      selected: selected,
+      optuna: optuna,
+      policies: policies,
+      gates: gates,
+      mtmGates: mtmGates,
+      strategySweeps: strategySweeps,
+      clusters: clusters,
+      conditional: conditional,
+      isEmpty: !quality.run_id && !labels.length && !relevance.length && !synergies.length && !selected.length && !optuna.length && !policies.length && !gates.length && !mtmGates.length && !strategySweeps.length && !clusters.length && !conditional.length,
+    };
   }
 
   function renderTemporalClusterTable(rows) {
@@ -2434,6 +2465,7 @@
     buildChampionModel: buildChampionModel,
     buildDataSourcesModel: buildDataSourcesModel,
     buildFeaturesModel: buildFeaturesModel,
+    buildTemporalSynergyModel: buildTemporalSynergyModel,
     _renderOverview: renderOverview,
     _renderDataSources: renderDataSources,
     _renderPipelines: renderPipelines,

@@ -548,3 +548,51 @@ def test_workbench_features_model_is_pure_and_stable():
         check=False,
     )
     assert result.returncode == 0, result.stderr + result.stdout
+
+
+def test_workbench_temporal_synergy_model_is_pure_and_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.WorkbenchView;
+        if (!view || typeof view.buildTemporalSynergyModel !== 'function') {
+          throw new Error('WorkbenchView.buildTemporalSynergyModel missing');
+        }
+
+        const model = view.buildTemporalSynergyModel({
+          quality: { run_id: 'temp_1', panel_rows: 12, stock_count: 3, feature_count: 4, label_count: 2, min_signal_date: '2026-01-01', max_signal_date: '2026-06-03' },
+          label_summary: [{ label_name: 'ret_20d' }],
+          top_relevance: [{ feature_name: 'x' }],
+          top_synergies: [{ feature_name: 'y' }],
+          selected_interactions: [{ feature_name: 'z' }],
+          optuna_studies: [{ run_id: 'opt_1' }],
+          policy_candidates: [{ run_id: 'p_1' }],
+          policy_gates: [{ gate_run_id: 'g_1' }],
+          policy_mtm_gates: [{ gate_run_id: 'mg_1' }],
+          policy_mtm_strategy_sweeps: [{ sweep_id: 's_1' }],
+          redundancy_clusters: [{ cluster_id: 'c_1' }],
+          conditional_synergies: [{ condition_name: 'cond_1' }],
+        });
+
+        if (!model || model.quality.run_id !== 'temp_1') throw new Error('quality mismatch');
+        if (model.labels.length !== 1 || model.relevance.length !== 1 || model.synergies.length !== 1) throw new Error('list normalization mismatch');
+        if (model.optuna.length !== 1 || model.policies.length !== 1 || model.gates.length !== 1) throw new Error('secondary list normalization mismatch');
+        if (model.mtmGates.length !== 1 || model.strategySweeps.length !== 1 || model.clusters.length !== 1 || model.conditional.length !== 1) throw new Error('tertiary list normalization mismatch');
+        if (view.buildTemporalSynergyModel({}).isEmpty !== true) throw new Error('default normalization mismatch');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/workbench-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
