@@ -3,6 +3,10 @@
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
 
+## 2026-06-03 — dead app.js overload cleanup
+
+- `assets/js/app.js` 里的重复 `runLifeboat()` overload 已删除，保留单一实现，避免同名函数在前后两段重复定义造成的死壳和维护歧义；`backend/tests/contract/test_workbench_frontend_contract.py` 已补 app.js 不应再保留重复 overload 的回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/app.js --scope backend/tests/contract/test_workbench_frontend_contract.py` PASS，`node --check assets/js/app.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py` 2 passed，`analyze_complexity.py` 复扫后 `assets/js/app.js` 无明显热点，`codegraph sync .` 已同步。
+
 ## 2026-06-03 — stock report widget removal
 
 - `assets/js/widgets/stock-report.js` 与其专用契约测试已删除，`index.html` / `assets/js/app.js` 里的 stock-report 脚本加载与 `StockReportWidget` 入口也一并清理；`backend/tests/contract/test_workbench_frontend_contract.py` 已补“stock-report 不应回流到 app.js / index”的回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/app.js --scope backend/tests/contract/test_workbench_frontend_contract.py` PASS，`node --check assets/js/app.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`analyze_complexity.py` 复扫后 `assets/js/app.js` 无明显热点，`codegraph sync .` 已同步。

@@ -624,40 +624,6 @@
     }, 3000);
   }
 
-  // ============================================================
-  // Lifeboat
-  // ============================================================
-  async function runLifeboat() {
-    var btn = el('btnLifeboat');
-    if (!btn) return;
-    btn.disabled = true;
-    btn.textContent = '运行中...';
-    var r = await api('/api/inst/lifeboat/run', { method: 'POST' });
-    if (!r?.ok) {
-      showModal('救生艇', r?.message || '启动失败');
-      btn.disabled = false;
-      btn.textContent = '救生艇';
-      return;
-    }
-    // 轮询等待完成
-    var polls = 0;
-    var timer = setInterval(async function () {
-      polls++;
-      var s = await api('/api/inst/lifeboat/status');
-      if (s && !s.running) {
-        clearInterval(timer);
-        btn.disabled = false;
-        btn.textContent = '救生艇';
-        if (s.result?.ok) {
-          showModal('救生艇', '报告已生成！<br><br><a href="/api/inst/lifeboat/report" target="_blank" style="color:var(--cm-brand-400);font-weight:600">点击查看报告</a><br><br><span style="font-size:12px;color:var(--cm-ink-300)">也可双击 lifeboat/run.command 独立运行</span>');
-        } else {
-          showModal('救生艇', '运行失败：' + (s.result?.message || '未知错误'));
-        }
-      }
-      if (polls > 120) { clearInterval(timer); btn.disabled = false; btn.textContent = '救生艇'; }
-    }, 3000);
-  }
-
   var ModelMonitorWidget = window.ModelMonitorWidget || null;
 
   async function loadModelMonitor() {
