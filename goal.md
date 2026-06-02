@@ -68,7 +68,7 @@
 
 - 2026-06-02 `build_daily_position_recommendations.py` 已把 MACD `mart_macd_state_history` 纳入候选池，并把 cross-stage fallback 回接到现有的 `mart_per_stock_strategy_optimal`；live 2026-06-01 运行现在不会再因错表崩溃，当前快照虽然返回 0 candidates，但这是 live DB 无匹配行，不是 loader 失败；该修复已在 commit `1402bc0b` 落地，随后这轮 stage-opt / MACD / docs slice 又以 `ed5a3ee6` 收口，当前 worktree 已 clean。
 
-2026-06-02 controller boundary note: `audit_stage_opt_candidate_supply.py` 和 `doctor --fast` 现在会把 live formula registry 显式带出来；live registry 只有 7 个 formula ids (`macd_golden_cross`, `turtle_breakout_20`, `turtle_breakout_55`, `dynamic_ma_iterative_cross`, `reversal_1m_mild`, `reversal_1m_deep`, `reversal_1w`)，`bestchoice` 的 `gs_*` / `volume_base_breakout` / `activity_breakout` / `ma_base_breakout` families 仍是 research-only challengers，不计入 live stage-opt supply。
+2026-06-02 controller boundary note: `audit_stage_opt_candidate_supply.py` 和 `doctor --fast` 现在会把 live formula registry 显式带出来；live registry 只有 7 个 formula ids (`macd_golden_cross`, `turtle_breakout_20`, `turtle_breakout_55`, `dynamic_ma_iterative_cross`, `reversal_1m_mild`, `reversal_1m_deep`, `reversal_1w`)，research challengers 另外单列 5 个公式 id (`gs_raw_buy`, `gs_pullback_confirm`, `ma_base_breakout`, `activity_breakout`, `volume_base_breakout`)；这两类加总后只是 controller 可见边界，不代表 research challengers 已经进入 live stage-opt supply。
 
 ### 权威文档顺序
 

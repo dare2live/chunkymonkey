@@ -52,6 +52,21 @@ def _live_formula_registry_summary() -> dict[str, Any]:
     }
 
 
+def _research_formula_registry_summary() -> dict[str, Any]:
+    # Challenger surface stays visible, but it is not counted as live stage-opt supply.
+    formula_ids = [
+        "gs_raw_buy",
+        "gs_pullback_confirm",
+        "ma_base_breakout",
+        "activity_breakout",
+        "volume_base_breakout",
+    ]
+    return {
+        "formula_count": len(formula_ids),
+        "formula_ids": formula_ids,
+    }
+
+
 def _load_signal_rows(
     conn: Any,
     *,
@@ -608,6 +623,18 @@ def _render_markdown(result: dict[str, Any]) -> str:
         if formula_ids:
             lines.append(f"- formula_ids: {', '.join(str(item) for item in formula_ids)}")
         lines.append("")
+    if result.get("research_formula_registry"):
+        registry = result["research_formula_registry"]
+        lines.extend(
+            [
+                "## Research Formula Registry",
+                f"- formula_count: {registry.get('formula_count', 0)}",
+            ]
+        )
+        formula_ids = registry.get("formula_ids") or []
+        if formula_ids:
+            lines.append(f"- formula_ids: {', '.join(str(item) for item in formula_ids)}")
+        lines.append("")
     lines.extend([
         "## By Formula Id",
     ])
@@ -753,6 +780,7 @@ def _compose_audit_result(
         "codes_with_bars": len(codes_with_bars),
         "codes_without_bars": codes_total - len(codes_with_bars),
         "live_formula_registry": _live_formula_registry_summary(),
+        "research_formula_registry": _research_formula_registry_summary(),
     }
 
 

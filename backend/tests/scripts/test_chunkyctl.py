@@ -698,6 +698,16 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
                     "reversal_1w",
                 ],
             },
+            "research_formula_registry": {
+                "formula_count": 5,
+                "formula_ids": [
+                    "gs_raw_buy",
+                    "gs_pullback_confirm",
+                    "ma_base_breakout",
+                    "activity_breakout",
+                    "volume_base_breakout",
+                ],
+            },
             "next_action_recommendation": {
                 "priority": "P1",
                 "focus": "upstream_candidate_supply",
@@ -738,6 +748,8 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
     assert summary["summary"]["raw_state_history_rows"] == 3
     assert summary["live_formula_registry"]["formula_count"] == 7
     assert "macd_golden_cross" in summary["live_formula_registry"]["formula_ids"]
+    assert summary["research_formula_registry"]["formula_count"] == 5
+    assert "gs_raw_buy" in summary["research_formula_registry"]["formula_ids"]
 
 
 def test_next_actions_include_stage_opt_live_registry_boundary() -> None:
@@ -772,6 +784,16 @@ def test_next_actions_include_stage_opt_live_registry_boundary() -> None:
                     "reversal_1w",
                 ],
             },
+            "research_formula_registry": {
+                "formula_count": 5,
+                "formula_ids": [
+                    "gs_raw_buy",
+                    "gs_pullback_confirm",
+                    "ma_base_breakout",
+                    "activity_breakout",
+                    "volume_base_breakout",
+                ],
+            },
         },
     )
 
@@ -782,7 +804,8 @@ def test_next_actions_include_stage_opt_live_registry_boundary() -> None:
             "expand upstream formula coverage or signal density before tuning profile knobs "
             "(weakest formulas: reversal_1m_deep; weakest stages: 1.5; live registry formulas: 7; "
             "live registry ids: macd_golden_cross, turtle_breakout_20, turtle_breakout_55, dynamic_ma_iterative_cross, "
-            "reversal_1m_mild, reversal_1m_deep, reversal_1w)"
+            "reversal_1m_mild, reversal_1m_deep, reversal_1w; research challengers: 5; research challenger ids: "
+            "gs_raw_buy, gs_pullback_confirm, ma_base_breakout, activity_breakout, volume_base_breakout)"
         ),
     }
 

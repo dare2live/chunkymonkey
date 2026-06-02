@@ -153,6 +153,11 @@ The model pipeline snapshot below is historical evidence for the completed
   `gs_*` / `volume_base_breakout` / `activity_breakout` / `ma_base_breakout`
   families remain research-only challengers and are not counted as live
   stage-opt supply.
+
+- controller boundary note v2: research challengers are now explicit too and
+  list 5 ids (`gs_raw_buy`, `gs_pullback_confirm`, `ma_base_breakout`,
+  `activity_breakout`, `volume_base_breakout`); they stay research-only and are
+  useful only as challenger evidence, not as live production supply.
 - stage-opt MACD state mart: 2026-06-02 added
   `mart_macd_state_history` / `build_macd_state_history.py` as a separate
   MACD active-state diagnostic mart. It uses a 180-day warm-up window and
