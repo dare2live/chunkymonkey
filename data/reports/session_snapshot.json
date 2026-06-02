@@ -1,9 +1,9 @@
 {
-  "snapshot_at": "2026-06-03 06:43:51 CST",
+  "snapshot_at": "2026-06-03 06:47:49 CST",
   "git": {
     "branch": "main",
-    "head_hash": "c94b1ea3",
-    "head_msg": "c94b1ea3 refactor: single-pass link overview manual counts | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal",
+    "head_hash": "336b483a",
+    "head_msg": "336b483a refactor: single-pass fallback drift capability models | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal",
     "commits_24h": 259,
     "uncommitted_files": 0
   },
