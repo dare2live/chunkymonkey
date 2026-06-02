@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 05:38:47 CST
+**Snapshot 时间**: 2026-06-03 05:43:11 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `7c0017a9 feat: extend shared widget formatter to signal widgets | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 253 |
+| HEAD | `a0d4e8ff feat: extend shared widget formatter to screening-panel and multidim-badge | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 252 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+a0d4e8ff feat: extend shared widget formatter to screening-panel and multidim-badge | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
+de85343f docs: refresh session handoff and workflow checkpoint after signal widgets formatter extension | # commit-msg: minimal
 7c0017a9 feat: extend shared widget formatter to signal widgets | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 45f50a6d docs: refresh session handoff and workflow checkpoint after topk-strip formatter extension | # commit-msg: minimal
 19635389 feat: extend shared widget formatter to topk-strip | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ bash scripts/install_resilience.sh --status   # check 装好没
 c186e156 docs: refresh session handoff and workflow checkpoint after widget formatter extension | # commit-msg: minimal
 ff72191e feat: extend shared widget formatter to ETF analysis and workbench-health | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 a1529873 docs: refresh session handoff and workflow checkpoint after ETF list/workbench formatter extension | # commit-msg: minimal
-a06b3514 feat: extend shared widget formatter to ETF list and workbench | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
-67a34d67 docs: refresh session handoff and workflow checkpoint after ETF formatter extension snapshot refresh | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
