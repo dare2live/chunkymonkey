@@ -205,11 +205,14 @@ def _date_bounds(conn: Any, table_name: str, date_col: str | None) -> tuple[str 
     return row["min_date"], row["max_date"]
 
 
-def _count_non_null(conn: Any, table_name: str, feature: str) -> int:
-    row = conn.execute(
-        f"SELECT COUNT({_quote_ident(feature)}) AS n FROM {_quote_ident(table_name)}"
-    ).fetchone()
-    return int(row["n"] or 0) if row else 0
+def _count_non_null_columns(conn: Any, table_name: str, features: list[str]) -> dict[str, int]:
+    if not features:
+        return {}
+    select_sql = ", ".join(f"COUNT({_quote_ident(feature)}) AS {_quote_ident(feature)}" for feature in features)
+    row = conn.execute(f"SELECT {select_sql} FROM {_quote_ident(table_name)}").fetchone()
+    if not row:
+        return {feature: 0 for feature in features}
+    return {feature: int(row[feature] or 0) for feature in features}
 
 
 def _join_plan(
@@ -332,13 +335,14 @@ def build_feature_catalog_current(
         total_rows = int(conn.execute(f"SELECT COUNT(*) AS n FROM {_quote_ident(table_name)}").fetchone()["n"] or 0)
         min_signal_date, max_signal_date = _date_bounds(conn, table_name, signal_date_column)
         table_has_signal_date = signal_date_column is not None
+        non_null_counts = _count_non_null_columns(conn, table_name, [str(col["column_name"]) for col in columns])
 
         for col in columns:
             feature = str(col["column_name"])
             spec, registry_status, base_feature = _feature_spec(registry, feature)
             risk = _pit_risk_level(feature, spec, registry)
             family = _feature_family(feature, spec, registry_status)
-            non_null_rows = _count_non_null(conn, table_name, feature)
+            non_null_rows = non_null_counts.get(feature, 0)
             coverage_pct = _finite_pct(non_null_rows, total_rows)
             reasons = _exclusion_reasons(
                 feature=feature,
