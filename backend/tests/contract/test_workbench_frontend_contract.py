@@ -149,6 +149,11 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "function loadInstScorecard(" in app_js
     assert "topCountEntries(" not in app_js
     assert "local.topIndustries = topCountEntries" not in app_js
+    assert "function turtleSystemLabel(" not in app_js
+    assert "function turtleStateMeta(" not in app_js
+    assert "function turtleStateTag(" not in app_js
+    assert "function instLink(" not in app_js
+    assert "function evTag(" not in app_js
     assert "function stockScoreValue(" not in app_js
     assert "function stockScoreBandMeta(" not in app_js
     assert "function stockScoreSubtext(" not in app_js

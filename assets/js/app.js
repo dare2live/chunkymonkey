@@ -303,31 +303,6 @@
     return WorkbenchHealthWidget.refreshNetwork(workbenchHealthDeps());
   }
 
-  function turtleSystemLabel(system) {
-    if (system === 'S1') return 'S1 系统';
-    if (system === 'S2') return 'S2 系统';
-    if (system === '观察') return '观察';
-    return system || '-';
-  }
-
-  function turtleStateMeta(state) {
-    return {
-      'S2突破触发': { label: 'S2突破触发', shortLabel: 'S2突破', tone: 'good', group: 'breakout' },
-      'S1突破触发': { label: 'S1突破触发', shortLabel: 'S1突破', tone: 'good', group: 'breakout' },
-      'S2待突破': { label: 'S2待突破', shortLabel: 'S2待突', tone: 'accent', group: 'watch' },
-      'S1待突破': { label: 'S1待突破', shortLabel: 'S1待突', tone: 'accent', group: 'watch' },
-      '20日退出触发': { label: '20日退出触发', shortLabel: '20日退出', tone: 'warn', group: 'exit' },
-      '10日退出触发': { label: '10日退出触发', shortLabel: '10日退出', tone: 'warn', group: 'exit' },
-      '等待形态': { label: '等待形态', shortLabel: '等待形态', tone: 'neutral', group: 'waiting' }
-    }[state || ''] || (state ? { label: String(state), shortLabel: String(state), tone: 'neutral', group: 'covered' } : null);
-  }
-
-  function turtleStateTag(state, useShortLabel) {
-    var meta = turtleStateMeta(state);
-    if (!meta) return '';
-    return '<span class="stock-attention-pill stock-attention-pill--' + meta.tone + '">' + esc(useShortLabel ? (meta.shortLabel || meta.label) : meta.label) + '</span>';
-  }
-
   // renderDashboardOverview 已随 Step 5d 工作台重塑移除。
   // 候选池/评分框架从「工作台」撤下，主入口统一为信号 v2。
 
@@ -340,9 +315,6 @@
     }[pool || ''] || { bg: 'var(--cm-ink-50)', fg: 'var(--cm-ink-500)' };
     return '<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:' + meta.bg + ';color:' + meta.fg + ';font-size:11px;font-weight:700">' + esc(pool || '未分池') + '</span>';
   }
-  function instLink(id, name, type) { return '<span class="type-tag clickable-name" data-type="' + esc(type || 'other') + '" onclick="App.toggleInstDetail(\'' + esc(id) + '\',this)" style="cursor:pointer;font-size:11px">' + esc(name || '') + '</span>' }
-  function evTag(type, label) { var cls = { new_entry: 'new', increase: 'up', decrease: 'down', exit: 'exit', unchanged: 'unchanged' }[type] || 'unchanged'; return '<span class="event-tag event-' + (cls) + '">' + esc(label || { new_entry: '新进', increase: '增持', decrease: '减持', exit: '退出', unchanged: '不变' }[type] || type) + '</span>' }
-
   // ============================================================
   // Scorecard
   // ============================================================
