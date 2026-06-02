@@ -15,7 +15,7 @@
   };
 
   const state = {
-    byStock: [],           // aggregateByStock 结果
+    byStock: [],           // SignalAdapter.byStock 结果
     rawEvents: [],         // 所有 eventToView 对象（用于抽屉过滤）
     watchlistSet: new Set(),
     filterAction: 'all',   // all | follow | watch | skip

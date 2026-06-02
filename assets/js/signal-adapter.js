@@ -178,11 +178,6 @@
     });
   }
 
-  // ─── 按股票聚合多个事件（股票视图主列表用）───────────
-  function aggregateByStock(rawSignals) {
-    return aggregateByStockViews((rawSignals || []).map(eventToView).filter(Boolean));
-  }
-
   // ─── 公开 API ──────────────────────────────────────────
 
   async function fetchSignals(freshnessDays = 90) {
@@ -289,6 +284,5 @@
     emit,
     // 工具（暴露让调用方也能做转换，复用不重写）
     eventToView,
-    aggregateByStock,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
