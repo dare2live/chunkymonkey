@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 23:29:59 CST
+**Snapshot 时间**: 2026-06-02 23:33:41 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `3d0bbbed feat: make moth canonical in process docs and trim data-view hotspots | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 2 passed, complexity no obvious hotspots, docs graph PASS, codegraph sync PASS` |
-| 最近 24h commits | 158 |
+| HEAD | `8cbba59a docs: make moth canonical in goal and workflow checkpoint | # commit-msg: minimal` |
+| 最近 24h commits | 160 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+8cbba59a docs: make moth canonical in goal and workflow checkpoint | # commit-msg: minimal
+6b0845e0 docs: refresh session handoff snapshot after moth process-doc update | # commit-msg: minimal
 3d0bbbed feat: make moth canonical in process docs and trim data-view hotspots | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 2 passed, complexity no obvious hotspots, docs graph PASS, codegraph sync PASS
 cd8f492a docs: refresh session handoff snapshot after research cleanup | # commit-msg: minimal
 0ee47767 feat: remove dead institution research controls and keep scorecard only | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS | cleanup verified 无残留 no stale
@@ -76,8 +78,6 @@ e4e21c7b feat: extract institution scorecard widget and wire research page | Cod
 ee546860 docs: refresh session handoff snapshot after etf analysis widget extraction | # commit-msg: minimal
 779190ce feat: extract etf analysis widget and trim app.js hotspot | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: audit PASS, node --check PASS, pytest 3 passed, complexity no new HIGH, docs graph PASS, codegraph sync PASS
 26bf642d docs: refresh session handoff snapshot after preflight migration
-65df4dd5 feat: migrate preflight to moth-backed tooling gate
-bc3ec666 docs: refresh session handoff snapshot after moth global install
 ```
 
 ## NEXT ACTION (auto-computed)
