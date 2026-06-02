@@ -25,9 +25,9 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 08:38:34 CST
+**Snapshot 时间**: 2026-06-02 08:44:50 CST
 
-- latest code/docs snapshot (2026-06-02) is commit `c93b991a`; `reversal_1m_mild` only loosened `rel_std_max` from `0.07` to `0.08`, lifting the history rebuild to `reversal_1m_mild: 357,425 / 14,300 / 73.75%`, and the full stage-opt audit to `raw_signal_rows=6,305,481 / filtered_signal_rows=3,120,795 / unique_keys=158,359 / ready_keys=118,608 / ready coverage=74.90% / below_min_signals=39,751`, with `min_signals=4/3/2` at `79.90% / 85.36% / 91.68%` and weakest formulas now `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1w`; controller recommendation remains `P1 / upstream_candidate_supply`, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`.
+- latest code/docs snapshot (2026-06-02) is commit `525fab9a`; `reversal_1w` only loosened `rel_std_max` from `0.06` to `0.07`, lifting the history rebuild to `reversal_1w: 280,065 / 13,639 / 75.54%`, and the full stage-opt audit to `raw_signal_rows=6,421,901 / filtered_signal_rows=3,177,918 / unique_keys=159,805 / ready_keys=120,242 / ready coverage=75.24% / below_min_signals=39,563`, with `min_signals=4/3/2` at `80.19% / 85.55% / 91.74%` and weakest formulas now `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_deep`; controller recommendation remains `P1 / upstream_candidate_supply`, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`.
 | Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
 | VM 状态 | ? |
 | VM 上次启动 |  |
@@ -58,14 +58,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `c93b991a feat: widen reversal deep rel_std to 0.10 and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 74.72% ready coverage, docs graph PASS, complexity no new HIGH` |
+| HEAD | `525fab9a feat: widen reversal 1w rel_std to 0.07 and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 75.24% ready coverage, docs graph PASS, complexity no new HIGH` |
 | 最近 24h commits | 114 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
-c93b991a feat: widen reversal deep rel_std to 0.10 and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 74.72% ready coverage, docs graph PASS, complexity no new HIGH
+525fab9a feat: widen reversal 1w rel_std to 0.07 and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 75.24% ready coverage, docs graph PASS, complexity no new HIGH
 a394af81 feat: widen reversal deep rel_std and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 74.56% ready coverage, docs graph PASS
 d041862e feat: lower turtle breakout 55 volume gate to 0.5 and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 74.16% ready coverage, docs graph PASS
 2738fe56 feat: lower turtle breakout 55 volume gate to 0.6 and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 74.15% ready coverage, docs graph PASS

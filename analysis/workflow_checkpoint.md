@@ -8,7 +8,7 @@ The model pipeline snapshot below is historical evidence for the completed
 
 ## Current Data Freshness Checkpoint
 
-- updated_at: `2026-06-02 06:58:23 CST`
+- updated_at: `2026-06-02 08:44:50 CST`
 - current_state: `architecture/data freshness repair / stage-opt supply tuning`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
@@ -193,6 +193,7 @@ The model pipeline snapshot below is historical evidence for the completed
 - 2026-06-02 08:22-08:23 `reversal_1m_deep` only loosened `rel_std_max` from `0.08` to `0.09`, lifting that formula to `284,627 / 18,503 / 71.97%`; the full stage-opt audit is now `raw_signal_rows=6,134,459 / filtered_signal_rows=3,040,285 / unique_keys=156,868 / ready_keys=116,967 / ready coverage=74.56% / below_min_signals=39,901`, `min_signals=4/3/2` at `79.68% / 85.23% / 91.61%`, and the weakest formulas still sit on `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_deep`, but the controller still points to `P1 / upstream_candidate_supply`, so this is the final low-risk config probe rather than a direction change.
 - 2026-06-02 08:28-08:30 `reversal_1m_deep` only loosened `rel_std_max` from `0.09` to `0.10`, lifting that formula to `315,555 / 18,962 / 73.29%`; the full stage-opt audit is now `raw_signal_rows=6,200,134 / filtered_signal_rows=3,071,213 / unique_keys=157,327 / ready_keys=117,547 / ready coverage=74.72% / below_min_signals=39,780`, `min_signals=4/3/2` at `79.81% / 85.32% / 91.64%`, and the weakest formulas still sit on `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_mild`, but the controller still points to `P1 / upstream_candidate_supply`, so this is the final low-risk config probe rather than a direction change.
 - 2026-06-02 08:35-08:37 `reversal_1m_mild` only loosened `rel_std_max` from `0.07` to `0.08`, lifting that formula to `357,425 / 14,300 / 73.75%`; the full stage-opt audit is now `raw_signal_rows=6,305,481 / filtered_signal_rows=3,120,795 / unique_keys=158,359 / ready_keys=118,608 / ready coverage=74.90% / below_min_signals=39,751`, `min_signals=4/3/2` at `79.90% / 85.36% / 91.68%`, and the weakest formulas now shift to `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1w`, but the controller still points to `P1 / upstream_candidate_supply`, so this is the final low-risk config probe rather than a direction change.
+- 2026-06-02 08:44-08:45 `reversal_1w` only loosened `rel_std_max` from `0.06` to `0.07`, lifting that formula to `280,065 signal_rows / 13,639 keys / 75.54% coverage`; the full stage-opt audit is now `raw_signal_rows=6,421,901 / filtered_signal_rows=3,177,918 / unique_keys=159,805 / ready_keys=120,242 / ready coverage=75.24% / below_min_signals=39,563`, `min_signals=4/3/2` at `80.19% / 85.55% / 91.74%`, and the weakest formulas now shift to `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_deep`, but the controller still points to `P1 / upstream_candidate_supply`, so this is the final low-risk config probe rather than a direction change.
 - later in the same slice we tested whether the 2023-01-01→2023-09-11
   technical-stage hole was the missing lever: `build_stage_formula_fitness.py`
   needed a longer `compute_start` than the write window, so a second run with
