@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 02:45:00 CST
+**Snapshot 时间**: 2026-06-03 02:48:16 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `86a243dd refactor: extract features model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 8 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 192 |
+| HEAD | `f9a39da3 refactor: extract temporal synergy model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 9 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 193 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+f9a39da3 refactor: extract temporal synergy model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 9 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
+f9a25895 docs: refresh session handoff snapshot after features model extraction | # commit-msg: minimal
 86a243dd refactor: extract features model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 8 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 0271160d docs: refresh session handoff snapshot after data sources model extraction | # commit-msg: minimal
 2a0ac5fb refactor: extract data sources model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 7 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ ba7e5e5f docs: refresh session handoff snapshot after champion model extraction 
 29f26074 docs: refresh session handoff snapshot after delivery model extraction | # commit-msg: minimal
 11b7aec7 refactor: extract delivery model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 5 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 5be03e8d docs: refresh session handoff snapshot after latest gate decision cleanup | # commit-msg: minimal
-24d8d61e refactor: remove dead latest gate decision helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 4 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
-53121899 docs: refresh session handoff snapshot after read model meta extraction | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
