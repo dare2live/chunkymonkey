@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 04:16:59 CST
+**Snapshot 时间**: 2026-06-03 04:18:22 CST
 
 ## 主线状态
 
@@ -61,13 +61,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `a03c2219 docs: record data-view source cards detail cache and refresh handoff | # commit-msg: minimal` |
-| 最近 24h commits | 228 |
+| HEAD | `0d2cd16e docs: refresh session handoff snapshot after data-view source cards detail cache | # commit-msg: minimal` |
+| 最近 24h commits | 229 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+0d2cd16e docs: refresh session handoff snapshot after data-view source cards detail cache | # commit-msg: minimal
 a03c2219 docs: record data-view source cards detail cache and refresh handoff | # commit-msg: minimal
 f36ca0d1 refactor: extract data-view link overview model and source card detail cache | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 4 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 1065c5ea docs: refresh session handoff snapshot after data-view link overview update | # commit-msg: minimal
@@ -77,7 +78,6 @@ f36ca0d1 refactor: extract data-view link overview model and source card detail 
 67fa7e8f docs: record stock timeline ordering delegation | # commit-msg: minimal
 ed97708a refactor: move stock timeline ordering into signal adapter | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 1 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 4becedce docs: refresh session handoff snapshot after data-view cockpit panel update | # commit-msg: minimal
-c8515d59 docs: record data-view cockpit panel model extraction | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
