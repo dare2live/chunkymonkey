@@ -946,6 +946,12 @@ SELECT * FROM mart_data_source_watermark;
 - `backend/tests/contract/test_stock_report_widget.py` / `backend/tests/contract/test_workbench_frontend_contract.py`: 新增 report helper 契约 smoke，并修正 workbench frontend contract 的 helper 归属断言，验证 report widget 注册、脚本注入顺序和 stock list controls 的 helper 归属都一致。
 - 验证: `node --check assets/js/widgets/stock-report.js assets/js/app.js` PASS；`pytest -q backend/tests/contract/test_stock_report_widget.py backend/tests/contract/test_stock_list_controls_widget.py backend/tests/contract/test_workbench_frontend_contract.py` 4 passed；`audit_test_tool_health.py` scoped PASS；`codegraph sync .` 已更新索引；`complexity-optimizer` 复扫后 `assets/js/app.js` 仍有遗留热点，但不再包含这段 report 生成逻辑。
 
+### 2026-06-02 stock cell helper dead-code cleanup
+
+- `assets/js/app.js`: 删除了前面 stock-list / stock-report 抽离后遗留在 app.js 里的零引用 cell helpers（`stockCompositeSummary` / `stockCompositeCell` / `stockResearchCell` / `stockDateSummaryCell` / `stockHolderCoverageCell` / `stockDimensionCell` / `stockAttentionVerdictCell` / `stockSignalCell` / `stockExecutionCell` / `sourceInstitutionCell` / `stockReportCell`），只保留仍然会被 scorecard / framework 逻辑调用的 `priorityPoolTag`。
+- `backend/tests/contract/test_workbench_frontend_contract.py`: 追加 contract 断言，确认上述 dead-code helper 不再回到 `app.js`；`stock-list-rows` widget 仍使用自己的本地 fallback，不依赖这些已删除的 app.js 定义。
+- 验证: `node --check assets/js/app.js assets/js/widgets/stock-list-rows.js assets/js/widgets/stock-report.js` PASS；`pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_stock_report_widget.py backend/tests/contract/test_stock_list_rows_widget.py backend/tests/contract/test_stock_list_controls_widget.py` 5 passed；`audit_test_tool_health.py` scoped PASS；`complexity-optimizer` 复扫后 `assets/js/app.js` 的 stock cell block 已收口，遗留热点继续集中在更高层的历史函数。
+
 ### 2026-06-02 feature drift mitigation shared defaults externalization
 
 - `backend/config/feature_drift_mitigation_panel.yaml` / `backend/services/feature_drift_mitigation_config.py`: feature-drift mitigation panel 的共享默认值从脚本常量外置到 config-owned policy，包含 `recommendations`、`transform_types`、`regime_controls`、`market_control_features`、`winsor_low/high`、`bucket_count`、`min_root_cause_max_psi`，并采用 strict fail-closed loader。
