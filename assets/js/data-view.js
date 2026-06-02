@@ -130,32 +130,32 @@
   function buildRoutesTableModel(routes, routeFilter, assetItems) {
     const assetIndex = buildAssetHealthIndex(assetItems || []);
     const filterText = String(routeFilter || '').trim().toLowerCase();
-    const list = (routes || [])
-      .filter(r => {
-        if (!filterText) return true;
-        const cur = r.current || {};
-        return [r.data_name, cur.source, cur.protocol, r.raw_table, r.step_id, r.notes].some(
+    const list = [];
+    for (const route of routes || []) {
+      if (!route) continue;
+      const cur = route.current || {};
+      if (filterText) {
+        const matched = [route.data_name, cur.source, cur.protocol, route.raw_table, route.step_id, route.notes].some(
           v => (v || '').toLowerCase().includes(filterText)
         );
-      })
-      .map(r => {
-        const cur = r.current || {};
-        const tgt = r.target || {};
-        const asset = assetIndex.get(r.raw_table) || null;
-        const health = routeHealth(r, asset);
-        const fallback = fallbackStatus(r);
-        const freshness = health.freshness || (asset && asset.freshness_hours != null ? `${asset.freshness_hours.toFixed(1)}h` : '—');
-        return {
-          route: r,
-          cur,
-          tgt,
-          asset,
-          health,
-          fallback,
-          freshness,
-          repairLabel: r.step_id ? '运行 step' : '查看资产',
-        };
-    });
+        if (!matched) continue;
+      }
+      const tgt = route.target || {};
+      const asset = assetIndex.get(route.raw_table) || null;
+      const health = routeHealth(route, asset);
+      const fallback = fallbackStatus(route);
+      const freshness = health.freshness || (asset && asset.freshness_hours != null ? `${asset.freshness_hours.toFixed(1)}h` : '—');
+      list.push({
+        route,
+        cur,
+        tgt,
+        asset,
+        health,
+        fallback,
+        freshness,
+        repairLabel: route.step_id ? '运行 step' : '查看资产',
+      });
+    }
     return { list };
   }
 

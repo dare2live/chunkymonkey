@@ -3,6 +3,10 @@
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
 
+## 2026-06-03 — data-view routes table single-pass cleanup
+
+- `assets/js/data-view.js` 里的 `buildRoutesTableModel()` 已改成单次扫描，`null` 路由会被直接跳过，`backend/tests/contract/test_data_view.py` 已补 `null` 路由不影响 route model 的回归。验证：`node --check assets/js/data-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py backend/tests/contract/test_workbench_frontend_contract.py` 6 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
+
 ## 2026-06-03 — app.js turtle/helper dead-code cleanup
 
 - `assets/js/app.js` 里的 `turtleSystemLabel` / `turtleStateMeta` / `turtleStateTag` / `instLink` / `evTag` 死 helper 已删除，`backend/tests/contract/test_workbench_frontend_contract.py` 已补这组 dead helper 不应回流的回归。验证：`node --check assets/js/app.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_data_view.py` 6 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。

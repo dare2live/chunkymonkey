@@ -223,7 +223,7 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "const assetIndex = buildAssetHealthIndex(" in data_view_js
     assert "const model = buildRoutesTableModel(" in data_view_js
     assert "const model = buildSourceCardsModel(" in data_view_js
-    assert "assetIndex.get(r.raw_table) || null" in data_view_js
+    assert "assetIndex.get(route.raw_table) || null" in data_view_js
     assert "const list = _state.routes.filter(r => {" not in data_view_js
     assert "root.innerHTML = tdxPriority + _state.sources.map(src => {" not in data_view_js
     assert "details.filter(r => (r.issues || []).length > 0)" not in data_view_js

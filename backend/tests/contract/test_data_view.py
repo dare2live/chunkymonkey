@@ -78,6 +78,7 @@ def test_data_view_build_routes_table_model_is_stable():
 
         const model = view.buildRoutesTableModel(
           [
+            null,
             {
               data_name: 'data_a',
               raw_table: 'fact_a',
@@ -104,6 +105,7 @@ def test_data_view_build_routes_table_model_is_stable():
         if (model.list.length !== 1) throw new Error('filtered route count mismatch: ' + model.list.length);
         const row = model.list[0];
         if (row.route.data_name !== 'data_a') throw new Error('wrong filtered route');
+        if (row.cur.source !== 'tdxhub' || row.tgt.source !== 'miaoxiang') throw new Error('route endpoints mismatch');
         if (row.health.label !== 'YELLOW' || row.health.tone !== 'warn') throw new Error('health metadata mismatch');
         if (row.fallback.label !== '迁移/兜底可用' || row.fallback.tone !== 'warn') throw new Error('fallback metadata mismatch');
         if (row.freshness !== '12.3h') throw new Error('freshness mismatch: ' + row.freshness);
