@@ -9,7 +9,7 @@ The model pipeline snapshot below is historical evidence for the completed
 ## Current Data Freshness Checkpoint
 
 - updated_at: `2026-06-02 09:00:33 CST`
-- current_state: `architecture/data freshness repair / shared-config boundary cleanup / stage-opt supply tuning`
+- current_state: `architecture/data freshness repair / shared-config boundary cleanup / stage-opt structural blocker triage`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
 - data audit: `audit_data_completeness.py` now exits PASS with WARN (0 FAIL /
@@ -180,7 +180,10 @@ The model pipeline snapshot below is historical evidence for the completed
   `reversal_1m_mild`, `reversal_1m_deep`, `reversal_1w`); the `bestchoice`
   `gs_*` / `volume_base_breakout` / `activity_breakout` / `ma_base_breakout`
   families remain research-only challengers and are not counted as live
-  stage-opt supply.
+  stage-opt supply. The 2026-06-02 config-only probe series is exhausted; there
+  is currently no safe code slice left for stage-opt. Future work there should
+  be treated as structural redesign or upstream-source work, not another
+  knob-tuning pass.
 
 - controller boundary note v2: research challengers are now explicit too and
   list 5 ids (`gs_raw_buy`, `gs_pullback_confirm`, `ma_base_breakout`,
