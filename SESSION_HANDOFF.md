@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 06:47:49 CST
+**Snapshot 时间**: 2026-06-03 06:50:30 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `336b483a refactor: single-pass fallback drift capability models | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 259 |
+| HEAD | `9e07938a refactor: single-pass source cards model cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 261 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+9e07938a refactor: single-pass source cards model cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
+127b2967 docs: refresh session handoff snapshot after fallback drift capability cleanup | # commit-msg: minimal
 336b483a refactor: single-pass fallback drift capability models | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 e98df8db docs: refresh session handoff snapshot after link overview manual count cleanup | # commit-msg: minimal
 c94b1ea3 refactor: single-pass link overview manual counts | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ ae7e4b27 refactor: remove dead app.js industry summary helpers | Codex-Reviewed:
 e2913555 docs: record settings-view versions cleanup and refresh handoff | # commit-msg: minimal
 65f64cb0 refactor: remove dead versions field from settings view schema model | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 79450d96 docs: record settings-view schema summary cleanup and refresh handoff | # commit-msg: minimal
-eea79efe refactor: remove dead schema summary field from settings view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
-f9719f6c docs: record signal-adapter dead wrapper cleanup and refresh handoff | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
