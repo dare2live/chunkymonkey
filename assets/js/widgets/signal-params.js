@@ -20,9 +20,6 @@
     const cls = n >= 0 ? 'sig-pos' : 'sig-neg';
     return `<span class="${cls}">${formatted}</span>`;
   }
-  function fmtWinRate(wr) {
-    return formatUtils.formatPercent(wr, 0, true, false, '-');
-  }
 
   function el(id) { return document.getElementById(id); }
 
@@ -39,20 +36,20 @@
       <div class="sig-config-cohort-title">当前参数下 cohort
         <span class="muted" style="font-weight:400">· ${esc(cohort.window.start)}~${esc(cohort.window.end)} · n=${cohort.cohort_size}</span>
       </div>
-      <div class="sig-config-cohort-grid">
-        <div class="sig-config-cohort-cell">
-          <div class="muted">Follow</div><b>${fmtPct(f.ev_pct)}</b>
-          <div class="muted">n=${f.n} · 胜 ${fmtWinRate(f.win_rate)}</div>
+        <div class="sig-config-cohort-grid">
+          <div class="sig-config-cohort-cell">
+            <div class="muted">Follow</div><b>${fmtPct(f.ev_pct)}</b>
+          <div class="muted">n=${f.n} · 胜 ${formatUtils.formatWinRate(f.win_rate, 0, '-')}</div>
           <div style="color:${(ef.ev_diff_pct||0)>0?'var(--cm-ok-500)':'var(--cm-bad-500)'}">vs Blind ${fmtPct(ef.ev_diff_pct)}</div>
         </div>
         <div class="sig-config-cohort-cell">
           <div class="muted">Blind</div><b>${fmtPct(b.ev_pct)}</b>
-          <div class="muted">n=${b.n} · 胜 ${fmtWinRate(b.win_rate)}</div>
+          <div class="muted">n=${b.n} · 胜 ${formatUtils.formatWinRate(b.win_rate, 0, '-')}</div>
           <div class="muted">基线</div>
         </div>
         <div class="sig-config-cohort-cell">
           <div class="muted">Skip</div><b>${fmtPct(s.ev_pct)}</b>
-          <div class="muted">n=${s.n} · 胜 ${fmtWinRate(s.win_rate)}</div>
+          <div class="muted">n=${s.n} · 胜 ${formatUtils.formatWinRate(s.win_rate, 0, '-')}</div>
           <div style="color:${(es.ev_diff_pct||0)<0?'var(--cm-ok-500)':'var(--cm-bad-500)'}">vs Blind ${fmtPct(es.ev_diff_pct)}</div>
         </div>
       </div>

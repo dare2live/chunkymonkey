@@ -86,6 +86,12 @@ const signalParamsSrc = fs.readFileSync(process.argv[11], 'utf8');
 if (!signalParamsSrc.includes('WidgetFormatUtils')) {
   throw new Error('SignalParamsWidget should use WidgetFormatUtils');
 }
+if (signalParamsSrc.includes('function fmtWinRate(')) {
+  throw new Error('SignalParamsWidget local win-rate formatter should be removed');
+}
+if (!signalParamsSrc.includes('formatWinRate(')) {
+  throw new Error('SignalParamsWidget should call shared win-rate formatter');
+}
 const cohortSrc = fs.readFileSync(process.argv[12], 'utf8');
 if (!cohortSrc.includes('WidgetFormatUtils')) {
   throw new Error('CohortCardWidget should use WidgetFormatUtils');
