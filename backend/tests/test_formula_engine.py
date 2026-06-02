@@ -396,7 +396,7 @@ class TestShortTermReversalConfig:
             "  lookback_days: 20\n"
             "  pct_change_lo: -0.15\n"
             "  pct_change_hi: -0.01\n"
-            "  rel_std_max: 0.07\n"
+            "  rel_std_max: 0.08\n"
             "  vol_ratio_lo: 0.6\n"
             "  vol_ratio_hi: 2.0\n"
             "reversal_1m_deep:\n"
@@ -417,7 +417,7 @@ class TestShortTermReversalConfig:
         )
         loaded = _load_config(cfg)
         assert loaded["reversal_1m_mild"]["pct_change_hi"] == pytest.approx(-0.01)
-        assert loaded["reversal_1m_mild"]["rel_std_max"] == pytest.approx(0.07)
+        assert loaded["reversal_1m_mild"]["rel_std_max"] == pytest.approx(0.08)
         assert loaded["reversal_1m_deep"]["pct_change_hi"] == pytest.approx(-0.04)
         assert loaded["reversal_1m_deep"]["rel_std_max"] == pytest.approx(0.10)
         assert loaded["reversal_1w"]["pct_change_hi"] == pytest.approx(-0.01)
