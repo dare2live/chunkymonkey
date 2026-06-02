@@ -176,3 +176,119 @@ def test_data_view_build_source_cards_model_is_stable():
         check=False,
     )
     assert result.returncode == 0, result.stderr + result.stdout
+
+
+def test_data_view_build_cockpit_models_are_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.CMDataView;
+        for (const name of [
+          'buildHealthHeatmapModel',
+          'buildSourcePriorityModel',
+          'buildFallbackPanelModel',
+          'buildDriftQueueModel',
+          'buildCapabilityTableModel',
+        ]) {
+          if (!view || typeof view[name] !== 'function') {
+            throw new Error('CMDataView.' + name + ' missing');
+          }
+        }
+
+        const heatmap = view.buildHealthHeatmapModel({
+          summary: { green: 2, yellow: 1, red: 0, unknown: 3 },
+          by_layer: {
+            fact: { green: 1, yellow: 0, red: 0, unknown: 1 },
+            mart: { green: 1, yellow: 1, red: 0, unknown: 2 },
+          },
+        });
+        if (heatmap.total !== 6) throw new Error('heatmap total mismatch: ' + heatmap.total);
+        if (heatmap.layers.length !== 2 || heatmap.layers[0].layer !== 'fact' || heatmap.layers[1].layer !== 'mart') {
+          throw new Error('heatmap layers mismatch: ' + JSON.stringify(heatmap.layers));
+        }
+        if (heatmap.barSegments[0].label !== 'green 2') throw new Error('heatmap bar mismatch: ' + heatmap.barSegments[0].label);
+
+        const sourcePriority = view.buildSourcePriorityModel({
+          sources: [
+            { upstream_source: 'aif10', green_count: 1, yellow_count: 2, red_count: 3, asset_count: 7 },
+          ],
+        });
+        if (sourcePriority.rows.length !== 1 || sourcePriority.rows[0].source !== 'aif10' || sourcePriority.rows[0].total !== 7) {
+          throw new Error('source priority model mismatch: ' + JSON.stringify(sourcePriority.rows));
+        }
+
+        const fallback = view.buildFallbackPanelModel(
+          {
+            fallback_active: [
+              {
+                data_name: 'fund_flow',
+                current: { source: 'akshare' },
+                target: { source: 'aif10' },
+              },
+            ],
+            source_tier_distribution: { '1': 3, '2': 5 },
+          },
+          {},
+          [
+            { current: { source: 'tdxhub', status: 'connected' }, target: null },
+            { current: { source: 'akshare', status: 'pending' }, target: { source: 'aif10' } },
+          ]
+        );
+        if (fallback.activeCount !== 1) throw new Error('fallback active count mismatch: ' + fallback.activeCount);
+        if (fallback.tierEntries.length !== 2 || fallback.tierMax !== 5) {
+          throw new Error('fallback tier mismatch: ' + JSON.stringify({ entries: fallback.tierEntries, tierMax: fallback.tierMax }));
+        }
+        if (fallback.transitionRows.length !== 1 || fallback.transitionRows[0].dataName !== 'fund_flow' || fallback.transitionRows[0].target !== 'aif10') {
+          throw new Error('fallback transition mismatch: ' + JSON.stringify(fallback.transitionRows));
+        }
+
+        const drift = view.buildDriftQueueModel({
+          summary: { drift_count: 1 },
+          versions: [
+            { table_name: 't1', drift: true },
+            { table_name: 't2', drift: false },
+          ],
+        });
+        if (drift.driftCount !== 1 || drift.driftRows.length !== 1 || drift.driftRows[0].table_name !== 't1') {
+          throw new Error('drift model mismatch: ' + JSON.stringify(drift));
+        }
+
+        const caps = view.buildCapabilityTableModel([
+          {
+            capability: 'individual_fund_flow',
+            freshness: 'daily',
+            primary_source: 'akshare',
+            fallback_chain: ['aif10'],
+            description: '资金流',
+          },
+          {
+            capability: 'lhb_daily',
+            freshness: 'daily',
+            primary_source: 'aif10',
+            fallback_chain: ['akshare'],
+            description: '龙虎榜',
+          },
+        ], 'fund_flow');
+        if (caps.list.length !== 1 || caps.list[0].capability !== 'individual_fund_flow') {
+          throw new Error('capability filter mismatch: ' + JSON.stringify(caps.list));
+        }
+        if (caps.list[0].fallbackChainText !== 'aif10') {
+          throw new Error('capability fallback chain mismatch: ' + caps.list[0].fallbackChainText);
+        }
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/data-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout

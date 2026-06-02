@@ -184,6 +184,103 @@
     });
   }
 
+  function buildHealthHeatmapModel(health) {
+    const summary = (health && health.summary) || {};
+    const byLayer = (health && health.by_layer) || {};
+    const total = (summary.green || 0) + (summary.yellow || 0) + (summary.red || 0) + (summary.unknown || 0);
+    const layers = Object.keys(byLayer).sort().map(layer => {
+      const row = byLayer[layer] || {};
+      const layerTotal = (row.green || 0) + (row.yellow || 0) + (row.red || 0) + (row.unknown || 0);
+      return {
+        layer,
+        row,
+        total: layerTotal,
+      };
+    });
+    return {
+      summary,
+      total,
+      layers,
+      barSegments: [
+        { value: summary.green || 0, color: 'var(--cm-ok-500)', label: `green ${summary.green || 0}` },
+        { value: summary.yellow || 0, color: 'var(--cm-warn-500)', label: `yellow ${summary.yellow || 0}` },
+        { value: summary.red || 0, color: 'var(--cm-bad-500)', label: `red ${summary.red || 0}` },
+        { value: summary.unknown || 0, color: 'var(--cm-ink-300)', label: `unknown ${summary.unknown || 0}` },
+      ],
+    };
+  }
+
+  function buildSourcePriorityModel(sourceHealth) {
+    const rows = (sourceHealth && (sourceHealth.sources || sourceHealth.source_priorities)) || [];
+    return {
+      rows: rows.map(r => {
+        const source = r.upstream_source || r.source || r.client_id || 'unknown';
+        const green = r.green_count ?? r.green ?? 0;
+        const yellow = r.yellow_count ?? r.yellow ?? 0;
+        const red = r.red_count ?? r.red ?? 0;
+        const total = r.asset_count ?? r.total ?? (green + yellow + red);
+        return {
+          source,
+          total,
+          green,
+          yellow,
+          red,
+        };
+      }),
+    };
+  }
+
+  function buildFallbackPanelModel(health, sourceHealth, routes) {
+    const active = ((health && health.fallback_active) || (sourceHealth && sourceHealth.fallback_active) || []).filter(Boolean);
+    const tiers = (health && health.source_tier_distribution) || (sourceHealth && sourceHealth.source_tier_distribution) || {};
+    const tierEntries = Object.entries(tiers);
+    const tierMax = tierEntries.reduce((max, [, count]) => Math.max(max, Number(count) || 0), 1);
+    const routeFallbacks = (routes || []).filter(r => r.target || (r.current && r.current.status !== 'connected')).slice(0, 8);
+    const transitionRows = (active.length ? active : routeFallbacks).slice(0, 8).map(x => {
+      const dataName = x.data_name || x.table_name || x.asset || x.raw_table || 'unknown';
+      const source = (x.current && x.current.source) || x.source || x.upstream_source || 'unknown';
+      const target = (x.target && x.target.source) || x.fallback_source || x.target_source || '';
+      return { dataName, source, target };
+    });
+    return {
+      activeCount: active.length || routeFallbacks.length || 0,
+      tierEntries,
+      tierMax,
+      transitionRows,
+    };
+  }
+
+  function buildDriftQueueModel(schemaVersions) {
+    const data = schemaVersions || {};
+    const summary = data.summary || {};
+    const versions = Array.isArray(data.versions) ? data.versions : [];
+    const driftRows = versions.filter(v => v && v.drift).slice(0, 12);
+    return {
+      summary,
+      driftRows,
+      driftCount: summary.drift_count || driftRows.length || 0,
+    };
+  }
+
+  function buildCapabilityTableModel(capabilities, capFilter) {
+    const filterText = String(capFilter || '').trim().toLowerCase();
+    const list = (capabilities || [])
+      .filter(c => {
+        if (!filterText) return true;
+        return (c.capability || '').toLowerCase().includes(filterText)
+          || (c.description || '').toLowerCase().includes(filterText)
+          || (c.fallback_chain || []).some(s => String(s || '').includes(filterText));
+      })
+      .map(c => ({
+        capability: c.capability,
+        freshness: c.freshness,
+        primarySource: c.primary_source,
+        fallbackChainText: (c.fallback_chain || []).join(' → '),
+        description: c.description,
+      }));
+    return { list };
+  }
+
   function renderLinkOverview() {
     const root = qs('ds-link-overview');
     if (!root) return;
@@ -440,18 +537,11 @@
   function renderHealthHeatmap() {
     const root = qs('ds-health-heatmap');
     if (!root) return;
-    const health = _state.health || {};
-    const summary = health.summary || {};
-    const byLayer = health.by_layer || {};
-    const total = (summary.green || 0) + (summary.yellow || 0) + (summary.red || 0) + (summary.unknown || 0);
-    const layers = Object.keys(byLayer).sort();
+    const model = buildHealthHeatmapModel(_state.health || {});
+    const summary = model.summary;
+    const total = model.total;
     const bar = global.CMViz && global.CMViz.stackedBar
-      ? global.CMViz.stackedBar([
-        { value: summary.green || 0, color: 'var(--cm-ok-500)', label: `green ${summary.green || 0}` },
-        { value: summary.yellow || 0, color: 'var(--cm-warn-500)', label: `yellow ${summary.yellow || 0}` },
-        { value: summary.red || 0, color: 'var(--cm-bad-500)', label: `red ${summary.red || 0}` },
-        { value: summary.unknown || 0, color: 'var(--cm-ink-300)', label: `unknown ${summary.unknown || 0}` },
-      ])
+      ? global.CMViz.stackedBar(model.barSegments)
       : '';
     root.innerHTML = `<div class="cm-section-head">
       <div>
@@ -468,11 +558,11 @@
         <div class="cm-health-row"><span>yellow</span>${global.CMViz ? global.CMViz.miniBar(summary.yellow || 0, total || 1, { color: 'var(--cm-warn-500)' }) : ''}<b>${summary.yellow || 0}</b></div>
         <div class="cm-health-row"><span>red</span>${global.CMViz ? global.CMViz.miniBar(summary.red || 0, total || 1, { color: 'var(--cm-bad-500)' }) : ''}<b>${summary.red || 0}</b></div>
       </div>
-      ${layers.map(layer => {
-        const row = byLayer[layer] || {};
-        const layerTotal = (row.green || 0) + (row.yellow || 0) + (row.red || 0) + (row.unknown || 0);
+      ${model.layers.map(layer => {
+        const row = layer.row || {};
+        const layerTotal = layer.total || 0;
         return `<div class="cm-health-card">
-          <h4>${esc(layer)}</h4>
+          <h4>${esc(layer.layer)}</h4>
           <div class="cm-health-row"><span>green</span>${global.CMViz ? global.CMViz.miniBar(row.green || 0, layerTotal || 1, { color: 'var(--cm-ok-500)' }) : ''}<b>${row.green || 0}</b></div>
           <div class="cm-health-row"><span>yellow</span>${global.CMViz ? global.CMViz.miniBar(row.yellow || 0, layerTotal || 1, { color: 'var(--cm-warn-500)' }) : ''}<b>${row.yellow || 0}</b></div>
           <div class="cm-health-row"><span>red</span>${global.CMViz ? global.CMViz.miniBar(row.red || 0, layerTotal || 1, { color: 'var(--cm-bad-500)' }) : ''}<b>${row.red || 0}</b></div>
@@ -484,8 +574,8 @@
   function renderSourcePriority() {
     const root = qs('ds-source-priority');
     if (!root) return;
-    const data = _state.sourceHealth || {};
-    const rows = data.sources || data.source_priorities || [];
+    const model = buildSourcePriorityModel(_state.sourceHealth || {});
+    const rows = model.rows;
     root.innerHTML = `<div class="cm-section-head">
       <div>
         <h3>源优先级与连通性</h3>
@@ -497,13 +587,12 @@
       <table class="cm-compact-table" style="min-width:760px">
         <thead><tr><th>源</th><th>资产数</th><th>green</th><th>yellow</th><th>red</th><th>健康占比</th></tr></thead>
         <tbody>${rows.length ? rows.map(r => {
-          const source = r.upstream_source || r.source || r.client_id || 'unknown';
-          const green = r.green_count ?? r.green ?? 0;
-          const yellow = r.yellow_count ?? r.yellow ?? 0;
-          const red = r.red_count ?? r.red ?? 0;
-          const total = r.asset_count ?? r.total ?? (green + yellow + red);
+          const green = r.green ?? 0;
+          const yellow = r.yellow ?? 0;
+          const red = r.red ?? 0;
+          const total = r.total ?? (green + yellow + red);
           return `<tr>
-            <td>${sourcePill(source)}</td>
+            <td>${sourcePill(r.source)}</td>
             <td>${esc(total)}</td>
             <td>${green}</td>
             <td>${yellow}</td>
@@ -522,38 +611,31 @@
   function renderFallbackPanel() {
     const root = qs('ds-fallback-panel');
     if (!root) return;
-    const health = _state.health || {};
-    const sourceHealth = _state.sourceHealth || {};
-    const active = health.fallback_active || sourceHealth.fallback_active || [];
-    const tiers = health.source_tier_distribution || sourceHealth.source_tier_distribution || {};
-    const tierEntries = Object.entries(tiers);
-    const tierMax = tierEntries.reduce((max, [, count]) => Math.max(max, Number(count) || 0), 1);
-    const routeFallbacks = _state.routes.filter(r => r.target || (r.current && r.current.status !== 'connected')).slice(0, 8);
+    const model = buildFallbackPanelModel(_state.health || {}, _state.sourceHealth || {}, _state.routes || []);
+    const tierRowsHtml = model.tierEntries.length ? model.tierEntries.map(([tier, count]) => `
+          <div class="cm-health-row"><span>${esc(tier)}</span>${global.CMViz ? global.CMViz.miniBar(count || 0, model.tierMax, { color: 'var(--cm-brand-500)' }) : ''}<b>${esc(count)}</b></div>
+        `).join('') : '<div class="muted" style="font-size:12px">暂无 tier 聚合</div>';
+    const transitionRowsHtml = model.transitionRows.length ? model.transitionRows.map(x => `
+          <div style="padding:5px 0;border-bottom:1px dotted var(--cm-bg-100);font-size:12px">
+            <strong>${esc(x.dataName)}</strong>
+            <span class="muted"> ${sourcePill(x.source)} ${x.target ? '-> ' + sourcePill(x.target) : ''}</span>
+          </div>
+        `).join('') : '<div class="muted" style="font-size:12px">暂无 fallback 触发</div>';
     root.innerHTML = `<div class="cm-section-head">
       <div>
         <h3>Fallback 状态</h3>
         <p class="muted">正式链路优先使用主源；fallback 只作为可解释的兜底或迁移过渡。</p>
       </div>
-      <span class="cm-muted-note">${active.length || routeFallbacks.length || 0} active/transition</span>
+      <span class="cm-muted-note">${model.activeCount} active/transition</span>
     </div>
     <div class="cm-health-grid">
       <div class="cm-health-card">
         <h4>Tier 分布</h4>
-        ${tierEntries.length ? tierEntries.map(([tier, count]) => `
-          <div class="cm-health-row"><span>${esc(tier)}</span>${global.CMViz ? global.CMViz.miniBar(count || 0, tierMax, { color: 'var(--cm-brand-500)' }) : ''}<b>${esc(count)}</b></div>
-        `).join('') : '<div class="muted" style="font-size:12px">暂无 tier 聚合</div>'}
+        ${tierRowsHtml}
       </div>
       <div class="cm-health-card">
         <h4>过渡队列</h4>
-        ${(active.length ? active : routeFallbacks).slice(0, 8).map(x => {
-          const dataName = x.data_name || x.table_name || x.asset || x.raw_table || 'unknown';
-          const source = (x.current && x.current.source) || x.source || x.upstream_source || 'unknown';
-          const target = (x.target && x.target.source) || x.fallback_source || x.target_source || '';
-          return `<div style="padding:5px 0;border-bottom:1px dotted var(--cm-bg-100);font-size:12px">
-            <strong>${esc(dataName)}</strong>
-            <span class="muted"> ${sourcePill(source)} ${target ? '-> ' + sourcePill(target) : ''}</span>
-          </div>`;
-        }).join('') || '<div class="muted" style="font-size:12px">暂无 fallback 触发</div>'}
+        ${transitionRowsHtml}
       </div>
     </div>`;
   }
@@ -561,16 +643,15 @@
   function renderDriftQueue() {
     const root = qs('ds-drift-queue');
     if (!root) return;
-    const data = _state.schemaVersions || {};
-    const summary = data.summary || {};
-    const versions = data.versions || [];
-    const driftRows = versions.filter(v => v.drift);
+    const model = buildDriftQueueModel(_state.schemaVersions || {});
+    const summary = model.summary;
+    const driftRows = model.driftRows;
     root.innerHTML = `<div class="cm-section-head">
       <div>
         <h3>Schema Drift 队列</h3>
         <p class="muted">派生/实验表 drift 会影响 data_health_snapshot 的资产级 red/yellow，优先在这里收口。</p>
       </div>
-      <span class="cm-muted-note">${summary.drift_count || driftRows.length || 0} drift</span>
+      <span class="cm-muted-note">${model.driftCount} drift</span>
     </div>
     <div class="cm-table-scroll">
       <table class="cm-compact-table" style="min-width:760px">
@@ -607,13 +688,8 @@
   function renderCapTable() {
     const root = qs('ds-capability-table');
     if (!root) return;
-    const list = _state.capabilities.filter(c => {
-      if (!_state.capFilter) return true;
-      const f = _state.capFilter.toLowerCase();
-      return c.capability.toLowerCase().includes(f)
-          || (c.description || '').toLowerCase().includes(f)
-          || (c.fallback_chain || []).some(s => s.includes(f));
-    });
+    const model = buildCapabilityTableModel(_state.capabilities || [], _state.capFilter || '');
+    const list = model.list;
     if (!list.length) {
       root.innerHTML = '<div class="muted" style="padding:14px;text-align:center;font-size:12px">无匹配</div>';
       return;
@@ -634,8 +710,8 @@
           <tr style="border-bottom:1px dotted var(--cm-bg-100)">
             <td style="padding:5px 8px"><code>${esc(c.capability)}</code></td>
             <td style="padding:5px 8px;color:var(--cm-ink-500)">${esc(c.freshness)}</td>
-            <td style="padding:5px 8px;font-weight:600">${esc(c.primary_source)}</td>
-            <td style="padding:5px 8px;color:var(--cm-ink-500)">${esc((c.fallback_chain || []).join(' → '))}</td>
+            <td style="padding:5px 8px;font-weight:600">${esc(c.primarySource)}</td>
+            <td style="padding:5px 8px;color:var(--cm-ink-500)">${esc(c.fallbackChainText)}</td>
             <td style="padding:5px 8px">${esc(c.description)}</td>
           </tr>
         `).join('')}
@@ -919,6 +995,11 @@
     buildAuditResultsModel,
     buildRoutesTableModel,
     buildSourceCardsModel,
+    buildHealthHeatmapModel,
+    buildSourcePriorityModel,
+    buildFallbackPanelModel,
+    buildDriftQueueModel,
+    buildCapabilityTableModel,
   };
 
   console.log('[DataView] module loaded');
