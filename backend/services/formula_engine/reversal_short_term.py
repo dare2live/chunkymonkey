@@ -60,7 +60,7 @@ DEFAULT_CONFIG: dict[str, dict[str, float | int]] = {
         "lookback_days": 20,
         "pct_change_lo": -0.30,
         "pct_change_hi": -0.04,
-        "rel_std_max": 0.08,
+        "rel_std_max": 0.09,
         "vol_ratio_lo": 0.6,
         "vol_ratio_hi": 2.0,
     },
