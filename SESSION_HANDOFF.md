@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 02:25:50 CST
+**Snapshot 时间**: 2026-06-03 02:29:29 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `58f483b8 refactor: extract source cards model from data view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 5 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 184 |
+| HEAD | `e3b0677c refactor: extract read model meta from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 7 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 186 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+e3b0677c refactor: extract read model meta from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 7 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
+55a28efc docs: refresh session handoff snapshot after source cards model extraction | # commit-msg: minimal
 58f483b8 refactor: extract source cards model from data view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 5 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 69f49fc0 docs: refresh session handoff snapshot after routes table model extraction | # commit-msg: minimal
 bafe90d4 refactor: extract routes table model from data view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 4 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ f27f9977 docs: refresh session handoff snapshot after dead stock display cleanup
 c6d866dd docs: refresh session handoff snapshot after dead stock score cleanup | # commit-msg: minimal
 4e3d93ac refactor: remove dead stock score helpers | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 08739def docs: record data-view audit model cleanup in controller state
-9f9dc9bf docs: refresh session handoff snapshot after data-view audit cleanup
-973f35e2 feat: move data audit results into a pure model
 ```
 
 ## NEXT ACTION (auto-computed)
