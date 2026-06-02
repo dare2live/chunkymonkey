@@ -1469,31 +1469,58 @@
   }
 
   function renderStorage(data) {
-    var retention = data.retention || {};
-    var arch = data.architecture || {};
-    var cleanup = data.architecture_cleanup || {};
-    var manifest = data.latest_manifest || {};
+    var model = buildStorageModel(data);
+    var retention = model.retention;
+    var arch = model.architecture;
+    var cleanup = model.cleanup;
+    var manifest = model.manifest;
     setBody(
       renderReadModelMeta(data) +
       '<div class="stats-row wb-stats-row">' +
       statCard('清理计划', manifest.latest_run_id || '-', esc(manifest.started_at || '-'), manifest.latest_status || 'none') +
-      statCard('Retention candidates', fmtNum(retention.candidate_count || 0), retention.mode || '-', retention.candidate_count ? 'warn' : 'ok') +
+      statCard('Retention candidates', fmtNum(model.retentionCandidateCount), retention.mode || '-', model.retentionCandidateCount ? 'warn' : 'ok') +
       statCard('Protected models', fmtNum(retention.protected_model_count || 0), 'lifecycle/evidence', 'ok') +
-      statCard('Arch cleanup', fmtNum((cleanup.candidates || []).length), renderStatusCounts(cleanup.status_counts), (cleanup.status_counts || {}).smoke_passed ? 'ok' : 'info') +
+      statCard('Arch cleanup', fmtNum(model.cleanupCandidateCount), renderStatusCounts(model.cleanupStatusCounts), (model.cleanupStatusCounts || {}).smoke_passed ? 'ok' : 'info') +
       statCard('Copy smoke', fmtNum((cleanup.smoke_counts || {}).passed || 0), 'view drops passed', (cleanup.smoke_counts || {}).passed ? 'ok' : 'none') +
       '</div>' +
       '<div class="wb-grid">' +
       '<section class="panel wb-panel"><div class="panel-head"><div><h3>架构分类</h3><div class="muted">run_id: <code>' + esc(arch.run_id || '-') + '</code></div></div></div>' +
-      renderKeyValueCounts(arch.classification_counts || {}) + '</section>' +
+      renderKeyValueCounts(model.classificationCounts || {}) + '</section>' +
       '<section class="panel wb-panel"><div class="panel-head"><div><h3>Retention</h3><div class="muted">dry-run only</div></div></div>' +
-      (retention.error ? '<div style="color:var(--cm-bad-500)">' + esc(retention.error) + '</div>' : renderRetentionCandidates(retention.candidates || [])) +
+      (retention.error ? '<div style="color:var(--cm-bad-500)">' + esc(retention.error) + '</div>' : renderRetentionCandidates(model.retentionCandidates)) +
       '</section>' +
       '</div>' +
       '<section class="panel wb-panel"><div class="panel-head"><div><h3>清理候选边界</h3><div class="muted">deprecated / shim / delete-after-tests</div></div></div>' +
-      renderArchitectureCandidates(arch.cleanup_candidates || []) + '</section>' +
+      renderArchitectureCandidates(model.architectureCleanupCandidates) + '</section>' +
       '<section class="panel wb-panel"><div class="panel-head"><div><h3>架构清理计划</h3><div class="muted">run_id: <code>' + esc(cleanup.run_id || '-') + '</code></div></div></div>' +
-      renderArchitectureCleanupPlan(cleanup.candidates || []) + '</section>'
+      renderArchitectureCleanupPlan(model.cleanupCandidates) + '</section>'
     );
+  }
+
+  function buildStorageModel(data) {
+    data = data || {};
+    var retention = data.retention || {};
+    var architecture = data.architecture || {};
+    var cleanup = data.architecture_cleanup || {};
+    var manifest = data.latest_manifest || {};
+    var retentionCandidates = Array.isArray(retention.candidates) ? retention.candidates : [];
+    var architectureCleanupCandidates = Array.isArray(architecture.cleanup_candidates) ? architecture.cleanup_candidates : [];
+    var cleanupCandidates = Array.isArray(cleanup.candidates) ? cleanup.candidates : [];
+    return {
+      retention: retention,
+      architecture: architecture,
+      cleanup: cleanup,
+      manifest: manifest,
+      retentionCandidates: retentionCandidates,
+      architectureCleanupCandidates: architectureCleanupCandidates,
+      cleanupCandidates: cleanupCandidates,
+      retentionCandidateCount: Number(retention.candidate_count || 0),
+      cleanupCandidateCount: cleanupCandidates.length,
+      classificationCounts: architecture.classification_counts || {},
+      cleanupStatusCounts: cleanup.status_counts || {},
+      cleanupSmokeCounts: cleanup.smoke_counts || {},
+      isEmpty: !manifest.latest_run_id && !retentionCandidates.length && !architectureCleanupCandidates.length && !cleanupCandidates.length
+    };
   }
 
   function renderRetentionCandidates(rows) {
@@ -2534,6 +2561,7 @@
     buildRankMatrixCacheModel: buildRankMatrixCacheModel,
     buildRecommendationsModel: buildRecommendationsModel,
     buildPaperSimModel: buildPaperSimModel,
+    buildStorageModel: buildStorageModel,
     _renderOverview: renderOverview,
     _renderDataSources: renderDataSources,
     _renderPipelines: renderPipelines,

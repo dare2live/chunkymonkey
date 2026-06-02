@@ -243,6 +243,9 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "renderRecommendations" in workbench_js
     assert "buildRecommendationsModel" in workbench_js
     assert "buildRecommendationsModel(data)" in workbench_js
+    assert "renderStorage" in workbench_js
+    assert "buildStorageModel" in workbench_js
+    assert "buildStorageModel(data)" in workbench_js
     assert "推荐" in workbench_js
     assert "存储" in workbench_js
     assert "稳定性上下文" in workbench_js

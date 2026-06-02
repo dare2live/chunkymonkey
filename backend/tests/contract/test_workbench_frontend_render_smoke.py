@@ -442,6 +442,48 @@ def test_workbench_paper_sim_model_is_pure_and_stable():
     assert result.returncode == 0, result.stderr + result.stdout
 
 
+def test_workbench_storage_model_is_pure_and_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.WorkbenchView;
+        if (!view || typeof view.buildStorageModel !== 'function') {
+          throw new Error('WorkbenchView.buildStorageModel missing');
+        }
+
+        const model = view.buildStorageModel({
+          latest_manifest: { latest_run_id: 'cleanup_1', started_at: '2026-06-03 01:00:00', latest_status: 'done' },
+          retention: { candidate_count: 2, mode: 'dry-run', protected_model_count: 1, candidates: [{ table: 'model_a' }, { table: 'model_b' }] },
+          architecture: { run_id: 'arch_1', classification_counts: { production: 10 }, cleanup_candidates: [{ kind: 'shim', table: 'shim_a' }] },
+          architecture_cleanup: { run_id: 'cleanup_1', status_counts: { blocked: 1 }, smoke_counts: { passed: 1 }, candidates: [{ table: 'cleanup_a' }, { table: 'cleanup_b' }] },
+        });
+
+        if (!model || model.manifest.latest_run_id !== 'cleanup_1') throw new Error('manifest mismatch');
+        if (model.retentionCandidateCount !== 2 || model.cleanupCandidateCount !== 2) throw new Error('count mismatch');
+        if (model.architectureCleanupCandidates.length !== 1 || model.cleanupCandidates.length !== 2) throw new Error('list normalization mismatch');
+        if (model.classificationCounts.production !== 10 || model.cleanupStatusCounts.blocked !== 1) throw new Error('counter normalization mismatch');
+        if (model.isEmpty !== false) throw new Error('empty flag mismatch');
+        const empty = view.buildStorageModel({});
+        if (empty.retentionCandidateCount !== 0 || empty.cleanupCandidateCount !== 0 || empty.isEmpty !== true) throw new Error('default normalization mismatch');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/workbench-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+
+
 def test_workbench_champion_model_is_pure_and_stable():
     script = textwrap.dedent(
         r"""
