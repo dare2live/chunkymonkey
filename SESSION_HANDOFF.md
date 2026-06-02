@@ -25,9 +25,9 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 09:00:33 CST
+**Snapshot 时间**: 2026-06-02 09:16:30 CST
 
-- latest code/docs snapshot (2026-06-02) is commit `58d3693c`; `turtle_breakout_55` only loosened `volume_multiple` from `0.5` to `0.4`, lifting the history rebuild to `turtle_breakout_55: 151,472 / 11,446 / 66.21%`, and the full stage-opt audit to `raw_signal_rows=6,422,516 / filtered_signal_rows=3,178,449 / unique_keys=159,814 / ready_keys=120,259 / ready coverage=75.25% / below_min_signals=39,555`, with `min_signals=4/3/2` at `80.19% / 85.55% / 91.74%` and weakest formulas now `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_deep`; controller recommendation remains `P1 / upstream_candidate_supply`, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`. Live recommendation PIT attrition is still 5/1/3 for short/mid/long, all `cross_stage_fallback`, so exact PIT coverage remains structurally sparse.
+- latest code snapshot remains commit `58d3693c`; this handoff refresh reflects the 2026-06-02 09:16 CST live writer refreshes, where `raw_profit_forecast_snapshot_daily` is no longer blocking, `fact_feature_panel` is still the only blocking yellow (`writer_at=2026-06-02`, `last_data_date=2026-05-29`), `dim_stock_tdx_industry_history` is the lone warning yellow, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`. `stage-opt` controller recommendation remains `P1 / upstream_candidate_supply`; live recommendation PIT attrition is still 5/1/3 for short/mid/long, all `cross_stage_fallback`, so exact PIT coverage remains structurally sparse.
 | Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
 | VM 状态 | ? |
 | VM 上次启动 |  |

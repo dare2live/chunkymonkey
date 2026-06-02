@@ -57,10 +57,10 @@ The model pipeline snapshot below is historical evidence for the completed
   owner/sync_step hints for self-triage, and `sync_raw` progress snapshots now
   feed `run_context.step_progress` / `/update/status` so the long raw fetch no
   longer looks frozen. The raw ingest cadence now refreshes on a 10-count / 30s
-  threshold rather than waiting for sparse 50-row logs. Feature panel lane was refreshed
-  successfully, removing `fact_feature_panel`,
-  `mart_feature_panel_validation`, and `mart_feature_panel_prune_run` from
-  red.
+  threshold rather than waiting for sparse 50-row logs. Feature panel lane was
+  refreshed incrementally on 2026-06-02, but `fact_feature_panel` still has
+  `last_data_date=2026-05-29`, so it remains the only blocking yellow while
+  `dim_stock_tdx_industry_history` stays warning yellow.
 - stage-opt audit: 2026-06-01 repaired the 2025-08-01→2026-05-29
   `fact_stock_technical_stage` / `fact_signal_context` discontinuity and
   reran `audit_stage_opt_candidate_supply.py`; full-history coverage is now
@@ -229,37 +229,26 @@ The model pipeline snapshot below is historical evidence for the completed
   state.
 - system data-health snapshot: `scripts/chunkyctl doctor --fast` now folds in
   `backend/scripts/data_health_snapshot.py --dry-run --format json` and fails
-  closed on red tables. Current dry-run evidence is `PASS: 0 red / 0 yellow /
-  342 total`; `warning/monitor_only` assets are capped to yellow, so the red
-  set is empty and there are no remaining yellow data-health items.
-  `raw_margin_daily` remains a monitor-only governance placeholder rather than
-  a blocker. This is the startup health signal the controller has to read
-  before trusting any freshness claim. Feature panel, capital_behavior, and
-  holder/shareholder-plan lanes have all been cleared from red; GPCW and
-  raw_aif10 are now green / on-demand governance, and
+  closed on red tables. Current live health after the 2026-06-02 refreshes is
+  `0 red / 2 yellow / 342 total`: `raw_profit_forecast_snapshot_daily` was
+  refreshed to `2026-06-02` and no longer blocks, `fact_feature_panel`
+  remains the only blocking yellow because `writer_at=2026-06-02` but
+  `last_data_date=2026-05-29`, and `dim_stock_tdx_industry_history` is the
+  lone warning yellow. `raw_margin_daily` remains a monitor-only governance
+  placeholder outside the yellow count. This is the startup health signal the
+  controller has to read before trusting any freshness claim. Feature panel,
+  capital_behavior, and holder/shareholder-plan lanes were cleared from red
+  earlier; GPCW and raw_aif10 are still green / on-demand governance, and
   `blocking_yellow_tables` are surfaced separately so
   `quality_gate_level=blocking` yellow assets get next-action priority before
-  generic yellow maintenance. 2026-06-01 the
-  `mart_p0b_lambdamart_v6_predictions` ensemble v7 context writer was
-  refreshed, clearing the only blocking yellow table, and
-  `raw_executive_trade` / `fact_executive_trade_event` were rebuilt locally,
-  and `sync_surveys` then refreshed `raw_institution_surveys` /
-  `mart_stock_survey_activity`, before the later `fact_institution_event`
-  safe rebuild path recovered the main ART index deadlock; `mart_architecture_cleanup_plan`
-  was reclassified to on-demand governance and is green. The official
-  2026-06-01 `cron_daily.py --full-sync` then validated the new `sync_raw`
-  10-count / 30-second cadence end-to-end: `raw_fetch` advanced from
-  `0/5201` to `5201/5201`, the run proceeded through `lineage / watermarks /
-  topk / selection_log / selection_outcome / selection_summary /
-  formula_weights / health / drift / audit`, and the whole 31/31 phase set
-  completed. The `F10 extra parse failed` warning surfaced during
-  `sync_raw` because an old DuckDB index-delete fatal error invalidated the
-  database and then caused the source-failure-queue update to fail too; that
-  path has since been resolved by the startup cleanup that removed the
-  legacy `fact_top10_holder_period.idx_fact_hp_*` indexes from the live DB,
-  so treat it as resolved index-debt evidence rather than a generalized
-  Python failure. `mart_pipeline_run_manifest.perf_summary_json` now uses
-  `compact_perf_summary_payload()`, so the largest live manifest row is
+  generic yellow maintenance. `mart_p0b_lambdamart_v6_predictions` was
+  refreshed on 2026-06-01, but that did not by itself settle the current
+  feature-panel freshness lag; the 2026-06-02 `raw_profit_forecast_snapshot_daily`
+  refresh removed one blocking yellow, while the incremental feature panel
+  rebuild left `fact_feature_panel` as the remaining blocking yellow.
+  `mart_architecture_cleanup_plan` is still on-demand governance and green.
+  `mart_pipeline_run_manifest.perf_summary_json` still uses
+  `compact_perf_summary_payload()`, so the largest live manifest row remains
   bounded at ~260,408 bytes instead of the earlier multi-megabyte log blob.
 - follow-up research-side snapshot: `build_fund_flow_rank_snapshot_daily.py`
   was run successfully on 2026-06-01 and wrote `5,188` rows / `5,188` codes
