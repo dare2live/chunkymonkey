@@ -25,21 +25,22 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 12:14:53 CST
+**Snapshot 时间**: 2026-06-02 12:23:27 CST
 
-- latest code snapshot is commit `766825ec`; this handoff refresh reflects the 2026-06-02 12:14 CST config-owned multidim walkforward defaults cleanup layered on top of the 2026-06-02 live writer refresh state, where `raw_profit_forecast_snapshot_daily` is no longer blocking, `fact_feature_panel` has been rebuilt through `2026-06-01` and no longer sits in blocking yellow, `dim_stock_tdx_industry_history` was refreshed on the main smartmoney DB and the prior warning yellow is now cleared, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`. `stage-opt` controller recommendation remains `P1 / upstream_candidate_supply`; live recommendation PIT attrition is still 5/1/3 for short/mid/long, all `cross_stage_fallback`, so exact PIT coverage remains structurally sparse. `latest_completed_trade_date` remains `2026-06-01` intraday even though these refreshes happened on `2026-06-02`.
+- latest code snapshot is commit `8603cd9b`; this handoff refresh reflects the 2026-06-02 12:23 CST config-owned stock-formula optuna thresholds cleanup layered on top of the 2026-06-02 live writer refresh state, where `raw_profit_forecast_snapshot_daily` is no longer blocking, `fact_feature_panel` has been rebuilt through `2026-06-01` and no longer sits in blocking yellow, `dim_stock_tdx_industry_history` was refreshed on the main smartmoney DB and the prior warning yellow is now cleared, and `need_027` still sits in blocked-gap triage with `aif10 exact individual_fund_flow unavailable`. `stage-opt` controller recommendation remains `P1 / upstream_candidate_supply`; live recommendation PIT attrition is still 5/1/3 for short/mid/long, all `cross_stage_fallback`, so exact PIT coverage remains structurally sparse. `latest_completed_trade_date` remains `2026-06-01` intraday even though these refreshes happened on `2026-06-02`.
 
 - controller boundary note: `audit_stage_opt_candidate_supply.py` and `doctor --fast` now surface the live formula registry explicitly; live stage-opt supply only includes 7 formula ids (`macd_golden_cross`, `turtle_breakout_20`, `turtle_breakout_55`, `dynamic_ma_iterative_cross`, `reversal_1m_mild`, `reversal_1m_deep`, `reversal_1w`). Research challengers are now separate and list 5 formula ids (`gs_raw_buy`, `gs_pullback_confirm`, `ma_base_breakout`, `activity_breakout`, `volume_base_breakout`); they remain research-only and must not be counted as live production supply.
 - shared-config boundary note: common holding windows, stage thresholds, MACD
   diagnostic windows, turtle_breakout volume confirmation gates,
   shareholder-plan walk-forward defaults, multidim walk-forward default model
-  params / degenerate threshold, and the backtest default stop/target/trailing
-  now live in shared YAML configs
+  params / degenerate threshold, stock-formula optuna bucket / high-conviction
+  thresholds, and the backtest default stop/target/trailing now live in shared
+  YAML configs
   (`formula_shared_windows.yaml`, `technical_stage.yaml`,
   `formula_macd_golden_cross.yaml`, `formula_turtle_breakout.yaml`,
   `shareholder_plan_family_walkforward.yaml`, `run_multidim_walkforward.yaml`,
-  `strategy_defaults.yaml`) plus the shared loader; formula-specific YAMLs keep
-  only formula-owned
+  `stock_formula_optuna.yaml`, `strategy_defaults.yaml`) plus the shared
+  loader; formula-specific YAMLs keep only formula-owned
   thresholds, and per-stock best-holding results stay table-backed in marts
   such as `mart_per_stock_stage_strategy_optimal_pit` /
   `mart_stock_horizon_profile` instead of becoming file literals.
