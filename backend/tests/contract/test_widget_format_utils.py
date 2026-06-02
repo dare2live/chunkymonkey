@@ -40,6 +40,7 @@ require(process.argv[5]);
 require(process.argv[6]);
 require(process.argv[7]);
 require(process.argv[8]);
+require(process.argv[9]);
 if (!globalThis.ETFSectorRotationWidget || typeof globalThis.ETFSectorRotationWidget.mount !== 'function') {
   throw new Error('ETFSectorRotationWidget exports missing');
 }
@@ -61,6 +62,9 @@ if (!globalThis.ETFAnalysisWidget || typeof globalThis.ETFAnalysisWidget.mountDe
 if (!globalThis.WorkbenchHealthWidget || typeof globalThis.WorkbenchHealthWidget.refreshWorkbenchHealthBar !== 'function') {
   throw new Error('WorkbenchHealthWidget exports missing');
 }
+if (!globalThis.InstitutionScorecardWidget || typeof globalThis.InstitutionScorecardWidget.mountScorecard !== 'function') {
+  throw new Error('InstitutionScorecardWidget exports missing');
+}
 """
 
     result = subprocess.run(
@@ -76,6 +80,7 @@ if (!globalThis.WorkbenchHealthWidget || typeof globalThis.WorkbenchHealthWidget
             str(REPO / "assets/js/widgets/etf-workbench.js"),
             str(REPO / "assets/js/widgets/etf-analysis.js"),
             str(REPO / "assets/js/widgets/workbench-health.js"),
+            str(REPO / "assets/js/widgets/institution-scorecard.js"),
         ],
         check=False,
         text=True,

@@ -19,25 +19,21 @@
       .replace(/'/g, '&#39;');
   }
 
+  var formatUtils = (typeof globalThis !== 'undefined' && globalThis.WidgetFormatUtils) || global.WidgetFormatUtils;
+  if (!formatUtils) throw new Error('WidgetFormatUtils missing');
+
   function fmtNum(value, digits) {
-    if (value == null || value === '') return '-';
-    var num = Number(value);
-    if (!Number.isFinite(num)) return '-';
-    return num.toFixed(digits == null ? 0 : digits);
+    return formatUtils.formatNumber(value, digits == null ? 0 : digits);
   }
 
   function fmtScore(value) {
-    if (value == null || value === '') return '-';
-    var num = Number(value);
-    if (!Number.isFinite(num)) return '-';
-    return num.toFixed(1);
+    return formatUtils.formatNumber(value, 1);
   }
 
   function fmtGain(value) {
-    if (value == null || value === '') return '-';
-    var num = Number(value);
-    if (!Number.isFinite(num)) return '-';
-    return '<span class="' + (num >= 0 ? 'gain-pos' : 'gain-neg') + '">' + (num >= 0 ? '+' : '') + num.toFixed(1) + '%</span>';
+    var formatted = formatUtils.formatPercent(value, 1, false, true, '-');
+    if (formatted === '-') return formatted;
+    return '<span class="' + (Number(value) >= 0 ? 'gain-pos' : 'gain-neg') + '">' + formatted + '</span>';
   }
 
   function resolveDeps(deps) {

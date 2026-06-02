@@ -14,6 +14,7 @@ REPO = Path(__file__).resolve().parents[3]
 def test_institution_scorecard_widget_renders_expected_outputs() -> None:
     script = r"""
 require(process.argv[1]);
+require(process.argv[2]);
 const widget = globalThis.InstitutionScorecardWidget;
 if (!widget || typeof widget.renderInstScorecardStats !== 'function' || typeof widget.renderInstFrameworkRules !== 'function' || typeof widget.renderScoreParamCard !== 'function' || typeof widget.renderStockFrameworkLayer !== 'function' || typeof widget.renderStockFrameworkRules !== 'function') {
   throw new Error('InstitutionScorecardWidget exports missing');
@@ -79,7 +80,7 @@ if (!frameworkHtml.includes('综合优先分') || !frameworkHtml.includes('池�
 """
 
     result = subprocess.run(
-        ["node", "-e", script, str(REPO / "assets/js/widgets/institution-scorecard.js")],
+        ["node", "-e", script, str(REPO / "assets/js/widgets/format-utils.js"), str(REPO / "assets/js/widgets/institution-scorecard.js")],
         check=False,
         text=True,
         capture_output=True,
