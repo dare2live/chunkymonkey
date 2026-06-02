@@ -207,7 +207,7 @@ bash scripts/install_resilience.sh --status   # check 装好没
 
 **Snapshot 时间**: $NOW
 
-## 主线 retrain 状态
+## 主线状态
 
 | 项 | 值 |
 |---|---|
@@ -271,7 +271,7 @@ $RECENT_COMMITS
 
 1. **Mac 重启 / terminal 崩 后**: 启动 terminal → \`cd /Users/dp/Documents/M/stock/chunkymonkey\` → 启动 \`claude\`
 2. Claude SessionStart hook 自动 cat \`SESSION_HANDOFF.md\` 注入 context
-3. Claude 看到: 当前 retrain model_id / local artifacts / next action
+3. Claude 看到: 当前主线状态 / local artifacts / next action
 4. Claude 按 NEXT ACTION 执行本地工作 (audit / compare / commit / etc)
 5. 用户 0 需要 paste 长 summary
 
