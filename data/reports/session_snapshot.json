@@ -1,9 +1,9 @@
 {
-  "snapshot_at": "2026-06-03 07:04:33 CST",
+  "snapshot_at": "2026-06-03 07:08:35 CST",
   "git": {
     "branch": "main",
-    "head_hash": "f57ff03e",
-    "head_msg": "f57ff03e refactor: data-view routes event delegation cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 6 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal",
+    "head_hash": "64be4af7",
+    "head_msg": "64be4af7 refactor: stock-view instType normalization cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal",
     "commits_24h": 265,
     "uncommitted_files": 0
   },
