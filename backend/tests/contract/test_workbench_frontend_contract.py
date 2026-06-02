@@ -169,6 +169,7 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "/api/workbench/data-sources" in data_view_js
     assert "/api/data_health/snapshot" not in data_view_js
     assert "/api/data_health/sources" not in data_view_js
+    assert "function buildAuditResultsModel(" in data_view_js
     assert "function buildAssetHealthIndex(" in data_view_js
     assert "function routeHealth(route, asset)" in data_view_js
     assert "const assetIndex = buildAssetHealthIndex(" in data_view_js

@@ -2559,6 +2559,20 @@ tools:
     replacement: end-to-end settings page contract when the settings surface grows further
     last_verified: "2026-06-03"
 
+  - id: data_view_contract_tests
+    paths:
+      - assets/js/data-view.js
+      - backend/tests/contract/test_data_view.py
+    owner_module: data_governance
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: data-view audit result model fixtures and route/audit payload shaping
+    risk_reason: validates audit result grouping mechanics only; it does not prove live data source freshness or backend mutation correctness
+    replacement: end-to-end data page contract when the data cockpit grows further
+    last_verified: "2026-06-03"
+
   - id: stock_horizon_read_root_tests
     paths:
       - backend/tests/test_stock_horizon_read.py

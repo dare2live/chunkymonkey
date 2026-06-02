@@ -106,6 +106,27 @@
     return { label: '按链路兜底', tone: 'info' };
   }
 
+  function buildAuditResultsModel(data) {
+    const details = Array.isArray(data && data.details) ? data.details : [];
+    const issues = [];
+    const okRows = [];
+    details.forEach(r => {
+      if (!r) return;
+      if ((r.issues || []).length > 0) issues.push(r);
+      else okRows.push(r);
+    });
+    return {
+      details,
+      issues,
+      okRows,
+      nError: Number(data && data.n_error) || 0,
+      nWarn: Number(data && data.n_warn) || 0,
+      nOk: Number(data && data.n_ok) || 0,
+      nTables: Number(data && data.n_tables) || 0,
+      runAt: data && data.run_at ? String(data.run_at) : '',
+    };
+  }
+
   function renderLinkOverview() {
     const root = qs('ds-link-overview');
     if (!root) return;
@@ -244,27 +265,21 @@
     const el = qs('ds-audit-results');
     const statsEl = qs('ds-audit-stats');
     if (!el) return;
-    const details = data.details || [];
-    const issues = [];
-    const okList = [];
-    details.forEach(r => {
-      if ((r.issues || []).length > 0) issues.push(r);
-      else okList.push(r);
-    });
+    const model = buildAuditResultsModel(data);
     if (statsEl) {
-      const errMark = data.n_error > 0 ? `<span style="color:#d33">${data.n_error} error</span> · ` : '';
-      const warnMark = data.n_warn > 0 ? `<span style="color:#a40">${data.n_warn} warn</span> · ` : '';
-      statsEl.innerHTML = `${errMark}${warnMark}<span style="color:#0a7">${data.n_ok} ok</span> / ${data.n_tables} 张 · ${esc(data.run_at || '').slice(0, 16)}`;
+      const errMark = model.nError > 0 ? `<span style="color:#d33">${model.nError} error</span> · ` : '';
+      const warnMark = model.nWarn > 0 ? `<span style="color:#a40">${model.nWarn} warn</span> · ` : '';
+      statsEl.innerHTML = `${errMark}${warnMark}<span style="color:#0a7">${model.nOk} ok</span> / ${model.nTables} 张 · ${esc(model.runAt).slice(0, 16)}`;
     }
-    if (!issues.length && !okList.length) {
+    if (!model.issues.length && !model.okRows.length) {
       el.innerHTML = '<div class="muted" style="padding:10px 0">无审计结果</div>';
       return;
     }
     el.innerHTML = `
-      ${issues.length > 0 ? `
+      ${model.issues.length > 0 ? `
         <div style="border-left:3px solid #a40;padding:6px 10px;background:rgba(170,68,0,0.05);border-radius:4px;margin-bottom:8px">
-          <div style="font-weight:600;font-size:12px;margin-bottom:6px">${issues.length} 张表有问题</div>
-          ${issues.map(r => `
+          <div style="font-weight:600;font-size:12px;margin-bottom:6px">${model.issues.length} 张表有问题</div>
+          ${model.issues.map(r => `
             <div style="padding:4px 0;border-bottom:1px dotted var(--cm-bg-100)">
               <code style="font-size:11px">${esc(r.table)}</code>
               <span class="muted" style="font-size:10px"> · rows=${r.n_rows}</span>
@@ -277,9 +292,9 @@
         </div>
       ` : ''}
       <details style="font-size:11px">
-        <summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">已通过 ${okList.length} 张</summary>
+        <summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">已通过 ${model.okRows.length} 张</summary>
         <div style="max-height:240px;overflow-y:auto;margin-top:4px">
-          ${okList.map(r => `
+          ${model.okRows.map(r => `
             <div style="padding:2px 0;font-size:11px;font-family:monospace">
               <code>${esc(r.table)}</code>
               <span class="muted" style="float:right">${r.n_rows} rows</span>
@@ -858,6 +873,7 @@
       setTimeout(() => { init().catch(e => console.error('[DataView] init err', e)); }, 0);
     },
     refresh: init,
+    buildAuditResultsModel,
   };
 
   console.log('[DataView] module loaded');
