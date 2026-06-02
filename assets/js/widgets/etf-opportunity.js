@@ -19,6 +19,9 @@
       .replace(/'/g, '&#39;');
   }
 
+  var formatUtils = (typeof globalThis !== 'undefined' && globalThis.WidgetFormatUtils) || global.WidgetFormatUtils;
+  if (!formatUtils) throw new Error('WidgetFormatUtils missing');
+
   function etfNum(value, digits) {
     if (value == null || Number.isNaN(Number(value))) return '-';
     return Number(value).toFixed(digits == null ? 1 : digits);
@@ -32,17 +35,11 @@
   }
 
   function signedPct(value) {
-    if (value == null || value === '') return '-';
-    var num = Number(value);
-    if (!Number.isFinite(num)) return '-';
-    return (num >= 0 ? '+' : '') + num.toFixed(2) + '%';
+    return formatUtils.formatPercent(value, 2, false, true);
   }
 
   function pct(value) {
-    if (value == null || value === '') return '-';
-    var num = Number(value);
-    if (!Number.isFinite(num)) return '-';
-    return num.toFixed(2) + '%';
+    return formatUtils.formatPercent(value, 2);
   }
 
   function etfOverviewTone(state) {

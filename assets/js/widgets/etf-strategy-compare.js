@@ -15,15 +15,9 @@
     return (s == null ? '' : String(s))
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
-  function fmt(v, d) {
-    if (v == null || isNaN(v)) return '-';
-    return Number(v).toFixed(d == null ? 2 : d);
-  }
-  function fmtPct(v, d) {
-    if (v == null || isNaN(v)) return '-';
-    var n = Number(v);
-    return (n > 0 ? '+' : '') + n.toFixed(d == null ? 2 : d) + '%';
-  }
+
+  var formatUtils = (typeof globalThis !== 'undefined' && globalThis.WidgetFormatUtils) || global.WidgetFormatUtils;
+  if (!formatUtils) throw new Error('WidgetFormatUtils missing');
 
   async function api(path) {
     var r = await fetch(path);
@@ -48,13 +42,13 @@
     if (!strat) return '<div class="esc-metric-card esc-metric-card--' + tone + '"><div class="esc-metric-head">' + label + '</div><div class="muted">无数据</div></div>';
     return '<div class="esc-metric-card esc-metric-card--' + tone + '">' +
       '<div class="esc-metric-head">' + label +
-        (strat.best_step_pct != null ? ' · 步长 ' + fmt(strat.best_step_pct, 1) + '%' : '') +
+        (strat.best_step_pct != null ? ' · 步长 ' + formatUtils.formatNumber(strat.best_step_pct, 1) + '%' : '') +
       '</div>' +
       '<div class="esc-metric-grid">' +
-        '<div><span class="esc-k">总收益</span><span class="esc-v">' + fmtPct(strat.return_pct) + '</span></div>' +
-        '<div><span class="esc-k">年化</span><span class="esc-v">' + fmtPct(strat.annualized_return_pct) + '</span></div>' +
+        '<div><span class="esc-k">总收益</span><span class="esc-v">' + formatUtils.formatPercent(strat.return_pct, 2, false, true) + '</span></div>' +
+        '<div><span class="esc-k">年化</span><span class="esc-v">' + formatUtils.formatPercent(strat.annualized_return_pct, 2, false, true) + '</span></div>' +
         '<div><span class="esc-k">最大回撤</span><span class="esc-v">' + fmtDD(strat.max_drawdown_pct) + '</span></div>' +
-        '<div><span class="esc-k">夏普</span><span class="esc-v">' + fmt(strat.sharpe) + '</span></div>' +
+        '<div><span class="esc-k">夏普</span><span class="esc-v">' + formatUtils.formatNumber(strat.sharpe, 2) + '</span></div>' +
         (strat.trade_count != null
           ? '<div><span class="esc-k">交易次数</span><span class="esc-v">' + strat.trade_count + '</span></div>'
           : '') +
@@ -95,14 +89,14 @@
       gridLine = '<line x1="' + padL + '" x2="' + (w - padR) + '" y1="' + Y(gridReturn).toFixed(1) +
         '" y2="' + Y(gridReturn).toFixed(1) + '" stroke="var(--cm-ok-500)" stroke-dasharray="4 3" stroke-width="1.4"/>' +
         '<text x="' + (w - padR - 4) + '" y="' + (Y(gridReturn) - 5).toFixed(1) +
-        '" text-anchor="end" font-size="10" fill="var(--cm-ok-500)" font-weight="700">网格 ' + fmtPct(gridReturn, 1) + '</text>';
+        '" text-anchor="end" font-size="10" fill="var(--cm-ok-500)" font-weight="700">网格 ' + formatUtils.formatPercent(gridReturn, 1, false, true) + '</text>';
     }
 
     var bhEnd = points.length ? points[points.length - 1].pct : 0;
     var bhEndMark = '<circle cx="' + X(points.length - 1).toFixed(1) + '" cy="' + Y(bhEnd).toFixed(1) +
       '" r="4" fill="var(--cm-accent-warm)" stroke="var(--cm-surface)" stroke-width="2"></circle>' +
       '<text x="' + (X(points.length - 1) - 6).toFixed(1) + '" y="' + (Y(bhEnd) - 8).toFixed(1) +
-      '" text-anchor="end" font-size="10" fill="var(--cm-accent-warm)" font-weight="700">持有 ' + fmtPct(bhEnd, 1) + '</text>';
+      '" text-anchor="end" font-size="10" fill="var(--cm-accent-warm)" font-weight="700">持有 ' + formatUtils.formatPercent(bhEnd, 1, false, true) + '</text>';
 
     var bhArea = '<path d="' + pathD +
       ' L ' + X(points.length - 1).toFixed(1) + ' ' + Y(yMin).toFixed(1) +
@@ -111,7 +105,7 @@
 
     var yTicks = [yMin, (yMin + yMax) / 2, yMax].map(function (t) {
       return '<text x="' + (padL - 6) + '" y="' + (Y(t) + 3).toFixed(1) +
-        '" text-anchor="end" font-size="10" fill="var(--cm-ink-500)">' + fmtPct(t, 0) + '</text>';
+        '" text-anchor="end" font-size="10" fill="var(--cm-ink-500)">' + formatUtils.formatPercent(t, 0, false, true) + '</text>';
     }).join('');
     var xTicks = [0, Math.floor(points.length / 2), points.length - 1].map(function (i) {
       return '<text x="' + X(i).toFixed(1) + '" y="' + (h - padB + 16) +
@@ -145,7 +139,7 @@
     var header = '<div class="esc-head">' +
       '<div class="esc-period-label">周期 ' + esc(periodObj.period) + ' · 窗口 ' + esc(periodObj.data_from || '-') + ' ~ ' + esc(periodObj.data_to || '-') + '</div>' +
       (edge != null
-        ? '<div class="esc-edge esc-edge--' + (edge > 0 ? 'pos' : 'neg') + '">网格 ' + (edge > 0 ? '跑赢' : '跑输') + ' ' + fmtPct(Math.abs(edge), 1) + '</div>'
+        ? '<div class="esc-edge esc-edge--' + (edge > 0 ? 'pos' : 'neg') + '">网格 ' + (edge > 0 ? '跑赢' : '跑输') + ' ' + formatUtils.formatPercent(Math.abs(edge), 1, false, true) + '</div>'
         : '') +
       '</div>';
 
@@ -213,4 +207,7 @@
   }
 
   global.ETFStrategyCompareWidget = { mount: mount };
+  if (typeof globalThis !== 'undefined') {
+    globalThis.ETFStrategyCompareWidget = global.ETFStrategyCompareWidget;
+  }
 })(typeof window !== 'undefined' ? window : this);

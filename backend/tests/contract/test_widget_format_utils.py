@@ -1,0 +1,64 @@
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+import pytest
+
+
+pytestmark = pytest.mark.contract
+
+REPO = Path(__file__).resolve().parents[3]
+
+
+def test_widget_format_utils_exports_and_formats() -> None:
+    script = r"""
+require(process.argv[1]);
+const fmt = globalThis.WidgetFormatUtils;
+if (!fmt || typeof fmt.formatNumber !== 'function' || typeof fmt.formatPercent !== 'function') {
+  throw new Error('WidgetFormatUtils exports missing');
+}
+if (fmt.formatNumber(1.234, 2) !== '1.23') {
+  throw new Error('formatNumber mismatch');
+}
+if (fmt.formatNumber(null, 2) !== '-') {
+  throw new Error('formatNumber empty mismatch');
+}
+if (fmt.formatPercent(0.1234, 2, true) !== '12.34%') {
+  throw new Error('formatPercent ratio mismatch');
+}
+if (fmt.formatPercent(12.34, 1, false, true) !== '+12.3%') {
+  throw new Error('formatPercent signed mismatch');
+}
+if (fmt.formatPercent(-12.34, 1, false, true) !== '-12.3%') {
+  throw new Error('formatPercent negative signed mismatch');
+}
+require(process.argv[2]);
+require(process.argv[3]);
+require(process.argv[4]);
+if (!globalThis.ETFSectorRotationWidget || typeof globalThis.ETFSectorRotationWidget.mount !== 'function') {
+  throw new Error('ETFSectorRotationWidget exports missing');
+}
+if (!globalThis.ETFStrategyCompareWidget || typeof globalThis.ETFStrategyCompareWidget.mount !== 'function') {
+  throw new Error('ETFStrategyCompareWidget exports missing');
+}
+if (!globalThis.ETFOpportunityWidget || typeof globalThis.ETFOpportunityWidget.mountOpportunity !== 'function') {
+  throw new Error('ETFOpportunityWidget exports missing');
+}
+"""
+
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            script,
+            str(REPO / "assets/js/widgets/format-utils.js"),
+            str(REPO / "assets/js/widgets/etf-sector-rotation.js"),
+            str(REPO / "assets/js/widgets/etf-strategy-compare.js"),
+            str(REPO / "assets/js/widgets/etf-opportunity.js"),
+        ],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout

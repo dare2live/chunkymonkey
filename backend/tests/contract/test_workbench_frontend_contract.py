@@ -36,6 +36,8 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "'assets/js/widgets/etf-analysis.js'" in index
     assert "'assets/js/widgets/etf-list.js'" in index
     assert "'assets/js/widgets/etf-opportunity.js'" in index
+    assert "'assets/js/widgets/etf-sector-rotation.js'" in index
+    assert "'assets/js/widgets/etf-strategy-compare.js'" in index
     assert "'assets/js/widgets/etf-workbench.js'" in index
     assert "'assets/js/widgets/model-monitor.js'" in index
     assert "'assets/js/widgets/format-utils.js'" in index
@@ -57,6 +59,9 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert index.index("'assets/js/widgets/etf-analysis.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/etf-list.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/etf-opportunity.js'") < index.index("'assets/js/app.js'")
+    assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/etf-sector-rotation.js'")
+    assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/etf-strategy-compare.js'")
+    assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/etf-opportunity.js'")
     assert index.index("'assets/js/widgets/etf-workbench.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/model-monitor.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/model-monitor.js'")

@@ -15,11 +15,8 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  function fmtPct(v) {
-    if (v == null) return '-';
-    var s = Number(v).toFixed(1);
-    return (Number(v) > 0 ? '+' : '') + s + '%';
-  }
+  var formatUtils = (typeof globalThis !== 'undefined' && globalThis.WidgetFormatUtils) || global.WidgetFormatUtils;
+  if (!formatUtils) throw new Error('WidgetFormatUtils missing');
 
   function toneClass(label) {
     if (label === 'leader') return 'esr-row--leader';
@@ -46,8 +43,8 @@
         '<div class="esr-bar" style="width:' + widthPct.toFixed(1) + '%"></div>' +
         '<span class="esr-bar-value">' + score.toFixed(1) + '</span>' +
       '</div>' +
-      '<span class="esr-metric">' + fmtPct(it.avg_ret_20d) + '</span>' +
-      '<span class="esr-metric esr-metric--muted">rel ' + fmtPct(it.rel_strength_4w) + '</span>' +
+      '<span class="esr-metric">' + formatUtils.formatPercent(it.avg_ret_20d, 1, false, true) + '</span>' +
+      '<span class="esr-metric esr-metric--muted">rel ' + formatUtils.formatPercent(it.rel_strength_4w, 1, false, true) + '</span>' +
       (leadCode
         ? '<button class="esr-leader" data-etf-pick="' + esc(leadCode) + '" title="深度分析 ' + esc(leadCode) + '">龙头 ' + esc(leadName) + '</button>'
         : '<span class="esr-leader esr-leader--none">无数据</span>') +
@@ -95,4 +92,7 @@
   }
 
   global.ETFSectorRotationWidget = { mount: mount };
+  if (typeof globalThis !== 'undefined') {
+    globalThis.ETFSectorRotationWidget = global.ETFSectorRotationWidget;
+  }
 })(typeof window !== 'undefined' ? window : this);
