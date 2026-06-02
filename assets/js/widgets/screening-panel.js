@@ -20,10 +20,6 @@
   var formatUtils = (typeof globalThis !== 'undefined' && globalThis.WidgetFormatUtils) || global.WidgetFormatUtils;
   if (!formatUtils) throw new Error('WidgetFormatUtils missing');
 
-  function fmt(n) {
-    return formatUtils.formatNumber(n, 0);
-  }
-
   function fmtDate(s) {
     if (!s) return '—';
     return String(s).slice(0, 10);
@@ -51,18 +47,18 @@
       '<div class="sig-bt-summary">' +
         '<div class="sig-bt-card sig-bt-follow">' +
           '<div class="sig-bt-lbl">TDX 命中（任一公式）</div>' +
-          '<div class="sig-bt-val">' + fmt(any) + '</div>' +
-          '<div class="sig-bt-sub">/' + fmt(total) + ' · ' + hitPct + ' · 扫描日 ' + esc(screenDate) + '</div>' +
+          '<div class="sig-bt-val">' + formatUtils.formatNumber(any, 0) + '</div>' +
+          '<div class="sig-bt-sub">/' + formatUtils.formatNumber(total, 0) + ' · ' + hitPct + ' · 扫描日 ' + esc(screenDate) + '</div>' +
         '</div>' +
         '<div class="sig-bt-card">' +
           '<div class="sig-bt-lbl">F1 / F3 / F5</div>' +
-          '<div class="sig-bt-val">' + fmt(f1) + ' · ' + fmt(f3) + ' · ' + fmt(f5) + '</div>' +
+          '<div class="sig-bt-val">' + formatUtils.formatNumber(f1, 0) + ' · ' + formatUtils.formatNumber(f3, 0) + ' · ' + formatUtils.formatNumber(f5, 0) + '</div>' +
           '<div class="sig-bt-sub">F1 长期低位突破 · F3 多级回撤 · F5 连跌反转</div>' +
         '</div>' +
         '<div class="sig-bt-card">' +
           '<div class="sig-bt-lbl">海龟突破 · 待突破 · 退出</div>' +
-          '<div class="sig-bt-val">' + fmt(brk) + ' · ' + fmt(pre) + ' · ' + fmt(exit) + '</div>' +
-          '<div class="sig-bt-sub">覆盖 ' + fmt(turtleN) + ' 只 · 快照日 ' + esc(turtleDate) + '</div>' +
+          '<div class="sig-bt-val">' + formatUtils.formatNumber(brk, 0) + ' · ' + formatUtils.formatNumber(pre, 0) + ' · ' + formatUtils.formatNumber(exit, 0) + '</div>' +
+          '<div class="sig-bt-sub">覆盖 ' + formatUtils.formatNumber(turtleN, 0) + ' 只 · 快照日 ' + esc(turtleDate) + '</div>' +
         '</div>' +
       '</div>';
   }

@@ -101,6 +101,9 @@ const screeningSrc = fs.readFileSync(process.argv[14], 'utf8');
 if (!screeningSrc.includes('WidgetFormatUtils')) {
   throw new Error('ScreeningPanelWidget should use WidgetFormatUtils');
 }
+if (screeningSrc.includes('function fmt(')) {
+  throw new Error('ScreeningPanelWidget local formatter should be removed');
+}
 const badgeSrc = fs.readFileSync(process.argv[15], 'utf8');
 if (!badgeSrc.includes('WidgetFormatUtils')) {
   throw new Error('MultidimBadgeWidget should use WidgetFormatUtils');
