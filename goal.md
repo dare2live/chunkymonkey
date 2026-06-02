@@ -3,6 +3,10 @@
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
 
+## 2026-06-03 — pipelines model extraction
+
+- `assets/js/workbench-view.js` 里的 pipelines 页已收成 `buildPipelinesModel()` 纯 helper，`renderPipelines()` 现在只消费 model；row normalization 把 `recent` / `slowest` / `blockers` 统一到 page-level model，并保留 `status_counts`、`latest`、`slowestName`、`slowestDurationS`、`isEmpty`。workbench contract / smoke test 已补上 helper 导出与输入归一回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/workbench-view.js --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_workbench_frontend_render_smoke.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 22 passed，`node --check assets/js/workbench-view.js` PASS，`analyze_complexity.py` 复扫后 `assets/js/workbench-view.js` 无明显热点，`codegraph sync .` 已同步。
+
 ## 2026-06-03 — research model extraction
 
 - `assets/js/workbench-view.js` 里的研究页已收成 `buildResearchModel()` 纯 helper，`renderResearch()` 现在只消费 model；row normalization 把 `research_schedule` / `model_stability` / `ranker_profiles` / `ranker_policy` / `rank_matrix_cache` / `stability_context` / `stock_horizon_profile` / `shareholder_plan_*` / `temporal_synergy` / `industry_pit` 统一到 page-level model，workbench contract / smoke test 已补上 helper 导出与输入归一回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/workbench-view.js --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_workbench_frontend_render_smoke.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 21 passed，`node --check assets/js/workbench-view.js` PASS，`analyze_complexity.py` 复扫后 `assets/js/workbench-view.js` 无明显热点，`codegraph sync .` 已同步。
