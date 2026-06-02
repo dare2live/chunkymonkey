@@ -17,6 +17,7 @@ import argparse
 import csv
 import logging
 import time
+from collections import deque
 from collections import defaultdict
 from pathlib import Path
 
@@ -48,6 +49,89 @@ def _bin_label(value, bins, fallback="?"):
         if lo <= value < hi:
             return label
     return fallback
+
+
+def _rolling_window_minima(values: list[float], window_size: int) -> list[float | None]:
+    if window_size <= 0:
+        raise ValueError("window_size must be positive")
+    minima: list[float | None] = [None] * len(values)
+    window: deque[tuple[int, float]] = deque()
+    for idx, value in enumerate(values):
+        while window and window[-1][1] >= value:
+            window.pop()
+        window.append((idx, value))
+        start = idx - window_size + 1
+        while window and window[0][0] < start:
+            window.popleft()
+        if idx >= window_size - 1:
+            minima[start] = window[0][1]
+    return minima
+
+
+def _build_kline_cache(
+    kl: dict[str, dict[str, float]],
+    holding_days: int,
+) -> dict[str, dict[str, object]]:
+    window_size = holding_days + 1
+    cache: dict[str, dict[str, object]] = {}
+    for code, by_date in kl.items():
+        dates = sorted(by_date.keys())
+        closes = [by_date[d] for d in dates]
+        if len(closes) <= holding_days:
+            continue
+        cache[code] = {
+            "dates": dates,
+            "closes": closes,
+            "date_to_index": {date: idx for idx, date in enumerate(dates)},
+            "entry_window_minima": _rolling_window_minima(closes, window_size),
+        }
+    return cache
+
+
+def _enrich_macd_signals(
+    rows: list[tuple[object, ...]],
+    kl: dict[str, dict[str, float]],
+    holding_days: int,
+) -> list[dict[str, object]]:
+    cache = _build_kline_cache(kl, holding_days)
+    enriched: list[dict[str, object]] = []
+    for sc, d, fvar, strength, vr, ar, p60, p120, stage in rows:
+        if vr is None or ar is None or p60 is None:
+            continue
+        code_cache = cache.get(sc)
+        if not code_cache:
+            continue
+        date_to_index = code_cache["date_to_index"]  # type: ignore[assignment]
+        dates = code_cache["dates"]  # type: ignore[assignment]
+        closes = code_cache["closes"]  # type: ignore[assignment]
+        window_minima = code_cache["entry_window_minima"]  # type: ignore[assignment]
+        try:
+            i = date_to_index[str(d)]  # type: ignore[index]
+        except KeyError:
+            continue
+        entry_i = i + 1
+        exit_i = entry_i + holding_days
+        if exit_i >= len(dates):
+            continue
+        entry = closes[entry_i]
+        exit_ = closes[exit_i]
+        if entry <= 0:
+            continue
+        ret = (exit_ - entry) / entry
+        dd_floor = window_minima[entry_i]
+        dd = (dd_floor - entry) / entry if dd_floor is not None else 0.0
+        enriched.append(
+            {
+                "ret": ret,
+                "dd": dd,
+                "dif_sign": str(fvar).replace("macd_golden_cross_", ""),  # above_zero / below_zero
+                "vol_bin": _bin_label(vr, VOL_BINS),
+                "amt_bin": _bin_label(ar, AMT_BINS),
+                "p60_bin": _bin_label(p60, P60_BINS),
+                "stage": stage if stage in STAGES else "?",
+            }
+        )
+    return enriched
 
 
 def main():
@@ -106,48 +190,7 @@ def main():
 
     # 3. 对每信号算 T+1 close 入场, T+1+hd close 出场 (跟主 horizon_evidence 一致)
     log.info(f"算 forward return (持仓 {args.holding_days}d)...")
-    # 我们需要每只股的 date 升序索引以便算 T+1+hd
-    kl_dates = {code: sorted(d.keys()) for code, d in kl.items()}
-
-    enriched = []
-    for sc, d, fvar, strength, vr, ar, p60, p120, stage in rows:
-        if vr is None or ar is None or p60 is None:
-            continue
-        dates_g = kl_dates.get(sc, [])
-        if not dates_g:
-            continue
-        # 找 d 的 index
-        try:
-            i = dates_g.index(str(d))
-        except ValueError:
-            continue
-        entry_i = i + 1
-        exit_i = i + 1 + args.holding_days
-        if exit_i >= len(dates_g):
-            continue
-        entry = kl[sc][dates_g[entry_i]]
-        exit_ = kl[sc][dates_g[exit_i]]
-        if entry <= 0:
-            continue
-        ret = (exit_ - entry) / entry
-        # 持仓期最低 (max DD)
-        lows = []
-        for j in range(entry_i, exit_i + 1):
-            cl = kl[sc].get(dates_g[j])
-            if cl is not None:
-                lows.append(cl)
-        if lows:
-            dd = (min(lows) - entry) / entry
-        else:
-            dd = 0.0
-        enriched.append({
-            "ret": ret, "dd": dd,
-            "dif_sign": fvar.replace("macd_golden_cross_", ""),  # above_zero / below_zero
-            "vol_bin": _bin_label(vr, VOL_BINS),
-            "amt_bin": _bin_label(ar, AMT_BINS),
-            "p60_bin": _bin_label(p60, P60_BINS),
-            "stage":   stage if stage in STAGES else "?",
-        })
+    enriched = _enrich_macd_signals(rows, kl, args.holding_days)
     log.info(f"  有效信号 (含 forward return): {len(enriched):,}")
 
     mkt.close()

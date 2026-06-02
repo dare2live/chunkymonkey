@@ -705,6 +705,19 @@ tools:
     replacement: verified train-log checkpoint audit and forward stability evidence for the current model_id
     last_verified: "2026-05-27"
 
+  - id: macd_feature_buckets_root_tests
+    paths:
+      - backend/tests/test_analyze_macd_feature_buckets.py
+    owner_module: signals.macd_feature_buckets
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_analyze_macd_feature_buckets.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: synthetic K-line and bucket-bin fixtures for rolling-window minima and MACD enrichment helpers
+    risk_reason: validates helper-level complexity reduction only; does not prove live DB query freshness or full frontier report content
+    replacement: live analyze_macd_feature_buckets.py run on current reports and market DB snapshot
+    last_verified: "2026-06-02"
+
   - id: calendar_gate_root_tests
     paths:
       - backend/tests/test_calendar_gate.py
