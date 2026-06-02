@@ -62,12 +62,14 @@ The model pipeline snapshot below is historical evidence for the completed
   `fact_feature_panel` is no longer blocking; `dim_stock_tdx_industry_history`
   remains the lone warning yellow.
 - shared-config boundary: common holding windows, stage thresholds, MACD
-  diagnostic windows, and turtle_breakout volume confirmation gates now live
-  in shared YAML configs (`formula_shared_windows.yaml`, `technical_stage.yaml`,
-  `formula_macd_golden_cross.yaml`, `formula_turtle_breakout.yaml`) plus the
-  shared loader; formula-specific YAMLs keep only formula-owned thresholds,
-  and per-stock best-holding results stay table-backed in marts such as
-  `mart_per_stock_stage_strategy_optimal_pit` / `mart_stock_horizon_profile`
+  diagnostic windows, turtle_breakout volume confirmation gates, and the
+  backtest default stop/target/trailing now live in shared YAML configs
+  (`formula_shared_windows.yaml`, `technical_stage.yaml`,
+  `formula_macd_golden_cross.yaml`, `formula_turtle_breakout.yaml`,
+  `strategy_defaults.yaml`) plus the shared loader; formula-specific YAMLs
+  keep only formula-owned thresholds, and per-stock best-holding results stay
+  table-backed in marts such as `mart_per_stock_stage_strategy_optimal_pit` /
+  `mart_stock_horizon_profile`
   instead of becoming file literals.
 - stage-opt audit: 2026-06-01 repaired the 2025-08-01→2026-05-29
   `fact_stock_technical_stage` / `fact_signal_context` discontinuity and

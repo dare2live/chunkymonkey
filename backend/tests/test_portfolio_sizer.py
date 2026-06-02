@@ -79,6 +79,38 @@ class TestKelly:
 
 
 # ===================== Sizing =====================
+class TestStrategyDefaults:
+    def test_loader_reads_values(self, tmp_path):
+        from services.backtest.strategy_defaults import _load_defaults
+
+        cfg = tmp_path / "strategy_defaults.yaml"
+        cfg.write_text(
+            "stop_pct: -0.07\n"
+            "target_pct: 0.12\n"
+            "trailing_pct: 0.03\n"
+            "label: custom_default\n",
+            encoding="utf-8",
+        )
+        loaded = _load_defaults(cfg)
+        assert loaded.stop_pct == pytest.approx(-0.07)
+        assert loaded.target_pct == pytest.approx(0.12)
+        assert loaded.trailing_pct == pytest.approx(0.03)
+        assert loaded.label == "custom_default"
+
+    def test_loader_missing_key_fails(self, tmp_path):
+        from services.backtest.strategy_defaults import _load_defaults
+
+        cfg = tmp_path / "strategy_defaults.yaml"
+        cfg.write_text(
+            "stop_pct: -0.07\n"
+            "target_pct: 0.12\n"
+            "label: custom_default\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError, match="missing strategy default key trailing_pct"):
+            _load_defaults(cfg)
+
+
 class TestSizing:
     @pytest.fixture
     def short_profile(self):
