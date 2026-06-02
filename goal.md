@@ -3,6 +3,10 @@
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
 
+## 2026-06-03 — data-view audit model cleanup
+
+- `assets/js/data-view.js` 里的审计结果拆分已收成 `buildAuditResultsModel()` 纯 helper，`renderAuditResults()` 只消费 model；`null` 审计行会被安全忽略，issues / okRows / n_error / n_warn / n_ok / n_tables / run_at 都在单一 model 层归一。新增 `backend/tests/contract/test_data_view.py` 锁住 helper 行为，并把 `backend/tests/contract/test_workbench_frontend_contract.py` 里的 data-view 契约收紧到 `buildAuditResultsModel(`。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/data-view.js --scope backend/tests/contract/test_data_view.py --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_settings_view.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_settings_view.py` 4 passed，`node --check assets/js/data-view.js` PASS，`analyze_complexity.py` 复扫后 `assets/js/data-view.js` 无明显热点，`codegraph sync .` 已同步。
+
 ## 2026-06-03 — ETF workbench widget extraction
 
 - `assets/js/app.js` 里的 ETF 工作台主实现已抽到 `assets/js/widgets/etf-workbench.js`，`app.js` 现在只保留 `loadEtfWorkbench()` 薄 wrapper + 依赖注入；widget 自带 `mountEtfWorkbench` / `buildWorkbenchHtml` / `etfNum`，把 ETF 工作台总览、数据源与覆盖范围、ETF 结构与功能入口收口到单独模块，`index.html` 已调整为先加载 widget 再加载 `app.js`。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_etf_workbench_widget.py --scope backend/tests/contract/test_workbench_frontend_contract.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_etf_workbench_widget.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`node --check assets/js/widgets/etf-workbench.js assets/js/app.js` PASS，`analyze_complexity.py` 复扫后新 widget 无明显热点，`codegraph sync .` 已同步。
