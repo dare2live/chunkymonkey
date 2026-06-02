@@ -1,11 +1,11 @@
 {
-  "snapshot_at": "2026-06-03 06:08:28 CST",
+  "snapshot_at": "2026-06-03 06:12:42 CST",
   "git": {
     "branch": "main",
-    "head_hash": "35227036",
-    "head_msg": "35227036 docs: refresh session handoff snapshot after signal-params formatter cleanup final head | # commit-msg: minimal",
-    "commits_24h": 258,
-    "uncommitted_files": 0
+    "head_hash": "b2a1f31e",
+    "head_msg": "b2a1f31e refactor: remove dead signal-adapter aggregateByStock wrapper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal",
+    "commits_24h": 259,
+    "uncommitted_files": 2
   },
   "retrain": {
     "model_id": "lgbm_phase5_v9b_20260523T083000Z",
@@ -25,5 +25,5 @@
     "pct_of_budget": "25.2",
     "remaining_hours_spot": "105.9"
   },
-  "next_action": "continue current goal blockers \u2014 stage-opt structural blocker triage / need_027 blocked-gap triage"
+  "next_action": "2 uncommitted files \u2014 git status \u770b + bash scripts/safe_commit.sh"
 }

@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 06:08:28 CST
+**Snapshot 时间**: 2026-06-03 06:12:42 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `35227036 docs: refresh session handoff snapshot after signal-params formatter cleanup final head | # commit-msg: minimal` |
-| 最近 24h commits | 258 |
-| 未 commit 文件 | 0 |
+| HEAD | `b2a1f31e refactor: remove dead signal-adapter aggregateByStock wrapper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 259 |
+| 未 commit 文件 | 2 |
 
 ### 最近 10 commits
 
 ```
+b2a1f31e refactor: remove dead signal-adapter aggregateByStock wrapper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
+87b8a6f2 docs: refresh session handoff snapshot after signal-params formatter cleanup current head | # commit-msg: minimal
 35227036 docs: refresh session handoff snapshot after signal-params formatter cleanup final head | # commit-msg: minimal
 40de46a4 docs: refresh session handoff snapshot after signal-params formatter cleanup | # commit-msg: minimal
 2538ad1e docs: record signal-params formatter cleanup in project index and workflow checkpoint | # commit-msg: minimal
@@ -76,13 +78,11 @@ bash scripts/install_resilience.sh --status   # check 装好没
 7e037323 feat: clean up screening-panel formatting helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 9ee82a4b docs: refresh session handoff snapshot after ETF list formatter cleanup | # commit-msg: minimal
 763835f5 feat: clean up ETF list formatting helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
-6ee6c05d docs: refresh session handoff snapshot after backtest-panel and strategy compare formatter extension | # commit-msg: minimal
-66a16dac feat: extend shared widget formatter to backtest-panel and etf-strategy-compare | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**continue current goal blockers — stage-opt structural blocker triage / need_027 blocked-gap triage**
+**2 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 
