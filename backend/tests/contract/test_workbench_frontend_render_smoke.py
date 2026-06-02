@@ -703,7 +703,10 @@ def test_workbench_data_sources_model_is_pure_and_stable():
           today_signal_cache: { status: 'fresh', signal_count: 12, requires_refresh: false, stale: false },
           asset_health: {
             summary: { total: 4 },
-            items: [{ table_name: 'fact_x', severity: 'warning', frontend_visibility: 'governance_visible' }],
+            items: [
+              { table_name: 'fact_x', severity: 'warning', quality_gate_level: 'warning', frontend_visibility: 'governance_visible' },
+              { table_name: 'fact_hidden', severity: 'info', quality_gate_level: 'monitor_only', frontend_visibility: 'hidden_internal' },
+            ],
             governance_counts: {
               quality_gate_level: { blocking: 1, warning: 2 },
               coverage_policy: {},
@@ -741,8 +744,50 @@ def test_workbench_data_sources_model_is_pure_and_stable():
         if (!model.kline.primary_is_tdxhub || model.primary.source_name !== 'tdxhub') throw new Error('kline normalization mismatch');
         if (model.qualityCounts.blocking !== 1 || model.tdxHealthSummary.timeout_server_count !== 1) throw new Error('counts mismatch');
         if (model.tdxServerHealth.rowCount !== 1 || model.tdxServerHealth.totals.timeout !== 1) throw new Error('tdx server health model mismatch');
+        if (model.assetGovernanceTable.rowCount !== 1 || model.assetGovernanceTable.rows[0].table_name !== 'fact_x') throw new Error('asset governance model mismatch');
         if (model.blockers.length !== 1 || model.watermarks.length !== 1 || model.tdxF10Capabilities.length !== 1) throw new Error('list normalization mismatch');
         if (view.buildDataSourcesModel({}).signalCacheTone !== 'unknown') throw new Error('default normalization mismatch');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/workbench-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+
+
+def test_workbench_asset_governance_table_model_is_pure_and_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.WorkbenchView;
+        if (!view || typeof view.buildAssetGovernanceTableModel !== 'function') {
+          throw new Error('WorkbenchView.buildAssetGovernanceTableModel missing');
+        }
+
+        const model = view.buildAssetGovernanceTableModel([
+          { table_name: 'fact_monitor', severity: 'warning', quality_gate_level: 'warning', layer: 'fact', asset_grain: 'day', frontend_visibility: 'governance_visible' },
+          { table_name: 'fact_blocked', severity: 'error', quality_gate_level: 'blocking', layer: 'fact', asset_grain: 'day', frontend_visibility: 'governance_visible' },
+          { table_name: 'fact_hidden', severity: 'info', quality_gate_level: 'monitor_only', frontend_visibility: 'hidden_internal' },
+          { table_name: 'fact_monitor_2', severity: 'info', quality_gate_level: 'monitor_only', frontend_visibility: 'governance_visible' },
+        ]);
+
+        if (!model || model.rowCount !== 3 || model.isEmpty !== false) throw new Error('row normalization mismatch');
+        if (model.rows[0].table_name !== 'fact_blocked' || model.rows[1].table_name !== 'fact_monitor') throw new Error('sort order mismatch');
+        if (model.rows[0].gateTone !== 'bad' || model.rows[1].gateTone !== 'warn' || model.rows[2].gateTone !== 'info') throw new Error('gate tone mismatch');
+        if (model.rows.some(row => row.table_name === 'fact_hidden')) throw new Error('hidden row should be filtered');
+        const empty = view.buildAssetGovernanceTableModel([]);
+        if (empty.rowCount !== 0 || empty.isEmpty !== true) throw new Error('default normalization mismatch');
         """
     ).strip()
 

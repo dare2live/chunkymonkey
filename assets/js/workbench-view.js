@@ -690,6 +690,7 @@
       tdxHealth: tdxHealth,
       tdxHealthSummary: tdxHealthSummary,
       tdxServerHealth: buildTdxServerHealthModel(tdxHealth),
+      assetGovernanceTable: buildAssetGovernanceTableModel(assetHealth.items || []),
       blockers: Array.isArray(data.blockers) ? data.blockers : [],
       watermarks: Array.isArray(data.watermarks) ? data.watermarks : [],
       tdxF10Capabilities: Array.isArray(data.tdx_f10_capabilities) ? data.tdx_f10_capabilities : [],
@@ -928,7 +929,7 @@
 
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>资产用途与质量契约</h3><div class="muted">should it be daily / can it enter model / how nulls are interpreted</div></div></div>' +
-      renderAssetGovernanceTable(model.assetHealth.items || []) +
+      renderAssetGovernanceTable(model.assetGovernanceTable) +
       '</section>' +
 
       '<div class="wb-grid">' +
@@ -987,33 +988,60 @@
     }).join('');
   }
 
-  function renderAssetGovernanceTable(rows) {
-    rows = (rows || []).filter(function (row) {
-      return (row.frontend_visibility || 'governance_visible') !== 'hidden_internal';
-    });
-    if (!rows.length) return renderEmpty('暂无资产治理标签');
-    rows = rows.slice().sort(function (a, b) {
-      var gateRank = { blocking: 0, warning: 1, monitor_only: 2 };
-      var ar = gateRank[a.quality_gate_level] == null ? 3 : gateRank[a.quality_gate_level];
-      var br = gateRank[b.quality_gate_level] == null ? 3 : gateRank[b.quality_gate_level];
-      if (ar !== br) return ar - br;
-      return String(a.table_name || '').localeCompare(String(b.table_name || ''));
-    }).slice(0, 80);
+  function renderAssetGovernanceTable(model) {
+    model = model || buildAssetGovernanceTableModel([]);
+    if (model.isEmpty) return renderEmpty('暂无资产治理标签');
+    var rows = model.rows || [];
     return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
       '<thead><tr><th>资产</th><th>健康</th><th>频率/覆盖</th><th>NULL/PIT</th><th>用途</th><th>入模/策略</th></tr></thead><tbody>' +
       rows.map(function (row) {
-        var gate = row.quality_gate_level || 'monitor_only';
-        var gateTone = gate === 'blocking' ? 'bad' : gate === 'warning' ? 'warn' : 'info';
         return '<tr>' +
           '<td><code>' + esc(row.table_name || '-') + '</code><div class="muted">' + esc(row.layer || '-') + ' · ' + esc(row.asset_grain || '-') + '</div></td>' +
           '<td>' + pill(row.severity || 'unknown', row.severity || 'unknown') + '<div class="muted">' + esc(row.issue_summary || row.upstream_source || '-') + '</div></td>' +
           '<td>' + esc(row.asset_cadence || row.expected_freshness || '-') + '<div class="muted">' + esc(row.coverage_policy || '-') + '</div></td>' +
           '<td><code>' + esc(row.null_policy || '-') + '</code><div class="muted">' + esc(row.pit_policy || '-') + '</div></td>' +
-          '<td>' + esc(row.intended_use || '-') + '<div class="muted">' + pill(gate, gateTone) + '</div></td>' +
+          '<td>' + esc(row.intended_use || '-') + '<div class="muted">' + pill(row.gate, row.gateTone) + '</div></td>' +
           '<td>' + esc(row.model_eligibility || '-') + '<div class="muted">' + esc(row.strategy_eligibility || '-') + '</div></td>' +
           '</tr>';
       }).join('') +
       '</tbody></table></div>';
+  }
+
+  function buildAssetGovernanceTableModel(rows) {
+    rows = Array.isArray(rows) ? rows : [];
+    var normalizedRows = rows.filter(function (row) {
+      return (row.frontend_visibility || 'governance_visible') !== 'hidden_internal';
+    }).slice().sort(function (a, b) {
+      var gateRank = { blocking: 0, warning: 1, monitor_only: 2 };
+      var ar = gateRank[a.quality_gate_level] == null ? 3 : gateRank[a.quality_gate_level];
+      var br = gateRank[b.quality_gate_level] == null ? 3 : gateRank[b.quality_gate_level];
+      if (ar !== br) return ar - br;
+      return String(a.table_name || '').localeCompare(String(b.table_name || ''));
+    }).slice(0, 80).map(function (row) {
+      var gate = row.quality_gate_level || 'monitor_only';
+      var gateTone = gate === 'blocking' ? 'bad' : gate === 'warning' ? 'warn' : 'info';
+      return {
+        table_name: row.table_name || '-',
+        layer: row.layer || '-',
+        asset_grain: row.asset_grain || '-',
+        severity: row.severity || 'unknown',
+        issue_summary: row.issue_summary || row.upstream_source || '-',
+        asset_cadence: row.asset_cadence || row.expected_freshness || '-',
+        coverage_policy: row.coverage_policy || '-',
+        null_policy: row.null_policy || '-',
+        pit_policy: row.pit_policy || '-',
+        intended_use: row.intended_use || '-',
+        gate: gate,
+        gateTone: gateTone,
+        model_eligibility: row.model_eligibility || '-',
+        strategy_eligibility: row.strategy_eligibility || '-',
+      };
+    });
+    return {
+      rows: normalizedRows,
+      rowCount: normalizedRows.length,
+      isEmpty: !normalizedRows.length,
+    };
   }
 
   function renderProcessingMonitorTable(rows) {
@@ -2672,6 +2700,7 @@
     buildDeliveryModel: buildDeliveryModel,
     buildChampionModel: buildChampionModel,
     buildDataSourcesModel: buildDataSourcesModel,
+    buildAssetGovernanceTableModel: buildAssetGovernanceTableModel,
     buildTdxServerHealthModel: buildTdxServerHealthModel,
     buildFeaturesModel: buildFeaturesModel,
     buildTemporalSynergyModel: buildTemporalSynergyModel,
