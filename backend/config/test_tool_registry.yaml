@@ -718,6 +718,19 @@ tools:
     replacement: live analyze_macd_feature_buckets.py run on current reports and market DB snapshot
     last_verified: "2026-06-02"
 
+  - id: survivorship_audit_root_tests
+    paths:
+      - backend/tests/test_audit_survivorship.py
+    owner_module: universe.survivorship_audit
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_audit_survivorship.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: synthetic missing-code fixtures for the survivorship audit helper
+    risk_reason: validates helper-level sampling only; does not prove live K-line coverage or survivorship gate freshness
+    replacement: current survivorship audit run on live K-line and universe tables
+    last_verified: "2026-06-02"
+
   - id: calendar_gate_root_tests
     paths:
       - backend/tests/test_calendar_gate.py

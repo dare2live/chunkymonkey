@@ -30,6 +30,7 @@ Rule 11 安全:
 from __future__ import annotations
 
 import argparse
+from heapq import nsmallest
 import json
 import logging
 import random
@@ -67,6 +68,14 @@ class CheckResult:
     detail: str
     rows: int = 0
     extras: dict = field(default_factory=dict)
+
+
+def _sample_missing_codes(missing: set[str], limit: int = 5) -> list[str]:
+    """Return the lexicographically smallest missing codes without full sorting."""
+
+    if limit <= 0 or not missing:
+        return []
+    return nsmallest(limit, missing)
 
 
 def check_delisted_table_existence(conn) -> list[CheckResult]:
@@ -452,7 +461,7 @@ def check_survivorship_spot_check(conn) -> list[CheckResult]:
                 "coverage": round(coverage, 4),
             }
             if missing:
-                sample = sorted(missing)[:5]
+                sample = _sample_missing_codes(missing)
                 extras["missing_sample"] = [
                     {"code": c, "first_seen_date": keep_universe.get(c)} for c in sample
                 ]
