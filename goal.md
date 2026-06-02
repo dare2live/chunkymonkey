@@ -5,6 +5,10 @@
 
 ## 2026-06-03 — data-view audit model cleanup
 
+## 2026-06-03 — asset governance table model extraction
+
+- `assets/js/workbench-view.js` 里的资产用途与质量契约表已收成 `buildAssetGovernanceTableModel()` 纯 helper，`renderAssetGovernanceTable()` 现在只消费 model；row normalization 把 `asset_health.items` 统一成 `rows`、`rowCount`、`isEmpty`，并保留原有 hidden_internal 过滤、quality gate 排序与 80 行上限语义。`buildDataSourcesModel()` 也开始返回 `assetGovernanceTable` model，workbench contract / smoke test 已补上 helper 导出与输入归一回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/workbench-view.js --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_workbench_frontend_render_smoke.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 18 passed，`node --check assets/js/workbench-view.js` PASS，`analyze_complexity.py` 复扫后 `assets/js/workbench-view.js` 无明显热点，`codegraph sync .` 已同步。
+
 ## 2026-06-03 — tdx server health model extraction
 
 - `assets/js/workbench-view.js` 里的 TDX K 线服务器健康块已收成 `buildTdxServerHealthModel()` 纯 helper，`renderTdxServerHealthTable()` 现在只消费 model；row normalization 把 `servers` / `summary` 统一成 `capabilities`、`totals`、`rows`、`rowCount`、`updatedAt`、`isEmpty`，并兼容 `healthy_count` / `timeout_server_count` 与 success/fail/timeout 汇总口径。`buildDataSourcesModel()` 也开始返回 `tdxServerHealth` model，workbench contract / smoke test 已补上 helper 导出与输入归一回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/workbench-view.js --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_workbench_frontend_render_smoke.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 17 passed，`node --check assets/js/workbench-view.js` PASS，`analyze_complexity.py` 复扫后 `assets/js/workbench-view.js` 无明显热点，`codegraph sync .` 已同步。
