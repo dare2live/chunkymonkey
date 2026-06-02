@@ -634,3 +634,47 @@ def test_workbench_rank_matrix_cache_model_is_pure_and_stable():
         check=False,
     )
     assert result.returncode == 0, result.stderr + result.stdout
+
+
+def test_workbench_overview_model_is_pure_and_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.WorkbenchView;
+        if (!view || typeof view.buildOverviewModel !== 'function') {
+          throw new Error('WorkbenchView.buildOverviewModel missing');
+        }
+
+        const model = view.buildOverviewModel({
+          latest_trading_day: '2026-06-03',
+          latest_manifest: { pipeline_name: 'cron_daily', run_id: 'run_1', status: 'done', duration_s: 32, gate_result: 'pass' },
+          schema_drift_count: 2,
+          champion: { counts: { champion: 1 }, champions: [{ model_id: 'champion_a' }] },
+          storage: { latest_run_id: 'cleanup_1', started_at: '2026-06-03 01:00:00', latest_status: 'done' },
+          research_schedule: { run_id: 'research_1', status_counts: { ready: 2 } },
+          blockers: [{ scope: 'schema', text: 'drift' }],
+          feature_drift: { run_id: 'drift_1' },
+        });
+
+        if (!model || model.latestTradingDay !== '2026-06-03') throw new Error('latestTradingDay mismatch');
+        if (model.schemaDriftCount !== 2 || model.championId !== 'champion_a') throw new Error('summary mismatch');
+        if (model.blockers.length !== 1 || model.research.run_id !== 'research_1') throw new Error('nested normalization mismatch');
+        if (model.storage.latest_run_id !== 'cleanup_1' || model.featureDrift.run_id !== 'drift_1') throw new Error('passthrough mismatch');
+        if (view.buildOverviewModel({}).championId !== '-') throw new Error('default normalization mismatch');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/workbench-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout

@@ -216,6 +216,9 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "管线" in workbench_js
     assert "特征" in workbench_js
     assert "GO/NO-GO" in workbench_js
+    assert "renderOverview" in workbench_js
+    assert "buildOverviewModel" in workbench_js
+    assert "buildOverviewModel(data)" in workbench_js
     assert "renderDelivery" in workbench_js
     assert "buildDeliveryModel" in workbench_js
     assert "buildDeliveryModel(data)" in workbench_js

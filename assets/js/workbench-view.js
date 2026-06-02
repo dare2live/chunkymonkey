@@ -242,49 +242,65 @@
   }
 
   function renderOverview(data) {
-    var latestManifest = data.latest_manifest || {};
-    var research = data.research_schedule || {};
-    var champion = data.champion || {};
-    var champions = champion.champions || [];
-    var championId = champions.length ? champions[0].model_id : '-';
-    var storage = data.storage || {};
+    var model = buildOverviewModel(data);
 
     setBody(
       renderReadModelMeta(data) +
       '<div class="stats-row wb-stats-row">' +
-      statCard('最新完成交易日', data.latest_trading_day, 'calendar target', data.latest_trading_day ? 'ok' : 'missing') +
-      statCard('最新运行', latestManifest.pipeline_name || '-', esc(latestManifest.run_id || ''), latestManifest.status) +
-      statCard('Schema drift', fmtNum(data.schema_drift_count || 0), 'expected vs actual', data.schema_drift_count ? 'warn' : 'ok') +
-      statCard('Champion', championId, renderStatusCounts(champion.counts), champions.length ? 'champion' : 'missing') +
-      statCard('清理计划', storage.latest_run_id || '-', esc(storage.started_at || ''), storage.latest_status || 'none') +
+      statCard('最新完成交易日', model.latestTradingDay, 'calendar target', model.latestTradingDay ? 'ok' : 'missing') +
+      statCard('最新运行', model.latestManifest.pipeline_name || '-', esc(model.latestManifest.run_id || ''), model.latestManifest.status) +
+      statCard('Schema drift', fmtNum(model.schemaDriftCount), 'expected vs actual', model.schemaDriftCount ? 'warn' : 'ok') +
+      statCard('Champion', model.championId, renderStatusCounts(model.champion.counts), model.champions.length ? 'champion' : 'missing') +
+      statCard('清理计划', model.storage.latest_run_id || '-', esc(model.storage.started_at || ''), model.storage.latest_status || 'none') +
       '</div>' +
 
       '<div class="wb-grid">' +
       '<section class="panel wb-panel">' +
-      '<div class="panel-head"><div><h3>研究计划</h3><div class="muted">run_id: <code>' + esc(research.run_id || '-') + '</code></div></div></div>' +
-      '<div class="wb-count-row">' + renderStatusCounts(research.status_counts) + '</div>' +
+      '<div class="panel-head"><div><h3>研究计划</h3><div class="muted">run_id: <code>' + esc(model.research.run_id || '-') + '</code></div></div></div>' +
+      '<div class="wb-count-row">' + renderStatusCounts(model.research.status_counts) + '</div>' +
       '</section>' +
 
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>当前阻塞</h3><div class="muted">schema / gate / runtime</div></div></div>' +
-      renderBlockers(data.blockers) +
+      renderBlockers(model.blockers) +
       '</section>' +
       '</div>' +
 
       '<section class="panel wb-panel">' +
-      '<div class="panel-head"><div><h3>特征漂移根因</h3><div class="muted">run_id: <code>' + esc((data.feature_drift || {}).run_id || '-') + '</code></div></div></div>' +
-      renderDriftTable(data.feature_drift) +
+      '<div class="panel-head"><div><h3>特征漂移根因</h3><div class="muted">run_id: <code>' + esc(model.featureDrift.run_id || '-') + '</code></div></div></div>' +
+      renderDriftTable(model.featureDrift) +
       '</section>' +
 
       '<section class="panel wb-panel">' +
-      '<div class="panel-head"><div><h3>最近运行清单</h3><div class="muted">as of: <code>' + esc(latestManifest.ended_at || latestManifest.started_at || '-') + '</code></div></div></div>' +
-      '<div class="wb-run-line">' + pill(latestManifest.status || 'unknown', latestManifest.status) +
-      '<span><code>' + esc(latestManifest.run_id || '-') + '</code></span>' +
-      '<span>' + esc(latestManifest.pipeline_name || '-') + '</span>' +
-      '<span>' + fmtDuration(latestManifest.duration_s) + '</span>' +
-      (latestManifest.gate_result ? '<span>' + pill(latestManifest.gate_result, latestManifest.gate_result) + '</span>' : '') +
+      '<div class="panel-head"><div><h3>最近运行清单</h3><div class="muted">as of: <code>' + esc(model.latestManifest.ended_at || model.latestManifest.started_at || '-') + '</code></div></div></div>' +
+      '<div class="wb-run-line">' + pill(model.latestManifest.status || 'unknown', model.latestManifest.status) +
+      '<span><code>' + esc(model.latestManifest.run_id || '-') + '</code></span>' +
+      '<span>' + esc(model.latestManifest.pipeline_name || '-') + '</span>' +
+      '<span>' + fmtDuration(model.latestManifest.duration_s) + '</span>' +
+      (model.latestManifest.gate_result ? '<span>' + pill(model.latestManifest.gate_result, model.latestManifest.gate_result) + '</span>' : '') +
       '</div></section>'
     );
+  }
+
+  function buildOverviewModel(data) {
+    data = data || {};
+    var latestManifest = data.latest_manifest || {};
+    var research = data.research_schedule || {};
+    var champion = data.champion || {};
+    var champions = Array.isArray(champion.champions) ? champion.champions : [];
+    var storage = data.storage || {};
+    return {
+      latestTradingDay: data.latest_trading_day || '',
+      latestManifest: latestManifest,
+      schemaDriftCount: Number(data.schema_drift_count || 0),
+      champion: champion,
+      champions: champions,
+      championId: champions.length ? champions[0].model_id : '-',
+      storage: storage,
+      research: research,
+      blockers: Array.isArray(data.blockers) ? data.blockers : [],
+      featureDrift: data.feature_drift || {},
+    };
   }
 
   function toneForReturn(value) {
@@ -2473,6 +2489,7 @@
   global.WorkbenchView = {
     show: show,
     setTab: setTab,
+    buildOverviewModel: buildOverviewModel,
     buildReadModelMeta: buildReadModelMeta,
     buildDeliveryModel: buildDeliveryModel,
     buildChampionModel: buildChampionModel,
