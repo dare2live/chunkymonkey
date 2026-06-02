@@ -67,13 +67,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `6e5d750f feat: externalize shared formula windows and split config ownership | Codex-Reviewed: APPROVE_WITH_NOTES | PIT neutral; OOS evidence unchanged; test pass: formula_engine 64 passed, py_compile PASS, docs graph PASS` |
-| 最近 24h commits | 115 |
+| HEAD | `526fa63a docs: refresh session handoff snapshot after shared-config refactor | # commit-msg: minimal` |
+| 最近 24h commits | 116 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+526fa63a docs: refresh session handoff snapshot after shared-config refactor | # commit-msg: minimal
 6e5d750f feat: externalize shared formula windows and split config ownership | Codex-Reviewed: APPROVE_WITH_NOTES | PIT neutral; OOS evidence unchanged; test pass: formula_engine 64 passed, py_compile PASS, docs graph PASS
 d79171f4 feat: surface research challenger registry boundary in stage-opt audit | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: pytest 33 passed, audit PASS, docs graph PASS
 525fab9a feat: widen reversal 1w rel_std to 0.07 and lift stage-opt supply | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: formula_engine 40 passed, audit PASS, stage-opt 75.24% ready coverage, docs graph PASS, complexity no new HIGH
