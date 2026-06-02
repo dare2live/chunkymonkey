@@ -30,7 +30,6 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "'assets/js/widgets/returns-chart.js'" in index
     assert "'assets/js/widgets/type-summary.js'" in index
     assert "'assets/js/widgets/stock-summary.js'" in index
-    assert "'assets/js/widgets/stock-report.js'" in index
     assert "'assets/js/widgets/stock-list-rows.js'" in index
     assert "'assets/js/widgets/stock-list-controls.js'" in index
     assert "'assets/js/widgets/institution-scorecard.js'" in index
@@ -52,7 +51,6 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert 'id="btnSearchInst"' not in index
     assert 'id="btnImportChecked"' not in index
     assert 'id="btnBatchAlias"' not in index
-    assert index.index("'assets/js/widgets/stock-report.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/stock-list-rows.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/institution-scorecard.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/etf-analysis.js'") < index.index("'assets/js/app.js'")
@@ -75,9 +73,6 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "ReturnsChartWidget" in app_js
     assert "TypeSummaryWidget" in app_js
     assert "StockSummaryWidget" in app_js
-    assert "StockReportWidget" in app_js
-    assert "function renderStockReportSection(" not in app_js
-    assert "function renderStockReportScoreSection(" not in app_js
     assert "StockListRowsWidget" in app_js
     assert "StockListControlsWidget" in app_js
     assert "InstitutionScorecardWidget" in app_js

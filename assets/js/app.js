@@ -17,7 +17,6 @@
   var StockListControlsWidget = window.StockListControlsWidget || null;
   var StockListRowsWidget = window.StockListRowsWidget || null;
   var StockSummaryWidget = window.StockSummaryWidget || null;
-  var StockReportWidget = window.StockReportWidget || null;
   var ReturnsChartWidget = window.ReturnsChartWidget || null;
   var TypeSummaryWidget = window.TypeSummaryWidget || null;
   var InstitutionScorecardWidget = window.InstitutionScorecardWidget || null;
@@ -353,41 +352,6 @@
 
   // renderDashboardOverview 已随 Step 5d 工作台重塑移除。
   // 候选池/评分框架从「工作台」撤下，主入口统一为信号 v2。
-
-  function stockReportDeps() {
-    return {
-      esc: esc,
-      fmt: fmt,
-      fmtDate: fmtDate,
-      fmtDateTime: fmtDateTime,
-      fmtGain: fmtGain,
-      pct: pct,
-      compactNum: compactNum,
-      fmtCurrency: fmtCurrency,
-      scoreNum: scoreNum,
-      signedScore: signedScore,
-      signedPct: signedPct,
-      signedCountText: signedCountText,
-      daysFromDateDigits: daysFromDateDigits,
-      daysBetweenDates: daysBetweenDates,
-      resolveStockSummary: resolveStockSummary,
-      stockGateInfo: stockGateInfo,
-      stockGateTag: stockGateTag,
-      stockSignalNarrative: stockSignalNarrative,
-      stockSignalHeadline: stockSignalHeadline,
-      stockSourceName: stockSourceName,
-      preferredIndustryLabel: preferredIndustryLabel,
-      turtleSystemLabel: turtleSystemLabel,
-      turtleStateTag: turtleStateTag,
-      setupEventText: setupEventText,
-      followGateTag: followGateTag,
-      costMethodText: costMethodText,
-      instLink: instLink,
-      evTag: evTag,
-      attentionSignalTag: attentionSignalTag,
-      attentionSignalMeta: attentionSignalMeta,
-    };
-  }
 
   function priorityPoolTag(pool) {
     var meta = {
