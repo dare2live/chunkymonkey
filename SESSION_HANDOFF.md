@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 04:53:07 CST
+**Snapshot 时间**: 2026-06-03 05:00:24 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `0bed79f4 refactor: hoist model-monitor format helpers | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
+| HEAD | `7af849d1 feat: add shared widget format utils | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
 | 最近 24h commits | 243 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+7af849d1 feat: add shared widget format utils | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
+703dccb8 docs: refresh session handoff and workflow checkpoint after model-monitor formatter cleanup | # commit-msg: minimal
 0bed79f4 refactor: hoist model-monitor format helpers | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 53652f82 docs: refresh session handoff snapshot after inline dispatch cleanup | # commit-msg: minimal
 62e2128d refactor: inline stock and research dispatches in app.js | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 2 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ b9442179 refactor: remove duplicate runLifeboat overload from app.js | Codex-Rev
 83f6edbd docs: refresh session handoff snapshot after stock report widget removal | # commit-msg: minimal
 469f6b76 refactor: remove stock report widget and dead app.js wrapper surface | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 2 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 00b4a641 docs: refresh session handoff snapshot after stock report wrapper cleanup | # commit-msg: minimal
-b6658796 refactor: remove dead stock report wrappers from app.js | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
-7936a0de docs: refresh session handoff snapshot after rank matrix cache rows model extraction | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
