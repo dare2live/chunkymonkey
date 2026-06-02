@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-02 17:29:07 CST
+**Snapshot 时间**: 2026-06-02 17:36:24 CST
 
 ## 主线 retrain 状态
 
@@ -61,13 +61,16 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `ec261178 docs: refresh session handoff snapshot` |
-| 最近 24h commits | 121 |
-| 未 commit 文件 | 1 |
+| HEAD | `b84f8cab fix: make session snapshot ignore generated handoff files` |
+| 最近 24h commits | 124 |
+| 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+b84f8cab fix: make session snapshot ignore generated handoff files
+97d9e929 fix: make session snapshot next action follow current goal
+4969f8ce docs: refresh session handoff snapshot
 ec261178 docs: refresh session handoff snapshot
 55d279ad docs: tighten stage-opt blocker guidance
 3355663f docs: refresh session handoff snapshot after BestChoice pipeline defaults commit | # commit-msg: minimal
@@ -75,14 +78,11 @@ d4884b42 feat: externalize BestChoice pipeline defaults into config | Codex-Revi
 77e88d8d docs: record archived pullback_doji and CYQ research assets | # commit-msg: minimal
 aa19ff1e feat: centralize shared label registry columns and record bestchoice candidate | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: pytest 9 passed, audit PASS, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 ce46e4b1 docs: refresh session handoff snapshot after feature drift mitigation commit | # commit-msg: minimal
-1f6fb919 feat: externalize feature drift mitigation defaults into config | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: pytest 5 passed, audit PASS, docs graph PASS, worktree FAIL pre-commit slice only
-8eecc25f docs: refresh controller snapshot after duckdb connect policy config externalization | # commit-msg: minimal
-aab43c0c feat: externalize duckdb connect allowlist into config and harden attach retry | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: integration contract 7 passed, stage-opt audit PASS, audit tool health PASS, docs graph PASS, codegraph sync PASS
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**1 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**continue current goal blockers — stage-opt structural blocker triage / need_027 blocked-gap triage**
 
 ## Resilience 配置 (verified)
 
