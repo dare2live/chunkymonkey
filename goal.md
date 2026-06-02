@@ -5,6 +5,10 @@
 
 ## 2026-06-03 — data-view audit model cleanup
 
+## 2026-06-03 — tdx server health model extraction
+
+- `assets/js/workbench-view.js` 里的 TDX K 线服务器健康块已收成 `buildTdxServerHealthModel()` 纯 helper，`renderTdxServerHealthTable()` 现在只消费 model；row normalization 把 `servers` / `summary` 统一成 `capabilities`、`totals`、`rows`、`rowCount`、`updatedAt`、`isEmpty`，并兼容 `healthy_count` / `timeout_server_count` 与 success/fail/timeout 汇总口径。`buildDataSourcesModel()` 也开始返回 `tdxServerHealth` model，workbench contract / smoke test 已补上 helper 导出与输入归一回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/workbench-view.js --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_workbench_frontend_render_smoke.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 17 passed，`node --check assets/js/workbench-view.js` PASS，`analyze_complexity.py` 复扫后 `assets/js/workbench-view.js` 无明显热点，`codegraph sync .` 已同步。
+
 - `assets/js/data-view.js` 里的审计结果拆分已收成 `buildAuditResultsModel()` 纯 helper，`renderAuditResults()` 只消费 model；`null` 审计行会被安全忽略，issues / okRows / n_error / n_warn / n_ok / n_tables / run_at 都在单一 model 层归一。新增 `backend/tests/contract/test_data_view.py` 锁住 helper 行为，并把 `backend/tests/contract/test_workbench_frontend_contract.py` 里的 data-view 契约收紧到 `buildAuditResultsModel(`。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/data-view.js --scope backend/tests/contract/test_data_view.py --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_settings_view.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_settings_view.py` 4 passed，`node --check assets/js/data-view.js` PASS，`analyze_complexity.py` 复扫后 `assets/js/data-view.js` 无明显热点，`codegraph sync .` 已同步。
 
 ## 2026-06-03 — ETF workbench widget extraction
