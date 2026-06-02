@@ -77,12 +77,6 @@
     return AppCache.apiCached(api, path, ttlMs, opts);
   }
 
-  async function loadIndustryOverviewSummary() {
-    var cached = await apiCached(INDUSTRY_OVERVIEW_SUMMARY_URL, SHORT_CACHE_TTL_MS).catch(function () { return null; });
-    if (cached?.summary && Array.isArray(cached.summary.sector_focus)) return cached;
-    return api(INDUSTRY_OVERVIEW_SUMMARY_URL);
-  }
-
   // ============================================================
   // Navigation
   // ============================================================
@@ -307,21 +301,6 @@
   async function refreshNetwork() {
     if (!WorkbenchHealthWidget || typeof WorkbenchHealthWidget.refreshNetwork !== 'function') return;
     return WorkbenchHealthWidget.refreshNetwork(workbenchHealthDeps());
-  }
-
-  function resolveStockSummary(stocks, stockSummary) {
-    if (StockSummaryWidget && StockSummaryWidget.mergeStockSummary) {
-      return StockSummaryWidget.mergeStockSummary(stocks || [], stockSummary || null, {
-        stockGateInfo: stockGateInfo,
-        stockSourceName: stockSourceName,
-      });
-    }
-    var rows = Array.isArray(stocks) ? stocks : [];
-    return {
-      total: rows.length,
-      followTotal: rows.filter(function (row) { return row && row.follow_gate === 'follow'; }).length,
-      watchlistTotal: rows.filter(function (row) { return row && row._in_watchlist; }).length
-    };
   }
 
   function turtleSystemLabel(system) {

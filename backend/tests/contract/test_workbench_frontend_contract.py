@@ -115,6 +115,7 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "function refreshNetwork()" in app_js
     assert "function loadStocks()" not in app_js
     assert "function loadResearch()" not in app_js
+    assert "function loadIndustryOverviewSummary()" not in app_js
     assert "function renderStockResearchSummary(" not in app_js
     assert "function renderStockInstitutionCoverageSection(" not in app_js
     assert "function renderStockReportHero(" not in app_js
@@ -152,6 +153,7 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "function stockScoreBandMeta(" not in app_js
     assert "function stockScoreSubtext(" not in app_js
     assert "function stockSortRows(" not in app_js
+    assert "function resolveStockSummary(" not in app_js
     assert "function summaryChip(" not in app_js
     assert "function hasAttentionCoverage(" not in app_js
     assert "function hasTurtleCoverage(" not in app_js
