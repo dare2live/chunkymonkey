@@ -163,6 +163,79 @@ def _need_coverage_summary(report: dict[str, Any] | None) -> dict[str, Any] | No
     }
 
 
+def _stage_opt_candidate_action(stage_opt: dict[str, Any] | None) -> dict[str, str] | None:
+    if not stage_opt or not stage_opt.get("next_action_recommendation"):
+        return None
+    recommendation = stage_opt["next_action_recommendation"]
+    focus = str(recommendation.get("focus") or "upstream_candidate_supply")
+    weakest_formula_ids = ", ".join(str(item) for item in recommendation.get("weakest_formula_ids") or [])
+    weakest_stage_bins = ", ".join(str(item) for item in recommendation.get("weakest_stage_bins") or [])
+    action_text = (
+        f"Stage-opt candidate supply [{focus}]: {recommendation.get('reason') or 'review current recommendation'} "
+        f"→ {recommendation.get('recommended_lever') or 'review upstream candidate supply'}"
+    )
+    if weakest_formula_ids or weakest_stage_bins:
+        details: list[str] = []
+        if weakest_formula_ids:
+            details.append(f"weakest formulas: {weakest_formula_ids}")
+        if weakest_stage_bins:
+            details.append(f"weakest stages: {weakest_stage_bins}")
+        structural_notes = [str(item) for item in recommendation.get("structural_notes") or [] if str(item).strip()]
+        if structural_notes:
+            details.append(f"structural notes: {'; '.join(structural_notes)}")
+        live_formula_registry = stage_opt.get("live_formula_registry") or {}
+        live_formula_ids = [str(item) for item in live_formula_registry.get("formula_ids") or [] if str(item).strip()]
+        if live_formula_registry.get("formula_count") is not None:
+            details.append(f"live registry formulas: {live_formula_registry.get('formula_count')}")
+        if live_formula_ids:
+            details.append(f"live registry ids: {', '.join(live_formula_ids[:10])}")
+        research_formula_registry = stage_opt.get("research_formula_registry") or {}
+        research_formula_ids = [str(item) for item in research_formula_registry.get("formula_ids") or [] if str(item).strip()]
+        if research_formula_registry.get("formula_count") is not None:
+            details.append(f"research challengers: {research_formula_registry.get('formula_count')}")
+        if research_formula_ids:
+            details.append(f"research challenger ids: {', '.join(research_formula_ids[:10])}")
+        action_text += " (" + "; ".join(details) + ")"
+    return {
+        "priority": str(recommendation.get("priority") or "P1"),
+        "action": action_text,
+    }
+
+
+def _need_coverage_blocked_action(need_coverage: dict[str, Any] | None) -> dict[str, str] | None:
+    blocked_needs = (need_coverage or {}).get("blocked_needs") or []
+    if not blocked_needs:
+        return None
+    blocked_need_ids = [str(item.get("need_id") or "") for item in blocked_needs if str(item.get("need_id") or "").strip()]
+    blocked_need_names = [str(item.get("need_name") or "") for item in blocked_needs if str(item.get("need_name") or "").strip()]
+    action_text = (
+        "Need coverage blocked-gap triage: review blocked needs and source evidence before treating them as production-ready"
+    )
+    details: list[str] = []
+    if blocked_need_ids:
+        details.append(f"blocked needs: {', '.join(blocked_need_ids[:3])}")
+    if blocked_need_names:
+        details.append(f"names: {', '.join(blocked_need_names[:2])}")
+    if details:
+        action_text += " (" + "; ".join(details) + ")"
+    special_need = next((item for item in blocked_needs if str(item.get("need_id") or "") == "need_027"), None)
+    if special_need:
+        failure_queue_snapshot = special_need.get("failure_queue_snapshot") or {}
+        status_counts = failure_queue_snapshot.get("status_counts") or {}
+        open_count = int(status_counts.get("open") or 0)
+        resolved_count = int(status_counts.get("resolved") or 0)
+        source_registration = special_need.get("source_registration") or {}
+        fallback_supports_individual_fund_flow = source_registration.get("fallback_source_supports_individual_fund_flow")
+        fallback_source_family = str(source_registration.get("fallback_source_family") or "aif10")
+        if open_count or resolved_count:
+            action_text += f" [need_027 blocked/unknown; failure_queue open={open_count} resolved={resolved_count}]"
+        else:
+            action_text += " [need_027 blocked/unknown; failure_queue evidence unavailable]"
+        if fallback_supports_individual_fund_flow is False:
+            action_text += f"; {fallback_source_family} exact individual_fund_flow unavailable"
+    return {"priority": "P1", "action": action_text}
+
+
 def _next_actions(
     tooling_gate: dict[str, Any] | None,
     worktree_summary: dict[str, Any] | None = None,
@@ -273,75 +346,12 @@ def _next_actions(
                     "action": "Review data health yellow tables and decide whether they are expected on-demand assets or writer/SLA debt",
                 }
             )
-    if stage_opt and stage_opt.get("next_action_recommendation"):
-        recommendation = stage_opt["next_action_recommendation"]
-        focus = str(recommendation.get("focus") or "upstream_candidate_supply")
-        weakest_formula_ids = ", ".join(str(item) for item in recommendation.get("weakest_formula_ids") or [])
-        weakest_stage_bins = ", ".join(str(item) for item in recommendation.get("weakest_stage_bins") or [])
-        action_text = (
-            f"Stage-opt candidate supply [{focus}]: {recommendation.get('reason') or 'review current recommendation'} "
-            f"→ {recommendation.get('recommended_lever') or 'review upstream candidate supply'}"
-        )
-        if weakest_formula_ids or weakest_stage_bins:
-            details: list[str] = []
-            if weakest_formula_ids:
-                details.append(f"weakest formulas: {weakest_formula_ids}")
-            if weakest_stage_bins:
-                details.append(f"weakest stages: {weakest_stage_bins}")
-            structural_notes = [str(item) for item in recommendation.get("structural_notes") or [] if str(item).strip()]
-            if structural_notes:
-                details.append(f"structural notes: {'; '.join(structural_notes)}")
-            live_formula_registry = stage_opt.get("live_formula_registry") or {}
-            live_formula_ids = [str(item) for item in live_formula_registry.get("formula_ids") or [] if str(item).strip()]
-            if live_formula_registry.get("formula_count") is not None:
-                details.append(f"live registry formulas: {live_formula_registry.get('formula_count')}")
-            if live_formula_ids:
-                details.append(f"live registry ids: {', '.join(live_formula_ids[:10])}")
-            research_formula_registry = stage_opt.get("research_formula_registry") or {}
-            research_formula_ids = [str(item) for item in research_formula_registry.get("formula_ids") or [] if str(item).strip()]
-            if research_formula_registry.get("formula_count") is not None:
-                details.append(f"research challengers: {research_formula_registry.get('formula_count')}")
-            if research_formula_ids:
-                details.append(f"research challenger ids: {', '.join(research_formula_ids[:10])}")
-            action_text += " (" + "; ".join(details) + ")"
-        actions.append(
-            {
-                "priority": str(recommendation.get("priority") or "P1"),
-                "action": action_text,
-            }
-        )
-    blocked_needs = (need_coverage or {}).get("blocked_needs") or []
-    if blocked_needs:
-        blocked_need_ids = [str(item.get("need_id") or "") for item in blocked_needs if str(item.get("need_id") or "").strip()]
-        blocked_need_names = [str(item.get("need_name") or "") for item in blocked_needs if str(item.get("need_name") or "").strip()]
-        action_text = (
-            "Need coverage blocked-gap triage: review blocked needs and source evidence before treating them as production-ready"
-        )
-        details: list[str] = []
-        if blocked_need_ids:
-            details.append(f"blocked needs: {', '.join(blocked_need_ids[:3])}")
-        if blocked_need_names:
-            details.append(f"names: {', '.join(blocked_need_names[:2])}")
-        if details:
-            action_text += " (" + "; ".join(details) + ")"
-        special_need = next((item for item in blocked_needs if str(item.get("need_id") or "") == "need_027"), None)
-        if special_need:
-            failure_queue_snapshot = special_need.get("failure_queue_snapshot") or {}
-            status_counts = failure_queue_snapshot.get("status_counts") or {}
-            open_count = int(status_counts.get("open") or 0)
-            resolved_count = int(status_counts.get("resolved") or 0)
-            source_registration = special_need.get("source_registration") or {}
-            fallback_supports_individual_fund_flow = source_registration.get("fallback_source_supports_individual_fund_flow")
-            fallback_source_family = str(source_registration.get("fallback_source_family") or "aif10")
-            if open_count or resolved_count:
-                action_text += f" [need_027 blocked/unknown; failure_queue open={open_count} resolved={resolved_count}]"
-            else:
-                action_text += " [need_027 blocked/unknown; failure_queue evidence unavailable]"
-            if fallback_supports_individual_fund_flow is False:
-                action_text += (
-                    f"; {fallback_source_family} exact individual_fund_flow unavailable"
-                )
-        actions.append({"priority": "P1", "action": action_text})
+    stage_opt_action = _stage_opt_candidate_action(stage_opt)
+    if stage_opt_action:
+        actions.append(stage_opt_action)
+    need_coverage_action = _need_coverage_blocked_action(need_coverage)
+    if need_coverage_action:
+        actions.append(need_coverage_action)
     return actions
 
 

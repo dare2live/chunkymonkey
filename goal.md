@@ -3,6 +3,10 @@
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
 
+## 2026-06-03 — chunkyctl need_027 blocker action helper extraction
+
+- `backend/scripts/chunkyctl.py` 里的 `_next_actions()` 现把 stage-opt / need_coverage 的 next-action 文本组装分别收成 `_stage_opt_candidate_action()` 和 `_need_coverage_blocked_action()`，主循环更短，但输出语义不变；`backend/tests/scripts/test_chunkyctl.py` 仍直接覆盖 stage-opt 推荐和 `need_027` blocked-gap 文本。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/scripts/chunkyctl.py --scope backend/tests/scripts/test_chunkyctl.py` PASS，`python -m py_compile backend/scripts/chunkyctl.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_chunkyctl.py` 27 passed，`analyze_complexity.py` 对 `backend/scripts/chunkyctl.py` 无明显热点，`codegraph sync .` 已同步。
+
 ## 2026-06-03 — settings-view data source params model extraction
 
 - `assets/js/settings-view.js` 里的数据源参数卡已收成 `buildDataSourceParamsModel()` 纯 helper，`renderDataSourceParams()` 现在只消费 model；row normalization 把 `sources` 统一成 `rows`、`sourceCount`、`totalCapabilities`、`isEmpty`，并把 `capabilities` 缺失作为空数组兜底，不再直接在 render 里读 raw payload。`backend/tests/contract/test_settings_view.py` 已补 helper 导出与输入归一回归。验证：`node --check assets/js/settings-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_settings_view.py backend/tests/contract/test_workbench_frontend_contract.py` 4 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对 `assets/js/settings-view.js` 无明显热点。
