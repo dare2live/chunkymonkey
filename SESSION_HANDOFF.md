@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 04:38:23 CST
+**Snapshot 时间**: 2026-06-03 04:42:16 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `b6658796 refactor: remove dead stock report wrappers from app.js | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 236 |
+| HEAD | `469f6b76 refactor: remove stock report widget and dead app.js wrapper surface | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 2 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 238 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+469f6b76 refactor: remove stock report widget and dead app.js wrapper surface | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 2 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
+00b4a641 docs: refresh session handoff snapshot after stock report wrapper cleanup | # commit-msg: minimal
 b6658796 refactor: remove dead stock report wrappers from app.js | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 7936a0de docs: refresh session handoff snapshot after rank matrix cache rows model extraction | # commit-msg: minimal
 f39fe08b refactor: extract rank matrix cache rows model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 23 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ cf90ad6c docs: refresh session handoff snapshot after stability context rows mod
 55a970a2 refactor: extract stability context rows model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 23 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 5ed99be6 docs: record stability context model extraction and refresh handoff | # commit-msg: minimal
 0ba5726d refactor: extract stability context model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 23 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
-41be236c docs: refresh session handoff snapshot after data-view source cards detail cache | # commit-msg: minimal
-0d2cd16e docs: refresh session handoff snapshot after data-view source cards detail cache | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
