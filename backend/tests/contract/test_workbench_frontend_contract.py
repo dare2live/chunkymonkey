@@ -237,6 +237,8 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "renderChampion" in workbench_js
     assert "buildChampionModel" in workbench_js
     assert "buildChampionModel(data)" in workbench_js
+    assert "buildStabilityContextModel" in workbench_js
+    assert "buildStabilityContextModel(data.stability_context || {})" in workbench_js
     assert "renderDataSources" in workbench_js
     assert "buildDataSourcesModel" in workbench_js
     assert "buildDataSourcesModel(data)" in workbench_js

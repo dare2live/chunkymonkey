@@ -615,7 +615,7 @@
       '</section>' +
 
       '<section class="panel wb-panel">' +
-      '<div class="panel-head"><div><h3>稳定性上下文</h3><div class="muted">run_id: <code>' + esc(stabilityContext.run_id || '-') + '</code></div></div></div>' +
+      '<div class="panel-head"><div><h3>稳定性上下文</h3><div class="muted">run_id: <code>' + esc(stabilityContext.runId || '-') + '</code></div></div></div>' +
       renderStabilityContext(stabilityContext) +
       '</section>' +
 
@@ -675,7 +675,7 @@
     var rankerProfiles = Array.isArray(data.ranker_profiles) ? data.ranker_profiles : [];
     var rankerPolicy = data.ranker_policy || {};
     var rankMatrixCache = data.rank_matrix_cache || {};
-    var stabilityContext = data.stability_context || {};
+    var stabilityContext = buildStabilityContextModel(data.stability_context || {});
     var stockHorizonProfile = data.stock_horizon_profile || {};
     var shareholderPlanInitialPanel = data.shareholder_plan_initial_feature_panel || {};
     var shareholderPlanFamilyEval = data.shareholder_plan_family_eval || {};
@@ -698,7 +698,7 @@
       temporalSynergy: temporalSynergy,
       industryPit: industryPit,
       featureDrift: featureDrift,
-      isEmpty: !schedule.run_id && !tasks.length && !studies.length && !rankerProfiles.length && !rankerPolicy.run_id && !stabilityContext.run_id && !stockHorizonProfile.run_id && !shareholderPlanInitialPanel.run_id && !shareholderPlanFamilyEval.run_id && !shareholderPlanFamilyWalkforward.run_id && !temporalSynergy.run_id && !industryPit.run_id && !featureDrift.run_id,
+      isEmpty: !schedule.run_id && !tasks.length && !studies.length && !rankerProfiles.length && !rankerPolicy.run_id && !stabilityContext.runId && !stockHorizonProfile.run_id && !shareholderPlanInitialPanel.run_id && !shareholderPlanFamilyEval.run_id && !shareholderPlanFamilyWalkforward.run_id && !temporalSynergy.run_id && !industryPit.run_id && !featureDrift.run_id,
     };
   }
 
@@ -2585,6 +2585,20 @@
       '</tbody></table></div>';
   }
 
+  function buildStabilityContextModel(context) {
+    context = context || {};
+    var summaries = Array.isArray(context.summaries) ? context.summaries : [];
+    var diagnostics = Array.isArray(context.diagnostics) ? context.diagnostics : [];
+    return {
+      runId: context.run_id || '',
+      summaries: summaries,
+      diagnostics: diagnostics,
+      summaryCount: summaries.length,
+      diagnosticCount: diagnostics.length,
+      isEmpty: !context.run_id && !summaries.length && !diagnostics.length,
+    };
+  }
+
   function renderRankerPolicy(data) {
     var policy = data.policy || {};
     var tokens = policy.gate_failure_tokens || [];
@@ -2618,7 +2632,7 @@
       '</div>' +
 
       '<section class="panel wb-panel">' +
-      '<div class="panel-head"><div><h3>Champion 阻塞上下文</h3><div class="muted">run_id: <code>' + esc(stabilityContext.run_id || '-') + '</code></div></div></div>' +
+      '<div class="panel-head"><div><h3>Champion 阻塞上下文</h3><div class="muted">run_id: <code>' + esc(stabilityContext.runId || '-') + '</code></div></div></div>' +
       renderStabilityContext(stabilityContext) +
       '</section>' +
 
@@ -2658,7 +2672,7 @@
     var challengers = Array.isArray(data.challengers) ? data.challengers : [];
     var evaluations = Array.isArray(data.candidate_evaluations) ? data.candidate_evaluations : [];
     var topk = data.latest_primary_topk || {};
-    var stabilityContext = data.stability_context || {};
+    var stabilityContext = buildStabilityContextModel(data.stability_context || {});
     var deployment = data.deployment || {};
     return {
       lifecycle: lifecycle,
@@ -2814,6 +2828,7 @@
     buildReadModelMeta: buildReadModelMeta,
     buildDeliveryModel: buildDeliveryModel,
     buildChampionModel: buildChampionModel,
+    buildStabilityContextModel: buildStabilityContextModel,
     buildResearchModel: buildResearchModel,
     buildPipelinesModel: buildPipelinesModel,
     buildDataSourcesModel: buildDataSourcesModel,

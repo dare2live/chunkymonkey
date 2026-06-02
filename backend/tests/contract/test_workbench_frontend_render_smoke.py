@@ -473,7 +473,7 @@ def test_workbench_research_model_is_pure_and_stable():
         if (!model || model.schedule.run_id !== 'schedule_1') throw new Error('schedule mismatch');
         if (model.tasks.length !== 1 || model.studies.length !== 1 || model.rankerProfiles.length !== 1) throw new Error('list normalization mismatch');
         if (model.rankerPolicy.run_id !== 'schedule_1' || model.rankMatrixCache.summary.entry_count !== 1) throw new Error('policy/cache mismatch');
-        if (model.stabilityContext.run_id !== 'context_1' || model.stockHorizonProfile.run_id !== 'stock_horizon_1') throw new Error('context mismatch');
+        if (model.stabilityContext.runId !== 'context_1' || model.stabilityContext.summaryCount !== 0 || model.stockHorizonProfile.run_id !== 'stock_horizon_1') throw new Error('context mismatch');
         if (model.shareholderPlanInitialPanel.run_id !== 'sp_initial_panel_1' || model.shareholderPlanFamilyWalkforward.run_id !== 'plan_wf_1') throw new Error('shareholder plan mismatch');
         if (model.temporalSynergy.run_id !== 'temporal_1' || model.industryPit.run_id !== 'industry_pit_1' || model.featureDrift.run_id !== 'drift_1') throw new Error('domain mismatch');
         if (model.isEmpty !== false) throw new Error('empty flag mismatch');
@@ -740,8 +740,46 @@ def test_workbench_champion_model_is_pure_and_stable():
         if (!model || model.firstChampion !== 'champion_a') throw new Error('firstChampion mismatch');
         if (model.challengerCount !== 2 || model.evaluationCount !== 1) throw new Error('count mismatch');
         if (!model.lifecycle || !model.champions.length || model.topk.count !== 8) throw new Error('model passthrough mismatch');
-        if (model.stabilityContext.run_id !== 'stability_1' || model.deployment.status !== 'deployed') throw new Error('context mismatch');
+        if (model.stabilityContext.runId !== 'stability_1' || model.stabilityContext.summaryCount !== 0 || model.deployment.status !== 'deployed') throw new Error('context mismatch');
         if (view.buildChampionModel({}).firstChampion !== '-') throw new Error('default normalization mismatch');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/workbench-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+
+
+def test_workbench_stability_context_model_is_pure_and_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.WorkbenchView;
+        if (!view || typeof view.buildStabilityContextModel !== 'function') {
+          throw new Error('WorkbenchView.buildStabilityContextModel missing');
+        }
+
+        const model = view.buildStabilityContextModel({
+          run_id: 'stability_1',
+          summaries: [{ source_run_id: 'run_a' }],
+          diagnostics: [{ scope: 'fold_1' }],
+        });
+
+        if (model.runId !== 'stability_1') throw new Error('runId mismatch: ' + model.runId);
+        if (model.summaryCount !== 1 || model.diagnosticCount !== 1) throw new Error('count mismatch');
+        if (!Array.isArray(model.summaries) || !Array.isArray(model.diagnostics)) throw new Error('array normalization mismatch');
+        if (view.buildStabilityContextModel({}).isEmpty !== true) throw new Error('default empty mismatch');
         """
     ).strip()
 
