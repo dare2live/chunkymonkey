@@ -11,15 +11,17 @@
     d.textContent = s == null ? '' : String(s);
     return d.innerHTML;
   }
+  var formatUtils = (typeof globalThis !== 'undefined' && globalThis.WidgetFormatUtils) || global.WidgetFormatUtils;
+  if (!formatUtils) throw new Error('WidgetFormatUtils missing');
   function fmtPct(v, digits = 1) {
-    if (v == null) return '-';
+    const formatted = formatUtils.formatPercent(v, digits, false, true, '-');
+    if (formatted === '-') return formatted;
     const n = Number(v);
     const cls = n >= 0 ? 'sig-pos' : 'sig-neg';
-    return `<span class="${cls}">${n >= 0 ? '+' : ''}${n.toFixed(digits)}%</span>`;
+    return `<span class="${cls}">${formatted}</span>`;
   }
   function fmtWinRate(wr) {
-    if (wr == null) return '-';
-    return Math.round(Number(wr) * 100) + '%';
+    return formatUtils.formatPercent(wr, 0, true, false, '-');
   }
 
   function renderPanel(r) {
@@ -123,4 +125,7 @@
   }
 
   global.BacktestPanelWidget = { mount };
-})(window);
+  if (typeof globalThis !== 'undefined') {
+    globalThis.BacktestPanelWidget = global.BacktestPanelWidget;
+  }
+})(typeof window !== 'undefined' ? window : this);

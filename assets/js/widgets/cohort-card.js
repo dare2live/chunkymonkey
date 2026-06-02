@@ -11,19 +11,20 @@
     d.textContent = s == null ? '' : String(s);
     return d.innerHTML;
   }
+  var formatUtils = (typeof globalThis !== 'undefined' && globalThis.WidgetFormatUtils) || global.WidgetFormatUtils;
+  if (!formatUtils) throw new Error('WidgetFormatUtils missing');
   function fmtPct(v, digits = 1) {
-    if (v == null) return '-';
+    const formatted = formatUtils.formatPercent(v, digits, false, true, '-');
+    if (formatted === '-') return formatted;
     const n = Number(v);
     const cls = n >= 0 ? 'sig-pos' : 'sig-neg';
-    return `<span class="${cls}">${n >= 0 ? '+' : ''}${n.toFixed(digits)}%</span>`;
+    return `<span class="${cls}">${formatted}</span>`;
   }
   function fmtPctPlain(v, digits = 1) {
-    if (v == null) return '-';
-    return Number(v).toFixed(digits) + '%';
+    return formatUtils.formatPercent(v, digits, false, false, '-');
   }
   function fmtWinRate(wr) {
-    if (wr == null) return '-';
-    return Math.round(Number(wr) * 100) + '%';
+    return formatUtils.formatPercent(wr, 0, true, false, '-');
   }
 
   function renderCard(c) {
@@ -112,4 +113,7 @@
   }
 
   global.CohortCardWidget = { mount, renderCard };
-})(window);
+  if (typeof globalThis !== 'undefined') {
+    globalThis.CohortCardWidget = global.CohortCardWidget;
+  }
+})(typeof window !== 'undefined' ? window : this);

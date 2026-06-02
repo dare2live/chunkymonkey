@@ -43,9 +43,24 @@ require(process.argv[7]);
 require(process.argv[8]);
 require(process.argv[9]);
 require(process.argv[10]);
+require(process.argv[11]);
+require(process.argv[12]);
+require(process.argv[13]);
 const topkSrc = fs.readFileSync(process.argv[10], 'utf8');
 if (!topkSrc.includes('WidgetFormatUtils')) {
   throw new Error('TopKStripWidget should use WidgetFormatUtils');
+}
+const signalParamsSrc = fs.readFileSync(process.argv[11], 'utf8');
+if (!signalParamsSrc.includes('WidgetFormatUtils')) {
+  throw new Error('SignalParamsWidget should use WidgetFormatUtils');
+}
+const cohortSrc = fs.readFileSync(process.argv[12], 'utf8');
+if (!cohortSrc.includes('WidgetFormatUtils')) {
+  throw new Error('CohortCardWidget should use WidgetFormatUtils');
+}
+const backtestSrc = fs.readFileSync(process.argv[13], 'utf8');
+if (!backtestSrc.includes('WidgetFormatUtils')) {
+  throw new Error('BacktestPanelWidget should use WidgetFormatUtils');
 }
 if (!globalThis.ETFSectorRotationWidget || typeof globalThis.ETFSectorRotationWidget.mount !== 'function') {
   throw new Error('ETFSectorRotationWidget exports missing');
@@ -74,6 +89,15 @@ if (!globalThis.InstitutionScorecardWidget || typeof globalThis.InstitutionScore
 if (!globalThis.TopKStripWidget || typeof globalThis.TopKStripWidget.mount !== 'function') {
   throw new Error('TopKStripWidget exports missing');
 }
+if (!globalThis.SignalParamsWidget || typeof globalThis.SignalParamsWidget.mount !== 'function') {
+  throw new Error('SignalParamsWidget exports missing');
+}
+if (!globalThis.CohortCardWidget || typeof globalThis.CohortCardWidget.mount !== 'function' || typeof globalThis.CohortCardWidget.renderCard !== 'function') {
+  throw new Error('CohortCardWidget exports missing');
+}
+if (!globalThis.BacktestPanelWidget || typeof globalThis.BacktestPanelWidget.mount !== 'function') {
+  throw new Error('BacktestPanelWidget exports missing');
+}
 """
 
     result = subprocess.run(
@@ -91,6 +115,9 @@ if (!globalThis.TopKStripWidget || typeof globalThis.TopKStripWidget.mount !== '
             str(REPO / "assets/js/widgets/workbench-health.js"),
             str(REPO / "assets/js/widgets/institution-scorecard.js"),
             str(REPO / "assets/js/widgets/topk-strip.js"),
+            str(REPO / "assets/js/widgets/signal-params.js"),
+            str(REPO / "assets/js/widgets/cohort-card.js"),
+            str(REPO / "assets/js/widgets/backtest-panel.js"),
         ],
         check=False,
         text=True,
