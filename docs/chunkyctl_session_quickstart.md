@@ -45,6 +45,11 @@ while blocking assets remain red. Red data-health tables are startup blockers,
 and the snapshot now emits `writer_prompt` / owner / sync_step hints so new
 sessions can see which writer or sync step likely owns the problem before
 moving into business work.
+When the session snapshot only has generated handoff files dirty, the computed
+`NEXT_ACTION` now points to the current goal blockers instead of the old
+retrain placeholder. Treat `SESSION_HANDOFF.md` as the startup state, but read
+its next action as controller guidance for the active project blockers rather
+than as a separate retrain workflow when the repo itself is otherwise clean.
 
 3. If `doctor` reports a dirty worktree, run:
 
