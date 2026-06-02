@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 04:27:46 CST
+**Snapshot 时间**: 2026-06-03 04:34:34 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `959c2c52 docs: record stability context rows model extraction and refresh handoff | # commit-msg: minimal` |
-| 最近 24h commits | 232 |
+| HEAD | `f39fe08b refactor: extract rank matrix cache rows model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 23 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 234 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+f39fe08b refactor: extract rank matrix cache rows model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 23 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
+cf90ad6c docs: refresh session handoff snapshot after stability context rows model extraction | # commit-msg: minimal
 959c2c52 docs: record stability context rows model extraction and refresh handoff | # commit-msg: minimal
 55a970a2 refactor: extract stability context rows model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 23 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 5ed99be6 docs: record stability context model extraction and refresh handoff | # commit-msg: minimal
@@ -76,8 +78,6 @@ bash scripts/install_resilience.sh --status   # check 装好没
 0d2cd16e docs: refresh session handoff snapshot after data-view source cards detail cache | # commit-msg: minimal
 a03c2219 docs: record data-view source cards detail cache and refresh handoff | # commit-msg: minimal
 f36ca0d1 refactor: extract data-view link overview model and source card detail cache | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 4 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
-1065c5ea docs: refresh session handoff snapshot after data-view link overview update | # commit-msg: minimal
-154eb6fd docs: record data-view link overview model extraction | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
