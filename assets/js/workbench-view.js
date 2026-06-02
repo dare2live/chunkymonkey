@@ -109,19 +109,33 @@
     return '<div class="muted" style="padding:14px 0">' + esc(text || '暂无数据') + '</div>';
   }
 
-  function renderReadModelMeta(data) {
+  function buildReadModelMeta(data) {
     var meta = (data && data.read_model) || {};
-    if (!meta.source_mode) return '';
+    if (!meta.source_mode) return null;
     var rows = meta.materialized_tables || [];
     var available = rows.filter(function (row) { return row && row.available; }).length;
+    return {
+      endpoint: meta.endpoint || '-',
+      sourceMode: meta.source_mode || 'materialized_snapshot',
+      recomputeLabel: meta.recompute_on_read ? 'read recompute' : 'snapshot read',
+      recomputeTone: meta.recompute_on_read ? 'warn' : 'ok',
+      availableCount: available,
+      totalCount: rows.length,
+      latestMaterializedAt: meta.latest_materialized_at || '-',
+    };
+  }
+
+  function renderReadModelMeta(data) {
+    var model = buildReadModelMeta(data);
+    if (!model) return '';
     return '<section class="panel wb-panel wb-read-model-panel">' +
       '<div class="panel-head"><div><h3>物化结果</h3>' +
-      '<div class="muted">endpoint: <code>' + esc(meta.endpoint || '-') + '</code></div></div>' +
-      '<div>' + pill(meta.recompute_on_read ? 'read recompute' : 'snapshot read', meta.recompute_on_read ? 'warn' : 'ok') + '</div></div>' +
+      '<div class="muted">endpoint: <code>' + esc(model.endpoint) + '</code></div></div>' +
+      '<div>' + pill(model.recomputeLabel, model.recomputeTone) + '</div></div>' +
       '<div class="wb-count-row">' +
-      '<span class="wb-count-pill">source <b>' + esc(meta.source_mode || 'materialized_snapshot') + '</b></span>' +
-      '<span class="wb-count-pill">tables <b>' + fmtNum(available) + '/' + fmtNum(rows.length) + '</b></span>' +
-      '<span class="wb-count-pill">latest <b>' + esc(meta.latest_materialized_at || '-') + '</b></span>' +
+      '<span class="wb-count-pill">source <b>' + esc(model.sourceMode) + '</b></span>' +
+      '<span class="wb-count-pill">tables <b>' + fmtNum(model.availableCount) + '/' + fmtNum(model.totalCount) + '</b></span>' +
+      '<span class="wb-count-pill">latest <b>' + esc(model.latestMaterializedAt) + '</b></span>' +
       '</div>' +
       '<div class="muted">刷新视图只重新读取最后一次成功物化的 JSON；训练、验证和数据拉取由 pipeline/job 触发。</div>' +
       '</section>';
@@ -2326,6 +2340,7 @@
   global.WorkbenchView = {
     show: show,
     setTab: setTab,
+    buildReadModelMeta: buildReadModelMeta,
     _renderOverview: renderOverview,
     _renderDataSources: renderDataSources,
     _renderPipelines: renderPipelines,

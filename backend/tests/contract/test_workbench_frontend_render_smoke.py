@@ -277,3 +277,52 @@ def test_workbench_frontend_render_smoke_for_all_tabs():
         capture_output=True,
     )
     assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_workbench_read_model_meta_is_pure_and_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.WorkbenchView;
+        if (!view || typeof view.buildReadModelMeta !== 'function') {
+          throw new Error('WorkbenchView.buildReadModelMeta missing');
+        }
+
+        const model = view.buildReadModelMeta({
+          read_model: {
+            endpoint: '/api/workbench/overview',
+            source_mode: 'materialized_snapshot',
+            recompute_on_read: true,
+            latest_materialized_at: '2026-06-03 02:00:00',
+            materialized_tables: [
+              { available: true },
+              { available: false },
+              null,
+            ],
+          },
+        });
+
+        if (!model) throw new Error('expected model');
+        if (model.endpoint !== '/api/workbench/overview') throw new Error('endpoint mismatch');
+        if (model.sourceMode !== 'materialized_snapshot') throw new Error('sourceMode mismatch');
+        if (model.recomputeLabel !== 'read recompute' || model.recomputeTone !== 'warn') throw new Error('recompute metadata mismatch');
+        if (model.availableCount !== 1 || model.totalCount !== 3) throw new Error('materialized table counts mismatch');
+        if (model.latestMaterializedAt !== '2026-06-03 02:00:00') throw new Error('latest materialized mismatch');
+        if (view.buildReadModelMeta({ read_model: {} }) !== null) throw new Error('expected null for missing source mode');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/workbench-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
