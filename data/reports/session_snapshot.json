@@ -1,10 +1,10 @@
 {
-  "snapshot_at": "2026-06-03 06:04:50 CST",
+  "snapshot_at": "2026-06-03 06:05:43 CST",
   "git": {
     "branch": "main",
-    "head_hash": "2538ad1e",
-    "head_msg": "2538ad1e docs: record signal-params formatter cleanup in project index and workflow checkpoint | # commit-msg: minimal",
-    "commits_24h": 257,
+    "head_hash": "40de46a4",
+    "head_msg": "40de46a4 docs: refresh session handoff snapshot after signal-params formatter cleanup | # commit-msg: minimal",
+    "commits_24h": 258,
     "uncommitted_files": 0
   },
   "retrain": {

@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 06:04:50 CST
+**Snapshot 时间**: 2026-06-03 06:05:43 CST
 
 ## 主线状态
 
@@ -61,13 +61,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `2538ad1e docs: record signal-params formatter cleanup in project index and workflow checkpoint | # commit-msg: minimal` |
-| 最近 24h commits | 257 |
+| HEAD | `40de46a4 docs: refresh session handoff snapshot after signal-params formatter cleanup | # commit-msg: minimal` |
+| 最近 24h commits | 258 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+40de46a4 docs: refresh session handoff snapshot after signal-params formatter cleanup | # commit-msg: minimal
 2538ad1e docs: record signal-params formatter cleanup in project index and workflow checkpoint | # commit-msg: minimal
 83c50d00 feat: clean up signal-params win-rate formatter | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 4ee98411 docs: refresh session handoff snapshot after screening-panel formatter cleanup | # commit-msg: minimal
@@ -77,7 +78,6 @@ bash scripts/install_resilience.sh --status   # check 装好没
 6ee6c05d docs: refresh session handoff snapshot after backtest-panel and strategy compare formatter extension | # commit-msg: minimal
 66a16dac feat: extend shared widget formatter to backtest-panel and etf-strategy-compare | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 b8356ea9 docs: refresh session handoff snapshot after ETF opportunity formatter cleanup | # commit-msg: minimal
-a7b34459 feat: clean up ETF opportunity formatting helpers | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
