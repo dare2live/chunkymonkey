@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 06:12:42 CST
+**Snapshot 时间**: 2026-06-03 06:16:00 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `b2a1f31e refactor: remove dead signal-adapter aggregateByStock wrapper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 259 |
-| 未 commit 文件 | 2 |
+| HEAD | `eea79efe refactor: remove dead schema summary field from settings view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 261 |
+| 未 commit 文件 | 4 |
 
 ### 最近 10 commits
 
 ```
+eea79efe refactor: remove dead schema summary field from settings view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
+f9719f6c docs: record signal-adapter dead wrapper cleanup and refresh handoff | # commit-msg: minimal
 b2a1f31e refactor: remove dead signal-adapter aggregateByStock wrapper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 87b8a6f2 docs: refresh session handoff snapshot after signal-params formatter cleanup current head | # commit-msg: minimal
 35227036 docs: refresh session handoff snapshot after signal-params formatter cleanup final head | # commit-msg: minimal
@@ -76,13 +78,11 @@ b2a1f31e refactor: remove dead signal-adapter aggregateByStock wrapper | Codex-R
 83c50d00 feat: clean up signal-params win-rate formatter | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 4ee98411 docs: refresh session handoff snapshot after screening-panel formatter cleanup | # commit-msg: minimal
 7e037323 feat: clean up screening-panel formatting helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
-9ee82a4b docs: refresh session handoff snapshot after ETF list formatter cleanup | # commit-msg: minimal
-763835f5 feat: clean up ETF list formatting helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**2 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**4 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 
