@@ -127,6 +127,38 @@
     };
   }
 
+  function buildRoutesTableModel(routes, routeFilter, assetItems) {
+    const assetIndex = buildAssetHealthIndex(assetItems || []);
+    const filterText = String(routeFilter || '').trim().toLowerCase();
+    const list = (routes || [])
+      .filter(r => {
+        if (!filterText) return true;
+        const cur = r.current || {};
+        return [r.data_name, cur.source, cur.protocol, r.raw_table, r.step_id, r.notes].some(
+          v => (v || '').toLowerCase().includes(filterText)
+        );
+      })
+      .map(r => {
+        const cur = r.current || {};
+        const tgt = r.target || {};
+        const asset = assetIndex.get(r.raw_table) || null;
+        const health = routeHealth(r, asset);
+        const fallback = fallbackStatus(r);
+        const freshness = health.freshness || (asset && asset.freshness_hours != null ? `${asset.freshness_hours.toFixed(1)}h` : '—');
+        return {
+          route: r,
+          cur,
+          tgt,
+          asset,
+          health,
+          fallback,
+          freshness,
+          repairLabel: r.step_id ? '运行 step' : '查看资产',
+        };
+      });
+    return { list };
+  }
+
   function renderLinkOverview() {
     const root = qs('ds-link-overview');
     if (!root) return;
@@ -322,15 +354,8 @@
   function renderRoutesTable() {
     const root = qs('ds-routes-table');
     if (!root) return;
-    const assetIndex = buildAssetHealthIndex((_state.health && _state.health.items) || []);
-    const list = _state.routes.filter(r => {
-      if (!_state.routeFilter) return true;
-      const f = _state.routeFilter.toLowerCase();
-      const cur = r.current || {};
-      return [r.data_name, cur.source, cur.protocol, r.raw_table, r.step_id, r.notes].some(
-        v => (v || '').toLowerCase().includes(f)
-      );
-    });
+    const model = buildRoutesTableModel(_state.routes, _state.routeFilter, (_state.health && _state.health.items) || []);
+    const list = model.list;
     if (!list.length) {
       root.innerHTML = '<div class="muted" style="padding:14px;text-align:center;font-size:12px">无匹配</div>';
       return;
@@ -358,14 +383,14 @@
           </tr>
         </thead>
         <tbody>
-        ${list.map(r => {
-          const cur = r.current || {};
-          const tgt = r.target || {};
-          const asset = assetIndex.get(r.raw_table) || null;
-          const health = routeHealth(r, asset);
-          const fb = fallbackStatus(r);
-          const freshness = health.freshness || (asset && asset.freshness_hours != null ? `${asset.freshness_hours.toFixed(1)}h` : '—');
-          const repairLabel = r.step_id ? '运行 step' : '查看资产';
+        ${list.map(entry => {
+          const r = entry.route;
+          const cur = entry.cur;
+          const tgt = entry.tgt;
+          const health = entry.health;
+          const fb = entry.fallback;
+          const freshness = entry.freshness;
+          const repairLabel = entry.repairLabel;
           return `
             <tr style="border-bottom:1px dotted var(--cm-bg-100)" title="${esc(r.notes || '')}">
               <td><strong>${esc(r.data_name)}</strong><br><small class="muted">${esc(r.notes || '')}</small></td>
@@ -874,6 +899,7 @@
     },
     refresh: init,
     buildAuditResultsModel,
+    buildRoutesTableModel,
   };
 
   console.log('[DataView] module loaded');

@@ -59,3 +59,63 @@ def test_data_view_build_audit_results_model_is_stable():
         check=False,
     )
     assert result.returncode == 0, result.stderr + result.stdout
+
+
+def test_data_view_build_routes_table_model_is_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.CMDataView;
+        if (!view || typeof view.buildRoutesTableModel !== 'function') {
+          throw new Error('CMDataView.buildRoutesTableModel missing');
+        }
+
+        const model = view.buildRoutesTableModel(
+          [
+            {
+              data_name: 'data_a',
+              raw_table: 'fact_a',
+              step_id: 'sync_a',
+              notes: 'alpha route',
+              current: { source: 'tdxhub', protocol: 'duckdb', status: 'connected' },
+              target: { source: 'miaoxiang', phase: 'fallback' },
+            },
+            {
+              data_name: 'data_b',
+              raw_table: 'fact_b',
+              notes: 'beta route',
+              current: { source: 'akshare', protocol: 'http', status: 'pending' },
+            },
+          ],
+          'alpha',
+          [
+            { table_name: 'fact_a', severity: 'yellow', issue_summary: 'stale', freshness_hours: 12.3 },
+            { table_name: 'fact_b', severity: 'red', issue_summary: 'missing', freshness_hours: 8.1 },
+          ]
+        );
+
+        if (!model || !Array.isArray(model.list)) throw new Error('model list missing');
+        if (model.list.length !== 1) throw new Error('filtered route count mismatch: ' + model.list.length);
+        const row = model.list[0];
+        if (row.route.data_name !== 'data_a') throw new Error('wrong filtered route');
+        if (row.health.label !== 'YELLOW' || row.health.tone !== 'warn') throw new Error('health metadata mismatch');
+        if (row.fallback.label !== '迁移/兜底可用' || row.fallback.tone !== 'warn') throw new Error('fallback metadata mismatch');
+        if (row.freshness !== '12.3h') throw new Error('freshness mismatch: ' + row.freshness);
+        if (row.repairLabel !== '运行 step') throw new Error('repair label mismatch: ' + row.repairLabel);
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/data-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
