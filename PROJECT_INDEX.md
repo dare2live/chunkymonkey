@@ -304,7 +304,7 @@
 **约束** (CLAUDE.md DuckDB 段已写):
 - 永远走 `services.duck_adapter.connect` / `services.db.get_conn`
 - 单写锁, 一次 ATTACH, 不要直接 `duckdb.connect()`
-- 加新 `duckdb.connect` 用法 → 加进 `backend/tests/integration/test_duckdb_connection_contract.py`
+- raw `duckdb.connect` 允许清单现在 config-owned (`backend/config/duckdb_connect_policy.yaml`); 加新 `duckdb.connect` 用法 → 先更新 policy YAML, 再同步 `backend/tests/integration/test_duckdb_connection_contract.py`
 
 ---
 

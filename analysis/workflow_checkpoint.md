@@ -76,7 +76,10 @@ The model pipeline snapshot below is historical evidence for the completed
   thresholds, and per-stock best-holding results stay table-backed in marts
   such as `mart_per_stock_stage_strategy_optimal_pit` /
   `mart_stock_horizon_profile`
-  instead of becoming file literals.
+  instead of becoming file literals. Raw `duckdb.connect` allowlists are now
+  config-owned in `backend/config/duckdb_connect_policy.yaml`, and
+  `services/duck_adapter.py` provides the shared ATTACH retry helper used by
+  stage audits instead of hardcoding one-shot ATTACH behavior in each script.
 - stage-opt audit: 2026-06-01 repaired the 2025-08-01→2026-05-29
   `fact_stock_technical_stage` / `fact_signal_context` discontinuity and
   reran `audit_stage_opt_candidate_supply.py`; full-history coverage is now
