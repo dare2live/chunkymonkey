@@ -911,6 +911,13 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-06-02 returns chart helper extraction
+
+- `assets/js/widgets/returns-chart.js`: 从 `assets/js/app.js` 抽出独立收益曲线 SVG helper，单独承载 `buildReturnsSvg()` 与采样逻辑，避免 app.js 继续背着这段 chart 生成的重复遍历/采样代码。
+- `assets/js/app.js` / `index.html`: 页面脚本在 app.js 之前加载新的 helper，机构画像里的收益曲线改为调用 `window.ReturnsChartWidget.buildReturnsSvg()`，不改变现有 UI 文案与 fallback 行为。
+- `backend/tests/contract/test_returns_chart_widget.py` / `backend/tests/contract/test_workbench_frontend_contract.py`: 新增 helper 契约 smoke，并补齐 workbench frontend contract 的 script 注入断言，验证短样本与 61 点采样样本都能输出正确的 SVG label。
+- 验证: `audit_test_tool_health.py` scoped PASS；`node --check assets/js/widgets/returns-chart.js assets/js/app.js` PASS；`pytest -q backend/tests/contract/test_returns_chart_widget.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed；`codegraph sync .` 已更新 4 个文件；`complexity-optimizer` 复扫后 `assets/js/app.js` 不再是明显热点。
+
 ### 2026-06-02 feature drift mitigation shared defaults externalization
 
 - `backend/config/feature_drift_mitigation_panel.yaml` / `backend/services/feature_drift_mitigation_config.py`: feature-drift mitigation panel 的共享默认值从脚本常量外置到 config-owned policy，包含 `recommendations`、`transform_types`、`regime_controls`、`market_control_features`、`winsor_low/high`、`bucket_count`、`min_root_cause_max_psi`，并采用 strict fail-closed loader。

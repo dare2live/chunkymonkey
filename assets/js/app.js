@@ -14,6 +14,7 @@
   var AppCache = window.AppCache;
   var AppNav = window.AppNav;
   var AppListState = window.AppListState;
+  var ReturnsChartWidget = window.ReturnsChartWidget || null;
   var etfState = AppNav.getEtfState();
   var instListState = AppListState.inst;
   var stockListState = AppListState.stock;
@@ -711,49 +712,6 @@
     filterEl.querySelector('.type-tag')?.classList.add('active');
     renderInstList(profiles?.data || [], 'all');
   }
-
-  function buildReturnsSvg(gains, width, height) {
-    if (!gains || gains.length < 2) return '<div class="muted" style="height:' + height + 'px;display:flex;align-items:center;justify-content:center;font-size:11px">数据不足</div>';
-    var vals = gains.map(function (g) { return g.gain_30d || 0; });
-    // 数据点过多时采样，保持曲线平滑
-    if (vals.length > 60) {
-      var step = Math.ceil(vals.length / 60), sampled = [];
-      for (var si = 0; si < vals.length; si += step) {
-        var chunk = vals.slice(si, Math.min(si + step, vals.length));
-        sampled.push(chunk.reduce(function (a, b) { return a + b }, 0) / chunk.length);
-      }
-      vals = sampled;
-    }
-    var mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals);
-    if (mx === mn) { mx = mn + 1; }
-    var pad = 4, w = width - pad * 2, h = height - pad * 2;
-    // 生成坐标点
-    var coords = vals.map(function (v, i) {
-      return { x: pad + i / (vals.length - 1) * w, y: pad + (1 - (v - mn) / (mx - mn)) * h };
-    });
-    // 贝塞尔平滑曲线
-    var pathD = 'M ' + coords[0].x.toFixed(1) + ' ' + coords[0].y.toFixed(1);
-    for (var ci = 1; ci < coords.length; ci++) {
-      var prev = coords[ci - 1], curr = coords[ci];
-      var cpx = (prev.x + curr.x) / 2;
-      pathD += ' C ' + cpx.toFixed(1) + ' ' + prev.y.toFixed(1) + ', ' + cpx.toFixed(1) + ' ' + curr.y.toFixed(1) + ', ' + curr.x.toFixed(1) + ' ' + curr.y.toFixed(1);
-    }
-    // 零线
-    var zeroY = (pad + (1 - (0 - mn) / (mx - mn)) * h).toFixed(1);
-    // 最大最小点
-    var maxIdx = 0, minIdx = 0;
-    vals.forEach(function (v, i) { if (v > vals[maxIdx]) maxIdx = i; if (v < vals[minIdx]) minIdx = i; });
-
-    return '<svg viewBox="0 0 ' + width + ' ' + height + '" style="width:100%;height:' + height + 'px">' +
-      '<line x1="' + pad + '" y1="' + zeroY + '" x2="' + (width - pad) + '" y2="' + zeroY + '" stroke="var(--cm-ink-100)" stroke-dasharray="3"/>' +
-      '<path d="' + pathD + '" fill="none" stroke="var(--cm-brand-400)" stroke-width="1.5"/>' +
-      '<circle cx="' + coords[maxIdx].x.toFixed(1) + '" cy="' + coords[maxIdx].y.toFixed(1) + '" r="3" fill="var(--stock-down)"/>' +
-      '<text x="' + (coords[maxIdx].x + 4).toFixed(1) + '" y="' + (coords[maxIdx].y - 3).toFixed(1) + '" font-size="9" fill="var(--stock-down)">+' + vals[maxIdx].toFixed(1) + '%</text>' +
-      '<circle cx="' + coords[minIdx].x.toFixed(1) + '" cy="' + coords[minIdx].y.toFixed(1) + '" r="3" fill="var(--stock-up)"/>' +
-      '<text x="' + (coords[minIdx].x + 4).toFixed(1) + '" y="' + (coords[minIdx].y + 10).toFixed(1) + '" font-size="9" fill="var(--stock-up)">' + vals[minIdx].toFixed(1) + '%</text>' +
-      '</svg>';
-  }
-
 
   // Phase 3: 机构列表维度切换（Step 5d：按钮组移到 HTML 的 .inst-dim-switch）
   function syncDimSwitchActive() {
@@ -3183,7 +3141,9 @@
       var p = (profilesResp?.data || []).find(function (x) { return x.institution_id === instId }) || {};
 
       // 画像摘要 + 收益曲线
-      var chartSvg = (chartResp?.ok && chartResp.data?.length) ? buildReturnsSvg(chartResp.data, 400, 60) : '<span class="muted">暂无收益数据</span>';
+      var chartSvg = (chartResp?.ok && chartResp.data?.length && ReturnsChartWidget && ReturnsChartWidget.buildReturnsSvg)
+        ? ReturnsChartWidget.buildReturnsSvg(chartResp.data, 400, 60)
+        : '<span class="muted">暂无收益数据</span>';
       var html = '<div style="margin-bottom:6px;font-size:12px;color:var(--cm-ink-700);background:var(--cm-ink-50);padding:6px 10px;border-radius:4px">' +
         '<strong>研究层画像</strong>&nbsp;—&nbsp;描述性指标，不直接决定是否跟投；执行主口径见下方"跟随决策 track record"。' +
         '</div>' +
