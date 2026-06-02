@@ -3,6 +3,10 @@
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
 
+## 2026-06-03 — data-view link overview manual count cleanup
+
+- `assets/js/data-view.js` 里的数据链路总览继续收口，`buildLinkOverviewModel()` 现在把 `manual` 的 keep/watch/drop 计数改成单次扫描，不再重复 `filter()` 三次；`backend/tests/contract/test_data_view.py` 已补 `manual` 无效 decision 不影响计数的回归。验证：`node --check assets/js/data-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py backend/tests/contract/test_workbench_frontend_contract.py` 6 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
+
 ## 2026-06-03 — widget format utils analysis/workbench-health 扩展
 
 - `assets/js/app.js` 里的 `loadIndustryOverviewSummary` / `resolveStockSummary` 死 helper 已删除，`backend/tests/contract/test_workbench_frontend_contract.py` 已补这两个 dead wrapper 不应回流的回归。验证：`node --check assets/js/app.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_settings_view.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。

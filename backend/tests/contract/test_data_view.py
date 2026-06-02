@@ -300,6 +300,8 @@ def test_data_view_build_cockpit_models_are_stable():
               { decision: 'keep' },
               { decision: 'watch' },
               { decision: 'drop' },
+              null,
+              { decision: 'ignore' },
             ],
             pit: { tdx_f10_gpcw_v1: { violation_rows: 0 } },
           },

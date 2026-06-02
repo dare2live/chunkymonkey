@@ -295,9 +295,15 @@
     const summary = (health && health.summary) || {};
     const byLayer = (health && health.by_layer) || {};
     const manual = (tdxValidation && tdxValidation.manual) || [];
-    const keep = manual.filter(r => r && r.decision === 'keep').length;
-    const watch = manual.filter(r => r && r.decision === 'watch').length;
-    const drop = manual.filter(r => r && r.decision === 'drop').length;
+    let keep = 0;
+    let watch = 0;
+    let drop = 0;
+    for (const row of manual) {
+      if (!row) continue;
+      if (row.decision === 'keep') keep += 1;
+      else if (row.decision === 'watch') watch += 1;
+      else if (row.decision === 'drop') drop += 1;
+    }
     const pit = (tdxValidation && tdxValidation.pit && tdxValidation.pit.tdx_f10_gpcw_v1 && tdxValidation.pit.tdx_f10_gpcw_v1.violation_rows) || 0;
     const sourceRows = (sourceHealth && sourceHealth.sources) || [];
     const sourceLabel = sourceRows.length
