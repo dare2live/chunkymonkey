@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 02:22:02 CST
+**Snapshot 时间**: 2026-06-03 02:25:50 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `bafe90d4 refactor: extract routes table model from data view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 4 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 182 |
+| HEAD | `58f483b8 refactor: extract source cards model from data view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 5 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 184 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+58f483b8 refactor: extract source cards model from data view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 5 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
+69f49fc0 docs: refresh session handoff snapshot after routes table model extraction | # commit-msg: minimal
 bafe90d4 refactor: extract routes table model from data view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 4 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 f27f9977 docs: refresh session handoff snapshot after dead stock display cleanup | # commit-msg: minimal
 1080ff52 refactor: remove dead stock display helpers | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ c6d866dd docs: refresh session handoff snapshot after dead stock score cleanup |
 08739def docs: record data-view audit model cleanup in controller state
 9f9dc9bf docs: refresh session handoff snapshot after data-view audit cleanup
 973f35e2 feat: move data audit results into a pure model
-9f17cdfc docs: refresh session handoff snapshot after stock summary delegate cleanup
-2d573a37 feat: delegate stock summary aggregation to widget
 ```
 
 ## NEXT ACTION (auto-computed)
