@@ -16,13 +16,14 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.db import get_conn  # noqa: E402
+from services.feature_registry import forward_return_label_columns  # noqa: E402
 from services.feature_drift_mitigation_config import DEFAULT_FEATURE_DRIFT_MITIGATION_PANEL_CONFIG  # noqa: E402
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso  # noqa: E402
 from services.schema_versions import record_actual_version  # noqa: E402
 from scripts.train_multidim_model import load_model_selection_run  # noqa: E402
 
 
-LABEL_COLUMNS = ["forward_ret_5d", "forward_ret_10d", "forward_ret_20d", "forward_ret_60d", "forward_ret_90d"]
+LABEL_COLUMNS = forward_return_label_columns()
 DEFAULT_RECOMMENDATIONS = DEFAULT_FEATURE_DRIFT_MITIGATION_PANEL_CONFIG.recommendations
 DEFAULT_TRANSFORMS = list(DEFAULT_FEATURE_DRIFT_MITIGATION_PANEL_CONFIG.transform_types)
 DEFAULT_MARKET_CONTROLS = list(DEFAULT_FEATURE_DRIFT_MITIGATION_PANEL_CONFIG.market_control_features)

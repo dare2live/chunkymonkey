@@ -1,6 +1,10 @@
 from pathlib import Path
 
-from services.feature_registry import load_feature_registry
+from services.feature_registry import (
+    follow_return_label_columns,
+    forward_return_label_columns,
+    load_feature_registry,
+)
 
 
 def test_feature_registry_loads_groups_and_excludes_labels():
@@ -53,6 +57,20 @@ def test_feature_registry_loads_groups_and_excludes_labels():
         "forward_ret_20d",
         "forward_ret_60d",
         "forward_ret_90d",
+        "follow_net_return_5d",
+        "follow_net_return_10d",
+        "follow_net_return_20d",
+        "follow_net_return_60d",
+        "follow_net_return_90d",
+    )
+    assert forward_return_label_columns(registry=registry) == (
+        "forward_ret_5d",
+        "forward_ret_10d",
+        "forward_ret_20d",
+        "forward_ret_60d",
+        "forward_ret_90d",
+    )
+    assert follow_return_label_columns(registry=registry) == (
         "follow_net_return_5d",
         "follow_net_return_10d",
         "follow_net_return_20d",

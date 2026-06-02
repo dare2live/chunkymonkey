@@ -16,19 +16,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts.build_feature_panel_duck import feature_input_columns  # noqa: E402
 from services.db import get_conn  # noqa: E402
-from services.feature_registry import load_feature_registry  # noqa: E402
+from services.feature_registry import forward_return_label_columns, load_feature_registry  # noqa: E402
 from services.model_feature_schema import holding_period_from_label  # noqa: E402
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso  # noqa: E402
 from services.schema_versions import record_actual_version  # noqa: E402
 
 
-DEFAULT_LABELS = [
-    "forward_ret_5d",
-    "forward_ret_10d",
-    "forward_ret_20d",
-    "forward_ret_60d",
-    "forward_ret_90d",
-]
+DEFAULT_LABELS = forward_return_label_columns()
 
 NUMERIC_TYPES = ("DOUBLE", "REAL", "FLOAT", "INTEGER", "BIGINT", "SMALLINT", "TINYINT", "HUGEINT", "DECIMAL")
 

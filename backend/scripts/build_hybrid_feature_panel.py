@@ -13,23 +13,13 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.db import get_conn  # noqa: E402
+from services.feature_registry import load_feature_registry  # noqa: E402
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso  # noqa: E402
 from services.schema_versions import record_actual_version  # noqa: E402
 from scripts.train_multidim_model import load_model_selection_run  # noqa: E402
 
 
-LABEL_COLUMNS = [
-    "forward_ret_5d",
-    "forward_ret_10d",
-    "forward_ret_20d",
-    "forward_ret_60d",
-    "forward_ret_90d",
-    "follow_net_return_5d",
-    "follow_net_return_10d",
-    "follow_net_return_20d",
-    "follow_net_return_60d",
-    "follow_net_return_90d",
-]
+LABEL_COLUMNS = load_feature_registry().label_columns()
 
 DDL = """
 CREATE TABLE IF NOT EXISTS fact_feature_panel_candidate (

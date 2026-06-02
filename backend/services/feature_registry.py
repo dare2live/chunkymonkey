@@ -82,6 +82,23 @@ class FeatureRegistry:
         return max(int(lag) for lag in lags)
 
 
+def label_columns_by_prefix(
+    prefix: str,
+    *,
+    registry: FeatureRegistry | None = None,
+) -> tuple[str, ...]:
+    reg = registry or load_feature_registry()
+    return tuple(name for name in reg.label_columns() if name.startswith(prefix))
+
+
+def forward_return_label_columns(*, registry: FeatureRegistry | None = None) -> tuple[str, ...]:
+    return label_columns_by_prefix("forward_ret_", registry=registry)
+
+
+def follow_return_label_columns(*, registry: FeatureRegistry | None = None) -> tuple[str, ...]:
+    return label_columns_by_prefix("follow_net_return_", registry=registry)
+
+
 def _as_tuple(value: Any) -> tuple[str, ...]:
     if value is None:
         return ()

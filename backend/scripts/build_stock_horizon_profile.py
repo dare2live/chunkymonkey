@@ -13,19 +13,14 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.db import get_conn  # noqa: E402
+from services.feature_registry import follow_return_label_columns  # noqa: E402
 from services.model_feature_schema import holding_period_from_label  # noqa: E402
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso  # noqa: E402
 from services.schema_versions import record_actual_version  # noqa: E402
 from scripts.train_multidim_model import load_model_selection_run  # noqa: E402
 
 
-DEFAULT_LABELS = [
-    "follow_net_return_5d",
-    "follow_net_return_10d",
-    "follow_net_return_20d",
-    "follow_net_return_60d",
-    "follow_net_return_90d",
-]
+DEFAULT_LABELS = follow_return_label_columns()
 
 DDL = """
 CREATE TABLE IF NOT EXISTS mart_stock_horizon_profile (

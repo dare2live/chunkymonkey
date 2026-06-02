@@ -13,6 +13,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.db import get_conn  # noqa: E402
+from services.feature_registry import forward_return_label_columns  # noqa: E402
 from scripts.build_candidate_feature_panel import (  # noqa: E402
     CANDIDATE_FEATURE_SET_ID,
     CANDIDATE_FEATURES,
@@ -54,7 +55,7 @@ FEATURE_GROUPS = {
     ],
 }
 
-LABEL_COLUMNS = ["forward_ret_5d", "forward_ret_10d", "forward_ret_20d", "forward_ret_60d", "forward_ret_90d"]
+LABEL_COLUMNS = list(forward_return_label_columns())
 META_COLUMNS = {"feature_set_id", "stock_code", "date", "built_at", *LABEL_COLUMNS}
 
 

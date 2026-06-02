@@ -12,6 +12,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.db import get_conn  # noqa: E402
+from services.feature_registry import forward_return_label_columns  # noqa: E402
 from scripts.build_tdx_gpcw_auto_features import AUTO_FEATURE_SET_ID  # noqa: E402
 
 logger = logging.getLogger("tdx_gpcw_auto_panel")
@@ -19,7 +20,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 
 AUTO_PANEL_FEATURE_SET_ID = "tdx_gpcw_auto_v1_pit"
-LABEL_COLUMNS = ["forward_ret_5d", "forward_ret_10d", "forward_ret_20d", "forward_ret_60d", "forward_ret_90d"]
+LABEL_COLUMNS = forward_return_label_columns()
 BASELINE_FEATURES = [
     "forecast_profit_yoy_mid",
     "inverse_holder_count_change_pct_tdx",

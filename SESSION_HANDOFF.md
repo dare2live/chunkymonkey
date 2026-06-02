@@ -41,14 +41,21 @@ bash scripts/install_resilience.sh --status   # check 装好没
   `formula_macd_golden_cross.yaml`, `formula_turtle_breakout.yaml`,
   `shareholder_plan_family_walkforward.yaml`, `run_multidim_walkforward.yaml`,
   `stock_formula_optuna.yaml`, `shared_feature_bins.yaml`,
-  `strategy_defaults.yaml`) plus the shared loader; formula-specific YAMLs keep only formula-owned
-  thresholds, and per-stock best-holding results stay table-backed in marts
-  such as `mart_per_stock_stage_strategy_optimal_pit` /
-  `mart_stock_horizon_profile` instead of becoming file literals. Raw
+  `strategy_defaults.yaml`) plus the shared loader; `feature_registry.py`
+  now also serves the forward / follow label lists from the registry so the
+  same horizon columns stop reappearing as script constants; formula-specific
+  YAMLs keep only formula-owned thresholds, and per-stock best-holding
+  results stay table-backed in marts such as
+  `mart_per_stock_stage_strategy_optimal_pit` / `mart_stock_horizon_profile`
+  instead of becoming file literals. Raw
   `duckdb.connect` allowlists are now config-owned in
   `backend/config/duckdb_connect_policy.yaml`, with `services/duck_adapter.py`
   handling ATTACH retry semantics so stage audits and contract tests reuse the
-  same lock policy instead of hardcoding it inside the test.
+  same lock policy instead of hardcoding it inside the test. BestChoice 当前
+  5 个公式对“`20` 个交易日内主力资金流入 + `1-2` 次倍量上涨”的形态只算
+  部分覆盖（最接近的是 `volume_base_breakout` / `activity_breakout`）；
+  这类候选先记入后续接入计划，等架构 / 数据治理完成后再评估是否
+  加入 BestChoice 模块。
 | Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
 | VM 状态 | ? |
 | VM 上次启动 |  |

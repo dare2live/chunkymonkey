@@ -72,14 +72,20 @@ The model pipeline snapshot below is historical evidence for the completed
   `formula_macd_golden_cross.yaml`, `formula_turtle_breakout.yaml`,
   `shareholder_plan_family_walkforward.yaml`, `run_multidim_walkforward.yaml`,
   `stock_formula_optuna.yaml`, `shared_feature_bins.yaml`,
-  `strategy_defaults.yaml`) plus the shared loader; formula-specific YAMLs keep only formula-owned
-  thresholds, and per-stock best-holding results stay table-backed in marts
-  such as `mart_per_stock_stage_strategy_optimal_pit` /
-  `mart_stock_horizon_profile`
-  instead of becoming file literals. Raw `duckdb.connect` allowlists are now
-  config-owned in `backend/config/duckdb_connect_policy.yaml`, and
-  `services/duck_adapter.py` provides the shared ATTACH retry helper used by
-  stage audits instead of hardcoding one-shot ATTACH behavior in each script.
+  `strategy_defaults.yaml`) plus the shared loader; `feature_registry.py`
+  now also serves the forward / follow label lists from the registry so the
+  same horizon columns stop reappearing as script constants; formula-specific
+  YAMLs keep only formula-owned thresholds, and per-stock best-holding results
+  stay table-backed in marts such as `mart_per_stock_stage_strategy_optimal_pit`
+  / `mart_stock_horizon_profile` instead of becoming file literals. Raw
+  `duckdb.connect` allowlists are now config-owned in
+  `backend/config/duckdb_connect_policy.yaml`, and `services/duck_adapter.py`
+  provides the shared ATTACH retry helper used by stage audits instead of
+  hardcoding one-shot ATTACH behavior in each script. BestChoice 当前 5 个
+  公式对“`20` 个交易日内主力资金流入 + `1-2` 次倍量上涨”的形态只算部分
+  覆盖（最接近的是 `volume_base_breakout` / `activity_breakout`），所以
+  这类候选已记入后续接入计划，等架构 / 数据治理完成后再评估是否加入
+  BestChoice 模块。
 - stage-opt audit: 2026-06-01 repaired the 2025-08-01→2026-05-29
   `fact_stock_technical_stage` / `fact_signal_context` discontinuity and
   reran `audit_stage_opt_candidate_supply.py`; full-history coverage is now
