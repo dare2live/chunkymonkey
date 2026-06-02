@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 02:02:00 CST
+**Snapshot 时间**: 2026-06-03 02:08:04 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `2d573a37 feat: delegate stock summary aggregation to widget` |
-| 最近 24h commits | 177 |
+| HEAD | `973f35e2 feat: move data audit results into a pure model` |
+| 最近 24h commits | 178 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+973f35e2 feat: move data audit results into a pure model
+9f17cdfc docs: refresh session handoff snapshot after stock summary delegate cleanup
 2d573a37 feat: delegate stock summary aggregation to widget
 b805d628 docs: refresh session handoff snapshot after settings view cleanup | # commit-msg: minimal
 3866f770 feat: single-pass schema version summary in settings view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 1 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ b805d628 docs: refresh session handoff snapshot after settings view cleanup | # 
 38a0a96d docs: refresh session handoff snapshot after doctor skip flag cleanup | # commit-msg: minimal
 b6e4ac75 fix: remove stale doctor skip flags | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 27 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 462fa06f docs: refresh session handoff snapshot after doctor fast wrapper fix | # commit-msg: minimal
-adbce7a2 fix: make doctor fast wrapper forward full gate | # commit-msg: minimal
-90b9a582 docs: refresh session handoff snapshot after ETF workbench snapshot sync | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
