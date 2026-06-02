@@ -26,11 +26,16 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 from services.duck_adapter import connect  # noqa: E402
+from services.bestchoice_config import DEFAULT_BESTCHOICE_PIPELINE_CONFIG  # noqa: E402
 
 # rule-compliance: ok evidence=plan §5 Phase 5+ ensemble naming
 ENSEMBLE_MODEL_ID = "ensemble_v4_bestchoice_v1"
 V4_MODEL_ID = "lgbm_20260517_governance_v1_20d"
-BC_RUN_ID = "bestchoice_formula_optuna_20260521_v1"
+BC_RUN_ID = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.bc_run_id
+ENSEMBLE_TRAIN_START = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.ensemble_train_start_date
+ENSEMBLE_TRAIN_END = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.ensemble_train_end_date
+ENSEMBLE_TEST_START = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.ensemble_test_start_date
+ENSEMBLE_TEST_END = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.ensemble_test_end_date
 
 
 def main() -> int:
@@ -96,10 +101,10 @@ def main() -> int:
                    'p0a_v3+formula_engine_v1' AS feature_version,
                    'p0a_v2_governance_v1' AS label_version,
                    'NA' AS walk_forward_mode,
-                   '2024-01-02' AS train_start,
-                   '2024-06-28' AS train_end,
-                   '2024-07-01' AS test_start,
-                   '2026-04-14' AS test_end,
+                   '{ENSEMBLE_TRAIN_START}' AS train_start,
+                   '{ENSEMBLE_TRAIN_END}' AS train_end,
+                   '{ENSEMBLE_TEST_START}' AS test_start,
+                   '{ENSEMBLE_TEST_END}' AS test_end,
                    FALSE AS is_final_holdout,
                    '{now_utc}' AS built_at,
                    trade_date_dt

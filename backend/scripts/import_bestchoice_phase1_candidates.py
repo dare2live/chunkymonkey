@@ -28,10 +28,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
 from services.duck_adapter import connect  # noqa: E402
+from services.bestchoice_config import DEFAULT_BESTCHOICE_PIPELINE_CONFIG  # noqa: E402
 
 DEFAULT_CSV = REPO_ROOT / "bestchoice" / "analysis" / "formula_local_optuna_batch_stock_best_replacements.csv"
 
-DEFAULT_RUN_ID = "bestchoice_formula_optuna_20260521_v1"
+DEFAULT_RUN_ID = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.bc_run_id
 # rule-compliance: ok evidence=BestChoice source CSV latest_data_date metadata
 DEFAULT_DATA_LATEST = "2026-05-19"
 TARGET_TABLE = "mart_stock_formula_optuna_bestchoice_v1"

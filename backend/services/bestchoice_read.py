@@ -10,8 +10,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from services.bestchoice_config import DEFAULT_BESTCHOICE_PIPELINE_CONFIG
+
 # rule-compliance: ok evidence=BestChoice plan §5 Phase 1 run_id naming
-DEFAULT_RUN_ID = "bestchoice_formula_optuna_20260521_v1"
+DEFAULT_RUN_ID = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.bc_run_id
 DEFAULT_CHALLENGER_MODEL_ID = "bestchoice_formula_challenger_v1"
 DEFAULT_ENSEMBLE_MODEL_ID = "ensemble_v4_bestchoice_v1"
 

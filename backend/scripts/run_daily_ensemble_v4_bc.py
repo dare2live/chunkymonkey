@@ -26,11 +26,12 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 from services.duck_adapter import connect  # noqa: E402
+from services.bestchoice_config import DEFAULT_BESTCHOICE_PIPELINE_CONFIG  # noqa: E402
 
 # rule-compliance: ok evidence=Phase 6 ensemble naming + plan §5 challenger run_id pattern
 ENSEMBLE_RUN_ID = "ensemble_v4_bc_v1"
 V4_MODEL_ID = "lgbm_20260517_governance_v1_20d"
-BC_RUN_ID = "bestchoice_formula_optuna_20260521_v1"
+BC_RUN_ID = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.bc_run_id
 
 
 def main() -> int:

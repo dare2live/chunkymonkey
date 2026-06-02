@@ -58,6 +58,7 @@ bash scripts/install_resilience.sh --status   # check 装好没
   `formula_limit_up_pullback` 与 CYQ 筹码分布规格；这些候选先记入
   后续接入计划，等架构 / 数据治理完成后再一起评估是否加入 BestChoice
   模块。
+  BestChoice 的共享 run-id / walk-forward 日期 / ensemble train-test windows 已统一到 `backend/config/bestchoice_pipeline.yaml`，由 `backend/services/bestchoice_config.py` 严格加载，避免 import / feed / audit / paper-sim / ensemble 脚本各自复制同一套默认值。
 | Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
 | VM 状态 | ? |
 | VM 上次启动 |  |

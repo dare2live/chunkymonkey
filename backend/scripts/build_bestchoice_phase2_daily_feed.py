@@ -28,9 +28,10 @@ sys.path.insert(0, str(REPO_ROOT / "backend"))
 sys.path.insert(0, str(BESTCHOICE_ROOT))
 
 from services.duck_adapter import connect  # noqa: E402
+from services.bestchoice_config import DEFAULT_BESTCHOICE_PIPELINE_CONFIG  # noqa: E402
 from formula_engine import compute_formula_signals  # noqa: E402
 
-DEFAULT_RUN_ID = "bestchoice_formula_optuna_20260521_v1"
+DEFAULT_RUN_ID = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.bc_run_id
 FEED_COLUMNS = [
     "run_id", "signal_date", "buy_date", "stock_code", "formula_id", "variant_id",
     "sell_rule", "holding_days", "confidence_score", "expected_return",
@@ -143,7 +144,7 @@ def main() -> int:
     parser.add_argument("--run-id", default=DEFAULT_RUN_ID)
     parser.add_argument("--limit-candidates", type=int, default=0, help="0 = no limit")
     # rule-compliance: ok evidence=main project paper_sim period_start 2023-01-03 (mart_paper_sim_kpi)
-    parser.add_argument("--start-date", default="2023-01-03")
+    parser.add_argument("--start-date", default=DEFAULT_BESTCHOICE_PIPELINE_CONFIG.walkforward_start_date)
     args = parser.parse_args()
 
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")

@@ -107,7 +107,7 @@
 | 顺序 | 优先级 | 主线任务 | 前置 gate |
 |---:|---|---|---|
 | 0 | P1 | 主升浪猎手认真研究和验证 | 框架治理结束后启动；先复核研究日志的数据/代码/样本边界，再经 PIT、成本、T+1、涨跌停、持仓重叠、walk-forward、paper_sim 和 forward monitor 复验；70%/78%/86% 等数字只作研究假设 |
-| 1 | P1 | BestChoice 公式接入与冻结证据复核 | BestChoice artifact freeze/hash/lineage, namespaced challenger import；新增候选公式：`20` 个交易日左右内的主力资金流入 + `1-2` 次倍量上涨的资金量价共振形态。现有 5 个 BestChoice 公式仅部分覆盖 `volume_base_breakout` / `activity_breakout`，尚缺直接资金流向特征；另一个已存档的研究资产是回调十字星 / `pullback_doji` / `formula_limit_up_pullback` 与 CYQ 筹码分布规格，待架构 / 数据治理完成后再一起评估是否作为 challenger 接入。 |
+| 1 | P1 | BestChoice 公式接入与冻结证据复核 | BestChoice artifact freeze/hash/lineage, namespaced challenger import；新增候选公式：`20` 个交易日左右内的主力资金流入 + `1-2` 次倍量上涨的资金量价共振形态。现有 5 个 BestChoice 公式仅部分覆盖 `volume_base_breakout` / `activity_breakout`，尚缺直接资金流向特征；另一个已存档的研究资产是回调十字星 / `pullback_doji` / `formula_limit_up_pullback` 与 CYQ 筹码分布规格，待架构 / 数据治理完成后再一起评估是否作为 challenger 接入。BestChoice 的共享 run-id / walk-forward 日期 / ensemble train-test windows 已统一到 `backend/config/bestchoice_pipeline.yaml`，由 `backend/services/bestchoice_config.py` 严格加载，避免 import / feed / audit / paper-sim / ensemble 脚本各自复制同一套默认值。 |
 | 2 | P1 | 300616 原始公式复现 | universe/PIT 清洁, god-view 与 PIT 去泄漏分离 |
 | 3 | P1/P2 | 300616 衍生公式与参数空间 | `plan_validator` 8 项 PASS, search space 非空 |
 | 4 | P1/P2 | 主项目量化回测 / paper_sim | `backtest_preflight` 8 项 PASS, 成本/涨跌停/排除股票规则有效 |

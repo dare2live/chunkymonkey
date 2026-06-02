@@ -22,10 +22,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 from services.duck_adapter import connect  # noqa: E402
+from services.bestchoice_config import DEFAULT_BESTCHOICE_PIPELINE_CONFIG  # noqa: E402
 
 DEFAULT_RESULT_ID = "ensemble_v4_bc_v1_20260522"
 DEFAULT_COMPARISON_ID = "lm_v6_compare_20260522T074141"
 DEFAULT_BASELINE_MODEL_ID = "lgbm_20260517_governance_v1_20d"
+EVIDENCE_PERIOD_START = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.ensemble_test_start_date
+EVIDENCE_PERIOD_END = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.ensemble_test_end_date
 
 
 def main() -> int:
@@ -74,8 +77,8 @@ def main() -> int:
                 f"{args.comparison_id}_lambdamart_v6",
                 args.comparison_id,
                 "v1", "ensemble_v4_bc",
-                # rule-compliance: ok evidence=paper_sim period 2024-07-01 to 2026-04-13 (V4 OOS coverage)
-                "2024-07-01", "2026-04-13",
+                # rule-compliance: ok evidence=paper_sim period aligned with config-owned ensemble test window
+                EVIDENCE_PERIOD_START, EVIDENCE_PERIOD_END,
                 0.7439, -0.1685, 1.83, 0.60, 0.0252,
                 True,  # leakage_flag — BC has MILD bias caveat
                 "candidate_forward_monitor",
@@ -86,7 +89,7 @@ def main() -> int:
                 json.dumps({
                     "method": "rank_combine_v4_bc",
                     "v4_model": "lgbm_20260517_governance_v1_20d",
-                    "bc_run": "bestchoice_formula_optuna_20260521_v1",
+                    "bc_run": DEFAULT_BESTCHOICE_PIPELINE_CONFIG.bc_run_id,
                 }),
             ],
         )

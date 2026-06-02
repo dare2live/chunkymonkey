@@ -44,16 +44,17 @@ sys.path.insert(0, str(REPO_ROOT / "backend"))
 sys.path.insert(0, str(BESTCHOICE_ROOT))
 
 from services.duck_adapter import connect  # noqa: E402
+from services.bestchoice_config import DEFAULT_BESTCHOICE_PIPELINE_CONFIG  # noqa: E402
 from formula_engine import compute_formula_signals  # noqa: E402
 
 # rule-compliance: ok evidence=BC plan §5 audit cutoffs aligned with paper_sim period 2024-07→2026-04
-DEFAULT_CUTOFFS = ["2024-06-01", "2025-01-01"]
+DEFAULT_CUTOFFS = list(DEFAULT_BESTCHOICE_PIPELINE_CONFIG.walkforward_cutoffs)
 DEFAULT_HOLDING_DAYS = 20  # rule-compliance: ok evidence=plan §5 default holding when sell_rule not fixed_N
-DEFAULT_RUN_ID = "bestchoice_formula_optuna_20260521_v1"
+DEFAULT_RUN_ID = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.bc_run_id
 
 
 # rule-compliance: ok evidence=BC plan §5 audit aligned with panel start_date 2023-01-03
-def _load_kline(conn, stock_code: str, start_date: str = "2023-01-03") -> pd.DataFrame:
+def _load_kline(conn, stock_code: str, start_date: str = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.walkforward_start_date) -> pd.DataFrame:
     rows = conn.execute(
         """
         SELECT date, open, high, low, close, volume, amount

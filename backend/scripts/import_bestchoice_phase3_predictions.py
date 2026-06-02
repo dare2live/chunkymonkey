@@ -28,10 +28,11 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 from services.duck_adapter import connect  # noqa: E402
+from services.bestchoice_config import DEFAULT_BESTCHOICE_PIPELINE_CONFIG  # noqa: E402
 
 # rule-compliance: ok evidence=plan §5 Phase 3 challenger id naming
 CHALLENGER_MODEL_ID = "bestchoice_formula_challenger_v1"
-FEED_RUN_ID_DEFAULT = "bestchoice_formula_optuna_20260521_v1"
+FEED_RUN_ID_DEFAULT = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.bc_run_id
 
 
 def main() -> int:

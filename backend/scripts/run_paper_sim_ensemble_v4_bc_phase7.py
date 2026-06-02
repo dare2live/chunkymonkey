@@ -33,10 +33,11 @@ BC_ROOT = REPO_ROOT / "bestchoice"
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 sys.path.insert(0, str(BC_ROOT))
 from services.duck_adapter import connect  # noqa: E402
+from services.bestchoice_config import DEFAULT_BESTCHOICE_PIPELINE_CONFIG  # noqa: E402
 
 # rule-compliance: ok evidence=Phase 7 walk-forward TEST range
-TEST_START = "2025-01-01"  # rule-compliance: ok evidence=Phase 7 walk-forward test start
-TEST_END = "2026-04-13"     # rule-compliance: ok evidence=panel V4 OOS upper bound
+TEST_START = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.walkforward_test_start_date  # rule-compliance: ok evidence=Phase 7 walk-forward test start
+TEST_END = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.walkforward_test_end_date     # rule-compliance: ok evidence=panel V4 OOS upper bound
 POSITIVE_CONTEXTS = {"below_zero_rebound_probe", "zero_axis_below_golden_cross"}
 
 
@@ -61,7 +62,7 @@ def _classify_macd(dif, dea, p_dif, p_dea):
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--policy-run", default="bestchoice_context_exit_v1_20260522_full")
+    p.add_argument("--policy-run", default=DEFAULT_BESTCHOICE_PIPELINE_CONFIG.context_exit_policy_run_id_full)
     p.add_argument("--top-k-v4", type=int, default=10, help="V4 top-K threshold per signal_date")
     args = p.parse_args()
 

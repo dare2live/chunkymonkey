@@ -38,12 +38,13 @@ BC_ROOT = REPO_ROOT / "bestchoice"
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 sys.path.insert(0, str(BC_ROOT))
 from services.duck_adapter import connect  # noqa: E402
+from services.bestchoice_config import DEFAULT_BESTCHOICE_PIPELINE_CONFIG  # noqa: E402
 from formula_engine import compute_formula_signals  # noqa: E402
 
 # rule-compliance: ok evidence=BC plan §5 Phase 7 POC config
-DEFAULT_RUN_ID = "bestchoice_formula_optuna_20260521_v1"
-POLICY_RUN_ID = "bestchoice_context_exit_v1_20260522"
-DEFAULT_TOP_N = 100
+DEFAULT_RUN_ID = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.bc_run_id
+POLICY_RUN_ID = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.context_exit_policy_run_id
+DEFAULT_TOP_N = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.context_exit_top_n
 
 
 def _macd(close: np.ndarray, fast: int = 12, slow: int = 26, signal: int = 9):
@@ -256,8 +257,9 @@ def main() -> int:
     sell_rules_to_test = [5, 10, 15, 20, 30]
     # rule-compliance: ok evidence=walk-forward split prevents in-sample fit (CLAUDE.md §1.4 真金白银)
     # Train: 2023-01-03 to 2024-12-31 (~2 years). Test: 2025-01-01 to 2026-04-13 (~16 months).
-    TRAIN_END = "2024-12-31"  # rule-compliance: ok evidence=BC POC walk-forward train_end (panel coverage to 2026-04)
-    TEST_END = "2026-04-13"    # rule-compliance: ok evidence=panel max signal_date (V4 OOS upper bound)
+    START_DATE = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.walkforward_start_date
+    TRAIN_END = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.walkforward_train_end_date  # rule-compliance: ok evidence=BC POC walk-forward train_end (panel coverage to 2026-04)
+    TEST_END = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.walkforward_test_end_date    # rule-compliance: ok evidence=panel max signal_date (V4 OOS upper bound)
 
     with connect(args.db_path, read_only=False, attach={"market": market_db}) as conn:
         conn.execute(
@@ -293,7 +295,6 @@ def main() -> int:
         print(f"[Phase 7 POC] processing {len(cands)} top candidates")
 
         # rule-compliance: ok evidence=panel start_date alignment
-        START_DATE = "2023-01-03"
         kline_by_stock = _load_kline_frames(conn, [row[0] for row in cands], START_DATE)
         policy_rows = []
         for i, (stock, formula_id, params_json, _sell_rule) in enumerate(cands):

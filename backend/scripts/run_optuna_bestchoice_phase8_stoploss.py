@@ -28,11 +28,12 @@ BC_ROOT = REPO_ROOT / "bestchoice"
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 sys.path.insert(0, str(BC_ROOT))
 from services.duck_adapter import connect  # noqa: E402
+from services.bestchoice_config import DEFAULT_BESTCHOICE_PIPELINE_CONFIG  # noqa: E402
 from formula_engine import compute_formula_signals  # noqa: E402
 
 # rule-compliance: ok evidence=Phase 7 POC walk-forward TEST range
-TEST_START = "2025-01-01"  # rule-compliance: ok evidence=Phase 7 walk-forward test start
-TEST_END = "2026-04-13"     # rule-compliance: ok evidence=panel V4 OOS upper bound
+TEST_START = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.walkforward_test_start_date  # rule-compliance: ok evidence=Phase 7 walk-forward test start
+TEST_END = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.walkforward_test_end_date     # rule-compliance: ok evidence=panel V4 OOS upper bound
 POSITIVE_CONTEXTS = {"below_zero_rebound_probe", "zero_axis_below_golden_cross"}
 
 
@@ -63,7 +64,7 @@ def _atr(high, low, close, n=20):
     return pd.Series(tr).rolling(n).mean().values
 
 
-def load_picks(conn, policy_run: str = "bestchoice_context_exit_v1_20260522_full") -> pd.DataFrame:
+def load_picks(conn, policy_run: str = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.context_exit_policy_run_id_full) -> pd.DataFrame:
     """Load Phase 7 policy + BC daily picks, joined."""
     picks = pd.DataFrame(
         conn.execute(
@@ -173,7 +174,7 @@ def objective(trial: optuna.Trial, conn, picks, policy, kline_cache) -> float:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--n-trials", type=int, default=50)
-    p.add_argument("--policy-run", default="bestchoice_context_exit_v1_20260522_full")
+    p.add_argument("--policy-run", default=DEFAULT_BESTCHOICE_PIPELINE_CONFIG.context_exit_policy_run_id_full)
     args = p.parse_args()
 
     market_db = str(REPO_ROOT / "data" / "market.duckdb")

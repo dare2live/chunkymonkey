@@ -88,6 +88,7 @@ The model pipeline snapshot below is historical evidence for the completed
   `formula_limit_up_pullback` 与 CYQ 筹码分布规格；这些候选已记入
   后续接入计划，等架构 / 数据治理完成后再一起评估是否加入 BestChoice
   模块。
+  BestChoice 的共享 run-id / walk-forward 日期 / ensemble train-test windows 已统一到 `backend/config/bestchoice_pipeline.yaml`，由 `backend/services/bestchoice_config.py` 严格加载，避免 import / feed / audit / paper-sim / ensemble 脚本各自复制同一套默认值。
 - stage-opt audit: 2026-06-01 repaired the 2025-08-01→2026-05-29
   `fact_stock_technical_stage` / `fact_signal_context` discontinuity and
   reran `audit_stage_opt_candidate_supply.py`; full-history coverage is now
