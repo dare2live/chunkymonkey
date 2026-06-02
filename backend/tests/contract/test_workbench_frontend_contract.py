@@ -27,6 +27,7 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert 'data-legacy-surface="data-health"' not in index
     assert "'assets/js/data-health-view.js'" not in index
     assert "'assets/js/widgets/returns-chart.js'" in index
+    assert "'assets/js/widgets/type-summary.js'" in index
     assert 'onclick="window.App.showView(\'data-health\')"' not in index
     assert "高级数据健康" not in index
     assert "window.App.showWorkbenchTab('dataSources')" in index
@@ -39,6 +40,7 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "showWorkbenchTab" in app_js
     assert "showView('workbench')" in app_js
     assert "ReturnsChartWidget" in app_js
+    assert "TypeSummaryWidget" in app_js
     assert "/api/workbench/data-sources" in data_view_js
     assert "/api/data_health/snapshot" not in data_view_js
     assert "/api/data_health/sources" not in data_view_js

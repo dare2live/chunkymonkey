@@ -15,6 +15,7 @@
   var AppNav = window.AppNav;
   var AppListState = window.AppListState;
   var ReturnsChartWidget = window.ReturnsChartWidget || null;
+  var TypeSummaryWidget = window.TypeSummaryWidget || null;
   var etfState = AppNav.getEtfState();
   var instListState = AppListState.inst;
   var stockListState = AppListState.stock;
@@ -346,24 +347,19 @@
 
   function renderHealthInst(inst) {
     var arr = (inst && inst.data) ? inst.data : [];
-    var active = arr.filter(i => i.enabled && !i.blacklisted).length;
-    var total = arr.length;
+    var summary = TypeSummaryWidget && TypeSummaryWidget.collectEnabledTypeSummary
+      ? TypeSummaryWidget.collectEnabledTypeSummary(arr, 4)
+      : null;
+    var active = summary ? summary.active : arr.filter(function (i) { return i.enabled && !i.blacklisted; }).length;
+    var total = summary ? summary.total : arr.length;
     setText('wbInstActive', fmt(active));
     setText('wbInstTotal', '总 ' + fmt(total) + ' · 黑名单 ' + fmt(total - active));
     // 展示全部类别，按数量降序；卡片位置有限，类别数多时展示 Top 4 + "+N类"
-    var types = {};
-    arr.forEach(i => { if (i.enabled && !i.blacklisted && i.type) types[i.type] = (types[i.type]||0) + 1; });
-    var sorted = Object.entries(types).sort((a,b) => b[1]-a[1]);
-    var chipLabel;
-    if (sorted.length <= 4) {
-      chipLabel = sorted.map(([t,n]) => t + n).join(' · ');
-    } else {
-      chipLabel = sorted.slice(0, 4).map(([t,n]) => t + n).join(' · ') + ' · +' + (sorted.length - 4) + '类';
-    }
+    var chipLabel = summary ? summary.label : '';
     var wbInstTypesEl = el('wbInstTypes');
     if (wbInstTypesEl) {
       wbInstTypesEl.textContent = chipLabel;
-      wbInstTypesEl.title = sorted.map(([t,n]) => t + ' ' + n).join('\n');
+      wbInstTypesEl.title = summary ? summary.title : '';
     }
   }
 
@@ -688,15 +684,12 @@
     var [profiles, inst] = await Promise.all([api('/api/inst/profiles'), api('/api/inst/institutions')]);
 
     // 按类型统计数量（仅计启用且未拉黑），按数量降序排列
-    var typeCounts = {};
-    (inst?.data || []).forEach(function (i) {
-      if (!i || !i.type || !i.enabled || i.blacklisted) return;
-      typeCounts[i.type] = (typeCounts[i.type] || 0) + 1;
-    });
-    var orderedTypes = Object.entries(typeCounts)
-      .sort(function (a, b) { return b[1] - a[1]; })
-      .map(function (kv) { return kv[0]; });
-    var totalActive = Object.values(typeCounts).reduce(function (a, b) { return a + b; }, 0);
+    var typeSummary = TypeSummaryWidget && TypeSummaryWidget.collectEnabledTypeSummary
+      ? TypeSummaryWidget.collectEnabledTypeSummary(inst?.data || [], 4)
+      : null;
+    var typeCounts = typeSummary ? typeSummary.counts : {};
+    var orderedTypes = typeSummary ? typeSummary.orderedTypes : [];
+    var totalActive = typeSummary ? typeSummary.active : 0;
 
     var filterEl = el('instTypeFilter');
     filterEl.innerHTML =
