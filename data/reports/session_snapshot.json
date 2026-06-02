@@ -1,10 +1,10 @@
 {
-  "snapshot_at": "2026-06-03 07:12:24 CST",
+  "snapshot_at": "2026-06-03 07:17:48 CST",
   "git": {
     "branch": "main",
-    "head_hash": "b512c0fd",
-    "head_msg": "b512c0fd refactor: stock-view evidence filter single-pass cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal",
-    "commits_24h": 267,
+    "head_hash": "c364240e",
+    "head_msg": "c364240e feat: extract settings-view data source params model | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 4 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal",
+    "commits_24h": 269,
     "uncommitted_files": 0
   },
   "retrain": {
