@@ -2,7 +2,7 @@
 
 Business-level pipeline tracker. Session-level state remains in SESSION_HANDOFF.md.
 
-- generated_at: `2026-06-02T22:18:10Z`
+- generated_at: `2026-06-02T22:21:30Z`
 - model_id: `lgbm_phase5_gcp_20260520T010718`
 - current_step: `all_done`
 - next_step: `all_done`

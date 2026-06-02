@@ -1,11 +1,11 @@
 {
-  "snapshot_at": "2026-06-03 06:18:10 CST",
+  "snapshot_at": "2026-06-03 06:22:09 CST",
   "git": {
     "branch": "main",
-    "head_hash": "65f64cb0",
-    "head_msg": "65f64cb0 refactor: remove dead versions field from settings view schema model | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal",
-    "commits_24h": 261,
-    "uncommitted_files": 2
+    "head_hash": "ae7e4b27",
+    "head_msg": "ae7e4b27 refactor: remove dead app.js industry summary helpers | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal",
+    "commits_24h": 263,
+    "uncommitted_files": 4
   },
   "retrain": {
     "model_id": "lgbm_phase5_v9b_20260523T083000Z",
@@ -25,5 +25,5 @@
     "pct_of_budget": "25.2",
     "remaining_hours_spot": "105.9"
   },
-  "next_action": "2 uncommitted files \u2014 git status \u770b + bash scripts/safe_commit.sh"
+  "next_action": "4 uncommitted files \u2014 git status \u770b + bash scripts/safe_commit.sh"
 }
