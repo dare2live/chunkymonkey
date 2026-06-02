@@ -119,3 +119,60 @@ def test_data_view_build_routes_table_model_is_stable():
         check=False,
     )
     assert result.returncode == 0, result.stderr + result.stdout
+
+
+def test_data_view_build_source_cards_model_is_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.CMDataView;
+        if (!view || typeof view.buildSourceCardsModel !== 'function') {
+          throw new Error('CMDataView.buildSourceCardsModel missing');
+        }
+
+        const model = view.buildSourceCardsModel([
+          {
+            name: 'tdxhub',
+            display_name: 'TDXHub',
+            priority: 1,
+            repo_url: 'https://example.com/tdxhub',
+            capabilities: [1, 2, 3],
+            telemetry: { call_count: 2, fail_count: 1, avg_latency_ms: 123.4 },
+            health: { state: 'ok', notes: 'healthy' },
+          },
+          {
+            name: 'akshare',
+            priority: 9,
+            capabilities: [],
+            telemetry: {},
+            health: { state: 'down' },
+          },
+        ]);
+
+        if (!Array.isArray(model) || model.length !== 2) throw new Error('source model length mismatch');
+        const first = model[0];
+        if (first.name !== 'tdxhub' || first.displayName !== 'TDXHub') throw new Error('display fields mismatch');
+        if (first.tone !== 'ok' || first.color !== '#0a0' || first.stateLabel !== 'OK') throw new Error('healthy source meta mismatch');
+        if (first.teleLine !== '2 次调用 / 1 失败 · 123.4ms 均延') throw new Error('teleLine mismatch: ' + first.teleLine);
+        if (!first.hasRepoLink) throw new Error('repo link flag missing');
+        const second = model[1];
+        if (second.tone !== 'bad' || second.color !== '#d33' || second.stateLabel !== 'DOWN') throw new Error('down source meta mismatch');
+        if (second.teleLine !== '尚未通过 registry 调用') throw new Error('fallback teleLine mismatch');
+        if (second.capabilityCount !== 0) throw new Error('capability count mismatch');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/data-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout

@@ -155,8 +155,33 @@
           freshness,
           repairLabel: r.step_id ? '运行 step' : '查看资产',
         };
-      });
+    });
     return { list };
+  }
+
+  function buildSourceCardsModel(sources) {
+    return (sources || []).map(src => {
+      const h = src.health || {};
+      const state = h.state || 'unknown';
+      const tele = src.telemetry || {};
+      const teleLine = tele.call_count > 0
+        ? `${tele.call_count} 次调用` + (tele.fail_count ? ` / ${tele.fail_count} 失败` : '')
+          + (tele.avg_latency_ms ? ` · ${tele.avg_latency_ms}ms 均延` : '')
+        : '尚未通过 registry 调用';
+      return {
+        name: src.name,
+        displayName: src.display_name || src.name,
+        priority: src.priority,
+        capabilityCount: Array.isArray(src.capabilities) ? src.capabilities.length : 0,
+        tone: state === 'ok' ? 'ok' : state === 'degraded' ? 'warn' : state === 'down' ? 'bad' : 'info',
+        color: STATE_COLORS[state || 'unknown'],
+        stateLabel: STATE_LABELS[state] || 'UNKNOWN',
+        healthNotes: h.notes || '未检',
+        teleLine,
+        repoUrl: src.repo_url || '',
+        hasRepoLink: !!src.repo_url,
+      };
+    });
   }
 
   function renderLinkOverview() {
@@ -237,28 +262,21 @@
           <span style="padding:3px 8px;border:1px solid var(--cm-ink-100);border-radius:4px"><b>akshare 兜底</b>: 临时不可用和未迁出历史接口</span>
         </div>
       </div>`;
-    root.innerHTML = tdxPriority + _state.sources.map(src => {
-      const h = src.health || {};
-      const tone = h.state === 'ok' ? 'ok' : h.state === 'degraded' ? 'warn' : h.state === 'down' ? 'bad' : 'info';
-      const color = STATE_COLORS[h.state || 'unknown'];
-      const repoLink = src.repo_url
-        ? `<a href="${esc(src.repo_url)}" target="_blank" style="color:var(--cm-ink-500);font-size:11px;text-decoration:none">repo↗</a>`
+    const model = buildSourceCardsModel(_state.sources);
+    root.innerHTML = tdxPriority + model.map(src => {
+      const repoLink = src.hasRepoLink
+        ? `<a href="${esc(src.repoUrl)}" target="_blank" style="color:var(--cm-ink-500);font-size:11px;text-decoration:none">repo↗</a>`
         : '';
-      const tele = src.telemetry || {};
-      const teleLine = tele.call_count > 0
-        ? `${tele.call_count} 次调用` + (tele.fail_count ? ` / ${tele.fail_count} 失败` : '')
-          + (tele.avg_latency_ms ? ` · ${tele.avg_latency_ms}ms 均延` : '')
-        : '尚未通过 registry 调用';
       return `
-        <div class="panel ds-source-card" data-source="${esc(src.name)}" style="padding:14px;border-left:4px solid ${color}">
+        <div class="panel ds-source-card" data-source="${esc(src.name)}" style="padding:14px;border-left:4px solid ${src.color}">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <div style="display:flex;align-items:center;gap:7px;font-weight:700;font-size:14px">${dotHtml(tone)} ${esc(src.display_name || src.name)}</div>
+            <div style="display:flex;align-items:center;gap:7px;font-weight:700;font-size:14px">${dotHtml(src.tone)} ${esc(src.displayName)}</div>
             <span style="font-size:11px;color:var(--cm-ink-500)">优先 ${src.priority}</span>
           </div>
           <div style="font-size:11px;color:var(--cm-ink-500);margin-bottom:6px">
-            <strong>${src.capabilities.length}</strong> 类数据 · ${esc(teleLine)}
+            <strong>${src.capabilityCount}</strong> 类数据 · ${esc(src.teleLine)}
           </div>
-          <div style="font-size:11px;color:${color};margin-bottom:8px;min-height:14px">${esc(STATE_LABELS[h.state || 'unknown'] || 'UNKNOWN')} · ${esc(h.notes || '未检')}</div>
+          <div style="font-size:11px;color:${src.color};margin-bottom:8px;min-height:14px">${esc(src.stateLabel)} · ${esc(src.healthNotes)}</div>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
             <button class="chip chip-outline ds-detail-btn" data-source="${esc(src.name)}" style="font-size:11px;padding:3px 8px">详情</button>
             <button class="chip chip-outline ds-health-btn" data-source="${esc(src.name)}" style="font-size:11px;padding:3px 8px">healthcheck</button>
@@ -900,6 +918,7 @@
     refresh: init,
     buildAuditResultsModel,
     buildRoutesTableModel,
+    buildSourceCardsModel,
   };
 
   console.log('[DataView] module loaded');
