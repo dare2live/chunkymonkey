@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 03:41:08 CST
+**Snapshot 时间**: 2026-06-03 03:48:07 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `a42231b0 refactor: extract today signal cache model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 20 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 215 |
-| 未 commit 文件 | 3 |
+| HEAD | `29277fc8 refactor: extract research model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 21 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 216 |
+| 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+29277fc8 refactor: extract research model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 21 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
+c5f356e4 docs: refresh session handoff and index after today signal cache model extraction | # commit-msg: minimal
 a42231b0 refactor: extract today signal cache model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 20 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 077f2b50 docs: refresh session handoff and index after processing monitor model extraction | # commit-msg: minimal
 df022714 refactor: extract processing monitor model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 19 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
@@ -76,13 +78,11 @@ df022714 refactor: extract processing monitor model from workbench view | Codex-
 60e25b99 docs: refresh session handoff and index after tdx server health model extraction | # commit-msg: minimal
 9233e028 refactor: extract tdx server health model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 17 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 3a213a4d docs: refresh session handoff and index after tdx f10 dq model extraction | # commit-msg: minimal
-33ed7cb5 refactor: extract tdx f10 source-date dq model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 16 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
-79e6d435 refactor: extract tdx f10 source-date audit model from workbench view | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 15 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**3 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**continue current goal blockers — stage-opt structural blocker triage / need_027 blocked-gap triage**
 
 ## Resilience 配置 (verified)
 
