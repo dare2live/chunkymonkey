@@ -2139,11 +2139,11 @@
   }
 
   function renderRankMatrixCache(data) {
-    data = data || {};
-    var summary = data.summary || {};
-    var benches = data.latest_benchmarks || [];
-    var entries = data.cache_entries || [];
-    if (!benches.length && !entries.length) return renderEmpty('暂无 rank matrix cache');
+    var model = buildRankMatrixCacheModel(data);
+    var summary = model.summary;
+    var benches = model.latestBenchmarks;
+    var entries = model.cacheEntries;
+    if (model.isEmpty) return renderEmpty('暂无 rank matrix cache');
     var meta = '<div class="wb-kv">' +
       '<div><span>entries</span><strong>' + fmtNum(summary.entry_count || entries.length || 0) + '</strong></div>' +
       '<div><span>rows</span><strong>' + fmtNum(summary.total_rows || 0) + '</strong></div>' +
@@ -2187,6 +2187,19 @@
         '</tbody></table></div>';
     }
     return meta + benchTable + entryTable;
+  }
+
+  function buildRankMatrixCacheModel(data) {
+    data = data || {};
+    var summary = data.summary || {};
+    var latestBenchmarks = Array.isArray(data.latest_benchmarks) ? data.latest_benchmarks : [];
+    var cacheEntries = Array.isArray(data.cache_entries) ? data.cache_entries : [];
+    return {
+      summary: summary,
+      latestBenchmarks: latestBenchmarks,
+      cacheEntries: cacheEntries,
+      isEmpty: !latestBenchmarks.length && !cacheEntries.length,
+    };
   }
 
   function renderStabilityContext(data) {
@@ -2466,6 +2479,7 @@
     buildDataSourcesModel: buildDataSourcesModel,
     buildFeaturesModel: buildFeaturesModel,
     buildTemporalSynergyModel: buildTemporalSynergyModel,
+    buildRankMatrixCacheModel: buildRankMatrixCacheModel,
     _renderOverview: renderOverview,
     _renderDataSources: renderDataSources,
     _renderPipelines: renderPipelines,

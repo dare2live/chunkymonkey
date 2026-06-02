@@ -231,6 +231,9 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "renderTemporalSynergy" in workbench_js
     assert "buildTemporalSynergyModel" in workbench_js
     assert "buildTemporalSynergyModel(data)" in workbench_js
+    assert "renderRankMatrixCache" in workbench_js
+    assert "buildRankMatrixCacheModel" in workbench_js
+    assert "buildRankMatrixCacheModel(data)" in workbench_js
     assert "推荐" in workbench_js
     assert "存储" in workbench_js
     assert "稳定性上下文" in workbench_js
@@ -246,7 +249,6 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "eval cache" in workbench_js
     assert "feature_drift_cache_hit_rate" in workbench_js
     assert "Rank Matrix Cache" in workbench_js
-    assert "renderRankMatrixCache" in workbench_js
     assert "Walk-forward 候选验证" in workbench_js
     assert "renderShareholderPlanWalkforward" in workbench_js
     assert "刷新视图" in workbench_js

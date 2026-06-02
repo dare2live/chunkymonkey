@@ -596,3 +596,41 @@ def test_workbench_temporal_synergy_model_is_pure_and_stable():
         check=False,
     )
     assert result.returncode == 0, result.stderr + result.stdout
+
+
+def test_workbench_rank_matrix_cache_model_is_pure_and_stable():
+    script = textwrap.dedent(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const file = process.argv[1];
+        global.window = global;
+        global.document = { getElementById: () => null };
+        vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+        const view = globalThis.WorkbenchView;
+        if (!view || typeof view.buildRankMatrixCacheModel !== 'function') {
+          throw new Error('WorkbenchView.buildRankMatrixCacheModel missing');
+        }
+
+        const model = view.buildRankMatrixCacheModel({
+          summary: { entry_count: 2, total_rows: 12, total_hits: 7, latest_used_at: '2026-06-03' },
+          latest_benchmarks: [{ run_id: 'rank_1', rank_matrix_cache: { status: 'ready', table_name: 'fact_rank_matrix' } }],
+          cache_entries: [{ table_name: 'rank_cache_1', panel_table: 'panel_1', feature_set_id: 'fs_1' }],
+        });
+
+        if (!model || model.summary.entry_count !== 2) throw new Error('summary mismatch');
+        if (model.latestBenchmarks.length !== 1 || model.cacheEntries.length !== 1) throw new Error('list normalization mismatch');
+        if (model.isEmpty !== false) throw new Error('empty flag mismatch');
+        if (view.buildRankMatrixCacheModel({}).isEmpty !== true) throw new Error('default normalization mismatch');
+        """
+    ).strip()
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/workbench-view.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
