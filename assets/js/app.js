@@ -21,6 +21,7 @@
   var ReturnsChartWidget = window.ReturnsChartWidget || null;
   var TypeSummaryWidget = window.TypeSummaryWidget || null;
   var InstitutionScorecardWidget = window.InstitutionScorecardWidget || null;
+  var ETFListWidget = window.ETFListWidget || null;
   var etfState = AppNav.getEtfState();
   var instListState = AppListState.inst;
   var stockListState = AppListState.stock;
@@ -720,86 +721,6 @@
   function evTag(type, label) { var cls = { new_entry: 'new', increase: 'up', decrease: 'down', exit: 'exit', unchanged: 'unchanged' }[type] || 'unchanged'; return '<span class="event-tag event-' + (cls) + '">' + esc(label || { new_entry: '新进', increase: '增持', decrease: '减持', exit: '退出', unchanged: '不变' }[type] || type) + '</span>' }
 
   // ============================================================
-  // Table Sorting
-  // ============================================================
-  function sortableCellMeta(cell) {
-    if (!cell) return { kind: 'text', raw: '', value: '' };
-    var datasetValue = cell.dataset.sortValue || cell.querySelector('[data-sort-value]')?.dataset.sortValue || '';
-    var raw = String(datasetValue || cell.textContent || '').trim();
-    if (!raw) return { kind: 'text', raw: '', value: '' };
-    var dateMatch = raw.match(/(\d{4})[-\/]?(\d{2})[-\/]?(\d{2})/);
-    if (dateMatch) {
-      return {
-        kind: 'date',
-        raw: raw,
-        value: Number(dateMatch[1] + dateMatch[2] + dateMatch[3])
-      };
-    }
-    var numericRaw = raw.replace(/[,%+]/g, '');
-    var numeric = parseFloat(numericRaw);
-    if (!Number.isNaN(numeric) && /^[-+]?\d/.test(numericRaw)) {
-      return { kind: 'number', raw: raw, value: numeric };
-    }
-    return { kind: 'text', raw: raw, value: raw };
-  }
-
-  function makeSortable(tableEl) {
-    if (!tableEl || tableEl.dataset.sortableReady === '1') return;
-    tableEl.dataset.sortableReady = '1';
-    var heads = tableEl.querySelectorAll('thead th');
-    heads.forEach(function (th, idx) {
-      // 跳过包含复选框或宽度很小的列（如全选列）
-      if (th.querySelector('input[type="checkbox"]') || th.style.width === '30px') return;
-      th.style.cursor = 'pointer';
-      th.addEventListener('click', function () {
-        var tbody = tableEl.querySelector('tbody');
-        var rows = Array.from(tbody.querySelectorAll('tr'));
-        var asc = th.dataset.sortDir !== 'asc';
-        heads.forEach(h => { h.dataset.sortDir = ''; h.textContent = h.textContent.replace(/ [▲▼]/, ''); });
-        th.dataset.sortDir = asc ? 'asc' : 'desc';
-        th.textContent += asc ? ' ▲' : ' ▼';
-        rows.sort(function (a, b) {
-          var ca = a.children[idx], cb = b.children[idx];
-          var ma = sortableCellMeta(ca), mb = sortableCellMeta(cb);
-          if (ma.kind === 'date' && mb.kind === 'date') return asc ? ma.value - mb.value : mb.value - ma.value;
-          if (ma.kind === 'number' && mb.kind === 'number') return asc ? ma.value - mb.value : mb.value - ma.value;
-          return asc ? ma.raw.localeCompare(mb.raw, 'zh') : mb.raw.localeCompare(ma.raw, 'zh');
-        });
-        rows.forEach(function (r) { tbody.appendChild(r); });
-      });
-    });
-  }
-
-  function scheduleSortableTables(root, selector) {
-    var container = typeof root === 'string' ? el(root) : root;
-    if (!container) return;
-    var tables = Array.from(container.querySelectorAll(selector || '.data-table'));
-    if (!tables.length) return;
-    var idx = 0;
-    function runBatch() {
-      var startedAt = (window.performance && performance.now) ? performance.now() : Date.now();
-      while (idx < tables.length) {
-        makeSortable(tables[idx]);
-        idx++;
-        var now = (window.performance && performance.now) ? performance.now() : Date.now();
-        if ((now - startedAt) > 8) break;
-      }
-      if (idx < tables.length) {
-        if (typeof window.requestIdleCallback === 'function') {
-          window.requestIdleCallback(runBatch, { timeout: 300 });
-        } else {
-          setTimeout(runBatch, 16);
-        }
-      }
-    }
-    if (typeof window.requestIdleCallback === 'function') {
-      window.requestIdleCallback(runBatch, { timeout: 150 });
-    } else {
-      setTimeout(runBatch, 16);
-    }
-  }
-
-  // ============================================================
   // Network Connectivity Check
   // ============================================================
   function normalizeSourceName(detail, fallback) {
@@ -1008,33 +929,11 @@
     if (v == null || Number.isNaN(Number(v))) return '-';
     return Number(v).toFixed(digits == null ? 1 : digits);
   }
-  function etfPctCell(v, invert) {
-    if (v == null || Number.isNaN(Number(v))) return '<span class="muted">-</span>';
-    var n = Number(v);
-    var positive = invert ? n <= 0 : n >= 0;
-    var cls = positive ? 'gain-pos' : 'gain-neg';
-    var sign = n > 0 ? '+' : '';
-    return '<span class="' + cls + '">' + sign + n.toFixed(2) + '%</span>';
-  }
   function etfOverviewTone(state) {
     if (state === 'panic') return { bg: 'var(--cm-brand-50)', fg: 'var(--cm-brand-500)', label: '恐慌待托底' };
     if (state === 'cooling') return { bg: 'var(--cm-warn-100)', fg: 'var(--cm-warn-500)', label: '降温观察期' };
     if (state === 'heated') return { bg: 'var(--cm-bad-100)', fg: 'var(--cm-bad-500)', label: '兑现降温期' };
     return { bg: 'var(--cm-ok-100)', fg: 'var(--cm-ok-500)', label: '趋势恢复期' };
-  }
-  function etfStrategyTone(kind) {
-    if (kind === '买入持有' || kind === '趋势持有') return { bg: 'var(--cm-ok-100)', fg: 'var(--cm-ok-500)' };
-    if (kind === '网格交易' || kind === '网格候选') return { bg: 'var(--cm-brand-100)', fg: 'var(--cm-brand-500)' };
-    if (kind === '防守停泊') return { bg: 'var(--cm-bg)', fg: 'var(--cm-ink-700)' };
-    if (kind === '暂不参与') return { bg: 'var(--cm-bad-100)', fg: 'var(--cm-bad-500)' };
-    return { bg: 'var(--cm-warn-100)', fg: 'var(--cm-warn-500)' };
-  }
-  function etfSetupTone(state) {
-    if (state === '收敛待发') return { bg: 'var(--cm-ok-100)', fg: 'var(--cm-ok-500)' };
-    if (state === '趋势跟随') return { bg: 'var(--cm-brand-100)', fg: 'var(--cm-brand-500)' };
-    if (state === '低波防守') return { bg: 'var(--cm-bg)', fg: 'var(--cm-ink-700)' };
-    if (state === '结构松散') return { bg: 'var(--cm-bad-100)', fg: 'var(--cm-bad-500)' };
-    return { bg: 'var(--cm-warn-100)', fg: 'var(--cm-warn-500)' };
   }
   function etfWatchTags(list, tone, actionMode) {
     if (!list || !list.length) return '<span class="muted">-</span>';
@@ -1052,17 +951,6 @@
         '</span>';
     }).join('');
   }
-  function etfCatColor(cat) {
-    var map = {
-      '宽基': 'var(--cm-brand-500)', '跨境': 'var(--cm-accent-vivid)', '商品': 'var(--cm-warn-500)', '债券': 'var(--cm-ink-500)', '货币': 'var(--cm-ink-300)',
-      '医疗健康': 'var(--cm-ok-500)', '半导体': 'var(--cm-brand-400)', '新能源': 'var(--cm-ok-500)', '消费': 'var(--cm-warn-500)',
-      '金融': 'var(--cm-bad-500)', '军工': 'var(--cm-ink-700)', '地产建筑': 'var(--cm-ink-500)', '周期资源': 'var(--cm-warn-500)',
-      '数字科技': 'var(--cm-brand-500)', '交通物流': 'var(--cm-brand-700)', '电力公用': 'var(--cm-brand-500)', '汽车': 'var(--cm-warn-500)',
-      '高端制造': 'var(--cm-brand-500)', '红利策略': 'var(--cm-accent-vivid)'
-    };
-    return map[cat] || 'var(--cm-brand-700)';
-  }
-
   function bindEtfActionLinks(root, deepPanelId) {
     if (!root) return;
     root.querySelectorAll('[data-etf-analyze]').forEach(function (node) {
@@ -1377,106 +1265,20 @@
     var r = etfState.dataCache;
     if (!r?.data?.length) return;
     var c = el('etfTableContainer');
-    var filterBox = el('etfCategoryFilter');
     if (!c) return;
-
-    // 提取所有分类并构建胶囊标签
-    var categories = [];
-    var catSet = {};
-    r.data.forEach(function (e) {
-      var cat = e.category || '其他';
-      if (!catSet[cat]) { catSet[cat] = 0; }
-      catSet[cat]++;
-    });
-    categories = Object.keys(catSet).sort(function (a, b) {
-      var order = ['宽基', '医疗健康', '半导体', '新能源', '消费', '金融', '军工', '数字科技', '高端制造', '汽车', '电力公用', '地产建筑', '周期资源', '交通物流', '红利策略', '行业·其他', '跨境', '商品', '债券', '货币'];
-      var ia = order.indexOf(a), ib = order.indexOf(b);
-      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
-    });
-
-    if (filterBox) {
-      // 分类过滤行
-      var filterHtml = '<div class="type-filter">';
-      filterHtml += '<span class="type-tag' + (etfState.categoryFilter === 'all' ? ' active' : '') + '" data-etfcat="all">全部 (' + r.data.length + ')</span>';
-      categories.forEach(function (cat) {
-        var color = etfCatColor(cat);
-        filterHtml += '<span class="type-tag' + (etfState.categoryFilter === cat ? ' active' : '') + '" data-etfcat="' + esc(cat) + '" style="--tc:' + color + '">' + esc(cat) + ' (' + catSet[cat] + ')</span>';
-      });
-      filterHtml += '</div>';
-      // 策略过滤行
-      var stratTypes = ['买入持有', '网格交易', '防守停泊', '暂不参与'];
-      filterHtml += '<div class="type-filter" style="margin-top:4px">';
-      filterHtml += '<span class="type-tag' + (etfState.strategyFilter === 'all' ? ' active' : '') + '" data-etfstrat="all" style="font-size:11px">策略:全部</span>';
-      stratTypes.forEach(function (s) {
-        var st = etfStrategyTone(s);
-        filterHtml += '<span class="type-tag' + (etfState.strategyFilter === s ? ' active' : '') + '" data-etfstrat="' + esc(s) + '" style="font-size:11px;--tc:' + st.fg + '">' + esc(s) + '</span>';
-      });
-      filterHtml += '</div>';
-      filterBox.innerHTML = filterHtml;
-      filterBox.querySelectorAll('[data-etfcat]').forEach(function (tag) {
-        tag.addEventListener('click', function () {
-          etfState.categoryFilter = tag.dataset.etfcat;
-          loadEtfList();
-        });
-      });
-      filterBox.querySelectorAll('[data-etfstrat]').forEach(function (tag) {
-        tag.addEventListener('click', function () {
-          etfState.strategyFilter = tag.dataset.etfstrat;
-          loadEtfList();
-        });
-      });
+    if (!ETFListWidget || typeof ETFListWidget.mountEtfList !== 'function') {
+      c.innerHTML = '<div class="muted" style="padding:20px;text-align:center">ETF 列表 widget 暂不可用</div>';
+      return;
     }
-
-    // 过滤数据
-    var filtered = r.data;
-    if (etfState.categoryFilter !== 'all') filtered = filtered.filter(function (e) { return e.category === etfState.categoryFilter; });
-    if (etfState.strategyFilter !== 'all') filtered = filtered.filter(function (e) { return e.strategy_type === etfState.strategyFilter; });
-
-    var head = '<table class="data-table"><thead><tr><th>名称</th><th>代码</th><th>分类</th><th>4周相强</th><th>12周相强</th><th>轮动分</th><th>网格收益</th><th>持有收益</th><th>超额</th><th>日线结构</th><th>策略类型</th><th>参考步长</th><th>趋势</th></tr></thead><tbody>';
-    var body = filtered.map(function (e) {
-      var catColor = etfCatColor(e.category);
-      var trendColor = e.trend_status === '多头' ? 'var(--stock-up)' : (e.trend_status === '空头' ? 'var(--stock-down)' : 'var(--cm-ink-500)');
-      var strategyTone = etfStrategyTone(e.strategy_type);
-      var setupTone = etfSetupTone(e.setup_state);
-      var rotationText = e.rotation_score != null ? etfNum(e.rotation_score, 1) + (e.rotation_bucket === 'leader' ? ' · 前排' : e.rotation_bucket === 'blacklist' ? ' · 回避' : '') : '—';
-      var excessColor = e.backtest_excess_pct == null ? 'var(--cm-ink-500)' : (e.backtest_excess_pct >= 0 ? 'var(--cm-ok-500)' : 'var(--cm-bad-500)');
-      return '<tr style="cursor:pointer" data-etf-code="' + esc(e.code) + '">' +
-        '<td style="font-weight:600">' + esc(e.name) + '</td>' +
-        '<td>' + xueqiuPillLink(e.code, e.code, true) + '</td>' +
-        '<td><span style="padding:2px 8px;border-radius:999px;background:' + catColor + '14;color:' + catColor + ';font-size:11px;font-weight:600">' + esc(e.category) + '</span></td>' +
-        '<td>' + etfPctCell(e.relative_strength_4w, false) + '</td>' +
-        '<td>' + etfPctCell(e.relative_strength_12w, false) + '</td>' +
-        '<td>' + esc(rotationText) + '</td>' +
-        '<td>' + (e.backtest_return_pct != null ? signedPct(e.backtest_return_pct) : '<span class="muted">-</span>') + '</td>' +
-        '<td>' + (e.buy_hold_return_pct != null ? signedPct(e.buy_hold_return_pct) : '<span class="muted">-</span>') + '</td>' +
-        '<td style="color:' + excessColor + ';font-weight:700">' + (e.backtest_excess_pct != null ? signedPct(e.backtest_excess_pct) : '<span class="muted">-</span>') + '</td>' +
-        '<td><span style="padding:2px 8px;border-radius:999px;background:' + setupTone.bg + ';color:' + setupTone.fg + ';font-size:11px;font-weight:600">' + esc(e.setup_state || '-') + '</span></td>' +
-        '<td><span style="padding:2px 8px;border-radius:999px;background:' + strategyTone.bg + ';color:' + strategyTone.fg + ';font-size:11px;font-weight:600" title="' + esc(e.strategy_reason || '') + '">' + esc(e.strategy_type || '-') + '</span></td>' +
-        '<td>' + (e.grid_step_pct != null ? esc(etfNum(e.grid_step_pct, 1) + '%') : '<span class="muted">-</span>') + '</td>' +
-        '<td style="color:' + trendColor + '">' + esc(e.trend_status) + '</td>' +
-        '</tr>';
-    }).join('');
-    c.innerHTML = head + body + '</tbody></table>';
-    scheduleSortableTables('etfTableContainer');
-    // 点击行 → 在该行下方插入深度分析面板
-    c.querySelectorAll('tr[data-etf-code]').forEach(function (row) {
-      row.addEventListener('click', function () {
-        var code = row.dataset.etfCode;
-        // 移除已有的分析行
-        var prev = c.querySelector('.etf-analysis-row');
-        if (prev) prev.remove();
-        // 在点击行后插入新的分析行
-        var analysisRow = document.createElement('tr');
-        analysisRow.className = 'etf-analysis-row';
-        var td = document.createElement('td');
-        td.colSpan = 13;
-        td.id = 'etfListAnalysisPanel';
-        td.style.padding = '0';
-        td.style.background = 'var(--bg-subtle)';
-        analysisRow.appendChild(td);
-        row.parentNode.insertBefore(analysisRow, row.nextSibling);
-        loadEtfDeepAnalysis(code, 'etfListAnalysisPanel');
-      });
+    ETFListWidget.mountEtfList({
+      tableId: 'etfTableContainer',
+      filterId: 'etfCategoryFilter',
+      state: etfState,
+      rows: r.data,
+      deepPanelId: 'etfListAnalysisPanel',
+      onAnalyze: function (code, panelId) {
+        loadEtfDeepAnalysis(code, panelId || 'etfListAnalysisPanel');
+      },
     });
   }
 
@@ -1488,7 +1290,6 @@
     if (window.ETFAnalysisWidget && typeof window.ETFAnalysisWidget.mountDeepAnalysis === 'function') {
       return window.ETFAnalysisWidget.mountDeepAnalysis(code, panelId, {
         securityIdentityBlock: securityIdentityBlock,
-        scheduleSortableTables: scheduleSortableTables,
       });
     }
     var panel = el(panelId);
