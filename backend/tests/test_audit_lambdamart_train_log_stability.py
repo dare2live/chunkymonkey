@@ -72,10 +72,10 @@ def test_attach_strategy_returns_buckets_non_overlap_returns_by_test_window():
     attach_strategy_returns(
         windows,
         [
-            ("2025-07-03", 0.10),
-            ("2025-07-15", -0.05),
-            ("2025-08-15", 0.03),
             ("2025-09-02", 0.40),
+            ("2025-08-15", 0.03),
+            ("2025-07-15", -0.05),
+            ("2025-07-03", 0.10),
         ],
     )
 
@@ -83,3 +83,12 @@ def test_attach_strategy_returns_buckets_non_overlap_returns_by_test_window():
     assert windows[0]["strategy_n_obs"] == 2
     assert round(windows[1]["strategy_return"], 6) == 0.03
     assert windows[1]["strategy_n_obs"] == 1
+
+
+def test_attach_strategy_returns_marks_empty_windows_none():
+    windows = [{"test_start": "2025-10-01", "test_end": "2025-10-31"}]
+    attach_strategy_returns(windows, [("2025-09-30", 0.10)])
+
+    assert windows[0]["strategy_n_obs"] == 0
+    assert windows[0]["strategy_return"] is None
+    assert windows[0]["strategy_mean_return"] is None

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from bisect import bisect_left, bisect_right
 import json
 import math
 import sys
@@ -130,13 +131,30 @@ def attach_strategy_returns(
     windows: list[dict[str, Any]],
     port_returns: list[tuple[pd.Timestamp, float]],
 ) -> None:
+    ordered_returns = sorted(
+        (pd.Timestamp(date).normalize(), float(ret))
+        for date, ret in port_returns
+    )
+    return_dates = [date for date, _ret in ordered_returns]
+    return_prefix_products = [1.0]
+    return_prefix_sums = [0.0]
+    for _, ret in ordered_returns:
+        return_prefix_products.append(return_prefix_products[-1] * (1.0 + ret))
+        return_prefix_sums.append(return_prefix_sums[-1] + ret)
+
     for window in windows:
-        start = pd.Timestamp(window["test_start"])
-        end = pd.Timestamp(window["test_end"])
-        values = [ret for date, ret in port_returns if start <= pd.Timestamp(date) <= end]
-        window["strategy_n_obs"] = len(values)
-        window["strategy_return"] = float(np.prod([1.0 + value for value in values]) - 1.0) if values else None
-        window["strategy_mean_return"] = _mean(values)
+        start = pd.Timestamp(window["test_start"]).normalize()
+        end = pd.Timestamp(window["test_end"]).normalize()
+        start_idx = bisect_left(return_dates, start)
+        end_idx = bisect_right(return_dates, end)
+        n_obs = end_idx - start_idx
+        window["strategy_n_obs"] = n_obs
+        if n_obs <= 0:
+            window["strategy_return"] = None
+            window["strategy_mean_return"] = None
+            continue
+        window["strategy_return"] = float(return_prefix_products[end_idx] / return_prefix_products[start_idx] - 1.0)
+        window["strategy_mean_return"] = float((return_prefix_sums[end_idx] - return_prefix_sums[start_idx]) / n_obs)
 
 
 def _corr(xs: list[float | None], ys: list[float | None]) -> float | None:
@@ -191,9 +209,13 @@ def build_stability_payload(
     is_metric = _safe_float(record.get("is_rank_ic")) or _mean(train_rank_ics)
     oos_metric = _safe_float(record.get("oos_rank_ic_avg")) or _mean(oos_rank_ics)
     relative_drop = _relative_drop(is_metric, oos_metric)
+    def _oos_rank_ic_sort_key(item: dict[str, Any]) -> float:
+        value = _safe_float(item.get("oos_rank_ic"))
+        return value if value is not None else 999.0
+
     worst_windows = sorted(
         windows,
-        key=lambda item: (_safe_float(item.get("oos_rank_ic")) if _safe_float(item.get("oos_rank_ic")) is not None else 999.0),
+        key=_oos_rank_ic_sort_key,
     )[:8]
     payload = {
         "run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
