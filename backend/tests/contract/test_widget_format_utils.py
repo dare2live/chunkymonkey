@@ -13,6 +13,7 @@ REPO = Path(__file__).resolve().parents[3]
 
 def test_widget_format_utils_exports_and_formats() -> None:
     script = r"""
+const fs = require('fs');
 require(process.argv[1]);
 const fmt = globalThis.WidgetFormatUtils;
 if (!fmt || typeof fmt.formatNumber !== 'function' || typeof fmt.formatPercent !== 'function') {
@@ -41,6 +42,11 @@ require(process.argv[6]);
 require(process.argv[7]);
 require(process.argv[8]);
 require(process.argv[9]);
+require(process.argv[10]);
+const topkSrc = fs.readFileSync(process.argv[10], 'utf8');
+if (!topkSrc.includes('WidgetFormatUtils')) {
+  throw new Error('TopKStripWidget should use WidgetFormatUtils');
+}
 if (!globalThis.ETFSectorRotationWidget || typeof globalThis.ETFSectorRotationWidget.mount !== 'function') {
   throw new Error('ETFSectorRotationWidget exports missing');
 }
@@ -65,6 +71,9 @@ if (!globalThis.WorkbenchHealthWidget || typeof globalThis.WorkbenchHealthWidget
 if (!globalThis.InstitutionScorecardWidget || typeof globalThis.InstitutionScorecardWidget.mountScorecard !== 'function') {
   throw new Error('InstitutionScorecardWidget exports missing');
 }
+if (!globalThis.TopKStripWidget || typeof globalThis.TopKStripWidget.mount !== 'function') {
+  throw new Error('TopKStripWidget exports missing');
+}
 """
 
     result = subprocess.run(
@@ -81,6 +90,7 @@ if (!globalThis.InstitutionScorecardWidget || typeof globalThis.InstitutionScore
             str(REPO / "assets/js/widgets/etf-analysis.js"),
             str(REPO / "assets/js/widgets/workbench-health.js"),
             str(REPO / "assets/js/widgets/institution-scorecard.js"),
+            str(REPO / "assets/js/widgets/topk-strip.js"),
         ],
         check=False,
         text=True,

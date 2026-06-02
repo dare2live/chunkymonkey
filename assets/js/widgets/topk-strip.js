@@ -12,9 +12,11 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
+  var formatUtils = (typeof globalThis !== 'undefined' && globalThis.WidgetFormatUtils) || global.WidgetFormatUtils;
+  if (!formatUtils) throw new Error('WidgetFormatUtils missing');
+
   function fmtScore(v) {
-    if (v == null || isNaN(v)) return '—';
-    return (Number(v) * 100).toFixed(1);
+    return formatUtils.formatNumber(v == null ? null : Number(v) * 100, 1, '—');
   }
   function horizonLabel(item) {
     var h = item && item.horizon_evidence ? item.horizon_evidence : null;
@@ -144,4 +146,7 @@
   }
 
   global.TopKStripWidget = { mount: mount };
+  if (typeof globalThis !== 'undefined') {
+    globalThis.TopKStripWidget = global.TopKStripWidget;
+  }
 })(typeof window !== 'undefined' ? window : this);
