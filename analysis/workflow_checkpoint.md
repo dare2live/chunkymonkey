@@ -9,7 +9,7 @@ The model pipeline snapshot below is historical evidence for the completed
 ## Current Data Freshness Checkpoint
 
 - updated_at: `2026-06-02 09:00:33 CST`
-- current_state: `architecture/data freshness repair / shared-config boundary cleanup / stage-opt structural blocker triage`
+- current_state: `architecture/data freshness repair / shared-config boundary cleanup / moth-backed tooling gate migration / stage-opt structural blocker triage`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
 - data audit: `audit_data_completeness.py` now exits PASS with WARN (0 FAIL /

@@ -122,6 +122,7 @@ def test_audit_plan_prefers_scoped_commands() -> None:
     commands = [item["cmd"] for item in report["commands"]]
     assert report["verdict"] == "PASS"
     assert commands[0][:3] == [sys.executable, "backend/scripts/audit_test_tool_health.py", "--scope"]
+    assert chunkyctl.build_moth_snapshot_command(chunkyctl.REPO, "chunkymonkey") in commands
     assert [sys.executable, "-m", "py_compile", "backend/scripts/chunkyctl.py", "backend/tests/scripts/test_chunkyctl.py"] in commands
     assert ["codegraph", "sync", "."] in commands
     assert [sys.executable, "-m", "pytest", "-q", "backend/tests/scripts/test_chunkyctl.py"] in commands
@@ -152,16 +153,6 @@ def test_prompt_printer_helpers_are_removed() -> None:
     assert not hasattr(chunkyctl, "SESSION_PROMPT")
     assert not hasattr(chunkyctl, "build_prompt_payload")
     assert not hasattr(chunkyctl, "run_prompt")
-
-
-def test_doctor_uses_default_complexity_baseline_when_present(tmp_path: Path) -> None:
-    baseline = tmp_path / "data/reports/tooling/complexity_baseline.json"
-    baseline.parent.mkdir(parents=True)
-    baseline.write_text('{"schema_version": 1, "findings": []}', encoding="utf-8")
-
-    assert chunkyctl._doctor_baseline_arg(tmp_path, None) == str(baseline)
-    assert chunkyctl._doctor_baseline_arg(tmp_path, "custom.json") == "custom.json"
-    assert chunkyctl._doctor_baseline_arg(tmp_path / "other", None) is None
 
 
 def test_storage_payload_summary_keeps_only_top_risk_findings() -> None:
@@ -351,22 +342,32 @@ def test_doctor_worktree_summary_reconciles_codegraph_pending(tmp_path: Path) ->
 
 
 def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_path: Path, capsys) -> None:
+    def fake_moth_snapshot(repo, profile):
+        payload = {
+            "schema_version": 1,
+            "generated_at": "2026-06-02T00:00:00Z",
+            "status": "PASS",
+            "profile": {"name": profile},
+            "dirty_worktree": [],
+            "codegraph": {"pending": {"sync_required": False, "added": 0}},
+            "complexity": {
+                "baseline": {"status": "loaded"},
+                "diff": {"status": "compared", "new_high_count": 0},
+            },
+            "issues": [],
+            "warnings": [],
+        }
+        return {
+            "command": [sys.executable, "-m", "moth.cli", "snapshot", "--repo", str(repo), "--profile", profile, "--format", "json"],
+            "returncode": 0,
+            "stdout": json.dumps(payload),
+            "stderr": "",
+            "payload": payload,
+            "verdict": "PASS",
+        }
+
     def fake_run_command(cmd, cwd):
         cmd_text = " ".join(str(part) for part in cmd)
-        if "audit_tooling_gate.py" in cmd_text:
-            return {
-                "cmd": cmd,
-                "returncode": 0,
-                "stdout": json.dumps(
-                    {
-                        "verdict": "PASS",
-                        "git_status": {"clean": True},
-                        "codegraph": {"pending": {"sync_required": False, "added": 0}},
-                        "complexity": {"baseline": {"status": "loaded"}, "diff": {"new_high_count": 0}},
-                    }
-                ),
-                "stderr": "",
-            }
         if "audit_test_tool_health.py" in cmd_text:
             return {"cmd": cmd, "returncode": 0, "stdout": json.dumps({"verdict": "PASS"}), "stderr": ""}
         if "check_universe_filter.py" in cmd_text:
@@ -460,6 +461,7 @@ def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_pa
             return {"cmd": cmd, "returncode": 0, "stdout": "", "stderr": ""}
         raise AssertionError(f"unexpected command: {cmd}")
 
+    monkeypatch.setattr(chunkyctl, "run_moth_snapshot", fake_moth_snapshot)
     monkeypatch.setattr(chunkyctl, "_run_command", fake_run_command)
 
     args = Namespace(
@@ -496,22 +498,32 @@ def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_pa
 
 
 def test_doctor_prioritizes_blocking_yellow_health_items(monkeypatch, tmp_path: Path, capsys) -> None:
+    def fake_moth_snapshot(repo, profile):
+        payload = {
+            "schema_version": 1,
+            "generated_at": "2026-06-02T00:00:00Z",
+            "status": "PASS",
+            "profile": {"name": profile},
+            "dirty_worktree": [],
+            "codegraph": {"pending": {"sync_required": False, "added": 0}},
+            "complexity": {
+                "baseline": {"status": "loaded"},
+                "diff": {"status": "compared", "new_high_count": 0},
+            },
+            "issues": [],
+            "warnings": [],
+        }
+        return {
+            "command": [sys.executable, "-m", "moth.cli", "snapshot", "--repo", str(repo), "--profile", profile, "--format", "json"],
+            "returncode": 0,
+            "stdout": json.dumps(payload),
+            "stderr": "",
+            "payload": payload,
+            "verdict": "PASS",
+        }
+
     def fake_run_command(cmd, cwd):
         cmd_text = " ".join(str(part) for part in cmd)
-        if "audit_tooling_gate.py" in cmd_text:
-            return {
-                "cmd": cmd,
-                "returncode": 0,
-                "stdout": json.dumps(
-                    {
-                        "verdict": "PASS",
-                        "git_status": {"clean": True},
-                        "codegraph": {"pending": {"sync_required": False, "added": 0}},
-                        "complexity": {"baseline": {"status": "loaded"}, "diff": {"new_high_count": 0}},
-                    }
-                ),
-                "stderr": "",
-            }
         if "audit_test_tool_health.py" in cmd_text:
             return {"cmd": cmd, "returncode": 0, "stdout": json.dumps({"verdict": "PASS"}), "stderr": ""}
         if "check_universe_filter.py" in cmd_text:
@@ -615,6 +627,7 @@ def test_doctor_prioritizes_blocking_yellow_health_items(monkeypatch, tmp_path: 
             return {"cmd": cmd, "returncode": 0, "stdout": "", "stderr": ""}
         raise AssertionError(f"unexpected command: {cmd}")
 
+    monkeypatch.setattr(chunkyctl, "run_moth_snapshot", fake_moth_snapshot)
     monkeypatch.setattr(chunkyctl, "_run_command", fake_run_command)
 
     args = Namespace(

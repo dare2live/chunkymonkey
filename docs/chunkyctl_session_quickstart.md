@@ -39,7 +39,11 @@ scripts/chunkyctl doctor --fast
 
 `doctor --fast` now includes tooling, test-tool, universe, storage-payload,
 stage-opt recommendation/sensitivity, need_027 blocked-gap triage, and
-system data-health snapshots. The data-health snapshot respects
+system data-health snapshots. The tooling gate now comes from the shared
+`moth snapshot` layer, and the old `audit_tooling_gate.py` wrapper is retired;
+so the local environment must have Moth available
+either on `PATH` or via `CHUNKYMONKEY_MOTH_COMMAND` (for example:
+`CHUNKYMONKEY_MOTH_COMMAND=/tmp/moth-venv/bin/moth`). The data-health snapshot respects
 `quality_gate_level`: `warning` and `monitor_only` assets are capped to yellow,
 while blocking assets remain red. Red data-health tables are startup blockers,
 and the snapshot now emits `writer_prompt` / owner / sync_step hints so new

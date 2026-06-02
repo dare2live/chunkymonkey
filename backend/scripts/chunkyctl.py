@@ -13,13 +13,16 @@ from typing import Any
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO = SCRIPT_DIR.parents[1]
 COMPLEXITY_SCRIPT = Path.home() / ".agents/skills/complexity-optimizer/scripts/analyze_complexity.py"
-DEFAULT_COMPLEXITY_BASELINE = Path("data/reports/tooling/complexity_baseline.json")
 
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-import audit_tooling_gate  # noqa: E402
 import audit_docs_graph  # noqa: E402
+from services.codegraph_status import parse_codegraph_status  # noqa: E402
+from services.moth_snapshot import build_snapshot_command as build_moth_snapshot_command  # noqa: E402
+from services.moth_snapshot import build_tooling_gate_report as build_moth_tooling_gate_report  # noqa: E402
+from services.moth_snapshot import run_snapshot as run_moth_snapshot  # noqa: E402
+from services.worktree_status import parse_git_status_short  # noqa: E402
 
 
 def _run_command(cmd: list[str], *, cwd: Path) -> dict[str, Any]:
@@ -170,7 +173,7 @@ def _next_actions(
     need_coverage: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     if not tooling_gate:
-        return [{"priority": "P0", "action": "Fix chunkyctl/audit_tooling_gate JSON parsing before relying on doctor output"}]
+        return [{"priority": "P0", "action": "Fix Moth snapshot JSON parsing before relying on doctor output"}]
     actions: list[dict[str, str]] = []
     git_status = tooling_gate.get("git_status", {})
     codegraph = tooling_gate.get("codegraph", {})
@@ -343,38 +346,21 @@ def _next_actions(
     return actions
 
 
-def _doctor_baseline_arg(repo: Path, explicit_baseline: str | None) -> str | None:
-    if explicit_baseline:
-        return explicit_baseline
-    candidate = repo / DEFAULT_COMPLEXITY_BASELINE
-    return str(candidate) if candidate.exists() else None
-
-
 def run_doctor(args: argparse.Namespace) -> int:
     repo = Path(args.repo).expanduser().resolve()
-    baseline_arg = _doctor_baseline_arg(repo, args.baseline)
-    tooling_cmd = [
-        sys.executable,
-        str(SCRIPT_DIR / "audit_tooling_gate.py"),
-        "--repo",
-        str(repo),
-        "--complexity-target",
-        args.complexity_target,
-        "--max-findings",
-        str(args.max_findings),
-    ]
-    if baseline_arg:
-        tooling_cmd.extend(["--baseline", baseline_arg])
-    if args.fail_on_dirty_worktree:
-        tooling_cmd.append("--fail-on-dirty-worktree")
-
-    tooling_result = _run_command(tooling_cmd, cwd=repo)
-    tooling_payload = _json_from_stdout(tooling_result)
+    moth_snapshot = run_moth_snapshot(repo, "chunkymonkey")
+    tooling_result = {
+        "cmd": moth_snapshot["command"],
+        "returncode": moth_snapshot["returncode"],
+        "stdout": moth_snapshot["stdout"],
+        "stderr": moth_snapshot["stderr"],
+    }
+    moth_payload = moth_snapshot.get("payload")
+    tooling_payload = build_moth_tooling_gate_report(moth_payload) if moth_payload else None
+    if tooling_payload and args.fail_on_dirty_worktree and not tooling_payload.get("git_status", {}).get("clean", True):
+        tooling_payload["verdict"] = "FAIL"
     sections: list[dict[str, Any]] = []
-    if tooling_payload:
-        sections.append({"name": "tooling_gate", "verdict": tooling_payload.get("verdict")})
-    else:
-        sections.append({"name": "tooling_gate", "verdict": "FAIL"})
+    sections.append({"name": "tooling_gate", "verdict": tooling_payload.get("verdict") if tooling_payload else "FAIL"})
 
     test_tool: dict[str, Any] | None = None
     if not args.skip_test_tool:
@@ -665,8 +651,10 @@ def _worktree_bucket(path: str, status_kind: str) -> str:
 
     if path in {
         "backend/scripts/chunkyctl.py",
-        "backend/scripts/audit_tooling_gate.py",
         "backend/scripts/audit_test_tool_health.py",
+        "backend/services/codegraph_status.py",
+        "backend/services/moth_snapshot.py",
+        "backend/services/worktree_status.py",
         "backend/config/test_tool_registry.yaml",
         "docs/chunkyctl_session_quickstart.md",
         "docs/engineering_governance.md",
@@ -743,7 +731,7 @@ def _is_codegraph_indexable_path(path: str) -> bool:
 
 
 def build_worktree_report(*, repo: Path, git_status_text: str, bucket: str | None = None) -> dict[str, Any]:
-    git_status = audit_tooling_gate.parse_git_status_short(git_status_text)
+    git_status = parse_git_status_short(git_status_text)
     buckets = {
         name: {
             "bucket": name,
@@ -1132,8 +1120,8 @@ def build_preflight_report(
     git_status_text: str,
     codegraph_status_text: str,
 ) -> dict[str, Any]:
-    git_status = audit_tooling_gate.parse_git_status_short(git_status_text)
-    codegraph_status = audit_tooling_gate.parse_codegraph_status(codegraph_status_text)
+    git_status = parse_git_status_short(git_status_text)
+    codegraph_status = parse_codegraph_status(codegraph_status_text)
     risks: list[dict[str, str]] = []
     if not git_status["clean"]:
         risks.append({"severity": "FAIL", "risk": "dirty_worktree", "detail": "classify/stage by scope; never git add ."})
@@ -1198,6 +1186,7 @@ def build_audit_plan(*, scopes: list[str]) -> dict[str, Any]:
     commands: list[list[str]] = []
     if scopes:
         commands.append([sys.executable, "backend/scripts/audit_test_tool_health.py", *sum([["--scope", scope] for scope in scopes], [])])
+        commands.append(build_moth_snapshot_command(REPO, "chunkymonkey"))
     py_scopes = [scope for scope in scopes if _is_python_scope(scope)]
     test_scopes = [scope for scope in scopes if _is_test_scope(scope)]
     if py_scopes:
@@ -1235,9 +1224,6 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     doctor = subparsers.add_parser("doctor", help="Run the standard project health snapshot")
-    doctor.add_argument("--complexity-target", default="backend")
-    doctor.add_argument("--max-findings", type=int, default=80)
-    doctor.add_argument("--baseline", default=None)
     doctor.add_argument("--fail-on-dirty-worktree", action="store_true")
     doctor.add_argument("--skip-test-tool", action="store_true")
     doctor.add_argument("--skip-universe", action="store_true")
