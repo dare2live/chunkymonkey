@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 12:24:01 CST
+**Snapshot 时间**: 2026-06-03 12:33:11 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `d83f7d5f feat: narrow stage-opt live supply` |
+| HEAD | `08f25e1b docs: record rank snapshot fallback probe` |
 | 最近 24h commits | 267 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+08f25e1b docs: record rank snapshot fallback probe
+d2280cc2 docs: refresh session handoff snapshot after live boundary tighten
 d83f7d5f feat: narrow stage-opt live supply
 8dcfcdac docs: refresh session handoff after data-health pass | # commit-msg: minimal
 277d589a refactor: data-view hot path second pass
@@ -76,8 +78,6 @@ b1be391d feat: expand stage-opt supply with challenger formulas
 d97131fd docs: refresh handoff snapshot after data-health blocker triage | # commit-msg: minimal
 f8d00e10 docs: record data-health blocker triage complete | # commit-msg: minimal
 8cd787f5 docs: add priority ladder for blocker triage | # commit-msg: minimal
-88433830 docs: refresh handoff after data-health reframe | # commit-msg: minimal
-5d1041ff docs: reframe next action to data-health blockers | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
