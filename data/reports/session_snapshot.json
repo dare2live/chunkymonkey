@@ -1,10 +1,10 @@
 {
-  "snapshot_at": "2026-06-03 14:24:34 CST",
+  "snapshot_at": "2026-06-03 16:58:13 CST",
   "git": {
     "branch": "main",
-    "head_hash": "385f099f",
-    "head_msg": "385f099f docs: align codex resume automation",
-    "commits_24h": 264,
+    "head_hash": "9644d65d",
+    "head_msg": "9644d65d chore: expose stage-opt attrition and skill dispatch",
+    "commits_24h": 263,
     "uncommitted_files": 0
   },
   "retrain": {
