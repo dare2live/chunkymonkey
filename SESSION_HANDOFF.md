@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 09:18:39 CST
+**Snapshot 时间**: 2026-06-03 09:27:58 CST
 
 ## 当前切片
 
@@ -69,13 +69,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `2d932cc0 refactor: stock-view index consolidation | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, audit PASS, pytest 3 passed, targeted complexity PASS, codegraph sync PASS` |
+| HEAD | `5d1041ff docs: reframe next action to data-health blockers | # commit-msg: minimal` |
 | 最近 24h commits | 275 |
-| 未 commit 文件 | 2 |
+| 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+5d1041ff docs: reframe next action to data-health blockers | # commit-msg: minimal
+0ab29a23 docs: refresh session handoff snapshot after stock-view index consolidation | # commit-msg: minimal
 2d932cc0 refactor: stock-view index consolidation | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, audit PASS, pytest 3 passed, targeted complexity PASS, codegraph sync PASS
 eeff4015 refactor: data-view route search cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, audit PASS, pytest 6 passed, targeted complexity PASS, codegraph sync PASS | post-fix-audit cleanup verified 无残留
 5bcea950 docs: refresh session handoff snapshot after signal-adapter grouping cleanup | # commit-msg: minimal
