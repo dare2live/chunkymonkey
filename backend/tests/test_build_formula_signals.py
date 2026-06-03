@@ -59,6 +59,11 @@ class TestBuildFormulaSignalsHistoryHelpers:
             "reversal_1m_mild",
             "reversal_1m_deep",
             "reversal_1w",
+            "gs_raw_buy",
+            "gs_pullback_confirm",
+            "ma_base_breakout",
+            "activity_breakout",
+            "volume_base_breakout",
         }.issubset(REGISTRY.keys())
 
     def test_load_all_kline_grouped_basic(self):
@@ -796,3 +801,52 @@ class TestFormulaSignalCanGoThroughWriteCycle:
             assert "000002" not in codes
         finally:
             conn.close()
+
+
+class TestBcAbsorbedChallengerAdapters:
+    """Live adapters for bc_absorbed challenger formulas."""
+
+    def test_bank_adapter_converts_entry_mask_to_signals(self, monkeypatch):
+        from services.formula_engine import bc_absorbed_challengers as adapters
+
+        adapter = adapters.BANK_CHALLENGER_REGISTRY["gs_raw_buy"]
+
+        def fake_run_bc_absorbed_formula(
+            formula_id: str,
+            *,
+            code: str,
+            dates: np.ndarray,
+            opens: np.ndarray,
+            highs: np.ndarray,
+            lows: np.ndarray,
+            closes: np.ndarray,
+            volumes: np.ndarray,
+            amounts: np.ndarray,
+            params: dict[str, object] | None = None,
+        ) -> tuple[np.ndarray, dict[str, object]]:
+            assert formula_id == "gs_raw_buy"
+            assert code == "TEST"
+            assert params in (None, {})
+            del opens, highs, lows, closes, volumes, amounts
+            return np.array([False, True, False]), {}
+
+        monkeypatch.setattr(adapters, "_run_bc_absorbed_formula", fake_run_bc_absorbed_formula)
+
+        signals = adapter.compute_signals(
+            "TEST",
+            np.array(["2024-01-01", "2024-01-02", "2024-01-03"]),
+            opens=np.array([1.0, 1.0, 1.0]),
+            highs=np.array([1.0, 1.0, 1.0]),
+            lows=np.array([1.0, 1.0, 1.0]),
+            closes=np.array([1.0, 1.0, 1.0]),
+            volumes=np.array([1.0, 1.0, 1.0]),
+            amounts=np.array([1.0, 1.0, 1.0]),
+        )
+
+        assert len(signals) == 1
+        signal = signals[0]
+        assert signal.stock_code == "TEST"
+        assert signal.date == "2024-01-02"
+        assert signal.formula_id == "gs_raw_buy"
+        assert signal.formula_variant == "gs_raw_buy"
+        assert signal.reason_codes == ("bc_absorbed:gs_raw_buy",)

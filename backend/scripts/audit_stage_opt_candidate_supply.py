@@ -52,7 +52,9 @@ def _live_formula_registry_summary() -> dict[str, Any]:
 
 
 def _research_formula_registry_summary() -> dict[str, Any]:
-    # Challenger surface stays visible, but it is not counted as live stage-opt supply.
+    # Challenger surface stays visible as a separate catalog for audit narration.
+    # The live registry also carries thin adapters for these formulas so the shared
+    # signal pipeline can populate them without duplicating the signal logic.
     formula_ids = [
         "gs_raw_buy",
         "gs_pullback_confirm",

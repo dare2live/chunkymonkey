@@ -21,6 +21,19 @@
 - `update_watermark_sla.py` 已把 `kline_daily` 水位同步到 `2026-06-02`，`scripts/chunkyctl doctor --fast` 现在是 `WARN` 但 `blocking_yellow=0`，`green=340 / yellow=2 / red=0`。剩余黄色只是不阻断门禁的 warning-only 资产：`fact_lhb_event`、`mart_daily_recommendation_explanation`。
 - 这意味着 data-health blocker triage 这一轮已经收口，后续优先级可以回到 `need_027` blocked-gap triage、stage-opt candidate supply，以及必要时的 warning-only writer 收尾，不再围着旧的 5 个 blocking yellow table 打转。
 
+## 2026-06-03 — stage-opt supply expansion via bc_absorbed challengers
+
+- `backend/services/formula_engine/bc_absorbed_challengers.py` 新增了 5 个 `bc_absorbed` challenger 的 `FormulaBase` 适配器，并在 `backend/services/formula_engine/bootstrap.py` 中纳入 live `REGISTRY`，让 `build_formula_signals_history.py` 能通过同一条信号管线生成它们的 `fact_technical_trigger` 行。
+- 已执行 `PYTHONPATH=backend python backend/scripts/build_formula_signals_history.py --formula gs_raw_buy gs_pullback_confirm ma_base_breakout activity_breakout volume_base_breakout`，本轮回填写入 `704,661` 条信号和 `35` 行 `mart_formula_horizon_evidence`。
+- 最新 `backend/scripts/audit_stage_opt_candidate_supply.py --format json` 显示：`live_formula_count=12`，`raw_signal_rows=7,127,177`，`unique_keys=222,509`，`ready_keys=153,433`，`ready_coverage_pct=68.96`，`blocked_reason_counts` 仍以 `below_min_signals=69,076` 为主，但 weakest formulas 已切到 `ma_base_breakout` / `gs_pullback_confirm` / `volume_base_breakout`。
+- 这一步把 stage-opt 的上游供给面真正扩宽了，但还没有结束 blocker 线程；下一步仍然是继续按 weakest formulas 和 `need_027` blocked-gap triage 往前推，而不是把它当成终局。
+
+## 2026-06-03 — bestchoice blueprint intake
+
+- 记录一份新的系统蓝图：以 `CatBoost` 特征矩阵 + 贝叶斯后验更新 + `Optuna TPE` 做参数寻优，执行层用 `ATR`、时间止损和分数凯利控制风险，底座是本地 `DuckDB` / `VectorBT`，原始数据湖走 `httpx` -> JSON -> `Parquet` -> `GCS`，重回测和大规模寻优放到 `GCP Spot`，最终信号分发可落到 `Cloud Run` / `FastAPI`。
+- 这个蓝图的推荐推进顺序是：`1)` 先把数据管道和 truth-source 收敛好，`2)` 再跑通本地研究闭环（特征、CatBoost、VectorBT、Bayesian/Optuna），`3)` 最后再上云做 Spot / Cloud Run 编排。数据层先行，因为没有稳定真相源，后面的模型和风控都只是漂浮的算术。
+- `bestchoice` 相关的公式 / 选股事项先记为后续推进项，不和当前的 `stage-opt` / `need_027` blocker 线程混在一起；等当前 blocker 线自然停住时，再切过来做。
+
 
 ## 2026-06-03 — stock-view index consolidation
 

@@ -84,6 +84,11 @@ e834f18c refactor: signal-adapter grouping cleanup | Codex-Reviewed: APPROVE_WIT
 
 **continue current goal blockers — stage-opt structural blocker triage / need_027 blocked-gap triage**
 
+## 追加记录
+
+- `bc_absorbed` 的 5 个 challenger formulas 已经通过 live `REGISTRY` 进入 `build_formula_signals_history`，并已回填 `704,661` 条信号和 `35` 行 horizon evidence；stage-opt audit 现在显示 `live_formula_count=12`，但当前 blocker 仍然是 `below_min_signals`，weakest formulas 已切到 `ma_base_breakout` / `gs_pullback_confirm` / `volume_base_breakout`。
+- 你给的高吞吐量化蓝图已记录，后续推进顺序按 `data pipeline / truth-source` -> `CatBoost + Bayesian/Optuna + VectorBT` -> `GCP Spot / Cloud Run` 走；`bestchoice` 公式事项先排队，不和当前 blocker 线程混在一起。
+
 ## Resilience 配置 (verified)
 
 | 机制 | 状态 |

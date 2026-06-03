@@ -10,3 +10,4 @@ from services.formula_engine import macd_golden_cross  # noqa: F401
 from services.formula_engine import turtle_breakout  # noqa: F401
 from services.formula_engine import dynamic_ma_iterative  # noqa: F401
 from services.formula_engine import reversal_short_term  # noqa: F401
+import services.formula_engine.bc_absorbed_challengers  # noqa: F401
