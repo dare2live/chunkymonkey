@@ -77,6 +77,19 @@
     return AppCache.apiCached(api, path, ttlMs, opts);
   }
 
+  function setActiveState(root, selector, isActive) {
+    if (!root) return;
+    root.querySelectorAll(selector).forEach(function (node) {
+      node.classList.toggle('active', !!isActive(node));
+    });
+  }
+
+  function bindNodeClicks(selector, handler) {
+    document.querySelectorAll(selector).forEach(function (node) {
+      node.addEventListener('click', function () { handler(node); });
+    });
+  }
+
   // ============================================================
   // Navigation
   // ============================================================
@@ -85,7 +98,7 @@
   // ============================================================
   function showGroup(name) {
     AppNav.setCurrentGroup(name);
-    document.querySelectorAll('.nav-group-btn').forEach(b => b.classList.toggle('active', b.dataset.group === name));
+    setActiveState(document, '.nav-group-btn', function (b) { return b.dataset.group === name; });
     var subHolder = el('nav-sub-holder');
     var subEtf = el('nav-sub-etf');
     if (subHolder) subHolder.style.display = name === 'holder' ? '' : 'none';
@@ -98,17 +111,16 @@
   }
 
   function showView(name) {
-    document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
+    setActiveState(document, '.view', function (v) { return v.id === 'view-' + name; });
     // 更新子导航按钮的 active 状态（仅更新当前板块的子导航）
     var subBar = AppNav.getCurrentGroup() === 'etf' ? el('nav-sub-etf') : el('nav-sub-holder');
     if (subBar) {
-      subBar.querySelectorAll('.nav-btn').forEach(b => {
+      setActiveState(subBar, '.nav-btn', function (b) {
         if (name === 'etf') {
           // ETF 子导航 active 状态由 etftab 控制
-          b.classList.toggle('active', b.dataset.etftab === etfState.currentTab);
-        } else {
-          b.classList.toggle('active', b.dataset.view === name);
+          return b.dataset.etftab === etfState.currentTab;
         }
+        return b.dataset.view === name;
       });
     }
     // C6g: stocks 为主入口，signals-v2 tab 下线
@@ -141,11 +153,11 @@
 
   function showEtfTab(tabName) {
     AppNav.setEtfTab(tabName);
-    document.querySelectorAll('.etf-tab-content').forEach(c => c.classList.toggle('active', c.id === 'etftab-' + tabName));
+    setActiveState(document, '.etf-tab-content', function (c) { return c.id === 'etftab-' + tabName; });
     // Update ETF sub-nav active state
     var subEtf = el('nav-sub-etf');
     if (subEtf) {
-      subEtf.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.etftab === tabName));
+      setActiveState(subEtf, '.nav-btn', function (b) { return b.dataset.etftab === tabName; });
     }
     if (tabName === 'workbench') {
       loadEtfWorkbench();
@@ -161,19 +173,17 @@
   }
 
   // 顶层板块切换
-  document.querySelectorAll('.nav-group-btn').forEach(b => b.addEventListener('click', () => showGroup(b.dataset.group)));
+  bindNodeClicks('.nav-group-btn', function (b) { showGroup(b.dataset.group); });
 
   // 子导航按钮
-  document.querySelectorAll('.nav-sub-bar .nav-btn').forEach(b => {
-    b.addEventListener('click', () => {
-      if (b.dataset.etftab) {
-        // ETF 子标签
-        showView('etf');
-        showEtfTab(b.dataset.etftab);
-      } else {
-        showView(b.dataset.view);
-      }
-    });
+  bindNodeClicks('.nav-sub-bar .nav-btn', function (b) {
+    if (b.dataset.etftab) {
+      // ETF 子标签
+      showView('etf');
+      showEtfTab(b.dataset.etftab);
+    } else {
+      showView(b.dataset.view);
+    }
   });
 
   // Dashboard sub-tabs
@@ -183,16 +193,11 @@
   // 批量管理挪至工作台的折叠区，首次展开时延迟加载。
 
   // Stock sub-tabs
-  document.querySelectorAll('.stock-tabs .tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.stock-tabs .tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.stab-content').forEach(c => c.classList.remove('active'));
-      btn.classList.add('active');
-      var t = document.getElementById('stab-' + btn.dataset.stab);
-      if (t) t.classList.add('active');
-      setStockSearchContext(btn.dataset.stab);
-      loadActiveStockSubtab();
-    });
+  bindNodeClicks('.stock-tabs .tab-btn', function (btn) {
+    setActiveState(document, '.stock-tabs .tab-btn', function (b) { return b === btn; });
+    setActiveState(document, '.stab-content', function (c) { return c.id === 'stab-' + btn.dataset.stab; });
+    setStockSearchContext(btn.dataset.stab);
+    loadActiveStockSubtab();
   });
 
   // ============================================================

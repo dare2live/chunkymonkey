@@ -98,6 +98,11 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "'assets/js/data-health-view.js'" not in app_js
     assert "showWorkbenchTab" in app_js
     assert "showView('workbench')" in app_js
+    assert "function setActiveState(" in app_js
+    assert "function bindNodeClicks(" in app_js
+    assert "document.querySelectorAll('.nav-group-btn').forEach" not in app_js
+    assert "document.querySelectorAll('.nav-sub-bar .nav-btn').forEach" not in app_js
+    assert "document.querySelectorAll('.stock-tabs .tab-btn').forEach" not in app_js
     assert "ReturnsChartWidget" in app_js
     assert "TypeSummaryWidget" in app_js
     assert "StockSummaryWidget" in app_js
