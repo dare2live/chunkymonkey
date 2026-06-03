@@ -141,6 +141,7 @@ def weekly_breakout_daily_confirm(close: np.ndarray, *, weekly_window: int = 20,
 def monthly_stage2_daily_volume_confirm(close: np.ndarray, volume: np.ndarray,
                                           **params: Any) -> tuple[np.ndarray, dict]:
     """Monthly higher-highs (uptrend) + daily vol spike 2x MA20."""
+    volume_mult = float(params.get("volume_mult", 2.0))
     monthly_close = _resample_close(close, 22)
     if len(monthly_close) < 4:
         return np.zeros(len(close), dtype=bool), {"name": "monthly_stage2_daily_volume_confirm", "entry_count": 0}
@@ -152,9 +153,9 @@ def monthly_stage2_daily_volume_confirm(close: np.ndarray, volume: np.ndarray,
     if len(m_map) < len(close):
         m_map = np.concatenate([m_map, np.zeros(len(close) - len(m_map), dtype=bool)])
     vol_ma = pd.Series(volume).rolling(20).mean().values
-    vol_spike = volume > vol_ma * 2.0
+    vol_spike = volume > vol_ma * volume_mult
     entry = m_map & vol_spike
-    return entry, {"name": "monthly_stage2_daily_volume_confirm", "entry_count": int(entry.sum())}
+    return entry, {"name": "monthly_stage2_daily_volume_confirm", "entry_count": int(entry.sum()), "volume_mult": volume_mult}
 
 
 def weekly_dragon_daily_pullback(close: np.ndarray, *, weekly_streak: int = 3,

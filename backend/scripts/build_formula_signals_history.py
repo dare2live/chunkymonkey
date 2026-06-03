@@ -37,6 +37,7 @@ from services.db import get_conn
 from services.utils import latest_completed_trade_date
 from services.formula_engine import REGISTRY
 from services.formula_engine import bootstrap as _formula_bootstrap  # noqa: F401
+from services.formula_engine.bootstrap import HELD_BACK_FORMULA_IDS, LIVE_FORMULA_IDS
 from services.formula_engine.base import FormulaSignal
 from services.formula_engine.ddl import ensure_formula_tables
 from services.formula_engine.shared_windows import HOLDING_DAYS
@@ -107,7 +108,7 @@ def compute_all_signals(
     formula_ids: tuple[str, ...] | None = None,
 ) -> list[FormulaSignal]:
     """跑全市场所有公式信号 (传入已 groupby 的 K 线)。"""
-    formulas = [REGISTRY[fid] for fid in (formula_ids or REGISTRY.keys())]
+    formulas = [REGISTRY[fid] for fid in (formula_ids or LIVE_FORMULA_IDS)]
     log.info(f"启动公式: {[f.metadata.formula_id for f in formulas]}")
 
     codes = list(grouped.keys())
@@ -240,6 +241,25 @@ def _filter_signals_to_window(
     end: str,
 ) -> list[FormulaSignal]:
     return [signal for signal in signals if start <= signal.date <= end]
+
+
+def _purge_formula_artifacts(
+    conn,
+    *,
+    formula_ids: tuple[str, ...],
+    start: str,
+    end: str,
+) -> None:
+    """Delete stale fact/evidence rows for formulas that should not stay live."""
+
+    if not formula_ids:
+        return
+    write_signals_to_db(conn, [], formula_ids=formula_ids, start=start, end=end)
+    placeholders = ",".join(["?"] * len(formula_ids))
+    conn.execute(
+        f"DELETE FROM mart_formula_horizon_evidence WHERE formula_id IN ({placeholders})",
+        list(formula_ids),
+    )
 
 
 def compute_horizon_evidence(
@@ -405,7 +425,7 @@ def main():
         if explicit_window and not args.recompute_horizon_evidence:
             log.info("显式窗口刷新: fact_technical_trigger 按日期窗口替换, 跳过 horizon evidence")
 
-        formula_ids = tuple(args.formula) if args.formula else tuple(REGISTRY.keys())
+        formula_ids = tuple(args.formula) if args.formula else tuple(LIVE_FORMULA_IDS)
         log.info(f"公式: {formula_ids}")
 
         # 一次性 groupby K 线,供 signal 计算 + horizon evidence 共用
@@ -446,6 +466,13 @@ def main():
             if not explicit_window or args.recompute_horizon_evidence:
                 n_evidence = compute_horizon_evidence(conn, grouped, formula_ids, eval_start, args.end)
                 log.info(f"写入 mart_formula_horizon_evidence: {n_evidence} 行")
+            if not args.formula:
+                _purge_formula_artifacts(
+                    conn,
+                    formula_ids=HELD_BACK_FORMULA_IDS,
+                    start=eval_start,
+                    end=str(args.end),
+                )
         finally:
             conn.close()
     finally:

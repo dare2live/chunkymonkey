@@ -64,7 +64,25 @@ class TestBuildFormulaSignalsHistoryHelpers:
             "ma_base_breakout",
             "activity_breakout",
             "volume_base_breakout",
+            "pullback_doji",
+            "weekly_macd_daily_macd_bull",
+            "weekly_higher_low_daily_break",
+            "monthly_uptrend_daily_pullback_buy",
+            "multi_tf_rsi_alignment",
+            "weekly_breakout_daily_confirm",
+            "monthly_stage2_daily_volume_confirm",
+            "weekly_dragon_daily_pullback",
         }.issubset(REGISTRY.keys())
+
+    def test_bootstrap_live_formula_ids_excludes_sparse_candidates(self):
+        from services.formula_engine.bootstrap import HELD_BACK_FORMULA_IDS, LIVE_FORMULA_IDS
+
+        assert "pullback_doji" in HELD_BACK_FORMULA_IDS
+        assert "monthly_stage2_daily_volume_confirm" in HELD_BACK_FORMULA_IDS
+        assert "pullback_doji" not in LIVE_FORMULA_IDS
+        assert "monthly_stage2_daily_volume_confirm" not in LIVE_FORMULA_IDS
+        assert "weekly_macd_daily_macd_bull" in LIVE_FORMULA_IDS
+        assert len(LIVE_FORMULA_IDS) == 18
 
     def test_load_all_kline_grouped_basic(self):
         """直接构造小 K 线表测试 groupby 逻辑 (用原生 duckdb 因为需要 fetchnumpy)."""

@@ -1,8 +1,8 @@
-"""Live FormulaBase adapters for bc_absorbed challenger formulas.
+"""Live FormulaBase adapters for bc_absorbed challenger and bank formulas.
 
-These adapters bridge the five bc_absorbed challenger formulas into the shared
-FormulaBase registry so ``build_formula_signals_history`` can populate them
-through the same live signal pipeline as the core formulas.
+These adapters bridge a small verified slice of the bc_absorbed formula bank
+into the shared FormulaBase registry so ``build_formula_signals_history`` can
+populate them through the same live signal pipeline as the core formulas.
 """
 from __future__ import annotations
 
@@ -87,6 +87,7 @@ def _run_bc_absorbed_formula(
 class BankFormulaAdapter:
     metadata: FormulaMetadata
     default_strength: float = 0.5
+    default_params: dict[str, Any] | None = None
 
     def compute_signals(
         self,
@@ -109,6 +110,7 @@ class BankFormulaAdapter:
             closes=closes,
             volumes=volumes,
             amounts=amounts,
+            params=self.default_params,
         )
         if not entry.any():
             return []
@@ -177,21 +179,150 @@ BANK_CHALLENGER_SPECS: tuple[tuple[str, str, str, str, int, float], ...] = (
     ),
 )
 
+BANK_EXTENSION_SPECS: tuple[tuple[str, str, str, str, int, float], ...] = (
+    (
+        "pullback_doji",
+        "回调十字星",
+        "PD",
+        "放量大涨后凌厉缩量回调收十字星，次日买入。",
+        10,
+        0.56,
+    ),
+    (
+        "weekly_macd_daily_macd_bull",
+        "周日 MACD 同强",
+        "WM",
+        "周线与日线 MACD 同时转强，DIF > DEA > 0。",
+        15,
+        0.56,
+    ),
+    (
+        "weekly_higher_low_daily_break",
+        "周更高低突破",
+        "WH",
+        "周线形成 higher-low 后，日线突破前高。",
+        12,
+        0.55,
+    ),
+    (
+        "monthly_uptrend_daily_pullback_buy",
+        "月升日回踩买",
+        "MU",
+        "月线多头 + 日线回踩 MA20。",
+        20,
+        0.56,
+    ),
+    (
+        "multi_tf_rsi_alignment",
+        "多周期 RSI 对齐",
+        "RS",
+        "日线冷却区 + 周线 RSI 强势对齐。",
+        10,
+        0.52,
+    ),
+    (
+        "weekly_breakout_daily_confirm",
+        "周突破日确认",
+        "WB",
+        "周线突破 20 周高点后，日线确认。",
+        15,
+        0.55,
+    ),
+    (
+        "monthly_stage2_daily_volume_confirm",
+        "月升量能确认",
+        "MV",
+        "月线升势 + 日线放量确认。",
+        15,
+        0.55,
+    ),
+    (
+        "weekly_dragon_daily_pullback",
+        "周龙日回踩",
+        "WD",
+        "周线连续上升后，日线小回踩。",
+        10,
+        0.55,
+    ),
+)
 
-BANK_CHALLENGER_REGISTRY: dict[str, BankFormulaAdapter] = {}
-for formula_id, name, tag, description, horizon_days, strength in BANK_CHALLENGER_SPECS:
-    adapter = BankFormulaAdapter(
-        metadata=FormulaMetadata(
-            formula_id=formula_id,
-            name=name,
-            tag=tag,
-            description=description,
-            default_horizon_days=horizon_days,
-        ),
-        default_strength=strength,
-    )
-    BANK_CHALLENGER_REGISTRY[formula_id] = adapter
-    register_formula(adapter)
+BANK_EXTENSION_DEFAULT_PARAMS: dict[str, dict[str, Any]] = {
+    "pullback_doji": {
+        "breakout_limit_ratio": 0.55,
+        "breakout_vol_ratio": 1.25,
+        "pullback_min_days": 2,
+        "pullback_max_days": 6,
+        "pullback_vol_shrink": 0.80,
+        "doji_body_ratio_max": 0.40,
+        "doji_range_min": 0.0025,
+        "buy_offset": 1,
+        "signal_cooldown_days": 0,
+    },
+    "weekly_higher_low_daily_break": {
+        "lookback": 4,
+    },
+    "weekly_breakout_daily_confirm": {
+        "weekly_window": 15,
+    },
+    "weekly_dragon_daily_pullback": {
+        "weekly_streak": 2,
+    },
+    "monthly_stage2_daily_volume_confirm": {
+        "volume_mult": 1.5,
+    },
+}
+
+BANK_HELD_BACK_EXTENSION_FORMULA_IDS: tuple[str, ...] = (
+    "pullback_doji",
+    "monthly_stage2_daily_volume_confirm",
+)
+
+BANK_LIVE_EXTENSION_FORMULA_IDS: tuple[str, ...] = tuple(
+    formula_id
+    for formula_id, *_ in BANK_EXTENSION_SPECS
+    if formula_id not in BANK_HELD_BACK_EXTENSION_FORMULA_IDS
+)
 
 
-__all__ = ["BANK_CHALLENGER_REGISTRY", "BankFormulaAdapter"]
+def _build_bank_registry(
+    specs: tuple[tuple[str, str, str, str, int, float], ...],
+    *,
+    default_params_by_formula_id: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, BankFormulaAdapter]:
+    registry: dict[str, BankFormulaAdapter] = {}
+    for formula_id, name, tag, description, horizon_days, strength in specs:
+        adapter = BankFormulaAdapter(
+            metadata=FormulaMetadata(
+                formula_id=formula_id,
+                name=name,
+                tag=tag,
+                description=description,
+                default_horizon_days=horizon_days,
+            ),
+            default_strength=strength,
+            default_params=(default_params_by_formula_id or {}).get(formula_id),
+        )
+        registry[formula_id] = adapter
+        register_formula(adapter)
+    return registry
+
+
+BANK_CHALLENGER_REGISTRY = _build_bank_registry(BANK_CHALLENGER_SPECS)
+BANK_EXTENSION_REGISTRY = _build_bank_registry(
+    BANK_EXTENSION_SPECS,
+    default_params_by_formula_id=BANK_EXTENSION_DEFAULT_PARAMS,
+)
+BANK_LIVE_REGISTRY = {
+    **BANK_CHALLENGER_REGISTRY,
+    **{formula_id: BANK_EXTENSION_REGISTRY[formula_id] for formula_id in BANK_LIVE_EXTENSION_FORMULA_IDS},
+}
+
+
+__all__ = [
+    "BANK_CHALLENGER_REGISTRY",
+    "BANK_EXTENSION_REGISTRY",
+    "BANK_HELD_BACK_EXTENSION_FORMULA_IDS",
+    "BANK_LIVE_REGISTRY",
+    "BANK_LIVE_EXTENSION_FORMULA_IDS",
+    "BankFormulaAdapter",
+]

@@ -27,6 +27,7 @@
 - 已执行 `PYTHONPATH=backend python backend/scripts/build_formula_signals_history.py --formula gs_raw_buy gs_pullback_confirm ma_base_breakout activity_breakout volume_base_breakout`，本轮回填写入 `704,661` 条信号和 `35` 行 `mart_formula_horizon_evidence`。
 - 最新 `backend/scripts/audit_stage_opt_candidate_supply.py --format json` 显示：`live_formula_count=12`，`raw_signal_rows=7,127,177`，`unique_keys=222,509`，`ready_keys=153,433`，`ready_coverage_pct=68.96`，`blocked_reason_counts` 仍以 `below_min_signals=69,076` 为主，但 weakest formulas 已切到 `ma_base_breakout` / `gs_pullback_confirm` / `volume_base_breakout`。
 - 这一步把 stage-opt 的上游供给面真正扩宽了，但还没有结束 blocker 线程；下一步仍然是继续按 weakest formulas 和 `need_027` blocked-gap triage 往前推，而不是把它当成终局。
+- 2026-06-03 进一步把 live 口径收紧成 18 条公式：`pullback_doji` 与 `monthly_stage2_daily_volume_confirm` 保留为研究候选，不再进入默认 live 回填；`backend/scripts/build_formula_signals_history.py` 现在默认只跑 `bootstrap.LIVE_FORMULA_IDS`，并在默认回填时顺手清掉 held-back 两条的历史 `fact_technical_trigger` / `mart_formula_horizon_evidence` 行。最新 full-history audit 刷成 `raw_signal_rows=5,901,698 / filtered_signal_rows=4,717,309 / unique_keys=315,814 / ready_keys=213,990 / ready_coverage_pct=67.76 / below_min_signals=101,824`，`weakest_formula_ids` 变成 `ma_base_breakout` / `gs_pullback_confirm` / `volume_base_breakout`；这比 64.71% 的扩展前结果更好，但仍低于 68.96% 的旧 baseline，所以 stage-opt 主线仍是 `P1 / upstream_candidate_supply`，只是 live surface 更干净了。
 
 ## 2026-06-03 — bestchoice blueprint intake
 

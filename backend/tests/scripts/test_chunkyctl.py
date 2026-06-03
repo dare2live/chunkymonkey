@@ -752,12 +752,18 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
         "gs_raw_buy",
         "ma_base_breakout",
         "macd_golden_cross",
+        "monthly_uptrend_daily_pullback_buy",
+        "multi_tf_rsi_alignment",
         "reversal_1m_deep",
         "reversal_1m_mild",
         "reversal_1w",
         "turtle_breakout_20",
         "turtle_breakout_55",
         "volume_base_breakout",
+        "weekly_breakout_daily_confirm",
+        "weekly_dragon_daily_pullback",
+        "weekly_higher_low_daily_break",
+        "weekly_macd_daily_macd_bull",
     ]
     summary = chunkyctl._stage_opt_summary(
         {
@@ -771,7 +777,7 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
             "blocked_reason_counts": {"below_min_signals": 6},
             "codes_without_bars": 0,
             "live_formula_registry": {
-                "formula_count": 12,
+                "formula_count": 18,
                 "formula_ids": live_formula_ids,
             },
             "research_formula_registry": {
@@ -822,9 +828,10 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
     ]
     assert summary["summary"]["raw_trigger_rows"] == 7
     assert summary["summary"]["raw_state_history_rows"] == 3
-    assert summary["live_formula_registry"]["formula_count"] == 12
+    assert summary["live_formula_registry"]["formula_count"] == 18
     assert "macd_golden_cross" in summary["live_formula_registry"]["formula_ids"]
     assert "gs_raw_buy" in summary["live_formula_registry"]["formula_ids"]
+    assert "weekly_macd_daily_macd_bull" in summary["live_formula_registry"]["formula_ids"]
     assert summary["research_formula_registry"]["formula_count"] == 5
     assert "gs_raw_buy" in summary["research_formula_registry"]["formula_ids"]
 
@@ -837,12 +844,18 @@ def test_next_actions_include_stage_opt_live_registry_boundary() -> None:
         "gs_raw_buy",
         "ma_base_breakout",
         "macd_golden_cross",
+        "monthly_uptrend_daily_pullback_buy",
+        "multi_tf_rsi_alignment",
         "reversal_1m_deep",
         "reversal_1m_mild",
         "reversal_1w",
         "turtle_breakout_20",
         "turtle_breakout_55",
         "volume_base_breakout",
+        "weekly_breakout_daily_confirm",
+        "weekly_dragon_daily_pullback",
+        "weekly_higher_low_daily_break",
+        "weekly_macd_daily_macd_bull",
     ]
     actions = chunkyctl._next_actions(
         {
@@ -864,7 +877,7 @@ def test_next_actions_include_stage_opt_live_registry_boundary() -> None:
                 "top_blocked_reason": "below_min_signals",
             },
             "live_formula_registry": {
-                "formula_count": 12,
+                "formula_count": 18,
                 "formula_ids": live_formula_ids,
             },
             "research_formula_registry": {
@@ -885,9 +898,8 @@ def test_next_actions_include_stage_opt_live_registry_boundary() -> None:
         "action": (
             "Stage-opt candidate supply [upstream_candidate_supply]: below_min_signals dominates current blocked keys → "
             "expand upstream formula coverage or signal density before tuning profile knobs "
-            "(weakest formulas: reversal_1m_deep; weakest stages: 1.5; live registry formulas: 12; "
-            "live registry ids: activity_breakout, dynamic_ma_iterative_cross, gs_pullback_confirm, gs_raw_buy, "
-            "ma_base_breakout, macd_golden_cross, reversal_1m_deep, reversal_1m_mild, reversal_1w, turtle_breakout_20; "
+            f"(weakest formulas: reversal_1m_deep; weakest stages: 1.5; live registry formulas: 18; "
+            f"live registry ids: {', '.join(live_formula_ids[:10])}; "
             "research challengers: 5; research challenger ids: "
             "gs_raw_buy, gs_pullback_confirm, ma_base_breakout, activity_breakout, volume_base_breakout)"
         ),

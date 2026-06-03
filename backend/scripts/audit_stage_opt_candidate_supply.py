@@ -28,6 +28,7 @@ from services.backtest.filters import is_index_code
 from services.duck_adapter import attach_with_retry, connect as duck_connect
 import services.formula_engine.bootstrap  # noqa: F401
 from services.formula_engine import REGISTRY
+from services.formula_engine.bootstrap import LIVE_FORMULA_IDS
 
 
 MARKET_DB = Path(__file__).resolve().parents[2] / "data" / "market.duckdb"
@@ -44,7 +45,7 @@ def _latest_signal_date(conn) -> str | None:
 
 
 def _live_formula_registry_summary() -> dict[str, Any]:
-    formula_ids = sorted(REGISTRY.keys())
+    formula_ids = list(LIVE_FORMULA_IDS)
     return {
         "formula_count": len(formula_ids),
         "formula_ids": formula_ids,
