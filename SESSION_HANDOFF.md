@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 11:24:24 CST
+**Snapshot 时间**: 2026-06-03 12:24:01 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `277d589a refactor: data-view hot path second pass` |
-| 最近 24h commits | 275 |
+| HEAD | `d83f7d5f feat: narrow stage-opt live supply` |
+| 最近 24h commits | 267 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+d83f7d5f feat: narrow stage-opt live supply
+8dcfcdac docs: refresh session handoff after data-health pass | # commit-msg: minimal
 277d589a refactor: data-view hot path second pass
 3838c577 refactor: flatten data-view render hot paths
 b1be391d feat: expand stage-opt supply with challenger formulas
@@ -76,8 +78,6 @@ f8d00e10 docs: record data-health blocker triage complete | # commit-msg: minima
 8cd787f5 docs: add priority ladder for blocker triage | # commit-msg: minimal
 88433830 docs: refresh handoff after data-health reframe | # commit-msg: minimal
 5d1041ff docs: reframe next action to data-health blockers | # commit-msg: minimal
-0ab29a23 docs: refresh session handoff snapshot after stock-view index consolidation | # commit-msg: minimal
-2d932cc0 refactor: stock-view index consolidation | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, audit PASS, pytest 3 passed, targeted complexity PASS, codegraph sync PASS
 ```
 
 ## NEXT ACTION (auto-computed)

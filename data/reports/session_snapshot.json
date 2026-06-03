@@ -1,10 +1,10 @@
 {
-  "snapshot_at": "2026-06-03 11:24:24 CST",
+  "snapshot_at": "2026-06-03 12:24:01 CST",
   "git": {
     "branch": "main",
-    "head_hash": "277d589a",
-    "head_msg": "277d589a refactor: data-view hot path second pass",
-    "commits_24h": 275,
+    "head_hash": "d83f7d5f",
+    "head_msg": "d83f7d5f feat: narrow stage-opt live supply",
+    "commits_24h": 267,
     "uncommitted_files": 0
   },
   "retrain": {
