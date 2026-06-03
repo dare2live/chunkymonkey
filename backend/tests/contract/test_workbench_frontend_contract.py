@@ -155,6 +155,9 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "sourceInstitutionCell(" not in app_js
     assert "stockReportCell(" not in app_js
     assert "function loadInstScorecard(" in app_js
+    assert "function buildStockIndex(" in stock_view_js
+    assert "state.stockIndex = buildStockIndex(state.byStock, state.screeningMap, state.turtleMap);" in stock_view_js
+    assert "global.StockView = { load, reload, openDrawer, _buildStockIndex: buildStockIndex }" in stock_view_js
     assert "topCountEntries(" not in app_js
     assert "local.topIndustries = topCountEntries" not in app_js
     assert "function turtleSystemLabel(" not in app_js

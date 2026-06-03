@@ -33,6 +33,7 @@
     signalSummary: null,
     screeningMap: new Map(),      // stock_code → mart_stock_screening 行
     turtleMap: new Map(),         // stock_code → dim_stock_turtle_latest 行
+    stockIndex: null,      // byStock 派生索引：筛选选项 / 计数 / 覆盖集合
     loading: false,
     drawerStock: null,     // 当前打开的股票 code
     drawerTab: 'conclusion',   // conclusion | data | model | timeline | rules
@@ -300,20 +301,43 @@
     return meta.model_role || 'explicit';
   }
 
-  // ── 胶囊筛选选项收集 ─────────────────────────────────────────────
-  function collectOptions(byStock) {
+  // ── byStock 派生索引 ─────────────────────────────────────────────
+  function buildStockIndex(byStock, screeningMap = state.screeningMap, turtleMap = state.turtleMap) {
+    const items = Array.isArray(byStock) ? byStock : [];
+    const screening = screeningMap || new Map();
+    const turtle = turtleMap || new Map();
     const industries = new Map();
     const instTypes = new Map();
-    byStock.forEach(s => {
+    const screeningHits = { f1: 0, f3: 0, f5: 0 };
+    const turtleHits = { breakout: 0, pre: 0, exit: 0, wait: 0 };
+    const stockMap = new Map();
+    const stockCodes = new Set();
+    for (const s of items) {
+      stockMap.set(s.stockCode, s);
+      stockCodes.add(s.stockCode);
       const ind = s.industry;
       if (ind) industries.set(ind, (industries.get(ind) || 0) + 1);
       const it = s.topEvent?.institutionType;
       const itStr = it != null ? String(it) : null;
       if (itStr) instTypes.set(itStr, (instTypes.get(itStr) || 0) + 1);
-    });
+      const scr = screening.get(s.stockCode);
+      if (scr) {
+        if (scr.f1_hit) screeningHits.f1 += 1;
+        if (scr.f3_hit) screeningHits.f3 += 1;
+        if (scr.f5_hit) screeningHits.f5 += 1;
+      }
+      const tur = turtle.get(s.stockCode);
+      if (tur && tur.turtle_setup_state) {
+        turtleHits[turtleBucket(tur.turtle_setup_state)] += 1;
+      }
+    }
     return {
       industries: Array.from(industries.entries()).sort(([a], [b]) => a.localeCompare(b)),
       instTypes: Array.from(instTypes.entries()).sort((a, b) => b[1] - a[1]),
+      screeningHits,
+      turtleHits,
+      stockCodes,
+      stockMap,
     };
   }
 
@@ -434,30 +458,10 @@
   }
 
   // 多选 chip 计数：当前 byStock 中各桶/公式命中的股票数
-  function countScreeningHits(byStock) {
-    const out = { f1: 0, f3: 0, f5: 0 };
-    byStock.forEach(s => {
-      const r = state.screeningMap.get(s.stockCode);
-      if (!r) return;
-      if (r.f1_hit) out.f1 += 1;
-      if (r.f3_hit) out.f3 += 1;
-      if (r.f5_hit) out.f5 += 1;
-    });
-    return out;
-  }
-  function countTurtleBuckets(byStock) {
-    const out = { breakout: 0, pre: 0, exit: 0, wait: 0 };
-    byStock.forEach(s => {
-      const r = state.turtleMap.get(s.stockCode);
-      if (!r || !r.turtle_setup_state) return;
-      out[turtleBucket(r.turtle_setup_state)] += 1;
-    });
-    return out;
-  }
-
   // ── 渲染筛选栏 ──────────────────────────────────────────────────
   function renderFilterBar(byStock) {
-    const { industries, instTypes } = collectOptions(byStock);
+    const index = state.stockIndex || buildStockIndex(byStock);
+    const { industries, instTypes, screeningHits: scrCount, turtleHits: tCount } = index;
     const actions = ['all', 'follow', 'watch', 'skip'];
     const actionLabels = { all: '全部', follow: '可跟', watch: '观察', skip: '不跟' };
     const actionBtns = actions.map(a =>
@@ -479,7 +483,6 @@
         `<option value="${esc(it)}" ${state.filterInstType === it ? 'selected' : ''}>${esc(it)} (${n})</option>`
       ).join('');
 
-    const scrCount = countScreeningHits(byStock);
     const scrChips = [
       ['f1', 'F1 长期低位'],
       ['f3', 'F3 多级回撤'],
@@ -490,7 +493,6 @@
       return `<button class="chip chip-sm sv-filter-tdx ${active ? 'chip-primary' : 'chip-outline'}" data-tdx="${k}">${label} (${n})</button>`;
     }).join('');
 
-    const tCount = countTurtleBuckets(byStock);
     const turtleChips = [
       ['breakout', '突破触发'],
       ['pre', '待突破'],
@@ -916,21 +918,23 @@
       root.innerHTML = '<div class="cm-muted-note">暂无 AI TopK；机构事件列表仍可继续使用。</div>';
       return;
     }
-    const stockMap = new Map(state.byStock.map(s => [s.stockCode, s]));
+    const index = state.stockIndex || buildStockIndex(state.byStock);
+    const stockMap = index.stockMap;
+    const coveredCodes = index.stockCodes;
     const rows = state.topkItems.slice(0, 10).map(item => {
       const s = stockMap.get(item.stock_code);
       const name = item.stock_name || s?.stockName || '';
       const identity = { stock_code: item.stock_code, stock_name: name };
       const industry = s ? (TDX_L1_NAMES[s.industry] || s.industry || '--') : (item.l2 || item.l1 || '--');
       const top = topPercent(item);
-      const covered = !!s;
+      const covered = coveredCodes.has(item.stock_code);
       return `<tr>
         <td>#${esc(item.rank || '-')}</td>
         <td>${securityIdentity(identity, { className: 'cm-security-identity cm-security-identity--inline' })}</td>
-        <td>${top == null ? '--' : 'Top ' + top.toFixed(top < 10 ? 1 : 0) + '%'}</td>
-        <td>${esc(horizonLabel(item))}</td>
-        <td>${esc(industry)}</td>
-        <td>${covered ? '是' : '否'}</td>
+      <td>${top == null ? '--' : 'Top ' + top.toFixed(top < 10 ? 1 : 0) + '%'}</td>
+      <td>${esc(horizonLabel(item))}</td>
+      <td>${esc(industry)}</td>
+      <td>${covered ? '是' : '否'}</td>
         <td><button class="chip chip-outline chip-sm" data-ai-pick="${esc(item.stock_code)}">${covered ? '打开' : '提示'}</button></td>
       </tr>`;
     }).join('');
@@ -950,7 +954,7 @@
     root.querySelectorAll('[data-ai-pick]').forEach(btn => {
       btn.addEventListener('click', () => {
         const code = btn.dataset.aiPick;
-        if (state.byStock.some(s => s.stockCode === code)) openDrawer(code);
+        if (coveredCodes.has(code)) openDrawer(code);
         else alert('该股在 AI TopK 中，但当前机构事件画像未覆盖。');
       });
     });
@@ -1074,11 +1078,13 @@
       state.watchlistSet = new Set(((wl && wl.data) || []).map(w => w.stock_code));
       state.screeningMap = (enrich && enrich.screening) || new Map();
       state.turtleMap = (enrich && enrich.turtle) || new Map();
+      state.stockIndex = buildStockIndex(state.byStock, state.screeningMap, state.turtleMap);
       parseTopkPayload(topk);
     } catch (e) {
       console.error('StockView reload failed', e);
       state.signalSummary = null;
       state.byStock = [];
+      state.stockIndex = buildStockIndex([]);
       state.rawEvents = [];
       parseTopkPayload(null);
     }
@@ -1102,5 +1108,5 @@
     });
   }
 
-  global.StockView = { load, reload, openDrawer };
+  global.StockView = { load, reload, openDrawer, _buildStockIndex: buildStockIndex };
 })(window);
