@@ -3,6 +3,10 @@
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
 
+## 2026-06-03 — signal-adapter grouping cleanup
+
+- `assets/js/signal-adapter.js` 里 `eventToView()` 的 institutionType 回退收成 `extractInstitutionType()`，`aggregateByStockViews()` 改成单次 group state + 线性 action 分桶 + 单次公告日排序；`backend/tests/contract/test_signal_adapter.py` 新增 `fetchSignals()` mock 回归，锁住 stock 桶顺序、`topEvent`、`events` / `timelineEvents` 顺序和 fallback 语义。验证：`node --check assets/js/signal-adapter.js` PASS，`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_signal_adapter.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_signal_adapter.py backend/tests/contract/test_workbench_frontend_contract.py` 4 passed，`python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py /Users/dp/Documents/M/stock/chunkymonkey/assets/js/signal-adapter.js --format markdown` 无明显热点；但全仓 broad scan 仍会把 `assets/js/app.js` / `assets/js/data-view.js` / `assets/js/settings-view.js` / `assets/js/stock-view.js` 以及 `signal-adapter.js` 的部分 heuristic 行继续列为高热点，后续继续按热路径收口。
+
 ## 2026-06-03 — app navigation helper extraction
 
 - `assets/js/app.js` 里的 group / view / ETF tab / stock tab active-state 切换现统一走 `setActiveState()`，点击绑定统一走 `bindNodeClicks()`，把 3 处顶层 `querySelectorAll(...).forEach(...)` 绑定和多处 `classList.toggle('active')` 收拢成 2 个纯 helper；`backend/tests/contract/test_workbench_frontend_contract.py` 已补 helper presence 与旧直接绑定模式不回流的回归。验证：`node --check assets/js/app.js` PASS，`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_workbench_frontend_contract.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py` 2 passed，`analyze_complexity.py` 对 `assets/js/app.js` 无明显热点；最新 `scripts/chunkyctl doctor --fast` 仍为 WARN，complexity high findings 80，主要集中在 `assets/js/data-view.js` 41 / `assets/js/stock-view.js` 13 / `assets/js/settings-view.js` 12 / `assets/js/signal-adapter.js` 9 / `assets/js/app.js` 5。

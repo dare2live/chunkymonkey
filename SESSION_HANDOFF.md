@@ -25,7 +25,11 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 08:29:33 CST
+**Snapshot 时间**: 2026-06-03 08:49:12 CST
+
+## 当前切片
+
+- `assets/js/signal-adapter.js` 里的 `eventToView()` institutionType 回退收成 `extractInstitutionType()`，`aggregateByStockViews()` 改成单次 group state + 线性 action 分桶 + 单次公告日排序；`backend/tests/contract/test_signal_adapter.py` 新增 `fetchSignals()` mock 回归，锁住 stock 桶顺序、`topEvent`、`events` / `timelineEvents` 顺序和 fallback 语义。验证：`node --check assets/js/signal-adapter.js` PASS，`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_signal_adapter.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_signal_adapter.py backend/tests/contract/test_workbench_frontend_contract.py` 4 passed，`python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py /Users/dp/Documents/M/stock/chunkymonkey/assets/js/signal-adapter.js --format markdown` targeted scan 无明显热点；但全仓 broad scan 仍会把 `assets/js/app.js` / `assets/js/data-view.js` / `assets/js/settings-view.js` / `assets/js/stock-view.js` 以及 `signal-adapter.js` 的部分 heuristic 行继续列为高热点。
 
 ## 主线状态
 
@@ -61,23 +65,23 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `74e25438 refactor: app navigation helper extraction | Codex-Reviewed: APPROVE | test pass: node --check PASS, audit PASS, pytest 2 passed, complexity no obvious hotspots, codegraph sync PASS` |
-| 最近 24h commits | 278 |
+| HEAD | `e834f18c refactor: signal-adapter grouping cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, audit PASS, pytest 4 passed, targeted complexity PASS, codegraph sync PASS | post-fix-audit cleanup verified 无残留` |
+| 最近 24h commits | 275 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+e834f18c refactor: signal-adapter grouping cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, audit PASS, pytest 4 passed, targeted complexity PASS, codegraph sync PASS | post-fix-audit cleanup verified 无残留
+690dd3ed docs: refresh session handoff snapshot after app navigation helper extraction | # commit-msg: minimal
+74e25438 refactor: app navigation helper extraction | Codex-Reviewed: APPROVE | test pass: node --check PASS, audit PASS, pytest 2 passed, complexity no obvious hotspots, codegraph sync PASS
+3aaea862 docs: refresh session handoff snapshot after chunkyctl action suffix helper extraction | # commit-msg: minimal
 d3ecc21e refactor: chunkyctl action detail suffix helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 28 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 d220d960 docs: refresh session handoff snapshot after need summary helper regression coverage | # commit-msg: minimal
 c7543045 test: add helper regression coverage for need summary | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 24 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 40cb6c4b docs: refresh session handoff snapshot after blocked need summary helper extraction | # commit-msg: minimal
 947abce1 refactor: blocked need summary helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 22 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 b6eb97be docs: refresh session handoff snapshot after need_027 source-registration helper extraction | # commit-msg: minimal
-bdef5ec5 refactor: need_027 source-registration summary helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 22 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
-33f4b861 docs: refresh session handoff snapshot after chunkyctl need_027 blocker helper extraction | # commit-msg: minimal
-55d1eb28 refactor: chunkyctl need_027 blocker action helpers | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 27 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
-2259a0be docs: refresh session handoff snapshot after settings-view about model extraction | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
