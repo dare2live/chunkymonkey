@@ -54,7 +54,7 @@
       industry: raw.industry,
       institutionId: raw.institution_id,
       institutionName: raw.institution_name,
-      institutionType: raw.institution_type || (raw.rule_breakdown?.checks || []).find(c => c.key === 'inst_type')?.raw,
+      institutionType: raw.institution_type || extractInstitutionType(raw),
       eventType: raw.event_type,
       noticeDate: raw.notice_date,
       noticeDateSource: raw.notice_date_source || 'unknown',
@@ -81,12 +81,21 @@
     };
   }
 
-  const STOCK_ACTION_RANK = { follow: 0, watch: 1, skip: 2 };
+  function extractInstitutionType(raw) {
+    const checks = raw?.rule_breakdown?.checks || [];
+    for (const check of checks) {
+      if (check && check.key === 'inst_type') return check.raw;
+    }
+    return null;
+  }
 
-  function compareStockEvents(a, b) {
-    const ra = STOCK_ACTION_RANK[a.action] ?? 9;
-    const rb = STOCK_ACTION_RANK[b.action] ?? 9;
-    if (ra !== rb) return ra - rb;
+  function compareStockGroups(a, b) {
+    if (b.actionCounts.follow !== a.actionCounts.follow) return b.actionCounts.follow - a.actionCounts.follow;
+    if (b.instCount !== a.instCount) return b.instCount - a.instCount;
+    return String(b.latestNotice || '').localeCompare(String(a.latestNotice || ''));
+  }
+
+  function compareNoticeDateDesc(a, b) {
     return String(b.noticeDate || '').localeCompare(String(a.noticeDate || ''));
   }
 
@@ -117,65 +126,75 @@
       group.latestNotice = view.noticeDate;
     }
 
-    if (!group.topEvent || compareStockEvents(view, group.topEvent) < 0) {
-      group.topEvent = view;
+  }
+
+  function buildStockGroupState(view) {
+    return {
+      stockCode: view.stockCode,
+      stockName: view.stockName,
+      industry: view.industry,
+      events: [],
+      institutions: new Set(),
+      actionCounts: { follow: 0, watch: 0, skip: 0 },
+      noticeSourceCounts: { source_notice: 0, page_update_date: 0, fetched_at_observed: 0, regulatory_deadline: 0, unknown: 0 },
+      premiumSum: 0,
+      premiumCount: 0,
+      longEVBest: null,
+      shortEVBest: null,
+      latestNotice: '',
+    };
+  }
+
+  function partitionEventsByAction(events) {
+    const buckets = { follow: [], watch: [], skip: [], other: [] };
+    for (const view of events || []) {
+      if (!view) continue;
+      if (buckets[view.action]) {
+        buckets[view.action].push(view);
+        continue;
+      }
+      buckets.other.push(view);
     }
+    return buckets;
+  }
+
+  function finalizeStockGroup(g) {
+    const timelineEvents = [...g.events].sort(compareNoticeDateDesc);
+    const buckets = partitionEventsByAction(timelineEvents);
+    const events = buckets.follow.concat(buckets.watch, buckets.skip, buckets.other);
+    const top = events[0] || null;
+    const premiumAvg = g.premiumCount ? g.premiumSum / g.premiumCount : null;
+    return {
+      stockCode: g.stockCode,
+      stockName: g.stockName,
+      industry: g.industry,
+      instCount: g.institutions.size,
+      eventCount: g.events.length,
+      actionCounts: g.actionCounts,
+      noticeSourceCounts: g.noticeSourceCounts,
+      bestAction: top ? top.action : 'none',
+      topEvent: top,
+      events,
+      timelineEvents,
+      premiumAvg,
+      longEVBest: g.longEVBest,
+      shortEVBest: g.shortEVBest,
+      latestNotice: g.latestNotice,
+    };
   }
 
   function aggregateByStockViews(views) {
     const groups = new Map();
-    (views || []).forEach(view => {
-      if (!view || !view.stockCode) return;
+    for (const view of views || []) {
+      if (!view || !view.stockCode) continue;
       const code = view.stockCode;
       if (!groups.has(code)) {
-        groups.set(code, {
-          stockCode: code,
-          stockName: view.stockName,
-          industry: view.industry,
-          events: [],
-          institutions: new Set(),
-          actionCounts: { follow: 0, watch: 0, skip: 0 },
-          noticeSourceCounts: { source_notice: 0, page_update_date: 0, fetched_at_observed: 0, regulatory_deadline: 0, unknown: 0 },
-          premiumSum: 0,
-          premiumCount: 0,
-          longEVBest: null,
-          shortEVBest: null,
-          latestNotice: '',
-          topEvent: null,
-        });
+        groups.set(code, buildStockGroupState(view));
       }
       updateStockAggregate(groups.get(code), view);
-    });
+    }
 
-    return Array.from(groups.values()).map(g => {
-      const sorted = [...g.events].sort(compareStockEvents);
-      const timelineEvents = [...sorted].sort((a, b) =>
-        String(b.noticeDate || '').localeCompare(String(a.noticeDate || ''))
-      );
-      const top = g.topEvent || sorted[0] || null;
-      const premiumAvg = g.premiumCount ? g.premiumSum / g.premiumCount : null;
-      return {
-        stockCode: g.stockCode,
-        stockName: g.stockName,
-        industry: g.industry,
-        instCount: g.institutions.size,
-        eventCount: g.events.length,
-        actionCounts: g.actionCounts,
-        noticeSourceCounts: g.noticeSourceCounts,
-        bestAction: top ? top.action : 'none',
-        topEvent: top,
-        events: sorted,
-        timelineEvents,
-        premiumAvg,
-        longEVBest: g.longEVBest,
-        shortEVBest: g.shortEVBest,
-        latestNotice: g.latestNotice,
-      };
-    }).sort((a, b) => {
-      if (b.actionCounts.follow !== a.actionCounts.follow) return b.actionCounts.follow - a.actionCounts.follow;
-      if (b.instCount !== a.instCount) return b.instCount - a.instCount;
-      return String(b.latestNotice).localeCompare(String(a.latestNotice));
-    });
+    return Array.from(groups.values()).map(finalizeStockGroup).sort(compareStockGroups);
   }
 
   // ─── 公开 API ──────────────────────────────────────────
