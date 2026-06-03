@@ -110,6 +110,40 @@ def test_data_view_build_routes_table_model_is_stable():
         if (row.fallback.label !== '迁移/兜底可用' || row.fallback.tone !== 'warn') throw new Error('fallback metadata mismatch');
         if (row.freshness !== '12.3h') throw new Error('freshness mismatch: ' + row.freshness);
         if (row.repairLabel !== '运行 step') throw new Error('repair label mismatch: ' + row.repairLabel);
+
+        const byProtocol = view.buildRoutesTableModel(
+          [
+            {
+              data_name: 'data_a',
+              raw_table: 'fact_a',
+              step_id: 'sync_a',
+              notes: 'alpha route',
+              current: { source: 'tdxhub', protocol: 'duckdb', status: 'connected' },
+            },
+          ],
+          'duckdb',
+          []
+        );
+        if (byProtocol.list.length !== 1 || byProtocol.list[0].route.raw_table !== 'fact_a') {
+          throw new Error('protocol filter mismatch: ' + JSON.stringify(byProtocol.list));
+        }
+
+        const byRawTable = view.buildRoutesTableModel(
+          [
+            {
+              data_name: 'data_a',
+              raw_table: 'fact_a',
+              step_id: 'sync_a',
+              notes: 'alpha route',
+              current: { source: 'tdxhub', protocol: 'duckdb', status: 'connected' },
+            },
+          ],
+          'fact_a',
+          []
+        );
+        if (byRawTable.list.length !== 1 || byRawTable.list[0].route.step_id !== 'sync_a') {
+          throw new Error('raw_table filter mismatch: ' + JSON.stringify(byRawTable.list));
+        }
         """
     ).strip()
 

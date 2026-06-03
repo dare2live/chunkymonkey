@@ -93,9 +93,9 @@
   }
   function buildAssetHealthIndex(items) {
     const index = new Map();
-    (items || []).forEach(item => {
+    for (const item of items || []) {
       if (item && item.table_name && !index.has(item.table_name)) index.set(item.table_name, item);
-    });
+    }
     return index;
   }
   function routeHealth(route, asset) {
@@ -116,15 +116,26 @@
     return { label: '按链路兜底', tone: 'info' };
   }
 
+  function buildRouteSearchText(route, cur) {
+    return [
+      route && route.data_name,
+      cur && cur.source,
+      cur && cur.protocol,
+      route && route.raw_table,
+      route && route.step_id,
+      route && route.notes,
+    ].map(v => String(v || '')).join(' ').toLowerCase();
+  }
+
   function buildAuditResultsModel(data) {
     const details = Array.isArray(data && data.details) ? data.details : [];
     const issues = [];
     const okRows = [];
-    details.forEach(r => {
-      if (!r) return;
+    for (const r of details) {
+      if (!r) continue;
       if ((r.issues || []).length > 0) issues.push(r);
       else okRows.push(r);
-    });
+    }
     return {
       details,
       issues,
@@ -145,10 +156,8 @@
       if (!route) continue;
       const cur = route.current || {};
       if (filterText) {
-        const matched = [route.data_name, cur.source, cur.protocol, route.raw_table, route.step_id, route.notes].some(
-          v => (v || '').toLowerCase().includes(filterText)
-        );
-        if (!matched) continue;
+        const haystack = buildRouteSearchText(route, cur);
+        if (!haystack.includes(filterText)) continue;
       }
       const tgt = route.target || {};
       const asset = assetIndex.get(route.raw_table) || null;
