@@ -121,6 +121,10 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "function loadModelMonitor()" in app_js
     assert "function refreshWorkbenchHealthBar()" in app_js
     assert "function refreshNetwork()" in app_js
+    assert "d.result.kline_source_breakdown.map(function (item)" not in app_js
+    assert "d.logs.slice(-30).map(function (line)" not in app_js
+    assert "for (var i = 0; i < d.result.kline_source_breakdown.length; i += 1)" in app_js
+    assert "for (var j = logStart; j < d.logs.length; j += 1)" in app_js
     assert "function loadStocks()" not in app_js
     assert "function loadResearch()" not in app_js
     assert "function loadIndustryOverviewSummary()" not in app_js

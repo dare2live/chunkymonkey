@@ -395,11 +395,15 @@
           'done': '完成', 'error': '失败'
         })[d.stage] || d.stage;
         var listSource = d.result && d.result.list_source ? d.result.list_source : '';
-        var klineBreakdown = d.result && Array.isArray(d.result.kline_source_breakdown)
-          ? d.result.kline_source_breakdown.map(function (item) {
-              return (item.source || '未知') + ' · ' + fmt(item.count || 0);
-            }).join(' / ')
-          : '';
+        var klineBreakdown = '';
+        if (d.result && Array.isArray(d.result.kline_source_breakdown)) {
+          var klineParts = [];
+          for (var i = 0; i < d.result.kline_source_breakdown.length; i += 1) {
+            var item = d.result.kline_source_breakdown[i];
+            klineParts.push((item.source || '未知') + ' · ' + fmt(item.count || 0));
+          }
+          klineBreakdown = klineParts.join(' / ');
+        }
         var extraSummary = '';
         if (!d.running && d.result) {
           extraSummary = '<div style="margin-top:8px;font-size:12px;line-height:1.7;color:var(--cm-ink-700)">' +
@@ -419,10 +423,14 @@
             extraSummary;
         }
         if (box && d.logs && d.logs.length) {
-          box.innerHTML = d.logs.slice(-30).map(function (line) {
+          var logLines = [];
+          var logStart = Math.max(d.logs.length - 30, 0);
+          for (var j = logStart; j < d.logs.length; j += 1) {
+            var line = d.logs[j];
             var color = line.level === 'error' ? 'var(--stock-up)' : (line.level === 'warning' ? 'var(--cm-warn-500)' : 'var(--cm-ink-700)');
-            return '<div style="color:' + color + '">[' + (line.ts || '').slice(11, 19) + '] ' + esc(line.message) + '</div>';
-          }).join('');
+            logLines.push('<div style="color:' + color + '">[' + (line.ts || '').slice(11, 19) + '] ' + esc(line.message) + '</div>');
+          }
+          box.innerHTML = logLines.join('');
           box.scrollTop = box.scrollHeight;
         }
         if (!d.running) {
