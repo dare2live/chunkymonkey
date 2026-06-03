@@ -5,9 +5,9 @@
 
 ## 2026-06-03 — strategy reframe: data-health blockers first
 
-- 这轮复盘的结论是：前端热点收口本身没有错，`stock-view.js` / `data-view.js` / `signal-adapter.js` / `app.js` 的局部 refactor 也都通过了 targeted 校验，但它们正在变成“优化复杂度分数”的局部循环，而不是解决当前项目最重的风险。最新 `scripts/chunkyctl doctor --fast` 已经把 **blocking yellow tables 清零**，`moth` 仍提示 complexity new high findings 80；剩下的黄色主要是 warning-only assets，而不是 data-health blocker。
-- 这轮 data-health triage 已按 writer / SLA 补完底层链路：`price_kline_tdxhub` 已推进到 `2026-06-02`，`fact_financial_pit_daily`、`fact_stock_fundamental_stage_daily`、`fact_feature_panel`、`mart_feature_drift`、`mart_feature_drift_histogram` 也都对齐到 `2026-06-02`。`scripts/chunkyctl doctor --fast` 现在是 `WARN` 但 `blocking_yellow=0`，只剩 `fact_lhb_event` 和 `mart_daily_recommendation_explanation` 两个 warning。
-- 前端结构优化暂停为次要任务，除非它直接关联用户可见 bug、数据门禁或 pipeline 失败；下一阶段的 success metric 以把剩余 warning-only 资产分层处理，而不是继续压 heuristic hotspot count。
+- 这轮复盘的结论是：前端热点收口本身没有错，`stock-view.js` / `data-view.js` / `signal-adapter.js` / `app.js` 的局部 refactor 也都通过了 targeted 校验，但它们正在变成“优化复杂度分数”的局部循环，而不是解决当前项目最重的风险。最新 `scripts/chunkyctl doctor --fast` 已经把 **data_health 刷成 PASS**，`green=342 / yellow=0 / red=0`；`moth` 仍提示 complexity new high findings 80，说明当前剩余问题已经不在 data-health，而在历史复杂度和仍未收口的 blocker 线程。
+- 这轮 data-health triage 已按 writer / SLA 补完底层链路：`price_kline_tdxhub`、`fact_financial_pit_daily`、`fact_stock_fundamental_stage_daily`、`fact_feature_panel`、`mart_feature_drift`、`mart_feature_drift_histogram`、`fact_lhb_event`、`mart_daily_recommendation_explanation` 都已经回到当前基准日期或被刷新到可用状态，因此不再把它们当成门禁阻塞项。
+- 前端结构优化继续降级为次要任务，除非它直接关联用户可见 bug、数据门禁或 pipeline 失败；下一阶段的 success metric 以 `need_027` blocked-gap triage 和 stage-opt candidate supply 为主，再结合必要的 warning-only / hot-path 收尾，而不是继续压 heuristic hotspot count。
 - 执行顺序分层：
   1. **P0 数据健康 / 正确性 blocker**: 直接阻断门禁、数据 freshness、PIT、安全性或会让 `doctor --fast` 继续 WARN 的问题。先修这个。
   2. **P1 框架 / seam**: 能一次性减少 2 个以上后续修复、或者复用到多个热点的共享 helper、shared model、边界抽离。只有它能减少重复劳动时，才先做框架。
@@ -39,6 +39,12 @@
 - `assets/js/data-view.js` 的几个渲染热点继续收口：`renderHealthHeatmap()`、`renderSourcePriority()`、`renderFallbackPanel()`、`renderDriftQueue()`、`renderCapTable()`、`renderStepGrid()` 以及 `startPolling()` 的日志聚合都从 `.map().join()` / `forEach()` 改成了直线型 `for...of` / 字符串拼接，保持输出语义不变，只收紧回调型热路径。
 - 验证：`node --check assets/js/data-view.js` PASS，`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_data_view.py --scope backend/tests/contract/test_workbench_frontend_contract.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py backend/tests/contract/test_workbench_frontend_contract.py` 6 passed，`python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py /Users/dp/Documents/M/stock/chunkymonkey/assets/js/data-view.js --format markdown` targeted scan 无明显热点，`codegraph sync .` 已同步。
 - 这次只是在前端 cockpit 里继续削掉一个明显的渲染带宽点；全仓 broad scan 仍然有历史 HIGH 残余，后续还是按 `assets/js/data-view.js` / `assets/js/settings-view.js` / `assets/js/signal-adapter.js` / `assets/js/stock-view.js` 的热路径继续收口，而不是把这次当成全局完结。
+
+## 2026-06-03 — data-view render hot paths second pass
+
+- `assets/js/data-view.js` 的第二轮收口把剩余的回调型渲染又压了一层：`buildRouteSearchText()`、`buildSourceCardsModel()`、`buildHealthHeatmapModel()`、`buildSourcePriorityModel()`、`buildLinkOverviewModel()`、`renderLinkOverview()`、`renderSourceCards()`、`renderAuditResults()`、`renderRoutesTable()` 和 `_setUpdateButtonsBusy()` 现在也都收成直线型循环/拼接，去掉了残余的 `.map()` / `.forEach()` 热点。
+- 验证：`node --check assets/js/data-view.js` PASS，`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_data_view.py --scope backend/tests/contract/test_workbench_frontend_contract.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py backend/tests/contract/test_workbench_frontend_contract.py` 6 passed，`python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py /Users/dp/Documents/M/stock/chunkymonkey/assets/js/data-view.js --format markdown` targeted scan 无明显热点，`codegraph sync .` 已同步。
+- 这轮的意义是把 `data-view` 从“broad scan 常驻高热点文件”往“局部可收口文件”推了一步；全仓 broad scan 仍会保留别的历史 HIGH，后续继续按 `stage-opt / need_027` 主线和剩余前端热路径并行推进。
 
 
 ## 2026-06-03 — stock-view index consolidation

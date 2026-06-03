@@ -117,14 +117,17 @@
   }
 
   function buildRouteSearchText(route, cur) {
-    return [
+    const parts = [
       route && route.data_name,
       cur && cur.source,
       cur && cur.protocol,
       route && route.raw_table,
       route && route.step_id,
       route && route.notes,
-    ].map(v => String(v || '')).join(' ').toLowerCase();
+    ];
+    const textParts = [];
+    for (const part of parts) textParts.push(String(part || ''));
+    return textParts.join(' ').toLowerCase();
   }
 
   function buildAuditResultsModel(data) {
@@ -179,7 +182,8 @@
   }
 
   function buildSourceCardsModel(sources) {
-    return (sources || []).map(src => {
+    const list = [];
+    for (const src of sources || []) {
       const h = src.health || {};
       const state = h.state || 'unknown';
       const tele = src.telemetry || {};
@@ -201,7 +205,7 @@
       const detailRowsHtml = detailRows.length
         ? detailRows.join('')
         : '<div class="muted" style="font-size:11px">暂无</div>';
-      return {
+      list.push({
         name: src.name,
         displayName: src.display_name || src.name,
         priority: src.priority,
@@ -214,23 +218,27 @@
         repoUrl: src.repo_url || '',
         hasRepoLink: !!src.repo_url,
         detailRowsHtml,
-      };
-    });
+      });
+    }
+    return list;
   }
 
   function buildHealthHeatmapModel(health) {
     const summary = (health && health.summary) || {};
     const byLayer = (health && health.by_layer) || {};
     const total = (summary.green || 0) + (summary.yellow || 0) + (summary.red || 0) + (summary.unknown || 0);
-    const layers = Object.keys(byLayer).sort().map(layer => {
+    const layers = [];
+    const layerKeys = Object.keys(byLayer);
+    layerKeys.sort();
+    for (const layer of layerKeys) {
       const row = byLayer[layer] || {};
       const layerTotal = (row.green || 0) + (row.yellow || 0) + (row.red || 0) + (row.unknown || 0);
-      return {
+      layers.push({
         layer,
         row,
         total: layerTotal,
-      };
-    });
+      });
+    }
     return {
       summary,
       total,
@@ -246,22 +254,22 @@
 
   function buildSourcePriorityModel(sourceHealth) {
     const rows = (sourceHealth && (sourceHealth.sources || sourceHealth.source_priorities)) || [];
-    return {
-      rows: rows.map(r => {
-        const source = r.upstream_source || r.source || r.client_id || 'unknown';
-        const green = r.green_count ?? r.green ?? 0;
-        const yellow = r.yellow_count ?? r.yellow ?? 0;
-        const red = r.red_count ?? r.red ?? 0;
-        const total = r.asset_count ?? r.total ?? (green + yellow + red);
-        return {
-          source,
-          total,
-          green,
-          yellow,
-          red,
-        };
-      }),
-    };
+    const list = [];
+    for (const r of rows) {
+      const source = r.upstream_source || r.source || r.client_id || 'unknown';
+      const green = r.green_count ?? r.green ?? 0;
+      const yellow = r.yellow_count ?? r.yellow ?? 0;
+      const red = r.red_count ?? r.red ?? 0;
+      const total = r.asset_count ?? r.total ?? (green + yellow + red);
+      list.push({
+        source,
+        total,
+        green,
+        yellow,
+        red,
+      });
+    }
+    return { rows: list };
   }
 
   function buildFallbackPanelModel(health, sourceHealth, routes) {
@@ -352,9 +360,14 @@
     }
     const pit = (tdxValidation && tdxValidation.pit && tdxValidation.pit.tdx_f10_gpcw_v1 && tdxValidation.pit.tdx_f10_gpcw_v1.violation_rows) || 0;
     const sourceRows = (sourceHealth && sourceHealth.sources) || [];
-    const sourceLabel = sourceRows.length
-      ? sourceRows.slice(0, 4).map(s => `${s.upstream_source}:${s.green_count || 0}/${s.asset_count || 0}`).join(' · ')
-      : '待加载';
+    let sourceLabel = '待加载';
+    if (sourceRows.length) {
+      const labels = [];
+      for (const s of sourceRows.slice(0, 4)) {
+        labels.push(`${s.upstream_source}:${s.green_count || 0}/${s.asset_count || 0}`);
+      }
+      sourceLabel = labels.join(' · ');
+    }
     return {
       snapshotAt: health && health.snapshot_at ? String(health.snapshot_at) : '',
       summary,
@@ -379,6 +392,14 @@
     const root = qs('ds-link-overview');
     if (!root) return;
     const model = buildLinkOverviewModel(_state.health || {}, _state.tdxValidation || {}, _state.sourceHealth || {});
+    let nodesHtml = '';
+    for (const n of model.nodes) {
+      nodesHtml += `<div class="cm-step cm-step-${n[2]}">
+        <span>${esc(n[0])}</span>
+        <b>${esc(n[1])}</b>
+        <small>${esc(n[3])}</small>
+      </div>`;
+    }
     root.innerHTML = `<div class="cm-section-head">
       <div>
         <h3>数据链路总览</h3>
@@ -387,11 +408,7 @@
       <span class="cm-muted-note">快照 ${esc(model.snapshotAt || '--')}</span>
     </div>
     <div class="cm-stepper">
-      ${model.nodes.map(n => `<div class="cm-step cm-step-${n[2]}">
-        <span>${esc(n[0])}</span>
-        <b>${esc(n[1])}</b>
-        <small>${esc(n[3])}</small>
-      </div>`).join('')}
+      ${nodesHtml}
     </div>
     <div class="cm-status-strip" style="margin-top:12px">
       <div class="cm-status-item cm-status-ok"><span>tdxhub 主供</span><b>K线 / 复权 / gpcw / 股东 F10</b></div>
@@ -435,12 +452,14 @@
         </div>
       </div>`;
     const model = buildSourceCardsModel(_state.sources);
-    _state.sourceCardModelByName = new Map(model.map(src => [src.name, src]));
-    root.innerHTML = tdxPriority + model.map(src => {
+    _state.sourceCardModelByName = new Map();
+    let cardsHtml = '';
+    for (const src of model) {
+      _state.sourceCardModelByName.set(src.name, src);
       const repoLink = src.hasRepoLink
         ? `<a href="${esc(src.repoUrl)}" target="_blank" style="color:var(--cm-ink-500);font-size:11px;text-decoration:none">repo↗</a>`
         : '';
-      return `
+      cardsHtml += `
         <div class="panel ds-source-card" data-source="${esc(src.name)}" style="padding:14px;border-left:4px solid ${src.color}">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
             <div style="display:flex;align-items:center;gap:7px;font-weight:700;font-size:14px">${dotHtml(src.tone)} ${esc(src.displayName)}</div>
@@ -458,7 +477,8 @@
           <div class="ds-detail-panel" style="display:none;margin-top:10px;padding-top:8px;border-top:1px dashed var(--cm-ink-100);font-size:11px;max-height:300px;overflow-y:auto"></div>
         </div>
       `;
-    }).join('');
+    }
+    root.innerHTML = tdxPriority + cardsHtml;
 
     bindDelegatedClick(root, '.ds-detail-btn, .ds-health-btn', btn => {
       if (btn.classList.contains('ds-detail-btn')) toggleDetail(btn.dataset.source);
@@ -495,31 +515,39 @@
       el.innerHTML = '<div class="muted" style="padding:10px 0">无审计结果</div>';
       return;
     }
+    let issueRowsHtml = '';
+    for (const r of model.issues) {
+      let issueMsgs = '';
+      for (const i of r.issues || []) {
+        const c = i.level === 'error' ? '#d33' : i.level === 'warn' ? '#a40' : 'var(--cm-ink-500)';
+        issueMsgs += `<div style="font-size:10px;color:${c};padding-left:14px">[${esc(i.level)}] ${esc(i.msg)}</div>`;
+      }
+      issueRowsHtml += `
+            <div style="padding:4px 0;border-bottom:1px dotted var(--cm-bg-100)">
+              <code style="font-size:11px">${esc(r.table)}</code>
+              <span class="muted" style="font-size:10px"> · rows=${r.n_rows}</span>
+              ${issueMsgs}
+            </div>`;
+    }
+    let okRowsHtml = '';
+    for (const r of model.okRows) {
+      okRowsHtml += `
+            <div style="padding:2px 0;font-size:11px;font-family:monospace">
+              <code>${esc(r.table)}</code>
+              <span class="muted" style="float:right">${r.n_rows} rows</span>
+            </div>`;
+    }
     el.innerHTML = `
       ${model.issues.length > 0 ? `
         <div style="border-left:3px solid #a40;padding:6px 10px;background:rgba(170,68,0,0.05);border-radius:4px;margin-bottom:8px">
           <div style="font-weight:600;font-size:12px;margin-bottom:6px">${model.issues.length} 张表有问题</div>
-          ${model.issues.map(r => `
-            <div style="padding:4px 0;border-bottom:1px dotted var(--cm-bg-100)">
-              <code style="font-size:11px">${esc(r.table)}</code>
-              <span class="muted" style="font-size:10px"> · rows=${r.n_rows}</span>
-              ${(r.issues || []).map(i => {
-                const c = i.level === 'error' ? '#d33' : i.level === 'warn' ? '#a40' : 'var(--cm-ink-500)';
-                return `<div style="font-size:10px;color:${c};padding-left:14px">[${esc(i.level)}] ${esc(i.msg)}</div>`;
-              }).join('')}
-            </div>
-          `).join('')}
+          ${issueRowsHtml}
         </div>
       ` : ''}
       <details style="font-size:11px">
         <summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">已通过 ${model.okRows.length} 张</summary>
         <div style="max-height:240px;overflow-y:auto;margin-top:4px">
-          ${model.okRows.map(r => `
-            <div style="padding:2px 0;font-size:11px;font-family:monospace">
-              <code>${esc(r.table)}</code>
-              <span class="muted" style="float:right">${r.n_rows} rows</span>
-            </div>
-          `).join('')}
+          ${okRowsHtml}
         </div>
       </details>
     `;
@@ -553,6 +581,29 @@
       transitional: pillHtml('TRANSITIONAL', 'warn', '已下架或迁移评估中'),
       pending: pillHtml('PENDING', 'info', 'registry 声明, 待接通'),
     };
+    let rowsHtml = '';
+    for (const entry of list) {
+      const r = entry.route;
+      const cur = entry.cur;
+      const tgt = entry.tgt;
+      const health = entry.health;
+      const fb = entry.fallback;
+      const freshness = entry.freshness;
+      const repairLabel = entry.repairLabel;
+      rowsHtml += `
+            <tr style="border-bottom:1px dotted var(--cm-bg-100)" title="${esc(r.notes || '')}">
+              <td><strong>${esc(r.data_name)}</strong><br><small class="muted">${esc(r.notes || '')}</small></td>
+              <td><code>${esc(r.raw_table)}</code></td>
+              <td>${sourcePill(cur.source)}</td>
+              <td><code>${esc(cur.protocol || '—')}</code></td>
+              <td>${STATUS_BADGE[cur.status] || esc(cur.status || '—')}</td>
+              <td>${tgt.source ? `${sourcePill(tgt.source)}<br><small class="muted">${esc(tgt.phase || '')}</small>` : '<span class="muted">—</span>'}</td>
+              <td>${pillHtml(fb.label, fb.tone)}</td>
+              <td>${pillHtml(health.label, health.tone, health.title)}<br><small class="muted">fresh ${esc(freshness)}</small></td>
+              <td><code>${esc(r.step_id || '—')}</code></td>
+              <td><button class="chip chip-outline chip-sm cm-repair-btn" data-route-repair="${esc(r.step_id || '')}" data-route-table="${esc(r.raw_table || '')}">${repairLabel}</button></td>
+            </tr>`;
+    }
     root.innerHTML = `
       <div class="cm-table-scroll">
       <table class="cm-route-table">
@@ -570,31 +621,7 @@
             <th>修复入口</th>
           </tr>
         </thead>
-        <tbody>
-        ${list.map(entry => {
-          const r = entry.route;
-          const cur = entry.cur;
-          const tgt = entry.tgt;
-          const health = entry.health;
-          const fb = entry.fallback;
-          const freshness = entry.freshness;
-          const repairLabel = entry.repairLabel;
-          return `
-            <tr style="border-bottom:1px dotted var(--cm-bg-100)" title="${esc(r.notes || '')}">
-              <td><strong>${esc(r.data_name)}</strong><br><small class="muted">${esc(r.notes || '')}</small></td>
-              <td><code>${esc(r.raw_table)}</code></td>
-              <td>${sourcePill(cur.source)}</td>
-              <td><code>${esc(cur.protocol || '—')}</code></td>
-              <td>${STATUS_BADGE[cur.status] || esc(cur.status || '—')}</td>
-              <td>${tgt.source ? `${sourcePill(tgt.source)}<br><small class="muted">${esc(tgt.phase || '')}</small>` : '<span class="muted">—</span>'}</td>
-              <td>${pillHtml(fb.label, fb.tone)}</td>
-              <td>${pillHtml(health.label, health.tone, health.title)}<br><small class="muted">fresh ${esc(freshness)}</small></td>
-              <td><code>${esc(r.step_id || '—')}</code></td>
-              <td><button class="chip chip-outline chip-sm cm-repair-btn" data-route-repair="${esc(r.step_id || '')}" data-route-table="${esc(r.raw_table || '')}">${repairLabel}</button></td>
-            </tr>
-          `;
-        }).join('')}
-        </tbody>
+        <tbody>${rowsHtml}</tbody>
       </table>
       </div>
     `;
@@ -852,14 +879,14 @@
   let _updateBusy = false;
   function _setUpdateButtonsBusy(busy) {
     _updateBusy = busy;
-    ['ds-smart', 'ds-data', 'ds-stop'].forEach(id => {
+    for (const id of ['ds-smart', 'ds-data', 'ds-stop']) {
       const el = document.getElementById(id);
       if (el) {
         el.disabled = busy && id !== 'ds-stop';   // stop 始终可点
         if (busy && id !== 'ds-stop') el.style.opacity = '0.5';
         else el.style.opacity = '';
       }
-    });
+    }
     const stepRoot = qs('ds-step-grid');
     if (stepRoot) {
       stepRoot.style.pointerEvents = busy ? 'none' : '';
