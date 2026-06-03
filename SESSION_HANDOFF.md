@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 07:34:16 CST
+**Snapshot 时间**: 2026-06-03 08:10:16 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `bdef5ec5 refactor: need_027 source-registration summary helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 22 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 275 |
+| HEAD | `947abce1 refactor: blocked need summary helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 22 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 277 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+947abce1 refactor: blocked need summary helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 22 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
+b6eb97be docs: refresh session handoff snapshot after need_027 source-registration helper extraction | # commit-msg: minimal
 bdef5ec5 refactor: need_027 source-registration summary helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 22 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 33f4b861 docs: refresh session handoff snapshot after chunkyctl need_027 blocker helper extraction | # commit-msg: minimal
 55d1eb28 refactor: chunkyctl need_027 blocker action helpers | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 27 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ bdef5ec5 refactor: need_027 source-registration summary helper | Codex-Reviewed:
 0f421ec4 docs: refresh session handoff snapshot after settings-view data source params model extraction | # commit-msg: minimal
 c364240e feat: extract settings-view data source params model | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 4 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 25a8762a docs: refresh session handoff snapshot after stock-view evidence filter cleanup | # commit-msg: minimal
-b512c0fd refactor: stock-view evidence filter single-pass cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 3 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
-eaaab0a6 docs: refresh session handoff snapshot after stock-view instType cleanup | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
