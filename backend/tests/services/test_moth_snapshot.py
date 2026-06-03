@@ -31,6 +31,27 @@ def test_build_snapshot_command_prefers_path_moth(monkeypatch) -> None:
     assert command[1:] == ["snapshot", "--repo", "/repo", "--profile", "chunkymonkey", "--format", "json"]
 
 
+def test_build_snapshot_command_prefers_matching_repo_local_profile(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("CHUNKYMONKEY_MOTH_COMMAND", raising=False)
+    monkeypatch.setattr(moth_snapshot.shutil, "which", lambda _name: "/usr/local/bin/moth")
+    profile_path = tmp_path / ".moth" / "profile.yaml"
+    profile_path.parent.mkdir()
+    profile_path.write_text("kind: profile\nname: chunkymonkey\n", encoding="utf-8")
+
+    command = moth_snapshot.build_snapshot_command(tmp_path, "chunkymonkey")
+
+    assert command == [
+        "/usr/local/bin/moth",
+        "snapshot",
+        "--repo",
+        str(tmp_path),
+        "--profile",
+        str(profile_path),
+        "--format",
+        "json",
+    ]
+
+
 def test_build_tooling_gate_report_maps_snapshot_fields() -> None:
     report = moth_snapshot.build_tooling_gate_report(
         {

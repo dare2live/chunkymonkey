@@ -10,6 +10,30 @@ from pathlib import Path
 from typing import Any
 
 
+def resolve_profile_reference(repo: Path, profile: str) -> str:
+    profile_path = Path(profile).expanduser()
+    if profile_path.is_absolute() or profile_path.parent != Path("."):
+        return str(profile_path)
+
+    local_profile = repo / ".moth" / "profile.yaml"
+    if not local_profile.exists():
+        return profile
+
+    try:
+        for line in local_profile.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if stripped.startswith("name:"):
+                local_name = stripped.split(":", 1)[1].strip().strip("'\"")
+                if local_name == profile:
+                    return str(local_profile)
+                break
+    except OSError:
+        return profile
+    return profile
+
+
 def _moth_base_command() -> list[str]:
     configured = os.environ.get("CHUNKYMONKEY_MOTH_COMMAND")
     if configured:
@@ -21,13 +45,14 @@ def _moth_base_command() -> list[str]:
 
 
 def build_snapshot_command(repo: Path, profile: str) -> list[str]:
+    profile_ref = resolve_profile_reference(repo, profile)
     return [
         *_moth_base_command(),
         "snapshot",
         "--repo",
         str(repo),
         "--profile",
-        profile,
+        profile_ref,
         "--format",
         "json",
     ]

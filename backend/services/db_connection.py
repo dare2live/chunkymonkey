@@ -10,7 +10,7 @@ from services.duck_adapter import connect as _duck_connect, DuckConn
 DB_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 DB_PATH = DB_DIR / "smartmoney.duckdb"
 
-__all__ = ["DB_DIR", "DB_PATH", "DuckConn", "get_conn"]
+__all__ = ["DB_DIR", "DB_PATH", "DuckConn", "current_db_paths", "get_conn"]
 
 
 def _current_db_paths() -> tuple[Path, Path]:
@@ -20,8 +20,13 @@ def _current_db_paths() -> tuple[Path, Path]:
     return getattr(facade, "DB_DIR", DB_DIR), getattr(facade, "DB_PATH", DB_PATH)
 
 
+def current_db_paths() -> tuple[Path, Path]:
+    """Return the active DB directory/path, honoring services.db monkeypatches."""
+    return _current_db_paths()
+
+
 def get_conn(timeout: int = 30) -> DuckConn:
     """返回 DuckDB 连接。"""
-    db_dir, db_path = _current_db_paths()
+    db_dir, db_path = current_db_paths()
     db_dir.mkdir(parents=True, exist_ok=True)
     return _duck_connect(str(db_path), timeout=timeout)

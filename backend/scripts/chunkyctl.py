@@ -494,6 +494,7 @@ def run_doctor(args: argparse.Namespace) -> int:
         [
             sys.executable,
             "backend/scripts/audit_tdx_data_need_coverage.py",
+            "--summary-only",
             "--format",
             "json",
         ],
@@ -693,6 +694,8 @@ def _worktree_bucket(path: str, status_kind: str) -> str:
         "gcp/cost_tracker.sh",
         "gcp/vm_start.sh",
     }:
+        return "startup_tooling"
+    if path == ".moth/profile.yaml" or path.startswith(".moth/"):
         return "startup_tooling"
 
     if status_kind == "deleted" and _is_top_level_markdown(path):

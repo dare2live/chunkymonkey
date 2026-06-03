@@ -17,6 +17,8 @@ assert SPEC and SPEC.loader
 sys.modules[SPEC.name] = audit_tdx_data_need_coverage
 SPEC.loader.exec_module(audit_tdx_data_need_coverage)
 
+from services import db as db_facade  # noqa: E402
+
 
 class ExecuteOnlyConn:
     def __init__(self, conn):
@@ -462,6 +464,40 @@ def test_audit_tdx_data_need_coverage_writes_expected_rows(tmp_path: Path) -> No
         "production",
         "eligible",
     )
+    assert result["materialized"] is True
+
+
+def test_summarize_tdx_data_need_coverage_does_not_materialize_tables(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    evidence = root / "evidence.md"
+    config = root / "tdx_data_need_coverage.yaml"
+    evidence.parent.mkdir(parents=True)
+    evidence.write_text("source evidence\n", encoding="utf-8")
+    _write_config(config, evidence)
+
+    conn = duckdb.connect(":memory:")
+    try:
+        result = audit_tdx_data_need_coverage.summarize_tdx_data_need_coverage(conn, config)
+        table_count = conn.execute(
+            """
+            SELECT COUNT(*)
+              FROM information_schema.tables
+             WHERE table_name IN (
+                'mart_tdx_data_need_coverage',
+                'dim_data_source_priority',
+                'mart_data_source_reassignment_proposal'
+             )
+            """
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    assert result["coverage_rows"] == 1
+    assert result["priority_rows"] == 1
+    assert result["reassignment_rows"] == 1
+    assert result["need_gap_summary"]["blocked_need_count"] == 0
+    assert result["materialized"] is False
+    assert table_count == 0
 
 
 def test_audit_tdx_data_need_coverage_exact_sync_removes_obsolete_rows(tmp_path: Path) -> None:
@@ -565,3 +601,60 @@ def test_main_emits_json_when_requested(monkeypatch, capsys) -> None:
     assert rc == 0
     assert payload["coverage_rows"] == 1
     assert payload["need_gap_summary"] == {"need_count": 1, "blocked_need_count": 0}
+
+
+def test_main_summary_only_uses_read_only_summary_path(monkeypatch, capsys) -> None:
+    class DummyConn:
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        audit_tdx_data_need_coverage,
+        "get_conn",
+        lambda: pytest.fail("summary-only must not open the write/materialize connection"),
+    )
+    monkeypatch.setattr(audit_tdx_data_need_coverage, "get_read_only_conn", lambda: DummyConn())
+    monkeypatch.setattr(
+        audit_tdx_data_need_coverage,
+        "summarize_tdx_data_need_coverage",
+        lambda conn, config_path=None: {
+            "coverage_rows": 1,
+            "priority_rows": 1,
+            "reassignment_rows": 1,
+            "need_gap_summary": {"need_count": 1, "blocked_need_count": 0},
+            "config_path": "config.yaml",
+            "input_files_read": [],
+            "built_at": "2026-06-01T00:00:00+00:00",
+            "materialized": False,
+        },
+    )
+
+    rc = audit_tdx_data_need_coverage.main(["--summary-only", "--format", "json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert payload["materialized"] is False
+    assert payload["need_gap_summary"] == {"need_count": 1, "blocked_need_count": 0}
+
+
+def test_get_read_only_conn_uses_runtime_db_path(monkeypatch, tmp_path: Path) -> None:
+    runtime_db_dir = tmp_path / "runtime-db"
+    runtime_db_path = runtime_db_dir / "smartmoney.duckdb"
+    captured: dict[str, object] = {}
+
+    class DummyConn:
+        pass
+
+    def fake_duck_connect(path: str, *, read_only: bool, timeout: int) -> DummyConn:
+        captured.update({"path": path, "read_only": read_only, "timeout": timeout})
+        return DummyConn()
+
+    monkeypatch.setattr(db_facade, "DB_DIR", runtime_db_dir)
+    monkeypatch.setattr(db_facade, "DB_PATH", runtime_db_path)
+    monkeypatch.setattr(audit_tdx_data_need_coverage, "duck_connect", fake_duck_connect)
+
+    conn = audit_tdx_data_need_coverage.get_read_only_conn(timeout=7)
+
+    assert isinstance(conn, DummyConn)
+    assert captured == {"path": str(runtime_db_path), "read_only": True, "timeout": 7}
+    assert runtime_db_dir.exists()

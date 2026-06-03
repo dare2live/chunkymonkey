@@ -87,12 +87,26 @@ PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope <reg
 
 | Role | Responsibility |
 |---|---|
-| Controller Codex | Direction, scope, gates, architecture decisions, final merge, shared docs |
-| Read-only agents | Discovery, graph queries, inventory, complexity triage, RCA evidence |
-| Worker agents | Bounded implementation only inside explicitly disjoint file scopes |
+| Controller Codex | Direction, scope, gates, architecture decisions, final merge, shared docs, and immediate critical-path work |
+| Default parallelism | Spawn bounded assistant agents by default for independent sidecar investigation unless the user explicitly says not to parallelize, the tool is unavailable, or the work is tightly coupled |
+| Read-only agents | Discovery, graph queries, data inventory, stage-opt/need coverage/storage triage, complexity triage, RCA evidence |
+| Worker agents | Bounded implementation only inside explicitly disjoint file scopes; never revert controller or peer work |
 
-Parallelize read-only work and independent tests. Serialize shared docs,
-commits, GCP, DuckDB writes, Optuna studies, and edits to the same file.
+Parallelize read-only work and independent tests. DuckDB-heavy audits may run in
+parallel only when they use explicit read-only connections. Serialize shared
+docs, commits, GCP, materializing/write DuckDB scripts, shared output paths,
+Optuna studies, and edits to the same file.
+
+## Moth Ownership
+
+Moth owns shared tooling state for this repo: profile discovery, evidence paths,
+dirty worktree status, CodeGraph freshness, and complexity baseline/current
+summaries. The active repo-local profile is `.moth/profile.yaml`.
+
+ChunkyMonkey owns business gate logic. Keep `stage_opt`, `need_027`,
+`storage_payload`, `data_health`, universe truth-source rules, and test-tool
+validity rules in repo audit scripts, config, and `chunkyctl`; Moth may read or
+surface their generated evidence, but should not redefine their rules.
 
 ## GCP Controlled Use
 

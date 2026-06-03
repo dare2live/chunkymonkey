@@ -1,0 +1,25 @@
+kind: profile
+name: chunkymonkey
+repo_path: /Users/dp/Documents/M/stock/chunkymonkey
+codegraph_root: .
+complexity_command:
+  - python
+  - /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py
+  - /Users/dp/Documents/M/stock/chunkymonkey
+  - --format
+  - markdown
+complexity_baseline_path: data/reports/tooling/complexity_baseline.json
+evidence_paths:
+  agents: AGENTS.md
+  goal: goal.md
+  handoff: SESSION_HANDOFF.md
+  workflow_checkpoint: analysis/workflow_checkpoint.md
+  quickstart: docs/chunkyctl_session_quickstart.md
+  engineering_governance: docs/engineering_governance.md
+  docs: docs
+  tooling_reports: data/reports/tooling
+notes: >
+  Controller-first ChunkyMonkey profile. Moth owns shared tooling state such as
+  dirty worktree, CodeGraph, complexity, and evidence path discovery. Repo audit
+  scripts and chunkyctl own business gates such as stage_opt, need_027,
+  storage_payload, and data_health.

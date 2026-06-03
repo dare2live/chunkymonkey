@@ -279,6 +279,7 @@ def test_worktree_report_classifies_dirty_entries_by_review_bucket(tmp_path: Pat
                 " M scripts/cm_resume.sh",
                 " M scripts/install_resilience.sh",
                 " M scripts/session_snapshot.sh",
+                "?? .moth/profile.yaml",
                 " M backend/scripts/run_phase4_full_chain.sh",
                 " M configs/data_governance.yaml",
                 "?? scratch.tmp",
@@ -287,7 +288,7 @@ def test_worktree_report_classifies_dirty_entries_by_review_bucket(tmp_path: Pat
     )
 
     assert report["verdict"] == "FAIL"
-    assert report["summary"]["total"] == 24
+    assert report["summary"]["total"] == 25
     assert report["summary"]["unknown_count"] == 1
     assert report["summary"]["codegraph_candidate_untracked_count"] == 2
     assert report["summary"]["codegraph_candidate_untracked_bucket_counts"] == {
@@ -296,7 +297,7 @@ def test_worktree_report_classifies_dirty_entries_by_review_bucket(tmp_path: Pat
     }
     assert report["summary"]["bucket_counts"] == {
         "controller_state": 2,
-        "startup_tooling": 6,
+        "startup_tooling": 7,
         "docs_archive_moves": 2,
         "updater_split": 2,
         "universe_governance": 1,
@@ -494,6 +495,7 @@ def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_pa
                 "stderr": "",
             }
         if "audit_tdx_data_need_coverage.py" in cmd_text:
+            assert "--summary-only" in cmd
             return {
                 "cmd": cmd,
                 "returncode": 0,
@@ -656,6 +658,7 @@ def test_doctor_prioritizes_blocking_yellow_health_items(monkeypatch, tmp_path: 
                 "stderr": "",
             }
         if "audit_tdx_data_need_coverage.py" in cmd_text:
+            assert "--summary-only" in cmd
             return {
                 "cmd": cmd,
                 "returncode": 0,

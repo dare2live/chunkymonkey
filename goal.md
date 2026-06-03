@@ -8,6 +8,21 @@
 - 项目恢复路径同步改为手动刷新：中断后先在仓库运行 `bash scripts/cm_resume.sh`，再让新 Codex 会话按 `docs/chunkyctl_session_quickstart.md` 完成 live startup checks。`SESSION_HANDOFF.md` 只作为 context-only snapshot，不能替代 `doctor --fast`、`worktree`、当前 crontab/hooks 实况。
 - `scripts/install_resilience.sh` 默认不再安装 legacy cron/launchd 自动化；如确需恢复旧自动化，必须显式设置 `CHUNKYMONKEY_ENABLE_LEGACY_AUTOMATION=1`。这避免 stale handoff 被新 Codex 会话静默加载，也避免 cron 在 macOS TCC/FDA 约束下反复产生失败日志或系统邮件。
 
+## 2026-06-03 — controller/agent parallelism and blocker triage update
+
+- 用户已明确纠正执行模型：Codex 是总指挥，其他 agents 是不同角色助手；默认应并行派 bounded sidecar agents，只有用户明确要求不并行、工具不可用、或下一步和 controller critical path 紧耦合时才不并行。`AGENTS.md` 与 `docs/chunkyctl_session_quickstart.md` 已同步这条 opt-out parallelism 规则；DB-heavy 命令仍要区分 read-only 与 materializing/write 连接，避免只读调查互相抢 DuckDB 写锁。
+- `audit_tdx_data_need_coverage.py` 已新增 `--summary-only` 只读摘要路径，`chunkyctl doctor` 改用该路径读取 `need_coverage`，避免 startup/并行 triage 时为了展示 blocked summary 去 exact-sync 写 `mart_tdx_data_need_coverage` / `dim_data_source_priority` / `mart_data_source_reassignment_proposal`。
+- `need_027` 最新 controller 复核：`PYTHONPATH=backend python backend/scripts/probe_source_capability.py --capability individual_fund_flow --prefer-source akshare --kwargs-json '{"stock":"600519","market":"sh"}'` 当前 `status=ok`，`source_used=akshare`，`row_count=120`，日期范围 `2025-12-01 -> 2026-06-02`。因此 blocker 不再按“外部源完全不可用”等待处理，而要切到小批量 exact-flow probe、PIT/freshness、writer/watermark、failure_queue resolve 试点；`raw_fund_flow_daily` 仍 stale/deprecated，研究侧 rank snapshot 仍不能当 production fallback。
+- `stage-opt` explorer 复核后仍是 `P1 / upstream_candidate_supply`：当前 `ready_coverage_pct=67.76`，`below_min_signals=101,824`，weakest formulas 为 `ma_base_breakout` / `gs_pullback_confirm` / `volume_base_breakout`；不要继续靠删除弱公式或局部阈值放宽美化 coverage。下一刀应先增强 `audit_stage_opt_candidate_supply.py` 的 registry/family/stage×formula blocked matrix 和 attrition 输出，再决定 upstream candidate contract/schema。
+- `storage_payload` 当前为 0 FAIL / 2 WARN，两个 WARN 都是 `formula_engine` reason JSON 总量 cap 超标：`fact_technical_trigger.reason_codes_json` 与 `mart_macd_state_history.reason_codes_json` 单行很小、无 recursive/path hits。它低于 `need_027` 与 stage-opt 主线优先级；后续单独做 retention/cap recalibration slice，不在当前 blocker 切口里抢主线。
+
+## 2026-06-03 — Codex local ops and Moth profile rules captured
+
+- 新增全局 skill `/Users/dp/.codex/skills/codex-local-ops`，用于 Codex Mac app/CLI 本地启动项、hooks、skills/MCP、plugin sync 429、remote compact 前端错误、`.codex/worktrees`、Terminal system mail、GCP monitor 残留等问题。全局 `/Users/dp/.codex/AGENTS.md` 已要求这类任务先用 `$codex-local-ops`，并把默认并行修正为 opt-out。
+- `codex-local-ops` 内置 `scripts/probe_plugin_startup_sync.sh`，用 fake `git` 短时探测 `codex app-server` 启动期 remote 调用。当前验证显示 baseline、`plugin_sharing=false`、`remote_plugin=false`、local marketplace override 仍会 `ls-remote` `openai/plugins.git` 与 `openai/codex-plugin-cc.git`；只有 `plugins=false` 不调用 git，但会禁用插件系统，因此只能作为用户明确接受的最后手段。
+- 新增 repo-local Moth profile `.moth/profile.yaml`，并同步 `/Users/dp/Documents/M/moth/profiles/chunkymonkey.yaml`；`backend/services/moth_snapshot.py` 现在会把匹配的 `chunkymonkey` profile 自动解析到 repo-local profile。Moth 只拥有 shared tooling metadata/evidence paths/CodeGraph/complexity/dirty state，`stage_opt`、`need_027`、`storage_payload`、`data_health` 仍由 ChunkyMonkey audit scripts 与 `chunkyctl` 拥有规则。
+- 验证：`quick_validate.py /Users/dp/.codex/skills/codex-local-ops` PASS；`moth profile chunkymonkey --format json` 能看到新增 evidence paths；`PYTHONPATH=backend python -m pytest -q backend/tests/services/test_moth_snapshot.py backend/tests/scripts/test_chunkyctl.py backend/tests/scripts/test_audit_tdx_data_need_coverage.py` 59 passed；`scripts/chunkyctl audit --run ... .moth/profile.yaml` PASS；`scripts/chunkyctl worktree --format markdown` unknown=0；`scripts/chunkyctl doctor --fast` 仍为 WARN，但 data_health/test_tool/universe PASS，剩余 WARN 是已知 dirty/complexity/storage/stage-opt/need_027。
+
 
 ## 2026-06-03 — strategy reframe: data-health blockers first
 

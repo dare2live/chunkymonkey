@@ -23,6 +23,11 @@ then apply the rules below in Codex terms.
   `moth sync` as the source of truth; repo-local wrappers like
   `scripts/chunkyctl doctor --fast` and `scripts/chunkyctl preflight` should
   consume that layer rather than re-implementing their own parser.
+- The repo-local Moth profile is `.moth/profile.yaml`. Use it for shared
+  tooling metadata and evidence paths only. Business gate logic such as
+  `stage_opt`, `need_027`, `storage_payload`, and `data_health` stays owned by
+  ChunkyMonkey audit scripts and `chunkyctl`, with Moth consuming their outputs
+  instead of re-defining their rules.
 
 ## Codegraph + Complexity Review
 
@@ -73,8 +78,12 @@ current FAIL/WARN state in `goal.md` or handoff.
 
 Use parallelism aggressively when scopes do not conflict, especially for
 read-only discovery, code-path audits, test runs, and independent file scopes.
-The durable policy lives in `docs/engineering_governance.md`; keep this
-section and that file aligned when changing workflow rules.
+For this repo, parallel agent work is opt-out: Codex should act as the
+controller and spawn bounded assistant agents by default for independent
+sidecar investigation unless the user explicitly asks not to parallelize, the
+tool is unavailable, or the next step is tightly coupled to the controller's
+critical path. The durable policy lives in `docs/engineering_governance.md`;
+keep this section and that file aligned when changing workflow rules.
 
 Default Codex mode for this repo is controller-led execution: Codex is the
 controller/architect/reviewer, not just a single-file implementer. The
@@ -92,7 +101,9 @@ are disjoint and explicitly owned.
 Safe to parallelize:
 - documentation reading and summarization;
 - CodeGraph/context queries;
-- read-only DuckDB inventory with read-only connections;
+- read-only DuckDB inventory with read-only connections, while DB-heavy audits
+  that may open write/materialization handles stay serialized unless they have
+  an explicit read-only mode;
 - independent code audits;
 - tests that do not write the same DB/output path;
 - implementation tasks with disjoint file ownership.

@@ -15,7 +15,8 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.data_sources import get_registry  # noqa: E402
-from services.db import get_conn  # noqa: E402
+from services.db import current_db_paths, get_conn  # noqa: E402
+from services.duck_adapter import connect as duck_connect  # noqa: E402
 
 logger = logging.getLogger("tdx_data_need_coverage")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
@@ -518,11 +519,40 @@ def audit_tdx_data_need_coverage(conn: Any, config_path: Path | None = None) -> 
         "config_path": config["config_path"],
         "input_files_read": input_inventory,
         "built_at": built_at,
+        "materialized": True,
     }
+
+
+def summarize_tdx_data_need_coverage(conn: Any, config_path: Path | None = None) -> dict[str, Any]:
+    config = load_tdx_data_need_config(config_path)
+    needs = config["needs"]
+    priorities = config["priorities"]
+    reassignments = config["reassignments"]
+    return {
+        "coverage_rows": len(needs),
+        "priority_rows": len(priorities),
+        "reassignment_rows": len(reassignments),
+        "need_gap_summary": _summarize_need_gaps(conn, needs),
+        "config_path": config["config_path"],
+        "input_files_read": _read_input_inventory(config["input_paths"]),
+        "built_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "materialized": False,
+    }
+
+
+def get_read_only_conn(timeout: int = 60) -> Any:
+    db_dir, db_path = current_db_paths()
+    db_dir.mkdir(parents=True, exist_ok=True)
+    return duck_connect(str(db_path), read_only=True, timeout=timeout)
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Read config and failure-queue evidence without materializing coverage tables.",
+    )
     parser.add_argument(
         "--format",
         choices=("text", "json"),
@@ -534,9 +564,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
-    conn = get_conn()
+    conn = get_read_only_conn() if args.summary_only else get_conn()
     try:
-        result = audit_tdx_data_need_coverage(conn)
+        result = (
+            summarize_tdx_data_need_coverage(conn)
+            if args.summary_only
+            else audit_tdx_data_need_coverage(conn)
+        )
         if args.format == "json":
             print(json.dumps(result, ensure_ascii=False, sort_keys=True, default=str))
         else:
