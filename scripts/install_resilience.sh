@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
-# install_resilience — 1 命令装齐 session resilience 全部组件.
+# install_resilience — legacy 自动恢复组件管理.
 #
-# 装的:
-#   1. SessionStart hook in ~/.claude/settings.json (claude 启动 auto-inject SESSION_HANDOFF.md)
-#   2. Cron: */5 * * * * session_snapshot.sh + */10 * * * * workflow_checkpoint.sh
-#   3. launchd plist: com.chunkymonkey.phase5-monitor (5min probe, VM TERMINATED 自动 pull)
+# Codex app/CLI 当前默认不再安装 SessionStart handoff auto-inject 或 cron
+# snapshot 自动刷新，避免 stale handoff 在新会话中被静默加载。推荐恢复路径是:
+#   bash scripts/cm_resume.sh
+#   然后在新 Codex 会话中按 docs/chunkyctl_session_quickstart.md 启动。
+#
+# legacy opt-in 装的:
+#   1. Cron: */5 * * * * session_snapshot.sh + */10 * * * * workflow_checkpoint.sh
+#   2. launchd plist: com.chunkymonkey.phase5-monitor (5min probe, VM TERMINATED 自动 pull)
 #
 # Usage:
-#   bash scripts/install_resilience.sh             # install all
+#   bash scripts/install_resilience.sh             # no-op status; does not install legacy automation
+#   CHUNKYMONKEY_ENABLE_LEGACY_AUTOMATION=1 bash scripts/install_resilience.sh
 #   bash scripts/install_resilience.sh --uninstall # remove all
 #   bash scripts/install_resilience.sh --status    # check install state
 #
@@ -21,30 +26,39 @@ MODE="${1:-install}"
 
 if [ "$MODE" = "--status" ]; then
     echo "=== Resilience install status ==="
-    # 1. SessionStart hook
-    if grep -q "session_start_handoff" ~/.claude/settings.json 2>/dev/null; then
-        echo "  [OK]   SessionStart hook (~/.claude/settings.json)"
+    # 1. Codex SessionStart hook
+    if grep -q "session_start_handoff" ~/.codex/hooks.json 2>/dev/null; then
+        echo "  [WARN] Codex SessionStart handoff hook enabled (legacy auto-inject)"
     else
-        echo "  [MISS] SessionStart hook"
+        echo "  [OK]   Codex SessionStart handoff hook disabled"
     fi
     # 2. Cron
-    if crontab -l 2>/dev/null | grep -q "session_snapshot"; then
-        echo "  [OK]   cron session_snapshot 5min"
+    CRONTAB_TEXT="$(crontab -l 2>/dev/null || true)"
+    cron_snapshot_enabled=0
+    cron_workflow_enabled=0
+    if printf '%s\n' "$CRONTAB_TEXT" | grep -q "session_snapshot"; then
+        cron_snapshot_enabled=1
+        echo "  [WARN] cron session_snapshot 5min enabled (legacy auto-update)"
     else
-        echo "  [MISS] cron session_snapshot"
+        echo "  [OK]   cron session_snapshot disabled"
     fi
-    if crontab -l 2>/dev/null | grep -q "workflow_checkpoint"; then
-        echo "  [OK]   cron workflow_checkpoint 10min"
+    if printf '%s\n' "$CRONTAB_TEXT" | grep -q "workflow_checkpoint"; then
+        cron_workflow_enabled=1
+        echo "  [WARN] cron workflow_checkpoint 10min enabled (legacy auto-update)"
     else
-        echo "  [MISS] cron workflow_checkpoint"
+        echo "  [OK]   cron workflow_checkpoint disabled"
     fi
     cron_blocked=0
-    for log in /tmp/session_snapshot.log /tmp/workflow_checkpoint.log; do
-        if [[ -f "$log" ]] && tail -20 "$log" 2>/dev/null | grep -qi "Operation not permitted"; then
-            echo "  [FAIL] cron runtime blocked: $log has Operation not permitted"
+    if [[ "$cron_snapshot_enabled" == "1" && -f /tmp/session_snapshot.log ]] \
+        && tail -20 /tmp/session_snapshot.log 2>/dev/null | grep -qi "Operation not permitted"; then
+            echo "  [FAIL] cron runtime blocked: /tmp/session_snapshot.log has Operation not permitted"
             cron_blocked=1
-        fi
-    done
+    fi
+    if [[ "$cron_workflow_enabled" == "1" && -f /tmp/workflow_checkpoint.log ]] \
+        && tail -20 /tmp/workflow_checkpoint.log 2>/dev/null | grep -qi "Operation not permitted"; then
+            echo "  [FAIL] cron runtime blocked: /tmp/workflow_checkpoint.log has Operation not permitted"
+            cron_blocked=1
+    fi
     if [[ "$cron_blocked" == "1" ]]; then
         echo "         ACTION: 手动恢复先跑 bash scripts/cm_resume.sh;"
         echo "                 长期修复需给 cron/bash Full Disk Access 或把 repo 移出 Documents."
@@ -69,22 +83,25 @@ if [ "$MODE" = "--uninstall" ]; then
         rm -f ~/Library/LaunchAgents/com.chunkymonkey.phase5-monitor.plist
         echo "  launchd unloaded"
     fi
-    echo "  (SessionStart hook in ~/.claude/settings.json kept — manual remove if needed)"
+    echo "  (Codex SessionStart hook is managed in ~/.codex/hooks.json; verify with --status)"
+    exit 0
+fi
+
+if [[ "${CHUNKYMONKEY_ENABLE_LEGACY_AUTOMATION:-0}" != "1" ]]; then
+    echo "=== Legacy automation install disabled by default ==="
+    echo "Codex app/CLI should use manual resume:"
+    echo "  bash scripts/cm_resume.sh"
+    echo "To intentionally restore legacy cron/launchd automation, rerun with:"
+    echo "  CHUNKYMONKEY_ENABLE_LEGACY_AUTOMATION=1 bash scripts/install_resilience.sh"
+    echo ""
+    bash "$0" --status
     exit 0
 fi
 
 echo "=== Install resilience ==="
 
-# 1. SessionStart hook check (we don't auto-edit ~/.claude/settings.json — user 已 install commit edc2bce5)
-if grep -q "session_start_handoff" ~/.claude/settings.json 2>/dev/null; then
-    echo "[1/3] SessionStart hook 已配置 (skip)"
-else
-    echo "[1/3] WARN: SessionStart hook 未配置. Manual:"
-    echo "      edit ~/.claude/settings.json hooks.SessionStart 加 bash ~/.claude/hooks/session_start_handoff.sh"
-fi
-
-# 2. Install cron (5min snapshot + 10min workflow if script exists)
-echo "[2/3] Install cron entries..."
+# 1. Install cron (5min snapshot + 10min workflow if script exists)
+echo "[1/2] Install legacy cron entries..."
 CRON_TMP=$(mktemp)
 crontab -l 2>/dev/null | grep -v "session_snapshot\|workflow_checkpoint" > "$CRON_TMP" || true
 echo "*/5 * * * * cd $REPO_ROOT && bash scripts/session_snapshot.sh > /tmp/session_snapshot.log 2>&1" >> "$CRON_TMP"
@@ -96,8 +113,8 @@ rm -f "$CRON_TMP"
 echo "      cron installed"
 crontab -l | grep -E "session_snapshot|workflow_checkpoint" | sed 's/^/        /'
 
-# 3. Install launchd plist for phase5-monitor probe (5min)
-echo "[3/3] Install launchd phase5-monitor..."
+# 2. Install launchd plist for phase5-monitor probe (5min)
+echo "[2/2] Install launchd phase5-monitor..."
 if [ -f "configs/launchd/com.chunkymonkey.phase5-monitor.plist" ]; then
     cp configs/launchd/com.chunkymonkey.phase5-monitor.plist ~/Library/LaunchAgents/
     launchctl unload ~/Library/LaunchAgents/com.chunkymonkey.phase5-monitor.plist 2>/dev/null || true
@@ -115,4 +132,4 @@ echo "中断恢复用法:"
 echo "  1. Mac 重启 / terminal 崩 后, 启 terminal"
 echo "  2. cd $REPO_ROOT"
 echo "  3. bash scripts/cm_resume.sh    # 看当前 state"
-echo "  4. claude                        # SessionStart hook 自动 inject handoff"
+echo "  4. 新 Codex 会话按 docs/chunkyctl_session_quickstart.md 启动"

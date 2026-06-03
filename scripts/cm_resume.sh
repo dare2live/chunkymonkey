@@ -4,15 +4,14 @@
 # 用户在 terminal 跑这个, 输出:
 #   1. 刷新 SESSION_HANDOFF.md (调 session_snapshot.sh)
 #   2. 刷新 analysis/workflow_checkpoint.md (调 workflow_checkpoint.sh if exists)
-#   3. 打印简短 "粘贴进 claude 的 prompt"
+#   3. 打印简短 "粘贴进 Codex 的 prompt"
 #
 # 用户中断后流程 (推荐):
 #   $ cd /Users/dp/Documents/M/stock/chunkymonkey
 #   $ bash scripts/cm_resume.sh          # 1 命令出 prompt
-#   $ claude                              # 启动 claude (SessionStart hook auto-inject)
-#   (claude 看到 handoff 自动按 next_action 继续)
+#   新 Codex 会话输入脚本输出的推荐 prompt.
 #
-# 如果 SessionStart hook 失败 (e.g. claude 没装 hook), 用户 copy 输出的 prompt 粘进 claude:
+# 如果需要显式恢复，用户 copy 输出的 prompt 粘进 Codex:
 #   "中断恢复. 看 SESSION_HANDOFF.md + analysis/workflow_checkpoint.md, 按 next_action 继续."
 
 set -e
@@ -57,41 +56,36 @@ echo "  24h commits:      $COMMITS_24H"
 echo "  Next action:      $NEXT_ACTION"
 echo ""
 echo "============================================================"
-echo "  用户怎么继续 (2 选 1)"
+echo "  用户怎么继续"
 echo "============================================================"
 echo ""
-echo "  方案 A 推荐 (SessionStart hook 已配置时, 1 步):"
-echo "    \$ claude"
-echo "    # SessionStart hook 自动 inject SESSION_HANDOFF.md, claude 看到立即继续"
+echo "  推荐:"
+echo "    请按照 docs/chunkyctl_session_quickstart.md 接手本项目，先完成启动检查，再看 SESSION_HANDOFF.md 的 next_action。"
 echo ""
-echo "  方案 B (hook 失败 / 想显式控制):"
-echo "    \$ claude"
-echo "    用户输入:  继续, 看 SESSION_HANDOFF.md 按 next_action 推进"
+echo "  简短恢复:"
+echo "    继续, 看 SESSION_HANDOFF.md 和 analysis/workflow_checkpoint.md, 按 next_action 推进"
 echo ""
 echo "  方案 C (复杂多步流程衔接, workflow_checkpoint 可用时):"
-echo "    \$ claude"
 echo "    用户输入:  从 analysis/workflow_checkpoint.md 推断当前 pipeline step, 按 next_recovery_command 继续"
 echo ""
 echo "============================================================"
 echo "  Resilience 配置 verify"
 echo "============================================================"
-# Verify SessionStart hook installed
-if grep -q "session_start_handoff" ~/.claude/settings.json 2>/dev/null; then
-    echo "  [OK]   SessionStart hook 已配置 (~/.claude/settings.json)"
+# Verify Codex SessionStart hook disabled
+if grep -q "session_start_handoff" ~/.codex/hooks.json 2>/dev/null; then
+    echo "  [WARN] Codex SessionStart handoff hook 仍启用 — 可能自动注入 stale handoff"
 else
-    echo "  [WARN] SessionStart hook 未配置 — claude 启动不会 auto-inject"
-    echo "         install: 见 ~/.claude/hooks/session_start_handoff.sh"
+    echo "  [OK]   Codex SessionStart handoff auto-inject 未启用"
 fi
-# Verify cron snapshot installed
+# Verify cron snapshot disabled by default
 if crontab -l 2>/dev/null | grep -q "session_snapshot"; then
-    echo "  [OK]   cron snapshot 已 install (5min auto-update)"
+    echo "  [WARN] cron snapshot 已 install (legacy auto-update)"
     if [[ -f /tmp/session_snapshot.log ]] && tail -20 /tmp/session_snapshot.log 2>/dev/null | grep -qi "Operation not permitted"; then
         echo "  [FAIL] cron snapshot runtime blocked: /tmp/session_snapshot.log has Operation not permitted"
         echo "         本次 cm_resume 已手动刷新; 长期修复需给 cron/bash Full Disk Access 或把 repo 移出 Documents."
     fi
 else
-    echo "  [WARN] cron snapshot 未 install — handoff 不会 auto-refresh"
-    echo "         install: bash scripts/install_resilience.sh"
+    echo "  [OK]   cron snapshot 未启用; handoff 只按需手动刷新"
 fi
 # Verify launchd monitor probe
 if launchctl list 2>/dev/null | grep -q "phase5-monitor"; then

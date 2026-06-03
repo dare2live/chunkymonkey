@@ -13,6 +13,12 @@ then continue from the current user request, `goal.md`, and the latest handoff.
 This entrypoint is for the whole project lifecycle, not only the current
 architecture-reform phase.
 
+Codex app/CLI should not rely on hidden SessionStart handoff injection or cron
+snapshot refresh. If the previous session may have crashed, first run
+`bash scripts/cm_resume.sh` in the repo, then give the new Codex session the
+instruction above. Treat `SESSION_HANDOFF.md` as a context-only snapshot and
+verify live state with `doctor --fast` before trusting it.
+
 ## Startup Sequence
 
 1. Read the required docs:
@@ -117,6 +123,7 @@ incomplete until this document is updated and the final handoff states whether
 | Moment | Command | Purpose |
 |---|---|---|
 | New session | Point Codex at this document | Lowest-friction default |
+| Crash/terminal recovery | `bash scripts/cm_resume.sh` | Refresh `SESSION_HANDOFF.md` and print the prompt to give Codex; no hidden auto-inject |
 | Session startup | `scripts/chunkyctl doctor --fast` | Get dirty worktree, CodeGraph, complexity, storage-payload, and system data-health snapshot quickly |
 | Dirty worktree reported | `scripts/chunkyctl worktree --format markdown` | Show a readable dirty-file bucket summary without mutating git |
 | Dirty bucket drilldown | `scripts/chunkyctl worktree --bucket <name> --format markdown` | Review one bucket's entries and action before staging/deleting anything |

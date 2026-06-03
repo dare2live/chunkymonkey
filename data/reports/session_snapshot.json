@@ -1,11 +1,11 @@
 {
-  "snapshot_at": "2026-06-03 13:26:50 CST",
+  "snapshot_at": "2026-06-03 14:16:15 CST",
   "git": {
     "branch": "main",
-    "head_hash": "5fd6d5c9",
-    "head_msg": "5fd6d5c9 docs: record need_027 fallback snapshot audit evidence",
-    "commits_24h": 264,
-    "uncommitted_files": 0
+    "head_hash": "4d5b4343",
+    "head_msg": "4d5b4343 refactor: flatten app etf sync render loops",
+    "commits_24h": 263,
+    "uncommitted_files": 7
   },
   "retrain": {
     "model_id": "lgbm_phase5_v9b_20260523T083000Z",
@@ -25,5 +25,5 @@
     "pct_of_budget": "25.2",
     "remaining_hours_spot": "105.9"
   },
-  "next_action": "continue current goal blockers \u2014 stage-opt structural blocker triage / need_027 blocked-gap triage"
+  "next_action": "7 uncommitted files \u2014 git status \u770b + bash scripts/safe_commit.sh"
 }

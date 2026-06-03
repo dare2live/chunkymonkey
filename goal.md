@@ -2,6 +2,12 @@
 
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
+## 2026-06-03 — Codex resume automation re-baselined to manual refresh
+
+- Codex app/CLI 的隐藏启动加载项已收口：`~/.codex/hooks.json` 不再启用 `SessionStart -> session_start_handoff.sh`，用户 crontab 不再包含 `scripts/session_snapshot.sh` / `scripts/workflow_checkpoint.sh` 周期任务，`check_pending_work.sh` 也不再在每次 prompt 隐式查询 GCP VM 状态。
+- 项目恢复路径同步改为手动刷新：中断后先在仓库运行 `bash scripts/cm_resume.sh`，再让新 Codex 会话按 `docs/chunkyctl_session_quickstart.md` 完成 live startup checks。`SESSION_HANDOFF.md` 只作为 context-only snapshot，不能替代 `doctor --fast`、`worktree`、当前 crontab/hooks 实况。
+- `scripts/install_resilience.sh` 默认不再安装 legacy cron/launchd 自动化；如确需恢复旧自动化，必须显式设置 `CHUNKYMONKEY_ENABLE_LEGACY_AUTOMATION=1`。这避免 stale handoff 被新 Codex 会话静默加载，也避免 cron 在 macOS TCC/FDA 约束下反复产生失败日志或系统邮件。
+
 
 ## 2026-06-03 — strategy reframe: data-health blockers first
 

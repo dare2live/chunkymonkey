@@ -1,8 +1,8 @@
-# SESSION HANDOFF — Auto-updated by cron
+# SESSION HANDOFF — Manual resume snapshot
 
-> 此文件由 `scripts/session_snapshot.sh` 每 5 min cron 自动更新.
-> Claude session start 时 read 此文件即可无缝衔接, 不需要用户 paste context.
-> Mac 重启 / terminal 崩 后, 启动 Claude → 自动 read → 立即知道当前状态 + next action.
+> 此文件由 `scripts/session_snapshot.sh` / `scripts/cm_resume.sh` 按需手动刷新.
+> Codex app/CLI 不再通过 cron 或 SessionStart hook 自动注入本 handoff，避免 stale state 被静默加载.
+> 新会话应先按 `docs/chunkyctl_session_quickstart.md` 做启动检查，再把本文件当 context-only 状态快照.
 > 业务 pipeline 进度另见 `analysis/workflow_checkpoint.md` (pull/audit/paper_sim/KPI/gate/decision).
 
 ## 中断恢复用法 (用户必读)
@@ -11,21 +11,20 @@
 ```
 cd /Users/dp/Documents/M/stock/chunkymonkey
 bash scripts/cm_resume.sh          # 1 命令出当前 state + prompt 模板
-claude                              # SessionStart hook 自动 inject 本 handoff
 ```
 
-### 2. 用户输入哪句话给 Claude:
-- **方案 A** (SessionStart hook 配好, 推荐): 不用输入, hook 自动 inject 本 handoff, Claude 看到立即继续 next_action
-- **方案 B** (hook fail / 想显式 trigger): 输入 `继续, 看 SESSION_HANDOFF.md 按 next_action 推进`
-- **方案 C** (复杂多步流程): 输入 `从 analysis/workflow_checkpoint.md 推断当前 pipeline step, 按 next_recovery_command 继续`
+### 2. 新 Codex 会话输入哪句话:
+- **推荐**: `请按照 docs/chunkyctl_session_quickstart.md 接手本项目，先完成启动检查，再看 SESSION_HANDOFF.md 的 next_action。`
+- **简短恢复**: `继续，看 SESSION_HANDOFF.md 和 analysis/workflow_checkpoint.md，按 next_action 推进。`
+- **复杂 pipeline**: `从 analysis/workflow_checkpoint.md 推断当前 pipeline step，按 next_recovery_command 继续。`
 
-### 3. 一次性 install 全部 resilience:
+### 3. 自动注入状态:
 ```
-bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
-bash scripts/install_resilience.sh --status   # check 装好没
+bash scripts/install_resilience.sh --status
 ```
+默认不再安装 cron snapshot / SessionStart auto-inject；如需恢复旧自动化，必须显式设置脚本里的 legacy opt-in。
 
-**Snapshot 时间**: 2026-06-03 13:26:50 CST
+**Snapshot 时间**: 2026-06-03 14:16:15 CST
 
 ## 主线状态
 
@@ -61,13 +60,16 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `5fd6d5c9 docs: record need_027 fallback snapshot audit evidence` |
-| 最近 24h commits | 264 |
-| 未 commit 文件 | 0 |
+| HEAD | `4d5b4343 refactor: flatten app etf sync render loops` |
+| 最近 24h commits | 263 |
+| 未 commit 文件 | 7 |
 
 ### 最近 10 commits
 
 ```
+4d5b4343 refactor: flatten app etf sync render loops
+3e894e9a refactor: flatten settings view render loops
+154f5407 docs: refresh handoff snapshot after commit
 5fd6d5c9 docs: record need_027 fallback snapshot audit evidence
 5831b37d docs: refresh handoff after rank snapshot fallback probe
 08f25e1b docs: record rank snapshot fallback probe
@@ -75,14 +77,11 @@ d2280cc2 docs: refresh session handoff snapshot after live boundary tighten
 d83f7d5f feat: narrow stage-opt live supply
 8dcfcdac docs: refresh session handoff after data-health pass | # commit-msg: minimal
 277d589a refactor: data-view hot path second pass
-3838c577 refactor: flatten data-view render hot paths
-b1be391d feat: expand stage-opt supply with challenger formulas
-d97131fd docs: refresh handoff snapshot after data-health blocker triage | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**continue current goal blockers — stage-opt structural blocker triage / need_027 blocked-gap triage**
+**7 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 
@@ -92,17 +91,17 @@ d97131fd docs: refresh handoff snapshot after data-health blocker triage | # com
 | F2 per-trial checkpoint | deployed (`data/reports/optuna/$MODEL_ID.best.json` atomic write) |
 | nohup + setsid + disown | retrain detached, SSH 断不影响 |
 | monitor MAX_DURATION_HOURS=24 | Mac sleep proof |
-| cron session_snapshot.sh | 5min auto update, 不依赖 Claude session 活 |
-| SessionStart hook (~/.claude/settings.json) | 启动时 auto-read SESSION_HANDOFF.md |
+| manual session_snapshot.sh | active; run via `bash scripts/cm_resume.sh` |
+| cron session_snapshot.sh | disabled by default for Codex app/CLI |
+| SessionStart handoff auto-inject | disabled by default for Codex app/CLI |
 | Stop hook session_rule_audit | 防 multi-agent / continuous-mode 违规 |
 
 ## 一旦中断如何无缝衔接
 
-1. **Mac 重启 / terminal 崩 后**: 启动 terminal → `cd /Users/dp/Documents/M/stock/chunkymonkey` → 启动 `claude`
-2. Claude SessionStart hook 自动 cat `SESSION_HANDOFF.md` 注入 context
-3. Claude 看到: 当前主线状态 / local artifacts / next action
-4. Claude 按 NEXT ACTION 执行本地工作 (audit / compare / commit / etc)
-5. 用户 0 需要 paste 长 summary
+1. **Mac 重启 / terminal 崩 后**: 启动 terminal → `cd /Users/dp/Documents/M/stock/chunkymonkey`
+2. 运行 `bash scripts/cm_resume.sh` 刷新本 handoff 和 snapshot
+3. 新 Codex 会话输入: `请按照 docs/chunkyctl_session_quickstart.md 接手本项目，先完成启动检查，再看 SESSION_HANDOFF.md 的 next_action。`
+4. Codex 先跑 live checks，再按 NEXT ACTION 执行本地工作 (audit / compare / commit / etc)
 
 GCP controlled-use (2026-05-21 用户澄清):
 - 可用于大计算、寻优、长 replay、主项目与 BestChoice 综合寻优。
