@@ -642,6 +642,7 @@ PYTHONPATH=backend python -m pytest -q \
 | 用户交付 | 输出 L0-L4 架构全貌、数据流、gate 位置、改前 vs 改后 |
 
 > 2026-06-01 note: `need_027` exact-flow 已确认不是 aif10 的继续 probe 问题；`aif10` 当前没有 `individual_fund_flow` exact capability。后续只有在 registry 新增能力或 route 映射时，才重新打开 exact-flow 恢复线。
+> 2026-06-03 note: `akshare.stock_fund_flow_individual` 的 `individual_fund_flow_rank_snapshot` 现场探针已成功，返回 `5195` rows / `10` columns，说明 research-side rank snapshot fallback 现在可用；但 `individual_fund_flow` exact probe 仍然是 `RemoteDisconnected`，所以 `need_027` 仍按 exact blocker 管理。
 
 ### GCP 规则保持
 
