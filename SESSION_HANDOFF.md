@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 11:20:10 CST
+**Snapshot 时间**: 2026-06-03 11:24:24 CST
 
 ## 主线状态
 
@@ -61,36 +61,28 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `f8d00e10 docs: record data-health blocker triage complete | # commit-msg: minimal` |
-| 最近 24h commits | 274 |
-| 未 commit 文件 | 4 |
+| HEAD | `277d589a refactor: data-view hot path second pass` |
+| 最近 24h commits | 275 |
+| 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+277d589a refactor: data-view hot path second pass
+3838c577 refactor: flatten data-view render hot paths
+b1be391d feat: expand stage-opt supply with challenger formulas
+d97131fd docs: refresh handoff snapshot after data-health blocker triage | # commit-msg: minimal
 f8d00e10 docs: record data-health blocker triage complete | # commit-msg: minimal
 8cd787f5 docs: add priority ladder for blocker triage | # commit-msg: minimal
 88433830 docs: refresh handoff after data-health reframe | # commit-msg: minimal
 5d1041ff docs: reframe next action to data-health blockers | # commit-msg: minimal
 0ab29a23 docs: refresh session handoff snapshot after stock-view index consolidation | # commit-msg: minimal
 2d932cc0 refactor: stock-view index consolidation | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, audit PASS, pytest 3 passed, targeted complexity PASS, codegraph sync PASS
-3911b457 docs: refresh session handoff snapshot after data-view route search cleanup | # commit-msg: minimal
-eeff4015 refactor: data-view route search cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, audit PASS, pytest 6 passed, targeted complexity PASS, codegraph sync PASS | post-fix-audit cleanup verified 无残留
-5bcea950 docs: refresh session handoff snapshot after signal-adapter grouping cleanup | # commit-msg: minimal
-e834f18c refactor: signal-adapter grouping cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, audit PASS, pytest 4 passed, targeted complexity PASS, codegraph sync PASS | post-fix-audit cleanup verified 无残留
 ```
 
 ## NEXT ACTION (auto-computed)
 
 **continue current goal blockers — stage-opt structural blocker triage / need_027 blocked-gap triage**
-
-## 追加记录
-
-- `bc_absorbed` 的 5 个 challenger formulas 已经通过 live `REGISTRY` 进入 `build_formula_signals_history`，并已回填 `704,661` 条信号和 `35` 行 horizon evidence；stage-opt audit 现在显示 `live_formula_count=12`，但当前 blocker 仍然是 `below_min_signals`，weakest formulas 已切到 `ma_base_breakout` / `gs_pullback_confirm` / `volume_base_breakout`。
-- 你给的高吞吐量化蓝图已记录，后续推进顺序按 `data pipeline / truth-source` -> `CatBoost + Bayesian/Optuna + VectorBT` -> `GCP Spot / Cloud Run` 走；`bestchoice` 公式事项先排队，不和当前 blocker 线程混在一起。
-- `build_lhb_events.py` 和 `run_daily_topk.py` 已把最后两条 warning-only writer 补完，最新 `scripts/chunkyctl doctor --fast` 结果是 `data_health PASS` (`green=342 / yellow=0 / red=0`)；overall `WARN` 现在只来自 `need_coverage` 的 `need_027` blocked、`stage-opt` 的 `below_min_signals`，以及当前 dirty worktree / complexity 历史，不再是 data-health blocker。
-- `assets/js/data-view.js` 这一轮继续把渲染热点收口到直线型 `for...of` / 拼接路径，`renderHealthHeatmap()`、`renderSourcePriority()`、`renderFallbackPanel()`、`renderDriftQueue()`、`renderCapTable()`、`renderStepGrid()` 和 `startPolling()` 的日志聚合都已去掉 `.map().join()` / `forEach()` 热回调；targeted complexity scan 这一个文件已经不再报明显热点，但全仓 broad scan 仍保留历史 HIGH 残余，后续继续按热路径推进。
-- `assets/js/data-view.js` 的第二轮收口又把 `buildRouteSearchText()`、`buildSourceCardsModel()`、`buildHealthHeatmapModel()`、`buildSourcePriorityModel()`、`buildLinkOverviewModel()`、`renderLinkOverview()`、`renderSourceCards()`、`renderAuditResults()`、`renderRoutesTable()` 和 `_setUpdateButtonsBusy()` 的残余 `.map()` / `.forEach()` 也收掉了；`data-view` 的 targeted complexity scan 继续是 clean，但 broad scan 仍有其他历史 HIGH，暂时不把这次当成全仓复杂度清零。
 
 ## Resilience 配置 (verified)
 
