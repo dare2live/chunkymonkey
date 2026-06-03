@@ -229,6 +229,8 @@ def _need_coverage_blocked_action(need_coverage: dict[str, Any] | None) -> dict[
         open_count = int(status_counts.get("open") or 0)
         resolved_count = int(status_counts.get("resolved") or 0)
         source_registration = special_need.get("source_registration") or {}
+        preferred_source_capabilities = source_registration.get("preferred_source_capabilities") or []
+        fallback_source_capabilities = source_registration.get("fallback_source_capabilities") or []
         fallback_supports_individual_fund_flow = source_registration.get("fallback_source_supports_individual_fund_flow")
         fallback_source_family = str(source_registration.get("fallback_source_family") or "aif10")
         if open_count or resolved_count:
@@ -237,6 +239,21 @@ def _need_coverage_blocked_action(need_coverage: dict[str, Any] | None) -> dict[
             action_text += " [need_027 blocked/unknown; failure_queue evidence unavailable]"
         if fallback_supports_individual_fund_flow is False:
             action_text += f"; {fallback_source_family} exact individual_fund_flow unavailable"
+        snapshot_source_label: str | None = None
+        if "individual_fund_flow_rank_snapshot" in preferred_source_capabilities:
+            snapshot_source_label = str(
+                source_registration.get("preferred_source_family")
+                or source_registration.get("preferred_source")
+                or "preferred source"
+            )
+        elif "individual_fund_flow_rank_snapshot" in fallback_source_capabilities:
+            snapshot_source_label = str(
+                source_registration.get("fallback_source_family")
+                or source_registration.get("fallback_source")
+                or "fallback source"
+            )
+        if snapshot_source_label:
+            action_text += f"; {snapshot_source_label} research-side individual_fund_flow_rank_snapshot available"
     return {"priority": "P1", "action": action_text}
 
 
