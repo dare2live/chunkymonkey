@@ -79,17 +79,21 @@
       const r = await fetch('/api/data_sources/list');
       const j = await r.json();
       const model = buildDataSourceParamsModel(j);
-      el.innerHTML = model.isEmpty ? '<div class="muted">无</div>' : `
-        <div style="font-size:11px;color:var(--cm-ink-500);margin-bottom:6px">
-          <strong>${model.sourceCount}</strong> 个数据源 / <strong>${model.totalCapabilities}</strong> 个 caps
-        </div>
-        ${model.rows.map(s => `
+      const sourceRows = [];
+      for (const s of model.rows) {
+        sourceRows.push(`
           <div style="padding:6px 0;border-bottom:1px dotted var(--cm-bg-100)">
             <span style="font-weight:600">${esc(s.displayName)}</span>
             <span style="color:var(--cm-ink-500)">优先级 ${esc(s.priority)}</span>
             <span style="float:right;color:var(--cm-ink-500)">${s.capabilityText}</span>
           </div>
-        `).join('')}
+        `);
+      }
+      el.innerHTML = model.isEmpty ? '<div class="muted">无</div>' : `
+        <div style="font-size:11px;color:var(--cm-ink-500);margin-bottom:6px">
+          <strong>${model.sourceCount}</strong> 个数据源 / <strong>${model.totalCapabilities}</strong> 个 caps
+        </div>
+        ${sourceRows.join('')}
       `;
     } catch (e) {
       el.innerHTML = '<div class="muted" style="color:#d33">加载失败: ' + esc(e.message) + '</div>';
@@ -106,6 +110,24 @@
       const data = await r.json();
       const model = buildSchemaVersionsModel(data);
       const { byLayer, driftRows, okRows, driftCount } = model;
+      const driftHtml = [];
+      for (const v of driftRows) {
+        driftHtml.push(`
+              <div style="padding:3px 0;font-size:11px;font-family:monospace">
+                <code>${esc(v.table_name)}</code>
+                <span style="color:var(--cm-ink-500)"> code=${esc(v.expected_version)} db=${esc(v.actual_version || 'never_recorded')}</span>
+              </div>
+            `);
+      }
+      const okHtml = [];
+      for (const v of okRows) {
+        okHtml.push(`
+              <div style="padding:3px 0;border-bottom:1px dotted var(--cm-bg-100);font-family:monospace;font-size:11px">
+                <code>${esc(v.table_name)}</code>
+                <span style="color:var(--cm-ink-500);float:right">${esc(v.expected_version)} ${v.rebuilt_at ? '@ ' + esc(v.rebuilt_at.slice(0, 16)) : ''}</span>
+              </div>
+            `);
+      }
 
       // 顶部摘要 + drift 列表 + ok 折叠
       el.innerHTML = `
@@ -120,24 +142,14 @@
         ${driftCount > 0 ? `
           <div style="background:rgba(221,51,51,0.05);border-left:3px solid #d33;padding:8px 12px;margin-bottom:10px;border-radius:4px">
             <div style="font-size:12px;font-weight:600;margin-bottom:6px">漂移派生表 (建议重算或标记 baseline)</div>
-            ${driftRows.map(v => `
-              <div style="padding:3px 0;font-size:11px;font-family:monospace">
-                <code>${esc(v.table_name)}</code>
-                <span style="color:var(--cm-ink-500)"> code=${esc(v.expected_version)} db=${esc(v.actual_version || 'never_recorded')}</span>
-              </div>
-            `).join('')}
+            ${driftHtml.join('')}
             <button class="chip chip-outline" style="margin-top:8px;font-size:11px" id="sys-schema-baseline-btn">标记当前 DB 为 baseline (假定 v1 数据正确)</button>
           </div>
         ` : ''}
         <details style="font-size:11px">
           <summary style="cursor:pointer;font-size:12px;font-weight:600">已对齐 ${okRows.length} 张 (展开看清单)</summary>
           <div style="margin-top:6px;max-height:300px;overflow-y:auto">
-            ${okRows.map(v => `
-              <div style="padding:3px 0;border-bottom:1px dotted var(--cm-bg-100);font-family:monospace;font-size:11px">
-                <code>${esc(v.table_name)}</code>
-                <span style="color:var(--cm-ink-500);float:right">${esc(v.expected_version)} ${v.rebuilt_at ? '@ ' + esc(v.rebuilt_at.slice(0, 16)) : ''}</span>
-              </div>
-            `).join('')}
+            ${okHtml.join('')}
           </div>
         </details>
       `;
@@ -170,22 +182,26 @@
         desc: '清空 fact_* + mart_* 全部派生表, 从 raw 重算. 不可撤销 (raw 保留). 预计 10-20 分钟.',
       },
     ];
-    el.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
-      ${buttons.map(b => `
+    const buttonCards = [];
+    for (const b of buttons) {
+      buttonCards.push(`
         <div style="border:1px solid #d33;border-radius:6px;padding:12px;border-left:4px solid #d33;background:rgba(221,51,51,0.03)">
           <button class="chip" id="sys-btn-${esc(b.id)}" style="margin-bottom:8px;background:#fff;border:1px solid #d33;color:#d33;font-weight:600">${esc(b.label)}</button>
           <div class="muted" style="font-size:11px;line-height:1.5">${esc(b.desc)}</div>
         </div>
-      `).join('')}
+      `);
+    }
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
+      ${buttonCards.join('')}
       </div>
       <div class="muted" style="font-size:11px;margin-top:10px;padding-top:8px;border-top:1px dashed var(--cm-ink-100)">
         <strong>区别于工作台 "计算派生层 (增量)"</strong>: 那个只对新增/变更样本算; 这里是 <strong>全量清空再重算</strong>, 用在 schema 升级 / 数据口径变化 / 修复异常之后.
       </div>
     `;
-    buttons.forEach(b => {
+    for (const b of buttons) {
       document.getElementById('sys-btn-' + b.id)?.addEventListener('click', b.action);
-    });
+    }
   }
 
   async function resetDerived() {

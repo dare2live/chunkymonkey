@@ -129,3 +129,78 @@ if (unknown.status !== 'unknown' || unknown.backendLabel !== '异常') {
         capture_output=True,
     )
     assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_settings_view_show_renders_all_panels() -> None:
+    script = r"""
+;(async () => {
+const file = process.argv[1];
+const elements = {
+  'sys-ds-params': { innerHTML: '' },
+  'sys-schema-versions': { innerHTML: '' },
+  'sys-danger-zone': { innerHTML: '' },
+  'sys-prefs': { innerHTML: '' },
+  'sys-about': { innerHTML: '' },
+};
+global.window = global;
+global.document = {
+  getElementById: (id) => elements[id] || null,
+};
+global.confirm = () => true;
+global.fetch = async (url) => {
+  if (url === '/api/data_sources/list') {
+    return {
+      json: async () => ({
+        sources: [
+          { name: 'akshare', display_name: 'AkShare', priority: 1, capabilities: [{}, {}] },
+        ],
+      }),
+    };
+  }
+  if (url === '/api/data_sources/schema_versions') {
+    return {
+      ok: true,
+      json: async () => ({
+        summary: { total: 2, n_views: 1, drift_count: 1 },
+        versions: [
+          { table_name: 'fact_a', layer: 'fact', drift: false, expected_version: 'v1', rebuilt_at: '2026-05-06T12:00:00' },
+          { table_name: 'mart_b', layer: 'mart', drift: true, expected_version: 'v2', actual_version: 'v1' },
+        ],
+      }),
+    };
+  }
+  if (url === '/api/inst/health/summary') {
+    return {
+      json: async () => ({ status: 'ok', enabled_modules: ['alpha', 'beta'] }),
+    };
+  }
+  throw new Error('unexpected fetch: ' + url);
+};
+require(file);
+globalThis.SettingsView.show();
+await new Promise((resolve) => setTimeout(resolve, 0));
+if (!elements['sys-ds-params'].innerHTML.includes('AkShare') || !elements['sys-ds-params'].innerHTML.includes('优先级 1')) {
+  throw new Error('data source panel mismatch: ' + elements['sys-ds-params'].innerHTML);
+}
+if (!elements['sys-schema-versions'].innerHTML.includes('WARN 1 张漂移') || !elements['sys-schema-versions'].innerHTML.includes('mart_b')) {
+  throw new Error('schema versions panel mismatch: ' + elements['sys-schema-versions'].innerHTML);
+}
+if (!elements['sys-danger-zone'].innerHTML.includes('清空并重算派生层')) {
+  throw new Error('danger zone panel mismatch: ' + elements['sys-danger-zone'].innerHTML);
+}
+if (!elements['sys-about'].innerHTML.includes('OK (alpha, beta)')) {
+  throw new Error('about panel mismatch: ' + elements['sys-about'].innerHTML);
+}
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+"""
+
+    result = subprocess.run(
+        ["node", "-e", script, str(REPO / "assets/js/settings-view.js")],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
