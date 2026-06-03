@@ -3,6 +3,11 @@
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
 
+## 2026-06-03 — stock-view index consolidation
+
+- `assets/js/stock-view.js` 新增 `buildStockIndex()`，把筛选选项收集、`screeningMap` / `turtleMap` 计数、覆盖股票集合与股票索引收成一次遍历，并对空输入做兜底；`renderFilterBar()` / `renderTopkSummary()` 直接复用这个索引，不再分别扫 `byStock`。`backend/tests/contract/test_stock_view.py` 新增 helper 行为回归，`backend/tests/contract/test_workbench_frontend_contract.py` 补 export / wiring contract。验证：`node --check assets/js/stock-view.js` PASS，`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_stock_view.py` 3 passed，`python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py /Users/dp/Documents/M/stock/chunkymonkey/assets/js/stock-view.js --format markdown` targeted scan 无明显热点，`codegraph sync .` 已同步，`git diff --check` PASS；但全仓 broad scan 仍为 WARN / 80 high findings，残余继续集中在 `assets/js/app.js` / `assets/js/settings-view.js` / `assets/js/signal-adapter.js` / `assets/js/stock-view.js` 的历史 heuristic 行，后续继续按热路径收口。
+
+
 ## 2026-06-03 — data-view route search cleanup
 
 - `assets/js/data-view.js` 里的 `buildAssetHealthIndex()` / `buildAuditResultsModel()` / `buildRoutesTableModel()` 现都改成直线型 `for...of` 收口，`buildRoutesTableModel()` 还把 route 过滤字段收成一次性 `buildRouteSearchText()` 搜索串，避免每条 route 再跑一层 `some()` 回调；`backend/tests/contract/test_data_view.py` 新增 `protocol` / `raw_table` filter 回归，锁住多字段过滤语义。验证：`node --check assets/js/data-view.js` PASS，`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_data_view.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py backend/tests/contract/test_workbench_frontend_contract.py` 6 passed，`python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py /Users/dp/Documents/M/stock/chunkymonkey/assets/js/data-view.js --format markdown` targeted scan 无明显热点，`codegraph sync .` 已同步；但全仓 broad scan 仍为 WARN / 80 high findings，主要残余还在 `assets/js/app.js` / `assets/js/data-view.js` / `assets/js/settings-view.js` / `assets/js/stock-view.js` / `assets/js/signal-adapter.js` 的历史热点，后续继续按热路径收口。
