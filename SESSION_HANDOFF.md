@@ -24,7 +24,7 @@ bash scripts/install_resilience.sh --status
 ```
 默认不再安装 cron snapshot / SessionStart auto-inject；如需恢复旧自动化，必须显式设置脚本里的 legacy opt-in。
 
-**Snapshot 时间**: 2026-06-03 14:16:15 CST
+**Snapshot 时间**: 2026-06-03 14:24:34 CST
 
 ## 主线状态
 
@@ -60,13 +60,14 @@ bash scripts/install_resilience.sh --status
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `4d5b4343 refactor: flatten app etf sync render loops` |
-| 最近 24h commits | 263 |
-| 未 commit 文件 | 7 |
+| HEAD | `385f099f docs: align codex resume automation` |
+| 最近 24h commits | 264 |
+| 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+385f099f docs: align codex resume automation
 4d5b4343 refactor: flatten app etf sync render loops
 3e894e9a refactor: flatten settings view render loops
 154f5407 docs: refresh handoff snapshot after commit
@@ -76,12 +77,11 @@ bash scripts/install_resilience.sh --status
 d2280cc2 docs: refresh session handoff snapshot after live boundary tighten
 d83f7d5f feat: narrow stage-opt live supply
 8dcfcdac docs: refresh session handoff after data-health pass | # commit-msg: minimal
-277d589a refactor: data-view hot path second pass
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**7 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**continue current goal blockers — stage-opt structural blocker triage / need_027 blocked-gap triage**
 
 ## Resilience 配置 (verified)
 
