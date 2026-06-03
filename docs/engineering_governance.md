@@ -15,6 +15,15 @@ files are archived under `analysis/docs_archive_20260531/`.
 | Green tests proving old assumptions | Run test-tool health before citing tests as evidence |
 | Cloud spend or dirty cloud artifacts | GCP work requires explicit scope and `CHUNKYMONKEY_GCP_EXPLICIT_OK=1` |
 
+## Skill Owner Map
+
+| Scope | Required skill | Rule |
+|---|---|---|
+| Codex Mac app/CLI, plugin sync, startup items, hooks, local automations, compact errors, Codex worktrees, Terminal mail, or monitor residue | `$codex-local-ops` | Diagnose local Codex state first; do not misclassify it as a project hook or business gate |
+| Non-trivial ChunkyMonkey execution, architecture, strategy validation, PIT/leakage, Optuna/GCP, deletion, or gate-policy work | `$chunkymonkey-governance` | Run pre-execution governance before edits or expensive commands |
+| Rule 10, commit readiness, blocking code review, or `.py` / `.yaml` / `.sql` slices before commit | `$chunkymonkey-review-gate` | Produce a review verdict and commit trailer before `safe_commit.sh` |
+| Shared tooling state and evidence path discovery | Moth profile `.moth/profile.yaml` | Locate evidence paths and current tooling state; do not redefine business gate rules |
+
 ## Dirty Worktree Resolution
 
 Dirty worktree cleanup is a staged delivery process. It is not complete until
@@ -101,7 +110,9 @@ Optuna studies, and edits to the same file.
 
 Moth owns shared tooling state for this repo: profile discovery, evidence paths,
 dirty worktree status, CodeGraph freshness, and complexity baseline/current
-summaries. The active repo-local profile is `.moth/profile.yaml`.
+summaries. The active repo-local profile is `.moth/profile.yaml`. It may also
+list local Codex skill files as evidence paths so new sessions can find the
+local-ops, governance, and Rule 10 contracts without relying on chat memory.
 
 ChunkyMonkey owns business gate logic. Keep `stage_opt`, `need_027`,
 `storage_payload`, `data_health`, universe truth-source rules, and test-tool

@@ -88,6 +88,12 @@ def test_summarize_stage_opt_candidate_supply_tracks_ready_and_blocked_keys() ->
         "1": {"below_min_signals": 1},
         "2": {"no_kline_bars": 1},
     }
+    assert summary["blocked_reason_counts_by_formula_family"] == {
+        "formula": {"below_min_signals": 1, "no_kline_bars": 1},
+    }
+    assert summary["blocked_reason_counts_by_registry_family"] == {
+        "unregistered|formula": {"below_min_signals": 1, "no_kline_bars": 1},
+    }
     assert summary["next_action_recommendation"] == {
         "priority": "P1",
         "focus": "upstream_candidate_supply",
@@ -99,13 +105,63 @@ def test_summarize_stage_opt_candidate_supply_tracks_ready_and_blocked_keys() ->
     }
     assert summary["rows_by_formula_id"] == {"formula_a": 9, "formula_b": 5}
     assert summary["rows_by_formula_variant"] == {"variant_a": 9, "variant_b": 5}
+    assert summary["rows_by_formula_family"] == {"formula": 14}
     assert summary["rows_by_stage_bin"] == {"1": 9, "2": 5}
+    assert summary["rows_by_registry_family"] == {"unregistered|formula": 14}
 
     by_formula = {row["formula_id"]: row for row in summary["keys_by_formula_id"]}
     assert by_formula["formula_a"]["keys_total"] == 2
     assert by_formula["formula_a"]["keys_ready"] == 1
+    assert by_formula["formula_a"]["keys_blocked"] == 1
+    assert by_formula["formula_a"]["blocked_pct"] == 50.0
+    assert by_formula["formula_a"]["formula_family"] == "formula"
+    assert by_formula["formula_a"]["registry_scopes"] == ["unregistered"]
+    assert by_formula["formula_a"]["blocked_reason_counts"] == {"below_min_signals": 1}
+    assert by_formula["formula_a"]["top_blocked_reason"] == "below_min_signals"
     assert by_formula["formula_b"]["keys_total"] == 1
     assert by_formula["formula_b"]["keys_ready"] == 0
+
+    family_attrition = summary["formula_family_attrition"]
+    assert family_attrition == [
+        {
+            "formula_family": "formula",
+            "keys_total": 3,
+            "keys_ready": 1,
+            "keys_blocked": 2,
+            "ready_coverage_pct": 33.33,
+            "blocked_pct": 66.67,
+            "signal_rows": 14,
+            "blocked_reason_counts": {"below_min_signals": 1, "no_kline_bars": 1},
+            "top_blocked_reason": "below_min_signals",
+        }
+    ]
+
+    matrix = {
+        (row["stage_bin"], row["formula_id"]): row
+        for row in summary["blocked_matrix_by_stage_formula"]
+    }
+    assert matrix[("1", "formula_a")]["keys_blocked"] == 1
+    assert matrix[("1", "formula_a")]["blocked_reason_counts"] == {"below_min_signals": 1}
+    assert matrix[("2", "formula_b")]["keys_blocked"] == 1
+    assert matrix[("2", "formula_b")]["blocked_reason_counts"] == {"no_kline_bars": 1}
+    assert [row["formula_id"] for row in summary["top_blocked_stage_formula_cells"]] == [
+        "formula_b",
+        "formula_a",
+    ]
+    assert summary["top_blocked_registry_family_cells"] == [
+        {
+            "registry_scope": "unregistered",
+            "formula_family": "formula",
+            "keys_total": 3,
+            "keys_ready": 1,
+            "keys_blocked": 2,
+            "ready_coverage_pct": 33.33,
+            "blocked_pct": 66.67,
+            "signal_rows": 14,
+            "blocked_reason_counts": {"below_min_signals": 1, "no_kline_bars": 1},
+            "top_blocked_reason": "below_min_signals",
+        }
+    ]
 
     weakest_formula_ids = summary["weakest_keys_by_formula_id"]
     assert weakest_formula_ids[0]["formula_id"] == "formula_b"
@@ -193,6 +249,37 @@ def test_summarize_stage_opt_candidate_supply_emits_structural_notes_for_macd() 
 
     assert "## Structural Notes" in markdown
     assert "fact_technical_trigger PRIMARY KEY" in markdown
+    assert "## Attrition Funnel" in markdown
+    assert "## Formula Family Attrition" in markdown
+    assert "## Top Blocked Stage x Formula Cells" in markdown
+    assert "## Top Blocked Registry x Family Cells" in markdown
+
+
+def test_summarize_stage_opt_candidate_supply_can_skip_detail_matrices() -> None:
+    signal_rows = [
+        {
+            "stock_code": "000001",
+            "signal_date": f"2026-05-{10 + idx:02d}",
+            "formula_id": "formula_a",
+            "formula_variant": "variant_a",
+            "stage_bin": "1",
+        }
+        for idx in range(4)
+    ]
+
+    summary = audit_stage_opt_candidate_supply.summarize_stage_opt_candidate_supply(
+        signal_rows,
+        {"000001"},
+        min_signals=5,
+        include_attrition_detail=False,
+    )
+
+    assert summary["ready_keys"] == 0
+    assert summary["blocked_reason_counts"] == {"below_min_signals": 1}
+    assert "blocked_matrix_by_stage_formula" not in summary
+    assert "top_blocked_stage_formula_cells" not in summary
+    assert "blocked_matrix_by_registry_family" not in summary
+    assert "top_blocked_registry_family_cells" not in summary
 
 
 def test_load_signal_rows_includes_macd_state_history_rows() -> None:
@@ -477,3 +564,166 @@ def test_compose_audit_result_preserves_raw_signal_rows() -> None:
     assert result["filtered_signal_rows"] == 7
     assert result["codes_with_bars"] == 2
     assert result["codes_without_bars"] == 1
+    assert result["verdict"] == "WARN"
+    assert result["attrition_funnel"] == {
+        "raw_rows": 10,
+        "raw_trigger_rows": 10,
+        "raw_state_history_rows": 0,
+        "dropped_index_rows": 1,
+        "dropped_unknown_stage_rows": 2,
+        "filtered_signal_rows": 7,
+        "unique_keys": 2,
+        "blocked_keys": 1,
+        "ready_keys": 1,
+        "ready_coverage_pct": 50.0,
+        "blocked_reason_counts": {"below_min_signals": 1},
+    }
+
+
+def test_compose_audit_result_treats_empty_candidate_supply_as_warn() -> None:
+    load_result = {
+        "raw_rows": 0,
+        "raw_trigger_rows": 0,
+        "raw_state_history_rows": 0,
+        "dropped_index_rows": 0,
+        "dropped_unknown_stage_rows": 0,
+        "dropped_unknown_stage_rows_by_formula_id": {},
+        "dropped_unknown_stage_rows_by_formula_variant": {},
+        "dropped_unknown_stage_examples": [],
+    }
+    summary = audit_stage_opt_candidate_supply.summarize_stage_opt_candidate_supply(
+        [],
+        set(),
+        min_signals=5,
+    )
+
+    result = audit_stage_opt_candidate_supply._compose_audit_result(
+        load_result,
+        summary,
+        start="2099-01-01",
+        end="2099-01-02",
+        min_signals=5,
+        signal_rows=[],
+        codes_total=0,
+        codes_with_bars=set(),
+    )
+
+    assert result["verdict"] == "WARN"
+    assert result["raw_signal_rows"] == 0
+    assert result["unique_keys"] == 0
+    assert result["next_action_recommendation"] == {
+        "priority": "P1",
+        "focus": "candidate_supply_coverage",
+        "reason": "no candidate keys were available for the selected audit scope",
+        "recommended_lever": "check date, formula, stock filters, and upstream signal inputs before treating supply as clean",
+        "weakest_formula_ids": [],
+        "weakest_stage_bins": [],
+        "top_blocked_reason": "no_candidate_supply",
+    }
+
+
+def test_limit_stock_filter_scopes_unknown_stage_verdict() -> None:
+    load_result = {
+        "raw_rows": 12,
+        "raw_trigger_rows": 9,
+        "raw_state_history_rows": 3,
+        "_raw_rows_by_stock_code": {"000001": 5, "000002": 7},
+        "_raw_trigger_rows_by_stock_code": {"000001": 4, "000002": 5},
+        "_raw_state_history_rows_by_stock_code": {"000001": 1, "000002": 2},
+        "dropped_index_rows": 0,
+        "_dropped_index_rows_by_stock_code": {},
+        "dropped_unknown_stage_rows": 4,
+        "dropped_unknown_stage_rows_by_formula_id": {"formula_a": 4},
+        "dropped_unknown_stage_rows_by_formula_variant": {"variant_a": 4},
+        "dropped_unknown_stage_examples": [{"stock_code": "000002", "formula_id": "formula_a"}],
+        "_dropped_unknown_stage_rows_by_stock_code": {"000002": 4},
+        "_dropped_unknown_stage_rows_by_stock_formula_id": {("000002", "formula_a"): 4},
+        "_dropped_unknown_stage_rows_by_stock_formula_variant": {("000002", "variant_a"): 4},
+    }
+    scoped_load_result = audit_stage_opt_candidate_supply._filter_load_result_for_stock_codes(
+        load_result,
+        {"000001"},
+    )
+    summary = {
+        "unique_keys": 1,
+        "ready_keys": 1,
+        "ready_coverage_pct": 100.0,
+        "blocked_reason_counts": {},
+    }
+
+    result = audit_stage_opt_candidate_supply._compose_audit_result(
+        scoped_load_result,
+        summary,
+        start="2023-01-01",
+        end="2026-05-29",
+        min_signals=5,
+        signal_rows=[{"stock_code": "000001"}] * 5,
+        codes_total=1,
+        codes_with_bars={"000001"},
+    )
+
+    assert scoped_load_result["dropped_unknown_stage_rows"] == 0
+    assert scoped_load_result["dropped_unknown_stage_rows_by_formula_id"] == {}
+    assert scoped_load_result["raw_rows"] == 5
+    assert scoped_load_result["raw_trigger_rows"] == 4
+    assert scoped_load_result["raw_state_history_rows"] == 1
+    assert result["verdict"] == "PASS"
+    assert result["attrition_funnel"]["raw_rows"] == 5
+    assert result["attrition_funnel"]["dropped_unknown_stage_rows"] == 0
+
+
+def test_limit_stock_candidates_keep_unknown_stage_only_slice_warn() -> None:
+    load_result = {
+        "raw_rows": 5,
+        "raw_trigger_rows": 5,
+        "raw_state_history_rows": 0,
+        "_raw_rows_by_stock_code": {"000001": 5},
+        "_raw_trigger_rows_by_stock_code": {"000001": 5},
+        "_raw_state_history_rows_by_stock_code": {},
+        "dropped_index_rows": 0,
+        "_dropped_index_rows_by_stock_code": {},
+        "dropped_unknown_stage_rows": 5,
+        "dropped_unknown_stage_rows_by_formula_id": {"formula_a": 5},
+        "dropped_unknown_stage_rows_by_formula_variant": {"variant_a": 5},
+        "dropped_unknown_stage_examples": [{"stock_code": "000001", "formula_id": "formula_a"}],
+        "_dropped_unknown_stage_rows_by_stock_code": {"000001": 5},
+        "_dropped_unknown_stage_rows_by_stock_formula_id": {("000001", "formula_a"): 5},
+        "_dropped_unknown_stage_rows_by_stock_formula_variant": {("000001", "variant_a"): 5},
+        "signal_rows": [],
+    }
+
+    codes = audit_stage_opt_candidate_supply._limit_candidate_stock_codes(load_result, [])[:3]
+    scoped_load_result = audit_stage_opt_candidate_supply._filter_load_result_for_stock_codes(
+        load_result,
+        set(codes),
+    )
+    summary = audit_stage_opt_candidate_supply.summarize_stage_opt_candidate_supply(
+        scoped_load_result["signal_rows"],
+        set(),
+        min_signals=5,
+    )
+    result = audit_stage_opt_candidate_supply._compose_audit_result(
+        scoped_load_result,
+        summary,
+        start="2026-06-01",
+        end="2026-06-02",
+        min_signals=5,
+        signal_rows=scoped_load_result["signal_rows"],
+        codes_total=len(codes),
+        codes_with_bars=set(),
+    )
+
+    assert codes == ["000001"]
+    assert scoped_load_result["raw_rows"] == 5
+    assert scoped_load_result["dropped_unknown_stage_rows"] == 5
+    assert result["verdict"] == "WARN"
+    assert result["next_action_recommendation"] == {
+        "priority": "P1",
+        "focus": "stage_context_coverage",
+        "reason": "unknown-stage rows were dropped before candidate-key evaluation",
+        "recommended_lever": "repair missing or invalid technical_stage coverage before treating candidate supply as clean",
+        "weakest_formula_ids": ["formula_a"],
+        "weakest_stage_bins": ["unknown"],
+        "top_blocked_reason": "unknown_stage",
+    }
+    assert result["attrition_funnel"]["dropped_unknown_stage_rows"] == 5

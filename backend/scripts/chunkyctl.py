@@ -111,6 +111,21 @@ def _stage_opt_summary(report: dict[str, Any] | None) -> dict[str, Any] | None:
     research_formula_registry = report.get("research_formula_registry")
     if not isinstance(research_formula_registry, dict):
         research_formula_registry = {}
+    attrition_funnel = report.get("attrition_funnel")
+    if not isinstance(attrition_funnel, dict):
+        attrition_funnel = {}
+    formula_attrition = report.get("formula_attrition")
+    if not isinstance(formula_attrition, list):
+        formula_attrition = []
+    formula_family_attrition = report.get("formula_family_attrition")
+    if not isinstance(formula_family_attrition, list):
+        formula_family_attrition = []
+    top_blocked_stage_formula_cells = report.get("top_blocked_stage_formula_cells")
+    if not isinstance(top_blocked_stage_formula_cells, list):
+        top_blocked_stage_formula_cells = []
+    top_blocked_registry_family_cells = report.get("top_blocked_registry_family_cells")
+    if not isinstance(top_blocked_registry_family_cells, list):
+        top_blocked_registry_family_cells = []
     blocked_reason_counts = report.get("blocked_reason_counts")
     if not isinstance(blocked_reason_counts, dict):
         blocked_reason_counts = {}
@@ -122,6 +137,7 @@ def _stage_opt_summary(report: dict[str, Any] | None) -> dict[str, Any] | None:
         key=lambda item: (-item["count"], item["reason"]),
     )[:3]
     return {
+        "verdict": report.get("verdict"),
         "summary": {
             "raw_signal_rows": report.get("raw_signal_rows"),
             "raw_trigger_rows": report.get("raw_trigger_rows"),
@@ -139,6 +155,11 @@ def _stage_opt_summary(report: dict[str, Any] | None) -> dict[str, Any] | None:
         "min_signals_sensitivity": sensitivity,
         "live_formula_registry": live_formula_registry,
         "research_formula_registry": research_formula_registry,
+        "attrition_funnel": attrition_funnel,
+        "formula_attrition": formula_attrition[:10],
+        "formula_family_attrition": formula_family_attrition[:10],
+        "top_blocked_stage_formula_cells": top_blocked_stage_formula_cells[:10],
+        "top_blocked_registry_family_cells": top_blocked_registry_family_cells[:10],
     }
 
 

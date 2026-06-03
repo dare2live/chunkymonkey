@@ -471,7 +471,7 @@ def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_pa
                 "returncode": 0,
                 "stdout": json.dumps(
                     {
-                        "verdict": "PASS",
+                        "verdict": "WARN",
                         "raw_signal_rows": 1381657,
                         "raw_trigger_rows": 7,
                         "raw_state_history_rows": 3,
@@ -480,6 +480,41 @@ def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_pa
                         "ready_keys": 57986,
                         "ready_coverage_pct": 48.21,
                         "blocked_reason_counts": {"below_min_signals": 62287},
+                        "attrition_funnel": {
+                            "raw_rows": 1381657,
+                            "filtered_signal_rows": 733083,
+                            "unique_keys": 120273,
+                            "blocked_keys": 62287,
+                            "ready_keys": 57986,
+                            "ready_coverage_pct": 48.21,
+                            "blocked_reason_counts": {"below_min_signals": 62287},
+                        },
+                        "formula_family_attrition": [
+                            {
+                                "formula_family": "bc_absorbed_challenger",
+                                "keys_total": 100,
+                                "keys_ready": 20,
+                                "keys_blocked": 80,
+                            }
+                        ],
+                        "top_blocked_stage_formula_cells": [
+                            {
+                                "stage_bin": "1",
+                                "formula_id": "ma_base_breakout",
+                                "keys_total": 50,
+                                "keys_ready": 5,
+                                "keys_blocked": 45,
+                            }
+                        ],
+                        "top_blocked_registry_family_cells": [
+                            {
+                                "registry_scope": "live+research_challenger",
+                                "formula_family": "bc_absorbed_challenger",
+                                "keys_total": 100,
+                                "keys_ready": 20,
+                                "keys_blocked": 80,
+                            }
+                        ],
                         "codes_without_bars": 0,
                         "next_action_recommendation": {
                             "priority": "P1",
@@ -548,6 +583,15 @@ def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_pa
     assert report["data_health"]["report"]["verdict"] == "FAIL"
     assert report["stage_opt"]["report"]["summary"]["raw_trigger_rows"] == 7
     assert report["stage_opt"]["report"]["summary"]["raw_state_history_rows"] == 3
+    assert report["stage_opt"]["verdict"] == "WARN"
+    assert report["stage_opt"]["report"]["verdict"] == "WARN"
+    assert report["stage_opt"]["report"]["attrition_funnel"]["blocked_keys"] == 62287
+    assert report["stage_opt"]["report"]["formula_family_attrition"][0]["keys_blocked"] == 80
+    assert report["stage_opt"]["report"]["top_blocked_stage_formula_cells"][0]["formula_id"] == "ma_base_breakout"
+    assert (
+        report["stage_opt"]["report"]["top_blocked_registry_family_cells"][0]["registry_scope"]
+        == "live+research_challenger"
+    )
     assert report["stage_opt"]["report"]["blocked_reason_counts"] == {"below_min_signals": 62287}
     assert report["stage_opt"]["report"]["top_blocked_reason_counts"] == [
         {"reason": "below_min_signals", "count": 62287}
@@ -773,6 +817,7 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
     ]
     summary = chunkyctl._stage_opt_summary(
         {
+            "verdict": "WARN",
             "raw_signal_rows": 10,
             "raw_trigger_rows": 7,
             "raw_state_history_rows": 3,
@@ -781,6 +826,50 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
             "ready_keys": 2,
             "ready_coverage_pct": 50.0,
             "blocked_reason_counts": {"below_min_signals": 6},
+            "attrition_funnel": {
+                "raw_rows": 10,
+                "filtered_signal_rows": 8,
+                "unique_keys": 4,
+                "blocked_keys": 2,
+                "ready_keys": 2,
+                "ready_coverage_pct": 50.0,
+                "blocked_reason_counts": {"below_min_signals": 6},
+            },
+            "formula_attrition": [
+                {
+                    "formula_id": f"formula_{idx}",
+                    "keys_total": idx + 1,
+                    "keys_ready": idx,
+                    "keys_blocked": 1,
+                }
+                for idx in range(12)
+            ],
+            "formula_family_attrition": [
+                {
+                    "formula_family": "bc_absorbed_challenger",
+                    "keys_total": 4,
+                    "keys_ready": 2,
+                    "keys_blocked": 2,
+                }
+            ],
+            "top_blocked_stage_formula_cells": [
+                {
+                    "stage_bin": "1",
+                    "formula_id": "macd_golden_cross",
+                    "keys_total": 4,
+                    "keys_ready": 2,
+                    "keys_blocked": 2,
+                }
+            ],
+            "top_blocked_registry_family_cells": [
+                {
+                    "registry_scope": "live",
+                    "formula_family": "macd",
+                    "keys_total": 4,
+                    "keys_ready": 2,
+                    "keys_blocked": 2,
+                }
+            ],
             "codes_without_bars": 0,
             "live_formula_registry": {
                 "formula_count": 18,
@@ -826,6 +915,13 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
         }
     )
 
+    assert summary["verdict"] == "WARN"
+    assert summary["attrition_funnel"]["blocked_keys"] == 2
+    assert len(summary["formula_attrition"]) == 10
+    assert summary["formula_attrition"][-1]["formula_id"] == "formula_9"
+    assert summary["formula_family_attrition"][0]["formula_family"] == "bc_absorbed_challenger"
+    assert summary["top_blocked_stage_formula_cells"][0]["formula_id"] == "macd_golden_cross"
+    assert summary["top_blocked_registry_family_cells"][0]["formula_family"] == "macd"
     assert summary["min_signals_sensitivity"][0]["min_signals"] == 4
     assert summary["min_signals_sensitivity"][0]["ready_coverage_pct"] == 75.0
     assert summary["blocked_reason_counts"] == {"below_min_signals": 6}

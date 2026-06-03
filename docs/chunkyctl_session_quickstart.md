@@ -37,6 +37,9 @@ verify live state with `doctor --fast` before trusting it.
      for command context when the latest handoff or `goal.md` still points to it.
    - Do not default to old `analysis/next_session_prompt_*.md` files; they are
      historical prompts unless `goal.md` explicitly makes one current.
+   - Skill dispatch: `$codex-local-ops` owns Codex app/CLI local issues;
+     `$chunkymonkey-governance` owns non-trivial project execution planning;
+     `$chunkymonkey-review-gate` owns Rule 10 and commit-readiness review.
 2. Run:
 
 ```bash
@@ -60,8 +63,10 @@ For shared tooling state, treat Moth as the canonical entrypoint: use
 when you need the raw shared snapshot, and `moth sync ...` when you want the
 shared snapshot refreshed before any repo-local wrapper consumes it.
 The active repo-local profile is `.moth/profile.yaml`; keep it limited to
-shared tooling metadata and evidence paths. Do not move business gate rules
-such as `stage_opt`, `need_027`, `storage_payload`, or `data_health` into Moth.
+shared tooling metadata and evidence paths, including pointers to the local
+Codex skills that govern local-ops, ChunkyMonkey governance, and Rule 10 review.
+Do not move business gate rules such as `stage_opt`, `need_027`,
+`storage_payload`, or `data_health` into Moth.
 The public Moth repo lives at `https://github.com/dare2live/moth`; keep the
 local `moth` binary or `CHUNKYMONKEY_MOTH_COMMAND` pointed at a current build
 from that repo so shared tooling state stays reproducible across sessions.
@@ -169,8 +174,10 @@ counts alone.
 | `storage_payload.summary.reviewed > 0` | Treat as reviewed PASS only when the matching `storage_retention.yaml` rule has owner, classification, caps, and recursive/path-marker guards |
 | `data_health.verdict=FAIL` | Inspect red tables with `PYTHONPATH=backend python backend/scripts/data_health_snapshot.py --format markdown`; treat only blocking assets as startup blockers, and remember that `warning` / `monitor_only` assets are intentionally capped to yellow |
 | `data_health.blocking_yellow > 0` | Inspect `blocking_yellow_tables` and let `scripts/chunkyctl doctor --fast` prioritize those before generic yellow maintenance; blocking-quality yellow assets are actionable even when the verdict is still WARN |
+| `stage_opt.verdict=WARN` | Advisory audit warning: candidate supply still has blocked keys or unknown-stage drops; it is not a strategy promote/reject verdict |
 | `stage_opt.top_blocked_reason_counts` exists | Use it to see which gate dominates stage-opt attrition before rerunning audits; `below_min_signals` is currently the primary blocker, and `doctor` should surface it alongside `next_action_recommendation` |
-| `stage_opt.next_action_recommendation.focus=upstream_candidate_supply` | Treat this as a supply-side blocker: expand upstream formula coverage or signal density before tuning profile knobs; the 2026-06-02 config-only probe series is exhausted, so there is currently no safe code slice left for stage-opt. Future work there should be treated as structural redesign or upstream-source work, not another knob-tuning pass; `macd_golden_cross` also carries a `fact_technical_trigger` schema limit note, so do not confuse state rows with a schema-only fix |
+| `stage_opt.attrition_funnel` / `top_blocked_stage_formula_cells` / `top_blocked_registry_family_cells` exists | Use these evidence fields to locate raw -> filtered -> unique -> blocked -> ready loss, the worst `stage_bin × formula_id` cells, and the worst `registry_scope × formula_family` cells before changing upstream contracts or schemas |
+| `stage_opt.next_action_recommendation.focus=upstream_candidate_supply` | Treat this as a supply-side blocker: expand upstream formula coverage or signal density before tuning profile knobs; the 2026-06-02 config-only probe series is exhausted, so there is no safe strategy/threshold knob slice left for stage-opt. Evidence-tooling slices are allowed when they make the structural blocker more legible; future production work should be structural redesign or upstream-source work, not another knob-tuning pass. `macd_golden_cross` also carries a `fact_technical_trigger` schema limit note, so do not confuse state rows with a schema-only fix |
 | `need_coverage.blocked_needs` contains `need_027` | Treat `need_027` as blocked exact-flow evidence until small-batch `akshare individual_fund_flow` stability, PIT/freshness, writer, watermark, and failure-queue resolve evidence pass; `aif10` exact `individual_fund_flow` is unavailable, and the research-side rank snapshot is not a production fallback |
 | `--skip-storage-payload` | Use only for emergency startup when the local DuckDB is unavailable; do not claim circular-reference cleanup from a skipped audit |
 
@@ -198,6 +205,7 @@ order:
 | Worker agents | Work only inside assigned disjoint read/write scope and return evidence, not decisions; never revert peer/controller work |
 | DB-heavy audits | Parallelize only when they use explicit read-only connections; serialize scripts that materialize tables, write DuckDB, or share output paths |
 | `chunkyctl` | Emits machine-readable facts and command plans; it does not replace review |
+| Skill dispatch | Local Codex ops use `$codex-local-ops`; project governance uses `$chunkymonkey-governance`; Rule 10 / commit review uses `$chunkymonkey-review-gate` |
 | Project docs | Keep durable rules in `AGENTS.md`, `goal.md`, handoff, and docs, not chat memory |
 
 ## Minimal Use

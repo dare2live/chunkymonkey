@@ -16,10 +16,16 @@ evidence_paths:
   workflow_checkpoint: analysis/workflow_checkpoint.md
   quickstart: docs/chunkyctl_session_quickstart.md
   engineering_governance: docs/engineering_governance.md
+  project_constitution: docs/PROJECT_CONSTITUTION.md
+  codex_global_agents: /Users/dp/.codex/AGENTS.md
+  skill_codex_local_ops: /Users/dp/.codex/skills/codex-local-ops/SKILL.md
+  skill_chunkymonkey_governance: /Users/dp/.codex/skills/chunkymonkey-governance/SKILL.md
+  skill_chunkymonkey_review_gate: /Users/dp/.codex/skills/chunkymonkey-review-gate/SKILL.md
   docs: docs
   tooling_reports: data/reports/tooling
 notes: >
   Controller-first ChunkyMonkey profile. Moth owns shared tooling state such as
-  dirty worktree, CodeGraph, complexity, and evidence path discovery. Repo audit
-  scripts and chunkyctl own business gates such as stage_opt, need_027,
+  dirty worktree, CodeGraph, complexity, and evidence path discovery, including
+  the local Codex skills that govern startup/local-ops and Rule 10 review. Repo
+  audit scripts and chunkyctl own business gates such as stage_opt, need_027,
   storage_payload, and data_health.

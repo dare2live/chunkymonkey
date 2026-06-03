@@ -29,6 +29,19 @@ then apply the rules below in Codex terms.
   ChunkyMonkey audit scripts and `chunkyctl`, with Moth consuming their outputs
   instead of re-defining their rules.
 
+## Skill Dispatch
+
+- Codex Mac app/CLI, hooks, plugins, startup items, local automations, remote
+  compact errors, stale Codex worktrees, Terminal mail, or GCP monitor residue:
+  use `$codex-local-ops` before touching project rules.
+- Non-trivial ChunkyMonkey execution, architecture, strategy validation,
+  PIT/leakage, Optuna/GCP, deletion, or gate-policy work: use
+  `$chunkymonkey-governance` before editing or launching work.
+- Rule 10, commit readiness, blocking reviews, and `.py` / `.yaml` / `.sql`
+  slices before commit: use `$chunkymonkey-review-gate`.
+- Moth is the shared tooling snapshot and evidence-path locator; it does not own
+  business gate logic.
+
 ## Codegraph + Complexity Review
 
 For any non-trivial code change, audit, refactor, performance task, or delivery
