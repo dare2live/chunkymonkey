@@ -3,6 +3,13 @@
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
 
+## 2026-06-03 — strategy reframe: data-health blockers first
+
+- 这轮复盘的结论是：前端热点收口本身没有错，`stock-view.js` / `data-view.js` / `signal-adapter.js` / `app.js` 的局部 refactor 也都通过了 targeted 校验，但它们正在变成“优化复杂度分数”的局部循环，而不是解决当前项目最重的风险。最新 `scripts/chunkyctl doctor --fast` 仍是 `WARN`，`moth` 仍提示 complexity new high findings 80；真正挡住健康状态的是 5 个 blocking yellow tables，而不是 JS 热点本身。
+- 当前优先级应切到 data-health blocker triage，按实际 writer / SLA 处理：`fact_feature_panel`、`fact_financial_pit_daily`、`fact_stock_fundamental_stage_daily`、`mart_feature_drift`、`mart_feature_drift_histogram`。`fact_lhb_event` 仍是 warning，但不在当前 blocking 集合内。
+- 前端结构优化暂停为次要任务，除非它直接关联用户可见 bug、数据门禁或 pipeline 失败；下一阶段的 success metric 以 `doctor --fast` 从 `WARN` 走向 `PASS`，而不是继续压 heuristic hotspot count。
+
+
 ## 2026-06-03 — stock-view index consolidation
 
 - `assets/js/stock-view.js` 新增 `buildStockIndex()`，把筛选选项收集、`screeningMap` / `turtleMap` 计数、覆盖股票集合与股票索引收成一次遍历，并对空输入做兜底；`renderFilterBar()` / `renderTopkSummary()` 直接复用这个索引，不再分别扫 `byStock`。`backend/tests/contract/test_stock_view.py` 新增 helper 行为回归，`backend/tests/contract/test_workbench_frontend_contract.py` 补 export / wiring contract。验证：`node --check assets/js/stock-view.js` PASS，`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_stock_view.py` 3 passed，`python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py /Users/dp/Documents/M/stock/chunkymonkey/assets/js/stock-view.js --format markdown` targeted scan 无明显热点，`codegraph sync .` 已同步，`git diff --check` PASS；但全仓 broad scan 仍为 WARN / 80 high findings，残余继续集中在 `assets/js/app.js` / `assets/js/settings-view.js` / `assets/js/signal-adapter.js` / `assets/js/stock-view.js` 的历史 heuristic 行，后续继续按热路径收口。
