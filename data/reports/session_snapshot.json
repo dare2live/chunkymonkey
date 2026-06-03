@@ -1,10 +1,10 @@
 {
-  "snapshot_at": "2026-06-03 18:22:12 CST",
+  "snapshot_at": "2026-06-03 19:12:33 CST",
   "git": {
     "branch": "main",
-    "head_hash": "ebd18209",
-    "head_msg": "ebd18209 fix: govern technical-stage residual classification",
-    "commits_24h": 252,
+    "head_hash": "b9e72d13",
+    "head_msg": "b9e72d13 docs: record stage context production rebuild evidence",
+    "commits_24h": 242,
     "uncommitted_files": 0
   },
   "retrain": {
