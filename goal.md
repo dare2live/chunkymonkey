@@ -3,6 +3,10 @@
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
 
+## 2026-06-03 — app navigation helper extraction
+
+- `assets/js/app.js` 里的 group / view / ETF tab / stock tab active-state 切换现统一走 `setActiveState()`，点击绑定统一走 `bindNodeClicks()`，把 3 处顶层 `querySelectorAll(...).forEach(...)` 绑定和多处 `classList.toggle('active')` 收拢成 2 个纯 helper；`backend/tests/contract/test_workbench_frontend_contract.py` 已补 helper presence 与旧直接绑定模式不回流的回归。验证：`node --check assets/js/app.js` PASS，`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_workbench_frontend_contract.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py` 2 passed，`analyze_complexity.py` 对 `assets/js/app.js` 无明显热点；最新 `scripts/chunkyctl doctor --fast` 仍为 WARN，complexity high findings 80，主要集中在 `assets/js/data-view.js` 41 / `assets/js/stock-view.js` 13 / `assets/js/settings-view.js` 12 / `assets/js/signal-adapter.js` 9 / `assets/js/app.js` 5。
+
 ## 2026-06-03 — chunkyctl action detail suffix helper extraction
 
 - `backend/scripts/chunkyctl.py` 里的 `_stage_opt_candidate_action()` / `_need_coverage_blocked_action()` 现共用 `_format_action_detail_suffix()`，把两处重复的 details 后缀拼装收成一个纯 helper；`stage-opt` / `need_027` 的 next-action 文本和现有回归测试语义保持不变。`backend/tests/scripts/test_chunkyctl.py` 已补 helper 直测。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/scripts/chunkyctl.py --scope backend/tests/scripts/test_chunkyctl.py` PASS，`python -m py_compile backend/scripts/chunkyctl.py backend/tests/scripts/test_chunkyctl.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_chunkyctl.py` 28 passed，`analyze_complexity.py` 对 `backend/scripts/chunkyctl.py` 无明显热点，`codegraph sync .` 已同步。

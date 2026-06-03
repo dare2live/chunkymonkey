@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 08:18:53 CST
+**Snapshot 时间**: 2026-06-03 08:29:33 CST
 
 ## 主线状态
 
@@ -61,8 +61,8 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `d3ecc21e refactor: chunkyctl action detail suffix helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 28 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 279 |
+| HEAD | `74e25438 refactor: app navigation helper extraction | Codex-Reviewed: APPROVE | test pass: node --check PASS, audit PASS, pytest 2 passed, complexity no obvious hotspots, codegraph sync PASS` |
+| 最近 24h commits | 278 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
@@ -82,7 +82,7 @@ bdef5ec5 refactor: need_027 source-registration summary helper | Codex-Reviewed:
 
 ## NEXT ACTION (auto-computed)
 
-**continue current goal blockers — stage-opt structural blocker triage / need_027 blocked-gap triage**
+**continue complexity hotspot triage — data-view.js / stock-view.js / settings-view.js / signal-adapter.js**
 
 ## Resilience 配置 (verified)
 
