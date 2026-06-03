@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 08:14:27 CST
+**Snapshot 时间**: 2026-06-03 08:18:53 CST
 
 ## 主线状态
 
@@ -61,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `c7543045 test: add helper regression coverage for need summary | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 24 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
-| 最近 24h commits | 278 |
+| HEAD | `d3ecc21e refactor: chunkyctl action detail suffix helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 28 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal` |
+| 最近 24h commits | 279 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+d3ecc21e refactor: chunkyctl action detail suffix helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 28 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
+d220d960 docs: refresh session handoff snapshot after need summary helper regression coverage | # commit-msg: minimal
 c7543045 test: add helper regression coverage for need summary | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 24 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 40cb6c4b docs: refresh session handoff snapshot after blocked need summary helper extraction | # commit-msg: minimal
 947abce1 refactor: blocked need summary helper | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 22 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
@@ -76,8 +78,6 @@ bdef5ec5 refactor: need_027 source-registration summary helper | Codex-Reviewed:
 33f4b861 docs: refresh session handoff snapshot after chunkyctl need_027 blocker helper extraction | # commit-msg: minimal
 55d1eb28 refactor: chunkyctl need_027 blocker action helpers | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: py_compile PASS, pytest 27 passed, audit PASS, complexity no new HIGH, codegraph sync PASS | # commit-msg: minimal
 2259a0be docs: refresh session handoff snapshot after settings-view about model extraction | # commit-msg: minimal
-6af8cc53 feat: extract settings-view about model | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, pytest 5 passed, audit PASS, complexity no new HIGH, docs graph PASS, codegraph sync PASS | # commit-msg: minimal
-0f421ec4 docs: refresh session handoff snapshot after settings-view data source params model extraction | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
