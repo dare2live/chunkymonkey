@@ -266,6 +266,32 @@ def _source_registration_summary(
     }
 
 
+def _blocked_need_summary(
+    record: dict[str, Any],
+    *,
+    evidence_status: str,
+    eligibility: str,
+    source_registration: dict[str, Any],
+    failure_queue_snapshot: dict[str, Any] | None,
+) -> dict[str, Any]:
+    return {
+        "need_id": record.get("need_id"),
+        "need_name": record.get("need_name"),
+        "consumer": record.get("consumer"),
+        "current_source": record.get("current_source"),
+        "tdxhub_capability": record.get("tdxhub_capability"),
+        "pit_key": record.get("pit_key"),
+        "evidence_status": evidence_status,
+        "production_eligibility": eligibility,
+        "preferred_source": record.get("preferred_source"),
+        "fallback_source": record.get("fallback_source"),
+        "source_registration": source_registration,
+        "failure_queue_snapshot": failure_queue_snapshot,
+        "action": record.get("action"),
+        "notes": record.get("notes"),
+    }
+
+
 def _failure_queue_snapshot(
     conn: Any,
     *,
@@ -347,22 +373,13 @@ def _summarize_need_gaps(conn: Any, needs: list[tuple[Any, ...]]) -> dict[str, A
                 registered_sources=registered_sources,
             )
             blocked_needs.append(
-                {
-                    "need_id": record.get("need_id"),
-                    "need_name": record.get("need_name"),
-                    "consumer": record.get("consumer"),
-                    "current_source": record.get("current_source"),
-                    "tdxhub_capability": record.get("tdxhub_capability"),
-                    "pit_key": record.get("pit_key"),
-                    "evidence_status": evidence_status,
-                    "production_eligibility": eligibility,
-                    "preferred_source": preferred_source,
-                    "fallback_source": fallback_source,
-                    "source_registration": source_registration,
-                    "failure_queue_snapshot": failure_queue_snapshot,
-                    "action": record.get("action"),
-                    "notes": record.get("notes"),
-                }
+                _blocked_need_summary(
+                    record,
+                    evidence_status=evidence_status,
+                    eligibility=eligibility,
+                    source_registration=source_registration,
+                    failure_queue_snapshot=failure_queue_snapshot,
+                )
             )
 
     return {
