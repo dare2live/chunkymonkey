@@ -729,7 +729,10 @@ class TestTechnicalStage:
             "slope_lookback_days: 15\n"
             "stage3_price_above_ma_mid_multiple: 1.12\n"
             "stage3_slope_min: 0.02\n"
-            "stage4_slope_max: -0.03\n",
+            "stage4_slope_max: -0.03\n"
+            "residual_above_mid_stage: \"3\"\n"
+            "residual_below_mid_down_stage: \"4\"\n"
+            "residual_below_mid_other_stage: \"1\"\n",
             encoding="utf-8",
         )
         loaded = _load_rules(cfg)
@@ -750,6 +753,9 @@ class TestTechnicalStage:
         assert loaded["stage3_price_above_ma_mid_multiple"] == pytest.approx(1.12)
         assert loaded["stage3_slope_min"] == pytest.approx(0.02)
         assert loaded["stage4_slope_max"] == pytest.approx(-0.03)
+        assert loaded["residual_above_mid_stage"] == "3"
+        assert loaded["residual_below_mid_down_stage"] == "4"
+        assert loaded["residual_below_mid_other_stage"] == "1"
 
     def test_config_loader_missing_key_fails(self, tmp_path):
         from services.formula_engine.technical_stage import _load_rules
@@ -775,6 +781,36 @@ class TestTechnicalStage:
             encoding="utf-8",
         )
         with pytest.raises(ValueError, match="missing technical_stage key stage4_slope_max"):
+            _load_rules(cfg)
+
+    def test_config_loader_invalid_residual_stage_fails(self, tmp_path):
+        from services.formula_engine.technical_stage import _load_rules
+
+        cfg = tmp_path / "technical_stage.yaml"
+        cfg.write_text(
+            "ma_fast_days: 42\n"
+            "ma_mid_days: 126\n"
+            "ma_slow_days: 252\n"
+            "range_lookback: 280\n"
+            "breakout_recent_days: 8\n"
+            "drawdown_max_stage2: 0.12\n"
+            "drawdown_lookback_days: 55\n"
+            "stage1_pos_max: 0.25\n"
+            "stage1_slope_max_abs: 0.01\n"
+            "stage1_vol_ratio_max: 0.7\n"
+            "stage15_vol_ratio_min: 1.4\n"
+            "stage15_recent_below_min_count: 3\n"
+            "volume_ma_days: 18\n"
+            "slope_lookback_days: 15\n"
+            "stage3_price_above_ma_mid_multiple: 1.12\n"
+            "stage3_slope_min: 0.02\n"
+            "stage4_slope_max: -0.03\n"
+            "residual_above_mid_stage: \"2\"\n"
+            "residual_below_mid_down_stage: \"4\"\n"
+            "residual_below_mid_other_stage: \"1\"\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError, match="residual_above_mid_stage"):
             _load_rules(cfg)
 
     def test_short_kline_returns_unknown(self, classify):
@@ -812,7 +848,37 @@ class TestTechnicalStage:
         stage4_count = sum(1 for s in late if s == "4")
         assert stage4_count >= 20, f"持续下跌后期至少 20 天 stage 4, 实际 {stage4_count}"
 
+    def test_sufficient_history_residual_is_classified(self, classify):
+        from services.formula_engine.technical_stage import MA_SLOW_DAYS
+
+        n = 380
+        x = np.arange(n)
+        closes = 10.0 + np.sin(x / 9.0) * 0.12
+        volumes = np.ones(n) * 1000
+
+        out = classify(closes, volumes)
+
+        assert all(s != "unknown" for s in out[MA_SLOW_DAYS:])
+        assert set(out[MA_SLOW_DAYS:]).issubset({"1", "1.5", "2", "3", "4"})
+
+    def test_residual_stage_policy_branches_are_governed(self):
+        from services.formula_engine.technical_stage import (
+            RESIDUAL_ABOVE_MID_STAGE,
+            RESIDUAL_BELOW_MID_DOWN_STAGE,
+            RESIDUAL_BELOW_MID_OTHER_STAGE,
+            _classify_residual_stage,
+        )
+
+        assert RESIDUAL_ABOVE_MID_STAGE == "3"
+        assert RESIDUAL_BELOW_MID_DOWN_STAGE == "4"
+        assert RESIDUAL_BELOW_MID_OTHER_STAGE == "1"
+        assert _classify_residual_stage(10.2, 9.8, 10.0, 0.01) == "3"
+        assert _classify_residual_stage(9.8, 10.1, 10.0, -0.03) == "4"
+        assert _classify_residual_stage(9.8, 10.1, 10.0, 0.0) == "1"
+
     def test_output_only_valid_labels(self, classify):
+        from services.formula_engine.technical_stage import MA_SLOW_DAYS
+
         # 任何输入,输出 labels 必须在合法集合内
         np.random.seed(42)
         n = 400
@@ -822,6 +888,7 @@ class TestTechnicalStage:
         valid = {"1", "1.5", "2", "3", "4", "unknown"}
         bad = [s for s in out if s not in valid]
         assert not bad, f"出现非法 label: {set(bad)}"
+        assert all(s != "unknown" for s in out[MA_SLOW_DAYS:])
 
 
 class TestFormulaSignalSerialization:

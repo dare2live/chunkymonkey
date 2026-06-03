@@ -2,6 +2,13 @@
 
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
+## 2026-06-03 — technical-stage residual classification repair ready for review
+
+- `stage-opt` 的 unknown-stage attrition 已确认是两层问题：`fact_signal_context` 缺覆盖和 `technical_stage='?'` 都会在 `audit_stage_opt_candidate_supply.py` 中被先行丢弃；当前 full-history evidence 仍为 `dropped_unknown_stage_rows=4,433,034`、`below_min_signals=101,824`、`ready_coverage_pct=67.76`。
+- `backend/services/formula_engine/technical_stage.py` 已把 `unknown` 收窄为“数据不足”语义；有足量 MA 慢线历史的 residual 状态会按 `backend/config/technical_stage.yaml` 的 governed residual policy 归入 `1/3/4`，避免 stage-opt 在评估候选供给前丢掉可交易状态。`residual_*_stage` 配置不允许 `1.5/2`，所以 Stage 1.5/2 仍只能由显式突破/上升趋势规则产生，不能通过 fallback 绕过 MA 顺序和回撤约束。
+- 验证已完成：`audit_test_tool_health.py --scope backend/tests/test_formula_engine.py --scope backend/tests/test_build_formula_signals.py` PASS；`pytest -q backend/tests/test_formula_engine.py::TestTechnicalStage backend/tests/test_build_formula_signals.py::TestTechnicalStageHistorical backend/tests/test_build_formula_signals.py::TestSignalContextWindowRefresh` 14 passed；`pytest -q backend/tests/scripts/test_audit_stage_opt_candidate_supply.py` 10 passed；`scripts/chunkyctl audit --run backend/config/technical_stage.yaml backend/services/formula_engine/technical_stage.py backend/tests/test_formula_engine.py` PASS；`codegraph status .` 已 up to date；目标文件 complexity scan 无明显热点；`git diff --check` PASS。
+- 生产 DB 尚未重建，所以 `doctor --fast` 仍应视为 WARN。下一步在代码 review/commit 后，按写窗口重建 `fact_stock_technical_stage` 与 `fact_signal_context`，再重跑 `audit_stage_opt_candidate_supply.py --format json` 和 `scripts/chunkyctl doctor --fast`。建议本地命令形态：先用宽 read window 跑 `build_stage_formula_fitness.py --stage-only`，再跑 `build_signal_context.py`，最后复核 stage-opt attrition；不要把这次代码测试结果解释成生产表已经修好。
+
 ## 2026-06-03 — Codex resume automation re-baselined to manual refresh
 
 - Codex app/CLI 的隐藏启动加载项已收口：`~/.codex/hooks.json` 不再启用 `SessionStart -> session_start_handoff.sh`，用户 crontab 不再包含 `scripts/session_snapshot.sh` / `scripts/workflow_checkpoint.sh` 周期任务，`check_pending_work.sh` 也不再在每次 prompt 隐式查询 GCP VM 状态。

@@ -6,7 +6,7 @@
   Stage 2 上升趋势:  MA10 > MA30 > MA50 (周线) + 价 > MA30 + 回撤 < 15%
   Stage 3 顶部分布:  价创新高但量背离 OR MA10 死叉 MA30 OR 距 MA30 偏离过大
   Stage 4 下跌趋势:  MA10 < MA30 < MA50 + 价 < MA30
-  unknown: 数据不足
+  unknown: 数据不足；足量历史 residual 归入 1/3/4，1.5/2 只由显式规则产生
 """
 from __future__ import annotations
 
@@ -19,6 +19,8 @@ from services.formula_engine.base import sma
 
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "technical_stage.yaml"
+CLASSIFIED_STAGES = {"1", "1.5", "2", "3", "4"}
+RESIDUAL_STAGES = {"1", "3", "4"}
 
 
 def _load_yaml(path: Path) -> dict[str, object]:
@@ -28,11 +30,25 @@ def _load_yaml(path: Path) -> dict[str, object]:
     return loaded
 
 
-def _load_rules(path: Path | None = None) -> dict[str, float | int]:
+def _stage_label(
+    raw: dict[str, object],
+    key: str,
+    raw_path: Path,
+    *,
+    allowed_stages: set[str] = CLASSIFIED_STAGES,
+) -> str:
+    label = str(raw[key])
+    if label not in allowed_stages:
+        allowed = ", ".join(sorted(allowed_stages))
+        raise ValueError(f"{raw_path.name}: {key} must be one of {allowed}, got {label!r}")
+    return label
+
+
+def _load_rules(path: Path | None = None) -> dict[str, float | int | str]:
     raw_path = path or CONFIG_PATH
     try:
         raw = _load_yaml(raw_path)
-        return {
+        rules: dict[str, float | int | str] = {
             "ma_fast_days": int(raw["ma_fast_days"]),
             "ma_mid_days": int(raw["ma_mid_days"]),
             "ma_slow_days": int(raw["ma_slow_days"]),
@@ -55,6 +71,19 @@ def _load_rules(path: Path | None = None) -> dict[str, float | int]:
         raise ValueError(f"{raw_path.name}: missing technical_stage key {exc.args[0]}") from exc
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{raw_path.name}: technical_stage rules must be numeric mappings") from exc
+    try:
+        rules["residual_above_mid_stage"] = _stage_label(
+            raw, "residual_above_mid_stage", raw_path, allowed_stages=RESIDUAL_STAGES
+        )
+        rules["residual_below_mid_down_stage"] = _stage_label(
+            raw, "residual_below_mid_down_stage", raw_path, allowed_stages=RESIDUAL_STAGES
+        )
+        rules["residual_below_mid_other_stage"] = _stage_label(
+            raw, "residual_below_mid_other_stage", raw_path, allowed_stages=RESIDUAL_STAGES
+        )
+    except KeyError as exc:
+        raise ValueError(f"{raw_path.name}: missing technical_stage key {exc.args[0]}") from exc
+    return rules
 
 
 TECHNICAL_STAGE_RULES = _load_rules()
@@ -75,6 +104,18 @@ SLOPE_LOOKBACK_DAYS = int(TECHNICAL_STAGE_RULES["slope_lookback_days"])
 STAGE3_PRICE_ABOVE_MA_MID_MULTIPLE = float(TECHNICAL_STAGE_RULES["stage3_price_above_ma_mid_multiple"])
 STAGE3_SLOPE_MIN = float(TECHNICAL_STAGE_RULES["stage3_slope_min"])
 STAGE4_SLOPE_MAX = float(TECHNICAL_STAGE_RULES["stage4_slope_max"])
+RESIDUAL_ABOVE_MID_STAGE = str(TECHNICAL_STAGE_RULES["residual_above_mid_stage"])
+RESIDUAL_BELOW_MID_DOWN_STAGE = str(TECHNICAL_STAGE_RULES["residual_below_mid_down_stage"])
+RESIDUAL_BELOW_MID_OTHER_STAGE = str(TECHNICAL_STAGE_RULES["residual_below_mid_other_stage"])
+
+
+def _classify_residual_stage(close: float, ma_fast: float, ma_mid: float, slope_mid: float) -> str:
+    """Classify sufficient-history rows that miss the explicit stage rules."""
+    if close > ma_mid:
+        return RESIDUAL_ABOVE_MID_STAGE
+    if slope_mid <= STAGE4_SLOPE_MAX or ma_fast < ma_mid:
+        return RESIDUAL_BELOW_MID_DOWN_STAGE
+    return RESIDUAL_BELOW_MID_OTHER_STAGE
 
 
 def classify_technical_stage(
@@ -150,6 +191,9 @@ def classify_technical_stage(
         if c > mm * STAGE3_PRICE_ABOVE_MA_MID_MULTIPLE or (mf < mm and slope > STAGE3_SLOPE_MIN):
             out[i] = "3"
             continue
-        # 其他默认 unknown (兜底)
+        # Residual with enough history is still a tradable market state.
+        # Keep "unknown" reserved for insufficient data; otherwise stage-opt
+        # drops valid signal rows before evaluating candidate supply.
+        out[i] = _classify_residual_stage(c, mf, mm, slope)
 
     return out

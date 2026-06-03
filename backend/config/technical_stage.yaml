@@ -17,3 +17,9 @@ slope_lookback_days: 20
 stage3_price_above_ma_mid_multiple: 1.15
 stage3_slope_min: 0.0
 stage4_slope_max: -0.02
+
+# residual 只处理有足量历史、但未命中显式 Stan Weinstein 阶段规则的状态。
+# residual label 只允许 1/3/4；Stage 1.5/2 只由显式突破/上升趋势规则产生。
+residual_above_mid_stage: "3"
+residual_below_mid_down_stage: "4"
+residual_below_mid_other_stage: "1"
