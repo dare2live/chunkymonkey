@@ -24,7 +24,7 @@ bash scripts/install_resilience.sh --status
 ```
 默认不再安装 cron snapshot / SessionStart auto-inject；如需恢复旧自动化，必须显式设置脚本里的 legacy opt-in。
 
-**Snapshot 时间**: 2026-06-03 16:58:13 CST
+**Snapshot 时间**: 2026-06-03 18:22:12 CST
 
 ## 主线状态
 
@@ -60,13 +60,15 @@ bash scripts/install_resilience.sh --status
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `9644d65d chore: expose stage-opt attrition and skill dispatch` |
-| 最近 24h commits | 263 |
+| HEAD | `ebd18209 fix: govern technical-stage residual classification` |
+| 最近 24h commits | 252 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+ebd18209 fix: govern technical-stage residual classification
+6c16bc47 docs: refresh session handoff after stage-opt gate update
 9644d65d chore: expose stage-opt attrition and skill dispatch
 7e1f14cb chore: capture Codex local ops and Moth profile rules
 30de8f81 docs: refresh handoff snapshot after codex resume cleanup
@@ -75,8 +77,6 @@ bash scripts/install_resilience.sh --status
 3e894e9a refactor: flatten settings view render loops
 154f5407 docs: refresh handoff snapshot after commit
 5fd6d5c9 docs: record need_027 fallback snapshot audit evidence
-5831b37d docs: refresh handoff after rank snapshot fallback probe
-08f25e1b docs: record rank snapshot fallback probe
 ```
 
 ## NEXT ACTION (auto-computed)
