@@ -29,7 +29,8 @@ bash scripts/install_resilience.sh --status   # check 装好没
 
 ## 当前切片
 
-- 复盘结论：前端热点收口已经完成了有价值的局部降噪，但它正在变成“优化复杂度分数”的局部循环，而不是解决项目主风险。最新 `scripts/chunkyctl doctor --fast` 仍是 `WARN`，`moth` 仍提示 complexity new high findings 80；真正挡住健康状态的是 5 个 blocking yellow tables，而不是 JS 热点本身。当前优先级应切到 data-health blocker triage，按 writer / SLA 修复 `fact_feature_panel`、`fact_financial_pit_daily`、`fact_stock_fundamental_stage_daily`、`mart_feature_drift`、`mart_feature_drift_histogram`；`fact_lhb_event` 目前只是 warning。
+- 复盘结论：前端热点收口已经完成了有价值的局部降噪，但它正在变成“优化复杂度分数”的局部循环，而不是解决项目主风险。最新 `scripts/chunkyctl doctor --fast` 已经把 **blocking yellow tables 清零**，`moth` 仍提示 complexity new high findings 80；当前剩下的是 warning-only assets，而不是 data-health blocker。
+- data-health triage 已经落地：`price_kline_tdxhub` 推进到 `2026-06-02`，`fact_financial_pit_daily`、`fact_stock_fundamental_stage_daily`、`fact_feature_panel`、`mart_feature_drift`、`mart_feature_drift_histogram` 都对齐到 `2026-06-02`，`update_watermark_sla.py` 也把 `kline_daily` 水位同步到了 `2026-06-02`。`doctor --fast` 现在是 `WARN` 但 `blocking_yellow=0`，只剩 `fact_lhb_event` 和 `mart_daily_recommendation_explanation` 两个 warning。
 - 执行顺序分层：P0 数据健康 / 正确性 blocker 先修；P1 框架 / seam 只在能减少 2+ 后续修复、或复用到多个热点时才先做；P2 用户可见热点直接修；P3 局部清理最后做。对前端来说，`app.js` / shared helper 这类是 P1，`stock-view.js` / `data-view.js` 这类高频页面热点是 P2。结论不是“框架一定先于细节”，而是“框架先于细节仅当它能减少重复劳动”。
 
 ## 上一切片
@@ -70,7 +71,7 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `5d1041ff docs: reframe next action to data-health blockers | # commit-msg: minimal` |
+| HEAD | `8cd787f5 docs: add priority ladder for blocker triage | # commit-msg: minimal` |
 | 最近 24h commits | 275 |
 | 未 commit 文件 | 0 |
 
@@ -96,7 +97,7 @@ b6eb97be docs: refresh session handoff snapshot after need_027 source-registrati
 
 ## NEXT ACTION (auto-computed)
 
-**data-health blocker triage — fact_feature_panel / fact_financial_pit_daily / fact_stock_fundamental_stage_daily / mart_feature_drift / mart_feature_drift_histogram**
+**need_027 blocked-gap triage — inspect source evidence / fallback availability; stage-opt candidate supply remains next if need triage stalls**
 
 ## Resilience 配置 (verified)
 

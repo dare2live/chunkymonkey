@@ -5,15 +5,21 @@
 
 ## 2026-06-03 — strategy reframe: data-health blockers first
 
-- 这轮复盘的结论是：前端热点收口本身没有错，`stock-view.js` / `data-view.js` / `signal-adapter.js` / `app.js` 的局部 refactor 也都通过了 targeted 校验，但它们正在变成“优化复杂度分数”的局部循环，而不是解决当前项目最重的风险。最新 `scripts/chunkyctl doctor --fast` 仍是 `WARN`，`moth` 仍提示 complexity new high findings 80；真正挡住健康状态的是 5 个 blocking yellow tables，而不是 JS 热点本身。
-- 当前优先级应切到 data-health blocker triage，按实际 writer / SLA 处理：`fact_feature_panel`、`fact_financial_pit_daily`、`fact_stock_fundamental_stage_daily`、`mart_feature_drift`、`mart_feature_drift_histogram`。`fact_lhb_event` 仍是 warning，但不在当前 blocking 集合内。
-- 前端结构优化暂停为次要任务，除非它直接关联用户可见 bug、数据门禁或 pipeline 失败；下一阶段的 success metric 以 `doctor --fast` 从 `WARN` 走向 `PASS`，而不是继续压 heuristic hotspot count。
+- 这轮复盘的结论是：前端热点收口本身没有错，`stock-view.js` / `data-view.js` / `signal-adapter.js` / `app.js` 的局部 refactor 也都通过了 targeted 校验，但它们正在变成“优化复杂度分数”的局部循环，而不是解决当前项目最重的风险。最新 `scripts/chunkyctl doctor --fast` 已经把 **blocking yellow tables 清零**，`moth` 仍提示 complexity new high findings 80；剩下的黄色主要是 warning-only assets，而不是 data-health blocker。
+- 这轮 data-health triage 已按 writer / SLA 补完底层链路：`price_kline_tdxhub` 已推进到 `2026-06-02`，`fact_financial_pit_daily`、`fact_stock_fundamental_stage_daily`、`fact_feature_panel`、`mart_feature_drift`、`mart_feature_drift_histogram` 也都对齐到 `2026-06-02`。`scripts/chunkyctl doctor --fast` 现在是 `WARN` 但 `blocking_yellow=0`，只剩 `fact_lhb_event` 和 `mart_daily_recommendation_explanation` 两个 warning。
+- 前端结构优化暂停为次要任务，除非它直接关联用户可见 bug、数据门禁或 pipeline 失败；下一阶段的 success metric 以把剩余 warning-only 资产分层处理，而不是继续压 heuristic hotspot count。
 - 执行顺序分层：
   1. **P0 数据健康 / 正确性 blocker**: 直接阻断门禁、数据 freshness、PIT、安全性或会让 `doctor --fast` 继续 WARN 的问题。先修这个。
   2. **P1 框架 / seam**: 能一次性减少 2 个以上后续修复、或者复用到多个热点的共享 helper、shared model、边界抽离。只有它能减少重复劳动时，才先做框架。
   3. **P2 用户可见热点**: 单个页面或模块的高频路径、N+1、重复扫描、明显卡顿。若没有共享 seam，就直接修这个，不要为了“框架正确性”绕路。
   4. **P3 局部清理**: 只影响单个文件、收益有限、且不触及 blocker 的收尾工作。放到最后。
 - 具体规则：如果一个“框架改造”只服务一个文件，直接修细节更划算；如果它能同时覆盖 2+ 个热点，或能把同类问题统一进一个 shared helper / model，先做框架。
+
+## 2026-06-03 — data-health blocker triage complete
+
+- `price_kline_tdxhub` 已补到 `2026-06-02`，`backfill_financial_pit.py --start 2026-05-29` 已把 `fact_financial_pit_daily` 抬到 `2026-06-02`，`build_picture_daily.py` 把 `fact_stock_fundamental_stage_daily` 抬到 `2026-06-02`，`build_feature_panel_duck.py --mode incremental` 把 `fact_feature_panel` 抬到 `2026-06-02`，`compute_feature_drift.py --refresh-baseline` 已刷新 `mart_feature_drift` / `mart_feature_drift_histogram`。
+- `update_watermark_sla.py` 已把 `kline_daily` 水位同步到 `2026-06-02`，`scripts/chunkyctl doctor --fast` 现在是 `WARN` 但 `blocking_yellow=0`，`green=340 / yellow=2 / red=0`。剩余黄色只是不阻断门禁的 warning-only 资产：`fact_lhb_event`、`mart_daily_recommendation_explanation`。
+- 这意味着 data-health blocker triage 这一轮已经收口，后续优先级可以回到 `need_027` blocked-gap triage、stage-opt candidate supply，以及必要时的 warning-only writer 收尾，不再围着旧的 5 个 blocking yellow table 打转。
 
 
 ## 2026-06-03 — stock-view index consolidation
