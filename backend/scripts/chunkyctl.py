@@ -163,6 +163,10 @@ def _need_coverage_summary(report: dict[str, Any] | None) -> dict[str, Any] | No
     }
 
 
+def _format_action_detail_suffix(details: list[str]) -> str:
+    return f" ({'; '.join(details)})" if details else ""
+
+
 def _stage_opt_candidate_action(stage_opt: dict[str, Any] | None) -> dict[str, str] | None:
     if not stage_opt or not stage_opt.get("next_action_recommendation"):
         return None
@@ -195,7 +199,7 @@ def _stage_opt_candidate_action(stage_opt: dict[str, Any] | None) -> dict[str, s
             details.append(f"research challengers: {research_formula_registry.get('formula_count')}")
         if research_formula_ids:
             details.append(f"research challenger ids: {', '.join(research_formula_ids[:10])}")
-        action_text += " (" + "; ".join(details) + ")"
+        action_text += _format_action_detail_suffix(details)
     return {
         "priority": str(recommendation.get("priority") or "P1"),
         "action": action_text,
@@ -217,7 +221,7 @@ def _need_coverage_blocked_action(need_coverage: dict[str, Any] | None) -> dict[
     if blocked_need_names:
         details.append(f"names: {', '.join(blocked_need_names[:2])}")
     if details:
-        action_text += " (" + "; ".join(details) + ")"
+        action_text += _format_action_detail_suffix(details)
     special_need = next((item for item in blocked_needs if str(item.get("need_id") or "") == "need_027"), None)
     if special_need:
         failure_queue_snapshot = special_need.get("failure_queue_snapshot") or {}

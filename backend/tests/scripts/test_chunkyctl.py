@@ -919,6 +919,11 @@ def test_next_actions_include_stage_opt_structural_notes() -> None:
     )
 
 
+def test_format_action_detail_suffix_handles_empty_and_joined_details() -> None:
+    assert chunkyctl._format_action_detail_suffix([]) == ""
+    assert chunkyctl._format_action_detail_suffix(["one", "two"]) == " (one; two)"
+
+
 def test_next_actions_include_need_coverage_recommendation() -> None:
     actions = chunkyctl._next_actions(
         {
