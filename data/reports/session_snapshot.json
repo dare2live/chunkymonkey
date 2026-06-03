@@ -1,11 +1,11 @@
 {
-  "snapshot_at": "2026-06-03 13:04:35 CST",
+  "snapshot_at": "2026-06-03 13:26:50 CST",
   "git": {
     "branch": "main",
-    "head_hash": "5831b37d",
-    "head_msg": "5831b37d docs: refresh handoff after rank snapshot fallback probe",
-    "commits_24h": 265,
-    "uncommitted_files": 3
+    "head_hash": "5fd6d5c9",
+    "head_msg": "5fd6d5c9 docs: record need_027 fallback snapshot audit evidence",
+    "commits_24h": 264,
+    "uncommitted_files": 0
   },
   "retrain": {
     "model_id": "lgbm_phase5_v9b_20260523T083000Z",
@@ -25,5 +25,5 @@
     "pct_of_budget": "25.2",
     "remaining_hours_spot": "105.9"
   },
-  "next_action": "3 uncommitted files \u2014 git status \u770b + bash scripts/safe_commit.sh"
+  "next_action": "continue current goal blockers \u2014 stage-opt structural blocker triage / need_027 blocked-gap triage"
 }

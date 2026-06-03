@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 13:04:35 CST
+**Snapshot 时间**: 2026-06-03 13:26:50 CST
 
 ## 主线状态
 
@@ -61,13 +61,14 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `5831b37d docs: refresh handoff after rank snapshot fallback probe` |
-| 最近 24h commits | 265 |
-| 未 commit 文件 | 3 |
+| HEAD | `5fd6d5c9 docs: record need_027 fallback snapshot audit evidence` |
+| 最近 24h commits | 264 |
+| 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+5fd6d5c9 docs: record need_027 fallback snapshot audit evidence
 5831b37d docs: refresh handoff after rank snapshot fallback probe
 08f25e1b docs: record rank snapshot fallback probe
 d2280cc2 docs: refresh session handoff snapshot after live boundary tighten
@@ -77,12 +78,11 @@ d83f7d5f feat: narrow stage-opt live supply
 3838c577 refactor: flatten data-view render hot paths
 b1be391d feat: expand stage-opt supply with challenger formulas
 d97131fd docs: refresh handoff snapshot after data-health blocker triage | # commit-msg: minimal
-f8d00e10 docs: record data-health blocker triage complete | # commit-msg: minimal
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**3 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**continue current goal blockers — stage-opt structural blocker triage / need_027 blocked-gap triage**
 
 ## Resilience 配置 (verified)
 
