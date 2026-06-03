@@ -3,6 +3,10 @@
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
 
+## 2026-06-03 — audit_tdx_data_need_coverage helper regression expansion
+
+- `backend/tests/scripts/test_audit_tdx_data_need_coverage.py` 现直接覆盖 `_source_registration_summary()` 和 `_blocked_need_summary()` 两个新 helper，补强了 `need_027` 的 source registration / failure queue 字段映射回归；`_summarize_need_gaps()` 的外层集成测试仍保留，输出语义不变。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/scripts/audit_tdx_data_need_coverage.py --scope backend/tests/scripts/test_audit_tdx_data_need_coverage.py` PASS，`python -m py_compile backend/scripts/audit_tdx_data_need_coverage.py backend/tests/scripts/test_audit_tdx_data_need_coverage.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_tdx_data_need_coverage.py` 24 passed，`analyze_complexity.py` 对 `backend/scripts/audit_tdx_data_need_coverage.py` 无明显热点，`codegraph sync .` 已同步。
+
 ## 2026-06-03 — audit_tdx_data_need_coverage blocked-need summary helper extraction
 
 - `backend/scripts/audit_tdx_data_need_coverage.py` 里的 `_summarize_need_gaps()` 现把 blocked need 字典拼装收成 `_blocked_need_summary()` 纯 helper，`need_027` 相关的 source registration / failure queue 结构保持不变，`blocked_needs` 输出没有改字段。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/scripts/audit_tdx_data_need_coverage.py --scope backend/tests/scripts/test_audit_tdx_data_need_coverage.py` PASS，`python -m py_compile backend/scripts/audit_tdx_data_need_coverage.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_tdx_data_need_coverage.py` 22 passed，`analyze_complexity.py` 对 `backend/scripts/audit_tdx_data_need_coverage.py` 无明显热点，`codegraph sync .` 已同步。

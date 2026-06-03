@@ -4,6 +4,7 @@ import json
 import importlib.util
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import duckdb
 import pytest
@@ -326,6 +327,98 @@ def test_summarize_need_gaps_identifies_only_blocked_need() -> None:
     assert blocked["failure_queue_snapshot"]["latest_resolved_row"]["data_domain"] == "stock_fund_flow_rank_snapshot"
     assert blocked["action"] == "probe_restore_or_keep_unknown"
     assert "CYQ 主力画像需要真实订单流" in blocked["notes"]
+
+
+def test_source_registration_summary_reports_registered_families_and_capabilities() -> None:
+    registered_sources = {
+        "akshare": SimpleNamespace(
+            capabilities=[
+                SimpleNamespace(name="individual_fund_flow"),
+                SimpleNamespace(name="individual_fund_flow_rank_snapshot"),
+            ]
+        ),
+        "aif10": SimpleNamespace(capabilities=[SimpleNamespace(name="other_capability")]),
+    }
+
+    summary = audit_tdx_data_need_coverage._source_registration_summary(
+        "akshare",
+        "miaoxiang",
+        registered_source_names=["aif10", "akshare", "tdxhub"],
+        registered_source_name_set={"aif10", "akshare", "tdxhub"},
+        registered_sources=registered_sources,
+    )
+
+    assert summary["registered_source_names"] == ["aif10", "akshare", "tdxhub"]
+    assert summary["preferred_source_registered"] is True
+    assert summary["preferred_source_family"] == "akshare"
+    assert summary["preferred_source_family_registered"] is True
+    assert summary["fallback_source_registered"] is False
+    assert summary["fallback_source_family"] == "aif10"
+    assert summary["fallback_source_family_registered"] is True
+    assert summary["preferred_source_capabilities"] == [
+        "individual_fund_flow",
+        "individual_fund_flow_rank_snapshot",
+    ]
+    assert summary["fallback_source_capabilities"] == ["other_capability"]
+    assert summary["preferred_source_supports_individual_fund_flow"] is True
+    assert summary["fallback_source_supports_individual_fund_flow"] is False
+
+
+def test_blocked_need_summary_preserves_need_entry_fields() -> None:
+    source_registration = {
+        "registered_source_names": ["aif10", "akshare", "tdxhub"],
+        "preferred_source_registered": True,
+        "preferred_source_family": "akshare",
+        "preferred_source_family_registered": True,
+        "fallback_source_registered": False,
+        "fallback_source_family": "aif10",
+        "fallback_source_family_registered": True,
+        "preferred_source_capabilities": ["individual_fund_flow"],
+        "fallback_source_capabilities": [],
+        "preferred_source_supports_individual_fund_flow": True,
+        "fallback_source_supports_individual_fund_flow": False,
+    }
+    failure_queue_snapshot = {
+        "row_count": 2,
+        "status_counts": {"open": 1, "resolved": 1},
+        "latest_open_row": {"data_domain": "order_flow_fund_flow"},
+        "latest_resolved_row": {"data_domain": "stock_fund_flow_rank_snapshot"},
+    }
+    record = {
+        "need_id": "need_027",
+        "need_name": "主力/超大/大/中/小单资金流向",
+        "consumer": "cyq_position_monitor, institution_score, sniper_score",
+        "current_source": "raw_fund_flow_daily deprecated/stale",
+        "tdxhub_capability": "not in current TDX path",
+        "pit_key": "unknown",
+        "preferred_source": "akshare",
+        "fallback_source": "miaoxiang",
+        "action": "probe_restore_or_keep_unknown",
+        "notes": "CYQ 主力画像需要真实订单流",
+    }
+
+    blocked = audit_tdx_data_need_coverage._blocked_need_summary(
+        record,
+        evidence_status="unknown",
+        eligibility="blocked",
+        source_registration=source_registration,
+        failure_queue_snapshot=failure_queue_snapshot,
+    )
+
+    assert blocked["need_id"] == "need_027"
+    assert blocked["need_name"] == "主力/超大/大/中/小单资金流向"
+    assert blocked["consumer"] == "cyq_position_monitor, institution_score, sniper_score"
+    assert blocked["current_source"] == "raw_fund_flow_daily deprecated/stale"
+    assert blocked["tdxhub_capability"] == "not in current TDX path"
+    assert blocked["pit_key"] == "unknown"
+    assert blocked["evidence_status"] == "unknown"
+    assert blocked["production_eligibility"] == "blocked"
+    assert blocked["preferred_source"] == "akshare"
+    assert blocked["fallback_source"] == "miaoxiang"
+    assert blocked["source_registration"] == source_registration
+    assert blocked["failure_queue_snapshot"] == failure_queue_snapshot
+    assert blocked["action"] == "probe_restore_or_keep_unknown"
+    assert blocked["notes"] == "CYQ 主力画像需要真实订单流"
 
 
 def test_audit_tdx_data_need_coverage_writes_expected_rows(tmp_path: Path) -> None:
