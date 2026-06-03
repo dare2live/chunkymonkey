@@ -25,9 +25,13 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-06-03 08:49:12 CST
+**Snapshot 时间**: 2026-06-03 08:56:44 CST
 
 ## 当前切片
+
+- `assets/js/data-view.js` 里的 `buildAssetHealthIndex()` / `buildAuditResultsModel()` / `buildRoutesTableModel()` 现都改成直线型 `for...of` 收口，`buildRoutesTableModel()` 还把 route 过滤字段收成一次性 `buildRouteSearchText()` 搜索串，避免每条 route 再跑一层 `some()` 回调；`backend/tests/contract/test_data_view.py` 新增 `protocol` / `raw_table` filter 回归，锁住多字段过滤语义。验证：`node --check assets/js/data-view.js` PASS，`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_data_view.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py backend/tests/contract/test_workbench_frontend_contract.py` 6 passed，`python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py /Users/dp/Documents/M/stock/chunkymonkey/assets/js/data-view.js --format markdown` targeted scan 无明显热点，`codegraph sync .` 已同步；但全仓 broad scan 仍为 WARN / 80 high findings，主要残余还在 `assets/js/app.js` / `assets/js/data-view.js` / `assets/js/settings-view.js` / `assets/js/stock-view.js` / `assets/js/signal-adapter.js` 的历史热点。
+
+## 上一切片
 
 - `assets/js/signal-adapter.js` 里的 `eventToView()` institutionType 回退收成 `extractInstitutionType()`，`aggregateByStockViews()` 改成单次 group state + 线性 action 分桶 + 单次公告日排序；`backend/tests/contract/test_signal_adapter.py` 新增 `fetchSignals()` mock 回归，锁住 stock 桶顺序、`topEvent`、`events` / `timelineEvents` 顺序和 fallback 语义。验证：`node --check assets/js/signal-adapter.js` PASS，`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_signal_adapter.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_signal_adapter.py backend/tests/contract/test_workbench_frontend_contract.py` 4 passed，`python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py /Users/dp/Documents/M/stock/chunkymonkey/assets/js/signal-adapter.js --format markdown` targeted scan 无明显热点；但全仓 broad scan 仍会把 `assets/js/app.js` / `assets/js/data-view.js` / `assets/js/settings-view.js` / `assets/js/stock-view.js` 以及 `signal-adapter.js` 的部分 heuristic 行继续列为高热点。
 
@@ -65,13 +69,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `e834f18c refactor: signal-adapter grouping cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, audit PASS, pytest 4 passed, targeted complexity PASS, codegraph sync PASS | post-fix-audit cleanup verified 无残留` |
+| HEAD | `eeff4015 refactor: data-view route search cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, audit PASS, pytest 6 passed, targeted complexity PASS, codegraph sync PASS | post-fix-audit cleanup verified 无残留` |
 | 最近 24h commits | 275 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+eeff4015 refactor: data-view route search cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, audit PASS, pytest 6 passed, targeted complexity PASS, codegraph sync PASS | post-fix-audit cleanup verified 无残留
+5bcea950 docs: refresh session handoff snapshot after signal-adapter grouping cleanup | # commit-msg: minimal
 e834f18c refactor: signal-adapter grouping cleanup | Codex-Reviewed: APPROVE_WITH_NOTES | test pass: node --check PASS, audit PASS, pytest 4 passed, targeted complexity PASS, codegraph sync PASS | post-fix-audit cleanup verified 无残留
 690dd3ed docs: refresh session handoff snapshot after app navigation helper extraction | # commit-msg: minimal
 74e25438 refactor: app navigation helper extraction | Codex-Reviewed: APPROVE | test pass: node --check PASS, audit PASS, pytest 2 passed, complexity no obvious hotspots, codegraph sync PASS
