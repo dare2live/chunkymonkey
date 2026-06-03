@@ -30,6 +30,7 @@ bash scripts/install_resilience.sh --status   # check 装好没
 ## 当前切片
 
 - 复盘结论：前端热点收口已经完成了有价值的局部降噪，但它正在变成“优化复杂度分数”的局部循环，而不是解决项目主风险。最新 `scripts/chunkyctl doctor --fast` 仍是 `WARN`，`moth` 仍提示 complexity new high findings 80；真正挡住健康状态的是 5 个 blocking yellow tables，而不是 JS 热点本身。当前优先级应切到 data-health blocker triage，按 writer / SLA 修复 `fact_feature_panel`、`fact_financial_pit_daily`、`fact_stock_fundamental_stage_daily`、`mart_feature_drift`、`mart_feature_drift_histogram`；`fact_lhb_event` 目前只是 warning。
+- 执行顺序分层：P0 数据健康 / 正确性 blocker 先修；P1 框架 / seam 只在能减少 2+ 后续修复、或复用到多个热点时才先做；P2 用户可见热点直接修；P3 局部清理最后做。对前端来说，`app.js` / shared helper 这类是 P1，`stock-view.js` / `data-view.js` 这类高频页面热点是 P2。结论不是“框架一定先于细节”，而是“框架先于细节仅当它能减少重复劳动”。
 
 ## 上一切片
 
