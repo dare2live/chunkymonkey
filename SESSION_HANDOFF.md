@@ -88,6 +88,7 @@ e834f18c refactor: signal-adapter grouping cleanup | Codex-Reviewed: APPROVE_WIT
 
 - `bc_absorbed` 的 5 个 challenger formulas 已经通过 live `REGISTRY` 进入 `build_formula_signals_history`，并已回填 `704,661` 条信号和 `35` 行 horizon evidence；stage-opt audit 现在显示 `live_formula_count=12`，但当前 blocker 仍然是 `below_min_signals`，weakest formulas 已切到 `ma_base_breakout` / `gs_pullback_confirm` / `volume_base_breakout`。
 - 你给的高吞吐量化蓝图已记录，后续推进顺序按 `data pipeline / truth-source` -> `CatBoost + Bayesian/Optuna + VectorBT` -> `GCP Spot / Cloud Run` 走；`bestchoice` 公式事项先排队，不和当前 blocker 线程混在一起。
+- `assets/js/data-view.js` 这一轮继续把渲染热点收口到直线型 `for...of` / 拼接路径，`renderHealthHeatmap()`、`renderSourcePriority()`、`renderFallbackPanel()`、`renderDriftQueue()`、`renderCapTable()`、`renderStepGrid()` 和 `startPolling()` 的日志聚合都已去掉 `.map().join()` / `forEach()` 热回调；targeted complexity scan 这一个文件已经不再报明显热点，但全仓 broad scan 仍保留历史 HIGH 残余，后续继续按热路径推进。
 
 ## Resilience 配置 (verified)
 

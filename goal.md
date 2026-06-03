@@ -34,6 +34,12 @@
 - 这个蓝图的推荐推进顺序是：`1)` 先把数据管道和 truth-source 收敛好，`2)` 再跑通本地研究闭环（特征、CatBoost、VectorBT、Bayesian/Optuna），`3)` 最后再上云做 Spot / Cloud Run 编排。数据层先行，因为没有稳定真相源，后面的模型和风控都只是漂浮的算术。
 - `bestchoice` 相关的公式 / 选股事项先记为后续推进项，不和当前的 `stage-opt` / `need_027` blocker 线程混在一起；等当前 blocker 线自然停住时，再切过来做。
 
+## 2026-06-03 — data-view render hot paths flattening
+
+- `assets/js/data-view.js` 的几个渲染热点继续收口：`renderHealthHeatmap()`、`renderSourcePriority()`、`renderFallbackPanel()`、`renderDriftQueue()`、`renderCapTable()`、`renderStepGrid()` 以及 `startPolling()` 的日志聚合都从 `.map().join()` / `forEach()` 改成了直线型 `for...of` / 字符串拼接，保持输出语义不变，只收紧回调型热路径。
+- 验证：`node --check assets/js/data-view.js` PASS，`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_data_view.py --scope backend/tests/contract/test_workbench_frontend_contract.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py backend/tests/contract/test_workbench_frontend_contract.py` 6 passed，`python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py /Users/dp/Documents/M/stock/chunkymonkey/assets/js/data-view.js --format markdown` targeted scan 无明显热点，`codegraph sync .` 已同步。
+- 这次只是在前端 cockpit 里继续削掉一个明显的渲染带宽点；全仓 broad scan 仍然有历史 HIGH 残余，后续还是按 `assets/js/data-view.js` / `assets/js/settings-view.js` / `assets/js/signal-adapter.js` / `assets/js/stock-view.js` 的热路径继续收口，而不是把这次当成全局完结。
+
 
 ## 2026-06-03 — stock-view index consolidation
 

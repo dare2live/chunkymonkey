@@ -611,6 +611,17 @@
     const model = buildHealthHeatmapModel(_state.health || {});
     const summary = model.summary;
     const total = model.total;
+    let layerCardsHtml = '';
+    for (const layer of model.layers) {
+      const row = layer.row || {};
+      const layerTotal = layer.total || 0;
+      layerCardsHtml += `<div class="cm-health-card">
+          <h4>${esc(layer.layer)}</h4>
+          <div class="cm-health-row"><span>green</span>${global.CMViz ? global.CMViz.miniBar(row.green || 0, layerTotal || 1, { color: 'var(--cm-ok-500)' }) : ''}<b>${row.green || 0}</b></div>
+          <div class="cm-health-row"><span>yellow</span>${global.CMViz ? global.CMViz.miniBar(row.yellow || 0, layerTotal || 1, { color: 'var(--cm-warn-500)' }) : ''}<b>${row.yellow || 0}</b></div>
+          <div class="cm-health-row"><span>red</span>${global.CMViz ? global.CMViz.miniBar(row.red || 0, layerTotal || 1, { color: 'var(--cm-bad-500)' }) : ''}<b>${row.red || 0}</b></div>
+        </div>`;
+    }
     const bar = global.CMViz && global.CMViz.stackedBar
       ? global.CMViz.stackedBar(model.barSegments)
       : '';
@@ -629,16 +640,7 @@
         <div class="cm-health-row"><span>yellow</span>${global.CMViz ? global.CMViz.miniBar(summary.yellow || 0, total || 1, { color: 'var(--cm-warn-500)' }) : ''}<b>${summary.yellow || 0}</b></div>
         <div class="cm-health-row"><span>red</span>${global.CMViz ? global.CMViz.miniBar(summary.red || 0, total || 1, { color: 'var(--cm-bad-500)' }) : ''}<b>${summary.red || 0}</b></div>
       </div>
-      ${model.layers.map(layer => {
-        const row = layer.row || {};
-        const layerTotal = layer.total || 0;
-        return `<div class="cm-health-card">
-          <h4>${esc(layer.layer)}</h4>
-          <div class="cm-health-row"><span>green</span>${global.CMViz ? global.CMViz.miniBar(row.green || 0, layerTotal || 1, { color: 'var(--cm-ok-500)' }) : ''}<b>${row.green || 0}</b></div>
-          <div class="cm-health-row"><span>yellow</span>${global.CMViz ? global.CMViz.miniBar(row.yellow || 0, layerTotal || 1, { color: 'var(--cm-warn-500)' }) : ''}<b>${row.yellow || 0}</b></div>
-          <div class="cm-health-row"><span>red</span>${global.CMViz ? global.CMViz.miniBar(row.red || 0, layerTotal || 1, { color: 'var(--cm-bad-500)' }) : ''}<b>${row.red || 0}</b></div>
-        </div>`;
-      }).join('')}
+      ${layerCardsHtml}
     </div>`;
   }
 
@@ -647,22 +649,13 @@
     if (!root) return;
     const model = buildSourcePriorityModel(_state.sourceHealth || {});
     const rows = model.rows;
-    root.innerHTML = `<div class="cm-section-head">
-      <div>
-        <h3>源优先级与连通性</h3>
-        <p class="muted">展示每个上游当前承载的资产健康分布，用于判断主源和补源是否符合预期。</p>
-      </div>
-      <span class="cm-muted-note">${rows.length || 0} sources</span>
-    </div>
-    <div class="cm-table-scroll">
-      <table class="cm-compact-table" style="min-width:760px">
-        <thead><tr><th>源</th><th>资产数</th><th>green</th><th>yellow</th><th>red</th><th>健康占比</th></tr></thead>
-        <tbody>${rows.length ? rows.map(r => {
-          const green = r.green ?? 0;
-          const yellow = r.yellow ?? 0;
-          const red = r.red ?? 0;
-          const total = r.total ?? (green + yellow + red);
-          return `<tr>
+    let rowsHtml = '';
+    for (const r of rows) {
+      const green = r.green ?? 0;
+      const yellow = r.yellow ?? 0;
+      const red = r.red ?? 0;
+      const total = r.total ?? (green + yellow + red);
+      rowsHtml += `<tr>
             <td>${sourcePill(r.source)}</td>
             <td>${esc(total)}</td>
             <td>${green}</td>
@@ -674,7 +667,18 @@
               { value: red, color: 'var(--cm-bad-500)', label: 'red' },
             ]) : ''}</td>
           </tr>`;
-        }).join('') : '<tr><td colspan="6" class="muted" style="padding:16px;text-align:center">源健康聚合待加载</td></tr>'}</tbody>
+    }
+    root.innerHTML = `<div class="cm-section-head">
+      <div>
+        <h3>源优先级与连通性</h3>
+        <p class="muted">展示每个上游当前承载的资产健康分布，用于判断主源和补源是否符合预期。</p>
+      </div>
+      <span class="cm-muted-note">${rows.length || 0} sources</span>
+    </div>
+    <div class="cm-table-scroll">
+      <table class="cm-compact-table" style="min-width:760px">
+        <thead><tr><th>源</th><th>资产数</th><th>green</th><th>yellow</th><th>red</th><th>健康占比</th></tr></thead>
+        <tbody>${rows.length ? rowsHtml : '<tr><td colspan="6" class="muted" style="padding:16px;text-align:center">源健康聚合待加载</td></tr>'}</tbody>
       </table>
     </div>`;
   }
@@ -683,15 +687,19 @@
     const root = qs('ds-fallback-panel');
     if (!root) return;
     const model = buildFallbackPanelModel(_state.health || {}, _state.sourceHealth || {}, _state.routes || []);
-    const tierRowsHtml = model.tierEntries.length ? model.tierEntries.map(([tier, count]) => `
-          <div class="cm-health-row"><span>${esc(tier)}</span>${global.CMViz ? global.CMViz.miniBar(count || 0, model.tierMax, { color: 'var(--cm-brand-500)' }) : ''}<b>${esc(count)}</b></div>
-        `).join('') : '<div class="muted" style="font-size:12px">暂无 tier 聚合</div>';
-    const transitionRowsHtml = model.transitionRows.length ? model.transitionRows.map(x => `
-          <div style="padding:5px 0;border-bottom:1px dotted var(--cm-bg-100);font-size:12px">
+    let tierRowsHtml = '';
+    for (const [tier, count] of model.tierEntries) {
+      tierRowsHtml += `<div class="cm-health-row"><span>${esc(tier)}</span>${global.CMViz ? global.CMViz.miniBar(count || 0, model.tierMax, { color: 'var(--cm-brand-500)' }) : ''}<b>${esc(count)}</b></div>`;
+    }
+    if (!tierRowsHtml) tierRowsHtml = '<div class="muted" style="font-size:12px">暂无 tier 聚合</div>';
+    let transitionRowsHtml = '';
+    for (const x of model.transitionRows) {
+      transitionRowsHtml += `<div style="padding:5px 0;border-bottom:1px dotted var(--cm-bg-100);font-size:12px">
             <strong>${esc(x.dataName)}</strong>
             <span class="muted"> ${sourcePill(x.source)} ${x.target ? '-> ' + sourcePill(x.target) : ''}</span>
-          </div>
-        `).join('') : '<div class="muted" style="font-size:12px">暂无 fallback 触发</div>';
+          </div>`;
+    }
+    if (!transitionRowsHtml) transitionRowsHtml = '<div class="muted" style="font-size:12px">暂无 fallback 触发</div>';
     root.innerHTML = `<div class="cm-section-head">
       <div>
         <h3>Fallback 状态</h3>
@@ -717,6 +725,20 @@
     const model = buildDriftQueueModel(_state.schemaVersions || {});
     const summary = model.summary;
     const driftRows = model.driftRows;
+    let driftRowsHtml = '';
+    for (const v of driftRows.slice(0, 12)) {
+      driftRowsHtml += `<tr>
+            <td><code>${esc(v.table_name)}</code></td>
+            <td>${esc(v.layer || '—')}</td>
+            <td><code>${esc(v.expected_version || '—')}</code></td>
+            <td><code>${esc(v.actual_version || 'never_recorded')}</code></td>
+            <td class="muted">${esc(v.rebuilt_at ? v.rebuilt_at.slice(0, 16) : '—')}</td>
+            <td><button class="chip chip-outline chip-sm" data-drift-table="${esc(v.table_name)}">查看设置</button></td>
+          </tr>`;
+    }
+    if (!driftRowsHtml) {
+      driftRowsHtml = '<tr><td colspan="6" class="muted" style="padding:16px;text-align:center">schema versions 已对齐</td></tr>';
+    }
     root.innerHTML = `<div class="cm-section-head">
       <div>
         <h3>Schema Drift 队列</h3>
@@ -727,16 +749,7 @@
     <div class="cm-table-scroll">
       <table class="cm-compact-table" style="min-width:760px">
         <thead><tr><th>表</th><th>层</th><th>expected</th><th>actual</th><th>最近重算</th><th>处理</th></tr></thead>
-        <tbody>${driftRows.length ? driftRows.slice(0, 12).map(v => `
-          <tr>
-            <td><code>${esc(v.table_name)}</code></td>
-            <td>${esc(v.layer || '—')}</td>
-            <td><code>${esc(v.expected_version || '—')}</code></td>
-            <td><code>${esc(v.actual_version || 'never_recorded')}</code></td>
-            <td class="muted">${esc(v.rebuilt_at ? v.rebuilt_at.slice(0, 16) : '—')}</td>
-            <td><button class="chip chip-outline chip-sm" data-drift-table="${esc(v.table_name)}">查看设置</button></td>
-          </tr>
-        `).join('') : '<tr><td colspan="6" class="muted" style="padding:16px;text-align:center">schema versions 已对齐</td></tr>'}</tbody>
+        <tbody>${driftRowsHtml}</tbody>
       </table>
     </div>`;
     bindDelegatedClick(root, '[data-drift-table]', btn => {
@@ -763,6 +776,16 @@
       root.innerHTML = '<div class="muted" style="padding:14px;text-align:center;font-size:12px">无匹配</div>';
       return;
     }
+    let capabilityRowsHtml = '';
+    for (const c of list) {
+      capabilityRowsHtml += `<tr style="border-bottom:1px dotted var(--cm-bg-100)">
+            <td style="padding:5px 8px"><code>${esc(c.capability)}</code></td>
+            <td style="padding:5px 8px;color:var(--cm-ink-500)">${esc(c.freshness)}</td>
+            <td style="padding:5px 8px;font-weight:600">${esc(c.primarySource)}</td>
+            <td style="padding:5px 8px;color:var(--cm-ink-500)">${esc(c.fallbackChainText)}</td>
+            <td style="padding:5px 8px">${esc(c.description)}</td>
+          </tr>`;
+    }
     root.innerHTML = `
       <table style="width:100%;font-size:12px;border-collapse:collapse">
         <thead style="position:sticky;top:0;background:var(--cm-surface);z-index:1">
@@ -774,17 +797,7 @@
             <th style="text-align:left;padding:6px 8px">描述</th>
           </tr>
         </thead>
-        <tbody>
-        ${list.map(c => `
-          <tr style="border-bottom:1px dotted var(--cm-bg-100)">
-            <td style="padding:5px 8px"><code>${esc(c.capability)}</code></td>
-            <td style="padding:5px 8px;color:var(--cm-ink-500)">${esc(c.freshness)}</td>
-            <td style="padding:5px 8px;font-weight:600">${esc(c.primarySource)}</td>
-            <td style="padding:5px 8px;color:var(--cm-ink-500)">${esc(c.fallbackChainText)}</td>
-            <td style="padding:5px 8px">${esc(c.description)}</td>
-          </tr>
-        `).join('')}
-        </tbody>
+        <tbody>${capabilityRowsHtml}</tbody>
       </table>
     `;
   }
@@ -806,12 +819,14 @@
   function renderStepGrid() {
     const root = qs('ds-step-grid');
     if (!root) return;
-    root.innerHTML = SYNC_STEPS.map(s => `
-      <div class="ds-step-chip" data-step="${esc(s.id)}" title="${esc(s.cap)} via ${esc(s.source)}">
+    let stepsHtml = '';
+    for (const s of SYNC_STEPS) {
+      stepsHtml += `<div class="ds-step-chip" data-step="${esc(s.id)}" title="${esc(s.cap)} via ${esc(s.source)}">
         <div style="font-weight:600;font-size:12px;margin-bottom:2px">${esc(s.name)}</div>
         <div style="color:var(--cm-ink-500);font-size:10px">${esc(s.source)}</div>
-      </div>
-    `).join('');
+      </div>`;
+    }
+    root.innerHTML = stepsHtml;
     bindDelegatedClick(root, '.ds-step-chip', el => triggerStep(el.dataset.step, el));
   }
 
@@ -907,7 +922,7 @@
         const j = await fetchJSON('/api/inst/update/status', { timeout: 5000 });
         // logs 是 [{id, ts, msg}, ...] (递增 id)
         if (Array.isArray(j.logs)) {
-          j.logs.forEach(item => {
+          for (const item of j.logs) {
             const id = item.id || 0;
             if (id > _lastLogId) {
               _lastLogId = id;
@@ -915,7 +930,7 @@
               _logBuffer.push(`[${ts}] ${item.message || item.msg || ''}`);
               if (_logBuffer.length > 500) _logBuffer.shift();
             }
-          });
+          }
           const el = qs('ds-live-log');
           if (el) { el.textContent = _logBuffer.slice(-200).join('\n'); el.scrollTop = el.scrollHeight; }
         }
