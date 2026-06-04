@@ -1,9 +1,10 @@
 # Agent Operating Policy
 
-This file is the Codex-facing operating rulebook for this repo. `CLAUDE.md`
-contains older Claude-specific workflows and project memory; read it when a task
-touches strategy validation, PIT/leakage, Optuna, GCP, or multi-agent execution,
-then apply the rules below in Codex terms.
+This file is the Codex-facing operating rulebook for this repo. `CLAUDE.md` is
+a legacy Claude-only artifact, not a Codex policy source. Codex must not read or
+apply `CLAUDE.md` by default; open it only when the user explicitly asks for
+historical comparison, and treat `AGENTS.md`, active docs, skills, and live
+tooling output as authoritative when they conflict.
 
 ## First Actions
 
@@ -126,8 +127,9 @@ Keep serialized:
 - writes to the same DuckDB table/output directory/cache/artifact;
 - Optuna studies sharing the same study name/storage;
 - commit/push/final merge;
-- `goal.md`, `SESSION_HANDOFF.md`, `AGENTS.md`, `CLAUDE.md`, and project index
-  updates unless one controller owns the edit.
+- `goal.md`, `SESSION_HANDOFF.md`, `AGENTS.md`, and project index updates
+  unless one controller owns the edit. `CLAUDE.md` is legacy and should not be
+  consulted or edited unless the user explicitly requests historical migration.
 
 Controller responsibilities:
 - choose what not to delegate: architecture decisions, truth-source decisions,

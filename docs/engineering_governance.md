@@ -11,6 +11,7 @@ files are archived under `analysis/docs_archive_20260531/`.
 |---|---|
 | Pretty backtests replacing production evidence | Metrics are `unknown` until measured by current gates |
 | Old docs or chat memory steering work | `goal.md`, `SESSION_HANDOFF.md`, `analysis/workflow_checkpoint.md`, and this docs set are the current surface |
+| Legacy Claude policy steering Codex | `CLAUDE.md` is ignored by default; Codex uses `AGENTS.md`, active docs, skills, and live tooling unless the user explicitly asks for historical migration |
 | Hidden complexity and stale indexes | CodeGraph and complexity optimizer are a paired gate |
 | Green tests proving old assumptions | Run test-tool health before citing tests as evidence |
 | Cloud spend or dirty cloud artifacts | GCP work requires explicit scope and `CHUNKYMONKEY_GCP_EXPLICIT_OK=1` |
@@ -100,6 +101,7 @@ PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope <reg
 | Default parallelism | Spawn bounded assistant agents by default for independent sidecar investigation unless the user explicitly says not to parallelize, the tool is unavailable, or the work is tightly coupled |
 | Read-only agents | Discovery, graph queries, data inventory, stage-opt/need coverage/storage triage, complexity triage, RCA evidence |
 | Worker agents | Bounded implementation only inside explicitly disjoint file scopes; never revert controller or peer work |
+| `chunkyctl preflight` controller-agent gate | Broad audit/research/architecture/data/debug or 3+ scope tasks must show `controller_agent_gate.required=true`; controller satisfies it by dispatching bounded agents or recording a concrete skip reason |
 
 Parallelize read-only work and independent tests. DuckDB-heavy audits may run in
 parallel only when they use explicit read-only connections. Serialize shared

@@ -2,6 +2,14 @@
 
 > 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
 
+## 2026-06-04 — Codex controller gate and data-health freshness blockers
+
+- Codex 规则源边界已重新固化：`CLAUDE.md` 是 legacy Claude-only history，Codex 默认只使用 `AGENTS.md`、当前 docs、Codex skills、Moth evidence paths 和 live tooling output。`chunkyctl preflight` 现在输出 `instruction_sources.ignored_by_default=["CLAUDE.md"]`，`chunkyctl worktree` 把 `CLAUDE.md` 归为 `legacy_context`，不再混入 `controller_state`。
+- controller/agent 执行模型已做成机器 gate：广义 audit/research/architecture/data/debug/review/spec/triage 或 3+ 独立 scope 会返回 `controller_agent_gate.required=true` 和 `controller_agent_dispatch_required`。Controller 仍负责方向、scope、最终验收、共享 docs、commit、DB/GCP 写窗口；agent 输出只能作为候选证据。
+- 2026-06-04 14:11 CST 的 `scripts/chunkyctl doctor --fast` 当前为 `WARN`：`data_health` 为 `green=314 / yellow=28 / red=0 / blocking_yellow=11`，覆盖 2026-06-03 的 data-health PASS 旧叙述。当前 blocking yellow 集中在 5 个 writer 切片：`forecast`、`holder/F10`、`GPCW local derived`、`capital`、`feature-panel tail`。
+- 下一步不应直接把所有 writer 混跑。先按切片串行推进：`forecast` 小切片优先，其次 holder/F10、GPCW、capital，最后 feature-panel incremental + scoped prune；任何写 DuckDB 的 refresh 都要在 controller 统一写窗口内执行并用 `doctor --fast` / `data_health_snapshot.py --dry-run --format text` 复验。
+- 本轮 governance/tooling 验证：`backend/tests/scripts/test_chunkyctl.py` 29 passed，`audit_test_tool_health.py --scope backend/scripts/chunkyctl.py --scope backend/tests/scripts/test_chunkyctl.py` PASS，`scripts/chunkyctl audit --run AGENTS.md backend/scripts/chunkyctl.py backend/tests/scripts/test_chunkyctl.py docs/chunkyctl_session_quickstart.md docs/engineering_governance.md` PASS，CodeGraph index up to date，`git diff --check` PASS。
+
 ## 2026-06-03 — technical-stage residual production rebuild complete
 
 - `backend/services/formula_engine/technical_stage.py` 已把 `unknown` 收窄为“数据不足”语义；有足量 MA 慢线历史的 residual 状态按 `backend/config/technical_stage.yaml` 的 governed residual policy 归入 `1/3/4`。`residual_*_stage` 配置不允许 `1.5/2`，所以 Stage 1.5/2 仍只能由显式突破/上升趋势规则产生，不能通过 fallback 绕过 MA 顺序和回撤约束。
@@ -46,7 +54,7 @@
   4. **P3 局部清理**: 只影响单个文件、收益有限、且不触及 blocker 的收尾工作。放到最后。
 - 具体规则：如果一个“框架改造”只服务一个文件，直接修细节更划算；如果它能同时覆盖 2+ 个热点，或能把同类问题统一进一个 shared helper / model，先做框架。
 
-## 2026-06-03 — data-health blocker triage complete
+## 2026-06-03 — data-health blocker triage complete (historical; superseded by 2026-06-04 live snapshot)
 
 - `price_kline_tdxhub` 已补到 `2026-06-02`，`backfill_financial_pit.py --start 2026-05-29` 已把 `fact_financial_pit_daily` 抬到 `2026-06-02`，`build_picture_daily.py` 把 `fact_stock_fundamental_stage_daily` 抬到 `2026-06-02`，`build_feature_panel_duck.py --mode incremental` 把 `fact_feature_panel` 抬到 `2026-06-02`，`compute_feature_drift.py --refresh-baseline` 已刷新 `mart_feature_drift` / `mart_feature_drift_histogram`。
 - `update_watermark_sla.py` 已把 `kline_daily` 水位同步到 `2026-06-02`，`scripts/chunkyctl doctor --fast` 现在是 `WARN` 但 `blocking_yellow=0`，`green=340 / yellow=2 / red=0`。剩余黄色只是不阻断门禁的 warning-only 资产：`fact_lhb_event`、`mart_daily_recommendation_explanation`。

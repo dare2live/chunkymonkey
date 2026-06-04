@@ -583,6 +583,7 @@ def _is_test_scope(scope: str) -> bool:
 
 WORKTREE_BUCKET_ORDER = [
     "controller_state",
+    "legacy_context",
     "startup_tooling",
     "docs_archive_moves",
     "updater_split",
@@ -602,6 +603,10 @@ WORKTREE_BUCKET_META = {
     "controller_state": {
         "priority": "P0",
         "recommended_action": "Review with current goal/handoff facts; stage only with the matching delivery slice",
+    },
+    "legacy_context": {
+        "priority": "P2",
+        "recommended_action": "Treat as Claude-only history; do not use for Codex policy unless explicitly migrating legacy context",
     },
     "startup_tooling": {
         "priority": "P0",
@@ -688,7 +693,9 @@ def _is_top_level_markdown(path: str) -> bool:
 
 
 def _worktree_bucket(path: str, status_kind: str) -> str:
-    if path in {"goal.md", "SESSION_HANDOFF.md", "PROJECT_INDEX.md", "AGENTS.md", "CLAUDE.md"}:
+    if path == "CLAUDE.md":
+        return "legacy_context"
+    if path in {"goal.md", "SESSION_HANDOFF.md", "PROJECT_INDEX.md", "AGENTS.md"}:
         return "controller_state"
     if path.startswith("analysis/workflow_checkpoint.") or path.startswith("analysis/handoff_"):
         return "controller_state"
@@ -1164,6 +1171,42 @@ def _task_mentions(task: str, terms: tuple[str, ...]) -> bool:
     return any(term.lower() in tokens for term in terms)
 
 
+def _task_requires_controller_agent_dispatch(task: str, scopes: list[str]) -> bool:
+    lowered = task.lower()
+    token_terms = (
+        "architecture",
+        "audit",
+        "complexity",
+        "data",
+        "debug",
+        "diagnose",
+        "governance",
+        "research",
+        "review",
+        "rfc",
+        "spec",
+        "triage",
+    )
+    text_terms = (
+        "架构",
+        "审计",
+        "治理",
+        "调研",
+        "调查",
+        "复核",
+        "诊断",
+        "复杂度",
+        "数据",
+        "并行",
+        "总指挥",
+    )
+    if _task_mentions(task, token_terms):
+        return True
+    if any(term in lowered for term in text_terms):
+        return True
+    return len(scopes) >= 3
+
+
 def build_preflight_report(
     *,
     repo: Path,
@@ -1185,6 +1228,15 @@ def build_preflight_report(
         risks.append({"severity": "WARN", "risk": "frontend_contract", "detail": "backend contract and Browser verification required"})
     if _task_mentions(task, ("delete", "cleanup", "remove")):
         risks.append({"severity": "WARN", "risk": "deletion_governance", "detail": "prove with CodeGraph + rg + tests before deleting"})
+    controller_agent_required = _task_requires_controller_agent_dispatch(task, scopes)
+    if controller_agent_required:
+        risks.append(
+            {
+                "severity": "WARN",
+                "risk": "controller_agent_dispatch_required",
+                "detail": "spawn bounded sidecar agents for independent work or record a concrete skip reason",
+            }
+        )
     verdict = "FAIL" if any(risk["severity"] == "FAIL" for risk in risks) else ("WARN" if risks else "PASS")
     return {
         "schema_version": 1,
@@ -1195,6 +1247,17 @@ def build_preflight_report(
         "verdict": verdict,
         "risks": risks,
         "required_gates": _gate_commands_for_task(task, scopes),
+        "controller_agent_gate": {
+            "required": controller_agent_required,
+            "controller_role": "Codex owns direction, scope, final acceptance, shared docs, commits, and DB/GCP write windows",
+            "agent_role": "bounded read-only exploration or disjoint worker scope; agent output is evidence, not a verdict",
+            "skip_allowed_when": "user explicitly opts out, work is tightly coupled, tool unavailable, or write scopes conflict",
+        },
+        "instruction_sources": {
+            "active": ["AGENTS.md", "goal.md", "SESSION_HANDOFF.md", "analysis/workflow_checkpoint.md", "docs/", "Codex skills"],
+            "ignored_by_default": ["CLAUDE.md"],
+            "legacy_exception": "Open CLAUDE.md only when the user explicitly requests historical comparison or migration.",
+        },
         "tooling_gate": tooling_gate,
         "truth_sources": [
             "K-line is trading truth",

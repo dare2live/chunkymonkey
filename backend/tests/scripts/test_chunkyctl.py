@@ -33,8 +33,10 @@ def test_preflight_reports_dirty_pending_and_required_gates(tmp_path: Path) -> N
     assert "test_tool_validity" in gate_names
     assert "complexity" in gate_names
     assert report["truth_sources"][0] == "K-line is trading truth"
+    assert report["instruction_sources"]["ignored_by_default"] == ["CLAUDE.md"]
     test_tool_gate = next(gate for gate in report["required_gates"] if gate["gate"] == "test_tool_validity")
     assert "--scope backend/routers/updater.py --scope backend/tests/test_updater_status.py" in test_tool_gate["command"]
+    assert report["controller_agent_gate"]["required"] is False
 
 
 def test_preflight_accepts_positional_task_and_scope_args() -> None:
@@ -89,7 +91,7 @@ def test_preflight_marks_strategy_or_cloud_tasks_as_blocked(tmp_path: Path) -> N
 def test_preflight_does_not_match_ui_inside_build(tmp_path: Path) -> None:
     report = chunkyctl.build_preflight_report(
         repo=tmp_path,
-        task="build architecture inventory parser scanner",
+        task="build inventory parser scanner",
         scopes=[],
         tooling_gate={
             "git_status": {"clean": True},
@@ -99,6 +101,32 @@ def test_preflight_does_not_match_ui_inside_build(tmp_path: Path) -> None:
 
     assert report["verdict"] == "PASS"
     assert report["risks"] == []
+    assert report["controller_agent_gate"]["required"] is False
+
+
+def test_preflight_requires_controller_agent_dispatch_for_broad_work(tmp_path: Path) -> None:
+    report = chunkyctl.build_preflight_report(
+        repo=tmp_path,
+        task="审计 data_health blocking yellow 并制定修复计划",
+        scopes=[],
+        tooling_gate={
+            "git_status": {"clean": True},
+            "codegraph": {"pending": {"sync_required": False, "added": 0}},
+        },
+    )
+
+    assert report["verdict"] == "WARN"
+    assert {
+        "severity": "WARN",
+        "risk": "controller_agent_dispatch_required",
+        "detail": "spawn bounded sidecar agents for independent work or record a concrete skip reason",
+    } in report["risks"]
+    assert report["controller_agent_gate"] == {
+        "required": True,
+        "controller_role": "Codex owns direction, scope, final acceptance, shared docs, commits, and DB/GCP write windows",
+        "agent_role": "bounded read-only exploration or disjoint worker scope; agent output is evidence, not a verdict",
+        "skip_allowed_when": "user explicitly opts out, work is tightly coupled, tool unavailable, or write scopes conflict",
+    }
 
 
 def test_preflight_matches_ui_as_own_token(tmp_path: Path) -> None:
@@ -118,8 +146,14 @@ def test_preflight_matches_ui_as_own_token(tmp_path: Path) -> None:
             "severity": "WARN",
             "risk": "frontend_contract",
             "detail": "backend contract and Browser verification required",
-        }
+        },
+        {
+            "severity": "WARN",
+            "risk": "controller_agent_dispatch_required",
+            "detail": "spawn bounded sidecar agents for independent work or record a concrete skip reason",
+        },
     ]
+    assert report["controller_agent_gate"]["required"] is True
 
 
 def test_run_preflight_uses_moth_snapshot(monkeypatch, tmp_path: Path, capsys) -> None:
@@ -296,7 +330,8 @@ def test_worktree_report_classifies_dirty_entries_by_review_bucket(tmp_path: Pat
         "updater_split": 1,
     }
     assert report["summary"]["bucket_counts"] == {
-        "controller_state": 2,
+        "controller_state": 1,
+        "legacy_context": 1,
         "startup_tooling": 7,
         "docs_archive_moves": 2,
         "updater_split": 2,

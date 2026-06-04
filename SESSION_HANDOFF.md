@@ -83,6 +83,13 @@ ebd18209 fix: govern technical-stage residual classification
 
 **run startup checks first — scripts/chunkyctl doctor --fast; prioritize data_health blocking_yellow, then stage-opt structural blocker / need_027 blocked-gap triage**
 
+## POST-SNAPSHOT CONTROLLER NOTE (2026-06-04 14:11 CST)
+
+- Treat `CLAUDE.md` as legacy Claude-only history. Codex policy comes from `AGENTS.md`, current docs, Codex skills, Moth evidence paths, and live tooling output unless the user explicitly asks for historical migration.
+- `chunkyctl preflight` now exposes `controller_agent_gate` and `instruction_sources`; broad audit/research/architecture/data/debug/review/spec/triage work should dispatch bounded sidecar agents or record the concrete skip reason.
+- Latest live `scripts/chunkyctl doctor --fast`: `data_health=WARN`, `green=314 / yellow=28 / red=0 / blocking_yellow=11`. This supersedes the older data-health PASS note.
+- Next data-health write path should be sliced, not mixed: forecast first, then holder/F10, GPCW derived audits, capital sync, and feature-panel tail refresh. Re-run `doctor --fast` or `data_health_snapshot.py --dry-run --format text` after each writer slice.
+
 ## Resilience 配置 (verified)
 
 | 机制 | 状态 |
