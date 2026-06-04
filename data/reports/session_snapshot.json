@@ -1,10 +1,10 @@
 {
-  "snapshot_at": "2026-06-03 19:12:33 CST",
+  "snapshot_at": "2026-06-04 13:50:35 CST",
   "git": {
     "branch": "main",
-    "head_hash": "b9e72d13",
-    "head_msg": "b9e72d13 docs: record stage context production rebuild evidence",
-    "commits_24h": 242,
+    "head_hash": "97c7f903",
+    "head_msg": "97c7f903 chore: exclude resume-generated checkpoints from snapshot dirtiness",
+    "commits_24h": 12,
     "uncommitted_files": 0
   },
   "retrain": {
@@ -25,5 +25,5 @@
     "pct_of_budget": "25.2",
     "remaining_hours_spot": "105.9"
   },
-  "next_action": "continue current goal blockers \u2014 stage-opt structural blocker triage / need_027 blocked-gap triage"
+  "next_action": "run startup checks first \u2014 scripts/chunkyctl doctor --fast; prioritize data_health blocking_yellow, then stage-opt structural blocker / need_027 blocked-gap triage"
 }

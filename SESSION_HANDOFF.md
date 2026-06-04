@@ -24,7 +24,7 @@ bash scripts/install_resilience.sh --status
 ```
 默认不再安装 cron snapshot / SessionStart auto-inject；如需恢复旧自动化，必须显式设置脚本里的 legacy opt-in。
 
-**Snapshot 时间**: 2026-06-03 19:12:33 CST
+**Snapshot 时间**: 2026-06-04 13:50:35 CST
 
 ## 主线状态
 
@@ -60,28 +60,28 @@ bash scripts/install_resilience.sh --status
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `b9e72d13 docs: record stage context production rebuild evidence` |
-| 最近 24h commits | 242 |
+| HEAD | `97c7f903 chore: exclude resume-generated checkpoints from snapshot dirtiness` |
+| 最近 24h commits | 12 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+97c7f903 chore: exclude resume-generated checkpoints from snapshot dirtiness
+1fa32d2d chore: align session snapshot next action
+43b85626 docs: align data health startup contract
+348c9b9f docs: refresh handoff after stage context production rebuild
 b9e72d13 docs: record stage context production rebuild evidence
 5a8273a0 docs: refresh handoff after technical-stage residual policy
 ebd18209 fix: govern technical-stage residual classification
 6c16bc47 docs: refresh session handoff after stage-opt gate update
 9644d65d chore: expose stage-opt attrition and skill dispatch
 7e1f14cb chore: capture Codex local ops and Moth profile rules
-30de8f81 docs: refresh handoff snapshot after codex resume cleanup
-385f099f docs: align codex resume automation
-4d5b4343 refactor: flatten app etf sync render loops
-3e894e9a refactor: flatten settings view render loops
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**continue current goal blockers — stage-opt structural blocker triage / need_027 blocked-gap triage**
+**run startup checks first — scripts/chunkyctl doctor --fast; prioritize data_health blocking_yellow, then stage-opt structural blocker / need_027 blocked-gap triage**
 
 ## Resilience 配置 (verified)
 
