@@ -117,6 +117,11 @@ ebd18209 fix: govern technical-stage residual classification
 - `backend/services/duck_adapter.py` 现在把旧式 `attach={"market": path}` 解释为 read-only attached DB；只有显式 `{"path": path, "read_only": false}` 才允许 writable attach。只读 sidecar 未发现必须写 attached DB 的生产路径；当前常见模式是写 smartmoney、读 market/alpha158。
 - 验证：controller preflight PASS 且记录 agent dispatch；`audit_test_tool_health` PASS / registry coverage 100%；`py_compile` PASS；targeted pytest `24 passed`；`paper_sim/test_ddl.py` 与 `test_candidate_feature_pipeline.py` PASS；target files complexity clean；`scripts/chunkyctl audit --run ...` PASS；CodeGraph 已 sync。没有移动表、删除表、VACUUM 或生产 DB 写入。
 
+## POST-SNAPSHOT CONTROLLER NOTE (2026-06-04 19:43 CST)
+
+- DB 连接边界第二片已把 `backend/services/db_connection.py` 的默认 `DB_PATH` / `DB_DIR` 接到 `database_manifest.smartmoney`，但仍保留 `services.db` facade monkeypatch 覆盖，兼容测试和临时库。`backend/tests/test_db.py` 新增默认路径来自 manifest 的回归。
+- 验证：controller preflight PASS 且记录 agent dispatch；`audit_test_tool_health` PASS；`py_compile` PASS；targeted pytest `16 passed`；target files complexity clean；`scripts/chunkyctl audit --run ...` PASS；`git diff --check` PASS；CodeGraph 已 sync。没有生产 DB 写入、搬表、删表或 VACUUM。下一步可继续按代表脚本分片清理散落 `data/*.duckdb` 字面量；业务优先级仍是 `need_027` exact-flow probe gate。
+
 ## Resilience 配置 (verified)
 
 | 机制 | 状态 |

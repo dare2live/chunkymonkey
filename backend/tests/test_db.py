@@ -7,7 +7,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from services import db
 from services import duck_adapter
 from services.db import get_enabled_modules
+from services.database_manifest import get_database_manifest
 from services.duck_adapter import connect as duck_connect
+
+
+def test_default_db_path_comes_from_database_manifest():
+    manifest = get_database_manifest()
+
+    assert db.DB_PATH == manifest.path_for("smartmoney")
+    assert db.DB_DIR == manifest.path_for("smartmoney").parent
 
 
 def test_get_enabled_modules():

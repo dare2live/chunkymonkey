@@ -5,10 +5,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from services.database_manifest import get_database_manifest
 from services.duck_adapter import connect as _duck_connect, DuckConn
 
-DB_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-DB_PATH = DB_DIR / "smartmoney.duckdb"
+_MANIFEST = get_database_manifest()
+DB_PATH = _MANIFEST.path_for("smartmoney")
+DB_DIR = DB_PATH.parent
 
 __all__ = ["DB_DIR", "DB_PATH", "DuckConn", "current_db_paths", "get_conn"]
 

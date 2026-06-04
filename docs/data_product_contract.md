@@ -23,6 +23,12 @@ and default attach mode. Cross-domain attach defaults to read-only; write access
 must open the target database as the primary DB or request an explicit writable
 attach edge.
 
+Default business DB entry points must consume this manifest too. In particular,
+`services.db_connection` resolves its default `smartmoney` path from the
+manifest while still allowing test or temporary-database overrides through the
+`services.db` facade. New production scripts should prefer manifest aliases or
+service entry points over private `data/*.duckdb` path literals.
+
 Current first-principles split:
 
 | Alias | Role | Default attach |
