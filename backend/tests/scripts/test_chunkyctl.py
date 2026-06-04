@@ -985,6 +985,17 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
                 }
             ],
             "codes_without_bars": 0,
+            "candidate_supply_contract": {
+                "version": 1,
+                "allowed_stage_bins": ["1", "1.5", "2", "3", "4"],
+                "sources": [
+                    {
+                        "source_id": "fact_technical_trigger",
+                        "table": "sm.fact_technical_trigger",
+                        "semantic_role": "trade_trigger",
+                    }
+                ],
+            },
             "live_formula_registry": {
                 "formula_count": 18,
                 "formula_ids": live_formula_ids,
@@ -1044,6 +1055,8 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
     ]
     assert summary["summary"]["raw_trigger_rows"] == 7
     assert summary["summary"]["raw_state_history_rows"] == 3
+    assert summary["candidate_supply_contract"]["version"] == 1
+    assert summary["candidate_supply_contract"]["sources"][0]["semantic_role"] == "trade_trigger"
     assert summary["live_formula_registry"]["formula_count"] == 18
     assert "macd_golden_cross" in summary["live_formula_registry"]["formula_ids"]
     assert "gs_raw_buy" in summary["live_formula_registry"]["formula_ids"]

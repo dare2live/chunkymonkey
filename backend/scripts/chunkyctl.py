@@ -111,6 +111,9 @@ def _stage_opt_summary(report: dict[str, Any] | None) -> dict[str, Any] | None:
     research_formula_registry = report.get("research_formula_registry")
     if not isinstance(research_formula_registry, dict):
         research_formula_registry = {}
+    candidate_supply_contract = report.get("candidate_supply_contract")
+    if not isinstance(candidate_supply_contract, dict):
+        candidate_supply_contract = {}
     attrition_funnel = report.get("attrition_funnel")
     if not isinstance(attrition_funnel, dict):
         attrition_funnel = {}
@@ -153,6 +156,7 @@ def _stage_opt_summary(report: dict[str, Any] | None) -> dict[str, Any] | None:
         "top_blocked_reason_counts": top_blocked_reason_counts,
         "next_action_recommendation": recommendation,
         "min_signals_sensitivity": sensitivity,
+        "candidate_supply_contract": candidate_supply_contract,
         "live_formula_registry": live_formula_registry,
         "research_formula_registry": research_formula_registry,
         "attrition_funnel": attrition_funnel,

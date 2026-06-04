@@ -250,6 +250,7 @@ def test_summarize_stage_opt_candidate_supply_emits_structural_notes_for_macd() 
     assert "## Structural Notes" in markdown
     assert "fact_technical_trigger PRIMARY KEY" in markdown
     assert "## Attrition Funnel" in markdown
+    assert "## Candidate Supply Contract" in markdown
     assert "## Formula Family Attrition" in markdown
     assert "## Top Blocked Stage x Formula Cells" in markdown
     assert "## Top Blocked Registry x Family Cells" in markdown
@@ -561,6 +562,12 @@ def test_compose_audit_result_preserves_raw_signal_rows() -> None:
     )
 
     assert result["raw_signal_rows"] == 10
+    assert result["schema_version"] == 1
+    assert result["candidate_supply_contract"]["version"] == 1
+    assert {
+        source["source_id"]
+        for source in result["candidate_supply_contract"]["sources"]
+    } == {"fact_technical_trigger", "mart_macd_state_history"}
     assert result["filtered_signal_rows"] == 7
     assert result["codes_with_bars"] == 2
     assert result["codes_without_bars"] == 1

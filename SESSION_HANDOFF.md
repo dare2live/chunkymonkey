@@ -129,6 +129,12 @@ ebd18209 fix: govern technical-stage residual classification
 - gate 现在明确拒绝 rank snapshot 作为 exact-flow 证据：非 `individual_fund_flow` capability 只会计入 `ignored_for_need_027_exact_flow_gate`；`individual_fund_flow_rank_snapshot` 的 persistence domain 改为 `stock_fund_flow_rank_snapshot`，不会误清 `order_flow_fund_flow` open 行。
 - live no-persist 复验：`PYTHONPATH=backend python backend/scripts/probe_source_capability.py --need027-exact-flow-gate --indent 2` 返回 `verdict=BLOCKED`、`probe_count=3`、`valid_count=0`、`failure_reasons.probe_blocked=3`；三只样本均为 `RemoteDisconnected`。因此 `need_027` 继续保持 `production_eligibility=blocked`，下一步不是 writer，而是等 exact source 稳定后再跑同一 gate，并补 PIT/freshness、writer/watermark、failure_queue resolve。
 
+## POST-SNAPSHOT CONTROLLER NOTE (2026-06-04 21:15 CST)
+
+- stage-opt upstream supply contract 第一片已落地：`backend/config/stage_opt_candidate_supply.yaml` / `backend/services/stage_opt_candidate_supply.py` 现在拥有 `fact_technical_trigger` 与 `mart_macd_state_history` 的 source role、grain、eligibility、PIT status、allowed consumers、allowed stage bins 和 research-challenger formula scope override。
+- `audit_stage_opt_candidate_supply.py` 已消费该 contract 并输出 `schema_version=1` / `candidate_supply_contract`；`chunkyctl doctor` 会透传该 summary。这个切片不跑 writer、不迁表、不调 `min_signals`，所以 stage-opt 仍是 `P1 / upstream_candidate_supply` blocker；下一步如继续 stage-opt，应做 source/schema redesign，而不是 knob tuning。
+- 验证：scoped test-tool audit PASS，`py_compile` PASS，stage-opt contract/audit/chunkyctl pytest `45 passed`，`backend/tests/test_build_formula_signals.py` `23 passed`，`scripts/chunkyctl audit --run ...` PASS，target files complexity clean，CodeGraph 已 sync。
+
 ## Resilience 配置 (verified)
 
 | 机制 | 状态 |

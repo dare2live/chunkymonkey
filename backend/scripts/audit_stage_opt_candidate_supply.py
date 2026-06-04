@@ -30,18 +30,19 @@ import services.formula_engine.bootstrap  # noqa: F401
 from services.formula_engine import REGISTRY
 from services.formula_engine.bootstrap import LIVE_FORMULA_IDS
 from services.formula_engine.bc_absorbed_challengers import BANK_CHALLENGER_REGISTRY, BANK_EXTENSION_REGISTRY
+from services.stage_opt_candidate_supply import DEFAULT_STAGE_OPT_CANDIDATE_SUPPLY_CONTRACT
 
 
 MARKET_DB = Path(__file__).resolve().parents[2] / "data" / "market.duckdb"
 SMART_DB = Path(__file__).resolve().parents[2] / "data" / "smartmoney.duckdb"
-ALLOWED_STAGES = {"1", "1.5", "2", "3", "4"}
-RESEARCH_FORMULA_IDS = (
-    "gs_raw_buy",
-    "gs_pullback_confirm",
-    "ma_base_breakout",
-    "activity_breakout",
-    "volume_base_breakout",
-)
+CONSUMER_ID = "audit_stage_opt_candidate_supply"
+SUPPLY_CONTRACT = DEFAULT_STAGE_OPT_CANDIDATE_SUPPLY_CONTRACT
+ALLOWED_STAGES = SUPPLY_CONTRACT.allowed_stage_set
+RESEARCH_FORMULA_IDS = SUPPLY_CONTRACT.formula_ids_for_scope("research_challenger")
+TRIGGER_SOURCE = SUPPLY_CONTRACT.source("fact_technical_trigger")
+MACD_STATE_SOURCE = SUPPLY_CONTRACT.source("mart_macd_state_history")
+TRIGGER_SOURCE.require_consumer(CONSUMER_ID)
+MACD_STATE_SOURCE.require_consumer(CONSUMER_ID)
 
 log = logging.getLogger("audit_stage_opt_candidate_supply")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -85,16 +86,11 @@ def _formula_family(formula_id: str) -> str:
 
 
 def _formula_registry_scopes(formula_id: str) -> list[str]:
-    scopes: list[str] = []
-    if formula_id in LIVE_FORMULA_IDS:
-        scopes.append("live")
-    elif formula_id in REGISTRY:
-        scopes.append("registered_non_live")
-    else:
-        scopes.append("unregistered")
-    if formula_id in RESEARCH_FORMULA_IDS:
-        scopes.append("research_challenger")
-    return scopes
+    return SUPPLY_CONTRACT.formula_scopes(
+        formula_id,
+        live_formula_ids=tuple(LIVE_FORMULA_IDS),
+        registered_formula_ids=tuple(REGISTRY.keys()),
+    )
 
 
 def _formula_registry_scope_label(formula_id: str) -> str:
@@ -138,7 +134,7 @@ def _load_signal_rows(
         f"""
         SELECT t.stock_code, t.date, t.formula_id, t.formula_variant,
                COALESCE(c.technical_stage, '?') AS stage_bin
-          FROM sm.fact_technical_trigger t
+          FROM {TRIGGER_SOURCE.table} t
           LEFT JOIN sm.fact_signal_context c
             ON c.stock_code = t.stock_code AND c.date = t.date
          WHERE t.date >= ? AND t.date <= ?
@@ -150,7 +146,7 @@ def _load_signal_rows(
     ).fetchall()
 
     state_history_rows: list[tuple[str, str, str, str, str]] = []
-    include_macd_state_history = not formula or "macd_golden_cross" in formula
+    include_macd_state_history = MACD_STATE_SOURCE.include_for_formula_filter(formula)
     if include_macd_state_history:
         try:
             state_formula_sql = ""
@@ -171,7 +167,7 @@ def _load_signal_rows(
                 f"""
                 SELECT s.stock_code, s.date, s.formula_id, s.formula_variant,
                        COALESCE(c.technical_stage, '?') AS stage_bin
-                  FROM sm.mart_macd_state_history s
+                  FROM {MACD_STATE_SOURCE.table} s
                   LEFT JOIN sm.fact_signal_context c
                     ON c.stock_code = s.stock_code AND c.date = s.date
                  WHERE s.date >= ? AND s.date <= ?
@@ -976,6 +972,22 @@ def _render_markdown(result: dict[str, Any]) -> str:
         if formula_ids:
             lines.append(f"- formula_ids: {', '.join(str(item) for item in formula_ids)}")
         lines.append("")
+    if result.get("candidate_supply_contract"):
+        contract = result["candidate_supply_contract"]
+        lines.extend(
+            [
+                "## Candidate Supply Contract",
+                f"- version: {contract.get('version')}",
+                f"- allowed_stage_bins: {', '.join(str(item) for item in contract.get('allowed_stage_bins') or [])}",
+            ]
+        )
+        for source in contract.get("sources") or []:
+            lines.append(
+                f"- {source.get('source_id')}: table={source.get('table')} "
+                f"role={source.get('semantic_role')} eligibility={source.get('eligibility')} "
+                f"pit_status={source.get('pit_status')}"
+            )
+        lines.append("")
     if result.get("research_formula_registry"):
         registry = result["research_formula_registry"]
         lines.extend(
@@ -1188,6 +1200,7 @@ def _compose_audit_result(
         }
     return {
         **summary,
+        "schema_version": 1,
         "verdict": verdict,
         "next_action_recommendation": next_action_recommendation,
         "start": start,
@@ -1217,6 +1230,7 @@ def _compose_audit_result(
             "ready_coverage_pct": summary.get("ready_coverage_pct"),
             "blocked_reason_counts": blocked_reason_counts,
         },
+        "candidate_supply_contract": SUPPLY_CONTRACT.to_report(),
         "live_formula_registry": _live_formula_registry_summary(),
         "research_formula_registry": _research_formula_registry_summary(),
     }

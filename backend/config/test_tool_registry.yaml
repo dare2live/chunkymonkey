@@ -114,6 +114,25 @@ tools:
     replacement: stronger shared lint hook or CI static policy gate if local hooks are centralized
     last_verified: "2026-06-04"
 
+  - id: stage_opt_candidate_supply_contract_tests
+    paths:
+      - backend/config/stage_opt_candidate_supply.yaml
+      - backend/services/stage_opt_candidate_supply.py
+      - backend/scripts/audit_stage_opt_candidate_supply.py
+      - backend/scripts/chunkyctl.py
+      - backend/tests/services/test_stage_opt_candidate_supply.py
+      - backend/tests/scripts/test_audit_stage_opt_candidate_supply.py
+      - backend/tests/scripts/test_chunkyctl.py
+    owner_module: stage_opt_governance
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/services/test_stage_opt_candidate_supply.py backend/tests/scripts/test_audit_stage_opt_candidate_supply.py backend/tests/scripts/test_chunkyctl.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: stage_opt_candidate_supply.yaml, formula runtime registry, candidate-supply audit contract, chunkyctl doctor summary contract
+    risk_reason: stage-opt upstream source semantics can drift if source eligibility, formula scope overrides, and doctor output are not tested together
+    replacement: broader stage-opt supply registry service if candidate-source ownership expands beyond audit and doctor
+    last_verified: "2026-06-04"
+
   - id: storage_payload_audit_tests
     paths:
       - backend/scripts/audit_storage_payloads.py
