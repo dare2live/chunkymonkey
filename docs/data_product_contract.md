@@ -15,6 +15,29 @@ detailed drafts are archived under `analysis/docs_archive_20260531/`.
 | Frontend overclaiming | UI may show `unknown`, `proxy`, or `stale`, but must not dress them as production facts |
 | Giant opaque payloads in DB | DB stores queryable facts, summaries, and artifact refs; large payloads move to detail tables or governed artifacts |
 
+## Database Ownership
+
+`backend/config/database_manifest.yaml` is the machine-readable database
+boundary map. It owns alias, path, domain, owner, online/artifact/planned state,
+and default attach mode. Cross-domain attach defaults to read-only; write access
+must open the target database as the primary DB or request an explicit writable
+attach edge.
+
+Current first-principles split:
+
+| Alias | Role | Default attach |
+|---|---|---|
+| `smartmoney` | Business control plane, facts, marts, governance evidence, model outputs | read-only when attached |
+| `market` | K-line, calendar, benchmark, and market truth source | read-only |
+| `alpha158` | Rebuildable factor feature store | read-only |
+| `etf` | ETF facts and benchmark support data | read-only |
+| `phase5_predictions` | Offline model artifact import source | read-only |
+| `feature_store` | Planned split target for large rebuildable feature/cache tables | read-only |
+
+Do not move tables, compact files, or delete old panels from this manifest
+alone. Table movement requires a separate owner/consumer/lineage proof, a
+rollback plan, and post-fix stale-artifact audit.
+
 ## Source And Need Contract
 
 | Asset type | Owner |

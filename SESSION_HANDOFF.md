@@ -111,6 +111,12 @@ ebd18209 fix: govern technical-stage residual classification
 - DB retention 第一片已实现为 dry-run inventory：`backend/config/storage_retention.yaml` 新增 `table_inventory`，`backend/services/storage_retention.py` 输出 `table_inventory` / `table_inventory_count`，`backend/scripts/plan_storage_retention.py` 在非 execute 模式默认 read-only 打开 DuckDB。生产库只读 dry-run 当前为 `candidate_count=0`、`table_inventory_count=12`、`protected_artifact_table_count=7`、`compaction.recommended=false`；它只分类，不删除，不 VACUUM。
 - sidecar 复核后的业务优先级：当前本地 P0 是收干净 controller tooling / retention dry-run 切片；下一业务 P1-A 是 `need_027` exact-flow blocked-gap triage。`data_health` 仍是 warning-only，`stage-opt` 是 P1 supply contract，`storage_payload` 为低优先级 WARN。
 
+## POST-SNAPSHOT CONTROLLER NOTE (2026-06-04 19:20 CST)
+
+- DB 模块化管理第一片已收口到 registry + attach 权限，而不是表迁移：新增 `backend/config/database_manifest.yaml` 和 `backend/services/database_manifest.py`，记录 `smartmoney` / `market` / `alpha158` / `etf` / `phase5_predictions` / planned `feature_store` 的 alias、path、owner/domain、online 状态和默认 attach mode；`analytics` 默认路径从 manifest 解析。
+- `backend/services/duck_adapter.py` 现在把旧式 `attach={"market": path}` 解释为 read-only attached DB；只有显式 `{"path": path, "read_only": false}` 才允许 writable attach。只读 sidecar 未发现必须写 attached DB 的生产路径；当前常见模式是写 smartmoney、读 market/alpha158。
+- 验证：controller preflight PASS 且记录 agent dispatch；`audit_test_tool_health` PASS / registry coverage 100%；`py_compile` PASS；targeted pytest `24 passed`；`paper_sim/test_ddl.py` 与 `test_candidate_feature_pipeline.py` PASS；target files complexity clean；`scripts/chunkyctl audit --run ...` PASS；CodeGraph 已 sync。没有移动表、删除表、VACUUM 或生产 DB 写入。
+
 ## Resilience 配置 (verified)
 
 | 机制 | 状态 |

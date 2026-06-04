@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from pathlib import Path
 from typing import Any, Sequence
 
 import duckdb
@@ -106,6 +107,35 @@ class DuckCursor:
         return self._cur.description
 
 
+def _attach_mode_to_read_only(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    mode = str(value).strip().lower().replace("-", "_")
+    if mode in {"read_only", "readonly", "ro"}:
+        return True
+    if mode in {"read_write", "readwrite", "rw", "write"}:
+        return False
+    raise ValueError(f"invalid attach mode: {value!r}")
+
+
+def _normalize_attach_spec(spec: Any) -> tuple[str, bool]:
+    if isinstance(spec, dict):
+        db_path = spec.get("path") or spec.get("db_path")
+        if db_path is None:
+            raise ValueError("attach spec dict must define path or db_path")
+        if "read_only" in spec:
+            read_only = _attach_mode_to_read_only(spec["read_only"])
+        else:
+            read_only = _attach_mode_to_read_only(spec.get("mode") or spec.get("attach_mode") or "read_only")
+        return str(db_path), read_only
+    if isinstance(spec, (list, tuple)) and len(spec) == 2:
+        db_path, read_only = spec
+        return str(db_path), _attach_mode_to_read_only(read_only)
+    if isinstance(spec, Path):
+        return str(spec), True
+    return str(spec), True
+
+
 class DuckConn:
     """DuckDB 连接包装器。"""
 
@@ -125,11 +155,13 @@ class DuckConn:
         self.duckdb_connect_wait_s = round(self.connect_mutex_wait_s + self.duckdb_lock_wait_s, 6)
         self.duckdb_connect_elapsed_s = round(time.monotonic() - connect_start, 6)
         self.in_transaction = False
-        # 可选 ATTACH 其它 DuckDB
+        # Optional attached DBs are read-only by default. Use
+        # {"path": "...", "read_only": False} only for an explicit write edge.
         if attach:
-            for alias, path in attach.items():
+            for alias, spec in attach.items():
                 try:
-                    attach_with_retry(self._con, alias, path, read_only=read_only, timeout=timeout)
+                    path, attach_read_only = _normalize_attach_spec(spec)
+                    attach_with_retry(self._con, alias, path, read_only=attach_read_only, timeout=timeout)
                 except Exception as e:
                     logger.warning("attach %s failed: %s", alias, e)
 

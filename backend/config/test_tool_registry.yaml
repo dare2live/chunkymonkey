@@ -1732,16 +1732,19 @@ tools:
 
   - id: analytics_contract_tests
     paths:
+      - backend/config/database_manifest.yaml
+      - backend/services/database_manifest.py
       - backend/tests/test_analytics.py
+      - backend/tests/services/test_database_manifest.py
     owner_module: analytics
     scope: contract
-    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_analytics.py
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_analytics.py backend/tests/services/test_database_manifest.py
     status: active
     evidence_level: trusted_with_scope
-    truth_source: analytics fixture contract
-    risk_reason: validates analytics helper behavior only; does not prove strategy readiness or production data freshness
+    truth_source: analytics fixture contract and database_manifest.yaml alias/path/attach-mode contract
+    risk_reason: validates analytics and DB manifest helper behavior only; does not prove strategy readiness, production data freshness, or table-move safety
     replacement: module-specific contract tests plus measured downstream evidence
-    last_verified: "2026-05-27"
+    last_verified: "2026-06-04"
 
   - id: lambdamart_v6_contract_tests
     paths:

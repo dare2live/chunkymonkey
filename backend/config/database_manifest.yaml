@@ -1,0 +1,75 @@
+version: 1
+defaults:
+  attach_mode: read_only
+  missing_optional_attach: warn
+
+databases:
+  smartmoney:
+    path: data/smartmoney.duckdb
+    domain: business_control_plane
+    owner: core_pipeline
+    role: primary business facts, marts, governance evidence, and model outputs
+    default_open_mode: read_write
+    default_attach_mode: read_only
+    online: true
+    status: active
+    retention_class: governed_control_plane
+
+  market:
+    path: data/market.duckdb
+    domain: market_truth
+    owner: market_data_pipeline
+    role: K-line, trading calendar, benchmark, and market source truth
+    default_open_mode: read_write
+    default_attach_mode: read_only
+    online: true
+    status: active
+    retention_class: canonical_source_store
+
+  alpha158:
+    path: data/alpha158.duckdb
+    domain: factor_feature_store
+    owner: alpha158_pipeline
+    role: reusable factor feature panel
+    default_open_mode: read_write
+    default_attach_mode: read_only
+    online: true
+    status: active
+    retention_class: rebuildable_feature_store
+
+  etf:
+    path: data/etf.duckdb
+    domain: etf_data
+    owner: etf_pipeline
+    role: ETF facts and benchmark support data
+    default_open_mode: read_write
+    default_attach_mode: read_only
+    online: true
+    status: active
+    retention_class: governed_source_store
+
+  phase5_predictions:
+    path_glob: data/phase5_predictions_*.duckdb
+    domain: model_artifact_import
+    owner: model_import_pipeline
+    role: offline prediction artifact import source
+    default_open_mode: read_only
+    default_attach_mode: read_only
+    online: false
+    status: artifact
+    retention_class: versioned_artifact
+
+  feature_store:
+    path: data/feature_store.duckdb
+    domain: feature_cache
+    owner: planned_feature_pipeline
+    role: planned split target for large rebuildable feature/cache tables
+    default_open_mode: read_write
+    default_attach_mode: read_only
+    online: false
+    status: planned
+    retention_class: planned_rebuildable_store
+    table_patterns:
+      - fact_feature_panel_candidate*
+      - mart_feature_rank_matrix_cache*
+      - mart_p0a_feature_label_panel*

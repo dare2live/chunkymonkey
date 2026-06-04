@@ -6,7 +6,7 @@
 > **目标**: 新接手 (无论 Claude 还是人) 读完此文档**不用看代码 / 不用查 DB** 就能理解:
 > 项目业务 / 架构 / 技术路线 / 数据资产 / 当前进度 / 已知坑 / 常用操作.
 
-最后更新: **2026-06-04** (after-close data refresh + controller-agent preflight hard gate + retention dry-run inventory + holder replay safety + Codex instruction-source boundary + DuckDB capacity audit).
+最后更新: **2026-06-04** (after-close data refresh + controller-agent preflight hard gate + retention dry-run inventory + DB manifest attach policy + holder replay safety + Codex instruction-source boundary + DuckDB capacity audit).
 
 ## [INDEX] 2026-06-04 增量
 
@@ -16,6 +16,7 @@
 - **Codex instruction-source boundary**: `.moth/profile.yaml` 暴露 `instruction_sources`，`chunkyctl preflight` 读取 Moth profile 后输出 `ignored_by_default=["CLAUDE.md"]`。Codex 默认使用 `AGENTS.md`、active docs、Codex skills、Moth evidence paths 和 live tooling output。
 - **DuckDB capacity audit**: `analysis/db_capacity_audit_20260604.md` 记录只读并行审计结果。`data/smartmoney.duckdb` 约 `33.6 GiB` / `34G`；未发现 `no2`、session snapshot 循环写爆，或能解释容量的 `.bak/.gz/.zst` 压缩备份副本。主压力来自多版本宽面板/cache 并存、rank cache key 重叠、索引/row-group 开销和 `formula_engine` reason JSON 总量 WARN。`raw_tdx_f10_holder_research` 是受保护 F10 raw/lineage evidence，不应和 cache 表放入同一清理 bucket。
 - **Retention dry-run inventory**: `backend/config/storage_retention.yaml` 新增 `table_inventory`，把 protected raw/lineage、current production panels、legacy/obsolete candidate panels、tdx_keep challenger panel、rank-matrix cache 表纳入机器可读分类；`backend/services/storage_retention.py` 输出 `table_inventory` 且所有 inventory 条目 `delete_candidate=false`。`backend/scripts/plan_storage_retention.py` dry-run 默认 read-only 打开 DuckDB。生产库只读 dry-run 当前 `candidate_count=0 / table_inventory_count=12 / compaction.recommended=false`，所以当前只是分类/owner/action 绑定，不执行删除或 VACUUM。
+- **DB manifest + attach policy**: `backend/config/database_manifest.yaml` 和 `backend/services/database_manifest.py` 新增 DB alias/path/domain/owner/online-state/default-attach-mode registry，覆盖 `smartmoney` / `market` / `alpha158` / `etf` / `phase5_predictions` / planned `feature_store`；`analytics` 默认路径由 manifest 解析。`duck_adapter.connect(... attach={"market": path})` 现在兼容旧读法但默认 `READ_ONLY` attach，只有显式 `{"path": path, "read_only": false}` 才允许 writable attached DB。该 slice 没有移动表、删除表、VACUUM 或写生产 DB；Rule 10 reviewer APPROVE，targeted tests/audit/CodeGraph PASS。
 - **Validation**: `scripts/chunkyctl audit --run .moth/profile.yaml SESSION_HANDOFF.md goal.md analysis/db_capacity_audit_20260604.md backend/scripts/chunkyctl.py backend/tests/scripts/test_chunkyctl.py backend/scripts/ingest_holders_tdxhub.py backend/tests/test_ingest_holders_tdxhub.py backend/services/capital_client.py backend/tests/test_capital_client_store.py docs/chunkyctl_session_quickstart.md docs/engineering_governance.md` PASS；targeted pytest 51 passed；CodeGraph up to date；Rule 10 final reviewer APPROVE.
 
 ## [INDEX] 2026-06-03 增量

@@ -11,12 +11,15 @@ from pathlib import Path
 
 import duckdb
 
+from services.database_manifest import get_database_manifest
+
 logger = logging.getLogger("cm-api")
 
-_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-SMART_DB = str(_DATA_DIR / "smartmoney.duckdb")
-MARKET_DB = str(_DATA_DIR / "market.duckdb")
-ETF_DB = str(_DATA_DIR / "etf.duckdb")
+_DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+_DATABASE_MANIFEST = get_database_manifest()
+SMART_DB = str(_DATABASE_MANIFEST.path_for("smartmoney"))
+MARKET_DB = str(_DATABASE_MANIFEST.path_for("market"))
+ETF_DB = str(_DATABASE_MANIFEST.path_for("etf"))
 
 
 def _open_duck(writable: bool = False) -> duckdb.DuckDBPyConnection:

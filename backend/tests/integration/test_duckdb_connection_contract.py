@@ -117,6 +117,36 @@ def test_duck_adapter_records_lock_wait_after_retry(monkeypatch, tmp_path):
         conn.close()
 
 
+def test_duck_adapter_attaches_path_specs_read_only_by_default(tmp_path):
+    smart_db = tmp_path / "smart.duckdb"
+    market_db = tmp_path / "market.duckdb"
+    _create_duck_file(smart_db, "CREATE TABLE smart_rows (id INTEGER);")
+    _create_duck_file(market_db, "CREATE TABLE market_rows (id INTEGER);")
+
+    with connect(str(smart_db), read_only=False, attach={"market": str(market_db)}) as conn:
+        conn.execute("INSERT INTO smart_rows VALUES (1)")
+        assert conn.execute("SELECT COUNT(*) FROM smart_rows").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM market.market_rows").fetchone()[0] == 0
+
+        with pytest.raises(Exception):
+            conn.execute("INSERT INTO market.market_rows VALUES (10)")
+
+
+def test_duck_adapter_allows_explicit_writable_attach(tmp_path):
+    smart_db = tmp_path / "smart.duckdb"
+    side_db = tmp_path / "side.duckdb"
+    _create_duck_file(smart_db, "CREATE TABLE smart_rows (id INTEGER);")
+    _create_duck_file(side_db, "CREATE TABLE side_rows (id INTEGER);")
+
+    with connect(
+        str(smart_db),
+        read_only=False,
+        attach={"side": {"path": str(side_db), "read_only": False}},
+    ) as conn:
+        conn.execute("INSERT INTO side.side_rows VALUES (10)")
+        assert conn.execute("SELECT SUM(id) FROM side.side_rows").fetchone()[0] == 10
+
+
 def test_duck_adapter_records_attach_wait_after_retry(monkeypatch):
     calls = []
 
