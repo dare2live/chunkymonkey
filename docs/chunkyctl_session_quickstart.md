@@ -172,7 +172,7 @@ counts alone.
 | `codegraph.pending.added` matches untracked indexable files | Review/stage by worktree bucket; do not force-sync or bulk stage to silence status |
 | `storage_payload.verdict=FAIL` | Inspect recursive JSON keys and oversized opaque DB payloads with `PYTHONPATH=backend python backend/scripts/audit_storage_payloads.py --format markdown` |
 | `storage_payload.summary.reviewed > 0` | Treat as reviewed PASS only when the matching `storage_retention.yaml` rule has owner, classification, caps, and recursive/path-marker guards |
-| `data_health.verdict=FAIL` | Inspect red tables with `PYTHONPATH=backend python backend/scripts/data_health_snapshot.py --format markdown`; treat only blocking assets as startup blockers, and remember that `warning` / `monitor_only` assets are intentionally capped to yellow |
+| `data_health.verdict=FAIL` | Inspect red tables with `PYTHONPATH=backend python backend/scripts/data_health_snapshot.py --dry-run --format text`; treat only blocking assets as startup blockers, and remember that `warning` / `monitor_only` assets are intentionally capped to yellow |
 | `data_health.blocking_yellow > 0` | Inspect `blocking_yellow_tables` and let `scripts/chunkyctl doctor --fast` prioritize those before generic yellow maintenance; blocking-quality yellow assets are actionable even when the verdict is still WARN |
 | `stage_opt.verdict=WARN` | Advisory audit warning: candidate supply still has blocked keys or unknown-stage drops; it is not a strategy promote/reject verdict |
 | `stage_opt.top_blocked_reason_counts` exists | Use it to see which gate dominates stage-opt attrition before rerunning audits; `below_min_signals` is currently the primary blocker, and `doctor` should surface it alongside `next_action_recommendation` |
@@ -218,7 +218,7 @@ scripts/chunkyctl worktree --format markdown
 scripts/chunkyctl worktree --bucket startup_tooling --format markdown
 scripts/chunkyctl docs --format markdown
 PYTHONPATH=backend python backend/scripts/audit_storage_payloads.py --format markdown
-PYTHONPATH=backend python backend/scripts/data_health_snapshot.py --format markdown
+PYTHONPATH=backend python backend/scripts/data_health_snapshot.py --dry-run --format text
 scripts/chunkyctl preflight "what I am about to change" path/to/file.py
 scripts/chunkyctl audit --run path/to/file.py path/to/test_file.py
 ```
