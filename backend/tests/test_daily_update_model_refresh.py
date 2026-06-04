@@ -32,3 +32,23 @@ def test_step4_model_refresh_branches_and_cost_control_are_wired():
 
     # GCP retrain 改手工触发 — 文档化提示用户手工跑命令
     assert "run_phase5_extended_retrain.sh" in text or "retrain_lambdamart_v6.py" in text
+
+
+def test_profit_forecast_snapshot_also_refreshes_live_shadow_mart():
+    """Daily update must keep raw forecast and live shadow mart on the same PIT date."""
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    raw_command = (
+        "backend/scripts/ingest_profit_forecast_snapshot.py \\\n"
+        '            --snapshot-date "$FORECAST_SNAPSHOT_DATE"'
+    )
+    mart_command = (
+        "backend/scripts/compute_forecast_upside_live.py \\\n"
+        '                --snapshot-date "$FORECAST_SNAPSHOT_DATE"'
+    )
+    raw_pos = text.index(raw_command)
+    mart_pos = text.index(mart_command)
+
+    assert "FORECAST_SNAPSHOT_DATE=$(date +%Y-%m-%d)" in text
+    assert raw_pos < mart_pos
+    assert "skip forecast_upside live mart" in text

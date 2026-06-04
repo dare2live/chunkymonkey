@@ -311,6 +311,7 @@ def test_worktree_report_classifies_dirty_entries_by_review_bucket(tmp_path: Pat
                 " M gcp/README_GCP_BATCH.md",
                 " M gcp/cost_tracker.sh",
                 " M scripts/cm_resume.sh",
+                " M scripts/daily_update.sh",
                 " M scripts/install_resilience.sh",
                 " M scripts/session_snapshot.sh",
                 "?? .moth/profile.yaml",
@@ -322,7 +323,7 @@ def test_worktree_report_classifies_dirty_entries_by_review_bucket(tmp_path: Pat
     )
 
     assert report["verdict"] == "FAIL"
-    assert report["summary"]["total"] == 25
+    assert report["summary"]["total"] == 26
     assert report["summary"]["unknown_count"] == 1
     assert report["summary"]["codegraph_candidate_untracked_count"] == 2
     assert report["summary"]["codegraph_candidate_untracked_bucket_counts"] == {
@@ -332,7 +333,7 @@ def test_worktree_report_classifies_dirty_entries_by_review_bucket(tmp_path: Pat
     assert report["summary"]["bucket_counts"] == {
         "controller_state": 1,
         "legacy_context": 1,
-        "startup_tooling": 7,
+        "startup_tooling": 8,
         "docs_archive_moves": 2,
         "updater_split": 2,
         "universe_governance": 1,

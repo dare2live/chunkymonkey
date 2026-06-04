@@ -87,8 +87,9 @@ ebd18209 fix: govern technical-stage residual classification
 
 - Treat `CLAUDE.md` as legacy Claude-only history. Codex policy comes from `AGENTS.md`, current docs, Codex skills, Moth evidence paths, and live tooling output unless the user explicitly asks for historical migration.
 - `chunkyctl preflight` now exposes `controller_agent_gate` and `instruction_sources`; broad audit/research/architecture/data/debug/review/spec/triage work should dispatch bounded sidecar agents or record the concrete skip reason.
-- Latest live `scripts/chunkyctl doctor --fast`: `data_health=WARN`, `green=314 / yellow=28 / red=0 / blocking_yellow=11`. This supersedes the older data-health PASS note.
-- Next data-health write path should be sliced, not mixed: forecast first, then holder/F10, GPCW derived audits, capital sync, and feature-panel tail refresh. Re-run `doctor --fast` or `data_health_snapshot.py --dry-run --format text` after each writer slice.
+- Latest live forecast slice: `raw_profit_forecast_snapshot_daily` now has `2026-06-04` / `2,377` stocks; `mart_forecast_upside_live` now has `2026-06-04` / `2,305` stocks. `data_health_snapshot.py --dry-run --format text` improved to `green=316 / yellow=26 / red=0 / blocking_yellow=9`.
+- Root cause fixed: `scripts/daily_update.sh` now refreshes `compute_forecast_upside_live.py` after raw forecast ingest using the same `FORECAST_SNAPSHOT_DATE`; `backend/tests/test_daily_update_model_refresh.py` locks this contract. The mart remains live shadow only, not training/backtest input.
+- Next data-health write path should be sliced, not mixed: holder/F10, GPCW derived audits, capital sync, and feature-panel tail refresh. Re-run `doctor --fast` or `data_health_snapshot.py --dry-run --format text` after each writer slice.
 
 ## Resilience 配置 (verified)
 

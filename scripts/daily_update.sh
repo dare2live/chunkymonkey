@@ -354,11 +354,21 @@ PYEOF
         # 2026-05-29 加 (市场感知数据接入 P0): profit_forecast EPS 快照接线
         # 反例: launchd plist 未 load, 只跑过 1 次 (2026-05-17). 景气度 forward 因子源 (研究证实
         # 多因子行业轮动有效), immutable PIT (INSERT OR IGNORE 同日 skip).
+        # 2026-06-04: 同一 daily snapshot 必须同步生成 shadow mart, 否则 mart_forecast_upside_live
+        # 会 stale 并触发 blocking data-health yellow. 显式传同一个日期, 防跨午夜 raw/mart 错位.
         log "--- Step 2l: profit_forecast EPS snapshot (景气度 immutable PIT) ---"
-        PYTHONPATH=backend python backend/scripts/ingest_profit_forecast_snapshot.py \
-            >> "$LOG" 2>&1 || log "WARN: profit_forecast sync 失败"
+        FORECAST_SNAPSHOT_DATE=$(date +%Y-%m-%d)
+        if PYTHONPATH=backend python backend/scripts/ingest_profit_forecast_snapshot.py \
+            --snapshot-date "$FORECAST_SNAPSHOT_DATE" >> "$LOG" 2>&1; then
+            log "--- Step 2m: forecast_upside live shadow mart (same PIT snapshot) ---"
+            PYTHONPATH=backend python backend/scripts/compute_forecast_upside_live.py \
+                --snapshot-date "$FORECAST_SNAPSHOT_DATE" >> "$LOG" 2>&1 \
+                || log "WARN: forecast_upside live mart refresh 失败"
+        else
+            log "WARN: profit_forecast sync 失败; skip forecast_upside live mart"
+        fi
     else
-        log "DRY: skip Step 2d-2l satellite syncs"
+        log "DRY: skip Step 2d-2m satellite syncs"
     fi
 fi
 

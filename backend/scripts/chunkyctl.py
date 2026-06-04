@@ -713,6 +713,7 @@ def _worktree_bucket(path: str, status_kind: str) -> str:
         "docs/chunkyctl_session_quickstart.md",
         "docs/engineering_governance.md",
         "scripts/chunkyctl",
+        "scripts/daily_update.sh",
         "scripts/cm_resume.sh",
         "scripts/install_resilience.sh",
         "scripts/safe_commit.sh",
