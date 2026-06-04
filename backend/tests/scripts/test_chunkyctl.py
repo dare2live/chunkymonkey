@@ -39,6 +39,33 @@ def test_preflight_reports_dirty_pending_and_required_gates(tmp_path: Path) -> N
     assert report["controller_agent_gate"]["required"] is False
 
 
+def test_preflight_prefers_moth_profile_instruction_sources(tmp_path: Path) -> None:
+    report = chunkyctl.build_preflight_report(
+        repo=tmp_path,
+        task="startup handoff",
+        scopes=[],
+        tooling_gate={
+            "git_status": {"clean": True},
+            "codegraph": {"pending": {"sync_required": False, "added": 0}},
+            "moth": {
+                "profile": {
+                    "instruction_sources": {
+                        "active": ["AGENTS.md", "docs/"],
+                        "ignored_by_default": ["CLAUDE.md", "CLAUDE.local.md"],
+                        "legacy_exception": "historical comparison only",
+                    }
+                }
+            },
+        },
+    )
+
+    assert report["instruction_sources"] == {
+        "active": ["AGENTS.md", "docs/"],
+        "ignored_by_default": ["CLAUDE.md", "CLAUDE.local.md"],
+        "legacy_exception": "historical comparison only",
+    }
+
+
 def test_preflight_accepts_positional_task_and_scope_args() -> None:
     task, scopes = chunkyctl._resolve_preflight_task_and_scopes(
         Namespace(
@@ -115,18 +142,67 @@ def test_preflight_requires_controller_agent_dispatch_for_broad_work(tmp_path: P
         },
     )
 
-    assert report["verdict"] == "WARN"
+    assert report["verdict"] == "FAIL"
     assert {
-        "severity": "WARN",
-        "risk": "controller_agent_dispatch_required",
-        "detail": "spawn bounded sidecar agents for independent work or record a concrete skip reason",
+        "severity": "FAIL",
+        "risk": "controller_agent_dispatch_missing",
+        "detail": "rerun preflight with --agent-dispatch evidence or --agent-skip-reason before editing",
     } in report["risks"]
     assert report["controller_agent_gate"] == {
         "required": True,
+        "satisfied": False,
+        "dispatch_evidence": [],
+        "skip_reason": "",
         "controller_role": "Codex owns direction, scope, final acceptance, shared docs, commits, and DB/GCP write windows",
         "agent_role": "bounded read-only exploration or disjoint worker scope; agent output is evidence, not a verdict",
         "skip_allowed_when": "user explicitly opts out, work is tightly coupled, tool unavailable, or write scopes conflict",
     }
+
+
+def test_preflight_passes_broad_work_with_agent_dispatch_evidence(tmp_path: Path) -> None:
+    report = chunkyctl.build_preflight_report(
+        repo=tmp_path,
+        task="审计 data_health blocking yellow 并制定修复计划",
+        scopes=[],
+        tooling_gate={
+            "git_status": {"clean": True},
+            "codegraph": {"pending": {"sync_required": False, "added": 0}},
+        },
+        agent_dispatches=["agent:Darwin read-only DB inventory", "agent:Confucius snapshot writer RCA"],
+    )
+
+    assert report["verdict"] == "PASS"
+    assert report["risks"] == []
+    assert report["controller_agent_gate"]["required"] is True
+    assert report["controller_agent_gate"]["satisfied"] is True
+    assert report["controller_agent_gate"]["dispatch_evidence"] == [
+        "agent:Darwin read-only DB inventory",
+        "agent:Confucius snapshot writer RCA",
+    ]
+
+
+def test_preflight_warns_when_broad_work_skips_agent_dispatch(tmp_path: Path) -> None:
+    report = chunkyctl.build_preflight_report(
+        repo=tmp_path,
+        task="审计 data_health blocking yellow 并制定修复计划",
+        scopes=[],
+        tooling_gate={
+            "git_status": {"clean": True},
+            "codegraph": {"pending": {"sync_required": False, "added": 0}},
+        },
+        agent_skip_reason="thread agent limit reached",
+    )
+
+    assert report["verdict"] == "WARN"
+    assert report["risks"] == [
+        {
+            "severity": "WARN",
+            "risk": "controller_agent_dispatch_skipped",
+            "detail": "agent dispatch skipped with explicit reason; verify this is tightly coupled or tool-limited",
+        }
+    ]
+    assert report["controller_agent_gate"]["satisfied"] is True
+    assert report["controller_agent_gate"]["skip_reason"] == "thread agent limit reached"
 
 
 def test_preflight_matches_ui_as_own_token(tmp_path: Path) -> None:
@@ -140,7 +216,7 @@ def test_preflight_matches_ui_as_own_token(tmp_path: Path) -> None:
         },
     )
 
-    assert report["verdict"] == "WARN"
+    assert report["verdict"] == "FAIL"
     assert report["risks"] == [
         {
             "severity": "WARN",
@@ -148,9 +224,9 @@ def test_preflight_matches_ui_as_own_token(tmp_path: Path) -> None:
             "detail": "backend contract and Browser verification required",
         },
         {
-            "severity": "WARN",
-            "risk": "controller_agent_dispatch_required",
-            "detail": "spawn bounded sidecar agents for independent work or record a concrete skip reason",
+            "severity": "FAIL",
+            "risk": "controller_agent_dispatch_missing",
+            "detail": "rerun preflight with --agent-dispatch evidence or --agent-skip-reason before editing",
         },
     ]
     assert report["controller_agent_gate"]["required"] is True
@@ -188,6 +264,8 @@ def test_run_preflight_uses_moth_snapshot(monkeypatch, tmp_path: Path, capsys) -
         task_arg=None,
         scope=["backend/app.py"],
         scope_arg=[],
+        agent_dispatch=[],
+        agent_skip_reason=None,
     )
     rc = chunkyctl.run_preflight(args)
     report = json.loads(capsys.readouterr().out)

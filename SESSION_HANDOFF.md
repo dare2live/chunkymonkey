@@ -91,6 +91,20 @@ ebd18209 fix: govern technical-stage residual classification
 - Root cause fixed: `scripts/daily_update.sh` now refreshes `compute_forecast_upside_live.py` after raw forecast ingest using the same `FORECAST_SNAPSHOT_DATE`; `backend/tests/test_daily_update_model_refresh.py` locks this contract. The mart remains live shadow only, not training/backtest input.
 - Next data-health write path should be sliced, not mixed: holder/F10, GPCW derived audits, capital sync, and feature-panel tail refresh. Re-run `doctor --fast` or `data_health_snapshot.py --dry-run --format text` after each writer slice.
 
+## POST-SNAPSHOT CONTROLLER NOTE (2026-06-04 16:45 CST)
+
+- 2026-06-04 盘后刷新已完成。`data_health_snapshot.py --dry-run --format text` 当前为 `green=326 / yellow=16 / red=0 / blocking_yellow=0`；`scripts/chunkyctl doctor --fast` 仍为 `WARN`，但 `data_health.blocking_yellow_tables=[]`、`red_tables=[]`。下一会话不要再按 14:11 的 `blocking_yellow=9` 循环。
+- K-line / feature-panel 已到 2026-06-04：本地 `build_price_kline_tdxhub.py --skip-existing --target-date 2026-06-04` 写入 `10,388` 行，`5,200` 股成功 / `000638` 失败；canonical K-line 为 `2022-01-01 -> 2026-06-04` / `5,203` codes。`sync_hs300_benchmark_kline.py` OK，`build_feature_panel_duck.py --mode incremental` 后 `fact_feature_panel` 为 `4,161,982` rows / `2023-01-03 -> 2026-06-04`，`feature_panel_prune_20260604_after_close` 显示两张 feature 表 `missing_signal_count=0` / `pruned_count=0`。
+- holder/F10 / GPCW / capital 本轮 blocking 切片已处理：GPCW profile/PIT audit 已刷新；capital latest 更新到 `2026-06-04T15:00:54.088424`；F10 raw 到 2026-06-04，canonical holder replay 有 2026-06-04 行，9 个 holder/plan/trade replay 索引已恢复；`mart_shareholder_plan_initial_event` 重建为 `9,677` rows / `built_at=2026-06-04T08:33:04+00:00`。
+- 本轮代码修复点：`ingest_holders_tdxhub.py` 的 replace raw replay 改成 raw-key temp table 批量删除旧 facts、跳过 holder-key 逐行 delete，并直接插入 `availability_source`，避免 DuckDB indexed delete fatal 和无索引逐行 UPDATE。相关测试 `backend/tests/test_ingest_holders_tdxhub.py` PASS。
+- Moth 已提交并推送：`ed19610 feat: preserve profile instruction sources`。GitHub repo `dare2live/moth` 为 PUBLIC，本机 `/Users/dp/.local/bin/moth` 指向 repo `.venv/bin/moth`，`moth snapshot/profile` 能输出 `instruction_sources.ignored_by_default=["CLAUDE.md"]`。
+
+## POST-SNAPSHOT CONTROLLER NOTE (2026-06-04 17:15 CST)
+
+- `chunkyctl preflight` 的 controller/agent gate 已从文档提醒升级为机器门禁：广义 audit/research/architecture/data/debug/review/spec/triage 或 3+ 独立 scope 缺少 `--agent-dispatch` 证据时会返回 `controller_agent_dispatch_missing` 并 FAIL；`--agent-skip-reason` 只能作为 WARN 例外。后续新会话不要只在文字上承诺“总指挥模式”，要先让 preflight 看到 agent 调度证据。
+- Rule 10 reviewer 指出 holder replace replay 还会留下旧 `fact_controlling_shareholder`。已修：replace replay 先解析成功 raw，再批量删除 holder/plan/trade/controlling 旧 facts；解析失败不会先删旧 facts。另补 `availability_source` 直接插入分支测试。核心 holder/chunkyctl/capital tests 当前通过。
+- DB 容量只读并行审计已记录到 `analysis/db_capacity_audit_20260604.md`。`data/smartmoney.duckdb` 约 `33.6 GiB` / `34G`；未发现 `no2`、session snapshot 循环写爆，或能解释容量的 `.bak/.gz/.zst` 压缩备份副本。主因更像多版本宽面板全量并存、rank/cache 表 key 重叠、347 个索引/存储元数据开销、小表 repeated rewrite row-group bloat，以及 `formula_engine` reason JSON 总量 WARN。最可疑冗余组是 `mart_p0a_feature_label_panel` legacy/v3/v4/v5/unified，以及 `fact_feature_panel_candidate` / `fact_feature_panel_tdx_keep_challenger` / `mart_feature_rank_matrix_cache_*` 同 key 重叠。不要从这条证据直接删表或 VACUUM；下一步应单独做 retention/index/compact 方案，先备份、分类 owner、证明 consumer。
+
 ## Resilience 配置 (verified)
 
 | 机制 | 状态 |

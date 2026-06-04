@@ -68,6 +68,9 @@ shared snapshot refreshed before any repo-local wrapper consumes it.
 The active repo-local profile is `.moth/profile.yaml`; keep it limited to
 shared tooling metadata and evidence paths, including pointers to the local
 Codex skills that govern local-ops, ChunkyMonkey governance, and Rule 10 review.
+It also exposes `instruction_sources`, where `CLAUDE.md` is listed under
+`ignored_by_default` so Codex startup and preflight flows can enforce that
+boundary without relying on chat memory.
 Do not move business gate rules such as `stage_opt`, `need_027`,
 `storage_payload`, or `data_health` into Moth.
 The public Moth repo lives at `https://github.com/dare2live/moth`; keep the
@@ -99,10 +102,13 @@ scripts/chunkyctl docs --format markdown
 6. Before a concrete task, run:
 
 ```bash
-scripts/chunkyctl preflight "task" path...
+scripts/chunkyctl preflight "task" path... --agent-dispatch "agent:NAME scope/evidence"
 ```
 
 `preflight` now reuses the shared Moth-backed tooling gate for dirty/worktree/codegraph state, so the old local codegraph parser wrapper is retired with the gate.
+For broad audit/research/architecture/data/debug or 3+ scope tasks, missing
+agent evidence is a FAIL. If dispatch is genuinely impossible, pass
+`--agent-skip-reason "concrete reason"` and expect a WARN.
 
 7. After `.py` edits, run:
 
@@ -178,7 +184,9 @@ counts alone.
 | `data_health.verdict=FAIL` | Inspect red tables with `PYTHONPATH=backend python backend/scripts/data_health_snapshot.py --dry-run --format text`; treat only blocking assets as startup blockers, and remember that `warning` / `monitor_only` assets are intentionally capped to yellow |
 | `data_health.blocking_yellow > 0` | Inspect `blocking_yellow_tables` and let `scripts/chunkyctl doctor --fast` prioritize those before generic yellow maintenance; blocking-quality yellow assets are actionable even when the verdict is still WARN |
 | `preflight.instruction_sources.ignored_by_default` contains `CLAUDE.md` | Treat `CLAUDE.md` as legacy Claude-only history; use `AGENTS.md`, active docs, Codex skills, and live tooling as policy |
-| `preflight.controller_agent_gate.required=true` | Spawn bounded sidecar agents for independent read-only/review/RCA or disjoint worker scopes, then reconcile their output as controller evidence; if not dispatching, record a concrete skip reason |
+| `.moth/profile.yaml instruction_sources.ignored_by_default` contains `CLAUDE.md` | Moth profile carries the same policy-source boundary for new sessions and raw snapshots |
+| `preflight.controller_agent_gate.required=true` | Spawn bounded sidecar agents for independent read-only/review/RCA or disjoint worker scopes, then reconcile their output as controller evidence |
+| `preflight.risk=controller_agent_dispatch_missing` | Stop before editing and rerun preflight with `--agent-dispatch` evidence or `--agent-skip-reason`; this is a process gate, not a documentation reminder |
 | `worktree.bucket=legacy_context` | Historical Claude-only context; do not merge it into Codex controller state unless explicitly migrating legacy content |
 | `stage_opt.verdict=WARN` | Advisory audit warning: candidate supply still has blocked keys or unknown-stage drops; it is not a strategy promote/reject verdict |
 | `stage_opt.top_blocked_reason_counts` exists | Use it to see which gate dominates stage-opt attrition before rerunning audits; `below_min_signals` is currently the primary blocker, and `doctor` should surface it alongside `next_action_recommendation` |
@@ -209,7 +217,7 @@ order:
 | Default parallelism | Spawn bounded assistant agents by default for independent sidecar investigation unless the user explicitly says not to parallelize, the tool is unavailable, or the work is tightly coupled |
 | Explorer agents | Use read-only scopes for architecture audits, data-lineage checks, stage-opt/need coverage triage, storage payload review, and failure root-cause mapping |
 | Worker agents | Work only inside assigned disjoint read/write scope and return evidence, not decisions; never revert peer/controller work |
-| `preflight` controller-agent gate | Broad audit/research/architecture/data/debug or 3+ scope tasks return `controller_agent_dispatch_required`; satisfy it by dispatching agents or recording the skip reason before editing |
+| `preflight` controller-agent gate | Broad audit/research/architecture/data/debug or 3+ scope tasks FAIL with `controller_agent_dispatch_missing` unless preflight receives `--agent-dispatch`; `--agent-skip-reason` records an explicit exception as WARN |
 | DB-heavy audits | Parallelize only when they use explicit read-only connections; serialize scripts that materialize tables, write DuckDB, or share output paths |
 | `chunkyctl` | Emits machine-readable facts and command plans; it does not replace review |
 | Skill dispatch | Local Codex ops use `$codex-local-ops`; project governance uses `$chunkymonkey-governance`; Rule 10 / commit review uses `$chunkymonkey-review-gate` |

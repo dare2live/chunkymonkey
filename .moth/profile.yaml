@@ -23,6 +23,18 @@ evidence_paths:
   skill_chunkymonkey_review_gate: /Users/dp/.codex/skills/chunkymonkey-review-gate/SKILL.md
   docs: docs
   tooling_reports: data/reports/tooling
+instruction_sources:
+  active:
+    - AGENTS.md
+    - goal.md
+    - SESSION_HANDOFF.md
+    - analysis/workflow_checkpoint.md
+    - docs/
+    - Codex skills
+    - live tooling output
+  ignored_by_default:
+    - CLAUDE.md
+  legacy_exception: Open CLAUDE.md only when the user explicitly requests historical comparison or migration.
 notes: >
   Controller-first ChunkyMonkey profile. Moth owns shared tooling state such as
   dirty worktree, CodeGraph, complexity, and evidence path discovery, including

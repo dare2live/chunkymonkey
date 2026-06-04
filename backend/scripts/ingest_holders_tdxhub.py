@@ -54,6 +54,21 @@ import duckdb
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("ingest-holders")
 
+HOLDER_PERIOD_INDEX_DDL = {
+    "idx_t10_stock": "CREATE INDEX IF NOT EXISTS idx_t10_stock ON fact_top10_holder_period(stock_code, report_date DESC)",
+    "idx_t10_holder": "CREATE INDEX IF NOT EXISTS idx_t10_holder ON fact_top10_holder_period(holder_name)",
+    "idx_t10_holder_norm": "CREATE INDEX IF NOT EXISTS idx_t10_holder_norm ON fact_top10_holder_period(holder_name_norm)",
+    "idx_t10_effective": "CREATE INDEX IF NOT EXISTS idx_t10_effective ON fact_top10_holder_period(effective_date)",
+    "idx_t10_set_class": "CREATE INDEX IF NOT EXISTS idx_t10_set_class ON fact_top10_holder_period(holder_set, share_class)",
+}
+REPLAY_FACT_INDEX_DDL = {
+    **HOLDER_PERIOD_INDEX_DDL,
+    "idx_plan_stock_announce": "CREATE INDEX IF NOT EXISTS idx_plan_stock_announce ON fact_shareholder_plan(stock_code, announce_date DESC)",
+    "idx_plan_raw_hash": "CREATE INDEX IF NOT EXISTS idx_plan_raw_hash ON fact_shareholder_plan(stock_code, raw_hash)",
+    "idx_trade_stock_date": "CREATE INDEX IF NOT EXISTS idx_trade_stock_date ON fact_shareholder_trade(stock_code, change_date DESC)",
+    "idx_trade_raw_hash": "CREATE INDEX IF NOT EXISTS idx_trade_raw_hash ON fact_shareholder_trade(stock_code, raw_hash)",
+}
+
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO / "backend"))
 
@@ -354,6 +369,42 @@ def _delete_existing_fact_rows(
         )
 
 
+def _delete_existing_fact_rows_for_raw_keys(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    raw_keys: Sequence[tuple[str, str]],
+    source: str,
+) -> None:
+    keys = sorted({(stock_code, raw_hash) for stock_code, raw_hash in raw_keys if stock_code and raw_hash})
+    if not keys:
+        return
+    con.execute("DROP TABLE IF EXISTS tmp_holder_replay_delete_keys")
+    con.execute("CREATE TEMP TABLE tmp_holder_replay_delete_keys(stock_code TEXT, raw_hash TEXT)")
+    con.executemany("INSERT INTO tmp_holder_replay_delete_keys VALUES (?, ?)", keys)
+    try:
+        for table in (
+            "fact_top10_holder_period",
+            "fact_shareholder_plan",
+            "fact_shareholder_trade",
+            "fact_controlling_shareholder",
+        ):
+            con.execute(
+                f"""
+                DELETE FROM {table}
+                 WHERE source = ?
+                   AND EXISTS (
+                         SELECT 1
+                           FROM tmp_holder_replay_delete_keys k
+                          WHERE k.stock_code = {table}.stock_code
+                            AND k.raw_hash = {table}.raw_hash
+                   )
+                """,
+                (source,),
+            )
+    finally:
+        con.execute("DROP TABLE IF EXISTS tmp_holder_replay_delete_keys")
+
+
 def _delete_rows_by_rowid(
     con: duckdb.DuckDBPyConnection,
     table: str,
@@ -377,6 +428,30 @@ def _delete_rows_by_rowid(
         rowids,
     )
     return len(rowids)
+
+
+def _drop_holder_period_indexes(con: duckdb.DuckDBPyConnection) -> None:
+    for index_name in HOLDER_PERIOD_INDEX_DDL:
+        con.execute(f"DROP INDEX IF EXISTS {index_name}")
+
+
+def _recreate_holder_period_indexes(con: duckdb.DuckDBPyConnection) -> None:
+    for ddl in HOLDER_PERIOD_INDEX_DDL.values():
+        con.execute(ddl)
+
+
+def _drop_replay_fact_indexes(con: duckdb.DuckDBPyConnection) -> None:
+    for index_name in REPLAY_FACT_INDEX_DDL:
+        con.execute(f"DROP INDEX IF EXISTS {index_name}")
+
+
+def _recreate_replay_fact_indexes(con: duckdb.DuckDBPyConnection) -> None:
+    for ddl in REPLAY_FACT_INDEX_DDL.values():
+        con.execute(ddl)
+
+
+def _table_has_column(con: duckdb.DuckDBPyConnection, table: str, column: str) -> bool:
+    return any(row[0] == column for row in con.execute(f"DESCRIBE {table}").fetchall())
 
 
 def _update_holder_availability_source(con: duckdb.DuckDBPyConnection, rows: list[dict]) -> None:
@@ -427,6 +502,7 @@ def write_raw_one(
     server: str | None,
     f10_format: str,
     parser_version: str = "v1",
+    refresh_existing: bool = False,
     lock: threading.Lock,
 ) -> bool:
     """Persist one fetched TDX raw page without touching canonical facts."""
@@ -442,6 +518,36 @@ def write_raw_one(
             (stock_code, raw_hash),
         ).fetchone()
         if exists:
+            if refresh_existing:
+                con.execute(
+                    """
+                    UPDATE raw_tdx_f10_holder_research
+                       SET stock_name = ?,
+                           market = ?,
+                           fetched_at = cast(? as timestamp),
+                           page_update_date = ?,
+                           raw_text = ?,
+                           bytes_len = ?,
+                           server = ?,
+                           f10_format = ?,
+                           parser_version = ?
+                     WHERE stock_code = ? AND raw_hash = ?
+                    """,
+                    (
+                        stock_name,
+                        market,
+                        fetched_at,
+                        page_update_date,
+                        raw_text,
+                        len(raw_text),
+                        server,
+                        f10_format,
+                        parser_version,
+                        stock_code,
+                        raw_hash,
+                    ),
+                )
+                return True
             return False
         con.execute(
             """
@@ -470,7 +576,8 @@ def write_raw_one(
 def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: str,
               market: str, result: ResolverResult,
               alias_map: dict[str, str], lock: threading.Lock,
-              replace_facts: bool = False) -> dict:
+              replace_facts: bool = False,
+              skip_holder_key_delete: bool = False) -> dict:
     """Persist a ResolverResult into raw + 4 fact tables under a connection lock.
 
     raw_text + 段 1/2/3 仅 tdxhub 路径有 (result.source_tier=1).
@@ -606,28 +713,44 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
                 "notice_date, effective_date, page_update_date, "
                 "source, source_tier, raw_hash, fetched_at, created_at"
             )
+            has_availability_source = _table_has_column(
+                con,
+                "fact_top10_holder_period",
+                "availability_source",
+            )
+            holder_tuples = [_holder_tuple(row) for row in holders_for_insert]
+            if has_availability_source:
+                holder_columns = f"{holder_columns}, availability_source"
+                holder_tuples = [
+                    (*holder_tuple, row.get("availability_source"))
+                    for holder_tuple, row in zip(holder_tuples, holders_for_insert, strict=True)
+                ]
             holder_value_count = len(_holder_tuple(holders_for_insert[0]))
+            if has_availability_source:
+                holder_value_count += 1
             holder_insert_sql = f"INSERT INTO fact_top10_holder_period({holder_columns}) VALUES ({', '.join('?' for _ in range(holder_value_count))})"
-            for row in holders_for_insert:
-                _delete_rows_by_rowid(
-                    con,
-                    "fact_top10_holder_period",
-                    "stock_code = ? AND report_date = ? AND holder_set = ? "
-                    "AND source = ? AND is_exit_row = ? AND holder_rank = ? "
-                    "AND row_seq = ? AND COALESCE(share_class, '') = COALESCE(?, '')",
-                    (
-                        row.get("stock_code"),
-                        row.get("report_date"),
-                        row.get("holder_set"),
-                        row.get("source") or result.source,
-                        row.get("is_exit_row"),
-                        row.get("holder_rank"),
-                        row.get("row_seq"),
-                        row.get("share_class"),
-                    ),
-                )
-            con.executemany(holder_insert_sql, [_holder_tuple(row) for row in holders_for_insert])
-            _update_holder_availability_source(con, holders_for_insert)
+            if not skip_holder_key_delete:
+                for row in holders_for_insert:
+                    _delete_rows_by_rowid(
+                        con,
+                        "fact_top10_holder_period",
+                        "stock_code = ? AND report_date = ? AND holder_set = ? "
+                        "AND source = ? AND is_exit_row = ? AND holder_rank = ? "
+                        "AND row_seq = ? AND COALESCE(share_class, '') = COALESCE(?, '')",
+                        (
+                            row.get("stock_code"),
+                            row.get("report_date"),
+                            row.get("holder_set"),
+                            row.get("source") or result.source,
+                            row.get("is_exit_row"),
+                            row.get("holder_rank"),
+                            row.get("row_seq"),
+                            row.get("share_class"),
+                        ),
+                    )
+            con.executemany(holder_insert_sql, holder_tuples)
+            if not has_availability_source:
+                _update_holder_availability_source(con, holders_for_insert)
 
         if ctrl is not None:
             con.execute("""
@@ -856,6 +979,7 @@ def parse_raw_records(
         "errors": 0,
         "replace_facts": replace_facts,
     }
+    parsed_rows: list[tuple[Any, str, ResolverResult]] = []
     for row in rows:
         stock_code = _row_value(row, "stock_code", 0) or ""
         try:
@@ -863,6 +987,23 @@ def parse_raw_records(
             if not result.has_data():
                 stats["no_data"] += 1
                 continue
+            parsed_rows.append((row, stock_code, result))
+        except Exception as exc:
+            stats["errors"] += 1
+            log.warning("[parse-raw] %s ERROR %s: %s", stock_code, type(exc).__name__, exc)
+
+    indexes_dropped = False
+    try:
+        if replace_facts and parsed_rows:
+            replay_raw_keys = [(stock_code, result.raw_hash) for _, stock_code, result in parsed_rows]
+            _drop_replay_fact_indexes(con)
+            indexes_dropped = True
+            _delete_existing_fact_rows_for_raw_keys(
+                con,
+                raw_keys=replay_raw_keys,
+                source="tdx_f10",
+            )
+        for row, stock_code, result in parsed_rows:
             write_one(
                 con,
                 stock_code=stock_code,
@@ -871,13 +1012,21 @@ def parse_raw_records(
                 result=result,
                 alias_map=alias_map,
                 lock=lock,
-                replace_facts=replace_facts,
+                replace_facts=False,
+                skip_holder_key_delete=replace_facts,
             )
             stats["parsed"] += 1
-        except Exception as exc:
-            stats["errors"] += 1
-            log.warning("[parse-raw] %s ERROR %s: %s", stock_code, type(exc).__name__, exc)
-    con.commit()
+        if replace_facts:
+            _recreate_replay_fact_indexes(con)
+        con.commit()
+    except Exception:
+        if indexes_dropped:
+            try:
+                con.rollback()
+            except Exception as rollback_exc:
+                log.warning("rollback failed after holder replay error: %s", rollback_exc)
+            _recreate_replay_fact_indexes(con)
+        raise
     stats["elapsed_s"] = time.time() - t0
     return stats
 
@@ -900,6 +1049,7 @@ def raw_worker(
     *,
     fetcher_factory: Callable[[], Any] | None = None,
     progress_callback: Callable[[dict], None] | None = None,
+    refresh_existing: bool = False,
 ) -> None:
     fetcher = fetcher_factory() if fetcher_factory is not None else _make_raw_fetcher()
     while True:
@@ -951,6 +1101,7 @@ def raw_worker(
                 page_update_date=_extract_page_update_date(raw_text),
                 server=_fetcher_server(fetcher),
                 f10_format=_detect_f10_format_label(raw_text),
+                refresh_existing=refresh_existing,
                 lock=con_lock,
             )
             elapsed = time.time() - t0
@@ -1051,6 +1202,7 @@ def fetch_raw_records(
             kwargs={
                 "fetcher_factory": fetcher_factory,
                 "progress_callback": progress_callback,
+                "refresh_existing": force,
             },
             name=f"holder-raw-worker-{i+1}",
         )
@@ -1182,7 +1334,7 @@ def run(
         )
         raw_keys = list(raw_stats.get("raw_keys") or [])
         if raw_keys:
-            parse_stats = parse_raw_records(con, raw_keys=raw_keys)
+            parse_stats = parse_raw_records(con, raw_keys=raw_keys, replace_facts=force)
         else:
             parse_stats = {
                 "raw_rows": 0,

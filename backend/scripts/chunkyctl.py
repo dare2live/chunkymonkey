@@ -1208,14 +1208,42 @@ def _task_requires_controller_agent_dispatch(task: str, scopes: list[str]) -> bo
     return len(scopes) >= 3
 
 
+def _instruction_sources_from_tooling_gate(tooling_gate: dict[str, Any]) -> dict[str, Any]:
+    default_sources: dict[str, Any] = {
+        "active": ["AGENTS.md", "goal.md", "SESSION_HANDOFF.md", "analysis/workflow_checkpoint.md", "docs/", "Codex skills"],
+        "ignored_by_default": ["CLAUDE.md"],
+        "legacy_exception": "Open CLAUDE.md only when the user explicitly requests historical comparison or migration.",
+    }
+    profile = ((tooling_gate.get("moth") or {}).get("profile") or {})
+    if not isinstance(profile, dict):
+        return default_sources
+    configured = profile.get("instruction_sources")
+    if not isinstance(configured, dict):
+        return default_sources
+
+    sources = dict(default_sources)
+    for key in ("active", "ignored_by_default"):
+        value = configured.get(key)
+        if isinstance(value, list):
+            sources[key] = [str(item) for item in value]
+    legacy_exception = configured.get("legacy_exception")
+    if isinstance(legacy_exception, str) and legacy_exception.strip():
+        sources["legacy_exception"] = legacy_exception.strip()
+    return sources
+
+
 def build_preflight_report(
     *,
     repo: Path,
     task: str,
     scopes: list[str],
     tooling_gate: dict[str, Any] | None,
+    agent_dispatches: list[str] | None = None,
+    agent_skip_reason: str | None = None,
 ) -> dict[str, Any]:
     tooling_gate = tooling_gate or {}
+    agent_dispatches = [item.strip() for item in (agent_dispatches or []) if item.strip()]
+    agent_skip_reason = (agent_skip_reason or "").strip()
     git_status = tooling_gate.get("git_status") or {}
     codegraph_status = tooling_gate.get("codegraph") or {}
     risks: list[dict[str, str]] = []
@@ -1230,12 +1258,25 @@ def build_preflight_report(
     if _task_mentions(task, ("delete", "cleanup", "remove")):
         risks.append({"severity": "WARN", "risk": "deletion_governance", "detail": "prove with CodeGraph + rg + tests before deleting"})
     controller_agent_required = _task_requires_controller_agent_dispatch(task, scopes)
-    if controller_agent_required:
+    controller_agent_satisfied = (
+        not controller_agent_required
+        or bool(agent_dispatches)
+        or bool(agent_skip_reason)
+    )
+    if controller_agent_required and not controller_agent_satisfied:
+        risks.append(
+            {
+                "severity": "FAIL",
+                "risk": "controller_agent_dispatch_missing",
+                "detail": "rerun preflight with --agent-dispatch evidence or --agent-skip-reason before editing",
+            }
+        )
+    elif controller_agent_required and agent_skip_reason:
         risks.append(
             {
                 "severity": "WARN",
-                "risk": "controller_agent_dispatch_required",
-                "detail": "spawn bounded sidecar agents for independent work or record a concrete skip reason",
+                "risk": "controller_agent_dispatch_skipped",
+                "detail": "agent dispatch skipped with explicit reason; verify this is tightly coupled or tool-limited",
             }
         )
     verdict = "FAIL" if any(risk["severity"] == "FAIL" for risk in risks) else ("WARN" if risks else "PASS")
@@ -1250,15 +1291,14 @@ def build_preflight_report(
         "required_gates": _gate_commands_for_task(task, scopes),
         "controller_agent_gate": {
             "required": controller_agent_required,
+            "satisfied": controller_agent_satisfied,
+            "dispatch_evidence": agent_dispatches,
+            "skip_reason": agent_skip_reason,
             "controller_role": "Codex owns direction, scope, final acceptance, shared docs, commits, and DB/GCP write windows",
             "agent_role": "bounded read-only exploration or disjoint worker scope; agent output is evidence, not a verdict",
             "skip_allowed_when": "user explicitly opts out, work is tightly coupled, tool unavailable, or write scopes conflict",
         },
-        "instruction_sources": {
-            "active": ["AGENTS.md", "goal.md", "SESSION_HANDOFF.md", "analysis/workflow_checkpoint.md", "docs/", "Codex skills"],
-            "ignored_by_default": ["CLAUDE.md"],
-            "legacy_exception": "Open CLAUDE.md only when the user explicitly requests historical comparison or migration.",
-        },
+        "instruction_sources": _instruction_sources_from_tooling_gate(tooling_gate),
         "tooling_gate": tooling_gate,
         "truth_sources": [
             "K-line is trading truth",
@@ -1278,7 +1318,14 @@ def run_preflight(args: argparse.Namespace) -> int:
     moth_snapshot = run_moth_snapshot(repo, "chunkymonkey")
     moth_payload = moth_snapshot.get("payload")
     tooling_gate = build_moth_tooling_gate_report(moth_payload) if moth_payload else None
-    report = build_preflight_report(repo=repo, task=task, scopes=scopes, tooling_gate=tooling_gate)
+    report = build_preflight_report(
+        repo=repo,
+        task=task,
+        scopes=scopes,
+        tooling_gate=tooling_gate,
+        agent_dispatches=args.agent_dispatch,
+        agent_skip_reason=args.agent_skip_reason,
+    )
     report["tooling_gate_command"] = _command_summary(
         {
             "cmd": moth_snapshot["command"],
@@ -1353,6 +1400,17 @@ def main() -> int:
     preflight.add_argument("scope_arg", nargs="*")
     preflight.add_argument("--task", default=None)
     preflight.add_argument("--scope", action="append", default=[])
+    preflight.add_argument(
+        "--agent-dispatch",
+        action="append",
+        default=[],
+        help="Evidence for a bounded sidecar agent dispatch, for broad controller-led tasks",
+    )
+    preflight.add_argument(
+        "--agent-skip-reason",
+        default=None,
+        help="Concrete reason why controller-agent dispatch was skipped for a broad task",
+    )
     preflight.set_defaults(func=run_preflight)
 
     worktree = subparsers.add_parser("worktree", help="Classify dirty worktree entries into review buckets")

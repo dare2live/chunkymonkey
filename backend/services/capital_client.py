@@ -275,8 +275,78 @@ def _fetch_repurchase():
 
 
 def _fetch_unlock_detail(start_date: str, end_date: str):
-    import akshare as ak
-    return ak.stock_restricted_release_detail_em(start_date=start_date, end_date=end_date)
+    import pandas as pd
+    import requests
+
+    start_date_str = "-".join([start_date[:4], start_date[4:6], start_date[6:]])
+    end_date_str = "-".join([end_date[:4], end_date[4:6], end_date[6:]])
+    url = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+    base_params = {
+        "sortColumns": "FREE_DATE,CURRENT_FREE_SHARES",
+        "sortTypes": "1,1",
+        "pageSize": "500",
+        "reportName": "RPT_LIFT_STAGE",
+        "columns": (
+            "SECURITY_CODE,SECURITY_NAME_ABBR,FREE_DATE,CURRENT_FREE_SHARES,ABLE_FREE_SHARES,"
+            "LIFT_MARKET_CAP,FREE_RATIO,NEW,B20_ADJCHRATE,A20_ADJCHRATE,FREE_SHARES_TYPE,"
+            "TOTAL_RATIO,NON_FREE_SHARES,BATCH_HOLDER_NUM"
+        ),
+        "source": "WEB",
+        "client": "WEB",
+        "filter": f"(FREE_DATE>='{start_date_str}')(FREE_DATE<='{end_date_str}')",
+    }
+
+    def fetch_page(page_number: int):
+        params = {**base_params, "pageNumber": str(page_number)}
+        resp = requests.get(url, params=params, timeout=20)
+        resp.raise_for_status()
+        payload = resp.json()
+        result = payload.get("result") or {}
+        if payload.get("success") is False or not isinstance(result, dict):
+            raise RuntimeError(f"eastmoney unlock response invalid for page={page_number}: {payload.get('message')}")
+        return result
+
+    first = fetch_page(1)
+    total_pages = int(first.get("pages") or 0)
+    data_rows = list(first.get("data") or [])
+    for page in range(2, total_pages + 1):
+        data_rows.extend(fetch_page(page).get("data") or [])
+
+    out_columns = [
+        "序号",
+        "股票代码",
+        "股票简称",
+        "解禁时间",
+        "限售股类型",
+        "解禁数量",
+        "实际解禁数量",
+        "实际解禁市值",
+        "占解禁前流通市值比例",
+        "解禁前一交易日收盘价",
+        "解禁前20日涨跌幅",
+        "解禁后20日涨跌幅",
+    ]
+    if not data_rows:
+        return pd.DataFrame(columns=out_columns)
+
+    df = pd.DataFrame(data_rows)
+    big_df = pd.DataFrame(
+        {
+            "序号": range(1, len(df) + 1),
+            "股票代码": df.get("SECURITY_CODE"),
+            "股票简称": df.get("SECURITY_NAME_ABBR"),
+            "解禁时间": pd.to_datetime(df.get("FREE_DATE"), errors="coerce").dt.date,
+            "限售股类型": df.get("FREE_SHARES_TYPE"),
+            "解禁数量": pd.to_numeric(df.get("ABLE_FREE_SHARES"), errors="coerce") * 10000,
+            "实际解禁数量": pd.to_numeric(df.get("CURRENT_FREE_SHARES"), errors="coerce") * 10000,
+            "实际解禁市值": pd.to_numeric(df.get("LIFT_MARKET_CAP"), errors="coerce") * 10000,
+            "占解禁前流通市值比例": pd.to_numeric(df.get("FREE_RATIO"), errors="coerce"),
+            "解禁前一交易日收盘价": pd.to_numeric(df.get("NEW"), errors="coerce"),
+            "解禁前20日涨跌幅": pd.to_numeric(df.get("B20_ADJCHRATE"), errors="coerce"),
+            "解禁后20日涨跌幅": pd.to_numeric(df.get("A20_ADJCHRATE"), errors="coerce"),
+        }
+    )
+    return big_df[out_columns]
 
 
 def _fetch_dividend_detail(symbol: str):

@@ -1,12 +1,21 @@
 # PROJECT_INDEX.md — Chunky Monkey v2 项目地图 (新人 briefing)
 
-> ⚠ **每次 session 启动必读** (CLAUDE.md 已引用). 用于防止对话压缩 / context 丢失导致重复发现项目结构 / 误解数据资产.
-> 内容是**项目地图**, 不是规则 — 规则在 CLAUDE.md.
+> ⚠ **每次 session 启动必读**. 用于防止对话压缩 / context 丢失导致重复发现项目结构 / 误解数据资产.
+> 内容是**项目地图**, 不是规则 — Codex 规则在 `AGENTS.md`; `CLAUDE.md` 是 legacy Claude-specific history.
 >
 > **目标**: 新接手 (无论 Claude 还是人) 读完此文档**不用看代码 / 不用查 DB** 就能理解:
 > 项目业务 / 架构 / 技术路线 / 数据资产 / 当前进度 / 已知坑 / 常用操作.
 
-最后更新: **2026-06-03** (K-line + alpha158 + stage/context/trigger + capital_flow/risk/sector + picture/survey + label/score freshness catch-up + portfolio_sizer config + dirty safety/tooling ledger + model monitor widget extraction + workbench health widget extraction + ETF workbench widget extraction + signal adapter aggregation cleanup + stock summary delegate cleanup + data-view audit model cleanup + paper sim model extraction + storage model extraction + tdx f10 source-date audit model extraction + tdx f10 source-date dq model extraction + research model extraction + pipelines model extraction + data-view cockpit panel model extraction + stock timeline ordering delegation + data-view source cards detail cache + data-view link overview model extraction + data-view link overview manual count cleanup + data-view fallback/drift/capability single-pass cleanup + data-view routes table single-pass cleanup + data-view routes table event delegation cleanup + data-view render hot paths flattening + data-view render hot paths second pass + stock-view instType normalization cleanup + app.js turtle/helper dead-code cleanup + stability context rows model extraction + rank matrix cache rows model extraction + stock report widget removal + dead app.js overload cleanup + widget format utils shared helper + ETF formatter extension to more widgets + ETF formatter extension to ETF list/workbench + ETF formatter extension to analysis/workbench-health + institution-scorecard formatter extension + topk-strip formatter extension + signal widgets formatter extension + screening-panel/multidim-badge formatter extension + ETF opportunity formatter cleanup + backtest-panel/strategy compare formatter extension + ETF list formatter cleanup + signal-params formatter cleanup + signal-adapter dead wrapper cleanup + app.js industry summary helper cleanup + settings-view schema summary cleanup + settings-view versions cleanup + settings-view data source params model extraction + settings-view about model extraction + screening-panel formatter cleanup + chunkyctl need_027 blocker action helper extraction + audit_tdx_data_need_coverage source-registration helper extraction + stage-opt supply expansion via bc_absorbed challengers + data-health blocker triage complete + bestchoice blueprint intake + technical_stage residual policy governed + stage/context production rebuild).
+最后更新: **2026-06-04** (after-close data refresh + controller-agent preflight hard gate + holder replay safety + Codex instruction-source boundary + DuckDB capacity audit).
+
+## [INDEX] 2026-06-04 增量
+
+- **After-close data-health refresh complete**: 2026-06-04 盘后已补 K-line / HS300 / feature-panel tail / feature prune，并串行刷新 holder/F10、GPCW、capital 相关 blocking slices。`data_health_snapshot.py --dry-run --format text` 当前为 `green=326 / yellow=16 / red=0 / blocking_yellow=0`；剩余黄色是 warning-quality 资产，不再是 startup blocker。
+- **Holder/F10 replace replay safety**: `backend/scripts/ingest_holders_tdxhub.py` 的 `--replace-facts` replay 改为先解析成功 raw，再按 raw key 批量删除 holder/plan/trade/controlling 旧 facts，避免解析失败先删旧 facts；同时恢复 replay 相关索引，并在有 `availability_source` 列时直接插入该字段。回归覆盖 force refresh、replace replay、stale controlling 清理、parse failure 保留旧 facts、index restore 和 availability_source direct insert。
+- **Controller-agent mode is now a machine gate**: `backend/scripts/chunkyctl.py preflight` 对 broad audit/research/architecture/data/debug/review/spec/triage 或 3+ scope 任务要求 `--agent-dispatch` 证据；缺失时 `controller_agent_dispatch_missing` 为 FAIL，`--agent-skip-reason` 仅作为 WARN 例外。Codex 仍是 controller，agent 输出只是证据。
+- **Codex instruction-source boundary**: `.moth/profile.yaml` 暴露 `instruction_sources`，`chunkyctl preflight` 读取 Moth profile 后输出 `ignored_by_default=["CLAUDE.md"]`。Codex 默认使用 `AGENTS.md`、active docs、Codex skills、Moth evidence paths 和 live tooling output。
+- **DuckDB capacity audit**: `analysis/db_capacity_audit_20260604.md` 记录只读并行审计结果。`data/smartmoney.duckdb` 约 `33.6 GiB` / `34G`；未发现 `no2`、session snapshot 循环写爆，或能解释容量的 `.bak/.gz/.zst` 压缩备份副本。主压力来自多版本宽面板/cache 并存、rank cache key 重叠、索引/row-group 开销和 `formula_engine` reason JSON 总量 WARN。`raw_tdx_f10_holder_research` 是受保护 F10 raw/lineage evidence，不应和 cache 表放入同一清理 bucket。
+- **Validation**: `scripts/chunkyctl audit --run .moth/profile.yaml SESSION_HANDOFF.md goal.md analysis/db_capacity_audit_20260604.md backend/scripts/chunkyctl.py backend/tests/scripts/test_chunkyctl.py backend/scripts/ingest_holders_tdxhub.py backend/tests/test_ingest_holders_tdxhub.py backend/services/capital_client.py backend/tests/test_capital_client_store.py docs/chunkyctl_session_quickstart.md docs/engineering_governance.md` PASS；targeted pytest 51 passed；CodeGraph up to date；Rule 10 final reviewer APPROVE.
 
 ## [INDEX] 2026-06-03 增量
 
@@ -1017,6 +1026,16 @@ SELECT * FROM mart_data_source_watermark;
 ## 14. Session 增量更新日志 (Rule 9.5 长期沉淀)
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
+
+### 2026-06-04 after-close data refresh + controller gate hardening
+
+- `data_health_snapshot.py --dry-run --format text` 当前为 `green=326 / yellow=16 / red=0 / blocking_yellow=0`。2026-06-04 盘后 K-line / HS300 / feature-panel tail 已刷新到当日，feature prune 为 `missing_signal_count=0` / `pruned_count=0`；holder/F10、GPCW、capital 的 blocking freshness slice 已串行处理。
+- `backend/scripts/ingest_holders_tdxhub.py`: replace replay 先解析成功 raw，再用 raw-key temp table 批量清理 holder/plan/trade/controlling 旧 facts；解析失败不再先删除旧 facts。生产表有 `availability_source` 时直接 insert，避免后置逐行 UPDATE。`backend/tests/test_ingest_holders_tdxhub.py` 覆盖 force refresh、replace replay、stale controlling 清理、parse failure old facts 保留、index restore、availability_source direct insert。
+- `backend/scripts/chunkyctl.py`: preflight 的 controller-agent gate 已从提醒变成硬门。broad audit/research/architecture/data/debug/review/spec/triage 或 3+ scope 缺少 `--agent-dispatch` 时返回 `controller_agent_dispatch_missing` FAIL；`--agent-skip-reason` 只作为 WARN 例外。`backend/tests/scripts/test_chunkyctl.py` 覆盖 missing / dispatch / skip 三种语义。
+- `.moth/profile.yaml` + `chunkyctl preflight`: `instruction_sources.ignored_by_default=["CLAUDE.md"]` 已进入 Moth-backed snapshot / preflight。Codex 使用 `AGENTS.md`、active docs、Codex skills、Moth evidence paths 和 live tooling output；`CLAUDE.md` 只作为 legacy Claude-specific history。
+- `backend/services/capital_client.py`: unlock detail 改为直接分页调用 Eastmoney API，避免 AkShare path hang/semaphore leak；`backend/tests/test_capital_client_store.py` 覆盖分页、filter、字段映射和万股/万元换算。
+- `analysis/db_capacity_audit_20260604.md`: 记录 smartmoney DuckDB 只读容量审计。未发现 `no2`、session snapshot 循环写爆，或能解释容量的 `.bak/.gz/.zst` 压缩备份；主因是多版本宽面板/cache 并存、rank cache key 重叠、索引/row-group 开销、formula reason JSON 总量 WARN。`raw_tdx_f10_holder_research` 被明确列为受保护 raw/lineage，不和 cache cleanup 混桶。
+- 验证: targeted pytest 51 passed；`scripts/chunkyctl audit --run` scoped PASS；`git diff --check` PASS；CodeGraph up to date；Rule 10 final reviewer APPROVE。
 
 ### 2026-06-02 returns chart helper extraction
 

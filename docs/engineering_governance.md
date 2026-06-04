@@ -101,7 +101,7 @@ PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope <reg
 | Default parallelism | Spawn bounded assistant agents by default for independent sidecar investigation unless the user explicitly says not to parallelize, the tool is unavailable, or the work is tightly coupled |
 | Read-only agents | Discovery, graph queries, data inventory, stage-opt/need coverage/storage triage, complexity triage, RCA evidence |
 | Worker agents | Bounded implementation only inside explicitly disjoint file scopes; never revert controller or peer work |
-| `chunkyctl preflight` controller-agent gate | Broad audit/research/architecture/data/debug or 3+ scope tasks must show `controller_agent_gate.required=true`; controller satisfies it by dispatching bounded agents or recording a concrete skip reason |
+| `chunkyctl preflight` controller-agent gate | Broad audit/research/architecture/data/debug or 3+ scope tasks must provide `--agent-dispatch` evidence; missing evidence is `controller_agent_dispatch_missing` FAIL, while an explicit `--agent-skip-reason` is a WARN exception |
 
 Parallelize read-only work and independent tests. DuckDB-heavy audits may run in
 parallel only when they use explicit read-only connections. Serialize shared
@@ -111,10 +111,11 @@ Optuna studies, and edits to the same file.
 ## Moth Ownership
 
 Moth owns shared tooling state for this repo: profile discovery, evidence paths,
-dirty worktree status, CodeGraph freshness, and complexity baseline/current
-summaries. The active repo-local profile is `.moth/profile.yaml`. It may also
-list local Codex skill files as evidence paths so new sessions can find the
-local-ops, governance, and Rule 10 contracts without relying on chat memory.
+policy-source boundaries, dirty worktree status, CodeGraph freshness, and
+complexity baseline/current summaries. The active repo-local profile is
+`.moth/profile.yaml`. It may also list local Codex skill files as evidence paths
+so new sessions can find the local-ops, governance, Rule 10, and `CLAUDE.md`
+ignore contracts without relying on chat memory.
 
 ChunkyMonkey owns business gate logic. Keep `stage_opt`, `need_027`,
 `storage_payload`, `data_health`, universe truth-source rules, and test-tool
@@ -152,7 +153,7 @@ it to `analysis/`; if it is not useful, delete it.
 | Dirty worktree buckets | `scripts/chunkyctl worktree --format markdown` |
 | Docs cleanup slice | `scripts/chunkyctl docs --format markdown` |
 | Storage payload / recursive JSON audit | `PYTHONPATH=backend python backend/scripts/audit_storage_payloads.py --format markdown` |
-| Pre-task gate | `scripts/chunkyctl preflight "<task>" path/to/scope.py` |
+| Pre-task gate | `scripts/chunkyctl preflight "<task>" path/to/scope.py --agent-dispatch "agent:NAME scope/evidence"` |
 | Docs graph | `PYTHONPATH=backend python backend/scripts/audit_docs_graph.py --format markdown` |
 | Test tool health | `PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope <scope>` |
 | Safe commit | `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "message"` for local batches; omit `SAFE_COMMIT_NO_PUSH` only when pushing is intended |

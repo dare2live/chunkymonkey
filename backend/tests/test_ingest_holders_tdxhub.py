@@ -318,6 +318,29 @@ def test_write_one_persists_records_without_database_unique_constraint():
         con.close()
 
 
+def test_write_one_inserts_availability_source_when_column_exists():
+    con = _make_conn()
+    lock = threading.Lock()
+    try:
+        con.execute("ALTER TABLE fact_top10_holder_period ADD COLUMN availability_source TEXT")
+        result = _make_result()
+        result.holders[0]["availability_source"] = "page_update_date"
+
+        ingest.write_one(
+            con,
+            stock_code="600519",
+            stock_name="贵州茅台",
+            market="SH",
+            result=result,
+            alias_map={},
+            lock=lock,
+        )
+
+        assert con.execute("SELECT availability_source FROM fact_top10_holder_period").fetchone()[0] == "page_update_date"
+    finally:
+        con.close()
+
+
 def test_write_one_drops_empty_placeholder_plans():
     """P-1.4 root cause: tdxhub parser 偶尔返回 announce_date=None + subject='' + direction=''
     的占位 plan stub. ingest 必须过滤, 防 fact_shareholder_plan 写入空记录污染 audit.
@@ -449,6 +472,45 @@ def test_fetch_raw_records_writes_only_raw_table():
         con.close()
 
 
+def test_fetch_raw_records_force_refreshes_existing_raw_hash():
+    con = _make_conn()
+    try:
+        raw_text = "☆股东研究☆◇600519 贵州茅台 更新日期：2026-05-04◇\n灵通V9.0 holder fixture"
+        raw_hash = ingest._raw_hash(raw_text)
+        con.execute(
+            """
+            INSERT INTO raw_tdx_f10_holder_research
+            (stock_code, stock_name, market, fetched_at, page_update_date, raw_text, raw_hash, bytes_len, server, f10_format, parser_version)
+            VALUES ('600519', '贵州茅台', 'SH', '2026-05-01T01:30:00', '2026-05-01', ?, ?, ?, 'old:7709', 'a_lingtong', 'v1')
+            """,
+            (raw_text, raw_hash, len(raw_text)),
+        )
+
+        stats = ingest.fetch_raw_records(
+            con,
+            workers=1,
+            symbols="600519",
+            force=True,
+            fetcher_factory=lambda: _FakeRawFetcher({"600519": raw_text}),
+        )
+
+        assert stats["raw_written"] == 1
+        assert stats["skipped_unchanged"] == 0
+        assert con.execute("SELECT COUNT(*) FROM raw_tdx_f10_holder_research").fetchone()[0] == 1
+        raw_row = con.execute(
+            """
+            SELECT raw_hash, CAST(fetched_at AS VARCHAR), CAST(page_update_date AS VARCHAR), server
+              FROM raw_tdx_f10_holder_research
+            """
+        ).fetchone()
+        assert raw_row[0] == raw_hash
+        assert raw_row[1] != "2026-05-01 01:30:00"
+        assert raw_row[2] == "2026-05-04"
+        assert raw_row[3] == "('fixture', 7709)"
+    finally:
+        con.close()
+
+
 def test_fetch_raw_records_emits_progress_callback():
     con = _make_conn()
     snapshots = []
@@ -531,6 +593,51 @@ def test_run_fetches_raw_then_replays_new_hash(monkeypatch):
         con.close()
 
 
+def test_run_force_replays_refreshed_raw_with_replace_facts(monkeypatch):
+    con = _make_conn()
+    try:
+        raw_text = "☆股东研究☆◇600519 贵州茅台 更新日期：2026-05-04◇\n灵通V9.0 holder fixture"
+        raw_hash = ingest._raw_hash(raw_text)
+        con.execute(
+            """
+            INSERT INTO raw_tdx_f10_holder_research
+            (stock_code, stock_name, market, fetched_at, page_update_date, raw_text, raw_hash, bytes_len, server, f10_format, parser_version)
+            VALUES ('600519', '贵州茅台', 'SH', '2026-05-01T01:30:00', '2026-05-01', ?, ?, ?, 'old:7709', 'a_lingtong', 'v1')
+            """,
+            (raw_text, raw_hash, len(raw_text)),
+        )
+        captured = {}
+
+        def fake_parse(_con, *, raw_keys=None, replace_facts=False, **_kwargs):
+            captured["raw_keys"] = raw_keys
+            captured["replace_facts"] = replace_facts
+            return {
+                "raw_rows": len(raw_keys or []),
+                "parsed": len(raw_keys or []),
+                "no_data": 0,
+                "errors": 0,
+                "replace_facts": replace_facts,
+                "elapsed_s": 0.01,
+            }
+
+        monkeypatch.setattr(ingest, "parse_raw_records", fake_parse)
+
+        stats = ingest.run(
+            workers=1,
+            symbols="600519",
+            force=True,
+            no_fallback=True,
+            con=con,
+            fetcher_factory=lambda: _FakeRawFetcher({"600519": raw_text}),
+        )
+
+        assert captured == {"raw_keys": [("600519", raw_hash)], "replace_facts": True}
+        assert stats["raw_written"] == 1
+        assert stats["parsed"] == 1
+    finally:
+        con.close()
+
+
 def test_parse_raw_records_can_replay_and_replace_canonical_rows():
     con = _make_conn()
     try:
@@ -584,6 +691,7 @@ def test_parse_raw_records_can_replay_and_replace_canonical_rows():
         )
         assert stats["parsed"] == 1
         assert con.execute("SELECT COUNT(*) FROM fact_top10_holder_period").fetchone()[0] == 2
+        ingest._recreate_replay_fact_indexes(con)
 
         def parser_one_row(_raw_text, *, symbol, stock_name):
             return {
@@ -620,6 +728,145 @@ def test_parse_raw_records_can_replay_and_replace_canonical_rows():
             "SELECT holder_rank, holder_name, hold_ratio_float FROM fact_top10_holder_period ORDER BY holder_rank"
         ).fetchall()
         assert [tuple(row) for row in rows] == [(1, "Holder A Updated", 2.0)]
+        index_names = {
+            row[0]
+            for row in con.execute(
+                "SELECT index_name FROM duckdb_indexes()"
+            ).fetchall()
+        }
+        assert set(ingest.REPLAY_FACT_INDEX_DDL) <= index_names
+    finally:
+        con.close()
+
+
+def test_parse_raw_records_replace_keeps_existing_facts_when_parse_fails():
+    con = _make_conn()
+    try:
+        con.execute(
+            """
+            INSERT INTO raw_tdx_f10_holder_research
+            (stock_code, stock_name, market, fetched_at, page_update_date, raw_text, raw_hash, bytes_len, server, f10_format, parser_version)
+            VALUES ('600519', '贵州茅台', 'SH', '2026-05-05T01:30:00', '2026-05-04', 'fixture raw', 'hash-fixture', 11, 'fixture:7709', 'a_lingtong', 'v1')
+            """
+        )
+        con.execute(
+            """
+            INSERT INTO fact_top10_holder_period
+            (stock_code, stock_name, market, report_date, holder_set, holder_rank, row_seq, holder_name,
+             is_exit_row, source, source_tier, raw_hash)
+            VALUES ('600519', '贵州茅台', 'SH', '20260331', 'free', 1, 1, 'Existing Holder',
+                    false, 'tdx_f10', 1, 'hash-fixture')
+            """
+        )
+
+        def broken_parser(_raw_text, *, symbol, stock_name):
+            raise RuntimeError(f"broken parser for {symbol}/{stock_name}")
+
+        stats = ingest.parse_raw_records(
+            con,
+            symbols="600519",
+            replace_facts=True,
+            parser=broken_parser,
+            hasher=lambda _text: "hash-fixture",
+        )
+
+        assert stats["parsed"] == 0
+        assert stats["errors"] == 1
+        rows = con.execute(
+            "SELECT holder_name FROM fact_top10_holder_period WHERE raw_hash = 'hash-fixture'"
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [("Existing Holder",)]
+    finally:
+        con.close()
+
+
+def test_parse_raw_records_replace_removes_stale_controlling_when_parser_omits_it():
+    con = _make_conn()
+    try:
+        con.execute(
+            """
+            INSERT INTO raw_tdx_f10_holder_research
+            (stock_code, stock_name, market, fetched_at, page_update_date, raw_text, raw_hash, bytes_len, server, f10_format, parser_version)
+            VALUES ('600519', '贵州茅台', 'SH', '2026-05-05T01:30:00', '2026-05-04', 'fixture raw', 'hash-fixture', 11, 'fixture:7709', 'a_lingtong', 'v1')
+            """
+        )
+
+        def parser_with_control(_raw_text, *, symbol, stock_name):
+            return {
+                "page": {"page_update_date": "2026-05-04"},
+                "holders": [
+                    {
+                        "stock_code": symbol,
+                        "stock_name": stock_name,
+                        "market": "SH",
+                        "report_date": "20260331",
+                        "holder_set": "free",
+                        "holder_rank": 1,
+                        "row_seq": 1,
+                        "holder_name": "Holder A",
+                        "share_class": "A",
+                        "hold_ratio": 1.0,
+                    }
+                ],
+                "periods": [{"report_date": "20260331"}],
+                "controlling": {
+                    "stock_code": symbol,
+                    "stock_name": stock_name,
+                    "market": "SH",
+                    "primary_shareholder_label": "控股股东",
+                    "primary_shareholder_name": "Old Controller",
+                    "primary_shareholder_ratio": 3.0,
+                    "primary_shareholder_raw": "Old Controller 3%",
+                    "source": "tdx_f10",
+                    "raw_hash": "hash-fixture",
+                    "fetched_at": "2026-05-05T01:30:00",
+                },
+                "plans": [],
+                "trades": [],
+            }
+
+        stats = ingest.parse_raw_records(
+            con,
+            symbols="600519",
+            parser=parser_with_control,
+            hasher=lambda _text: "hash-fixture",
+        )
+        assert stats["parsed"] == 1
+        assert con.execute("SELECT primary_name FROM fact_controlling_shareholder").fetchone()[0] == "Old Controller"
+
+        def parser_without_control(_raw_text, *, symbol, stock_name):
+            return {
+                "page": {"page_update_date": "2026-05-04"},
+                "holders": [
+                    {
+                        "stock_code": symbol,
+                        "stock_name": stock_name,
+                        "market": "SH",
+                        "report_date": "20260331",
+                        "holder_set": "free",
+                        "holder_rank": 1,
+                        "row_seq": 1,
+                        "holder_name": "Holder B",
+                        "share_class": "A",
+                        "hold_ratio": 2.0,
+                    }
+                ],
+                "periods": [{"report_date": "20260331"}],
+                "plans": [],
+                "trades": [],
+            }
+
+        stats = ingest.parse_raw_records(
+            con,
+            symbols="600519",
+            replace_facts=True,
+            parser=parser_without_control,
+            hasher=lambda _text: "hash-fixture",
+        )
+
+        assert stats["parsed"] == 1
+        assert con.execute("SELECT holder_name FROM fact_top10_holder_period").fetchone()[0] == "Holder B"
+        assert con.execute("SELECT COUNT(*) FROM fact_controlling_shareholder").fetchone()[0] == 0
     finally:
         con.close()
 

@@ -88,3 +88,67 @@ def test_capital_detail_store_functions_filter_missing_notice_dates():
         assert conn.execute("SELECT COUNT(*) FROM raw_capital_allotment_detail").fetchone()[0] == 1
     finally:
         conn.close()
+
+
+def test_fetch_unlock_detail_uses_direct_eastmoney_pages(monkeypatch):
+    calls = []
+
+    class _Response:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    def fake_get(_url, *, params, timeout):
+        calls.append((params.copy(), timeout))
+        page = int(params["pageNumber"])
+        rows = {
+            1: [
+                {
+                    "SECURITY_CODE": "600001",
+                    "SECURITY_NAME_ABBR": "A",
+                    "FREE_DATE": "2026-06-10",
+                    "CURRENT_FREE_SHARES": "8",
+                    "ABLE_FREE_SHARES": "10",
+                    "LIFT_MARKET_CAP": "1000",
+                    "FREE_RATIO": "3.5",
+                    "NEW": "10.2",
+                    "B20_ADJCHRATE": "5",
+                    "A20_ADJCHRATE": "-2",
+                    "FREE_SHARES_TYPE": "首发",
+                }
+            ],
+            2: [
+                {
+                    "SECURITY_CODE": "000002",
+                    "SECURITY_NAME_ABBR": "B",
+                    "FREE_DATE": "2026-06-11",
+                    "CURRENT_FREE_SHARES": "1.5",
+                    "ABLE_FREE_SHARES": "2.5",
+                    "LIFT_MARKET_CAP": "30",
+                    "FREE_RATIO": "1.2",
+                    "NEW": "20.1",
+                    "B20_ADJCHRATE": "0",
+                    "A20_ADJCHRATE": "1",
+                    "FREE_SHARES_TYPE": "定增",
+                }
+            ],
+        }[page]
+        return _Response({"success": True, "result": {"pages": 2, "data": rows}})
+
+    monkeypatch.setattr("requests.get", fake_get)
+
+    df = capital_client._fetch_unlock_detail("20260603", "20270603")
+
+    assert [call[0]["pageNumber"] for call in calls] == ["1", "2"]
+    assert {call[1] for call in calls} == {20}
+    assert calls[0][0]["filter"] == "(FREE_DATE>='2026-06-03')(FREE_DATE<='2027-06-03')"
+    assert df["股票代码"].tolist() == ["600001", "000002"]
+    assert df["解禁时间"].astype(str).tolist() == ["2026-06-10", "2026-06-11"]
+    assert df["解禁数量"].tolist() == [100000.0, 25000.0]
+    assert df["实际解禁数量"].tolist() == [80000.0, 15000.0]
+    assert df["实际解禁市值"].tolist() == [10000000.0, 300000.0]
