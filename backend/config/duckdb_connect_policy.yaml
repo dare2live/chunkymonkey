@@ -1,5 +1,9 @@
 version: 1
 
+db_path_literal_policy:
+  block_data_duckdb_literals: true
+  database_manifest_path: database_manifest.yaml
+
 allowed_raw_connect_paths:
   - services/analytics.py
   - services/backtest_preflight.py

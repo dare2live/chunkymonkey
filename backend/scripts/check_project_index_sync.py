@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Pre-commit hook: 检查 staged 改动是否需要同步更新 PROJECT_INDEX.md / CLAUDE.md.
+"""Pre-commit hook: 检查 staged 改动是否需要同步更新 PROJECT_INDEX.md / AGENTS.md.
 
 根因 (Rule 9.5 沉淀):
-  我 (Claude) 多次在 commit 阶段遗漏更新 PROJECT_INDEX.md, 导致下次 session 启动
+  仅靠人工记忆多次在 commit 阶段遗漏更新 PROJECT_INDEX.md, 导致下次 session 启动
   时项目地图过时, 用户每次都要 push back. Rule 9.5 是被动文字, 没主动触发.
 
 修法 (三层防护):
-  1. **Pre-commit hook (硬强制)**: 此脚本 — 改了 service/script/yaml/CLAUDE.md
+  1. **Pre-commit hook (硬强制)**: 此脚本 — 改了 service/script/yaml/AGENTS.md
      必须同步改 PROJECT_INDEX.md, 否则 reject commit
-  2. **CLAUDE.md Rule 9.6 commit-checklist sub-clause (中)**: 5-question self-check
-  3. **TodoWrite 模板 (软)**: 每 phase 结束自动加 "update PROJECT_INDEX" todo
+  2. **AGENTS.md / engineering governance commit checklist (中)**: self-check
+  3. **controller plan 模板 (软)**: 每 phase 结束自动加 "update PROJECT_INDEX" todo
 
 触发条件 (TRIGGERS): 修改这些文件之一 → PROJECT_INDEX.md 必须也在 staged 里
   - backend/services/         新 service / 模块
@@ -18,7 +18,7 @@
   - backend/scripts/run_      新 entry script
   - backend/scripts/backfill_ 新 backfill
   - backend/config/*.yaml     新 yaml config
-  - CLAUDE.md                 新 Rule
+  - AGENTS.md                 新 Rule
 
 Bypass (不推荐): git commit --no-verify
 """
@@ -37,7 +37,7 @@ TRIGGERS = (
     "backend/scripts/rebuild_",
     "backend/scripts/audit_",
     "backend/config/",
-    "CLAUDE.md",
+    "AGENTS.md",
 )
 
 # 文件类型例外: 测试 / __pycache__ / __init__ 不要求同步 index
@@ -97,7 +97,7 @@ def main() -> int:
     print("     注意: --no-verify 会绕过所有 hook, 慎用", file=sys.stderr)
     print("  3. 检查是否触发器太宽 — 改 backend/scripts/check_project_index_sync.py", file=sys.stderr)
     print(file=sys.stderr)
-    print("根因: CLAUDE.md Rule 9.5 (Rule 化沉淀) — 不维护 PROJECT_INDEX = 下次 session 重新摸索", file=sys.stderr)
+    print("根因: AGENTS.md / engineering governance rule 沉淀 — 不维护 PROJECT_INDEX = 下次 session 重新摸索", file=sys.stderr)
     print("=" * 80, file=sys.stderr)
     return 1
 

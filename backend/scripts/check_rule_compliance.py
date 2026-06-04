@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Pre-commit hook: 检测 staged diff 里的 Rule 6/5/7 反 pattern.
+"""Pre-commit hook: 检测 staged diff 里的 Rule 6/5/7 和 DB 边界反 pattern.
 
 根因 (用户 push back #N):
-  我 (Claude) 即使 CLAUDE.md 写了 "Rule 6 拍脑袋默认是 anti-pattern", 写代码时仍违反 —
+  仅靠文档提醒写着 "Rule 6 拍脑袋默认是 anti-pattern" 不足以防止实现时违反 —
   e.g. Phase ψ.β.5 L2 vol-aware 的 sigma=2.0/3.0/1.0 + bounds [-0.20, -0.05] 全是估算.
   Rule 文字是被动的, 没硬护栏.
 
@@ -19,6 +19,8 @@
   4. Rule 5 try/except: pass      (静默 bypass 反 Rule)
   5. Rule 7/9 hardcoded date      (业务代码硬编码 YYYY-MM-DD)
   6. Rule 7/9 hardcoded stock_code (业务代码硬编码 60xxxx 6 位数字字符串)
+  7. DB boundary raw duckdb connect call (新增生产 raw connect 必须显式说明例外)
+  8. DB boundary hardcoded duckdb path (新增 data/*.duckdb 字面量必须走 manifest/config)
 
 Whitelist (跳过检测):
   - yaml 文件本身 (config 就是 yaml-backed)
@@ -34,7 +36,16 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+import ast
+from pathlib import Path
 from typing import NamedTuple
+
+import yaml
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DUCKDB_CONNECT_POLICY_PATH = REPO_ROOT / "backend" / "config" / "duckdb_connect_policy.yaml"
+DATABASE_MANIFEST_PATH = REPO_ROOT / "backend" / "config" / "database_manifest.yaml"
 
 
 # 文件类型 whitelist: 这些路径不检测
@@ -125,6 +136,11 @@ PATTERNS = (
 )
 
 
+RAW_DUCKDB_CONNECT_RE = re.compile(r"\bduckdb\.connect\s*\(")
+QUOTED_DATA_DUCKDB_RE = re.compile(r"[\"'][^\"']*data[/\\][^\"']*\.duckdb[^\"']*[\"']")
+QUOTED_DATA_SEGMENT_RE = re.compile(r"[\"']data[\"']")
+
+
 def is_exempt(path: str) -> bool:
     if any(path.startswith(p) for p in EXEMPT_PATH_PREFIXES):
         return True
@@ -148,6 +164,85 @@ def has_evidence(curr_line: str, prev_line: str) -> bool:
         if any(kw in prev_comment for kw in EVIDENCE_KEYWORDS):
             return True
     return False
+
+
+def load_db_path_literal_policy(config_path: Path = DUCKDB_CONNECT_POLICY_PATH) -> tuple[bool, Path]:
+    if not config_path.exists():
+        return True, DATABASE_MANIFEST_PATH
+    raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    value = raw.get("db_path_literal_policy") or {}
+    if not isinstance(value, dict):
+        return True, DATABASE_MANIFEST_PATH
+    block_data_duckdb_literals = value.get("block_data_duckdb_literals", True)
+    if not isinstance(block_data_duckdb_literals, bool):
+        block_data_duckdb_literals = True
+    manifest_value = value.get("database_manifest_path", "database_manifest.yaml")
+    if isinstance(manifest_value, bool) or not isinstance(manifest_value, str) or not manifest_value.strip():
+        return block_data_duckdb_literals, DATABASE_MANIFEST_PATH
+    manifest_path = Path(manifest_value)
+    if not manifest_path.is_absolute():
+        manifest_path = config_path.parent / manifest_path
+    return block_data_duckdb_literals, manifest_path
+
+
+def load_manifest_db_path_tokens(manifest_path: Path) -> set[str]:
+    if not manifest_path.exists():
+        return set()
+    raw = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+    databases = raw.get("databases") or {}
+    if not isinstance(databases, dict):
+        return set()
+    tokens: set[str] = set()
+    for spec in databases.values():
+        if not isinstance(spec, dict):
+            continue
+        for key in ("path", "path_glob"):
+            value = spec.get(key)
+            if not isinstance(value, str) or ".duckdb" not in value:
+                continue
+            normalized = value.replace("\\", "/")
+            tokens.add(normalized)
+            tokens.add(Path(normalized).name)
+    return {token for token in tokens if token}
+
+
+def load_duckdb_connect_patterns(path: str) -> tuple[re.Pattern[str], ...]:
+    patterns = [RAW_DUCKDB_CONNECT_RE]
+    file_path = REPO_ROOT / path
+    if not file_path.exists():
+        return tuple(patterns)
+    try:
+        tree = ast.parse(file_path.read_text(encoding="utf-8"))
+    except SyntaxError:
+        return tuple(patterns)
+    module_aliases = {"duckdb"}
+    connect_aliases: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "duckdb":
+                    module_aliases.add(alias.asname or alias.name)
+        elif isinstance(node, ast.ImportFrom) and node.module == "duckdb":
+            for alias in node.names:
+                if alias.name == "connect":
+                    connect_aliases.add(alias.asname or alias.name)
+    for alias in sorted(module_aliases - {"duckdb"}):
+        patterns.append(re.compile(rf"\b{re.escape(alias)}\.connect\s*\("))
+    for alias in sorted(connect_aliases):
+        patterns.append(re.compile(rf"\b{re.escape(alias)}\s*\("))
+    return tuple(patterns)
+
+
+def has_db_path_literal(line: str, manifest_tokens: set[str], *, block_data_duckdb_literals: bool) -> bool:
+    if ".duckdb" not in line:
+        return False
+    if block_data_duckdb_literals and re.search(r"[\"'][^\"'/\\]+\.duckdb[^\"']*[\"']", line):
+        return True
+    if block_data_duckdb_literals and QUOTED_DATA_DUCKDB_RE.search(line):
+        return True
+    if block_data_duckdb_literals and QUOTED_DATA_SEGMENT_RE.search(line):
+        return True
+    return any(token in line for token in manifest_tokens)
 
 
 def get_staged_diff() -> list[tuple[str, list[tuple[int, str]]]]:
@@ -212,6 +307,8 @@ def main() -> int:
         return 0
 
     violations: list[Violation] = []
+    block_data_duckdb_literals, database_manifest_path = load_db_path_literal_policy()
+    manifest_db_path_tokens = load_manifest_db_path_tokens(database_manifest_path)
     for path, lines in diffs:
         if is_exempt(path):
             continue
@@ -222,11 +319,40 @@ def main() -> int:
         # 没有完整 context. 我们做 best-effort: 用 staged 行本身判断, 进入/退出 docstring
         # 在同一个 hunk 时正确; 跨 hunk 可能误判, 但 false-positive 风险低 (反正 evidence 注释豁免可救).
         in_docstring = False
+        duckdb_connect_patterns = load_duckdb_connect_patterns(path)
         for i, (lineno, line) in enumerate(lines):
             skip, in_docstring = _is_in_docstring_or_comment(line, in_docstring)
             if skip:
                 continue
             prev_line = lines[i - 1][1] if i > 0 else ""
+            if any(pat.search(line) for pat in duckdb_connect_patterns):
+                if not has_evidence(line, prev_line):
+                    violations.append(
+                        Violation(
+                            path,
+                            lineno,
+                            "DB boundary raw duckdb.connect",
+                            "duckdb.connect / duckdb alias connect",
+                            line.strip(),
+                        )
+                    )
+            if (
+                has_db_path_literal(
+                    line,
+                    manifest_db_path_tokens,
+                    block_data_duckdb_literals=block_data_duckdb_literals,
+                )
+                and not has_evidence(line, prev_line)
+            ):
+                violations.append(
+                    Violation(
+                        path,
+                        lineno,
+                        "DB boundary hardcoded duckdb path",
+                        "database_manifest.yaml / data/*.duckdb",
+                        line.strip(),
+                    )
+                )
             for rule_name, pat in PATTERNS:
                 if not pat.search(line):
                     continue
@@ -244,7 +370,7 @@ def main() -> int:
         return 0
 
     print("=" * 80, file=sys.stderr)
-    print(f"ERROR: 发现 {len(violations)} 个 Rule 违规 (Rule 6/5/7 反 pattern):", file=sys.stderr)
+    print(f"ERROR: 发现 {len(violations)} 个 Rule/DB 边界违规 (Rule 6/5/7 + DB boundary):", file=sys.stderr)
     print(file=sys.stderr)
     for v in violations:
         print(f"  [{v.rule}]", file=sys.stderr)
@@ -262,8 +388,12 @@ def main() -> int:
     print("     - `# rule-compliance: ok evidence=<source>` (显式 bypass, 慎用)", file=sys.stderr)
     print("  3. 如果误判 (e.g. enum 值 / range 参数 / unit test fixture):", file=sys.stderr)
     print("     改 backend/scripts/check_rule_compliance.py 的 PATTERNS / EVIDENCE_KEYWORDS", file=sys.stderr)
+    print("  4. DB 边界违规:", file=sys.stderr)
+    print("     - 新代码优先用 services.duck_adapter.connect / services.database_manifest", file=sys.stderr)
+    print("     - DB 路径字面量放进 backend/config/database_manifest.yaml 或专属 config", file=sys.stderr)
+    print("     - 历史 raw connect 由 backend/config/duckdb_connect_policy.yaml 继续跟踪; 新增行默认阻断", file=sys.stderr)
     print(file=sys.stderr)
-    print("根因: CLAUDE.md Rule 6 (Measured not Estimated) — 任何参数/阈值/权重必须有 backtest 证据.", file=sys.stderr)
+    print("根因: AGENTS.md / engineering governance Rule 6 (Measured not Estimated) — 任何参数/阈值/权重必须有 backtest 证据.", file=sys.stderr)
     print("拍脑袋默认是 anti-pattern (反例见 Rule 6 表).", file=sys.stderr)
     print("=" * 80, file=sys.stderr)
     return 1

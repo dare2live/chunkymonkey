@@ -96,6 +96,24 @@ tools:
     replacement: keep until commit policy is enforced by a stronger shared hook or CI gate
     last_verified: "2026-05-28"
 
+  - id: rule_compliance_static_gate_tests
+    paths:
+      - backend/scripts/check_rule_compliance.py
+      - backend/config/duckdb_connect_policy.yaml
+      - backend/config/database_manifest.yaml
+      - backend/services/duckdb_connect_policy.py
+      - backend/tests/scripts/test_rule_compliance.py
+      - backend/tests/services/test_duckdb_connect_policy.py
+    owner_module: governance
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_rule_compliance.py backend/tests/services/test_duckdb_connect_policy.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: staged-diff fixtures, duckdb connect policy, database manifest DB path ownership
+    risk_reason: commit-time static gate drift could allow new raw DuckDB connections or private data/*.duckdb literals back into production code
+    replacement: stronger shared lint hook or CI static policy gate if local hooks are centralized
+    last_verified: "2026-06-04"
+
   - id: storage_payload_audit_tests
     paths:
       - backend/scripts/audit_storage_payloads.py

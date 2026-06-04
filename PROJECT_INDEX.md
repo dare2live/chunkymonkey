@@ -6,7 +6,7 @@
 > **目标**: 新接手 (无论 Claude 还是人) 读完此文档**不用看代码 / 不用查 DB** 就能理解:
 > 项目业务 / 架构 / 技术路线 / 数据资产 / 当前进度 / 已知坑 / 常用操作.
 
-最后更新: **2026-06-04** (after-close data refresh + controller-agent preflight hard gate + retention dry-run inventory + DB manifest attach policy + holder replay safety + Codex instruction-source boundary + DuckDB capacity audit + need_027 exact-flow probe gate).
+最后更新: **2026-06-04** (after-close data refresh + controller-agent preflight hard gate + retention dry-run inventory + DB manifest attach policy + DB boundary static gate + holder replay safety + Codex instruction-source boundary + DuckDB capacity audit + need_027 exact-flow probe gate).
 
 ## [INDEX] 2026-06-04 增量
 
@@ -17,6 +17,7 @@
 - **DuckDB capacity audit**: `analysis/db_capacity_audit_20260604.md` 记录只读并行审计结果。`data/smartmoney.duckdb` 约 `33.6 GiB` / `34G`；未发现 `no2`、session snapshot 循环写爆，或能解释容量的 `.bak/.gz/.zst` 压缩备份副本。主压力来自多版本宽面板/cache 并存、rank cache key 重叠、索引/row-group 开销和 `formula_engine` reason JSON 总量 WARN。`raw_tdx_f10_holder_research` 是受保护 F10 raw/lineage evidence，不应和 cache 表放入同一清理 bucket。
 - **Retention dry-run inventory**: `backend/config/storage_retention.yaml` 新增 `table_inventory`，把 protected raw/lineage、current production panels、legacy/obsolete candidate panels、tdx_keep challenger panel、rank-matrix cache 表纳入机器可读分类；`backend/services/storage_retention.py` 输出 `table_inventory` 且所有 inventory 条目 `delete_candidate=false`。`backend/scripts/plan_storage_retention.py` dry-run 默认 read-only 打开 DuckDB。生产库只读 dry-run 当前 `candidate_count=0 / table_inventory_count=12 / compaction.recommended=false`，所以当前只是分类/owner/action 绑定，不执行删除或 VACUUM。
 - **DB manifest + attach policy**: `backend/config/database_manifest.yaml` 和 `backend/services/database_manifest.py` 新增 DB alias/path/domain/owner/online-state/default-attach-mode registry，覆盖 `smartmoney` / `market` / `alpha158` / `etf` / `phase5_predictions` / planned `feature_store`；`analytics` 默认路径由 manifest 解析。`duck_adapter.connect(... attach={"market": path})` 现在兼容旧读法但默认 `READ_ONLY` attach，只有显式 `{"path": path, "read_only": false}` 才允许 writable attached DB。后续第二片已把 `services.db_connection` 默认 `DB_PATH` / `DB_DIR` 也接入 `database_manifest.smartmoney`，同时保留 `services.db` facade monkeypatch 兼容。该系列没有移动表、删除表、VACUUM 或写生产 DB；Rule 10 reviewer APPROVE/APPROVE_WITH_NOTES，targeted tests/audit/CodeGraph PASS。
+- **DB boundary static gate**: `backend/scripts/check_rule_compliance.py` 现在在 staged diff 上阻断新增生产 raw DuckDB connect call（含 `duckdb` alias connect）和新增 `.duckdb` 文件名字面量；历史 raw connect allowlist 仍由 `backend/config/duckdb_connect_policy.yaml` + integration contract 跟踪，但不再豁免新增行。`db_path_literal_policy` 指向 `backend/config/database_manifest.yaml`，新增 DB 路径默认应进入 manifest/config，而不是散落在脚本。新增 `backend/tests/scripts/test_rule_compliance.py`、`backend/tests/services/test_duckdb_connect_policy.py` 和 `rule_compliance_static_gate_tests` registry。这个切片是“新增阻断”地基，不是历史 literal 批量迁移或生产库清理。
 - **need_027 exact-flow probe gate**: `backend/config/tdx_data_need_coverage.yaml` 的 `need_027.source_probe_cases` 固化 `600519/sh`、`000001/sz`、`300750/sz` 三个 exact `individual_fund_flow` 样本；`backend/scripts/probe_source_capability.py --need027-exact-flow-gate` 默认 no-persist，case-level `persist_status` 会被拒绝，只有顶层 `--persist-status` 才写 `mart_data_source_failure_queue`。gate 先校验 exact capability、row/date range、主力/超大/大/中/小单字段，再决定是否 resolve；malformed exact-flow 只能保持/open blocker，rank snapshot 仍是 research-side，persistence domain 为 `stock_fund_flow_rank_snapshot`，不能误清 `order_flow_fund_flow`。2026-06-04 20:25 CST live no-persist gate 仍 `BLOCKED`，三只样本均 `RemoteDisconnected`，所以 `need_027` 仍为 production blocker。
 - **Validation**: `scripts/chunkyctl audit --run .moth/profile.yaml SESSION_HANDOFF.md goal.md analysis/db_capacity_audit_20260604.md backend/scripts/chunkyctl.py backend/tests/scripts/test_chunkyctl.py backend/scripts/ingest_holders_tdxhub.py backend/tests/test_ingest_holders_tdxhub.py backend/services/capital_client.py backend/tests/test_capital_client_store.py docs/chunkyctl_session_quickstart.md docs/engineering_governance.md` PASS；targeted pytest 51 passed；CodeGraph up to date；Rule 10 final reviewer APPROVE.
 
@@ -433,10 +434,11 @@
 | `market.duckdb` | `data/market.duckdb` | K 线 + 行情 (`v_price_kline_qfq`) |
 | `etf.duckdb` | `data/etf.duckdb` | ETF 专用 |
 
-**约束** (CLAUDE.md DuckDB 段已写):
+**约束** (AGENTS.md / engineering governance DuckDB 段):
 - 永远走 `services.duck_adapter.connect` / `services.db.get_conn`
 - 单写锁, 一次 ATTACH, 不要直接 `duckdb.connect()`
-- raw `duckdb.connect` 允许清单现在 config-owned (`backend/config/duckdb_connect_policy.yaml`); 加新 `duckdb.connect` 用法 → 先更新 policy YAML, 再同步 `backend/tests/integration/test_duckdb_connection_contract.py`
+- raw `duckdb.connect` 允许清单现在 config-owned (`backend/config/duckdb_connect_policy.yaml`) 用于跟踪历史 call sites；新增生产 raw connect line 由 `backend/scripts/check_rule_compliance.py` 默认阻断，确需例外必须有同行/上一行 evidence 注释并进入 review。
+- 新增 `data/*.duckdb` / `.duckdb` 文件名字面量默认阻断；DB 路径应进入 `backend/config/database_manifest.yaml` 或专属 config。
 
 ---
 
@@ -1040,7 +1042,8 @@ SELECT * FROM mart_data_source_watermark;
 - `backend/services/capital_client.py`: unlock detail 改为直接分页调用 Eastmoney API，避免 AkShare path hang/semaphore leak；`backend/tests/test_capital_client_store.py` 覆盖分页、filter、字段映射和万股/万元换算。
 - `analysis/db_capacity_audit_20260604.md`: 记录 smartmoney DuckDB 只读容量审计。未发现 `no2`、session snapshot 循环写爆，或能解释容量的 `.bak/.gz/.zst` 压缩备份；主因是多版本宽面板/cache 并存、rank cache key 重叠、索引/row-group 开销、formula reason JSON 总量 WARN。`raw_tdx_f10_holder_research` 被明确列为受保护 raw/lineage，不和 cache cleanup 混桶。
 - `backend/config/storage_retention.yaml` / `backend/services/storage_retention.py` / `backend/scripts/plan_storage_retention.py`: DB retention 第一片落成 dry-run inventory。生产库只读 dry-run 当前输出 `candidate_count=0`、`table_inventory_count=12`、`protected_artifact_table_count=7`、`compaction.recommended=false`；inventory 覆盖 F10 raw lineage、canonical/current panels、legacy/obsolete candidate panels、tdx_keep challenger panel 和 rank-matrix cache，并明确所有 inventory entry `delete_candidate=false`。`plan_storage_retention.py` 非 execute 模式默认 read-only 连接 DuckDB。
-- 验证: targeted pytest 51 passed；`scripts/chunkyctl audit --run` scoped PASS；`git diff --check` PASS；CodeGraph up to date；Rule 10 final reviewer APPROVE。
+- `backend/scripts/check_rule_compliance.py` / `backend/config/duckdb_connect_policy.yaml`: DB boundary static gate 现在阻断新增生产 raw DuckDB connect call（含 alias）和新增 `.duckdb` 文件名字面量；历史 raw connect allowlist 仍作为 inventory/contract，不再豁免新增行。`backend/tests/scripts/test_rule_compliance.py` 和 `backend/tests/services/test_duckdb_connect_policy.py` 覆盖 raw connect、alias、unmanifested DB filename、manifest/config/test/evidence 例外。`docs/chunkyctl_session_quickstart.md` 和 `goal.md` 同步“先搭框架地基、不要单方向深挖”的架构原则。
+- 验证: earlier targeted pytest 51 passed；DB boundary gate targeted pytest 10 passed，DuckDB connection/manifest contract 16 passed；`scripts/chunkyctl audit --run` scoped PASS；`git diff --check` PASS；CodeGraph sync 由 audit 执行；Rule 10 final reviewer APPROVE。
 
 ### 2026-06-02 returns chart helper extraction
 

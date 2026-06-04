@@ -131,6 +131,7 @@ chat, `goal.md`, a handoff, or a tool implementation.
 | Startup command or `chunkyctl` subcommands | Update `Daily Flow` and `Minimal Use` |
 | Gate order or evidence rules | Update the numbered sequence before relying on the new gate |
 | Controller / worker-agent workflow | Update `Operating Model` |
+| Architecture / first-principles workflow | Update `Operating Model` and keep local mechanisms aligned with Moth evidence paths |
 | Project phase changes | Keep the instruction project-lifecycle based, not tied to a temporary phase |
 | New durable workflow/tool/doc convention | Add the command, owner, and validation point here before handing off |
 
@@ -217,6 +218,8 @@ order:
 | Role | Rule |
 |---|---|
 | Controller Codex | Owns priority, scope, gate decisions, docs, final acceptance; does the immediate critical-path work locally |
+| Architecture review | Start from truth source, minimal mechanism, and ownership boundary before local fixes; use Moth/CodeGraph/audit outputs as evidence, not as business-rule owners |
+| Depth control | Build framework foundations first, then improve one layer at a time; do not follow one technical direction into broad historical migration unless it blocks the current architecture layer |
 | Default parallelism | Spawn bounded assistant agents by default for independent sidecar investigation unless the user explicitly says not to parallelize, the tool is unavailable, or the work is tightly coupled |
 | Explorer agents | Use read-only scopes for architecture audits, data-lineage checks, stage-opt/need coverage triage, storage payload review, and failure root-cause mapping |
 | Worker agents | Work only inside assigned disjoint read/write scope and return evidence, not decisions; never revert peer/controller work |
