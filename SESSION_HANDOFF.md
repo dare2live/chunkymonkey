@@ -122,6 +122,13 @@ ebd18209 fix: govern technical-stage residual classification
 - DB 连接边界第二片已把 `backend/services/db_connection.py` 的默认 `DB_PATH` / `DB_DIR` 接到 `database_manifest.smartmoney`，但仍保留 `services.db` facade monkeypatch 覆盖，兼容测试和临时库。`backend/tests/test_db.py` 新增默认路径来自 manifest 的回归。
 - 验证：controller preflight PASS 且记录 agent dispatch；`audit_test_tool_health` PASS；`py_compile` PASS；targeted pytest `16 passed`；target files complexity clean；`scripts/chunkyctl audit --run ...` PASS；`git diff --check` PASS；CodeGraph 已 sync。没有生产 DB 写入、搬表、删表或 VACUUM。下一步可继续按代表脚本分片清理散落 `data/*.duckdb` 字面量；业务优先级仍是 `need_027` exact-flow probe gate。
 
+## POST-SNAPSHOT CONTROLLER NOTE (2026-06-04 20:25 CST)
+
+- `need_027` exact-flow probe gate 已实现为默认只读、不持久化的小批量 gate：默认样本从 `backend/config/tdx_data_need_coverage.yaml` 的 `need_027.source_probe_cases` 读取，覆盖 `600519/sh`、`000001/sz`、`300750/sz` 三个 `individual_fund_flow` exact case；`--cases-json` 可显式覆盖，但 case-level `persist_status` 会被拒绝，只有顶层 `--persist-status` 才写 `mart_data_source_failure_queue`。
+- persistence 现在在 exact-flow validation 之后执行：exact probe 返回 `ok` 但缺日期/行数/主力/超大/大/中/小单字段时，`--persist-status` 也不会 resolve `order_flow_fund_flow`，只会继续/open validation blocker。
+- gate 现在明确拒绝 rank snapshot 作为 exact-flow 证据：非 `individual_fund_flow` capability 只会计入 `ignored_for_need_027_exact_flow_gate`；`individual_fund_flow_rank_snapshot` 的 persistence domain 改为 `stock_fund_flow_rank_snapshot`，不会误清 `order_flow_fund_flow` open 行。
+- live no-persist 复验：`PYTHONPATH=backend python backend/scripts/probe_source_capability.py --need027-exact-flow-gate --indent 2` 返回 `verdict=BLOCKED`、`probe_count=3`、`valid_count=0`、`failure_reasons.probe_blocked=3`；三只样本均为 `RemoteDisconnected`。因此 `need_027` 继续保持 `production_eligibility=blocked`，下一步不是 writer，而是等 exact source 稳定后再跑同一 gate，并补 PIT/freshness、writer/watermark、failure_queue resolve。
+
 ## Resilience 配置 (verified)
 
 | 机制 | 状态 |

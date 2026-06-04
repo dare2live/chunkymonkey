@@ -298,3 +298,301 @@ def test_probe_source_capability_downgrades_persist_failure_on_success(monkeypat
         assert report["persisted"]["error"] == "db locked"
     finally:
         conn.close()
+
+
+def _need027_exact_flow_row(date: str = "2026-06-04") -> dict[str, object]:
+    return {
+        "日期": date,
+        "主力净流入-净额": 1.0,
+        "超大单净流入-净额": 2.0,
+        "大单净流入-净额": 3.0,
+        "中单净流入-净额": 4.0,
+        "小单净流入-净额": 5.0,
+    }
+
+
+def test_probe_source_capability_batch_does_not_persist_by_default(monkeypatch) -> None:
+    def fake_resolve(capability: str, *, prefer_source=None, **kwargs):
+        assert capability == "individual_fund_flow"
+        assert prefer_source == "akshare"
+        return ([_need027_exact_flow_row()], "akshare")
+
+    def fail_get_conn():
+        raise AssertionError("default batch probe must not open writable DB connection")
+
+    monkeypatch.setattr(probe, "resolve", fake_resolve)
+    monkeypatch.setattr(probe, "get_conn", fail_get_conn)
+
+    report = probe.probe_source_capability_batch(
+        [
+            {
+                "case_id": "case_600519",
+                "capability": "individual_fund_flow",
+                "kwargs": {"stock": "600519", "market": "sh"},
+            }
+        ],
+        prefer_source="akshare",
+    )
+
+    assert report["status"] == "ok"
+    assert report["ok_count"] == 1
+    assert report["results"][0]["case_id"] == "case_600519"
+    assert "persisted" not in report["results"][0]
+
+
+def test_probe_case_level_persist_status_is_rejected() -> None:
+    try:
+        probe._parse_cases_json(
+            '[{"capability": "individual_fund_flow", "persist_status": true}]'
+        )
+    except ValueError as exc:
+        assert "case-level persist_status is not supported" in str(exc)
+    else:
+        raise AssertionError("case-level persist_status should not bypass the CLI latch")
+
+
+def test_need027_probe_cases_load_from_config(tmp_path) -> None:
+    config = tmp_path / "tdx_data_need_coverage.yaml"
+    config.write_text(
+        """
+needs:
+  - need_id: "need_027"
+    source_probe_cases:
+      - case_id: "case_600519"
+        capability: "individual_fund_flow"
+        kwargs:
+          stock: "600519"
+          market: "sh"
+        stock_code: "600519"
+""",
+        encoding="utf-8",
+    )
+
+    cases = probe._load_need027_probe_cases(config)
+
+    assert cases == [
+        {
+            "case_id": "case_600519",
+            "capability": "individual_fund_flow",
+            "kwargs": {"stock": "600519", "market": "sh"},
+            "stock_code": "600519",
+        }
+    ]
+
+
+def test_need027_exact_flow_gate_passes_for_exact_batch(monkeypatch) -> None:
+    def fake_resolve(capability: str, *, prefer_source=None, **kwargs):
+        assert capability == "individual_fund_flow"
+        assert prefer_source == "akshare"
+        return (
+            [
+                _need027_exact_flow_row("2026-06-03"),
+                _need027_exact_flow_row("2026-06-04"),
+            ],
+            "akshare",
+        )
+
+    monkeypatch.setattr(probe, "resolve", fake_resolve)
+
+    report = probe.probe_need027_exact_flow_gate(
+        [
+            {
+                "case_id": "case_600519",
+                "capability": "individual_fund_flow",
+                "kwargs": {"stock": "600519", "market": "sh"},
+                "stock_code": "600519",
+            },
+            {
+                "case_id": "case_000001",
+                "capability": "individual_fund_flow",
+                "kwargs": {"stock": "000001", "market": "sz"},
+                "stock_code": "000001",
+            },
+        ]
+    )
+
+    assert report["verdict"] == "PASS"
+    assert report["status"] == "source_probe_passed"
+    assert report["production_eligibility"] == "blocked"
+    assert report["production_promotion"] == "not_allowed_from_probe_only"
+    assert report["next_gate"] == "writer_watermark_pit_freshness_gate_required"
+    assert report["exact_flow"]["probe_count"] == 2
+    assert report["exact_flow"]["valid_count"] == 2
+    assert report["exact_flow"]["failure_reasons"] == {}
+    for item in report["batch"]["results"]:
+        assert item["need027_exact_flow_validation"]["status"] == "ok"
+        assert item["need027_exact_flow_validation"]["column_coverage"]["missing_groups"] == []
+
+
+def test_need027_gate_blocks_rank_snapshot_even_when_snapshot_ok(monkeypatch) -> None:
+    def fake_resolve(capability: str, *, prefer_source=None, **kwargs):
+        if capability == "individual_fund_flow_rank_snapshot":
+            return ([{"序号": 1, "代码": "600519", "净流入": 1.0}], "akshare")
+        raise AssertionError(f"unexpected capability {capability}")
+
+    monkeypatch.setattr(probe, "resolve", fake_resolve)
+
+    report = probe.probe_need027_exact_flow_gate(
+        [
+            {
+                "case_id": "snapshot_only",
+                "capability": "individual_fund_flow_rank_snapshot",
+                "kwargs": {"symbol": "即时"},
+            }
+        ]
+    )
+
+    assert report["verdict"] == "BLOCKED"
+    assert report["status"] == "blocked"
+    assert report["exact_flow"]["probe_count"] == 0
+    assert report["non_exact_probe_count"] == 1
+    assert report["rank_snapshot_policy"] == "research_side_only_not_exact_flow_evidence"
+    assert report["batch"]["results"][0]["need027_exact_flow_validation"] == {
+        "status": "ignored",
+        "reason": "not exact-flow capability",
+    }
+
+
+def test_need027_persist_status_does_not_resolve_malformed_exact_flow(monkeypatch) -> None:
+    conn = duck_mem()
+    try:
+        def fake_blocked(*_args, **_kwargs):
+            raise RuntimeError("exact flow blocked")
+
+        monkeypatch.setattr(probe, "get_conn", lambda: _ConnProxy(conn))
+        monkeypatch.setattr(probe, "resolve", fake_blocked)
+        probe.probe_source_capability(
+            "individual_fund_flow",
+            {"stock": "600519", "market": "sh"},
+            prefer_source="akshare",
+            persist_status=True,
+            stock_code="600519",
+        )
+
+        def fake_malformed_exact(capability: str, *, prefer_source=None, **kwargs):
+            assert capability == "individual_fund_flow"
+            return ([{"主力净流入-净额": 1.0}], "akshare")
+
+        monkeypatch.setattr(probe, "resolve", fake_malformed_exact)
+        report = probe.probe_need027_exact_flow_gate(
+            [
+                {
+                    "case_id": "malformed_600519",
+                    "capability": "individual_fund_flow",
+                    "kwargs": {"stock": "600519", "market": "sh"},
+                    "stock_code": "600519",
+                }
+            ],
+            persist_status=True,
+        )
+
+        assert report["verdict"] == "BLOCKED"
+        result = report["batch"]["results"][0]
+        assert result["status"] == "ok"
+        assert result["need027_exact_flow_validation"]["status"] == "blocked"
+        assert result["persisted"]["status"] == "open"
+        rows = conn.execute(
+            """
+            SELECT error_type, status, resolved_at
+              FROM mart_data_source_failure_queue
+             WHERE data_domain = 'order_flow_fund_flow'
+               AND source_name = 'akshare'
+               AND stock_code = '600519'
+             ORDER BY error_type
+            """
+        ).fetchall()
+        assert rows
+        assert {row["status"] for row in rows} == {"open"}
+        assert all(row["resolved_at"] is None for row in rows)
+        assert "need027_exact_flow_validation_failed" in {row["error_type"] for row in rows}
+    finally:
+        conn.close()
+
+
+def test_rank_snapshot_persistence_does_not_resolve_exact_flow_failure(monkeypatch) -> None:
+    conn = duck_mem()
+    try:
+        def fake_blocked(*_args, **_kwargs):
+            raise RuntimeError("exact flow blocked")
+
+        monkeypatch.setattr(probe, "get_conn", lambda: _ConnProxy(conn))
+        monkeypatch.setattr(probe, "resolve", fake_blocked)
+        probe.probe_source_capability(
+            "individual_fund_flow",
+            {"stock": "600519", "market": "sh"},
+            prefer_source="akshare",
+            persist_status=True,
+            stock_code="600519",
+        )
+
+        def fake_rank_snapshot(capability: str, *, prefer_source=None, **kwargs):
+            assert capability == "individual_fund_flow_rank_snapshot"
+            return ([{"序号": 1, "代码": "600519", "净流入": 1.0}], "akshare")
+
+        monkeypatch.setattr(probe, "resolve", fake_rank_snapshot)
+        report = probe.probe_source_capability(
+            "individual_fund_flow_rank_snapshot",
+            {"symbol": "即时"},
+            prefer_source="akshare",
+            persist_status=True,
+        )
+
+        assert report["status"] == "ok"
+        assert report["persisted"]["status"] == "resolved"
+        assert report["persisted"]["data_domain"] == "stock_fund_flow_rank_snapshot"
+        exact_row = conn.execute(
+            """
+            SELECT data_domain, status, resolved_at
+              FROM mart_data_source_failure_queue
+             WHERE data_domain = 'order_flow_fund_flow'
+               AND source_name = 'akshare'
+               AND stock_code = '600519'
+            """
+        ).fetchone()
+        assert exact_row["status"] == "open"
+        assert exact_row["resolved_at"] is None
+    finally:
+        conn.close()
+
+
+def test_need027_gate_blocks_missing_date_range_and_exact_columns(monkeypatch) -> None:
+    def fake_resolve(capability: str, *, prefer_source=None, **kwargs):
+        assert capability == "individual_fund_flow"
+        return ([{"主力净流入-净额": 1.0}], "akshare")
+
+    monkeypatch.setattr(probe, "resolve", fake_resolve)
+
+    report = probe.probe_need027_exact_flow_gate(
+        [
+            {
+                "case_id": "missing_fields",
+                "capability": "individual_fund_flow",
+                "kwargs": {"stock": "600519", "market": "sh"},
+                "stock_code": "600519",
+            }
+        ]
+    )
+
+    assert report["verdict"] == "BLOCKED"
+    assert report["exact_flow"]["blocked_count"] == 1
+    assert report["exact_flow"]["failure_reasons"] == {
+        "missing_date_range": 1,
+        "missing_exact_flow_columns": 1,
+    }
+    validation = report["batch"]["results"][0]["need027_exact_flow_validation"]
+    assert validation["status"] == "blocked"
+    assert validation["column_coverage"]["missing_groups"] == [
+        "super_large",
+        "large",
+        "medium",
+        "small",
+    ]
+
+
+def test_parse_cases_json_rejects_non_list() -> None:
+    try:
+        probe._parse_cases_json('{"capability": "individual_fund_flow"}')
+    except ValueError as exc:
+        assert "--cases-json must decode to a list" in str(exc)
+    else:
+        raise AssertionError("non-list cases JSON should be rejected")

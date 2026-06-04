@@ -195,7 +195,7 @@ counts alone.
 | `stage_opt.top_blocked_reason_counts` exists | Use it to see which gate dominates stage-opt attrition before rerunning audits; `below_min_signals` is currently the primary blocker, and `doctor` should surface it alongside `next_action_recommendation` |
 | `stage_opt.attrition_funnel` / `top_blocked_stage_formula_cells` / `top_blocked_registry_family_cells` exists | Use these evidence fields to locate raw -> filtered -> unique -> blocked -> ready loss, the worst `stage_bin × formula_id` cells, and the worst `registry_scope × formula_family` cells before changing upstream contracts or schemas |
 | `stage_opt.next_action_recommendation.focus=upstream_candidate_supply` | Treat this as a supply-side blocker: expand upstream formula coverage or signal density before tuning profile knobs; the 2026-06-02 config-only probe series is exhausted, so there is no safe strategy/threshold knob slice left for stage-opt. Evidence-tooling slices are allowed when they make the structural blocker more legible; future production work should be structural redesign or upstream-source work, not another knob-tuning pass. `macd_golden_cross` also carries a `fact_technical_trigger` schema limit note, so do not confuse state rows with a schema-only fix |
-| `need_coverage.blocked_needs` contains `need_027` | Treat `need_027` as blocked exact-flow evidence until small-batch `akshare individual_fund_flow` stability, PIT/freshness, writer, watermark, and failure-queue resolve evidence pass; `aif10` exact `individual_fund_flow` is unavailable, and the research-side rank snapshot is not a production fallback |
+| `need_coverage.blocked_needs` contains `need_027` | Run the dedicated no-persist gate `PYTHONPATH=backend python backend/scripts/probe_source_capability.py --need027-exact-flow-gate --indent 2`; treat `need_027` as blocked exact-flow evidence until small-batch `akshare individual_fund_flow` stability, PIT/freshness, writer, watermark, and failure-queue resolve evidence pass; `aif10` exact `individual_fund_flow` is unavailable, and the research-side rank snapshot is not a production fallback |
 | `--skip-storage-payload` | Use only for emergency startup when the local DuckDB is unavailable; do not claim circular-reference cleanup from a skipped audit |
 
 ## Dirty Resolution Mode
@@ -237,6 +237,7 @@ scripts/chunkyctl worktree --bucket startup_tooling --format markdown
 scripts/chunkyctl docs --format markdown
 PYTHONPATH=backend python backend/scripts/audit_storage_payloads.py --format markdown
 PYTHONPATH=backend python backend/scripts/data_health_snapshot.py --dry-run --format text
+PYTHONPATH=backend python backend/scripts/probe_source_capability.py --need027-exact-flow-gate --indent 2
 scripts/chunkyctl preflight "what I am about to change" path/to/file.py
 scripts/chunkyctl audit --run path/to/file.py path/to/test_file.py
 ```
