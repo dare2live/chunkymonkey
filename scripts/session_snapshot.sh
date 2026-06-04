@@ -46,7 +46,10 @@ COMMITS_24H=$(git log --oneline --since '24 hours ago' 2>/dev/null | wc -l | tr 
 UNCOMMITTED=$(git status --short 2>/dev/null | awk '
 {
   path = substr($0, 4);
-  if (path != "SESSION_HANDOFF.md" && path != "data/reports/session_snapshot.json") {
+  if (path != "SESSION_HANDOFF.md" &&
+      path != "data/reports/session_snapshot.json" &&
+      path != "analysis/workflow_checkpoint.md" &&
+      path != "analysis/workflow_checkpoint.json") {
     count++;
   }
 }
