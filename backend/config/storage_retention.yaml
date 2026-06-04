@@ -188,6 +188,65 @@ protected_artifact_tables:
   - table: mart_stock_horizon_selection
     reason: per-stock holding horizon selection is recommendation evidence
 
+table_inventory:
+  - table: raw_tdx_f10_holder_research
+    classification: protected_raw_lineage
+    owner: tdx_f10_source_ingestion
+    retention_action: protect_replayability_before_any_retention_change
+    reason: Large F10 raw-text table; needed for raw_hash replay, PIT lineage, and canonical holder fact explainability.
+  - table: fact_feature_panel
+    classification: current_production_panel
+    owner: feature_panel_pipeline
+    retention_action: protect_current_canonical_panel
+    reason: Canonical feature panel backed by K-line truth-source lineage; not a cache cleanup candidate.
+  - table: mart_p0a_feature_label_panel_v4
+    classification: current_production_panel
+    owner: panel_pipeline_manifest
+    retention_action: protect_current_retrain_panel
+    reason: Current P0A feature-label panel used by retrain/sniper/institution flows.
+  - table: mart_p0a_feature_label_panel_v3
+    classification: upstream_reproducibility_evidence
+    owner: panel_pipeline_manifest
+    retention_action: classify_consumer_before_cleanup
+    reason: Upstream input for v4 in panel pipeline manifest; cleanup requires reproducibility owner review.
+  - table: mart_p0a_feature_label_panel_v5
+    classification: obsolete_candidate_requires_owner
+    owner: panel_pipeline_manifest
+    retention_action: prove_no_consumer_and_reproducibility_before_delete
+    reason: Full-width panel version overlaps unified_v1 keys; owner and consumer status must be proven before cleanup.
+  - table: mart_p0a_feature_label_panel_unified_v1
+    classification: obsolete_candidate_requires_owner
+    owner: panel_pipeline_manifest
+    retention_action: prove_no_consumer_and_reproducibility_before_delete
+    reason: Full-width panel version overlaps v5 keys; owner and consumer status must be proven before cleanup.
+  - table: mart_p0a_feature_label_panel
+    classification: legacy_panel_requires_owner
+    owner: panel_pipeline_manifest
+    retention_action: prove_legacy_consumer_status_before_delete
+    reason: Legacy full-width panel still consumes material space; cleanup requires consumer and evidence classification.
+  - table: fact_feature_panel_candidate
+    classification: governed_candidate_panel
+    owner: storage_retention_policy
+    retention_action: use_candidate_feature_panel_retention_rules
+    reason: Candidate feature-set table already has key-level retention rules; current dry-run may still protect all keys.
+  - table: fact_feature_panel_tdx_keep_challenger
+    classification: derived_challenger_panel_requires_owner
+    owner: tdx_keep_challenger_pipeline
+    retention_action: prove_regenerability_and_consumer_status_before_delete
+    reason: Derived challenger panel likely regenerable, but tied to challenger evidence and promotion flows.
+  - table: mart_feature_rank_matrix_cache_manifest
+    classification: cache_manifest_evidence
+    owner: feature_rank_matrix_cache
+    retention_action: protect_until_cache_policy_uses_manifest
+    reason: Manifest records rank-matrix cache identity and usage; keep it separate from cache table deletion candidates.
+  - table_like: mart_feature_rank_matrix_cache_%
+    exclude_tables:
+      - mart_feature_rank_matrix_cache_manifest
+    classification: cache_candidate
+    owner: feature_rank_matrix_cache
+    retention_action: define_stale_cache_policy_before_delete
+    reason: Persistent rank-matrix cache tables overlap candidate panel keys; delete only after cache manifest and consumer checks.
+
 model_file_roots:
   - data/multidim_models
 

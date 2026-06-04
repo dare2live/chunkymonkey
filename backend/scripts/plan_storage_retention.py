@@ -12,7 +12,7 @@ from typing import Iterator
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from services.db import get_conn  # noqa: E402
+from services.db import current_db_paths, get_conn  # noqa: E402
 from services.duck_adapter import DuckConn, connect as duck_connect  # noqa: E402
 from services.storage_retention import (  # noqa: E402
     execute_storage_cleanup,
@@ -37,8 +37,14 @@ def prepare_db_copy(*, source: str | None, target: str | None, overwrite: bool) 
 
 
 @contextmanager
-def open_retention_connection(db_path: str | None = None) -> Iterator[DuckConn]:
-    conn = duck_connect(str(Path(db_path))) if db_path else get_conn()
+def open_retention_connection(db_path: str | None = None, *, read_only: bool = False) -> Iterator[DuckConn]:
+    if db_path:
+        conn = duck_connect(str(Path(db_path)), read_only=read_only)
+    elif read_only:
+        _, production_db = current_db_paths()
+        conn = duck_connect(str(production_db), read_only=True)
+    else:
+        conn = get_conn()
     try:
         yield conn
     finally:
@@ -57,7 +63,7 @@ def main() -> int:
 
     prepare_db_copy(source=args.copy_from, target=args.db_path, overwrite=args.overwrite_copy)
     policy = load_storage_retention_policy(args.config)
-    with open_retention_connection(args.db_path) as conn:
+    with open_retention_connection(args.db_path, read_only=not args.execute_approved) as conn:
         if args.execute_approved:
             report = execute_storage_cleanup(
                 conn,

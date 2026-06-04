@@ -9,6 +9,7 @@ from services.storage_retention import (
     CandidateFeaturePanelRule,
     ProtectedArtifactRule,
     StorageRetentionPolicy,
+    TableInventoryRule,
     execute_storage_cleanup,
     load_storage_retention_policy,
     plan_storage_cleanup,
@@ -224,6 +225,119 @@ def test_storage_retention_reports_protected_pit_f10_and_horizon_artifacts():
         assert "feature_pit_coverage_summary" in report["protected_feature_set_reasons"]["pit_set"]
         assert "horizon_set" in report["protected_feature_set_reasons"]
         assert "stock_horizon_selection" in report["protected_feature_set_reasons"]["horizon_set"]
+    finally:
+        conn.close()
+
+
+def test_storage_retention_reports_table_inventory_without_delete_candidates():
+    conn = duck_mem()
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE raw_tdx_f10_holder_research (
+                stock_code TEXT,
+                raw_text TEXT
+            );
+            CREATE TABLE mart_feature_rank_matrix_cache_alpha (
+                signal_date DATE,
+                stock_code TEXT
+            );
+            CREATE TABLE mart_feature_rank_matrix_cache_manifest (
+                cache_table TEXT
+            );
+            INSERT INTO raw_tdx_f10_holder_research VALUES
+                ('000001', 'raw holder text');
+            INSERT INTO mart_feature_rank_matrix_cache_alpha VALUES
+                ('2026-06-04', '000001'),
+                ('2026-06-04', '000002');
+            INSERT INTO mart_feature_rank_matrix_cache_manifest VALUES
+                ('mart_feature_rank_matrix_cache_alpha');
+            """
+        )
+        policy = StorageRetentionPolicy(
+            protected_model_statuses=("champion",),
+            candidate_feature_panels=(),
+            model_prediction_tables=(),
+            model_file_roots=(),
+            optuna_study_roots=(),
+            defaults={},
+            table_inventory=(
+                TableInventoryRule(
+                    table="raw_tdx_f10_holder_research",
+                    classification="protected_raw_lineage",
+                    owner="tdx_f10_source_ingestion",
+                    retention_action="protect_replayability_before_any_retention_change",
+                    reason="raw replay source",
+                ),
+                TableInventoryRule(
+                    table="mart_feature_rank_matrix_cache_manifest",
+                    classification="cache_manifest_evidence",
+                    owner="feature_rank_matrix_cache",
+                    retention_action="protect_until_cache_policy_uses_manifest",
+                    reason="cache identity ledger",
+                ),
+                TableInventoryRule(
+                    table_like="mart_feature_rank_matrix_cache_%",
+                    classification="cache_candidate",
+                    owner="feature_rank_matrix_cache",
+                    retention_action="define_stale_cache_policy_before_delete",
+                    reason="persistent rank matrix cache",
+                    exclude_tables=("mart_feature_rank_matrix_cache_manifest",),
+                ),
+            ),
+        )
+
+        report = plan_storage_cleanup(conn, policy)
+        inventory = {item["table"]: item for item in report["table_inventory"]}
+
+        assert report["candidate_count"] == 0
+        assert report["table_inventory_count"] == 3
+        assert inventory["raw_tdx_f10_holder_research"]["classification"] == "protected_raw_lineage"
+        assert inventory["raw_tdx_f10_holder_research"]["row_count"] == 1
+        assert inventory["mart_feature_rank_matrix_cache_manifest"]["classification"] == "cache_manifest_evidence"
+        assert inventory["mart_feature_rank_matrix_cache_manifest"]["row_count"] == 1
+        assert inventory["mart_feature_rank_matrix_cache_alpha"]["classification"] == "cache_candidate"
+        assert inventory["mart_feature_rank_matrix_cache_alpha"]["row_count"] == 2
+        assert all(item["delete_candidate"] is False for item in report["table_inventory"])
+    finally:
+        conn.close()
+
+
+def test_storage_retention_reports_missing_inventory_patterns():
+    conn = duck_mem()
+    try:
+        policy = StorageRetentionPolicy(
+            protected_model_statuses=("champion",),
+            candidate_feature_panels=(),
+            model_prediction_tables=(),
+            model_file_roots=(),
+            optuna_study_roots=(),
+            defaults={},
+            table_inventory=(
+                TableInventoryRule(
+                    table="missing_panel",
+                    classification="obsolete_candidate_requires_owner",
+                    owner="panel_pipeline_manifest",
+                    retention_action="prove_no_consumer_and_reproducibility_before_delete",
+                    reason="future or absent table",
+                ),
+                TableInventoryRule(
+                    table_like="missing_cache_%",
+                    classification="cache_candidate",
+                    owner="feature_rank_matrix_cache",
+                    retention_action="define_stale_cache_policy_before_delete",
+                    reason="future cache pattern",
+                ),
+            ),
+        )
+
+        report = plan_storage_cleanup(conn, policy)
+        inventory = {item["table"]: item for item in report["table_inventory"]}
+
+        assert inventory["missing_panel"]["exists"] is False
+        assert inventory["missing_panel"]["row_count"] is None
+        assert inventory["missing_cache_%"]["exists"] is False
+        assert inventory["missing_cache_%"]["row_count"] is None
     finally:
         conn.close()
 

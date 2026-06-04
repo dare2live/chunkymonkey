@@ -11,7 +11,7 @@ Usage:
   scripts/chunkyctl doctor [--fast] [--skip-storage-payload]
   scripts/chunkyctl worktree [--bucket name] [--format json|markdown]
   scripts/chunkyctl docs [--format json|markdown]
-  scripts/chunkyctl preflight "task description" [scope ...]
+  scripts/chunkyctl preflight "task description" [scope ...] [--agent-dispatch evidence]
   scripts/chunkyctl audit [--run] [scope ...]
 
 Examples:
@@ -114,17 +114,83 @@ case "$cmd" in
     PYTHONPATH=backend python backend/scripts/chunkyctl.py "${args[@]}"
     ;;
   preflight)
-    if [[ $# -lt 1 ]]; then
+    task=""
+    args=(preflight)
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --task)
+          if [[ $# -lt 2 ]]; then
+            echo "ERROR: preflight --task requires a description." >&2
+            usage >&2
+            exit 2
+          fi
+          task="$2"
+          shift 2
+          ;;
+        --task=*)
+          task="${1#--task=}"
+          shift
+          ;;
+        --scope)
+          if [[ $# -lt 2 ]]; then
+            echo "ERROR: preflight --scope requires a scope." >&2
+            usage >&2
+            exit 2
+          fi
+          args+=(--scope "$2")
+          shift 2
+          ;;
+        --scope=*)
+          args+=(--scope "${1#--scope=}")
+          shift
+          ;;
+        --agent-dispatch)
+          if [[ $# -lt 2 ]]; then
+            echo "ERROR: preflight --agent-dispatch requires evidence." >&2
+            usage >&2
+            exit 2
+          fi
+          args+=(--agent-dispatch "$2")
+          shift 2
+          ;;
+        --agent-dispatch=*)
+          args+=(--agent-dispatch "${1#--agent-dispatch=}")
+          shift
+          ;;
+        --agent-skip-reason)
+          if [[ $# -lt 2 ]]; then
+            echo "ERROR: preflight --agent-skip-reason requires a reason." >&2
+            usage >&2
+            exit 2
+          fi
+          args+=(--agent-skip-reason "$2")
+          shift 2
+          ;;
+        --agent-skip-reason=*)
+          args+=(--agent-skip-reason "${1#--agent-skip-reason=}")
+          shift
+          ;;
+        --*)
+          echo "ERROR: unknown preflight option: $1" >&2
+          usage >&2
+          exit 2
+          ;;
+        *)
+          if [[ -z "$task" ]]; then
+            task="$1"
+          else
+            args+=(--scope "$1")
+          fi
+          shift
+          ;;
+      esac
+    done
+    if [[ -z "$task" ]]; then
       echo "ERROR: preflight requires a task description." >&2
       usage >&2
       exit 2
     fi
-    task="$1"
-    shift
-    args=(preflight --task "$task")
-    for scope in "$@"; do
-      args+=(--scope "$scope")
-    done
+    args+=(--task "$task")
     PYTHONPATH=backend python backend/scripts/chunkyctl.py "${args[@]}"
     ;;
   audit)

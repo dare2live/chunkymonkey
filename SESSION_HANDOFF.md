@@ -105,6 +105,12 @@ ebd18209 fix: govern technical-stage residual classification
 - Rule 10 reviewer 指出 holder replace replay 还会留下旧 `fact_controlling_shareholder`。已修：replace replay 先解析成功 raw，再批量删除 holder/plan/trade/controlling 旧 facts；解析失败不会先删旧 facts。另补 `availability_source` 直接插入分支测试。核心 holder/chunkyctl/capital tests 当前通过。
 - DB 容量只读并行审计已记录到 `analysis/db_capacity_audit_20260604.md`。`data/smartmoney.duckdb` 约 `33.6 GiB` / `34G`；未发现 `no2`、session snapshot 循环写爆，或能解释容量的 `.bak/.gz/.zst` 压缩备份副本。主因更像多版本宽面板全量并存、rank/cache 表 key 重叠、347 个索引/存储元数据开销、小表 repeated rewrite row-group bloat，以及 `formula_engine` reason JSON 总量 WARN。最可疑冗余组是 `mart_p0a_feature_label_panel` legacy/v3/v4/v5/unified，以及 `fact_feature_panel_candidate` / `fact_feature_panel_tdx_keep_challenger` / `mart_feature_rank_matrix_cache_*` 同 key 重叠。不要从这条证据直接删表或 VACUUM；下一步应单独做 retention/index/compact 方案，先备份、分类 owner、证明 consumer。
 
+## POST-SNAPSHOT CONTROLLER NOTE (2026-06-04 18:45 CST)
+
+- `scripts/chunkyctl preflight` wrapper 已补 `--agent-dispatch` / `--agent-skip-reason` 转发，项目推荐入口现在能真正把 agent evidence 传给 Python gate；缺失 evidence 的 broad work 仍会 FAIL。新增 wrapper 回归测试覆盖 positional scope、flag task、skip reason。
+- DB retention 第一片已实现为 dry-run inventory：`backend/config/storage_retention.yaml` 新增 `table_inventory`，`backend/services/storage_retention.py` 输出 `table_inventory` / `table_inventory_count`，`backend/scripts/plan_storage_retention.py` 在非 execute 模式默认 read-only 打开 DuckDB。生产库只读 dry-run 当前为 `candidate_count=0`、`table_inventory_count=12`、`protected_artifact_table_count=7`、`compaction.recommended=false`；它只分类，不删除，不 VACUUM。
+- sidecar 复核后的业务优先级：当前本地 P0 是收干净 controller tooling / retention dry-run 切片；下一业务 P1-A 是 `need_027` exact-flow blocked-gap triage。`data_health` 仍是 warning-only，`stage-opt` 是 P1 supply contract，`storage_payload` 为低优先级 WARN。
+
 ## Resilience 配置 (verified)
 
 | 机制 | 状态 |

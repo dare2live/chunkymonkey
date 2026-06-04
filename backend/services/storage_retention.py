@@ -44,6 +44,17 @@ class ProtectedArtifactRule:
 
 
 @dataclass(frozen=True)
+class TableInventoryRule:
+    classification: str
+    owner: str
+    retention_action: str
+    reason: str
+    table: str | None = None
+    table_like: str | None = None
+    exclude_tables: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class StorageRetentionPolicy:
     protected_model_statuses: tuple[str, ...]
     candidate_feature_panels: tuple[CandidateFeaturePanelRule, ...]
@@ -52,6 +63,7 @@ class StorageRetentionPolicy:
     optuna_study_roots: tuple[str, ...]
     defaults: dict[str, Any]
     protected_artifact_tables: tuple[ProtectedArtifactRule, ...] = ()
+    table_inventory: tuple[TableInventoryRule, ...] = ()
 
 
 def _as_tuple(value: Any) -> tuple[str, ...]:
@@ -122,6 +134,25 @@ def load_storage_retention_policy(path: str | Path | None = None) -> StorageRete
                 reason=str(item.get("reason") or "protected artifact table"),
             )
         )
+    table_inventory_rules = []
+    for item in raw.get("table_inventory", []) or []:
+        if not isinstance(item, dict):
+            continue
+        table = item.get("table")
+        table_like = item.get("table_like")
+        if not table and not table_like:
+            continue
+        table_inventory_rules.append(
+            TableInventoryRule(
+                table=str(table) if table else None,
+                table_like=str(table_like) if table_like else None,
+                classification=str(item.get("classification") or "unclassified"),
+                owner=str(item.get("owner") or "unknown"),
+                retention_action=str(item.get("retention_action") or "classify_owner_before_cleanup"),
+                reason=str(item.get("reason") or "retention inventory entry"),
+                exclude_tables=_as_tuple(item.get("exclude_tables")),
+            )
+        )
     return StorageRetentionPolicy(
         protected_model_statuses=_as_tuple(raw.get("protected_model_statuses")),
         candidate_feature_panels=tuple(feature_rules),
@@ -130,6 +161,7 @@ def load_storage_retention_policy(path: str | Path | None = None) -> StorageRete
         optuna_study_roots=_as_tuple(raw.get("optuna_study_roots")),
         defaults=defaults,
         protected_artifact_tables=tuple(protected_artifact_rules),
+        table_inventory=tuple(table_inventory_rules),
     )
 
 
@@ -616,6 +648,62 @@ def protected_artifact_table_summaries(conn, policy: StorageRetentionPolicy) -> 
     return summaries
 
 
+def _inventory_table_names(conn, rule: TableInventoryRule) -> list[tuple[str, bool]]:
+    if rule.table:
+        return [(rule.table, _table_exists(conn, rule.table))]
+    if not rule.table_like:
+        return []
+    rows = conn.execute(
+        """
+        SELECT table_name
+          FROM information_schema.tables
+         WHERE table_name LIKE ?
+         ORDER BY table_name
+        """,
+        (rule.table_like,),
+    ).fetchall()
+    excluded = set(rule.exclude_tables)
+    names = [str(row["table_name"]) for row in rows if str(row["table_name"]) not in excluded]
+    return [(name, True) for name in names] or [(rule.table_like, False)]
+
+
+def table_inventory_summaries(conn, policy: StorageRetentionPolicy) -> list[dict[str, Any]]:
+    summaries: list[dict[str, Any]] = []
+    existing_tables: set[str] = set()
+    entries: list[tuple[TableInventoryRule, str, bool]] = []
+    for rule in policy.table_inventory:
+        for table_name, exists in _inventory_table_names(conn, rule):
+            entries.append((rule, table_name, exists))
+            if exists:
+                existing_tables.add(table_name)
+
+    row_counts: dict[str, int] = {}
+    if existing_tables:
+        count_sql = "\nUNION ALL\n".join(
+            f"SELECT '{table}' AS table_name, COUNT(*) AS n FROM {_quote_ident(table)}"
+            for table in sorted(existing_tables)
+        )
+        row_counts = {
+            str(row["table_name"]): int(row["n"] or 0)
+            for row in conn.execute(count_sql).fetchall()
+        }
+
+    for rule, table_name, exists in entries:
+        summaries.append(
+            {
+                "table": table_name,
+                "exists": exists,
+                "row_count": row_counts.get(table_name) if exists else None,
+                "classification": rule.classification,
+                "owner": rule.owner,
+                "retention_action": rule.retention_action,
+                "reason": rule.reason,
+                "delete_candidate": False,
+            }
+        )
+    return summaries
+
+
 def compaction_guidance(policy: StorageRetentionPolicy, candidates: list[dict[str, Any]]) -> dict[str, Any]:
     threshold = int(policy.defaults.get("large_delete_row_threshold", 1_000_000) or 0)
     row_candidates = [
@@ -662,6 +750,7 @@ def plan_storage_cleanup(
     ]
     optuna_artifacts = active_optuna_study_artifacts(policy)
     protected_artifacts = protected_artifact_table_summaries(conn, policy)
+    table_inventory = table_inventory_summaries(conn, policy)
     compaction = compaction_guidance(policy, candidates)
     return {
         "mode": "dry_run",
@@ -674,6 +763,8 @@ def plan_storage_cleanup(
         "active_optuna_study_count": len(optuna_artifacts),
         "protected_artifact_tables": protected_artifacts,
         "protected_artifact_table_count": len(protected_artifacts),
+        "table_inventory": table_inventory,
+        "table_inventory_count": len(table_inventory),
         "compaction": compaction,
         "candidate_count": len(candidates),
         "candidates": candidates,

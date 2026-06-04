@@ -106,6 +106,9 @@ scripts/chunkyctl preflight "task" path... --agent-dispatch "agent:NAME scope/ev
 ```
 
 `preflight` now reuses the shared Moth-backed tooling gate for dirty/worktree/codegraph state, so the old local codegraph parser wrapper is retired with the gate.
+The shell wrapper accepts `--agent-dispatch` and `--agent-skip-reason` in both
+positional and flag-style preflight calls; use the wrapper, not the Python
+module path, as the normal startup entrypoint.
 For broad audit/research/architecture/data/debug or 3+ scope tasks, missing
 agent evidence is a FAIL. If dispatch is genuinely impossible, pass
 `--agent-skip-reason "concrete reason"` and expect a WARN.
