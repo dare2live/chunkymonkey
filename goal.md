@@ -40,12 +40,12 @@ evidence or disjoint patches; their output is not a verdict.
 |---|---|---|---|
 | P0 | Documentation control plane | Thin `goal.md` / ledger split committed in `8371e60c` | Keep current-state facts here; put completed evidence in `analysis/project_state_ledger.md` |
 | P0 | Provider-neutral execution surface | Retired GCP execution surface removed and `experiment_jobs` contract committed in `8371e60c` | Treat `local` as active and `modal` as planned/blocked until adapter gates exist |
-| P0 | Dirty worktree governance | Remaining dirty files are the data-source research slice | Review/stage that slice separately; never `git add .` |
+| P0 | Dirty worktree governance | Clean after `3e9fafc8`; `worktree` gate reports `unknown=0` | Keep future commits slice-based; never `git add .` |
 | P1 | `need_027` exact order-flow | Still blocked; rank/proxy snapshots do not satisfy exact-flow contract | Run token-backed no-persist TuShare/akshare exact-flow probe only when credentials/source stability are available |
-| P1 | Data-source capability routing | iFinD/TuShare/tdxhub research evidence exists, but no production writer is approved | Convert source decisions into capability-level contracts and probes before any DB writer |
+| P1 | Data-source capability routing | Capability contracts committed in `3e9fafc8`; no production writer is approved yet | Run capability-level no-persist probes before any DB writer or provider promotion |
 | P1 | DB retention/modularization | Manifest/connection boundary groundwork exists; retention is dry-run inventory only | Design retention/compact policy by table owner and consumer before deleting/VACUUM |
 | P1 | Stage-opt supply | Structural upstream candidate supply blocker remains | Improve source/schema evidence; do not tune knobs as a substitute |
-| P2 | Microsoft RD-Agent(Q) research | Useful external framework patterns identified; not yet mapped to ChunkyMonkey contracts | Deep-dive as isolated research-agent POC: map RD-Agent(Q)/Qlib research loop, Co-STEER, and factor-model co-optimization into borrow/reject decisions; keep production data/PIT/backtest/promotion in ChunkyMonkey |
+| P2 | Microsoft RD-Agent(Q) research | Tracked as follow-up only; no production integration approved | Create a dated `analysis/rd_agent_q_research_*.md` note mapping RD-Agent(Q)/Qlib, Co-STEER, factor mining, experiment loop, and agent roles into borrow/reject decisions under ChunkyMonkey gates |
 | P2 | Data-health warning-only assets | No red or blocking-yellow in latest live doctor; 7 warning-quality tables remain yellow | Treat as owner-specific maintenance, not startup blockers |
 
 ## Latest Live Gate Snapshot
@@ -54,8 +54,9 @@ As of the latest checked state on 2026-06-05:
 
 | Gate | Current result | Meaning |
 |---|---|---|
-| `scripts/chunkyctl doctor --fast` | `WARN` | Worktree dirty; data-health has warning-only yellow; `need_027` remains blocked |
-| `scripts/chunkyctl worktree --format markdown` | `FAIL`, dirty data-source slice, `unknown=0` | Commit planning must remain slice-based |
+| `scripts/chunkyctl doctor --fast` | `WARN` | Data-health has warning-only yellow; `need_027` remains blocked |
+| `scripts/chunkyctl worktree --format markdown` | `PASS`, dirty entries `0`, `unknown=0` | Worktree is clean; keep future changes slice-based |
+| `moth snapshot --repo . --format markdown` | `PASS` | CodeGraph is up to date; no new complexity findings |
 | `data_health_snapshot.py --dry-run` | `green=335 / yellow=7 / red=0 / blocking_yellow=0` | No startup data-health blocker; yellow assets are maintenance debt |
 | `audit_execution_surface.py --include-live-launchd` | `PASS / 0 findings` | Retired execution-surface references are not currently detected |
 | `need_coverage` | `need_027` blocked | Exact flow source evidence still missing |
@@ -73,9 +74,12 @@ Live gates override this section. Refresh before using the numbers as evidence.
 3. **Strategy/model work:** resume stage-opt and model exploration only after
    the upstream supply and data-source truth contracts are explicit.
 4. **RD-Agent(Q) follow-up research:** run a read-only deep dive after P0
-   cleanup, with output as a dated `analysis/` research note covering reusable
-   RD-Agent(Q)/Qlib concepts, rejected pieces, integration boundaries, and gates
-   required before any production code adopts the pattern.
+   cleanup, with output as a dated `analysis/` research note. Compare the
+   upstream RD-Agent(Q)/Qlib research loop, Co-STEER feedback, factor mining,
+   report-to-code flow, and agent role split against this project's PIT,
+   data-source, paper-sim, promotion, and `experiment_jobs` contracts. The
+   expected result is a borrow/reject table and a smallest reversible POC plan,
+   not direct production adoption.
 
 ## Long-Term Roadmap
 
