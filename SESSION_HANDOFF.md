@@ -139,6 +139,7 @@ ebd18209 fix: govern technical-stage residual classification
 
 - `chunkyctl preflight` 已新增 `design_review_gate` 机器字段，把 `docs/engineering_governance.md` 的 Design Review Gate 显式输出到 JSON：`first_principles`、`occam`、`owner`、`truth_source`、`failure_mode`、`gate`。这补齐了“第一性原理 / 奥卡姆 / 架构师视角”只在文档里的缺口。
 - Moth registry profile 已同步 repo-local instruction sources 并推送：`dcb809a fix: sync ChunkyMonkey instruction sources`；`/Users/dp/.local/bin/moth` 仍指向 repo `.venv/bin/moth`，所以本机使用的是最新 Moth。
+- 提交后 live `scripts/chunkyctl doctor --fast` 为 `WARN` / worktree `PASS`。data-health 因 2026-06-05 08:39 CST 的 freshness SLA 滚动变成 `green=321 / yellow=21 / red=0 / blocking_yellow=4`，blocking 表为 `fact_financial_pit_daily`、`fact_stock_fundamental_stage_daily`、`mart_feature_drift`、`mart_feature_drift_histogram`。下一轮不要沿用 2026-06-04 16:45 的 `blocking_yellow=0` 作为当前状态。
 
 ## Resilience 配置 (verified)
 
