@@ -161,6 +161,12 @@ ebd18209 fix: govern technical-stage residual classification
 - 复验 `data_health_snapshot.py --dry-run --format json` 为 `green=335 / yellow=7 / red=0 / blocking_yellow=0`；`scripts/chunkyctl doctor --fast` 仍为 `WARN`，但 `worktree=PASS`、storage payload `PASS`，剩余业务 WARN 是 stage-opt supply 和 `need_027` exact-flow blocked。
 - 剩余 7 个 data-health yellow：`fact_dzjy_event`、`fact_jgdy_event`、`raw_executive_trade`、`fact_executive_trade_event`、`fact_institution_event`、`fact_shareholder_trade`、`fact_paper_sim_trade`。不要把它们混成一个“刷新所有”批次：`build_akshare_panel.py` 对 jgdy/dzjy 是全表 drop/rebuild；高管增减持脚本也需先 dry-run；`fact_institution_event` 是 high fan-out derived chain；`fact_shareholder_trade` 要走 holder/F10 专项；`fact_paper_sim_trade` 是策略验证产物，不应只为 freshness 重跑。
 
+## POST-SNAPSHOT CONTROLLER NOTE (2026-06-05 10:37 CST)
+
+- 同花顺 / 通达信 / TuShare 数据源阶段研究已收束并记录到 `analysis/data_source_selection_20260605.md`。结论不是单源替换，而是按用途拆分：TuShare 是 `need_027` exact-flow 的第一只读 probe 候选；同花顺/iFinD 或同花顺语义 MCP 更适合产业链、题材热度、板块轮动和龙头扩散；通达信 MCP/xmtdx 只能作为低成本行情/板块/资金流实验候选，不能直接替代现有 `need_027` gate。
+- 最小可逆下一步：若有 TuShare token，先做不持久化三股 probe（`600519`、`000001`、`300750`），把返回字段映射到 `main_net_amount`、`super_large_net_amount`、`large_net_amount`、`medium_net_amount`、`small_net_amount`、`trade_date`、watermark 和 raw lineage；只有字段、日期、行数、稳定性、PIT/freshness、writer/watermark gate 通过后，才允许设计生产 writer 或 resolve failure_queue。
+- 产业链/板块轮动/龙头扩散方向先定义 daily snapshot contract，不能用 current-only 概念成分或热榜做历史回测；该方向可以作为 P1 research source onboarding，但不得绕过 `docs/data_product_contract.md` 的 source/PIT/freshness/eligibility 契约。
+
 ## Resilience 配置 (verified)
 
 | 机制 | 状态 |
