@@ -130,6 +130,9 @@ def _stage_opt_summary(report: dict[str, Any] | None) -> dict[str, Any] | None:
     top_blocked_registry_family_cells = report.get("top_blocked_registry_family_cells")
     if not isinstance(top_blocked_registry_family_cells, list):
         top_blocked_registry_family_cells = []
+    source_load_errors = report.get("source_load_errors")
+    if not isinstance(source_load_errors, list):
+        source_load_errors = []
     blocked_reason_counts = report.get("blocked_reason_counts")
     if not isinstance(blocked_reason_counts, dict):
         blocked_reason_counts = {}
@@ -151,8 +154,10 @@ def _stage_opt_summary(report: dict[str, Any] | None) -> dict[str, Any] | None:
             "ready_keys": report.get("ready_keys"),
             "ready_coverage_pct": report.get("ready_coverage_pct"),
             "below_min_signals": (report.get("blocked_reason_counts") or {}).get("below_min_signals", 0),
+            "source_load_error_count": len(source_load_errors),
             "codes_without_bars": report.get("codes_without_bars", 0),
         },
+        "source_load_errors": source_load_errors[:10],
         "blocked_reason_counts": blocked_reason_counts,
         "top_blocked_reason_counts": top_blocked_reason_counts,
         "next_action_recommendation": recommendation,

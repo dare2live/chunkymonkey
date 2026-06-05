@@ -166,7 +166,7 @@ tools:
     truth_source: stage_opt_candidate_supply.yaml, formula runtime registry, candidate-supply audit contract, chunkyctl doctor summary contract
     risk_reason: stage-opt upstream source semantics can drift if source eligibility, formula scope overrides, and doctor output are not tested together
     replacement: broader stage-opt supply registry service if candidate-source ownership expands beyond audit and doctor
-    last_verified: "2026-06-04"
+    last_verified: "2026-06-06"
 
   - id: storage_payload_audit_tests
     paths:

@@ -146,6 +146,7 @@ def _load_signal_rows(
     ).fetchall()
 
     state_history_rows: list[tuple[str, str, str, str, str]] = []
+    source_load_errors: list[dict[str, str]] = []
     include_macd_state_history = MACD_STATE_SOURCE.include_for_formula_filter(formula)
     if include_macd_state_history:
         try:
@@ -176,8 +177,16 @@ def _load_signal_rows(
                 """,
                 [start, end] + state_formula_params + state_stock_params,
             ).fetchall()
-        except Exception:
+        except Exception as exc:
             state_history_rows = []
+            source_load_errors.append(
+                {
+                    "source_id": MACD_STATE_SOURCE.source_id,
+                    "table": MACD_STATE_SOURCE.table,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[:500],
+                }
+            )
 
     rows = trigger_rows + state_history_rows
 
@@ -238,6 +247,7 @@ def _load_signal_rows(
         "raw_rows": raw_rows,
         "raw_trigger_rows": raw_trigger_rows,
         "raw_state_history_rows": raw_state_history_rows,
+        "source_load_errors": source_load_errors,
         "_raw_rows_by_stock_code": dict(sorted(raw_rows_by_stock_code.items())),
         "_raw_trigger_rows_by_stock_code": dict(sorted(raw_trigger_rows_by_stock_code.items())),
         "_raw_state_history_rows_by_stock_code": dict(sorted(raw_state_history_rows_by_stock_code.items())),
@@ -935,6 +945,7 @@ def _render_markdown(result: dict[str, Any]) -> str:
         f"- filtered_signal_rows: {result['filtered_signal_rows']}",
         f"- dropped_index_rows: {result['dropped_index_rows']}",
         f"- dropped_unknown_stage_rows: {result['dropped_unknown_stage_rows']}",
+        f"- source_load_errors: {len(result.get('source_load_errors') or [])}",
         f"- codes_with_bars: {result['codes_with_bars']}",
         f"- codes_without_bars: {result['codes_without_bars']}",
         f"- unique_keys: {result['unique_keys']}",
@@ -981,6 +992,9 @@ def _render_markdown(result: dict[str, Any]) -> str:
                 f"- allowed_stage_bins: {', '.join(str(item) for item in contract.get('allowed_stage_bins') or [])}",
             ]
         )
+        readiness = contract.get("readiness") or {}
+        if readiness:
+            lines.append(f"- readiness.min_signals_per_key: {readiness.get('min_signals_per_key')}")
         for source in contract.get("sources") or []:
             lines.append(
                 f"- {source.get('source_id')}: table={source.get('table')} "
@@ -999,6 +1013,14 @@ def _render_markdown(result: dict[str, Any]) -> str:
         formula_ids = registry.get("formula_ids") or []
         if formula_ids:
             lines.append(f"- formula_ids: {', '.join(str(item) for item in formula_ids)}")
+        lines.append("")
+    if result.get("source_load_errors"):
+        lines.append("## Source Load Errors")
+        for error in result["source_load_errors"]:
+            lines.append(
+                f"- {error.get('source_id')}: table={error.get('table')} "
+                f"{error.get('error_type')}: {error.get('error')}"
+            )
         lines.append("")
     lines.extend([
         "## By Formula Id",
@@ -1171,8 +1193,9 @@ def _compose_audit_result(
     blocked_keys = max(0, unique_keys - ready_keys)
     blocked_reason_counts = summary.get("blocked_reason_counts") or {}
     dropped_unknown_stage_rows = int(load_result["dropped_unknown_stage_rows"])
+    source_load_errors = list(load_result.get("source_load_errors") or [])
     has_candidate_supply = unique_keys > 0
-    verdict = "WARN" if blocked_keys or dropped_unknown_stage_rows or not has_candidate_supply else "PASS"
+    verdict = "WARN" if blocked_keys or dropped_unknown_stage_rows or source_load_errors or not has_candidate_supply else "PASS"
     next_action_recommendation = summary.get("next_action_recommendation")
     if dropped_unknown_stage_rows and not blocked_keys:
         top_unknown_formulas = [
@@ -1187,6 +1210,16 @@ def _compose_audit_result(
             "weakest_formula_ids": top_unknown_formulas,
             "weakest_stage_bins": ["unknown"],
             "top_blocked_reason": "unknown_stage",
+        }
+    elif source_load_errors and not blocked_keys:
+        next_action_recommendation = {
+            "priority": "P1",
+            "focus": "candidate_supply_source_load",
+            "reason": "one or more configured candidate-supply sources failed to load",
+            "recommended_lever": "repair source table/schema availability before treating zero rows as true supply absence",
+            "weakest_formula_ids": [],
+            "weakest_stage_bins": [],
+            "top_blocked_reason": "source_load_error",
         }
     elif not has_candidate_supply:
         next_action_recommendation = {
@@ -1209,6 +1242,7 @@ def _compose_audit_result(
         "raw_signal_rows": load_result["raw_rows"],
         "raw_trigger_rows": load_result.get("raw_trigger_rows", load_result["raw_rows"]),
         "raw_state_history_rows": load_result.get("raw_state_history_rows", 0),
+        "source_load_errors": source_load_errors,
         "filtered_signal_rows": len(signal_rows),
         "dropped_index_rows": load_result["dropped_index_rows"],
         "dropped_unknown_stage_rows": load_result["dropped_unknown_stage_rows"],
@@ -1247,9 +1281,17 @@ def main() -> int:
     parser.add_argument("--formula", nargs="+", default=None, help="only audit selected formula ids")
     parser.add_argument("--stock-codes", nargs="+", default=None, help="only audit selected stock codes")
     parser.add_argument("--limit-stocks", type=int, default=None, help="limit audited stocks after sorting")
-    parser.add_argument("--min-signals", type=int, default=5, help="minimum signal rows per (stock × formula × stage)")
+    parser.add_argument(
+        "--min-signals",
+        type=int,
+        default=None,
+        help="override readiness.min_signals_per_key from stage_opt_candidate_supply.yaml",
+    )
     parser.add_argument("--format", choices=["markdown", "json"], default="markdown")
     args = parser.parse_args()
+    min_signals = args.min_signals if args.min_signals is not None else SUPPLY_CONTRACT.min_signals_per_key
+    if min_signals <= 0:
+        parser.error("--min-signals must be a positive integer")
 
     conn = duck_connect(str(MARKET_DB), read_only=True)
     attach_with_retry(conn.raw, "sm", str(SMART_DB), read_only=True, timeout=60)
@@ -1281,7 +1323,7 @@ def main() -> int:
         summary = summarize_stage_opt_candidate_supply(
             signal_rows,
             codes_with_bars,
-            min_signals=args.min_signals,
+            min_signals=min_signals,
             dropped_unknown_stage_rows_by_formula_id=scoped_load_result["dropped_unknown_stage_rows_by_formula_id"],
             dropped_unknown_stage_rows_by_formula_variant=scoped_load_result["dropped_unknown_stage_rows_by_formula_variant"],
             dropped_unknown_stage_examples=scoped_load_result["dropped_unknown_stage_examples"],
@@ -1291,7 +1333,7 @@ def main() -> int:
             summary,
             start=start,
             end=end,
-            min_signals=args.min_signals,
+            min_signals=min_signals,
             signal_rows=signal_rows,
             codes_total=len(codes),
             codes_with_bars=codes_with_bars,
@@ -1299,7 +1341,7 @@ def main() -> int:
         result["min_signals_sensitivity"] = _build_min_signals_sensitivity(
             signal_rows,
             codes_with_bars,
-            baseline_min_signals=args.min_signals,
+            baseline_min_signals=min_signals,
             dropped_unknown_stage_rows_by_formula_id=scoped_load_result["dropped_unknown_stage_rows_by_formula_id"],
             dropped_unknown_stage_rows_by_formula_variant=scoped_load_result["dropped_unknown_stage_rows_by_formula_variant"],
             dropped_unknown_stage_examples=scoped_load_result["dropped_unknown_stage_examples"],

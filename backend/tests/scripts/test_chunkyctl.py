@@ -1122,6 +1122,14 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
             "ready_keys": 2,
             "ready_coverage_pct": 50.0,
             "blocked_reason_counts": {"below_min_signals": 6},
+            "source_load_errors": [
+                {
+                    "source_id": "mart_macd_state_history",
+                    "table": "sm.mart_macd_state_history",
+                    "error_type": "CatalogException",
+                    "error": "missing table",
+                }
+            ],
             "attrition_funnel": {
                 "raw_rows": 10,
                 "filtered_signal_rows": 8,
@@ -1170,6 +1178,9 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
             "candidate_supply_contract": {
                 "version": 1,
                 "allowed_stage_bins": ["1", "1.5", "2", "3", "4"],
+                "readiness": {
+                    "min_signals_per_key": 5,
+                },
                 "sources": [
                     {
                         "source_id": "fact_technical_trigger",
@@ -1237,6 +1248,8 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
     ]
     assert summary["summary"]["raw_trigger_rows"] == 7
     assert summary["summary"]["raw_state_history_rows"] == 3
+    assert summary["summary"]["source_load_error_count"] == 1
+    assert summary["source_load_errors"][0]["source_id"] == "mart_macd_state_history"
     assert summary["candidate_supply_contract"]["version"] == 1
     assert summary["candidate_supply_contract"]["sources"][0]["semantic_role"] == "trade_trigger"
     assert summary["live_formula_registry"]["formula_count"] == 18

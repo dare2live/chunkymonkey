@@ -251,6 +251,7 @@ def test_summarize_stage_opt_candidate_supply_emits_structural_notes_for_macd() 
     assert "fact_technical_trigger PRIMARY KEY" in markdown
     assert "## Attrition Funnel" in markdown
     assert "## Candidate Supply Contract" in markdown
+    assert "readiness.min_signals_per_key: 5" in markdown
     assert "## Formula Family Attrition" in markdown
     assert "## Top Blocked Stage x Formula Cells" in markdown
     assert "## Top Blocked Registry x Family Cells" in markdown
@@ -367,8 +368,47 @@ def test_load_signal_rows_includes_macd_state_history_rows() -> None:
         assert load_result["raw_trigger_rows"] == 4
         assert load_result["raw_state_history_rows"] == 2
         assert load_result["raw_rows"] == 6
+        assert load_result["source_load_errors"] == []
         assert len(load_result["signal_rows"]) == 6
         assert load_result["dropped_unknown_stage_rows"] == 0
+    finally:
+        conn.close()
+
+
+def test_load_signal_rows_reports_macd_state_history_load_errors() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute("CREATE SCHEMA sm")
+        conn.execute(
+            """
+            CREATE TABLE sm.fact_technical_trigger (
+                stock_code TEXT,
+                date TEXT,
+                formula_id TEXT,
+                formula_variant TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE sm.fact_signal_context (
+                stock_code TEXT,
+                date TEXT,
+                technical_stage TEXT
+            )
+            """
+        )
+
+        load_result = audit_stage_opt_candidate_supply._load_signal_rows(
+            conn,
+            start="2026-05-10",
+            end="2026-05-15",
+            formula=["macd_golden_cross"],
+        )
+
+        assert load_result["raw_state_history_rows"] == 0
+        assert load_result["source_load_errors"][0]["source_id"] == "mart_macd_state_history"
+        assert load_result["source_load_errors"][0]["table"] == "sm.mart_macd_state_history"
     finally:
         conn.close()
 
@@ -564,6 +604,7 @@ def test_compose_audit_result_preserves_raw_signal_rows() -> None:
     assert result["raw_signal_rows"] == 10
     assert result["schema_version"] == 1
     assert result["candidate_supply_contract"]["version"] == 1
+    assert result["candidate_supply_contract"]["readiness"] == {"min_signals_per_key": 5}
     assert {
         source["source_id"]
         for source in result["candidate_supply_contract"]["sources"]
@@ -627,6 +668,60 @@ def test_compose_audit_result_treats_empty_candidate_supply_as_warn() -> None:
         "weakest_stage_bins": [],
         "top_blocked_reason": "no_candidate_supply",
     }
+
+
+def test_compose_audit_result_treats_source_load_errors_as_warn() -> None:
+    signal_rows = [
+        {
+            "stock_code": "000001",
+            "signal_date": f"2026-05-{10 + idx:02d}",
+            "formula_id": "macd_golden_cross",
+            "formula_variant": "macd_golden_cross_above_zero",
+            "stage_bin": "1",
+        }
+        for idx in range(5)
+    ]
+    load_result = {
+        "raw_rows": 5,
+        "raw_trigger_rows": 5,
+        "raw_state_history_rows": 0,
+        "source_load_errors": [
+            {
+                "source_id": "mart_macd_state_history",
+                "table": "sm.mart_macd_state_history",
+                "error_type": "CatalogException",
+                "error": "missing table",
+            }
+        ],
+        "dropped_index_rows": 0,
+        "dropped_unknown_stage_rows": 0,
+        "dropped_unknown_stage_rows_by_formula_id": {},
+        "dropped_unknown_stage_rows_by_formula_variant": {},
+        "dropped_unknown_stage_examples": [],
+    }
+    summary = audit_stage_opt_candidate_supply.summarize_stage_opt_candidate_supply(
+        signal_rows,
+        {"000001"},
+        min_signals=5,
+    )
+
+    result = audit_stage_opt_candidate_supply._compose_audit_result(
+        load_result,
+        summary,
+        start="2026-05-10",
+        end="2026-05-15",
+        min_signals=5,
+        signal_rows=signal_rows,
+        codes_total=1,
+        codes_with_bars={"000001"},
+    )
+    markdown = audit_stage_opt_candidate_supply._render_markdown(result)
+
+    assert result["verdict"] == "WARN"
+    assert result["source_load_errors"] == load_result["source_load_errors"]
+    assert result["next_action_recommendation"]["focus"] == "candidate_supply_source_load"
+    assert "## Source Load Errors" in markdown
+    assert "mart_macd_state_history" in markdown
 
 
 def test_limit_stock_filter_scopes_unknown_stage_verdict() -> None:

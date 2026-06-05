@@ -59,6 +59,7 @@ class StageOptSupplySource:
 class StageOptCandidateSupplyContract:
     version: int
     allowed_stage_bins: tuple[str, ...]
+    min_signals_per_key: int
     sources: tuple[StageOptSupplySource, ...]
     formula_scope_overrides: dict[str, tuple[str, ...]]
 
@@ -98,6 +99,9 @@ class StageOptCandidateSupplyContract:
         return {
             "version": self.version,
             "allowed_stage_bins": list(self.allowed_stage_bins),
+            "readiness": {
+                "min_signals_per_key": self.min_signals_per_key,
+            },
             "sources": [source.to_report() for source in self.sources],
             "formula_scope_overrides": {
                 scope: list(formula_ids)
@@ -128,6 +132,15 @@ def _require_str_tuple(raw: dict[str, Any], key: str, path: Path) -> tuple[str, 
     if len(items) != len(value):
         raise ValueError(f"{path.name}: {key} must contain only non-empty strings")
     return items
+
+
+def _load_min_signals_per_key(raw_readiness: Any, path: Path) -> int:
+    if not isinstance(raw_readiness, dict):
+        raise ValueError(f"{path.name}: readiness must be a mapping")
+    value = raw_readiness.get("min_signals_per_key")
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"{path.name}: readiness.min_signals_per_key must be a positive integer")
+    return value
 
 
 def _load_sources(raw_sources: Any, path: Path) -> tuple[StageOptSupplySource, ...]:
@@ -193,6 +206,7 @@ def load_stage_opt_candidate_supply_contract(path: str | Path | None = None) -> 
     return StageOptCandidateSupplyContract(
         version=version,
         allowed_stage_bins=allowed_stage_bins,
+        min_signals_per_key=_load_min_signals_per_key(raw.get("readiness"), config_path),
         sources=_load_sources(raw.get("sources"), config_path),
         formula_scope_overrides=_load_formula_scope_overrides(
             raw.get("formula_scope_overrides"),

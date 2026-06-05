@@ -12,6 +12,8 @@ def test_default_stage_opt_candidate_supply_contract_declares_source_semantics()
 
     assert contract.version == 1
     assert contract.allowed_stage_set == {"1", "1.5", "2", "3", "4"}
+    assert contract.min_signals_per_key == 5
+    assert contract.to_report()["readiness"] == {"min_signals_per_key": 5}
     trigger_source = contract.source("fact_technical_trigger")
     macd_state_source = contract.source("mart_macd_state_history")
     assert trigger_source.semantic_role == "trade_trigger"
@@ -53,6 +55,8 @@ def test_loader_rejects_unsafe_table_names(tmp_path: Path) -> None:
         """
 version: 1
 allowed_stage_bins: ["1"]
+readiness:
+  min_signals_per_key: 5
 sources:
   - source_id: bad
     table: "sm.fact;DROP TABLE x"
@@ -68,4 +72,30 @@ formula_scope_overrides: {}
     )
 
     with pytest.raises(ValueError, match="invalid table name"):
+        load_stage_opt_candidate_supply_contract(config_path)
+
+
+def test_loader_requires_readiness_min_signals_per_key(tmp_path: Path) -> None:
+    config_path = tmp_path / "stage_opt_candidate_supply.yaml"
+    config_path.write_text(
+        """
+version: 1
+allowed_stage_bins: ["1"]
+readiness:
+  min_signals_per_key: 0
+sources:
+  - source_id: trigger
+    table: sm.fact_technical_trigger
+    semantic_role: trade_trigger
+    eligibility: stage_opt_candidate_supply
+    pit_status: signal_date_pit
+    grain: [stock_code]
+    required_joins: [none]
+    allowed_consumers: [audit_stage_opt_candidate_supply]
+formula_scope_overrides: {}
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="readiness.min_signals_per_key"):
         load_stage_opt_candidate_supply_contract(config_path)

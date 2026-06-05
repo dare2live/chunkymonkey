@@ -8,6 +8,9 @@ allowed_stage_bins:
   - "3"
   - "4"
 
+readiness:
+  min_signals_per_key: 5
+
 sources:
   - source_id: fact_technical_trigger
     table: sm.fact_technical_trigger

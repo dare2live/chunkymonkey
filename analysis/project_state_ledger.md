@@ -9,6 +9,38 @@
 > snapshot, and `rg` / `tail` on this ledger only when a task needs specific
 > historical evidence.
 
+## 2026-06-06 — Stage-opt candidate supply readiness contract hardening
+
+- `backend/config/stage_opt_candidate_supply.yaml` now owns
+  `readiness.min_signals_per_key=5`; `audit_stage_opt_candidate_supply.py`
+  uses that config value as the default and keeps `--min-signals` as an
+  explicit override only. This preserves the current threshold while moving the
+  business readiness rule out of argparse code.
+- `backend/services/stage_opt_candidate_supply.py` validates readiness as a
+  positive integer and includes it in `candidate_supply_contract` reports, so
+  downstream `chunkyctl`/doctor consumers can see the config-owned threshold.
+- `audit_stage_opt_candidate_supply.py` now reports configured diagnostic
+  source-load failures via `source_load_errors` instead of silently treating a
+  missing or broken `mart_macd_state_history` read as zero rows. Source-load
+  failures make the audit `WARN` even when candidate keys otherwise look ready.
+- `backend/scripts/chunkyctl.py` now preserves `source_load_errors` and
+  `summary.source_load_error_count` in the stage-opt doctor summary, so the
+  controller view cannot hide diagnostic-source failures behind
+  `below_min_signals`.
+- Verification: `py_compile` passed; scoped test-tool audit
+  `stage_opt_candidate_supply_contract_tests` passed with `fail=0`, `warn=0`;
+  targeted tests passed (`54 passed`); short live read-only audit for
+  `2026-06-01..2026-06-05` returned `WARN`, `min_signals=5`,
+  `source_load_error_count=0`, `unique_keys=12155`, `ready_keys=0`, and
+  `blocked_reason_counts={"below_min_signals": 12155}`. Compressed
+  `scripts/chunkyctl doctor --fast` evidence returned `stage_opt_verdict=WARN`,
+  `stage_opt_source_load_error_count=0`, `raw_state_history_rows=3258115`, and
+  `unknown_worktree=0`.
+- This does not close the P1 stage-opt blocker. It only hardens the gate
+  contract and evidence surface. Remaining work is source/schema join
+  enforcement, per-key K-line coverage evidence, and upstream formula
+  coverage/signal-density repair before strategy/model work resumes.
+
 ## 2026-06-06 — TuShare no-persist exact-flow probe wiring for `need_027`
 
 - `backend/services/data_sources/sources/tushare.py` adds a TuShare Pro source
