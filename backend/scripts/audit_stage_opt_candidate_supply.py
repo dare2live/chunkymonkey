@@ -97,6 +97,130 @@ def _formula_registry_scope_label(formula_id: str) -> str:
     return "+".join(_formula_registry_scopes(formula_id))
 
 
+def _inspect_table_columns(conn: Any, table: str) -> tuple[set[str], str | None]:
+    try:
+        description = conn.execute(f"SELECT * FROM {table} LIMIT 0").description
+    except Exception as exc:
+        return set(), f"{type(exc).__name__}: {str(exc)[:500]}"
+    return {str(column[0]) for column in description}, None
+
+
+def _build_schema_error(
+    *,
+    source_id: str,
+    table: str,
+    check_type: str,
+    missing_columns: list[str] | None = None,
+    error: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "source_id": source_id,
+        "table": table,
+        "check_type": check_type,
+    }
+    if missing_columns:
+        payload["missing_columns"] = missing_columns
+    if error:
+        payload["error"] = error
+    return payload
+
+
+def _audit_source_schema(conn: Any, *, formula: list[str] | None = None) -> dict[str, Any]:
+    checks: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+    for source in SUPPLY_CONTRACT.sources:
+        if not source.include_for_formula_filter(formula):
+            continue
+        columns, error = _inspect_table_columns(conn, source.table)
+        missing_columns = sorted(set(source.required_columns) - columns)
+        checks.append(
+            {
+                "source_id": source.source_id,
+                "table": source.table,
+                "check_type": "source_table",
+                "required_columns": list(source.required_columns),
+                "missing_columns": missing_columns,
+                "status": "FAIL" if error or missing_columns else "PASS",
+            }
+        )
+        if error:
+            errors.append(
+                _build_schema_error(
+                    source_id=source.source_id,
+                    table=source.table,
+                    check_type="source_table",
+                    error=error,
+                )
+            )
+        elif missing_columns:
+            errors.append(
+                _build_schema_error(
+                    source_id=source.source_id,
+                    table=source.table,
+                    check_type="source_table",
+                    missing_columns=missing_columns,
+                )
+            )
+        for join_check in source.join_checks:
+            join_columns, join_error = _inspect_table_columns(conn, join_check.table)
+            join_missing_columns = sorted(set(join_check.required_columns) - join_columns)
+            checks.append(
+                {
+                    "source_id": source.source_id,
+                    "table": join_check.table,
+                    "check_type": "join_table",
+                    "source_columns": list(join_check.source_columns),
+                    "target_columns": list(join_check.target_columns),
+                    "required_columns": list(join_check.required_columns),
+                    "missing_columns": join_missing_columns,
+                    "status": "FAIL" if join_error or join_missing_columns else "PASS",
+                }
+            )
+            if join_error:
+                errors.append(
+                    _build_schema_error(
+                        source_id=source.source_id,
+                        table=join_check.table,
+                        check_type="join_table",
+                        error=join_error,
+                    )
+                )
+            elif join_missing_columns:
+                errors.append(
+                    _build_schema_error(
+                        source_id=source.source_id,
+                        table=join_check.table,
+                        check_type="join_table",
+                        missing_columns=join_missing_columns,
+                    )
+                )
+    return {"source_schema_checks": checks, "source_schema_errors": errors}
+
+
+def _empty_load_result(schema_result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "raw_rows": 0,
+        "raw_trigger_rows": 0,
+        "raw_state_history_rows": 0,
+        "source_load_errors": [],
+        "source_schema_checks": schema_result.get("source_schema_checks") or [],
+        "source_schema_errors": schema_result.get("source_schema_errors") or [],
+        "_raw_rows_by_stock_code": {},
+        "_raw_trigger_rows_by_stock_code": {},
+        "_raw_state_history_rows_by_stock_code": {},
+        "dropped_index_rows": 0,
+        "_dropped_index_rows_by_stock_code": {},
+        "dropped_unknown_stage_rows": 0,
+        "dropped_unknown_stage_rows_by_formula_id": {},
+        "dropped_unknown_stage_rows_by_formula_variant": {},
+        "dropped_unknown_stage_examples": [],
+        "_dropped_unknown_stage_rows_by_stock_code": {},
+        "_dropped_unknown_stage_rows_by_stock_formula_id": {},
+        "_dropped_unknown_stage_rows_by_stock_formula_variant": {},
+        "signal_rows": [],
+    }
+
+
 def _reason_counts_dict(reason_counts: Counter[str]) -> dict[str, int]:
     return {reason: int(count) for reason, count in sorted(reason_counts.items())}
 
@@ -945,6 +1069,7 @@ def _render_markdown(result: dict[str, Any]) -> str:
         f"- filtered_signal_rows: {result['filtered_signal_rows']}",
         f"- dropped_index_rows: {result['dropped_index_rows']}",
         f"- dropped_unknown_stage_rows: {result['dropped_unknown_stage_rows']}",
+        f"- source_schema_errors: {len(result.get('source_schema_errors') or [])}",
         f"- source_load_errors: {len(result.get('source_load_errors') or [])}",
         f"- codes_with_bars: {result['codes_with_bars']}",
         f"- codes_without_bars: {result['codes_without_bars']}",
@@ -1013,6 +1138,19 @@ def _render_markdown(result: dict[str, Any]) -> str:
         formula_ids = registry.get("formula_ids") or []
         if formula_ids:
             lines.append(f"- formula_ids: {', '.join(str(item) for item in formula_ids)}")
+        lines.append("")
+    if result.get("source_schema_errors"):
+        lines.append("## Source Schema Errors")
+        for error in result["source_schema_errors"]:
+            detail = ""
+            if error.get("missing_columns"):
+                detail = f"missing_columns={', '.join(str(item) for item in error['missing_columns'])}"
+            elif error.get("error"):
+                detail = str(error.get("error"))
+            lines.append(
+                f"- {error.get('source_id')}: table={error.get('table')} "
+                f"check={error.get('check_type')} {detail}".rstrip()
+            )
         lines.append("")
     if result.get("source_load_errors"):
         lines.append("## Source Load Errors")
@@ -1194,8 +1332,18 @@ def _compose_audit_result(
     blocked_reason_counts = summary.get("blocked_reason_counts") or {}
     dropped_unknown_stage_rows = int(load_result["dropped_unknown_stage_rows"])
     source_load_errors = list(load_result.get("source_load_errors") or [])
+    source_schema_checks = list(load_result.get("source_schema_checks") or [])
+    source_schema_errors = list(load_result.get("source_schema_errors") or [])
     has_candidate_supply = unique_keys > 0
-    verdict = "WARN" if blocked_keys or dropped_unknown_stage_rows or source_load_errors or not has_candidate_supply else "PASS"
+    verdict = (
+        "WARN"
+        if blocked_keys
+        or dropped_unknown_stage_rows
+        or source_schema_errors
+        or source_load_errors
+        or not has_candidate_supply
+        else "PASS"
+    )
     next_action_recommendation = summary.get("next_action_recommendation")
     if dropped_unknown_stage_rows and not blocked_keys:
         top_unknown_formulas = [
@@ -1210,6 +1358,16 @@ def _compose_audit_result(
             "weakest_formula_ids": top_unknown_formulas,
             "weakest_stage_bins": ["unknown"],
             "top_blocked_reason": "unknown_stage",
+        }
+    elif source_schema_errors and not blocked_keys:
+        next_action_recommendation = {
+            "priority": "P1",
+            "focus": "candidate_supply_source_schema",
+            "reason": "one or more configured source or join schema checks failed",
+            "recommended_lever": "repair source or join table schema before treating rows as supply evidence",
+            "weakest_formula_ids": [],
+            "weakest_stage_bins": [],
+            "top_blocked_reason": "source_schema_error",
         }
     elif source_load_errors and not blocked_keys:
         next_action_recommendation = {
@@ -1242,6 +1400,8 @@ def _compose_audit_result(
         "raw_signal_rows": load_result["raw_rows"],
         "raw_trigger_rows": load_result.get("raw_trigger_rows", load_result["raw_rows"]),
         "raw_state_history_rows": load_result.get("raw_state_history_rows", 0),
+        "source_schema_checks": source_schema_checks,
+        "source_schema_errors": source_schema_errors,
         "source_load_errors": source_load_errors,
         "filtered_signal_rows": len(signal_rows),
         "dropped_index_rows": load_result["dropped_index_rows"],
@@ -1303,13 +1463,19 @@ def main() -> int:
             if end is None:
                 raise SystemExit("no trading calendar data found for default end date")
 
-        load_result = _load_signal_rows(
-            conn,
-            start=start,
-            end=end,
-            formula=args.formula,
-            stock_codes=args.stock_codes,
-        )
+        schema_result = _audit_source_schema(conn, formula=args.formula)
+        if schema_result["source_schema_errors"]:
+            load_result = _empty_load_result(schema_result)
+        else:
+            load_result = _load_signal_rows(
+                conn,
+                start=start,
+                end=end,
+                formula=args.formula,
+                stock_codes=args.stock_codes,
+            )
+            load_result["source_schema_checks"] = schema_result["source_schema_checks"]
+            load_result["source_schema_errors"] = schema_result["source_schema_errors"]
         signal_rows = load_result["signal_rows"]
         codes = sorted({row["stock_code"] for row in signal_rows})
         scoped_load_result = load_result

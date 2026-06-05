@@ -23,23 +23,30 @@
   source-load failures via `source_load_errors` instead of silently treating a
   missing or broken `mart_macd_state_history` read as zero rows. Source-load
   failures make the audit `WARN` even when candidate keys otherwise look ready.
+- The same contract now declares source `required_columns` and join
+  `source_columns` / `target_columns` / `required_columns`. The audit checks
+  those table schemas before row loading and emits `source_schema_checks` /
+  `source_schema_errors`; schema failures short-circuit to structural `WARN`
+  with `candidate_supply_source_schema`, so missing source or join columns
+  cannot be mistaken for ordinary candidate scarcity.
 - `backend/scripts/chunkyctl.py` now preserves `source_load_errors` and
-  `summary.source_load_error_count` in the stage-opt doctor summary, so the
-  controller view cannot hide diagnostic-source failures behind
+  `source_schema_errors` plus `summary.source_load_error_count` and
+  `summary.source_schema_error_count` in the stage-opt doctor summary, so the
+  controller view cannot hide diagnostic-source or schema failures behind
   `below_min_signals`.
 - Verification: `py_compile` passed; scoped test-tool audit
   `stage_opt_candidate_supply_contract_tests` passed with `fail=0`, `warn=0`;
-  targeted tests passed (`54 passed`); short live read-only audit for
+  targeted tests passed (`59 passed`); short live read-only audit for
   `2026-06-01..2026-06-05` returned `WARN`, `min_signals=5`,
-  `source_load_error_count=0`, `unique_keys=12155`, `ready_keys=0`, and
-  `blocked_reason_counts={"below_min_signals": 12155}`. Compressed
-  `scripts/chunkyctl doctor --fast` evidence returned `stage_opt_verdict=WARN`,
-  `stage_opt_source_load_error_count=0`, `raw_state_history_rows=3258115`, and
-  `unknown_worktree=0`.
+  `source_schema_error_count=0`, `source_load_error_count=0`,
+  `unique_keys=12155`, `ready_keys=0`, and
+  `blocked_reason_counts={"below_min_signals": 12155}`. CodeGraph is synced
+  and up to date; complexity scan only reported existing JS hotspots; Rule 10
+  reviewer returned `APPROVE_WITH_NOTES`.
 - This does not close the P1 stage-opt blocker. It only hardens the gate
-  contract and evidence surface. Remaining work is source/schema join
-  enforcement, per-key K-line coverage evidence, and upstream formula
-  coverage/signal-density repair before strategy/model work resumes.
+  contract and evidence surface. Remaining work is per-key K-line coverage
+  evidence and upstream formula coverage/signal-density repair before
+  strategy/model work resumes.
 
 ## 2026-06-06 — TuShare no-persist exact-flow probe wiring for `need_027`
 

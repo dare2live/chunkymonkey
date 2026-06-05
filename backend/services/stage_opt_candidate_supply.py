@@ -14,6 +14,22 @@ _TABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?
 
 
 @dataclass(frozen=True)
+class StageOptJoinCheck:
+    table: str
+    source_columns: tuple[str, ...]
+    target_columns: tuple[str, ...]
+    required_columns: tuple[str, ...]
+
+    def to_report(self) -> dict[str, Any]:
+        return {
+            "table": self.table,
+            "source_columns": list(self.source_columns),
+            "target_columns": list(self.target_columns),
+            "required_columns": list(self.required_columns),
+        }
+
+
+@dataclass(frozen=True)
 class StageOptSupplySource:
     source_id: str
     table: str
@@ -21,7 +37,9 @@ class StageOptSupplySource:
     eligibility: str
     pit_status: str
     grain: tuple[str, ...]
+    required_columns: tuple[str, ...]
     required_joins: tuple[str, ...]
+    join_checks: tuple[StageOptJoinCheck, ...]
     allowed_consumers: tuple[str, ...]
     include_formula_ids: tuple[str, ...] | None = None
 
@@ -47,7 +65,9 @@ class StageOptSupplySource:
             "eligibility": self.eligibility,
             "pit_status": self.pit_status,
             "grain": list(self.grain),
+            "required_columns": list(self.required_columns),
             "required_joins": list(self.required_joins),
+            "join_checks": [join_check.to_report() for join_check in self.join_checks],
             "allowed_consumers": list(self.allowed_consumers),
         }
         if self.include_formula_ids is not None:
@@ -143,6 +163,70 @@ def _load_min_signals_per_key(raw_readiness: Any, path: Path) -> int:
     return value
 
 
+def _validate_column_subset(
+    *,
+    owner: str,
+    subset_name: str,
+    subset: tuple[str, ...],
+    superset_name: str,
+    superset: tuple[str, ...],
+    path: Path,
+) -> None:
+    missing = [column for column in subset if column not in set(superset)]
+    if missing:
+        raise ValueError(
+            f"{path.name}: {owner} {subset_name} columns missing from {superset_name}: {', '.join(missing)}"
+        )
+
+
+def _load_join_checks(
+    raw_join_checks: Any,
+    *,
+    source_id: str,
+    source_required_columns: tuple[str, ...],
+    path: Path,
+) -> tuple[StageOptJoinCheck, ...]:
+    if not isinstance(raw_join_checks, list) or not raw_join_checks:
+        raise ValueError(f"{path.name}: source {source_id} join_checks must be a non-empty list")
+    join_checks: list[StageOptJoinCheck] = []
+    for raw_join_check in raw_join_checks:
+        if not isinstance(raw_join_check, dict):
+            raise ValueError(f"{path.name}: source {source_id} join_checks entries must be mappings")
+        table = _require_str(raw_join_check, "table", path)
+        if not _TABLE_NAME_RE.match(table):
+            raise ValueError(f"{path.name}: invalid join table name for {source_id}: {table}")
+        source_columns = _require_str_tuple(raw_join_check, "source_columns", path)
+        target_columns = _require_str_tuple(raw_join_check, "target_columns", path)
+        required_columns = _require_str_tuple(raw_join_check, "required_columns", path)
+        if len(source_columns) != len(target_columns):
+            raise ValueError(f"{path.name}: source {source_id} join {table} source_columns/target_columns length mismatch")
+        _validate_column_subset(
+            owner=f"source {source_id} join {table}",
+            subset_name="source_columns",
+            subset=source_columns,
+            superset_name="source required_columns",
+            superset=source_required_columns,
+            path=path,
+        )
+        _validate_column_subset(
+            owner=f"source {source_id} join {table}",
+            subset_name="target_columns",
+            subset=target_columns,
+            superset_name="join required_columns",
+            superset=required_columns,
+            path=path,
+        )
+        join_checks.append(
+            StageOptJoinCheck(
+                table=table,
+                source_columns=source_columns,
+                target_columns=target_columns,
+                required_columns=required_columns,
+            )
+        )
+    return tuple(join_checks)
+
+
 def _load_sources(raw_sources: Any, path: Path) -> tuple[StageOptSupplySource, ...]:
     if not isinstance(raw_sources, list) or not raw_sources:
         raise ValueError(f"{path.name}: sources must be a non-empty list")
@@ -161,6 +245,16 @@ def _load_sources(raw_sources: Any, path: Path) -> tuple[StageOptSupplySource, .
         include_formula_ids = None
         if raw_source.get("include_formula_ids") is not None:
             include_formula_ids = _require_str_tuple(raw_source, "include_formula_ids", path)
+        required_columns = _require_str_tuple(raw_source, "required_columns", path)
+        grain = _require_str_tuple(raw_source, "grain", path)
+        _validate_column_subset(
+            owner=f"source {source_id}",
+            subset_name="grain",
+            subset=grain,
+            superset_name="required_columns",
+            superset=required_columns,
+            path=path,
+        )
         sources.append(
             StageOptSupplySource(
                 source_id=source_id,
@@ -168,8 +262,15 @@ def _load_sources(raw_sources: Any, path: Path) -> tuple[StageOptSupplySource, .
                 semantic_role=_require_str(raw_source, "semantic_role", path),
                 eligibility=_require_str(raw_source, "eligibility", path),
                 pit_status=_require_str(raw_source, "pit_status", path),
-                grain=_require_str_tuple(raw_source, "grain", path),
+                grain=grain,
+                required_columns=required_columns,
                 required_joins=_require_str_tuple(raw_source, "required_joins", path),
+                join_checks=_load_join_checks(
+                    raw_source.get("join_checks"),
+                    source_id=source_id,
+                    source_required_columns=required_columns,
+                    path=path,
+                ),
                 allowed_consumers=_require_str_tuple(raw_source, "allowed_consumers", path),
                 include_formula_ids=include_formula_ids,
             )

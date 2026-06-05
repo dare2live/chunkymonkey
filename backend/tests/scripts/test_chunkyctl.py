@@ -1130,6 +1130,14 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
                     "error": "missing table",
                 }
             ],
+            "source_schema_errors": [
+                {
+                    "source_id": "fact_technical_trigger",
+                    "table": "sm.fact_signal_context",
+                    "check_type": "join_table",
+                    "missing_columns": ["technical_stage"],
+                }
+            ],
             "attrition_funnel": {
                 "raw_rows": 10,
                 "filtered_signal_rows": 8,
@@ -1248,7 +1256,9 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
     ]
     assert summary["summary"]["raw_trigger_rows"] == 7
     assert summary["summary"]["raw_state_history_rows"] == 3
+    assert summary["summary"]["source_schema_error_count"] == 1
     assert summary["summary"]["source_load_error_count"] == 1
+    assert summary["source_schema_errors"][0]["source_id"] == "fact_technical_trigger"
     assert summary["source_load_errors"][0]["source_id"] == "mart_macd_state_history"
     assert summary["candidate_supply_contract"]["version"] == 1
     assert summary["candidate_supply_contract"]["sources"][0]["semantic_role"] == "trade_trigger"

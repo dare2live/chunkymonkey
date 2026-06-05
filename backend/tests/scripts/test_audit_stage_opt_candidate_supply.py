@@ -15,6 +15,59 @@ sys.modules[SPEC.name] = audit_stage_opt_candidate_supply
 SPEC.loader.exec_module(audit_stage_opt_candidate_supply)
 
 
+def _create_candidate_supply_schema(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    include_macd: bool = True,
+    include_technical_stage: bool = True,
+    include_kline_adjust: bool = True,
+) -> None:
+    conn.execute("CREATE SCHEMA sm")
+    conn.execute(
+        """
+        CREATE TABLE sm.fact_technical_trigger (
+            stock_code TEXT,
+            date TEXT,
+            formula_id TEXT,
+            formula_variant TEXT
+        )
+        """
+    )
+    technical_stage_column = ", technical_stage TEXT" if include_technical_stage else ""
+    conn.execute(
+        f"""
+        CREATE TABLE sm.fact_signal_context (
+            stock_code TEXT,
+            date TEXT
+            {technical_stage_column}
+        )
+        """
+    )
+    if include_macd:
+        conn.execute(
+            """
+            CREATE TABLE sm.mart_macd_state_history (
+                stock_code TEXT,
+                date TEXT,
+                formula_id TEXT,
+                formula_variant TEXT,
+                state TEXT
+            )
+            """
+        )
+    adjust_column = ", adjust TEXT" if include_kline_adjust else ""
+    conn.execute(
+        f"""
+        CREATE TABLE v_price_kline_qfq (
+            code TEXT,
+            date TEXT,
+            freq TEXT
+            {adjust_column}
+        )
+        """
+    )
+
+
 def test_summarize_stage_opt_candidate_supply_tracks_ready_and_blocked_keys() -> None:
     signal_rows = [
         *[
@@ -413,6 +466,51 @@ def test_load_signal_rows_reports_macd_state_history_load_errors() -> None:
         conn.close()
 
 
+def test_audit_source_schema_respects_formula_filter_for_diagnostic_source() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        _create_candidate_supply_schema(conn, include_macd=False)
+
+        result = audit_stage_opt_candidate_supply._audit_source_schema(
+            conn,
+            formula=["reversal_1m_deep"],
+        )
+
+        assert result["source_schema_errors"] == []
+        assert {
+            (row["source_id"], row["table"])
+            for row in result["source_schema_checks"]
+        } == {
+            ("fact_technical_trigger", "sm.fact_technical_trigger"),
+            ("fact_technical_trigger", "sm.fact_signal_context"),
+            ("fact_technical_trigger", "v_price_kline_qfq"),
+        }
+    finally:
+        conn.close()
+
+
+def test_audit_source_schema_reports_missing_join_columns() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        _create_candidate_supply_schema(conn, include_technical_stage=False)
+
+        result = audit_stage_opt_candidate_supply._audit_source_schema(
+            conn,
+            formula=["reversal_1m_deep"],
+        )
+
+        assert result["source_schema_errors"] == [
+            {
+                "source_id": "fact_technical_trigger",
+                "table": "sm.fact_signal_context",
+                "check_type": "join_table",
+                "missing_columns": ["technical_stage"],
+            }
+        ]
+    finally:
+        conn.close()
+
+
 def test_min_signals_sensitivity_reports_threshold_lift() -> None:
     signal_rows = [
         *[
@@ -722,6 +820,55 @@ def test_compose_audit_result_treats_source_load_errors_as_warn() -> None:
     assert result["next_action_recommendation"]["focus"] == "candidate_supply_source_load"
     assert "## Source Load Errors" in markdown
     assert "mart_macd_state_history" in markdown
+
+
+def test_compose_audit_result_treats_source_schema_errors_as_warn() -> None:
+    load_result = audit_stage_opt_candidate_supply._empty_load_result(
+        {
+            "source_schema_checks": [
+                {
+                    "source_id": "fact_technical_trigger",
+                    "table": "sm.fact_signal_context",
+                    "check_type": "join_table",
+                    "required_columns": ["stock_code", "date", "technical_stage"],
+                    "missing_columns": ["technical_stage"],
+                    "status": "FAIL",
+                }
+            ],
+            "source_schema_errors": [
+                {
+                    "source_id": "fact_technical_trigger",
+                    "table": "sm.fact_signal_context",
+                    "check_type": "join_table",
+                    "missing_columns": ["technical_stage"],
+                }
+            ],
+        }
+    )
+    summary = audit_stage_opt_candidate_supply.summarize_stage_opt_candidate_supply(
+        [],
+        set(),
+        min_signals=5,
+    )
+
+    result = audit_stage_opt_candidate_supply._compose_audit_result(
+        load_result,
+        summary,
+        start="2026-06-01",
+        end="2026-06-02",
+        min_signals=5,
+        signal_rows=[],
+        codes_total=0,
+        codes_with_bars=set(),
+    )
+    markdown = audit_stage_opt_candidate_supply._render_markdown(result)
+
+    assert result["verdict"] == "WARN"
+    assert result["source_schema_errors"] == load_result["source_schema_errors"]
+    assert result["next_action_recommendation"]["focus"] == "candidate_supply_source_schema"
+    assert result["next_action_recommendation"]["top_blocked_reason"] == "source_schema_error"
+    assert "## Source Schema Errors" in markdown
+    assert "technical_stage" in markdown
 
 
 def test_limit_stock_filter_scopes_unknown_stage_verdict() -> None:
