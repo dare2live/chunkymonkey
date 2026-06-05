@@ -53,15 +53,22 @@ payload_audit:
       column: reason_codes_json
       classification: compact_per_signal_reason_codes
       owner: formula_engine
-      reason: Compact per-row formula trigger reason codes; row count can grow with signal history, but each value must stay tiny and non-recursive.
+      reason: Full-history formula trigger reason-code evidence; row count can grow with signal history, but each value must stay tiny and non-recursive.
       max_value_bytes: 512
-      max_total_value_bytes: 268435456
+      max_total_value_bytes: 536870912
     - table: mart_macd_state_history
       column: reason_codes_json
       classification: diagnostic_state_history_evidence
       owner: formula_engine
       reason: MACD state history is evidence-only; per-row reason codes are bounded and intentionally retained for candidate-supply audits, so aggregate volume can grow with history without becoming recursive.
       max_value_bytes: 512
+      max_total_value_bytes: 536870912
+    - table: mart_stock_picture_daily
+      column: institution_top_json
+      classification: bounded_picture_daily_institution_summary
+      owner: picture_daily
+      reason: Daily stock picture keeps a compact top-institution summary per stock/date for UI and recommendation evidence; it must remain bounded and non-recursive.
+      max_value_bytes: 2048
       max_total_value_bytes: 67108864
     - table: mart_today_signal_cache_signal
       column: signal_json

@@ -216,6 +216,59 @@ def test_storage_payload_reviewed_macd_state_history_reason_codes_passes_total_w
     assert finding["reasons"] == ["reviewed payload: diagnostic_state_history_evidence"]
 
 
+def test_storage_payload_reviewed_picture_institution_summary_passes_total_warn() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute("CREATE TABLE mart_stock_picture_daily (institution_top_json TEXT)")
+        payload = '[{"name":"inst","score":1}]'
+        conn.executemany("INSERT INTO mart_stock_picture_daily VALUES (?)", [(payload,) for _ in range(12)])
+
+        report = audit_storage_payloads.build_storage_payload_report(
+            conn,
+            policy=_policy(
+                total_value_warn_bytes=20,
+                total_value_fail_bytes=1000,
+                reviewed_columns=[
+                    {
+                        "table": "mart_stock_picture_daily",
+                        "column": "institution_top_json",
+                        "classification": "bounded_picture_daily_institution_summary",
+                        "max_value_bytes": 128,
+                        "max_total_value_bytes": 1000,
+                    }
+                ],
+            ),
+            tables=["mart_stock_picture_daily"],
+        )
+    finally:
+        conn.close()
+
+    assert report["verdict"] == "PASS"
+    assert report["summary"]["reviewed"] == 1
+    finding = report["findings"][0]
+    assert finding["severity"] == "PASS"
+    assert finding["review"]["status"] == "accepted"
+    assert finding["reasons"] == ["reviewed payload: bounded_picture_daily_institution_summary"]
+
+
+def test_default_payload_policy_contains_current_capacity_review_rules() -> None:
+    policy = audit_storage_payloads.load_payload_policy()
+    by_column = {
+        (rule["table"], rule["column"]): rule
+        for rule in policy["reviewed_columns"]
+    }
+
+    assert by_column[("fact_technical_trigger", "reason_codes_json")]["max_total_value_bytes"] == 536870912
+    assert by_column[("mart_macd_state_history", "reason_codes_json")]["max_total_value_bytes"] == 536870912
+    assert (
+        by_column[("mart_stock_picture_daily", "institution_top_json")]["classification"]
+        == "bounded_picture_daily_institution_summary"
+    )
+    assert by_column[("mart_stock_picture_daily", "institution_top_json")]["owner"] == "picture_daily"
+    assert by_column[("mart_stock_picture_daily", "institution_top_json")]["max_value_bytes"] == 2048
+    assert by_column[("mart_stock_picture_daily", "institution_top_json")]["max_total_value_bytes"] == 67108864
+
+
 def test_storage_payload_reviewed_column_never_downgrades_recursive_fail() -> None:
     conn = duckdb.connect(":memory:")
     try:
