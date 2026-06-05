@@ -1042,6 +1042,12 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-06-05 storage retention consumer audit
+
+- `backend/scripts/audit_storage_retention_consumers.py`: 新增只读 table-inventory consumer audit。它用 exact table-token 匹配扫描 repo 文本引用，避免 `mart_p0a_feature_label_panel` 被 `_v3/_v4/_v5` 前缀噪声误判；`unknown_pending_*` consumers 会 FAIL，runtime references 会进入报告。
+- `backend/config/storage_retention.yaml`: `mart_p0a_feature_label_panel_v5` / `mart_p0a_feature_label_panel_unified_v1` / `mart_p0a_feature_label_panel` 从 `unknown_pending_codegraph` cleanup 假设改为明确 protected consumers。v5 仍有 v7 daily inference / unified builder / feature_join_v5；unified_v1 仍有 unified ranker train/walk-forward/diag；legacy baseline panel 仍是 P0b/P1/audit 默认输入。结论：不是 no-live-consumer，可删前必须先迁移或退役 consumer。
+- 验证: storage retention consumer audit `PASS / audited_tables=11 / runtime_ref_tables=11`；`plan_storage_retention.py` 为 `candidate_count=0 / table_inventory_count=12 / policy_contract=PASS / compaction.recommended=false`；targeted retention suite (`test_audit_storage_retention_consumers.py` + `test_storage_retention.py` + `test_plan_storage_retention.py`) `24 passed`；scoped test-tool audit PASS。
+
 ### 2026-06-05 architect-controller skill install
 
 - `/Users/dp/.codex/skills/architect-controller/SKILL.md`: 已把用户提供的“架构师/总指挥”材料提炼为可调用本地 Codex skill。运行协议是 substrate truth source、boundary contracts、meta-spec、falsification gates、attention allocation、delegation contract 和 smallest reversible next step；输出要求 `PROCEED / REVISE / BLOCK`。

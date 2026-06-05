@@ -9,6 +9,31 @@
 > snapshot, and `rg` / `tail` on this ledger only when a task needs specific
 > historical evidence.
 
+## 2026-06-05 — DB retention consumer audit correction
+
+- P1 DB retention consumer proof corrected a bad cleanup assumption. The three
+  previously `unknown_pending_codegraph` P0A panels are not no-live-consumer
+  deletion candidates:
+  `mart_p0a_feature_label_panel_v5` has `run_daily_v7_inference.py`,
+  `build_unified_panel_v1.py`, and `feature_join_v5.py` consumers;
+  `mart_p0a_feature_label_panel_unified_v1` has unified ranker train,
+  walk-forward, and diagnostic consumers; `mart_p0a_feature_label_panel` is
+  still the default for P0b LightGBM, P1 ablation, and P0a audit scripts.
+- `backend/scripts/audit_storage_retention_consumers.py` now provides the
+  read-only static gate for table-inventory consumer proof. It exact-matches
+  table tokens so `mart_p0a_feature_label_panel` is not falsely inflated by
+  `_v3` / `_v4` / `_v5` references, fails on `unknown_pending_*` consumers,
+  and reports runtime references by table.
+- Live evidence after the correction: `audit_storage_retention_consumers.py`
+  is `PASS` with `audited_tables=11` and `runtime_ref_tables=11`;
+  `plan_storage_retention.py` is `candidate_count=0`,
+  `table_inventory_count=12`, `policy_contract=PASS`,
+  `compaction.recommended=false`. This does not authorize production delete or
+  VACUUM; it means the retention contract is explicit and currently protective.
+- Next cleanup step changed from "prove no live consumer" to "migrate or retire
+  panel consumers first, then rerun consumer audit, copied-DuckDB validation,
+  row/schema manifests, and rollback checks."
+
 ## 2026-06-05 — DB retention owner/consumer policy contract
 
 - P1 DB retention/modularization advanced from owner-only dry-run inventory to
@@ -34,9 +59,8 @@
   and rank/cache overlap. No large `.duckdb.bak/.gz/.zst` backup set or
   snapshot-loop write explosion was found under `data/`.
 - Still not approved: production delete, VACUUM, export/import compact, table
-  movement, or feature-store split. Next proof step is CodeGraph/`rg` no-live-
-  consumer evidence for obsolete/cache entries, then copied-DuckDB verification
-  with row/schema manifests.
+  movement, or feature-store split. The follow-up consumer audit above replaces
+  the earlier no-live-consumer hypothesis for the P0A panel family.
 
 ## Archived From `goal.md` On 2026-06-05
 

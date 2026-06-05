@@ -46,11 +46,14 @@ rollback plan, and post-fix stale-artifact audit.
 
 `backend/config/storage_retention.yaml` owns table-level retention and compact
 policy. Every table inventory entry must declare the database alias, truth
-source, owner, consumers, compaction policy, and, for cache/legacy/obsolete or
+source, owner, consumers, compaction policy, and, for cache/obsolete or
 delete-class entries, explicit delete gates plus rollback evidence.
 `backend/services/storage_retention.py` emits `policy_contract`; execution must
 fail unless that contract is `PASS`. A clean contract is still not permission to
-delete production data. Production cleanup also needs no-live-consumer proof,
+delete production data. `backend/scripts/audit_storage_retention_consumers.py`
+is the static consumer gate for table inventory: `unknown_pending_*` consumers
+are blocking, and runtime references must be surfaced before any cleanup claim.
+Production cleanup also needs consumer migration or retirement evidence,
 copied-DuckDB verification, row/schema manifests, and a serialized maintenance
 window.
 

@@ -183,6 +183,21 @@ tools:
     replacement: native DuckDB storage observability or a broader data artifact governance service
     last_verified: "2026-06-01"
 
+  - id: storage_retention_consumer_audit_tests
+    paths:
+      - backend/scripts/audit_storage_retention_consumers.py
+      - backend/tests/scripts/test_audit_storage_retention_consumers.py
+      - backend/config/storage_retention.yaml
+    owner_module: storage_governance
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_storage_retention_consumers.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: storage_retention.yaml table inventory, repo static references, runtime-code consumer categorization
+    risk_reason: DB retention cleanup can delete or compact still-consumed panels if unknown consumer placeholders or live script references are not surfaced before approval
+    replacement: broader data asset lineage graph with exact runtime consumer ownership
+    last_verified: "2026-06-05"
+
   - id: audit_script_tests
     paths:
       - backend/tests/scripts

@@ -253,62 +253,73 @@ table_inventory:
     retention_action: classify_consumer_before_cleanup
     reason: Upstream input for v4 in panel pipeline manifest; cleanup requires reproducibility owner review.
   - table: mart_p0a_feature_label_panel_v5
-    classification: obsolete_candidate_requires_owner
+    classification: protected_runtime_panel
     owner: panel_pipeline_manifest
     db_alias: smartmoney
     truth_source: historical_panel_pipeline_output
     consumers:
-      - unknown_pending_codegraph
+      - runtime_consumer_v7_daily_inference
+      - unified_panel_builder
+      - feature_join_v5_pipeline
       - historical_reproducibility
     delete_gates:
-      - codegraph_no_live_consumer
+      - v7_daily_inference_migrated_or_retired
+      - unified_panel_builder_migrated_or_retired
+      - codegraph_no_live_consumer_after_deprecation
       - rg_no_runtime_reference
       - pipeline_manifest_rebuild_path_verified
       - row_count_and_schema_snapshot_saved
     rollback_evidence:
       - copied_duckdb_execute_dry_run
       - deletion_manifest_with_counts
-    compaction_policy: checkpoint_after_approved_delete
-    retention_action: prove_no_consumer_and_reproducibility_before_delete
-    reason: Full-width panel version overlaps unified_v1 keys; owner and consumer status must be proven before cleanup.
+    compaction_policy: protect_no_compaction_without_verified_copy
+    retention_action: protect_until_runtime_consumers_are_migrated_or_retired
+    reason: Full-width panel version overlaps unified_v1 keys but still feeds v7 daily inference and unified panel build paths.
   - table: mart_p0a_feature_label_panel_unified_v1
-    classification: obsolete_candidate_requires_owner
+    classification: protected_research_panel
     owner: panel_pipeline_manifest
     db_alias: smartmoney
     truth_source: historical_panel_pipeline_output
     consumers:
-      - unknown_pending_codegraph
+      - unified_ranker_train_smoke
+      - unified_ranker_walkforward
+      - phase42_diag_ablation
       - historical_reproducibility
     delete_gates:
-      - codegraph_no_live_consumer
+      - unified_ranker_scripts_retired_or_migrated
+      - codegraph_no_live_consumer_after_deprecation
       - rg_no_runtime_reference
       - pipeline_manifest_rebuild_path_verified
       - row_count_and_schema_snapshot_saved
     rollback_evidence:
       - copied_duckdb_execute_dry_run
       - deletion_manifest_with_counts
-    compaction_policy: checkpoint_after_approved_delete
-    retention_action: prove_no_consumer_and_reproducibility_before_delete
-    reason: Full-width panel version overlaps v5 keys; owner and consumer status must be proven before cleanup.
+    compaction_policy: protect_no_compaction_without_verified_copy
+    retention_action: protect_until_research_consumers_are_retired_or_archived
+    reason: Full-width panel version overlaps v5 keys but still has training, walk-forward, and diagnostic script consumers.
   - table: mart_p0a_feature_label_panel
-    classification: legacy_panel_requires_owner
+    classification: protected_baseline_panel
     owner: panel_pipeline_manifest
     db_alias: smartmoney
     truth_source: legacy_panel_pipeline_output
     consumers:
-      - unknown_pending_codegraph
+      - p0b_lightgbm_default
+      - p1_ablation_default
+      - p0a_panel_audit_default
+      - schema_and_field_dictionary
       - historical_reproducibility
     delete_gates:
-      - codegraph_no_live_consumer
+      - legacy_cli_defaults_migrated_or_retired
+      - schema_and_field_dictionary_repointed
+      - codegraph_no_live_consumer_after_deprecation
       - rg_no_runtime_reference
-      - legacy_report_reference_check
       - row_count_and_schema_snapshot_saved
     rollback_evidence:
       - copied_duckdb_execute_dry_run
       - deletion_manifest_with_counts
-    compaction_policy: checkpoint_after_approved_delete
-    retention_action: prove_legacy_consumer_status_before_delete
-    reason: Legacy full-width panel still consumes material space; cleanup requires consumer and evidence classification.
+    compaction_policy: protect_no_compaction_without_verified_copy
+    retention_action: protect_until_cli_defaults_and_schema_refs_are_migrated
+    reason: Baseline panel consumes material space but remains the default input for P0b training, P1 ablation, and P0a audit scripts.
   - table: fact_feature_panel_candidate
     classification: governed_candidate_panel
     owner: storage_retention_policy

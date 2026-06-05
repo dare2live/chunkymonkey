@@ -43,7 +43,7 @@ evidence or disjoint patches; their output is not a verdict.
 | P0 | Dirty worktree governance | Clean after `3e9fafc8`; `worktree` gate reports `unknown=0` | Keep future commits slice-based; never `git add .` |
 | P1 | `need_027` exact order-flow | Still blocked; rank/proxy snapshots do not satisfy exact-flow contract | Run token-backed no-persist TuShare/akshare exact-flow probe only when credentials/source stability are available |
 | P1 | Data-source capability routing | Capability contracts committed in `3e9fafc8`; no production writer is approved yet | Run capability-level no-persist probes before any DB writer or provider promotion |
-| P1 | DB retention/modularization | Retention inventory now has owner/consumer/truth/compact contract; obsolete/cache entries are blocked on consumer proof | Prove no-live-consumer on obsolete/cache entries with CodeGraph/`rg`, then validate only on copied DuckDB before any production cleanup |
+| P1 | DB retention/modularization | Retention inventory now has owner/consumer/truth/compact contract; former unknown panels are protected by known runtime/research consumers | Migrate or retire panel consumers before any cleanup; keep production delete/VACUUM blocked unless copied-DuckDB validation and manifests exist |
 | P1 | Stage-opt supply | Structural upstream candidate supply blocker remains | Improve source/schema evidence; do not tune knobs as a substitute |
 | P2 | Microsoft RD-Agent(Q) research | Tracked as follow-up only; no production integration approved | Create a dated `analysis/rd_agent_q_research_*.md` note mapping RD-Agent(Q)/Qlib, Co-STEER, factor mining, experiment loop, and agent roles into borrow/reject decisions under ChunkyMonkey gates |
 | P2 | Data-health warning-only assets | No red or blocking-yellow in latest live doctor; 7 warning-quality tables remain yellow | Treat as owner-specific maintenance, not startup blockers |
@@ -58,7 +58,8 @@ As of the latest checked state on 2026-06-05:
 | `scripts/chunkyctl worktree --format markdown` | `PASS`, dirty entries `0`, `unknown=0` | Worktree is clean; keep future changes slice-based |
 | `moth snapshot --repo . --format markdown` | `PASS` | CodeGraph is up to date; no new complexity findings |
 | `data_health_snapshot.py --dry-run` | `green=335 / yellow=7 / red=0 / blocking_yellow=0` | No startup data-health blocker; yellow assets are maintenance debt |
-| `plan_storage_retention.py` | `candidate_count=0 / table_inventory_count=12 / policy_contract=FAIL on unknown consumer proof` | Retention is governed dry-run only; no production delete/VACUUM path is open |
+| `plan_storage_retention.py` | `candidate_count=0 / table_inventory_count=12 / policy_contract=PASS / compaction.recommended=false` | Contract is complete, but no production delete/VACUUM path is open |
+| `audit_storage_retention_consumers.py` | `PASS / audited_tables=11 / runtime_ref_tables=11` | Cleanup candidates are protected by explicit consumer evidence instead of unknown placeholders |
 | `audit_execution_surface.py --include-live-launchd` | `PASS / 0 findings` | Retired execution-surface references are not currently detected |
 | `need_coverage` | `need_027` blocked | Exact flow source evidence still missing |
 
@@ -71,7 +72,8 @@ Live gates override this section. Refresh before using the numbers as evidence.
    probes pass.
 2. **Storage/DB governance:** continue from manifest + retention dry-run toward
    owner-based retention and compact policy. No production deletion without
-   consumer evidence and rollback.
+   consumer migration/retirement evidence, copied-DuckDB validation, manifests,
+   and rollback.
 3. **Strategy/model work:** resume stage-opt and model exploration only after
    the upstream supply and data-source truth contracts are explicit.
 4. **RD-Agent(Q) follow-up research:** run a read-only deep dive after P0
