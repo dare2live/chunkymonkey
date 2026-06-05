@@ -1212,6 +1212,63 @@ def _task_requires_controller_agent_dispatch(task: str, scopes: list[str]) -> bo
     return len(scopes) >= 3
 
 
+def _task_requires_design_review_gate(task: str, scopes: list[str]) -> bool:
+    if scopes:
+        return True
+    if _task_requires_controller_agent_dispatch(task, scopes):
+        return True
+    return _task_mentions(
+        task,
+        (
+            "architecture",
+            "backtest",
+            "config",
+            "feature",
+            "flow",
+            "gcp",
+            "module",
+            "optuna",
+            "strategy",
+            "table",
+            "threshold",
+        ),
+    )
+
+
+def _design_review_gate(task: str, scopes: list[str]) -> dict[str, Any]:
+    return {
+        "required": _task_requires_design_review_gate(task, scopes),
+        "source": "docs/engineering_governance.md#design-review-gate",
+        "controller_owner": "Codex controller owns architecture, truth-source, scope, and final gate decisions",
+        "checks": [
+            {
+                "check": "first_principles",
+                "requirement": "State what must exist for real-money A-share decisions to be trustworthy",
+            },
+            {
+                "check": "occam",
+                "requirement": "Prefer an existing module/table/config owner before adding a new abstraction",
+            },
+            {
+                "check": "owner",
+                "requirement": "Assign YAML/config, data table, service module, or documented code exception ownership",
+            },
+            {
+                "check": "truth_source",
+                "requirement": "Name the authoritative source and distinguish caches, snapshots, and evidence",
+            },
+            {
+                "check": "failure_mode",
+                "requirement": "Name the 300616-style drift/leakage/data-integrity failure the change prevents or exposes",
+            },
+            {
+                "check": "gate",
+                "requirement": "Name the script or test that blocks drift before production use",
+            },
+        ],
+    }
+
+
 def _instruction_sources_from_tooling_gate(tooling_gate: dict[str, Any]) -> dict[str, Any]:
     default_sources: dict[str, Any] = {
         "active": ["AGENTS.md", "goal.md", "SESSION_HANDOFF.md", "analysis/workflow_checkpoint.md", "docs/", "Codex skills"],
@@ -1293,6 +1350,7 @@ def build_preflight_report(
         "verdict": verdict,
         "risks": risks,
         "required_gates": _gate_commands_for_task(task, scopes),
+        "design_review_gate": _design_review_gate(task, scopes),
         "controller_agent_gate": {
             "required": controller_agent_required,
             "satisfied": controller_agent_satisfied,

@@ -106,6 +106,9 @@ scripts/chunkyctl preflight "task" path... --agent-dispatch "agent:NAME scope/ev
 ```
 
 `preflight` now reuses the shared Moth-backed tooling gate for dirty/worktree/codegraph state, so the old local codegraph parser wrapper is retired with the gate.
+It also emits `design_review_gate`, which machine-surfaces the first-principles,
+Occam, owner, truth-source, failure-mode, and drift-blocking gate checks from
+`docs/engineering_governance.md`.
 The shell wrapper accepts `--agent-dispatch` and `--agent-skip-reason` in both
 positional and flag-style preflight calls; use the wrapper, not the Python
 module path, as the normal startup entrypoint.
@@ -189,6 +192,7 @@ counts alone.
 | `data_health.blocking_yellow > 0` | Inspect `blocking_yellow_tables` and let `scripts/chunkyctl doctor --fast` prioritize those before generic yellow maintenance; blocking-quality yellow assets are actionable even when the verdict is still WARN |
 | `preflight.instruction_sources.ignored_by_default` contains `CLAUDE.md` | Treat `CLAUDE.md` as legacy Claude-only history; use `AGENTS.md`, active docs, Codex skills, and live tooling as policy |
 | `.moth/profile.yaml instruction_sources.ignored_by_default` contains `CLAUDE.md` | Moth profile carries the same policy-source boundary for new sessions and raw snapshots |
+| `preflight.design_review_gate.required=true` | Answer the first-principles, Occam, owner, truth-source, failure-mode, and drift-blocking gate checks before accepting architecture/data/config/table/threshold work |
 | `preflight.controller_agent_gate.required=true` | Spawn bounded sidecar agents for independent read-only/review/RCA or disjoint worker scopes, then reconcile their output as controller evidence |
 | `preflight.risk=controller_agent_dispatch_missing` | Stop before editing and rerun preflight with `--agent-dispatch` evidence or `--agent-skip-reason`; this is a process gate, not a documentation reminder |
 | `worktree.bucket=legacy_context` | Historical Claude-only context; do not merge it into Codex controller state unless explicitly migrating legacy content |

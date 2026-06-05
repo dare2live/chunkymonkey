@@ -34,6 +34,15 @@ def test_preflight_reports_dirty_pending_and_required_gates(tmp_path: Path) -> N
     assert "complexity" in gate_names
     assert report["truth_sources"][0] == "K-line is trading truth"
     assert report["instruction_sources"]["ignored_by_default"] == ["CLAUDE.md"]
+    assert report["design_review_gate"]["required"] is True
+    assert {item["check"] for item in report["design_review_gate"]["checks"]} == {
+        "first_principles",
+        "occam",
+        "owner",
+        "truth_source",
+        "failure_mode",
+        "gate",
+    }
     test_tool_gate = next(gate for gate in report["required_gates"] if gate["gate"] == "test_tool_validity")
     assert "--scope backend/routers/updater.py --scope backend/tests/test_updater_status.py" in test_tool_gate["command"]
     assert report["controller_agent_gate"]["required"] is False
@@ -128,6 +137,7 @@ def test_preflight_does_not_match_ui_inside_build(tmp_path: Path) -> None:
 
     assert report["verdict"] == "PASS"
     assert report["risks"] == []
+    assert report["design_review_gate"]["required"] is False
     assert report["controller_agent_gate"]["required"] is False
 
 
@@ -230,6 +240,32 @@ def test_preflight_matches_ui_as_own_token(tmp_path: Path) -> None:
         },
     ]
     assert report["controller_agent_gate"]["required"] is True
+
+
+def test_preflight_requires_design_review_for_broad_work(tmp_path: Path) -> None:
+    report = chunkyctl.build_preflight_report(
+        repo=tmp_path,
+        task="architecture review for DB module boundary",
+        scopes=[],
+        tooling_gate={
+            "git_status": {"clean": True},
+            "codegraph": {"pending": {"sync_required": False, "added": 0}},
+        },
+        agent_dispatches=["agent:Peirce read-only process audit"],
+    )
+
+    assert report["verdict"] == "PASS"
+    assert report["design_review_gate"]["required"] is True
+    assert report["design_review_gate"]["source"] == "docs/engineering_governance.md#design-review-gate"
+    assert "truth-source" in report["design_review_gate"]["controller_owner"]
+    assert [item["check"] for item in report["design_review_gate"]["checks"]] == [
+        "first_principles",
+        "occam",
+        "owner",
+        "truth_source",
+        "failure_mode",
+        "gate",
+    ]
 
 
 def test_run_preflight_uses_moth_snapshot(monkeypatch, tmp_path: Path, capsys) -> None:

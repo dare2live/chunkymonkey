@@ -86,7 +86,7 @@ ebd18209 fix: govern technical-stage residual classification
 ## POST-SNAPSHOT CONTROLLER NOTE (2026-06-04 14:11 CST)
 
 - Treat `CLAUDE.md` as legacy Claude-only history. Codex policy comes from `AGENTS.md`, current docs, Codex skills, Moth evidence paths, and live tooling output unless the user explicitly asks for historical migration.
-- `chunkyctl preflight` now exposes `controller_agent_gate` and `instruction_sources`; broad audit/research/architecture/data/debug/review/spec/triage work should dispatch bounded sidecar agents or record the concrete skip reason.
+- `chunkyctl preflight` now exposes `controller_agent_gate`, `design_review_gate`, and `instruction_sources`; broad audit/research/architecture/data/debug/review/spec/triage work should dispatch bounded sidecar agents or record the concrete skip reason, and scoped architecture/data/config/table/threshold work should answer first-principles, Occam, owner, truth-source, failure-mode, and drift-blocking gate checks.
 - Latest live forecast slice: `raw_profit_forecast_snapshot_daily` now has `2026-06-04` / `2,377` stocks; `mart_forecast_upside_live` now has `2026-06-04` / `2,305` stocks. `data_health_snapshot.py --dry-run --format text` improved to `green=316 / yellow=26 / red=0 / blocking_yellow=9`.
 - Root cause fixed: `scripts/daily_update.sh` now refreshes `compute_forecast_upside_live.py` after raw forecast ingest using the same `FORECAST_SNAPSHOT_DATE`; `backend/tests/test_daily_update_model_refresh.py` locks this contract. The mart remains live shadow only, not training/backtest input.
 - Next data-health write path should be sliced, not mixed: holder/F10, GPCW derived audits, capital sync, and feature-panel tail refresh. Re-run `doctor --fast` or `data_health_snapshot.py --dry-run --format text` after each writer slice.
@@ -97,7 +97,7 @@ ebd18209 fix: govern technical-stage residual classification
 - K-line / feature-panel 已到 2026-06-04：本地 `build_price_kline_tdxhub.py --skip-existing --target-date 2026-06-04` 写入 `10,388` 行，`5,200` 股成功 / `000638` 失败；canonical K-line 为 `2022-01-01 -> 2026-06-04` / `5,203` codes。`sync_hs300_benchmark_kline.py` OK，`build_feature_panel_duck.py --mode incremental` 后 `fact_feature_panel` 为 `4,161,982` rows / `2023-01-03 -> 2026-06-04`，`feature_panel_prune_20260604_after_close` 显示两张 feature 表 `missing_signal_count=0` / `pruned_count=0`。
 - holder/F10 / GPCW / capital 本轮 blocking 切片已处理：GPCW profile/PIT audit 已刷新；capital latest 更新到 `2026-06-04T15:00:54.088424`；F10 raw 到 2026-06-04，canonical holder replay 有 2026-06-04 行，9 个 holder/plan/trade replay 索引已恢复；`mart_shareholder_plan_initial_event` 重建为 `9,677` rows / `built_at=2026-06-04T08:33:04+00:00`。
 - 本轮代码修复点：`ingest_holders_tdxhub.py` 的 replace raw replay 改成 raw-key temp table 批量删除旧 facts、跳过 holder-key 逐行 delete，并直接插入 `availability_source`，避免 DuckDB indexed delete fatal 和无索引逐行 UPDATE。相关测试 `backend/tests/test_ingest_holders_tdxhub.py` PASS。
-- Moth 已提交并推送：`ed19610 feat: preserve profile instruction sources`。GitHub repo `dare2live/moth` 为 PUBLIC，本机 `/Users/dp/.local/bin/moth` 指向 repo `.venv/bin/moth`，`moth snapshot/profile` 能输出 `instruction_sources.ignored_by_default=["CLAUDE.md"]`。
+- Moth 已提交并推送到最新：`dcb809a fix: sync ChunkyMonkey instruction sources`。GitHub repo `dare2live/moth` 为 PUBLIC，本机 `/Users/dp/.local/bin/moth` 指向 repo `.venv/bin/moth`，registry `moth profile chunkymonkey` 与 repo-local snapshot/profile 路径都能输出 `instruction_sources.ignored_by_default=["CLAUDE.md"]`。
 
 ## POST-SNAPSHOT CONTROLLER NOTE (2026-06-04 17:15 CST)
 
@@ -134,6 +134,11 @@ ebd18209 fix: govern technical-stage residual classification
 - stage-opt upstream supply contract 第一片已落地：`backend/config/stage_opt_candidate_supply.yaml` / `backend/services/stage_opt_candidate_supply.py` 现在拥有 `fact_technical_trigger` 与 `mart_macd_state_history` 的 source role、grain、eligibility、PIT status、allowed consumers、allowed stage bins 和 research-challenger formula scope override。
 - `audit_stage_opt_candidate_supply.py` 已消费该 contract 并输出 `schema_version=1` / `candidate_supply_contract`；`chunkyctl doctor` 会透传该 summary。这个切片不跑 writer、不迁表、不调 `min_signals`，所以 stage-opt 仍是 `P1 / upstream_candidate_supply` blocker；下一步如继续 stage-opt，应做 source/schema redesign，而不是 knob tuning。
 - 验证：scoped test-tool audit PASS，`py_compile` PASS，stage-opt contract/audit/chunkyctl pytest `45 passed`，`backend/tests/test_build_formula_signals.py` `23 passed`，`scripts/chunkyctl audit --run ...` PASS，target files complexity clean，CodeGraph 已 sync。
+
+## POST-SNAPSHOT CONTROLLER NOTE (2026-06-05 00:33 CST)
+
+- `chunkyctl preflight` 已新增 `design_review_gate` 机器字段，把 `docs/engineering_governance.md` 的 Design Review Gate 显式输出到 JSON：`first_principles`、`occam`、`owner`、`truth_source`、`failure_mode`、`gate`。这补齐了“第一性原理 / 奥卡姆 / 架构师视角”只在文档里的缺口。
+- Moth registry profile 已同步 repo-local instruction sources 并推送：`dcb809a fix: sync ChunkyMonkey instruction sources`；`/Users/dp/.local/bin/moth` 仍指向 repo `.venv/bin/moth`，所以本机使用的是最新 Moth。
 
 ## Resilience 配置 (verified)
 
