@@ -1,13 +1,116 @@
 import sys
+import json
 from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from conftest import duck_mem
-from scripts.data_health_snapshot import build_health_snapshot_report, compute_health_for_table, parse_date_value
+from scripts import data_health_snapshot
+from scripts.data_health_snapshot import (
+    build_health_snapshot_report,
+    compute_health_for_table,
+    open_data_health_connection,
+    parse_date_value,
+)
 from services import workbench_read
 from services.workbench_read import build_workbench_data_sources, build_workbench_storage
+
+
+def test_open_data_health_connection_uses_read_only_path(monkeypatch, tmp_path: Path):
+    db_path = tmp_path / "smartmoney.duckdb"
+    sentinel = object()
+    captured = {}
+
+    monkeypatch.setattr(data_health_snapshot, "current_db_paths", lambda: (tmp_path, db_path))
+
+    def fake_duck_connect(path: str, *, read_only: bool, timeout: int):
+        captured.update({"path": path, "read_only": read_only, "timeout": timeout})
+        return sentinel
+
+    monkeypatch.setattr(data_health_snapshot, "duck_connect", fake_duck_connect)
+
+    assert open_data_health_connection(read_only=True) is sentinel
+    assert captured == {"path": str(db_path), "read_only": True, "timeout": 30}
+
+
+def test_open_data_health_connection_write_mode_uses_default_get_conn(monkeypatch):
+    sentinel = object()
+    monkeypatch.setattr(data_health_snapshot, "get_conn", lambda: sentinel)
+
+    assert open_data_health_connection(read_only=False) is sentinel
+
+
+def test_main_dry_run_uses_read_only_connection_and_skips_writes(monkeypatch, tmp_path: Path, capsys):
+    db_path = tmp_path / "smartmoney.duckdb"
+    setup_conn = data_health_snapshot.duck_connect(str(db_path))
+    try:
+        setup_conn.execute(
+            """
+            CREATE TABLE dim_data_asset (
+                table_name TEXT,
+                layer TEXT,
+                purpose TEXT,
+                writer_module TEXT,
+                reader_modules TEXT,
+                upstream_source TEXT,
+                source_tier INTEGER,
+                expected_freshness TEXT,
+                sla_hours INTEGER,
+                consumed_by_views TEXT
+            )
+            """
+        )
+        setup_conn.execute(
+            """
+            INSERT INTO dim_data_asset VALUES (
+                'mart_test_asset',
+                'mart',
+                'test asset',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'on-demand',
+                24,
+                NULL
+            )
+            """
+        )
+        setup_conn.execute("CREATE TABLE mart_test_asset (id INTEGER)")
+        setup_conn.execute("INSERT INTO mart_test_asset VALUES (1)")
+        setup_conn.commit()
+    finally:
+        setup_conn.close()
+
+    monkeypatch.setattr(data_health_snapshot, "current_db_paths", lambda: (tmp_path, db_path))
+    monkeypatch.setattr(
+        data_health_snapshot,
+        "ensure_asset_deprecation_columns",
+        lambda _con: (_ for _ in ()).throw(AssertionError("dry-run must not run DDL")),
+    )
+    monkeypatch.setattr(
+        data_health_snapshot,
+        "record_pipeline_run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("dry-run must not record pipeline runs")),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["data_health_snapshot.py", "--dry-run", "--format", "json"],
+    )
+
+    assert data_health_snapshot.main() == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["dry_run"] is True
+    assert payload["summary"] == {
+        "blocking_yellow": 0,
+        "green": 1,
+        "red": 0,
+        "total": 1,
+        "yellow": 0,
+    }
 
 
 def test_parse_date_value_accepts_compact_utc_timestamp():

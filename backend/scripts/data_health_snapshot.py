@@ -35,8 +35,9 @@ log = logging.getLogger("data-health")
 
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO / "backend"))
-from services.db import get_conn  # noqa: E402
+from services.db import current_db_paths, get_conn  # noqa: E402
 from services.data_sources.clients_registry import get_table_metadata  # noqa: E402
+from services.duck_adapter import connect as duck_connect  # noqa: E402
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso  # noqa: E402
 
 
@@ -118,6 +119,13 @@ def ensure_asset_deprecation_columns(con) -> None:
             msg = str(exc).lower()
             if "duplicate" not in msg and "already exists" not in msg:
                 raise
+
+
+def open_data_health_connection(*, read_only: bool = False):
+    if not read_only:
+        return get_conn()
+    _, db_path = current_db_paths()
+    return duck_connect(str(db_path), read_only=True, timeout=30)
 
 
 def parse_date_value(raw) -> Optional[datetime]:
@@ -529,18 +537,20 @@ def main() -> int:
     run_started_at = utc_now_iso()
     run_t0 = time.perf_counter()
 
-    con = get_conn()
+    con = open_data_health_connection(read_only=args.dry_run)
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    ensure_asset_deprecation_columns(con)
+    if not args.dry_run:
+        ensure_asset_deprecation_columns(con)
 
     # 拉所有登记的资产
     asset_columns = set(get_table_columns(con, "dim_data_asset"))
     base_cols = [
         "table_name", "layer", "purpose", "writer_module", "reader_modules",
         "upstream_source", "source_tier", "expected_freshness", "sla_hours",
-        "consumed_by_views", "deprecation_status", "replacement_table",
+        "consumed_by_views",
     ]
     optional_cols = [
+        "deprecation_status", "replacement_table",
         "asset_grain", "asset_cadence", "coverage_policy", "null_policy",
         "pit_policy", "intended_use", "model_eligibility",
         "strategy_eligibility", "frontend_visibility", "quality_gate_level",

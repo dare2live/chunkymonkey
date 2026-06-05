@@ -147,6 +147,13 @@ ebd18209 fix: govern technical-stage residual classification
 - 新增可调用本地 skill `/Users/dp/.codex/skills/architect-controller/SKILL.md`，用于架构设计、总指挥、多 agent 编排、模糊需求拆解、地基优先、第一性原理/奥卡姆/证伪审查。全局 `/Users/dp/.codex/AGENTS.md`、`chunkymonkey-governance` skill、项目 `AGENTS.md`、`docs/chunkyctl_session_quickstart.md` 均已指向 `$architect-controller`。
 - `.moth/profile.yaml` 已新增 `evidence_paths.skill_architect_controller`，让 Moth snapshot 和 ChunkyMonkey profile 能发现该 skill；Moth 仍只负责 shared tooling/evidence paths，不拥有 stage-opt、need_027、storage_payload、data_health 等业务 gate。
 
+## POST-SNAPSHOT CONTROLLER NOTE (2026-06-05 09:36 CST)
+
+- Codex app 更新后复查：当前未提交补丁仍存在；旧 `chunkyctl doctor` / `moth snapshot` / complexity scan 孤儿进程已清理。本轮继续按 controller 模式派只读 sidecar 复核 Moth 和 ChunkyMonkey diff，Codex 负责最终取舍、门禁和提交。
+- Moth complexity diff 已改为正常 compare + path normalization：不再用 top-level path root 判断 baseline 不兼容；repo 内绝对路径会归一到相对路径，避免同源 finding 漂移。本机 ignored baseline `data/reports/tooling/complexity_baseline.json` 已刷新到当前全仓 scanner scope（80 条 `assets` findings），live snapshot 应为 `complexity.diff.status=compared` / `new_high_count=0`。
+- `data_health_snapshot.py --dry-run` 已改为 read-only DuckDB 连接并跳过 DDL，避免 dry-run 抢写锁；复验 `--dry-run --format json` 为 `green=325 / yellow=17 / red=0`。这只修 dry-run 门禁路径，17 个 yellow 仍是 warning-only data-health debt。
+- 本轮架构检查没有发现 `no2` 循环快照、压缩备份副本或快照反复落盘导致的 P0 DB 膨胀；storage 仍为 `WARN`，当前 3 条 payload WARN 归 formula/picture evidence payload。下一优先级保持：retention/compact 设计、`need_027` exact-flow、stage-opt upstream supply。
+
 ## Resilience 配置 (verified)
 
 | 机制 | 状态 |
