@@ -10,7 +10,6 @@
 #   holdings   — 当前持仓 + 盈亏 (paper_sim 实测)
 #   kpi        — KPI 矩阵 (mart_paper_sim_kpi all runs)
 #   sync       — 各 source health (mart_data_source_watermark)
-#   gcp        — GCP VM status + retrain log tail + F2 best params
 #   retrain    — retrain 触发条件预览 (alpha_decay + IS_QUARTER_START)
 #   promote    — list P3 PASS candidate
 #   resume     — alias bash scripts/cm_resume.sh (中断恢复)
@@ -36,7 +35,6 @@ Usage:
   cm holdings           当前持仓
   cm kpi [--limit N]    KPI 矩阵 (default 10 latest)
   cm sync               sync status (各 source)
-  cm gcp                GCP VM + retrain status
   cm retrain --dry      retrain trigger 条件预览
   cm promote            P3 PASS candidate list
   cm resume             中断恢复 (bash cm_resume.sh)
@@ -112,28 +110,6 @@ con.close()
 "
 }
 
-cm_gcp() {
-    if [[ "${CHUNKYMONKEY_GCP_EXPLICIT_OK:-0}" != "1" ]]; then
-        echo "GCP controlled-use: cloud commands require CHUNKYMONKEY_GCP_EXPLICIT_OK=1."
-        echo "启动前先明确 scope、预计耗时/成本、输入输出、artifact 保存和 stop/rollback。"
-        return 3
-    fi
-    echo "=== GCP VM status ==="
-    gcloud compute instances describe chunkymonkey-optuna --zone=us-central1-a --format='value(status,lastStartTimestamp,lastStopTimestamp)' 2>&1 | head -3
-    echo ""
-    MODEL_ID=$(cat "$REPO_ROOT/data/reports/phase5_chain/model_id.txt" 2>/dev/null | head -1)
-    echo "current retrain model_id: $MODEL_ID"
-    echo ""
-    F2="$REPO_ROOT/data/reports/optuna/${MODEL_ID}.best.json"
-    if [ -f "$F2" ]; then
-        echo "=== F2 checkpoint best (local) ==="
-        python3 -c "import json; d=json.load(open('$F2')); print(f'best_trial=#{d[\"best_trial_number\"]} value={d[\"best_value\"]:.4f} updated={d[\"updated_at\"]}')"
-    fi
-    echo ""
-    echo "=== probe.log (主动 monitor) ==="
-    tail -5 ~/.cm_monitor/probe.log 2>&1 | head -5
-}
-
 cm_retrain() {
     DRY=0
     [[ "$1" == "--dry" ]] && DRY=1
@@ -150,13 +126,16 @@ cm_retrain() {
         echo "  Trigger 1 (event-driven): alpha_decay 检测 (rank_ic 最近 4 windows 连降)"
         echo "  Trigger 2 (quarterly): DOM=1 of Jan/Apr/Jul/Oct"
         echo ""
-        echo "  手工触发命令:"
-        echo "    GCP: bash scripts/gcp_stability_retrain.sh          # controlled-use stability search"
-        echo "    Mac local: bash scripts/local_retrain.sh             # ~10-14h"
+        echo "  先登记 job plan:"
+        echo "    scripts/chunkyctl jobs --family model_training --model-id lgbm_<yyyymmdd> \\"
+        echo "      --input-snapshot smartmoney.duckdb@<date> --objective '<why>' --rollback-plan '<stop/discard plan>' \\"
+        echo "      --gate-evidence leakage_audit=<artifact> --gate-evidence train_log_integrity=<artifact> --gate-evidence phase4_gate=<artifact>"
+        echo "  手工触发:"
+        echo "    先确认 job plan 的 required gates / artifact_contracts，再运行对应训练脚本；cm 不自动触发 retrain。"
         return
     fi
     echo "[cm retrain] 当前不支持自动 trigger, 用 --dry 看条件"
-    echo "手工触发: bash scripts/gcp_stability_retrain.sh"
+    echo "先登记: scripts/chunkyctl jobs --family model_training --model-id lgbm_<yyyymmdd> --input-snapshot smartmoney.duckdb@<date> --objective '<why>' --rollback-plan '<stop/discard plan>' --gate-evidence leakage_audit=<artifact> --gate-evidence train_log_integrity=<artifact> --gate-evidence phase4_gate=<artifact>"
 }
 
 cm_promote() {
@@ -209,7 +188,6 @@ case "$CMD" in
     holdings|h)     cm_holdings ;;
     kpi|k)          cm_kpi "$@" ;;
     sync|s)         cm_sync ;;
-    gcp|g)          cm_gcp ;;
     retrain|r)      cm_retrain "$@" ;;
     promote|p)      cm_promote ;;
     resume)         cm_resume ;;

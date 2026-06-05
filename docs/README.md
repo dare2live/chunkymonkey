@@ -4,9 +4,11 @@ This is the active documentation map. The project keeps `docs/` to 10 current
 markdown files; dated research, RCA, handoffs, old plans, and superseded specs
 belong in `analysis/`.
 
-The core rule is separation of concerns: `goal.md` is the live status ledger,
-this directory holds durable rules/contracts/specs, and `analysis/` holds dated
-evidence. Do not copy the same status table into multiple docs.
+The core rule is separation of concerns: `goal.md` is the compact live
+controller board, `analysis/project_state_ledger.md` is the historical status
+and completed-work ledger, this directory holds durable rules/contracts/specs,
+and `analysis/` holds dated evidence. Do not copy the same status table into
+multiple docs.
 
 ## Authority Order
 
@@ -16,12 +18,12 @@ but they do not override the active contracts.
 | Priority | Document | Role |
 |---:|---|---|
 | 1 | `../AGENTS.md` | Codex operating policy for this repo |
-| 2 | `../goal.md` | Current FAIL/WARN ledger, priorities, and next actions |
+| 2 | `../goal.md` | Current phase objective, priority board, active blockers, and next actions |
 | 3 | `chunkyctl_session_quickstart.md` | New-session startup contract |
 | 4 | `PROJECT_CONSTITUTION.md` | Highest project rules and truth-source doctrine |
-| 5 | `engineering_governance.md` | Engineering gates, deletion, agents, CodeGraph, complexity, GCP |
+| 5 | `engineering_governance.md` | Engineering gates, deletion, agents, CodeGraph, complexity, provider jobs |
 | 6 | `data_product_contract.md` | Data needs, lineage, profiles, UI contract |
-| 7 | `strategy_validation_contract.md` | Strategy validation, Optuna/GCP, promotion contract |
+| 7 | `strategy_validation_contract.md` | Strategy validation, Optuna/provider jobs, promotion contract |
 | 8 | `architecture_reform_context.md` | 300616 sentinel case and why governance comes first |
 | 9 | `implementation_plan.md` | Durable execution order, gates, and acceptance criteria |
 
@@ -29,8 +31,9 @@ but they do not override the active contracts.
 
 | Document | Role |
 |---|---|
+| `../analysis/project_state_ledger.md` | Historical completed-work/status ledger. Query by `rg`/`tail`; do not read start-to-finish during startup. |
 | `../SESSION_HANDOFF.md` | Runtime snapshot. It may contain legacy Claude automation text; use facts only, not policy, when it conflicts with current Codex docs. |
-| `../analysis/workflow_checkpoint.md` | Historical pipeline/business checkpoint. Use as evidence of prior runs, not permission to resume business work. |
+| `../analysis/workflow_checkpoint.md` | Active-pipeline checkpoint only when it says active. Otherwise it is an inactive stub or historical evidence pointer. |
 | `../analysis/handoff_*.md` | Dated handoff evidence. The latest relevant file can guide current work only when consistent with `goal.md` and active docs. |
 
 ## Active Docs
@@ -41,10 +44,10 @@ but they do not override the active contracts.
 | `PROJECT_CONSTITUTION.md` | Constitution: truth sources, architecture layers, hard gates |
 | `architecture_reform_context.md` | 300616 sentinel history and systemic failure lessons |
 | `chunkyctl_session_quickstart.md` | Durable startup and controller workflow |
-| `implementation_plan.md` | Durable execution plan; current status remains in `../goal.md` |
-| `engineering_governance.md` | Design review, CodeGraph + complexity, tests, agents, GCP, deletion policy |
+| `implementation_plan.md` | Durable execution plan; current phase board remains in `../goal.md` and completed evidence in `../analysis/project_state_ledger.md` |
+| `engineering_governance.md` | Design review, CodeGraph + complexity, tests, agents, provider-job, deletion policy |
 | `data_product_contract.md` | Data needs, lineage, profiles, market perception support, frontend contract |
-| `strategy_validation_contract.md` | Backtest, Optuna/GCP, paper_sim, forward, and promotion contract |
+| `strategy_validation_contract.md` | Backtest, Optuna/provider jobs, paper_sim, forward, and promotion contract |
 | `chip_distribution_cyq_spec.md` | Active CYQ algorithm/detail spec for main-force profile and 主升浪 validation |
 | `zhushenglang_hunter_research_log_20260528.md` | 主升浪猎手 product north star and research evidence; not production proof |
 
@@ -52,7 +55,8 @@ but they do not override the active contracts.
 
 | Case | Action |
 |---|---|
-| Current state, priorities, FAIL/WARN, next work | Update `../goal.md` |
+| Current objective, priorities, active blockers, next work | Update `../goal.md` |
+| Completed work, historical state, detailed validation evidence | Append or move to `../analysis/project_state_ledger.md` or a dated `../analysis/` artifact |
 | Durable rule/design contract | Keep in one of the 10 active docs |
 | Execution order, phase boundaries, acceptance criteria | Update `implementation_plan.md` |
 | New topic that fits an active owner | Extend the owner doc instead of creating a new doc |
@@ -65,7 +69,7 @@ but they do not override the active contracts.
 | Rule | Reason |
 |---|---|
 | Active docs should be stable enough to survive a new session | Avoid stale 2026-xx status misleading future work |
-| Put exact PASS/WARN/FAIL numbers in `goal.md` unless they are immutable historical evidence | Prevent duplicated status drift |
+| Put only the latest accepted gate summary in `goal.md`; detailed PASS/WARN/FAIL evidence goes to the ledger or dated artifacts | Prevent duplicated status drift and startup bloat |
 | Put old but useful details in `analysis/` with a dated filename | Preserve evidence without treating it as policy |
 | Do not keep obsolete text as comments, disabled sections, or "for later" docs | Residue becomes false authority |
 | Large research logs may stay active only when they are a named north star/spec and clearly marked non-production proof | Keeps 主升浪/CYQ usable without overclaiming |
@@ -97,11 +101,11 @@ Current target:
 
 | New active doc | Superseded / archived docs |
 |---|---|
-| `engineering_governance.md` | Former top-level design, test-tool, agent-parallel, tooling, GCP, and deprecation docs |
+| `engineering_governance.md` | Former top-level design, test-tool, agent-parallel, tooling, provider-job, and deprecation docs |
 | `data_product_contract.md` | Former lineage, profile, technical, incremental, market-perception, stock-graph, UI, and trade-date migration docs |
 | `strategy_validation_contract.md` | Former backtester, leakage, paper-sim, forward, phase4, retrain, SUE, MSAF, and stock-scheme docs |
 | `implementation_plan.md` | Current durable roadmap only; detailed slice progress moved back to `../goal.md` |
-| `architecture_reform_context.md` | Stable 300616 rationale only; old current-status and GCP-cost snapshots removed from active authority |
+| `architecture_reform_context.md` | Stable 300616 rationale only; old current-status and provider-cost snapshots removed from active authority |
 
 ## Recent Cleanup Ledger
 
@@ -140,7 +144,7 @@ Archive notes:
 | `docs/top_level_design_review.md` | Archived as `../analysis/docs_archive_20260531/top_level_design_review.md`; active rules in `engineering_governance.md` |
 | `docs/test_tool_governance.md` | Archived as `../analysis/docs_archive_20260531/test_tool_governance.md`; active rules in `engineering_governance.md` |
 | `docs/tooling_update_review_20260527.md` | Archived as `../analysis/docs_archive_20260531/tooling_update_review_20260527.md`; active rules in `engineering_governance.md` |
-| `docs/gcp_controlled_execution_runbook.md` | Archived as `../analysis/docs_archive_20260531/gcp_controlled_execution_runbook.md`; active rules in `engineering_governance.md` |
+| `docs/gcp_controlled_execution_runbook.md` | Archived as `../analysis/docs_archive_20260531/gcp_controlled_execution_runbook.md`; historical evidence only |
 | `docs/deprecation_sop.md` | Archived as `../analysis/docs_archive_20260531/deprecation_sop.md`; active rules in `engineering_governance.md` |
 | `docs/data_lineage_spec.md` | Archived as `../analysis/docs_archive_20260531/data_lineage_spec.md`; active rules in `data_product_contract.md` |
 | `docs/profile_lineage_roadmap.md` | Archived as `../analysis/docs_archive_20260531/profile_lineage_roadmap.md`; active rules in `data_product_contract.md` |

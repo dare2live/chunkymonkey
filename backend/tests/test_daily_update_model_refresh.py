@@ -13,10 +13,10 @@ def test_daily_update_shell_syntax_valid():
     assert result.returncode == 0, result.stderr
 
 
-def test_step4_model_refresh_branches_and_cost_control_are_wired():
+def test_step4_model_refresh_branches_and_job_contract_are_wired():
     """Verify Step 4 wired with event-driven (alpha_decay) + quarterly fallback (DOM=1 Jan/Apr/Jul/Oct).
-    GCP retrain 改全手工触发 (user push back 2026-05-18), 不在 daily_update 自动调.
-    旧 cron Monday DOW=1 + GCP auto retrain 已 deprecated, 替换 IS_QUARTER_START.
+    Heavy retrain 改全手工触发 (user push back 2026-05-18), 不在 daily_update 自动调.
+    旧 cron Monday DOW=1 + auto retrain 已 deprecated, 替换 IS_QUARTER_START.
     """
     text = SCRIPT.read_text(encoding="utf-8")
 
@@ -30,8 +30,10 @@ def test_step4_model_refresh_branches_and_cost_control_are_wired():
     assert "IS_QUARTER_START" in text  # quarterly fallback
     assert 'DOM' in text  # day-of-month check
 
-    # GCP retrain 改手工触发 — 文档化提示用户手工跑命令
-    assert "run_phase5_extended_retrain.sh" in text or "retrain_lambdamart_v6.py" in text
+    # Heavy retrain 改手工触发，并先登记 provider-neutral job plan.
+    assert "scripts/chunkyctl jobs --family model_training" in text
+    assert "retrain_lambdamart_v6.py" in text
+    assert "CHUNKYMONKEY_GCP" not in text
 
 
 def test_profit_forecast_snapshot_also_refreshes_live_shadow_mart():

@@ -518,58 +518,24 @@ def test_p3_acceptance_falls_back_to_pit_audit(tmp_path):
     assert p3["source"] == "pit_audit_fallback"
 
 
-def test_gcp_controlled_idle_status_makes_cost_control_pass(tmp_path, monkeypatch):
-    status_dir = tmp_path / "data" / "reports" / "phase5_chain"
-    status_dir.mkdir(parents=True)
-    (status_dir / "status.json").write_text(json.dumps({
-        "step": "gcp_disabled",
-        "status": "TERMINATED",
-    }))
-    monkeypatch.setattr(audit, "REPO_ROOT", tmp_path)
-
-    result = audit.check_gcp_cost_control()
+def test_compute_backend_control_uses_experiment_job_contract():
+    result = audit.check_compute_backend_control()
 
     assert result["pct"] == 100
-    assert result["alert_level"] == "CONTROLLED_USE_IDLE"
-    assert result["policy"] == "controlled_use_requires_explicit_latch"
-    assert result["vm_status"] == "TERMINATED"
-    assert result["source"] == "phase5_chain_controlled_idle"
+    assert result["active_backends"] == ["local"]
+    assert "modal" in result["planned_backends"]
+    assert {"data_validation", "backtest_validation", "model_training", "parameter_search"}.issubset(
+        set(result["job_families"])
+    )
+    assert result["source"] == "backend/config/experiment_jobs.yaml"
 
 
-def test_gcp_running_cost_summary_overrides_legacy_controlled_idle(tmp_path, monkeypatch):
-    status_dir = tmp_path / "data" / "reports" / "phase5_chain"
-    status_dir.mkdir(parents=True)
-    (status_dir / "status.json").write_text(json.dumps({
-        "step": "gcp_disabled",
-        "status": "TERMINATED",
-    }))
-    reports_dir = tmp_path / "data" / "reports"
-    (reports_dir / "gcp_cost_summary.json").write_text(json.dumps({
-        "checked_at": "2026-05-21T14:11:09+08:00",
-        "vm_status": "RUNNING",
-        "alert_level": "OK",
-        "pct_of_budget": 63.3,
-        "projected_month_cost": 6.3302,
-        "remaining_budget_usd": 5.9154,
-        "remaining_hours_at_spot": 15.73,
-    }))
-    monkeypatch.setattr(audit, "REPO_ROOT", tmp_path)
-
-    result = audit.check_gcp_cost_control()
-
-    assert result["pct"] == 100
-    assert result["alert_level"] == "OK"
-    assert result["vm_status"] == "RUNNING"
-    assert result["pct_of_budget"] == 63.3
-    assert result["source"] == "gcp_cost_summary"
-
-
-def test_daily_automation_uses_active_cost_report_over_legacy_idle(tmp_path, monkeypatch):
+def test_daily_automation_uses_compute_backend_contract(tmp_path, monkeypatch):
     scripts_dir = tmp_path / "scripts"
     scripts_dir.mkdir(parents=True)
     (scripts_dir / "daily_update.sh").write_text(
         "\n".join([
-            "Step 0: GCP cost tracker",
+            "Step 0: experiment job contract",
             "run_phase4_gate_on_msaf.py",
             "Step 2c: alpha158",
             "STEP6_GATE_OK",
@@ -577,17 +543,6 @@ def test_daily_automation_uses_active_cost_report_over_legacy_idle(tmp_path, mon
             "backend/scripts/promote_champion.py --p3-run-id p3_latest",
         ])
     )
-    status_dir = tmp_path / "data" / "reports" / "phase5_chain"
-    status_dir.mkdir(parents=True)
-    (status_dir / "status.json").write_text(json.dumps({
-        "step": "gcp_disabled",
-        "status": "TERMINATED",
-    }))
-    reports_dir = tmp_path / "data" / "reports"
-    (reports_dir / "gcp_cost_summary.json").write_text(json.dumps({
-        "vm_status": "RUNNING",
-        "alert_level": "OK",
-    }))
     monkeypatch.setattr(audit, "REPO_ROOT", tmp_path)
 
     import subprocess
@@ -603,11 +558,8 @@ def test_daily_automation_uses_active_cost_report_over_legacy_idle(tmp_path, mon
 
     result = audit.check_daily_automation()
 
-    assert result["gcp_controlled_idle"] is False
-    assert result["gcp_cost_report_active"] is True
-    assert result["gcp_cost_report_alert"] == "OK"
-    assert result["gcp_cost_report_vm_status"] == "RUNNING"
-    assert result["cost_loaded"] is False
+    assert result["step_0_contract"] is True
+    assert result["compute_backend_control"]["verdict"] == "PASS"
     assert result["pct"] >= 90
 
 

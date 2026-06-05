@@ -1083,7 +1083,7 @@ Regime gate:
 |---|---|
 | [docs/chip_distribution_cyq_spec.md](chip_distribution_cyq_spec.md) | 已存在(615 行 CYQ spec) |
 | [docs/zhushenglang_hunter_research_log_20260528.md](zhushenglang_hunter_research_log_20260528.md) | **本文档** |
-| 当前 strategy validation contract | 当前 Optuna/GCP/回测/promotion 治理规则；以 docs map 指向的 active contract 为准 |
+| 当前 strategy validation contract | 当前 Optuna/provider/回测/promotion 治理规则；以 docs map 指向的 active contract 为准 |
 | 当前 engineering governance contract | 当前 Codex skill、CodeGraph、complexity、删除和测试工具规则；以 docs map 指向的 active contract 为准 |
 
 ### Backfill 数据(已落入 production DB)

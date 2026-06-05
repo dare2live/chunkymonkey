@@ -3,11 +3,10 @@
 #
 # 输出:
 # 1. audit_delivery_readiness 6 criteria 当前 %
-# 2. Phase 5 retrain 进度 (trial / score / ETA)
-# 3. watcher PID alive check
+# 2. Local model-training process
+# 3. Compute backend contract
 # 4. cron entries 状态
-# 5. GCP cost + VM status
-# 6. 关键 background processes
+# 5. 关键 background processes
 
 set -uo pipefail
 
@@ -25,96 +24,57 @@ PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py 2>&1 | \
     grep -E "PASS|WARN|FAIL|均值" | head -10
 echo ""
 
-# 2. Phase 5 retrain
-echo "--- Phase 5 retrain (PID 79023) ---"
-RETRAIN_PID=$(pgrep -f "retrain_lambdamart_v6.py.*lgbm_phase5_" | head -1 || true)
+# 2. Local model training
+echo "--- local model training ---"
+RETRAIN_PID=$(pgrep -f "retrain_lambdamart_v6.py" | head -1 || true)
 if [[ -n "$RETRAIN_PID" ]]; then
     echo "  PID $RETRAIN_PID alive: $(ps -p $RETRAIN_PID -o stat,etime 2>/dev/null | tail -1 || echo 'unknown')"
-    LATEST_TRIAL=$(grep -E "Trial [0-9]+ finished|Trial [0-9]+ pruned" /tmp/phase5_retrain_mac.log 2>/dev/null | tail -1 || echo "no trials logged yet")
-    echo "  latest: $LATEST_TRIAL"
-    BEST_SO_FAR=$(grep -oE "Best is trial [0-9]+ with value: [0-9.]+" /tmp/phase5_retrain_mac.log 2>/dev/null | tail -1 || echo "no best yet")
-    echo "  $BEST_SO_FAR"
 else
-    echo "  retrain PID not running (already done OR not started)"
+    echo "  retrain PID not running"
     LATEST_MODEL=$(PYTHONPATH=backend python -c "
 import duckdb
 con = duckdb.connect('data/smartmoney.duckdb', read_only=True)
 try:
-    r = con.execute(\"SELECT model_id, COUNT(DISTINCT signal_date) FROM mart_p0b_oos_predictions WHERE model_id LIKE 'lgbm_phase5_%' GROUP BY model_id ORDER BY COUNT(DISTINCT signal_date) DESC LIMIT 1\").fetchone()
+    r = con.execute(\"SELECT model_id, COUNT(DISTINCT signal_date) FROM mart_p0b_oos_predictions GROUP BY model_id ORDER BY COUNT(DISTINCT signal_date) DESC LIMIT 1\").fetchone()
     if r: print(f'{r[0]} ({r[1]} dates)')
-    else: print('no phase5 model')
+    else: print('no prediction model')
 except Exception as e: print(f'lookup err: {e}')
 finally: con.close()
 " 2>/dev/null)
-    echo "  latest phase5 model: $LATEST_MODEL"
+    echo "  latest prediction model: $LATEST_MODEL"
 fi
 echo ""
 
-# 3. Watcher
-echo "--- watcher process ---"
-WATCHER_PID=$(pgrep -f "watch_phase5_retrain_and_post.sh" | head -1 || true)
-if [[ -n "$WATCHER_PID" ]]; then
-    echo "  watcher PID $WATCHER_PID alive: $(ps -p $WATCHER_PID -o stat,etime 2>/dev/null | tail -1 || echo 'unknown')"
-else
-    echo "  watcher NOT running (retrain 完后 post-retrain 须手动: bash scripts/run_phase5_post_retrain.sh)"
-fi
-echo ""
-
-# 4. cron entries
+# 3. cron entries
 echo "--- crontab automation ---"
 CRON_COUNT=$(crontab -l 2>/dev/null | grep -cE "^(\*/[0-9]+|[0-9]+) [0-9*]" || echo 0)
-echo "  cron entries installed: $CRON_COUNT (期望 4: daily/nightly/session/workflow; GCP cost cron disabled)"
-if [[ "$CRON_COUNT" -lt 4 ]]; then
+echo "  cron entries installed: $CRON_COUNT (expected config: daily/nightly/codex/workflow/log-rotate)"
+if [[ "$CRON_COUNT" -lt 5 ]]; then
     echo "  ACTION: bash configs/cron/install.sh install  (FDA-free 自动化)"
 fi
 echo ""
 
-# 5. GCP
-echo "--- GCP policy ---"
-if python3 - "$REPO_ROOT/data/reports/phase5_chain/status.json" <<'PY'
-import json
-import sys
+# 4. Compute backend
+echo "--- compute backend contract ---"
+PYTHONPATH=backend python - <<'PY' 2>/dev/null || echo "  experiment_jobs contract unavailable"
+from services.experiment_jobs import load_experiment_job_contract
 
-path = sys.argv[1]
-try:
-    d = json.load(open(path))
-except Exception:
-    sys.exit(1)
-
-if d.get("step") != "gcp_disabled":
-    sys.exit(1)
-
-print("  Mode: CONTROLLED_USE_IDLE")
-print(f"  VM status: {d.get('status', 'UNKNOWN')}")
-print("  Cloud query: skipped")
-print(f"  Safety latch: {d.get('requires_explicit_enable_env', 'CHUNKYMONKEY_GCP_EXPLICIT_OK=1')}")
+contract = load_experiment_job_contract()
+for backend_id, backend in sorted(contract.backends.items()):
+    print(f"  {backend_id}: status={backend.status} mode={backend.execution_mode}")
+print("  job families:", ", ".join(sorted(contract.families)))
 PY
-then
-    :
-elif [[ -f "$REPO_ROOT/data/reports/gcp_cost_summary.json" ]]; then
-    echo "  GCP controlled-use status missing; showing stale local cost summary only"
-    python3 -c "
-import json
-d = json.load(open('$REPO_ROOT/data/reports/gcp_cost_summary.json'))
-print(f\"  VM status: {d.get('vm_status', 'UNKNOWN')}\")
-print(f\"  Alert: {d.get('alert_level', 'UNKNOWN')}\")
-print(f\"  Budget: {d.get('pct_of_budget', '?')}% used\")
-print(f\"  Projected month: \${d.get('projected_month_cost', '?')}\")
-"
-else
-    echo "  cost_summary.json 不存在；GCP controlled-use, 不自动运行 cost_tracker"
-fi
 echo ""
 
-# 6. Background processes
+# 5. Background processes
 echo "--- relevant background processes ---"
-pgrep -af "retrain_lambdamart|watch_phase5|build_institution|build_sniper|panel_v4" 2>/dev/null | head -5 || echo "  none"
+pgrep -af "retrain_lambdamart|build_institution|build_sniper|panel_v4" 2>/dev/null | head -5 || echo "  none"
 
 echo ""
 echo "=========================================="
 echo "Next actions (if not in cron):"
 echo "  daily update:        bash scripts/daily_update.sh"
 echo "  audit:               PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py"
-echo "  cost check:          GCP controlled-use; commands require CHUNKYMONKEY_GCP_EXPLICIT_OK=1"
+echo "  compute plan:        scripts/chunkyctl jobs --family model_training --model-id <id> --input-snapshot <snapshot> --objective <why> --rollback-plan <plan> --gate-evidence <gate>=<artifact>"
 echo "  cron install:        bash configs/cron/install.sh install"
 echo "=========================================="

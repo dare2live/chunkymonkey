@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """Model Monitor Dashboard — 模型 + 策略全指标监控台 (用户 push back 2026-05-18).
 
-用户原话: 'gcp 设计成手工触发吧, 系统里做好相关指标监控, 做个模型监控台之类的功能'
-
 展示:
 1. 当前 champion model_id + KPI (P3 ann/max_dd/月胜 / MSAF median/sharpe/hit)
 2. 最近 8 个 OOS windows rank_ic 时序 (alpha decay 检测)
 3. 模型 retrain 频率 + 上次 retrain 日期 + 下次建议 retrain (event-driven + quarterly)
 4. Top-K daily portfolio (latest signal_date)
 5. Stale data sources (SLA alert)
-6. GCP 月度 cost burn + budget %
+6. Compute backend contract (active/planned job backends)
 7. 交付标准 6 项 % audit
 
 Usage:
@@ -156,17 +154,20 @@ def get_stale_sources(audit_path: Path) -> dict:
     }
 
 
-def get_gcp_cost(report_path: Path) -> dict:
-    """GCP 月度 cost burn + budget."""
-    if not report_path.exists():
-        return {"error": "gcp_cost_summary.json 不存在, 跑 bash gcp/cost_tracker.sh"}
-    d = json.loads(report_path.read_text())
+def get_compute_backend_contract() -> dict:
+    """Compute backend contract from experiment_jobs."""
+    try:
+        from services.experiment_jobs import load_experiment_job_contract
+
+        contract = load_experiment_job_contract()
+    except Exception as e:
+        return {"error": str(e)}
+    report = contract.to_report()
+    backends = report.get("backends", {})
     return {
-        "vm_status": d.get("vm_status"),
-        "alert_level": d.get("alert_level"),
-        "pct_of_budget": d.get("pct_of_budget"),
-        "projected_month": d.get("projected_month_cost"),
-        "remaining_hours_at_spot": d.get("remaining_hours_at_spot"),
+        "active_backends": [key for key, value in backends.items() if value.get("status") == "active"],
+        "planned_backends": [key for key, value in backends.items() if value.get("status") == "planned"],
+        "job_families": sorted(report.get("families", {}).keys()),
     }
 
 
@@ -198,7 +199,7 @@ def main() -> int:
             "retrain_recommendation": get_retrain_recommendation(con),
             "latest_top_k": get_latest_top_k(con),
             "stale_sources": get_stale_sources(REPO_ROOT / "data" / "audit" / "watermark_sla_latest.json"),
-            "gcp_cost": get_gcp_cost(REPO_ROOT / "data" / "reports" / "gcp_cost_summary.json"),
+            "compute_backend": get_compute_backend_contract(),
             "delivery_readiness": get_delivery_readiness(REPO_ROOT / "data" / "reports" / "delivery_readiness.json"),
         }
     finally:
@@ -245,13 +246,11 @@ def main() -> int:
             for s in ss["stale_sources"]:
                 log.info(f"    {s}")
         log.info("")
-        log.info("--- GCP Cost ---")
-        gc = dashboard["gcp_cost"]
-        log.info(f"  vm_status: {gc.get('vm_status')}")
-        log.info(f"  alert: {gc.get('alert_level')}")
-        log.info(f"  pct_of_budget: {gc.get('pct_of_budget')}%")
-        log.info(f"  projected_month: ${gc.get('projected_month')}")
-        log.info(f"  remaining_hours_at_spot: {gc.get('remaining_hours_at_spot')}h")
+        log.info("--- Compute Backend ---")
+        cb = dashboard["compute_backend"]
+        log.info(f"  active: {cb.get('active_backends')}")
+        log.info(f"  planned: {cb.get('planned_backends')}")
+        log.info(f"  families: {cb.get('job_families')}")
         log.info("")
         log.info("--- Delivery Readiness ---")
         dr = dashboard["delivery_readiness"]

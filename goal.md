@@ -1,726 +1,104 @@
 # ChunkyMonkey Goal
 
-> 这是当前目标的权威入口。每当新的验证结果、数据源状态、门禁结果或 blocker 发生变化，必须先更新本文件和对应 handoff，再继续沿用旧计划，避免在过期目标上循环。
-
-## 2026-06-04 — Codex controller gate and data-health freshness blockers
-
-- 2026-06-05 10:37 CST 已按总控模式完成同花顺 / 通达信 / TuShare 数据源阶段研究并落证据到 `analysis/data_source_selection_20260605.md`。结论按用途拆分：`need_027` exact-flow 的最小可逆下一步是 TuShare token-backed 只读三股 probe（`600519`、`000001`、`300750`）映射到现有主力/超大/大/中/小单契约；同花顺/iFinD 或同花顺语义 MCP 更适合产业链、题材、热榜、龙头扩散，但必须先做 daily PIT snapshot contract；通达信 MCP/xmtdx 保留低成本行情/板块/资金流实验候选，不能直接升为 `need_027` 生产源。当前 `need_027` 仍 `blocked`，不建 writer、不写库、不 resolve failure_queue，直到字段/日期/稳定性/PIT/freshness/watermark gate 全过。
-- 2026-06-04 盘后数据刷新已完成：本地 `build_price_kline_tdxhub.py --skip-existing --target-date 2026-06-04` 写入 `10,388` 行，`5,200` 股成功 / `1` 股失败（`000638`），canonical K-line 当前为 `2022-01-01 -> 2026-06-04` / `5,203` codes；`sync_hs300_benchmark_kline.py` 也到 `2026-06-04`。`build_feature_panel_duck.py --mode incremental` 把 `fact_feature_panel` 推进到 `2026-06-04`，`4,161,982` rows / `5,203` codes；`prune_feature_panel_to_canonical_kline.py --start-date 2026-01-12 --end-date 2026-06-04` 复验 `missing_signal_count=0` / `pruned_count=0`。
-- holder/F10、GPCW、capital、feature-panel tail 本轮 blocking 切片已串行刷新并复验：GPCW profile/PIT audit 刷到 2026-06-04；capital `dim_capital_behavior_latest.updated_at=2026-06-04T15:00:54.088424`；F10 raw 已刷到 2026-06-04，canonical holder facts 有 2026-06-04 replay 行，`idx_t10_*` / `idx_plan_*` / `idx_trade_*` 9 个 replay 相关索引已恢复；`mart_shareholder_plan_initial_event` 重建为 `9,677` rows / `built_at=2026-06-04T08:33:04+00:00`。
-- 最新 live gate：`data_health_snapshot.py --dry-run --format text` 为 `green=326 / yellow=16 / red=0 / blocking_yellow=0`；`scripts/chunkyctl doctor --fast` 仍为 `WARN`，但 `data_health.blocking_yellow_tables=[]`、`red_tables=[]`。剩余黄色是 warning-quality 资产（如 `fact_dzjy_event`、`fact_executive_trade_event`、`raw_lhb_daily` 等），不再是当前 startup blocker；后续可按 warning-only writer 收尾，但不要把它们和本轮 blocker 混为一谈。
-- 2026-06-05 08:39 CST 复跑 `scripts/chunkyctl doctor --fast` 后，随时间推进 data-health freshness 又回到 `green=321 / yellow=21 / red=0 / blocking_yellow=4`。blocking yellow 为 `fact_financial_pit_daily`、`fact_stock_fundamental_stage_daily`、`mart_feature_drift`、`mart_feature_drift_histogram`；这是 SLA 滚动后的当前 live 状态，不是 `design_review_gate` 代码改动导致。下一轮数据维护应优先按这 4 个 writer 切片复验，再处理 warning-only 资产。
-- 2026-06-05 08:50 CST 已按窄写窗口清掉这 4 个 blocking-yellow：`backfill_financial_pit.py --start 2026-06-03 --end 2026-06-04` 写入尾部 `10,364` 行，`fact_financial_pit_daily` 到 `2026-06-04`；`build_stage_formula_fitness.py --start 2025-01-01 --write-start 2026-06-03 --end 2026-06-04 --stage-only` 补 `fact_stock_technical_stage` `10,222` 行；`build_picture_daily.py --date 2026-06-04` 写入 `5,203` 股 × 4 表；`compute_feature_drift.py --refresh-baseline` 写入 27 个 drift 特征并刷新 histogram（命令返回 2 是因为新 snapshot 有 `critical=3`，不是写入失败）。复验：`data_health_snapshot.py --dry-run --format text` 为 `green=325 / yellow=17 / red=0`，`scripts/chunkyctl doctor --fast` 为 `WARN` / `worktree PASS` / `blocking_yellow=0` / `red=[]`。剩余 yellow 是 warning-only writer/SLA debt；下一步不要再追这 4 个旧 blocker。
-- 2026-06-05 10:20 CST 按 warning-only P1 本地派生切片继续收敛 data-health：先以 `data_health_snapshot.py --dry-run --format json` 确认 live 状态为 `green=333 / yellow=9 / red=0 / blocking_yellow=0`，再串行重建 `mart_current_relationship`（`build_current_relationship` 写入 `5,000` 行）和 `mart_dual_confirm`（`calc_dual_confirm` 更新 `15,320` 条事件）。复验：`data_health_snapshot.py --dry-run --format json` 为 `green=335 / yellow=7 / red=0 / blocking_yellow=0`；`scripts/chunkyctl doctor --fast` 为 `WARN` / `worktree PASS` / storage payload `PASS` / stage-opt `ready_coverage_pct=74.81` / `need_027` 仍 blocked。剩余 7 个 yellow 是 `fact_dzjy_event`、`fact_jgdy_event`、`raw_executive_trade`、`fact_executive_trade_event`、`fact_institution_event`、`fact_shareholder_trade`、`fact_paper_sim_trade`；它们分别属于外部 AkShare 全表/事件源、derived high fan-out、TDX holder/F10、paper_sim 验证产物，不应为了 freshness 数字盲跑窄窗口或全量 destructive writer。
-- `ingest_holders_tdxhub.py --parse-raw-only --replace-facts --limit 5201` 暴露了 DuckDB indexed delete / replay 性能问题：逐股 rowid delete 会触发 DuckDB fatal 或长时间扫描。代码已改为 replace replay 先解析成功 raw，再按 raw key 临时表批量删除旧 holder/plan/trade/controlling facts、跳过 holder-key 逐行 delete，并在生产表有 `availability_source` 时直接插入该列，避免无索引逐行 UPDATE。Rule 10 reviewer 指出的 `fact_controlling_shareholder` stale-row 风险和 `availability_source` 覆盖缺口已补回归；`backend/tests/test_ingest_holders_tdxhub.py` PASS。
-- Moth 已同步上游并更新本机安装：`dare2live/moth` 确认为 PUBLIC，最新提交 `dcb809a fix: sync ChunkyMonkey instruction sources` 已推送，`/Users/dp/.local/bin/moth` 指向 repo `.venv/bin/moth` 并能在 registry `moth profile chunkymonkey` 与 repo-local snapshot/profile 路径输出 `instruction_sources.ignored_by_default=["CLAUDE.md"]`。
-- 2026-06-05 09:02 CST 已把用户提供的“架构师/总指挥”思维提炼成本地 Codex skill：`/Users/dp/.codex/skills/architect-controller/SKILL.md`，并在 `/Users/dp/.codex/AGENTS.md`、`chunkymonkey-governance` skill、项目 `AGENTS.md`、`docs/chunkyctl_session_quickstart.md` 和 `.moth/profile.yaml` 挂上调用/发现路径。该 skill 的运行协议是 substrate truth source、boundary contract、meta-spec、falsification gate、attention allocation 和 smallest reversible next step；Moth 只暴露 `skill_architect_controller` evidence path，不承载业务规则。
-- 2026-06-05 09:36 CST 已用 `$architect-controller` 做本轮恢复和架构检查：Codex app 更新后未提交补丁仍在；旧的 `chunkyctl doctor` / `moth snapshot` / complexity scan 孤儿进程已清掉。`architect-controller` skill 新增 “verify the verifier” 运行规则；`complexity-optimizer` 的单文件扫描 false-negative 已修并用最小反例验证，所以本轮之前由单文件 complexity scan 得出的“clean”证据遇到异常时要复验工具本身。
-- Moth complexity baseline 误报根因已改按“本机 baseline stale + Moth path normalization”处理：Moth 不再用顶层目录不相交猜测 baseline 不兼容，loaded baseline 会正常 compare；Moth diff 现在会把 repo 内绝对路径归一为相对路径，避免同源 finding 被误算为新增/已解决。当前本机 ignored baseline `data/reports/tooling/complexity_baseline.json` 已刷新到当前全仓 scanner scope（80 条 `assets` findings），所以 live Moth snapshot 应回到 `complexity.diff.status=compared` / `new_high_count=0`。若 scanner scope 未来改变，先刷新同 scope baseline，再使用 `new_high_count` 做阻断判断。
-- `data_health_snapshot.py --dry-run` 写锁根因已修：dry-run 现在通过 `duck_adapter.connect(..., read_only=True)` 打开生产 DB，且不执行 `ensure_asset_deprecation_columns()` DDL；`deprecation_status` / `replacement_table` 改为 optional cols 保持旧 schema 兼容。复验 `--dry-run --format json` 为 `green=325 / yellow=17 / red=0`，不再因写连接或 DDL 抢 DuckDB 锁。
-- Codex 规则源边界已重新固化：`CLAUDE.md` 是 legacy Claude-only history，Codex 默认只使用 `AGENTS.md`、当前 docs、Codex skills、Moth evidence paths 和 live tooling output。`chunkyctl preflight` 现在输出 `instruction_sources.ignored_by_default=["CLAUDE.md"]`，`chunkyctl worktree` 把 `CLAUDE.md` 归为 `legacy_context`，不再混入 `controller_state`。
-- controller/agent 执行模型已做成机器 gate：广义 audit/research/architecture/data/debug/review/spec/triage 或 3+ 独立 scope 如果没有 `--agent-dispatch` 证据，会返回 `controller_agent_dispatch_missing` 并使 `preflight` FAIL；只有显式 `--agent-skip-reason` 才能作为 WARN 例外。Controller 仍负责方向、scope、最终验收、共享 docs、commit、DB/GCP 写窗口；agent 输出只能作为候选证据。
-- 第一性原理 / 奥卡姆 / 架构师审查已从文档约束补成 `chunkyctl preflight.design_review_gate` 机器字段：scope 任务、架构/数据/策略/配置/表/阈值类任务会显式要求检查 first_principles、occam、owner、truth_source、failure_mode 和 drift-blocking gate；长期规则仍归 `docs/engineering_governance.md`，Moth 只暴露证据路径和指令源边界。
-- DB 容量问题已完成只读并行审计并记录到 `analysis/db_capacity_audit_20260604.md`：`data/smartmoney.duckdb` 约 `33.6 GiB` / `34G`，未发现 `no2`、session snapshot 循环写爆，或能解释容量的 `.bak/.gz/.zst` 压缩备份副本；主因更像多版本宽面板/缓存并存、rank/cache key 重叠、索引/row-group 开销，以及 `formula_engine` reason JSON 总量 WARN。最可疑冗余组是 `mart_p0a_feature_label_panel` legacy/v3/v4/v5/unified 以及 `fact_feature_panel_candidate` / `fact_feature_panel_tdx_keep_challenger` / `mart_feature_rank_matrix_cache_*` 的同 key 重叠。不要直接删表或 VACUUM；下一步应做独立 retention/index/compact 方案，先分 owner 和可复现证据。
-- 2026-06-05 本轮只读复核未发现“原表 + 压缩备份 + 多快照”或 `no2` 循环快照导致的 P0 写爆；`smartmoney.duckdb` 容量风险仍来自宽事实/缓存/多版本表和 reason JSON payload。本轮 storage payload 切片只校准 reviewed-column owner/cap，不清表、不压缩、不写生产库：`fact_technical_trigger.reason_codes_json` 与 `mart_macd_state_history.reason_codes_json` 提升为 full-history evidence cap，`mart_stock_picture_daily.institution_top_json` 纳入 bounded picture summary。最新 `audit_storage_payloads.py` 复验为 `PASS`、`323 columns / 0 FAIL / 0 WARN / 13 reviewed`，递归 key/path-marker/单行超 cap 仍会重新 WARN/FAIL。
-- DB retention 第一片已收口到 dry-run inventory，不做生产删除：`storage_retention.yaml` 现在把 F10 raw lineage、canonical/current panels、legacy/obsolete candidate panels、tdx_keep challenger panel、rank-matrix cache 表纳入 `table_inventory`；`plan_storage_retention.py` dry-run 默认 read-only 打开生产库。最新只读 dry-run 为 `candidate_count=0`、`table_inventory_count=12`、`protected_artifact_table_count=7`、`compaction.recommended=false`，说明当前进度是“机器可读分类和 owner/action 绑定”，不是清理执行。
-- DB 模块化管理第一片已落地为 registry + 连接权限收口，不搬表、不删除、不压缩：新增 `backend/config/database_manifest.yaml` 与 `backend/services/database_manifest.py`，机器记录 `smartmoney` / `market` / `alpha158` / `etf` / `phase5_predictions` / planned `feature_store` 的 alias、path、owner/domain、online/artifact/planned 状态和默认 attach mode；`analytics` 默认路径改由 manifest 解析。`duck_adapter.connect(... attach={"market": path})` 现在默认把附库按 `READ_ONLY` attach，只有显式 `{"path": path, "read_only": false}` 才允许 writable attached DB，避免 writable smartmoney 连接顺手把 market/alpha158/etf 也拿成可写边。只读 sidecar 未发现生产路径必须写 attached DB；可疑路径都是“写 smartmoney、读 market/alpha158”。验证：`chunkyctl preflight` PASS 且记录 agent dispatch，`audit_test_tool_health` PASS / registry coverage 100%，`py_compile` PASS，targeted pytest `24 passed`，`paper_sim/test_ddl.py` 与 `test_candidate_feature_pipeline.py` PASS，target files complexity clean，`scripts/chunkyctl audit --run ...` PASS，CodeGraph 已 sync。
-- DB 连接边界第二片已把 `services.db_connection` 默认主库路径接入 `database_manifest.smartmoney`，同时保留 `services.db.DB_DIR` / `DB_PATH` monkeypatch 兼容；这让主业务 DB 的默认入口也跟随 manifest，而不是继续私有硬编码。新增 `test_default_db_path_comes_from_database_manifest` 锁住默认路径。验证：controller preflight PASS 且记录 agent dispatch；`audit_test_tool_health` PASS；`py_compile` PASS；targeted pytest `16 passed`；目标复杂度 clean；`scripts/chunkyctl audit --run ...` PASS；`git diff --check` PASS；CodeGraph 已 sync。没有移动表、删除表、VACUUM 或生产 DB 写入。下一片再选代表脚本逐步移除散落的 `data/*.duckdb` 字面量。
-- DB 模块化第三片已收口为“新增阻断”地基，不继续深挖历史迁移：`check_rule_compliance.py` 现在会在 staged diff 上阻断新增生产 `duckdb.connect(...)` / duckdb alias connect 和新增 `data/*.duckdb` / `.duckdb` 文件名字面量；例外仍由 evidence 注释或 `backend/config/database_manifest.yaml` 等配置拥有，不在 hook 里新建业务规则源。新增 `rule_compliance_static_gate_tests` 登记到 test-tool registry。验证：`backend/tests/scripts/test_rule_compliance.py` + `backend/tests/services/test_duckdb_connect_policy.py` 10 passed，DuckDB connection/manifest 相关 16 passed，`scripts/chunkyctl audit --run ...` PASS，CodeGraph sync 已由 audit 执行（提交前新测试文件仍会显示 pending added），`git diff --check` PASS。下一步不应沿 DB literal 批量迁移深入，除非它阻塞更高层框架；优先回到 `need_027` exact-flow、stage-opt upstream supply、storage retention/compact 方案的分层推进。
-- `need_027` exact-flow blocked-gap 第一片已落地为专用小批量 probe gate：`backend/config/tdx_data_need_coverage.yaml` 的 `need_027.source_probe_cases` 现在配置 `600519/sh`、`000001/sz`、`300750/sz` 三个 exact `individual_fund_flow` 样本；`backend/scripts/probe_source_capability.py --need027-exact-flow-gate` 默认只读不持久化，case-level `persist_status` 会被拒绝，只有显式 `--persist-status` 才写 failure_queue。gate 要求 exact capability、非空行、日期范围、主力/超大/大/中/小单字段；即使 `--persist-status`，也必须先通过 exact-flow validation 才能 resolve，validation 失败只会保持/open blocker；rank snapshot 会被标为 `ignored_for_need_027_exact_flow_gate`，且 `individual_fund_flow_rank_snapshot` 的 persistence domain 已改为 `stock_fund_flow_rank_snapshot`，不能误 resolve `order_flow_fund_flow`。2026-06-04 20:25 CST live no-persist gate 仍为 `BLOCKED`：3/3 exact 样本均 `RemoteDisconnected`，`success_rate=0.0`，`production_eligibility` 保持 `blocked`，下一步仍需源稳定性恢复后再做 PIT/freshness、writer/watermark、failure_queue resolve。
-- stage-opt upstream supply contract 第一片已落地，不调阈值、不写生产库：新增 `backend/config/stage_opt_candidate_supply.yaml` 与 `backend/services/stage_opt_candidate_supply.py`，把 `fact_technical_trigger` / `mart_macd_state_history` 的 source role、grain、eligibility、PIT status、allowed consumers、allowed stage bins 和 research-challenger formula scope override 放到 config-owned contract。`audit_stage_opt_candidate_supply.py` 现在消费该 contract 并输出 `schema_version=1` / `candidate_supply_contract`；`chunkyctl doctor` 透传该 summary。验证：scoped test-tool audit PASS，`py_compile` PASS，`backend/tests/services/test_stage_opt_candidate_supply.py` + stage-opt audit + chunkyctl tests `45 passed`，`backend/tests/test_build_formula_signals.py` `23 passed`，`scripts/chunkyctl audit --run ...` PASS，target files complexity clean，CodeGraph 已 sync。结论不变：stage-opt 仍是 `P1 / upstream_candidate_supply`，当前地基只是把 truth-source / source eligibility / formula scope 边界机器化，下一步再决定是否做 schema/source redesign。
-- 2026-06-04 14:11 CST 的 `scripts/chunkyctl doctor --fast` 是 forecast 切片前 baseline：`data_health` 为 `green=314 / yellow=28 / red=0 / blocking_yellow=11`，覆盖 2026-06-03 的 data-health PASS 旧叙述。切片前 blocking yellow 集中在 5 个 writer 切片：`forecast`、`holder/F10`、`GPCW local derived`、`capital`、`feature-panel tail`。
-- Forecast 小切片已执行：`ingest_profit_forecast_snapshot.py --snapshot-date 2026-06-04` 写入 `raw_profit_forecast_snapshot_daily` 当日 `2,377` stocks，`compute_forecast_upside_live.py --snapshot-date 2026-06-04` 写入 `mart_forecast_upside_live` 当日 `2,305` stocks；`data_health_snapshot.py --dry-run --format text` 复验为 `green=316 / yellow=26 / red=0 / blocking_yellow=9`。
-- Forecast 根因已定位并修复到 daily workflow：`scripts/daily_update.sh` 原本 Step 2l 只跑 raw ingest，未跑 `compute_forecast_upside_live.py`，导致 `mart_forecast_upside_live` stale。现在 Step 2l/2m 用同一个 `FORECAST_SNAPSHOT_DATE` 串行刷新 raw 和 shadow mart；`backend/tests/test_daily_update_model_refresh.py` 已加 static contract 防回退。注意 forecast mart 仍是 live shadow，不可用于历史 training/backtest。
-- 下一步不应直接把所有 writer 混跑。当前 blocking-yellow 已清零；后续如果继续数据维护，按 warning-only writer 分片推进（事件类、调研类、LHB、paper_sim 等），每片仍要在 controller 统一写窗口内执行并用 `doctor --fast` / `data_health_snapshot.py --dry-run --format text` 复验。
-- 本轮 governance/tooling 验证：`backend/tests/scripts/test_chunkyctl.py` 29 passed，`audit_test_tool_health.py --scope backend/scripts/chunkyctl.py --scope backend/tests/scripts/test_chunkyctl.py` PASS，`scripts/chunkyctl audit --run AGENTS.md backend/scripts/chunkyctl.py backend/tests/scripts/test_chunkyctl.py docs/chunkyctl_session_quickstart.md docs/engineering_governance.md` PASS，CodeGraph index up to date，`git diff --check` PASS。
-
-## 2026-06-03 — technical-stage residual production rebuild complete
-
-- `backend/services/formula_engine/technical_stage.py` 已把 `unknown` 收窄为“数据不足”语义；有足量 MA 慢线历史的 residual 状态按 `backend/config/technical_stage.yaml` 的 governed residual policy 归入 `1/3/4`。`residual_*_stage` 配置不允许 `1.5/2`，所以 Stage 1.5/2 仍只能由显式突破/上升趋势规则产生，不能通过 fallback 绕过 MA 顺序和回撤约束。
-- 代码切片已提交：`ebd18209 fix: govern technical-stage residual classification`；验证为 `audit_test_tool_health.py --scope backend/tests/test_formula_engine.py --scope backend/tests/test_build_formula_signals.py` PASS，targeted stage/signal-context tests 14 passed，stage-opt audit tests 10 passed，`scripts/chunkyctl audit --run backend/config/technical_stage.yaml backend/services/formula_engine/technical_stage.py backend/tests/test_formula_engine.py` PASS，CodeGraph synced，目标文件 complexity scan clean，`git diff --check` PASS。
-- 生产 DB 已按月/季度窗口本地重建完成：`fact_stock_technical_stage` 现在 `3,973,319` rows，范围 `2023-01-12 -> 2026-06-02`；`fact_signal_context` 现在 `4,093,116` rows，范围 `2023-01-03 -> 2026-06-02`。单次 full-window `fact_stock_technical_stage` 写入会在大批量 `executemany` 阶段中断，已改用月度窗口规避；后续若要再做全量重建，应优先把 stage 写入实现改成批量/临时表路径。
-- 最新 full-history `audit_stage_opt_candidate_supply.py --format json` 仍为 `WARN`，但漏斗已明显改善：`filtered_signal_rows=7,918,485`、`unique_keys=358,529`、`ready_keys=268,198`、`ready_coverage_pct=74.81`，`dropped_unknown_stage_rows` 从 `4,433,034` 降到 `1,231,858`，`blocked_keys` 从 `101,824` 降到 `90,331`；剩余 blocker 仍全是 `below_min_signals`，所以主线继续是 `P1 / upstream_candidate_supply`，不是再调 stage fallback。
-- 最新 `scripts/chunkyctl doctor --fast` 仍为 `WARN`，但 `data_health PASS`、`universe PASS`、`worktree PASS/0 dirty`。剩余 next actions 是 complexity high findings、storage payload WARN、stage-opt upstream candidate supply、`need_027` exact-flow blocked-gap triage。
-
-## 2026-06-03 — Codex resume automation re-baselined to manual refresh
-
-- Codex app/CLI 的隐藏启动加载项已收口：`~/.codex/hooks.json` 不再启用 `SessionStart -> session_start_handoff.sh`，用户 crontab 不再包含 `scripts/session_snapshot.sh` / `scripts/workflow_checkpoint.sh` 周期任务，`check_pending_work.sh` 也不再在每次 prompt 隐式查询 GCP VM 状态。
-- 项目恢复路径同步改为手动刷新：中断后先在仓库运行 `bash scripts/cm_resume.sh`，再让新 Codex 会话按 `docs/chunkyctl_session_quickstart.md` 完成 live startup checks。`SESSION_HANDOFF.md` 只作为 context-only snapshot，不能替代 `doctor --fast`、`worktree`、当前 crontab/hooks 实况。
-- `scripts/install_resilience.sh` 默认不再安装 legacy cron/launchd 自动化；如确需恢复旧自动化，必须显式设置 `CHUNKYMONKEY_ENABLE_LEGACY_AUTOMATION=1`。这避免 stale handoff 被新 Codex 会话静默加载，也避免 cron 在 macOS TCC/FDA 约束下反复产生失败日志或系统邮件。
-
-## 2026-06-03 — controller/agent parallelism and blocker triage update
-
-- 用户已明确纠正执行模型：Codex 是总指挥，其他 agents 是不同角色助手；默认应并行派 bounded sidecar agents，只有用户明确要求不并行、工具不可用、或下一步和 controller critical path 紧耦合时才不并行。`AGENTS.md` 与 `docs/chunkyctl_session_quickstart.md` 已同步这条 opt-out parallelism 规则；DB-heavy 命令仍要区分 read-only 与 materializing/write 连接，避免只读调查互相抢 DuckDB 写锁。
-- 阶段推进原则补充：不要在某个方向过度深入细节；先搭框架地基，再按层完善。当前估算本阶段约完成 70%-75%，剩余约 25%-30%：重点不是继续清单个 DB literal，而是把 `need_027`、stage-opt supply、storage retention/compact、数据治理闭环按框架顺序推进到可持续默认门禁。
-- `audit_tdx_data_need_coverage.py` 已新增 `--summary-only` 只读摘要路径，`chunkyctl doctor` 改用该路径读取 `need_coverage`，避免 startup/并行 triage 时为了展示 blocked summary 去 exact-sync 写 `mart_tdx_data_need_coverage` / `dim_data_source_priority` / `mart_data_source_reassignment_proposal`。
-- `need_027` controller 复核：单只 `600519/sh` 曾返回 `status=ok` / `row_count=120` / 日期范围 `2025-12-01 -> 2026-06-02`，但 2026-06-03 15:38 CST 的只读 explorer live probe 又返回 `status=blocked` / `RemoteDisconnected`。因此该 blocker 仍是 production blocker：不能按“源已恢复”推进，也不能用 rank snapshot 当 production fallback；下一刀应是专用小批量 exact-flow probe gate，先证明稳定性、PIT/freshness、writer/watermark、failure_queue resolve，再谈生产 writer。
-- `stage-opt` explorer 复核后仍是 `P1 / upstream_candidate_supply`：当前 full-history audit 为 `raw_rows=9,159,813`，`filtered_signal_rows=4,717,309`，`unique_keys=315,814`，`ready_keys=213,990`，`ready_coverage_pct=67.76`，`below_min_signals=101,824`，`dropped_unknown_stage_rows=4,433,034`；weakest formulas 为 `ma_base_breakout` / `gs_pullback_confirm` / `volume_base_breakout`。不要继续靠删除弱公式或局部阈值放宽美化 coverage。`audit_stage_opt_candidate_supply.py` 现已补 `attrition_funnel`、`formula_attrition`、`formula_family_attrition`、`blocked_matrix_by_stage_formula`、`top_blocked_stage_formula_cells`、`blocked_matrix_by_registry_family`、`top_blocked_registry_family_cells` 与 advisory `verdict`；`--limit-stocks` 现在从 raw 非指数样本选股，纯 unknown-stage 切片仍会保留 drop 计数并 `WARN`，并输出 `P1 / stage_context_coverage` recommendation，sensitivity 也改成单次 key counter，不再重算完整 attrition 矩阵。`chunkyctl doctor` 会透传 top evidence cells。下一步应基于这些证据决定 upstream candidate contract/schema，而不是再做 knob-tuning。
-- `storage_payload` cap recalibration slice 已收口：`fact_technical_trigger.reason_codes_json` 与 `mart_macd_state_history.reason_codes_json` 仍要求单行很小、无 recursive/path hits，但总量 cap 按 full-history evidence 调整；`mart_stock_picture_daily.institution_top_json` 作为有界 daily picture summary 纳入 reviewed 列。当前 storage payload 不是 blocker；后续 storage 治理继续转向 retention/compact owner 设计。
-
-## 2026-06-03 — Codex local ops and Moth profile rules captured
-
-- 新增全局 skill `/Users/dp/.codex/skills/codex-local-ops`，用于 Codex Mac app/CLI 本地启动项、hooks、skills/MCP、plugin sync 429、remote compact 前端错误、`.codex/worktrees`、Terminal system mail、GCP monitor 残留等问题。全局 `/Users/dp/.codex/AGENTS.md` 已要求这类任务先用 `$codex-local-ops`，并把默认并行修正为 opt-out。
-- `codex-local-ops` 内置 `scripts/probe_plugin_startup_sync.sh`，用 fake `git` 短时探测 `codex app-server` 启动期 remote 调用。当前验证显示 baseline、`plugin_sharing=false`、`remote_plugin=false`、local marketplace override 仍会 `ls-remote` `openai/plugins.git` 与 `openai/codex-plugin-cc.git`；只有 `plugins=false` 不调用 git，但会禁用插件系统，因此只能作为用户明确接受的最后手段。
-- 新增 repo-local Moth profile `.moth/profile.yaml`，并同步 `/Users/dp/Documents/M/moth/profiles/chunkymonkey.yaml`；`backend/services/moth_snapshot.py` 现在会把匹配的 `chunkymonkey` profile 自动解析到 repo-local profile。Moth 只拥有 shared tooling metadata/evidence paths/CodeGraph/complexity/dirty state，`stage_opt`、`need_027`、`storage_payload`、`data_health` 仍由 ChunkyMonkey audit scripts 与 `chunkyctl` 拥有规则。
-- `.moth/profile.yaml` 现在把 `/Users/dp/.codex/AGENTS.md`、`$codex-local-ops`、`$chunkymonkey-governance`、`$chunkymonkey-review-gate` 和 `docs/PROJECT_CONSTITUTION.md` 暴露为 evidence paths；`AGENTS.md` / `docs/engineering_governance.md` / `docs/chunkyctl_session_quickstart.md` 已新增 Skill dispatch，防止后续新会话只跑 `doctor` 而不加载对应 skill。Moth 仍只负责定位证据和 shared tooling snapshot，不承载业务 gate 规则。
-- `plugin startup_sync` 规则已扩展到 GitHub 429、clone timeout、`early EOF`、`openai/plugins.git`、`openai/codex-plugin-cc.git` 和 `codex review` / helper task 启动时打印的同类 WARN；这些都先按 Codex 本地插件同步问题处理，不先归因到项目 hook/cron/LaunchAgent，也不先删 plugin cache。
-- 验证：`quick_validate.py /Users/dp/.codex/skills/codex-local-ops` PASS；`moth profile chunkymonkey --format json` 能看到新增 evidence paths；`PYTHONPATH=backend python -m pytest -q backend/tests/services/test_moth_snapshot.py backend/tests/scripts/test_chunkyctl.py backend/tests/scripts/test_audit_tdx_data_need_coverage.py` 59 passed；`PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_stage_opt_candidate_supply.py backend/tests/scripts/test_chunkyctl.py` 37 passed；`scripts/chunkyctl audit --run ... .moth/profile.yaml` PASS；`scripts/chunkyctl worktree --format markdown` unknown=0；`scripts/chunkyctl doctor --fast` 仍为 WARN，但 data_health/test_tool/universe PASS，剩余 WARN 是已知 dirty/complexity/storage/stage-opt/need_027。
-
-
-## 2026-06-03 — strategy reframe: data-health blockers first
-
-- 这轮复盘的结论是：前端热点收口本身没有错，`stock-view.js` / `data-view.js` / `signal-adapter.js` / `app.js` 的局部 refactor 也都通过了 targeted 校验，但它们正在变成“优化复杂度分数”的局部循环，而不是解决当前项目最重的风险。最新 `scripts/chunkyctl doctor --fast` 已经把 **data_health 刷成 PASS**，`green=342 / yellow=0 / red=0`；`moth` 仍提示 complexity new high findings 80，说明当前剩余问题已经不在 data-health，而在历史复杂度和仍未收口的 blocker 线程。
-- 这轮 data-health triage 已按 writer / SLA 补完底层链路：`price_kline_tdxhub`、`fact_financial_pit_daily`、`fact_stock_fundamental_stage_daily`、`fact_feature_panel`、`mart_feature_drift`、`mart_feature_drift_histogram`、`fact_lhb_event`、`mart_daily_recommendation_explanation` 都已经回到当前基准日期或被刷新到可用状态，因此不再把它们当成门禁阻塞项。
-- 前端结构优化继续降级为次要任务，除非它直接关联用户可见 bug、数据门禁或 pipeline 失败；下一阶段的 success metric 以 `need_027` blocked-gap triage 和 stage-opt candidate supply 为主，再结合必要的 warning-only / hot-path 收尾，而不是继续压 heuristic hotspot count。
-- 执行顺序分层：
-  1. **P0 数据健康 / 正确性 blocker**: 直接阻断门禁、数据 freshness、PIT、安全性或会让 `doctor --fast` 继续 WARN 的问题。先修这个。
-  2. **P1 框架 / seam**: 能一次性减少 2 个以上后续修复、或者复用到多个热点的共享 helper、shared model、边界抽离。只有它能减少重复劳动时，才先做框架。
-  3. **P2 用户可见热点**: 单个页面或模块的高频路径、N+1、重复扫描、明显卡顿。若没有共享 seam，就直接修这个，不要为了“框架正确性”绕路。
-  4. **P3 局部清理**: 只影响单个文件、收益有限、且不触及 blocker 的收尾工作。放到最后。
-- 具体规则：如果一个“框架改造”只服务一个文件，直接修细节更划算；如果它能同时覆盖 2+ 个热点，或能把同类问题统一进一个 shared helper / model，先做框架。
-
-## 2026-06-03 — data-health blocker triage complete (historical; superseded by 2026-06-04 live snapshot)
-
-- `price_kline_tdxhub` 已补到 `2026-06-02`，`backfill_financial_pit.py --start 2026-05-29` 已把 `fact_financial_pit_daily` 抬到 `2026-06-02`，`build_picture_daily.py` 把 `fact_stock_fundamental_stage_daily` 抬到 `2026-06-02`，`build_feature_panel_duck.py --mode incremental` 把 `fact_feature_panel` 抬到 `2026-06-02`，`compute_feature_drift.py --refresh-baseline` 已刷新 `mart_feature_drift` / `mart_feature_drift_histogram`。
-- `update_watermark_sla.py` 已把 `kline_daily` 水位同步到 `2026-06-02`，`scripts/chunkyctl doctor --fast` 现在是 `WARN` 但 `blocking_yellow=0`，`green=340 / yellow=2 / red=0`。剩余黄色只是不阻断门禁的 warning-only 资产：`fact_lhb_event`、`mart_daily_recommendation_explanation`。
-- 这意味着 data-health blocker triage 这一轮已经收口，后续优先级可以回到 `need_027` blocked-gap triage、stage-opt candidate supply，以及必要时的 warning-only writer 收尾，不再围着旧的 5 个 blocking yellow table 打转。
-
-## 2026-06-03 — stage-opt supply expansion via bc_absorbed challengers
-
-- `backend/services/formula_engine/bc_absorbed_challengers.py` 新增了 5 个 `bc_absorbed` challenger 的 `FormulaBase` 适配器，并在 `backend/services/formula_engine/bootstrap.py` 中纳入 live `REGISTRY`，让 `build_formula_signals_history.py` 能通过同一条信号管线生成它们的 `fact_technical_trigger` 行。
-- 已执行 `PYTHONPATH=backend python backend/scripts/build_formula_signals_history.py --formula gs_raw_buy gs_pullback_confirm ma_base_breakout activity_breakout volume_base_breakout`，本轮回填写入 `704,661` 条信号和 `35` 行 `mart_formula_horizon_evidence`。
-- 最新 `backend/scripts/audit_stage_opt_candidate_supply.py --format json` 显示：`live_formula_count=12`，`raw_signal_rows=7,127,177`，`unique_keys=222,509`，`ready_keys=153,433`，`ready_coverage_pct=68.96`，`blocked_reason_counts` 仍以 `below_min_signals=69,076` 为主，但 weakest formulas 已切到 `ma_base_breakout` / `gs_pullback_confirm` / `volume_base_breakout`。
-- 这一步把 stage-opt 的上游供给面真正扩宽了，但还没有结束 blocker 线程；下一步仍然是继续按 weakest formulas 和 `need_027` blocked-gap triage 往前推，而不是把它当成终局。
-- 2026-06-03 进一步把 live 口径收紧成 18 条公式：`pullback_doji` 与 `monthly_stage2_daily_volume_confirm` 保留为研究候选，不再进入默认 live 回填；`backend/scripts/build_formula_signals_history.py` 现在默认只跑 `bootstrap.LIVE_FORMULA_IDS`，并在默认回填时顺手清掉 held-back 两条的历史 `fact_technical_trigger` / `mart_formula_horizon_evidence` 行。最新 full-history audit 刷成 `raw_signal_rows=5,901,698 / filtered_signal_rows=4,717,309 / unique_keys=315,814 / ready_keys=213,990 / ready_coverage_pct=67.76 / below_min_signals=101,824`，`weakest_formula_ids` 变成 `ma_base_breakout` / `gs_pullback_confirm` / `volume_base_breakout`；这比 64.71% 的扩展前结果更好，但仍低于 68.96% 的旧 baseline，所以 stage-opt 主线仍是 `P1 / upstream_candidate_supply`，只是 live surface 更干净了。
-
-## 2026-06-03 — bestchoice blueprint intake
-
-- 记录一份新的系统蓝图：以 `CatBoost` 特征矩阵 + 贝叶斯后验更新 + `Optuna TPE` 做参数寻优，执行层用 `ATR`、时间止损和分数凯利控制风险，底座是本地 `DuckDB` / `VectorBT`，原始数据湖走 `httpx` -> JSON -> `Parquet` -> `GCS`，重回测和大规模寻优放到 `GCP Spot`，最终信号分发可落到 `Cloud Run` / `FastAPI`。
-- 这个蓝图的推荐推进顺序是：`1)` 先把数据管道和 truth-source 收敛好，`2)` 再跑通本地研究闭环（特征、CatBoost、VectorBT、Bayesian/Optuna），`3)` 最后再上云做 Spot / Cloud Run 编排。数据层先行，因为没有稳定真相源，后面的模型和风控都只是漂浮的算术。
-- `bestchoice` 相关的公式 / 选股事项先记为后续推进项，不和当前的 `stage-opt` / `need_027` blocker 线程混在一起；等当前 blocker 线自然停住时，再切过来做。
-
-## 2026-06-03 — data-view render hot paths flattening
-
-- `assets/js/data-view.js` 的几个渲染热点继续收口：`renderHealthHeatmap()`、`renderSourcePriority()`、`renderFallbackPanel()`、`renderDriftQueue()`、`renderCapTable()`、`renderStepGrid()` 以及 `startPolling()` 的日志聚合都从 `.map().join()` / `forEach()` 改成了直线型 `for...of` / 字符串拼接，保持输出语义不变，只收紧回调型热路径。
-- 验证：`node --check assets/js/data-view.js` PASS，`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_data_view.py --scope backend/tests/contract/test_workbench_frontend_contract.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py backend/tests/contract/test_workbench_frontend_contract.py` 6 passed，`python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py /Users/dp/Documents/M/stock/chunkymonkey/assets/js/data-view.js --format markdown` targeted scan 无明显热点，`codegraph sync .` 已同步。
-- 这次只是在前端 cockpit 里继续削掉一个明显的渲染带宽点；全仓 broad scan 仍然有历史 HIGH 残余，后续还是按 `assets/js/data-view.js` / `assets/js/settings-view.js` / `assets/js/signal-adapter.js` / `assets/js/stock-view.js` 的热路径继续收口，而不是把这次当成全局完结。
-
-## 2026-06-03 — data-view render hot paths second pass
-
-- `assets/js/data-view.js` 的第二轮收口把剩余的回调型渲染又压了一层：`buildRouteSearchText()`、`buildSourceCardsModel()`、`buildHealthHeatmapModel()`、`buildSourcePriorityModel()`、`buildLinkOverviewModel()`、`renderLinkOverview()`、`renderSourceCards()`、`renderAuditResults()`、`renderRoutesTable()` 和 `_setUpdateButtonsBusy()` 现在也都收成直线型循环/拼接，去掉了残余的 `.map()` / `.forEach()` 热点。
-- 验证：`node --check assets/js/data-view.js` PASS，`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_data_view.py --scope backend/tests/contract/test_workbench_frontend_contract.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py backend/tests/contract/test_workbench_frontend_contract.py` 6 passed，`python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py /Users/dp/Documents/M/stock/chunkymonkey/assets/js/data-view.js --format markdown` targeted scan 无明显热点，`codegraph sync .` 已同步。
-- 这轮的意义是把 `data-view` 从“broad scan 常驻高热点文件”往“局部可收口文件”推了一步；全仓 broad scan 仍会保留别的历史 HIGH，后续继续按 `stage-opt / need_027` 主线和剩余前端热路径并行推进。
-
-
-## 2026-06-03 — stock-view index consolidation
-
-- `assets/js/stock-view.js` 新增 `buildStockIndex()`，把筛选选项收集、`screeningMap` / `turtleMap` 计数、覆盖股票集合与股票索引收成一次遍历，并对空输入做兜底；`renderFilterBar()` / `renderTopkSummary()` 直接复用这个索引，不再分别扫 `byStock`。`backend/tests/contract/test_stock_view.py` 新增 helper 行为回归，`backend/tests/contract/test_workbench_frontend_contract.py` 补 export / wiring contract。验证：`node --check assets/js/stock-view.js` PASS，`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_stock_view.py` 3 passed，`python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py /Users/dp/Documents/M/stock/chunkymonkey/assets/js/stock-view.js --format markdown` targeted scan 无明显热点，`codegraph sync .` 已同步，`git diff --check` PASS；但全仓 broad scan 仍为 WARN / 80 high findings，残余继续集中在 `assets/js/app.js` / `assets/js/settings-view.js` / `assets/js/signal-adapter.js` / `assets/js/stock-view.js` 的历史 heuristic 行，后续继续按热路径收口。
-
-
-## 2026-06-03 — data-view route search cleanup
-
-- `assets/js/data-view.js` 里的 `buildAssetHealthIndex()` / `buildAuditResultsModel()` / `buildRoutesTableModel()` 现都改成直线型 `for...of` 收口，`buildRoutesTableModel()` 还把 route 过滤字段收成一次性 `buildRouteSearchText()` 搜索串，避免每条 route 再跑一层 `some()` 回调；`backend/tests/contract/test_data_view.py` 新增 `protocol` / `raw_table` filter 回归，锁住多字段过滤语义。验证：`node --check assets/js/data-view.js` PASS，`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_data_view.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py backend/tests/contract/test_workbench_frontend_contract.py` 6 passed，`python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py /Users/dp/Documents/M/stock/chunkymonkey/assets/js/data-view.js --format markdown` targeted scan 无明显热点，`codegraph sync .` 已同步；但全仓 broad scan 仍为 WARN / 80 high findings，主要残余还在 `assets/js/app.js` / `assets/js/data-view.js` / `assets/js/settings-view.js` / `assets/js/stock-view.js` / `assets/js/signal-adapter.js` 的历史热点，后续继续按热路径收口。
-
-## 2026-06-03 — signal-adapter grouping cleanup
-
-- `assets/js/signal-adapter.js` 里 `eventToView()` 的 institutionType 回退收成 `extractInstitutionType()`，`aggregateByStockViews()` 改成单次 group state + 线性 action 分桶 + 单次公告日排序；`backend/tests/contract/test_signal_adapter.py` 新增 `fetchSignals()` mock 回归，锁住 stock 桶顺序、`topEvent`、`events` / `timelineEvents` 顺序和 fallback 语义。验证：`node --check assets/js/signal-adapter.js` PASS，`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_signal_adapter.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_signal_adapter.py backend/tests/contract/test_workbench_frontend_contract.py` 4 passed，`python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py /Users/dp/Documents/M/stock/chunkymonkey/assets/js/signal-adapter.js --format markdown` 无明显热点；但全仓 broad scan 仍会把 `assets/js/app.js` / `assets/js/data-view.js` / `assets/js/settings-view.js` / `assets/js/stock-view.js` 以及 `signal-adapter.js` 的部分 heuristic 行继续列为高热点，后续继续按热路径收口。
-
-## 2026-06-03 — app navigation helper extraction
-
-- `assets/js/app.js` 里的 group / view / ETF tab / stock tab active-state 切换现统一走 `setActiveState()`，点击绑定统一走 `bindNodeClicks()`，把 3 处顶层 `querySelectorAll(...).forEach(...)` 绑定和多处 `classList.toggle('active')` 收拢成 2 个纯 helper；`backend/tests/contract/test_workbench_frontend_contract.py` 已补 helper presence 与旧直接绑定模式不回流的回归。验证：`node --check assets/js/app.js` PASS，`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_workbench_frontend_contract.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py` 2 passed，`analyze_complexity.py` 对 `assets/js/app.js` 无明显热点；最新 `scripts/chunkyctl doctor --fast` 仍为 WARN，complexity high findings 80，主要集中在 `assets/js/data-view.js` 41 / `assets/js/stock-view.js` 13 / `assets/js/settings-view.js` 12 / `assets/js/signal-adapter.js` 9 / `assets/js/app.js` 5。
-
-## 2026-06-03 — chunkyctl action detail suffix helper extraction
-
-- `backend/scripts/chunkyctl.py` 里的 `_stage_opt_candidate_action()` / `_need_coverage_blocked_action()` 现共用 `_format_action_detail_suffix()`，把两处重复的 details 后缀拼装收成一个纯 helper；`stage-opt` / `need_027` 的 next-action 文本和现有回归测试语义保持不变。`backend/tests/scripts/test_chunkyctl.py` 已补 helper 直测。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/scripts/chunkyctl.py --scope backend/tests/scripts/test_chunkyctl.py` PASS，`python -m py_compile backend/scripts/chunkyctl.py backend/tests/scripts/test_chunkyctl.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_chunkyctl.py` 28 passed，`analyze_complexity.py` 对 `backend/scripts/chunkyctl.py` 无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — audit_tdx_data_need_coverage helper regression expansion
-
-- `backend/tests/scripts/test_audit_tdx_data_need_coverage.py` 现直接覆盖 `_source_registration_summary()` 和 `_blocked_need_summary()` 两个新 helper，补强了 `need_027` 的 source registration / failure queue 字段映射回归；`_summarize_need_gaps()` 的外层集成测试仍保留，输出语义不变。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/scripts/audit_tdx_data_need_coverage.py --scope backend/tests/scripts/test_audit_tdx_data_need_coverage.py` PASS，`python -m py_compile backend/scripts/audit_tdx_data_need_coverage.py backend/tests/scripts/test_audit_tdx_data_need_coverage.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_tdx_data_need_coverage.py` 24 passed，`analyze_complexity.py` 对 `backend/scripts/audit_tdx_data_need_coverage.py` 无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — audit_tdx_data_need_coverage blocked-need summary helper extraction
-
-- `backend/scripts/audit_tdx_data_need_coverage.py` 里的 `_summarize_need_gaps()` 现把 blocked need 字典拼装收成 `_blocked_need_summary()` 纯 helper，`need_027` 相关的 source registration / failure queue 结构保持不变，`blocked_needs` 输出没有改字段。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/scripts/audit_tdx_data_need_coverage.py --scope backend/tests/scripts/test_audit_tdx_data_need_coverage.py` PASS，`python -m py_compile backend/scripts/audit_tdx_data_need_coverage.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_tdx_data_need_coverage.py` 22 passed，`analyze_complexity.py` 对 `backend/scripts/audit_tdx_data_need_coverage.py` 无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — audit_tdx_data_need_coverage source-registration helper extraction
-
-- `backend/scripts/audit_tdx_data_need_coverage.py` 里的 `_summarize_need_gaps()` 现把 blocked need 的 source registration 摘成 `_source_registration_summary()` 纯 helper，`preferred/fallback` 的 family、注册状态、capability 列表和 `individual_fund_flow` 支持判断都统一由这个 helper 生成，`need_027` 输出结构不变。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/scripts/audit_tdx_data_need_coverage.py --scope backend/tests/scripts/test_audit_tdx_data_need_coverage.py` PASS，`python -m py_compile backend/scripts/audit_tdx_data_need_coverage.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_tdx_data_need_coverage.py` 22 passed，`analyze_complexity.py` 对 `backend/scripts/audit_tdx_data_need_coverage.py` 无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — chunkyctl need_027 blocker action helper extraction
-
-- `backend/scripts/chunkyctl.py` 里的 `_next_actions()` 现把 stage-opt / need_coverage 的 next-action 文本组装分别收成 `_stage_opt_candidate_action()` 和 `_need_coverage_blocked_action()`，主循环更短，但输出语义不变；`backend/tests/scripts/test_chunkyctl.py` 仍直接覆盖 stage-opt 推荐和 `need_027` blocked-gap 文本。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/scripts/chunkyctl.py --scope backend/tests/scripts/test_chunkyctl.py` PASS，`python -m py_compile backend/scripts/chunkyctl.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_chunkyctl.py` 27 passed，`analyze_complexity.py` 对 `backend/scripts/chunkyctl.py` 无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — settings-view data source params model extraction
-
-- `assets/js/settings-view.js` 里的数据源参数卡已收成 `buildDataSourceParamsModel()` 纯 helper，`renderDataSourceParams()` 现在只消费 model；row normalization 把 `sources` 统一成 `rows`、`sourceCount`、`totalCapabilities`、`isEmpty`，并把 `capabilities` 缺失作为空数组兜底，不再直接在 render 里读 raw payload。`backend/tests/contract/test_settings_view.py` 已补 helper 导出与输入归一回归。验证：`node --check assets/js/settings-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_settings_view.py backend/tests/contract/test_workbench_frontend_contract.py` 4 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对 `assets/js/settings-view.js` 无明显热点。
-
-- `assets/js/settings-view.js` 里的 about 区块也已收成 `buildAboutModel()` 纯 helper，`renderAbout()` 现在只消费 model；row normalization 把 `status` / `enabled_modules` 统一成 `backendLabel`、`enabledModules`、`isHealthy`，并把空响应兜底成 `异常`。`backend/tests/contract/test_settings_view.py` 已补 helper 导出与输入归一回归。验证：`node --check assets/js/settings-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_settings_view.py backend/tests/contract/test_workbench_frontend_contract.py` 5 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对 `assets/js/settings-view.js` 无明显热点。
-
-## 2026-06-03 — data-view routes table single-pass cleanup
-
-- `assets/js/stock-view.js` 里的信号证据链继续收口，`renderTabEvidence()` 现在把 follow/watch 事件改成单次扫描，不再先 `filter()` 两遍再拼接；`backend/tests/contract/test_workbench_frontend_contract.py` 已补 `stock-view` 不应回到双 filter 版本的回归。验证：`node --check assets/js/stock-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_signal_adapter.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对 `assets/js/stock-view.js` 无明显热点。
-
-- `assets/js/stock-view.js` 里的股票筛选继续收口，`collectOptions()` / `applyFilters()` 现在直接读 `topEvent.institutionType`，不再重复从 `ruleChecks` 扫 `inst_type`；`backend/tests/contract/test_signal_adapter.py` 已补 `eventToView` 通过 `rule_breakdown.checks` 归一出 `institutionType` 的回归。验证：`node --check assets/js/signal-adapter.js assets/js/stock-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_signal_adapter.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对 `assets/js/stock-view.js` 无明显热点。
-
-- `assets/js/data-view.js` 里的数据视图继续收口，`renderSourceCards()` / `renderRoutesTable()` / `renderDriftQueue()` / `renderStepGrid()` 现在都改成事件委托，不再在每次渲染后 `querySelectorAll(...).forEach(...)` 逐个绑定按钮；`_setUpdateButtonsBusy()` 也改成对 step-grid 容器统一切换 busy 样式。验证：`node --check assets/js/data-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py backend/tests/contract/test_workbench_frontend_contract.py` 6 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
-
-- `assets/js/data-view.js` 里的 `buildRoutesTableModel()` 已改成单次扫描，`null` 路由会被直接跳过，`backend/tests/contract/test_data_view.py` 已补 `null` 路由不影响 route model 的回归。验证：`node --check assets/js/data-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py backend/tests/contract/test_workbench_frontend_contract.py` 6 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — app.js turtle/helper dead-code cleanup
-
-- `assets/js/app.js` 里的 `turtleSystemLabel` / `turtleStateMeta` / `turtleStateTag` / `instLink` / `evTag` 死 helper 已删除，`backend/tests/contract/test_workbench_frontend_contract.py` 已补这组 dead helper 不应回流的回归。验证：`node --check assets/js/app.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_data_view.py` 6 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — data-view fallback/drift/capability single-pass cleanup
-
-- `assets/js/data-view.js` 里的数据视图继续收口，`buildFallbackPanelModel()`、`buildDriftQueueModel()`、`buildCapabilityTableModel()` 现在都改成单次扫描，不再在 `filter()` / `map()` 链里重复遍历；`backend/tests/contract/test_data_view.py` 已补 null / invalid 输入不影响输出形状的回归。验证：`node --check assets/js/data-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py backend/tests/contract/test_workbench_frontend_contract.py` 6 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — data-view link overview manual count cleanup
-
-- `assets/js/data-view.js` 里的数据链路总览继续收口，`buildLinkOverviewModel()` 现在把 `manual` 的 keep/watch/drop 计数改成单次扫描，不再重复 `filter()` 三次；`backend/tests/contract/test_data_view.py` 已补 `manual` 无效 decision 不影响计数的回归。验证：`node --check assets/js/data-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py backend/tests/contract/test_workbench_frontend_contract.py` 6 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — widget format utils analysis/workbench-health 扩展
-
-- `assets/js/app.js` 里的 `loadIndustryOverviewSummary` / `resolveStockSummary` 死 helper 已删除，`backend/tests/contract/test_workbench_frontend_contract.py` 已补这两个 dead wrapper 不应回流的回归。验证：`node --check assets/js/app.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_settings_view.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
-
-- `assets/js/settings-view.js` 里的 `versions` 死字段已删除，schema versions model 现在只保留层级计数与漂移/对齐分组；`backend/tests/contract/test_settings_view.py` 已补 `versions` 不应再出现在 schema model 的回归。验证：`node --check assets/js/settings-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_settings_view.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
-
-- `assets/js/settings-view.js` 里的 `summary` 死字段已删除，schema versions 现在只暴露由版本列表聚合出来的层级计数与漂移分组；`backend/tests/contract/test_settings_view.py` 已补 `summary` 不应再出现在 schema model 的回归。验证：`node --check assets/js/settings-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_settings_view.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
-
-- `assets/js/signal-adapter.js` 里的旧 `aggregateByStock()` wrapper 已删除，股票视图现在只消费 `fetchSignals()` 返回的 `byStock` 聚合结果，`backend/tests/contract/test_signal_adapter.py` 也改成锁定 `eventToView` 映射与 dead wrapper 清理；`backend/tests/contract/test_workbench_frontend_contract.py` 继续确保信号适配层契约文件仍在预期加载顺序内。验证：`node --check assets/js/signal-adapter.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_signal_adapter.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
-
-- `assets/js/widgets/signal-params.js` 里的本地 `fmtWinRate` 已删除，cohort inline 里的胜率展示现在直接复用 `WidgetFormatUtils.formatWinRate()`；`backend/tests/contract/test_widget_format_utils.py` 已补 `SignalParamsWidget` 的共享 formatter / local formatter contract，`backend/tests/contract/test_workbench_frontend_contract.py` 继续保证 `format-utils.js` 在 `signal-params.js` 之前加载。验证：`node --check assets/js/widgets/signal-params.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_widget_format_utils.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
-
-- `assets/js/widgets/screening-panel.js` 里的本地 `fmt` 已删除，选股扫描卡片现在直接复用 `WidgetFormatUtils.formatNumber()`；`backend/tests/contract/test_widget_format_utils.py` 已补 `ScreeningPanelWidget` 的共享 formatter / local formatter contract，`backend/tests/contract/test_workbench_frontend_contract.py` 继续保证 `format-utils.js` 在 `screening-panel.js` 之前加载。验证：`node --check assets/js/widgets/screening-panel.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_widget_format_utils.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
-
-- `assets/js/widgets/etf-list.js` 里的本地 `etfNum` 已删除，ETF 全量筛选页现在直接复用 `WidgetFormatUtils.formatNumber()`；`backend/tests/contract/test_widget_format_utils.py` 已补 `ETFListWidget` 的共享 formatter / local formatter contract，`backend/tests/contract/test_workbench_frontend_contract.py` 继续保证 `format-utils.js` 在 `etf-list.js` 之前加载。验证：`node --check assets/js/widgets/etf-list.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_widget_format_utils.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
-
-- `assets/js/widgets/format-utils.js` 的共享格式化 helper 继续向 `backtest-panel` / `etf-strategy-compare` 扩展，`backtest-panel` 的 win rate 展示和 `etf-strategy-compare` 的 win rate / 回撤展示现在都复用 `WidgetFormatUtils.formatWinRate()` / `formatPercent()`；`backend/tests/contract/test_widget_format_utils.py` 已补 helper export / widget source contract，`backend/tests/contract/test_workbench_frontend_contract.py` 继续保证 `format-utils.js` 在这些 widget 之前加载。验证：`node --check assets/js/widgets/format-utils.js assets/js/widgets/backtest-panel.js assets/js/widgets/etf-strategy-compare.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_widget_format_utils.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
-
-- `assets/js/widgets/etf-opportunity.js` 里的本地 `etfNum` / `scoreNum` / `signedPct` / `pct` 已删除，机会发现页现在直接复用 `WidgetFormatUtils.formatNumber()` / `formatPercent()`；`backend/tests/contract/test_widget_format_utils.py` 已补 `ETFOpportunityWidget` 的共享 formatter / local formatter contract，`backend/tests/contract/test_workbench_frontend_contract.py` 继续保证 `format-utils.js` 在 `etf-opportunity.js` 之前加载。验证：`node --check assets/js/widgets/etf-opportunity.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_widget_format_utils.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
-
-- `assets/js/widgets/format-utils.js` 的共享格式化 helper 继续向 `screening-panel` / `cohort-card` / `backtest-panel` 扩展，三个 widget 现在都复用 `WidgetFormatUtils`，并补了 Node `globalThis` 导出回归；`index.html` 也把 `format-utils.js` 提前到这组三个 widget 之前加载。`backend/tests/contract/test_widget_format_utils.py` 继续负责 helper export / widget export contract，`backend/tests/contract/test_workbench_frontend_contract.py` 也补了 `format-utils.js` 在这些 widget 之前加载的回归。验证：`node --check assets/js/widgets/format-utils.js assets/js/widgets/signal-params.js assets/js/widgets/cohort-card.js assets/js/widgets/backtest-panel.js assets/js/widgets/screening-panel.js assets/js/widgets/multidim-badge.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_widget_format_utils.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
-
-- `assets/js/widgets/format-utils.js` 的共享格式化 helper 继续向 `signal-params` / `cohort-card` / `backtest-panel` 扩展，三个 widget 现在都复用 `WidgetFormatUtils`，并补了 Node `globalThis` 导出回归；`index.html` 也把 `format-utils.js` 提前到这组三个 widget 之前加载。`backend/tests/contract/test_widget_format_utils.py` 继续负责 helper export / widget export contract，`backend/tests/contract/test_workbench_frontend_contract.py` 也补了 `format-utils.js` 在这些 widget 之前加载的回归。验证：`node --check assets/js/widgets/format-utils.js assets/js/widgets/signal-params.js assets/js/widgets/cohort-card.js assets/js/widgets/backtest-panel.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_widget_format_utils.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
-
-- `assets/js/widgets/format-utils.js` 的共享格式化 helper 继续向 `topk-strip` 扩展，`topk-strip` 的 `fmtScore` 现在也复用 `WidgetFormatUtils`，并补了 Node 导出与源码契约回归，保证它不是只在浏览器里偶然可用；`backend/tests/contract/test_widget_format_utils.py` 继续负责 helper export / widget export contract，`backend/tests/contract/test_workbench_frontend_contract.py` 也补了 `format-utils.js` 在 `topk-strip` 之前加载的回归。验证：`node --check assets/js/widgets/format-utils.js assets/js/widgets/topk-strip.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_widget_format_utils.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
-
-- `assets/js/widgets/format-utils.js` 的共享格式化 helper 继续向 `institution-scorecard` 扩展，机构评分卡里的 `fmtNum` / `fmtScore` / `fmtGain` 现在都复用 `WidgetFormatUtils`，去掉各自的重复 local formatter 逻辑；`backend/tests/contract/test_widget_format_utils.py` 继续负责 helper export / widget export contract，`backend/tests/contract/test_institution_scorecard_widget.py` 也补了 format-utils 依赖加载回归，`backend/tests/contract/test_workbench_frontend_contract.py` 继续保证 format-utils 在机构评分卡之前加载。验证：`node --check assets/js/widgets/format-utils.js assets/js/widgets/institution-scorecard.js assets/js/widgets/etf-analysis.js assets/js/widgets/workbench-health.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_widget_format_utils.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_institution_scorecard_widget.py` 4 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
-
-- `assets/js/widgets/format-utils.js` 的共享格式化 helper 继续向 `etf-analysis` / `workbench-health` 扩展，`etf-analysis` 里的 `fmtNum` / `fmtSignedPct` / `etfNum` 和 `workbench-health` 里的 `fmt` 现在都复用 `WidgetFormatUtils`，去掉各自的重复 local formatter 逻辑；`backend/tests/contract/test_widget_format_utils.py` 继续负责 helper export / widget export contract，`backend/tests/contract/test_workbench_frontend_contract.py` 也补了 format-utils 在这些 widget 之前加载的回归。验证：`node --check assets/js/widgets/format-utils.js assets/js/widgets/etf-analysis.js assets/js/widgets/workbench-health.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_widget_format_utils.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — widget format utils ETF list/workbench 扩展
-
-- `assets/js/widgets/format-utils.js` 的共享格式化 helper 继续向 `etf-list` / `etf-workbench` 扩展，两个 widget 现在也统一复用 `WidgetFormatUtils.formatNumber()` / `formatPercent()`，去掉各自的重复 local formatter 逻辑；`backend/tests/contract/test_widget_format_utils.py` 继续负责 helper export / widget export contract，`backend/tests/contract/test_workbench_frontend_contract.py` 也补了 `format-utils.js` 在这两个 widget 之前加载的回归。验证：`node --check assets/js/widgets/format-utils.js assets/js/widgets/etf-list.js assets/js/widgets/etf-workbench.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_widget_format_utils.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对改动文件无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — widget format utils ETF 扩展
-
-- `assets/js/widgets/format-utils.js` 的共享格式化 helper 继续向 ETF widget 扩展，`etf-sector-rotation` / `etf-opportunity` / `etf-strategy-compare` 现在也统一复用 `WidgetFormatUtils.formatNumber()` / `formatPercent()`，去掉各自的重复 local formatter 逻辑；`index.html` 的加载顺序已经覆盖这些 widget，`backend/tests/contract/test_widget_format_utils.py` 补了 helper export / widget export contract，`backend/tests/contract/test_workbench_frontend_contract.py` 也补了 format-utils 在 ETF widget 之前加载的回归。验证：`node --check assets/js/widgets/format-utils.js assets/js/widgets/etf-sector-rotation.js assets/js/widgets/etf-opportunity.js assets/js/widgets/etf-strategy-compare.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_widget_format_utils.py backend/tests/contract/test_model_monitor_widget.py backend/tests/contract/test_workbench_frontend_contract.py` 4 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对三个改动文件无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — widget format utils shared helper
-
-- `assets/js/widgets/format-utils.js` 新增共享格式化 helper，`model-monitor` 和 `grid-optimizer` 现在统一复用 `WidgetFormatUtils.formatNumber()` / `formatPercent()`，去掉各自的重复 local formatter 逻辑；`index.html` 已把 helper 放在对应 widget 之前加载，`backend/tests/contract/test_model_monitor_widget.py` 也补了 helper export / format contract。验证：`node --check assets/js/widgets/format-utils.js assets/js/widgets/model-monitor.js assets/js/widgets/grid-optimizer.js assets/js/app.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_model_monitor_widget.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`audit_test_tool_health.py` PASS，`analyze_complexity.py` 对两个改动文件无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — dead app.js wrapper cleanup
-
-- `assets/js/app.js` 里的薄 wrapper `loadStocks()` / `loadResearch()` 已删除，`showView()` 直接分发到 `window.StockView.load()/reload()` 与 `loadInstScorecard()`，避免重复入口和维护歧义；`backend/tests/contract/test_workbench_frontend_contract.py` 已补这两条 wrapper 不应回流的回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/app.js --scope backend/tests/contract/test_workbench_frontend_contract.py` PASS，`node --check assets/js/app.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py` 2 passed，`analyze_complexity.py` 复扫后 `assets/js/app.js` 无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — stock report widget removal
-
-- `assets/js/widgets/stock-report.js` 与其专用契约测试已删除，`index.html` / `assets/js/app.js` 里的 stock-report 脚本加载与 `StockReportWidget` 入口也一并清理；`backend/tests/contract/test_workbench_frontend_contract.py` 已补“stock-report 不应回流到 app.js / index”的回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/app.js --scope backend/tests/contract/test_workbench_frontend_contract.py` PASS，`node --check assets/js/app.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`analyze_complexity.py` 复扫后 `assets/js/app.js` 无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — rank matrix cache rows model extraction
-
-- `assets/js/workbench-view.js` 里的 rank matrix cache 页已继续收成页级 model：`buildRankMatrixCacheModel()` 现在把 `summary` / `latest_benchmarks` / `cache_entries` 规范成 `summaryMetrics`、`benchmarkRows`、`cacheEntryRows`、`isEmpty`，`renderRankMatrixCache()` 只消费 model；`backend/tests/contract/test_workbench_frontend_render_smoke.py` 已补这组 model 的稳定性回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/workbench-view.js --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_workbench_frontend_render_smoke.py` PASS，`node --check assets/js/workbench-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 23 passed，`analyze_complexity.py` 复扫后 `assets/js/workbench-view.js` 无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — stability context rows model extraction
-
-- `assets/js/workbench-view.js` 里的稳定性上下文已继续收成页级 model：`buildStabilityContextModel()` 现在把 `summaries` / `diagnostics` 进一步规范成 `summaryRows`、`diagnosticRows`、`summaryCount`、`diagnosticCount`、`isEmpty`，`renderStabilityContext()` 只消费 model；`buildResearchModel()` / `buildChampionModel()` 也都直接消费这个 model。`backend/tests/contract/test_workbench_frontend_contract.py` 和 `backend/tests/contract/test_workbench_frontend_render_smoke.py` 已补 helper 导出与输入归一回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/workbench-view.js --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_workbench_frontend_render_smoke.py` PASS，`node --check assets/js/workbench-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 23 passed，`analyze_complexity.py` 复扫后 `assets/js/workbench-view.js` 无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — stability context model extraction
-
-- `assets/js/workbench-view.js` 里的稳定性上下文已收成 `buildStabilityContextModel()` 纯 helper，`buildResearchModel()` / `buildChampionModel()` 现在都直接消费该 model，`renderResearch()` / `renderChampion()` 只显示 `runId` 与归一后的 summaries/diagnostics；`backend/tests/contract/test_workbench_frontend_contract.py` 和 `backend/tests/contract/test_workbench_frontend_render_smoke.py` 已补 helper 导出与输入归一回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/workbench-view.js --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_workbench_frontend_render_smoke.py` PASS，`node --check assets/js/workbench-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 23 passed，`analyze_complexity.py` 复扫后 `assets/js/workbench-view.js` 无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — data-view source cards detail cache
-
-- `assets/js/data-view.js` 里的数据源卡片详情现在预先缓存成 `detailRowsHtml`，`renderSourceCards()` 只挂载 source model，`toggleDetail()` 直接从 `_state.sourceCardModelByName` 读取，避免每次点击都重新 `find/map` 重算 capability rows；`backend/tests/contract/test_data_view.py` 已补 source-cards model 的稳定性回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/data-view.js --scope backend/tests/contract/test_data_view.py` PASS，`node --check assets/js/data-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py` 4 passed，`codegraph sync .` 已同步。
-
-
-## 2026-06-03 — data-view link overview model extraction
-
-- `assets/js/data-view.js` 里的数据链路总览已收成 `buildLinkOverviewModel()` 纯 helper，`renderLinkOverview()` 现在只消费 model；row normalization 把 `summary` / `by_layer` / `tdxValidation` / `sourceHealth` 统一成 `snapshotAt`、`keep`、`watch`、`drop`、`pit`、`sourceLabel`、`nodes`，并把 `statusFromCounts` 的决策也前移到 model 层。`backend/tests/contract/test_data_view.py` 已补 link overview 的稳定性回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/data-view.js --scope backend/tests/contract/test_data_view.py` PASS，`node --check assets/js/data-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py` 4 passed，`analyze_complexity.py` 复扫后 `assets/js/data-view.js` / `assets/js/stock-view.js` 无新增明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — stock timeline ordering delegation
-
-- `assets/js/signal-adapter.js` 里的股票事件聚合继续模型化，`aggregateByStockViews()` 现在除了 `events` 还预先产出 `timelineEvents`，把 `renderTabTimeline()` 的日期排序从 UI 渲染路径挪到共享数据层；`assets/js/stock-view.js` 已直接消费 `s.timelineEvents || s.events`。`backend/tests/contract/test_signal_adapter.py` 已补 timeline 顺序回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/signal-adapter.js --scope assets/js/stock-view.js --scope backend/tests/contract/test_signal_adapter.py` PASS，`node --check assets/js/signal-adapter.js assets/js/stock-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_signal_adapter.py` 1 passed，`analyze_complexity.py` 复扫后 `assets/js/signal-adapter.js` / `assets/js/stock-view.js` 无新增明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — data-view cockpit panel model extraction
-
-- `assets/js/data-view.js` 里的数据视图 cockpit 面板继续收口成纯 model：新增 `buildHealthHeatmapModel()`、`buildSourcePriorityModel()`、`buildFallbackPanelModel()`、`buildDriftQueueModel()`、`buildCapabilityTableModel()`，对应的 `renderHealthHeatmap()` / `renderSourcePriority()` / `renderFallbackPanel()` / `renderDriftQueue()` / `renderCapTable()` 现在只消费 model；`backend/tests/contract/test_data_view.py` 已补这组 builder 的稳定性回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/data-view.js --scope backend/tests/contract/test_data_view.py` PASS，`node --check assets/js/data-view.js` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py` 4 passed，`analyze_complexity.py` 复扫后 `assets/js/data-view.js` 无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — pipelines model extraction
-
-- `assets/js/workbench-view.js` 里的 pipelines 页已收成 `buildPipelinesModel()` 纯 helper，`renderPipelines()` 现在只消费 model；row normalization 把 `recent` / `slowest` / `blockers` 统一到 page-level model，并保留 `status_counts`、`latest`、`slowestName`、`slowestDurationS`、`isEmpty`。workbench contract / smoke test 已补上 helper 导出与输入归一回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/workbench-view.js --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_workbench_frontend_render_smoke.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 22 passed，`node --check assets/js/workbench-view.js` PASS，`analyze_complexity.py` 复扫后 `assets/js/workbench-view.js` 无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — research model extraction
-
-- `assets/js/workbench-view.js` 里的研究页已收成 `buildResearchModel()` 纯 helper，`renderResearch()` 现在只消费 model；row normalization 把 `research_schedule` / `model_stability` / `ranker_profiles` / `ranker_policy` / `rank_matrix_cache` / `stability_context` / `stock_horizon_profile` / `shareholder_plan_*` / `temporal_synergy` / `industry_pit` 统一到 page-level model，workbench contract / smoke test 已补上 helper 导出与输入归一回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/workbench-view.js --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_workbench_frontend_render_smoke.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 21 passed，`node --check assets/js/workbench-view.js` PASS，`analyze_complexity.py` 复扫后 `assets/js/workbench-view.js` 无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — data-view audit model cleanup
-
-## 2026-06-03 — today signal cache model extraction
-
-- `assets/js/workbench-view.js` 里的今日信号快照已收成 `buildTodaySignalCacheModel()` 纯 helper，`renderTodaySignalCache()` 现在只消费 model；row normalization 把 `today_signal_cache` 统一成 `status`、`statusTone`、`signalCount`、`freshnessDays`、`sourceMaxNoticeDate`、`currentSourceMaxNoticeDate`、`builtAt`、`error`、`step`、`isEmpty`，并把 dataSources 页头部的信号快照统计也切到 model 口径。`buildDataSourcesModel()` 也开始返回 `signalCacheModel`，workbench contract / smoke test 已补上 helper 导出与输入归一回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/workbench-view.js --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_workbench_frontend_render_smoke.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 20 passed，`node --check assets/js/workbench-view.js` PASS，`analyze_complexity.py` 复扫后 `assets/js/workbench-view.js` 无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — processing monitor model extraction
-
-- `assets/js/workbench-view.js` 里的处理工具监控 / 拒绝原因块已收成 `buildProcessingMonitorModel()` 纯 helper，`renderProcessingMonitorTable()` 现在只消费 model；row normalization 把 `processing_monitor` 统一成 `recentRuns`、`reasonCounts`、`totalRejectedRows`、`runCount`、`recentRunCount`、`reasonCount`、`isEmpty`，并把数据源页头部清洗拒绝统计也切到 model 口径。`buildDataSourcesModel()` 也开始返回 `processingMonitor` model，workbench contract / smoke test 已补上 helper 导出与输入归一回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/workbench-view.js --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_workbench_frontend_render_smoke.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 19 passed，`node --check assets/js/workbench-view.js` PASS，`analyze_complexity.py` 复扫后 `assets/js/workbench-view.js` 无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — asset governance table model extraction
-
-- `assets/js/workbench-view.js` 里的资产用途与质量契约表已收成 `buildAssetGovernanceTableModel()` 纯 helper，`renderAssetGovernanceTable()` 现在只消费 model；row normalization 把 `asset_health.items` 统一成 `rows`、`rowCount`、`isEmpty`，并保留原有 hidden_internal 过滤、quality gate 排序与 80 行上限语义。`buildDataSourcesModel()` 也开始返回 `assetGovernanceTable` model，workbench contract / smoke test 已补上 helper 导出与输入归一回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/workbench-view.js --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_workbench_frontend_render_smoke.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 18 passed，`node --check assets/js/workbench-view.js` PASS，`analyze_complexity.py` 复扫后 `assets/js/workbench-view.js` 无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — tdx server health model extraction
-
-- `assets/js/workbench-view.js` 里的 TDX K 线服务器健康块已收成 `buildTdxServerHealthModel()` 纯 helper，`renderTdxServerHealthTable()` 现在只消费 model；row normalization 把 `servers` / `summary` 统一成 `capabilities`、`totals`、`rows`、`rowCount`、`updatedAt`、`isEmpty`，并兼容 `healthy_count` / `timeout_server_count` 与 success/fail/timeout 汇总口径。`buildDataSourcesModel()` 也开始返回 `tdxServerHealth` model，workbench contract / smoke test 已补上 helper 导出与输入归一回归。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/workbench-view.js --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_workbench_frontend_render_smoke.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 17 passed，`node --check assets/js/workbench-view.js` PASS，`analyze_complexity.py` 复扫后 `assets/js/workbench-view.js` 无明显热点，`codegraph sync .` 已同步。
-
-- `assets/js/data-view.js` 里的审计结果拆分已收成 `buildAuditResultsModel()` 纯 helper，`renderAuditResults()` 只消费 model；`null` 审计行会被安全忽略，issues / okRows / n_error / n_warn / n_ok / n_tables / run_at 都在单一 model 层归一。新增 `backend/tests/contract/test_data_view.py` 锁住 helper 行为，并把 `backend/tests/contract/test_workbench_frontend_contract.py` 里的 data-view 契约收紧到 `buildAuditResultsModel(`。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope assets/js/data-view.js --scope backend/tests/contract/test_data_view.py --scope backend/tests/contract/test_workbench_frontend_contract.py --scope backend/tests/contract/test_settings_view.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_data_view.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_settings_view.py` 4 passed，`node --check assets/js/data-view.js` PASS，`analyze_complexity.py` 复扫后 `assets/js/data-view.js` 无明显热点，`codegraph sync .` 已同步。
-
-## 2026-06-03 — ETF workbench widget extraction
-
-- `assets/js/app.js` 里的 ETF 工作台主实现已抽到 `assets/js/widgets/etf-workbench.js`，`app.js` 现在只保留 `loadEtfWorkbench()` 薄 wrapper + 依赖注入；widget 自带 `mountEtfWorkbench` / `buildWorkbenchHtml` / `etfNum`，把 ETF 工作台总览、数据源与覆盖范围、ETF 结构与功能入口收口到单独模块，`index.html` 已调整为先加载 widget 再加载 `app.js`。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_etf_workbench_widget.py --scope backend/tests/contract/test_workbench_frontend_contract.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_etf_workbench_widget.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`node --check assets/js/widgets/etf-workbench.js assets/js/app.js` PASS，`analyze_complexity.py` 复扫后新 widget 无明显热点，`codegraph sync .` 已同步。
-## 2026-06-03 — workbench health widget extraction
-
-- `assets/js/app.js` 里的工作台健康 / 连通性实现已抽到 `assets/js/widgets/workbench-health.js`，`app.js` 现在只保留 `refreshWorkbenchHealthBar()` / `refreshNetwork()` 薄 wrapper + 依赖注入；widget 自带 `refreshWorkbenchHealthBar` / `refreshNetwork` / `normalizeSourceName` / `setSourcePill`，把健康卡、事件成熟度、机构概览、信号概览、管线状态与 network pills 收口到单独模块，`index.html` 已调整为先加载 widget 再加载 `app.js`。验证：`PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope backend/tests/contract/test_workbench_health_widget.py --scope backend/tests/contract/test_workbench_frontend_contract.py` PASS，`PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_health_widget.py backend/tests/contract/test_workbench_frontend_contract.py` 3 passed，`node --check assets/js/widgets/workbench-health.js assets/js/app.js` PASS，`analyze_complexity.py` 复扫后新 widget 无明显热点，`codegraph sync .` 已同步。
-## 2026-05-27 — 架构重构当前执行计划 (承接 handoff, 覆盖旧 M0/M4/M5 顺序)
-
-> 当前阶段是 **先架构后业务**。本节是接手 `analysis/handoff_20260527.md`、
-> `analysis/codex_bootstrap_20260527.md`、`docs/PROJECT_CONSTITUTION.md`、
-> `docs/architecture_reform_context.md` 后形成的执行计划。`docs/implementation_plan.md`
-> 已同步为同一架构优先口径。
-
-### 当前 WARN / 风险先记
-
-| 项 | 当前状态 | 风险/决策 |
-|---|---:|---|
-| `check_universe_filter.py --all` | **PASS: CLEAN (767 production files)** | non-test gate 已清零；`--include-tests` 仍可审计 fixture 引用 |
-| `dim_active_a_stock` 定位 | non-test 直接引用已治理 | 只能做 code->name/cache/data-sync/schema/meta，不做 universe 真相源 |
-| `universe_governance` | **PASS scoped audit**: `services.universe` / checker / recommendation universe / label universe 通过 test-tool audit、py_compile、per-file complexity、CodeGraph sync、`check_universe_filter --all`、`test_universe.py` + checker tests | ST SQL 过滤已改为从 `universe_rules.yaml` 的 `st_name_patterns` 生成；`dim_active_a_stock` 仅用于 ST 名称映射 evidence，不作为活跃 universe 真相源 |
-| Rule 10 | 已在 `safe_commit.sh` 增加 Step 4.5 blocking gate，并补 `SAFE_COMMIT_NO_PUSH=1` 本地提交模式；`test_safe_commit.py` 6 passed | `.py` staged commit 必须被 `Codex-Reviewed: APPROVE/APPROVE_WITH_NOTES` 或 8+ 字符 skip reason 硬约束；`REQUEST_CHANGES` 不可放行；dirty 收束可先本地 safe commit，不为清理工作区被迫 push |
-| 顶层设计审查 | **APPROVE_WITH_NOTES / 未最终闭环** | `docs/engineering_governance.md` 已补“二阶审查”，确认流程/功能/模块/数据表/配置文件这套管理方式本身合理；但 freshness/PIT/complexity gate 未全闭环，不能当架构完成证书 |
-| 硬编码治理 | 已纳入 `AGENTS.md`、bootstrap、top-level design review 和 chunkymonkey skills | 业务规则/阈值/source catalog/数据源优先级默认归 config/table/service；raw `duckdb.connect` allowlist 已外置到 `backend/config/duckdb_connect_policy.yaml`，ATTACH retry 统一进 `services/duck_adapter.py`；Python 只留测试夹具、数学常量、schema/enum、SQL DDL 或有证据的例外 |
-| 共享配置边界 | **PASS scoped / shared-config-owned**: 通用 holding_days、stage 口径、MACD 诊断窗口、海龟突破量能门槛、shareholder-plan walk-forward 默认 fold/train/holdout、multidim walk-forward 默认模型参数/degenerate 门槛、stock-formula optuna 的 bucket / high-conviction 阈值由 `backend/config/stock_formula_optuna.yaml` 承载，而共享 vol/amt/p60 bins 已拆到 `backend/config/shared_feature_bins.yaml`；`feature_registry.py` 现在也把 forward / follow label 列统一从 registry 读出来，避免相同 horizon label 列表继续散落在脚本常量里；backtest 默认 stop/target/trailing 则继续收敛到 `backend/config/strategy_defaults.yaml`。`shared_windows.py` 负责共同窗口加载，formula-specific YAML 只保留各自专用阈值，`mart_per_stock_stage_strategy_optimal_pit` / `mart_stock_horizon_profile` 这类 per-stock 最佳持股周期继续表化，不回到 Python literal。 | 按第一性原理把“通用配置”与“专用配置”分开：共享口径统一维护，公式专用阈值单独文件，个股档案结果表化，不让每个公式复制一套一样的窗口常量 |
-| 删除治理 | 已纳入 `AGENTS.md`、top-level design review 和 chunkymonkey skills | 经 CodeGraph + `rg` + 测试/审计验证可删的代码必须真删；不允许用注释、隐藏开关、改名、dead branch 或空壳保留来掩饰残留 |
-| 数据需求契约 | **PASS scoped audit / 生产库未写**: `tdx_data_need_coverage.yaml` 已把 `grain`、`pit_key`、`freshness_sla`、`evidence_status`、`production_eligibility` 升级为每个 need 的必填契约；`audit_tdx_data_need_coverage.py` 缺字段/非法 enum/eligible+unknown PIT 会 FAIL，DDL 与 `schema_marts.py` 已补新列 | 当前只验证配置 loader 与临时 DuckDB 物化，未写生产 DuckDB；后续 source 增删改必须先登记 need contract，再走 source probe、PIT/freshness、exact-sync 和 consumer eligibility |
-| 系统级数据健康审计 | **WARN: 0 red / 26 yellow / 342 total, blocking_yellow=9**: 2026-06-04 14:31 CST live `data_health_snapshot.py --dry-run --format text` shows `green=316`, `yellow=26`, `red=0`; forecast raw/mart freshness has been cleared by the 2026-06-04 forecast slice. `scripts/chunkyctl doctor --fast` consumes the JSON form and fails closed only on red while surfacing blocking-quality yellow rows as next-action priority. Human inspection command is `PYTHONPATH=backend python backend/scripts/data_health_snapshot.py --dry-run --format text` (`markdown` is not a supported format). Remaining blocking yellow families are capital behavior, TDX holder/shareholder-plan, feature panel/prune, and GPCW audit/profile; clear these via their writer/sync_step evidence before claiming data-health green again. |
-| 库内 artifact/cache 污染审计 | **PASS / 未发现 LifeHack 自嵌套，单行大 payload FAIL 已迁移**: `audit_storage_payloads.py` 已改为只扫 payload-like 列，并用 JSON key 形态识别递归，避免把普通 `stock_code/date/built_at` 或命令字符串误判为循环引用；`chunkyctl doctor --fast` 现在默认包含 storage payload summary。2026-06-01 已将 `mart_today_signal_cache.signals_json` 20,220,095 bytes / 9,286 signals 从主表整包 JSON 迁入 `mart_today_signal_cache_signal` 明细表，主表只留 summary/cache metadata + `signals_json='[]'` 兼容字段；随后在 `storage_retention.yaml` 为有界 raw/detail/reason-code/picture/lineage pointer 列登记 owner、classification、单条/总量上限和 path-marker 许可。最新真实库审计: 323 columns scanned / 0 FAIL / 0 WARN / 13 reviewed PASS / recursive hits 0。 | 这不是清表/VACUUM，也不是把风险静默跳过；未来若这些列出现递归 key、单条超 cap、总量超 cap 或未许可 path marker，会重新 WARN/FAIL。后续 storage 治理从“是否自嵌套”转向容量/保留期/可重算性分批治理。 |
-| 文档引用图 / 循环权威链 | **PASS scoped / 10 active docs**: `docs/` 已压缩为 10 个活文档；旧研究/RCA/spec 已迁 `analysis/docs_archive_20260531/`；`audit_docs_graph.py` 当前区分 authority edge 与 context-only edge，运行快照/dated handoff 不再参与权威 SCC。 | 最新实跑: 13 sources / 260 edges / 191 authority edges / 23 context-only edges / 0 unresolved live refs / 0 missing archive targets / 0 forbidden SCC / largest SCC 7；后续新增活文档必须同批合并/归档/删除旧文档，保持 `docs/*.md <= 10`。 |
-| 文档清理切片验收 | **PASS scoped when worktree clean / gate active**: `scripts/chunkyctl docs --format markdown` 已把 docs graph 与 docs/archive/support dirty 切片合并输出；docs_graph 当前 PASS，`docs/*.md=10`。本轮 storage-tool 切片修改期间该 gate 只因 support files dirty 显示 WARN。 | 这证明循环权威链已清且工具可用；后续 staging/commit 必须把 docs 删除、analysis 归档、docs map、goal/implementation、`audit_docs_graph.py`/tests、`chunkyctl docs` 入口作为同一 reviewed slice 处理，不能 `git add .`。 |
-| 文档内容整合 | **PASS scoped / active docs职责收窄**: `docs/implementation_plan.md` 已改为 durable roadmap，不再复制每个 slice 的实时 PASS/WARN；`docs/architecture_reform_context.md` 已改为 300616 历史原因和稳定原则，移除旧“当前状态/GCP 当前用量/40 违规”等易误导内容；`docs/README.md` 补“goal=状态、docs=规则契约、analysis=证据”的文档治理规则。 | 当前状态只写 `goal.md`；历史证据只进 `analysis/`；活文档保留 <=10 且不再自说自话。后续若新增文档/改变启动模式/改变 gate，必须同批更新 docs map 和 quickstart。 |
-| 文档归档内容审计 | **PASS scoped / no missing target**: 根目录三份迁移文档已与 `analysis/plan_v3_20260514_archived.md`、`analysis/data_integrity_audit_20260517.md`、`analysis/market_perception_development_plan_20260520.md` 逐字匹配；可从 HEAD 精确比对的归档项中 20 个 exact match，13 个为路径/status/controller-agent 规则的 intentional normalization，6 个无 HEAD 基线只能按 target-exists + live refs gate 管理。 | `Archived as/under` 不是当前权威入口；归档文件只作历史证据。若后续需要保留逐字证据，先用 `git show HEAD:<old>` / hash 比对，再改 ledger。 |
-| 测试工具可信度 | **PRE-TEST GATE ACTIVE / PASS**: `backend/config/test_tool_registry.yaml` + `backend/scripts/audit_test_tool_health.py` + `docs/engineering_governance.md` 已覆盖全部 selected test artifacts；root micro-batch 13 已完成 updater 9 个 root tests 与剩余 system/strategy/tdx/v3/utils/conftest/xdxr 等 14 个 root artifacts 的 owner/status/evidence 登记；Rule 10 行为测试已加入；full audit 为 0 FAIL / 0 WARN / 365 selected / 365 registered / 100% registry coverage | 这只证明测试工具 registry 与默认/opt-in scope 对齐，不证明业务数据或策略有效；updater targeted pytest 89 passed / 2 warnings；剩余 14 个 root artifacts 默认 pytest 76 passed / 63 deselected / 15 warnings；`system_routes` 与 `v3_*` route smoke 已标 `realdb` opt-in，realdb collect-only 63/66 collected，未执行真实库测试；`backend/services/source_watermarks.py` 已改为 timezone-aware UTC 时间戳，相关 `test_source_watermarks` / `probe_source_capability` 的 `datetime.utcnow()` warning 已清掉；`test_tdx_source.py` 仍有 `datetime.utcnow()` deprecation 小债 |
-| `raw_fund_flow_daily` | **FAIL / deprecated / stale, production fallback fixed**: 本地 86,426 rows，2025-08-21 -> 2026-04-24，`dim_data_asset.deprecation_status=deprecated`；`CapitalFlowAlpha` 与 institution score source gate 已改为 PIT-only，panel manifest 已标 raw 只能 research/deprecated；`need_027` 主力/超大/大/中/小单资金流仍 blocked/unknown；`backend/scripts/audit_tdx_data_need_coverage.py` 已把 blocked need summary 做成固定输出，目前只剩 `need_027` 一个 blocked gap；2026-06-01 该 audit 进一步显式列出 source registration：preferred `akshare` 在当前 registry 中已注册，而 declared fallback 标签 `miaoxiang` 只是 `aif10` 家族别名；最新 capability inventory 证明 `akshare` 确实暴露 `individual_fund_flow` / `individual_fund_flow_rank` / `individual_fund_flow_rank_snapshot`，但 `aif10` 家族能力里并没有这类 exact flow capability，所以 fallback 仍是概念路径，未构成可执行生产证据；2026-06-01 另外补上 `akshare.stock_fund_flow_individual` 研究侧排行快照 capability，并落成 `mart_stock_fund_flow_rank_snapshot_daily` / `build_fund_flow_rank_snapshot_daily`，已实跑落表到 `2026-06-01`（5,188 rows / 5,188 codes），对应 failure queue 也已从 open 收敛为 resolved；但它仍只是主力行为研究的辅助观测，不等同 `need_027` exact flow；2026-06-01 还把 blocked need summary 继续升级成 failure-queue-backed evidence：`need_027` 的 blocked summary 现在会直接携带 `mart_data_source_failure_queue` 的 open / resolved 快照，能一眼看到 `order_flow_fund_flow` 的 `individual_fund_flow` / `individual_fund_flow_rank` 现场失败证据，而不是只看到抽象的 blocked/unknown；2026-06-02 live probe 再次验证 `individual_fund_flow` via `akshare`（`stock=600519, market=sh`）仍报 `RemoteDisconnected`，`mart_data_source_failure_queue` 当前实际为 `open=3 / resolved=5`，其中 `order_flow_fund_flow/akshare` 仍在 open（`individual_fund_flow` / `individual_fund_flow_rank`），另有 `northbound_holding/akshare_hsgt` 也仍 open；这说明该 blocker 依旧是外部源阻塞，不是本地解析层可自愈的问题；`probe_source_capability.py` 现在默认压掉 `data_sources.registry` 的 fallback warning，只输出结构化 blocked JSON，`--show-registry-warnings` 才会恢复原始 fallback log；即使 persistence 落队列时遇到 DB 锁/模式问题，也会把 `persisted.status=error` 降级写回报告而不抛成真 traceback；但 Eastmoney 端点仍以 `ConnectionError` / `JSONDecodeError` 的 remote disconnect 失败，blocked probe 继续写入 `mart_data_source_failure_queue` 供后续 triage 复用 | CYQ 主力画像仍需要真实主力/超大/大/中/小单资金流；恢复前必须 source probe + PIT/freshness gate，生产策略/画像路径不得吃 stale raw，raw 只能 research/proxy/unknown |
-| `market_perception` | **PLAN / gated**: 最近研究把路线收敛为“行业分类层均值回归、概念主题层才是 alpha 主战场，但必须 daily snapshot PIT 落库”；`fact_stock_attention_snapshot` / `raw_profit_forecast_snapshot_daily` 是 P0 接线，`dim_stock_tdx_block` 需要 history 化，`fact_margin_detail_daily` 是 P2 免费 14 年历史补位，LHB / 主力跟随信号整体反向或随机，AIF10 空壳不接 | 这条并行研究只反哺数据接入和 `daily_update` 纪律，不把“明面主力跟随”误升成正向生产证据；这轮主力资金链路已补齐到 2026-05-29，但 LHB 事件仍只能记 `partial_warn`。`raw_lhb_daily` 与 `fact_lhb_event` 都已到 2026-05-29，最新日 raw 94 rows / 84 codes、fact 84 rows / 84 codes，说明 LHB 是 source-sparse 事实，不是 ETL 落后。`need_027` 现在已登记 akshare capability；`miaoxiang` 只是 `aif10` 家族别名，但 capability inventory 里 `aif10` 仍不含 `individual_fund_flow`，live probe 继续被 Eastmoney `ConnectionError` / `JSONDecodeError` 卡住；另外 `akshare.stock_fund_flow_individual` 已有 `mart_stock_fund_flow_rank_snapshot_daily` 研究侧排行快照支撑，并已实跑落表到 `2026-06-01`（5,188 rows），failure queue 也已从 open 收敛为 resolved，但它仍不等同 exact flow；2026-06-01 还把 registry-side `lhb_daily` 对齐到和 `services.lhb_client` 一样的 date-bounded helper，所以 resolve/probe 不再落入旧的 aif10 全历史假象，主力画像仍继续按 `unknown/blocked` 管理 |
-| `portfolio_sizer` profile thresholds | **PASS scoped / config-owned**: `short/mid/long` 阈值已迁到 `backend/config/portfolio_sizer_profiles.yaml`，由 `services.portfolio_sizer.config` 统一加载；`rank_and_size()` 仍会在 `hp/n_signals/Wilson` 门槛处把 exact PIT 候选截掉，所以配置化只是把 owner 和 tuning 面收口，不代表 coverage 已修复；`backend/scripts/audit_portfolio_sizer_profile_attrition.py` 现在是阈值调优前的固定审计入口，2026-06-01 复跑 353 个 raw candidates 后，短/中/长档分别只剩 5/1/2 个 selected_rows，且全部是 `cross_stage_fallback`；新的 `fail_reasons_by_match_tier` 进一步显示 exact-tier 主要卡在 `stage_pit` 的 `hp/n_signals/Wilson`，`stage_pit_formula_fallback` 主要卡在 `hp/n_signals`，而 `cross_stage_fallback` 的失败也主要集中在 `hp` 与 `wilson`；新补的 `fail_holding_days_by_match_tier` 进一步把 hp 失败拆到 holding_days：`stage_pit` 失败主要集中在 20/30/60/90 这些 off-anchor 档位，`stage_pit_formula_fallback` 主要集中在 20/30/60/90，`cross_stage_fallback` 则分布在 5/10/15/20/30/60/90 全部档位；2026-06-01 的 sensitivity audit 继续验证了这一点：`base` / `hold+20` / `min_n_signals-2` / `min_wilson_win-0.05` 对当前真实候选池的 selected_rows 没有影响，短/中/长仍然是 5/1/2 | 后续若要放宽 `min_n_signals` / `min_wilson_win`，必须先跑 profile attrition audit 并走 evidence-gated tuning，不允许回到 `profiles.py` 硬编码；当前更像是上游 candidate supply / formula coverage 的结构性稀疏，而不是 profile knob 微调能修好的问题 |
-| stage-opt candidate supply audit | **PASS scoped / upstream supply evidence**: 新增 `backend/scripts/audit_stage_opt_candidate_supply.py` + `backend/tests/scripts/test_audit_stage_opt_candidate_supply.py`；2026-06-01 先后回填 `fact_stock_technical_stage` / `fact_signal_context` 的 2025-08-01→2026-05-29 断档，再跑 full-history 审计时实际看到 `raw_signal_rows=1,381,657`、`filtered_signal_rows=733,083`、`unique_keys=120,273`、`ready_keys=57,986`、`ready coverage=48.21%`、`dropped_index_rows=1,355`、`dropped_unknown_stage_rows=647,219`、`below_min_signals=62,287`，且 `codes_without_bars=0`，说明当前瓶颈不是 K 线缺失而是 signal density；这次还修正了脚本结果里 `raw_signal_rows` 被 summary shadow 的报告 bug，所以 raw / filtered 现在分开显示；后续又用 `compute_start=2022-01-01 / write_start=2023-01-01 / end=2023-09-11` 补了 `fact_stock_technical_stage` 早期窗口 427,436 行（min date 到 2023-01-13），但 rerun 审计结果完全不变，说明 stage-opt 目前的瓶颈并不在这段 2023 年初空白；2026-06-02 先把 `reversal_1m_deep` 阈值从 15-30% 放宽到 10-30%，历史重算后该 formula 的 `rows / keys / ready coverage` 提升到 `76,635 / 11,968 / 42.54%`，随后又把 `reversal_1m_mild` 阈值从 5-15% 放宽到 4-15%，历史重算后该 formula 的 `rows / keys / ready coverage` 提升到 `372,661 / 9,265 / 62.43%`，并把 `reversal_1w` 从 5-10% 放宽到 2-10% 后实跑到 `369,822 / 15,937 / 66.18%`；2026-06-02 还把 `dynamic_ma_iterative_cross` 默认迭代轮数从 10 轮压到 2 轮，历史重算后该 formula 的 `rows / keys / ready coverage` 提升到 `225,783 / 20,076 / 51.63%`；全局审计也更新为 `raw_signal_rows=2,103,143 / filtered_signal_rows=1,110,280 / unique_keys=133,857 / ready_keys=76,480 / ready coverage=57.14% / below_min_signals=57,377`；`build_formula_signals_history.py --recompute-horizon-evidence` 现在也已在补 `defaultdict` import 后恢复可跑，不再在 horizon evidence 重算阶段抛 NameError；2026-06-02 的 `min_signals` probe 进一步显示 `min_signals=4` / `3` 会把全局 ready coverage 分别抬到 `64.84%` / `73.75%`，对应 `ready_keys=86,796` / `98,721`、`below_min_signals=47,061` / `35,136`，2026-06-02 额外把 `min_signals=2` 继续推到 `84.80%`（`113,506` ready_keys / `20,351` below_min_signals），同时 `reversal_1m_deep` ready coverage 提升到 `50.97%` / `62.34%`，但 controller 仍把下一步指向 `P1 / upstream_candidate_supply`，说明阈值确实是杠杆但当前仍需回到上游供给设计；新增的 `blocked_reason_counts_by_formula_id` / `blocked_reason_counts_by_formula_variant` / `blocked_reason_counts_by_stage_bin` 进一步显示所有 blocked keys 都卡在 `below_min_signals`，其中 `macd_golden_cross`、stage 3/4 是当前最弱分布；脚本现在还会自带 `next_action_recommendation`，直接把下一步指向 `P1 / upstream_candidate_supply`，并把 `macd_golden_cross` 与最弱 stage bins 作为优先 triage 目标；`2024-03-06` 起的 `dropped_unknown_stage_rows` 降到 454,158，说明 2025 H2 的硬断档已修，剩余 `technical_stage='?'` 更偏结构性分类/预热缺口而不是新鲜 ETL outage；脚本默认 end 现在复用当前连接里的交易日历真相源，不再 nested `latest_closed_or_raise()` 新连接。2026-06-02 04:48 CST 的最新重算又把这条线往前推了一格：在 `reversal_1m_deep` 继续维持 8-30% 的前提下，`mart_macd_state_history` 以 180 天 warm-up 写出的 `raw_state_history_rows=370,039` 已被正式纳入 MACD 诊断 mart，`audit_stage_opt_candidate_supply.py --formula macd_golden_cross` 现在计入 `raw_trigger_rows=161,279` + `raw_state_history_rows=370,039`，把 MACD 相关 coverage 抬到 `47.13%`（`16,474` ready keys）；同一轮 full-history 复跑的全局审计已刷新为 `raw_signal_rows=5,085,286 / filtered_signal_rows=2,550,775 / unique_keys=147,441 / ready_keys=101,382 / ready coverage=68.76% / below_min_signals=46,059`，`macd_golden_cross` 达到 `1,714,731 signal_rows / 46,120 keys / 84.75% coverage`，`reversal_1m_deep` 达到 `118,098 signal_rows / 14,389 keys / 51.30% coverage`，`min_signals=4/3/2` 分别抬到 `75.33% / 82.36% / 90.25%`（`111,069 / 121,431 / 133,063` ready keys），但 controller 仍然指向 `P1 / upstream_candidate_supply`，说明即便这轮供应大幅抬升，结构性瓶颈依旧是上游候选供给，不是单个公式的阈值；2026-06-02 05:02 进一步把 `turtle_breakout_55` 的量能确认门槛外置到 `backend/config/formula_turtle_breakout.yaml` 并从 `1.3` 收到 `1.2`，历史重算后 `turtle_breakout_20` / `turtle_breakout_55` 分别达到 `199,495 / 19,413 / 80.81%` 和 `115,911 / 16,898 / 60.17%`，全局审计刷新为 `raw_signal_rows=5,123,528 / filtered_signal_rows=2,574,836 / unique_keys=147,674 / ready_keys=102,500 / ready coverage=69.41% / below_min_signals=45,174`，`min_signals=4/3/2` 现在对应 `75.85% / 82.68% / 90.43%`（`112,013 / 122,097 / 133,545` ready keys）；2026-06-02 05:17-05:18 继续把 `turtle_breakout_55` 的量能确认门槛从 1.2 收到 1.1，历史重算后 `turtle_breakout_20` / `turtle_breakout_55` 分别达到 `214,919 / 19,476 / 83.33%` 和 `124,226 / 17,004 / 62.07%`，全局审计刷新为 `raw_signal_rows=5,183,518 / filtered_signal_rows=2,609,421 / unique_keys=148,117 / ready_keys=103,984 / ready coverage=70.20% / below_min_signals=44,133`，`min_signals=4/3/2` 现在对应 `76.41% / 83.06% / 90.65%`（`113,174 / 123,029 / 134,264` ready keys）；但 controller 结论仍然是 `P1 / upstream_candidate_supply`；`macd_golden_cross` 的进一步扩展仍受 `fact_technical_trigger` PRIMARY KEY `(stock_code, date, formula_id)` 限制，若要增加多状态行，必须走 schema evolution 而不是单改 formula state；2026-06-02 05:07-05:08 又把 `dynamic_ma_iterative_cross` 默认迭代轮数从 2 轮压到 1 轮，历史重算后该 formula 的 `rows / keys / ready coverage` 提升到 `248,214 / 20,350 / 53.67%`，全局审计刷新为 `raw_signal_rows=5,145,959 / filtered_signal_rows=2,585,682 / unique_keys=147,948 / ready_keys=103,056 / ready coverage=69.66% / below_min_signals=44,892`，`min_signals=4/3/2` 现在对应 `76.02% / 82.77% / 90.50%`（`112,471 / 122,462 / 133,892` ready keys），但 controller 仍然指向 `P1 / upstream_candidate_supply`。2026-06-02 05:51-05:52 又把 `turtle_breakout_55` 的量能确认门槛从 `1.1` 收到 `1.0`，历史重算后该 formula 的 `rows / keys / ready coverage` 提升到 `132,024 / 17,089 / 63.45%`，整条 stage-opt 刷新为 `raw_signal_rows=5,483,722 / filtered_signal_rows=2,740,702 / unique_keys=151,655 / ready_keys=109,361 / ready coverage=72.11% / below_min_signals=42,294`，`min_signals=4/3/2` 现在对应 `77.93% / 84.18% / 91.21%`（`118,186 / 127,669 / 138,331` ready keys），`weakest_formula_ids` 仍是 `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1w`，但 controller 依然指向 `P1 / upstream_candidate_supply`，说明这刀继续抬升了 supply，但结构性瓶颈仍然在上游候选供给。
-| stage-opt 2026-06-02 06:21-06:22 turtle breakout 20/55 variant split | **PASS scoped / upstream supply evidence**: 2026-06-02 06:21-06:22 将 `turtle_breakout_55` 的量能确认门槛进一步拆成 20 日博弈 / 55 日博弈两个 variant，保持 20 日博弈在 `0.9`、把 55 日博弈从 `0.9` 收到 `0.8`；历史重算后 `turtle_breakout_55` 提升到 `144,450 signal_rows / 17,181 keys / 65.44% coverage`，全局审计刷新为 `raw_signal_rows=5,671,811 / filtered_signal_rows=2,831,747 / unique_keys=152,592 / ready_keys=111,961 / ready coverage=73.37% / below_min_signals=40,631`，`min_signals=4/3/2` 现在对应 `78.82% / 84.79% / 91.47%`（`120,269 / 129,383 / 139,582` ready keys），但 controller recommendation 仍然是 `P1 / upstream_candidate_supply`，说明这刀继续抬升了 supply，但结构性瓶颈仍然在上游候选供给。|
-- 2026-06-02 06:27-06:29 `reversal_1m_mild` was widened from 3-15% to 2-15%, lifting that formula to `214,103 / 16,188 / 68.67%`; the full stage-opt audit is now `raw_signal_rows=5,748,314 / filtered_signal_rows=2,865,720 / unique_keys=153,235 / ready_keys=112,748 / ready coverage=73.58% / below_min_signals=40,487`, `min_signals=4/3/2` at `78.95% / 84.86% / 91.49%`, and the weakest formulas shifted to `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_deep`, but the controller still points to `P1 / upstream_candidate_supply`.
-- 2026-06-02 06:30-06:31 `turtle_breakout_55` was lowered from `0.8` to `0.7`, lifting that formula to `147,973 / 17,245 / 65.78%`; the full stage-opt audit is now `raw_signal_rows=5,753,115 / filtered_signal_rows=2,869,243 / unique_keys=153,299 / ready_keys=112,848 / ready coverage=73.61% / below_min_signals=40,451`, `min_signals=4/3/2` at `78.97% / 84.86% / 91.49%`, and the weakest formulas remain `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_deep`, but the controller still points to `P1 / upstream_candidate_supply`.
-- 2026-06-02 06:38-06:39 `reversal_1m_deep` was lowered from `5-30%` to `4-30%`, lifting that formula to `248,022 / 17,814 / 70.21%`; the full stage-opt audit is now `raw_signal_rows=5,840,232 / filtered_signal_rows=2,906,972 / unique_keys=153,975 / ready_keys=113,949 / ready coverage=74.00% / below_min_signals=40,026`, `min_signals=4/3/2` at `79.27% / 85.04% / 91.58%`, and the weakest formulas remain `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_mild`, but the controller still points to `P1 / upstream_candidate_supply`.
-- 2026-06-02 06:43-06:45 `reversal_1m_mild` was lowered from `2-15%` to `1-15%`, lifting that formula to `249,394 / 16,818 / 69.95%`; the full stage-opt audit is now `raw_signal_rows=5,919,142 / filtered_signal_rows=2,942,263 / unique_keys=154,605 / ready_keys=114,597 / ready coverage=74.12% / below_min_signals=40,008`, `min_signals=4/3/2` at `79.34% / 85.05% / 91.55%`, and the weakest formulas remain `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_mild`, but the controller still points to `P1 / upstream_candidate_supply`.
-| stage-opt 2026-06-02 05:57-06:07 dynamic_ma 0-iteration + turtle 0.9 lift | **PASS scoped / upstream supply evidence**: 2026-06-02 05:57-05:58 将 `dynamic_ma_iterative_cross` 默认迭代轮数从 1 轮压到 0 轮，历史重算后该 formula 的 `rows / keys / ready coverage` 提升到 `144,282 / 20,522 / 56.83%`；随后 2026-06-02 06:06-06:07 又把 `turtle_breakout_55` 的 量能门槛从 `1.0` 收到 `0.9`，历史重算后该 formula 的 `rows / keys / ready coverage` 提升到 `139,053 / 17,143 / 64.62%`；全局审计刷新为 `raw_signal_rows=5,530,639 / filtered_signal_rows=2,765,531 / unique_keys=151,881 / ready_keys=110,336 / ready coverage=72.65% / below_min_signals=41,545`，`min_signals=4/3/2` 现在对应 `78.35% / 84.47% / 91.32%`（`119,000 / 128,298 / 138,696` ready keys）；controller recommendation 仍然是 `P1 / upstream_candidate_supply`，说明这刀继续抬升了 supply，但结构性瓶颈仍然在上游候选供给。 |
-| stage-opt 2026-06-02 reversal_1w 1-10 lift | **PASS scoped / upstream supply evidence**: 2026-06-02 06:12-06:13 进一步把 `reversal_1w` 从 2-10% 放宽到 1-10%，历史重算后该 formula 的 `rows / keys / ready coverage` 提升到 `222,942 / 16,610 / 72.28%`；全局审计刷新为 `raw_signal_rows=5,664,501 / filtered_signal_rows=2,826,350 / unique_keys=152,554 / ready_keys=111,794 / ready coverage=73.28% / below_min_signals=40,760`，`min_signals=4/3/2` 现在对应 `78.76% / 84.74% / 91.44%`（`120,146 / 129,274 / 139,500` ready keys）；`weakest_formula_ids` 现在转成 `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_mild`，但 controller recommendation 仍然是 `P1 / upstream_candidate_supply`，说明这刀继续抬升了 supply，但结构性瓶颈仍然在上游候选供给。 |
-| stage-opt 2026-06-02 turtle 0.6 lift | **PASS scoped / upstream supply evidence**: 2026-06-02 06:58-06:59 又把 `turtle_breakout_55` 的量能确认门槛从 `0.7` 收到 `0.6`，历史重算后该 formula 的 `rows / keys / ready coverage` 提升到 `149,966 / 17,266 / 66.01%`；全局审计刷新为 `raw_signal_rows=5,921,755 / filtered_signal_rows=2,944,256 / unique_keys=154,626 / ready_keys=114,651 / ready coverage=74.15% / below_min_signals=39,975`，`min_signals=4/3/2` 现在对应 `79.36% / 85.06% / 91.55%`（`122,711 / 131,519 / 141,561` ready keys）；`weakest_formula_ids` 仍是 `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_mild`，但 controller recommendation 依然是 `P1 / upstream_candidate_supply`，说明这刀继续抬升了 supply，但结构性瓶颈仍然在上游候选供给。 |
-| stage-opt 2026-06-02 turtle 0.5 lift | **PASS scoped / upstream supply evidence**: 2026-06-02 07:03-07:04 又把 `turtle_breakout_55` 的量能确认门槛从 `0.6` 收到 `0.5`，历史重算后该 formula 的 `rows / keys / ready coverage` 提升到 `150,941 / 17,278 / 66.15%`；全局审计刷新为 `raw_signal_rows=5,923,016 / filtered_signal_rows=2,945,231 / unique_keys=154,638 / ready_keys=114,682 / ready coverage=74.16% / below_min_signals=39,956`，`min_signals=4/3/2` 现在对应 `79.36% / 85.06% / 91.55%`（`122,722 / 131,533 / 141,573` ready keys）；`weakest_formula_ids` 仍是 `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_mild`，但 controller recommendation 依然是 `P1 / upstream_candidate_supply`，说明这刀继续抬升了 supply，但结构性瓶颈仍然在上游候选供给。 |
-| stage-opt 2026-06-02 reversal_1m_mild rel_std 0.07 probe | **PASS scoped / final config-only probe**: 2026-06-02 07:21-07:23 只把 `reversal_1m_mild.rel_std_max` 从 `0.06` 放宽到 `0.07`，不动其它阈值；历史重算后该 formula 提升到 `307,843 signal_rows / 13,239 keys / 72.11% coverage`，全局审计刷新为 `raw_signal_rows=6,054,317 / filtered_signal_rows=3,003,680 / unique_keys=156,179 / ready_keys=116,157 / ready coverage=74.37% / below_min_signals=40,022`，`min_signals=4/3/2` 现在对应 `79.54% / 85.15% / 91.57%`（`124,231 / 132,994 / 143,011` ready keys）；`weakest_formula_ids` 现在转成 `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_deep`，但 controller recommendation 仍然是 `P1 / upstream_candidate_supply`，说明这次只是验证了最后一个低风险 config probe，主线方向没有变化。 |
-| stage-opt 2026-06-02 reversal_1m_deep rel_std 0.09 probe | **PASS scoped / final config-only probe**: 2026-06-02 08:22-08:23 只把 `reversal_1m_deep.rel_std_max` 从 `0.08` 放宽到 `0.09`，不动其它阈值；历史重算后该 formula 提升到 `284,627 signal_rows / 18,503 keys / 71.97% coverage`，全局审计刷新为 `raw_signal_rows=6,134,459 / filtered_signal_rows=3,040,285 / unique_keys=156,868 / ready_keys=116,967 / ready coverage=74.56% / below_min_signals=39,901`，`min_signals=4/3/2` 现在对应 `79.68% / 85.23% / 91.61%`（`124,994 / 133,697 / 143,710` ready keys）；`weakest_formula_ids` 现在转成 `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_deep`，但 controller recommendation 仍然是 `P1 / upstream_candidate_supply`，说明这次只是验证了最后一个低风险 config probe，主线方向没有变化。 |
-| stage-opt 2026-06-02 reversal_1m_deep rel_std 0.10 probe | **PASS scoped / final config-only probe**: 2026-06-02 08:28-08:30 只把 `reversal_1m_deep.rel_std_max` 从 `0.09` 放宽到 `0.10`，不动其它阈值；历史重算后该 formula 提升到 `315,555 signal_rows / 18,962 keys / 73.29% coverage`，全局审计刷新为 `raw_signal_rows=6,200,134 / filtered_signal_rows=3,071,213 / unique_keys=157,327 / ready_keys=117,547 / ready coverage=74.72% / below_min_signals=39,780`，`min_signals=4/3/2` 现在对应 `79.81% / 85.32% / 91.64%`（`125,556 / 134,239 / 144,171` ready keys）；`weakest_formula_ids` 现在仍是 `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_mild`，但 controller recommendation 仍然是 `P1 / upstream_candidate_supply`，说明这次只是验证了最后一个低风险 config probe，主线方向没有变化。 |
-| stage-opt 2026-06-02 reversal_1m_mild rel_std 0.08 probe | **PASS scoped / final config-only probe**: 2026-06-02 08:35-08:37 只把 `reversal_1m_mild.rel_std_max` 从 `0.07` 放宽到 `0.08`，不动其它阈值；历史重算后该 formula 提升到 `357,425 signal_rows / 14,300 keys / 73.75% coverage`，全局审计刷新为 `raw_signal_rows=6,305,481 / filtered_signal_rows=3,120,795 / unique_keys=158,359 / ready_keys=118,608 / ready coverage=74.90% / below_min_signals=39,751`，`min_signals=4/3/2` 现在对应 `79.90% / 85.36% / 91.68%`（`126,525 / 135,168 / 145,180` ready keys）；`weakest_formula_ids` 现在仍是 `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1w`，但 controller recommendation 仍然是 `P1 / upstream_candidate_supply`，说明这次只是验证了最后一个低风险 config probe，主线方向没有变化。 |
-| stage-opt 2026-06-02 turtle_breakout_55 rel_std 0.4 probe | **PASS scoped / final config-only probe**: 2026-06-02 09:00-09:00 只把 `turtle_breakout_55.volume_multiple` 从 `0.5` 再降到 `0.4`，不动其它阈值；历史重算后该 formula 提升到 `151,472 signal_rows / 11,446 keys / 66.21% coverage`，全局审计刷新为 `raw_signal_rows=6,422,516 / filtered_signal_rows=3,178,449 / unique_keys=159,814 / ready_keys=120,259 / ready coverage=75.25% / below_min_signals=39,555`，`min_signals=4/3/2` 现在对应 `80.19% / 85.55% / 91.74%`（`128,160 / 136,717 / 146,617` ready keys）；`weakest_formula_ids` 仍是 `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_deep`，但 controller recommendation 依旧是 `P1 / upstream_candidate_supply`，说明这次只是验证了最后一个低风险 config probe，主线方向没有变化。 |
-| stage-opt structural blocker note | **NO SAFE CODE SLICE REMAINS**: the 2026-06-02 config-only probe series is exhausted; `stage-opt` remains structurally blocked on upstream candidate supply, so future work there should be treated as redesign / upstream-source change, not another knob-tuning pass. |
-| stage-opt 2026-06-02 reversal_1w rel_std 0.07 probe | **PASS scoped / final config-only probe**: 2026-06-02 08:44-08:45 只把 `reversal_1w.rel_std_max` 从 `0.06` 放宽到 `0.07`，不动其它阈值；历史重算后该 formula 提升到 `280,065 signal_rows / 13,639 keys / 75.54% coverage`，全局审计刷新为 `raw_signal_rows=6,421,901 / filtered_signal_rows=3,177,918 / unique_keys=159,805 / ready_keys=120,242 / ready coverage=75.24% / below_min_signals=39,563`，`min_signals=4/3/2` 现在对应 `80.19% / 85.55% / 91.74%`（`128,150 / 136,710 / 146,610` ready keys）；`weakest_formula_ids` 现在转成 `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1m_deep`，但 controller recommendation 仍然是 `P1 / upstream_candidate_supply`，说明这次只是验证了最后一个低风险 config probe，主线方向没有变化。 |
-| 画像 / 股票档案 | **PLAN / gated**: `docs/data_product_contract.md` 已新增 | 股票画像、机构画像、主力行为画像和前端股票档案必须先走数据需求契约 + lineage/freshness contract；前端不能先把 `unknown/proxy/stale` 包装成生产证据 |
-| `test_screening_engine.py` | **PASS**: active-universe fixture 已修复 | K 线 truth-source fixture 改为相对当前日期；`test_screening_engine.py` + `test_screening_read.py` 4 passed |
-| main 工作区 | **长期 dirty 已清零 / 本轮数据刷新未制造 tracked dirty**: 2026-06-01 已按 bucket -> gate -> explicit stage -> `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh` 分阶段收束，上一安全/tooling 切片已提交；K 线补齐写入 ignored DuckDB，补文档前 `git status --short` 为空。 | dirty 工作区问题已从长期阻塞变成受控切片流程；后续仍禁止 `git add .`，每个新改动继续按小切片、test-tool gate、CodeGraph+complexity、safe_commit 收束。 |
-| CodeGraph 索引状态 | 上一 `.py` 变更后已 `codegraph sync .` 且 `doctor --fast` PASS；本轮 K 线补齐未改 `.py`。 | CodeGraph 已不再被长期 untracked/dirty 误导；后续 `.py` 变更仍需改前 query/context、改后 `codegraph sync .`，最终交付前 `codegraph status .` 应回到 up to date。 |
-| 工具更新 | **MOTH-AS-CANONICAL-TOOLING-STATE / LOCAL WRAPPER CONSUMER**: `moth snapshot` / `moth sync` 现已作为共享状态真源，`chunkyctl doctor` 通过 `backend/services/moth_snapshot.py` 消费它而不是自建 parser；`audit_tooling_gate.py` 已退役；`chunkyctl worktree` 当前可归桶 dirty；`chunkyctl audit` 支持 scoped gate；`safe_commit.sh` 支持 `SAFE_COMMIT_NO_PUSH=1` 本地安全提交；`docs/chunkyctl_session_quickstart.md` 已同步 doctor storage payload、complexity identity 与 Moth 依赖说明。2026-06-01 发现旧本地 baseline 截断会误报历史 HIGH，已刷新到 220 条；本轮又修正 diff identity 默认不依赖行号，避免删除/新增一行把历史 HIGH 漂移误判为 new。 | GitHub 调研后暂不引入 Worktrunk/lazygit/delta/git-absorb/git-town/git-branchless；先把 dirty/codegraph/complexity/storage 机器化，再逐步收束成 `chunkyctl` 类项目专用审计/开发辅助入口；后续任何 session 启动模式、gate、工具入口或 controller/agent 工作法变化，必须同批更新 quickstart，不允许只留在对话或 handoff。 |
-| `docs_archive_moves` | **APPROVE_WITH_NOTES**: 三份 root 历史文档已逐字迁到 `analysis/data_integrity_audit_20260517.md`、`analysis/plan_v3_20260514_archived.md`、`analysis/market_perception_development_plan_20260520.md`；hash 复核一致: plan archive=851cd7b7, data-integrity archive=3aaabf4b, market-perception archive=ceb29db0，`git diff --no-index --stat` 无输出 | 后续 staging 时三份 root 删除和三份 `analysis/` 归档必须同组处理；旧 root 名称剩余命中为 Docs Map、迁移记录、归档正文标题或 test fixture，不是活跃入口 |
-| `config_project` | **PASS scoped audit**: `.gitignore`、`backend/config/field_dictionary.yaml`、`pytest.ini` 已和 test-tool registry / audit 脚本 / 回归一起审计；`pytest.ini` 默认排除 `realdb/perf/network/gcp/slow` | 这是配置门禁证据，不是业务数据或策略证据；后续 staging 应随 startup/test-tool/config slice 成组处理 |
-| `docs/implementation_plan.md` | 已收窄为 durable roadmap | 当前 PASS/WARN/FAIL 看本节；执行顺序、边界和验收标准看该文件 |
-| `updater.py` | 723 LOC route shell + `updater_execution.py` 823 LOC + `updater_launcher.py` 278 LOC + `updater_completeness.py` 108 LOC + `updater_plan.py` 130 LOC + `updater_lifeboat.py` 88 LOC + `updater_market_data.py` 765 LOC + `updater_infra.py` 258 LOC + `updater_calendar.py` 157 LOC + `updater_steps.py` 232 LOC + `updater_connectivity.py` 156 LOC + `updater_sync.py` 443 LOC + `updater_calc.py` 196 LOC + `updater_runtime.py` 34 LOC + `updater_audit.py` 53 LOC + `updater_status.py` 593 LOC + `updater_reset.py` 161 LOC + `updater_institution.py` 533 LOC + `updater_trends.py` 303 LOC + `updater_profiles.py` 455 LOC | runtime helper、infra/helper、calendar/date-truth、DAG metadata 与 DAG 查询/选择 helper、execution orchestration helper、full/group/smart/single 状态账本、group pipeline 执行循环 helper、full DAG 执行循环 helper、single-step chain 执行循环 helper、smart plan 执行循环 helper、smart-update 计划/交易日历 preflight helper、background task failure/cleanup launcher helper、smart/full/single/group background launcher deps、launcher callback bundle、group route request launcher helper、run-start helper、step-status priming helper/connection lifecycle、stale-running step_status 清理 helper、step_status catalog 同步 helper、source failure queue 状态 helper、update status payload/response helper、audit snapshot refresh helper、audit route payload helper、step-result apply helper、stop/hard-dependency bookkeeping helper、running/stopped/failed transition helper、K 线不可用 skip/gap_queue helper、K 线连通性预检 helper、runner managed connection helper、data_completeness 校准 helper、status/plan summary、connectivity probe/cache、reset table helper 与 reset response payload/connection lifecycle、standalone external sync/calc、sync_raw/sync_financial body、institution match、sync_industry body、industry_stat sync body、build_trends body、build_profiles body、sync_market_data body、lifeboat legacy endpoints 已抽出；full/group/single launcher 参数注入与 group route request 调度已迁入 `updater_launcher.py`，reset-derived/reset-industry response/connection lifecycle 已迁入 `updater_reset.py`，后续继续按 route/status 边界收薄 |
-| Complexity HIGH | backend API HIGH 已清；已治理 gate scripts 无 HIGH。2026-06-01 已把 `build_architecture_inventory.py`、BestChoice context/feed 脚本、`build_candidate_feature_panel.py`、`build_dim_listing_status.py`、`build_drift_safe_feature_candidates.py`、Phase7、executive、feature association 等切片清掉；本轮通过 Moth-backed tooling gate / `chunkyctl doctor` 的 complexity diff 无热点。`build_daily_position_recommendations.py` 仍有历史 HIGH 412/492，当前只修 destructive DDL，不把它误报为新增。 | 下一优先级不再追截断误报的 complexity `new_high`，也不再把已审过的 storage payload 当 dirty；优先处理真实业务风险: 端到端数据 freshness/PIT FAIL、Survivorship/Data completeness 实跑 FAIL。若后续新增 `.py` 再触发 new HIGH，仍按 CodeGraph+complexity 小切片实修或 reviewed exception。 |
-
-| 端到端审计实跑 | **PASS with WARN: 24 total / 23 OK / 1 WARN / 0 FAIL** | 2026-06-01 08:12 CST 复跑已无 FAIL：`mart_stock_picture_daily` 与 `mart_stock_survey_features` 均补到 2026-05-29；`audit_end_to_end.py` 现改为对齐最新已完成交易日，周末/盘中自然日误伤不再计入 freshness WARN，所以当前唯一 WARN 只剩最新推荐 PIT coverage=0。2026-06-01 已把 `rank_and_size()` 改成 PIT-tier-first，但 2026-05-29 复跑显示 PIT exact 候选仍因 `hp/n_signals/Wilson` 门槛稀疏而未进入最终推荐，所以 coverage 仍是数据稀疏问题，不是排序 bug。随后对 `build_stage_opt_pit.py --cutoffs 2026-05-19 --stock-codes 600850 601963 300750 001286 300360 301568 605580` 做 targeted backfill，最新 cutoff 行数从 3 补到 4；再对 `optimize_per_stock_stage_strategy.py --stock-codes 001286 605580 --min-signals 3` 做 smoke，仍是 0 governance pass rows。2026-06-01 额外跑了 `audit_portfolio_sizer_profile_attrition.py`：353 个 raw candidates 中，短/中/长档 selected_rows 仅 5/1/2，且全是 `cross_stage_fallback`，fail reasons 主要集中在 `hp` 与 `wilson`；这次新增的 `fail_reasons_by_match_tier` 进一步显示 exact-tier 主要卡在 `stage_pit` 的 `hp/n_signals/Wilson`，`stage_pit_formula_fallback` 主要卡在 `hp/n_signals`，而 `cross_stage_fallback` 的失败也主要集中在 `hp` 与 `wilson`；新补的 `fail_holding_days_by_match_tier` 进一步把 hp 失败拆到 holding_days：`stage_pit` 失败主要集中在 20/30/60/90 这些 off-anchor 档位，`stage_pit_formula_fallback` 主要集中在 20/30/60/90，`cross_stage_fallback` 则分布在 5/10/15/20/30/60/90 全部档位，所以 exact stage × formula 候选供给是结构性稀疏，不是单次补表能解决。2026-06-01 的 sensitivity audit 也确认，`base` / `hold+20` / `min_n_signals-2` / `min_wilson_win-0.05` 对 selected_rows 没有影响，短/中/长仍然是 5/1/2，因此后续 tuning 重点应回到上游 candidate supply / formula coverage，而不是继续围着 profile knobs。2026-06-01 又对当前推荐的 7 个 stock code 以 cutoffs `2026-01-01,2026-05-19,2026-05-29` 重跑 `build_stage_opt_pit.py`，结果 latest recommendation PIT coverage 仍然 0（8 total / 0 exact / 0 same_formula / 1 same_stock / 8 cross_stage），说明 exact stage × formula 的候选供给是结构性稀疏，不是单次补表能解决。2026-06-01 还补了 `mart_daily_position_recommendation_pit_diagnostic` 的 `governance_reject_count` / `governance_latest_reason` / `governance_latest_rejected_at`，并重跑 `build_daily_position_recommendations.py --date 2026-05-29`，让 7 个 `stock_missing_pit` 和 1 个 `formula_missing_pit` 行直接携带最新治理拒绝原因；这只提升 triage 可见性，不改变 PIT coverage 0 的结论。当前 PIT coverage 0 说明 exact stage × formula 组合在现有样本和治理门槛下仍太稀，不是推荐排序本身的 bug。不能当生产证据；继续微调 profile knobs 不会改变这个结论。 |
-| PIT integrity 实跑 | **PASS: 11 PASS / 28 WARN / 0 FAIL** | 2026-06-01 04:07 CST 复跑 PASS；`fact_signal_context`/`fact_technical_trigger` 在 2026-05-29 spot-check 无 future rows。2026-06-01 11:17 CST 复跑 `audit_pit_coverage.py` 仍是 4/4 PASS，`fact_lhb_event` gain_20d coverage 83.9% > 60%，所以 LHB 的剩余问题是 sparse-event completeness，不是 PIT 安全性。仍有 legacy single-batch/OOS/selector WARN，不能把 legacy/warn-only 当 production 证据 |
-| Survivorship gate 实跑 | **PASS: current label_version=p0a_v3_horizon_governance** | 当前训练面板 `mart_p0a_label_panel` 的 `p0a_v3_horizon_governance` 版本覆盖 5,210 distinct codes，>= KEEP ever-listed 5,210 的 90% 门槛；`p0a_v2_governance_v1` 仍保留为历史版本，只在显式 flag 下复查 |
-| Universe coverage 实跑 | **PASS: 16 PASS / 6 WARN / 0 FAIL** | 真实 gate 0 FAIL；6 WARN 为 `fact_signal_context` 空行、近期 panel 空行和 1 个 partial-sync month-first 样本，不能当数据全新鲜证据 |
-| `reversal_short_term` 配置化与 mild/deep supply lift | **PASS scoped / config-owned**: `backend/services/formula_engine/reversal_short_term.py` 已把 1m mild / 1m deep / 1w 三个 variant 的阈值外提到 `backend/config/formula_reversal_short_term.yaml`，并将 `reversal_1m_deep` 的收益率上界从 `-0.08` 放宽到 `-0.05`、`reversal_1m_mild` 的收益率上界从 `-0.04` 放宽到 `-0.03`；`backend/tests/test_formula_engine.py` 新增 loader 回归 + 3% 温和下跌样例 + 6% 深跌样例，`pytest -q backend/tests/test_formula_engine.py` 39 passed。真实历史重写后 `reversal_1m_deep` 从 `118,098 signal_rows / 14,389 keys / 51.30% coverage` 抬到 `210,293 signal_rows / 17,138 keys / 66.55% coverage`，`reversal_1m_mild` 也从 `180,130 signal_rows / 15,545 keys / 66.45% coverage` 抬上来，整条 stage-opt 刷新为 `raw_signal_rows=5,472,946 / filtered_signal_rows=2,732,904 / unique_keys=151,570 / ready_keys=109,073 / ready coverage=71.96% / below_min_signals=42,497`，`min_signals=4/3/2` 现在对应 `77.81% / 84.08% / 91.16%`；`weakest_formula_ids` 现在转成 `dynamic_ma_iterative_cross` / `turtle_breakout_55` / `reversal_1w`，但 controller 仍指向 `P1 / upstream_candidate_supply`，说明这刀继续抬升了 supply，但结构性瓶颈仍然在上游候选供给。 |
-| 数据完整性实跑 | **PASS with WARN: 0 FAIL / 2 WARN** | 2026-06-01 已把 `price_kline_tdxhub`、`fact_alpha158_panel`、`fact_stock_technical_stage`、`fact_signal_context`、`fact_technical_trigger`、`fact_capital_flow_pit_daily`、`fact_risk_factors`、`fact_sector_momentum_daily`、`mart_stock_picture_daily`、`mart_stock_survey_features`、`mart_p0a_label_panel`、`mart_p0a_feature_label_panel_v3`、`mart_p0a_feature_label_panel_v4`、`mart_sniper_score_daily`、`mart_institution_score_daily` 补到交易日历 `2026-05-29`；2026-06-01 又额外回填 `fact_stock_technical_stage` / `fact_signal_context` 的 2025-08-01→2026-05-29 断档，stage-opt audit 里的 `technical_stage='?'` 现在更多是结构性分类/预热缺口而不是新鲜 ETL outage；`fact_lhb_event` 与 `fact_technical_trigger` 已在 `dim_data_asset` 注册为 `sparse_event_presence_only`，完整性审计只保留 WARN evidence：`fact_lhb_event` 84 个 code（raw/fact 都到 2026-05-29，最新日 raw 94 rows / fact 84 rows）、`fact_technical_trigger` 1,692 个 code，不再当缺数 blocker。 |
-| 业务推进 | 暂停 | 不做 300616 五公式、前端公式视图、GCP/Optuna 全量跑批 |
-
-- 2026-06-02 `build_daily_position_recommendations.py` 已把 MACD `mart_macd_state_history` 纳入候选池，并把 cross-stage fallback 回接到现有的 `mart_per_stock_strategy_optimal`；live 2026-06-01 运行现在不会再因错表崩溃，当前快照虽然返回 0 candidates，但这是 live DB 无匹配行，不是 loader 失败；该修复已在 commit `1402bc0b` 落地，随后这轮 stage-opt / MACD / docs slice 又以 `ed5a3ee6` 收口，当前 worktree 已 clean。
-
-2026-06-02 controller boundary note: `audit_stage_opt_candidate_supply.py` 和 `doctor --fast` 现在会把 live formula registry 显式带出来；live registry 只有 7 个 formula ids (`macd_golden_cross`, `turtle_breakout_20`, `turtle_breakout_55`, `dynamic_ma_iterative_cross`, `reversal_1m_mild`, `reversal_1m_deep`, `reversal_1w`)，research challengers 另外单列 5 个公式 id (`gs_raw_buy`, `gs_pullback_confirm`, `ma_base_breakout`, `activity_breakout`, `volume_base_breakout`)；这两类加总后只是 controller 可见边界，不代表 research challengers 已经进入 live stage-opt supply。
-
-### 权威文档顺序
-
-| 优先级 | 文档 | 用途 |
-|---:|---|---|
-| 1 | `AGENTS.md` | Codex 操作政策: dirty worktree、CodeGraph+complexity、GCP、删除治理 |
-| 2 | `goal.md` 本节 | 当前 FAIL/WARN 账本、优先级和下一步 |
-| 3 | `docs/chunkyctl_session_quickstart.md` | 新 session 启动契约 |
-| 4 | `docs/PROJECT_CONSTITUTION.md` | 最高规则: 真相源、分层、gate、完成标准 |
-| 5 | `docs/engineering_governance.md` | 第一性原理/奥卡姆、CodeGraph+complexity、测试工具、agents、GCP、删除治理 |
-| 6 | `docs/data_product_contract.md` | 数据需求、血缘、画像、市场感知支持、前端契约 |
-| 7 | `docs/strategy_validation_contract.md` | 回测、Optuna/GCP、paper_sim、forward、promotion、主升浪验证边界 |
-| 8 | `docs/architecture_reform_context.md` | 300616 哨兵案例和架构改革原因 |
-| 9 | `docs/implementation_plan.md` | 正式计划文档，已同步为架构优先口径 |
-
-`SESSION_HANDOFF.md`、`analysis/workflow_checkpoint.md`、`analysis/handoff_*.md`
-和 dated bootstrap/prompt 文件只作运行上下文与历史证据；若与以上权威文档
-冲突，以权威文档为准。
-
-### 不做清单 (直到架构 gate 通过)
-
-| 暂停项 | 原因 | 恢复条件 |
+> Current phase contract and implementation plan only. Keep this file compact:
+> current objective, active priorities, live gates, and long-term direction.
+> Completed work and detailed evidence belong in
+> `analysis/project_state_ledger.md`; generated resume state belongs in
+> `SESSION_HANDOFF.md`; pipeline artifact checkpoints belong in
+> `analysis/workflow_checkpoint.md`.
+
+## Document Contract
+
+| Document | Owns | Startup use |
 |---|---|---|
-| M0 300616 五公式 | 业务逻辑会被错误 universe / PIT / gate 污染 | 架构验收通过后再按 god-view -> PIT 去泄漏方法做 |
-| 主升浪猎手正式研究/验证 | 当前仍在框架治理期，不能把研究日志里的旧胜率当生产结论 | 框架治理工作结束并通过 architecture/docs/test/data/tooling gate 后，作为主线 P1 专题认真研究、复现、去泄漏验证 |
-| M4 前端公式视图 | 展示层不能先于可信公式/数据层 | L0-L3 gate 清楚、公式 registry 可信 |
-| M5 GCP 全量 Optuna | 之前 29/34 无 search space 白跑、200 只深主板偏样本 | `backtest_preflight` + `plan_validator` + GCP preflight 全 PASS |
-| 新策略 promotion claim | 未测指标必须 unknown | 只能用 paper_sim/Phase4/PBO/DSR/forward 证据 |
+| `goal.md` | Current phase objective, priority board, implementation plan, long-term roadmap | Read first |
+| `analysis/project_state_ledger.md` | Completed work, historical status, evidence notes formerly appended to `goal.md` | Query with `rg` or `tail`, not full startup read |
+| `SESSION_HANDOFF.md` | Generated/manual runtime resume snapshot | Context-only; verify with live gates |
+| `analysis/workflow_checkpoint.md` | Historical business pipeline checkpoint evidence | Context-only; not permission to resume obsolete provider work |
+| `docs/chunkyctl_session_quickstart.md` | Startup procedure and controller workflow | Startup contract |
+| `docs/README.md` | Active docs map and ownership rules | Docs authority map |
 
-### 架构完成后回归主线
+Update rule: if an item is done, move the evidence to
+`analysis/project_state_ledger.md` and keep only the resulting current decision
+or blocker here. `goal.md` should stay under roughly 150 lines unless the active
+phase genuinely needs a larger plan.
 
-架构 / 框架治理 gate 通过后恢复主线, 但顺序必须是验证先于展示。`docs/zhushenglang_hunter_research_log_20260528.md`
-作为“主项目做成主升浪猎手”的产品北极星保留；治理结束后要认真研究、复现和验证，不把旧 prototype 结论直接当生产证据。
+## Current Phase
 
-| 顺序 | 优先级 | 主线任务 | 前置 gate |
-|---:|---|---|---|
-| 0 | P1 | 主升浪猎手认真研究和验证 | 框架治理结束后启动；先复核研究日志的数据/代码/样本边界，再经 PIT、成本、T+1、涨跌停、持仓重叠、walk-forward、paper_sim 和 forward monitor 复验；70%/78%/86% 等数字只作研究假设 |
-| 1 | P1 | BestChoice 公式接入与冻结证据复核 | BestChoice artifact freeze/hash/lineage, namespaced challenger import；新增候选公式：`20` 个交易日左右内的主力资金流入 + `1-2` 次倍量上涨的资金量价共振形态。现有 5 个 BestChoice 公式仅部分覆盖 `volume_base_breakout` / `activity_breakout`，尚缺直接资金流向特征；另一个已存档的研究资产是回调十字星 / `pullback_doji` / `formula_limit_up_pullback` 与 CYQ 筹码分布规格，待架构 / 数据治理完成后再一起评估是否作为 challenger 接入。BestChoice 的共享 run-id / walk-forward 日期 / ensemble train-test windows 已统一到 `backend/config/bestchoice_pipeline.yaml`，由 `backend/services/bestchoice_config.py` 严格加载，避免 import / feed / audit / paper-sim / ensemble 脚本各自复制同一套默认值。 |
-| 2 | P1 | 300616 原始公式复现 | universe/PIT 清洁, god-view 与 PIT 去泄漏分离 |
-| 3 | P1/P2 | 300616 衍生公式与参数空间 | `plan_validator` 8 项 PASS, search space 非空 |
-| 4 | P1/P2 | 主项目量化回测 / paper_sim | `backtest_preflight` 8 项 PASS, 成本/涨跌停/排除股票规则有效 |
-| 5 | P2 | 候选池与持仓监控 | paper_sim/Phase4/PBO/DSR/forward 证据足够, 未测指标仍 `unknown` |
-| 6 | P2/P3 | 股票画像和档案 API | profile contract + lineage/freshness gate |
-| 7 | P3/P4 | 全局前端 UI/交互重设计 | 业务 API、gate 状态、lineage contract 稳定 |
+**Phase:** architecture/data governance foundation before deeper strategy work.
 
-因此“架构完成”不是直接上前端, 而是恢复可验证主线: 公式 -> 回测 -> 候选/监控 -> 画像/API -> 前端。
+**Objective:** make the project controllable and auditable before expanding
+data sources, provider compute, model search, or production promotion.
 
-### 总体目标架构
+**Controller rule:** Codex owns direction, truth-source decisions, shared docs,
+gates, staging, commits, and risky write windows. Side agents provide bounded
+evidence or disjoint patches; their output is not a verdict.
 
-| 层 | 责任 | 真相源 / 模块 | 当前整改重点 |
+## Active Priority Board
+
+| Priority | Workstream | Current state | Next action |
 |---|---|---|---|
-| L0 基础设施 | 交易日历、K 线、配置、审计 | `price_kline*`, `services/calendar.py`, `config/*.yaml`, `data_audit.py` | K 线为交易真相；`dim_active_a_stock` 降级为 cache/name |
-| L1 公式引擎 | 59 公式、参数、search space | `bc_absorbed/formula_engine.py`, `formula_*.yaml` | 暂停新公式，先确保 gate 和 universe 可信 |
-| L2 信号处理 | 共振评分、画像、SmartMoney adapter | `stock_profiler.py`, `signal_ranker.py`, `smartmoney_adapter.py` | 画像先做 contract/lineage/freshness；缺源字段输出 `unknown`，不抢当前 P0 |
-| L3 策略执行 | 股票池、paper_sim、交易模型 | `portfolio_pool.py`, `paper_sim/` | 成本/涨跌停/持仓规则来自配置 |
-| L4 展示 | API / 前端 | `backend/routers/*.py`, `v3/*` | `updater.py` god module 拆分，股票档案前端等后端画像 contract 稳定后再改 |
+| P0 | Documentation control plane | `goal.md` was overloaded with historical ledger content | Keep `goal.md` thin; move completed details to `analysis/project_state_ledger.md`; update startup/docs/Moth pointers |
+| P0 | Provider-neutral execution surface | Old GCP scripts/launchd paths are being retired; `experiment_jobs` contract exists in dirty worktree | Finish reviewed provider-neutral cleanup slice, keep data-source work separate, then commit |
+| P0 | Dirty worktree governance | `scripts/chunkyctl worktree --format markdown` reports dirty mixed slices and `unknown=0` | Stage one reviewed slice at a time; never `git add .` |
+| P1 | `need_027` exact order-flow | Still blocked; rank/proxy snapshots do not satisfy exact-flow contract | Run token-backed no-persist TuShare/akshare exact-flow probe only when credentials/source stability are available |
+| P1 | Data-source capability routing | iFinD/TuShare/tdxhub research evidence exists, but no production writer is approved | Convert source decisions into capability-level contracts and probes before any DB writer |
+| P1 | DB retention/modularization | Manifest/connection boundary groundwork exists; retention is dry-run inventory only | Design retention/compact policy by table owner and consumer before deleting/VACUUM |
+| P1 | Stage-opt supply | Structural upstream candidate supply blocker remains | Improve source/schema evidence; do not tune knobs as a substitute |
+| P2 | Microsoft RD-Agent(Q) research | Useful external framework patterns identified; not yet mapped to ChunkyMonkey contracts | Deep-dive as isolated research-agent POC: map RD-Agent(Q)/Qlib research loop, Co-STEER, and factor-model co-optimization into borrow/reject decisions; keep production data/PIT/backtest/promotion in ChunkyMonkey |
+| P2 | Data-health warning-only assets | No red or blocking-yellow in latest live doctor; 7 warning-quality tables remain yellow | Treat as owner-specific maintenance, not startup blockers |
 
-### 智能更新管家边界
+## Latest Live Gate Snapshot
 
-| 角色 | 负责 | 不负责 |
+As of the latest checked state on 2026-06-05:
+
+| Gate | Current result | Meaning |
 |---|---|---|
-| 智能更新管家 | 审计输入、DAG 计划、依赖调度、锁/停止、超时、状态、日志、StepResult 汇总、质量 gate 汇总 | 拉行情、写财务表、算画像、判断 universe 真相 |
-| 数据/计算模块 | 自己的数据源、表写入、领域内校验、watermark、统一返回 `status/count/detail/error` | 全局流程、跨模块调度、前端状态、绕过 gate |
-| 审计模块 | 新鲜度、完整性、缺口、异常和是否需要更新 | 直接执行更新 |
+| `scripts/chunkyctl doctor --fast` | `WARN` | Worktree dirty; data-health has warning-only yellow; `need_027` remains blocked |
+| `scripts/chunkyctl worktree --format markdown` | `FAIL`, dirty mixed slices, `unknown=0` | Commit planning must be slice-based |
+| `data_health_snapshot.py --dry-run` | `green=335 / yellow=7 / red=0 / blocking_yellow=0` | No startup data-health blocker; yellow assets are maintenance debt |
+| `audit_execution_surface.py --include-live-launchd` | `PASS / 0 findings` | Retired execution-surface references are not currently detected |
+| `need_coverage` | `need_027` blocked | Exact flow source evidence still missing |
 
-后续 `updater.py` 拆分必须沿这个边界推进: 管家只监督流程和质量，数据模块自更新并交回可审计证据。
+Live gates override this section. Refresh before using the numbers as evidence.
 
-### 数据血缘与画像 / 股票档案路线图
+## Implementation Plan
 
-| 顺序 | 优先级 | 内容 | 依赖 / Gate |
-|---:|---|---|---|
-| 1 | P0 | 数据需求契约与血缘先行: 新画像字段先登记 need、grain、PIT key、freshness、consumer | `tdx_data_need_coverage.yaml`, `audit_tdx_data_need_coverage.py`, `docs/data_product_contract.md` |
-| 2 | P0/P1 | 统一画像 component contract: `value + as_of_date + built_at + source_tables + freshness_status + evidence_status + lineage_ref` | 缺数据必须 `unknown`; proxy 必须显式标注 |
-| 3 | P1 | 股票画像读模型: 趋势/量价/风险/行业/graph/horizon evidence 汇总 | K 线真相源、PIT lineage、不能从 `dim_active_a_stock` 推 universe |
-| 4 | P1 | 机构画像收敛: 复用 `mart_institution_profile`，补 source/freshness/lineage | 机构持仓、调研、龙虎榜、行业统计均需可追溯 |
-| 5 | P1/P2 | 主力行为画像: CYQ + 量价 + 事件 + 真实订单流资金 | `docs/chip_distribution_cyq_spec.md` 已把 CYQ 算法和验证写清；`raw_fund_flow_daily` / `need_027` 恢复前资金流维度为 `unknown` 或 proxy，不作生产证据；`akshare.stock_fund_flow_individual` 可作研究侧排行快照补充，但不等同 exact flow |
-| 6 | P2 | 股票档案 API: 统一现有 stock detail/graph/institution/profile 读模型 | contract test 覆盖 `unknown/proxy/production` |
-| 7 | P2/P3 | 前端股票档案: 总览、机构、主力/CYQ、数据血缘/新鲜度分区 | 后端 contract 稳定后再做；前端只展示证据，不自造判断 |
-| 8 | P3/P4 | 全局前端 UI/交互重设计: 按项目架构和流程重组操作台 | IA/交互方案审查 + contract tests + Browser 截图验收 + 关键流程 smoke |
+1. **Thin-doc control plane:** finish this document split and update
+   quickstart/docs/Moth references so new sessions use the right entrypoints.
+2. **Provider-neutral cleanup commit:** reconcile side-agent review, rerun
+   execution-surface/test-tool/pytest/docs gates, stage only the cleanup slice,
+   and commit with Rule 10 trailer.
+3. **Data-source contracts:** keep iFinD/TuShare/tdxhub work in research/probe
+   mode until capability contracts, PIT/freshness/watermark, and no-persist
+   probes pass.
+4. **Storage/DB governance:** continue from manifest + retention dry-run toward
+   owner-based retention and compact policy. No production deletion without
+   consumer evidence and rollback.
+5. **Strategy/model work:** resume stage-opt and model exploration only after
+   the upstream supply and data-source truth contracts are explicit.
+6. **RD-Agent(Q) follow-up research:** run a read-only deep dive after P0
+   cleanup, with output as a dated `analysis/` research note covering reusable
+   RD-Agent(Q)/Qlib concepts, rejected pieces, integration boundaries, and gates
+   required before any production code adopts the pattern.
 
-详细路线见 `docs/data_product_contract.md`。该路线不改变当前“先架构后业务”的优先级: P0 仍是治理、universe、Rule 10、数据契约、复杂度和 updater 边界；全局前端重设计放在主线验证之后。
+## Long-Term Roadmap
 
-### Dirty worktree 分阶段收束计划
-
-| 批次 | 优先级 | 当前桶/数量 | 处理方式 | 验收/退出条件 |
-|---:|---|---:|---|---|
-| 0 | P0 | 本地生成残留 | 已删除 `.DS_Store` / `__pycache__` / `.pytest_cache` / `.pyc`；日志、报告、DB 不删，先判定证据价值 | `find` 不再发现上述生成残留；git dirty 数不会因此下降，属环境清理 |
-| A | P0 | docs + controller: `project_docs=69`、`docs_archive_moves=6`、controller docs/state 相关 | 把 10 active docs、analysis 归档、root 历史文档删除、goal/implementation/quickstart 更新作为同一 docs-cleanup slice | `audit_docs_graph.py` PASS；`scripts/chunkyctl docs` 除 dirty slice 外无 graph FAIL；归档 hash/引用证明齐全 |
-| B | P0/P1 | startup/tooling: `startup_tooling=12`、部分 `config_project/tests/audit_gate_scripts` | 验收 `chunkyctl`、test-tool registry、Rule 10、safe_commit dry-run、GCP latch 文案；通过后单独 stage/commit | test-tool scope PASS；`test_chunkyctl.py`、`test_safe_commit.py`、工具脚本 py_compile/pytest PASS；Rule 10 verdict 可写入 commit message |
-| C | P0/P1 | universe/data/storage gates: `universe_governance=4`、`data_source_lineage_profiles=7`、storage payload audit | 验证 `check_universe_filter --all`、tdx need coverage、storage payload audit；禁止把 stale/proxy 变生产证据 | universe CLEAN；source/lineage/storage scoped tests PASS；真实库 storage finding 入账为后续迁移任务 |
-| D | P1 | updater split: `updater_split=30` | 按“管家监督流程、数据模块自更新”边界审查拆分文件和 root updater tests | CodeGraph + complexity paired；updater targeted pytest PASS；`updater.py` route shell 边界清楚 |
-| E | P1 | services/scripts/tests/config: `backend_services_api=30`、`pipeline_build_scripts=20`、`audit_gate_scripts` 剩余、`tests=36`、`config_project=7` | 按业务域小批次验收，优先数据真相源、PIT/freshness、测试工具有效性；不跨域大 commit | 每批都有 scope、test-tool gate、py_compile/pytest/domain audit、complexity diff；无新增 HIGH |
-| F | P0 | final clean | **DONE for long-lived dirty / current slice gated**: 所有长期 dirty 已按小切片提交；当前 safety/tooling 切片完成 test-tool audit、py_compile、scoped pytest 30 passed、`scripts/chunkyctl audit --run` 和 CodeGraph sync，提交后工作区应回到 0 dirty。 | `scripts/chunkyctl doctor --fast` 不应再因长期 dirty/unknown/pending FAIL；本地 complexity baseline 已刷新且 diff identity 已抗行号漂移，下一剩余真实治理对象是端到端数据 freshness/PIT、Survivorship 与 Data completeness。 |
-
-当前裁定: dirty 问题已完成一轮系统化清零；后续继续使用 bucket -> gate -> explicit stage -> safe_commit 的收束流水线。`build_architecture_inventory.py`、BestChoice context/feed、candidate feature panel DDL fallback、listing status schema migration、drift-safe fold-stable scoring/serialization、Phase7 context bulk K-line、executive trade events bulk/index、feature association fold/correlation cleanup、storage payload reviewed-column、公式信号增量刷新安全阀、daily recommendation DDL 防误删、tooling diff identity、alpha158 安全窗口写入、stage/context/technical-trigger 安全窗口刷新、picture 单日事务补齐、survey read-window/write-window 拆分与空窗口防误删切片均已完成 scoped gates；K 线、alpha158、stage、signal_context、technical_trigger、picture、survey freshness 已补到 2026-05-29。下一步不是继续找长期 dirty，也不是追被 baseline/行号漂移误报的 complexity new HIGH，而是处理真实业务风险: label/v3/v4/sniper/institution stale、LHB stale、Survivorship/Data completeness 实跑 FAIL，以及推荐 PIT coverage=0 的 legacy fallback。storage payload 当前为 PASS / 12 reviewed columns，不再是剩余阻塞。
-
-### P0-P3 实施计划
-
-| 阶段 | 优先级 | 目标 | 主要动作 | 验收 |
-|---:|---|---|---|---|
-| 0 | P0 | 冻结现场和 scope | `git status --short`; `scripts/chunkyctl worktree --format markdown`; 按 dirty bucket 分类 tracked dirty / untracked；不 stage data parquet / skill 目录 / 无关文档；先删可再生本地残留 | 2026-06-01 之前 dirty entries 曾清零；当前 worktree 仍有 8 个 tracked mods（holder/shareholder-plan slice），需按 bucket 收束后再 commit；`scripts/chunkyctl worktree --format markdown` 仍应以 bucket 方式下钻 |
-| 1 | P0 | Universe lint 从误标 FAIL 变成真实剩余清单 | 修 5 处 `rule-compliance` 同行；复跑 checker；记录 non-test 剩余 | 5 处从报告消失，剩余列表可分组 |
-| 2 | P0 | Rule 10 从提醒变硬阻断 | `scripts/safe_commit.sh` 已增加 `.py staged` commit message gate，并补临时 git repo 行为测试 | 无 `Codex-Reviewed: APPROVE/APPROVE_WITH_NOTES` 或 8+ 字符 `codex-review: skipped reason=...` 时 exit 6；`REQUEST_CHANGES` 不放行 |
-| 3 | P0/P1 | 清完 non-test `dim_active_a_stock` | 合法 cache/name/data-sync/schema/meta 已加同一行 evidence；非法 universe 走 `get_active_universe()` | `check_universe_filter --all` CLEAN |
-| 4 | P1 | 保持正式计划文档同步 | `docs/implementation_plan.md` 已改为架构优先；后续随实际进度同步 | 文档不再声明旧 CLEAN 或旧优先级 |
-| 4.5 | P0/P1 | 顶层设计审查制度化 | `docs/engineering_governance.md` 已新增，明确流程/功能/模块/表/配置的 owner、truth source、gate、奥卡姆审查 | 后续架构变更能先填审查模板，避免新增表/配置/模块无主膨胀 |
-| 4.6 | P0/P1 | 硬编码治理制度化 | 将“业务规则/阈值/source catalog/优先级先定 owner”写入 `AGENTS.md`、bootstrap、top-level review、`chunkymonkey-governance` 和 `chunkymonkey-review-gate` | 新增业务值先判定 config/table/service/code exception；同一规则只能有一个真相源 |
-| 4.6.1 | P0/P1 | 删除治理制度化 | 将“验证可删就真删，禁止注释/隐藏/改名假删除；删除前用 CodeGraph + `rg` + 测试/审计取证”写入 `AGENTS.md`、top-level review、`chunkymonkey-governance` 和 `chunkymonkey-review-gate` | 死代码/旧测试/旧文档不再以注释、disabled branch 或空壳污染工作区；未验证可删的对象保持 active/quarantined 状态并写明证据缺口 |
-| 4.7 | P0/P1 | 数据需求契约化 | 已把 `grain`、`pit_key`、`freshness_sla`、`evidence_status`、`production_eligibility` 从 notes 提升为 YAML 必填字段；`need_027` 主力/超大/大/中/小单资金流明确为 `pit_key=unknown`、`evidence_status=unknown`、`production_eligibility=blocked`；`CapitalFlowAlpha` / institution score / panel manifest 已移除 stale raw 生产 fallback | `scripts/chunkyctl audit --run ...` PASS；targeted pytest 25 passed；临时 DuckDB 物化 27 needs / 10 priorities / 14 reassignments；缺字段、非法 enum、eligible+unknown PIT 都会 FAIL；生产 DuckDB exact-sync 尚未执行，需用户批准后单独写入 |
-| 4.8 | P0/P1 | 画像与股票档案路线契约化 | 新增 `docs/data_product_contract.md`；把股票画像、机构画像、主力行为画像、股票档案前端按 lineage -> profile contract -> mart/service -> API -> frontend 排序 | 任何画像/前端展示必须携带 source、PIT/freshness、`unknown/proxy/production` 状态和 lineage_ref |
-| 5 | P1 | 拆 `updater.py` | 已抽 19 个 `updater_*` 模块；第二十一至第五十八刀已迁出状态账本、step-status、连通性、execution loop、background task helper、smart plan/preflight、launcher 和 reset response payload/connection lifecycle；第五十一刀将 `sync_industry` body/gap queue/progress JSON 迁入 `updater_institution.py::_step_sync_industry_with_hooks`，`updater.py` 只保留 hook 注入 wrapper；第五十二刀将 `/update/status` 连接生命周期与 step_status catalog sync 迁入 `updater_status.py::build_update_status_response`；第五十三刀将 `/update/smart-plan` 连接生命周期与 plan budget response 迁入 `updater_status.py::build_smart_plan_response`；第五十四刀将 `/update/reset-derived` 与 `/update/reset-industry-derived` 连接生命周期迁入 `updater_reset.py::build_reset_derived_response` / `build_reset_industry_response`；第五十五刀将启动前 step_status priming 连接生命周期迁入 `updater_steps.py::prime_run_step_status_for_steps`；第五十六刀将 `/update/smart` 计划构建连接生命周期迁入 `updater_status.py::build_smart_update_plan`；第五十七刀将 run context/noop/finish/heartbeat helper 迁入 `updater_status.py`；第五十八刀将 group route request scheduling 迁入 `updater_launcher.py::launch_group_update_request` | god module 5136 -> 723 LOC，targeted tests pass，0 新 HIGH |
-| 6 | P0/P1 | 清复杂度 HIGH | P0-A `v3_meta.py` 已批量化；P0-B `institution.py` 已改为计数/预排序 map；P0-C `screening.py` 已抽顶层 name-key helper；P1 `v3_portfolio_builder.py` 已将 regime 分段汇总下沉到 service；P1 gate script `audit_delivery_readiness.py` 已预排序 glob paths 并批量查询 mart table existence；P1 data gate script `audit_data_completeness.py` 已按 DB 批量汇总 table freshness/coverage；P1 scanner `audit_n_plus_one.py` 已拆单层 helper并清自身 complexity HIGH；P1 leakage gate `audit_panel_leakage.py` 已批量 schema/null-gradient 查询并拆单层 grep helper；P1 PIT gate `audit_pit_integrity.py` 已批量 table/column inventory 并扁平化 walk-forward/forward-leak scans；P1 tradeability gate `audit_tradeability.py` 已拆静态扫描 helper并批量 spot-check raw/view counts；P1 survivorship gate `audit_survivorship_gate.py` 已批量 ever/active/panel count 并拆训练入口扫描 helper；P1 universe coverage gate `audit_universe_coverage.py` 已批量 K 线/业务表 ref-date codes 并抽稳定采样 helper；P1 TDX data need coverage gate `audit_tdx_data_need_coverage.py` 已把 source catalog/priority/reassignment 从 Python 硬编码迁到 `backend/config/tdx_data_need_coverage.yaml`，脚本只做 loader/校验/物化并补 exact-sync；P1 architecture inventory 已批量 latest-column 查询、修 nested router prefix、建立 route match index、把 `_strip_js_comments()` 改为单通道状态机、把 `_apply_dependency_context()` 改为 set-based 去重/阻断汇总，并在 2026-06-01 继续拆出 backend/frontend edge helper、import resolution helper、route lookup helper 和 DDL statement helper，清除 broad scan 中该文件 HIGH；P1 BestChoice context exit/feed 已去掉 candidate K 线 N+1、policy row per-row insert、entry 内部手写二分循环并补 helper 单测；P1 Phase7 context 已把 per-stock K-line query 改为一次批量 JOIN + context map，并补 bulk/filter/score-gate 回归测试；P1 executive trade events 已把 K-line chunk query 改为临时 code 表单次 JOIN，并用 per-code date/close index + `bisect_right` 替代 per-event 全历史扫描；P1 feature association 已去掉 DDL split execute loop、fold temp-table loop，按 fold range 过滤 base table，并把 pairwise correlation / cluster / horizon sensitivity 拆成有界 helper | backend API HIGH 已清；上述 gate scripts 无 HIGH，`audit_tdx_data_need_coverage.py` 仍有 1 个 MEDIUM membership 提示；`build_architecture_inventory.py`、BestChoice context exit/feed、Phase7 context、executive trade events、feature association 已不再出现在 complexity diff new HIGH；每刀 CodeGraph + complexity 成对；相关测试 PASS；不改变业务语义 |
-| 6.5 | P0/P1 | 测试工具清理与可信度审查 | 已建立第十轮闭环并完成全部 selected test artifact backfill：registry 记录 owner/status/evidence；审计器输出 FAIL/WARN + `controller_feedback` + `gate_updates` + `unregistered_selected_slices`；显式空 scope/默认 gate non-current/marker-scope drift 均失败；前三批目录级 129 个 artifacts scoped audit PASS；root batch 4/5 与 micro-batch 6-13 已按 owner 登记；root micro-batch 13a 覆盖 updater 9 个 root tests，scoped audit PASS，pytest 89 passed / 2 warnings；root micro-batch 13b 覆盖剩余 system/strategy/tdx/v3/utils/conftest/xdxr 等 14 个 root artifacts，scoped audit PASS，默认 pytest 76 passed / 63 deselected / 15 warnings，realdb collect-only 63/66 collected；Rule 10 行为测试已登记；`test_run_feature_ablation.py` 已隔离 `alpha158.duckdb` 隐式真实库；`test_system_routes.py` 不再在 module import 阶段加载生产 `main` | `pytest.ini` 默认排除 `realdb/perf/network/gcp/slow`；full audit 当前 PASS：0 FAIL / 0 WARN / 365 selected / 365 registered / 100% coverage；后续重点转为定期审计漂移、清理过期测试和真实库 opt-in 测试逐步 contract 化，不允许把 realdb collect-only 当业务证据 |
-| 6.6 | P0/P1 | 工具门禁 JSON 化 | Moth snapshot 现已作为共享 tooling state 真源，`chunkyctl doctor` 只是消费它：解析 git status、CodeGraph status、complexity markdown，输出 baseline/diff；无 baseline 时输出 `baseline_unavailable` + `unclassified_high_count`，加载 baseline 后才输出有效 `new_high_count`；`chunkyctl doctor` 默认读取 `CHUNKYMONKEY_MOTH_COMMAND` 或 PATH 上的 `moth`，并保留 storage payload summary；2026-06-01 发现旧 baseline 只有前 40 条，清掉 feature association 后会把后续历史 HIGH 误报为 new，已刷新本地 ignored baseline 到 220 条；`moth snapshot` / `moth sync` 已成为新增的权威 snapshot/sync 入口；storage payload reviewed-column 配置后为 323 columns / 0 FAIL / 0 WARN / 13 reviewed PASS，`mart_pipeline_run_manifest.perf_summary_json` 也已加 `compact_perf_summary_payload()`，当前最大 row 约 260,408 bytes；`chunkyctl preflight` 改为 token 匹配 task risk，避免 `build` 误触发 `ui` frontend gate；新增 `docs/engineering_governance.md` 记录 GitHub 工具调研 | dirty worktree 不再只靠人工读长列表；历史 HIGH、新增 HIGH、大 payload/递归 JSON 风险可分开治理；baseline 是本地忽略工具状态，不是生产证据；当前 P0/P1 后续转向数据 freshness/PIT FAIL 与真实新增 complexity 回退 |
-| 6.7 | P0/P1 | 项目专用审计/开发辅助工具雏形 | 新增 `backend/scripts/chunkyctl.py` + `scripts/chunkyctl` + `docs/chunkyctl_session_quickstart.md`，最初以 `audit_tooling_gate.py` 为 seed，现已迁到 `backend/services/moth_snapshot.py` 和 Moth snapshot layer；保留 `doctor/worktree/docs/preflight/audit` 最小入口，但共享状态真源已经切到 Moth，所以 `doctor --fast` 现在只是消费 shared snapshot，继续同时暴露 worktree、CodeGraph、complexity baseline/diff、storage payload summary 和系统 data-health snapshot；`worktree` 默认 JSON，`--format markdown` 给 controller/agent 人读审查；`preflight` 也已改为复用 Moth-backed tooling gate，避免继续依赖本地 codegraph parser；`audit` 只对 `.py` scope 跑 py_compile/complexity，避免 YAML/INI 等配置误入 Python gate；quickstart 已写明启动契约维护规则、dirty resolution mode、Moth 依赖和 storage/data-health FAIL 解释 | 新 session 默认只需按 `docs/chunkyctl_session_quickstart.md` 接手并跑 `scripts/chunkyctl doctor --fast`；dirty 时再跑 `scripts/chunkyctl worktree --format markdown` 和 bucket 下钻；storage payload FAIL 时跑 `audit_storage_payloads.py --format markdown`；data-health red/yellow rows 则先用 `data_health_snapshot.py --dry-run --format text` 看 bucket，再回到 writer / evidence gap；若 doctor FAIL 应优先看 complexity/data/storage/test/data-health gate 而非继续找 dirty；后续增删改文档、优化工具或改变 gate/agent 启动流程时，必须同批更新 quickstart 并在 handoff/final 中说明 |
-| 6.8 | P0/P1 | 文档归档 bucket 审计 | `docs_archive_moves` 三份 root 历史文档已迁入 `analysis/`，controller + subagent 均验证旧 root 与新归档逐字一致；活跃代码注释已指向 `analysis/plan_v3_20260514_archived.md`；`docs/README.md` 已升级为文档索引/生命周期规则；一次性 cron automation RCA 已移到 `analysis/cron_automation_breakage_rca_20260529.md`；旧 market perception Codex prompt 经 `rg` 验证无外部引用后删除；`goal.md` 已把 2026-05-24 及更早历史章节完整归档到 `analysis/goal_legacy_20260531.md` | staging 时三份 root 删除和三份 `analysis/` 归档必须同组处理；`cron_automation_breakage_rca_20260529.md` 与 legacy goal archive 作为 analysis evidence 处理；旧 prompt 不再保留，后续 session 只使用 `docs/chunkyctl_session_quickstart.md` |
-| 6.9 | P0/P1 | artifact/cache storage 治理 | 已按 LifeHack 24.7GB 事故模型做本项目只读排查并落证据到 `analysis/lifehack_storage_bloat_analog_audit_20260531.md`；`audit_storage_payloads.py` 已固化为可重复门禁并接入 `chunkyctl doctor`。2026-06-01 完成 today signal cache 迁移：`mart_today_signal_cache` 主表只存 summary/cache metadata，新增 `mart_today_signal_cache_signal` 按 `cache_key + signal_rank` 存有界 `signal_json`；`backend/scripts/migrate_today_signal_cache_payload.py` 支持默认 dry-run、`--execute` 才写库。真实库迁移结果: 1 row / 9,286 signals / payload 20,220,095 -> 2 bytes；随后把 raw F10/GPCW/AIF10、signal detail、reason codes、picture summary、lineage/source-artifact/path pointer 等非递归有界列登记为 reviewed columns。storage audit 最新为 323 columns / 0 FAIL / 0 WARN / 13 reviewed PASS。 | `/api/signals/today` cache hit/miss 与 `signals_v2` 今日缓存回归 42 passed；reviewed PASS 由 `storage_retention.yaml` 的 owner/classification/cap 控制，递归 key、超 cap 或未许可 path marker 仍会重新告警。禁止直接清表/VACUUM 造成 API 空响应；后续 storage 治理按容量、保留期、消费者价值和可重算性排序。 |
-| 6.10 | P0/P1 | 文档引用图和循环权威链清理 | Scoped cleanup complete: `docs/` 已收敛为 10 个活文档；本轮新增 `engineering_governance.md`、`data_product_contract.md`、`strategy_validation_contract.md` 三个合并契约，并把 34 个旧 active docs 迁入 `analysis/docs_archive_20260531/`；`backend/scripts/audit_docs_graph.py` 当前 PASS：13 sources / 286 total edges / 217 authority edges / 26 context-only edges / 0 unresolved live refs / 0 missing archive targets / 0 forbidden SCC / largest SCC 7 | 后续验收保持 `docs/*.md <=10`，新增活文档必须同批合并/归档/删除旧文档；`zhushenglang_hunter_research_log_20260528.md` 作为主升浪猎手产品北极星保留，框架治理结束后进入 P1 严肃复现和验证 |
-| 7 | P2 | 清 paper_sim 死 YAML | `rg` 查 7 个 YAML 引用；无引用才删 | 无死引用，文档记录 |
-| 8 | P0/P1 | 总验收和架构说明 | 跑 checker/codegraph/complexity/tests/diff check；输出 L0-L4 全貌 | 用户能接着做业务，不靠口头记忆 |
-
-### 阶段 0: 现场冻结
-
-| 动作 | 命令/方法 | 注意 |
-|---|---|---|
-| 查看 dirty | `scripts/chunkyctl doctor --fast` + `scripts/chunkyctl worktree --format markdown` | 以实时 gate 为准；先看当前 bucket 与 CodeGraph pending，再决定是否收束/commit；若 doctor FAIL 先看 complexity/data/test gate，再按 bucket 看 worktree |
-| 查看 tracked diff | `git diff --stat` | 区分前 session 改动和本次新增 |
-| 查看 untracked | `git ls-files --others --exclude-standard` | `data/phase5_exports/*.parquet` 不应误纳入架构 commit |
-| 计划 stage scope | 按阶段 stage | 不使用 `git add .` |
-
-### 阶段 1: `dim_active_a_stock` 治理
-
-| 子任务 | 文件/范围 | 处理方式 |
-|---|---|---|
-| 1.1 同行 annotation | `recommendation.py`, `screening_engine.py`, `recommendation_universe.py`, `stock_detail_read.py`, `stock_graph_read.py` | 把 `rule-compliance: ok evidence=...` 放到含 `dim_active_a_stock` 的同一行 |
-| 1.2 data-sync 合法枚举 | `build_price_kline_tdxhub.py`, `financial_client.py`, `capital_client.py`, `aif10_capability_client.py`, `institution_write.py` 等 | 同行 evidence: `data-sync-enumeration` / `lineage-metadata` |
-| 1.3 name lookup | `run_daily_topk.py`, stock read / router name mapping | 同行 evidence: `code-to-name-mapping` |
-| 1.4 schema/meta/audit | `schema_core.py`, `schema_migrations.py`, `security_master.py`, `data_lineage/registry.py`, `data_audit.py` 等 | 同行 evidence: `schema-definition`, `table-writer-itself`, `audit-config-reference` |
-| 1.5 非法 universe 过滤 | 任何把 dim 表当 active universe 的业务路径 | 改用 `services.universe.get_active_universe()` 或服务 API |
-
-阶段 1 验收命令:
-
-```bash
-PYTHONPATH=backend python backend/scripts/check_universe_filter.py --all
-```
-
-验收口径: non-test violations 必须为 0。若 test fixtures 仍报，先记录并决定是给测试夹具加 evidence，还是收紧 checker 的 test 豁免。
-
-当前结果 (2026-05-28): `check_universe_filter.py --all` 默认 production-code only，CLEAN (767 files checked)。`--include-tests` 保留人工审计口径，当前报告 37 个 test fixture 引用。
-
-### 阶段 2: Rule 10 blocking gate
-
-`scripts/safe_commit.sh` 在 commit message keyword 后、`git commit` 前增加硬门:
-
-```bash
-py_staged=$(git diff --cached --name-only -- '*.py' | wc -l | tr -d ' ')
-if [[ "$py_staged" -gt 0 ]]; then
-    has_codex=$(echo "$MSG" | grep -cE "Codex-Reviewed:[[:space:]]*(APPROVE|APPROVE_WITH_NOTES)" || true)
-    has_request_changes=$(echo "$MSG" | grep -cE "Codex-Reviewed:[[:space:]]*REQUEST_CHANGES([[:space:]]|$|\\()" || true)
-    has_skip_reason=1  # only when codex-review skip reason is non-empty and 8+ chars
-    if [[ "$has_request_changes" -gt 0 ]]; then
-        echo "ERROR: staged .py files cannot be committed with Codex-Reviewed: REQUEST_CHANGES"
-        exit 6
-    fi
-    if [[ "$has_codex" == "0" && "$has_skip_reason" == "0" ]]; then
-        echo "ERROR: staged .py files require approved Codex review or meaningful skip reason"
-        exit 6
-    fi
-fi
-```
-
-验收:
-
-| 检查 | 命令/方式 |
+| Area | Direction |
 |---|---|
-| shell 语法 | `bash -n scripts/safe_commit.sh` |
-| 无 review 阻断 | `backend/tests/scripts/test_safe_commit.py` 临时 staged `.py` dry-run 覆盖 exit 6 |
-| 有 review 放行 | commit message 含 `Codex-Reviewed: APPROVE/APPROVE_WITH_NOTES` 或 8+ 字符 skip reason |
-| REQUEST_CHANGES 阻断 | `Codex-Reviewed: REQUEST_CHANGES` 无论是否附带 skip reason 都不能通过 Rule 10 |
+| Data sources | Capability-level routing: `tdxhub` backbone, iFinD semantic research snapshots, TuShare structured exact-flow/batch probes, each gated by PIT/freshness/watermark |
+| Compute | `experiment_jobs` is the only approved job contract; `local` active, `modal` planned/blocked until adapter manifest, sandbox, cost boundary, and rollback exist |
+| Research agents | Microsoft RD-Agent(Q) / Qlib ideas may feed isolated candidate generation and experiment design; production data, PIT, backtest, and promotion gates stay in ChunkyMonkey |
+| Database | Manifest-owned DB aliases, read-only attached DBs by default, owner-based retention, no ad hoc scripts or hidden DB paths |
+| Promotion | Measured paper sim / Phase4 / PBO / forward evidence only; in-sample or proxy metrics remain `unknown` |
 
-### 阶段 3: CodeGraph + complexity 工作流
+## Operating Reminders
 
-任何 `.py` 变更必须按以下顺序执行，不攒到最后:
-
-```bash
-codegraph query "<symbol>"
-codegraph context "<task>"
-# edit
-codegraph sync .
-python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py \
-  /Users/dp/Documents/M/stock/chunkymonkey/backend --format markdown
-PYTHONPATH=backend python backend/scripts/check_universe_filter.py --all
-git diff --check
-```
-
-若修改触及回测/验证/Optuna/GCP 入口，还必须先看:
-
-| Gate | 检查项 |
-|---|---|
-| `backtest_preflight` | `universe_clean`, `limit_pct_per_board`, `cost_model`, `data_freshness`, `walk_forward`, `signal_pit_spotcheck`, `code_leakage_scan`, `excluded_stocks` |
-| `plan_validator` | `search_space`, `trial_value`, `formula_runnable`, `cost_efficiency`, `param_scope`, `sample_size_coverage`, `board_coverage`, `output_usable` |
-| `data_audit` | `kline_completeness`, `kline_consistency`, `board_coverage`, `date_range`, `volume_sanity`, `smartmoney_freshness`, `cross_table_consistency` |
-
-#### 硬编码治理检查
-
-每次新增或修改业务值时先判定 owner:
-
-| 类型 | 默认 owner | 例外 |
-|---|---|---|
-| 规则、阈值、策略参数、开关 | YAML/config + loader 校验 | 测试夹具、数学常量 |
-| source/path catalog、数据源优先级、迁移建议、gate evidence | 数据表、稳定 artifact 或配置 | 单次脚本局部实现细节 |
-| fallback 顺序、规则解释、typed access | service module | 私有 helper 且不参与业务决策 |
-| schema/enum/SQL DDL | Python 可接受 | 不能复制成生产策略 |
-
-BLOCK 条件: 业务规则长期硬编码在 Python、同一规则在 YAML/SQL/Python 多处重复、无 owner/schema/consumer 的配置或表、router/updater 复制领域策略。
-
-### 阶段 3.5: Complexity HIGH 治理
-
-| 优先级 | 范围 | 当前状态 | 下一步 |
-|---|---|---|---|
-| P0-A | `backend/routers/v3_meta.py` | 已完成：`get_formulas()` 由 per-formula 查询改为批量查询 map，清掉 3 个 HIGH io/query-in-loop；`backend/tests/test_v3_meta.py` 27 passed, 2 warnings；`codegraph sync .` synced 29 changed files (27 added, 2 modified, 503 nodes) | 继续监控 response shape，不新增业务语义 |
-| P0-B | `backend/routers/institution.py` | 已完成：`get_institution_detail()` 行业树由循环内排序改为 Counter 计数 + parent group 预排序 map；新增 helper 回归覆盖 Layer B 注释与排序；`test_institution_read.py` + `test_institution_contract.py` 14 passed, 2 warnings；backend/routers complexity 不再报告 `institution.py` HIGH | 剩余 MEDIUM membership 提示暂不阻断 |
-| P0-C | `backend/routers/screening.py` | 已完成：`_to_name_keyed()` 从 route 内嵌 nested loop 改为顶层 `_rename_sector_in_value()` + 浅拷贝转换；`backend/tests/test_screening_read.py` 3 passed；backend/routers complexity 不再报告 `screening.py` HIGH | active-universe fixture 已单独修复；`test_screening_engine.py` + `test_screening_read.py` 4 passed |
-| P1 | `backend/routers/v3_portfolio_builder.py` | 已完成：regime 分段统计从 router 下沉到 `services.portfolio_walk_forward.regime.summarize_regime_segments()`；新增 service + endpoint 回归；backend/routers complexity 不再报告 HIGH | 后续转向 scripts/audit/backfill HIGH，按热路径和门禁影响排序 |
-| P1 | `backend/scripts/audit_delivery_readiness.py` | 已完成：循环内 `glob` 排序改为循环前预排序列表；strategy model source mart 表存在性由循环内 information_schema 查询改为一次批量查询；单文件 complexity 已无明显热点 | `test_audit_delivery_readiness.py` 16 passed；backend 全量 complexity 不再报告该文件；未运行会写 `delivery_readiness.json` 的完整审计 |
-| P1 | `backend/scripts/audit_data_completeness.py` | 已完成：每张表循环内 connect/query 改为按 DB 分组后一次 UNION 汇总 max_date 与当日 n_codes；新增纯函数和 DuckDB 临时库回归测试 | `backend/tests/scripts/test_audit_data_completeness.py` 3 passed；单文件/scripts/backend complexity 不再报告该文件；脚本实跑 exit 1，因 6 张本地表 `STALE_7d⚠` |
-| P1 | `backend/scripts/audit_n_plus_one.py` | 已完成：scanner 自身的 root/file/body/iterrows 嵌套扫描拆为单层 helper，循环头 `sorted(...)` 改为预排序列表；不改变 finding 规则和报告格式 | `backend/tests/scripts/test_audit_n_plus_one.py` 15 passed；脚本实跑到 `/tmp` 为 30 findings / 22 HIGH / 8 LOW / baseline OK；backend complexity 不再报告该文件 |
-| P1 | `backend/scripts/audit_panel_leakage.py` | 已完成：PIT marker schema introspection 改为一次 information_schema 批量读取；flat mapping PARTITION BY、fallback ratio、NULL year gradient、forward-index grep、universe PIT grep 与 summary print 拆成单层 helper；check 6 的 per-feature SQL 改为一次按 year 聚合；不放松 leakage finding 口径 | `backend/tests/scripts/test_audit_panel_leakage.py` 4 passed；与 `test_audit_n_plus_one.py` 合跑 19 passed；backend/scripts/backend complexity 不再报告该文件；未跑真实大库 `audit_panel_leakage.py --panel ...`，避免本轮写正式 leakage report/长耗时 |
-| P1 | `backend/scripts/audit_pit_integrity.py` | 已完成：walk-forward batch/OOS 表规格扁平化，information_schema 表/列读取批量化，cross-date forward leak spot-check 改为扁平 specs + 单次 UNION ALL；不改变 critical FAIL / legacy WARN / future-dated WARN 语义 | `backend/tests/scripts/test_audit_pit_integrity.py` 3 passed；与 import/leakage/nplusone 相邻测试合跑 24 passed；backend complexity 不再报告该文件；BestChoice PIT 元数据补齐后脚本实跑 PASS：9 PASS / 30 WARN / 0 FAIL |
-| P1 | `backend/scripts/import_bestchoice_phase1_candidates.py` | 已完成：BestChoice Phase 1 writer 新增/迁移 `as_of_date` 与 `built_at`，默认 source 切到 repo 内 `chunkymonkey/bestchoice/analysis/...`，避免静态 challenger artifact 缺 PIT key | `test_import_bestchoice_phase1_candidates.py` 2 passed；重导入 `mart_stock_formula_optuna_bestchoice_v1` 1146 rows；`audit_pit_integrity.py` 实跑 PASS：9 PASS / 30 WARN / 0 FAIL；backend complexity 不报告该文件 HIGH |
-| P1 | `backend/scripts/audit_event_timestamp.py` | 已完成：event table/column inventory 复用批量 helper；timestamp non-null、PIT lag、recent-30d sanity 从 per-table query 改为 UNION ALL 批量指标；不改变 primary FAIL / secondary WARN / unusual lag WARN 语义 | `backend/tests/scripts/test_audit_event_timestamp.py` 3 passed；与 import/PIT/leakage/nplusone 相邻测试合跑 27 passed；真实脚本实跑 PASS：55 PASS / 5 WARN / 0 FAIL；backend complexity 不再报告该文件 |
-| P1 | `backend/scripts/audit_tradeability.py` | 已完成：静态 grep 拆为 file-level helper，避免 file×line×pattern 嵌套；spot check raw/view 逐日查询改为一次批量 UNION ALL 计数；不改变 suspension/limit/spot-check PASS/WARN/FAIL 语义 | `backend/tests/scripts/test_audit_tradeability.py` 3 passed；与 `test_audit_n_plus_one.py` 合跑 18 passed；真实脚本实跑 PASS：4 PASS / 4 WARN / 0 FAIL；WARN 为本地 `price_kline` 无停牌样本和近 14 天无涨跌停 proxy，不能当完整生产覆盖证据；backend complexity 不再报告该文件 |
-| P1 | `backend/scripts/audit_survivorship_gate.py` | 已完成：DB 侧 ever-listed/active/panel count 从多次查询合成一次 CTE；训练入口 `is_active=1` 扫描拆成可测试 helper；默认 label_version 已对齐当前主线 `p0a_v3_horizon_governance`，旧 `p0a_v2_governance_v1` 仅作为显式历史复查口径 | `backend/tests/scripts/test_audit_survivorship_gate.py` 3 passed；与 `test_audit_n_plus_one.py` 合跑 18 passed；真实脚本实跑 PASS：label panel 5,210 codes >= 90% of ever-listed 5,210；backend complexity 不再报告该文件 |
-| P1 | `backend/scripts/audit_universe_coverage.py` | 已完成：business-table coverage 从 ref_date × table 逐次查询改为批量 K 线 universe 与业务表 codes map；gap sample 排序抽到 helper；不改变 panel FAIL、event info、gap PASS/WARN/FAIL 语义 | `backend/tests/scripts/test_audit_universe_coverage.py` 4 passed；与 `test_audit_n_plus_one.py` 合跑 19 passed；真实脚本实跑 PASS：16 PASS / 6 WARN / 0 FAIL；backend/scripts/backend complexity 不再报告该文件；6 WARN 不可当 freshness 全绿证据 |
-| P1 | `backend/scripts/audit_tdx_data_need_coverage.py` | 已完成：`ensure_tables` fallback 不再 split DDL 循环执行；TDX data need/source priority/reassignment catalog 从 Python 常量迁入 `backend/config/tdx_data_need_coverage.yaml`；2026-05-27 补 exact-sync；2026-05-31 将 `grain` / `pit_key` / `freshness_sla` / `evidence_status` / `production_eligibility` 设为 need contract 必填并补 enum/eligible 校验；`need_027` 明确 blocked/unknown，2026-06-01 该 audit 还把 source registration 显式写进 blocked summary：preferred `akshare` 已注册，declared fallback 标签 `miaoxiang` 则归到 `aif10` 家族，但当前 `aif10` adapter 仍未实现 `individual_fund_flow`，所以 fallback 仍是概念路径；2026-06-02 live probe 再次验证 `individual_fund_flow` via `akshare`（`stock=600519, market=sh`）仍报 `RemoteDisconnected`，`mart_data_source_failure_queue` 当前实际为 `open=3 / resolved=5`，其中 `order_flow_fund_flow/akshare` 仍在 open（`individual_fund_flow` / `individual_fund_flow_rank`），另有 `northbound_holding/akshare_hsgt` 也仍 open；这说明该 blocker 依旧是外部源阻塞，不是本地解析层可自愈的问题；`probe_source_capability.py` 现场探针现在已先清代理再重试，但 Eastmoney 端点仍返回 `ConnectionError` / `JSONDecodeError` remote disconnect，blocked probe 继续写入 `mart_data_source_failure_queue` 供后续 triage 复用；另有 `akshare.stock_fund_flow_individual` 研究侧排行快照，可作为主力行为研究的辅助观测，但不等同 `need_027` exact flow；2026-06-01 新增 blocked_reason 维度的 stage-opt audit 诊断后，candidate supply 侧的 bottleneck 已更清楚地落在 `below_min_signals`，不是 bar 缺失。 | `scripts/chunkyctl audit --run backend/scripts/audit_tdx_data_need_coverage.py ...` PASS；`backend/tests/scripts/test_audit_tdx_data_need_coverage.py` 16 passed；三文件 targeted pytest 25 passed；默认配置物化目标为 27 coverage / 10 priority / 14 reassignment rows；生产 DuckDB 已只读核实 `raw_fund_flow_daily` stale/deprecated，本轮未写生产 DuckDB exact-sync |
-| P1 | `backend/scripts/audit_stale_references.py` | 已完成：Tier 5/6/7 结论写入 JSON 报告和 summary，避免 console-only 证据丢失；commented-out-code 检测改为 AST/SQL 可解析口径，过滤公式说明、YAML 来源说明、英文说明性注释；新增 per-run `_read_lines` cache，降低 Tier1/Tier3/Phase0 重复全仓读取风险；Phase0 denylist 仍保持 report-only，不顺手改 blocking 策略 | `backend/tests/scripts/test_audit_stale_references.py` 8 passed；真实 smoke `--no-fail --output /tmp/chunkymonkey_stale_audit_smoke.json` 写出 `summary` + Tier5/6/7 arrays，当前 critical/warn/parity/Tier5/Tier6/Tier7 均 0；单文件 complexity 为 0 HIGH / 2 MEDIUM，测试文件 0 findings |
-| P1 | `backend/scripts/build_architecture_inventory.py` | 已完成三刀：`_safe_latest()` 从候选列逐条查询改为一次 SELECT 批量 latest-column 聚合；新增 nested `include_router()` app-prefix 传播，修复 lifeboat 子路由合同缺口；frontend route contract 改为静态 route set + pattern/prefix index；`_strip_js_comments()` 从嵌套 `while` 改为单通道状态机；`_apply_dependency_context()` 改为 incoming/source/target blocker set maps，统一排序/去重后赋值，test dependency 不产生 blocker | scoped test-tool audit PASS；`py_compile` PASS；`backend/tests/pipeline/test_architecture_inventory.py` + `backend/tests/contract/test_architecture_contracts.py` 15 passed；`codegraph sync .` synced 46 changed files；`check_universe_filter.py --all` CLEAN；full test-tool audit PASS；backend complexity 已不再报告旧 JS comment stripper 与 dependency context sort-in-loop 热点，但 broad scan 仍报该文件其他历史 HIGH；不能宣称 clean |
-
-### 阶段 4: `updater.py` 拆分方案
-
-执行前必须先跑:
-
-```bash
-codegraph query "updater"
-codegraph context "updater split"
-python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py \
-  /Users/dp/Documents/M/stock/chunkymonkey/backend/routers --format markdown
-```
-
-目标边界:
-
-| 模块 | 内容 | 备注 |
-|---|---|---|
-| `backend/routers/updater_infra.py` | UI log handler, reset logs, metrics helpers | 基础设施 helper |
-| `backend/routers/updater_steps.py` | step status, normalize/sanitize, `_prime_step_status_rows`, `_sync_step_status_catalog_for_steps`, `_record_step_source_state_for_domains`, `_update_step` | 状态机核心 |
-| `backend/routers/updater_calendar.py` | calendar step, trading calendar status | 日期真相源相关 |
-| `backend/routers/updater_runtime.py` | `_run_blocking_db_task`, `_run_blocking_market_db_task` | 共享 runtime helper，不放业务逻辑 |
-| `backend/routers/updater_audit.py` | audit snapshot refresh task、refreshing status helper、sync refresh helper | 审计快照后台刷新从主 router 分离；`routers.updater` 继续导入同名 helper |
-| `backend/routers/updater_plan.py` | `STEPS`, `HARD_DEPS`, `SOFT_DEPS`, `MANUAL_ONLY_STEPS` | DAG metadata 从 router 分离；`routers.updater` 继续 re-export 兼容测试/调用 |
-| `backend/routers/updater_execution.py` | hard-dependency blocking、remaining steps、K 线不可用 gap queue block/update fields、`StepRunProgress`、K 线不可用 skip helper、runner managed connection helper、group/full/single/smart 执行循环 helper | 从 smart/single/group/full route body 抽共享执行规则，不移动运行态 globals |
-| `backend/routers/updater_launcher.py` | `UpdaterExecutionDeps` launcher callback bundle、`run_background_update_task` 后台任务失败/cleanup launcher、`run_smart_update_background` / `run_full_update_background` / `run_single_update_background` / `run_group_update_background` launcher helpers | route-level launcher plumbing，依赖 `updater_execution.run_smart_steps/run_all_steps/run_single_steps/run_group_steps`，避免 execution helper 继续膨胀 |
-| `backend/routers/updater_status.py` | step budget、source domain、smart plan budget、critical daily filter、smart-update 计划/交易日历 preflight helper、status summary、update status payload/response connection lifecycle、smart-plan response connection lifecycle、downstream DAG helper | `updater.py` 只保留当前 STEPS/HARD_DEPS/SOFT_DEPS wrapper |
-| `backend/routers/updater_reset.py` | reset table 清理常量、批量 table existence/count/delete helper、reset-derived/reset-industry response payload/connection lifecycle helper | `updater.py` 只保留 reset route 编排和 smart-update 接续 |
-| `backend/routers/updater_connectivity.py` | connectivity probe、TTL cache、cached status helper | `updater.py` 只保留 route/runner 调用与 re-export |
-| `backend/routers/updater_sync.py` | 独立外部 sync runner；目前承接 sync_raw、LHB/QFII/AIF10/surveys/sync_financial body | 如果超过 1000 行，拆成 sync_fetch / sync_build，不硬塞 |
-| `backend/routers/updater_calc.py` | 独立计算/build/score runner；目前承接 financial/screening/sector/prediction/risk/external/stage/turtle/score/today-signal wrapper | 计算型步骤 |
-| `backend/routers/updater_institution.py` | institution-domain runner；目前承接 match_inst/exclusion helper、sync_industry body 与 build_industry_stat sync body | 后续优先评估 profiles 是否同域迁入 |
-| `backend/routers/updater_trends.py` | stock trend mart runner；承接 build_trends body、K 线批量读取、趋势 helper | `updater.py` 只保留 thin wrapper 注入 stop hook |
-| `backend/routers/updater_profiles.py` | institution profile mart runner；承接 build_profiles body、机构画像批量聚合、持仓周期 helper | `updater.py` 只保留 thin wrapper 注入 stop hook |
-| `backend/routers/updater_market_data.py` | market data runner；承接 sync_market_data body、gap queue reconciliation、daily/monthly K 线同步、xdxr sync 编排 | `updater.py` 只保留 thin wrapper 注入 stop hook/update_step |
-| `backend/routers/updater_lifeboat.py` | legacy lifeboat endpoints；承接 `/lifeboat/run/status/report`、子进程执行、HTML 报告返回 | `updater.py` 只 include 子 router，API path 不变 |
-| `backend/routers/updater_completeness.py` | data_completeness 覆盖率校准 helper；承接 returns/industry coverage 检查和 mart 表 `data_completeness` 标记 | 非目标 step 直接 return，避免每个 step 都做覆盖率查询；`updater.py` 只保留薄 wrapper 注入 truth source/logger |
-| `backend/routers/updater.py` | API routes 薄代理 | 保持现有 endpoint 兼容 |
-
-当前进展 (2026-05-27):
-
-| 项 | 结果 |
-|---|---:|
-| 已抽模块 | `backend/routers/updater_infra.py`, `backend/routers/updater_calendar.py`, `backend/routers/updater_steps.py`, `backend/routers/updater_connectivity.py`, `backend/routers/updater_sync.py`, `backend/routers/updater_calc.py`, `backend/routers/updater_runtime.py`, `backend/routers/updater_audit.py`, `backend/routers/updater_institution.py`, `backend/routers/updater_trends.py`, `backend/routers/updater_profiles.py`, `backend/routers/updater_status.py`, `backend/routers/updater_reset.py`, `backend/routers/updater_market_data.py`, `backend/routers/updater_lifeboat.py`, `backend/routers/updater_plan.py`, `backend/routers/updater_execution.py`, `backend/routers/updater_launcher.py`, `backend/routers/updater_completeness.py` |
-| `updater.py` 行数 | 5136 -> 723 |
-| `updater_completeness.py` 行数 | 108 |
-| `updater_execution.py` 行数 | 823 |
-| `updater_launcher.py` 行数 | 278 |
-| `updater_plan.py` 行数 | 130 |
-| `updater_lifeboat.py` 行数 | 88 |
-| `updater_market_data.py` 行数 | 765 |
-| `updater_infra.py` 行数 | 258 |
-| `updater_calendar.py` 行数 | 157 |
-| `updater_steps.py` 行数 | 232 |
-| `updater_connectivity.py` 行数 | 156 |
-| `updater_sync.py` 行数 | 443 |
-| `updater_calc.py` 行数 | 196 |
-| `updater_runtime.py` 行数 | 34 |
-| `updater_audit.py` 行数 | 53 |
-| `updater_status.py` 行数 | 593 |
-| `updater_reset.py` 行数 | 161 |
-| `updater_institution.py` 行数 | 533 |
-| `updater_trends.py` 行数 | 303 |
-| `updater_profiles.py` 行数 | 455 |
-| 已迁移内容 | UI log handler/reset/get logs、daily sync source metrics、step detail/status normalize/format helper；交易日历前置、日期覆盖检查、calendar refresh；DAG metadata (`STEPS`/deps/manual-only) 与 DAG 查询/计划过滤 helper（step ids/index/name/group/selected deps/selected specs/skipped outside plan）；执行编排共享规则（hard dependency blocking、remaining steps、K 线不可用 gap queue block/update fields、`StepRunProgress` full/group/smart/single 状态账本、`_begin_run` 启动状态 helper、`_prime_run_step_status` 连接生命周期 helper、`apply_step_result` runner result 落账/progress helper、`mark_remaining_stopped` stop remaining helper、`skip_if_hard_dependency_blocked` hard-dependency skipped helper、`mark_step_running` / `mark_step_stopped` / `mark_step_failed` step transition helper、`skip_if_kline_unavailable` K 线不可用 skip/gap_queue bookkeeping helper、`kline_connectivity_for_steps` K 线连通性预检 helper、`run_step_with_managed_connection` runner 独立连接生命周期 helper、`run_group_steps` group pipeline 执行循环 helper、`run_all_steps` full DAG 执行循环 helper、`run_single_steps` single-step chain 执行循环 helper、`run_smart_steps` smart plan 执行循环 helper）；launcher callback bundle / background task failure-cleanup / smart/full/single/group background launcher / group route request scheduling 已迁入 `updater_launcher.py`；data_completeness 覆盖率校准 helper；step_status prime/connection-lifecycle/mark/stale-running-cleanup/catalog-sync/source-failure-state/fail/update/result normalize；blocking runtime helper；audit snapshot refresh task/status helper 与 `/update/audit` payload helper；status summary / update status payload/response connection lifecycle / smart-plan response connection lifecycle / smart plan budget / smart-update 计划/交易日历 preflight helper / downstream DAG helper；connectivity probe/cache helper；reset table 常量、批量清理 helper 与 reset response payload/connection lifecycle；sync_raw、LHB/QFII/AIF10/surveys/sync_financial external sync runner；gen_events/calc_returns/current_relationship + financial/screening/sector/prediction/risk/external/stage/turtle/score/today-signal calc/build wrapper；match_inst/exclusion helper；build_industry_stat sync body；build_trends body 与趋势/K 线批量读取 helper；build_profiles body 与机构画像批量聚合 helper；sync_market_data body 与 gap queue/daily/monthly/xdxr 编排；lifeboat legacy endpoints（`updater.py` 保留 thin wrapper / include router） |
-| 兼容处理 | `routers.updater` 继续回导出测试仍引用的私有 helper/calendar/step helper；`_prime_step_status_rows` 保留薄 wrapper 读取当前 `STEPS` |
-| 验证 | `py_compile` PASS；industry/reset focused tests 8 passed, 2 warnings；status+nplusone focused tests 39 passed；nplusone/status/system focused tests 45 passed, 2 warnings；updater adjacent suite 104 passed, 2 warnings；post-cleanup smoke 38 passed, 2 warnings；checker CLEAN (764 files checked)；敏感扫描仅命中两处历史注释，无 `dim_active_a_stock` / `shift(-` / `np.roll` / GCP / Optuna 命中；`git diff --check` / project index PASS；`codegraph sync .` 完成（27 changed files: 27 added, 445 nodes）；backend complexity 仍只有既有 HIGH，未新增 touched-file HIGH |
-| 剩余风险 | `codegraph status .` 因新 untracked 文件仍提示 `Added: 40 files`；`updater.py` 仍 723 LOC，route/status glue 仍可继续收薄；`updater_execution.py` 已降到 823 LOC，但仍偏大；`updater_market_data.py` 仍 765 LOC，后续可继续按 daily/monthly/xdxr 边界拆；未 stage/commit 前属于 main 工作区状态风险，不是索引未 sync |
-
-拆分原则:
-
-| 规则 | 做法 |
-|---|---|
-| 先小后大 | 先抽无副作用 helper，再抽 step 函数 |
-| API 不变 | route path、response shape、status 字段不变 |
-| 单模块尺寸 | 目标 < 1000 行；若 6 模块方案违反尺寸，允许拆成 7+ 模块 |
-| 测试跟随 | 每次抽取后跑相关 `test_updater_*` 和 route smoke |
-| 不跨层 | router 只编排，业务逻辑下沉 service 时需另立计划 |
-
-目标测试:
-
-```bash
-PYTHONPATH=backend python -m pytest -q \
-  backend/tests/test_updater_n_plus_one_fix.py \
-  backend/tests/test_updater_reset_industry.py \
-  backend/tests/test_updater_daily_sync_metrics.py \
-  backend/tests/test_system_routes.py
-```
-
-### 阶段 5: 文档和交付同步
-
-| 文档 | 更新内容 |
-|---|---|
-| `docs/implementation_plan.md` | 已改为本节同口径: 架构优先；M0/M4/M5 暂停；P0/P1 架构 gate 优先 |
-| `SESSION_HANDOFF.md` | 只在交接/状态变化时更新，不和 cron 输出打架 |
-| `analysis/workflow_checkpoint.md` | 业务 pipeline 状态变化才更新 |
-| `goal.md` | 每批完成后更新数字、证据、下一步 |
-
-### 最终验收标准
-
-| 验收项 | 标准 |
-|---|---|
-| Universe lint | `check_universe_filter.py --all` non-test = 0 |
-| Rule 10 | `safe_commit.sh` 对 staged `.py` 无 review 直接 block |
-| CodeGraph | `codegraph sync .` 已完成；`status` 只允许出现已解释的 untracked `Added` 风险 |
-| Complexity | backend 扫描无本轮新增 HIGH；遗留 hotspot 单独列明 |
-| Tests | 变更相关 targeted tests pass；大范围改动再跑更广测试 |
-| Diff hygiene | `git diff --check` pass |
-| Docs | `docs/implementation_plan.md`、`goal.md`、handoff 口径一致 |
-| 用户交付 | 输出 L0-L4 架构全貌、数据流、gate 位置、改前 vs 改后 |
-
-> 2026-06-01 note: `need_027` exact-flow 已确认不是 aif10 的继续 probe 问题；`aif10` 当前没有 `individual_fund_flow` exact capability。后续只有在 registry 新增能力或 route 映射时，才重新打开 exact-flow 恢复线。
-> 2026-06-03 note: `akshare.stock_fund_flow_individual` 的 `individual_fund_flow_rank_snapshot` 现场探针已成功，返回 `5195` rows / `10` columns，说明 research-side rank snapshot fallback 现在可用；但 `individual_fund_flow` exact probe 仍然是 `RemoteDisconnected`，所以 `need_027` 仍按 exact blocker 管理。
-> 2026-06-03 note: 针对 `backend/scripts/chunkyctl.py` / `backend/tests/scripts/test_chunkyctl.py` 的当前 diff 已做 health audit + `py_compile` + `pytest -q backend/tests/scripts/test_chunkyctl.py` 验证，三项均 PASS；随后 `codegraph sync .` 已完成并同步 2 个变更文件。`need_027` 仍保持 exact blocker，但现在 next-action 文本会同时提示 research-side `individual_fund_flow_rank_snapshot` 已可用。
-
-### GCP 规则保持
-
-本计划不启动 GCP。后续如恢复 GCP/Optuna，必须先说明 objective、命令族、预计 wall time/成本、输入快照、输出路径、artifact 保存、monitor/stop/rollback，并且所有 GCP 命令必须显式带:
-
-```bash
-CHUNKYMONKEY_GCP_EXPLICIT_OK=1
-```
-
-## Legacy Archive
-
-2026-05-24 and earlier goal sections have been archived to `analysis/goal_legacy_20260531.md`.
-They are historical evidence only. Current execution authority is the
-2026-05-27 architecture-reform section above plus the active docs listed in
-`docs/README.md`; runtime snapshots such as `SESSION_HANDOFF.md` and
-`analysis/workflow_checkpoint.md` are context-only.
+- Do not read or apply `CLAUDE.md` by default.
+- Use `$architect-controller` for architecture/controller work,
+  `$chunkymonkey-governance` before risky project execution, and
+  `$chunkymonkey-review-gate` before commits or after `.py/.yaml/.sql` changes.
+- Prefer first-principles truth sources: K-line for tradeability, calendar for
+  dates, config/table/service owners for business rules.
+- Remove proven-dead paths directly; do not keep obsolete code by comments,
+  hidden flags, or compatibility shims.

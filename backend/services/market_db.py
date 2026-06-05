@@ -87,7 +87,7 @@ def filter_kline_rows_by_calendar(
     """Filter rows by latest_completed_trade_date (write-side PIT lint).
 
     Shared helper (Codex review 2026-05-19 CRITICAL): 下沉到共享函数, 让所有 K-line writer
-    (write_batch in build_price_kline_tdxhub, sync_kline_from_gcs, upsert_price_kline_tdxhub_rows
+    (write_batch in build_price_kline_tdxhub and upsert_price_kline_tdxhub_rows
     via _clean_kline_rows_for_write) 都走同一 lint.
 
     max_date_override: batch sync 启动时锁定的 cutoff, 避免跨 15:05 阈值导致同批次不一致.

@@ -6,7 +6,7 @@
   #2 策略模型管理: MSAF 3 类 + ensemble + regime + paper_sim KPI 达标
   #3 backtester gate: PBO/DSR/conservative/IS-OOS verdict 真实
   #4 全自动化 daily: daily_update 8 步真调
-  #5 GCP 成本控制: cost_tracker 实时跟踪 + alert
+  #5 计算后端控制: experiment job contract + active local backend
   #6 实盘 GO/NO-GO: holdout 跨年中位 ≥ 25%
 
 Usage:
@@ -424,46 +424,6 @@ def _load_msaf_challenger_oos_probes(reports_dir: Path) -> list[dict]:
     return rows
 
 
-def _gcp_controlled_idle_status() -> dict:
-    status_path = REPO_ROOT / "data" / "reports" / "phase5_chain" / "status.json"
-    if not status_path.exists():
-        return {}
-    try:
-        data = json.loads(status_path.read_text())
-    except Exception as e:
-        log.warning(f"phase5_chain status parse failed: {e}")
-        return {}
-    if data.get("step") != "gcp_disabled":
-        return {}
-    return data
-
-
-def _load_gcp_cost_summary() -> dict:
-    cost_report = REPO_ROOT / "data" / "reports" / "gcp_cost_summary.json"
-    if not cost_report.exists():
-        return {}
-    try:
-        data = json.loads(cost_report.read_text())
-    except Exception as e:
-        log.warning(f"gcp_cost_summary parse failed: {e}")
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-def _gcp_cost_summary_active(cost_info: dict) -> bool:
-    vm_status = str(cost_info.get("vm_status") or "").upper()
-    return vm_status not in {"", "TERMINATED", "STOPPED", "SUSPENDED", "UNKNOWN"}
-
-
-def _score_gcp_cost_info(cost_info: dict) -> int:
-    alert = cost_info.get("alert_level", "UNKNOWN")
-    if alert == "OK":
-        return 100
-    if alert == "YELLOW":
-        return 70
-    return 50
-
-
 def check_data_management() -> dict:
     """#1 数据管理: stale source count + PIT 严格度 + PIT coverage audit."""
     sla_report = REPO_ROOT / "data" / "audit" / "watermark_sla_latest.json"
@@ -791,7 +751,7 @@ def check_daily_automation() -> dict:
         ]
         steps_status[f"step_{step_num}"] = any(m in content for m in markers)
 
-    has_step_0_cost = "Step 0: GCP cost tracker" in content
+    has_step_0_contract = "Step 0: experiment job contract" in content
     has_phase4_gate_real = "run_phase4_gate_on_msaf.py" in content
     has_alpha158_check = "Step 2c: alpha158" in content
     has_promote_verdict_gated = "STEP6_GATE_OK" in content
@@ -802,7 +762,6 @@ def check_daily_automation() -> dict:
     # launchd plist installed?
     plist_dir = REPO_ROOT / "configs" / "launchd"
     has_daily_plist = (plist_dir / "com.chunkymonkey.daily-update.plist").exists()
-    has_cost_plist = (plist_dir / "com.chunkymonkey.gcp-cost-tracker.plist").exists()
 
     # 真 loaded + 真 healthy 检测 (不只是 plist 文件存在 + 不只是 loaded):
     # 1) launchctl list 显示 + exit code != 126 (macOS Full Disk Access permission denied)
@@ -829,11 +788,9 @@ def check_daily_automation() -> dict:
     except Exception as e:
         log.warning(f"launchctl list failed: {e}")
     daily_loaded_launchd = loaded_labels.get("com.chunkymonkey.daily-update") == 0
-    cost_loaded_launchd = loaded_labels.get("com.chunkymonkey.gcp-cost-tracker") == 0
 
     # crontab fallback check
     cron_daily = False
-    cron_cost = False
     try:
         result = subprocess.run(
             ["crontab", "-l"],
@@ -842,50 +799,38 @@ def check_daily_automation() -> dict:
         if result.returncode == 0:
             cron_text = result.stdout
             cron_daily = "scripts/daily_update.sh" in cron_text
-            cron_cost = "gcp/cost_tracker.sh" in cron_text
     except Exception as e:
         log.warning(f"crontab -l failed: {e}")
 
     daily_loaded = daily_loaded_launchd or cron_daily
-    cost_loaded = cost_loaded_launchd or cron_cost
-    gcp_cost_info = _load_gcp_cost_summary()
-    gcp_cost_report_active = _gcp_cost_summary_active(gcp_cost_info)
-    gcp_controlled_idle = bool(_gcp_controlled_idle_status()) and not gcp_cost_report_active
-    gcp_cost_report_ok = gcp_cost_info.get("alert_level") in {"OK", "YELLOW"}
-    cost_control_satisfied = cost_loaded or gcp_controlled_idle or gcp_cost_report_ok
+    compute_backend = check_compute_backend_control()
+    compute_control_satisfied = compute_backend["verdict"] == "PASS"
 
     # cron OR launchd counted as "loaded" (cron is FDA-free fallback)
-    pct = 40 + (10 if has_step_0_cost else 0) + (10 if has_phase4_gate_real else 0) + \
+    pct = 40 + (10 if has_step_0_contract else 0) + (10 if has_phase4_gate_real else 0) + \
           (5 if has_alpha158_check else 0) + (5 if has_promote_verdict_gated else 0) + \
           (10 if has_step5_ensemble_real else 0) + \
           (10 if has_promote_real else 0) + \
           (5 if daily_loaded else (2 if (has_daily_plist or cron_daily) else 0)) + \
-          (5 if cost_control_satisfied else (2 if (has_cost_plist or cron_cost) else 0))
+          (5 if compute_control_satisfied else 0)
     return {
         "criterion": "全自动化 daily",
         "pct": min(pct, 100),
-        "step_0_cost": has_step_0_cost,
+        "step_0_contract": has_step_0_contract,
         "phase4_gate_real": has_phase4_gate_real,
         "alpha158_check": has_alpha158_check,
         "promote_verdict_gated": has_promote_verdict_gated,
         "step5_ensemble_real": has_step5_ensemble_real,
         "promote_champion_real_call": has_promote_real,
         "daily_plist_installed": has_daily_plist,
-        "cost_plist_installed": has_cost_plist,
         "daily_loaded": daily_loaded,
-        "cost_loaded": cost_loaded,
-        "gcp_controlled_idle": gcp_controlled_idle,
-        "gcp_cost_report_active": gcp_cost_report_active,
-        "gcp_cost_report_alert": gcp_cost_info.get("alert_level"),
-        "gcp_cost_report_vm_status": gcp_cost_info.get("vm_status"),
+        "compute_backend_control": compute_backend,
         "daily_via_launchd": daily_loaded_launchd,
         "daily_via_cron": cron_daily,
-        "cost_via_launchd": cost_loaded_launchd,
-        "cost_via_cron": cron_cost,
         "loaded_agents_launchd": {k: v for k, v in loaded_labels.items()},
         "fda_blocked": fda_blocked,
         "install_action": (
-            None if (daily_loaded and cost_loaded) else
+            None if daily_loaded else
             "bash configs/cron/install.sh install  # 无 FDA 阻塞 (推荐)"
             if fda_blocked else
             "bash configs/cron/install.sh install  OR  bash configs/launchd/install_all.sh install"
@@ -894,60 +839,47 @@ def check_daily_automation() -> dict:
     }
 
 
-def check_gcp_cost_control() -> dict:
-    """#5 GCP 成本控制: controlled-use idle state or cost_tracker budget check."""
-    cost_info = _load_gcp_cost_summary()
-    if _gcp_cost_summary_active(cost_info):
-        pct = _score_gcp_cost_info(cost_info)
+def check_compute_backend_control() -> dict:
+    """#5 计算后端控制: provider-neutral job contract must own heavy jobs."""
+    try:
+        from services.experiment_jobs import load_experiment_job_contract
+    except Exception as e:
         return {
-            "criterion": "GCP 成本控制",
-            "pct": pct,
-            "alert_level": cost_info.get("alert_level"),
-            "pct_of_budget": cost_info.get("pct_of_budget"),
-            "projected_month_cost": cost_info.get("projected_month_cost"),
-            "remaining_budget_usd": cost_info.get("remaining_budget_usd"),
-            "remaining_hours_at_spot": cost_info.get("remaining_hours_at_spot"),
-            "vm_status": cost_info.get("vm_status"),
-            "checked_at": cost_info.get("checked_at"),
-            "policy": "controlled_use_requires_explicit_latch",
-            "source": "gcp_cost_summary",
-            "verdict": "PASS" if pct >= 80 else "WARN",
+            "criterion": "计算后端控制",
+            "pct": 0,
+            "verdict": "FAIL",
+            "reason": f"experiment job contract import failed: {e}",
         }
-    controlled_idle = _gcp_controlled_idle_status()
-    if controlled_idle:
+    try:
+        contract = load_experiment_job_contract()
+    except Exception as e:
         return {
-            "criterion": "GCP 成本控制",
-            "pct": 100,
-            "alert_level": "CONTROLLED_USE_IDLE",
-            "pct_of_budget": None,
-            "projected_month_cost": None,
-            "vm_status": controlled_idle.get("status"),
-            "policy": "controlled_use_requires_explicit_latch",
-            "source": "phase5_chain_controlled_idle",
-            "verdict": "PASS",
+            "criterion": "计算后端控制",
+            "pct": 0,
+            "verdict": "FAIL",
+            "reason": f"experiment job contract load failed: {e}",
         }
-    cost_report = REPO_ROOT / "data" / "reports" / "gcp_cost_summary.json"
-    tracker_script = REPO_ROOT / "gcp" / "cost_tracker.sh"
-    if not tracker_script.exists():
-        return {"criterion": "GCP 成本控制", "pct": 50, "verdict": "WARN",
-                "reason": "gcp/cost_tracker.sh 不存在"}
-
-    pct = 80
-    if cost_report.exists():
-        pct = _score_gcp_cost_info(cost_info)
-
+    local = contract.backends.get("local")
+    planned = [backend_id for backend_id, backend in contract.backends.items() if backend.status == "planned"]
+    required_families = {"data_validation", "backtest_validation", "model_training", "parameter_search"}
+    missing_families = sorted(required_families - set(contract.families))
+    blockers = []
+    if local is None or not local.active:
+        blockers.append("local_backend_not_active")
+    if missing_families:
+        blockers.append(f"missing_job_families:{','.join(missing_families)}")
+    pct = 100 if not blockers else 50
     return {
-        "criterion": "GCP 成本控制",
+        "criterion": "计算后端控制",
         "pct": pct,
-        "alert_level": cost_info.get("alert_level"),
-        "pct_of_budget": cost_info.get("pct_of_budget"),
-        "projected_month_cost": cost_info.get("projected_month_cost"),
-        "remaining_budget_usd": cost_info.get("remaining_budget_usd"),
-        "remaining_hours_at_spot": cost_info.get("remaining_hours_at_spot"),
-        "vm_status": cost_info.get("vm_status"),
-        "checked_at": cost_info.get("checked_at"),
-        "source": "gcp_cost_summary" if cost_info else "tracker_script_present",
-        "verdict": "PASS" if pct >= 80 else "WARN",
+        "active_backends": sorted(
+            backend_id for backend_id, backend in contract.backends.items() if backend.active
+        ),
+        "planned_backends": sorted(planned),
+        "job_families": sorted(contract.families),
+        "blockers": blockers,
+        "source": "backend/config/experiment_jobs.yaml",
+        "verdict": "PASS" if not blockers else "WARN",
     }
 
 
@@ -1255,7 +1187,7 @@ def main() -> int:
         check_strategy_model(),
         check_backtester_gate(),
         check_daily_automation(),
-        check_gcp_cost_control(),
+        check_compute_backend_control(),
         check_live_ready(),
     ]
 

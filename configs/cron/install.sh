@@ -28,7 +28,7 @@ status() {
         echo "INSTALLED: chunkymonkey cron entries 存在"
         echo ""
         echo "=== recent activity ==="
-        for log in /tmp/gcp_cost_tracker.log /tmp/chunkymonkey_daily_update.log /tmp/nightly_data_audit.log /tmp/codex_monitor.log; do
+        for log in /tmp/chunkymonkey_daily_update.log /tmp/nightly_data_audit.log /tmp/codex_monitor.log; do
             if [[ -f "$log" ]]; then
                 echo "  $log: $(wc -l <"$log" | tr -d ' ') lines, last modified $(stat -f '%Sm' "$log" 2>/dev/null || stat -c '%y' "$log")"
             fi

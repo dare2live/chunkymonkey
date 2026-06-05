@@ -11,6 +11,7 @@ Usage:
   scripts/chunkyctl doctor [--fast] [--skip-storage-payload]
   scripts/chunkyctl worktree [--bucket name] [--format json|markdown]
   scripts/chunkyctl docs [--format json|markdown]
+  scripts/chunkyctl jobs [--family job-family] [--backend local] [--job-id id] [--model-id id]
   scripts/chunkyctl preflight "task description" [scope ...] [--agent-dispatch evidence]
   scripts/chunkyctl audit [--run] [scope ...]
 
@@ -20,6 +21,7 @@ Examples:
   scripts/chunkyctl worktree --format markdown
   scripts/chunkyctl worktree --bucket updater_split --format markdown
   scripts/chunkyctl docs --format markdown
+  scripts/chunkyctl jobs --family model_training --backend local --model-id lgbm_<yyyymmdd> --input-snapshot smartmoney.duckdb@<date> --objective '<why>' --rollback-plan '<stop/discard plan>' --gate-evidence leakage_audit=<artifact> --gate-evidence train_log_integrity=<artifact> --gate-evidence phase4_gate=<artifact>
   scripts/chunkyctl preflight "拆 updater status glue" backend/routers/updater.py backend/tests/test_updater_status.py
   scripts/chunkyctl audit --run backend/scripts/chunkyctl.py backend/tests/scripts/test_chunkyctl.py
   scripts/chunkyctl audit --run --scope backend/scripts/chunkyctl.py --scope backend/tests/scripts/test_chunkyctl.py
@@ -28,6 +30,7 @@ Notes:
   doctor     = project health snapshot, including storage payload recursion/size audit unless skipped.
   worktree   = read-only dirty worktree bucket report.
   docs       = docs graph + docs-cleanup worktree-slice readiness.
+  jobs       = provider-neutral experiment job contract / plan.
   preflight  = what gates must run before editing a task.
   audit      = scoped post-change checks; add --run to execute them.
 EOF
@@ -217,6 +220,9 @@ case "$cmd" in
       esac
     done
     PYTHONPATH=backend python backend/scripts/chunkyctl.py "${args[@]}"
+    ;;
+  jobs)
+    PYTHONPATH=backend python backend/scripts/chunkyctl.py jobs "$@"
     ;;
   *)
     echo "ERROR: unknown chunkyctl command: $cmd" >&2

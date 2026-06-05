@@ -2,8 +2,8 @@
 
 This is the active engineering rulebook for architecture work after the docs
 consolidation. It absorbs the durable rules from the former top-level design,
-test-tool, agent-parallel, tooling, GCP, and deprecation docs. Historical source
-files are archived under `analysis/docs_archive_20260531/`.
+test-tool, agent-parallel, tooling, provider-job, and deprecation docs.
+Historical source files are archived under `analysis/docs_archive_20260531/`.
 
 ## Risk First
 
@@ -14,14 +14,15 @@ files are archived under `analysis/docs_archive_20260531/`.
 | Legacy Claude policy steering Codex | `CLAUDE.md` is ignored by default; Codex uses `AGENTS.md`, active docs, skills, and live tooling unless the user explicitly asks for historical migration |
 | Hidden complexity and stale indexes | CodeGraph and complexity optimizer are a paired gate |
 | Green tests proving old assumptions | Run test-tool health before citing tests as evidence |
-| Cloud spend or dirty cloud artifacts | GCP work requires explicit scope and `CHUNKYMONKEY_GCP_EXPLICIT_OK=1` |
+| Provider spend or dirty provider artifacts | Long or paid compute must be a registered `experiment_jobs` plan with gates and artifact contracts; do not revive deleted provider scripts |
+| Automation points at deleted scripts | `audit_execution_surface.py` must PASS; launchd, cron, installers, dashboards, registries, and Moth evidence paths cannot reference missing or retired entrypoints |
 
 ## Skill Owner Map
 
 | Scope | Required skill | Rule |
 |---|---|---|
 | Codex Mac app/CLI, plugin sync, startup items, hooks, local automations, compact errors, Codex worktrees, Terminal mail, or monitor residue | `$codex-local-ops` | Diagnose local Codex state first; do not misclassify it as a project hook or business gate |
-| Non-trivial ChunkyMonkey execution, architecture, strategy validation, PIT/leakage, Optuna/GCP, deletion, or gate-policy work | `$chunkymonkey-governance` | Run pre-execution governance before edits or expensive commands |
+| Non-trivial ChunkyMonkey execution, architecture, strategy validation, PIT/leakage, Optuna/provider jobs, deletion, or gate-policy work | `$chunkymonkey-governance` | Run pre-execution governance before edits or expensive commands |
 | Rule 10, commit readiness, blocking code review, or `.py` / `.yaml` / `.sql` slices before commit | `$chunkymonkey-review-gate` | Produce a review verdict and commit trailer before `safe_commit.sh` |
 | Shared tooling state and evidence path discovery | Moth profile `.moth/profile.yaml` | Locate evidence paths and current tooling state; do not redefine business gate rules |
 
@@ -105,7 +106,7 @@ PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope <reg
 
 Parallelize read-only work and independent tests. DuckDB-heavy audits may run in
 parallel only when they use explicit read-only connections. Serialize shared
-docs, commits, GCP, materializing/write DuckDB scripts, shared output paths,
+docs, commits, provider jobs, materializing/write DuckDB scripts, shared output paths,
 Optuna studies, and edits to the same file.
 
 ## Moth Ownership
@@ -122,19 +123,29 @@ ChunkyMonkey owns business gate logic. Keep `stage_opt`, `need_027`,
 validity rules in repo audit scripts, config, and `chunkyctl`; Moth may read or
 surface their generated evidence, but should not redefine their rules.
 
-## GCP Controlled Use
+## Compute Backend / Experiment Jobs
 
-GCP is allowed only for scoped work where cloud runtime materially helps. Before
-launching, state objective, command family, expected runtime/cost, input
-snapshot, output path, monitor plan, and stop plan. All GCP-touching commands
-must include:
+Legacy project-local GCP execution entrypoints were removed on 2026-06-05. That
+retired provider is historical evidence only, not a path to revive with
+comments, guards, hidden flags, or compatibility shims.
+
+The active contract for data validation, backtest validation, model training,
+and parameter search is `backend/config/experiment_jobs.yaml`, surfaced through:
 
 ```bash
-CHUNKYMONKEY_GCP_EXPLICIT_OK=1
+scripts/chunkyctl jobs --family <job-family> --backend local
 ```
 
-Compute jobs need a wrapper or heredoc that records pid/log/artifact/GCS path,
-handles final upload, and schedules shutdown only after verified finalization.
+`local` is the only active backend. `modal` is a planned backend and must stay
+blocked until a reviewed adapter proves its artifact-manifest contract. Provider
+adapters may execute commands and materialize manifests; business gates remain
+owned by ChunkyMonkey config, services, scripts, and tables.
+
+`chunkyctl jobs` must not report a family as ready to run unless the operator
+supplies an input snapshot, objective, rollback plan, and one
+`--gate-evidence <gate>=<artifact-or-command>` token for every required gate in
+the family contract. A backend being `active` only means the backend is
+permitted; it is not launch approval.
 
 ## Deletion And Deprecation
 
@@ -154,7 +165,9 @@ it to `analysis/`; if it is not useful, delete it.
 | Docs cleanup slice | `scripts/chunkyctl docs --format markdown` |
 | Storage payload / recursive JSON audit | `PYTHONPATH=backend python backend/scripts/audit_storage_payloads.py --format markdown` |
 | Pre-task gate | `scripts/chunkyctl preflight "<task>" path/to/scope.py --agent-dispatch "agent:NAME scope/evidence"` |
+| Experiment job plan | `scripts/chunkyctl jobs --family <job-family> --backend local --input-snapshot <snapshot> --objective <why> --rollback-plan <plan> --gate-evidence <gate>=<artifact>` |
 | Docs graph | `PYTHONPATH=backend python backend/scripts/audit_docs_graph.py --format markdown` |
+| Execution surface | `PYTHONPATH=backend python backend/scripts/audit_execution_surface.py --include-live-launchd --format markdown` |
 | Test tool health | `PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope <scope>` |
 | Safe commit | `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "message"` for local batches; omit `SAFE_COMMIT_NO_PUSH` only when pushing is intended |
 
@@ -168,5 +181,5 @@ This contract supersedes these former active docs:
 | `../analysis/docs_archive_20260531/test_tool_governance.md` | Archived; registry/gate contract consolidated here |
 | `../analysis/docs_archive_20260531/agent_parallel_execution_policy.md` | Archived; controller/agent rules consolidated here |
 | `../analysis/docs_archive_20260531/tooling_update_review_20260527.md` | Archived; active commands consolidated here |
-| `../analysis/docs_archive_20260531/gcp_controlled_execution_runbook.md` | Archived; controlled-use rule consolidated here |
+| `../analysis/docs_archive_20260531/gcp_controlled_execution_runbook.md` | Archived historical evidence; active provider work now uses `experiment_jobs` |
 | `../analysis/docs_archive_20260531/deprecation_sop.md` | Archived; deletion/deprecation rule consolidated here |

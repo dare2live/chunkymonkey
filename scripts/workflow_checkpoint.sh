@@ -13,7 +13,63 @@ set -euo pipefail
 REPO_ROOT="${WORKFLOW_CHECKPOINT_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$REPO_ROOT"
 
-MODEL_ID="${WORKFLOW_CHECKPOINT_MODEL_ID:-${MODEL_ID:-$(head -1 data/reports/phase5_chain/model_id.txt 2>/dev/null || true)}}"
+if [[ "${WORKFLOW_CHECKPOINT_LEGACY_PIPELINE:-0}" != "1" ]]; then
+    mkdir -p analysis
+    GENERATED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    cat > analysis/workflow_checkpoint.json <<EOF
+{
+  "generated_at": "$GENERATED_AT",
+  "schema_version": 2,
+  "status": "inactive",
+  "active": false,
+  "current_step": "inactive",
+  "next_step": "inactive",
+  "resume_command": "echo inactive",
+  "blockers": [],
+  "message": "No active workflow pipeline is registered. Use goal.md plus live chunkyctl gates for current work.",
+  "archive": {
+    "legacy_gcp_checkpoint_md": "analysis/workflow_checkpoint_legacy_gcp_20260604.md",
+    "legacy_gcp_checkpoint_json": "analysis/workflow_checkpoint_legacy_gcp_20260604.json"
+  }
+}
+EOF
+    cat > analysis/workflow_checkpoint.md <<EOF
+# Workflow Checkpoint
+
+- generated_at: \`$GENERATED_AT\`
+- status: \`inactive\`
+- current_step: \`inactive\`
+- next_step: \`inactive\`
+- resume_command: \`echo inactive\`
+
+No active multi-step workflow pipeline is registered.
+
+Use \`goal.md\` plus live \`scripts/chunkyctl doctor --fast\` /
+\`scripts/chunkyctl worktree --format markdown\` output for current work.
+
+Historical GCP pipeline evidence was archived to:
+
+- \`analysis/workflow_checkpoint_legacy_gcp_20260604.md\`
+- \`analysis/workflow_checkpoint_legacy_gcp_20260604.json\`
+
+To inspect the retired legacy checkpoint generator for tests or archaeology,
+run with \`WORKFLOW_CHECKPOINT_LEGACY_PIPELINE=1\`. Do not use that mode as a
+current recovery command.
+EOF
+    exit 0
+fi
+
+if [[ -z "${WORKFLOW_CHECKPOINT_MODEL_ID:-${MODEL_ID:-}}" ]]; then
+    MODEL_ID="$(cat data/reports/stability_retrain/current.pointer 2>/dev/null | tr -d '[:space:]' || true)"
+    if [[ -z "$MODEL_ID" ]]; then
+        latest_best="$(ls -t data/reports/optuna/*.best.json 2>/dev/null | head -1 || true)"
+        if [[ -n "$latest_best" ]]; then
+            MODEL_ID="$(basename "$latest_best" .best.json)"
+        fi
+    fi
+else
+    MODEL_ID="${WORKFLOW_CHECKPOINT_MODEL_ID:-${MODEL_ID:-}}"
+fi
 export WORKFLOW_CHECKPOINT_ROOT="$REPO_ROOT"
 export WORKFLOW_CHECKPOINT_MODEL_ID="$MODEL_ID"
 
@@ -227,18 +283,7 @@ def step_pull_predictions() -> Evidence:
     if MODEL_ID:
         check_file(ev, f"data/smartmoney_post_{MODEL_ID}.duckdb.bak", nonempty=True)
         check_file(ev, f"data/smartmoney_post_{MODEL_ID}.duckdb", nonempty=True)
-        status_path = ROOT / "data/reports/phase5_chain/status.json"
-        ev.expect("json:data/reports/phase5_chain/status.json step=pull_done")
-        if status_path.exists():
-            status = read_json(status_path)
-            if status and status.get("model_id") == MODEL_ID and status.get("step") == "pull_done":
-                ev.add("json:data/reports/phase5_chain/status.json step=pull_done")
-            elif status and status.get("model_id") == MODEL_ID:
-                ev.add(f"json:data/reports/phase5_chain/status.json step={status.get('step')}", satisfies=False)
-        sentinel = ROOT / f"data/reports/phase5_chain/monitor_done_{MODEL_ID}.sentinel"
-        ev.expect(f"file:data/reports/phase5_chain/monitor_done_{MODEL_ID}.sentinel (weak)")
-        if sentinel.exists():
-            ev.add(f"file:data/reports/phase5_chain/monitor_done_{MODEL_ID}.sentinel (weak)", satisfies=False)
+        check_file(ev, f"data/phase5_exports/{MODEL_ID}/manifest.json", nonempty=True)
         db_count(
             ev,
             "mart_p0b_oos_predictions",
@@ -429,8 +474,8 @@ STEP_SPECS = [
 
 RESUME_COMMANDS = {
     "pull_predictions": (
-        f'find data/phase5_exports -maxdepth 3 -name "*.duckdb" -print; '
-        f'echo "GCP disabled: import only from existing local artifacts with backend/scripts/import_phase5_remote_predictions.py"'
+        f'find data/phase5_exports -maxdepth 3 -name "manifest.json" -print; '
+        f'echo "Import existing local artifacts with backend/scripts/import_phase5_remote_predictions.py"'
     ),
     "pre_sim_audit": "PYTHONPATH=backend python backend/scripts/audit_pit_coverage.py --output-json data/reports/pit_audit.json",
     "paper_sim_execution": (
@@ -456,7 +501,7 @@ steps: list[dict[str, Any]] = []
 blockers: list[str] = []
 
 if not MODEL_ID:
-    blockers.append("model_id missing; set WORKFLOW_CHECKPOINT_MODEL_ID or data/reports/phase5_chain/model_id.txt")
+    blockers.append("model_id missing; set WORKFLOW_CHECKPOINT_MODEL_ID or create data/reports/stability_retrain/current.pointer")
 if DUCKDB_ERROR:
     blockers.append(f"DuckDB read-only checks skipped: {DUCKDB_ERROR}")
 
@@ -479,7 +524,7 @@ pull_has_weak_sentinel = any("monitor_done_" in item for item in pull_step["evid
 pull_has_strong = pull_step["status"] == "done"
 if pull_has_weak_sentinel and not pull_has_strong:
     blockers.append(
-        "pull sentinel exists without strong local evidence; verify GCS pull and remove stale sentinel only after confirming it is wrong"
+        "pull sentinel exists without strong local evidence; verify the provider artifact manifest or local pull evidence and remove stale sentinel only after confirming it is wrong"
     )
 
 first_missing = next((step for step in steps if step["status"] != "done"), None)

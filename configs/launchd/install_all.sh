@@ -19,10 +19,8 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
 PLISTS=(
     "com.chunkymonkey.daily-update"
-    "com.chunkymonkey.gcp-cost-tracker"
     "com.chunkymonkey.nightly-data-audit"
     "com.chunkymonkey.codex-monitor"
-    "com.chunkymonkey.phase5-monitor"
 )
 
 ACTION="${1:-install}"

@@ -13,9 +13,7 @@ import json
 import logging
 import math
 import os
-import shutil
 import signal
-import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -58,7 +56,6 @@ LABEL_COLUMNS = ("fwd_cost_after_5d", "fwd_cost_after_10d", "fwd_cost_after_20d"
 MODEL_VERSION = "v6.lambdamart"
 DEFAULT_FEATURE_VERSION = "p0a_v4"
 DEFAULT_LABEL_VERSION = "horizon_governance_v1"
-_PREEMPT_SYNC_IN_PROGRESS = False
 
 
 def _storage_sqlite_path(study_storage: str | None) -> Path | None:
@@ -91,63 +88,37 @@ def _write_sigterm_marker(
     return marker_path
 
 
-def _sync_preempt_artifacts(
+def _write_preempt_artifacts(
     *,
     model_id: str,
     checkpoint_path: str | None,
     study_storage: str | None,
-    gcs_sync_uri: str | None,
     signum: int | None = None,
-) -> None:
-    """Best-effort copy of preemption artifacts to GCS within the short shutdown window."""
+) -> list[str]:
+    """Write local preemption markers and return known local artifact paths."""
 
-    global _PREEMPT_SYNC_IN_PROGRESS
-    if not gcs_sync_uri or _PREEMPT_SYNC_IN_PROGRESS:
-        return
-    _PREEMPT_SYNC_IN_PROGRESS = True
-    try:
-        artifact_paths: list[Path] = []
-        if signum is not None:
-            artifact_paths.append(
-                _write_sigterm_marker(
-                    model_id=model_id,
-                    checkpoint_path=checkpoint_path,
-                    study_storage=study_storage,
-                    signum=signum,
-                )
+    artifact_paths: list[Path] = []
+    if signum is not None:
+        artifact_paths.append(
+            _write_sigterm_marker(
+                model_id=model_id,
+                checkpoint_path=checkpoint_path,
+                study_storage=study_storage,
+                signum=signum,
             )
-        if checkpoint_path:
-            artifact_paths.append(Path(checkpoint_path))
-        sqlite_path = _storage_sqlite_path(study_storage)
-        if sqlite_path:
-            artifact_paths.extend(
-                [
-                    sqlite_path,
-                    sqlite_path.with_name(sqlite_path.name + "-wal"),
-                    sqlite_path.with_name(sqlite_path.name + "-shm"),
-                ]
-            )
-
-        if shutil.which("gcloud"):
-            copier = ["gcloud", "storage", "cp"]
-        elif shutil.which("gsutil"):
-            copier = ["gsutil", "cp"]
-        else:
-            copier = None
-        if copier is None:
-            log.warning("GCS sync skipped: neither gcloud nor gsutil is available")
-            return
-        dest_dir = gcs_sync_uri.rstrip("/")
-        for artifact_path in artifact_paths:
-            if not artifact_path.exists() or not artifact_path.is_file():
-                continue
-            dest = f"{dest_dir}/{artifact_path.name}"
-            try:
-                subprocess.run([*copier, str(artifact_path), dest], check=False, timeout=8)
-            except subprocess.TimeoutExpired:
-                log.warning("GCS sync timed out for %s", artifact_path)
-    finally:
-        _PREEMPT_SYNC_IN_PROGRESS = False
+        )
+    if checkpoint_path:
+        artifact_paths.append(Path(checkpoint_path))
+    sqlite_path = _storage_sqlite_path(study_storage)
+    if sqlite_path:
+        artifact_paths.extend(
+            [
+                sqlite_path,
+                sqlite_path.with_name(sqlite_path.name + "-wal"),
+                sqlite_path.with_name(sqlite_path.name + "-shm"),
+            ]
+        )
+    return [str(path) for path in artifact_paths if path.exists()]
 
 
 def _install_sigterm_handler(
@@ -155,15 +126,13 @@ def _install_sigterm_handler(
     model_id: str,
     checkpoint_path: str | None,
     study_storage: str | None,
-    gcs_sync_uri: str | None,
 ) -> None:
     def _handle_sigterm(signum: int, _frame: Any) -> None:
-        log.warning("received SIGTERM; syncing checkpoint artifacts before exit")
-        _sync_preempt_artifacts(
+        log.warning("received SIGTERM; writing local checkpoint artifact markers before exit")
+        _write_preempt_artifacts(
             model_id=model_id,
             checkpoint_path=checkpoint_path,
             study_storage=study_storage,
-            gcs_sync_uri=gcs_sync_uri,
             signum=signum,
         )
         raise SystemExit(128 + signum)
@@ -1059,8 +1028,6 @@ def main() -> int:
                         help="Stable replay id for per-window train-log checkpoints; default derives from model_id and params hash")
     parser.add_argument("--warm-start-checkpoint", default=None,
                         help="Seed Optuna with best_params from a prior checkpoint JSON (Layer 4 warm-start)")
-    parser.add_argument("--gcs-sync-uri", default=os.environ.get("RETRAIN_GCS_SYNC_URI"),
-                        help="Optional gs:// directory for best-effort SIGTERM sync of best.json and Optuna SQLite")
     args = parser.parse_args()
 
     # Pre-train leakage audit (Option A integration, 2026-05-22 user push back)
@@ -1102,7 +1069,6 @@ def main() -> int:
         model_id=model_id,
         checkpoint_path=checkpoint_path,
         study_storage=study_storage,
-        gcs_sync_uri=args.gcs_sync_uri,
     )
 
     log.info(
@@ -1265,11 +1231,10 @@ def main() -> int:
             except Exception as e:
                 log.warning("L9 booster save failed (non-fatal): %s", e)
 
-    _sync_preempt_artifacts(
+    _write_preempt_artifacts(
         model_id=model_id,
         checkpoint_path=checkpoint_path,
         study_storage=study_storage,
-        gcs_sync_uri=args.gcs_sync_uri,
     )
     print(f"MODEL_ID={model_id}")
     return 0

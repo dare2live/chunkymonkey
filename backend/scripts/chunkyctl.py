@@ -18,6 +18,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import audit_docs_graph  # noqa: E402
+from services.experiment_jobs import load_experiment_job_contract  # noqa: E402
 from services.moth_snapshot import build_snapshot_command as build_moth_snapshot_command  # noqa: E402
 from services.moth_snapshot import build_tooling_gate_report as build_moth_tooling_gate_report  # noqa: E402
 from services.moth_snapshot import run_snapshot as run_moth_snapshot  # noqa: E402
@@ -289,6 +290,7 @@ def _next_actions(
     data_health: dict[str, Any] | None = None,
     stage_opt: dict[str, Any] | None = None,
     need_coverage: dict[str, Any] | None = None,
+    execution_surface: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     if not tooling_gate:
         return [{"priority": "P0", "action": "Fix Moth snapshot JSON parsing before relying on doctor output"}]
@@ -296,6 +298,12 @@ def _next_actions(
     git_status = tooling_gate.get("git_status", {})
     codegraph = tooling_gate.get("codegraph", {})
     complexity = tooling_gate.get("complexity", {})
+    codegraph_untracked_count = (worktree_summary or {}).get("codegraph_candidate_untracked_count")
+    if codegraph_untracked_count is None:
+        codegraph_untracked_count = (worktree_summary or {}).get("codegraph_reconciliation", {}).get(
+            "untracked_indexable_files",
+            0,
+        )
     if not git_status.get("clean", True):
         unknown_count = (worktree_summary or {}).get("unknown_count")
         if unknown_count == 0:
@@ -312,11 +320,15 @@ def _next_actions(
                     "action": "Classify dirty worktree into review/stage/delete/generated buckets; do not bulk stage",
                 }
             )
+    if execution_surface and execution_surface.get("verdict") == "FAIL":
+        actions.append(
+            {
+                "priority": "P0",
+                "action": "Fix execution-surface audit findings: no launchd/cron/installer/dashboard/registry/Moth path may reference deleted entrypoints",
+            }
+        )
     if codegraph.get("pending", {}).get("sync_required"):
-        candidate_count = (worktree_summary or {}).get("codegraph_candidate_untracked_count")
-        if candidate_count is None:
-            candidate_count = (worktree_summary or {}).get("codegraph_reconciliation", {}).get("untracked_indexable_files")
-        if candidate_count == codegraph.get("pending", {}).get("added"):
+        if codegraph_untracked_count == codegraph.get("pending", {}).get("added"):
             actions.append(
                 {
                     "priority": "P0",
@@ -330,7 +342,14 @@ def _next_actions(
                     "action": "Run codegraph sync, then reconcile remaining Added pending against untracked files",
                 }
             )
-    if not codegraph.get("pending", {}).get("sync_required"):
+    elif codegraph_untracked_count:
+        actions.append(
+            {
+                "priority": "P0",
+                "action": "Review/stage untracked indexable files before treating CodeGraph as clean; sync after the file is tracked or intentionally removed",
+            }
+        )
+    else:
         actions.append(
             {
                 "priority": "P1",
@@ -428,6 +447,32 @@ def run_doctor(args: argparse.Namespace) -> int:
         "verdict": parsed.get("verdict") if parsed else "FAIL",
     }
     sections.append({"name": "test_tool", "verdict": test_tool["verdict"], "returncode": result["returncode"]})
+
+    execution_surface: dict[str, Any] | None = None
+    if not args.skip_execution_surface:
+        result = _run_command(
+            [
+                sys.executable,
+                "backend/scripts/audit_execution_surface.py",
+                "--format",
+                "json",
+                "--include-live-launchd",
+            ],
+            cwd=repo,
+        )
+        parsed = _json_from_stdout(result)
+        execution_surface = {
+            "command": _command_summary(result),
+            "report": parsed,
+            "verdict": parsed.get("verdict") if parsed else "FAIL",
+        }
+        sections.append(
+            {
+                "name": "execution_surface",
+                "verdict": execution_surface["verdict"],
+                "returncode": result["returncode"],
+            }
+        )
 
     result = _run_command(
         [sys.executable, "backend/scripts/check_universe_filter.py", "--all"],
@@ -555,6 +600,7 @@ def run_doctor(args: argparse.Namespace) -> int:
         "tooling_gate_command": _command_summary(tooling_result),
         "worktree": worktree_summary,
         "test_tool": test_tool,
+        "execution_surface": execution_surface,
         "universe": universe,
         "storage_payload": storage_payload,
         "data_health": data_health,
@@ -567,6 +613,7 @@ def run_doctor(args: argparse.Namespace) -> int:
             data_health.get("report") if data_health else None,
             stage_opt.get("report") if stage_opt else None,
             need_coverage.get("report") if need_coverage else None,
+            execution_surface=execution_surface.get("report") if execution_surface else None,
         ),
     }
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
@@ -717,16 +764,21 @@ def _worktree_bucket(path: str, status_kind: str) -> str:
         "docs/chunkyctl_session_quickstart.md",
         "docs/engineering_governance.md",
         "scripts/chunkyctl",
+        "scripts/cm.sh",
         "scripts/daily_update.sh",
         "scripts/cm_resume.sh",
+        "scripts/install_launchd_all.sh",
         "scripts/install_resilience.sh",
+        "scripts/post_retrain_pipeline.sh",
         "scripts/safe_commit.sh",
         "scripts/session_snapshot.sh",
+        "scripts/session_status.sh",
         "scripts/session_handoff_audit.py",
-        "gcp/README_GCP_BATCH.md",
-        "gcp/cost_tracker.sh",
-        "gcp/vm_start.sh",
     }:
+        return "startup_tooling"
+    if path.startswith("gcp/") or path.startswith("scripts/gcp_") or "gcp" in Path(path).name:
+        return "startup_tooling"
+    if path.startswith("scripts/") and path.endswith(".sh"):
         return "startup_tooling"
     if path == ".moth/profile.yaml" or path.startswith(".moth/"):
         return "startup_tooling"
@@ -783,6 +835,8 @@ def _worktree_bucket(path: str, status_kind: str) -> str:
         return "backend_services_api"
     if path.startswith("backend/tests/"):
         return "tests"
+    if path.startswith("tests/scripts/"):
+        return "tests"
     if path.startswith("docs/") or path.startswith("analysis/"):
         return "project_docs"
     if path in {".gitignore", "pytest.ini"} or path.startswith(("backend/config/", "configs/")):
@@ -837,6 +891,24 @@ def build_worktree_report(*, repo: Path, git_status_text: str, bucket: str | Non
         selected_buckets = [item for item in selected_buckets if item["bucket"] == bucket]
     bucket_counts = {item["bucket"]: item["count"] for item in selected_buckets}
     unknown_count = buckets["unknown"]["count"]
+    next_actions = [
+        {
+            "priority": "P0",
+            "action": "Review one bucket at a time; never git add . or mix unrelated slices",
+        },
+        {
+            "priority": "P1",
+            "action": "For deletion candidates, prove moved content/references/tests before deleting for real",
+        },
+    ]
+    if unknown_count:
+        next_actions.insert(
+            1,
+            {
+                "priority": "P0",
+                "action": "Inspect unknown bucket with CodeGraph + rg before staging or deleting",
+            },
+        )
     return {
         "schema_version": 1,
         "command": "worktree",
@@ -853,20 +925,7 @@ def build_worktree_report(*, repo: Path, git_status_text: str, bucket: str | Non
             "codegraph_candidate_untracked_bucket_counts": indexable_untracked_bucket_counts,
         },
         "buckets": selected_buckets,
-        "next_actions": [
-            {
-                "priority": "P0",
-                "action": "Review one bucket at a time; never git add . or mix unrelated slices",
-            },
-            {
-                "priority": "P0" if unknown_count else "P1",
-                "action": "Inspect unknown bucket with CodeGraph + rg before staging or deleting",
-            },
-            {
-                "priority": "P1",
-                "action": "For deletion candidates, prove moved content/references/tests before deleting for real",
-            },
-        ],
+        "next_actions": next_actions,
     }
 
 
@@ -978,6 +1037,13 @@ def _worktree_entries_by_bucket(worktree_report: dict[str, Any]) -> dict[str, li
     }
 
 
+def _worktree_entries(worktree_report: dict[str, Any]) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for bucket in worktree_report.get("buckets", []):
+        entries.extend(list(bucket.get("entries", [])))
+    return entries
+
+
 def build_docs_cleanup_report(*, repo: Path, git_status_text: str) -> dict[str, Any]:
     docs_graph = audit_docs_graph.build_docs_graph_report(repo)
     worktree_report = build_worktree_report(repo=repo, git_status_text=git_status_text)
@@ -987,19 +1053,18 @@ def build_docs_cleanup_report(*, repo: Path, git_status_text: str) -> dict[str, 
         for bucket in DOCS_CLEANUP_BUCKETS
         if bucket_counts.get(bucket, 0)
     }
-    entries_by_bucket = _worktree_entries_by_bucket(worktree_report)
-    support_entries: list[dict[str, str]] = []
-    for entries in entries_by_bucket.values():
-        for entry in entries:
-            path = str(entry.get("normalized_path") or "")
-            if path in DOCS_SUPPORT_PATHS:
-                support_entries.append(
-                    {
-                        "path": path,
-                        "bucket": _worktree_bucket(path, str(entry.get("status") or "")),
-                        "status": str(entry.get("status") or "changed"),
-                    }
-                )
+    support_entries = [
+        {
+            "path": str(entry.get("normalized_path") or ""),
+            "bucket": _worktree_bucket(
+                str(entry.get("normalized_path") or ""),
+                str(entry.get("status") or ""),
+            ),
+            "status": str(entry.get("status") or "changed"),
+        }
+        for entry in _worktree_entries(worktree_report)
+        if str(entry.get("normalized_path") or "") in DOCS_SUPPORT_PATHS
+    ]
     support_bucket_counts: dict[str, int] = {}
     for entry in support_entries:
         bucket = entry["bucket"]
@@ -1225,6 +1290,7 @@ def _task_requires_design_review_gate(task: str, scopes: list[str]) -> bool:
             "config",
             "feature",
             "flow",
+            "cloud",
             "gcp",
             "module",
             "optuna",
@@ -1271,7 +1337,17 @@ def _design_review_gate(task: str, scopes: list[str]) -> dict[str, Any]:
 
 def _instruction_sources_from_tooling_gate(tooling_gate: dict[str, Any]) -> dict[str, Any]:
     default_sources: dict[str, Any] = {
-        "active": ["AGENTS.md", "goal.md", "SESSION_HANDOFF.md", "analysis/workflow_checkpoint.md", "docs/", "Codex skills"],
+        "active": [
+            "AGENTS.md",
+            "goal.md",
+            "docs/",
+            "Codex skills",
+        ],
+        "context_only": [
+            "analysis/project_state_ledger.md",
+            "SESSION_HANDOFF.md",
+            "analysis/workflow_checkpoint.md",
+        ],
         "ignored_by_default": ["CLAUDE.md"],
         "legacy_exception": "Open CLAUDE.md only when the user explicitly requests historical comparison or migration.",
     }
@@ -1283,7 +1359,7 @@ def _instruction_sources_from_tooling_gate(tooling_gate: dict[str, Any]) -> dict
         return default_sources
 
     sources = dict(default_sources)
-    for key in ("active", "ignored_by_default"):
+    for key in ("active", "context_only", "ignored_by_default"):
         value = configured.get(key)
         if isinstance(value, list):
             sources[key] = [str(item) for item in value]
@@ -1312,7 +1388,7 @@ def build_preflight_report(
         risks.append({"severity": "FAIL", "risk": "dirty_worktree", "detail": "classify/stage by scope; never git add ."})
     if (codegraph_status.get("pending") or {}).get("sync_required"):
         risks.append({"severity": "FAIL", "risk": "codegraph_pending", "detail": "sync and disclose remaining untracked Added pending"})
-    if _task_mentions(task, ("gcp", "optuna", "backtest", "paper", "strategy")):
+    if _task_mentions(task, ("cloud", "gcp", "optuna", "backtest", "paper", "strategy")):
         risks.append({"severity": "FAIL", "risk": "strategy_or_cloud_gate", "detail": "require explicit preflight gates before expensive or strategy work"})
     if _task_mentions(task, ("frontend", "ui", "browser")):
         risks.append({"severity": "WARN", "risk": "frontend_contract", "detail": "backend contract and Browser verification required"})
@@ -1356,7 +1432,7 @@ def build_preflight_report(
             "satisfied": controller_agent_satisfied,
             "dispatch_evidence": agent_dispatches,
             "skip_reason": agent_skip_reason,
-            "controller_role": "Codex owns direction, scope, final acceptance, shared docs, commits, and DB/GCP write windows",
+            "controller_role": "Codex owns direction, scope, final acceptance, shared docs, commits, and DB/provider write windows",
             "agent_role": "bounded read-only exploration or disjoint worker scope; agent output is evidence, not a verdict",
             "skip_allowed_when": "user explicitly opts out, work is tightly coupled, tool unavailable, or write scopes conflict",
         },
@@ -1445,6 +1521,39 @@ def run_audit(args: argparse.Namespace) -> int:
     return 1 if report["verdict"] == "FAIL" else 0
 
 
+def run_jobs(args: argparse.Namespace) -> int:
+    contract = load_experiment_job_contract()
+    if args.family:
+        plan = contract.plan(
+            args.family,
+            backend_id=args.backend,
+            job_id=args.job_id,
+            model_id=args.model_id,
+            input_snapshot=args.input_snapshot,
+            objective=args.objective,
+            rollback_plan=args.rollback_plan,
+            gate_evidence=tuple(args.gate_evidence or ()),
+            artifact_dir=args.artifact_dir,
+        )
+        report = {
+            "schema_version": 1,
+            "command": "jobs",
+            "mode": "plan",
+            "verdict": "PASS" if plan.ready_to_run else "FAIL",
+            "plan": plan.to_report(),
+        }
+    else:
+        report = {
+            "schema_version": 1,
+            "command": "jobs",
+            "mode": "contract",
+            "verdict": "PASS",
+            "contract": contract.to_report(),
+        }
+    print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+    return 1 if report["verdict"] == "FAIL" else 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", default=str(REPO))
@@ -1452,6 +1561,7 @@ def main() -> int:
 
     doctor = subparsers.add_parser("doctor", help="Run the standard project health snapshot")
     doctor.add_argument("--fail-on-dirty-worktree", action="store_true")
+    doctor.add_argument("--skip-execution-surface", action="store_true")
     doctor.add_argument("--skip-storage-payload", action="store_true")
     doctor.add_argument("--skip-stage-opt", action="store_true")
     doctor.add_argument("--storage-max-findings", type=int, default=20)
@@ -1489,6 +1599,23 @@ def main() -> int:
     audit.add_argument("--run", action="store_true")
     audit.add_argument("--include-stdout", action="store_true")
     audit.set_defaults(func=run_audit)
+
+    jobs = subparsers.add_parser("jobs", help="Inspect or plan provider-neutral experiment jobs")
+    jobs.add_argument("--family", default=None, help="Job family id such as model_training or data_validation")
+    jobs.add_argument("--backend", default="local", help="Execution backend id, default local")
+    jobs.add_argument("--job-id", default=None)
+    jobs.add_argument("--model-id", default=None)
+    jobs.add_argument("--input-snapshot", default=None)
+    jobs.add_argument("--objective", default=None)
+    jobs.add_argument("--rollback-plan", default=None)
+    jobs.add_argument(
+        "--gate-evidence",
+        action="append",
+        default=[],
+        help="Gate evidence token in the form gate_id=artifact_or_command; repeat for every required gate",
+    )
+    jobs.add_argument("--artifact-dir", default=None)
+    jobs.set_defaults(func=run_jobs)
 
     args = parser.parse_args()
     return args.func(args)

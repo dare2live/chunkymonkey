@@ -1,4 +1,4 @@
-# crontab 配置 — 用户每天 cron 自动跑 daily_update / cost tracker / data audit
+# crontab 配置 — 用户每天 cron 自动跑 daily_update / data audit
 #
 # 用户 push back: macOS launchd 跑 ~/Documents/ 下 script 需 Full Disk Access 1 次手工授权
 # 替代: cron daemon 不受 FDA 限制, 一行 `crontab -e` 安装即真自动化
@@ -25,8 +25,7 @@ SHELL=/bin/bash
 PATH=/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin
 REPO=/Users/dp/Documents/M/stock/chunkymonkey
 
-# GCP controlled-use (2026-05-21): 不在 cron 自动安装 cost tracker / phase5 monitor.
-# 手动 GCP 命令必须带 CHUNKYMONKEY_GCP_EXPLICIT_OK=1。
+# Heavy provider jobs are not installed in cron. Use experiment_jobs planning first.
 
 # 每天 17:00 daily_update (A 股收盘 15:00 + 2h 数据 publish)
 0 17 * * * cd $REPO && bash scripts/daily_update.sh >> /tmp/chunkymonkey_daily_update.log 2>&1
@@ -43,5 +42,3 @@ REPO=/Users/dp/Documents/M/stock/chunkymonkey
 # 每 5 min Codex TUI tracing log guard: byte-based, not line-based; one tracing span can be GB-sized.
 # Runtime entry lives outside ~/Documents to avoid macOS cron Documents privacy failures.
 * * * * * /Users/dp/.codex/bin/rotate_codex_tui_log.sh >> /tmp/codex_tui_log_rotate.log 2>&1
-
-# F4 P1 phase5 GCP retrain probe disabled by default.

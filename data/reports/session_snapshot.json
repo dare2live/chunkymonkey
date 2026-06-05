@@ -1,29 +1,24 @@
 {
-  "snapshot_at": "2026-06-04 13:50:35 CST",
+  "snapshot_at": "2026-06-05 22:01:02 CST",
   "git": {
     "branch": "main",
-    "head_hash": "97c7f903",
-    "head_msg": "97c7f903 chore: exclude resume-generated checkpoints from snapshot dirtiness",
-    "commits_24h": 12,
-    "uncommitted_files": 0
+    "head_hash": "fde3a74d",
+    "head_msg": "fde3a74d docs: record data-source selection research test pass evidence",
+    "commits_24h": 8,
+    "uncommitted_files": 104
   },
   "retrain": {
     "model_id": "lgbm_phase5_v9b_20260523T083000Z",
-    "vm_status": "?",
-    "vm_last_start": "",
-    "vm_last_stop": "",
     "f2_checkpoint_path": "data/reports/optuna/lgbm_phase5_v9b_20260523T083000Z.best.json",
     "f2_best_value": "0.3094819825339931",
     "f2_best_trial": "32",
     "f2_updated_at": "2026-05-23T12:24:52+00:00"
   },
   "background": {
-    "monitor": "dead",
     "codex_running": 0
   },
-  "gcp_cost": {
-    "pct_of_budget": "25.2",
-    "remaining_hours_spot": "105.9"
+  "compute_backend": {
+    "backends": "local:active, modal:planned"
   },
-  "next_action": "run startup checks first \u2014 scripts/chunkyctl doctor --fast; prioritize data_health blocking_yellow, then stage-opt structural blocker / need_027 blocked-gap triage"
+  "next_action": "104 uncommitted files \u2014 git status \u770b + bash scripts/safe_commit.sh"
 }

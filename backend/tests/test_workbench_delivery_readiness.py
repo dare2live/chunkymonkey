@@ -19,8 +19,8 @@ def test_delivery_readiness_payload_combines_live_and_rejected_challenger(tmp_pa
                  "reject_reasons": ["max_dd -39% worse than -25%"],
              }}},
             {"criterion": "backtester gate", "pct": 87, "phase4_promote_action": "block"},
-            {"criterion": "GCP 成本控制", "pct": 100, "policy": "controlled_use_requires_explicit_latch",
-             "alert_level": "CONTROLLED_USE_IDLE", "vm_status": "TERMINATED"},
+            {"criterion": "计算后端控制", "pct": 100, "active_backends": ["local"],
+             "planned_backends": ["modal"], "job_families": ["model_training"]},
             {"criterion": "实盘 GO/NO-GO", "pct": 80, "verdict": "PASS",
              "ship_baseline_passed": True, "perfect_ladder_ready": False,
              "msaf_n_obs": 22, "msaf_sharpe": 0.81, "msaf_max_dd": -0.2428,
@@ -68,4 +68,5 @@ def test_delivery_readiness_payload_combines_live_and_rejected_challenger(tmp_pa
     assert payload["challenger"]["gate"]["pbo"]["passes"] is False
     assert payload["sources"]["available"]["institution"] is True
     assert payload["sources"]["institution_evaluation"]["production_decision"] == "hold_reject"
+    assert payload["compute_backend"]["active_backends"] == ["local"]
     assert {row["scope"] for row in payload["blockers"]} == {"milestone", "challenger", "institution"}

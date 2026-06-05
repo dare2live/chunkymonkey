@@ -8,7 +8,6 @@
 #
 # legacy opt-in 装的:
 #   1. Cron: */5 * * * * session_snapshot.sh + */10 * * * * workflow_checkpoint.sh
-#   2. launchd plist: com.chunkymonkey.phase5-monitor (5min probe, VM TERMINATED 自动 pull)
 #
 # Usage:
 #   bash scripts/install_resilience.sh             # no-op status; does not install legacy automation
@@ -63,12 +62,6 @@ if [ "$MODE" = "--status" ]; then
         echo "         ACTION: 手动恢复先跑 bash scripts/cm_resume.sh;"
         echo "                 长期修复需给 cron/bash Full Disk Access 或把 repo 移出 Documents."
     fi
-    # 3. launchd
-    if launchctl list 2>/dev/null | grep -q "phase5-monitor"; then
-        echo "  [OK]   launchd phase5-monitor (5min probe)"
-    else
-        echo "  [MISS] launchd phase5-monitor"
-    fi
     exit 0
 fi
 
@@ -77,12 +70,6 @@ if [ "$MODE" = "--uninstall" ]; then
     # 1. cron
     crontab -l 2>/dev/null | grep -v "session_snapshot\|workflow_checkpoint" | crontab - 2>/dev/null || true
     echo "  cron entries removed"
-    # 2. launchd
-    if launchctl list 2>/dev/null | grep -q "phase5-monitor"; then
-        launchctl unload ~/Library/LaunchAgents/com.chunkymonkey.phase5-monitor.plist 2>/dev/null || true
-        rm -f ~/Library/LaunchAgents/com.chunkymonkey.phase5-monitor.plist
-        echo "  launchd unloaded"
-    fi
     echo "  (Codex SessionStart hook is managed in ~/.codex/hooks.json; verify with --status)"
     exit 0
 fi
@@ -101,7 +88,7 @@ fi
 echo "=== Install resilience ==="
 
 # 1. Install cron (5min snapshot + 10min workflow if script exists)
-echo "[1/2] Install legacy cron entries..."
+echo "[1/1] Install legacy cron entries..."
 CRON_TMP=$(mktemp)
 crontab -l 2>/dev/null | grep -v "session_snapshot\|workflow_checkpoint" > "$CRON_TMP" || true
 echo "*/5 * * * * cd $REPO_ROOT && bash scripts/session_snapshot.sh > /tmp/session_snapshot.log 2>&1" >> "$CRON_TMP"
@@ -112,17 +99,6 @@ crontab "$CRON_TMP"
 rm -f "$CRON_TMP"
 echo "      cron installed"
 crontab -l | grep -E "session_snapshot|workflow_checkpoint" | sed 's/^/        /'
-
-# 2. Install launchd plist for phase5-monitor probe (5min)
-echo "[2/2] Install launchd phase5-monitor..."
-if [ -f "configs/launchd/com.chunkymonkey.phase5-monitor.plist" ]; then
-    cp configs/launchd/com.chunkymonkey.phase5-monitor.plist ~/Library/LaunchAgents/
-    launchctl unload ~/Library/LaunchAgents/com.chunkymonkey.phase5-monitor.plist 2>/dev/null || true
-    launchctl load ~/Library/LaunchAgents/com.chunkymonkey.phase5-monitor.plist
-    echo "      launchd loaded (5min auto probe)"
-else
-    echo "      SKIP (configs/launchd/com.chunkymonkey.phase5-monitor.plist 不存在)"
-fi
 
 echo ""
 echo "=== Install done. Verify ==="

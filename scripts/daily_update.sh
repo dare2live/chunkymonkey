@@ -6,7 +6,7 @@
 # 设计原则:
 # 1. 不需要 Claude / Codex 干预 (纯 cron 或用户 1 click)
 # 2. 失败有明确 alert (log + email/notification)
-# 3. 资源自适应 (本地 Mac 优先, 需要 compute 时 auto start/stop VM)
+# 3. 资源自适应 (本地 Mac 优先; 大任务先登记 experiment job contract)
 # 4. 数据完整性 gate (preflight 检查 K-line continuity, sync gap auto alert)
 # 5. 增量更新 (不重建全量, 只追新)
 #
@@ -14,7 +14,6 @@
 #   bash scripts/daily_update.sh          # 默认: 全流程
 #   bash scripts/daily_update.sh --dry    # dry-run, 不写 DB
 #   bash scripts/daily_update.sh --skip-sync  # 跳数据 sync (用现有)
-#   bash scripts/daily_update.sh --gcp    # 强制用 GCP VM (Optuna refresh)
 #
 # Cron schedule (launchd plist 在 configs/launchd/com.chunkymonkey.daily-update.plist):
 #   每天 17:00 (A 股收盘 15:00 + 2h 容缓数据 publish)
@@ -35,29 +34,26 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
-source scripts/lib/gcp_guard.sh
 
 DATE=$(date +%Y%m%d)
 LOG="/tmp/chunkymonkey_daily_update_${DATE}.log"
 # Env var override (e.g. DRY=1 SKIP_SYNC=1 bash daily_update.sh)
 DRY=${DRY:-0}
 SKIP_SYNC=${SKIP_SYNC:-0}
-USE_GCP=${USE_GCP:-0}
 MODEL_ID_DATE="${CHUNKY_MODEL_DATE_OVERRIDE:-$DATE}"
 DOW="${CHUNKY_DOW_OVERRIDE:-$(date +%u)}"
-VM_NAME="${VM_NAME:-chunkymonkey-optuna}"
-ZONE="${ZONE:-us-central1-a}"
-REMOTE_REPO_DIR="${REMOTE_REPO_DIR:-~/chunkymonkey}"
 # Champion model_id for daily Step 7 promote / Step 4 retrain (rule-compliance: ok evidence=lambdamart-v6-codex-2.1-fixed-config)
 CHAMPION_MODEL_ID="${CHAMPION_MODEL_ID:-lgbm_20260517_governance_v1_20d}"
-MODEL_REFRESH_VM_STARTED=0
 
 # Parse args
 for arg in "$@"; do
     case "$arg" in
         --dry) DRY=1 ;;
         --skip-sync) SKIP_SYNC=1 ;;
-        --gcp) USE_GCP=1 ;;
+        *)
+            echo "ERROR: unknown daily_update argument: $arg" >&2
+            exit 2
+            ;;
     esac
 done
 
@@ -68,16 +64,6 @@ log() {
 fatal() {
     log "FATAL: $*"
     exit 1
-}
-
-stop_model_refresh_vm() {
-    if [[ "$MODEL_REFRESH_VM_STARTED" == "1" ]]; then
-        log "Stopping GCP VM after model refresh"
-        if ! bash gcp/vm_stop.sh >> "$LOG" 2>&1; then
-            log "WARN: VM stop failed; run bash gcp/vm_stop.sh manually"
-        fi
-        MODEL_REFRESH_VM_STARTED=0
-    fi
 }
 
 run_backtest_validation_gate() {
@@ -95,62 +81,21 @@ if result.promote_action in {"block", "force_retrain"}:
 PY
 }
 
-run_lambdamart_v6_retrain_on_vm() {
-    require_gcp_explicit_ok "scripts/daily_update.sh --gcp"
-    gcloud compute ssh "${VM_NAME}" --zone="${ZONE}" --tunnel-through-iap --command \
-        "bash -s -- '${REMOTE_REPO_DIR}' '${MODEL_ID_DATE}'" <<'REMOTE'
-set -euo pipefail
-
-REMOTE_REPO_DIR="$1"
-MODEL_ID_DATE="$2"
-REPO_DIR="${REMOTE_REPO_DIR/#\~/${HOME}}"
-
-cd "${REPO_DIR}"
-if [[ -d ".venv" ]]; then
-    # shellcheck disable=SC1091
-    source ".venv/bin/activate"
-fi
-export PYTHONPATH=backend
-python backend/scripts/retrain_lambdamart_v6.py \
-    --model-date "${MODEL_ID_DATE}" \
-    --n-trials 50 \
-    --full
-REMOTE
-}
-
-trap stop_model_refresh_vm EXIT
-
 log "=== ChunkyMonkey daily update ${DATE} ==="
-log "  dry=$DRY skip_sync=$SKIP_SYNC use_gcp=$USE_GCP"
+log "  dry=$DRY skip_sync=$SKIP_SYNC"
 
-# Step 0: GCP 成本 tracker (用户原则 CLAUDE.md §10.0.2: 不浪费 GCP 资源)
-log "--- Step 0: GCP cost tracker ---"
-COST_TRACKER_EXIT=0
-if [[ "${CHUNKYMONKEY_GCP_EXPLICIT_OK:-0}" == "1" ]]; then
-    bash gcp/cost_tracker.sh --quiet >> "$LOG" 2>&1 || COST_TRACKER_EXIT=$?
-else
-    log "GCP disabled by user rule; skip cost tracker and force local mode"
-    USE_GCP=0
-fi
-COST_ALERT=$(PYTHONPATH=backend python -c "
-import json
-try:
-    with open('data/reports/gcp_cost_summary.json') as f:
-        d = json.load(f)
-    print(d.get('alert_level', 'UNKNOWN'), d.get('pct_of_budget', 0), d.get('projected_month_cost', 0))
-except Exception as e:
-    print('UNKNOWN 0 0')
-" 2>/dev/null)
-log "GCP cost: $COST_ALERT"
-if [[ "$COST_TRACKER_EXIT" == "2" ]]; then
-    log "[GCP-ALERT-RED] 月度预算 >100%, 当前必须 stop VM"
-    if [[ "$USE_GCP" == "1" ]]; then
-        log "  USE_GCP=1 但预算超支, 强制改本地模式"
-        USE_GCP=0
-    fi
-elif [[ "$COST_TRACKER_EXIT" == "1" ]]; then
-    log "[GCP-ALERT-YELLOW] 月度预算 >80%, 谨慎使用 VM"
-fi
+# Step 0: experiment job contract sanity (provider-neutral)
+log "--- Step 0: experiment job contract ---"
+PYTHONPATH=backend python - <<'PY' >> "$LOG" 2>&1
+from services.experiment_jobs import load_experiment_job_contract
+
+contract = load_experiment_job_contract()
+print({
+    "backends": sorted(contract.backends),
+    "families": sorted(contract.families),
+    "local_active": contract.backends["local"].active,
+})
+PY
 
 # Step 1: Preflight
 log "--- Step 1: Preflight (watermark SLA + K-line gate) ---"
@@ -181,40 +126,25 @@ fi
 # Step 2: Data sync (tdxhub + akshare)
 if [[ "$SKIP_SYNC" == "0" ]]; then
     log "--- Step 2: Data sync ---"
-    if [[ "$USE_GCP" == "1" ]]; then
-        # GCP path: VM tdxhub fetch (本地 network block 时用)
-        log "Using GCP VM for backfill (tdxhub + akshare)"
-        bash gcp/vm_start.sh >> "$LOG" 2>&1 || fatal "VM start failed"
-        bash gcp/fetch_kline_via_vm.sh >> "$LOG" 2>&1
-        kline_exit=$?
-        if [[ "$kline_exit" == "0" ]]; then
-            log "VM kline fetch OK"
-        else
-            log "WARN: VM kline fetch exit $kline_exit (alert + 继续)"
+    log "Local sync (tdxhub daily incremental)"
+    if [[ "$DRY" == "0" ]]; then
+        # latest_completed_trade_date 自动 target
+        # 2026-05-21 fix: set -e + tdxhub exit 非 0 会让脚本静默终止. 用 if 包装抑制.
+        sync_exit=0
+        if ! PYTHONPATH=backend python backend/scripts/build_price_kline_tdxhub.py \
+            --skip-existing \
+            --workers 4 --connect-timeout 2.5 \
+            --max-server-attempts 9 --per-stock-retry-attempts 2 \
+            --write-batch-rows 5000 --log-every 200 \
+            >> "$LOG" 2>&1; then
+            sync_exit=$?
         fi
-        bash gcp/vm_stop.sh >> "$LOG" 2>&1 || log "WARN: VM stop failed"
+        log "tdxhub sync exit $sync_exit"
+        # HS300 benchmark
+        PYTHONPATH=backend python backend/scripts/sync_hs300_benchmark_kline.py \
+            >> "$LOG" 2>&1 || log "WARN: HS300 sync 失败 (非 fatal)"
     else
-        # Local path: tdxhub daily incremental
-        log "Local sync (tdxhub daily incremental)"
-        if [[ "$DRY" == "0" ]]; then
-            # latest_completed_trade_date 自动 target
-            # 2026-05-21 fix: set -e + tdxhub exit 非 0 会让脚本静默终止. 用 if 包装抑制.
-            sync_exit=0
-            if ! PYTHONPATH=backend python backend/scripts/build_price_kline_tdxhub.py \
-                --skip-existing \
-                --workers 4 --connect-timeout 2.5 \
-                --max-server-attempts 9 --per-stock-retry-attempts 2 \
-                --write-batch-rows 5000 --log-every 200 \
-                >> "$LOG" 2>&1; then
-                sync_exit=$?
-            fi
-            log "tdxhub sync exit $sync_exit"
-            # HS300 benchmark
-            PYTHONPATH=backend python backend/scripts/sync_hs300_benchmark_kline.py \
-                >> "$LOG" 2>&1 || log "WARN: HS300 sync 失败 (非 fatal)"
-        else
-            log "DRY: skip actual sync"
-        fi
+        log "DRY: skip actual sync"
     fi
 fi
 
@@ -413,16 +343,16 @@ fi
 # Step 4: Model refresh — event-driven 触发 + quarterly fallback (用户 push back 2026-05-18)
 log "--- Step 4: Model refresh (event-driven + quarterly fallback) ---"
 run_backtest_validation_gate || fatal "backtest_validation pre-flight gate failed"
-# 用户 push back: 'event-driven 我觉得比较合理或者按季度, gcp 设计成手工触发'
+# 用户 push back: 'event-driven 我觉得比较合理或者按季度, heavy retrain 设计成手工触发'
 #
 # 触发逻辑:
 # 1. event-driven (alpha decay): rank_ic 最近 4 windows 连降 → 触发 retrain (高优先级)
 # 2. quarterly fallback: DOM=1 of Jan/Apr/Jul/Oct (Q1/Q2/Q3/Q4 季初) → 触发 retrain
 # 3. 其它 days: use cached model
 #
-# GCP 改全手工触发 (不在 daily_update 自动调). 触发需 user explicit:
-#   bash scripts/gcp_stability_retrain.sh                 # GCP controlled-use stability search
-#   nohup ... retrain_lambdamart_v6.py ...                # Mac local 12.8h overnight
+# Heavy model search 不在 daily_update 自动调；先登记 experiment_jobs model_training/parameter_search plan。
+#   scripts/chunkyctl jobs --family model_training --model-id <id> --input-snapshot smartmoney.duckdb@<date> --objective '<why>' --rollback-plan '<stop/discard plan>' --gate-evidence leakage_audit=<artifact> --gate-evidence train_log_integrity=<artifact> --gate-evidence phase4_gate=<artifact>
+#   nohup PYTHONPATH=backend python backend/scripts/retrain_lambdamart_v6.py ...
 DOM="${CHUNKY_DOM_OVERRIDE:-$(date +%-d)}"
 MONTH="${CHUNKY_MONTH_OVERRIDE:-$(date +%-m)}"
 IS_QUARTER_START=0
@@ -455,10 +385,11 @@ log "alpha decay check: $ALPHA_DECAY"
 
 if [[ "$ALPHA_DECAY" == "DECAY" ]]; then
     log "[event-driven] Alpha decay detected (rank_ic 4 连降), 建议 retrain"
+    log "  先登记: scripts/chunkyctl jobs --family model_training --model-id lgbm_${MODEL_ID_DATE} --input-snapshot smartmoney.duckdb@${DATE} --objective '<why>' --rollback-plan '<stop/discard plan>' --gate-evidence leakage_audit=<artifact> --gate-evidence train_log_integrity=<artifact> --gate-evidence phase4_gate=<artifact>"
     log "  手动触发: nohup PYTHONPATH=backend python backend/scripts/retrain_lambdamart_v6.py --model-date ${MODEL_ID_DATE} > /tmp/retrain_${MODEL_ID_DATE}.log 2>&1 &"
-    log "  或 GCP: bash scripts/gcp_stability_retrain.sh"
 elif [[ "$IS_QUARTER_START" == "1" ]]; then
     log "[quarterly] Q$((($MONTH-1)/3+1)) 季初 (month=$MONTH day=$DOM), 建议 retrain"
+    log "  先登记: scripts/chunkyctl jobs --family model_training --model-id lgbm_${MODEL_ID_DATE} --input-snapshot smartmoney.duckdb@${DATE} --objective '<why>' --rollback-plan '<stop/discard plan>' --gate-evidence leakage_audit=<artifact> --gate-evidence train_log_integrity=<artifact> --gate-evidence phase4_gate=<artifact>"
     log "  手动触发: nohup PYTHONPATH=backend python backend/scripts/retrain_lambdamart_v6.py --model-date ${MODEL_ID_DATE} > /tmp/retrain_${MODEL_ID_DATE}.log 2>&1 &"
 else
     log "[cached] alpha stable, 非季初, 使用 cached lambdamart_v6 model"

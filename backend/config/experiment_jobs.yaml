@@ -1,0 +1,123 @@
+version: 1
+
+backends:
+  local:
+    status: active
+    execution_mode: same_host_command
+    artifact_mode: local_manifest
+    notes:
+      - Default backend for data validation, backtests, narrow model runs, and small parameter searches.
+
+  modal:
+    status: planned
+    execution_mode: external_worker_artifact_manifest
+    artifact_mode: provider_manifest
+    notes:
+      - Successor backend target. Do not call provider APIs until a Modal proof of concept defines the adapter.
+
+job_families:
+  data_validation:
+    owner_module: data_quality
+    purpose: Validate source freshness, PIT safety, row coverage, and table health before model or backtest work.
+    allowed_backends:
+      - local
+    command_family: data_validation
+    required_plan_fields:
+      - input_snapshot
+      - objective
+      - rollback_plan
+    required_gates:
+      - data_health_snapshot
+      - data_audit
+      - source_watermark_sla
+    artifact_contracts:
+      - id: data_health_snapshot
+        kind: report
+        required: true
+        path_glob: data/reports/data_health*.json
+      - id: source_watermark_sla
+        kind: report
+        required: false
+        path_glob: data/audit/watermark_sla*.json
+
+  backtest_validation:
+    owner_module: backtest_validation
+    purpose: Run paper simulation, Phase4, PBO, DSR, and promotion-readiness validation on existing artifacts.
+    allowed_backends:
+      - local
+    command_family: backtest_validation
+    required_plan_fields:
+      - input_snapshot
+      - objective
+      - rollback_plan
+    required_gates:
+      - backtest_preflight
+      - paper_sim
+      - phase4_gate
+    artifact_contracts:
+      - id: phase4_gate
+        kind: report
+        required: true
+        path_glob: data/reports/phase4_gate*.json
+      - id: paper_sim_kpi
+        kind: table
+        required: true
+        table: mart_paper_sim_kpi
+        min_rows: 1
+
+  model_training:
+    owner_module: ml_lifecycle
+    purpose: Train or replay ranking models while preserving PIT, train-log, checkpoint, and prediction artifacts.
+    allowed_backends:
+      - local
+      - modal
+    command_family: model_training
+    required_plan_fields:
+      - input_snapshot
+      - objective
+      - rollback_plan
+    required_gates:
+      - leakage_audit
+      - train_log_integrity
+      - phase4_gate
+    artifact_contracts:
+      - id: best_checkpoint
+        kind: file
+        required: true
+        path_glob: data/reports/optuna/*.best.json
+      - id: train_log
+        kind: table
+        required: true
+        table: fact_model_train_log
+        min_rows: 1
+      - id: predictions
+        kind: table
+        required: true
+        table: mart_p0b_oos_predictions
+        min_rows: 1
+
+  parameter_search:
+    owner_module: optimization
+    purpose: Explore feature, parameter, and strategy search spaces only after the search plan proves useful.
+    allowed_backends:
+      - local
+      - modal
+    command_family: parameter_search
+    required_plan_fields:
+      - input_snapshot
+      - objective
+      - rollback_plan
+    required_gates:
+      - plan_validator
+      - backtest_preflight
+      - checkpoint_manifest
+    artifact_contracts:
+      - id: search_space
+        kind: report
+        required: true
+        path_glob: data/reports/optuna/*.json
+      - id: pipeline_manifest
+        kind: table
+        required: true
+        table: mart_pipeline_run_manifest
+        min_rows: 1

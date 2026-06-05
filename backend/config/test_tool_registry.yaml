@@ -1,5 +1,5 @@
 version: 1
-updated_at: "2026-06-02"
+updated_at: "2026-06-05"
 policy:
   default_testpaths:
     - backend/tests
@@ -66,6 +66,23 @@ tools:
     replacement: integrate into chunkyctl audit/doctor once docs graph gate becomes a default startup check
     last_verified: "2026-05-31"
 
+  - id: execution_surface_audit_tests
+    paths:
+      - backend/scripts/audit_execution_surface.py
+      - backend/tests/scripts/test_audit_execution_surface.py
+      - backend/config/test_tool_registry.yaml
+      - .moth/profile.yaml
+      - docs/engineering_governance.md
+    owner_module: startup_tooling
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_execution_surface.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: filesystem, launchd plist ProgramArguments, cron/static automation files, active test registry paths, and Moth evidence paths
+    risk_reason: deleted or retired scripts must not remain reachable through launchd, cron, installers, dashboards, registry paths, or Moth evidence references
+    replacement: keep as a generic execution-surface gate; extend to provider adapters when Modal integration lands
+    last_verified: "2026-06-05"
+
   - id: chunkyctl_contract_tests
     paths:
       - backend/scripts/chunkyctl.py
@@ -95,6 +112,24 @@ tools:
     risk_reason: safe_commit is the final local commit gate; weak review trailers or empty skip reasons can bypass Codex review for Python changes
     replacement: keep until commit policy is enforced by a stronger shared hook or CI gate
     last_verified: "2026-05-28"
+
+  - id: experiment_job_contract_tests
+    paths:
+      - backend/config/experiment_jobs.yaml
+      - backend/services/experiment_jobs.py
+      - backend/tests/services/test_experiment_jobs.py
+      - backend/scripts/chunkyctl.py
+      - backend/tests/scripts/test_chunkyctl.py
+      - docs/engineering_governance.md
+    owner_module: experiment_job_governance
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/services/test_experiment_jobs.py backend/tests/scripts/test_chunkyctl.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: experiment_jobs.yaml backend/family contract and chunkyctl jobs plan output
+    risk_reason: data validation, backtests, model training, and parameter search must be registered jobs with gates/artifacts instead of scattered provider scripts
+    replacement: provider adapter contract tests after Modal integration is implemented
+    last_verified: "2026-06-05"
 
   - id: rule_compliance_static_gate_tests
     paths:
@@ -458,7 +493,7 @@ tools:
     status: active
     evidence_level: trusted_with_scope
     truth_source: walk-forward split contracts, governance rejection rules, DSR/PBO/objective fixtures, temporary Optuna storage fixtures
-    risk_reason: validates local optimization contracts and leakage guards; does not authorize Optuna/GCP runs or production promotion without plan_validator, backtest_preflight, and measured OOS evidence
+    risk_reason: validates local optimization contracts and leakage guards; does not authorize Optuna/provider jobs or production promotion without plan_validator, backtest_preflight, and measured OOS evidence
     replacement: plan_validator-backed Optuna integration tests when parameter search resumes
     last_verified: "2026-05-27"
 
@@ -731,9 +766,9 @@ tools:
     runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_audit_delivery_readiness.py
     status: active
     evidence_level: trusted_with_scope
-    truth_source: local delivery-readiness JSON fixtures, Phase4/PBO/DSR parser fixtures, PIT-audit fallback fixtures, and GCP idle/cost-control fixtures
-    risk_reason: verifies readiness-report parsing and gate semantics only; passing tests do not prove current production freshness, live GCP state, or strategy promotion readiness
-    replacement: real delivery-readiness, Phase4, PBO/DSR, data freshness, and GCP controlled-use gate evidence when release decisions resume
+    truth_source: local delivery-readiness JSON fixtures, Phase4/PBO/DSR parser fixtures, PIT-audit fallback fixtures, and compute-backend contract fixtures
+    risk_reason: verifies readiness-report parsing and gate semantics only; passing tests do not prove current production freshness, provider state, or strategy promotion readiness
+    replacement: real delivery-readiness, Phase4, PBO/DSR, data freshness, and experiment_jobs evidence when release decisions resume
     last_verified: "2026-05-27"
 
   - id: workbench_delivery_readiness_read_tests
@@ -1178,8 +1213,8 @@ tools:
     status: active
     evidence_level: trusted_with_scope
     truth_source: shell syntax check and static daily_update.sh branch/cost-control assertions
-    risk_reason: verifies daily-update wiring text only; it does not execute the updater, prove model refresh quality, or authorize automatic GCP retraining
-    replacement: updater DAG audit, delivery-readiness gates, and explicit controlled-use GCP approval before cloud retraining
+    risk_reason: verifies daily-update wiring text only; it does not execute the updater, prove model refresh quality, or authorize automatic provider retraining
+    replacement: updater DAG audit, delivery-readiness gates, and experiment_jobs model_training plan before provider retraining
     last_verified: "2026-05-27"
 
   - id: static_data_contract_root_tests
@@ -1338,7 +1373,7 @@ tools:
     status: active
     evidence_level: trusted_with_scope
     truth_source: in-memory DuckDB smart-update audit, relationship freshness, attention snapshot, and updater downstream-step fixtures
-    risk_reason: validates smart-plan decision mechanics only; it does not execute data sync, prove production freshness, or authorize GCP/long-running updates
+    risk_reason: validates smart-plan decision mechanics only; it does not execute data sync, prove production freshness, or authorize provider/long-running updates
     replacement: updater DAG audit, data_audit, and controlled execution evidence before production update claims
     last_verified: "2026-05-27"
 
@@ -1404,7 +1439,7 @@ tools:
     evidence_level: trusted_with_scope
     truth_source: temporary local/remote DuckDB and parquet prediction import fixtures
     risk_reason: validates scoped model-id replacement, dry-run, mirroring, column reordering, and parquet import mechanics only; it does not prove remote artifact integrity or prediction quality
-    replacement: GCP controlled export evidence, artifact hashes, train-log coverage, and downstream delivery gates before production use
+    replacement: provider artifact contract evidence, artifact hashes, train-log coverage, and downstream delivery gates before production use
     last_verified: "2026-05-27"
 
   - id: industry_pit_root_tests
@@ -1818,7 +1853,7 @@ tools:
     status: active
     evidence_level: trusted_with_scope
     truth_source: synthetic RankPanel timing budget for build_walk_forward_windows regression detection
-    risk_reason: timing evidence is environment-sensitive and opt-in only; it does not prove GCP retrain runtime, production model stability, or deployability
+    risk_reason: timing evidence is environment-sensitive and opt-in only; it does not prove provider retrain runtime, production model stability, or deployability
     replacement: controlled retrain wrapper logs, verified checkpoints, train-log stability audit, and production-scale profiling
     last_verified: "2026-05-27"
 
@@ -1950,7 +1985,7 @@ tools:
     evidence_level: trusted_with_scope
     truth_source: DuckDB manifest fixtures, config-backed performance policy, panel preflight fixtures, and in-memory obsolete-run delete ledger
     risk_reason: verifies pipeline governance mechanics only; synthetic stale/preflight and delete cases do not authorize production deletion, data freshness claims, or long-run performance budgets
-    replacement: production run manifest audit, data_audit, deletion governance dry-run, and controlled GCP wrapper logs when heavy runs resume
+    replacement: production run manifest audit, data_audit, deletion governance dry-run, and experiment_jobs artifacts when heavy runs resume
     last_verified: "2026-05-27"
 
   - id: pricing_policy_sql_root_tests
@@ -2476,8 +2511,8 @@ tools:
     status: active
     evidence_level: trusted_with_scope
     truth_source: retrain schema, checkpoint, train-log resume, temporary checkpoint, duck_mem, and in-memory Optuna fixtures
-    risk_reason: validates retrain orchestration and checkpoint semantics only; synthetic OOS/rank-IC/Optuna values are not model stability, GCP runtime, or production promotion evidence
-    replacement: verified train-log checkpoints, walk-forward stability, controlled GCP wrapper logs, Phase4/PBO/DSR, and forward validation
+    risk_reason: validates retrain orchestration and checkpoint semantics only; synthetic OOS/rank-IC/Optuna values are not model stability, provider runtime, or production promotion evidence
+    replacement: verified train-log checkpoints, walk-forward stability, experiment_jobs artifacts, Phase4/PBO/DSR, and forward validation
     last_verified: "2026-05-27"
 
   - id: daily_topk_root_tests

@@ -8,14 +8,24 @@ tooling output as authoritative when they conflict.
 
 ## First Actions
 
-- Read `goal.md`, `SESSION_HANDOFF.md`, and `analysis/workflow_checkpoint.md`
-  before continuing interrupted work.
+- Read `goal.md` first. Treat it as the compact live controller board: current
+  objective, priority order, active blockers, and implementation plan.
+- Treat `SESSION_HANDOFF.md` as a generated context-only snapshot and
+  `analysis/workflow_checkpoint.md` as an active-pipeline checkpoint only when
+  it says the pipeline is active. Verify both with live gates before using them
+  as state.
+- Use `analysis/project_state_ledger.md` for completed work and historical
+  evidence by `rg`/`tail` lookup, not as a full startup read.
 - Run `git status --short` before edits. The worktree is often dirty; never
   revert user or peer changes unless explicitly asked.
+- When deleting or retiring scripts, provider paths, startup jobs, cron entries,
+  launchd plists, installers, dashboards, or local automation, run
+  `PYTHONPATH=backend python backend/scripts/audit_execution_surface.py --include-live-launchd --format markdown`.
 - Prefer `rg`, `codegraph`, targeted tests, and read-only DuckDB inspection
   before guessing.
-- Keep `goal.md` / handoff files current when the task changes delivery state,
-  GCP state, validation evidence, or next actions.
+- Keep `goal.md` current when active objective, priority order, blocker state,
+  or next actions change. Move completed details and historical evidence to
+  `analysis/project_state_ledger.md`; do not grow `goal.md` as a session log.
 - Keep `docs/chunkyctl_session_quickstart.md` current when startup commands,
   gate order, controller/agent workflow, tool entrypoints, or project phase
   assumptions change. New sessions must not inherit stale startup instructions.
@@ -33,7 +43,8 @@ tooling output as authoritative when they conflict.
 ## Skill Dispatch
 
 - Codex Mac app/CLI, hooks, plugins, startup items, local automations, remote
-  compact errors, stale Codex worktrees, Terminal mail, or GCP monitor residue:
+  compact errors, stale Codex worktrees, Terminal mail, or retired provider
+  monitor residue:
   use `$codex-local-ops` before touching project rules.
 - Broad architecture, controller-led decomposition, multi-agent orchestration,
   ambiguous system design, or "framework foundation before details" work: use
@@ -41,7 +52,7 @@ tooling output as authoritative when they conflict.
   falsification gates, attention allocation, delegation slices, and the smallest
   reversible next step.
 - Non-trivial ChunkyMonkey execution, architecture, strategy validation,
-  PIT/leakage, Optuna/GCP, deletion, or gate-policy work: use
+  PIT/leakage, Optuna/provider jobs, deletion, or gate-policy work: use
   `$chunkymonkey-governance` before editing or launching work.
 - Rule 10, commit readiness, blocking reviews, and `.py` / `.yaml` / `.sql`
   slices before commit: use `$chunkymonkey-review-gate`.
@@ -90,8 +101,9 @@ pre-test check and state it in the work log:
 
 After the audit script exists, run it before meaningful targeted or broad test
 runs and treat FAIL as blocking unless the current task is fixing that test-tool
-failure. Keep the long-lived policy in `docs/engineering_governance.md` and the
-current FAIL/WARN state in `goal.md` or handoff.
+failure. Keep the long-lived policy in `docs/engineering_governance.md`, the
+current controller decision in `goal.md`, and completed evidence in
+`analysis/project_state_ledger.md`.
 
 ## Parallel Execution
 
@@ -138,84 +150,45 @@ Keep serialized:
 
 Controller responsibilities:
 - choose what not to delegate: architecture decisions, truth-source decisions,
-  final gate verdicts, shared documentation, staging, commits, pushes, GCP/Optuna
-  control, and DuckDB write windows stay with the controller;
+  final gate verdicts, shared documentation, staging, commits, pushes,
+  provider-backed job control, and DuckDB write windows stay with the controller;
 - define each agent's read/write scope before starting;
-- tell read-only agents not to edit, delete, stage, commit, run GCP, run Optuna,
-  or run long/expensive jobs;
+- tell read-only agents not to edit, delete, stage, commit, run provider jobs,
+  run Optuna, or run long/expensive jobs;
 - tell worker agents they are not alone in the codebase and must not revert
   others' changes;
 - review returned patches before accepting them;
 - run final tests and merge/update project state in one place.
-- update `goal.md`/handoff only after reconciling agent results; shared docs are
-  serialized unless one controller owns the edit.
+- update compact `goal.md` and `analysis/project_state_ledger.md` only after
+  reconciling agent results; `SESSION_HANDOFF.md` remains generated context,
+  and shared docs are serialized unless one controller owns the edit.
 
-## GCP Controlled Use
+## Compute / Experiment Jobs
 
-GCP is available for this project, but cloud work must be intentional,
-observable, and reproducible. Use local execution for code edits, small tests,
-read-only DuckDB inspection, lightweight JSON refreshes, and narrow audits. Use
-GCP when it materially improves throughput for expensive work such as large
-Optuna searches, integrated ChunkyMonkey + BestChoice optimization, long model
-replays, broad parameter sweeps, or repeated validation runs that would block
-local progress.
+Legacy project-owned GCP execution entrypoints were removed on 2026-06-05. Do
+not add provider-specific shell scripts, guard-only shims, or hidden restart
+paths for retired providers. Heavy data validation, backtest validation, model
+training, and parameter search work must be represented as a registered job family in
+`backend/config/experiment_jobs.yaml` and planned through:
 
-Before starting any GCP workload that can spend money, mutate cloud state, or
-move large artifacts, state:
-- objective and exact command family;
-- expected wall time and rough cost/risk;
-- input data/source snapshot;
-- output paths in GCS/local repo and how they will be preserved;
-- monitor/stop/rollback plan.
+```bash
+scripts/chunkyctl jobs --family <job-family> --backend local \
+  --input-snapshot <snapshot> \
+  --objective "<why this job should run>" \
+  --rollback-plan "<how to stop or discard artifacts>" \
+  --gate-evidence <gate>=<artifact-or-command>
+```
 
-Commands that touch GCP must include `CHUNKYMONKEY_GCP_EXPLICIT_OK=1`. This is a
-safety latch against accidental cloud work, not a ban. It applies to:
-- `gcloud` / `gsutil`;
-- `gcp/*` scripts;
-- SSH to GCP VMs;
-- GCS upload/download/sync;
-- billing/cost tracker queries;
-- monitor/probe scripts;
-- start/stop/resume/inspect cloud jobs.
+`local` is the only active backend. `modal` is a planned backend and must remain
+blocked until a provider adapter proves its artifact manifest contract. Provider
+adapters may execute commands and materialize artifact manifests; domain gates,
+PIT/leakage checks, promotion criteria, and business validation stay owned by
+ChunkyMonkey services, scripts, config, and tables.
 
-When the user has approved a GCP-capable objective, the agent may use GCP within
-that objective without asking again for every subcommand, as long as the command
-stays inside the stated scope and uses the safety latch. If scope, cost, data
-movement, or runtime changes materially, pause and restate the plan first.
-
-Historical GCP artifacts may be read locally from disk. Refreshing or replacing
-them from cloud counts as GCP work and must follow the controlled-use rules.
-
-### GCP Execution Hygiene
-
-Do not run expensive GCP work through fragile one-line SSH commands. A GCP job is
-not allowed to start until the operator has a wrapper script or heredoc body that
-has been syntax-checked and includes explicit lifecycle handling.
-
-Minimum checklist for every GCP compute job:
-- cancel stale pending shutdowns before launch: `sudo shutdown -c || true`;
-- run under the intended remote environment, usually `. .venv/bin/activate` and
-  `PYTHONPATH=backend`;
-- write `current.pid`, `current.logpath`, `current.artifact`, and `current.gcs_dir`
-  under the job's report directory before backgrounding;
-- stream logs to a stable file and record the command exit code;
-- export small result artifacts to JSON/CSV when possible; do not pull or upload
-  a full 25GB DuckDB when the required evidence is a small row or report;
-- upload the small artifact and log to GCS before shutdown;
-- schedule shutdown only inside the verified wrapper finalization path, and add a
-  separate fallback TTL only after the job is confirmed running;
-- for stability retrains, prefer the read-only monitor wrapper
-  `CHUNKYMONKEY_GCP_EXPLICIT_OK=1 TAIL_LINES=80 bash scripts/gcp_stability_status.sh`
-  over ad hoc SSH polling, and do not export/import until it shows a COMPLETE
-  trial plus a best checkpoint or final summary;
-- after any SSH/IAP failure, check VM status and GCS artifacts before restarting,
-  because the VM may have stopped or the job may already have uploaded results;
-- when syncing code to a VM with a dirty worktree, back up the remote files first
-  and copy only the required scoped files. Do not `git pull` over local/remote
-  dirty state as a shortcut.
-
-If a GCP run wastes time or terminates without artifacts, record the root cause
-and prevention in `docs/engineering_governance.md` before retrying.
+Before any long or paid provider-backed job, state objective, job family,
+backend, expected runtime/cost, input snapshot, artifact directory, required
+gates, and stop/rollback plan. The controller owns backend selection, final gate
+verdicts, and shared state updates.
 
 ## Long-Run Checkpoint Reuse
 
@@ -268,8 +241,8 @@ deployment risk signal, not a scoreboard.
 - Use time-aware walk-forward splits; Optuna must not see future OOS periods.
 - Record OOS metrics and reject/governance reasons. In-sample `sharpe` is not a
   selector for forward decisions.
-- Heavy search should use GCP when local runtime would slow delivery, under the
-  GCP controlled-use rules above.
+- Heavy search should be planned through `experiment_jobs`; `local` is active
+  and `modal` remains blocked until its adapter contract is reviewed.
 
 ## Root Cause and Data Integrity
 
@@ -337,8 +310,13 @@ unowned output directories.
   Preserve anything that is still part of audit evidence, lineage,
   reproducibility, or historical validation.
 - Keep documents organized by purpose:
-  - current operating state belongs in `goal.md`, `SESSION_HANDOFF.md`, and
-    `analysis/workflow_checkpoint.md`;
+  - current objectives, priority order, blockers, and implementation plan belong
+    in the compact `goal.md`;
+  - completed work, historical status, and detailed evidence belong in
+    `analysis/project_state_ledger.md` or a dated `analysis/` artifact;
+  - `SESSION_HANDOFF.md` is generated resume context only;
+  - `analysis/workflow_checkpoint.md` is only for one active multi-step
+    pipeline, otherwise it should be an inactive stub;
   - durable design/audit references belong under `docs/`;
   - dated evidence and session archives belong under `analysis/`;
   - old handoffs, stale prompts, duplicated status docs, and obsolete plans
@@ -394,5 +372,5 @@ Resolve dirty state in layers:
   Phase 0 artifact freeze/hash/lineage, namespaced challenger import, daily
   candidate feed, main-project paper sim, KPI registry, and complementarity
   comparison. Do not directly merge BestChoice logic into production
-  ChunkyMonkey, and do not run BestChoice GCP expansion until local portfolio
+  ChunkyMonkey, and do not run BestChoice cloud expansion until local portfolio
   paper_sim or complementarity evidence satisfies the plan's trigger conditions.

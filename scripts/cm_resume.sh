@@ -12,7 +12,7 @@
 #   新 Codex 会话输入脚本输出的推荐 prompt.
 #
 # 如果需要显式恢复，用户 copy 输出的 prompt 粘进 Codex:
-#   "中断恢复. 看 SESSION_HANDOFF.md + analysis/workflow_checkpoint.md, 按 next_action 继续."
+#   "中断恢复. 看 goal.md + SESSION_HANDOFF.md + doctor 输出, 按当前 P0 继续."
 
 set -e
 cd "$(dirname "$0")/.."
@@ -37,19 +37,19 @@ if [ -x "scripts/workflow_checkpoint.sh" ]; then
 fi
 
 # 3. Extract key state for prompt
-MODEL_ID=$(cat data/reports/phase5_chain/model_id.txt 2>/dev/null | head -1)
+MODEL_ID=$(python3 -c "import json; d=json.load(open('data/reports/session_snapshot.json')); print(d.get('retrain',{}).get('model_id','?'))" 2>/dev/null || echo "?")
 NEXT_ACTION=$(python3 -c "import json; d=json.load(open('data/reports/session_snapshot.json')); print(d.get('next_action','?'))" 2>/dev/null || echo "?")
-VM_STATUS=$(python3 -c "import json; d=json.load(open('data/reports/session_snapshot.json')); print(d['retrain']['vm_status'])" 2>/dev/null || echo "?")
 F2_BEST=$(python3 -c "import json; d=json.load(open('data/reports/session_snapshot.json')); print(d['retrain']['f2_best_value'])" 2>/dev/null || echo "")
 COMMITS_24H=$(python3 -c "import json; d=json.load(open('data/reports/session_snapshot.json')); print(d['git']['commits_24h'])" 2>/dev/null || echo "?")
 CODEX_RUN=$(python3 -c "import json; d=json.load(open('data/reports/session_snapshot.json')); print(d['background']['codex_running'])" 2>/dev/null || echo "?")
+COMPUTE_BACKENDS=$(python3 -c "import json; d=json.load(open('data/reports/session_snapshot.json')); print(d.get('compute_backend',{}).get('backends','?'))" 2>/dev/null || echo "?")
 
 echo ""
 echo "============================================================"
 echo "  当前状态 (auto-detected)"
 echo "============================================================"
 echo "  retrain model_id: $MODEL_ID"
-echo "  VM 状态:          $VM_STATUS"
+echo "  compute backend:  $COMPUTE_BACKENDS"
 [ -n "$F2_BEST" ] && [ "$F2_BEST" != "?" ] && echo "  F2 best value:    $F2_BEST"
 echo "  Codex running:    $CODEX_RUN"
 echo "  24h commits:      $COMMITS_24H"
@@ -60,13 +60,13 @@ echo "  用户怎么继续"
 echo "============================================================"
 echo ""
 echo "  推荐:"
-echo "    请按照 docs/chunkyctl_session_quickstart.md 接手本项目，先完成启动检查，再看 SESSION_HANDOFF.md 的 next_action。"
+echo "    请按照 docs/chunkyctl_session_quickstart.md 接手本项目，先完成启动检查，再看 goal.md 和 live gates。"
 echo ""
 echo "  简短恢复:"
-echo "    继续, 看 SESSION_HANDOFF.md 和 analysis/workflow_checkpoint.md, 按 next_action 推进"
+echo "    继续, 看 goal.md、SESSION_HANDOFF.md 和 doctor 输出，按当前 P0 推进"
 echo ""
 echo "  方案 C (复杂多步流程衔接, workflow_checkpoint 可用时):"
-echo "    用户输入:  从 analysis/workflow_checkpoint.md 推断当前 pipeline step, 按 next_recovery_command 继续"
+echo "    用户输入:  仅当 analysis/workflow_checkpoint.md 声明 active pipeline 时，按其中 next command 继续"
 echo ""
 echo "============================================================"
 echo "  Resilience 配置 verify"
@@ -86,13 +86,6 @@ if crontab -l 2>/dev/null | grep -q "session_snapshot"; then
     fi
 else
     echo "  [OK]   cron snapshot 未启用; handoff 只按需手动刷新"
-fi
-# Verify launchd monitor probe
-if launchctl list 2>/dev/null | grep -q "phase5-monitor"; then
-    echo "  [OK]   launchd monitor 已 active"
-else
-    echo "  [WARN] launchd monitor 未 active — VM TERMINATED 不会 auto pull"
-    echo "         install: bash configs/launchd/install_all.sh install"
 fi
 echo ""
 echo "============================================================"

@@ -36,7 +36,7 @@ Do not resume business expansion until governance gates are accepted:
 |---|---|
 | 300616 original or derived formulas | Universe, PIT, data freshness, and plan gates pass |
 | BestChoice formula expansion | Artifact freeze, namespaced challenger import, and local paper evidence pass |
-| GCP Optuna or broad replay | `backtest_preflight`, `plan_validator`, data audit, and GCP controlled-use plan pass |
+| Heavy Optuna or broad replay | `backtest_preflight`, `plan_validator`, data audit, and an `experiment_jobs` plan pass |
 | Stock-profile or global frontend redesign | Data/profile/API contracts are stable and tested |
 
 主升浪猎手 remains the product north star, but the research log is hypothesis
@@ -110,7 +110,7 @@ This boundary is the criterion for any remaining `updater.py` split.
 | `.py` edits | CodeGraph query/context before; `codegraph sync .` and complexity scan after |
 | Test evidence | `audit_test_tool_health.py --scope <scope>` before citing tests |
 | Docs cleanup | `audit_docs_graph.py --format markdown` and `scripts/chunkyctl docs --format markdown` |
-| Backtest/Optuna/GCP | `backtest_preflight`, `plan_validator`, data audit, explicit GCP controlled-use plan |
+| Backtest/Optuna/provider job | `backtest_preflight`, `plan_validator`, data audit, and `scripts/chunkyctl jobs --family <family> --backend local --input-snapshot <snapshot> --objective <why> --rollback-plan <plan> --gate-evidence <gate>=<artifact>` |
 | Commit | `scripts/safe_commit.sh`; no raw `git commit` |
 
 ## Acceptance Criteria
@@ -125,12 +125,19 @@ This boundary is the criterion for any remaining `updater.py` split.
 | Strategy | Results come from current measured evidence, not in-sample/proxy/warn-only claims |
 | User handoff | `goal.md` records current FAIL/WARN, next action, and unresolved risk |
 
-## GCP
+## Compute Jobs
 
-This plan does not start GCP. Any future GCP action must state objective,
-command family, expected runtime/cost, input snapshot, output path,
-monitor/stop/rollback plan, and use:
+This plan does not start provider compute. Long data validation, model
+training, backtest validation, and parameter search work must first be
+registered in `backend/config/experiment_jobs.yaml` and planned with:
 
 ```bash
-CHUNKYMONKEY_GCP_EXPLICIT_OK=1
+scripts/chunkyctl jobs --family <job-family> --backend local \
+  --input-snapshot <snapshot> \
+  --objective "<why this job should run>" \
+  --rollback-plan "<how to stop or discard artifacts>" \
+  --gate-evidence <gate>=<artifact-or-command>
 ```
+
+`local` is the active backend. `modal` is planned and remains blocked until a
+reviewed adapter proves the artifact-manifest contract.

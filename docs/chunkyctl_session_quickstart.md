@@ -9,7 +9,7 @@ For a fresh Codex session, the simplest user message is:
 ```
 
 The new session must then do the startup sequence below before changing files,
-then continue from the current user request, `goal.md`, and the latest handoff.
+then continue from the current user request, compact `goal.md`, and live gates.
 This entrypoint is for the whole project lifecycle, not only the current
 architecture-reform phase.
 
@@ -21,23 +21,27 @@ verify live state with `doctor --fast` before trusting it.
 
 ## Startup Sequence
 
-1. Read the required docs:
+1. Read the minimal startup docs:
    - `AGENTS.md`
    - `goal.md`
    - `docs/README.md`
-   - latest relevant `analysis/handoff_*.md` by date, if one exists
-   - `docs/architecture_reform_context.md`
-   - `docs/engineering_governance.md`
-   - `docs/data_product_contract.md`
-   - `docs/strategy_validation_contract.md`
    - `SESSION_HANDOFF.md` and `analysis/workflow_checkpoint.md` as context-only
      snapshots; ignore legacy Claude automation instructions when they conflict
      with the current Codex contracts.
+   - Use `analysis/project_state_ledger.md` only by `rg` or `tail` when the
+     current task needs historical evidence; do not read it start-to-finish
+     during startup.
+   - Load owner docs on demand:
+     `docs/engineering_governance.md` for gates/deletion/provider jobs,
+     `docs/data_product_contract.md` for data-source/PIT/freshness work,
+     `docs/strategy_validation_contract.md` for strategy/model promotion, and
+     `docs/architecture_reform_context.md` for architecture-regression checks.
    - Do not read `CLAUDE.md` as a Codex startup or policy source; it is legacy
      Claude-only history unless the user explicitly asks for historical
      migration.
    - dated bootstrap files such as `analysis/codex_bootstrap_20260527.md` only
-     for command context when the latest handoff or `goal.md` still points to it.
+     for command context when compact `goal.md` or the generated handoff still
+     points to it.
    - Do not default to old `analysis/next_session_prompt_*.md` files; they are
      historical prompts unless `goal.md` explicitly makes one current.
    - Skill dispatch: `$codex-local-ops` owns Codex app/CLI local issues;
@@ -51,8 +55,8 @@ scripts/chunkyctl doctor --fast
 ```
 
 `doctor --fast` now includes tooling, test-tool, universe, storage-payload,
-stage-opt recommendation/sensitivity, need_027 blocked-gap triage, and
-system data-health snapshots. The tooling gate now comes from the shared
+stage-opt recommendation/sensitivity, need_027 blocked-gap triage,
+execution-surface audit, and system data-health snapshots. The tooling gate now comes from the shared
 `moth snapshot` layer, and the old `audit_tooling_gate.py` wrapper is retired;
 so the local environment must have Moth available
 either on `PATH` or via `CHUNKYMONKEY_MOTH_COMMAND` (for example:
@@ -82,11 +86,11 @@ Prefer a globally installed Moth for all repos, with the repo-local wrapper
 only consuming the shared CLI. When you need a migration window or a pinned
 behavior, point `CHUNKYMONKEY_MOTH_COMMAND` at a specific installed build
 instead of copying Moth logic into the repo itself.
-When the session snapshot only has generated handoff files dirty, the computed
-`NEXT_ACTION` now points to the current goal blockers instead of the old
-retrain placeholder. Treat `SESSION_HANDOFF.md` as the startup state, but read
-its next action as controller guidance for the active project blockers rather
-than as a separate retrain workflow when the repo itself is otherwise clean.
+When the session snapshot only has generated handoff files dirty, read its
+`NEXT_ACTION` as a hint, not authority. The compact `goal.md` plus live
+`doctor --fast` output decide the actual next action. `analysis/workflow_checkpoint.md`
+is active only when it explicitly says an active pipeline is in progress; an
+inactive checkpoint must not revive completed or retired provider workflows.
 
 3. If `doctor` reports a dirty worktree, run:
 
@@ -150,7 +154,9 @@ incomplete until this document is updated and the final handoff states whether
 |---|---|---|
 | New session | Point Codex at this document | Lowest-friction default |
 | Crash/terminal recovery | `bash scripts/cm_resume.sh` | Refresh `SESSION_HANDOFF.md` and print the prompt to give Codex; no hidden auto-inject |
-| Session startup | `scripts/chunkyctl doctor --fast` | Get dirty worktree, CodeGraph, complexity, storage-payload, and system data-health snapshot quickly |
+| Session startup | `scripts/chunkyctl doctor --fast` | Get dirty worktree, CodeGraph, complexity, execution-surface, storage-payload, and system data-health snapshot quickly |
+| Historical state lookup | `rg "<topic>" analysis/project_state_ledger.md` or `tail -120 analysis/project_state_ledger.md` | Find completed evidence without loading the whole ledger |
+| Retiring scripts/providers/automation | `PYTHONPATH=backend python backend/scripts/audit_execution_surface.py --include-live-launchd --format markdown` | Prove launchd, cron, installers, dashboards, registries, Moth evidence paths, and live LaunchAgents do not point at deleted or retired execution paths |
 | Dirty worktree reported | `scripts/chunkyctl worktree --format markdown` | Show a readable dirty-file bucket summary without mutating git |
 | Dirty bucket drilldown | `scripts/chunkyctl worktree --bucket <name> --format markdown` | Review one bucket's entries and action before staging/deleting anything |
 | Docs cleanup slice | `scripts/chunkyctl docs --format markdown` | Combine docs graph and docs/archive dirty-bucket readiness |
@@ -175,9 +181,10 @@ read/compute window from the write/delete window.
 
 Do not pass a target window as `--start` when the script needs lookback. Use a
 wider `--start` for computation and `--write-start` for replacement. After
-refreshing production DuckDB tables, rerun the relevant data gates and record
-FAIL/WARN state in `goal.md`/handoff instead of claiming readiness from row
-counts alone.
+refreshing production DuckDB tables, rerun the relevant data gates, update the
+active decision in `goal.md`, and move detailed evidence to
+`analysis/project_state_ledger.md` or a dated artifact instead of claiming
+readiness from row counts alone.
 
 ## Doctor Interpretation
 
@@ -234,7 +241,7 @@ order:
 | DB-heavy audits | Parallelize only when they use explicit read-only connections; serialize scripts that materialize tables, write DuckDB, or share output paths |
 | `chunkyctl` | Emits machine-readable facts and command plans; it does not replace review |
 | Skill dispatch | Local Codex ops use `$codex-local-ops`; broad architecture/controller work uses `$architect-controller`; project governance uses `$chunkymonkey-governance`; Rule 10 / commit review uses `$chunkymonkey-review-gate` |
-| Project docs | Keep durable rules in `AGENTS.md`, `goal.md`, handoff, and docs, not chat memory |
+| Project docs | Keep durable rules in `AGENTS.md`/`docs`, current controller state in compact `goal.md`, completed evidence in `analysis/project_state_ledger.md`, and generated resume facts in `SESSION_HANDOFF.md` |
 
 ## Minimal Use
 
@@ -245,6 +252,7 @@ scripts/chunkyctl doctor --fast
 scripts/chunkyctl worktree --format markdown
 scripts/chunkyctl worktree --bucket startup_tooling --format markdown
 scripts/chunkyctl docs --format markdown
+PYTHONPATH=backend python backend/scripts/audit_execution_surface.py --include-live-launchd --format markdown
 PYTHONPATH=backend python backend/scripts/audit_storage_payloads.py --format markdown
 PYTHONPATH=backend python backend/scripts/data_health_snapshot.py --dry-run --format text
 PYTHONPATH=backend python backend/scripts/probe_source_capability.py --need027-exact-flow-gate --indent 2

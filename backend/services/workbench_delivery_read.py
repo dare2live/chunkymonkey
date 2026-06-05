@@ -67,7 +67,7 @@ def build_workbench_delivery_readiness(
     strategy = criteria.get("策略模型管理", {})
     live = criteria.get("实盘 GO/NO-GO", {})
     backtester = criteria.get("backtester gate", {})
-    gcp = criteria.get("GCP 成本控制", {})
+    compute_backend = criteria.get("计算后端控制", {})
     decision = _read_json(reports / f"decision_{challenger_model_id}.json")
     challenger_gate = _read_json(reports / f"phase4_gate_{challenger_model_id}.json")
     live_gate = _read_json(reports / "phase4_gate_result.json")
@@ -127,10 +127,11 @@ def build_workbench_delivery_readiness(
             "gate": _gate_summary(challenger_gate) if challenger_gate else {},
         },
         "live_gate": _gate_summary(live_gate) if live_gate else {},
-        "gcp": {
-            "policy": gcp.get("policy"),
-            "alert_level": gcp.get("alert_level"),
-            "vm_status": gcp.get("vm_status"),
+        "compute_backend": {
+            "active_backends": compute_backend.get("active_backends") or [],
+            "planned_backends": compute_backend.get("planned_backends") or [],
+            "job_families": compute_backend.get("job_families") or [],
+            "source": compute_backend.get("source"),
         },
         "blockers": blockers,
         "read_model": {

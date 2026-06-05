@@ -1,128 +1,15 @@
 {
-  "generated_at": "2026-06-04T05:50:35Z",
-  "model_id": "lgbm_phase5_gcp_20260520T010718",
-  "steps": [
-    {
-      "step": 1,
-      "key": "pull_predictions",
-      "name": "verify local prediction artifacts",
-      "status": "done",
-      "evidence": [
-        "file:data/smartmoney_post_lgbm_phase5_gcp_20260520T010718.duckdb.bak",
-        "file:data/smartmoney_post_lgbm_phase5_gcp_20260520T010718.duckdb",
-        "json:data/reports/phase5_chain/status.json step=pull_done",
-        "file:data/reports/phase5_chain/monitor_done_lgbm_phase5_gcp_20260520T010718.sentinel (weak)",
-        "db:mart_p0b_oos_predictions model_id",
-        "db:mart_p0b_lambdamart_v6_predictions model_id"
-      ],
-      "evidence_found": [
-        "json:data/reports/phase5_chain/status.json step=gcp_disabled",
-        "db:mart_p0b_lambdamart_v6_predictions model_id rows=3396073"
-      ]
-    },
-    {
-      "step": 2,
-      "key": "pre_sim_audit",
-      "name": "pre-sim audit",
-      "status": "done",
-      "evidence": [
-        "json:analysis/pre_sim_audit_lgbm_phase5_gcp_20260520T010718.json",
-        "json:data/reports/pre_sim_audit_lgbm_phase5_gcp_20260520T010718.json",
-        "json:data/reports/pit_audit_lgbm_phase5_gcp_20260520T010718.json",
-        "json:data/reports/pit_audit.json fresh PASS",
-        "db:mart_champion_candidate_evaluation PIT pass"
-      ],
-      "evidence_found": [
-        "json:data/reports/pit_audit_lgbm_phase5_gcp_20260520T010718.json (model_id mismatch)",
-        "json:data/reports/pit_audit.json fresh PASS"
-      ]
-    },
-    {
-      "step": 3,
-      "key": "paper_sim_execution",
-      "name": "paper_sim execution",
-      "status": "done",
-      "evidence": [
-        "json:data/reports/msaf_ensemble_phase5_lgbm_phase5_gcp_20260520T010718.json",
-        "json:data/reports/paper_sim_lgbm_phase5_gcp_20260520T010718.json",
-        "json:analysis/paper_sim_lgbm_phase5_gcp_20260520T010718.json",
-        "db:mart_paper_sim_lambdamart_v6_kpi_compare model_id",
-        "db:mart_paper_sim_nav sim_run_id contains model_id"
-      ],
-      "evidence_found": [
-        "db:mart_paper_sim_lambdamart_v6_kpi_compare model_id rows=1",
-        "db:mart_paper_sim_nav sim_run_id contains model_id rows=614"
-      ]
-    },
-    {
-      "step": 4,
-      "key": "kpi_ingestion",
-      "name": "KPI ingestion",
-      "status": "done",
-      "evidence": [
-        "json:data/reports/msaf_ensemble_phase5_lgbm_phase5_gcp_20260520T010718.json kpi",
-        "json:data/reports/kpi_lgbm_phase5_gcp_20260520T010718.json",
-        "json:analysis/kpi_lgbm_phase5_gcp_20260520T010718.json",
-        "db:mart_paper_sim_kpi joined to model compare"
-      ],
-      "evidence_found": [
-        "db:mart_paper_sim_kpi joined to model compare rows=1"
-      ]
-    },
-    {
-      "step": 5,
-      "key": "kpi_comparison",
-      "name": "KPI comparison",
-      "status": "done",
-      "evidence": [
-        "json:data/reports/kpi_compare_lgbm_phase5_gcp_20260520T010718.json",
-        "json:analysis/kpi_compare_lgbm_phase5_gcp_20260520T010718.json",
-        "db:mart_paper_sim_lambdamart_v6_kpi_compare model_id"
-      ],
-      "evidence_found": [
-        "db:mart_paper_sim_lambdamart_v6_kpi_compare model_id rows=1"
-      ]
-    },
-    {
-      "step": 6,
-      "key": "pareto_verdict_gatekeeper",
-      "name": "Pareto verdict gatekeeper",
-      "status": "done",
-      "evidence": [
-        "json:data/reports/phase4_gate_lgbm_phase5_gcp_20260520T010718.json",
-        "json:analysis/pareto_verdict_lgbm_phase5_gcp_20260520T010718.json",
-        "json:data/reports/pareto_verdict_lgbm_phase5_gcp_20260520T010718.json",
-        "json:data/reports/phase4_gate_result.json matching model",
-        "db:mart_tdx_keep_promotion_gate challenger_model_id"
-      ],
-      "evidence_found": [
-        "json:data/reports/phase4_gate_lgbm_phase5_gcp_20260520T010718.json",
-        "json:data/reports/phase4_gate_result.json matching model (model_id mismatch)"
-      ]
-    },
-    {
-      "step": 7,
-      "key": "decision",
-      "name": "decision promote/reject/retrain",
-      "status": "done",
-      "evidence": [
-        "json:analysis/decision_lgbm_phase5_gcp_20260520T010718.json",
-        "json:data/reports/decision_lgbm_phase5_gcp_20260520T010718.json",
-        "json:data/reports/promote_lgbm_phase5_gcp_20260520T010718.json",
-        "json:data/reports/ensemble_decision_lgbm_phase5_gcp_20260520T010718.json",
-        "json:data/reports/retrain_decision_lgbm_phase5_gcp_20260520T010718.json",
-        "db:mart_champion_model model_id",
-        "db:mart_champion_candidate_evaluation final status",
-        "db:mart_tdx_keep_promotion_gate final decision"
-      ],
-      "evidence_found": [
-        "json:data/reports/decision_lgbm_phase5_gcp_20260520T010718.json"
-      ]
-    }
-  ],
-  "current_step": "all_done",
-  "next_step": "all_done",
-  "resume_command": "echo all_done",
+  "generated_at": "2026-06-05T14:01:02Z",
+  "schema_version": 2,
+  "status": "inactive",
+  "active": false,
+  "current_step": "inactive",
+  "next_step": "inactive",
+  "resume_command": "echo inactive",
   "blockers": [],
-  "last_verified": "2026-06-04T05:50:35Z"
+  "message": "No active workflow pipeline is registered. Use goal.md plus live chunkyctl gates for current work.",
+  "archive": {
+    "legacy_gcp_checkpoint_md": "analysis/workflow_checkpoint_legacy_gcp_20260604.md",
+    "legacy_gcp_checkpoint_json": "analysis/workflow_checkpoint_legacy_gcp_20260604.json"
+  }
 }

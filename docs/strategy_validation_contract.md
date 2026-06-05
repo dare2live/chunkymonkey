@@ -11,7 +11,7 @@ archived under `analysis/docs_archive_20260531/`.
 | In-sample or proxy result promoted as production | Blocked; use `unknown` until current evidence exists |
 | PIT leakage | Any time `t` decision may only use data available at or before `t` |
 | Unrealistic execution | Include costs, slippage, T+1, limit-up buyability, one-line boards, capacity, and overlap |
-| Search without search space | `plan_validator` must pass before Optuna/GCP |
+| Search without search space | `plan_validator` must pass before Optuna/provider jobs |
 | Suspiciously good numbers | Sharpe >5, win rate >95%, or annualized >100% triggers leakage/PIT ablation |
 
 ## Required Gates

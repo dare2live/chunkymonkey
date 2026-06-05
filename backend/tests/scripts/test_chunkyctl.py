@@ -60,6 +60,7 @@ def test_preflight_prefers_moth_profile_instruction_sources(tmp_path: Path) -> N
                 "profile": {
                     "instruction_sources": {
                         "active": ["AGENTS.md", "docs/"],
+                        "context_only": ["goal.md"],
                         "ignored_by_default": ["CLAUDE.md", "CLAUDE.local.md"],
                         "legacy_exception": "historical comparison only",
                     }
@@ -70,6 +71,7 @@ def test_preflight_prefers_moth_profile_instruction_sources(tmp_path: Path) -> N
 
     assert report["instruction_sources"] == {
         "active": ["AGENTS.md", "docs/"],
+        "context_only": ["goal.md"],
         "ignored_by_default": ["CLAUDE.md", "CLAUDE.local.md"],
         "legacy_exception": "historical comparison only",
     }
@@ -106,7 +108,7 @@ def test_preflight_keeps_flag_task_compatible() -> None:
 def test_preflight_marks_strategy_or_cloud_tasks_as_blocked(tmp_path: Path) -> None:
     report = chunkyctl.build_preflight_report(
         repo=tmp_path,
-        task="run GCP Optuna backtest",
+        task="run cloud Optuna backtest",
         scopes=[],
         tooling_gate={
             "git_status": {"clean": True},
@@ -163,7 +165,7 @@ def test_preflight_requires_controller_agent_dispatch_for_broad_work(tmp_path: P
         "satisfied": False,
         "dispatch_evidence": [],
         "skip_reason": "",
-        "controller_role": "Codex owns direction, scope, final acceptance, shared docs, commits, and DB/GCP write windows",
+        "controller_role": "Codex owns direction, scope, final acceptance, shared docs, commits, and DB/provider write windows",
         "agent_role": "bounded read-only exploration or disjoint worker scope; agent output is evidence, not a verdict",
         "skip_allowed_when": "user explicitly opts out, work is tightly coupled, tool unavailable, or write scopes conflict",
     }
@@ -213,6 +215,91 @@ def test_preflight_warns_when_broad_work_skips_agent_dispatch(tmp_path: Path) ->
     ]
     assert report["controller_agent_gate"]["satisfied"] is True
     assert report["controller_agent_gate"]["skip_reason"] == "thread agent limit reached"
+
+
+def test_jobs_plan_uses_experiment_job_contract(capsys) -> None:
+    rc = chunkyctl.run_jobs(
+        Namespace(
+            family="model_training",
+            backend="local",
+            job_id="train_probe",
+            model_id="lgbm_probe",
+            input_snapshot="snapshot_20260604",
+            objective="train probe",
+            rollback_plan="discard probe artifacts",
+            gate_evidence=[
+                "leakage_audit=data/reports/leakage.json",
+                "train_log_integrity=data/reports/train_log.json",
+                "phase4_gate=data/reports/phase4_gate.json",
+            ],
+            artifact_dir=None,
+        )
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert payload["verdict"] == "PASS"
+    assert payload["plan"]["job_id"] == "train_probe"
+    assert payload["plan"]["family"]["family_id"] == "model_training"
+    assert payload["plan"]["backend"]["backend_id"] == "local"
+    assert payload["plan"]["ready_to_run"] is True
+    assert payload["plan"]["artifact_dir"] == "data/reports/experiment_jobs/train_probe"
+
+
+def test_jobs_plan_blocks_planned_modal_backend(capsys) -> None:
+    rc = chunkyctl.run_jobs(
+        Namespace(
+            family="parameter_search",
+            backend="modal",
+            job_id=None,
+            model_id="search_probe",
+            input_snapshot="snapshot_20260604",
+            objective="search probe",
+            rollback_plan="discard probe artifacts",
+            gate_evidence=[
+                "plan_validator=data/reports/plan_validator.json",
+                "backtest_preflight=data/reports/backtest_preflight.json",
+                "checkpoint_manifest=data/reports/checkpoint_manifest.json",
+            ],
+            artifact_dir=None,
+        )
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 1
+    assert payload["verdict"] == "FAIL"
+    assert payload["plan"]["backend"]["status"] == "planned"
+    assert payload["plan"]["blocked_reasons"] == ["backend_not_active:modal:planned"]
+
+
+def test_jobs_plan_blocks_empty_gate_evidence(capsys) -> None:
+    rc = chunkyctl.run_jobs(
+        Namespace(
+            family="model_training",
+            backend="local",
+            job_id="train_probe",
+            model_id="lgbm_probe",
+            input_snapshot="snapshot_20260604",
+            objective="train probe",
+            rollback_plan="discard probe artifacts",
+            gate_evidence=[
+                "leakage_audit=",
+                "train_log_integrity=data/reports/train_log.json",
+                "phase4_gate=data/reports/phase4_gate.json",
+            ],
+            artifact_dir=None,
+        )
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 1
+    assert payload["verdict"] == "FAIL"
+    assert payload["plan"]["ready_to_run"] is False
+    assert "empty_gate_evidence:leakage_audit" in payload["plan"]["blocked_reasons"]
+    assert "missing_gate_evidence:leakage_audit" in payload["plan"]["blocked_reasons"]
 
 
 def test_preflight_matches_ui_as_own_token(tmp_path: Path) -> None:
@@ -401,6 +488,23 @@ def test_next_actions_include_storage_payload_failures() -> None:
     }
 
 
+def test_next_actions_include_execution_surface_failures() -> None:
+    actions = chunkyctl._next_actions(
+        {
+            "git_status": {"clean": True},
+            "codegraph": {"pending": {"sync_required": False}},
+            "complexity": {"baseline": {"status": "loaded"}, "diff": {"new_high_count": 0}},
+        },
+        {"unknown_count": 0},
+        execution_surface={"verdict": "FAIL", "finding_count": 1},
+    )
+
+    assert {
+        "priority": "P0",
+        "action": "Fix execution-surface audit findings: no launchd/cron/installer/dashboard/registry/Moth path may reference deleted entrypoints",
+    } in actions
+
+
 def test_worktree_report_classifies_dirty_entries_by_review_bucket(tmp_path: Path) -> None:
     report = chunkyctl.build_worktree_report(
         repo=tmp_path,
@@ -422,42 +526,53 @@ def test_worktree_report_classifies_dirty_entries_by_review_bucket(tmp_path: Pat
                 " M docs/data_product_contract.md",
                 " M pytest.ini",
                 " M CLAUDE.md",
-                " M gcp/README_GCP_BATCH.md",
-                " M gcp/cost_tracker.sh",
+                " M scripts/cm.sh",
                 " M scripts/cm_resume.sh",
                 " M scripts/daily_update.sh",
+                " M scripts/install_launchd_all.sh",
                 " M scripts/install_resilience.sh",
+                " M scripts/post_retrain_pipeline.sh",
                 " M scripts/session_snapshot.sh",
+                " M scripts/session_status.sh",
                 "?? .moth/profile.yaml",
                 " M backend/scripts/run_phase4_full_chain.sh",
+                " M backend/scripts/model_monitor_dashboard.py",
+                "?? backend/config/experiment_jobs.yaml",
+                "?? backend/services/experiment_jobs.py",
+                "?? backend/tests/services/test_experiment_jobs.py",
+                " M configs/cron/crontab.txt",
+                " M configs/cron/install.sh",
                 " M configs/data_governance.yaml",
+                " M configs/launchd/install_all.sh",
                 "?? scratch.tmp",
             ]
         ),
     )
 
     assert report["verdict"] == "FAIL"
-    assert report["summary"]["total"] == 26
+    assert report["summary"]["total"] == 35
     assert report["summary"]["unknown_count"] == 1
-    assert report["summary"]["codegraph_candidate_untracked_count"] == 2
+    assert report["summary"]["codegraph_candidate_untracked_count"] == 4
     assert report["summary"]["codegraph_candidate_untracked_bucket_counts"] == {
         "startup_tooling": 1,
         "updater_split": 1,
+        "backend_services_api": 1,
+        "tests": 1,
     }
     assert report["summary"]["bucket_counts"] == {
         "controller_state": 1,
         "legacy_context": 1,
-        "startup_tooling": 8,
+        "startup_tooling": 10,
         "docs_archive_moves": 2,
         "updater_split": 2,
         "universe_governance": 1,
         "data_source_lineage_profiles": 2,
         "audit_gate_scripts": 1,
-        "pipeline_build_scripts": 2,
-        "backend_services_api": 1,
-        "tests": 1,
+        "pipeline_build_scripts": 3,
+        "backend_services_api": 2,
+        "tests": 2,
         "generated_evidence": 1,
-        "config_project": 2,
+        "config_project": 6,
         "unknown": 1,
     }
     assert report["summary"]["selected_bucket_counts"] == report["summary"]["bucket_counts"]
@@ -556,6 +671,31 @@ def test_doctor_worktree_summary_reconciles_codegraph_pending(tmp_path: Path) ->
     ]
 
 
+def test_next_actions_do_not_call_codegraph_clean_with_untracked_indexable_file() -> None:
+    actions = chunkyctl._next_actions(
+        {
+            "git_status": {"clean": False},
+            "codegraph": {"pending": {"added": 0, "sync_required": False}},
+            "complexity": {"baseline": {"status": "loaded"}, "diff": {"new_high_count": 0}},
+        },
+        {
+            "unknown_count": 0,
+            "codegraph_candidate_untracked_count": 1,
+            "codegraph_reconciliation": {
+                "pending_added": 0,
+                "untracked_indexable_files": 1,
+                "matches": False,
+            },
+        },
+    )
+
+    assert {
+        "priority": "P0",
+        "action": "Review/stage untracked indexable files before treating CodeGraph as clean; sync after the file is tracked or intentionally removed",
+    } in actions
+    assert not any(action["action"].startswith("CodeGraph has no pending changes") for action in actions)
+
+
 def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_path: Path, capsys) -> None:
     def fake_moth_snapshot(repo, profile):
         payload = {
@@ -585,6 +725,8 @@ def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_pa
         cmd_text = " ".join(str(part) for part in cmd)
         if "audit_test_tool_health.py" in cmd_text:
             return {"cmd": cmd, "returncode": 0, "stdout": json.dumps({"verdict": "PASS"}), "stderr": ""}
+        if "audit_execution_surface.py" in cmd_text:
+            return {"cmd": cmd, "returncode": 0, "stdout": json.dumps({"verdict": "PASS", "finding_count": 0, "findings": []}), "stderr": ""}
         if "check_universe_filter.py" in cmd_text:
             return {"cmd": cmd, "returncode": 0, "stdout": "", "stderr": ""}
         if "audit_storage_payloads.py" in cmd_text:
@@ -721,6 +863,7 @@ def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_pa
         max_findings=80,
         baseline=None,
         fail_on_dirty_worktree=False,
+        skip_execution_surface=False,
         skip_storage_payload=False,
         skip_stage_opt=False,
         storage_max_findings=20,
@@ -784,6 +927,8 @@ def test_doctor_prioritizes_blocking_yellow_health_items(monkeypatch, tmp_path: 
         cmd_text = " ".join(str(part) for part in cmd)
         if "audit_test_tool_health.py" in cmd_text:
             return {"cmd": cmd, "returncode": 0, "stdout": json.dumps({"verdict": "PASS"}), "stderr": ""}
+        if "audit_execution_surface.py" in cmd_text:
+            return {"cmd": cmd, "returncode": 0, "stdout": json.dumps({"verdict": "PASS", "finding_count": 0, "findings": []}), "stderr": ""}
         if "check_universe_filter.py" in cmd_text:
             return {"cmd": cmd, "returncode": 0, "stdout": "", "stderr": ""}
         if "audit_storage_payloads.py" in cmd_text:
@@ -895,6 +1040,7 @@ def test_doctor_prioritizes_blocking_yellow_health_items(monkeypatch, tmp_path: 
         max_findings=80,
         baseline=None,
         fail_on_dirty_worktree=False,
+        skip_execution_surface=False,
         skip_storage_payload=False,
         skip_stage_opt=False,
         storage_max_findings=20,

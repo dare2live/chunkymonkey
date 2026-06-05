@@ -12,11 +12,13 @@ complexity_baseline_path: data/reports/tooling/complexity_baseline.json
 evidence_paths:
   agents: AGENTS.md
   goal: goal.md
+  project_state_ledger: analysis/project_state_ledger.md
   handoff: SESSION_HANDOFF.md
   workflow_checkpoint: analysis/workflow_checkpoint.md
   quickstart: docs/chunkyctl_session_quickstart.md
   engineering_governance: docs/engineering_governance.md
   project_constitution: docs/PROJECT_CONSTITUTION.md
+  execution_surface_audit: backend/scripts/audit_execution_surface.py
   codex_global_agents: /Users/dp/.codex/AGENTS.md
   skill_codex_local_ops: /Users/dp/.codex/skills/codex-local-ops/SKILL.md
   skill_architect_controller: /Users/dp/.codex/skills/architect-controller/SKILL.md
@@ -28,11 +30,13 @@ instruction_sources:
   active:
     - AGENTS.md
     - goal.md
-    - SESSION_HANDOFF.md
-    - analysis/workflow_checkpoint.md
     - docs/
     - Codex skills
     - live tooling output
+  context_only:
+    - analysis/project_state_ledger.md
+    - SESSION_HANDOFF.md
+    - analysis/workflow_checkpoint.md
   ignored_by_default:
     - CLAUDE.md
   legacy_exception: Open CLAUDE.md only when the user explicitly requests historical comparison or migration.
@@ -40,5 +44,8 @@ notes: >
   Controller-first ChunkyMonkey profile. Moth owns shared tooling state such as
   dirty worktree, CodeGraph, complexity, and evidence path discovery, including
   the local Codex skills that govern startup/local-ops and Rule 10 review. Repo
-  audit scripts and chunkyctl own business gates such as stage_opt, need_027,
-  storage_payload, and data_health.
+  audit scripts and chunkyctl own business gates and local execution-surface
+  checks such as stage_opt, need_027, storage_payload, data_health, and
+  launchd/cron/installer references to retired or missing entrypoints. goal.md
+  is the compact live controller board; analysis/project_state_ledger.md is
+  historical evidence and should be queried, not loaded wholesale at startup.

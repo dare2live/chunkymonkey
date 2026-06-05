@@ -89,6 +89,5 @@ allowed_raw_connect_paths:
   - scripts/run_msaf_ensemble_paper_sim.py
   - scripts/run_paper_sim_sizer_ablation.py
   - scripts/run_phase4_gate_on_msaf.py
-  - scripts/sync_kline_from_gcs.py
   - scripts/validate_exclusion_rules.py
   - scripts/validate_sentiment_ic.py

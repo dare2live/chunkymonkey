@@ -4,7 +4,7 @@
 # 用户终极交付标准 #4: "一切不再需要大模型维护, 用户每天跑数据更新就全自动化"
 #
 # 安装 3 个 launchd jobs:
-# 1. codex-monitor — 每 15 min auto-cancel idle Codex (CLAUDE.md §10.0.4)
+# 1. codex-monitor — 每 15 min auto-cancel idle Codex (current Codex local-ops policy)
 # 2. nightly-data-audit — 每天 2 AM 数据治理 audit (configs/launchd 已有)
 # 3. daily-update — 每个交易日 17:00 全自动 update + paper_sim + 报告
 
@@ -23,11 +23,6 @@ PLISTS=(
 # Optional: nightly-data-audit
 if [[ -f "$PROJECT_ROOT/configs/launchd/com.chunkymonkey.nightly-data-audit.plist" ]]; then
     PLISTS+=("com.chunkymonkey.nightly-data-audit.plist")
-fi
-
-# Optional: gcp-cost-tracker (每 15 min, 实时 GCP 月度 budget tracking)
-if [[ -f "$PROJECT_ROOT/configs/launchd/com.chunkymonkey.gcp-cost-tracker.plist" ]]; then
-    PLISTS+=("com.chunkymonkey.gcp-cost-tracker.plist")
 fi
 
 echo "=== ChunkyMonkey launchd install ==="

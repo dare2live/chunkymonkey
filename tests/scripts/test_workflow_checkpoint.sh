@@ -46,15 +46,22 @@ assert_file_nonempty() {
 make_root() {
     local root
     root="$TMP_BASE/root_$RANDOM"
-    mkdir -p "$root/data/reports/phase5_chain" "$root/analysis"
-    printf '%s\n' "$MODEL_ID" > "$root/data/reports/phase5_chain/model_id.txt"
+    mkdir -p "$root/data/reports/stability_retrain" "$root/analysis"
+    printf '%s\n' "$MODEL_ID" > "$root/data/reports/stability_retrain/current.pointer"
     printf '%s\n' "$root"
 }
 
 run_checkpoint() {
     local root="$1"
-    WORKFLOW_CHECKPOINT_ROOT="$root" WORKFLOW_CHECKPOINT_MODEL_ID="$MODEL_ID" \
+    local legacy="${2:-1}"
+    if [[ "$legacy" == "1" ]]; then
+        WORKFLOW_CHECKPOINT_LEGACY_PIPELINE=1 \
+        WORKFLOW_CHECKPOINT_ROOT="$root" WORKFLOW_CHECKPOINT_MODEL_ID="$MODEL_ID" \
         bash "$SCRIPT" >/tmp/workflow_checkpoint_test.log 2>&1
+    else
+        WORKFLOW_CHECKPOINT_ROOT="$root" WORKFLOW_CHECKPOINT_MODEL_ID="$MODEL_ID" \
+        bash "$SCRIPT" >/tmp/workflow_checkpoint_test.log 2>&1
+    fi
 }
 
 json_value() {
@@ -73,7 +80,9 @@ PY
 write_all_done_artifacts() {
     local root="$1"
     mkdir -p "$root/data/reports"
+    mkdir -p "$root/data/phase5_exports/${MODEL_ID}"
     printf 'mock db\n' > "$root/data/smartmoney_post_${MODEL_ID}.duckdb.bak"
+    printf '{"model_id":"%s"}\n' "$MODEL_ID" > "$root/data/phase5_exports/${MODEL_ID}/manifest.json"
     cat > "$root/data/reports/pre_sim_audit_${MODEL_ID}.json" <<EOF
 {"model_id":"$MODEL_ID","generated_at":"2026-05-20T02:00:00Z","status":"pass"}
 EOF
@@ -94,33 +103,41 @@ EOF
 echo "=== test_workflow_checkpoint.sh ==="
 
 echo ""
-echo "Test 1: script runs clean and writes JSON/MD"
+echo "Test 1: default mode is inactive and writes JSON/MD"
 ROOT1="$(make_root)"
-run_checkpoint "$ROOT1"
+run_checkpoint "$ROOT1" 0
 assert_eq "exit code for clean run" "$?" "0"
 assert_file_nonempty "JSON created" "$ROOT1/analysis/workflow_checkpoint.json"
 assert_file_nonempty "MD created" "$ROOT1/analysis/workflow_checkpoint.md"
+CURRENT_STEP="$(json_value "$ROOT1" "data['current_step']")"
+NEXT_STEP="$(json_value "$ROOT1" "data['next_step']")"
+ACTIVE="$(json_value "$ROOT1" "data['active']")"
+assert_eq "default current_step inactive" "$CURRENT_STEP" "inactive"
+assert_eq "default next_step inactive" "$NEXT_STEP" "inactive"
+assert_eq "default active false" "$ACTIVE" "False"
 
 echo ""
-echo "Test 2: mock step1 evidence present yields next_step 2"
+echo "Test 2: legacy mode mock step1 evidence present yields next_step 2"
 ROOT2="$(make_root)"
 printf 'mock db\n' > "$ROOT2/data/smartmoney_post_${MODEL_ID}.duckdb.bak"
-run_checkpoint "$ROOT2"
+mkdir -p "$ROOT2/data/phase5_exports/${MODEL_ID}"
+printf '{"model_id":"%s"}\n' "$MODEL_ID" > "$ROOT2/data/phase5_exports/${MODEL_ID}/manifest.json"
+run_checkpoint "$ROOT2" 1
 NEXT_STEP="$(json_value "$ROOT2" "data['next_step']")"
 assert_eq "next_step after only pull evidence" "$NEXT_STEP" "2"
 
 echo ""
-echo "Test 3: mock all steps done yields all_done"
+echo "Test 3: legacy mode mock all steps done yields all_done"
 ROOT3="$(make_root)"
 write_all_done_artifacts "$ROOT3"
-run_checkpoint "$ROOT3"
+run_checkpoint "$ROOT3" 1
 NEXT_STEP="$(json_value "$ROOT3" "data['next_step']")"
 CURRENT_STEP="$(json_value "$ROOT3" "data['current_step']")"
 assert_eq "next_step when all evidence exists" "$NEXT_STEP" "all_done"
 assert_eq "current_step when all evidence exists" "$CURRENT_STEP" "all_done"
 
 echo ""
-echo "Test 4: JSON schema is valid enough for consumers"
+echo "Test 4: legacy JSON schema is valid enough for consumers"
 python3 - "$ROOT3/analysis/workflow_checkpoint.json" <<'PY'
 import json
 import sys

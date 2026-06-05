@@ -71,11 +71,11 @@ L4 展示      → API / 前端
 | 写代码 | `scripts/chunkyctl preflight` + `docs/engineering_governance.md` 设计审查 | 停, 不写 |
 | commit | 测试 + 审计工具 | reject |
 | 跑回测 | `backtest_preflight` 8 项 | raise |
-| 跑 GCP | `plan_validator` + GCP controlled-use preflight + `CHUNKYMONKEY_GCP_EXPLICIT_OK=1` | exit |
+| 跑 provider job | `plan_validator` + `scripts/chunkyctl jobs --family <family> --backend local --input-snapshot <snapshot> --objective <why> --rollback-plan <plan> --gate-evidence <gate>=<artifact>` + artifact contract | exit |
 | 数据 sync 后 | `data_audit` 7 项 | raise (strict) |
 | session 结束 | `session_handoff_audit` | WARNING |
 
-**WHY**: 29/34 无 search space 白跑 GCP $1.5; 200 只全深主板; 573 只误标. 都是没验证就执行.
+**WHY**: 29/34 无 search space 白跑 provider compute; 200 只全深主板; 573 只误标. 都是没验证就执行.
 
 ## 第六条: 审计工具体系
 
@@ -132,7 +132,7 @@ L4 展示      → API / 前端
 ### 6.3 计划验证 (`plan_validator.py`)
 
 ```
-触发: GCP 跑批前, formula_local_optuna_batch.py main() 入口
+触发: Optuna / 参数探索 / provider job 跑批前
 位置: backend/services/bc_absorbed/plan_validator.py
 
 检查项:
@@ -149,26 +149,26 @@ L4 展示      → API / 前端
 维护: 新公式加入时自动被 search_space 检查覆盖
 ```
 
-### 6.4 GCP 启动前置 (controlled-use preflight)
+### 6.4 Experiment Job 前置
 
 ```
-触发: 任何 GCP/SSH/GCS/billing/VM 命令执行前
-位置: `docs/engineering_governance.md` + `AGENTS.md` + scoped wrapper script
+触发: 任何长时间/花钱的 data_validation / backtest_validation / model_training / parameter_search 前
+位置: `backend/config/experiment_jobs.yaml` + `backend/services/experiment_jobs.py` + `scripts/chunkyctl jobs`
 
 检查项:
+  family_registered     — job family 已在 experiment_jobs.yaml 注册
+  backend_active        — backend 当前 active；planned backend 必须阻断
   objective             — 目标、命令族、输入快照、输出路径明确
   cost_and_runtime      — wall time、预算风险、停止条件明确
-  ssh_reachable         — SSH 能连通
-  explicit_ok           — 命令显式带 CHUNKYMONKEY_GCP_EXPLICIT_OK=1
-  lifecycle_wrapper     — pid/log/artifact/GCS/finalization/TTL 可追踪
-  remote_plan_validator — VM 上 plan_validator PASS (如涉及 Optuna/验证)
-  remote_data_integrity — VM 上 data verify OK
+  required_gates        — family 声明的 gate 已运行或计划运行
+  artifact_contract     — 输出文件/表/manifest 的 grain、路径、min_rows 明确
+  plan_validator        — 如涉及 Optuna/参数探索，计划验证 PASS
+  data_integrity        — 如涉及数据/训练/回测，数据完整性 gate PASS
   leakage_scan          — 本地 code leakage scan PASS
-  budget                — GCP 月预算未超
 
 阻断: exit 1
-扩展: 加新检查 = 更新 controlled-use wrapper + `docs/chunkyctl_session_quickstart.md`
-维护: VM 配置变更时同步更新
+扩展: 加新 backend / family = 更新 experiment_jobs config + service tests + `chunkyctl jobs`
+维护: provider adapter 变更时同步更新 artifact contract 和 gate 测试
 ```
 
 ### 6.5 Session Handoff (`session_handoff_audit.py`)
@@ -248,7 +248,7 @@ skill 或 checker。
 | `paper_sim_formula.yaml` | 公式策略股票池参数 |
 | `formula_*.yaml` | 各公式参数默认值 |
 | `optuna_config.yaml` | Optuna 治理 (trials/seed/walk-forward) |
-| `gcp_policy.yaml` | GCP 预算 + VM 配置 |
+| `experiment_jobs.yaml` | data/backtest/model/search job family + backend + artifact contract |
 
 改参数 = 改 YAML. 改代码 = 改逻辑. 两者分离.
 

@@ -1,27 +1,23 @@
 #!/usr/bin/env bash
-# post_retrain_pipeline.sh — GCP stability retrain 完成后一键跑 P1 pipeline
+# post_retrain_pipeline.sh — model artifact 完成后一键跑 P1 pipeline
 #
-# 链路: GCP retrain best.json/summary 出 → export prediction parquet → import 本地 mart →
+# 链路: 本地 artifact/parquet 准备好 → import 本地 mart →
 #       paper_sim v6 compare → Phase4 gate verdict → strategy_result_registry update
-#
-# 用户 2026-05-21 push back: "gcp完成后的工作也可以同步准备着".
 #
 # Usage:
 #   bash scripts/post_retrain_pipeline.sh                     # default: 走全链路, model from active.pointer
-#   MODEL_ID=lgbm_phase5_stability_20260521T055800Z bash scripts/post_retrain_pipeline.sh
+#   MODEL_ID=lgbm_model_20260605T170000Z bash scripts/post_retrain_pipeline.sh
 #   bash scripts/post_retrain_pipeline.sh --dry-run           # 仅 print 命令, 不执行
-#   bash scripts/post_retrain_pipeline.sh --skip-export       # 跳 export (parquet 已存在)
 #   bash scripts/post_retrain_pipeline.sh --skip-import       # 跳 import (本地 mart 已更新)
 #
 # Env vars:
-#   CHUNKYMONKEY_GCP_EXPLICIT_OK=1  必须设 (latch)
 #   MODEL_ID                        默认从 data/reports/stability_retrain/current.pointer 读
 #   DRY_RUN=1                       同 --dry-run
 #
 # 退出码:
 #   0  - 全链路 PASS, registry 更新 verdict={promote|warn_only|hold_reject}
 #   1  - retrain 未完成 / best.json 缺失 / 中断
-#   2  - export/import 失败
+#   2  - artifact/import 失败
 #   3  - paper_sim 失败
 #   4  - Phase4 gate verdict=block (model rejected)
 #
@@ -33,16 +29,12 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
-source scripts/lib/gcp_guard.sh
-
 DRY_RUN="${DRY_RUN:-0}"
-SKIP_EXPORT="${SKIP_EXPORT:-0}"
 SKIP_IMPORT="${SKIP_IMPORT:-0}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run|--dry) DRY_RUN=1; shift ;;
-        --skip-export)   SKIP_EXPORT=1; shift ;;
         --skip-import)   SKIP_IMPORT=1; shift ;;
         *) echo "[post_retrain] Unknown flag: $1" >&2; exit 2 ;;
     esac
@@ -60,7 +52,7 @@ if [[ -z "${MODEL_ID:-}" ]]; then
 fi
 
 echo "[post_retrain] MODEL_ID=$MODEL_ID"
-echo "[post_retrain] dry_run=$DRY_RUN skip_export=$SKIP_EXPORT skip_import=$SKIP_IMPORT"
+echo "[post_retrain] dry_run=$DRY_RUN skip_import=$SKIP_IMPORT"
 
 STATE_DIR="data/reports/post_retrain/$MODEL_ID"
 mkdir -p "$STATE_DIR"
@@ -79,7 +71,7 @@ BEST_JSON="data/reports/optuna/${MODEL_ID}.best.json"
 SUMMARY_GLOB="data/reports/stability_retrain/${MODEL_ID}_stability_retrain_*.json"
 if [[ ! -f "$BEST_JSON" ]]; then
     log "FATAL: best.json missing: $BEST_JSON"
-    log "  retrain may still be running. Check: CHUNKYMONKEY_GCP_EXPLICIT_OK=1 bash scripts/gcp_stability_status.sh"
+    log "  retrain may still be running or checkpoint was not materialized locally."
     exit 1
 fi
 log "best.json found: $BEST_JSON ($(wc -c < "$BEST_JSON") bytes)"
@@ -92,29 +84,23 @@ else
     log "summary JSON: $SUMMARY"
 fi
 
-# ------- Step 1: Export prediction parquet from GCP VM -------
+# ------- Step 1: Local artifact readiness -------
 log ""
-log "=== Step 1: Export prediction parquet (GCP) ==="
+log "=== Step 1: Local artifact readiness ==="
 
 EXPORT_DONE="$STATE_DIR/01_export.done"
-if [[ "$SKIP_EXPORT" == "1" || -f "$EXPORT_DONE" ]]; then
-    log "skip export (SKIP_EXPORT=$SKIP_EXPORT, done=$([[ -f $EXPORT_DONE ]] && echo yes || echo no))"
+if [[ -f "$EXPORT_DONE" ]]; then
+    log "artifact readiness already checked"
 elif [[ -d "$EXPORT_DIR" ]] && ls "$EXPORT_DIR"/mart_p0b_lambdamart_v6_predictions.parquet >/dev/null 2>&1; then
-    log "parquet already exists in $EXPORT_DIR, skip export"
+    log "parquet exists in $EXPORT_DIR"
     touch "$EXPORT_DONE"
 else
-    require_gcp_explicit_ok "post_retrain_pipeline Step 1: gcp_export_model_predictions"
-    if [[ "$DRY_RUN" == "1" ]]; then
-        log "DRY: would run: MODEL_ID=$MODEL_ID EXPORT_DIR=$EXPORT_DIR bash scripts/gcp_export_model_predictions.sh"
+    if [[ "$DRY_RUN" == "1" || "$SKIP_IMPORT" == "1" ]]; then
+        log "artifact parquet not found, but DRY_RUN=$DRY_RUN SKIP_IMPORT=$SKIP_IMPORT allows continuing"
     else
-        if MODEL_ID="$MODEL_ID" EXPORT_DIR="$EXPORT_DIR" \
-            bash scripts/gcp_export_model_predictions.sh 2>&1 | tee -a "$LOG_FILE"; then
-            touch "$EXPORT_DONE"
-            log "export done: $EXPORT_DIR"
-        else
-            log "FATAL: export failed"
-            exit 2
-        fi
+        log "FATAL: local parquet missing: $EXPORT_DIR/mart_p0b_lambdamart_v6_predictions.parquet"
+        log "Register/produce a model_training job artifact first: scripts/chunkyctl jobs --family model_training --model-id $MODEL_ID --input-snapshot smartmoney.duckdb@<date> --objective '<why>' --rollback-plan '<stop/discard plan>' --gate-evidence leakage_audit=<artifact> --gate-evidence train_log_integrity=<artifact> --gate-evidence phase4_gate=<artifact>"
+        exit 2
     fi
 fi
 

@@ -2,7 +2,7 @@
 
 This document explains why the project is in a governance-first phase. It is
 historical context and stable rationale, not the live status ledger. Current
-FAIL/WARN counts, exact file progress, GCP state, and next commands belong in
+FAIL/WARN counts, exact file progress, compute state, and next commands belong in
 `../goal.md`.
 
 ## Why This Exists
@@ -37,7 +37,7 @@ answer a concrete question:
 |---|---|
 | Active universe came from snapshot-derived tables | K-line data is tradeability truth; cache tables are not truth |
 | Code-sorted stock samples produced board bias | Runtime sample coverage matters more than DB-wide preconditions |
-| Formulas without search spaces were sent to Optuna/GCP | A runnable plan is not necessarily a useful plan |
+| Formulas without search spaces were sent to Optuna/provider compute | A runnable plan is not necessarily a useful plan |
 | Limit-up percentage was treated as a global parameter | Board-specific trading rules are runtime attributes from config |
 | Several formulas used future information | PIT and leakage checks are zero-tolerance |
 | `dim_active_a_stock` was used as active-universe truth | It is only code-to-name/cache/schema support |
@@ -72,7 +72,7 @@ answer a concrete question:
 | Resume 300616 formulas because the story started there | Blocked until governance gates pass |
 | Treat 主升浪猎手 research numbers as production | Blocked until revalidated under PIT, cost, walk-forward, and paper/forward gates |
 | Use stale fund-flow or market-perception data as a signal | Blocked or `unknown` until freshness and lineage pass |
-| Start GCP because a prior run existed | Blocked until the current GCP controlled-use plan is stated |
+| Start provider compute because a prior run existed | Blocked until an `experiment_jobs` plan and gates are stated |
 | Add a new doc for every idea | Blocked unless another active doc is merged, archived, or deleted in the same slice |
 
 ## Post-Governance Mainline
