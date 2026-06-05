@@ -1,11 +1,11 @@
 {
-  "snapshot_at": "2026-06-05 22:39:02 CST",
+  "snapshot_at": "2026-06-05 23:15:11 CST",
   "git": {
     "branch": "main",
-    "head_hash": "8371e60c",
-    "head_msg": "8371e60c chore: add provider-neutral execution control plane",
-    "commits_24h": 9,
-    "uncommitted_files": 5
+    "head_hash": "d318ed70",
+    "head_msg": "d318ed70 chore: require storage retention policy contract",
+    "commits_24h": 13,
+    "uncommitted_files": 0
   },
   "retrain": {
     "model_id": "lgbm_phase5_v9b_20260523T083000Z",
@@ -20,5 +20,5 @@
   "compute_backend": {
     "backends": "local:active, modal:planned"
   },
-  "next_action": "5 uncommitted files \u2014 git status \u770b + bash scripts/safe_commit.sh"
+  "next_action": "run startup checks first \u2014 scripts/chunkyctl doctor --fast; prioritize data_health blocking_yellow, then stage-opt structural blocker / need_027 blocked-gap triage"
 }

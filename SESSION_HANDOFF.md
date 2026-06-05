@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh --status
 ```
 默认不再安装 cron snapshot / SessionStart auto-inject；如需恢复旧自动化，必须显式设置脚本里的 legacy opt-in。
 
-**Snapshot 时间**: 2026-06-05 22:39:02 CST
+**Snapshot 时间**: 2026-06-05 23:15:11 CST
 
 ## 主线状态
 
@@ -57,28 +57,28 @@ bash scripts/install_resilience.sh --status
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `8371e60c chore: add provider-neutral execution control plane` |
-| 最近 24h commits | 9 |
-| 未 commit 文件 | 5 |
+| HEAD | `d318ed70 chore: require storage retention policy contract` |
+| 最近 24h commits | 13 |
+| 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+d318ed70 chore: require storage retention policy contract
+0a85a9c7 docs: track RD-Agent research follow-up
+3e9fafc8 docs: codify data-source capability contracts
+3e3b9884 docs: refresh controller state after cleanup
 8371e60c chore: add provider-neutral execution control plane
 fde3a74d docs: record data-source selection research test pass evidence
 f00cd7f9 docs: refresh data health warning state
 762645cd chore: calibrate storage payload audit caps
 3f6db577 fix: keep data health dry-run read-only
 929d99df docs: wire architect controller skill
-0ef74934 docs: record data-health blocker refresh
-4f487f12 docs: refresh data-health rollover state
-06eff20e chore: expose design review preflight gate
-11e430f8 chore: add stage-opt supply contract
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**5 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**run startup checks first — scripts/chunkyctl doctor --fast; prioritize data_health blocking_yellow, then stage-opt structural blocker / need_027 blocked-gap triage**
 
 ## Resilience 配置 (verified)
 
