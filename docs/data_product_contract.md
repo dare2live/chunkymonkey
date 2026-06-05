@@ -44,6 +44,16 @@ Do not move tables, compact files, or delete old panels from this manifest
 alone. Table movement requires a separate owner/consumer/lineage proof, a
 rollback plan, and post-fix stale-artifact audit.
 
+`backend/config/storage_retention.yaml` owns table-level retention and compact
+policy. Every table inventory entry must declare the database alias, truth
+source, owner, consumers, compaction policy, and, for cache/legacy/obsolete or
+delete-class entries, explicit delete gates plus rollback evidence.
+`backend/services/storage_retention.py` emits `policy_contract`; execution must
+fail unless that contract is `PASS`. A clean contract is still not permission to
+delete production data. Production cleanup also needs no-live-consumer proof,
+copied-DuckDB verification, row/schema manifests, and a serialized maintenance
+window.
+
 ## Source And Need Contract
 
 | Asset type | Owner |

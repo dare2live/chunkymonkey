@@ -9,6 +9,35 @@
 > snapshot, and `rg` / `tail` on this ledger only when a task needs specific
 > historical evidence.
 
+## 2026-06-05 — DB retention owner/consumer policy contract
+
+- P1 DB retention/modularization advanced from owner-only dry-run inventory to
+  a table-level policy contract in `backend/config/storage_retention.yaml`.
+  Each inventory entry now declares `db_alias`, truth source, consumers,
+  delete gates, rollback evidence, and compaction policy.
+- `backend/services/storage_retention.py` now emits `policy_contract` from the
+  dry-run planner and blocks `execute_storage_cleanup()` unless the contract
+  is `PASS`. Missing consumers, truth source, compaction policy, delete gates,
+  or rollback evidence are treated as policy violations.
+- Production DB remained read-only for this slice. Live dry-run evidence:
+  `candidate_count=0`, `table_inventory_count=12`,
+  `policy_contract=FAIL on unknown_consumer_proof`,
+  `compaction.recommended=false`. The FAIL is intentional protection: obsolete
+  and cache entries with `unknown_pending_*` consumers cannot satisfy cleanup
+  readiness.
+- Rule 10 sidecar found and controller fixed an initial gap where
+  `policy_contract` covered only inventory rows, not executable cleanup
+  candidates. The contract now checks that every executable candidate matches an
+  inventory contract and still has delete/rollback gates.
+- Sidecar storage audit confirmed `data/smartmoney.duckdb` remains the capacity
+  driver (`~33.6 GiB` / `34G`), with pressure from multi-version wide panels
+  and rank/cache overlap. No large `.duckdb.bak/.gz/.zst` backup set or
+  snapshot-loop write explosion was found under `data/`.
+- Still not approved: production delete, VACUUM, export/import compact, table
+  movement, or feature-store split. Next proof step is CodeGraph/`rg` no-live-
+  consumer evidence for obsolete/cache entries, then copied-DuckDB verification
+  with row/schema manifests.
+
 ## Archived From `goal.md` On 2026-06-05
 
 ## 2026-06-05 — documentation control plane split

@@ -3,6 +3,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+import pytest
+
 from conftest import duck_mem
 from services.duck_adapter import connect as duck_connect
 from services.storage_retention import (
@@ -266,6 +268,9 @@ def test_storage_retention_reports_table_inventory_without_delete_candidates():
                     table="raw_tdx_f10_holder_research",
                     classification="protected_raw_lineage",
                     owner="tdx_f10_source_ingestion",
+                    truth_source="tdx_f10_raw_holder_snapshot",
+                    consumers=("holder_replay",),
+                    compaction_policy="protect_no_compaction_without_verified_copy",
                     retention_action="protect_replayability_before_any_retention_change",
                     reason="raw replay source",
                 ),
@@ -273,6 +278,11 @@ def test_storage_retention_reports_table_inventory_without_delete_candidates():
                     table="mart_feature_rank_matrix_cache_manifest",
                     classification="cache_manifest_evidence",
                     owner="feature_rank_matrix_cache",
+                    truth_source="feature_rank_matrix_cache_identity_ledger",
+                    consumers=("feature_rank_matrix_cache",),
+                    delete_gates=("cache_policy_replacement_verified",),
+                    rollback_evidence=("cache_manifest_export",),
+                    compaction_policy="protect_until_cache_policy_then_checkpoint",
                     retention_action="protect_until_cache_policy_uses_manifest",
                     reason="cache identity ledger",
                 ),
@@ -280,6 +290,11 @@ def test_storage_retention_reports_table_inventory_without_delete_candidates():
                     table_like="mart_feature_rank_matrix_cache_%",
                     classification="cache_candidate",
                     owner="feature_rank_matrix_cache",
+                    truth_source="feature_rank_matrix_cache_manifest",
+                    consumers=("feature_rank_matrix_cache",),
+                    delete_gates=("cache_manifest_stale_key_policy",),
+                    rollback_evidence=("copied_duckdb_before_after_counts",),
+                    compaction_policy="checkpoint_after_cache_policy_delete",
                     retention_action="define_stale_cache_policy_before_delete",
                     reason="persistent rank matrix cache",
                     exclude_tables=("mart_feature_rank_matrix_cache_manifest",),
@@ -294,11 +309,24 @@ def test_storage_retention_reports_table_inventory_without_delete_candidates():
         assert report["table_inventory_count"] == 3
         assert inventory["raw_tdx_f10_holder_research"]["classification"] == "protected_raw_lineage"
         assert inventory["raw_tdx_f10_holder_research"]["row_count"] == 1
+        assert inventory["raw_tdx_f10_holder_research"]["consumers"] == ["holder_replay"]
+        assert inventory["raw_tdx_f10_holder_research"]["truth_source"] == "tdx_f10_raw_holder_snapshot"
+        assert inventory["raw_tdx_f10_holder_research"]["compaction_policy"] == (
+            "protect_no_compaction_without_verified_copy"
+        )
         assert inventory["mart_feature_rank_matrix_cache_manifest"]["classification"] == "cache_manifest_evidence"
         assert inventory["mart_feature_rank_matrix_cache_manifest"]["row_count"] == 1
+        assert inventory["mart_feature_rank_matrix_cache_manifest"]["delete_gates"] == [
+            "cache_policy_replacement_verified"
+        ]
         assert inventory["mart_feature_rank_matrix_cache_alpha"]["classification"] == "cache_candidate"
         assert inventory["mart_feature_rank_matrix_cache_alpha"]["row_count"] == 2
+        assert inventory["mart_feature_rank_matrix_cache_alpha"]["rollback_evidence"] == [
+            "copied_duckdb_before_after_counts"
+        ]
         assert all(item["delete_candidate"] is False for item in report["table_inventory"])
+        assert report["policy_contract"]["verdict"] == "PASS"
+        assert report["policy_contract"]["checked_candidate_entries"] == 0
     finally:
         conn.close()
 
@@ -318,6 +346,11 @@ def test_storage_retention_reports_missing_inventory_patterns():
                     table="missing_panel",
                     classification="obsolete_candidate_requires_owner",
                     owner="panel_pipeline_manifest",
+                    truth_source="historical_panel_pipeline_output",
+                    consumers=("unknown_pending_codegraph",),
+                    delete_gates=("codegraph_no_live_consumer",),
+                    rollback_evidence=("copied_duckdb_execute_dry_run",),
+                    compaction_policy="checkpoint_after_approved_delete",
                     retention_action="prove_no_consumer_and_reproducibility_before_delete",
                     reason="future or absent table",
                 ),
@@ -325,6 +358,11 @@ def test_storage_retention_reports_missing_inventory_patterns():
                     table_like="missing_cache_%",
                     classification="cache_candidate",
                     owner="feature_rank_matrix_cache",
+                    truth_source="feature_rank_matrix_cache_manifest",
+                    consumers=("feature_rank_matrix_cache",),
+                    delete_gates=("cache_manifest_stale_key_policy",),
+                    rollback_evidence=("cache_manifest_export",),
+                    compaction_policy="checkpoint_after_cache_policy_delete",
                     retention_action="define_stale_cache_policy_before_delete",
                     reason="future cache pattern",
                 ),
@@ -338,6 +376,146 @@ def test_storage_retention_reports_missing_inventory_patterns():
         assert inventory["missing_panel"]["row_count"] is None
         assert inventory["missing_cache_%"]["exists"] is False
         assert inventory["missing_cache_%"]["row_count"] is None
+        assert report["policy_contract"]["verdict"] == "FAIL"
+        issues = {item["issue"] for item in report["policy_contract"]["violations"]}
+        assert "unknown_consumer_proof" in issues
+    finally:
+        conn.close()
+
+
+def test_storage_retention_policy_contract_blocks_owner_only_inventory():
+    conn = duck_mem()
+    try:
+        policy = StorageRetentionPolicy(
+            protected_model_statuses=("champion",),
+            candidate_feature_panels=(),
+            model_prediction_tables=(),
+            model_file_roots=(),
+            optuna_study_roots=(),
+            defaults={},
+            table_inventory=(
+                TableInventoryRule(
+                    table="owner_only_cache",
+                    classification="cache_candidate",
+                    owner="feature_rank_matrix_cache",
+                    retention_action="define_stale_cache_policy_before_delete",
+                    reason="owner-only entries are insufficient for deletion governance",
+                ),
+            ),
+        )
+
+        report = plan_storage_cleanup(conn, policy)
+
+        assert report["policy_contract"]["verdict"] == "FAIL"
+        issues = {item["issue"] for item in report["policy_contract"]["violations"]}
+        assert {
+            "missing_truth_source",
+            "missing_consumers",
+            "missing_compaction_policy",
+            "missing_delete_gates",
+            "missing_rollback_evidence",
+        } <= issues
+        with pytest.raises(RuntimeError, match="policy contract"):
+            execute_storage_cleanup(conn, policy, approve=True)
+    finally:
+        conn.close()
+
+
+def test_storage_retention_policy_contract_covers_executable_candidates():
+    conn = duck_mem()
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE fact_feature_panel_candidate (
+                feature_set_id TEXT,
+                stock_code TEXT,
+                built_at TEXT
+            );
+            INSERT INTO fact_feature_panel_candidate VALUES
+                ('new_set', '000001', '2026-05-06T00:00:00'),
+                ('old_set', '000001', '2026-05-05T00:00:00');
+            """
+        )
+        policy = StorageRetentionPolicy(
+            protected_model_statuses=("champion",),
+            candidate_feature_panels=(
+                CandidateFeaturePanelRule(
+                    table="fact_feature_panel_candidate",
+                    key_column="feature_set_id",
+                    built_at_column="built_at",
+                    retain_latest_keys=1,
+                ),
+            ),
+            model_prediction_tables=(),
+            model_file_roots=(),
+            optuna_study_roots=(),
+            defaults={},
+            table_inventory=(),
+        )
+
+        report = plan_storage_cleanup(conn, policy)
+
+        assert report["candidate_count"] == 1
+        assert report["policy_contract"]["verdict"] == "FAIL"
+        assert {
+            item["issue"] for item in report["policy_contract"]["violations"]
+        } == {"candidate_without_inventory_contract"}
+        with pytest.raises(RuntimeError, match="policy contract"):
+            execute_storage_cleanup(conn, policy, approve=True)
+    finally:
+        conn.close()
+
+
+def test_storage_retention_policy_contract_accepts_candidate_with_inventory_contract():
+    conn = duck_mem()
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE fact_feature_panel_candidate (
+                feature_set_id TEXT,
+                stock_code TEXT,
+                built_at TEXT
+            );
+            INSERT INTO fact_feature_panel_candidate VALUES
+                ('new_set', '000001', '2026-05-06T00:00:00'),
+                ('old_set', '000001', '2026-05-05T00:00:00');
+            """
+        )
+        policy = StorageRetentionPolicy(
+            protected_model_statuses=("champion",),
+            candidate_feature_panels=(
+                CandidateFeaturePanelRule(
+                    table="fact_feature_panel_candidate",
+                    key_column="feature_set_id",
+                    built_at_column="built_at",
+                    retain_latest_keys=1,
+                ),
+            ),
+            model_prediction_tables=(),
+            model_file_roots=(),
+            optuna_study_roots=(),
+            defaults={},
+            table_inventory=(
+                TableInventoryRule(
+                    table="fact_feature_panel_candidate",
+                    classification="governed_candidate_panel",
+                    owner="storage_retention_policy",
+                    truth_source="candidate_feature_panel_retention_rules",
+                    consumers=("model_selection_run",),
+                    delete_gates=("protected_feature_set_reason_scan",),
+                    rollback_evidence=("copied_duckdb_before_after_counts",),
+                    compaction_policy="checkpoint_after_approved_delete",
+                    retention_action="use_candidate_feature_panel_retention_rules",
+                    reason="candidate panel cleanup is governed by key-level retention",
+                ),
+            ),
+        )
+
+        report = plan_storage_cleanup(conn, policy)
+
+        assert report["candidate_count"] == 1
+        assert report["policy_contract"]["verdict"] == "PASS"
+        assert report["policy_contract"]["checked_candidate_entries"] == 1
     finally:
         conn.close()
 
@@ -394,6 +572,20 @@ def test_storage_retention_execute_deletes_rows_directly_without_copying(tmp_pat
             model_file_roots=(),
             optuna_study_roots=(),
             defaults={},
+            table_inventory=(
+                TableInventoryRule(
+                    table="mart_multidim_prediction",
+                    classification="model_prediction_rows",
+                    owner="storage_retention_policy",
+                    truth_source="mart_model_lifecycle",
+                    consumers=("model_prediction_cleanup",),
+                    delete_gates=("protected_model_id_scan",),
+                    rollback_evidence=("copied_duckdb_before_after_counts",),
+                    compaction_policy="checkpoint_after_approved_delete",
+                    retention_action="delete_non_protected_model_predictions",
+                    reason="unit test prediction rows can be deleted after lifecycle protection scan",
+                ),
+            ),
         )
 
         result = execute_storage_cleanup(
@@ -451,6 +643,20 @@ def test_storage_retention_execute_deletes_model_files_directly(tmp_path):
             model_file_roots=(str(model_dir),),
             optuna_study_roots=(),
             defaults={},
+            table_inventory=(
+                TableInventoryRule(
+                    table=f"filesystem:{model_dir}",
+                    classification="model_file_candidate",
+                    owner="storage_retention_policy",
+                    truth_source="mart_model_lifecycle",
+                    consumers=("model_file_cleanup",),
+                    delete_gates=("protected_model_id_scan",),
+                    rollback_evidence=("copied_duckdb_before_after_counts",),
+                    compaction_policy="not_applicable_filesystem_delete",
+                    retention_action="delete_non_protected_model_files",
+                    reason="unit test model file can be deleted after lifecycle protection scan",
+                ),
+            ),
         )
 
         result = execute_storage_cleanup(
@@ -776,6 +982,20 @@ model_prediction_tables:
 model_file_roots: []
 optuna_study_roots: []
 defaults:
+table_inventory:
+  - table: mart_multidim_prediction
+    classification: model_prediction_rows
+    owner: storage_retention_policy
+    truth_source: mart_model_lifecycle
+    consumers:
+      - model_prediction_cleanup
+    delete_gates:
+      - protected_model_id_scan
+    rollback_evidence:
+      - copied_duckdb_before_after_counts
+    compaction_policy: checkpoint_after_approved_delete
+    retention_action: delete_non_protected_model_predictions
+    reason: copied-db smoke test prediction rows can be deleted after lifecycle protection scan
 """,
         encoding="utf-8",
     )

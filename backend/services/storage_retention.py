@@ -52,6 +52,12 @@ class TableInventoryRule:
     table: str | None = None
     table_like: str | None = None
     exclude_tables: tuple[str, ...] = ()
+    db_alias: str = "smartmoney"
+    truth_source: str = "unknown"
+    consumers: tuple[str, ...] = ()
+    delete_gates: tuple[str, ...] = ()
+    rollback_evidence: tuple[str, ...] = ()
+    compaction_policy: str = "none"
 
 
 @dataclass(frozen=True)
@@ -151,6 +157,12 @@ def load_storage_retention_policy(path: str | Path | None = None) -> StorageRete
                 retention_action=str(item.get("retention_action") or "classify_owner_before_cleanup"),
                 reason=str(item.get("reason") or "retention inventory entry"),
                 exclude_tables=_as_tuple(item.get("exclude_tables")),
+                db_alias=str(item.get("db_alias") or "smartmoney"),
+                truth_source=str(item.get("truth_source") or "unknown"),
+                consumers=_as_tuple(item.get("consumers")),
+                delete_gates=_as_tuple(item.get("delete_gates")),
+                rollback_evidence=_as_tuple(item.get("rollback_evidence")),
+                compaction_policy=str(item.get("compaction_policy") or "none"),
             )
         )
     return StorageRetentionPolicy(
@@ -696,12 +708,119 @@ def table_inventory_summaries(conn, policy: StorageRetentionPolicy) -> list[dict
                 "row_count": row_counts.get(table_name) if exists else None,
                 "classification": rule.classification,
                 "owner": rule.owner,
+                "db_alias": rule.db_alias,
+                "truth_source": rule.truth_source,
+                "consumers": list(rule.consumers),
                 "retention_action": rule.retention_action,
+                "delete_gates": list(rule.delete_gates),
+                "rollback_evidence": list(rule.rollback_evidence),
+                "compaction_policy": rule.compaction_policy,
                 "reason": rule.reason,
                 "delete_candidate": False,
             }
         )
     return summaries
+
+
+def _inventory_requires_delete_contract(item: dict[str, Any]) -> bool:
+    haystack = " ".join(
+        str(item.get(key) or "")
+        for key in ("classification", "retention_action")
+    ).lower()
+    return any(
+        token in haystack
+        for token in (
+            "candidate",
+            "cache",
+            "cleanup",
+            "delete",
+            "legacy",
+            "obsolete",
+        )
+    )
+
+
+def _has_unknown_placeholder(values: Any) -> bool:
+    return any(str(value).startswith("unknown_pending") for value in _as_tuple(values))
+
+
+def _inventory_contract_key(item: dict[str, Any]) -> str:
+    return str(item.get("table") or item.get("path") or "")
+
+
+def _candidate_contract_key(candidate: dict[str, Any]) -> str:
+    if candidate.get("table"):
+        return str(candidate["table"])
+    if candidate.get("kind") == "model_file" and candidate.get("path"):
+        return f"filesystem:{Path(str(candidate['path'])).parent}"
+    if candidate.get("path"):
+        return str(candidate["path"])
+    return str(candidate.get("kind") or "")
+
+
+def storage_policy_contract_report(
+    table_inventory: list[dict[str, Any]],
+    candidates: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    violations: list[dict[str, Any]] = []
+    candidate_items = candidates or []
+    for item in table_inventory:
+        table = str(item.get("table") or "")
+        if not item.get("owner") or item.get("owner") == "unknown":
+            violations.append({"table": table, "issue": "missing_owner"})
+        if not item.get("db_alias"):
+            violations.append({"table": table, "issue": "missing_db_alias"})
+        if not item.get("truth_source") or item.get("truth_source") == "unknown":
+            violations.append({"table": table, "issue": "missing_truth_source"})
+        if not item.get("consumers"):
+            violations.append({"table": table, "issue": "missing_consumers"})
+        if _has_unknown_placeholder(item.get("consumers")):
+            violations.append({"table": table, "issue": "unknown_consumer_proof"})
+        if not item.get("compaction_policy") or item.get("compaction_policy") == "none":
+            violations.append({"table": table, "issue": "missing_compaction_policy"})
+        if _inventory_requires_delete_contract(item):
+            if not item.get("delete_gates"):
+                violations.append({"table": table, "issue": "missing_delete_gates"})
+            if not item.get("rollback_evidence"):
+                violations.append({"table": table, "issue": "missing_rollback_evidence"})
+            if _has_unknown_placeholder(item.get("delete_gates")):
+                violations.append({"table": table, "issue": "unknown_delete_gate"})
+            if _has_unknown_placeholder(item.get("rollback_evidence")):
+                violations.append({"table": table, "issue": "unknown_rollback_evidence"})
+    inventory_by_key = {
+        _inventory_contract_key(item): item
+        for item in table_inventory
+        if _inventory_contract_key(item)
+    }
+    for candidate in candidate_items:
+        key = _candidate_contract_key(candidate)
+        inventory_item = inventory_by_key.get(key)
+        if not inventory_item:
+            violations.append({"table": key, "issue": "candidate_without_inventory_contract"})
+            continue
+        if not inventory_item.get("delete_gates"):
+            violations.append({"table": key, "issue": "candidate_missing_delete_gates"})
+        if not inventory_item.get("rollback_evidence"):
+            violations.append({"table": key, "issue": "candidate_missing_rollback_evidence"})
+        if _has_unknown_placeholder(inventory_item.get("consumers")):
+            violations.append({"table": key, "issue": "candidate_unknown_consumer_proof"})
+    return {
+        "verdict": "FAIL" if violations else "PASS",
+        "checked_inventory_entries": len(table_inventory),
+        "checked_candidate_entries": len(candidate_items),
+        "violation_count": len(violations),
+        "violations": violations,
+        "required_fields": [
+            "owner",
+            "db_alias",
+            "truth_source",
+            "consumers",
+            "compaction_policy",
+            "delete_gates for candidate/cache/legacy/delete-class entries",
+            "rollback_evidence for candidate/cache/legacy/delete-class entries",
+            "every executable candidate must match an inventory contract",
+        ],
+    }
 
 
 def compaction_guidance(policy: StorageRetentionPolicy, candidates: list[dict[str, Any]]) -> dict[str, Any]:
@@ -751,6 +870,7 @@ def plan_storage_cleanup(
     optuna_artifacts = active_optuna_study_artifacts(policy)
     protected_artifacts = protected_artifact_table_summaries(conn, policy)
     table_inventory = table_inventory_summaries(conn, policy)
+    policy_contract = storage_policy_contract_report(table_inventory, candidates)
     compaction = compaction_guidance(policy, candidates)
     return {
         "mode": "dry_run",
@@ -765,6 +885,7 @@ def plan_storage_cleanup(
         "protected_artifact_table_count": len(protected_artifacts),
         "table_inventory": table_inventory,
         "table_inventory_count": len(table_inventory),
+        "policy_contract": policy_contract,
         "compaction": compaction,
         "candidate_count": len(candidates),
         "candidates": candidates,
@@ -870,8 +991,10 @@ def execute_storage_cleanup(
     policy = policy or load_storage_retention_policy()
     if not approve:
         raise RuntimeError("storage cleanup execution requires approve=True")
-    run_id = run_id or f"storage_cleanup_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+    run_id = run_id or f"storage_cleanup_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
     report = plan_storage_cleanup(conn, policy)
+    if report.get("policy_contract", {}).get("verdict") != "PASS":
+        raise RuntimeError("storage retention policy contract must PASS before execution")
     executed: list[dict[str, Any]] = []
     for index, candidate in enumerate(report["candidates"], start=1):
         item = dict(candidate)

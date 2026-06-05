@@ -199,51 +199,172 @@ table_inventory:
   - table: raw_tdx_f10_holder_research
     classification: protected_raw_lineage
     owner: tdx_f10_source_ingestion
+    db_alias: smartmoney
+    truth_source: tdx_f10_raw_holder_snapshot
+    consumers:
+      - holder_replay
+      - holder_count_pit_lineage
+      - data_health_source_audit
+    compaction_policy: protect_no_compaction_without_verified_copy
     retention_action: protect_replayability_before_any_retention_change
     reason: Large F10 raw-text table; needed for raw_hash replay, PIT lineage, and canonical holder fact explainability.
   - table: fact_feature_panel
     classification: current_production_panel
     owner: feature_panel_pipeline
+    db_alias: smartmoney
+    truth_source: kline_calendar_and_feature_pipeline_manifest
+    consumers:
+      - feature_join
+      - daily_recommendation
+      - model_training
+      - workbench_feature_catalog
+    compaction_policy: protect_no_compaction_without_verified_copy
     retention_action: protect_current_canonical_panel
     reason: Canonical feature panel backed by K-line truth-source lineage; not a cache cleanup candidate.
   - table: mart_p0a_feature_label_panel_v4
     classification: current_production_panel
     owner: panel_pipeline_manifest
+    db_alias: smartmoney
+    truth_source: panel_pipeline_manifest_current_retrain_panel
+    consumers:
+      - retrain_pipeline
+      - sniper_score
+      - institution_score
+      - panel_lineage_audit
+    compaction_policy: protect_no_compaction_without_verified_copy
     retention_action: protect_current_retrain_panel
     reason: Current P0A feature-label panel used by retrain/sniper/institution flows.
   - table: mart_p0a_feature_label_panel_v3
     classification: upstream_reproducibility_evidence
     owner: panel_pipeline_manifest
+    db_alias: smartmoney
+    truth_source: panel_pipeline_manifest_v4_input
+    consumers:
+      - p0a_v4_reproducibility
+      - panel_lineage_audit
+    delete_gates:
+      - codegraph_no_live_consumer
+      - pipeline_manifest_rebuild_path_verified
+      - row_count_and_schema_snapshot_saved
+    rollback_evidence:
+      - copied_duckdb_execute_dry_run
+      - panel_pipeline_manifest_hash
+    compaction_policy: checkpoint_after_approved_delete
     retention_action: classify_consumer_before_cleanup
     reason: Upstream input for v4 in panel pipeline manifest; cleanup requires reproducibility owner review.
   - table: mart_p0a_feature_label_panel_v5
     classification: obsolete_candidate_requires_owner
     owner: panel_pipeline_manifest
+    db_alias: smartmoney
+    truth_source: historical_panel_pipeline_output
+    consumers:
+      - unknown_pending_codegraph
+      - historical_reproducibility
+    delete_gates:
+      - codegraph_no_live_consumer
+      - rg_no_runtime_reference
+      - pipeline_manifest_rebuild_path_verified
+      - row_count_and_schema_snapshot_saved
+    rollback_evidence:
+      - copied_duckdb_execute_dry_run
+      - deletion_manifest_with_counts
+    compaction_policy: checkpoint_after_approved_delete
     retention_action: prove_no_consumer_and_reproducibility_before_delete
     reason: Full-width panel version overlaps unified_v1 keys; owner and consumer status must be proven before cleanup.
   - table: mart_p0a_feature_label_panel_unified_v1
     classification: obsolete_candidate_requires_owner
     owner: panel_pipeline_manifest
+    db_alias: smartmoney
+    truth_source: historical_panel_pipeline_output
+    consumers:
+      - unknown_pending_codegraph
+      - historical_reproducibility
+    delete_gates:
+      - codegraph_no_live_consumer
+      - rg_no_runtime_reference
+      - pipeline_manifest_rebuild_path_verified
+      - row_count_and_schema_snapshot_saved
+    rollback_evidence:
+      - copied_duckdb_execute_dry_run
+      - deletion_manifest_with_counts
+    compaction_policy: checkpoint_after_approved_delete
     retention_action: prove_no_consumer_and_reproducibility_before_delete
     reason: Full-width panel version overlaps v5 keys; owner and consumer status must be proven before cleanup.
   - table: mart_p0a_feature_label_panel
     classification: legacy_panel_requires_owner
     owner: panel_pipeline_manifest
+    db_alias: smartmoney
+    truth_source: legacy_panel_pipeline_output
+    consumers:
+      - unknown_pending_codegraph
+      - historical_reproducibility
+    delete_gates:
+      - codegraph_no_live_consumer
+      - rg_no_runtime_reference
+      - legacy_report_reference_check
+      - row_count_and_schema_snapshot_saved
+    rollback_evidence:
+      - copied_duckdb_execute_dry_run
+      - deletion_manifest_with_counts
+    compaction_policy: checkpoint_after_approved_delete
     retention_action: prove_legacy_consumer_status_before_delete
     reason: Legacy full-width panel still consumes material space; cleanup requires consumer and evidence classification.
   - table: fact_feature_panel_candidate
     classification: governed_candidate_panel
     owner: storage_retention_policy
+    db_alias: smartmoney
+    truth_source: candidate_feature_panel_retention_rules
+    consumers:
+      - model_selection_run
+      - model_lifecycle_training_config
+      - feature_pit_audit
+      - research_schedule_plan
+    delete_gates:
+      - protected_feature_set_reason_scan
+      - retain_latest_keys_policy
+      - copied_duckdb_execute_dry_run
+    rollback_evidence:
+      - data_deletion_manifest
+      - copied_duckdb_before_after_counts
+    compaction_policy: checkpoint_after_approved_delete
     retention_action: use_candidate_feature_panel_retention_rules
     reason: Candidate feature-set table already has key-level retention rules; current dry-run may still protect all keys.
   - table: fact_feature_panel_tdx_keep_challenger
     classification: derived_challenger_panel_requires_owner
     owner: tdx_keep_challenger_pipeline
+    db_alias: smartmoney
+    truth_source: tdx_keep_challenger_pipeline_output
+    consumers:
+      - tdx_keep_promotion_gate
+      - challenger_evidence_bundle
+      - historical_reproducibility
+    delete_gates:
+      - codegraph_no_live_consumer
+      - promotion_gate_reference_check
+      - rebuild_command_verified
+      - row_count_and_schema_snapshot_saved
+    rollback_evidence:
+      - copied_duckdb_execute_dry_run
+      - challenger_artifact_manifest
+    compaction_policy: checkpoint_after_approved_delete
     retention_action: prove_regenerability_and_consumer_status_before_delete
     reason: Derived challenger panel likely regenerable, but tied to challenger evidence and promotion flows.
   - table: mart_feature_rank_matrix_cache_manifest
     classification: cache_manifest_evidence
     owner: feature_rank_matrix_cache
+    db_alias: smartmoney
+    truth_source: feature_rank_matrix_cache_identity_ledger
+    consumers:
+      - feature_rank_matrix_cache
+      - storage_retention_policy
+      - workbench_storage_view
+    delete_gates:
+      - cache_policy_replacement_verified
+      - no_cache_tables_depend_on_manifest
+    rollback_evidence:
+      - copied_duckdb_execute_dry_run
+      - cache_manifest_export
+    compaction_policy: protect_until_cache_policy_then_checkpoint
     retention_action: protect_until_cache_policy_uses_manifest
     reason: Manifest records rank-matrix cache identity and usage; keep it separate from cache table deletion candidates.
   - table_like: mart_feature_rank_matrix_cache_%
@@ -251,6 +372,19 @@ table_inventory:
       - mart_feature_rank_matrix_cache_manifest
     classification: cache_candidate
     owner: feature_rank_matrix_cache
+    db_alias: smartmoney
+    truth_source: feature_rank_matrix_cache_manifest
+    consumers:
+      - feature_rank_matrix_cache
+      - workbench_storage_view
+    delete_gates:
+      - cache_manifest_stale_key_policy
+      - codegraph_no_direct_table_consumer
+      - copied_duckdb_execute_dry_run
+    rollback_evidence:
+      - cache_manifest_export
+      - copied_duckdb_before_after_counts
+    compaction_policy: checkpoint_after_cache_policy_delete
     retention_action: define_stale_cache_policy_before_delete
     reason: Persistent rank-matrix cache tables overlap candidate panel keys; delete only after cache manifest and consumer checks.
 
