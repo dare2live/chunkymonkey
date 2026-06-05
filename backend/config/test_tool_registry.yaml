@@ -1575,6 +1575,19 @@ tools:
     replacement: source coverage probe plus freshness/PIT audit before any production fund-flow claim
     last_verified: "2026-06-01"
 
+  - id: tushare_source_capability_contract_tests
+    paths:
+      - backend/tests/test_data_sources_tushare.py
+    owner_module: data_sources.tushare
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_data_sources_tushare.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: mocked TuShare Pro client plus env-token boundary checks
+    risk_reason: verifies registry wiring, env-token loading, and moneyflow field normalization only; it does not prove live TuShare credentials, API quota, PIT coverage, or production freshness
+    replacement: token-backed no-persist source probe plus PIT/freshness/watermark gates before any production fund-flow claim
+    last_verified: "2026-06-06"
+
   - id: fund_flow_rank_snapshot_contract_tests
     paths:
       - backend/tests/test_build_fund_flow_rank_snapshot_daily.py

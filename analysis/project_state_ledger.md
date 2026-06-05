@@ -9,6 +9,35 @@
 > snapshot, and `rg` / `tail` on this ledger only when a task needs specific
 > historical evidence.
 
+## 2026-06-06 — TuShare no-persist exact-flow probe wiring for `need_027`
+
+- `backend/services/data_sources/sources/tushare.py` adds a TuShare Pro source
+  adapter for `moneyflow`, `moneyflow_dc`, and `moneyflow_ths`. Tokens are
+  read only from `TUSHARE_TOKEN`, `TUSHARE_PRO_TOKEN`, or `TS_TOKEN`; probe
+  kwargs and reports do not carry token values. Healthcheck verifies token and
+  package presence only and does not call the live API.
+- `backend/scripts/probe_source_capability.py --need027-exact-flow-gate` now
+  treats `individual_fund_flow`, `moneyflow`, `moneyflow_dc`, and
+  `moneyflow_ths` as exact-flow candidates, but evaluates them by source group:
+  one complete source group can satisfy the source-probe layer, while other
+  candidate source failures remain visible as grouped blockers. This preserves
+  the business rule that AkShare and token-backed TuShare are alternatives, not
+  an all-sources-AND production requirement.
+- `backend/config/tdx_data_need_coverage.yaml` adds three TuShare `moneyflow`
+  no-persist probe cases for `600519.SH`, `000001.SZ`, and `300750.SZ`. These
+  cases are still probe/research scope only; no writer, DB persistence,
+  failure-queue resolve, or production promotion is enabled by this slice.
+- Focused verification: targeted tests for TuShare adapter, source probe gate,
+  and need-coverage audit passed (`52 passed`); scoped
+  `audit_test_tool_health.py` passed with `fail=0`, `warn=0`, and
+  `registry_coverage_pct=100`.
+- Latest live no-persist gate evidence is still `BLOCKED`: `6` exact-flow
+  probes, `0` valid, source groups `akshare` and `tushare` both blocked.
+  AkShare failed with Eastmoney `RemoteDisconnected`; TuShare failed because no
+  env token is configured. `production_eligibility` remains `blocked` and the
+  next gate is still writer/watermark/PIT/freshness/failure-queue evidence
+  after a stable source probe exists.
+
 ## 2026-06-05 — DB retention consumer audit correction
 
 - P1 DB retention consumer proof corrected a bad cleanup assumption. The three

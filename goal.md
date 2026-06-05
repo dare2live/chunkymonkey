@@ -41,8 +41,8 @@ evidence or disjoint patches; their output is not a verdict.
 | P0 | Documentation control plane | Thin `goal.md` / ledger split committed in `8371e60c` | Keep current-state facts here; put completed evidence in `analysis/project_state_ledger.md` |
 | P0 | Provider-neutral execution surface | Retired GCP execution surface removed and `experiment_jobs` contract committed in `8371e60c` | Treat `local` as active and `modal` as planned/blocked until adapter gates exist |
 | P0 | Dirty worktree governance | Clean after `3e9fafc8`; `worktree` gate reports `unknown=0` | Keep future commits slice-based; never `git add .` |
-| P1 | `need_027` exact order-flow | Still blocked; rank/proxy snapshots do not satisfy exact-flow contract | Run token-backed no-persist TuShare/akshare exact-flow probe only when credentials/source stability are available |
-| P1 | Data-source capability routing | Capability contracts committed in `3e9fafc8`; no production writer is approved yet | Run capability-level no-persist probes before any DB writer or provider promotion |
+| P1 | `need_027` exact order-flow | Still blocked; no-persist gate now evaluates AkShare and TuShare by exact-flow source group; latest focused run is `BLOCKED` because AkShare hit `RemoteDisconnected` and TuShare has no env token | Rerun no-persist source-group gate after source stability or token availability; then require PIT/freshness, writer, watermark, and failure-queue evidence before production use |
+| P1 | Data-source capability routing | Capability contracts committed in `3e9fafc8`; TuShare `moneyflow` adapter/gate wiring is local no-persist probe scope only | Keep new providers in capability-level probe mode before any DB writer or provider promotion |
 | P1 | DB retention/modularization | Retention inventory now has owner/consumer/truth/compact contract; former unknown panels are protected by known runtime/research consumers | Migrate or retire panel consumers before any cleanup; keep production delete/VACUUM blocked unless copied-DuckDB validation and manifests exist |
 | P1 | Stage-opt supply | Structural upstream candidate supply blocker remains | Improve source/schema evidence; do not tune knobs as a substitute |
 | P2 | Microsoft RD-Agent(Q) research | Tracked as follow-up only; no production integration approved | Create a dated `analysis/rd_agent_q_research_*.md` note mapping RD-Agent(Q)/Qlib, Co-STEER, factor mining, experiment loop, and agent roles into borrow/reject decisions under ChunkyMonkey gates |
@@ -50,7 +50,8 @@ evidence or disjoint patches; their output is not a verdict.
 
 ## Latest Live Gate Snapshot
 
-As of the latest checked state on 2026-06-05:
+As of the latest checked state, with full doctor evidence from 2026-06-05 and
+focused `need_027` source-probe evidence from 2026-06-06:
 
 | Gate | Current result | Meaning |
 |---|---|---|
@@ -61,7 +62,7 @@ As of the latest checked state on 2026-06-05:
 | `plan_storage_retention.py` | `candidate_count=0 / table_inventory_count=12 / policy_contract=PASS / compaction.recommended=false` | Contract is complete, but no production delete/VACUUM path is open |
 | `audit_storage_retention_consumers.py` | `PASS / audited_tables=11 / runtime_ref_tables=11` | Cleanup candidates are protected by explicit consumer evidence instead of unknown placeholders |
 | `audit_execution_surface.py --include-live-launchd` | `PASS / 0 findings` | Retired execution-surface references are not currently detected |
-| `need_coverage` | `need_027` blocked | Exact flow source evidence still missing |
+| `need_coverage` | `need_027` blocked | Latest focused no-persist gate: `6` probes / `0` valid; AkShare exact-flow blocked by `RemoteDisconnected`, TuShare `moneyflow` blocked by missing env token |
 
 Live gates override this section. Refresh before using the numbers as evidence.
 

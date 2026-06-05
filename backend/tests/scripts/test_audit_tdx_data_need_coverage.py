@@ -338,7 +338,7 @@ def test_summarize_need_gaps_identifies_only_blocked_need() -> None:
         conn.close()
 
     assert summary["need_count"] == 27
-    assert summary["registered_source_names"] == ["aif10", "akshare", "tdxhub"]
+    assert summary["registered_source_names"] == ["aif10", "akshare", "tdxhub", "tushare"]
     assert summary["eligibility_counts"]["eligible"] == 4
     assert summary["eligibility_counts"]["research_only"] == 22
     assert summary["eligibility_counts"]["blocked"] == 1
@@ -365,7 +365,7 @@ def test_summarize_need_gaps_identifies_only_blocked_need() -> None:
     assert blocked["candidate_sources"][1]["role"] == "direct_bucket_candidate"
     assert "freshness_sla" in blocked["candidate_sources"][1]["required_validation"]
     assert "watermark" in blocked["candidate_sources"][1]["required_validation"]
-    assert blocked["source_registration"]["registered_source_names"] == ["aif10", "akshare", "tdxhub"]
+    assert blocked["source_registration"]["registered_source_names"] == ["aif10", "akshare", "tdxhub", "tushare"]
     assert blocked["source_registration"]["preferred_source_registered"] is True
     assert blocked["source_registration"]["fallback_source_registered"] is False
     assert blocked["source_registration"]["preferred_source_family"] == "akshare"

@@ -424,6 +424,104 @@ def test_need027_exact_flow_gate_passes_for_exact_batch(monkeypatch) -> None:
         assert item["need027_exact_flow_validation"]["column_coverage"]["missing_groups"] == []
 
 
+def test_need027_exact_flow_gate_accepts_tushare_moneyflow(monkeypatch) -> None:
+    def fake_resolve(capability: str, *, prefer_source=None, **kwargs):
+        assert capability == "moneyflow"
+        assert prefer_source == "tushare"
+        assert kwargs == {"ts_code": "600519.SH"}
+        return (
+            [
+                {
+                    "trade_date": "20260605",
+                    "main_net_amount": 1.0,
+                    "super_large_net_amount": 2.0,
+                    "large_net_amount": 3.0,
+                    "medium_net_amount": 4.0,
+                    "small_net_amount": 5.0,
+                },
+            ],
+            "tushare",
+        )
+
+    monkeypatch.setattr(probe, "resolve", fake_resolve)
+
+    report = probe.probe_need027_exact_flow_gate(
+        [
+            {
+                "case_id": "tushare_600519",
+                "capability": "moneyflow",
+                "prefer_source": "tushare",
+                "data_domain": "order_flow_fund_flow",
+                "source_name": "tushare",
+                "source_tier": 2,
+                "kwargs": {"ts_code": "600519.SH"},
+                "stock_code": "600519",
+            },
+        ]
+    )
+
+    assert report["verdict"] == "PASS"
+    assert "moneyflow" in report["exact_capabilities"]
+    result = report["batch"]["results"][0]
+    assert result["need027_exact_flow_validation"]["status"] == "ok"
+    assert result["source_name"] == "tushare"
+    assert result["source_tier"] == 2
+
+
+def test_need027_exact_flow_gate_passes_when_one_source_group_is_complete(monkeypatch) -> None:
+    def fake_resolve(capability: str, *, prefer_source=None, **kwargs):
+        if capability == "individual_fund_flow" and prefer_source == "akshare":
+            return (
+                [
+                    {
+                        "日期": "2026-06-05",
+                        "主力净流入-净额": 1.0,
+                        "超大单净流入-净额": 2.0,
+                        "大单净流入-净额": 3.0,
+                        "中单净流入-净额": 4.0,
+                        "小单净流入-净额": 5.0,
+                    }
+                ],
+                "akshare",
+            )
+        if capability == "moneyflow" and prefer_source == "tushare":
+            raise RuntimeError("TuShare token missing")
+        raise AssertionError(f"unexpected route {capability}/{prefer_source}/{kwargs}")
+
+    monkeypatch.setattr(probe, "resolve", fake_resolve)
+
+    report = probe.probe_need027_exact_flow_gate(
+        [
+            {
+                "case_id": "akshare_600519",
+                "capability": "individual_fund_flow",
+                "prefer_source": "akshare",
+                "source_name": "akshare",
+                "source_tier": 3,
+                "kwargs": {"stock": "600519", "market": "sh"},
+            },
+            {
+                "case_id": "tushare_600519",
+                "capability": "moneyflow",
+                "prefer_source": "tushare",
+                "source_name": "tushare",
+                "source_tier": 2,
+                "kwargs": {"ts_code": "600519.SH"},
+            },
+        ]
+    )
+
+    assert report["verdict"] == "PASS"
+    assert report["status"] == "source_probe_passed"
+    assert report["exact_flow"]["probe_count"] == 2
+    assert report["exact_flow"]["valid_count"] == 1
+    assert report["exact_flow"]["blocked_count"] == 1
+    assert report["exact_flow"]["valid_source_groups"] == ["akshare"]
+    assert report["exact_flow"]["blocked_source_groups"] == ["tushare"]
+    assert report["exact_flow"]["source_groups"]["akshare"]["status"] == "ok"
+    assert report["exact_flow"]["source_groups"]["tushare"]["status"] == "blocked"
+
+
 def test_need027_gate_blocks_rank_snapshot_even_when_snapshot_ok(monkeypatch) -> None:
     def fake_resolve(capability: str, *, prefer_source=None, **kwargs):
         if capability == "individual_fund_flow_rank_snapshot":

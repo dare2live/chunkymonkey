@@ -389,6 +389,33 @@ needs:
           stock: "300750"
           market: "sz"
         stock_code: "300750"
+      - case_id: "tushare_600519_moneyflow"
+        capability: "moneyflow"
+        prefer_source: "tushare"
+        data_domain: "order_flow_fund_flow"
+        source_name: "tushare"
+        source_tier: 2
+        kwargs:
+          ts_code: "600519.SH"
+        stock_code: "600519"
+      - case_id: "tushare_000001_moneyflow"
+        capability: "moneyflow"
+        prefer_source: "tushare"
+        data_domain: "order_flow_fund_flow"
+        source_name: "tushare"
+        source_tier: 2
+        kwargs:
+          ts_code: "000001.SZ"
+        stock_code: "000001"
+      - case_id: "tushare_300750_moneyflow"
+        capability: "moneyflow"
+        prefer_source: "tushare"
+        data_domain: "order_flow_fund_flow"
+        source_name: "tushare"
+        source_tier: 2
+        kwargs:
+          ts_code: "300750.SZ"
+        stock_code: "300750"
     candidate_sources:
       - source_id: "tushare_moneyflow_2000"
         provider: "tushare"

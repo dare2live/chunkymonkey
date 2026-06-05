@@ -6,6 +6,7 @@ import argparse
 import json
 import logging
 import sys
+from collections import Counter
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any
@@ -34,18 +35,38 @@ CAPABILITY_DATA_DOMAIN_HINTS = {
     "individual_fund_flow": "order_flow_fund_flow",
     "individual_fund_flow_rank": "order_flow_fund_flow",
     "individual_fund_flow_rank_snapshot": "stock_fund_flow_rank_snapshot",
+    "moneyflow": "order_flow_fund_flow",
+    "moneyflow_dc": "order_flow_fund_flow",
+    "moneyflow_ths": "order_flow_fund_flow",
 }
 
 CAPABILITY_SOURCE_HINTS = {
     "individual_fund_flow": "akshare",
     "individual_fund_flow_rank": "akshare",
     "individual_fund_flow_rank_snapshot": "akshare",
+    "moneyflow": "tushare",
+    "moneyflow_dc": "tushare",
+    "moneyflow_ths": "tushare",
 }
 
 NEED027_ID = "need_027"
 NEED027_EXACT_FLOW_CAPABILITY = "individual_fund_flow"
+NEED027_EXACT_FLOW_CAPABILITIES = frozenset(
+    {
+        "individual_fund_flow",
+        "moneyflow",
+        "moneyflow_dc",
+        "moneyflow_ths",
+    }
+)
 NEED027_SOURCE_NAME = "akshare"
 NEED027_SOURCE_TIER = 3
+NEED027_SOURCE_DEFAULTS = {
+    "individual_fund_flow": {"source_name": "akshare", "source_tier": 3},
+    "moneyflow": {"source_name": "tushare", "source_tier": 2},
+    "moneyflow_dc": {"source_name": "tushare", "source_tier": 2},
+    "moneyflow_ths": {"source_name": "tushare", "source_tier": 2},
+}
 NEED027_DATA_DOMAIN = "order_flow_fund_flow"
 NEED027_MIN_SUCCESS_RATE = 1.0
 NEED027_MIN_ROWS_PER_PROBE = 1
@@ -250,6 +271,9 @@ def probe_source_capability_batch(
             report["case_id"] = str(case["case_id"])
         if case.get("stock_code"):
             report["stock_code"] = str(case["stock_code"])
+        for key in ("data_domain", "source_name", "source_tier"):
+            if key in case:
+                report[key] = case[key]
         results.append(report)
 
     blocked_count = sum(1 for report in results if report.get("status") != "ok")
@@ -264,11 +288,12 @@ def probe_source_capability_batch(
 
 def _with_need027_defaults(raw_case: dict[str, Any], *, prefer_source: str | None) -> dict[str, Any]:
     case = _normalize_probe_case(raw_case)
-    if case["capability"] == NEED027_EXACT_FLOW_CAPABILITY:
-        case.setdefault("prefer_source", prefer_source or NEED027_SOURCE_NAME)
+    if case["capability"] in NEED027_EXACT_FLOW_CAPABILITIES:
+        defaults = NEED027_SOURCE_DEFAULTS.get(case["capability"], {})
+        case.setdefault("prefer_source", defaults.get("source_name") or prefer_source or NEED027_SOURCE_NAME)
         case.setdefault("data_domain", NEED027_DATA_DOMAIN)
-        case.setdefault("source_name", NEED027_SOURCE_NAME)
-        case.setdefault("source_tier", NEED027_SOURCE_TIER)
+        case.setdefault("source_name", defaults.get("source_name") or NEED027_SOURCE_NAME)
+        case.setdefault("source_tier", defaults.get("source_tier") or NEED027_SOURCE_TIER)
     return case
 
 
@@ -345,6 +370,71 @@ def _validate_need027_exact_report(
     }
 
 
+def _need027_failures(report: dict[str, Any]) -> list[str]:
+    validation = report.get("need027_exact_flow_validation", {})
+    return [str(reason) for reason in validation.get("failures", [])]
+
+
+def _need027_source_group_name(report: dict[str, Any]) -> str:
+    return str(
+        report.get("source_name")
+        or report.get("source_used")
+        or report.get("prefer_source")
+        or "unknown"
+    )
+
+
+def _summarize_need027_source_groups(
+    reports: list[dict[str, Any]],
+    *,
+    min_success_rate: float,
+) -> tuple[dict[str, dict[str, Any]], list[str], list[str]]:
+    source_groups: dict[str, dict[str, Any]] = {}
+    for report in reports:
+        source_name = _need027_source_group_name(report)
+        group = source_groups.setdefault(
+            source_name,
+            {
+                "source_name": source_name,
+                "source_tier": report.get("source_tier"),
+                "probe_count": 0,
+                "valid_count": 0,
+                "blocked_count": 0,
+                "failure_reasons": Counter(),
+                "case_ids": [],
+            },
+        )
+        group["probe_count"] += 1
+        if report.get("case_id"):
+            group["case_ids"].append(str(report["case_id"]))
+        validation = report.get("need027_exact_flow_validation", {})
+        if validation.get("status") == "ok":
+            group["valid_count"] += 1
+            continue
+        group["blocked_count"] += 1
+        group["failure_reasons"].update(_need027_failures(report))
+
+    valid_source_groups: list[str] = []
+    blocked_source_groups: list[str] = []
+    for source_name, group in source_groups.items():
+        group["success_rate"] = (
+            group["valid_count"] / group["probe_count"]
+            if group["probe_count"]
+            else 0.0
+        )
+        group["status"] = (
+            "ok"
+            if group["probe_count"] > 0 and group["success_rate"] >= min_success_rate
+            else "blocked"
+        )
+        group["failure_reasons"] = dict(group["failure_reasons"])
+        if group["status"] == "ok":
+            valid_source_groups.append(source_name)
+        else:
+            blocked_source_groups.append(source_name)
+    return source_groups, valid_source_groups, blocked_source_groups
+
+
 def probe_need027_exact_flow_gate(
     cases: list[dict[str, Any]] | tuple[dict[str, Any], ...] | None = None,
     *,
@@ -369,7 +459,7 @@ def probe_need027_exact_flow_gate(
     exact_reports: list[dict[str, Any]] = []
     non_exact_reports: list[dict[str, Any]] = []
     for report in batch["results"]:
-        if report.get("capability") == NEED027_EXACT_FLOW_CAPABILITY:
+        if report.get("capability") in NEED027_EXACT_FLOW_CAPABILITIES:
             validation = _validate_need027_exact_report(
                 report,
                 min_rows_per_probe=min_rows_per_probe,
@@ -391,16 +481,19 @@ def probe_need027_exact_flow_gate(
     exact_probe_count = len(exact_reports)
     success_rate = valid_exact_count / exact_probe_count if exact_probe_count else 0.0
     blocked_exact_count = exact_probe_count - valid_exact_count
-    verdict_pass = (
-        exact_probe_count > 0
-        and blocked_exact_count == 0
-        and success_rate >= min_success_rate
+
+    failure_counter: Counter[str] = Counter()
+    for report in exact_reports:
+        failure_counter.update(_need027_failures(report))
+    failure_reasons = dict(failure_counter)
+    source_groups, valid_source_groups, blocked_source_groups = _summarize_need027_source_groups(
+        exact_reports,
+        min_success_rate=min_success_rate,
     )
 
-    failure_reasons: dict[str, int] = {}
-    for report in exact_reports:
-        for reason in report.get("need027_exact_flow_validation", {}).get("failures", []):
-            failure_reasons[reason] = failure_reasons.get(reason, 0) + 1
+    # need_027 requires one stable exact-flow source, not every candidate source.
+    # Candidate failures stay visible as source-group blockers.
+    verdict_pass = bool(valid_source_groups)
 
     if persist_status:
         for report in exact_reports:
@@ -416,12 +509,12 @@ def probe_need027_exact_flow_gate(
                 }
             _persist_probe_status(
                 persist_report,
-                capability=NEED027_EXACT_FLOW_CAPABILITY,
+                capability=str(report.get("capability") or NEED027_EXACT_FLOW_CAPABILITY),
                 persist_status=True,
                 prefer_source=prefer_source,
                 data_domain=NEED027_DATA_DOMAIN,
-                source_name=NEED027_SOURCE_NAME,
-                source_tier=NEED027_SOURCE_TIER,
+                source_name=str(report.get("source_name") or report.get("source_used") or report.get("prefer_source") or NEED027_SOURCE_NAME),
+                source_tier=int(report.get("source_tier") or NEED027_SOURCE_TIER),
                 stock_code=str(report.get("stock_code") or ""),
             )
             if persist_report is not report and "persisted" in persist_report:
@@ -436,6 +529,7 @@ def probe_need027_exact_flow_gate(
         "gate": "need_027_exact_flow_source_probe",
         "need_id": NEED027_ID,
         "capability": NEED027_EXACT_FLOW_CAPABILITY,
+        "exact_capabilities": sorted(NEED027_EXACT_FLOW_CAPABILITIES),
         "prefer_source": prefer_source,
         "status": "source_probe_passed" if verdict_pass else "blocked",
         "verdict": "PASS" if verdict_pass else "BLOCKED",
@@ -447,6 +541,13 @@ def probe_need027_exact_flow_gate(
             "min_success_rate": min_success_rate,
             "min_rows_per_probe": min_rows_per_probe,
             "failure_reasons": failure_reasons,
+            "source_success_policy": "any_source_group_meets_min_success_rate",
+            "source_group_count": len(source_groups),
+            "valid_source_group_count": len(valid_source_groups),
+            "valid_source_groups": valid_source_groups,
+            "blocked_source_groups": blocked_source_groups,
+            "selected_source_name": valid_source_groups[0] if valid_source_groups else None,
+            "source_groups": source_groups,
         },
         "non_exact_probe_count": len(non_exact_reports),
         "non_exact_policy": "ignored_for_need_027_exact_flow_gate",
