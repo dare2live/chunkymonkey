@@ -142,6 +142,11 @@ ebd18209 fix: govern technical-stage residual classification
 - 提交后 live `scripts/chunkyctl doctor --fast` 为 `WARN` / worktree `PASS`。data-health 因 2026-06-05 08:39 CST 的 freshness SLA 滚动变成 `green=321 / yellow=21 / red=0 / blocking_yellow=4`，blocking 表为 `fact_financial_pit_daily`、`fact_stock_fundamental_stage_daily`、`mart_feature_drift`、`mart_feature_drift_histogram`。下一轮不要沿用 2026-06-04 16:45 的 `blocking_yellow=0` 作为当前状态。
 - 2026-06-05 08:50 CST 已清掉上述 4 个 blocking-yellow。执行顺序：financial PIT tail `2026-06-03..2026-06-04`、technical stage tail `2026-06-03..2026-06-04`（第一次用 2026-01-01 预热不足被空窗口保护拒绝，未写库；第二次用 2025-01-01 成功）、picture daily `2026-06-04`、feature drift `--refresh-baseline`。复验 `doctor --fast`: `WARN` / worktree `PASS` / data-health `green=325 yellow=17 red=0 blocking_yellow=0`；feature drift writer 返回码 2 仅表示新 snapshot 里 `critical=3`，需作为模型漂移风险另行审查。
 
+## POST-SNAPSHOT CONTROLLER NOTE (2026-06-05 09:02 CST)
+
+- 新增可调用本地 skill `/Users/dp/.codex/skills/architect-controller/SKILL.md`，用于架构设计、总指挥、多 agent 编排、模糊需求拆解、地基优先、第一性原理/奥卡姆/证伪审查。全局 `/Users/dp/.codex/AGENTS.md`、`chunkymonkey-governance` skill、项目 `AGENTS.md`、`docs/chunkyctl_session_quickstart.md` 均已指向 `$architect-controller`。
+- `.moth/profile.yaml` 已新增 `evidence_paths.skill_architect_controller`，让 Moth snapshot 和 ChunkyMonkey profile 能发现该 skill；Moth 仍只负责 shared tooling/evidence paths，不拥有 stage-opt、need_027、storage_payload、data_health 等业务 gate。
+
 ## Resilience 配置 (verified)
 
 | 机制 | 状态 |

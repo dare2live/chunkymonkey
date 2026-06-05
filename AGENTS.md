@@ -35,6 +35,11 @@ tooling output as authoritative when they conflict.
 - Codex Mac app/CLI, hooks, plugins, startup items, local automations, remote
   compact errors, stale Codex worktrees, Terminal mail, or GCP monitor residue:
   use `$codex-local-ops` before touching project rules.
+- Broad architecture, controller-led decomposition, multi-agent orchestration,
+  ambiguous system design, or "framework foundation before details" work: use
+  `$architect-controller` to define truth source, boundary contracts,
+  falsification gates, attention allocation, delegation slices, and the smallest
+  reversible next step.
 - Non-trivial ChunkyMonkey execution, architecture, strategy validation,
   PIT/leakage, Optuna/GCP, deletion, or gate-policy work: use
   `$chunkymonkey-governance` before editing or launching work.

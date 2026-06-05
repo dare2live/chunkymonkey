@@ -6,7 +6,7 @@
 > **目标**: 新接手 (无论 Claude 还是人) 读完此文档**不用看代码 / 不用查 DB** 就能理解:
 > 项目业务 / 架构 / 技术路线 / 数据资产 / 当前进度 / 已知坑 / 常用操作.
 
-最后更新: **2026-06-05** (design-review preflight machine gate + Moth registry instruction-source sync + after-close data refresh + controller-agent preflight hard gate + retention dry-run inventory + DB manifest attach policy + DB boundary static gate + holder replay safety + Codex instruction-source boundary + DuckDB capacity audit + need_027 exact-flow probe gate + stage-opt supply contract).
+最后更新: **2026-06-05** (architect-controller skill install + Moth evidence path sync + design-review preflight machine gate + Moth registry instruction-source sync + after-close data refresh + controller-agent preflight hard gate + retention dry-run inventory + DB manifest attach policy + DB boundary static gate + holder replay safety + Codex instruction-source boundary + DuckDB capacity audit + need_027 exact-flow probe gate + stage-opt supply contract).
 
 ## [INDEX] 2026-06-04 增量
 
@@ -1034,6 +1034,14 @@ SELECT * FROM mart_data_source_watermark;
 ## 14. Session 增量更新日志 (Rule 9.5 长期沉淀)
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
+
+### 2026-06-05 architect-controller skill install
+
+- `/Users/dp/.codex/skills/architect-controller/SKILL.md`: 已把用户提供的“架构师/总指挥”材料提炼为可调用本地 Codex skill。运行协议是 substrate truth source、boundary contracts、meta-spec、falsification gates、attention allocation、delegation contract 和 smallest reversible next step；输出要求 `PROCEED / REVISE / BLOCK`。
+- `/Users/dp/.codex/AGENTS.md` 与 `/Users/dp/.codex/skills/chunkymonkey-governance/SKILL.md`: broad architecture、controller-led decomposition、多 agent orchestration、模糊需求拆解、地基优先、第一性原理/奥卡姆/证伪审查现在先触发 `$architect-controller`，再进入项目治理 gate。
+- `.moth/profile.yaml` 与 Moth registry profile `/Users/dp/Documents/M/moth/profiles/chunkymonkey.yaml`: 已新增 `evidence_paths.skill_architect_controller`，`moth profile chunkymonkey --format json` 和 registry-profile `moth snapshot` 都能解析到 `/Users/dp/.codex/skills/architect-controller/SKILL.md`。Moth 仍只拥有 shared tooling / evidence paths，不承载 `stage_opt`、`need_027`、`storage_payload`、`data_health` 业务规则。
+- `AGENTS.md` / `docs/chunkyctl_session_quickstart.md` / `goal.md` / `SESSION_HANDOFF.md`: 项目启动和交接入口已同步 skill dispatch，后续新 session 不应只口头承诺“总指挥模式”，应通过 `$architect-controller` + `chunkyctl preflight` + bounded sidecar evidence 固化到执行流程。
+- 验证: skill frontmatter/openai.yaml 结构 PASS；YAML parse PASS；repo-local Moth snapshot 与 registry profile snapshot 均能看到 `skill_architect_controller`；只读 sidecar validator 未发现阻断性 FAIL；`scripts/chunkyctl audit --run AGENTS.md docs/chunkyctl_session_quickstart.md goal.md SESSION_HANDOFF.md .moth/profile.yaml` PASS；`git diff --check` PASS。Moth repo test `26 passed`，commit `b553f66 chore: expose architect controller skill` 已 push 到 `dare2live/moth`.
 
 ### 2026-06-04 after-close data refresh + controller gate hardening
 

@@ -41,6 +41,7 @@ verify live state with `doctor --fast` before trusting it.
    - Do not default to old `analysis/next_session_prompt_*.md` files; they are
      historical prompts unless `goal.md` explicitly makes one current.
    - Skill dispatch: `$codex-local-ops` owns Codex app/CLI local issues;
+     `$architect-controller` owns broad architecture/controller decomposition;
      `$chunkymonkey-governance` owns non-trivial project execution planning;
      `$chunkymonkey-review-gate` owns Rule 10 and commit-readiness review.
 2. Run:
@@ -67,8 +68,9 @@ when you need the raw shared snapshot, and `moth sync ...` when you want the
 shared snapshot refreshed before any repo-local wrapper consumes it.
 The active repo-local profile is `.moth/profile.yaml`; keep it limited to
 shared tooling metadata and evidence paths, including pointers to the local
-Codex skills that govern local-ops, ChunkyMonkey governance, and Rule 10 review.
-It also exposes `instruction_sources`, where `CLAUDE.md` is listed under
+Codex skills that govern local-ops, architecture/controller decomposition,
+ChunkyMonkey governance, and Rule 10 review. It also exposes
+`instruction_sources`, where `CLAUDE.md` is listed under
 `ignored_by_default` so Codex startup and preflight flows can enforce that
 boundary without relying on chat memory.
 Do not move business gate rules such as `stage_opt`, `need_027`,
@@ -231,7 +233,7 @@ order:
 | `preflight` controller-agent gate | Broad audit/research/architecture/data/debug or 3+ scope tasks FAIL with `controller_agent_dispatch_missing` unless preflight receives `--agent-dispatch`; `--agent-skip-reason` records an explicit exception as WARN |
 | DB-heavy audits | Parallelize only when they use explicit read-only connections; serialize scripts that materialize tables, write DuckDB, or share output paths |
 | `chunkyctl` | Emits machine-readable facts and command plans; it does not replace review |
-| Skill dispatch | Local Codex ops use `$codex-local-ops`; project governance uses `$chunkymonkey-governance`; Rule 10 / commit review uses `$chunkymonkey-review-gate` |
+| Skill dispatch | Local Codex ops use `$codex-local-ops`; broad architecture/controller work uses `$architect-controller`; project governance uses `$chunkymonkey-governance`; Rule 10 / commit review uses `$chunkymonkey-review-gate` |
 | Project docs | Keep durable rules in `AGENTS.md`, `goal.md`, handoff, and docs, not chat memory |
 
 ## Minimal Use

@@ -19,6 +19,7 @@ evidence_paths:
   project_constitution: docs/PROJECT_CONSTITUTION.md
   codex_global_agents: /Users/dp/.codex/AGENTS.md
   skill_codex_local_ops: /Users/dp/.codex/skills/codex-local-ops/SKILL.md
+  skill_architect_controller: /Users/dp/.codex/skills/architect-controller/SKILL.md
   skill_chunkymonkey_governance: /Users/dp/.codex/skills/chunkymonkey-governance/SKILL.md
   skill_chunkymonkey_review_gate: /Users/dp/.codex/skills/chunkymonkey-review-gate/SKILL.md
   docs: docs
