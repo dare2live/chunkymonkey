@@ -155,6 +155,12 @@ ebd18209 fix: govern technical-stage residual classification
 - `data_health_snapshot.py --dry-run` 已改为 read-only DuckDB 连接并跳过 DDL，避免 dry-run 抢写锁；复验 `--dry-run --format json` 为 `green=325 / yellow=17 / red=0`。这只修 dry-run 门禁路径，17 个 yellow 仍是 warning-only data-health debt。
 - 本轮架构检查没有发现 `no2` 循环快照、压缩备份副本或快照反复落盘导致的 P0 DB 膨胀；storage 仍为 `WARN`，当前 3 条 payload WARN 归 formula/picture evidence payload。下一优先级保持：retention/compact 设计、`need_027` exact-flow、stage-opt upstream supply。
 
+## POST-SNAPSHOT CONTROLLER NOTE (2026-06-05 10:20 CST)
+
+- warning-only data-health P1 本地派生切片已执行：`build_current_relationship(conn)` 重建 `mart_current_relationship` 写入 `5,000` 行；`calc_dual_confirm(conn)` 更新 `mart_dual_confirm` `15,320` 条事件。两步均为本地 derived mart 写入，不拉外部网络、不跑 GCP、不改代码、不 stage/commit。
+- 复验 `data_health_snapshot.py --dry-run --format json` 为 `green=335 / yellow=7 / red=0 / blocking_yellow=0`；`scripts/chunkyctl doctor --fast` 仍为 `WARN`，但 `worktree=PASS`、storage payload `PASS`，剩余业务 WARN 是 stage-opt supply 和 `need_027` exact-flow blocked。
+- 剩余 7 个 data-health yellow：`fact_dzjy_event`、`fact_jgdy_event`、`raw_executive_trade`、`fact_executive_trade_event`、`fact_institution_event`、`fact_shareholder_trade`、`fact_paper_sim_trade`。不要把它们混成一个“刷新所有”批次：`build_akshare_panel.py` 对 jgdy/dzjy 是全表 drop/rebuild；高管增减持脚本也需先 dry-run；`fact_institution_event` 是 high fan-out derived chain；`fact_shareholder_trade` 要走 holder/F10 专项；`fact_paper_sim_trade` 是策略验证产物，不应只为 freshness 重跑。
+
 ## Resilience 配置 (verified)
 
 | 机制 | 状态 |
