@@ -49,7 +49,7 @@ rollback plan, and post-fix stale-artifact audit.
 | Asset type | Owner |
 |---|---|
 | Need/source coverage | `backend/config/tdx_data_need_coverage.yaml` |
-| Source priority | Config, with tdxhub primary and akshare fallback when a need requires it |
+| Source priority | Config at capability/data-need grain; no provider is global primary |
 | Runtime evidence | Data tables and audit rows |
 | Validation logic | Service/script modules |
 | Stable thresholds | YAML/config unless a documented code exception is safer |
@@ -58,6 +58,18 @@ Every new data need must specify: `need_id`, consumer, grain, PIT key, freshness
 SLA, source priority, fallback behavior, evidence status, and production
 eligibility. Missing PIT or stale critical data means the downstream profile
 field is `unknown` or blocked.
+
+Source priority is capability-level, not vendor-level. `tdxhub`, TuShare,
+`aif10`/miaoxiang, AkShare, and future direct vendor adapters may all be active
+in parallel when they own different observed or derived capabilities. A provider
+can be primary for one need, benchmark-only for another, and blocked/probe-only
+for a third. Production routing must follow the need contract and runtime gates,
+not a global "primary source" label.
+
+Candidate sources that are not production-eligible must declare structured
+`required_validation` items such as field mapping, date coverage, PIT key,
+freshness SLA, watermark, reconciliation, and failure-queue resolution. Notes are
+context only; they are not a substitute for machine-readable gates.
 
 ## Lineage Contract
 

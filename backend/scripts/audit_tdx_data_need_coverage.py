@@ -50,6 +50,18 @@ REASSIGNMENT_FIELDS = (
     "risk",
     "reason",
 )
+CANDIDATE_SOURCE_FIELDS = (
+    "source_id",
+    "provider",
+    "capability",
+    "role",
+    "minimum_points",
+    "evidence_status",
+    "production_eligibility",
+    "gate",
+    "required_validation",
+    "notes",
+)
 EVIDENCE_STATUSES = {"production", "proxy", "research", "unknown"}
 PRODUCTION_ELIGIBILITIES = {"eligible", "blocked", "research_only", "proxy_only", "unknown"}
 UNKNOWN_VALUES = {"unknown", "n/a", "none", "null"}
@@ -182,6 +194,64 @@ def _rows(raw: dict[str, Any], key: str, fields: tuple[str, ...]) -> list[tuple[
     return rows
 
 
+def _validate_candidate_source(item: dict[str, Any], need_id: str, index: int) -> None:
+    missing = [field for field in CANDIDATE_SOURCE_FIELDS if field not in item]
+    if missing:
+        raise ValueError(
+            f"need {need_id} candidate_sources[{index}] missing required fields: {', '.join(missing)}"
+        )
+    evidence_status = _as_clean_text(item.get("evidence_status"))
+    if evidence_status not in EVIDENCE_STATUSES:
+        allowed = ", ".join(sorted(EVIDENCE_STATUSES))
+        raise ValueError(
+            f"need {need_id} candidate_sources[{index}] invalid evidence_status={evidence_status!r}; "
+            f"expected one of: {allowed}"
+        )
+    production_eligibility = _as_clean_text(item.get("production_eligibility"))
+    if production_eligibility not in PRODUCTION_ELIGIBILITIES:
+        allowed = ", ".join(sorted(PRODUCTION_ELIGIBILITIES))
+        raise ValueError(
+            f"need {need_id} candidate_sources[{index}] invalid production_eligibility="
+            f"{production_eligibility!r}; expected one of: {allowed}"
+        )
+    required_validation = item.get("required_validation")
+    if not isinstance(required_validation, list) or not required_validation:
+        raise ValueError(f"need {need_id} candidate_sources[{index}] required_validation must be a non-empty list")
+    if any(not _as_clean_text(value) for value in required_validation):
+        raise ValueError(
+            f"need {need_id} candidate_sources[{index}] required_validation must contain non-empty strings"
+        )
+
+
+def _need_metadata_by_id(raw: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    values = raw.get("needs")
+    if not isinstance(values, list):
+        raise ValueError(f"needs must be a list in {CONFIG_PATH.name}")
+
+    metadata_by_id: dict[str, dict[str, Any]] = {}
+    for need_index, need in enumerate(values, start=1):
+        if not isinstance(need, dict):
+            continue
+        need_id = _as_clean_text(need.get("need_id"))
+        if not need_id:
+            continue
+        metadata: dict[str, Any] = {}
+        candidate_sources = need.get("candidate_sources")
+        if candidate_sources is not None:
+            if not isinstance(candidate_sources, list):
+                raise ValueError(f"needs[{need_index}] candidate_sources must be a list")
+            for candidate_index, candidate in enumerate(candidate_sources, start=1):
+                if not isinstance(candidate, dict):
+                    raise ValueError(
+                        f"need {need_id} candidate_sources[{candidate_index}] must be a mapping"
+                    )
+                _validate_candidate_source(candidate, need_id, candidate_index)
+            metadata["candidate_sources"] = candidate_sources
+        if metadata:
+            metadata_by_id[need_id] = metadata
+    return metadata_by_id
+
+
 def _need_record(row: tuple[Any, ...]) -> dict[str, Any]:
     return dict(zip(NEED_FIELDS, row))
 
@@ -274,6 +344,7 @@ def _blocked_need_summary(
     eligibility: str,
     source_registration: dict[str, Any],
     failure_queue_snapshot: dict[str, Any] | None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "need_id": record.get("need_id"),
@@ -286,6 +357,7 @@ def _blocked_need_summary(
         "production_eligibility": eligibility,
         "preferred_source": record.get("preferred_source"),
         "fallback_source": record.get("fallback_source"),
+        "candidate_sources": (metadata or {}).get("candidate_sources", []),
         "source_registration": source_registration,
         "failure_queue_snapshot": failure_queue_snapshot,
         "action": record.get("action"),
@@ -346,7 +418,11 @@ def _failure_queue_snapshot(
     }
 
 
-def _summarize_need_gaps(conn: Any, needs: list[tuple[Any, ...]]) -> dict[str, Any]:
+def _summarize_need_gaps(
+    conn: Any,
+    needs: list[tuple[Any, ...]],
+    need_metadata_by_id: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     records = [_need_record(row) for row in needs]
     eligibility_counts = {}
     blocked_needs = []
@@ -380,6 +456,7 @@ def _summarize_need_gaps(conn: Any, needs: list[tuple[Any, ...]]) -> dict[str, A
                     eligibility=eligibility,
                     source_registration=source_registration,
                     failure_queue_snapshot=failure_queue_snapshot,
+                    metadata=(need_metadata_by_id or {}).get(str(record.get("need_id"))),
                 )
             )
 
@@ -411,6 +488,7 @@ def load_tdx_data_need_config(config_path: Path | None = None) -> dict[str, Any]
         "config_path": str(path),
         "input_paths": _resolve_input_paths(raw.get("input_paths")),
         "needs": _rows(raw, "needs", NEED_FIELDS),
+        "need_metadata_by_id": _need_metadata_by_id(raw),
         "priorities": _rows(raw, "priorities", PRIORITY_FIELDS),
         "reassignments": _rows(raw, "reassignments", REASSIGNMENT_FIELDS),
     }
@@ -454,7 +532,7 @@ def audit_tdx_data_need_coverage(conn: Any, config_path: Path | None = None) -> 
     needs = config["needs"]
     priorities = config["priorities"]
     reassignments = config["reassignments"]
-    need_gap_summary = _summarize_need_gaps(conn, needs)
+    need_gap_summary = _summarize_need_gaps(conn, needs, config["need_metadata_by_id"])
     input_inventory = _read_input_inventory(config["input_paths"])
     built_at = datetime.now(UTC).isoformat(timespec="seconds")
     conn.execute("BEGIN TRANSACTION")
@@ -532,7 +610,7 @@ def summarize_tdx_data_need_coverage(conn: Any, config_path: Path | None = None)
         "coverage_rows": len(needs),
         "priority_rows": len(priorities),
         "reassignment_rows": len(reassignments),
-        "need_gap_summary": _summarize_need_gaps(conn, needs),
+        "need_gap_summary": _summarize_need_gaps(conn, needs, config["need_metadata_by_id"]),
         "config_path": config["config_path"],
         "input_files_read": _read_input_inventory(config["input_paths"]),
         "built_at": datetime.now(UTC).isoformat(timespec="seconds"),

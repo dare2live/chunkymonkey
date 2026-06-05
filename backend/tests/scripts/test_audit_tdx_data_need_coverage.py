@@ -108,6 +108,7 @@ def _write_config(
     evidence_status: str = "production",
     production_eligibility: str = "eligible",
     pit_key: str = "trade_date",
+    candidate_sources: str = "",
 ) -> None:
     need_name_line = "" if omit_need_field == "need_name" else '    need_name: "sample need"\n'
     grain_line = "" if omit_need_field == "grain" else '    grain: "stock_code x trade_date"\n'
@@ -132,7 +133,7 @@ needs:
     preferred_source: "tdxhub_quote"
     fallback_source: "akshare"
     action: "keep"
-    notes: "test row"
+{candidate_sources}    notes: "test row"
 priorities:
   - data_domain: "test_domain"
     preferred_source: "tdxhub_quote"
@@ -206,6 +207,33 @@ def test_load_config_rejects_non_production_eligible_need(tmp_path: Path) -> Non
         audit_tdx_data_need_coverage.load_tdx_data_need_config(config)
 
 
+def test_load_config_rejects_invalid_candidate_source(tmp_path: Path) -> None:
+    evidence = tmp_path / "evidence.md"
+    evidence.write_text("source evidence\n", encoding="utf-8")
+    config = tmp_path / "tdx_data_need_coverage.yaml"
+    _write_config(
+        config,
+        evidence,
+        candidate_sources="""
+    candidate_sources:
+      - source_id: "candidate"
+        provider: "tushare"
+        capability: "moneyflow"
+        role: "probe"
+        minimum_points: 2000
+        evidence_status: "warn_only"
+        production_eligibility: "blocked"
+        gate: "probe"
+        required_validation:
+          - "no_persist_probe"
+        notes: "candidate"
+""",
+    )
+
+    with pytest.raises(ValueError, match="invalid evidence_status"):
+        audit_tdx_data_need_coverage.load_tdx_data_need_config(config)
+
+
 def test_default_config_points_to_existing_evidence_files() -> None:
     config = audit_tdx_data_need_coverage.load_tdx_data_need_config()
     input_paths = config["input_paths"]
@@ -221,6 +249,19 @@ def test_default_config_points_to_existing_evidence_files() -> None:
     assert needs_by_id["need_027"][6] == "unknown"
     assert needs_by_id["need_027"][7] == "blocked"
     assert needs_by_id["need_027"][10] == "none"
+    candidates = config["need_metadata_by_id"]["need_027"]["candidate_sources"]
+    assert [item["source_id"] for item in candidates] == [
+        "tushare_moneyflow_2000",
+        "tushare_moneyflow_dc_5000",
+        "tushare_moneyflow_ths_6000",
+        "akshare_individual_fund_flow",
+        "tdxhub_xmtdx_history_fund_flow",
+    ]
+    assert candidates[0]["minimum_points"] == 2000
+    assert candidates[1]["minimum_points"] == 5000
+    assert candidates[2]["minimum_points"] == 6000
+    assert "pit_key" in candidates[0]["required_validation"]
+    assert "watermark" in candidates[0]["required_validation"]
 
 
 def test_summarize_need_gaps_identifies_only_blocked_need() -> None:
@@ -288,7 +329,11 @@ def test_summarize_need_gaps_identifies_only_blocked_need() -> None:
                 "2026-06-01 14:35:33",
             ],
         )
-        summary = audit_tdx_data_need_coverage._summarize_need_gaps(conn, config["needs"])
+        summary = audit_tdx_data_need_coverage._summarize_need_gaps(
+            conn,
+            config["needs"],
+            config["need_metadata_by_id"],
+        )
     finally:
         conn.close()
 
@@ -309,6 +354,17 @@ def test_summarize_need_gaps_identifies_only_blocked_need() -> None:
     assert blocked["production_eligibility"] == "blocked"
     assert blocked["preferred_source"] == "akshare"
     assert blocked["fallback_source"] == "miaoxiang"
+    assert [item["source_id"] for item in blocked["candidate_sources"]] == [
+        "tushare_moneyflow_2000",
+        "tushare_moneyflow_dc_5000",
+        "tushare_moneyflow_ths_6000",
+        "akshare_individual_fund_flow",
+        "tdxhub_xmtdx_history_fund_flow",
+    ]
+    assert blocked["candidate_sources"][1]["capability"] == "moneyflow_dc"
+    assert blocked["candidate_sources"][1]["role"] == "direct_bucket_candidate"
+    assert "freshness_sla" in blocked["candidate_sources"][1]["required_validation"]
+    assert "watermark" in blocked["candidate_sources"][1]["required_validation"]
     assert blocked["source_registration"]["registered_source_names"] == ["aif10", "akshare", "tdxhub"]
     assert blocked["source_registration"]["preferred_source_registered"] is True
     assert blocked["source_registration"]["fallback_source_registered"] is False
@@ -405,6 +461,22 @@ def test_blocked_need_summary_preserves_need_entry_fields() -> None:
         eligibility="blocked",
         source_registration=source_registration,
         failure_queue_snapshot=failure_queue_snapshot,
+        metadata={
+            "candidate_sources": [
+                {
+                    "source_id": "tushare_moneyflow_2000",
+                    "provider": "tushare",
+                    "capability": "moneyflow",
+                    "role": "low_cost_exact_flow_probe",
+                    "minimum_points": 2000,
+                    "evidence_status": "unknown",
+                    "production_eligibility": "blocked",
+                    "gate": "probe",
+                    "required_validation": ["no_persist_probe"],
+                    "notes": "candidate",
+                }
+            ]
+        },
     )
 
     assert blocked["need_id"] == "need_027"
@@ -417,6 +489,7 @@ def test_blocked_need_summary_preserves_need_entry_fields() -> None:
     assert blocked["production_eligibility"] == "blocked"
     assert blocked["preferred_source"] == "akshare"
     assert blocked["fallback_source"] == "miaoxiang"
+    assert blocked["candidate_sources"][0]["source_id"] == "tushare_moneyflow_2000"
     assert blocked["source_registration"] == source_registration
     assert blocked["failure_queue_snapshot"] == failure_queue_snapshot
     assert blocked["action"] == "probe_restore_or_keep_unknown"
