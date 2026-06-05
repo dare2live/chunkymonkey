@@ -1,10 +1,10 @@
 {
-  "snapshot_at": "2026-06-05 23:15:11 CST",
+  "snapshot_at": "2026-06-05 23:44:57 CST",
   "git": {
     "branch": "main",
-    "head_hash": "d318ed70",
-    "head_msg": "d318ed70 chore: require storage retention policy contract",
-    "commits_24h": 13,
+    "head_hash": "848d5e2a",
+    "head_msg": "848d5e2a chore: audit storage retention consumers",
+    "commits_24h": 15,
     "uncommitted_files": 0
   },
   "retrain": {

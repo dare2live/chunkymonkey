@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh --status
 ```
 默认不再安装 cron snapshot / SessionStart auto-inject；如需恢复旧自动化，必须显式设置脚本里的 legacy opt-in。
 
-**Snapshot 时间**: 2026-06-05 23:15:11 CST
+**Snapshot 时间**: 2026-06-05 23:44:57 CST
 
 ## 主线状态
 
@@ -57,13 +57,15 @@ bash scripts/install_resilience.sh --status
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `d318ed70 chore: require storage retention policy contract` |
-| 最近 24h commits | 13 |
+| HEAD | `848d5e2a chore: audit storage retention consumers` |
+| 最近 24h commits | 15 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+848d5e2a chore: audit storage retention consumers
+93291afc docs: refresh session snapshot after retention contract
 d318ed70 chore: require storage retention policy contract
 0a85a9c7 docs: track RD-Agent research follow-up
 3e9fafc8 docs: codify data-source capability contracts
@@ -72,8 +74,6 @@ d318ed70 chore: require storage retention policy contract
 fde3a74d docs: record data-source selection research test pass evidence
 f00cd7f9 docs: refresh data health warning state
 762645cd chore: calibrate storage payload audit caps
-3f6db577 fix: keep data health dry-run read-only
-929d99df docs: wire architect controller skill
 ```
 
 ## NEXT ACTION (auto-computed)
