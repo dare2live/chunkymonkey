@@ -1,10 +1,10 @@
 {
-  "snapshot_at": "2026-06-06 07:10:45 CST",
+  "snapshot_at": "2026-06-06 07:38:13 CST",
   "git": {
     "branch": "main",
-    "head_hash": "812d2c84",
-    "head_msg": "812d2c84 chore: wire tushare need027 probe",
-    "commits_24h": 17,
+    "head_hash": "bfdd19e3",
+    "head_msg": "bfdd19e3 chore: harden stage-opt supply readiness gate evidence",
+    "commits_24h": 19,
     "uncommitted_files": 0
   },
   "retrain": {

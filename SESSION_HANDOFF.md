@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh --status
 ```
 默认不再安装 cron snapshot / SessionStart auto-inject；如需恢复旧自动化，必须显式设置脚本里的 legacy opt-in。
 
-**Snapshot 时间**: 2026-06-06 07:10:45 CST
+**Snapshot 时间**: 2026-06-06 07:38:13 CST
 
 ## 主线状态
 
@@ -57,13 +57,15 @@ bash scripts/install_resilience.sh --status
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `812d2c84 chore: wire tushare need027 probe` |
-| 最近 24h commits | 17 |
+| HEAD | `bfdd19e3 chore: harden stage-opt supply readiness gate evidence` |
+| 最近 24h commits | 19 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+bfdd19e3 chore: harden stage-opt supply readiness gate evidence
+14e40455 docs: refresh session snapshot after tushare probe wiring
 812d2c84 chore: wire tushare need027 probe
 1fa9b375 docs: refresh session snapshot after consumer audit
 848d5e2a chore: audit storage retention consumers
@@ -72,8 +74,6 @@ d318ed70 chore: require storage retention policy contract
 0a85a9c7 docs: track RD-Agent research follow-up
 3e9fafc8 docs: codify data-source capability contracts
 3e3b9884 docs: refresh controller state after cleanup
-8371e60c chore: add provider-neutral execution control plane
-fde3a74d docs: record data-source selection research test pass evidence
 ```
 
 ## NEXT ACTION (auto-computed)
