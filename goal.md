@@ -38,9 +38,9 @@ evidence or disjoint patches; their output is not a verdict.
 
 | Priority | Workstream | Current state | Next action |
 |---|---|---|---|
-| P0 | Documentation control plane | `goal.md` was overloaded with historical ledger content | Keep `goal.md` thin; move completed details to `analysis/project_state_ledger.md`; update startup/docs/Moth pointers |
-| P0 | Provider-neutral execution surface | Old GCP scripts/launchd paths are being retired; `experiment_jobs` contract exists in dirty worktree | Finish reviewed provider-neutral cleanup slice, keep data-source work separate, then commit |
-| P0 | Dirty worktree governance | `scripts/chunkyctl worktree --format markdown` reports dirty mixed slices and `unknown=0` | Stage one reviewed slice at a time; never `git add .` |
+| P0 | Documentation control plane | Thin `goal.md` / ledger split committed in `8371e60c` | Keep current-state facts here; put completed evidence in `analysis/project_state_ledger.md` |
+| P0 | Provider-neutral execution surface | Retired GCP execution surface removed and `experiment_jobs` contract committed in `8371e60c` | Treat `local` as active and `modal` as planned/blocked until adapter gates exist |
+| P0 | Dirty worktree governance | Remaining dirty files are the data-source research slice | Review/stage that slice separately; never `git add .` |
 | P1 | `need_027` exact order-flow | Still blocked; rank/proxy snapshots do not satisfy exact-flow contract | Run token-backed no-persist TuShare/akshare exact-flow probe only when credentials/source stability are available |
 | P1 | Data-source capability routing | iFinD/TuShare/tdxhub research evidence exists, but no production writer is approved | Convert source decisions into capability-level contracts and probes before any DB writer |
 | P1 | DB retention/modularization | Manifest/connection boundary groundwork exists; retention is dry-run inventory only | Design retention/compact policy by table owner and consumer before deleting/VACUUM |
@@ -55,7 +55,7 @@ As of the latest checked state on 2026-06-05:
 | Gate | Current result | Meaning |
 |---|---|---|
 | `scripts/chunkyctl doctor --fast` | `WARN` | Worktree dirty; data-health has warning-only yellow; `need_027` remains blocked |
-| `scripts/chunkyctl worktree --format markdown` | `FAIL`, dirty mixed slices, `unknown=0` | Commit planning must be slice-based |
+| `scripts/chunkyctl worktree --format markdown` | `FAIL`, dirty data-source slice, `unknown=0` | Commit planning must remain slice-based |
 | `data_health_snapshot.py --dry-run` | `green=335 / yellow=7 / red=0 / blocking_yellow=0` | No startup data-health blocker; yellow assets are maintenance debt |
 | `audit_execution_surface.py --include-live-launchd` | `PASS / 0 findings` | Retired execution-surface references are not currently detected |
 | `need_coverage` | `need_027` blocked | Exact flow source evidence still missing |
@@ -64,20 +64,15 @@ Live gates override this section. Refresh before using the numbers as evidence.
 
 ## Implementation Plan
 
-1. **Thin-doc control plane:** finish this document split and update
-   quickstart/docs/Moth references so new sessions use the right entrypoints.
-2. **Provider-neutral cleanup commit:** reconcile side-agent review, rerun
-   execution-surface/test-tool/pytest/docs gates, stage only the cleanup slice,
-   and commit with Rule 10 trailer.
-3. **Data-source contracts:** keep iFinD/TuShare/tdxhub work in research/probe
+1. **Data-source contracts:** keep iFinD/TuShare/tdxhub work in research/probe
    mode until capability contracts, PIT/freshness/watermark, and no-persist
    probes pass.
-4. **Storage/DB governance:** continue from manifest + retention dry-run toward
+2. **Storage/DB governance:** continue from manifest + retention dry-run toward
    owner-based retention and compact policy. No production deletion without
    consumer evidence and rollback.
-5. **Strategy/model work:** resume stage-opt and model exploration only after
+3. **Strategy/model work:** resume stage-opt and model exploration only after
    the upstream supply and data-source truth contracts are explicit.
-6. **RD-Agent(Q) follow-up research:** run a read-only deep dive after P0
+4. **RD-Agent(Q) follow-up research:** run a read-only deep dive after P0
    cleanup, with output as a dated `analysis/` research note covering reusable
    RD-Agent(Q)/Qlib concepts, rejected pieces, integration boundaries, and gates
    required before any production code adopts the pattern.

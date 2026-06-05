@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh --status
 ```
 默认不再安装 cron snapshot / SessionStart auto-inject；如需恢复旧自动化，必须显式设置脚本里的 legacy opt-in。
 
-**Snapshot 时间**: 2026-06-05 22:01:02 CST
+**Snapshot 时间**: 2026-06-05 22:39:02 CST
 
 ## 主线状态
 
@@ -57,13 +57,14 @@ bash scripts/install_resilience.sh --status
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `fde3a74d docs: record data-source selection research test pass evidence` |
-| 最近 24h commits | 8 |
-| 未 commit 文件 | 104 |
+| HEAD | `8371e60c chore: add provider-neutral execution control plane` |
+| 最近 24h commits | 9 |
+| 未 commit 文件 | 5 |
 
 ### 最近 10 commits
 
 ```
+8371e60c chore: add provider-neutral execution control plane
 fde3a74d docs: record data-source selection research test pass evidence
 f00cd7f9 docs: refresh data health warning state
 762645cd chore: calibrate storage payload audit caps
@@ -73,12 +74,11 @@ f00cd7f9 docs: refresh data health warning state
 4f487f12 docs: refresh data-health rollover state
 06eff20e chore: expose design review preflight gate
 11e430f8 chore: add stage-opt supply contract
-22189b75 chore: add DB boundary static gate
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**104 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**5 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

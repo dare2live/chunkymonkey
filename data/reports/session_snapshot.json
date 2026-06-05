@@ -1,11 +1,11 @@
 {
-  "snapshot_at": "2026-06-05 22:01:02 CST",
+  "snapshot_at": "2026-06-05 22:39:02 CST",
   "git": {
     "branch": "main",
-    "head_hash": "fde3a74d",
-    "head_msg": "fde3a74d docs: record data-source selection research test pass evidence",
-    "commits_24h": 8,
-    "uncommitted_files": 104
+    "head_hash": "8371e60c",
+    "head_msg": "8371e60c chore: add provider-neutral execution control plane",
+    "commits_24h": 9,
+    "uncommitted_files": 5
   },
   "retrain": {
     "model_id": "lgbm_phase5_v9b_20260523T083000Z",
@@ -20,5 +20,5 @@
   "compute_backend": {
     "backends": "local:active, modal:planned"
   },
-  "next_action": "104 uncommitted files \u2014 git status \u770b + bash scripts/safe_commit.sh"
+  "next_action": "5 uncommitted files \u2014 git status \u770b + bash scripts/safe_commit.sh"
 }
