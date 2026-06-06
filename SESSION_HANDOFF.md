@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh --status
 ```
 默认不再安装 cron snapshot / SessionStart auto-inject；如需恢复旧自动化，必须显式设置脚本里的 legacy opt-in。
 
-**Snapshot 时间**: 2026-06-06 07:57:47 CST
+**Snapshot 时间**: 2026-06-06 08:22:32 CST
 
 ## 主线状态
 
@@ -57,13 +57,15 @@ bash scripts/install_resilience.sh --status
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `c8000b2f chore: harden stage-opt schema contract` |
-| 最近 24h commits | 21 |
+| HEAD | `23c0fb00 chore: harden stage-opt signal kline coverage evidence` |
+| 最近 24h commits | 23 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+23c0fb00 chore: harden stage-opt signal kline coverage evidence
+793279c9 docs: refresh session snapshot after schema gate
 c8000b2f chore: harden stage-opt schema contract
 cb1740e4 docs: refresh session snapshot after stage-opt gate
 bfdd19e3 chore: harden stage-opt supply readiness gate evidence
@@ -72,8 +74,6 @@ bfdd19e3 chore: harden stage-opt supply readiness gate evidence
 1fa9b375 docs: refresh session snapshot after consumer audit
 848d5e2a chore: audit storage retention consumers
 93291afc docs: refresh session snapshot after retention contract
-d318ed70 chore: require storage retention policy contract
-0a85a9c7 docs: track RD-Agent research follow-up
 ```
 
 ## NEXT ACTION (auto-computed)
