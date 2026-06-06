@@ -45,7 +45,7 @@ evidence or disjoint patches; their output is not a verdict.
 | P1 | Data-source capability routing | Capability contracts committed in `3e9fafc8`; TuShare `moneyflow` adapter/gate wiring is local no-persist probe scope only | Keep new providers in capability-level probe mode before any DB writer or provider promotion |
 | P1 | DB retention/modularization | Retention inventory now has owner/consumer/truth/compact contract; former unknown panels are protected by known runtime/research consumers | Migrate or retire panel consumers before any cleanup; keep production delete/VACUUM blocked unless copied-DuckDB validation and manifests exist |
 | P1 | Stage-opt supply | Structural upstream blocker remains; readiness, source/schema, and signal-date K-line coverage diagnostics are now reportable; latest live coverage is 100% | Repair upstream formula density; do not tune knobs or chase K-line coverage as a substitute |
-| P2 | Microsoft RD-Agent(Q) research | Tracked as follow-up only; no production integration approved | Create a dated `analysis/rd_agent_q_research_*.md` note mapping RD-Agent(Q)/Qlib reusable components, Co-STEER feedback, factor mining, report-to-code flow, experiment loop, and agent role split into borrow/reject decisions under ChunkyMonkey gates |
+| P2 | Microsoft RD-Agent(Q) research | Tracked as follow-up only; no production integration approved | Create a dated `analysis/rd_agent_q_research_*.md` deep-dive note mapping RD-Agent(Q)/Qlib reusable components, Co-STEER feedback, factor mining, report-to-code flow, experiment loop, agent role split, and experiment-manager contracts into borrow/reject/POC decisions under ChunkyMonkey gates |
 | P2 | Data-health warning-only assets | No red or blocking-yellow in latest live doctor; 7 warning-quality tables remain yellow | Treat as owner-specific maintenance, not startup blockers |
 
 ## Latest Live Gate Snapshot
@@ -80,15 +80,16 @@ Live gates override this section. Refresh before using the numbers as evidence.
    upstream signal density, data-source truth contracts, and live audit gates
    are explicit.
 4. **RD-Agent(Q) follow-up research:** run a read-only deep dive after P0
-   cleanup, with output as a dated `analysis/` research note. Compare the
-   upstream RD-Agent(Q)/Qlib research loop, Co-STEER feedback, factor mining,
-   report-to-code flow, experiment manager, and agent role split against this
-   project's PIT, data-source, paper-sim, promotion, and `experiment_jobs`
-   contracts. The expected result is a borrow/reject table, an integration-risk
-   map, and a smallest reversible POC plan. Mature ideas may be copied as
-   isolated research tooling; no upstream framework, agent loop, generated
-   factor, or model result can bypass ChunkyMonkey's truth-source, leakage,
-   paper-sim, and promotion gates.
+   cleanup or in an explicitly bounded parallel research slot, with output as a
+   dated `analysis/` research note. Compare the upstream RD-Agent(Q)/Qlib
+   research loop, Co-STEER feedback, factor mining, report-to-code flow,
+   experiment manager, and agent role split against this project's PIT,
+   data-source, paper-sim, promotion, and `experiment_jobs` contracts. The
+   expected result is a borrow/reject table, an integration-risk map, a mature
+   component reuse list, and the smallest reversible POC plan. Mature ideas may
+   be copied as isolated research tooling; no upstream framework, agent loop,
+   generated factor, or model result can bypass ChunkyMonkey's truth-source,
+   leakage, paper-sim, and promotion gates.
 
 ## Long-Term Roadmap
 
