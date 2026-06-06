@@ -43,8 +43,8 @@ evidence or disjoint patches; their output is not a verdict.
 | P0 | Dirty worktree governance | Clean after `3e9fafc8`; `worktree` gate reports `unknown=0` | Keep future commits slice-based; never `git add .` |
 | P1 | `need_027` exact order-flow | Still blocked; no-persist gate now emits source-group `controller_blockers` and `post_probe_gates`; latest focused run is `BLOCKED` with AkShare `akshare_remote_disconnected=3`, TuShare `tushare_token_missing=3`, and all post-probe gates `not_checked` | Restore source stability or provide token, rerun no-persist source-group gate, then require PIT/freshness, writer, watermark, and failure-queue evidence before production use |
 | P1 | Data-source capability routing | Capability contracts committed in `3e9fafc8`; TuShare `moneyflow` adapter/gate wiring is local no-persist probe scope only; iFinD MCP is a research-only semantic/industry-chain snapshot candidate, not a行情 or exact-flow production replacement | Keep new providers in capability-level probe mode before any DB writer or provider promotion; route iFinD MCP through daily PIT snapshot contracts for sector/theme/news/notice evidence |
-| P1 | DB retention/modularization | Retention inventory now has owner/consumer/truth/compact contract; former unknown panels are protected by known runtime/research consumers | Migrate or retire panel consumers before any cleanup; keep production delete/VACUUM blocked unless copied-DuckDB validation and manifests exist |
-| P1 | Stage-opt supply | Structural blocker remains, but short-window reversal top cell is now classified as `candidate_supply_freshness`: `fact_technical_trigger` / reversal max at `2026-06-02` while K-line reaches `2026-06-04`; YTD reversal-only readiness is nonzero (`62.21%`) | Refresh/rebuild `fact_technical_trigger` to latest trusted K-line date, rerun short + YTD audits, then decide whether a no-persist reversal state/source POC is still needed |
+| P1 | DB retention/modularization | Capacity pressure is internal table/version/cache overlap inside `smartmoney.duckdb`, not external NO2/backup/snapshot files; retention inventory has owner/consumer/truth/compact contracts and no executable delete candidates | Migrate or retire panel/cache consumers before any cleanup; keep production delete/VACUUM blocked unless copied-DuckDB validation and manifests exist |
+| P1 | Stage-opt supply | Structural blocker remains, but short-window reversal blocker is now classified as `candidate_supply_freshness`: `fact_signal_context` and `fact_technical_trigger` stop at `2026-06-02` while trusted K-line reaches `2026-06-04`; YTD reversal-only readiness is nonzero (`62.21%`) | Serially refresh `fact_signal_context` first, then `fact_technical_trigger`, to latest trusted K-line date (`2026-06-04` in current local data); rerun short + YTD audits before considering any no-persist reversal state/source POC |
 | P2 | Microsoft RD-Agent(Q) research | Tracked as follow-up only; no production integration approved | Create a dated `analysis/rd_agent_q_research_*.md` deep-dive note mapping RD-Agent(Q)/Qlib reusable components, Co-STEER feedback, factor mining, report-to-code flow, experiment loop, agent role split, and experiment-manager contracts into borrow/reject/POC decisions under ChunkyMonkey gates |
 | P2 | Data-health warning-only assets | No red or blocking-yellow in latest live doctor; 7 warning-quality tables remain yellow | Treat as owner-specific maintenance, not startup blockers |
 
@@ -63,7 +63,7 @@ As of the latest checked state, with full doctor/stage-opt evidence and focused
 | `audit_storage_retention_consumers.py` | `PASS / audited_tables=11 / runtime_ref_tables=11` | Cleanup candidates are protected by explicit consumer evidence instead of unknown placeholders |
 | `audit_execution_surface.py --include-live-launchd` | `PASS / 0 findings` | Retired execution-surface references are not currently detected |
 | `need_coverage` | `need_027` blocked | Latest focused no-persist gate: `6` probes / `0` valid; AkShare exact-flow classified as `akshare_remote_disconnected=3`, TuShare `moneyflow` classified as `tushare_token_missing=3`; `post_probe_gates` remain `not_checked` |
-| `audit_stage_opt_candidate_supply.py` | `WARN` | Short live reversal audit `2026-06-01..2026-06-05`: `source_max_date_before_kline_max` and `source_window_signal_dates_below_min_signals`; `fact_technical_trigger` / reversal max `2026-06-02`, K-line max `2026-06-04`; next focus is `candidate_supply_freshness`, not another formula threshold tweak |
+| `audit_stage_opt_candidate_supply.py` | `WARN` | Short live reversal audit `2026-06-01..2026-06-05`: `source_max_date_before_kline_max` and `source_window_signal_dates_below_min_signals`; `fact_signal_context` + `fact_technical_trigger` max `2026-06-02`, K-line max `2026-06-04`; next focus is serial freshness repair, not another formula threshold tweak |
 
 Live gates override this section. Refresh before using the numbers as evidence.
 
@@ -80,7 +80,9 @@ Live gates override this section. Refresh before using the numbers as evidence.
    and rollback.
 3. **Strategy/model work:** resume stage-opt and model exploration only after
    upstream signal density, data-source truth contracts, and live audit gates
-   are explicit.
+   are explicit. Current stage-opt freshness repair order is
+   `fact_signal_context` before `fact_technical_trigger`; use trusted K-line max
+   rather than calendar max as the write end.
 4. **RD-Agent(Q) follow-up research:** run a read-only deep dive after P0
    cleanup or in an explicitly bounded parallel research slot, with output as a
    dated `analysis/` research note. Compare the upstream RD-Agent(Q)/Qlib

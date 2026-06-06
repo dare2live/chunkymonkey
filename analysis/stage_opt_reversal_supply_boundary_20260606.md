@@ -16,9 +16,12 @@ formula-density defect.
 
 - `fact_technical_trigger` and the three reversal formulas currently max at
   `2026-06-02`.
+- `fact_signal_context`, required by `stage_opt_candidate_supply.yaml` as a
+  join dependency, also currently maxes at `2026-06-02`.
 - `v_price_kline_qfq` has daily qfq bars through `2026-06-04`.
 - `dim_trading_calendar` has trading dates through `2026-06-05` for the checked
-  window.
+  window, but the freshness repair target is the trusted K-line max
+  (`2026-06-04`), not the calendar max alone.
 - Short audit `2026-06-01..2026-06-05` with
   `--formula reversal_1m_mild reversal_1m_deep reversal_1w` now reports:
   `candidate_supply_freshness`, `source_max_date_before_kline_max`, and
@@ -42,9 +45,10 @@ formula-density defect.
 
 ## Next Slice
 
-1. Refresh or rebuild `fact_technical_trigger` through the latest trusted K-line
+1. Refresh `fact_signal_context` through the latest trusted K-line date.
+2. Refresh or rebuild `fact_technical_trigger` through the same trusted K-line
    date.
-2. Rerun the short live audit and the longer historical audit.
-3. If `candidate_supply_freshness` clears but `below_min_signals` remains a
+3. Rerun the short live audit and the longer historical audit.
+4. If `candidate_supply_freshness` clears but `below_min_signals` remains a
    material blocker, design a no-persist reversal state/source POC before any
    table or writer is introduced.

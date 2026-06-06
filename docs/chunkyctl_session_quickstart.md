@@ -179,6 +179,12 @@ read/compute window from the write/delete window.
 | `fact_signal_context` | `PYTHONPATH=backend python backend/scripts/build_signal_context.py --start <read_start> --write-start <write_start> --end <end>` |
 | `fact_technical_trigger` | `PYTHONPATH=backend python backend/scripts/build_formula_signals_history.py --start <read_start> --write-start <write_start> --end <end>` |
 
+For stage-opt candidate-supply freshness, refresh dependencies in order:
+`fact_signal_context` first, then `fact_technical_trigger`. Use the latest
+trusted K-line date as `<end>` (`min(latest_completed_trade_date, kline_max)`),
+not the trading-calendar max by itself. A narrow `--write-start` window is valid
+only when `--start` still gives formula/context lookback enough history.
+
 Do not pass a target window as `--start` when the script needs lookback. Use a
 wider `--start` for computation and `--write-start` for replacement. After
 refreshing production DuckDB tables, rerun the relevant data gates, update the
@@ -209,7 +215,7 @@ readiness from row counts alone.
 | `stage_opt.top_blocked_reason_counts` exists | Use it to see which gate dominates stage-opt attrition before rerunning audits; `below_min_signals` is currently the primary blocker, and `doctor` should surface it alongside `next_action_recommendation` |
 | `stage_opt.attrition_funnel` / `top_blocked_stage_formula_cells` / `top_blocked_registry_family_cells` exists | Use these evidence fields to locate raw -> filtered -> unique -> blocked -> ready loss, the worst `stage_bin × formula_id` cells, and the worst `registry_scope × formula_family` cells before changing upstream contracts or schemas |
 | `stage_opt.candidate_supply_contract` exists | Treat this as the machine-readable source contract for stage-opt supply: source role, grain, PIT/diagnostic eligibility, allowed consumers, allowed stage bins, and formula scope overrides live in `backend/config/stage_opt_candidate_supply.yaml`; do not re-create these rules in scripts or docs |
-| `stage_opt.next_action_recommendation.focus=upstream_candidate_supply` | Treat this as a supply-side blocker: expand upstream formula coverage or signal density before tuning profile knobs; the 2026-06-02 config-only probe series is exhausted, so there is no safe strategy/threshold knob slice left for stage-opt. Evidence-tooling slices are allowed when they make the structural blocker more legible; future production work should be structural redesign or upstream-source work, not another knob-tuning pass. `macd_golden_cross` also carries a `fact_technical_trigger` schema limit note, so do not confuse state rows with a schema-only fix |
+| `stage_opt.next_action_recommendation.focus=upstream_candidate_supply` | Treat this as a supply-side blocker: first check freshness and dependency windows (`fact_signal_context` before `fact_technical_trigger`), then expand upstream formula coverage or signal density only if freshness is aligned. The 2026-06-02 config-only probe series is exhausted, so there is no safe strategy/threshold knob slice left for stage-opt. Evidence-tooling slices are allowed when they make the structural blocker more legible; future production work should be structural redesign or upstream-source work, not another knob-tuning pass. `macd_golden_cross` also carries a `fact_technical_trigger` schema limit note, so do not confuse state rows with a schema-only fix |
 | `need_coverage.blocked_needs` contains `need_027` | Run the dedicated no-persist gate `PYTHONPATH=backend python backend/scripts/probe_source_capability.py --need027-exact-flow-gate --indent 2`; read `exact_flow.source_groups` by provider because AkShare and token-backed TuShare are alternative exact-flow candidates, not an all-sources-AND requirement; treat `need_027` as production-blocked until one source group passes small-batch stability and PIT/freshness, writer, watermark, and failure-queue resolve evidence also pass; `aif10` exact `individual_fund_flow` is unavailable, and the research-side rank snapshot is not a production fallback |
 | `--skip-storage-payload` | Use only for emergency startup when the local DuckDB is unavailable; do not claim circular-reference cleanup from a skipped audit |
 
