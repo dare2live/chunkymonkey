@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh --status
 ```
 默认不再安装 cron snapshot / SessionStart auto-inject；如需恢复旧自动化，必须显式设置脚本里的 legacy opt-in。
 
-**Snapshot 时间**: 2026-06-06 08:41:39 CST
+**Snapshot 时间**: 2026-06-06 09:08:39 CST
 
 ## 主线状态
 
@@ -57,13 +57,16 @@ bash scripts/install_resilience.sh --status
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `e123dae0 chore: harden need027 probe diagnostics` |
-| 最近 24h commits | 24 |
+| HEAD | `5ac01041 chore: add stage-opt source density diagnostics` |
+| 最近 24h commits | 25 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+5ac01041 chore: add stage-opt source density diagnostics
+80e1557c docs: track rd-agent follow-up research
+287f2d5e docs: refresh session snapshot after need027 diagnostics
 e123dae0 chore: harden need027 probe diagnostics
 96444d2f docs: refresh session snapshot after kline gate
 23c0fb00 chore: harden stage-opt signal kline coverage evidence
@@ -71,9 +74,6 @@ e123dae0 chore: harden need027 probe diagnostics
 c8000b2f chore: harden stage-opt schema contract
 cb1740e4 docs: refresh session snapshot after stage-opt gate
 bfdd19e3 chore: harden stage-opt supply readiness gate evidence
-14e40455 docs: refresh session snapshot after tushare probe wiring
-812d2c84 chore: wire tushare need027 probe
-1fa9b375 docs: refresh session snapshot after consumer audit
 ```
 
 ## NEXT ACTION (auto-computed)
