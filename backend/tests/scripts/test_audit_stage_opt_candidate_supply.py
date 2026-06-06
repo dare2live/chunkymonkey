@@ -684,6 +684,242 @@ def test_load_signal_rows_marks_missing_signal_date_kline_bar() -> None:
         conn.close()
 
 
+def test_compose_audit_result_reports_source_freshness_window_mismatch() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        _create_candidate_supply_schema(conn, include_macd=False)
+        conn.execute(
+            """
+            CREATE TABLE sm.dim_trading_calendar (
+                trade_date TEXT,
+                is_trading INTEGER
+            )
+            """
+        )
+        conn.executemany(
+            "INSERT INTO sm.dim_trading_calendar VALUES (?, ?)",
+            [
+                ("2026-06-01", 1),
+                ("2026-06-02", 1),
+                ("2026-06-03", 1),
+                ("2026-06-04", 1),
+                ("2026-06-05", 1),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO sm.fact_technical_trigger VALUES (?, ?, ?, ?)",
+            [
+                ("000001", "2026-06-01", "reversal_1w", "reversal_1w"),
+                ("000001", "2026-06-02", "reversal_1w", "reversal_1w"),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO sm.fact_signal_context VALUES (?, ?, ?)",
+            [
+                ("000001", "2026-06-01", "4"),
+                ("000001", "2026-06-02", "4"),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO v_price_kline_qfq VALUES (?, ?, ?, ?)",
+            [
+                ("000001", "2026-06-01", "daily", "qfq"),
+                ("000001", "2026-06-02", "daily", "qfq"),
+                ("000001", "2026-06-03", "daily", "qfq"),
+                ("000001", "2026-06-04", "daily", "qfq"),
+            ],
+        )
+
+        load_result = audit_stage_opt_candidate_supply._load_signal_rows(
+            conn,
+            start="2026-06-01",
+            end="2026-06-05",
+            min_signals=5,
+            formula=["reversal_1w"],
+        )
+        signal_rows = load_result["signal_rows"]
+        codes_with_bars = audit_stage_opt_candidate_supply._load_kline_codes(
+            conn,
+            codes=["000001"],
+            start="2026-06-01",
+            end="2026-06-05",
+        )
+        summary = audit_stage_opt_candidate_supply.summarize_stage_opt_candidate_supply(
+            signal_rows,
+            codes_with_bars,
+            min_signals=5,
+        )
+        result = audit_stage_opt_candidate_supply._compose_audit_result(
+            load_result,
+            summary,
+            start="2026-06-01",
+            end="2026-06-05",
+            min_signals=5,
+            signal_rows=signal_rows,
+            codes_total=1,
+            codes_with_bars=codes_with_bars,
+        )
+        markdown = audit_stage_opt_candidate_supply._render_markdown(result)
+
+        warnings = result["source_freshness"]["warnings"]
+        assert {warning["reason"] for warning in warnings} == {
+            "source_max_date_before_kline_max",
+            "source_window_signal_dates_below_min_signals",
+        }
+        assert result["source_freshness"]["sources"][0]["max_signal_date"] == "2026-06-02"
+        assert result["source_freshness"]["sources"][0]["kline_dates_after_max_signal_date_sample"] == [
+            "2026-06-03",
+            "2026-06-04",
+        ]
+        assert result["next_action_recommendation"]["focus"] == "candidate_supply_freshness"
+        assert result["next_action_recommendation"]["top_blocked_reason"] == "source_freshness_window"
+        assert result["attrition_funnel"]["source_freshness_warning_count"] == 2
+        assert "## Source Freshness" in markdown
+        assert "reversal_1w:max=2026-06-02,dates=2,rows=2" in markdown
+    finally:
+        conn.close()
+
+
+def test_load_signal_rows_default_freshness_reports_trigger_and_macd_sources() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        _create_candidate_supply_schema(conn)
+        conn.execute(
+            """
+            CREATE TABLE sm.dim_trading_calendar (
+                trade_date TEXT,
+                is_trading INTEGER
+            )
+            """
+        )
+        conn.executemany(
+            "INSERT INTO sm.dim_trading_calendar VALUES (?, ?)",
+            [
+                ("2026-06-01", 1),
+                ("2026-06-02", 1),
+                ("2026-06-03", 1),
+                ("2026-06-04", 1),
+                ("2026-06-05", 1),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO sm.fact_technical_trigger VALUES (?, ?, ?, ?)",
+            [
+                ("000001", "2026-06-01", "formula_a", "variant_a"),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO sm.mart_macd_state_history VALUES (?, ?, ?, ?, ?)",
+            [
+                ("000002", "2026-06-03", "macd_golden_cross", "macd_golden_cross_above_zero", "holding"),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO sm.fact_signal_context VALUES (?, ?, ?)",
+            [
+                ("000001", "2026-06-01", "1"),
+                ("000002", "2026-06-03", "1"),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO v_price_kline_qfq VALUES (?, ?, ?, ?)",
+            [
+                ("000001", "2026-06-01", "daily", "qfq"),
+                ("000002", "2026-06-03", "daily", "qfq"),
+                ("000001", "2026-06-04", "daily", "qfq"),
+            ],
+        )
+
+        load_result = audit_stage_opt_candidate_supply._load_signal_rows(
+            conn,
+            start="2026-06-01",
+            end="2026-06-05",
+            min_signals=5,
+            formula=None,
+        )
+
+        sources = {
+            row["source_id"]: row
+            for row in load_result["source_freshness"]["sources"]
+        }
+        assert set(sources) == {"fact_technical_trigger", "mart_macd_state_history"}
+        assert sources["fact_technical_trigger"]["max_signal_date"] == "2026-06-01"
+        assert sources["mart_macd_state_history"]["max_signal_date"] == "2026-06-03"
+        assert {
+            (warning["source_id"], warning["reason"])
+            for warning in load_result["source_freshness"]["warnings"]
+        } == {
+            ("fact_technical_trigger", "source_max_date_before_kline_max"),
+            ("fact_technical_trigger", "source_window_signal_dates_below_min_signals"),
+            ("mart_macd_state_history", "source_max_date_before_kline_max"),
+            ("mart_macd_state_history", "source_window_signal_dates_below_min_signals"),
+        }
+    finally:
+        conn.close()
+
+
+def test_compose_audit_result_does_not_route_to_freshness_for_unblocked_stale_source() -> None:
+    load_result = {
+        "raw_rows": 4,
+        "raw_trigger_rows": 4,
+        "raw_state_history_rows": 0,
+        "source_freshness": {
+            "warnings": [
+                {
+                    "source_id": "mart_macd_state_history",
+                    "reason": "source_max_date_before_kline_max",
+                    "max_signal_date": "2026-06-01",
+                    "kline_max_date": "2026-06-04",
+                    "signal_date_count": 1,
+                    "min_signals": 5,
+                }
+            ]
+        },
+        "dropped_index_rows": 0,
+        "dropped_unknown_stage_rows": 0,
+        "dropped_unknown_stage_rows_by_formula_id": {},
+        "dropped_unknown_stage_rows_by_formula_variant": {},
+        "dropped_unknown_stage_examples": [],
+    }
+    expected_recommendation = {
+        "priority": "P1",
+        "focus": "upstream_candidate_supply",
+        "reason": "below_min_signals dominates current blocked keys",
+        "recommended_lever": "expand upstream formula coverage or signal density before tuning profile knobs",
+        "weakest_formula_ids": ["reversal_1w"],
+        "weakest_stage_bins": ["4"],
+        "top_blocked_reason": "below_min_signals",
+    }
+    summary = {
+        "unique_keys": 1,
+        "ready_keys": 0,
+        "ready_coverage_pct": 0.0,
+        "blocked_reason_counts": {"below_min_signals": 1},
+        "blocked_matrix_by_source_registry_family_stage": [
+            {
+                "source_id": "fact_technical_trigger",
+                "blocked_reason_counts": {"below_min_signals": 1},
+            }
+        ],
+        "next_action_recommendation": expected_recommendation,
+    }
+
+    result = audit_stage_opt_candidate_supply._compose_audit_result(
+        load_result,
+        summary,
+        start="2026-06-01",
+        end="2026-06-05",
+        min_signals=5,
+        signal_rows=[{"stock_code": "000001"}] * 4,
+        codes_total=1,
+        codes_with_bars={"000001"},
+    )
+
+    assert result["verdict"] == "WARN"
+    assert result["attrition_funnel"]["source_freshness_warning_count"] == 1
+    assert result["next_action_recommendation"] == expected_recommendation
+
+
 def test_load_signal_rows_reports_macd_state_history_load_errors() -> None:
     conn = duckdb.connect(":memory:")
     try:
@@ -1000,6 +1236,7 @@ def test_compose_audit_result_preserves_raw_signal_rows() -> None:
         "signal_rows_with_bars": 0,
         "signal_rows_without_bars": 0,
         "signal_kline_coverage_pct": 0.0,
+        "source_freshness_warning_count": 0,
         "unique_keys": 2,
         "blocked_keys": 1,
         "ready_keys": 1,

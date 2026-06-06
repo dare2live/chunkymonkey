@@ -42,9 +42,9 @@ evidence or disjoint patches; their output is not a verdict.
 | P0 | Provider-neutral execution surface | Retired GCP execution surface removed and `experiment_jobs` contract committed in `8371e60c` | Treat `local` as active and `modal` as planned/blocked until adapter gates exist |
 | P0 | Dirty worktree governance | Clean after `3e9fafc8`; `worktree` gate reports `unknown=0` | Keep future commits slice-based; never `git add .` |
 | P1 | `need_027` exact order-flow | Still blocked; no-persist gate now emits source-group `controller_blockers` and `post_probe_gates`; latest focused run is `BLOCKED` with AkShare `akshare_remote_disconnected=3`, TuShare `tushare_token_missing=3`, and all post-probe gates `not_checked` | Restore source stability or provide token, rerun no-persist source-group gate, then require PIT/freshness, writer, watermark, and failure-queue evidence before production use |
-| P1 | Data-source capability routing | Capability contracts committed in `3e9fafc8`; TuShare `moneyflow` adapter/gate wiring is local no-persist probe scope only | Keep new providers in capability-level probe mode before any DB writer or provider promotion |
+| P1 | Data-source capability routing | Capability contracts committed in `3e9fafc8`; TuShare `moneyflow` adapter/gate wiring is local no-persist probe scope only; iFinD MCP is a research-only semantic/industry-chain snapshot candidate, not a行情 or exact-flow production replacement | Keep new providers in capability-level probe mode before any DB writer or provider promotion; route iFinD MCP through daily PIT snapshot contracts for sector/theme/news/notice evidence |
 | P1 | DB retention/modularization | Retention inventory now has owner/consumer/truth/compact contract; former unknown panels are protected by known runtime/research consumers | Migrate or retire panel consumers before any cleanup; keep production delete/VACUUM blocked unless copied-DuckDB validation and manifests exist |
-| P1 | Stage-opt supply | Structural upstream blocker remains; readiness, source/schema, signal-date K-line, and source-aware density diagnostics are now reportable; latest live coverage is 100%, top short-window blocker is `fact_technical_trigger × live × reversal × stage 4` with only 1/2 signal rows per key | Repair upstream formula/source density using source-aware top cells; do not tune knobs or chase K-line coverage as a substitute |
+| P1 | Stage-opt supply | Structural blocker remains, but short-window reversal top cell is now classified as `candidate_supply_freshness`: `fact_technical_trigger` / reversal max at `2026-06-02` while K-line reaches `2026-06-04`; YTD reversal-only readiness is nonzero (`62.21%`) | Refresh/rebuild `fact_technical_trigger` to latest trusted K-line date, rerun short + YTD audits, then decide whether a no-persist reversal state/source POC is still needed |
 | P2 | Microsoft RD-Agent(Q) research | Tracked as follow-up only; no production integration approved | Create a dated `analysis/rd_agent_q_research_*.md` deep-dive note mapping RD-Agent(Q)/Qlib reusable components, Co-STEER feedback, factor mining, report-to-code flow, experiment loop, agent role split, and experiment-manager contracts into borrow/reject/POC decisions under ChunkyMonkey gates |
 | P2 | Data-health warning-only assets | No red or blocking-yellow in latest live doctor; 7 warning-quality tables remain yellow | Treat as owner-specific maintenance, not startup blockers |
 
@@ -55,7 +55,7 @@ As of the latest checked state, with full doctor/stage-opt evidence and focused
 
 | Gate | Current result | Meaning |
 |---|---|---|
-| `scripts/chunkyctl doctor --fast` | `WARN` | `need_027` remains blocked; stage-opt remains `upstream_candidate_supply` |
+| `scripts/chunkyctl doctor --fast` | `WARN` | `need_027` remains blocked; stage-opt now has freshness/window evidence for the short reversal blocker |
 | `scripts/chunkyctl worktree --format markdown` | Use live gate before staging | Latest pre-commit check had `unknown=0`; keep future commits slice-based |
 | `moth snapshot --repo . --format markdown` | CodeGraph `PASS` | CodeGraph is up to date; complexity diff has `new_high_count=0` |
 | `data_health_snapshot.py --dry-run` | `green=335 / yellow=7 / red=0 / blocking_yellow=0` | No startup data-health blocker; yellow assets are maintenance debt |
@@ -63,15 +63,17 @@ As of the latest checked state, with full doctor/stage-opt evidence and focused
 | `audit_storage_retention_consumers.py` | `PASS / audited_tables=11 / runtime_ref_tables=11` | Cleanup candidates are protected by explicit consumer evidence instead of unknown placeholders |
 | `audit_execution_surface.py --include-live-launchd` | `PASS / 0 findings` | Retired execution-surface references are not currently detected |
 | `need_coverage` | `need_027` blocked | Latest focused no-persist gate: `6` probes / `0` valid; AkShare exact-flow classified as `akshare_remote_disconnected=3`, TuShare `moneyflow` classified as `tushare_token_missing=3`; `post_probe_gates` remain `not_checked` |
-| `audit_stage_opt_candidate_supply.py` | `WARN` | Short live audit `2026-06-01..2026-06-05`: `signal_kline_coverage_pct=100.0`, `signal_rows_without_bars=0`, `12155` keys blocked by `below_min_signals`; top source-aware cell is `fact_technical_trigger × live × reversal × stage 4` with buckets `1=1202 / 2=2183`; blocker remains upstream supply |
+| `audit_stage_opt_candidate_supply.py` | `WARN` | Short live reversal audit `2026-06-01..2026-06-05`: `source_max_date_before_kline_max` and `source_window_signal_dates_below_min_signals`; `fact_technical_trigger` / reversal max `2026-06-02`, K-line max `2026-06-04`; next focus is `candidate_supply_freshness`, not another formula threshold tweak |
 
 Live gates override this section. Refresh before using the numbers as evidence.
 
 ## Implementation Plan
 
-1. **Data-source contracts:** keep iFinD/TuShare/tdxhub work in research/probe
-   mode until capability contracts, PIT/freshness/watermark, and no-persist
-   probes pass.
+1. **Data-source contracts:** keep iFinD MCP / TuShare / tdxhub work in
+   capability-scoped research/probe mode until PIT/freshness/watermark and
+   no-persist probes pass. iFinD MCP is for sector/theme/news/notice/industry
+   chain snapshots first; TuShare remains the structured exact-flow/batch probe
+   candidate; tdxhub remains the current backbone for stable local facts.
 2. **Storage/DB governance:** continue from manifest + retention dry-run toward
    owner-based retention and compact policy. No production deletion without
    consumer migration/retirement evidence, copied-DuckDB validation, manifests,
@@ -95,7 +97,7 @@ Live gates override this section. Refresh before using the numbers as evidence.
 
 | Area | Direction |
 |---|---|
-| Data sources | Capability-level routing: `tdxhub` backbone, iFinD semantic research snapshots, TuShare structured exact-flow/batch probes, each gated by PIT/freshness/watermark |
+| Data sources | Capability-level routing: `tdxhub` backbone, iFinD MCP semantic/industry-chain research snapshots, TuShare structured exact-flow/batch probes, each gated by PIT/freshness/watermark |
 | Compute | `experiment_jobs` is the only approved job contract; `local` active, `modal` planned/blocked until adapter manifest, sandbox, cost boundary, and rollback exist |
 | Research agents | Microsoft RD-Agent(Q) / Qlib ideas may feed isolated candidate generation and experiment design; production data, PIT, backtest, and promotion gates stay in ChunkyMonkey |
 | Database | Manifest-owned DB aliases, read-only attached DBs by default, owner-based retention, no ad hoc scripts or hidden DB paths |

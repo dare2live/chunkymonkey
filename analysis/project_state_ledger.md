@@ -9,6 +9,62 @@
 > snapshot, and `rg` / `tail` on this ledger only when a task needs specific
 > historical evidence.
 
+## 2026-06-06 — iFinD MCP data-source routing recheck
+
+- A read-only sidecar rechecked the local iFinD MCP mirror under
+  `/Users/dp/Documents/M/stock/iFind` and the current ChunkyMonkey data-source
+  routing docs. The controller accepted the routing evidence but not a
+  production promotion.
+- Current decision remains: iFinD MCP is eligible only as a research/probe
+  source for sector/theme daily PIT snapshots, industry-chain analyst-assist,
+  news/notice evidence snippets, company profile enrichment, and curated EDB
+  industry-cycle candidates.
+- iFinD MCP must not become a global fallback or replace K-line, tick/order-book,
+  high-frequency realtime quotes, F10/holder backbone, historical concept
+  membership backfill, or `need_027` exact order-flow. Structured forecast/report
+  rows remain unproven unless a separate field/date/PIT/permission probe proves
+  them.
+- Durable owner: keep the current route in `goal.md` and the completed evidence
+  in `analysis/data_source_selection_20260605.md`; future production-shaped
+  probes should record query template hash, result limit, source date, quota
+  cost, de-dup key, empty behavior, and PIT counterexamples before any writer or
+  source catalog promotion.
+
+## 2026-06-06 — Stage-opt reversal freshness/window boundary
+
+- `audit_stage_opt_candidate_supply.py` now reports source freshness and
+  audit-window feasibility, including per-source `max_signal_date`,
+  `signal_date_count`, formula-level max signal dates, K-line dates after source
+  max, and warnings such as `source_max_date_before_kline_max` /
+  `source_window_signal_dates_below_min_signals`.
+- This closes a diagnostic ambiguity from the short live reversal audit. Local
+  read-only verification showed `dim_trading_calendar` reached `2026-06-05`,
+  `v_price_kline_qfq` reached `2026-06-04`, but `fact_technical_trigger` and
+  `reversal_1m_mild` / `reversal_1m_deep` / `reversal_1w` reached only
+  `2026-06-02`.
+- Short live reversal audit `2026-06-01..2026-06-05` now recommends
+  `candidate_supply_freshness` before formula/source redesign. It reports
+  `fact_technical_trigger` formula max dates of `2026-06-02`, K-line dates after
+  source max `2026-06-03` and `2026-06-04`, and `signal_date_count=2 <
+  min_signals=5`.
+- Longer 2026 YTD reversal-only audit proves this is not simply "reversal can
+  never meet readiness": `raw_signal_rows=306247`, `unique_keys=33946`,
+  `ready_keys=21117`, `ready_coverage_pct=62.21`,
+  `signal_kline_coverage_pct=100.0`.
+- Controller decision: do not tune reversal thresholds again and do not add a
+  reversal state/history table yet. First refresh/rebuild `fact_technical_trigger`
+  to the latest trusted K-line date, rerun short + YTD audits, then consider a
+  no-persist state/source POC only if freshness-aligned evidence still shows a
+  material density blocker.
+- Verification: scoped `audit_test_tool_health.py` PASS; targeted
+  `backend/tests/scripts/test_audit_stage_opt_candidate_supply.py` passed
+  (`22 passed`); related service/script/CLI tests passed (`67 passed`);
+  `scripts/chunkyctl audit --run ...` passed, including CodeGraph sync,
+  complexity checks, universe filter, compile, Moth snapshot, and pytest. Short
+  live reversal audit still recommends `candidate_supply_freshness`. See
+  `analysis/stage_opt_reversal_supply_boundary_20260606.md` for the compact
+  decision record.
+
 ## 2026-06-06 — Stage-opt signal-date K-line coverage evidence
 
 - `audit_stage_opt_candidate_supply.py` now joins `v_price_kline_qfq` at

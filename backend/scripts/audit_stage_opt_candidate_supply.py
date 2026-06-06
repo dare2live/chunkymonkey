@@ -202,6 +202,7 @@ def _empty_load_result(schema_result: dict[str, Any]) -> dict[str, Any]:
         "raw_rows": 0,
         "raw_trigger_rows": 0,
         "raw_state_history_rows": 0,
+        "source_freshness": {},
         "source_load_errors": [],
         "source_schema_checks": schema_result.get("source_schema_checks") or [],
         "source_schema_errors": schema_result.get("source_schema_errors") or [],
@@ -245,14 +246,186 @@ def _kline_signal_row_counts(rows: list[dict[str, Any]], codes_with_bars: set[st
     return matched, len(rows) - matched
 
 
+def _date_bounds(dates: list[str]) -> dict[str, Any]:
+    if not dates:
+        return {"count": 0, "min_date": None, "max_date": None}
+    return {"count": len(dates), "min_date": dates[0], "max_date": dates[-1]}
+
+
+def _query_distinct_dates(conn: Any, sql: str, params: list[Any]) -> tuple[list[str], str | None]:
+    try:
+        rows = conn.execute(sql, params).fetchall()
+    except Exception as exc:
+        return [], f"{type(exc).__name__}: {str(exc)[:500]}"
+    return [str(row[0]) for row in rows if row and row[0] is not None], None
+
+
+def _load_source_freshness(
+    conn: Any,
+    *,
+    start: str,
+    end: str,
+    min_signals: int,
+    formula: list[str] | None = None,
+    stock_codes: list[str] | None = None,
+) -> dict[str, Any]:
+    """Report source/window freshness so short live audits do not masquerade as formula defects."""
+    stock_filter_sql = ""
+    stock_filter_params: list[str] = []
+    kline_stock_filter_sql = ""
+    if stock_codes:
+        stock_codes = sorted({str(code).strip() for code in stock_codes if str(code).strip()})
+        placeholders = ",".join(["?"] * len(stock_codes))
+        stock_filter_sql = f" AND x.stock_code IN ({placeholders})"
+        kline_stock_filter_sql = f" AND code IN ({placeholders})"
+        stock_filter_params = stock_codes
+
+    calendar_dates, calendar_error = _query_distinct_dates(
+        conn,
+        """
+        SELECT DISTINCT trade_date
+          FROM sm.dim_trading_calendar
+         WHERE is_trading=1 AND trade_date >= ? AND trade_date <= ?
+         ORDER BY trade_date
+        """,
+        [start, end],
+    )
+    kline_dates, kline_error = _query_distinct_dates(
+        conn,
+        f"""
+        SELECT DISTINCT date
+          FROM v_price_kline_qfq
+         WHERE freq='daily' AND adjust='qfq'
+           AND date >= ? AND date <= ?
+           {kline_stock_filter_sql}
+         ORDER BY date
+        """,
+        [start, end] + stock_filter_params,
+    )
+
+    source_reports: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+    formula_filter_sql = ""
+    formula_filter_params: list[str] = []
+    if formula:
+        placeholders = ",".join(["?"] * len(formula))
+        formula_filter_sql = f" AND x.formula_id IN ({placeholders})"
+        formula_filter_params = list(formula)
+
+    for source in SUPPLY_CONTRACT.sources:
+        if not source.include_for_formula_filter(formula):
+            continue
+        source_dates, source_error = _query_distinct_dates(
+            conn,
+            f"""
+            SELECT DISTINCT x.date
+              FROM {source.table} x
+             WHERE x.date >= ? AND x.date <= ?
+               {formula_filter_sql}
+               {stock_filter_sql}
+             ORDER BY x.date
+            """,
+            [start, end] + formula_filter_params + stock_filter_params,
+        )
+        formula_rows: list[dict[str, Any]] = []
+        if source_error is None:
+            try:
+                rows = conn.execute(
+                    f"""
+                    SELECT x.formula_id, MAX(x.date), COUNT(DISTINCT x.date), COUNT(*)
+                      FROM {source.table} x
+                     WHERE x.date >= ? AND x.date <= ?
+                       {formula_filter_sql}
+                       {stock_filter_sql}
+                     GROUP BY x.formula_id
+                     ORDER BY x.formula_id
+                    """,
+                    [start, end] + formula_filter_params + stock_filter_params,
+                ).fetchall()
+                formula_rows = [
+                    {
+                        "formula_id": str(row[0]),
+                        "max_signal_date": str(row[1]) if row[1] is not None else None,
+                        "signal_date_count": int(row[2] or 0),
+                        "row_count": int(row[3] or 0),
+                    }
+                    for row in rows
+                ]
+            except Exception as exc:
+                source_error = f"{type(exc).__name__}: {str(exc)[:500]}"
+
+        source_bounds = _date_bounds(source_dates)
+        source_max = source_bounds["max_date"]
+        kline_max = kline_dates[-1] if kline_dates else None
+        kline_dates_after_source_max = [
+            date_value for date_value in kline_dates if source_max is not None and date_value > source_max
+        ]
+        source_warnings: list[str] = []
+        if source_error:
+            source_warnings.append("source_date_query_error")
+        if source_max and kline_max and source_max < kline_max:
+            source_warnings.append("source_max_date_before_kline_max")
+        if source_bounds["count"] < min_signals:
+            source_warnings.append("source_window_signal_dates_below_min_signals")
+
+        report = {
+            "source_id": source.source_id,
+            "table": source.table,
+            "status": "WARN" if source_warnings else "PASS",
+            "signal_date_count": source_bounds["count"],
+            "min_signal_date": source_bounds["min_date"],
+            "max_signal_date": source_max,
+            "kline_dates_after_max_signal_date_count": len(kline_dates_after_source_max),
+            "kline_dates_after_max_signal_date_sample": kline_dates_after_source_max[:5],
+            "formula_max_signal_dates": formula_rows,
+            "warnings": source_warnings,
+        }
+        if source_error:
+            report["error"] = source_error
+        source_reports.append(report)
+        for warning in source_warnings:
+            warnings.append(
+                {
+                    "source_id": source.source_id,
+                    "reason": warning,
+                    "max_signal_date": source_max,
+                    "kline_max_date": kline_max,
+                    "signal_date_count": source_bounds["count"],
+                    "min_signals": min_signals,
+                    "kline_dates_after_max_signal_date_count": len(kline_dates_after_source_max),
+                    "kline_dates_after_max_signal_date_sample": kline_dates_after_source_max[:5],
+                }
+            )
+
+    return {
+        "window": {
+            "start": start,
+            "end": end,
+            "calendar": {**_date_bounds(calendar_dates), "error": calendar_error},
+            "kline": {**_date_bounds(kline_dates), "error": kline_error},
+        },
+        "sources": source_reports,
+        "warnings": warnings,
+    }
+
+
 def _load_signal_rows(
     conn: Any,
     *,
     start: str,
     end: str,
+    min_signals: int = 5,
     formula: list[str] | None = None,
     stock_codes: list[str] | None = None,
 ) -> dict[str, Any]:
+    source_freshness = _load_source_freshness(
+        conn,
+        start=start,
+        end=end,
+        min_signals=min_signals,
+        formula=formula,
+        stock_codes=stock_codes,
+    )
     formula_filter_sql = ""
     formula_filter_params: list[str] = []
     if formula:
@@ -409,6 +582,7 @@ def _load_signal_rows(
         "raw_rows": raw_rows,
         "raw_trigger_rows": raw_trigger_rows,
         "raw_state_history_rows": raw_state_history_rows,
+        "source_freshness": source_freshness,
         "source_load_errors": source_load_errors,
         "_raw_rows_by_stock_code": dict(sorted(raw_rows_by_stock_code.items())),
         "_raw_trigger_rows_by_stock_code": dict(sorted(raw_trigger_rows_by_stock_code.items())),
@@ -1242,6 +1416,7 @@ def _render_markdown(result: dict[str, Any]) -> str:
         f"- filtered_signal_rows: {result['filtered_signal_rows']}",
         f"- dropped_index_rows: {result['dropped_index_rows']}",
         f"- dropped_unknown_stage_rows: {result['dropped_unknown_stage_rows']}",
+        f"- source_freshness_warnings: {len((result.get('source_freshness') or {}).get('warnings') or [])}",
         f"- source_schema_errors: {len(result.get('source_schema_errors') or [])}",
         f"- source_load_errors: {len(result.get('source_load_errors') or [])}",
         f"- codes_with_bars: {result['codes_with_bars']}",
@@ -1265,6 +1440,7 @@ def _render_markdown(result: dict[str, Any]) -> str:
                 f"- signal_rows_with_bars: {funnel.get('signal_rows_with_bars', 0)}",
                 f"- signal_rows_without_bars: {funnel.get('signal_rows_without_bars', 0)}",
                 f"- signal_kline_coverage_pct: {funnel.get('signal_kline_coverage_pct', 0.0)}",
+                f"- source_freshness_warning_count: {funnel.get('source_freshness_warning_count', 0)}",
                 f"- unique_keys: {funnel['unique_keys']}",
                 f"- blocked_keys: {funnel['blocked_keys']}",
                 f"- ready_keys: {funnel['ready_keys']}",
@@ -1335,6 +1511,53 @@ def _render_markdown(result: dict[str, Any]) -> str:
                 f"- {error.get('source_id')}: table={error.get('table')} "
                 f"{error.get('error_type')}: {error.get('error')}"
             )
+        lines.append("")
+    if result.get("source_freshness"):
+        freshness = result["source_freshness"]
+        window = freshness.get("window") or {}
+        calendar = window.get("calendar") or {}
+        kline = window.get("kline") or {}
+        lines.append("## Source Freshness")
+        lines.append(
+            f"- calendar: count={calendar.get('count')} min={calendar.get('min_date')} max={calendar.get('max_date')}"
+        )
+        if calendar.get("error"):
+            lines.append(f"- calendar_error: {calendar.get('error')}")
+        lines.append(
+            f"- kline: count={kline.get('count')} min={kline.get('min_date')} max={kline.get('max_date')}"
+        )
+        if kline.get("error"):
+            lines.append(f"- kline_error: {kline.get('error')}")
+        for source in freshness.get("sources") or []:
+            warning_text = ",".join(str(item) for item in source.get("warnings") or []) or "none"
+            sample_text = ",".join(str(item) for item in source.get("kline_dates_after_max_signal_date_sample") or []) or "none"
+            lines.append(
+                f"- {source.get('source_id')}: status={source.get('status')} "
+                f"signal_date_count={source.get('signal_date_count')} "
+                f"min={source.get('min_signal_date')} max={source.get('max_signal_date')} "
+                f"kline_after_max={source.get('kline_dates_after_max_signal_date_count')} "
+                f"sample={sample_text} warnings={warning_text}"
+            )
+            formula_rows = source.get("formula_max_signal_dates") or []
+            if formula_rows:
+                formula_text = "; ".join(
+                    f"{row.get('formula_id')}:max={row.get('max_signal_date')},dates={row.get('signal_date_count')},rows={row.get('row_count')}"
+                    for row in formula_rows[:8]
+                )
+                lines.append(f"  - formula_max_signal_dates: {formula_text}")
+        if freshness.get("warnings"):
+            lines.append("- warnings:")
+            for warning in freshness["warnings"]:
+                sample_text = ",".join(str(item) for item in warning.get("kline_dates_after_max_signal_date_sample") or []) or "none"
+                lines.append(
+                    f"  - {warning.get('source_id')}: {warning.get('reason')} "
+                    f"max_signal_date={warning.get('max_signal_date')} "
+                    f"kline_max_date={warning.get('kline_max_date')} "
+                    f"signal_date_count={warning.get('signal_date_count')} "
+                    f"min_signals={warning.get('min_signals')} "
+                    f"kline_after_max={warning.get('kline_dates_after_max_signal_date_count')} "
+                    f"sample={sample_text}"
+                )
         lines.append("")
     lines.extend([
         "## By Formula Id",
@@ -1531,6 +1754,8 @@ def _compose_audit_result(
     source_load_errors = list(load_result.get("source_load_errors") or [])
     source_schema_checks = list(load_result.get("source_schema_checks") or [])
     source_schema_errors = list(load_result.get("source_schema_errors") or [])
+    source_freshness = dict(load_result.get("source_freshness") or {})
+    source_freshness_warnings = list(source_freshness.get("warnings") or [])
     has_candidate_supply = unique_keys > 0
     verdict = (
         "WARN"
@@ -1538,11 +1763,61 @@ def _compose_audit_result(
         or dropped_unknown_stage_rows
         or source_schema_errors
         or source_load_errors
+        or source_freshness_warnings
         or not has_candidate_supply
         else "PASS"
     )
     next_action_recommendation = summary.get("next_action_recommendation")
-    if dropped_unknown_stage_rows and not blocked_keys:
+    freshness_warning_source_ids = {
+        str(warning.get("source_id"))
+        for warning in source_freshness_warnings
+        if warning.get("source_id")
+    }
+    source_blocker_rows = summary.get("blocked_matrix_by_source_registry_family_stage") or []
+    source_ids_with_below_min_blockers = {
+        str(row.get("source_id"))
+        for row in source_blocker_rows
+        if int((row.get("blocked_reason_counts") or {}).get("below_min_signals") or 0) > 0
+    }
+    if not source_blocker_rows:
+        source_ids_with_below_min_blockers = set(freshness_warning_source_ids)
+    freshness_warnings_for_blocked_sources = [
+        warning
+        for warning in source_freshness_warnings
+        if str(warning.get("source_id")) in source_ids_with_below_min_blockers
+    ]
+    freshness_warning_reasons = {
+        str(warning.get("reason"))
+        for warning in freshness_warnings_for_blocked_sources
+    }
+    if (
+        "source_max_date_before_kline_max" in freshness_warning_reasons
+        or "source_window_signal_dates_below_min_signals" in freshness_warning_reasons
+    ) and blocked_reason_counts.get("below_min_signals"):
+        weakest_formula_ids = []
+        for row in summary.get("weakest_keys_by_formula_id") or []:
+            formula_id = row.get("formula_id")
+            if formula_id:
+                weakest_formula_ids.append(formula_id)
+            if len(weakest_formula_ids) >= 3:
+                break
+        weakest_stage_bins = []
+        for row in summary.get("weakest_keys_by_stage_bin") or []:
+            stage_bin = row.get("stage_bin")
+            if stage_bin:
+                weakest_stage_bins.append(stage_bin)
+            if len(weakest_stage_bins) >= 3:
+                break
+        next_action_recommendation = {
+            "priority": "P1",
+            "focus": "candidate_supply_freshness",
+            "reason": "candidate supply source freshness/window coverage can cap short-window keys below min_signals",
+            "recommended_lever": "refresh upstream signal source or narrow the live audit end to source max date before formula/source redesign",
+            "weakest_formula_ids": weakest_formula_ids,
+            "weakest_stage_bins": weakest_stage_bins,
+            "top_blocked_reason": "source_freshness_window",
+        }
+    elif dropped_unknown_stage_rows and not blocked_keys:
         top_unknown_formulas = [
             formula_id
             for formula_id, _count in Counter(load_result["dropped_unknown_stage_rows_by_formula_id"]).most_common(3)
@@ -1597,6 +1872,7 @@ def _compose_audit_result(
         "raw_signal_rows": load_result["raw_rows"],
         "raw_trigger_rows": load_result.get("raw_trigger_rows", load_result["raw_rows"]),
         "raw_state_history_rows": load_result.get("raw_state_history_rows", 0),
+        "source_freshness": source_freshness,
         "source_schema_checks": source_schema_checks,
         "source_schema_errors": source_schema_errors,
         "source_load_errors": source_load_errors,
@@ -1618,6 +1894,7 @@ def _compose_audit_result(
             "signal_rows_with_bars": summary.get("signal_rows_with_bars", 0),
             "signal_rows_without_bars": summary.get("signal_rows_without_bars", 0),
             "signal_kline_coverage_pct": summary.get("signal_kline_coverage_pct", 0.0),
+            "source_freshness_warning_count": len(source_freshness_warnings),
             "unique_keys": unique_keys,
             "blocked_keys": blocked_keys,
             "ready_keys": ready_keys,
@@ -1671,6 +1948,7 @@ def main() -> int:
                 conn,
                 start=start,
                 end=end,
+                min_signals=min_signals,
                 formula=args.formula,
                 stock_codes=args.stock_codes,
             )

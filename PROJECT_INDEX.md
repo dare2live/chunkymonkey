@@ -7,7 +7,7 @@
 > **目标**: 新接手 (无论 Claude 还是人) 读完此文档**不用看代码 / 不用查 DB** 就能理解:
 > 项目业务 / 架构 / 技术路线 / 数据资产 / 当前进度 / 已知坑 / 常用操作.
 
-最后更新: **2026-06-06** (TuShare no-persist exact-flow probe wiring + need_027 probe diagnostics hardening + storage retention owner/consumer policy contract + data-source capability router contract + need_027 candidate validation metadata + provider-neutral experiment job contract + execution-surface audit + retired GCP execution surface removal + architect-controller skill install + verify-verifier rule + Moth complexity path normalization + local complexity baseline refresh + data-health dry-run read-only fix + Moth evidence path sync + design-review preflight machine gate + Moth registry instruction-source sync + after-close data refresh + controller-agent preflight hard gate + retention dry-run inventory + storage payload cap recalibration + DB manifest attach policy + DB boundary static gate + holder replay safety + Codex instruction-source boundary + DuckDB capacity audit + need_027 exact-flow probe gate + stage-opt supply/readiness/schema contract + stage-opt signal-date K-line coverage evidence + stage-opt source-aware density diagnostics).
+最后更新: **2026-06-06** (TuShare no-persist exact-flow probe wiring + need_027 probe diagnostics hardening + storage retention owner/consumer policy contract + data-source capability router contract + need_027 candidate validation metadata + provider-neutral experiment job contract + execution-surface audit + retired GCP execution surface removal + architect-controller skill install + verify-verifier rule + Moth complexity path normalization + local complexity baseline refresh + data-health dry-run read-only fix + Moth evidence path sync + design-review preflight machine gate + Moth registry instruction-source sync + after-close data refresh + controller-agent preflight hard gate + retention dry-run inventory + storage payload cap recalibration + DB manifest attach policy + DB boundary static gate + holder replay safety + Codex instruction-source boundary + DuckDB capacity audit + need_027 exact-flow probe gate + stage-opt supply/readiness/schema contract + stage-opt signal-date K-line coverage evidence + stage-opt source-aware density diagnostics + stage-opt source freshness/window diagnostics + iFinD MCP research-only routing recheck).
 
 ## [INDEX] 2026-06-04 增量
 
@@ -1045,6 +1045,14 @@ SELECT * FROM mart_data_source_watermark;
 ## 14. Session 增量更新日志 (Rule 9.5 长期沉淀)
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
+
+### 2026-06-06 stage-opt source freshness/window diagnostics
+
+- `backend/scripts/audit_stage_opt_candidate_supply.py`: 新增 source freshness / audit-window feasibility 诊断，报告 per-source `max_signal_date`、`signal_date_count`、formula-level max signal dates、K-line dates after source max，以及 `source_max_date_before_kline_max` / `source_window_signal_dates_below_min_signals` warnings。短窗口 `below_min_signals` 不再直接被误读成公式密度或阈值问题。
+- Recommendation 覆盖规则被限定在“有 `below_min_signals` blocker 的 source 同时出现 freshness warning”时才转为 `candidate_supply_freshness`；无关 stale source 只保留 WARN，不抢走真正 blocker 的 next action。对应测试覆盖 freshness mismatch、默认多 source freshness 报告、无关 stale source 防误导。
+- 当前短 live reversal audit `2026-06-01..2026-06-05` 仍是 `WARN`，但 focus 已转为 `candidate_supply_freshness`: `fact_technical_trigger` / reversal max `2026-06-02`，K-line max `2026-06-04`，source window 只有 2 个 signal dates，低于 `min_signals=5`。2026 YTD reversal-only audit仍有 `ready_coverage_pct=62.21`，所以先修 source freshness / rebuild，不再继续调 reversal threshold 或新建生产 state table。
+- iFinD MCP routing recheck: 本地镜像和只读 sidecar 均支持当前路由结论。iFinD MCP 只作为 research/probe 的 sector/theme/news/notice/industry-chain/EDB snapshot 候选，不是 K-line、tick/order-book、F10/holder、历史概念成员 backfill 或 `need_027` exact-flow 的生产 fallback。
+- 验证: `py_compile` PASS；scoped `audit_test_tool_health.py` PASS；`backend/tests/scripts/test_audit_stage_opt_candidate_supply.py` 22 passed；related stage-opt service/script/CLI tests 67 passed；`scripts/chunkyctl audit --run ...` PASS；short live reversal audit confirmed `candidate_supply_freshness`；`scripts/chunkyctl doctor --fast` remains WARN only for existing `need_027`, warning-only data-health freshness, dirty worktree, and known complexity backlog; Rule 10 reviewer `APPROVE_WITH_NOTES`.
 
 ### 2026-06-05 storage retention consumer audit
 
