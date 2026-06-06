@@ -416,11 +416,21 @@ def test_need027_exact_flow_gate_passes_for_exact_batch(monkeypatch) -> None:
     assert report["production_eligibility"] == "blocked"
     assert report["production_promotion"] == "not_allowed_from_probe_only"
     assert report["next_gate"] == "writer_watermark_pit_freshness_gate_required"
+    assert report["post_probe_gates"]["field_mapping"]["status"] == "pass"
+    assert report["post_probe_gates"]["date_coverage"]["status"] == "pass"
+    assert report["post_probe_gates"]["pit_key"]["status"] == "required"
+    assert report["next_actions"] == [
+        "run_writer_watermark_pit_freshness_failure_queue_gates"
+    ]
     assert report["exact_flow"]["probe_count"] == 2
     assert report["exact_flow"]["valid_count"] == 2
     assert report["exact_flow"]["failure_reasons"] == {}
+    assert report["exact_flow"]["source_groups"]["akshare"]["production_blockers"] == {
+        "post_probe_gate_required": 2
+    }
     for item in report["batch"]["results"]:
         assert item["need027_exact_flow_validation"]["status"] == "ok"
+        assert item["need027_exact_flow_validation"]["controller_blocker"] == "post_probe_gate_required"
         assert item["need027_exact_flow_validation"]["column_coverage"]["missing_groups"] == []
 
 
@@ -520,6 +530,50 @@ def test_need027_exact_flow_gate_passes_when_one_source_group_is_complete(monkey
     assert report["exact_flow"]["blocked_source_groups"] == ["tushare"]
     assert report["exact_flow"]["source_groups"]["akshare"]["status"] == "ok"
     assert report["exact_flow"]["source_groups"]["tushare"]["status"] == "blocked"
+    assert report["exact_flow"]["source_groups"]["tushare"]["controller_blockers"] == {
+        "tushare_token_missing": 1
+    }
+    result = report["batch"]["results"][1]
+    assert result["need027_exact_flow_validation"]["controller_blocker"] == "tushare_token_missing"
+    assert result["need027_exact_flow_validation"]["next_action"] == "provide_token_and_rerun_no_persist_probe"
+
+
+def test_need027_gate_classifies_akshare_remote_disconnected(monkeypatch) -> None:
+    def fake_resolve(capability: str, *, prefer_source=None, **kwargs):
+        assert capability == "individual_fund_flow"
+        assert prefer_source == "akshare"
+        raise RuntimeError(
+            "所有 1 个源都失败了 (capability=individual_fund_flow): "
+            "ConnectionError: ('Connection aborted.', "
+            "RemoteDisconnected('Remote end closed connection without response'))"
+        )
+
+    monkeypatch.setattr(probe, "resolve", fake_resolve)
+
+    report = probe.probe_need027_exact_flow_gate(
+        [
+            {
+                "case_id": "akshare_600519",
+                "capability": "individual_fund_flow",
+                "prefer_source": "akshare",
+                "source_name": "akshare",
+                "source_tier": 3,
+                "kwargs": {"stock": "600519", "market": "sh"},
+            },
+        ]
+    )
+
+    assert report["verdict"] == "BLOCKED"
+    assert report["post_probe_gates"]["pit_key"]["status"] == "not_checked"
+    assert report["exact_flow"]["source_groups"]["akshare"]["controller_blockers"] == {
+        "akshare_remote_disconnected": 1
+    }
+    assert report["exact_flow"]["source_groups"]["akshare"]["next_actions"] == [
+        "retry_source_probe_or_choose_stable_candidate_source"
+    ]
+    validation = report["batch"]["results"][0]["need027_exact_flow_validation"]
+    assert validation["controller_blocker"] == "akshare_remote_disconnected"
+    assert validation["next_action"] == "retry_source_probe_or_choose_stable_candidate_source"
 
 
 def test_need027_gate_blocks_rank_snapshot_even_when_snapshot_ok(monkeypatch) -> None:
@@ -545,10 +599,11 @@ def test_need027_gate_blocks_rank_snapshot_even_when_snapshot_ok(monkeypatch) ->
     assert report["exact_flow"]["probe_count"] == 0
     assert report["non_exact_probe_count"] == 1
     assert report["rank_snapshot_policy"] == "research_side_only_not_exact_flow_evidence"
-    assert report["batch"]["results"][0]["need027_exact_flow_validation"] == {
-        "status": "ignored",
-        "reason": "not exact-flow capability",
-    }
+    validation = report["batch"]["results"][0]["need027_exact_flow_validation"]
+    assert validation["status"] == "ignored"
+    assert validation["reason"] == "not exact-flow capability"
+    assert validation["controller_blocker"] == "not_exact_flow_capability"
+    assert validation["next_action"] == "ignore_for_need027_exact_flow_gate"
 
 
 def test_need027_persist_status_does_not_resolve_malformed_exact_flow(monkeypatch) -> None:
@@ -679,6 +734,11 @@ def test_need027_gate_blocks_missing_date_range_and_exact_columns(monkeypatch) -
     }
     validation = report["batch"]["results"][0]["need027_exact_flow_validation"]
     assert validation["status"] == "blocked"
+    assert validation["controller_blockers"] == [
+        "missing_date_range",
+        "missing_exact_flow_columns",
+    ]
+    assert validation["next_action"] == "fix_field_or_date_mapping_before_source_promotion"
     assert validation["column_coverage"]["missing_groups"] == [
         "super_large",
         "large",

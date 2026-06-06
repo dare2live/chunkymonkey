@@ -1588,6 +1588,21 @@ tools:
     replacement: token-backed no-persist source probe plus PIT/freshness/watermark gates before any production fund-flow claim
     last_verified: "2026-06-06"
 
+  - id: need027_source_probe_gate_contract_tests
+    paths:
+      - backend/scripts/probe_source_capability.py
+      - backend/tests/scripts/test_probe_source_capability.py
+      - backend/config/tdx_data_need_coverage.yaml
+    owner_module: data_source_governance
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_probe_source_capability.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: mocked source-capability batch reports, need_027 source_probe_cases, exact-flow column/date validation, and no-persist probe contract
+    risk_reason: validates need_027 source-probe gate shape only; it does not prove live AkShare/TuShare availability, token quota, PIT coverage, writer readiness, or production freshness
+    replacement: live no-persist source probes plus PIT/freshness/writer/watermark/failure-queue gates before any production fund-flow claim
+    last_verified: "2026-06-06"
+
   - id: fund_flow_rank_snapshot_contract_tests
     paths:
       - backend/tests/test_build_fund_flow_rank_snapshot_daily.py

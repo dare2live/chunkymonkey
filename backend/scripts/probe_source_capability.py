@@ -77,6 +77,15 @@ NEED027_EXACT_FLOW_COLUMN_GROUPS = {
     "medium": ("中单", "medium"),
     "small": ("小单", "small"),
 }
+NEED027_POST_PROBE_GATES = (
+    "field_mapping",
+    "date_coverage",
+    "pit_key",
+    "freshness_sla",
+    "writer",
+    "watermark",
+    "failure_queue_resolution",
+)
 
 logger = logging.getLogger("probe_source_capability")
 
@@ -375,6 +384,17 @@ def _need027_failures(report: dict[str, Any]) -> list[str]:
     return [str(reason) for reason in validation.get("failures", [])]
 
 
+def _dedupe(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        deduped.append(value)
+    return deduped
+
+
 def _need027_source_group_name(report: dict[str, Any]) -> str:
     return str(
         report.get("source_name")
@@ -382,6 +402,109 @@ def _need027_source_group_name(report: dict[str, Any]) -> str:
         or report.get("prefer_source")
         or "unknown"
     )
+
+
+def _need027_error_text(report: dict[str, Any]) -> str:
+    validation = report.get("need027_exact_flow_validation", {})
+    parts = [
+        str(report.get("error_type") or ""),
+        str(report.get("error") or ""),
+        " ".join(str(reason) for reason in validation.get("failures", [])),
+    ]
+    return " ".join(parts).lower()
+
+
+def _classify_need027_controller_blockers(report: dict[str, Any]) -> list[str]:
+    validation = report.get("need027_exact_flow_validation", {})
+    status = validation.get("status")
+    if status == "ok":
+        return ["post_probe_gate_required"]
+    if status == "ignored":
+        return ["not_exact_flow_capability"]
+
+    failures = _need027_failures(report)
+    text = _need027_error_text(report)
+    source_name = _need027_source_group_name(report)
+    blockers: list[str] = []
+
+    if "probe_blocked" in failures:
+        if "tushare token missing" in text or (
+            source_name == "tushare" and "token" in text and "missing" in text
+        ):
+            blockers.append("tushare_token_missing")
+        elif "remotedisconnected" in text or "remote end closed connection" in text:
+            blockers.append(f"{source_name}_remote_disconnected")
+        elif "jsondecodeerror" in text:
+            blockers.append(f"{source_name}_payload_parse_error")
+        elif "connection" in text:
+            blockers.append(f"{source_name}_transport_blocked")
+        else:
+            blockers.append("probe_blocked")
+
+    failure_map = {
+        "missing_exact_flow_columns": "missing_exact_flow_columns",
+        "missing_date_range": "missing_date_range",
+        "row_count_below_minimum": "row_count_below_minimum",
+    }
+    blockers.extend(failure_map[failure] for failure in failures if failure in failure_map)
+    return _dedupe(blockers or ["need027_exact_flow_validation_failed"])
+
+
+def _next_action_for_need027_blockers(blockers: list[str]) -> str:
+    if "post_probe_gate_required" in blockers:
+        return "run_writer_watermark_pit_freshness_failure_queue_gates"
+    if "tushare_token_missing" in blockers:
+        return "provide_token_and_rerun_no_persist_probe"
+    if any(
+        blocker.endswith(("_remote_disconnected", "_transport_blocked", "_payload_parse_error"))
+        for blocker in blockers
+    ):
+        return "retry_source_probe_or_choose_stable_candidate_source"
+    if "missing_exact_flow_columns" in blockers or "missing_date_range" in blockers:
+        return "fix_field_or_date_mapping_before_source_promotion"
+    if "row_count_below_minimum" in blockers:
+        return "increase_probe_window_or_reject_source"
+    if "not_exact_flow_capability" in blockers:
+        return "ignore_for_need027_exact_flow_gate"
+    return "inspect_blocker_and_rerun_no_persist_probe"
+
+
+def _annotate_need027_controller_action(report: dict[str, Any]) -> None:
+    validation = report.get("need027_exact_flow_validation")
+    if not isinstance(validation, dict):
+        return
+    blockers = _classify_need027_controller_blockers(report)
+    validation["controller_blockers"] = blockers
+    validation["controller_blocker"] = blockers[0] if blockers else None
+    validation["next_action"] = _next_action_for_need027_blockers(blockers)
+
+
+def _need027_post_probe_gates(
+    *,
+    source_probe_passed: bool,
+    selected_source_name: str | None,
+) -> dict[str, dict[str, Any]]:
+    gates: dict[str, dict[str, Any]] = {}
+    for gate in NEED027_POST_PROBE_GATES:
+        if not source_probe_passed:
+            gates[gate] = {
+                "status": "not_checked",
+                "reason": "source_probe_blocked",
+            }
+            continue
+        if gate in {"field_mapping", "date_coverage"}:
+            gates[gate] = {
+                "status": "pass",
+                "source_name": selected_source_name,
+                "evidence": "selected_source_group_no_persist_probe",
+            }
+            continue
+        gates[gate] = {
+            "status": "required",
+            "source_name": selected_source_name,
+            "reason": "not_proven_by_no_persist_source_probe",
+        }
+    return gates
 
 
 def _summarize_need027_source_groups(
@@ -401,18 +524,26 @@ def _summarize_need027_source_groups(
                 "valid_count": 0,
                 "blocked_count": 0,
                 "failure_reasons": Counter(),
+                "controller_blockers": Counter(),
+                "production_blockers": Counter(),
                 "case_ids": [],
+                "next_actions": [],
             },
         )
         group["probe_count"] += 1
         if report.get("case_id"):
             group["case_ids"].append(str(report["case_id"]))
         validation = report.get("need027_exact_flow_validation", {})
+        blockers = [str(blocker) for blocker in validation.get("controller_blockers", [])]
+        if validation.get("next_action"):
+            group["next_actions"].append(str(validation["next_action"]))
         if validation.get("status") == "ok":
             group["valid_count"] += 1
+            group["production_blockers"].update(blockers)
             continue
         group["blocked_count"] += 1
         group["failure_reasons"].update(_need027_failures(report))
+        group["controller_blockers"].update(blockers)
 
     valid_source_groups: list[str] = []
     blocked_source_groups: list[str] = []
@@ -428,6 +559,9 @@ def _summarize_need027_source_groups(
             else "blocked"
         )
         group["failure_reasons"] = dict(group["failure_reasons"])
+        group["controller_blockers"] = dict(group["controller_blockers"])
+        group["production_blockers"] = dict(group["production_blockers"])
+        group["next_actions"] = _dedupe(group["next_actions"])
         if group["status"] == "ok":
             valid_source_groups.append(source_name)
         else:
@@ -465,12 +599,14 @@ def probe_need027_exact_flow_gate(
                 min_rows_per_probe=min_rows_per_probe,
             )
             report["need027_exact_flow_validation"] = validation
+            _annotate_need027_controller_action(report)
             exact_reports.append(report)
         else:
             report["need027_exact_flow_validation"] = {
                 "status": "ignored",
                 "reason": "not exact-flow capability",
             }
+            _annotate_need027_controller_action(report)
             non_exact_reports.append(report)
 
     valid_exact_count = sum(
@@ -494,6 +630,16 @@ def probe_need027_exact_flow_gate(
     # need_027 requires one stable exact-flow source, not every candidate source.
     # Candidate failures stay visible as source-group blockers.
     verdict_pass = bool(valid_source_groups)
+    selected_source_name = valid_source_groups[0] if valid_source_groups else None
+    post_probe_gates = _need027_post_probe_gates(
+        source_probe_passed=verdict_pass,
+        selected_source_name=selected_source_name,
+    )
+    next_actions = _dedupe(
+        str(action)
+        for group in source_groups.values()
+        for action in group.get("next_actions", [])
+    )
 
     if persist_status:
         for report in exact_reports:
@@ -541,20 +687,27 @@ def probe_need027_exact_flow_gate(
             "min_success_rate": min_success_rate,
             "min_rows_per_probe": min_rows_per_probe,
             "failure_reasons": failure_reasons,
+            "controller_blockers": {
+                source_name: group.get("controller_blockers", {})
+                for source_name, group in source_groups.items()
+                if group.get("controller_blockers")
+            },
             "source_success_policy": "any_source_group_meets_min_success_rate",
             "source_group_count": len(source_groups),
             "valid_source_group_count": len(valid_source_groups),
             "valid_source_groups": valid_source_groups,
             "blocked_source_groups": blocked_source_groups,
-            "selected_source_name": valid_source_groups[0] if valid_source_groups else None,
+            "selected_source_name": selected_source_name,
             "source_groups": source_groups,
         },
         "non_exact_probe_count": len(non_exact_reports),
         "non_exact_policy": "ignored_for_need_027_exact_flow_gate",
         "rank_snapshot_policy": "research_side_only_not_exact_flow_evidence",
+        "post_probe_gates": post_probe_gates,
         "production_eligibility": "blocked",
         "production_promotion": "not_allowed_from_probe_only",
         "next_gate": "writer_watermark_pit_freshness_gate_required",
+        "next_actions": next_actions,
         "persist_status": persist_status,
         "batch": batch,
     }

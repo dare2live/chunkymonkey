@@ -47,6 +47,38 @@
   stage-opt gate. It does not close the P1 stage-opt blocker: the current live
   blocker is still upstream formula coverage / signal density.
 
+## 2026-06-06 — `need_027` exact-flow probe diagnostics hardening
+
+- `backend/scripts/probe_source_capability.py` now classifies `need_027`
+  exact-flow source-probe blockers as controller-readable causes instead of
+  collapsing them into `probe_blocked`. Current classifications include
+  `tushare_token_missing`, `akshare_remote_disconnected`,
+  `missing_exact_flow_columns`, `missing_date_range`,
+  `row_count_below_minimum`, and `not_exact_flow_capability`.
+- The gate report now includes per-case `controller_blockers` / `next_action`,
+  per-source-group blocker and next-action summaries, and a top-level
+  `post_probe_gates` object for `field_mapping`, `date_coverage`, `pit_key`,
+  `freshness_sla`, `writer`, `watermark`, and
+  `failure_queue_resolution`. A source-probe PASS can mark field/date checks
+  as pass for the selected source group, but production remains blocked until
+  PIT/freshness/writer/watermark/failure-queue gates are separately proven.
+- `backend/config/test_tool_registry.yaml` now registers
+  `need027_source_probe_gate_contract_tests` as explicit acceptance evidence
+  for the gate contract, rather than relying only on the broad
+  `backend/tests/scripts` bucket.
+- Verification: scoped `audit_test_tool_health.py` for the probe script, probe
+  tests, registry, TuShare tests, and need-coverage audit returned `PASS` with
+  `registry_coverage_pct=100`; `py_compile` passed; targeted pytest passed
+  (`53 passed`); live no-persist gate summary returned `BLOCKED` with
+  `6` exact-flow probes, `0` valid, AkShare
+  `akshare_remote_disconnected=3`, TuShare `tushare_token_missing=3`, and all
+  `post_probe_gates` `not_checked`; CodeGraph synced and is up to date;
+  complexity scan still reports only the existing 80 high findings.
+- This does not close `need_027`. It makes the blocker actionable: restore
+  AkShare source stability or provide a TuShare token, rerun the no-persist
+  gate, then continue only through PIT/freshness/writer/watermark/failure-queue
+  evidence.
+
 ## 2026-06-06 — Stage-opt candidate supply readiness contract hardening
 
 - `backend/config/stage_opt_candidate_supply.yaml` now owns
