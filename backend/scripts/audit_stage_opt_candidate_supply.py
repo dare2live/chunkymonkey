@@ -278,7 +278,8 @@ def _load_signal_rows(
         )
         SELECT t.stock_code, t.date, t.formula_id, t.formula_variant,
                COALESCE(c.technical_stage, '?') AS stage_bin,
-               k.code IS NOT NULL AS has_kline_bar
+               k.code IS NOT NULL AS has_kline_bar,
+               ? AS source_id
           FROM {TRIGGER_SOURCE.table} t
           LEFT JOIN sm.fact_signal_context c
             ON c.stock_code = t.stock_code AND c.date = t.date
@@ -289,10 +290,10 @@ def _load_signal_rows(
            {stock_filter_sql}
          ORDER BY t.stock_code, t.formula_variant, t.date
         """,
-        [start, end, start, end] + formula_filter_params + stock_filter_params,
+        [start, end, TRIGGER_SOURCE.source_id, start, end] + formula_filter_params + stock_filter_params,
     ).fetchall()
 
-    state_history_rows: list[tuple[str, str, str, str, str, bool]] = []
+    state_history_rows: list[tuple[str, str, str, str, str, bool, str]] = []
     source_load_errors: list[dict[str, str]] = []
     include_macd_state_history = MACD_STATE_SOURCE.include_for_formula_filter(formula)
     if include_macd_state_history:
@@ -321,7 +322,8 @@ def _load_signal_rows(
                 )
                 SELECT s.stock_code, s.date, s.formula_id, s.formula_variant,
                        COALESCE(c.technical_stage, '?') AS stage_bin,
-                       k.code IS NOT NULL AS has_kline_bar
+                       k.code IS NOT NULL AS has_kline_bar,
+                       ? AS source_id
                   FROM {MACD_STATE_SOURCE.table} s
                   LEFT JOIN sm.fact_signal_context c
                     ON c.stock_code = s.stock_code AND c.date = s.date
@@ -331,7 +333,7 @@ def _load_signal_rows(
                    {state_formula_sql}
                    {state_stock_sql}
                 """,
-                [start, end, start, end] + state_formula_params + state_stock_params,
+                [start, end, MACD_STATE_SOURCE.source_id, start, end] + state_formula_params + state_stock_params,
             ).fetchall()
         except Exception as exc:
             state_history_rows = []
@@ -362,10 +364,11 @@ def _load_signal_rows(
     dropped_unknown_stage_rows_by_stock_formula_variant: Counter[tuple[str, str]] = Counter()
     dropped_unknown_stage_examples: list[dict[str, Any]] = []
     signal_rows: list[dict[str, Any]] = []
-    for stock_code, signal_date, formula_id, formula_variant, stage_bin, has_kline_bar in rows:
+    for stock_code, signal_date, formula_id, formula_variant, stage_bin, has_kline_bar, source_id in rows:
         stock_code = str(stock_code)
         formula_id = str(formula_id)
         formula_variant = str(formula_variant)
+        source_id = str(source_id or "unknown")
         if is_index_code(stock_code):
             dropped_index_rows += 1
             dropped_index_rows_by_stock_code[stock_code] += 1
@@ -386,6 +389,7 @@ def _load_signal_rows(
                         "formula_id": formula_id,
                         "formula_variant": formula_variant,
                         "stage_bin": stage_bin,
+                        "source_id": source_id,
                     }
                 )
             continue
@@ -397,6 +401,7 @@ def _load_signal_rows(
                 "formula_variant": formula_variant,
                 "stage_bin": stage_bin,
                 "has_kline_bar": bool(has_kline_bar),
+                "source_id": source_id,
             }
         )
 
@@ -553,6 +558,12 @@ def _latest_closed_trade_date(conn: Any) -> str | None:
     return None
 
 
+def _signal_count_bucket(kline_signal_rows: int, min_signals: int) -> str:
+    if kline_signal_rows >= min_signals:
+        return f">={min_signals}"
+    return str(max(0, kline_signal_rows))
+
+
 def summarize_stage_opt_candidate_supply(
     signal_rows: list[dict[str, Any]],
     codes_with_bars: set[str],
@@ -572,18 +583,22 @@ def summarize_stage_opt_candidate_supply(
     rows_by_stage = Counter()
     rows_by_stage_formula = Counter()
     rows_by_registry_family = Counter()
+    rows_by_source_id = Counter()
+    rows_by_source_registry_family_stage = Counter()
     key_counts_by_formula_id = Counter()
     key_counts_by_formula_variant = Counter()
     key_counts_by_formula_family = Counter()
     key_counts_by_stage = Counter()
     key_counts_by_stage_formula = Counter()
     key_counts_by_registry_family = Counter()
+    key_counts_by_source_registry_family_stage = Counter()
     ready_keys_by_formula_id = Counter()
     ready_keys_by_formula_variant = Counter()
     ready_keys_by_formula_family = Counter()
     ready_keys_by_stage = Counter()
     ready_keys_by_stage_formula = Counter()
     ready_keys_by_registry_family = Counter()
+    ready_keys_by_source_registry_family_stage = Counter()
     blocked_reason_counts = Counter()
     blocked_reason_counts_by_formula_id: defaultdict[str, Counter[str]] = defaultdict(Counter)
     blocked_reason_counts_by_formula_variant: defaultdict[str, Counter[str]] = defaultdict(Counter)
@@ -591,6 +606,12 @@ def summarize_stage_opt_candidate_supply(
     blocked_reason_counts_by_stage = defaultdict(Counter)
     blocked_reason_counts_by_stage_formula: defaultdict[tuple[str, str], Counter[str]] = defaultdict(Counter)
     blocked_reason_counts_by_registry_family: defaultdict[tuple[str, str], Counter[str]] = defaultdict(Counter)
+    blocked_reason_counts_by_source_registry_family_stage: defaultdict[
+        tuple[str, str, str, str], Counter[str]
+    ] = defaultdict(Counter)
+    blocked_kline_signal_buckets_by_source_registry_family_stage: defaultdict[
+        tuple[str, str, str, str], Counter[str]
+    ] = defaultdict(Counter)
     blocked_examples: list[dict[str, Any]] = []
     signal_rows_with_bars = sum(1 for row in signal_rows if _signal_row_has_kline_bar(row, codes_with_bars))
     signal_rows_without_bars = len(signal_rows) - signal_rows_with_bars
@@ -600,6 +621,8 @@ def summarize_stage_opt_candidate_supply(
         stage_bin = row["stage_bin"]
         formula_family = _formula_family(formula_id)
         registry_scope = _formula_registry_scope_label(formula_id)
+        source_id = str(row.get("source_id") or "unknown")
+        source_registry_family_stage_key = (source_id, registry_scope, formula_family, stage_bin)
         key = (
             row["stock_code"],
             formula_id,
@@ -613,6 +636,8 @@ def summarize_stage_opt_candidate_supply(
         rows_by_stage[stage_bin] += 1
         rows_by_stage_formula[(stage_bin, formula_id)] += 1
         rows_by_registry_family[(registry_scope, formula_family)] += 1
+        rows_by_source_id[source_id] += 1
+        rows_by_source_registry_family_stage[source_registry_family_stage_key] += 1
 
     for (stock_code, formula_id, formula_variant, stage_bin), rows in key_rows.items():
         n_rows = len(rows)
@@ -622,12 +647,24 @@ def summarize_stage_opt_candidate_supply(
         registry_scope = _formula_registry_scope_label(formula_id)
         stage_formula_key = (stage_bin, formula_id)
         registry_family_key = (registry_scope, formula_family)
+        source_counts = Counter(str(row.get("source_id") or "unknown") for row in rows)
+        source_kline_counts = Counter(
+            str(row.get("source_id") or "unknown")
+            for row in rows
+            if _signal_row_has_kline_bar(row, codes_with_bars)
+        )
+        source_registry_family_stage_keys = [
+            (source_id, registry_scope, formula_family, stage_bin)
+            for source_id in sorted(source_counts)
+        ]
         key_counts_by_formula_id[formula_id] += 1
         key_counts_by_formula_variant[formula_variant] += 1
         key_counts_by_formula_family[formula_family] += 1
         key_counts_by_stage[stage_bin] += 1
         key_counts_by_stage_formula[stage_formula_key] += 1
         key_counts_by_registry_family[registry_family_key] += 1
+        for source_cell_key in source_registry_family_stage_keys:
+            key_counts_by_source_registry_family_stage[source_cell_key] += 1
 
         blocked_reasons: list[str] = []
 
@@ -660,9 +697,15 @@ def summarize_stage_opt_candidate_supply(
                         "kline_signal_rows": kline_signal_rows,
                         "missing_kline_signal_rows": missing_kline_signal_rows,
                         "has_bars": has_bars,
+                        "source_ids": sorted(source_counts),
                         "blocked_reasons": blocked_reasons,
                     }
                 )
+            for source_cell_key in source_registry_family_stage_keys:
+                source_bucket = _signal_count_bucket(source_kline_counts[source_cell_key[0]], min_signals)
+                for reason in blocked_reasons:
+                    blocked_reason_counts_by_source_registry_family_stage[source_cell_key][reason] += 1
+                blocked_kline_signal_buckets_by_source_registry_family_stage[source_cell_key][source_bucket] += 1
             continue
 
         ready_keys_by_formula_id[formula_id] += 1
@@ -671,6 +714,8 @@ def summarize_stage_opt_candidate_supply(
         ready_keys_by_stage[stage_bin] += 1
         ready_keys_by_stage_formula[stage_formula_key] += 1
         ready_keys_by_registry_family[registry_family_key] += 1
+        for source_cell_key in source_registry_family_stage_keys:
+            ready_keys_by_source_registry_family_stage[source_cell_key] += 1
 
     ready_key_count = sum(ready_keys_by_formula_id.values())  # same as len(ready_keys)
     total_key_count = len(key_rows)
@@ -827,6 +872,7 @@ def summarize_stage_opt_candidate_supply(
         n_rows = len(rows)
         kline_signal_rows, missing_kline_signal_rows = _kline_signal_row_counts(rows, codes_with_bars)
         has_bars = kline_signal_rows > 0
+        source_ids = sorted({str(row.get("source_id") or "unknown") for row in rows})
         reasons: list[str] = []
         if not has_bars:
             reasons.append("no_kline_bars")
@@ -845,6 +891,7 @@ def summarize_stage_opt_candidate_supply(
                     "kline_signal_rows": kline_signal_rows,
                     "missing_kline_signal_rows": missing_kline_signal_rows,
                     "has_bars": has_bars,
+                    "source_ids": source_ids,
                     "blocked_reasons": reasons,
                 }
             )
@@ -893,6 +940,13 @@ def summarize_stage_opt_candidate_supply(
         "rows_by_registry_family": {
             f"{registry_scope}|{formula_family}": count
             for (registry_scope, formula_family), count in sorted(rows_by_registry_family.items())
+        },
+        "rows_by_source_id": dict(sorted(rows_by_source_id.items())),
+        "rows_by_source_registry_family_stage": {
+            f"{source_id}|{registry_scope}|{formula_family}|{stage_bin}": count
+            for (source_id, registry_scope, formula_family, stage_bin), count in sorted(
+                rows_by_source_registry_family_stage.items()
+            )
         },
         "keys_by_formula_id": formula_id_rows,
         "formula_attrition": formula_attrition_rows,
@@ -984,6 +1038,54 @@ def summarize_stage_opt_candidate_supply(
                 "top_blocked_stage_formula_cells": top_blocked_stage_formula_cells,
                 "blocked_matrix_by_registry_family": registry_family_matrix_rows,
                 "top_blocked_registry_family_cells": top_blocked_registry_family_cells,
+            }
+        )
+        source_registry_family_stage_matrix_rows = []
+        for source_id, registry_scope, formula_family, stage_bin in sorted(
+            key_counts_by_source_registry_family_stage
+        ):
+            cell_key = (source_id, registry_scope, formula_family, stage_bin)
+            keys_total = key_counts_by_source_registry_family_stage[cell_key]
+            keys_ready = ready_keys_by_source_registry_family_stage[cell_key]
+            keys_blocked = keys_total - keys_ready
+            reason_counts = blocked_reason_counts_by_source_registry_family_stage[cell_key]
+            kline_buckets = blocked_kline_signal_buckets_by_source_registry_family_stage[cell_key]
+            source_registry_family_stage_matrix_rows.append(
+                {
+                    "source_id": source_id,
+                    "registry_scope": registry_scope,
+                    "formula_family": formula_family,
+                    "stage_bin": stage_bin,
+                    "keys_total": keys_total,
+                    "keys_ready": keys_ready,
+                    "keys_blocked": keys_blocked,
+                    "ready_coverage_pct": _coverage(keys_ready, keys_total),
+                    "blocked_pct": _coverage(keys_blocked, keys_total),
+                    "source_signal_rows": rows_by_source_registry_family_stage[cell_key],
+                    "blocked_reason_counts": _reason_counts_dict(reason_counts),
+                    "top_blocked_reason": _top_reason(reason_counts),
+                    "kline_signal_row_buckets": dict(sorted(kline_buckets.items())),
+                }
+            )
+        top_blocked_source_registry_family_stage_cells = [
+            row
+            for row in sorted(
+                source_registry_family_stage_matrix_rows,
+                key=lambda item: (
+                    -int(item["keys_blocked"]),
+                    float(item["ready_coverage_pct"]),
+                    item["source_id"],
+                    item["registry_scope"],
+                    item["formula_family"],
+                    item["stage_bin"],
+                ),
+            )
+            if int(row["keys_blocked"]) > 0
+        ][:10]
+        result.update(
+            {
+                "blocked_matrix_by_source_registry_family_stage": source_registry_family_stage_matrix_rows,
+                "top_blocked_source_registry_family_stage_cells": top_blocked_source_registry_family_stage_cells,
             }
         )
     return result
@@ -1354,6 +1456,23 @@ def _render_markdown(result: dict[str, Any]) -> str:
                 f"- {row['registry_scope']} × {row['formula_family']}: keys_total={row['keys_total']} "
                 f"ready={row['keys_ready']} blocked={row['keys_blocked']} "
                 f"coverage={row['ready_coverage_pct']}% reasons={reason_text}"
+            )
+    if result.get("top_blocked_source_registry_family_stage_cells"):
+        lines.append("")
+        lines.append("## Top Blocked Source x Registry x Family x Stage Cells")
+        for row in result["top_blocked_source_registry_family_stage_cells"]:
+            reason_text = ", ".join(f"{reason}={count}" for reason, count in row["blocked_reason_counts"].items())
+            bucket_text = ", ".join(
+                f"{bucket}={count}" for bucket, count in row.get("kline_signal_row_buckets", {}).items()
+            )
+            if not bucket_text:
+                bucket_text = "none"
+            lines.append(
+                f"- {row['source_id']} × {row['registry_scope']} × {row['formula_family']} "
+                f"× stage {row['stage_bin']}: keys_total={row['keys_total']} "
+                f"ready={row['keys_ready']} blocked={row['keys_blocked']} "
+                f"source_signal_rows={row['source_signal_rows']} coverage={row['ready_coverage_pct']}% "
+                f"reasons={reason_text} kline_buckets={bucket_text}"
             )
     if result["blocked_examples"]:
         lines.append("")

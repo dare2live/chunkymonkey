@@ -244,11 +244,144 @@ def test_summarize_stage_opt_candidate_supply_tracks_ready_and_blocked_keys() ->
     assert blocked_examples[0]["stock_code"] == "000003"
     assert blocked_examples[0]["kline_signal_rows"] == 0
     assert blocked_examples[0]["missing_kline_signal_rows"] == 5
+    assert blocked_examples[0]["source_ids"] == ["unknown"]
     assert blocked_examples[0]["blocked_reasons"] == ["no_kline_bars"]
     assert blocked_examples[1]["stock_code"] == "000001"
     assert blocked_examples[1]["kline_signal_rows"] == 4
     assert blocked_examples[1]["missing_kline_signal_rows"] == 0
+    assert blocked_examples[1]["source_ids"] == ["unknown"]
     assert blocked_examples[1]["blocked_reasons"] == ["below_min_signals"]
+
+
+def test_summarize_stage_opt_candidate_supply_reports_source_density_buckets() -> None:
+    signal_rows = [
+        *[
+            {
+                "stock_code": "000101",
+                "signal_date": f"2026-05-{10 + idx:02d}",
+                "formula_id": "formula_a",
+                "formula_variant": "variant_a",
+                "stage_bin": "1",
+                "source_id": "fact_technical_trigger",
+            }
+            for idx in range(4)
+        ],
+        *[
+            {
+                "stock_code": "000102",
+                "signal_date": f"2026-05-{14 + idx:02d}",
+                "formula_id": "formula_a",
+                "formula_variant": "variant_a",
+                "stage_bin": "1",
+                "source_id": "mart_macd_state_history",
+            }
+            for idx in range(2)
+        ],
+        *[
+            {
+                "stock_code": "000103",
+                "signal_date": f"2026-05-{20 + idx:02d}",
+                "formula_id": "formula_a",
+                "formula_variant": "variant_a",
+                "stage_bin": "1",
+                "source_id": "fact_technical_trigger",
+            }
+            for idx in range(5)
+        ],
+    ]
+
+    summary = audit_stage_opt_candidate_supply.summarize_stage_opt_candidate_supply(
+        signal_rows,
+        {"000101", "000102", "000103"},
+        min_signals=5,
+    )
+
+    assert summary["ready_keys"] == 1
+    assert summary["rows_by_source_id"] == {
+        "fact_technical_trigger": 9,
+        "mart_macd_state_history": 2,
+    }
+    cells = {
+        (row["source_id"], row["stage_bin"]): row
+        for row in summary["top_blocked_source_registry_family_stage_cells"]
+    }
+    assert cells[("fact_technical_trigger", "1")] == {
+        "source_id": "fact_technical_trigger",
+        "registry_scope": "unregistered",
+        "formula_family": "formula",
+        "stage_bin": "1",
+        "keys_total": 2,
+        "keys_ready": 1,
+        "keys_blocked": 1,
+        "ready_coverage_pct": 50.0,
+        "blocked_pct": 50.0,
+        "source_signal_rows": 9,
+        "blocked_reason_counts": {"below_min_signals": 1},
+        "top_blocked_reason": "below_min_signals",
+        "kline_signal_row_buckets": {"4": 1},
+    }
+    assert cells[("mart_macd_state_history", "1")] == {
+        "source_id": "mart_macd_state_history",
+        "registry_scope": "unregistered",
+        "formula_family": "formula",
+        "stage_bin": "1",
+        "keys_total": 1,
+        "keys_ready": 0,
+        "keys_blocked": 1,
+        "ready_coverage_pct": 0.0,
+        "blocked_pct": 100.0,
+        "source_signal_rows": 2,
+        "blocked_reason_counts": {"below_min_signals": 1},
+        "top_blocked_reason": "below_min_signals",
+        "kline_signal_row_buckets": {"2": 1},
+    }
+
+
+def test_source_density_buckets_are_source_specific_for_mixed_source_keys() -> None:
+    signal_rows = [
+        *[
+            {
+                "stock_code": "000201",
+                "signal_date": f"2026-05-{10 + idx:02d}",
+                "formula_id": "formula_a",
+                "formula_variant": "variant_a",
+                "stage_bin": "1",
+                "source_id": "fact_technical_trigger",
+            }
+            for idx in range(2)
+        ],
+        *[
+            {
+                "stock_code": "000201",
+                "signal_date": f"2026-05-{12 + idx:02d}",
+                "formula_id": "formula_a",
+                "formula_variant": "variant_a",
+                "stage_bin": "1",
+                "source_id": "mart_macd_state_history",
+            }
+            for idx in range(2)
+        ],
+    ]
+
+    summary = audit_stage_opt_candidate_supply.summarize_stage_opt_candidate_supply(
+        signal_rows,
+        {"000201"},
+        min_signals=5,
+    )
+
+    cells = {
+        row["source_id"]: row
+        for row in summary["top_blocked_source_registry_family_stage_cells"]
+    }
+    assert summary["blocked_examples"][0]["kline_signal_rows"] == 4
+    assert summary["blocked_examples"][0]["source_ids"] == [
+        "fact_technical_trigger",
+        "mart_macd_state_history",
+    ]
+    assert cells["fact_technical_trigger"]["source_signal_rows"] == 2
+    assert cells["fact_technical_trigger"]["kline_signal_row_buckets"] == {"2": 1}
+    assert cells["mart_macd_state_history"]["source_signal_rows"] == 2
+    assert cells["mart_macd_state_history"]["kline_signal_row_buckets"] == {"2": 1}
 
 
 def test_summarize_stage_opt_candidate_supply_blocks_partial_signal_date_kline_gaps() -> None:
@@ -295,6 +428,7 @@ def test_summarize_stage_opt_candidate_supply_blocks_partial_signal_date_kline_g
             "kline_signal_rows": 4,
             "missing_kline_signal_rows": 1,
             "has_bars": True,
+            "source_ids": ["unknown"],
             "blocked_reasons": ["below_min_signals", "missing_signal_kline_bars"],
         }
     ]
@@ -393,6 +527,8 @@ def test_summarize_stage_opt_candidate_supply_can_skip_detail_matrices() -> None
     assert "top_blocked_stage_formula_cells" not in summary
     assert "blocked_matrix_by_registry_family" not in summary
     assert "top_blocked_registry_family_cells" not in summary
+    assert "blocked_matrix_by_source_registry_family_stage" not in summary
+    assert "top_blocked_source_registry_family_stage_cells" not in summary
 
 
 def test_load_signal_rows_includes_macd_state_history_rows() -> None:
@@ -496,6 +632,14 @@ def test_load_signal_rows_includes_macd_state_history_rows() -> None:
         assert load_result["source_load_errors"] == []
         assert len(load_result["signal_rows"]) == 6
         assert all(row["has_kline_bar"] is True for row in load_result["signal_rows"])
+        assert [row["source_id"] for row in load_result["signal_rows"]] == [
+            "fact_technical_trigger",
+            "fact_technical_trigger",
+            "fact_technical_trigger",
+            "fact_technical_trigger",
+            "mart_macd_state_history",
+            "mart_macd_state_history",
+        ]
         assert load_result["dropped_unknown_stage_rows"] == 0
     finally:
         conn.close()
@@ -535,6 +679,7 @@ def test_load_signal_rows_marks_missing_signal_date_kline_bar() -> None:
             True,
             False,
         ]
+        assert {row["source_id"] for row in load_result["signal_rows"]} == {"fact_technical_trigger"}
     finally:
         conn.close()
 
