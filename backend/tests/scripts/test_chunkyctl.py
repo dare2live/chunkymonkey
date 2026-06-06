@@ -768,6 +768,9 @@ def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_pa
                         "raw_trigger_rows": 7,
                         "raw_state_history_rows": 3,
                         "filtered_signal_rows": 733083,
+                        "signal_rows_with_bars": 733083,
+                        "signal_rows_without_bars": 0,
+                        "signal_kline_coverage_pct": 100.0,
                         "unique_keys": 120273,
                         "ready_keys": 57986,
                         "ready_coverage_pct": 48.21,
@@ -775,6 +778,9 @@ def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_pa
                         "attrition_funnel": {
                             "raw_rows": 1381657,
                             "filtered_signal_rows": 733083,
+                            "signal_rows_with_bars": 733083,
+                            "signal_rows_without_bars": 0,
+                            "signal_kline_coverage_pct": 100.0,
                             "unique_keys": 120273,
                             "blocked_keys": 62287,
                             "ready_keys": 57986,
@@ -876,6 +882,9 @@ def test_doctor_includes_data_health_snapshot_and_red_action(monkeypatch, tmp_pa
     assert report["data_health"]["report"]["verdict"] == "FAIL"
     assert report["stage_opt"]["report"]["summary"]["raw_trigger_rows"] == 7
     assert report["stage_opt"]["report"]["summary"]["raw_state_history_rows"] == 3
+    assert report["stage_opt"]["report"]["summary"]["signal_rows_with_bars"] == 733083
+    assert report["stage_opt"]["report"]["summary"]["signal_rows_without_bars"] == 0
+    assert report["stage_opt"]["report"]["summary"]["signal_kline_coverage_pct"] == 100.0
     assert report["stage_opt"]["verdict"] == "WARN"
     assert report["stage_opt"]["report"]["verdict"] == "WARN"
     assert report["stage_opt"]["report"]["attrition_funnel"]["blocked_keys"] == 62287
@@ -1090,6 +1099,40 @@ def test_next_actions_include_stage_opt_recommendation() -> None:
     }
 
 
+def test_next_actions_include_stage_opt_kline_signal_recommendation() -> None:
+    actions = chunkyctl._next_actions(
+        {
+            "git_status": {"clean": True},
+            "codegraph": {"pending": {"sync_required": False}},
+            "complexity": {"baseline": {"status": "loaded"}, "diff": {"new_high_count": 0}},
+        },
+        {"unknown_count": 0},
+        {"verdict": "PASS"},
+        {"summary": {"total": 342, "green": 342, "yellow": 0, "red": 0}},
+        {
+            "next_action_recommendation": {
+                "priority": "P1",
+                "focus": "kline_signal_coverage",
+                "reason": "signal-date K-line blockers are current limiting defects",
+                "recommended_lever": "repair signal-date daily/qfq bar coverage before re-running candidate supply",
+                "weakest_formula_ids": ["formula_gap"],
+                "weakest_stage_bins": ["1"],
+                "top_blocked_reason": "missing_signal_kline_bars",
+            }
+        },
+    )
+
+    assert actions[-1] == {
+        "priority": "P1",
+        "action": (
+            "Stage-opt candidate supply [kline_signal_coverage]: "
+            "signal-date K-line blockers are current limiting defects → "
+            "repair signal-date daily/qfq bar coverage before re-running candidate supply "
+            "(weakest formulas: formula_gap; weakest stages: 1)"
+        ),
+    }
+
+
 def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
     live_formula_ids = [
         "activity_breakout",
@@ -1118,10 +1161,16 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
             "raw_trigger_rows": 7,
             "raw_state_history_rows": 3,
             "filtered_signal_rows": 8,
+            "signal_rows_with_bars": 6,
+            "signal_rows_without_bars": 2,
+            "signal_kline_coverage_pct": 75.0,
             "unique_keys": 4,
             "ready_keys": 2,
             "ready_coverage_pct": 50.0,
-            "blocked_reason_counts": {"below_min_signals": 6},
+            "blocked_reason_counts": {
+                "below_min_signals": 6,
+                "missing_signal_kline_bars": 2,
+            },
             "source_load_errors": [
                 {
                     "source_id": "mart_macd_state_history",
@@ -1141,6 +1190,9 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
             "attrition_funnel": {
                 "raw_rows": 10,
                 "filtered_signal_rows": 8,
+                "signal_rows_with_bars": 6,
+                "signal_rows_without_bars": 2,
+                "signal_kline_coverage_pct": 75.0,
                 "unique_keys": 4,
                 "blocked_keys": 2,
                 "ready_keys": 2,
@@ -1229,6 +1281,10 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
                     "delta_ready_coverage_pct": 25.0,
                     "below_min_signals": 5,
                     "delta_below_min_signals": -1,
+                    "no_kline_bars": 0,
+                    "delta_no_kline_bars": 0,
+                    "missing_signal_kline_bars": 2,
+                    "delta_missing_signal_kline_bars": 0,
                     "next_action_recommendation": {
                         "priority": "P1",
                         "focus": "upstream_candidate_supply",
@@ -1250,12 +1306,19 @@ def test_stage_opt_summary_preserves_min_signals_sensitivity() -> None:
     assert summary["top_blocked_registry_family_cells"][0]["formula_family"] == "macd"
     assert summary["min_signals_sensitivity"][0]["min_signals"] == 4
     assert summary["min_signals_sensitivity"][0]["ready_coverage_pct"] == 75.0
-    assert summary["blocked_reason_counts"] == {"below_min_signals": 6}
+    assert summary["blocked_reason_counts"] == {
+        "below_min_signals": 6,
+        "missing_signal_kline_bars": 2,
+    }
     assert summary["top_blocked_reason_counts"] == [
-        {"reason": "below_min_signals", "count": 6}
+        {"reason": "below_min_signals", "count": 6},
+        {"reason": "missing_signal_kline_bars", "count": 2},
     ]
     assert summary["summary"]["raw_trigger_rows"] == 7
     assert summary["summary"]["raw_state_history_rows"] == 3
+    assert summary["summary"]["signal_rows_with_bars"] == 6
+    assert summary["summary"]["signal_rows_without_bars"] == 2
+    assert summary["summary"]["signal_kline_coverage_pct"] == 75.0
     assert summary["summary"]["source_schema_error_count"] == 1
     assert summary["summary"]["source_load_error_count"] == 1
     assert summary["source_schema_errors"][0]["source_id"] == "fact_technical_trigger"

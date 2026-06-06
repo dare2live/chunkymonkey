@@ -9,6 +9,44 @@
 > snapshot, and `rg` / `tail` on this ledger only when a task needs specific
 > historical evidence.
 
+## 2026-06-06 — Stage-opt signal-date K-line coverage evidence
+
+- `audit_stage_opt_candidate_supply.py` now joins `v_price_kline_qfq` at
+  `(stock_code, date)` grain for both `fact_technical_trigger` and
+  `mart_macd_state_history` rows, then carries `has_kline_bar` into each signal
+  row. Candidate readiness remains at
+  `(stock_code, formula_id, formula_variant, stage_bin)` key grain, but a key is
+  ready only when `kline_signal_rows >= readiness.min_signals_per_key`.
+- Partial signal-date K-line gaps are now visible instead of being hidden by
+  stock-level coverage. A key with some matched bars but fewer matched signal
+  rows than `min_signals` is blocked by `below_min_signals` and, when relevant,
+  `missing_signal_kline_bars`; keys with zero matched bars remain
+  `no_kline_bars`.
+- Recommendation logic now compares pure upstream supply shortfall against
+  signal-date K-line blockers. K-line blockers win ties because K-line is the
+  lower truth source; this prevents a 5 raw signal / 4 matched K-line case from
+  being mislabeled as ordinary upstream formula scarcity.
+- Reports now expose `signal_rows_with_bars`, `signal_rows_without_bars`, and
+  `signal_kline_coverage_pct` at top level, in the attrition funnel, markdown
+  output, `min_signals_sensitivity`, and the `chunkyctl doctor` stage-opt
+  summary.
+- Verification: scoped test-tool audit
+  `stage_opt_candidate_supply_contract_tests` passed with `fail=0`, `warn=0`;
+  targeted pytest for stage-opt audit plus `chunkyctl` passed (`56 passed`);
+  `py_compile` passed; short live audit `2026-06-01..2026-06-05` returned
+  `WARN`, `signal_rows_with_bars=16558`, `signal_rows_without_bars=0`,
+  `signal_kline_coverage_pct=100.0`, and
+  `blocked_reason_counts={"below_min_signals": 12155}`; full
+  `scripts/chunkyctl doctor --fast` still returned `WARN`, with full-history
+  `signal_rows_with_bars=7918485`, `signal_rows_without_bars=0`,
+  `signal_kline_coverage_pct=100.0`, `below_min_signals=90331`, and
+  `stage_focus=upstream_candidate_supply`. CodeGraph synced and up to date;
+  Moth showed no new complexity findings (`new_high_count=0`); `git diff
+  --check` passed.
+- This closes the previous "per-key K-line coverage evidence" gap in the
+  stage-opt gate. It does not close the P1 stage-opt blocker: the current live
+  blocker is still upstream formula coverage / signal density.
+
 ## 2026-06-06 — Stage-opt candidate supply readiness contract hardening
 
 - `backend/config/stage_opt_candidate_supply.yaml` now owns
@@ -44,9 +82,9 @@
   and up to date; complexity scan only reported existing JS hotspots; Rule 10
   reviewer returned `APPROVE_WITH_NOTES`.
 - This does not close the P1 stage-opt blocker. It only hardens the gate
-  contract and evidence surface. Remaining work is per-key K-line coverage
-  evidence and upstream formula coverage/signal-density repair before
-  strategy/model work resumes.
+  contract and evidence surface. The later signal-date K-line evidence slice
+  closed the K-line diagnostic gap; remaining work is upstream formula
+  coverage/signal-density repair before strategy/model work resumes.
 
 ## 2026-06-06 — TuShare no-persist exact-flow probe wiring for `need_027`
 

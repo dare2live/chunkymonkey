@@ -122,6 +122,9 @@ def test_summarize_stage_opt_candidate_supply_tracks_ready_and_blocked_keys() ->
     )
 
     assert summary["raw_signal_rows"] == 14
+    assert summary["signal_rows_with_bars"] == 9
+    assert summary["signal_rows_without_bars"] == 5
+    assert summary["signal_kline_coverage_pct"] == 64.29
     assert summary["unique_keys"] == 3
     assert summary["ready_keys"] == 1
     assert summary["ready_coverage_pct"] == 33.33
@@ -149,12 +152,12 @@ def test_summarize_stage_opt_candidate_supply_tracks_ready_and_blocked_keys() ->
     }
     assert summary["next_action_recommendation"] == {
         "priority": "P1",
-        "focus": "upstream_candidate_supply",
-        "reason": "below_min_signals dominates current blocked keys",
-        "recommended_lever": "expand upstream formula coverage or signal density before tuning profile knobs",
+        "focus": "kline_signal_coverage",
+        "reason": "signal-date K-line blockers are current limiting defects",
+        "recommended_lever": "repair signal-date daily/qfq bar coverage before re-running candidate supply",
         "weakest_formula_ids": ["formula_b", "formula_a"],
         "weakest_stage_bins": ["2", "1"],
-        "top_blocked_reason": "below_min_signals",
+        "top_blocked_reason": "no_kline_bars",
     }
     assert summary["rows_by_formula_id"] == {"formula_a": 9, "formula_b": 5}
     assert summary["rows_by_formula_variant"] == {"variant_a": 9, "variant_b": 5}
@@ -239,9 +242,64 @@ def test_summarize_stage_opt_candidate_supply_tracks_ready_and_blocked_keys() ->
     blocked_examples = summary["blocked_examples"]
     assert len(blocked_examples) == 2
     assert blocked_examples[0]["stock_code"] == "000003"
+    assert blocked_examples[0]["kline_signal_rows"] == 0
+    assert blocked_examples[0]["missing_kline_signal_rows"] == 5
     assert blocked_examples[0]["blocked_reasons"] == ["no_kline_bars"]
     assert blocked_examples[1]["stock_code"] == "000001"
+    assert blocked_examples[1]["kline_signal_rows"] == 4
+    assert blocked_examples[1]["missing_kline_signal_rows"] == 0
     assert blocked_examples[1]["blocked_reasons"] == ["below_min_signals"]
+
+
+def test_summarize_stage_opt_candidate_supply_blocks_partial_signal_date_kline_gaps() -> None:
+    signal_rows = [
+        {
+            "stock_code": "000010",
+            "signal_date": f"2026-05-{10 + idx:02d}",
+            "formula_id": "formula_gap",
+            "formula_variant": "variant_gap",
+            "stage_bin": "1",
+            "has_kline_bar": idx < 4,
+        }
+        for idx in range(5)
+    ]
+
+    summary = audit_stage_opt_candidate_supply.summarize_stage_opt_candidate_supply(
+        signal_rows,
+        {"000010"},
+        min_signals=5,
+    )
+
+    assert summary["raw_signal_rows"] == 5
+    assert summary["signal_rows_with_bars"] == 4
+    assert summary["signal_rows_without_bars"] == 1
+    assert summary["signal_kline_coverage_pct"] == 80.0
+    assert summary["ready_keys"] == 0
+    assert summary["blocked_reason_counts"] == {
+        "below_min_signals": 1,
+        "missing_signal_kline_bars": 1,
+    }
+    assert summary["blocked_reason_counts_by_formula_id"] == {
+        "formula_gap": {
+            "below_min_signals": 1,
+            "missing_signal_kline_bars": 1,
+        }
+    }
+    assert summary["blocked_examples"] == [
+        {
+            "stock_code": "000010",
+            "formula_id": "formula_gap",
+            "formula_variant": "variant_gap",
+            "stage_bin": "1",
+            "signal_rows": 5,
+            "kline_signal_rows": 4,
+            "missing_kline_signal_rows": 1,
+            "has_bars": True,
+            "blocked_reasons": ["below_min_signals", "missing_signal_kline_bars"],
+        }
+    ]
+    assert summary["next_action_recommendation"]["focus"] == "kline_signal_coverage"
+    assert summary["next_action_recommendation"]["top_blocked_reason"] == "missing_signal_kline_bars"
 
 
 def test_summarize_stage_opt_candidate_supply_emits_structural_notes_for_macd() -> None:
@@ -376,6 +434,16 @@ def test_load_signal_rows_includes_macd_state_history_rows() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE v_price_kline_qfq (
+                code TEXT,
+                date TEXT,
+                freq TEXT,
+                adjust TEXT
+            )
+            """
+        )
         conn.executemany(
             """
             INSERT INTO sm.fact_technical_trigger
@@ -401,6 +469,10 @@ def test_load_signal_rows_includes_macd_state_history_rows() -> None:
             ],
         )
         conn.executemany(
+            "INSERT INTO v_price_kline_qfq VALUES (?, ?, 'daily', 'qfq')",
+            [(("000001", f"2026-05-{10 + idx:02d}")) for idx in range(6)],
+        )
+        conn.executemany(
             """
             INSERT INTO sm.mart_macd_state_history
               (stock_code, date, formula_id, formula_variant, state, strength, reason_codes_json)
@@ -423,7 +495,46 @@ def test_load_signal_rows_includes_macd_state_history_rows() -> None:
         assert load_result["raw_rows"] == 6
         assert load_result["source_load_errors"] == []
         assert len(load_result["signal_rows"]) == 6
+        assert all(row["has_kline_bar"] is True for row in load_result["signal_rows"])
         assert load_result["dropped_unknown_stage_rows"] == 0
+    finally:
+        conn.close()
+
+
+def test_load_signal_rows_marks_missing_signal_date_kline_bar() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        _create_candidate_supply_schema(conn)
+        trigger_rows = [
+            ("000010", f"2026-05-{10 + idx:02d}", "formula_gap", "variant_gap")
+            for idx in range(5)
+        ]
+        context_rows = [
+            ("000010", f"2026-05-{10 + idx:02d}", "1")
+            for idx in range(5)
+        ]
+        kline_rows = [
+            ("000010", f"2026-05-{10 + idx:02d}", "daily", "qfq")
+            for idx in range(4)
+        ]
+        conn.executemany("INSERT INTO sm.fact_technical_trigger VALUES (?, ?, ?, ?)", trigger_rows)
+        conn.executemany("INSERT INTO sm.fact_signal_context VALUES (?, ?, ?)", context_rows)
+        conn.executemany("INSERT INTO v_price_kline_qfq VALUES (?, ?, ?, ?)", kline_rows)
+
+        load_result = audit_stage_opt_candidate_supply._load_signal_rows(
+            conn,
+            start="2026-05-10",
+            end="2026-05-14",
+            formula=["formula_gap"],
+        )
+
+        assert [row["has_kline_bar"] for row in load_result["signal_rows"]] == [
+            True,
+            True,
+            True,
+            True,
+            False,
+        ]
     finally:
         conn.close()
 
@@ -448,6 +559,16 @@ def test_load_signal_rows_reports_macd_state_history_load_errors() -> None:
                 stock_code TEXT,
                 date TEXT,
                 technical_stage TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE v_price_kline_qfq (
+                code TEXT,
+                date TEXT,
+                freq TEXT,
+                adjust TEXT
             )
             """
         )
@@ -565,6 +686,10 @@ def test_min_signals_sensitivity_reports_threshold_lift() -> None:
             "delta_ready_coverage_pct": 33.34,
             "below_min_signals": 1,
             "delta_below_min_signals": -1,
+            "no_kline_bars": 0,
+            "delta_no_kline_bars": 0,
+            "missing_signal_kline_bars": 0,
+            "delta_missing_signal_kline_bars": 0,
             "next_action_recommendation": {
                 "priority": "P1",
                 "focus": "upstream_candidate_supply",
@@ -581,6 +706,10 @@ def test_min_signals_sensitivity_reports_threshold_lift() -> None:
             "delta_ready_coverage_pct": 66.67,
             "below_min_signals": 0,
             "delta_below_min_signals": -2,
+            "no_kline_bars": 0,
+            "delta_no_kline_bars": 0,
+            "missing_signal_kline_bars": 0,
+            "delta_missing_signal_kline_bars": 0,
             "next_action_recommendation": {
                 "priority": "P2",
                 "focus": "candidate_supply_monitoring",
@@ -597,6 +726,10 @@ def test_min_signals_sensitivity_reports_threshold_lift() -> None:
             "delta_ready_coverage_pct": 66.67,
             "below_min_signals": 0,
             "delta_below_min_signals": -2,
+            "no_kline_bars": 0,
+            "delta_no_kline_bars": 0,
+            "missing_signal_kline_bars": 0,
+            "delta_missing_signal_kline_bars": 0,
             "next_action_recommendation": {
                 "priority": "P2",
                 "focus": "candidate_supply_monitoring",
@@ -631,6 +764,7 @@ def test_min_signals_sensitivity_reports_threshold_lift() -> None:
     assert "min_signals=4" in markdown
     assert "min_signals=3" in markdown
     assert "min_signals=2" in markdown
+    assert "Δmissing_signal_kline=+0" in markdown
 
 
 def test_latest_closed_trade_date_uses_existing_calendar_connection() -> None:
@@ -718,6 +852,9 @@ def test_compose_audit_result_preserves_raw_signal_rows() -> None:
         "dropped_index_rows": 1,
         "dropped_unknown_stage_rows": 2,
         "filtered_signal_rows": 7,
+        "signal_rows_with_bars": 0,
+        "signal_rows_without_bars": 0,
+        "signal_kline_coverage_pct": 0.0,
         "unique_keys": 2,
         "blocked_keys": 1,
         "ready_keys": 1,

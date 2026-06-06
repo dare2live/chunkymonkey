@@ -231,6 +231,20 @@ def _top_reason(reason_counts: Counter[str]) -> str | None:
     return sorted(reason_counts.items(), key=lambda item: (-int(item[1]), item[0]))[0][0]
 
 
+def _signal_row_has_kline_bar(row: dict[str, Any], codes_with_bars: set[str]) -> bool:
+    if "has_kline_bar" in row:
+        value = row.get("has_kline_bar")
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "y"}
+        return bool(value)
+    return str(row.get("stock_code")) in codes_with_bars
+
+
+def _kline_signal_row_counts(rows: list[dict[str, Any]], codes_with_bars: set[str]) -> tuple[int, int]:
+    matched = sum(1 for row in rows if _signal_row_has_kline_bar(row, codes_with_bars))
+    return matched, len(rows) - matched
+
+
 def _load_signal_rows(
     conn: Any,
     *,
@@ -256,20 +270,29 @@ def _load_signal_rows(
 
     trigger_rows = conn.execute(
         f"""
+        WITH kline AS (
+            SELECT DISTINCT code, date
+              FROM v_price_kline_qfq
+             WHERE freq='daily' AND adjust='qfq'
+               AND date >= ? AND date <= ?
+        )
         SELECT t.stock_code, t.date, t.formula_id, t.formula_variant,
-               COALESCE(c.technical_stage, '?') AS stage_bin
+               COALESCE(c.technical_stage, '?') AS stage_bin,
+               k.code IS NOT NULL AS has_kline_bar
           FROM {TRIGGER_SOURCE.table} t
           LEFT JOIN sm.fact_signal_context c
             ON c.stock_code = t.stock_code AND c.date = t.date
+          LEFT JOIN kline k
+            ON k.code = t.stock_code AND k.date = t.date
          WHERE t.date >= ? AND t.date <= ?
            {formula_filter_sql}
            {stock_filter_sql}
          ORDER BY t.stock_code, t.formula_variant, t.date
         """,
-        [start, end] + formula_filter_params + stock_filter_params,
+        [start, end, start, end] + formula_filter_params + stock_filter_params,
     ).fetchall()
 
-    state_history_rows: list[tuple[str, str, str, str, str]] = []
+    state_history_rows: list[tuple[str, str, str, str, str, bool]] = []
     source_load_errors: list[dict[str, str]] = []
     include_macd_state_history = MACD_STATE_SOURCE.include_for_formula_filter(formula)
     if include_macd_state_history:
@@ -290,16 +313,25 @@ def _load_signal_rows(
 
             state_history_rows = conn.execute(
                 f"""
+                WITH kline AS (
+                    SELECT DISTINCT code, date
+                      FROM v_price_kline_qfq
+                     WHERE freq='daily' AND adjust='qfq'
+                       AND date >= ? AND date <= ?
+                )
                 SELECT s.stock_code, s.date, s.formula_id, s.formula_variant,
-                       COALESCE(c.technical_stage, '?') AS stage_bin
+                       COALESCE(c.technical_stage, '?') AS stage_bin,
+                       k.code IS NOT NULL AS has_kline_bar
                   FROM {MACD_STATE_SOURCE.table} s
                   LEFT JOIN sm.fact_signal_context c
                     ON c.stock_code = s.stock_code AND c.date = s.date
+                  LEFT JOIN kline k
+                    ON k.code = s.stock_code AND k.date = s.date
                  WHERE s.date >= ? AND s.date <= ?
                    {state_formula_sql}
                    {state_stock_sql}
                 """,
-                [start, end] + state_formula_params + state_stock_params,
+                [start, end, start, end] + state_formula_params + state_stock_params,
             ).fetchall()
         except Exception as exc:
             state_history_rows = []
@@ -330,7 +362,7 @@ def _load_signal_rows(
     dropped_unknown_stage_rows_by_stock_formula_variant: Counter[tuple[str, str]] = Counter()
     dropped_unknown_stage_examples: list[dict[str, Any]] = []
     signal_rows: list[dict[str, Any]] = []
-    for stock_code, signal_date, formula_id, formula_variant, stage_bin in rows:
+    for stock_code, signal_date, formula_id, formula_variant, stage_bin, has_kline_bar in rows:
         stock_code = str(stock_code)
         formula_id = str(formula_id)
         formula_variant = str(formula_variant)
@@ -364,6 +396,7 @@ def _load_signal_rows(
                 "formula_id": formula_id,
                 "formula_variant": formula_variant,
                 "stage_bin": stage_bin,
+                "has_kline_bar": bool(has_kline_bar),
             }
         )
 
@@ -559,6 +592,8 @@ def summarize_stage_opt_candidate_supply(
     blocked_reason_counts_by_stage_formula: defaultdict[tuple[str, str], Counter[str]] = defaultdict(Counter)
     blocked_reason_counts_by_registry_family: defaultdict[tuple[str, str], Counter[str]] = defaultdict(Counter)
     blocked_examples: list[dict[str, Any]] = []
+    signal_rows_with_bars = sum(1 for row in signal_rows if _signal_row_has_kline_bar(row, codes_with_bars))
+    signal_rows_without_bars = len(signal_rows) - signal_rows_with_bars
 
     for row in signal_rows:
         formula_id = row["formula_id"]
@@ -581,7 +616,8 @@ def summarize_stage_opt_candidate_supply(
 
     for (stock_code, formula_id, formula_variant, stage_bin), rows in key_rows.items():
         n_rows = len(rows)
-        has_bars = stock_code in codes_with_bars
+        kline_signal_rows, missing_kline_signal_rows = _kline_signal_row_counts(rows, codes_with_bars)
+        has_bars = kline_signal_rows > 0
         formula_family = _formula_family(formula_id)
         registry_scope = _formula_registry_scope_label(formula_id)
         stage_formula_key = (stage_bin, formula_id)
@@ -594,24 +630,23 @@ def summarize_stage_opt_candidate_supply(
         key_counts_by_registry_family[registry_family_key] += 1
 
         blocked_reasons: list[str] = []
-        if n_rows < min_signals:
-            blocked_reasons.append("below_min_signals")
-            blocked_reason_counts["below_min_signals"] += 1
-            blocked_reason_counts_by_formula_id[formula_id]["below_min_signals"] += 1
-            blocked_reason_counts_by_formula_variant[formula_variant]["below_min_signals"] += 1
-            blocked_reason_counts_by_formula_family[formula_family]["below_min_signals"] += 1
-            blocked_reason_counts_by_stage[stage_bin]["below_min_signals"] += 1
-            blocked_reason_counts_by_stage_formula[stage_formula_key]["below_min_signals"] += 1
-            blocked_reason_counts_by_registry_family[registry_family_key]["below_min_signals"] += 1
+
+        def add_blocked_reason(reason: str) -> None:
+            blocked_reasons.append(reason)
+            blocked_reason_counts[reason] += 1
+            blocked_reason_counts_by_formula_id[formula_id][reason] += 1
+            blocked_reason_counts_by_formula_variant[formula_variant][reason] += 1
+            blocked_reason_counts_by_formula_family[formula_family][reason] += 1
+            blocked_reason_counts_by_stage[stage_bin][reason] += 1
+            blocked_reason_counts_by_stage_formula[stage_formula_key][reason] += 1
+            blocked_reason_counts_by_registry_family[registry_family_key][reason] += 1
+
         if not has_bars:
-            blocked_reasons.append("no_kline_bars")
-            blocked_reason_counts["no_kline_bars"] += 1
-            blocked_reason_counts_by_formula_id[formula_id]["no_kline_bars"] += 1
-            blocked_reason_counts_by_formula_variant[formula_variant]["no_kline_bars"] += 1
-            blocked_reason_counts_by_formula_family[formula_family]["no_kline_bars"] += 1
-            blocked_reason_counts_by_stage[stage_bin]["no_kline_bars"] += 1
-            blocked_reason_counts_by_stage_formula[stage_formula_key]["no_kline_bars"] += 1
-            blocked_reason_counts_by_registry_family[registry_family_key]["no_kline_bars"] += 1
+            add_blocked_reason("no_kline_bars")
+        elif kline_signal_rows < min_signals:
+            add_blocked_reason("below_min_signals")
+            if missing_kline_signal_rows:
+                add_blocked_reason("missing_signal_kline_bars")
 
         if blocked_reasons:
             if len(blocked_examples) < max_examples:
@@ -622,6 +657,8 @@ def summarize_stage_opt_candidate_supply(
                         "formula_variant": formula_variant,
                         "stage_bin": stage_bin,
                         "signal_rows": n_rows,
+                        "kline_signal_rows": kline_signal_rows,
+                        "missing_kline_signal_rows": missing_kline_signal_rows,
                         "has_bars": has_bars,
                         "blocked_reasons": blocked_reasons,
                     }
@@ -736,9 +773,12 @@ def summarize_stage_opt_candidate_supply(
     def _recommend_next_action() -> dict[str, Any]:
         below_min_signals = blocked_reason_counts.get("below_min_signals", 0)
         no_kline_bars = blocked_reason_counts.get("no_kline_bars", 0)
+        missing_signal_kline_bars = blocked_reason_counts.get("missing_signal_kline_bars", 0)
+        kline_blockers = no_kline_bars + missing_signal_kline_bars
+        pure_supply_shortfall = max(0, below_min_signals - missing_signal_kline_bars)
         weakest_formula_ids = [row["formula_id"] for row in weakest_formula_id_rows[:3]]
         weakest_stage_bins = [row["stage_bin"] for row in weakest_stage_rows[:3]]
-        if below_min_signals == 0 and no_kline_bars == 0:
+        if pure_supply_shortfall == 0 and kline_blockers == 0:
             return {
                 "priority": "P2",
                 "focus": "candidate_supply_monitoring",
@@ -748,7 +788,7 @@ def summarize_stage_opt_candidate_supply(
                 "weakest_stage_bins": weakest_stage_bins,
                 "top_blocked_reason": None,
             }
-        if below_min_signals >= no_kline_bars:
+        if pure_supply_shortfall > kline_blockers:
             recommendation = {
                 "priority": "P1",
                 "focus": "upstream_candidate_supply",
@@ -770,12 +810,12 @@ def summarize_stage_opt_candidate_supply(
             return recommendation
         return {
             "priority": "P1",
-            "focus": "kline_coverage",
-            "reason": "no_kline_bars dominates current blocked keys",
-            "recommended_lever": "repair missing bars or date coverage before re-running candidate supply",
+            "focus": "kline_signal_coverage",
+            "reason": "signal-date K-line blockers are current limiting defects",
+            "recommended_lever": "repair signal-date daily/qfq bar coverage before re-running candidate supply",
             "weakest_formula_ids": weakest_formula_ids,
             "weakest_stage_bins": weakest_stage_bins,
-            "top_blocked_reason": "no_kline_bars",
+            "top_blocked_reason": "no_kline_bars" if no_kline_bars >= missing_signal_kline_bars else "missing_signal_kline_bars",
         }
 
     sorted_key_rows = sorted(
@@ -784,13 +824,16 @@ def summarize_stage_opt_candidate_supply(
     )
     top_blocked_keys = []
     for (stock_code, formula_id, formula_variant, stage_bin), rows in sorted_key_rows:
-        has_bars = stock_code in codes_with_bars
         n_rows = len(rows)
+        kline_signal_rows, missing_kline_signal_rows = _kline_signal_row_counts(rows, codes_with_bars)
+        has_bars = kline_signal_rows > 0
         reasons: list[str] = []
-        if n_rows < min_signals:
-            reasons.append("below_min_signals")
         if not has_bars:
             reasons.append("no_kline_bars")
+        elif kline_signal_rows < min_signals:
+            reasons.append("below_min_signals")
+            if missing_kline_signal_rows:
+                reasons.append("missing_signal_kline_bars")
         if reasons:
             top_blocked_keys.append(
                 {
@@ -799,6 +842,8 @@ def summarize_stage_opt_candidate_supply(
                     "formula_variant": formula_variant,
                     "stage_bin": stage_bin,
                     "signal_rows": n_rows,
+                    "kline_signal_rows": kline_signal_rows,
+                    "missing_kline_signal_rows": missing_kline_signal_rows,
                     "has_bars": has_bars,
                     "blocked_reasons": reasons,
                 }
@@ -808,6 +853,9 @@ def summarize_stage_opt_candidate_supply(
 
     result = {
         "raw_signal_rows": len(signal_rows),
+        "signal_rows_with_bars": signal_rows_with_bars,
+        "signal_rows_without_bars": signal_rows_without_bars,
+        "signal_kline_coverage_pct": _coverage(signal_rows_with_bars, len(signal_rows)),
         "unique_keys": total_key_count,
         "ready_keys": ready_key_count,
         "ready_coverage_pct": _coverage(ready_key_count, total_key_count),
@@ -959,15 +1007,17 @@ def _build_min_signals_sensitivity(
         return []
 
     key_counts: Counter[tuple[str, str, str, str]] = Counter()
+    kline_key_counts: Counter[tuple[str, str, str, str]] = Counter()
     for row in signal_rows:
-        key_counts[
-            (
-                str(row["stock_code"]),
-                str(row["formula_id"]),
-                str(row["formula_variant"]),
-                str(row["stage_bin"]),
-            )
-        ] += 1
+        key = (
+            str(row["stock_code"]),
+            str(row["formula_id"]),
+            str(row["formula_variant"]),
+            str(row["stage_bin"]),
+        )
+        key_counts[key] += 1
+        if _signal_row_has_kline_bar(row, codes_with_bars):
+            kline_key_counts[key] += 1
     total_keys = len(key_counts)
 
     def _coverage(ready: int) -> float:
@@ -977,13 +1027,17 @@ def _build_min_signals_sensitivity(
         ready_keys = 0
         blocked_reason_counts: Counter[str] = Counter()
         for stock_code, _formula_id, _formula_variant, _stage_bin in key_counts:
-            n_rows = key_counts[(stock_code, _formula_id, _formula_variant, _stage_bin)]
+            key = (stock_code, _formula_id, _formula_variant, _stage_bin)
+            n_rows = kline_key_counts[key]
+            raw_rows = key_counts[key]
             blocked = False
-            if n_rows < min_signals:
-                blocked_reason_counts["below_min_signals"] += 1
-                blocked = True
-            if stock_code not in codes_with_bars:
+            if n_rows == 0:
                 blocked_reason_counts["no_kline_bars"] += 1
+                blocked = True
+            elif n_rows < min_signals:
+                blocked_reason_counts["below_min_signals"] += 1
+                if n_rows < raw_rows:
+                    blocked_reason_counts["missing_signal_kline_bars"] += 1
                 blocked = True
             if not blocked:
                 ready_keys += 1
@@ -992,7 +1046,10 @@ def _build_min_signals_sensitivity(
     def _recommend_from_counts(reason_counts: Counter[str]) -> dict[str, str | None]:
         below_min_signals = reason_counts.get("below_min_signals", 0)
         no_kline_bars = reason_counts.get("no_kline_bars", 0)
-        if below_min_signals == 0 and no_kline_bars == 0:
+        missing_signal_kline_bars = reason_counts.get("missing_signal_kline_bars", 0)
+        kline_blockers = no_kline_bars + missing_signal_kline_bars
+        pure_supply_shortfall = max(0, below_min_signals - missing_signal_kline_bars)
+        if pure_supply_shortfall == 0 and kline_blockers == 0:
             return {
                 "priority": "P2",
                 "focus": "candidate_supply_monitoring",
@@ -1000,7 +1057,7 @@ def _build_min_signals_sensitivity(
                 "recommended_lever": "keep monitoring upstream supply and PIT coverage",
                 "top_blocked_reason": None,
             }
-        if below_min_signals >= no_kline_bars:
+        if pure_supply_shortfall > kline_blockers:
             return {
                 "priority": "P1",
                 "focus": "upstream_candidate_supply",
@@ -1010,24 +1067,31 @@ def _build_min_signals_sensitivity(
             }
         return {
             "priority": "P1",
-            "focus": "kline_coverage",
-            "reason": "no_kline_bars dominates current blocked keys",
-            "recommended_lever": "repair missing bars or date coverage before re-running candidate supply",
-            "top_blocked_reason": "no_kline_bars",
+            "focus": "kline_signal_coverage",
+            "reason": "signal-date K-line blockers are current limiting defects",
+            "recommended_lever": "repair signal-date daily/qfq bar coverage before re-running candidate supply",
+            "top_blocked_reason": "no_kline_bars" if no_kline_bars >= missing_signal_kline_bars else "missing_signal_kline_bars",
         }
 
     if baseline_summary is not None:
         baseline_ready_keys = int(baseline_summary["ready_keys"])
         baseline_ready_coverage_pct = float(baseline_summary["ready_coverage_pct"])
-        baseline_blocked = int((baseline_summary.get("blocked_reason_counts") or {}).get("below_min_signals", 0))
+        baseline_counts = baseline_summary.get("blocked_reason_counts") or {}
+        baseline_blocked = int(baseline_counts.get("below_min_signals", 0))
+        baseline_no_kline = int(baseline_counts.get("no_kline_bars", 0))
+        baseline_missing_kline = int(baseline_counts.get("missing_signal_kline_bars", 0))
     else:
         baseline_ready_keys, baseline_ready_coverage_pct, baseline_counts = _threshold_counts(baseline_min_signals)
         baseline_blocked = int(baseline_counts.get("below_min_signals", 0))
+        baseline_no_kline = int(baseline_counts.get("no_kline_bars", 0))
+        baseline_missing_kline = int(baseline_counts.get("missing_signal_kline_bars", 0))
 
     sensitivity_rows: list[dict[str, Any]] = []
     for probe_min_signals_value in probe_values:
         probe_ready_keys, probe_ready_coverage_pct, probe_counts = _threshold_counts(probe_min_signals_value)
         probe_blocked = int(probe_counts.get("below_min_signals", 0))
+        probe_no_kline = int(probe_counts.get("no_kline_bars", 0))
+        probe_missing_kline = int(probe_counts.get("missing_signal_kline_bars", 0))
         probe_recommendation = _recommend_from_counts(probe_counts)
         sensitivity_rows.append(
             {
@@ -1041,6 +1105,10 @@ def _build_min_signals_sensitivity(
                 ),
                 "below_min_signals": probe_blocked,
                 "delta_below_min_signals": probe_blocked - baseline_blocked,
+                "no_kline_bars": probe_no_kline,
+                "delta_no_kline_bars": probe_no_kline - baseline_no_kline,
+                "missing_signal_kline_bars": probe_missing_kline,
+                "delta_missing_signal_kline_bars": probe_missing_kline - baseline_missing_kline,
                 "next_action_recommendation": {
                     "priority": probe_recommendation.get("priority"),
                     "focus": probe_recommendation.get("focus"),
@@ -1066,6 +1134,9 @@ def _render_markdown(result: dict[str, Any]) -> str:
     if "raw_state_history_rows" in result:
         lines.append(f"- raw_state_history_rows: {result['raw_state_history_rows']}")
     lines.extend([
+        f"- signal_rows_with_bars: {result.get('signal_rows_with_bars', 0)}",
+        f"- signal_rows_without_bars: {result.get('signal_rows_without_bars', 0)}",
+        f"- signal_kline_coverage_pct: {result.get('signal_kline_coverage_pct', 0.0)}",
         f"- filtered_signal_rows: {result['filtered_signal_rows']}",
         f"- dropped_index_rows: {result['dropped_index_rows']}",
         f"- dropped_unknown_stage_rows: {result['dropped_unknown_stage_rows']}",
@@ -1089,6 +1160,9 @@ def _render_markdown(result: dict[str, Any]) -> str:
                 f"- dropped_index_rows: {funnel['dropped_index_rows']}",
                 f"- dropped_unknown_stage_rows: {funnel['dropped_unknown_stage_rows']}",
                 f"- filtered_signal_rows: {funnel['filtered_signal_rows']}",
+                f"- signal_rows_with_bars: {funnel.get('signal_rows_with_bars', 0)}",
+                f"- signal_rows_without_bars: {funnel.get('signal_rows_without_bars', 0)}",
+                f"- signal_kline_coverage_pct: {funnel.get('signal_kline_coverage_pct', 0.0)}",
                 f"- unique_keys: {funnel['unique_keys']}",
                 f"- blocked_keys: {funnel['blocked_keys']}",
                 f"- ready_keys: {funnel['ready_keys']}",
@@ -1221,10 +1295,13 @@ def _render_markdown(result: dict[str, Any]) -> str:
             delta_cov = row.get("delta_ready_coverage_pct")
             delta_keys = row.get("delta_ready_keys")
             delta_blocked = row.get("delta_below_min_signals")
+            delta_no_kline = row.get("delta_no_kline_bars", 0)
+            delta_missing_kline = row.get("delta_missing_signal_kline_bars", 0)
             lines.append(
                 f"- min_signals={row['min_signals']}: ready_keys={row['ready_keys']} "
                 f"coverage={row['ready_coverage_pct']}% (Δkeys={delta_keys:+}, Δcoverage={delta_cov:+.2f}pp, "
-                f"Δbelow_min={delta_blocked:+})"
+                f"Δbelow_min={delta_blocked:+}, Δno_kline={delta_no_kline:+}, "
+                f"Δmissing_signal_kline={delta_missing_kline:+})"
             )
         lines.append("")
     lines.append("## By Formula Variant")
@@ -1284,7 +1361,8 @@ def _render_markdown(result: dict[str, Any]) -> str:
         for row in result["blocked_examples"]:
             lines.append(
                 f"- {row['stock_code']} {row['formula_variant']} stage={row['stage_bin']} "
-                f"signals={row['signal_rows']} bars={row['has_bars']} "
+                f"signals={row['signal_rows']} kline_signals={row.get('kline_signal_rows', 0)} "
+                f"missing_kline_signals={row.get('missing_kline_signal_rows', 0)} bars={row['has_bars']} "
                 f"reasons={row['blocked_reasons']}"
             )
     if result["blocked_reason_counts_by_formula_id"]:
@@ -1418,6 +1496,9 @@ def _compose_audit_result(
             "dropped_index_rows": load_result["dropped_index_rows"],
             "dropped_unknown_stage_rows": dropped_unknown_stage_rows,
             "filtered_signal_rows": len(signal_rows),
+            "signal_rows_with_bars": summary.get("signal_rows_with_bars", 0),
+            "signal_rows_without_bars": summary.get("signal_rows_without_bars", 0),
+            "signal_kline_coverage_pct": summary.get("signal_kline_coverage_pct", 0.0),
             "unique_keys": unique_keys,
             "blocked_keys": blocked_keys,
             "ready_keys": ready_keys,
