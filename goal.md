@@ -44,7 +44,7 @@ evidence or disjoint patches; their output is not a verdict.
 | P1 | `need_027` exact order-flow | Still blocked; no-persist gate now emits source-group `controller_blockers` and `post_probe_gates`; latest focused run is `BLOCKED` with AkShare `akshare_remote_disconnected=3`, TuShare `tushare_token_missing=3`, and all post-probe gates `not_checked` | Restore source stability or provide token, rerun no-persist source-group gate, then require PIT/freshness, writer, watermark, and failure-queue evidence before production use |
 | P1 | Data-source capability routing | Capability contracts committed in `3e9fafc8`; TuShare `moneyflow` adapter/gate wiring is local no-persist probe scope only; iFinD MCP is a research-only semantic/industry-chain snapshot candidate, not a行情 or exact-flow production replacement | Keep new providers in capability-level probe mode before any DB writer or provider promotion; route iFinD MCP through daily PIT snapshot contracts for sector/theme/news/notice evidence |
 | P1 | DB retention/modularization | Capacity pressure is internal table/version/cache overlap inside `smartmoney.duckdb`, not external NO2/backup/snapshot files; retention inventory has owner/consumer/truth/compact contracts and no executable delete candidates | Migrate or retire panel/cache consumers before any cleanup; keep production delete/VACUUM blocked unless copied-DuckDB validation and manifests exist |
-| P1 | Stage-opt supply | Structural blocker remains, but short-window reversal blocker is now classified as `candidate_supply_freshness`: `fact_signal_context` and `fact_technical_trigger` stop at `2026-06-02` while trusted K-line reaches `2026-06-04`; YTD reversal-only readiness is nonzero (`62.21%`) | Serially refresh `fact_signal_context` first, then `fact_technical_trigger`, to latest trusted K-line date (`2026-06-04` in current local data); rerun short + YTD audits before considering any no-persist reversal state/source POC |
+| P1 | Stage-opt supply | Freshness repair is complete through trusted K-line max `2026-06-04`: `fact_signal_context`, `fact_technical_trigger`, and `mart_macd_state_history` all max at `2026-06-04`; latest 5-K-line-day audit has `source_freshness_warnings=0`, default readiness `3010/23661=12.72%`, reversal-only readiness `1401/9218=15.2%`; YTD reversal-only readiness is nonzero (`21530` ready keys / `62.7%`) | Treat remaining stage-opt blocker as upstream signal-density / state-source design, not stale tables; do not tune formula thresholds again until a no-persist source/state POC proves useful PIT candidate supply |
 | P2 | Microsoft RD-Agent(Q) research | Tracked as follow-up only; no production integration approved | Create a dated `analysis/rd_agent_q_research_*.md` deep-dive note mapping RD-Agent(Q)/Qlib reusable components, Co-STEER feedback, factor mining, report-to-code flow, experiment loop, agent role split, and experiment-manager contracts into borrow/reject/POC decisions under ChunkyMonkey gates |
 | P2 | Data-health warning-only assets | No red or blocking-yellow in latest live doctor; 7 warning-quality tables remain yellow | Treat as owner-specific maintenance, not startup blockers |
 
@@ -55,7 +55,7 @@ As of the latest checked state, with full doctor/stage-opt evidence and focused
 
 | Gate | Current result | Meaning |
 |---|---|---|
-| `scripts/chunkyctl doctor --fast` | `WARN` | `need_027` remains blocked; stage-opt now has freshness/window evidence for the short reversal blocker |
+| `scripts/chunkyctl doctor --fast` | `WARN` | `need_027` remains blocked and `data_health` has 7 warning-only tables; execution surface, Moth, universe, worktree, and stage-opt freshness are clear |
 | `scripts/chunkyctl worktree --format markdown` | Use live gate before staging | Latest pre-commit check had `unknown=0`; keep future commits slice-based |
 | `moth snapshot --repo . --format markdown` | CodeGraph `PASS` | CodeGraph is up to date; complexity diff has `new_high_count=0` |
 | `data_health_snapshot.py --dry-run` | `green=335 / yellow=7 / red=0 / blocking_yellow=0` | No startup data-health blocker; yellow assets are maintenance debt |
@@ -63,7 +63,7 @@ As of the latest checked state, with full doctor/stage-opt evidence and focused
 | `audit_storage_retention_consumers.py` | `PASS / audited_tables=11 / runtime_ref_tables=11` | Cleanup candidates are protected by explicit consumer evidence instead of unknown placeholders |
 | `audit_execution_surface.py --include-live-launchd` | `PASS / 0 findings` | Retired execution-surface references are not currently detected |
 | `need_coverage` | `need_027` blocked | Latest focused no-persist gate: `6` probes / `0` valid; AkShare exact-flow classified as `akshare_remote_disconnected=3`, TuShare `moneyflow` classified as `tushare_token_missing=3`; `post_probe_gates` remain `not_checked` |
-| `audit_stage_opt_candidate_supply.py` | `WARN` | Short live reversal audit `2026-06-01..2026-06-05`: `source_max_date_before_kline_max` and `source_window_signal_dates_below_min_signals`; `fact_signal_context` + `fact_technical_trigger` max `2026-06-02`, K-line max `2026-06-04`; next focus is serial freshness repair, not another formula threshold tweak |
+| `audit_stage_opt_candidate_supply.py` | Freshness clear / density low | Latest actual 5-K-line-day audit `2026-05-29..2026-06-04`: default `raw_signal_rows=54206`, `ready_keys=3010`, `ready_coverage_pct=12.72`, `source_freshness_warnings=0`; remaining blocker is `below_min_signals`, not source staleness |
 
 Live gates override this section. Refresh before using the numbers as evidence.
 
@@ -80,9 +80,10 @@ Live gates override this section. Refresh before using the numbers as evidence.
    and rollback.
 3. **Strategy/model work:** resume stage-opt and model exploration only after
    upstream signal density, data-source truth contracts, and live audit gates
-   are explicit. Current stage-opt freshness repair order is
-   `fact_signal_context` before `fact_technical_trigger`; use trusted K-line max
-   rather than calendar max as the write end.
+   are explicit. Stage-opt freshness is now repaired to trusted K-line max
+   `2026-06-04`; the next stage-opt decision is whether a no-persist
+   state/source POC can improve PIT candidate supply without adding another
+   stale writer.
 4. **RD-Agent(Q) follow-up research:** run a read-only deep dive after P0
    cleanup or in an explicitly bounded parallel research slot, with output as a
    dated `analysis/` research note. Compare the upstream RD-Agent(Q)/Qlib

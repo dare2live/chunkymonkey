@@ -2,10 +2,15 @@
 
 ## Decision
 
-The current short-window `fact_technical_trigger × live × reversal` blocker is
+The original short-window `fact_technical_trigger × live × reversal` blocker was
 first a source freshness / audit-window problem, not proof that reversal
-formulas need another threshold-tuning pass or a new production state-history
+formulas needed another threshold-tuning pass or a new production state-history
 table.
+
+That freshness issue is now repaired through the current trusted K-line max
+(`2026-06-04`). The remaining short-window blocker is upstream candidate supply
+density under `readiness.min_signals_per_key=5`, not stale trigger/context
+tables.
 
 Keep `readiness.min_signals_per_key=5` for optimizer readiness. For short live
 audits, require the audit to report whether the selected source has enough
@@ -14,21 +19,29 @@ formula-density defect.
 
 ## Evidence
 
-- `fact_technical_trigger` and the three reversal formulas currently max at
-  `2026-06-02`.
-- `fact_signal_context`, required by `stage_opt_candidate_supply.yaml` as a
-  join dependency, also currently maxes at `2026-06-02`.
-- `v_price_kline_qfq` has daily qfq bars through `2026-06-04`.
+- Before repair, `fact_technical_trigger`, the three reversal formulas, and
+  `fact_signal_context` maxed at `2026-06-02`, while `v_price_kline_qfq` had
+  daily qfq bars through `2026-06-04`.
+- Repair executed serially to the trusted K-line max:
+  `fact_signal_context` first, then `fact_technical_trigger`, then the
+  diagnostic `mart_macd_state_history` source.
+- Current table maxima after repair:
+  `fact_signal_context=2026-06-04`,
+  `fact_technical_trigger=2026-06-04`,
+  `mart_macd_state_history=2026-06-04`.
 - `dim_trading_calendar` has trading dates through `2026-06-05` for the checked
   window, but the freshness repair target is the trusted K-line max
   (`2026-06-04`), not the calendar max alone.
-- Short audit `2026-06-01..2026-06-05` with
-  `--formula reversal_1m_mild reversal_1m_deep reversal_1w` now reports:
-  `candidate_supply_freshness`, `source_max_date_before_kline_max`, and
-  `source_window_signal_dates_below_min_signals`.
-- 2026 YTD reversal-only audit is not zero-supply:
-  `raw_signal_rows=306247`, `unique_keys=33946`, `ready_keys=21117`,
-  `ready_coverage_pct=62.21`, `signal_kline_coverage_pct=100.0`.
+- Latest actual 5-K-line-day default audit `2026-05-29..2026-06-04` reports:
+  `raw_signal_rows=54206`, `ready_keys=3010`, `ready_coverage_pct=12.72`,
+  `source_freshness_warnings=0`, and both
+  `fact_technical_trigger` / `mart_macd_state_history` freshness `PASS`.
+- Latest actual 5-K-line-day reversal-only audit reports:
+  `raw_signal_rows=24446`, `unique_keys=9218`, `ready_keys=1401`,
+  `ready_coverage_pct=15.2`, `source_freshness_warnings=0`.
+- 2026 YTD reversal-only audit after trigger repair is not zero-supply:
+  `raw_signal_rows=315825`, `ready_keys=21530`,
+  `ready_coverage_pct=62.7`, `signal_kline_coverage_pct=100.0`.
 - Verification: scoped `audit_test_tool_health.py` passed; targeted audit tests
   passed (`22 passed`); related stage-opt service/script/CLI tests passed
   (`67 passed`); `scripts/chunkyctl audit --run ...` passed.
@@ -45,10 +58,10 @@ formula-density defect.
 
 ## Next Slice
 
-1. Refresh `fact_signal_context` through the latest trusted K-line date.
-2. Refresh or rebuild `fact_technical_trigger` through the same trusted K-line
-   date.
-3. Rerun the short live audit and the longer historical audit.
-4. If `candidate_supply_freshness` clears but `below_min_signals` remains a
-   material blocker, design a no-persist reversal state/source POC before any
-   table or writer is introduced.
+1. Keep freshness validation on actual available K-line dates, not future
+   calendar-only dates.
+2. Treat `below_min_signals` as the active stage-opt blocker.
+3. Design a no-persist reversal/state-source POC before introducing any new
+   table or writer.
+4. Only after the POC proves PIT candidate-supply lift should threshold tuning,
+   state-history materialization, or optimizer-profile changes be considered.
