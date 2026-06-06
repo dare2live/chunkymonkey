@@ -1,10 +1,10 @@
 {
-  "snapshot_at": "2026-06-06 08:22:32 CST",
+  "snapshot_at": "2026-06-06 08:41:39 CST",
   "git": {
     "branch": "main",
-    "head_hash": "23c0fb00",
-    "head_msg": "23c0fb00 chore: harden stage-opt signal kline coverage evidence",
-    "commits_24h": 23,
+    "head_hash": "e123dae0",
+    "head_msg": "e123dae0 chore: harden need027 probe diagnostics",
+    "commits_24h": 24,
     "uncommitted_files": 0
   },
   "retrain": {
