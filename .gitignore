@@ -57,3 +57,4 @@ bestchoice/__pycache__/
 bestchoice/cache_*.duckdb
 bestchoice/analysis/*.duckdb
 bestchoice/.git/
+.venv/

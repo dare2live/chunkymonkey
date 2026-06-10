@@ -773,6 +773,7 @@ def _worktree_bucket(path: str, status_kind: str) -> str:
         "backend/scripts/audit_test_tool_health.py",
         "backend/services/moth_snapshot.py",
         "backend/services/worktree_status.py",
+        "backend/requirements.txt",
         "backend/config/test_tool_registry.yaml",
         "docs/chunkyctl_session_quickstart.md",
         "docs/engineering_governance.md",

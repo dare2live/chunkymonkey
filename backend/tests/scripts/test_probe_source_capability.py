@@ -116,6 +116,30 @@ def test_probe_source_capability_marks_blocked_on_error(monkeypatch) -> None:
     assert report["error"] == "proxy blocked"
 
 
+def test_tushare_preflight_reports_missing_token_and_package(monkeypatch) -> None:
+    monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
+    monkeypatch.delenv("TUSHARE_PRO_TOKEN", raising=False)
+    monkeypatch.delenv("TS_TOKEN", raising=False)
+    monkeypatch.setattr(probe.importlib.util, "find_spec", lambda name: None)
+
+    report = probe._source_preflight("tushare")
+
+    assert report["status"] == "blocked"
+    assert report["checks"]["token_env_present"] == {
+        "TUSHARE_TOKEN": False,
+        "TUSHARE_PRO_TOKEN": False,
+        "TS_TOKEN": False,
+    }
+    assert report["checks"]["package_installed"] is False
+    assert report["blockers"] == ["tushare_token_missing", "tushare_package_missing"]
+    assert "backend/requirements.txt" in report["install_hint"]
+    assert "--break-system-packages" in report["install_hint"]
+    assert report["next_actions"] == [
+        "install_tushare_package_from_backend_requirements",
+        "set_tushare_token_env_and_rerun_no_persist_probe",
+    ]
+
+
 def test_probe_source_capability_quiets_registry_warnings(monkeypatch, caplog) -> None:
     registry_logger = logging.getLogger("data_sources.registry")
     original_level = registry_logger.level
@@ -435,6 +459,11 @@ def test_need027_exact_flow_gate_passes_for_exact_batch(monkeypatch) -> None:
 
 
 def test_need027_exact_flow_gate_accepts_tushare_moneyflow(monkeypatch) -> None:
+    monkeypatch.setenv("TUSHARE_TOKEN", "test-token")
+    monkeypatch.delenv("TUSHARE_PRO_TOKEN", raising=False)
+    monkeypatch.delenv("TS_TOKEN", raising=False)
+    monkeypatch.setattr(probe.importlib.util, "find_spec", lambda name: object())
+
     def fake_resolve(capability: str, *, prefer_source=None, **kwargs):
         assert capability == "moneyflow"
         assert prefer_source == "tushare"
@@ -476,6 +505,109 @@ def test_need027_exact_flow_gate_accepts_tushare_moneyflow(monkeypatch) -> None:
     assert result["need027_exact_flow_validation"]["status"] == "ok"
     assert result["source_name"] == "tushare"
     assert result["source_tier"] == 2
+
+
+def test_need027_gate_surfaces_tushare_preflight_blockers(monkeypatch) -> None:
+    monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
+    monkeypatch.delenv("TUSHARE_PRO_TOKEN", raising=False)
+    monkeypatch.delenv("TS_TOKEN", raising=False)
+    monkeypatch.setattr(probe.importlib.util, "find_spec", lambda name: None)
+
+    def fake_resolve(capability: str, *, prefer_source=None, **kwargs):
+        assert capability == "moneyflow"
+        assert prefer_source == "tushare"
+        raise RuntimeError("TuShare token missing")
+
+    monkeypatch.setattr(probe, "resolve", fake_resolve)
+
+    report = probe.probe_need027_exact_flow_gate(
+        [
+            {
+                "case_id": "tushare_600519",
+                "capability": "moneyflow",
+                "prefer_source": "tushare",
+                "source_name": "tushare",
+                "source_tier": 2,
+                "kwargs": {"ts_code": "600519.SH"},
+            },
+        ]
+    )
+
+    assert report["verdict"] == "BLOCKED"
+    assert report["source_preflight"]["tushare"]["blockers"] == [
+        "tushare_token_missing",
+        "tushare_package_missing",
+    ]
+    assert report["exact_flow"]["source_groups"]["tushare"]["preflight_blockers"] == {
+        "tushare_token_missing": 1,
+        "tushare_package_missing": 1,
+    }
+    assert report["exact_flow"]["source_groups"]["tushare"]["next_actions"] == [
+        "provide_token_and_rerun_no_persist_probe",
+        "install_tushare_package_from_backend_requirements",
+        "set_tushare_token_env_and_rerun_no_persist_probe",
+    ]
+
+
+def test_need027_gate_preflight_veto_blocks_group_despite_probe_success(monkeypatch) -> None:
+    """Veto semantics: a 100%-successful live probe is still demoted to blocked when
+    local preflight reports blockers, so a mock/replay PASS can never mask a runtime
+    that cannot actually fetch (anti-fake-PASS). This divergence path previously had
+    no test and was only reachable by accident."""
+    monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
+    monkeypatch.delenv("TUSHARE_PRO_TOKEN", raising=False)
+    monkeypatch.delenv("TS_TOKEN", raising=False)
+    monkeypatch.setattr(probe.importlib.util, "find_spec", lambda name: None)
+
+    def fake_resolve(capability: str, *, prefer_source=None, **kwargs):
+        return (
+            [
+                {
+                    "trade_date": "20260605",
+                    "main_net_amount": 1.0,
+                    "super_large_net_amount": 2.0,
+                    "large_net_amount": 3.0,
+                    "medium_net_amount": 4.0,
+                    "small_net_amount": 5.0,
+                },
+            ],
+            "tushare",
+        )
+
+    monkeypatch.setattr(probe, "resolve", fake_resolve)
+
+    report = probe.probe_need027_exact_flow_gate(
+        [
+            {
+                "case_id": "tushare_600519",
+                "capability": "moneyflow",
+                "prefer_source": "tushare",
+                "source_name": "tushare",
+                "source_tier": 2,
+                "kwargs": {"ts_code": "600519.SH"},
+            },
+        ]
+    )
+
+    group = report["exact_flow"]["source_groups"]["tushare"]
+    assert group["success_rate"] == 1.0
+    assert group["status"] == "blocked"
+    assert report["verdict"] == "BLOCKED"
+
+
+def test_source_preflight_degrades_when_find_spec_raises(monkeypatch) -> None:
+    """find_spec raises ValueError when sys.modules holds a stub with __spec__=None;
+    a diagnostic preflight must report package_missing instead of crashing the gate."""
+    monkeypatch.setenv("TUSHARE_TOKEN", "test-token")
+
+    def raising_find_spec(name):
+        raise ValueError(f"{name}.__spec__ is None")
+
+    monkeypatch.setattr(probe.importlib.util, "find_spec", raising_find_spec)
+
+    result = probe._source_preflight("tushare")
+    assert result["status"] == "blocked"
+    assert result["blockers"] == ["tushare_package_missing"]
 
 
 def test_need027_exact_flow_gate_passes_when_one_source_group_is_complete(monkeypatch) -> None:

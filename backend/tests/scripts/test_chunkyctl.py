@@ -521,6 +521,7 @@ def test_worktree_report_classifies_dirty_entries_by_review_bucket(tmp_path: Pat
                 " M backend/scripts/audit_data_completeness.py",
                 " M backend/scripts/build_price_kline_tdxhub.py",
                 " M backend/services/data_quality.py",
+                " M backend/requirements.txt",
                 " M backend/tests/test_universe.py",
                 "?? backend/scripts/audit_n_plus_one_results.json",
                 " M docs/data_product_contract.md",
@@ -550,7 +551,7 @@ def test_worktree_report_classifies_dirty_entries_by_review_bucket(tmp_path: Pat
     )
 
     assert report["verdict"] == "FAIL"
-    assert report["summary"]["total"] == 35
+    assert report["summary"]["total"] == 36
     assert report["summary"]["unknown_count"] == 1
     assert report["summary"]["codegraph_candidate_untracked_count"] == 4
     assert report["summary"]["codegraph_candidate_untracked_bucket_counts"] == {
@@ -562,7 +563,7 @@ def test_worktree_report_classifies_dirty_entries_by_review_bucket(tmp_path: Pat
     assert report["summary"]["bucket_counts"] == {
         "controller_state": 1,
         "legacy_context": 1,
-        "startup_tooling": 10,
+        "startup_tooling": 11,
         "docs_archive_moves": 2,
         "updater_split": 2,
         "universe_governance": 1,
@@ -582,6 +583,14 @@ def test_worktree_report_classifies_dirty_entries_by_review_bucket(tmp_path: Pat
         "backend/routers/updater.py",
         "backend/routers/updater_status.py",
     }
+    # Contract: backend/requirements.txt routes to startup_tooling deliberately
+    # (dependency-manifest changes still surface in the report, just not as unknown).
+    # Any other dependency-manifest path must keep falling through to unknown.
+    startup_bucket = next(item for item in report["buckets"] if item["bucket"] == "startup_tooling")
+    assert "backend/requirements.txt" in {
+        entry["normalized_path"] for entry in startup_bucket["entries"]
+    }
+    assert chunkyctl._worktree_bucket("backend/requirements-dev.txt", "modified") == "unknown"
 
 
 def test_worktree_report_can_filter_to_one_bucket(tmp_path: Path) -> None:

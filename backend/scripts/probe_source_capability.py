@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import logging
+import os
 import sys
 from collections import Counter
 from contextlib import contextmanager, nullcontext
@@ -17,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.db import get_conn  # noqa: E402
 from services.data_sources import resolve  # noqa: E402
+from services.data_sources.sources.tushare import TOKEN_ENV_VARS as TUSHARE_TOKEN_ENV_VARS  # noqa: E402
 from services.source_watermarks import record_source_failure, resolve_source_failures  # noqa: E402
 
 
@@ -88,6 +91,56 @@ NEED027_POST_PROBE_GATES = (
 )
 
 logger = logging.getLogger("probe_source_capability")
+
+
+def _source_preflight(source_name: str | None) -> dict[str, Any]:
+    """Local dependency checks that do not call provider APIs or persist state."""
+    if source_name != "tushare":
+        return {
+            "source_name": source_name,
+            "status": "not_checked",
+            "reason": "no_local_preflight_defined",
+        }
+
+    token_env_present = {
+        name: bool(os.environ.get(name, "").strip())
+        for name in TUSHARE_TOKEN_ENV_VARS
+    }
+    try:
+        package_installed = importlib.util.find_spec("tushare") is not None
+    except (ImportError, ValueError):
+        # find_spec raises ValueError when sys.modules holds a stub with __spec__=None
+        # (mock.patch.dict pattern) and ImportError on broken partial installs; a
+        # diagnostic preflight must degrade to "missing", never crash the gate.
+        package_installed = False
+    blockers: list[str] = []
+    if not any(token_env_present.values()):
+        blockers.append("tushare_token_missing")
+    if not package_installed:
+        blockers.append("tushare_package_missing")
+
+    next_actions: list[str] = []
+    if "tushare_package_missing" in blockers:
+        next_actions.append("install_tushare_package_from_backend_requirements")
+    if "tushare_token_missing" in blockers:
+        next_actions.append("set_tushare_token_env_and_rerun_no_persist_probe")
+
+    return {
+        "source_name": "tushare",
+        "status": "ok" if not blockers else "blocked",
+        "checks": {
+            "token_env_present": token_env_present,
+            "package_installed": package_installed,
+        },
+        "blockers": blockers,
+        "install_hint": (
+            "Install backend/requirements.txt in the project runtime or a virtualenv; "
+            "do not use --break-system-packages on Homebrew-managed Python."
+            if "tushare_package_missing" in blockers
+            else None
+        ),
+        "next_actions": next_actions,
+    }
 
 
 @contextmanager
@@ -176,6 +229,8 @@ def probe_source_capability(
     stock_code: str | None = None,
     quiet_registry_warnings: bool = True,
 ) -> dict[str, Any]:
+    expected_source = source_name or prefer_source or CAPABILITY_SOURCE_HINTS.get(capability)
+    source_preflight = _source_preflight(expected_source)
     resolve_context = (
         _temporary_logger_level("data_sources.registry", logging.ERROR)
         if quiet_registry_warnings
@@ -192,6 +247,7 @@ def probe_source_capability(
                 "error_type": type(exc).__name__,
                 "error": str(exc),
                 "kwargs": kwargs,
+                "source_preflight": source_preflight,
             }
             _persist_probe_status(
                 report,
@@ -211,6 +267,7 @@ def probe_source_capability(
             "source_used": source_used,
             "status": "ok",
             "kwargs": kwargs,
+            "source_preflight": _source_preflight(source_used),
         }
         report.update(_summarize(data))
         _persist_probe_status(
@@ -432,6 +489,10 @@ def _classify_need027_controller_blockers(report: dict[str, Any]) -> list[str]:
             source_name == "tushare" and "token" in text and "missing" in text
         ):
             blockers.append("tushare_token_missing")
+        elif source_name == "tushare" and (
+            "package not installed" in text or "no module named 'tushare'" in text
+        ):
+            blockers.append("tushare_package_missing")
         elif "remotedisconnected" in text or "remote end closed connection" in text:
             blockers.append(f"{source_name}_remote_disconnected")
         elif "jsondecodeerror" in text:
@@ -455,6 +516,8 @@ def _next_action_for_need027_blockers(blockers: list[str]) -> str:
         return "run_writer_watermark_pit_freshness_failure_queue_gates"
     if "tushare_token_missing" in blockers:
         return "provide_token_and_rerun_no_persist_probe"
+    if "tushare_package_missing" in blockers:
+        return "install_tushare_package_from_backend_requirements"
     if any(
         blocker.endswith(("_remote_disconnected", "_transport_blocked", "_payload_parse_error"))
         for blocker in blockers
@@ -526,6 +589,7 @@ def _summarize_need027_source_groups(
                 "failure_reasons": Counter(),
                 "controller_blockers": Counter(),
                 "production_blockers": Counter(),
+                "preflight_blockers": Counter(),
                 "case_ids": [],
                 "next_actions": [],
             },
@@ -537,6 +601,13 @@ def _summarize_need027_source_groups(
         blockers = [str(blocker) for blocker in validation.get("controller_blockers", [])]
         if validation.get("next_action"):
             group["next_actions"].append(str(validation["next_action"]))
+        preflight = report.get("source_preflight") or {}
+        group["preflight_blockers"].update(
+            str(blocker) for blocker in preflight.get("blockers") or []
+        )
+        group["next_actions"].extend(
+            str(action) for action in preflight.get("next_actions") or []
+        )
         if validation.get("status") == "ok":
             group["valid_count"] += 1
             group["production_blockers"].update(blockers)
@@ -553,20 +624,36 @@ def _summarize_need027_source_groups(
             if group["probe_count"]
             else 0.0
         )
+        has_preflight_blockers = bool(group["preflight_blockers"])
         group["status"] = (
             "ok"
-            if group["probe_count"] > 0 and group["success_rate"] >= min_success_rate
+            if group["probe_count"] > 0
+            and group["success_rate"] >= min_success_rate
+            and not has_preflight_blockers
             else "blocked"
         )
         group["failure_reasons"] = dict(group["failure_reasons"])
         group["controller_blockers"] = dict(group["controller_blockers"])
         group["production_blockers"] = dict(group["production_blockers"])
+        group["preflight_blockers"] = dict(group["preflight_blockers"])
         group["next_actions"] = _dedupe(group["next_actions"])
         if group["status"] == "ok":
             valid_source_groups.append(source_name)
         else:
             blocked_source_groups.append(source_name)
     return source_groups, valid_source_groups, blocked_source_groups
+
+
+def _need027_source_preflight_summary(
+    reports: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    summary: dict[str, dict[str, Any]] = {}
+    for report in reports:
+        source_name = _need027_source_group_name(report)
+        preflight = report.get("source_preflight")
+        if isinstance(preflight, dict) and source_name not in summary:
+            summary[source_name] = preflight
+    return summary
 
 
 def probe_need027_exact_flow_gate(
@@ -626,6 +713,7 @@ def probe_need027_exact_flow_gate(
         exact_reports,
         min_success_rate=min_success_rate,
     )
+    source_preflight = _need027_source_preflight_summary(exact_reports + non_exact_reports)
 
     # need_027 requires one stable exact-flow source, not every candidate source.
     # Candidate failures stay visible as source-group blockers.
@@ -703,6 +791,7 @@ def probe_need027_exact_flow_gate(
         "non_exact_probe_count": len(non_exact_reports),
         "non_exact_policy": "ignored_for_need_027_exact_flow_gate",
         "rank_snapshot_policy": "research_side_only_not_exact_flow_evidence",
+        "source_preflight": source_preflight,
         "post_probe_gates": post_probe_gates,
         "production_eligibility": "blocked",
         "production_promotion": "not_allowed_from_probe_only",

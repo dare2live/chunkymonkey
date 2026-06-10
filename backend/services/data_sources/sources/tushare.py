@@ -9,6 +9,7 @@ from ..base import BaseDataSource, Capability, Health, register_source
 
 
 TOKEN_ENV_VARS = ("TUSHARE_TOKEN", "TUSHARE_PRO_TOKEN", "TS_TOKEN")
+HTTP_URL_ENV = "TUSHARE_HTTP_URL"
 
 
 def _env_token() -> str:
@@ -19,6 +20,18 @@ def _env_token() -> str:
     raise RuntimeError(
         "TuShare token missing; set one of TUSHARE_TOKEN, TUSHARE_PRO_TOKEN, TS_TOKEN"
     )
+
+
+def _pro_api(token: str):
+    import tushare as ts
+
+    pro = ts.pro_api(token)
+    custom_url = os.environ.get(HTTP_URL_ENV, "").strip()
+    if custom_url:
+        # 代理商网关 (e.g. http://jiaoch.site): SDK 无公开参数, 官方推荐写法即覆盖私有属性
+        pro._DataApi__token = token
+        pro._DataApi__http_url = custom_url
+    return pro
 
 
 def _compact_params(**params: Any) -> dict[str, Any]:
@@ -172,11 +185,9 @@ class TuShareSource(BaseDataSource):
     def fetch(self, capability: str, **kwargs) -> Any:
         token = _env_token()
         try:
-            import tushare as ts
+            pro = _pro_api(token)
         except ImportError as exc:
             raise RuntimeError(f"tushare package not installed: {exc}") from exc
-
-        pro = ts.pro_api(token)
         params = _compact_params(
             ts_code=kwargs.get("ts_code"),
             trade_date=kwargs.get("trade_date"),
