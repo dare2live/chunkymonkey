@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh --status
 ```
 默认不再安装 cron snapshot / SessionStart auto-inject；如需恢复旧自动化，必须显式设置脚本里的 legacy opt-in。
 
-**Snapshot 时间**: 2026-06-06 13:11:46 CST
+**Snapshot 时间**: 2026-06-10 23:54:42 CST
 
 ## 主线状态
 
@@ -57,13 +57,16 @@ bash scripts/install_resilience.sh --status
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `e7d338e3 chore: add stage-opt freshness audit evidence` |
-| 最近 24h commits | 22 |
-| 未 commit 文件 | 0 |
+| HEAD | `13af1ad8 docs: record stage opt freshness repair` |
+| 最近 24h commits | 0 |
+| 未 commit 文件 | 8 |
 
 ### 最近 10 commits
 
 ```
+13af1ad8 docs: record stage opt freshness repair
+62d86ab2 docs: codify stage-opt and db governance next steps; docs graph PASS, diff check passed
+39258d96 docs: refresh session snapshot after freshness audit
 e7d338e3 chore: add stage-opt freshness audit evidence
 83af1811 docs: refresh session snapshot after source density diagnostics
 5ac01041 chore: add stage-opt source density diagnostics
@@ -71,14 +74,11 @@ e7d338e3 chore: add stage-opt freshness audit evidence
 287f2d5e docs: refresh session snapshot after need027 diagnostics
 e123dae0 chore: harden need027 probe diagnostics
 96444d2f docs: refresh session snapshot after kline gate
-23c0fb00 chore: harden stage-opt signal kline coverage evidence
-793279c9 docs: refresh session snapshot after schema gate
-c8000b2f chore: harden stage-opt schema contract
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**run startup checks first — scripts/chunkyctl doctor --fast; prioritize data_health blocking_yellow, then stage-opt structural blocker / need_027 blocked-gap triage**
+**8 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

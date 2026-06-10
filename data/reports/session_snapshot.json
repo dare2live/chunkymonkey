@@ -1,11 +1,11 @@
 {
-  "snapshot_at": "2026-06-06 13:11:46 CST",
+  "snapshot_at": "2026-06-10 23:54:42 CST",
   "git": {
     "branch": "main",
-    "head_hash": "e7d338e3",
-    "head_msg": "e7d338e3 chore: add stage-opt freshness audit evidence",
-    "commits_24h": 22,
-    "uncommitted_files": 0
+    "head_hash": "13af1ad8",
+    "head_msg": "13af1ad8 docs: record stage opt freshness repair",
+    "commits_24h": 0,
+    "uncommitted_files": 8
   },
   "retrain": {
     "model_id": "lgbm_phase5_v9b_20260523T083000Z",
@@ -20,5 +20,5 @@
   "compute_backend": {
     "backends": "local:active, modal:planned"
   },
-  "next_action": "run startup checks first \u2014 scripts/chunkyctl doctor --fast; prioritize data_health blocking_yellow, then stage-opt structural blocker / need_027 blocked-gap triage"
+  "next_action": "8 uncommitted files \u2014 git status \u770b + bash scripts/safe_commit.sh"
 }
