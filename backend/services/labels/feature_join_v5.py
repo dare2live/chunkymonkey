@@ -106,7 +106,10 @@ _FEATURE_JOIN_SQL_V5 = """
 --   dropped from v4 JOIN list; the other 2 cols were never in v3 base anyway.
 INSERT INTO mart_p0a_feature_label_panel_v5 BY NAME
 SELECT
-    v3.*,
+    -- EXCLUDE = inst_path_a latest-snapshot leak cols (CLAUDE 4.5 反例; v3 DDL 自注 "latest, NOT PIT").
+    -- 此前靠 "v5 表无这些列" 被动阻断; 2026-06-11 v3 表加宽后必须显式排除, 兑现 line 56 注释承诺.
+    v3.* EXCLUDE (inst_quality_wavg, inst_quality_max, inst_total_holding_ratio,
+                  inst_holder_cnt, top_inst_holding_ratio),
     -- capital_flow 12 cols (inline from fact_capital_flow_pit_daily PIT)
     cf.lhb_count_30d, cf.lhb_net_buy_pct_30d, cf.lhb_inst_buy_30d,
     cf.lhb_count_90d, cf.lhb_inst_buy_90d,

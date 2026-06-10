@@ -12,6 +12,7 @@
 ## [INDEX] 最近增量 (只留 7 天, 历史在 analysis/project_index_changelog_archive_20260611.md + ledger)
 
 - **2026-06-11 TuShare vendor-gateway 接入 + need_027 gate PASS**: `.venv` + tushare 1.4.29; adapter `_pro_api()` 支持 `TUSHARE_HTTP_URL` 代理网关 (token/URL 只在 .env, 不进 git); probe `TUSHARE_TOKEN_ENV_VARS` 改 import adapter 真相源; `_source_preflight` find_spec 加防护; 3 个防回退测试; live gate PASS (tushare 3/3, selected_source=tushare); 代理有间歇空响应, writer 必须 0 行当失败重试; 剩余 production gates: pit_key/freshness_sla/writer/watermark/failure_queue。
+- **2026-06-11 v5 panel PIT 防线显式化 (CRITICAL)**: v3 panel 表加宽后 (含 inst_path_a latest-snapshot 泄漏列, v3 DDL 自注 "latest, NOT PIT"), v5 的 `v3.*` 透传通道失去"v5 表无此列"的被动阻挡; `feature_join_v5.py` 现已显式 `v3.* EXCLUDE (inst_quality_wavg/max, inst_total_holding_ratio, inst_holder_cnt, top_inst_holding_ratio)` 兑现注释承诺, 防回退测试断言 5 列必须在 EXCLUDE 清单。v5 表误加的 5 列已 DROP (0 值写入)。遗留: v3 表自身泄漏列的物理清理在 implementation_plan P2。
 - **2026-06-11 调度层 cron→launchd 迁移 + 失败告警**: cron 无 FDA 静默失败 (K线断流 4+ 交易日); python3.13 (有 FDA) 做 plist 入口 spawn bash 全链通; `scripts/launchd_job_wrapper.py` 失败写 ALERT flag + macOS 通知; crontab 两条退役。防回退: plist 入口不许改回 bash; 定时任务必须走 wrapper。
 
 ## 30 秒速览 — 这是什么项目

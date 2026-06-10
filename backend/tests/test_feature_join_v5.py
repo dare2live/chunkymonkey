@@ -22,10 +22,19 @@ def test_v5_sql_excludes_leaky_cols():
     assert "mcd.mcap_decile" not in sql, "v5 SQL should drop mcap_decile from JOIN"
     assert "ib.beta_60d" not in sql, "v5 SQL should drop beta_60d from JOIN"
     assert "ib.beta_60d_zscore" not in sql, "v5 SQL should drop beta_60d_zscore from JOIN"
-    # inst_quality_max + inst_holder_cnt 不在 v3 base, 无需 EXCLUDE (实测 panel v3 102 cols 不含)
-    # Just ensure leaky cols not SELECTed at all
-    assert "inst_quality_max" not in sql.split("FROM")[0], "v5 SELECT should not include inst_quality_max"
-    assert "inst_holder_cnt" not in sql.split("FROM")[0], "v5 SELECT should not include inst_holder_cnt"
+    # 2026-06-11: v3 表已加宽含 inst_path_a latest-snapshot 泄漏列 (v3 DDL 自注 "latest, NOT PIT"),
+    # v5 必须显式 EXCLUDE 阻断 v3.* 透传 — 此前只是恰好 "v5 表无这些列" 被动挡住, 不算防线.
+    select_part = sql.split("FROM")[0]
+    assert "EXCLUDE" in select_part, "v5 must explicitly EXCLUDE inst_path_a leak cols from v3.*"
+    exclude_clause = select_part.split("EXCLUDE")[-1]
+    for col in (
+        "inst_quality_wavg",
+        "inst_quality_max",
+        "inst_total_holding_ratio",
+        "inst_holder_cnt",
+        "top_inst_holding_ratio",
+    ):
+        assert col in exclude_clause, f"{col} must be in v3.* EXCLUDE list (inst_path_a leak)"
     # SQL should target mart_p0a_feature_label_panel_v5
     assert "INSERT INTO mart_p0a_feature_label_panel_v5" in sql
     # v4 JOIN tables not actively joined (comment refs may remain for documentation)
