@@ -14,7 +14,7 @@
 | `goal.md` | Current phase objective, priority board, implementation plan, long-term roadmap | Read first |
 | `analysis/project_state_ledger.md` | Completed work, historical status, evidence notes formerly appended to `goal.md` | Query with `rg` or `tail`, not full startup read |
 | `SESSION_HANDOFF.md` | Generated/manual runtime resume snapshot | Context-only; verify with live gates |
-| `analysis/workflow_checkpoint.md` | Historical business pipeline checkpoint evidence | Context-only; not permission to resume obsolete provider work |
+| `analysis/workflow_checkpoint.md` | Retired 2026-06-11 (inactive since 2026-06-05); physical removal tracked as P2 slice in `docs/implementation_plan.md` | Do not read for resume; historical evidence only |
 | `docs/chunkyctl_session_quickstart.md` | Startup procedure and controller workflow | Startup contract |
 | `docs/README.md` | Active docs map and ownership rules | Docs authority map |
 
@@ -22,6 +22,19 @@ Update rule: if an item is done, move the evidence to
 `analysis/project_state_ledger.md` and keep only the resulting current decision
 or blocker here. `goal.md` should stay under roughly 150 lines unless the active
 phase genuinely needs a larger plan.
+
+## North-Star KPI (唯一 owner: 本文件; 其他文档只指针引用)
+
+| 指标 | 目标 | 口径 |
+|---|---|---|
+| 年化收益 | >= +30% | 含成本 OOS paper_sim, 2023-01-03 起 100 万初始 |
+| 最大回撤 | >= -20% | 同上 |
+| 超额 vs HS300 | > 0 | 真实 HS300 基准 (基准=0 的结果无效) |
+| 月胜率 | >= 55% | walk-forward OOS 月度胜率分布, 不是均值 |
+
+当前实测状态 (2026-06-11 体检): 无任何同时满足四项、含成本、gate 通过且数据新鲜的数字;
+最近可信 artifact 均为 2026-05-23 前。正确答案是 `unknown`, 修复路径见
+`docs/implementation_plan.md` Active Repair Plan。
 
 ## Current Phase
 
@@ -34,6 +47,11 @@ data sources, provider compute, model search, or production promotion.
 gates, staging, commits, and risky write windows. Side agents provide bounded
 evidence or disjoint patches; their output is not a verdict.
 
+**Commit ownership (2026-06-11 裁决, 双轨合法):** Codex 会话按上行规则;
+Claude controller 会话直接走 `scripts/safe_commit.sh` 现行契约 (message 满足
+`Codex-Reviewed:` 或 `codex-review: skipped reason=<...>` + self-check fallback)。
+两轨共用同一套 pre-commit hook, 不另开第三条路。
+
 ## Active Priority Board
 
 | Priority | Workstream | Current state | Next action |
@@ -41,7 +59,7 @@ evidence or disjoint patches; their output is not a verdict.
 | P0 | Documentation control plane | Thin `goal.md` / ledger split committed in `8371e60c` | Keep current-state facts here; put completed evidence in `analysis/project_state_ledger.md` |
 | P0 | Provider-neutral execution surface | Retired GCP execution surface removed and `experiment_jobs` contract committed in `8371e60c` | Treat `local` as active and `modal` as planned/blocked until adapter gates exist |
 | P0 | Dirty worktree governance | Clean after `3e9fafc8`; `worktree` gate reports `unknown=0` | Keep future commits slice-based; never `git add .` |
-| P1 | `need_027` exact order-flow | **No-persist gate PASS (2026-06-11)**: TuShare 3/3 probes ok via vendor gateway (`TUSHARE_HTTP_URL`, token in local `.env`, tushare 1.4.29 in project `.venv`), `selected_source=tushare`, `field_mapping`/`date_coverage` pass; AkShare group still `akshare_remote_disconnected=3`; vendor gateway shows intermittent empty responses (~15s, retry succeeds) so writers must treat 0-row as failure | Complete the 5 `required` post-probe gates (`pit_key`/`freshness_sla`/`writer`/`watermark`/`failure_queue_resolution`) per `docs/implementation_plan_20260611.md` Phase 1; separately restore AkShare source stability or formally retire it from need_027 candidates (open since 2026-06-06) |
+| P1 | `need_027` exact order-flow | **No-persist gate PASS (2026-06-11)**: TuShare 3/3 probes ok via vendor gateway (`TUSHARE_HTTP_URL`, token in local `.env`, tushare 1.4.29 in project `.venv`), `selected_source=tushare`, `field_mapping`/`date_coverage` pass; AkShare group still `akshare_remote_disconnected=3`; vendor gateway shows intermittent empty responses (~15s, retry succeeds) so writers must treat 0-row as failure | Complete the 5 `required` post-probe gates (`pit_key`/`freshness_sla`/`writer`/`watermark`/`failure_queue_resolution`) per `docs/implementation_plan.md` Active Repair Plan Phase 1; separately restore AkShare source stability or formally retire it from need_027 candidates (open since 2026-06-06) |
 | P1 | Data-source capability routing | Capability contracts committed in `3e9fafc8`; TuShare `moneyflow` adapter/gate wiring is local no-persist probe scope only; iFinD MCP is a research-only semantic/industry-chain snapshot candidate, not a行情 or exact-flow production replacement | Keep new providers in capability-level probe mode before any DB writer or provider promotion; route iFinD MCP through daily PIT snapshot contracts for sector/theme/news/notice evidence |
 | P1 | DB retention/modularization | Capacity pressure is internal table/version/cache overlap inside `smartmoney.duckdb`, not external NO2/backup/snapshot files; retention inventory has owner/consumer/truth/compact contracts and no executable delete candidates | Migrate or retire panel/cache consumers before any cleanup; keep production delete/VACUUM blocked unless copied-DuckDB validation and manifests exist |
 | P1 | Stage-opt supply | Freshness repair is complete through trusted K-line max `2026-06-04`: `fact_signal_context`, `fact_technical_trigger`, and `mart_macd_state_history` all max at `2026-06-04`; latest 5-K-line-day audit has `source_freshness_warnings=0`, default readiness `3010/23661=12.72%`, reversal-only readiness `1401/9218=15.2%`; YTD reversal-only readiness is nonzero (`21530` ready keys / `62.7%`) | Treat remaining stage-opt blocker as upstream signal-density / state-source design, not stale tables; do not tune formula thresholds again until a no-persist source/state POC proves useful PIT candidate supply |

@@ -142,24 +142,11 @@ cat > "$HANDOFF_MD" <<EOF
 > 当前计划看薄入口 \`goal.md\`; 已完成证据查 \`analysis/project_state_ledger.md\`.
 > \`analysis/workflow_checkpoint.md\` 只在其声明 active pipeline 时参与恢复。
 
-## 中断恢复用法 (用户必读)
+## 中断恢复用法
 
-### 1. Mac 重启 / terminal 崩 后:
-\`\`\`
-cd /Users/dp/Documents/M/stock/chunkymonkey
-bash scripts/cm_resume.sh          # 1 命令出当前 state + prompt 模板
-\`\`\`
-
-### 2. 新 Codex 会话输入哪句话:
-- **推荐**: \`请按照 docs/chunkyctl_session_quickstart.md 接手本项目，先完成启动检查，再看 goal.md 和 live gates。\`
-- **简短恢复**: \`继续，看 goal.md、SESSION_HANDOFF.md 和 doctor 输出，按当前 P0 推进。\`
-- **复杂 pipeline**: 仅当 \`analysis/workflow_checkpoint.md\` 声明 active pipeline 时，按其中 next command 继续。
-
-### 3. 自动注入状态:
-\`\`\`
-bash scripts/install_resilience.sh --status
-\`\`\`
-默认不再安装 cron snapshot / SessionStart auto-inject；如需恢复旧自动化，必须显式设置脚本里的 legacy opt-in。
+恢复流程唯一 owner = \`docs/chunkyctl_session_quickstart.md\` (2026-06-11 文档治理收口)。
+速记: \`bash scripts/cm_resume.sh\` 刷新本快照, 新会话按 quickstart 启动检查。
+定时任务告警: 启动时检查 \`/tmp/chunkymonkey_ALERT_*.flag\`, 存在 = 有 job 失败未处理。
 
 **Snapshot 时间**: $NOW
 

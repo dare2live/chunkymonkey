@@ -124,6 +124,7 @@ Archive notes:
 | `PLAN_V3.md` | Archived as `../analysis/plan_v3_20260514_archived.md` |
 | `DATA_INTEGRITY_AUDIT_20260517.md` | Archived as `../analysis/data_integrity_audit_20260517.md` |
 | `市场感知开发计划.md` | Archived as `../analysis/market_perception_development_plan_20260520.md` |
+| `docs/implementation_plan_20260611.md` | Archived as `../analysis/implementation_plan_20260611.md` (2026-06-11 checkup dated evidence; active plan merged into `implementation_plan.md`) |
 | `docs/cron_automation_breakage_rca_20260529.md` | Archived as `../analysis/cron_automation_breakage_rca_20260529.md` |
 | `docs/market_perception_codex_prompt.md` | Deleted; superseded by `chunkyctl_session_quickstart.md`, `goal.md`, and active contracts |
 | `../goal.md` 2026-05-24 and earlier sections | Archived as `../analysis/goal_legacy_20260531.md` |

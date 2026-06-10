@@ -58,3 +58,5 @@ bestchoice/cache_*.duckdb
 bestchoice/analysis/*.duckdb
 bestchoice/.git/
 .venv/
+data/reports/session_snapshot.json
+analysis/workflow_checkpoint.json

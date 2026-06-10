@@ -42,7 +42,7 @@ echo "=== Step 2: PROJECT_INDEX sync check ==="
 if ! PYTHONPATH=backend python backend/scripts/check_project_index_sync.py 2>&1 | tail -5; then
     echo
     echo "ERROR: PROJECT_INDEX.md 未同步."
-    echo "修法: 改 PROJECT_INDEX.md §14 加增量日志 + git add PROJECT_INDEX.md"
+    echo "修法: 更新 PROJECT_INDEX.md 对应活索引节 (历史叙事写 ledger, 不进 INDEX changelog) + git add PROJECT_INDEX.md"
     exit 2
 fi
 

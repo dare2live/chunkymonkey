@@ -24,6 +24,34 @@ archived under `analysis/docs_archive_20260531/`.
 | Paper sim | Must use current universe, PIT features, costs, constraints, and explicit excluded stocks |
 | Forward monitor | Promotion requires current, non-proxy forward or accepted paper evidence |
 
+## Optuna Governance (durable rules, owner: this file)
+
+All Optuna work goes through `services.optimization`; never call `study.optimize`
+bare. Thresholds/ranges/weights/table names live in `backend/config/optuna_config.yaml`.
+
+Three mandatory gates:
+
+| Gate | Rule |
+|---|---|
+| 时序切分 | `walk_forward.split_dispatch(signals)` (default R1 = `expanding_monthly`); Optuna only sees early-window train |
+| 预校验 | `governance.enforce_pre_optimize(n_trials, has_seed=True)` — 50 <= n_trials <= 500, fixed seed |
+| OOS 验证 | best params rerun on test -> `governance.enforce_pre_insert(record)`; rejects `walk_forward_mode='none'`, missing OOS fields, sharpe>5, win>0.95 |
+
+R1 `expanding_monthly` standard: cut at month end; first `min_train_months` (default 6)
+months are train base; best params from earliest window run on each later OOS month;
+multi-window trades aggregate via `oos_aggregator.aggregate_oos_metrics`; the stored
+sharpe is multi-window OOS truth, never in-sample fit.
+
+Business-table contract: every `mart_per_stock_*_optimal` table must carry OOS columns
+(`oos_sharpe/oos_win_rate/oos_avg_ret/oos_n_traded/oos_period_*/walk_forward_mode/`
+`train_n_signals/test_n_signals`); selectors/scoring read only `oos_*`; legacy columns
+(`sharpe/win_rate/avg_ret`) are descriptive. New optimization tables copy this contract.
+
+No-future-function defense in depth: (1) data split via `split_expanding_monthly`;
+(2) search space contains strategy behavior params (hp/stop/target/trailing/pattern
+thresholds), never data lookups; (3) insert gate as above. Every reject is logged to
+`fact_optuna_governance_log` (PK=`run_id`, full `record_json` + reason).
+
 ## Mainline After Governance
 
 Framework governance comes first. After architecture/docs/test/data/tooling gates

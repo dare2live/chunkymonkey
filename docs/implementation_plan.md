@@ -67,6 +67,26 @@ evidence, not production proof. It starts only after framework governance.
 | 8 | P1/P2 | Post-governance strategy mainline | 主升浪猎手, BestChoice, 300616, and main paper sim follow validation gates |
 | 9 | P2/P3 | Profiles/API/frontend | Profile contracts and evidence states exist before UI redesign |
 
+## Active Repair Plan (2026-06-11 checkup)
+
+Full dated evidence: `../analysis/implementation_plan_20260611.md` (2026-06-11
+全面体检产物: 28 confirmed + 61 medium/low findings, 四条审计线)。本节是现行执行序。
+
+| Phase | 内容 | 验收 |
+|---|---|---|
+| 0 止血 (P0) | 调度 cron→launchd + 告警送达 (done 2026-06-11, `6f0357d5`); K 线补数 06-05~06-10; 427 commits push (done); champion 身份统一到单一 yaml 注册点; 证据链补洞 (v9b train_log 缺失行 / p3 HS300 基准=0 / GO-NO-GO 混 model_id) | launchd 连续 3 天成功; K 线 max(date)=最新交易日; delivery_readiness 每项证据可复核 |
+| 1 TuShare 接入 (P0/P1) | need_027 gate 已 PASS (2026-06-11); 通用 sync client (0 行=失败重试 / 按 trade_date 批量 / watermark / failure queue); 接入序: moneyflow → cyq_perf/chips → stk_limit/stock_st/suspend_d → 北向 → margin → top_inst → trade_cal/stock_basic 去 akshare 化 → daily 对账 | 5 项 required post-probe gates 全 pass |
+| 2 Alpha 研究 (P1) | 特征注册制 + ROI gate (Spearman/coverage/var); 顺序: 资金流族 → 筹码族 (winner_rate 与胜率诉求同义) → 板块/概念协同 (dc_member PIT 化) → 龙虎榜/游资 → 事件族; OOS RankIC 基线 0.0108-0.0203, 相对提升 ≥+50% 触发 PIT 复审 | walk-forward OOS RankIC + ablation |
+| 3 回测收敛 (P1, 与 2 并行) | 不重写 paper_sim; AbstractStrategy 接口; 删 legacy latest 路径; 内建三基准对比; paper_sim 超参进 Optuna; 12 yaml 变体收敛为 prod 1 + 模板 1 | 数字出口规则: 对外只引用含成本 replay 及以上 |
+| 4 模型/策略升级 (P1/P2) | v7 = v6 + 新特征族逐族 ablation; ensemble 权重进 Optuna; regime gate 数据驱动 (+moneyflow_mkt_dc); 胜率专项以 OOS 月度胜率分布验收 (目标稳定 ≥55%) | Phase4 gate + paper_sim 全 KPI |
+| 5 实盘验证 (P2) | 可执行性闭环 (stock_st/stk_limit/suspend_d 替代静态规则); 小资金实盘滑点校准; paper→live 偏差记录; 双周 KPI gate | 四大目标含成本 OOS 口径 |
+
+治理瘦身 (贯穿): G1 状态面 8→3 · G2 死表族清理 (~34GB) · G3 dim_all_ever_listed 退役 ·
+G4 每股最优 5 表→1 / 推荐 8 表→1 · G5 bestchoice 双拷贝二选一。
+P2 工程 slice 待办: workflow_checkpoint 物理退役 (涉 14 文件); 体检 28 confirmed 余项
+(SQL 注入参数化 / 0.0.0.0 默认绑定 / champion artifact 备份 / daily_update 18 步覆盖缺口 /
+plan_validator 缩进 bug / complexity 分 scope baseline / validate_loaded_stocks 公共化)。
+
 ## Updater Boundary
 
 The smart updater is a supervisor, not the worker for every domain.
