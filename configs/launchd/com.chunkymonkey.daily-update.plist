@@ -6,6 +6,9 @@
     <string>com.chunkymonkey.daily-update</string>
     <key>ProgramArguments</key>
     <array>
+        <string>/Users/dp/Documents/M/stock/chunkymonkey/.venv/bin/python</string>
+        <string>/Users/dp/Documents/M/stock/chunkymonkey/scripts/launchd_job_wrapper.py</string>
+        <string>daily_update</string>
         <string>/bin/bash</string>
         <string>/Users/dp/Documents/M/stock/chunkymonkey/scripts/daily_update.sh</string>
     </array>

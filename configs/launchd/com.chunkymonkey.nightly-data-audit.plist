@@ -7,10 +7,23 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/bin/zsh</string>
-        <string>-lc</string>
-        <string>cd /Users/dp/Documents/M/stock/chunkymonkey &amp;&amp; PYTHONPATH=backend /opt/homebrew/opt/python@3.13/libexec/bin/python3 backend/scripts/nightly_data_audit.py --write-default-json --lookback-days 30</string>
+        <string>/Users/dp/Documents/M/stock/chunkymonkey/.venv/bin/python</string>
+        <string>/Users/dp/Documents/M/stock/chunkymonkey/scripts/launchd_job_wrapper.py</string>
+        <string>nightly_data_audit</string>
+        <string>/Users/dp/Documents/M/stock/chunkymonkey/.venv/bin/python</string>
+        <string>backend/scripts/nightly_data_audit.py</string>
+        <string>--write-default-json</string>
+        <string>--lookback-days</string>
+        <string>30</string>
     </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONPATH</key>
+        <string>backend</string>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
 
     <key>StartCalendarInterval</key>
     <dict>
