@@ -35,6 +35,10 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# launchd/Homebrew 环境无裸 `python` (只有 python3) — 前置项目 venv bin (含 python symlink),
+# 44 处 `PYTHONPATH=backend python` 一并解决; venv 解释器 = 有 FDA 的 python3.13 (TCC 链依赖)
+export PATH="$REPO_ROOT/.venv/bin:$PATH"
+
 DATE=$(date +%Y%m%d)
 LOG="/tmp/chunkymonkey_daily_update_${DATE}.log"
 # Env var override (e.g. DRY=1 SKIP_SYNC=1 bash daily_update.sh)
