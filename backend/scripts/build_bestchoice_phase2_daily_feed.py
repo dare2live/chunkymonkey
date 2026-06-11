@@ -147,7 +147,7 @@ def main() -> int:
     parser.add_argument("--start-date", default=DEFAULT_BESTCHOICE_PIPELINE_CONFIG.walkforward_start_date)
     args = parser.parse_args()
 
-    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")  # Phase ψ.5 allowlist: built_at lineage 非 trade_date
     start_dt = pd.to_datetime(args.start_date)
 
     market_db = str(REPO_ROOT / "data" / "market.duckdb")

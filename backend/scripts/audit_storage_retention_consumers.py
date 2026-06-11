@@ -103,6 +103,11 @@ def _scan_reference_index(repo: Path, tables: Iterable[str]) -> dict[str, list[R
         + "|".join(re.escape(table) for table in table_names)
         + r")(?![A-Za-z0-9_])"
     )
+    import shutil as _shutil
+
+    if _shutil.which("rg") is None:
+        # 显式环境报错 (非 FileNotFoundError 深栈): rg 缺失 = 审计无法执行, 不许静默空结果
+        raise EnvironmentError("rg binary not on PATH — storage retention audit requires ripgrep")
     command = ["rg", "--json", "--pcre2", "--glob", "!CLAUDE.md"]
     for glob in SKIP_DIR_GLOBS:
         command.extend(["--glob", glob])

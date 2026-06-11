@@ -13,7 +13,7 @@ REPO = Path(__file__).resolve().parents[3]
 
 def test_etf_workbench_widget_exports_and_renders_core_sections() -> None:
     script = r"""
-require(process.argv[1]);
+for (const f of process.argv.slice(1)) require(f);  // 依赖序: format-utils 先于 widget (生产由模板 script 序保证, harness 须显式)
 const widget = globalThis.ETFWorkbenchWidget;
 if (!widget || typeof widget.mountEtfWorkbench !== 'function' || typeof widget.buildWorkbenchHtml !== 'function' || typeof widget.etfNum !== 'function') {
   throw new Error('ETFWorkbenchWidget exports missing');
@@ -63,7 +63,7 @@ if (widget.etfNum(12.34, 1) !== '12.3') {
 """
 
     result = subprocess.run(
-        ["node", "-e", script, str(REPO / "assets/js/widgets/etf-workbench.js")],
+        ["node", "-e", script, str(REPO / "assets/js/widgets/format-utils.js"), str(REPO / "assets/js/widgets/etf-workbench.js")],
         check=False,
         text=True,
         capture_output=True,

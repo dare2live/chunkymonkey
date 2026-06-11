@@ -78,7 +78,7 @@ def main() -> int:
     p.add_argument("--top-k", type=int, default=10)
     args = p.parse_args()
 
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")  # Phase ψ.5 allowlist: 产物文件名时间戳非 trade_date
     model_id = f"unified_ranker_v1_{ts}"
     booster_path = REPO_ROOT / "data" / "reports" / "optuna" / f"{model_id}.lgb.txt"
     feat_path = REPO_ROOT / "data" / "reports" / "optuna" / f"{model_id}.feature_cols.json"

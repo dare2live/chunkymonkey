@@ -13,7 +13,7 @@ REPO = Path(__file__).resolve().parents[3]
 
 def test_etf_opportunity_widget_renders_expected_outputs() -> None:
     script = r"""
-require(process.argv[1]);
+for (const f of process.argv.slice(1)) require(f);  // 依赖序: format-utils 先于 widget (生产由模板 script 序保证, harness 须显式)
 const widget = globalThis.ETFOpportunityWidget;
 if (!widget || typeof widget.etfOverviewTone !== 'function' || typeof widget.etfWatchTags !== 'function' || typeof widget.buildOpportunityHtml !== 'function' || typeof widget.buildOpportunityMiningHtml !== 'function' || typeof widget.mountOpportunity !== 'function') {
   throw new Error('ETFOpportunityWidget exports missing');
@@ -65,7 +65,7 @@ if (!miningHtml.includes('网格交易 Top 5') || !miningHtml.includes('买入�
 """
 
     result = subprocess.run(
-        ["node", "-e", script, str(REPO / "assets/js/widgets/etf-opportunity.js")],
+        ["node", "-e", script, str(REPO / "assets/js/widgets/format-utils.js"), str(REPO / "assets/js/widgets/etf-opportunity.js")],
         check=False,
         text=True,
         capture_output=True,

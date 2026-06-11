@@ -41,7 +41,7 @@ def main() -> int:
     p.add_argument("--signal-date", default=None, help="specific signal_date (YYYY-MM-DD); default = latest")
     args = p.parse_args()
 
-    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")  # Phase ψ.5 allowlist: built_at lineage 非 trade_date
 
     with connect(args.db_path, read_only=False) as conn:
         # Ensure target table

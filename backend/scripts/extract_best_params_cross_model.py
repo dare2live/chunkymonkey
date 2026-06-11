@@ -79,7 +79,7 @@ def main() -> int:
             consensus[param] = {"values": values, "note": "non-numeric"}
 
     out = {
-        "audited_at": datetime.now(timezone.utc).strftime("%Y-%m-%d"),  # rule-compliance: ok evidence=runtime date stamp
+        "audited_at": datetime.now(timezone.utc).strftime("%Y-%m-%d"),  # rule-compliance: ok evidence=runtime date stamp  # Phase ψ.5 allowlist: audited_at 审计时间非 trade_date
         "rationale": "Cross-model best params extraction from v7/v8/v9b Optuna DBs",
         "models_compared": list(cross_model.keys()),
         "best_value_comparison": {

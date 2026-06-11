@@ -43,7 +43,7 @@ def main() -> int:
     p.add_argument("--db-path", default=str(REPO_ROOT / "data" / "smartmoney.duckdb"))
     args = p.parse_args()
 
-    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")  # Phase ψ.5 allowlist: built_at lineage 非 trade_date
 
     with connect(args.db_path, read_only=False) as conn:
         # Delete existing ensemble rows (idempotent)

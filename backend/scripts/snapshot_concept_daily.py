@@ -70,7 +70,29 @@ def main() -> int:
     args = parser.parse_args()
 
     pro = _pro()
-    today = args.date or datetime.now().strftime("%Y%m%d")
+    today = args.date or datetime.now().strftime("%Y%m%d")  # Phase ψ.5 allowlist: 快照日由下方交易日 gate 校验
+    # 交易日 gate (2026-06-12 根治, calendar_gate 复查唯一真违规): 非交易日 launchd 17:40
+    # 照跑会对 5 个 API 打无效请求, 且部分接口对非交易日返回邻日数据 → 生成假快照目录
+    # 污染概念事件 diff (event_date 错位)。日历不可达时 fail-open 继续跑 (快照宁多勿缺,
+    # 多了可去重, 缺了买不回) 但告警可见。
+    if args.date is None:
+        try:
+            from services.database_manifest import get_database_manifest  # 路径真相源 = manifest
+            from services.duck_adapter import connect as duck_connect  # 项目连接契约, 禁裸 duckdb.connect
+
+            cal = duck_connect(str(get_database_manifest().path_for("smartmoney")), read_only=True)
+            try:
+                is_trading = cal.execute(
+                    "SELECT COUNT(*) FROM dim_trading_calendar WHERE trade_date = ? AND is_trading = 1",
+                    [f"{today[:4]}-{today[4:6]}-{today[6:]}"],
+                ).fetchone()[0]
+            finally:
+                cal.close()
+            if not is_trading:
+                print(f"{today} 非交易日, 跳过快照 (交易日 gate)")
+                return 0
+        except Exception as exc:  # noqa: BLE001 — fail-open: 日历锁竞争不挡快照, 但必须可见
+            print(f"WARN: 交易日 gate 日历不可达 ({str(exc)[:80]}), fail-open 继续快照")
     out_dir = OUT_ROOT / today
     out_dir.mkdir(parents=True, exist_ok=True)
 

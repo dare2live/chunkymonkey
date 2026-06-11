@@ -61,7 +61,7 @@ def _decide(week: int, sharpe: float, max_dd: float, win_rate: float, contam: fl
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--today", default=datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    p.add_argument("--today", default=datetime.now(timezone.utc).strftime("%Y-%m-%d"))  # Phase ψ.5 allowlist: CLI 默认值, 周报物理日期非交易日筛选
     p.add_argument("--output-json", default=None)
     args = p.parse_args()
 

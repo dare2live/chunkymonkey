@@ -35,7 +35,7 @@ POSITIVE_STAGES = ("1.5", "2", "3")
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     args = p.parse_args()
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")  # Phase ψ.5 allowlist: built_at lineage 非 trade_date
     stages_csv = ",".join(f"'{s}'" for s in POSITIVE_STAGES)
     with connect(str(REPO_ROOT / "data" / "smartmoney.duckdb"), read_only=False) as conn:
         conn.execute("DELETE FROM mart_p0b_lambdamart_v6_predictions WHERE model_id = ?",

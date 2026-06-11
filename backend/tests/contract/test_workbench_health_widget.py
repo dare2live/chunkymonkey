@@ -13,7 +13,7 @@ REPO = Path(__file__).resolve().parents[3]
 
 def test_workbench_health_widget_exports_and_normalizes_sources() -> None:
     script = r"""
-require(process.argv[1]);
+for (const f of process.argv.slice(1)) require(f);  // 依赖序: format-utils 先于 widget (生产由模板 script 序保证, harness 须显式)
 const widget = globalThis.WorkbenchHealthWidget;
 if (!widget || typeof widget.refreshWorkbenchHealthBar !== 'function' || typeof widget.refreshNetwork !== 'function' || typeof widget.normalizeSourceName !== 'function' || typeof widget.setSourcePill !== 'function') {
   throw new Error('WorkbenchHealthWidget exports missing');
@@ -30,7 +30,7 @@ if (widget.normalizeSourceName('', 'akshare') !== 'akshare') {
 """
 
     result = subprocess.run(
-        ["node", "-e", script, str(REPO / "assets/js/widgets/workbench-health.js")],
+        ["node", "-e", script, str(REPO / "assets/js/widgets/format-utils.js"), str(REPO / "assets/js/widgets/workbench-health.js")],
         check=False,
         text=True,
         capture_output=True,

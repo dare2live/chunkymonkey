@@ -517,7 +517,7 @@ def run_scan(params: dict | None = None, quiet: bool = False):
 
     # save
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%dT%H%M%S")
+    ts = datetime.now().strftime("%Y%m%dT%H%M%S")  # Phase ψ.5 allowlist: 产物文件名时间戳非 trade_date
     out_path = OUTPUT_DIR / f"formula_limit_up_pullback_{ts}.json"
     summary = {
         "params": {k: (v if not isinstance(v, np.generic) else v.item()) for k, v in params.items()},
@@ -619,7 +619,7 @@ def run_sweep():
               f"{s['v_3d_mean']:>+6.2f}% {s['v_3d_win']:>4.1f}%")
 
     # save sweep
-    ts = datetime.now().strftime("%Y%m%dT%H%M%S")
+    ts = datetime.now().strftime("%Y%m%dT%H%M%S")  # Phase ψ.5 allowlist: 产物文件名时间戳非 trade_date
     out_path = OUTPUT_DIR / f"formula_limit_up_pullback_sweep_{ts}.json"
     with open(out_path, "w") as f:
         json.dump(results_summary, f, indent=2, ensure_ascii=False, default=str)

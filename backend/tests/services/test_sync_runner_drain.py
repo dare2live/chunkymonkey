@@ -225,3 +225,20 @@ def test_run_domain_ok_strict_any_failure_is_not_ok(monkeypatch):
     assert r["failed_batches"] == 1
     assert r["ok"] is False           # 严格: 不许部分成功伪装 ok
     assert recorded["ok"] is False    # 与 record 判定统一 (消双标)
+
+
+def test_domain_sample_captured_on_first_batch(tmp_path, monkeypatch):
+    """根因 A 契约: 首批写入自动存真实样本入 fixtures; 已存在不覆盖 (注册时刻快照)."""
+    monkeypatch.setattr(sr, "_SAMPLE_DIR", tmp_path)
+    conn = connect(":memory:")
+    spec = sr._domain_spec(_registry(), "demo")
+    rows = [{"ts_code": "BK0145.DC", "trade_date": "20200101", "val": 1.0}]
+    sr._write_batch(conn, spec, rows)
+    import json as _json
+    sample = _json.loads((tmp_path / "demo.json").read_text())
+    assert sample["rows"][0]["ts_code"] == "BK0145.DC"  # 真实形态原样保存
+    assert sample["grain"] == ["ts_code", "trade_date"]
+    # 第二批不同数据不覆盖首批样本
+    sr._write_batch(conn, spec, [{"ts_code": "XXXX", "trade_date": "20200102", "val": 2.0}])
+    sample2 = _json.loads((tmp_path / "demo.json").read_text())
+    assert sample2["rows"][0]["ts_code"] == "BK0145.DC"

@@ -352,7 +352,7 @@ def main():
 
     # Save results
     OUTPUT_DIR.mkdir(exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%dT%H%M%S")
+    ts = datetime.now().strftime("%Y%m%dT%H%M%S")  # Phase ψ.5 allowlist: 产物文件名时间戳非 trade_date
     results = {}
     for rname, study in all_studies.items():
         best = study.best_trial

@@ -1,0 +1,16 @@
+{
+ "domain": "demo",
+ "api": "demo_api",
+ "grain": [
+  "ts_code",
+  "trade_date"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "ts_code": "000001.SZ",
+   "trade_date": "20200102",
+   "val": 2.0
+  }
+ ]
+}

@@ -42,7 +42,7 @@ def main() -> int:
     p.add_argument("--challenger-model-id", default=CHALLENGER_MODEL_ID)
     args = p.parse_args()
 
-    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")  # Phase ψ.5 allowlist: built_at lineage 非 trade_date
 
     with connect(args.db_path, read_only=False) as conn:
         # Verify source feed exists

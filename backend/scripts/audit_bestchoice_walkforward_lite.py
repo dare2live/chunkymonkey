@@ -216,7 +216,7 @@ def main() -> int:
             if (i + 1) % 100 == 0:
                 print(f"  processed {i+1}/{len(cands)}")
 
-    now_ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    now_ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")  # Phase ψ.5 allowlist: 审计产物时间戳非 trade_date
     out_csv = Path(args.report_dir) / f"audit_{now_ts}.csv"
     df = pd.DataFrame(results)
     df.to_csv(out_csv, index=False)

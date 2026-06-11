@@ -122,7 +122,7 @@ def _apply_context_filter(v7: pd.DataFrame, contexts: dict[tuple[str, pd.Timesta
 
 def main() -> int:
     market_db = str(REPO_ROOT / "data" / "market.duckdb")
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")  # Phase ψ.5 allowlist: built_at lineage 非 trade_date
 
     with connect(str(REPO_ROOT / "data" / "smartmoney.duckdb"), read_only=False, attach={"market": market_db}) as conn:
         print("Loading v7 predictions...")

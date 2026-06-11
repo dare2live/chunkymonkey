@@ -147,10 +147,41 @@ def _fetch_paged(adapter, spec: dict[str, Any], params: dict[str, Any]) -> list[
     return None
 
 
+_SAMPLE_DIR = _REPO / "backend" / "tests" / "fixtures" / "domain_samples"
+
+
+def _capture_domain_sample(spec: dict[str, Any], rows: list[dict[str, Any]]) -> None:
+    """域真实样本存档 (字段语义契约, 根因 A 根治).
+
+    WHY: dc_member 方向反事故 — registry grain 只声明键集合无字段语义, 消费代码
+    fixture 用抽象命名 (C1/600000) 时测试与实现会一致地错。首批写入时把前 5 行
+    真实数据存进 git, 任何消费代码的测试必须可用真实形态 — 抽象 fixture 失去借口。
+    幂等: 样本文件已存在则跳过 (样本是注册时刻快照, 不随数据漂移)。失败不挡写入。
+    """
+    path = _SAMPLE_DIR / f"{spec['domain']}.json"
+    if path.exists():
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        sample = {
+            "domain": spec["domain"],
+            "api": spec.get("api"),
+            "grain": spec.get("grain"),
+            "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+            "rows": rows[:5],
+        }
+        path.write_text(json.dumps(sample, ensure_ascii=False, indent=1, default=str),
+                        encoding="utf-8")
+        log.info("域样本已存档 %s (%d 行)", path.name, min(5, len(rows)))
+    except Exception as exc:  # noqa: BLE001 — 样本存档失败不挡数据写入, 但必须可见
+        log.warning("域样本存档失败 %s: %s", spec["domain"], str(exc)[:120])
+
+
 def _write_batch(conn, spec: dict[str, Any], rows: list[dict[str, Any]]) -> int:
     """MERGE on grain: DELETE 同 grain 旧行 + INSERT, 加 built_at (幂等)."""
     if not rows:
         return 0
+    _capture_domain_sample(spec, rows)
     import pandas as pd
 
     df = pd.DataFrame(rows)

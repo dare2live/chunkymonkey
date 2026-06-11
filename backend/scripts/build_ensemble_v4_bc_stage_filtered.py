@@ -42,7 +42,7 @@ ENSEMBLE_TEST_END = DEFAULT_BESTCHOICE_PIPELINE_CONFIG.ensemble_test_end_date
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     args = p.parse_args()
-    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")  # Phase ψ.5 allowlist: built_at lineage 非 trade_date
 
     with connect(str(REPO_ROOT / "data" / "smartmoney.duckdb"), read_only=False) as conn:
         conn.execute(

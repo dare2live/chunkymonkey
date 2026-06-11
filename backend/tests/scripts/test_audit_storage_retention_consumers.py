@@ -1,9 +1,18 @@
 from __future__ import annotations
 
 import importlib.util
+import shutil
 import sys
 from pathlib import Path
 
+import pytest
+
+# rg 是本审计的硬依赖 (PCRE2 全仓扫描 ~2400 文件, python 化实测劣化 3-5 倍不值得);
+# 部分环境 (Claude shell) rg 是 shell 函数 shim 非二进制, subprocess 不可继承 → 显式 skip
+# 而非假红 (环境问题环境解, 生产 launchd/终端环境有真 rg)
+pytestmark = pytest.mark.skipif(
+    shutil.which("rg") is None, reason="rg binary not on PATH (shell-function shim doesn't count)"
+)
 
 SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "audit_storage_retention_consumers.py"
 SPEC = importlib.util.spec_from_file_location("audit_storage_retention_consumers", SCRIPT_PATH)

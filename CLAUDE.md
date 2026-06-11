@@ -183,6 +183,13 @@ memory 时顺手清过期/冗余/结构问题; 早期方向不删, 加 "状态: 
 
 不能逐项 yes = 别 commit. 重做.
 
+### 8.25 模型降级期标记 (2026-06-12, 反例: 两次降级期缺陷均靠事后全量复查抓)
+
+会话模型从 Fable 5 降级 (如 Opus) 期间的每个 commit, message 加一行
+`model-context: degraded`。恢复 Fable 5 后第一件事: `git log --grep="model-context: degraded"`
+列降级期 commits 定向复查 — 重点抓字段语义/验收引用/时区口径这类"测试绿也挡不住"的
+实测类错误 (反例: dc_member 方向反 7 测全绿 / UTC 误读虚构事故)。
+
 ### 8.3 Codex 不可用时的 self-审 fallback
 
 commit message 必写 5 项: (1) PIT: 用未来信息了? (2) OOS: walk-forward 还是 in-sample?
@@ -202,6 +209,12 @@ Long-run checkpoint reuse 规则 owner = `AGENTS.md`.
 Owner: `AGENTS.md` Parallel Execution + `docs/engineering_governance.md`. 速查: 同文件
 Edit / 同 DuckDB 表写 / 同 Optuna study / commit 序列必须串行; read-only audit / 独立
 ablation 可并发 (DB 连接显式 `read_only=True`); 并发完成必须 main 串行汇总.
+
+**Side-agent 入库边界 (2026-06-12, 反例: agent 改 INDEX 把两条目嫁接成 Frankenstein)**:
+side-agent 产出只许两种形态 — analysis/ 草稿 或 代码+测试; **禁改 PROJECT_INDEX.md /
+goal.md / docs/ / CLAUDE.md** (控制面文件主会话独占)。主会话必须 review 后收编
+(字段语义/真数据抽查, 不只看测试绿 — 反例: agent 判级 19 文件错 3 个 built_at 类,
+亲核才翻案), INDEX 条目由主会话补写。
 
 ## 11. 协作与 commit 所有权
 

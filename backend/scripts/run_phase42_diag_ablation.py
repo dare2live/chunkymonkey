@@ -147,7 +147,7 @@ def main() -> int:
     p.add_argument("--quick", action="store_true", help="skip H2 (v7-window retrain)")
     args = p.parse_args()
 
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")  # Phase ψ.5 allowlist: 产物文件名时间戳非 trade_date
     out_json = REPO_ROOT / "analysis" / f"phase42_ablation_{ts}.json"
     out_json.parent.mkdir(exist_ok=True)
 

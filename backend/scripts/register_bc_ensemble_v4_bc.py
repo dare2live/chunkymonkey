@@ -38,7 +38,7 @@ def main() -> int:
     p.add_argument("--comparison-id", default=DEFAULT_COMPARISON_ID)
     args = p.parse_args()
 
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")  # Phase ψ.5 allowlist: registered_at lineage 非 trade_date
     evidence = {
         "method": "rank-percentile combine v4_score + bc_confidence",
         "audit_evidence": "data/reports/bestchoice_walkforward_lite/audit_20260522T104228.csv",

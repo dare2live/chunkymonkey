@@ -13,7 +13,7 @@ REPO = Path(__file__).resolve().parents[3]
 
 def test_etf_analysis_widget_renders_expected_outputs() -> None:
     script = r"""
-require(process.argv[1]);
+for (const f of process.argv.slice(1)) require(f);  // 依赖序: format-utils 先于 widget (生产由模板 script 序保证, harness 须显式)
 const widget = globalThis.ETFAnalysisWidget;
 if (!widget || typeof widget.buildEtfTradeTimelineHtml !== 'function' || typeof widget.buildNavCurveSvg !== 'function' || typeof widget.buildDeepAnalysisHtml !== 'function') {
   throw new Error('ETFAnalysisWidget exports missing');
@@ -87,7 +87,7 @@ if (!html.includes('深度量化分析') || !html.includes('核心指标对比')
 """
 
     result = subprocess.run(
-        ["node", "-e", script, str(REPO / "assets/js/widgets/etf-analysis.js")],
+        ["node", "-e", script, str(REPO / "assets/js/widgets/format-utils.js"), str(REPO / "assets/js/widgets/etf-analysis.js")],
         check=False,
         text=True,
         capture_output=True,

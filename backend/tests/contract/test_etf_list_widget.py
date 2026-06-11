@@ -13,7 +13,7 @@ REPO = Path(__file__).resolve().parents[3]
 
 def test_etf_list_widget_renders_expected_outputs() -> None:
     script = r"""
-require(process.argv[1]);
+for (const f of process.argv.slice(1)) require(f);  // 依赖序: format-utils 先于 widget (生产由模板 script 序保证, harness 须显式)
 const widget = globalThis.ETFListWidget;
 if (!widget || typeof widget.collectEtfCategoryCounts !== 'function' || typeof widget.sortEtfCategories !== 'function' || typeof widget.applyEtfListFilters !== 'function' || typeof widget.buildEtfFilterBarHtml !== 'function' || typeof widget.buildEtfListRowHtml !== 'function' || typeof widget.buildEtfListTableHtml !== 'function' || typeof widget.mountEtfList !== 'function') {
   throw new Error('ETFListWidget exports missing');
@@ -50,7 +50,7 @@ if (!tableHtml.includes('<table class="data-table">') || !tableHtml.includes('da
 """
 
     result = subprocess.run(
-        ["node", "-e", script, str(REPO / "assets/js/widgets/etf-list.js")],
+        ["node", "-e", script, str(REPO / "assets/js/widgets/format-utils.js"), str(REPO / "assets/js/widgets/etf-list.js")],
         check=False,
         text=True,
         capture_output=True,

@@ -47,7 +47,7 @@ def main() -> int:
                    default=str(REPO_ROOT / "data" / "reports" / "v7_forward_monitor.json"))
     args = p.parse_args()
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")  # Phase ψ.5 allowlist: 监控报告物理日期非交易日筛选
     out = {
         "audited_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "model_id": V7_MODEL_ID,

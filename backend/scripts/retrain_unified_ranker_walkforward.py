@@ -82,7 +82,7 @@ def main() -> int:
     p.add_argument("--max-windows", type=int, default=None)
     args = p.parse_args()
 
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")  # Phase ψ.5 allowlist: 产物文件名时间戳非 trade_date
     model_id = f"unified_ranker_wf_v1_{ts}"
     out_dir = REPO_ROOT / "data" / "reports" / "optuna"
     out_metrics = out_dir / f"{model_id}.json"

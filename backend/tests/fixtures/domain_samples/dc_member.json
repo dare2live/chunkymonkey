@@ -1,0 +1,42 @@
+{
+ "domain": "dc_member",
+ "api": "dc_member",
+ "grain": [
+  "trade_date",
+  "ts_code",
+  "con_code"
+ ],
+ "note": "真实样本回补 (2026-06-12, parquet 快照源): ts_code=概念板块 BK*.DC / con_code=成分股 — 方向反事故的物证",
+ "rows": [
+  {
+   "trade_date": "20260611",
+   "ts_code": "BK0145.DC",
+   "con_code": "600503.SH",
+   "name": "华丽家族"
+  },
+  {
+   "trade_date": "20260611",
+   "ts_code": "BK0145.DC",
+   "con_code": "603329.SH",
+   "name": "上海雅仕"
+  },
+  {
+   "trade_date": "20260611",
+   "ts_code": "BK0145.DC",
+   "con_code": "603987.SH",
+   "name": "康德莱"
+  },
+  {
+   "trade_date": "20260611",
+   "ts_code": "BK0145.DC",
+   "con_code": "300008.SZ",
+   "name": "天海防务"
+  },
+  {
+   "trade_date": "20260611",
+   "ts_code": "BK0145.DC",
+   "con_code": "688213.SH",
+   "name": "思特威-W"
+  }
+ ]
+}
