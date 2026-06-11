@@ -46,6 +46,21 @@ if ! PYTHONPATH=backend python backend/scripts/check_project_index_sync.py 2>&1 
     exit 2
 fi
 
+# 2.6 Feature map refresh — 机器派生视图保鲜 (漂移才写盘, 同 commit 带上)
+# alert_level=optional: 生成失败不挡 commit, 但必须可见 (Platform Runtime Contract)
+echo
+echo "=== Step 2.6: feature map refresh ==="
+if PYTHONPATH=backend python backend/scripts/build_feature_map.py --quiet 2>/dev/null; then
+    if [[ -n "$(git status --porcelain -- FEATURE_MAP.md)" ]]; then
+        git add FEATURE_MAP.md
+        echo "[feature-map] 漂移 → 已重生成并 stage 进本次 commit"
+    else
+        echo "[feature-map] fresh"
+    fi
+else
+    echo "WARNING: [feature-map] 生成失败 (optional 级, 不挡 commit) — 跑 scripts/chunkyctl map 查原因"
+fi
+
 # 3. Rule compliance
 echo
 echo "=== Step 3: rule compliance ==="

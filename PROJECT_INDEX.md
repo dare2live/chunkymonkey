@@ -11,6 +11,7 @@
 
 ## [INDEX] 最近增量 (只留 7 天, 历史在 analysis/project_index_changelog_archive_20260611.md + ledger)
 
+- **2026-06-11 功能地图工具 (FEATURE_MAP.md 机器事实层)**: `backend/scripts/build_feature_map.py` (入口 `scripts/chunkyctl map`, `--check` 漂移门) 从 4 真相源机器枚举: chunkyctl 子命令/launchd plist/@router 路由/sync_registry 域/**产表→writer 映射 (单 writer 契约执法视图: 302 表中 121 张多 writer)**/codegraph 依赖热点 (双过滤抗按名解析假边: 唯一定义名 + caller 实际 import 目标模块 — 实测剔除 Path.resolve 272 条假边)。保鲜: safe_commit Step 2.6 漂移才重生成并同 commit (时间戳行不算漂移, 防噪音 commit); 生成失败 optional 级不挡 commit 但可见。**职责切分红线: FEATURE_MAP=机器可枚举事实, PROJECT_INDEX=人工判断层 (坑/权重/状态), 互不重复**。6 单测 + chunkyctl 39 回归 = 45 passed, 生成 ~1s。
 - **2026-06-11 Serenity 方法论锻造 + TuShare 模块化 catalog + 金股验证**: (1) @aleabitoreddit 全量 6463 贴文 (镜像站后端 API 直拉) 提炼方法论全集 (B1-B12 信念/W1-W3 工作流/证据三档, 全带原话日期) + 集成设计 (拆四块: chain-research skill / industry_chain.yaml 链谱维表 / 解禁质押减持 veto / chain_diffusion 第 8 引擎条件激活; **明确反对建第四套书与照搬选股逻辑**; 链谱后视污染 freeze-date forward-only 红线) + 不可迁移批判 — analysis/serenity_20260611/。(2) `backend/scripts/build_tushare_catalog.py` 生成 `backend/config/tushare_api_catalog.json` (239 接口结构化: 积分/限频/字段/起始, probed_* 增量回写设计) = sync_registry 上游字典, 镜像更新可重跑。(3) 券商金股 measured (29 月): 共识>=3 月均超额 +1.41%/累计 +69% vs 市场 +18%, 但小桶噪音 (月中位 8 只) — 定位候选池增强因子非独立策略, 归 v7-F4 与 report_rc 同族 W5 设计 — analysis/broker_gold_validation_20260611.md。
 - **2026-06-11 产业链 L1 数据底座: fina_mainbz 主营构成接入 + by_ts_code 批模式**: Serenity A股化三层方案 L1 — `fina_mainbz` (按产品分项收入/利润/成本, 立讯 002475 实测 4 产品项) 注册进 sync_registry, 首期 20251231 年报全市场 ~5300 股排 chain3; sync_runner 新增 `by_ts_code` 模式 (股票清单真相源=K线近45日活跃 code, 非 dim 表) + `fixed_params` 透传。**PIT 教科书陷阱已写进 registry**: end_date 是报告期非披露日, 可用时点必须 JOIN ann_date/disclosure_date。用途: 概念标签→收入加权产业链节点 (蹭概念 <5% vs 真卡点 >50%, 一个 JOIN 算纯度)。互动易 irm_qa_sz/sh 实测 premium 无权限 → 走交易所公开接口直抓 (L2 关系边); vip 全市场版无权限且重复访问触发网关风控 357s 封禁 → 拉黑 (权限错立即放弃, 重复打 = 风控)。
 - **2026-06-11 sync_registry 范式落地 + 首个生产域回填 (Task 1 writer/watermark/failure_queue 三 gate)**: 架构稿 §3 实施 — `backend/config/sync_registry.yaml` (一条目=一域, 7 个 W1 域注册: moneyflow/limit_list_d/stk_limit/stock_st/suspend_d/moneyflow_mkt_dc/trade_cal, 每条带 pit_anchor/available_after/data_start/freshness_sla/min_rows 机器可读契约) + `services/data_sources/sync_runner.py` (通用同步器: 交易日历切批 by_trade_date/by_date_range/full_refresh, 0行退避重试, MERGE on grain 幂等, 列演进, 复用 source_watermarks 服务) + `data/tushare_raw.duckdb` 新库 (manifest 注册, 与主库写锁解耦 — DB 管理决策: 新域不进 34GB 单体)。adapter 加 `fetch_raw(api_name)` sync 专用入口 (raw 镜像不加工)。首跑实测: moneyflow_mkt_dc 全史 762 行落库 + watermark 写入 + 7 单测 green (幂等/0行重试/列演进/grain 缺失防御)。**实战坑 2 个**: (1) data_start 必须按"单日参数口径"实测, 范围查询会掩盖真实起点 (mkt_dc 单日 20230103 空, 范围查却有) (2) 部分接口 trade_date 单日参数语义失效只认 start/end → by_date_range 模式。
@@ -365,6 +366,9 @@
 ---
 
 ## 4. Scripts 入口 (135 个)
+
+> 机器枚举的完整入口/产表/依赖清单 → `FEATURE_MAP.md` (`scripts/chunkyctl map` 重生成,
+> 勿手改)。本节只保留人工策展 (哪些重要/怎么用/坑在哪), 计数以 FEATURE_MAP 为准。
 
 按主题分组:
 

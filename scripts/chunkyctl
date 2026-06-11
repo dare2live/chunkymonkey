@@ -14,6 +14,7 @@ Usage:
   scripts/chunkyctl jobs [--family job-family] [--backend local] [--job-id id] [--model-id id]
   scripts/chunkyctl preflight "task description" [scope ...] [--agent-dispatch evidence]
   scripts/chunkyctl audit [--run] [scope ...]
+  scripts/chunkyctl map [--check]
 
 Examples:
   scripts/chunkyctl doctor --fast
@@ -33,6 +34,7 @@ Notes:
   jobs       = provider-neutral experiment job contract / plan.
   preflight  = what gates must run before editing a task.
   audit      = scoped post-change checks; add --run to execute them.
+  map        = regenerate FEATURE_MAP.md machine-derived feature map; --check = drift gate only.
 EOF
 }
 
@@ -223,6 +225,9 @@ case "$cmd" in
     ;;
   jobs)
     PYTHONPATH=backend python backend/scripts/chunkyctl.py jobs "$@"
+    ;;
+  map)
+    PYTHONPATH=backend python backend/scripts/build_feature_map.py "$@"
     ;;
   *)
     echo "ERROR: unknown chunkyctl command: $cmd" >&2
