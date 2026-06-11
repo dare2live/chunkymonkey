@@ -44,6 +44,12 @@ evidence, not production proof. It starts only after framework governance.
 
 ## Target Architecture
 
+Full design draft (六层契约 + 回测配置化 + 新数据域/新策略挂载范式 + 6 条防发散 gate):
+`../analysis/architecture_framework_design_20260611.md` (2026-06-11 顶层设计, controller verdict PROCEED).
+核心立场: 复用 paper_sim v2 / data_sources registry / feature_registry 三骨架, 只补契约+注册制,
+不建新引擎; 新增物总清单 = 2 yaml (sync_registry/strategies) + 2 模块 (sync_runner/strategy_registry)
++ 1 表 (fact_sim_run) + 1 lint。落地顺序见该稿 §6, 挂靠下方 Active Repair Plan 各 Phase。
+
 | Layer | Responsibility | Truth source / owner |
 |---|---|---|
 | L0 Infrastructure | Calendar, K-line, configs, audits | K-line tradeability, calendar dates, YAML rules |
@@ -51,6 +57,11 @@ evidence, not production proof. It starts only after framework governance.
 | L2 Signal and profile | Signal context, stock/institution/main-force profiles | PIT features, lineage, freshness evidence |
 | L3 Strategy execution | Universe, paper sim, costs, constraints, promotion | Preflight gates, paper sim config, excluded stocks |
 | L4 API/UI | Cockpit, stock file, monitor views | Backend contracts; UI never fabricates evidence |
+
+行业分类层 (L0 真相源): 主口径 = 申万 L2 (measured: `../analysis/industry_discrimination_20260611.json`,
+净区分度 0.137 > 通达信 L2 0.118; L2>L1, 通达信 L3 过细=过拟合)。生产需从 TuShare `index_member_all`
+拉历史成分 PIT 化 (申万退役真因 = 只有快照无历史)。多口径并存: 申万 L2 主分类; 东财/同花顺口径
+专服各自资金流/热度因子 (口径必须匹配才能 JOIN)。板块轮动/产业链扩散/个股多标签建在此层之上。
 
 ## Execution Roadmap
 
