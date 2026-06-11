@@ -40,8 +40,9 @@ phase genuinely needs a larger plan.
 
 Owner: `analysis/strategy_portfolio_20260611.md` (三套组合 + 12 周路线图 + 13 条全局纪律件;
 三评委 judge panel 定稿: B 回调增强 8.0 主书 / D v7 排序 7.6 公共增强层 / C 题材扩散 6.0
-降级数据采集)。宪法 v2 草案: `analysis/constitution_v2_draft_20260611.md` (13 条全带反例,
-待用户最终确认后替换 docs/PROJECT_CONSTITUTION.md)。
+降级数据采集)。**宪法 v2 已生效** (2026-06-11 用户原话确认 "宪法v2确认"): live 文件 =
+`docs/PROJECT_CONSTITUTION.md` (13 条全带反例); v1 归档 `analysis/constitution_v1_retired_20260611.md`;
+草案 `analysis/constitution_v2_draft_20260611.md` 已采纳为 live, 仅留作锻造证据。
 当前周: **W1** — DONE: need_027 5 gates (moneyflow 4.22M 主源就位) / E4 回填 (moneyflow/dc_member/stk_limit/stock_st 等 watermark 至 20260611) / E7 快照自养 (concept-snapshot launchd) / 数据平台 P0 (失败分级+drain+SLA registry 驱动) / 前端急救 / 概念事件 detector / 互动易 L2 直抓 / 全量默认 tushare 政策。进行中: chain4/5 回填 (旧源退役批 + K线三件套) / W-B 25 接口逐域注册。
 待 raw 锁空闲: 概念事件 reconstructed 实验 (dc_member 2.71M 已就位) / 复权链消费侧转正。
 验证期 (W1-W12) 新策略 0 真金白银, 全部 paper_sim 候选态。
