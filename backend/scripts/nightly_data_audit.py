@@ -25,7 +25,18 @@ VWAP_CLOSE_MAX = 1.5
 # from yaml: configs/data_governance.yaml periodic_audit.checks.single_source_proportion_drift (governance v1)
 TIER1_RATIO_MIN = 0.999
 # from yaml: configs/data_governance.yaml periodic_audit.checks.fwd_cost_after_outlier_count (governance v1)
+# 2026-06-11 语义修正: 1.0 (100%) 是 WARN 级观察阈值, 不是数据错误判据 —
+# 创业板 20cm 连板复利可真实超过它 (实证: 300085 2024-09-13 起 8 个精确 20.0% 连板,
+# 10 日 +453%, 逐日验证无复权断层 = 924 行情真实历史)。
 FWD_ABS_BLOCK_THRESHOLD = 1.0
+# block 判据 = 超物理复利极限 (全市场最宽 30cm 北交所, 1.3^n - 1):
+# 超过它的 forward 收益在涨跌停制度下不可能发生 = 必然复权断层/坏 K 线。
+# rule-compliance: ok evidence=limit-board-compound-bound-1.3^n, 300085 case verified 2026-06-11
+FWD_PHYSICAL_BOUNDS = {
+    "fwd_cost_after_5d": 1.3 ** 5 - 1,    # 2.71
+    "fwd_cost_after_10d": 1.3 ** 10 - 1,  # 12.79
+    "fwd_cost_after_20d": 1.3 ** 20 - 1,  # 189.0
+}
 # from yaml: configs/data_governance.yaml deprecation.allowed_fallback_codes (CSI 300 index 000300, tier-2 benchmark allowlist)
 ALLOWED_FALLBACK_CODES = {"000300"}
 LABEL_COLUMNS = ("fwd_cost_after_5d", "fwd_cost_after_10d", "fwd_cost_after_20d")
@@ -88,11 +99,20 @@ def check_vwap_close_ratio(con: duckdb.DuckDBPyConnection, cutoff: date) -> dict
                 source_name,
                 source_tier,
                 is_fallback,
-                amount / NULLIF(volume * ?, 0) / NULLIF(close, 0) AS vwap_close_ratio
+                -- 2026-06-11 口径修正: amount/volume 是原始价口径, close 是 qfq 价;
+                -- 乘 factor 对齐 (raw_vwap * factor = qfq_vwap), 否则近期除权股
+                -- (factor<0.67) 的固有偏离 1/factor 会假突破 1.5 阈值 (实测 002245
+                -- 1.5082 -> 1.0153)。
+                amount / NULLIF(volume * ?, 0)
+                    * COALESCE(NULLIF(factor, 0), 1.0)
+                    / NULLIF(close, 0) AS vwap_close_ratio
             FROM market.v_price_kline_qfq
             WHERE freq = 'daily'
               AND adjust = 'qfq'
               AND CAST(date AS DATE) >= ?
+              -- 停牌行 (含 denormal 清洗后的 volume=0) 无 vwap 语义, 不进 ratio 检查;
+              -- 停牌可执行性由 tradability.is_suspended 把守
+              AND volume * ? >= 1
         )
         SELECT
             COUNT(*) AS checked_rows,
@@ -106,6 +126,7 @@ def check_vwap_close_ratio(con: duckdb.DuckDBPyConnection, cutoff: date) -> dict
         [
             LOT_SIZE_SHARES,
             cutoff,
+            LOT_SIZE_SHARES,  # 停牌行过滤 volume*lot >= 1
             VWAP_CLOSE_MIN,
             VWAP_CLOSE_MAX,
             VWAP_CLOSE_MIN,
@@ -126,11 +147,20 @@ def check_vwap_close_ratio(con: duckdb.DuckDBPyConnection, cutoff: date) -> dict
                 source_name,
                 source_tier,
                 is_fallback,
-                amount / NULLIF(volume * ?, 0) / NULLIF(close, 0) AS vwap_close_ratio
+                -- 2026-06-11 口径修正: amount/volume 是原始价口径, close 是 qfq 价;
+                -- 乘 factor 对齐 (raw_vwap * factor = qfq_vwap), 否则近期除权股
+                -- (factor<0.67) 的固有偏离 1/factor 会假突破 1.5 阈值 (实测 002245
+                -- 1.5082 -> 1.0153)。
+                amount / NULLIF(volume * ?, 0)
+                    * COALESCE(NULLIF(factor, 0), 1.0)
+                    / NULLIF(close, 0) AS vwap_close_ratio
             FROM market.v_price_kline_qfq
             WHERE freq = 'daily'
               AND adjust = 'qfq'
               AND CAST(date AS DATE) >= ?
+              -- 停牌行 (含 denormal 清洗后的 volume=0) 无 vwap 语义, 不进 ratio 检查;
+              -- 停牌可执行性由 tradability.is_suspended 把守
+              AND volume * ? >= 1
         )
         SELECT
             source_name,
@@ -148,7 +178,7 @@ def check_vwap_close_ratio(con: duckdb.DuckDBPyConnection, cutoff: date) -> dict
         GROUP BY source_name, source_tier, is_fallback
         ORDER BY anomaly_rows DESC
         """,
-        [LOT_SIZE_SHARES, cutoff, VWAP_CLOSE_MIN, VWAP_CLOSE_MAX],
+        [LOT_SIZE_SHARES, cutoff, LOT_SIZE_SHARES, VWAP_CLOSE_MIN, VWAP_CLOSE_MAX],
     )
     breakdown = _rows_as_dicts(con)
 
@@ -221,6 +251,7 @@ def check_fwd_cost_after(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     for table in tables:
         for column in LABEL_COLUMNS:
+            bound = FWD_PHYSICAL_BOUNDS[column]
             sql = f"""
             SELECT
                 '{table}' AS table_name,
@@ -229,24 +260,37 @@ def check_fwd_cost_after(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
                 SUM(CASE WHEN {column} IS NOT NULL AND isnan({column}) THEN 1 ELSE 0 END) AS nan_rows,
                 MIN(CASE WHEN isfinite({column}) THEN {column} END) AS min_value,
                 MAX(CASE WHEN isfinite({column}) THEN {column} END) AS max_value,
-                SUM(CASE WHEN isfinite({column}) AND ABS({column}) > ? THEN 1 ELSE 0 END) AS abs_gt_threshold_rows
+                SUM(CASE WHEN isfinite({column}) AND ABS({column}) > ? THEN 1 ELSE 0 END) AS abs_gt_threshold_rows,
+                SUM(CASE WHEN isfinite({column}) AND ABS({column}) > ? THEN 1 ELSE 0 END) AS physical_bound_rows
             FROM {table}
             """
-            con.execute(sql, [FWD_ABS_BLOCK_THRESHOLD])
+            con.execute(sql, [FWD_ABS_BLOCK_THRESHOLD, bound])
             rows.extend(_rows_as_dicts(con))
 
     total_outliers = sum(int(row["abs_gt_threshold_rows"] or 0) for row in rows)
+    total_physical = sum(int(row["physical_bound_rows"] or 0) for row in rows)
     total_nan = sum(int(row["nan_rows"] or 0) for row in rows)
-    severity = "critical" if total_outliers > 0 or total_nan > 0 else "ok"
+    # critical = 物理不可能 (复权断层/坏K线) 或 NaN; 仅超 1.0 观察阈值 = warn (真实牛市连板可达)
+    if total_physical > 0 or total_nan > 0:
+        severity = "critical"
+    elif total_outliers > 0:
+        severity = "warn"
+    else:
+        severity = "ok"
     return {
         "name": "fwd_cost_after_outlier_count",
         "severity": severity,
         "threshold": {
-            "abs_value_gt": FWD_ABS_BLOCK_THRESHOLD,
+            "warn_abs_value_gt": FWD_ABS_BLOCK_THRESHOLD,
+            "block_abs_value_gt": {k: round(v, 2) for k, v in FWD_PHYSICAL_BOUNDS.items()},
             "block_count_gt": 0,
             "block_nan_count_gt": 0,
         },
-        "summary": {"outlier_rows": total_outliers, "nan_rows": total_nan},
+        "summary": {
+            "outlier_rows": total_outliers,
+            "physical_bound_rows": total_physical,
+            "nan_rows": total_nan,
+        },
         "tables": rows,
     }
 
@@ -310,8 +354,9 @@ def main() -> int:
 
     if report["severity"] == "critical":
         return 2
-    if report["severity"] == "warn":
-        return 1
+    # warn 不走非零退出码: launchd wrapper 把 rc!=0 一律当 FAIL 弹通知,
+    # 每天为观察级 warn 弹"失败"= 告警疲劳, 会淹没真 critical (狼来了效应)。
+    # warn 详情在 JSON 报告 severity 字段, chunkyctl doctor 负责呈现。
     return 0
 
 

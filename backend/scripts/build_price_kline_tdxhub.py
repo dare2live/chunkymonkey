@@ -218,6 +218,17 @@ def _safe_float(value) -> float | None:
         return None
 
 
+def _denormal_to_zero(value: float | None) -> float | None:
+    """float32 denormal 垃圾值 (~5.9e-39, tdx 停牌日协议噪声) 归 0.
+
+    阈值 1e-6 = 不足 0.000001 手/元, 物理上不可能的成交量级。
+    # rule-compliance: ok evidence=denormal-float32-min-positive-1.18e-38, 2026-06-11 audit 实测 137 行
+    """
+    if value is not None and 0 < value < 1e-6:
+        return 0.0
+    return value
+
+
 def _scale_price(value, factor: float) -> float | None:
     number = _safe_float(value)
     return None if number is None else float(number) * float(factor)
@@ -312,8 +323,11 @@ def normalize(rows: list[dict], batch_id: str, source_name: str = "tdxhub") -> l
             "high": _safe_float(row.get("high")),
             "low": _safe_float(row.get("low")),
             "close": _safe_float(row.get("close")),
-            "volume": _safe_float(row.get("vol", row.get("volume"))),
-            "amount": _safe_float(row.get("amount")),
+            # denormal 清洗 (2026-06-11 audit): tdx 协议对停牌日返回 float32 denormal
+            # 垃圾值 (~5.9e-39) 而非 0; denormal > 0 会绕过 tradability 的 volume<=0
+            # 停牌检查 = 停牌股被当可交易. < 1e-6 (不足 0.000001 手) 一律归 0.
+            "volume": _denormal_to_zero(_safe_float(row.get("vol", row.get("volume")))),
+            "amount": _denormal_to_zero(_safe_float(row.get("amount"))),
             "factor": _safe_float(row.get("factor")) if row.get("factor") is not None else 1.0,
             "source": source_name or "tdxhub",
             "batch_id": batch_id,

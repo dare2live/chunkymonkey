@@ -134,3 +134,19 @@ def test_can_buy_no_pre_close_passes():
     """缺 pre_close → 不 mask (保守允许), 历史数据缺失场景."""
     k = {"volume": 100, "amount": 1000, "close": 100.0}
     assert can_buy(k, pre_close=None, stock_code="600519")
+
+
+def test_is_suspended_catches_denormal_float_garbage():
+    """防回退 (2026-06-11 audit): tdx 停牌日写出 float32 denormal (~5.9e-39),
+    denormal > 0 曾绕过 volume<=0 检查把停牌股判成可交易 (实测 137 行/44 股)。
+    物理下限 1.0 (不足 1 手/1 元) 必须判停牌。"""
+    from services.paper_sim.tradability import is_suspended
+
+    denormal_row = {"volume": 5.877472e-39, "amount": 5.877472e-39, "close": 2.76}
+    assert is_suspended(denormal_row) is True
+
+    normal_row = {"volume": 869270.0, "amount": 9.43e8, "close": 10.82}
+    assert is_suspended(normal_row) is False
+
+    true_zero = {"volume": 0, "amount": 0, "close": 2.76}
+    assert is_suspended(true_zero) is True

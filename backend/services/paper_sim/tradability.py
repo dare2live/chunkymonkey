@@ -51,13 +51,19 @@ def get_segment_limit_pct(stock_code: str) -> tuple[float, float]:
 
 
 def is_suspended(k: dict | None) -> bool:
-    """K线 row 是否 hit 停牌. volume/amount <= 0 或 None 视为停牌."""
+    """K线 row 是否 hit 停牌. volume/amount 低于物理下限或 None 视为停牌.
+
+    防御 (2026-06-11 audit): tdx 停牌日会写出 float32 denormal (~5.9e-39),
+    denormal > 0 会绕过 `<= 0` 检查把停牌股判成可交易 — 真金白银可执行性 bug.
+    下限 1.0 = 不足 1 手成交 / 不足 1 元成交额, 任何真实可交易日都不可能.
+    # rule-compliance: ok evidence=denormal-2026-06-11-audit-137-rows
+    """
     if not k:
         return True
     vol = k.get("volume") or 0
     amt = k.get("amount") or 0
     close = k.get("close") or 0
-    return vol <= 0 or amt <= 0 or close <= 0
+    return vol < 1.0 or amt < 1.0 or close <= 0
 
 
 def is_limit_up_today(k: dict | None, pre_close: float | None, up_pct: float) -> bool:
