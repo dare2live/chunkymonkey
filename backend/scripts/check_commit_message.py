@@ -145,7 +145,16 @@ def main(msg_path: str) -> int:
     has_b = any(kw in body_only for kw in GROUP_B_KEYWORDS) if require_b else True
 
     # GROUP D: post-fix-audit (Rule 9.2 #7) — 含 fix/leakage/drop/cleanup 必须含 cleanup 证据
-    triggered_d = any(kw in body_only for kw in POST_FIX_TRIGGER_KEYWORDS)
+    # 2026-06-11: 英文触发词改词边界匹配 — 子串匹配把 fixed_params/prefix/dropdown/killer
+    # 等标识符误判为 fix/drop/kill 触发 (实证: fixed_params 误触发 GROUP D)
+    import re as _re
+
+    def _kw_hit(kw: str, text: str) -> bool:
+        if kw.isascii():
+            return _re.search(rf"\b{_re.escape(kw)}\b", text) is not None
+        return kw in text
+
+    triggered_d = any(_kw_hit(kw, body_only) for kw in POST_FIX_TRIGGER_KEYWORDS)
     has_d_proof = any(kw in body_only for kw in POST_FIX_PROOF_KEYWORDS) if triggered_d else True
 
     if has_a and has_b and has_d_proof:

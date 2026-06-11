@@ -117,3 +117,70 @@ domains:
     data_start: "20200101"
     freshness_sla_trading_days: 30 # 日历覆盖到未来, 滞后语义不同: 检查 max(cal_date) > today+30
     min_rows_per_batch: 100
+
+  # ── P0-d: 概念/板块域历史回填 (E8 探底实测起点; 未来增量由 concept-snapshot launchd 续) ──
+  dc_member:
+    source: tushare
+    api: dc_member
+    target_table: raw_tushare_dc_member
+    grain: [trade_date, ts_code, con_code]
+    batch_mode: by_trade_date
+    pit_anchor: "trade_date; 概念成分按日快照, 成员漂移敏感 — 特征 JOIN as-of t-1"
+    available_after: "18:00"
+    data_start: "20250102"   # E8 探底实测 (更早单日无数据)
+    freshness_sla_trading_days: 2
+    min_rows_per_batch: 1000
+
+  dc_index:
+    source: tushare
+    api: dc_index
+    target_table: raw_tushare_dc_index
+    grain: [trade_date, ts_code]
+    batch_mode: by_trade_date
+    pit_anchor: "trade_date; 板块指数行情, 盘后 -> JOIN t-1"
+    available_after: "18:00"
+    data_start: "20250102"   # E8 探底实测
+    freshness_sla_trading_days: 2
+    min_rows_per_batch: 100
+
+  moneyflow_ind_dc:
+    source: tushare
+    api: moneyflow_ind_dc
+    target_table: raw_tushare_moneyflow_ind_dc
+    grain: [trade_date, ts_code]
+    batch_mode: by_trade_date
+    pit_anchor: "trade_date; 板块资金流盘后 -> JOIN t-1; rank 字段是分页伪 rank 禁用 (INDEX §8 陷阱)"
+    available_after: "18:00"
+    data_start: "20240102"   # E8 探底实测
+    freshness_sla_trading_days: 2
+    min_rows_per_batch: 200
+
+  limit_cpt_list:
+    source: tushare
+    api: limit_cpt_list
+    target_table: raw_tushare_limit_cpt_list
+    grain: [trade_date, ts_code]
+    batch_mode: by_trade_date
+    pit_anchor: "trade_date; 最强板块盘后榜单 -> JOIN t-1"
+    available_after: "18:00"
+    data_start: "20240102"   # E8 探底实测
+    freshness_sla_trading_days: 2
+    min_rows_per_batch: 1
+    allow_empty_batch: true   # 冰点日可能无涨停板块
+
+  # ── 产业链层 L1: 主营业务构成 (Serenity A股化数据底座, 2026-06-11 实测可用) ──
+  fina_mainbz:
+    source: tushare
+    api: fina_mainbz
+    target_table: raw_tushare_fina_mainbz
+    grain: [ts_code, end_date, bz_code, bz_item]
+    batch_mode: by_ts_code
+    fixed_params:
+      period: "20251231"     # 首期 = 最近完整年报 (2026-04 底披露完毕, 立讯 002475 实测有数据)
+      type: P                # P=按产品构成 (产业链节点归属用); D=按地区另期评估
+    pit_anchor: "end_date 是报告期非披露日! PIT 可用时点 = 年报 ann_date, 特征 JOIN 必须经 disclosure_date/income.ann_date 对齐, 严禁用 end_date 当可用日 (教科书级 PIT 陷阱)"
+    available_after: "t+1"
+    data_start: "20251231"
+    freshness_sla_trading_days: 130   # 年报数据, 按披露季节奏; 下一期 20260630 在 2026-08 后增量
+    min_rows_per_batch: 0
+    allow_empty_batch: true           # 部分股票该期无构成数据 (新股/披露豁免) 合法

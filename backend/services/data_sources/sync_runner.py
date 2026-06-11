@@ -230,6 +230,26 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         finally:
             conn0.close()
         batches = [{"start_date": start_d, "end_date": end_d}]
+    elif spec["batch_mode"] == "by_ts_code":
+        # 按股循环 (单股接口如 fina_mainbz); 股票清单真相源 = K 线近 30 日活跃 code (宪法第 3 条)
+        fixed = dict(spec.get("fixed_params") or {})
+        conn0 = _smartmoney_conn()
+        try:
+            codes = [r[0] for r in conn0.execute(
+                """
+                SELECT DISTINCT code FROM market.price_kline_tdxhub
+                WHERE freq='daily' AND CAST(date AS DATE) >= current_date - INTERVAL 45 DAY
+                """
+            ).fetchall()]
+        finally:
+            conn0.close()
+        def _ts(code: str) -> str | None:
+            if code.startswith("6"):
+                return f"{code}.SH"
+            if code.startswith(("0", "3")):
+                return f"{code}.SZ"
+            return None  # 北交所/异常前缀不在 universe
+        batches = [{"ts_code": t, **fixed} for c in sorted(codes) if (t := _ts(c))]
     elif spec["batch_mode"] == "by_trade_date":
         if backfill:
             start_d = start or spec["data_start"]
