@@ -61,9 +61,13 @@ def _ensure_table(conn) -> None:
 
 
 def _membership_by_day_from_raw(conn, source_table: str) -> dict[str, dict[str, set[str]]]:
-    """raw 表 → {trade_date: {concept_code: {con_code,...}}} (只读)."""
+    """raw 表 → {trade_date: {concept_code: {member,...}}} (只读).
+
+    字段方向 (2026-06-11 parquet 实测, Fable-5 复查抓反向 bug):
+    ts_code = 概念板块代码 (BK0145.DC, 全市场 66 个); con_code = 成分股 (600503.SH, 5521 只)。
+    """
     rows = conn.execute(
-        f'SELECT trade_date, con_code AS concept, ts_code AS member FROM "{source_table}"'
+        f'SELECT trade_date, ts_code AS concept, con_code AS member FROM "{source_table}"'
     ).fetchall()
     out: dict[str, dict[str, set[str]]] = {}
     for d, concept, member in rows:
@@ -85,7 +89,8 @@ def _membership_by_day_from_snapshots() -> dict[str, dict[str, set[str]]]:
         if "con_code" not in df.columns or "ts_code" not in df.columns:
             continue
         day = day_dir.name
-        for concept, member in zip(df["con_code"], df["ts_code"]):
+        # ts_code = 概念板块 (BK*.DC) / con_code = 成分股 — 与 raw 路径同口径 (实测方向)
+        for concept, member in zip(df["ts_code"], df["con_code"]):
             out.setdefault(day, {}).setdefault(str(concept), set()).add(str(member))
     return out
 

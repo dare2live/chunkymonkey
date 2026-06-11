@@ -18,13 +18,16 @@ post-probe gate。
 | freshness_sla | `freshness_sla_trading_days: 1` + update_watermark_sla.py registry 驱动探测 | SLA dry-run 实测 sync:* 域入审计 (NEVER_SYNCED/DB_LOCKED 等显式状态) |
 | writer | sync_runner `_write_batch` MERGE on grain (DELETE 同 grain + INSERT, 幂等) | **raw_tushare_moneyflow 4,229,537 行** |
 | watermark | `_record_outcome` → upsert_watermark | **mart_data_source_watermark `sync:moneyflow` last_data_date=20260611 row_count=4,229,537** |
-| failure_queue_resolution | record_source_failure + drain_domain + resolve_source_failures | **failure_queue `sync:moneyflow` status=resolved** (回填期 29 终败入队 → 重拉解决全闭环) |
+| failure_queue_resolution | record_source_failure + drain_domain + resolve_source_failures | failure_queue `sync:moneyflow` 上午轮闭环实测: 10:43 失败 record open → 12:14 完整轮 ok → resolved (入队→解决机制跑通)。**修正 (Fable-5 复查)**: 初版误把该 resolved 行当"下午轮 29 终败已解决"的证据 — 实际下午轮 29 终败的 record 未生效 (已立诊断 task), 29 日缺口待 drain 按日历 gap 自动补 (drain 不依赖 queue, 正是该设计的兜底价值) |
 
-## 关键运行时实证 (2026-06-11)
+## 关键运行时实证 (2026-06-11; Fable-5 复查修正版)
 
-- moneyflow 全市场回填完成: 4.22M 行, watermark 至最新交易日 20260611
-- 失败闭环跑通: 回填期 vendor gateway 28-29 次终败 (read-timeout/zero-rows/并发上限)
-  全部入 failure_queue, 经重拉后 status 翻 `resolved` — 不是静默吞错, 是入队-解决可审计
+- moneyflow 全市场回填: raw 表 4.08M+ 行 (下午轮 829/830 批), watermark 行为上午轮
+  12:14 状态 (4.22M/20260611 — 该行含上午轮口径疑点, 见诊断 task)
+- 失败闭环机制实测 (上午轮): 失败 record open → 完整轮 ok → resolved, 入队-解决可审计
+- **复查发现并立案**: 下午轮 `_record_outcome` 未生效 (watermark/queue 都停在 12:14,
+  但 run_domain log 正常) + run_domain `ok` 宽松判定与 record 的严格判定双标 —
+  29 个终败日期缺口当前未补, 由 drain 日历 gap 扫描兜底 (不依赖 queue)
 - 其余 sync 域同机制落库: dc_member 2.71M / stk_limit 5.76M / stock_st 123K /
   limit_list_d 104K / trade_cal 13K
 - 当前 open 失败 (可见非静默): limit_cpt_list / moneyflow_ind_dc 各 1 (回填中/待 drain)

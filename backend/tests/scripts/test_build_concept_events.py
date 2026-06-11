@@ -63,3 +63,31 @@ def test_as_of_mode_tagged_on_every_event():
 def test_single_day_yields_no_events():
     """不足两个快照日无法 diff (诚实返回空, 不臆造)."""
     assert mod._diff_events({"20260108": {"C1": {"600000"}}}, "observed", "dc", None) == []
+
+
+def test_field_direction_concept_is_ts_code_member_is_con_code(tmp_path, monkeypatch):
+    """字段方向防回退 (Fable-5 复查抓的反向 bug): dc_member 真实形态
+    ts_code=BK*.DC (概念板块) / con_code=股票代码 — 反向会把 5521 只股票当概念。
+    用真实形态数据走 snapshot 路径, 断言概念键是 BK 形态。"""
+    import pandas as pd
+
+    day1 = tmp_path / "20260108"; day1.mkdir()
+    day2 = tmp_path / "20260109"; day2.mkdir()
+    df1 = pd.DataFrame({"trade_date": ["20260108"] * 2,
+                        "ts_code": ["BK0145.DC", "BK0145.DC"],
+                        "con_code": ["600503.SH", "603329.SH"]})
+    df2 = pd.DataFrame({"trade_date": ["20260109"] * 3,
+                        "ts_code": ["BK0145.DC"] * 2 + ["BK0999.DC"],
+                        "con_code": ["600503.SH", "300008.SZ", "688213.SH"]})
+    df1.to_parquet(day1 / "dc_member.parquet")
+    df2.to_parquet(day2 / "dc_member.parquet")
+    monkeypatch.setattr(mod, "_SNAPSHOT_ROOT", tmp_path)
+
+    by_day = mod._membership_by_day_from_snapshots()
+    assert set(by_day["20260108"]) == {"BK0145.DC"}, "概念键必须是 BK 板块代码, 不是股票"
+    assert by_day["20260108"]["BK0145.DC"] == {"600503.SH", "603329.SH"}
+    ev = mod._diff_events(by_day, "observed", "dc", None)
+    born = [e for e in ev if e[3] == mod.BORN]
+    assert [(e[2]) for e in born] == ["BK0999.DC"]  # 新概念 = 新板块, 不是新股票
+    adds = [(e[2], e[4]) for e in ev if e[3] == mod.ADD]
+    assert ("BK0145.DC", "300008.SZ") in adds
