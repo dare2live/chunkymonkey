@@ -164,6 +164,28 @@ if [[ "$SKIP_SYNC" == "0" ]]; then
         # HS300 benchmark
         PYTHONPATH=backend python backend/scripts/sync_hs300_benchmark_kline.py \
             >> "$LOG" 2>&1 || step_degraded "HS300 sync 失败 (非 fatal)"
+        # Step 2b2: xdxr 除权事件 sync — 热备链路 (主源 = tushare dividend/adj_factor)
+        # 根因记录 2026-06-11: 旧 cron→HTTP updater 路径含 xdxr 段, 切 launchd 直跑本脚本后
+        # xdxr 成孤儿步断流 17 天, 被 registry 驱动 SLA 防线抓出。纳回调度; cooldown 24h 幂等。
+        log "--- Step 2b2: xdxr sync (热备链路) ---"
+        PYTHONPATH=backend python - <<'PYEOF' >> "$LOG" 2>&1 || step_degraded "xdxr sync 失败 (热备链路, 主源 tushare 在 registry)"
+import asyncio
+from services.duck_adapter import connect  # xdxr_client 需要 dict-row 包装, 裸 duckdb 会 ValueError
+from services.xdxr_client import sync_xdxr_for_codes
+
+conn = connect("data/market.duckdb")
+try:
+    codes = [r[0] for r in conn.execute(
+        "SELECT DISTINCT code FROM price_kline_tdxhub WHERE freq='daily' "
+        "AND CAST(date AS DATE) >= current_date - INTERVAL 45 DAY").fetchall()]
+    st = asyncio.run(sync_xdxr_for_codes(conn, codes))
+    print({k: st.get(k) for k in ("status", "total_codes", "success_codes", "rows", "failed_count")})
+    total = max(1, st.get("total_codes") or len(codes))
+    if (st.get("failed_count") or 0) > total * 0.2:  # >20% 失败 = 链路级故障非个股噪音
+        raise SystemExit(1)
+finally:
+    conn.close()
+PYEOF
     else
         log "DRY: skip actual sync"
     fi

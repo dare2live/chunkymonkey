@@ -59,4 +59,8 @@
 2. 注册 registry (pit_anchor/available_after/data_start/sla/min_rows 全填)
 3. 回填排 chain 队列 (gateway 并发 2 串行纪律)
 4. 消费侧双轨: 新表 vs 旧表核对窗口 >= 20 交易日关键字段一致率
-5. 旧路径物理退役: 摄入脚本删除 + daily_update step 删除 + INDEX/FEATURE_MAP 同步
+5. 旧路径按角色处置 (用户补充决策: 备用源也要修, fallback 也可能会用到):
+   - **akshare 等淘汰源**: 双轨核对一致后物理退役 (脚本删除 + daily_update step 删除)
+   - **tdxhub/miaoxiang 热备源**: 切换后保持健康运行 — 故障照修、SLA 照测 (阈值放宽到
+     备源档如 3-5 交易日, 但不许静音/停更); fallback 链顺序同步更新为 tushare 主 → 热备
+6. INDEX/FEATURE_MAP 同步

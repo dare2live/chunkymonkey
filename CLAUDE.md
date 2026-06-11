@@ -90,8 +90,11 @@ JOIN → 永远带 `AND x.built_at <= t` / `as_of_date`; 宇宙 → `dim_index_m
   tushare catalog → 单日实弹核证字段/grain/单页上限 → 注册 sync_registry。tushare 没有的
   能力 (TDX F10 文本类/本地 CYQ 计算) 才落旧源, 且必须在 need contract 记录例外+理由。
   存量非 tushare 路径 (44 表清单见 analysis/tushare_full_migration_map_20260611.md) 一律
-  是迁移对象: 双轨核对 → 物理退役。消费侧方向 = tushare 转正、旧源降备援 — 不许把
+  是迁移对象: 双轨核对 → 按角色处置。消费侧方向 = tushare 转正、旧源降备援 — 不许把
   tushare 表述/设计成"兜底/对照", 那是主从倒挂 (被用户纠偏反例).
+- **备用源是热备不是废弃 (用户原话: fallback 也可能会用到)**: tdxhub/miaoxiang 域切换后
+  保持健康 — 坏了照修、SLA 照测 (阈值可放宽到备源档但不许静音); 只有 akshare 等淘汰源
+  才在双轨核对后物理退役. fallback 链顺序随主源切换同步更新 (tushare 主 → tdxhub 备).
 - tdxhub / miaoxiang: 数据质量 100% 可信 (角色 = 备用源). 缺失 = 自己 sync 路径 bug, 优先重拉.
 - akshare: 不稳定 (限频/接口变), 正被 TuShare 替换 (见 goal.md need_027).
 - tushare (vendor gateway): 171/239 接口实测可用; 间歇空响应/读超时/并发上限 2 — writer 必须
