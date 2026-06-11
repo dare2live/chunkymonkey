@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""概念/板块成分与资金流每日快照自养 (E7, 策略锻造 W1).
+
+为什么存在: dc_member/dc_index 历史仅 2025 起 (E8 探底实测), 概念隶属历史买不到,
+攒一天少一天 — 本任务与任何策略 go/no-go 完全解耦, 是零成本不可逆数据资产。
+套三 (题材扩散) W9 复审、概念协同/产业链扩散因子全部依赖这份积累。
+
+落盘: data/concept_snapshots/<YYYYMMDD>/{dc_member,ths_member,moneyflow_cnt_ths,
+moneyflow_ind_dc,limit_cpt_list}.parquet — parquet 文件级追加, 不写 DuckDB
+(与主库写锁解耦; 积累期后由 sync_runner 统一入库)。
+
+调度: launchd com.chunkymonkey.concept-snapshot 每日 17:40 (盘后数据就绪),
+经 launchd_job_wrapper.py — 失败 ALERT flag + 系统通知 (宪法 v2 第 5 条)。
+
+纪律 (宪法 v2 第 6 条): 0 行 = 失败重试 <=3 次退避; 任一关键源全失败 -> exit 1
+让 wrapper 告警, 绝不静默落空。
+"""
+from __future__ import annotations
+
+import os
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+REPO = Path(__file__).resolve().parents[2]
+OUT_ROOT = REPO / "data" / "concept_snapshots"
+
+# .env 加载 (launchd 环境无 shell profile)
+_env_file = REPO / ".env"
+if _env_file.exists():
+    for line in _env_file.read_text().splitlines():
+        if "=" in line and not line.strip().startswith("#"):
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip())
+
+
+def _pro():
+    import tushare as ts
+
+    token = os.environ["TUSHARE_TOKEN"]
+    pro = ts.pro_api(token)
+    custom = os.environ.get("TUSHARE_HTTP_URL", "").strip()
+    if custom:
+        pro._DataApi__token = token
+        pro._DataApi__http_url = custom
+    return pro
+
+
+def _fetch_retry(name: str, fn, tries: int = 3):
+    """0 行/异常 -> 指数退避重试 (宪法 v2 第 6 条: 0 行当失败)."""
+    for i in range(tries):
+        try:
+            df = fn()
+            if df is not None and len(df):
+                return df
+        except Exception as exc:  # noqa: BLE001 — 重试边界, 最终失败上抛
+            print(f"WARN {name} try{i+1}: {str(exc)[:120]}", flush=True)
+        time.sleep(2 * (i + 1))
+    return None
+
+
+def main() -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--date", default=None, help="快照日期 YYYYMMDD, 默认今天 (验证/回补用)")
+    args = parser.parse_args()
+
+    pro = _pro()
+    today = args.date or datetime.now().strftime("%Y%m%d")
+    out_dir = OUT_ROOT / today
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # (源名, 拉取函数, 是否关键源 — 关键源全败才算任务失败)
+    sources = [
+        ("dc_member", lambda: pro.dc_member(trade_date=today), True),
+        ("moneyflow_cnt_ths", lambda: pro.moneyflow_cnt_ths(trade_date=today), True),
+        ("moneyflow_ind_dc", lambda: pro.moneyflow_ind_dc(trade_date=today), True),
+        ("limit_cpt_list", lambda: pro.limit_cpt_list(trade_date=today), False),
+        ("dc_index", lambda: pro.dc_index(trade_date=today), False),
+    ]
+    ok, critical_fail = [], []
+    for name, fn, critical in sources:
+        df = _fetch_retry(name, fn)
+        if df is not None:
+            df.to_parquet(out_dir / f"{name}.parquet")
+            ok.append(f"{name}({len(df)})")
+        elif critical:
+            critical_fail.append(name)
+        time.sleep(0.5)
+
+    # ths_member 按概念循环 (带 in_date/out_date, 每周一全量刷一次即可, 其他日跳过)
+    if datetime.now().weekday() == 0:
+        try:
+            idx = _fetch_retry("ths_index", lambda: pro.ths_index(type="N"))
+            if idx is not None:
+                import pandas as pd
+
+                frames = []
+                for code in idx["ts_code"].tolist():
+                    d = _fetch_retry(f"ths_member:{code}", lambda c=code: pro.ths_member(ts_code=c), tries=2)
+                    if d is not None:
+                        frames.append(d)
+                    time.sleep(0.4)
+                if frames:
+                    pd.concat(frames, ignore_index=True).to_parquet(out_dir / "ths_member.parquet")
+                    ok.append(f"ths_member({sum(len(f) for f in frames)})")
+        except Exception as exc:  # noqa: BLE001
+            print(f"WARN ths_member weekly: {str(exc)[:120]}", flush=True)
+
+    print(f"snapshot {today}: ok={ok} critical_fail={critical_fail}", flush=True)
+    if critical_fail:
+        # 非交易日所有源天然空 — 用交易日历区分 (休市日 0 行是正常, 不告警)
+        try:
+            cal = _fetch_retry("trade_cal", lambda: pro.trade_cal(
+                start_date=today, end_date=today))
+            if cal is not None and len(cal) and int(cal.iloc[0].get("is_open", 1)) == 0:
+                print(f"{today} 休市, 空快照正常", flush=True)
+                return 0
+        except Exception:  # noqa: BLE001 — 日历探测失败按交易日保守告警
+            pass
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

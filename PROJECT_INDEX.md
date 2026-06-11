@@ -39,9 +39,10 @@
        → NAV 曲线 → KPI 验证 (6 类 20+ 指标)
 ```
 
-**当前最强发现** (实测严格 walk-forward OOS, 7.5h 跑批):
-- `reversal_1m_mild × stage=1.5`: avg OOS sharpe **+0.435** / win **58.5%**
-- `reversal_1m_deep × stage=1`: avg OOS sharpe **+0.32** / win **60.5%**
+**当前最强发现** (实测严格 walk-forward OOS, 7.5h 跑批; 2026-06-11 E0 双口径收敛:
+本区历史数字与 §10 实表矛盾, **统一以 §10 表为唯一口径**, 三评委一致点名该矛盾已污染下游引用):
+- `reversal_1m_deep × stage=1`: avg OOS sharpe **+0.392** / win **58.1%** (§10 表, 地基旗舰)
+- `reversal_1m_mild × stage=1.5`: avg OOS sharpe **+0.342** / win **51.9%** (§10 表, 次选)
 - 整体 momentum 公式 (MACD/turtle/dynamic_ma) **全失效** (OOS sharpe ~0 或负)
 
 **距离用户目标**: 单股 OOS sharpe 0.32 → 5 股组合 + 月度轮换 paper_sim 真实期望约 **+15-25% 年化** (推算未实测). 缺 **+5-15pp** 才达 +30% 标准.
@@ -548,6 +549,7 @@ Rule 9: 真金白银 / 第一性原理       — 用户视角严苛门槛
 
 | 项 | 状态 |
 |---|---|
+| **vendor rank 字段 = 分页伪 rank** | [陷阱-永久] `moneyflow_ind_dc.rank` 是每 50 行循环的分页序号 (三评委独立复现 vs 自算全量 rank spearman 仅 0.07-0.084)。**一切 vendor rank/序号类字段必须自算全量截面 rank**, 禁止直接当因子 (E9 纪律件, 2026-06-11) |
 | `mart_sector_momentum` 只 41 行 (2026-04 起) | [BLOCKED] 没历史回测能力, **需 rebuild 全期** |
 | `fact_setup_snapshot` 0 行 | [BLOCKED] 未启用 |
 | **paper_sim 选股 走 strategy_ensemble** | [PASS] Phase ψ.β.4: ensemble mode + `paper_sim_ensemble.yaml` 10 alpha |

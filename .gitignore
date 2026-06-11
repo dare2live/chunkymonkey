@@ -60,3 +60,4 @@ bestchoice/.git/
 .venv/
 data/reports/session_snapshot.json
 analysis/workflow_checkpoint.json
+data/concept_snapshots/
