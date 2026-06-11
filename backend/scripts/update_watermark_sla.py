@@ -94,11 +94,41 @@ DATA_SOURCE_QUERIES = {
 }
 
 
-def _query_actual_max_date(market_conn, smart_conn, data_domain: str) -> str | None:
-    spec = DATA_SOURCE_QUERIES.get(data_domain)
-    if not spec:
+def _sync_registry_queries() -> dict[str, dict]:
+    """sync:* 域 SLA 查询从 sync_registry.yaml 自动生成 — registry 驱动, 不手维护.
+
+    复审 HIGH (2026-06-11): sync:* 域无 DATA_SOURCE_QUERIES 条目 → actual=None →
+    永不告警 = audit 防线对全部新数据域盲区 (静默腐烂同型)。registry 注册即自动入防线。
+    """
+    import yaml
+
+    out: dict[str, dict] = {}
+    reg_path = REPO_ROOT / "backend" / "config" / "sync_registry.yaml"
+    try:
+        reg = yaml.safe_load(reg_path.read_text(encoding="utf-8")) or {}
+        for name, spec in (reg.get("domains") or {}).items():
+            mode = spec.get("batch_mode")
+            if mode in ("by_trade_date", "by_date_range"):
+                out[f"sync:{name}"] = {
+                    "db": "tushare_raw",
+                    "query": f'SELECT MAX(CAST(trade_date AS VARCHAR)) FROM "{spec["target_table"]}"',
+                    "sla_days": spec.get("freshness_sla_trading_days"),
+                }
+            else:
+                # 季度 (by_ts_code) / 日历 (full_refresh) 无日频新鲜度语义 — 显式标注, 不静默当 OK
+                out[f"sync:{name}"] = {"db": "tushare_raw", "no_probe": f"batch_mode={mode}"}
+    except Exception as e:  # noqa: BLE001 — registry 读失败必须可见, 不能让全部 sync 域回到盲区
+        log.warning(f"sync_registry SLA 条目生成失败 (sync:* 域回到盲区!): {e}")
+    return out
+
+
+def _query_actual_max_date(conns: dict, queries: dict, data_domain: str) -> str | None:
+    spec = queries.get(data_domain)
+    if not spec or spec.get("no_probe"):
         return None
-    conn = market_conn if spec["db"] == "market" else smart_conn
+    conn = conns.get(spec["db"])
+    if conn is None:
+        return None  # 库不可达 — 调用方按 DB_LOCKED_UNVERIFIED 显式标注
     try:
         r = conn.execute(spec["query"]).fetchone()
         return r[0] if r and r[0] else None
@@ -134,6 +164,17 @@ def main() -> int:
 
     smart_conn = duck_connect(args.smartmoney_db, read_only=False)  # need write
     market_conn = duck_connect(args.market_db, read_only=True)
+    # tushare_raw: 回填链持写锁时 read_only 也连不上 (DuckDB 排他) — 显式置 None,
+    # 对应域标 DB_LOCKED_UNVERIFIED 而非静默 OK
+    raw_conn = None
+    try:
+        from services.database_manifest import get_database_manifest
+
+        raw_conn = duck_connect(str(get_database_manifest().path_for("tushare_raw")), read_only=True)
+    except Exception as e:  # noqa: BLE001 — 锁竞争是回填期常态, 显式降级不挡 SLA 主流程
+        log.warning(f"tushare_raw 不可达 (回填链占锁?): {e}")
+    queries = {**DATA_SOURCE_QUERIES, **_sync_registry_queries()}
+    conns = {"market": market_conn, "smartmoney": smart_conn, "tushare_raw": raw_conn}
     try:
         watermark_rows = smart_conn.execute(
             "SELECT data_domain, source_name, source_tier, last_data_date, updated_at "
@@ -147,14 +188,23 @@ def main() -> int:
         for row in watermark_rows:
             data_domain, source_name, source_tier, watermark_date, updated_at = row
 
-            actual_date = _query_actual_max_date(market_conn, smart_conn, data_domain)
+            actual_date = _query_actual_max_date(conns, queries, data_domain)
             actual_days = _days_since(actual_date, today)
             watermark_days = _days_since(watermark_date, today)
-            # 季度数据 override (gpcw_8q / holders_top10 / qfii 等)
-            sla = SLA_DAYS_OVERRIDE.get(data_domain, SLA_DAYS.get(source_tier, 3))
+            # SLA 优先序: registry per-domain > 季度 override > tier 默认
+            qspec = queries.get(data_domain) or {}
+            sla = (qspec.get("sla_days")
+                   or SLA_DAYS_OVERRIDE.get(data_domain)
+                   or SLA_DAYS.get(source_tier, 3))
 
             status = "OK"
             alert = False
+            if qspec.get("no_probe"):
+                status = "NO_PROBE_RULE"  # 季度/日历域: 无日频语义, 显式标注非 OK
+            elif not qspec:
+                status = "NO_QUERY_MAPPING"  # 既不在手维护表也不在 registry — 防线缺口可见化
+            elif qspec.get("db") == "tushare_raw" and raw_conn is None:
+                status = "DB_LOCKED_UNVERIFIED"  # 回填期暂态, 不告警但不许伪装 OK
 
             # 1. watermark out of date vs actual
             if actual_date and watermark_date:
@@ -197,6 +247,18 @@ def main() -> int:
                 "alert": alert,
             })
 
+        # registry 域 ∪ watermark 行: 从未成功 sync 的注册域没有 watermark 行 →
+        # 不进上面循环 = 注册后一直没跑成会永远隐形。显式补 NEVER_SYNCED 行。
+        seen_domains = {r[0] for r in watermark_rows}
+        for qd, qspec in queries.items():
+            if qd.startswith("sync:") and qd not in seen_domains:
+                results.append({
+                    "data_domain": qd, "source_name": "tushare", "source_tier": 2,
+                    "watermark_date": None, "actual_date": None, "actual_days_ago": None,
+                    "watermark_days_ago": None, "sla_days": qspec.get("sla_days"),
+                    "status": "NEVER_SYNCED", "alert": False,
+                })
+
         # Write JSON report
         Path(args.json_output).parent.mkdir(parents=True, exist_ok=True)
         with open(args.json_output, "w", encoding="utf-8") as f:
@@ -220,6 +282,11 @@ def main() -> int:
             smart_conn.close()
         except Exception as e:  # rule-compliance: ok evidence=cleanup-best-effort
             log.warning(f"smart_conn close failed: {e}")
+        if raw_conn is not None:
+            try:
+                raw_conn.close()
+            except Exception as e:  # rule-compliance: ok evidence=cleanup-best-effort
+                log.warning(f"raw_conn close failed: {e}")
 
 
 if __name__ == "__main__":
