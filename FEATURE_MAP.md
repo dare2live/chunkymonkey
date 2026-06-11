@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-11 19:22
+> Snapshot: 2026-06-11 19:59
 
 ## 1. 入口面
 
@@ -59,17 +59,23 @@
 
 | 域 | 源 | api | 表 | 模式 | SLA(交易日) |
 |---|---|---|---|---|---|
+| adj_factor | tushare | adj_factor | raw_tushare_adj_factor | by_trade_date | 1 |
 | dc_index | tushare | dc_index | raw_tushare_dc_index | by_trade_date | 2 |
 | dc_member | tushare | dc_member | raw_tushare_dc_member | by_trade_date | 2 |
+| dividend | tushare | dividend | raw_tushare_dividend | by_trade_date | 5 |
 | fina_mainbz | tushare | fina_mainbz | raw_tushare_fina_mainbz | by_ts_code | 130 |
 | limit_cpt_list | tushare | limit_cpt_list | raw_tushare_limit_cpt_list | by_trade_date | 2 |
 | limit_list_d | tushare | limit_list_d | raw_tushare_limit_list_d | by_trade_date | 1 |
 | moneyflow | tushare | moneyflow | raw_tushare_moneyflow | by_trade_date | 1 |
+| moneyflow_hsgt | tushare | moneyflow_hsgt | raw_tushare_moneyflow_hsgt | by_trade_date | 2 |
 | moneyflow_ind_dc | tushare | moneyflow_ind_dc | raw_tushare_moneyflow_ind_dc | by_trade_date | 2 |
 | moneyflow_mkt_dc | tushare | moneyflow_mkt_dc | raw_tushare_moneyflow_mkt_dc | by_date_range | 1 |
+| report_rc | tushare | report_rc | raw_tushare_report_rc | by_trade_date | 3 |
 | stk_limit | tushare | stk_limit | raw_tushare_stk_limit | by_trade_date | 1 |
 | stock_st | tushare | stock_st | raw_tushare_stock_st | by_trade_date | 1 |
 | suspend_d | tushare | suspend_d | raw_tushare_suspend_d | by_trade_date | 3 |
+| ths_hot | tushare | ths_hot | raw_tushare_ths_hot | by_trade_date | 2 |
+| top_list | tushare | top_list | raw_tushare_top_list | by_trade_date | 2 |
 | trade_cal | tushare | trade_cal | raw_tushare_trade_cal | full_refresh | 30 |
 
 ## 3. 产表 writer (单 writer 契约审查素材)
@@ -433,7 +439,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 19,048 | calls 边 207,384 | imports 边 20,292 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 19,049 | calls 边 207,391 | imports 边 20,292 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -490,6 +496,6 @@
 ## 5. 概览
 
 - chunkyctl 子命令 7 | launchd 任务 4 | router 21 (端点 167)
-- sync_registry 数据域 12
+- sync_registry 数据域 18
 - 产表 302 (多 writer 121)
 

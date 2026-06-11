@@ -260,7 +260,10 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         # 增量模式跳过 watermark 当天 (已写过)
         if not backfill and len(days) > 1 and days[0] == (start or _last_watermark_date(domain, spec["source"]) or ""):
             days = days[1:]
-        batches = [{"trade_date": d} for d in days]
+        # date_param: API 日期参数名 (默认 trade_date; dividend 用 ex_date / report_rc 用
+        # report_date — 锚定列同名, raw 表镜像后 drain 也按它扫 gap)
+        date_param = spec.get("date_param", "trade_date")
+        batches = [{date_param: d} for d in days]
     else:
         raise NotImplementedError(f"batch_mode {spec['batch_mode']} 未实现 (by_ts_code/by_month 按需加)")
 
@@ -279,8 +282,9 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
                 failed.append({**params, "suspect": "below_min_rows"})
             n = _write_batch(conn, spec, rows)
             total_rows += n
-            if params.get("trade_date"):
-                last_ok_date = params["trade_date"]
+            date_key = spec.get("date_param", "trade_date")
+            if params.get(date_key):
+                last_ok_date = params[date_key]
             elif params.get("end_date"):
                 last_ok_date = params["end_date"]
             time.sleep(0.4)  # rule-compliance: ok evidence=vendor-gateway-conn-refused-backoff-2026-06-11
@@ -313,6 +317,11 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     spec = _domain_spec(reg, domain)
     if spec.get("batch_mode") != "by_trade_date":
         return {"domain": domain, "status": "unsupported", "batch_mode": spec.get("batch_mode")}
+    if spec.get("allow_empty_batch"):
+        # 空日合法的域 gap 不可判定: 缺口 vs 真空无法区分, 空日会被每日重查永不收敛
+        # (dividend 自 2005 年 ~3500 个无除权日会吃光重拉名额 + 永远 partial 告警疲劳)。
+        # 这类域走 watermark 增量 (main --drain 分支 fallback run_domain)。
+        return {"domain": domain, "status": "drain_inapplicable", "reason": "allow_empty 域走增量"}
     expected = trading_days if trading_days is not None else _trading_days(
         str(spec["data_start"]).replace("-", ""))
     # 只修"今日之前"的确定性缺口: 当日数据到位时刻由 available_after 管 (多在 18:00),
@@ -324,22 +333,22 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     own_conn = conn is None
     conn = conn or _target_conn(spec)
     table = spec["target_table"]
-    refilled_rows, confirmed_empty, still_failed = 0, [], []
+    refilled_rows, still_failed = 0, []
     actual: set[str] = set()
     min_rows = int(spec.get("min_rows_per_batch", 0))
-    allow_empty = bool(spec.get("allow_empty_batch"))
     # "完整日"口径 = 行数达 min_rows 的日; 不足日视同缺口重拉 (MERGE 幂等, 重拉安全)。
     # 复审 HIGH: 旧版 DISTINCT 把 vendor 截断批 (在表但残缺) 当完整, 会洗白 run_domain
-    # 标记的 suspect 日且永无重拉机制。allow_empty 域不设行数门槛。
-    threshold = 0 if allow_empty else min_rows
+    # 标记的 suspect 日且永无重拉机制。
+    threshold = min_rows
     try:
         has_table = conn.execute(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?", [table]
         ).fetchone()[0]
+        date_col = spec.get("date_param", "trade_date")  # raw 表镜像 api 字段, 锚定列与参数同名
         if has_table:
             actual = {str(r[0]).replace("-", "")
                       for r in conn.execute(
-                          f'SELECT trade_date FROM "{table}" GROUP BY 1 HAVING COUNT(*) >= ?',
+                          f'SELECT "{date_col}" FROM "{table}" GROUP BY 1 HAVING COUNT(*) >= ?',
                           [threshold]).fetchall()}
         gap = [d for d in expected if d not in actual]
         truncated = max_dates is not None and len(gap) > max_dates
@@ -349,23 +358,21 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
         if todo:
             adapter = adapter or _adapter(spec["source"])
         for d in todo:
-            rows = _fetch_with_retry(adapter, spec, {"trade_date": d})
-            if rows is None:
+            rows = _fetch_with_retry(adapter, spec, {date_col: d})
+            if not rows:  # None=终败; [] 理论不可达 (allow_empty 域已前置排除), 防御同终败
                 still_failed.append(d)
-            elif rows:
-                refilled_rows += _write_batch(conn, spec, rows)
-                if min_rows and not allow_empty and len(rows) < min_rows:
-                    still_failed.append(d)  # 截断批: 写入 (聊胜于无) 但不算修好, 下轮仍在 gap
-                time.sleep(0.4)  # rule-compliance: ok evidence=同 run_domain 节流口径 vendor-gateway-2026-06-11
-            else:
-                confirmed_empty.append(d)  # allow_empty 域确认空日: 不写表, 下次 drain 重查 (1 次 API 成本)
+                continue
+            refilled_rows += _write_batch(conn, spec, rows)
+            if min_rows and len(rows) < min_rows:
+                still_failed.append(d)  # 截断批: 写入 (聊胜于无) 但不算修好, 下轮仍在 gap
+            time.sleep(0.4)  # rule-compliance: ok evidence=同 run_domain 节流口径 vendor-gateway-2026-06-11
     finally:
         if own_conn:
             conn.close()
     status = "clean" if not gap else ("drained" if not still_failed and not truncated else "partial")
     result = {"domain": domain, "status": status, "expected_days": len(expected),
-              "gap_days": len(gap), "refilled_days": len(todo) - len(still_failed) - len(confirmed_empty),
-              "refilled_rows": refilled_rows, "confirmed_empty_days": len(confirmed_empty),
+              "gap_days": len(gap), "refilled_days": len(todo) - len(still_failed),
+              "refilled_rows": refilled_rows,
               "still_failed": still_failed[:20], "truncated": truncated}
     if record:  # 送达 (宪法第 5 条): 仍有缺口 → 记 failure; 清干净 → resolve
         _record_outcome(spec, ok=status in ("clean", "drained"),
@@ -399,8 +406,13 @@ def main() -> int:
         for d in domains:
             try:
                 res = drain_domain(d, registry=reg, max_dates=args.max_dates)
-                if res.get("status") == "unsupported" and res.get("batch_mode") in ("by_date_range", "full_refresh"):
-                    # 非按日域无 gap 语义 → 直接增量 run_domain (单次调用, 成本极低)。
+                fallback_incremental = (
+                    res.get("status") == "drain_inapplicable"
+                    or (res.get("status") == "unsupported"
+                        and res.get("batch_mode") in ("by_date_range", "full_refresh"))
+                )
+                if fallback_incremental:
+                    # 非按日域 + allow_empty 域无 gap 语义 → 增量 run_domain (watermark 起点)。
                     # 复审 HIGH: drain-only 接线下这些域否则零自动同步 = 静默停更同型复发。
                     # by_ts_code (如 fina_mainbz ~5300 股调用) 仍显式 unsupported, 归专门调度。
                     res = run_domain(d, registry=reg)

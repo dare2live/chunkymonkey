@@ -80,15 +80,28 @@ def test_drain_terminal_failure_stays_listed_not_silent():
     assert r["status"] == "partial" and r["still_failed"] == ["20200101"]
 
 
-def test_drain_allow_empty_confirmed_empty_separated_from_failure():
-    """allow_empty 域: 重查确认空 ≠ 终败, 分开计数."""
+def test_drain_allow_empty_domain_inapplicable():
+    """allow_empty 域空日合法 gap 不可判定 → 显式 drain_inapplicable, 走增量 fallback."""
+    r = sr.drain_domain("demo", registry=_registry(allow_empty_batch=True), record=False)
+    assert r["status"] == "drain_inapplicable"
+
+
+def test_drain_respects_custom_date_param():
+    """date_param 域 (如 dividend ex_date): gap 扫描列与 fetch 参数都用它."""
     conn = connect(":memory:")
-    _seed(conn, [])
-    adapter = FakeAdapter({"20200101": []})
-    r = sr.drain_domain("demo", registry=_registry(allow_empty_batch=True), conn=conn,
-                        adapter=adapter, trading_days=["20200101"], record=False)
-    assert r["status"] == "drained"
-    assert r["confirmed_empty_days"] == 1 and r["still_failed"] == []
+    conn.execute("CREATE TABLE raw_tushare_demo (ts_code VARCHAR, ex_date VARCHAR, val DOUBLE, built_at TIMESTAMP)")
+    conn.execute("INSERT INTO raw_tushare_demo VALUES ('000001.SZ', '20200101', 1.0, now())")
+
+    class ParamCapture(FakeAdapter):
+        def fetch_raw(self, api_name, **params):
+            assert "ex_date" in params and "trade_date" not in params
+            return super().fetch_raw(api_name, trade_date=params["ex_date"])
+
+    adapter = ParamCapture({"20200102": [{"ts_code": "000001.SZ", "ex_date": "20200102", "val": 2.0}]})
+    reg = _registry(date_param="ex_date", grain=["ts_code", "ex_date"])
+    r = sr.drain_domain("demo", registry=reg, conn=conn, adapter=adapter,
+                        trading_days=["20200101", "20200102"], record=False)
+    assert r["status"] == "drained" and r["refilled_days"] == 1
 
 
 def test_drain_unsupported_batch_mode_explicit():
