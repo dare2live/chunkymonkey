@@ -84,6 +84,20 @@ Candidate sources that are not production-eligible must declare structured
 freshness SLA, watermark, reconciliation, and failure-queue resolution. Notes are
 context only; they are not a substitute for machine-readable gates.
 
+## Platform Runtime Contract
+
+Adopted 2026-06-11 from the three-track platform audit; evidence and full design
+in `../analysis/platform_top_level_design_20260611.md`.
+
+| Principle | Rule |
+|---|---|
+| Registry-driven | Every ingestion domain is a `sync_registry.yaml` entry (source, mode, grain, PIT key, freshness SLA, retry, alert level); adding data = adding an entry, not a new script |
+| Single executor | `sync_runner` is the only ingestion executor; a new per-source script with private failure handling is a contract violation |
+| Four defenses | Protocol-level source probe → watermark + failure queue with drain/replay → registry-derived freshness audit → delivered alert (wrapper + ALERT flag); a path missing any defense is not "done" |
+| Failure levels | Per-domain `alert_level`: `fatal` stops the chain; `degraded` continues but must write a same-day ALERT flag; `optional` queues for weekly summary. Blanket WARN-and-continue swallowing is forbidden (constitution alert-delivery rule) |
+| Single writer | Each fact/mart table has exactly one writer module (manifest-registered); modules communicate through tables with grain/as_of/SLA, not cross-layer imports |
+| Storage layers | Raw landing DBs (per-source, runner-only writer) → main DB (short merge windows) → immutable artifacts; long backfills must not hold the main DB write lock |
+
 ## Lineage Contract
 
 | Layer | Required fields |
@@ -144,6 +158,9 @@ should be an operating cockpit for evidence and decisions, not a marketing page.
 | Stock file | Stock profile, institution profile, main-force profile, evidence status |
 | Backtest/forward monitor | KPI, drawdown, costs, data freshness, PIT status |
 | Unknown states | Visible and explicit; never silently hidden |
+| Decision thresholds | Business thresholds, sort rules, and cutoffs come from backend config (yaml → config API); zero hardcoded thresholds in UI code |
+| Data unavailability | No silent mock fallback in production mode; fetch failure surfaces as an explicit error/stale badge, never a quiet substitute dataset |
+| Freshness | Every data card carries `as_of` plus SLA-derived freshness status as a first-class display element |
 
 ## Archived Sources
 
