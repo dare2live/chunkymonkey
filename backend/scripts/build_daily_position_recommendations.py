@@ -344,37 +344,35 @@ def _load_candidate_rows(conn, signal_date: str) -> list[tuple]:
           )
           WHERE rn = 1
         )
-        -- η+++++++ tier-1: PIT exact stage; tier-1b: PIT same stock+formula; fallback: cross-stage optimal
+        -- PIT 红线: scoring 只读 oos_* (CLAUDE.md §5). fallback 链截断在 PIT 表,
+        -- 绝不回接 mart_per_stock_strategy_optimal (无 oos_*, 全期 in-sample sharpe = leakage,
+        -- §4.5 反例 mart_per_stock_*_optimal.sharpe → paper_sim "+312%" 假象).
+        --   tier-1  stage_pit            : PIT 同 stock+formula+variant+stage, ASOF 最新 cutoff
+        --   tier-1b stage_pit_formula_fallback (= cross-stage): PIT 同 stock+formula+variant, 不限 stage,
+        --           ASOF 最新 cutoff (该表有 oos_*, 仍是干净 OOS)
+        --   PIT 无覆盖 → 该 (stock,formula,variant) 不进候选 (score=unknown), 不用 in-sample 值强推
         SELECT ts.stock_code, ts.formula_id, ts.formula_variant,
                ts.vol_bin, ts.amt_bin, ts.p60_bin, ts.stage_bin,
-               COALESCE(sopt.holding_days, sfopt.holding_days, opt.optimal_hp) AS holding_days,
-               COALESCE(sopt.oos_n_traded, sopt.n_traded,
-                        sfopt.oos_n_traded, sfopt.n_traded, opt.n_traded)      AS n_signals,
-               COALESCE(sopt.oos_win_rate, sopt.win_rate,
-                        sfopt.oos_win_rate, sfopt.win_rate, opt.win_rate)      AS win_rate,
-               COALESCE(sopt.oos_avg_ret, sopt.avg_ret,
-                        sfopt.oos_avg_ret, sfopt.avg_ret, opt.avg_ret)         AS avg_ret,
-               COALESCE(opt.avg_max_dd, sopt.optimal_stop_pct, sfopt.optimal_stop_pct) AS avg_dd,
-               COALESCE(sopt.oos_sharpe, sopt.sharpe,
-                        sfopt.oos_sharpe, sfopt.sharpe, opt.sharpe)            AS sharpe,
-               COALESCE(
-                 opt.calmar,
-                 CASE
-                   WHEN COALESCE(sopt.oos_avg_ret, sopt.avg_ret) > 0
-                    AND sopt.optimal_stop_pct < 0
-                   THEN COALESCE(sopt.oos_avg_ret, sopt.avg_ret) / abs(sopt.optimal_stop_pct)
-                   WHEN COALESCE(sfopt.oos_avg_ret, sfopt.avg_ret) > 0
-                    AND sfopt.optimal_stop_pct < 0
-                   THEN COALESCE(sfopt.oos_avg_ret, sfopt.avg_ret) / abs(sfopt.optimal_stop_pct)
-                   ELSE NULL
-                 END
-               )                                                             AS calmar,
+               COALESCE(sopt.holding_days, sfopt.holding_days) AS holding_days,
+               -- scoring 只读 oos_*; in-sample n_traded/win_rate/avg_ret/sharpe 仅描述兼容,
+               -- 永不参与排序 (selector 用 oos_*). oos_* 缺则该列 NULL → sizing 判 unknown.
+               COALESCE(sopt.oos_n_traded, sfopt.oos_n_traded)               AS n_signals,
+               COALESCE(sopt.oos_win_rate, sfopt.oos_win_rate)               AS win_rate,
+               COALESCE(sopt.oos_avg_ret, sfopt.oos_avg_ret)                 AS avg_ret,
+               COALESCE(sopt.optimal_stop_pct, sfopt.optimal_stop_pct)       AS avg_dd,
+               COALESCE(sopt.oos_sharpe, sfopt.oos_sharpe)                   AS sharpe,
+               CASE
+                 WHEN sopt.oos_avg_ret > 0 AND sopt.optimal_stop_pct < 0
+                 THEN sopt.oos_avg_ret / abs(sopt.optimal_stop_pct)
+                 WHEN sfopt.oos_avg_ret > 0 AND sfopt.optimal_stop_pct < 0
+                 THEN sfopt.oos_avg_ret / abs(sfopt.optimal_stop_pct)
+                 ELSE NULL
+               END                                                          AS calmar,
                CASE WHEN sopt.stock_code IS NOT NULL THEN 'stage_pit'
-                    WHEN sfopt.stock_code IS NOT NULL THEN 'stage_pit_formula_fallback'
-                    ELSE 'cross_stage_fallback' END                          AS match_tier,
-              COALESCE(sopt.optimal_stop_pct,     sfopt.optimal_stop_pct,     opt.optimal_stop_pct)     AS optimal_stop_pct,
-              COALESCE(sopt.optimal_target_pct,   sfopt.optimal_target_pct,   opt.optimal_target_pct)   AS optimal_target_pct,
-              COALESCE(sopt.optimal_trailing_pct, sfopt.optimal_trailing_pct, opt.optimal_trailing_pct) AS optimal_trailing_pct,
+                    ELSE 'stage_pit_formula_fallback' END                   AS match_tier,
+              COALESCE(sopt.optimal_stop_pct,     sfopt.optimal_stop_pct)     AS optimal_stop_pct,
+              COALESCE(sopt.optimal_target_pct,   sfopt.optimal_target_pct)   AS optimal_target_pct,
+              COALESCE(sopt.optimal_trailing_pct, sfopt.optimal_trailing_pct) AS optimal_trailing_pct,
                p.fundamental_stage, p.latest_close,
                COALESCE(sf.survey_bin, '冷')     AS survey_bin,
                COALESCE(sf.survey_count_60d, 0)  AS survey_count_60d,
@@ -385,7 +383,8 @@ def _load_candidate_rows(conn, signal_date: str) -> list[tuple]:
            AND sopt.formula_id      = ts.formula_id
            AND sopt.formula_variant = ts.formula_variant
            AND sopt.stage_filter    = ts.stage_bin
-           -- audit fix: filter ret/dd/sharpe 异常值
+           -- audit fix: filter ret/dd/sharpe 异常值 (oos_* 为准)
+           AND sopt.oos_sharpe IS NOT NULL
            AND abs(COALESCE(sopt.oos_avg_ret, sopt.avg_ret, 0)) <= 0.5
            AND sopt.optimal_stop_pct >= -0.5
            AND abs(COALESCE(sopt.oos_sharpe, sopt.sharpe, 0)) <= 10
@@ -394,15 +393,10 @@ def _load_candidate_rows(conn, signal_date: str) -> list[tuple]:
            AND sfopt.formula_id      = ts.formula_id
            AND sfopt.formula_variant = ts.formula_variant
            AND sopt.stock_code IS NULL
+           AND sfopt.oos_sharpe IS NOT NULL
            AND abs(COALESCE(sfopt.oos_avg_ret, sfopt.avg_ret, 0)) <= 0.5
            AND sfopt.optimal_stop_pct >= -0.5
            AND abs(COALESCE(sfopt.oos_sharpe, sfopt.sharpe, 0)) <= 10
-          LEFT JOIN mart_per_stock_strategy_optimal opt
-            ON opt.stock_code      = ts.stock_code
-           AND opt.formula_id      = ts.formula_id
-           AND opt.formula_variant = ts.formula_variant
-           AND abs(opt.avg_ret) <= 0.5 AND opt.avg_max_dd >= -0.5
-           AND abs(opt.sharpe) <= 10
         LEFT JOIN mart_stock_picture_daily p
             ON p.stock_code = ts.stock_code
            AND p.snapshot_date = (SELECT MAX(snapshot_date) FROM mart_stock_picture_daily)
@@ -412,9 +406,10 @@ def _load_candidate_rows(conn, signal_date: str) -> list[tuple]:
          WHERE (
                 sopt.stock_code IS NOT NULL
              OR sfopt.stock_code IS NOT NULL
-             OR opt.stock_code IS NOT NULL
          )
         """,
+        # 5 placeholders: today_signals t.date / s.date, stage_pit_exact cutoff,
+        # stage_pit_formula cutoff, sf.as_of_date
         [signal_date, signal_date, signal_date, signal_date, signal_date],
     ).fetchall()
 

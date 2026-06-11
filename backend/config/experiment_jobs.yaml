@@ -9,11 +9,18 @@ backends:
       - Default backend for data validation, backtests, narrow model runs, and small parameter searches.
 
   modal:
-    status: planned
+    status: active
     execution_mode: external_worker_artifact_manifest
     artifact_mode: provider_manifest
     notes:
-      - Successor backend target. Do not call provider APIs until a Modal proof of concept defines the adapter.
+      # adapter: services/compute/modal_adapter.py reuses the local plan gate
+      # (input_snapshot + objective + rollback_plan + required gate evidence)
+      # before any Modal SDK call. Credentials in ~/.modal.toml (profile dare2live).
+      # budget evidence: 2026-06-11 user-set $30/mo cap for tushare backfill + alpha sweep offload.
+      - budget_monthly_usd=30
+      - Active for model_training and parameter_search offload (tushare big backfill + alpha sweep).
+      - Adapter emits an artifact manifest (input_snapshot hash + objective + rollback_plan + gate evidence) per submission.
+      - Submission is blocked unless input_snapshot, objective, rollback_plan, and required gate evidence are all present.
 
 job_families:
   data_validation:

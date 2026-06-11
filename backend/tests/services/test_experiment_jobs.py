@@ -18,7 +18,9 @@ def test_default_contract_declares_job_families_and_no_legacy_cloud_backend() ->
     }
     assert set(contract.backends) == {"local", "modal"}
     assert contract.backends["local"].active is True
-    assert contract.backends["modal"].status == "planned"
+    # 2026-06-11: modal adapter (services/compute/modal_adapter.py) 上线后激活,
+    # status planned -> active (reuses local plan gate; budget $30/mo; ~/.modal.toml)
+    assert contract.backends["modal"].status == "active"
 
 
 def test_local_data_validation_plan_is_runnable_contract_only() -> None:
@@ -84,7 +86,10 @@ def test_empty_or_malformed_gate_evidence_does_not_satisfy_required_gates() -> N
     assert "missing_gate_evidence:source_watermark_sla" in plan.blocked_reasons
 
 
-def test_planned_modal_backend_blocks_until_adapter_exists() -> None:
+def test_active_modal_backend_ready_when_plan_complete() -> None:
+    # 2026-06-11: 取代旧 test_planned_modal_backend_blocks_until_adapter_exists.
+    # modal adapter 上线 + status active 后, model_training (allowed_backends 含 modal)
+    # 在 input_snapshot/objective/rollback_plan/required gate evidence 齐全时应 ready_to_run.
     contract = load_experiment_job_contract()
 
     plan = contract.plan(
@@ -101,8 +106,8 @@ def test_planned_modal_backend_blocks_until_adapter_exists() -> None:
         ),
     )
 
-    assert plan.ready_to_run is False
-    assert plan.blocked_reasons == ("backend_not_active:modal:planned",)
+    assert plan.ready_to_run is True
+    assert plan.blocked_reasons == ()
 
 
 def test_unallowed_backend_is_blocked_even_when_backend_exists() -> None:
@@ -111,8 +116,8 @@ def test_unallowed_backend_is_blocked_even_when_backend_exists() -> None:
     plan = contract.plan("data_validation", backend_id="modal")
 
     assert plan.ready_to_run is False
+    # data_validation 仅 allowed_backends=[local], modal 虽 active 但不在该 family 白名单
     assert "backend_not_allowed:modal" in plan.blocked_reasons
-    assert "backend_not_active:modal:planned" in plan.blocked_reasons
     assert "missing_plan_field:input_snapshot" in plan.blocked_reasons
 
 

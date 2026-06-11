@@ -15,10 +15,21 @@ P2.8 解决:
 from __future__ import annotations
 
 import logging
+import re
 import time
 from datetime import date, datetime, timedelta
 
 logger = logging.getLogger("cm-api.prediction_outcome")
+
+# model_id 白名单: 字母/数字/下划线/连字符/点 (项目模型命名约定, e.g.
+# "lambdamart_v3.2", "ensemble_2026-05-01"). 拒绝引号/分号/空格/通配符等
+# SQL 注入字符. 长度上限 128 防超长 payload.
+_SAFE_MODEL_ID_RE = re.compile(r"^[A-Za-z0-9_.\-]{1,128}$")
+
+
+def _is_safe_model_id(model_id: str) -> bool:
+    """model_id 白名单校验 — 防 SQL 注入 (defense in depth, 配合参数化)."""
+    return isinstance(model_id, str) and bool(_SAFE_MODEL_ID_RE.match(model_id))
 
 
 def ensure_table(conn) -> None:
@@ -193,13 +204,27 @@ def calc_outcomes(conn, *, lookback_days: int = 90) -> dict:
 
 
 def model_performance_summary(conn, model_id: str | None = None, lookback_days: int = 90) -> dict:
-    """汇总 outcome: hit_rate / avg_gain / IC by model_id."""
-    cutoff = (date.today() - timedelta(days=lookback_days)).isoformat()
-    where = f"WHERE snapshot_date >= '{cutoff}'"
-    if model_id:
-        where += f" AND model_id = '{model_id}'"
+    """汇总 outcome: hit_rate / avg_gain / IC by model_id.
 
-    rows = conn.execute(f"""
+    安全: model_id 来自公开 HTTP query 参数 (routers/data_sources.py
+    prediction_outcomes_summary), 必须参数化 + 白名单校验, 不能 f-string 拼 SQL
+    (注入面). cutoff 也参数化 (虽内部派生, 统一走 placeholder, 不留 f-string SQL).
+    """
+    # 白名单校验: model_id 只允许字母/数字/下划线/连字符/点 (模型命名约定),
+    # 拒绝引号/分号/空格等注入字符. 不合法 → 当作无该模型, 返回空汇总.
+    if model_id is not None and not _is_safe_model_id(model_id):
+        logger.warning("[prediction_outcome] 拒绝非法 model_id (疑似注入): %r", model_id)
+        return {"lookback_days": lookback_days, "summaries": []}
+
+    cutoff = (date.today() - timedelta(days=lookback_days)).isoformat()
+    where = "WHERE snapshot_date >= ?"
+    params: list = [cutoff]
+    if model_id:
+        where += " AND model_id = ?"
+        params.append(model_id)
+
+    rows = conn.execute(
+        f"""
         SELECT
             model_id,
             COUNT(*) AS n,
@@ -213,7 +238,9 @@ def model_performance_summary(conn, model_id: str | None = None, lookback_days: 
         {where}
         GROUP BY model_id
         ORDER BY model_id
-    """).fetchall()
+    """,
+        params,
+    ).fetchall()
 
     return {
         "lookback_days": lookback_days,

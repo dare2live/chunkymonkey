@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+from datetime import date
+from functools import lru_cache
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
+import yaml
 
 from services.strategies.institution_follow._common import (
     complete_universe,
@@ -15,6 +21,26 @@ from services.strategies.institution_follow._common import (
     table_exists,
     universe_clause,
 )
+
+log = logging.getLogger("northbound_alpha")
+
+_CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "institution_alpha.yaml"
+
+
+@lru_cache(maxsize=1)
+def _max_staleness_days(config_path: str | None = None) -> int:
+    """Read the fact_hsgt_daily staleness threshold (calendar days) from yaml.
+
+    Rules-in-yaml (CLAUDE.md §3): the threshold is config-owned, not hardcoded.
+    """
+    path = Path(config_path) if config_path else _CONFIG_PATH
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    value = (raw.get("northbound") or {}).get("max_staleness_days")
+    if value is None:
+        raise ValueError(f"{path.name}: northbound.max_staleness_days is required")
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        raise ValueError(f"{path.name}: northbound.max_staleness_days must be a positive number")
+    return int(value)
 
 
 class NorthboundAlpha:
@@ -30,9 +56,13 @@ class NorthboundAlpha:
         "northbound_score",
     ]
 
-    def __init__(self, conn=None):
+    def __init__(self, conn=None, max_staleness_days: int | None = None):
         self.conn = conn or open_smart_conn(read_only=True)
         self._own_conn = conn is None
+        # yaml-back threshold; explicit override allowed for tests.
+        self.max_staleness_days = (
+            int(max_staleness_days) if max_staleness_days is not None else _max_staleness_days()
+        )
 
     def close(self) -> None:
         if self._own_conn:
@@ -42,10 +72,56 @@ class NorthboundAlpha:
         signal = normalize_signal_date(signal_date)
         if not table_exists(self.conn, "fact_hsgt_daily"):
             return empty_features(universe, self.FEATURE_COLUMNS)
+        if self._is_stale(signal, universe):
+            # Deprecated source past freshness budget: emit unknown (0.0) rather
+            # than silently feeding a ~2-year-old snapshot into the live score.
+            return empty_features(universe, self.FEATURE_COLUMNS)
         features = self._features(signal, universe)
         features = complete_universe(features, universe, self.FEATURE_COLUMNS[:-1])
         features["northbound_score"] = self._score(features)
         return complete_universe(features, universe, self.FEATURE_COLUMNS)
+
+    def _latest_snapshot_date(self, signal: str, universe: list[str] | None) -> date | None:
+        """Most recent snapshot strictly before signal_date, or None if absent."""
+        dt = date_expr("snapshot_date")
+        clause, params = universe_clause(universe)
+        sql = f"""
+            SELECT MAX({dt}) AS latest_snapshot
+              FROM fact_hsgt_daily
+             WHERE {dt} < CAST(? AS DATE)
+               {clause}
+        """
+        try:
+            df = fetch_df(self.conn, sql, [signal, *params])
+        except Exception:
+            return None
+        if df.empty:
+            return None
+        latest = df.iloc[0]["latest_snapshot"]
+        if latest is None or pd.isna(latest):
+            return None
+        return pd.to_datetime(latest).date()
+
+    def _is_stale(self, signal: str, universe: list[str] | None) -> bool:
+        """True when the freshest available snapshot is older than the budget."""
+        latest = self._latest_snapshot_date(signal, universe)
+        if latest is None:
+            # No usable snapshot before signal_date — downstream yields all-zero
+            # features anyway; treat as unknown without a staleness warning.
+            return True
+        signal_dt = pd.to_datetime(signal).date()
+        staleness_days = (signal_dt - latest).days
+        if staleness_days > self.max_staleness_days:
+            log.warning(
+                "fact_hsgt_daily stale: signal_date=%s latest_snapshot=%s "
+                "staleness=%sd > max=%sd -> northbound factor set to unknown (0.0)",
+                signal,
+                latest.isoformat(),
+                staleness_days,
+                self.max_staleness_days,
+            )
+            return True
+        return False
 
     def _features(self, signal: str, universe: list[str] | None) -> pd.DataFrame:
         dt = date_expr("snapshot_date")

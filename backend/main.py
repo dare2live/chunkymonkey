@@ -82,9 +82,27 @@ async def _db_health_check():
         logging.getLogger("cm-startup").error("[db_health] startup checks FAILED: %s", exc)
         raise
 
+# CORS: 默认只允许本机 origin (本系统是单机本地工具, 写端点零鉴权,
+# 不能用通配符 origin 让任意网站 CSRF 调用写接口). 需要跨机访问时
+# 通过环境变量 CM_CORS_ORIGINS (逗号分隔) 显式放开.
+import os as _os
+
+
+def _resolve_cors_origins() -> list[str]:
+    raw = _os.environ.get("CM_CORS_ORIGINS", "").strip()
+    if raw:
+        return [o.strip() for o in raw.split(",") if o.strip()]
+    port = _os.environ.get("CM_PORT", "8000").strip() or "8000"
+    # 默认本机 origin (loopback 的两种写法 + 默认端口)
+    return [
+        f"http://localhost:{port}",
+        f"http://127.0.0.1:{port}",
+    ]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_resolve_cors_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )

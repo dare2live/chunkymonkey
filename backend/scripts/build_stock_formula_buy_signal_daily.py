@@ -45,6 +45,65 @@ def _bin_label(value, bins):
     return "?"
 
 
+def load_today_rows(conn, signal_date):
+    """加载 signal_date 当日触发 × picture(PIT as-of) × survey × Optuna 寻优.
+
+    PIT 约束 (2026-06-11 体检 HIGH 修复):
+      picture JOIN 取每只股 snapshot_date <= signal_date 的最近一张画像 (as-of),
+      不再 `MAX(snapshot_date)` 把最新快照贴给历史 signal_date.
+      若该 signal_date 之前没有画像快照 → 子查询 NULL → fund/archetype/primary_type
+      标 unknown (LEFT JOIN NULL), 绝不注入未来快照.
+    """
+    # 检测 optimal_buy_offset 列是否存在 (buy_offset 重跑可能进行中)
+    cols = [r[1] for r in conn.execute("DESCRIBE mart_per_stock_strategy_optimal").fetchall()]
+    has_buy_offset = "optimal_buy_offset" in cols
+    buy_offset_sel = "opt.optimal_buy_offset" if has_buy_offset else "1 AS optimal_buy_offset"
+
+    return conn.execute(
+        f"""
+        WITH today_signals AS (
+          SELECT t.stock_code, t.formula_id, t.formula_variant,
+                 c.vol_r20, c.amt_r20, c.price_pos_60d, c.technical_stage
+            FROM fact_technical_trigger t
+            LEFT JOIN fact_signal_context c
+              ON c.stock_code = t.stock_code AND c.date = t.date
+           WHERE t.date = ?
+        )
+        SELECT ts.stock_code, ts.formula_id, ts.formula_variant,
+               ts.vol_r20, ts.amt_r20, ts.price_pos_60d, ts.technical_stage,
+               p.fundamental_stage, p.stock_archetype, p.primary_type,
+               sf.survey_bin, sf.survey_count_60d,
+               opt.optimal_hp, opt.optimal_stop_pct, opt.optimal_target_pct,
+               opt.optimal_trailing_pct, {buy_offset_sel},
+               opt.sharpe, opt.win_rate, opt.n_traded
+          FROM today_signals ts
+          -- PIT as-of (2026-06-11 体检 HIGH 修复): 历史 --date 不得贴最新画像快照.
+          -- 取每只股 snapshot_date <= signal_date 的最近一张画像; 若该日之前无快照,
+          -- 子查询返回 NULL → fund/archetype/primary_type 标 unknown, 不注入未来.
+          LEFT JOIN mart_stock_picture_daily p
+            ON p.stock_code = ts.stock_code
+           AND p.snapshot_date = (
+                 SELECT MAX(p2.snapshot_date)
+                   FROM mart_stock_picture_daily p2
+                  WHERE p2.stock_code = ts.stock_code
+                    AND p2.snapshot_date <= ?
+               )
+          LEFT JOIN mart_stock_survey_features sf
+            ON sf.stock_code = ts.stock_code AND sf.as_of_date = ?
+          LEFT JOIN mart_per_stock_strategy_optimal opt
+            ON opt.stock_code = ts.stock_code
+           AND opt.formula_id = ts.formula_id
+           AND opt.formula_variant = ts.formula_variant
+           -- audit fix: 剔除异常值 (winsorize: |ret|≤50%, dd≥-50%, |sharpe|≤10)
+           AND (opt.avg_ret IS NULL OR abs(opt.avg_ret) <= 0.5)
+           AND (opt.avg_max_dd IS NULL OR opt.avg_max_dd >= -0.5)
+           AND (opt.sharpe IS NULL OR abs(opt.sharpe) <= 10)
+        """,
+        # 顺序: t.date / picture as-of <= / sf.as_of_date — 三处都是 signal_date.
+        [signal_date, signal_date, signal_date],
+    ).fetchall()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--date", default=None, help="signal_date, 默认最新")
@@ -66,47 +125,9 @@ def main():
             return
         log.info(f"signal_date = {signal_date}")
 
-        # 2. 今日触发 × signal_context × picture × survey × Optuna 寻优 (一 JOIN 拿全)
-        log.info("加载今日触发 × 多源数据 ...")
-        # 检测 optimal_buy_offset 列是否存在 (buy_offset 重跑可能进行中)
-        cols = [r[1] for r in conn.execute("DESCRIBE mart_per_stock_strategy_optimal").fetchall()]
-        has_buy_offset = "optimal_buy_offset" in cols
-        buy_offset_sel = "opt.optimal_buy_offset" if has_buy_offset else "1 AS optimal_buy_offset"
-
-        rows = conn.execute(
-            f"""
-            WITH today_signals AS (
-              SELECT t.stock_code, t.formula_id, t.formula_variant,
-                     c.vol_r20, c.amt_r20, c.price_pos_60d, c.technical_stage
-                FROM fact_technical_trigger t
-                LEFT JOIN fact_signal_context c
-                  ON c.stock_code = t.stock_code AND c.date = t.date
-               WHERE t.date = ?
-            )
-            SELECT ts.stock_code, ts.formula_id, ts.formula_variant,
-                   ts.vol_r20, ts.amt_r20, ts.price_pos_60d, ts.technical_stage,
-                   p.fundamental_stage, p.stock_archetype, p.primary_type,
-                   sf.survey_bin, sf.survey_count_60d,
-                   opt.optimal_hp, opt.optimal_stop_pct, opt.optimal_target_pct,
-                   opt.optimal_trailing_pct, {buy_offset_sel},
-                   opt.sharpe, opt.win_rate, opt.n_traded
-              FROM today_signals ts
-              LEFT JOIN mart_stock_picture_daily p
-                ON p.stock_code = ts.stock_code
-               AND p.snapshot_date = (SELECT MAX(snapshot_date) FROM mart_stock_picture_daily)
-              LEFT JOIN mart_stock_survey_features sf
-                ON sf.stock_code = ts.stock_code AND sf.as_of_date = ?
-              LEFT JOIN mart_per_stock_strategy_optimal opt
-                ON opt.stock_code = ts.stock_code
-               AND opt.formula_id = ts.formula_id
-               AND opt.formula_variant = ts.formula_variant
-               -- audit fix: 剔除异常值 (winsorize: |ret|≤50%, dd≥-50%, |sharpe|≤10)
-               AND (opt.avg_ret IS NULL OR abs(opt.avg_ret) <= 0.5)
-               AND (opt.avg_max_dd IS NULL OR opt.avg_max_dd >= -0.5)
-               AND (opt.sharpe IS NULL OR abs(opt.sharpe) <= 10)
-            """,
-            [signal_date, signal_date],
-        ).fetchall()
+        # 2. 今日触发 × signal_context × picture(PIT as-of) × survey × Optuna 寻优
+        log.info("加载今日触发 × 多源数据 (picture PIT as-of <= signal_date) ...")
+        rows = load_today_rows(conn, signal_date)
 
         # 3.0 加载 mart_stage_formula_fitness 数据驱动 lookup (factor 4 的真值)
         log.info("加载 mart_stage_formula_fitness 数据 ...")

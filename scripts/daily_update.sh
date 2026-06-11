@@ -314,6 +314,25 @@ if [[ "$DRY" == "0" ]]; then
     REBUILD_START=$(date -v-7d +%Y-%m-%d 2>/dev/null || date --date='7 days ago' +%Y-%m-%d)
     log "rebuild range: $REBUILD_START → $REBUILD_END (last 7d incremental)"
 
+    # 3-pre. 三件套增量 rebuild (signal_context / technical_trigger / macd_state)
+    # 2026-06-11 fix (体检 HIGH daily-update-wiring): 这三表是 panel/stage-opt 下游消费的真相源,
+    # 之前不在 daily_update → 每次靠人手刷 (反例: 2026-06-06 stage-opt freshness repair 全手动串行).
+    # PIT 安全: 三脚本 --end 均默认 calendar-gated (latest_completed_trade_date / K线max),
+    #   不传 --end 让其自 resolve, 绝不喂 wall-clock today.
+    # --write-start = REBUILD_START (last-7d 替换窗口, 只删改近 7 天, 不动历史);
+    # --start = 2025-01-01 给滚动计算 (signal_context 120d / formula lookback) 预热 (rule-compliance: ok evidence=warmup-window-for-rolling-calc).
+    # macd 只有 --start/--end, 其 --start 同时是写窗口起点 (脚本内部自加 180d warmup), 故传 REBUILD_START.
+    log "--- Step 3-pre: 三件套增量 (signal_context / technical_trigger / macd_state) ---"
+    PYTHONPATH=backend python backend/scripts/build_signal_context.py \
+        --start 2025-01-01 --write-start "$REBUILD_START" \
+        >> "$LOG" 2>&1 || log "WARN: signal_context 增量 rebuild 失败"
+    PYTHONPATH=backend python backend/scripts/build_formula_signals_history.py \
+        --start 2025-01-01 --write-start "$REBUILD_START" \
+        >> "$LOG" 2>&1 || log "WARN: technical_trigger (formula signals) 增量 rebuild 失败"
+    PYTHONPATH=backend python backend/scripts/build_macd_state_history.py \
+        --start "$REBUILD_START" \
+        >> "$LOG" 2>&1 || log "WARN: macd_state 增量 rebuild 失败"
+
     # 3a. Label panel 增量 (写 mart_p0a_label_panel)
     PYTHONPATH=backend python backend/scripts/rebuild_p0a_label_panel.py \
         --start-date "$REBUILD_START" --end-date "$REBUILD_END" \

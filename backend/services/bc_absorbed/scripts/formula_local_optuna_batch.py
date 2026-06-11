@@ -326,19 +326,24 @@ def main() -> None:
     print("formula_optuna_batch: data OK", flush=True)
 
     print("formula_optuna_batch: validating plan logic...", flush=True)
-    from plan_validator import validate_optuna_plan, PlanValidationError
+    from plan_validator import enforce_optuna_plan, PlanValidationError
     trial_plan = {fid: _tiered_trials(fid, args.trials) for fid in args.formulas}
     searchable_formulas = [fid for fid, (_, n_params) in trial_plan.items() if n_params > 0]
     if searchable_formulas:
-        plan_result = validate_optuna_plan(
-            formulas=searchable_formulas,
-            trials=max(trial_plan[fid][0] for fid in searchable_formulas),
-            output_path=args.output,
-        )
-        print(plan_result.summary(), flush=True)
-    if not plan_result.passed:
-            print("PLAN VALIDATION FAILED — refusing to run", flush=True)
+        # enforce_optuna_plan raises PlanValidationError on FAIL (search space /
+        # runnable / output_path 等任一不过), 不允许带病跑批. 2026-06-11 修缩进 bug:
+        # 旧代码用 validate_optuna_plan + 手动 sys.exit, 且 `if not plan_result.passed`
+        # 在 plan_result 未绑定 (searchable_formulas 为空) 时会 NameError, 等于 gate 失效.
+        try:
+            plan_result = enforce_optuna_plan(
+                formulas=searchable_formulas,
+                trials=max(trial_plan[fid][0] for fid in searchable_formulas),
+                output_path=args.output,
+            )
+        except PlanValidationError as e:
+            print(f"PLAN VALIDATION FAILED — refusing to run\n{e}", flush=True)
             sys.exit(2)
+        print(plan_result.summary(), flush=True)
     else:
         print("Plan Validation: no searchable params; all formulas run 1 baseline trial", flush=True)
 

@@ -18,9 +18,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
 from services.duck_adapter import connect
+from services.strategies.institution_follow._common import date_expr
 from services.strategies.institution_follow.capital_flow_alpha import CapitalFlowAlpha
 from services.strategies.institution_follow.lhb_alpha import LHBAlpha
-from services.strategies.institution_follow.northbound_alpha import NorthboundAlpha
+from services.strategies.institution_follow.northbound_alpha import (
+    NorthboundAlpha,
+    _max_staleness_days,
+)
 from services.strategies.institution_follow.survey_alpha import SurveyAlpha
 
 
@@ -284,6 +288,39 @@ def _source_available(conn, spec: ClassSpec) -> bool:
     return available
 
 
+def _northbound_source_is_stale(conn, end_date: str) -> bool:
+    """True when fact_hsgt_daily latest snapshot is staler than the yaml budget.
+
+    fact_hsgt_daily is a DEPRECATED source (disclosure rules changed 2024-08).
+    A non-empty table passes _source_available, so we additionally gate on
+    freshness here: if the latest snapshot is older than the build window end by
+    more than northbound.max_staleness_days, drop the class from the build and
+    warn loudly instead of materializing a column built on a ~2-year-old snapshot.
+    """
+    if not _table_row_count(conn, "fact_hsgt_daily"):
+        return False
+    dt = date_expr("snapshot_date")
+    row = conn.execute(f"SELECT MAX({dt}) FROM fact_hsgt_daily").fetchone()
+    latest = row[0] if row else None
+    if latest is None:
+        return False
+    latest_dt = pd.to_datetime(latest).date()
+    end_dt = pd.to_datetime(end_date).date()
+    staleness_days = (end_dt - latest_dt).days
+    max_days = _max_staleness_days()
+    if staleness_days > max_days:
+        log.warning(
+            "fact_hsgt_daily stale across build window: end_date=%s latest_snapshot=%s "
+            "staleness=%sd > max=%sd -> dropping northbound class (factor=unknown)",
+            end_date,
+            latest_dt.isoformat(),
+            staleness_days,
+            max_days,
+        )
+        return True
+    return False
+
+
 def _load_signal_dates(conn, start_date: str, end_date: str, limit: int = 0) -> list:
     limit_sql = f" LIMIT {int(limit)}" if limit and limit > 0 else ""
     rows = conn.execute(
@@ -401,6 +438,8 @@ def build_institution_score_daily(
         conn.execute(f"PRAGMA memory_limit='{memory_limit}'")
 
         active_specs = [spec for spec in CLASS_SPECS if _source_available(conn, spec)]
+        if _northbound_source_is_stale(conn, end_date):
+            active_specs = [spec for spec in active_specs if spec.name != "northbound"]
         alphas = {spec.name: spec.alpha_cls(conn=conn) for spec in active_specs}
         dates = _load_signal_dates(conn, start_date, end_date, dry_run_dates)
         if not dates:

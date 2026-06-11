@@ -1,0 +1,26 @@
+# Institution-follow (Scheme 7) alpha guardrails.
+#
+# Rules-in-yaml (CLAUDE.md §3): thresholds for the institution alpha modules live
+# here, not hardcoded in services/*.py. Edit a value here to change behaviour;
+# business code only reads this file.
+
+northbound:
+  # fact_hsgt_daily staleness guard.
+  #
+  # WHY: fact_hsgt_daily is a DEPRECATED source. HSGT per-stock holding
+  # disclosure rules changed in 2024-08; the table stopped receiving fresh rows
+  # after the 2024-08-16 snapshot. Without a guard, NorthboundAlpha picks
+  # MAX(snapshot_date) < signal_date and silently feeds a ~2-year-old snapshot
+  # into the live institution composite score (health-check 2026-06-10 HIGH).
+  #
+  # GUARD: if (signal_date - latest available snapshot_date) exceeds the
+  # threshold below, the whole northbound factor block is set to unknown (0.0)
+  # and a warning is logged, instead of using stale data.
+  #
+  # UNIT: calendar days. We deliberately avoid a trading-calendar dependency
+  # here — calendar gap >= trading-day gap, so this never UNDER-flags staleness
+  # (it is conservative). 45 calendar days ~= one disclosure cadence buffer:
+  # a fresh source updates within days, so anything older than ~6 weeks is
+  # unambiguously stale rather than a normal weekend/holiday gap.
+  # evidence: fact_hsgt_daily MAX(snapshot_date)=2024-08-16 (read-only inspect 2026-06-10)
+  max_staleness_days: 45

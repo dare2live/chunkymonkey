@@ -5,6 +5,15 @@
        → 按 (fund_stage × tech_stage × formula × hp) 加权聚合
        → 1 行 1 桶组合, rank_in_stage 标 best
 
+PIT 约束 (2026-06-11 体检 HIGH 修复):
+  旧版用 `snapshot_date = MAX(snapshot_date)` 把"最新"基本面画像贴给 2024-01-01~
+  eval_end_date 的全历史 Optuna 聚合 = inst_path_a 同款 latest-snapshot leakage.
+  optuna_v2 每行是整段 eval window 的聚合 (eval_start_date~eval_end_date), 没有
+  per-signal-date, 所以严格 per-signal PIT 不成立. 这里取最接近且 <= eval_end_date
+  的 as-of 画像 (不取 MAX, 不取窗口结束之后的未来快照), 并显式标
+  `walk_forward_mode='none'`: 诚实声明 fund_stage 是 window-level 归因, 不是
+  per-signal-date 的 walk-forward OOS. 下游 selector 据此不得当作 OOS 真值.
+
 用法:
   PYTHONPATH=backend python backend/scripts/rebuild_stage_formula_fitness.py
 """
@@ -39,6 +48,9 @@ CREATE TABLE IF NOT EXISTS mart_stage_formula_fitness (
     is_recommended     BOOLEAN,          -- rank=1 + n>=20 + win>0.55
     eval_start_date    TEXT,
     eval_end_date      TEXT,
+    -- PIT marker: fund_stage 取 as-of (<=eval_end_date) 画像, 但仍是 window-level 归因,
+    -- 不是 per-signal-date walk-forward → 标 'none', 下游不得当 OOS 真值用.
+    walk_forward_mode  TEXT DEFAULT 'none',
     built_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (fundamental_stage, technical_stage, formula_variant, holding_days)
 );
@@ -46,17 +58,25 @@ CREATE INDEX IF NOT EXISTS idx_msff_stage_formula ON mart_stage_formula_fitness(
 """
 
 
-def main():
-    t0 = time.time()
-    conn = get_conn()
-    try:
-        conn.executescript(DDL)
-
-        log.info("聚合 (fund × tech × formula × hp) → fitness ...")
-        rows = conn.execute("""
-        WITH joined AS (
+# PIT as-of 聚合 SQL (抽成常量便于单测断言不注入未来快照).
+# JOIN 取每只股 snapshot_date <= v.eval_end_date 的最近一张画像 (as-of),
+# 绝不取 MAX(snapshot_date) (那会把 eval window 结束之后的未来快照贴进来).
+FITNESS_AGG_SQL = """
+        WITH pit_picture AS (
+          -- 每 (stock, eval_end) 取 <=eval_end 的最新 as-of fundamental_stage
+          SELECT v.stock_code, v.eval_end_date,
+                 (SELECT p.fundamental_stage
+                    FROM mart_stock_picture_daily p
+                   WHERE p.stock_code = v.stock_code
+                     AND p.snapshot_date <= v.eval_end_date
+                   ORDER BY p.snapshot_date DESC
+                   LIMIT 1) AS fundamental_stage
+            FROM (SELECT DISTINCT stock_code, eval_end_date
+                    FROM mart_stock_formula_optuna_v2) v
+        ),
+        joined AS (
           SELECT
-            COALESCE(p.fundamental_stage, '中性') AS fund_stage,
+            COALESCE(pp.fundamental_stage, '中性') AS fund_stage,
             v.stage_bin AS tech_stage,
             v.formula_id, v.formula_variant, v.holding_days,
             v.n_signals, v.win_rate, v.avg_ret, v.avg_max_dd,
@@ -64,9 +84,9 @@ def main():
             GREATEST(LEAST(v.sharpe, 5.0), -5.0) AS sharpe_capped,
             v.stock_code
           FROM mart_stock_formula_optuna_v2 v
-          LEFT JOIN mart_stock_picture_daily p
-            ON p.stock_code = v.stock_code
-           AND p.snapshot_date = (SELECT MAX(snapshot_date) FROM mart_stock_picture_daily)
+          LEFT JOIN pit_picture pp
+            ON pp.stock_code = v.stock_code
+           AND pp.eval_end_date = v.eval_end_date
           WHERE v.n_signals >= 3
             AND abs(v.avg_ret) <= 0.5     -- filter outlier (复权异常 +500% 等)
             AND v.avg_max_dd >= -0.5      -- 不接 dd <-50% 的桶
@@ -102,7 +122,17 @@ def main():
                rank_in_stage,
                (rank_in_stage = 1 AND n_signals >= 20 AND win_rate >= 0.55) AS is_recommended
           FROM ranked
-        """).fetchall()
+"""
+
+
+def main():
+    t0 = time.time()
+    conn = get_conn()
+    try:
+        conn.executescript(DDL)
+
+        log.info("聚合 (fund × tech × formula × hp, PIT as-of <= eval_end_date) → fitness ...")
+        rows = conn.execute(FITNESS_AGG_SQL).fetchall()
 
         log.info(f"  聚合后: {len(rows):,} 行 (fund×tech×formula×hp)")
 
@@ -122,13 +152,16 @@ def main():
                 int(r[12]),
                 bool(r[13]),
                 "2024-01-01", "2026-05-11",
+                # PIT: fund_stage 是 window-level as-of 归因, 非 per-signal walk-forward.
+                "none",
             ) for r in rows]
             conn.executemany(
                 """INSERT INTO mart_stage_formula_fitness (
                     fundamental_stage, technical_stage, formula_id, formula_variant, holding_days,
                     n_signals, n_stocks, win_rate, avg_ret, avg_dd, calmar, sharpe,
-                    rank_in_stage, is_recommended, eval_start_date, eval_end_date
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    rank_in_stage, is_recommended, eval_start_date, eval_end_date,
+                    walk_forward_mode
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 insert_rows,
             )
             conn.execute("COMMIT")

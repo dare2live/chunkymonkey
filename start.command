@@ -5,6 +5,9 @@ ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 PORT=8000
 RELOAD_MODE="${CM_RELOAD:-0}"
+# 默认只绑 loopback (127.0.0.1): 本系统是单机本地量化工具, 写端点零鉴权,
+# 绑 0.0.0.0 会把写接口暴露到整个局域网. 需跨机访问时显式 export CM_HOST=0.0.0.0.
+HOST="${CM_HOST:-127.0.0.1}"
 export PATH="/opt/homebrew/opt/python@3.13/libexec/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
@@ -94,6 +97,9 @@ fi
 # (akshare → mini_racer → V8 已知 issue: https://github.com/bpcreech/PyMiniRacer)
 export V8_FLAGS="${V8_FLAGS:---no-randomize-hashes --no-sandbox}"
 
+# 传给 FastAPI 进程: CORS 默认 origin 用实际端口拼 (main.py::_resolve_cors_origins)
+export CM_PORT="$PORT"
+
 echo "========================================"
 echo "  Chunky Monkey v2 启动中..."
 echo "  地址: http://localhost:$PORT  (/ → /v3 设计稿)"
@@ -131,7 +137,7 @@ if [[ "${CM_OPEN_BROWSER:-1}" == "1" ]]; then
 fi
 
 if [[ "$RELOAD_MODE" == "1" ]]; then
-  exec "$PYTHON_BIN" -m uvicorn main:app --host 0.0.0.0 --port "$PORT" --reload --reload-dir "$BACKEND_DIR"
+  exec "$PYTHON_BIN" -m uvicorn main:app --host "$HOST" --port "$PORT" --reload --reload-dir "$BACKEND_DIR"
 fi
 
-exec "$PYTHON_BIN" -m uvicorn main:app --host 0.0.0.0 --port "$PORT"
+exec "$PYTHON_BIN" -m uvicorn main:app --host "$HOST" --port "$PORT"
