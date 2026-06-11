@@ -1,0 +1,36 @@
+{
+ "domain": "adj_factor",
+ "api": "adj_factor",
+ "grain": [
+  "ts_code",
+  "trade_date"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "ts_code": "000001.SZ",
+   "trade_date": "20230103",
+   "adj_factor": 113.9362
+  },
+  {
+   "ts_code": "000002.SZ",
+   "trade_date": "20230103",
+   "adj_factor": 172.8236
+  },
+  {
+   "ts_code": "000004.SZ",
+   "trade_date": "20230103",
+   "adj_factor": 4.064
+  },
+  {
+   "ts_code": "000005.SZ",
+   "trade_date": "20230103",
+   "adj_factor": 9.268
+  },
+  {
+   "ts_code": "000006.SZ",
+   "trade_date": "20230103",
+   "adj_factor": 38.94
+  }
+ ]
+}

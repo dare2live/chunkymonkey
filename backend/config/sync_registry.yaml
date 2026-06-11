@@ -322,3 +322,21 @@ domains:
     freshness_sla_trading_days: 1
     min_rows_per_batch: 4000   # 实测 20260610 = 5512 行
     allow_empty_batch: false
+
+  # ── 筹码族 (用户点名: 筹码胜率 alpha; 2026-06-12 实弹核证) ──
+  cyq_perf:
+    source: tushare
+    api: cyq_perf
+    target_table: raw_tushare_cyq_perf
+    grain: [ts_code, trade_date]
+    batch_mode: by_trade_date
+    pit_anchor: "trade_date; 每日筹码及胜率盘后更新 -> JOIN t-1; winner_rate + cost_5/15/50/85/95pct + weight_avg 实测在录"
+    available_after: "18:00"
+    data_start: "20180102"   # 文档口径 2018 起; 回填首跑探底校准
+    freshness_sla_trading_days: 1
+    min_rows_per_batch: 4000  # 实测 20260610 = 5512 行; 距单次上限 6000 仅 ~8%, 超限截断风险年检 (同 daily)
+    allow_empty_batch: false
+
+  # stk_factor_pro 暂缓注册 (2026-06-12 实弹): 单日返回 1878 行 != 全市场 5512 — 截断疑点
+  # (261 字段大体积响应疑被网关掐), 分页连续性核证后注册。cyq_chips (per-stock 分布明细,
+  # by_ts_code 大回填) 按 alpha 实验需要再注册。
