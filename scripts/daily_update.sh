@@ -39,6 +39,12 @@ cd "$REPO_ROOT"
 # 44 处 `PYTHONPATH=backend python` 一并解决; venv 解释器 = 有 FDA 的 python3.13 (TCC 链依赖)
 export PATH="$REPO_ROOT/.venv/bin:$PATH"
 
+# 统一 env 真相源 = .env (gitignored): TUSHARE token/URL (Step 2.95 drain 必需) +
+# CM_TDX_SERVERS 可达池 (Step 2/2b2; 只放 plist 的话手动跑会退化死池 — 2026-06-11 实测教训)
+if [[ -f "$REPO_ROOT/.env" ]]; then
+    set -a; source "$REPO_ROOT/.env"; set +a
+fi
+
 DATE=$(date +%Y%m%d)
 LOG="/tmp/chunkymonkey_daily_update_${DATE}.log"
 # Env var override (e.g. DRY=1 SKIP_SYNC=1 bash daily_update.sh)
