@@ -6,26 +6,13 @@
 > 当前计划看薄入口 `goal.md`; 已完成证据查 `analysis/project_state_ledger.md`.
 > `analysis/workflow_checkpoint.md` 只在其声明 active pipeline 时参与恢复。
 
-## 中断恢复用法 (用户必读)
+## 中断恢复用法
 
-### 1. Mac 重启 / terminal 崩 后:
-```
-cd /Users/dp/Documents/M/stock/chunkymonkey
-bash scripts/cm_resume.sh          # 1 命令出当前 state + prompt 模板
-```
+恢复流程唯一 owner = `docs/chunkyctl_session_quickstart.md` (2026-06-11 文档治理收口)。
+速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
+定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-### 2. 新 Codex 会话输入哪句话:
-- **推荐**: `请按照 docs/chunkyctl_session_quickstart.md 接手本项目，先完成启动检查，再看 goal.md 和 live gates。`
-- **简短恢复**: `继续，看 goal.md、SESSION_HANDOFF.md 和 doctor 输出，按当前 P0 推进。`
-- **复杂 pipeline**: 仅当 `analysis/workflow_checkpoint.md` 声明 active pipeline 时，按其中 next command 继续。
-
-### 3. 自动注入状态:
-```
-bash scripts/install_resilience.sh --status
-```
-默认不再安装 cron snapshot / SessionStart auto-inject；如需恢复旧自动化，必须显式设置脚本里的 legacy opt-in。
-
-**Snapshot 时间**: 2026-06-10 23:54:42 CST
+**Snapshot 时间**: 2026-06-11 10:43:16 CST
 
 ## 主线状态
 
@@ -49,7 +36,7 @@ bash scripts/install_resilience.sh --status
 
 | 项 | 值 |
 |---|---|
-| Backends | local:active, modal:planned |
+| Backends | local:active, modal:active |
 | Job plan | `scripts/chunkyctl jobs --family model_training --model-id <id> --input-snapshot <snapshot> --objective <why> --rollback-plan <plan> --gate-evidence <gate>=<artifact>` |
 
 ## Git 状态
@@ -57,28 +44,28 @@ bash scripts/install_resilience.sh --status
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `13af1ad8 docs: record stage opt freshness repair` |
-| 最近 24h commits | 0 |
-| 未 commit 文件 | 8 |
+| HEAD | `81cbff7f fix: tdxhub 断流根因修复 — Surge 代理接管 TCP, server 探活改协议层握手实测池` |
+| 最近 24h commits | 12 |
+| 未 commit 文件 | 1 |
 
 ### 最近 10 commits
 
 ```
-13af1ad8 docs: record stage opt freshness repair
-62d86ab2 docs: codify stage-opt and db governance next steps; docs graph PASS, diff check passed
-39258d96 docs: refresh session snapshot after freshness audit
-e7d338e3 chore: add stage-opt freshness audit evidence
-83af1811 docs: refresh session snapshot after source density diagnostics
-5ac01041 chore: add stage-opt source density diagnostics
-80e1557c docs: track rd-agent follow-up research
-287f2d5e docs: refresh session snapshot after need027 diagnostics
-e123dae0 chore: harden need027 probe diagnostics
-96444d2f docs: refresh session snapshot after kline gate
+81cbff7f fix: tdxhub 断流根因修复 — Surge 代理接管 TCP, server 探活改协议层握手实测池
+eee23138 fix: Fable-5 复查补漏降级期 3 个真问题 (PIT/烧钱/unknown静默参与)
+72f1436c fix: TradingCostConfig default-free, 消灭成本第二真相源 (双源收敛收尾)
+6bfa3cc0 docs: persist architecture framework design + 申万L2 industry decision
+93d1ece3 fix: 体检 confirmed 系统性修复 7 组 + 行业区分度 measured 决策
+cc0facb3 fix: v5 panel explicitly EXCLUDEs inst_path_a leak cols from v3 passthrough
+3b2fe22f fix: daily_update resolves python via project venv PATH
+10fa6abd docs: execute documentation governance per checkup audit E1-E7
+6f0357d5 fix: migrate scheduling cron to launchd with python TCC entrypoint and failure alerting
+075e6519 chore: refresh session snapshot after tushare integration
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**8 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**1 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 
