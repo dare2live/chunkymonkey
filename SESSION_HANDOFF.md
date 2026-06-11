@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-06-11 10:43:16 CST
+**Snapshot 时间**: 2026-06-11 16:49:17 CST
 
 ## 主线状态
 
@@ -44,28 +44,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `81cbff7f fix: tdxhub 断流根因修复 — Surge 代理接管 TCP, server 探活改协议层握手实测池` |
-| 最近 24h commits | 12 |
-| 未 commit 文件 | 1 |
+| HEAD | `33bb8e58 feat: Serenity 方法论锻造 + TuShare catalog 模块化 + 金股 measured 验证` |
+| 最近 24h commits | 21 |
+| 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+33bb8e58 feat: Serenity 方法论锻造 + TuShare catalog 模块化 + 金股 measured 验证
+16e770f7 feat: fina_mainbz 主营构成接入 + by_ts_code 批模式 (产业链 L1 数据底座) + hook 词边界修正
+c90197a6 feat: E1 B-V0 资金流分桶实测 — 倒 U 型发现, L2 gate 设计修订
+30225692 feat: sync_registry 数据域接入范式落地, 首个生产域回填实测通过
+a532fa28 feat: W1 启动 — E0 双口径收敛 + E9 伪 rank 陷阱入册 + E7 概念快照自养上线 + E8 探底判决
+666a114b docs: 宪法 v2 正式生效 (用户确认 2026-06-11)
+ffd7741c docs: 策略锻造定稿 — 三套组合 + 12 周路线图 + 宪法 v2 草案
+1afd7ff2 fix: K线 denormal 停牌行三层修复 + audit 口径两处修正, audit 链转绿
+219f6af3 docs: persist user vision hologram + blind-spot analysis
 81cbff7f fix: tdxhub 断流根因修复 — Surge 代理接管 TCP, server 探活改协议层握手实测池
-eee23138 fix: Fable-5 复查补漏降级期 3 个真问题 (PIT/烧钱/unknown静默参与)
-72f1436c fix: TradingCostConfig default-free, 消灭成本第二真相源 (双源收敛收尾)
-6bfa3cc0 docs: persist architecture framework design + 申万L2 industry decision
-93d1ece3 fix: 体检 confirmed 系统性修复 7 组 + 行业区分度 measured 决策
-cc0facb3 fix: v5 panel explicitly EXCLUDEs inst_path_a leak cols from v3 passthrough
-3b2fe22f fix: daily_update resolves python via project venv PATH
-10fa6abd docs: execute documentation governance per checkup audit E1-E7
-6f0357d5 fix: migrate scheduling cron to launchd with python TCC entrypoint and failure alerting
-075e6519 chore: refresh session snapshot after tushare integration
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**1 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**run startup checks first — scripts/chunkyctl doctor --fast; prioritize data_health blocking_yellow, then stage-opt structural blocker / need_027 blocked-gap triage**
 
 ## Resilience 配置 (verified)
 
