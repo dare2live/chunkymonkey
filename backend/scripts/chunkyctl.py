@@ -433,6 +433,25 @@ def _next_actions(
     return actions
 
 
+def collect_alert_flags() -> dict[str, Any]:
+    """定时任务失败/降级 flag 巡检 — 把"启动查 /tmp/chunkymonkey_ALERT_*.flag"的约定变成代码.
+
+    flag 存在 = 有 job 失败或降级未确认 (launchd_job_wrapper 失败写 + daily_update
+    degraded 写; 成功链路各自清除)。verdict: 无 flag = PASS, 有 = WARN (送达但不挡 doctor)。
+    """
+    import glob
+
+    flags = []
+    for path in sorted(glob.glob("/tmp/chunkymonkey_ALERT_*.flag")):
+        p = Path(path)
+        try:
+            tail = p.read_text(encoding="utf-8", errors="replace").strip().splitlines()[-3:]
+        except OSError:
+            tail = []
+        flags.append({"flag": p.name, "mtime": p.stat().st_mtime, "last_lines": tail})
+    return {"verdict": "PASS" if not flags else "WARN", "count": len(flags), "flags": flags}
+
+
 def run_doctor(args: argparse.Namespace) -> int:
     repo = Path(args.repo).expanduser().resolve()
     moth_snapshot = run_moth_snapshot(repo, "chunkymonkey")
@@ -448,6 +467,8 @@ def run_doctor(args: argparse.Namespace) -> int:
         tooling_payload["verdict"] = "FAIL"
     sections: list[dict[str, Any]] = []
     sections.append({"name": "tooling_gate", "verdict": tooling_payload.get("verdict") if tooling_payload else "FAIL"})
+    alert_flags = collect_alert_flags()
+    sections.append({"name": "alert_flags", "verdict": alert_flags["verdict"]})
 
     result = _run_command(
         [sys.executable, "backend/scripts/audit_test_tool_health.py"],
@@ -619,6 +640,7 @@ def run_doctor(args: argparse.Namespace) -> int:
         "data_health": data_health,
         "stage_opt": stage_opt,
         "need_coverage": need_coverage,
+        "alert_flags": alert_flags,
         "next_actions": _next_actions(
             tooling_payload,
             worktree_summary,

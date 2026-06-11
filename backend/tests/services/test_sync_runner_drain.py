@@ -163,3 +163,44 @@ def test_drain_max_dates_truncation_reports_partial():
                         trading_days=["20200101", "20200102", "20200103"],
                         max_dates=2, record=False)
     assert r["truncated"] is True and r["status"] == "partial" and r["refilled_days"] == 2
+
+
+def test_fetch_paged_concatenates_until_short_page():
+    """分页拼接到末页 (< limit 即止), 全量无截断."""
+    spec = {"domain": "demo", "api": "x", "page_limit": 2,
+            "retry": {"max_attempts": 1, "backoff_seconds": [0]}}
+
+    class PagedAdapter:
+        def fetch_raw(self, api, **params):
+            offset = params.get("offset", 0)
+            data = [{"i": n} for n in range(5)]
+            return data[offset: offset + params["limit"]]
+
+    rows = sr._fetch_paged(PagedAdapter(), spec, {"trade_date": "20200101"})
+    assert [r["i"] for r in rows] == [0, 1, 2, 3, 4]
+
+
+def test_fetch_paged_midpage_failure_returns_none_not_partial():
+    """中间页终败 → 整批 None (部分页写入会伪装完整日, 比失败更危险)."""
+    spec = {"domain": "demo", "api": "x", "page_limit": 2, "allow_empty_batch": False,
+            "retry": {"max_attempts": 1, "backoff_seconds": [0]}}
+
+    class FailSecondPage:
+        def fetch_raw(self, api, **params):
+            if params.get("offset", 0) >= 2:
+                raise RuntimeError("gateway timeout")
+            return [{"i": 0}, {"i": 1}]
+
+    assert sr._fetch_paged(FailSecondPage(), spec, {"trade_date": "20200101"}) is None
+
+
+def test_fetch_paged_without_page_limit_passthrough():
+    spec = {"domain": "demo", "api": "x",
+            "retry": {"max_attempts": 1, "backoff_seconds": [0]}}
+
+    class OneShot:
+        def fetch_raw(self, api, **params):
+            assert "limit" not in params and "offset" not in params
+            return [{"i": 9}]
+
+    assert sr._fetch_paged(OneShot(), spec, {"trade_date": "20200101"}) == [{"i": 9}]

@@ -122,6 +122,31 @@ def _fetch_with_retry(adapter, spec: dict[str, Any], params: dict[str, Any]) -> 
     return None
 
 
+def _fetch_paged(adapter, spec: dict[str, Any], params: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """带 offset 分页的 fetch: registry 声明 page_limit 的域逐页拉到末页 (< limit 即止).
+
+    单页上限不分页 = 静默截断丢数据 (top_inst 1000 整 / stk_surv 100 实测反例, 宪法第 6 条)。
+    任何中间页终败 → 整批返回 None (当日整体失败重试) — 部分页写入会伪装成完整日,
+    比整体失败更危险。50 页硬上限防接口异常死循环。
+    """
+    limit = int(spec.get("page_limit") or 0)
+    if not limit:
+        return _fetch_with_retry(adapter, spec, params)
+    all_rows: list[dict[str, Any]] = []
+    offset = 0
+    for _ in range(50):  # 50 页 × page_limit 远超任何单日真实量, 防御性边界
+        page = _fetch_with_retry(adapter, spec, {**params, "limit": limit, "offset": offset})
+        if page is None:
+            return None  # 中间页失败不交部分结果
+        all_rows.extend(page)
+        if len(page) < limit:
+            return all_rows
+        offset += limit
+        time.sleep(0.4)  # rule-compliance: ok evidence=同 run_domain 节流口径 vendor-gateway-2026-06-11
+    log.warning("分页超 50 页防御上限 domain=%s params=%s", spec["domain"], params)
+    return None
+
+
 def _write_batch(conn, spec: dict[str, Any], rows: list[dict[str, Any]]) -> int:
     """MERGE on grain: DELETE 同 grain 旧行 + INSERT, 加 built_at (幂等)."""
     if not rows:
@@ -272,7 +297,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
     min_rows = int(spec.get("min_rows_per_batch", 0))
     try:
         for params in batches:
-            rows = _fetch_with_retry(adapter, spec, params)
+            rows = _fetch_paged(adapter, spec, params)
             if rows is None:
                 failed.append(params)
                 continue
@@ -358,7 +383,7 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
         if todo:
             adapter = adapter or _adapter(spec["source"])
         for d in todo:
-            rows = _fetch_with_retry(adapter, spec, {date_col: d})
+            rows = _fetch_paged(adapter, spec, {date_col: d})
             if not rows:  # None=终败; [] 理论不可达 (allow_empty 域已前置排除), 防御同终败
                 still_failed.append(d)
                 continue

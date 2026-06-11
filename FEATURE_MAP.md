@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-11 20:56
+> Snapshot: 2026-06-11 22:18
 
 ## 1. 入口面
 
@@ -43,6 +43,7 @@
 | updater | `/api/inst` | 13 |
 | updater_lifeboat | `—` | 3 |
 | v3_bestchoice | `/api/v3` | 4 |
+| v3_config | `/api/v3` | 1 |
 | v3_market_perception | `/api/v3/market_perception` | 11 |
 | v3_meta | `/api/v3` | 7 |
 | v3_paper | `/api/v3/paper` | 5 |
@@ -77,6 +78,7 @@
 | stock_st | tushare | stock_st | raw_tushare_stock_st | by_trade_date | 1 |
 | suspend_d | tushare | suspend_d | raw_tushare_suspend_d | by_trade_date | 3 |
 | ths_hot | tushare | ths_hot | raw_tushare_ths_hot | by_trade_date | 2 |
+| top_inst | tushare | top_inst | raw_tushare_top_inst | by_trade_date | 2 |
 | top_list | tushare | top_list | raw_tushare_top_list | by_trade_date | 2 |
 | trade_cal | tushare | trade_cal | raw_tushare_trade_cal | full_refresh | 30 |
 
@@ -441,7 +443,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 19,049 | calls 边 207,391 | imports 边 20,292 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 19,064 | calls 边 207,406 | imports 边 20,295 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -492,12 +494,12 @@
 | backend/scripts/audit_stage_opt_candidate_supply.py | 2005 |
 | backend/services/audit.py | 1745 |
 | backend/services/financial_client.py | 1701 |
-| backend/scripts/chunkyctl.py | 1639 |
+| backend/scripts/chunkyctl.py | 1661 |
 | backend/scripts/build_temporal_synergy_research.py | 1637 |
 
 ## 5. 概览
 
-- chunkyctl 子命令 7 | launchd 任务 4 | router 21 (端点 167)
-- sync_registry 数据域 20
+- chunkyctl 子命令 7 | launchd 任务 4 | router 22 (端点 168)
+- sync_registry 数据域 21
 - 产表 302 (多 writer 121)
 

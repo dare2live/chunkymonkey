@@ -1558,3 +1558,23 @@ def test_docs_cleanup_report_fails_when_docs_graph_fails(tmp_path: Path) -> None
 
     assert report["verdict"] == "FAIL"
     assert report["docs_graph"]["unresolved_live_refs"] == 1
+
+
+def test_collect_alert_flags_pass_when_none(tmp_path, monkeypatch):
+    """无 flag = PASS; 有 flag = WARN + 内容尾行可见 (定时任务告警送达约定变代码)."""
+    import glob as _glob
+
+    monkeypatch.setattr(_glob, "glob", lambda pattern: [])
+    out = chunkyctl.collect_alert_flags()
+    assert out["verdict"] == "PASS" and out["count"] == 0
+
+
+def test_collect_alert_flags_warn_with_content(tmp_path, monkeypatch):
+    import glob as _glob
+
+    flag = tmp_path / "chunkymonkey_ALERT_daily_update_degraded.flag"
+    flag.write_text("[2026-06-11 17:05] LHB event sync 失败\n", encoding="utf-8")
+    monkeypatch.setattr(_glob, "glob", lambda pattern: [str(flag)])
+    out = chunkyctl.collect_alert_flags()
+    assert out["verdict"] == "WARN" and out["count"] == 1
+    assert "LHB" in out["flags"][0]["last_lines"][-1]

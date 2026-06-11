@@ -202,8 +202,22 @@ domains:
     min_rows_per_batch: 20   # 实测 20260610 = 95 行; 龙虎榜常态 60-150
     allow_empty_batch: false
 
-  # top_inst 暂缓注册 (2026-06-11 实测): 单日返回 1000 行整 = 命中隐性单页上限,
-  # 截断静默丢数据违宪第 6 条。等 sync_runner 支持 offset 分页后注册 (与 stk_surv 同批)。
+  top_inst:
+    source: tushare
+    api: top_inst
+    target_table: raw_tushare_top_inst
+    grain: [trade_date, ts_code, exalter, side]   # 同席位同股按买卖方向分行 (字段实测在录)
+    batch_mode: by_trade_date
+    page_limit: 1000          # 实测单页 1000 整上限; runner offset 分页拉全 (中间页败=整批重试)
+    pit_anchor: "trade_date; 龙虎榜席位明细盘后公布 -> JOIN t-1"
+    available_after: "18:00"
+    data_start: "20050104"    # 与 top_list 同窗; 回填首跑校准
+    freshness_sla_trading_days: 2
+    min_rows_per_batch: 1
+    allow_empty_batch: true   # 个别日仅游资席位无机构明细, 合法空 (走增量 fallback 非 drain)
+
+  # stk_surv 暂缓注册 (2026-06-11 实测): trade_date=20260610 返回 0 行 — 参数语义未核证
+  # (疑似用 surv_date/ann_date), 0 行不下结论不连发 (并发风控纪律), 与 dc_hot 同列待核批。
 
   report_rc:
     source: tushare
