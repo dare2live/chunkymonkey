@@ -84,11 +84,15 @@ JOIN → 永远带 `AND x.built_at <= t` / `as_of_date`; 宇宙 → `dim_index_m
   必须 ablation 验证每 col 群 PIT 干净度.
 - 干净参考: v3.2 P0b 实测 RankIC 0.0108-0.0203 (跨 5/10/20 horizon) = 干净 PIT 下诚实数字.
 
-### 4.3 数据可信度 (用户原话)
+### 4.3 数据源主源序 + 可信度 (用户原话, 2026-06-11 两次强调)
 
-- tdxhub / miaoxiang: 100% 可信. 缺失 = 自己 sync 路径 bug, 优先重拉, 不假设上游缺.
-- akshare: 不稳定 (限频/接口变), 正在被 TuShare 替换 (2026-06-11 接入, 见 goal.md need_027).
-- tushare (vendor gateway): 19/20 接口实测可用; 间歇空响应 — writer 必须把 0 行当失败重试.
+- **主源序: tushare 主源 / tdxhub 备用 / miaoxiang 第三 / akshare 最后.** "能在 tushare
+  获取的就从 tushare 获取"; 新接域消费侧切换方向 = tushare 转正、旧源降备援交叉验证.
+  **不许把 tushare 表述/设计成"兜底/对照"** — 那是主从倒挂 (2026-06-11 被用户纠偏反例).
+- tdxhub / miaoxiang: 数据质量 100% 可信 (角色 = 备用源). 缺失 = 自己 sync 路径 bug, 优先重拉.
+- akshare: 不稳定 (限频/接口变), 正被 TuShare 替换 (见 goal.md need_027).
+- tushare (vendor gateway): 171/239 接口实测可用; 间歇空响应/读超时/并发上限 2 — writer 必须
+  把 0 行当失败重试; 单页上限必须实测防静默截断 (top_inst 1000 整反例).
 
 ### 4.4 Root Cause — 严禁忍
 

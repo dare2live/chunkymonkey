@@ -187,7 +187,8 @@ domains:
 
   # ── 旧源退役批 (2026-06-11 用户决策: 能在 tushare 获取的就从 tushare 获取) ──
   # 替代对象: lhb_daily(aif10, 实测滞后13天) / profit_forecast / external_attention /
-  # northbound(映射盲区) / xdxr复权对照(tdxhub 实测滞后17天)。旧路径双轨核对一致后物理退役。
+  # northbound(映射盲区) / 复权链(adj_factor+dividend 转正主源, tdxhub xdxr 滞后17天降备援
+  # 交叉验证 — 主源序: tushare 主/tdxhub 备)。旧路径双轨核对一致后物理退役。
   top_list:
     source: tushare
     api: top_list
@@ -256,10 +257,10 @@ domains:
     target_table: raw_tushare_dividend
     grain: [ts_code, end_date, div_proc]   # 同方案多阶段 (预案/股东会/实施) 多行
     batch_mode: by_trade_date
-    date_param: ex_date      # 锚定除权除息日 (必为交易日, 复权对照口径); 周末公告无漏检风险
+    date_param: ex_date      # 锚定除权除息日 (必为交易日, 复权主源口径); 周末公告无漏检风险
     pit_anchor: "ex_date 当日生效; 但方案披露早于 ex_date, 事件类特征须用 ann_date 做 PIT 锚, 本表 raw 镜像两者都存"
     available_after: "t+1"
-    data_start: "20050104"   # 与复权对照窗对齐; 回填首跑校准
+    data_start: "20050104"   # 复权主源全史窗; 回填首跑校准
     freshness_sla_trading_days: 5
     min_rows_per_batch: 0
     allow_empty_batch: true   # 非分红季多数交易日无除权事件
@@ -272,7 +273,7 @@ domains:
     batch_mode: by_trade_date
     pit_anchor: "trade_date; 盘前 9:15-20 当日复权因子入库 -> 当日可用 (唯一盘前可用域)"
     available_after: "09:20"
-    data_start: "20050104"   # 复权对照窗; 回填首跑校准
+    data_start: "20050104"   # 复权主源全史窗; 回填首跑校准
     freshness_sla_trading_days: 1
     min_rows_per_batch: 4000  # 全市场日截面 ~5300 只; 同 moneyflow 口径
     allow_empty_batch: false
