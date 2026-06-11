@@ -45,13 +45,27 @@
 | raw_aif10_forecast_consensus (妙想一致预期) | `report_rc` (已注册) 自聚合共识 |
 | CYQ 筹码 | 保持本地计算, 输入切 `daily`+`daily_basic.float_share` |
 
-## 真例外 (tushare 无等价, 保留并记录)
+## W-B 追加批 (2026-06-11 深挖 catalog, 用户纠偏 "认真挖一下 tushare" — 实弹核证 ✓ 标注)
+
+| 替代对象 / 新能力 | tushare 接口 | 积分 | 实弹 |
+|---|---|---|---|
+| 股权质押 (Serenity 减持质押 veto 件原料, 原盘点缺失) | `pledge_stat`+`pledge_detail` | 1000×2 | ✓ 749 行全史/股 |
+| F10 管理层 | `stk_managers` (含简历) + `stk_rewards` (薪酬持股) | 2000×2 | ✓ 193 行 |
+| F10 公司概况 + **文字主营** (产业链 L1 文本源, 补 fina_mainbz 结构化收入) | `stock_company` (main_business/introduction/business_scope/employees) | 120 | ✓ |
+| 曾用名/ST 史 (universe 清洗) | `namechange` (含 change_reason) | — | ✓ 6 行 |
+| 审计意见 (基本面风控) | `fina_audit` | 2000 | 待核 |
+| 每日股本盘前 (CYQ 股本输入候选 #2) | `stk_premarket` | — | 代理超时待重核 |
+| 北水持股穿透 | `ccass_hold_detail` | 8000 | 待核 |
+| fact_common_major_holder_stock (同大股东个股) | **不需要接口** — `top10_holders` 全市场自 JOIN 派生 | — | — |
+| QFII 持仓 (妙想 RPT_DMSK_HOLDERS) | `top10_floatholders` 按 holder 类型筛选派生 | — | — |
+
+## 真例外 (深挖后仅剩)
 
 | 域 | 理由 | 处置 |
 |---|---|---|
-| fact_shareholder_plan_tdx_f10 / fact_common_major_holder_stock 等 F10 文本类 | tushare 无 F10 叙述性数据 | 保留 tdxhub, need contract 记例外 |
+| 股东增减持**计划** (fact_shareholder_plan, 计划类非已发生) | tushare 无结构化接口; 已发生变动归 `stk_holdertrade` | 半替代: `anns_d` 全量公告 + 关键词过滤 (**注意: anns_d 曾触发网关 357s 风控, 重新接触只许单次谨慎探测**); 过渡期保留 tdxhub 热备 |
 | fact_jgdy_event (调研事件, akshare) | tushare 有 `stk_surv` 但 100/页需分页 | W-C, 分页支持后切 |
-| raw_fund_flow_daily (停用) | 已由 `moneyflow` (chain1 回填中) 替代 | 直接退役, 不恢复 |
+| raw_fund_flow_daily (停用) | 已由 `moneyflow` (chain1 已回填) 替代 | 直接退役, 不恢复 |
 
 ## 执行纪律 (每域 checklist)
 
