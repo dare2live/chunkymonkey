@@ -160,6 +160,9 @@ from routers.v3_meta import router as v3_meta_router
 app.include_router(v3_meta_router, prefix="/api/v3", tags=["v3_meta"])
 
 # Phase γ D4: 股票画像 + trade plan (mart_stock_picture_daily / mart_stock_trade_plan)
+from routers.v3_config import router as v3_config_router
+app.include_router(v3_config_router, prefix="/api/v3", tags=["v3_config"])
+
 from routers.v3_picture import router as v3_picture_router
 app.include_router(v3_picture_router, prefix="/api/v3", tags=["v3_picture"])
 

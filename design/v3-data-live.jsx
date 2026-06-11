@@ -23,16 +23,26 @@
 (async function loadLiveData() {
   const TAG = '[v3-data-live]';
 
+  // 数据源状态台账: 任何 fetch 失败必须可见 (data_product_contract Frontend Contract:
+  // 禁静默 mock 回退) — 失败记录进 SOURCE_STATUS, dataReady 携带, 页面顶部 badge 提示
+  window.CMV3 = window.CMV3 || {};
+  window.CMV3.SOURCE_STATUS = {};
   const fetchJson = async (url) => {
     try {
       const r = await fetch(url);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      window.CMV3.SOURCE_STATUS[url] = 'ok';
       return await r.json();
     } catch (e) {
-      console.warn(`${TAG} ${url} failed:`, e.message);
+      console.error(`${TAG} ${url} FAILED (页面对应区块将显示 mock/空):`, e.message);
+      window.CMV3.SOURCE_STATUS[url] = `error: ${e.message}`;
       return null;
     }
   };
+
+  // 展示参数唯一真相源 (frontend_config.yaml 经 API 下发); 拉不到 = CONFIG null,
+  // 消费侧判级显示中性灰 — 不许内置回退值 (那是第二真相源)
+  window.CMV3.CONFIG = await fetchJson('/api/v3/config');
 
   // 并行拉所有 API (含 labels — UI 字段中文映射)
   const [profilesResp, dailyResp, runMetaResp, significantResp,
@@ -114,7 +124,7 @@
       win30: (Number(p.win_rate_30d) || 0) / 100,
       win60: (Number(p.win_rate_60d) || 0) / 100,
       win90: (Number(p.win_rate_90d) || 0) / 100,
-      stability: 0.80,  // mart_institution_profile 暂无 stability_score, hardcoded
+      stability: p.stability_score != null ? Number(p.stability_score) : null,  // 无数据显示 '—', 不许硬编码假值
       n_stocks: Number(p.current_stock_count) || 0,
       holdings: Number(p.current_stock_count) || 0,
       tracked: true,
@@ -339,6 +349,20 @@
     console.info(`${TAG} PL_ATTR: ${window.CMV3.PL_ATTR.length} 归因桶`);
   }
 
+  // 数据降级透明化: 任一源失败 → 页面顶部常驻 badge (用户必须知道在看降级数据)
+  const failedSources = Object.entries(window.CMV3.SOURCE_STATUS)
+    .filter(([, s]) => s !== 'ok').map(([u]) => u);
+  if (failedSources.length) {
+    const badge = document.createElement('div');
+    badge.id = 'cmv3-degraded-badge';
+    badge.style.cssText = 'position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:9999;'
+      + 'background:var(--c-warn, #b8860b);color:#fff;padding:4px 14px;border-radius:0 0 8px 8px;'
+      + 'font:12px var(--f-mono, monospace);cursor:pointer;';
+    badge.textContent = `数据降级: ${failedSources.length} 个源失败, 对应区块为 mock/空 (点击看明细)`;
+    badge.onclick = () => console.table(window.CMV3.SOURCE_STATUS);
+    document.body.appendChild(badge);
+  }
+
   // 触发 App re-render
   window.dispatchEvent(new CustomEvent('cmv3:dataReady', {
     detail: {
@@ -349,7 +373,10 @@
       paper_holdings: window.CMV3.HOLDINGS?.length || 0,
       paper_ic_signals: window.CMV3.SIGNAL_IC?.length || 0,
       run_meta_signal_date: window.CMV3.RUN_META?.signal_date,
+      degraded: failedSources.length > 0,
+      failed_sources: failedSources,
+      config_loaded: !!window.CMV3.CONFIG,
     },
   }));
-  console.info(`${TAG} all live data loaded, dispatch cmv3:dataReady`);
+  console.info(`${TAG} all live data loaded, dispatch cmv3:dataReady (degraded=${failedSources.length > 0})`);
 })();

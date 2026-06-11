@@ -75,7 +75,8 @@ function HealthBar() {
   // 顶部健康概要 — 只看 4 个 status
   const dataStatus = TABLES.some(t => t.freshness_status==='bad') ? 'bad' : TABLES.some(t => t.freshness_status==='warn') ? 'warn' : 'ok';
   const pipeStatus = PIPELINE.some(p => p.status==='bad') ? 'bad' : PIPELINE.some(p => p.status==='warn') ? 'warn' : 'ok';
-  const modelStatus = MODELS.champion.rolling30_winrate >= 0.58 ? 'ok' : 'warn';
+  const _thOk = window.CMV3.CONFIG?.thresholds?.model_health_winrate_ok;  // 阈值出口唯一 = /api/v3/config
+  const modelStatus = _thOk == null ? 'warn' : (MODELS.champion.rolling30_winrate >= _thOk ? 'ok' : 'warn');
   const items = [
     { k:'数据', s:dataStatus,  detail:`${TABLES.length} 张表 · ${TABLES.filter(t=>t.freshness_status!=='ok').length} 待处理` },
     { k:'链路', s:pipeStatus,  detail:`${PIPELINE.length} 阶段 · ${PIPELINE.filter(p=>p.status==='warn').length} warn` },
@@ -326,7 +327,10 @@ function FeatureRow({ f }) {
 
 function InstSubrow({ inst, onOpen }) {
   const { RolePill, MiniSpark } = window.CMV3;
-  const winColor = inst.win_rate >= 0.6 ? 'var(--c-accent)' : inst.win_rate >= 0.5 ? 'var(--c-warn)' : 'var(--c-bad)';
+  const _cfg = window.CMV3.CONFIG?.thresholds;  // config 拉不到 → 中性灰, 不许内置回退值 (第二真相源)
+  const winColor = _cfg == null ? 'var(--ink-2)'
+    : inst.win_rate >= _cfg.inst_winrate_green ? 'var(--c-accent)'
+    : inst.win_rate >= _cfg.inst_winrate_yellow ? 'var(--c-warn)' : 'var(--c-bad)';
   return (
     <div onClick={onOpen} style={{
       padding:'10px 12px',background:'var(--c-surface)',

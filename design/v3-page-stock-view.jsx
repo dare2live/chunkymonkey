@@ -84,7 +84,7 @@ window.CMV3.PageStockView = function PageStockView({ initialCode, onOpenInst }) 
             {data.selection_summary ? (
               <div style={{fontSize:12,lineHeight:1.7}}>
                 <div>选中次数: <b>{data.selection_summary.n_total}</b> 总 · 近 30d <b>{data.selection_summary.n_30d}</b> · 近 90d <b>{data.selection_summary.n_90d}</b></div>
-                <div>胜率: <b style={{color: data.selection_summary.win_rate >= 0.5 ? 'var(--c-up)' : 'var(--c-down)'}}>
+                <div>胜率: <b style={{color: (window.CMV3.CONFIG?.thresholds?.stock_winrate_green != null && data.selection_summary.win_rate >= window.CMV3.CONFIG.thresholds.stock_winrate_green) ? 'var(--c-up)' : 'var(--c-down)'}}>
                   {data.selection_summary.win_rate != null ? UI.fmt2pct(data.selection_summary.win_rate, false).replace("+","") : '—'}
                 </b>
                 · 平均收益: <span style={{fontFamily:'var(--f-mono)'}}>

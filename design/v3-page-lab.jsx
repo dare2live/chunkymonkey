@@ -248,7 +248,7 @@ function InstView() {
                 <td style={{padding:'10px 6px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{(i.win30*100).toFixed(0)}%</td>
                 <td style={{padding:'10px 6px',textAlign:'right',fontFamily:'var(--f-mono)',fontWeight:600,color:i.win60>=0.6?'#2f8a55':'var(--ink-0)'}}>{(i.win60*100).toFixed(0)}%</td>
                 <td style={{padding:'10px 6px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{(i.win90*100).toFixed(0)}%</td>
-                <td style={{padding:'10px 6px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{(i.stability*100).toFixed(0)}</td>
+                <td style={{padding:'10px 6px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{i.stability == null ? '—' : (i.stability*100).toFixed(0)}</td>
                 <td style={{padding:'10px 6px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{i.holdings||'—'}</td>
               </tr>
             ))}</tbody>
@@ -274,7 +274,7 @@ function InstView() {
                 <td style={{padding:'10px 6px'}}><UI.Pill size="xs">{h.type}</UI.Pill></td>
                 <td style={{padding:'10px 6px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{h.holdings}</td>
                 <td style={{padding:'10px 6px',textAlign:'right',fontFamily:'var(--f-mono)',fontWeight:600,color:h.win60>=0.6?'#2f8a55':'var(--ink-0)'}}>{(h.win60*100).toFixed(0)}%</td>
-                <td style={{padding:'10px 6px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{(h.stability*100).toFixed(0)}</td>
+                <td style={{padding:'10px 6px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{h.stability == null ? '—' : (h.stability*100).toFixed(0)}</td>
                 <td style={{padding:'10px 6px',fontSize:11,color:'var(--ink-2)'}}>{h.last_action}</td>
                 <td style={{padding:'10px 6px',textAlign:'right'}}>
                   {h.tracked

@@ -1,0 +1,14 @@
+# frontend_config.yaml — 前端展示参数唯一真相源
+# Platform Runtime Contract (data_product_contract.md Frontend Contract): 前端零硬编码阈值,
+# 全部经 GET /api/v3/config 下发; 改门槛改这里, 不改 JSX。
+# 值为 2026-06-11 从前端硬编码原样迁移 (历史值, 业务校准另案 — 校准时走 measured 流程)。
+
+thresholds:
+  model_health_winrate_ok: 0.58   # 迁自 v3-page-picks.jsx:78 (模型健康 ok/warn 线)
+  inst_winrate_green: 0.60        # 迁自 v3-page-picks.jsx:329 (机构胜率绿线)
+  inst_winrate_yellow: 0.50       # 迁自 v3-page-picks.jsx:329 (机构胜率黄线)
+  stock_winrate_green: 0.50       # 迁自 v3-page-stock-view.jsx:87
+  min_event_sample: 8             # 迁自 v3-page-picks.jsx:49 (排序最少事件样本)
+
+display:
+  ai_top_cutoffs: [20, 50]        # 迁自 assets/js/stock-view.js:356 (AI 推荐分割线)
