@@ -522,8 +522,10 @@ def test_compute_backend_control_uses_experiment_job_contract():
     result = audit.check_compute_backend_control()
 
     assert result["pct"] == 100
-    assert result["active_backends"] == ["local"]
-    assert "modal" in result["planned_backends"]
+    # modal 2026-06-11 转正可用 (用户决策"该用就用"; $30/月额度, dry_run 默认 True 防误花,
+    # 跑批仍需 reviewed adapter + artifact-manifest 契约). active 标"可派发"非"必派发".
+    assert result["active_backends"] == ["local", "modal"]
+    assert result["planned_backends"] == []
     assert {"data_validation", "backtest_validation", "model_training", "parameter_search"}.issubset(
         set(result["job_families"])
     )
