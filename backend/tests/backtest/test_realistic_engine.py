@@ -184,9 +184,15 @@ class TestBugRegressionGuards:
             ("2026-05-03", 10, 10.5, 10, 10.5, 1e6, 1e9),
         ])
         # 用 open 模式, T+1 open = 9.5 → buy=9.5
+        # default-free 后 cost 必须显式; 本测试只断言 buy_price, 用零成本隔离变量
+        zero_cost = TradingCostConfig(
+            buy_commission_bps=0.0, buy_transfer_bps=0.0, buy_impact_bps=0.0,
+            sell_commission_bps=0.0, sell_transfer_bps=0.0,
+            sell_stamp_duty_bps=0.0, sell_impact_bps=0.0,
+        )
         em_open = ExecutionModel(
             version="test", buy_pricing=BuyPricingConfig(mode="open"),
-            sell_pricing=SellPricingConfig(), cost=TradingCostConfig(),
+            sell_pricing=SellPricingConfig(), cost=zero_cost,
             limit_board=LimitBoardConfig(), horizon_unit=HorizonUnit.TRADING_DAYS,
         )
         t = simulate_trade("000001", "2026-05-01", bars,

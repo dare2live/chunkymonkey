@@ -16,17 +16,25 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class TradingCostConfig:
-    """单边交易成本 + 双边汇总 (bps 基点 = 万分之一)."""
+    """单边交易成本 + 双边汇总 (bps 基点 = 万分之一).
+
+    default-free by design (2026-06-11 成本双源收敛收尾):
+    数值真相源唯一 = paper_sim_config.yaml::tx_cost, 经
+    services.trading_config.registry._cost_from_paper_sim() 派生.
+    本类禁止携带默认值 — 历史反例: 印花税默认 10bps 在 2023-08 减半
+    (现行 5bps) 后失真, 裸构造 TradingCostConfig() 成为第二真相源.
+    需要实例: 用 registry.DEFAULT_EXECUTION_MODEL.cost, 或显式传全部字段.
+    """
     # 买入侧
-    buy_commission_bps: float = 2.5     # 券商佣金 万 2.5
-    buy_transfer_bps:   float = 0.2     # 过户费 万 0.2 (仅沪深)
-    buy_impact_bps:     float = 5.0     # 价格冲击 (中等假设)
+    buy_commission_bps: float
+    buy_transfer_bps:   float   # transfer+exchange+regulatory 每侧均摊 bucket
+    buy_impact_bps:     float   # 滑点 bucket
 
     # 卖出侧
-    sell_commission_bps: float = 2.5
-    sell_transfer_bps:   float = 0.2
-    sell_stamp_duty_bps: float = 10.0   # 印花税 千 1
-    sell_impact_bps:     float = 5.0
+    sell_commission_bps: float
+    sell_transfer_bps:   float
+    sell_stamp_duty_bps: float  # A 股仅卖出收印花
+    sell_impact_bps:     float
 
     def buy_cost_pct(self) -> float:
         """单边买入总成本 (% of trade value)."""
