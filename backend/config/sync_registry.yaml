@@ -1,0 +1,119 @@
+# sync_registry.yaml — 数据域接入唯一注册表 (架构稿 §3 范式, 2026-06-11)
+#
+# 原则: 一个条目 = 一个数据域接入, 零域专属代码 (sync_runner 读本表驱动一切)。
+# 宪法 v2 第 7 条: 新数据域必走本表; 第 9 条 gate(6): services/ 新增 *_sync.py 直写表 = FAIL。
+# 宪法 v2 第 6 条: zero_row_policy=fail — 0 行当失败重试, 决不静默落空。
+#
+# 字段语义:
+#   source         数据源 adapter 名 (services/data_sources registry)
+#   api            源 API 名 (tushare pro 接口名)
+#   target_db      database_manifest.yaml 里的库 alias (新域一律 tushare_raw, 与主库写锁解耦)
+#   target_table   raw 表名 (api 字段镜像 + built_at, 不加工 — 加工归特征层)
+#   grain          MERGE 主键 (幂等重跑)
+#   batch_mode     by_trade_date (一次调用全市场一天) / by_ts_code / by_month / full_refresh
+#   pit_anchor     PIT 锚点列 + 可用时刻语义 (特征 JOIN 纪律的机器可读声明)
+#   available_after 盘后可用时刻 (HH:MM, 't+1' = 次日盘前; 决定特征 JOIN t 还是 t-1)
+#   data_start     回填起点 (E8 探底/文档实测)
+#   freshness_sla_trading_days  落后超过 N 交易日 = audit FAIL
+#   min_rows_per_batch  单批最低行数 sanity (低于即可疑, 0 行必重试)
+
+version: 1
+
+defaults:
+  retry:
+    max_attempts: 3
+    backoff_seconds: [5, 30, 120]
+  zero_row_policy: fail
+  watermark_table: mart_data_source_watermark      # 复用 services/source_watermarks
+  failure_queue_table: mart_data_source_failure_queue
+  target_db: tushare_raw
+
+domains:
+  # ── P0-a: 资金流 (套一 L2 + 套二 F1 + 退出组件, 一次回填三用) ──
+  moneyflow:
+    source: tushare
+    api: moneyflow
+    target_table: raw_tushare_moneyflow
+    grain: [ts_code, trade_date]
+    batch_mode: by_trade_date
+    pit_anchor: "trade_date; 盘后更新 (文档未写时点, 按 18:00 保守) -> t 收盘截面特征 JOIN t-1"
+    available_after: "18:00"
+    data_start: "20220104"        # MVP 窗口先 2022+, W3 判决实验前扩 2018 (FINAL P1-c)
+    freshness_sla_trading_days: 1
+    min_rows_per_batch: 4000      # 全市场日行数 ~5200, 低于 4000 可疑
+
+  # ── P0-b: 可执行性真相源 + 情绪温度计 ──
+  limit_list_d:
+    source: tushare
+    api: limit_list_d
+    target_table: raw_tushare_limit_list_d
+    grain: [ts_code, trade_date, limit]
+    batch_mode: by_trade_date
+    pit_anchor: "trade_date; 盘后榜单 (文档未写时点) -> JOIN t-1"
+    available_after: "18:00"
+    data_start: "20200102"        # 文档原文: 数据从 2020 年开始
+    freshness_sla_trading_days: 1
+    min_rows_per_batch: 10        # 跌停冰点日可能极少, 仅防 0 行
+
+  stk_limit:
+    source: tushare
+    api: stk_limit
+    target_table: raw_tushare_stk_limit
+    grain: [ts_code, trade_date]
+    batch_mode: by_trade_date
+    pit_anchor: "trade_date; 8:40 盘前更新 -> t 日盘前即可用 (罕见的当日可用源)"
+    available_after: "08:40"
+    data_start: "20220104"
+    freshness_sla_trading_days: 1
+    min_rows_per_batch: 4000
+
+  stock_st:
+    source: tushare
+    api: stock_st
+    target_table: raw_tushare_stock_st
+    grain: [ts_code, trade_date]
+    batch_mode: by_trade_date
+    pit_anchor: "trade_date; 9:20 盘前更新 -> t 日盘前可用; 历史每日 ST 名单 = PIT universe 过滤真相源"
+    available_after: "09:20"
+    data_start: "20220104"        # 接口支持 2016+, 项目 K 线窗口 2022+ 对齐
+    freshness_sla_trading_days: 1
+    min_rows_per_batch: 50        # ST 股票数量级 100-200
+
+  suspend_d:
+    source: tushare
+    api: suspend_d
+    target_table: raw_tushare_suspend_d
+    grain: [ts_code, trade_date, suspend_type]
+    batch_mode: by_trade_date
+    pit_anchor: "trade_date; 更新'不定期' -> 保守 JOIN t-1"
+    available_after: "t+1"
+    data_start: "20220104"
+    freshness_sla_trading_days: 3  # 停牌公告不是每日必有
+    min_rows_per_batch: 0          # 无停牌日合法 0 行 (zero_row_policy 例外: allow_empty)
+    allow_empty_batch: true
+
+  # ── P0-c: regime gate 原料 (1 行/日, ROI 最高) ──
+  moneyflow_mkt_dc:
+    source: tushare
+    api: moneyflow_mkt_dc
+    target_table: raw_tushare_moneyflow_mkt_dc
+    grain: [trade_date]
+    batch_mode: by_date_range   # 单日 trade_date 参数实测返回空; 范围查询正常 (单次上限 3000 行 > 全史 762)
+    pit_anchor: "trade_date; 盘后更新 -> regime 判定 t 盘后算, 作用于 t+1 (严禁 gate t 日信号)"
+    available_after: "18:00"
+    data_start: "20230417"   # 深样本范围查询实测真实起点 (单日查 20230103 为 0 行)
+    freshness_sla_trading_days: 1
+    min_rows_per_batch: 1
+
+  # ── 基础: 交易日历去 akshare 单点 (用户决策: 能 tushare 就 tushare) ──
+  trade_cal:
+    source: tushare
+    api: trade_cal
+    target_table: raw_tushare_trade_cal
+    grain: [exchange, cal_date]
+    batch_mode: full_refresh       # 小表全量刷
+    pit_anchor: "cal_date; 静态日历, 年度扩展"
+    available_after: "00:00"
+    data_start: "20200101"
+    freshness_sla_trading_days: 30 # 日历覆盖到未来, 滞后语义不同: 检查 max(cal_date) > today+30
+    min_rows_per_batch: 100

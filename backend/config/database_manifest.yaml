@@ -72,4 +72,21 @@ databases:
     table_patterns:
       - fact_feature_panel_candidate*
       - mart_feature_rank_matrix_cache*
+
+  tushare_raw:
+    path: data/tushare_raw.duckdb
+    domain: tushare_raw_mirror
+    owner: sync_runner
+    role: >-
+      TuShare raw api-mirror tables (raw_tushare_*), written only by
+      services/data_sources/sync_runner.py per sync_registry.yaml entries.
+      Separate file = write-lock isolation from smartmoney (2026-06-11 DB
+      management decision: new domains never grow the monolith).
+    default_open_mode: read_write
+    default_attach_mode: read_only
+    online: true
+    status: active
+    retention_class: source_mirror_rebuildable
+    table_patterns:
+      - raw_tushare_*
       - mart_p0a_feature_label_panel*

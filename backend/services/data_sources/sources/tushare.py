@@ -207,6 +207,23 @@ class TuShareSource(BaseDataSource):
 
         raise NotImplementedError(f"tushare does not implement capability '{capability}'")
 
+    def fetch_raw(self, api_name: str, **params) -> list[dict[str, Any]]:
+        """sync_runner 专用通用入口: 按 api 名直调, 返回 api 字段镜像 records.
+
+        与 fetch(capability) 的边界: capability 是策略/probe 面 (带字段归一化),
+        fetch_raw 是 sync 面 (raw 镜像不加工, 加工归特征层 — 架构稿 §3.3)。
+        仅 sync_registry.yaml 驱动的 sync_runner 允许调用。
+        """
+        token = _env_token()
+        try:
+            pro = _pro_api(token)
+        except ImportError as exc:
+            raise RuntimeError(f"tushare package not installed: {exc}") from exc
+        fn = getattr(pro, api_name, None)
+        if fn is None:
+            return _to_records(pro.query(api_name, **_compact_params(**params)))
+        return _to_records(fn(**_compact_params(**params)))
+
     def healthcheck(self) -> Health:
         try:
             _env_token()
