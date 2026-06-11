@@ -15,6 +15,7 @@ Usage:
   scripts/chunkyctl preflight "task description" [scope ...] [--agent-dispatch evidence]
   scripts/chunkyctl audit [--run] [scope ...]
   scripts/chunkyctl map [--check]
+  scripts/chunkyctl data-status [--format json|table]
 
 Examples:
   scripts/chunkyctl doctor --fast
@@ -35,6 +36,7 @@ Notes:
   preflight  = what gates must run before editing a task.
   audit      = scoped post-change checks; add --run to execute them.
   map        = regenerate FEATURE_MAP.md machine-derived feature map; --check = drift gate only.
+  data-status = tushare migration status (registry-driven: landed/never-synced/stale/failures per domain).
 EOF
 }
 
@@ -228,6 +230,9 @@ case "$cmd" in
     ;;
   map)
     PYTHONPATH=backend python backend/scripts/build_feature_map.py "$@"
+    ;;
+  data-status)
+    PYTHONPATH=backend python backend/scripts/data_migration_status.py "$@"
     ;;
   *)
     echo "ERROR: unknown chunkyctl command: $cmd" >&2
