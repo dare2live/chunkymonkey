@@ -1,255 +1,93 @@
-# 项目宪法 — ChunkyMonkey
+# ChunkyMonkey 项目宪法 v2
 
-> 本文件是最高权威. 代码/配置/流程与本文件冲突时, 本文件优先, 代码必须改.
-> 修改本文件需用户明确同意.
+> 生效: 2026-06-11 (用户原话确认 "宪法v2确认"); v1 归档于 analysis/constitution_v1_retired_20260611.md
 
-## 第一条: 真相源
+> 最高权威: 代码/配置/流程与本文件冲突时, 本文件优先, 代码必须改. 修改需用户明确同意.
+> v2 重铸依据: 奥卡姆审计 (76% commit 耗在文档/治理维护, 治理机器自我膨胀; 实战有拦截证据的只有 governance gate + plan_validator + review).
+> 准入铁律: 每条条款必须带一次真实拦截或亏钱反例 (WHY), 否则进不了宪法 — 见第 10 条.
 
-每个判断只有一个真相源. 不允许中间派生表参与业务判断.
+## 第一章 数据红线 (错了直接亏钱)
 
-| 判断 | 唯一真相源 | 禁止 |
+**第 1 条 PIT 零容忍.**
+规则: 时刻 t 的决策只能用 <= t 已知信息 — JOIN 必带 `built_at/as_of <= t`, 盘后数据 (资金流/筹码) 特征取 t-1, 公告类锚 `ann_date` 不是生效日, selector/scoring 只读 `oos_*` 列且 NULL 不许 COALESCE 回 in-sample.
+WHY: stage_opt 全期 MAX(oos_sharpe) 给历史信号用未来 Optuna 结果 → paper_sim "+312%" 假象 (commit 5cc47987).
+验证: pit-audit 5 步 + `backtest_preflight.signal_pit_spotcheck` (截断未来数据重跑, 信号必须消失) + `code_leakage_scan`.
+
+**第 2 条 异常数字双向警报.**
+规则: RankIC>0.3 / sharpe>5 / 胜率>95% / 年化>100% 绝对红线, 相对 baseline 提升 >=50% 同触发 — 先怀疑泄漏后兴奋; 反向同理, 真实市场极值 != 坏数据, 告警阈值先问"物理上可能吗".
+WHY: v3 RankIC "+75% 提升"实为 latest-snapshot + 99.978% sector fallback 双泄漏; 反向反例: 300085 八个精确 20% 连板 +453% 是真行情, 曾被 audit 误判坏数据.
+验证: `governance.enforce_pre_insert` 拒收 + 触发后逐 col 群 ablation; 干净参考系 RankIC 0.011-0.020.
+
+**第 3 条 真相源唯一.**
+规则: 每个判断恰有一个真相源 (在交易=K 线有数据, 交易日=日历, 规则与阈值=YAML); 复制的常量、dataclass 默认值、平行 dim 表 = 第二真相源, 禁止.
+WHY: dim_all_ever_listed 快照比对误标 573 只活跃股为退市; 旧印花税 10bps 在减半 3 年后还活在 default 参数里.
+验证: `data_audit.cross_table_consistency` + 双独立路径 diff==0 互证 (如 cost round-trip vs label 层口径); 成本类 dataclass default-free 强制显式构造.
+
+**第 4 条 Measured not estimated, unknown = NaN.**
+规则: 任何参数/阈值/效果必须能指出"哪段 SQL + 哪个时间窗 + 几行真实历史"测出; 测不出标 unknown, unknown 必须是 NaN 让聚合自动排除, 严禁当 0 参与.
+WHY: `swap_uplift_estimate` 公式估算掩盖了实测 swap 拉低年化 33pp; unknown 当 0.0 被 normalize 成合法值, 稀释 composite 并虚增合格类数 (降级期复查实锤, commit eee23138).
+验证: 写数前四问 (哪段 SQL / 几行历史 / 换 unknown 决策会变吗 / 用户能复现吗) + NaN 行为断言进单测.
+
+## 第二章 基础设施红线 (断流即失明)
+
+**第 5 条 告警必须送达用户.**
+规则: 定时任务必须包 wrapper (失败写 `/tmp/chunkymonkey_ALERT_*.flag` + 系统通知, 成功清 flag), 入口走有 FDA 的 launchd python, 禁止裸 cron; "装了定时任务"不算完成.
+WHY: cron 无 FDA 每天 Operation not permitted 且静默, K 线断流 4+ 交易日无人知晓 (2026-06-11).
+验证: 故意弄失败一次、告警真送达 = 安装完成的唯一标准; session 启动检查 ALERT flag.
+
+**第 6 条 探活走协议层, 0 行当失败.**
+规则: 数据源探活必须发真实协议包收响应 — 代理环境下 TCP connect 恒为 0.00s 假成功, 不作依据; writer 收到 0 行一律当失败入队重试 (<=3 次退避), 不静默落空.
+WHY: Surge 接管全部 TCP 骗过 server 选择逻辑, 真实失败推迟到应用层读超时 (commit 81cbff7f); tushare 网关存在 15s 后 0 行不报错的间歇空响应模式.
+验证: 连保留地址 192.0.2.1 "成功" = 代理接管实锤对照; failure_queue 表有迹可查.
+
+**第 7 条 数据源优先序 (用户 2026-06-11 拍板).**
+规则: tushare 主源 / tdxhub 备源 / miaoxiang 第三 / akshare 仅存量且持续退役; 路由只写在 `data_sources.yaml` capability 表, 新数据域接入只走 `sync_registry.yaml` 条目, 不写每域脚本.
+WHY: tushare 239 接口实测 171 ok 且重叠日 K 线逐行 diff 验证口径一致; akshare 限频+改接口不稳定; 每域手写 sync 脚本是静默失败温床 (18 步覆盖缺口).
+验证: 每 capability 必有 primary+fallback 条目; preflight 扫到 `services/` 新增 `*_sync.py` 直写表 = FAIL.
+
+## 第三章 执行纪律 (跑了白跑就是烧钱)
+
+**第 8 条 不验证不执行, 验证含运行时.**
+规则: 跑批/回测/Optuna 前必过对应 gate (`plan_validator` / `backtest_preflight` / `data_audit` strict), FAIL 必须 raise/exit 阻断, 不许 WARNING 放行; 审计必须覆盖运行时实际加载, 不只查前置条件.
+WHY: 29/34 公式无 search space 白跑 Optuna; DB 有 5206 股 preflight PASS, 但 runner 实际只加载 200 只且全是深主板.
+验证: gate 全部代码化; 运行时 `validate_loaded_stocks` (四板块覆盖 + 80% 比例).
+
+**第 9 条 防发散六 gate.**
+规则: (1) 配置变体只许 base+diff override, 禁全量拷贝 yaml; (2) 建表先在 manifest 注册 grain + "为什么现有表不行"; (3) 禁第二套 driver/selector 引擎目录; (4) 策略分发走注册表, 禁 if-chain 加分支; (5) 对外数字必须 JOIN 到 `fact_sim_run` (status=complete, 含 config_hash+input_snapshot); (6) 新数据域必走 sync_registry.
+WHY: 12 个 paper_sim yaml 全量拷贝 diff 记在注释里 / 推荐表 8 张同语义 / bestchoice 双引擎尸体 / selector 5 分支 if-chain / "+312%" 旁路出数 / 每域脚本静默失败 — 六种发散全都真实发生过.
+验证: `config_divergence_lint` + `database_manifest` cross-check + architecture lint + rule_compliance PATTERNS + handoff run_id 存在性校验 + preflight 路径检查; 没有 gate 的规则 = 等于没立.
+
+**第 10 条 治理自限 (奥卡姆对治理本身生效).**
+规则: 宪法/流程条款准入门槛 = 至少一次真实拦截或亏钱反例; 文档义务收敛到两处 — goal.md (数字+决策+下一步) 与 PROJECT_INDEX 活索引; 工具规格说明书、配置清单表、分层叙事不入宪法.
+WHY: 奥卡姆审计: 76% commit 耗在文档/治理维护而非策略与数据, 治理机器自我膨胀; 同期真正拦住错误的只有 governance gate、plan_validator 和 review.
+验证: 每条款带反例 commit 可考; 季度复审, 12 个月无拦截记录的条款退役进附录.
+
+## 第四章 协作纪律 (多 agent 时代的新坑)
+
+**第 11 条 组间缝隙全局扫.**
+规则: 并行修复按文件分 scope 后, controller 必须亲自做跨组全局扫 (`rg "FROM|JOIN" <泄漏源表>`), 不得只信各组 confirmed_fixed 的并集.
+WHY: 同一泄漏源的多个消费点被切进不同组, 各组都"修完"、合起来仍漏 (2026-06 多 agent 修复工厂实战).
+验证: 修复收尾 checklist 含全局 rg 输出记录; verifier 与 finder 不同盲区交叉 (同模型则同盲).
+
+**第 12 条 降级期产物默认待复审.**
+规则: 模型/verifier 降级期间合入的 PIT 类与默认值类改动, 恢复后必须重审; 代码注释声称的行为不等于实际行为.
+WHY: 降级模型 + 降级 verifier 双盲放过 3 个真问题 (PIT/烧钱/unknown 静默参与), 恢复后复查才抓到 (commit eee23138); "注释写 unknown(0.0)" 验证者就信了 0.0 是 unknown.
+验证: 降级期 commit 打标入清单; 恢复后逐项复查清零才解除标记.
+
+**第 13 条 完成 = 可回溯的真实结果.**
+规则: 完成 = 真实运行产出 + 对应 gate PASS + 数字可沿 `sim_run_id → strategy_id → model_id → formula_id → feature_group → source watermark` 链回溯; py_compile/lint 通过、单分数 improve 都不算完成.
+WHY: LHB fact 没重建就说"完成了"; "+312%" 单分数无 evidence artifact 即噪音.
+验证: 对外引用 KPI 必须有 `fact_sim_run` complete 行 + 三基准 (HS300/等权/不换股) 并排; 旧 validation artifact 只追加不覆盖.
+
+## 附录 A — 退役条款 (v1 → v2)
+
+| v1 条款 | 处置 | 理由 |
 |---|---|---|
-| 股票是否在交易 | K 线有数据 | 快照表/活跃列表/手工标记 |
-| 日期是否交易日 | 交易日历 | 硬编码日期/weekday 推断 |
-| 涨跌停幅度 | `universe_rules.yaml` | 代码 hardcode/多处定义 |
-| 是否 ST | `dim_active_a_stock.stock_name` | 各处自行 LIKE |
-| 交易成本 | `paper_sim_config.yaml` | hardcode 15 bps |
-| 公式参数 | 各公式 `formula_*.yaml` | 代码内默认值 |
-
-**WHY**: dim_all_ever_listed 快照误标 573 只; get_limit_up_pct 两处重复; ST 检查 10+ 处各写各的. 中间层越多, 出错概率越高.
-
-## 第二条: 奥卡姆剃刀
-
-能删的必须删. 删不掉要说明为什么.
-
-- 多一张表 → 多一个 sync 失败点. 必须证明"不建这张表不行".
-- 多一个函数 → 多一个被 bypass 的可能. 必须证明"现有函数改不了".
-- 多一个配置文件 → 多一个不一致的来源. 同类配置合并到一个 YAML.
-- 同一逻辑出现两次 → 立即合并. 不等以后.
-
-**WHY**: 98 处引用 dim_active_a_stock, 42 处 bypass get_active_universe. 冗余就是 bug 的温床.
-
-## 第三条: 模块 + 数据表 + 配置文件
-
-所有功能必须按此模式实现:
-
-```
-config/*.yaml   — 规则和参数 (改参数不动代码)
-services/*.py   — 逻辑模块 (读 config, 查真相源)
-真相源          — 只读 (K线/交易日历)
-dim_* 表        — 仅缓存/映射 (不参与业务判断)
-```
-
-- 新功能: 先写 YAML, 再写模块, 最后连真相源
-- 改参数: 只改 YAML, 不改代码
-- 查数据: 通过模块 API, 不直接 SQL JOIN dim 表
-
-**WHY**: 42 处直接 JOIN dim_active_a_stock 做 universe 过滤, 改一个漏一个. 统一入口才能统一行为.
-
-## 第四条: 分层架构
-
-```
-L0 基础设施  → 交易日历 / K线 / 配置 / 审计
-L1 公式引擎  → 59 公式 + YAML 配置 + search space
-L2 信号处理  → 共振评分 / 画像 / SmartMoney
-L3 策略执行  → 股票池 / 回测 / 交易模型
-L4 展示      → API / 前端
-```
-
-- 每层只依赖下层, 不反向依赖
-- 跨层数据通过函数调用, 不通过直接查表
-- 新模块必须明确属于哪一层
-
-**WHY**: updater.py 5136 行什么都做. 没有分层 = 改哪都可能炸.
-
-## 第五条: 验证前置
-
-不验证不执行. 所有执行动作前必须有对应 gate.
-
-| 动作 | 前置 gate | 不通过 |
-|---|---|---|
-| 写代码 | `scripts/chunkyctl preflight` + `docs/engineering_governance.md` 设计审查 | 停, 不写 |
-| commit | 测试 + 审计工具 | reject |
-| 跑回测 | `backtest_preflight` 8 项 | raise |
-| 跑 provider job | `plan_validator` + `scripts/chunkyctl jobs --family <family> --backend local --input-snapshot <snapshot> --objective <why> --rollback-plan <plan> --gate-evidence <gate>=<artifact>` + artifact contract | exit |
-| 数据 sync 后 | `data_audit` 7 项 | raise (strict) |
-| session 结束 | `session_handoff_audit` | WARNING |
-
-**WHY**: 29/34 无 search space 白跑 provider compute; 200 只全深主板; 573 只误标. 都是没验证就执行.
-
-## 第六条: 审计工具体系
-
-审计不是"跑一下看看", 是基础设施. 每个 gate 有明确的:
-- **输入**: 什么触发它
-- **检查项**: 具体查什么
-- **输出**: PASS/FAIL + 详情
-- **阻断**: FAIL 时怎么拦 (raise / exit / WARNING)
-- **扩展**: 怎么加新检查项
-- **维护**: 谁更新, 什么时候更新
-
-### 6.1 数据审计 (`data_audit.py`)
-
-```
-触发: 每次数据 sync 后自动跑 (daily_update.sh 每步后调)
-位置: backend/services/data_audit.py
-配置: backend/config/data_audit_rules.yaml, 代码只保留 loader/validator/fallback
-
-检查项:
-  kline_completeness    — 逐股票 vs 交易日历, 缺天 = FAIL
-  kline_consistency     — 重复/gap > 5 天 = FAIL
-  board_coverage        — 四板块全覆盖
-  date_range            — 匹配交易日历 max_date
-  volume_sanity         — 无负值无全零
-  smartmoney_freshness  — 关键表新鲜度 vs 交易日历
-  cross_table_consistency — K线股票 vs universe + 误标退市检查
-
-输出: data/reports/data_audit_latest.json
-阻断: strict 模式 raise, warn 模式 log
-扩展: 加新检查 = 加 _check_xxx 函数 + 注册到 run_post_sync_audit
-维护: 新数据源接入时同步加检查项
-```
-
-### 6.2 回测前置审计 (`backtest_preflight.py`)
-
-```
-触发: 每次回测/Optuna/验证前, 在入口函数调 enforce_backtest_preflight()
-位置: backend/services/backtest_preflight.py
-
-检查项:
-  universe_clean        — stock_codes 全在 active universe
-  limit_pct_per_board   — 多板块区分 (不允许全用同一阈值)
-  cost_model            — tx_cost_bps >= 10 (from paper_sim_config.yaml)
-  data_freshness        — K线 max_date vs 交易日历
-  walk_forward          — 必须显式声明模式 (不传 = FAIL)
-  signal_pit_spotcheck  — 截断未来数据重跑, 信号消失 = FAIL
-  code_leakage_scan     — 静态扫 bank 源码 future-index 模式
-
-阻断: raise BacktestPreflightError
-扩展: 加 _check_xxx 函数 + 注册到 run_backtest_preflight
-维护: 新公式/新数据源接入时检查是否需要新检查项
-```
-
-### 6.3 计划验证 (`plan_validator.py`)
-
-```
-触发: Optuna / 参数探索 / provider job 跑批前
-位置: backend/services/bc_absorbed/plan_validator.py
-
-检查项:
-  search_space          — 每个公式有非空 Optuna search space
-  trial_value           — N trials 不是重复跑同参数
-  formula_runnable      — 每个公式能 import + 小数据跑通
-  cost_efficiency       — 成本 vs 产出合理
-  param_scope           — per-stock 属性不在 global search space
-  sample_size_coverage  — 全量 universe (max_stocks=0) + 四板块覆盖
-  output_usable         — 结果有下游消费方
-
-阻断: raise PlanValidationError 或 exit 2
-扩展: 加 _check_xxx 函数 + 注册到 validate_optuna_plan
-维护: 新公式加入时自动被 search_space 检查覆盖
-```
-
-### 6.4 Experiment Job 前置
-
-```
-触发: 任何长时间/花钱的 data_validation / backtest_validation / model_training / parameter_search 前
-位置: `backend/config/experiment_jobs.yaml` + `backend/services/experiment_jobs.py` + `scripts/chunkyctl jobs`
-
-检查项:
-  family_registered     — job family 已在 experiment_jobs.yaml 注册
-  backend_active        — backend 当前 active；planned backend 必须阻断
-  objective             — 目标、命令族、输入快照、输出路径明确
-  cost_and_runtime      — wall time、预算风险、停止条件明确
-  required_gates        — family 声明的 gate 已运行或计划运行
-  artifact_contract     — 输出文件/表/manifest 的 grain、路径、min_rows 明确
-  plan_validator        — 如涉及 Optuna/参数探索，计划验证 PASS
-  data_integrity        — 如涉及数据/训练/回测，数据完整性 gate PASS
-  leakage_scan          — 本地 code leakage scan PASS
-
-阻断: exit 1
-扩展: 加新 backend / family = 更新 experiment_jobs config + service tests + `chunkyctl jobs`
-维护: provider adapter 变更时同步更新 artifact contract 和 gate 测试
-```
-
-### 6.5 Session Handoff (`session_handoff_audit.py`)
-
-```
-触发: session 结束时 (Stop hook) + 下次启动时 (SessionStart hook) + 手动
-位置: scripts/session_handoff_audit.py
-
-检查项:
-  topic_coverage        — commits 提取的主题在 goal.md 中覆盖
-  file_mention          — 新/改 Python 文件在文档中提及
-  human_checklist       — 5 项人工确认 (next step/数字/失败原因/用户指令/能接着干)
-
-阻断: WARNING (advisory, 不阻断)
-扩展: 加新 keyword 模式到 keywords_map
-维护: 每次发现遗漏模式时补充
-```
-
-### 6.6 工程纪律 (`docs/engineering_governance.md` + ChunkyMonkey skills)
-
-```
-触发: 任何代码改动、架构决策、跑批、删除、提交前
-位置: `docs/engineering_governance.md`, `AGENTS.md`,
-     `chunkymonkey-governance`, `chunkymonkey-review-gate`,
-     `scripts/chunkyctl preflight`
-
-检查项:
-  first_principles      — 是否服务可信实盘候选
-  occam                 — 是否能复用/删除/简化
-  owner                 — config/table/service/code exception 是否明确
-  truth_source          — 真相源、cache、evidence 是否分清
-  codegraph_complexity  — CodeGraph 与 complexity optimizer 成对
-  test_tool_validity    — 测试工具是否仍证明当前架构
-
-阻断: controller 判断 + gate 脚本阻断
-扩展: 踩新坑 → 写入 active docs / AGENTS / ChunkyMonkey skill / checker
-维护: 项目内规则优先, 跨项目经验只作为参考
-```
-
-### 6.7 审计体系设计原则
-
-1. **每个 gate 必须有代码实现** — 不靠人记, 靠工具拦
-2. **FAIL 必须阻断** — 不允许 WARNING 然后继续 (除了 handoff audit)
-3. **新增功能 = 新增检查** — 加公式 → plan_validator 自动覆盖; 加数据源 → data_audit 加检查
-4. **审计覆盖运行时** — 不只查前置条件 (DB 有数据), 也查运行时 (runner 实际加载了多少)
-5. **审计结果可追溯** — 写 JSON 报告到 data/reports/, git 跟踪
-
-## 第七条: 完成标准
-
-"完成" = 以下全部满足:
-1. 代码写完 + 测试通过
-2. 审计工具跑过 (data_audit / preflight / plan_validator)
-3. 端到端数据验证 (不只是 import OK, 是结果数字正确)
-4. goal.md 已更新 (含数字/决策/下一步)
-5. 用户能看到/验证结果
-
-缺任何一条 = 没完成. 不说"完成了".
-
-**WHY**: LHB fact 没重建说"完成了"; stage 没更新说"完成了"; handoff 漏 6 项说"完成了".
-
-## 第八条: 教训即规则
-
-踩过的坑自动升级为规则, 写入 active docs、`AGENTS.md`、ChunkyMonkey
-skill 或 checker。
-规则一旦写入, 同类错误不允许再犯. 再犯 = 工具没拦住, 修工具.
-
-**WHY**: 同一个错误 (不验证就执行) 在这个 session 犯了 5 次. 记住不够, 工具拦截才行.
-
-## 第九条: 配置驱动
-
-所有阈值/参数/规则必须在 YAML 配置文件中, 不在代码里.
-
-| 配置文件 | 管什么 |
-|---|---|
-| `universe_rules.yaml` | 板块前缀 + ST + 涨跌停 + 退市天数 |
-| `paper_sim_config.yaml` | 交易成本 + 持仓规则 |
-| `paper_sim_formula.yaml` | 公式策略股票池参数 |
-| `formula_*.yaml` | 各公式参数默认值 |
-| `optuna_config.yaml` | Optuna 治理 (trials/seed/walk-forward) |
-| `experiment_jobs.yaml` | data/backtest/model/search job family + backend + artifact contract |
-
-改参数 = 改 YAML. 改代码 = 改逻辑. 两者分离.
-
-**WHY**: 公式参数 hardcode 导致不能调参; 交易成本 hardcode 15 bps 到处散落.
+| 第四条 L0-L4 分层架构叙事 | 退役, 由六层契约注册制 (architecture_framework_design) 接管 | 分层文字从未拦截过一次错误; 拦截靠注册 yaml + gate, 不靠层次图 |
+| 第六条 6.1-6.6 审计工具说明书 (~130 行规格) | 移出宪法 → 工具 docstring + PROJECT_INDEX | 规格书是 76% 文档 commit 的主力; 宪法只留第 8 条原则, 工具细节随代码走 |
+| 第六条 session_handoff_audit 条款 | 降为普通工具, 不入宪法 | WARNING-only, 零阻断证据, 不满足第 10 条准入门槛 |
+| 第七条 五项完成标准 | 收敛为第 13 条一句话 | 其中 3 项是文档义务, 与第 10 条文档收敛冲突 |
+| 第九条 配置文件清单表 | 移至 PROJECT_INDEX 活索引 | 清单必然过期, 宪法不放会过期的东西; 配置驱动原则并入第 3/9 条 |
+| 第八条 教训即规则 | 并入第 9/10 条验证方式 | 方向正确但无准入门槛, 实际助长了治理条款无证据增生 |
+| 第二条 奥卡姆 (只对代码) | 升级为第 10 条 (对治理本身也生效) | v1 的剃刀只剃代码不剃自己, 结果治理层成了最肥的一层 |
+| 第三条 模块+表+配置模式 | 并入第 9 条 gate (2)(6) | 原则没有 gate 时被 bypass 42 处, 证明叙述无效、gate 有效 |
