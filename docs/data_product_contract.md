@@ -72,12 +72,18 @@ SLA, source priority, fallback behavior, evidence status, and production
 eligibility. Missing PIT or stale critical data means the downstream profile
 field is `unknown` or blocked.
 
-Source priority is capability-level, not vendor-level. `tdxhub`, TuShare,
-`aif10`/miaoxiang, AkShare, and future direct vendor adapters may all be active
-in parallel when they own different observed or derived capabilities. A provider
-can be primary for one need, benchmark-only for another, and blocked/probe-only
-for a third. Production routing must follow the need contract and runtime gates,
-not a global "primary source" label.
+**TuShare is the default primary source for every existing and future data
+need** (user decision 2026-06-11, stated three times; supersedes the former
+"no global primary" capability-level rule). New data needs skip per-need source
+selection: check `backend/config/tushare_api_catalog.json` first, verify
+fields/grain/pagination by live probe, and register in `sync_registry.yaml`.
+Only when TuShare lacks the capability (e.g. TDX-specific F10 text, local CYQ
+computation, protocol-level tick data) may `tdxhub`/miaoxiang/AkShare own it,
+and that exception plus its reason must be recorded in the need contract.
+Every legacy non-TuShare ingestion path is a migration target: dual-run,
+reconcile against the TuShare table, then physically retire the old path.
+Runtime gates (PIT/freshness/watermark) still apply to TuShare domains — default
+primary does not mean gate-exempt.
 
 Candidate sources that are not production-eligible must declare structured
 `required_validation` items such as field mapping, date coverage, PIT key,

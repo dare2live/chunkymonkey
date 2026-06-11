@@ -277,3 +277,34 @@ domains:
     freshness_sla_trading_days: 1
     min_rows_per_batch: 4000  # 全市场日截面 ~5300 只; 同 moneyflow 口径
     allow_empty_batch: false
+
+  # ── K 线主战场 (2026-06-11 用户全量决策: 现有+将来所有数据默认接 tushare) ──
+  # daily(未复权 OHLCV) + adj_factor(复权因子) + daily_basic(估值/换手/股本) = K 线完整三件套。
+  # 消费链切换 (v_price_kline qfq 等) 是独立大手术须 review; 本批先 raw 落库双轨。
+  # data_start 起步 20190102 (覆盖项目全部回测窗+3年缓冲); 需更早历史时改小 data_start,
+  # gap drain 会自动补老缺口 (日历 gap 扫描天然支持向前扩窗)。
+  daily:
+    source: tushare
+    api: daily
+    target_table: raw_tushare_daily
+    grain: [ts_code, trade_date]
+    batch_mode: by_trade_date
+    pit_anchor: "trade_date; 收盘后 15-16 点入库 -> 保守 18:00; 未复权价, 复权用 adj_factor 派生"
+    available_after: "18:00"
+    data_start: "20190102"
+    freshness_sla_trading_days: 1
+    min_rows_per_batch: 4000   # 实测 20260610 = 5512 行; 注意全市场行数距单次上限 6000 仅 ~9%, 超限截断风险年检
+    allow_empty_batch: false
+
+  daily_basic:
+    source: tushare
+    api: daily_basic
+    target_table: raw_tushare_daily_basic
+    grain: [ts_code, trade_date]
+    batch_mode: by_trade_date
+    pit_anchor: "trade_date; 盘后更新 -> JOIN t-1; float_share/free_share 为 CYQ 流通股本输入候选 (替代本地推算)"
+    available_after: "18:00"
+    data_start: "20190102"
+    freshness_sla_trading_days: 1
+    min_rows_per_batch: 4000   # 实测 20260610 = 5512 行
+    allow_empty_batch: false
