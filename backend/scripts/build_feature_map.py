@@ -380,7 +380,7 @@ def main() -> int:
     import datetime
     tracked = tracked_files(REPO)
     d = {
-        "generated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "generated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),  # Phase ψ.5 allowlist: 文档元数据时间戳非 trade_date
         "generated_from": "backend/scripts/build_feature_map.py",
         "chunkyctl": scan_chunkyctl(REPO),
         "launchd": scan_launchd(REPO),

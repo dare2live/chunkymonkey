@@ -350,10 +350,10 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     expected = trading_days if trading_days is not None else _trading_days(
         str(spec["data_start"]).replace("-", ""))
     # 只修"今日之前"的确定性缺口: 当日数据到位时刻由 available_after 管 (多在 18:00),
-    # 17:00 链里 drain 当日必然假失败。today 锚定交易所时区 (复审: 本地 naive 时钟在
-    # 上海以西时区会把北京昨日误当今日多排除一轮)
+    # 17:00 链里 drain 当日必然假失败。这里**不能**用 latest_completed_trade_date —
+    # 它 16:00 截断后会返回今天, 正好defeat本排除 (gate triage 误判: 此处不是 end_date 用途)。
     from zoneinfo import ZoneInfo
-    today = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d")
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d")  # Phase ψ.5 allowlist: 排除当日非 end_date, 防拉未发布数据
     expected = [d for d in expected if d < today]
     own_conn = conn is None
     conn = conn or _target_conn(spec)
