@@ -36,6 +36,15 @@ phase genuinely needs a larger plan.
 最近可信 artifact 均为 2026-05-23 前。正确答案是 `unknown`, 修复路径见
 `docs/implementation_plan.md` Active Repair Plan。
 
+## Strategy Portfolio (2026-06-11 策略锻造定稿)
+
+Owner: `analysis/strategy_portfolio_20260611.md` (三套组合 + 12 周路线图 + 13 条全局纪律件;
+三评委 judge panel 定稿: B 回调增强 8.0 主书 / D v7 排序 7.6 公共增强层 / C 题材扩散 6.0
+降级数据采集)。宪法 v2 草案: `analysis/constitution_v2_draft_20260611.md` (13 条全带反例,
+待用户最终确认后替换 docs/PROJECT_CONSTITUTION.md)。
+当前周: **W1** — E0 双口径收敛 / need_027 余 5 gates / E1 B-V0 零数据分桶 / E7 快照自养 /
+E8 四接口探底 / E4 limit_list_d 等回填。验证期 (W1-W12) 新策略 0 真金白银, 全部 paper_sim 候选态。
+
 ## Current Phase
 
 **Phase:** architecture/data governance foundation before deeper strategy work.
