@@ -4,6 +4,7 @@ uvicorn[standard]>=0.23.0
 httpx>=0.24.0
 akshare>=1.12.0
 tushare>=1.4.0
+modal>=1.5.0       # compute backend (experiment_jobs modal:active, services/compute/modal_adapter.py)
 numpy
 pydantic>=2.0
 PyYAML>=6.0

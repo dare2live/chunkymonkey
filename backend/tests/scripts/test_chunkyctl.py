@@ -247,7 +247,10 @@ def test_jobs_plan_uses_experiment_job_contract(capsys) -> None:
     assert payload["plan"]["artifact_dir"] == "data/reports/experiment_jobs/train_probe"
 
 
-def test_jobs_plan_blocks_planned_modal_backend(capsys) -> None:
+def test_jobs_plan_active_modal_backend_ready_when_complete(capsys) -> None:
+    # 2026-06-11: 取代 test_jobs_plan_blocks_planned_modal_backend.
+    # modal adapter 上线 + status active 后, parameter_search (allowed_backends 含 modal)
+    # 在 input_snapshot/objective/rollback_plan/required gate evidence 齐全时应 ready_to_run.
     rc = chunkyctl.run_jobs(
         Namespace(
             family="parameter_search",
@@ -268,10 +271,11 @@ def test_jobs_plan_blocks_planned_modal_backend(capsys) -> None:
 
     payload = json.loads(capsys.readouterr().out)
 
-    assert rc == 1
-    assert payload["verdict"] == "FAIL"
-    assert payload["plan"]["backend"]["status"] == "planned"
-    assert payload["plan"]["blocked_reasons"] == ["backend_not_active:modal:planned"]
+    assert rc == 0
+    assert payload["verdict"] == "PASS"
+    assert payload["plan"]["backend"]["status"] == "active"
+    assert payload["plan"]["ready_to_run"] is True
+    assert payload["plan"]["blocked_reasons"] == []
 
 
 def test_jobs_plan_blocks_empty_gate_evidence(capsys) -> None:

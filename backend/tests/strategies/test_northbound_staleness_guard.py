@@ -14,6 +14,8 @@ from __future__ import annotations
 import logging
 
 import duckdb
+import numpy as np
+import pandas as pd
 import pytest
 
 from scripts.build_institution_score_daily import _northbound_source_is_stale
@@ -66,9 +68,15 @@ def test_stale_snapshot_yields_unknown_factor(conn, caplog) -> None:
         feats = alpha.get_features("2026-04-13", ["600000"])
 
     row = feats.iloc[0]
-    # Every northbound feature must be unknown (0.0), not the stale snapshot.
+    # northbound_score 必须 NaN (unknown), 不是 0.0 — 否则 compose 会当合格类静默参与 (§4).
+    assert pd.isna(row["northbound_score"]), (
+        f"stale source 的 northbound_score 必须 NaN 让 compose 排除, 实得 {row['northbound_score']}"
+    )
+    # 其余 feature 列不得泄漏 2 年前的快照值
     for col in NorthboundAlpha.FEATURE_COLUMNS:
-        assert row[col] == 0.0, f"{col} leaked stale data: {row[col]}"
+        if col == "northbound_score":
+            continue
+        assert row[col] == 0.0 or pd.isna(row[col]), f"{col} leaked stale data: {row[col]}"
     assert any("stale" in rec.getMessage() for rec in caplog.records), (
         "expected a staleness warning to be logged"
     )
@@ -151,3 +159,31 @@ def test_build_source_stale_detector_passes_fresh_snapshot(conn) -> None:
 def test_build_source_stale_detector_handles_missing_table(conn) -> None:
     # No fact_hsgt_daily at all -> not stale (the source-available gate handles absence).
     assert _northbound_source_is_stale(conn, "2026-04-13") is False
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Fable-5 复查防回退 (2026-06-11): unknown northbound 必须被 compose 完全排除,
+# 不得以 0.0 静默参与 composite / 虚增 n_classes_eligible (§4 反模式)
+# ──────────────────────────────────────────────────────────────────────
+
+def test_unknown_northbound_excluded_from_composite_not_diluting():
+    from scripts.build_institution_score_daily import compose_signal_date_scores
+
+    universe = ["600000", "600001", "600002"]
+    # northbound class: 全 unknown (score=NaN, 模拟 stale source 的 _unknown_features 产出)
+    nb_frame = pd.DataFrame({"stock_code": universe, "northbound_score": [np.nan, np.nan, np.nan]})
+    # lhb class: 有真实分化 score; capital_flow/survey 不提供 (None) → 自然不 eligible
+    lhb_frame = pd.DataFrame({"stock_code": universe, "lhb_score": [1.0, 2.0, 3.0]})
+    out = compose_signal_date_scores(
+        "2026-04-13", universe,
+        {"northbound": nb_frame, "lhb": lhb_frame},  # 默认 CLASS_SPECS
+    )
+    # northbound 全 NaN + capital_flow/survey 缺 → 只有 lhb 1 个合格类
+    assert (out["n_classes_eligible"] == 1).all(), (
+        f"unknown northbound 不得计入 eligible, 实得 {out['n_classes_eligible'].tolist()}"
+    )
+    # composite 应纯由 lhb 决定 (0/0.5/1.0), 不被 northbound 的 0.0 稀释
+    comp = out.sort_values("stock_code")["composite_score"].tolist()
+    assert comp == pytest.approx([0.0, 0.5, 1.0]), (
+        f"composite 被 unknown northbound 稀释: {comp} (应纯 lhb 归一)"
+    )

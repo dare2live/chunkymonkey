@@ -207,6 +207,7 @@ def test_complete_plan_spawns_modal_function_with_manifest() -> None:
     handle = modal_adapter.submit_job(
         "model_training",
         modal_sdk=sdk,
+        dry_run=False,   # explicit: live spawn path under mocked SDK
         **_complete_model_training_kwargs(),
     )
 
@@ -226,6 +227,7 @@ def test_extra_fn_kwargs_are_forwarded_to_spawn() -> None:
     handle = modal_adapter.submit_job(
         "model_training",
         modal_sdk=sdk,
+        dry_run=False,   # explicit: live spawn path under mocked SDK
         fn_kwargs={"n_trials": 100, "seed": 42},
         **_complete_model_training_kwargs(),
     )
@@ -244,6 +246,7 @@ def test_app_name_separate_from_function_name() -> None:
     handle = modal_adapter.submit_job(
         "model_training",
         modal_sdk=sdk,
+        dry_run=False,   # explicit: live spawn path under mocked SDK
         app_name="explicit-app",
         **{**_complete_model_training_kwargs(), "fn_ref": "train_window"},
     )
@@ -271,3 +274,18 @@ def test_fn_ref_without_app_is_rejected() -> None:
             objective="y",
             rollback_plan="z",
         )
+
+
+def test_default_is_dry_run_no_spawn_even_with_complete_plan_and_sdk():
+    """Fable-5 复查防回退: 完整 plan + SDK 在场, 但不传 dry_run → 默认 True 不 spawn.
+
+    防 latent 烧钱: 调用方忘记 dry_run 不会触发付费 modal job.
+    """
+    sdk = _FakeModalSdk()
+    handle = modal_adapter.submit_job(
+        "model_training",
+        modal_sdk=sdk,
+        **_complete_model_training_kwargs(),
+    )
+    assert handle.submitted is False, "默认必须 dry_run, 不得 spawn"
+    assert sdk.function.spawn_calls == [], "默认不传 dry_run 时绝不可触达 SDK spawn"

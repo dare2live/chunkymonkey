@@ -46,21 +46,21 @@ def _bin_label(value, bins):
 
 
 def load_today_rows(conn, signal_date):
-    """加载 signal_date 当日触发 × picture(PIT as-of) × survey × Optuna 寻优.
+    """加载 signal_date 当日触发 × picture(PIT as-of) × survey × Optuna 寻优 (PIT oos_*).
 
-    PIT 约束 (2026-06-11 体检 HIGH 修复):
-      picture JOIN 取每只股 snapshot_date <= signal_date 的最近一张画像 (as-of),
-      不再 `MAX(snapshot_date)` 把最新快照贴给历史 signal_date.
-      若该 signal_date 之前没有画像快照 → 子查询 NULL → fund/archetype/primary_type
-      标 unknown (LEFT JOIN NULL), 绝不注入未来快照.
+    PIT 约束 (2026-06-11 体检 HIGH 修复, 两个维度):
+    1. picture JOIN 取每只股 snapshot_date <= signal_date 的最近一张画像 (as-of),
+       不再 `MAX(snapshot_date)` 把最新快照贴给历史 signal_date; 该日前无快照 →
+       NULL → fund/archetype/primary_type 标 unknown, 绝不注入未来快照.
+    2. 寻优参数/统计改读 PIT 表 mart_per_stock_stage_strategy_optimal_pit 的
+       cutoff_date <= signal_date as-of 行, 统计只取 oos_* — 不再 JOIN legacy
+       in-sample 表 mart_per_stock_strategy_optimal (无 oos_* 列, 全期 fit;
+       其 sharpe/win_rate/n_traded 此前经 6 因子 score→tier 流入 live selector,
+       §4.5 反例同款; Fable-5 复查 2026-06-11 发现的组间 scope 缝隙).
+       PIT 无覆盖 → opt 列全 NULL → factor 标 unknown, 不强用 in-sample 值.
     """
-    # 检测 optimal_buy_offset 列是否存在 (buy_offset 重跑可能进行中)
-    cols = [r[1] for r in conn.execute("DESCRIBE mart_per_stock_strategy_optimal").fetchall()]
-    has_buy_offset = "optimal_buy_offset" in cols
-    buy_offset_sel = "opt.optimal_buy_offset" if has_buy_offset else "1 AS optimal_buy_offset"
-
     return conn.execute(
-        f"""
+        """
         WITH today_signals AS (
           SELECT t.stock_code, t.formula_id, t.formula_variant,
                  c.vol_r20, c.amt_r20, c.price_pos_60d, c.technical_stage
@@ -68,18 +68,36 @@ def load_today_rows(conn, signal_date):
             LEFT JOIN fact_signal_context c
               ON c.stock_code = t.stock_code AND c.date = t.date
            WHERE t.date = ?
+        ),
+        pit_opt AS (
+          -- as-of: 每 (stock, formula, variant) 取 cutoff_date <= signal_date 的
+          -- 最新 cutoff (同 cutoff 多 stage 行取 oos_sharpe 最高), 只要有 OOS 证据的行.
+          SELECT stock_code, formula_id, formula_variant,
+                 holding_days AS optimal_hp,
+                 optimal_stop_pct, optimal_target_pct, optimal_trailing_pct,
+                 oos_sharpe, oos_win_rate, oos_n_traded,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY stock_code, formula_id, formula_variant
+                   ORDER BY CAST(cutoff_date AS DATE) DESC, oos_sharpe DESC
+                 ) AS rn
+            FROM mart_per_stock_stage_strategy_optimal_pit
+           WHERE CAST(cutoff_date AS DATE) <= CAST(? AS DATE)
+             AND oos_sharpe IS NOT NULL
+             -- audit fix: 剔除异常值 (winsorize, oos 口径: |ret|<=50%, stop>=-50%, |sharpe|<=10)
+             AND abs(COALESCE(oos_avg_ret, 0)) <= 0.5
+             AND optimal_stop_pct >= -0.5
+             AND abs(oos_sharpe) <= 10
         )
         SELECT ts.stock_code, ts.formula_id, ts.formula_variant,
                ts.vol_r20, ts.amt_r20, ts.price_pos_60d, ts.technical_stage,
                p.fundamental_stage, p.stock_archetype, p.primary_type,
                sf.survey_bin, sf.survey_count_60d,
                opt.optimal_hp, opt.optimal_stop_pct, opt.optimal_target_pct,
-               opt.optimal_trailing_pct, {buy_offset_sel},
-               opt.sharpe, opt.win_rate, opt.n_traded
+               opt.optimal_trailing_pct, 1 AS optimal_buy_offset,
+               opt.oos_sharpe AS sharpe, opt.oos_win_rate AS win_rate,
+               opt.oos_n_traded AS n_traded
           FROM today_signals ts
-          -- PIT as-of (2026-06-11 体检 HIGH 修复): 历史 --date 不得贴最新画像快照.
-          -- 取每只股 snapshot_date <= signal_date 的最近一张画像; 若该日之前无快照,
-          -- 子查询返回 NULL → fund/archetype/primary_type 标 unknown, 不注入未来.
+          -- PIT as-of: 历史 --date 不得贴最新画像快照.
           LEFT JOIN mart_stock_picture_daily p
             ON p.stock_code = ts.stock_code
            AND p.snapshot_date = (
@@ -90,17 +108,14 @@ def load_today_rows(conn, signal_date):
                )
           LEFT JOIN mart_stock_survey_features sf
             ON sf.stock_code = ts.stock_code AND sf.as_of_date = ?
-          LEFT JOIN mart_per_stock_strategy_optimal opt
+          LEFT JOIN pit_opt opt
             ON opt.stock_code = ts.stock_code
            AND opt.formula_id = ts.formula_id
            AND opt.formula_variant = ts.formula_variant
-           -- audit fix: 剔除异常值 (winsorize: |ret|≤50%, dd≥-50%, |sharpe|≤10)
-           AND (opt.avg_ret IS NULL OR abs(opt.avg_ret) <= 0.5)
-           AND (opt.avg_max_dd IS NULL OR opt.avg_max_dd >= -0.5)
-           AND (opt.sharpe IS NULL OR abs(opt.sharpe) <= 10)
+           AND opt.rn = 1
         """,
-        # 顺序: t.date / picture as-of <= / sf.as_of_date — 三处都是 signal_date.
-        [signal_date, signal_date, signal_date],
+        # 顺序: t.date / pit_opt cutoff <= / picture as-of <= / sf.as_of_date — 四处都是 signal_date.
+        [signal_date, signal_date, signal_date, signal_date],
     ).fetchall()
 
 

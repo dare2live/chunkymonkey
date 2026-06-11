@@ -68,14 +68,27 @@ class NorthboundAlpha:
         if self._own_conn:
             self.conn.close()
 
+    def _unknown_features(self, universe: list[str] | None) -> pd.DataFrame:
+        """source 缺失/过期时的 unknown frame: score 列 = NaN, 不是 0.0.
+
+        2026-06-11 Fable-5 复查修正: 旧版返回 empty_features (全 0.0). 但 0.0 在
+        compose_signal_date_scores 里被 normalize 成 0.0 (notna), _prepare_class_frame
+        当作合格类计入 eligible_norm_cols, 稀释 composite_score + 虚增 n_classes_eligible
+        (§4 "unknown 当 0 偷偷参与" 反模式). 把 score 列设 NaN 后, normalize valid=False
+        → norm NaN → 该类被 compose 完全排除 (不参与均值, 不计 eligible).
+        """
+        frame = empty_features(universe, self.FEATURE_COLUMNS)
+        frame["northbound_score"] = np.nan
+        return frame
+
     def get_features(self, signal_date, universe: list[str] | None = None) -> pd.DataFrame:
         signal = normalize_signal_date(signal_date)
         if not table_exists(self.conn, "fact_hsgt_daily"):
-            return empty_features(universe, self.FEATURE_COLUMNS)
+            return self._unknown_features(universe)
         if self._is_stale(signal, universe):
-            # Deprecated source past freshness budget: emit unknown (0.0) rather
-            # than silently feeding a ~2-year-old snapshot into the live score.
-            return empty_features(universe, self.FEATURE_COLUMNS)
+            # Deprecated source past freshness budget: emit unknown (score=NaN) so the
+            # class is EXCLUDED from the composite, never a silent 2-year-old 0.0 vote.
+            return self._unknown_features(universe)
         features = self._features(signal, universe)
         features = complete_universe(features, universe, self.FEATURE_COLUMNS[:-1])
         features["northbound_score"] = self._score(features)

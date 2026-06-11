@@ -201,7 +201,7 @@ def submit_job(
     artifact_path: str | None = None,
     contract: ExperimentJobContract | None = None,
     modal_sdk: Any | None = None,
-    dry_run: bool = False,
+    dry_run: bool = True,   # fail-safe: 默认不真花钱; 调用方必须显式 dry_run=False 才 spawn 付费 job
     now: datetime | None = None,
     fn_kwargs: dict[str, Any] | None = None,
 ) -> ModalJobHandle:
@@ -213,8 +213,11 @@ def submit_job(
          and that ``modal`` is an allowed + active backend for the family.
       2. If the plan is blocked -> raise ``ModalSubmissionBlocked`` (no SDK call).
       3. Build the artifact manifest (pure).
-      4. ``dry_run`` -> return handle with manifest, no SDK call.
-      5. Otherwise look up the Modal app + function via the SDK and ``spawn`` it.
+      4. ``dry_run`` (DEFAULT True, fail-safe) -> return handle with manifest, no SDK call.
+      5. Only when caller EXPLICITLY passes ``dry_run=False`` -> look up the Modal
+         app + function via the SDK and ``spawn`` it (real, paid). The True default
+         means a forgotten flag never burns budget (modal is installed locally, so
+         the SDK-missing guard alone is not a money fail-safe — this default is).
 
     The Modal SDK is only touched in step 5, so steps 1-4 are fully testable
     without credentials. Tests inject ``modal_sdk`` (a fake) to assert step 5
