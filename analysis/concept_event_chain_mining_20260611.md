@@ -72,9 +72,18 @@
 
 ## 4. 行动项
 
-| # | 动作 | 前置 |
-|---|---|---|
-| 1 | `tdx_index`/`tdx_member`/`kpl_concept_cons` 三域加入 sync_registry (历史按日回填) | chain1/2 队列完成后追加, 避免 gateway 并发上限 2 互踩 |
-| 2 | `fact_concept_event` 生成器 + observed/reconstructed 双模式 | 概念域落库 |
-| 3 | measured 实验: 概念诞生后 N 日超额 + member_add 股 forward 分布 | #2 |
-| 4 | 四源投票边 → industry_chain.yaml 候选区 (人工审核入谱) | #2, Serenity 集成 W5 |
+| # | 动作 | 前置 | 状态 |
+|---|---|---|---|
+| 1 | `tdx_index`/`tdx_member`/`kpl_concept_cons` 三域加入 sync_registry (历史按日回填) | chain 队列完成后追加, 避免 gateway 并发上限 2 互踩 | 待 |
+| 2 | `fact_concept_event` 生成器 + observed/reconstructed 双模式 | 概念域落库 | **完成 (build_concept_events.py, 6 单测)** — dc 源相邻快照 diff, raw=reconstructed/parquet=observed, event_date=后一快照日 (PIT) |
+| 3 | measured 实验: 概念诞生后 N 日超额 + member_add 股 forward 分布 | #2 + dc_member 历史落库 (chain2 回填中) | 待数据 |
+| 4 | 四源投票边 → industry_chain.yaml 候选区 (人工审核入谱) | #2, Serenity 集成 W5 | 待 |
+
+## 互动易直抓 (L2 关系边): 接口未实证, 暂不进生产 (2026-06-11)
+
+调研结论: 深交所 irm.cninfo.com.cn 存活但前端 JS 渲染, 浅层无 RESTful JSON 端点; 上证
+sns.sseinfo.com/ircs 返回 404。真实 XHR API 大概率需 cookie/referer/token。tushare
+irm_qa_sz/sh premium 本账号无权限 (实测)。**PIT 锚 = answer_date (回答发布日), 非
+question_date** (提问不保证含实质信息)。设计草案 (raw_irm_qa grain=qa_id, httpx 礼貌
+限频 2s) 已备, 但**接口路径未实证 = 不写生产代码** (诚实边界, 不靠推断 schema 上线)。
+下一步: 浏览器开发者工具抓真实 XHR 端点后再实现, 或评估第三方已封装库的合规性。
