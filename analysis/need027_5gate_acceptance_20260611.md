@@ -18,16 +18,19 @@ post-probe gate。
 | freshness_sla | `freshness_sla_trading_days: 1` + update_watermark_sla.py registry 驱动探测 | SLA dry-run 实测 sync:* 域入审计 (NEVER_SYNCED/DB_LOCKED 等显式状态) |
 | writer | sync_runner `_write_batch` MERGE on grain (DELETE 同 grain + INSERT, 幂等) | **raw_tushare_moneyflow 4,229,537 行** |
 | watermark | `_record_outcome` → upsert_watermark | **mart_data_source_watermark `sync:moneyflow` last_data_date=20260611 row_count=4,229,537** |
-| failure_queue_resolution | record_source_failure + drain_domain + resolve_source_failures | failure_queue `sync:moneyflow` 上午轮闭环实测: 10:43 失败 record open → 12:14 完整轮 ok → resolved (入队→解决机制跑通)。**修正 (Fable-5 复查)**: 初版误把该 resolved 行当"下午轮 29 终败已解决"的证据 — 实际下午轮 29 终败的 record 未生效 (已立诊断 task), 29 日缺口待 drain 按日历 gap 自动补 (drain 不依赖 queue, 正是该设计的兜底价值) |
+| failure_queue_resolution | record_source_failure + drain_domain + resolve_source_failures | **两轮闭环实测 (时间全北京时; DB 存 UTC, 读数须 +8h)**: 第一轮 backfill 15:10-18:43 共 830 批 29 终败 → 18:43 record open (UTC 10:43); chain 脚本幂等补跑第二轮 18:43-20:14 共 830 批全成功 4,229,537 行 → 20:14 upsert watermark + resolve (UTC 12:14)。29 缺口日已由第二轮补齐 (二轮行数 = 一轮 4,081,288 + 缺口 148,249 精确自洽) |
 
-## 关键运行时实证 (2026-06-11; Fable-5 复查修正版)
+## 关键运行时实证 (2026-06-11; Fable-5 复查二次修正 — 最终版)
 
-- moneyflow 全市场回填: raw 表 4.08M+ 行 (下午轮 829/830 批), watermark 行为上午轮
-  12:14 状态 (4.22M/20260611 — 该行含上午轮口径疑点, 见诊断 task)
-- 失败闭环机制实测 (上午轮): 失败 record open → 完整轮 ok → resolved, 入队-解决可审计
-- **复查发现并立案**: 下午轮 `_record_outcome` 未生效 (watermark/queue 都停在 12:14,
-  但 run_domain log 正常) + run_domain `ok` 宽松判定与 record 的严格判定双标 —
-  29 个终败日期缺口当前未补, 由 drain 日历 gap 扫描兜底 (不依赖 queue)
+- moneyflow 两轮回填闭环 (北京时): 第一轮 15:10-18:43 共 830 批 29 终败 →
+  record open; 脚本幂等补跑第二轮 18:43-20:14 共 830 批全成 4,229,537 行 →
+  watermark 20260611 + queue resolved。29 缺口日已补 (行数差 148,249 精确自洽)。
+- 复查过程乌龙记录 (留作教训): 初次复查把 DB 的 UTC 时间戳 (10:43/12:14) 误读为
+  北京上午, 虚构"上午轮"与"record 静默失效", 一度把正确结论改错; 第二次修正以
+  `datetime.now(timezone.utc)` 源码 + 实验行时间戳为证还原。**读 watermark/queue
+  时间戳必须 +8h 转北京时** — 已沉淀 mythos。
+- 仍保留的真问题 (Task #14 缩窄): run_domain 日志 `'ok': True` 在 29 批失败时仍打
+  True (宽松判定) 与 _record_outcome 的严格判定双标, 日志有误导性, 待小修。
 - 其余 sync 域同机制落库: dc_member 2.71M / stk_limit 5.76M / stock_st 123K /
   limit_list_d 104K / trade_cal 13K
 - 当前 open 失败 (可见非静默): limit_cpt_list / moneyflow_ind_dc 各 1 (回填中/待 drain)

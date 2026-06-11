@@ -1,4 +1,10 @@
-"""Source-domain watermarks for data freshness and fallback visibility."""
+"""Source-domain watermarks for data freshness and fallback visibility.
+
+时间戳口径警示 (2026-06-12 复查乌龙教训): 本模块所有时间戳列
+(first_seen_at/last_seen_at/resolved_at/last_success_at/updated_at) 存
+`datetime.now(timezone.utc)` — 人读必须 +8h 转北京时, 直接当本地时间读
+会把晚间事件误判成上午 (曾因此虚构出不存在的"record 静默失效"事故)。
+"""
 from __future__ import annotations
 
 import hashlib

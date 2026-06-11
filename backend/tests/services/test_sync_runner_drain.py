@@ -204,3 +204,24 @@ def test_fetch_paged_without_page_limit_passthrough():
             return [{"i": 9}]
 
     assert sr._fetch_paged(OneShot(), spec, {"trade_date": "20200101"}) == [{"i": 9}]
+
+
+def test_run_domain_ok_strict_any_failure_is_not_ok(monkeypatch):
+    """复查 #14: 任一批失败 result['ok'] 必须 False — 旧宽松口径掩盖过 29 批失败."""
+    reg = _registry()
+    conn = connect(":memory:")
+    adapter = FakeAdapter({
+        "20200101": [{"ts_code": "000001.SZ", "trade_date": "20200101", "val": 1.0}],
+        "20200102": [],  # zero_row_policy=fail → 终败
+    })
+    recorded = {}
+    monkeypatch.setattr(sr, "_adapter", lambda name: adapter)
+    monkeypatch.setattr(sr, "_target_conn", lambda spec: conn)
+    monkeypatch.setattr(sr, "_trading_days", lambda start, end=None: ["20200101", "20200102"])
+    monkeypatch.setattr(sr, "_last_watermark_date", lambda d, s: None)
+    monkeypatch.setattr(sr, "_record_outcome",
+                        lambda spec, **kw: recorded.update(kw))
+    r = sr.run_domain("demo", backfill=True, registry=reg)
+    assert r["failed_batches"] == 1
+    assert r["ok"] is False           # 严格: 不许部分成功伪装 ok
+    assert recorded["ok"] is False    # 与 record 判定统一 (消双标)

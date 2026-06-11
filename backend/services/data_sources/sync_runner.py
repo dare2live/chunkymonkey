@@ -316,8 +316,10 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
     finally:
         conn.close()
 
-    ok = not failed or (total_rows > 0 and len(failed) < len(batches))
-    _record_outcome(spec, ok=len(failed) == 0, last_date=last_ok_date,
+    # 严格判定: 任一批失败即非 ok — 旧宽松口径 (部分成功=True) 使日志 'ok': True
+    # 掩盖 29 批失败 (Fable-5 复查 #14 双标问题); 与 _record_outcome 判定统一
+    ok = len(failed) == 0
+    _record_outcome(spec, ok=ok, last_date=last_ok_date,
                     rows=total_rows, error=json.dumps(failed[:5]) if failed else None)
     result = {"domain": domain, "batches": len(batches), "rows": total_rows,
               "failed_batches": len(failed), "last_date": last_ok_date, "ok": ok}
