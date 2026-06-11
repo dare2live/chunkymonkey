@@ -70,6 +70,15 @@ fatal() {
     exit 1
 }
 
+# degraded 级失败: 继续跑, 但必须送达 (宪法第 5 条; Platform Runtime Contract 失败分级).
+# 旧 || log "WARN" 吞错继续是 external_attention 14 天断流无人知的根因链第一环.
+DEGRADED_FLAG="/tmp/chunkymonkey_ALERT_daily_update_degraded.flag"
+step_degraded() {
+    log "DEGRADED: $*"
+    # || true: flag 写失败 (如 /tmp 满) 不能把 degraded 升级成链中断 (set -e 上下文)
+    echo "[$(date '+%F %T')] $*" >> "$DEGRADED_FLAG" || true
+}
+
 run_backtest_validation_gate() {
     log "Running backtest_validation pre-flight gate"
     PYTHONPATH=backend python - <<'PY' >> "$LOG" 2>&1
@@ -87,6 +96,8 @@ PY
 
 log "=== ChunkyMonkey daily update ${DATE} ==="
 log "  dry=$DRY skip_sync=$SKIP_SYNC"
+# 每次链起跑清前日 degraded flag — 本次跑完仍存在 = 本次产生的真实降级
+rm -f "$DEGRADED_FLAG"
 
 # Step 0: experiment job contract sanity (provider-neutral)
 log "--- Step 0: experiment job contract ---"
@@ -115,15 +126,16 @@ if ! PYTHONPATH=backend python backend/scripts/update_watermark_sla.py \
     sla_exit=$?
 fi
 if [[ "$sla_exit" == "2" ]]; then
-    log "WARN: watermark SLA alert (见 data/audit/watermark_sla_${DATE}.json)"
+    step_degraded "watermark SLA alert (见 data/audit/watermark_sla_${DATE}.json)"
 elif [[ "$sla_exit" != "0" ]]; then
-    log "ERROR: watermark SLA check failed (exit $sla_exit) — 继续推进 Step 2 sync"
+    # 复审 MEDIUM: 检查器本身 crash 比检查出 alert 更该送达 (旧版严重度倒挂只 log)
+    step_degraded "watermark SLA 检查器 crash (exit $sla_exit) — SLA 体系失明"
 fi
 
 # 1b. K-line continuity preflight
 if [[ -f "backend/scripts/preflight_panel_build.py" ]]; then
     if ! PYTHONPATH=backend python backend/scripts/preflight_panel_build.py >> "$LOG" 2>&1; then
-        log "WARN: K-line preflight failed, gap or freshness 问题"
+        step_degraded "K-line preflight failed, gap or freshness 问题"
     fi
 fi
 
@@ -144,9 +156,14 @@ if [[ "$SKIP_SYNC" == "0" ]]; then
             sync_exit=$?
         fi
         log "tdxhub sync exit $sync_exit"
+        # 复审 HIGH: K 线是全链最关键路径, 失败必须送达 — 旧版只 log 即丢弃,
+        # 恰好复刻"断流 4+ 日无人知"的当天静默 (用 if 不用 &&, 防 set -e 误杀)
+        if [[ "$sync_exit" != "0" ]]; then
+            step_degraded "tdxhub K线 sync exit $sync_exit (链继续但 K 线可能 stale)"
+        fi
         # HS300 benchmark
         PYTHONPATH=backend python backend/scripts/sync_hs300_benchmark_kline.py \
-            >> "$LOG" 2>&1 || log "WARN: HS300 sync 失败 (非 fatal)"
+            >> "$LOG" 2>&1 || step_degraded "HS300 sync 失败 (非 fatal)"
     else
         log "DRY: skip actual sync"
     fi
@@ -189,7 +206,7 @@ log "alpha158 max stale: ${ALPHA158_STALE_DAYS} days"
 if [[ "$ALPHA158_STALE_DAYS" -gt 3 && "$DRY" == "0" ]]; then
     log "alpha158 > 3d stale, 跑全量 rebuild (~12 sec on Mac)"
     PYTHONPATH=backend python backend/scripts/build_alpha158_duck.py --start 2023-01-01 >> "$LOG" 2>&1 || \
-        log "WARN: alpha158 rebuild failed"
+        step_degraded "alpha158 rebuild failed"
 else
     log "alpha158 fresh (≤3d stale) 跳过 rebuild"
 fi
@@ -198,7 +215,7 @@ fi
 if [[ "$SKIP_SYNC" == "0" ]]; then
     if [[ "$DRY" == "0" ]]; then
         log "--- Step 2d: LHB event sync ---"
-        PYTHONPATH=backend python - <<'PYEOF' >> "$LOG" 2>&1 || log "WARN: LHB event sync 失败"
+        PYTHONPATH=backend python - <<'PYEOF' >> "$LOG" 2>&1 || step_degraded "LHB event sync 失败"
 import asyncio, duckdb, json
 from routers.updater import _step_sync_lhb
 conn = duckdb.connect("data/smartmoney.duckdb")
@@ -211,7 +228,7 @@ PYEOF
         log "--- Step 2e: risk factors sync ---"
         # rule-compliance: ok evidence=signature-fix-2026-05-19 (Codex patch a85ca8c9 误传 mkt_conn,
         # calc_risk_factors 只接 conn + kwargs, 修)
-        PYTHONPATH=backend python - <<'PYEOF' >> "$LOG" 2>&1 || log "WARN: risk factors sync 失败"
+        PYTHONPATH=backend python - <<'PYEOF' >> "$LOG" 2>&1 || step_degraded "risk factors sync 失败"
 import duckdb
 from services.risk_factors import calc_risk_factors
 conn = duckdb.connect("data/smartmoney.duckdb")
@@ -223,23 +240,23 @@ PYEOF
 
         log "--- Step 2f: sector momentum PIT backfill ---"
         PYTHONPATH=backend python backend/scripts/backfill_sector_momentum_history.py \
-            >> "$LOG" 2>&1 || log "WARN: sector momentum PIT backfill 失败"
+            >> "$LOG" 2>&1 || step_degraded "sector momentum PIT backfill 失败"
 
         log "--- Step 2g: capital flow PIT backfill ---"
         PYTHONPATH=backend python backend/scripts/backfill_capital_flow_pit.py \
-            >> "$LOG" 2>&1 || log "WARN: capital flow PIT backfill 失败"
+            >> "$LOG" 2>&1 || step_degraded "capital flow PIT backfill 失败"
 
         log "--- Step 2h: sniper/institution score marts ---"
         PYTHONPATH=backend python backend/scripts/build_sniper_score_daily.py \
-            >> "$LOG" 2>&1 || log "WARN: sniper score mart build 失败"
+            >> "$LOG" 2>&1 || step_degraded "sniper score mart build 失败"
         PYTHONPATH=backend python backend/scripts/build_institution_score_daily.py \
-            >> "$LOG" 2>&1 || log "WARN: institution score mart build 失败"
+            >> "$LOG" 2>&1 || step_degraded "institution score mart build 失败"
 
         # 2026-05-21 加: institution_survey aif10 sync (修 lag 6d alert)
         # 之前不在 daily_update sync 范围 → watermark SLA 持续 alert
         # 实测 sync: written=3920 raw, mart=3805 rows
         log "--- Step 2i: institution_survey aif10 sync ---"
-        PYTHONPATH=backend python - <<'PYEOF' >> "$LOG" 2>&1 || log "WARN: institution_survey sync 失败"
+        PYTHONPATH=backend python - <<'PYEOF' >> "$LOG" 2>&1 || step_degraded "institution_survey sync 失败"
 from services.duck_adapter import connect as duck_connect
 from services.institution_survey_client import sync_institution_surveys
 conn = duck_connect("data/smartmoney.duckdb")
@@ -254,7 +271,7 @@ PYEOF
         # 阻塞 Perception P3 主题扩到概念 + P5 LeaderFollower 扩历史. tdxhub block 无历史 API,
         # 唯一路径自建 daily snapshot 累积. tdx_industry_client.py 已在 sync 时自动追加历史表.
         log "--- Step 2j: tdx_industry sync (累积 PIT 历史 for Perception P3/P5) ---"
-        PYTHONPATH=backend python - <<'PYEOF' >> "$LOG" 2>&1 || log "WARN: tdx_industry sync 失败"
+        PYTHONPATH=backend python - <<'PYEOF' >> "$LOG" 2>&1 || step_degraded "tdx_industry sync 失败"
 import asyncio
 from services.duck_adapter import connect as duck_connect
 from routers.updater import _step_sync_industry
@@ -273,7 +290,7 @@ PYEOF
         # (memory feedback-data-sync-silent-failure). sync 函数 external_attention.py:387 现成, 纯没接线.
         # append-only PIT 关注度/调研, 每拖一天永久丢一天历史.
         log "--- Step 2k: external_attention snapshot (累积 PIT 关注度/调研) ---"
-        PYTHONPATH=backend python - <<'PYEOF' >> "$LOG" 2>&1 || log "WARN: external_attention sync 失败"
+        PYTHONPATH=backend python - <<'PYEOF' >> "$LOG" 2>&1 || step_degraded "external_attention sync 失败"
 from services.duck_adapter import connect as duck_connect
 from services.external_attention import sync_external_attention_snapshot
 conn = duck_connect("data/smartmoney.duckdb")
@@ -297,13 +314,23 @@ PYEOF
             log "--- Step 2m: forecast_upside live shadow mart (same PIT snapshot) ---"
             PYTHONPATH=backend python backend/scripts/compute_forecast_upside_live.py \
                 --snapshot-date "$FORECAST_SNAPSHOT_DATE" >> "$LOG" 2>&1 \
-                || log "WARN: forecast_upside live mart refresh 失败"
+                || step_degraded "forecast_upside live mart refresh 失败"
         else
-            log "WARN: profit_forecast sync 失败; skip forecast_upside live mart"
+            step_degraded "profit_forecast sync 失败; skip forecast_upside live mart"
         fi
     else
         log "DRY: skip Step 2d-2m satellite syncs"
     fi
+fi
+
+# Step 2.95: sync_registry 域日历 gap 重放 = 增量 + 修洞统一机制 (终败/漏跑/历史空洞)
+# drain 只拉今日之前的确定性缺口 (当日数据多在 18:00 到位, runner 内置排除当日;
+# 昨日数据在今天 17:00 这里落库, 正好赶上 panel 构建的 JOIN t-1 语义)。
+# 回填链占写锁期间会显式 error → degraded 送达, 不静默; 回填完成后自动恢复。
+if [[ "$SKIP_SYNC" == "0" && "$DRY" == "0" ]]; then
+    log "--- Step 2.95: sync_registry drain (gap 重放即增量) ---"
+    PYTHONPATH=backend python -m services.data_sources.sync_runner --all-due --drain --max-dates 30 \
+        >> "$LOG" 2>&1 || step_degraded "sync_registry drain 有残余缺口或域错误 (见 log)"
 fi
 
 # Step 3: Label / panel rebuild (增量)
@@ -325,23 +352,23 @@ if [[ "$DRY" == "0" ]]; then
     log "--- Step 3-pre: 三件套增量 (signal_context / technical_trigger / macd_state) ---"
     PYTHONPATH=backend python backend/scripts/build_signal_context.py \
         --start 2025-01-01 --write-start "$REBUILD_START" \
-        >> "$LOG" 2>&1 || log "WARN: signal_context 增量 rebuild 失败"
+        >> "$LOG" 2>&1 || step_degraded "signal_context 增量 rebuild 失败"
     PYTHONPATH=backend python backend/scripts/build_formula_signals_history.py \
         --start 2025-01-01 --write-start "$REBUILD_START" \
-        >> "$LOG" 2>&1 || log "WARN: technical_trigger (formula signals) 增量 rebuild 失败"
+        >> "$LOG" 2>&1 || step_degraded "technical_trigger (formula signals) 增量 rebuild 失败"
     PYTHONPATH=backend python backend/scripts/build_macd_state_history.py \
         --start "$REBUILD_START" \
-        >> "$LOG" 2>&1 || log "WARN: macd_state 增量 rebuild 失败"
+        >> "$LOG" 2>&1 || step_degraded "macd_state 增量 rebuild 失败"
 
     # 3a. Label panel 增量 (写 mart_p0a_label_panel)
     PYTHONPATH=backend python backend/scripts/rebuild_p0a_label_panel.py \
         --start-date "$REBUILD_START" --end-date "$REBUILD_END" \
-        >> "$LOG" 2>&1 || log "WARN: label panel rebuild 失败"
+        >> "$LOG" 2>&1 || step_degraded "label panel rebuild 失败"
 
     # 3b. v4 panel 增量 (Codex 2.1 完会改 v6 panel)
     PYTHONPATH=backend python backend/scripts/build_p0a_feature_panel_v4.py \
         --start-date "$REBUILD_START" --end-date "$REBUILD_END" \
-        >> "$LOG" 2>&1 || log "WARN: v4 panel rebuild 失败"
+        >> "$LOG" 2>&1 || step_degraded "v4 panel rebuild 失败"
 
     log "panel incremental rebuild done"
 
@@ -358,7 +385,7 @@ print(f'data_audit: {n_pass} PASS, {n_fail} FAIL')
 for c in checks:
     if c['status'] != 'PASS':
         print(f'  FAIL: {c[\"name\"]}: {c[\"detail\"][:60]}')
-" >> "$LOG" 2>&1 || log "WARN: data_audit 失败"
+" >> "$LOG" 2>&1 || step_degraded "data_audit 失败"
 else
     log "DRY: skip rebuild"
 fi
@@ -441,7 +468,7 @@ PYEOF
     ENSEMBLE_OUT="data/reports/msaf_ensemble_${DATE}.json"
     PYTHONPATH=backend python backend/scripts/run_msaf_ensemble_paper_sim.py \
         --compute-kpi --horizon 20d \
-        --output-json "$ENSEMBLE_OUT" >> "$LOG" 2>&1 || log "WARN: MSAF ensemble paper_sim 失败"
+        --output-json "$ENSEMBLE_OUT" >> "$LOG" 2>&1 || step_degraded "MSAF ensemble paper_sim 失败"
     # Pull key KPI
     KPI_SUMMARY=$(PYTHONPATH=backend python -c "
 import json
@@ -458,7 +485,7 @@ except Exception as e:
     # 5c. BestChoice Phase 6 daily ensemble (V4 + BC rank-combined) — 2026-05-22 added
     log "--- 5c. BestChoice Phase 6 daily ensemble V4+BC ---"
     PYTHONPATH=backend python backend/scripts/run_daily_ensemble_v4_bc.py \
-        --top-k 5 >> "$LOG" 2>&1 || log "WARN: BC daily ensemble 失败 (V4 OOS 边界 or BC sparse)"
+        --top-k 5 >> "$LOG" 2>&1 || step_degraded "BC daily ensemble 失败 (V4 OOS 边界 or BC sparse)"
     # Pull last ensemble picks summary
     BC_ENSEMBLE_SUMMARY=$(PYTHONPATH=backend python -c "
 import sys
@@ -476,7 +503,7 @@ except Exception as e:
     # 5d. v7 forward deploy monitor — 2026-05-23 Option 4 deploy
     log "--- 5d. v7 forward deploy monitor ---"
     PYTHONPATH=backend python backend/scripts/monitor_v7_forward.py >> "$LOG" 2>&1 \
-        || log "WARN: v7 forward monitor 失败"
+        || step_degraded "v7 forward monitor 失败"
     V7_MONITOR_STATUS=$(PYTHONPATH=backend python -c "
 import json
 try:
@@ -490,7 +517,7 @@ except Exception as e:
     # 5e. v7 daily forward inference — 2026-05-24 操作可交付状态
     log "--- 5e. v7 daily forward inference (top-10 picks) ---"
     PYTHONPATH=backend python backend/scripts/run_daily_v7_inference.py --top-k 10 >> "$LOG" 2>&1 \
-        || log "WARN: v7 daily inference 失败"
+        || step_degraded "v7 daily inference 失败"
     V7_PICKS_SUMMARY=$(PYTHONPATH=backend python -c "
 from services.duck_adapter import connect
 try:
@@ -513,7 +540,7 @@ log "--- Step 6: PBO/DSR/conservative gate (Phase 4 真调) ---"
 GATE_OUT="data/reports/phase4_gate_result.json"
 if [[ "$DRY" == "0" ]]; then
     PYTHONPATH=backend python backend/scripts/run_phase4_gate_on_msaf.py \
-        --output-json "$GATE_OUT" >> "$LOG" 2>&1 || log "[gate] WARN: phase4 gate runner exit non-zero (见 $LOG)"
+        --output-json "$GATE_OUT" >> "$LOG" 2>&1 || step_degraded "phase4 gate runner exit non-zero (promote 已默认阻断, 见 $LOG)"
     # 读 verdict
     VERDICT=$(PYTHONPATH=backend python -c "
 import json
@@ -778,7 +805,7 @@ REPORT_MD="data/reports/daily_${DATE}.md"
 if PYTHONPATH=backend python backend/scripts/gen_report.py --format markdown --output "$REPORT_MD" >> "$LOG" 2>&1; then
     log "Markdown report written: $REPORT_MD"
 else
-    log "WARN: markdown report generation failed"
+    step_degraded "markdown report generation failed"
 fi
 
 if PYTHONPATH=backend python - "$REPORT_JSON" >> "$LOG" 2>&1 <<'PYEOF'
@@ -803,9 +830,19 @@ PYEOF
 then
     log "Alerts present; dispatching notification"
     PYTHONPATH=backend python -m backend.services.notification.dispatcher --report "$REPORT_JSON" >> "$LOG" 2>&1 || \
-        log "WARN: notification dispatch failed"
+        step_degraded "notification dispatch failed"
 else
     log "No notification alerts"
+fi
+
+# degraded 汇总送达: flag 仍在 = 本次有降级步, 推送通知 (链 exit 0 不经 wrapper 告警, 必须自己送)
+if [[ -f "$DEGRADED_FLAG" ]]; then
+    n_degraded=$(wc -l < "$DEGRADED_FLAG" | tr -d ' ')
+    log "DEGRADED SUMMARY: 本次 $n_degraded 步降级 (明细 $DEGRADED_FLAG):"
+    tee -a "$LOG" < "$DEGRADED_FLAG"
+    osascript -e "display notification \"daily_update ${n_degraded} 步降级, 详见 ALERT flag\" with title \"ChunkyMonkey degraded\"" 2>/dev/null || true
+else
+    log "degraded: 0 步"
 fi
 
 log "=== daily_update DONE ==="

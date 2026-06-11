@@ -296,6 +296,86 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
     return result
 
 
+def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
+                 conn=None, adapter=None, trading_days: list[str] | None = None,
+                 max_dates: int | None = None, record: bool = True) -> dict[str, Any]:
+    """日历 gap 重放 — 应有交易日 − raw 表实有日期 = 缺口, 逐日重拉.
+
+    真相源 = 交易日历 + target_table 本身 (宪法第 1 条), 不依赖 failure_queue 中间
+    记录 — queue 按 (域,源,错误类型) 聚合不存日期, 且漏拉/调度漏跑/历史空洞它
+    根本看不见。gap 扫描三类全覆盖。
+
+    仅支持 by_trade_date 域 (缺口语义 = 缺整天); 其他 batch_mode 显式返回
+    unsupported, 不静默跳过。allow_empty_batch 域的"重查确认空"与终败分开报。
+    conn/adapter/trading_days/record 可注入 (单测); 生产路径全走真相源。
+    """
+    reg = registry or load_registry()
+    spec = _domain_spec(reg, domain)
+    if spec.get("batch_mode") != "by_trade_date":
+        return {"domain": domain, "status": "unsupported", "batch_mode": spec.get("batch_mode")}
+    expected = trading_days if trading_days is not None else _trading_days(
+        str(spec["data_start"]).replace("-", ""))
+    # 只修"今日之前"的确定性缺口: 当日数据到位时刻由 available_after 管 (多在 18:00),
+    # 17:00 链里 drain 当日必然假失败。today 锚定交易所时区 (复审: 本地 naive 时钟在
+    # 上海以西时区会把北京昨日误当今日多排除一轮)
+    from zoneinfo import ZoneInfo
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d")
+    expected = [d for d in expected if d < today]
+    own_conn = conn is None
+    conn = conn or _target_conn(spec)
+    table = spec["target_table"]
+    refilled_rows, confirmed_empty, still_failed = 0, [], []
+    actual: set[str] = set()
+    min_rows = int(spec.get("min_rows_per_batch", 0))
+    allow_empty = bool(spec.get("allow_empty_batch"))
+    # "完整日"口径 = 行数达 min_rows 的日; 不足日视同缺口重拉 (MERGE 幂等, 重拉安全)。
+    # 复审 HIGH: 旧版 DISTINCT 把 vendor 截断批 (在表但残缺) 当完整, 会洗白 run_domain
+    # 标记的 suspect 日且永无重拉机制。allow_empty 域不设行数门槛。
+    threshold = 0 if allow_empty else min_rows
+    try:
+        has_table = conn.execute(
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?", [table]
+        ).fetchone()[0]
+        if has_table:
+            actual = {str(r[0]).replace("-", "")
+                      for r in conn.execute(
+                          f'SELECT trade_date FROM "{table}" GROUP BY 1 HAVING COUNT(*) >= ?',
+                          [threshold]).fetchall()}
+        gap = [d for d in expected if d not in actual]
+        truncated = max_dates is not None and len(gap) > max_dates
+        # 截断取最新优先 (gap 升序取尾部): backlog 超限时昨日数据必须先落地
+        # (复审: 最老优先会让永败日卡住头部名额, 最新数据永远轮不到)
+        todo = gap if max_dates is None else gap[len(gap) - min(max_dates, len(gap)):]
+        if todo:
+            adapter = adapter or _adapter(spec["source"])
+        for d in todo:
+            rows = _fetch_with_retry(adapter, spec, {"trade_date": d})
+            if rows is None:
+                still_failed.append(d)
+            elif rows:
+                refilled_rows += _write_batch(conn, spec, rows)
+                if min_rows and not allow_empty and len(rows) < min_rows:
+                    still_failed.append(d)  # 截断批: 写入 (聊胜于无) 但不算修好, 下轮仍在 gap
+                time.sleep(0.4)  # rule-compliance: ok evidence=同 run_domain 节流口径 vendor-gateway-2026-06-11
+            else:
+                confirmed_empty.append(d)  # allow_empty 域确认空日: 不写表, 下次 drain 重查 (1 次 API 成本)
+    finally:
+        if own_conn:
+            conn.close()
+    status = "clean" if not gap else ("drained" if not still_failed and not truncated else "partial")
+    result = {"domain": domain, "status": status, "expected_days": len(expected),
+              "gap_days": len(gap), "refilled_days": len(todo) - len(still_failed) - len(confirmed_empty),
+              "refilled_rows": refilled_rows, "confirmed_empty_days": len(confirmed_empty),
+              "still_failed": still_failed[:20], "truncated": truncated}
+    if record:  # 送达 (宪法第 5 条): 仍有缺口 → 记 failure; 清干净 → resolve
+        _record_outcome(spec, ok=status in ("clean", "drained"),
+                        last_date=max(actual | set(todo)) if (actual or todo) else None,
+                        rows=refilled_rows,
+                        error=json.dumps({"drain_still_failed": still_failed[:10]}) if still_failed else None)
+    log.info("drain %s", result)
+    return result
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
     parser = argparse.ArgumentParser()
@@ -304,12 +384,33 @@ def main() -> int:
     parser.add_argument("--backfill", action="store_true", help="从 data_start 全量回填")
     parser.add_argument("--start", default=None, help="覆盖起始日 YYYYMMDD")
     parser.add_argument("--end", default=None, help="覆盖结束日 YYYYMMDD")
+    parser.add_argument("--drain", action="store_true",
+                        help="日历 gap 重放 (by_trade_date 域): 应有交易日 − 实有 = 缺口逐日重拉")
+    parser.add_argument("--max-dates", type=int, default=None, help="drain 单域单次重拉日数上限 (限流边界)")
     args = parser.parse_args()
 
     reg = load_registry()
     domains = list(reg["domains"]) if args.all_due else ([args.domain] if args.domain else [])
     if not domains:
         parser.error("--domain 或 --all-due 必选其一")
+
+    if args.drain:
+        results = []
+        for d in domains:
+            try:
+                res = drain_domain(d, registry=reg, max_dates=args.max_dates)
+                if res.get("status") == "unsupported" and res.get("batch_mode") in ("by_date_range", "full_refresh"):
+                    # 非按日域无 gap 语义 → 直接增量 run_domain (单次调用, 成本极低)。
+                    # 复审 HIGH: drain-only 接线下这些域否则零自动同步 = 静默停更同型复发。
+                    # by_ts_code (如 fina_mainbz ~5300 股调用) 仍显式 unsupported, 归专门调度。
+                    res = run_domain(d, registry=reg)
+                    res["mode"] = "incremental_fallback"
+                results.append(res)
+            except Exception as exc:  # noqa: BLE001 — 单域异常 (如写锁被占) 不挡其余域, 显式入结果非静默
+                results.append({"domain": d, "status": "error", "error": str(exc)[:200]})
+        print(json.dumps(results, ensure_ascii=False, indent=1))
+        bad = any(r.get("status") in ("partial", "error") or r.get("failed_batches") for r in results)
+        return 1 if bad else 0
 
     results = [run_domain(d, backfill=args.backfill, start=args.start, end=args.end, registry=reg)
                for d in domains]
