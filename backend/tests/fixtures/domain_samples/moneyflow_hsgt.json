@@ -1,0 +1,19 @@
+{
+ "domain": "moneyflow_hsgt",
+ "api": "moneyflow_hsgt",
+ "grain": [
+  "trade_date"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "trade_date": "20230103",
+   "ggt_ss": "3121.04",
+   "ggt_sz": "1129.18",
+   "hgt": "-2135.0",
+   "sgt": "1490.0",
+   "north_money": "-645.0",
+   "south_money": "4250.22"
+  }
+ ]
+}

@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-06-11 16:49:17 CST
+**Snapshot 时间**: 2026-06-12 10:00:25 CST
 
 ## 主线状态
 
@@ -44,28 +44,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `33bb8e58 feat: Serenity 方法论锻造 + TuShare catalog 模块化 + 金股 measured 验证` |
-| 最近 24h commits | 21 |
-| 未 commit 文件 | 0 |
+| HEAD | `e9758a9b feat: modal 计算面实弹打通 — CYQ 全市场复算函数 deploy 常驻` |
+| 最近 24h commits | 39 |
+| 未 commit 文件 | 3 |
 
 ### 最近 10 commits
 
 ```
-33bb8e58 feat: Serenity 方法论锻造 + TuShare catalog 模块化 + 金股 measured 验证
-16e770f7 feat: fina_mainbz 主营构成接入 + by_ts_code 批模式 (产业链 L1 数据底座) + hook 词边界修正
-c90197a6 feat: E1 B-V0 资金流分桶实测 — 倒 U 型发现, L2 gate 设计修订
-30225692 feat: sync_registry 数据域接入范式落地, 首个生产域回填实测通过
-a532fa28 feat: W1 启动 — E0 双口径收敛 + E9 伪 rank 陷阱入册 + E7 概念快照自养上线 + E8 探底判决
-666a114b docs: 宪法 v2 正式生效 (用户确认 2026-06-11)
-ffd7741c docs: 策略锻造定稿 — 三套组合 + 12 周路线图 + 宪法 v2 草案
-1afd7ff2 fix: K线 denormal 停牌行三层修复 + audit 口径两处修正, audit 链转绿
-219f6af3 docs: persist user vision hologram + blind-spot analysis
-81cbff7f fix: tdxhub 断流根因修复 — Surge 代理接管 TCP, server 探活改协议层握手实测池
+e9758a9b feat: modal 计算面实弹打通 — CYQ 全市场复算函数 deploy 常驻
+3ad48346 feat: 34G 拆分执行完成 — smartmoney 36.1G 紧缩至 19.3G, validation 全 PASS
+a0bf931e feat: 三决议落地 — codex review 强制解除 + C0 实验脚本 + 34G 回收提级 P0
+5094728e docs: alpha 组合矩阵定稿 — 16 设计经三轴评审, 4 run_first 带执行序
+e8b9a8c0 feat: 筹码胜率 cyq_perf 注册排队 + 34G 库死表先行处置与拆分 runbook
+7d7a1105 test: 复查问题系统性根治 — 按根因四 Phase, suite 红海清零恢复信号价值
+adac636a test: 复查二次修正 — UTC 时区乌龙还原真相 + run_domain ok 双标改严格
+3da900cb fix: Fable-5 复查降级期工作 — 概念事件字段方向反 + 验收文档引用错 两个实质问题
+8093a72d test: 数据迁移状态仪表盘 chunkyctl data-status — '数据基建做好了么'可执行答案
+09dfc56f docs: 宪法 v2 确认状态落实到 artifact — 消除 goal.md stale '草案待确认'措辞
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**run startup checks first — scripts/chunkyctl doctor --fast; prioritize data_health blocking_yellow, then stage-opt structural blocker / need_027 blocked-gap triage**
+**3 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 
