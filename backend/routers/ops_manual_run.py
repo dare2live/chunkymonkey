@@ -31,16 +31,9 @@ MANUAL_JOBS: dict[str, dict[str, Any]] = {
         "extra_flags": ["/tmp/chunkymonkey_ALERT_daily_update_degraded.flag"],
         "label": "每日数据更新链 (K线/因子/信号/审计 全链, 约 40-60 分钟)",
     },
-    "concept_snapshot": {
-        "argv": [
-            str(_PY),
-            str(_REPO / "backend" / "scripts" / "snapshot_concept_daily.py"),
-        ],
-        "pattern": "snapshot_concept_daily.py",
-        "log": "/tmp/chunkymonkey_concept_snapshot.log",
-        "extra_flags": [],
-        "label": "概念成分快照自养 (E7 已退役, 按需手动; dc 系历史可从 tushare 回拉)",
-    },
+    # concept_snapshot (E7) 2026-06-13 物理摘除: 实测 20260610/11 两份快照均 8000 行整
+    # 截断 (真实日量 ~90k), observed 事件全是伪影; dc 系历史 tushare 可随时回拉, 快照
+    # 是冗余中间层 — 留可点按钮 = 误导 (产物入 fact_concept_event 污染 LF 实验面)。
     "tdx_pool_refresh": {
         "argv": [
             str(_PY),
