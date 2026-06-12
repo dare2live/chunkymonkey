@@ -51,7 +51,7 @@ domains:
     batch_mode: by_trade_date
     pit_anchor: "trade_date; 盘后榜单 (文档未写时点) -> JOIN t-1"
     available_after: "18:00"
-    data_start: "20200102"        # 文档原文: 数据从 2020 年开始
+    data_start: "20230103"        # 2026-06-12: 对齐实际落库防 drain 开闸 (文档支持 2020 起, B 书 W6 需要时回填再改回 20200102)
     freshness_sla_trading_days: 1
     min_rows_per_batch: 10        # 跌停冰点日可能极少, 仅防 0 行
 
@@ -127,7 +127,8 @@ domains:
     batch_mode: by_trade_date
     pit_anchor: "trade_date; 概念成分按日快照, 成员漂移敏感 — 特征 JOIN as-of t-1"
     available_after: "18:00"
-    data_start: "20250102"   # E8 探底实测 (更早单日无数据)
+    data_start: "20250102"   # E8 探底实测 (更早单日无数据, 2026-06-12 复核一致)
+    page_limit: 5000         # 2026-06-12: catalog 单次上限 5000 实锤; 无分页曾静默截断 (整 8000/5000 pin, 754 概念单日仅见 27-354)
     freshness_sla_trading_days: 2
     min_rows_per_batch: 1000
 
@@ -140,6 +141,7 @@ domains:
     pit_anchor: "trade_date; 板块指数行情, 盘后 -> JOIN t-1"
     available_after: "18:00"
     data_start: "20250102"   # E8 探底实测
+    page_limit: 5000         # 2026-06-12: catalog 单次上限 5000, 与 dc_member 同防截断
     freshness_sla_trading_days: 2
     min_rows_per_batch: 100
 
@@ -153,7 +155,7 @@ domains:
     available_after: "18:00"
     data_start: "20240102"   # E8 探底实测
     freshness_sla_trading_days: 2
-    min_rows_per_batch: 200
+    min_rows_per_batch: 50   # 2026-06-12 修正: 2024-2025 年初实测 86 行/日 (仅行业板块) 为合法全量, 原 200 误配致 drain 永不收敛
 
   limit_cpt_list:
     source: tushare
@@ -197,7 +199,7 @@ domains:
     batch_mode: by_trade_date
     pit_anchor: "trade_date; 龙虎榜盘后公布 -> JOIN t-1"
     available_after: "18:00"
-    data_start: "20050104"   # 文档 2005 年起; 回填首跑按单日口径校准
+    data_start: "20180102"   # 2026-06-12 范围决策: chain9 回填 2018-2022; 2005-2017 归 chain10 (LHB 判正条件触发, 原值 20050104)
     freshness_sla_trading_days: 2
     min_rows_per_batch: 20   # 实测 20260610 = 95 行; 龙虎榜常态 60-150
     allow_empty_batch: false
@@ -211,7 +213,7 @@ domains:
     page_limit: 1000          # 实测单页 1000 整上限; runner offset 分页拉全 (中间页败=整批重试)
     pit_anchor: "trade_date; 龙虎榜席位明细盘后公布 -> JOIN t-1"
     available_after: "18:00"
-    data_start: "20050104"    # 与 top_list 同窗; 回填首跑校准
+    data_start: "20180102"    # 与 top_list 同窗 (2026-06-12 范围决策, 原值 20050104)
     freshness_sla_trading_days: 2
     min_rows_per_batch: 1
     allow_empty_batch: true   # 个别日仅游资席位无机构明细, 合法空 (走增量 fallback 非 drain)
@@ -287,9 +289,9 @@ domains:
     batch_mode: by_trade_date
     pit_anchor: "trade_date; 盘前 9:15-20 当日复权因子入库 -> 当日可用 (唯一盘前可用域)"
     available_after: "09:20"
-    data_start: "20050104"   # 复权主源全史窗; 回填首跑校准
+    data_start: "20190102"   # 2026-06-12 范围决策: 对齐 daily (LHB forward 窗+缓冲, 原值 20050104 全史与 chain10 同议)
     freshness_sla_trading_days: 1
-    min_rows_per_batch: 4000  # 全市场日截面 ~5300 只; 同 moneyflow 口径
+    min_rows_per_batch: 3000  # 2019 年截面 ~3700 只 (chain9 跑前 grill 抓的白跑级误配, 原 4000 按 2026 年 5512 标定)
     allow_empty_batch: false
 
   # ── K 线主战场 (2026-06-11 用户全量决策: 现有+将来所有数据默认接 tushare) ──
@@ -307,7 +309,7 @@ domains:
     available_after: "18:00"
     data_start: "20190102"
     freshness_sla_trading_days: 1
-    min_rows_per_batch: 4000   # 实测 20260610 = 5512 行; 注意全市场行数距单次上限 6000 仅 ~9%, 超限截断风险年检
+    min_rows_per_batch: 3000   # 2019 年截面 ~3700 只 (2026-06-12 grill 修正, 原 4000); 全市场行数距单次上限 6000 仅 ~9%, 超限截断风险年检
     allow_empty_batch: false
 
   daily_basic:
@@ -332,7 +334,7 @@ domains:
     batch_mode: by_trade_date
     pit_anchor: "trade_date; 每日筹码及胜率盘后更新 -> JOIN t-1; winner_rate + cost_5/15/50/85/95pct + weight_avg 实测在录; C0 黑箱审计 20260612 FAIL (J1 spearman 0.8972<0.95 / J2 8.53pp>5 / J3 0.072<0.99) -> winner_rate 疑似未复权坐标口径 (J3 实现缺陷致未确证), 与本地 qfq CYQ 不可直接互换, 消费前必须口径换算或弃用; evidence=analysis/c0_cyq_audit_20260612.json"
     available_after: "18:00"
-    data_start: "20180102"   # 文档口径 2018 起; 回填首跑探底校准. 实际落库 min=20230103 (被 dim_trading_calendar 起点 2023-01-03 静默 clamp, 2018-2022 段待日历扩展决策后补)
+    data_start: "20230103"   # 2026-06-12: 筹码轴 C0 FAIL 冻结, 对齐实际落库防 drain 开闸; 2018-2022 补样并入 cyq_chips 口径对照结论处置 (文档口径原值 20180102)
     freshness_sla_trading_days: 1
     min_rows_per_batch: 4000  # 实测 20260610 = 5512 行; 距单次上限 6000 仅 ~8%, 超限截断风险年检 (同 daily)
     allow_empty_batch: false

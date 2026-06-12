@@ -78,6 +78,56 @@ def _smartmoney_conn():
     return get_conn()
 
 
+def _warn_if_clamped(domain: str, start_d: str, days: list[str]) -> None:
+    """回填/增量起点早于交易日历首日 = 更早段被静默 clamp — 必须显式可见.
+
+    反例 (CLAUDE.md §4.5, 2026-06-12): registry data_start=20050104 被日历起点
+    2023-01-03 clamp, top_list 等 2005-2022 全军未落零告警; 验收必须按落库
+    min(trade_date) 对账 data_start, 不是"跑完没报错"。
+    """
+    first = days[0] if days else None
+    if first is not None and start_d < first:
+        log.warning(
+            "domain=%s 起点 %s 早于交易日历首日 %s — 更早段被日历 clamp 不会拉取; "
+            "落库验收按 min(trade_date) 对账 data_start",
+            domain, start_d, first,
+        )
+    elif not days:
+        log.warning("domain=%s 请求窗口起点 %s 在交易日历内零交易日", domain, start_d)
+
+
+def _by_ts_code_batches(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    """按股循环批清单 (单股接口如 fina_mainbz); 股票清单真相源 = K 线近 45 日活跃 code.
+
+    smartmoney 连接默认不挂 market 库 — 2026-06-12 chain7 step3 实测 Binder Error
+    (fina_mainbz 0 行回填, 确定性 bug); ATTACH 范式同 services/risk_factors.py。
+    """
+    from services.database_manifest import get_database_manifest
+
+    fixed = dict(spec.get("fixed_params") or {})
+    market_path = get_database_manifest().path_for("market")
+    conn0 = _smartmoney_conn()
+    try:
+        conn0.execute(f"ATTACH IF NOT EXISTS '{market_path}' AS market (READ_ONLY)")
+        codes = [r[0] for r in conn0.execute(
+            """
+            SELECT DISTINCT code FROM market.price_kline_tdxhub
+            WHERE freq='daily' AND CAST(date AS DATE) >= current_date - INTERVAL 45 DAY
+            """
+        ).fetchall()]
+    finally:
+        conn0.close()
+
+    def _ts(code: str) -> str | None:
+        if code.startswith("6"):
+            return f"{code}.SH"
+        if code.startswith(("0", "3")):
+            return f"{code}.SZ"
+        return None  # 北交所/异常前缀不在 universe
+
+    return [{"ts_code": t, **fixed} for c in sorted(codes) if (t := _ts(c))]
+
+
 def _trading_days(start: str, end: str | None = None) -> list[str]:
     """交易日列表 (YYYYMMDD), 真相源 = 项目交易日历 (L0)."""
     from services.utils import latest_completed_trade_date
@@ -287,25 +337,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
             conn0.close()
         batches = [{"start_date": start_d, "end_date": end_d}]
     elif spec["batch_mode"] == "by_ts_code":
-        # 按股循环 (单股接口如 fina_mainbz); 股票清单真相源 = K 线近 30 日活跃 code (宪法第 3 条)
-        fixed = dict(spec.get("fixed_params") or {})
-        conn0 = _smartmoney_conn()
-        try:
-            codes = [r[0] for r in conn0.execute(
-                """
-                SELECT DISTINCT code FROM market.price_kline_tdxhub
-                WHERE freq='daily' AND CAST(date AS DATE) >= current_date - INTERVAL 45 DAY
-                """
-            ).fetchall()]
-        finally:
-            conn0.close()
-        def _ts(code: str) -> str | None:
-            if code.startswith("6"):
-                return f"{code}.SH"
-            if code.startswith(("0", "3")):
-                return f"{code}.SZ"
-            return None  # 北交所/异常前缀不在 universe
-        batches = [{"ts_code": t, **fixed} for c in sorted(codes) if (t := _ts(c))]
+        batches = _by_ts_code_batches(spec)
     elif spec["batch_mode"] == "by_trade_date":
         if backfill:
             start_d = start or spec["data_start"]
@@ -313,6 +345,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
             wm = _last_watermark_date(domain, spec["source"])
             start_d = start or wm or spec["data_start"]
         days = _trading_days(start_d, end)
+        _warn_if_clamped(domain, start_d, days)
         # 增量模式跳过 watermark 当天 (已写过)
         if not backfill and len(days) > 1 and days[0] == (start or _last_watermark_date(domain, spec["source"]) or ""):
             days = days[1:]
