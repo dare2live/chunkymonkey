@@ -50,3 +50,8 @@ data/reports/session_snapshot.json
 analysis/workflow_checkpoint.json
 data/concept_snapshots/
 data/archive/
+
+# 本地会话工具链不入 git (INDEX 0611 约定; settings.json 是唯一在册例外)
+.claude/launch.json
+.claude/preview-server.js
+.claude/skills/
