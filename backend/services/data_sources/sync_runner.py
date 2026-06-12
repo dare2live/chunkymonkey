@@ -184,13 +184,39 @@ def _fetch_paged(adapter, spec: dict[str, Any], params: dict[str, Any]) -> list[
         return _fetch_with_retry(adapter, spec, params)
     all_rows: list[dict[str, Any]] = []
     offset = 0
+    prev_page: list[dict[str, Any]] | None = None
     for _ in range(50):  # 50 页 × page_limit 远超任何单日真实量, 防御性边界
         page = _fetch_with_retry(adapter, spec, {**params, "limit": limit, "offset": offset})
         if page is None:
             return None  # 中间页失败不交部分结果
+        if offset == 0 and len(page) > limit:
+            # 首页行数 > limit = 网关无视 limit 直接给全量 (top_inst 实测 1231 > 1000),
+            # 收下即完整数据, 不烧第二发探页
+            log.info("网关无视 limit 返回全量 n=%d > %d, 单页收齐 domain=%s params=%s",
+                     len(page), limit, spec["domain"], params)
+            return page
+        # 相同页守卫 (2026-06-12 实测): vendor 网关可能同时无视 limit/offset, 每页返回
+        # 相同全量 (top_inst 20180112 四种参数组合均返回同样 1231 行) — 旧逻辑会把相同页
+        # 叠加 50 次后整批判失败 (86 天 x 50 调用白烧实证)。
+        if prev_page is not None and page and prev_page and (
+            len(page) == len(prev_page)
+            and page[0] == prev_page[0]
+            and page[-1] == prev_page[-1]
+        ):
+            if len(page) % limit == 0:
+                # 行数恰为 limit 整倍数 + offset 失效 = 无法区分 "全量" 与 "网关硬截断",
+                # fail-closed 判失败 (dc_member 整 5000 pin 反例: 接受即静默截断)
+                log.warning("分页相同页且行数整倍数, 疑网关截断+offset 失效 domain=%s params=%s n=%d",
+                            spec["domain"], params, len(page))
+                return None
+            # 行数非整倍数 = 网关返回的就是全量 (limit 也被无视), 首页即完整数据
+            log.info("网关 offset 失效但返回全量 (n=%d 非 %d 整倍数), 取首页 domain=%s params=%s",
+                     len(page), limit, spec["domain"], params)
+            return prev_page
         all_rows.extend(page)
         if len(page) < limit:
             return all_rows
+        prev_page = page
         offset += limit
         time.sleep(0.4)  # rule-compliance: ok evidence=同 run_domain 节流口径 vendor-gateway-2026-06-11
     log.warning("分页超 50 页防御上限 domain=%s params=%s", spec["domain"], params)

@@ -78,3 +78,51 @@ def test_registry_surgery_contract_20260612():
     assert d["adj_factor"]["data_start"] == "20190102"
     assert d["cyq_perf"]["data_start"] == "20230103"
     assert d["limit_list_d"]["data_start"] == "20230103"
+
+
+class _PagedAdapter:
+    """模拟 vendor 网关的三种分页病理."""
+
+    def __init__(self, pages):
+        self.pages = pages
+        self.calls = 0
+
+    def fetch_raw(self, api_name, **params):
+        idx = min(self.calls, len(self.pages) - 1)
+        self.calls += 1
+        return self.pages[idx]
+
+
+def _paged_spec():
+    return {"domain": "demo", "api": "demo", "page_limit": 3,
+            "retry": {"max_attempts": 1, "backoff_seconds": [0]}}
+
+
+def _rows(n, tag):
+    return [{"ts_code": f"{tag}{i}", "v": i} for i in range(n)]
+
+
+def test_fetch_paged_gateway_ignores_limit_returns_full(monkeypatch):
+    # 首页 5 行 > limit 3 = 网关无视 limit 给全量 → 单页收齐, 只烧 1 发
+    monkeypatch.setattr(sr.time, "sleep", lambda s: None)
+    ad = _PagedAdapter([_rows(5, "a")])
+    out = sr._fetch_paged(ad, _paged_spec(), {"trade_date": "20180112"})
+    assert len(out) == 5 and ad.calls == 1
+
+
+def test_fetch_paged_identical_page_nonmultiple_takes_first(monkeypatch):
+    # offset 失效 + 行数恰为 limit 整倍数 → 无法区分全量与截断, 必须 fail-closed
+    monkeypatch.setattr(sr.time, "sleep", lambda s: None)
+    page3 = _rows(3, "c")
+    ad = _PagedAdapter([page3, page3])
+    out = sr._fetch_paged(ad, _paged_spec(), {"trade_date": "20180112"})
+    assert out is None  # 整倍数 + offset 失效 = 疑截断, 拒收 (dc_member 整 5000 pin 反例)
+    assert ad.calls == 2  # 不再烧到 50 页
+
+
+def test_fetch_paged_real_pagination_still_works(monkeypatch):
+    # 真分页: 两页不同, 末页短 → 正常拼接
+    monkeypatch.setattr(sr.time, "sleep", lambda s: None)
+    ad = _PagedAdapter([_rows(3, "p1"), _rows(2, "p2")])
+    out = sr._fetch_paged(ad, _paged_spec(), {"trade_date": "20180112"})
+    assert len(out) == 5 and ad.calls == 2
