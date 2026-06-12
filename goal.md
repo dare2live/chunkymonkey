@@ -48,8 +48,8 @@ Owner: `analysis/strategy_portfolio_20260611.md` (三套组合 + 12 周路线图
 | 轨道 | 资源 | 内容 | 状态 |
 |---|---|---|---|
 | A 存储 | smartmoney IO | 34G 拆分完成但出回归: COPY FROM DATABASE 丢 315 约束/348 索引 → 两轮整改 (06-12 15:34 收口: 164 张 upsert 目标表 PK 全量恢复, 冒烟 6/6 PASS, 终态 24G); 反例与 validation v2 见 `analysis/db_split_runbook_20260612.md` | DONE (旧库 06-26 后删) |
-| B 数据 | tushare gateway (并发 2) | chain4-8 已全部跑完退出 (06-12 12:09): 22 域注册 15 转正 18M 行; **2005-2022 历史被 dim_trading_calendar (起点 2023-01-03) 静默 clamp 全军未落** — 窗口决策待用户; 7 域未转正 (top_inst 落 548k 行未转正 / fina_mainbz 0 行 sync_runner attach bug / suspend_d+dc_index 静默短路根因未定) | 决策+补跑 |
-| C 实验 | 本地 CPU (判决全 SQL 秒-分钟级) | **C0 FAIL (06-12 12:09, J1 0.8972/J2 8.53pp/J3 0.072 三判官全败)** → 按预注册条款筹码轴 5 combo 冻结不复跑, 口径结论已写回 sync_registry cyq_perf pit_anchor (疑似未复权, J3 实现缺陷未确证); 产能转 LF V0 (fact_concept_event 仅 1 天 270 行需增厚) + LHB 退出 (gate 被 top_list 2023 clamp 阻塞, 依赖 B 轨) | 转向执行 |
+| B 数据 | tushare gateway (并发 2) | chain9 收官 (06-13 05:50): 日历扩展 5343 行后 top_list/daily/adj_factor 实验窗 728 日齐, dc_member 重拉 23.1M 行 (8.6x), top_inst 1.87M; 首批类型推断陷阱根治 (加宽重试)。**chain9b 在跑** (06-13 06:22 发射): daily_basic 2020-2022 → LHB 判决 → dc_member 6 凹陷日定点重拉 (实测全是残缺拉取非 vendor 缺口) → 加宽自愈三域 (suspend_d/dc_index/fina_mainbz) → 概念事件重建 | 链在跑 |
+| C 实验 | 本地 CPU (判决全 SQL 秒-分钟级) | **C0 FAIL (06-12, 三判官全败)** → 筹码轴 5 combo 冻结不复跑。**LHB 退出 + LF V0 执行面已就绪** (06-13): 两实验脚本落地 (prereg 逐字对账 --check-prereg / sherpa gate 硬门 / 合成测试可红性实证), LHB gate 6/6 GO 等 daily_basic g5; **flicker 鉴别推翻 G4 放宽预判**: 成员级 flicker 84.7% = 6 凹陷日伪影, 修数据不挪门柱, 重建后复测裁决 lf_v0 G4 | 判决今日出 |
 | D 算力 | **modal ($30/月)** | chunkymonkey-compute 已 deploy (smoke PASS); 全市场 CYQ 复算未启动 (push 脚本未写 + C0 FAIL 连带冻结首单); smoke 与真数据同路径覆写隐患待修 | 冻结待裁 |
 | E 消费侧 | 代码 | 复权链转正 (adj_factor 4.47M 已落) + LHB 双轨核对退役 | 排 C 轨道同窗 |
 验证期 (W1-W12) 新策略 0 真金白银, 全部 paper_sim 候选态。
