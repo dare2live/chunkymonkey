@@ -116,6 +116,11 @@ app.include_router(market_router, prefix="/api/inst", tags=["market"])
 app.include_router(institution_router, prefix="/api/inst", tags=["institution"])
 app.include_router(updater_router, prefix="/api/inst", tags=["updater"])
 
+# 手动任务触发 (2026-06-12 用户决议: 自动调度退役, 更新链改前端按钮手动跑)
+from routers.ops_manual_run import router as ops_manual_run_router
+
+app.include_router(ops_manual_run_router, prefix="/api/v3/ops", tags=["ops"])
+
 from routers.etf import router as etf_router
 
 # 模块化路由注册

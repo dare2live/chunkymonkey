@@ -346,6 +346,40 @@
   // Step 5 任务 4：scorecard 入口现在只负责挂载机构评分卡 widget，不再保留旧的股票/机构评分卡双入口。
 
   // ============================================================
+  // 手动任务触发 (2026-06-12 自动调度退役: daily_update/概念快照改按钮手动)
+  // ============================================================
+  var _opsPollTimer = null;
+  async function refreshOpsJobs() {
+    var box = el('opsJobsStatus');
+    if (!box) return;
+    var r = await api('/api/v3/ops/jobs');
+    if (!r || !r.jobs) { box.textContent = '手动任务状态不可用 (后端未启动?)'; return; }
+    var anyRunning = false;
+    box.innerHTML = r.jobs.map(function (j) {
+      var flags = Object.keys(j.alert_flags || {}).filter(function (k) { return j.alert_flags[k]; });
+      var state;
+      if (j.running) { state = '运行中'; anyRunning = true; }
+      else if (flags.length) { state = '上次有失败/降级 flag'; }
+      else { state = '空闲'; }
+      return esc(j.job) + ': ' + esc(state);
+    }).join('<br>');
+    if (anyRunning && !_opsPollTimer) {
+      _opsPollTimer = setInterval(refreshOpsJobs, 30000);
+    } else if (!anyRunning && _opsPollTimer) {
+      clearInterval(_opsPollTimer); _opsPollTimer = null;
+    }
+  }
+  async function runOpsJob(job, btn) {
+    if (btn) { btn.disabled = true; }
+    var r = await api('/api/v3/ops/jobs/' + job + '/run', { method: 'POST' });
+    if (r && r.started) {
+      showToast(job + ' 已启动 (pid ' + r.pid + '), 后台运行', 'success');
+    }
+    if (btn) { btn.disabled = false; }
+    refreshOpsJobs();
+  }
+
+  // ============================================================
   // Init
   // ============================================================
   async function init() {
@@ -366,6 +400,9 @@
     el('btnReset')?.addEventListener('click', resetDerivedData);
     el('stockSearch')?.addEventListener('input', handleStockSearchInput);
     el('btnLifeboat')?.addEventListener('click', runLifeboat);
+    el('btnRunDailyUpdate')?.addEventListener('click', function () { runOpsJob('daily_update', this); });
+    el('btnRunConceptSnapshot')?.addEventListener('click', function () { runOpsJob('concept_snapshot', this); });
+    refreshOpsJobs();
     el('btnEtfSync')?.addEventListener('click', async function () {
       var btn = this;
       btn.disabled = true; btn.textContent = '同步中...';
