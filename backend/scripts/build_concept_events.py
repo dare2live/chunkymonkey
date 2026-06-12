@@ -66,8 +66,11 @@ def _membership_by_day_from_raw(conn, source_table: str) -> dict[str, dict[str, 
     字段方向 (2026-06-11 parquet 实测, Fable-5 复查抓反向 bug):
     ts_code = 概念板块代码 (BK0145.DC, 全市场 66 个); con_code = 成分股 (600503.SH, 5521 只)。
     """
+    # 2026-06-13 修: 带点全名整体引号会被当单标识符 ("traw.raw_tushare_dc_member" 查无此表),
+    # raw 源路径因此从未跑通 (此前误归因写锁); 按点分段引每节。
+    qualified = ".".join(f'"{part}"' for part in source_table.split("."))
     rows = conn.execute(
-        f'SELECT trade_date, ts_code AS concept, con_code AS member FROM "{source_table}"'
+        f"SELECT trade_date, ts_code AS concept, con_code AS member FROM {qualified}"
     ).fetchall()
     out: dict[str, dict[str, set[str]]] = {}
     for d, concept, member in rows:

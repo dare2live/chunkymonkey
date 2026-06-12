@@ -320,9 +320,9 @@ domains:
     batch_mode: by_trade_date
     pit_anchor: "trade_date; 盘后更新 -> JOIN t-1; float_share/free_share 为 CYQ 流通股本输入候选 (替代本地推算)"
     available_after: "18:00"
-    data_start: "20190102"
+    data_start: "20200102"   # 2026-06-13: LHB 混淆臂市值桶消费方出现, 2020-2022 段获批回填 (chain9b); 原 20190102
     freshness_sla_trading_days: 1
-    min_rows_per_batch: 4000   # 实测 20260610 = 5512 行
+    min_rows_per_batch: 3000  # 2020 年截面 ~3800 只, 同 daily 口径   # 实测 20260610 = 5512 行
     allow_empty_batch: false
 
   # ── 筹码族 (用户点名: 筹码胜率 alpha; 2026-06-12 实弹核证) ──

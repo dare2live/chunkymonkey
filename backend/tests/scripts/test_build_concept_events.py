@@ -91,3 +91,20 @@ def test_field_direction_concept_is_ts_code_member_is_con_code(tmp_path, monkeyp
     assert [(e[2]) for e in born] == ["BK0999.DC"]  # 新概念 = 新板块, 不是新股票
     adds = [(e[2], e[4]) for e in ev if e[3] == mod.ADD]
     assert ("BK0145.DC", "300008.SZ") in adds
+
+
+def test_membership_from_raw_handles_attached_qualified_name(tmp_path):
+    # 2026-06-13 回归: "traw.x" 整体引号 = 单标识符查无此表 (raw 源从未跑通的真根因)
+    import duckdb
+    from scripts.build_concept_events import _membership_by_day_from_raw
+
+    raw = tmp_path / "raw.duckdb"
+    c0 = duckdb.connect(str(raw))
+    c0.execute("CREATE TABLE raw_tushare_dc_member (trade_date VARCHAR, ts_code VARCHAR, con_code VARCHAR)")
+    c0.execute("INSERT INTO raw_tushare_dc_member VALUES ('20250102','BK0145.DC','600503.SH')")
+    c0.close()
+    conn = duckdb.connect()
+    conn.execute(f"ATTACH '{raw}' AS traw (READ_ONLY)")
+    out = _membership_by_day_from_raw(conn, "traw.raw_tushare_dc_member")
+    conn.close()
+    assert out == {"20250102": {"BK0145.DC": {"600503.SH"}}}
