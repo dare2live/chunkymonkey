@@ -1,0 +1,46 @@
+{
+ "domain": "stk_limit",
+ "api": "stk_limit",
+ "grain": [
+  "ts_code",
+  "trade_date"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "trade_date": "20220104",
+   "ts_code": "000001.SZ",
+   "pre_close": null,
+   "up_limit": 18.13,
+   "down_limit": 14.83
+  },
+  {
+   "trade_date": "20220104",
+   "ts_code": "000002.SZ",
+   "pre_close": null,
+   "up_limit": 21.74,
+   "down_limit": 17.78
+  },
+  {
+   "trade_date": "20220104",
+   "ts_code": "000004.SZ",
+   "pre_close": null,
+   "up_limit": 21.36,
+   "down_limit": 17.48
+  },
+  {
+   "trade_date": "20220104",
+   "ts_code": "000005.SZ",
+   "pre_close": null,
+   "up_limit": 2.42,
+   "down_limit": 2.19
+  },
+  {
+   "trade_date": "20220104",
+   "ts_code": "000006.SZ",
+   "pre_close": null,
+   "up_limit": 4.91,
+   "down_limit": 4.01
+  }
+ ]
+}

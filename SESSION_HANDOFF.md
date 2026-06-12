@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-06-12 14:24:06 CST
+**Snapshot 时间**: 2026-06-13 06:09:59 CST
 
 ## 主线状态
 
@@ -44,28 +44,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `389ff6de chore: cm_resume 顺带刷新 workflow_checkpoint 时间戳 (机器生成文件) # commit-msg: minimal` |
-| 最近 24h commits | 36 |
-| 未 commit 文件 | 3 |
+| HEAD | `3e3e9283 fix: 概念事件 raw 源带点全名引号根因 + daily_basic 2020-2022 回填获批` |
+| 最近 24h commits | 26 |
+| 未 commit 文件 | 9 |
 
 ### 最近 10 commits
 
 ```
-389ff6de chore: cm_resume 顺带刷新 workflow_checkpoint 时间戳 (机器生成文件) # commit-msg: minimal
-9794f16e docs: session 收尾交接 — modal 实弹/34G 真相/goal-app 诊断入档, CLI 接手快照
-e9758a9b feat: modal 计算面实弹打通 — CYQ 全市场复算函数 deploy 常驻
-3ad48346 feat: 34G 拆分执行完成 — smartmoney 36.1G 紧缩至 19.3G, validation 全 PASS
-a0bf931e feat: 三决议落地 — codex review 强制解除 + C0 实验脚本 + 34G 回收提级 P0
-5094728e docs: alpha 组合矩阵定稿 — 16 设计经三轴评审, 4 run_first 带执行序
-e8b9a8c0 feat: 筹码胜率 cyq_perf 注册排队 + 34G 库死表先行处置与拆分 runbook
-7d7a1105 test: 复查问题系统性根治 — 按根因四 Phase, suite 红海清零恢复信号价值
-adac636a test: 复查二次修正 — UTC 时区乌龙还原真相 + run_domain ok 双标改严格
-3da900cb fix: Fable-5 复查降级期工作 — 概念事件字段方向反 + 验收文档引用错 两个实质问题
+3e3e9283 fix: 概念事件 raw 源带点全名引号根因 + daily_basic 2020-2022 回填获批
+9d48bf99 feat: LHB gate 转 GO — 首批类型推断陷阱根治 + G4 按实测剖面修法
+26f913e7 chore: 纠正上一 commit 误入的本地工具链文件 — .claude 回归 settings.json 单文件在册
+ce461328 chore: 残留大清理 — 5 线审计执行 (直删 21 文件 + 死代码 6 块 + 消费方 12 处同步 + 预存红 7 测清零)
+fe111127 docs: 数据获取 v2 设计 + v2.1 三判官修订落账 — 渠道治理替代补丁循环
+1d2f940e feat: 文档治理机器执法 — 状态标头契约 + 执法器入弹仓 (新旧混用防线)
+222cf607 fix: 相同页守卫升级序不敏感 — 三判官抓的行序漂移盲区
+1405fb0f fix: 分页相同页守卫 — 网关无视 limit/offset 的三态处置 (top_inst 风暴止血)
+070e0759 docs: 前端统筹设计 v5 — 角色版面 x 档案体系 x verdict 流 (继承旧 v3 档案思路)
+1270df95 docs: 前端重设计 v4 设计稿包 — 6 模块每日动线 IA, 已推 Claude Design
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**3 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**9 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

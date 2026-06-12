@@ -43,3 +43,11 @@ assertions:
     database: data/tushare_raw.duckdb
     query: "SELECT CASE WHEN avg(CASE WHEN pct_change IS NULL OR reason IS NULL OR net_amount IS NULL THEN 1.0 ELSE 0 END)<0.005 AND avg(CASE WHEN float_values IS NULL THEN 1.0 ELSE 0.0 END)<0.10 THEN 1 ELSE 0 END FROM raw_tushare_top_list WHERE trade_date BETWEEN '20200101' AND '20221231'"
     expect: {op: "==", value: 1}
+  - id: g5-dailybasic-circmv
+    # 2026-06-13 补门 (实验实现期发现的缺依赖, 跑前收紧非挪柱): 混淆臂市值桶需要对照股
+    # circ_mv (daily_basic), 实验窗段获批回填排 chain9b
+    claim: "daily_basic 实验窗 2020-2022 段 728 日齐 (混淆臂市值五分位原料)"
+    type: duckdb_sql
+    database: data/tushare_raw.duckdb
+    query: "SELECT count(DISTINCT trade_date) FROM raw_tushare_daily_basic WHERE trade_date BETWEEN '20200101' AND '20221231'"
+    expect: {op: ">=", value: 728}

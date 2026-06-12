@@ -1,0 +1,63 @@
+{
+ "domain": "fina_mainbz",
+ "api": "fina_mainbz",
+ "grain": [
+  "ts_code",
+  "end_date",
+  "bz_code",
+  "bz_item"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "ts_code": "000001.SZ",
+   "end_date": "20251231",
+   "bz_item": "非利息收入:手续费及佣金收入:银行卡业务(产品)",
+   "bz_code": "P",
+   "bz_sales": 12393000000,
+   "bz_profit": null,
+   "bz_cost": null,
+   "curr_type": "CNY"
+  },
+  {
+   "ts_code": "000001.SZ",
+   "end_date": "20251231",
+   "bz_item": "非利息收入:手续费及佣金收入:代理委托业务(产品)",
+   "bz_code": "P",
+   "bz_sales": 6126000000,
+   "bz_profit": null,
+   "bz_cost": null,
+   "curr_type": "CNY"
+  },
+  {
+   "ts_code": "000001.SZ",
+   "end_date": "20251231",
+   "bz_item": "利息收入:发放贷款及垫款:个人贷款业务(产品)",
+   "bz_code": "P",
+   "bz_sales": 82243000000,
+   "bz_profit": null,
+   "bz_cost": null,
+   "curr_type": "CNY"
+  },
+  {
+   "ts_code": "000001.SZ",
+   "end_date": "20251231",
+   "bz_item": "利息收入:发放贷款及垫款:票据贴现业务(产品)",
+   "bz_code": "P",
+   "bz_sales": 1876000000,
+   "bz_profit": null,
+   "bz_cost": null,
+   "curr_type": "CNY"
+  },
+  {
+   "ts_code": "000001.SZ",
+   "end_date": "20251231",
+   "bz_item": "利息收入:发放贷款及垫款:公司贷款业务(产品)",
+   "bz_code": "P",
+   "bz_sales": 46382000000,
+   "bz_profit": null,
+   "bz_cost": null,
+   "curr_type": "CNY"
+  }
+ ]
+}

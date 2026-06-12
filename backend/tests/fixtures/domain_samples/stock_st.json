@@ -1,0 +1,46 @@
+{
+ "domain": "stock_st",
+ "api": "stock_st",
+ "grain": [
+  "ts_code",
+  "trade_date"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "ts_code": "000005.SZ",
+   "name": "ST星源",
+   "trade_date": "20220104",
+   "type": "ST",
+   "type_name": "风险警示板"
+  },
+  {
+   "ts_code": "000007.SZ",
+   "name": "*ST全新",
+   "trade_date": "20220104",
+   "type": "ST",
+   "type_name": "风险警示板"
+  },
+  {
+   "ts_code": "000410.SZ",
+   "name": "ST沈机",
+   "trade_date": "20220104",
+   "type": "ST",
+   "type_name": "风险警示板"
+  },
+  {
+   "ts_code": "000502.SZ",
+   "name": "*ST绿景",
+   "trade_date": "20220104",
+   "type": "ST",
+   "type_name": "风险警示板"
+  },
+  {
+   "ts_code": "000509.SZ",
+   "name": "*ST华塑",
+   "trade_date": "20220104",
+   "type": "ST",
+   "type_name": "风险警示板"
+  }
+ ]
+}
