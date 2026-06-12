@@ -12,6 +12,16 @@
 > snapshot, and `rg` / `tail` on this ledger only when a task needs specific
 > historical evidence.
 
+## 2026-06-12 晚 — 调度手动化 + 日历扩展 + chain9 发射 (持续推进指令下的当晚执行账)
+
+- 调度新政落地: daily-update/concept-snapshot launchd bootout (plist 归档), ops_manual_run router + 前端按钮 (7 单测+实弹); E7 概念快照退役 (用户决议概念域单源化 = 东财 dc 系唯一, THS 出局; dc 系历史 tushare 可回拉, 快照属冗余中间层)。
+- 手动 daily_update 实弹 (18:38-20:54, wrapper OK): PK 修复后全链零 Binder degraded — 二轮整改实弹验证成立。Step 2.95 drain 网关晚高峰 ~3 调用/分钟僵慢 (115 分钟 vs 晨跑 15 分钟基线, CPU 2:56/115min + 连接轮换证实非挂死), 定点终止按设计降级; 误配失败单重试风暴 = min_rows 修复的实证现场。
+- 链后核验: K 线 06-12 全市场 5200 行已落 (watermark 元数据滞后 1 天 bug 坐实, 修复排 P1); xdxr Step 2b2 首实弹失败定根因 = xdxr 客户端遍历死 TDX 服务器池, 未接 CM_TDX_SERVERS 活池 override (K 线路径接了所以 4 分钟跑完) — 修复排 P1, 热备源可容忍; 6 域 watermark 转正未发生 (drain 被磨死在前段), 移交 chain9 step5 drain。
+- 日历扩展执行: dim_trading_calendar 969→5,343 行 (2005-01-04..2022-12-30 段 4,374 行), 七项验证全 PASS (evidence=analysis/calendar_extension_20260612.py); claims 弹仓 calendar-floor 收紧 == 2005-01-04, realdb 断言收紧 min<=2005-01-04+count>=5000 防回退。
+- failure_queue 僵尸单清理 8→6 open (moneyflow_hsgt 20230210 已在表实证 + diag_test_14 案撤, resolve 带对账理由)。
+- chain9 发射 (20:58, nohup): 自检 PASS (日历/min_rows/page_limit/写锁) → 探底实弹: top_list 2018/2019/2020 = 44/67/52 行, top_inst 487/786 行 (LHB 回填数据可得性确认); **dc_member 地板夹层定案 = 2024-12-16 零行 / 2024-12-31 有数据** (10 发双确认探针), registry 20250102 最多丢 3-5 交易日维持不改 (E8 基本正确) — 套三门① (>=2022-01) dc 系永不满足, 走养数据或 kpl 探史。链序: LHB 四件套 → 2022 段补窗 → dc_member 分页重拉 → 全域 drain (增量+转正) → 7 域补丁 → fina_mainbz → 链尾 data-status+sherpa gates+moth assert 自验闭环。
+- Opus 工具线: moth assertion 引擎+assert 子命令 (dare2live/moth 已推); sherpa v0.1+init (dare2live/sherpa 新私有仓); chunkymonkey 弹仓 claims 8 断言 + gates lhb_exit/lf_v0 两包。
+
 ## 2026-06-12 — 接管对账 + 拆分回归二轮整改 (断线 session 善后)
 
 - 背景: 10:04 收尾 commit 后 12:09-14:24 间一个 session 断线, 留 4 孤儿文件; 用户 14:33 拉起新 session 全面接管。六线 workflow (A 存储/B 数据/C 实验/D modal/E 平台/F 考古, 13 agents 对抗核验) + 完备性审查定位全部残留。

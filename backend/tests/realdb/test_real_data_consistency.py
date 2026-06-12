@@ -52,8 +52,8 @@ def test_real_trading_calendar_is_available_and_has_completed_trade_date():
         ).fetchone()
         latest = latest_completed_trade_date(conn)
 
-        assert count >= 700
-        assert min_date <= "2023-01-03"
+        assert count >= 5000  # 2026-06-12 日历扩展后 5343 行 (2005-01-04 起)
+        assert min_date <= "2005-01-04"  # 防回退: 起点回缩 = 静默 clamp 复发 (CLAUDE.md §4.5)
         assert max_date >= latest
         assert latest is not None
     finally:

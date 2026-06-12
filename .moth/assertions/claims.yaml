@@ -29,11 +29,11 @@ assertions:
     path: data/smartmoney.duckdb
     expect: {op: between, low: 20000000000, high: 30000000000}
   - id: calendar-floor
-    claim: "交易日历起点 <= 2023-01-03 (扩展至 2005-01-04 后收紧为 ==; 回退 = 静默 clamp 复发)"
+    claim: "交易日历起点 == 2005-01-04 (2026-06-12 扩展+七项验证 PASS; 回退 = 静默 clamp 复发)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT CAST(min(trade_date) AS VARCHAR) FROM dim_trading_calendar"
-    expect: {op: "<=", value: "2023-01-03"}
+    expect: {op: "==", value: "2005-01-04"}
   - id: retired-db-retained
     claim: "旧库保留至 2026-06-26 (goal.md 拆分回滚保险; 到期人工删除后移除本断言)"
     type: file_exists
