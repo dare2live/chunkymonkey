@@ -70,8 +70,13 @@ def _daily_winner_rates(hq, lq, cq, vol_shares, float_shares, vwap_q):
 
 
 @app.function(image=IMAGE, volumes={DATA: VOL}, timeout=1800, cpu=2.0)
-def cyq_replay_batch(codes: list[str]) -> str:
-    """一批股票的逐日 winner_rate 复算; 输入/输出都走 volume parquet."""
+def cyq_replay_batch(codes: list[str], input_rel: str = "kline_qfq.parquet",
+                     out_rel: str = "cyq_local") -> str:
+    """一批股票的逐日 winner_rate 复算; 输入/输出都走 volume parquet.
+
+    input_rel/out_rel: DATA 下相对路径 — smoke 走 smoke/ 隔离前缀, 防合成数据
+    覆写真输入 / 污染真输出 (2026-06-13 同路径覆写隐患修复)。
+    """
     import duckdb
     import numpy as np
     import pandas as pd
@@ -80,7 +85,7 @@ def cyq_replay_batch(codes: list[str]) -> str:
     results = []
     for code in codes:
         df = con.execute(
-            f"SELECT * FROM '{DATA}/kline_qfq.parquet' WHERE ts_code = ? ORDER BY trade_date",
+            f"SELECT * FROM '{DATA}/{input_rel}' WHERE ts_code = ? ORDER BY trade_date",
             [code],
         ).df()
         if len(df) < 300:
@@ -95,9 +100,9 @@ def cyq_replay_batch(codes: list[str]) -> str:
     if not results:
         return "empty"
     out = pd.concat(results, ignore_index=True)
-    path = f"{DATA}/cyq_local/{codes[0]}_{len(codes)}.parquet"
+    path = f"{DATA}/{out_rel}/{codes[0]}_{len(codes)}.parquet"
     import os
-    os.makedirs(f"{DATA}/cyq_local", exist_ok=True)
+    os.makedirs(f"{DATA}/{out_rel}", exist_ok=True)
     out.to_parquet(path)
     VOL.commit()
     return f"{path}: {len(out)} rows / {len(results)} codes"
@@ -131,10 +136,13 @@ def smoke() -> str:
         "vwap_q": close * 1.001,
     })
     import os
-    os.makedirs(DATA, exist_ok=True)
-    df.to_parquet(f"{DATA}/kline_qfq.parquet")
+    # smoke 全程走 smoke/ 隔离前缀 — 绝不写共享 kline_qfq.parquet (真数据输入),
+    # 反例: 旧版 smoke 直接覆写真输入路径, 真数据上传后跑一次 smoke = 输入变 1 只合成股
+    os.makedirs(f"{DATA}/smoke", exist_ok=True)
+    df.to_parquet(f"{DATA}/smoke/kline_qfq.parquet")
     VOL.commit()
-    r = cyq_replay_batch.remote(["TEST.SM"])
+    r = cyq_replay_batch.remote(["TEST.SM"], input_rel="smoke/kline_qfq.parquet",
+                                out_rel="smoke/cyq_local")
     w = _daily_winner_rates(df["high_q"].values, df["low_q"].values, df["close_q"].values,
                             df["vol_shares"].values, df["float_shares"].values, df["vwap_q"].values)
     import numpy as _np
