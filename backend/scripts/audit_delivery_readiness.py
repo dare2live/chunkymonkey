@@ -760,7 +760,7 @@ def check_daily_automation() -> dict:
     # Step 7 真调 promote_champion.py CLI (不是 mock import check)
     has_promote_real = "backend/scripts/promote_champion.py" in content and "--p3-run-id" in content
     # launchd plist installed?
-    plist_dir = REPO_ROOT / "configs" / "launchd"
+    plist_dir = REPO_ROOT / "backend" / "scripts" / "launchd"  # 2026-06-12 手动化决议归档地
     has_daily_plist = (plist_dir / "com.chunkymonkey.daily-update.plist").exists()
 
     # 真 loaded + 真 healthy 检测 (不只是 plist 文件存在 + 不只是 loaded):
@@ -830,10 +830,9 @@ def check_daily_automation() -> dict:
         "loaded_agents_launchd": {k: v for k, v in loaded_labels.items()},
         "fda_blocked": fda_blocked,
         "install_action": (
+            # 2026-06-12 手动化决议: 自动调度退役, daily 未跑不再推荐重装, 改提示手动入口
             None if daily_loaded else
-            "bash configs/cron/install.sh install  # 无 FDA 阻塞 (推荐)"
-            if fda_blocked else
-            "bash configs/cron/install.sh install  OR  bash configs/launchd/install_all.sh install"
+            "手动时代: 工作台按钮 或 launchd_job_wrapper daily_update (自动调度已按 2026-06-12 决议退役)"
         ),
         "verdict": "PASS" if pct >= 80 else "WARN",
     }

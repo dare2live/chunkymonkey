@@ -5,24 +5,13 @@
 *.db-shm
 __pycache__/
 *.pyc
-.claude/
-!.claude/settings.json
+.!.claude/settings.json
 Users/
-data/qlib_data/features
-data/qlib_models/
-data/qlib_runs/
-data/qlib_etf_data/
-data/qlib_etf_models/
-data/qlib_etf_runs/
-data/qlib_alpha158
-data/qlib_follow_models/
-data/qlib_runs_check/
 data/multidim_models/*.pkl
 data/optuna/
 data/storage_cleanup_smoke/
 data/audit/
 .codegraph/
-claude/
 mlruns/
 node_modules/
 .env
@@ -32,7 +21,6 @@ backend/forecast_sample.csv
 .duckdb-wal
 *.duckdb
 *.duckdb.wal
-gcp/jobs/
 
 # Auto-add 2026-05-18: prevent large data files commit
 data/*.duckdb

@@ -47,19 +47,21 @@ def test_accepts_uncommented_skip_reason(monkeypatch, tmp_path: Path) -> None:
     assert rc == 0
 
 
-def test_rejects_short_skip_reason_for_code_change(monkeypatch, tmp_path: Path) -> None:
+def test_short_skip_reason_is_informational_not_blocking(monkeypatch, tmp_path: Path) -> None:
+    # 2026-06-12 用户决议: Codex review 强制解除 — 缺 evidence 降级为 INFO, 永不阻塞
     module = _load_module()
     monkeypatch.setattr(module, "get_staged_files", lambda: ["backend/tests/scripts/test_safe_commit.py"])
 
     rc = module.main(str(_write_message(tmp_path, "test audit\ncodex-review: skipped reason=typo")))
 
-    assert rc == 1
+    assert rc == 0
 
 
-def test_commit_msg_minimal_does_not_bypass_rule10(monkeypatch, tmp_path: Path) -> None:
+def test_commit_msg_minimal_is_informational_not_blocking(monkeypatch, tmp_path: Path) -> None:
+    # 同上决议: minimal 标记下缺 review evidence 也只 INFO 不阻塞
     module = _load_module()
     monkeypatch.setattr(module, "get_staged_files", lambda: ["backend/scripts/check_codex_review.py"])
 
     rc = module.main(str(_write_message(tmp_path, "test audit\n# commit-msg: minimal")))
 
-    assert rc == 1
+    assert rc == 0

@@ -101,7 +101,7 @@ export V8_FLAGS="${V8_FLAGS:---no-randomize-hashes --no-sandbox}"
 export CM_PORT="$PORT"
 
 echo "========================================"
-echo "  Chunky Monkey v2 启动中..."
+echo "  ChunkyMonkey 启动中..."
 echo "  地址: http://localhost:$PORT  (/ → /v3 设计稿)"
 echo "  API:  http://localhost:$PORT/docs"
 echo "  Python: $($PYTHON_BIN --version 2>&1)"

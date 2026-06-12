@@ -8,7 +8,6 @@ import httpx
 
 logger = logging.getLogger("cm-api")
 
-_EM_ENDPOINT = "(deprecated, P6.5 走 aif10_scraper)"
 _CACHE_TTL_SEC = 600
 _CACHE: dict[tuple, tuple[float, object]] = {}
 _FETCH_RETRY_DELAYS_SEC = (0.6, 1.2)

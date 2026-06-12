@@ -803,7 +803,6 @@ def _worktree_bucket(path: str, status_kind: str) -> str:
         "scripts/cm.sh",
         "scripts/daily_update.sh",
         "scripts/cm_resume.sh",
-        "scripts/install_launchd_all.sh",
         "scripts/install_resilience.sh",
         "scripts/post_retrain_pipeline.sh",
         "scripts/safe_commit.sh",

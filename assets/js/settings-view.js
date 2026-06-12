@@ -242,10 +242,10 @@
       backend = model.backendLabel;
     } catch { backend = '不可达'; }
     el.innerHTML = `
-      <div>chunky-monkey-v2</div>
+      <div>ChunkyMonkey</div>
       <div style="color:var(--cm-ink-500);font-size:11px;margin-top:4px">
         后端: ${esc(backend)}<br>
-        架构方案: docs/architecture-redesign-2026-04.md<br>
+        架构方案: docs/PROJECT_CONSTITUTION.md + docs/README.md<br>
         数据源: <a href="https://github.com/dare2live/tdxhub" target="_blank">tdxhub</a> + <a href="https://github.com/dare2live/aif10-scraper" target="_blank">aif10-scraper</a>
       </div>
     `;

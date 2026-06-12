@@ -356,7 +356,7 @@ def main() -> int:
         print(f"  annualized ret approx: {avg_ret:.2%}")
         print(f"  avg max_dd: {avg_dd:.2%}")
         gate_pass = avg_sharpe >= 1.3 or (avg_ret >= 0.50 and avg_dd >= -0.25)
-        print(f"  Phase 8 GCP gate: {'PASS' if gate_pass else 'FAIL'} (threshold: sharpe>=1.3 OR ann>=50% dd>=-25%)")
+        print(f"  Phase 8 gate: {'PASS' if gate_pass else 'FAIL'} (threshold: sharpe>=1.3 OR ann>=50% dd>=-25%)")
         return 0
 
 

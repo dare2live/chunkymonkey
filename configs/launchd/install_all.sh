@@ -17,8 +17,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
+# 2026-06-12 手动化决议: daily-update/concept-snapshot/codex-monitor 退役 (归档 backend/scripts/launchd/)
 PLISTS=(
-    "com.chunkymonkey.daily-update"
     "com.chunkymonkey.nightly-data-audit"
     "com.chunkymonkey.codex-monitor"
 )

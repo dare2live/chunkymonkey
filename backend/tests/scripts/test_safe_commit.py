@@ -61,8 +61,9 @@ def test_rule10_blocks_empty_skip_reason_for_staged_python(tmp_path: Path) -> No
 
     result = _safe_commit(repo, "test audit\ncodex-review: skipped reason=   ")
 
-    assert result.returncode == 6
-    assert "non-empty 'codex-review: skipped reason=...'" in result.stdout
+    # 2026-06-12 决议: Rule 10 非阻塞化 — 空 skip reason 也只信息提示 (skip_reason=0)
+    assert "Rule 10 (informational)" in result.stdout
+    assert "skip_reason=0" in result.stdout
 
 
 def test_rule10_blocks_request_changes_review_verdict(tmp_path: Path) -> None:
@@ -70,8 +71,8 @@ def test_rule10_blocks_request_changes_review_verdict(tmp_path: Path) -> None:
 
     result = _safe_commit(repo, "test audit\nCodex-Reviewed: REQUEST_CHANGES")
 
-    assert result.returncode == 6
-    assert "cannot be committed with Codex-Reviewed: REQUEST_CHANGES" in result.stdout
+    # 非阻塞化后 safe_commit 不再因 verdict 退出 6, 仅信息行 (历史条款见 CLAUDE.md §11)
+    assert "Rule 10 (informational)" in result.stdout
 
 
 def test_rule10_blocks_request_changes_even_with_skip_reason(tmp_path: Path) -> None:
@@ -82,8 +83,8 @@ def test_rule10_blocks_request_changes_even_with_skip_reason(tmp_path: Path) -> 
         "test audit\nCodex-Reviewed: REQUEST_CHANGES\ncodex-review: skipped reason=docs-only rename",
     )
 
-    assert result.returncode == 6
-    assert "cannot be committed with Codex-Reviewed: REQUEST_CHANGES" in result.stdout
+    # 非阻塞化 (2026-06-12 决议): verdict 不再触发退出 6
+    assert "Rule 10 (informational)" in result.stdout
 
 
 def test_rule10_accepts_approved_review_for_staged_python(tmp_path: Path) -> None:
@@ -92,7 +93,8 @@ def test_rule10_accepts_approved_review_for_staged_python(tmp_path: Path) -> Non
     result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE_WITH_NOTES")
 
     assert result.returncode == 0
-    assert "Rule 10 OK" in result.stdout
+    assert "Rule 10 (informational)" in result.stdout  # 2026-06-12 决议: 信息行替代 'Rule 10 OK'
+    assert "Codex-Reviewed=1" in result.stdout
     assert "SAFE_COMMIT_DRY_RUN=1" in result.stdout
 
 
@@ -102,7 +104,8 @@ def test_rule10_accepts_meaningful_skip_reason_for_staged_python(tmp_path: Path)
     result = _safe_commit(repo, "test audit\ncodex-review: skipped reason=docs-only rename")
 
     assert result.returncode == 0
-    assert "Rule 10 OK" in result.stdout
+    assert "Rule 10 (informational)" in result.stdout
+    assert "skip_reason=1" in result.stdout
     assert "SAFE_COMMIT_DRY_RUN=1" in result.stdout
 
 

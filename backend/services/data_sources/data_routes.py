@@ -14,9 +14,10 @@
   client_module: backend/services/ 里的实际 client 文件
   notes:         备注
 
-设计原则 (来自用户要求):
-- 数据源只 3 个: tdxhub (主) / aif10 妙想 (备) / akshare (兜底)
-- 直连抓取不是独立 source; 当前只展示 tdxhub / aif10 / akshare / retired.
+设计原则 (2026-06-12 与 §4.3 主源决议对齐, 修正主从倒挂措辞):
+- 主源 = tushare (全量默认, 用户三次递进决策); tdxhub = 备援 (热备照修); aif10 = 第三;
+  akshare = 淘汰中 (按迁移地图逐域双轨核对后退役, 禁称"兜底")
+- 直连抓取不是独立 source。
 """
 from __future__ import annotations
 

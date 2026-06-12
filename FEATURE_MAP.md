@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-12 22:01
+> Snapshot: 2026-06-12 23:23
 
 ## 1. 入口面
 
@@ -23,9 +23,6 @@
 
 | Label | 时刻 | 入口 |
 |---|---|---|
-| com.chunkymonkey.codex-monitor | 900 | `/bin/bash scripts/codex_monitor.sh` |
-| com.chunkymonkey.concept-snapshot | 17:40 | `.venv/bin/python scripts/launchd_job_wrapper.py concept_snapshot .venv/bin/python backend/…` |
-| com.chunkymonkey.daily-update | 17:00 | `.venv/bin/python scripts/launchd_job_wrapper.py daily_update /bin/bash scripts/daily_updat…` |
 | com.chunkymonkey.nightly-data-audit | 02:00 | `.venv/bin/python scripts/launchd_job_wrapper.py nightly_data_audit .venv/bin/python backen…` |
 
 ### API 路由 (regex 口径: @router 装饰器)
@@ -160,7 +157,6 @@
 | mart_market_perception_style_daily | 3 | backend/scripts/build_market_perception_style_daily.py<br>backend/services/schema_marts.py<br>backend/services/schema_migrations.py |
 | mart_market_perception_theme_daily | 3 | backend/scripts/build_market_perception_theme_daily.py<br>backend/services/schema_marts.py<br>backend/services/schema_migrations.py |
 | mart_market_perception_under_reaction_daily | 3 | backend/scripts/build_market_perception_under_reaction_daily.py<br>backend/services/schema_marts.py<br>backend/services/schema_migrations.py |
-| mart_model_lifecycle | 3 | backend/scripts/bootstrap_model_lifecycle.py<br>backend/services/ml_lifecycle/registry.py<br>backend/services/schema_marts.py |
 | mart_multidim_model | 3 | backend/scripts/run_multidim_walkforward.py<br>backend/scripts/train_multidim_model.py<br>backend/scripts/train_tdx_keep_challenger_model.py |
 | mart_multidim_prediction | 3 | backend/scripts/run_multidim_walkforward.py<br>backend/scripts/train_multidim_model.py<br>backend/scripts/train_tdx_keep_challenger_model.py |
 | mart_signal_ic | 3 | backend/scripts/build_signal_ic_daily.py<br>backend/services/paper_engine/ddl.py<br>backend/services/paper_engine/signal_ic.py |
@@ -229,6 +225,7 @@
 | mart_model_edge_flags | 2 | backend/services/research/ddl.py<br>backend/services/research/edge_flags.py |
 | mart_model_feature_lineage | 2 | backend/services/model_feature_lineage.py<br>backend/services/schema_marts.py |
 | mart_model_holding_topk_eval | 2 | backend/scripts/evaluate_holding_topk.py<br>backend/services/schema_marts.py |
+| mart_model_lifecycle | 2 | backend/services/ml_lifecycle/registry.py<br>backend/services/schema_marts.py |
 | mart_p0a_label_panel | 2 | backend/scripts/rebuild_p0a_label_panel.py<br>backend/services/labels/ddl.py |
 | mart_p1_optuna_trials | 2 | backend/scripts/run_p0b_lightgbm_optuna_v3.py<br>backend/scripts/run_p0b_lightgbm_optuna_v4.py |
 | mart_paper_sim_kpi | 2 | backend/services/paper_sim/ddl.py<br>backend/services/paper_sim/reporter.py |
@@ -448,7 +445,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 19,268 | calls 边 207,573 | imports 边 20,330 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 19,281 | calls 边 207,586 | imports 边 20,331 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -499,12 +496,12 @@
 | backend/scripts/audit_stage_opt_candidate_supply.py | 2005 |
 | backend/services/audit.py | 1745 |
 | backend/services/financial_client.py | 1701 |
-| backend/scripts/chunkyctl.py | 1661 |
+| backend/scripts/chunkyctl.py | 1660 |
 | backend/scripts/build_temporal_synergy_research.py | 1637 |
 
 ## 5. 概览
 
-- chunkyctl 子命令 8 | launchd 任务 4 | router 23 (端点 171)
+- chunkyctl 子命令 8 | launchd 任务 1 | router 23 (端点 171)
 - sync_registry 数据域 22
 - 产表 302 (多 writer 121)
 

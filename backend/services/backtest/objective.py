@@ -103,10 +103,3 @@ def make_objective(
     return objective
 
 
-# Keep old compute_score for back-compat with tests
-def compute_score(summary: BacktestSummary, min_n: int = 5) -> float:
-    """⚠ DEPRECATED — 仅供老 test 用. 新代码用 composite_score."""
-    if summary.n_traded < min_n: return SCORE_FAILURE
-    if summary.std_ret <= 0:     return SCORE_FAILURE
-    sample_weight = min(1.0, summary.n_traded / (min_n * 2.0))
-    return summary.sharpe * math.log(1 + summary.n_traded) * sample_weight

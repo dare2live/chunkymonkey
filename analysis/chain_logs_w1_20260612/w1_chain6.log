@@ -1,0 +1,14 @@
+=== chain5 完成, chain6 cyq_perf 回填启动 02:46:54 ===
+  "ok": true
+ }
+]
+=== 概念事件 reconstructed 首跑 (raw 锁已释放) ===
+  "events": 270,
+  "by_type": {
+   "member_add": 135,
+   "member_drop": 135
+  },
+  "after_day": null
+ }
+]
+=== chain6 完成 03:03:53 — E1/筹码 alpha 数据全就绪 ===

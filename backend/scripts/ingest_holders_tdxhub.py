@@ -4,7 +4,7 @@
 顺序 fallback:
   tier 1: tdxhub.holders.HolderFetcher (117 服务器池自动轮询)
   tier 2: miaoxiang aif10 RPT_F10_EH_FREEHOLDERS (备源, 仅 tier 1 失败时用)
-  tier 3: akshare (兜底, 当前未启用; 见 holders_resolver.AkshareHolderSource)
+  tier 3: 无 (akshare 占位类 2026-06-12 已删; 需要时按 tushare 主源立项)
 
 默认链路分两段:
   1. fetch raw: 只抓 tdxhub F10 原文并写 raw_tdx_f10_holder_research.

@@ -114,24 +114,8 @@ def main() -> int:
             critical_fail.append(name)
         time.sleep(0.5)
 
-    # ths_member 按概念循环 (带 in_date/out_date, 每周一全量刷一次即可, 其他日跳过)
-    if datetime.now().weekday() == 0:
-        try:
-            idx = _fetch_retry("ths_index", lambda: pro.ths_index(type="N"))
-            if idx is not None:
-                import pandas as pd
-
-                frames = []
-                for code in idx["ts_code"].tolist():
-                    d = _fetch_retry(f"ths_member:{code}", lambda c=code: pro.ths_member(ts_code=c), tries=2)
-                    if d is not None:
-                        frames.append(d)
-                    time.sleep(0.4)
-                if frames:
-                    pd.concat(frames, ignore_index=True).to_parquet(out_dir / "ths_member.parquet")
-                    ok.append(f"ths_member({sum(len(f) for f in frames)})")
-        except Exception as exc:  # noqa: BLE001
-            print(f"WARN ths_member weekly: {str(exc)[:120]}", flush=True)
+    # ths_member 周一全量分支已删 (2026-06-12 概念域单源化决议: 东财 dc 系唯一,
+    # THS 概念族出局, "攒一天少一天" 仅对已出局的 THS 成立故不再积累; 历史 _full 快照保留为证据)
 
     print(f"snapshot {today}: ok={ok} critical_fail={critical_fail}", flush=True)
     if critical_fail:

@@ -75,39 +75,6 @@ def compute_survey_windows(
     return out
 
 
-def expand_to_daily_grid(
-    window_results: list[SurveyWindowResult],
-    grid_start: str,
-    grid_end: str,
-    long_days: int = 60,
-) -> list[SurveyWindowResult]:
-    """把"调研事件日"扩展到"每个交易日的快照".
-
-    场景: ETL 想每日生成 mart_stock_survey_features 一行, 但调研不是每天发生.
-    在事件日之间用上一次窗口结果 "carry forward", 同时随时间老化窗口 (60 日前的事件自动出栈).
-
-    Args:
-        window_results: 已计算的事件日结果 (按 as_of_date 升序, 同股)
-        grid_start: 网格起始 (YYYY-MM-DD)
-        grid_end:   网格终止 (YYYY-MM-DD)
-        long_days:  长窗口天数 (默认 60)
-
-    Returns:
-        每个 grid 日上一条 SurveyWindowResult (按 as_of_date 升序).
-
-    Notes:
-        - 老化语义: 在 grid 日 d 上, 窗口包含 [d - long_days+1, d] 的所有事件
-        - 实现上不只 carry forward, 而是重新过滤事件
-        - 如果一只股票从未有过调研, 不在 grid 内产出 (调用方过滤)
-    """
-    if not window_results:
-        return []
-    stock_code = window_results[0].stock_code
-    raw_events: list[tuple[str, int]] = []
-    # 反推 raw 事件 (window_results 的"当日新增" = count_60d - 上一日的部分)
-    # 实际上更简单: 重新构造 raw events 需要 raw input, 这个函数直接用一个 helper 复用计算
-    # 为保持 expand 函数的纯粹性: 让调用方直接传 raw events 进 daily_grid_from_events
-    raise NotImplementedError("use daily_grid_from_events instead")
 
 
 def daily_grid_from_events(

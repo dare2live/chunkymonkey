@@ -50,7 +50,7 @@ echo "--- crontab automation ---"
 CRON_COUNT=$(crontab -l 2>/dev/null | grep -cE "^(\*/[0-9]+|[0-9]+) [0-9*]" || echo 0)
 echo "  cron entries installed: $CRON_COUNT (expected config: daily/nightly/codex/workflow/log-rotate)"
 if [[ "$CRON_COUNT" -lt 5 ]]; then
-    echo "  ACTION: bash configs/cron/install.sh install  (FDA-free 自动化)"
+    echo "  ACTION: 手动时代 (2026-06-12 决议) — 跑链用 工作台按钮 或 nohup python scripts/launchd_job_wrapper.py daily_update /bin/bash scripts/daily_update.sh"
 fi
 echo ""
 
@@ -76,5 +76,5 @@ echo "Next actions (if not in cron):"
 echo "  daily update:        bash scripts/daily_update.sh"
 echo "  audit:               PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py"
 echo "  compute plan:        scripts/chunkyctl jobs --family model_training --model-id <id> --input-snapshot <snapshot> --objective <why> --rollback-plan <plan> --gate-evidence <gate>=<artifact>"
-echo "  cron install:        bash configs/cron/install.sh install"
+echo "  手动触发入口:        /api/v3/ops/jobs (前端工作台) 或 launchd_job_wrapper CLI"
 echo "=========================================="

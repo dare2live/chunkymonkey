@@ -166,35 +166,7 @@ def main(msg_path: str) -> int:
     # 2026-06-12 用户决议: Codex review 强制解除 — 降级为信息提示, 永不阻塞
     print("INFO: commit 无 Codex review evidence (2026-06-12 决议: 不再强制)", file=sys.stderr)
     return 0
-    print(file=sys.stderr)
-    print("Staged code files:", file=sys.stderr)
-    code_files = [f for f in staged if any(f.startswith(p) for p in CODE_PATH_PREFIXES)
-                  and not any(f.endswith(s) for s in EXEMPT_PATH_SUFFIXES)]
-    for f in code_files[:10]:
-        print(f"  {f}", file=sys.stderr)
-    if len(code_files) > 10:
-        print(f"  ... 另 {len(code_files) - 10} 文件", file=sys.stderr)
-    print(file=sys.stderr)
-    print("CLAUDE Rule 10 要求: 任何代码 commit 必须先 Codex review.", file=sys.stderr)
-    print("Codex 调用方式:", file=sys.stderr)
-    print("  /codex:rescue --model gpt-5.5 --effort xhigh <prompt>", file=sys.stderr)
-    print(file=sys.stderr)
-    print("commit message body 必须含以下任一 evidence:", file=sys.stderr)
-    print("  - 'Codex-Reviewed: APPROVE' 或 'Codex-Reviewed: APPROVE_WITH_NOTES'", file=sys.stderr)
-    print("  - 'Codex <agent_id>' (e.g. Codex ad2e09e7)", file=sys.stderr)
-    print("  - 'codex review' / 'codex-rescue' / 'agent <ID>'", file=sys.stderr)
-    print("  - 8-char hex agent ID pattern", file=sys.stderr)
-    print(file=sys.stderr)
-    print("Bypass (慎用, 加在 message body 内):", file=sys.stderr)
-    print("  'codex-review: skipped reason=typo'", file=sys.stderr)
-    print("  'codex-review: skipped reason=rename'", file=sys.stderr)
-    print("  'codex-review: skipped reason=markdown'", file=sys.stderr)
-    print("  'codex-review: skipped reason=trivial'", file=sys.stderr)
-    print(file=sys.stderr)
-    print("根因: CLAUDE Rule 10 — code 阶段性 commit 必须 Codex review.", file=sys.stderr)
-    print("无 Codex review 的 code commit 下次 session 重读时无法 audit 是否经过 critical 检查.", file=sys.stderr)
-    print("=" * 80, file=sys.stderr)
-    return 1
+    # (2026-06-12 决议后不可达的旧阻塞文案块已删 — 残留清理)
 
 
 if __name__ == "__main__":

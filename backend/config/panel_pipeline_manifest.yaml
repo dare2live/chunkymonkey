@@ -125,7 +125,7 @@ pipelines:
     output_table: mart_p0b_oos_predictions
     inputs: [mart_p0a_feature_label_panel_v4]
     rebuild_mode: APPEND_by_model_id
-    eta_min: 240  # GCP n2-32, 50 trials, full panel
+    eta_min: 240  # 实测口径源自历史 50-trials 全 panel 跑批 (GCP 已退役, 现执行面 = local/modal)
     eta_min_mac: 1800  # Mac 8C, 35-50h serial
 
   - name: sniper_score

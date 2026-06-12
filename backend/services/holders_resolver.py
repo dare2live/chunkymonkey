@@ -331,29 +331,8 @@ class MiaoxiangHolderSource(HolderSource):
                 pass
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Tier 3: akshare (panic-mode, batch-style; 占位)
-# ─────────────────────────────────────────────────────────────────────
-
-class AkshareHolderSource(HolderSource):
-    """兜底 — akshare stock_gdfx_free_holding_detail_em.
-
-    注意: akshare 接口是按报告期批量下载, 不是按股票. 单股 fallback 成本很
-    高 (要下载整个季度的全市场十大流通股东). 当前实现为占位; 99.6% 覆盖
-    下基本用不到, 真用到再写.
-    """
-
-    name = "akshare"
-    source_tier = 3
-
-    def fetch(self, symbol: str, *, stock_name: str = "") -> Optional[ResolverResult]:
-        raise NotImplementedError(
-            "akshare per-stock holder fallback 未实现. "
-            "akshare stock_gdfx_free_holding_detail_em 是按报告期批量, "
-            "需先决定调度策略 (是否预下载整季并缓存). "
-            "tdxhub + miaoxiang 双层覆盖足以应对当前 99.6% 全市场场景."
-        )
-
+# Tier 3 akshare 占位类已删 (2026-06-12 残留清理): 0 运行时调用方且 akshare 整体
+# 退役中 (§4.3); "真用到再写" 前提已消失, 需要批量兜底时按 tushare 主源接口立项。
 
 # ─────────────────────────────────────────────────────────────────────
 # Resolver

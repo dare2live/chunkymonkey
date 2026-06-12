@@ -3,7 +3,7 @@
 
 Codex review agent a8d412b0 verdict applied:
 - Train window shifted to 2024-11-01 onwards (perception coverage starts then; pre-2024-11 perception all NULL = no training signal)
-- Use v7 best_params as smoke baseline (Phase 4.2b: real Optuna re-search ~50 trials, deferred to GCP)
+- Use v7 best_params as smoke baseline (Phase 4.2b: real Optuna re-search ~50 trials, 待排 experiment_jobs 契约 local/modal)
 - Keep all rows including NULL-heavy (LightGBM learns default direction natively)
 - Output OOS RankIC + NDCG + spreads for honest comparison vs v7
 
