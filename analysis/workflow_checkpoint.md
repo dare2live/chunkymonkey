@@ -1,5 +1,7 @@
 # Workflow Checkpoint
 
+> 状态: live — 机器生成 stub (active pipeline 时才参与恢复)
+
 - generated_at: `2026-06-12T02:00:25Z`
 - status: `inactive`
 - current_step: `inactive`

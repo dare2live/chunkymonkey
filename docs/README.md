@@ -51,6 +51,20 @@ but they do not override the active contracts.
 | `chip_distribution_cyq_spec.md` | Active CYQ algorithm/detail spec for main-force profile and 主升浪 validation |
 | `zhushenglang_hunter_research_log_20260528.md` | 主升浪猎手 product north star and research evidence; not production proof |
 
+## 状态标头契约 (2026-06-12 新增, 机器执法)
+
+新旧文档混用误导的机械防线。默认语义 + 例外标头 + 执法器:
+
+- **默认语义**: `docs/` 与控制面 (`goal.md`/`CLAUDE.md`/`AGENTS.md`/`PROJECT_INDEX.md`) = live;
+  `analysis/` = 按日期冻结的证据 (evidence-frozen), 只新增不改写。
+- **例外必须声明** (文件前 10 行): `> 状态: live` (analysis 里的活文档如 ledger/作战图) /
+  `> 状态: superseded-by: <现行文件路径>` / `> 状态: retired`。
+- **引用纪律**: 控制面引用的 analysis 文件必须存在 (幽灵引用 = FAIL); 引用 retired/superseded
+  文件仅限历史叙述 (执法器 WARN, 当 owner 引用须改指现行文件)。
+- **执法器**: `backend/scripts/check_doc_governance.py` (C1 goal 行数 / C2 docs 文件数 /
+  C3 幽灵引用 / C4 superseded 断链 / C5 退役引用), 已入 moth claims 弹仓 —
+  `moth assert` / `sherpa takeover` 每次自动跑, 文档腐烂当天可见。
+
 ## Lifecycle Rules
 
 | Case | Action |

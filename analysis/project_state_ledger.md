@@ -1,5 +1,7 @@
 # ChunkyMonkey Project State Ledger
 
+> 状态: live — 滚动追加的历史账本 (例外: analysis 默认冻结, 本文件持续追加)
+
 > 滚动规则 (2026-06-11): 本文件只保留当月+上月条目; 月初把更早条目剪切到
 > `analysis/ledger_archive_YYYYMM.md`。手动执行, 不写自动工具。
 

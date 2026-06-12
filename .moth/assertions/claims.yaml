@@ -50,3 +50,8 @@ assertions:
     type: shell
     command: ["grep", "-ci", "utc", "backend/services/source_watermarks.py"]
     expect: {op: ">=", value: 1}
+  - id: doc-governance
+    claim: "文档治理执法器 PASS (幽灵引用/superseded 断链/goal 行数/docs 文件数; 状态标头契约 owner=docs/README.md)"
+    type: shell
+    command: ["python3", "backend/scripts/check_doc_governance.py"]
+    expect: {op: regex, pattern: "verdict=PASS"}
