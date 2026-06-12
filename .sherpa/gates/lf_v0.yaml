@@ -1,0 +1,46 @@
+kind: assertion_pack
+name: lf_v0
+# B组C3 "chain_leader_follower V0" 开跑 gate (X 轨 G1-G6, 2026-06-12)
+# G2 概念覆盖阈值 400 为保守初标 (截断期单日仅 27-354), 首个干净日后按实测校准 — 校准=改本文件=git 可见。
+assertions:
+  - id: g1-pagination-registered
+    claim: "registry dc_member 已声明 page_limit (截断根因修复)"
+    type: shell
+    command: ["bash", "-c", "awk '/^  dc_member:/,/^  [a-z_]+:/' backend/config/sync_registry.yaml | grep -c page_limit"]
+    expect: {op: ">=", value: 1}
+  - id: g2-no-truncation-pin
+    claim: "dc_member 近 30 日零整 5000 行截断签名"
+    type: duckdb_sql
+    database: data/tushare_raw.duckdb
+    query: "SELECT count(*) FROM (SELECT trade_date, count(*) AS n FROM raw_tushare_dc_member GROUP BY 1 ORDER BY 1 DESC LIMIT 30) WHERE n % 5000 = 0"
+    expect: {op: "==", value: 0}
+  - id: g2-concept-coverage
+    claim: "最新日 distinct 概念数 >= 400 (重拉后全量口径; 保守初标待首个干净日校准)"
+    type: duckdb_sql
+    database: data/tushare_raw.duckdb
+    query: "SELECT count(DISTINCT ts_code) FROM raw_tushare_dc_member WHERE trade_date = (SELECT max(trade_date) FROM raw_tushare_dc_member)"
+    expect: {op: ">=", value: 400}
+  - id: g3-event-history-depth
+    claim: "fact_concept_event reconstructed 事件史 >= 340 个 event_date 且起点 <= 20250106"
+    type: duckdb_sql
+    database: data/smartmoney.duckdb
+    query: "SELECT CASE WHEN count(DISTINCT event_date) >= 340 AND CAST(min(event_date) AS VARCHAR) <= '2025-01-06' THEN 1 ELSE 0 END FROM fact_concept_event WHERE as_of_mode='reconstructed'"
+    expect: {op: "==", value: 1}
+  - id: g4-artifact-residue
+    claim: "伪影残留判据: BORN+DEAD 日均 < 5 (概念集跳变幻影杀线)"
+    type: duckdb_sql
+    database: data/smartmoney.duckdb
+    query: "SELECT CASE WHEN count(*) = 0 THEN 999 ELSE count(*) FILTER (WHERE event_type IN ('concept_born','concept_dead')) * 1.0 / count(DISTINCT event_date) END FROM fact_concept_event WHERE as_of_mode='reconstructed'"
+    expect: {op: "<", value: 5}
+  - id: g4-churn-band
+    claim: "ADD+DROP 日均 <= 240 (稳定窗实测基线 24 x10 容忍)"
+    type: duckdb_sql
+    database: data/smartmoney.duckdb
+    query: "SELECT CASE WHEN count(*) = 0 THEN 99999 ELSE count(*) FILTER (WHERE event_type IN ('member_add','member_drop')) * 1.0 / count(DISTINCT event_date) END FROM fact_concept_event WHERE as_of_mode='reconstructed'"
+    expect: {op: "<=", value: 240}
+  - id: g6-main-tables-fresh
+    claim: "主表三件 (limit_list_d/stk_limit/kline) 覆盖到实验窗尾"
+    type: duckdb_sql
+    database: data/tushare_raw.duckdb
+    query: "SELECT CASE WHEN (SELECT max(trade_date) FROM raw_tushare_limit_list_d) >= '20260601' AND (SELECT max(trade_date) FROM raw_tushare_stk_limit) >= '20260601' THEN 1 ELSE 0 END"
+    expect: {op: "==", value: 1}

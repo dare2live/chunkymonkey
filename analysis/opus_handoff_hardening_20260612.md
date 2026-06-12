@@ -75,6 +75,18 @@
       读作战图 → 按 playbook 干活。
 - [ ] **E3 mythos / memory 增量沉淀本 10 天新教训**。
 
+## 1.5 实用工具清单 (用户 06-12 晚点名 "留下类似 moth 的实用工具", 与上面条目互为索引)
+
+| 工具 | 形态 | 一句话 | 对应条目 |
+|---|---|---|---|
+| `moth doctor` + assertion 弹仓 | 已交付 | 声称-实况对账, 文档腐烂/schema 回归/截断签名一条命令 | A1 |
+| `cm_takeover_audit` | 新脚本 (P0) | **接手对账器**: alert flags + git + doctor + data-status + moth + chain 日志尾 → 单页 verdict; 新 session 第一条命令, 把本周 13-agent 人肉对账的确定性部分一键化 | 新增 |
+| `experiment_gates` | 新脚本 (P0) | 实验 go/no-go 跑批器: gate 写 YAML (SQL/shell 判据), 跑前一条命令出 PASS/FAIL 表, 防"门柱挪动/带病开跑" | B2 |
+| moth 守门有效性审计 | moth 第二刀 (P1) | 每个 checker/test 验 (a) 有调用方 (b) 物理可红 — 抓 print-not-fail/孤儿守门/空弹仓 | A4 |
+| diff 风险分类器 | hook (P1) | staged diff 按路径+模式规则 (YAML) 分类 数据语义/策略/资金路径, 高风险类强制对抗复审标记, 机械化 degraded 协议 | C1 |
+| 对抗复审 workflow 模板 | .claude/workflows (P1) | 调查→对抗核验→完备性审查 三段式固化, Opus 直接调用; 确定性检查为主力, agent 只做语义层 | C2 |
+| 语义探针弹仓 | YAML (P0) | 键形态/时区/单位带/整千 pin/min-date 对账, 反例驱动逐条扩 | A3 |
+
 ## 2. 明确不做的 (奥卡姆)
 
 - 不做"Opus 专用降智版文档" — 文档已经是契约化的, 弱模型需要的是更少自由发挥面, 不是更多解释。

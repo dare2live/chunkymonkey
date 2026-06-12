@@ -1,0 +1,39 @@
+kind: takeover_checklist
+name: chunkymonkey
+# 新 session 第一条命令: sherpa takeover --repo ~/Documents/M/stock/chunkymonkey
+# 设计: 确定性接手对账 (2026-06-12 接手战役的机械化沉淀); doctor --fast 较重未入清单,
+# 状态深查仍按 quickstart 走。
+sections:
+  - id: alert-flags
+    title: "定时任务告警 flag (/tmp)"
+    command: ["bash", "-c", "ls /tmp/chunkymonkey_ALERT_*.flag 2>/dev/null | grep . && echo FLAGS_PRESENT || echo NO_FLAGS"]
+    fail_regex: "FLAGS_PRESENT"
+    ok_requires_regex: "NO_FLAGS|FLAGS_PRESENT"
+  - id: running-jobs
+    title: "在跑的链/任务 (有 = 先别动库)"
+    command: ["bash", "-c", "pgrep -fl 'daily_update.sh|sync_runner|backfill_history|build_concept_events' || echo NONE_RUNNING"]
+    warn_regex: "daily_update|sync_runner|backfill|build_concept"
+    ok_requires_regex: "NONE_RUNNING|[0-9]"
+  - id: git-status
+    title: "脏 worktree (有未 commit = 上个 session 没收尾)"
+    command: ["git", "status", "--short"]
+    warn_regex: "."
+  - id: chain-logs
+    title: "最近链日志尾部 (w1_chain*/chain9)"
+    command: ["bash", "-c", "for f in /tmp/w1_chain*.log /tmp/chunkymonkey_daily_update.log; do [ -f \"$f\" ] && echo \"== $f\" && tail -3 \"$f\"; done"]
+    fail_regex: "FAIL:"
+    max_lines: 20
+  - id: moth-assertions
+    title: "moth 声称-实况对账 (弹仓)"
+    command: ["/Users/dp/.local/bin/moth", "assert", "--repo", "."]
+    timeout_s: 120
+    ok_requires_regex: "verdict="
+    fail_regex: "verdict=FAIL"
+  - id: data-status
+    title: "数据迁移状态仪表盘 (registry 驱动)"
+    command: ["bash", "scripts/chunkyctl", "data-status"]
+    timeout_s: 180
+    ok_requires_regex: "verdict"
+    fail_regex: "verdict=FAIL"
+    warn_regex: "verdict=WARN"
+    max_lines: 25

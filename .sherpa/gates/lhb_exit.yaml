@@ -1,0 +1,41 @@
+kind: assertion_pack
+name: lhb_exit
+# C组C1 "LHB 上榜即退出" 开跑 gate (X 轨 G1-G6, 2026-06-12 实测口径; 预注册纪律: gate 用实测不引用文档)
+# G5 (2020 段 below_min_rows suspect 豁免清单) 为程序性条款, 见 chain9 runbook; G6 top_inst 臂可选不阻塞。
+assertions:
+  - id: g1-calendar-floor
+    claim: "交易日历起点 <= 2020-01-02 (clamp 根因已修)"
+    type: duckdb_sql
+    database: data/smartmoney.duckdb
+    query: "SELECT CAST(min(trade_date) AS VARCHAR) FROM dim_trading_calendar"
+    expect: {op: "<=", value: "2020-01-02"}
+  - id: g2-toplist-floor
+    claim: "top_list 历史地板 <= 20200101"
+    type: duckdb_sql
+    database: data/tushare_raw.duckdb
+    query: "SELECT CAST(min(trade_date) AS VARCHAR) FROM raw_tushare_top_list"
+    expect: {op: "<=", value: "20200101"}
+  - id: g2-toplist-2020-2022-days
+    claim: "top_list 2020-2022 段 728 交易日齐 (raw_tushare_trade_cal 实测开市日数)"
+    type: duckdb_sql
+    database: data/tushare_raw.duckdb
+    query: "SELECT count(DISTINCT trade_date) FROM raw_tushare_top_list WHERE trade_date BETWEEN '20200101' AND '20221231'"
+    expect: {op: ">=", value: 728}
+  - id: g3-daily-2020-2022-days
+    claim: "daily (forward return 价源) 2020-2022 段 728 日齐"
+    type: duckdb_sql
+    database: data/tushare_raw.duckdb
+    query: "SELECT count(DISTINCT trade_date) FROM raw_tushare_daily WHERE trade_date BETWEEN '20200101' AND '20221231'"
+    expect: {op: ">=", value: 728}
+  - id: g3-adjfactor-2020-2022-days
+    claim: "adj_factor (复权) 2020-2022 段 728 日齐"
+    type: duckdb_sql
+    database: data/tushare_raw.duckdb
+    query: "SELECT count(DISTINCT trade_date) FROM raw_tushare_adj_factor WHERE trade_date BETWEEN '20200101' AND '20221231'"
+    expect: {op: ">=", value: 728}
+  - id: g4-field-quality
+    claim: "字段质量: pct_change/reason/net_amount 零 null 且 float_values null<5% (混淆臂与方向特征可用)"
+    type: duckdb_sql
+    database: data/tushare_raw.duckdb
+    query: "SELECT CASE WHEN sum(CASE WHEN pct_change IS NULL OR reason IS NULL OR net_amount IS NULL THEN 1 ELSE 0 END)=0 AND avg(CASE WHEN float_values IS NULL THEN 1.0 ELSE 0.0 END)<0.05 THEN 1 ELSE 0 END FROM raw_tushare_top_list"
+    expect: {op: "==", value: 1}

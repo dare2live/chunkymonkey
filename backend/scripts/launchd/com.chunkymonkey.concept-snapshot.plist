@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.chunkymonkey.concept-snapshot</string>
+    <!-- E7 概念快照自养: 攒一天少一天 (dc 系历史仅 2025 起, E8 探底实测).
+         入口必须是 .venv python (TCC FDA 链) + wrapper (告警送达), 宪法 v2 第 5 条 -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/dp/Documents/M/stock/chunkymonkey/.venv/bin/python</string>
+        <string>/Users/dp/Documents/M/stock/chunkymonkey/scripts/launchd_job_wrapper.py</string>
+        <string>concept_snapshot</string>
+        <string>/Users/dp/Documents/M/stock/chunkymonkey/.venv/bin/python</string>
+        <string>backend/scripts/snapshot_concept_daily.py</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key><integer>17</integer>
+        <key>Minute</key><integer>40</integer>
+    </dict>
+    <key>WorkingDirectory</key>
+    <string>/Users/dp/Documents/M/stock/chunkymonkey</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+</dict>
+</plist>
