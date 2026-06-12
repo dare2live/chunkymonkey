@@ -1,0 +1,78 @@
+{
+ "experiment": "C-C1_lhb_exit_main_verdict",
+ "prereg": "prereg_lhb_exit_20260612.md",
+ "run_at_utc": "2026-06-12T22:52:26.637480+00:00",
+ "window": [
+  "20200102",
+  "20260529"
+ ],
+ "hold_days": 20,
+ "n_events_judged": 74111,
+ "excluded": {
+  "null_float (修订1)": 2,
+  "window_tail": 9976,
+  "no_price_or_quintile": 14,
+  "no_controls": 14601
+ },
+ "event_mean_pp": 2.132,
+ "control_mean_pp": -0.296,
+ "J1": {
+  "net_pp": 2.428,
+  "ci95": [
+   2.239,
+   2.61
+  ],
+  "threshold_pp": 1.0,
+  "pass": true
+ },
+ "J2": {
+  "yearly": {
+   "2020": {
+    "n": 12498,
+    "net_pp": 2.909
+   },
+   "2021": {
+    "n": 11618,
+    "net_pp": 1.682
+   },
+   "2022": {
+    "n": 11026,
+    "net_pp": 3.676
+   },
+   "2023": {
+    "n": 8880,
+    "net_pp": 2.501
+   },
+   "2024": {
+    "n": 13396,
+    "net_pp": 2.478
+   },
+   "2025": {
+    "n": 12072,
+    "net_pp": 2.177
+   },
+   "2026": {
+    "n": 4621,
+    "net_pp": 0.388
+   }
+  },
+  "positive_years": 7,
+  "need": ">=5/7",
+  "pass": true
+ },
+ "J3": {
+  "event_mean": 2.132,
+  "control_mean": -0.296,
+  "ratio_need": 1.5,
+  "pass": true
+ },
+ "sensitivity_nullfloat": {
+  "n": 2,
+  "raw_exit_gain_mean_pp": 3.591
+ },
+ "bootstrap": {
+  "n": 10000,
+  "seed": 20260612
+ },
+ "verdict": "GO"
+}

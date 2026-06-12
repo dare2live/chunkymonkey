@@ -14,6 +14,25 @@
 > snapshot, and `rg` / `tail` on this ledger only when a task needs specific
 > historical evidence.
 
+## 2026-06-13 晨 — 第一个 alpha 判决: LHB 上榜即退出 = GO (三判官全过)
+
+- **判决 (C组C1, prereg FROZEN 2026-06-12 + 修订1, 跑于 06:48-06:52)**: `analysis/lhb_exit_verdict_20260612.json`。
+  n=74,111 事件 (2020-01..2026-05, 含牛熊震荡全周期); J1 净效应 **+2.428pp/20日** (bootstrap CI95
+  [2.239, 2.61], 阈值 1.0, seed=20260612 n=10000) PASS; J2 **7/7 年同号为正** (2020:+2.91 / 2021:+1.68 /
+  2022:+3.68 / 2023:+2.50 / 2024:+2.48 / 2025:+2.18 / 2026YTD:+0.39, 需>=5/7) PASS; J3 事件组 +2.132 vs
+  混淆臂对照 **-0.296** — 同日同涨幅带同市值五分位的非上榜股 20 日窗持有反而略优于退出, 而上榜股退出
+  显著占优 = LHB 信息强于纯均值回归, 判官设计意图实质满足 PASS。**verdict=GO**。
+- 排除披露: window_tail 9,976 / no_controls 14,601 / null_float 仅 2 (修订1 担心的 4-8% null 实为
+  top_list 自带 float_values 口径, 几乎无损) / no_price_or_quintile 14。保守性: 退市股 t+21 无价被排除
+  → 排除的恰是退出收益最大的灾难案例, 偏差方向对判正不利, 结论稳健。
+- 前置数据面: chain9b step1 daily_basic 2020-2022 回填 689 批 2,984,163 行 0 失败 (06:22-06:48, 26 分钟,
+  晨间网关高吞吐), g5 独立复核 728/728 整; sherpa gates lhb_exit 7/7 GO 后实验才开跑 (硬门履约)。
+- 处置 (prereg 既定): 判正 → 是否进 B 主书退出组件 ablation **待用户拍板**; top_inst 机构席位臂为可选
+  副表后补 (8 缺日 vendor 顽固空响应, 不阻塞)。C组C2 冷却期二审解锁 (串行 gate 条款: C1 非零信息成立)。
+- 执行自省 (如实): 总指挥在监控中犯时间锚定错误 — 凭臆想时钟把 top_inst drain "重试 2 分钟" 误判为
+  "卡死 2 小时" 并过早 kill (06:57)。代价可控 (可选副表 + drain 幂等, 链尾后重发即补), 教训 = 任何
+  时长判断必须先 `date` 锚定真实时钟, 不许凭会话体感 (与 UTC 误读虚构事故同族, §8.25 实测类错误)。
+
 ## 2026-06-12 晚 — 调度手动化 + 日历扩展 + chain9 发射 (持续推进指令下的当晚执行账)
 
 - 调度新政落地: daily-update/concept-snapshot launchd bootout (plist 归档), ops_manual_run router + 前端按钮 (7 单测+实弹); E7 概念快照退役 (用户决议概念域单源化 = 东财 dc 系唯一, THS 出局; dc 系历史 tushare 可回拉, 快照属冗余中间层)。
