@@ -326,8 +326,9 @@ def main() -> int:
     born_n = None
     try:
         scon = duckdb.connect(args.smart_db, read_only=True)  # rule-compliance: ok evidence=搭车臂只读计数
+        # source 列 = 数据族 ('dc'), raw/snapshot 之分在 as_of_mode (reconstructed/observed)
         born_n = scon.execute("SELECT count(*) FROM fact_concept_event "
-                              "WHERE event_type='concept_born' AND source='raw'").fetchone()[0]
+                              "WHERE event_type='concept_born' AND as_of_mode='reconstructed'").fetchone()[0]
         scon.close()
     except Exception as e:
         born_n = f"unavailable: {str(e)[:60]}"

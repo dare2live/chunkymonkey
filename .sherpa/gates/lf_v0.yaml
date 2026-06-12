@@ -24,7 +24,8 @@ assertions:
     claim: "fact_concept_event reconstructed 事件史 >= 340 个 event_date 且起点 <= 20250106"
     type: duckdb_sql
     database: data/smartmoney.duckdb
-    query: "SELECT CASE WHEN count(DISTINCT event_date) >= 340 AND CAST(min(event_date) AS VARCHAR) <= '2025-01-06' THEN 1 ELSE 0 END FROM fact_concept_event WHERE as_of_mode='reconstructed'"
+    # 2026-06-13 修订: 字面量 '2025-01-06' 带横杠 vs 数据 '20250103' 不带 — '2'>'-' 字典序恒假, g3 永 FAIL (gate 自身带病)
+    query: "SELECT CASE WHEN count(DISTINCT event_date) >= 340 AND min(event_date) <= '20250106' THEN 1 ELSE 0 END FROM fact_concept_event WHERE as_of_mode='reconstructed'"
     expect: {op: "==", value: 1}
   - id: g4-artifact-residue
     claim: "伪影残留判据: BORN+DEAD 日均 < 5 (概念集跳变幻影杀线)"
