@@ -166,11 +166,15 @@ def _load_hq_hosts() -> tuple[tuple[str, int], ...]:
 
 def iter_tdx_servers() -> tuple[tuple[str, int], ...]:
     custom_raw = [item.strip() for item in os.environ.get("CM_TDX_SERVERS", "").split(",") if item.strip()]
-    custom = [parse_tdx_server_string(item) for item in custom_raw]
+    custom = [item for item in (parse_tdx_server_string(raw) for raw in custom_raw) if item is not None]
+    # CM_TDX_SERVERS = 操作员显式声明的实测活池 → 独占使用, 不再拼接 HQ_HOSTS 兜底。
+    # 反例 (2026-06-12 xdxr 全军超时): 活池排头 + 死池拖尾的旧契约被请求级游标轮转
+    # (_iter_tdx_servers_for_request 负载均衡) 抹平 — 32 路并发冷启动大多从死 IP 烧光
+    # 超时预算; K 线路径单线程靠 prefer_last_success 锁定活机才幸免。代理环境下死池
+    # "兜底" 是负资产 (TCP connect 假成功, 见 INDEX tdxhub 断流反例)。
     ordered: list[tuple[str, int]] = []
     seen: set[tuple[str, int]] = set()
-
-    for server in [item for item in custom if item is not None] + list(_load_hq_hosts()):
+    for server in (custom if custom else list(_load_hq_hosts())):
         if server in seen:
             continue
         seen.add(server)

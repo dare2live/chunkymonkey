@@ -34,7 +34,9 @@ def test_tdx_source_prefers_workspace_tdxhub_fork_when_present():
     assert hasattr(StdQuotes, "index_bars_records")
 
 
-def test_iter_tdx_servers_prefers_custom_and_deduplicates(monkeypatch):
+def test_iter_tdx_servers_custom_pool_is_exclusive(monkeypatch):
+    # 2026-06-12 契约变更: CM_TDX_SERVERS = 实测活池, 独占; 不再拼接 HQ_HOSTS 死池兜底
+    # (旧契约下排头优势被请求级轮转抹平, xdxr 32 路并发全军超时反例)
     monkeypatch.setenv("CM_TDX_SERVERS", "1.1.1.1:7709,2.2.2.2:7709,1.1.1.1:7709")
     monkeypatch.setattr(
         tdx_source,
@@ -44,7 +46,20 @@ def test_iter_tdx_servers_prefers_custom_and_deduplicates(monkeypatch):
 
     servers = tdx_source.iter_tdx_servers()
 
-    assert servers == (("1.1.1.1", 7709), ("2.2.2.2", 7709), ("3.3.3.3", 7709))
+    assert servers == (("1.1.1.1", 7709), ("2.2.2.2", 7709))
+
+
+def test_iter_tdx_servers_falls_back_to_hq_hosts_without_custom(monkeypatch):
+    monkeypatch.delenv("CM_TDX_SERVERS", raising=False)
+    monkeypatch.setattr(
+        tdx_source,
+        "_load_hq_hosts",
+        lambda: (("2.2.2.2", 7709), ("3.3.3.3", 7709), ("2.2.2.2", 7709)),
+    )
+
+    servers = tdx_source.iter_tdx_servers()
+
+    assert servers == (("2.2.2.2", 7709), ("3.3.3.3", 7709))
 
 
 def test_tdx_server_health_reorders_future_server_iteration(monkeypatch):
