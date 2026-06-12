@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-06-12 10:00:25 CST
+**Snapshot 时间**: 2026-06-12 14:24:06 CST
 
 ## 主线状态
 
@@ -44,13 +44,15 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `e9758a9b feat: modal 计算面实弹打通 — CYQ 全市场复算函数 deploy 常驻` |
-| 最近 24h commits | 39 |
+| HEAD | `389ff6de chore: cm_resume 顺带刷新 workflow_checkpoint 时间戳 (机器生成文件) # commit-msg: minimal` |
+| 最近 24h commits | 36 |
 | 未 commit 文件 | 3 |
 
 ### 最近 10 commits
 
 ```
+389ff6de chore: cm_resume 顺带刷新 workflow_checkpoint 时间戳 (机器生成文件) # commit-msg: minimal
+9794f16e docs: session 收尾交接 — modal 实弹/34G 真相/goal-app 诊断入档, CLI 接手快照
 e9758a9b feat: modal 计算面实弹打通 — CYQ 全市场复算函数 deploy 常驻
 3ad48346 feat: 34G 拆分执行完成 — smartmoney 36.1G 紧缩至 19.3G, validation 全 PASS
 a0bf931e feat: 三决议落地 — codex review 强制解除 + C0 实验脚本 + 34G 回收提级 P0
@@ -59,8 +61,6 @@ e8b9a8c0 feat: 筹码胜率 cyq_perf 注册排队 + 34G 库死表先行处置与
 7d7a1105 test: 复查问题系统性根治 — 按根因四 Phase, suite 红海清零恢复信号价值
 adac636a test: 复查二次修正 — UTC 时区乌龙还原真相 + run_domain ok 双标改严格
 3da900cb fix: Fable-5 复查降级期工作 — 概念事件字段方向反 + 验收文档引用错 两个实质问题
-8093a72d test: 数据迁移状态仪表盘 chunkyctl data-status — '数据基建做好了么'可执行答案
-09dfc56f docs: 宪法 v2 确认状态落实到 artifact — 消除 goal.md stale '草案待确认'措辞
 ```
 
 ## NEXT ACTION (auto-computed)
