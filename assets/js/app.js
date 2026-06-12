@@ -349,11 +349,26 @@
   // 手动任务触发 (2026-06-12 自动调度退役: daily_update/概念快照改按钮手动)
   // ============================================================
   var _opsPollTimer = null;
+  var _opsButtonsRendered = false;
+  function renderOpsButtons(jobs) {
+    var group = el('opsJobsButtons');
+    if (!group || _opsButtonsRendered) return;
+    jobs.forEach(function (j, idx) {
+      var btn = document.createElement('button');
+      btn.className = idx === 0 ? 'chip chip-primary' : 'chip chip-outline';
+      btn.textContent = j.job;
+      btn.title = j.label || j.job;
+      btn.addEventListener('click', function () { runOpsJob(j.job, btn); });
+      group.appendChild(btn);
+    });
+    _opsButtonsRendered = jobs.length > 0;
+  }
   async function refreshOpsJobs() {
     var box = el('opsJobsStatus');
     if (!box) return;
     var r = await api('/api/v3/ops/jobs');
     if (!r || !r.jobs) { box.textContent = '手动任务状态不可用 (后端未启动?)'; return; }
+    renderOpsButtons(r.jobs);  // 注册表驱动: MANUAL_JOBS 加条目 -> 按钮自动出现
     var anyRunning = false;
     box.innerHTML = r.jobs.map(function (j) {
       var flags = Object.keys(j.alert_flags || {}).filter(function (k) { return j.alert_flags[k]; });
@@ -400,8 +415,6 @@
     el('btnReset')?.addEventListener('click', resetDerivedData);
     el('stockSearch')?.addEventListener('input', handleStockSearchInput);
     el('btnLifeboat')?.addEventListener('click', runLifeboat);
-    el('btnRunDailyUpdate')?.addEventListener('click', function () { runOpsJob('daily_update', this); });
-    el('btnRunConceptSnapshot')?.addEventListener('click', function () { runOpsJob('concept_snapshot', this); });
     refreshOpsJobs();
     el('btnEtfSync')?.addEventListener('click', async function () {
       var btn = this;

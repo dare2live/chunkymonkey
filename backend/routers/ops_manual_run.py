@@ -39,7 +39,17 @@ MANUAL_JOBS: dict[str, dict[str, Any]] = {
         "pattern": "snapshot_concept_daily.py",
         "log": "/tmp/chunkymonkey_concept_snapshot.log",
         "extra_flags": [],
-        "label": "概念成分快照自养 (E7, 数分钟)",
+        "label": "概念成分快照自养 (E7 已退役, 按需手动; dc 系历史可从 tushare 回拉)",
+    },
+    "tdx_pool_refresh": {
+        "argv": [
+            str(_PY),
+            str(_REPO / "backend" / "scripts" / "refresh_tdx_server_pool.py"),
+        ],
+        "pattern": "refresh_tdx_server_pool.py",
+        "log": "/tmp/chunkymonkey_tdx_pool_refresh.log",
+        "extra_flags": [],
+        "label": "TDX 服务器活池刷新 (协议层扫描全候选写回 .env, ~1 分钟; 活池独占后的定期保养)",
     },
 }
 

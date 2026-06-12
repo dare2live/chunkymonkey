@@ -100,3 +100,21 @@ def test_production_registry_shape():
         for key in ("argv", "pattern", "log", "extra_flags", "label"):
             assert key in spec, f"{job} 缺 {key}"
         assert isinstance(spec["argv"], list) and spec["argv"]
+
+
+def test_update_env_text_replaces_and_appends():
+    from scripts.refresh_tdx_server_pool import update_env_text
+
+    # 替换既有行 (保留其他行原样)
+    text = "TUSHARE_TOKEN=xxx\nCM_TDX_SERVERS=1.1.1.1:7709\nOTHER=1\n"
+    out = update_env_text(text, "2.2.2.2:7709,3.3.3.3:7709")
+    assert "CM_TDX_SERVERS=2.2.2.2:7709,3.3.3.3:7709" in out
+    assert "1.1.1.1" not in out and "TUSHARE_TOKEN=xxx" in out and "OTHER=1" in out
+    # 无既有行则追加
+    out2 = update_env_text("A=1\n", "9.9.9.9:7709")
+    assert out2.endswith("CM_TDX_SERVERS=9.9.9.9:7709\n")
+
+
+def test_tdx_pool_refresh_registered():
+    assert "tdx_pool_refresh" in opsmod.MANUAL_JOBS
+    assert opsmod.MANUAL_JOBS["tdx_pool_refresh"]["argv"][-1].endswith("refresh_tdx_server_pool.py")
