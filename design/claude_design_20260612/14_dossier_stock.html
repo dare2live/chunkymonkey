@@ -1,0 +1,46 @@
+<!-- @dsCard group="Dossiers·档案" -->
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><style>:root{--brand:#3657D8;--brandb:#dbe3fb;--bg:#FAFAFA;--sf:#fff;--ink:#111827;--mut:#6b7280;--ln:#e5e7eb;
+--ok:#0B9D6A;--okb:#dcf4e7;--wn:#d97706;--wnb:#fef3c7;--bd:#dc2626;--bdb:#fee2e2;--uk:#9ca3af;--ukb:#f3f4f6}
+*{box-sizing:border-box}body{font-family:-apple-system,'PingFang SC',sans-serif;background:var(--bg);color:var(--ink);margin:0;font-size:13px}
+table{font-variant-numeric:tabular-nums;width:100%;border-collapse:collapse;font-size:12px}
+td,th{text-align:left;padding:6px 8px;border-top:1px solid var(--ln)}th{color:var(--mut);font-weight:500;border:0}
+.top{display:flex;gap:14px;align-items:center;padding:10px 20px;background:var(--sf);border-bottom:1px solid var(--ln)}
+.top b{font-size:15px}.nav{display:flex;gap:2px}.nav a{padding:6px 12px;border-radius:8px;color:var(--mut);text-decoration:none;font-size:12px}
+.nav a.on{background:var(--brandb);color:var(--brand);font-weight:600}
+.role{margin-left:auto;display:flex;gap:4px;background:var(--ukb);border-radius:8px;padding:3px}
+.role span{padding:4px 10px;border-radius:6px;font-size:11px;color:var(--mut)}.role span.on{background:var(--sf);color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.wrap{padding:16px 20px;display:grid;gap:14px}
+.card{background:var(--sf);border:1px solid var(--ln);border-radius:12px;padding:14px}.card h3{margin:0 0 8px;font-size:13px}
+.card .sub{font-size:11px;color:var(--mut);margin-bottom:10px}
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
+.tag.ok{background:var(--okb);color:var(--ok)}.tag.bd{background:var(--bdb);color:var(--bd)}
+.tag.wn{background:var(--wnb);color:var(--wn)}.tag.uk{background:var(--ukb);color:var(--uk)}.tag.br{background:var(--brandb);color:var(--brand)}
+.ent{color:var(--brand);font-weight:600;border-bottom:1px dashed var(--brand);cursor:pointer}
+h1{font-size:17px;margin:0 0 4px}p.lead{color:var(--mut);font-size:12px;max-width:900px;margin:0 0 14px}
+</style></head><body><div class="top"><b>ChunkyMonkey</b><div class="nav"><a class="">今日决策</a><a class="">策略组合</a><a class="on">档案</a><a class="">实验工厂</a><a class="">数据底座</a><a class="">治理</a><span style="margin-left:8px;color:var(--ln)">|</span></div><div class="role"><span class="on">投资人</span><span class="">研究员</span><span class="">管理员</span></div></div>
+<div class="wrap">
+<div class="card"><div style="display:flex;align-items:baseline;gap:12px"><h1 style="margin:0">五粮液 <span style="font-family:monospace;font-size:14px;color:var(--mut)">000858.SZ</span></h1>
+<span class="tag ok">候选中 · 0.71</span><span class="tag uk">paper 态</span><span class="sub">白酒 · 申万L2 食品饮料 · 概念: <span class="ent">白酒</span> <span class="ent">消费</span></span></div></div>
+<div style="display:grid;grid-template-columns:1.4fr .6fr;gap:14px">
+<div class="card"><h3>价格 + 信号叠加 (240 日)</h3>
+<svg viewBox="0 0 600 160" style="width:100%;height:160px">
+<polyline fill="none" stroke="#3657D8" stroke-width="2" points="0,120 60,110 120,125 180,95 240,100 300,70 330,85 360,60 420,75 480,55 540,62 600,48"/>
+<circle cx="300" cy="70" r="5" fill="#0B9D6A"/><text x="308" y="64" font-size="10" fill="#0B9D6A">reversal 信号 t</text>
+<circle cx="360" cy="60" r="5" fill="#d97706"/><text x="368" y="54" font-size="10" fill="#d97706">t+1 open 入场</text>
+<line x1="480" y1="20" x2="480" y2="150" stroke="#dc2626" stroke-dasharray="4"/><text x="486" y="30" font-size="10" fill="#dc2626">wr_tp 触发位</text></svg>
+<div class="sub">叠加层可勾选: 信号 / 进出点 / 涨停日 / LHB 上榜日 / 概念事件 — 每个标记可点开解释</div></div>
+<div class="card"><h3>为什么在候选里 (贡献分解)</h3>
+<table><tr><th>因子</th><th>贡献</th><th></th></tr>
+<tr><td><span class="ent">reversal_1m_deep</span></td><td>+0.42</td><td><span class="tag ok">oos 0.0186</span></td></tr>
+<tr><td><span class="ent">stage=1</span></td><td>+0.18</td><td><span class="tag ok">PIT 净</span></td></tr>
+<tr><td>L1 筹码确认</td><td>—</td><td><span class="tag uk">冻结 (C0)</span></td></tr>
+<tr><td>板块顺风 L3</td><td>+0.11</td><td><span class="tag wn">W5 口径</span></td></tr></table>
+<div class="sub">每行可点 → 公式档案; 分数 = Σ贡献, 不存在不可溯源的黑箱项</div></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+<div class="card"><h3>事件时间线</h3><table>
+<tr><td>06-12</td><td>入候选 (0.71) · <span class="sub">evidence: run #2381</span></td></tr>
+<tr><td>06-10</td><td>概念事件: <span class="ent">白酒</span> member 无变动</td></tr>
+<tr><td>06-05</td><td>北向净买入 2.1 亿 <span class="tag uk">研究层</span></td></tr></table></div>
+<div class="card"><h3>机构持仓 (跟随价值)</h3><table>
+<tr><td><span class="ent">XX 资管</span></td><td>评分 8.2 · <span class="sub">第二次行为: 加仓兑现</span></td></tr></table></div>
+</div></div></body></html>

@@ -1,0 +1,34 @@
+<!-- @dsCard group="Screens·角色版面" -->
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><style>:root{--brand:#3657D8;--brandb:#dbe3fb;--bg:#FAFAFA;--sf:#fff;--ink:#111827;--mut:#6b7280;--ln:#e5e7eb;
+--ok:#0B9D6A;--okb:#dcf4e7;--wn:#d97706;--wnb:#fef3c7;--bd:#dc2626;--bdb:#fee2e2;--uk:#9ca3af;--ukb:#f3f4f6}
+*{box-sizing:border-box}body{font-family:-apple-system,'PingFang SC',sans-serif;background:var(--bg);color:var(--ink);margin:0;font-size:13px}
+table{font-variant-numeric:tabular-nums;width:100%;border-collapse:collapse;font-size:12px}
+td,th{text-align:left;padding:6px 8px;border-top:1px solid var(--ln)}th{color:var(--mut);font-weight:500;border:0}
+.top{display:flex;gap:14px;align-items:center;padding:10px 20px;background:var(--sf);border-bottom:1px solid var(--ln)}
+.top b{font-size:15px}.nav{display:flex;gap:2px}.nav a{padding:6px 12px;border-radius:8px;color:var(--mut);text-decoration:none;font-size:12px}
+.nav a.on{background:var(--brandb);color:var(--brand);font-weight:600}
+.role{margin-left:auto;display:flex;gap:4px;background:var(--ukb);border-radius:8px;padding:3px}
+.role span{padding:4px 10px;border-radius:6px;font-size:11px;color:var(--mut)}.role span.on{background:var(--sf);color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.wrap{padding:16px 20px;display:grid;gap:14px}
+.card{background:var(--sf);border:1px solid var(--ln);border-radius:12px;padding:14px}.card h3{margin:0 0 8px;font-size:13px}
+.card .sub{font-size:11px;color:var(--mut);margin-bottom:10px}
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
+.tag.ok{background:var(--okb);color:var(--ok)}.tag.bd{background:var(--bdb);color:var(--bd)}
+.tag.wn{background:var(--wnb);color:var(--wn)}.tag.uk{background:var(--ukb);color:var(--uk)}.tag.br{background:var(--brandb);color:var(--brand)}
+.ent{color:var(--brand);font-weight:600;border-bottom:1px dashed var(--brand);cursor:pointer}
+h1{font-size:17px;margin:0 0 4px}p.lead{color:var(--mut);font-size:12px;max-width:900px;margin:0 0 14px}
+</style></head><body><div class="top"><b>ChunkyMonkey</b><div class="nav"><a class="">指挥台</a><a class="">策略组合</a><a class="">档案</a><a class="">实验工厂</a><a class="">数据底座</a><a class="">治理</a><span style="margin-left:8px;color:var(--ln)">|</span></div><div class="role"><span class="">投资人</span><span class="">研究员</span><span class="on">管理员</span></div></div>
+<div class="wrap">
+<div style="display:flex;align-items:center;gap:14px;background:var(--okb);border:1px solid var(--ok);border-radius:12px;padding:12px 16px">
+<span style="background:var(--ok);color:#fff;font-weight:700;border-radius:8px;padding:6px 14px">可以动</span>
+<div><b>接手对账 OK</b> — flag 0 · 写锁空闲 · 弹仓 8/8 · 脏树 0 <span class="sub">sherpa takeover @ 09:02 · FAIL 时锁住全部手动按钮</span></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+<div class="card"><h3>手动任务 (注册表驱动)</h3>
+<table><tr><td><b>daily_update</b><br><span class="sub">上次 20:54 OK · 1 降级</span></td><td style="text-align:right"><span class="tag br">跑</span></td></tr>
+<tr><td><b>tdx_pool_refresh</b><br><span class="sub">上次 47 活/70 死</span></td><td style="text-align:right"><span class="tag br">跑</span></td></tr>
+<tr><td><b>chain9 历史回填</b><br><span class="sub">在跑 · step 2c · 3.1k/9.7k 调用</span></td><td style="text-align:right"><span class="tag wn">38%</span></td></tr></table></div>
+<div class="card"><h3>verdict 流 (机器生成)</h3><div style="line-height:2.1">
+<span class="tag ok">OK</span> K 线 06-12 落 5,200 行<br>
+<span class="tag wn">WARN</span> kline watermark 滞后 1 天 → <span class="ent">数据域档案: kline_daily</span><br>
+<span class="tag bd">FAIL</span> dc_member 截断签名 21/30 → <span class="ent">数据域档案: dc_member</span><br>
+<span class="tag wn">WARN</span> failure_queue 6 open</div></div></div></div></body></html>

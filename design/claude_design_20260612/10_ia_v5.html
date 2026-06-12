@@ -1,0 +1,40 @@
+<!-- @dsCard group="IA" -->
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><style>:root{--brand:#3657D8;--brandb:#dbe3fb;--bg:#FAFAFA;--sf:#fff;--ink:#111827;--mut:#6b7280;--ln:#e5e7eb;
+--ok:#0B9D6A;--okb:#dcf4e7;--wn:#d97706;--wnb:#fef3c7;--bd:#dc2626;--bdb:#fee2e2;--uk:#9ca3af;--ukb:#f3f4f6}
+*{box-sizing:border-box}body{font-family:-apple-system,'PingFang SC',sans-serif;background:var(--bg);color:var(--ink);margin:0;font-size:13px}
+table{font-variant-numeric:tabular-nums;width:100%;border-collapse:collapse;font-size:12px}
+td,th{text-align:left;padding:6px 8px;border-top:1px solid var(--ln)}th{color:var(--mut);font-weight:500;border:0}
+.top{display:flex;gap:14px;align-items:center;padding:10px 20px;background:var(--sf);border-bottom:1px solid var(--ln)}
+.top b{font-size:15px}.nav{display:flex;gap:2px}.nav a{padding:6px 12px;border-radius:8px;color:var(--mut);text-decoration:none;font-size:12px}
+.nav a.on{background:var(--brandb);color:var(--brand);font-weight:600}
+.role{margin-left:auto;display:flex;gap:4px;background:var(--ukb);border-radius:8px;padding:3px}
+.role span{padding:4px 10px;border-radius:6px;font-size:11px;color:var(--mut)}.role span.on{background:var(--sf);color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.wrap{padding:16px 20px;display:grid;gap:14px}
+.card{background:var(--sf);border:1px solid var(--ln);border-radius:12px;padding:14px}.card h3{margin:0 0 8px;font-size:13px}
+.card .sub{font-size:11px;color:var(--mut);margin-bottom:10px}
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
+.tag.ok{background:var(--okb);color:var(--ok)}.tag.bd{background:var(--bdb);color:var(--bd)}
+.tag.wn{background:var(--wnb);color:var(--wn)}.tag.uk{background:var(--ukb);color:var(--uk)}.tag.br{background:var(--brandb);color:var(--brand)}
+.ent{color:var(--brand);font-weight:600;border-bottom:1px dashed var(--brand);cursor:pointer}
+h1{font-size:17px;margin:0 0 4px}p.lead{color:var(--mut);font-size:12px;max-width:900px;margin:0 0 14px}
+</style></head><body>
+<div style="margin:24px">
+<h1>统筹 IA v5 — 角色版面 × 档案体系 × 机器 verdict 流</h1>
+<p class="lead">三个设计传统的合流: 旧 v3 的<b>档案体系</b> (股票/公式/机构视图 + 全局抽屉, 任何实体名可点开档案) +
+v4 的<b>每日动线与 verdict 流</b> (状态色只来自机器判决) + 新增<b>角色版面</b> (同一档案底座, 三种工作台)。</p>
+<table style="max-width:980px">
+<tr><th style="width:110px">角色</th><th>默认首屏</th><th>可见模块</th><th>设计语气</th></tr>
+<tr><td><b>投资人</b> (用户)</td><td>今日决策: KPI 四格 + 候选 (带可解释分解) + 持仓与退出信号</td><td>今日决策 / 策略组合 / 档案 (股票·策略)</td><td>结果优先, 零运维噪音; 每个数字可点穿到证据</td></tr>
+<tr><td><b>研究员</b></td><td>实验工厂: 预注册→gate→判决流水线 + 12 周路线</td><td>实验工厂 / 档案 (公式·实验·数据域) / 可视化工作台</td><td>判据与证据优先; 阴性结果同等可见</td></tr>
+<tr><td><b>管理员</b> (总指挥)</td><td>指挥台: 接手对账 verdict 横幅 + 手动任务 + 告警</td><td>指挥台 / 数据底座 / 治理 / 全部档案</td><td>能不能动 → 哪里坏了 → 一键修</td></tr>
+</table>
+<h1 style="margin-top:26px">档案体系 (6 类) — 全局可达: 任何界面点击实体名 = 打开档案抽屉, 深查另开整页</h1>
+<table style="max-width:980px">
+<tr><th style="width:110px">档案</th><th>核心内容</th><th>真相源</th></tr>
+<tr><td><b>股票档案</b></td><td>价格+信号叠加图 · 推荐/退出原因 (公式贡献分解) · 机构持仓 · 概念归属 · 事件时间线</td><td>K线/mart 推荐/fact_concept_event</td></tr>
+<tr><td><b>公式档案</b></td><td>人话+机器话定义 · 参数溯源 (yaml/optuna) · OOS 成绩单 · 贡献 waterfall · 审计状态</td><td>formula_engine/optuna study/oos_* 列</td></tr>
+<tr><td><b>策略档案</b></td><td>法的可视化: 创世层/判断法典/死亡条款 · paper_sim 净值 · ablation 记录</td><td>prereg 文档/paper_sim</td></tr>
+<tr><td><b>机构档案</b></td><td>跟随价值评分卡 · 第二次行为标准 · 持仓变动</td><td>institution mart (旧主线收编)</td></tr>
+<tr><td><b>数据域档案</b></td><td>registry 条目可视化: pit_anchor/SLA/watermark/失败单/样本契约</td><td>sync_registry/data-status</td></tr>
+<tr><td><b>实验档案</b></td><td>预注册判据 (冻结) → gate → 三判官 → 处置</td><td>prereg 文档/sherpa gates</td></tr>
+</table></div></body></html>
