@@ -361,6 +361,16 @@ if [[ "$SKIP_SYNC" == "0" && "$DRY" == "0" ]]; then
         >> "$LOG" 2>&1 || step_degraded "sync_registry drain 有残余缺口或域错误 (见 log)"
 fi
 
+# Step 2.97: 源域水位刷新 (从真实表派生, 写 mart_data_source_watermark)
+# 根因 (2026-06-13): 调度手动化时旧 cron_daily phase_watermarks 孤儿化 — 检查器 (Step 1
+# SLA) 只读水位从不写, 刷新器无人调 → kline_daily 水位卡死 06-03 而真实表已到 06-12。
+# 必须在全部数据步 (Step 2.x) 之后跑, 否则刷出来的还是旧水位。
+if [[ "$SKIP_SYNC" == "0" && "$DRY" == "0" ]]; then
+    log "--- Step 2.97: source watermark refresh (派生自真实表) ---"
+    PYTHONPATH=backend python backend/scripts/refresh_source_watermarks.py \
+        >> "$LOG" 2>&1 || step_degraded "watermark refresh 失败 — SLA 体系将持续误报 stale"
+fi
+
 # Step 3: Label / panel rebuild (增量)
 log "--- Step 3: Label + panel incremental rebuild ---"
 if [[ "$DRY" == "0" ]]; then
