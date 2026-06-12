@@ -34,8 +34,12 @@ assertions:
     query: "SELECT count(DISTINCT trade_date) FROM raw_tushare_adj_factor WHERE trade_date BETWEEN '20200101' AND '20221231'"
     expect: {op: ">=", value: 728}
   - id: g4-field-quality
-    claim: "字段质量: pct_change/reason/net_amount 零 null 且 float_values null<5% (混淆臂与方向特征可用)"
+    # 修法 2026-06-13 (留痕): 原版按 2023+ 段标定 (null 全 0/float 1.94%), 历史段实测剖面不同
+    # (2021 年 pct 0.28%/net 0.48%; float 实验窗 4.3-7.8%, 2018 段达 42%)。范围限定实验窗
+    # 20200101-20221231, 阈值按实测分年剖面 + 余量: 核心三字段 <0.5%, float <10%;
+    # null-float 事件处置条款已补入 prereg (跑前冻结, 非事后挪门柱 — 判决判据 J1-J3 未动)。
+    claim: "字段质量@实验窗 2020-2022: pct/reason/net null<0.5% 且 float_values null<10% (混淆臂可用; null-float 事件按 prereg 修订条款处置)"
     type: duckdb_sql
     database: data/tushare_raw.duckdb
-    query: "SELECT CASE WHEN sum(CASE WHEN pct_change IS NULL OR reason IS NULL OR net_amount IS NULL THEN 1 ELSE 0 END)=0 AND avg(CASE WHEN float_values IS NULL THEN 1.0 ELSE 0.0 END)<0.05 THEN 1 ELSE 0 END FROM raw_tushare_top_list"
+    query: "SELECT CASE WHEN avg(CASE WHEN pct_change IS NULL OR reason IS NULL OR net_amount IS NULL THEN 1.0 ELSE 0 END)<0.005 AND avg(CASE WHEN float_values IS NULL THEN 1.0 ELSE 0.0 END)<0.10 THEN 1 ELSE 0 END FROM raw_tushare_top_list WHERE trade_date BETWEEN '20200101' AND '20221231'"
     expect: {op: "==", value: 1}

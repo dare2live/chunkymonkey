@@ -289,7 +289,39 @@ def _write_batch(conn, spec: dict[str, Any], rows: list[dict[str, Any]]) -> int:
     key = " AND ".join(f't."{g}" = s."{g}"' for g in grain)
     conn.execute(f"DELETE FROM {table} t WHERE EXISTS (SELECT 1 FROM df s WHERE {key})")
     cols = ", ".join(f'"{c}"' for c in df.columns)
-    conn.execute(f"INSERT INTO {table} ({cols}) SELECT {cols} FROM df")
+    try:
+        conn.execute(f"INSERT INTO {table} ({cols}) SELECT {cols} FROM df")
+    except Exception as exc:
+        # 首批类型推断陷阱 (2026-06-13 chain9 三案实证): 首批列全 NULL/小整数 → 表列被
+        # 建成 INT32, 后续真实数据溢出/字符串进不去 (suspend_timing '09:30-10:00' /
+        # dc_index level '东财二级行业' / fina_mainbz bz_profit 164.7 亿)。
+        # 修法: 按本批 df 的真实 dtype 对冲突列做单调加宽 (int->BIGINT, float->DOUBLE,
+        # 其余->VARCHAR), 重试一次; 仍失败则抛出 (fail-closed, 不静默丢行)。
+        if "Conversion" not in type(exc).__name__ and "Conversion" not in str(exc):
+            raw_con.unregister("df")
+            raise
+        col_types = {r[0]: r[1] for r in conn.execute(
+            f"SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '{table}'"
+        ).fetchall()}
+        widened = []
+        for col in df.columns:
+            dtype = str(df[col].dtype).lower()  # pandas 3.x 字符串列 dtype='str' (非 'object')
+            cur = col_types.get(col, "")
+            target = None
+            if dtype.startswith("int") and cur in ("INTEGER", "SMALLINT", "TINYINT"):
+                target = "BIGINT"
+            elif dtype.startswith("float") and cur in ("INTEGER", "SMALLINT", "TINYINT", "BIGINT"):
+                target = "DOUBLE"
+            elif dtype in ("object", "str", "string") and cur not in ("VARCHAR", ""):
+                target = "VARCHAR"
+            if target:
+                conn.execute(f'ALTER TABLE {table} ALTER COLUMN "{col}" SET DATA TYPE {target}')
+                widened.append(f"{col}:{cur}->{target}")
+        if not widened:
+            raw_con.unregister("df")
+            raise
+        log.warning("首批类型推断加宽 table=%s %s (重试 INSERT)", table, widened)
+        conn.execute(f"INSERT INTO {table} ({cols}) SELECT {cols} FROM df")
     raw_con.unregister("df")
     return len(df)
 

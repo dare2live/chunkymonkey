@@ -137,3 +137,44 @@ def test_fetch_paged_identical_page_order_insensitive(monkeypatch):
     out = sr._fetch_paged(ad, _paged_spec(), {"trade_date": "20180112"})
     assert out is None  # len==limit 整倍数 + 内容相同 (无视行序) = fail-closed
     assert ad.calls == 2
+
+
+def test_write_batch_widens_first_batch_inferred_types(monkeypatch, tmp_path):
+    # 首批类型推断陷阱回归 (chain9 三案): 首批整数 -> INT32 列, 次批大数/字符串必须自动加宽
+    import duckdb as _duck
+    from services.duck_adapter import connect as _connect
+
+    conn = _connect(str(tmp_path / "raw.duckdb"))
+    spec = {"domain": "demo", "target_table": "raw_demo", "grain": ["k"], "api": "demo"}
+    monkeypatch.setattr(sr, "_capture_domain_sample", lambda s, r: None)
+    try:
+        # 首批: 小整数 -> 可能推断 INTEGER
+        conn.execute("CREATE TABLE raw_demo (k VARCHAR, v INTEGER)")  # 模拟已存在的窄类型表
+        n1 = sr._write_batch(conn, spec, [{"k": "a", "v": 1}])
+        assert n1 == 1
+        # 次批: 164.7 亿 (溢 INT32) + 字符串列场景
+        n2 = sr._write_batch(conn, spec, [{"k": "b", "v": 16472341619.53}])
+        assert n2 == 1
+        rows = dict(conn.execute("SELECT k, v FROM raw_demo ORDER BY k").fetchall())
+        assert rows["b"] == 16472341619.53  # 值无损
+        dt = conn.execute("SELECT data_type FROM information_schema.columns WHERE table_name='raw_demo' AND column_name='v'").fetchone()[0]
+        assert dt == "DOUBLE"
+    finally:
+        conn.close()
+
+
+def test_write_batch_widens_null_inferred_string_column(monkeypatch, tmp_path):
+    # suspend_timing 案: 首批全 NULL -> INT32, 次批字符串 '09:30-10:00' 必须进得去
+    from services.duck_adapter import connect as _connect
+
+    conn = _connect(str(tmp_path / "raw2.duckdb"))
+    spec = {"domain": "demo", "target_table": "raw_demo2", "grain": ["k"], "api": "demo"}
+    monkeypatch.setattr(sr, "_capture_domain_sample", lambda s, r: None)
+    try:
+        conn.execute("CREATE TABLE raw_demo2 (k VARCHAR, suspend_timing INTEGER)")
+        n = sr._write_batch(conn, spec, [{"k": "x", "suspend_timing": "09:30-10:00"}])
+        assert n == 1
+        v = conn.execute("SELECT suspend_timing FROM raw_demo2").fetchone()[0]
+        assert v == "09:30-10:00"
+    finally:
+        conn.close()
