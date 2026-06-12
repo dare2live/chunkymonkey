@@ -1,0 +1,52 @@
+kind: assertion_pack
+name: chunkymonkey-claims
+# 声称-实况对账弹仓 (claims vs reality) — 2026-06-12 创立
+# 规则: 文档/commit 里任何带数字的关键声称, 在这里挂一条可执行断言;
+# 声称变化 (新决策) 时同 commit 更新断言 — 弹仓漂移 = 文档腐烂警报。
+# 全部只读; duckdb 连接由 moth 引擎强制 read_only。
+assertions:
+  - id: smartmoney-constraint-tables
+    claim: "PK/UNIQUE 约束表 >= 169 (2026-06-12 拆分回归二轮整改: 164 张 upsert 目标表 PK 全量恢复)"
+    type: duckdb_sql
+    database: data/smartmoney.duckdb
+    query: "SELECT count(DISTINCT table_name) FROM duckdb_constraints() WHERE constraint_type IN ('PRIMARY KEY','UNIQUE')"
+    expect: {op: ">=", value: 169}
+  - id: smartmoney-indexes
+    claim: "索引 348 (拆分后从旧库 DDL 全量重放, 缺 = 回归)"
+    type: duckdb_sql
+    database: data/smartmoney.duckdb
+    query: "SELECT count(*) FROM duckdb_indexes()"
+    expect: {op: ">=", value: 348}
+  - id: smartmoney-tables
+    claim: "343 表 (拆分 validation 口径; 增删表应显式过决策)"
+    type: duckdb_sql
+    database: data/smartmoney.duckdb
+    query: "SELECT count(*) FROM duckdb_tables()"
+    expect: {op: ">=", value: 343}
+  - id: smartmoney-size-band
+    claim: "库体量 20-30GB 带内 (goal.md '24G'; 越界 = 异常膨胀或错库)"
+    type: file_size
+    path: data/smartmoney.duckdb
+    expect: {op: between, low: 20000000000, high: 30000000000}
+  - id: calendar-floor
+    claim: "交易日历起点 <= 2023-01-03 (扩展至 2005-01-04 后收紧为 ==; 回退 = 静默 clamp 复发)"
+    type: duckdb_sql
+    database: data/smartmoney.duckdb
+    query: "SELECT CAST(min(trade_date) AS VARCHAR) FROM dim_trading_calendar"
+    expect: {op: "<=", value: "2023-01-03"}
+  - id: retired-db-retained
+    claim: "旧库保留至 2026-06-26 (goal.md 拆分回滚保险; 到期人工删除后移除本断言)"
+    type: file_exists
+    path: data/smartmoney_v1_retired_20260612.duckdb
+    expect: {op: "==", value: true}
+  - id: dc-member-truncation-pin
+    claim: "dc_member 近 30 日无整 5000 行截断签名 (2026-06-12 发现静默截断; chain9 分页重拉后应转绿)"
+    type: duckdb_sql
+    database: data/tushare_raw.duckdb
+    query: "SELECT count(*) FROM (SELECT trade_date, count(*) AS n FROM raw_tushare_dc_member GROUP BY 1 ORDER BY 1 DESC LIMIT 30) WHERE n % 5000 = 0"
+    expect: {op: "==", value: 0}
+  - id: watermark-utc-contract
+    claim: "source_watermarks.py 保留 UTC 口径警示头注 (两次 UTC 误读事故防线)"
+    type: shell
+    command: ["grep", "-ci", "utc", "backend/services/source_watermarks.py"]
+    expect: {op: ">=", value: 1}

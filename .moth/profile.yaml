@@ -49,3 +49,5 @@ notes: >
   launchd/cron/installer references to retired or missing entrypoints. goal.md
   is the compact live controller board; analysis/project_state_ledger.md is
   historical evidence and should be queried, not loaded wholesale at startup.
+assertion_packs:
+  - .moth/assertions/claims.yaml
