@@ -52,3 +52,30 @@ Binder Error (drain 转正 6 域连环失败), 查询性能受损。初版 valid
 索引计数 + ON CONFLICT 写路径冒烟** 五件套。
 **工具选型修正**: 整库迁移要保真用 `EXPORT DATABASE`/`IMPORT DATABASE`
 (schema.sql 含约束索引); `COPY FROM DATABASE` 仅适合纯数据搬运。
+
+## 2026-06-12 15:34 第二轮整改 — 写入面"仅 4 表"声称证伪, PK 全量恢复
+
+**证伪**: 全仓静态扫描 (INSERT OR REPLACE + ON CONFLICT, backend/+scripts/) 实测
+upsert 目标表 184 个, 其中存在于 smartmoney 且无 PK/UNIQUE 的 = **165 张**, 不是 4 张 —
+首轮修复只覆盖了 drain 路径撞到的表。当晚 17:00 daily_update 链路传递闭包内至少 11 张
+(mart_p0a_label_panel 4.2M / fact_risk_factors 4.85M / sniper+institution_score 各 2.4M 等)
+会再撞 Binder Error (被 step_degraded 吞成降级, 不致整链死但污染当晚实弹观察)。
+
+**整改 (16:50 前完成)**: 放弃 call-graph 猜热路径 (import 解析有盲区, 实测漏报
+mart_prediction_outcome 等), 改恒等式规则 "凡 upsert 目标表必有 PK": 164 张全部按旧库
+DDL 原样重建 (逐表事务: drop 表上索引 -> RENAME -> CREATE 旧 DDL -> INSERT SELECT ->
+行数核验 -> DROP tmp -> 重放旧库该表索引), 79 张 7.2s + 85 张 100.6s 完成, 0 失败。
+
+**终态实测**: PK/UNIQUE 约束表 5->169; 索引 348 不变; 表 343 不变; 0 tmp 残留;
+upsert 冒烟 6/6 PASS (pipeline_lock/prediction_outcome/quality_gate/sector_momentum/
+paper_sim_kpi/financial_sync_state, 事务内 INSERT OR REPLACE 回滚验证); 库文件
+23.7G -> 24G (+0.3G PK ART 索引)。
+
+**显式残余 (1 张, 非本回归)**: fact_fundamental_quarterly 旧库本就无 PK —
+写入器 build_fundamental_quarterly.py 的 upsert 在拆分前同样会报错, 属既有缺陷,
+单独立案不混入本次回归。
+
+**RENAME 依赖坑 (validation v2 六件套补充)**: DuckDB 表上有索引时 ALTER RENAME 报
+Dependency Error — 重建顺序必须 先 DROP 该表索引再 RENAME。五件套升级:
+行数 + 抽样值 + 约束计数 + 索引计数 + upsert 冒烟 + **写入面全仓扫描对账**
+(声称写入面 N 表必须给静态扫描证据, 不许拍)。

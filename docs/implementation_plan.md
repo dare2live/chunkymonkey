@@ -170,5 +170,10 @@ scripts/chunkyctl jobs --family <job-family> --backend local \
   --gate-evidence <gate>=<artifact-or-command>
 ```
 
-`local` is the active backend. `modal` is planned and remains blocked until a
-reviewed adapter proves the artifact-manifest contract.
+`local` and `modal` are both active (2026-06-11 user decision, `~/.modal.toml`,
+$30/mo cap). `modal` dispatch stays safe-by-default: `dry_run=True` default plus
+reviewed adapter + artifact manifest + rollback before any paid run. App
+`chunkymonkey-compute` deployed 2026-06-12 (cyq_replay_batch/all + smoke, smoke
+passed with 300 synthetic rows); full-market CYQ replay has NOT started — data
+push script `scripts/modal_data_push.py` is still pending, and the first paid
+run is gated on the C0 verdict follow-up (C0 FAILed 2026-06-12).

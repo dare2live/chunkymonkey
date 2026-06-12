@@ -125,6 +125,13 @@ JOIN → 永远带 `AND x.built_at <= t` / `as_of_date`; 宇宙 → `dim_index_m
 - **审计必须验证运行时状态, 不只是前置条件** (4.6 并入): preflight 查的是"数据存在",
   运行时验证查的是"数据被正确使用". 反例: DB 有 5206 stocks → preflight PASS, 但 runner
   只加载 200 只 → 没人查. 两者缺一不可.
+- **DuckDB 整库迁移 `COPY FROM DATABASE` 不搬 PK/约束/索引 (2026-06-12)** → 315 约束→1,
+  upsert 全 Binder Error; "validation 全 PASS" 的验收尺只比了数据没比 schema. 保真迁移用
+  EXPORT/IMPORT DATABASE; validation 必含约束/索引计数+upsert 冒烟+写入面全仓扫描对账
+  ("写入面仅 N 表"必须给静态扫描证据, 首轮拍了 4 张实为 165 张). 详 `analysis/db_split_runbook_20260612.md`.
+- **回填窗口被日历真相源静默 clamp (2026-06-12)** → registry 写 data_start=20050104, 但
+  sync_runner 以 dim_trading_calendar (起点 2023-01-03) 为日期源, 2005-2022 全军未落且零告警.
+  教训: 回填完成的验收 = 落库 min(trade_date) 对账 data_start, 不是"跑完没报错".
 
 ## 5. Optuna 治理
 

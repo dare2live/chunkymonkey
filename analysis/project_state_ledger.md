@@ -12,6 +12,17 @@
 > snapshot, and `rg` / `tail` on this ledger only when a task needs specific
 > historical evidence.
 
+## 2026-06-12 — 接管对账 + 拆分回归二轮整改 (断线 session 善后)
+
+- 背景: 10:04 收尾 commit 后 12:09-14:24 间一个 session 断线, 留 4 孤儿文件; 用户 14:33 拉起新 session 全面接管。六线 workflow (A 存储/B 数据/C 实验/D modal/E 平台/F 考古, 13 agents 对抗核验) + 完备性审查定位全部残留。
+- 后台链下落定案: chain4-8 nohup 链没死, 07:02-12:09 自然跑完退出 (本机 0 残活进程, /tmp/w1_chain7.log + w1_chain8.log 物证); 但 chain7 带三处伤: (1) step1 末 6 域 drain 撞拆库丢 PK 回归 Binder 连环失败 (2) step2 top_inst 548,858 行落库未转正 ok:false (3) step3 fina_mainbz 秒崩 (sync_runner by_ts_code 路径 get_conn 不带 market attach, 确定性代码 bug 非环境问题)。
+- 时区乌龙又一例: watermark"停在 06-11 23:17"系 UTC 误读, 实为 06-12 07:17 CST chain7 成功记录 (source_watermarks.py 头注明示 UTC 存储)。
+- 拆分回归二轮整改: 首轮 (13:52 断线 session) 只补 4 表 PK; 本轮全仓静态扫描证伪"写入面仅 4 表" (实测 165 张无 PK upsert 目标), 按恒等式"凡 upsert 目标必有 PK"以旧库 DDL 逐表事务重建 164 张 (79 张 7.2s + 85 张 100.6s, 0 失败; RENAME 前须先 DROP 表上索引否则 Dependency Error), 终态约束表 5→169 / 索引 348 不变 / 343 表 0 残留 / 冒烟 6/6 PASS / 24G。残余 1 张 fact_fundamental_quarterly = 旧库本就无 PK 的既有缺陷, 不混入本回归。
+- chain7 静默 clamp 定案 (critical): registry data_start=20050104 被 dim_trading_calendar 起点 2023-01-03 静默截断, top_list/top_inst/dividend/adj_factor/cyq_perf 的 2005-2022 (cyq 2018-2022) 全军未落零告警; LHB 退出实验 gate (top_list min<=20200101) 因此阻塞。窗口决策 (扩日历 vs 改 data_start) 待用户。
+- C0 判决执行: verdict=FAIL 入档 (db3feffa), 筹码轴 5 combo 按预注册条款冻结, 口径结论写回 sync_registry cyq_perf pit_anchor (措辞"疑似未复权": J3 双口径比对实现缺陷 + exdiv median 8.11pp 未过自设 10pp 线, 确证留待非判决性 probe); 产能转 LF V0 + LHB 退出。
+- 文档对齐: goal.md 同步矩阵 5 轨道刷新; implementation_plan.md modal stale 行改 active 实况; CLAUDE.md §4.5 新增 COPY FROM DATABASE 与日历 clamp 两反例。
+- 遗留 (优先级序): (1) 17:00 daily_update 拆库后首跑观察 (xdxr Step 2b2 首实弹 + kline watermark 滞后 bug 验证) (2) fina_mainbz attach bug 修复 (3) top_inst 5 终败日重试 + 0610/0611 补 (4) suspend_d/dc_index 静默短路根因 (5) 窗口决策 (6) modal smoke 同路径覆写隐患 (7) moneyflow_ind_dc min_rows 误配核证 + failure_queue 僵尸单清理 (8) LF V0 事件面板增厚。
+
 ## 2026-06-11 — 文档治理执行 (盘点 agent 清单 E1-E7)
 
 - docs gate FAIL→PASS: implementation_plan_20260611 并入 docs/implementation_plan.md (Active Repair Plan 节) 后归档至 analysis/, docs_count 11→10, unresolved_live_refs 1→0。

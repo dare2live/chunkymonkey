@@ -330,9 +330,9 @@ domains:
     target_table: raw_tushare_cyq_perf
     grain: [ts_code, trade_date]
     batch_mode: by_trade_date
-    pit_anchor: "trade_date; 每日筹码及胜率盘后更新 -> JOIN t-1; winner_rate + cost_5/15/50/85/95pct + weight_avg 实测在录"
+    pit_anchor: "trade_date; 每日筹码及胜率盘后更新 -> JOIN t-1; winner_rate + cost_5/15/50/85/95pct + weight_avg 实测在录; C0 黑箱审计 20260612 FAIL (J1 spearman 0.8972<0.95 / J2 8.53pp>5 / J3 0.072<0.99) -> winner_rate 疑似未复权坐标口径 (J3 实现缺陷致未确证), 与本地 qfq CYQ 不可直接互换, 消费前必须口径换算或弃用; evidence=analysis/c0_cyq_audit_20260612.json"
     available_after: "18:00"
-    data_start: "20180102"   # 文档口径 2018 起; 回填首跑探底校准
+    data_start: "20180102"   # 文档口径 2018 起; 回填首跑探底校准. 实际落库 min=20230103 (被 dim_trading_calendar 起点 2023-01-03 静默 clamp, 2018-2022 段待日历扩展决策后补)
     freshness_sla_trading_days: 1
     min_rows_per_batch: 4000  # 实测 20260610 = 5512 行; 距单次上限 6000 仅 ~8%, 超限截断风险年检 (同 daily)
     allow_empty_batch: false
