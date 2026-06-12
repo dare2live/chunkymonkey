@@ -1,0 +1,44 @@
+{
+ "domain": "moneyflow_mkt_dc",
+ "api": "moneyflow_mkt_dc",
+ "grain": [
+  "trade_date"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "trade_date": "20260611",
+   "close_sh": 3987.01,
+   "pct_change_sh": -0.16,
+   "close_sz": 14851.98,
+   "pct_change_sz": -0.68,
+   "net_amount": -43068190720.0,
+   "net_amount_rate": -1.69,
+   "buy_elg_amount": -19118149632.0,
+   "buy_elg_amount_rate": -0.75,
+   "buy_lg_amount": -23950041088.0,
+   "buy_lg_amount_rate": -0.94,
+   "buy_md_amount": 6469636096.0,
+   "buy_md_amount_rate": 0.25,
+   "buy_sm_amount": 36598558720.0,
+   "buy_sm_amount_rate": 1.43
+  },
+  {
+   "trade_date": "20260610",
+   "close_sh": 3993.23,
+   "pct_change_sh": -0.42,
+   "close_sz": 14954.1,
+   "pct_change_sz": -2.06,
+   "net_amount": -105081425920.0,
+   "net_amount_rate": -4.01,
+   "buy_elg_amount": -61054590976.0,
+   "buy_elg_amount_rate": -2.33,
+   "buy_lg_amount": -44026834944.0,
+   "buy_lg_amount_rate": -1.68,
+   "buy_md_amount": 23372042240.0,
+   "buy_md_amount_rate": 0.89,
+   "buy_sm_amount": 81709383680.0,
+   "buy_sm_amount_rate": 3.12
+  }
+ ]
+}

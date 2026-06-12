@@ -1,0 +1,76 @@
+{
+ "domain": "cyq_perf",
+ "api": "cyq_perf",
+ "grain": [
+  "ts_code",
+  "trade_date"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "ts_code": "000001.SZ",
+   "trade_date": "20230103",
+   "his_low": 0.2,
+   "his_high": 21.2,
+   "cost_5pct": 9.0,
+   "cost_15pct": 9.8,
+   "cost_50pct": 11.0,
+   "cost_85pct": 12.6,
+   "cost_95pct": 16.4,
+   "weight_avg": 11.31,
+   "winner_rate": 76.02
+  },
+  {
+   "ts_code": "000002.SZ",
+   "trade_date": "20230103",
+   "his_low": 0.2,
+   "his_high": 32.0,
+   "cost_5pct": 13.4,
+   "cost_15pct": 14.8,
+   "cost_50pct": 17.2,
+   "cost_85pct": 18.4,
+   "cost_95pct": 19.6,
+   "weight_avg": 17.01,
+   "winner_rate": 52.39
+  },
+  {
+   "ts_code": "000004.SZ",
+   "trade_date": "20230103",
+   "his_low": 0.8,
+   "his_high": 53.2,
+   "cost_5pct": 8.8,
+   "cost_15pct": 9.2,
+   "cost_50pct": 9.6,
+   "cost_85pct": 10.4,
+   "cost_95pct": 11.2,
+   "weight_avg": 9.85,
+   "winner_rate": 50.3
+  },
+  {
+   "ts_code": "000006.SZ",
+   "trade_date": "20230103",
+   "his_low": 0.2,
+   "his_high": 15.9,
+   "cost_5pct": 5.5,
+   "cost_15pct": 5.8,
+   "cost_50pct": 6.1,
+   "cost_85pct": 6.5,
+   "cost_95pct": 6.8,
+   "weight_avg": 6.14,
+   "winner_rate": 25.45
+  },
+  {
+   "ts_code": "000007.SZ",
+   "trade_date": "20230103",
+   "his_low": 0.6,
+   "his_high": 20.6,
+   "cost_5pct": 7.4,
+   "cost_15pct": 7.6,
+   "cost_50pct": 7.8,
+   "cost_85pct": 8.2,
+   "cost_95pct": 8.2,
+   "weight_avg": 7.89,
+   "winner_rate": 79.64
+  }
+ ]
+}

@@ -1,0 +1,41 @@
+{
+ "domain": "trade_cal",
+ "api": "trade_cal",
+ "grain": [
+  "exchange",
+  "cal_date"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "exchange": "SSE",
+   "cal_date": "20261231",
+   "is_open": "1",
+   "pretrade_date": "20261230"
+  },
+  {
+   "exchange": "SSE",
+   "cal_date": "20261230",
+   "is_open": "1",
+   "pretrade_date": "20261229"
+  },
+  {
+   "exchange": "SSE",
+   "cal_date": "20261229",
+   "is_open": "1",
+   "pretrade_date": "20261228"
+  },
+  {
+   "exchange": "SSE",
+   "cal_date": "20261228",
+   "is_open": "1",
+   "pretrade_date": "20261225"
+  },
+  {
+   "exchange": "SSE",
+   "cal_date": "20261227",
+   "is_open": "0",
+   "pretrade_date": "20261225"
+  }
+ ]
+}

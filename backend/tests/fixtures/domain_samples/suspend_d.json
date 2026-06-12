@@ -1,0 +1,42 @@
+{
+ "domain": "suspend_d",
+ "api": "suspend_d",
+ "grain": [
+  "ts_code",
+  "trade_date",
+  "suspend_type"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "ts_code": "000045.SZ",
+   "trade_date": "20230103",
+   "suspend_timing": null,
+   "suspend_type": "R"
+  },
+  {
+   "ts_code": "000153.SZ",
+   "trade_date": "20230103",
+   "suspend_timing": null,
+   "suspend_type": "S"
+  },
+  {
+   "ts_code": "002186.SZ",
+   "trade_date": "20230103",
+   "suspend_timing": null,
+   "suspend_type": "S"
+  },
+  {
+   "ts_code": "002387.SZ",
+   "trade_date": "20230103",
+   "suspend_timing": null,
+   "suspend_type": "R"
+  },
+  {
+   "ts_code": "300084.SZ",
+   "trade_date": "20230103",
+   "suspend_timing": null,
+   "suspend_type": "S"
+  }
+ ]
+}

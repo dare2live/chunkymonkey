@@ -145,18 +145,9 @@ if [[ "${#skip_reason}" -ge "$MIN_CODEX_SKIP_REASON_CHARS" ]]; then
     has_skip_reason=1
 fi
 if [[ "$py_staged" -gt 0 ]]; then
-    if [[ "$has_request_changes" -gt 0 ]]; then
-        echo "ERROR: staged .py files cannot be committed with Codex-Reviewed: REQUEST_CHANGES"
-        echo "修法: 先消除 review objections 后再提交，或改成 APPROVE / APPROVE_WITH_NOTES / 合法 skip reason。"
-        exit 6
-    fi
-    if [[ "$has_codex" == "0" && "$has_skip_reason" == "0" ]]; then
-        echo "ERROR: staged .py files require 'Codex-Reviewed: APPROVE[_WITH_NOTES]' or a non-empty 'codex-review: skipped reason=...' (${MIN_CODEX_SKIP_REASON_CHARS}+ chars)"
-        echo "staged .py files: $py_staged"
-        echo "修法: 先跑 Codex review gate, 或对 trivial/markdown/typo/rename 写明 skip reason."
-        exit 6
-    fi
-    echo "Rule 10 OK: staged .py=$py_staged, Codex-Reviewed=$has_codex, REQUEST_CHANGES=$has_request_changes, skip_reason=$has_skip_reason"
+    # 2026-06-12 用户决议: Codex review 强制解除 — 改为信息性提示, 不阻塞。
+    # 质量闸保留: 单测 + self-check 5 项 + 重大改动对抗复审 (workflow)。
+    echo "Rule 10 (informational): staged .py=$py_staged, Codex-Reviewed=$has_codex, skip_reason=$has_skip_reason"
 else
     echo "Rule 10 skipped: no staged .py files"
 fi

@@ -218,12 +218,12 @@ goal.md / docs/ / CLAUDE.md** (控制面文件主会话独占)。主会话必须
 
 ## 11. 协作与 commit 所有权
 
-以 `goal.md` controller rule + `AGENTS.md` 为准: Codex 会话按 goal.md (Codex owns
-direction/commits); Claude 会话走 `scripts/safe_commit.sh` 现行契约 — message 满足
-`Codex-Reviewed:` 或 `codex-review: skipped reason=<...>` + §8.3 fallback 5 项.
-豁免: 纯 markdown / 改名 / typo / hook+config 改 (非业务逻辑).
-Codex 标 CRITICAL 涉及 PIT/leakage/真金白银 → 只能"完全接受+立刻修+test verified",
-不许折中 (反例: 2026-05-15 折中导致 chain leakage RankIC +60% 假象).
+**2026-06-12 用户决议: Codex review 强制解除** (safe_commit Step 4.5 与
+check_codex_review hook 均已非阻塞化, 信息性提示保留)。现行质量闸:
+单测 + self-check 5 项 (§8.3) + 重大改动 (数据语义/策略/资金路径) 对抗复审 workflow
+(本 session 实证: 三次对抗复审抓 3 HIGH + 字段方向反 CRITICAL, 有效性已验)。
+历史条款存档: 若 Codex 复用, CRITICAL 涉 PIT/leakage/真金白银仍"完全接受+立刻修",
+不许折中 (反例: 2026-05-15 折中致 chain leakage RankIC +60% 假象)。
 
 ## 11.5 Skills
 

@@ -1,0 +1,76 @@
+{
+ "domain": "daily",
+ "api": "daily",
+ "grain": [
+  "ts_code",
+  "trade_date"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "ts_code": "000001.SZ",
+   "trade_date": "20230103",
+   "open": 13.2,
+   "high": 13.85,
+   "low": 13.05,
+   "close": 13.77,
+   "pre_close": 13.16,
+   "change": 0.61,
+   "pct_chg": 4.6353,
+   "vol": 2194127.94,
+   "amount": 2971546.989
+  },
+  {
+   "ts_code": "000002.SZ",
+   "trade_date": "20230103",
+   "open": 18.1,
+   "high": 18.5,
+   "low": 17.88,
+   "close": 18.23,
+   "pre_close": 18.2,
+   "change": 0.03,
+   "pct_chg": 0.1648,
+   "vol": 636399.63,
+   "amount": 1158945.281
+  },
+  {
+   "ts_code": "000004.SZ",
+   "trade_date": "20230103",
+   "open": 9.67,
+   "high": 10.05,
+   "low": 9.61,
+   "close": 9.94,
+   "pre_close": 9.68,
+   "change": 0.26,
+   "pct_chg": 2.686,
+   "vol": 21340.62,
+   "amount": 21096.459
+  },
+  {
+   "ts_code": "000005.SZ",
+   "trade_date": "20230103",
+   "open": 1.85,
+   "high": 1.88,
+   "low": 1.83,
+   "close": 1.87,
+   "pre_close": 1.86,
+   "change": 0.01,
+   "pct_chg": 0.5376,
+   "vol": 58366.0,
+   "amount": 10814.411
+  },
+  {
+   "ts_code": "000006.SZ",
+   "trade_date": "20230103",
+   "open": 6.2,
+   "high": 6.26,
+   "low": 5.98,
+   "close": 6.12,
+   "pre_close": 6.3,
+   "change": -0.18,
+   "pct_chg": -2.8571,
+   "vol": 1066476.7,
+   "amount": 650673.926
+  }
+ ]
+}

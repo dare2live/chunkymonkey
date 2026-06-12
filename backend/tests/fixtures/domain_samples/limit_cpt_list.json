@@ -1,0 +1,66 @@
+{
+ "domain": "limit_cpt_list",
+ "api": "limit_cpt_list",
+ "grain": [
+  "trade_date",
+  "ts_code"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "ts_code": "885700.TI",
+   "name": "军工",
+   "trade_date": "20240102",
+   "days": 1,
+   "up_stat": "3天3板",
+   "cons_nums": "2",
+   "up_nums": 13,
+   "pct_chg": 0.6693,
+   "rank": 1
+  },
+  {
+   "ts_code": "885571.TI",
+   "name": "核电",
+   "trade_date": "20240102",
+   "days": 1,
+   "up_stat": "3天3板",
+   "cons_nums": "3",
+   "up_nums": 11,
+   "pct_chg": 2.7006,
+   "rank": 2
+  },
+  {
+   "ts_code": "885531.TI",
+   "name": "光伏概念",
+   "trade_date": "20240102",
+   "days": 3,
+   "up_stat": "3天3板",
+   "cons_nums": "6",
+   "up_nums": 11,
+   "pct_chg": 0.2069,
+   "rank": 3
+  },
+  {
+   "ts_code": "885699.TI",
+   "name": "ST板块",
+   "trade_date": "20240102",
+   "days": 1,
+   "up_stat": "6天6板",
+   "cons_nums": "5",
+   "up_nums": 10,
+   "pct_chg": 0.133,
+   "rank": 4
+  },
+  {
+   "ts_code": "885431.TI",
+   "name": "新能源汽车",
+   "trade_date": "20240102",
+   "days": 3,
+   "up_stat": "5天3板",
+   "cons_nums": "5",
+   "up_nums": 10,
+   "pct_chg": -0.1413,
+   "rank": 5
+  }
+ ]
+}

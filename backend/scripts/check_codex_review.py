@@ -163,7 +163,9 @@ def main(msg_path: str) -> int:
 
     # Reject + 提示
     print("=" * 80, file=sys.stderr)
-    print("ERROR: Code-relevant commit 缺 Codex review evidence (CLAUDE Rule 10)", file=sys.stderr)
+    # 2026-06-12 用户决议: Codex review 强制解除 — 降级为信息提示, 永不阻塞
+    print("INFO: commit 无 Codex review evidence (2026-06-12 决议: 不再强制)", file=sys.stderr)
+    return 0
     print(file=sys.stderr)
     print("Staged code files:", file=sys.stderr)
     code_files = [f for f in staged if any(f.startswith(p) for p in CODE_PATH_PREFIXES)

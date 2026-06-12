@@ -1,0 +1,86 @@
+{
+ "domain": "dc_index",
+ "api": "dc_index",
+ "grain": [
+  "trade_date",
+  "ts_code"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "ts_code": "BK0145.DC",
+   "trade_date": "20250530",
+   "name": "上海板块",
+   "leading": "霍普股份",
+   "leading_code": "301024.SZ",
+   "pct_change": -1.15,
+   "leading_pct": 19.99,
+   "total_mv": 829796684.8,
+   "turnover_rate": 1.28,
+   "up_num": 97,
+   "down_num": 333,
+   "idx_type": "地域板块",
+   "level": NaN
+  },
+  {
+   "ts_code": "BK0146.DC",
+   "trade_date": "20250530",
+   "name": "黑龙江",
+   "leading": "哈三联",
+   "leading_code": "002900.SZ",
+   "pct_change": -0.59,
+   "leading_pct": 10.03,
+   "total_mv": 33592884.8,
+   "turnover_rate": 3.11,
+   "up_num": 12,
+   "down_num": 27,
+   "idx_type": "地域板块",
+   "level": NaN
+  },
+  {
+   "ts_code": "BK0147.DC",
+   "trade_date": "20250530",
+   "name": "新疆板块",
+   "leading": "天康生物",
+   "leading_code": "002100.SZ",
+   "pct_change": -0.86,
+   "leading_pct": 3.02,
+   "total_mv": 74577185.6,
+   "turnover_rate": 1.06,
+   "up_num": 17,
+   "down_num": 43,
+   "idx_type": "地域板块",
+   "level": NaN
+  },
+  {
+   "ts_code": "BK0148.DC",
+   "trade_date": "20250530",
+   "name": "吉林板块",
+   "leading": "*ST通脉",
+   "leading_code": "603559.SH",
+   "pct_change": -1.22,
+   "leading_pct": 3.35,
+   "total_mv": 37283216.0,
+   "turnover_rate": 2.29,
+   "up_num": 12,
+   "down_num": 35,
+   "idx_type": "地域板块",
+   "level": NaN
+  },
+  {
+   "ts_code": "BK0149.DC",
+   "trade_date": "20250530",
+   "name": "安徽板块",
+   "leading": "富煌钢构",
+   "leading_code": "002743.SZ",
+   "pct_change": -1.44,
+   "leading_pct": 10.0,
+   "total_mv": 197125696.0,
+   "turnover_rate": 2.09,
+   "up_num": 29,
+   "down_num": 153,
+   "idx_type": "地域板块",
+   "level": NaN
+  }
+ ]
+}
