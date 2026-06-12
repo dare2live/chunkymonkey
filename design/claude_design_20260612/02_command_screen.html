@@ -1,0 +1,52 @@
+<!-- @dsCard group="Screens" -->
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><style>
+:root{--brand:#3657D8;--bg:#FAFAFA;--sf:#fff;--ink:#111827;--mut:#6b7280;--ln:#e5e7eb;
+--ok:#0B9D6A;--okb:#dcf4e7;--wn:#d97706;--wnb:#fef3c7;--bd:#dc2626;--bdb:#fee2e2;--uk:#9ca3af;--ukb:#f3f4f6}
+*{box-sizing:border-box}body{font-family:-apple-system,'PingFang SC',sans-serif;background:var(--bg);color:var(--ink);margin:0;font-size:13px}
+.top{display:flex;align-items:center;gap:18px;padding:10px 20px;background:var(--sf);border-bottom:1px solid var(--ln)}
+.top b{font-size:15px}.nav{display:flex;gap:2px}.nav a{padding:6px 12px;border-radius:8px;color:var(--mut);text-decoration:none}
+.nav a.on{background:#dbe3fb;color:var(--brand);font-weight:600}
+.wrap{padding:16px 20px;display:grid;gap:14px}
+.verdict{display:flex;align-items:center;gap:14px;background:var(--okb);border:1px solid var(--ok);border-radius:12px;padding:12px 16px}
+.verdict .tag{background:var(--ok);color:#fff;font-weight:700;border-radius:8px;padding:6px 14px}
+.verdict small{color:var(--mut)}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.kpi{background:var(--sf);border:1px solid var(--ln);border-radius:12px;padding:14px}
+.kpi .lbl{color:var(--mut);font-size:11px}.kpi .v{font-size:26px;font-weight:700;margin-top:4px}
+.kpi .v.uk{color:var(--uk)}.kpi .why{font-size:11px;color:var(--mut);margin-top:6px}
+.cols{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}
+.card{background:var(--sf);border:1px solid var(--ln);border-radius:12px;padding:14px}
+.card h3{margin:0 0 10px;font-size:13px}
+.job{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-top:1px solid var(--ln)}
+.job button{background:var(--brand);color:#fff;border:0;border-radius:8px;padding:7px 14px;font-weight:600}
+.job button.o{background:#fff;color:var(--brand);border:1px solid var(--brand)}
+.job small{color:var(--mut);display:block}
+.run{font-size:12px;padding:8px 10px;background:var(--wnb);border-radius:8px;margin-bottom:8px}
+.bar{height:6px;background:var(--ukb);border-radius:3px;margin-top:6px}.bar i{display:block;height:6px;width:38%;background:var(--wn);border-radius:3px}
+.flag{font-size:12px;color:var(--ok)}
+</style></head><body>
+<div class="top"><b>ChunkyMonkey</b><div class="nav"><a class="on">指挥台</a><a>数据底座</a><a>实验工厂</a><a>策略组合</a><a>候选决策</a><a>治理</a></div></div>
+<div class="wrap">
+<div class="verdict"><span class="tag">可以动</span><div><b>接手对账 OK</b> — 告警 flag 0 · 写锁空闲 · 脏 worktree 0 · 弹仓 8/8 PASS<br>
+<small>sherpa takeover @ 09:02 · 有 writer 在跑时此条变红并锁住手动按钮</small></div></div>
+<div class="grid">
+<div class="kpi"><div class="lbl">年化收益 (含成本 OOS)</div><div class="v uk">unknown</div><div class="why">最近可信 artifact 2026-05-23 前 · W8 出第一张表</div></div>
+<div class="kpi"><div class="lbl">最大回撤</div><div class="v uk">unknown</div><div class="why">目标 ≥ -20%</div></div>
+<div class="kpi"><div class="lbl">超额 vs HS300</div><div class="v uk">unknown</div><div class="why">基准源切换中 (index_daily 转正)</div></div>
+<div class="kpi"><div class="lbl">月胜率</div><div class="v uk">unknown</div><div class="why">目标 ≥ 55% · walk-forward 分布</div></div>
+</div>
+<div class="cols">
+<div class="card"><h3>手动任务 (注册表驱动 — MANUAL_JOBS 加条目按钮自动出现)</h3>
+<div class="run">chain9 历史回填在跑 · step 2c daily 2019-2022 · 已 3.1k/约 9.7k 调用<div class="bar"><i></i></div></div>
+<div class="job"><div><b>daily_update</b><small>每日数据更新链 · 40-60 分钟 · 上次 06-12 20:54 OK (1 降级)</small></div><button>跑</button></div>
+<div class="job"><div><b>tdx_pool_refresh</b><small>TDX 活池刷新 · ~1 分钟 · 上次 47 活/70 死</small></div><button class="o">跑</button></div>
+<div class="job"><div><b>concept_snapshot</b><small>E7 已退役 · 按需</small></div><button class="o">跑</button></div></div>
+<div class="card"><h3>今日要点 (机器生成, 来源 = verdict 流)</h3>
+<div style="line-height:2">
+<span class="flag">[OK]</span> K 线 06-12 全市场 5,200 行已落<br>
+<span style="color:var(--wn)">[WARN]</span> kline watermark 滞后 1 天 (修复排期中)<br>
+<span style="color:var(--wn)">[WARN]</span> failure_queue 6 open (top_inst x2 / ths_hot ...)<br>
+<span class="flag">[OK]</span> LHB gate 等 chain9 · LF gate 等重建<br>
+<span style="color:var(--uk)">[--]</span> 筹码轴 5 combo 冻结 (C0 FAIL)</div></div>
+</div></div>
+</body></html>

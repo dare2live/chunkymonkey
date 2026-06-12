@@ -1,0 +1,44 @@
+<!-- @dsCard group="Screens" -->
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><style>
+:root{--brand:#3657D8;--bg:#FAFAFA;--sf:#fff;--ink:#111827;--mut:#6b7280;--ln:#e5e7eb;
+--ok:#0B9D6A;--okb:#dcf4e7;--wn:#d97706;--wnb:#fef3c7;--bd:#dc2626;--bdb:#fee2e2;--uk:#9ca3af;--ukb:#f3f4f6}
+*{box-sizing:border-box}body{font-family:-apple-system,'PingFang SC',sans-serif;background:var(--bg);color:var(--ink);margin:0;font-size:13px}
+.top{display:flex;gap:18px;align-items:center;padding:10px 20px;background:var(--sf);border-bottom:1px solid var(--ln)}
+.top b{font-size:15px}.nav{display:flex;gap:2px}.nav a{padding:6px 12px;border-radius:8px;color:var(--mut);text-decoration:none}.nav a.on{background:#dbe3fb;color:var(--brand);font-weight:600}
+.wrap{padding:16px 20px;display:grid;gap:14px}
+.books{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.book{background:var(--sf);border:1px solid var(--ln);border-radius:12px;padding:14px}
+.book h4{margin:0 0 2px;font-size:14px}.book .pos{font-size:11px;color:var(--mut)}
+.book .cap{font-size:22px;font-weight:700;margin:8px 0 2px}
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
+.tag.ok{background:var(--okb);color:var(--ok)}.tag.uk{background:var(--ukb);color:var(--uk)}.tag.wn{background:var(--wnb);color:var(--wn)}
+.book ul{margin:10px 0 0;padding:0;list-style:none;font-size:11px;color:var(--mut);line-height:1.9}
+.cols{display:grid;grid-template-columns:1.4fr .6fr;gap:14px}
+.card{background:var(--sf);border:1px solid var(--ln);border-radius:12px;padding:14px}.card h3{margin:0 0 8px;font-size:13px}
+.chart{height:150px;border-radius:8px;background:repeating-linear-gradient(90deg,var(--ukb),var(--ukb) 1px,transparent 1px,transparent 40px);position:relative}
+.chart .uk{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--uk);font-weight:700}
+.temp{display:flex;gap:4px;align-items:flex-end;height:80px}
+.temp i{flex:1;background:var(--okb);border-radius:4px 4px 0 0}
+.temp i.h{background:var(--wnb)}.temp i.x{background:var(--bdb)}
+</style></head><body>
+<div class="top"><b>ChunkyMonkey</b><div class="nav"><a>指挥台</a><a>数据底座</a><a>实验工厂</a><a class="on">策略组合</a><a>候选决策</a><a>治理</a></div></div>
+<div class="wrap">
+<div class="books">
+<div class="book"><h4>B 主书 — Reversal-Plus v2 <span class="tag wn">W6 ablation 前</span></h4><div class="pos">回调增强 · 地基 +0.392/58.1%</div>
+<div class="cap">100%<span style="font-size:12px;color:var(--mut)"> 资金 (验证期 0 真金)</span></div>
+<ul><li>入场: reversal_1m_deep × stage=1 + 三层确认 gate (待验)</li><li>退出: wr_takeprofit + elg_outflow (独立交付组件)</li><li>仓位: wilson_kelly · max 5 · 同板块 ≤2</li></ul></div>
+<div class="book"><h4>D 增强层 — v7 排序 <span class="tag uk">W2 A0 锚点</span></h4><div class="pos">不占独立资金 · selector 乘法因子</div>
+<div class="cap">×<span style="font-size:12px;color:var(--mut)"> 乘法层</span></div>
+<ul><li>score_blend_w_v7 (w=0 保险丝)</li><li>降权/排除 gate → max_dd 左尾</li><li>regime gate 数据化 (炸板率/连板高度/大盘净流)</li></ul></div>
+<div class="book"><h4>C 卫星 — 题材扩散 <span class="tag uk">养数据</span></h4><div class="pos">条件激活 · W9 三道门复审</div>
+<div class="cap">≤20%<span style="font-size:12px;color:var(--mut)"> 若激活</span></div>
+<ul><li>门① dc 系史不足 → kpl 探史或下季再审</li><li>门② moneyflow 实证 (W3 判决)</li><li>门③ 概念粒度 null 基线</li></ul></div>
+</div>
+<div class="cols">
+<div class="card"><h3>paper_sim 净值 (含成本 OOS) — 第一张可信表在 W8</h3>
+<div class="chart"><div class="uk">unknown — 诚实状态: 无可信含成本 artifact (2026-05-23 后)</div></div></div>
+<div class="card"><h3>regime 温度计 (lmt_market_temp)</h3>
+<div class="temp"><i style="height:30%"></i><i style="height:45%"></i><i style="height:40%"></i><i class="h" style="height:65%"></i><i class="h" style="height:70%"></i><i style="height:50%"></i><i class="x" style="height:90%"></i><i class="h" style="height:60%"></i><i style="height:42%"></i><i style="height:38%"></i></div>
+<div style="font-size:11px;color:var(--mut);margin-top:8px">炸板率 median 0.241 · 连板高度 median 5 · E5 v0 排 W2</div></div>
+</div></div>
+</body></html>

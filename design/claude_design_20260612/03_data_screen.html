@@ -1,0 +1,54 @@
+<!-- @dsCard group="Screens" -->
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><style>
+:root{--brand:#3657D8;--bg:#FAFAFA;--sf:#fff;--ink:#111827;--mut:#6b7280;--ln:#e5e7eb;
+--ok:#0B9D6A;--okb:#dcf4e7;--wn:#d97706;--wnb:#fef3c7;--bd:#dc2626;--bdb:#fee2e2;--uk:#9ca3af;--ukb:#f3f4f6}
+*{box-sizing:border-box}body{font-family:-apple-system,'PingFang SC',sans-serif;background:var(--bg);color:var(--ink);margin:0;font-size:13px}
+.top{display:flex;gap:18px;align-items:center;padding:10px 20px;background:var(--sf);border-bottom:1px solid var(--ln)}
+.top b{font-size:15px}.nav{display:flex;gap:2px}.nav a{padding:6px 12px;border-radius:8px;color:var(--mut);text-decoration:none}.nav a.on{background:#dbe3fb;color:var(--brand);font-weight:600}
+.wrap{padding:16px 20px;display:grid;gap:14px}.card{background:var(--sf);border:1px solid var(--ln);border-radius:12px;padding:14px}.card h3{margin:0 0 4px;font-size:13px}
+.card .sub{font-size:11px;color:var(--mut);margin-bottom:10px}
+.domgrid{display:grid;grid-template-columns:repeat(8,1fr);gap:8px}
+.dom{border-radius:10px;padding:9px;font-size:11px;border:1px solid var(--ln)}
+.dom b{display:block;font-size:12px;margin-bottom:3px}.dom small{color:var(--mut)}
+.dom.ok{background:var(--okb)}.dom.wn{background:var(--wnb)}.dom.bd{background:var(--bdb)}.dom.uk{background:var(--ukb)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+table{width:100%;border-collapse:collapse;font-size:12px}td,th{text-align:left;padding:6px 8px;border-top:1px solid var(--ln)}th{color:var(--mut);font-weight:500;border:0}
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
+.tag.ok{background:var(--okb);color:var(--ok)}.tag.bd{background:var(--bdb);color:var(--bd)}.tag.wn{background:var(--wnb);color:var(--wn)}
+</style></head><body>
+<div class="top"><b>ChunkyMonkey</b><div class="nav"><a>指挥台</a><a class="on">数据底座</a><a>实验工厂</a><a>策略组合</a><a>候选决策</a><a>治理</a></div></div>
+<div class="wrap">
+<div class="card"><h3>数据域格栅 — 真相源 = chunkyctl data-status (registry 驱动, 22 域)</h3>
+<div class="sub">格 = 一个 sync_registry 域 · 颜色 = 机器 verdict · 点击进域详情 (watermark/失败单/样本契约)</div>
+<div class="domgrid">
+<div class="dom ok"><b>daily</b><small>06-12 · 4.4M</small></div>
+<div class="dom ok"><b>adj_factor</b><small>06-12 · 4.5M</small></div>
+<div class="dom ok"><b>moneyflow</b><small>06-12 · 4.2M</small></div>
+<div class="dom ok"><b>top_list</b><small>回填中 2018→</small></div>
+<div class="dom wn"><b>top_inst</b><small>未转正 · 5 终败日</small></div>
+<div class="dom bd"><b>dc_member</b><small>截断签名 21/30 日</small></div>
+<div class="dom wn"><b>dc_index</b><small>停 2025-05-29</small></div>
+<div class="dom ok"><b>cyq_perf</b><small>06-12 · 冻结消费</small></div>
+<div class="dom ok"><b>stk_limit</b><small>06-12</small></div>
+<div class="dom ok"><b>limit_list_d</b><small>06-12</small></div>
+<div class="dom wn"><b>suspend_d</b><small>停 2023-01-18</small></div>
+<div class="dom ok"><b>trade_cal</b><small>1990-2026</small></div>
+<div class="dom ok"><b>dividend</b><small>06-11</small></div>
+<div class="dom wn"><b>ths_hot</b><small>缺 240312</small></div>
+<div class="dom uk"><b>fina_mainbz</b><small>队列中 (chain9)</small></div>
+<div class="dom ok"><b>+7 域</b><small>全绿收起</small></div>
+</div></div>
+<div class="cols">
+<div class="card"><h3>moth 声称-实况弹仓</h3><div class="sub">moth assert · 文档腐烂/schema 回归/截断的机械防线</div>
+<table><tr><th>断言</th><th>实测</th><th></th></tr>
+<tr><td>约束表 ≥169 / 索引 348 / 343 表</td><td>169 · 348 · 343</td><td><span class="tag ok">PASS</span></td></tr>
+<tr><td>日历起点 == 2005-01-04</td><td>2005-01-04</td><td><span class="tag ok">PASS</span></td></tr>
+<tr><td>dc_member 近 30 日零截断签名</td><td>21 日整 5000</td><td><span class="tag bd">FAIL</span></td></tr>
+<tr><td>旧库保留至 06-26</td><td>在</td><td><span class="tag ok">PASS</span></td></tr></table></div>
+<div class="card"><h3>失败队列 (6 open)</h3><div class="sub">日历 gap 扫描口径 · drain 自动重放 · 僵尸单人工 resolve 留痕</div>
+<table><tr><th>域</th><th>明细</th><th>处置</th></tr>
+<tr><td>top_inst</td><td>5 终败日 2023-2024</td><td><span class="tag wn">chain9 重试中</span></td></tr>
+<tr><td>ths_hot</td><td>20240312 单日</td><td><span class="tag wn">重试 1 次后裁决</span></td></tr>
+<tr><td>northbound</td><td>无主源 (旧)</td><td><span class="tag wn">hk_hold 接管排期</span></td></tr></table></div>
+</div></div>
+</body></html>

@@ -1,0 +1,40 @@
+<!-- @dsCard group="Components" -->
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><style>
+:root{--brand:#3657D8;--bg:#FAFAFA;--sf:#fff;--ink:#111827;--mut:#6b7280;--ln:#e5e7eb;
+--ok:#0B9D6A;--okb:#dcf4e7;--wn:#d97706;--wnb:#fef3c7;--bd:#dc2626;--bdb:#fee2e2;--uk:#9ca3af;--ukb:#f3f4f6}
+body{font-family:-apple-system,'PingFang SC',sans-serif;background:var(--bg);color:var(--ink);margin:24px;font-size:13px}
+h2{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em;margin:22px 0 10px}
+.verdict{display:flex;align-items:center;gap:14px;border-radius:12px;padding:12px 16px;margin-bottom:8px}
+.verdict .tag{color:#fff;font-weight:700;border-radius:8px;padding:6px 14px}
+.v-ok{background:var(--okb);border:1px solid var(--ok)}.v-ok .tag{background:var(--ok)}
+.v-bd{background:var(--bdb);border:1px solid var(--bd)}.v-bd .tag{background:var(--bd)}
+.kpi{display:inline-block;width:200px;background:var(--sf);border:1px solid var(--ln);border-radius:12px;padding:14px;margin-right:10px;vertical-align:top}
+.kpi .lbl{color:var(--mut);font-size:11px}.kpi .v{font-size:24px;font-weight:700}.kpi .v.uk{color:var(--uk)}.kpi .v.ok{color:var(--ok)}
+.kpi .why{font-size:11px;color:var(--mut);margin-top:4px}
+.gate{width:480px;background:var(--sf);border:1px solid var(--ln);border-radius:12px;padding:12px}
+.gate .row{display:flex;justify-content:space-between;padding:7px 0;border-top:1px solid var(--ln);font-size:12px}
+.gate .row:first-of-type{border:0}
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
+.tag.ok{background:var(--okb);color:var(--ok)}.tag.bd{background:var(--bdb);color:var(--bd)}.tag.uk{background:var(--ukb);color:var(--uk)}
+.dom{display:inline-block;width:130px;border-radius:10px;padding:9px;font-size:11px;border:1px solid var(--ln);margin-right:8px}
+.dom b{display:block;font-size:12px}.dom small{color:var(--mut)}
+.dom.ok{background:var(--okb)}.dom.bd{background:var(--bdb)}
+</style></head><body>
+<h1 style="font-size:16px">核心组件 — 全部状态色来自机器 verdict, 前端零判断</h1>
+<h2>Verdict 横幅 (sherpa takeover 的 UI 化 — 首屏第一元素)</h2>
+<div class="verdict v-ok"><span class="tag">可以动</span><div><b>接手对账 OK</b> — flag 0 · 写锁空闲 · 弹仓 8/8<br><small style="color:var(--mut)">数据源: sherpa takeover --format json</small></div></div>
+<div class="verdict v-bd"><span class="tag">先别动</span><div><b>有 writer 在跑 / 弹仓 FAIL</b> — 手动按钮自动禁用, 详情见数据底座<br><small style="color:var(--mut)">防 2026-06-12 写锁互踩反例</small></div></div>
+<h2>KPI 格 — unknown 一等公民</h2>
+<div class="kpi"><div class="lbl">年化收益 (含成本 OOS)</div><div class="v uk">unknown</div><div class="why">为什么: 无 2026-05-23 后可信 artifact</div></div>
+<div class="kpi"><div class="lbl">年化收益 (判正后示例)</div><div class="v ok">+34.2%</div><div class="why">evidence: paper_sim run #… (点击溯源)</div></div>
+<h2>实验 gate 表 (sherpa gates 的 UI 化)</h2>
+<div class="gate"><b style="font-size:13px">lhb_exit 开跑前置</b>
+<div class="row"><span>G1 日历地板 ≤ 2020-01-02</span><span class="tag ok">PASS</span></div>
+<div class="row"><span>G2 top_list 2020-2022 728 日</span><span class="tag bd">412/728</span></div>
+<div class="row"><span>G3 daily+adj_factor 同段</span><span class="tag bd">回填中</span></div>
+<div class="row"><span>G4 字段质量零 null</span><span class="tag ok">PASS</span></div>
+<div class="row"><span style="color:var(--mut)">verdict</span><span class="tag bd">NO-GO</span></div></div>
+<h2>数据域格 (data-status 的 UI 化)</h2>
+<div class="dom ok"><b>daily</b><small>06-12 · 4.4M 行 · SLA 1d</small></div>
+<div class="dom bd"><b>dc_member</b><small>截断签名 21/30 日</small></div>
+</body></html>

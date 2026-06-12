@@ -1,0 +1,29 @@
+<!-- @dsCard group="Foundations" -->
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><style>
+:root{--brand:#3657D8;--brand-100:#dbe3fb;--bg:#FAFAFA;--surface:#fff;--ink:#111827;--ink-500:#6b7280;--ink-100:#e5e7eb;
+--ok:#0B9D6A;--ok-100:#dcf4e7;--warn:#d97706;--warn-100:#fef3c7;--bad:#dc2626;--bad-100:#fee2e2;
+--unknown:#9ca3af;--unknown-100:#f3f4f6}
+body{font-family:-apple-system,'PingFang SC',sans-serif;background:var(--bg);color:var(--ink);margin:24px}
+h1{font-size:18px}h2{font-size:13px;color:var(--ink-500);margin:18px 0 8px;text-transform:uppercase;letter-spacing:.08em}
+.row{display:flex;gap:10px;flex-wrap:wrap}.sw{width:120px;border-radius:10px;overflow:hidden;border:1px solid var(--ink-100)}
+.sw .c{height:48px}.sw .l{font-size:11px;padding:6px 8px;background:var(--surface)}
+.pill{display:inline-block;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:600}
+</style></head><body>
+<h1>ChunkyMonkey 设计令牌 v4 — 现役色系 + unknown 语义补位</h1>
+<h2>品牌与中性</h2><div class="row">
+<div class="sw"><div class="c" style="background:#3657D8"></div><div class="l">brand-500 #3657D8</div></div>
+<div class="sw"><div class="c" style="background:#dbe3fb"></div><div class="l">brand-100</div></div>
+<div class="sw"><div class="c" style="background:#111827"></div><div class="l">ink-900</div></div>
+<div class="sw"><div class="c" style="background:#6b7280"></div><div class="l">ink-500</div></div>
+<div class="sw"><div class="c" style="background:#FAFAFA;border-bottom:1px solid #eee"></div><div class="l">bg #FAFAFA</div></div></div>
+<h2>语义四态 — 核心新增: unknown 是一等公民 (真金白银项目里"不知道"必须可见, 不许用 0 或绿色冒充)</h2>
+<div class="row">
+<span class="pill" style="background:var(--ok-100);color:var(--ok)">OK / GO / 转正</span>
+<span class="pill" style="background:var(--warn-100);color:var(--warn)">WARN / 降级 / 待观察</span>
+<span class="pill" style="background:var(--bad-100);color:var(--bad)">FAIL / NO-GO / 断流</span>
+<span class="pill" style="background:var(--unknown-100);color:var(--unknown)">UNKNOWN / 未测 / 冻结</span></div>
+<h2>规则</h2>
+<div style="font-size:13px;line-height:1.9">1. 状态色只来自机器判决 (sherpa/moth/data-status 的 verdict 字段), 前端不自行计算状态。<br>
+2. unknown 灰 = 诚实缺数据, 永不回退到内置默认值 (前端急救三件套既定纪律)。<br>
+3. 文字 marker 用 [OK]/[WARN]/[NO], 全站无 emoji (项目纪律)。</div>
+</body></html>
