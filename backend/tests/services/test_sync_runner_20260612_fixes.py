@@ -126,3 +126,14 @@ def test_fetch_paged_real_pagination_still_works(monkeypatch):
     ad = _PagedAdapter([_rows(3, "p1"), _rows(2, "p2")])
     out = sr._fetch_paged(ad, _paged_spec(), {"trade_date": "20180112"})
     assert len(out) == 5 and ad.calls == 2
+
+
+def test_fetch_paged_identical_page_order_insensitive(monkeypatch):
+    # 判官修订实证: 网关返回同一全量但行序漂移 — 位置比较失明, 集合签名必须命中
+    monkeypatch.setattr(sr.time, "sleep", lambda s: None)
+    page_a = _rows(3, "x")
+    page_b = list(reversed(page_a))  # 同内容, 反序
+    ad = _PagedAdapter([page_a, page_b])
+    out = sr._fetch_paged(ad, _paged_spec(), {"trade_date": "20180112"})
+    assert out is None  # len==limit 整倍数 + 内容相同 (无视行序) = fail-closed
+    assert ad.calls == 2

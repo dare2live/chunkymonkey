@@ -172,6 +172,13 @@ def _fetch_with_retry(adapter, spec: dict[str, Any], params: dict[str, Any]) -> 
     return None
 
 
+def _page_signature(page: list[dict[str, Any]]) -> int:
+    """整页内容的序不敏感签名 (行序无关): 网关全量响应行序可能逐次漂移."""
+    return hash(frozenset(
+        tuple(sorted((k, str(v)) for k, v in row.items())) for row in page
+    ))
+
+
 def _fetch_paged(adapter, spec: dict[str, Any], params: dict[str, Any]) -> list[dict[str, Any]] | None:
     """带 offset 分页的 fetch: registry 声明 page_limit 的域逐页拉到末页 (< limit 即止).
 
@@ -195,13 +202,13 @@ def _fetch_paged(adapter, spec: dict[str, Any], params: dict[str, Any]) -> list[
             log.info("网关无视 limit 返回全量 n=%d > %d, 单页收齐 domain=%s params=%s",
                      len(page), limit, spec["domain"], params)
             return page
-        # 相同页守卫 (2026-06-12 实测): vendor 网关可能同时无视 limit/offset, 每页返回
-        # 相同全量 (top_inst 20180112 四种参数组合均返回同样 1231 行) — 旧逻辑会把相同页
-        # 叠加 50 次后整批判失败 (86 天 x 50 调用白烧实证)。
+        # 相同页守卫 (2026-06-12 实测 + 三判官修订): vendor 网关可能同时无视 limit/offset,
+        # 每页返回相同全量 (top_inst 20180112 四参数组合同返 1231 行, 86 天 x50 调用白烧实证)。
+        # 序不敏感比较 (判官抓的盲区): 网关返回行序不稳定时, 首/末行位置比较会失明 —
+        # 改为整页内容集合签名, 行序无关。
         if prev_page is not None and page and prev_page and (
             len(page) == len(prev_page)
-            and page[0] == prev_page[0]
-            and page[-1] == prev_page[-1]
+            and _page_signature(page) == _page_signature(prev_page)
         ):
             if len(page) % limit == 0:
                 # 行数恰为 limit 整倍数 + offset 失效 = 无法区分 "全量" 与 "网关硬截断",
