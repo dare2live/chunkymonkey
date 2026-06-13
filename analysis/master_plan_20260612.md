@@ -1,22 +1,27 @@
-# 总指挥统一作战图 — 策略需求 × 数据解锁 (2026-06-12)
+# 总指挥统一作战图 — 策略需求 × 数据解锁 (2026-06-12, 06-13 对齐更新)
 
-> 状态: live — 总指挥排兵单一入口 (状态变化回写 goal.md)
+> 状态: live — §1 统一图 / §4 tushare 用尽地图 / §7 决策落账 仍 live; §0/§3 战术段已执行完 (见下)。
+> **当前操作框架 = `systematic_validation_plan_20260613.md` (L0-L4 分层验证)**; 本图保留为排兵历史 +
+> 数据动作清单。状态变化回写 goal.md。
 
-> Owner: 本文件 = 总指挥排兵的单一入口 (用户 2026-06-12 授权 "作为总指挥安排、持续推进、综合设计")。
-> 引用源: strategy_portfolio_20260611.md (12 周路线) + alpha_combo_matrix_20260612.md (16 combo)
-> + 本日 13+9 agent 两轮对抗核验调查。状态变化回写 goal.md, 本文件不做日更。
+> Owner: 总指挥排兵入口 (用户 2026-06-12 授权)。引用源: strategy_portfolio_20260611.md (12 周路线)
+> + alpha_combo_matrix_20260612.md (16 combo)。
 
-## 0. 现状一句话判定
+## 0. 现状一句话判定 (06-13 更新)
 
-**策略设计已定稿, 验证执行刚起步且当日三条路全堵; 堵点 100% 在数据底座, 解锁动作全部明确且大部分今晚可发。**
+**06-12 的"三条路全堵"已全部疏通并出判决; 策略验证从"被数据堵"转入"有诚实结论, 转攻地基 + 组合"。**
 
-- 设计资产: 三套组合 (B 回调增强主书 / D v7 排序公共层 / C 题材扩散降级) + 16 combo 矩阵
-  (4 run_first) + 13 条全局纪律件 + 12 周路线图。当前位置 = W1 末 (里程碑 3/4 完成,
-  E8 探底四元组报告缺档)。
-- 验证现实: 北极星 KPI 四指标全 = unknown (无可信含成本 artifact); 第一张能回答 "30% 行不行"
-  的表在 W8 (B-V3 paper_sim)。
-- 当日三堵: 筹码轴 5 combo 被 C0 FAIL 预注册冻结 / LF V0 被 dc_member 静默截断 (新发现,
-  比"面板薄"更深) / LHB 退出被 top_list 历史 clamp (gate 实测 FAIL)。
+- **三判决落定** (06-13): LHB 上榜即退出 = **GO** (+2.428pp/20日, 7/7 年); LF V0 概念传导 = **REJECT**
+  (净超额≈0, theme/LF 证伪); 主升浪 S3 ML = **REJECT-泄漏** (follow_net_return 标签泄入, 修后 0 真 edge)。
+- **泄漏治理立** (06-13): S3 暴露特征级泄漏 → `services/leakage_detect.py` 4 阶段模块 + 三道强制闸
+  (注册表/--gate/safe_commit+moth) + L0-L4 系统性验证计划。live 三消费者体检全 CLEAN。
+- **干净特征 alpha 实测** (06-13): 62 干净特征 0 泄漏, 有诚实弱 alpha (rz_balance 杠杆情绪 IC_IR 0.80→
+  1.37@90d / lhb 反转 / 中短反转簇), 但无强单因子, 单独不够 KPI — 需多因子组合 optuna + 新特征增量。
+- **筹码轴 5 combo 仍冻结** (C0 FAIL 未翻案)。
+- **地基缺口 (本轮转攻)**: index_daily + index_member_all 未落库 (KPI 超额 HS300 真相源, 现走 akshare
+  主从倒挂; 申万 L2 行业 PIT) = North-Star KPI 量不出的根因。Opus 硬化纲领 ~6/23 完成 (cm_takeover_audit /
+  experiment_gates / 语义探针弹仓 / A4 守门有效性审计等 P0/P1 待补)。
+- 北极星 KPI 四指标仍 = unknown (无可信含成本 artifact); 含成本 paper_sim 最新 2026-05-16 all_kpi=False。
 
 ## 1. 统一图: 策略需求 → 实验 gate → 数据动作
 
@@ -57,23 +62,13 @@
 - B组C6 "12 周 forward 记账 cron" 假设失效 → 改为 forward 记账脚本挂 daily_update 链内
   (手动跑时顺带), 预注册文档按此改写。
 
-## 3. 今晚执行序 (总指挥已排, 按序进行中)
+## 3. 06-12 今晚执行序 (已全部执行完, 存档)
 
-1. **手动 daily_update 实弹** (18:38 已发, 监控中) — 同时验证: 拆库 PK 修复后链路干净度 /
-   xdxr Step 2b2 首实弹 / kline watermark 滞后 bug / 6 域 drain 转正自愈。已知预期失败:
-   fina_mainbz (attach bug, 修复在代码批)。
-2. **代码批** (链跑完后落盘, 防 Step 2.95 import 半成品): fina_mainbz market ATTACH 修复 /
-   dc_member page_limit + snapshot_concept_daily 分页 / sync_runner data_start<日历起点显式告警 /
-   registry data_start 范围手术 + min_rows 2020 段预案。全部带单测。
-3. **日历扩展**: INSERT OR REPLACE 2005-01-04..2022-12-30 段 (4374 行, 与 2023+ 段物理不相交),
-   7 项验证清单 + realdb 断言收紧 (min<=2005-01-04 防回退) + kline_completeness 前后对照。
-4. **chain9 夜间回填链** (nohup): 探底 (top_list/top_inst 2018-2020 + dc_member 2020/2022
-   历史下限) → top_list 2020-2022 (728) → daily/adj_factor 2020-2022 (1456) → moneyflow 2022
-   (242) → top_inst drain 补洞 → dc_member 分页重拉 347 日 (探页数后定, 估 1k-8k 调用) →
-   链尾 data-status。fina_mainbz 全市场扫 (5300 调用) 显式不入本链 = chain10。
-5. **概念快照手动补今日** (分页修复后跑, 今天的快照将是第一份非截断快照)。
-6. **build_concept_events 重建** — 只在 dc_member 重拉过 G2 验收后跑 (G4 伪影判据把关),
-   预计明天。
+1-6 全部完成 (06-12 晚~06-13): daily_update 实弹 + 代码批 + 日历扩展 5343 行 + chain9/9b/9c 回填
+(top_list/daily/adj_factor 实验窗 728 日齐 / dc_member 重拉 23.1M / 类型推断加宽根治 / 薄日重拉 +
+carry-forward 平滑) + 概念快照 E7 退役 (证人腐坏摘除) + build_concept_events 平滑重建。详 ledger
+2026-06-12~13 各条。**当前执行序改由 `systematic_validation_plan_20260613.md` + goal.md 验证计划节驱动**:
+地基 (index_member_all/index_daily 落库) → tushare 域 alpha 贡献研究 (T 层) 并行 → 组合 optuna。
 
 ## 4. tushare 用尽地图 (T 轨 239 接口全盘点定稿, 2026-06-12)
 
