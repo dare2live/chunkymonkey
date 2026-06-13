@@ -71,8 +71,34 @@ builder 全不在 daily_update (原属 cron_daily)。
   validate_tdx_gpcw_auto_pit / profile_tdx_gpcw_fields / build_picture_daily / backfill_financial_pit / build_shareholder_plan_initial_event
 - Category A (1 表, SLA 误配): dim_capital_behavior_latest (akshare 已退役却仍 48h blocking) → 改 seed_dim_data_asset.py SLA/移出 blocker, 不是重建.
 
-**待用户定夺的结构决策**: 孤儿 builder 归属 — (a) 并入 daily_update.sh (手动一次跑全) 还是
-(b) 保留 cron_daily.py 单独跑? 不擅自重构核心管道。reconcile 后这类断流不再复发。
+**方向修正 (2026-06-13, 用户第一性原理纠偏)**: 用户先选 A (孤儿 builder 并入 daily_update),
+设计蓝图查出 cron_daily 只管 drift、其余 7 builder 需 inline ~9 步 (Step 2n/2.98/3d-3i)。但用户
+随即纠偏: **"数据还没定下来都需要啥, 先把更新确定了? 是不是该先探索数据"** —— 命中 architect
+rule6 (为没证明需要的负载建基础设施)。**Option A 冻结 (前提未成立)**: 在不知哪些特征有 alpha
+前, 不花 30-50min/天 + 90 行管道保鲜一堆可能不进策略的派生表。区分: 真相源 (K线/tushare raw)
++ fact_feature_panel (探索底座) 必须保鲜=已做; 其余派生表 stale 无害 (反而诚实标"没在用")。
+**转入: 数据资产盘点** (workflow wf_23c90d88) → 产出"有什么/覆盖/质量/研究状态/去留"菜单 →
+菜单定哪些是 core(保鲜)/experimental(按需)/dead(退役) → 那时再决定接哪几张(很可能远少于12)
+进 daily_update。盘点 ≠ 验证策略 (不违"先不急推进验证")。akshare SLA 误配 (dim_capital_behavior_latest)
+仍单独修 (config 非 builder)。
+
+## 专项: Alpha 验证程序 + DB 分区 (2026-06-14, 数据探索纠偏后的主线)
+
+用户纠偏链 (2026-06-13→14): 修 stale 表→盘点已入库→**全面 access surface (不限已入库)**→发现真正缺口
+是基本面 factor 族零底座 (非 stale 表)。两份设计提案 (执行前过 grill):
+
+- **Alpha 验证程序** (owner=`analysis/alpha_validation_program_spec_20260614.md`): (新数据 × 全消费者
+  [20技术公式+特征族]) 一次性 PIT 矩阵验证, 走实验台 (experiment_jobs 契约+prereg→verdict→DB→ledger 留档),
+  获取走 datahub, 验证走 Optuna 中央层+Modal, 验证前必跑 leakage 审计。数据候选优先级: 基本面四件套
+  (forecast/express/income/fina_indicator) > cyq_chips > kpl_list/limit_step(喂北极星) > 股东事件。
+  阶段 S0(实验台扩 consumer_alpha family+executor+留档表) → S1 datahub 获取 → S2 matrix harness → S3 逐验 → S4 判决。
+- **DB 多库分区** (owner=`analysis/db_management_design_20260614.md`): smartmoney 348表单体=写锁痛点根因;
+  按写入节奏拆 4 tier (源/特征/服务/实验) = 写并行, daily_update∥feature重算∥实验跑批不撞锁。迁移用
+  EXPORT/IMPORT(禁 COPY FROM DATABASE, 06-12 丢约束 315→1 教训)。**前置于验证程序数据获取** (趁新数据没落库前重构省二次迁移)。
+  阶段 D0(写入面扫描+tier分配+事务边界) → D1 实验库 → D2 特征库 → D3 源库 raw 移出 → D4 manifest 路由。
+
+执行顺序: D0 (read-only 写入面扫描, 现在做) → grill → D1-D4 与 S0 并行 → S1+。
+数据底座 housekeeping (SLA 误配/dead 退役/daily_update 孤儿) 降为支线, 与主线并行不阻塞。
 
 ## 多维策略立方体架构 (2026-06-13, 完整 owner=analysis/multidim_strategy_architecture_20260613.md)
 
