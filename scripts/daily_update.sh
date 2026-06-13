@@ -15,8 +15,12 @@
 #   bash scripts/daily_update.sh --dry    # dry-run, 不写 DB
 #   bash scripts/daily_update.sh --skip-sync  # 跳数据 sync (用现有)
 #
-# Cron schedule (launchd plist 在 configs/launchd/com.chunkymonkey.daily-update.plist):
-#   每天 17:00 (A 股收盘 15:00 + 2h 容缓数据 publish)
+# 运行方式 (2026-06-13 用户决议: 本地未上云 + 定时不保证开机时刻在线 → 手动运行, 成熟后再上云自动跑):
+#   手动: 收盘后 (15:00 + 2h 数据 publish 容缓, ~17:00 之后) 跑 `bash scripts/daily_update.sh`
+#   原 launchd plist (configs/launchd/com.chunkymonkey.daily-update.plist) 已于 2026-06-12 (commit ce461328) 退役删除;
+#   归档副本在 backend/scripts/launchd/ — 待上云后再恢复自动调度.
+#   注意: 本脚本不覆盖 fact_feature_panel + 其下游 (drift/gpcw/prune/picture/financial_pit/holder/shareholder) —
+#   这批 builder 原属旧 cron_daily.py, 迁移时未并入本脚本 (2026-06-13 体检发现的孤儿管道, 见 goal.md 数据底座节).
 #
 # Log: /tmp/chunkymonkey_daily_update_<YYYYMMDD>.log
 #

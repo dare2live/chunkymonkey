@@ -48,6 +48,32 @@ Owner: `analysis/strategy_portfolio_20260611.md` (三套组合 + 12 周路线图
 C 实验 三判决落定 (LHB GO / LF REJECT / S3 REJECT-泄漏, 详 ledger 与验证计划 L2) / D modal 已 deploy
 + smoke 隔离修 (CYQ 特征扩展待 S3 判正) / E 复权链转正。验证期 (W1-W12) 新策略 0 真金白银全 paper_sim 候选态。
 
+## 数据底座基础设施 (2026-06-13 体检 + 修复进行中, 用户指令"先做好数据底座")
+
+**决议: daily_update 保持手动** (本地未上云 + 定时不保证开机时刻在线; 成熟后再上云自动跑)。
+**doctor verdict=FAIL, 但真相源完好**: K线 (price_kline_tdxhub/raw_tushare_daily 均 06-12) + DuckDB
+schema (smartmoney 348表/839约束/172PK, 06-12 库分裂丢约束已恢复) 都健康。坏的是派生层。
+
+**根因 (查实)**: 调度手动化 + 旧 `cron_daily.py` → `daily_update.sh` 迁移时, 一批派生 builder
+被漏在新管道外 (孤儿管道)。两条日更管道割裂: daily_update 覆盖 live 链 (p0a panel/scores/syncs/
+watermark), 但 fact_feature_panel + holder/gpcw/drift/prune/picture/financial_pit/shareholder 的
+builder 全不在 daily_update (原属 cron_daily)。
+
+**进度 (blocker 14→12)**:
+- [完成] `fact_feature_panel` 重建 (build_feature_panel_duck.py --mode incremental): 4.19M 行, max_date
+  06-04→**06-12**, 最新行 forward 列 NULL (PIT 边界净, stale 修了没引泄漏). → 连带清 mart_feature_panel_validation.
+- [完成] `refresh_source_watermarks.py` 跑过 — 治 watermark 失真 (Step 2.97 孤儿化根因).
+- [完成] daily_update.sh:18 stale 注释修 (指向已删 plist 改手动运行说明 + 孤儿管道警告).
+
+**剩余 12 blocker + 下一批** (DuckDB 单写锁→必须串行):
+- Category B (4 表, tdxhub holder sync, 需网络): ingest_holders_tdxhub.py [tier-2 miaoxiang aif10 兜底]
+- Category D (7 表, 派生 builder 没跑, 读已新鲜 panel/kline): compute_feature_drift / prune_feature_panel_to_canonical_kline /
+  validate_tdx_gpcw_auto_pit / profile_tdx_gpcw_fields / build_picture_daily / backfill_financial_pit / build_shareholder_plan_initial_event
+- Category A (1 表, SLA 误配): dim_capital_behavior_latest (akshare 已退役却仍 48h blocking) → 改 seed_dim_data_asset.py SLA/移出 blocker, 不是重建.
+
+**待用户定夺的结构决策**: 孤儿 builder 归属 — (a) 并入 daily_update.sh (手动一次跑全) 还是
+(b) 保留 cron_daily.py 单独跑? 不擅自重构核心管道。reconcile 后这类断流不再复发。
+
 ## 多维策略立方体架构 (2026-06-13, 完整 owner=analysis/multidim_strategy_architecture_20260613.md)
 
 用户多维想法 (数据源参数化 optuna / 分组适配非全市场统一 / 主辅策略 / 模块×数据×配置 ∩

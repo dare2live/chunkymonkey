@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-06-13 06:09:59 CST
+**Snapshot 时间**: 2026-06-13 22:53:37 CST
 
 ## 主线状态
 
@@ -44,28 +44,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `3e3e9283 fix: 概念事件 raw 源带点全名引号根因 + daily_basic 2020-2022 回填获批` |
-| 最近 24h commits | 26 |
-| 未 commit 文件 | 9 |
+| HEAD | `03204a35 evidence: 压缩前探索 workflow 孤儿证据落档 (CYQ/IC/S3 ablation/资金流) + index sync fixtures` |
+| 最近 24h commits | 39 |
+| 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
-3e3e9283 fix: 概念事件 raw 源带点全名引号根因 + daily_basic 2020-2022 回填获批
-9d48bf99 feat: LHB gate 转 GO — 首批类型推断陷阱根治 + G4 按实测剖面修法
-26f913e7 chore: 纠正上一 commit 误入的本地工具链文件 — .claude 回归 settings.json 单文件在册
-ce461328 chore: 残留大清理 — 5 线审计执行 (直删 21 文件 + 死代码 6 块 + 消费方 12 处同步 + 预存红 7 测清零)
-fe111127 docs: 数据获取 v2 设计 + v2.1 三判官修订落账 — 渠道治理替代补丁循环
-1d2f940e feat: 文档治理机器执法 — 状态标头契约 + 执法器入弹仓 (新旧混用防线)
-222cf607 fix: 相同页守卫升级序不敏感 — 三判官抓的行序漂移盲区
-1405fb0f fix: 分页相同页守卫 — 网关无视 limit/offset 的三态处置 (top_inst 风暴止血)
-070e0759 docs: 前端统筹设计 v5 — 角色版面 x 档案体系 x verdict 流 (继承旧 v3 档案思路)
-1270df95 docs: 前端重设计 v4 设计稿包 — 6 模块每日动线 IA, 已推 Claude Design
+03204a35 evidence: 压缩前探索 workflow 孤儿证据落档 (CYQ/IC/S3 ablation/资金流) + index sync fixtures
+41f2fb8c design: 多维策略立方体顶层设计 (Segment×Feature-set×Policy) — 立法 PROCEED + 实例化 BLOCK
+6dff6e00 chore: v1 旧库 34G 删除收尾 (用户授权删) — moth 断言移除 + goal 状态更新
+8005079a feat: CYQ 筹码买卖点深挖 — px_pctile 真卖点信号但扣成本不独立, 落地=LHB 退出闸 (用户: 深挖)
+f1e21345 feat: tushare raw 域挖掘 — daily_basic 风格因子是唯一真增量 (用户: 同步挖掘)
+52a5bcc7 feat: 地基 index 族落库 — KPI 超额 HS300 真相源 + 申万 L2 PIT (用户: 先打地基)
+9c3e3003 docs: 作战图对齐 06-13 进度 — 三判决落定/泄漏治理立/转攻地基 (用户: 文档对齐最新进度)
+f0143b4a feat: 干净特征 forward-IC 探索结果 — 有诚实弱 alpha 0 泄漏 (充分利用 duckdb)
+c1024c1c docs: 异常核查协议入泄漏模块+验证计划 (用户: 异常不应直接排除而应核查)
+d86d8347 fix: safe_commit Step 3.6 变量名修正 — STAGED 未定义致消费方泄漏闸静默不触发
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**9 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**run startup checks first — scripts/chunkyctl doctor --fast; prioritize data_health blocking_yellow, then stage-opt structural blocker / need_027 blocked-gap triage**
 
 ## Resilience 配置 (verified)
 
