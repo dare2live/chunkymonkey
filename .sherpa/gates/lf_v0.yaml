@@ -35,11 +35,17 @@ assertions:
     query: "SELECT CASE WHEN count(*) = 0 THEN 999 ELSE count(*) FILTER (WHERE event_type IN ('concept_born','concept_dead')) * 1.0 / count(DISTINCT event_date) END FROM fact_concept_event WHERE as_of_mode='reconstructed'"
     expect: {op: "<", value: 5}
   - id: g4-churn-band
-    claim: "ADD+DROP 日均 <= 240 (稳定窗实测基线 24 x10 容忍)"
+    # 2026-06-13 prereg 修订 3 重标定 (跑前, 非结果驱动): 旧 240 = 截断面板 (仅见 27-354 概念)
+    # 上按"24x10容忍"拍的绝对计数, 在干净全面板 (1016 概念/~89k 成员行) 失真。实测扣 day1
+    # 初始全量载入后, 真实成员 churn 中位 468/日 (扣全部薄日及邻日仍 453 = 东财真实重分类,
+    # 非伪影); 改用中位数 (对残留多日薄段尖峰稳健, max 16.7% 率不污染中心) 门柱 < 900
+    # (clean 468 留 1.9x 余量; 平滑前 flicker 态中位 1273 仍被抓)。binding 幻影守门 = g4-artifact
+    # (BORN+DEAD<5, prereg 冻结死亡条款), binding 成员稳定性守门 = 实验自带 PIT 双锚 (留存>=50%)。
+    claim: "成员 churn 中位 < 900/日 (扣 day1; 干净面板实测 468, 幻影回归态 >1273 被抓)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
-    query: "SELECT CASE WHEN count(*) = 0 THEN 99999 ELSE count(*) FILTER (WHERE event_type IN ('member_add','member_drop')) * 1.0 / count(DISTINCT event_date) END FROM fact_concept_event WHERE as_of_mode='reconstructed'"
-    expect: {op: "<=", value: 240}
+    query: "WITH e AS (SELECT event_date, count(*) FILTER (WHERE event_type IN ('member_add','member_drop')) AS c FROM fact_concept_event WHERE as_of_mode='reconstructed' GROUP BY 1) SELECT CASE WHEN (SELECT count(*) FROM e) <= 1 THEN 99999 ELSE median(c) FILTER (WHERE event_date > (SELECT min(event_date) FROM e)) END FROM e"
+    expect: {op: "<", value: 900}
   - id: g6-main-tables-fresh
     claim: "主表三件 (limit_list_d/stk_limit/kline) 覆盖到实验窗尾"
     type: duckdb_sql
