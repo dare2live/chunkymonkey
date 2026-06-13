@@ -1,0 +1,81 @@
+{
+ "domain": "index_dailybasic",
+ "api": "index_dailybasic",
+ "grain": [
+  "ts_code",
+  "trade_date"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "ts_code": "000300.SH",
+   "trade_date": "20260612",
+   "total_mv": 67937951620802.0,
+   "float_mv": 52227849787215.0,
+   "total_share": 4385913578268.0,
+   "float_share": 3305835767100.0,
+   "free_share": 1119295640757.0,
+   "turnover_rate": 1.02,
+   "turnover_rate_f": 3.0,
+   "pe": 14.61,
+   "pe_ttm": 14.42,
+   "pb": 1.44
+  },
+  {
+   "ts_code": "000300.SH",
+   "trade_date": "20260611",
+   "total_mv": 67153261156212.0,
+   "float_mv": 51584717674556.0,
+   "total_share": 4385601906588.0,
+   "float_share": 3305524791718.0,
+   "free_share": 1119123190050.0,
+   "turnover_rate": 0.75,
+   "turnover_rate_f": 2.21,
+   "pe": 14.44,
+   "pe_ttm": 14.25,
+   "pb": 1.42
+  },
+  {
+   "ts_code": "000300.SH",
+   "trade_date": "20260610",
+   "total_mv": 67366439106496.0,
+   "float_mv": 51768435441378.0,
+   "total_share": 4385203532167.0,
+   "float_share": 3305166421161.0,
+   "free_share": 1118778100391.0,
+   "turnover_rate": 0.78,
+   "turnover_rate_f": 2.32,
+   "pe": 14.49,
+   "pe_ttm": 14.3,
+   "pb": 1.43
+  },
+  {
+   "ts_code": "000300.SH",
+   "trade_date": "20260609",
+   "total_mv": 67689628618903.0,
+   "float_mv": 52101228892972.0,
+   "total_share": 4381933482445.0,
+   "float_share": 3306140918713.0,
+   "free_share": 1119752597943.0,
+   "turnover_rate": 0.78,
+   "turnover_rate_f": 2.31,
+   "pe": 14.56,
+   "pe_ttm": 14.37,
+   "pb": 1.43
+  },
+  {
+   "ts_code": "000300.SH",
+   "trade_date": "20260608",
+   "total_mv": 67064782413279.0,
+   "float_mv": 51447502849949.0,
+   "total_share": 4381933409135.0,
+   "float_share": 3304213348682.0,
+   "free_share": 1120120513633.0,
+   "turnover_rate": 0.91,
+   "turnover_rate_f": 2.68,
+   "pe": 14.42,
+   "pe_ttm": 14.23,
+   "pb": 1.42
+  }
+ ]
+}

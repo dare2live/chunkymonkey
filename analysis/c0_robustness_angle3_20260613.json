@@ -1,0 +1,68 @@
+{
+  "experiment": "C0_unadjusted_coordinate_robustness_angle3",
+  "run_at_utc": "2026-06-13",
+  "scope": "买卖点 TIMING (持仓退出/低位进场), 非入场 filter; 2023-2026 全市场",
+  "data": {
+    "cyq_perf_rows": 4573677,
+    "cyq_stocks": 5812,
+    "forward_horizon_days": 20,
+    "label": "market.v_price_kline_qfq forward 20d return (qfq, code 6-digit)",
+    "pit_rule": "决策日 t 的 CYQ 特征用 t-1 值 (cyq_perf 盘后 18:00 更新)"
+  },
+  "a_exdiv_detection": {
+    "source1_dividend_impl_pairs": 15583,
+    "source2_adj_factor_jump_pairs": 15784,
+    "both_agree": 15420,
+    "agreement_rate": 0.967,
+    "only_dividend": 163,
+    "only_adj_factor": 364,
+    "union_pairs": 15947,
+    "note": "adj_factor 跳变阈值 |ratio-1|>5e-4; 并集多出的 364 = 送转/配股 (dividend 表只含现金分红实施). 用并集做隔离窗中心最稳健."
+  },
+  "b_window_coverage": {
+    "exdiv_window_pm_trading_days": 3,
+    "n_valid_samples": 4084486,
+    "n_in_window": 93312,
+    "window_pct": 2.28,
+    "note": "除权窗 ±3 交易日仅占 2.28% 样本 — 横截面 RankIC 被严重稀释, 单看全样本 IC 看不出污染."
+  },
+  "c_ic_comparison": {
+    "winner_rate": {
+      "full_rank_ic": -0.02262, "full_ic_ir": -0.2069,
+      "excl_exwin_rank_ic": -0.02214, "excl_exwin_ic_ir": -0.2024,
+      "exwin_only_rank_ic": -0.03374,
+      "delta_negligible": true,
+      "exday_delta_pp_median": 6.92, "nonexday_delta_pp_median": 6.65,
+      "mannwhitney_p_exday_gt_baseline": 0.6625,
+      "verdict": "winner_rate 是比率, 除权日 |delta| 与非除权日无统计差异 (p=0.66). audit 的 8.11pp 跳变 = 38股 blackbox 小样本巧合, 实为 winner_rate 序列固有高频抖动 (全样本日间 median 6.71pp / p90 29.7pp). 剔不剔除权窗 IC 几乎不变 → winner_rate 不受除权坐标实质污染, 可直用."
+    },
+    "cost_gap_close_over_weightavg": {
+      "definition": "PIT t-1: 未复权 daily.close / vendor weight_avg - 1 (同坐标比值)",
+      "full_rank_ic": -0.04239, "full_ic_ir": -0.3892,
+      "excl_exwin_rank_ic": -0.0404, "excl_exwin_ic_ir": -0.3733,
+      "exwin_only_rank_ic": -0.13399, "exwin_only_ic_ir": -0.8095,
+      "amplification_in_window": 3.31,
+      "exday_gap_delta_vs_baseline_ratio": 1.58,
+      "mannwhitney_p": 0.0,
+      "exday_close_ret_median": -0.0166,
+      "exday_weightavg_ret_median": -0.0003,
+      "exday_close_vs_wa_mismatch_median": 0.0211,
+      "exday_close_vs_wa_mismatch_p90": 0.1277,
+      "verdict": "SMOKING GUN: 除权日 close 台阶下跌 -1.66% 但 vendor weight_avg 仅 -0.03% — weight_avg/cost 分位未跟随除权. price-vs-cost gap 在除权窗内 IC -0.134 (3.3x 放大), 是坐标错配伪信号. 必须剔除除权窗 ±3 或等 qfq 精算."
+    }
+  },
+  "d_robust_use_protocol": {
+    "ratio_features_safe_without_qfq": [
+      "winner_rate (筹码胜率) — 比率, 除权日内部自洽, 实测除权窗影响不显著, 直用 (可选剔窗保险, IC 几乎不变)"
+    ],
+    "ratio_features_need_window_exclusion": [
+      "cost_gap = price / weight_avg, price / cost_50pct 等所有 价格-vs-成本 跨坐标比值 — 除权日 vendor 成本坐标不跟随, 窗内 IC 3.3x 伪放大, 必须剔除除权窗 ±3 (源=dividend.ex_date∪adj_factor跳变并集)",
+      "his_low/his_high 相对价格的位置类 (价/历史成本极值) — 同坐标错配, 剔窗或 qfq 精算"
+    ],
+    "must_wait_qfq_local_recompute": [
+      "任何把 cost_5/15/50/85/95pct/weight_avg 当绝对价位用、跨除权日做 price-vs-cost 精确配对的特征 — 剔窗只能去掉 2.28% 污染点, 但除权后到下一除权前的成本坐标整段相对未复权价偏移仍在, 精确配对需 modal 本地 qfq 重算 cost 分布"
+    ],
+    "exclusion_recipe": "决策日 t 落在任一 (ts_code 的 ex_date ±3 交易日) 即剔除; ex_date 源 = raw_tushare_dividend.ex_date (TRIM(div_proc)='实施') ∪ raw_tushare_adj_factor 相邻日 |ratio-1|>5e-4; 用 raw_tushare_trade_cal SSE is_open 算 ±3 交易日 (非自然日)."
+  },
+  "conclusion": "C0 影响可隔离且影响面比 audit 表述小. 关键修正: (1) winner_rate 是比率, 除权日跳变是序列固有噪声 (p=0.66 不显著), 不需剔窗即可用于买卖点 TIMING; (2) 真正受未复权坐标咬伤的是 price-vs-cost 跨坐标比值, 窗内 IC 3.3x 伪放大, 剔除权窗 ±3 即可隔离 (代价仅 2.28% 样本); (3) 绝对价位配对类必须 qfq 精算. 结论: 其余三路 CYQ 信号中 ratio 型 (winner_rate / 分位内部相对) 可信; price-vs-cost 型剔窗后可信; 绝对价位精配等 modal qfq."
+}

@@ -1,0 +1,77 @@
+{
+ "domain": "index_member_all",
+ "api": "index_member_all",
+ "grain": [
+  "l3_code",
+  "ts_code",
+  "in_date"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "l1_code": "801010.SI",
+   "l1_name": "农林牧渔",
+   "l2_code": "801011.SI",
+   "l2_name": "林业Ⅱ",
+   "l3_code": "850131.SI",
+   "l3_name": "林业Ⅲ",
+   "ts_code": "000592.SZ",
+   "name": "平潭发展",
+   "in_date": "20091009",
+   "out_date": null,
+   "is_new": "Y"
+  },
+  {
+   "l1_code": "801010.SI",
+   "l1_name": "农林牧渔",
+   "l2_code": "801011.SI",
+   "l2_name": "林业Ⅱ",
+   "l3_code": "850131.SI",
+   "l3_name": "林业Ⅲ",
+   "ts_code": "000663.SZ",
+   "name": "永安林业",
+   "in_date": "20220729",
+   "out_date": null,
+   "is_new": "Y"
+  },
+  {
+   "l1_code": "801010.SI",
+   "l1_name": "农林牧渔",
+   "l2_code": "801011.SI",
+   "l2_name": "林业Ⅱ",
+   "l3_code": "850131.SI",
+   "l3_name": "林业Ⅲ",
+   "ts_code": "002679.SZ",
+   "name": "福建金森",
+   "in_date": "20120130",
+   "out_date": null,
+   "is_new": "Y"
+  },
+  {
+   "l1_code": "801010.SI",
+   "l1_name": "农林牧渔",
+   "l2_code": "801011.SI",
+   "l2_name": "林业Ⅱ",
+   "l3_code": "850131.SI",
+   "l3_name": "林业Ⅲ",
+   "ts_code": "600265.SH",
+   "name": "ST景谷",
+   "in_date": "20000825",
+   "out_date": null,
+   "is_new": "Y"
+  },
+  {
+   "l1_code": "801010.SI",
+   "l1_name": "农林牧渔",
+   "l2_code": "801012.SI",
+   "l2_name": "农产品加工",
+   "l3_code": "850151.SI",
+   "l3_name": "果蔬加工",
+   "ts_code": "000972.SZ",
+   "name": "*ST中基",
+   "in_date": "20000512",
+   "out_date": null,
+   "is_new": "Y"
+  }
+ ]
+}

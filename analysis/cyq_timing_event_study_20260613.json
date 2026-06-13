@@ -1,0 +1,160 @@
+{
+  "meta": {
+    "run_at_utc": "2026-06-13T10:45:31.056434+00:00",
+    "fwd_days": 20,
+    "pct_window": 250,
+    "exdiv_pad": 3,
+    "panel_rows_total": 4193732,
+    "panel_rows_valid_after_exdiv_and_features": 3686600,
+    "exdiv_excluded_rows": 102371,
+    "n_stocks_valid": 5183,
+    "date_range": [
+      "20230404",
+      "20260515"
+    ],
+    "label_source": "market qfq close[t+20]/close[t]-1 (PIT-clean)",
+    "pit_note": "CYQ wr/wavg use t-1 lag; rolling pctile excludes current bar (w[:-1]<w[-1]); price-vs-cost uses raw unadjusted daily.close"
+  },
+  "rules": {
+    "SELL_winner_rate_pctile_gt_0.90": {
+      "rule": "SELL: wr_pctile>0.90 (获利盘极重, 应退出)",
+      "n_events": 432908,
+      "n_stocks": 5180,
+      "rule_fwd20_mean": 0.00511,
+      "mkt_baseline_fwd20_mean": 0.00687,
+      "net_effect": -0.00175,
+      "paired_tstat": -7.535,
+      "rule_fwd20_median": -0.01258,
+      "by_year": {
+        "2023": {
+          "n": 78922,
+          "rule_fwd20": -0.02152,
+          "mkt_fwd20": -0.01792,
+          "net": -0.0036
+        },
+        "2024": {
+          "n": 169809,
+          "rule_fwd20": 0.00146,
+          "mkt_fwd20": 0.00561,
+          "net": -0.00415
+        },
+        "2025": {
+          "n": 142745,
+          "rule_fwd20": 0.0261,
+          "mkt_fwd20": 0.0281,
+          "net": -0.002
+        },
+        "2026": {
+          "n": 41432,
+          "rule_fwd20": -0.00151,
+          "mkt_fwd20": -0.01393,
+          "net": 0.01241
+        }
+      }
+    },
+    "BUY_pctile_lt_0.10_AND_price_above_wavg": {
+      "rule": "BUY: wr_pctile<0.10 AND close>weight_avg (套牢释放+站上均成本)",
+      "n_events": 60874,
+      "n_stocks": 3907,
+      "rule_fwd20_mean": -0.00825,
+      "mkt_baseline_fwd20_mean": -0.00066,
+      "net_effect": -0.00758,
+      "paired_tstat": -14.057,
+      "rule_fwd20_median": -0.01132,
+      "by_year": {
+        "2023": {
+          "n": 36485,
+          "rule_fwd20": -0.01777,
+          "mkt_fwd20": -0.01085,
+          "net": -0.00692
+        },
+        "2024": {
+          "n": 14257,
+          "rule_fwd20": -0.00425,
+          "mkt_fwd20": 0.00245,
+          "net": -0.0067
+        },
+        "2025": {
+          "n": 8089,
+          "rule_fwd20": 0.02462,
+          "mkt_fwd20": 0.03786,
+          "net": -0.01324
+        },
+        "2026": {
+          "n": 2043,
+          "rule_fwd20": 0.00383,
+          "mkt_fwd20": 0.00707,
+          "net": -0.00325
+        }
+      }
+    },
+    "BUY_pctile_lt_0.10_ONLY_no_price_filter": {
+      "rule": "BUY-ablation: wr_pctile<0.10 only",
+      "n_events": 448459,
+      "n_stocks": 5174,
+      "rule_fwd20_mean": 0.01724,
+      "mkt_baseline_fwd20_mean": 0.01572,
+      "net_effect": 0.00153,
+      "paired_tstat": 8.704,
+      "rule_fwd20_median": 0.00304,
+      "by_year": {
+        "2023": {
+          "n": 144414,
+          "rule_fwd20": -0.00298,
+          "mkt_fwd20": -0.00832,
+          "net": 0.00534
+        },
+        "2024": {
+          "n": 116204,
+          "rule_fwd20": 0.01819,
+          "mkt_fwd20": 0.01538,
+          "net": 0.00281
+        },
+        "2025": {
+          "n": 122987,
+          "rule_fwd20": 0.04558,
+          "mkt_fwd20": 0.04571,
+          "net": -0.00013
+        },
+        "2026": {
+          "n": 64854,
+          "rule_fwd20": 0.00686,
+          "mkt_fwd20": 0.01299,
+          "net": -0.00613
+        }
+      }
+    }
+  },
+  "ic_summary": {
+    "wr_pctile_250d": {
+      "rank_ic": -0.02504,
+      "ic_ir": -0.244,
+      "n_days": 752,
+      "direction": "higher winner_rate pctile -> lower fwd20"
+    },
+    "wr_lag_raw": {
+      "rank_ic": -0.02586,
+      "ic_ir": -0.24,
+      "n_days": 752
+    },
+    "price_prem_vs_wavg": {
+      "rank_ic": -0.04814,
+      "ic_ir": -0.432,
+      "n_days": 752,
+      "direction": "price above avg cost -> lower fwd20 (mean-reversion)"
+    }
+  },
+  "robustness_no_exdiv_pool_baseline": {
+    "SELL_gt_0.9": {
+      "net_vs_cyq_pool": -0.00231,
+      "tstat": -10.05,
+      "n": 443656
+    },
+    "BUY_lt_0.1_price": {
+      "net_vs_cyq_pool": -0.00933,
+      "tstat": -17.4,
+      "n": 62843
+    },
+    "note": "剔除/不剔除除权窗结果方向幅度一致 (winner_rate 比率除权日间内部自洽), C0 处理稳健"
+  }
+}
