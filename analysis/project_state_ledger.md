@@ -14,6 +14,26 @@
 > snapshot, and `rg` / `tail` on this ledger only when a task needs specific
 > historical evidence.
 
+## 2026-06-13 晚 — 地基 index 落库 + tushare raw 域挖掘 (用户: 打地基 + 同步挖掘)
+
+- **地基 index 族落库** (KPI 超额 HS300 真相源缺口 D3): registry 加 index_daily_benchmark (7 基准指数全史,
+  by_code_list 新 batch_mode) + index_member_all (31 申万一级成分史)。实测 raw_tushare_index_daily 35,128 行
+  (HS300 000300.SH 5,206 行全史 2005-2026 = 终结 akshare 主从倒挂) + index_member_all 5,847 行 (in_date/out_date
+  原生 PIT = 申万退役真因"只有快照无历史"的正解)。落库前单发实测救坑: 无参全拉整 5000 截断 (dc_member 同型) → l1 循环。
+- **tushare raw 域增量 alpha 挖掘** (3 域并行, t-1 PIT, 过泄漏 gate, 异常核查不排除):
+  - **daily_basic = 唯一真增量**: turnover_rate (RankIC -0.089 / IC_IR **-0.497** / t-16) + circ_mv 连续 size
+    (-0.049/-0.264) + pb (-0.069), **均不在 v5 130-col panel (0 hits 实证), PIT 干净 (same-day -0.094 vs t-1
+    -0.089 证 shift 生效), 与反转正交 (spearman +0.22<0.3)** = 真新维度非换皮。turnover_rate IC_IR -0.5 稳定性
+    超现面板多数特征 = 本轮最有价值发现。
+  - moneyflow / top_inst = **无增量** (net_mf 0.0267 / 机构席位质量四维 ~0, 现有 flow rank / LHB 计数反转换皮)。
+  - verify-the-verifier: circ_mv 当年被 v5 DROP 的 caveat 查清 = 派生表 fact_market_cap_decile_daily 的
+    Pattern 10 NULL 时间渐变 leak (pre-2025 98.3% NULL), 非 size 因子本身; raw daily_basic circ_mv 全年 0% NULL
+    绕开。异常核查抓出 seat_diff_all (-0.0501 但 99.3% 事件值=0 仅 253 天) = 低覆盖伪信号非 alpha; inst_buy_share
+    split-half 非平稳衰减 (0.162→0.046) 标注。
+- **诚实结论 (回答"tushare 对 alpha 增强")**: raw tushare 仅 daily_basic 风格因子 (换手/size/价值) 有增量;
+  flow/LHB 域已饱和。next = turnover_rate+circ_mv 按 t-1 PIT 进面板 → 控现有 62/130 列偏 IC ablation (验增量非
+  共线) → optuna 组合 (走 plan_validator 防空 search space); 若偏 IC 仍弱则现有 raw 域见底, 转 CYQ (modal)/链谱新维度。
+
 ## 2026-06-13 晚 — 干净特征 forward-IC 探索: 有诚实弱 alpha, 0 泄漏 (充分利用 duckdb)
 
 - **四路 duckdb 探索 (原始IC/horizon/regime/正交, 全过泄漏 gate, 产物 analysis/c1_rankic_*_20260613.*)**:
