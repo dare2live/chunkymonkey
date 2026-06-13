@@ -14,7 +14,22 @@
 > snapshot, and `rg` / `tail` on this ledger only when a task needs specific
 > historical evidence.
 
-## 2026-06-13 傍晚 — 主升浪 S3 泄漏彻查结案: 0.779 全是标签泄露, 去掉后 0 真 edge
+## 2026-06-13 晚 — 干净特征 forward-IC 探索: 有诚实弱 alpha, 0 泄漏 (充分利用 duckdb)
+
+- **四路 duckdb 探索 (原始IC/horizon/regime/正交, 全过泄漏 gate, 产物 analysis/c1_rankic_*_20260613.*)**:
+  62 干净特征 (builder 标签契约排除后) 对 forward_ret_20d 跑 805 日 walk-forward 截面 RankIC。
+- **0 泄漏嫌疑**: 全场 |RankIC| 上限 0.107 (<0.15 §4.2 红线), IC_IR 上限 0.80 — 印证 label-excluded
+  PIT 保证有效, 反证过去 +312%/RankIC 0.035 那些惊喜确是泄漏。
+- **诚实弱 alpha (有, 但需组合)**: 3 簇正交符号稳定信号 — (1) **rz_balance_to_amount20** (融资余额/20d
+  成交额, 杠杆情绪) IC_IR 0.80 唯一强正向, 随 horizon 单调增强 0.073@5d→0.138@90d (IC_IR 1.37@90d),
+  全 regime 稳定, 但覆盖仅 56.6% (两融标的); (2) **lhb_inst_buy_count_30/60d** 反转/拥挤 IC_IR -0.84
+  高度正交; (3) 中短期反转簇 (ret_20/60d/ma_ratio_*, 共线留 1-2); (4) 波动簇 regime-依赖 (须 gate)。
+- **判决**: 无强单因子, 但是合法多因子组合底座 (低频 60-90d 持有, 温和超额); 单独撑不起 KPI 年化>=30%,
+  冲 KPI 需 (a) 三族组合 optuna OOS 确认 (本地, ~8 因子线性权重 + walk-forward, 不需 modal) (b) CYQ 筹码/
+  资金流类新特征补增量 (alpha_combo_matrix run_first combo 方向)。干净量价这口井诚实见底。
+- **anomaly 协议跟进**: rz_balance IC_IR 1.37@90d 是全场最高, 虽 <0.15 红线且 horizon-单调+regime-稳定
+  (慢因子特征非泄漏特征), 仍按"异常核查不排除"做 PIT 溯源确认 (融资余额是否 T+1 PIT 干净) 再入组合。
+- **modal 未触发**: 全程本地 duckdb 秒-分钟级算完; modal 只在 CYQ 全市场筹码特征扩展时才上。
 
 - **彻查 (用户指令: 排除泄露但不放过真实增强; workflow ablation + 主会话亲自复算双证)**: S3 首轮
   AUC 0.779 = **确凿特征级前瞻泄漏, 非真 edge**。罪魁 = 5 个 `follow_net_return_5/10/20/60/90d`

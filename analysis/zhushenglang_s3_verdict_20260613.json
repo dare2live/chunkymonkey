@@ -1,7 +1,7 @@
 {
  "experiment": "zhushenglang_S3_lightgbm_walkforward",
  "prereg": "prereg_zhushenglang_s3_20260613.md",
- "run_at_utc": "2026-06-13T07:22:28.739942+00:00",
+ "run_at_utc": "2026-06-13T07:32:56.403044+00:00",
  "n_samples": 26789,
  "n_features": 62,
  "base_rate_overall": 0.1038,
@@ -61,7 +61,7 @@
  "J2_not_leakage": {
   "mean_auc": 0.5013,
   "auc_ceiling": 0.75,
-  "mean_shuffle_auc": 0.5101,
+  "mean_shuffle_auc": 0.5084,
   "shuffle_band": [
    0.45,
    0.55
