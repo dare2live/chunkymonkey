@@ -55,3 +55,24 @@ assertions:
     type: shell
     command: ["python3", "backend/scripts/check_doc_governance.py"]
     expect: {op: regex, pattern: "verdict=PASS"}
+  - id: quota-circuit-breaker
+    claim: "信道配额熔断在盘 (2026-06-13 代理 jiaoch.site 反刷量墙定层; 删除=逐日续戳烧配额复发)"
+    type: shell
+    command: ["grep", "-c", "_is_quota_wall\\|QuotaExhaustedError", "backend/services/data_sources/sync_runner.py"]
+    expect: {op: ">=", value: 3}
+  - id: watermark-refresher-wired
+    claim: "kline 水位刷新器接在 daily_update Step 2.97 (2026-06-13 修孤儿化; 检查器写器两器官缺一即水位卡死)"
+    type: shell
+    command: ["grep", "-c", "refresh_source_watermarks.py", "scripts/daily_update.sh"]
+    expect: {op: ">=", value: 1}
+  - id: lhb-exit-verdict-go
+    claim: "LHB 上榜即退出判决 = GO (2026-06-13 第一个判正 alpha, 三判官全过; 判负归档前应在)"
+    type: shell
+    command: ["bash", "-c", "grep -o '\"verdict\": \"GO\"' analysis/lhb_exit_verdict_20260612.json | head -1 | grep -c GO"]
+    expect: {op: "==", value: 1}
+  - id: concept-event-no-phantom
+    claim: "概念事件幻影残留杀线: 平滑重建后 BORN+DEAD 日均 < 5 (2026-06-13 平滑窗3根治 4612→79)"
+    type: duckdb_sql
+    database: data/smartmoney.duckdb
+    query: "WITH e AS (SELECT event_date, count(*) FILTER (WHERE event_type IN ('concept_born','concept_dead')) AS c FROM fact_concept_event WHERE as_of_mode='reconstructed' GROUP BY 1) SELECT CASE WHEN count(*)=0 THEN 999 ELSE sum(c)*1.0/count(*) END FROM e"
+    expect: {op: "<", value: 5}

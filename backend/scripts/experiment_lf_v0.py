@@ -140,43 +140,64 @@ def detect_events(con, days, day_idx, anchor_offset: int = 0):
     return events
 
 
-def members_asof(con, t: str, concept: str, days, day_idx, anchor_offset: int) -> set[str]:
-    """概念归属 = 锚点窗 (MEMBER_WINDOW 个交易日, 全 <= 锚点) 内任一日见过即算 (修订 2)."""
+def members_asof(member_by_day, days, day_idx, t: str, concept: str, anchor_offset: int) -> set[str]:
+    """概念归属 = 锚点窗 (MEMBER_WINDOW 个交易日, 全 <= 锚点) 内任一日见过即算 (修订 2).
+
+    纯 dict 并集 (member_by_day 预载, 不再每事件一次 SQL 往返 — 性能根治 2026-06-13)。
+    """
     i = day_idx.get(t)
     if i is None:
         return set()
     end = i - anchor_offset
     if end < 0:
         return set()
-    mdays = days[max(0, end - (MEMBER_WINDOW - 1)):end + 1]
-    if not mdays:
-        return set()
-    qs = ",".join("?" * len(mdays))
-    return {r[0] for r in con.execute(
-        f"SELECT DISTINCT con_code FROM raw_tushare_dc_member WHERE ts_code = ? AND trade_date IN ({qs})",
-        [concept, *mdays]).fetchall()}
+    out: set[str] = set()
+    for d in days[max(0, end - (MEMBER_WINDOW - 1)):end + 1]:
+        out |= member_by_day.get(d, {}).get(concept, frozenset())
+    return out
 
 
-def fwd5(hopen, days, day_idx, t, code) -> float | None:
+def fwd5(hopen, days, day_idx, t, code, cache=None) -> float | None:
+    """t+1 open 买 t+6 open 卖 (qfq, 含双边成本). cache: (t,code)→结果 memo (anchor 无关, 跨臂共享)."""
+    if cache is not None:
+        key = (t, code)
+        if key in cache:
+            return cache[key]
     i = day_idx.get(t)
+    val: float | None
     if i is None or i + 1 + HOLD_DAYS >= len(days):
-        return None  # 窗尾不足
-    o1 = hopen.get((days[i + 1], code))
-    o6 = hopen.get((days[i + 1 + HOLD_DAYS], code))
-    if not o1 or not o6:
-        return None  # 停牌/缺价
-    return (o6 / o1 - 1.0) * 100.0 - COST_RT_PP  # pp, 含双边成本
+        val = None  # 窗尾不足
+    else:
+        o1 = hopen.get((days[i + 1], code))
+        o6 = hopen.get((days[i + 1 + HOLD_DAYS], code))
+        val = None if (not o1 or not o6) else (o6 / o1 - 1.0) * 100.0 - COST_RT_PP
+    if cache is not None:
+        cache[key] = val
+    return val
 
 
-def run_arm(con, days, day_idx, hopen, by_day, limit_up_by_day, open_by_day, uplimit_by_day,
-            anchor_offset: int):
-    """一条臂 (anchor t 或 t-1) 的完整样本生成. 返回 samples + 排除计数."""
-    events = detect_events(con, days, day_idx, anchor_offset)
+def _day_sorted(by_day, t, cache):
+    """当日 (pct 升序) 列表 (pcts, codes), 懒缓存 — 对照带 bisect 切片用 (避免每 follower 全扫排序)."""
+    if t not in cache:
+        items = sorted(by_day.get(t, {}).items(), key=lambda kv: (kv[1], kv[0]))
+        cache[t] = ([p for _, p in items], [c for c, _ in items])
+    return cache[t]
+
+
+def run_arm(events, days, day_idx, hopen, by_day, limit_up_by_day, open_by_day, uplimit_by_day,
+            member_by_day, anchor_offset, fwd_cache, day_sorted_cache):
+    """一条臂 (anchor t 或 t-1) 的完整样本生成. 返回 samples + 排除计数.
+
+    语义与朴素版逐字等价 (合成测试判决恒等守门); 仅向量化: members dict 并集 / fwd5 memo /
+    对照带 bisect 切片 + 带内按 (|涨幅差|, code) 排序 (= 朴素全扫排序的同序子集)。
+    """
+    import bisect
+
     excl = {"window_tail": 0, "no_t1_tradable": 0, "no_controls": 0, "no_pct": 0}
     samples = []   # (event_key, t, excess_pp)
     n_events_contributing = 0
     for t, concept, leaders in events:
-        members = members_asof(con, t, concept, days, day_idx, anchor_offset)
+        members = members_asof(member_by_day, days, day_idx, t, concept, anchor_offset)
         if not members:
             continue
         i = day_idx.get(t)
@@ -185,9 +206,11 @@ def run_arm(con, days, day_idx, hopen, by_day, limit_up_by_day, open_by_day, upl
             continue
         d1 = days[i + 1]
         lim_today = limit_up_by_day.get(t, set())
+        day_pct = by_day.get(t, {})
+        pcts, codes = _day_sorted(by_day, t, day_sorted_cache)
         contributed = False
         for code in sorted(members - leaders - lim_today):
-            pct = by_day.get(t, {}).get(code)
+            pct = day_pct.get(code)
             if pct is None:
                 excl["no_pct"] += 1
                 continue
@@ -196,17 +219,20 @@ def run_arm(con, days, day_idx, hopen, by_day, limit_up_by_day, open_by_day, upl
             if o1 is None or ul is None or not (o1 < ul):
                 excl["no_t1_tradable"] += 1  # 盲点6: t+1 一字/无价不可成交
                 continue
-            f = fwd5(hopen, days, day_idx, t, code)
+            f = fwd5(hopen, days, day_idx, t, code, fwd_cache)
             if f is None:
                 excl["window_tail"] += 1
                 continue
+            # ±1pp 带 = pct 排序后 [pct-BAND, pct+BAND] 的连续切片 (bisect), 排除成员,
+            # 带内按 (|涨幅差|, code) 排序 = 朴素全扫同序子集 (逐字等价)
+            lo = bisect.bisect_left(pcts, pct - PCT_BAND)
+            hi = bisect.bisect_right(pcts, pct + PCT_BAND)
             cands = sorted(
-                ((c, p) for c, p in by_day.get(t, {}).items()
-                 if c not in members and abs(p - pct) <= PCT_BAND),
+                ((codes[k], pcts[k]) for k in range(lo, hi) if codes[k] not in members),
                 key=lambda x: (abs(x[1] - pct), x[0]))
             ctrl = []
             for c, _ in cands:
-                cf = fwd5(hopen, days, day_idx, t, c)
+                cf = fwd5(hopen, days, day_idx, t, c, fwd_cache)
                 if cf is not None:
                     ctrl.append(cf)
                 if len(ctrl) == N_CONTROLS:
@@ -282,32 +308,52 @@ def main() -> int:
         "SELECT trade_date, ts_code, up_limit FROM raw_tushare_stk_limit "
         "WHERE up_limit IS NOT NULL AND trade_date BETWEEN ? AND ?",
         [WINDOW[0], "20261231"]).fetchall()}
+    # 成员面板预载 (dc_member ts_code=概念/con_code=成分): 杀 members_asof 的 N+1 SQL
+    member_by_day: dict[str, dict[str, set[str]]] = {}
+    for t, concept, member in con.execute(
+            "SELECT trade_date, ts_code, con_code FROM raw_tushare_dc_member "
+            "WHERE trade_date BETWEEN ? AND ?", [WINDOW[0], "20261231"]).fetchall():
+        member_by_day.setdefault(t, {}).setdefault(concept, set()).add(member)
+
+    # 事件检测两锚共享 (detect_events 一次 SQL, 与 run_arm 解耦); fwd5/day_sorted 跨臂共享缓存
+    fwd_cache: dict = {}
+    day_sorted_cache: dict = {}
+    events0 = detect_events(con, days, day_idx, anchor_offset=0)
+    events1 = detect_events(con, days, day_idx, anchor_offset=1)
+    con.close()  # 面板全预载, 后续纯本地计算无需 DB
 
     # 主臂 (anchor=t) + PIT 双锚臂 (anchor=t-1)
-    samples, n_events, excl = run_arm(con, days, day_idx, hopen, by_day, limit_up_by_day,
-                                      open_by_day, uplimit_by_day, anchor_offset=0)
-    samples_t1, n_events_t1, excl_t1 = run_arm(con, days, day_idx, hopen, by_day, limit_up_by_day,
-                                               open_by_day, uplimit_by_day, anchor_offset=1)
+    samples, n_events, excl = run_arm(events0, days, day_idx, hopen, by_day, limit_up_by_day,
+                                      open_by_day, uplimit_by_day, member_by_day, 0, fwd_cache, day_sorted_cache)
+    samples_t1, n_events_t1, excl_t1 = run_arm(events1, days, day_idx, hopen, by_day, limit_up_by_day,
+                                               open_by_day, uplimit_by_day, member_by_day, 1, fwd_cache, day_sorted_cache)
 
     if not samples:
         print(json.dumps({"verdict": "INVALID", "reason": "0 follower 样本 — 数据/匹配口径有问题",
                           "n_events": n_events, "excluded": excl}, ensure_ascii=False))
-        con.close()
         return 3
 
     net = net_of(samples)
     # cluster bootstrap: 按事件重采样 (同事件 follower 相关, 不当独立样本)
+    # 性能 (2026-06-13): 预算 per-event (sum,count), 重采样累加 = 朴素 pool.extend 后 sum/len
+    # 的逐字等价 (sum(pool)=Σ event_sum, len(pool)=Σ event_count), 同 rng.randrange 序列保种子复现,
+    # 但避免每次 bootstrap 构建 ~30 万元素 pool (O(N×pool) → O(N×events))。
     by_event: dict = {}
     for key, _, x in samples:
         by_event.setdefault(key, []).append(x)
     event_keys = sorted(by_event)
+    ev_sum = [sum(by_event[k]) for k in event_keys]
+    ev_cnt = [len(by_event[k]) for k in event_keys]
+    ne = len(event_keys)
     rng = random.Random(BOOTSTRAP_SEED)
     boots = []
     for _ in range(BOOTSTRAP_N):
-        pool = []
-        for _ in range(len(event_keys)):
-            pool.extend(by_event[event_keys[rng.randrange(len(event_keys))]])
-        boots.append(sum(pool) / len(pool))
+        s = c = 0.0
+        for _ in range(ne):
+            j = rng.randrange(ne)
+            s += ev_sum[j]
+            c += ev_cnt[j]
+        boots.append(s / c)
     boots.sort()
     ci_low, ci_high = boots[int(0.025 * BOOTSTRAP_N)], boots[int(0.975 * BOOTSTRAP_N)]
 
@@ -376,7 +422,6 @@ def main() -> int:
     out_path.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     print(json.dumps(out, ensure_ascii=False, indent=1))
     print(f"\n判决已落盘: {out_path}")
-    con.close()
     return 0
 
 
