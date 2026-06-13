@@ -342,3 +342,34 @@ domains:
   # stk_factor_pro 暂缓注册 (2026-06-12 实弹): 单日返回 1878 行 != 全市场 5512 — 截断疑点
   # (261 字段大体积响应疑被网关掐), 分页连续性核证后注册。cyq_chips (per-stock 分布明细,
   # by_ts_code 大回填) 按 alpha 实验需要再注册。
+
+  # ── 指数族 (2026-06-13 地基: KPI 超额 HS300 真相源 + 申万 L2 行业 PIT; 用户"先打地基") ──
+  # 现状: KPI 超额走 akshare = 主从倒挂; 申万退役真因 = 只有快照无历史 → index_member_all 带
+  # in_date/out_date 是 PIT 原生解。两域均 2000 积分实测可调 (2026-06-13 单发核证字段/grain)。
+  index_daily_benchmark:
+    source: tushare
+    api: index_daily
+    target_table: raw_tushare_index_daily
+    grain: [ts_code, trade_date]
+    batch_mode: by_code_list      # 基准指数清单循环 (非全市场); 每指数一次 ranged 调用
+    code_param: ts_code
+    code_list: ["000300.SH", "000905.SH", "000852.SH", "000016.SH", "399006.SZ", "000001.SH", "399001.SZ"]
+    fixed_params: {start_date: "20050101", end_date: "20260612"}   # rule-compliance: ok evidence=指数日线全史回填窗, 单次范围查询 (HS300 全史 <5000 行实测无截断险)
+    pit_anchor: "trade_date; 指数收盘即定, 当日可用 (基准超额无前瞻)"
+    data_start: "20050101"
+    freshness_sla_trading_days: 1
+    min_rows_per_batch: 100        # 单指数全史数千行; <100 = 截断/异常
+    allow_empty_batch: false
+  index_member_all:
+    source: tushare
+    api: index_member_all
+    target_table: raw_tushare_index_member_all
+    grain: [l3_code, ts_code, in_date]   # 分级成分 PIT: 同股可多区间 (in/out), 按 in_date 去重
+    batch_mode: by_code_list      # 按申万一级 31 个循环 (无参全拉实测整 5000 截断, 同 dc_member 反例)
+    code_param: l1_code
+    code_list: ["801010.SI","801030.SI","801040.SI","801050.SI","801080.SI","801110.SI","801120.SI","801130.SI","801140.SI","801150.SI","801160.SI","801170.SI","801180.SI","801200.SI","801210.SI","801230.SI","801710.SI","801720.SI","801730.SI","801740.SI","801750.SI","801760.SI","801770.SI","801780.SI","801790.SI","801880.SI","801890.SI","801950.SI","801960.SI","801970.SI","801980.SI"]
+    pit_anchor: "in_date/out_date 原生 PIT; JOIN 决策日 t 须 in_date<=t AND (out_date IS NULL OR out_date>t)"
+    data_start: "19891101"        # in_date 最早 (申万成分史起点, 实测)
+    freshness_sla_trading_days: 30  # 成分调整低频 (季度级)
+    min_rows_per_batch: 20         # 单 l1 成分史数十~数百行 (801010 实测 126); <20 可疑
+    allow_empty_batch: false

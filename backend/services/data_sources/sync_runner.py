@@ -426,6 +426,14 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         batches = [{"start_date": start_d, "end_date": end_d}]
     elif spec["batch_mode"] == "by_ts_code":
         batches = _by_ts_code_batches(spec)
+    elif spec["batch_mode"] == "by_code_list":
+        # 显式代码清单循环 (指数/申万行业等 — code 源非 market 股票表): 每 code 一批,
+        # code_param 指定参数名 (ts_code/l1_code...), fixed_params 合并 (如指数日线的 start/end)。
+        # 用途: index_daily 基准指数 (无视全市场, 只拉 benchmark 代码) / index_member_all 按申万 l1
+        # 循环避开无参 5000 整截断 (2026-06-13 实测无参全拉 = 整 5000 = top_inst/dc_member 同型截断反例)。
+        code_param = spec.get("code_param", "ts_code")
+        fixed = dict(spec.get("fixed_params") or {})
+        batches = [{code_param: c, **fixed} for c in spec["code_list"]]
     elif spec["batch_mode"] == "by_trade_date":
         if backfill:
             start_d = start or spec["data_start"]
