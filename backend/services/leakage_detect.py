@@ -58,8 +58,10 @@ def _name_flagged(col: str) -> bool:
 
 def _single_feature_auc(values, y):
     import numpy as np
+    import pandas as pd
     from sklearn.metrics import roc_auc_score
-    v = np.asarray(values, dtype=float); yy = np.asarray(y, dtype=float)
+    v = pd.to_numeric(pd.Series(values), errors="coerce").to_numpy(dtype=float)  # NAType/Arrow→nan
+    yy = pd.to_numeric(pd.Series(y), errors="coerce").to_numpy(dtype=float)
     mask = ~np.isnan(v) & ~np.isnan(yy)
     if mask.sum() < 50 or len(set(yy[mask].tolist())) < 2:
         return None

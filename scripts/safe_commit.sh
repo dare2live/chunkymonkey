@@ -103,6 +103,26 @@ if [[ -n "$panel_touched" ]]; then
     fi
 fi
 
+# 3.6 消费方泄漏闸 (改了特征面板消费者/注册表/builder 标签契约时): 遍历 leakage_consumers.yaml
+# 逐消费者跑事前探针 (label 当特征 / 单特征 AUC), 任一 HIGH 即阻断。补 3.5 (panel-build SQL) 的
+# 消费方盲区 (S3 漏排 follow_net_return 同型)。
+consumer_touched=$(echo "$STAGED" | grep -E "leakage_consumers.yaml|run_daily_v7_inference|run_p0b_lambdamart|build_sniper_score|experiment_zhushenglang_s3|build_feature_panel_duck|leakage_detect|leakage_probe" || true)
+if [[ -n "$consumer_touched" ]]; then
+    echo
+    echo "=== Step 3.6: leakage consumer gate (消费方/注册表/契约 staged) ==="
+    echo "triggered by: $(echo "$consumer_touched" | tr '\n' ' ')"
+    if PYTHONPATH=backend python backend/scripts/leakage_probe.py --gate 2>&1 | tail -20; then
+        echo "[leakage-gate] PASS"
+    else
+        echo
+        echo "ERROR: 消费方泄漏闸 HIGH — 有特征面板消费者把标签/前瞻列当特征喂模型 (S3 同型)。"
+        echo "修: 对齐 builder MODEL_INPUT_EXCLUDED_COLS / 补 panel_labels; 不手写漏排。"
+        echo "Override: SKIP_LEAKAGE_AUDIT=1 (仅 known false-positive, 需 commit msg 说明)"
+        [[ "${SKIP_LEAKAGE_AUDIT:-0}" != "1" ]] && exit 4
+        echo "WARNING: SKIP_LEAKAGE_AUDIT=1 bypass — proceeding."
+    fi
+fi
+
 # 4. Commit message keyword check (manual preview)
 echo
 echo "=== Step 4: commit message keyword ==="

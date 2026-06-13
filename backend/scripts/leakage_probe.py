@@ -47,11 +47,16 @@ def main() -> int:
     ap.add_argument("--split-mode", default="time")
     ap.add_argument("--where", default="")
     ap.add_argument("--lessons", action="store_true", help="打印泄漏教训登记表")
+    ap.add_argument("--gate", action="store_true",
+                    help="遍历 leakage_consumers.yaml 逐消费者跑事前探针 (强制闸; 任一 HIGH 即 exit 1)")
     args = ap.parse_args()
 
     if args.lessons:
         print(json.dumps(L.LEAKAGE_LESSONS, ensure_ascii=False, indent=1))
         return 0
+
+    if args.gate:
+        return _run_gate()
 
     def _load_df():
         import duckdb
@@ -97,6 +102,44 @@ def main() -> int:
 
     print(json.dumps(rep, ensure_ascii=False, indent=1))
     return _exit_code(rep["verdict"])
+
+
+def _run_gate() -> int:
+    """强制闸: 遍历 leakage_consumers.yaml, 逐消费者跑事前探针, 任一 HIGH 即 FAIL (exit 1)."""
+    import duckdb
+    import pandas as pd
+    import yaml
+    reg_path = REPO / "backend" / "config" / "leakage_consumers.yaml"
+    reg = yaml.safe_load(reg_path.read_text(encoding="utf-8"))
+    db = reg.get("db", "data/smartmoney.duckdb")  # rule-compliance: ok evidence=registry yaml 取值, 默认仅 fallback, read_only
+    since = reg.get("since", "2025-01-01")  # rule-compliance: ok evidence=registry yaml 探针采样窗起点, 默认仅 fallback
+    results, any_high = [], False
+    for c in reg.get("consumers", []):
+        panel, label = c["panel"], c["label_col"]
+        declared = _discover(str(REPO / c["exclude_source"])) if c.get("exclude_source") else set()
+        declared |= set(c.get("panel_labels") or [])  # 注册表显式权威标签 (面板无 builder 契约时); 不信脚本手写
+        con = duckdb.connect(db, read_only=True)  # rule-compliance: ok evidence=read_only 泄漏闸遍历
+        cols = [r[0] for r in con.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name=?", [panel]).fetchall()]
+        if label not in cols:
+            results.append({"id": c["id"], "verdict": "SKIP", "reason": f"label {label} 不在 {panel}"}); con.close(); continue
+        feats = [x for x in cols if x != label and x not in declared]
+        sel = ", ".join('"' + x + '"' for x in [label, *feats])
+        date_col = "signal_date" if "signal_date" in cols else ("date" if "date" in cols else None)
+        wh = f"WHERE {date_col} >= '{since}'" if date_col else ""
+        # 确定性抽样上限 30k 行: 泄漏是结构性的, 抽样足够 (0.84-AUC 泄漏在 3 万行照样现形), 控 moth 60s
+        cap = "USING SAMPLE 30000 ROWS (reservoir, 20260613)" if date_col else ""
+        df = con.execute(f"SELECT {sel} FROM {panel} {wh} {cap}").df(); con.close()
+        df["_y"] = (pd.to_numeric(df[label], errors="coerce") > 0).astype(int)
+        numf = [x for x in feats if pd.api.types.is_numeric_dtype(df[x])]
+        rep = L.probe_feature_leakage(df, numf, "_y", declared_labels=declared)
+        any_high = any_high or rep["verdict"] == "HIGH"
+        results.append({"id": c["id"], "panel": panel, "verdict": rep["verdict"],
+                        "n_high": rep["n_high"], "n_features": rep["n_features"],
+                        "high_features": [f["feature"] for f in rep["flags"] if f["severity"] == "HIGH"]})
+    print(json.dumps({"gate": "leakage_consumers", "overall": "FAIL" if any_high else "PASS",
+                      "results": results}, ensure_ascii=False, indent=1))
+    return 1 if any_high else 0
 
 
 def _discover(path: str) -> set:

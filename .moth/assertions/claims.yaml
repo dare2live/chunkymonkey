@@ -70,6 +70,11 @@ assertions:
     type: shell
     command: ["bash", "-c", "grep -o '\"verdict\": \"GO\"' analysis/lhb_exit_verdict_20260612.json | head -1 | grep -c GO"]
     expect: {op: "==", value: 1}
+  - id: leakage-consumer-gate
+    claim: "全部特征面板消费者过泄漏闸 (leakage_consumers.yaml 逐个 feature_consumer 探针, 任一 HIGH=FAIL)"
+    type: shell
+    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend .venv/bin/python backend/scripts/leakage_probe.py --gate | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)[\"overall\"]==\"PASS\" else 1)' && echo GATE_PASS"]
+    expect: {op: regex, pattern: "GATE_PASS"}
   - id: concept-event-no-phantom
     claim: "概念事件幻影残留杀线: 平滑重建后 BORN+DEAD 日均 < 5 (2026-06-13 平滑窗3根治 4612→79)"
     type: duckdb_sql

@@ -1,0 +1,34 @@
+# 泄漏检测消费者注册表 — 所有"在特征面板上训练/打分模型"的脚本必须在此登记 (2026-06-13)
+#
+# 为什么: 工具不强制 = 孤儿 (mythos #14)。S3 漏排 follow_net_return 致 AUC 0.84 假象, 靠的是
+# 作者手写 EXCLUDE 自觉; live 碰巧干净也是运气。强制三道闸:
+#   (1) 此注册表 = 真相源 (谁在用特征面板)
+#   (2) leakage_probe --gate 遍历本表逐个跑事前探针 (接 moth 弹仓 + doctor, 每次全面检测)
+#   (3) safe_commit 拦截: 改了 builder/消费者/新训练脚本 → 跑 --gate; 新训练脚本未登记 → 阻断
+#
+# 字段: id / script / panel (库内表) / label_col (二分或连续>0 二分) / exclude_source (标签契约 builder, 空=仅名模式+AUC)
+# verdict HIGH 任一 = gate FAIL。新增模型训练/打分脚本必须加条目 (否则 safe_commit 阻断)。
+version: 1
+db: data/smartmoney.duckdb
+since: "2025-01-01"          # 探针采样窗 (避开早期稀疏; 与训练窗对齐)
+consumers:
+  - id: zhushenglang_s3
+    script: backend/scripts/experiment_zhushenglang_s3.py
+    panel: fact_feature_panel
+    label_col: forward_ret_20d           # >0 二分; S3 真实 label 是 rally, 此处探面板前瞻列泄漏
+    exclude_source: backend/scripts/build_feature_panel_duck.py
+    note: "S3 实验; 首轮漏排 follow_net_return_* 致泄漏, 已修复复用 builder 契约"
+  - id: v7_daily_inference
+    script: backend/scripts/run_daily_v7_inference.py
+    panel: mart_p0a_feature_label_panel_v5
+    label_col: fwd_cost_after_20d
+    exclude_source: ""                    # v5 无可 import 的 builder 标签契约 → 用 panel_labels 显式列权威标签
+    panel_labels: [fwd_cost_after_5d, fwd_cost_after_10d]  # 面板前瞻标签 (20d=label_col); gate 权威排除, 不信脚本手写
+    note: "live forward picks; 2026-06-13 体检 CLEAN (124 特征); 单特征 AUC 层兜住新混入前瞻列"
+  - id: p0b_lambdamart_v6
+    script: backend/scripts/run_p0b_lambdamart_v6.py
+    panel: mart_p0a_feature_label_panel_v4
+    label_col: fwd_cost_after_20d
+    exclude_source: ""                    # p0b _META_COLS 含 latest-snapshot/fallback 排除; 实测 CLEAN
+    panel_labels: [fwd_cost_after_5d, fwd_cost_after_10d]  # v4 前瞻标签; sm_ret/sector_ret 是 trailing 特征非标签
+    note: "live ensemble v4_bc 上游; 2026-06-13 体检 CLEAN (122 特征)"
