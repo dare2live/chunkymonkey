@@ -15,6 +15,13 @@ audit_panel_leakage.py)。一个模块, 四阶段, 每阶段对应数据流的�
 **定位: 复核筛选器, 非神谕** — 输出是待人核的嫌疑 + 证据 + 误报说明, 不自动封杀/删特征。
 工具本身可能误判 (用户点的), 故每个 flag 标可信度 (契约命中权威 / AUC 经验强 / 名模式高误报)。
 
+**异常核查协议 (用户 2026-06-13: 异常不应直接排除而应核查)**: 任一 flag/异常高信号 = 触发核查,
+**不是直接排除**。核查四步 (ANOMALY_PROTOCOL): (1) ablation — 剔除该特征/族看指标崩多少 (崩到随机=
+信号全在它=泄漏; 仅微降=可有可无); (2) PIT 溯源 — 读该特征 builder lineage 确认是否用 <=t 信息;
+(3) 剔除重跑 — 去掉后指标若落正常带=它是泄漏源, 若仍高=另有泄漏或是真 edge; (4) shuffle 对照 —
+管道级泄漏排查。**核实泄漏才修; 核实真 edge 则保留, 用新冻结红线重跑 (不复用被看过判据), 绝不
+因"看着高"就丢掉真实增强** (反例反向: S3 核查后确认泄漏才定性, 没有一看高就扔)。
+
 用法 (CLI 在 backend/scripts/leakage_probe.py):
   适时单阶段: leakage_probe --stage feature-consumer --panel X --label-col y
   全面:       leakage_probe --stage all ...
