@@ -108,3 +108,38 @@ def test_membership_from_raw_handles_attached_qualified_name(tmp_path):
     out = _membership_by_day_from_raw(conn, "traw.raw_tushare_dc_member")
     conn.close()
     assert out == {"20250102": {"BK0145.DC": {"600503.SH"}}}
+
+
+def test_smooth_window_suppresses_single_thin_day_phantoms():
+    """薄日去抖 (2026-06-13 prereg lf_v0 修订 2 的实现核): 单日成员列表残缺
+    (实测: 修复 6 凹陷日后 flicker 仍 85.1%, 20260518 单日 35,120 幻影 drop) —
+    平滑窗 3 下单日缺席不产生任何 drop/re-add 幻影对。"""
+    by_day = {
+        "20260108": {"C1": {"600000", "600001", "600002"}},
+        "20260109": {"C1": {"600000"}},                       # 薄日: 600001/600002 假缺席
+        "20260110": {"C1": {"600000", "600001", "600002"}},   # 全量回归
+        "20260111": {"C1": {"600000", "600001", "600002"}},
+    }
+    ev = mod._diff_events(by_day, "reconstructed", "dc", None, smooth_window=3)
+    assert ev == [], f"薄日不应产生事件, 实得: {ev}"
+    # 对照: 裸 diff (window=1) 在同数据上必产幻影 — 证明平滑是必要的而非空转
+    raw_ev = mod._diff_events(by_day, "reconstructed", "dc", None, smooth_window=1)
+    assert len(raw_ev) == 4  # 2 drop + 2 re-add 幻影
+
+
+def test_smooth_window_confirms_real_drop_with_lag():
+    """真实 drop (持续缺席) 在平滑窗下以 window-1 日滞后确认, 不会被永久吞掉;
+    事件日仍只用 <= 当日信息 (PIT)。"""
+    by_day = {
+        "20260108": {"C1": {"600000", "600001"}},
+        "20260109": {"C1": {"600000"}},   # 600001 真退出 (此后持续缺席)
+        "20260110": {"C1": {"600000"}},
+        "20260111": {"C1": {"600000"}},
+        "20260112": {"C1": {"600000"}},
+    }
+    ev = mod._diff_events(by_day, "reconstructed", "dc", None, smooth_window=3)
+    drops = [(e[0], e[2], e[4]) for e in ev if e[3] == mod.DROP]
+    # 最后见于 0108, 平滑面板含它直到 0110 (窗含 0108), 0111 起不含 → drop 确认于 0111
+    assert drops == [("20260111", "C1", "600001")]
+    adds = [e for e in ev if e[3] == mod.ADD]
+    assert adds == []  # 无幻影回加

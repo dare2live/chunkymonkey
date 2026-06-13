@@ -45,6 +45,9 @@ PCT_BAND = 1.0           # 对照涨幅带 ±1pp, 冻结
 N_CONTROLS = 3           # 每 follower 对照数, 冻结
 LEADER_MIN = 2           # 事件 = 概念当日涨停龙头数 >= 2, 冻结
 COOLDOWN_DAYS = 4        # 去连发: [t-4, t-1] 无事件, 冻结
+MEMBER_WINDOW = 3        # 概念归属 carry-forward 平滑窗 (prereg 修订 2): 近 3 交易日见过即算成员;
+                         # 只用 <= 锚点日信息 (PIT); 动机 = dc_member 薄日伪影实测 flicker 85.1%,
+                         # 逐日裸快照会把真成员误判非成员 (漏 leader + 污染对照)
 HOT_QUANTILE = 0.9       # 极端热日 = 全市场涨停数最高 10% 分位, 分桶报告不并桶判决
 WINDOW = ("20250102", "20260630")  # dc_member 地板 20250102 (E8 探底) .. 2026H1 期末
 BOOTSTRAP_N = 10_000     # bootstrap 重采样次数 (实现细节, 披露)
@@ -71,6 +74,8 @@ def check_prereg_consistency() -> list[str]:
         problems.append(f"龙头数下限 {LEADER_MIN} 与 prereg 不一致")
     if "[t-4, t-1]" not in text:
         problems.append("去连发窗 [t-4,t-1] 与 prereg 不一致")
+    if f"carry-forward 平滑窗 {MEMBER_WINDOW}" not in text:
+        problems.append(f"概念归属平滑窗 {MEMBER_WINDOW} 与 prereg 修订 2 不一致")
     return problems
 
 
@@ -94,21 +99,27 @@ def load_calendar(con):
 def detect_events(con, days, day_idx, anchor_offset: int = 0):
     """事件检测: (t, concept) 当日涨停龙头数 >= LEADER_MIN, 去连发.
 
-    anchor_offset=0 → 概念归属 as-of t; anchor_offset=1 → as-of t-1 (PIT 双锚敏感性)。
+    anchor_offset=0 → 概念归属锚 t (面板窗 [t-2..t]); anchor_offset=1 → 锚 t-1
+    (面板窗 [t-3..t-1], PIT 双锚敏感性)。归属 = 窗内任一日见过即算 (修订 2 平滑语义)。
     返回 [(t, concept, frozenset(leaders))], 按 (concept, t) 升序确定性。
     """
+    con.execute(
+        "CREATE TEMP TABLE IF NOT EXISTS _cal_idx AS "
+        "SELECT cal_date, row_number() OVER (ORDER BY cal_date) AS rn "
+        "FROM raw_tushare_trade_cal WHERE exchange='SSE' AND is_open='1'"
+    )
+    hi = anchor_offset
+    lo = anchor_offset + MEMBER_WINDOW - 1
     rows = con.execute(
         f"""
         SELECT l.trade_date, m.ts_code AS concept, l.ts_code AS leader
         FROM raw_tushare_limit_list_d l
+        JOIN _cal_idx ct ON ct.cal_date = l.trade_date
+        JOIN _cal_idx cm ON cm.rn BETWEEN ct.rn - {lo} AND ct.rn - {hi}
         JOIN raw_tushare_dc_member m
-          ON m.con_code = l.ts_code
-         AND m.trade_date = (
-              CASE WHEN {anchor_offset} = 0 THEN l.trade_date
-                   ELSE (SELECT max(cal_date) FROM raw_tushare_trade_cal c
-                         WHERE c.exchange='SSE' AND c.is_open='1' AND c.cal_date < l.trade_date)
-              END)
+          ON m.trade_date = cm.cal_date AND m.con_code = l.ts_code
         WHERE l."limit" = 'U' AND l.trade_date BETWEEN ? AND ?
+        GROUP BY 1, 2, 3
         """, list(WINDOW),
     ).fetchall()
     by_key: dict[tuple[str, str], set[str]] = {}
@@ -130,15 +141,20 @@ def detect_events(con, days, day_idx, anchor_offset: int = 0):
 
 
 def members_asof(con, t: str, concept: str, days, day_idx, anchor_offset: int) -> set[str]:
-    d = t
-    if anchor_offset:
-        i = day_idx.get(t, 0)
-        if i == 0:
-            return set()
-        d = days[i - 1]
+    """概念归属 = 锚点窗 (MEMBER_WINDOW 个交易日, 全 <= 锚点) 内任一日见过即算 (修订 2)."""
+    i = day_idx.get(t)
+    if i is None:
+        return set()
+    end = i - anchor_offset
+    if end < 0:
+        return set()
+    mdays = days[max(0, end - (MEMBER_WINDOW - 1)):end + 1]
+    if not mdays:
+        return set()
+    qs = ",".join("?" * len(mdays))
     return {r[0] for r in con.execute(
-        "SELECT con_code FROM raw_tushare_dc_member WHERE trade_date = ? AND ts_code = ?",
-        [d, concept]).fetchall()}
+        f"SELECT DISTINCT con_code FROM raw_tushare_dc_member WHERE ts_code = ? AND trade_date IN ({qs})",
+        [concept, *mdays]).fetchall()}
 
 
 def fwd5(hopen, days, day_idx, t, code) -> float | None:

@@ -98,16 +98,39 @@ def _membership_by_day_from_snapshots() -> dict[str, dict[str, set[str]]]:
     return out
 
 
+def _smoothed_at(by_day: dict[str, dict[str, set[str]]], days: list[str], i: int,
+                 window: int) -> dict[str, set[str]]:
+    """carry-forward 平滑面板: smoothed[t] = union(raw[t-window+1 .. t]).
+
+    只用 <= t 的信息 (PIT 干净)。动机 (2026-06-13 实测): dc_member 单日薄拉取广泛存在 —
+    修复 6 凹陷日后成员级 flicker 仍 85.1% (392,502/461,060 drop 在 3 日内 re-add),
+    drop 最高日 (20260518 单日 35,120) 不在凹陷日清单 = 概念数筛法抓不到的成员级薄日。
+    逐日裸 diff 对此结构性过敏; 平滑后单日缺席不再制造幻影 drop/re-add 对,
+    真实 drop (持续缺席) 以 window-1 日滞后确认。
+    """
+    merged: dict[str, set[str]] = {}
+    for j in range(max(0, i - window + 1), i + 1):
+        for c, members in by_day[days[j]].items():
+            merged.setdefault(c, set()).update(members)
+    return merged
+
+
 def _diff_events(by_day: dict[str, dict[str, set[str]]], as_of_mode: str,
-                 source: str, after_day: str | None) -> list[tuple]:
-    """相邻快照日 diff → 事件行. after_day: 只产 > 该日的事件 (增量)."""
+                 source: str, after_day: str | None, smooth_window: int = 1) -> list[tuple]:
+    """平滑面板相邻日 diff → 事件行. after_day: 只产 > 该日的事件 (增量).
+
+    smooth_window=1 = 裸 diff 语义; raw (reconstructed) 生产路径由 build() 传 3
+    (见 _smoothed_at 动机 — dc_member 薄日伪影)。
+    """
     days = sorted(by_day)
     events: list[tuple] = []
+    prev = _smoothed_at(by_day, days, 0, smooth_window)
     for i in range(1, len(days)):
-        prev_day, cur_day = days[i - 1], days[i]
+        cur_day = days[i]
+        cur = _smoothed_at(by_day, days, i, smooth_window)
         if after_day and cur_day <= after_day:
+            prev = cur
             continue
-        prev, cur = by_day[prev_day], by_day[cur_day]
         prev_concepts, cur_concepts = set(prev), set(cur)
         for c in cur_concepts - prev_concepts:  # 新概念诞生 (含其全部初始成分)
             events.append((cur_day, source, c, BORN, None, as_of_mode))
@@ -118,6 +141,7 @@ def _diff_events(by_day: dict[str, dict[str, set[str]]], as_of_mode: str,
                 events.append((cur_day, source, c, ADD, m, as_of_mode))
             for m in prev[c] - cur[c]:
                 events.append((cur_day, source, c, DROP, m, as_of_mode))
+        prev = cur
     return events
 
 
@@ -162,7 +186,9 @@ def build(source_kind: str, *, rebuild: bool = False) -> dict[str, Any]:
         if len(by_day) < 2:
             return {"source": source_kind, "status": "insufficient_days", "days": len(by_day), "events": 0}
 
-        events = _diff_events(by_day, as_of_mode, source, after)
+        # raw 路径平滑窗 3 (prereg lf_v0 修订 2): 薄日伪影实测 85.1% flicker, 裸 diff 不可用
+        events = _diff_events(by_day, as_of_mode, source, after,
+                              smooth_window=3 if source_kind == "raw" else 1)
         if rebuild:
             conn.execute(f"DELETE FROM {_EVENT_TABLE} WHERE source=? AND as_of_mode=?", [source, as_of_mode])
         if events:

@@ -6,7 +6,8 @@ assertions:
   - id: g1-pagination-registered
     claim: "registry dc_member 已声明 page_limit (截断根因修复)"
     type: shell
-    command: ["bash", "-c", "awk '/^  dc_member:/,/^  [a-z_]+:/' backend/config/sync_registry.yaml | grep -c page_limit"]
+    # 2026-06-13 修: 旧 awk range 起始行 '  dc_member:' 自身命中结束模式 '^  [a-z_]+:' → range 只含一行恒 0 (gate 自身带病, chain9b 链尾 ERROR 实证)
+    command: ["bash", "-c", "awk '/^  dc_member:/{f=1;next} f&&/^  [a-z_]+:/{f=0} f' backend/config/sync_registry.yaml | grep -c page_limit"]
     expect: {op: ">=", value: 1}
   - id: g2-no-truncation-pin
     claim: "dc_member 近 30 日零整 5000 行截断签名"
