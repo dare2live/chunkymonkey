@@ -37,9 +37,18 @@ ground truth 定义全量在档 (研究日志 §7), 重建 = 纯 K 线计算, **
 中位持续 66 vs 90 = 时长统计口径差异 (疑原文按涨势结束日非峰日), 不影响成员判定。
 **复现成立, 重建口径已显式化锁入脚本常量 (比原文更可审计)。** FAKE/NEUTRAL 边界原文
 未记录, S3 训练标签立法时再定 (不伪装复现)。
-| S2 特征 | V14 级特征面板 (量价 + 板块共振 + CYQ + regime) | 本地为主; CYQ 全市场复算可上 modal (cyq_replay_all 已 deploy) | 特征 PIT audit (盘后字段 t-1 JOIN) |
-| S3 模型 | LightGBM walk-forward (purge+embargo, 5 fold) 重验 70/78% 假设 | **modal** (并行 fold, $30/月额度内) | 预注册判据先冻结 (判官数值线按成本锚立法, 不从旧数字反推) |
+| S2 特征 | ~~V14 重造~~ → **复用现成 fact_feature_panel** (79 列 PIT, 奥卡姆) | 本地 SQL JOIN | 覆盖率实测 |
+| S3 模型 | LightGBM walk-forward (purge+embargo) 重验 70/78% 假设 | **本地** (27k×70 秒级, modal 非必需) | 预注册判据先冻结 |
 | S4 判决 | 三判官 + 处置 | 本地 | 入 ledger; 判正才谈接入 live |
+
+**S1 落库 + S2 复用验证 (2026-06-13)**:
+- `fact_rally_ground_truth` 落地 (`rally_ground_truth_scan.py --land`): 31,531 突破事件 + 连续结局
+  (gain_to_peak/peak_offset/max_dd) + is_true_rally (读法 B); 全部事件 (含 FAKE/NEUTRAL) 入库供
+  S3 定二分目标; event_date=突破日 t (PIT 锚)。**产物落库不落 /tmp (防原型灭失复发)**。
+- **S2 = 事件 JOIN fact_feature_panel (stock_code,date), 零特征重造**: 实测 2023+ 段 100% 命中
+  (26,789 事件 / 2,784 TRUE 带 70+ PIT 特征); 2022 段 4,734 无特征 (面板起 2023-01) → S3 训练窗 2023-2026。
+- **关键修订: S3 不需要 modal** — 27k×70 LightGBM walk-forward 本地秒级。modal 留给 CYQ 全市场
+  复算特征扩展 (判正后增量轮), 首轮不烧。
 
 ## 预算
 

@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-13 05:59
+> Snapshot: 2026-06-13 14:33
 
 ## 1. 入口面
 
@@ -84,7 +84,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 302 张 | 单 writer 181 | 多 writer 121 | 动态表名写点 74 处 (38 文件)
+统计: 表 302 张 | 单 writer 181 | 多 writer 121 | 动态表名写点 76 处 (39 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -113,6 +113,7 @@
 | backend/scripts/import_phase5_remote_predictions.py | 3 |
 | backend/scripts/optimize_per_formula_stage.py | 1 |
 | backend/scripts/optimize_per_stock_stage_strategy.py | 1 |
+| backend/scripts/rally_ground_truth_scan.py | 2 |
 | backend/scripts/retrain_lambdamart_v6.py | 4 |
 | backend/scripts/run_daily_v7_inference.py | 2 |
 | backend/scripts/run_paper_sim_lambdamart_v6_compare.py | 2 |
@@ -445,7 +446,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 19,282 | calls 边 207,594 | imports 边 20,331 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 19,420 | calls 边 207,755 | imports 边 20,337 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 

@@ -119,9 +119,48 @@ def judge(events, reading: str):
     return out
 
 
+SMART_DB = REPO / "data" / "smartmoney.duckdb"  # rule-compliance: ok evidence=ground truth 落库目标 (研究产物防 /tmp 灭失), 写 fact_rally_ground_truth
+GT_TABLE = "fact_rally_ground_truth"
+
+
+def land_ground_truth(events, reading: str, window_end: str) -> int:
+    """落地全部突破事件 + 标签到 smartmoney.fact_rally_ground_truth (主升浪 S2/S3 训练面板地基).
+
+    存全部事件 (含 FAKE/NEUTRAL) + 连续结局 (gain/dd/peak_offset), 不只 TRUE — 下游 S3
+    定义 TRUE vs not-TRUE 二分目标。label is_true_rally 按冻结读法 (B)。
+    event_date = 突破日 t (PIT 锚: 特征只能用 <= t, label 用 t+1..t+180 = 目标非特征)。
+    """
+    import duckdb
+    flags = judge(events, reading)
+    rows = [(code, t.replace("-", ""), round(gain * 100, 4), peak_off, round(dd * 100, 4),
+             fwd_len, bool(f), reading)
+            for (code, t, gain, peak_off, dd, fwd_len), f in zip(events, flags)
+            if not (gain != gain)]  # 排除 nan gain (窗尾无前瞻)
+    con = duckdb.connect(str(SMART_DB))  # rule-compliance: ok evidence=一次性研究产物落库, 单写, 无其他 writer
+    try:
+        con.execute(f"DROP TABLE IF EXISTS {GT_TABLE}")
+        con.execute(f"""
+            CREATE TABLE {GT_TABLE} (
+                stock_code VARCHAR, event_date VARCHAR,
+                gain_to_peak_pct DOUBLE, peak_offset_days INTEGER, max_dd_pct DOUBLE,
+                fwd_window_len INTEGER, is_true_rally BOOLEAN, reading VARCHAR,
+                window_end VARCHAR, built_at TIMESTAMP DEFAULT current_timestamp,
+                PRIMARY KEY (stock_code, event_date))""")
+        con.executemany(
+            f"INSERT INTO {GT_TABLE} (stock_code,event_date,gain_to_peak_pct,peak_offset_days,"
+            f"max_dd_pct,fwd_window_len,is_true_rally,reading,window_end) VALUES (?,?,?,?,?,?,?,?,'{window_end}')",
+            rows)
+        n_true = con.execute(f"SELECT count(*) FROM {GT_TABLE} WHERE is_true_rally").fetchone()[0]
+    finally:
+        con.close()
+    print(f"落库 {GT_TABLE}: {len(rows):,} 事件 ({n_true:,} TRUE, 读法 {reading})")
+    return len(rows)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--end", default="2026-05-28")  # rule-compliance: ok evidence=原研究数据截止日, 复现对账锚定窗 (研究日志 20260528)
+    ap.add_argument("--land", action="store_true", help="落地 fact_rally_ground_truth (S2/S3 训练面板地基)")
     args = ap.parse_args()
 
     import duckdb
@@ -163,6 +202,10 @@ def main() -> int:
     out = OUT_DIR / f"rally_gt_reproduction_{args.end.replace('-', '')}.json"
     out.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"落盘: {out}")
+
+    if args.land:
+        report["landed_rows"] = land_ground_truth(events, READING, args.end.replace("-", ""))
+        out.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     return 0
 
 
