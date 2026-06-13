@@ -149,8 +149,27 @@ def _trading_days(start: str, end: str | None = None) -> list[str]:
     return [r[0] for r in rows]
 
 
+class QuotaExhaustedError(RuntimeError):
+    """信道账户级配额/反刷量墙命中 — 必须立即停链, 不可重试 (重试只会延长冷却)."""
+
+
+# 代理网关 (jiaoch.site) 反刷量/防攻击触发的报错特征 (2026-06-13 实测 + 代理商原话确认):
+# 账户全局日量墙, 与 TuShare 官方按接口积分配额无关 (官方 5000+ 常规数据无日上限,
+# 详见 analysis/data_acquisition_v2_design_20260612.md 信道限流定层)。命中后逐日重试 =
+# 每个日批多戳 3 次反而加重"攻击"判定 → 必须熔断停链。
+_QUOTA_WALL_MARKERS = ("今日请求已达上限", "请明天再试", "请求过多", "访问频率", "攻击")
+
+
+def _is_quota_wall(msg: str) -> bool:
+    return any(m in msg for m in _QUOTA_WALL_MARKERS)
+
+
 def _fetch_with_retry(adapter, spec: dict[str, Any], params: dict[str, Any]) -> list[dict[str, Any]] | None:
-    """0 行/异常 → 退避重试; 终败返回 None (调用方入 failure_queue)."""
+    """0 行/异常 → 退避重试; 终败返回 None (调用方入 failure_queue).
+
+    配额/反刷量墙命中 → 抛 QuotaExhaustedError 立即上抛 (不消耗重试, 不逐日续戳),
+    由 run_domain/drain/main 熔断停链。
+    """
     retry = spec.get("retry") or {}
     attempts = int(retry.get("max_attempts", 3))
     backoffs = list(retry.get("backoff_seconds", [5, 30, 120]))
@@ -166,6 +185,10 @@ def _fetch_with_retry(adapter, spec: dict[str, Any], params: dict[str, Any]) -> 
             last_err = "zero_rows"
         except Exception as exc:  # noqa: BLE001 — 重试边界
             last_err = str(exc)[:200]
+            if _is_quota_wall(last_err):
+                raise QuotaExhaustedError(
+                    f"信道配额/反刷量墙命中 domain={spec['domain']} params={params} err={last_err}"
+                ) from exc
         if i < attempts - 1:
             time.sleep(backoffs[min(i, len(backoffs) - 1)])
     log.warning("fetch 终败 domain=%s params=%s err=%s", spec["domain"], params, last_err)
@@ -424,9 +447,17 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
     conn = _target_conn(spec)
     total_rows, failed, last_ok_date = 0, [], None
     min_rows = int(spec.get("min_rows_per_batch", 0))
+    quota_halt = False
     try:
         for params in batches:
-            rows = _fetch_paged(adapter, spec, params)
+            try:
+                rows = _fetch_paged(adapter, spec, params)
+            except QuotaExhaustedError as exc:
+                # 熔断: 配额墙命中, 停止本域剩余批 (已写批由 finally 保留), 上抛停全链
+                log.error("配额熔断 domain=%s 已写 %d 行后停止剩余 %d 批: %s",
+                          domain, total_rows, len(batches) - len(failed), exc)
+                quota_halt = True
+                break
             if rows is None:
                 failed.append(params)
                 continue
@@ -447,12 +478,19 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
 
     # 严格判定: 任一批失败即非 ok — 旧宽松口径 (部分成功=True) 使日志 'ok': True
     # 掩盖 29 批失败 (Fable-5 复查 #14 双标问题); 与 _record_outcome 判定统一
-    ok = len(failed) == 0
-    _record_outcome(spec, ok=ok, last_date=last_ok_date,
-                    rows=total_rows, error=json.dumps(failed[:5]) if failed else None)
+    ok = len(failed) == 0 and not quota_halt
+    err_payload = json.dumps(failed[:5]) if failed else None
+    if quota_halt:
+        err_payload = "quota_wall_halt"
+    _record_outcome(spec, ok=ok, last_date=last_ok_date, rows=total_rows, error=err_payload)
     result = {"domain": domain, "batches": len(batches), "rows": total_rows,
               "failed_batches": len(failed), "last_date": last_ok_date, "ok": ok}
+    if quota_halt:
+        result["quota_halt"] = True
     log.info("sync %s", result)
+    if quota_halt:
+        # 上抛由 main 熔断全链 (已写批与 watermark 已落盘, 可恢复)
+        raise QuotaExhaustedError(f"domain={domain} 配额墙停链 (已写 {total_rows} 行)")
     return result
 
 
@@ -514,7 +552,13 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
         if todo:
             adapter = adapter or _adapter(spec["source"])
         for d in todo:
-            rows = _fetch_paged(adapter, spec, {date_col: d})
+            try:
+                rows = _fetch_paged(adapter, spec, {date_col: d})
+            except QuotaExhaustedError:
+                # 熔断: 已修批保留, 未修日留在 gap 下轮补; 上抛停全链 (不逐日续戳反刷量)
+                log.error("配额熔断 drain domain=%s 已补 %d 行后停止 (剩 %d 缺口日未修)",
+                          domain, refilled_rows, len(todo) - todo.index(d))
+                raise
             if not rows:  # None=终败; [] 理论不可达 (allow_empty 域已前置排除), 防御同终败
                 still_failed.append(d)
                 continue
@@ -574,16 +618,31 @@ def main() -> int:
                     res = run_domain(d, registry=reg)
                     res["mode"] = "incremental_fallback"
                 results.append(res)
+            except QuotaExhaustedError as exc:
+                # 熔断: 配额墙 = 账户级, 续跑其余域只会延长冷却 → 停全链 (区别于单域写锁错)
+                log.error("配额熔断停链 (drain): %s — 剩 %d 域不跑", exc, len(domains) - domains.index(d) - 1)
+                results.append({"domain": d, "status": "quota_halt", "error": str(exc)[:200]})
+                break
             except Exception as exc:  # noqa: BLE001 — 单域异常 (如写锁被占) 不挡其余域, 显式入结果非静默
                 results.append({"domain": d, "status": "error", "error": str(exc)[:200]})
         print(json.dumps(results, ensure_ascii=False, indent=1))
+        if any(r.get("status") == "quota_halt" for r in results):
+            return 2  # 配额墙专用退出码 (调用方区分'信道墙'与'数据失败')
         bad = any(r.get("status") in ("partial", "error") or r.get("failed_batches") for r in results)
         return 1 if bad else 0
 
-    results = [run_domain(d, backfill=args.backfill, start=args.start, end=args.end, registry=reg)
-               for d in domains]
+    results = []
+    for d in domains:
+        try:
+            results.append(run_domain(d, backfill=args.backfill, start=args.start, end=args.end, registry=reg))
+        except QuotaExhaustedError as exc:
+            log.error("配额熔断停链: %s — 剩 %d 域不跑", exc, len(domains) - domains.index(d) - 1)
+            results.append({"domain": d, "status": "quota_halt", "error": str(exc)[:200]})
+            break
     print(json.dumps(results, ensure_ascii=False, indent=1))
-    return 0 if all(r["failed_batches"] == 0 for r in results) else 1
+    if any(r.get("status") == "quota_halt" for r in results):
+        return 2
+    return 0 if all(r.get("failed_batches") == 0 for r in results) else 1
 
 
 if __name__ == "__main__":

@@ -122,3 +122,56 @@ def test_retry_recovers_from_intermittent_empty():
     fake = FakeAdapter([[], good])
     out = sr._fetch_with_retry(fake, spec, {"trade_date": "20260610"})
     assert out == good and fake.calls == 2
+
+
+def test_quota_wall_detection_string_matching():
+    """配额墙识别: 代理反刷量报错特征命中, 普通错不误判 (2026-06-13 信道定层)."""
+    assert sr._is_quota_wall("今日请求已达上限，请明天再试！")
+    assert sr._is_quota_wall("请求过多会被系统认为攻击")
+    assert sr._is_quota_wall("访问频率过高")
+    assert not sr._is_quota_wall("zero_rows")
+    assert not sr._is_quota_wall("Connection refused")
+    assert not sr._is_quota_wall("您没有访问该接口的权限")  # 官方权限错 != 配额墙
+
+
+def test_quota_wall_raises_immediately_no_retry():
+    """配额墙命中 = 立即抛 QuotaExhaustedError, 不消耗重试 (续戳加重反刷量判定)."""
+    spec = sr._domain_spec(_registry(retry={"max_attempts": 3, "backoff_seconds": [0, 0, 0]}), "demo")
+    ad = FakeAdapter([RuntimeError("今日请求已达上限，请明天再试！")])
+    with pytest.raises(sr.QuotaExhaustedError):
+        sr._fetch_with_retry(ad, spec, {"trade_date": "20260610"})
+    assert ad.calls == 1, "配额墙必须首次命中即抛, 不能重试 (实测续戳延长冷却)"
+
+
+def test_normal_error_still_retries():
+    """对照: 普通异常仍走满 3 次重试 (熔断不误伤正常退避)."""
+    spec = sr._domain_spec(_registry(retry={"max_attempts": 3, "backoff_seconds": [0, 0, 0]}), "demo")
+    ad = FakeAdapter([RuntimeError("timeout"), RuntimeError("timeout"), RuntimeError("timeout")])
+    out = sr._fetch_with_retry(ad, spec, {"trade_date": "20260610"})
+    assert out is None and ad.calls == 3
+
+
+def test_run_domain_halts_chain_on_quota_wall(monkeypatch, tmp_path):
+    """run_domain 撞配额墙 = 停剩余批 + 上抛 (不逐日续戳烧配额); 已写批保留可恢复."""
+    import services.data_sources.sync_runner as m
+    from services.duck_adapter import connect
+
+    # 第 1 日成功写入, 第 2 日撞墙 → 第 3 日不该再被调用
+    ad = FakeAdapter([
+        [{"ts_code": "a", "trade_date": "20260601", "net": 1.0},
+         {"ts_code": "b", "trade_date": "20260601", "net": 2.0}],
+        RuntimeError("今日请求已达上限，请明天再试！"),
+        [{"ts_code": "c", "trade_date": "20260603", "net": 3.0}],  # 不该被取到
+    ])
+    db = str(tmp_path / "halt.duckdb")  # 文件库: run_domain 的 finally close 后数据仍可复读
+    monkeypatch.setattr(m, "_adapter", lambda src: ad)
+    monkeypatch.setattr(m, "_target_conn", lambda spec: connect(db))
+    monkeypatch.setattr(m, "_record_outcome", lambda *a, **k: None)
+    monkeypatch.setattr(m, "_trading_days", lambda start, end=None: ["20260601", "20260602", "20260603"])
+    with pytest.raises(sr.QuotaExhaustedError):
+        m.run_domain("demo", backfill=True, registry=_registry(data_start="20260601", min_rows_per_batch=1))
+    # 第 1 日已写入保留 (熔断前的批落盘), 第 3 日 payload 未被消费 (熔断停链证据)
+    rconn = connect(db)
+    assert rconn.execute("SELECT COUNT(*) FROM raw_tushare_demo").fetchone()[0] == 2
+    rconn.close()
+    assert len(ad.payloads) == 1, "撞墙后剩余批不该被调用 (熔断生效)"
