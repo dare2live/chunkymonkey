@@ -173,9 +173,22 @@ def main() -> int:
 
     import duckdb
     import numpy as np
+    import pandas as pd
     con = duckdb.connect(args.db, read_only=True)  # rule-compliance: ok evidence=read_only 判决实验
     dates, X, y, feats = load_panel(con)
     con.close()
+
+    # 事前泄漏闸 (2026-06-13, 用户指令 "事前检测"): 训练前用统一 leakage_detect 探针查
+    # 残留特征是否含漏排的标签/前瞻列 (单特征 AUC 层兜住名模式漏网的) — HIGH 即拒训练。
+    # 这是 S3 首轮漏排 follow_net_return_* 的防回退: 即使 EXCLUDE_COLS 再漏, 此闸拦下。
+    from services.leakage_detect import probe_feature_leakage
+    _pdf = pd.DataFrame(X, columns=feats); _pdf["_y"] = y
+    _lk = probe_feature_leakage(_pdf, feats, "_y")
+    if _lk["verdict"] == "HIGH":
+        print(json.dumps({"verdict": "INVALID", "reason": "事前泄漏闸 HIGH — 拒训练 (特征含漏排标签/前瞻列)",
+                          "leakage_flags": _lk["flags"]}, ensure_ascii=False))
+        return 3
+
     if len(y) < 1000:
         print(json.dumps({"verdict": "INVALID", "reason": f"样本不足 {len(y)}"}, ensure_ascii=False))
         return 3
