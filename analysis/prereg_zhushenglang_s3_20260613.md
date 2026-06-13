@@ -30,6 +30,18 @@ OOS 上, 区分力显著高于 base rate (10.3%), 且在标签置换对照下崩
 | 选参 | 固定超参 (不在判决轮 Optuna; 防 OOS 选参错误教训) | LGBM 固定: n_est=300/lr=0.05/leaves=31/seed=20260613; Optuna 留判正后增量轮 |
 | base rate | 训练窗 TRUE 占比 | `mean(y)` 实测 10.3% |
 
+## 修订 1 (2026-06-13, 首轮判后 — 泄漏排除完整性修正, 判据数值线未动)
+
+首轮 verdict=REJECT 由 J2 leakage-ceiling 触发 (AUC 0.779 > 0.75)。ablation 彻查确认 = **特征级
+前瞻泄漏, 非真 edge**: 手写 EXCLUDE_COLS 漏了 `follow_net_return_5/10/20/60/90d` 标签族 (builder
+build_feature_panel_duck.py 已标 PIT_LABEL_COLS / MODEL_INPUT_EXCLUDED_COLS, LEAD(exit_price) 算的
+前瞻标签), 它们贡献 top15 gain 51.8% (follow_net_return_90d 单列 29%); 剔除后 fold0 AUC 0.8368→
+0.4797 (比随机差), 仅用这 5 列即 0.8419 = edge 几乎全来自标签泄漏。
+**修正 (非挪门柱, 是排除 builder 已声明的标签)**: EXCLUDE_COLS 改为复用 builder
+`MODEL_INPUT_EXCLUDED_COLS` 单一真相源 (含全 PIT_LABEL_COLS) — 不手写第二份防漂移。三判官数值线
+(J1/J2/J3) 与 embargo 一字未动。corrected 重跑结论见 verdict JSON; 预期 AUC≈0.5 (无真 edge,
+诚实负结果) — 若 corrected 反而显著, 那是去掉泄漏后的**真**信号 (用户要的"不放过真实增强")。
+
 ## 三判官 + 泄漏对照 (全部满足 = GO; 任一不满足 = NO-GO)
 
 ```yaml

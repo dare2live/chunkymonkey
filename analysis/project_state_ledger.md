@@ -14,6 +14,24 @@
 > snapshot, and `rg` / `tail` on this ledger only when a task needs specific
 > historical evidence.
 
+## 2026-06-13 傍晚 — 主升浪 S3 泄漏彻查结案: 0.779 全是标签泄露, 去掉后 0 真 edge
+
+- **彻查 (用户指令: 排除泄露但不放过真实增强; workflow ablation + 主会话亲自复算双证)**: S3 首轮
+  AUC 0.779 = **确凿特征级前瞻泄漏, 非真 edge**。罪魁 = 5 个 `follow_net_return_5/10/20/60/90d`
+  标签列被当特征 (贡献 top15 gain 51.8%, follow_net_return_90d 单列 29%); 这些列 builder
+  build_feature_panel_duck.py 已标 `PIT_LABEL_COLS`/`MODEL_INPUT_EXCLUDED_COLS` (LEAD(exit_price)
+  前瞻算的), **是我 S3 脚本手写 EXCLUDE_COLS 漏了它们绕过了 builder 标签契约**。
+- **corrected 复算 (修订1: EXCLUDE_COLS 改复用 builder MODEL_INPUT_EXCLUDED_COLS 单一真相源)**:
+  62 特征, mean AUC **0.5013** / top-decile precision **0.94x base** (低于 base!) / 三折 0.48-0.55-0.47
+  = 纯随机; shuffle 0.51 干净。**verdict=REJECT (无真 edge, 干净)**。
+- **双向结论**: (1) 泄漏 100% 坐实并已修 (排除标签族 + 防回退测试断言涵盖 builder 契约);
+  (2) **没有放过真实增强** — 去泄漏后现有 fact_feature_panel 因果特征对主升浪预测 0 edge。研究日志
+  V12/V16 的 70.9%/86% 极可能是同款 follow/forward 衍生特征泄漏 (北极星头条数字存疑)。
+- **系统性教训 (用户提: 做专用事前泄漏工具)**: builder 有标签契约 + audit_panel_leakage.py 查面板
+  构建 SQL, 但都**抓不到消费方把标签当特征**这层 (S3 盲区)。→ 需消费方/训练前 leakage_probe:
+  (a) 标签契约静态校验 (feature ∩ MODEL_INPUT_EXCLUDED_COLS/forward 名模式) (b) 单特征 OOS AUC
+  探针 (>0.7 = 泄漏嫌疑, follow_net_return_90d 单列 0.84 会被抓)。作 L0 事前闸, 见 goal.md 验证计划。
+
 ## 2026-06-13 午后 — 主升浪 S1→S2→S3: ground truth 落库 + ML 假设重验 = REJECT (异常高泄漏警报)
 
 - **S1 落库**: `fact_rally_ground_truth` (31,531 突破事件 + 连续结局 + is_true_rally 读法B 3,247 TRUE);

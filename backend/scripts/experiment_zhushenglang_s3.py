@@ -43,11 +43,21 @@ N_FOLDS = 3                  # 冻结
 TOP_DECILE = 0.10            # top-decile precision, 冻结
 LGBM_PARAMS = dict(n_estimators=300, learning_rate=0.05, num_leaves=31,
                    random_state=20260613, n_jobs=-1, verbosity=-1)  # 固定, 不判决轮 Optuna
-EXCLUDE_COLS = {"stock_code", "date", "close", "kline_source_name", "kline_source_tier",
-                "kline_is_fallback", "built_at", "forward_ret_5d", "forward_ret_10d",
-                "forward_ret_20d", "forward_ret_60d", "forward_ret_90d"}
-# built_at = 运行时元数据 (排除, 防 run-time 泄漏); kline_is_fallback = 源质量 meta (非因果, 排除);
-# regime_flag (VARCHAR bull/bear/flat) = 真特征, label 编码保留 (研究日志 hs300 regime)
+def _builder_excluded() -> set:
+    """单一真相源: 复用 build_feature_panel_duck 的 MODEL_INPUT_EXCLUDED_COLS (含全部
+    PIT_LABEL_COLS)。修订 1 (2026-06-13): 旧手写清单漏了 follow_net_return_* 标签族 →
+    S3 首轮 AUC 0.779 全是前瞻泄漏 (ablation 实证: 剔除后 0.48)。builder 标签契约是
+    label 的唯一定义, 不手写第二份 (防漂移)。"""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "_bfp", str(REPO / "backend" / "scripts" / "build_feature_panel_duck.py"))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return set(m.MODEL_INPUT_EXCLUDED_COLS)
+
+
+# close = OHLC 原值 (非因果特征, S3 特有排除); 其余标签/键/源 meta 全走 builder 契约
+EXCLUDE_COLS = {"close"} | _builder_excluded()
 
 
 def check_prereg_consistency() -> list[str]:
