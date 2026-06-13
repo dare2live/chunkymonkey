@@ -289,7 +289,7 @@
 | | composite.py | CompositeWeights.from_config() (7 个权重 ∑=1.0) |
 | | constraints.py | HardConstraints (max_dd, streak, worst_loss, min_traded) |
 | | objectives.py | 8 个 metric (sharpe/calmar/sortino/pain/ulcer/tail/stability/cvar) |
-| | ddl.py | mart_per_stock_*_optimal / mart_per_formula_stage_optimal / fact_optuna_governance_log DDL |
+| | ddl.py | mart_per_stock_*_optimal / mart_per_formula_stage_optimal / fact_optuna_governance_log DDL; log_governance_violations(**manage_txn**: False=与业务表同事务原子提交防 orphan governance, 06-14 D0 发现) |
 | `services/backtest/` | optimize.py | optimize_stock_strategy (R1 expanding_monthly 主流程) |
 | | realistic_engine.py | simulate_trade (T+1 入场, intraday stop/target, 含 tx_cost) |
 | | search_space.py | 5 维 SearchSpace.from_config() (hp/stop/target/trailing/buy_offset) |

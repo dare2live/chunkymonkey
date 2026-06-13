@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-13 18:54
+> Snapshot: 2026-06-14 07:49
 
 ## 1. 入口面
 
@@ -449,14 +449,14 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 19,629 | calls 边 209,362 | imports 边 20,509 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 19,641 | calls 边 209,791 | imports 边 20,530 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
 | services.db | 176 |
-| services.duck_adapter | 86 |
+| services.duck_adapter | 87 |
 | services.pipeline_manifest | 62 |
 | services.schema_versions | 52 |
 | services.market_db | 48 |
@@ -468,7 +468,7 @@
 | services.industry | 18 |
 | services.bestchoice_config | 15 |
 | services.feature_registry | 15 |
-| services.optimization.config | 13 |
+| services.optimization.config | 14 |
 | services.backtest.result | 12 |
 
 ### 跨文件 fan-in 最高的文件 (近似口径: 唯一定义名 + caller 实际 import 目标模块双过滤)
@@ -479,7 +479,7 @@
 | backend/services/duck_adapter.py | 22 |
 | backend/services/industry.py | 17 |
 | backend/services/model_feature_schema.py | 16 |
-| backend/services/optimization/config.py | 13 |
+| backend/services/optimization/config.py | 14 |
 | backend/services/ml_lifecycle/registry.py | 11 |
 | backend/services/pipeline_manifest.py | 11 |
 | backend/services/schema_versions.py | 10 |

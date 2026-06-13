@@ -225,11 +225,17 @@ def log_governance_violations(
     run_id: str,
     violations: list[dict],
     cfg: Optional[OptunaConfig] = None,
+    manage_txn: bool = True,
 ) -> int:
     """把 governance.enforce_pre_insert 抛出的 GovernanceViolation 批量写审计表.
 
     violations: list of dicts with keys:
         stock_code, formula_id, formula_variant, stage_filter, reason, record_json
+
+    manage_txn: True (默认) 自起 BEGIN/COMMIT 独立提交. False = 调用方已在事务内,
+        本函数只发 INSERT 不碰事务边界, 让 governance 写与业务表写**同事务原子提交/回滚**
+        (防 orphan governance: 业务写回滚而 governance 已落 = 审计与结果不一致).
+        DuckDB 不支持嵌套事务, 故同事务场景必须传 manage_txn=False.
 
     Returns: 写入行数.
     """
@@ -238,7 +244,8 @@ def log_governance_violations(
     cfg = cfg or get_optuna_config()
     table = cfg.output.governance_log_table
 
-    conn.execute("BEGIN TRANSACTION")
+    if manage_txn:
+        conn.execute("BEGIN TRANSACTION")
     try:
         conn.executemany(
             f"""INSERT OR IGNORE INTO {table}
@@ -251,11 +258,12 @@ def log_governance_violations(
               v.get("reason", ""), v.get("record_json", ""))
              for v in violations],
         )
-        conn.execute("COMMIT")
+        if manage_txn:
+            conn.execute("COMMIT")
     except BaseException:
-        try:
-            conn.execute("ROLLBACK")
-        except Exception:
-            pass
+        if manage_txn:
+            try:
+                conn.execute("ROLLBACK")
+            except Exception: pass  # best-effort ROLLBACK; 原异常经下方 raise 保留 (同 caller 风格)
         raise
     return len(violations)

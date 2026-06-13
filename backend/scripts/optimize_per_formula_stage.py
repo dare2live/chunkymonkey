@@ -348,12 +348,12 @@ def main():
 
         log.info(f"  governance: {len(validated_rows):,} pass / "
                  f"{len(violations):,} reject")
-        if violations:
-            log_governance_violations(conn, run_id, violations, cfg)
-
-        # 9. 写表 (增量 DELETE 只清本次 formula)
+        # 9. 写表 + 治理审计 (同事务原子: governance reject 与业务结果一致提交/回滚, 防 orphan governance)
         conn.execute("BEGIN TRANSACTION")
         try:
+            # 治理审计写入同一事务 (manage_txn=False, 由本事务统一 COMMIT/ROLLBACK)
+            if violations:
+                log_governance_violations(conn, run_id, violations, cfg, manage_txn=False)
             if args.formula:
                 ph = ",".join(["?"] * len(args.formula))
                 conn.execute(f"DELETE FROM {table} WHERE formula_id IN ({ph})",
