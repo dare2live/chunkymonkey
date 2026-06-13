@@ -373,3 +373,17 @@ domains:
     freshness_sla_trading_days: 30  # 成分调整低频 (季度级)
     min_rows_per_batch: 20         # 单 l1 成分史数十~数百行 (801010 实测 126); <20 可疑
     allow_empty_batch: false
+  index_dailybasic:
+    source: tushare
+    api: index_dailybasic
+    target_table: raw_tushare_index_dailybasic
+    grain: [ts_code, trade_date]
+    batch_mode: by_code_list      # 基准指数清单 (regime 特征源: 指数级 total_mv/turnover/pe/pb)
+    code_param: ts_code
+    code_list: ["000300.SH", "000905.SH", "000852.SH", "000016.SH", "399006.SZ", "000001.SH", "399001.SZ"]
+    fixed_params: {start_date: "20100101", end_date: "20260612"}   # rule-compliance: ok evidence=指数每日指标回填窗 (index_dailybasic 史起约 2010)
+    pit_anchor: "trade_date; 指数收盘即定当日可用 (regime 特征 JOIN t-1 防边界)"
+    data_start: "20100101"
+    freshness_sla_trading_days: 1
+    min_rows_per_batch: 50
+    allow_empty_batch: false

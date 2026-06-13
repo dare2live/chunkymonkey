@@ -14,6 +14,27 @@
 > snapshot, and `rg` / `tail` on this ledger only when a task needs specific
 > historical evidence.
 
+## 2026-06-13 夜 — CYQ 筹码买卖点深挖 (用户: 深度挖掘筹码分布/胜率 + 买卖点应用)
+
+- **四角度深挖** (winner_rate 买卖向 / 筹码形态 / C0 除权鲁棒 / 买卖点规则事件研究), 全程 t-1 PIT +
+  泄漏 gate + 剔除除权窗 + 异常核查不排除:
+- **最强信号 = px_pctile** (价在筹码成本分布的相对分位 = (raw_close-cost_5)/(cost_95-cost_5)):
+  RankIC -0.042 / **IR -0.39** (个位特征里偏强, shuffle=0 无 leakage), 效应高度集中 TOP decile
+  (D9 价站上几乎全部历史持仓成本=获利盘极厚无套牢支撑 fwd20 -0.47% vs rest +1.20%) = **清晰的高位
+  退出/止盈卖点信号**, 且 past20 双重排序证**独立于动量** (增量 alpha)。这是用户"辅助判断卖出点位"的答案。
+- **诚实证伪 (不夸大)**: 事件研究 SELL 规则 (winner_rate 250日分位>0.9 退出) 净 alpha 仅 18-23bp,
+  **扣 T+1 双边成本 ~30-40bp 后归零** → CYQ 不构成扣成本后可独立投入的卖点。BUY 假设**被证伪**
+  (低胜率+站上均成本进场 4 年净 -0.76pp, t=-14; "站上均成本"本身是均值回归卖向非买向)。winner_rate
+  弱负 (-0.022) 且 2026 翻正跨 regime 不稳。**用户先验"筹码集中+价上方=强势"被数据否定** (该象限最差;
+  "发散+价在成本下方"+1.44% 最优)。
+- **定位 (诚实)**: CYQ 是 **ensemble 弱辅助/风险过滤特征 (高分位降权) + 退出组件辅助闸**, 非独立买卖点触发。
+- **C0 三级协议** (修正 audit 的 8.11pp 框架): 级别1 比率型 (winner_rate/分位) 直接可用 (除权日 |delta|
+  6.92 vs 非除权 6.65pp, Mann-Whitney p=0.66 不显著, audit 8.11pp 是 38 股小样本巧合); 级别2 price-vs-cost
+  跨坐标型剔除除权窗±3 (窗内 IC -0.134 vs 窗外 -0.040 = 3.3x 伪放大, 剔窗仅去 2.28% 样本) + 配 raw 未复权
+  close; 级别3 绝对价位精配才需 modal qfq 重算。**modal 当前不触发** (本轮无级别3 特征)。
+- **next**: px_pctile 作 **LHB GO 退出组件的卖点闸**验证 (CYQ TIMING 信号 × LHB GO 入场后持仓退出天然契合,
+  把 CYQ 从"证伪的独立信号"转为"退出辅助闸"的唯一有价值落地路径); 带 T+1 成本验证未过不进生产。
+
 ## 2026-06-13 晚 — 地基 index 落库 + tushare raw 域挖掘 (用户: 打地基 + 同步挖掘)
 
 - **地基 index 族落库** (KPI 超额 HS300 真相源缺口 D3): registry 加 index_daily_benchmark (7 基准指数全史,

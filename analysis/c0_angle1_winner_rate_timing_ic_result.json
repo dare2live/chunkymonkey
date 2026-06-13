@@ -1,0 +1,104 @@
+{
+  "experiment": "C0_angle1_winner_rate_timing_ic",
+  "fwd_horizon": 20,
+  "exdiv_window_days": 3,
+  "pit": "winner_rate_lag = t-1 winner_rate; label fwd20 = qfq close[t+20]/close[t]-1",
+  "ic": {
+    "no_exclusion": {
+      "tag": "no_exclusion",
+      "rank_ic_mean": -0.02262,
+      "rank_ic_std": 0.10932,
+      "ic_ir": -0.2069,
+      "n_days": 811,
+      "n_obs": 4084488,
+      "monthly_ic_mean": -0.02105,
+      "monthly_ic_ir": -0.3129,
+      "pct_days_negative": 0.5783
+    },
+    "exdiv_excluded": {
+      "tag": "exdiv_excluded",
+      "rank_ic_mean": -0.02213,
+      "rank_ic_std": 0.10941,
+      "ic_ir": -0.2023,
+      "n_days": 811,
+      "n_obs": 3992237,
+      "monthly_ic_mean": -0.02063,
+      "monthly_ic_ir": -0.3064,
+      "pct_days_negative": 0.5758
+    }
+  },
+  "buckets": {
+    "no_exclusion": {
+      "tag": "no_exclusion",
+      "buckets": [
+        {
+          "bucket": 0,
+          "fwd20_mean": 0.00854,
+          "winner_rate_mean": 13.32,
+          "n": 817676
+        },
+        {
+          "bucket": 1,
+          "fwd20_mean": 0.01108,
+          "winner_rate_mean": 27.95,
+          "n": 816599
+        },
+        {
+          "bucket": 2,
+          "fwd20_mean": 0.01203,
+          "winner_rate_mean": 42.42,
+          "n": 816699
+        },
+        {
+          "bucket": 3,
+          "fwd20_mean": 0.01204,
+          "winner_rate_mean": 59.47,
+          "n": 816682
+        },
+        {
+          "bucket": 4,
+          "fwd20_mean": 0.00803,
+          "winner_rate_mean": 82.78,
+          "n": 816832
+        }
+      ],
+      "low_minus_high_fwd20": 0.00051
+    },
+    "exdiv_excluded": {
+      "tag": "exdiv_excluded",
+      "buckets": [
+        {
+          "bucket": 0,
+          "fwd20_mean": 0.00894,
+          "winner_rate_mean": 13.32,
+          "n": 799220
+        },
+        {
+          "bucket": 1,
+          "fwd20_mean": 0.0115,
+          "winner_rate_mean": 27.95,
+          "n": 798165
+        },
+        {
+          "bucket": 2,
+          "fwd20_mean": 0.01253,
+          "winner_rate_mean": 42.41,
+          "n": 798214
+        },
+        {
+          "bucket": 3,
+          "fwd20_mean": 0.01261,
+          "winner_rate_mean": 59.44,
+          "n": 798191
+        },
+        {
+          "bucket": 4,
+          "fwd20_mean": 0.00884,
+          "winner_rate_mean": 82.75,
+          "n": 798447
+        }
+      ],
+      "low_minus_high_fwd20": 0.0001
+    }
+  }
+}
