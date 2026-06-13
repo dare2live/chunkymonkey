@@ -176,23 +176,94 @@ def fwd5(hopen, days, day_idx, t, code, cache=None) -> float | None:
     return val
 
 
-def _day_sorted(by_day, t, cache):
-    """当日 (pct 升序) 列表 (pcts, codes), 懒缓存 — 对照带 bisect 切片用 (避免每 follower 全扫排序)."""
+def _day_groups(by_day, t, cache):
+    """当日按 distinct pct 分组 (pct 升序, 组内 code 升序), 懒缓存.
+
+    返回 (group_pcts, groups): group_pcts[k] = 第 k 组的 pct, groups[k] = 该 pct 的 code 列表 (升序)。
+    """
     if t not in cache:
-        items = sorted(by_day.get(t, {}).items(), key=lambda kv: (kv[1], kv[0]))
-        cache[t] = ([p for _, p in items], [c for c, _ in items])
+        buckets: dict[float, list[str]] = {}
+        for c, p in by_day.get(t, {}).items():
+            buckets.setdefault(p, []).append(c)
+        gp = sorted(buckets)
+        cache[t] = (gp, [sorted(buckets[p]) for p in gp])
     return cache[t]
+
+
+def _band_controls(group_pcts, groups, p, members, take, valid_fn):
+    """按 (|pct-p|, code) 升序在 ±PCT_BAND 带内取前 take 个有效对照 (两指针外扩, 命中即停).
+
+    与朴素 sorted(band, key=(abs(pct-p), code)) 后取前 take 有效逐字等价 (差分测试守门):
+    组按 |diff| 升序外扩 (左 pct<p / 右 pct>=p), |diff| 相等时左右两组 code 归并 (= 朴素同 |diff|
+    纯按 code 排); 组内 code 已升序。避免对全带 (flat follower ~1400 股) 排序 = O(命中数) 非 O(带)。
+    """
+    import bisect
+    R = bisect.bisect_left(group_pcts, p)  # 首个 pct >= p 的组 (含 ==p, |diff|=0)
+    L = R - 1                              # 末个 pct < p 的组
+    n = len(group_pcts)
+    out: list[float] = []
+
+    def _consume(code):
+        if code in members:
+            return
+        v = valid_fn(code)
+        if v is not None:
+            out.append(v)
+
+    while (L >= 0 or R < n) and len(out) < take:
+        ld = (p - group_pcts[L]) if L >= 0 else None
+        rd = (group_pcts[R] - p) if R < n else None
+        l_in = ld is not None and ld <= PCT_BAND
+        r_in = rd is not None and rd <= PCT_BAND
+        if not l_in and not r_in:
+            break
+        if l_in and (not r_in or ld < rd):
+            for c in groups[L]:
+                _consume(c)
+                if len(out) >= take:
+                    break
+            L -= 1
+        elif r_in and (not l_in or rd < ld):
+            for c in groups[R]:
+                _consume(c)
+                if len(out) >= take:
+                    break
+            R += 1
+        else:  # ld == rd <= BAND: 左右组 code 归并 (朴素同 |diff| 跨边界按 code)
+            i = j = 0
+            lc, rc = groups[L], groups[R]
+            while (i < len(lc) or j < len(rc)) and len(out) < take:
+                if j >= len(rc) or (i < len(lc) and lc[i] <= rc[j]):
+                    _consume(lc[i]); i += 1
+                else:
+                    _consume(rc[j]); j += 1
+            L -= 1
+            R += 1
+    return out
+
+
+def _controls_naive(by_day, t, pct, members, fwd5_fn, take):
+    """朴素对照选择 (全带排序) — 仅差分测试基准, 生产用 _band_controls (两指针)."""
+    cands = sorted(
+        ((c, p) for c, p in by_day.get(t, {}).items() if c not in members and abs(p - pct) <= PCT_BAND),
+        key=lambda x: (abs(x[1] - pct), x[0]))
+    out = []
+    for c, _ in cands:
+        cf = fwd5_fn(c)
+        if cf is not None:
+            out.append(cf)
+        if len(out) >= take:
+            break
+    return out
 
 
 def run_arm(events, days, day_idx, hopen, by_day, limit_up_by_day, open_by_day, uplimit_by_day,
             member_by_day, anchor_offset, fwd_cache, day_sorted_cache):
     """一条臂 (anchor t 或 t-1) 的完整样本生成. 返回 samples + 排除计数.
 
-    语义与朴素版逐字等价 (合成测试判决恒等守门); 仅向量化: members dict 并集 / fwd5 memo /
-    对照带 bisect 切片 + 带内按 (|涨幅差|, code) 排序 (= 朴素全扫排序的同序子集)。
+    语义与朴素版逐字等价 (合成测试 + 差分测试守门); 向量化: members dict 并集 / fwd5 memo /
+    对照两指针带外扩 (_band_controls, 命中即停, 替代全带排序 — flat follower ~1400 股病理根治)。
     """
-    import bisect
-
     excl = {"window_tail": 0, "no_t1_tradable": 0, "no_controls": 0, "no_pct": 0}
     samples = []   # (event_key, t, excess_pp)
     n_events_contributing = 0
@@ -207,7 +278,7 @@ def run_arm(events, days, day_idx, hopen, by_day, limit_up_by_day, open_by_day, 
         d1 = days[i + 1]
         lim_today = limit_up_by_day.get(t, set())
         day_pct = by_day.get(t, {})
-        pcts, codes = _day_sorted(by_day, t, day_sorted_cache)
+        group_pcts, groups = _day_groups(by_day, t, day_sorted_cache)
         contributed = False
         for code in sorted(members - leaders - lim_today):
             pct = day_pct.get(code)
@@ -223,20 +294,8 @@ def run_arm(events, days, day_idx, hopen, by_day, limit_up_by_day, open_by_day, 
             if f is None:
                 excl["window_tail"] += 1
                 continue
-            # ±1pp 带 = pct 排序后 [pct-BAND, pct+BAND] 的连续切片 (bisect), 排除成员,
-            # 带内按 (|涨幅差|, code) 排序 = 朴素全扫同序子集 (逐字等价)
-            lo = bisect.bisect_left(pcts, pct - PCT_BAND)
-            hi = bisect.bisect_right(pcts, pct + PCT_BAND)
-            cands = sorted(
-                ((codes[k], pcts[k]) for k in range(lo, hi) if codes[k] not in members),
-                key=lambda x: (abs(x[1] - pct), x[0]))
-            ctrl = []
-            for c, _ in cands:
-                cf = fwd5(hopen, days, day_idx, t, c, fwd_cache)
-                if cf is not None:
-                    ctrl.append(cf)
-                if len(ctrl) == N_CONTROLS:
-                    break
+            ctrl = _band_controls(group_pcts, groups, pct, members,
+                                  N_CONTROLS, lambda c: fwd5(hopen, days, day_idx, t, c, fwd_cache))
             if not ctrl:
                 excl["no_controls"] += 1
                 continue

@@ -88,3 +88,41 @@ def test_end_to_end_synthetic_verdict(tmp_path):
     # 单事件 < 30 → J3 不足 → INCONCLUSIVE (非判负, prereg 原文), 判负路径由 J3 钉死可达
     assert payload["verdict"] == "INCONCLUSIVE"
     assert payload["J3"]["pass"] is False
+
+
+def test_band_controls_equals_naive_differential():
+    """两指针对照选择 (_band_controls) 与朴素全带排序 (_controls_naive) 逐字等价.
+
+    红线 (2026-06-13 性能根治): 替排序的两指针 tie-break (同 |diff| 跨边界按 code /
+    同 pct 组内 code 序) 易错 = '测试绿但判决偏'。随机面板 1000 case 差分, 任一不等即红。
+    """
+    import importlib.util
+    import random as _r
+    from pathlib import Path as _P
+    spec = importlib.util.spec_from_file_location("exp_lf", _P(__file__).resolve().parents[2] / "scripts" / "experiment_lf_v0.py")
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+
+    rng = _r.Random(424242)
+    mismatches = 0
+    for case in range(1000):
+        # 随机当日面板: 30-200 股, pct 含大量重复 (制造同 |diff| 与同 pct 组 tie)
+        n = rng.randint(30, 200)
+        codes = [f"{rng.randint(1, 999999):06d}.SZ" for _ in range(n)]
+        codes = list(dict.fromkeys(codes))  # 去重 code
+        # pct 从小集合抽 → 强制大量同 pct / 对称 pct
+        pcts = {c: rng.choice([-2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, round(rng.uniform(-3, 3), 1)]) for c in codes}
+        by_day = {"D": pcts}
+        members = set(rng.sample(codes, k=min(len(codes), rng.randint(0, 5))))
+        # fwd5: ~15% 无效 (None) 制造 take 需跳过的情形
+        fwd = {c: (None if rng.random() < 0.15 else round(rng.uniform(-10, 10), 4)) for c in codes}
+        fwd5_fn = lambda c: fwd.get(c)
+        follower_pct = rng.choice(list(pcts.values()))
+
+        group_pcts, groups = m._day_groups(by_day, "D", {})
+        fast = m._band_controls(group_pcts, groups, follower_pct, members, m.N_CONTROLS, fwd5_fn)
+        naive = m._controls_naive(by_day, "D", follower_pct, members, fwd5_fn, m.N_CONTROLS)
+        if fast != naive:
+            mismatches += 1
+            if mismatches <= 3:
+                print(f"case {case}: follower_pct={follower_pct} fast={fast} naive={naive}")
+    assert mismatches == 0, f"{mismatches}/1000 差分不等 — 两指针 tie-break 偏离朴素"

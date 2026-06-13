@@ -14,6 +14,24 @@
 > snapshot, and `rg` / `tail` on this ledger only when a task needs specific
 > historical evidence.
 
+## 2026-06-13 午 — 第二个 alpha 判决: LF V0 概念龙头-跟随者 = REJECT (假设证伪)
+
+- **判决 (B组C3, prereg FROZEN + 修订1/2/3, 跑于 14:07-14:15)**: `analysis/lf_v0_verdict_20260613.json`。
+  n_events=17,151 / n_follower=3,496,309 (2025-2026)。J1 净超额 **-0.025pp** (bootstrap CI95
+  [-0.057, 0.008], 阈值 +0.55) FAIL; J2 三期 -0.19/+0.07/+0.015 (2/3 正, 需 3/3) FAIL;
+  J3 17,151≥30 PASS; PIT 双锚 net_t1=-0.026≈net (成员锚定不改变零结果 = 无不稳定伪影);
+  极端热日 -0.155 / 平日 -0.004 全≈0。**verdict=REJECT**: 概念内涨停龙头出现后 follower 相对
+  同日同涨幅带非成员股**零超额** — "theme/LF +5-10pp" (hologram A.3) 假设证伪。
+- verify-the-verifier: 无 leakage 警报 (负结果非可疑正结果); 各臂/分期/冷热日全收敛 0; 3.5M 样本
+  CI 自然极窄; 两指针对照选择经 1000-case 差分测试与朴素逐字等价 (非选择偏差致负)。
+- **prereg 判负处置 (预注册, 防留恋)**: theme/LF 轴封档; bank/sentiment.py 列退役清单 (待主会话
+  审后收编, 不本轮删); 套三复审门③ 记 FAIL 输入; 产能转 D 排序层 W2 + LHB 线; 搭车臂 (纯度/BORN
+  副表) 一并归档不单独立项。
+- **性能根治 (验证器 intractable)**: 朴素版 ~50k 事件 × ~89 follower × 5512 全扫排序 × 2 臂 →
+  36min CPU 不出 (睡眠期误判断电); 向量化五招 (members 预载 dict 并集 / fwd5 memo / bootstrap
+  预算累加 / 对照两指针带外扩替全扫排序 / detect 两锚共享) → 8 分钟出判决; 两指针 tie-break
+  经 1000-case 差分测试守门 (= 朴素逐字等价, 防"测试绿判决偏")。
+
 ## 2026-06-13 晨 — 第一个 alpha 判决: LHB 上榜即退出 = GO (三判官全过)
 
 - **判决 (C组C1, prereg FROZEN 2026-06-12 + 修订1, 跑于 06:48-06:52)**: `analysis/lhb_exit_verdict_20260612.json`。
