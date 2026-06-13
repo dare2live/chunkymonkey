@@ -44,7 +44,7 @@ Owner: `analysis/strategy_portfolio_20260611.md` (三套组合 + 12 周路线图
 `docs/PROJECT_CONSTITUTION.md` (13 条全带反例); v1 归档 `analysis/constitution_v1_retired_20260611.md`;
 草案 `analysis/constitution_v2_draft_20260611.md` 已采纳为 live, 仅留作锻造证据。当前周 **W1** (完成项详 ledger)。
 **轨道现状 (06-12 矩阵已被下方验证计划取代, 完成项详 ledger)**: A 存储 DONE (34G 拆分+PK 恢复,
-旧库 06-26 删) / B 数据 tushare 22 域 ~1.1 亿行基本抓完 (gap: fina_mainbz 单期/watermark 失真) /
+旧库已删 06-13) / B 数据 tushare 22 域 ~1.1 亿行基本抓完 (gap: fina_mainbz 单期/watermark 失真) /
 C 实验 三判决落定 (LHB GO / LF REJECT / S3 REJECT-泄漏, 详 ledger 与验证计划 L2) / D modal 已 deploy
 + smoke 隔离修 (CYQ 特征扩展待 S3 判正) / E 复权链转正。验证期 (W1-W12) 新策略 0 真金白银全 paper_sim 候选态。
 

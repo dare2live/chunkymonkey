@@ -34,11 +34,8 @@ assertions:
     database: data/smartmoney.duckdb
     query: "SELECT CAST(min(trade_date) AS VARCHAR) FROM dim_trading_calendar"
     expect: {op: "==", value: "2005-01-04"}
-  - id: retired-db-retained
-    claim: "旧库保留至 2026-06-26 (goal.md 拆分回滚保险; 到期人工删除后移除本断言)"
-    type: file_exists
-    path: data/smartmoney_v1_retired_20260612.duckdb
-    expect: {op: "==", value: true}
+  # retired-db-retained 断言已移除 (2026-06-13 用户授权提前删 v1 旧库 34G — 新库稳定一日重负载验证通过,
+  # 回滚窗提前关; 按断言自身契约"到期人工删除后移除本断言"执行)
   - id: dc-member-truncation-pin
     claim: "dc_member 近 30 日无整 5000 行截断签名 (2026-06-12 发现静默截断; chain9 分页重拉后应转绿)"
     type: duckdb_sql
