@@ -48,6 +48,20 @@ Owner: `analysis/strategy_portfolio_20260611.md` (三套组合 + 12 周路线图
 C 实验 三判决落定 (LHB GO / LF REJECT / S3 REJECT-泄漏, 详 ledger 与验证计划 L2) / D modal 已 deploy
 + smoke 隔离修 (CYQ 特征扩展待 S3 判正) / E 复权链转正。验证期 (W1-W12) 新策略 0 真金白银全 paper_sim 候选态。
 
+## 多维策略立方体架构 (2026-06-13, 完整 owner=analysis/multidim_strategy_architecture_20260613.md)
+
+用户多维想法 (数据源参数化 optuna / 分组适配非全市场统一 / 主辅策略 / 模块×数据×配置 ∩
+规则×模型×策略) 的第一性原理顶层设计。**架构 = 策略立方体 (cell = Segment × Feature-set ×
+Policy)**, 三轴真相源全有现成底座 (板块=universe_rules / 形态=technical_stage / 市值=circ_mv /
+资金=moneyflow; 数据源族=feature_registry.groups; 策略=formula+model+optuna 退出层)。立法已落
+(genesis/codex/3 死亡条款), **唯二新增件 = strategy_cube.yaml + services/strategy_cube/**, 其余全复用。
+
+**Verdict: 立法 PROCEED + 实例化 BLOCK (§5 已实测坐实)**。最小可逆第一步 (板块维 read-only 检验,
+`cube_board_axis_check_20260613.json`) 结论: 板块间最优 stop/target 参数无显著差异 (p>0.15) +
+底层 per-stock 策略 OOS 本身为负 (mean oos_sharpe -0.35~-0.41)。**瓶颈在 base-edge 缺失, 不在
+分组架构** —— 不建 cube 空壳, 算力重定向到下方系统性验证 L0-L4 + T 轨先找 base edge; edge 为正
+再回来逐维解锁立方体。
+
 ## 系统性验证计划 (2026-06-13, 完整 owner=analysis/systematic_validation_plan_20260613.md)
 
 核心: alpha/特征/live 可信度自底向上逐层机器可检, 任一层红则其上全部"受污染" (触发=S3 实证

@@ -1,0 +1,26 @@
+{
+  "check": "strategy_cube §5 smallest-reversible-step: board-axis differentiation + OOS lift",
+  "date": "2026-06-13",
+  "source_table": "smartmoney.duckdb::mart_per_stock_stage_strategy_optimal",
+  "filter": "walk_forward_mode='expanding_monthly' AND oos_sharpe IS NOT NULL",
+  "oos_valid_rows": 1725,
+  "groups": {"board_10pct(60/00)": 1128, "board_20pct(30/68)": 597},
+  "param_differentiation_mannwhitney": {
+    "optimal_stop_pct": {"median_10pct": -0.0731, "median_20pct": -0.0725, "p": 0.1569, "significant": false},
+    "optimal_target_pct": {"median_10pct": 0.1679, "median_20pct": 0.1646, "p": 0.2093, "significant": false},
+    "optimal_trailing_pct": {"median_10pct": 0.0615, "median_20pct": 0.0629, "p": 0.8029, "significant": false},
+    "oos_sharpe": {"median_10pct": -0.1335, "median_20pct": -0.1088, "p": 0.5568, "significant": false},
+    "oos_avg_ret": {"median_10pct": -0.0068, "median_20pct": -0.0062, "p": 0.5963, "significant": false}
+  },
+  "oos_aggregate": {
+    "oos_sharpe_mean_10pct": -0.4085, "oos_sharpe_mean_20pct": -0.3453,
+    "oos_avg_ret_mean_10pct": 0.0030, "oos_avg_ret_mean_20pct": 0.0052
+  },
+  "verdict": "BOARD_AXIS_NOT_JUSTIFIED",
+  "findings": [
+    "板块间最优 stop/target/trailing 参数无显著差异 (all p>0.15) — 物理涨停差异未转化为参数差异",
+    "底层 per-stock stage 策略 OOS 本身为负 (median oos_sharpe -0.11~-0.13, mean -0.35~-0.41) — 无可分组的 base edge",
+    "瓶颈在 base-edge 缺失, 不在架构/分组; 给零负 edge 策略按板块切 = 切噪音"
+  ],
+  "decision": "立方体实例化 BLOCK 维持; 设计存档为法; 算力重定向到 base-edge 发现 (systematic_validation_plan L0-L4 + tushare T 轨域 alpha), 而非加更多 segment 轴试探"
+}
