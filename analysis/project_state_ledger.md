@@ -14,6 +14,27 @@
 > snapshot, and `rg` / `tail` on this ledger only when a task needs specific
 > historical evidence.
 
+## 2026-06-13 午后 — 主升浪 S1→S2→S3: ground truth 落库 + ML 假设重验 = REJECT (异常高泄漏警报)
+
+- **S1 落库**: `fact_rally_ground_truth` (31,531 突破事件 + 连续结局 + is_true_rally 读法B 3,247 TRUE);
+  S1 复现已对账锚 99.92% (见早条)。产物落库防 /tmp 灭失。
+- **S2 复用 (奥卡姆零特征重造)**: 事件 JOIN 现成 `fact_feature_panel` (67 PIT 特征), 2023+ 段 100%
+  命中 (26,797 事件 / 2,784 TRUE); 2022 段无特征 (面板起 2023-01) 排除 → 训练窗 2023-2026。
+- **S3 判决 (prereg FROZEN, `analysis/prereg_zhushenglang_s3_20260613.md`, `experiment_zhushenglang_s3.py`)**:
+  LightGBM walk-forward, **embargo>=180 交易日** (label horizon, 防重叠标签泄漏 — 经典陷阱, 原研究
+  很可能未做), 3 折 expanding。结果: **J1 信号 PASS 且强** (top-decile precision 3.18x base, mean
+  AUC 0.779, 3/3 折正); **J3 PASS** (3/3 折); **J2 非泄漏 FAIL** — mean AUC 0.779 > 预注册 0.75
+  "异常高"红线 (§4.2)。标签置换对照 0.530 (落 [0.45,0.55] 带) = **管道层无泄漏**。**verdict=REJECT**。
+- **纪律解读 (不挪门柱)**: REJECT 由冻结的 leakage-ceiling 规则触发, 非"无信号"。信号真实 (shuffle 干净
+  + 3.18x precision) 但 AUC 超 §4.2 怀疑线。置换对照只抓管道级泄漏, **抓不到特征级前瞻污染** (如 LF V0
+  latest-snapshot bug 型)。两可能须 ablation 区分: (a) 真动量 edge (突破股 ret_20d/60d 合法预测续涨,
+  则我 0.75 红线太保守 — **但禁止事后抬 (谄媚死)**); (b) fact_feature_panel 某特征前瞻泄漏虚抬 AUC。
+- **判负处置 (预注册 + §4.2 相对红线)**: 主升浪 ML 线**不接 live, 不在现有特征上调参续命**; 下一步 =
+  特征族 ablation (定位 AUC 驱动) + 驱动特征 PIT 审计 → 若证实泄漏, 修 fact_feature_panel; 若证实真
+  edge, 用**新冻结的、properly-anchored 红线**重跑 (不复用本轮被看过的判据)。fold-2 (最新) label 因
+  数据截止 2026-05-28 前瞻窗截断而 AUC 0.68 偏低 (披露)。
+- **验证器性能**: S3 27k×67 LightGBM walk-forward + 置换对照本地 ~分钟 (modal 非必需, 留 CYQ 特征扩展)。
+
 ## 2026-06-13 午 — 第二个 alpha 判决: LF V0 概念龙头-跟随者 = REJECT (假设证伪)
 
 - **判决 (B组C3, prereg FROZEN + 修订1/2/3, 跑于 14:07-14:15)**: `analysis/lf_v0_verdict_20260613.json`。
