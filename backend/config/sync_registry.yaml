@@ -402,3 +402,17 @@ domains:
     freshness_sla_trading_days: 5   # 预告季末密集平日稀疏 (实弹 20260430/20260828 = 0 行, allow_empty)
     min_rows_per_batch: 1
     allow_empty_batch: true   # 多数交易日无新预告
+
+  income:   # 正式利润表 (2026-06-14 实弹核证: 96 列全套利润表科目, PEAD 后段慢信号)
+    source: tushare
+    api: income
+    target_table: raw_tushare_income
+    grain: [ts_code, end_date, f_ann_date, update_flag]   # 实弹决定性: 仅此组合 0 dup (同 end_date 同 ann_date 仍有 uf=0原始/1订正双推送行); report_type 不入 (2000积分仅'1'合并)
+    batch_mode: by_trade_date
+    date_param: ann_date   # 接口按公告日切片 (实弹单日 141 行干净); ann_date(查询参数) ≠ f_ann_date(grain 用, 实际公告日)
+    pit_anchor: "f_ann_date; 正式财报披露日 (盘中/盘后, 滞后报告期 1-4 月) -> JOIN t-1 保守; 取 update_flag=1 最新订正版 (禁用 end_date 报告期末当锚=leakage)"
+    available_after: "t+1"
+    data_start: "20080101"   # 财报史可回溯 1990s 但接口覆盖以单股探底为准; 回填首跑落库 min(end_date) 对账 (防日历 clamp 反例)
+    freshness_sla_trading_days: 5   # 财报季密集平日稀疏
+    min_rows_per_batch: 1
+    allow_empty_batch: true   # 多数交易日无新财报披露

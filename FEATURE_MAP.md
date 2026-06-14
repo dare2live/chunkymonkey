@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-14 10:31
+> Snapshot: 2026-06-14 10:57
 
 ## 1. 入口面
 
@@ -68,6 +68,7 @@
 | dividend | tushare | dividend | raw_tushare_dividend | by_trade_date | 5 |
 | fina_mainbz | tushare | fina_mainbz | raw_tushare_fina_mainbz | by_ts_code | 130 |
 | forecast | tushare | forecast | raw_tushare_forecast | by_trade_date | 5 |
+| income | tushare | income | raw_tushare_income | by_trade_date | 5 |
 | index_daily_benchmark | tushare | index_daily | raw_tushare_index_daily | by_code_list | 1 |
 | index_dailybasic | tushare | index_dailybasic | raw_tushare_index_dailybasic | by_code_list | 1 |
 | index_member_all | tushare | index_member_all | raw_tushare_index_member_all | by_code_list | 30 |
@@ -508,6 +509,6 @@
 ## 5. 概览
 
 - chunkyctl 子命令 8 | launchd 任务 1 | router 23 (端点 171)
-- sync_registry 数据域 26
+- sync_registry 数据域 27
 - 产表 302 (多 writer 121)
 

@@ -234,7 +234,8 @@
 | `raw_aif10_valuation_quantile.percentile_fifty` | 估值 10Y 分位 (strategy_ensemble 在用) |
 | `raw_aif10_forecast_consensus.compre_rating_num` | 一致预期评分 (strategy_ensemble 在用) |
 | `raw_aif10_peer_valuation` | 同业估值 |
-| **`raw_tushare_forecast`** (业绩预告, 2026-06-14 接入) | **PEAD 预期差事件因子** (alpha 验证程序 S1 第一个基本面接口): type(预增/预减/扭亏/首亏) + p_change_min/max(净利变动幅度) + net_profit_min/max + ann_date(PIT 锚, 早于正式财报). grain=[ts_code,end_date,ann_date]; 实测 2026 YTD 2339 行. express/income/fina_indicator 待接 |
+| **`raw_tushare_forecast`** (业绩预告, 2026-06-14 接入) | **PEAD 预期差事件因子** (alpha 验证程序 S1 第一个基本面接口): type(预增/预减/扭亏/首亏) + p_change_min/max(净利变动幅度) + net_profit_min/max + ann_date(PIT 锚, 早于正式财报). grain=[ts_code,end_date,ann_date]; 实测 17042 行 (2023-2026) |
+| **`raw_tushare_income`** (正式利润表, 2026-06-14 接入) | 96 列全套利润表 (total_revenue/revenue/oper_cost/各费用/operate_profit/n_income/ebit/ebitda...) = 质量/成长因子料 (PEAD 后段慢信号). grain=[ts_code,end_date,f_ann_date,update_flag] (uf=0原始/1订正双推送), PIT 锚 f_ann_date 取 uf=1; by_trade_date date_param=ann_date; 实测 4月 10578 行/5305 股. **express(需 by_period express_vip)/fina_indicator(需 by_ts_code 100条窗口分页) 设计就绪待接** |
 
 ### 2.5 资金流 / 事件
 
