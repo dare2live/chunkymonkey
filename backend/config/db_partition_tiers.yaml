@@ -19,6 +19,10 @@ atomic_write_clusters:
     tables: [fact_optuna_governance_log, mart_per_formula_stage_optimal]
   # 注: fact_optuna_governance_log 仅被上述 2 脚本写 (log_governance_violations 仅 2 caller),
   # 与 stage_optimal 原子绑定 → 整簇留 serving, 不进 experiment (否则拆簇)。
+  - name: feature_panel_plus_validation
+    # build_feature_panel_duck.py 单连接上下文写 fact_feature_panel + mart_feature_panel_validation (auto-commit 原子)
+    tier: feature
+    tables: [fact_feature_panel, mart_feature_panel_validation]
 
 # tier 表清单 (迁移引擎按 tier 取要迁的表)。
 tiers:
@@ -56,7 +60,13 @@ tiers:
   # feature / source tier 表清单: D0 uncertain (event/holders 归属) 收口后补, D2/D3 用。
   feature:
     target_db: data/feature_store.duckdb
-    tables: []   # TODO D2: fact_feature_panel 家族 + signal_context/technical_trigger/drift/prune + alpha158
+    # D2-minimal (2026-06-14 探索定案): 只迁 build_feature_panel_duck 独占写的原子对
+    # → build_feature_panel 写 feature_store / daily_update 写 smartmoney = 写锁竞争消失 (本 session 撞到的 contention X)。
+    # fact_feature_panel 47 离线读 : 1 live (recommendation.py) — 比 D1(58文件/7 live)干净得多。
+    # 三件套 (signal_context/technical_trigger/macd) 留 smartmoney (daily_update 写 + live 重读, 迁=D1 同型坑, 暂缓 contention Y)。
+    tables:
+      - fact_feature_panel
+      - mart_feature_panel_validation
   source:
     target_db: data/tushare_raw.duckdb   # 已存在 (扩成全 raw)
     tables: []   # TODO D3: smartmoney 里 raw_* + (D0 裁决) fact_*_event
