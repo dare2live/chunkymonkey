@@ -48,6 +48,8 @@ Owner: `docs/PROJECT_CONSTITUTION.md` 第一/二/三条 (真相源唯一 / 能�
 
 ## 2. 接手前 First Actions
 
+0. **invoke `chunkymonkey-ops` skill** (操作手册: 红线/坑库/工具调度/纪律/文档地图) + 读
+   `docs/MASTER_TOPLEVEL_DESIGN.md` (全局架构骨架) — 先有全局再动手.
 1. 读 `goal.md` + `docs/chunkyctl_session_quickstart.md` (启动契约);
    `SESSION_HANDOFF.md` 仅 context-only 快照, live gates 优先于它.
 2. `git status --short` 看脏 worktree. 不擅自 revert 别人 (Codex / 上一 session) 的改动.
@@ -243,6 +245,7 @@ check_codex_review hook 均已非阻塞化, 信息性提示保留)。现行质�
 
 | Skill | 触发场景 | 强制/建议 |
 |---|---|---|
+| **`chunkymonkey-ops`** | 接手 / 任何实质工作前 (操作手册: 红线/坑库/工具调度/纪律/文档地图) | **强制 — 接手即 invoke** |
 | `chunkymonkey-governance` / `engineering-discipline` (grill) | 执行计划前 (跑批 / Optuna / 新模块设计) | 强制 — 不 grill 不执行 |
 | `plan_validator.enforce_optuna_plan()` | 跑批前 (代码级) | 强制 (2026-05-26 反例: 29/34 公式无 search space 白跑) |
 | `/diagnose` | 硬 bug / 异常结果 / 性能回退 | 强制 — 不走诊断循环不猜 |
