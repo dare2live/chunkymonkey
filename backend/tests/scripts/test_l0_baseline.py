@@ -50,6 +50,33 @@ def test_run_formula_anomaly_clean_for_modest_ic():
     assert res["anomaly"]["verdict"] == "CLEAN", "随机数据 IC 不该触 §4.2 红线"
 
 
+def test_run_search_writes_best_params(tmp_path):
+    # 寻参模式: _run_search 写 L0_search_* + verdict (含 best_params/dsr) 到临时库
+    from services.duck_adapter import connect as duck_connect
+    spec2 = importlib.util.spec_from_file_location("bes2", REPO / "backend" / "scripts" / "build_experiment_store.py")
+    bes = importlib.util.module_from_spec(spec2)
+    spec2.loader.exec_module(bes)
+    store = tmp_path / "exp.duckdb"
+    conn = duck_connect(str(store), read_only=False)
+    conn.executescript(bes.DDL)
+    conn.execute("CHECKPOINT")
+    conn.close()
+
+    split = {"verdict": "PASS", "problems": []}
+    rc = l0d._run_search(_synth_market(), ["reversal_short_term"], horizon=5, embargo=5,
+                         run_id="t_search", data_snapshot="20250101", store=store,
+                         prereg_hash="abc123", split=split)
+    assert rc == 0
+    conn = duck_connect(str(store), read_only=True)
+    try:
+        v = conn.execute("SELECT verdict, prereg_hash FROM fact_experiment_verdict WHERE run_id='t_search'").fetchone()
+        assert v[0] == "L0_SEARCH" and v[1] == "abc123"
+        n = conn.execute("SELECT count(*) FROM fact_consumer_alpha_ic_scan WHERE consumer_id='L0_search_reversal_short_term'").fetchone()[0]
+        assert n >= 1
+    finally:
+        conn.close()
+
+
 def test_driver_wires_three_leakage_gates():
     # 反孤儿 (mythos §14): driver 必须真 import + 调 3 防泄露工具
     src = (REPO / "backend" / "scripts" / "experiment_l0_baseline.py").read_text()

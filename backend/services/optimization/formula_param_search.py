@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from itertools import product
 
+import numpy as np
+
 from services.formula_engine.features import extract_feature
 from services.optimization.deflated_sharpe import deflated_sharpe_ratio
 from services.optimization.plan_validator import enforce_search_space_nonempty, load_search_spaces
@@ -82,11 +84,15 @@ def search_formula(
                 "all_results": results, "reason": "no_valid_combo"}
     # 选最佳 by OOS RankIC 绝对值 (反转类负相关也是信号; 标尺取最强可预测性)
     best = max(scored, key=lambda r: abs(r["oos_rank_ic"]))
-    # DSR deflate: best IC_IR 在试了 n_trials 组合后是否真显著 (多重比较校正)
+    # DSR deflate: best IC_IR 在试了 n_trials 组合后是否真显著 (多重比较校正)。
+    # sharpe_variance 用 trials 间 IC_IR **实测方差** 校准 (Bailey-LdP: 有 trials 数据取 V[SR],
+    # 默认 1.0 是无 prior 粗近似 — 对 IC_IR 小尺度 [~0.3] 严重过严致 p=0 假阴)。
     dsr = None
+    ic_irs = [abs(r["ic_ir"]) for r in scored if r["ic_ir"] is not None]
     if best["ic_ir"] is not None and best["n_days"] and best["n_days"] >= 2:
+        sharpe_var = float(np.var(ic_irs, ddof=1)) if len(ic_irs) > 1 else 1.0
         dsr = deflated_sharpe_ratio(abs(best["ic_ir"]), n_trials=len(combos),
-                                    n_observations=best["n_days"])
+                                    n_observations=best["n_days"], sharpe_variance=max(sharpe_var, 1e-9))
     return {"formula": formula, "n_trials": len(combos), "best_params": best["params"],
             "best_oos_rank_ic": best["oos_rank_ic"], "best_ic_ir": best["ic_ir"],
             "dsr_pvalue": dsr, "all_results": results}

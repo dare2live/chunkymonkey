@@ -58,6 +58,20 @@ v1 (+0.059) 被对抗审计修 superseded: (a) embargo 校验但未传进 oos_ra
 (b) IC_IR std 改无偏 ddof=1; (c) 不完整末窗丢弃; (d) PIT 门抽样 5→50 股 + 探点 8→24。v1 JSON 留 git 作 pre-fix 记录。
 已知限制: 宇宙=有K线全股 (v1 含潜在生存者偏差; alpha 同宇宙比较故公平; PIT 宇宙 dim_index_member_history 待 S3 接)。
 
+## 3.2 寻参结果 (best-OOS-params, run_id=l0_search_v1, pre-reg d80e8ce 冻结后)
+全市场网格寻参 (plan_validator 闸过 + 3 门 + DSR), J1 全过 (改进非退化) / J3 无 anomaly:
+| 公式 | best params | best OOS RankIC | vs 默认 | n_trials |
+|---|---|---|---|---|
+| reversal_short_term | lookback=20 | **+0.064** | =默认(已最优) | 3 |
+| ma_base_breakout | ma.long=145 | -0.073 | =默认(已最优) | 4 |
+| macd_golden_cross | fast16/slow34/sig9 | -0.054 | 强于默认 -0.049 | 9 |
+| turtle_breakout | channel=30 | -0.043 | 强于默认 -0.037 | 4 |
+
+**精化标尺确认 = reversal +0.064** (lookback=20); 寻参佐证默认参数近最优 (非过拟合敏感, 好迹象)。
+**DSR 诚实框定**: p≈1.0 全显著, 但 DSR 假设独立 trials, 对 3-9 组合**相关**小网格假设弱 (经验方差校准
+后偏宽松; 默认 var=1.0 则偏严 p=0)。此尺度真正防过拟合 = **小网格 + OOS-only + walk-forward + smoke(300)
+与全市场一致** (4 项); DSR 仅辅助方向信号, 不作主显著性依据。J2 标 `dsr_supplementary`。
+
 ## 4. reset 后 survives vs rebuilds (下沉核证, 非信旧 spec)
 **幸存 (config 治理契约完整)**: `optuna_config.yaml` (全治理) / `stock_formula_optuna.yaml` (阈值) /
 9 个 `formula_*.yaml` (信号参数) / `formula_engine/{base,ddl,macd_golden_cross,shared_windows,technical_stage}.py` /

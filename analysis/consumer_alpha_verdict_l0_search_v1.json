@@ -1,0 +1,269 @@
+{
+  "run_id": "l0_search_v1",
+  "verdict": "L0_SEARCH",
+  "ts": "2026-06-14T11:21:15.914205+00:00",
+  "data_snapshot": "2026-06-12",
+  "prereg_hash": "d80e8ce636826a4f8e8b7e74f486bb3a3d534aac4ddbcf8107e1faa8e01ea409",
+  "horizon": 5,
+  "embargo": 5,
+  "results": [
+    {
+      "formula": "macd_golden_cross",
+      "n_trials": 9,
+      "best_params": {
+        "fast_period": 16,
+        "slow_period": 34,
+        "signal_period": 9
+      },
+      "best_oos_rank_ic": -0.05368885682573252,
+      "best_ic_ir": -0.357849711551038,
+      "dsr_pvalue": 0.9999999999992413,
+      "all_results": [
+        {
+          "params": {
+            "fast_period": 8,
+            "slow_period": 21,
+            "signal_period": 9
+          },
+          "oos_rank_ic": -0.04253782000924622,
+          "ic_ir": -0.2821062751189611,
+          "n_days": 513,
+          "n_windows": 35
+        },
+        {
+          "params": {
+            "fast_period": 8,
+            "slow_period": 26,
+            "signal_period": 9
+          },
+          "oos_rank_ic": -0.04521574690785779,
+          "ic_ir": -0.29889792761132755,
+          "n_days": 513,
+          "n_windows": 35
+        },
+        {
+          "params": {
+            "fast_period": 8,
+            "slow_period": 34,
+            "signal_period": 9
+          },
+          "oos_rank_ic": -0.0486422813318436,
+          "ic_ir": -0.32051820123949826,
+          "n_days": 513,
+          "n_windows": 35
+        },
+        {
+          "params": {
+            "fast_period": 12,
+            "slow_period": 21,
+            "signal_period": 9
+          },
+          "oos_rank_ic": -0.046273585664196704,
+          "ic_ir": -0.30615712153574454,
+          "n_days": 513,
+          "n_windows": 35
+        },
+        {
+          "params": {
+            "fast_period": 12,
+            "slow_period": 26,
+            "signal_period": 9
+          },
+          "oos_rank_ic": -0.04850679817381345,
+          "ic_ir": -0.3212380349387888,
+          "n_days": 513,
+          "n_windows": 35
+        },
+        {
+          "params": {
+            "fast_period": 12,
+            "slow_period": 34,
+            "signal_period": 9
+          },
+          "oos_rank_ic": -0.05163740803729815,
+          "ic_ir": -0.3420621961796924,
+          "n_days": 513,
+          "n_windows": 35
+        },
+        {
+          "params": {
+            "fast_period": 16,
+            "slow_period": 21,
+            "signal_period": 9
+          },
+          "oos_rank_ic": -0.048829979447664616,
+          "ic_ir": -0.3242110324850959,
+          "n_days": 513,
+          "n_windows": 35
+        },
+        {
+          "params": {
+            "fast_period": 16,
+            "slow_period": 26,
+            "signal_period": 9
+          },
+          "oos_rank_ic": -0.0508751597980416,
+          "ic_ir": -0.33849694764426236,
+          "n_days": 513,
+          "n_windows": 35
+        },
+        {
+          "params": {
+            "fast_period": 16,
+            "slow_period": 34,
+            "signal_period": 9
+          },
+          "oos_rank_ic": -0.05368885682573252,
+          "ic_ir": -0.357849711551038,
+          "n_days": 513,
+          "n_windows": 35
+        }
+      ]
+    },
+    {
+      "formula": "ma_base_breakout",
+      "n_trials": 4,
+      "best_params": {
+        "ma": {
+          "long": 145
+        }
+      },
+      "best_oos_rank_ic": -0.07320397885194412,
+      "best_ic_ir": -0.4009661269707734,
+      "dsr_pvalue": 0.999999999999992,
+      "all_results": [
+        {
+          "params": {
+            "ma": {
+              "long": 90
+            }
+          },
+          "oos_rank_ic": -0.0706239849444056,
+          "ic_ir": -0.39628188272139125,
+          "n_days": 468,
+          "n_windows": 32
+        },
+        {
+          "params": {
+            "ma": {
+              "long": 120
+            }
+          },
+          "oos_rank_ic": -0.07101051457323564,
+          "ic_ir": -0.38935817243904414,
+          "n_days": 435,
+          "n_windows": 30
+        },
+        {
+          "params": {
+            "ma": {
+              "long": 145
+            }
+          },
+          "oos_rank_ic": -0.07320397885194412,
+          "ic_ir": -0.4009661269707734,
+          "n_days": 418,
+          "n_windows": 29
+        },
+        {
+          "params": {
+            "ma": {
+              "long": 170
+            }
+          },
+          "oos_rank_ic": -0.06312697155767075,
+          "ic_ir": -0.37886338412566056,
+          "n_days": 408,
+          "n_windows": 28
+        }
+      ]
+    },
+    {
+      "formula": "turtle_breakout",
+      "n_trials": 4,
+      "best_params": {
+        "channel": 30
+      },
+      "best_oos_rank_ic": -0.043358681775184794,
+      "best_ic_ir": -0.30045387511450417,
+      "dsr_pvalue": 0.9999999993460112,
+      "all_results": [
+        {
+          "params": {
+            "channel": 15
+          },
+          "oos_rank_ic": -0.03450488220529622,
+          "ic_ir": -0.2439641411852238,
+          "n_days": 529,
+          "n_windows": 36
+        },
+        {
+          "params": {
+            "channel": 20
+          },
+          "oos_rank_ic": -0.03654798134827112,
+          "ic_ir": -0.25833701908313383,
+          "n_days": 513,
+          "n_windows": 35
+        },
+        {
+          "params": {
+            "channel": 30
+          },
+          "oos_rank_ic": -0.043358681775184794,
+          "ic_ir": -0.30045387511450417,
+          "n_days": 513,
+          "n_windows": 35
+        },
+        {
+          "params": {
+            "channel": 55
+          },
+          "oos_rank_ic": -0.042654692668928997,
+          "ic_ir": -0.28222368559147515,
+          "n_days": 495,
+          "n_windows": 34
+        }
+      ]
+    },
+    {
+      "formula": "reversal_short_term",
+      "n_trials": 3,
+      "best_params": {
+        "lookback": 20
+      },
+      "best_oos_rank_ic": 0.06400316403193132,
+      "best_ic_ir": 0.38676829890610015,
+      "dsr_pvalue": 0.9999999999999618,
+      "all_results": [
+        {
+          "params": {
+            "lookback": 5
+          },
+          "oos_rank_ic": 0.04546731177692459,
+          "ic_ir": 0.290453576234214,
+          "n_days": 529,
+          "n_windows": 36
+        },
+        {
+          "params": {
+            "lookback": 10
+          },
+          "oos_rank_ic": 0.05870977177530206,
+          "ic_ir": 0.3719529365957101,
+          "n_days": 529,
+          "n_windows": 36
+        },
+        {
+          "params": {
+            "lookback": 20
+          },
+          "oos_rank_ic": 0.06400316403193132,
+          "ic_ir": 0.38676829890610015,
+          "n_days": 513,
+          "n_windows": 35
+        }
+      ]
+    }
+  ]
+}

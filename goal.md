@@ -55,7 +55,7 @@
 |---|---|---|---|
 | P0 | 文档同步 | goal/INDEX reset-rewrite | 立 `moth doc-drift` 固化 (机器对账, 防再漂; mythos §16) |
 | P0 | Alpha 验证 S0 | **完成** (留档4表 + `experiment_jobs.py` loader 恢复修4悬空import + `consumer_alpha_validation` family + `consumer_alpha_matrix.yaml` 6候选→7cell + `experiment_consumer_alpha_validation.py` config驱动执行器: gate-before-run/prereg_hash/PIT每步落档/dry空矩阵ic_scan不造假; 10单测+moth断言+CI全pass) | 进 L0 |
-| P1 | 裸K线基准 L0 | **Tier-1 基准已测 + 对抗审计修** (owner=`l0_bare_kline_baseline_spec`): 全市场5204股/400万obs/35窗 OOS RankIC — **reversal +0.064 (IC_IR 0.39) 最佳裸K线信号** (v2, embargo+ddof修后), macd/turtle/ma_base 短期负相关; 诚实干净 (≈0.06<<0.3红线)。**防泄露 3 门固化 + 对抗审计** (7 skeptic 抓 1 HIGH 死闸[embargo未接]+4 修, moth `l0-leakage-gates-wired` 守); 9公式保留config备选; **寻参治理层已建** (services/optimization: DSR去过拟合+plan_validator搜索空间闸+网格寻参, moth守) | best-OOS-params 寻参 RUN (task#17, pre-reg+grill后; 大计算上 Modal) → Tier-2 backtest 终验引擎 |
+| P1 | 裸K线基准 L0 | **Tier-1 标尺定** (owner=`l0_bare_kline_baseline_spec`): 寻参 RUN 完成 (pre-reg d80e8ce 冻结+grill+plan_validator闸+3门, J1全过/J3无anomaly) → **标尺=reversal_short_term OOS RankIC +0.064 (lookback=20)**, 寻参佐证默认近最优(非过拟合敏感)。全链审计过 (对抗7skeptic抓embargo死闸已修, moth 21断言, 防泄露3门固化, DSR诚实框定为辅助)。每个 alpha 须超 +0.064 | **Tier-2 backtest 终验引擎** (信号→T+1含成本→OOS sharpe, 对齐KPI; reset删须重建) → S3 逐数据 alpha 验证 (S1数据已备) |
 | P2 | 深层解耦 backlog | kept routers 懒加载已删 services / 8 散落服务自建表 / 23 god-file (framework doc §6) | rebuild 时按 layer 顺手解耦, moth 守不回潮; **不 big-bang** (反复破 CI 教训) |
 
 ## 重建路线 (全 config 驱动, owner=`analysis/alpha_validation_program_spec_20260614.md`)
