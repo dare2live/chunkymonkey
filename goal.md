@@ -97,8 +97,11 @@ rule6 (为没证明需要的负载建基础设施)。**Option A 冻结 (前提�
   EXPORT/IMPORT(禁 COPY FROM DATABASE, 06-12 丢约束 315→1 教训)。**前置于验证程序数据获取** (趁新数据没落库前重构省二次迁移)。
   阶段 D0(写入面扫描+tier分配+事务边界) → D1 实验库 → D2 特征库 → D3 源库 raw 移出 → D4 manifest 路由。
 
-执行顺序: D0 (read-only 写入面扫描, 现在做) → grill → D1-D4 与 S0 并行 → S1+。
-数据底座 housekeeping (SLA 误配/dead 退役/daily_update 孤儿) 降为支线, 与主线并行不阻塞。
+**DB 分区状态 (2026-06-14 探索后定案)**: D0 写入面扫描 + 保真迁移引擎 (db_partition_migrate.py) + 2 次实测保真迁移
+(experiment 25 表 / feature 2 表全 PASS) 完成 = **引擎与设计已证明**。但 **cutover 暂缓** (实测: experiment 58文件/7 live 耦合;
+feature 的 fact_feature_panel 是 106-读取方中心表, cutover 需永久 always-attach+view 间接层, 而竞争手动工作流下罕见 =
+rule6 反模式)。保留引擎+设计作 ready 资产 (stale 副本已删), 竞争真咬人/上云时几分钟可完成 cutover。详 db_management_design §11。
+**数据底座主线回到 alpha 验证程序 (找 base-edge)**; DB 分区/housekeeping 是支撑基建, 不阻塞主线。
 
 ## 多维策略立方体架构 (2026-06-13, 完整 owner=analysis/multidim_strategy_architecture_20260613.md)
 

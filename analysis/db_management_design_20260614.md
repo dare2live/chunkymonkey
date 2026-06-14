@@ -82,3 +82,19 @@
 实验 tier (`experiment_store.duckdb`) **直接服务** alpha_validation_program_spec: (数据×消费者) 验证的
 OOS/ablation/verdict 全写实验 tier, 与 live 服务隔离 → 验证跑批永不阻塞每日更新, 且留档表集中一库便于 query。
 **DB 分区 (D0-D4) 应先于或并行于验证程序 S0/S1。**
+
+## 11. 执行决定 (2026-06-14 探索后定案)
+
+D0 (写入面扫描) + 保真迁移引擎 (db_partition_migrate.py) + 两次实测保真迁移 (experiment 25 表 / feature 2 表,
+行数/EXCEPT/约束/索引全 PASS) 完成 → **引擎与设计已证明可用**。但 **cutover (repoint 写入方 + 读取方 ATTACH +
+DROP 源) 暂缓**, 理由 (实测 blast radius):
+
+- **D1 (experiment)**: 25 表被 live 每日推荐重度读 (58 文件 / 7 live 链路) → 迁出反而增 live 跨库耦合, 收益小。暂缓。
+- **D2-minimal (feature)**: fact_feature_panel 是 **106-读取方中心表** (52 中央helper / 47 继承conn / 7 raw)。cutover 需
+  get_conn 默认 ATTACH feature_store + smartmoney 建 view 兜读取方 — 给**每个连接加永久 always-attach + view 间接层**。
+  而竞争 (build_feature_panel vs daily_update) 在**手动工作流下罕见** (本 session 顺序跑 0.3min 没真撞)。
+  **为罕见负载建永久基础设施 = architect rule6 反模式** (同策略立方体/Option A 的判断)。暂缓。
+
+**结论**: 保留引擎 + 设计 + tier 配置 + D0 图作为 ready 资产; stale 验证副本已删 (源 smartmoney 全程未动)。
+**cutover 触发条件**: 竞争真咬人 (并发跑批密集) 或上云自动化 (并发常态) → 那时引擎可几分钟完成任意 tier cutover。
+当前数据底座主线回到 alpha 验证程序 (找 base-edge) — DB 分区是支撑性基建, 不阻塞主线。
