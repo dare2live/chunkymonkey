@@ -87,6 +87,11 @@ assertions:
     type: shell
     command: ["bash", "-c", "grep -o '\"verdict\": \"GO\"' analysis/lhb_exit_verdict_20260612.json | head -1 | grep -c GO"]
     expect: {op: "==", value: 1}
+  - id: consumer-alpha-axes-in-config-not-code
+    claim: "S0 consumer_alpha 矩阵轴 (data_candidate ids) 只在 yaml 不在 executor 代码 (2026-06-14 S0 重建立: 死亡条款#2 判断死 = 轴/阈值 hardcode 进代码而非 config; 命中=判断死回潮)"
+    type: shell
+    command: ["bash", "-c", "grep -cE 'forecast_express_pead|income_fina_indicator|kpl_limit_step|holder_events|sw_industry_tree' backend/scripts/experiment_consumer_alpha_validation.py || true"]
+    expect: {op: "==", value: 0}
   # 2026-06-14 地基-reset 退役 (引用已删特征/模型层, 重建特征/模型层后须恢复):
   #   - leakage-consumer-gate: 探针读已删特征面板 (feature_consumers); 特征层重做后恢复, 防泄露红线不可永久缺
   #   - concept-event-no-phantom: 查已删 fact_concept_event; 概念事件层重建后恢复

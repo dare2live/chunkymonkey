@@ -743,3 +743,26 @@
 
 > 全文移至 `ledger_archive_202605.md` (2026-06-11 文档治理)。
 > 该计划已被 goal.md 取代; execution authority = goal.md + docs/implementation_plan.md。
+
+## 2026-06-14 — Alpha 验证程序 S0 完成 (实验台执行器 config 驱动重建)
+
+地基-reset 后 spec §4「复用实验台」前提已死 (核证: optimization 中央层 / plan_validator /
+walk_forward runner / backtest / chunkyctl.py jobs 派发器全被 reset 删, experiment_jobs.py 契约
+loader 误删致 4 处 `import services.experiment_jobs` 悬空崩)。故 S0 = config 驱动**新建**最小脚手架,
+不复活 god-dispatcher (它派发的引擎本身已删 = 想象的复杂度, architect rule6)。
+
+交付 (全 local 秒级, 零 Optuna/Modal 花费):
+- `experiment_jobs.py` 契约 loader 忠实恢复 (337L 薄/纯 yaml 校验/误删) — 修复 4 处悬空 import。
+- `consumer_alpha_matrix.yaml` (数据x消费者) 矩阵: 6 候选 (forecast/income/cyq/kpl/holder/sw) +
+  映射铁律 (event/fundamental/chip/infra→feature_ic, technical→formula_signal) → 枚举 7 cell。
+- `experiment_jobs.yaml` 加 `consumer_alpha_validation` family (required_gates: data_health_snapshot/
+  pit_audit/leakage_consumer_scan; artifact_contracts 指向 4 留档表)。
+- `experiment_consumer_alpha_validation.py` 执行器: gate-before-run (plan().blocked_reasons) →
+  枚举 cell → S0 dry 空矩阵 (不写假 IC, measured-not-estimated) → 写 verdict/lineage/pit_audit
+  留档 + verdict JSON 落 analysis/。死亡条款守: 矩阵轴走 config (判断死) / prereg_hash+--check-prereg
+  (谄媚死) / PIT 每步落档 (泄漏死) / dry 不造假 (估计死)。
+- 验证: dry 骨架实跑 7 cell 枚举正确 (kpl 双消费者路由), 留档表写 verdict 1/pit_audit 4/lineage 1/
+  ic_scan 0; 10 单测 + moth `consumer-alpha-axes-in-config-not-code` 断言 + CI offline 64 passed 全绿;
+  smoke 数据已清 (实 store S1+ 才落真数据)。
+- 下一步 (P1): L0 裸K线基准 — 需重建 OOS walk-forward IC 计算 (reset 删了 walk_forward runner),
+  仅 OHLCV 派生基准跑过执行器作标尺。

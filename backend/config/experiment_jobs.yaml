@@ -128,3 +128,47 @@ job_families:
         required: true
         table: mart_pipeline_run_manifest
         min_rows: 1
+
+  consumer_alpha_validation:
+    owner_module: experiment_consumer_alpha
+    purpose: >-
+      Validate which new data candidates carry real PIT-clean alpha by running the
+      (data candidate x consumer) matrix, before any pipeline is built. Verify-only:
+      never tunes formula thresholds (goal.md freeze). Outputs route to the isolated
+      experiment_store DB (must NOT be consumed by daily_update live path).
+    allowed_backends:
+      - local
+      - modal
+    command_family: consumer_alpha_validation
+    required_plan_fields:
+      - input_snapshot
+      - objective
+      - rollback_plan
+    required_gates:
+      - data_health_snapshot
+      - pit_audit
+      - leakage_consumer_scan
+    artifact_contracts:
+      - id: consumer_alpha_verdict
+        kind: table
+        required: true
+        table: fact_experiment_verdict
+        min_rows: 1
+      - id: consumer_alpha_pit_audit
+        kind: table
+        required: true
+        table: experiment_pit_audit_log
+        min_rows: 1
+      - id: consumer_alpha_lineage
+        kind: table
+        required: true
+        table: pipeline_artifact_lineage
+        min_rows: 1
+      - id: consumer_alpha_ic_scan
+        kind: table
+        required: false
+        table: fact_consumer_alpha_ic_scan
+      - id: consumer_alpha_verdict_json
+        kind: report
+        required: false
+        path_glob: analysis/consumer_alpha_verdict_*.json
