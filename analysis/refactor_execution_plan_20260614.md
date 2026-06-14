@@ -37,6 +37,24 @@
 - E 策略立方体逐维解锁 (BLOCK 直到 B/D 出正 edge)
 - F 含成本 paper_sim → KPI
 
+### 执行中发现 (2026-06-14, 改写 A1/A3b 顺序)
+1. **gate 双精度 bug 已修 (A3d done)**: 238 含 ~59 噪声 = __pycache__ 二进制 + substring 假阳性
+   (wiped `fact_shareholder_plan` 裸 grep 误匹配活表 `fact_shareholder_plan_tdx_f10` L1/30769行)。
+   修后真实 C2=179; 删 2 真孤儿 config (model_search/champion_registry)→**149**。
+2. **config 不全是孤儿 (agent 粗标纠偏)**: `feature_registry.yaml`(被 4 live service load)+
+   `market_perception.yaml`(被 regime_engine+schema_marts+schema_migrations+stock_graph_read+main.py 用)
+   **不可删**; feature_registry 的 8 处"stale"全是 substring 假阳性 (修 gate 后消失)。
+3. **A1↔A3b 深度纠缠 (关键)**: daily_update.sh 对 routers 只有 **2 个函数**耦合 —
+   `routers.updater._step_sync_lhb`(Step2d)+`_step_sync_industry`(Step2g); 其余 sync 全走干净
+   `services.*`。→ 退役 routers 前必须先把这 2 helper 抽进 service, 否则断 sync 管线 (真金白银)。
+   **refined 子序列** (动 live 管线+app boot, 不 big-bang):
+   - A3b-0 抽 `_step_sync_lhb`/`_step_sync_industry` → services/ (核无 FastAPI 依赖), daily_update 改调 service
+   - A1   重写 daily_update.sh (调 service; 删 Step0/4-8 + missing L2 builder; 加 retention+report) → C1 绿
+   - A3b  退役死 serving routers (updater_*/institution/recommendation/screening/v3_meta/v3_views/
+          v3_market_perception/v3_perception_legacy) + main.py 注册 + updater.py serving 部分
+   - A3c  schema_versions.py 删 wiped DDL(23) + market_perception/storage_retention/杂 config 外科清
+   每步: app `import main` 冒烟 + CI/moth 验, red→green。
+
 ### daily_update.sh 重建底本 (A1)
 幸存脚本 (6): update_watermark_sla / build_price_kline_tdxhub / sync_hs300_benchmark_kline /
 ingest_profit_forecast_snapshot / refresh_source_watermarks / build_macd_state_history。
