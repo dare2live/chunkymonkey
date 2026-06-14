@@ -387,3 +387,18 @@ domains:
     freshness_sla_trading_days: 1
     min_rows_per_batch: 50
     allow_empty_batch: false
+
+  # ── 基本面/盈利预测族 (alpha 验证程序 S1, 2026-06-14 实弹核证 PASS: PEAD 事件因子, 最大未挖矿) ──
+  forecast:
+    source: tushare
+    api: forecast
+    target_table: raw_tushare_forecast
+    grain: [ts_code, end_date, ann_date]   # 同股同期可修订 (revision 不同 ann_date) → grain 含 ann_date; 实弹峰值日 632 行无截断
+    batch_mode: by_trade_date
+    date_param: ann_date   # 接口日期参数 = 业绩预告公告日 (非 trade_date; 实弹 forecast 不支持纯 period 查询)
+    pit_anchor: "ann_date; 业绩预告公告日 (盘中/盘后披露) -> JOIN t-1 保守 (PEAD 事件锚, 早于正式财报)"
+    available_after: "t+1"
+    data_start: "20080101"   # 业绩预告史约 2008 起; 回填首跑探底校准 (落库 min(ann_date) 对账)
+    freshness_sla_trading_days: 5   # 预告季末密集平日稀疏 (实弹 20260430/20260828 = 0 行, allow_empty)
+    min_rows_per_batch: 1
+    allow_empty_batch: true   # 多数交易日无新预告
