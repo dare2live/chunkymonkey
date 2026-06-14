@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-06-13 22:53:37 CST
+**Snapshot 时间**: 2026-06-14 12:29:30 CST
 
 ## 主线状态
 
@@ -44,28 +44,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `03204a35 evidence: 压缩前探索 workflow 孤儿证据落档 (CYQ/IC/S3 ablation/资金流) + index sync fixtures` |
-| 最近 24h commits | 39 |
-| 未 commit 文件 | 0 |
+| HEAD | `9ac37595 perf: DB 瘦身实删 62M 行过时表 (lifecycle 分析+对抗核证, 用户'有引用≠不能删')` |
+| 最近 24h commits | 31 |
+| 未 commit 文件 | 1 |
 
 ### 最近 10 commits
 
 ```
-03204a35 evidence: 压缩前探索 workflow 孤儿证据落档 (CYQ/IC/S3 ablation/资金流) + index sync fixtures
-41f2fb8c design: 多维策略立方体顶层设计 (Segment×Feature-set×Policy) — 立法 PROCEED + 实例化 BLOCK
-6dff6e00 chore: v1 旧库 34G 删除收尾 (用户授权删) — moth 断言移除 + goal 状态更新
-8005079a feat: CYQ 筹码买卖点深挖 — px_pctile 真卖点信号但扣成本不独立, 落地=LHB 退出闸 (用户: 深挖)
-f1e21345 feat: tushare raw 域挖掘 — daily_basic 风格因子是唯一真增量 (用户: 同步挖掘)
-52a5bcc7 feat: 地基 index 族落库 — KPI 超额 HS300 真相源 + 申万 L2 PIT (用户: 先打地基)
-9c3e3003 docs: 作战图对齐 06-13 进度 — 三判决落定/泄漏治理立/转攻地基 (用户: 文档对齐最新进度)
-f0143b4a feat: 干净特征 forward-IC 探索结果 — 有诚实弱 alpha 0 泄漏 (充分利用 duckdb)
-c1024c1c docs: 异常核查协议入泄漏模块+验证计划 (用户: 异常不应直接排除而应核查)
-d86d8347 fix: safe_commit Step 3.6 变量名修正 — STAGED 未定义致消费方泄漏闸静默不触发
+9ac37595 perf: DB 瘦身实删 62M 行过时表 (lifecycle 分析+对抗核证, 用户'有引用≠不能删')
+d201815a feat: db_dead_table_audit 保守死表审计工具 + 纠偏 — 对抗验证挡住误删 (探索 agent over-claim)
+1c1b1516 design: DB cutover-free 优化方案 (探索) — 渐进分区原则 + ~10G 瘦身清单
+2935bd1d feat: S1 — express/fina_indicator 注册 + sync_runner by_period 分支 (基本面四件套补齐配置)
+6e65b50d feat: alpha 验证程序 S1 — income 正式利润表接入 (基本面四件套第二个) + express/fina_indicator 设计就绪
+5d747ffe feat: alpha 验证程序 S1 — forecast 业绩预告接入 (基本面四件套第一个, PEAD 事件因子)
+c3447f42 design: DB 分区 cutover 暂缓定案 (探索后) — 引擎已证明, 为罕见竞争建永久 attach=rule6 反模式
+6563613e design: D2-minimal 定案 + feature_store 迁验 PASS (探索后决策: 转 D2 比 D1 干净)
+763d2c9f feat: DB 分区 D1a — 保真迁移引擎 + experiment_store 25 表迁验 PASS (用户: 平滑过渡)
+f4ce3910 fix: governance_log 写入与业务表同事务原子 — 防 orphan governance (D0 扫描发现)
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**run startup checks first — scripts/chunkyctl doctor --fast; prioritize data_health blocking_yellow, then stage-opt structural blocker / need_027 blocked-gap triage**
+**1 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

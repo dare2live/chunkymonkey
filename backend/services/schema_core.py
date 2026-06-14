@@ -753,4 +753,5 @@ __all__ = ["ensure_core_schema"]
 
 
 def ensure_core_schema(conn) -> None:
-    conn.executescript(CORE_SCHEMA_SQL)
+    from .schema_layer_filter import filter_schema_sql
+    conn.executescript(filter_schema_sql(CORE_SCHEMA_SQL))

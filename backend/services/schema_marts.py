@@ -986,15 +986,18 @@ __all__ = ["ensure_mart_schema", "ensure_schema"]
 
 
 def ensure_mart_schema(conn) -> None:
+    from .schema_layer_filter import filter_schema_sql, keep_stmt
+    _sql = filter_schema_sql(MART_SCHEMA_SQL)
     if hasattr(conn, "executescript"):
-        conn.executescript(MART_SCHEMA_SQL)
+        conn.executescript(_sql)
     else:
-        for stmt in MART_SCHEMA_SQL.split(";"):
+        for stmt in _sql.split(";"):
             stmt = stmt.strip()
             if stmt:
                 conn.execute(stmt)
     for stmt in MART_SCHEMA_MIGRATIONS:
-        conn.execute(stmt)
+        if keep_stmt(stmt):  # layer 门控: 跳过非活层表 ALTER (防引用已删表报错)
+            conn.execute(stmt)
 
 
 def ensure_schema(conn) -> None:

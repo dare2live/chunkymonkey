@@ -330,7 +330,8 @@ def _table_columns(conn, table_name: str) -> set[str]:
 
 
 def _apply_schema_maintenance(conn) -> None:
-    conn.executescript(SCHEMA_MAINTENANCE_SQL)
+    from .schema_layer_filter import filter_schema_sql
+    conn.executescript(filter_schema_sql(SCHEMA_MAINTENANCE_SQL))
 
 
 def _execute_optional_ddl(conn, sql: str) -> None:

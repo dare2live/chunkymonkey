@@ -57,6 +57,21 @@ assertions:
     type: shell
     command: ["grep", "-c", "_is_quota_wall\\|QuotaExhaustedError", "backend/services/data_sources/sync_runner.py"]
     expect: {op: ">=", value: 3}
+  - id: data-layer-integrity
+    claim: "每张活表必在 data_layers.yaml 声明 layer (2026-06-14 地基-reset 立: 层级声明化根治'隐式分层→反复推导+耦合无法分离'; 未声明=违纪, 新表必须先声明)"
+    type: shell
+    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python backend/scripts/data_layer_audit.py --check | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)[\"overall\"]==\"PASS\" else 1)' && echo LAYER_OK"]
+    expect: {op: regex, pattern: "LAYER_OK"}
+  - id: minimal-module-main-routers
+    claim: "main.py 挂载 router 数有上界 (反例 2026-06-14: main import 全 router 致地基-reset 时闭包拉不开; 最小化模块纪律, 涨破阈值=耦合回潮须拆)"
+    type: shell
+    command: ["bash", "-c", "grep -c 'include_router' backend/main.py"]
+    expect: {op: "<=", value: 45}
+  - id: minimal-module-no-new-godfile
+    claim: "god-file (>800行) 数 ratchet <=23 (2026-06-14 立基线: data_quality 4286/scoring 2712/signals_v2 2156 等违最小化模块; 禁新增, 存量逐步拆; 涨破=耦合回潮)"
+    type: shell
+    command: ["bash", "-c", "find backend -name '*.py' -not -path '*/__pycache__/*' -not -path '*/tests/*' | xargs wc -l 2>/dev/null | awk '$1>800 && $2!=\"total\"{n++} END{print n+0}'"]
+    expect: {op: "<=", value: 23}
   - id: watermark-refresher-wired
     claim: "kline 水位刷新器接在 daily_update Step 2.97 (2026-06-13 修孤儿化; 检查器写器两器官缺一即水位卡死)"
     type: shell

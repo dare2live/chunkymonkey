@@ -132,6 +132,13 @@ JOIN → 永远带 `AND x.built_at <= t` / `as_of_date`; 宇宙 → `dim_index_m
 - **回填窗口被日历真相源静默 clamp (2026-06-12)** → registry 写 data_start=20050104, 但
   sync_runner 以 dim_trading_calendar (起点 2023-01-03) 为日期源, 2005-2022 全军未落且零告警.
   教训: 回填完成的验收 = 落库 min(trade_date) 对账 data_start, 不是"跑完没报错".
+- **隐式分层+耦合过紧致 reset 极痛 (2026-06-14)** → 339表/26.6G reset 回 85表/2.5G 时, 因当初没按
+  "最小化模块+最小化数据表+配置驱动"设计: 层级隐式(跑4 workflow反复推导哪层) + 模块耦合(main import全
+  router/routers互引)致删码靠 import闭包不可靠(漏相对/动态/子模块import)反复 whack-a-mole + 删表后
+  app启动 schema-init 空重建(59张)悄悄撤销. 根治=层级声明化: `backend/config/data_layers.yaml`(每表
+  声明layer单一真相源) + `data_layer_audit.py`(未声明=FAIL) + moth `data-layer-integrity`/
+  `minimal-module-main-routers`断言(自动执法非靠人记). 框架 owner=docs/data_management_framework.md.
+  教训: 纪律不固化进自动 gate (moth/hook/codegraph) 必漂移; 删改按声明的 layer 查询, 不靠脆弱 import 闭包.
 
 ## 5. Optuna 治理
 
