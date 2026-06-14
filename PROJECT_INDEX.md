@@ -177,7 +177,7 @@
 > 权威清单 = `backend/config/database_manifest.yaml` (含 retention_class 生命周期分类, 见 db_management_design §13)。
 | DB | 路径 | 用途 | retention_class |
 |---|---|---|---|
-| `smartmoney.duckdb` | `data/smartmoney.duckdb` | 业务主库 (mart_*/fact_*/raw_*/dim_*); **16.3G / 265表** (2026-06-14 删11+68过时表+两轮缩盘 26.6→16.3G) | production_control |
+| `smartmoney.duckdb` | `data/smartmoney.duckdb` | **2.5G / 85表** (2026-06-14 地基-reset: 删整个模型/特征/寻优层144表, 只留基础数据+纯K线中间+档案展示+治理; 26.6→2.5G; 参数寻优重做; 退役实验知识→config/experiments/retired_experiments.yaml) | production_control(地基) |
 | `market.duckdb` | `data/market.duckdb` | K 线 + 行情 (`v_price_kline_qfq`) | canonical_source |
 | `tushare_raw.duckdb` | `data/tushare_raw.duckdb` | TuShare raw 镜像 (raw_tushare_*), sync_runner 独占写, 写锁隔离 | canonical_source (mirror) |
 | `alpha158.duckdb` | `data/alpha158.duckdb` | 因子特征库 (可重建) | rebuildable_feature |
@@ -453,7 +453,8 @@
 | `backend/config/db_partition_tiers.yaml` | **DB 多库分区 tier** (源/特征/服务/实验) + 原子写簇 (关联性检查); 驱动 `backend/scripts/db_partition_migrate.py` (保真迁移引擎: 原 DDL 含 PK + INSERT SELECT, 非 CTAS; dry-run 默认 + 前后验证[行数/EXCEPT/约束/索引] + 绝不 DROP 源; D1a experiment_store 25 表迁验 PASS [暂缓 repoint, live 耦合重]; **D2-minimal feature_store 2 表 fact_feature_panel+validation 迁验 PASS** [解决 build_feature_panel vs daily_update 写锁竞争, repoint 待定]) — owner=analysis/db_management_design_20260614.md |
 | `backend/scripts/db_compact.py` | **整库保真缩盘** (删行后回收盘): ATTACH-copy 逐表原 DDL 含 PK + INSERT + 重建索引 + 视图按定义重建 (依赖容忍重试), **绝不 CTAS** (避 06-12 约束 315→1); dry-run 默认; 验证前 DETACH src (information_schema/约束/索引跨 attach 库会双计) + 逐表行数对账全等才换名, 旧库留 `_precompact_bak`。2026-06-14 实测 smartmoney 26.6G→17.5G (-34%, 333表/4视图/821约束/333索引全等) — owner=db_management_design §13.4 |
 | `backend/scripts/db_dead_table_audit.py` | **死表守门** (0行 AND 0字面引用才判死, 保守防误删); 大表过时判定走 lifecycle 分析非本工具 — owner=db_management_design §12 |
-| `backend/scripts/db_lifecycle_delete.py` | **生命周期删除执行器** (可复用): 读删除 manifest, 4 道闸 — (1) live守护 word-boundary grep daily_update脚本集+serving/ensemble/routers, 命中REFUSE; (2) action=archive 先 COPY parquet 再删; (3) mart_data_deletion_record 留痕; (4) 残留扫描悬挂视图。dry-run默认。2026-06-14 删 68 L1探索表(0真消费者子集)+3悬挂视图 — owner=db_management_design §13.6 |
+| `backend/scripts/db_lifecycle_delete.py` | **生命周期删除执行器** (可复用): 读删除 manifest, 4 道闸 — (1) live守护 word-boundary grep daily_update脚本集+serving/ensemble/routers, 命中REFUSE (`--force` 跳过用于有意删 live 层如地基-reset); (2) action=archive 先 COPY parquet 再删 (drop 则不归档); (3) mart_data_deletion_record 留痕; (4) 残留扫描悬挂视图 + view 处理 + 周期 CHECKPOINT 防 catalog stale。dry-run默认。2026-06-14 地基-reset 删 144 表/视图 — owner=db_management_design §13.6 |
+| `backend/config/experiments/retired_experiments.yaml` | **退役实验知识库** (实验模块 config 子目录): 模型/寻优层删全表时把"用了什么(字段族/年限/工具/结论)"留这替代留全表 (用户 2026-06-14: challenger 只留摘要不留全表); 参数寻优重做的历史参照; 14 子系统 (公式工厂/p0a-p0b/multidim/synergy/drift/paper_sim/stage-opt/horizon/market_perception/特征搜索/research_chains 等) |
 | `backend/config/pipeline_performance_policy.yaml` | step budget 预算 |
 | `backend/config/data_sources.yaml` | 数据源 |
 | `backend/config/storage_retention.yaml` | 保留期 |

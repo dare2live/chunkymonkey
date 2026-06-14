@@ -1,403 +1,724 @@
-run_id: lifecycle_20260614_clean
-source: data-lifecycle-classify workflow wf_09c8aac5 + live交叉核查(主会话收编) + 主会话 external-reader 精核 (仅留 0 真消费者表)
-note: 112候选中47有external消费者(workbench/研究/离线), 删会留尾巴; 本清单仅68张0消费者安全删
-archive_dir: data/archive/lifecycle_20260614
+run_id: lifecycle_20260614_reset
+source: foundation-reset-classify workflow + 用户拍板"执行"; 只留地基85张
+note: '删全表不归档parquet(用户: challenger只留摘要); 知识入 backend/config/experiments/retired_experiments.yaml'
 entries:
-- table: fact_holder_event
+- table: dim_stock_archetype_latest
   action: drop
-  bucket: safe_delete
-  rows: 471217
-  reason: L1 派生, 非 live_cited (consumed_by_views 空, 唯一 reader 自身 builder, model_eligibility=encoded_auxiliary_only); 纯从在库的 fact_top10_holder_period 全量 DELETE+INSERT 确定性重建, 无外部源依赖。删前确认无在跑 ablation 依赖。
-  builder: python backend/scripts/rebuild_holder_events.py
-- table: mart_model_portfolio_curve
+  bucket: reset_model_layer
+  rows: 5503
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: dim_stock_attention_latest
   action: drop
-  bucket: safe_delete
-  rows: 136182
-  reason: 0 live 引用, 离线回测 NAV 曲线, reader_modules=[] 与 production_output 标签矛盾=孤儿回测输出; 从 mart_multidim_prediction+model+K线 确定性重跑。
-  builder: python backend/scripts/backtest_model_portfolio.py
-- table: fact_shareholder_trade_tdx_b
+  bucket: reset_model_layer
+  rows: 5507
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: dim_stock_industry_context_latest
   action: drop
-  bucket: safe_delete
-  rows: 88764
-  reason: tdxhub holders F10 b 段 PIT 表, encoded_auxiliary_only 非 live 消费; 从在库 raw_tdx_f10_holder_research 确定性重建。
-  builder: ingest/rebuild from raw_tdx_f10_holder_research (holders_resolver)
-- table: fact_policy_trade
+  bucket: reset_model_layer
+  rows: 5611
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: dim_stock_quality_latest
   action: drop
-  bucket: safe_delete
-  rows: 80869
-  reason: policy 组合 MVP 回测 trade 明细, research_or_monitoring, 无 live reader; run_portfolio_mvp 可重跑。
-  builder: run_portfolio_mvp
-- table: fact_policy_equity_curve
+  bucket: reset_model_layer
+  rows: 6018
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: dim_stock_stage_days
   action: drop
-  bucket: safe_delete
-  rows: 64207
-  reason: policy 组合 MVP 净值曲线, 无 live reader; run_portfolio_mvp 可重建。
-  builder: run_portfolio_mvp
-- table: mart_architecture_dependency_edge
+  bucket: reset_model_layer
+  rows: 42551
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: dim_stock_stage_latest
   action: drop
-  bucket: safe_delete
-  rows: 43832
-  reason: 架构依赖图边表 (governance_context 自描述), 无 live reader; 随时重扫重建。
-  builder: build_architecture_inventory
-- table: mart_synergy_policy_mtm_daily_path
+  bucket: reset_model_layer
+  rows: 3355
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: dim_stock_turtle_latest
   action: drop
-  bucket: safe_delete
-  rows: 41309
-  reason: synergy policy MTM 路径 (research_or_monitoring 验证产物), 无 live reader, 已登记 experiment tier→迁移后 TRUNCATE。
-  builder: synergy policy mtm builder 重跑
-- table: raw_tdx_f10_extra_parse_status
+  bucket: reset_model_layer
+  rows: 2763
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: dim_strategy_preset
   action: drop
-  bucket: safe_delete
-  rows: 26935
-  reason: F10 解析状态跟踪 (governance_context 运行态), 无 live reader; 下次 sync 重生。
-  builder: tdx_f10_extra_client 重跑
-- table: fact_shareholder_trade
-  action: drop
-  bucket: safe_delete
-  rows: 25462
-  reason: 股东增减持, encoded_auxiliary_only 无 live reader; 从 tdxhub raw 重建。
-  builder: ingest_holders_tdxhub
-- table: fact_jgdy_event
-  action: drop
-  bucket: safe_delete
-  rows: 20567
-  reason: 机构调研事件, encoded_auxiliary_only, 仅探索 panel builder 读; 从 akshare raw 重建。删前复核 build_feature_panel 是否入 champion 训练 (当前判 build-only)。
-  builder: akshare jgdy ingest 重建
-- table: fact_stock_turtle_features
-  action: drop
-  bucket: safe_delete
-  rows: 19120
-  reason: 海龟特征 (45 cols), governance_context/not_model_input 无 live reader; 重建。
-  builder: stock_turtle_engine
-- table: fact_shareholder_plan
-  action: drop
-  bucket: safe_delete
-  rows: 16658
-  reason: 股东增减持计划, encoded_auxiliary_only 无 live reader; §4.5 announce_date 47% NULL 已修; 从 tdxhub raw 重建。
-  builder: ingest_holders_tdxhub
-- table: mart_shareholder_plan_initial_event
-  action: drop
-  bucket: safe_delete
-  rows: 9677
-  reason: 股东增持初始事件 (research_candidate_after_validation, 未进 live); 从 fact_shareholder_plan 重建。
-  builder: shareholder_plan_initial_event builder
-- table: mart_today_signal_cache_signal
-  action: drop
-  bucket: safe_delete
-  rows: 9286
-  reason: 今日信号缓存 (governance_context cache 态), 无 live reader 命中; 下次刷新重生。
-  builder: signals_v2 重算
-- table: fact_sector_predicted_ret_daily
-  action: drop
-  bucket: safe_delete
-  rows: 8983
-  reason: 板块预测收益 (训练输出 governance_context), 无 live reader; 重跑。
-  builder: train_sector_rotation
-- table: mart_feature_bucket_effect
-  action: drop
-  bucket: safe_delete
-  rows: 7105
-  reason: 特征桶效应 (因子探索 governance_context), 无 live reader; 重建。
-  builder: temporal synergy builder
-- table: market_gap_queue
-  action: drop
-  bucket: safe_delete
-  rows: 6456
-  reason: sync 缺口队列 (运行态), 无 live reader; 下次 sync 重生。
-  builder: gap_queue 重算
-- table: financial_sync_state
-  action: drop
-  bucket: safe_delete
-  rows: 5514
-  reason: 财报 sync 状态 watermark (运行态), 无 live reader; 下次 sync 重生。
-  builder: financial_client 重跑
-- table: fact_controlling_shareholder
-  action: drop
-  bucket: safe_delete
-  rows: 5201
-  reason: 控股股东表, encoded auxiliary 无 live reader; 从 tdxhub raw 重建。
-  builder: ingest_holders_tdxhub
-- table: mart_feature_relevance_stability
-  action: drop
-  bucket: safe_delete
-  rows: 4707
-  reason: 特征相关性稳定度 (因子探索 governance_context), 无 live reader; 重建。
-  builder: temporal synergy builder
-- table: mart_feature_redundancy_pair
-  action: drop
-  bucket: safe_delete
-  rows: 3774
-  reason: 特征冗余对 (因子探索 governance_context), 无 live reader; 重建。
-  builder: temporal redundancy builder
-- table: mart_feature_drift_root_cause
-  action: drop
-  bucket: safe_delete
-  rows: 2422
-  reason: 特征漂移根因 (governance_context 无 reader), builder 在; 重建。
-  builder: drift root cause builder
-- table: mart_etf_snapshot_latest
-  action: drop
-  bucket: safe_delete
-  rows: 1647
-  reason: ETF 快照最新 (research_or_monitoring 无 reader); 从 etf.duckdb 源重建。
-  builder: etf snapshot builder
-- table: mart_feature_drift_histogram
-  action: drop
-  bucket: safe_delete
-  rows: 540
-  reason: 特征漂移直方图 (monitoring_cache 无 reader); drift.py 重算。
-  builder: drift.py
-- table: mart_drift_safe_candidate_feature
-  action: drop
-  bucket: safe_delete
-  rows: 298
-  reason: 抗漂移候选特征 (governance 无 reader), builder 在; 重建。
-  builder: drift safe candidate builder
-- table: mart_per_stock_optuna_best
-  action: drop
-  bucket: safe_delete
-  rows: 284
-  reason: per-stock MACD Optuna 最优探索输出 (无 reader); 重跑 study; 已登记 experiment tier→迁移后 TRUNCATE。
-  builder: per-stock MACD optuna 重跑
-- table: mart_optuna_feature_space_trial
-  action: drop
-  bucket: safe_delete
-  rows: 243
-  reason: 特征空间 Optuna 逐 trial 过程 (无 reader); 重跑 study; 已登记 experiment tier→迁移后 TRUNCATE。
-  builder: feature space optuna 重跑
-- table: mart_tdx_data_need_coverage
-  action: drop
-  bucket: safe_delete
-  rows: 27
-  reason: TDX 数据需求覆盖审计快照, audit 脚本从 registry+config 确定性重建, 非 live 读。
-  builder: tdx data need coverage audit 脚本
-- table: mart_lineage
-  action: drop
-  bucket: safe_delete
-  rows: 24
-  reason: 数据血缘治理快照 (governance_context monitor_only), 从 schema 确定性重建, 非 live 读。
-  builder: lineage run (从 schema)
-- table: mart_drift_safe_candidate_batch_eval
-  action: drop
-  bucket: safe_delete
-  rows: 23
-  reason: 漂移安全候选批量评估 (因子探索, 0 reader); 从 raw+config 重建。
-  builder: drift safe candidate batch builder
-- table: mart_pricing_label_data_readiness_gate
-  action: drop
-  bucket: safe_delete
-  rows: 22
-  reason: 定价 label 数据就绪 gate 快照 (0 reader); builder 从源重建, 非 live 决策。
-  builder: pricing label readiness gate builder
-- table: mart_architecture_inventory_summary
-  action: drop
-  bucket: safe_delete
-  rows: 14
-  reason: 架构盘点摘要 (治理 monitor_only), 扫代码库重建非 live。
-  builder: build_architecture_inventory
-- table: mart_data_source_reassignment_proposal
-  action: drop
-  bucket: safe_delete
-  rows: 14
-  reason: 数据源重分配提案 (审计脚本产物 0 reader, governance_context); 重建。
-  builder: data source reassignment 审计脚本
-- table: mart_synergy_policy_mtm_rerank
-  action: drop
-  bucket: safe_delete
-  rows: 14
-  reason: Optuna 后 MTM 回撤 rerank 研究 (0 reader, research_evidence_only); 已登记 experiment tier→迁移后 TRUNCATE。
-  builder: synergy mtm rerank builder
-- table: mart_model_ablation_run
-  action: drop
-  bucket: safe_delete
-  rows: 10
-  reason: 特征 ablation run 输出 (0 reader, production_output 标签但无消费者); 从 panel 重跑; 已登记 experiment tier→迁移后 TRUNCATE。
-  builder: model ablation 重跑 (从 panel)
-- table: mart_pricing_label_policy_gate
-  action: drop
-  bucket: safe_delete
-  rows: 9
-  reason: 定价 label 策略 gate (0 reader, governance_context); 服务可重写。
-  builder: pricing label policy gate 服务
-- table: mart_drift_safe_candidate_batch_summary
-  action: drop
-  bucket: safe_delete
-  rows: 8
-  reason: 漂移安全候选批量摘要 (0 reader 因子探索), builder 重建。
-  builder: drift safe candidate batch summary builder
-- table: mart_feature_panel_prune_run
-  action: drop
-  bucket: safe_delete
-  rows: 8
-  reason: 特征面板剪枝 run (0 reader, blocking 标签但无消费者); 从 canonical kline 重跑。
-  builder: feature panel prune 重跑
-- table: mart_synergy_policy_mtm_rerank_summary
-  action: drop
-  bucket: safe_delete
+  bucket: reset_model_layer
   rows: 3
-  reason: MTM rerank 摘要 (0 reader, research_evidence_only); 重建。
-  builder: synergy mtm rerank summary builder
-- table: mart_audit_snapshot_state
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: dim_style_factor
   action: drop
-  bucket: safe_delete
+  bucket: reset_model_layer
+  rows: 6
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_capital_flow_pit_daily
+  action: drop
+  bucket: reset_model_layer
+  rows: 941760
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_chain_alpha_truth
+  action: drop
+  bucket: reset_model_layer
+  rows: 15009
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_feature_panel
+  action: drop
+  bucket: reset_model_layer
+  rows: 4193121
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_financial_pit_daily
+  action: drop
+  bucket: reset_model_layer
+  rows: 3768758
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_fund_holding_tdx_f10
+  action: drop
+  bucket: reset_model_layer
+  rows: 17145
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_industry_beta_daily
+  action: drop
+  bucket: reset_model_layer
+  rows: 2950666
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_institution_follow_backtest
+  action: drop
+  bucket: reset_model_layer
+  rows: 180
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_market_cap_decile_daily
+  action: drop
+  bucket: reset_model_layer
+  rows: 3550837
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_model_train_log
+  action: drop
+  bucket: reset_model_layer
+  rows: 6
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_optuna_governance_log
+  action: drop
+  bucket: reset_model_layer
+  rows: 12964
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_paper_position
+  action: drop
+  bucket: reset_model_layer
+  rows: 6462
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_paper_sim_position
+  action: drop
+  bucket: reset_model_layer
+  rows: 8357
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_paper_sim_trade
+  action: drop
+  bucket: reset_model_layer
+  rows: 16561
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_policy_eval
+  action: drop
+  bucket: reset_model_layer
+  rows: 162
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_rally_ground_truth
+  action: drop
+  bucket: reset_model_layer
+  rows: 31531
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_regime_state
+  action: drop
+  bucket: reset_model_layer
+  rows: 775
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_risk_factors
+  action: drop
+  bucket: reset_model_layer
+  rows: 4855826
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_sector_momentum_daily
+  action: drop
+  bucket: reset_model_layer
+  rows: 10816
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_setup_snapshot
+  action: drop
+  bucket: reset_model_layer
+  rows: 0
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_signal_context
+  action: drop
+  bucket: reset_model_layer
+  rows: 4134320
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_stock_archetype
+  action: drop
+  bucket: reset_model_layer
+  rows: 22000
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_stock_attention_snapshot
+  action: drop
+  bucket: reset_model_layer
+  rows: 90879
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_stock_fundamental_stage_daily
+  action: drop
+  bucket: reset_model_layer
+  rows: 42551
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_stock_industry_context
+  action: drop
+  bucket: reset_model_layer
+  rows: 80778
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_stock_selection_log
+  action: drop
+  bucket: reset_model_layer
+  rows: 872904
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_stock_stage_features
+  action: drop
+  bucket: reset_model_layer
+  rows: 48958
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_stock_type_daily
+  action: drop
+  bucket: reset_model_layer
+  rows: 42551
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: fact_technical_trigger
+  action: drop
+  bucket: reset_model_layer
+  rows: 5962134
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_architecture_cleanup_plan
+  action: drop
+  bucket: reset_model_layer
+  rows: 69
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_architecture_inventory_asset
+  action: drop
+  bucket: reset_model_layer
+  rows: 7323
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_bestchoice_context_exit_policy_v1
+  action: drop
+  bucket: reset_model_layer
+  rows: 2288
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_challenger_evidence_bundle
+  action: drop
+  bucket: reset_model_layer
+  rows: 0
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_champion_model
+  action: drop
+  bucket: reset_model_layer
   rows: 1
-  reason: 审计快照状态游标 (0 reader); audit 服务再生。
-  builder: audit 服务再生
-- table: mart_etf_snapshot_state
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_daily_blended_recommendation
   action: drop
-  bucket: safe_delete
+  bucket: reset_model_layer
+  rows: 50
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_daily_ensemble_picks_v4_bc_v1
+  action: drop
+  bucket: reset_model_layer
+  rows: 32
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_daily_formula_buys
+  action: drop
+  bucket: reset_model_layer
+  rows: 8
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_daily_formula_candidate_bestchoice_v1
+  action: drop
+  bucket: reset_model_layer
+  rows: 25684
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_daily_position_recommendation
+  action: drop
+  bucket: reset_model_layer
+  rows: 15
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_daily_position_recommendation_pit_diagnostic
+  action: drop
+  bucket: reset_model_layer
+  rows: 15
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_daily_recommendation
+  action: drop
+  bucket: reset_model_layer
+  rows: 350
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_daily_recommendation_explanation
+  action: drop
+  bucket: reset_model_layer
+  rows: 9450
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_daily_recommendation_risk
+  action: drop
+  bucket: reset_model_layer
+  rows: 2
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_daily_topk_view_cache
+  action: drop
+  bucket: reset_model_layer
+  rows: 350
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_dual_confirm
+  action: drop
+  bucket: reset_model_layer
+  rows: 18290
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_ensemble_signals
+  action: drop
+  bucket: reset_model_layer
+  rows: 9238
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_feature_availability_contract
+  action: drop
+  bucket: reset_model_layer
+  rows: 76
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_feature_catalog_current
+  action: drop
+  bucket: reset_model_layer
+  rows: 2672
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_feature_drift
+  action: drop
+  bucket: reset_model_layer
+  rows: 405
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_feature_null_policy
+  action: drop
+  bucket: reset_model_layer
+  rows: 35
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_feature_panel_validation
+  action: drop
+  bucket: reset_model_layer
+  rows: 29
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_feature_pit_audit
+  action: drop
+  bucket: reset_model_layer
+  rows: 737
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_feature_pit_coverage_summary
+  action: drop
+  bucket: reset_model_layer
+  rows: 6
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_feature_pit_join_plan
+  action: drop
+  bucket: reset_model_layer
+  rows: 2672
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_feature_rank_matrix_cache_manifest
+  action: drop
+  bucket: reset_model_layer
+  rows: 2
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_feature_retention_decision
+  action: drop
+  bucket: reset_model_layer
+  rows: 0
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_follow_return_label_build
+  action: drop
+  bucket: reset_model_layer
+  rows: 27
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_follow_return_label_quality
+  action: drop
+  bucket: reset_model_layer
+  rows: 125
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_forecast_upside_live
+  action: drop
+  bucket: reset_model_layer
+  rows: 11513
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_formula_horizon_evidence
+  action: drop
+  bucket: reset_model_layer
+  rows: 133
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_formula_weight_history
+  action: drop
+  bucket: reset_model_layer
+  rows: 15
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_institution_industry_stat
+  action: drop
+  bucket: reset_model_layer
+  rows: 4807
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_institution_profile
+  action: drop
+  bucket: reset_model_layer
+  rows: 231
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_institution_score_daily
+  action: drop
+  bucket: reset_model_layer
+  rows: 2412230
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_market_perception_audit_log
+  action: drop
+  bucket: reset_model_layer
+  rows: 8
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_market_perception_daily
+  action: drop
+  bucket: reset_model_layer
+  rows: 373
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_market_perception_emotion_daily
+  action: drop
+  bucket: reset_model_layer
+  rows: 814
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_market_perception_leader_follower_daily
+  action: drop
+  bucket: reset_model_layer
+  rows: 910
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_market_perception_stock_context_daily
+  action: drop
+  bucket: reset_model_layer
+  rows: 702
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_market_perception_style_daily
+  action: drop
+  bucket: reset_model_layer
+  rows: 14
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_market_perception_theme_daily
+  action: drop
+  bucket: reset_model_layer
+  rows: 168
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_market_perception_under_reaction_daily
+  action: drop
+  bucket: reset_model_layer
+  rows: 702
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_model_explanation
+  action: drop
+  bucket: reset_model_layer
+  rows: 6
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_model_feature_lineage
+  action: drop
+  bucket: reset_model_layer
+  rows: 27
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_model_lifecycle
+  action: drop
+  bucket: reset_model_layer
   rows: 1
-  reason: ETF 快照状态游标 (0 reader); manager 再生。
-  builder: etf snapshot manager 再生
-- table: mart_pricing_label_policy
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_model_portfolio_summary
   action: drop
-  bucket: safe_delete
+  bucket: reset_model_layer
+  rows: 1195
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_model_selection_run
+  action: drop
+  bucket: reset_model_layer
+  rows: 47
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_model_stability_context_diagnostic
+  action: drop
+  bucket: reset_model_layer
+  rows: 120
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_model_stability_context_summary
+  action: drop
+  bucket: reset_model_layer
+  rows: 24
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_model_stability_search_summary
+  action: drop
+  bucket: reset_model_layer
+  rows: 58
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_model_walkforward_fold
+  action: drop
+  bucket: reset_model_layer
+  rows: 8
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_model_walkforward_portfolio_summary
+  action: drop
+  bucket: reset_model_layer
+  rows: 16
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_multidim_model
+  action: drop
+  bucket: reset_model_layer
   rows: 1
-  reason: 定价 label 策略记录 (0 reader, governance_context); 服务可重写。
-  builder: pricing label policy 服务
-- table: mart_synergy_policy_mtm_strategy_sweep_summary
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_multidim_prediction
   action: drop
-  bucket: safe_delete
-  rows: 1
-  reason: MTM 策略 sweep 摘要 (0 reader, research_evidence_only); 重建。
-  builder: synergy mtm sweep summary builder
-- table: mart_today_signal_cache
+  bucket: reset_model_layer
+  rows: 575923
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_optuna_synergy_study_summary
   action: drop
-  bucket: safe_delete
-  rows: 1
-  reason: 今日信号缓存 (派生缓存 0 reader); signals_v2 重算自动重建。
-  builder: signals_v2 重算
-- table: mart_data_processing_tool_issue
+  bucket: reset_model_layer
+  rows: 34
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_p0a_feature_label_panel_v3
   action: drop
-  bucket: safe_delete
+  bucket: reset_model_layer
+  rows: 4303460
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_p0a_feature_label_panel_v4
+  action: drop
+  bucket: reset_model_layer
+  rows: 4303460
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_p0a_feature_label_panel_v5
+  action: drop
+  bucket: reset_model_layer
+  rows: 2733903
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_p0a_label_panel
+  action: drop
+  bucket: reset_model_layer
+  rows: 4195568
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_p0b_oos_predictions
+  action: drop
+  bucket: reset_model_layer
+  rows: 7118999
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_p0b_walkforward_eval
+  action: drop
+  bucket: reset_model_layer
+  rows: 22
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_p3_acceptance_result
+  action: drop
+  bucket: reset_model_layer
+  rows: 4
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_paper_nav
+  action: drop
+  bucket: reset_model_layer
+  rows: 2393
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_paper_sim_kpi
+  action: drop
+  bucket: reset_model_layer
+  rows: 59
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_paper_sim_lambdamart_v6_kpi_compare
+  action: drop
+  bucket: reset_model_layer
+  rows: 18
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_paper_sim_nav
+  action: drop
+  bucket: reset_model_layer
+  rows: 20477
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_per_formula_stage_optimal
+  action: drop
+  bucket: reset_model_layer
+  rows: 426
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_per_stock_stage_strategy_optimal
+  action: drop
+  bucket: reset_model_layer
+  rows: 1725
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_per_stock_stage_strategy_optimal_pit
+  action: drop
+  bucket: reset_model_layer
+  rows: 2416
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_per_stock_strategy_optimal
+  action: drop
+  bucket: reset_model_layer
+  rows: 24442
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_prediction_outcome
+  action: drop
+  bucket: reset_model_layer
+  rows: 149
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_research_schedule_plan
+  action: drop
+  bucket: reset_model_layer
+  rows: 223
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_sector_momentum
+  action: drop
+  bucket: reset_model_layer
+  rows: 41
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_shareholder_plan_family_walkforward
+  action: drop
+  bucket: reset_model_layer
+  rows: 104
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_shareholder_plan_family_walkforward_summary
+  action: drop
+  bucket: reset_model_layer
+  rows: 26
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_shareholder_plan_feature_family_eval
+  action: drop
+  bucket: reset_model_layer
+  rows: 195
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_shareholder_plan_initial_feature_panel_quality
+  action: drop
+  bucket: reset_model_layer
+  rows: 2
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_signal_ic
+  action: drop
+  bucket: reset_model_layer
+  rows: 1619
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_sniper_score_daily
+  action: drop
+  bucket: reset_model_layer
+  rows: 2412230
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_stage_formula_fitness
+  action: drop
+  bucket: reset_model_layer
+  rows: 1015
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_stock_formula_buy_signal_daily
+  action: drop
+  bucket: reset_model_layer
+  rows: 7930
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_stock_formula_optuna_bestchoice_v1
+  action: drop
+  bucket: reset_model_layer
+  rows: 1146
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_stock_horizon_candidate_gate
+  action: drop
+  bucket: reset_model_layer
+  rows: 51526
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_stock_horizon_profile
+  action: drop
+  bucket: reset_model_layer
+  rows: 103252
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_stock_horizon_selection
+  action: drop
+  bucket: reset_model_layer
+  rows: 20620
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_stock_screening
+  action: drop
+  bucket: reset_model_layer
+  rows: 4657
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_stock_selection_outcome
+  action: drop
+  bucket: reset_model_layer
+  rows: 371596
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_stock_selection_summary
+  action: drop
+  bucket: reset_model_layer
+  rows: 19667
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_stock_survey_features
+  action: drop
+  bucket: reset_model_layer
+  rows: 237239
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_stock_trade_plan
+  action: drop
+  bucket: reset_model_layer
+  rows: 200
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_stock_trend
+  action: drop
+  bucket: reset_model_layer
+  rows: 3354
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_strategy_result_registry
+  action: drop
+  bucket: reset_model_layer
+  rows: 80
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_synergy_policy_candidate
+  action: drop
+  bucket: reset_model_layer
+  rows: 52
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_synergy_policy_evidence_bundle
+  action: drop
+  bucket: reset_model_layer
+  rows: 41
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_synergy_policy_gate
+  action: drop
+  bucket: reset_model_layer
+  rows: 41
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_synergy_policy_mtm_evidence_bundle
+  action: drop
+  bucket: reset_model_layer
+  rows: 56
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_synergy_policy_mtm_gate
+  action: drop
+  bucket: reset_model_layer
+  rows: 56
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_synergy_policy_walkforward
+  action: drop
+  bucket: reset_model_layer
+  rows: 175
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_tdx_gpcw_auto_pit_audit
+  action: drop
+  bucket: reset_model_layer
+  rows: 690
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_tdx_keep_promotion_gate
+  action: drop
+  bucket: reset_model_layer
   rows: 0
-  reason: 数据处理工具问题日志 (0 行 0 reader); monitor 服务再生。
-  builder: monitor 服务再生
-- table: mart_data_processing_tool_run
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: mart_v7_daily_forward_picks
   action: drop
-  bucket: safe_delete
-  rows: 0
-  reason: 数据处理工具 run 日志 (0 行 0 reader); monitor 服务再生。
-  builder: monitor 服务再生
-- table: mart_feature_candidate_coverage
+  bucket: reset_model_layer
+  rows: 20
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: research_cross_factor
   action: drop
-  bucket: safe_delete
-  rows: 0
-  reason: 特征候选覆盖 (0 行因子探索), builder 可重建。
-  builder: feature candidate coverage builder
-- table: mart_hybrid_feature_panel_build
+  bucket: reset_model_layer
+  rows: 259
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: research_holding_chains
   action: drop
-  bucket: safe_delete
-  rows: 0
-  reason: 混合特征面板构建记录 (0 行 0 reader, blocking 标签但空无消费者); 从 raw 重建。
-  builder: hybrid feature panel builder
-- table: mart_model_composite_score
+  bucket: reset_model_layer
+  rows: 15009
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: research_inst_industry_performance
   action: drop
-  bucket: safe_delete
-  rows: 0
-  reason: 模型综合分 (0 行 0 reader, production_output 标签但空无消费者); research 服务可重算。
-  builder: model composite score 服务
-- table: mart_model_edge_flags
+  bucket: reset_model_layer
+  rows: 6564
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: research_signal_transfer
   action: drop
-  bucket: safe_delete
-  rows: 0
-  reason: 模型 edge flags (0 行 0 reader, production_output 标签但空无消费者); research 服务可重算。
-  builder: model edge flags 服务
-- table: mart_model_holding_topk_eval
+  bucket: reset_model_layer
+  rows: 967
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'
+- table: v_stock_sector_momentum_daily
   action: drop
-  bucket: safe_delete
+  bucket: reset_model_layer
   rows: 0
-  reason: 持仓 topk 评估 (0 行 0 reader, production_output 标签但空无消费者); builder 可重跑。
-  builder: model holding topk eval builder
-- table: mart_research_reflection_log
-  action: drop
-  bucket: safe_delete
-  rows: 0
-  reason: 研究反思日志 (0 行 0 reader, governance_context); 服务重写。
-  builder: research reflection 服务
-- table: mart_tdx_gpcw_auto_feature_cluster
-  action: drop
-  bucket: safe_delete
-  rows: 0
-  reason: TDX gpcw 自动特征聚类 (0 行因子探索), builder 可重跑。
-  builder: tdx gpcw auto feature cluster builder
-- table: mart_tdx_gpcw_auto_feature_score
-  action: drop
-  bucket: safe_delete
-  rows: 0
-  reason: TDX gpcw 自动特征打分 (0 行), builder 可重跑。
-  builder: tdx gpcw auto feature score builder
-- table: mart_tdx_gpcw_auto_optuna_run
-  action: drop
-  bucket: safe_delete
-  rows: 0
-  reason: TDX gpcw 自动 Optuna run (0 行参数搜索), builder 可重跑; 已登记 experiment tier。
-  builder: tdx gpcw auto optuna 重跑
-- table: mart_tdx_gpcw_auto_retention_decision
-  action: drop
-  bucket: safe_delete
-  rows: 0
-  reason: TDX gpcw 自动保留决策 (0 行), builder 可重建。
-  builder: tdx gpcw auto retention builder
-- table: mart_tdx_server_health
-  action: drop
-  bucket: safe_delete
-  rows: 0
-  reason: TDX 服务器健康状态 (0 行 0 reader); tdx_source 探活再生。
-  builder: tdx_source 探活再生
-- table: fact_feature_panel_tdx_keep_challenger
-  action: archive
-  bucket: archive_first
-  rows: 4052975
-  reason: TDX keep 挑战者实验面板 (feature-set challenger), max_date 2026-05-06 stale 5+ 周, 无 live/champion/serving 引用 (仅自身 builder 读), 被 live v4/v5 versioned panel 取代。但重建直接依赖的 fact_feature_panel_candidate 已 drop,
-    当前不
-- table: mart_unified_v1_wf_oos_predictions
-  action: archive
-  bucket: archive_first
-  rows: 312607
-  reason: WF OOS predictions 孤儿表 (signal_date 2024-07..09 单季), 0 writer 0 reader 非 live 非 source; 模型 OOS 预测产物且无 builder 可确定性重建 (上游 unified_ranker_v1 训练态已散), 删即失去对该实验再审计能力。先 EXPORT parquet 冷归档再删, 防失去 PIT/leakage
-- table: raw_executive_trade
-  action: archive
-  bucket: archive_first
-  rows: 144483
-  reason: raw 镜像但 0 消费者 (全库无 SELECT/JOIN), 源=akshare:stock_ggcg_em (§4.3 淘汰源不稳定), 非 tushare/market 稳定 raw, 重拉非确定性 (限频/接口变/无 PIT 快照) → 失去即无法可靠再审计。先 EXPORT parquet 冷归档再删, 防丢历史增减持事件审计能力。
-- table: raw_capital_dividend_summary
-  action: archive
-  bucket: archive_first
-  rows: 90800
-  reason: 'akshare 分红/融资历史汇总镜像 (deprecated 源, §4.3 正被 tushare 替换), snapshot_date 镜像外部 API, 历史快照无法从 tushare_raw/market 确定性重放 (regenerable=false)。不在 live 日链 (下游 dim_capital_behavior_latest builder 未被 daily_update '
-- table: fact_stock_quality_features
-  action: archive
-  bucket: archive_first
-  rows: 30072
-  reason: 个股质量特征 (46 cols), governance_context/not_model_input 无 live reader; dim_data_asset writer 字段空 → 重建路径不确定 (regenerable=false)。先 EXPORT parquet 冷归档再删, 防失去再审计能力。
-- table: dim_stock_sw_industry
-  action: archive
-  bucket: archive_first
-  rows: 5805
-  reason: 申万行业映射 dim, reader 空 + 仅 1 引用 + writer 字段空 → 重建路径不确定 (是否仍有 sync 未知)。行业映射类基础 dim 删错影响面大 (生存者/宇宙构建潜在依赖), 不可确定性重建。先 EXPORT 冷归档再删。
-- table: research_setup_replay_event
-  action: drop
-  bucket: already_dead
-  rows: 0
-  reason: setup回放事件, 全库0引用(writer空reader空), 非原始源
-- table: mart_candidate_feature_set_contract
-  action: drop
-  bucket: already_dead
-  rows: 0
-  reason: 候选特征集契约, 0行0reader, data_quality写但从未落数, 空脚手架
-- table: mart_tdx_challenger_report
-  action: drop
-  bucket: already_dead
-  rows: 0
-  reason: TDX挑战者报告, 0行0reader writer=None, 空死表无重建路径
-- table: mart_tdx_gpcw_auto_challenger_report
-  action: drop
-  bucket: already_dead
-  rows: 0
-  reason: TDX gpcw自动挑战者报告, 0行0reader writer=None, 空死表
-- table: scan_log
-  action: drop
-  bucket: already_dead
-  rows: 0
-  reason: 扫描日志, 0行0reader writer=None, 空死表无builder
+  reason: '地基-reset: 模型/特征/寻优层删全表, 知识留 retired_experiments.yaml; 参数寻优重做'

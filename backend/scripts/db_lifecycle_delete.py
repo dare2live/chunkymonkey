@@ -80,24 +80,27 @@ def _next_seq(conn) -> int:
     return n
 
 
-def run(manifest_path: Path, execute: bool) -> int:
+def run(manifest_path: Path, execute: bool, force: bool = False) -> int:
     man = yaml.safe_load(open(manifest_path, encoding="utf-8"))
     entries = man["entries"]
     run_id = man.get("run_id", "lifecycle_adhoc")
     archive_dir = REPO / man.get("archive_dir", "data/archive/lifecycle")
 
     db = _db_path("smartmoney")
-    surface = _live_surface()
-    corpus = _load_surface(surface)
     print(f"=== 生命周期删除 manifest={manifest_path.name} ({len(entries)} 表) db=smartmoney ===")
-    print(f"  live 守护面: {len(surface)} 文件 | run_id={run_id} | archive_dir={archive_dir.relative_to(REPO)}")
 
-    # 1. live 守护 (全部先过一遍, 命中即剔除)
+    # 1. live 守护 (全部先过一遍, 命中即剔除); --force 跳过 (用于有意删除 live 层, 如地基-reset)
     refused = []
-    for e in entries:
-        hit = _is_live_cited(e["table"], corpus)
-        if hit:
-            refused.append((e["table"], hit))
+    if force:
+        print(f"  ** --force: 跳过 live 守护 (有意删除含 live 层) | run_id={run_id} **")
+    else:
+        surface = _live_surface()
+        corpus = _load_surface(surface)
+        print(f"  live 守护面: {len(surface)} 文件 | run_id={run_id} | archive_dir={archive_dir.relative_to(REPO)}")
+        for e in entries:
+            hit = _is_live_cited(e["table"], corpus)
+            if hit:
+                refused.append((e["table"], hit))
     todo = [e for e in entries if e["table"] not in {t for t, _ in refused}]
     if refused:
         print(f"\n  [live 守护] REFUSE {len(refused)} 张 (命中 live 服务面, 不删):")
@@ -115,16 +118,22 @@ def run(manifest_path: Path, execute: bool) -> int:
     dropped, archived, errors = [], [], []
     try:
         seq = _next_seq(conn)
-        for e in todo:
+        for i, e in enumerate(todo, 1):
             t = e["table"]
-            # 存在性
-            if conn.execute(
-                "SELECT count(*) FROM information_schema.tables WHERE table_name=?", [t]
-            ).fetchone()[0] == 0:
-                errors.append((t, "表不存在 (已删?)"))
+            if i % 25 == 0:
+                conn.execute("CHECKPOINT")  # 防连续 DROP 后 catalog 缓存 stale (反例: 2026-06-14 reset 第144张 count(*) 假崩)
+            # 存在性 + 行/列捕获 (包 try: 缓存 stale 时跳过不崩整轮)
+            try:
+                if conn.execute(
+                    "SELECT count(*) FROM information_schema.tables WHERE table_name=?", [t]
+                ).fetchone()[0] == 0:
+                    errors.append((t, "表不存在 (已删?)"))
+                    continue
+                rows = conn.execute(f'SELECT count(*) FROM main."{t}"').fetchone()[0]
+                cols = [c[1] for c in conn.execute(f'PRAGMA table_info("{t}")').fetchall()]
+            except Exception as ex:  # noqa: BLE001
+                errors.append((t, f"行/列捕获失败(跳过) {str(ex)[:60]}"))
                 continue
-            rows = conn.execute(f'SELECT count(*) FROM "{t}"').fetchone()[0]
-            cols = [c[1] for c in conn.execute(f'PRAGMA table_info("{t}")').fetchall()]
             arch_path = ""
             # 2. 冷归档 (archive 动作; 事务外先做, 失败则跳过 drop)
             if e["action"] == "archive":
@@ -141,17 +150,20 @@ def run(manifest_path: Path, execute: bool) -> int:
                     errors.append((t, f"归档失败 {str(ex)[:60]}, 跳过 drop"))
                     continue
             # 3+drop: 留痕 + DROP 同事务
+            is_view = conn.execute(
+                "SELECT count(*) FROM information_schema.tables WHERE table_name=? AND table_type='VIEW'", [t]
+            ).fetchone()[0] > 0
             try:
                 conn.execute("BEGIN TRANSACTION")
                 conn.execute(
                     "INSERT INTO mart_data_deletion_record (record_id, deletion_run_id, table_name, "
                     "delete_scope, key_column, key_value, deleted_rows, deleted_files, deleted_bytes, "
                     "reason, verification_json, deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?, strftime(now(),'%Y-%m-%dT%H:%M:%S'))",
-                    [f"{run_id}_{seq:03d}", run_id, t, "table_drop", "", "", rows, 0, 0,
+                    [f"{run_id}_{seq:03d}", run_id, t, "view_drop" if is_view else "table_drop", "", "", rows, 0, 0,
                      e.get("reason", "")[:400],
                      json.dumps({"bucket": e.get("bucket"), "cols": cols, "archive": arch_path}, ensure_ascii=False)],
                 )
-                conn.execute(f'DROP TABLE "{t}"')
+                conn.execute(f'DROP VIEW "{t}"' if is_view else f'DROP TABLE "{t}"')
                 conn.execute("COMMIT")
                 seq += 1
                 if e["action"] != "archive":
@@ -194,8 +206,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--manifest", required=True)
     ap.add_argument("--execute", action="store_true", help="真删 (默认 dry-run)")
+    ap.add_argument("--force", action="store_true", help="跳过 live 守护 (有意删除含 live 层, 如地基-reset)")
     args = ap.parse_args()
-    sys.exit(run(REPO / args.manifest if not Path(args.manifest).is_absolute() else Path(args.manifest), args.execute))
+    sys.exit(run(REPO / args.manifest if not Path(args.manifest).is_absolute() else Path(args.manifest), args.execute, args.force))
 
 
 if __name__ == "__main__":

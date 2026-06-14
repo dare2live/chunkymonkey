@@ -1,0 +1,90 @@
+version: 1
+_doc: '退役实验知识库 (2026-06-14 地基-reset): 模型/寻优层删全表时把"用了什么"留这, 替代留全表。参数寻优重做时的历史参照。owner=实验模块。'
+retired_experiments:
+- subsystem: 公式工厂 (formula_factory)
+  tables_retired_count: 6
+  summary: '字段族=formula_id/variant/strength/buy_signal/optuna_bestchoice. 工具=services.formula_engine + Optuna bestchoice.
+    结论=3 Phase 接线 05-26 完成但深度寻优从未跑完已搁置 (memory: 主升浪猎手原型灭失); 参数寻优全部重做. 行=fact_technical_trigger + mart_stock_formula_buy_signal_daily(7930)
+    + mart_stock_formula_optuna_bestchoice_v1(1146) + mart_daily_formula_buys/candidate_bestchoice.'
+  retired_date: '2026-06-14'
+  retired_run: lifecycle_20260614_reset
+- subsystem: p0a/p0b 模型 (LGBM 面板)
+  tables_retired_count: 14
+  summary: 字段族=feature_label_panel v3/v4/v5 多源因子+label + p0b OOS predictions/walkforward. 年限=跨 daily. 工具=ml_ranking + walk_forward.expanding_monthly.
+    结论=干净 PIT 参考 (RankIC 0.0108-0.0203) 但属模型层全删重做. 行=22.66M (p0a v3/v4 各 4.30M, v5 2.73M, label 4.20M, p0b OOS 7.12M 为本批最大单体).
+  retired_date: '2026-06-14'
+  retired_run: lifecycle_20260614_reset
+- subsystem: multidim 多维立方体
+  tables_retired_count: 2
+  summary: 字段族=segment×feature×policy 预测分. 工具=多维策略立方体 (06-13 顶层设计 PROCEED 但实例化 BLOCK). 结论=仅顶层设计未落地, 预测表 575,923 行删. 行=575,924.
+  retired_date: '2026-06-14'
+  retired_run: lifecycle_20260614_reset
+- subsystem: synergy 协同策略
+  tables_retired_count: 7
+  summary: 字段族=policy_candidate/evidence_bundle/gate/mtm_gate/walkforward + optuna_synergy_study. 工具=Optuna synergy study.
+    结论=协同策略寻优全删, 参数重做. 行=455 (小体量证据表).
+  retired_date: '2026-06-14'
+  retired_run: lifecycle_20260614_reset
+- subsystem: stability/drift 稳定性
+  tables_retired_count: 3
+  summary: 字段族=PSI/n_train/n_recent/severity + context_diagnostic/summary/search_summary. 工具=build_market regime + drift mitigation
+    (.optuna 2026-05-06 study). 结论=模型稳定性诊断层全删. 行=202.
+  retired_date: '2026-06-14'
+  retired_run: lifecycle_20260614_reset
+- subsystem: paper_sim / lambdamart v6/v7
+  tables_retired_count: 8
+  summary: '字段族=paper nav/kpi/position/trade + lambdamart_v6 kpi_compare + v7 forward_picks. 工具=services.paper_sim 含成本模型.
+    结论=含 tx_cost 的回测层全删 (反例: +312% 假象已修但表本身属模型层). 行=fact_paper_*(position/trade) + mart_paper_nav(2393)/sim_nav(20477)/sim_kpi(59).'
+  retired_date: '2026-06-14'
+  retired_run: lifecycle_20260614_reset
+- subsystem: stage-opt 阶段策略寻优
+  tables_retired_count: 5
+  summary: 字段族=per_stock/per_formula stage_strategy_optimal (sharpe/oos_sharpe/walk_forward) + stage_formula_fitness. 工具=stage_opt_per_stock
+    Optuna. 结论=反例核心 (5cc47987 systemic leakage MAX(oos_sharpe) 给每 signal_date 用未来), 全删重做; 含 _pit 版(2416). 行=30,024.
+  retired_date: '2026-06-14'
+  retired_run: lifecycle_20260614_reset
+- subsystem: horizon-selection 选股/狙击
+  tables_retired_count: 11
+  summary: 字段族=horizon profile/candidate_gate/selection + selection_outcome/summary + sniper_score_daily + signal_ic + trade_plan/trend/screening.
+    工具=多 horizon 选股引擎. 结论=选股决策层全删. 行=2.99M (sniper_score 2.41M + selection_outcome 371,596 为主体).
+  retired_date: '2026-06-14'
+  retired_run: lifecycle_20260614_reset
+- subsystem: market_perception 市场感知
+  tables_retired_count: 5
+  summary: 字段族=regime/breadth/sentiment + leader_follower/stock_context/style/theme/under_reaction daily + emotion + audit_log.
+    工具=market_perception 构建链. 结论=市场情绪派生层全删. 行=daily 表 2496 + perception_daily/emotion/audit (prompt 列的) 另计.
+  retired_date: '2026-06-14'
+  retired_run: lifecycle_20260614_reset
+- subsystem: shareholder_plan_family 股东计划族
+  tables_retired_count: 4
+  summary: '字段族=family_walkforward + feature_family_eval + initial_feature_panel_quality. 工具=walkforward family 评估. 结论=股东计划特征族实验全删
+    (注: 原始 fact_shareholder_plan_tdx_f10 + raw 在 KEEP). 行=327.'
+  retired_date: '2026-06-14'
+  retired_run: lifecycle_20260614_reset
+- subsystem: feature-search 特征工程/搜索
+  tables_retired_count: 40
+  summary: 字段族=feature_panel(79 col 多源混合) + risk_factors/signal_context/stage_features/industry_context/sector_momentum/market_cap_decile/industry_beta
+    + 全套 feature_pit_audit/catalog/null_policy/retention/lineage 治理表. 工具=build_feature_panel + PIT audit. 结论=特征层全删, 重做. 行=feature_panel
+    4xxK + fact_financial_pit_daily(3.77M, model_feature_source 类) + survey_features(237,239).
+  retired_date: '2026-06-14'
+  retired_run: lifecycle_20260614_reset
+- subsystem: research_chains 链路研究
+  tables_retired_count: 5
+  summary: 字段族=holding_chains(15009) + cross_factor(259) + inst_industry_performance(6564) + signal_transfer(967) + chain_alpha_truth(15009).
+    工具=早期 chain-alpha 实验. 结论=反例 (chain leakage RankIC +60/75% 假象, inst_path_a latest + sector 99.978% fallback), 全删. 行=37,808.
+  retired_date: '2026-06-14'
+  retired_run: lifecycle_20260614_reset
+- subsystem: sector_momentum / 派生 daily
+  tables_retired_count: 2
+  summary: 字段族=板块动量 close/ma/ret/excess/prank. 工具=build sector momentum. 结论=v_stock_sector_momentum_daily 是 VIEW (4.61M 幻行非物理)
+    + mart_sector_momentum(41); 派生层全删. 行=物理仅 41.
+  retired_date: '2026-06-14'
+  retired_run: lifecycle_20260614_reset
+- subsystem: champion/ensemble/recommendation 模型产出
+  tables_retired_count: 30
+  summary: '字段族=champion_model/challenger_evidence + ensemble_signals/daily_ensemble_picks_v4 + daily_recommendation(+explanation/risk)
+    + daily_position_recommendation(+pit_diagnostic) + blended/topk_view_cache + forecast_upside_live + institution_score/profile/industry_stat
+    + regime_state + setup_snapshot + model_train_log. 工具=ensemble 13 weights(反例: 业务直觉写 yaml 应全丢 Optuna) + champion/challenger.
+    结论=最终推荐/模型管理层全删, 参数寻优重做.'
+  retired_date: '2026-06-14'
+  retired_run: lifecycle_20260614_reset

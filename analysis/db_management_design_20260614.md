@@ -184,6 +184,15 @@ post-fix-audit: dim_data_asset 11 删表条目 DELETE (16→12 blockers, 删表 
 - **推迟** (有真痛点再建, 现 speculative): chunkyctl storage 命令套件 / 自动 wipe gates / db级 health 监控 / scratch sweep。当前手动工作流 (用户决议) 下写锁竞争罕见, 重工具化无人遵守 (workflow 自警)。
 - **前置原则** (§8 渐进分区): S1 新数据 (forecast/income/cyq...) 在 sync_registry 声明目标库, 直接落对 tier (raw→tushare_raw, 特征→feature_store), 不先入 smartmoney 再拆。
 
+### 13.7 地基-reset (2026-06-14, 用户"参数寻优全部重做, 只留基础数据+裸K线+展示")
+
+用户定调: 项目 reset 回"数据地基 + 档案展示 + 配置驱动的模块骨架", **整个模型/特征/寻优层推倒重做** (全局架构 = rules+models+strategies 的模块+数据配置文件组合, 见多维策略立方体)。
+- **判据**: KEEP = 基础数据(raw源/dim/源fact如十大股东/财报PIT/资金流/LHB/机构) + 纯K线中间变量(仅OHLCV派生) + 档案展示(picture/holders) + 必要治理基建。DELETE = 特征工程 + 模型(p0a v3/v4/v5/scores/preds/champion/ensemble) + 寻优(optuna/ablation/walkforward/stage-opt) + 探索 + paper_sim + 推荐输出。
+- **执行**: `foundation-reset-classify` workflow (codegraph 辅助, 边界二次验证) 分类全 228 表 → KEEP 85 / DELETE 144。`db_lifecycle_delete --force` 删 144 表/视图 (drop 不归档, 知识留 retired_experiments.yaml) + 留痕 + 残留扫描 0 悬挂。**安全核证**: 基准 K 线真相源在 market.duckdb/tushare_raw.duckdb 不在范围; 20 张 raw_* vendor 源全 KEEP; 0 张原始数据被删; 应留85张 0 误删。
+- **结果**: smartmoney **26.6G → 2.5G (-90%, -24.1G)**, 228表→85表 (11.1M行)。三轮删除累计 26.6→17.5→16.3→14.3→2.5G。
+- **实验知识 config 化**: `backend/config/experiments/retired_experiments.yaml` 14 子系统摘要 (字段族/年限/工具/结论) 替代留全表 (用户: challenger 只留摘要)。
+- **遗留 (代码层, 下阶段)**: 模型/serving 代码现引用已删表 (dormant, 不在 live 跑); 死探索子系统代码可删, 模型 pipeline 骨架留待寻优重做接新数据。moth `leakage-consumer-gate`/`concept-event-no-phantom` 退役待特征/概念层重建后恢复 (防泄露红线不可永久缺)。
+
 ### 13.6 L1 探索数据删除 SOP (用户"裸K线基准留, 因子探索临时, 探索完该删删, 只留过程+结论")
 
 用户生命周期模型: **L0 裸K线基准(永久标尺) / L1 因子探索(临时大,可删) / L2 结论(永久小)**。

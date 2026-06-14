@@ -6,28 +6,28 @@ name: chunkymonkey-claims
 # 全部只读; duckdb 连接由 moth 引擎强制 read_only。
 assertions:
   - id: smartmoney-constraint-tables
-    claim: "PK/UNIQUE 约束表 >= 136 (2026-06-14 生命周期删 68 L1探索表后; 带 PK 的 upsert 目标表全保留)"
+    claim: "PK/UNIQUE 约束表 >= 39 (2026-06-14 地基-reset: 删整个模型/特征/寻优层后只剩地基+展示+治理 85 表)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT count(DISTINCT table_name) FROM duckdb_constraints() WHERE constraint_type IN ('PRIMARY KEY','UNIQUE')"
-    expect: {op: ">=", value: 136}
+    expect: {op: ">=", value: 39}
   - id: smartmoney-indexes
-    claim: "索引 274 (2026-06-14 删 11 表 62M + 删 68 L1探索表 + 两轮保真缩盘后, 逐表对账全等; 缺 = 回归)"
+    claim: "索引 99 (2026-06-14 地基-reset 后; 缺 = 回归)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM duckdb_indexes()"
-    expect: {op: ">=", value: 274}
+    expect: {op: ">=", value: 99}
   - id: smartmoney-tables
-    claim: "265 表 (2026-06-14 生命周期删 11+68 过时/探索表后; 增删表应显式过决策)"
+    claim: "85 表 (2026-06-14 地基-reset: 只留基础数据54+纯K线中间2+档案展示5+治理24; 模型/特征/寻优层144表删, 参数寻优重做; 增表应显式过决策)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM duckdb_tables()"
-    expect: {op: ">=", value: 265}
+    expect: {op: ">=", value: 85}
   - id: smartmoney-size-band
-    claim: "库体量 14-26GB 带内 (2026-06-14 保真缩盘 26.6→17.5G; 越界 = 异常膨胀或错库/数据丢失)"
+    claim: "库体量 2-6GB 带内 (2026-06-14 地基-reset 26.6→2.5G; 越界 = 异常膨胀或错库/数据丢失)"
     type: file_size
     path: data/smartmoney.duckdb
-    expect: {op: between, low: 14000000000, high: 26000000000}
+    expect: {op: between, low: 2000000000, high: 6000000000}
   - id: calendar-floor
     claim: "交易日历起点 == 2005-01-04 (2026-06-12 扩展+七项验证 PASS; 回退 = 静默 clamp 复发)"
     type: duckdb_sql
@@ -67,14 +67,6 @@ assertions:
     type: shell
     command: ["bash", "-c", "grep -o '\"verdict\": \"GO\"' analysis/lhb_exit_verdict_20260612.json | head -1 | grep -c GO"]
     expect: {op: "==", value: 1}
-  - id: leakage-consumer-gate
-    claim: "全部特征面板消费者过泄漏闸 (leakage_consumers.yaml 逐个 feature_consumer 探针, 任一 HIGH=FAIL)"
-    type: shell
-    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend .venv/bin/python backend/scripts/leakage_probe.py --gate | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)[\"overall\"]==\"PASS\" else 1)' && echo GATE_PASS"]
-    expect: {op: regex, pattern: "GATE_PASS"}
-  - id: concept-event-no-phantom
-    claim: "概念事件幻影残留杀线: 平滑重建后 BORN+DEAD 日均 < 5 (2026-06-13 平滑窗3根治 4612→79)"
-    type: duckdb_sql
-    database: data/smartmoney.duckdb
-    query: "WITH e AS (SELECT event_date, count(*) FILTER (WHERE event_type IN ('concept_born','concept_dead')) AS c FROM fact_concept_event WHERE as_of_mode='reconstructed' GROUP BY 1) SELECT CASE WHEN count(*)=0 THEN 999 ELSE sum(c)*1.0/count(*) END FROM e"
-    expect: {op: "<", value: 5}
+  # 2026-06-14 地基-reset 退役 (引用已删特征/模型层, 重建特征/模型层后须恢复):
+  #   - leakage-consumer-gate: 探针读已删特征面板 (feature_consumers); 特征层重做后恢复, 防泄露红线不可永久缺
+  #   - concept-event-no-phantom: 查已删 fact_concept_event; 概念事件层重建后恢复
