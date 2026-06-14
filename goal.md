@@ -55,7 +55,7 @@
 |---|---|---|---|
 | P0 | 文档同步 | goal/INDEX reset-rewrite | 立 `moth doc-drift` 固化 (机器对账, 防再漂; mythos §16) |
 | P0 | Alpha 验证 S0 | **完成** (留档4表 + `experiment_jobs.py` loader 恢复修4悬空import + `consumer_alpha_validation` family + `consumer_alpha_matrix.yaml` 6候选→7cell + `experiment_consumer_alpha_validation.py` config驱动执行器: gate-before-run/prereg_hash/PIT每步落档/dry空矩阵ic_scan不造假; 10单测+moth断言+CI全pass) | 进 L0 |
-| P1 | 裸K线基准 L0 | **进行中** (spec+候选库已立, owner=`analysis/l0_bare_kline_baseline_spec_20260614.md`): 定义=裸K线公式 walk-forward OOS 寻优的**最佳OOS参数**作标尺 (用户 msg2); 9公式全保留为 config 备选 (`formula_candidates.yaml`, active子集4防过拟合); 防过拟合为第一约束 (用户 msg3: walk-forward OOS选参/DSR/pre-reg/限维度/诚实报弱, moth 3断言固化) | 重建 walk-forward OOS 引擎 (复用 metrics.py) → 治理层 (plan_validator/oos-only selector/DSR) → pre-reg → 寻优RUN(grill后) |
+| P1 | 裸K线基准 L0 | **Tier-1 默认参数基准已测** (owner=`l0_bare_kline_baseline_spec`): 全市场5204股/400万obs/35窗 OOS RankIC — **reversal +0.059 (IC_IR 0.36) 最佳裸K线信号**, macd/turtle/ma_base 短期负相关; 诚实干净 (≈0.06<<0.3红线无anomaly)。**防泄露 3 门固化进驱动** (PIT行为门/切分纪律/异常红线 from leakage_detect, moth `l0-leakage-gates-wired` 反孤儿守); 9公式保留config备选 | best-OOS-params 寻优 (task#17, pre-reg+grill后精化标尺) → Tier-2 backtest 终验引擎 |
 | P2 | 深层解耦 backlog | kept routers 懒加载已删 services / 8 散落服务自建表 / 23 god-file (framework doc §6) | rebuild 时按 layer 顺手解耦, moth 守不回潮; **不 big-bang** (反复破 CI 教训) |
 
 ## 重建路线 (全 config 驱动, owner=`analysis/alpha_validation_program_spec_20260614.md`)

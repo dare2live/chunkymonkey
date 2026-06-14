@@ -107,6 +107,11 @@ assertions:
     type: shell
     command: ["bash", "-c", "grep -c 'status: active' backend/config/experiments/formula_candidates.yaml"]
     expect: {op: "<=", value: 5}
+  - id: l0-leakage-gates-wired
+    claim: "L0 驱动固化 3 防泄露门 (PIT行为门 assert_pit_clean / 切分纪律 check_split_discipline / 异常红线 check_metric_anomaly) — 2026-06-14 用户'固化防泄露工具进流程'; 反孤儿 mythos §14: 删任一=泄漏门失效"
+    type: shell
+    command: ["bash", "-c", "grep -cE 'assert_pit_clean|check_split_discipline|check_metric_anomaly' backend/scripts/experiment_l0_baseline.py"]
+    expect: {op: ">=", value: 3}
   # 2026-06-14 地基-reset 退役 (引用已删特征/模型层, 重建特征/模型层后须恢复):
   #   - leakage-consumer-gate: 探针读已删特征面板 (feature_consumers); 特征层重做后恢复, 防泄露红线不可永久缺
   #   - concept-event-no-phantom: 查已删 fact_concept_event; 概念事件层重建后恢复

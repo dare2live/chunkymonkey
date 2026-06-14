@@ -44,6 +44,7 @@ jobs:
             tests/test_scoring_engine.py tests/test_scoring_composite.py \
             tests/test_db.py tests/test_source_watermarks.py tests/scripts/test_db_compact.py \
             tests/scripts/test_consumer_alpha_validation.py tests/test_oos_ic.py \
+            tests/test_formula_features_pit.py tests/scripts/test_l0_baseline.py \
             -p no:cacheprovider --tb=short -q || exit 1
 
       - name: Smoke import

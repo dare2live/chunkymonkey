@@ -9,6 +9,15 @@
 裸K线基准 = 对纯 OHLCV 派生的技术公式做 **walk-forward OOS 参数寻优, 取最佳 OOS 参数配置**作标尺;
 每个 alpha 因子必须超越这个"调到最优的纯价量策略"才算携带真增量。防过拟合是本模块第一约束。
 
+## 0.1 共同度量 (用户决策 2026-06-14: 两者都算)
+spec 里技术公式->信号、基本面->特征IC 是两种度量, 不可直接比 -> 统一为**双层判据**:
+- **Tier-1 RankIC 快筛** (共享地板): 公式作连续特征 (MACD柱/MA距离/动量/通道位置) -> 寻参最大化
+  OOS RankIC; alpha 特征同样测 RankIC。apples-to-apples 快速筛, 无需 backtest 引擎。
+- **Tier-2 策略 OOS sharpe/年化 终验** (真金白银对齐): 过 Tier-1 的才进 backtest (信号->T+1含成本
+  NAV->OOS sharpe/年化), 直对 KPI。**须重建 backtest 引擎** (reset 删了整个 backtest/, leakage 重灾区)。
+- 判 "alpha 超越基准": Tier-1 RankIC 先筛 (alpha 特征 RankIC > 裸K线最佳 OOS RankIC), Tier-2 上线前策略终验。
+- 两引擎共享 walk-forward expanding_monthly 窗口 + PIT 前向收益标注 (本模块第一个 leakage-critical 核心)。
+
 ## 1. 为何 best-OOS-params 而非固定参数 (用户 msg2)
 固定拍参数的基准太弱 (alpha 轻易超越 = 假增量)。诚实地板 = 纯价量在**最优调参**下能达到的 OOS 上限。
 alpha 只有超越它, 才证明增量来自新数据而非"价量本可以调出来的"。
@@ -33,6 +42,19 @@ vol-aware stop/target hardcode "业界常用" 丢 search space; selector ORDER B
 全 9 个纯 OHLCV 公式见 `formula_candidates.yaml` (全保留为 config 备选)。L0 **active 子集**选最规范、最少:
 先 3-4 个 (macd_golden_cross[评估器幸存] + ma_base_breakout + turtle_breakout + reversal_short_term),
 其余 status=candidate (定义留存, 不进 L0 寻优, 防"池子越大越拟合")。涨停/活跃度/gs 等待 active 子集验通再逐个解锁。
+
+## 3.1 Tier-1 默认参数基准实测 (2026-06-14, run_id=l0_baseline_v1)
+全市场 5204 股 / 4.0M obs / 35 expanding_monthly 窗 / horizon=5 / 默认参数 (未寻优):
+| 公式 | OOS RankIC | IC_IR | 解读 |
+|---|---|---|---|
+| reversal_short_term | **+0.059** | **0.36** | 最佳裸K线信号 (超卖反弹, 行为金融吻合) |
+| macd_golden_cross | -0.036 | -0.24 | 短期动量负相关 (A股追高被罚) |
+| turtle_breakout | -0.036 | -0.26 | 突破短期负相关 |
+| ma_base_breakout | -0.071 | -0.41 | 均线突破短期负相关 |
+
+诚实干净 (RankIC≈0.06 << §4.2 红线 0.3, 3 门全过无 anomaly; 300股 smoke 与全市场近一致=稳健非过拟合)。
+**当前标尺 = +0.059** (reversal 默认参数); 寻优 (task#17) 精化为 best-OOS-params 后更新。
+已知限制: 宇宙=有K线全股 (v1 含潜在生存者偏差; alpha 同宇宙比较故公平; PIT 宇宙 dim_index_member_history 待 S3 接)。
 
 ## 4. reset 后 survives vs rebuilds (下沉核证, 非信旧 spec)
 **幸存 (config 治理契约完整)**: `optuna_config.yaml` (全治理) / `stock_formula_optuna.yaml` (阈值) /
