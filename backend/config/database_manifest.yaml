@@ -73,6 +73,30 @@ databases:
       - fact_feature_panel_candidate*
       - mart_feature_rank_matrix_cache*
 
+  experiment_store:
+    path: data/experiment_store.duckdb
+    domain: alpha_validation_experiment
+    owner: planned_experiment_pipeline
+    role: >-
+      planned isolated store for alpha-validation experiment outputs
+      (fact_experiment_verdict, fact_consumer_alpha_ic_scan,
+      pipeline_artifact_lineage, experiment_pit_audit_log). Created at S0 of the
+      alpha validation program. Wipeable after a validation cycle; CONSTRAINT:
+      must NOT be consumed by daily_update live path (isolate experiment from
+      serving to avoid result contamination). Declared ahead of S0 so new tables
+      route here directly (no second migration) — see
+      analysis/db_management_design_20260614.md §13.
+    default_open_mode: read_write
+    default_attach_mode: read_only
+    online: false
+    status: planned
+    retention_class: transient_experiment
+    table_patterns:
+      - fact_experiment_verdict*
+      - fact_consumer_alpha_ic_scan*
+      - pipeline_artifact_lineage*
+      - experiment_pit_audit_log*
+
   tushare_raw:
     path: data/tushare_raw.duckdb
     domain: tushare_raw_mirror

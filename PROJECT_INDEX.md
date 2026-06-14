@@ -174,11 +174,16 @@
 
 ## 1. 三个 DuckDB 数据库
 
-| DB | 路径 | 用途 |
-|---|---|---|
-| `smartmoney.duckdb` | `data/smartmoney.duckdb` | 业务主库 (mart_* / fact_* / raw_* / dim_*) |
-| `market.duckdb` | `data/market.duckdb` | K 线 + 行情 (`v_price_kline_qfq`) |
-| `etf.duckdb` | `data/etf.duckdb` | ETF 专用 |
+> 权威清单 = `backend/config/database_manifest.yaml` (含 retention_class 生命周期分类, 见 db_management_design §13)。
+| DB | 路径 | 用途 | retention_class |
+|---|---|---|---|
+| `smartmoney.duckdb` | `data/smartmoney.duckdb` | 业务主库 (mart_*/fact_*/raw_*/dim_*); **17.5G** (2026-06-14 保真缩盘 -34%) | production_control |
+| `market.duckdb` | `data/market.duckdb` | K 线 + 行情 (`v_price_kline_qfq`) | canonical_source |
+| `tushare_raw.duckdb` | `data/tushare_raw.duckdb` | TuShare raw 镜像 (raw_tushare_*), sync_runner 独占写, 写锁隔离 | canonical_source (mirror) |
+| `alpha158.duckdb` | `data/alpha158.duckdb` | 因子特征库 (可重建) | rebuildable_feature |
+| `etf.duckdb` | `data/etf.duckdb` | ETF 专用 | governed_source |
+| `experiment_store.duckdb` | (规划, S0 建) | alpha 验证实验输出 (verdict/IC scan/lineage/pit_audit), 与 live 隔离 | transient_experiment |
+| `data/scratch/*.duckdb` | (约定) | 测试/探索一次性库, 用完即删, gitignore | disposable_scratch |
 
 **约束** (AGENTS.md / engineering governance DuckDB 段):
 - 永远走 `services.duck_adapter.connect` / `services.db.get_conn`
@@ -446,6 +451,8 @@
 | `backend/config/field_dictionary.yaml` | **Phase ψ.γ.dict.1** 字段字典 (3 DB × 12 核心表 × 100+ 字段 + 单位 + PIT key + outlier cap + JOIN 模板) — 防 VWAP unit bug 类故障 |
 | `backend/config/recommendation_universe.yaml` | 选股宇宙 |
 | `backend/config/db_partition_tiers.yaml` | **DB 多库分区 tier** (源/特征/服务/实验) + 原子写簇 (关联性检查); 驱动 `backend/scripts/db_partition_migrate.py` (保真迁移引擎: 原 DDL 含 PK + INSERT SELECT, 非 CTAS; dry-run 默认 + 前后验证[行数/EXCEPT/约束/索引] + 绝不 DROP 源; D1a experiment_store 25 表迁验 PASS [暂缓 repoint, live 耦合重]; **D2-minimal feature_store 2 表 fact_feature_panel+validation 迁验 PASS** [解决 build_feature_panel vs daily_update 写锁竞争, repoint 待定]) — owner=analysis/db_management_design_20260614.md |
+| `backend/scripts/db_compact.py` | **整库保真缩盘** (删行后回收盘): ATTACH-copy 逐表原 DDL 含 PK + INSERT + 重建索引 + 视图按定义重建 (依赖容忍重试), **绝不 CTAS** (避 06-12 约束 315→1); dry-run 默认; 验证前 DETACH src (information_schema/约束/索引跨 attach 库会双计) + 逐表行数对账全等才换名, 旧库留 `_precompact_bak`。2026-06-14 实测 smartmoney 26.6G→17.5G (-34%, 333表/4视图/821约束/333索引全等) — owner=db_management_design §13.4 |
+| `backend/scripts/db_dead_table_audit.py` | **死表守门** (0行 AND 0字面引用才判死, 保守防误删); 大表过时判定走 lifecycle 分析非本工具 — owner=db_management_design §12 |
 | `backend/config/pipeline_performance_policy.yaml` | step budget 预算 |
 | `backend/config/data_sources.yaml` | 数据源 |
 | `backend/config/storage_retention.yaml` | 保留期 |

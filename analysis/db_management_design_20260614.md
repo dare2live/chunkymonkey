@@ -140,10 +140,46 @@ cutover 暂缓后, DB 优化转向**不动读写路径**的两条线:
 执行: 事务 DROP + CHECKPOINT; **6 live 表 (v4/v5/label_panel/fact_feature_panel/mcap_decile/industry_beta) 全完好**。
 post-fix-audit: dim_data_asset 11 删表条目 DELETE (16→12 blockers, 删表 fallout 清零)。
 **对抗核证又救场**: agent 标 mcap_decile/industry_beta 可删, 实测各 2 live 引用喂 v4 → KEEP (挡住误删)。
-**遗留 (低优先级)**: (1) 文件仍 25G — DuckDB CHECKPOINT 释放内部块 (未来写入复用防增长), 文件缩需整库重写 (EXPORT/IMPORT 或 db_split_execute逐表重建, 26G 大操作另案); (2) 死 builder 脚本 (build_candle_pattern_daily/build_mart_stock_regime_full/build_ensemble_v7_*/train_unified_ranker_v1 等) 未删 — 不在 live 链 (跑了会 CREATE 空表无害), 单独清理另案。
+**遗留 (低优先级)**: (1) ~~文件仍 25G~~ **已执行缩盘 (2026-06-14, 见 §13.3)**: `db_compact.py` 保真整库重写, 26.6G→~16-18G; (2) 死 builder 脚本 (build_candle_pattern_daily/build_mart_stock_regime_full/build_ensemble_v7_*/train_unified_ranker_v1 等) 未删 — 不在 live 链 (跑了会 CREATE 空表无害), 单独清理另案。
 **正确结论 (修正 §12.2)**: 死表清理**不能靠 0-ref 字面规则** (过保守, 找 0); 须 lifecycle 分析 (live-current/superseded/dead-experiment) + live 路径对抗核证, 才能安全删出真过时表。db_dead_table_audit 守 0行0引用底线; 大表过时判定走 lifecycle 分析。
 
 ### 12.3 卫生 + tushare_raw 增长
 - tushare_raw: S1 基本面四件套预计 +2-4G (append-only, 无需 VACUUM; DELETE 才评估)。
 - smartmoney: 现无需定期 VACUUM; DROP 死表后 CHECKPOINT 回收。补 `chunkyctl storage --checkpoint` 包装 + data_health 加 db_size/disk_free 比率告警 (阈 0.6)。
 - **时序**: G4 panel 收敛应在 S1 数据入库后评估 (防 S1+收敛并行短期破 30G 线)。
+
+## 13. DB 文件按生命周期分类管理 (2026-06-14, 用户"测试库用完即删, 从管理角度探索")
+
+### 13.1 第一性原理: 一个 DB 文件的管理决策 = 3 个正交属性塌缩
+任何库的"怎么管"不靠拍脑袋分类, 由 3 问决定 → 自然落到 5 类管理画像 (奥卡姆: 不是 8 类不是 12 类, 是 5):
+1. **可重建吗?** (能否从源/代码再生) — 否=必备份永不 wipe; 是=备份可免可整库重建
+2. **live 依赖吗?** (daily/serving 读不读) — 是=删需 consumer 迁移证明; 否=可自由删
+3. **价值持久吗?** (keeper vs 用完即弃) — keeper=留; scratch/test=用完即删
+
+### 13.2 5 类管理画像 (映射全部现有 + 规划库)
+| class | 文件 | 装什么 | 备份 | wipe | 增长告警 | 删除门槛 |
+|---|---|---|---|---|---|---|
+| **canonical_source** | market / tushare_raw / etf | K线/日历/基准/raw镜像 (不可重建真相源) | 必备 | 否 | 中 | 永不删 (源数据) |
+| **production_control** | smartmoney | live mart/scores/governance | 必备 | 谨慎 | 严 (破30G 警) | lifecycle分析 + live路径对抗核证 (§12.4) |
+| **rebuildable_feature** | alpha158 / feature_store(规划) | 因子/特征panel (可重算) | 免 (从源重建) | 是 (整库) | 松 | DROP key + 重算即可 |
+| **transient_experiment** | experiment_store(规划) | Optuna log/verdict/IC scan/pit_audit | 免 | 是 (验证后全清) | 松 | 无 live 读取方即可清; **约束: 不可被 daily 消费** (防结果污染) |
+| **disposable_scratch** | `data/scratch/*.duckdb` | 测试/探索/一次性中间产物 | 无 | 是 (用完即删) | 无 | 即用即删, 无需审计 |
+> 正交项 **versioned_artifact** (phase5_predictions_*): 冻结模型输出, 版本锁定, 既不 wipe 也不轮转备份 (它本身即快照); 不算生命周期阶段, 单列。
+
+### 13.3 用户思路落地: disposable_scratch 约定 ("测试库用完即删")
+- **位置**: `data/scratch/` (已 .gitignore; 任何临时/测试/探索 .duckdb 落这, 非 `data/` 根)。
+- **命名**: `test_<purpose>.duckdb` / `scratch_<purpose>.duckdb` — 一眼可弃。
+- **清理**: 手动 `rm data/scratch/*.duckdb` (无 live 依赖, 无需守门); 用完即删是默认契约, 不留过夜。
+- **维护临时库** (如本次缩盘的 `smartmoney_compact.duckdb` / `smartmoney_precompact_bak.duckdb`): 走 `data/` 根但 `*.duckdb` 已 gitignore; bak 在 doctor 验证后即删 (见 §13.4)。
+- **为什么不建 scratch 自动 sweep 工具**: 当前 0 个 scratch 库, 建 sweep = speculative (违反"不写 speculative feature")。约定 + .gitignore 足够; 待 scratch 真堆积再工具化。
+
+### 13.4 本次缩盘执行 (回收 §12.4 删 62M 行后的盘)
+- **工具**: `backend/scripts/db_compact.py` — **保真整库重写** (绝不 CTAS, 避 06-12 约束 315→1 坑): 逐表原 DDL(含PK/约束) + INSERT + 重建索引 + 视图按定义重建 (依赖容忍重试)。
+- **方法**: ATTACH-copy (新库 + ATTACH 旧 READ_ONLY 逐表拷), peak=old+new (无中间 parquet, 比 EXPORT/IMPORT 省盘); 不删生产库, 验证通过才换名, 旧库留 `_precompact_bak` (doctor 验证后删)。
+- **对账闸**: 333 表 + 4 视图 / 821 约束 / 333 索引 / 8263万行 逐表 COUNT 全等才换名; 任一不齐则保留旧库不动。
+- **结果**: 26.6G → ~16-18G (回收删 62M 行后碎片); 验证: doctor --fast 全绿 + bak 删除。
+
+### 13.5 立即做 vs 推迟 (奥卡姆: 不建无痛点的工具)
+- **立即** (本 commit): (a) `experiment_store` 注册进 manifest (status=planned, 声明 S0 实验表路由, 避二次迁移); (b) `data/scratch/` gitignore + 约定成文; (c) 缩盘执行。
+- **推迟** (有真痛点再建, 现 speculative): chunkyctl storage 命令套件 / 自动 wipe gates / db级 health 监控 / scratch sweep。当前手动工作流 (用户决议) 下写锁竞争罕见, 重工具化无人遵守 (workflow 自警)。
+- **前置原则** (§8 渐进分区): S1 新数据 (forecast/income/cyq...) 在 sync_registry 声明目标库, 直接落对 tier (raw→tushare_raw, 特征→feature_store), 不先入 smartmoney 再拆。

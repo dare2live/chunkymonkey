@@ -30,6 +30,7 @@ data/*.duckdb.backup_*
 data/*.duckdb.tmp
 data/*.duckdb.tmp/
 data/portfolio_backtest_nav.csv
+data/scratch/
 data/audit/
 data/reports/
 data/phase5_exports/

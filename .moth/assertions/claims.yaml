@@ -12,22 +12,22 @@ assertions:
     query: "SELECT count(DISTINCT table_name) FROM duckdb_constraints() WHERE constraint_type IN ('PRIMARY KEY','UNIQUE')"
     expect: {op: ">=", value: 169}
   - id: smartmoney-indexes
-    claim: "索引 348 (拆分后从旧库 DDL 全量重放, 缺 = 回归)"
+    claim: "索引 333 (2026-06-14 删 11 过时表 62M 行 + 保真缩盘后, 缩盘前后逐表对账全等; 缺 = 回归)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM duckdb_indexes()"
-    expect: {op: ">=", value: 348}
+    expect: {op: ">=", value: 333}
   - id: smartmoney-tables
-    claim: "343 表 (拆分 validation 口径; 增删表应显式过决策)"
+    claim: "333 表 (2026-06-14 lifecycle 删 11 过时表后; 增删表应显式过决策)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM duckdb_tables()"
-    expect: {op: ">=", value: 343}
+    expect: {op: ">=", value: 333}
   - id: smartmoney-size-band
-    claim: "库体量 20-30GB 带内 (goal.md '24G'; 越界 = 异常膨胀或错库)"
+    claim: "库体量 14-26GB 带内 (2026-06-14 保真缩盘 26.6→17.5G; 越界 = 异常膨胀或错库/数据丢失)"
     type: file_size
     path: data/smartmoney.duckdb
-    expect: {op: between, low: 20000000000, high: 30000000000}
+    expect: {op: between, low: 14000000000, high: 26000000000}
   - id: calendar-floor
     claim: "交易日历起点 == 2005-01-04 (2026-06-12 扩展+七项验证 PASS; 回退 = 静默 clamp 复发)"
     type: duckdb_sql
