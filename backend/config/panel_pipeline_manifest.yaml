@@ -22,13 +22,9 @@ sources:
     description: "K-line raw (PIT, 已 calendar gate filter)"
     sync_script: backend/scripts/build_price_kline_tdxhub.py
     write_lint: services/market_db.filter_kline_rows_by_calendar
-  fact_alpha158_panel:
-    db: alpha158.duckdb
-    pit_field: date
-    description: "Alpha158 K-line 衍生 (65 cols, qlib quant pipeline)"
-    sync_script: backend/scripts/build_alpha158_duck.py
-    upstream: [v_price_kline_qfq]
-    calendar_gate: true  # WHERE date <= cal_max
+  # fact_alpha158_panel: 移除 (2026-06-14 地基-reset 收口) — alpha158 不再是日更管线 (特征层,
+  # 旧 panel PIT 不可信已删, daily_update Step 2c 重建循环已切)。重算路径=manual build_alpha158_duck.py
+  # + pit_guard 核证, 见 database_manifest alpha158 (planned) + model_validation_reliability_design。
   fact_capital_flow_pit_daily:
     db: smartmoney.duckdb
     pit_field: trade_date

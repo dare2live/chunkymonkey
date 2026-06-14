@@ -306,7 +306,7 @@ databases:
         event_inst_30d:  {type: BOOL}
         feature_version: {type: TEXT}
         built_at:        {type: TEXT}
-        # NOTE: 65 alpha158 features (a158_kmid..a158_vstd60) — schema 见 alpha158.duckdb::fact_alpha158_panel
+        # NOTE: 65 alpha158 features (a158_kmid..a158_vstd60) — 旧 panel 2026-06-14 已删 (PIT不可信); 验证Alpha158时干净重算
 
     mart_p0a_feature_label_panel_v3:
       description: "P0a feature × label JOIN v3 — v2 + survey 4 + valuation_z 4 + sector 5 + inst_path_a 5 (Codex 7-day plan Day 2-3)"

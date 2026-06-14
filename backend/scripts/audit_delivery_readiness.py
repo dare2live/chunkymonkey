@@ -753,8 +753,7 @@ def check_daily_automation() -> dict:
 
     has_step_0_contract = "Step 0: experiment job contract" in content
     has_phase4_gate_real = "run_phase4_gate_on_msaf.py" in content
-    has_alpha158_check = "Step 2c: alpha158" in content
-    has_promote_verdict_gated = "STEP6_GATE_OK" in content
+    has_promote_verdict_gated = "STEP6_GATE_OK" in content  # 2026-06-14: alpha158_check 删 (panel 已退役)
     # Step 5 真调 ensemble runner (compute-kpi)
     has_step5_ensemble_real = "run_msaf_ensemble_paper_sim.py" in content and "--compute-kpi" in content
     # Step 7 真调 promote_champion.py CLI (不是 mock import check)
@@ -808,7 +807,7 @@ def check_daily_automation() -> dict:
 
     # cron OR launchd counted as "loaded" (cron is FDA-free fallback)
     pct = 40 + (10 if has_step_0_contract else 0) + (10 if has_phase4_gate_real else 0) + \
-          (5 if has_alpha158_check else 0) + (5 if has_promote_verdict_gated else 0) + \
+          (10 if has_promote_verdict_gated else 0) + \
           (10 if has_step5_ensemble_real else 0) + \
           (10 if has_promote_real else 0) + \
           (5 if daily_loaded else (2 if (has_daily_plist or cron_daily) else 0)) + \
@@ -818,7 +817,6 @@ def check_daily_automation() -> dict:
         "pct": min(pct, 100),
         "step_0_contract": has_step_0_contract,
         "phase4_gate_real": has_phase4_gate_real,
-        "alpha158_check": has_alpha158_check,
         "promote_verdict_gated": has_promote_verdict_gated,
         "step5_ensemble_real": has_step5_ensemble_real,
         "promote_champion_real_call": has_promote_real,

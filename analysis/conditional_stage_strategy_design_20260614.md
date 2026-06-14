@@ -19,7 +19,7 @@ cell = **(Segment 形态 × Feature-set 因子族 × Policy 公式/模型)**。�
 | 横盘/低位/上升通道/下跌通道/高位 | **Segment 形态** | `technical_stage.py`(Stan Weinstein 5 阶段, 幸存)+ config |
 | MACD 零轴上/下、当前阶段历史区间分位 | Segment 细分轴 | 新增 stage 描述子(PIT 分位 + MACD 符号), 进 technical_stage.yaml |
 | 哪个公式适用哪个阶段 | **Policy 公式** | 20 公式 + 主升浪猎手(formula_candidates.yaml) |
-| 换手率/筹码/资金流向 增 alpha | **Feature-set 因子族** | Alpha158(已建)+ tushare menu(资金流/筹码)+ daily_basic 换手 |
+| 换手率/筹码/资金流向 增 alpha | **Feature-set 因子族** | Alpha158(旧panel已删, 验证时干净重算)+ tushare menu(资金流/筹码)+ daily_basic 换手 |
 | 排除 ST/退市/三板/北交所 | **Universe** | `universe.py`(前缀非60/00/30/68排除=北交所/三板;ST名;退市no-trade)**已覆盖你列的全部** |
 | 数据驱动探索其他模式 | Segment 发现 | 无监督 regime 聚类(K线特征)作 Weinstein 之外的第二 segment 源, OOS 闸 |
 

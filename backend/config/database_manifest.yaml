@@ -30,11 +30,15 @@ databases:
     path: data/alpha158.duckdb
     domain: factor_feature_store
     owner: alpha158_pipeline
-    role: reusable factor feature panel
+    role: >-
+      qlib Alpha158 K线技术因子面板 (consumer_alpha 矩阵的因子来源)。2026-06-14 地基-reset 收口:
+      旧 panel (418万行/3.8G, 建于 reset 前 PIT 纪律收紧之前, 不可信任) 已删。重算契约: 验证
+      Alpha158 时用干净 PIT 管道重建 (复用 features.py/oos_ic 模式 + pit_guard 核证), 纳 data_layers
+      L2_feature 治理。见 analysis/model_validation_reliability_design_20260614.md §3/§7。
     default_open_mode: read_write
     default_attach_mode: read_only
-    online: true
-    status: active
+    online: false
+    status: planned   # 2026-06-14: 旧不可信 panel 已删; 重算后转 active
     retention_class: rebuildable_feature_store
 
   etf:

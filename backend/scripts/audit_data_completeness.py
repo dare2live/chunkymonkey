@@ -28,19 +28,12 @@ from services.market_db import _latest_completed_trade_date_for_write
 UNIVERSE_SIZE_HINT = 5200  # A 股 active universe size
 
 # (db_path, table, date_col, has_n_codes, coverage_col)
+# 2026-06-14 地基-reset 收口: 删 11 张已删表的完整性检查 (alpha158 panel + 模型/特征层
+# mart_p0a_*/fact_capital_flow_pit/fact_risk_factors/fact_technical_trigger/fact_sector_momentum/
+# mart_sniper_score/mart_institution_score)。重建对应层后再加回各自检查。仅存活地基/事件表保留。
 TABLES = [
     ("market.duckdb", "price_kline_tdxhub", "date", True, "code"),
-    ("alpha158.duckdb", "fact_alpha158_panel", "date", True, "stock_code"),
-    ("smartmoney.duckdb", "mart_p0a_label_panel", "signal_date", True, "stock_code"),
-    ("smartmoney.duckdb", "mart_p0a_feature_label_panel_v3", "signal_date", True, "stock_code"),
-    ("smartmoney.duckdb", "mart_p0a_feature_label_panel_v4", "signal_date", True, "stock_code"),
-    ("smartmoney.duckdb", "fact_capital_flow_pit_daily", "trade_date", True, "stock_code"),
     ("smartmoney.duckdb", "fact_lhb_event", "trade_date", True, "stock_code"),
-    ("smartmoney.duckdb", "fact_risk_factors", "calc_date", True, "stock_code"),
-    ("smartmoney.duckdb", "fact_technical_trigger", "date", True, "stock_code"),
-    ("smartmoney.duckdb", "fact_sector_momentum_daily", "date", False, None),
-    ("smartmoney.duckdb", "mart_sniper_score_daily", "signal_date", True, "stock_code"),
-    ("smartmoney.duckdb", "mart_institution_score_daily", "signal_date", True, "stock_code"),
 ]
 
 

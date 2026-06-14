@@ -37,7 +37,7 @@
 | 来源 | 内容 | 数据依赖 | 状态 |
 |---|---|---|---|
 | L0 hand-built | reversal/macd/ma/turtle (4) | 纯 OHLCV | [OK] 标尺 reversal +0.064 |
-| **qlib Alpha158** | KBAR/rolling 技术因子 (`fact_alpha158_panel` 418万行×67列) | **纯 OHLCV** (+少量量) | [OK] **已建** (3.8G, 但 PIT 待重核) |
+| **qlib Alpha158** | KBAR/rolling 技术因子 (`fact_alpha158_panel` ~64 因子) | **纯 OHLCV** (+少量量) | [无] 旧 panel(418万行/3.8G, PIT 不可信)**2026-06-14 已删**; 验证时干净重算 |
 | qlib Alpha360 | 60日归一价量原始序列 | 纯 OHLCV | [无] 可选扩 |
 | tushare 新数据 | flow/chip/fundamental (menu P0/P1) | 资金流/筹码/财务 | [无] 验证后抓 |
 

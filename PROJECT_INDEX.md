@@ -180,7 +180,7 @@
 | `smartmoney.duckdb` | `data/smartmoney.duckdb` | **2.5G / 85表** (2026-06-14 地基-reset: 删整个模型/特征/寻优层144表, 只留基础数据+纯K线中间+档案展示+治理; 26.6→2.5G; 参数寻优重做; 退役实验知识→config/experiments/retired_experiments.yaml) | production_control(地基) |
 | `market.duckdb` | `data/market.duckdb` | K 线 + 行情 (`v_price_kline_qfq`) | canonical_source |
 | `tushare_raw.duckdb` | `data/tushare_raw.duckdb` | TuShare raw 镜像 (raw_tushare_*), sync_runner 独占写, 写锁隔离 | canonical_source (mirror) |
-| `alpha158.duckdb` | `data/alpha158.duckdb` | 因子特征库 (可重建) | rebuildable_feature |
+| `alpha158.duckdb` | (planned, 旧panel 2026-06-14 删) | qlib Alpha158 K线因子库; 旧 panel(418万行/3.5G, PIT不可信)删, 验证Alpha158时干净重算+pit_guard核证 (manifest planned; daily_update Step2c重建循环已切) | rebuildable_feature |
 | `etf.duckdb` | `data/etf.duckdb` | ETF 专用 | governed_source |
 | `experiment_store.duckdb` | active (S0 建, 执行器接入) | alpha 验证实验输出 (verdict/IC scan/lineage/pit_audit), 与 live 隔离; 写入器=experiment_consumer_alpha_validation.py | transient_experiment |
 | `data/scratch/*.duckdb` | (约定) | 测试/探索一次性库, 用完即删, gitignore | disposable_scratch |

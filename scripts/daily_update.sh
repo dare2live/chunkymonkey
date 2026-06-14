@@ -201,47 +201,11 @@ PYEOF
     fi
 fi
 
-# Step 2c: alpha158 incremental check + rebuild if stale
-log "--- Step 2c: alpha158 freshness check + rebuild if stale ---"
-ALPHA158_STALE_DAYS=$(PYTHONPATH=backend python -c "
-import duckdb, datetime
-# Codex review 2026-05-19 Q2 (a846ce75) + MEDIUM (aee63ad7): 旧版 MAX(date) 漏 partial
-# coverage; v2 加 95% n_codes 阈值; v3 (本版) 加 calendar gate 防盘中 partial-但高覆盖
-# 边界 case (alpha158 即使 write lint 拦, defense-in-depth 二次 gate).
-# rule-compliance: ok evidence=alpha158-freshness-multi-gate-defense
-try:
-    import sys
-    sys.path.insert(0, 'backend')
-    from services.market_db import _latest_completed_trade_date_for_write
-    cal_max = _latest_completed_trade_date_for_write(raise_on_miss=False)
-    con = duckdb.connect('data/alpha158.duckdb', read_only=True)
-    r = con.execute('''
-        WITH d AS (
-            SELECT date, COUNT(DISTINCT stock_code) n
-            FROM fact_alpha158_panel
-            WHERE ? IS NULL OR date <= ?
-            GROUP BY date
-        )
-        SELECT MAX(date) FROM d
-        WHERE n >= 0.95 * (SELECT MAX(n) FROM d)
-    ''', [cal_max, cal_max]).fetchone()[0]
-    con.close()
-    if r is None:
-        print(9999)
-    else:
-        delta = (datetime.date.today() - r).days
-        print(delta)
-except Exception:
-    print(9999)
-" 2>/dev/null)
-log "alpha158 max stale: ${ALPHA158_STALE_DAYS} days"
-if [[ "$ALPHA158_STALE_DAYS" -gt 3 && "$DRY" == "0" ]]; then
-    log "alpha158 > 3d stale, 跑全量 rebuild (~12 sec on Mac)"
-    PYTHONPATH=backend python backend/scripts/build_alpha158_duck.py --start 2023-01-01 >> "$LOG" 2>&1 || \
-        step_degraded "alpha158 rebuild failed"
-else
-    log "alpha158 fresh (≤3d stale) 跳过 rebuild"
-fi
+# Step 2c: alpha158 — 移除 (2026-06-14 地基-reset 收口)。
+# 旧步骤每日检测 alpha158 stale 即 build_alpha158_duck.py 自动重建 = **重建循环** (光删 panel
+# 下次 daily_update 会重造)。alpha158 是特征层 (L2_feature), reset 范围内; 旧 panel PIT 不可信已删。
+# 重算契约: 验证 Alpha158 时手动用干净 PIT 管道重建 (build_alpha158_duck.py + pit_guard 核证), 不进
+# daily_update 自动循环。见 analysis/model_validation_reliability_design_20260614.md §3/§7 + manifest alpha158。
 
 # Step 2d-2h: satellite fact/mart syncs needed before panel/live consumers
 if [[ "$SKIP_SYNC" == "0" ]]; then
