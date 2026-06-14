@@ -1,0 +1,20 @@
+version: 1
+_doc: >-
+  裸K线公式参数搜索空间 (L0 寻参, owner=analysis/l0_bare_kline_baseline_spec_20260614.md §5)。
+  防过拟合 (用户 #1 约束): 网格刻意**小** (每公式 3-9 组合), 维度少 = 拟合噪声少; 全网格穷举
+  (可复现, 无 sampler) + DSR deflate (多重比较校正 n_trials=组合数)。axes 笛卡尔积 = 候选组合;
+  dotted key (ma.long) 由 runner 展开嵌套。搜索范围数据化 (死亡条款#2 判断死: 不 hardcode 进 runner)。
+  寻参 RUN = task#17 (pre-reg + grill 后; 全市场重计算上 Modal)。
+
+# 每公式: param 轴 -> 候选值列表。runner Cartesian product 成组合, 每组合算 OOS RankIC, 选最佳。
+formula_search_spaces:
+  macd_golden_cross:        # 3x3x1 = 9 组合
+    fast_period: [8, 12, 16]
+    slow_period: [21, 26, 34]
+    signal_period: [9]
+  ma_base_breakout:         # 4 组合 (MA_long 距离)
+    ma.long: [90, 120, 145, 170]
+  turtle_breakout:          # 4 组合 (Donchian 通道)
+    channel: [15, 20, 30, 55]
+  reversal_short_term:      # 3 组合 (回看窗)
+    lookback: [5, 10, 20]
