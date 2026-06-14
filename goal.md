@@ -7,6 +7,7 @@
 
 | Document | Owns | Startup use |
 |---|---|---|
+| `docs/MASTER_TOPLEVEL_DESIGN.md` | 综合顶层设计 (数据→因子→策略→验证→KPI 全链骨架 + 纪律/工具 + 路线) | 先读它有全局 |
 | `goal.md` | 当前阶段目标 / 优先级板 / genesis 法 / 路线 | Read first |
 | `analysis/project_state_ledger.md` | 完成项 / 历史状态 / 证据 | `rg`/`tail` 查, 不全读 |
 | `SESSION_HANDOFF.md` | 运行态恢复快照 | Context-only, 以 live gate 为准 |
