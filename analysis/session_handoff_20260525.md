@@ -1,5 +1,8 @@
 # Session Handoff 2026-05-25 — Phase 4.2b walk-forward 跑到一半暂停
 
+> **状态: 已偏离 (2026-06-14 地基-reset 取代)** — 本文档(计划/设计/handoff层)针对已删的模型/特征/寻优/serving层, 已过时; 保留作历史叙事/measured证据参考。当前态见 `goal.md` + `docs/data_management_framework.md`。
+
+
 > 用户说 "把现在的工作停下来" — 不杀 bg 进程(进度按 window 增量 checkpoint 保存了), 我停止主动监控 + 写续行指引.
 > 下次对话 user 说 "继续" → read this doc → 决定 resume 路径.
 

@@ -1,5 +1,8 @@
 # Alpha 组合实验矩阵 (tushare × iFind) — 三视角设计 + Judge 定稿
 
+> **状态: 已偏离 (2026-06-14 地基-reset 取代)** — 本文档(计划/设计/handoff层)针对已删的模型/特征/寻优/serving层, 已过时; 保留作历史叙事/measured证据参考。当前态见 `goal.md` + `docs/data_management_framework.md`。
+
+
 > 2026-06-12 | workflow: 3 设计视角 (筹码×资金流 / 产业链×概念事件 / 反直觉) 各出 4-6 combo,
 > judge 按 PIT 可行性 × 与 46 维量价正交性 × 判决力 三轴评审。16 设计 → 4 run_first / 9 run_later / 3 reject。
 > 纪律: 每实验跑前预注册判据冻结阈值; 判负按处置条款归档不复跑不放宽; 验证期 0 真金白银。

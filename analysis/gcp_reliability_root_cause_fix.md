@@ -1,5 +1,8 @@
 # GCP retrain 中断根因与可靠性修复方案
 
+> **状态: 已偏离 (2026-06-14 地基-reset 取代)** — 本文档(计划/设计/handoff层)针对已删的模型/特征/寻优/serving层, 已过时; 保留作历史叙事/measured证据参考。当前态见 `goal.md` + `docs/data_management_framework.md`。
+
+
 ## 0. 调查摘要
 
 本文记录 `lgbm_phase5_gcp_20260519T143043` 的 read-only 调查结论。本次没有修改任何 `.py`、`.sh` 或配置文件, 唯一写入文件是本文档。

@@ -1,5 +1,8 @@
 # Alpha Enhancement Plan — 2026-05-22 (evidence-driven rewrite v2)
 
+> **状态: 已偏离 (2026-06-14 地基-reset 取代)** — 本文档(计划/设计/handoff层)针对已删的模型/特征/寻优/serving层, 已过时; 保留作历史叙事/measured证据参考。当前态见 `goal.md` + `docs/data_management_framework.md`。
+
+
 > v1 (09:55) 是 doc 推断 (data ready × 互补性 × 复杂度), 不是 实证驱动. 用户 push back: "经过这么多轮的验证你应该有个大概的感觉哪些指标可能会显著提升, 可以按这个规律去决定测试的参数".
 >
 > v2 重写: **按 ChunkyMonkey 历史几轮 retrain 的实证规律选方向**, drop 没历史证据的 "加 features / 加新数据" 方向.

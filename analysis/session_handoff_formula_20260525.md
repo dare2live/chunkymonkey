@@ -1,5 +1,8 @@
 # Session Handoff — 回调十字星 + 公式工厂整改 2026-05-25
 
+> **状态: 已偏离 (2026-06-14 地基-reset 取代)** — 本文档(计划/设计/handoff层)针对已删的模型/特征/寻优/serving层, 已过时; 保留作历史叙事/measured证据参考。当前态见 `goal.md` + `docs/data_management_framework.md`。
+
+
 ## 下一个 session 的 next action
 
 **Phase 1 开始**: GS 系列 (gs_raw_buy + gs_pullback_confirm) 接入 preflight + 配置化

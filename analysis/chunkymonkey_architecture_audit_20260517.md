@@ -1,5 +1,8 @@
 # ChunkyMonkey 综合架构审计与经验蒸馏
 
+> **状态: 已偏离 (2026-06-14 地基-reset 取代)** — 本文档(计划/设计/handoff层)针对已删的模型/特征/寻优/serving层, 已过时; 保留作历史叙事/measured证据参考。当前态见 `goal.md` + `docs/data_management_framework.md`。
+
+
 审计日期: 2026-05-17  
 审计范围: `/Users/dp/Documents/M/stock/chunkymonkey`  
 只读证据: 代码结构、`backend/config/*.yaml`、`data/*.duckdb` 元数据、现有审计/治理脚本。  

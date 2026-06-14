@@ -1,5 +1,8 @@
 # 市场感知开发计划
 
+> **状态: 已偏离 (2026-06-14 地基-reset 取代)** — 本文档(计划/设计/handoff层)针对已删的模型/特征/寻优/serving层, 已过时; 保留作历史叙事/measured证据参考。当前态见 `goal.md` + `docs/data_management_framework.md`。
+
+
 > 当前版本: 2026-05-20  
 > 依据: `docs/market_perception_codex_handoff.md`, `docs/market_regime_framework.md`, `CLAUDE.md`, CodeGraph 审计, complexity-optimizer 审计, 当前真实 DuckDB 状态。  
 > 原则: 本文档是滚动计划。每个阶段完成、数据现实变化、性能瓶颈或 PIT 风险暴露后，先更新本文档，再继续实施。

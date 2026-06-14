@@ -1,5 +1,8 @@
 # Multi-Wave Strategy Design for 300616
 
+> **状态: 已偏离 (2026-06-14 地基-reset 取代)** — 本文档(计划/设计/handoff层)针对已删的模型/特征/寻优/serving层, 已过时; 保留作历史叙事/measured证据参考。当前态见 `goal.md` + `docs/data_management_framework.md`。
+
+
 Objective: catch the full 300616 rally structure across three historical waves by generating close-of-day signals that can be bought at the next trading day's open. This is a design document only; no backend files are modified.
 
 Important timing rule: every signal below is evaluated after market close on day T. The earliest executable entry is T+1 open. Any condition that requires T+1 close/high/low is a confirmation or exit rule, not an entry filter.

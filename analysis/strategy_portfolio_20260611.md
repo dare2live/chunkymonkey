@@ -1,5 +1,8 @@
 # ChunkyMonkey 最终策略组合方案 (FINAL strategy portfolio)
 
+> **状态: 已偏离 (2026-06-14 地基-reset 取代)** — 本文档(计划/设计/handoff层)针对已删的模型/特征/寻优/serving层, 已过时; 保留作历史叙事/measured证据参考。当前态见 `goal.md` + `docs/data_management_framework.md`。
+
+
 > 生成: 2026-06-11 | 作者: 首席策略综合师 (Claude)
 > 输入: 3 份蓝图 (B-reversal-plus / C-theme-diffusion / D-rank-enhance, blueprint_A 始终未产出, 三评委均未对其评分) + 3 评委结构化打分 + 评委批注 + user_vision_hologram.md + repo 只读核验
 > 北极星 KPI (owner: goal.md): 年化 ≥30% / max_dd ≥-20% / 超额 HS300 >0 / 月胜率 ≥55%

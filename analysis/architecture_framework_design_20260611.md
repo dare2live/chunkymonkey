@@ -1,5 +1,8 @@
 # ChunkyMonkey 整体框架设计底稿 — 六层契约 + 回测框架配置化
 
+> **状态: 已偏离 (2026-06-14 地基-reset 取代)** — 本文档(计划/设计/handoff层)针对已删的模型/特征/寻优/serving层, 已过时; 保留作历史叙事/measured证据参考。当前态见 `goal.md` + `docs/data_management_framework.md`。
+
+
 > 状态: 底稿 (draft), 2026-06-11 体检后顶层设计。
 > 上位文档: `docs/PROJECT_CONSTITUTION.md` (宪法) · `docs/implementation_plan.md` (Active Repair Plan)。
 > 本稿不新建权威体系 — 六层是宪法 L0-L4 的细化, 不是替代。冲突时宪法优先。

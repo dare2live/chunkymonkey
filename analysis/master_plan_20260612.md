@@ -1,5 +1,8 @@
 # 总指挥统一作战图 — 策略需求 × 数据解锁 (2026-06-12, 06-13 对齐更新)
 
+> **状态: 已偏离 (2026-06-14 地基-reset 取代)** — 本文档(计划/设计/handoff层)针对已删的模型/特征/寻优/serving层, 已过时; 保留作历史叙事/measured证据参考。当前态见 `goal.md` + `docs/data_management_framework.md`。
+
+
 > 状态: live — §1 统一图 / §4 tushare 用尽地图 / §7 决策落账 仍 live; §0/§3 战术段已执行完 (见下)。
 > **当前操作框架 = `systematic_validation_plan_20260613.md` (L0-L4 分层验证)**; 本图保留为排兵历史 +
 > 数据动作清单。状态变化回写 goal.md。

@@ -1,5 +1,8 @@
 # smartmoney 34G 清理即拆分 Runbook (G2 执行计划)
 
+> **状态: 已偏离 (2026-06-14 地基-reset 取代)** — 本文档(计划/设计/handoff层)针对已删的模型/特征/寻优/serving层, 已过时; 保留作历史叙事/measured证据参考。当前态见 `goal.md` + `docs/data_management_framework.md`。
+
+
 > 2026-06-12 | 用户催办。现状实测: smartmoney.duckdb **34G / 345 表**, 磁盘余 48G (拆分可行)。
 > 原则 (既有决策): DuckDB DELETE/DROP **不回收空间** → 唯一回收路径 = 活表导出重建新库。
 > Gate (goal.md): 执行前需 copied-DuckDB validation + Codex review; 本文即 review 输入。

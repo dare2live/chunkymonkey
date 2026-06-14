@@ -1,5 +1,8 @@
 # Session 交接备忘 — 2026-05-22 08:30 CST
 
+> **状态: 已偏离 (2026-06-14 地基-reset 取代)** — 本文档(计划/设计/handoff层)针对已删的模型/特征/寻优/serving层, 已过时; 保留作历史叙事/measured证据参考。当前态见 `goal.md` + `docs/data_management_framework.md`。
+
+
 > 用户 push back: "暂停一下, 把当前工作做个交接, 新起 terminal 无缝衔接".
 > 本 doc 是给新 session 的完整 context, 配合 goal.md + SESSION_HANDOFF.md 一起读.
 

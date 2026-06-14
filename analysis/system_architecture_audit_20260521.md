@@ -1,5 +1,8 @@
 # 全系统架构 Audit — 2026-05-21
 
+> **状态: 已偏离 (2026-06-14 地基-reset 取代)** — 本文档(计划/设计/handoff层)针对已删的模型/特征/寻优/serving层, 已过时; 保留作历史叙事/measured证据参考。当前态见 `goal.md` + `docs/data_management_framework.md`。
+
+
 > 触发: 用户 2026-05-21 21:00 push back "对整个系统的交互连通性 + 代码复杂度 + 模块化管理 + 可维护可扩展 + 代码冗余 audit, 本着第一性原理 + 奥卡姆剃刀".
 > 方法: codegraph (status / query / context) + complexity-optimizer + 4 个并行 agents (Explore × 2 + Plan × 1 + general-purpose × 1).
 > 范围: 主项目 chunkymonkey + 子模块 market_perception + 物理隔离 sibling BestChoice.

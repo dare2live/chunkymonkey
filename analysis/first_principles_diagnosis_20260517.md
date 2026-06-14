@@ -1,5 +1,8 @@
 # ChunkyMonkey 第一性原理深度诊断报告
 
+> **状态: 已偏离 (2026-06-14 地基-reset 取代)** — 本文档(计划/设计/handoff层)针对已删的模型/特征/寻优/serving层, 已过时; 保留作历史叙事/measured证据参考。当前态见 `goal.md` + `docs/data_management_framework.md`。
+
+
 日期: 2026-05-17  
 范围: `backend/` 训练、特征、label、paper_sim、成本、universe。诚实基线: RankIC=0.0246；equal 年化 -9.0%；`score_rank_diff_v1` 年化 -2.8%（+6.2pp）；60d IR median=-0.65~-0.52；月胜率 50%；年化换手 30.86x；100 万 CNY × 5 仓。
 
