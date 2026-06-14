@@ -29,11 +29,22 @@
    重建尚未 KPI 验证 → 保留待重建达标后删。要现在删省盘? 用户定。
 2. **updater 死 builder P2 解耦** (C2 29→0): 须跑 test 验 data_sources/etf 不破, 是 framework 钦定增量项。
 
-## 剩余 Phase A polish (低风险, 继续)
-- A4: 8 散落 ensure_tables() 包 layer-gate (assert_active_layer) — **预防性**硬化 (防未来重建循环, 当前无活 bug;
-  站点: institution_survey/turtle/picture/qfii/stage/signals_v2, 建的都是 active 表)。
-- A6: 文档收口 — 候选多被控制面引用 (README authority 链 + strategy_validation_contract) 或已诚实标"已偏离(留证据)";
-  仅 multi_wave_strategy_300616/system_architecture_audit_20260521 零引用安全删; CLAUDE.md 瘦身 (§4.5反例→skill指针) 待。
+## A6 + skill 沉淀 (本轮已完成)
+- **A6 文档收口 done**: git rm 5 已偏离 analysis + architecture_reform_context(已被 MASTER 覆盖); zhushenglang
+  北极星研究移 docs/->analysis/ 保留(不可替代 ground truth); authority 链 7 处更新; DOCS_MAX_FILES 12->10;
+  **docs 12->10, doc-governance PASS**。
+- **skill 教训沉淀 done**: 本轮 5 教训入 `chunkymonkey-ops` skill §2 坑库 (验证器假阳性/agent粗标/tracked≠ignored/
+  live-DAG禁big-bang/gate扫描面)。
+
+## 剩余 Phase A polish
+- A4: 8 散落 ensure_tables() 包 layer-gate — **预防性**硬化 (当前无活 bug; institution_survey/turtle/picture/qfii/stage/signals_v2)。
+- **CLAUDE.md 瘦身**: 红线文件, 待用户点头审 diff (方案: §4.5反例→skill指针 + §1/§8细节→指针, 红线一字不删, 268->~180行)。
+
+## Phase B 前置已验证就绪 (下一步)
+`fact_stock_technical_stage` **3,983,541 行** (stage 列=Weinstein 5阶段 Segment 真相源, L1k) + `oos_ic.py` 引擎 +
+`technical_stage.py` 计算器 全在盘。**per-stage L0 IC 实验随时可跑**: reversal 在 Stage1(低位) 是否远超市场级 +0.064
+→ 证条件化 + 出(公式×形态)矩阵。owner=`analysis/conditional_stage_strategy_design_20260614.md`。
+**真金白银红线: 此实验是策略方向决断, 须谨慎跑(measured not estimated), 不在疲劳 turn 末仓促做。**
 
 ## 下一步路线 (owner=MASTER §10)
 ```
