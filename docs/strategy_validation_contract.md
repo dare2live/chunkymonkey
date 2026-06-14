@@ -69,8 +69,9 @@ pass, recover the business mainline in this order:
 
 ## 主升浪猎手 Validation Boundary
 
-`docs/zhushenglang_hunter_research_log_20260528.md` is preserved as the product
-north star and research evidence, not as a production certificate. Its 70%,
+`../analysis/zhushenglang_hunter_research_log_20260528.md` (moved docs/->analysis/
+2026-06-15) is preserved as the product north star and research evidence, not as
+a production certificate. Its 70%,
 78%, and 86% figures are hypotheses until revalidated under current gates.
 
 Minimum validation before using it for real candidates:

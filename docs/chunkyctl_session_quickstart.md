@@ -35,7 +35,8 @@ verify live state with `doctor --fast` before trusting it.
      `docs/engineering_governance.md` for gates/deletion/provider jobs,
      `docs/data_product_contract.md` for data-source/PIT/freshness work,
      `docs/strategy_validation_contract.md` for strategy/model promotion, and
-     `docs/architecture_reform_context.md` for architecture-regression checks.
+     `docs/MASTER_TOPLEVEL_DESIGN.md` for global architecture/lineage/roadmap
+     (architecture_reform_context retired 2026-06-15).
    - Do not read `CLAUDE.md` as a Codex startup or policy source; it is legacy
      Claude-only history unless the user explicitly asks for historical
      migration.

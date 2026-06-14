@@ -110,5 +110,5 @@ S3 逐数据验证 → S4 判决。留档链: pre-reg(冻结判据 prereg_hash) 
 - **owner 细节 doc** (本文件引用, 不复制): data_management_framework(数据层) / strategy_validation_contract(PIT/Optuna) /
   PROJECT_CONSTITUTION(三原则) / 各 analysis 设计 doc (alpha验证/L0/可靠性/条件化策略/重构架构/数据菜单)。
 - **skill `chunkymonkey-ops`** = 操作知识固化 (坑/工具调度/纪律/反例), 后续开发持续 invoke。
-- **退役**: 36 个已标"已偏离" analysis + 过时 docs (architecture_reform_context 等) → 移 _retired_/ 或删 (防污染)。
+- **退役 (2026-06-15 A6 执行)**: git rm 5 已偏离 analysis (first_principles_diagnosis/chunkymonkey_architecture_audit/multi_wave_strategy_300616/system_architecture_audit_20260521/implementation_plan_20260611) + architecture_reform_context (本设计已覆盖); 移 zhushenglang 研究日志 docs/->analysis/ (北极星证据归 evidence 目录)。docs 12->10。
 - **CLAUDE.md** = 瘦身到会话红线 + 指针到本文件/skill (不重复细节)。

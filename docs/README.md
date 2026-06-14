@@ -24,7 +24,7 @@ but they do not override the active contracts.
 | 5 | `engineering_governance.md` | Engineering gates, deletion, agents, CodeGraph, complexity, provider jobs |
 | 6 | `data_product_contract.md` | Data needs, lineage, profiles, UI contract |
 | 7 | `strategy_validation_contract.md` | Strategy validation, Optuna/provider jobs, promotion contract |
-| 8 | `architecture_reform_context.md` | 300616 sentinel case and why governance comes first |
+| 8 | `MASTER_TOPLEVEL_DESIGN.md` | Global top-level design (data->factor->strategy->validation->KPI skeleton, discipline, roadmap); supersedes retired architecture_reform_context |
 | 9 | `implementation_plan.md` | Durable execution order, gates, and acceptance criteria |
 
 ## Context-Only Snapshots
@@ -42,14 +42,14 @@ but they do not override the active contracts.
 |---|---|
 | `README.md` | This map, lifecycle rules, and archive ledger |
 | `PROJECT_CONSTITUTION.md` | Constitution: truth sources, architecture layers, hard gates |
-| `architecture_reform_context.md` | 300616 sentinel history and systemic failure lessons |
+| `MASTER_TOPLEVEL_DESIGN.md` | Global top-level design skeleton (architecture/lineage/roadmap); supersedes retired architecture_reform_context (2026-06-15, lessons in `../analysis/project_state_ledger.md`) |
 | `chunkyctl_session_quickstart.md` | Durable startup and controller workflow |
 | `implementation_plan.md` | Durable execution plan; current phase board remains in `../goal.md` and completed evidence in `../analysis/project_state_ledger.md` |
 | `engineering_governance.md` | Design review, CodeGraph + complexity, tests, agents, provider-job, deletion policy |
 | `data_product_contract.md` | Data needs, lineage, profiles, market perception support, frontend contract |
 | `strategy_validation_contract.md` | Backtest, Optuna/provider jobs, paper_sim, forward, and promotion contract |
 | `chip_distribution_cyq_spec.md` | Active CYQ algorithm/detail spec for main-force profile and 主升浪 validation |
-| `zhushenglang_hunter_research_log_20260528.md` | 主升浪猎手 product north star and research evidence; not production proof |
+| (`../analysis/zhushenglang_hunter_research_log_20260528.md`) | 主升浪猎手 north-star research evidence; moved docs/->analysis/ 2026-06-15 (research log, not production proof; belongs in evidence dir) |
 
 ## 状态标头契约 (2026-06-12 新增, 机器执法)
 
@@ -119,7 +119,7 @@ Current target:
 | `data_product_contract.md` | Former lineage, profile, technical, incremental, market-perception, stock-graph, UI, and trade-date migration docs |
 | `strategy_validation_contract.md` | Former backtester, leakage, paper-sim, forward, phase4, retrain, SUE, MSAF, and stock-scheme docs |
 | `implementation_plan.md` | Current durable roadmap only; detailed slice progress moved back to `../goal.md` |
-| `architecture_reform_context.md` | Stable 300616 rationale only; old current-status and provider-cost snapshots removed from active authority |
+| `architecture_reform_context.md` | Deleted 2026-06-15 (A6); 300616 rationale + architecture-layer doctrine superseded by `MASTER_TOPLEVEL_DESIGN.md` + `PROJECT_CONSTITUTION.md`; lessons in `../analysis/project_state_ledger.md` (git history) |
 
 ## Recent Cleanup Ledger
 
@@ -138,19 +138,19 @@ Archive notes:
 | `PLAN_V3.md` | Archived as `../analysis/plan_v3_20260514_archived.md` |
 | `DATA_INTEGRITY_AUDIT_20260517.md` | Archived as `../analysis/data_integrity_audit_20260517.md` |
 | `市场感知开发计划.md` | Archived as `../analysis/market_perception_development_plan_20260520.md` |
-| `docs/implementation_plan_20260611.md` | Archived as `../analysis/implementation_plan_20260611.md` (2026-06-11 checkup dated evidence; active plan merged into `implementation_plan.md`) |
+| `docs/implementation_plan_20260611.md` | Deleted 2026-06-15 (A6); 2026-06-11 checkup findings 多已被地基-reset 偏离, active plan in `implementation_plan.md` + `../goal.md` (git history) |
 | `docs/cron_automation_breakage_rca_20260529.md` | Archived as `../analysis/cron_automation_breakage_rca_20260529.md` |
 | `docs/market_perception_codex_prompt.md` | Deleted; superseded by `chunkyctl_session_quickstart.md`, `goal.md`, and active contracts |
 | `../goal.md` 2026-05-24 and earlier sections | Archived as `../analysis/goal_legacy_20260531.md` |
 | `docs/feasibility_analysis_20260517.md` | Archived as `../analysis/feasibility_analysis_20260517.md` |
-| `docs/first_principles_diagnosis_20260517.md` | Archived as `../analysis/first_principles_diagnosis_20260517.md` |
+| `docs/first_principles_diagnosis_20260517.md` | Deleted 2026-06-15 (A6); 针对已删模型/特征/serving 层, 地基-reset 偏离 (git history) |
 | `docs/v4_panel_feature_audit_20260517.md` | Archived as `../analysis/v4_panel_feature_audit_20260517.md` |
 | `docs/MASTER_SYNTHESIS_20260523.md` | Archived as `../analysis/MASTER_SYNTHESIS_20260523.md` |
 | `docs/project_synthesis_20260523.md` | Archived as `../analysis/project_synthesis_20260523.md` |
 | `docs/project_audit_20260523.md` | Archived as `../analysis/project_audit_20260523.md` |
 | `docs/integration_master_plan_20260523.md` | Archived as `../analysis/integration_master_plan_20260523.md` |
 | `docs/optimization_plan_consolidated_20260523.md` | Archived as `../analysis/optimization_plan_consolidated_20260523.md` |
-| `docs/chunkymonkey_architecture_audit_20260517.md` | Archived as `../analysis/chunkymonkey_architecture_audit_20260517.md` |
+| `docs/chunkymonkey_architecture_audit_20260517.md` | Deleted 2026-06-15 (A6); 针对已删架构层, 地基-reset 偏离 (git history) |
 | `docs/codegraph_audit_integration_spec.md` | Archived as `../analysis/codegraph_audit_integration_spec.md` |
 | `docs/gcp_reliability_root_cause_fix.md` | Archived as `../analysis/gcp_reliability_root_cause_fix.md` |
 | `docs/modularization_refactor_plan.md` | Archived as `../analysis/modularization_refactor_plan.md` |

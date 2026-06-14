@@ -10,7 +10,7 @@ the live ledger is `../goal.md`.
 |---|---|
 | What is blocked or next right now? | `../goal.md` |
 | What is the execution order? | This file |
-| Why did the architecture reform start? | `architecture_reform_context.md` |
+| Why did the architecture reform start? | `MASTER_TOPLEVEL_DESIGN.md` (architecture_reform_context retired 2026-06-15) |
 | What rules are non-negotiable? | `PROJECT_CONSTITUTION.md`, `engineering_governance.md` |
 | What data/product contracts must future work satisfy? | `data_product_contract.md`, `strategy_validation_contract.md` |
 
@@ -80,8 +80,8 @@ Full design draft (六层契约 + 回测配置化 + 新数据域/新策略挂载
 
 ## Active Repair Plan (2026-06-11 checkup)
 
-Full dated evidence: `../analysis/implementation_plan_20260611.md` (2026-06-11
-全面体检产物: 28 confirmed + 61 medium/low findings, 四条审计线)。本节是现行执行序。
+Dated evidence (2026-06-11 体检产物 28 confirmed + 61 medium/low findings) retired
+2026-06-15 — 地基-reset 后该批 findings 多已偏离; 现行执行序见本节 + `../goal.md`。
 
 | Phase | 内容 | 验收 |
 |---|---|---|
