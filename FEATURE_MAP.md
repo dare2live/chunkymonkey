@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-14 19:23
+> Snapshot: 2026-06-15 00:15
 
 ## 1. 入口面
 
@@ -31,11 +31,8 @@
 |---|---|---|
 | data_sources | `/api/data_sources` | 18 |
 | etf | `/api/etf` | 9 |
-| institution | `/api/inst` | 30 |
 | market | `/api/inst` | 1 |
 | ops_manual_run | `/api/v3/ops` | 3 |
-| recommendation | `/api/rec` | 7 |
-| screening | `/api/screening` | 7 |
 | signals | `/api/signals` | 10 |
 | stock_graph | `/api/v3` | 3 |
 | strategy_preset | `/api/inst/strategy` | 4 |
@@ -43,14 +40,10 @@
 | updater_lifeboat | `—` | 3 |
 | v3_bestchoice | `/api/v3` | 4 |
 | v3_config | `/api/v3` | 1 |
-| v3_market_perception | `/api/v3/market_perception` | 11 |
-| v3_meta | `/api/v3` | 7 |
 | v3_paper | `/api/v3/paper` | 5 |
-| v3_perception_legacy | `/api/v3/perception` | 5 |
 | v3_picture | `/api/v3` | 3 |
 | v3_portfolio_builder | `/api/v3/portfolio` | 5 |
 | v3_selection | `/api/v3/selection` | 6 |
-| v3_views | `/api/v3/view` | 6 |
 | workbench | `/api/workbench` | 10 |
 
 端点全列表在 json (`routes` 键)。
@@ -287,7 +280,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 7,481 | calls 边 101,060 | imports 边 13,643 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 7,545 | calls 边 101,350 | imports 边 13,641 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -338,12 +331,12 @@
 | backend/scripts/ingest_holders_tdxhub.py | 1545 |
 | backend/services/tdx_f10_extra_client.py | 1478 |
 | backend/scripts/build_price_kline_tdxhub.py | 1461 |
-| backend/routers/institution.py | 1370 |
 | backend/scripts/seed_dim_data_asset.py | 1339 |
+| backend/scripts/audit_delivery_readiness.py | 1226 |
 
 ## 5. 概览
 
-- chunkyctl 子命令 8 | launchd 任务 1 | router 23 (端点 171)
+- chunkyctl 子命令 8 | launchd 任务 1 | router 16 (端点 98)
 - sync_registry 数据域 29
 - 产表 164 (多 writer 71)
 

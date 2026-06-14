@@ -109,12 +109,11 @@ app.add_middleware(
 
 # 注册路由
 from routers.market import router as market_router
-from routers.institution import router as institution_router
 from routers.updater import router as updater_router
 
 app.include_router(market_router, prefix="/api/inst", tags=["market"])
-app.include_router(institution_router, prefix="/api/inst", tags=["institution"])
 app.include_router(updater_router, prefix="/api/inst", tags=["updater"])
+# routers.institution (serving) 退役 2026-06-14 地基-reset 收口 — 查 wiped mart_institution_profile/stat (L2/L3 已删)
 
 # 手动任务触发 (2026-06-12 用户决议: 自动调度退役, 更新链改前端按钮手动跑)
 from routers.ops_manual_run import router as ops_manual_run_router
@@ -140,14 +139,12 @@ def register_modules(app):
 
 app_modules = register_modules(app)
 
-from routers.screening import router as screening_router
-app.include_router(screening_router, prefix="/api/screening", tags=["screening"])
+# routers.screening (serving) 退役 2026-06-14 — 查 wiped mart_stock_screening (L2 已删)
 
 from routers.signals import router as signals_router
 app.include_router(signals_router, prefix="/api/signals", tags=["signals"])
 
-from routers.recommendation import router as recommendation_router
-app.include_router(recommendation_router, prefix="/api/rec", tags=["recommendation"])
+# routers.recommendation (serving) 退役 2026-06-14 — 查 wiped mart_daily_recommendation 等 (L3 已删)
 
 from routers.workbench import router as workbench_router
 app.include_router(workbench_router, prefix="/api/workbench", tags=["workbench"])
@@ -160,9 +157,7 @@ app.include_router(data_sources_router, prefix="/api/data_sources", tags=["data_
 from routers.strategy_preset import router as strategy_preset_router
 app.include_router(strategy_preset_router, prefix="/api/inst/strategy", tags=["strategy_preset"])
 
-# v3 设计稿专用聚合 API
-from routers.v3_meta import router as v3_meta_router
-app.include_router(v3_meta_router, prefix="/api/v3", tags=["v3_meta"])
+# v3_meta (serving 聚合) 退役 2026-06-14 — 查 wiped 模型/感知 mart (L2/L3 已删)
 
 # Phase γ D4: 股票画像 + trade plan (mart_stock_picture_daily / mart_stock_trade_plan)
 from routers.v3_config import router as v3_config_router
@@ -179,9 +174,7 @@ app.include_router(v3_paper_router, prefix="/api/v3/paper", tags=["v3_paper"])
 from routers.v3_selection import router as v3_selection_router
 app.include_router(v3_selection_router, prefix="/api/v3/selection", tags=["v3_selection"])
 
-# Phase η: 3 视图 API (股票/公式/机构)
-from routers.v3_views import router as v3_views_router
-app.include_router(v3_views_router, prefix="/api/v3/view", tags=["v3_view"])
+# v3_views (serving 3视图: 股票/公式/机构) 退役 2026-06-14 — 查 wiped mart (L2/L3 已删)
 
 # Phase η++ : 组合构建器 (3 risk profile, Kelly + Wilson 仓位)
 from routers.v3_portfolio_builder import router as v3_portfolio_builder_router
@@ -191,12 +184,12 @@ app.include_router(v3_portfolio_builder_router, prefix="/api/v3/portfolio", tags
 PERCEPTION_SRC = Path(__file__).resolve().parents[2] / "perception" / "src"
 if PERCEPTION_SRC.exists() and str(PERCEPTION_SRC) not in sys.path:
     sys.path.insert(0, str(PERCEPTION_SRC))
+# 仅用 standalone perception 项目 (bundled routers/v3_market_perception fallback 退役 2026-06-14 — 查 wiped mart)
 try:
     from perception.router import router as v3_market_perception_router
+    app.include_router(v3_market_perception_router, prefix="/api/v3/market_perception", tags=["v3_market_perception"])
 except Exception as exc:
-    logger.warning("standalone perception router unavailable, falling back to bundled router: %s", exc)
-    from routers.v3_market_perception import router as v3_market_perception_router
-app.include_router(v3_market_perception_router, prefix="/api/v3/market_perception", tags=["v3_market_perception"])
+    logger.warning("standalone perception router unavailable; bundled fallback retired 2026-06-14: %s", exc)
 
 # Project D 股票图谱 (2026-05-22 用户新加): UI 查询层, 基于 Perception 7 mart, 不接 ranker
 from routers.stock_graph import router as stock_graph_router
@@ -206,9 +199,7 @@ app.include_router(stock_graph_router, prefix="/api/v3", tags=["v3_stock_graph"]
 from routers.v3_bestchoice import router as v3_bestchoice_router
 app.include_router(v3_bestchoice_router, prefix="/api/v3", tags=["v3_bestchoice"])
 
-# Perception legacy display (2026-05-24 Phase 1.7): read-only Track A 展示, 不影响 champion
-from routers.v3_perception_legacy import router as v3_perception_legacy_router
-app.include_router(v3_perception_legacy_router)
+# v3_perception_legacy (serving) 退役 2026-06-14 — 查 wiped 感知 mart (L2/L3 已删)
 
 # 初始化 signals_v2 默认配置（幂等）
 try:
