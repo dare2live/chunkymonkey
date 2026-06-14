@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-14 16:12
+> Snapshot: 2026-06-14 16:54
 
 ## 1. 入口面
 
@@ -91,7 +91,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 162 张 | 单 writer 93 | 多 writer 69 | 动态表名写点 19 处 (11 文件)
+统计: 表 164 张 | 单 writer 95 | 多 writer 69 | 动态表名写点 19 处 (11 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -199,9 +199,11 @@
 | dim_stock_tdx_industry_history | backend/services/tdx_industry_client.py |
 | dim_stock_turtle_latest | backend/services/stock_turtle_engine.py |
 | dim_strategy_preset | backend/routers/strategy_preset.py |
+| fact_consumer_alpha_ic_scan | backend/scripts/build_experiment_store.py |
 | fact_daily_price_status | backend/services/primitives/ddl.py |
 | fact_dzjy_event | backend/scripts/build_akshare_panel.py |
 | fact_executive_trade_event | backend/scripts/build_executive_trade_events.py |
+| fact_experiment_verdict | backend/scripts/build_experiment_store.py |
 | fact_feature_panel_candidate | backend/services/schema_core.py |
 | fact_feature_panel_tdx_keep_challenger | backend/services/schema_core.py |
 | fact_financial_derived | backend/services/financial_client.py |
@@ -285,7 +287,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 7,249 | calls 边 100,157 | imports 边 13,558 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 7,271 | calls 边 100,169 | imports 边 13,561 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -293,7 +295,7 @@
 |---|---|
 | services.db | 44 |
 | services.utils | 36 |
-| services.duck_adapter | 26 |
+| services.duck_adapter | 27 |
 | services.market_db | 23 |
 | services.industry | 16 |
 | services.tdx_source | 15 |
@@ -313,9 +315,9 @@
 |---|---|
 | backend/services/industry.py | 15 |
 | backend/routers/updater_runtime.py | 6 |
+| backend/services/duck_adapter.py | 6 |
 | backend/services/etf_grid_engine.py | 6 |
 | backend/services/data_sources/base.py | 5 |
-| backend/services/duck_adapter.py | 5 |
 | backend/services/kline_source.py | 5 |
 | backend/services/etf_engine.py | 4 |
 | backend/services/business_facts.py | 3 |
@@ -343,5 +345,5 @@
 
 - chunkyctl 子命令 8 | launchd 任务 1 | router 23 (端点 171)
 - sync_registry 数据域 29
-- 产表 162 (多 writer 69)
+- 产表 164 (多 writer 69)
 

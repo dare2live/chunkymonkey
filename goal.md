@@ -54,7 +54,7 @@
 | P | Workstream | State | Next action |
 |---|---|---|---|
 | P0 | 文档同步 | goal/INDEX reset-rewrite | 立 `moth doc-drift` 固化 (机器对账, 防再漂; mythos §16) |
-| P0 | Alpha 验证 S0 | 实验台 (`experiment_jobs.py`) 被 reset 删, yaml 契约在 | 在干净地基重写 consumer_alpha family + executor + 留档表 (fact_experiment_verdict/ic_scan/lineage/pit_audit → `experiment_store.duckdb`) |
+| P0 | Alpha 验证 S0 | **留档表已建** (`build_experiment_store.py` → `experiment_store.duckdb` 4表/12约束: verdict/ic_scan/lineage/pit_audit, L4隔离 PIT-clean; manifest active); 实验台执行器 (`experiment_jobs.py`) 被 reset 删待重写 | 重写 consumer_alpha family + executor (读 `experiment_jobs.yaml` 契约, 写留档表), 然后 L0 裸K线基准首验 |
 | P1 | 裸K线基准 L0 | 待建 (北极星: 先建标尺再加 alpha) | S0 后第一个 consumer: 仅 OHLCV 派生的基准策略, PIT-clean, 作每个 alpha 的标尺 |
 | P2 | 深层解耦 backlog | kept routers 懒加载已删 services / 8 散落服务自建表 / 23 god-file (framework doc §6) | rebuild 时按 layer 顺手解耦, moth 守不回潮; **不 big-bang** (反复破 CI 教训) |
 

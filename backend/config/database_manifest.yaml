@@ -76,9 +76,9 @@ databases:
   experiment_store:
     path: data/experiment_store.duckdb
     domain: alpha_validation_experiment
-    owner: planned_experiment_pipeline
+    owner: experiment_pipeline
     role: >-
-      planned isolated store for alpha-validation experiment outputs
+      isolated store for alpha-validation experiment outputs
       (fact_experiment_verdict, fact_consumer_alpha_ic_scan,
       pipeline_artifact_lineage, experiment_pit_audit_log). Created at S0 of the
       alpha validation program. Wipeable after a validation cycle; CONSTRAINT:
@@ -88,8 +88,8 @@ databases:
       analysis/db_management_design_20260614.md §13.
     default_open_mode: read_write
     default_attach_mode: read_only
-    online: false
-    status: planned
+    online: true
+    status: active  # 2026-06-14 S0: build_experiment_store.py 建 4 留档表
     retention_class: transient_experiment
     table_patterns:
       - fact_experiment_verdict*
