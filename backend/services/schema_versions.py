@@ -39,11 +39,8 @@ logger = logging.getLogger("cm-api.schema_versions")
 # fact_* (事件/快照层, 23 张)
 FACT_VERSIONS = {
     "fact_institution_event": "v2",          # 机构事件 (公告日 source lineage)
-    "fact_setup_snapshot": "v1",             # setup 快照
     "fact_chain_alpha_truth": "v1",          # 链路 alpha 真值
     "fact_feature_panel": "v4",              # 特征面板 (含 follow_net_return_* 标签 + K线来源血缘)
-    "fact_feature_panel_candidate": "v3",    # 候选特征面板 (含 follow_net_return_* 标签, 不替换 champion)
-    "fact_feature_panel_tdx_keep_challenger": "v2",  # TDX keep challenger 面板
     "fact_dzjy_event": "v1",                 # 大宗交易事件
     "fact_executive_trade_event": "v1",      # 高管交易事件
     "fact_jgdy_event": "v1",                 # 机构调研事件
@@ -81,16 +78,10 @@ FACT_VERSIONS = {
 
 # mart_* (集市层, 可重算, 32 张)
 MART_VERSIONS = {
-    "mart_audit_snapshot_state": "v1",
     "mart_current_relationship": "v1",       # 当前持仓关系 ⭐
     "mart_daily_recommendation": "v1",       # 每日推荐 topK
     "mart_daily_recommendation_risk": "v1",
     "mart_daily_topk_view_cache": "v1",
-    "mart_dual_confirm": "v1",               # 双重确认
-    "mart_etf_snapshot_latest": "v1",
-    "mart_etf_snapshot_state": "v1",
-    "mart_institution_industry_stat": "v1",  # 机构行业统计
-    "mart_institution_profile": "v2",        # 机构画像 ⭐ (pricing_policy_hash)
     "mart_model_ablation_run": "v1",
     "mart_feature_association_stat": "v2",
     "mart_feature_correlation_cluster": "v1",
@@ -116,16 +107,9 @@ MART_VERSIONS = {
     "mart_stock_horizon_profile": "v3",
     "mart_stock_horizon_feature_effect": "v2",
     "mart_stock_horizon_selection": "v1",
-    "mart_feature_candidate_score": "v1",
-    "mart_feature_group_ablation": "v2",
-    "mart_feature_pit_audit": "v1",
     "mart_feature_pit_coverage_summary": "v1",
     "mart_feature_panel_validation": "v1",
     "mart_feature_panel_prune_run": "v1",
-    "mart_candidate_walkforward_eval": "v1",
-    "mart_model_holding_topk_eval": "v1",
-    "mart_model_feature_lineage": "v1",
-    "mart_feature_retention_decision": "v1",
     "mart_feature_candidate_coverage": "v1",
     "mart_feature_drift_histogram": "v1",
     "mart_challenger_evidence_bundle": "v1",
@@ -189,9 +173,6 @@ MART_VERSIONS = {
     "mart_data_deletion_record": "v1",
     "mart_follow_return_label_build": "v1",
     "mart_follow_return_label_quality": "v1",
-    "mart_model_selection_run": "v1",
-    "mart_tdx_challenger_report": "v1",
-    "mart_tdx_keep_promotion_gate": "v1",
     "mart_data_deprecation_record": "v1",
     "mart_model_portfolio_curve": "v1",
     "mart_model_portfolio_summary": "v1",    # 模型组合表现 (cost/return/sharpe)
@@ -200,12 +181,8 @@ MART_VERSIONS = {
     "mart_model_walkforward_prediction": "v1",
     "mart_multidim_model": "v1",             # 多维模型注册
     "mart_multidim_prediction": "v1",        # 多维模型预测
-    "mart_sector_momentum": "v1",            # 板块动量
     "mart_step_fingerprint": "v1",           # step 指纹 (增量驱动)
-    "mart_stock_screening": "v1",            # 选股结果
     "mart_stock_survey_activity": "v1",      # 调研活动
-    "mart_stock_trend": "v1",                # 股票趋势 ⭐
-    "mart_stock_fund_flow_rank_snapshot_daily": "v1",  # 研究侧资金流排行快照
     "mart_prediction_outcome": "v1",         # P2.8 预测 outcome tracker
     "mart_ensemble_signals": "v1",           # P3.11 多策略 ensemble
     "mart_today_signal_cache": "v2",         # signals_v2 read cache summary row

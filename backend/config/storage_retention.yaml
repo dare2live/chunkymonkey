@@ -122,7 +122,7 @@ payload_audit:
       allow_path_marker: true
       max_value_bytes: 512
       max_total_value_bytes: 1048576
-    - table: mart_strategy_result_registry
+    - table: mart_strategy_result_registry  # @archived wiped-2026-06-14-reset
       column: evidence_json
       classification: governed_strategy_evidence_pointer
       owner: strategy_result_registry
@@ -130,7 +130,7 @@ payload_audit:
       allow_path_marker: true
       max_value_bytes: 4096
       max_total_value_bytes: 1048576
-    - table: mart_strategy_result_registry
+    - table: mart_strategy_result_registry  # @archived wiped-2026-06-14-reset
       column: lineage_url
       classification: governed_lineage_pointer
       owner: strategy_result_registry
@@ -153,7 +153,7 @@ protected_model_statuses:
   - shadow
 
 candidate_feature_panels:
-  - table: fact_feature_panel_candidate
+  - table: fact_feature_panel_candidate  # @archived wiped-2026-06-14-reset
     key_column: feature_set_id
     built_at_column: built_at
     retain_latest_keys: 3
@@ -184,11 +184,11 @@ protected_artifact_tables:
     reason: TDX F10 raw holder snapshots are replayable source records
   - table: raw_tdx_f10_holder_count_history
     reason: TDX F10 parsed raw holder-count snapshots support source-date replay
-  - table: raw_tdx_f10_extra_parse_status
+  - table: raw_tdx_f10_extra_parse_status  # @archived wiped-2026-06-14-reset
     reason: TDX F10 parse ledger prevents repeated failed or terminal parses
   - table: mart_tdx_f10_capability_matrix
     reason: TDX F10 capability and PIT-date matrix is source governance evidence
-  - table: mart_feature_pit_audit
+  - table: mart_feature_pit_audit  # @archived wiped-2026-06-14-reset
     reason: PIT audit rows gate feature and model promotion
   - table: mart_feature_pit_coverage_summary
     reason: high/critical PIT coverage summary is model governance evidence
@@ -355,7 +355,7 @@ table_inventory:
     compaction_policy: protect_no_compaction_without_verified_copy
     retention_action: protect_until_cli_defaults_and_schema_refs_are_migrated
     reason: Baseline panel consumes material space but remains the default input for P0b training, P1 ablation, and P0a audit scripts.
-  - table: fact_feature_panel_candidate
+  - table: fact_feature_panel_candidate  # @archived wiped-2026-06-14-reset
     classification: governed_candidate_panel
     owner: storage_retention_policy
     db_alias: smartmoney
@@ -375,7 +375,7 @@ table_inventory:
     compaction_policy: checkpoint_after_approved_delete
     retention_action: use_candidate_feature_panel_retention_rules
     reason: Candidate feature-set table already has key-level retention rules; current dry-run may still protect all keys.
-  - table: fact_feature_panel_tdx_keep_challenger
+  - table: fact_feature_panel_tdx_keep_challenger  # @archived wiped-2026-06-14-reset
     classification: derived_challenger_panel_requires_owner
     owner: tdx_keep_challenger_pipeline
     db_alias: smartmoney

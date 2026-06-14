@@ -74,7 +74,7 @@ databases:
     status: planned
     retention_class: planned_rebuildable_store
     table_patterns:
-      - fact_feature_panel_candidate*
+      - fact_feature_panel_candidate*  # @archived wiped-2026-06-14-reset
       - mart_feature_rank_matrix_cache*
 
   experiment_store:

@@ -31,7 +31,7 @@ tiers:
     # 25 张纯 optuna 研究输出 (无与 serving 的写原子绑定; serving 如需读走 ATTACH read_only)。
     # 排除 fact_optuna_governance_log (原子绑 stage_optimal 留 serving)。
     tables:
-      - mart_feature_group_ablation
+      - mart_feature_group_ablation  # @archived wiped-2026-06-14-reset
       - mart_model_ablation_run
       - mart_model_feature_ablation
       - mart_optuna_feature_space_trial
@@ -55,7 +55,7 @@ tiers:
       - mart_synergy_policy_mtm_strategy_sweep
       - mart_synergy_policy_mtm_strategy_sweep_summary
       - mart_synergy_policy_walkforward
-      - mart_tdx_gpcw_auto_optuna_run
+      - mart_tdx_gpcw_auto_optuna_run  # @archived wiped-2026-06-14-reset
 
   # feature / source tier 表清单: D0 uncertain (event/holders 归属) 收口后补, D2/D3 用。
   feature:

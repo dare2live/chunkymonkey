@@ -77,7 +77,7 @@ retired_experiments:
 - subsystem: sector_momentum / 派生 daily
   tables_retired_count: 2
   summary: 字段族=板块动量 close/ma/ret/excess/prank. 工具=build sector momentum. 结论=v_stock_sector_momentum_daily 是 VIEW (4.61M 幻行非物理)
-    + mart_sector_momentum(41); 派生层全删. 行=物理仅 41.
+    + mart_sector_momentum(41); 派生层全删. 行=物理仅 41.  # @archived wiped-2026-06-14-reset
   retired_date: '2026-06-14'
   retired_run: lifecycle_20260614_reset
 - subsystem: champion/ensemble/recommendation 模型产出

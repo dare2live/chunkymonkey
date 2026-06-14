@@ -577,7 +577,7 @@ reassignments:
     migration_required: false
     risk: "low"
     reason: "保留全字段 JSON 作为语义和自动特征源。"
-  - table_name: "fact_tdx_gpcw_auto_feature_quarterly"
+  - table_name: "fact_tdx_gpcw_auto_feature_quarterly"  # @archived wiped-2026-06-14-reset
     current_source: "new derived"
     proposed_primary_source: "tdxhub_gpcw"
     fallback_source: null
@@ -598,7 +598,7 @@ reassignments:
     migration_required: false
     risk: "medium"
     reason: "明细股东事件仍需 F10 parser。"
-  - table_name: "fact_fund_holding_tdx_f10"
+  - table_name: "fact_fund_holding_tdx_f10"  # @archived wiped-2026-06-14-reset
     current_source: "TDX F10 section 7"
     proposed_primary_source: "tdxhub_f10"
     fallback_source: "miaoxiang"

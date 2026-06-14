@@ -2197,7 +2197,7 @@ tools:
     runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_gap_queue.py
     status: active
     evidence_level: trusted_with_scope
-    truth_source: in-memory market_gap_queue schema fixtures and gap state upsert/reconcile contract
+    truth_source: in-memory market_gap_queue schema fixtures and gap state upsert/reconcile contract  # @archived wiped-2026-06-14-reset
     risk_reason: validates gap queue persistence mechanics only; it does not prove live source coverage, freshness, or update-run completeness
     replacement: updater run manifest plus post-sync data_audit and source coverage evidence
     last_verified: "2026-06-01"
@@ -2605,7 +2605,7 @@ tools:
     runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_run_feature_group_ablation.py
     status: active
     evidence_level: trusted_with_scope
-    truth_source: in-memory feature-panel candidate rows and mart_candidate_walkforward_eval fixtures
+    truth_source: in-memory feature-panel candidate rows and mart_candidate_walkforward_eval fixtures  # @archived wiped-2026-06-14-reset
     risk_reason: validates feature-group aggregation mechanics only; fixture rank-IC values and feature names are not production uplift or deployable feature evidence
     replacement: feature lineage/freshness audit, walk-forward ablation artifacts, and measured downstream validation
     last_verified: "2026-05-27"
