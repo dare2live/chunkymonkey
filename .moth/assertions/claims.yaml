@@ -117,6 +117,11 @@ assertions:
     type: shell
     command: ["bash", "-c", "grep -cE 'enforce_search_space_nonempty|deflated_sharpe_ratio' backend/services/optimization/formula_param_search.py"]
     expect: {op: ">=", value: 2}
+  - id: legacy-flow-no-pollution
+    claim: "老流程污染防回潮 gate PASS (2026-06-14 工具化 reset 教训; **重构验收 gate**: 重构前红[daily_update 调19缺失脚本+238 wiped表孤儿引用+3表缺retention]=问题实锤, 老daily_update退役+清孤儿引用+加retention 后转绿; daily_update 无缺失脚本调用/无wiped表孤儿引用/append-only必retention)"
+    type: shell
+    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python backend/scripts/check_legacy_flow_integrity.py >/dev/null 2>&1 && echo LEGACY_OK || echo LEGACY_PENDING"]
+    expect: {op: regex, pattern: "LEGACY_OK"}
   # 2026-06-14 地基-reset 退役 (引用已删特征/模型层, 重建特征/模型层后须恢复):
   #   - leakage-consumer-gate: 探针读已删特征面板 (feature_consumers); 特征层重做后恢复, 防泄露红线不可永久缺
   #   - concept-event-no-phantom: 查已删 fact_concept_event; 概念事件层重建后恢复

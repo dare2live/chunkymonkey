@@ -49,7 +49,8 @@
 | moth `data-layer-integrity` | 同上, 自动对账 | `moth assert` / doctor |
 | moth `minimal-module-main-routers` | main.py router 数 <= 45 (耦合回潮告警) | `moth assert` / doctor |
 | moth `minimal-module-no-new-godfile` | god-file(>800行) 数 ratchet <=23 (禁新增, 存量逐步拆) | `moth assert` / doctor |
-| `schema_layer_filter.filter_schema_sql/keep_stmt` | schema-init 只建活层表 (滤除 wiped 层 CREATE/ALTER/引用) — **梳理"删表后启动空重建"的 recreation loop** | schema_core/marts/migrations 执行点 |
+| `schema_layer_filter.filter_schema_sql/keep_stmt` | schema-init 只建活层表 (滤除 wiped 层 CREATE/ALTER/引用) — 梳理"删表后**启动**空重建"的 recreation loop | schema_core/marts/migrations 执行点 |
+| `check_legacy_flow_integrity.py` (C1/C2/C3) | C1 daily_update 无缺失脚本调用 (删层必删 caller) / C2 无 wiped 表孤儿引用 / C3 append-only 必 retention — **覆盖 schema-init 之外的污染面** (daily_update/散落 service DDL/config 引用) | moth `legacy-flow-no-pollution` |
 | codegraph 耦合 gate (规划) | substantial change 前查扇入扇出/跨层 import | preflight (见 §5) |
 
 新增数据/表/模块时: **先在 data_layers.yaml 声明 layer**, 否则 `data_layer_audit` + moth 断言 FAIL。
@@ -62,8 +63,27 @@
 - `retired_experiments.yaml` = L4 实验知识 (摘要替代留全表)。
 - 待补 (workflow 综合后): codegraph 耦合 gate 接 preflight; 新表 layer 声明 hook; schema-init 与 layer 联动 (删 layer 同步删 schema-def 防重建)。
 
-## 6. 遗留 (本次 reset 代码层未尽)
+## 6. reset 老流程污染 — 教训 + 收尾 (2026-06-14 全面 sweep wa3kxgj13)
 
-- kept routers (recommendation/v3/workbench) 懒加载 import 已删 L2/L3 services → endpoint 断 (serving 停, 已认可); 须按 layer 清 router 层。
-- kept schema_core/schema_marts 仍含 L2/L3 表的 CREATE 定义 → app 启动空重建 (59 张); 须移除 deleted-layer schema-def。
-- 这两项是"代码到地基"的收尾, 按 layer 系统做 (不再 whack-a-mole)。
+### 6.1 教训 (为何老流程污染新系统 + DB 为何巨大)
+1. **删层必删 caller, 非只删 schema**: 删 144 表只删了 schema, 没删 orchestration 里的调用步骤 (daily_update.sh
+   仍调 19 个已删脚本)。删任何层: `grep -r <表名/脚本名>` daily_update + manifest + audit config, 不止 DB schema。
+2. **删 schema 留 caller = 静默 degraded 假活**: daily_update 调缺失脚本 → `step_degraded` (非 FATAL) → 用户
+   以为管线还活。关键步骤须 FATAL 不 degraded; 可选卫星 sync 才 degraded。
+3. **append-only 无 retention = 无界膨胀 (DB 巨大根因之一)**: dim_*_history/*_snapshot 不在 storage_retention
+   → 每年 +百万行。storage_retention 必须 100% 覆盖; schema_layer_filter/gate 验。
+4. **孤儿 config 引用**: 238 处 config/service/router 引用已删表 (panel_pipeline_manifest/schema_versions/
+   field_dictionary/data_audit_rules/routers)。删表无自动化清引用 → stale。post-reset 须 sweep 全 config 清。
+5. **散落 service DDL 绕 layer 门**: 部分表在 service import 时 `ensure_tables()` 自建, **绕过 schema_layer_filter**
+   (那门只管 schema_core/marts, 不管散落 DDL)。这是 alpha158 类 recreation loop 漏过 schema 门的根。须 layer-gate
+   包住所有 ensure_tables()。
+6. **daily_update 自当 schema 真相源 ≠ data_layers 真相源**: 应**反转** — data_layers.yaml 驱动, daily_update
+   读它自动跳 wiped 层步骤 (声明式, 非脚本里硬编步骤)。
+
+### 6.2 收尾 (按 layer 系统做, 受 §4 gate 守; 不 whack-a-mole)
+- **老 daily_update 退役** (用户决: 不复用, 新数据走新流程): 切 Step 2c(alpha158 已切)/2f-2h(sector/capital/
+  sniper/institution)/3-pre/3a-3b(signal/p0a panel) + Step4-8(model/ensemble/champion/inference, 19 缺失脚本)。
+- 新每日流程 = source/foundation/snapshot + retention gate only (架构师设计 owner=待出重构设计 doc)。
+- 清 238 孤儿引用 + 3 表加 retention + 散落 DDL 包 layer-gate。
+- kept routers 懒加载已删 services / schema_core 含 deleted-layer CREATE → 同 layer 系统清。
+- 验收 = moth `legacy-flow-no-pollution` 转绿 (重构前红=问题实锤)。
