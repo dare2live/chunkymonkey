@@ -110,17 +110,23 @@ cutover 暂缓后, DB 优化转向**不动读写路径**的两条线:
   消费方 (Optuna/Modal 验证脚本) 本就在实验 tier 工作。约束 (写文档): **实验表不可被 live daily 消费** (否则需 view 代理)。
 - 原则: 旧中心表 (fact_feature_panel 等) 不迁 (cutover churn 大); 新表逐个落对的库 → 分区随时间自然长出。
 
-### 12.2 Cutover-free 瘦身 (DROP 死表 + panel 收敛, 不破读写路径)
-smartmoney 26GB/348 表实测可回收 **~10GB**, 全程不动 live 读写 (删的是 0-ref 死表/历史版本):
-| 类 | 表 | 行数 | 回收 | 风险 |
-|---|---|---|---|---|
-| 空死表 | 36 张 (0 行 0 ref: excluded_stocks/草稿表...) | 0 | 0 盘但清册 | **零** (0 行 0 引用) |
-| 历史版本 | 17 张 (panel v3/v4/unified_v1 + lambdamart_v6 23.2M + v1/v2 optuna + cache) | ~36M | **~6.9G** | 低 (v5 active 确认不删; rg 0 非测试引用) |
-| panel 归档 | v3/unified_v1/v1/shareholder/temporal (research, 非 daily 链) | 13.22M | ~2-2.2G (EXPORT parquet 后 DROP) | 中 (先 EXPORT 备份) |
-| panel 删除 | fact_feature_panel_candidate + tdx_keep_challenger (0 生产写) | 8.1M | ~1-1.3G | 低 (仅测试 fixture 读) |
+### 12.2 Cutover-free 瘦身 — 实测纠偏: **没有免费午餐** (2026-06-14 工具核证)
 
-**KEEP (live daily 链, 不动)**: mart_p0a_label_panel / fact_feature_panel / v4 panel / **v5 panel** (v7 live 推理输入)。
-执行铁律: DROP 前 audit_panel_leakage 确认无隐藏 live 读 + EXPORT parquet 备份 (归档类) + 逐表事务 + DROP 后 doctor 3 天监控 + CHECKPOINT 回收盘。
+探索 agent 声称 ~10G "0-ref 死表"可删, 但 **`db_dead_table_audit.py` 保守工具 (0行 AND 0字面引用) 实测推翻**:
+- 30 张 0 行表**全部受保护** (代码有 schema 定义/writer 引用), 真死表 = **0**。
+- agent 列的"历史版本可删"表实测**非测试引用 4-24 个/张** (v3=22 / lambdamart_v6=19 / candidate=24 / tdx_keep=11 / unified_v1=4)。
+  它们有 builder+reader+schema, **不是死表**; 盲删会破坏 50-100+ 文件。
+
+**结论 (对抗验证价值)**: agent 的死表清单 plausible 但错 (用窄 SELECT/JOIN/INSERT 匹配漏了 builder/schema/其他引用形)。
+**smartmoney 几乎无真死表; "免费瘦身"不存在** —— 历史表都带 builder+legacy reader, 删 = 逐表移 builder+迁 reader 的真 refactor (非 cutover-free)。
+→ 瘦身**降为低优先级支线** (vs alpha 验证主线); 真要做须逐表评估 (remove builder + 迁/弃 reader + EXPORT + DROP), 不批量盲删。
+`db_dead_table_audit.py` (保守, 0行+0引用才判死) 作为**持续防误删的守门工具**, 周期重跑; 当前判 0 可删 = 安全。
+
+### 12.2b 真正的 DB 最佳实践 (持续, 用户"随新数据/回测/日更持续探索")
+- **渐进分区** (§12.1): 新表走新库 = 唯一 churn-free 优化, 主推。
+- **守门**: `db_dead_table_audit.py` 周期跑 (新死表累积时才删, 永不盲删有引用表)。
+- **增长监控**: tushare_raw append-only +2-4G/S1; smartmoney DROP 后 CHECKPOINT; data_health 加 db_size/disk_free 告警。
+- **教训**: 探索 agent 的"可删"清单必须工具核证引用 (本次挡住误删), 不直接执行。
 
 ### 12.3 卫生 + tushare_raw 增长
 - tushare_raw: S1 基本面四件套预计 +2-4G (append-only, 无需 VACUUM; DELETE 才评估)。
