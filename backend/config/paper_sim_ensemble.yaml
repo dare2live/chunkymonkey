@@ -131,12 +131,15 @@ selection:
     # 假设 4 原因 (Rule 9.4 失败先承认): (a) weight 0.10 太高; (b) 跟 sector_ret_60d
     # 强相关 double-count; (c) mean-reversion 跟 momentum alpha 冲突; (d) alpha 饱和.
     # weight: 0.0 → 剔除. 后续 Optuna 寻优可让它自动判断是否启用.
-    - name: "predicted_sector_ret_10d"   # rule-compliance: ok evidence=disabled-hurt-KPI
-      weight: 0.0                        # rule-compliance: ok evidence=disabled-hurt-KPI-21pp
-      source_table: "v_stock_sector_predicted_ret"
-      source_col: "predicted_ret_10d"
-      direction: -1
-      pit_key: "trade_date"
+    # 2026-06-14 生命周期清理: source_table v_stock_sector_predicted_ret 视图 + 底表
+    # fact_sector_predicted_ret_daily 已删 (disabled alpha, 0 live 消费); 条目注释化避免悬挂引用。
+    # 重启用须先重建 fact_sector_predicted_ret_daily (train_sector_rotation_predictor.py) + 视图。
+    # - name: "predicted_sector_ret_10d"
+    #   weight: 0.0
+    #   source_table: "v_stock_sector_predicted_ret"   # 已删 (lifecycle_20260614)
+    #   source_col: "predicted_ret_10d"
+    #   direction: -1
+    #   pit_key: "trade_date"
 
   # ── 大盘 regime gate (fact_regime_state) ──
   regime_gate:

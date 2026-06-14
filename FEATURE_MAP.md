@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-14 13:05
+> Snapshot: 2026-06-14 13:55
 
 ## 1. 入口面
 
@@ -157,6 +157,7 @@
 | fact_risk_factors | 3 | backend/scripts/backfill_risk_factors_history.py<br>backend/services/data_governance/etl_hook.py<br>backend/services/risk_factors.py |
 | fact_shareholder_plan | 3 | backend/scripts/ingest_holders_tdxhub.py<br>backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
 | fact_shareholder_trade | 3 | backend/scripts/ingest_holders_tdxhub.py<br>backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
+| mart_data_deletion_record | 3 | backend/scripts/db_lifecycle_delete.py<br>backend/services/data_deletion.py<br>backend/services/schema_marts.py |
 | mart_etf_snapshot_latest | 3 | backend/services/etf_db.py<br>backend/services/etf_snapshot_manager.py<br>backend/services/schema_marts.py |
 | mart_etf_snapshot_state | 3 | backend/services/etf_db.py<br>backend/services/etf_snapshot_manager.py<br>backend/services/schema_marts.py |
 | mart_feature_pit_audit | 3 | backend/scripts/audit_registry_feature_pit.py<br>backend/scripts/validate_tdx_feature_pit.py<br>backend/services/schema_marts.py |
@@ -213,7 +214,6 @@
 | mart_candidate_walkforward_eval | 2 | backend/scripts/run_walkforward_feature_eval.py<br>backend/services/schema_marts.py |
 | mart_current_relationship | 2 | backend/services/holdings.py<br>backend/services/schema_marts.py |
 | mart_daily_formula_buys | 2 | backend/scripts/build_daily_formula_buys.py<br>backend/services/formula_engine/per_stock_ddl.py |
-| mart_data_deletion_record | 2 | backend/services/data_deletion.py<br>backend/services/schema_marts.py |
 | mart_data_deprecation_record | 2 | backend/services/data_deprecation.py<br>backend/services/schema_marts.py |
 | mart_data_health | 2 | backend/scripts/data_health_snapshot.py<br>backend/services/schema_marts.py |
 | mart_data_source_reassignment_proposal | 2 | backend/scripts/audit_tdx_data_need_coverage.py<br>backend/services/schema_marts.py |
@@ -455,14 +455,14 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 19,700 | calls 边 210,073 | imports 边 20,546 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 19,718 | calls 边 210,098 | imports 边 20,548 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
 | services.db | 176 |
-| services.duck_adapter | 91 |
+| services.duck_adapter | 92 |
 | services.pipeline_manifest | 62 |
 | services.schema_versions | 52 |
 | services.market_db | 48 |

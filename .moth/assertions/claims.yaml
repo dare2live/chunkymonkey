@@ -6,23 +6,23 @@ name: chunkymonkey-claims
 # 全部只读; duckdb 连接由 moth 引擎强制 read_only。
 assertions:
   - id: smartmoney-constraint-tables
-    claim: "PK/UNIQUE 约束表 >= 169 (2026-06-12 拆分回归二轮整改: 164 张 upsert 目标表 PK 全量恢复)"
+    claim: "PK/UNIQUE 约束表 >= 136 (2026-06-14 生命周期删 68 L1探索表后; 带 PK 的 upsert 目标表全保留)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT count(DISTINCT table_name) FROM duckdb_constraints() WHERE constraint_type IN ('PRIMARY KEY','UNIQUE')"
-    expect: {op: ">=", value: 169}
+    expect: {op: ">=", value: 136}
   - id: smartmoney-indexes
-    claim: "索引 333 (2026-06-14 删 11 过时表 62M 行 + 保真缩盘后, 缩盘前后逐表对账全等; 缺 = 回归)"
+    claim: "索引 274 (2026-06-14 删 11 表 62M + 删 68 L1探索表 + 两轮保真缩盘后, 逐表对账全等; 缺 = 回归)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM duckdb_indexes()"
-    expect: {op: ">=", value: 333}
+    expect: {op: ">=", value: 274}
   - id: smartmoney-tables
-    claim: "333 表 (2026-06-14 lifecycle 删 11 过时表后; 增删表应显式过决策)"
+    claim: "265 表 (2026-06-14 生命周期删 11+68 过时/探索表后; 增删表应显式过决策)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM duckdb_tables()"
-    expect: {op: ">=", value: 333}
+    expect: {op: ">=", value: 265}
   - id: smartmoney-size-band
     claim: "库体量 14-26GB 带内 (2026-06-14 保真缩盘 26.6→17.5G; 越界 = 异常膨胀或错库/数据丢失)"
     type: file_size

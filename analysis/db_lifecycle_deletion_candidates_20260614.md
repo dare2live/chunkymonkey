@@ -4,7 +4,19 @@
 > 用户生命周期模型: L0 裸K线基准(永久) / L1 因子探索(临时大,可删) / L2 结论(永久小)。
 > **执行前须用户拍板** (删除半破坏性); 全程走 mart_data_deletion_record 留痕 + db_compact 缩盘回收盘 + post-fix-audit。
 
-## 分桶总览
+## 执行状态 (2026-06-14, 用户"不留尾巴 + 删除中吸取教训")
+
+**已执行: 删 68 表 + 3 悬挂视图** (`db_lifecycle_delete.py` 工具: live守护 + parquet归档 + mart_data_deletion_record留痕 + 残留扫描)。
+- 主会话 **external-reader 精核**纠 workflow 盲区: 原 112 候选里 47 有 external 消费者 (workbench/研究/离线) → 只删 **0 真消费者的 68 张** (5.74M 行, 6 张归档 parquet)。
+- 残留扫描抓 **3 悬挂视图** (workflow + 我的代码扫都漏了 DB 内 VIEW 定义) → 视图均 stale (lineage元数据/config/disabled-weight0 alpha) → DROP + paper_sim_ensemble.yaml 停用条目注释化。
+- 缩盘两轮: 26.6G → 17.5G (删11表62M) → 16.3G (删68表)。265 表 / 1 视图。
+- **教训沉淀** (见 db_management_design §13.6 / §4.5): (1) "有 reader ≠ 必留", 判据是**实际用途**, 过时表+过时reader整套退役 (用户纠偏); (2) live 守护须扫**代码 + DB内VIEW定义 + yaml config** 三处 (单扫代码漏视图/配置); (3) external-reader 区分 builder-self vs 真消费者。
+
+**held 44 表** (有 external 消费者): 按用户"看实际用途, 过时则连reader一起删"指引, 走 `subsystem-retirement-analysis` workflow 做子系统级退役分析 (synergy/feature-search/drift-safe/formula-optuna/workbench/p0a-base), 结论另附。
+
+---
+
+## 分桶总览 (原 workflow 分类, 执行前)
 
 | 桶 | 表数 | 行 | 处置 |
 |---|---|---|---|
