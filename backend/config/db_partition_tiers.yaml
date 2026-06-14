@@ -1,0 +1,62 @@
+# DB 多库分区 tier 配置 (owner=analysis/db_management_design_20260614.md)
+# 按写入节奏拆 4 tier = 写并行; DuckDB 事务不跨文件故原子写簇必须同 tier。
+# D0 写入面扫描产出 (analysis/db_partition_d0_20260614.md)。
+# 本配置驱动 backend/scripts/db_partition_migrate.py (data-driven, 不 hardcode 表名)。
+#
+# 状态: D1 (experiment tier) 已敲定; D2(feature)/D3(source) 表清单待 D0 uncertain 收口后补。
+version: 1
+
+# 原子写簇: 同一事务内写多表 → 必须同 tier/同库 (拆开 = 事务不可跨文件 → 写失败)。
+# 迁移引擎 preflight 强制校验: 迁移集合若拆开任一簇 → FAIL (关联性检查)。
+atomic_write_clusters:
+  - name: governance_plus_per_stock_stage
+    # optimize_per_stock_stage_strategy.py 单事务写 (manage_txn=False, fix f4ce3910)
+    tier: serving                       # stage_optimal 喂每日 serving 推荐供给 → 簇留 serving
+    tables: [fact_optuna_governance_log, mart_per_stock_stage_strategy_optimal]
+  - name: governance_plus_per_formula_stage
+    # optimize_per_formula_stage.py 单事务写 (同 fix)
+    tier: serving
+    tables: [fact_optuna_governance_log, mart_per_formula_stage_optimal]
+  # 注: fact_optuna_governance_log 仅被上述 2 脚本写 (log_governance_violations 仅 2 caller),
+  # 与 stage_optimal 原子绑定 → 整簇留 serving, 不进 experiment (否则拆簇)。
+
+# tier 表清单 (迁移引擎按 tier 取要迁的表)。
+tiers:
+  experiment:
+    target_db: data/experiment_store.duckdb   # 新库 (Optuna/Modal 突发写, 与 serving 写锁隔离)
+    # 25 张纯 optuna 研究输出 (无与 serving 的写原子绑定; serving 如需读走 ATTACH read_only)。
+    # 排除 fact_optuna_governance_log (原子绑 stage_optimal 留 serving)。
+    tables:
+      - mart_feature_group_ablation
+      - mart_model_ablation_run
+      - mart_model_feature_ablation
+      - mart_optuna_feature_space_trial
+      - mart_optuna_synergy_study_summary
+      - mart_optuna_synergy_trial
+      - mart_p1_ablation_result
+      - mart_p1_optuna_trials
+      - mart_per_stock_optuna_best
+      - mart_stock_formula_optuna
+      - mart_stock_formula_optuna_bestchoice_v1
+      - mart_stock_formula_optuna_v2
+      - mart_synergy_policy_candidate
+      - mart_synergy_policy_evidence_bundle
+      - mart_synergy_policy_gate
+      - mart_synergy_policy_mtm_daily_path
+      - mart_synergy_policy_mtm_evidence_bundle
+      - mart_synergy_policy_mtm_gate
+      - mart_synergy_policy_mtm_position
+      - mart_synergy_policy_mtm_rerank
+      - mart_synergy_policy_mtm_rerank_summary
+      - mart_synergy_policy_mtm_strategy_sweep
+      - mart_synergy_policy_mtm_strategy_sweep_summary
+      - mart_synergy_policy_walkforward
+      - mart_tdx_gpcw_auto_optuna_run
+
+  # feature / source tier 表清单: D0 uncertain (event/holders 归属) 收口后补, D2/D3 用。
+  feature:
+    target_db: data/feature_store.duckdb
+    tables: []   # TODO D2: fact_feature_panel 家族 + signal_context/technical_trigger/drift/prune + alpha158
+  source:
+    target_db: data/tushare_raw.duckdb   # 已存在 (扩成全 raw)
+    tables: []   # TODO D3: smartmoney 里 raw_* + (D0 裁决) fact_*_event
