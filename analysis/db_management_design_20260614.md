@@ -128,6 +128,21 @@ cutover 暂缓后, DB 优化转向**不动读写路径**的两条线:
 - **增长监控**: tushare_raw append-only +2-4G/S1; smartmoney DROP 后 CHECKPOINT; data_health 加 db_size/disk_free 告警。
 - **教训**: 探索 agent 的"可删"清单必须工具核证引用 (本次挡住误删), 不直接执行。
 
+### 12.4 实测执行: lifecycle 分析删出 62M 行 (2026-06-14, 用户"有引用≠不能删, 请分析")
+§12.2 "0-ref 规则找 0 可删"是**过度保守** —— 用户纠正: 有引用≠不能删, 若引用是死代码 (旧 builder/废实验/测试) 且表是过时派生 (非原始数据), 可删。
+**lifecycle 分析 (workflow) + 对抗核证 (live 路径 0 引用)** 找出 11 张真过时表, **实删 61,938,652 行**:
+| 表 | 行 | 过时原因 |
+|---|---|---|
+| mart_p0b_lambdamart_v6_predictions | 23.2M | v6 被 v7/v4 champion 取代, daily 不调度 |
+| fact_tdx_gpcw_auto_feature_quarterly | 16.4M | gpcw 自动特征实验, 不在 live 链 |
+| mart_stock_regime_full(138列)/fact_candle_pattern_daily/fact_feature_panel_candidate/mart_temporal_research_panel/mart_shareholder_plan_initial_feature_panel/mart_p0a_feature_label_panel_unified_v1/mart_synergy_policy_mtm_position/mart_stock_horizon_feature_effect/mart_unified_v1_oos_predictions | ~22M | 废实验/研究/中间产物/superseded panel |
+
+执行: 事务 DROP + CHECKPOINT; **6 live 表 (v4/v5/label_panel/fact_feature_panel/mcap_decile/industry_beta) 全完好**。
+post-fix-audit: dim_data_asset 11 删表条目 DELETE (16→12 blockers, 删表 fallout 清零)。
+**对抗核证又救场**: agent 标 mcap_decile/industry_beta 可删, 实测各 2 live 引用喂 v4 → KEEP (挡住误删)。
+**遗留 (低优先级)**: (1) 文件仍 25G — DuckDB CHECKPOINT 释放内部块 (未来写入复用防增长), 文件缩需整库重写 (EXPORT/IMPORT 或 db_split_execute逐表重建, 26G 大操作另案); (2) 死 builder 脚本 (build_candle_pattern_daily/build_mart_stock_regime_full/build_ensemble_v7_*/train_unified_ranker_v1 等) 未删 — 不在 live 链 (跑了会 CREATE 空表无害), 单独清理另案。
+**正确结论 (修正 §12.2)**: 死表清理**不能靠 0-ref 字面规则** (过保守, 找 0); 须 lifecycle 分析 (live-current/superseded/dead-experiment) + live 路径对抗核证, 才能安全删出真过时表。db_dead_table_audit 守 0行0引用底线; 大表过时判定走 lifecycle 分析。
+
 ### 12.3 卫生 + tushare_raw 增长
 - tushare_raw: S1 基本面四件套预计 +2-4G (append-only, 无需 VACUUM; DELETE 才评估)。
 - smartmoney: 现无需定期 VACUUM; DROP 死表后 CHECKPOINT 回收。补 `chunkyctl storage --checkpoint` 包装 + data_health 加 db_size/disk_free 比率告警 (阈 0.6)。
