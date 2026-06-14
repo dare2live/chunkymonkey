@@ -98,3 +98,31 @@ DROP 源) 暂缓**, 理由 (实测 blast radius):
 **结论**: 保留引擎 + 设计 + tier 配置 + D0 图作为 ready 资产; stale 验证副本已删 (源 smartmoney 全程未动)。
 **cutover 触发条件**: 竞争真咬人 (并发跑批密集) 或上云自动化 (并发常态) → 那时引擎可几分钟完成任意 tier cutover。
 当前数据底座主线回到 alpha 验证程序 (找 base-edge) — DB 分区是支撑性基建, 不阻塞主线。
+
+## 12. Cutover-free 优化 (2026-06-14 探索, 用户"继续探索优化 DB 管理")
+
+cutover 暂缓后, DB 优化转向**不动读写路径**的两条线:
+
+### 12.1 关键原则: 渐进分区 ("新表走新库, 旧表不动")
+**新数据/新表无历史读取方 → 直接落独立库 = 零 cutover churn**。这优雅绕过了迁中心表的 churn:
+- **alpha 验证程序新表** (`fact_experiment_verdict` / `fact_consumer_alpha_ic_scan` / `pipeline_artifact_lineage` / `experiment_pit_audit_log`):
+  无历史读取方 → S0 建表时**直接落 `experiment_store.duckdb` 新独立库** (database_manifest experiment status planned→active), 不放 smartmoney。
+  消费方 (Optuna/Modal 验证脚本) 本就在实验 tier 工作。约束 (写文档): **实验表不可被 live daily 消费** (否则需 view 代理)。
+- 原则: 旧中心表 (fact_feature_panel 等) 不迁 (cutover churn 大); 新表逐个落对的库 → 分区随时间自然长出。
+
+### 12.2 Cutover-free 瘦身 (DROP 死表 + panel 收敛, 不破读写路径)
+smartmoney 26GB/348 表实测可回收 **~10GB**, 全程不动 live 读写 (删的是 0-ref 死表/历史版本):
+| 类 | 表 | 行数 | 回收 | 风险 |
+|---|---|---|---|---|
+| 空死表 | 36 张 (0 行 0 ref: excluded_stocks/草稿表...) | 0 | 0 盘但清册 | **零** (0 行 0 引用) |
+| 历史版本 | 17 张 (panel v3/v4/unified_v1 + lambdamart_v6 23.2M + v1/v2 optuna + cache) | ~36M | **~6.9G** | 低 (v5 active 确认不删; rg 0 非测试引用) |
+| panel 归档 | v3/unified_v1/v1/shareholder/temporal (research, 非 daily 链) | 13.22M | ~2-2.2G (EXPORT parquet 后 DROP) | 中 (先 EXPORT 备份) |
+| panel 删除 | fact_feature_panel_candidate + tdx_keep_challenger (0 生产写) | 8.1M | ~1-1.3G | 低 (仅测试 fixture 读) |
+
+**KEEP (live daily 链, 不动)**: mart_p0a_label_panel / fact_feature_panel / v4 panel / **v5 panel** (v7 live 推理输入)。
+执行铁律: DROP 前 audit_panel_leakage 确认无隐藏 live 读 + EXPORT parquet 备份 (归档类) + 逐表事务 + DROP 后 doctor 3 天监控 + CHECKPOINT 回收盘。
+
+### 12.3 卫生 + tushare_raw 增长
+- tushare_raw: S1 基本面四件套预计 +2-4G (append-only, 无需 VACUUM; DELETE 才评估)。
+- smartmoney: 现无需定期 VACUUM; DROP 死表后 CHECKPOINT 回收。补 `chunkyctl storage --checkpoint` 包装 + data_health 加 db_size/disk_free 比率告警 (阈 0.6)。
+- **时序**: G4 panel 收敛应在 S1 数据入库后评估 (防 S1+收敛并行短期破 30G 线)。
