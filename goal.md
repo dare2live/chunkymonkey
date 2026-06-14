@@ -55,13 +55,13 @@
 |---|---|---|---|
 | P0 | 文档同步 | goal/INDEX reset-rewrite | 立 `moth doc-drift` 固化 (机器对账, 防再漂; mythos §16) |
 | P0 | Alpha 验证 S0 | **完成** (留档4表 + `experiment_jobs.py` loader 恢复修4悬空import + `consumer_alpha_validation` family + `consumer_alpha_matrix.yaml` 6候选→7cell + `experiment_consumer_alpha_validation.py` config驱动执行器: gate-before-run/prereg_hash/PIT每步落档/dry空矩阵ic_scan不造假; 10单测+moth断言+CI全pass) | 进 L0 |
-| P1 | 裸K线基准 L0 | **下一步** (北极星: 先建标尺再加 alpha; S1数据已备) | 建 OOS walk-forward IC 计算 (reset删了 walk_forward runner, 须重建) → 仅 OHLCV 派生基准跑过执行器, 作每个 alpha 的标尺 |
+| P1 | 裸K线基准 L0 | **进行中** (spec+候选库已立, owner=`analysis/l0_bare_kline_baseline_spec_20260614.md`): 定义=裸K线公式 walk-forward OOS 寻优的**最佳OOS参数**作标尺 (用户 msg2); 9公式全保留为 config 备选 (`formula_candidates.yaml`, active子集4防过拟合); 防过拟合为第一约束 (用户 msg3: walk-forward OOS选参/DSR/pre-reg/限维度/诚实报弱, moth 3断言固化) | 重建 walk-forward OOS 引擎 (复用 metrics.py) → 治理层 (plan_validator/oos-only selector/DSR) → pre-reg → 寻优RUN(grill后) |
 | P2 | 深层解耦 backlog | kept routers 懒加载已删 services / 8 散落服务自建表 / 23 god-file (framework doc §6) | rebuild 时按 layer 顺手解耦, moth 守不回潮; **不 big-bang** (反复破 CI 教训) |
 
 ## 重建路线 (全 config 驱动, owner=`analysis/alpha_validation_program_spec_20260614.md`)
 
 1. **S0** 实验台 + 留档表 (experiment_store, 与 live 隔离防污染)。
-2. **L0 裸K线基准** (只 OHLCV, PIT-clean) — 标尺, 每个 alpha 要超越它。
+2. **L0 裸K线基准** = 裸K线公式 walk-forward OOS 寻优的**最佳OOS参数** (防过拟合第一约束: OOS选参/DSR/pre-reg/限维度) — 标尺, 每个 alpha 要超越它。owner=`analysis/l0_bare_kline_baseline_spec_20260614.md`。
 3. **逐步加 alpha 因子** (S1 数据已备), 每个过 leakage 审计 + walk-forward OOS, 结论入 `retired_experiments.yaml` (challenger 只留摘要不留全表)。
 4. **多维策略立方体** (cell = Segment × Feature-set × Policy, 全 config 组合; owner=`analysis/multidim_strategy_architecture_20260613.md`), edge 为正再逐维解锁。
 

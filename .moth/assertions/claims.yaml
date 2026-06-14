@@ -92,6 +92,21 @@ assertions:
     type: shell
     command: ["bash", "-c", "grep -cE 'forecast_express_pead|income_fina_indicator|kpl_limit_step|holder_events|sw_industry_tree' backend/scripts/experiment_consumer_alpha_validation.py || true"]
     expect: {op: "==", value: 0}
+  - id: optuna-require-walk-forward
+    claim: "optuna_config 守 require_walk_forward=true (2026-06-14 L0 立: 防过拟合核心 — 业务表禁 in-sample fit 入库; 翻 false = 估计死红线破, stage_opt leakage 反例复发)"
+    type: shell
+    command: ["bash", "-c", "grep -c 'require_walk_forward: true' backend/config/optuna_config.yaml"]
+    expect: {op: ">=", value: 1}
+  - id: optuna-realistic-sharpe-cap
+    claim: "optuna_config 守 max_realistic_sharpe 熔断 (2026-06-14 L0 立: 异常高数字=leakage警报非成就; 删=裸K线基准'太好'无人核查)"
+    type: shell
+    command: ["bash", "-c", "grep -c 'max_realistic_sharpe' backend/config/optuna_config.yaml"]
+    expect: {op: ">=", value: 1}
+  - id: l0-baseline-pool-bounded
+    claim: "L0 裸K线基准 active 公式池 <=5 (2026-06-14 用户 msg1: 池子小防过拟合; 涨破=过拟合风险回潮, 须验通再解锁 candidate)"
+    type: shell
+    command: ["bash", "-c", "grep -c 'status: active' backend/config/experiments/formula_candidates.yaml"]
+    expect: {op: "<=", value: 5}
   # 2026-06-14 地基-reset 退役 (引用已删特征/模型层, 重建特征/模型层后须恢复):
   #   - leakage-consumer-gate: 探针读已删特征面板 (feature_consumers); 特征层重做后恢复, 防泄露红线不可永久缺
   #   - concept-event-no-phantom: 查已删 fact_concept_event; 概念事件层重建后恢复
