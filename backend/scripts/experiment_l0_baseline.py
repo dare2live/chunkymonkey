@@ -155,7 +155,8 @@ def _run_search(by_code, formulas, horizon, embargo, run_id, data_snapshot, stor
     finally:
         conn.close()
 
-    out = REPO / "analysis" / f"consumer_alpha_verdict_{run_id}.json"
+    out_dir = store.parent if store.parent.name != "data" else REPO / "analysis"  # 测试用temp store不污染analysis/
+    out = out_dir / f"consumer_alpha_verdict_{run_id}.json"
     out.write_text(json.dumps({"run_id": run_id, "verdict": verdict, "ts": _utc(),
                                "data_snapshot": data_snapshot, "prereg_hash": prereg_hash,
                                "horizon": horizon, "embargo": embargo,
@@ -251,7 +252,8 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         conn.close()
 
-    out = REPO / "analysis" / f"consumer_alpha_verdict_{run_id}.json"
+    out_dir = store.parent if store.parent.name != "data" else REPO / "analysis"  # 测试用temp store不污染analysis/
+    out = out_dir / f"consumer_alpha_verdict_{run_id}.json"
     out.write_text(json.dumps({
         "run_id": run_id, "verdict": verdict, "ts": _utc(), "data_snapshot": data_snapshot,
         "horizon": args.horizon, "embargo": embargo, "n_stocks": len(by_code),
