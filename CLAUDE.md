@@ -110,37 +110,15 @@ JOIN → 永远带 `AND x.built_at <= t` / `as_of_date`; 宇宙 → `dim_index_m
 
 ### 4.5 反例汇总
 
-- **K 线含盘中数据** → 不要 `--end 2026-05-12` 钉死, 改 sync 入口 `latest_completed_trade_date` + lint 防回退.
-- **DuckDB DELETE FATAL** → DROP+REBUILD index 清状态不够, 找首次写坏路径 + health check.
-- **`fact_shareholder_plan.announce_date` 47% NULL** → 不放松 audit 阈值, 查 ingest 路径 (commit 69371838: 写 7034 placeholder 行 + DELETE 历史 + 防回退).
-- **`mart_per_stock_stage_strategy_optimal.sharpe`** 全期 in-sample fit + `selector ORDER BY sharpe DESC` → paper_sim "+312%" 假象. 修法: walk_forward.expanding_monthly + selector ORDER BY `COALESCE(oos_sharpe, sharpe)` + `governance.enforce_pre_insert` 拒 `walk_forward_mode='none'`.
-- **v3.2 `stage_opt_per_stock`** MAX(oos_sharpe) GROUP BY stock_code 给每 signal_date 用未来 Optuna → systemic leakage (Codex acf48d35 review Q1 critical, commit 5cc47987).
-- **v3 102 features RankIC 0.0353** → relative +75% 没触发 absolute 但触发 relative, chain 含 inst_path_a (latest snapshot) + sector (99.978% fallback) leakage. 详 [[feedback-codex-critical-no-compromise]].
-- **`swap_uplift_estimate` 公式估算** → 实测 swap 拉低年化 33pp. 改真实 K 线 forward 反事实.
-- **vol-aware stop/target/trailing hardcode "业界常用"** → 丢 Optuna search space, walk-forward 拼 OOS 入 mart.
-- **ensemble 13 weights 业务直觉写 yaml** → 全丢 Optuna.
-- **regime_gate `bear/sideways/bull` 拍脑袋** → 历史 regime sensitivity sweep.
-- **portfolio_backtest +45.4% 当最终决策** → 不含 tx_cost/T+1, paper_sim 加成本骤降. live 必须用含成本 paper_sim.
-- **`max_stocks=200` 按 code 排序** → 只取 00 深主板, 创业板/科创板/沪主板 0 只参与 Optuna. 审计只查 DB 层 (5206 stocks PASS), 没查 runner 实际加载数. 改: 全量 universe + 运行时 `validate_loaded_stocks` (板块覆盖 + 80% 比例).
-- **参数作用域错配** → `limit_up_pct` 是 per-stock 属性 (板块决定) 但放进 global Optuna search space. 改: per-stock 属性运行时自动取, 不进 search space.
-- **cron 静默失败 (2026-06-11)** → daily_update cron 无 FDA 每天 'Operation not permitted', K 线断流 4+ 交易日无人知晓. 修法: launchd + python (有 FDA) 入口 + `scripts/launchd_job_wrapper.py` 失败告警送达. 防回退: 定时任务必须走 wrapper, 不许裸 cron; "失败必须有送达用户的 alert"是最低线.
-- **审计必须验证运行时状态, 不只是前置条件** (4.6 并入): preflight 查的是"数据存在",
-  运行时验证查的是"数据被正确使用". 反例: DB 有 5206 stocks → preflight PASS, 但 runner
-  只加载 200 只 → 没人查. 两者缺一不可.
-- **DuckDB 整库迁移 `COPY FROM DATABASE` 不搬 PK/约束/索引 (2026-06-12)** → 315 约束→1,
-  upsert 全 Binder Error; "validation 全 PASS" 的验收尺只比了数据没比 schema. 保真迁移用
-  EXPORT/IMPORT DATABASE; validation 必含约束/索引计数+upsert 冒烟+写入面全仓扫描对账
-  ("写入面仅 N 表"必须给静态扫描证据, 首轮拍了 4 张实为 165 张). 详 `analysis/db_split_runbook_20260612.md`.
-- **回填窗口被日历真相源静默 clamp (2026-06-12)** → registry 写 data_start=20050104, 但
-  sync_runner 以 dim_trading_calendar (起点 2023-01-03) 为日期源, 2005-2022 全军未落且零告警.
-  教训: 回填完成的验收 = 落库 min(trade_date) 对账 data_start, 不是"跑完没报错".
-- **隐式分层+耦合过紧致 reset 极痛 (2026-06-14)** → 339表/26.6G reset 回 85表/2.5G 时, 因当初没按
-  "最小化模块+最小化数据表+配置驱动"设计: 层级隐式(跑4 workflow反复推导哪层) + 模块耦合(main import全
-  router/routers互引)致删码靠 import闭包不可靠(漏相对/动态/子模块import)反复 whack-a-mole + 删表后
-  app启动 schema-init 空重建(59张)悄悄撤销. 根治=层级声明化: `backend/config/data_layers.yaml`(每表
-  声明layer单一真相源) + `data_layer_audit.py`(未声明=FAIL) + moth `data-layer-integrity`/
-  `minimal-module-main-routers`断言(自动执法非靠人记). 框架 owner=docs/data_management_framework.md.
-  教训: 纪律不固化进自动 gate (moth/hook/codegraph) 必漂移; 删改按声明的 layer 查询, 不靠脆弱 import 闭包.
+> leakage / 真金白银红线类反例留此 (最该 session 看见的); **操作类坑** (K线/DuckDB/sync/迁移/分层等)
+> 详见 `chunkymonkey-ops` skill §2 坑库 + `analysis/project_state_ledger.md` (机器版全清单)。§8.2 #4 沉淀新坑两处都加。
+
+- **in-sample fit 假象**: `mart_per_stock_stage_strategy_optimal` 全期 in-sample + `selector ORDER BY sharpe DESC` → paper_sim "+312%" 假象. 修: walk_forward.expanding_monthly + selector ORDER BY `COALESCE(oos_sharpe, sharpe)` + `governance.enforce_pre_insert` 拒 `walk_forward_mode='none'`.
+- **systemic leakage**: v3.2 `stage_opt_per_stock` MAX(oos_sharpe) GROUP BY stock_code 给每 signal_date 用未来 Optuna (Codex acf48d35 critical, commit 5cc47987).
+- **chain leakage (relative 红线)**: v3 102 features RankIC 0.0353 = relative +75% (未触 absolute 但触 relative), chain 含 inst latest-snapshot + sector 99.978% fallback leakage. 详 [[feedback-codex-critical-no-compromise]].
+- **含成本红线**: portfolio_backtest +45.4% 当最终决策 (不含 tx_cost/T+1); live 必须含成本 paper_sim, 加成本骤降.
+- **selection bias**: `max_stocks=200` 按 code 排序 → 只取 00 深主板, 创业/科创/沪主 0 只参与 Optuna; 审计只查 DB 层 (5206 PASS) 没查 runner 实际加载数. 改: 全量 universe + 运行时 `validate_loaded_stocks` (板块覆盖+80%).
+- **公式估算 != measured**: `swap_uplift_estimate` 公式估 → 实测 swap 拉低年化 33pp. 改真实 K 线 forward 反事实. (同类: vol-aware stop/ensemble weights/regime gate hardcode → 全进 Optuna search space + walk-forward OOS。)
 
 ## 5. Optuna 治理
 
