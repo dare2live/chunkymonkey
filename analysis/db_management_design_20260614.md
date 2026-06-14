@@ -183,3 +183,25 @@ post-fix-audit: dim_data_asset 11 删表条目 DELETE (16→12 blockers, 删表 
 - **立即** (本 commit): (a) `experiment_store` 注册进 manifest (status=planned, 声明 S0 实验表路由, 避二次迁移); (b) `data/scratch/` gitignore + 约定成文; (c) 缩盘执行。
 - **推迟** (有真痛点再建, 现 speculative): chunkyctl storage 命令套件 / 自动 wipe gates / db级 health 监控 / scratch sweep。当前手动工作流 (用户决议) 下写锁竞争罕见, 重工具化无人遵守 (workflow 自警)。
 - **前置原则** (§8 渐进分区): S1 新数据 (forecast/income/cyq...) 在 sync_registry 声明目标库, 直接落对 tier (raw→tushare_raw, 特征→feature_store), 不先入 smartmoney 再拆。
+
+### 13.6 L1 探索数据删除 SOP (用户"裸K线基准留, 因子探索临时, 探索完该删删, 只留过程+结论")
+
+用户生命周期模型: **L0 裸K线基准(永久标尺) / L1 因子探索(临时大,可删) / L2 结论(永久小)**。
+落地分类见 `analysis/db_lifecycle_deletion_candidates_20260614.md` (workflow 13 agent 逐表实查)。
+
+**诚实数字 (不报喜)**: 333 表 82.8M 行里, 可删/归档仅 **~11M 行 (SAFE_DELETE 100表/2.19M + ARCHIVE_FIRST 10表/8.52M + DEAD 6表/0.30M), 估省 ~1-2GB**。其余 71.6M 行是 KEEP —— **因为现有大表 (champion v4 panel / fact_technical_trigger 5.96M / fact_risk_factors 4.86M / fact_feature_panel 4.19M) 全被 live 链消费**。故: 删 L1 的**即时收益不大** (大头喂着 live champion); 本政策真正价值 = **防未来膨胀** (alpha 因子增多时 L1 不再无限堆)。最大一次性回收已经是 §13.4 缩盘 (-9.1G)。
+
+**硬删 vs 冷归档判据 (硬闸, 严守真金白银+防泄漏):**
+| 情形 | 处置 |
+|---|---|
+| live_cited=true OR source镜像 OR L2结论 | **KEEP** 不动 (live 硬闸, 不论多大) |
+| L1/dead 且 regenerable=true 且 builder 在库可一键重建 且 非live | **SAFE_DELETE** (DROP, 要审计就 rebuild) |
+| L1/L2 但 regenerable=false (builder灭失/外部源不可重放/snapshot无时间字段) | **ARCHIVE_FIRST** (EXPORT parquet 冷归档再删, 防失去 PIT/leakage 再审计能力) |
+
+**执行顺序 (workflow 对抗核证的 6 个坑, 必守):**
+1. **裸K线 L0 基准库内不存在** — 现有 mart_p0a_*panel 是 143 列特征面板**非 baseline**; 裸K线真相源在独立 market.duckdb。L0 基准 = alpha 验证 **S0 待建**, 严禁把现有 panel 误当基准删/留。
+2. **DROP 不回收盘** — SAFE_DELETE DROP 后文件不缩, 必须配 `db_compact.py --execute` 整库保真重写才回收 (§13.4)。
+3. **experiment-tier 路由优先于硬删** — ~14 张 SAFE_DELETE 已登记 db_partition_tiers experiment tier; 先 `db_partition_migrate` 迁去 experiment_store 再在该库 TRUNCATE, 不在 smartmoney DROP (避二次搬)。
+4. **fact_stock_attention_snapshot 写回循环** — 仍被 live 链 WRITE (虽不被 READ); 直接归档会被次日 daily_update 重写回 → 必须先停/改写路径再归档。
+5. **storage_retention protected 冲突 2 张** (mart_tdx_f10_capability_matrix / mart_feature_rank_matrix_cache_manifest) 需复核才删。
+6. **合规留痕** — 每张删除前 row_count/schema snapshot + dry_run, 写 `mart_data_deletion_record` 台账, 删后 post-fix-audit 扫 0 residue (view/JOIN 悬挂引用)。项目红线: validation artifacts 不可静默消失。
