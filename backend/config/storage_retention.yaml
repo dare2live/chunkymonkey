@@ -208,6 +208,41 @@ table_inventory:
     compaction_policy: protect_no_compaction_without_verified_copy
     retention_action: protect_replayability_before_any_retention_change
     reason: Large F10 raw-text table; needed for raw_hash replay, PIT lineage, and canonical holder fact explainability.
+  - table: dim_stock_tdx_industry_history
+    classification: pit_dimension_snapshot
+    owner: tdx_industry_client
+    db_alias: smartmoney
+    truth_source: tdx_industry_daily_snapshot_appended_on_change
+    consumers:
+      - industry_neutralization
+      - sector_membership_as_of_join
+      - data_health_source_audit
+    compaction_policy: protect_no_compaction_without_verified_copy
+    retention_action: protect_pit_as_of_history
+    reason: PIT industry-classification history for as-of joins; append-on-change keeps it bounded (~67k rows across the active universe). Needed for survivorship-clean sector membership at decision time, not a cache cleanup candidate.
+  - table: raw_profit_forecast_snapshot_daily
+    classification: append_only_source_snapshot
+    owner: ingest_profit_forecast_snapshot
+    db_alias: smartmoney
+    truth_source: tushare_profit_forecast_daily_snapshot
+    consumers:
+      - forecast_upside_live_mart
+      - earnings_surprise_factor
+      - data_health_source_audit
+    compaction_policy: protect_no_compaction_without_verified_copy
+    retention_action: protect_pit_forecast_lineage
+    reason: Append-only daily analyst-forecast snapshots; PIT anchor is snapshot_date. Small today; retained for PIT as-of forecast joins. If growth becomes unbounded, add a rolling snapshot_date policy before any pruning.
+  - table: raw_tdx_industry_file_snapshot
+    classification: protected_raw_lineage
+    owner: tdx_industry_client
+    db_alias: smartmoney
+    truth_source: tdx_industry_raw_file_snapshot
+    consumers:
+      - industry_file_replay
+      - tdx_industry_parse_lineage
+    compaction_policy: protect_no_compaction_without_verified_copy
+    retention_action: protect_replayability_before_any_retention_change
+    reason: Raw TDX industry file blobs (raw_bytes) for raw_hash replay and parser-version lineage; replayable source records, same handling as raw_tdx_f10_holder_research.
   - table: fact_feature_panel
     classification: current_production_panel
     owner: feature_panel_pipeline
