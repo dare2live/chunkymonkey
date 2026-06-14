@@ -1,234 +1,74 @@
 # ChunkyMonkey Goal
 
-> Current phase contract and implementation plan only. Keep this file compact:
-> current objective, active priorities, live gates, and long-term direction.
-> Completed work and detailed evidence belong in
-> `analysis/project_state_ledger.md`; generated resume state belongs in
-> `SESSION_HANDOFF.md`; pipeline artifact checkpoints belong in
-> `analysis/workflow_checkpoint.md`.
+> 当前阶段契约 only。完成项 → `analysis/project_state_ledger.md`;运行态 →
+> `SESSION_HANDOFF.md`。保持 < 165 行;item 完成就移 ledger 只留当前决策/blocker。
 
 ## Document Contract
 
 | Document | Owns | Startup use |
 |---|---|---|
-| `goal.md` | Current phase objective, priority board, implementation plan, long-term roadmap | Read first |
-| `analysis/project_state_ledger.md` | Completed work, historical status, evidence notes formerly appended to `goal.md` | Query with `rg` or `tail`, not full startup read |
-| `SESSION_HANDOFF.md` | Generated/manual runtime resume snapshot | Context-only; verify with live gates |
-| `analysis/workflow_checkpoint.md` | Retired 2026-06-11 (inactive since 2026-06-05); physical removal tracked as P2 slice in `docs/implementation_plan.md` | Do not read for resume; historical evidence only |
-| `docs/chunkyctl_session_quickstart.md` | Startup procedure and controller workflow | Startup contract |
-| `docs/README.md` | Active docs map and ownership rules | Docs authority map |
+| `goal.md` | 当前阶段目标 / 优先级板 / genesis 法 / 路线 | Read first |
+| `analysis/project_state_ledger.md` | 完成项 / 历史状态 / 证据 | `rg`/`tail` 查, 不全读 |
+| `SESSION_HANDOFF.md` | 运行态恢复快照 | Context-only, 以 live gate 为准 |
+| `docs/data_management_framework.md` | 数据层级框架 + 三原则 + 自动执法 (2026-06-14 立) | 数据管理权威 |
+| `docs/chunkyctl_session_quickstart.md` | 启动流程 | 启动契约 |
+| `docs/README.md` | docs 地图 + 权属 | 文档权威图 |
 
-Update rule: if an item is done, move the evidence to
-`analysis/project_state_ledger.md` and keep only the resulting current decision
-or blocker here. `goal.md` should stay under roughly 150 lines unless the active
-phase genuinely needs a larger plan.
+## 创世层 (项目法, 2026-06-14 地基-reset 后立; 重建的验收标尺)
 
-## North-Star KPI (唯一 owner: 本文件; 其他文档只指针引用)
+**为何存在**: 把 A 股公开数据 (K线/财报/筹码/资金) 转成真金白银的 KPI 级回报 —— 不是论文, 不是数字游戏 (用户原话: "真金白银投入的")。
+
+**死亡条款** (≤3, 陌生人可判):
+1. **感知死** — forward 预测从不回填对账 / 异常高回测 (RankIC>0.3, sharpe>5, 年化>100%) 不查 leakage 就上线。
+2. **判断死** — 阈值/权重/策略组合 hardcode 进代码而非 config (立方体退化成死代码)。
+3. **谄媚死** — 报喜不报忧 (0 STRONG_BUY / Gate FAIL 不先讲) / 只调对你舒服的方向。
+
+**判断法典种子** (人话 → 机器话, 自动执法):
+| 人话 | 机器话 (moth/gate) |
+|---|---|
+| 每张表必声明所属 layer | `moth data-layer-integrity` ✓ |
+| 不留 god-file / 万物互引 | `moth minimal-module-main-routers` + `no-new-godfile` ✓ |
+| 删的层不被启动重建 | `services/schema_layer_filter` ✓ |
+| 文档不准漂移 | `moth doc-drift` (本轮立) |
+| 数字 measured 可复现 | `check_rule_compliance` + leakage gate |
+
+## North-Star KPI (唯一 owner: 本文件)
 
 | 指标 | 目标 | 口径 |
 |---|---|---|
 | 年化收益 | >= +30% | 含成本 OOS paper_sim, 2023-01-03 起 100 万初始 |
 | 最大回撤 | >= -20% | 同上 |
-| 超额 vs HS300 | > 0 | 真实 HS300 基准 (基准=0 的结果无效) |
-| 月胜率 | >= 55% | walk-forward OOS 月度胜率分布, 不是均值 |
+| 超额 vs HS300 | > 0 | 真实 HS300 基准 (基准=0 无效) |
+| 月胜率 | >= 55% | walk-forward OOS 月度分布, 不是均值 |
 
-当前实测状态 (2026-06-11 体检): 无任何同时满足四项、含成本、gate 通过且数据新鲜的数字;
-最近可信 artifact 均为 2026-05-23 前。正确答案是 `unknown`, 修复路径见
-`docs/implementation_plan.md` Active Repair Plan。
+**当前: `unknown`** —— 2026-06-14 模型/特征/寻优层全 reset, 参数寻优从零重做。不许引用 reset 前的旧数字。
 
-## Strategy Portfolio (2026-06-11 策略锻造定稿)
+## Current Phase: 干净地基上重建 alpha
 
-Owner: `analysis/strategy_portfolio_20260611.md` (三套组合 + 12 周路线图 + 13 条全局纪律件;
-三评委 judge panel 定稿: B 回调增强 8.0 主书 / D v7 排序 7.6 公共增强层 / C 题材扩散 6.0
-降级数据采集)。**宪法 v2 已生效** (2026-06-11 用户原话确认 "宪法v2确认"): live 文件 =
-`docs/PROJECT_CONSTITUTION.md` (13 条全带反例); v1 归档 `analysis/constitution_v1_retired_20260611.md`;
-草案 `analysis/constitution_v2_draft_20260611.md` 已采纳为 live, 仅留作锻造证据。当前周 **W1** (完成项详 ledger)。
-**轨道现状 (06-12 矩阵已被下方验证计划取代, 完成项详 ledger)**: A 存储 DONE (34G 拆分+PK 恢复,
-旧库已删 06-13) / B 数据 tushare 22 域 ~1.1 亿行基本抓完 (gap: fina_mainbz 单期/watermark 失真) /
-C 实验 三判决落定 (LHB GO / LF REJECT / S3 REJECT-泄漏, 详 ledger 与验证计划 L2) / D modal 已 deploy
-+ smoke 隔离修 (CYQ 特征扩展待 S3 判正) / E 复权链转正。验证期 (W1-W12) 新策略 0 真金白银全 paper_sim 候选态。
+**地基现状 (2026-06-14 reset 后)**: smartmoney **85 表 / 2.5G** (raw源/dim/财报PIT/十大股东/K线中间 + 档案展示 + 治理infra); 数据管理框架已立 (8层声明式 `data_layers.yaml` + `data_layer_audit` + `schema_layer_filter` 防重建 + moth 13断言全pass); S1 基本面四件套 (forecast/express/income/fina_indicator) 回填完成; CI绿。owner=`docs/data_management_framework.md`。
 
-## 数据底座基础设施 (2026-06-13 体检 + 修复进行中, 用户指令"先做好数据底座")
-
-**决议: daily_update 保持手动** (本地未上云 + 定时不保证开机时刻在线; 成熟后再上云自动跑)。
-**doctor verdict=FAIL, 但真相源完好**: K线 (price_kline_tdxhub/raw_tushare_daily 均 06-12) + DuckDB
-schema (smartmoney 348表/839约束/172PK, 06-12 库分裂丢约束已恢复) 都健康。坏的是派生层。
-
-**根因 (查实)**: 调度手动化 + 旧 `cron_daily.py` → `daily_update.sh` 迁移时, 一批派生 builder
-被漏在新管道外 (孤儿管道)。两条日更管道割裂: daily_update 覆盖 live 链 (p0a panel/scores/syncs/
-watermark), 但 fact_feature_panel + holder/gpcw/drift/prune/picture/financial_pit/shareholder 的
-builder 全不在 daily_update (原属 cron_daily)。
-
-**进度 (blocker 14→12)**:
-- [完成] `fact_feature_panel` 重建 (build_feature_panel_duck.py --mode incremental): 4.19M 行, max_date
-  06-04→**06-12**, 最新行 forward 列 NULL (PIT 边界净, stale 修了没引泄漏). → 连带清 mart_feature_panel_validation.
-- [完成] `refresh_source_watermarks.py` 跑过 — 治 watermark 失真 (Step 2.97 孤儿化根因).
-- [完成] daily_update.sh:18 stale 注释修 (指向已删 plist 改手动运行说明 + 孤儿管道警告).
-
-**剩余 12 blocker + 下一批** (DuckDB 单写锁→必须串行):
-- Category B (4 表, tdxhub holder sync, 需网络): ingest_holders_tdxhub.py [tier-2 miaoxiang aif10 兜底]
-- Category D (7 表, 派生 builder 没跑, 读已新鲜 panel/kline): compute_feature_drift / prune_feature_panel_to_canonical_kline /
-  validate_tdx_gpcw_auto_pit / profile_tdx_gpcw_fields / build_picture_daily / backfill_financial_pit / build_shareholder_plan_initial_event
-- Category A (1 表, SLA 误配): dim_capital_behavior_latest (akshare 已退役却仍 48h blocking) → 改 seed_dim_data_asset.py SLA/移出 blocker, 不是重建.
-
-**方向修正 (2026-06-13, 用户第一性原理纠偏)**: 用户先选 A (孤儿 builder 并入 daily_update),
-设计蓝图查出 cron_daily 只管 drift、其余 7 builder 需 inline ~9 步 (Step 2n/2.98/3d-3i)。但用户
-随即纠偏: **"数据还没定下来都需要啥, 先把更新确定了? 是不是该先探索数据"** —— 命中 architect
-rule6 (为没证明需要的负载建基础设施)。**Option A 冻结 (前提未成立)**: 在不知哪些特征有 alpha
-前, 不花 30-50min/天 + 90 行管道保鲜一堆可能不进策略的派生表。区分: 真相源 (K线/tushare raw)
-+ fact_feature_panel (探索底座) 必须保鲜=已做; 其余派生表 stale 无害 (反而诚实标"没在用")。
-**转入: 数据资产盘点** (workflow wf_23c90d88) → 产出"有什么/覆盖/质量/研究状态/去留"菜单 →
-菜单定哪些是 core(保鲜)/experimental(按需)/dead(退役) → 那时再决定接哪几张(很可能远少于12)
-进 daily_update。盘点 ≠ 验证策略 (不违"先不急推进验证")。akshare SLA 误配 (dim_capital_behavior_latest)
-仍单独修 (config 非 builder)。
-
-## 专项: Alpha 验证程序 + DB 分区 (2026-06-14, 数据探索纠偏后的主线)
-
-用户纠偏链 (2026-06-13→14): 修 stale 表→盘点已入库→**全面 access surface (不限已入库)**→发现真正缺口
-是基本面 factor 族零底座 (非 stale 表)。两份设计提案 (执行前过 grill):
-
-- **Alpha 验证程序** (owner=`analysis/alpha_validation_program_spec_20260614.md`): (新数据 × 全消费者
-  [20技术公式+特征族]) 一次性 PIT 矩阵验证, 走实验台 (experiment_jobs 契约+prereg→verdict→DB→ledger 留档),
-  获取走 datahub, 验证走 Optuna 中央层+Modal, 验证前必跑 leakage 审计。数据候选优先级: 基本面四件套
-  (forecast/express/income/fina_indicator) > cyq_chips > kpl_list/limit_step(喂北极星) > 股东事件。
-  阶段 S0(实验台扩 consumer_alpha family+executor+留档表) → S1 datahub 获取 → S2 matrix harness → S3 逐验 → S4 判决。
-- **DB 多库分区** (owner=`analysis/db_management_design_20260614.md`): smartmoney 348表单体=写锁痛点根因;
-  按写入节奏拆 4 tier (源/特征/服务/实验) = 写并行, daily_update∥feature重算∥实验跑批不撞锁。迁移用
-  EXPORT/IMPORT(禁 COPY FROM DATABASE, 06-12 丢约束 315→1 教训)。**前置于验证程序数据获取** (趁新数据没落库前重构省二次迁移)。
-  阶段 D0(写入面扫描+tier分配+事务边界) → D1 实验库 → D2 特征库 → D3 源库 raw 移出 → D4 manifest 路由。
-
-**DB 分区状态 (2026-06-14 探索后定案)**: D0 写入面扫描 + 保真迁移引擎 (db_partition_migrate.py) + 2 次实测保真迁移
-(experiment 25 表 / feature 2 表全 PASS) 完成 = **引擎与设计已证明**。但 **cutover 暂缓** (实测: experiment 58文件/7 live 耦合;
-feature 的 fact_feature_panel 是 106-读取方中心表, cutover 需永久 always-attach+view 间接层, 而竞争手动工作流下罕见 =
-rule6 反模式)。保留引擎+设计作 ready 资产 (stale 副本已删), 竞争真咬人/上云时几分钟可完成 cutover。详 db_management_design §11。
-**数据底座主线回到 alpha 验证程序 (找 base-edge)**; DB 分区/housekeeping 是支撑基建, 不阻塞主线。
-
-## 多维策略立方体架构 (2026-06-13, 完整 owner=analysis/multidim_strategy_architecture_20260613.md)
-
-用户多维想法 (数据源参数化 optuna / 分组适配非全市场统一 / 主辅策略 / 模块×数据×配置 ∩
-规则×模型×策略) 的第一性原理顶层设计。**架构 = 策略立方体 (cell = Segment × Feature-set ×
-Policy)**, 三轴真相源全有现成底座 (板块=universe_rules / 形态=technical_stage / 市值=circ_mv /
-资金=moneyflow; 数据源族=feature_registry.groups; 策略=formula+model+optuna 退出层)。立法已落
-(genesis/codex/3 死亡条款), **唯二新增件 = strategy_cube.yaml + services/strategy_cube/**, 其余全复用。
-
-**Verdict: 立法 PROCEED + 实例化 BLOCK (§5 已实测坐实)**。最小可逆第一步 (板块维 read-only 检验,
-`cube_board_axis_check_20260613.json`) 结论: 板块间最优 stop/target 参数无显著差异 (p>0.15) +
-底层 per-stock 策略 OOS 本身为负 (mean oos_sharpe -0.35~-0.41)。**瓶颈在 base-edge 缺失, 不在
-分组架构** —— 不建 cube 空壳, 算力重定向到下方系统性验证 L0-L4 + T 轨先找 base edge; edge 为正
-再回来逐维解锁立方体。
-
-## 系统性验证计划 (2026-06-13, 完整 owner=analysis/systematic_validation_plan_20260613.md)
-
-核心: alpha/特征/live 可信度自底向上逐层机器可检, 任一层红则其上全部"受污染" (触发=S3 实证
-fact_feature_panel 喂 follow_net_return 标签泄漏, 同源 mart_p0a_v4/v5 直喂 3 条 live 链)。工具
-`services/leakage_detect.py` (4 阶段)。铁律详见 plan 文档 (判据冻结/异常高回 L0/真相源单一)。
-
-- **L0 特征面板 PIT** (进行中): 消费者 feature_cols ∩ builder 标签集==∅ + lineage 净 + S3 重跑 AUC~0.50
-- **L1 标签真实+时间安全** (待): 被 L0 排除 + embargo>=horizon + corr(特征,label)无>0.2
-- **L2 实验复验** (LHB/LF/S3 已判): 冻结判据 + ablation 边际非负
-- **L3 Live OOS 背书** (待, 审计 HIGH): 3 链训练面板 L0 PASS + selector 只读 oos_*
-- **L4 含成本 paper_sim+forward** (待, 2026-05-16 all_kpi=False): KPI + forward 兑现落区间
-- **T tushare 域 alpha 研究** (横切, 待): 22 域逐域 IC/ablation 增量 (用户问: 尚无系统研究)
-
-**immediate_next**: L0 live 泄漏体检 — `run_daily_v7_inference.py:94` 手写 EXCLUDE 读 mart_p0a_v5
-不引 builder 契约 = S3 同型漏排活体嫌疑; `leakage_probe --stage feature-consumer` 核 3 live 消费者。
-
-## Current Phase
-
-**Phase:** architecture/data governance foundation before deeper strategy work.
-
-**Objective:** make the project controllable and auditable before expanding
-data sources, provider compute, model search, or production promotion.
-
-**Controller rule:** Codex owns direction, truth-source decisions, shared docs,
-gates, staging, commits, and risky write windows. Side agents provide bounded
-evidence or disjoint patches; their output is not a verdict.
-
-**Commit ownership (2026-06-12 用户决议更新):** Codex review 强制已解除
-(safe_commit Step 4.5 + check_codex_review hook 非阻塞化)。质量闸 = 单测 +
-self-check 5 项 + 重大改动 (数据语义/策略/资金路径) 对抗复审 workflow。
-其余 pre-commit hook (INDEX-sync / rule-compliance / no-emoji / commit-msg) 不变。
+**Controller rule**: 主会话 owns 方向/真相源/共享文档/gate/staging/commit/风险写窗口。side-agent 只给有界证据, 非裁决。重大改动 (数据语义/策略/资金路径) 走对抗复审。
 
 ## Active Priority Board
 
-| Priority | Workstream | Current state | Next action |
+| P | Workstream | State | Next action |
 |---|---|---|---|
-| P0 | Documentation control plane | Thin `goal.md` / ledger split committed in `8371e60c` | Keep current-state facts here; put completed evidence in `analysis/project_state_ledger.md` |
-| P0 | Provider-neutral execution surface | Retired GCP execution surface removed and `experiment_jobs` contract committed in `8371e60c`; `modal` promoted to active 2026-06-11 (user decision "该用就用", $30/mo quota, ~/.modal.toml) | Both `local` and `modal` active; `modal` dispatch is gated by `dry_run=True` default + reviewed adapter + artifact-manifest contract (active = dispatchable, not auto-dispatched); never set `dry_run=False` without a reviewed plan + rollback |
-| P0 | Dirty worktree governance | Clean after `3e9fafc8`; `worktree` gate reports `unknown=0` | Keep future commits slice-based; never `git add .` |
-| P0 | Platform reliability convergence | Three-track audit done 2026-06-11 (`analysis/platform_top_level_design_20260611.md`); Platform Runtime Contract adopted into `docs/data_product_contract.md`. Verified gaps: 12+ WARN-and-continue swallow steps in `scripts/daily_update.sh`, 7 sources without watermark, failure_queue has writers but no drain consumer, 4 `except Exception: pass` in backfill scripts, frontend silent mock fallback plus 10+ hardcoded thresholds | **Done 2026-06-11 evening**: failure-level semantics live (29 swallow points → `step_degraded` + ALERT flag + end-of-chain notification) and calendar-gap drain live (`sync_runner --drain`, completeness-aware via min_rows, newest-first truncation, non-daily domains fall back to incremental run_domain; 16 unit tests + live lock-path probe exit 1). Registry-derived SLA audit also live: `update_watermark_sla.py` auto-generates `sync:*` probes from sync_registry.yaml with explicit NO_PROBE_RULE / NO_QUERY_MAPPING / DB_LOCKED_UNVERIFIED / NEVER_SYNCED states (no more silent-OK); first live dry-run caught real rot: `lhb_daily` stale 13d (aif10 path) and `xdxr` stale 17d (dividend season — affects adjustment correctness). Remaining: root-cause xdxr staleness, migrate legacy sources to tushare registry (top_list/top_inst/stk_surv/report_rc/ths_hot/moneyflow_hsgt all within 10000 points), dead-dates dampening, doctor ALERT-flag check; frontend rescue trio as separate batch |
-| DONE | `need_027` exact order-flow | **All 5 post-probe gates PASS (2026-06-11)**, infra + runtime double-evidence in `analysis/need027_5gate_acceptance_20260611.md`: pit_key/freshness_sla/writer/watermark/failure_queue_resolution all satisfied; runtime: `raw_tushare_moneyflow` 4.22M rows, watermark `sync:moneyflow` at 20260611, failure_queue 29 backfill failures → resolved (full fail→queue→resolve loop proven). AkShare formally retired from need_027 (persistent `akshare_remote_disconnected`); TuShare is sole primary | Consume in alpha research (Task #4 / route-2 mid-layer): feature JOIN must obey pit_anchor t-1; moneyflow_ind_dc open failure auto-replays next daily_update drain |
-| P1 | Data-source capability routing | Capability contracts committed in `3e9fafc8`; TuShare `moneyflow` adapter/gate wiring is local no-persist probe scope only; iFinD MCP is a research-only semantic/industry-chain snapshot candidate, not a行情 or exact-flow production replacement; 2026-06-11 live probes passed with user-provided token (initialize / tools-list / `sector_data` real data), token kept in local `.env` only, 3 servers registered local-scope for research sessions; concept add/drop event-stream design in `analysis/concept_event_chain_mining_20260611.md` | Keep new providers in capability-level probe mode before any DB writer or provider promotion; route iFinD MCP through daily PIT snapshot contracts for sector/theme/news/notice evidence; implement `fact_concept_event` after concept-domain backfill lands |
-| P0 | DB retention/modularization | User directive 2026-06-12: execute the 34G reclamation now. Two dead hash-cache tables already archived+dropped (985MB parquet rollback). Split runbook = `analysis/db_split_runbook_20260612.md` | **DONE 2026-06-12 (两轮整改后)**: per-table rebuild + 回归修复后终态 36.1G→24G (实际回收 12.1G; 19.3G 是索引/PK 重放前的 stale 快照值). 回归: COPY FROM DATABASE 不搬约束/索引 (315→1), 首轮只补 4 表, 二轮按"凡 upsert 目标必有 PK"恒等式恢复 164 张 (冒烟 6/6 PASS, 0 失败); validation v2 六件套沉淀于 runbook. Old file `smartmoney_v1_retired_20260612.duckdb` — **delete manually after 2026-06-26** (frees 36G). Second pass = G4 panel convergence (~5-8G more) |
-| P1 | Stage-opt supply | Freshness repair is complete through trusted K-line max `2026-06-04`: `fact_signal_context`, `fact_technical_trigger`, and `mart_macd_state_history` all max at `2026-06-04`; latest 5-K-line-day audit has `source_freshness_warnings=0`, default readiness `3010/23661=12.72%`, reversal-only readiness `1401/9218=15.2%`; YTD reversal-only readiness is nonzero (`21530` ready keys / `62.7%`) | Treat remaining stage-opt blocker as upstream signal-density / state-source design, not stale tables; do not tune formula thresholds again until a no-persist source/state POC proves useful PIT candidate supply |
-| P2 | Microsoft RD-Agent(Q) research | Tracked as follow-up only; no production integration approved | Create a dated `analysis/rd_agent_q_research_*.md` deep-dive note mapping RD-Agent(Q)/Qlib reusable components, Co-STEER feedback, factor mining, report-to-code flow, experiment loop, agent role split, and experiment-manager contracts into borrow/reject/POC decisions under ChunkyMonkey gates |
-| P2 | Data-health warning-only assets | No red or blocking-yellow in latest live doctor; 7 warning-quality tables remain yellow | Treat as owner-specific maintenance, not startup blockers |
+| P0 | 文档同步 | goal/INDEX reset-rewrite | 立 `moth doc-drift` 固化 (机器对账, 防再漂; mythos §16) |
+| P0 | Alpha 验证 S0 | 实验台 (`experiment_jobs.py`) 被 reset 删, yaml 契约在 | 在干净地基重写 consumer_alpha family + executor + 留档表 (fact_experiment_verdict/ic_scan/lineage/pit_audit → `experiment_store.duckdb`) |
+| P1 | 裸K线基准 L0 | 待建 (北极星: 先建标尺再加 alpha) | S0 后第一个 consumer: 仅 OHLCV 派生的基准策略, PIT-clean, 作每个 alpha 的标尺 |
+| P2 | 深层解耦 backlog | kept routers 懒加载已删 services / 8 散落服务自建表 / 23 god-file (framework doc §6) | rebuild 时按 layer 顺手解耦, moth 守不回潮; **不 big-bang** (反复破 CI 教训) |
 
-## Latest Live Gate Snapshot
+## 重建路线 (全 config 驱动, owner=`analysis/alpha_validation_program_spec_20260614.md`)
 
-As of the latest checked state, with full doctor/stage-opt evidence and focused
-`need_027` source-probe evidence from 2026-06-06:
-
-| Gate | Current result | Meaning |
-|---|---|---|
-| `scripts/chunkyctl doctor --fast` | `WARN` | `need_027` remains blocked and `data_health` has 7 warning-only tables; execution surface, Moth, universe, worktree, and stage-opt freshness are clear |
-| `scripts/chunkyctl worktree --format markdown` | Use live gate before staging | Latest pre-commit check had `unknown=0`; keep future commits slice-based |
-| `moth snapshot --repo . --format markdown` | CodeGraph `PASS` | CodeGraph is up to date; complexity diff has `new_high_count=0` |
-| `data_health_snapshot.py --dry-run` | `green=335 / yellow=7 / red=0 / blocking_yellow=0` | No startup data-health blocker; yellow assets are maintenance debt |
-| `plan_storage_retention.py` | `candidate_count=0 / table_inventory_count=12 / policy_contract=PASS / compaction.recommended=false` | Contract is complete, but no production delete/VACUUM path is open |
-| `audit_storage_retention_consumers.py` | `PASS / audited_tables=11 / runtime_ref_tables=11` | Cleanup candidates are protected by explicit consumer evidence instead of unknown placeholders |
-| `audit_execution_surface.py --include-live-launchd` | `PASS / 0 findings` | Retired execution-surface references are not currently detected |
-| `need_coverage` | `need_027` no-persist gate **PASS** (2026-06-11) | TuShare source group `ok` 3/3 (`selected_source=tushare`); AkShare group still `akshare_remote_disconnected=3`; `field_mapping`/`date_coverage` pass; remaining `required`: `pit_key`/`freshness_sla`/`writer`/`watermark`/`failure_queue_resolution` before production writes |
-| `audit_stage_opt_candidate_supply.py` | Freshness clear / density low | Latest actual 5-K-line-day audit `2026-05-29..2026-06-04`: default `raw_signal_rows=54206`, `ready_keys=3010`, `ready_coverage_pct=12.72`, `source_freshness_warnings=0`; remaining blocker is `below_min_signals`, not source staleness |
-
-Live gates override this section. Refresh before using the numbers as evidence.
-
-## Implementation Plan
-
-1. **Data-source contracts:** keep iFinD MCP / TuShare / tdxhub work in
-   capability-scoped research/probe mode until PIT/freshness/watermark and
-   no-persist probes pass. iFinD MCP is for sector/theme/news/notice/industry
-   chain snapshots first; TuShare remains the structured exact-flow/batch probe
-   candidate; tdxhub remains the current backbone for stable local facts.
-2. **Storage/DB governance:** continue from manifest + retention dry-run toward
-   owner-based retention and compact policy. No production deletion without
-   consumer migration/retirement evidence, copied-DuckDB validation, manifests,
-   and rollback.
-3. **Strategy/model work:** resume stage-opt and model exploration only after
-   upstream signal density, data-source truth contracts, and live audit gates
-   are explicit. Stage-opt freshness is now repaired to trusted K-line max
-   `2026-06-04`; the next stage-opt decision is whether a no-persist
-   state/source POC can improve PIT candidate supply without adding another
-   stale writer.
-4. **RD-Agent(Q) follow-up research:** run a read-only deep dive after P0
-   cleanup or in an explicitly bounded parallel research slot, with output as a
-   dated `analysis/` research note. Compare the upstream RD-Agent(Q)/Qlib
-   research loop, Co-STEER feedback, factor mining, report-to-code flow,
-   experiment manager, and agent role split against this project's PIT,
-   data-source, paper-sim, promotion, and `experiment_jobs` contracts. The
-   expected result is a borrow/reject table, an integration-risk map, a mature
-   component reuse list, and the smallest reversible POC plan. Mature ideas may
-   be copied as isolated research tooling; no upstream framework, agent loop,
-   generated factor, or model result can bypass ChunkyMonkey's truth-source,
-   leakage, paper-sim, and promotion gates.
-
-## Long-Term Roadmap
-
-| Area | Direction |
-|---|---|
-| Data sources | Capability-level routing: `tdxhub` backbone, iFinD MCP semantic/industry-chain research snapshots, TuShare structured exact-flow/batch probes, each gated by PIT/freshness/watermark |
-| Compute | `experiment_jobs` is the only approved job contract; `local` and `modal` both active (2026-06-11); `modal` dispatch stays safe-by-default (`dry_run=True`) and requires reviewed adapter + artifact manifest + rollback before any `dry_run=False` paid run |
-| Research agents | Microsoft RD-Agent(Q) / Qlib ideas may feed isolated candidate generation and experiment design; production data, PIT, backtest, and promotion gates stay in ChunkyMonkey |
-| Database | Manifest-owned DB aliases, read-only attached DBs by default, owner-based retention, no ad hoc scripts or hidden DB paths |
-| Promotion | Measured paper sim / Phase4 / PBO / forward evidence only; in-sample or proxy metrics remain `unknown` |
+1. **S0** 实验台 + 留档表 (experiment_store, 与 live 隔离防污染)。
+2. **L0 裸K线基准** (只 OHLCV, PIT-clean) — 标尺, 每个 alpha 要超越它。
+3. **逐步加 alpha 因子** (S1 数据已备), 每个过 leakage 审计 + walk-forward OOS, 结论入 `retired_experiments.yaml` (challenger 只留摘要不留全表)。
+4. **多维策略立方体** (cell = Segment × Feature-set × Policy, 全 config 组合; owner=`analysis/multidim_strategy_architecture_20260613.md`), edge 为正再逐维解锁。
 
 ## Operating Reminders
 
-- Do not read or apply `CLAUDE.md` by default.
-- Use `$architect-controller` for architecture/controller work,
-  `$chunkymonkey-governance` before risky project execution, and
-  `$chunkymonkey-review-gate` before commits or after `.py/.yaml/.sql` changes.
-- Prefer first-principles truth sources: K-line for tradeability, calendar for
-  dates, config/table/service owners for business rules.
-- Remove proven-dead paths directly; do not keep obsolete code by comments,
-  hidden flags, or compatibility shims.
+- 主动用全套工具/skill (不等点名): `architect-controller` (架构/总指挥) · `mythos` (神话/创世) · `chunkymonkey-governance` (跑批前 grill) · moth (断言对账) · codegraph (耦合/依赖) · workflow (并发)。
+- 第一性原理真相源: K线=可交易性 / 日历=日期 / config-table-service owner=业务规则。
+- 删确定死的路径直接删, 不留注释/隐藏flag/兼容垫片; 但**不 big-bang 硬删紧耦合层** (按 layer 增量, moth 守)。
+- commit 走 `bash scripts/safe_commit.sh`; 大改动数据语义/策略/资金路径走对抗复审。
+- 历史详情 (reset 前 Strategy Portfolio / 数据底座 blocker / DB分区 / 旧 board / live gate) 见各 owner 文档 + ledger; 不在本文件保留。

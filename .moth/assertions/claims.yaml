@@ -57,6 +57,11 @@ assertions:
     type: shell
     command: ["grep", "-c", "_is_quota_wall\\|QuotaExhaustedError", "backend/services/data_sources/sync_runner.py"]
     expect: {op: ">=", value: 3}
+  - id: doc-drift
+    claim: "活索引文档 (PROJECT_INDEX/goal) 不引用已删代码文件路径 (2026-06-14 立: mythos §16 漂移默认态对账要机器做 + 用户'及时更新文档'; 历史叙事/模板豁免)"
+    type: shell
+    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python backend/scripts/check_doc_drift.py --check | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)[\"overall\"]==\"PASS\" else 1)' && echo DOC_OK"]
+    expect: {op: regex, pattern: "DOC_OK"}
   - id: data-layer-integrity
     claim: "每张活表必在 data_layers.yaml 声明 layer (2026-06-14 地基-reset 立: 层级声明化根治'隐式分层→反复推导+耦合无法分离'; 未声明=违纪, 新表必须先声明)"
     type: shell

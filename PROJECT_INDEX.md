@@ -477,51 +477,12 @@ pip install -r backend/requirements.txt
 pip install pre-commit && pre-commit install   # 强制 PROJECT_INDEX 同步检查
 ```
 
-### 数据 backfill (从空开始)
-```bash
-# 1. 技术阶段 (Stan Weinstein 4 stage)
-PYTHONPATH=backend python backend/scripts/build_stage_formula_fitness.py --start 2022-09-01
+### 数据 backfill / Optuna / paper_sim 运行手册
 
-# 2. signal_context (vol/amt/price_pos + technical_stage)
-PYTHONPATH=backend python backend/scripts/build_signal_context.py --start 2023-09-01
-
-# 3. 公式信号历史 (含反转 3 公式)
-PYTHONPATH=backend python backend/scripts/build_formula_signals_history.py
-
-# 4. PIT 因子 (Phase ψ.β.1/2/3)
-PYTHONPATH=backend python backend/scripts/backfill_risk_factors_history.py
-PYTHONPATH=backend python backend/scripts/backfill_financial_pit.py
-PYTHONPATH=backend python backend/scripts/backfill_capital_flow_pit.py
-```
-
-### Optuna 跑批
-```bash
-# per-formula × stage 全局 walk-forward (推荐)
-PYTHONPATH=backend python backend/scripts/optimize_per_formula_stage.py \
-    --formula reversal_1m_mild reversal_1m_deep reversal_1w \
-              macd_golden_cross turtle_breakout_20 turtle_breakout_55 \
-              dynamic_ma_iterative_cross
-# 时长: ~7.5h (1260 任务), 输出 mart_per_formula_stage_optimal 426 行
-```
-
-### paper_sim 跑批 (4 套 ablation)
-```bash
-# A. baseline (no swap, 老 momentum 公式)
-PYTHONPATH=backend python backend/scripts/run_paper_sim_v2.py --variant baseline
-
-# B. 反转单 alpha (最强 setup)
-PYTHONPATH=backend python backend/scripts/run_paper_sim_v2.py \
-    --config-path backend/config/paper_sim_reversal.yaml --ablation
-
-# C. momentum 单 alpha
-PYTHONPATH=backend python backend/scripts/run_paper_sim_v2.py \
-    --config-path backend/config/paper_sim_momentum.yaml --ablation
-
-# D. ensemble 10 alpha 综合 (主战)
-PYTHONPATH=backend python backend/scripts/run_paper_sim_v2.py \
-    --config-path backend/config/paper_sim_ensemble.yaml --ablation
-# 时长: 各 ~30-60 min
-```
+> **2026-06-14 地基-reset 移除**: 模型/特征/寻优/paper_sim 层 (build_signal_context /
+> backfill_risk_factors / optimize_per_formula_stage / run_paper_sim_v2 等) 已删, 参数寻优从零重做。
+> 数据获取 (raw/dim 同步) 走 `sync_runner` (sync_registry.yaml); 重建路线见 `goal.md` 重建路线 +
+> `analysis/alpha_validation_program_spec_20260614.md`。地基同步: `scripts/daily_update.sh` (手动)。
 
 ### 数据查询 (常用诊断)
 ```bash
@@ -546,11 +507,8 @@ UNION SELECT 'signal_context', MIN(date), MAX(date), COUNT(*) FROM fact_signal_c
 # 全部单测 (paper_sim + optuna + backtest + ...)
 cd backend && PYTHONPATH=. pytest tests/ -q
 
-# 仅 Optuna 治理测试
-cd backend && PYTHONPATH=. pytest tests/optimization -q   # 83 tests
-
-# 跑 audit (23 项检查)
-PYTHONPATH=backend python backend/scripts/audit_end_to_end.py
+# 地基模块测试 (db/层级/同步)
+cd backend && PYTHONPATH=. pytest tests/test_db.py tests/scripts/test_db_compact.py tests/test_source_watermarks.py -q
 ```
 
 ### Pre-commit 测试 (避免 hook reject)
@@ -786,8 +744,6 @@ SELECT * FROM mart_architecture_inventory_asset WHERE run_id = ?;
 SELECT * FROM mart_data_health;
 SELECT * FROM mart_data_source_watermark;
 ```
-
-或运行 `backend/scripts/build_architecture_inventory.py` 自动重生成.
 
 ---
 
