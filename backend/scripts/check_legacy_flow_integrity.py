@@ -57,8 +57,12 @@ def check_no_wiped_refs() -> dict:
     stale: list[dict] = []
     for t in wiped:
         try:
-            r = subprocess.run(["grep", "-rn", "--", t, *GREP_ROOTS], cwd=str(REPO),
-                               capture_output=True, text=True)
+            # -w 词边界: 防 substring 假阳性 (wiped `fact_shareholder_plan` 误匹配活表
+            #   `fact_shareholder_plan_tdx_f10`, `_` 是 word 字符故 -w 正确拒匹配);
+            # -I 跳二进制 + --exclude-dir=__pycache__: 防 .pyc stale 编译产物灌水 (mythos §13).
+            r = subprocess.run(
+                ["grep", "-rnwI", "--exclude-dir=__pycache__", "--", t, *GREP_ROOTS],
+                cwd=str(REPO), capture_output=True, text=True)
         except Exception:
             continue
         for line in r.stdout.splitlines():
