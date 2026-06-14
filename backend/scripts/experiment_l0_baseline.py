@@ -74,10 +74,11 @@ def load_kline(start: str, end: str | None, limit_stocks: int) -> dict[str, dict
     return dict(by_code)
 
 
-def run_formula(formula: str, by_code: dict[str, dict], horizon: int) -> dict:
-    """单公式: PIT 门 -> 特征+前向收益 -> panel -> oos_rank_ic + 异常门。返回结果 + 门判。"""
-    # 门1 PIT 行为门 (提取器是确定性函数, 抽样 5 股足证函数级 PIT)
-    sample = [c for c in list(by_code)[:5] if len(by_code[c]["close"]) >= 30]
+def run_formula(formula: str, by_code: dict[str, dict], horizon: int, embargo: int = 0) -> dict:
+    """单公式: PIT 门 -> 特征+前向收益 -> panel -> oos_rank_ic(embargo) + 异常门。返回结果 + 门判。"""
+    # 门1 PIT 行为门: 抽样 50 股核证 (active 公式是单股确定性函数, 函数级 PIT 与股无关, 50 足;
+    # 假设: L0 公式必须单股 PIT-legal 不依赖股身份/跨股统计。若未来加跨股特征须扩抽样 + 加集成测试)
+    sample = [c for c in list(by_code)[:50] if len(by_code[c]["close"]) >= 30]  # evidence: 单股确定性函数抽样核证
     pit_reports = [assert_pit_clean(lambda b: extract_feature(formula, b), by_code[c]) for c in sample]
     pit_clean = all(r["clean"] for r in pit_reports)
 
@@ -91,7 +92,7 @@ def run_formula(formula: str, by_code: dict[str, dict], horizon: int) -> dict:
             for i, date in enumerate(bars["date"]):
                 if feat[i] is not None and fwd[i] is not None:
                     panel.append(PanelRow(date=date, code=code, feature=feat[i], fwd_ret=fwd[i]))
-    ic = oos_rank_ic(panel) if panel else {"oos_rank_ic": None, "ic_ir": None, "n_windows": 0, "n_days": 0}
+    ic = oos_rank_ic(panel, embargo_days=embargo) if panel else {"oos_rank_ic": None, "ic_ir": None, "n_windows": 0, "n_days": 0}
     anomaly = check_metric_anomaly({"rankic": ic["oos_rank_ic"]}, red_lines={"rankic": RANKIC_RED_LINE})
     return {"formula": formula, "pit_clean": pit_clean,
             "pit_violations": [v for r in pit_reports for v in r["violations"]][:3],
@@ -123,7 +124,7 @@ def main(argv: list[str] | None = None) -> int:
     data_snapshot = max((d for b in by_code.values() for d in b["date"]), default=args.start)
     print(f"[L0] {len(by_code)} 股, data_snapshot={data_snapshot}")
 
-    results = [run_formula(f, by_code, args.horizon) for f in args.formulas]
+    results = [run_formula(f, by_code, args.horizon, embargo) for f in args.formulas]
 
     # 门1 汇总: 任一公式 PIT 泄漏 -> BLOCK (不写库)
     leaked = [r["formula"] for r in results if not r["pit_clean"]]

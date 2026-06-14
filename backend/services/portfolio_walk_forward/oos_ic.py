@@ -104,7 +104,7 @@ def expanding_monthly_windows(
     while start < len(uniq):
         train = tuple(uniq[:start])
         test = tuple(uniq[start:start + forward_months])
-        if not test:
+        if len(test) < forward_months:  # 不完整末窗丢弃 (统计一致性: 全窗等大)
             break
         windows.append((train, test))
         start += forward_months
@@ -113,12 +113,15 @@ def expanding_monthly_windows(
 
 def oos_rank_ic(
     panel: list[PanelRow], *, min_train_months: int = 6, forward_months: int = 1,
-    min_total_months: int = 12,
+    min_total_months: int = 12, embargo_days: int = 0,
 ) -> dict:
     """walk-forward OOS RankIC 聚合。
 
     每窗在 test 月的每个交易日算截面 IC -> 全窗 OOS 日度 IC 序列 -> 均值=oos_rank_ic, mean/std=ic_ir。
     只用 test (OOS) 行, 绝不用 train (防 in-sample fit 入选)。
+    embargo_days>0: 丢每个 test 窗末 embargo_days 个交易日 (其 horizon 前向 label 跨入下一窗 = 跨窗
+    label 重叠; 切掉使窗间 label-disjoint, 防泄露固化非死闸 — 寻参时 train tail 同理被 purge)。
+    ic_ir 用无偏 std (ddof=1, 金融 Sharpe 类标准; 有偏 ddof=0 高估)。
     返回 {oos_rank_ic, ic_ir, n_windows, n_days, per_window_ic}; 无足够窗 -> oos_rank_ic=None (标 unknown)。
     """
     months = sorted({_month(r.date) for r in panel})
@@ -138,10 +141,11 @@ def oos_rank_ic(
     per_window: list[float | None] = []
     for _train, test in windows:
         test_set = set(test)
+        test_dates = sorted(d for d in by_date if _month(d) in test_set)
+        if embargo_days > 0:  # 切窗末 embargo_days 天 (其 label 跨入下一窗)
+            test_dates = test_dates[:-embargo_days] if len(test_dates) > embargo_days else []
         win_ics: list[float] = []
-        for date in sorted(by_date):
-            if _month(date) not in test_set:
-                continue
+        for date in test_dates:
             rows = by_date[date]
             ic = cross_sectional_ic([r.feature for r in rows], [r.fwd_ret for r in rows])
             if ic is not None:
@@ -153,7 +157,8 @@ def oos_rank_ic(
         return {"oos_rank_ic": None, "ic_ir": None, "n_windows": len(windows), "n_days": 0,
                 "per_window_ic": per_window, "reason": "no_valid_ic_days"}
     arr = np.array(daily_ics, dtype=float)
-    ic_ir = float(arr.mean() / arr.std()) if arr.std() > 0 else None
+    std = float(arr.std(ddof=1)) if arr.size > 1 else 0.0  # 无偏 (金融标准)
+    ic_ir = float(arr.mean() / std) if std > 0 else None
     return {
         "oos_rank_ic": float(arr.mean()), "ic_ir": ic_ir, "n_windows": len(windows),
         "n_days": len(daily_ics), "per_window_ic": per_window,

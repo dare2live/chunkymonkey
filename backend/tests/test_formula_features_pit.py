@@ -66,6 +66,16 @@ def test_pit_guard_catches_lookahead_leak():
     assert len(rep["violations"]) >= 1
 
 
+def test_pit_guard_catches_length_dependent_leak():
+    # 审计修: 不连续/长度依赖泄漏 (feature 依赖序列总长 -> 追加未来后过去值变)
+    def length_dep(b):
+        c = b["close"]
+        n = len(c)
+        return [c[i] * 2 if i >= n - 3 else c[i] for i in range(n)]  # 末3行依赖总长
+    rep = assert_pit_clean(length_dep, _bars())
+    assert not rep["clean"], "长度依赖泄漏 (追加未来改过去), PIT 门必须抓到"
+
+
 def test_pit_guard_catches_centered_window_leak():
     def centered(b):  # 居中窗 (含未来): mean(close[i-2:i+3])
         c = b["close"]

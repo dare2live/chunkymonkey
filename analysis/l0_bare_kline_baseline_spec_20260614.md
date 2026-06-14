@@ -43,17 +43,19 @@ vol-aware stop/target hardcode "业界常用" 丢 search space; selector ORDER B
 先 3-4 个 (macd_golden_cross[评估器幸存] + ma_base_breakout + turtle_breakout + reversal_short_term),
 其余 status=candidate (定义留存, 不进 L0 寻优, 防"池子越大越拟合")。涨停/活跃度/gs 等待 active 子集验通再逐个解锁。
 
-## 3.1 Tier-1 默认参数基准实测 (2026-06-14, run_id=l0_baseline_v1)
-全市场 5204 股 / 4.0M obs / 35 expanding_monthly 窗 / horizon=5 / 默认参数 (未寻优):
+## 3.1 Tier-1 默认参数基准实测 (2026-06-14, run_id=l0_baseline_v2 — 对抗审计修后)
+全市场 5204 股 / 4.0M obs / 35 expanding_monthly 窗 / horizon=5 / embargo=5 / 默认参数 (未寻优):
 | 公式 | OOS RankIC | IC_IR | 解读 |
 |---|---|---|---|
-| reversal_short_term | **+0.059** | **0.36** | 最佳裸K线信号 (超卖反弹, 行为金融吻合) |
-| macd_golden_cross | -0.036 | -0.24 | 短期动量负相关 (A股追高被罚) |
-| turtle_breakout | -0.036 | -0.26 | 突破短期负相关 |
-| ma_base_breakout | -0.071 | -0.41 | 均线突破短期负相关 |
+| reversal_short_term | **+0.064** | **0.39** | 最佳裸K线信号 (超卖反弹, 行为金融吻合) |
+| macd_golden_cross | -0.049 | -0.32 | 短期动量负相关 (A股追高被罚) |
+| turtle_breakout | -0.037 | -0.26 | 突破短期负相关 |
+| ma_base_breakout | -0.073 | -0.40 | 均线突破短期负相关 |
 
 诚实干净 (RankIC≈0.06 << §4.2 红线 0.3, 3 门全过无 anomaly; 300股 smoke 与全市场近一致=稳健非过拟合)。
-**当前标尺 = +0.059** (reversal 默认参数); 寻优 (task#17) 精化为 best-OOS-params 后更新。
+**当前标尺 = +0.064** (reversal 默认参数); 寻优 (task#17) 精化为 best-OOS-params 后更新。
+v1 (+0.059) 被对抗审计修 superseded: (a) embargo 校验但未传进 oos_rank_ic [HIGH 死闸] 已接 + 切窗末天;
+(b) IC_IR std 改无偏 ddof=1; (c) 不完整末窗丢弃; (d) PIT 门抽样 5→50 股 + 探点 8→24。v1 JSON 留 git 作 pre-fix 记录。
 已知限制: 宇宙=有K线全股 (v1 含潜在生存者偏差; alpha 同宇宙比较故公平; PIT 宇宙 dim_index_member_history 待 S3 接)。
 
 ## 4. reset 后 survives vs rebuilds (下沉核证, 非信旧 spec)

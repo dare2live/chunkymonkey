@@ -14,7 +14,7 @@ import math
 
 
 def assert_pit_clean(
-    feature_fn, bars: dict[str, list[float]], *, probe_points: int = 8,
+    feature_fn, bars: dict[str, list[float]], *, probe_points: int = 24,
     future_pad: int = 5, tol: float = 1e-9,
 ) -> dict:
     """对 feature_fn 做行为级 PIT 核证。

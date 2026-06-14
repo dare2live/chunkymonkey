@@ -107,6 +107,36 @@ def test_oos_rank_ic_noise_near_zero():
     assert abs(res["oos_rank_ic"]) < 0.2              # 纯噪声 -> IC ~0 (不虚高)
 
 
+def _dense_panel(seed: int = 5) -> list[PanelRow]:
+    """14 月 x 20 交易日/月 x 20 股稠密面板 (embargo 测试需每月多天)。"""
+    rng = np.random.default_rng(seed)
+    rows: list[PanelRow] = []
+    for mi in range(1, 15):
+        yy, mm = (2024, mi) if mi <= 12 else (2025, mi - 12)
+        for day in range(1, 21):
+            for s in range(20):
+                f = rng.normal()
+                rows.append(PanelRow(date=f"{yy}{mm:02d}{day:02d}", code=f"s{s}",
+                                     feature=f, fwd_ret=0.5 * f + 0.5 * rng.normal()))
+    return rows
+
+
+def test_oos_rank_ic_embargo_reduces_days():
+    # 审计 HIGH 修: embargo>0 切窗末天 -> n_days 严格减少 (防死闸: 闸真生效)
+    panel = _dense_panel()
+    no_emb = oos_rank_ic(panel, embargo_days=0)
+    emb = oos_rank_ic(panel, embargo_days=5)
+    assert emb["n_days"] < no_emb["n_days"], "embargo 必须真切掉窗末天 (非死闸)"
+    assert emb["n_days"] > 0
+
+
+def test_expanding_windows_no_partial_final():
+    # 审计 low 修: forward_months=2, 13 月 -> 末窗不足 2 月应丢弃 (全窗等大)
+    months = [f"2024{m:02d}" for m in range(1, 13)] + ["202501"]  # 13 月
+    w = expanding_monthly_windows(months, min_train_months=6, forward_months=2, min_total_months=12)
+    assert all(len(test) == 2 for _train, test in w), "不该有不完整末窗"
+
+
 def test_oos_rank_ic_insufficient_months_unknown():
     # 只 6 月 < min_total 12 -> oos_rank_ic=None (标 unknown 不报假数)
     rows = [PanelRow(date=f"2024{mi:02d}15", code=f"s{s}", feature=1.0 * s, fwd_ret=0.1 * s)
