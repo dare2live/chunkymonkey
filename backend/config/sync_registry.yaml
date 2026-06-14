@@ -416,3 +416,31 @@ domains:
     freshness_sla_trading_days: 5   # 财报季密集平日稀疏
     min_rows_per_batch: 1
     allow_empty_batch: true   # 多数交易日无新财报披露
+
+  express:   # 业绩快报 (2026-06-14 实弹核证: 介于预告与正式财报, 含 revenue/n_income/eps/roe 实数 — PEAD 二段)
+    source: tushare
+    api: express_vip   # 关键: 裸 express 强制 ts_code 不可批 → 用 *_vip 按 period 整批 (本 2000积分 token 实弹调通)
+    target_table: raw_tushare_express
+    grain: [ts_code, end_date]   # 实测每 period 快照 (ts_code,end_date) 唯一 dup=0 update_flag全'0' (覆盖式修订原地覆盖, ≠ forecast 带 ann_date 多行)
+    batch_mode: by_period   # 关键差异: forecast=by_trade_date(ann_date); express_vip 按报告期批 (sync_runner 2026-06-14 加 by_period 分支)
+    date_param: period   # 季末日 YYYYMMDD (实弹: ann_date/start/end 全被代理拒)
+    pit_anchor: "ann_date (行内字段); 快报披露日盘中/盘后 -> JOIN t-1 保守 (period 仅回填批次键, PIT 锚用行内 ann_date 早于正式财报晚于预告)"
+    available_after: "t+1"
+    data_start: "20070101"   # 实测 20071231 已有 316 行; 回填首跑落库 min(end_date) 对账
+    freshness_sla_trading_days: 5
+    min_rows_per_batch: 1
+    allow_empty_batch: true   # 非财报季某 period 增量 0
+
+  fina_indicator:   # 财务指标 (2026-06-14 实弹核证: 167 项衍生指标 ROE/ROA/毛利率/负债率 = 直接因子料)
+    source: tushare
+    api: fina_indicator
+    target_table: raw_tushare_fina_indicator
+    grain: [ts_code, end_date, update_flag]   # 实测同 end_date 同 ann_date 仍 2 行 (uf=0原始/1修正) → grain 必含 update_flag (ann_date 不区分修订)
+    batch_mode: by_ts_code   # 实测 ann_date/period 均返 0 行 (不可批) → 唯一可行逐股; 100 条/call 硬上限
+    fixed_params: {start_date: "20230101", end_date: "20260612"}   # rule-compliance: ok evidence=逐股窗口 2023-2026 (对齐 feature_panel; 每股<100行避截断, 全史需多窗口分页另案)
+    pit_anchor: "ann_date (行内字段); 财报公告日 -> JOIN t-1 保守; 取 update_flag=1 最新修正版 (<=t 最新 ann_date 行)"
+    available_after: "t+1"
+    data_start: "20230101"   # 当前窗口起点 (全史接口覆盖 ~2012, 老股 >100 行需窗口分页, 全史另案)
+    freshness_sla_trading_days: 5
+    min_rows_per_batch: 1
+    allow_empty_batch: true   # 次新股/无财报股 0 行

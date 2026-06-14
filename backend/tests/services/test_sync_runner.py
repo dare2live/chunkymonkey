@@ -175,3 +175,17 @@ def test_run_domain_halts_chain_on_quota_wall(monkeypatch, tmp_path):
     assert rconn.execute("SELECT COUNT(*) FROM raw_tushare_demo").fetchone()[0] == 2
     rconn.close()
     assert len(ad.payloads) == 1, "撞墙后剩余批不该被调用 (熔断生效)"
+
+
+def test_quarter_ends_generates_report_periods():
+    """by_period 报告期生成 (2026-06-14 express_vip 接入): [start,end] 内季末日 YYYYMMDD."""
+    # 2023Q1 ~ 2026Q1 = 13 期
+    assert sr._quarter_ends("20230101", "20260612") == [
+        "20230331", "20230630", "20230930", "20231231",
+        "20240331", "20240630", "20240930", "20241231",
+        "20250331", "20250630", "20250930", "20251231",
+        "20260331",
+    ]
+    # 边界: 单期含端点 / 空范围 (无季末日落入)
+    assert sr._quarter_ends("20251231", "20251231") == ["20251231"]
+    assert sr._quarter_ends("20251201", "20251220") == []

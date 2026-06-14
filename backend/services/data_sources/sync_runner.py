@@ -128,6 +128,21 @@ def _by_ts_code_batches(spec: dict[str, Any]) -> list[dict[str, Any]]:
     return [{"ts_code": t, **fixed} for c in sorted(codes) if (t := _ts(c))]
 
 
+def _quarter_ends(start: str, end: str) -> list[str]:
+    """报告期列表 (季末日 YYYYMMDD): [start, end] 内所有 0331/0630/0930/1231.
+
+    用于 by_period 批 (财报快报 express_vip / 按报告期整批拉的接口 — ann_date/trade_date 不可批)。
+    覆盖式快照接口重拉某 period 拿最新修订态, MERGE on grain 幂等。
+    """
+    sy, ey = int(start[:4]), int(end[:4])
+    return [
+        p
+        for y in range(sy, ey + 1)
+        for md in ("0331", "0630", "0930", "1231")
+        if start <= (p := f"{y}{md}") <= end
+    ]
+
+
 def _trading_days(start: str, end: str | None = None) -> list[str]:
     """交易日列表 (YYYYMMDD), 真相源 = 项目交易日历 (L0)."""
     from services.utils import latest_completed_trade_date
@@ -449,6 +464,22 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         # report_date — 锚定列同名, raw 表镜像后 drain 也按它扫 gap)
         date_param = spec.get("date_param", "trade_date")
         batches = [{date_param: d} for d in days]
+    elif spec["batch_mode"] == "by_period":
+        # 报告期循环 (财报快报 express_vip: 按报告期整批, ann_date/trade_date 不可批 — 实弹证伪)。
+        if backfill:
+            start_d = start or spec["data_start"]
+        else:
+            wm = _last_watermark_date(domain, spec["source"])
+            start_d = start or wm or spec["data_start"]
+        from services.utils import latest_completed_trade_date
+
+        conn0 = _smartmoney_conn()
+        try:
+            end_d = end or latest_completed_trade_date(conn0).replace("-", "")
+        finally:
+            conn0.close()
+        date_param = spec.get("date_param", "period")
+        batches = [{date_param: p} for p in _quarter_ends(start_d, end_d)]
     else:
         raise NotImplementedError(f"batch_mode {spec['batch_mode']} 未实现 (by_ts_code/by_month 按需加)")
 

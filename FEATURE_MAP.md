@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-14 10:57
+> Snapshot: 2026-06-14 11:12
 
 ## 1. 入口面
 
@@ -66,6 +66,8 @@
 | dc_index | tushare | dc_index | raw_tushare_dc_index | by_trade_date | 2 |
 | dc_member | tushare | dc_member | raw_tushare_dc_member | by_trade_date | 2 |
 | dividend | tushare | dividend | raw_tushare_dividend | by_trade_date | 5 |
+| express | tushare | express_vip | raw_tushare_express | by_period | 5 |
+| fina_indicator | tushare | fina_indicator | raw_tushare_fina_indicator | by_ts_code | 5 |
 | fina_mainbz | tushare | fina_mainbz | raw_tushare_fina_mainbz | by_ts_code | 130 |
 | forecast | tushare | forecast | raw_tushare_forecast | by_trade_date | 5 |
 | income | tushare | income | raw_tushare_income | by_trade_date | 5 |
@@ -452,7 +454,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 19,658 | calls 边 209,827 | imports 边 20,532 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 19,659 | calls 边 209,832 | imports 边 20,532 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -509,6 +511,6 @@
 ## 5. 概览
 
 - chunkyctl 子命令 8 | launchd 任务 1 | router 23 (端点 171)
-- sync_registry 数据域 27
+- sync_registry 数据域 29
 - 产表 302 (多 writer 121)
 
