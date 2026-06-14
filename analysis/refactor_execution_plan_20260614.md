@@ -26,7 +26,7 @@
 | A3b | 退役孤儿 routers (v3_market_perception/recommendation/institution/updater_*/v3_meta/v3_views/v3_perception_legacy/screening) + 改 main.py | C2 大部分 | **改 app, CI 风险** | 待 |
 | A3c | schema_versions.py 删 wiped 表 DDL (防重建循环, 27 处) | C2 收尾 | 中 (schema-init) | 待 |
 | A4 | 8 散落 service ensure_tables() 包 layer-gate (assert_active_layer) | 防 alpha158 类循环 | 中 | 待 |
-| A5 | bloat 回收: phase5_predictions 57M .duckdb 删 + ARCHIVE_FIRST 10 表 DROP (停 fact_stock_attention_snapshot write 路径后) | 省盘 | **破坏性数据** | 待 |
+| A5 | bloat 回收 | 省盘 | 破坏性数据 | **部分完成**: 删 phase5_predictions.duckdb(57M)+phase5_exports/(101M) 死 model 工件 + manifest 去 phase5 分区声明 = 158M; **archive/ 3.4G (lifecycle_20260614 reset 删前回滚网 2.5G + dead_tables_20260612 985M) 保留** — 不可逆非 git, 待重建 KPI 验证后用户定删; ARCHIVE_FIRST bulk 撤销 (反例: fact_stock_attention_snapshot 经核是 live daily 写, handoff 清单不可靠须逐表 live-check) |
 | A6 | 文档收口: git rm 5 已偏离 analysis (first_principles_diagnosis_20260517 / chunkymonkey_architecture_audit_20260517 / multi_wave_strategy_300616 / system_architecture_audit_20260521 / implementation_plan_20260611) + 2 docs (zhushenglang_hunter_research_log_20260528 / architecture_reform_context) ; CLAUDE.md 瘦身 ~70 行迁 skill | docs<=10 | 控制面, 用户审 | 待 |
 | Z | 全 gate 绿 + moth assert + doctor + commit/push + 更新 goal/INDEX/HANDOFF | 验收 | — | 待 |
 

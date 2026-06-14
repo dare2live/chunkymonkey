@@ -52,16 +52,8 @@ databases:
     status: active
     retention_class: governed_source_store
 
-  phase5_predictions:
-    path_glob: data/phase5_predictions_*.duckdb
-    domain: model_artifact_import
-    owner: model_import_pipeline
-    role: offline prediction artifact import source
-    default_open_mode: read_only
-    default_attach_mode: read_only
-    online: false
-    status: artifact
-    retention_class: versioned_artifact
+  # phase5_predictions partition 退役 2026-06-14 — model 层 reset 删除; offline 预测 artifact (.duckdb 文件 57M
+  # + data/phase5_exports/) 已删孤儿。重建 model 层时按 DB 分区契约重新声明。
 
   feature_store:
     path: data/feature_store.duckdb
