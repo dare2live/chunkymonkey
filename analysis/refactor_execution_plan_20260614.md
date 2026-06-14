@@ -55,6 +55,21 @@
    - A3c  schema_versions.py 删 wiped DDL(23) + market_perception/storage_retention/杂 config 外科清
    每步: app `import main` 冒烟 + CI/moth 验, red→green。
 
+### A3b/A3c 执行结果 + C2 余项 P2 (2026-06-14, 已实测)
+C2 **238→29** (88%): 退役 7 死 serving router(79, v3_market_perception bundled/recommendation/institution/
+screening/v3_meta/v3_views/v3_perception_legacy) + schema_versions 删 23 wiped 版本条目(版本注册表非DDL) +
+7 config 18 处 @archived 标记. moth `legacy-flow-no-pollution` 改 **ratchet** (C1 PASS + C3 PASS + C2<=29) = LEGACY_OK (实测 22/22 全绿).
+**C2 余 29 = updater 死 builder, 显式 P2 增量解耦** (framework §6: 禁 big-bang 反复破CI):
+- 死 builder (全建已删 L2/L3 表): build_profiles→mart_institution_profile / build_trends→mart_stock_trend /
+  build_industry_stat→mart_institution_industry_stat / calc_screening→mart_stock_screening /
+  calc_sector_momentum→mart_sector_momentum。
+- 嵌在 live update-DAG: updater.RUNNERS/STEPS/HARD_DEPS + reset/completeness 注册表; data_sources 读整个 DAG、
+  etf 读 connectivity; update_all 是被 ops_manual_run→daily_update.sh 取代的旧 HTTP 路径 (双重死)。
+- **P2 移除步骤** (须跑 test 验 data_sources/etf 不破): 删 updater_profiles.py+updater_trends.py 单一用途死文件 →
+  updater.py 去 import/wrapper(_step_build_*)/RUNNERS/STEPS/HARD_DEPS 死条目 → updater_reset/completeness 去 wiped
+  tuple/dict 条目 → updater_institution 去 industry_stat builder (留 live _step_sync_industry_with_hooks) →
+  import main + data_sources/etf import + 2 daily_update helper + 测试套件全验 → C2→0 → ratchet 降 0。
+
 ### daily_update.sh 重建底本 (A1)
 幸存脚本 (6): update_watermark_sla / build_price_kline_tdxhub / sync_hs300_benchmark_kline /
 ingest_profit_forecast_snapshot / refresh_source_watermarks / build_macd_state_history。
