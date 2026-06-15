@@ -1,0 +1,35 @@
+{
+  "experiment": "tier2_conditional_backtest",
+  "strategy": "Stage1.5_reversal_top20_T1_weekly",
+  "cost_bps": 10,
+  "metrics": {
+    "annual_return": -0.41959855032006976,
+    "max_drawdown": -0.5777897150317715,
+    "sharpe": -0.5813889004654738,
+    "calmar": -0.7262132561445765,
+    "monthly_win_rate": 0.425,
+    "final_nav": 0.70420452
+  },
+  "kpi_passes": {
+    "annual_return": false,
+    "max_drawdown": false,
+    "monthly_win_rate": false
+  },
+  "verdict": "KPI_FAIL",
+  "n_signals": 3240,
+  "note": "含成本 OOS; 超额HS300待基准",
+  "diagnostic": {
+    "net_long_10bps": {
+      "annual": -0.4196,
+      "max_dd": -0.5778,
+      "sharpe": -0.58
+    },
+    "gross_long_0bps": {
+      "annual": -0.0801,
+      "max_dd": -0.5379,
+      "sharpe": 0.18
+    },
+    "note": "cost~34%年化拖累(周度高换手); gross本身微负(Sharpe+0.18)=条件化reversal单信号弱; longshort诊断无效(引擎钳[0,1]空头未执行)"
+  },
+  "redirect": "+0.156 RankIC真但单信号naive交易KPI大幅FAIL(§4.5铁律). 出路: (a)极低换手(成本是首杀) (b)多因子立方体组合 (c)更强base数据(资金流/筹码). 条件化reversal单独不够."
+}
