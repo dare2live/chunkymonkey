@@ -32,6 +32,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from services.utils import safe_float as _safe_float
+from services.industry import INDUSTRY_TABLE  # 2026-06-16 S3: 行业 JOIN 走单一常量 (申万切换不漏改, no-hardcode)
 
 logger = logging.getLogger("cm-api")
 
@@ -725,7 +726,7 @@ def fetch_institution_history(
             e.max_drawdown_30d, e.max_drawdown_60d,
             i.tdx_l1 AS industry
         FROM fact_institution_event e
-        LEFT JOIN dim_stock_tdx_industry i ON i.stock_code = e.stock_code
+        LEFT JOIN {INDUSTRY_TABLE} i ON i.stock_code = e.stock_code
         WHERE {' AND '.join(where_parts)}
         ORDER BY e.notice_date DESC
     """
@@ -1473,7 +1474,7 @@ def build_today_signals(
             h.holder_rank, h.hold_ratio
         FROM fact_institution_event e
         LEFT JOIN inst_institutions i ON i.id = e.institution_id
-        LEFT JOIN dim_stock_tdx_industry ind ON ind.stock_code = e.stock_code
+        LEFT JOIN {INDUSTRY_TABLE} ind ON ind.stock_code = e.stock_code
         LEFT JOIN inst_holdings h ON h.institution_id = e.institution_id
                AND h.stock_code = e.stock_code AND h.report_date = e.report_date
         WHERE e.event_type IN ('new_entry', 'increase')
@@ -1513,7 +1514,7 @@ def build_today_signals(
                e.max_drawdown_30d, e.max_drawdown_60d,
                ind.tdx_l1 AS industry
         FROM fact_institution_event e
-        LEFT JOIN dim_stock_tdx_industry ind ON ind.stock_code = e.stock_code
+        LEFT JOIN {INDUSTRY_TABLE} ind ON ind.stock_code = e.stock_code
         WHERE e.event_type IN ('new_entry','increase')
           AND e.{cfg.gain_column} IS NOT NULL
           AND e.institution_id IN ({placeholders})
@@ -1654,11 +1655,11 @@ def fetch_similar_for_event(
     except ValueError:
         return {"error": f"invalid event_id: {event_id}"}
 
-    row = conn.execute("""
+    row = conn.execute(f"""
         SELECT e.institution_id, e.stock_code, e.report_date, e.notice_date, e.event_type,
                e.premium_pct, ind.tdx_l1 AS industry
         FROM fact_institution_event e
-        LEFT JOIN dim_stock_tdx_industry ind ON ind.stock_code = e.stock_code
+        LEFT JOIN {INDUSTRY_TABLE} ind ON ind.stock_code = e.stock_code
         WHERE e.institution_id = ? AND e.stock_code = ? AND e.report_date = ?
     """, (inst_id, stock_code, report_date)).fetchone()
 
@@ -1749,7 +1750,7 @@ def backtest_historical(
             i.type AS inst_type,
             h.holder_rank, h.hold_ratio
         FROM fact_institution_event e
-        LEFT JOIN dim_stock_tdx_industry ind ON ind.stock_code = e.stock_code
+        LEFT JOIN {INDUSTRY_TABLE} ind ON ind.stock_code = e.stock_code
         LEFT JOIN inst_institutions i ON i.id = e.institution_id
         LEFT JOIN inst_holdings h ON h.institution_id = e.institution_id
                AND h.stock_code = e.stock_code AND h.report_date = e.report_date
@@ -1958,7 +1959,7 @@ def cohort_recent_matured(
             i.type AS inst_type,
             h.holder_rank, h.hold_ratio
         FROM fact_institution_event e
-        LEFT JOIN dim_stock_tdx_industry ind ON ind.stock_code = e.stock_code
+        LEFT JOIN {INDUSTRY_TABLE} ind ON ind.stock_code = e.stock_code
         LEFT JOIN inst_institutions i ON i.id = e.institution_id
         LEFT JOIN inst_holdings h ON h.institution_id = e.institution_id
                AND h.stock_code = e.stock_code AND h.report_date = e.report_date
@@ -1987,7 +1988,7 @@ def cohort_recent_matured(
         SELECT e.institution_id, e.notice_date, e.{cfg.gain_column} AS gain,
                ind.tdx_l1 AS industry
         FROM fact_institution_event e
-        LEFT JOIN dim_stock_tdx_industry ind ON ind.stock_code = e.stock_code
+        LEFT JOIN {INDUSTRY_TABLE} ind ON ind.stock_code = e.stock_code
         WHERE e.event_type IN ('new_entry','increase')
           AND e.{cfg.gain_column} IS NOT NULL
         ORDER BY e.notice_date ASC

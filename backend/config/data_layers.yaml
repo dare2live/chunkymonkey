@@ -68,8 +68,9 @@ tables:
   dim_liquidity_threshold: L1_foundation
   dim_listing_status: L1_foundation
   dim_market_segment: L1_foundation
+  dim_stock_sw_industry: L1_foundation     # 2026-06-16 S3 当前申万行业快照 (serving, 从 v_sw_industry_pit; 替代通达信)
   dim_stock_tdx_block: L1_foundation
-  dim_stock_tdx_industry: L1_foundation
+  dim_stock_tdx_industry: L1_foundation     # 通达信行业 (S7 起降 tdxhub 热备, 不物删 §4.3)
   dim_stock_tdx_industry_history: L1_foundation
   dim_tdx_block_catalog: L1_foundation
   dim_tdx_gpcw_field: L1_foundation
