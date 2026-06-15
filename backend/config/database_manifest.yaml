@@ -58,14 +58,20 @@ databases:
   feature_store:
     path: data/feature_store.duckdb
     domain: feature_cache
-    owner: planned_feature_pipeline
-    role: planned split target for large rebuildable feature/cache tables
+    owner: feature_pipeline
+    role: >-
+      L2 feature panel store (rebuildable). Holds fact_feature_panel (code x date
+      PIT factor columns) built by backend/scripts/build_feature_panel.py from
+      L0/market. Isolated DB = write-lock separation: build writes feature_store
+      while daily_update writes smartmoney (no contention). Experiments/exploration
+      read this panel, NOT L0 raw (moth feature-layer-l2-bypass-ratchet).
     default_open_mode: read_write
     default_attach_mode: read_only
-    online: false
-    status: planned
-    retention_class: planned_rebuildable_store
+    online: true
+    status: active  # 2026-06-15: build_feature_panel.py 建 fact_feature_panel 8.17M行/5427股/2019-2026
+    retention_class: rebuildable_feature_store
     table_patterns:
+      - fact_feature_panel  # L2_feature 主面板 (2026-06-15 rebuild; 5因子: mom_60/reversal_20/vol_20/mf_trend_20/roe_dt_asof)
       - fact_feature_panel_candidate*  # @archived wiped-2026-06-14-reset
       - mart_feature_rank_matrix_cache*
 

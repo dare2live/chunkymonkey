@@ -152,6 +152,12 @@ assertions:
     type: shell
     command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python backend/scripts/check_strategy_validation_integrity.py 2>/dev/null | python3 -c 'import json,sys; print(\"GATE_\"+json.load(sys.stdin)[\"overall\"])'"]
     expect: {op: regex, pattern: "GATE_PASS"}
+  - id: feature-panel-l2-built
+    claim: "L2 fact_feature_panel 在 feature_store.duckdb (2026-06-15 build_feature_panel.py 重建: 8.17M行/5427股/2019-01-30~2026-06-12, 5因子 PIT mom_60/reversal_20/vol_20/mf_trend_20/roe_dt_asof). 多因子探索读此 L2 不读 L0 raw (写锁隔离). 丢失/骤减=L2 被 wipe 未重建, 实验会退回内联直读 L0 = L2-bypass 复发. owner=analysis/feature_layer_and_test_plan_20260615.md"
+    type: duckdb_sql
+    database: data/feature_store.duckdb
+    query: "SELECT count(*) FROM fact_feature_panel"
+    expect: {op: ">=", value: 7000000}
   - id: feature-layer-l2-bypass-ratchet
     claim: "L2-bypass ratchet <=13 (2026-06-15 用户'我一直在实验里临时算因子没落L2层, 从流程杜绝'): 算 IC/backtest 的 experiment_*.py 内联直读 L0 (tushare_raw 或 load_moneyflow/quality/kline) 现算因子而不读 feature_store L2 panel 的文件数. 基线13=存量V0方向实验(已出裁决, mythos§12 pre-reg 永不入生产, grandfathered); 禁新增(涨破=L2-bypass复发: 实验撞raw回补写锁+因子不可复用/清), 逐步 repoint 读 fact_feature_panel 后 ratchet 降. owner=analysis/feature_layer_and_test_plan_20260615.md"
     type: shell

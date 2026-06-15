@@ -53,7 +53,15 @@ def check_daily_update_scripts() -> dict:
 
 def check_no_wiped_refs() -> dict:
     """C2: config/schema_versions/routers 不引用 wiped 表 (除 @archived 注释行)。"""
-    wiped = sorted(t for t, lyr in _layers().items() if lyr in WIPED_LAYERS)
+    # 排除已重建为 live 的表: wiped 层 (L2/L3/L4) != 该层每张表都 wiped — 重建后 layer 仍 L2 但表已 live
+    #   (如 fact_feature_panel 2026-06-15 重建进 feature_store), 引用 live 表不算孤儿 (mythos §16 完成态对账,
+    #   防"代码改了但 gate 仍按旧 wiped 态判"). live 集 = managed-DB (smartmoney+feature_store) 实表, 与 audit 同源.
+    try:
+        from data_layer_audit import _live_tables  # noqa: E402  DRY: 单一 managed-DB live 真相源
+        live = _live_tables()
+    except Exception:
+        live = set()  # fail-open 到旧行为 (只按 layer 判), 不因 DB 不可读崩 gate
+    wiped = sorted(t for t, lyr in _layers().items() if lyr in WIPED_LAYERS and t not in live)
     stale: list[dict] = []
     for t in wiped:
         try:

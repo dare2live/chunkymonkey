@@ -30,20 +30,32 @@ REGISTRY = REPO / "backend" / "config" / "data_layers.yaml"
 MANIFEST = REPO / "backend" / "config" / "database_manifest.yaml"
 
 
-def _smartmoney_path() -> Path:
+# 受层级框架管理的业务库 (持声明-layer 的活表): smartmoney 业务控制面 + feature_store L2 面板。
+# market(canonical_source)/tushare_raw(L0 vendor 镜像)/experiment_store(L4 transient) 各有独立 retention 语义,
+# 不进 layer 声明执法 (2026-06-15: feature_store 接入, 否则 L2 分区静默不受管 = 框架本意落空)。
+MANAGED_DBS = ("smartmoney", "feature_store")  # rule-compliance: ok evidence=database_manifest.yaml 业务/特征库
+
+
+def _db_path(key: str) -> Path:
     m = yaml.safe_load(open(MANIFEST, encoding="utf-8"))
-    return REPO / m["databases"]["smartmoney"]["path"]
+    return REPO / m["databases"][key]["path"]
 
 
 def _live_tables() -> set[str]:
-    c = duck_connect(str(_smartmoney_path()), read_only=True)
-    try:
-        c.execute("SET enable_progress_bar=false")
-        return {r[0] for r in c.execute(
-            "SELECT table_name FROM duckdb_tables() WHERE database_name='smartmoney' AND schema_name='main'"
-        ).fetchall()}
-    finally:
-        c.close()
+    live: set[str] = set()
+    for key in MANAGED_DBS:
+        path = _db_path(key)
+        if not path.exists():
+            continue  # planned/未建库跳过 (建后自动纳管)
+        c = duck_connect(str(path), read_only=True)
+        try:
+            c.execute("SET enable_progress_bar=false")
+            live |= {r[0] for r in c.execute(
+                "SELECT table_name FROM duckdb_tables() WHERE schema_name='main'"
+            ).fetchall()}
+        finally:
+            c.close()
+    return live
 
 
 def audit() -> dict:
