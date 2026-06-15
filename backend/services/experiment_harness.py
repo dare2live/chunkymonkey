@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+import numpy as np
+
 from services.portfolio_walk_forward.pit_guard import assert_pit_clean
 
 # §4.2 异常红线 (owner=CLAUDE.md §4.2 / goal.md 死亡条款感知死)
@@ -140,3 +142,34 @@ def kpi_verdict(metrics: dict[str, Any], kpi: dict[str, float] | None = None) ->
     return {"verdict": verdict, "passes": passes,
             "diagnostics": {"win_rate": wr, "payoff_ratio": payoff, "expectancy": expectancy,
                             "note": "胜率为诊断量, 收益率+max_dd 为目标量 (C-WinReturn)"}}
+
+
+def block_bootstrap_return_null(period_returns, *, n_boot: int = 1000, block: int = 4,
+                                seed_base: int = 20260615) -> dict[str, Any]:
+    """绝对收益型 null (R1 armory, 缺陷 N1): block bootstrap 重采样含成本持有期收益序列 -> 终值分布。
+
+    缘起: Gate2-5 的 null 全是排序型 (置换/sharpe), 数学上对 long-only 绝对收益盲。本 null 直接对
+    含成本持有期收益做块自助 (块保留衰减/自相关), 看累计收益是否稳健 > 0 (P(累计<=0))。
+    与 rank 显著性正交 —— 排序显著的 cohort 仍可 P(累计<=0) 很高 (崩盘 cohort, Phase B 铁证)。
+
+    period_returns = [每持有期(调仓段)含成本组合收益]; 返回 {p_le_zero(累计<=0 概率), boot_mean_total, ci, n_boot}。
+    p_le_zero 高 = 绝对收益不稳健正 (即便 rank IC 显著也不可 long-only 转正)。样本<3 -> unknown。
+    """
+    r = np.asarray([x for x in period_returns if x is not None], float)
+    if r.size < 3:
+        return {"p_le_zero": None, "note": "持有期样本<3, 标 unknown (measured not estimated)"}
+    rng = np.random.default_rng(seed_base)
+    n = r.size
+    totals = []
+    for _ in range(n_boot):
+        idx: list[int] = []
+        while len(idx) < n:
+            s = int(rng.integers(0, n))
+            idx.extend(range(s, min(s + block, n)))
+        samp = r[idx[:n]]
+        totals.append(float(np.prod(1.0 + samp) - 1.0))
+    t = np.asarray(totals)
+    return {"p_le_zero": float((t <= 0).mean()), "boot_mean_total": float(t.mean()),
+            "ci_low": float(np.percentile(t, 5)), "ci_high": float(np.percentile(t, 95)),
+            "n_boot": n_boot, "block": block,
+            "note": "绝对收益 null: p_le_zero 高 = 含成本累计收益不稳健正, 不许凭 rank IC 转正 (R1)"}

@@ -84,6 +84,23 @@ def mean_ic(by_date: dict, test_dates: list[str], rng: np.random.Generator | Non
     return float(np.mean(ics)) if ics else None
 
 
+def cohort_abs_forward(by_date: dict, test_dates: list[str], top_k: int = 20) -> tuple[float | None, float | None]:
+    """N1 修: Gate2 额外报告**绝对 forward 收益** (置换 null 数学上看不见的维度)。
+
+    返回 (cohort_mean_fwd, topk_mean_fwd): cohort=该形态全成员等权日均 forward; topk=按 feat 降序(reversal 高=多)
+    top-K 等权日均 forward。topk<=cohort 或 topk<=0 -> 排序即便显著也无绝对价值 (R1: rank 真 != 钱)。
+    """
+    co, tk = [], []
+    for d in test_dates:
+        f, l = by_date[d]
+        if f.size < 3:  # rule-compliance: ok evidence=同 spearman 最小样本
+            continue
+        co.append(float(l.mean()))
+        order = np.argsort(-f)[:top_k]   # feat 降序 top-K
+        tk.append(float(l[order].mean()))
+    return (float(np.mean(co)) if co else None, float(np.mean(tk)) if tk else None)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--stage", default="1.5")
@@ -119,7 +136,12 @@ def main(argv: list[str] | None = None) -> int:
     p95 = float(np.percentile(null, 95))
     p_raw = float((null >= real).mean())
     p_adj = min(1.0, p_raw * N_CELLS_TRIED)
-    verdict = "REAL_EDGE" if p_adj < 0.05 else "NOISE_OR_SELECTION_BIAS"
+    # N3 两级转正: Gate2 只证**排序统计显著**, 非 money edge -> STAT_EDGE_CONFIRMED (不盖 owner 转正章)。
+    # money 转正 (confirmed_by_owner=1) 须经 tier2 含成本 tradability_verdict + kpi_verdict (R1)。
+    verdict = "STAT_EDGE_CONFIRMED" if p_adj < 0.05 else "NOISE_OR_SELECTION_BIAS"
+
+    # N1 修: 置换 null 数学上对绝对收益盲 -> 额外报告 cohort/top-K 绝对 forward 收益 (rank 真 != 钱)
+    cohort_fwd, topk_fwd = cohort_abs_forward(by_date, test_dates, top_k=20)  # rule-compliance: ok evidence=tier2 同 top_k=20
 
     print(f"\n===== Gate2 MC 截面置换 ablation (Stage{args.stage} reversal) =====")
     print(f"real OOS RankIC      = {real:+.4f}")
@@ -127,18 +149,24 @@ def main(argv: list[str] | None = None) -> int:
     print(f"null 95 分位         = {p95:+.4f}")
     print(f"p_raw (null>=real)   = {p_raw:.4f}  ({N_PERM} 置换)")
     print(f"p_adj (Bonferroni x{N_CELLS_TRIED}) = {p_adj:.4f}")
-    print(f"VERDICT              = {verdict}")
-    print(f"  -> {'真横截面 edge, 解锁形态维' if verdict=='REAL_EDGE' else '可能噪声/选择偏差, 不解锁'}")
+    print(f"[N1 绝对维] cohort 日均 forward = {cohort_fwd:+.4%}  top-K 日均 forward = {topk_fwd:+.4%}"
+          if cohort_fwd is not None and topk_fwd is not None else "[N1 绝对维] forward 不足")
+    print(f"VERDICT              = {verdict}  (排序统计显著性; 非 money edge)")
+    if topk_fwd is not None and topk_fwd <= 0:
+        print("  [R1 警告] top-K 绝对 forward<=0: 即便排序显著, long-only 不赚钱 (须 tier2 含成本裁决)")
+    print(f"  -> {'排序 edge 真, 但 money 转正须过 tier2 含成本 (tradability+kpi)' if verdict=='STAT_EDGE_CONFIRMED' else '可能噪声/选择偏差, 不解锁'}")
 
     out = {"experiment": "ablation_gate2_mc_permutation", "stage": args.stage,
            "real_oos_rank_ic": real, "null_mean": float(null.mean()), "null_std": float(null.std()),
            "null_p95": p95, "p_raw": p_raw, "n_perm": N_PERM, "n_cells_tried": N_CELLS_TRIED,
-           "p_adj_bonferroni": p_adj, "verdict": verdict, "seed": SEED}
+           "p_adj_bonferroni": p_adj, "cohort_mean_fwd": cohort_fwd, "topk_mean_fwd": topk_fwd,
+           "verdict": verdict, "seed": SEED,
+           "note": "STAT_EDGE_CONFIRMED=排序统计显著非 money; 置换 null 对绝对收益盲(N1); money 转正须 tier2 含成本 (R1)"}
     out_path = REPO / "analysis" / f"ablation_gate2_stage{args.stage}_20260615.json"
     out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[out] {out_path}")
 
-    # 留档 L4 experiment_store (固化进流程)
+    # 留档 L4 experiment_store (固化进流程); confirmed_by_owner=0 (N3: Gate2 不盖 money 转正章)
     run_id = f"phaseb_ablation_gate2_stage{args.stage}_20260615"
     with open_store() as st:
         record_ic_cell(st, run_id=run_id, data_snapshot=f"v_price_kline_qfq@{args.start}",
@@ -146,10 +174,11 @@ def main(argv: list[str] | None = None) -> int:
                        value=real, n_windows=len(test_dates))
         record_verdict(st, run_id=run_id, family="conditional_segment_ablation", verdict=verdict,
                        judges={"real_oos_rank_ic": real, "null_mean": float(null.mean()), "null_p95": p95,
-                               "p_raw": p_raw, "p_adj_bonferroni": p_adj, "n_perm": N_PERM, "n_cells_tried": N_CELLS_TRIED},
-                       confirmed_by_owner=1 if verdict == "REAL_EDGE" else 0)
+                               "p_raw": p_raw, "p_adj_bonferroni": p_adj, "n_perm": N_PERM, "n_cells_tried": N_CELLS_TRIED,
+                               "cohort_mean_fwd": cohort_fwd, "topk_mean_fwd": topk_fwd},
+                       confirmed_by_owner=0)
         record_artifact(st, run_id=run_id, artifact_path=out_path)
-    print(f"[store] experiment_store 留档 ablation verdict={verdict} (run_id={run_id})")
+    print(f"[store] experiment_store 留档 ablation verdict={verdict} (run_id={run_id}); money 转正待 tier2")
     return 0
 
 

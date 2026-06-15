@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from services.experiment_harness import tradability_verdict, kpi_verdict
+from services.experiment_harness import tradability_verdict, kpi_verdict, block_bootstrap_return_null
 from services import experiment_store as es
 
 
@@ -87,3 +87,23 @@ def test_record_verdict_non_promotion_no_money_required():
     es.record_verdict(conn, run_id="t", family="f", verdict="STAT_EDGE_CONFIRMED",
                       judges={"oos_rank_ic": 0.2}, confirmed_by_owner=0)
     assert len(conn.calls) == 1
+
+
+# ---- 绝对收益 null (R1 armory, N1): block bootstrap ----
+def test_block_bootstrap_null_positive_series_robust():
+    """稳健正收益序列 -> p_le_zero 低 (累计收益稳健 > 0)。"""
+    r = [0.05, 0.03, 0.04, 0.06, 0.02, 0.05, 0.03, 0.04]
+    out = block_bootstrap_return_null(r, n_boot=500, block=2)
+    assert out["p_le_zero"] < 0.1
+    assert out["boot_mean_total"] > 0
+
+
+def test_block_bootstrap_null_negative_series_flagged():
+    """负收益序列 -> p_le_zero 高 (绝对收益不稳健正, R1 不许凭 IC 转正)。"""
+    r = [-0.04, -0.02, -0.05, -0.03, -0.06, -0.02, -0.04, -0.03]
+    out = block_bootstrap_return_null(r, n_boot=500, block=2)
+    assert out["p_le_zero"] > 0.9
+
+
+def test_block_bootstrap_null_small_sample_unknown():
+    assert block_bootstrap_return_null([0.1, 0.2])["p_le_zero"] is None

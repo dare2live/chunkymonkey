@@ -28,6 +28,7 @@ from services.formula_engine.features import feature_reversal  # noqa: E402
 from services.portfolio_walk_forward.oos_ic import PanelRow, forward_returns, oos_rank_ic  # noqa: E402
 from services.experiment_store import open_store, record_ic_cells, record_pit_check, record_verdict, record_artifact  # noqa: E402
 from services.experiment_harness import leakage_gate, anomaly_verdict  # noqa: E402
+from services.optimization.deflated_sharpe import deflated_sharpe_ratio  # noqa: E402  N17: 多cell selection bias 去偏
 
 LOOKBACK = 20   # measured: l0 reversal best
 HORIZON = 5
@@ -124,15 +125,28 @@ def main(argv: list[str] | None = None) -> int:
     best = max((k for k in cells if cells[k]["oos_rank_ic"] is not None and (cells[k]["n_days"] or 0) >= 60),
                key=lambda k: cells[k]["oos_rank_ic"], default=None)
     av = anomaly_verdict(cells[best]["oos_rank_ic"], baseline=STAGE15_IC) if best else {"verdict": "NONE", "action": ""}
+    # N17: 9 子格按 IC 选 best = selection bias -> 对 best cell IC_IR 做 DSR 多重比较去偏
+    #   n_trials=实际 cell 数 (非 hardcode); n_eff=n_days/HORIZON (重叠 5 天 label 自相关校正, N15)。
+    dsr_p, selbias = None, "NONE"
+    if best:
+        ic_ir = cells[best].get("ic_ir")
+        n_eff = max(2, (cells[best].get("n_days") or 0) // HORIZON)
+        if ic_ir is not None:
+            dsr_p = deflated_sharpe_ratio(observed_sharpe=ic_ir, n_trials=max(2, len(cells)), n_observations=n_eff)
+            selbias = "DSR_SURVIVES" if (dsr_p == dsr_p and dsr_p > 0.95) else "SELECTION_BIAS_SUSPECT"
     stronger = bool(best and cells[best]["oos_rank_ic"] > STAGE15_IC)
-    verdict = "LAYERING_FINDS_STRONGER_CELL" if stronger else "LAYERING_NO_LIFT"
+    # best cell 须 (a) IC 超整体 (b) DSR 扛住多重比较 (c) 后续 tier2 含成本绝对收益 (R1) 才值得单独 backtest
+    verdict = "LAYERING_FINDS_STRONGER_CELL" if (stronger and selbias == "DSR_SURVIVES") else (
+        "LAYERING_SELECTION_BIAS" if stronger else "LAYERING_NO_LIFT")
     best_ic_s = _f(cells[best]["oos_rank_ic"], "+.4f") if best else "None"
     print(f"\n最强子格: {best} = {best_ic_s} (vs Stage1.5 +0.156); anomaly={av['verdict']}")
-    print(f"VERDICT: {verdict}  ({'子格更强值得单独 backtest' if stronger else '细分未超整体, 市值/换手不显著提升 reversal edge'})")
+    print(f"[N17 DSR] best IC_IR DSR p={_f(dsr_p, '.3f')} (n_trials={len(cells)}, n_eff=n_days/{HORIZON}) -> {selbias}")
+    print(f"VERDICT: {verdict}  (best cell 须 IC超整体 + DSR扛多重比较 + tier2含成本绝对收益 R1 才转正; IC高!=赚钱)")
 
     out = {"experiment": "layered_segment_ic", "cells": cells, "best_cell": best,
            "best_ic": cells[best]["oos_rank_ic"] if best else None, "stage15_baseline": STAGE15_IC,
-           "anomaly": av, "verdict": verdict, "note": "9子格多重比较, 高格须ablation转正"}
+           "anomaly": av, "dsr_p": dsr_p, "selection_bias": selbias, "n_cells": len(cells), "verdict": verdict,
+           "note": "9子格多重比较: best cell 须 DSR 扛多重比较(N17) + tier2 含成本绝对收益(R1) 才转正, IC高!=赚钱"}
     out_path = REPO / "analysis" / "layered_segment_ic_20260615.json"
     out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[out] {out_path}")
@@ -142,7 +156,8 @@ def main(argv: list[str] | None = None) -> int:
         record_pit_check(st, run_id=run_id, step="leakage_gate", check_name="reversal_pit_behavioral", passed=gate["clean"], detail=gate)
         n = record_ic_cells(st, run_id=run_id, data_snapshot=f"stage15_x_mv_x_turnover@{args.start}", cells=cells)
         record_verdict(st, run_id=run_id, family="conditional_segment", verdict=verdict,
-                       judges={"best_cell": best, "best_ic": cells[best]["oos_rank_ic"] if best else None, "anomaly": av})
+                       judges={"best_cell": best, "best_ic": cells[best]["oos_rank_ic"] if best else None,
+                               "anomaly": av, "dsr_p": dsr_p, "selection_bias": selbias, "n_cells": len(cells)})
         record_artifact(st, run_id=run_id, artifact_path=out_path)
     print(f"[store] 留档 {n} IC cells + verdict (run_id={run_id})")
     return 0
