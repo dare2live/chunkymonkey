@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 
 from services.portfolio_execbacktest import (
-    ExecConfig, run_execution_backtest, _sizing_weights, _metrics,
+    ExecConfig, run_execution_backtest, _sizing_weights, _metrics, trailing_metrics,
     _is_one_line_up, _is_one_line_down,
 )
 
@@ -130,6 +130,30 @@ def test_metrics_payoff_and_expectancy():
     assert m["win_rate"] == pytest.approx(2 / 3)
     assert m["payoff_ratio"] == pytest.approx(2.0)
     assert m["expectancy"] == pytest.approx(1.0)
+
+
+# ---- 7b. trailing 多窗口 metrics (用户: 分窗看趋势非全期均值) ----
+def test_trailing_metrics_windows_and_partial():
+    # 造 600 日 nav (够 24m=504, 不够 3y=756)
+    import numpy as np
+    dates = [f"2023-{1+(i//21)%12:02d}-{1+i%21:02d}" for i in range(600)]
+    nav = list(1.0 + np.linspace(0, 0.5, 600))   # 单调上行
+    tw = trailing_metrics(dates, nav)
+    assert "3m" in tw and "24m" in tw and "full" in tw
+    assert tw["3m"]["n_days"] == 63 and tw["24m"]["n_days"] == 504
+    assert tw["3y"]["partial"] is True            # 600<756 -> partial
+    assert tw["full"]["n_days"] == 600
+    # 单调上行: 各窗年化 > 0
+    assert all(tw[w]["annual_return"] > 0 for w in ["3m", "12m", "full"])
+
+
+def test_trailing_metrics_detects_recent_decay():
+    # 前300日涨, 后300日跌 -> 近窗(3m)年化 < 全期
+    import numpy as np
+    dates = [f"2023-{1+(i//21)%12:02d}-{1+i%21:02d}" for i in range(600)]
+    nav = list(np.concatenate([np.linspace(1.0, 1.5, 300), np.linspace(1.5, 1.1, 300)]))
+    tw = trailing_metrics(dates, nav)
+    assert tw["3m"]["annual_return"] < tw["full"]["annual_return"]  # 近期衰减被检出
 
 
 # ---- 8. config 从 yaml 加载 (真相源) ----

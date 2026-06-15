@@ -182,6 +182,42 @@ def _metrics(nav_dates, nav, seg_returns, tdays=252) -> dict:
             "avg_win": avg_win, "avg_loss": avg_loss, "expectancy": expectancy}
 
 
+# trailing 窗口 (交易日, ~21日/月): 看策略趋势衰减/改善 (用户: 全期均值掩盖, 分窗才看出是否真适用)
+_TRAILING_WINDOWS = {"3m": 63, "6m": 126, "12m": 252, "18m": 378, "24m": 504, "3y": 756, "5y": 1260}
+
+
+def trailing_metrics(nav_dates: list[str], nav: list[float], tdays: int = 252) -> dict:
+    """分 trailing 窗口 (近3/6/12/18/24月/3年/5年/全期) 的年化收益+月胜率+max_dd, 看趋势 (非全期均值)。
+
+    用户洞见: 全期均值会掩盖策略衰减 (前期+20%后期-15%=均值正但已失效); 分窗口才看出某策略'是否真适用/在恶化'。
+    每窗取 nav 序列最后 N 交易日 (不足则全用并标 partial)。返回 {window: {annual, monthly_win_rate, max_dd, n_days, partial}}。
+    """
+    if len(nav) < 2:
+        return {}
+    arr = np.asarray(nav, float)
+    out: dict[str, dict] = {}
+    for label, n in {**_TRAILING_WINDOWS, "full": len(arr)}.items():
+        take = min(n, len(arr))
+        if take < 2:
+            continue
+        seg = arr[-take:]
+        seg_dates = nav_dates[-take:]
+        total = seg[-1] / seg[0] - 1.0
+        years = max(take / tdays, 1e-9)
+        ann = (1 + total) ** (1 / years) - 1 if total > -1 else -1.0
+        run_max = np.maximum.accumulate(seg)
+        mdd = float(((seg - run_max) / run_max).min())
+        bm: dict[str, float] = {}
+        for d, v in zip(seg_dates, seg):
+            bm[d[:7]] = v
+        mo = sorted(bm)
+        mwr = (sum(1 for i in range(1, len(mo)) if bm[mo[i]] > bm[mo[i - 1]]) / (len(mo) - 1)
+               if len(mo) >= 2 else None)
+        out[label] = {"annual_return": float(ann), "monthly_win_rate": mwr, "max_drawdown": mdd,
+                      "n_days": take, "partial": (n > len(arr) and label != "full")}
+    return out
+
+
 def run_execution_backtest(rebalances, bars_by_code, calendar, *, config: ExecConfig | None = None,
                            sizing: str = "equal", top_k: int = 20, gross_exposure: float = 1.0,
                            stop_loss_pct: float | None = None) -> dict:

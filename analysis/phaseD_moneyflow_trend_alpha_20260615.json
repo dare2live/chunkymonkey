@@ -22,6 +22,64 @@
     "avg_turnover": 1.7679584465292004,
     "capacity_warn_rate": 0.1913499344692005
   },
+  "trailing": {
+    "3m": {
+      "annual_return": -0.27227569585970945,
+      "monthly_win_rate": 0.3333333333333333,
+      "max_drawdown": -0.11832054119363505,
+      "n_days": 63,
+      "partial": false
+    },
+    "6m": {
+      "annual_return": -0.020103247738782914,
+      "monthly_win_rate": 0.5,
+      "max_drawdown": -0.15988757411549812,
+      "n_days": 126,
+      "partial": false
+    },
+    "12m": {
+      "annual_return": 0.12420971567406625,
+      "monthly_win_rate": 0.6153846153846154,
+      "max_drawdown": -0.15988757411549812,
+      "n_days": 252,
+      "partial": false
+    },
+    "18m": {
+      "annual_return": 0.13587755179886218,
+      "monthly_win_rate": 0.631578947368421,
+      "max_drawdown": -0.15988757411549812,
+      "n_days": 378,
+      "partial": false
+    },
+    "24m": {
+      "annual_return": 0.1460274493454532,
+      "monthly_win_rate": 0.6,
+      "max_drawdown": -0.18705283037122372,
+      "n_days": 504,
+      "partial": false
+    },
+    "3y": {
+      "annual_return": 0.06831987648407778,
+      "monthly_win_rate": 0.5789473684210527,
+      "max_drawdown": -0.2138293843850762,
+      "n_days": 756,
+      "partial": false
+    },
+    "5y": {
+      "annual_return": 0.025336429827220064,
+      "monthly_win_rate": 0.55,
+      "max_drawdown": -0.31197311295867886,
+      "n_days": 811,
+      "partial": true
+    },
+    "full": {
+      "annual_return": 0.025336429827220064,
+      "monthly_win_rate": 0.55,
+      "max_drawdown": -0.31197311295867886,
+      "n_days": 811,
+      "partial": false
+    }
+  },
   "tradability": {
     "verdict": "TRADABLE",
     "action": "IC=+0.0099>0 且含成本年化=+2.53%>0: 排序 edge 可交易 (仍须过 KPI 联合门)"
@@ -46,6 +104,6 @@
   "rebalance_days": 20,
   "top_k": 20,
   "sizing": "equal",
-  "note": "Phase D 慢衰减绝对源; IC necessary 快筛, 裁决=含成本 execution-aware 绝对收益 (R1/C-WinReturn)",
+  "note": "Phase D 慢衰减绝对源; IC necessary 快筛, 裁决=含成本 execution-aware 绝对收益 (R1/C-WinReturn); trailing 多窗看趋势",
   "signal": "mf_net_inflow_trend_w20_top20_monthly_equal"
 }

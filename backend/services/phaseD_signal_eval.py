@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from services.portfolio_walk_forward.oos_ic import PanelRow, oos_rank_ic
-from services.portfolio_execbacktest import run_execution_backtest, ExecConfig
+from services.portfolio_execbacktest import run_execution_backtest, ExecConfig, trailing_metrics
 from services.experiment_store import open_store, record_ic_cell, record_verdict, record_pit_check, record_artifact
 from services.experiment_harness import anomaly_verdict, tradability_verdict, kpi_verdict
 
@@ -67,6 +67,9 @@ def evaluate_signal(*, signal_by_code: dict, bars_by_code: dict, calendar: list,
     trad = tradability_verdict(ic, m["annual_return"])
     kpi = kpi_verdict(m)
     verdict = kpi["verdict"]
+    nav_dates = [d for d, _ in res["nav"]]
+    nav_vals = [v for _, v in res["nav"]]
+    tw = trailing_metrics(nav_dates, nav_vals)
 
     print(f"\n===== Phase D: {signal_name} (top{top_k}, T+1 open, {rebalance_days}日调仓, sizing={sizing}) =====")
     print(f"IC 快筛  = {ic if ic is None else f'{ic:+.4f}'} (necessary)")
@@ -75,14 +78,22 @@ def evaluate_signal(*, signal_by_code: dict, bars_by_code: dict, calendar: list,
     print(f"Sharpe   = {m['sharpe']:.2f}  段胜率={_pct(m['win_rate']) if m['win_rate'] else 'None'} 盈亏比={m['payoff_ratio']} 期望={m['expectancy']}")
     print(f"末NAV    = {res['final_nav']:.3f} (成本拖累 {res['cost_drag']:.1%}, 均换手 {res['avg_turnover']:.2f}, 容量超阈率 {res['capacity_warn_rate']:.1%})")
     print(f"R1 可交易= {trad['verdict']}  VERDICT={verdict}")
+    # trailing 窗口趋势 (近期 vs 远期: 看策略是否在恶化/真适用, 非全期均值)
+    if tw:
+        print("[趋势] trailing 窗口 年化收益 / 月胜率 (近->远, 看衰减):")
+        order = [w for w in ["3m", "6m", "12m", "18m", "24m", "3y", "5y", "full"] if w in tw]
+        print("  " + "".join(f"{w:>8}" for w in order))
+        print("  年化" + "".join(f"{_pct(tw[w]['annual_return']):>8}" for w in order))
+        print("  胜率" + "".join(f"{(_pct(tw[w]['monthly_win_rate']) if tw[w]['monthly_win_rate'] is not None else 'NA'):>8}" for w in order))
 
     out = {"experiment": signal_name, "engine": "portfolio_execbacktest_20260615",
            "ic_quick_screen": ic, "anomaly": av,
            "metrics": {**m, "final_nav": res["final_nav"], "cost_drag": res["cost_drag"],
                        "avg_turnover": res["avg_turnover"], "capacity_warn_rate": res["capacity_warn_rate"]},
+           "trailing": tw,
            "tradability": trad, "kpi_verdict": kpi, "verdict": verdict, "n_rebalances": res["n_rebalances"],
            "rebalance_days": rebalance_days, "top_k": top_k, "sizing": sizing,
-           "note": "Phase D 慢衰减绝对源; IC necessary 快筛, 裁决=含成本 execution-aware 绝对收益 (R1/C-WinReturn)"}
+           "note": "Phase D 慢衰减绝对源; IC necessary 快筛, 裁决=含成本 execution-aware 绝对收益 (R1/C-WinReturn); trailing 多窗看趋势"}
     if extra:
         out.update(extra)
     Path(out_path).write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
