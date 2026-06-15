@@ -1,60 +1,88 @@
-# SESSION HANDOFF — 快照 (2026-06-15)
+# SESSION HANDOFF — Manual resume snapshot
 
-> 压缩前手动快照, 防上下文丢失。已 commit 全在 git。新会话: invoke `chunkymonkey-ops` skill +
-> 读 `docs/MASTER_TOPLEVEL_DESIGN.md` + `analysis/refactor_execution_plan_20260614.md` + 本文件。
+> 此文件由 `scripts/session_snapshot.sh` / `scripts/cm_resume.sh` 按需手动刷新.
+> Codex app/CLI 不再通过 cron 或 SessionStart hook 自动注入本 handoff，避免 stale state 被静默加载.
+> 新会话应先按 `docs/chunkyctl_session_quickstart.md` 做启动检查，再把本文件当 context-only 状态快照.
+> 当前计划看薄入口 `goal.md`; 已完成证据查 `analysis/project_state_ledger.md`.
+> `analysis/workflow_checkpoint.md` 只在其声明 active pipeline 时参与恢复。
 
-## 用户当前指令 (持续推进, 不征求同意)
-"按方案最终目标推进直至实现" + daily_update 保持手动 + 数据底座系统方案并执行。
+## 中断恢复用法
 
-## 本轮干了什么 (9 commits, 91329248..HEAD)
-**Phase A 数据底座收口** (owner=`analysis/refactor_execution_plan_20260614.md`):
-- A2: 3 表 retention 声明 → **gate C3 PASS**。
-- A1: `daily_update.sh` 855→457 行重写为纯数据底座流 (删 Step4-8 model/paper_sim/champion + 19 缺失脚本调用;
-  保留 sync/L1k macd + 加 retention/data-health report) → **gate C1 PASS**; DRY 实跑全流程通过。
-- A3a/A3d: gate 精度修 (词边界防 substring 假阳性 + 跳二进制) + 删 2 真孤儿 config → C2 238→149。
-- A3b: 退役 7 死 serving router (v3_market_perception bundled/recommendation/institution/screening/
-  v3_meta/v3_views/v3_perception_legacy) + main.py → C2 149→70; app import 124 routes OK。
-- A3c: schema_versions 删 23 wiped 版本条目 + 7 config 18 处 @archived → C2 70→**29**。
-- gate 改 ratchet (C1+C3 PASS + C2≤29); **moth 22/22 全绿**。
-- A5: 删 phase5 死 model 工件 158M (.duckdb 57M + exports 101M tracked parquet) + manifest 去分区。
+恢复流程唯一 owner = `docs/chunkyctl_session_quickstart.md` (2026-06-11 文档治理收口)。
+速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
+定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-## 当前 gate 状态 (诚实)
-- C1 daily_update [PASS] / C3 retention [PASS] / C2 wiped-ref **29** (raw gate FAIL, **moth ratchet PASS** C2≤29)。
-- C2 余 29 = **updater 死 builder** (build_profiles/trends/industry_stat/screening/sector_momentum 建已删 L2/L3 表)
-  嵌在 live update-DAG (RUNNERS/STEPS/HARD_DEPS, data_sources/etf 依赖) = 显式 **P2 增量解耦**
-  (framework §6 禁 big-bang; 精确移除步骤见 plan doc)。
+**Snapshot 时间**: 2026-06-15 17:35:11 CST
 
-## 待用户决策 (高后果不可逆, 我没自作主张)
-1. **data/archive/ 3.4G** (lifecycle_20260614 reset 删前回滚网 2.5G + dead_tables_20260612 985M): 非 git 删不可逆,
-   重建尚未 KPI 验证 → 保留待重建达标后删。要现在删省盘? 用户定。
-2. **updater 死 builder P2 解耦** (C2 29→0): 须跑 test 验 data_sources/etf 不破, 是 framework 钦定增量项。
+## 主线状态
 
-## A6 + skill 沉淀 (本轮已完成)
-- **A6 文档收口 done**: git rm 5 已偏离 analysis + architecture_reform_context(已被 MASTER 覆盖); zhushenglang
-  北极星研究移 docs/->analysis/ 保留(不可替代 ground truth); authority 链 7 处更新; DOCS_MAX_FILES 12->10;
-  **docs 12->10, doc-governance PASS**。
-- **skill 教训沉淀 done**: 本轮 5 教训入 `chunkymonkey-ops` skill §2 坑库 (验证器假阳性/agent粗标/tracked≠ignored/
-  live-DAG禁big-bang/gate扫描面)。
+| 项 | 值 |
+|---|---|
+| Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
+| F2 checkpoint best_value | 0.3094819825339931 |
+| F2 checkpoint best_trial | 32 |
+| F2 updated_at | 2026-05-23T12:24:52+00:00 |
+| F2 path | `data/reports/optuna/lgbm_phase5_v9b_20260523T083000Z.best.json` |
 
-## 剩余 Phase A polish
-- A4: 8 散落 ensure_tables() 包 layer-gate — **预防性**硬化 (当前无活 bug; institution_survey/turtle/picture/qfii/stage/signals_v2)。
-- **CLAUDE.md 瘦身**: 红线文件, 待用户点头审 diff (方案: §4.5反例→skill指针 + §1/§8细节→指针, 红线一字不删, 268->~180行)。
+## 后台 process
 
-## Phase B 前置已验证就绪 (下一步)
-`fact_stock_technical_stage` **3,983,541 行** (stage 列=Weinstein 5阶段 Segment 真相源, L1k) + `oos_ic.py` 引擎 +
-`technical_stage.py` 计算器 全在盘。**per-stage L0 IC 实验随时可跑**: reversal 在 Stage1(低位) 是否远超市场级 +0.064
-→ 证条件化 + 出(公式×形态)矩阵。owner=`analysis/conditional_stage_strategy_design_20260614.md`。
-**真金白银红线: 此实验是策略方向决断, 须谨慎跑(measured not estimated), 不在疲劳 turn 末仓促做。**
+| 项 | 状态 |
+|---|---|
+| Codex companion threads | 0 running |
 
-## 下一步路线 (owner=MASTER §10)
+0
+
+## Compute backend
+
+| 项 | 值 |
+|---|---|
+| Backends | local:active, modal:active |
+| Job plan | `scripts/chunkyctl jobs --family model_training --model-id <id> --input-snapshot <snapshot> --objective <why> --rollback-plan <plan> --gate-evidence <gate>=<artifact>` |
+
+## Git 状态
+
+| 项 | 值 |
+|---|---|
+| Branch | main |
+| HEAD | `69f1c5e8 chore: 刷新 Gate2 ablation json — STAT_EDGE_CONFIRMED + cohort绝对收益 (P2 改后)` |
+| 最近 24h commits | 46 |
+| 未 commit 文件 | 0 |
+
+### 最近 10 commits
+
 ```
-Phase A 收尾 (A4/A6) → **Phase B 证 base-edge** (per-stage L0 IC: reversal 在低位是否远超 +0.064 + Alpha158 重算)
-  → Phase C 可靠性阶梯+Tier-2 backtest引擎 → Phase D 逐数据 alpha 验证 → Phase E 立方体 → Phase F KPI
+69f1c5e8 chore: 刷新 Gate2 ablation json — STAT_EDGE_CONFIRMED + cohort绝对收益 (P2 改后)
+cb02825f feat: P3 实弹重裁决 — execution-aware 真引擎: 裸K线 reversal long-only A股结构性不可交易
+637b2496 feat: P2 验证阶梯 R1 加固 — Gate2 两级转正+cohort绝对收益, cell-scan DSR, 绝对收益null
+cb0aa881 feat: P1 引擎删除重建 — execution-aware (T+1 open/涨跌停/非对称成本/容量/仓位), 旧 return-based 删
+a39d91e0 feat: P0 制度先行 — R1/R2/胜率-收益 判断法典工具化 (gate+hook+moth+法典)
+ec7ed75d design: 旧设计缺陷批判 II — 8-lens 对抗复审确认 34 条 (N1-N30) + 根因链 R1/R2
+6b1544af design: 旧策略设计缺陷批判+扩展 base 版 (7条, 用户'扩展深挖')
+2485547c feat: 最强子格含成本 backtest — IC选格误导铁证 (IC最高+0.195但gross-34.6%)
+dc173196 feat: 完整分层 Stage1.5×市值×换手 reversal IC — 验证用户思路, 最强子格小盘高换手+0.195
+84ec5cd0 feat: 干净重建 return-based 回测引擎 — 旧引擎退役, Tier-2 裁决纠正 (gross +7.1% edge 真但成本结构杀)
 ```
-**战略**: cube 实例化已 BLOCK (板块维实测失效); 数据菜单无 high-edge → 瓶颈在 base-edge,
-Phase B (per-stage L0 IC) 是最便宜的"edge 存不存在"探针, 决定 C-F 是否值得做。
 
-## 关键真相源
-- 全局 `docs/MASTER_TOPLEVEL_DESIGN.md` · 执行清单 `analysis/refactor_execution_plan_20260614.md` ·
-  操作 `chunkymonkey-ops` skill · KPI `goal.md` · L0 标尺 reversal +0.064 `analysis/l0_bare_kline_baseline_spec_20260614.md`
-- live gate: `scripts/chunkyctl doctor --fast` + `moth assert --repo .` (22/22)
+## NEXT ACTION (auto-computed)
+
+**run startup checks first — scripts/chunkyctl doctor --fast; prioritize data_health blocking_yellow, then stage-opt structural blocker / need_027 blocked-gap triage**
+
+## Resilience 配置 (verified)
+
+| 机制 | 状态 |
+|---|---|
+| F1 Optuna SQLite storage | deployed (`sqlite:///data/reports/optuna/$MODEL_ID.db` resume on preempt) |
+| F2 per-trial checkpoint | deployed (`data/reports/optuna/$MODEL_ID.best.json` atomic write) |
+| nohup + setsid + disown | retrain detached, SSH 断不影响 |
+| monitor MAX_DURATION_HOURS=24 | Mac sleep proof |
+| manual session_snapshot.sh | active; run via `bash scripts/cm_resume.sh` |
+| cron session_snapshot.sh | disabled by default for Codex app/CLI |
+| SessionStart handoff auto-inject | disabled by default for Codex app/CLI |
+| Stop hook session_rule_audit | 防 multi-agent / continuous-mode 违规 |
+
+## 一旦中断如何无缝衔接
+
+1. **Mac 重启 / terminal 崩 后**: 启动 terminal → `cd /Users/dp/Documents/M/stock/chunkymonkey`
+2. 运行 `bash scripts/cm_resume.sh` 刷新本 handoff 和 snapshot
+3. 新 Codex 会话输入: `请按照 docs/chunkyctl_session_quickstart.md 接手本项目，先完成启动检查，再看 goal.md 和 live gates。`
+4. Codex 先跑 live checks，再按 NEXT ACTION 执行本地工作 (audit / compare / commit / etc)
