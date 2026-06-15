@@ -91,8 +91,6 @@ EXTRA_WRITER_BY_TABLE = {
     "mart_synergy_policy_mtm_rerank_summary": "backend/scripts/rerank_optuna_synergy_mtm.py",
     "mart_synergy_policy_mtm_strategy_sweep": "backend/scripts/sweep_synergy_mtm_strategy.py",
     "mart_synergy_policy_mtm_strategy_sweep_summary": "backend/scripts/sweep_synergy_mtm_strategy.py",
-    "mart_stock_industry_pit": "backend/scripts/build_industry_pit.py",
-    "mart_industry_pit_quality": "backend/scripts/build_industry_pit.py",
     "mart_macd_state_history": "backend/scripts/build_macd_state_history.py",
 }
 
@@ -159,14 +157,6 @@ EXTRA_UPSTREAM_BY_TABLE = {
         "derived from mart_synergy_policy_mtm_strategy_sweep",
         None,
     ),
-    "mart_stock_industry_pit": (
-        "derived from dim_stock_tdx_industry_history + dim_stock_tdx_industry",
-        None,
-    ),
-    "mart_industry_pit_quality": (
-        "derived from mart_stock_industry_pit + configured signal table",
-        None,
-    ),
 }
 
 EXTRA_FRESHNESS_BY_TABLE = {
@@ -212,8 +202,6 @@ EXTRA_FRESHNESS_BY_TABLE = {
     "mart_synergy_policy_mtm_rerank_summary": ("on-demand", 24 * 30),
     "mart_synergy_policy_mtm_strategy_sweep": ("on-demand", 24 * 30),
     "mart_synergy_policy_mtm_strategy_sweep_summary": ("on-demand", 24 * 30),
-    "mart_stock_industry_pit": ("on-demand", 24 * 30),
-    "mart_industry_pit_quality": ("on-demand", 24 * 30),
     "mart_macd_state_history": ("on-demand", 24 * 30),
     "mart_tdx_gpcw_auto_challenger_report": ("on-demand", 24 * 30),
     "mart_tdx_gpcw_auto_feature_cluster": ("on-demand", 24 * 30),
@@ -431,30 +419,6 @@ EXTRA_ASSET_CONTRACT_BY_TABLE = {
         "intended_use": "audit_and_future_industry_pit_backfill_source",
         "model_eligibility": "not_model_input",
         "strategy_eligibility": "raw_lineage_for_industry_constraints",
-        "frontend_visibility": "governance_visible",
-        "quality_gate_level": "blocking_when_industry_constraints_enabled",
-    },
-    "mart_stock_industry_pit": {
-        "asset_grain": "stock_code+effective_date_range",
-        "asset_cadence": "on_demand_governance",
-        "coverage_policy": "complete_for_signal_universe_only_when_quality_gate_passes",
-        "null_policy": "no_null_for_keys_source_and_effective_dates",
-        "pit_policy": "latest_industry_snapshot_lte_signal_date_current_label_fallback_blocked",
-        "intended_use": "industry_constraint_readiness_and_future_strategy_parameter_source",
-        "model_eligibility": "not_model_input",
-        "strategy_eligibility": "blocked_until_mart_industry_pit_quality_passes",
-        "frontend_visibility": "governance_visible",
-        "quality_gate_level": "blocking_when_industry_constraints_enabled",
-    },
-    "mart_industry_pit_quality": {
-        "asset_grain": "run_id+signal_table",
-        "asset_cadence": "on_demand_governance",
-        "coverage_policy": "signal_stock_date_coverage_for_industry_pit",
-        "null_policy": "metrics_nullable_only_when_signal_scope_missing",
-        "pit_policy": "documents_industry_pit_eligibility_before_strategy_use",
-        "intended_use": "industry_constraint_gate_and_frontend_readiness",
-        "model_eligibility": "not_model_input",
-        "strategy_eligibility": "required_gate_for_industry_concentration_parameters",
         "frontend_visibility": "governance_visible",
         "quality_gate_level": "blocking_when_industry_constraints_enabled",
     },
