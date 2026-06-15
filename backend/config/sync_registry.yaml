@@ -38,9 +38,9 @@ domains:
     batch_mode: by_trade_date
     pit_anchor: "trade_date; 盘后更新 (文档未写时点, 按 18:00 保守) -> t 收盘截面特征 JOIN t-1"
     available_after: "18:00"
-    data_start: "20220104"        # MVP 窗口先 2022+, W3 判决实验前扩 2018 (FINAL P1-c)
+    data_start: "20200101"        # 2026-06-15 用户"回测数据拉齐2020全量": 扩 2020+ 对齐 K线 tushare-qfq (原 20220104)
     freshness_sla_trading_days: 1
-    min_rows_per_batch: 4000      # 全市场日行数 ~5200, 低于 4000 可疑
+    min_rows_per_batch: 3000      # 2026-06-15 扩2020回补降4000->3000: 2020 universe ~3740股 (实测) < 4000 误报; 与 daily 一致, 仍防真截断
 
   # ── P0-b: 可执行性真相源 + 情绪温度计 ──
   limit_list_d:

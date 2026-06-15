@@ -203,6 +203,7 @@
 |---|---|---|---|
 | `v_price_kline_qfq` (market.duckdb) 含指数 K 线 | 5.97M 行 / 6,618 股 / 2022-01 → 2026-05 | 实时 | tdxhub 备援源视图; 只 2022+ 且 2022-12-30 复权 glitch; 回测主源已切 ↓ |
 | `price_kline_qfq_tushare` (market.duckdb) **回测前复权主源** | 856万行 / 5755 股 / **2019-01 → 2026-06** | build_price_kline_qfq_tushare.py | 2026-06-15 §4.3 消费链切换: raw_tushare_daily×adj_factor 前复权(rebased, 单位对齐tdxhub); 与tdxhub重叠期收益对账 avg 0.03%一致(max差=tdxhub 2022-12-30 glitch, tushare正确); load_kline 已 repoint; 解锁2020+多regime回测; data_layers=L1k |
+| `raw_tushare_moneyflow` (tushare_raw) | 4.23M+ → 扩2020回补中 | sync_runner --domain moneyflow --backfill | 2026-06-15 用户"拉齐2020": data_start 20220104→20200101 + min_rows 4000→3000(2020 universe~3740股); 全量回补 2020-2021 缺口窗运行中 (.venv/bin/python + source .env) |
 | `fact_regime_state` | 775 行 / 2023-02 → 2026-04 [PASS] | 历史可用 | trade_date / regime_id / regime_label (bull/bear/sideways) / regime_prob_json / transition_signal |
 | `dim_market_segment` | dim 表 | 静态 | 市场分段 |
 
