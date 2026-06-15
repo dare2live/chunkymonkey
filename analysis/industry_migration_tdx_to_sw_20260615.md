@@ -28,7 +28,8 @@
 ## 迁移步骤 (S0-S8)
 - **S0** [DONE] 决策门: 全套迁移 + 删mart走视图 + 接受 taxonomy 不可比。本文件 = 契约。
 - **S1** [DONE 2026-06-15] P0 数据真相: registry 加 `index_member_all_hist` 域 (is_new='N'), 回拉 1940 历史剔除区间 → raw_tushare_index_member_all。**验收 PASS**: out_date_filled 0→1940, is_new Y+N, 同股多区间 0→1609。latest-snapshot leakage 数据层已修。
-- **S2** [TODO] 建 as-of 视图 (真相源=raw 表, 奥卡姆不物化中间 mart): WHERE in_date<=t AND (out_date IS NULL OR out_date>t), 按决策日 t 取唯一归属 (dedup: 取 in_date 最大活跃区间; 脏数据→unknown)。列映射 l1_code/name→tdx_l1/name 位 (抽象层 alias)。视图建哪库: smartmoney ATTACH tushare_raw 或跨库。
+- **S1.5** [DONE 2026-06-15] as-of PIT 逻辑 measured 验证: 000007.SZ 换 6 次 L1 行业 (家电→房地产→有色→社服→综合→商贸零售), as-of 2018→综合(对)/2026→商贸零售(当前)/2010→None(区间间真空, 诚实 PIT 不编造)。证明 S1 数据 + `in_date<=t AND (out_date NULL OR out_date>t) ORDER BY in_date DESC LIMIT 1` = 正确 PIT 行业解析, latest-snapshot leakage 实锤已修 (旧表只有当前商贸零售贴全史)。
+- **S2** [TODO] 建 as-of 视图 (真相源=raw 表, 奥卡姆不物化中间 mart): WHERE in_date<=t AND (out_date IS NULL OR out_date>t), 按决策日 t 取唯一归属 (dedup: 取 in_date 最大活跃区间; 脏数据→unknown)。列映射 l1_code/name→tdx_l1/name 位 (抽象层 alias)。**设计待决 (S2 开头解)**: 视图建哪库 — industry.py 消费者传 smartmoney conn, 但 raw 在 tushare_raw。选项 (a) 视图建 smartmoney 须 conn ATTACH tushare_raw (查 database_manifest attach 配置是否已挂); (b) 若未挂则 industry.py 改连 tushare_raw 或 attach。注: ts_code '000007.SZ' vs smartmoney stock_code 格式须归一 (去后缀)。
 - **S3** [TODO] repoint industry.py 单点: INDUSTRY_TABLE 常量 + load_industry_map/resolve_industry 读 S2 视图 + **修 latent bug** (load_industry_map/resolve_industry 加 as_of_date 入参真下推到视图 WHERE, 否则换源也还 latest-snapshot)。signals_v2.py 裸 JOIN 一并 repoint。列名常量 tdx_* 保持 (alias 语义=当前生效行业级别, 源已换)。
 - **S4** [TODO] 删 STALE mart (用户定): DROP mart_stock_industry_pit + mart_industry_pit_quality; 改 seed_dim_data_asset.py:94 悬空 owner 引用; 删前确认 workbench gate 无硬依赖。
 - **S5** [TODO] 改 workbench_industry_pit_read.py: 读 S2 视图派生 readiness (替原 mart)。
