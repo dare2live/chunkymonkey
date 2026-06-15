@@ -49,7 +49,11 @@ def _db(alias: str) -> Path:
 
 
 def load_kline(start: str, end: str | None, limit_stocks: int) -> dict[str, dict]:
-    """v_price_kline_qfq -> {code: {date:[], close:[], high:[], low:[]}} (按 code,date 升序, PIT)。"""
+    """v_price_kline_qfq -> {code: {date,close,high,low,open,volume,amount}} (按 code,date 升序, PIT)。
+
+    2026-06-15 (N9 修): 补 open/volume/amount —— execution-aware 引擎需 open (T+1 入场价) + volume/amount
+    (容量诊断) + 涨跌停一字板判定。close/high/low 保持兼容老消费者 (additive, 不破坏 per_stage_ic 等)。
+    """
     src = _db("market")
     where = f"date >= '{start}'" + (f" AND date <= '{end}'" if end else "")
     conn = duck_connect(str(src), read_only=True)
@@ -60,18 +64,22 @@ def load_kline(start: str, end: str | None, limit_stocks: int) -> dict[str, dict
             ).fetchall()]
             where += " AND code IN ('" + "','".join(codes) + "')"
         rows = conn.execute(
-            f"SELECT code, date, close, high, low FROM v_price_kline_qfq WHERE {where} "
+            f"SELECT code, date, close, high, low, open, volume, amount FROM v_price_kline_qfq WHERE {where} "
             "ORDER BY code, date"
         ).fetchall()
     finally:
         conn.close()
-    by_code: dict[str, dict] = defaultdict(lambda: {"date": [], "close": [], "high": [], "low": []})
-    for code, date, close, high, low in rows:
+    by_code: dict[str, dict] = defaultdict(
+        lambda: {"date": [], "close": [], "high": [], "low": [], "open": [], "volume": [], "amount": []})
+    for code, date, close, high, low, open_, volume, amount in rows:
         d = by_code[code]
         d["date"].append(date)
         d["close"].append(close)
         d["high"].append(high)
         d["low"].append(low)
+        d["open"].append(open_)
+        d["volume"].append(volume)
+        d["amount"].append(amount)
     return dict(by_code)
 
 

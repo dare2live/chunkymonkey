@@ -1,0 +1,40 @@
+# 回测执行微结构契约 (2026-06-15 P1 引擎重建; owner=docs/strategy_validation_contract.md 判断法典 C-R2)
+#
+# 缘起: 8-lens 对抗复审根因 R2 "信号 != 可交易头寸" — 旧引擎用 close 无条件成交假设无摩擦市场。
+# 本 config = execution-aware 引擎 (services/portfolio_execbacktest.py) 的唯一微结构真相源 (judgment 不 hardcode)。
+# 真相源 provenance (防双真相源 mythos §4):
+#   - cost: 镜像 backend/config/paper_sim_momentum.yaml tx_cost (券商真实费率, 2023+ 沪深统一)
+#   - limit_board: 镜像 backend/config/universe_rules.yaml limit_up_pct + dim_price_limit_rules 表 (test 交叉核对防漂移)
+
+# --- 成本栈 (A股非对称: 卖方收印花, 买方不收 — N13) ---
+cost:
+  commission_pct: 0.00025          # from yaml: paper_sim_momentum 单边佣金 0.025% (中信/华泰参考)
+  commission_min_cny: 5            # from yaml: paper_sim_momentum 最低佣金 5 元
+  stamp_duty_sell_pct: 0.0005      # from yaml: paper_sim_momentum 卖出印花 0.05% (仅卖方, 非对称核心)
+  transfer_fee_pct: 0.00001        # from yaml: paper_sim_momentum 过户费 0.001% 双向
+  exchange_fee_pct: 0.0000341      # from yaml: paper_sim_momentum 交易所规费 双向
+  regulatory_fee_pct: 0.00002      # from yaml: paper_sim_momentum 证管费 双向
+  slippage_pct: 0.0008             # from yaml: paper_sim_momentum 基础滑点 8bps (大盘 5-10bps)
+  large_order_surcharge_pct: 0.0015  # from yaml: paper_sim_momentum 大单溢价 15bps (单边, 参与度超阈值时叠加)
+
+# --- 涨跌停板 (一字板买不进/卖不出 — N8/N12) ---
+limit_board:
+  by_prefix:                       # from yaml: universe_rules limit_up_pct (板块涨跌停幅度)
+    "60": 0.10                     # 沪主板
+    "00": 0.10                     # 深主板
+    "30": 0.20                     # 创业板
+    "68": 0.20                     # 科创板
+    "8": 0.30                      # 北交所
+    "4": 0.30                      # 北交所/老三板
+    "9": 0.30                      # 北交所
+  one_line_buy_block: true         # 一字涨停 (open==high==low 且 涨幅>=板幅*tol) = 买不进, 剔出当期篮
+  one_line_sell_block: true        # 一字跌停 (open==high==low 且 跌幅<=-板幅*tol) = 卖不出, 持仓顺延
+  detect_tol: 0.985                # rule-compliance: ok evidence=一字板判定容差 (涨幅达板幅 98.5% 即视触板, 防浮点/复权微差)
+
+# --- 容量/冲击 (小盘 top-K 容量约束 — N10; 诚实: 用文档化大单溢价 + 参与度诊断, 不编造冲击系数) ---
+capacity:
+  capital_cny: 1000000             # from yaml: goal.md North-Star 100 万初始本金
+  adv_window: 20                   # rule-compliance: ok evidence=ADV 均量窗口 20 交易日 (月度流动性口径)
+  large_order_participation_threshold: 0.10  # 单笔买入 > 当日 ADV 名义额 10% -> 触发大单溢价 + capacity 警告
+  # 注: 不设 sqrt 冲击系数 (无执行数据测不出, 守 measured-not-estimated); 容量以"参与度诊断 + 大单溢价"表达,
+  #     capacity_utilization 作 diagnostic 报出 (N10: 小盘×高换手格容量小, 让用户看见而非伪精确建模)。

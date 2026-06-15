@@ -142,8 +142,16 @@ assertions:
     type: shell
     command: ["bash", "-c", "grep -cE 'def kpi_verdict|positive_expectancy|payoff_ratio' backend/services/experiment_harness.py"]
     expect: {op: ">=", value: 3}
-  # P1 引擎重建后加: validation-engine-execution-aware (check_strategy_validation_integrity 的 engine_execution_aware=PASS)
-  #   + validation-integrity-gate-green (gate overall=PASS). 现 engine 检查 FAIL = 预期红色规格 (P0 gate=P1 验收尺)。
+  - id: validation-engine-execution-aware
+    claim: "execution-aware 引擎在岗 (2026-06-15 P1 重建, 根因 R2): portfolio_execbacktest 须含 T+1 open 入场 + 涨跌停一字板剔篮 + 非对称成本栈(卖方印花) + 容量诊断 + 停牌冻结. 旧 portfolio_returnbacktest(close 无条件成交)已删. 删=R2 无摩擦市场假设复发, '含成本裁决'变假裁决. owner=docs/strategy_validation_contract.md C-R2"
+    type: shell
+    command: ["bash", "-c", "grep -cE 'def run_execution_backtest|_is_one_line_up|stamp_duty_sell_pct|entry_at_open|capacity' backend/services/portfolio_execbacktest.py"]
+    expect: {op: ">=", value: 4}
+  - id: validation-integrity-gate-green
+    claim: "策略验证完整性 gate 全绿 (2026-06-15 P1 收口): check_strategy_validation_integrity overall=PASS (anomaly_symmetric + promotion_needs_money + kpi_joint_codex + engine_execution_aware 四检查全过). 任一红=R1/R2/C-WinReturn 制度被破坏"
+    type: shell
+    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python backend/scripts/check_strategy_validation_integrity.py 2>/dev/null | python3 -c 'import json,sys; print(\"GATE_\"+json.load(sys.stdin)[\"overall\"])'"]
+    expect: {op: regex, pattern: "GATE_PASS"}
   # 2026-06-14 地基-reset 退役 (引用已删特征/模型层, 重建特征/模型层后须恢复):
   #   - leakage-consumer-gate: 探针读已删特征面板 (feature_consumers); 特征层重做后恢复, 防泄露红线不可永久缺
   #   - concept-event-no-phantom: 查已删 fact_concept_event; 概念事件层重建后恢复
