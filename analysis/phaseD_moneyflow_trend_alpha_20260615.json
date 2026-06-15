@@ -1,7 +1,6 @@
 {
   "experiment": "moneyflow_trend_alpha",
   "engine": "portfolio_execbacktest_20260615",
-  "signal": "mf_net_inflow_trend_w20_top20_monthly_equal",
   "ic_quick_screen": 0.009860428431134495,
   "anomaly": {
     "verdict": "CLEAN",
@@ -44,5 +43,9 @@
   },
   "verdict": "KPI_FAIL",
   "n_rebalances": 41,
-  "note": "Phase D 慢衰减绝对源第一刀; IC necessary 快筛, 裁决=含成本 execution-aware 绝对收益 (R1/C-WinReturn)"
+  "rebalance_days": 20,
+  "top_k": 20,
+  "sizing": "equal",
+  "note": "Phase D 慢衰减绝对源; IC necessary 快筛, 裁决=含成本 execution-aware 绝对收益 (R1/C-WinReturn)",
+  "signal": "mf_net_inflow_trend_w20_top20_monthly_equal"
 }
