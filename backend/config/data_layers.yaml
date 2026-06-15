@@ -94,6 +94,7 @@ tables:
   mart_stock_survey_activity: L1_foundation
   fact_stock_technical_stage: L1k_kline_intermediate
   mart_macd_state_history: L1k_kline_intermediate
+  price_kline_qfq_tushare: L1k_kline_intermediate   # 2026-06-15 tushare 前复权 K线 (回测主源, §4.3; build_price_kline_qfq_tushare.py 从 raw_tushare_daily×adj_factor 建 2019+)
   _cache_holder_search: display
   _cache_stock_latest_rd: display
   mart_current_relationship: display

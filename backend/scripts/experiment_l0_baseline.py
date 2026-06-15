@@ -58,13 +58,15 @@ def load_kline(start: str, end: str | None, limit_stocks: int) -> dict[str, dict
     where = f"date >= '{start}'" + (f" AND date <= '{end}'" if end else "")
     conn = duck_connect(str(src), read_only=True)
     try:
+        # 2026-06-15 消费链切换 (§4.3 tushare 转正主源): tdxhub 视图 v_price_kline_qfq (只2022+, 且2022-12-30复权glitch)
+        # -> tushare 前复权 price_kline_qfq_tushare (2019+, 与tdxhub收益对账avg 0.03%一致, build_price_kline_qfq_tushare.py)
         if limit_stocks > 0:
             codes = [r[0] for r in conn.execute(
-                f"SELECT DISTINCT code FROM v_price_kline_qfq WHERE {where} ORDER BY code LIMIT {limit_stocks}"
+                f"SELECT DISTINCT code FROM price_kline_qfq_tushare WHERE {where} ORDER BY code LIMIT {limit_stocks}"
             ).fetchall()]
             where += " AND code IN ('" + "','".join(codes) + "')"
         rows = conn.execute(
-            f"SELECT code, date, close, high, low, open, volume, amount FROM v_price_kline_qfq WHERE {where} "
+            f"SELECT code, date, close, high, low, open, volume, amount FROM price_kline_qfq_tushare WHERE {where} "
             "ORDER BY code, date"
         ).fetchall()
     finally:
