@@ -373,6 +373,21 @@ domains:
     freshness_sla_trading_days: 30  # 成分调整低频 (季度级)
     min_rows_per_batch: 20         # 单 l1 成分史数十~数百行 (801010 实测 126); <20 可疑
     allow_empty_batch: false
+    fixed_params: {is_new: "Y"}    # 当前成分 (out_date NULL=仍在); 2026-06-15 显式化: is_new 默认只 Y, 历史剔除走 _hist 域
+  index_member_all_hist:           # 2026-06-15 P0: 历史已剔除成分 (is_new=N, out_date 填) — 补真 PIT 区间
+    source: tushare                # 根因: 原域只 is_new=Y => out_date 100% NULL = latest-snapshot leakage; 单发探针实测 is_new=N 给 out_date (801010: 56行全填)
+    api: index_member_all
+    target_table: raw_tushare_index_member_all  # 同表 MERGE on grain (N行 in_date 区间异于 Y行, 不冲突共存)
+    grain: [l3_code, ts_code, in_date]
+    batch_mode: by_code_list
+    code_param: l1_code
+    code_list: ["801010.SI","801030.SI","801040.SI","801050.SI","801080.SI","801110.SI","801120.SI","801130.SI","801140.SI","801150.SI","801160.SI","801170.SI","801180.SI","801200.SI","801210.SI","801230.SI","801710.SI","801720.SI","801730.SI","801740.SI","801750.SI","801760.SI","801770.SI","801780.SI","801790.SI","801880.SI","801890.SI","801950.SI","801960.SI","801970.SI","801980.SI"]
+    pit_anchor: "out_date NOT NULL=已剔除区间 [in_date,out_date); 配 is_new=Y 当前段拼成完整 PIT 历史"
+    data_start: "19891101"
+    freshness_sla_trading_days: 30
+    min_rows_per_batch: 1          # 部分 l1 历史剔除少 (单批 1+ 即有效, 不同 Y 域 20 门)
+    allow_empty_batch: true        # 部分 l1 可能 0 剔除 (新行业/无调整)
+    fixed_params: {is_new: "N"}
   index_dailybasic:
     source: tushare
     api: index_dailybasic

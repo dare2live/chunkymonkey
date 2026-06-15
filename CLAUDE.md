@@ -119,6 +119,7 @@ JOIN → 永远带 `AND x.built_at <= t` / `as_of_date`; 宇宙 → `dim_index_m
 - **含成本红线**: portfolio_backtest +45.4% 当最终决策 (不含 tx_cost/T+1); live 必须含成本 paper_sim, 加成本骤降.
 - **selection bias**: `max_stocks=200` 按 code 排序 → 只取 00 深主板, 创业/科创/沪主 0 只参与 Optuna; 审计只查 DB 层 (5206 PASS) 没查 runner 实际加载数. 改: 全量 universe + 运行时 `validate_loaded_stocks` (板块覆盖+80%).
 - **公式估算 != measured**: `swap_uplift_estimate` 公式估 → 实测 swap 拉低年化 33pp. 改真实 K 线 forward 反事实. (同类: vol-aware stop/ensemble weights/regime gate hardcode → 全进 Optuna search space + walk-forward OOS。)
+- **行业 taxonomy 切源 = 桶定义变, 历史不可比 (2026-06-15, owner=analysis/industry_migration_tdx_to_sw_20260615.md)**: 切行业分类源 (通达信 13/56/76 → 申万 31/131/337) **不是 1:1 映射**, sector-relative 特征 (*_tdx_l1_rel) 的 PARTITION BY 桶数变 → 跨切换点历史特征/RankIC **不可比**, sector_momentum 板块集合变须全量重算。**禁跨 taxonomy 版本 partition/拼接**; 切换打 `taxonomy_version` 戳分段。另: 申万 index_member_all 默认只拉 is_new='Y' (当前成分) → out_date 100% NULL = **latest-snapshot leakage 变体** (行业切换历史丢失), 必须并拉 is_new='N' (历史剔除区间, out_date 填) 才是真 PIT (实测探针: Y 给当前 out_date空 / N 给历史 out_date填)。
 
 ## 5. Optuna 治理
 
