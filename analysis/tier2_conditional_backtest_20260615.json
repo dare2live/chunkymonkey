@@ -20,26 +20,5 @@
   },
   "verdict": "KPI_FAIL",
   "n_rebalances": 162,
-  "note": "clean 引擎含成本 OOS; 超额HS300待基准",
-  "engine_fix": "旧 portfolio_backtest.py(5-07)退役重建为 portfolio_returnbacktest.py(透明日度mark-to-market+显式成本+4单测). 旧引擎 cash*0.95欠仓+5%容差致 -42%假象; clean 引擎实测见下.",
-  "decomposition": {
-    "weekly_net_10bps": {
-      "annual": -0.0279,
-      "max_dd": -0.4447,
-      "sharpe": -0.01,
-      "cost_drag": 0.313
-    },
-    "weekly_gross_0bps": {
-      "annual": 0.071,
-      "sharpe": 0.42
-    },
-    "monthly_net_10bps": {
-      "annual": -0.0709
-    },
-    "monthly_gross_0bps": {
-      "annual": -0.0477
-    }
-  },
-  "verdict_final": "KPI_FAIL 结构性. reversal edge 真实但~5天快衰减: 周度 gross +7.1%(Sharpe+0.42)有 edge, 但需高换手(turnover1.93)成本31%吃掉->net-2.8%; 月度低换手则 edge 消失(gross-4.8%). edge需快换手vs低成本需慢换手=不可兼得=结构性不可交易.",
-  "redirect_final": "裸K线短衰减信号被成本结构杀死. 出路=慢衰减信号(财务质量/资金流trend/筹码结构, Phase D), 其 edge 持续数周->低换手->成本可survive. 不再在裸K线短信号上投精调."
+  "note": "clean 引擎含成本 OOS; 超额HS300待基准"
 }
