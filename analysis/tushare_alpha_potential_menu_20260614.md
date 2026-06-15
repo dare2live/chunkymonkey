@@ -1,5 +1,7 @@
 # tushare 未抓接口 Alpha 潜力评估菜单 (2026-06-14)
 
+> **状态 (2026-06-15 N27 点名 + R1 后 superseded)**: 接口 catalog 仍有效; 但 edge 列(medium/low)是 a-priori 脑补假设**从未 measured**(违 §1.2, N27; flow 族实测兄弟 moneyflow net_mf≈0 已证近零增量), 应改 **measured/unknown 两段**; 入选/转正判据"超 +0.064 RankIC"被 R1 推翻(IC necessary 快筛, **转正须含成本 execution-aware 绝对收益** tradability_verdict+kpi_verdict); 优先级反转(慢衰减绝对>快衰减相对), block_trade/打板等快衰减降级。owner 冲突优先: 判断法典=`docs/strategy_validation_contract.md` · 缺陷体系 N25/N27/N29=`analysis/design_deficiencies_extension2_20260615.md` · P3 裁决+Phase D=`analysis/p3_execution_aware_verdict_20260615.md`。
+
 > 方法: 137 个 A股相关未抓接口 (catalog 239 - 已抓29 - off-strategy73), 8 域研究员并行评估 alpha 潜力
 > (Workflow wf_7bb5e2a9, 综合 agent 崩→controller 从 journal 抢救 8 域 90 接口评估自综合, mythos §18)。
 > 维度: alpha 假设 / 因子族 / PIT 风险 / 与已抓29冗余 / 预期 edge / 优先级。

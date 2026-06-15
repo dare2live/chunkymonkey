@@ -1,5 +1,7 @@
 # 条件化(形态×公式×因子)策略设计思路 (2026-06-14, 草案/未实现)
 
+> **状态 (2026-06-15 P0-P3 后部分 superseded)**: 核心条件化洞察仍对; 操作化三处偏离 — ① 立方体 3 轴→**5 轴**(+Regime/Timing+Execution); ② 选 cell/解锁改按**含成本 execution-aware 绝对收益**, IC 降级 necessary 快筛(§3/4 ORDER BY IC stale); ③ 裸 K 线 reversal base 经 P3 实弹判**结构性不可交易**, 转慢衰减绝对源。owner 冲突优先: 判断法典=`docs/strategy_validation_contract.md` · 缺陷体系/根因 R1/R2=`analysis/design_deficiencies_extension2_20260615.md` · P3 实弹裁决+Phase D=`analysis/p3_execution_aware_verdict_20260615.md`。本文骨架保留作演进记录。
+
 > 用户核心洞察: 不找"通用全部股票全部阶段的万能公式", 而是 先给股票形态分类 → 看哪个公式适用哪个
 > 形态 → 再叠因子(换手/筹码/资金流)增 alpha → 多维多因子寻优 + 数据驱动探索模式 + 用现有排除列表。
 > owner=本文件(具体思路); 立法上位=`analysis/multidim_strategy_architecture_20260613.md`(策略立方体);

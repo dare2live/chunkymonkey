@@ -1,5 +1,7 @@
 ## Segment 分层 Taxonomy 设计 — 架构师版 (2026-06-15)
 
+> **状态 (2026-06-15 P0-P3 后部分 superseded)**: 逐层解锁防组合爆炸 + DSR/PBO 去偏骨架仍有效; 解锁判据偏离 — "OOS IC 增益 > 基线"已被 R1 推翻, 改**含成本 execution-aware 绝对收益 sufficient gate + DSR 去偏**(IC 仅 necessary 快筛)。另: 立方体 3 轴→**5 轴**; S1 裸 K 线 reversal base 经 P3 判**结构性不可交易**; 数据优先级反转(慢衰减绝对>快衰减相对)。owner 冲突优先: 判断法典=`docs/strategy_validation_contract.md` · 缺陷体系/根因=`analysis/design_deficiencies_extension2_20260615.md`(N16/17/18 直接点名本文逐层解锁) · P3 裁决+Phase D=`analysis/p3_execution_aware_verdict_20260615.md`。
+
 > 状态: live。owner=本文件 (Segment 维细化), 上承 `conditional_stage_strategy_design_20260614.md` +
 > `multidim_strategy_architecture_20260613.md` + MASTER §5。**在既有立方体框架内逐层推进, 非另起炉灶。**
 > 缘起: 用户 direction (形态分更细 / 流通市值+换手率+成交量 / tushare+iFinD 充分挖掘 / 顶层设计逐层推进)。

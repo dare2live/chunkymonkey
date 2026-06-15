@@ -1,5 +1,7 @@
 # 模型验证「可靠性检测仪」+ 因子来源 设计思路 (2026-06-14, 草案/未实现)
 
+> **状态 (2026-06-15 P0-P3 后部分 superseded)**: 阶梯+随机性军火库思路有先见; 但 Gate1-5 的 null/度量全建在 rank/sharpe 空间, **数学上对 long-only 绝对收益盲**(N1 CRITICAL 测度论级盲点)。修正: ① Gate1 RankIC>+0.064 由硬淘汰降为 **necessary 快筛**; ② 新增**绝对收益门**(tradability_verdict/kpi_verdict/block_bootstrap_return_null NAV 符号 null) = sufficient 终验; ③ Gate5 sharpe→long-only 含成本 NAV 符号; ④ 两级转正(N3)+ DSR n_eff=n_days/horizon(N15)+ n_trials 实计(N17)。owner 冲突优先: 判断法典=`docs/strategy_validation_contract.md`(C-R1/C-R2/C-WinReturn) · 缺陷体系 N1/N3/N15/N17=`analysis/design_deficiencies_extension2_20260615.md` · P3 裁决=`analysis/p3_execution_aware_verdict_20260615.md`。执法 gate=`check_strategy_validation_integrity`。
+
 > 用户: "把模型规则策略的思路先想好" (像数据底座那样先立法再实现, 不着急验证)。
 > 缘起: 用户提蒙特卡洛回测可靠性检测 + qlib Alpha158 因子库。
 > owner=本文件 (设计真相源); 实现前须 grill + 对抗复审方法论。上位=alpha_validation_program_spec / l0_bare_kline_baseline_spec。

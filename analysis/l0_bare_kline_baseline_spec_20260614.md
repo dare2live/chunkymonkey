@@ -1,5 +1,7 @@
 # L0 裸K线基准 Spec — best-OOS-params 标尺 (2026-06-14)
 
+> **状态 (2026-06-15 P3 实弹后 superseded)**: best-OOS-params 防过拟合方法论沉淀仍有价值; 但核心前提被推翻 — 裸 K 线 reversal long-only 含成本 execution-aware 实测年化 -14.06%~-34.69%/max_dd -57%~-81%(IC_POSITIVE_BUT_UNTRADABLE)= **A 股结构性不可交易**; +0.064 RankIC 正是 R1 的 IC⟂盈利活样本, **降级为 necessary 快筛, 不再是标尺/判负线/增量判据**; base 转**慢衰减绝对源**; 入选改按含成本 execution-aware 绝对收益; 引擎已具体落 `portfolio_execbacktest`(backtest_execution.yaml)。owner 冲突优先: P3 裁决=`analysis/p3_execution_aware_verdict_20260615.md` · 判断法典=`docs/strategy_validation_contract.md` · 缺陷体系=`analysis/design_deficiencies_extension2_20260615.md`。
+
 > 状态: 草案 — 执行寻优前必过 grill gate (chunkymonkey-governance) + pre-reg 冻结判据。
 > owner = 本文件 (L0 设计真相源); goal.md P1 行为薄指针; 上位 = alpha_validation_program_spec §3.1 (技术公式消费者轴)。
 > 缘起 (用户 3 条指令, 2026-06-14): (1) 最小主动信号 + 公式全保留为 config 备选;

@@ -1,5 +1,7 @@
 # 专项行动: 数据 × 消费者 Alpha 统一验证程序 (Spec)
 
+> **状态 (2026-06-15 P0-P3 后部分 superseded)**: 数据×消费者矩阵 + 留档骨架仍有效; IC-first 范式被反转 — 流程改 **IC necessary 快筛 → Tier-1.5 含成本可交易性前置筛(半衰期/换手/成本/容量) → execution-aware backtest 绝对收益 sufficient gate**; 死亡条款加 R1 untradable + R2 execution-aware 强制; 异常核查加对称门(N2: IC 正但收益负); 立方体 3 轴→5 轴; 数据优先级反转(慢衰减绝对>快衰减相对); S3 验收加 tradability_verdict/kpi_verdict + 含成本 backtest verdict 留档。owner 冲突优先: 判断法典=`docs/strategy_validation_contract.md` · 缺陷体系=`analysis/design_deficiencies_extension2_20260615.md`(N1/N2) · P3 裁决+Phase D=`analysis/p3_execution_aware_verdict_20260615.md`; 工具=experiment_harness.{tradability_verdict,kpi_verdict,block_bootstrap_return_null}+check_strategy_validation_integrity。
+
 > 状态: 草案 (2026-06-14) — 执行前必过 grill gate (chunkymonkey-governance / engineering-discipline)。
 > owner = 本文件 (设计真相源); goal.md「专项: alpha 验证程序」节为薄指针。
 > 缘起: 用户纠偏数据探索方向 (不限已入库 → 看全 access surface) → 发现真正缺口不是 stale 表,

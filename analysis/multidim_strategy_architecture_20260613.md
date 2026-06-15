@@ -1,5 +1,7 @@
 # 多维策略架构顶层设计 — 策略立方体 (Strategy Cube)
 
+> **状态 (2026-06-15 P0-P3 后部分 superseded)**: §5 板块维 BLOCK 结论仍对; 架构定义偏离 — ① 3 轴→**5 轴**(§2/§3.1 owner 已转 design_deficiencies_extension2, 新增 Regime/Timing+Execution); ② C3 把 sizing/exit/regime 降级 auxiliary, 现为**一等设计轴**(C-WinReturn); ③ IC-edge + §4.2 RankIC>0.15 红线 + "IC→paper_sim"顺序被 R1 取代(IC necessary 快筛, 含成本绝对收益 sufficient 终验); ④ 引擎=`portfolio_execbacktest`(旧 return-based 删)。owner 冲突优先: 判断法典=`docs/strategy_validation_contract.md` · 5 轴+缺陷体系=`analysis/design_deficiencies_extension2_20260615.md` · P3 裁决=`analysis/p3_execution_aware_verdict_20260615.md`。
+
 > 2026-06-13 立项。owner = 本文件 (设计真相源); goal.md「策略立方体架构」节为薄指针。
 > 创造类工作, 走 architect-controller legislator block。用户原话 (2026-06-13):
 > "把每种数据源独立做成参数, 用 optuna 挖潜, 探索各种组合; 数据验证不必全市场统一参数,
