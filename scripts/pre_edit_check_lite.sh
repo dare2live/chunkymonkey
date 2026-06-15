@@ -49,6 +49,22 @@ case "$TARGET" in
         ;;
 esac
 
+# R1/R2/C-WinReturn 策略验证红线提醒 (2026-06-15: 8-lens 对抗复审根因反哺 hook; 该做hook做hook).
+# 改 策略/回测/实验/寻优/验证 代码前自动触发, 不受小文件 skip 影响 (引擎文件常 <200 LOC).
+# owner=docs/strategy_validation_contract.md 判断法典 + analysis/design_deficiencies_extension2_20260615.md。
+case "$TARGET" in
+    *backtest*.py|*portfolio_*.py|*experiment_*.py|*formula_param*.py|*optimization*.py|*oos_ic*.py|*deflated_sharpe*.py|*pit_guard*.py)
+        R1R2_MSG="[策略验证红线] 改 $(basename "$TARGET") 前自检 (judgment codex, owner=docs/strategy_validation_contract.md):
+  - R1 验证空间!=盈利空间: 每日截面 rank-IC 数学上减掉 cohort 绝对漂移, long-only 赚的恰是它. 任何 edge 充分证据=含成本绝对收益, IC 仅 necessary 快筛.
+  - R2 信号!=可交易头寸: 回测须 execution-aware (涨跌停剔篮/非对称成本/容量/T+1 open), 非 close 假成交.
+  - C-WinReturn: 胜率=诊断量, 收益率+max_dd=目标量, 联合验收(胜率x盈亏比期望). 用 experiment_harness.tradability_verdict + kpi_verdict, 禁单凭 IC/胜率放行.
+  - 流程: 跑前 leakage_gate -> 算IC -> 事后 anomaly_verdict + tradability_verdict; 选 cell/因子按含成本 backtest 绝对收益, 不按 IC.
+  - 验收: 跑 python backend/scripts/check_strategy_validation_integrity.py 须 PASS."
+        jq -nc --arg msg "$R1R2_MSG" '{systemMessage: $msg}' 2>/dev/null
+        exit 0
+        ;;
+esac
+
 # Skip if small file
 LOC=$(wc -l < "$TARGET" 2>/dev/null | tr -d ' ')
 [[ -z "$LOC" || "$LOC" -lt 200 ]] && exit 0

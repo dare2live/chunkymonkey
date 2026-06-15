@@ -86,9 +86,31 @@ def record_pit_check(conn, *, run_id: str, step: str, check_name: str, passed: b
          json.dumps(detail, ensure_ascii=False, default=str), _utc()])
 
 
+# C-R1 转正章证据键 (judges 顶层或一层嵌套含任一非空 = 看过钱). 防缺陷 N3: 转正纯凭 IC 置换显著性盖章,
+# 系统最强章 (confirmed_by_owner) 盖时完全没看过含成本绝对收益。owner=docs/strategy_validation_contract.md C-R1。
+_MONEY_EVIDENCE_KEYS = ("cost_aware_net_return", "net_annual_return", "kpi_verdict", "tradability", "kpi_passes")
+
+
+def _has_money_evidence(judges: dict | None) -> bool:
+    """judges 顶层或一层嵌套是否含含成本绝对收益证据 (任一证据键非空)。"""
+    if not judges:
+        return False
+    def _hit(d: dict) -> bool:
+        return any(d.get(k) not in (None, {}, "") for k in _MONEY_EVIDENCE_KEYS)
+    if _hit(judges):
+        return True
+    return any(isinstance(v, dict) and _hit(v) for v in judges.values())
+
+
 def record_verdict(conn, *, run_id: str, family: str, verdict: str, prereg_hash: str = "",
                    judges: dict | None = None, gate_blockers: dict | None = None,
                    confirmed_by_owner: int = 0) -> None:
+    # C-R1 死亡条款 (自欺死): 转正章必须看过钱, 不许纯凭 IC 显著性盖 (缺陷 N3)
+    if confirmed_by_owner and not _has_money_evidence(judges):
+        raise ValueError(
+            "C-R1 BLOCK: confirmed_by_owner=1 须带含成本绝对收益证据 (judges 含 "
+            f"{'/'.join(_MONEY_EVIDENCE_KEYS)} 任一非空), 不许纯凭 IC 置换显著性转正 (缺陷 N3 / 自欺死)。"
+            " IC 真 != 能赚钱: 排序显著的 cohort 可整体崩盘 (Phase B 实证 33σ 仍 gross -34.6%)。")
     conn.execute(
         "INSERT OR REPLACE INTO fact_experiment_verdict "
         "(verdict_id, family, run_id, verdict, ts, prereg_hash, judges_json, gate_blockers_json, confirmed_by_owner) "

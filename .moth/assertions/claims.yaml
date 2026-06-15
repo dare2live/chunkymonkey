@@ -127,6 +127,23 @@ assertions:
     type: shell
     command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && v=0; for f in backend/scripts/experiment_*.py; do grep -qE 'oos_rank_ic|cross_sectional_ic' \"$f\" || continue; grep -qE 'experiment_store|fact_consumer_alpha_ic_scan' \"$f\" || v=$((v+1)); grep -qE 'leakage_gate|pit_guard|pit_selfcheck|assert_pit_clean' \"$f\" || v=$((v+1)); grep -qE 'anomaly_verdict|check_metric_anomaly|ablation|permutation|relative_redline' \"$f\" || v=$((v+1)); done; echo \"violations=$v\""]
     expect: {op: regex, pattern: "violations=0"}
+  - id: validation-r1-symmetric-gate
+    claim: "R1 对称可交易性门在岗 (2026-06-15 8-lens 对抗复审根因 R1 反哺): anomaly_verdict 是单边门(只抓IC太高), 数学上抓不到 'IC真但long-only含成本亏钱'(Phase B 33σ REAL_EDGE 仍 gross -34.6%). experiment_harness 必有 tradability_verdict -> IC>0 且 net<=0 标 IC_POSITIVE_BUT_UNTRADABLE. 删=R1盲点复发. owner=docs/strategy_validation_contract.md C-R1"
+    type: shell
+    command: ["bash", "-c", "grep -cE 'def tradability_verdict|IC_POSITIVE_BUT_UNTRADABLE' backend/services/experiment_harness.py"]
+    expect: {op: ">=", value: 2}
+  - id: validation-promotion-needs-money
+    claim: "转正章必须看过钱 (2026-06-15 缺陷 N3/自欺死): confirmed_by_owner=1 不许纯凭 IC 置换显著性盖, 必带含成本绝对收益证据 (record_verdict guard raise). 删=系统最强章盖时没看过含成本收益. owner=docs/strategy_validation_contract.md C-R1"
+    type: shell
+    command: ["bash", "-c", "grep -cE '_has_money_evidence|C-R1 BLOCK' backend/services/experiment_store.py"]
+    expect: {op: ">=", value: 2}
+  - id: validation-winreturn-codex
+    claim: "C-WinReturn 联合验收门在岗 (2026-06-15 用户: 除胜率还要考核收益率, 目的是真能赚钱非证明有效): experiment_harness.kpi_verdict 须联合 年化 AND max_dd AND 月胜率 AND 胜率x盈亏比期望(positive_expectancy); 胜率=诊断量收益+max_dd=目标量. 删=单凭胜率/IC 放行. owner=docs/strategy_validation_contract.md C-WinReturn"
+    type: shell
+    command: ["bash", "-c", "grep -cE 'def kpi_verdict|positive_expectancy|payoff_ratio' backend/services/experiment_harness.py"]
+    expect: {op: ">=", value: 3}
+  # P1 引擎重建后加: validation-engine-execution-aware (check_strategy_validation_integrity 的 engine_execution_aware=PASS)
+  #   + validation-integrity-gate-green (gate overall=PASS). 现 engine 检查 FAIL = 预期红色规格 (P0 gate=P1 验收尺)。
   # 2026-06-14 地基-reset 退役 (引用已删特征/模型层, 重建特征/模型层后须恢复):
   #   - leakage-consumer-gate: 探针读已删特征面板 (feature_consumers); 特征层重做后恢复, 防泄露红线不可永久缺
   #   - concept-event-no-phantom: 查已删 fact_concept_event; 概念事件层重建后恢复

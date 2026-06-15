@@ -14,10 +14,27 @@ archived under `analysis/docs_archive_20260531/`.
 | Search without search space | `plan_validator` must pass before Optuna/provider jobs |
 | Suspiciously good numbers | Sharpe >5, win rate >95%, or annualized >100% triggers leakage/PIT ablation |
 
+## 判断法典 (Judgment Codex) — owner: this file
+
+立法层 (2026-06-15 8-lens 对抗复审根因 R1/R2 + 用户"考核收益率不止胜率, 目的是真能赚钱"反哺)。
+每条人话+机器话双语; 机器话由 `check_strategy_validation_integrity.py` gate + moth `validation-*` 断言执法。
+完整缺陷体系 owner=`analysis/design_deficiencies_extension2_20260615.md` (N1-N30 + 根因链)。
+
+| 法典条 | 人话 (任何人能懂) | 机器话 (gate/assert 执行) |
+|---|---|---|
+| **C-R1 验证空间≠盈利空间** | 每日截面 rank-IC 数学上减掉了 cohort 绝对漂移, 而 long-only 赚的恰是它 → 验证空间(rank) ⟂ 盈利空间(含成本绝对NAV)。任何 edge 的**充分**证据 = 含成本绝对收益, IC 仅 necessary 快筛。IC 真 ≠ 能赚钱 (Phase B: 33σ REAL_EDGE 仍 gross -34.6%)。 | `tradability_verdict(ic, net)` 对称门: IC>0 且 net≤0 → `IC_POSITIVE_BUT_UNTRADABLE`; `record_verdict` 拒 `confirmed_by_owner=1` 无含成本 net_return 证据; 验证阶梯 Gate 须含**绝对收益 null** (block bootstrap NAV 符号, 非纯 rank/sharpe 置换)。moth `validation-r1-symmetric-gate` / `validation-promotion-needs-money`。 |
+| **C-R2 信号≠可交易头寸** | 信号是排序(数学对象), 头寸是受涨跌停/T+1/停牌/印花税/流动性约束的物理对象。回测把二者等同 = 假设无摩擦市场, 绝对收益系统性乐观。 | 回测引擎须 execution-aware: 涨跌停一字板剔篮 + 非对称成本栈(卖+印花) + 容量/冲击 + T+1 open 入场(非 close 假成交)。`check_strategy_validation_integrity.engine_execution_aware`=PASS; moth `validation-engine-execution-aware`。 |
+| **C-WinReturn 胜率诊断/收益目标** | 单笔期望=胜率×平均盈−败率×平均亏; 胜率脱离盈亏比无意义 (40%×3:1 完胜 60%×0.5:1)。**胜率=诊断量, 收益率+max_dd=目标量**。仓位管理是把 {edge,胜率,盈亏分布} 转成 {实现收益,回撤} 的传递函数, 是一等设计轴非事后系数。最终目的是真能赚钱, 不是证明策略有效。 | `kpi_verdict(metrics)` 联合门: 年化 AND max_dd AND 月胜率 AND 胜率×盈亏比期望(`positive_expectancy`), 全 AND, 单项不放行; 引擎须报 payoff_ratio/avg_win/avg_loss。moth `validation-winreturn-codex`。 |
+
+死亡条款 (wired, 非文本): **感知死** = confirmed cell forward 不兑现自动冻结 (forward_reconciliation job, 读 `fact_experiment_verdict`); **自欺死** = 任何 edge 无含成本绝对收益证据即 BLOCK (C-R1 转正 guard)。
+
+验证范式 (R1 修正): IC = necessary 快筛 (降级); 含成本 backtest 绝对收益 = sufficient gate (升级)。早期插廉价绝对收益门 (Tier-1.5 可交易性筛: 半衰期→换手预算→成本可活性→容量), 选 cell/因子一律按含成本 OOS 绝对收益, 不按 IC。
+
 ## Required Gates
 
 | Gate | Required checks |
 |---|---|
+| Strategy validation integrity | `anomaly_symmetric`(C-R1), `promotion_needs_money`(C-R1), `kpi_joint_codex`(C-WinReturn), `engine_execution_aware`(C-R2) — `check_strategy_validation_integrity.py` |
 | Backtest preflight | `universe_clean`, `limit_pct_per_board`, `cost_model`, `data_freshness`, `walk_forward`, `signal_pit_spotcheck`, `code_leakage_scan`, `excluded_stocks` |
 | Plan validator | `search_space`, `trial_value`, `formula_runnable`, `cost_efficiency`, `param_scope`, `sample_size_coverage`, `board_coverage`, `output_usable` |
 | Data audit | Run after data sync; stale critical data blocks production evidence |

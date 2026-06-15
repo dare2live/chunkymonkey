@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-15 14:08
+> Snapshot: 2026-06-15 16:43
 
 ## 1. 入口面
 
@@ -280,7 +280,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 7,727 | calls 边 101,610 | imports 边 13,726 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 7,760 | calls 边 101,617 | imports 边 13,707 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -297,10 +297,10 @@
 | services.pipeline_manifest | 8 |
 | services.portfolio_walk_forward.oos_ic | 8 |
 | services.pricing_policy | 8 |
+| services.experiment_harness | 7 |
 | routers.updater_runtime | 6 |
 | scripts.experiment_l0_baseline | 6 |
 | services.constants | 6 |
-| services.data_sources | 6 |
 
 ### 跨文件 fan-in 最高的文件 (近似口径: 唯一定义名 + caller 实际 import 目标模块双过滤)
 
@@ -312,12 +312,12 @@
 | backend/services/portfolio_walk_forward/oos_ic.py | 8 |
 | backend/routers/updater_runtime.py | 6 |
 | backend/services/etf_grid_engine.py | 6 |
-| backend/services/experiment_harness.py | 6 |
 | backend/scripts/experiment_l0_baseline.py | 5 |
 | backend/services/data_sources/base.py | 5 |
 | backend/services/kline_source.py | 5 |
 | backend/services/etf_engine.py | 4 |
 | backend/scripts/experiment_per_stage_ic.py | 3 |
+| backend/services/business_facts.py | 3 |
 
 ### LOC top 10 (God module 候选)
 
