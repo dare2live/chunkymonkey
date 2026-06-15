@@ -141,18 +141,24 @@ def main(argv: list[str] | None = None) -> int:
     print(f"R1 可交易性 = {trad['verdict']} ({trad['action'][:60]})")
     print(f"VERDICT    = {verdict}  (超额HS300 待基准; 小盘 cohort 须对标中证1000/2000)")
 
+    # cell tag: 区分全市场 vs 子格 (防 run_id/json 碰撞覆盖留档)
+    cell_tag = "fullmarket" if not cell_filter else f"cap{args.cap_tier}_to{args.turnover_tier}"
     out = {"experiment": "tier2_conditional_backtest", "engine": "portfolio_execbacktest_20260615",
-           "strategy": f"Stage{STAGE}_reversal_top{TOP_K}_T1open_{args.sizing}",
+           "cell": cell_tag, "sizing": args.sizing,
+           "strategy": f"Stage{STAGE}_reversal_top{TOP_K}_T1open_{args.sizing}_{cell_tag}",
            "metrics": {**m, "final_nav": res["final_nav"], "cost_drag": res["cost_drag"],
                        "avg_turnover": res["avg_turnover"], "avg_participation": res["avg_participation"],
                        "max_participation": res["max_participation"], "capacity_warn_rate": res["capacity_warn_rate"]},
            "tradability": trad, "kpi_verdict": kpi, "verdict": verdict, "n_rebalances": res["n_rebalances"],
            "note": "execution-aware 含成本 OOS (T+1 open/涨跌停/非对称成本/停牌冻结/容量); 超额HS300待基准"}
-    out_path = REPO / "analysis" / "tier2_conditional_backtest_20260615.json"
+    # 全市场=canonical 固定名; 子格=带 cell tag 名 (并存不覆盖)
+    fname = "tier2_conditional_backtest_20260615.json" if cell_tag == "fullmarket" \
+        else f"tier2_conditional_backtest_{cell_tag}_{args.sizing}_20260615.json"
+    out_path = REPO / "analysis" / fname
     out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[out] {out_path}")
 
-    run_id = "phaseb_tier2_conditional_backtest_20260615"
+    run_id = f"phaseb_tier2_{cell_tag}_{args.sizing}_20260615"
     with open_store() as st:
         record_pit_check(st, run_id=run_id, step="leakage_gate", check_name="reversal_pit_behavioral",
                          passed=gate["clean"], detail=gate)

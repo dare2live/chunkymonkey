@@ -1,0 +1,47 @@
+{
+  "experiment": "tier2_conditional_backtest",
+  "engine": "portfolio_execbacktest_20260615",
+  "cell": "caplow_tohigh",
+  "sizing": "equal",
+  "strategy": "Stage1.5_reversal_top20_T1open_equal_caplow_tohigh",
+  "metrics": {
+    "annual_return": -0.34690961163083067,
+    "max_drawdown": -0.8055740364725202,
+    "sharpe": -1.2900810198669719,
+    "calmar": -0.4306365348489784,
+    "monthly_win_rate": 0.325,
+    "win_rate": 0.4382716049382716,
+    "payoff_ratio": 0.7372825805153751,
+    "avg_win": 0.02374697777903541,
+    "avg_loss": -0.03220878725011488,
+    "expectancy": -0.23859837520622457,
+    "final_nav": 0.25135515933431657,
+    "cost_drag": 0.16303757115945908,
+    "avg_turnover": 1.4733569990241946,
+    "avg_participation": 0.02632096563321786,
+    "max_participation": 0.4377277725107724,
+    "capacity_warn_rate": 0.043686415320167565
+  },
+  "tradability": {
+    "verdict": "IC_POSITIVE_BUT_UNTRADABLE",
+    "action": "IC=+0.1560>0 但含成本年化=-34.69%<=0 (R1: 排序真但 long-only 不赚钱): 崩盘 cohort, 不许凭 IC 转正; 选 cell/因子按含成本绝对收益不按 IC"
+  },
+  "kpi_verdict": {
+    "verdict": "KPI_FAIL",
+    "passes": {
+      "annual_return": false,
+      "max_drawdown": false,
+      "monthly_win_rate": false,
+      "positive_expectancy": false
+    },
+    "diagnostics": {
+      "win_rate": 0.4382716049382716,
+      "payoff_ratio": 0.7372825805153751,
+      "expectancy": -0.23859837520622457,
+      "note": "胜率为诊断量, 收益率+max_dd 为目标量 (C-WinReturn)"
+    }
+  },
+  "verdict": "KPI_FAIL",
+  "n_rebalances": 162,
+  "note": "execution-aware 含成本 OOS (T+1 open/涨跌停/非对称成本/停牌冻结/容量); 超额HS300待基准"
+}
