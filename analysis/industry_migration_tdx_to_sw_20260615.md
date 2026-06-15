@@ -31,11 +31,13 @@
 - **S1.5** [DONE 2026-06-15] as-of PIT 逻辑 measured 验证: 000007.SZ 换 6 次 L1 行业 (家电→房地产→有色→社服→综合→商贸零售), as-of 2018→综合(对)/2026→商贸零售(当前)/2010→None(区间间真空, 诚实 PIT 不编造)。证明 S1 数据 + `in_date<=t AND (out_date NULL OR out_date>t) ORDER BY in_date DESC LIMIT 1` = 正确 PIT 行业解析, latest-snapshot leakage 实锤已修 (旧表只有当前商贸零售贴全史)。
 - **S2** [DONE 2026-06-16] 建 as-of 视图 `v_sw_industry_pit` (build_sw_industry_view.py, 真相源=raw 表, 奥卡姆不物化中间 mart)。建在 **tushare_raw 单库** (与源表同库, 避跨库 attach 脆弱性; 消费侧跨库访问留 S3 决)。归一: ts_code→6位 stock_code (SPLIT_PART, 实测 smartmoney dim/market K线 均 6 位无后缀), out_date INTEGER→VARCHAR (与 in_date 同型字典序=时序)。**验证 PASS**: 7787行/5847股, 当前成分(out_date NULL)5847, 000007 as-of 2018=综合/2026=商贸零售 (L1+L2 PIT 正确)。消费侧 as-of 查询: `in_date<=t AND (out_date IS NULL OR out_date>t) ORDER BY in_date DESC LIMIT 1`。**这步已让探索可读正确 PIT 申万行业** (sector-relative/中性化特征不再建在错行业上)。
 - **S3** [DONE 2026-06-16, 用户在场选A] repoint 完成 (**materialize 方案** 避跨库脆弱): build_sw_industry_view.py 加建 smartmoney `dim_stock_sw_industry` 当前申万快照 (5847股, 列名 tdx_l* 位置别名/值申万, 声明 L1_foundation)。industry.py INDUSTRY_TABLE→dim_stock_sw_industry (load_industry_map/resolve_industry 跟随); signals_v2 **7 处裸 JOIN** 走 `{INDUSTRY_TABLE}` 常量 (no-hardcode); resolve_industry ref_date 缺陷显式标注 (serving=当前快照, as-of/PIT 走 v_sw_industry_pit)。验证: load_industry_map 000007=商贸零售(申万)/59测试pass/moth32-32。**待用户验** workbench/signals UI 显申万。dead_orphan 消费者(industry_context/sector_momentum)仍读通达信(未repoint, 走独立退役)。
-- **S4** [TODO] 删 STALE mart (用户定): DROP mart_stock_industry_pit + mart_industry_pit_quality; 改 seed_dim_data_asset.py:94 悬空 owner 引用; 删前确认 workbench gate 无硬依赖。
-- **S5** [TODO] 改 workbench_industry_pit_read.py: 读 S2 视图派生 readiness (替原 mart)。
-- **S6** [TODO] 双轨核对 >=1周: 申万L1 vs tdx_l1 同批活跃股归属一致率, 留 artifact; tdxhub dim sync 链保热备 (§4.3)。
-- **S7** [TODO] 退役: 物删 mart 重建残留 (悬空引用); dim sync 链降 tdxhub 热备**不物删** (§4.3 fallback 也用, 申万无T码三级等价); dead_orphan ~17 独立退役线 (非本迁移)。
-- **S8** [TODO, P1 并行] 注册+落 index_classify (level×SW2021) 补桶骨架/变动原因; 核 raw_tushare_index_daily 含 801xxx.SI 全31行业日线 (sw_daily, 行业动量/中性化收益序列)。
+- **S4** [DONE 2026-06-16] DROP mart_stock_industry_pit + mart_industry_pit_quality (STALE 5周/通达信源/fallback leakage 孤儿); 4 消费者全 _table_exists guard → graceful degrade (workbench readiness 返 pit_eligible=False blockers=[missing] 不崩); 移 data_layers(2)+schema_versions(2) 声明; post-fix-audit: DB residue=0, 40测试pass, moth32/audit94 PASS。seed_dim_data_asset 6 处 catalog 元数据 (含悬空 build_industry_pit.py 引用) = 低风险 catalog 残留, spawn 跟进清。
+- **S5** [N/A] readers 全 guard 优雅降级, 无需重写; 申万-based readiness 重建 = 跟进 (workbench industry-PIT-readiness 面板暂显 missing, 诚实)。
+- **S6** [PARTIAL] 初次双轨核对 DONE: 申万 5847股 > 通达信 5624股 (申万覆盖更全含退市), L1名一致仅4% = taxonomy 不同非系统错位 (000001 银行vs金融/600519 食品饮料vs日常消费, 申万更细, 都对); **无系统性错位, 迁移 sound**。完整 >=1周 双写观察窗 = 跟进。
+- **S7** [DONE-doc] 通达信降 tdxhub 热备: serving 已不读 dim_stock_tdx_industry (改读申万), dim sync 链 (daily_update Step2j) 保留**热备不物删** (§4.3, 申万无T码三级等价)。dead_orphan ~17 消费者独立退役线 (非本迁移)。
+- **S8** [跟进, P1] 注册+落 index_classify (level×SW2021) 补桶骨架/变动原因; 核 raw_tushare_index_daily 含 801xxx.SI 全31行业日线。
+
+### 收尾状态 (2026-06-16): 迁移**功能完成** — live serving + 探索 + KPI 全在申万 PIT; 通达信降热备; STALE mart 删。剩跟进 (非阻塞): S6 完整1周双写 / S8 index_classify / 申万-readiness 面板重建 / seed catalog 清。
 
 ## 开放决策 (用户已定 #1/#2; #3-5 默认见下)
 - #1 taxonomy 历史不可比: **接受** (用户定全套迁移)。

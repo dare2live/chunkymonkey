@@ -91,7 +91,6 @@ tables:
   fact_top10_holder_period: L1_foundation
   inst_holdings: L1_foundation
   inst_institutions: L1_foundation
-  mart_stock_industry_pit: L1_foundation
   mart_stock_survey_activity: L1_foundation
   fact_stock_technical_stage: L1k_kline_intermediate
   mart_macd_state_history: L1k_kline_intermediate
@@ -117,7 +116,6 @@ tables:
   mart_data_source_failure_queue: infra
   mart_data_source_watermark: infra
   mart_global_data_quality_gate: infra
-  mart_industry_pit_quality: infra
   mart_pipeline_lock: infra
   mart_pipeline_run_manifest: infra
   mart_step_fingerprint: infra

@@ -151,8 +151,6 @@ MART_VERSIONS = {
     "mart_synergy_policy_mtm_rerank_summary": "v1",
     "mart_synergy_policy_mtm_strategy_sweep": "v1",
     "mart_synergy_policy_mtm_strategy_sweep_summary": "v1",
-    "mart_stock_industry_pit": "v1",
-    "mart_industry_pit_quality": "v1",
     "mart_research_schedule_plan": "v1",
     "mart_architecture_inventory_asset": "v1",
     "mart_architecture_dependency_edge": "v1",
