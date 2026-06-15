@@ -28,8 +28,7 @@ sys.path.insert(0, str(REPO / "backend"))
 from scripts.experiment_l0_baseline import load_kline  # noqa: E402
 from scripts.experiment_per_stage_ic import load_stage_map  # noqa: E402
 from services.formula_engine.features import feature_reversal  # noqa: E402
-from services.portfolio_backtest import run_portfolio_backtest, SlippageModel, PositionConstraint  # noqa: E402
-from services.portfolio_walk_forward.metrics import compute_metrics  # noqa: E402
+from services.portfolio_returnbacktest import run_return_backtest  # noqa: E402  干净重建引擎 (旧 portfolio_backtest 退役)
 from services.experiment_store import open_store, record_verdict, record_pit_check, record_artifact  # noqa: E402
 from services.experiment_harness import leakage_gate  # noqa: E402
 
@@ -69,7 +68,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--start", default="2023-01-01")  # rule-compliance: ok evidence=对齐 L0/KPI 窗口起点
     ap.add_argument("--cost-bps", type=float, default=10.0)  # rule-compliance: ok evidence=诊断 gross vs net (默认 10bps)
     ap.add_argument("--side", choices=["long", "longshort"], default="long")  # rule-compliance: ok evidence=诊断多空 vs 纯多
+    ap.add_argument("--rebalance-days", type=int, default=REBALANCE_DAYS)  # rule-compliance: ok evidence=诊断换手 vs 成本 (默认周度5)
     args = ap.parse_args(argv)
+    rebalance_days = args.rebalance_days
 
     print("[load] K线 + stage ...", flush=True)
     by_code = load_kline(args.start, None, 0)
@@ -82,77 +83,63 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[BLOCK] reversal 事前 leakage 门 FAIL: {gate['sample_violations']}"); return 1
     print(f"[leakage] 事前门 PASS", flush=True)
 
-    # 价格表 + 每股 reversal
-    price: dict[tuple[str, str], float] = {}
+    # 价格表 {code:{date:close}} + 每股 reversal (clean 引擎接口)
+    price_by_code: dict[str, dict[str, float]] = {}
     reversal: dict[str, dict[str, float]] = {}
     for code, bars in by_code.items():
         if not in_universe(code):
             continue
         closes, dates = bars["close"], bars["date"]
         feat = feature_reversal(closes, lookback=LOOKBACK)
-        rv = {}
+        pc, rv = {}, {}
         for i, d in enumerate(dates):
             if closes[i] is not None:
-                price[(code, d)] = closes[i]
+                pc[d] = closes[i]
             if feat[i] is not None:
                 rv[d] = feat[i]
+        price_by_code[code] = pc
         reversal[code] = rv
 
-    # 全局交易日历 (T+1 执行)
-    all_dates = sorted({d for (_c, d) in price})
-    rebal_idx = list(range(0, len(all_dates) - 1, REBALANCE_DAYS))
+    all_dates = sorted({d for pc in price_by_code.values() for d in pc})
+    rebal_idx = list(range(0, len(all_dates) - 1, rebalance_days))
     print(f"[signal] 全局 {len(all_dates)} 交易日, {len(rebal_idx)} 周度调仓点", flush=True)
 
-    # 建信号: 决策日 t 选 Stage1.5 top-K reversal, T+1 (下一交易日) 执行
-    signals = []
+    # 调仓表: 决策日 t 选 Stage top-K reversal (引擎做 T+1 + 含成本; clean 引擎 long-only)
+    rebalances = []
     for gi in rebal_idx:
         t = all_dates[gi]
-        exec_date = all_dates[gi + 1]   # T+1
         cands = [(c, reversal[c][t]) for c in reversal
                  if t in reversal[c] and stage_map.get((c, t)) == STAGE]
         if not cands:
             continue
         cands.sort(key=lambda x: x[1], reverse=True)   # reversal 高 = 超卖 = 多
-        topk = cands[:TOP_K]
-        w = 1.0 / len(topk)
-        for c, _v in topk:
-            signals.append({"date": exec_date, "stock_code": c, "target_weight": w})
-        if args.side == "longshort":   # 诊断: 空底部K (测 rank-spread 是否市场中性可捕)
-            botk = cands[-TOP_K:]
-            for c, _v in botk:
-                signals.append({"date": exec_date, "stock_code": c, "target_weight": -w})
-    print(f"[signal] {len(signals)} 信号行 ({len(set(s['date'] for s in signals))} 调仓日)", flush=True)
+        rebalances.append((t, [c for c, _v in cands[:TOP_K]]))
+    print(f"[backtest] clean return-based 引擎 ({len(rebalances)} 调仓, T+1, {args.cost_bps}bps) ...", flush=True)
 
-    print("[backtest] run_portfolio_backtest (含成本 10bps+滑点, T+1) ...", flush=True)
-    res = run_portfolio_backtest(
-        signals, price_fn=lambda sc, d: price.get((sc, d)),
-        initial_capital=1_000_000, slippage=SlippageModel(fixed_bps=args.cost_bps), constraint=PositionConstraint(),
-        rebalance_freq="weekly")
-    equity = res.equity_curve if hasattr(res, "equity_curve") else res.metrics.get("equity_curve", [])
-    if not equity:
-        print(f"[ERR] 空 equity: {res.metrics}"); return 1
-    nav = [e["total"] / 1_000_000 for e in equity]
-    m = compute_metrics(nav)
-    mwr = monthly_win_rate(equity)
+    res = run_return_backtest(rebalances, price_by_code, all_dates, cost_bps=args.cost_bps)
+    if not res["nav"]:
+        print("[ERR] 空 NAV"); return 1
+    m = res["metrics"]
+    mwr = m["monthly_win_rate"]
 
     # KPI 裁决
-    passes = {"annual_return": m.annual_return >= KPI["annual_return"],
-              "max_drawdown": m.max_drawdown >= KPI["max_drawdown"],
+    passes = {"annual_return": m["annual_return"] >= KPI["annual_return"],
+              "max_drawdown": m["max_drawdown"] >= KPI["max_drawdown"],
               "monthly_win_rate": mwr is not None and mwr >= KPI["monthly_win_rate"]}
     verdict = "KPI_PASS" if all(passes.values()) else "KPI_FAIL"
 
-    print(f"\n===== Tier-2 含成本 backtest (Stage1.5 reversal top{TOP_K}, T+1, 10bps, 周度) =====")
-    print(f"年化收益   = {m.annual_return:+.2%}  (KPI>=+30%: {'PASS' if passes['annual_return'] else 'FAIL'})")
-    print(f"最大回撤   = {m.max_drawdown:+.2%}  (KPI>=-20%: {'PASS' if passes['max_drawdown'] else 'FAIL'})")
-    print(f"年化Sharpe = {m.sharpe:.2f}   Calmar = {m.calmar:.2f}")
+    print(f"\n===== Tier-2 含成本 backtest [clean 引擎] (Stage{STAGE} reversal top{TOP_K}, T+1, {args.cost_bps}bps, 周度) =====")
+    print(f"年化收益   = {m['annual_return']:+.2%}  (KPI>=+30%: {'PASS' if passes['annual_return'] else 'FAIL'})")
+    print(f"最大回撤   = {m['max_drawdown']:+.2%}  (KPI>=-20%: {'PASS' if passes['max_drawdown'] else 'FAIL'})")
+    print(f"年化Sharpe = {m['sharpe']:.2f}   Calmar = {m['calmar']:.2f}")
     print(f"月胜率     = {(f'{mwr:.1%}' if mwr is not None else 'None')}  (KPI>=55%: {'PASS' if passes['monthly_win_rate'] else 'FAIL'})")
-    print(f"末NAV      = {nav[-1]:.3f}  ({len(equity)} 交易日)")
+    print(f"末NAV      = {res['final_nav']:.3f}  ({len(res['nav'])} 交易日, 成本拖累 {res['cost_drag']:.1%}, 均换手 {res['avg_turnover']:.2f})")
     print(f"VERDICT    = {verdict}  (超额HS300 待基准 sync)")
 
-    out = {"experiment": "tier2_conditional_backtest", "strategy": f"Stage{STAGE}_reversal_top{TOP_K}_T1_weekly",
-           "cost_bps": 10, "metrics": {"annual_return": m.annual_return, "max_drawdown": m.max_drawdown,
-           "sharpe": m.sharpe, "calmar": m.calmar, "monthly_win_rate": mwr, "final_nav": nav[-1]},
-           "kpi_passes": passes, "verdict": verdict, "n_signals": len(signals), "note": "含成本 OOS; 超额HS300待基准"}
+    out = {"experiment": "tier2_conditional_backtest", "engine": "portfolio_returnbacktest_clean_20260615",
+           "strategy": f"Stage{STAGE}_reversal_top{TOP_K}_T1_weekly", "cost_bps": args.cost_bps,
+           "metrics": {**m, "final_nav": res["final_nav"], "cost_drag": res["cost_drag"], "avg_turnover": res["avg_turnover"]},
+           "kpi_passes": passes, "verdict": verdict, "n_rebalances": res["n_rebalances"], "note": "clean 引擎含成本 OOS; 超额HS300待基准"}
     out_path = REPO / "analysis" / "tier2_conditional_backtest_20260615.json"
     out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[out] {out_path}")

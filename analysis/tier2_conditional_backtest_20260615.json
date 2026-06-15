@@ -1,14 +1,17 @@
 {
   "experiment": "tier2_conditional_backtest",
+  "engine": "portfolio_returnbacktest_clean_20260615",
   "strategy": "Stage1.5_reversal_top20_T1_weekly",
-  "cost_bps": 10,
+  "cost_bps": 10.0,
   "metrics": {
-    "annual_return": -0.41959855032006976,
-    "max_drawdown": -0.5777897150317715,
-    "sharpe": -0.5813889004654738,
-    "calmar": -0.7262132561445765,
-    "monthly_win_rate": 0.425,
-    "final_nav": 0.70420452
+    "annual_return": -0.027905833005865577,
+    "max_drawdown": -0.44469767717084285,
+    "sharpe": -0.009403232571765808,
+    "calmar": -0.0627523696174936,
+    "monthly_win_rate": 0.45,
+    "final_nav": 0.9120272100442579,
+    "cost_drag": 0.31260000000000043,
+    "avg_turnover": 1.9296296296296298
   },
   "kpi_passes": {
     "annual_return": false,
@@ -16,20 +19,27 @@
     "monthly_win_rate": false
   },
   "verdict": "KPI_FAIL",
-  "n_signals": 3240,
-  "note": "含成本 OOS; 超额HS300待基准",
-  "diagnostic": {
-    "net_long_10bps": {
-      "annual": -0.4196,
-      "max_dd": -0.5778,
-      "sharpe": -0.58
+  "n_rebalances": 162,
+  "note": "clean 引擎含成本 OOS; 超额HS300待基准",
+  "engine_fix": "旧 portfolio_backtest.py(5-07)退役重建为 portfolio_returnbacktest.py(透明日度mark-to-market+显式成本+4单测). 旧引擎 cash*0.95欠仓+5%容差致 -42%假象; clean 引擎实测见下.",
+  "decomposition": {
+    "weekly_net_10bps": {
+      "annual": -0.0279,
+      "max_dd": -0.4447,
+      "sharpe": -0.01,
+      "cost_drag": 0.313
     },
-    "gross_long_0bps": {
-      "annual": -0.0801,
-      "max_dd": -0.5379,
-      "sharpe": 0.18
+    "weekly_gross_0bps": {
+      "annual": 0.071,
+      "sharpe": 0.42
     },
-    "note": "cost~34%年化拖累(周度高换手); gross本身微负(Sharpe+0.18)=条件化reversal单信号弱; longshort诊断无效(引擎钳[0,1]空头未执行)"
+    "monthly_net_10bps": {
+      "annual": -0.0709
+    },
+    "monthly_gross_0bps": {
+      "annual": -0.0477
+    }
   },
-  "redirect": "+0.156 RankIC真但单信号naive交易KPI大幅FAIL(§4.5铁律). 出路: (a)极低换手(成本是首杀) (b)多因子立方体组合 (c)更强base数据(资金流/筹码). 条件化reversal单独不够."
+  "verdict_final": "KPI_FAIL 结构性. reversal edge 真实但~5天快衰减: 周度 gross +7.1%(Sharpe+0.42)有 edge, 但需高换手(turnover1.93)成本31%吃掉->net-2.8%; 月度低换手则 edge 消失(gross-4.8%). edge需快换手vs低成本需慢换手=不可兼得=结构性不可交易.",
+  "redirect_final": "裸K线短衰减信号被成本结构杀死. 出路=慢衰减信号(财务质量/资金流trend/筹码结构, Phase D), 其 edge 持续数周->低换手->成本可survive. 不再在裸K线短信号上投精调."
 }
