@@ -1,0 +1,52 @@
+{
+  "experiment": "subpattern_ic",
+  "pit_selfcheck": {
+    "checked_stocks": 30,
+    "violation_stocks": 0,
+    "verdict": "PIT_CLEAN"
+  },
+  "baseline_ref": {
+    "stage1": 0.0038,
+    "stage1.5": 0.1559,
+    "ALL": 0.064
+  },
+  "cells": {
+    "ALL": {
+      "oos_rank_ic": 0.06403476788479141,
+      "ic_ir": 0.38704360351413863,
+      "n_days": 513,
+      "n_rows": 4064225
+    },
+    "pullback_low_flat": {
+      "oos_rank_ic": 0.02094768130247916,
+      "ic_ir": 0.13594862841286534,
+      "n_days": 495,
+      "n_rows": 270683
+    },
+    "low_flat": {
+      "oos_rank_ic": 0.013394192943797189,
+      "ic_ir": 0.06933944902211642,
+      "n_days": 493,
+      "n_rows": 260891
+    },
+    "low_vol_spike": {
+      "oos_rank_ic": 0.04649931868225913,
+      "ic_ir": 0.21960202440046384,
+      "n_days": 493,
+      "n_rows": 138750
+    },
+    "breakout_pullback": {
+      "oos_rank_ic": 0.00986590721684007,
+      "ic_ir": 0.08136621173153569,
+      "n_days": 495,
+      "n_rows": 1463676
+    },
+    "hist_low_pct": {
+      "oos_rank_ic": 0.041826059481834606,
+      "ic_ir": 0.2325495225581442,
+      "n_days": 495,
+      "n_rows": 639121
+    }
+  },
+  "note": "directional V0; 高cell须DSR多重比较校正+独立holdout才转正"
+}
