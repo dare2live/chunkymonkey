@@ -27,8 +27,12 @@ def evaluate_signal(*, signal_by_code: dict, bars_by_code: dict, calendar: list,
                     snapshot: str, out_path: Path, consumer_id: str,
                     ic_baseline: float = 0.064, rebalance_days: int = 20, top_k: int = 20,
                     sizing: str = "equal", embargo: int = 5, gate: dict | None = None,
-                    extra: dict | None = None) -> dict:
-    """评估一个慢衰减绝对源信号 (signal_by_code={code:{date:val}} 已 PIT; 高=优先做多)。返回 result dict。"""
+                    regime_ok: dict | None = None, extra: dict | None = None) -> dict:
+    """评估一个慢衰减绝对源信号 (signal_by_code={code:{date:val}} 已 PIT; 高=优先做多)。返回 result dict。
+
+    regime_ok (第四轴 Regime/Timing, N6/R1): {date: bool} 绝对方向门。某调仓日 regime_ok=False -> 该期持现金
+    (空篮, 引擎自然降仓), 实现 "在对的时候在场" 削 max_dd。None=不择时 (全程满仓 long-only)。
+    """
     # IC necessary 快筛 (报, 非 gate)
     panel = [PanelRow(date=d, code=c, feature=signal_by_code[c][d], fwd_ret=fwd_by_code[c][d])
              for c in signal_by_code for d in signal_by_code[c] if d in fwd_by_code.get(c, {})]
@@ -37,15 +41,22 @@ def evaluate_signal(*, signal_by_code: dict, bars_by_code: dict, calendar: list,
     av = anomaly_verdict(ic, baseline=ic_baseline)
     print(f"[IC 快筛] {signal_name} OOS RankIC = {ic if ic is None else f'{ic:+.4f}'} (necessary, 非 gate); anomaly={av['verdict']}", flush=True)
 
-    # 调仓表: 每 rebalance_days 选 top-K (signal 高=优先)
+    # 调仓表: 每 rebalance_days 选 top-K (signal 高=优先); Regime/Timing 门 risk-off 期持现金 (空篮)
     rebalances = []
+    n_cash = 0
     for gi in range(0, len(calendar) - 1, rebalance_days):
         t = calendar[gi]
+        if regime_ok is not None and not regime_ok.get(t, True):
+            rebalances.append((t, []))   # risk-off -> 现金 (第四轴择时削 max_dd)
+            n_cash += 1
+            continue
         cands = [(c, signal_by_code[c][t]) for c in signal_by_code if t in signal_by_code[c]]
         if not cands:
             continue
         cands.sort(key=lambda x: x[1], reverse=True)
         rebalances.append((t, cands[:top_k]))
+    if regime_ok is not None:
+        print(f"[regime] 第四轴择时门: {n_cash}/{len(rebalances)} 调仓期 risk-off 持现金", flush=True)
     print(f"[backtest] execution-aware ({len(rebalances)} 调仓/{rebalance_days}日, T+1 open, sizing={sizing}, 含成本) ...", flush=True)
 
     res = run_execution_backtest(rebalances, bars_by_code, calendar,

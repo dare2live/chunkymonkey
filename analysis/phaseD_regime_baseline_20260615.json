@@ -1,0 +1,50 @@
+{
+  "experiment": "mf_trend_no_regime",
+  "engine": "portfolio_execbacktest_20260615",
+  "ic_quick_screen": 0.009860428431134495,
+  "anomaly": {
+    "verdict": "CLEAN",
+    "action": ""
+  },
+  "metrics": {
+    "annual_return": 0.025336429827220064,
+    "max_drawdown": -0.31197311295867886,
+    "sharpe": 0.22610308747541388,
+    "calmar": 0.0812135045451045,
+    "monthly_win_rate": 0.55,
+    "win_rate": 0.5853658536585366,
+    "payoff_ratio": 0.8232368258325861,
+    "avg_win": 0.04686047800611303,
+    "avg_loss": -0.05692223250426191,
+    "expectancy": 0.06726058097517229,
+    "final_nav": 1.0822309113922213,
+    "cost_drag": 0.11006985572332476,
+    "avg_turnover": 1.7679584465292004,
+    "capacity_warn_rate": 0.1913499344692005
+  },
+  "tradability": {
+    "verdict": "TRADABLE",
+    "action": "IC=+0.0099>0 且含成本年化=+2.53%>0: 排序 edge 可交易 (仍须过 KPI 联合门)"
+  },
+  "kpi_verdict": {
+    "verdict": "KPI_FAIL",
+    "passes": {
+      "annual_return": false,
+      "max_drawdown": false,
+      "monthly_win_rate": true,
+      "positive_expectancy": true
+    },
+    "diagnostics": {
+      "win_rate": 0.5853658536585366,
+      "payoff_ratio": 0.8232368258325861,
+      "expectancy": 0.06726058097517229,
+      "note": "胜率为诊断量, 收益率+max_dd 为目标量 (C-WinReturn)"
+    }
+  },
+  "verdict": "KPI_FAIL",
+  "n_rebalances": 41,
+  "rebalance_days": 20,
+  "top_k": 20,
+  "sizing": "equal",
+  "note": "Phase D 慢衰减绝对源; IC necessary 快筛, 裁决=含成本 execution-aware 绝对收益 (R1/C-WinReturn)"
+}
