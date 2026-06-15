@@ -29,10 +29,9 @@ sys.path.insert(0, str(REPO / "backend"))
 
 from scripts.experiment_l0_baseline import load_kline  # noqa: E402
 from services.duck_adapter import connect as duck_connect  # noqa: E402
-from services.portfolio_walk_forward.oos_ic import PanelRow, forward_returns, oos_rank_ic  # noqa: E402
-from services.portfolio_execbacktest import run_execution_backtest, ExecConfig  # noqa: E402
-from services.experiment_store import open_store, record_ic_cell, record_verdict, record_pit_check, record_artifact  # noqa: E402
-from services.experiment_harness import leakage_gate, anomaly_verdict, tradability_verdict, kpi_verdict  # noqa: E402
+from services.portfolio_walk_forward.oos_ic import forward_returns  # noqa: E402
+from services.experiment_harness import leakage_gate  # noqa: E402
+from services.phaseD_signal_eval import evaluate_signal  # noqa: E402  共享评估 harness (IC快筛/含成本backtest/裁决/留档)
 
 TREND_WINDOW = 20    # rule-compliance: ok evidence=pre-reg 月度趋势窗 (慢衰减; 对比 reversal 5日)
 REBALANCE_DAYS = 20  # rule-compliance: ok evidence=pre-reg 月度调仓 (慢衰减->低换手, R2 成本可活)
@@ -94,7 +93,6 @@ def main(argv: list[str] | None = None) -> int:
     # 每股 mf_trend 信号 (PIT, 按 K线 date 对齐) + bars_by_code (引擎) + fwd (IC 快筛)
     bars_by_code: dict[str, dict] = {}
     signal: dict[str, dict] = {}
-    feat_panel_src: dict[str, dict] = {}
     fwd_src: dict[str, dict] = {}
     for code, bars in by_code.items():
         if not in_universe(code) or code not in mf:
@@ -114,7 +112,6 @@ def main(argv: list[str] | None = None) -> int:
                 sig[d] = trend[i]
         bars_by_code[code] = bb
         signal[code] = sig
-        feat_panel_src[code] = {d: trend[i] for i, d in enumerate(dates) if trend[i] is not None}
         fwd_src[code] = {d: fwd[i] for i, d in enumerate(dates) if fwd[i] is not None}
 
     # 事前 leakage 门 (mf_trend trailing 累计 PIT 行为门: 追加未来不改过去)
@@ -132,74 +129,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[BLOCK] mf_trend 事前 leakage 门 FAIL: {gate['sample_violations']}"); return 1
     print(f"[leakage] 事前门 PASS (mf_trend x {gate['n_stocks']} 股)", flush=True)
 
-    # IC 快筛 (necessary, 非 gate): walk-forward OOS RankIC
-    panel = [PanelRow(date=d, code=c, feature=feat_panel_src[c][d], fwd_ret=fwd_src[c][d])
-             for c in feat_panel_src for d in feat_panel_src[c] if d in fwd_src.get(c, {})]
-    ic_res = oos_rank_ic(panel, embargo_days=EMBARGO)
-    ic = ic_res.get("oos_rank_ic")
-    av = anomaly_verdict(ic, baseline=BASELINE_IC)
-    print(f"[IC 快筛] mf_trend OOS RankIC = {ic if ic is None else f'{ic:+.4f}'} (necessary, 非 gate); anomaly={av['verdict']}", flush=True)
-
-    # 调仓表: 全局交易日每 REBALANCE_DAYS 选 top-K (mf_trend 高=持续吸筹)
+    # 评估委托共享 harness (IC necessary 快筛 → execution-aware 含成本 backtest → R1/C-WinReturn 裁决 → 留档)
     all_dates = sorted({d for bb in bars_by_code.values() for d in bb})
-    rebalances = []
-    for gi in range(0, len(all_dates) - 1, REBALANCE_DAYS):
-        t = all_dates[gi]
-        cands = [(c, signal[c][t]) for c in signal if t in signal[c]]
-        if not cands:
-            continue
-        cands.sort(key=lambda x: x[1], reverse=True)
-        rebalances.append((t, cands[:TOP_K]))
-    print(f"[backtest] execution-aware ({len(rebalances)} 月度调仓, T+1 open, sizing={args.sizing}, 含成本) ...", flush=True)
-
-    res = run_execution_backtest(rebalances, bars_by_code, all_dates,
-                                 config=ExecConfig.load(), sizing=args.sizing, top_k=TOP_K)
-    if not res["nav"]:
-        print("[ERR] 空 NAV"); return 1
-    m = res["metrics"]
-
-    # 法典裁决: R1 对称门 + C-WinReturn 联合门 (钱的裁决, 非 IC)
-    trad = tradability_verdict(ic, m["annual_return"])
-    kpi = kpi_verdict(m)
-    verdict = kpi["verdict"]
-
-    def pct(x):
-        return f"{x:+.2%}" if isinstance(x, (int, float)) else "None"
-
-    print(f"\n===== Phase D 第一刀: moneyflow 大单净流入趋势 (top{TOP_K}, T+1 open, 月度, sizing={args.sizing}) =====")
-    print(f"IC 快筛   = {ic if ic is None else f'{ic:+.4f}'} (necessary, 非裁决)")
-    print(f"年化收益  = {pct(m['annual_return'])}  (KPI>=+30%: {'PASS' if kpi['passes']['annual_return'] else 'FAIL'})")
-    print(f"最大回撤  = {pct(m['max_drawdown'])}  (KPI>=-20%: {'PASS' if kpi['passes']['max_drawdown'] else 'FAIL'})")
-    print(f"Sharpe    = {m['sharpe']:.2f}   Calmar = {m['calmar']:.2f}")
-    print(f"月胜率    = {pct(m['monthly_win_rate']) if m['monthly_win_rate'] else 'None'} (诊断量) 段胜率={pct(m['win_rate']) if m['win_rate'] else 'None'} 盈亏比={m['payoff_ratio']} 期望={m['expectancy']}")
-    print(f"末NAV     = {res['final_nav']:.3f}  (成本拖累 {res['cost_drag']:.1%}, 均换手 {res['avg_turnover']:.2f}, 容量超阈率 {res['capacity_warn_rate']:.1%})")
-    print(f"R1 可交易 = {trad['verdict']}")
-    print(f"VERDICT   = {verdict}  ({'慢衰减绝对源方法论成立=第一个可交易 Phase D 信号' if verdict=='KPI_PASS' else '阴性: 含成本不达标, 诚实记录换方向'})")
-
-    out = {"experiment": "moneyflow_trend_alpha", "engine": "portfolio_execbacktest_20260615",
-           "signal": f"mf_net_inflow_trend_w{TREND_WINDOW}_top{TOP_K}_monthly_{args.sizing}",
-           "ic_quick_screen": ic, "anomaly": av,
-           "metrics": {**m, "final_nav": res["final_nav"], "cost_drag": res["cost_drag"],
-                       "avg_turnover": res["avg_turnover"], "capacity_warn_rate": res["capacity_warn_rate"]},
-           "tradability": trad, "kpi_verdict": kpi, "verdict": verdict, "n_rebalances": res["n_rebalances"],
-           "note": "Phase D 慢衰减绝对源第一刀; IC necessary 快筛, 裁决=含成本 execution-aware 绝对收益 (R1/C-WinReturn)"}
-    out_path = REPO / "analysis" / "phaseD_moneyflow_trend_alpha_20260615.json"
-    out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"[out] {out_path}")
-
-    run_id = "phaseD_moneyflow_trend_alpha_20260615"
-    with open_store() as st:
-        record_pit_check(st, run_id=run_id, step="leakage_gate", check_name="mf_trend_pit_behavioral",
-                         passed=gate["clean"], detail=gate)
-        if ic is not None:
-            record_ic_cell(st, run_id=run_id, data_snapshot=f"moneyflow_trend@{args.start}",
-                           consumer_id="moneyflow|net_inflow_trend", metric="oos_rank_ic",
-                           value=ic, n_windows=ic_res.get("n_days"))
-        record_verdict(st, run_id=run_id, family="phaseD_slowdecay_absolute", verdict=verdict,
-                       judges={"ic_quick_screen": ic, "metrics": out["metrics"], "tradability": trad, "kpi_verdict": kpi},
-                       confirmed_by_owner=0)
-        record_artifact(st, run_id=run_id, artifact_path=out_path)
-    print(f"[store] 留档 Phase D verdict={verdict} R1={trad['verdict']} (run_id={run_id})")
+    evaluate_signal(
+        signal_by_code=signal, bars_by_code=bars_by_code, calendar=all_dates, fwd_by_code=fwd_src,
+        signal_name="moneyflow_trend_alpha", run_id="phaseD_moneyflow_trend_alpha_20260615",
+        family="phaseD_slowdecay_absolute", snapshot=f"moneyflow_trend@{args.start}",
+        out_path=REPO / "analysis" / "phaseD_moneyflow_trend_alpha_20260615.json",
+        consumer_id="moneyflow|net_inflow_trend", ic_baseline=BASELINE_IC,
+        rebalance_days=REBALANCE_DAYS, top_k=TOP_K, sizing=args.sizing, embargo=EMBARGO, gate=gate,
+        extra={"signal": f"mf_net_inflow_trend_w{TREND_WINDOW}_top{TOP_K}_monthly_{args.sizing}"})
     return 0
 
 
