@@ -137,6 +137,16 @@ assertions:
     type: shell
     command: ["bash", "-c", "grep -cE '_has_money_evidence|C-R1 BLOCK' backend/services/experiment_store.py"]
     expect: {op: ">=", value: 2}
+  - id: validation-promotion-needs-leakage-clean
+    claim: "转正章必须 leakage-clean — 真金白银门不可自批绕过 (2026-06-15 用户: commit 时 SKIP_LEAKAGE_AUDIT 自批=门是摆设, 本地 hook 终究可 --no-verify 逃). 真正强制移到提交者够不到的**转正门**: record_verdict confirmed_by_owner=1 须带 leakage-clean 证据 (judges 含 leakage_gate/leakage_clean/pit_audit 显示 clean), 否则 C-LEAK BLOCK raise. 配套: safe_commit Step3.5/3.6 已移除 SKIP 自批逃生 (改硬门; 误报=修 verifier 非 skip). 删=泄漏隐患可盖最强章上 live. owner=docs/strategy_validation_contract.md"
+    type: shell
+    command: ["bash", "-c", "grep -cE '_has_leakage_clean|C-LEAK BLOCK' backend/services/experiment_store.py"]
+    expect: {op: ">=", value: 2}
+  - id: leakage-gate-no-self-bypass
+    claim: "leakage commit 门无自批 SKIP 逃生 (2026-06-15 用户: 自批绕过=摆设). safe_commit Step3.5/3.6 HIGH=硬 exit 4, 不再认 SKIP_LEAKAGE_AUDIT 自批 (含义性 grep: 不应再有 'SKIP_LEAKAGE_AUDIT.*proceeding' 放行). 误报正解=修 verifier 精度/config (永久), 真紧急=--no-verify(核选项留疤). 复活自批=门退回摆设."
+    type: shell
+    command: ["bash", "-c", "grep -c 'SKIP_LEAKAGE_AUDIT.*bypass.*proceeding\\|SKIP_LEAKAGE_AUDIT=1 bypass' scripts/safe_commit.sh || true"]
+    expect: {op: "==", value: 0}
   - id: validation-winreturn-codex
     claim: "C-WinReturn 联合验收门在岗 (2026-06-15 用户: 除胜率还要考核收益率, 目的是真能赚钱非证明有效): experiment_harness.kpi_verdict 须联合 年化 AND max_dd AND 月胜率 AND 胜率x盈亏比期望(positive_expectancy); 胜率=诊断量收益+max_dd=目标量. 删=单凭胜率/IC 放行. owner=docs/strategy_validation_contract.md C-WinReturn"
     type: shell

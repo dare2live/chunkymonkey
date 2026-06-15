@@ -107,7 +107,8 @@ def evaluate_signal(*, signal_by_code: dict, bars_by_code: dict, calendar: list,
             record_ic_cell(st, run_id=run_id, data_snapshot=snapshot, consumer_id=consumer_id,
                            metric="oos_rank_ic", value=ic, n_windows=ic_res.get("n_days"))
         record_verdict(st, run_id=run_id, family=family, verdict=verdict,
-                       judges={"ic_quick_screen": ic, "metrics": out["metrics"], "tradability": trad, "kpi_verdict": kpi},
+                       judges={"ic_quick_screen": ic, "metrics": out["metrics"], "tradability": trad,
+                               "kpi_verdict": kpi, "leakage_gate": gate},  # gate 带入 -> 转正门 C-LEAK 可验 leakage-clean
                        confirmed_by_owner=0)
         record_artifact(st, run_id=run_id, artifact_path=out_path)
     print(f"[store] 留档 {signal_name} verdict={verdict} R1={trad['verdict']} (run_id={run_id})")

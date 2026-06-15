@@ -102,6 +102,30 @@ def _has_money_evidence(judges: dict | None) -> bool:
     return any(isinstance(v, dict) and _hit(v) for v in judges.values())
 
 
+# C-LEAK 转正章 leakage-clean 证据键 (2026-06-15 用户: 真金白银门不可自批绕过 — commit 时 SKIP 终究本地可逃,
+# 真正强制移到提交者够不到的**转正门**: 盖最强章前 judges 必带 leakage-clean attestation). owner=docs/strategy_validation_contract.md
+_LEAKAGE_CLEAN_KEYS = ("leakage_gate", "leakage_clean", "pit_audit", "leakage_probe")
+
+
+def _has_leakage_clean(judges: dict | None) -> bool:
+    """judges 顶层或一层嵌套是否含 leakage-clean 证据 (键值显示 clean/PASS, 非仅存在)。"""
+    if not judges:
+        return False
+    def _clean(v) -> bool:
+        if v is True:
+            return True
+        if isinstance(v, str):
+            return v.upper() in ("CLEAN", "PASS", "OK")
+        if isinstance(v, dict):
+            return bool(v.get("clean")) or str(v.get("verdict", "")).upper() in ("CLEAN", "PASS")
+        return False
+    def _hit(d: dict) -> bool:
+        return any(_clean(d.get(k)) for k in _LEAKAGE_CLEAN_KEYS)
+    if _hit(judges):
+        return True
+    return any(isinstance(v, dict) and _hit(v) for v in judges.values())
+
+
 def record_verdict(conn, *, run_id: str, family: str, verdict: str, prereg_hash: str = "",
                    judges: dict | None = None, gate_blockers: dict | None = None,
                    confirmed_by_owner: int = 0) -> None:
@@ -111,6 +135,13 @@ def record_verdict(conn, *, run_id: str, family: str, verdict: str, prereg_hash:
             "C-R1 BLOCK: confirmed_by_owner=1 须带含成本绝对收益证据 (judges 含 "
             f"{'/'.join(_MONEY_EVIDENCE_KEYS)} 任一非空), 不许纯凭 IC 置换显著性转正 (缺陷 N3 / 自欺死)。"
             " IC 真 != 能赚钱: 排序显著的 cohort 可整体崩盘 (Phase B 实证 33σ 仍 gross -34.6%)。")
+    # C-LEAK 死亡条款 (泄漏死): 转正章必须 leakage-clean. 这是 commit 时 SKIP 够不到的**转正门**强制 —
+    # 本地 commit gate 终究可 --no-verify 逃, 真金白银的真正闸放在盖章这一刻 (提交者无法用 env 绕过)。
+    if confirmed_by_owner and not _has_leakage_clean(judges):
+        raise ValueError(
+            "C-LEAK BLOCK: confirmed_by_owner=1 须带 leakage-clean 证据 (judges 含 "
+            f"{'/'.join(_LEAKAGE_CLEAN_KEYS)} 显示 clean/PASS), 不许带泄漏隐患盖最强章 (真金白银)。"
+            " 这是 commit-time SKIP 够不到的转正门强制: 实验必须真跑过泄漏门且 clean 才能转正。")
     conn.execute(
         "INSERT OR REPLACE INTO fact_experiment_verdict "
         "(verdict_id, family, run_id, verdict, ts, prereg_hash, judges_json, gate_blockers_json, confirmed_by_owner) "

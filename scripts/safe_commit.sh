@@ -83,22 +83,16 @@ if [[ -n "$panel_touched" ]]; then
         rc=$?
         if [[ "$rc" == "1" ]]; then
             echo
-            echo "ERROR: leakage audit returned HIGH-risk findings (exit 1)."
-            echo "Review data/reports/leakage_audit/ and fix panel before commit."
-            echo "Override: SKIP_LEAKAGE_AUDIT=1 bash scripts/safe_commit.sh (only known-false-positive)"
-            if [[ "${SKIP_LEAKAGE_AUDIT:-0}" != "1" ]]; then
-                exit 4
-            fi
-            # L12 enforcement: SKIP_LEAKAGE_AUDIT bypass requires documented reason in commit msg
-            if ! echo "$MSG" | grep -qiE "SKIP_LEAKAGE_AUDIT|pre-existing|documented caveat|panel v[0-9].*(prep|build)|inherited from"; then
-                echo "ERROR: SKIP_LEAKAGE_AUDIT=1 set but commit message lacks justification."
-                echo "Required: explain why (e.g. 'panel v3 base inherits historical contamination', 'pre-existing in v4 not introduced this commit')."
-                echo "Add reason to commit message keyword (panel.*prep / inherited / pre-existing / documented caveat / SKIP_LEAKAGE_AUDIT)."
-                exit 5
-            fi
-            echo "WARNING: SKIP_LEAKAGE_AUDIT=1 bypass with justification — proceeding."
+            echo "ERROR: leakage audit HIGH-risk (exit 1) — 真金白银红线门, 不可自批绕过 (2026-06-15 用户: 自批skip=门是摆设)。"
+            echo "正解二选一 (无 SKIP 逃生):"
+            echo "  (a) panel/builder 真泄漏 → 修数据/builder, 不是跳过。"
+            echo "  (b) verifier 误报/stale → 修 audit 精度或 config (false-positive = 验证器 bug, 永久修一次;"
+            echo "      只改 audit_panel_leakage.py/leakage_* 本身不触发本门, 无死锁; 先提交 verifier 修复再提交 panel)。"
+            echo "真紧急 = git commit --no-verify (核选项: 跳全部 hook + 留疤, 非常规逃生)。"
+            echo "真金白银的真正强制不在 commit (本地 hook 终究可 --no-verify), 在**转正门** (record_verdict 须 leakage-clean) + CI。"
+            exit 4
         else
-            echo "[leakage-audit] MEDIUM/WARN (exit $rc), not blocking."
+            echo "[leakage-audit] MEDIUM/WARN (exit $rc), not blocking。"
         fi
     fi
 fi
@@ -115,11 +109,10 @@ if [[ -n "$consumer_touched" ]]; then
         echo "[leakage-gate] PASS"
     else
         echo
-        echo "ERROR: 消费方泄漏闸 HIGH — 有特征面板消费者把标签/前瞻列当特征喂模型 (S3 同型)。"
-        echo "修: 对齐 builder MODEL_INPUT_EXCLUDED_COLS / 补 panel_labels; 不手写漏排。"
-        echo "Override: SKIP_LEAKAGE_AUDIT=1 (仅 known false-positive, 需 commit msg 说明)"
-        [[ "${SKIP_LEAKAGE_AUDIT:-0}" != "1" ]] && exit 4
-        echo "WARNING: SKIP_LEAKAGE_AUDIT=1 bypass — proceeding."
+        echo "ERROR: 消费方泄漏闸 HIGH — 特征面板消费者把标签/前瞻列当特征 (S3 同型)。真金白银红线, 不可自批绕过。"
+        echo "正解: 对齐 builder MODEL_INPUT_EXCLUDED_COLS / 补 panel_labels (不手写漏排); 或修 verifier 精度 (误报=验证器bug)。"
+        echo "真紧急 = git commit --no-verify (核选项, 跳全部 hook + 留疤)。真金白银强制在转正门 + CI, 不在 commit。"
+        exit 4
     fi
 fi
 

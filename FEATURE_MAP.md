@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-15 22:55
+> Snapshot: 2026-06-15 23:06
 
 ## 1. 入口面
 
@@ -282,7 +282,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,047 | calls 边 101,865 | imports 边 13,770 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 8,050 | calls 边 101,853 | imports 边 13,770 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -315,11 +315,11 @@
 | backend/services/experiment_harness.py | 9 |
 | backend/routers/updater_runtime.py | 6 |
 | backend/services/etf_grid_engine.py | 6 |
-| backend/services/experiment_store.py | 6 |
 | backend/services/data_sources/base.py | 5 |
 | backend/services/kline_source.py | 5 |
 | backend/services/etf_engine.py | 4 |
 | backend/scripts/experiment_l0_baseline.py | 3 |
+| backend/scripts/experiment_moneyflow_trend_alpha.py | 3 |
 
 ### LOC top 10 (God module 候选)
 

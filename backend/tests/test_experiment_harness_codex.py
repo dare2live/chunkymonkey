@@ -72,13 +72,22 @@ def test_record_verdict_promotion_blocks_without_money_evidence():
                           judges={"oos_rank_ic": 0.2}, confirmed_by_owner=1)
 
 
-def test_record_verdict_promotion_allowed_with_money_evidence():
-    """带含成本绝对收益证据 -> 过 guard, 正常写入。"""
+def test_record_verdict_promotion_blocks_without_leakage_clean():
+    """C-LEAK / 泄漏死: confirmed_by_owner=1 有钱证据但无 leakage-clean -> raise (真金白银转正门, commit-skip 够不到)。"""
+    with pytest.raises(ValueError, match="C-LEAK"):
+        es.record_verdict(_FakeConn(), run_id="t", family="f", verdict="REAL_EDGE",
+                          judges={"kpi_verdict": {"verdict": "KPI_PASS"}, "tradability": "TRADABLE"},
+                          confirmed_by_owner=1)
+
+
+def test_record_verdict_promotion_allowed_with_money_and_leakage_clean():
+    """带含成本绝对收益证据 AND leakage-clean -> 过两道 guard, 正常写入。"""
     conn = _FakeConn()
     es.record_verdict(conn, run_id="t", family="f", verdict="REAL_EDGE",
-                      judges={"kpi_verdict": {"verdict": "KPI_PASS"}, "tradability": "TRADABLE"},
+                      judges={"kpi_verdict": {"verdict": "KPI_PASS"}, "tradability": "TRADABLE",
+                              "leakage_gate": {"clean": True}},
                       confirmed_by_owner=1)
-    assert len(conn.calls) == 1                          # 写入执行
+    assert len(conn.calls) == 1                          # 写入执行 (钱 + leakage-clean 双证据齐)
 
 
 def test_record_verdict_non_promotion_no_money_required():
