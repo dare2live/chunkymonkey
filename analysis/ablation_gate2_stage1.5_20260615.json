@@ -9,6 +9,9 @@
   "n_perm": 500,
   "n_cells_tried": 30,
   "p_adj_bonferroni": 0.0,
-  "verdict": "REAL_EDGE",
-  "seed": 20260615
+  "cohort_mean_fwd": -0.00698082992308196,
+  "topk_mean_fwd": -0.0009791888920507763,
+  "verdict": "STAT_EDGE_CONFIRMED",
+  "seed": 20260615,
+  "note": "STAT_EDGE_CONFIRMED=排序统计显著非 money; 置换 null 对绝对收益盲(N1); money 转正须 tier2 含成本 (R1)"
 }
