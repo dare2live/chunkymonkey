@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-15 19:11
+> Snapshot: 2026-06-15 19:39
 
 ## 1. 入口面
 
@@ -280,22 +280,22 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 7,885 | calls 边 101,774 | imports 边 13,743 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 7,906 | calls 边 101,785 | imports 边 13,749 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
 | services.db | 44 |
-| services.duck_adapter | 36 |
+| services.duck_adapter | 37 |
 | services.utils | 36 |
 | services.market_db | 23 |
 | services.industry | 16 |
 | services.tdx_source | 15 |
+| services.portfolio_walk_forward.oos_ic | 13 |
 | services.experiment_harness | 12 |
-| services.portfolio_walk_forward.oos_ic | 12 |
+| scripts.experiment_l0_baseline | 11 |
 | services.kline_source | 11 |
-| scripts.experiment_l0_baseline | 10 |
 | services.experiment_store | 8 |
 | services.formula_engine.features | 8 |
 | services.pipeline_manifest | 8 |
@@ -307,11 +307,11 @@
 | 文件 | 调用方文件数 |
 |---|---|
 | backend/services/industry.py | 15 |
-| backend/services/duck_adapter.py | 13 |
-| backend/services/portfolio_walk_forward/oos_ic.py | 12 |
+| backend/services/duck_adapter.py | 14 |
+| backend/services/portfolio_walk_forward/oos_ic.py | 13 |
 | backend/services/experiment_harness.py | 9 |
 | backend/services/formula_engine/features.py | 9 |
-| backend/scripts/experiment_l0_baseline.py | 7 |
+| backend/scripts/experiment_l0_baseline.py | 8 |
 | backend/routers/updater_runtime.py | 6 |
 | backend/services/etf_grid_engine.py | 6 |
 | backend/services/experiment_store.py | 6 |
