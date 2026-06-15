@@ -1,0 +1,27 @@
+# Phase D Regime/Timing × mf_trend Optuna 搜索空间 (2026-06-15, 用户: 充分利用 optuna)
+# config 驱动不 hardcode (CLAUDE §3); grill 门 enforce_phaseD_search_nonempty 读本文件防空搜白跑 (29/34 反例)。
+# 目标 = 含成本 execution-aware backtest 绝对收益 (R1, 非 IC) + max_dd KPI 突破惩罚。train/holdout disjoint (N20)。
+
+phaseD_regime_mf_search:
+  mf_window: [10, 20, 40, 60]        # 资金流净流入趋势窗 (慢衰减档位)
+  regime_ma: [20, 40, 60, 120]       # 市场代理趋势均线 (regime 快慢档; 60 已验 max_dd-22.5%)
+  top_k: [15, 20, 30, 50]            # 持仓数 (容量 vs 分散)
+  rebalance_days: [10, 20, 40]       # 调仓频率 (换手 vs 成本)
+  sizing: [equal, rank, inverse_vol] # 仓位 policy (Execution 第五轴)
+
+objective:
+  # R1: 目标=含成本绝对收益, 不是 IC。dd 是 binding 真金白银约束 -> 突破 KPI 重罚。
+  dd_kpi: -0.20                       # rule-compliance: ok evidence=goal.md North-Star max_dd>=-20%
+  dd_penalty_lambda: 2.0              # rule-compliance: ok evidence=pre-reg 偏好权重 (dd 突破 2x 罚 return, dd=生存约束); 非数据估计
+  metric: annual_return               # 主目标=含成本年化, 减 dd 突破罚
+
+split:
+  train_end: "2024-12-31"             # rule-compliance: ok evidence=N20 disjoint: train<=2024 选参, 2025+ holdout 评 (绝不重叠)
+
+optuna:
+  n_trials: 120                       # rule-compliance: ok evidence=optuna_config governance band 50-500 内
+  seed: 20260615                      # rule-compliance: ok evidence=可复现固定种子
+  sampler: TPE
+
+dsr:
+  min_p: 0.95                         # rule-compliance: ok evidence=optuna_config DSR min_p_value (多重比较去偏)
