@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-15 10:07
+> Snapshot: 2026-06-15 10:37
 
 ## 1. 入口面
 
@@ -109,8 +109,9 @@
 | 表 | writer 数 | writer 文件 |
 |---|---|---|
 | fact_controlling_shareholder | 4 | backend/scripts/ingest_holders_tdxhub.py<br>backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py<br>backend/services/tdx_f10_extra_client.py |
+| fact_experiment_verdict | 4 | backend/scripts/build_experiment_store.py<br>backend/scripts/experiment_consumer_alpha_validation.py<br>backend/scripts/experiment_l0_baseline.py<br>backend/services/experiment_store.py |
 | fact_top10_holder_period | 4 | backend/scripts/cleanup_holder_dup.py<br>backend/scripts/ingest_holders_tdxhub.py<br>backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
-| fact_experiment_verdict | 3 | backend/scripts/build_experiment_store.py<br>backend/scripts/experiment_consumer_alpha_validation.py<br>backend/scripts/experiment_l0_baseline.py |
+| fact_consumer_alpha_ic_scan | 3 | backend/scripts/build_experiment_store.py<br>backend/scripts/experiment_l0_baseline.py<br>backend/services/experiment_store.py |
 | fact_shareholder_plan | 3 | backend/scripts/ingest_holders_tdxhub.py<br>backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
 | fact_shareholder_trade | 3 | backend/scripts/ingest_holders_tdxhub.py<br>backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
 | mart_data_deletion_record | 3 | backend/scripts/db_lifecycle_delete.py<br>backend/services/data_deletion.py<br>backend/services/schema_marts.py |
@@ -137,7 +138,6 @@
 | dim_trading_rule | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_trading_session | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | fact_common_major_holder_stock | 2 | backend/services/schema_core.py<br>backend/services/tdx_f10_extra_client.py |
-| fact_consumer_alpha_ic_scan | 2 | backend/scripts/build_experiment_store.py<br>backend/scripts/experiment_l0_baseline.py |
 | fact_fund_holding_tdx_f10 | 2 | backend/services/schema_core.py<br>backend/services/tdx_f10_extra_client.py |
 | fact_holder_count_period | 2 | backend/services/schema_core.py<br>backend/services/tdx_f10_extra_client.py |
 | fact_holder_event | 2 | backend/services/holders_event.py<br>backend/services/schema_core.py |
@@ -280,7 +280,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 7,638 | calls 边 101,449 | imports 边 13,665 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 7,669 | calls 边 101,504 | imports 边 13,704 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -288,7 +288,7 @@
 |---|---|
 | services.db | 44 |
 | services.utils | 36 |
-| services.duck_adapter | 32 |
+| services.duck_adapter | 33 |
 | services.market_db | 23 |
 | services.industry | 16 |
 | services.tdx_source | 15 |
@@ -314,10 +314,10 @@
 | backend/services/etf_grid_engine.py | 6 |
 | backend/services/data_sources/base.py | 5 |
 | backend/services/kline_source.py | 5 |
-| backend/scripts/experiment_l0_baseline.py | 4 |
 | backend/services/etf_engine.py | 4 |
+| backend/services/experiment_harness.py | 4 |
+| backend/scripts/experiment_l0_baseline.py | 3 |
 | backend/services/business_facts.py | 3 |
-| backend/services/data_processing_monitor.py | 3 |
 
 ### LOC top 10 (God module 候选)
 

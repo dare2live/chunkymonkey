@@ -26,6 +26,8 @@ from services.formula_engine.features import feature_reversal  # noqa: E402
 from services.portfolio_walk_forward.oos_ic import (  # noqa: E402
     _month, cross_sectional_ic, expanding_monthly_windows, forward_returns,
 )
+from services.experiment_store import open_store, record_ic_cell, record_verdict, record_artifact  # noqa: E402
+from services.experiment_harness import anomaly_verdict, leakage_gate  # noqa: E402  本脚本=事后异常核查工具 (ablation)
 
 HORIZON = 5
 EMBARGO = 5
@@ -88,6 +90,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--start", default="2023-01-01")  # rule-compliance: ok evidence=对齐 L0 baseline 窗口起点
     args = ap.parse_args(argv)
 
+    # 事前 leakage 门 (固化: 即便 ablate 已 gated cell, 也自含 pit_guard 行为门)
+    gate = leakage_gate(lambda b: feature_reversal(b["close"], lookback=20), list(load_kline(args.start, None, 20).values()))
+    if not gate["clean"]:
+        print(f"[BLOCK] reversal 事前 leakage 门 FAIL: {gate['sample_violations']}"); return 1
+    print(f"[leakage] 事前门 PASS (reversal x {gate['n_stocks']} 股)", flush=True)
+
     print(f"[build] Stage{args.stage} reversal cell ...", flush=True)
     by_date = build_cell_by_date(args.stage, args.start)
     test_dates = oos_test_dates(by_date)
@@ -95,6 +103,9 @@ def main(argv: list[str] | None = None) -> int:
 
     real = mean_ic(by_date, test_dates)
     print(f"[real] Stage{args.stage} reversal OOS RankIC = {real:+.4f}")
+    # 事后异常核查确认: 正因触 §4.2 红线才做本 ablation (不直接用/弃)
+    av = anomaly_verdict(real, baseline=0.064)
+    print(f"[anomaly] {av['verdict']}: {av['action'] or 'CLEAN'} -> 本脚本即该红线要求的 MC 截面置换 ablation")
 
     rng = np.random.default_rng(SEED)
     null = []
@@ -123,9 +134,22 @@ def main(argv: list[str] | None = None) -> int:
            "real_oos_rank_ic": real, "null_mean": float(null.mean()), "null_std": float(null.std()),
            "null_p95": p95, "p_raw": p_raw, "n_perm": N_PERM, "n_cells_tried": N_CELLS_TRIED,
            "p_adj_bonferroni": p_adj, "verdict": verdict, "seed": SEED}
-    (REPO / "analysis" / f"ablation_gate2_stage{args.stage}_20260615.json").write_text(
-        json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"[out] analysis/ablation_gate2_stage{args.stage}_20260615.json")
+    out_path = REPO / "analysis" / f"ablation_gate2_stage{args.stage}_20260615.json"
+    out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"[out] {out_path}")
+
+    # 留档 L4 experiment_store (固化进流程)
+    run_id = f"phaseb_ablation_gate2_stage{args.stage}_20260615"
+    with open_store() as st:
+        record_ic_cell(st, run_id=run_id, data_snapshot=f"v_price_kline_qfq@{args.start}",
+                       consumer_id=f"reversal_short_term|stage{args.stage}", metric="oos_rank_ic",
+                       value=real, n_windows=len(test_dates))
+        record_verdict(st, run_id=run_id, family="conditional_segment_ablation", verdict=verdict,
+                       judges={"real_oos_rank_ic": real, "null_mean": float(null.mean()), "null_p95": p95,
+                               "p_raw": p_raw, "p_adj_bonferroni": p_adj, "n_perm": N_PERM, "n_cells_tried": N_CELLS_TRIED},
+                       confirmed_by_owner=1 if verdict == "REAL_EDGE" else 0)
+        record_artifact(st, run_id=run_id, artifact_path=out_path)
+    print(f"[store] experiment_store 留档 ablation verdict={verdict} (run_id={run_id})")
     return 0
 
 

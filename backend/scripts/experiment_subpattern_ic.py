@@ -27,6 +27,8 @@ from services.duck_adapter import connect as duck_connect  # noqa: E402  central
 from services.formula_engine.base import sma  # noqa: E402
 from services.formula_engine.features import feature_reversal  # noqa: E402
 from services.portfolio_walk_forward.oos_ic import PanelRow, forward_returns, oos_rank_ic  # noqa: E402
+from services.experiment_store import open_store, record_ic_cells, record_pit_check, record_verdict, record_artifact  # noqa: E402
+from services.experiment_harness import anomaly_verdict  # noqa: E402  事后异常核查 (pit_selfcheck=事前 leakage 门)
 
 
 def load_kline_vol(start: str) -> dict:
@@ -162,11 +164,28 @@ def main(argv: list[str] | None = None) -> int:
         ir_s = f"{ir:+.3f}" if ir is not None else "None"
         print(f"{seg:<22}{ic_s:>12}{ir_s:>9}{r.get('n_days',0):>8}{len(panels[seg]):>12}")
 
+    # 事后异常核查 (固化: 每 cell 过 anomaly_verdict §4.2, 命中 -> 须 ablation 不直接用/弃)
+    anomalies = {seg: anomaly_verdict(c.get("oos_rank_ic"), baseline=0.064) for seg, c in cells.items()}
+    flags = {seg: a for seg, a in anomalies.items() if a["verdict"] not in ("CLEAN", "UNKNOWN")}
+    print(f"[flags] 事后异常核查: {flags or '全 CLEAN (无 cell 触 §4.2 红线)'}")
     out = {"experiment": "subpattern_ic", "pit_selfcheck": pit, "baseline_ref": {"stage1": 0.0038, "stage1.5": 0.1559, "ALL": 0.064},
-           "cells": cells, "note": "directional V0; 高cell须DSR多重比较校正+独立holdout才转正"}
-    (REPO / "analysis" / "subpattern_ic_20260615.json").write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+           "cells": cells, "anomaly_check": flags, "note": "directional V0; 高cell须DSR多重比较校正+独立holdout才转正"}
+    out_path = REPO / "analysis" / "subpattern_ic_20260615.json"
+    out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n[ref] 对照: 底部Stage1=+0.004, 突破中Stage1.5=+0.156, 市场ALL=+0.064")
-    print(f"[out] analysis/subpattern_ic_20260615.json")
+    print(f"[out] {out_path}")
+
+    # 留档 L4 experiment_store (固化进流程)
+    run_id = "phaseb_subpattern_ic_20260615"
+    with open_store() as st:
+        record_pit_check(st, run_id=run_id, step="pit_selfcheck", check_name="subpattern_classifier",
+                         passed=pit["verdict"] == "PIT_CLEAN", detail=pit)
+        n = record_ic_cells(st, run_id=run_id, data_snapshot=f"v_price_kline_qfq@{args.start}", cells=cells)
+        record_verdict(st, run_id=run_id, family="conditional_segment", verdict="LOW_SUBPATTERN_NEGATIVE",
+                       judges={"finding": "低位5子型 reversal IC 全 < 市场 +0.064, edge 在突破非低位",
+                               "best_low": "low_vol_spike +0.047"})
+        record_artifact(st, run_id=run_id, artifact_path=out_path)
+    print(f"[store] experiment_store 留档 {n} IC cells + PIT门 + verdict (run_id={run_id})")
     return 0
 
 

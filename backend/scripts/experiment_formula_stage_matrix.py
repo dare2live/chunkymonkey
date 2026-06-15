@@ -28,6 +28,8 @@ from scripts.experiment_l0_baseline import load_kline  # noqa: E402  rule-compli
 from scripts.experiment_per_stage_ic import load_stage_map  # noqa: E402  rule-compliance: ok evidence=reuse stage loader
 from services.formula_engine.features import ema, extract_feature, ACTIVE_FORMULAS  # noqa: E402
 from services.portfolio_walk_forward.oos_ic import PanelRow, forward_returns, oos_rank_ic  # noqa: E402
+from services.experiment_store import open_store, record_ic_cells, record_verdict, record_artifact  # noqa: E402
+from services.experiment_harness import leakage_gate, anomaly_verdict  # noqa: E402
 
 HORIZON = 5      # from spec: l0 forward 期
 EMBARGO = 5      # from spec §4.1
@@ -62,6 +64,14 @@ def main(argv: list[str] | None = None) -> int:
     by_code = load_kline(args.start, None, 0)
     stage_map = load_stage_map(args.start)
     print(f"[load] {len(by_code)} 股, stage {len(stage_map):,}", flush=True)
+
+    # 事前 leakage 门 (固化: 算 IC 前必跑 pit_guard 行为门, 不过 BLOCK 不算)
+    sample = list(by_code.values())[:20]
+    for formula in ACTIVE_FORMULAS:
+        g = leakage_gate(lambda b, f=formula: extract_feature(f, b), sample)
+        if not g["clean"]:
+            print(f"[BLOCK] {formula} 事前 leakage 门 FAIL: {g['sample_violations']}"); return 1
+    print(f"[leakage] 事前门 PASS (4 公式 x {len(sample)} 股 pit_guard 行为门)", flush=True)
 
     # panels[(formula, segment)] = [PanelRow]; segment = stage 或 'ALL' 或 macd 零轴 'DIF+'/'DIF-'
     panels: dict[tuple[str, str], list[PanelRow]] = defaultdict(list)
@@ -114,25 +124,33 @@ def main(argv: list[str] | None = None) -> int:
         if c:
             print(f"{seg:<16}{_f(c.get('oos_rank_ic')):>12}{_f(c.get('ic_ir')):>9}{c.get('n_days',0):>8}{c.get('n_rows',0):>12}")
 
-    # relative 红线扫描 (cell IC > 1.5x 该公式基线; abs>0.30 anomaly)
+    # 事后异常核查 (固化: anomaly_verdict §4.2 红线, 命中 -> 标 pending ablation 不直接用/弃)
     flags = []
     for key, c in cells.items():
         formula = key.split("|")[0]
-        ic = c.get("oos_rank_ic")
-        base = L0_BASELINE.get(formula, 0.05)
-        if ic is None:
+        if c.get("n_days", 0) < 60:
             continue
-        if abs(ic) > 0.30:
-            flags.append((key, round(ic, 4), "ANOMALY"))
-        elif base > 0 and ic > base * 1.5 and c.get("n_days", 0) >= 60:
-            flags.append((key, round(ic, 4), f"relative>{base*1.5:.3f}_pending_ablation"))
-    print(f"\n[flags] relative红线/anomaly (须 DSR-deflate + ablation, 单看=selection bias): {flags}")
+        av = anomaly_verdict(c.get("oos_rank_ic"), baseline=L0_BASELINE.get(formula))
+        if av["verdict"] not in ("CLEAN", "UNKNOWN"):
+            flags.append({"cell": key, "ic": round(c["oos_rank_ic"], 4), "verdict": av["verdict"], "action": av["action"]})
+    print(f"\n[flags] 事后异常核查 (须 ablation, 不直接用/弃): {flags}")
 
     out = {"experiment": "formula_stage_matrix", "params": {"horizon": HORIZON, "embargo": EMBARGO, "start": args.start},
            "cells": cells, "flags": flags, "note": "directional V0; 任何高cell须DSR多重比较校正+ablation才转正"}
     out_path = REPO / "analysis" / "formula_stage_matrix_20260615.json"
     out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[out] {out_path}")
+
+    # 留档 L4 experiment_store (固化进流程, 非散落 JSON)
+    run_id = "phaseb_formula_stage_matrix_20260615"
+    with open_store() as st:
+        n = record_ic_cells(st, run_id=run_id, data_snapshot=f"v_price_kline_qfq@{args.start}", cells=cells)
+        record_verdict(st, run_id=run_id, family="conditional_segment", verdict="MATRIX_MAPPED",
+                       judges={"breakout_regime": "reversal +0.156 vs macd/ma -0.116/-0.117",
+                               "macd_zero_axis": "DIF+ -0.059 vs DIF- -0.026", "low_stage": "all formulas ~0"},
+                       gate_blockers={"relative_flags_pending_ablation": flags})
+        record_artifact(st, run_id=run_id, artifact_path=out_path)
+    print(f"[store] experiment_store 留档 {n} IC cells + verdict (run_id={run_id})")
     return 0
 
 

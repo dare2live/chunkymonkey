@@ -122,6 +122,11 @@ assertions:
     type: shell
     command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python -c \"import json,subprocess,os; e=dict(os.environ,PYTHONPATH='backend'); d=json.loads(subprocess.run(['python','backend/scripts/check_legacy_flow_integrity.py'],capture_output=True,text=True,env=e).stdout); c=d['checks']; ok=c['daily_update_scripts']['verdict']=='PASS' and c['append_only_retention']['verdict']=='PASS' and c['no_wiped_refs']['n_stale_refs']<=29; print('LEGACY_OK' if ok else 'LEGACY_PENDING')\""]
     expect: {op: regex, pattern: "LEGACY_OK"}
+  - id: experiment-discipline-tooled
+    claim: "实验三段纪律固化进流程 (2026-06-15 用户: 工具化进系统非靠文档/人记). 每个算 OOS IC 的 backend/scripts/experiment_*.py 必须三段全走: (a) 留档 L4 experiment_store (services.experiment_store, 防散落 JSON 漏进隔离实验层) (b) 事前 leakage 门 (leakage_gate/pit_guard 行为门, 算 IC 前必跑, 不过 BLOCK) (c) 事后异常核查 (anomaly_verdict §4.2 红线/ablation, 命中标 pending 不直接用/弃). owner=services/experiment_harness.py + services/experiment_store.py; 新实验缺任一段=FAIL"
+    type: shell
+    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && v=0; for f in backend/scripts/experiment_*.py; do grep -qE 'oos_rank_ic|cross_sectional_ic' \"$f\" || continue; grep -qE 'experiment_store|fact_consumer_alpha_ic_scan' \"$f\" || v=$((v+1)); grep -qE 'leakage_gate|pit_guard|pit_selfcheck|assert_pit_clean' \"$f\" || v=$((v+1)); grep -qE 'anomaly_verdict|check_metric_anomaly|ablation|permutation|relative_redline' \"$f\" || v=$((v+1)); done; echo \"violations=$v\""]
+    expect: {op: regex, pattern: "violations=0"}
   # 2026-06-14 地基-reset 退役 (引用已删特征/模型层, 重建特征/模型层后须恢复):
   #   - leakage-consumer-gate: 探针读已删特征面板 (feature_consumers); 特征层重做后恢复, 防泄露红线不可永久缺
   #   - concept-event-no-phantom: 查已删 fact_concept_event; 概念事件层重建后恢复

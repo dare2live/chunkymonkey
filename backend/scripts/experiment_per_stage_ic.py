@@ -35,6 +35,8 @@ from scripts.experiment_l0_baseline import load_kline  # noqa: E402  rule-compli
 from services.duck_adapter import connect as duck_connect  # noqa: E402
 from services.formula_engine.features import feature_reversal  # noqa: E402
 from services.portfolio_walk_forward.oos_ic import PanelRow, forward_returns, oos_rank_ic  # noqa: E402
+from services.experiment_store import open_store, record_ic_cells, record_pit_check, record_verdict, record_artifact  # noqa: E402
+from services.experiment_harness import leakage_gate, anomaly_verdict  # noqa: E402
 
 LOOKBACK = 20        # reversal lookback (L0 标尺最佳)  # measured: l0_search_v1 reversal best
 HORIZON = 5          # forward 收益天数  # from spec: l0 forward 期
@@ -67,6 +69,12 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[load] {len(by_code)} 股 K线", flush=True)
     stage_map = load_stage_map(args.start)
     print(f"[load] stage map {len(stage_map):,} (code,date) 行", flush=True)
+
+    # 事前 leakage 门 (固化: 算 IC 前必跑 pit_guard 行为门, 不过 BLOCK)
+    gate = leakage_gate(lambda b: feature_reversal(b["close"], lookback=LOOKBACK), list(by_code.values())[:20])
+    if not gate["clean"]:
+        print(f"[BLOCK] reversal 事前 leakage 门 FAIL: {gate['sample_violations']}"); return 1
+    print(f"[leakage] 事前门 PASS (reversal x {gate['n_stocks']} 股 pit_guard 行为门)", flush=True)
 
     panels: dict[str, list[PanelRow]] = defaultdict(list)
     all_panel: list[PanelRow] = []
@@ -146,6 +154,21 @@ def main(argv: list[str] | None = None) -> int:
     out_path = REPO / "analysis" / "per_stage_l0_ic_result_20260615.json"
     out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[out] {out_path}")
+
+    # 留档 L4 experiment_store (固化进流程)
+    run_id = "phaseb_per_stage_ic_20260615"
+    cells = {f"reversal_short_term|stage{k if k != 'ALL' else 'ALL'}":
+             {"oos_rank_ic": v.get("oos_rank_ic"), "ic_ir": v.get("ic_ir"), "n_days": v.get("n_days")}
+             for k, v in results.items()}
+    with open_store() as st:
+        record_pit_check(st, run_id=run_id, step="leakage_gate", check_name="reversal_pit_behavioral",
+                         passed=gate["clean"], detail=gate)
+        n = record_ic_cells(st, run_id=run_id, data_snapshot=f"v_price_kline_qfq@{args.start}", cells=cells)
+        record_verdict(st, run_id=run_id, family="conditional_segment", verdict=verdict,
+                       judges={"stage_ics": stage_ics, "confirm": confirm, "pipeline_ok": pipeline_ok},
+                       gate_blockers={"relative_redline": relative_redline, "anomalies": anomalies})
+        record_artifact(st, run_id=run_id, artifact_path=out_path)
+    print(f"[store] experiment_store 留档 {n} IC cells + leakage门 + verdict (run_id={run_id})")
     return 0
 
 
