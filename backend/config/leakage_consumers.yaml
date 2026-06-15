@@ -21,3 +21,12 @@ version: 1
 db: data/feature_store.duckdb   # L2 面板主库 (2026-06-15: fact_feature_panel 迁此; 历史 smartmoney 面板已 wiped)
 since: "2025-01-01"          # 探针采样窗 (避开早期稀疏; 与训练窗对齐)
 consumers: []                # post-reset: 0 live 消费者; 新 runner 消费 fact_feature_panel 时登记 (gate 事前探针)
+
+# audit_panel_leakage.py 的 panel-build PIT 审计目标 (能不硬编码就不硬编码 — 之前工具硬编码 default=
+# mart_p0a_feature_label_panel_v4[已wipe] + build_feature_panel_duck.py[已删], 2026-06-15 改 config 驱动)。
+# 每项 {panel, db(相对repo路径), build_sql(相对repo路径)}; 工具审 build-SQL 的 JOIN PIT-strict + dim 标记 +
+# 生存者偏差等 9 检 (针对 **SQL-built** 面板)。
+# post-reset 空: 旧 SQL 面板 (mart_p0a_v4/v5) 已 wipe; 现 L2 fact_feature_panel 是 **Python builder**
+# (build_feature_panel.py, 因子在 Python 算非 SQL JOIN) + code/date schema, 此 SQL-JOIN 审计工具不适用
+# (它的 PIT 控制在 build 时 + moth feature-panel-l2-built + 同日截面组合)。新 SQL-built 面板在此登记后自动纳审。
+audit_panels: []

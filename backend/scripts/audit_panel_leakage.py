@@ -43,6 +43,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "backend"))
@@ -654,91 +655,108 @@ def audit_check_10_survivorship_bias(conn, panel_table: str = "mart_p0a_feature_
     return findings
 
 
+LEAKAGE_CONSUMERS = REPO_ROOT / "backend" / "config" / "leakage_consumers.yaml"  # rule-compliance: ok evidence=panel-leakage 治理 config (audit_panels 段)
+
+
+def _load_audit_targets() -> list[dict]:
+    """从 config 读 panel-build PIT 审计目标 (能不硬编码就不硬编码; owner=leakage_consumers.yaml audit_panels)。
+
+    每项 {panel, db(相对repo), build_sql(相对repo)}。post-reset 空 = 旧 SQL 面板已 wipe, 无 SQL-built 面板待审 (PASS)。
+    """
+    if not LEAKAGE_CONSUMERS.exists():
+        return []
+    cfg = yaml.safe_load(LEAKAGE_CONSUMERS.read_text(encoding="utf-8")) or {}
+    return cfg.get("audit_panels", []) or []
+
+
+def _audit_one(panel: str, db: str, build_sql: str, report_dir: str, sample_rows: int,
+               strict: bool, now: datetime) -> int:
+    """审一个 SQL-built 面板的 build-SQL PIT + dim 标记 + 生存者偏差等 9 检; 返回 exit code (0/1/2)。"""
+    out_path = Path(report_dir) / f"{panel}_{now.strftime('%Y%m%dT%H%M%S')}.json"
+    print(f"[audit-leakage] panel={panel}, db={db}")
+    print(f"[audit-leakage] panel build SQL: {build_sql}")
+    all_findings: list = []
+    with connect(db, read_only=True) as conn:
+        print("[1/9] PIT markers on fact_*/mart_*/dim_* tables ...")
+        all_findings.extend(audit_check_1_pit_markers(conn))
+        print("[2/9] Panel JOIN PIT-strict pattern ...")
+        all_findings.extend(audit_check_2_panel_join_pit(Path(build_sql)))
+        print("[3/9] Flat current-mapping PARTITION BY (retrospective bias) ...")
+        all_findings.extend(audit_check_3_flat_mapping_partition(Path(build_sql), conn))
+        print("[4/9] Mapping table fallback ratio ...")
+        all_findings.extend(audit_check_4_fallback_ratio(conn))
+        print(f"[5/9] Per-feature temporal variance (sample {sample_rows} rows) ...")
+        all_findings.extend(audit_check_5_temporal_variance(conn, panel, sample_rows))
+        print(f"[6/9] Per-feature NULL ratio gradient across years ...")
+        all_findings.extend(audit_check_6_null_year_gradient(conn, panel))
+        print(f"[7/9] Forward-index pattern grep (feature code) ...")
+        all_findings.extend(audit_check_7_forward_index_grep(Path(build_sql)))
+        print(f"[8/9] Universe selection PIT predicate ...")
+        all_findings.extend(audit_check_8_universe_pit(Path(build_sql)))
+        print(f"[9/9] Survivorship bias (panel stocks vs ever_listed) ...")
+        all_findings.extend(audit_check_10_survivorship_bias(conn, panel))
+
+    fbr = _findings_by_risk(all_findings)
+    n_high, n_medium, n_low = len(fbr["HIGH"]), len(fbr["MEDIUM"]), len(fbr["LOW"])
+    out_path.write_text(json.dumps({"panel": panel, "audit_time": now.isoformat(),
+                                    "n_findings": len(all_findings), "n_high": n_high,
+                                    "n_medium": n_medium, "n_low": n_low, "findings": all_findings},
+                                   indent=2, default=str, ensure_ascii=False))
+    print("\n" + "=" * 80 + f"\nAUDIT SUMMARY — panel {panel}\n" + "=" * 80)
+    print(f"  HIGH: {n_high}  MEDIUM: {n_medium}  LOW: {n_low}  full report: {out_path}\n")
+    for risk in ("HIGH", "MEDIUM"):
+        _print_top_risk_findings(risk, fbr[risk])
+    if n_high > 0:
+        print(f"[audit-leakage] BLOCK: {n_high} HIGH-risk findings (e.g. flat current-mapping in panel)")
+        return 1
+    if strict and n_medium > 0:
+        print(f"[audit-leakage] BLOCK (strict): {n_medium} MEDIUM-risk findings")
+        return 1
+    if n_medium > 0:
+        print(f"[audit-leakage] WARN: {n_medium} MEDIUM-risk findings (use --strict to block)")
+        return 2
+    print(f"[audit-leakage] OK: no HIGH risk found")
+    return 0
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--panel", default="mart_p0a_feature_label_panel_v4",
-                   help="panel table to audit")
-    p.add_argument("--db", default=str(REPO_ROOT / "data" / "smartmoney.duckdb"))
-    p.add_argument("--panel-build-sql",
-                   default=str(REPO_ROOT / "backend" / "scripts" / "build_feature_panel_duck.py"),
-                   help="panel build script to audit JOIN patterns")
-    p.add_argument("--strict", action="store_true",
-                   help="exit 1 even on MEDIUM (default: exit 1 only on HIGH)")
+    # 无硬编码默认目标 (能不硬编码就不硬编码): 不给 --panel 则从 config audit_panels 读 (post-reset 空=PASS)
+    p.add_argument("--panel", default=None, help="单面板覆盖 (CLI); 不给则从 leakage_consumers.yaml audit_panels 读")
+    p.add_argument("--db", default=None, help="--panel 时的库路径 (相对 repo 或绝对)")
+    p.add_argument("--panel-build-sql", default=None, help="--panel 时的 build 脚本 (build-SQL JOIN PIT 审计)")
+    p.add_argument("--strict", action="store_true", help="MEDIUM 也 exit 1 (默认仅 HIGH block)")
     p.add_argument("--report-dir", default=str(REPO_ROOT / "data" / "reports" / "leakage_audit"))
     p.add_argument("--sample-rows", type=int, default=50000)
     args = p.parse_args()
 
     Path(args.report_dir).mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc)
-    out_path = Path(args.report_dir) / f"{args.panel}_{now.strftime('%Y%m%dT%H%M%S')}.json"
 
-    print(f"[audit-leakage] panel={args.panel}, db={args.db}")
-    print(f"[audit-leakage] panel build SQL: {args.panel_build_sql}")
-    print()
+    if args.panel:  # CLI 显式单面板 (rehab/调试用)
+        if not args.db or not args.panel_build_sql:
+            print("[audit-leakage] --panel 需配 --db 和 --panel-build-sql"); return 3
+        targets = [{"panel": args.panel, "db": args.db, "build_sql": args.panel_build_sql}]
+    else:
+        targets = _load_audit_targets()
 
-    all_findings = []
-    with connect(args.db, read_only=True) as conn:
-        print("[1/9] PIT markers on fact_*/mart_*/dim_* tables ...")
-        all_findings.extend(audit_check_1_pit_markers(conn))
-        print("[2/9] Panel JOIN PIT-strict pattern ...")
-        all_findings.extend(audit_check_2_panel_join_pit(Path(args.panel_build_sql)))
-        print("[3/9] Flat current-mapping PARTITION BY (retrospective bias) ...")
-        all_findings.extend(audit_check_3_flat_mapping_partition(Path(args.panel_build_sql), conn))
-        print("[4/9] Mapping table fallback ratio ...")
-        all_findings.extend(audit_check_4_fallback_ratio(conn))
-        print(f"[5/9] Per-feature temporal variance (sample {args.sample_rows} rows) ...")
-        all_findings.extend(audit_check_5_temporal_variance(conn, args.panel, args.sample_rows))
-        print(f"[6/9] Per-feature NULL ratio gradient across years ...")
-        all_findings.extend(audit_check_6_null_year_gradient(conn, args.panel))
-        print(f"[7/9] Forward-index pattern grep (feature code) ...")
-        all_findings.extend(audit_check_7_forward_index_grep(Path(args.panel_build_sql)))
-        print(f"[8/9] Universe selection PIT predicate ...")
-        all_findings.extend(audit_check_8_universe_pit(Path(args.panel_build_sql)))
-        print(f"[9/9] Survivorship bias (panel stocks vs ever_listed) ...")
-        all_findings.extend(audit_check_10_survivorship_bias(conn, args.panel))
+    if not targets:
+        print("[audit-leakage] config audit_panels 空 — 无 SQL-built 面板待审 (post-reset: 旧面板已 wipe; "
+              "fact_feature_panel 是 Python builder + code/date schema, 该 SQL-审计工具不适用, 见 leakage_consumers.yaml 注释)。PASS。")
+        return 0
 
-    findings_by_risk = _findings_by_risk(all_findings)
-    n_high = len(findings_by_risk["HIGH"])
-    n_medium = len(findings_by_risk["MEDIUM"])
-    n_low = len(findings_by_risk["LOW"])
-
-    # Save full report
-    report = {
-        "panel": args.panel,
-        "audit_time": now.isoformat(),
-        "n_findings": len(all_findings),
-        "n_high": n_high,
-        "n_medium": n_medium,
-        "n_low": n_low,
-        "findings": all_findings,
-    }
-    out_path.write_text(json.dumps(report, indent=2, default=str, ensure_ascii=False))
-
-    print()
-    print("=" * 80)
-    print(f"AUDIT SUMMARY — panel {args.panel}")
-    print("=" * 80)
-    print(f"  HIGH:   {n_high}")
-    print(f"  MEDIUM: {n_medium}")
-    print(f"  LOW:    {n_low}")
-    print(f"  full report: {out_path}")
-    print()
-
-    # Print top findings per risk level
-    for risk in ("HIGH", "MEDIUM"):
-        _print_top_risk_findings(risk, findings_by_risk[risk])
-
-    # Exit code
-    if n_high > 0:
-        print(f"[audit-leakage] BLOCK: {n_high} HIGH-risk findings (e.g. flat current-mapping in panel)")
+    codes: list[int] = []
+    for t in targets:
+        db = t["db"] if Path(t["db"]).is_absolute() else str(REPO_ROOT / t["db"])
+        if not Path(db).exists():
+            print(f"[audit-leakage] 跳过 {t['panel']}: 库 {db} 不存在 (wiped/planned)"); continue
+        bs = t["build_sql"] if Path(t["build_sql"]).is_absolute() else str(REPO_ROOT / t["build_sql"])
+        codes.append(_audit_one(t["panel"], db, bs, args.report_dir, args.sample_rows, args.strict, now))
+    # 聚合: 任一 BLOCK(1) -> 1; 否则任一 WARN(2) -> 2; 否则 0
+    if 1 in codes:
         return 1
-    if args.strict and n_medium > 0:
-        print(f"[audit-leakage] BLOCK (strict mode): {n_medium} MEDIUM-risk findings")
-        return 1
-    if n_medium > 0:
-        print(f"[audit-leakage] WARN: {n_medium} MEDIUM-risk findings (use --strict to block)")
+    if 2 in codes:
         return 2
-    print(f"[audit-leakage] OK: no HIGH risk found")
     return 0
 
 
