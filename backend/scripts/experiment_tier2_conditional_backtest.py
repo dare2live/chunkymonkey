@@ -31,6 +31,7 @@ from services.formula_engine.features import feature_reversal  # noqa: E402
 from services.portfolio_returnbacktest import run_return_backtest  # noqa: E402  干净重建引擎 (旧 portfolio_backtest 退役)
 from services.experiment_store import open_store, record_verdict, record_pit_check, record_artifact  # noqa: E402
 from services.experiment_harness import leakage_gate  # noqa: E402
+from scripts.experiment_layered_segment_ic import load_daily_basic, _tier  # noqa: E402  市值/换手 cell 过滤
 
 TOP_K = 20           # rule-compliance: ok evidence=pre-reg 固定选股数 (不优化防过拟合)
 REBALANCE_DAYS = 5   # rule-compliance: ok evidence=pre-reg 周度调仓 = reversal horizon 5
@@ -69,6 +70,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--cost-bps", type=float, default=10.0)  # rule-compliance: ok evidence=诊断 gross vs net (默认 10bps)
     ap.add_argument("--side", choices=["long", "longshort"], default="long")  # rule-compliance: ok evidence=诊断多空 vs 纯多
     ap.add_argument("--rebalance-days", type=int, default=REBALANCE_DAYS)  # rule-compliance: ok evidence=诊断换手 vs 成本 (默认周度5)
+    ap.add_argument("--cap-tier", choices=["all", "low", "mid", "high"], default="all")  # rule-compliance: ok evidence=市值子格过滤 (best=low)
+    ap.add_argument("--turnover-tier", choices=["all", "low", "mid", "high"], default="all")  # rule-compliance: ok evidence=换手子格过滤 (best=high)
     args = ap.parse_args(argv)
     rebalance_days = args.rebalance_days
 
@@ -104,12 +107,29 @@ def main(argv: list[str] | None = None) -> int:
     rebal_idx = list(range(0, len(all_dates) - 1, rebalance_days))
     print(f"[signal] 全局 {len(all_dates)} 交易日, {len(rebal_idx)} 周度调仓点", flush=True)
 
+    # 市值/换手 cell 过滤 (best 子格 = cap_low × turnover_high)
+    cell_filter = args.cap_tier != "all" or args.turnover_tier != "all"
+    db = load_daily_basic(args.start) if cell_filter else {}
+    if cell_filter:
+        print(f"[cell] 过滤子格 cap={args.cap_tier} turnover={args.turnover_tier} (daily_basic {len(db):,})", flush=True)
+
     # 调仓表: 决策日 t 选 Stage top-K reversal (引擎做 T+1 + 含成本; clean 引擎 long-only)
     rebalances = []
     for gi in rebal_idx:
         t = all_dates[gi]
         cands = [(c, reversal[c][t]) for c in reversal
                  if t in reversal[c] and stage_map.get((c, t)) == STAGE]
+        if cell_filter and cands:
+            wb = [(c, rv) for c, rv in cands if (c, t) in db]
+            if len(wb) >= 9:  # rule-compliance: ok evidence=截面分位最小样本
+                mvs = sorted(db[(c, t)][0] for c, _ in wb)
+                tos = sorted(db[(c, t)][1] for c, _ in wb)
+                k = len(mvs); mv_lo, mv_hi = mvs[k // 3], mvs[2 * k // 3]; to_lo, to_hi = tos[k // 3], tos[2 * k // 3]
+                cands = [(c, rv) for c, rv in wb
+                         if (args.cap_tier == "all" or _tier(db[(c, t)][0], mv_lo, mv_hi) == args.cap_tier)
+                         and (args.turnover_tier == "all" or _tier(db[(c, t)][1], to_lo, to_hi) == args.turnover_tier)]
+            else:
+                cands = []
         if not cands:
             continue
         cands.sort(key=lambda x: x[1], reverse=True)   # reversal 高 = 超卖 = 多

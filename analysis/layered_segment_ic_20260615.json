@@ -63,6 +63,15 @@
     "verdict": "CLEAN",
     "action": ""
   },
-  "verdict": "LAYERING_FINDS_STRONGER_CELL",
-  "note": "9子格多重比较, 高格须ablation转正"
+  "verdict": "LAYERING_BY_IC_MISLEADS",
+  "note": "9子格多重比较, 高格须ablation转正",
+  "best_cell_backtest": {
+    "cell": "mv_low|to_high",
+    "ic": 0.1951,
+    "gross_annual": -0.346,
+    "net_annual": -0.4027,
+    "net_max_dd": -0.8325,
+    "sharpe_net": -1.36
+  },
+  "critical_lesson": "IC 选格误导! IC 最高子格(小盘高换手+0.195) backtest gross -34.6% (cohort崩盘, IC测相对排序 long-only earns绝对). 全Stage1.5(含大盘)gross+7.1%反更好. 选cell必按含成本backtest非IC. §4.2异常高IC=警报."
 }
