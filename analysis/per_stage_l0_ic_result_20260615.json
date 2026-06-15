@@ -1,0 +1,66 @@
+{
+  "experiment": "per_stage_l0_ic",
+  "params": {
+    "lookback": 20,
+    "horizon": 5,
+    "embargo": 5,
+    "start": "2023-01-01",
+    "market_baseline": 0.064,
+    "confirm_mult": 2.0,
+    "min_days": 60
+  },
+  "verdict": "CONFIRM_CONDITIONAL_PENDING_ABLATION",
+  "pipeline_reproduces_baseline": true,
+  "results": {
+    "ALL": {
+      "oos_rank_ic": 0.06400316403193132,
+      "ic_ir": 0.38676829890610015,
+      "n_windows": 35,
+      "n_days": 513
+    },
+    "1": {
+      "oos_rank_ic": 0.0038463514901024743,
+      "ic_ir": 0.021142558617000904,
+      "n_windows": 35,
+      "n_days": 513
+    },
+    "1.5": {
+      "oos_rank_ic": 0.15590337580516847,
+      "ic_ir": 0.8953548148992957,
+      "n_windows": 35,
+      "n_days": 513
+    },
+    "2": {
+      "oos_rank_ic": 0.06575602021428455,
+      "ic_ir": 0.45282302496899196,
+      "n_windows": 35,
+      "n_days": 513
+    },
+    "3": {
+      "oos_rank_ic": 0.05337637237270981,
+      "ic_ir": 0.3519719527250171,
+      "n_windows": 35,
+      "n_days": 513
+    },
+    "4": {
+      "oos_rank_ic": 0.031226260521495044,
+      "ic_ir": 0.17863750669796175,
+      "n_windows": 35,
+      "n_days": 513
+    }
+  },
+  "confirm": [
+    [
+      "1.5",
+      0.15590337580516847
+    ]
+  ],
+  "anomalies": [],
+  "relative_redline": [
+    [
+      "1.5",
+      0.1559,
+      2.44
+    ]
+  ]
+}
