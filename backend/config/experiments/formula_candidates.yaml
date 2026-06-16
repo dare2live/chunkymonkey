@@ -1,0 +1,74 @@
+version: 1
+_doc: >-
+  技术公式候选库索引 (2026-06-14, 用户: "之前的公式都先保留作为配置文件备选, 省得后续重建")。
+  owner=实验模块 config 子目录; 上位设计=analysis/l0_bare_kline_baseline_spec_20260614.md。
+  地基-reset 删了部分公式评估器 .py, 但 9 份 backend/config/formula_*.yaml 信号参数全幸存 —
+  本文件是它们的统一索引 + 状态/分类, 让公式可发现可选不散落。L0 裸K线基准只激活 active 子集
+  (用户 msg1: 池子小防过拟合); 其余 candidate = 定义留存, 验通后逐个解锁 (不重建)。
+
+# 共享 strategy 退出参数搜索空间 (5维: hp/stop/target/trailing/buy_offset) — 所有公式共用。
+# 真相源 = optuna_config.yaml::search_space.strategy (幸存); search_space.py 评估器须重建 (reset 删)。
+shared_strategy_search_space:
+  owner: backend/config/optuna_config.yaml
+  section: search_space.strategy
+  dims: [hp, stop_pct, target_pct, trailing_pct, buy_offset]
+  rebuild_note: services/backtest/search_space.py 已删, 重建读 optuna_config (anti-overfit: 限 5 维不堆)
+
+# 9 公式 (shared_windows 是共享参数非公式)。全部 ohlcv_only=true (纯价量派生, 涨停由 pct+板块静态属性派生)。
+# evaluator: live = formula_engine 现存 .py; recoverable@639e0dfb~1 = reset 删, git 可恢复 (省重建)。
+# param_config = 幸存的信号参数 yaml; status = active (进 L0 裸K线寻优池) / candidate (留存待解锁)。
+formulas:
+  - id: macd_golden_cross
+    kind: macd
+    ohlcv_only: true
+    param_config: backend/config/formula_macd_golden_cross.yaml
+    evaluator: live                       # formula_engine/macd_golden_cross.py 幸存
+    status: active
+  - id: ma_base_breakout
+    kind: ma_breakout
+    ohlcv_only: true
+    param_config: backend/config/formula_ma_base_breakout.yaml
+    evaluator: recoverable@639e0dfb~1
+    status: active
+  - id: turtle_breakout
+    kind: channel_breakout
+    ohlcv_only: true
+    param_config: backend/config/formula_turtle_breakout.yaml
+    evaluator: recoverable@639e0dfb~1     # formula_engine/turtle_breakout.py reset 删
+    status: active
+  - id: reversal_short_term
+    kind: reversal
+    ohlcv_only: true
+    param_config: backend/config/formula_reversal_short_term.yaml
+    evaluator: recoverable@639e0dfb~1     # formula_engine/reversal_short_term.py reset 删
+    status: active
+  - id: volume_base_breakout
+    kind: volume_breakout
+    ohlcv_only: true
+    param_config: backend/config/formula_volume_base_breakout.yaml
+    evaluator: recoverable@639e0dfb~1
+    status: candidate
+  - id: dynamic_ma_iterative
+    kind: ma_dynamic
+    ohlcv_only: true
+    param_config: backend/config/formula_dynamic_ma_iterative.yaml
+    evaluator: recoverable@639e0dfb~1     # formula_engine/dynamic_ma_iterative.py reset 删
+    status: candidate
+  - id: activity_breakout
+    kind: activity_breakout
+    ohlcv_only: true
+    param_config: backend/config/formula_activity_breakout.yaml
+    evaluator: recoverable@639e0dfb~1
+    status: candidate
+  - id: limit_up_pullback
+    kind: limit_up_pullback
+    ohlcv_only: true                      # 涨停由 pct+板块静态 limit 派生, 非外部数据
+    param_config: backend/config/formula_limit_up_pullback.yaml
+    evaluator: recoverable@639e0dfb~1
+    status: candidate
+  - id: gs
+    kind: golden_section
+    ohlcv_only: true                      # 黄金分割 CROSS(X36,X3) on price
+    param_config: backend/config/formula_gs.yaml
+    evaluator: recoverable@639e0dfb~1     # bc_absorbed/scripts reset 删
+    status: candidate
