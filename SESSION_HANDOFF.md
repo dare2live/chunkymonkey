@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-06-15 17:35:11 CST
+**Snapshot 时间**: 2026-06-16 08:56:25 CST
 
 ## 主线状态
 
@@ -44,28 +44,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `69f1c5e8 chore: 刷新 Gate2 ablation json — STAT_EDGE_CONFIRMED + cohort绝对收益 (P2 改后)` |
-| 最近 24h commits | 46 |
-| 未 commit 文件 | 0 |
+| HEAD | `b57cada2 chore: 清 seed_dim_data_asset 已删 industry-pit mart 的 catalog 残留 (S4 post-fix-audit 收尾)` |
+| 最近 24h commits | 45 |
+| 未 commit 文件 | 10 |
 
 ### 最近 10 commits
 
 ```
-69f1c5e8 chore: 刷新 Gate2 ablation json — STAT_EDGE_CONFIRMED + cohort绝对收益 (P2 改后)
-cb02825f feat: P3 实弹重裁决 — execution-aware 真引擎: 裸K线 reversal long-only A股结构性不可交易
-637b2496 feat: P2 验证阶梯 R1 加固 — Gate2 两级转正+cohort绝对收益, cell-scan DSR, 绝对收益null
-cb0aa881 feat: P1 引擎删除重建 — execution-aware (T+1 open/涨跌停/非对称成本/容量/仓位), 旧 return-based 删
-a39d91e0 feat: P0 制度先行 — R1/R2/胜率-收益 判断法典工具化 (gate+hook+moth+法典)
-ec7ed75d design: 旧设计缺陷批判 II — 8-lens 对抗复审确认 34 条 (N1-N30) + 根因链 R1/R2
-6b1544af design: 旧策略设计缺陷批判+扩展 base 版 (7条, 用户'扩展深挖')
-2485547c feat: 最强子格含成本 backtest — IC选格误导铁证 (IC最高+0.195但gross-34.6%)
-dc173196 feat: 完整分层 Stage1.5×市值×换手 reversal IC — 验证用户思路, 最强子格小盘高换手+0.195
-84ec5cd0 feat: 干净重建 return-based 回测引擎 — 旧引擎退役, Tier-2 裁决纠正 (gross +7.1% edge 真但成本结构杀)
+b57cada2 chore: 清 seed_dim_data_asset 已删 industry-pit mart 的 catalog 残留 (S4 post-fix-audit 收尾)
+3c542f41 refactor: 行业迁移 S4-S7 收尾 — 删 STALE 通达信 industry-pit mart, 通达信降热备, 迁移功能完成
+7b55c314 feat: 行业迁移 S3 — live serving 切申万 SW2021 (industry.py + signals_v2 repoint, 06-11 ANOVA 主口径)
+147a47a8 feat: 行业迁移 S2 — 申万 PIT as-of 视图 v_sw_industry_pit (探索可读正确行业)
+136a276f docs: 行业迁移 S1.5 — as-of PIT 逻辑实测验证 (S1 数据正确性闭环)
+c1a0793a feat: 行业迁移 S1 (P0) — 申万成分补 is_new=N 历史区间, 修 latent-snapshot leakage + 计划冻结
+b2608aad feat: leakage 门去自批绕过 — commit 硬门 + 转正门 C-LEAK 强制 (用户拷问: 自批skip=门是摆设)
+ea1663b7 refactor: audit_panel_leakage 去硬编码改 config 驱动 + experiment-discipline 门识别共享 harness
+bfc23480 feat: 多因子探索 runner — 读L2面板含成本R1裁决 + 首测 reversal IC_POSITIVE_BUT_UNTRADABLE
+fef9ea57 feat: L2 fact_feature_panel 落地 + feature_store 纳入层级执法 + C2 gate 防回退
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**run startup checks first — scripts/chunkyctl doctor --fast; prioritize data_health blocking_yellow, then stage-opt structural blocker / need_027 blocked-gap triage**
+**10 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

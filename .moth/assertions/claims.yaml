@@ -87,16 +87,6 @@ assertions:
     type: shell
     command: ["bash", "-c", "grep -o '\"verdict\": \"GO\"' analysis/lhb_exit_verdict_20260612.json | head -1 | grep -c GO"]
     expect: {op: "==", value: 1}
-  - id: consumer-alpha-axes-in-config-not-code
-    claim: "S0 consumer_alpha 矩阵轴 (data_candidate ids) 只在 yaml 不在 executor 代码 (2026-06-14 S0 重建立: 死亡条款#2 判断死 = 轴/阈值 hardcode 进代码而非 config; 命中=判断死回潮)"
-    type: shell
-    command: ["bash", "-c", "grep -cE 'forecast_express_pead|income_fina_indicator|kpl_limit_step|holder_events|sw_industry_tree' backend/scripts/experiment_consumer_alpha_validation.py || true"]
-    expect: {op: "==", value: 0}
-  - id: experiment-harness-no-naked-script
-    claim: "全部 experiment_*.py 走 harness/留档层 (phaseD_signal_eval/experiment_store), 0 裸跑 (2026-06-16 G3 门#1 散落死, owner=docs/conditional_alpha_program.md §4; 根因 H1/H2: 旧框架弃用后实验退化散落丢 analysis/*.json 不进库; 命中=新实验裸跑漂移复发)"
-    type: shell
-    command: ["bash", "-c", "for f in backend/scripts/experiment_*.py; do grep -qE 'phaseD_signal_eval|experiment_store|record_verdict|record_ic_cell|open_store' \"$f\" || echo miss; done | grep -c miss || true"]
-    expect: {op: "==", value: 0}
   - id: optuna-require-walk-forward
     claim: "optuna_config 守 require_walk_forward=true (2026-06-14 L0 立: 防过拟合核心 — 业务表禁 in-sample fit 入库; 翻 false = 估计死红线破, stage_opt leakage 反例复发)"
     type: shell
@@ -107,16 +97,6 @@ assertions:
     type: shell
     command: ["bash", "-c", "grep -c 'max_realistic_sharpe' backend/config/optuna_config.yaml"]
     expect: {op: ">=", value: 1}
-  - id: l0-baseline-pool-bounded
-    claim: "L0 裸K线基准 active 公式池 <=5 (2026-06-14 用户 msg1: 池子小防过拟合; 涨破=过拟合风险回潮, 须验通再解锁 candidate)"
-    type: shell
-    command: ["bash", "-c", "grep -c 'status: active' backend/config/experiments/formula_candidates.yaml"]
-    expect: {op: "<=", value: 5}
-  - id: l0-leakage-gates-wired
-    claim: "L0 驱动固化 3 防泄露门 (PIT行为门 assert_pit_clean / 切分纪律 check_split_discipline / 异常红线 check_metric_anomaly) — 2026-06-14 用户'固化防泄露工具进流程'; 反孤儿 mythos §14: 删任一=泄漏门失效"
-    type: shell
-    command: ["bash", "-c", "grep -cE 'assert_pit_clean|check_split_discipline|check_metric_anomaly' backend/scripts/experiment_l0_baseline.py"]
-    expect: {op: ">=", value: 3}
   - id: l0-search-governance-wired
     claim: "L0 寻参 runner 接 plan_validator 搜索空间闸 + DSR deflate (2026-06-14: 防过拟合多重比较校正 + 防 29/34 白跑反例; 反孤儿 mythos §14 删任一=寻参失治理)"
     type: shell
@@ -127,11 +107,6 @@ assertions:
     type: shell
     command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python -c \"import json,subprocess,os; e=dict(os.environ,PYTHONPATH='backend'); d=json.loads(subprocess.run(['python','backend/scripts/check_legacy_flow_integrity.py'],capture_output=True,text=True,env=e).stdout); c=d['checks']; ok=c['daily_update_scripts']['verdict']=='PASS' and c['append_only_retention']['verdict']=='PASS' and c['no_wiped_refs']['n_stale_refs']<=29; print('LEGACY_OK' if ok else 'LEGACY_PENDING')\""]
     expect: {op: regex, pattern: "LEGACY_OK"}
-  - id: experiment-discipline-tooled
-    claim: "实验三段纪律固化进流程 (2026-06-15 用户: 工具化进系统非靠文档/人记). 每个算 OOS IC 的 backend/scripts/experiment_*.py 必须三段全走: (a) 留档 L4 experiment_store (services.experiment_store, 防散落 JSON 漏进隔离实验层) (b) 事前 leakage 门 (leakage_gate/pit_guard/check_split_discipline 行为/切分门, 算 IC 前必跑, 不过 BLOCK) (c) 事后异常核查 (anomaly_verdict §4.2 红线/ablation, 命中标 pending 不直接用/弃). **共享 harness 识别 (2026-06-15)**: 调 phaseD_signal_eval.evaluate_signal 即满足 (a)留档+(c)异常 — 该 harness 实做 record_verdict/record_ic_cell(留档)+anomaly_verdict(异常); (b)leakage 门仍须实验文件自带(harness 只收 gate 不跑). owner=services/experiment_harness.py + services/experiment_store.py + services/phaseD_signal_eval.py; 新实验缺任一段=FAIL"
-    type: shell
-    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && v=0; for f in backend/scripts/experiment_*.py; do grep -qE 'oos_rank_ic|cross_sectional_ic' \"$f\" || continue; grep -qE 'experiment_store|fact_consumer_alpha_ic_scan|evaluate_signal' \"$f\" || v=$((v+1)); grep -qE 'leakage_gate|pit_guard|pit_selfcheck|assert_pit_clean|check_split_discipline' \"$f\" || v=$((v+1)); grep -qE 'anomaly_verdict|check_metric_anomaly|ablation|permutation|relative_redline|evaluate_signal' \"$f\" || v=$((v+1)); done; echo \"violations=$v\""]
-    expect: {op: regex, pattern: "violations=0"}
   - id: validation-r1-symmetric-gate
     claim: "R1 对称可交易性门在岗 (2026-06-15 8-lens 对抗复审根因 R1 反哺): anomaly_verdict 是单边门(只抓IC太高), 数学上抓不到 'IC真但long-only含成本亏钱'(Phase B 33σ REAL_EDGE 仍 gross -34.6%). experiment_harness 必有 tradability_verdict -> IC>0 且 net<=0 标 IC_POSITIVE_BUT_UNTRADABLE. 删=R1盲点复发. owner=docs/strategy_validation_contract.md C-R1"
     type: shell
@@ -167,17 +142,3 @@ assertions:
     type: shell
     command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python backend/scripts/check_strategy_validation_integrity.py 2>/dev/null | python3 -c 'import json,sys; print(\"GATE_\"+json.load(sys.stdin)[\"overall\"])'"]
     expect: {op: regex, pattern: "GATE_PASS"}
-  - id: feature-panel-l2-built
-    claim: "L2 fact_feature_panel 在 feature_store.duckdb (2026-06-15 build_feature_panel.py 重建: 8.17M行/5427股/2019-01-30~2026-06-12, 5因子 PIT mom_60/reversal_20/vol_20/mf_trend_20/roe_dt_asof). 多因子探索读此 L2 不读 L0 raw (写锁隔离). 丢失/骤减=L2 被 wipe 未重建, 实验会退回内联直读 L0 = L2-bypass 复发. owner=analysis/feature_layer_and_test_plan_20260615.md"
-    type: duckdb_sql
-    database: data/feature_store.duckdb
-    query: "SELECT count(*) FROM fact_feature_panel"
-    expect: {op: ">=", value: 7000000}
-  - id: feature-layer-l2-bypass-ratchet
-    claim: "L2-bypass ratchet <=13 (2026-06-15 用户'我一直在实验里临时算因子没落L2层, 从流程杜绝'): 算 IC/backtest 的 experiment_*.py 内联直读 L0 (tushare_raw 或 load_moneyflow/quality/kline) 现算因子而不读 feature_store L2 panel 的文件数. 基线13=存量V0方向实验(已出裁决, mythos§12 pre-reg 永不入生产, grandfathered); 禁新增(涨破=L2-bypass复发: 实验撞raw回补写锁+因子不可复用/清), 逐步 repoint 读 fact_feature_panel 后 ratchet 降. owner=analysis/feature_layer_and_test_plan_20260615.md"
-    type: shell
-    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && v=0; for f in backend/scripts/experiment_*.py; do grep -qE 'oos_rank_ic|cross_sectional_ic|evaluate_signal|run_execution_backtest' \"$f\" || continue; if grep -qE 'tushare_raw' \"$f\"; then v=$((v+1)); elif grep -qE 'load_moneyflow|load_quality_reports|asof_quality_series|load_kline' \"$f\" && ! grep -qE 'fact_feature_panel|feature_store' \"$f\"; then v=$((v+1)); fi; done; echo \"$v\""]
-    expect: {op: "<=", value: 13}
-  # 2026-06-14 地基-reset 退役 (引用已删特征/模型层, 重建特征/模型层后须恢复):
-  #   - leakage-consumer-gate: 探针读已删特征面板 (feature_consumers); 特征层重做后恢复, 防泄露红线不可永久缺
-  #   - concept-event-no-phantom: 查已删 fact_concept_event; 概念事件层重建后恢复

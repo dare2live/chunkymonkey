@@ -51,6 +51,7 @@ def _staged_experiment_files() -> list[Path]:
     return [
         REPO / line for line in out.splitlines()
         if line.startswith("backend/scripts/experiment_") and line.endswith(".py")
+        and (REPO / line).exists()   # 跳过 staged 的删除 (文件已不存在, 非裸跑)
     ]
 
 
