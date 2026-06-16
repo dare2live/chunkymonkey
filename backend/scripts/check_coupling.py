@@ -100,6 +100,13 @@ def cmd_orphans() -> int:
     except Exception as exc:  # noqa: BLE001
         warns.append(f"T1 pytest --co 跑不动 (跳过): {str(exc)[:60]}")
 
+    # T5: CI workflow 硬编码测试清单引用不存在的测试文件 (删测试→ci.yml 悬空, exit 1 = 本轮第二个 CI 崩根因)
+    for wf in glob.glob(str(REPO / ".github/workflows/*.yml")):
+        wt = Path(wf).read_text(encoding="utf-8", errors="ignore")
+        for ref in sorted(set(re.findall(r'(tests/[\w/]+\.py)', wt))):
+            if not (REPO / "backend" / ref).exists() and not (REPO / ref).exists():
+                fails.append(f"T5 {Path(wf).relative_to(REPO).as_posix()} 引用不存在测试 {ref}")
+
     # T4: moth claims.yaml command/database 引用的文件路径不存在 (drop 表/删脚本后断言悬空)
     moth = REPO / ".moth/assertions/claims.yaml"
     if moth.exists():

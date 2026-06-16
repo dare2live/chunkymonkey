@@ -43,8 +43,8 @@ jobs:
           python -m pytest tests/test_utils.py tests/test_kline_sources.py \
             tests/test_scoring_engine.py tests/test_scoring_composite.py \
             tests/test_db.py tests/test_source_watermarks.py tests/scripts/test_db_compact.py \
-            tests/scripts/test_consumer_alpha_validation.py tests/test_oos_ic.py \
-            tests/test_formula_features_pit.py tests/scripts/test_l0_baseline.py \
+            tests/test_oos_ic.py \
+            tests/test_formula_features_pit.py \
             tests/test_optimization_layer.py \
             -p no:cacheprovider --tb=short -q || exit 1
 
@@ -64,7 +64,7 @@ jobs:
           from services.data_sources import sync_runner
           from services.schema_layer_filter import filter_schema_sql, keep_stmt
           from services.experiment_jobs import load_experiment_job_contract
-          assert 'consumer_alpha_validation' in load_experiment_job_contract().families
+          assert 'model_training' in load_experiment_job_contract().families
           print('地基+框架模块 importable')
           print(f'  schema_versions: {summary()}')
           print(f'  audit_rules: {len(AUDIT_RULES)}')
