@@ -64,3 +64,16 @@
 ## 6. 最小可落地第一步 (不一次煮沸海洋)
 先做 **市值中性 + 位置(PTH/range_pos)×波动regime 2×2 cell**, 在每 cell 内测已有因子 forward IC (含成本) → 看哪个 cell 有稳定 edge。哪个 cell 有 edge 再细化 + 加趋势/突破维。HMM/聚类放第二轮。
 > 转正铁律不变: cell/因子最终须过 execution-aware 含成本 OOS backtest (C-R1/C-R2) + DSR/PBO, 不凭 IC 选 (§4.5)。
+
+## 7. 含成本裁决 (experiment_position_reversal.py, 2023+ 4 cell) — 位置-反转 ≠ alpha
+
+| cell | IC快筛 | 含成本年化 | max_dd | R1 | verdict |
+|---|---|---|---|---|---|
+| overall | +0.051(反转) | **-29.1%** | -72% | IC_POSITIVE_BUT_UNTRADABLE | KPI_FAIL |
+| 中盘高波 | +0.058(最强反转) | -10.0% | -42% | IC_POSITIVE_BUT_UNTRADABLE | KPI_FAIL |
+| 小盘低波 | +0.006(弱) | +3.8% | -58% | TRADABLE | KPI_FAIL |
+| 大盘低波 | -0.006(动量) | -5.4% | NO_EDGE | — | KPI_FAIL |
+
+**裁决: 位置/形态轴 IC 真(反转), 但不是可交易 alpha — 全 4 cell KPI_FAIL** (§4.5 再现: IC 最强反转 cell 恰最不可交易, 买最深超跌=接刀 -72% max_dd)。
+
+**对方向的含义 (关键, 正向印证用户原始方法论)**: 形态/位置/分层 = **结构层 (segment, 决定在哪个 cell 条件化), 不是 alpha 本身**; alpha 来自 cell 内**叠加高价值因子** (量→换手→筹码→资金→北向/板块, 用户原话)。F0/F1 已建成+验证**结构层** (正交轴方向 + vol-regime 条件化成立)。下一相 = 结构落成 cell 框架 (F2) + 拉高价值因子 (北向 hk_hold/筹码/资金, 与 tdxhub 退役要拉的 tushare 数据同源) 在 cell 内挖真 alpha; **不再在位置/形态轴上找 alpha**。

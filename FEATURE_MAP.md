@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-16 18:24
+> Snapshot: 2026-06-16 18:38
 
 ## 1. 入口面
 
@@ -287,7 +287,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 7,805 | calls 边 101,592 | imports 边 13,673 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 7,818 | calls 边 101,615 | imports 边 13,676 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -305,9 +305,9 @@
 | routers.updater_runtime | 6 |
 | services.constants | 6 |
 | services.data_sources | 6 |
+| services.database_manifest | 6 |
 | services.etf_grid_engine | 6 |
 | services.gap_queue | 6 |
-| services.scoring | 6 |
 
 ### 跨文件 fan-in 最高的文件 (近似口径: 唯一定义名 + caller 实际 import 目标模块双过滤)
 
@@ -317,8 +317,8 @@
 | backend/routers/updater_runtime.py | 6 |
 | backend/services/etf_grid_engine.py | 6 |
 | backend/services/data_sources/base.py | 5 |
+| backend/services/database_manifest.py | 5 |
 | backend/services/kline_source.py | 5 |
-| backend/services/database_manifest.py | 4 |
 | backend/services/etf_engine.py | 4 |
 | backend/services/business_facts.py | 3 |
 | backend/services/data_processing_monitor.py | 3 |
