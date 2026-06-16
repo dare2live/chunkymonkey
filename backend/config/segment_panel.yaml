@@ -1,0 +1,18 @@
+# F0 形态/分层面板 (fact_segment_panel) 构建参数 — MASTER §5 L1-L3 segment 层
+# owner: backend/scripts/build_segment_panel.py
+#
+# MACD 零轴态分层用. 12/26/9 = 行业通用 MACD 定义常数 (Appel 原始定义), 非业务可调阈值,
+# 但仍走 config 以便审计/未来若改周期不动代码.
+macd:
+  fast: 12
+  slow: 26
+  signal: 9
+
+# profiling 阶段算前瞻收益的 horizon (交易日). 仅用于评估识别器分离度,
+# 绝不物化进面板 (outcome-as-feature 泄漏红线, 坑库 S3 反例).
+forward_horizons: [5, 10, 20]
+
+# range_pos 分桶边界 (F2 分层: 低位/横盘/高位). F0 先存连续值, 分桶在 profiling/F2 据 measured 分布定.
+range_buckets:
+  low_max: 0.33
+  high_min: 0.67

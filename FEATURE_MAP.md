@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-16 15:08
+> Snapshot: 2026-06-16 18:24
 
 ## 1. 入口面
 
@@ -87,7 +87,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 164 张 | 单 writer 93 | 多 writer 71 | 动态表名写点 23 处 (14 文件)
+统计: 表 165 张 | 单 writer 94 | 多 writer 71 | 动态表名写点 23 处 (14 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -214,6 +214,7 @@
 | fact_lhb_event | backend/scripts/build_lhb_events.py |
 | fact_profit_forecast_daily | backend/scripts/build_akshare_panel.py |
 | fact_research_report | backend/scripts/build_akshare_panel.py |
+| fact_segment_panel | backend/scripts/build_segment_panel.py |
 | fact_setup_snapshot | backend/services/schema_core.py |
 | fact_stock_attention_snapshot | backend/services/external_attention.py |
 | fact_stock_industry_context | backend/services/industry_context_engine.py |
@@ -286,7 +287,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 7,748 | calls 边 101,527 | imports 边 13,666 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 7,805 | calls 边 101,592 | imports 边 13,673 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -317,13 +318,13 @@
 | backend/services/etf_grid_engine.py | 6 |
 | backend/services/data_sources/base.py | 5 |
 | backend/services/kline_source.py | 5 |
+| backend/services/database_manifest.py | 4 |
 | backend/services/etf_engine.py | 4 |
 | backend/services/business_facts.py | 3 |
 | backend/services/data_processing_monitor.py | 3 |
 | backend/services/etf_db.py | 3 |
 | backend/services/formula_engine/features.py | 3 |
 | backend/services/holders_resolver.py | 3 |
-| backend/services/holdings.py | 3 |
 
 ### LOC top 10 (God module 候选)
 
@@ -344,5 +345,5 @@
 
 - chunkyctl 子命令 8 | launchd 任务 1 | router 16 (端点 98)
 - sync_registry 数据域 32
-- 产表 164 (多 writer 71)
+- 产表 165 (多 writer 71)
 

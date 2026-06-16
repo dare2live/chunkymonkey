@@ -56,9 +56,11 @@ allowed_raw_connect_paths:
   - scripts/build_p0a_feature_panel_v3.py
   - scripts/build_p0a_feature_panel_v4.py
   - scripts/build_p0a_feature_panel_v5.py
+  - scripts/build_segment_panel.py        # F0 形态/分层面板 build (只读 market + 写 feature_store, manifest 路径)
   - scripts/build_signal_context.py
   - scripts/build_sniper_score_daily.py
   - scripts/build_stage_formula_fitness.py
+  - scripts/measure_form_separation.py     # F1 分离度诊断 (ATTACH 多库 read_only)
   - scripts/build_stage_opt_pit.py
   - scripts/build_stock_formula_optuna.py
   - scripts/build_stock_formula_optuna_v2.py
