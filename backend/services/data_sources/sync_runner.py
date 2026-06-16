@@ -168,15 +168,27 @@ class QuotaExhaustedError(RuntimeError):
     """信道账户级配额/反刷量墙命中 — 必须立即停链, 不可重试 (重试只会延长冷却)."""
 
 
-# 代理网关 (jiaoch.site) 反刷量/防攻击触发的报错特征 (2026-06-13 实测 + 代理商原话确认):
-# 账户全局日量墙, 与 TuShare 官方按接口积分配额无关 (官方 5000+ 常规数据无日上限,
-# 详见 analysis/data_acquisition_v2_design_20260612.md 信道限流定层)。命中后逐日重试 =
-# 每个日批多戳 3 次反而加重"攻击"判定 → 必须熔断停链。
-_QUOTA_WALL_MARKERS = ("今日请求已达上限", "请明天再试", "请求过多", "访问频率", "攻击")
+# 代理网关 (jiaoch.site) 限流分两类 (2026-06-16 用户纠偏 + advrecv backfill 实测报错原文区分):
+#   (1) 真·当日/账户级墙 (反刷量/防攻击): 命中后逐日续戳加重判定 → 必须熔断停链, 不可重试。
+#       明确措辞 = "今日请求已达上限 / 请明天再试 / 攻击 / 封禁"。
+#   (2) 瞬态限流 (每分钟单接口 120/多接口 200/并发上限 2/流量峰值): 等几分钟即恢复 → 退避重试, 绝不停链。
+#       措辞 = "并发请求过多 / 请稍后重试 / 访问频率"。用户原话: "过几分钟重试就可以了"。
+# 旧 bug (本次根因): 过宽标记 "请求过多" 把瞬态的"并发请求过多, 请稍后重试"误判成当日墙 → 误熔断停链
+#   (advrecv backfill 两次 0 行停链, 主会话两次误判"配额墙")。修法: 只有明确当日/账户级措辞才算墙;
+#   其余 (瞬态限流/超时/0 行) 一律退避重试, 终败入 failure_queue 由 drain 补 (mythos §10), 不停全链。
+_HARD_WALL_MARKERS = ("今日请求已达上限", "请明天再试", "明日再试", "攻击", "封禁", "黑名单")
+_TRANSIENT_RATELIMIT_MARKERS = (
+    "并发请求过多", "请稍后重试", "稍后重试", "稍后再试", "访问频率", "频率超限", "请求过于频繁",
+)
+
+
+def _is_transient_ratelimit(msg: str) -> bool:
+    return any(m in msg for m in _TRANSIENT_RATELIMIT_MARKERS)
 
 
 def _is_quota_wall(msg: str) -> bool:
-    return any(m in msg for m in _QUOTA_WALL_MARKERS)
+    """仅明确"当日/账户级"措辞算墙 (停链); 瞬态限流/超时/0 行都不算 → 退避重试。"""
+    return any(m in msg for m in _HARD_WALL_MARKERS)
 
 
 def _fetch_with_retry(adapter, spec: dict[str, Any], params: dict[str, Any]) -> list[dict[str, Any]] | None:
@@ -188,6 +200,9 @@ def _fetch_with_retry(adapter, spec: dict[str, Any], params: dict[str, Any]) -> 
     retry = spec.get("retry") or {}
     attempts = int(retry.get("max_attempts", 3))
     backoffs = list(retry.get("backoff_seconds", [5, 30, 120]))
+    # 瞬态限流 (每分钟级窗口) 需等几分钟才恢复, 普通退避太短 → 专用更长退避。
+    # evidence: 用户 2026-06-16 "tushare 代理每分钟单接口120/多接口200, 过几分钟重试就可以了"。
+    transient_backoffs = list(retry.get("transient_backoff_seconds", [60, 120, 180]))
     allow_empty = bool(spec.get("allow_empty_batch"))
     last_err: str | None = None
     for i in range(attempts):
@@ -204,8 +219,14 @@ def _fetch_with_retry(adapter, spec: dict[str, Any], params: dict[str, Any]) -> 
                 raise QuotaExhaustedError(
                     f"信道配额/反刷量墙命中 domain={spec['domain']} params={params} err={last_err}"
                 ) from exc
+            # 瞬态限流/超时 → 不停链, 退避重试 (瞬态限流用更长退避等窗口恢复)
         if i < attempts - 1:
-            time.sleep(backoffs[min(i, len(backoffs) - 1)])
+            wait = backoffs[min(i, len(backoffs) - 1)]
+            if last_err and _is_transient_ratelimit(last_err):
+                wait = max(wait, transient_backoffs[min(i, len(transient_backoffs) - 1)])
+                log.warning("瞬态限流退避 %ds domain=%s params=%s (非当日墙, 不停链): %s",
+                            wait, spec["domain"], params, last_err)
+            time.sleep(wait)
     log.warning("fetch 终败 domain=%s params=%s err=%s", spec["domain"], params, last_err)
     return None
 

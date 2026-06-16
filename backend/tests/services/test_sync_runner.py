@@ -125,13 +125,28 @@ def test_retry_recovers_from_intermittent_empty():
 
 
 def test_quota_wall_detection_string_matching():
-    """配额墙识别: 代理反刷量报错特征命中, 普通错不误判 (2026-06-13 信道定层)."""
+    """配额墙识别: 仅明确'当日/账户级'措辞算墙 (2026-06-16 用户纠偏: 瞬态限流≠当日墙, 不停链)."""
     assert sr._is_quota_wall("今日请求已达上限，请明天再试！")
-    assert sr._is_quota_wall("请求过多会被系统认为攻击")
-    assert sr._is_quota_wall("访问频率过高")
+    assert sr._is_quota_wall("请求过多会被系统认为攻击")   # 含'攻击' = 反刷量真墙
     assert not sr._is_quota_wall("zero_rows")
     assert not sr._is_quota_wall("Connection refused")
     assert not sr._is_quota_wall("您没有访问该接口的权限")  # 官方权限错 != 配额墙
+    # 瞬态限流 (每分钟/并发级) 不是当日墙 — 旧 taxonomy 把'访问频率/请求过多'误判成墙致误停链 (本次根因)
+    assert not sr._is_quota_wall("访问频率过高")
+    assert not sr._is_quota_wall("您的并发请求过多（上限 2个），请稍后重试!")
+
+
+def test_transient_ratelimit_detection_and_retry():
+    """瞬态限流: 识别为 transient + 退避重试不停链 (用户 2026-06-16: 每分钟级, 过几分钟重试就好)."""
+    assert sr._is_transient_ratelimit("您的并发请求过多（上限 2个），请稍后重试!")
+    assert sr._is_transient_ratelimit("访问频率过高")
+    assert not sr._is_transient_ratelimit("今日请求已达上限，请明天再试！")
+    # 撞瞬态限流 = 不抛 QuotaExhaustedError, 走满重试后入 failure_queue (返 None), 不停全链
+    spec = sr._domain_spec(_registry(retry={"max_attempts": 3, "backoff_seconds": [0, 0, 0],
+                                            "transient_backoff_seconds": [0, 0, 0]}), "demo")
+    ad = FakeAdapter([RuntimeError("您的并发请求过多（上限 2个），请稍后重试!")] * 3)
+    out = sr._fetch_with_retry(ad, spec, {"trade_date": "20260610"})
+    assert out is None and ad.calls == 3, "瞬态限流应退避重试满 3 次, 不熔断 (对比当日墙首次即抛)"
 
 
 def test_quota_wall_raises_immediately_no_retry():
