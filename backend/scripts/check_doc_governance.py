@@ -26,6 +26,7 @@ DOCS_MAX_FILES = 10   # 2026-06-16 重启: 方法论并入 MASTER §5 删独立 
 _HEADER_SCAN_LINES = 10
 _STATUS_RE = re.compile(r">\s*状态\s*[:：]\s*(live|retired|superseded-by\s*[:：]?\s*(\S+))", re.I)
 _ANALYSIS_REF_RE = re.compile(r"(?<![\w/])analysis/[\w\-./]+\.(?:md|py|json|yaml)")  # 负向回顾: 不匹配绝对路径/跨仓路径中段
+_SCRIPT_REF_RE = re.compile(r"\b((?:audit|build|probe|run|backfill|modal|seed)_[\w]+\.py)\b")  # C6: 命令命名约定前缀的脚本引用
 
 
 def _status_of(path: Path) -> tuple[str, str | None]:
@@ -72,6 +73,9 @@ def run(root: Path) -> tuple[list[str], list[str]]:
         elif status == "retired":
             retired_like.add(rel)
 
+    # C6: 控制面 doc 不引用不存在的脚本命令 (2026-06-16 补盲区: reset 删 audit_docs_graph 等致 doc→脚本悬空累积 17 处无门拦;
+    #     原 C3 只查 analysis/, 不查 backend/scripts 命令名)。脚本命名约定前缀 = 命令引用, 在 backend/scripts 或 scripts/ 必存在。
+    script_dirs = [root / "backend" / "scripts", root / "scripts"]
     for doc in control_plane:
         text = doc.read_text(encoding="utf-8", errors="ignore")
         rel_doc = doc.relative_to(root).as_posix()
@@ -80,6 +84,11 @@ def run(root: Path) -> tuple[list[str], list[str]]:
                 fails.append(f"C3 {rel_doc} 引用不存在的 {ref} (幽灵引用)")
             elif ref in retired_like:
                 warns.append(f"C5 {rel_doc} 引用已退役/被取代的 {ref} — 历史叙述合法, 当 owner 引用须改指现行文件")
+        for ref in set(_SCRIPT_REF_RE.findall(text)):
+            if not any((d / ref).exists() for d in script_dirs):
+                # WARN 级 (2026-06-16 立, 暂不 FAIL): 先暴露 reset 删脚本致 doc→命令悬空 backlog (25+ 处),
+                # doc 清理收口后翻 FAIL 守门 (原 audit_docs_graph gate 已删=此盲区累积根因)。
+                warns.append(f"C6 {rel_doc} 引用不存在脚本命令 {ref} (reset 删/改名后悬空; 清理 backlog, 收口后翻 FAIL)")
 
     return fails, warns
 
