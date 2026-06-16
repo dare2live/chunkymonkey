@@ -1,0 +1,77 @@
+{
+ "domain": "index_member_all_hist",
+ "api": "index_member_all",
+ "grain": [
+  "l3_code",
+  "ts_code",
+  "in_date"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "l1_code": "801010.SI",
+   "l1_name": "农林牧渔",
+   "l2_code": "801011.SI",
+   "l2_name": "林业Ⅱ",
+   "l3_code": "850131.SI",
+   "l3_name": "林业Ⅲ",
+   "ts_code": "000663.SZ",
+   "name": "永安林业",
+   "in_date": "19961206",
+   "out_date": "20160630",
+   "is_new": "N"
+  },
+  {
+   "l1_code": "801010.SI",
+   "l1_name": "农林牧渔",
+   "l2_code": "801011.SI",
+   "l2_name": "林业Ⅱ",
+   "l3_code": "850131.SI",
+   "l3_name": "林业Ⅲ",
+   "ts_code": "002200.SZ",
+   "name": "*ST交投",
+   "in_date": "20071220",
+   "out_date": "20130628",
+   "is_new": "N"
+  },
+  {
+   "l1_code": "801010.SI",
+   "l1_name": "农林牧渔",
+   "l2_code": "801011.SI",
+   "l2_name": "林业Ⅱ",
+   "l3_code": "850131.SI",
+   "l3_name": "林业Ⅲ",
+   "ts_code": "600189.SH",
+   "name": "泉阳泉",
+   "in_date": "19981007",
+   "out_date": "20190723",
+   "is_new": "N"
+  },
+  {
+   "l1_code": "801010.SI",
+   "l1_name": "农林牧渔",
+   "l2_code": "801012.SI",
+   "l2_name": "农产品加工",
+   "l3_code": "850151.SI",
+   "l3_name": "果蔬加工",
+   "ts_code": "000626.SZ",
+   "name": "远大控股",
+   "in_date": "19961128",
+   "out_date": "20110930",
+   "is_new": "N"
+  },
+  {
+   "l1_code": "801010.SI",
+   "l1_name": "农林牧渔",
+   "l2_code": "801012.SI",
+   "l2_name": "农产品加工",
+   "l3_code": "850151.SI",
+   "l3_name": "果蔬加工",
+   "ts_code": "600180.SH",
+   "name": "瑞茂通",
+   "in_date": "19980703",
+   "out_date": "20121228",
+   "is_new": "N"
+  }
+ ]
+}

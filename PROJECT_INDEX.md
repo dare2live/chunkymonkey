@@ -245,6 +245,7 @@
 | `raw_aif10_peer_valuation` | 同业估值 |
 | **`raw_tushare_forecast`** (业绩预告, 2026-06-14 接入) | **PEAD 预期差事件因子** (alpha 验证程序 S1 第一个基本面接口): type(预增/预减/扭亏/首亏) + p_change_min/max(净利变动幅度) + net_profit_min/max + ann_date(PIT 锚, 早于正式财报). grain=[ts_code,end_date,ann_date]; 实测 17042 行 (2023-2026) |
 | **`raw_tushare_income`** (正式利润表, 2026-06-14 接入) | 96 列全套利润表 (total_revenue/revenue/oper_cost/各费用/operate_profit/n_income/ebit/ebitda...) = 质量/成长因子料 (PEAD 后段慢信号). grain=[ts_code,end_date,f_ann_date,update_flag] (uf=0原始/1订正双推送), PIT 锚 f_ann_date 取 uf=1; by_trade_date date_param=ann_date; 实测 4月 10578 行/5305 股. **express/fina_indicator 已注册** (express=express_vip by_period [sync_runner 加 by_period 分支+单测]; fina_indicator=by_ts_code 2023-2026窗口避100条截断), 回填排队 income 后 (单写锁) |
+| **`raw_tushare_balancesheet_advrecv`** (预收账款/合同负债, 2026-06-16 注册) | 用户提议"预收账款"前瞻需求因子: adv_receipts + contract_liab (2020 后迁入) + total_assets. PIT 锚 ann_date; by_period (V0 取每期最新修订). **当前落库 7 期非连续止 2020Q3 = 不可用** (allow_empty=true 旧配置静默吃间歇空响应 + 配额墙截断双因); 已配 allow_empty=false + min_rows_per_batch=1000, 待配额恢复重拉连续季报. debate 裁决档C: 修源前禁入 panel |
 
 ### 2.5 资金流 / 事件
 
@@ -256,7 +257,8 @@
 | `fact_executive_trade_event` | 高管增减持 |
 | `fact_shareholder_trade` / `fact_shareholder_trade_tdx_b` | 股东交易 |
 | `fact_holder_event` / `fact_top10_holder_period` / `fact_holder_count_period` | 持股人结构 |
-| `fact_dzjy_event` | 大宗交易 |
+| `fact_dzjy_event` | 大宗交易 (旧源) |
+| **`raw_tushare_block_trade`** (大宗交易, 2026-06-16 注册) | 用户提议: 机构折价/大单方向, stage 内 alpha 增强候选 (moneyflow 抓不到的机构维度). grain=[ts_code,trade_date,price,vol] (同股同日多笔全留), PIT 锚 trade_date (盘后披露, 决策用 t-1); by_trade_date 2023+. **表未建** (配额墙), 配置就绪待拉. debate 裁决档B: 做事件 confirmation 不做连续因子 |
 | `raw_capital_*` (allotment/dividend/repurchase/unlock) | 配股/分红/回购/解禁 |
 | `raw_institution_surveys` | 机构调研 raw |
 | `raw_qfii_holding_quarterly` | QFII 季度持仓 |

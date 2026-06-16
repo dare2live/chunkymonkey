@@ -432,6 +432,32 @@ domains:
     min_rows_per_batch: 1
     allow_empty_batch: true   # 多数交易日无新财报披露
 
+  balancesheet_advrecv:   # 2026-06-16 用户提议试"预收账款"因子 (假设驱动 validation-first 精简拉, 非投机菜单)
+    source: tushare      # 假设: 预收账款(及2020后迁入的合同负债)= 前瞻需求/盈利质量领先信号 (钱先收收入后确认)
+    api: balancesheet
+    target_table: raw_tushare_balancesheet_advrecv
+    grain: [ts_code, end_date]   # report_type=1 合并; by_period 取每期最新修订
+    batch_mode: by_period
+    date_param: period
+    data_start: "20170101"   # 支持 as-of 2019+ 信号 + YoY (前一年同期)
+    fixed_params: {report_type: "1", fields: "ts_code,ann_date,f_ann_date,end_date,report_type,adv_receipts,contract_liab,total_assets"}
+    pit_anchor: "ann_date (行内公告日); JOIN 决策日 t 取 ann_date<=t 最新一期。V0 口径: by_period 取每期最新修订(重述 leakage 小, 测向用); 转正改 by_trade_date+update_flag 严 PIT。禁用 end_date 报告期末当锚=leakage。因子必 COALESCE(adv_receipts,contract_liab) (实测茅台 2020 后 adv_receipts=NULL 全迁 contract_liab)"
+    freshness_sla_trading_days: 5
+    min_rows_per_batch: 1000   # 每季全市场千只股报表; <1000 = 间歇空响应/截断 (mythos §8) -> 记 failure 重拉
+    allow_empty_batch: false   # 每报告期都有数据, 0 行=tushare 间歇空响应 (mythos §8) -> 退避重试不吃 (反例: allow_empty=true 致散落只落7期)
+  block_trade:   # 2026-06-16 用户提议试: 大宗交易 (机构折价/大单方向 — stage 内 alpha 增强候选, moneyflow 抓不到的机构维度)
+    source: tushare
+    api: block_trade
+    target_table: raw_tushare_block_trade
+    grain: [ts_code, trade_date, price, vol]   # 同股同日可多笔大宗 (不同价/量), 全留
+    batch_mode: by_trade_date
+    date_param: trade_date
+    data_start: "20230101"   # 对齐 cyq_perf/panel 可用窗 (stage-conditional 测窗)
+    pit_anchor: "trade_date (大宗当日盘后披露); JOIN 决策日 t 用 trade_date<=t (t-1 保守)"
+    available_after: "t+1"
+    freshness_sla_trading_days: 5
+    min_rows_per_batch: 1
+    allow_empty_batch: true   # 部分交易日确无大宗 (真空); 间歇空响应靠尾部 gap 扫描补 (mythos §10)
   express:   # 业绩快报 (2026-06-14 实弹核证: 介于预告与正式财报, 含 revenue/n_income/eps/roe 实数 — PEAD 二段)
     source: tushare
     api: express_vip   # 关键: 裸 express 强制 ts_code 不可批 → 用 *_vip 按 period 整批 (本 2000积分 token 实弹调通)
