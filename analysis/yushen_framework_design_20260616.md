@@ -100,5 +100,29 @@ random-entry 同context对照保留 (隔离 beta); DSR + PBO 防多重比较过�
 **执行面**: 本地 Optuna (无 Modal 花钱 → assistant 权限内可跑); 走 services.optimization 中央层不裸调 study.optimize;
 阈值走 optuna_config.yaml; 跑前 plan_validator.enforce_optuna_plan() 须 PASS (搜索空间非空已满足)。
 
+## 8.7 OOS +95.9% 对抗泄漏审计裁决 (2026-06-16, 6向量Workflow wgq5k8z37)
+
+> 用户纠: 异常高 OOS 不该红线判死, 要用防泄露工具真查 (探索阶段红线=去查不是挡箭牌)。结论印证: 信号无泄漏 bug, 但+95.9%是peek+beta非真alpha。
+
+**裁决 PARTIAL** — 嵌套分解 (非加和):
+
+| 来源 | 贡献 | 证据 |
+|---|---|---|
+| 幸存者偏差 | 0pp | 表含退市股完整死亡螺旋(19只OOS退市末25日中位-69.3%), 全量喂入 |
+| 短窗年化放大 | ~0.5pp | OOS 251交易日≈满年(252/251=1.004), 月度分散11/13正 |
+| 题材集中 | 0pp | 404笔/368股/13行业, AI仅6.3%P&L, HHI 0.016 |
+| 信号PIT泄漏 | 0pp | 9796笔0违规, 周线shift(1)/二次突破<=t/T+1 open, 无look-ahead |
+| **入场参数OOS-peek** | **+38~69pp** | risk_harness.py:36注释把#3的"OOS+3.33%"写进选参理由; 脚本train准则选的是#6; 干净#6 OOS仅+26.7% (一处peek吹高3.6x) |
+| **小盘beta** | **~35~40pp** | OOS=小盘牛市(中证500+42.5%/中证1000+35.3%/HS300+24.1%); OOS>>TRAIN是regime luck非策略变强(TRAIN期指数≈0%策略+37.4%) |
+| 残余真alpha | **−12~+19pp(中心≈0)** | DSR p=0.83不显著, 单一牛市窗; 干净#6(+26.7%)还跑输小盘基准(+38.9%) |
+
+**诚实 OOS 超额 alpha ≈ −10%~+15% (中心≈0, 不可分于运气), KPI_FAIL**。唯一干净"砖"=二次突破 per-trade +2.5~2.8%(boot p=0.99), 被复利+peek+beta放大成虚高的"楼"。
+
+**方法论修 (固化进后续所有寻优, owner=[[feedback-param-selection-peek]])**:
+1. 全参数(入场+风控+出场+因子)train-only选; OOS列冻结前物理遮蔽; 多参数进同一walk-forward中央层一次联合选优(非分步各peek)。
+2. 裁决换超额(对标中证500/1000同窗), 非裸年化; 别把beta当alpha。
+3. 单一OOS窗不够 → regime-conditional/滚动OOS(牛/熊/震荡分段)。
+4. 扩样本/降搜索维 把DSR拉过0.95再谈可投入。
+
 ## 8. 数据真相源铁律 (2026-06-16 教训)
 data_start 用 catalog `history_start` (tushare文档一手), 非冻结的 registry; 字段审计别冻结数据 range; 限流 0 行≠数据无。已修: cyq 2023→2018 解冻回填。(owner=memory feedback-data-start-truth-source)
