@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 
 GOAL_MAX_LINES = 165  # from yaml-like contract: goal.md 自述 ~150 行上限, +10% 容忍
-DOCS_MAX_FILES = 11   # 2026-06-16: +docs/conditional_alpha_program.md (条件化 Alpha 工程纲领, G3 门引用的 live 控制面真相源, 非 bloat 回潮=新增权威 owner doc); 前值 10 (2026-06-15 A6 收口)
+DOCS_MAX_FILES = 10   # 2026-06-16 重启: 方法论并入 MASTER §5 删独立 doc, 11→10 (前: +conditional_alpha_program)
 _HEADER_SCAN_LINES = 10
 _STATUS_RE = re.compile(r">\s*状态\s*[:：]\s*(live|retired|superseded-by\s*[:：]?\s*(\S+))", re.I)
 _ANALYSIS_REF_RE = re.compile(r"(?<![\w/])analysis/[\w\-./]+\.(?:md|py|json|yaml)")  # 负向回顾: 不匹配绝对路径/跨仓路径中段

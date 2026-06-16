@@ -62,11 +62,11 @@
 |---|---|---|---|
 | P0 | 文档同步 | goal/INDEX reset-rewrite | 立 `moth doc-drift` 固化 (机器对账, 防再漂; mythos §16) |
 | P0 | 重启清理 | **完成** (精准删本轮探索污染: experiment_store 留档行/L2 探索面板/16 探索 runner/49 验证 json/探索 docs+configs/6 探索断言; 保数据底座+sync修复+catalog+mio+G2-G3 治理) | — |
-| **P1** | **alpha 发现方法论 (重建基准)** | **立法层 owner=`docs/alpha_discovery_methodology.md`** (用户口述监督式范式: 裸K线扫主升浪>60% / MACD episode>30% = ground truth → 入场点 PIT 因子逐层叠 → 分层 → train≤2025-06/OOS→2026-06 → Modal) | 按 D0-D4 执行 (见下) |
+| **P1** | **alpha 发现方法论 (重建基准)** | **立法层 owner=`docs/MASTER_TOPLEVEL_DESIGN.md §5`** (用户口述监督式范式: 裸K线扫主升浪>60% / MACD episode>30% = ground truth → 入场点 PIT 因子逐层叠 → 分层 → train≤2025-06/OOS→2026-06 → Modal) | 按 D0-D4 执行 (见下) |
 | P1 | 数据底座研究 | cyq 实测与 tushare qfq 同复权坐标可用 (C0 FAIL=审计比错基准非数据错); 高积分高价值因子已排序 | D0 回填 hk_hold/stk_holdertrade/moneyflow_dc 等 + cyq 解冻 2018 |
 | P2 | 深层解耦 backlog | kept routers 懒加载已删 services / 散落服务自建表 / god-file (framework doc §6) | rebuild 时按 layer 顺手解耦, moth 守不回潮; **不 big-bang** |
 
-## 重建路线 (owner=`docs/alpha_discovery_methodology.md`)
+## 重建路线 (owner=`docs/MASTER_TOPLEVEL_DESIGN.md §5`)
 
 - **D0** 数据齐: 高价值因子回填 + cyq 解冻 2018 + tushare catalog 入库可查。
 - **D1** 裸K线扫 ground truth (主升浪 >60% / MACD episode >30%) 落库 = 标签 y。

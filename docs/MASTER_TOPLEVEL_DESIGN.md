@@ -5,11 +5,8 @@
 > 各层细节 owner 见文末文档体系; 本文件只给**骨架 + 决策 + 为何**, 不复制细节 (防双真相源)。
 > 固化: 本设计的操作知识 (坑/工具调度/纪律) 沉淀进项目专用 skill `chunkymonkey-ops` (后续开发持续用)。
 >
-> **状态 (2026-06-15 P0-P3 固化后部分 superseded)**: 本文 2026-06-14 骨架在三处已演进, 冲突以下列 owner 为准 (本文旧措辞保留作演进记录):
-> ① **验证范式** (§6): IC 降级为 necessary 快筛, **含成本 execution-aware backtest 绝对收益 = sufficient gate**; 选 cell/因子按含成本绝对收益**不按 IC** (根因 R1)。
-> ② **base 性质** (§4/§5): 裸 K 线 reversal long-only 经 P3 实弹判为 A 股**结构性不可交易** → base 转**慢衰减绝对源**。
-> ③ **立方体** (§5): 3 轴 → **5 轴** (+ Regime/Timing 绝对方向门 + Execution sizing/exit/容量)。
-> owner: 判断法典=`docs/strategy_validation_contract.md` · 缺陷体系 N1-N30+根因 R1/R2=`analysis/design_deficiencies_extension2_20260615.md` · Phase B 实弹裁决+Phase D 方向=`analysis/p3_execution_aware_verdict_20260615.md`。
+> **状态 (2026-06-16 重启后, 本文=alpha 方法论单一 owner)**: 用户决议清掉无锁方案的探索污染重新开始, 本文收口为**唯一立法层方法论真相源** (替代已删的 conditional_alpha_program/alpha_validation_program_spec 等探索 doc; §5 收录用户口述监督式范式)。
+> 验证范式 (§6): IC 降级 necessary 快筛, 含成本 execution-aware backtest 绝对收益 = sufficient gate; 判断法典 owner=`docs/strategy_validation_contract.md`。
 
 ---
 
@@ -41,7 +38,7 @@ KPI (owner=goal.md): 年化≥30% / max_dd≥-20% / 超额HS300>0 / 月胜率≥
 
 ## 3. 数据层 (tushare 主源; 验证优先于抓取)
 - **主源 tushare** (171/239 可用, 已抓 29); tdxhub/miaoxiang 备援; akshare 淘汰中。
-- **数据菜单** (owner=tushare_alpha_potential_menu): 137 A股未抓接口评估, **无 high edge** (诚实)。真缺口因子族:
+- **数据菜单** (owner=backend/config/tushare_api_catalog.json): 137 A股未抓接口评估, **无 high edge** (诚实)。真缺口因子族:
   现金流质量(cashflow)/机构大宗折价(block_trade)/北向per-stock(ccass/hsgt_top10)/事件日历/杠杆(margin)。
 - **用户 focus (技术类: 资金流/筹码)**: 个股资金流 moneyflow_dc(低PIT) / 筹码 cyq_chips(重建winner_rate) /
   北向 hsgt_top10+ccass / 大宗 block_trade / 龙虎 hm_detail(10000档, 高PIT须t-1)。
@@ -56,8 +53,16 @@ KPI (owner=goal.md): 年化≥30% / max_dd≥-20% / 超额HS300>0 / 月胜率≥
 - **慢衰减绝对源 (Phase D P0/P1)**: 财务质量/资金流 trend/景气/筹码结构 (已在库 daily_basic/moneyflow/cyq_perf); 绝对方向+慢衰减→低换手→成本可 survive。
 
 ## 5. 策略层 (用户核心想法: **条件化, 非万能公式**)
+
+**alpha 发现范式 (用户口述, 2026-06-16 重启定为执行基准 — 监督式 = 结果倒推非信号正推)**:
+1. **裸K线全市场逐股扫 ground truth (标签 y)**: 主升浪 = 每股每次底→顶涨幅 **>60%**; 公式 episode (MACD 范本) = 每次金叉→死叉**盈利>30%** 的赢家。标签全程后验算 (合法, 它是 y)。
+2. **入场点 PIT 特征逐层叠** (一个一个加, 判据=含成本前向收益, 非"赢家里常见"): 量→换手→筹码→个股资金流→板块/概念资金→北向→增减持。
+3. **写公式→评估** (胜率/收益/回撤/持仓周期/抓出多少) **→分层** (大/小市值等, 每公式最佳参数+因子组合)。
+4. **train≤2025-06 建 / OOS 2025-06→2026-06 验** (模拟"2025-06 做的公式对未知一年") → **Modal 规模搜索 + DSR/PBO 按搜索规模校正**。
+- **两铁律**: 特征只用入场及之前 (不碰涨幅自己的未来; S3 AUC0.779 栽在结局量当特征); OOS 段构建时不碰。
+- **数据**: K线+复权统一 tushare qfq (cyq 实测同坐标可用, C0 FAIL=审计比错基准); **高积分高价值因子优先** (hk_hold 北向个股/stk_holdertrade 增减持/moneyflow_dc 资金分层/top10_floatholders 筹码结构)。
 > L0 市场级 reversal 仅 +0.064, **因把所有形态平均了** (低位用reversal/上升用动量互相抵消)。正解=条件化。
-**策略立方体** cell = (Segment 形态 × Feature 因子 × Policy 公式 × **Regime/Timing** × **Execution**), 5 轴 (2026-06-15 扩展, owner=design_deficiencies_extension2 §3.1 N4/N5/N6 + 法典 C-WinReturn; 旧 owner conditional_stage_strategy_design/multidim 已加偏离头注):
+**策略立方体** cell = (Segment 形态 × Feature 因子 × Policy 公式 × **Regime/Timing** × **Execution**), 5 轴 (2026-06-15 扩展 (owner=本文§5, 2026-06-16 重启收口为单一 owner; 法典 C-WinReturn)):
 - **Segment 形态** (用户): 横盘/低位/上升通道/下跌通道/高位 = `technical_stage` (Weinstein 5阶段) + MACD零轴/历史分位(PIT expanding)细分轴。
 - **Policy 公式**: 20公式+主升浪猎手, 找"哪个公式适配哪个形态"。
 - **Feature 因子**: 换手/筹码/资金流/Alpha158 在 cell 内增 alpha (主辅: 主公式出仓, 因子只调制)。
@@ -67,7 +72,7 @@ KPI (owner=goal.md): 年化≥30% / max_dd≥-20% / 超额HS300>0 / 月胜率≥
 - **治理**: 维度爆炸用 DSR/PBO 压 (n_trials 如实计全 cell, 非 hardcode); **逐维解锁** (先证含成本绝对收益>0 再加维); 数据驱动 regime 聚类作补充。
 - **宇宙**: `universe.py` 排除 ST/退市/三板/北交所 (前缀非60/00/30/68 + ST名 + 退市no-trade)。
 
-## 6. 验证层 (可靠性阶梯, 防过拟合第一约束; owner=model_validation_reliability_design)
+## 6. 验证层 (可靠性阶梯, 防过拟合第一约束; owner=本文§6 + strategy_validation_contract)
 > **状态: 验证范式 R1 修正 (2026-06-15, owner=strategy_validation_contract 判断法典)**。Gate1-5 的 null 全建在 rank/sharpe 空间, **数学上对 long-only 绝对收益盲** (N1: 截面 spearman/置换保留每日收益分布, 崩盘 cohort 可全数过闸; 33σ 仍亏)。修正: **IC=necessary 快筛(降级)**, **含成本 execution-aware backtest 绝对收益=sufficient gate(升级)**; 选 cell 按绝对收益不按 IC。
 > 阶梯加**绝对收益门 (R1)**: `tradability_verdict`(IC>0 且含成本净≤0→IC_POSITIVE_BUT_UNTRADABLE) + `kpi_verdict`(年化 AND max_dd AND 胜率×盈亏比期望, C-WinReturn) + `block_bootstrap_return_null`(NAV 符号 null, 与 rank 置换正交)。两级转正 (N3): Gate2 排序显著=STAT_EDGE_CONFIRMED 非 money; confirmed_by_owner 须含成本证据。执法 gate=`check_strategy_validation_integrity` 4 维 + moth `validation-*`。
 ```
@@ -82,7 +87,7 @@ Gate5 含成本 execution-aware backtest 绝对收益 (sufficient gate, portfoli
 ```
 纠错 (N1): feature↔label 截面置换 null 保留每日收益分布, **对 cohort 绝对涨跌恒不变, 不能单独作终验**; 终验=含成本 execution-aware backtest 绝对收益 (NAV 符号 block bootstrap), 不是策略 sharpe (sharpe 仍 rank/风险调整量)。
 
-## 7. 实验台 (alpha 验证程序 S0-S4, owner=alpha_validation_program_spec)
+## 7. 实验台 (alpha 验证程序 S0-S4, owner=本文§7 + experiment_store)
 S0 实验台✓(experiment_store 4留档表 + consumer_alpha family + 执行器) → S1 数据✓ → S2 harness →
 S3 逐数据验证 → S4 判决。留档链: pre-reg(冻结判据 prereg_hash) → verdict JSON → DB → ledger。隔离 live 防污染。
 
