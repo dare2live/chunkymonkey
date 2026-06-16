@@ -137,3 +137,8 @@ assertions:
     type: shell
     command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python backend/scripts/check_strategy_validation_integrity.py 2>/dev/null | python3 -c 'import json,sys; print(\"GATE_\"+json.load(sys.stdin)[\"overall\"])'"]
     expect: {op: regex, pattern: "GATE_PASS"}
+  - id: coupling-no-orphan-refs
+    claim: "无孤儿耦合引用 (2026-06-16 用户: 删除暴露 表↔代码↔配置↔DB↔文档↔测试 耦合; check_coupling.py 防'删脚本→孤儿测试崩CI collection'/'drop表→moth断言悬空'复发. 删前用 --impact <name> 看爆炸半径)"
+    type: shell
+    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python backend/scripts/check_coupling.py 2>&1 | grep -o 'verdict=[A-Z]*' | head -1"]
+    expect: {op: regex, pattern: "verdict=PASS"}
