@@ -127,6 +127,36 @@ def build_episodes(
     return out
 
 
+def _months_before(date_str: str, months: int) -> str:
+    """date_str 往前推 months 月 (返回 YYYY-MM-DD; 日截断到 28 防月末越界)。"""
+    y, m, d = int(date_str[:4]), int(date_str[5:7]), int(date_str[8:10])
+    total = y * 12 + (m - 1) - months
+    ny, nm = total // 12, total % 12 + 1
+    return f"{ny:04d}-{nm:02d}-{min(d, 28):02d}"
+
+
+def trailing_windows(episodes: list[Episode], months: tuple[int, ...] = (3, 6, 9, 12, 18, 24, 36)) -> dict:
+    """按入场时间的 trailing 窗 (近 N 月) 聚合 — 看 edge 是稳还是衰减/集中某段 (mio #6 分层非平均)。
+
+    ref = 最新入场日 (≈数据末); 近 N 月 = entry_date >= ref-N月 (嵌套窗, 越大越含早期)。
+    """
+    if not episodes:
+        return {}
+    ref = max(e.entry_date for e in episodes)
+    out: dict[str, dict] = {}
+    for mo in months:
+        cut = _months_before(ref, mo)
+        sub = [e for e in episodes if e.entry_date >= cut]
+        rets = np.array([e.net_return for e in sub], dtype=float)
+        out[f"{mo}m"] = {
+            "n_episodes": len(sub),
+            "win_rate": float((rets > 0).mean()) if len(rets) else None,
+            "mean_net_return": float(rets.mean()) if len(rets) else None,
+            "cutoff": cut,
+        }
+    return out
+
+
 def aggregate_by_cell(episodes: list[Episode], *, by: tuple[str, ...] = ("entry_stage", "entry_zero_axis")) -> dict:
     """按 segment cell 聚合 episode 统计 (含成本)。返回 {cell_key: stats}。"""
     cells: dict[tuple, list[Episode]] = {}

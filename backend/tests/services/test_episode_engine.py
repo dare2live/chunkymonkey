@@ -81,6 +81,24 @@ def test_hold_cap_exit_when_no_sell():
     assert eps[0].exit_reason == "hold_cap" and eps[0].hold_days == 3
 
 
+def test_months_before():
+    assert ee._months_before("2026-06-15", 3) == "2026-03-15"
+    assert ee._months_before("2026-01-10", 3) == "2025-10-10"   # 跨年
+    assert ee._months_before("2026-06-30", 1) == "2026-05-28"   # 日截断防越界
+
+
+def test_trailing_windows_recency():
+    """近 N 月窗: 嵌套, 越大越含早期; 衰减可见。"""
+    eps = [
+        ee.Episode("a", "2024-01-02", "2024-01-10", 8, 0.20, 0.19, "1", "below", "sell_signal"),   # 早期大赢
+        ee.Episode("b", "2026-05-02", "2026-05-10", 8, -0.05, -0.06, "1", "below", "sell_signal"),  # 近期亏
+        ee.Episode("c", "2026-06-02", "2026-06-10", 8, -0.03, -0.04, "1", "below", "sell_signal"),  # 近期亏
+    ]
+    tw = ee.trailing_windows(eps, months=(3, 36))
+    assert tw["3m"]["n_episodes"] == 2 and tw["3m"]["mean_net_return"] < 0   # 近 3 月只剩两笔亏
+    assert tw["36m"]["n_episodes"] == 3 and tw["36m"]["mean_net_return"] > 0  # 含 2024 大赢转正
+
+
 def test_aggregate_by_cell_and_all():
     eps = [
         ee.Episode("a", "2020-01-02", "2020-01-10", 8, 0.10, 0.09, "1", "below", "sell_signal"),
