@@ -25,7 +25,7 @@ Owner: `docs/PROJECT_CONSTITUTION.md` 第一/二/三条 (真相源唯一 / 能�
 
 ### 1.2 Measured Not Estimated
 
-任何参数/阈值/模型预测/策略效果必须真实历史测过, 不能公式估.
+> 哲学 owner = `mio` skill (真相源原教旨派生面 measured-not-estimated)。本节只留项目机械红线 + self-check (非-mio/Codex 路径提交前拦截)。
 
 - 禁止: "差不多" / "估计" / "假设" / "按当前速度跑" / "线性外推". 变量名含
   `_estimate / predicted_ / assumed_` 停下问: 真来自数据还是拍脑袋?
@@ -35,16 +35,16 @@ Owner: `docs/PROJECT_CONSTITUTION.md` 第一/二/三条 (真相源唯一 / 能�
 
 ### 1.3 真金白银 — 实盘投入
 
-每行代码当"上线后亏钱我能睡着吗"评估. 用户原话: **"不是数字游戏, 是真金白银投入的"**.
+> 哲学 owner = `mio` skill 核心视角#8 (真金白银/后果优先: "不是数字游戏是真金白银投入的" / "上线后亏钱我睡得着吗" / 误用警告=裁决闸非探索挡箭牌)。本节留项目机械红线触发语 (资金安全, 项目+mio 双写冗余防非-mio session 失守)。
 
-- "leakage 影响估计 < 10%" → 0 leakage. "回测 +312%" → 立刻怀疑 leakage 不兴奋.
+- 异常漂亮 = 警报不是兴奋: "leakage 影响估计 < 10%" → 0 leakage; "回测 +312%" → 立刻怀疑 leakage; 高后果项漏容忍 = 0.
 - "先跑试试" → 跑前想清"出数能直接决策吗", 不能别跑.
 - 目标穿透 (KPI owner = `goal.md`): 任何分数 improve 必须能回答"含 selection bias /
   leakage 吗? 真实 forward 期望多少?". 不能穿透 = 噪音.
 
 ### 1.4 失败先承认
 
-反转 OOS 不及格 → 立刻换方向, 不留恋. "不合格就是不合格" (用户原话).
+> owner = `mio` skill 核心视角#6 (失败先承认/诚实面对负面证据两面)。项目应用: 反转 OOS 不及格 → 立刻换方向不留恋 ("不合格就是不合格"); 根因找不到 → 明说不伪装"已解决".
 
 ## 2. 接手前 First Actions
 
@@ -224,6 +224,7 @@ check_codex_review hook 均已非阻塞化, 信息性提示保留)。现行质�
 
 | Skill | 触发场景 | 强制/建议 |
 |---|---|---|
+| **`mio`** | 任何判断/分析/架构/取舍的实质任务**开工前** (用户主管思路真相源: 真金白银/后果优先·真相源原教旨·失败先承认·measured-not-estimated·对抗同盟·执行前 grill·跨边界写确认) | **强制 — 实质工作前 invoke** |
 | **`chunkymonkey-ops`** | 接手 / 任何实质工作前 (操作手册: 红线/坑库/工具调度/纪律/文档地图) | **强制 — 接手即 invoke** |
 | `chunkymonkey-governance` / `engineering-discipline` (grill) | 执行计划前 (跑批 / Optuna / 新模块设计) | 强制 — 不 grill 不执行 |
 | `plan_validator.enforce_optuna_plan()` | 跑批前 (代码级) | 强制 (2026-05-26 反例: 29/34 公式无 search space 白跑) |
@@ -231,14 +232,15 @@ check_codex_review hook 均已非阻塞化, 信息性提示保留)。现行质�
 | `/lessons` | 改代码前查相关教训 | 建议 |
 | 内置 `/tdd` `/handoff` `/to-issues` `architect-controller` | 对应场景 | 建议 |
 
-执行前三问 (self-check): 跑完产出什么谁消费? 每步前提验证了? 成本 vs 产出合理?
+执行前 grill 三问 (有效性≠可行性) 哲学 owner = `mio` skill 协议#8 + `chunkymonkey-governance`/`engineering-discipline`; 代码级强制 = `plan_validator.enforce_optuna_plan()`。三问: 跑完产出什么谁消费? 每步前提验证了? 成本 vs 产出合理?
 
 ## 12. 用户偏好 / 沟通
+
+> 协作哲学 owner = `mio` skill (不报喜不报忧=谄媚死反模式; 接任务先 push back 简化=核心视角#4)。本节留项目沟通机械触发。
 
 - 中文回复. 简洁实用. 表格 > 段落. 数字优先.
 - 不报喜不报忧 — 0 STRONG_BUY / 数据滞后 / 测试 fail / Gate FAIL 先讲.
 - 先讲业务结果 (年化/max_dd/超额), 技术次之.
-- 接任务先 push back 看更简单方案, 别上来就实现.
 
 ## 附录
 
