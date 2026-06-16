@@ -1,0 +1,108 @@
+{
+  "experiment": "turnover_小低波",
+  "engine": "portfolio_execbacktest_20260615",
+  "ic_quick_screen": 0.07635130006914817,
+  "anomaly": {
+    "verdict": "CLEAN",
+    "action": ""
+  },
+  "metrics": {
+    "annual_return": 0.38927421191630174,
+    "max_drawdown": -0.39768135458493725,
+    "sharpe": 1.2468131418480228,
+    "calmar": 0.9788596006030755,
+    "monthly_win_rate": 0.625,
+    "win_rate": 0.5609756097560976,
+    "payoff_ratio": 2.607602494983552,
+    "avg_win": 0.07761715964917903,
+    "avg_loss": -0.029765717665363955,
+    "expectancy": 1.023777009381017,
+    "final_nav": 2.866090761371754,
+    "cost_drag": 0.14524926420975476,
+    "avg_turnover": 1.394017647477144,
+    "capacity_warn_rate": 0.1168736303871439
+  },
+  "trailing": {
+    "3m": {
+      "annual_return": 0.04940640437312438,
+      "monthly_win_rate": 0.3333333333333333,
+      "max_drawdown": -0.10580284065580374,
+      "n_days": 63,
+      "partial": false
+    },
+    "6m": {
+      "annual_return": 0.062141043019871445,
+      "monthly_win_rate": 0.5,
+      "max_drawdown": -0.10580284065580374,
+      "n_days": 126,
+      "partial": false
+    },
+    "12m": {
+      "annual_return": 0.5617639764283471,
+      "monthly_win_rate": 0.6923076923076923,
+      "max_drawdown": -0.10580284065580374,
+      "n_days": 252,
+      "partial": false
+    },
+    "18m": {
+      "annual_return": 0.5600983519553366,
+      "monthly_win_rate": 0.6842105263157895,
+      "max_drawdown": -0.1471144998237405,
+      "n_days": 378,
+      "partial": false
+    },
+    "24m": {
+      "annual_return": 0.5644519533295345,
+      "monthly_win_rate": 0.72,
+      "max_drawdown": -0.1471144998237405,
+      "n_days": 504,
+      "partial": false
+    },
+    "3y": {
+      "annual_return": 0.41513399716806054,
+      "monthly_win_rate": 0.6578947368421053,
+      "max_drawdown": -0.39768135458493725,
+      "n_days": 756,
+      "partial": false
+    },
+    "5y": {
+      "annual_return": 0.38927421191630174,
+      "monthly_win_rate": 0.625,
+      "max_drawdown": -0.39768135458493725,
+      "n_days": 808,
+      "partial": true
+    },
+    "full": {
+      "annual_return": 0.38927421191630174,
+      "monthly_win_rate": 0.625,
+      "max_drawdown": -0.39768135458493725,
+      "n_days": 808,
+      "partial": false
+    }
+  },
+  "tradability": {
+    "verdict": "TRADABLE",
+    "action": "IC=+0.0764>0 且含成本年化=+38.93%>0: 排序 edge 可交易 (仍须过 KPI 联合门)"
+  },
+  "kpi_verdict": {
+    "verdict": "KPI_FAIL",
+    "passes": {
+      "annual_return": true,
+      "max_drawdown": false,
+      "monthly_win_rate": true,
+      "positive_expectancy": true
+    },
+    "diagnostics": {
+      "win_rate": 0.5609756097560976,
+      "payoff_ratio": 2.607602494983552,
+      "expectancy": 1.023777009381017,
+      "note": "胜率为诊断量, 收益率+max_dd 为目标量 (C-WinReturn)"
+    }
+  },
+  "verdict": "KPI_FAIL",
+  "n_rebalances": 41,
+  "rebalance_days": 20,
+  "top_k": 20,
+  "sizing": "equal",
+  "note": "Phase D 慢衰减绝对源; IC necessary 快筛, 裁决=含成本 execution-aware 绝对收益 (R1/C-WinReturn); trailing 多窗看趋势"
+}
