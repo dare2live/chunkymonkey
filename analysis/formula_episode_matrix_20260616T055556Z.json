@@ -1,0 +1,1084 @@
+{
+  "experiment": "formula_episode_segment_time",
+  "formulas": [
+    "macd_golden_cross",
+    "ma_base_breakout",
+    "turtle_breakout"
+  ],
+  "hold_cap": 60,
+  "start": "2020-01-01",
+  "summary": {
+    "macd_golden_cross": {
+      "n_episodes": 273651,
+      "cells": {
+        "1|below": {
+          "n_episodes": 29632,
+          "win_rate": 0.39710448164146867,
+          "mean_net_return": 0.015612140668773552,
+          "median_net_return": -0.018829320634173738,
+          "payoff_ratio": 2.2876261496255195,
+          "expectancy": 0.015612140668773552,
+          "mean_hold_days": 17.691515928725703,
+          "annualized_per_episode": 0.24690324576378697
+        },
+        "4|below": {
+          "n_episodes": 75819,
+          "win_rate": 0.3880161964679038,
+          "mean_net_return": 0.018566812058035415,
+          "median_net_return": -0.021366711262319857,
+          "payoff_ratio": 2.4623211624518317,
+          "expectancy": 0.018566812058035415,
+          "mean_hold_days": 16.59223941228452,
+          "annualized_per_episode": 0.3223409279640521
+        },
+        "1.5|below": {
+          "n_episodes": 8195,
+          "win_rate": 0.3629042098840757,
+          "mean_net_return": 0.006007088340397047,
+          "median_net_return": -0.028044655696202667,
+          "payoff_ratio": 2.020232377991279,
+          "expectancy": 0.006007088340397047,
+          "mean_hold_days": 14.498474679682733,
+          "annualized_per_episode": 0.10970885263489105
+        },
+        "3|above": {
+          "n_episodes": 34381,
+          "win_rate": 0.25703149995637126,
+          "mean_net_return": -0.007588745954501247,
+          "median_net_return": -0.026280702453385582,
+          "payoff_ratio": 2.2542189143398814,
+          "expectancy": -0.007588745954501247,
+          "mean_hold_days": 7.775311945551322,
+          "annualized_per_episode": -0.21877441690223975
+        },
+        "2|above": {
+          "n_episodes": 37024,
+          "win_rate": 0.2805207433016422,
+          "mean_net_return": -0.0027373591720583988,
+          "median_net_return": -0.02904398947368407,
+          "payoff_ratio": 2.381832436119705,
+          "expectancy": -0.0027373591720583988,
+          "mean_hold_days": 8.290838375108038,
+          "annualized_per_episode": -0.07993973576756563
+        },
+        "2|below": {
+          "n_episodes": 15444,
+          "win_rate": 0.33527583527583527,
+          "mean_net_return": 0.007826642019829503,
+          "median_net_return": -0.02555312108730949,
+          "payoff_ratio": 2.469371670601002,
+          "expectancy": 0.007826642019829503,
+          "mean_hold_days": 12.626392126392126,
+          "annualized_per_episode": 0.1683558896642796
+        },
+        "3|below": {
+          "n_episodes": 37367,
+          "win_rate": 0.3606123049749779,
+          "mean_net_return": 0.011114722595966657,
+          "median_net_return": -0.025907007947019764,
+          "payoff_ratio": 2.331524593149973,
+          "expectancy": 0.011114722595966657,
+          "mean_hold_days": 14.69448979045682,
+          "annualized_per_episode": 0.2087152862414814
+        },
+        "1.5|above": {
+          "n_episodes": 8257,
+          "win_rate": 0.31318880949497396,
+          "mean_net_return": -0.003746375719083727,
+          "median_net_return": -0.028125025396825418,
+          "payoff_ratio": 1.9779182842950436,
+          "expectancy": -0.003746375719083727,
+          "mean_hold_days": 10.374712365265834,
+          "annualized_per_episode": -0.08713722810881275
+        },
+        "4|above": {
+          "n_episodes": 9243,
+          "win_rate": 0.30141728875906093,
+          "mean_net_return": 0.007086637539006982,
+          "median_net_return": -0.019741432514177634,
+          "payoff_ratio": 2.9472342334644326,
+          "expectancy": 0.007086637539006982,
+          "mean_hold_days": 9.050416531429189,
+          "annualized_per_episode": 0.21728699779143046
+        },
+        "unknown|above": {
+          "n_episodes": 5203,
+          "win_rate": 0.28637324620411303,
+          "mean_net_return": 5.962487658018939e-05,
+          "median_net_return": -0.03141553700376702,
+          "payoff_ratio": 2.495128879682609,
+          "expectancy": 5.962487658018939e-05,
+          "mean_hold_days": 8.375168172208342,
+          "annualized_per_episode": 0.001795606504883862
+        },
+        "1|above": {
+          "n_episodes": 568,
+          "win_rate": 0.23591549295774647,
+          "mean_net_return": 0.0005434857040381784,
+          "median_net_return": -0.017695576998683835,
+          "payoff_ratio": 3.325732573475752,
+          "expectancy": 0.0005434857040381784,
+          "mean_hold_days": 6.829225352112676,
+          "annualized_per_episode": 0.02025163802615193
+        },
+        "unknown|below": {
+          "n_episodes": 12518,
+          "win_rate": 0.3170634286627257,
+          "mean_net_return": 0.0003998021584705933,
+          "median_net_return": -0.035464960623531924,
+          "payoff_ratio": 2.1722918134534934,
+          "expectancy": 0.0003998021584705933,
+          "mean_hold_days": 15.615992970123022,
+          "annualized_per_episode": 0.006471287831574024
+        },
+        "__ALL__": {
+          "n_episodes": 273651,
+          "win_rate": 0.3398525859580268,
+          "mean_net_return": 0.007797148998606315,
+          "median_net_return": -0.024817752238805932,
+          "payoff_ratio": 2.3758464294047674,
+          "expectancy": 0.007797148998606315,
+          "mean_hold_days": 13.271225027498529,
+          "annualized_per_episode": 0.15891190797893628
+        }
+      },
+      "trailing_all": {
+        "3m": {
+          "n_episodes": 11074,
+          "win_rate": 0.2895069532237674,
+          "mean_net_return": 0.007520882884508436,
+          "cutoff": "2026-03-12"
+        },
+        "6m": {
+          "n_episodes": 21440,
+          "win_rate": 0.325419776119403,
+          "mean_net_return": 0.00954590781847145,
+          "cutoff": "2025-12-12"
+        },
+        "9m": {
+          "n_episodes": 33879,
+          "win_rate": 0.3163611676849966,
+          "mean_net_return": 0.007486413077902138,
+          "cutoff": "2025-09-12"
+        },
+        "12m": {
+          "n_episodes": 47095,
+          "win_rate": 0.34224439961779385,
+          "mean_net_return": 0.012319453120033293,
+          "cutoff": "2025-06-12"
+        },
+        "18m": {
+          "n_episodes": 68376,
+          "win_rate": 0.36562536562536563,
+          "mean_net_return": 0.01476612431641579,
+          "cutoff": "2024-12-12"
+        },
+        "24m": {
+          "n_episodes": 94983,
+          "win_rate": 0.35491614288872747,
+          "mean_net_return": 0.019885710306971748,
+          "cutoff": "2024-06-12"
+        },
+        "36m": {
+          "n_episodes": 138928,
+          "win_rate": 0.34217004491535186,
+          "mean_net_return": 0.011989136916180183,
+          "cutoff": "2023-06-12"
+        }
+      },
+      "trailing_top_cells": {
+        "4|below": {
+          "3m": {
+            "n_episodes": 3788,
+            "win_rate": 0.2463041182682154,
+            "mean_net_return": -0.014259556909356763,
+            "cutoff": "2026-03-12"
+          },
+          "6m": {
+            "n_episodes": 5188,
+            "win_rate": 0.2856592135697764,
+            "mean_net_return": -0.007362672371667352,
+            "cutoff": "2025-12-12"
+          },
+          "9m": {
+            "n_episodes": 6220,
+            "win_rate": 0.2887459807073955,
+            "mean_net_return": -0.005331379495640461,
+            "cutoff": "2025-09-12"
+          },
+          "12m": {
+            "n_episodes": 7360,
+            "win_rate": 0.3372282608695652,
+            "mean_net_return": 0.0025311285231441973,
+            "cutoff": "2025-06-12"
+          },
+          "18m": {
+            "n_episodes": 8822,
+            "win_rate": 0.35966900929494444,
+            "mean_net_return": 0.006581978187083714,
+            "cutoff": "2024-12-12"
+          },
+          "24m": {
+            "n_episodes": 21116,
+            "win_rate": 0.3602007956052283,
+            "mean_net_return": 0.03516045253646768,
+            "cutoff": "2024-06-12"
+          },
+          "36m": {
+            "n_episodes": 39944,
+            "win_rate": 0.37212096935709993,
+            "mean_net_return": 0.02164204539472699,
+            "cutoff": "2023-06-12"
+          }
+        },
+        "3|below": {
+          "3m": {
+            "n_episodes": 1687,
+            "win_rate": 0.3366923532898637,
+            "mean_net_return": 0.02916991241281736,
+            "cutoff": "2026-03-12"
+          },
+          "6m": {
+            "n_episodes": 3637,
+            "win_rate": 0.3846576849051416,
+            "mean_net_return": 0.02756214167761101,
+            "cutoff": "2025-12-12"
+          },
+          "9m": {
+            "n_episodes": 6325,
+            "win_rate": 0.3543083003952569,
+            "mean_net_return": 0.0190914957133742,
+            "cutoff": "2025-09-12"
+          },
+          "12m": {
+            "n_episodes": 7425,
+            "win_rate": 0.3701010101010101,
+            "mean_net_return": 0.020038950531940814,
+            "cutoff": "2025-06-12"
+          },
+          "18m": {
+            "n_episodes": 13765,
+            "win_rate": 0.4382128586996004,
+            "mean_net_return": 0.031334434715011864,
+            "cutoff": "2024-12-12"
+          },
+          "24m": {
+            "n_episodes": 15340,
+            "win_rate": 0.42816166883963497,
+            "mean_net_return": 0.03238078078215567,
+            "cutoff": "2024-06-12"
+          },
+          "36m": {
+            "n_episodes": 19962,
+            "win_rate": 0.38979060214407374,
+            "mean_net_return": 0.02065548400330045,
+            "cutoff": "2023-06-12"
+          }
+        },
+        "2|above": {
+          "3m": {
+            "n_episodes": 1754,
+            "win_rate": 0.3169897377423033,
+            "mean_net_return": 0.01721982433519946,
+            "cutoff": "2026-03-12"
+          },
+          "6m": {
+            "n_episodes": 4655,
+            "win_rate": 0.3005370569280344,
+            "mean_net_return": 0.006074379591835772,
+            "cutoff": "2025-12-12"
+          },
+          "9m": {
+            "n_episodes": 7671,
+            "win_rate": 0.284056837439708,
+            "mean_net_return": 0.0027403623481818346,
+            "cutoff": "2025-09-12"
+          },
+          "12m": {
+            "n_episodes": 13213,
+            "win_rate": 0.3134791493226368,
+            "mean_net_return": 0.009968817635681077,
+            "cutoff": "2025-06-12"
+          },
+          "18m": {
+            "n_episodes": 17165,
+            "win_rate": 0.2972909991261288,
+            "mean_net_return": 0.004028056463954231,
+            "cutoff": "2024-12-12"
+          },
+          "24m": {
+            "n_episodes": 18497,
+            "win_rate": 0.29064172568524627,
+            "mean_net_return": 0.0024023946448282762,
+            "cutoff": "2024-06-12"
+          },
+          "36m": {
+            "n_episodes": 21783,
+            "win_rate": 0.2816875545149887,
+            "mean_net_return": -0.0010181776920333756,
+            "cutoff": "2023-06-12"
+          }
+        },
+        "3|above": {
+          "3m": {
+            "n_episodes": 465,
+            "win_rate": 0.2172043010752688,
+            "mean_net_return": -0.013668480224369258,
+            "cutoff": "2026-03-12"
+          },
+          "6m": {
+            "n_episodes": 1455,
+            "win_rate": 0.2020618556701031,
+            "mean_net_return": -0.01445980168142519,
+            "cutoff": "2025-12-12"
+          },
+          "9m": {
+            "n_episodes": 2492,
+            "win_rate": 0.21789727126805777,
+            "mean_net_return": -0.01262821881994728,
+            "cutoff": "2025-09-12"
+          },
+          "12m": {
+            "n_episodes": 4718,
+            "win_rate": 0.28995337007206445,
+            "mean_net_return": 0.001395527973652216,
+            "cutoff": "2025-06-12"
+          },
+          "18m": {
+            "n_episodes": 7454,
+            "win_rate": 0.2510061711832573,
+            "mean_net_return": -0.00688013436778885,
+            "cutoff": "2024-12-12"
+          },
+          "24m": {
+            "n_episodes": 13901,
+            "win_rate": 0.2627149125962161,
+            "mean_net_return": -0.005820020910218196,
+            "cutoff": "2024-06-12"
+          },
+          "36m": {
+            "n_episodes": 17755,
+            "win_rate": 0.25818079414249506,
+            "mean_net_return": -0.007558820005682134,
+            "cutoff": "2023-06-12"
+          }
+        }
+      }
+    },
+    "ma_base_breakout": {
+      "n_episodes": 138523,
+      "cells": {
+        "2|below": {
+          "n_episodes": 11966,
+          "win_rate": 0.20508106301186696,
+          "mean_net_return": 0.010284199538976921,
+          "median_net_return": -0.015201449817343712,
+          "payoff_ratio": 5.868712915204672,
+          "expectancy": 0.010284199538976921,
+          "mean_hold_days": 12.817984288818318,
+          "annualized_per_episode": 0.22281247722900588
+        },
+        "1.5|above": {
+          "n_episodes": 33051,
+          "win_rate": 0.17938942845904815,
+          "mean_net_return": -0.0014344628726368418,
+          "median_net_return": -0.032578946268656914,
+          "payoff_ratio": 4.429336870248704,
+          "expectancy": -0.0014344628726368418,
+          "mean_hold_days": 17.58515627363771,
+          "annualized_per_episode": -0.020360855390930577
+        },
+        "3|above": {
+          "n_episodes": 24891,
+          "win_rate": 0.16250853722228917,
+          "mean_net_return": 0.0037267052999627893,
+          "median_net_return": -0.02118457583892623,
+          "payoff_ratio": 5.836462516086452,
+          "expectancy": 0.0037267052999627893,
+          "mean_hold_days": 14.080671728737295,
+          "annualized_per_episode": 0.06883834749656059
+        },
+        "3|below": {
+          "n_episodes": 28571,
+          "win_rate": 0.20307304609569143,
+          "mean_net_return": 0.007447951890558954,
+          "median_net_return": -0.01811281538461522,
+          "payoff_ratio": 5.164754545451298,
+          "expectancy": 0.007447951890558954,
+          "mean_hold_days": 12.72920093801407,
+          "annualized_per_episode": 0.1582389796686865
+        },
+        "4|below": {
+          "n_episodes": 2049,
+          "win_rate": 0.14055636896046853,
+          "mean_net_return": 0.002192192449771263,
+          "median_net_return": -0.018034322448979553,
+          "payoff_ratio": 6.689755645569719,
+          "expectancy": 0.002192192449771263,
+          "mean_hold_days": 9.889702293801854,
+          "annualized_per_episode": 0.057384311473052785
+        },
+        "1.5|below": {
+          "n_episodes": 19567,
+          "win_rate": 0.20677671589921806,
+          "mean_net_return": 0.007029618300115527,
+          "median_net_return": -0.02441121497160563,
+          "payoff_ratio": 4.6570892170052804,
+          "expectancy": 0.007029618300115527,
+          "mean_hold_days": 15.813205907906168,
+          "annualized_per_episode": 0.11810179587656733
+        },
+        "4|above": {
+          "n_episodes": 7756,
+          "win_rate": 0.13705518308406395,
+          "mean_net_return": 0.0020544666211528765,
+          "median_net_return": -0.01857292234862161,
+          "payoff_ratio": 6.824798191588305,
+          "expectancy": 0.0020544666211528765,
+          "mean_hold_days": 10.388731304796286,
+          "annualized_per_episode": 0.051044237714865215
+        },
+        "1|above": {
+          "n_episodes": 1390,
+          "win_rate": 0.14820143884892087,
+          "mean_net_return": 0.0072120139722825684,
+          "median_net_return": -0.015454445361722566,
+          "payoff_ratio": 7.934076119248263,
+          "expectancy": 0.0072120139722825684,
+          "mean_hold_days": 12.479856115107914,
+          "annualized_per_episode": 0.1561624137663986
+        },
+        "2|above": {
+          "n_episodes": 1222,
+          "win_rate": 0.190671031096563,
+          "mean_net_return": 0.007665103079724215,
+          "median_net_return": -0.019666835427630133,
+          "payoff_ratio": 5.455078041301045,
+          "expectancy": 0.007665103079724215,
+          "mean_hold_days": 15.14975450081833,
+          "annualized_per_episode": 0.13543364012386871
+        },
+        "1|below": {
+          "n_episodes": 3400,
+          "win_rate": 0.1497058823529412,
+          "mean_net_return": -0.0021679407552028206,
+          "median_net_return": -0.01429367078775122,
+          "payoff_ratio": 5.010731099466683,
+          "expectancy": -0.0021679407552028206,
+          "mean_hold_days": 10.133235294117647,
+          "annualized_per_episode": -0.05254165938155231
+        },
+        "unknown|above": {
+          "n_episodes": 3033,
+          "win_rate": 0.11704582921200132,
+          "mean_net_return": -0.01858949506348234,
+          "median_net_return": -0.02931172477847059,
+          "payoff_ratio": 4.382251951766215,
+          "expectancy": -0.01858949506348234,
+          "mean_hold_days": 10.931091328717441,
+          "annualized_per_episode": -0.35117122559158254
+        },
+        "unknown|below": {
+          "n_episodes": 1627,
+          "win_rate": 0.15795943454210204,
+          "mean_net_return": -0.007181328660353574,
+          "median_net_return": -0.02445408832487332,
+          "payoff_ratio": 4.257780761444403,
+          "expectancy": -0.007181328660353574,
+          "mean_hold_days": 11.872157344806393,
+          "annualized_per_episode": -0.14185466779347333
+        },
+        "__ALL__": {
+          "n_episodes": 138523,
+          "win_rate": 0.18182540083596227,
+          "mean_net_return": 0.003487770533754566,
+          "median_net_return": -0.021643710718789275,
+          "payoff_ratio": 5.005167489172161,
+          "expectancy": 0.003487770533754566,
+          "mean_hold_days": 14.306606123170882,
+          "annualized_per_episode": 0.06324711589482468
+        }
+      },
+      "trailing_all": {
+        "3m": {
+          "n_episodes": 5668,
+          "win_rate": 0.1755469301340861,
+          "mean_net_return": 0.004137048955746603,
+          "cutoff": "2026-03-12"
+        },
+        "6m": {
+          "n_episodes": 12251,
+          "win_rate": 0.17174108236062363,
+          "mean_net_return": 0.0005118211981159798,
+          "cutoff": "2025-12-12"
+        },
+        "9m": {
+          "n_episodes": 17756,
+          "win_rate": 0.17256138769993243,
+          "mean_net_return": 0.0022770088846713024,
+          "cutoff": "2025-09-12"
+        },
+        "12m": {
+          "n_episodes": 23642,
+          "win_rate": 0.2042551391591236,
+          "mean_net_return": 0.013066522124995901,
+          "cutoff": "2025-06-12"
+        },
+        "18m": {
+          "n_episodes": 35761,
+          "win_rate": 0.21369648499762312,
+          "mean_net_return": 0.014748839501207088,
+          "cutoff": "2024-12-12"
+        },
+        "24m": {
+          "n_episodes": 47614,
+          "win_rate": 0.2309824841433192,
+          "mean_net_return": 0.0193200175134092,
+          "cutoff": "2024-06-12"
+        },
+        "36m": {
+          "n_episodes": 69479,
+          "win_rate": 0.19539717036802487,
+          "mean_net_return": 0.007707013605777124,
+          "cutoff": "2023-06-12"
+        }
+      },
+      "trailing_top_cells": {
+        "1.5|above": {
+          "3m": {
+            "n_episodes": 1112,
+            "win_rate": 0.1474820143884892,
+            "mean_net_return": -0.006824495734476305,
+            "cutoff": "2026-03-12"
+          },
+          "6m": {
+            "n_episodes": 2772,
+            "win_rate": 0.12842712842712842,
+            "mean_net_return": -0.01186912403417906,
+            "cutoff": "2025-12-12"
+          },
+          "9m": {
+            "n_episodes": 3257,
+            "win_rate": 0.12926005526558182,
+            "mean_net_return": -0.00990237814604123,
+            "cutoff": "2025-09-12"
+          },
+          "12m": {
+            "n_episodes": 4979,
+            "win_rate": 0.18919461739305082,
+            "mean_net_return": 0.010068207365360033,
+            "cutoff": "2025-06-12"
+          },
+          "18m": {
+            "n_episodes": 6492,
+            "win_rate": 0.19100431300061615,
+            "mean_net_return": 0.014272289817137407,
+            "cutoff": "2024-12-12"
+          },
+          "24m": {
+            "n_episodes": 11257,
+            "win_rate": 0.24269343519587813,
+            "mean_net_return": 0.0160037764504602,
+            "cutoff": "2024-06-12"
+          },
+          "36m": {
+            "n_episodes": 16733,
+            "win_rate": 0.19721508396581605,
+            "mean_net_return": 0.0016464472409017429,
+            "cutoff": "2023-06-12"
+          }
+        },
+        "3|below": {
+          "3m": {
+            "n_episodes": 1493,
+            "win_rate": 0.19624916275954454,
+            "mean_net_return": 0.013971970368000844,
+            "cutoff": "2026-03-12"
+          },
+          "6m": {
+            "n_episodes": 2589,
+            "win_rate": 0.2078022402471997,
+            "mean_net_return": 0.009405830508514722,
+            "cutoff": "2025-12-12"
+          },
+          "9m": {
+            "n_episodes": 4329,
+            "win_rate": 0.19773619773619774,
+            "mean_net_return": 0.009831811482860603,
+            "cutoff": "2025-09-12"
+          },
+          "12m": {
+            "n_episodes": 4897,
+            "win_rate": 0.21094547682254441,
+            "mean_net_return": 0.014207065795285693,
+            "cutoff": "2025-06-12"
+          },
+          "18m": {
+            "n_episodes": 9330,
+            "win_rate": 0.24094319399785638,
+            "mean_net_return": 0.01558672894348271,
+            "cutoff": "2024-12-12"
+          },
+          "24m": {
+            "n_episodes": 10737,
+            "win_rate": 0.23880040979789513,
+            "mean_net_return": 0.01946190296619539,
+            "cutoff": "2024-06-12"
+          },
+          "36m": {
+            "n_episodes": 14318,
+            "win_rate": 0.21322810448386645,
+            "mean_net_return": 0.011225474136582139,
+            "cutoff": "2023-06-12"
+          }
+        },
+        "3|above": {
+          "3m": {
+            "n_episodes": 755,
+            "win_rate": 0.12450331125827814,
+            "mean_net_return": -0.00980207354491594,
+            "cutoff": "2026-03-12"
+          },
+          "6m": {
+            "n_episodes": 2122,
+            "win_rate": 0.11922714420358153,
+            "mean_net_return": -0.007892591195601241,
+            "cutoff": "2025-12-12"
+          },
+          "9m": {
+            "n_episodes": 2507,
+            "win_rate": 0.11447945751894695,
+            "mean_net_return": -0.008971503379265998,
+            "cutoff": "2025-09-12"
+          },
+          "12m": {
+            "n_episodes": 4028,
+            "win_rate": 0.19612711022840118,
+            "mean_net_return": 0.011371400579857917,
+            "cutoff": "2025-06-12"
+          },
+          "18m": {
+            "n_episodes": 5716,
+            "win_rate": 0.1884184744576627,
+            "mean_net_return": 0.011127657287354308,
+            "cutoff": "2024-12-12"
+          },
+          "24m": {
+            "n_episodes": 8119,
+            "win_rate": 0.22699839881758838,
+            "mean_net_return": 0.025992148533484187,
+            "cutoff": "2024-06-12"
+          },
+          "36m": {
+            "n_episodes": 12894,
+            "win_rate": 0.17659376454164727,
+            "mean_net_return": 0.008895469497436123,
+            "cutoff": "2023-06-12"
+          }
+        },
+        "1.5|below": {
+          "3m": {
+            "n_episodes": 1043,
+            "win_rate": 0.20038350910834132,
+            "mean_net_return": 0.01647069318882534,
+            "cutoff": "2026-03-12"
+          },
+          "6m": {
+            "n_episodes": 2075,
+            "win_rate": 0.21156626506024095,
+            "mean_net_return": 0.011451879533097733,
+            "cutoff": "2025-12-12"
+          },
+          "9m": {
+            "n_episodes": 3153,
+            "win_rate": 0.2029812876625436,
+            "mean_net_return": 0.012305478734067019,
+            "cutoff": "2025-09-12"
+          },
+          "12m": {
+            "n_episodes": 3717,
+            "win_rate": 0.21657250470809794,
+            "mean_net_return": 0.01803704490514276,
+            "cutoff": "2025-06-12"
+          },
+          "18m": {
+            "n_episodes": 5708,
+            "win_rate": 0.2214435879467414,
+            "mean_net_return": 0.016815110688927173,
+            "cutoff": "2024-12-12"
+          },
+          "24m": {
+            "n_episodes": 6871,
+            "win_rate": 0.24101295299083103,
+            "mean_net_return": 0.022664201611000485,
+            "cutoff": "2024-06-12"
+          },
+          "36m": {
+            "n_episodes": 9831,
+            "win_rate": 0.21523751398636964,
+            "mean_net_return": 0.011748701127198604,
+            "cutoff": "2023-06-12"
+          }
+        }
+      }
+    },
+    "turtle_breakout": {
+      "n_episodes": 44070,
+      "cells": {
+        "1.5|above": {
+          "n_episodes": 9081,
+          "win_rate": 0.3804647065301178,
+          "mean_net_return": -0.0008331832046230014,
+          "median_net_return": -0.05234325560307966,
+          "payoff_ratio": 1.613320038430851,
+          "expectancy": -0.0008331832046230014,
+          "mean_hold_days": 58.8394449950446,
+          "annualized_per_episode": -0.003563514313725036
+        },
+        "3|above": {
+          "n_episodes": 8232,
+          "win_rate": 0.3938289601554908,
+          "mean_net_return": 0.00038150255723190605,
+          "median_net_return": -0.046142607637814956,
+          "payoff_ratio": 1.545744265952133,
+          "expectancy": 0.00038150255723190605,
+          "mean_hold_days": 59.310009718172985,
+          "annualized_per_episode": 0.0016219562496613271
+        },
+        "4|below": {
+          "n_episodes": 4814,
+          "win_rate": 0.4948068134607395,
+          "mean_net_return": 0.03917493215391488,
+          "median_net_return": -0.0027282000000000005,
+          "payoff_ratio": 1.5607026163582438,
+          "expectancy": 0.03917493215391488,
+          "mean_hold_days": 58.57436643124221,
+          "annualized_per_episode": 0.17977271640084247
+        },
+        "2|above": {
+          "n_episodes": 10027,
+          "win_rate": 0.4090954423057744,
+          "mean_net_return": 0.01054105145842811,
+          "median_net_return": -0.0462064608695653,
+          "payoff_ratio": 1.6065211501413275,
+          "expectancy": 0.01054105145842811,
+          "mean_hold_days": 58.121571756258106,
+          "annualized_per_episode": 0.04651338543325867
+        },
+        "4|above": {
+          "n_episodes": 4918,
+          "win_rate": 0.4465229768198455,
+          "mean_net_return": 0.023455308764437514,
+          "median_net_return": -0.02238108924558578,
+          "payoff_ratio": 1.6178916563527006,
+          "expectancy": 0.023455308764437514,
+          "mean_hold_days": 59.29808865392436,
+          "annualized_per_episode": 0.10354459337112942
+        },
+        "1.5|below": {
+          "n_episodes": 1953,
+          "win_rate": 0.4116743471582181,
+          "mean_net_return": 0.00905780864209297,
+          "median_net_return": -0.04131340900321527,
+          "payoff_ratio": 1.588452135873699,
+          "expectancy": 0.00905780864209297,
+          "mean_hold_days": 58.3783922171019,
+          "annualized_per_episode": 0.039690960276344445
+        },
+        "1|below": {
+          "n_episodes": 150,
+          "win_rate": 0.5266666666666666,
+          "mean_net_return": 0.012568760083615273,
+          "median_net_return": 0.011206403140344337,
+          "payoff_ratio": 1.0643300281116836,
+          "expectancy": 0.012568760083615273,
+          "mean_hold_days": 59.586666666666666,
+          "annualized_per_episode": 0.05424376335366321
+        },
+        "3|below": {
+          "n_episodes": 1439,
+          "win_rate": 0.47810979847116053,
+          "mean_net_return": 0.016294809177524027,
+          "median_net_return": -0.0073793627906975495,
+          "payoff_ratio": 1.3435716102586657,
+          "expectancy": 0.016294809177524027,
+          "mean_hold_days": 59.01528839471855,
+          "annualized_per_episode": 0.07145691435088564
+        },
+        "unknown|above": {
+          "n_episodes": 2294,
+          "win_rate": 0.3217088055797733,
+          "mean_net_return": -0.00763904912472413,
+          "median_net_return": -0.09343403276594352,
+          "payoff_ratio": 1.9788528708800026,
+          "expectancy": -0.00763904912472413,
+          "mean_hold_days": 59.98910200523104,
+          "annualized_per_episode": -0.031699717500810576
+        },
+        "2|below": {
+          "n_episodes": 497,
+          "win_rate": 0.448692152917505,
+          "mean_net_return": 0.03668824992310283,
+          "median_net_return": -0.015649990170708714,
+          "payoff_ratio": 1.8855003654805793,
+          "expectancy": 0.03668824992310283,
+          "mean_hold_days": 58.93158953722334,
+          "annualized_per_episode": 0.16657822144855672
+        },
+        "unknown|below": {
+          "n_episodes": 626,
+          "win_rate": 0.2955271565495208,
+          "mean_net_return": -0.036731319032836225,
+          "median_net_return": -0.09712112574151464,
+          "payoff_ratio": 1.6467918805680812,
+          "expectancy": -0.036731319032836225,
+          "mean_hold_days": 60.0,
+          "annualized_per_episode": -0.14544651678171194
+        },
+        "1|above": {
+          "n_episodes": 39,
+          "win_rate": 0.41025641025641024,
+          "mean_net_return": 2.7916960206291596e-05,
+          "median_net_return": -0.014923321951219412,
+          "payoff_ratio": 1.4380982786086642,
+          "expectancy": 2.7916960206291596e-05,
+          "mean_hold_days": 57.23076923076923,
+          "annualized_per_episode": 0.00012293051914502584
+        },
+        "__ALL__": {
+          "n_episodes": 44070,
+          "win_rate": 0.41093714545041976,
+          "mean_net_return": 0.009665342784198425,
+          "median_net_return": -0.04040447593509654,
+          "payoff_ratio": 1.5901123697145017,
+          "expectancy": 0.009665342784198425,
+          "mean_hold_days": 58.8500340367597,
+          "annualized_per_episode": 0.042048978506825874
+        }
+      },
+      "trailing_all": {
+        "3m": {
+          "n_episodes": 1606,
+          "win_rate": 0.28268991282689915,
+          "mean_net_return": -0.04038561325202373,
+          "cutoff": "2026-03-12"
+        },
+        "6m": {
+          "n_episodes": 3689,
+          "win_rate": 0.30848468419625913,
+          "mean_net_return": -0.026804186179329226,
+          "cutoff": "2025-12-12"
+        },
+        "9m": {
+          "n_episodes": 5174,
+          "win_rate": 0.353884808658678,
+          "mean_net_return": -0.0038121714643670904,
+          "cutoff": "2025-09-12"
+        },
+        "12m": {
+          "n_episodes": 7642,
+          "win_rate": 0.40630724941114893,
+          "mean_net_return": 0.023207428051929106,
+          "cutoff": "2025-06-12"
+        },
+        "18m": {
+          "n_episodes": 11451,
+          "win_rate": 0.44293074840625274,
+          "mean_net_return": 0.03098591919263158,
+          "cutoff": "2024-12-12"
+        },
+        "24m": {
+          "n_episodes": 16243,
+          "win_rate": 0.5013236471095242,
+          "mean_net_return": 0.06048576442533547,
+          "cutoff": "2024-06-12"
+        },
+        "36m": {
+          "n_episodes": 22383,
+          "win_rate": 0.426037617834964,
+          "mean_net_return": 0.014781496550817804,
+          "cutoff": "2023-06-12"
+        }
+      },
+      "trailing_top_cells": {
+        "2|above": {
+          "3m": {
+            "n_episodes": 619,
+            "win_rate": 0.37479806138933763,
+            "mean_net_return": 0.016935353359386104,
+            "cutoff": "2026-03-12"
+          },
+          "6m": {
+            "n_episodes": 1550,
+            "win_rate": 0.3735483870967742,
+            "mean_net_return": 0.009244397418262726,
+            "cutoff": "2025-12-12"
+          },
+          "9m": {
+            "n_episodes": 2316,
+            "win_rate": 0.41796200345423146,
+            "mean_net_return": 0.02994379273630769,
+            "cutoff": "2025-09-12"
+          },
+          "12m": {
+            "n_episodes": 3546,
+            "win_rate": 0.44021432600112803,
+            "mean_net_return": 0.04634959947442032,
+            "cutoff": "2025-06-12"
+          },
+          "18m": {
+            "n_episodes": 4814,
+            "win_rate": 0.4542999584545077,
+            "mean_net_return": 0.04260793222250282,
+            "cutoff": "2024-12-12"
+          },
+          "24m": {
+            "n_episodes": 5055,
+            "win_rate": 0.4536102868447082,
+            "mean_net_return": 0.04189658343921035,
+            "cutoff": "2024-06-12"
+          },
+          "36m": {
+            "n_episodes": 5781,
+            "win_rate": 0.43175921120913335,
+            "mean_net_return": 0.0240581345176785,
+            "cutoff": "2023-06-12"
+          }
+        },
+        "1.5|above": {
+          "3m": {
+            "n_episodes": 328,
+            "win_rate": 0.2530487804878049,
+            "mean_net_return": -0.05563029325086166,
+            "cutoff": "2026-03-11"
+          },
+          "6m": {
+            "n_episodes": 769,
+            "win_rate": 0.25487646293888166,
+            "mean_net_return": -0.048528104616999225,
+            "cutoff": "2025-12-11"
+          },
+          "9m": {
+            "n_episodes": 943,
+            "win_rate": 0.2767762460233298,
+            "mean_net_return": -0.03780732867468781,
+            "cutoff": "2025-09-11"
+          },
+          "12m": {
+            "n_episodes": 1388,
+            "win_rate": 0.3515850144092219,
+            "mean_net_return": -0.0065212544965017345,
+            "cutoff": "2025-06-11"
+          },
+          "18m": {
+            "n_episodes": 1887,
+            "win_rate": 0.3868574456809751,
+            "mean_net_return": 0.0111142332308615,
+            "cutoff": "2024-12-11"
+          },
+          "24m": {
+            "n_episodes": 3129,
+            "win_rate": 0.45701502077341005,
+            "mean_net_return": 0.04459729963662634,
+            "cutoff": "2024-06-11"
+          },
+          "36m": {
+            "n_episodes": 4397,
+            "win_rate": 0.3866272458494428,
+            "mean_net_return": 0.0021149579795706305,
+            "cutoff": "2023-06-11"
+          }
+        },
+        "3|above": {
+          "3m": {
+            "n_episodes": 172,
+            "win_rate": 0.26744186046511625,
+            "mean_net_return": -0.059153377224134426,
+            "cutoff": "2026-03-12"
+          },
+          "6m": {
+            "n_episodes": 414,
+            "win_rate": 0.30917874396135264,
+            "mean_net_return": -0.03460722577296274,
+            "cutoff": "2025-12-12"
+          },
+          "9m": {
+            "n_episodes": 697,
+            "win_rate": 0.3500717360114778,
+            "mean_net_return": -0.009871816058871516,
+            "cutoff": "2025-09-12"
+          },
+          "12m": {
+            "n_episodes": 1140,
+            "win_rate": 0.4298245614035088,
+            "mean_net_return": 0.028559681285226977,
+            "cutoff": "2025-06-12"
+          },
+          "18m": {
+            "n_episodes": 2088,
+            "win_rate": 0.46360153256704983,
+            "mean_net_return": 0.03659622648192393,
+            "cutoff": "2024-12-12"
+          },
+          "24m": {
+            "n_episodes": 3255,
+            "win_rate": 0.4488479262672811,
+            "mean_net_return": 0.03162545370566142,
+            "cutoff": "2024-06-12"
+          },
+          "36m": {
+            "n_episodes": 4213,
+            "win_rate": 0.3973415618324235,
+            "mean_net_return": -0.003708852848552312,
+            "cutoff": "2023-06-12"
+          }
+        },
+        "4|above": {
+          "3m": {
+            "n_episodes": 90,
+            "win_rate": 0.14444444444444443,
+            "mean_net_return": -0.11155037743454328,
+            "cutoff": "2026-03-11"
+          },
+          "6m": {
+            "n_episodes": 184,
+            "win_rate": 0.21195652173913043,
+            "mean_net_return": -0.05309898561534057,
+            "cutoff": "2025-12-11"
+          },
+          "9m": {
+            "n_episodes": 202,
+            "win_rate": 0.22277227722772278,
+            "mean_net_return": -0.052749480683497364,
+            "cutoff": "2025-09-11"
+          },
+          "12m": {
+            "n_episodes": 354,
+            "win_rate": 0.4011299435028249,
+            "mean_net_return": 0.01955839060430014,
+            "cutoff": "2025-06-11"
+          },
+          "18m": {
+            "n_episodes": 407,
+            "win_rate": 0.4201474201474201,
+            "mean_net_return": 0.0210518642007648,
+            "cutoff": "2024-12-11"
+          },
+          "24m": {
+            "n_episodes": 1221,
+            "win_rate": 0.7027027027027027,
+            "mean_net_return": 0.17724236325223358,
+            "cutoff": "2024-06-11"
+          },
+          "36m": {
+            "n_episodes": 2544,
+            "win_rate": 0.43946540880503143,
+            "mean_net_return": 0.024371960557673957,
+            "cutoff": "2023-06-11"
+          }
+        }
+      }
+    }
+  },
+  "note": "公式×segment×trailing窗 含成本刻画; buyable-only/PIT/非对称成本; 年化口径单 episode 非组合 NAV"
+}
