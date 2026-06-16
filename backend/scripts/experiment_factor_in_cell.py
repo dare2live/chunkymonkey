@@ -63,6 +63,25 @@ def _load(con, factor: str, start: str) -> pd.DataFrame:
         p = con.execute("SELECT stock_code code, date, range_pos FROM fs.fact_segment_panel WHERE date >= ?", [start]).df()
         m = m.merge(p, on=["code", "date"], how="left")
         m["factor"] = m["range_pos"]
+    elif factor == "moneyflow":
+        # 资金因子 = 主力(大单+特大单)净流入率 trailing-20d 均 (smart money 持续吸筹); 盘后t-1, PIT (signal@t, 入场t+1)
+        mf = con.execute(
+            """
+            WITH r AS (
+              SELECT SUBSTR(ts_code,1,6) code,
+                     SUBSTR(trade_date,1,4)||'-'||SUBSTR(trade_date,5,2)||'-'||SUBSTR(trade_date,7,2) date,
+                     (buy_lg_amount+buy_elg_amount-sell_lg_amount-sell_elg_amount) /
+                       NULLIF(buy_sm_amount+buy_md_amount+buy_lg_amount+buy_elg_amount
+                              +sell_sm_amount+sell_md_amount+sell_lg_amount+sell_elg_amount,0) AS main_ratio
+              FROM tr.raw_tushare_moneyflow WHERE trade_date >= ?
+            )
+            SELECT code, date,
+                   AVG(main_ratio) OVER (PARTITION BY code ORDER BY date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS factor
+            FROM r
+            """,
+            [start.replace("-", "")],
+        ).df()
+        m = m.merge(mf, on=["code", "date"], how="left")
     else:
         raise SystemExit(f"未知 factor: {factor}")
     return m.dropna(subset=["factor", "circ_mv", "rv20", "fwd20"])

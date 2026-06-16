@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-06-16 08:56:25 CST
+**Snapshot 时间**: 2026-06-16 22:12:26 CST
 
 ## 主线状态
 
@@ -44,28 +44,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `b57cada2 chore: 清 seed_dim_data_asset 已删 industry-pit mart 的 catalog 残留 (S4 post-fix-audit 收尾)` |
-| 最近 24h commits | 45 |
-| 未 commit 文件 | 10 |
+| HEAD | `fbbd400f feat: D3 富因子+多因子crux — 主升浪买点判别全弱(OOS AUC 0.51≈null=LOW_CEILING), 待Optuna+Modal系统搜` |
+| 最近 24h commits | 38 |
+| 未 commit 文件 | 8 |
 
 ### 最近 10 commits
 
 ```
-b57cada2 chore: 清 seed_dim_data_asset 已删 industry-pit mart 的 catalog 残留 (S4 post-fix-audit 收尾)
-3c542f41 refactor: 行业迁移 S4-S7 收尾 — 删 STALE 通达信 industry-pit mart, 通达信降热备, 迁移功能完成
-7b55c314 feat: 行业迁移 S3 — live serving 切申万 SW2021 (industry.py + signals_v2 repoint, 06-11 ANOVA 主口径)
-147a47a8 feat: 行业迁移 S2 — 申万 PIT as-of 视图 v_sw_industry_pit (探索可读正确行业)
-136a276f docs: 行业迁移 S1.5 — as-of PIT 逻辑实测验证 (S1 数据正确性闭环)
-c1a0793a feat: 行业迁移 S1 (P0) — 申万成分补 is_new=N 历史区间, 修 latent-snapshot leakage + 计划冻结
-b2608aad feat: leakage 门去自批绕过 — commit 硬门 + 转正门 C-LEAK 强制 (用户拷问: 自批skip=门是摆设)
-ea1663b7 refactor: audit_panel_leakage 去硬编码改 config 驱动 + experiment-discipline 门识别共享 harness
-bfc23480 feat: 多因子探索 runner — 读L2面板含成本R1裁决 + 首测 reversal IC_POSITIVE_BUT_UNTRADABLE
-fef9ea57 feat: L2 fact_feature_panel 落地 + feature_store 纳入层级执法 + C2 gate 防回退
+fbbd400f feat: D3 富因子+多因子crux — 主升浪买点判别全弱(OOS AUC 0.51≈null=LOW_CEILING), 待Optuna+Modal系统搜
+85820f72 feat: D3 轨迹特征广扫(量价弱~1.1x) + moneyflow_dc 东财资金全拉(2023-10+, 384万行)
+c0540c0c feat: 正确流程 D1+D2 — 主升浪 ground truth 重建(clean tushare, 2025-06前)+ episode 形态分类
+7a5bd308 docs: alpha 方法论跑偏固化 — MASTER §5 加执行顺序铁律 (D1-first/禁信号正推)
+ce334a39 feat: F2 cell条件化首验 — 低换手×大盘低波 +19.5%/-9%dd/Sharpe1.34 (方法论验证, 近6m衰减待DSR)
+c0cb98b3 feat: F1 含成本裁决 — 位置-反转 IC真(+0.05)但全4cell KPI_FAIL, 形态=结构非alpha (印证方法论)
+2ee26ebd feat: F0 形态面板 + F1 分离度诊断 — range_pos 反转信号 -0.043 (regime翻转), 正交轴方向验证
+10db7da3 refactor: 耦合检查收敛到 moth coupling 单一真相源 (本地 check_coupling 退役)
+2caaaad8 refactor: 去 chunkymonkey settings 的 architect_gate 重复 wiring (全局已 wire)
+01c0b041 feat: wire architect_controller_gate 进 chunkymonkey UserPromptSubmit — 固化'改前计划/审计'前半环
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**10 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**8 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

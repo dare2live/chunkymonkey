@@ -347,9 +347,9 @@ domains:
     batch_mode: by_trade_date
     pit_anchor: "trade_date; 每日筹码及胜率盘后更新 -> JOIN t-1; winner_rate + cost_5/15/50/85/95pct + weight_avg 实测在录; C0 黑箱审计 20260612 FAIL (J1 spearman 0.8972<0.95 / J2 8.53pp>5 / J3 0.072<0.99) -> winner_rate 疑似未复权坐标口径 (J3 实现缺陷致未确证), 与本地 qfq CYQ 不可直接互换, 消费前必须口径换算或弃用; evidence=analysis/c0_cyq_audit_20260612.json"
     available_after: "18:00"
-    data_start: "20230103"   # 2026-06-12: 筹码轴 C0 FAIL 冻结, 对齐实际落库防 drain 开闸; 2018-2022 补样并入 cyq_chips 口径对照结论处置 (文档口径原值 20180102)
+    data_start: "20180101"   # 2026-06-16 解冻 (用户: cyq 2018就有, re-audit 结论 C0 FAIL=审计比错基准/cost分位qfq对齐可用): 实弹确认 tushare cyq_perf 20180102=3094行. 原 20230103 冻结是 C0 误判, 补拉 2018-2022
     freshness_sla_trading_days: 1
-    min_rows_per_batch: 4000  # 实测 20260610 = 5512 行; 距单次上限 6000 仅 ~8%, 超限截断风险年检 (同 daily)
+    min_rows_per_batch: 2500  # 2026-06-16 降4000->2500: 2018 universe ~3094股(实弹), 4000会误判截断; 近年5512>>2500仍catch半空批
     allow_empty_batch: false
 
   # stk_factor_pro 暂缓注册 (2026-06-12 实弹): 单日返回 1878 行 != 全市场 5512 — 截断疑点

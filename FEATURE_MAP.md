@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-16 22:26
+> Snapshot: 2026-06-16 22:28
 
 ## 1. 入口面
 
@@ -88,7 +88,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 165 张 | 单 writer 94 | 多 writer 71 | 动态表名写点 25 处 (15 文件)
+统计: 表 165 张 | 单 writer 94 | 多 writer 71 | 动态表名写点 27 处 (16 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -105,6 +105,7 @@
 | backend/scripts/build_sw_industry_view.py | 1 |
 | backend/scripts/db_compact.py | 2 |
 | backend/scripts/db_partition_migrate.py | 2 |
+| backend/scripts/experiment_macd_episode_scan.py | 2 |
 | backend/scripts/rally_ground_truth_scan.py | 2 |
 | backend/scripts/seed_dim_data_asset.py | 1 |
 | backend/services/aif10_capability_client.py | 3 |
@@ -289,7 +290,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 7,983 | calls 边 102,327 | imports 边 13,735 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 7,987 | calls 边 101,919 | imports 边 13,714 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -305,11 +306,11 @@
 | services.kline_source | 11 |
 | services.pipeline_manifest | 8 |
 | services.pricing_policy | 8 |
+| services.experiment_store | 7 |
 | routers.updater_runtime | 6 |
 | services.constants | 6 |
 | services.data_sources | 6 |
 | services.etf_grid_engine | 6 |
-| services.gap_queue | 6 |
 
 ### 跨文件 fan-in 最高的文件 (近似口径: 唯一定义名 + caller 实际 import 目标模块双过滤)
 
@@ -317,9 +318,9 @@
 |---|---|
 | backend/services/database_manifest.py | 15 |
 | backend/services/duck_adapter.py | 12 |
+| backend/services/experiment_store.py | 8 |
 | backend/routers/updater_runtime.py | 6 |
 | backend/services/etf_grid_engine.py | 6 |
-| backend/services/experiment_store.py | 6 |
 | backend/services/data_sources/base.py | 5 |
 | backend/services/kline_source.py | 5 |
 | backend/services/etf_engine.py | 4 |
