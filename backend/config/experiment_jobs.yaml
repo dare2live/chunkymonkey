@@ -129,10 +129,12 @@ job_families:
         table: mart_pipeline_run_manifest
         min_rows: 1
 
-  consumer_alpha_validation:
+  consumer_alpha_validation:   # [DEPRECATED 2026-06-16 G2] 孤儿 family, 勿作新实验入口 (只跑过 2 行 S0 dry)。
+    # 新 alpha 实验唯一入口 = services/phaseD_signal_eval.evaluate_signal (轻 harness, 写 experiment_store)。
+    # 真相源 docs/conditional_alpha_program.md §6。保留仅为 experiment_l0_baseline 历史依赖, 解耦后删。
     owner_module: experiment_consumer_alpha
     purpose: >-
-      Validate which new data candidates carry real PIT-clean alpha by running the
+      [DEPRECATED] Validate which new data candidates carry real PIT-clean alpha by running the
       (data candidate x consumer) matrix, before any pipeline is built. Verify-only:
       never tunes formula thresholds (goal.md freeze). Outputs route to the isolated
       experiment_store DB (must NOT be consumed by daily_update live path).

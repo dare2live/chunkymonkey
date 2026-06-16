@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""S0 consumer_alpha 验证执行器 (alpha 验证程序, owner=analysis/alpha_validation_program_spec_20260614.md §4-5)。
+"""[DEPRECATED 2026-06-16] consumer_alpha 验证执行器 — 孤儿框架, 勿作新实验入口。
+
+>>> 退役裁决 (根因审计 agent a3b2fbfa + docs/conditional_alpha_program.md §1/§6/G2):
+>>> 本重型 family/executor 被判"想象的复杂度"沦孤儿 (verdict 表仅 2 行 S0 dry, 矩阵从未真跑)。
+>>> 新 alpha 实验【唯一入口】= services/phaseD_signal_eval.evaluate_signal (轻 harness, 已被 5+ 脚本
+>>> 复用, 自动写 experiment_store)。本文件仅为 experiment_l0_baseline 历史依赖保留, 不再扩展/不接新实验;
+>>> experiment_l0_baseline 解耦后物删。执行真相源已迁 docs/conditional_alpha_program.md。
+
+历史: S0 consumer_alpha 验证执行器 (alpha 验证程序, owner=analysis/alpha_validation_program_spec_20260614.md §4-5)。
 
 地基-reset 后重建: 复用对象 (services.optimization 中央层 / plan_validator / walk_forward
 runner) 已被 reset 删, 本脚本是 config 驱动的最小脚手架, 不复活 chunkyctl god-dispatcher
