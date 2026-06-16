@@ -116,6 +116,24 @@ if [[ -n "$consumer_touched" ]]; then
     fi
 fi
 
+# 3.7 散落死闸 (G3 门#1, owner=docs/conditional_alpha_program.md §4): staged 的 experiment_*.py
+# 必须走 harness/留档层 (phaseD_signal_eval 或 experiment_store), 禁裸跑无留档 → 进 experiment_store
+# 唯一真相源, 防"一脚本一实验丢 analysis/*.json"漂移 (根因审计 H1/H2)。
+exp_staged=$(git diff --cached --name-only | grep -E "^backend/scripts/experiment_.*\.py$" || true)
+if [[ -n "$exp_staged" ]]; then
+    echo
+    echo "=== Step 3.7: experiment harness gate (experiment_*.py staged) ==="
+    if PYTHONPATH=backend python backend/scripts/check_experiment_harness.py --staged 2>&1 | tail -15; then
+        echo "[experiment-harness] PASS"
+    else
+        echo
+        echo "ERROR: 散落死闸 — staged experiment 脚本裸跑无留档 (不走 phaseD_signal_eval / 不写 experiment_store)。"
+        echo "正解: 实验走 services/phaseD_signal_eval.evaluate_signal (唯一 harness) 或 import experiment_store 留档; 不丢 analysis/*.json。"
+        echo "真豁免 (非 alpha 实验) = check_experiment_harness.py EXEMPT 显式登记 + 理由, 不 --no-verify 绕。"
+        exit 4
+    fi
+fi
+
 # 4. Commit message keyword check (manual preview)
 echo
 echo "=== Step 4: commit message keyword ==="

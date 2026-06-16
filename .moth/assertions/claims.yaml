@@ -92,6 +92,11 @@ assertions:
     type: shell
     command: ["bash", "-c", "grep -cE 'forecast_express_pead|income_fina_indicator|kpl_limit_step|holder_events|sw_industry_tree' backend/scripts/experiment_consumer_alpha_validation.py || true"]
     expect: {op: "==", value: 0}
+  - id: experiment-harness-no-naked-script
+    claim: "全部 experiment_*.py 走 harness/留档层 (phaseD_signal_eval/experiment_store), 0 裸跑 (2026-06-16 G3 门#1 散落死, owner=docs/conditional_alpha_program.md §4; 根因 H1/H2: 旧框架弃用后实验退化散落丢 analysis/*.json 不进库; 命中=新实验裸跑漂移复发)"
+    type: shell
+    command: ["bash", "-c", "for f in backend/scripts/experiment_*.py; do grep -qE 'phaseD_signal_eval|experiment_store|record_verdict|record_ic_cell|open_store' \"$f\" || echo miss; done | grep -c miss || true"]
+    expect: {op: "==", value: 0}
   - id: optuna-require-walk-forward
     claim: "optuna_config 守 require_walk_forward=true (2026-06-14 L0 立: 防过拟合核心 — 业务表禁 in-sample fit 入库; 翻 false = 估计死红线破, stage_opt leakage 反例复发)"
     type: shell
