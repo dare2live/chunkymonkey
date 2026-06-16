@@ -42,6 +42,19 @@ domains:
     freshness_sla_trading_days: 1
     min_rows_per_batch: 3000      # 2026-06-15 扩2020回补降4000->3000: 2020 universe ~3740股 (实测) < 4000 误报; 与 daily 一致, 仍防真截断
 
+  moneyflow_dc:   # 2026-06-16 用户"全拉初评有用数据": 东财个股资金流 (net_amount/net_amount_rate, 补 order-size moneyflow 的东财口径)
+    source: tushare
+    api: moneyflow_dc
+    target_table: raw_tushare_moneyflow_dc
+    grain: [ts_code, trade_date]
+    batch_mode: by_trade_date
+    pit_anchor: "trade_date; 盘后更新 -> JOIN t-1 (与 moneyflow 同)"
+    available_after: "18:00"
+    data_start: "20230901"        # 2026-06-16 实测: 东财个股资金流 ~2023-10 才有 (20230701空/20231009=5419行); 2020-2023空, 不空跑
+    freshness_sla_trading_days: 1
+    min_rows_per_batch: 4000      # 实弹 5419-5965 行 (2023Q4+全宇宙)
+    allow_empty_batch: false
+
   # ── P0-b: 可执行性真相源 + 情绪温度计 ──
   limit_list_d:
     source: tushare
