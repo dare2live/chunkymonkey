@@ -72,5 +72,33 @@ execution-aware 含成本 backtest (T+1 open/涨跌停剔/非对称成本/容量
 **下一步 (pre-reg)**: Optuna 调 BASE_N/RETR/HOLD_TOL/MAX_BASE/缩量阈值 — 目标函数 = **比随机的增量** (非裸收益,
 防拟合 beta), walk-forward OOS; 放宽规则提频但守住增量 → 组合 NAV含成本 → 叠 context 因子 (筹码/资金/预期上调) 过滤。
 
+## 8.6 系统化 Optuna pre-reg (冻结判据, 2026-06-16, 跑前必冻 — CLAUDE§5/plan_validator)
+
+> 触发前置: 入场 alpha 已证稳健可调 (§8.5 鲁棒性扫描, 8组增量全+2~3.4%/OOS同向)。**但到 KPI 有三道墙, 仅清墙1**。
+
+**三道墙 (诚实分解, 防"入场 alpha 真=快到 KPI"错觉)**:
+- 墙1 入场 edge: ✓ 二次突破比随机 +2~3.4% 稳健, OOS 坐实 (n=589@#6)。
+- 墙2 回撤控制: ✗ **真正硬墙** — 裸基组合 max_dd -46.8% → 需 ≤-20%; 入场 alpha 不解决回撤, 须 regime门/仓位/出场。
+- 墙3 含成本组合年化 ≥30%: ✗ 入场+风控合起来的最终真金白银, 未知。
+
+**冻结目标函数 (C-R1/C-WinReturn 铁律)**: maximize **含成本组合 OOS 年化**, subject to **max_dd ≥ -20% (硬约束/惩罚项)**;
+**禁用** per-trade 增量 / IC / sharpe 当唯一目标 (per-trade 增量是诊断量, IC 减掉 cohort 漂移看不见 long-only 的钱)。
+
+**冻结搜索空间 (非空, 三组)**:
+- 入场: base_n∈[30,60], retr∈[0.04,0.10], hold_tol∈[0.05,0.10], max_base∈[60,120], vol_mult∈[1.0,2.0]。
+- 出场: trail∈[0.85,0.92], weekly_break on/off, max_hold∈[60,180]。
+- 风控 (攻墙2): regime门 (HS300/中证500 周线在不在多头) on/off, 仓位 (等权 vs 波动倒数), max_pos∈[10,30]。
+
+**冻结 OOS 协议**: walk-forward expanding_monthly, train ≤2025-05, OOS 2025-06+ **完全留出**; selector 只读 oos_* 列;
+random-entry 同context对照保留 (隔离 beta); DSR + PBO 防多重比较过拟合 (8+维搜索空间必做)。
+
+**冻结成败判据 (跑前写死, 不事后挪门柱)**:
+- PASS: 含成本组合 OOS 年化 ≥30% AND max_dd ≥-20% AND 超额HS300>0 AND DSR>0 AND PBO<0.5。
+- FAIL: OOS 年化 < 裸基baseline OR max_dd 更差 OR DSR/PBO 报过拟合 → 诚实记录, 不调判据复跑。
+- 部分: 年化或回撤单项达标但非全 KPI → 记 tradeoff, 不当 delivery。
+
+**执行面**: 本地 Optuna (无 Modal 花钱 → assistant 权限内可跑); 走 services.optimization 中央层不裸调 study.optimize;
+阈值走 optuna_config.yaml; 跑前 plan_validator.enforce_optuna_plan() 须 PASS (搜索空间非空已满足)。
+
 ## 8. 数据真相源铁律 (2026-06-16 教训)
 data_start 用 catalog `history_start` (tushare文档一手), 非冻结的 registry; 字段审计别冻结数据 range; 限流 0 行≠数据无。已修: cyq 2023→2018 解冻回填。(owner=memory feedback-data-start-truth-source)
