@@ -152,3 +152,45 @@ def test_audit_contamination(tmp_path):
     assert r['delisted_picks'] == 1  # 600003
     assert r['neeq_picks'] == 1  # 830001
     assert r['etf_picks'] == 1  # 510300
+
+
+# === 2026-06-17 universe 升交易日历级真相源: 硬验证器 + PIT ST 防回归 ===
+
+def test_classify_exclusion_whitelist_passes():
+    from services.universe import classify_exclusion
+    for code in ("600000", "000001", "300274", "688981"):
+        assert classify_exclusion(code) is None
+
+
+def test_classify_exclusion_flags_excluded_boards():
+    from services.universe import classify_exclusion
+    assert classify_exclusion("920819") is not None   # 北交所
+    assert classify_exclusion("832000") is not None   # 北交所/三板
+    assert classify_exclusion("430139") is not None   # 新三板
+    assert classify_exclusion("159915") is not None   # ETF
+    assert classify_exclusion("510300") is not None   # ETF
+
+
+def test_assert_universe_clean_passes_whitelist():
+    from services.universe import assert_universe_clean
+    assert assert_universe_clean(["600000", "000001", "300274", "688981"]) is True
+
+
+def test_assert_universe_clean_raises_on_contamination():
+    from services.universe import assert_universe_clean, UniverseContaminationError
+    with pytest.raises(UniverseContaminationError):
+        assert_universe_clean(["600000", "920819"], context="test")
+    # 报错应列出污染只数 + 板块
+    try:
+        assert_universe_clean(["600000", "920819", "159915"])
+    except UniverseContaminationError as e:
+        msg = str(e)
+        assert "2" in msg  # 2 只排除股
+
+
+def test_is_st_on_pit():
+    from services.universe import is_st_on
+    cal = {"600519": {"20240101", "20240102"}}
+    assert is_st_on("600519", "20240101", cal) is True
+    assert is_st_on("600519", "20240601", cal) is False  # PIT: 当日未 ST
+    assert is_st_on("000001", "20240101", cal) is False  # 未在日历

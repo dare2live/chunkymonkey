@@ -15,6 +15,14 @@ class UniverseDataError(RuntimeError):
     """Raised when a required universe truth source is unavailable."""
 
 
+class UniverseContaminationError(RuntimeError):
+    """Raised when a stock set contains excluded (non-whitelist) codes.
+
+    2026-06-17 用户决议: universe 升到交易日历级硬真相源 — 排除股进任何
+    验证/回测/GT = 硬错, 不是 warning。任何最终股票集必过 assert_universe_clean()。
+    """
+
+
 def _load_universe_config() -> dict:
     import yaml
     from pathlib import Path
@@ -215,3 +223,77 @@ def audit_strategy_universe_contamination(
         "neeq_picks": neeq[0], "neeq_stocks": neeq[1], "neeq_pct": neeq[0] / total_picks * 100,
         "etf_picks": etf[0], "etf_stocks": etf[1], "etf_pct": etf[0] / total_picks * 100,
     }
+
+
+# =====================================================================
+# 硬真相源门 (2026-06-17 用户决议: universe 升到交易日历级)
+# 排除列表里的股票永不进任何验证/回测/GT/选股。任何最终股票集必过
+# assert_universe_clean()。前缀级判定 (无 DB, 快), 报错带板块归类。
+# =====================================================================
+
+_EXCLUDED_BOARDS: dict[str, str] = dict(_UNIVERSE_CFG.get("exclude", {}).get("excluded_boards", {}))
+
+
+def classify_exclusion(stock_code: str) -> str | None:
+    """返回排除原因 (板块名); 若在白名单内返回 None.
+
+    白名单 = include.board_prefixes (60/00/30/68)。补集按 excluded_boards
+    taxonomy 归类 (北交所/三板/ETF), 兜底 '非白名单(前缀)'。
+    """
+    if not stock_code or len(stock_code) < 2:
+        return "代码畸形"
+    p2 = stock_code[:2]
+    if p2 in ACTIVE_A_SHARE_PREFIXES:
+        return None
+    # 先查 2 位, 再查 1 位 taxonomy
+    if p2 in _EXCLUDED_BOARDS:
+        return _EXCLUDED_BOARDS[p2]
+    if stock_code[:1] in _EXCLUDED_BOARDS:
+        return _EXCLUDED_BOARDS[stock_code[:1]]
+    return f"非白名单({p2}x)"
+
+
+def assert_universe_clean(stock_codes, *, context: str = "") -> bool:
+    """硬门: 若 stock_codes 含任何排除股, raise UniverseContaminationError.
+
+    交易日历级真相源 — 就像非交易日不能下单, 排除股不能进 universe。
+    GT/回测/实验/选股的最终股票集必调本函数。前缀级, 无 DB。
+    """
+    bad: dict[str, list[str]] = {}
+    for code in stock_codes:
+        reason = classify_exclusion(code)
+        if reason is not None:
+            bad.setdefault(reason, []).append(str(code))
+    if bad:
+        n_bad = sum(len(v) for v in bad.values())
+        parts = "; ".join(f"{r}: {len(v)}只(如{v[:3]})" for r, v in sorted(bad.items()))
+        ctx = f" @ {context}" if context else ""
+        raise UniverseContaminationError(
+            f"universe 污染{ctx}: {n_bad} 只排除股混入 — {parts}. "
+            f"修: 股票集先过 services.universe.assert_universe_clean / get_active_universe."
+        )
+    return True
+
+
+def load_st_calendar(raw_conn) -> dict[str, set[str]]:
+    """PIT ST 日历: {code(6位): set(YYYYMMDD)} — 某股某日是否被 ST 标记的真相源.
+
+    源: raw_tushare_stock_st (data_source.st_calendar)。用于历史 t 的 PIT ST 判定
+    (旧 dim_active_a_stock 只有当前名字, 非 PIT)。单一计算点: GT/回测共用本函数,
+    不各自内联 ST 查询。
+    """
+    if not _table_exists(raw_conn, "raw_tushare_stock_st"):
+        raise UniverseDataError("raw_tushare_stock_st (PIT ST 真相源) 不存在")
+    rows = raw_conn.execute(
+        "SELECT DISTINCT SUBSTR(ts_code,1,6) AS code, REPLACE(trade_date,'-','') AS d "
+        "FROM raw_tushare_stock_st"
+    ).fetchall()
+    cal: dict[str, set[str]] = {}
+    for code, d in rows:
+        cal.setdefault(code, set()).add(d)
+    return cal
+
+
+def is_st_on(stock_code: str, yyyymmdd: str, st_calendar: dict[str, set[str]]) -> bool:
+    """PIT: stock_code 在 yyyymmdd (无横杠) 当日是否 ST."""
+    return yyyymmdd in st_calendar.get(stock_code, ())

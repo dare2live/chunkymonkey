@@ -1,0 +1,67 @@
+{
+ "domain": "stk_surv",
+ "api": "stk_surv",
+ "grain": [
+  "ts_code",
+  "surv_date",
+  "rece_org"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "ts_code": "000661.SZ",
+   "name": "长春高新",
+   "surv_date": "20210805",
+   "fund_visitors": "--",
+   "rece_place": "电话及网络会议",
+   "rece_mode": "电话会议",
+   "rece_org": "安信基金",
+   "org_type": "基金管理公司",
+   "comp_rece": "公司董事会秘书 张德申,公司子公司金赛药业董事、总经理 金磊"
+  },
+  {
+   "ts_code": "000661.SZ",
+   "name": "长春高新",
+   "surv_date": "20210805",
+   "fund_visitors": "--",
+   "rece_place": "电话及网络会议",
+   "rece_mode": "电话会议",
+   "rece_org": "安信证券",
+   "org_type": "证券公司",
+   "comp_rece": "公司董事会秘书 张德申,公司子公司金赛药业董事、总经理 金磊"
+  },
+  {
+   "ts_code": "000661.SZ",
+   "name": "长春高新",
+   "surv_date": "20210805",
+   "fund_visitors": "--",
+   "rece_place": "电话及网络会议",
+   "rece_mode": "电话会议",
+   "rece_org": "八阳投资",
+   "org_type": NaN,
+   "comp_rece": "公司董事会秘书 张德申,公司子公司金赛药业董事、总经理 金磊"
+  },
+  {
+   "ts_code": "000661.SZ",
+   "name": "长春高新",
+   "surv_date": "20210805",
+   "fund_visitors": "--",
+   "rece_place": "电话及网络会议",
+   "rece_mode": "电话会议",
+   "rece_org": "宝盈基金",
+   "org_type": "基金管理公司",
+   "comp_rece": "公司董事会秘书 张德申,公司子公司金赛药业董事、总经理 金磊"
+  },
+  {
+   "ts_code": "000661.SZ",
+   "name": "长春高新",
+   "surv_date": "20210805",
+   "fund_visitors": "--",
+   "rece_place": "电话及网络会议",
+   "rece_mode": "电话会议",
+   "rece_org": "北京博泽资产",
+   "org_type": NaN,
+   "comp_rece": "公司董事会秘书 张德申,公司子公司金赛药业董事、总经理 金磊"
+  }
+ ]
+}

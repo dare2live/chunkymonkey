@@ -66,8 +66,8 @@ tables:
   dim_financial_latest: L1_foundation
   dim_holder_alias: L1_foundation
   dim_liquidity_threshold: L1_foundation
-  fact_rally_ground_truth: L1_foundation   # 2026-06-16 D1 主升浪 ground truth 标签y (rally_ground_truth_scan 监督式 episode, derived from K线; 突破后60-180天≥50%涨幅)
-  fact_macd_episode_ground_truth: L1_foundation   # 2026-06-16 D1 MACD金叉峰值 ground truth (experiment_macd_episode_scan --land, derived from K线; 金叉买点→持有窗波峰gain, 28万episode)
+  fact_rally_ground_truth: L1_foundation   # 2026-06-17 D1 结构型主升浪 y (build_rally_ground_truth.py; 用户图样型:长底+多头排列+平滑+底→顶>60%; universe硬门0排除股; 9070主升浪/4347股)
+  fact_macd_episode_ground_truth: L1_foundation   # 2026-06-17 D1 MACD金叉峰值 (build_macd_episode_ground_truth.py; 金叉买点→持有窗波峰gain>30%; universe硬门; 311k episode/5197股)
   dim_listing_status: L1_foundation
   dim_market_segment: L1_foundation
   dim_stock_sw_industry: L1_foundation     # 2026-06-16 S3 当前申万行业快照 (serving, 从 v_sw_industry_pit; 替代通达信)

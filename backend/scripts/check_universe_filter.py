@@ -43,6 +43,16 @@ EXEMPT_FILES = {
 SQL_PATTERN = re.compile(r"dim_active_a_stock", re.IGNORECASE)
 UNIVERSE_CALL_PATTERN = re.compile(r"get_active_universe|sql_where_active_a_share|sql_where_no_st")
 
+# 2026-06-17: 硬编码白名单前缀绕过 (universe 升交易日历级真相源). 任何文件内联
+# ('60','00','30','68') 白名单 = 第二真相源 → 必须 import universe.ACTIVE_A_SHARE_PREFIXES.
+# 这是污染复发的根 (实验/旧GT 内联前缀或干脆不过滤直扫 K线).
+_WHITELIST_PREFIXES = ("60", "00", "30", "68")
+
+
+def _has_board_whitelist_literal(line: str) -> bool:
+    """line 是否硬编码了完整白名单前缀 (4 个全在, 任意序)."""
+    return all((f"'{p}'" in line) or (f'"{p}"' in line) for p in _WHITELIST_PREFIXES)
+
 
 def _is_test_path(rel: str) -> bool:
     return any(rel.startswith(prefix) for prefix in TEST_PREFIXES)
@@ -96,6 +106,17 @@ def check_file(path: Path, *, include_tests: bool = False) -> list[dict]:
                     "match": stripped[:80],
                     "reason": "dim_active_a_stock 在 JOIN/FROM, file 有 get_active_universe 但 此处 direct — 验证是否 intentional. 加 # rule-compliance: ok evidence=... 跳过.",
                 })
+        # 2026-06-17: 硬编码白名单前缀绕过 (universe 升真相源后必拦)
+        if _has_board_whitelist_literal(line):
+            stripped = line.strip()
+            if stripped.startswith("#") or "rule-compliance: ok evidence=" in line:
+                continue
+            findings.append({
+                "file": rel,
+                "line": i,
+                "match": stripped[:80],
+                "reason": "硬编码白名单前缀(60/00/30/68)=第二真相源, 应 import services.universe.ACTIVE_A_SHARE_PREFIXES 或调 assert_universe_clean()",
+            })
     return findings
 
 

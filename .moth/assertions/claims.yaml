@@ -142,3 +142,20 @@ assertions:
     type: shell
     command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && moth coupling --repo . 2>&1 | grep -o 'verdict=[A-Z]*' | head -1"]
     expect: {op: regex, pattern: "verdict=PASS"}
+  - id: rally-gt-universe-clean
+    claim: "结构型主升浪 GT 0 排除股 (2026-06-17 universe 升交易日历级真相源; build_rally_ground_truth assert_universe_clean 硬门. >0 = 排除股污染复发, 验证无效)"
+    type: duckdb_sql
+    database: data/smartmoney.duckdb
+    query: "SELECT count(*) FROM fact_rally_ground_truth WHERE SUBSTR(stock_code,1,2) NOT IN ('60','00','30','68')"
+    expect: {op: "==", value: 0}
+  - id: macd-gt-universe-clean
+    claim: "MACD episode GT 0 排除股 (2026-06-17 同 universe 硬门; build_macd_episode_ground_truth)"
+    type: duckdb_sql
+    database: data/smartmoney.duckdb
+    query: "SELECT count(*) FROM fact_macd_episode_ground_truth WHERE SUBSTR(stock_code,1,2) NOT IN ('60','00','30','68')"
+    expect: {op: "==", value: 0}
+  - id: universe-hard-gate-present
+    claim: "universe 硬门在岗 (2026-06-17 用户: 排除列表升交易日历级; assert_universe_clean 是任何GT/回测/选股最终股票集必过的硬门. 删=污染可复发)"
+    type: shell
+    command: ["bash", "-c", "grep -c 'def assert_universe_clean\\|class UniverseContaminationError' backend/services/universe.py"]
+    expect: {op: ">=", value: 2}

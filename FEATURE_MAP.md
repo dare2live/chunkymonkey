@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-17 15:14
+> Snapshot: 2026-06-17 16:15
 
 ## 1. 入口面
 
@@ -89,7 +89,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 165 张 | 单 writer 94 | 多 writer 71 | 动态表名写点 27 处 (16 文件)
+统计: 表 166 张 | 单 writer 95 | 多 writer 71 | 动态表名写点 27 处 (16 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -102,11 +102,11 @@
 | backend/scripts/build_feature_map.py | 1 |
 | backend/scripts/build_feature_panel.py | 2 |
 | backend/scripts/build_lhb_events.py | 1 |
+| backend/scripts/build_macd_episode_ground_truth.py | 2 |
 | backend/scripts/build_price_kline_qfq_tushare.py | 1 |
 | backend/scripts/build_sw_industry_view.py | 1 |
 | backend/scripts/db_compact.py | 2 |
 | backend/scripts/db_partition_migrate.py | 2 |
-| backend/scripts/experiment_macd_episode_scan.py | 2 |
 | backend/scripts/rally_ground_truth_scan.py | 2 |
 | backend/scripts/seed_dim_data_asset.py | 1 |
 | backend/services/aif10_capability_client.py | 3 |
@@ -217,6 +217,7 @@
 | fact_jgdy_event | backend/scripts/build_akshare_panel.py |
 | fact_lhb_event | backend/scripts/build_lhb_events.py |
 | fact_profit_forecast_daily | backend/scripts/build_akshare_panel.py |
+| fact_rally_ground_truth | backend/scripts/build_rally_ground_truth.py |
 | fact_research_report | backend/scripts/build_akshare_panel.py |
 | fact_segment_panel | backend/scripts/build_segment_panel.py |
 | fact_setup_snapshot | backend/services/schema_core.py |
@@ -291,7 +292,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 9,259 | calls 边 101,269 | imports 边 14,031 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 9,271 | calls 边 101,223 | imports 边 14,039 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -302,7 +303,7 @@
 | services.duck_adapter | 33 |
 | services.database_manifest | 29 |
 | services.market_db | 23 |
-| services.experiment_store | 20 |
+| services.experiment_store | 18 |
 | services.industry | 15 |
 | services.tdx_source | 15 |
 | services.kline_source | 10 |
@@ -318,7 +319,7 @@
 | 文件 | 调用方文件数 |
 |---|---|
 | backend/services/database_manifest.py | 28 |
-| backend/services/experiment_store.py | 21 |
+| backend/services/experiment_store.py | 19 |
 | backend/services/duck_adapter.py | 16 |
 | bestchoice/compute.py | 9 |
 | backend/routers/updater_runtime.py | 6 |
@@ -349,5 +350,5 @@
 
 - chunkyctl 子命令 8 | launchd 任务 1 | router 16 (端点 98)
 - sync_registry 数据域 34
-- 产表 165 (多 writer 71)
+- 产表 166 (多 writer 71)
 
