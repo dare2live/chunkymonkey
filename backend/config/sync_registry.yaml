@@ -248,6 +248,20 @@ domains:
     min_rows_per_batch: 1
     allow_empty_batch: true   # 长假后首日可能无新研报
 
+  stk_surv:
+    source: tushare
+    api: stk_surv
+    target_table: raw_tushare_stk_surv
+    grain: [ts_code, surv_date, rece_org]
+    batch_mode: by_trade_date
+    date_param: trade_date    # tushare stk_surv 接口日期参数=trade_date(调研日); 返回列=surv_date
+    pit_anchor: "surv_date 机构调研日 -> JOIN t+1 (调研纪要盘后/隔日披露, 保守可见)"
+    available_after: "t+1"
+    data_start: "20180102"   # 探底校准 (机构调研 tushare 覆盖较新)
+    freshness_sla_trading_days: 5
+    min_rows_per_batch: 1
+    allow_empty_batch: true   # 部分交易日无机构调研披露
+
   ths_hot:
     source: tushare
     api: ths_hot

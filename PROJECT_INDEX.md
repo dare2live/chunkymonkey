@@ -380,7 +380,7 @@
 
 | 模块 | 作用 |
 |---|---|
-| `services/data_sources/` | base / clients_registry / data_routes / fallback / registry — 数据源中央 |
+| `services/data_sources/` | base / clients_registry / data_routes / fallback / registry — 数据源中央。**tushare 代理网关 2026-06-17 切 tinyshare** (旧 jiaoch.site 反刷量墙弃用): `sources/tushare.py:_pro_api` = `import tinyshare as ts; ts.set_token(授权码); ts.pro_api()` (tinyshare 自带网关, 去 _DataApi__http_url monkeypatch); 授权码进 gitignored .env (TUSHARE_TOKEN); 旧网关解封 stk_surv 机构调研(实测 316 行/日)。sync_registry 已注册 stk_surv 域 |
 | `services/akshare_client.py` / `tdx_*_client.py` / `block_client.py` / `capital_client.py` / `lhb_client.py` / `xdxr_client.py` / etc. | 各种数据源 client |
 | `services/kline_source.py` / `market_db.py` | K 线源 + market DB 入口 |
 | `services/duck_adapter.py` / `db.py` / `db_health.py` | DuckDB 安全包装 |

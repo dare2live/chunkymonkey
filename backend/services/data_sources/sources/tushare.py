@@ -9,7 +9,6 @@ from ..base import BaseDataSource, Capability, Health, register_source
 
 
 TOKEN_ENV_VARS = ("TUSHARE_TOKEN", "TUSHARE_PRO_TOKEN", "TS_TOKEN")
-HTTP_URL_ENV = "TUSHARE_HTTP_URL"
 
 
 def _env_token() -> str:
@@ -18,20 +17,17 @@ def _env_token() -> str:
         if token:
             return token
     raise RuntimeError(
-        "TuShare token missing; set one of TUSHARE_TOKEN, TUSHARE_PRO_TOKEN, TS_TOKEN"
+        "tinyshare 授权码 missing; set one of TUSHARE_TOKEN, TUSHARE_PRO_TOKEN, TS_TOKEN"
     )
 
 
 def _pro_api(token: str):
-    import tushare as ts
+    # 2026-06-17 切 tinyshare 代理 (旧 jiaoch.site 反刷量墙封锁; tinyshare 自带网关, 无需 _DataApi__http_url monkeypatch)。
+    # tinyshare 是 tushare 兼容的代理包: import tinyshare as ts; ts.set_token(授权码); ts.pro_api()。
+    import tinyshare as ts
 
-    pro = ts.pro_api(token)
-    custom_url = os.environ.get(HTTP_URL_ENV, "").strip()
-    if custom_url:
-        # 代理商网关 (e.g. http://jiaoch.site): SDK 无公开参数, 官方推荐写法即覆盖私有属性
-        pro._DataApi__token = token
-        pro._DataApi__http_url = custom_url
-    return pro
+    ts.set_token(token)
+    return ts.pro_api()
 
 
 def _compact_params(**params: Any) -> dict[str, Any]:
@@ -187,7 +183,7 @@ class TuShareSource(BaseDataSource):
         try:
             pro = _pro_api(token)
         except ImportError as exc:
-            raise RuntimeError(f"tushare package not installed: {exc}") from exc
+            raise RuntimeError(f"tinyshare package not installed: {exc}") from exc
         params = _compact_params(
             ts_code=kwargs.get("ts_code"),
             trade_date=kwargs.get("trade_date"),
@@ -218,7 +214,7 @@ class TuShareSource(BaseDataSource):
         try:
             pro = _pro_api(token)
         except ImportError as exc:
-            raise RuntimeError(f"tushare package not installed: {exc}") from exc
+            raise RuntimeError(f"tinyshare package not installed: {exc}") from exc
         fn = getattr(pro, api_name, None)
         if fn is None:
             return _to_records(pro.query(api_name, **_compact_params(**params)))
@@ -230,11 +226,11 @@ class TuShareSource(BaseDataSource):
         except RuntimeError as exc:
             return Health(state="unknown", last_check_ts=time.time(), notes=str(exc))
         try:
-            import tushare as ts  # noqa: F401
+            import tinyshare as ts  # noqa: F401
         except ImportError as exc:
-            return Health(state="down", last_check_ts=time.time(), notes=f"tushare not installed: {exc}")
+            return Health(state="down", last_check_ts=time.time(), notes=f"tinyshare not installed: {exc}")
         return Health(
             state="ok",
             last_check_ts=time.time(),
-            notes="token present; live API not called by healthcheck",
+            notes="授权码 present; tinyshare 代理; live API not called by healthcheck",
         )
