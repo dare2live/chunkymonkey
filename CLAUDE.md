@@ -99,8 +99,10 @@ JOIN → 永远带 `AND x.built_at <= t` / `as_of_date`; 宇宙 → `dim_index_m
   才在双轨核对后物理退役. fallback 链顺序随主源切换同步更新 (tushare 主 → tdxhub 备).
 - tdxhub / miaoxiang: 数据质量 100% 可信 (角色 = 备用源). 缺失 = 自己 sync 路径 bug, 优先重拉.
 - akshare: 不稳定 (限频/接口变), 正被 TuShare 替换 (见 goal.md need_027).
-- tushare (vendor gateway): 171/239 接口实测可用; 间歇空响应/读超时/并发上限 2 — writer 必须
+- tushare (vendor gateway): 171/239 接口实测可用; 间歇空响应/读超时 — writer 必须
   把 0 行当失败重试; 单页上限必须实测防静默截断 (top_inst 1000 整反例).
+  **代理 2026-06-17 切 tinyshare** (旧 jiaoch.site 账户级反刷量墙弃用; tinyshare 自带网关, `import tinyshare as ts; ts.set_token(授权码); ts.pro_api()`, 授权码进 .env TUSHARE_TOKEN).
+  **限流 (tinyshare, 用户 2026-06-17): 单接口 120 次/分钟, 多接口 200 次/分钟, 并发上限 2** — 瞬态限流退避几分钟即恢复 (非当日墙不停链, sync_runner 已实现); 旧 tushare 是 150/200.
 
 ### 4.4 Root Cause — 严禁忍
 

@@ -37,6 +37,8 @@
 
 **处置**: 官方直连 5000 积分 (¥500/年) 根治日封顶 (常规数据全无上限); cyq 特色数据线需 10000 积分 (¥1000/年)。信道 channel-agnostic, 改 TUSHARE_HTTP_URL 零代码切换。在切换前, 熔断 (#9) 防止反刷量被逐日续戳放大。本地官方文档镜像: `/Users/dp/Documents/M/stock/tushare/tushare.pro/document/`。
 
+**已切换 (2026-06-17)**: 弃用 jiaoch.site (反刷量墙封死 stk_surv 等), 改 **tinyshare** 代理 (`import tinyshare as ts; ts.set_token(授权码); ts.pro_api()`, 自带网关无需 _DataApi__http_url; 授权码进 .env)。实测解封: stk_surv 机构调研单日 316 行、daily/moneyflow 正常。**tinyshare 限流 (用户 2026-06-17): 单接口 120 次/分钟, 多接口 200 次/分钟, 并发上限 2** (旧 tushare 150/200); 瞬态限流退避几分钟即恢复, sync_runner `_is_transient_ratelimit` + 专用更长退避已实现 (非"当日墙"不停链)。`_pro_api` owner = `backend/services/data_sources/sources/tushare.py`。
+
 ## 2. 渠道决策 (需用户拍板的唯一一项)
 
 **结论先行: 真金白银项目的数据地基不该建在行为不可预期的代理网关上。**
