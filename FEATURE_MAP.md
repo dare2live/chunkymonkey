@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-17 12:37
+> Snapshot: 2026-06-17 13:12
 
 ## 1. 入口面
 
@@ -291,7 +291,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 9,210 | calls 边 101,230 | imports 边 13,985 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 9,225 | calls 边 101,244 | imports 边 14,005 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -300,9 +300,9 @@
 | services.db | 36 |
 | services.utils | 34 |
 | services.duck_adapter | 33 |
-| services.database_manifest | 26 |
+| services.database_manifest | 27 |
 | services.market_db | 23 |
-| services.experiment_store | 17 |
+| services.experiment_store | 18 |
 | services.industry | 15 |
 | services.tdx_source | 15 |
 | services.kline_source | 10 |
@@ -317,14 +317,14 @@
 
 | 文件 | 调用方文件数 |
 |---|---|
-| backend/services/database_manifest.py | 25 |
-| backend/services/experiment_store.py | 18 |
+| backend/services/database_manifest.py | 26 |
+| backend/services/experiment_store.py | 19 |
 | backend/services/duck_adapter.py | 16 |
 | bestchoice/compute.py | 9 |
 | backend/routers/updater_runtime.py | 6 |
 | backend/services/etf_grid_engine.py | 6 |
+| backend/scripts/experiment_yushen_clean_baseline.py | 5 |
 | bestchoice/execution_model.py | 5 |
-| backend/scripts/experiment_yushen_clean_baseline.py | 4 |
 | backend/services/data_sources/base.py | 4 |
 | backend/services/etf_engine.py | 4 |
 | backend/services/kline_source.py | 4 |
