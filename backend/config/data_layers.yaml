@@ -26,7 +26,7 @@ layers:
     desc: 多因子特征工程 (panels/risk_factors/triggers)
     retention: wipeable
     rebuild: from L1, 参数寻优重做
-    status: wiped_pending_decision  # fact_feature_panel 已 drop(06-16 reset) + builder BROKEN; 重建/退役 pending。fact_segment_panel(形态轴) live
+    status: live_rebuilt  # 2026-06-19 fact_feature_panel 重建物化 live (8.17M行/5427股/PIT验证, build_feature_panel.py); fact_segment_panel(形态轴) live
   L3_model:
     desc: 模型产出 (scores/predictions/champion/ensemble)
     retention: wipeable
@@ -124,7 +124,7 @@ tables:
   dim_stock_industry_context_latest: L1_foundation
   dim_strategy_preset: infra
   fact_controlling_shareholder: L2_feature
-  fact_feature_panel: L2_feature          # @dropped 06-16 reset; builder BROKEN; 重建/退役 pending (非 live)
+  fact_feature_panel: L2_feature          # 2026-06-19 重建物化 live (8.17M行/5427股/2019-2026; mom_60/reversal_20/vol_20/mf_trend_20/roe_dt_asof PIT; entry点JOIN覆盖100%; build_feature_panel.py)
   fact_feature_panel_candidate: L2_feature
   fact_feature_panel_tdx_keep_challenger: L2_feature
   fact_fund_holding_tdx_f10: L2_feature

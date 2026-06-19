@@ -68,10 +68,10 @@ databases:
     default_open_mode: read_write
     default_attach_mode: read_only
     online: true
-    status: active  # feature_store 库 active (fact_segment_panel live)。注: fact_feature_panel 已 drop(06-16 reset) + build_feature_panel.py BROKEN(import 已删 feature 库) — 重建/退役决策 pending (架构审计 wf_4d9f4bbf REVISE)
+    status: active  # feature_store 库 active; fact_feature_panel 2026-06-19 重建物化 live (8.17M行/5427股, build_feature_panel.py 从 services.data_loaders+formula_engine, pit_guard门+独立重算0泄漏); fact_segment_panel live
     retention_class: rebuildable_feature_store
     table_patterns:
-      - fact_feature_panel  # @dropped 06-16 reset; builder build_feature_panel.py BROKEN(import 已删库); 重建/退役 pending
+      - fact_feature_panel  # 2026-06-19 重建物化 live (8.17M行/5427股; PIT验证0泄漏)
       - fact_feature_panel_candidate*  # @archived wiped-2026-06-14-reset
       - mart_feature_rank_matrix_cache*
 
