@@ -49,7 +49,7 @@ but they do not override the active contracts.
 | `data_product_contract.md` | Data needs, lineage, profiles, market perception support, frontend contract |
 | `strategy_validation_contract.md` | Backtest, Optuna/provider jobs, paper_sim, forward, and promotion contract |
 | `chip_distribution_cyq_spec.md` | Active CYQ algorithm/detail spec for main-force profile and 主升浪 validation |
-| (`../analysis/zhushenglang_hunter_research_log_20260528.md`) | 主升浪猎手 north-star research evidence; moved docs/->analysis/ 2026-06-15 (research log, not production proof; belongs in evidence dir) |
+| (`zhushenglang_hunter_research_log_20260528.md`) | Deleted 2026-06-17 (污染期 V0-V16 原型 findings, 建于已删 LGBM/ensemble + 错方法论; 教训已 codify 进 CLAUDE §4.5 + 契约; git history) |
 
 ## 状态标头契约 (2026-06-12 新增, 机器执法)
 
@@ -145,7 +145,7 @@ Archive notes:
 | `docs/feasibility_analysis_20260517.md` | Archived as `../analysis/feasibility_analysis_20260517.md` |
 | `docs/first_principles_diagnosis_20260517.md` | Deleted 2026-06-15 (A6); 针对已删模型/特征/serving 层, 地基-reset 偏离 (git history) |
 | `docs/v4_panel_feature_audit_20260517.md` | Archived as `../analysis/v4_panel_feature_audit_20260517.md` |
-| `docs/MASTER_SYNTHESIS_20260523.md` | Archived as `../analysis/MASTER_SYNTHESIS_20260523.md` |
+| `docs/MASTER_SYNTHESIS_20260523.md` | Deleted 2026-06-17 (污染期已删 model/ensemble/寻优层验证 findings; git history) |
 | `docs/project_synthesis_20260523.md` | Archived as `../analysis/project_synthesis_20260523.md` |
 | `docs/project_audit_20260523.md` | Archived as `../analysis/project_audit_20260523.md` |
 | `docs/integration_master_plan_20260523.md` | Archived as `../analysis/integration_master_plan_20260523.md` |

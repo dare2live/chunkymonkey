@@ -87,10 +87,13 @@ pass, recover the business mainline in this order:
 
 ## 主升浪猎手 Validation Boundary
 
-`../analysis/zhushenglang_hunter_research_log_20260528.md` (moved docs/->analysis/
-2026-06-15) is preserved as the product north star and research evidence, not as
-a production certificate. Its 70%,
-78%, and 86% figures are hypotheses until revalidated under current gates.
+主升浪猎手 is the product north star. Any prior research-log win-rate / precision
+figures came from contaminated-universe buy-point exploration (built on the
+now-deleted LGBM/ensemble apparatus + 错方法论) and were cleared 2026-06-17. No
+strategy number counts as a production certificate until revalidated under
+current gates — on the structured 主升浪 ground truth (universe hard-truth-source
+clean, 底→顶>60% + 长底 + 多头排列 + 平滑) via the supervised episode-first
+D1-D4 pipeline.
 
 Minimum validation before using it for real candidates:
 
