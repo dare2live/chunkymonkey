@@ -793,3 +793,19 @@ loader 误删致 4 处 `import services.experiment_jobs` 悬空崩)。故 S0 = c
   build_akshare_panel 6→5 / financial_client caller改stub), KEEP 部分全验完好; scoring/audit dormant 引用 try/except 安全降级。
   全程 data_layer_audit PASS + moth fail=0 + 各簇 test passed。退役日志详 non_tushare_source_inventory_20260619.md §3.5。
   剩 KEEP_MIGRATE_FIRST 5表 (aif10 valuation/peer/forecast + dividend_summary + price_kline) 走 M2/M3/M4 双轨先迁后删。
+
+- **2026-06-19~20 主升浪猎手地基 F0+B+C done (8 commit)**: episode-first 结果倒推 pipeline 地基全建+对抗验证。
+  **F0 地基止血** (8d2ad93e/00e007c7/c8d6177c/41845922/390c8c3a/eda381d0): 因子恢复进services + 加载器移
+  services.data_loaders(builder un-broke,12单测,DB路径走manifest) + GT标签拆 fact_rally_entry_pit(entry_signal_date=
+  bottom + base_days唯一PIT特征 + fwd_complete90.5%; outcome[gain/peak/dd/**bull_aligned**拉升期测]剥离禁做X,
+  rally_labels守门+moth) + PIT负样本 fact_rally_entry_negative(hard-negative=同结构pivot+长底+未涨, 35198/4846股
+  pos:neg1:3.9, 0重叠/0北交所/0outcome) + fact_feature_panel物化live(8.17M行/5427股 mom/rev/vol/mf/roe PIT;
+  pit_guard门+独立重算600519 1784日0泄漏+universe0违规; entry点JOIN正负100%覆盖 mom100%/mf83%/roe45%)。
+  关键修正: bull_aligned 名似入场态实为 forward outcome(逐列核 detect_episodes 翻案, Explore/INDEX/早期皆误标)。
+  **B tradability go/no-go GREEN** (b9c865c1, owner=analysis/rally_buyability_gonogo_20260620.md): 起涨点可买入率
+  99.9%(一字板0.1%); 主升浪=慢平滑(峰距底中位9月/底→顶84%/底后5日+5.3%/入场窗81%<10%@d5)→连板买不进对平滑型不成立,
+  tradability PASS(只证可买非证alpha)。 **C 分层切阶段** (3977630f/e970a046): fact_rally_episode_strata(申万sector
+  as-of PIT99%+市值PIT83%[2019缺daily_basic起2020]+base桶; 小盘微盘60%+主导) + fact_rally_stage(鱼头/鱼身/鱼尾
+  per-date 1.5M行; progress首次跨阈连续段; 起涨42%/主升50%/顶部8%=入场窗宽出场窗窄; panel join三阶段100%)。
+  Modal端到端验证可用(dare2live, remote容器跑通)。遗留: daily_basic 2019市值补拉(task_022abb42); GT builder
+  统一调rally_detect(低优); roe/mom尾值D阶段winsorize; (e)消费侧leakage注册留D(有训练consumer时)。
