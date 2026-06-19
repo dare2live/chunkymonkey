@@ -178,7 +178,7 @@
 |---|---|---|---|
 | `v_price_kline_qfq` (market.duckdb) 含指数 K 线 | 5.97M 行 / 6,618 股 / 2022-01 → 2026-05 | 实时 | tdxhub 备援源视图; 只 2022+ 且 2022-12-30 复权 glitch; 回测主源已切 ↓ |
 | `price_kline_qfq_tushare` (market.duckdb) **回测前复权主源** | 856万行 / 5755 股 / **2019-01 → 2026-06** | build_price_kline_qfq_tushare.py | 2026-06-15 §4.3 消费链切换: raw_tushare_daily×adj_factor 前复权(rebased, 单位对齐tdxhub); 与tdxhub重叠期收益对账 avg 0.03%一致(max差=tdxhub 2022-12-30 glitch, tushare正确); load_kline 已 repoint; 解锁2020+多regime回测; data_layers=L1k |
-| `fact_feature_panel` (**feature_store.duckdb** L2) | **已 drop (06-16 reset)** | build_feature_panel.py **BROKEN** (import 已删 feature 库 experiment_l0_baseline 等, 33f6b430) | L2 因子面板载体; 重建(基于干净PIT管道+因子移services消除倒挂) vs 退役 **决策 pending** (架构审计 wf_4d9f4bbf REVISE); 逐数据验证需先定此; data_layers=L2_feature(@dropped) |
+| `fact_feature_panel` (**feature_store.duckdb** L2) | **已 drop, 待物化** (06-16 reset) | build_feature_panel.py **已 un-broke** (2026-06-19 A0: import 改 services.data_loaders + services.formula_engine.features 5 因子, 消除倒挂; 加 pit_guard 物化前门) | L2 因子面板载体 (mom_60/reversal_20/vol_20/mf_trend_20/roe_dt_asof); builder import/单测/market只读冒烟通; **RUN 待 tushare_raw 锁释放** (续拉中, mf/quality 读 L0); data_layers=L2_feature(@dropped→重建中) |
 | `fact_segment_panel` (**feature_store.duckdb** L2) **形态/分层面板** | (重建中) | build_segment_panel.py (+config segment_panel.yaml) | 直读 price_kline_qfq_tushare 复用 classify_technical_stage 物化 PIT 形态轴: stage(Weinstein5态)+range_pos+dif/dea/macd_hist/macd_above_zero+board; forward 不入表(防 outcome-as-feature); Arrow批插。判别力结论=unknown(逐数据 alpha 验证重做, 见 goal.md); data_layers=L2_feature |
 | `fact_rally_ground_truth` (**smartmoney.duckdb** L1) **D1 主升浪 ground truth 标签y** | **9,070 主升浪 / 4,347股 / 2019+** | build_rally_ground_truth.py (services.universe 硬门 clean) | 2026-06-17 结构型重建(用户图样型, episode-first D1 锚): 底→顶>60% + 长底 + 多头排列(MA5>10>20>30>60) + 平滑(途中max_dd>-30%), 排北交所/ST/退市(assert_universe_clean); event_date=底(bottom_date PIT锚, 特征<=t/label后验); 下游 D2-D4 因子判别力=unknown(逐数据 alpha 验证待跑); data_layers=L1_foundation |
 | `fact_macd_episode_ground_truth` (**smartmoney.duckdb** L1) **D1 MACD金叉峰值 ground truth** | **311,291 episode / 5,197股** | build_macd_episode_ground_truth.py (services.universe 硬门 clean) | 2026-06-17 重建(用户口径: 金叉=买点, 卖点=金叉后波峰探索): 金叉峰值>30%=is_win; peak_gain_pct/peak_offset_days/max_dd_pct; 出场规则判别力=unknown(逐数据验证); data_layers=L1_foundation |
@@ -334,6 +334,7 @@
 | `services/industry.py` / `industry_pit.py` / `industry_overview_read.py` | 行业 PIT + UI 读取 |
 | `services/stock_stage_engine.py` | 阶段特征中间事实层 |
 | `services/stock_turtle_engine.py` | 海龟形态特征 |
+| `services/data_loaders.py` | **feature_panel 物化输入层** (2026-06-19 A0: 从已删 experiment_* 移进 services, 可注入 conn 可测): `load_kline`(L1k market price_kline_qfq_tushare)/`load_moneyflow`(L0 raw_tushare_moneyflow, net+total_flow)/`load_quality_reports`(L0 raw_tushare_fina_indicator, ann_date ISO PIT 锚)/`in_active_universe`(services.universe config 驱动替内联前缀)。分层契约: build 唯一 L0-read 点, 探索只读物化后 panel (L2-bypass lesson) |
 
 ### 3.7 数据源 / 客户端 / sync
 
