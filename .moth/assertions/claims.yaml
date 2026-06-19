@@ -154,6 +154,12 @@ assertions:
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM fact_macd_episode_ground_truth WHERE SUBSTR(stock_code,1,2) NOT IN ('60','00','30','68')"
     expect: {op: "==", value: 0}
+  - id: rally-negative-universe-clean
+    claim: "主升浪 hard-negative 对照组 0 排除股 (2026-06-19 A0#d; build_rally_negatives is_active_a_share 板块过滤. >0=排除股污染对照组, 判别器训练失真)"
+    type: duckdb_sql
+    database: data/smartmoney.duckdb
+    query: "SELECT count(*) FROM fact_rally_entry_negative WHERE SUBSTR(stock_code,1,2) NOT IN ('60','00','30','68')"
+    expect: {op: "==", value: 0}
   - id: universe-hard-gate-present
     claim: "universe 硬门在岗 (2026-06-17 用户: 排除列表升交易日历级; assert_universe_clean 是任何GT/回测/选股最终股票集必过的硬门. 删=污染可复发)"
     type: shell

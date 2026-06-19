@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-19 22:34
+> Snapshot: 2026-06-19 22:50
 
 ## 1. 入口面
 
@@ -94,7 +94,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 161 张 | 单 writer 92 | 多 writer 69 | 动态表名写点 27 处 (16 文件)
+统计: 表 161 张 | 单 writer 92 | 多 writer 69 | 动态表名写点 29 处 (17 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -110,6 +110,7 @@
 | backend/scripts/build_macd_episode_ground_truth.py | 2 |
 | backend/scripts/build_price_kline_qfq_tushare.py | 1 |
 | backend/scripts/build_rally_entry_pit.py | 2 |
+| backend/scripts/build_rally_negatives.py | 2 |
 | backend/scripts/build_sw_industry_view.py | 1 |
 | backend/scripts/db_compact.py | 2 |
 | backend/scripts/db_partition_migrate.py | 2 |
@@ -292,33 +293,33 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,936 | calls 边 98,036 | imports 边 13,266 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 8,972 | calls 边 98,063 | imports 边 13,296 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
+| services.duck_adapter | 36 |
 | services.db | 35 |
-| services.duck_adapter | 35 |
 | services.utils | 32 |
 | services.market_db | 23 |
 | services.industry | 15 |
 | services.tdx_source | 15 |
-| services.database_manifest | 11 |
+| services.database_manifest | 12 |
 | services.kline_source | 10 |
 | services.pipeline_manifest | 8 |
 | services.pricing_policy | 8 |
 | services.data_sources | 7 |
+| services.universe | 7 |
 | routers.updater_runtime | 6 |
 | services.constants | 6 |
 | services.etf_grid_engine | 6 |
-| services.gap_queue | 6 |
 
 ### 跨文件 fan-in 最高的文件 (近似口径: 唯一定义名 + caller 实际 import 目标模块双过滤)
 
 | 文件 | 调用方文件数 |
 |---|---|
-| backend/services/duck_adapter.py | 19 |
+| backend/services/duck_adapter.py | 20 |
 | bestchoice/compute.py | 9 |
 | backend/services/database_manifest.py | 8 |
 | backend/routers/updater_runtime.py | 6 |
