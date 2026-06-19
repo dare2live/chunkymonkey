@@ -1,4 +1,17 @@
-"""TuShare source adapter for token-backed, no-persist capability probes."""
+"""TuShare source adapter for token-backed, no-persist capability probes.
+
+代理 = tinyshare (2026-06-17 切, 旧 jiaoch.site 反刷量墙弃用)。授权码进 .env (TUSHARE_TOKEN 等)。
+
+限流 (tinyshare 代理, 用户 2026-06-17/19):
+  - 单接口 120 次/分钟
+  - 多接口合计 200 次/分钟
+  - 并发上限 2
+强制方式 = **配置驱动主动节流** (no-hardcode): 限额声明在 backend/config/sync_registry.yaml
+  defaults.rate_limit (per_interface_per_min / total_per_min / max_concurrency); sync_runner._RateLimiter
+  读 config 在每次 adapter.fetch_raw 前滑窗节流 (撞墙前先睡)。瞬态限流措辞退避 (sync_runner
+  _is_transient_ratelimit -> transient_backoff) 作兜底; 真·当日/账户级墙 (_is_quota_wall) 才停链。
+  改限额只动 yaml, 不动代码。
+"""
 from __future__ import annotations
 
 import os

@@ -21,7 +21,9 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import threading
 import time
+from collections import defaultdict, deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -186,6 +188,67 @@ def _is_quota_wall(msg: str) -> bool:
     return any(m in msg for m in _HARD_WALL_MARKERS)
 
 
+class _RateLimiter:
+    """tinyshare 代理限流 **主动节流** (撞墙前先睡, 优于反应式退避): 单接口 per_interface/分钟 +
+    全接口合计 total/分钟 滑窗。配置来源 sync_registry.yaml `defaults.rate_limit` (no-hardcode, 用户
+    2026-06-17/19: 单接口120/多接口200/并发2)。runner 链串行单线程调用 → 并发=1 < max_concurrency;
+    max_concurrency 配置守界, 未来并行需配 semaphore。reactive 退避 (_is_transient_ratelimit) 保留作兜底。"""
+    _WINDOW = 60.0
+
+    def __init__(self, per_interface_per_min: int, total_per_min: int):
+        self.per_api = max(1, int(per_interface_per_min))
+        self.total = max(1, int(total_per_min))
+        self._api_calls: dict[str, deque] = defaultdict(deque)
+        self._all_calls: deque = deque()
+        self._lock = threading.Lock()
+
+    @classmethod
+    def _evict(cls, dq: deque, now: float) -> None:
+        while dq and now - dq[0] > cls._WINDOW:
+            dq.popleft()
+
+    def acquire(self, api: str) -> None:
+        """阻塞直到本次调用不超 单接口/全接口 每分钟上限, 然后登记本次调用时间。"""
+        while True:
+            with self._lock:
+                now = time.time()
+                self._evict(self._all_calls, now)
+                dq = self._api_calls[api]
+                self._evict(dq, now)
+                wait = 0.0
+                if len(dq) >= self.per_api:
+                    wait = max(wait, self._WINDOW - (now - dq[0]))
+                if len(self._all_calls) >= self.total:
+                    wait = max(wait, self._WINDOW - (now - self._all_calls[0]))
+                if wait <= 0:
+                    ts = time.time()
+                    dq.append(ts)
+                    self._all_calls.append(ts)
+                    return
+            log.debug("[rate-limit] 主动节流 api=%s 睡 %.1fs (单接口%d/分 全%d/分)", api, wait, self.per_api, self.total)
+            time.sleep(wait + 0.05)  # 锁外睡, 不阻塞其他线程窗口推进
+
+
+_RATE_LIMITER: "_RateLimiter | None" = None
+_RATE_LIMITER_INIT = False
+
+
+def _get_rate_limiter(spec: dict[str, Any]) -> "_RateLimiter | None":
+    """从 spec.rate_limit (defaults 合并) 懒初始化全局单例; 未配置 = 不节流 (向后兼容)。"""
+    global _RATE_LIMITER, _RATE_LIMITER_INIT
+    if _RATE_LIMITER_INIT:
+        return _RATE_LIMITER
+    _RATE_LIMITER_INIT = True
+    cfg = spec.get("rate_limit") or {}
+    per_api = cfg.get("per_interface_per_min")
+    total = cfg.get("total_per_min")
+    if per_api and total:
+        _RATE_LIMITER = _RateLimiter(per_api, total)
+        log.info("[rate-limit] 主动节流启用: 单接口 %s/分 + 全接口 %s/分 (并发上限 %s)",
+                 per_api, total, cfg.get("max_concurrency"))
+    return _RATE_LIMITER
+
+
 def _fetch_with_retry(adapter, spec: dict[str, Any], params: dict[str, Any]) -> list[dict[str, Any]] | None:
     """0 行/异常 → 退避重试; 终败返回 None (调用方入 failure_queue).
 
@@ -199,9 +262,12 @@ def _fetch_with_retry(adapter, spec: dict[str, Any], params: dict[str, Any]) -> 
     # evidence: 用户 2026-06-16 "tushare 代理每分钟单接口120/多接口200, 过几分钟重试就可以了"。
     transient_backoffs = list(retry.get("transient_backoff_seconds", [60, 120, 180]))
     allow_empty = bool(spec.get("allow_empty_batch"))
+    rate_limiter = _get_rate_limiter(spec)
     last_err: str | None = None
     for i in range(attempts):
         try:
+            if rate_limiter is not None:
+                rate_limiter.acquire(spec["api"])   # 主动节流: 撞墙前先睡 (config-driven)
             rows = adapter.fetch_raw(spec["api"], **params)
             if rows:
                 return rows
