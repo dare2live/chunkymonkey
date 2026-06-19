@@ -68,10 +68,10 @@ databases:
     default_open_mode: read_write
     default_attach_mode: read_only
     online: true
-    status: active  # 2026-06-15: build_feature_panel.py 建 fact_feature_panel 8.17M行/5427股/2019-2026
+    status: active  # feature_store 库 active (fact_segment_panel live)。注: fact_feature_panel 已 drop(06-16 reset) + build_feature_panel.py BROKEN(import 已删 feature 库) — 重建/退役决策 pending (架构审计 wf_4d9f4bbf REVISE)
     retention_class: rebuildable_feature_store
     table_patterns:
-      - fact_feature_panel  # L2_feature 主面板 (2026-06-15 rebuild; 5因子: mom_60/reversal_20/vol_20/mf_trend_20/roe_dt_asof)
+      - fact_feature_panel  # @dropped 06-16 reset; builder build_feature_panel.py BROKEN(import 已删库); 重建/退役 pending
       - fact_feature_panel_candidate*  # @archived wiped-2026-06-14-reset
       - mart_feature_rank_matrix_cache*
 

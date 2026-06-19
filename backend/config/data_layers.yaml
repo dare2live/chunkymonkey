@@ -26,7 +26,7 @@ layers:
     desc: 多因子特征工程 (panels/risk_factors/triggers)
     retention: wipeable
     rebuild: from L1, 参数寻优重做
-    status: partial_rebuild_20260615  # fact_feature_panel 重建 (feature_store.duckdb, build_feature_panel.py); 其余仍 wiped
+    status: wiped_pending_decision  # fact_feature_panel 已 drop(06-16 reset) + builder BROKEN; 重建/退役 pending。fact_segment_panel(形态轴) live
   L3_model:
     desc: 模型产出 (scores/predictions/champion/ensemble)
     retention: wipeable
@@ -128,7 +128,7 @@ tables:
   dim_stock_industry_context_latest: L1_foundation
   dim_strategy_preset: infra
   fact_controlling_shareholder: L2_feature
-  fact_feature_panel: L2_feature          # 2026-06-15 rebuild (feature_store.duckdb, 5因子 PIT 面板)
+  fact_feature_panel: L2_feature          # @dropped 06-16 reset; builder BROKEN; 重建/退役 pending (非 live)
   fact_feature_panel_candidate: L2_feature
   fact_feature_panel_tdx_keep_challenger: L2_feature
   fact_financial_indicator_ak: L1_foundation
