@@ -66,6 +66,7 @@ tables:
   fact_rally_entry_pit: L1_foundation   # 2026-06-19 A0#c GT entry-PIT 侧 (build_rally_entry_pit.py; 剥 outcome 防 leakage: entry_signal_date=bottom_date + base_days + fwd_complete; outcome 留 GT 表禁做X, rally_gt_columns.yaml)
   fact_rally_entry_negative: L1_foundation   # 2026-06-19 A0#d hard-negative 对照组 (build_rally_negatives.py; 同结构pivot-low+长底base>=40+未涨<60% 35198/4846股; ST留消费侧; 下游 UNION entry_pit 训练判别器)
   fact_rally_episode_strata: L1_foundation   # 2026-06-20 C#48 episode PIT分层 (build_rally_episode_strata.py; 申万sector as-of 99% + 市值PIT 83%[2019缺daily_basic] + base桶; 9070 episode; 小盘/微盘主导)
+  fact_rally_stage: L1_foundation   # 2026-06-20 C#48 step2 episode阶段切分 (build_rally_stage.py + rally_stage.yaml; 起涨/主升/顶部=鱼头/鱼身/鱼尾 per-date; progress首次跨阈划连续段; 1.5M行; stage=post-hoc分析用; panel join 100%)
   fact_macd_episode_ground_truth: L1_foundation   # 2026-06-17 D1 MACD金叉峰值 (build_macd_episode_ground_truth.py; 金叉买点→持有窗波峰gain>30%; universe硬门; 311k episode/5197股)
   dim_listing_status: L1_foundation
   dim_market_segment: L1_foundation

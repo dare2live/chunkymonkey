@@ -1,0 +1,16 @@
+# 主升浪 episode 阶段切分 (C#48 step2, 2026-06-20, pre-registered 冻结判据)
+#
+# 鱼头/鱼身/鱼尾 = 起涨/主升/顶部, 服务 D 的 出场>延续>买点 stage-conditional 因子研究。
+# 按价格 progress = (close[t]-bottom_close)/(peak_close-bottom_close) 首次跨阈划**连续时间段** (cummax 单调,
+# 防 pullback 日错标)。stage 标签是 POST-HOC (依赖 peak 事后才知) = 结果倒推分析用 (研究各阶段 PIT 特征,
+# 特征仍 <=t PIT), 非 live conditioning。阈值 pre-registered 可 refine (time-based/structure-based 备选)。
+
+stage_thresholds:
+  launch_end: 0.30   # 起涨(鱼头, 入场zone)结束: progress 首次>=0.30 → 早期发射段, 研究入场信号
+  main_end: 0.85     # 主升(鱼身, 持仓zone)结束: progress 首次>=0.85 → 主升浪主段, 研究延续信号
+                     # 顶部(鱼尾, 出场zone): progress>=0.85 到 peak → 顶部派发段, 研究出场信号
+
+stage_names:
+  launch: 起涨
+  main: 主升
+  top: 顶部
