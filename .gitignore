@@ -35,6 +35,12 @@ data/audit/
 data/reports/
 data/phase5_exports/
 
+# sandbox/ — 隔离探索区 (用完直接删, 2026-06-17 用户根治: 探索散进主代码=污染根因)
+# 探索脚本/草稿/结果/scratch DB 全在这, gitignored 进不了主代码; 唯一留存=experiment_store verdict
+# 用 sandbox/* (非 sandbox/) 才能 negate README — git 不下降进被整体忽略的目录
+sandbox/*
+!sandbox/README.md
+
 # Local Codex/skill/plugin metadata; project skills live in $CODEX_HOME or are
 # documented in tracked files, not committed as generated workspace state.
 .agents/

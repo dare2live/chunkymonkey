@@ -159,3 +159,8 @@ assertions:
     type: shell
     command: ["bash", "-c", "grep -c 'def assert_universe_clean\\|class UniverseContaminationError' backend/services/universe.py"]
     expect: {op: ">=", value: 2}
+  - id: exploration-isolated-in-sandbox
+    claim: "探索隔离在 sandbox/ 不污染主代码 (2026-06-17 用户根治: 探索脚本/findings草稿/结果散进 backend/scripts+analysis+docs = 反复污染根因, 本对话清~100文件). sandbox/ gitignored 用完直接删 (scripts/sandbox.sh); 探索 runner (experiment_*/analyze_*) 不许在 backend/scripts (该在 sandbox/<exp>/); 唯一跨删存活=experiment_store verdict. 复活=污染根因复发. owner=sandbox/README.md"
+    type: shell
+    command: ["bash", "-c", "ls backend/scripts/experiment_*.py backend/scripts/analyze_*.py 2>/dev/null | wc -l | tr -d ' '"]
+    expect: {op: "==", value: 0}

@@ -62,6 +62,13 @@ Owner: `AGENTS.md` Engineering Rules. 速查: 数值/阈值/路径/日期/表名
 同逻辑 2 次抽公共 3 次必重构; 可 hardcode 仅数学常数/边界/测试 fixture/SQL LIMIT (写注释);
 用户要全量真实数据不"快速验证小样本"; 数据告诉什么就报什么, 不报喜不报忧.
 
+**探索沙盒 (2026-06-17 用户根治, owner=`sandbox/README.md` + docs/engineering_governance §Exploration Sandbox)**:
+ephemeral 探索 (一次性 runner / findings 草稿 / 中间结果 / scratch 数据) **只住 `sandbox/`**
+(`bash scripts/sandbox.sh new <exp>`), 绝不进 `backend/scripts/`、`analysis/`、`docs/`、主 DB —
+否则探索散进主代码=反复污染 (本次清 ~100 文件的根因)。`sandbox/` gitignored 用完直接删
+(`sandbox.sh wipe-all`); 唯一跨删存活 = 裁决写 `experiment_store.duckdb` (record_verdict); 真 edge
+才干净重写进 `backend/services/` + 单测。moth `exploration-isolated-in-sandbox` 拦探索 runner 漏进 backend/scripts.
+
 ## 4. 数据 / 策略安全 (核心红线)
 
 ### 4.1 PIT / Anti-Leakage

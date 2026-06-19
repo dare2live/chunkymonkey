@@ -155,6 +155,20 @@ Before deletion, use CodeGraph plus `rg` to check references and run the
 narrowest relevant audit/test. If evidence is historical but still useful, move
 it to `analysis/`; if it is not useful, delete it.
 
+## Exploration Sandbox (隔离探索区, owner: `sandbox/README.md`)
+
+2026-06-17 用户根治: ephemeral 探索 (一次性 runner / findings 草稿 / 中间结果 / scratch
+数据) **只住 `sandbox/`**, 绝不进 `backend/scripts/`、`analysis/`、`docs/` 或主 DB —— 否则
+探索散进主代码/文档 = 反复污染 = 反复大清理 (这是本次 ~100 文件清理的根因)。
+
+| 规则 | 机制 |
+|---|---|
+| 探索脚本/草稿/结果 → `sandbox/<exp>/`, scratch 数据 → `sandbox/scratch.duckdb` (主 6 库只读) | `bash scripts/sandbox.sh new/list/wipe/wipe-all/check` |
+| `sandbox/` gitignored (除 README) — 探索进不了 git/主代码 | `.gitignore: sandbox/*` + `!sandbox/README.md` |
+| 探索 runner (`experiment_*`/`analyze_*`) 不许在 `backend/scripts/` | moth `exploration-isolated-in-sandbox` (==0) |
+| 用完直接删, 主代码/文档/git 0 残留 | `scripts/sandbox.sh wipe-all` |
+| 唯一跨删存活 = 裁决 → `experiment_store.duckdb` (record_verdict); 真 edge 才 promote (干净重写进 `backend/services/` + 单测, 非 copy) | `services.experiment_store` + `experiment_harness` |
+
 ## Active Tool Commands
 
 | Purpose | Command |
