@@ -1,5 +1,8 @@
 # 项目综合 + 经验教训 + Enforcement 转换 — 2026-05-23
 
+> [!] 2026-06-17 清污染期头注: 本文所有具体 alpha 数字/模型裁决 (sharpe/PBO/RankIC/胜率/年化/超额/AUC) **全部作废** — 建于已删 LGBM/ensemble apparatus + 污染 universe + 错方法论。仅留方法论结构/盲点/leakage 机制供参考; 任何数字须在结构型主升浪 GT (universe 硬门 clean) 上重验。
+
+
 > 用户 push: "综合所有想法 + 数据 + 验证 results 找盲点 + 第一性原理 + 奥卡姆设计 + 把 doc 可 hook 的转 enforcement".
 
 ---

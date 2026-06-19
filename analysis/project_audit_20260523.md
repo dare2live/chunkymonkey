@@ -1,5 +1,8 @@
 # ChunkyMonkey 项目全面审计 + 经验教训 — 2026-05-23
 
+> [!] 2026-06-17 清污染期头注: 本文所有具体 alpha 数字/模型裁决 (sharpe/PBO/RankIC/胜率/年化/超额/AUC) **全部作废** — 建于已删 LGBM/ensemble apparatus + 污染 universe + 错方法论。仅留方法论结构/盲点/leakage 机制供参考; 任何数字须在结构型主升浪 GT (universe 硬门 clean) 上重验。
+
+
 > 用户 push: "也就是全都白跑了, 你总结一下本项目开发以来的经验教训, 然后顺着这个思路全面做个审计".
 > 
 > 本文档对项目从 GCP retrain 开始迭代以来积累的关键教训 + 当前残留 issues 做系统盘点.

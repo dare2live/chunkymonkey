@@ -1,5 +1,8 @@
 # Alpha Enhancement Plan — 2026-05-22 (evidence-driven rewrite v2)
 
+> [!] 2026-06-17 清污染期头注: 本文所有具体 alpha 数字/模型裁决 (sharpe/PBO/RankIC/胜率/年化/超额/AUC) **全部作废** — 建于已删 LGBM/ensemble apparatus + 污染 universe + 错方法论。仅留方法论结构/盲点/leakage 机制供参考; 任何数字须在结构型主升浪 GT (universe 硬门 clean) 上重验。
+
+
 > **状态: 已偏离 (2026-06-14 地基-reset 取代)** — 本文档(计划/设计/handoff层)针对已删的模型/特征/寻优/serving层, 已过时; 保留作历史叙事/measured证据参考。当前态见 `goal.md` + `docs/data_management_framework.md`。
 
 

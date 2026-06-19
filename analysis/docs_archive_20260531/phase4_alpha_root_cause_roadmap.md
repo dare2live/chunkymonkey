@@ -1,5 +1,8 @@
 # Phase 4 Alpha 根因回溯 Roadmap
 
+> [!] 2026-06-17 清污染期头注: 本文所有具体 alpha 数字/模型裁决 (sharpe/PBO/RankIC/胜率/年化/超额/AUC) **全部作废** — 建于已删 LGBM/ensemble apparatus + 污染 universe + 错方法论。仅留方法论结构/盲点/leakage 机制供参考; 任何数字须在结构型主升浪 GT (universe 硬门 clean) 上重验。
+
+
 按 `analysis/plan_v3_20260514_archived.md` §72 "任一失败 → 停止包装, 回到 alpha 根因, 不调目标".
 
 ## 触发条件

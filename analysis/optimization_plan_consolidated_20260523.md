@@ -1,5 +1,8 @@
 # ChunkyMonkey 综合优化方案 — 2026-05-23 final
 
+> [!] 2026-06-17 清污染期头注: 本文所有具体 alpha 数字/模型裁决 (sharpe/PBO/RankIC/胜率/年化/超额/AUC) **全部作废** — 建于已删 LGBM/ensemble apparatus + 污染 universe + 错方法论。仅留方法论结构/盲点/leakage 机制供参考; 任何数字须在结构型主升浪 GT (universe 硬门 clean) 上重验。
+
+
 > 用户指令: 停止版本测试 (v7/v8/v9b 测试结束). 综合所有 prior discussion 出统一可执行方案.
 >
 > 实测验证: 单 model retrain 边际收益递减 (v7 0.87 → v8 1.53 → v9b 1.71 都 Phase 4 BLOCK).
