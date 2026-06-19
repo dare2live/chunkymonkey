@@ -52,7 +52,7 @@
 
 ## Current Phase: 干净地基上重建 alpha
 
-**地基现状 (2026-06-14 reset 后)**: smartmoney **85 表 / 2.5G** (raw源/dim/财报PIT/十大股东/K线中间 + 档案展示 + 治理infra); 数据管理框架已立 (8层声明式 `data_layers.yaml` + `data_layer_audit` + `schema_layer_filter` 防重建 + moth 13断言全pass); S1 基本面四件套 (forecast/express/income/fina_indicator) 回填完成; CI绿。owner=`docs/data_management_framework.md`。
+**地基现状 (2026-06-14 reset 后, 2026-06-19 数据底座硬化)**: 数据管理框架已立 (8层声明式 `data_layers.yaml` + `data_layer_audit` PASS + `schema_layer_filter` 防重建 + moth 全pass); S1 基本面四件套 (forecast/express/income/fina_indicator) 回填完成; CI绿。**2026-06-19 硬化**: universe 身份真相源 = tushare `stock_basic` (退役 akshare dim_active 前缀猜); 非tushare孤儿源 6/6 SAFE_TO_DROP 退役 (~838k行, smartmoney 当前 ~87表); 排除股(北交所/三板)全库清+sync写入门防回潮。owner=`docs/data_management_framework.md` + `analysis/non_tushare_source_inventory_20260619.md`。
 
 **Controller rule**: 主会话 owns 方向/真相源/共享文档/gate/staging/commit/风险写窗口。side-agent 只给有界证据, 非裁决。重大改动 (数据语义/策略/资金路径) 走对抗复审。
 
@@ -63,7 +63,8 @@
 | P0 | 文档同步 | goal/INDEX reset-rewrite | 立 `moth doc-drift` 固化 (机器对账, 防再漂; mythos §16) |
 | P0 | 彻底清除污染期产物 | **完成** (2轮穷尽 sweep: DELETE 64 docs/脚本/config/验证结果 + scrub/作废头注~14 + DB 0残留; build_feature_panel BROKEN flag; fact_feature_panel 三处虚假active改诚实) + **沙盒机制根治** (sandbox/ gitignored 用完删 + moth exploration-isolated, 探索不再散进主代码) | — |
 | **P1** | **主升浪猎手执行方案** | **owner=`analysis/zhushenglang_hunter_plan_20260617.md`** (架构审计 REVISE + 用户阶段框架: 识别→分层+切阶段→逐阶段验因子; 短路径鱼身/出场/仓位优先) | Phase 0 地基补全 (build_feature_panel 重建 + GT 标签拆 + 负样本生成器) |
-| P1 | 数据底座研究 | cyq 实测与 tushare qfq 同复权坐标可用 (C0 FAIL=审计比错基准非数据错); 高积分高价值因子已排序 | D0 回填 hk_hold/stk_holdertrade/moneyflow_dc 等 + cyq 解冻 2018 |
+| **P1** | **数据底座: universe真相源 + 非tushare退役** | **2026-06-19**: universe 身份真相源切 tushare stock_basic (双向bug根治: K线∩前缀漏入指数000300 + stale akshare漏真股 → 加身份交集); 非tushare源全盘点(akshare22/tdxhub18/aif10 13, owner=`analysis/non_tushare_source_inventory_20260619.md`); **6/6 SAFE_TO_DROP 退役 ~838k行**(逐表对抗验证0消费者+shared-writer删X留Y); 排除股全库清+写入门防回潮; ensemble污染孤儿退役; P0拉取(stock_basic/share_float/stk_holdernumber done, stk_factor_pro运行中) | 链完验P0落库 universe-clean; **KEEP_MIGRATE 5表**(aif10 valuation/peer/forecast→v3_picture + dividend_summary→scoring + price_kline→regime)走 M2/M3/M4 双轨先迁后删 |
+| P1 | 数据底座研究 (chips/分位/资金) | cyq 实测与 tushare qfq 同复权坐标可用 (C0 FAIL=审计比错基准非数据错); 高积分高价值因子已排序 | cyq 解冻 2018 + 待评估高价值未拉项 |
 | P2 | 深层解耦 backlog | kept routers 懒加载已删 services / 散落服务自建表 / god-file (framework doc §6) | rebuild 时按 layer 顺手解耦, moth 守不回潮; **不 big-bang** |
 
 ## 重建路线 (owner=`analysis/zhushenglang_hunter_plan_20260617.md` + MASTER §5)

@@ -784,3 +784,12 @@ loader 误删致 4 处 `import services.experiment_jobs` 悬空崩)。故 S0 = c
   get_active_universe 加身份交集。实测 dim 5201→5208(+8真股/-1退市000638), universe 000300出局/4978干净/test_universe 16 passed。
   全库非tushare源盘点 owner=analysis/non_tushare_source_inventory_20260619.md (akshare22/tdxhub18/aif10 13 + critic抓出tdxhub财务簇盲区,
   M2-M4 逐簇双轨退役, 不bulk-drop)。akshare stock_info_a_code_name 调用退役(其余 ~10 akshare 备援调用不动)。
+- 2026-06-19 非tushare孤儿源 6/6 SAFE_TO_DROP 全退役 (~838k行, 用户"继续退役非tushare源"):
+  逐表对抗验证 workflow wf_39200ec2 (11表→SAFE_TO_DROP 6/KEEP_MIGRATE 5/0误判); 关键 mythos§14 — aif10 valuation/peer
+  + price_kline 被标 RETIRE 实为 LIVE(喂 v3_picture serving/regime engine)→改 KEEP_MIGRATE 避免 bulk-drop 断服务。
+  退役 6 表 (commit 0c2eeb8a/bb245c57/1485c13b/a5991e90): fact_orderbook_snapshot(污染残留) + raw_fund_flow_daily(86k,→tushare moneyflow)
+  + raw_aif10_holder_count(742k,→stk_holdernumber) + raw_aif10_financial_history(探针孤儿) + fact_hsgt_daily(2767,HSGT停2024)
+  + financial_indicator簇3表(fact/dim/sync_state)。每张 shared-writer 删X留Y精细手术(aif10_capability_client 5→3 /
+  build_akshare_panel 6→5 / financial_client caller改stub), KEEP 部分全验完好; scoring/audit dormant 引用 try/except 安全降级。
+  全程 data_layer_audit PASS + moth fail=0 + 各簇 test passed。退役日志详 non_tushare_source_inventory_20260619.md §3.5。
+  剩 KEEP_MIGRATE_FIRST 5表 (aif10 valuation/peer/forecast + dividend_summary + price_kline) 走 M2/M3/M4 双轨先迁后删。
