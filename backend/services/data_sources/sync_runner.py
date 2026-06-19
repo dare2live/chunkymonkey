@@ -329,6 +329,21 @@ def _write_batch(conn, spec: dict[str, Any], rows: list[dict[str, Any]]) -> int:
     if missing:
         raise ValueError(f"{table}: api 返回缺 grain 列 {missing} — registry 条目或上游 schema 变了")
 
+    # universe 写入门 (2026-06-17 用户: 排除列表=交易日历级硬真相源, 排除股不入库):
+    # stock-level 域 (universe_filter=true) 写前丢非白名单前缀行 (北交所8x/9x/三板4x); index/concept
+    # 域 (sw_daily/dc_index/moneyflow_ind_dc/index_*) 不设此标不受影响。by_trade_date 域重拉全市场
+    # 时防排除股回潮 (与一次性 purge 配套, 让清理生效)。
+    if spec.get("universe_filter"):
+        from services.universe import ACTIVE_A_SHARE_PREFIXES
+        ucol = spec.get("universe_filter_col") or grain[0]
+        if ucol in df.columns:
+            _n0 = len(df)
+            df = df[df[ucol].astype(str).str[:2].isin(set(ACTIVE_A_SHARE_PREFIXES))]
+            if len(df) < _n0:
+                log.info("[universe-filter] %s 丢 %d 排除前缀行 (北交所/三板)", table, _n0 - len(df))
+            if df.empty:
+                return 0
+
     # duck_adapter 包装层挡住 DataFrame replacement scan, 显式注册视图
     raw_con = getattr(conn, "_con", conn)
     raw_con.register("df", df)
