@@ -1,0 +1,33 @@
+# fact_rally_ground_truth 列角色契约 (2026-06-19 A0 地基止血 #c: GT 标签拆)
+#
+# 为何存在: episode-first 结果倒推 = 从赢家 episode 反推 PIT 入场前兆特征。
+#   死亡条款 (感知死/真金白银): outcome 列 (事后才知的涨幅/峰值/回撤) 当训练 X = leakage
+#   = "异常高数字" 的根源。本契约把每列硬分类, services.rally_labels + 单测 执法,
+#   下游训练只许用 pit_features + (JOIN fact_feature_panel 的 PIT 因子), 物理上够不到 outcome。
+#
+# 语义来源: backend/scripts/build_rally_ground_truth.py detect_episodes (逐列核对计算窗口)。
+
+entry_anchor: bottom_date          # = entry_signal_date; PIT 决策点 + fact_feature_panel 的 JOIN 键 (code, date)
+
+pit_features:                      # <=bottom_date 可用, 安全做训练 X
+  - base_days                      # 底前 BASE_LOOKBACK 窗内贴底(low*0.85~1.25)盘整日数; slice closes[i-N:i] 不含 i = 纯底前 (PIT)
+
+label: is_true_rally               # 目标 y (漏斗判定结果, 用 forward 定义, 非特征); GT 表内恒 True, 负样本由 generator 出
+
+outcomes_forbidden_as_x:           # >bottom_date 事后才知, 绝禁做训练 X (违 = leakage 死)
+  - peak_date                      # 波峰日 (forward argmax)
+  - gain_to_peak_pct               # 底→顶涨幅 (forward)
+  - peak_offset_days               # 到峰交易日数 (forward)
+  - bull_aligned                   # 拉升期 seg=[bottom..peak] 内某日 MA5>10>20>30>60 — 名字像入场态, 实为 FORWARD!
+  - path_max_dd_pct                # 拉升途中回撤 path=[bottom..peak] (forward)
+
+meta:                              # 非特征非 outcome, 元信息
+  - fwd_window_len
+  - taxonomy_version
+  - built_at
+  - st_in_episode
+
+notes: |
+  陷阱: bull_aligned 反复被误当入场特征 (Explore/INDEX/早期分类都错过) — 它在 [bottom..peak]
+  拉升期测, 入场当时不可知。真正丰富的入场 PIT 特征来自 fact_feature_panel JOIN (code, entry_signal_date),
+  GT 自带的 PIT 特征只有 base_days 一个 (结构型长底)。
