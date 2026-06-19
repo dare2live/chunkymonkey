@@ -124,3 +124,61 @@ def extract_feature(formula_id: str, bars: dict[str, list[float]],
 
 
 ACTIVE_FORMULAS = ("macd_golden_cross", "ma_base_breakout", "turtle_breakout", "reversal_short_term")
+
+
+# ===========================================================================
+# 主升浪 stage 因子 (2026-06-19 从已删 experiment_* 脚本恢复进 services,
+#   消除 build_feature_panel→experiment 倒挂; A0 地基止血 #1)。
+# 全部 PIT: feat[i] 只用 <=i 信息。list-based per-stock (与上方因子同风格)。
+# ===========================================================================
+
+def feature_momentum(closes: list[float | None], window: int = 20) -> list[float | None]:
+    """N 日价格动量 close[t]/close[t-N]-1 (PIT)。warmup 不足 -> None。
+
+    主升段鱼身延续因子 (时序动量, A股比横截面动量稳; 横截面动量常反转勿混用)。
+    """
+    out: list[float | None] = [None] * len(closes)
+    for i in range(len(closes)):
+        j = i - window
+        if j < 0 or closes[i] in (None, 0) or closes[j] in (None, 0):
+            continue
+        out[i] = closes[i] / closes[j] - 1.0
+    return out
+
+
+def feature_moneyflow_trend(net_series: list[float | None], flow_series: list[float | None],
+                            window: int = 20) -> list[float | None]:
+    """trailing-N 净流入占总流比 (PIT)。warmup 不足 -> None; 总流 <=0 -> None。
+
+    资金确认因子 (主力净入支撑主升延续 / 流出转向预警顶部)。net/flow 同口径 (flow vendor=membership vendor)。
+    """
+    out: list[float | None] = [None] * len(net_series)
+    for i in range(len(net_series)):
+        lo = i - window + 1
+        if lo < 0:
+            continue
+        net_sum = sum(n for n in net_series[lo:i + 1] if n is not None)
+        flow_sum = sum(f for f in flow_series[lo:i + 1] if f is not None)
+        out[i] = (net_sum / flow_sum) if flow_sum and flow_sum > 0 else None
+    return out
+
+
+def feature_asof_quality(dates: list[str], reports: list[tuple]) -> list[float | None]:
+    """as-of 财务质量序列 (PIT: 决策日 d 只用 ann_date<=d 的报告, 取已披露 max(end_date) 的最新修订值)。
+
+    reports = [(ann_date, end_date, value)] 按 ann_date 升序。无披露 -> None。
+    财报类 JOIN 纪律的代码级 PIT 锚 (公告日 ann_date 而非生效日)。分层慢变量。
+    """
+    out: list[float | None] = [None] * len(dates)
+    known: dict[str, tuple] = {}   # end_date -> (ann_date, value); 同 end_date 后到 ann_date 覆盖 (修订)
+    ri = 0
+    n = len(reports)
+    for i, d in enumerate(dates):
+        while ri < n and reports[ri][0] <= d:   # ann_date <= 决策日 d 才纳入 (PIT 核心)
+            a, end, val = reports[ri]
+            known[end] = (a, val)
+            ri += 1
+        if known:
+            latest_end = max(known)              # 已披露的最新财季
+            out[i] = known[latest_end][1]
+    return out
