@@ -15,10 +15,13 @@
    **绝不进 `analysis/` 或 `docs/`**。
 3. **中间结果** (json / csv / 图) → `sandbox/<exp>/results/`,
    **绝不进 `analysis/` 或 `data/reports/`**。
-4. **scratch 数据** → `sandbox/scratch.duckdb` (随便建表玩), **不碰 6 个主库**
+4. **scratch 数据** → `sandbox/<exp>/scratch.duckdb` (per-exp, 随探索一并 wipe), **不碰 6 个主库**
    (smartmoney / market / tushare_raw / feature_store / etf / experiment_store)。
-   读主库一律 `read_only=True`。
-5. **gitignored**: `sandbox/` 整个不进 git (除本 README)。
+5. **边界水密 (运行时硬门, 非约定)**: 探索脚本首行
+   `from services.sandbox_guard import enable_sandbox_guard, read_only_main, sandbox_scratch; enable_sandbox_guard()` —
+   此后 read_write 打开主库 = `raise SandboxBoundaryError`。读主库用 `read_only_main("market")`,
+   写探索数据用 `sandbox_scratch("<exp>")`。`scripts/sandbox.sh new <exp>` 生成的 probe.py 模板已带。
+6. **gitignored**: `sandbox/` 整个不进 git (除本 README)。
 
 ## 用完直接删 (重点)
 

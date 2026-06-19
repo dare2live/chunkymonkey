@@ -162,5 +162,10 @@ assertions:
   - id: exploration-isolated-in-sandbox
     claim: "探索隔离在 sandbox/ 不污染主代码 (2026-06-17 用户根治: 探索脚本/findings草稿/结果散进 backend/scripts+analysis+docs = 反复污染根因, 本对话清~100文件). sandbox/ gitignored 用完直接删 (scripts/sandbox.sh); 探索 runner (experiment_*/analyze_*) 不许在 backend/scripts (该在 sandbox/<exp>/); 唯一跨删存活=experiment_store verdict. 复活=污染根因复发. owner=sandbox/README.md"
     type: shell
-    command: ["bash", "-c", "ls backend/scripts/experiment_*.py backend/scripts/analyze_*.py 2>/dev/null | wc -l | tr -d ' '"]
+    command: ["bash", "-c", "{ ls backend/scripts/experiment_*.py backend/scripts/analyze_*.py 2>/dev/null || true; } | wc -l | tr -d ' '"]
     expect: {op: "==", value: 0}
+  - id: sandbox-boundary-guard-present
+    claim: "沙盒边界硬门在岗 (2026-06-17 用户: 边界要水密非约定; 审计 wf_6185abb2 实测沙脚本能裸 duckdb.connect 主库 rw 真写了 market 库). services.sandbox_guard 提供 enable_sandbox_guard (monkeypatch 挡 rw 开主6库 raise SandboxBoundaryError) + read_only_main (只读正路) + sandbox_scratch (per-exp); sandbox.sh new 模板首行调 guard. 删=边界退回纯约定, 探索可写坏主库. owner=sandbox/README.md"
+    type: shell
+    command: ["bash", "-c", "grep -c 'def enable_sandbox_guard\\|class SandboxBoundaryError\\|def read_only_main' backend/services/sandbox_guard.py"]
+    expect: {op: ">=", value: 3}
