@@ -231,7 +231,6 @@
 |---|---|
 | `fact_hsgt_daily` | 北向资金 daily |
 | `raw_lhb_daily` / `fact_lhb_event` | 龙虎榜 |
-| `raw_fund_flow_daily` | 主力资金流 daily |
 | `fact_executive_trade_event` | 高管增减持 |
 | `fact_shareholder_trade` / `fact_shareholder_trade_tdx_b` | 股东交易 |
 | `fact_holder_event` / `fact_top10_holder_period` / `fact_holder_count_period` | 持股人结构 |

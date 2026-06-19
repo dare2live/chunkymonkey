@@ -47,7 +47,6 @@ tables:
   raw_capital_dividend_detail: L0_source
   raw_capital_repurchase: L0_source
   raw_capital_unlock: L0_source
-  raw_fund_flow_daily: L0_source
   raw_gpcw_detail: L0_source
   raw_gpcw_financial: L0_source
   raw_institution_surveys: L0_source

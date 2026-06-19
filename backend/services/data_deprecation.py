@@ -32,11 +32,6 @@ DATA_DEPRECATION_ASSETS = [
         "reason": "Legacy chain-alpha experiment table has no active writer or reader.",
     },
     {
-        "table_name": "raw_fund_flow_daily",
-        "replacement_table": None,
-        "reason": "Legacy fund-flow raw table is no longer connected and remains deprecated; CYQ/order-flow reuse requires a fresh source probe plus PIT/freshness gate before reactivation.",
-    },
-    {
         "table_name": "fact_hsgt_daily",
         "replacement_table": None,
         "reason": "akshare HSGT endpoint currently returns stale 2024 holdings and no active reader consumes this legacy panel.",

@@ -1633,19 +1633,6 @@ tools:
     replacement: LHB source coverage, PIT lineage, and freshness audits
     last_verified: "2026-06-01"
 
-  - id: orderbook_snapshot_contract_tests
-    paths:
-      - backend/tests/test_build_orderbook_snapshot.py
-    owner_module: market_data.orderbook
-    scope: contract
-    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_build_orderbook_snapshot.py
-    status: active
-    evidence_level: trusted_with_scope
-    truth_source: local orderbook snapshot builder fixtures
-    risk_reason: verifies snapshot write mechanics only; does not prove live quote availability or order-flow freshness
-    replacement: market-data source coverage and post-sync freshness audit
-    last_verified: "2026-05-27"
-
   - id: calendar_kline_contract_tests
     paths:
       - backend/tests/test_calendar_shim_compat.py

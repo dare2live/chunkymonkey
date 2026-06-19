@@ -79,6 +79,19 @@
 **铁律** (每表退役前): 双轨核对 (新tushare vs 旧, 差异定位到具体code看谁对) → repoint 消费侧 → 验0残留 → 物删。
 **不 bulk-drop on agent label** (mythos §14): 每簇按 ensemble 退役标准 (多源核 + 0 live 消费证伪) 才删。
 
+## 3.5 退役执行日志 (逐表对抗验证后, 不bulk-drop)
+
+验证 workflow wf_39200ec2 (11 表逐表对抗验证): SAFE_TO_DROP 6 / KEEP_MIGRATE_FIRST 5 / 0 KEEP_LIVE。
+关键: aif10 valuation_quantile(3消费者 v3_picture serving)/peer_valuation/price_kline(4消费者 regime/return) 是 **LIVE**, 按 label bulk-drop 会断服务 → KEEP_MIGRATE_FIRST。
+
+| 日期 | 表 | 行 | 处置 | 验证 |
+|---|---|---|---|---|
+| 2026-06-19 | **fact_orderbook_snapshot** (market) | 100 | RETIRED (DROP + 清 pyc/test_tool_registry; writer 639e0dfb 已删, 无源=污染残留) | 0消费者 |
+| 2026-06-19 | **raw_fund_flow_daily** (smartmoney) | 86117 | RETIRED (DROP + 清 data_layers/data_deprecation/INDEX; writer 491072d1 已删) | 0消费者 (被 tushare moneyflow 替代) |
+
+**KEEP_MIGRATE_FIRST (有 live 消费者, 先迁消费侧再删, 勿现删)**: raw_capital_dividend_summary(→dim→scoring) · raw_aif10_valuation_quantile/peer_valuation(→v3_picture serving) · raw_aif10_forecast_consensus(→report_rc) · price_kline(→index_daily, regime/return engine; M3)。
+**待 writer 手术 RETIRE (Batch B, shared writer 精细删)**: fact_financial_indicator_ak(dedicated financial_indicator_client) · fact_hsgt_daily(build_akshare_panel shared) · raw_aif10_holder_count + raw_aif10_financial_history(aif10_capability_client shared, 删2留3)。
+
 ## 4. 完整审计原始数据
 
 workflow 完整返回 (5 lens 表级 + critic): `tasks/we2vsfoba.output` (会话级, 临时)。

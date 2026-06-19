@@ -203,7 +203,7 @@ DATA_ROUTES = [
         "freshness": "—",
         "step_id": "(模块停用)",
         "client_module": "(fetch_fund_flow_daily.py 已删, 见 git 历史 491072d1)",
-        "notes": "raw_fund_flow_daily 已退役且停在 2026-04-24；akshare individual_fund_flow capability 已登记，2026-06-03 单股 live probe (600519/sh) 已返回 120 行且 max 日期到 2026-06-02，但这只证明端点恢复可探测，不等于生产恢复。另有 akshare stock_fund_flow_individual 研究侧排行快照可做补充观测，但不等同 exact flow。CYQ 主力画像恢复前必须先通过小批量 source probe、PIT availability、freshness、writer/watermark 和反爬稳定性评估。",
+        "notes": "raw_fund_flow_daily 已物删 (2026-06-19, 86117行, 0 live消费者, 被 tushare moneyflow/moneyflow_dc 替代; writer fetch_fund_flow_daily.py 早删 491072d1)。akshare individual_fund_flow capability 已登记，2026-06-03 单股 live probe (600519/sh) 已返回 120 行且 max 日期到 2026-06-02，但这只证明端点恢复可探测，不等于生产恢复。CYQ 主力画像恢复前必须先通过小批量 source probe、PIT availability、freshness、writer/watermark 和反爬稳定性评估 (恢复走 tushare moneyflow 非 akshare)。",
     },
     {
         "data_name": "个股资金流排行快照 (研究)",
