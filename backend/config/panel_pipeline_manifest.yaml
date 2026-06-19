@@ -145,7 +145,6 @@ pipelines:
       - fact_lhb_event (LHBAlpha)
       - fact_capital_flow_pit_daily (CapitalFlowAlpha PIT-only; raw_fund_flow_daily research/deprecated only)
       - raw_institution_surveys (SurveyAlpha)
-      - fact_hsgt_daily (NorthboundAlpha)
     rebuild_mode: INSERT_OR_REPLACE_by_date_range
     eta_min: 15
 

@@ -249,68 +249,8 @@ def build_dzjy_events(conn, date_windows: list[tuple[str, str]]) -> int:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# 3. 陆股通每日个股持股
-# ═══════════════════════════════════════════════════════════════════════
-
-def build_hsgt_daily(conn, today_only: bool = True) -> int:
-    conn.executescript("""
-    CREATE TABLE IF NOT EXISTS fact_hsgt_daily (
-        snapshot_date TEXT NOT NULL,
-        stock_code    TEXT NOT NULL,
-        stock_name    TEXT,
-        hold_shares   REAL,
-        hold_market_value REAL,
-        hold_pct_of_float REAL,
-        built_at      TEXT,
-        PRIMARY KEY (snapshot_date, stock_code)
-    );
-    CREATE INDEX IF NOT EXISTS idx_hsgt_d_code ON fact_hsgt_daily(stock_code);
-    CREATE INDEX IF NOT EXISTS idx_hsgt_d_date ON fact_hsgt_daily(snapshot_date);
-    """)
-    total = 0
-    built_at = datetime.utcnow().isoformat()
-    today = datetime.now().strftime('%Y%m%d')  # Phase ψ.5 allowlist: experimental (dead-audit phase 2)
-    try:
-        sh_rows = _records_from_table(ak.stock_hsgt_hold_stock_em(market='沪股通', indicator='今日排行'))
-    except Exception as e:
-        logger.warning("hsgt sh: %s", e)
-        return 0
-    try:
-        sz_rows = _records_from_table(ak.stock_hsgt_hold_stock_em(market='深股通', indicator='今日排行'))
-    except Exception as e:
-        logger.warning("hsgt sz: %s", e)
-        sz_rows = []
-    records = sh_rows + sz_rows
-    if not records:
-        return 0
-
-    cols_map = {'代码': 'stock_code', '股票代码': 'stock_code',
-                '名称': 'stock_name', '股票简称': 'stock_name',
-                '今日持股-股数': 'hold_shares', '持股数量': 'hold_shares',
-                '今日持股-市值': 'hold_market_value', '持股市值': 'hold_market_value',
-                '今日持股-占流通股比': 'hold_pct_of_float',
-                '持股数量占发行股百分比': 'hold_pct_of_float',
-                '日期': 'snapshot_date'}
-    rows = []
-    for record in records:
-        row = _map_row(record, cols_map)
-        stock_code = _stock_code(row.get("stock_code"))
-        if not stock_code:
-            continue
-        row["snapshot_date"] = _date_key(row.get("snapshot_date")) or today
-        row["stock_code"] = stock_code
-        row["built_at"] = built_at
-        rows.append(row)
-    rows = _dedupe(rows, ['snapshot_date', 'stock_code'])
-    cols = ['snapshot_date', 'stock_code', 'stock_name', 'hold_shares',
-            'hold_market_value', 'hold_pct_of_float', 'built_at']
-    _insert_ignore(conn, 'fact_hsgt_daily', rows, cols)
-    conn.commit()
-    total = len(rows)
-    logger.info("fact_hsgt_daily +%d 条 (snapshot=%s)", total, today)
-    return total
-
-
+# (3. 陆股通每日个股持股 fact_hsgt_daily — 2026-06-19 退役: akshare HSGT 停在
+#  2024-08 + 0 live消费者; per-stock 北向披露 ~2025-07 停, 不再接入)
 # ═══════════════════════════════════════════════════════════════════════
 # 4. 热度 daily panel (只拉当日 top 100)
 # ═══════════════════════════════════════════════════════════════════════
@@ -486,8 +426,8 @@ def _date_range(start: str, end: str):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--tasks', default='jgdy,dzjy,hsgt,hot,profit_forecast',
-                        help='逗号分隔: jgdy, dzjy, hsgt, hot, rr, profit_forecast')
+    parser.add_argument('--tasks', default='jgdy,dzjy,hot,profit_forecast',
+                        help='逗号分隔: jgdy, dzjy, hot, rr, profit_forecast (hsgt 已退役 2026-06-19)')
     parser.add_argument('--jgdy-start', default='20230101')
     parser.add_argument('--jgdy-end', default=datetime.now().strftime('%Y%m%d'))  # Phase ψ.5 allowlist
     parser.add_argument('--dzjy-start', default='20230101')
@@ -521,11 +461,6 @@ def main():
         logger.info("dzjy 月窗口数 %d", len(windows))
         build_dzjy_events(conn, windows)
         logger.info("dzjy 耗时 %.1fs", time.time() - t0)
-
-    if 'hsgt' in tasks:
-        t0 = time.time()
-        build_hsgt_daily(conn, today_only=True)
-        logger.info("hsgt 耗时 %.1fs", time.time() - t0)
 
     if 'hot' in tasks:
         t0 = time.time()

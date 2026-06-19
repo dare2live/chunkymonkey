@@ -254,7 +254,6 @@ CLIENTS: list[ClientSpec] = [
         writes=[
             TableWriteSpec("fact_jgdy_event", "机构调研事件流", "event", 48),
             TableWriteSpec("fact_dzjy_event", "大宗交易事件流", "event", 48),
-            TableWriteSpec("fact_hsgt_daily", "陆股通持股日度面板", "t+0", 24),
             TableWriteSpec("fact_hot_rank_daily", "股票热度日度面板", "t+0", 24),
             TableWriteSpec("fact_research_report", "个股研报事件流", "event", 48),
             TableWriteSpec("fact_profit_forecast_daily", "分析师盈利预测快照", "t+0", 24),

@@ -45,7 +45,6 @@ FACT_VERSIONS = {
     "fact_executive_trade_event": "v1",      # 高管交易事件
     "fact_jgdy_event": "v1",                 # 机构调研事件
     "fact_lhb_event": "v1",                  # 龙虎榜事件
-    "fact_hsgt_daily": "v1",                 # 沪深港通日度
     "fact_financial_derived": "v1",          # 财务派生
     "fact_financial_indicator_ak": "v1",     # akshare 财务指标
     "fact_fundamental_quarterly": "v1",      # 基本面季度

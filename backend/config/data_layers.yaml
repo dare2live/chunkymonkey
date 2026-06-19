@@ -83,7 +83,6 @@ tables:
   fact_financial_derived: L1_foundation
   fact_fundamental_quarterly: L1_foundation
   fact_holder_count_period: L1_foundation
-  fact_hsgt_daily: L1_foundation
   fact_institution_event: L1_foundation
   fact_lhb_event: L1_foundation
   fact_shareholder_plan_tdx_f10: L1_foundation

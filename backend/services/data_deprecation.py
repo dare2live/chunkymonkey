@@ -32,11 +32,6 @@ DATA_DEPRECATION_ASSETS = [
         "reason": "Legacy chain-alpha experiment table has no active writer or reader.",
     },
     {
-        "table_name": "fact_hsgt_daily",
-        "replacement_table": None,
-        "reason": "akshare HSGT endpoint currently returns stale 2024 holdings and no active reader consumes this legacy panel.",
-    },
-    {
         "table_name": "fact_regime_state",
         "replacement_table": "fact_feature_panel",
         "reason": "Legacy regime snapshot has no active writer or reader; regime features now live on fact_feature_panel.",
