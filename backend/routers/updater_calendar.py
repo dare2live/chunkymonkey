@@ -22,11 +22,9 @@ CALENDAR_DATA_FETCH_STEPS = {
     "sync_qfii",
     # sync_margin removed (Phase ψ.5 dead-data cleanup): 写了没人读, UI 一处 + audit 一处而已
     "sync_lhb",
-    "sync_aif10_holder_count",
     "sync_aif10_valuation_quantile",
     "sync_aif10_peer_valuation",
     "sync_aif10_forecast_consensus",
-    "sync_aif10_financial_history",
 }
 
 

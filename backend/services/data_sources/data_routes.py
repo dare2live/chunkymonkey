@@ -102,13 +102,13 @@ DATA_ROUTES = [
     },
     {
         "data_name": "股东人数 (深历史)",
-        "raw_table": "(待建)",
-        "current": {"source": "aif10", "protocol": "RPT_F10_EH_HOLDERNUM", "status": "pending"},
+        "raw_table": "raw_tushare_stk_holdernumber",
+        "current": {"source": "tushare", "protocol": "stk_holdernumber", "status": "retired_aif10"},
         "target": None,
         "freshness": "季",
-        "step_id": "(待加 sync_aif10_holder_count)",
-        "client_module": "data_sources/sources/aif10.py",
-        "notes": "妙想独家 (tdxhub 没户数), registry 已声明等接通",
+        "step_id": "sync_runner --domain stk_holdernumber",
+        "client_module": "data_sources/sync_runner.py",
+        "notes": "2026-06-19: raw_aif10_holder_count(742k)物删, 转正 tushare stk_holdernumber; 旧 aif10 capability 退役",
     },
     {
         "data_name": "估值分位 PE/PB/PS PEG (历史)",
@@ -142,13 +142,13 @@ DATA_ROUTES = [
     },
     {
         "data_name": "财务历史 200 期",
-        "raw_table": "(待建)",
-        "current": {"source": "aif10", "protocol": "RPT_F10_FINANCE_MAINFINADATA (v0)", "status": "pending"},
+        "raw_table": "(已退役)",
+        "current": {"source": "aif10", "protocol": "RPT_F10_FINANCE_MAINFINADATA (v0)", "status": "retired"},
         "target": None,
         "freshness": "季",
-        "step_id": "(待加)",
-        "client_module": "data_sources/sources/aif10.py",
-        "notes": "比 tdxhub 8 期更深, 接通后可补充",
+        "step_id": "(已退役)",
+        "client_module": "(已退役)",
+        "notes": "2026-06-19: raw_aif10_financial_history(5713/50股探针)物删, 0消费者孤儿; 财务史走 tushare income/fina_indicator",
     },
 
     # =================================================================

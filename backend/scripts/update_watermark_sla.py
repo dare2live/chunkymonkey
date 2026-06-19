@@ -54,7 +54,6 @@ SLA_DAYS_OVERRIDE = {
     "financial_gpcw_8q": 100,        # 8 quarter 财报, 季度更新
     "holders_top10_float": 100,      # top10 股东季报
     "qfii_holding_quarterly": 100,   # qfii 季报
-    "aif10_holder_count": 100,       # 股东户数季报
 }
 
 # data_domain → actual table + date column

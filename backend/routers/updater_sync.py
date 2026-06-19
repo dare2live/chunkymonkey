@@ -299,10 +299,6 @@ async def _step_sync_aif10_capability(conn, capability_name: str) -> dict:
         return {"count": 0, "status": "failed", "error": str(exc)[:200]}
 
 
-async def _step_sync_aif10_holder_count(conn) -> dict:
-    return await _step_sync_aif10_capability(conn, "holder_count")
-
-
 async def _step_sync_aif10_valuation_quantile(conn) -> dict:
     return await _step_sync_aif10_capability(conn, "valuation_quantile")
 
@@ -313,23 +309,6 @@ async def _step_sync_aif10_peer_valuation(conn) -> dict:
 
 async def _step_sync_aif10_forecast_consensus(conn) -> dict:
     return await _step_sync_aif10_capability(conn, "forecast_consensus")
-
-
-async def _step_sync_aif10_financial_history(conn) -> dict:
-    """v0 接口, 按单股拉. 默认 50 只活跃股 (避免一次跑太久)."""
-    from services.aif10_capability_client import sync_financial_history_200q
-
-    try:
-        result = sync_financial_history_200q(limit=50)
-        return {
-            "count": result.get("rows", 0),
-            "status": "ok" if result.get("rows", 0) > 0 else "empty",
-            "secucodes": result.get("secucodes"),
-            "elapsed_s": result.get("elapsed_s"),
-        }
-    except Exception as exc:
-        logger.warning(f"[aif10/financial_history] 失败: {exc}")
-        return {"count": 0, "status": "failed", "error": str(exc)[:200]}
 
 
 async def _step_sync_financial(

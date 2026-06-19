@@ -18,11 +18,9 @@ STEP_BUDGET_MODEL: dict[str, dict] = {
     "sync_surveys": {"base": 90, "per_day": 15, "max": 240},
     "sync_qfii": {"base": 90, "per_day": 10, "max": 180},
     "sync_lhb": {"base": 90, "per_day": 10, "max": 180},
-    "sync_aif10_holder_count": {"base": 90, "per_day": 10, "max": 180},
     "sync_aif10_valuation_quantile": {"base": 90, "per_day": 10, "max": 180},
     "sync_aif10_peer_valuation": {"base": 90, "per_day": 10, "max": 180},
     "sync_aif10_forecast_consensus": {"base": 90, "per_day": 10, "max": 180},
-    "sync_aif10_financial_history": {"base": 90, "per_day": 10, "max": 180},
     "calc_financial_derived": {"base": 90, "per_day": 0, "max": 90},
     "build_stage_features": {"base": 90, "per_day": 0, "max": 90},
     "build_external_attention": {"base": 90, "per_day": 0, "max": 90},
@@ -42,11 +40,9 @@ STEP_SOURCE_DOMAINS = {
     "sync_surveys": ("institution_survey", "aif10_survey", 2),
     "sync_qfii": ("qfii_holding_quarterly", "aif10_qfii", 2),
     "sync_lhb": ("lhb_daily", "aif10_lhb", 2),
-    "sync_aif10_holder_count": ("aif10_holder_count", "aif10", 2),
     "sync_aif10_valuation_quantile": ("aif10_valuation_quantile", "aif10", 2),
     "sync_aif10_peer_valuation": ("aif10_peer_valuation", "aif10", 2),
     "sync_aif10_forecast_consensus": ("aif10_forecast_consensus", "aif10", 2),
-    "sync_aif10_financial_history": ("aif10_financial_history", "aif10", 2),
 }
 
 DAILY_NON_CRITICAL_STEPS = {

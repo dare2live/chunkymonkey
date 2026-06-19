@@ -88,6 +88,8 @@
 |---|---|---|---|---|
 | 2026-06-19 | **fact_orderbook_snapshot** (market) | 100 | RETIRED (DROP + 清 pyc/test_tool_registry; writer 639e0dfb 已删, 无源=污染残留) | 0消费者 |
 | 2026-06-19 | **raw_fund_flow_daily** (smartmoney) | 86117 | RETIRED (DROP + 清 data_layers/data_deprecation/INDEX; writer 491072d1 已删) | 0消费者 (被 tushare moneyflow 替代) |
+| 2026-06-19 | **raw_aif10_holder_count** (smartmoney) | 742291 | RETIRED (DROP + aif10_capability_client 删 capability + updater DAG 5文件接线 + clients_registry/data_layers/watermark_sla/data_routes; 删2留3) | 0消费者, 转 tushare stk_holdernumber |
+| 2026-06-19 | **raw_aif10_financial_history** (smartmoney) | 5713 | RETIRED (DROP + aif10_capability_client 删 sync_financial_history_200q + updater DAG 6文件 + storage_retention/data_routes) | 0消费者 (50股探针孤儿) |
 
 **KEEP_MIGRATE_FIRST (有 live 消费者, 先迁消费侧再删, 勿现删)**: raw_capital_dividend_summary(→dim→scoring) · raw_aif10_valuation_quantile/peer_valuation(→v3_picture serving) · raw_aif10_forecast_consensus(→report_rc) · price_kline(→index_daily, regime/return engine; M3)。
 **待 writer 手术 RETIRE (Batch B, shared writer 精细删)**: fact_financial_indicator_ak(dedicated financial_indicator_client) · fact_hsgt_daily(build_akshare_panel shared) · raw_aif10_holder_count + raw_aif10_financial_history(aif10_capability_client shared, 删2留3)。

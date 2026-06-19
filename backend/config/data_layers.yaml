@@ -38,9 +38,7 @@ layers:
     rebuild: rerun; 知识在 config/experiments/retired_experiments.yaml
     status: wiped_20260614
 tables:
-  raw_aif10_financial_history: L0_source
   raw_aif10_forecast_consensus: L0_source
-  raw_aif10_holder_count: L0_source
   raw_aif10_peer_valuation: L0_source
   raw_aif10_valuation_quantile: L0_source
   raw_capital_allotment_detail: L0_source

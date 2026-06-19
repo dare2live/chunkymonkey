@@ -77,13 +77,6 @@ payload_audit:
       reason: Replacement for the former single-row signals_json blob; one bounded JSON row per signal keeps API cache replayable without recursive nesting.
       max_value_bytes: 8192
       max_total_value_bytes: 67108864
-    - table: raw_aif10_financial_history
-      column: raw_json
-      classification: bounded_raw_source_record
-      owner: financial_source_ingestion
-      reason: AIF10 source snapshots are replayable raw inputs; large total volume is expected only when each source record remains bounded.
-      max_value_bytes: 16384
-      max_total_value_bytes: 67108864
     - table: raw_tdx_f10_holder_research
       column: raw_text
       classification: bounded_raw_source_record

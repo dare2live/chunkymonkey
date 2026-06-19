@@ -1,11 +1,10 @@
 """通用妙想 capability 同步 — P1.5 (2026-04-28).
 
-接通 5 个妙想独家 capability 到 sync step:
-- holder_count        股东人数 (RPT_F10_EH_HOLDERNUM, 季)
+接通妙想独家 capability 到 sync step (2026-06-19: holder_count → tushare stk_holdernumber 转正退役;
+financial_history_200q 50股探针孤儿退役; 留 3 个 LIVE 喂 v3_picture serving):
 - valuation_quantile  估值分位 (RPT_STOCKVALUATIONTANTILE, 日)
 - peer_valuation      同行估值排名 (RPT_PCF10_INDUSTRY_CVALUE, 季)
 - forecast_consensus  一致预期 (RPT_HSF10_RES_ORGRATING, 周)
-- financial_history_200q 财务 200 期历史 (RPT_F10_FINANCE_MAINFINADATA, 季, v0 接口)
 
 设计:
 - 配置式声明 (CAPABILITY_CONFIG): reportName / pk / 字段映射 / schema_sql
@@ -33,26 +32,6 @@ logger = logging.getLogger("cm-api.aif10_capability")
 # ===========================================================================
 
 CAPABILITY_CONFIG: dict[str, dict] = {
-    "holder_count": {
-        "report_name": "RPT_F10_EH_HOLDERNUM",
-        "raw_table": "raw_aif10_holder_count",
-        "pk_cols": ("secucode", "end_date"),
-        "field_map": {
-            "secucode": "SECUCODE",
-            "security_code": "SECURITY_CODE",
-            "end_date": "END_DATE",
-            "holder_total_num": "HOLDER_TOTAL_NUM",
-            "total_num_ratio": "TOTAL_NUM_RATIO",  # 较上期变化 %
-            "avg_free_shares": "AVG_FREE_SHARES",
-            "avg_freeshares_ratio": "AVG_FREESHARES_RATIO",
-            "price": "PRICE",
-            "avg_hold_amt": "AVG_HOLD_AMT",
-            "hold_focus": "HOLD_FOCUS",
-            "hold_ratio_total": "HOLD_RATIO_TOTAL",
-        },
-        "sort_columns": "END_DATE,SECURITY_CODE",
-        "sort_types": "-1,1",
-    },
     "valuation_quantile": {
         "report_name": "RPT_STOCKVALUATIONTANTILE",
         "raw_table": "raw_aif10_valuation_quantile",
@@ -116,10 +95,6 @@ CAPABILITY_CONFIG: dict[str, dict] = {
         "sort_columns": "",  # 这接口不支持自定义 sort, 传空
         "sort_types": "",
     },
-    # NOTE: financial_history_200q 走 v0 接口 (RPT_F10_FINANCE_MAINFINADATA),
-    # 跟其他 4 个 v1 接口签名不同, 单独 sync 函数实现
-    # 因为 v0 用 sty 参数 + p/ps 分页, 不走 fetch_all_pages 默认路径.
-    # 在 sync_financial_history_200q 单独处理.
 }
 
 
@@ -318,10 +293,6 @@ def sync_capability(
 # 5 个 sync_xxx 函数 (updater STEPS 调用)
 # ===========================================================================
 
-def sync_holder_count() -> dict:
-    return sync_capability("holder_count")
-
-
 def sync_valuation_quantile() -> dict:
     return sync_capability("valuation_quantile")
 
@@ -334,118 +305,8 @@ def sync_forecast_consensus() -> dict:
     return sync_capability("forecast_consensus")
 
 
-def sync_financial_history_200q(secucodes: list[str] | None = None, limit: int = 50) -> dict:
-    """财报长历史: 走 v1 RPT_F10_FINANCE_MAINFINADATA (实测茅台 102 期 / 165 字段).
-
-    按单股拉 (单股 page_size=200 一次拿全). 默认拉前 limit 只活跃股.
-    raw_json 列存原始接口返回 165 字段 (避免静态 schema 跟不上字段变化).
-    """
-    from aif10_scraper import default_client
-    from services.db import get_conn
-
-    conn = get_conn()
-    if secucodes is None:
-        try:
-            rows = conn.execute(
-                "SELECT stock_code FROM dim_active_a_stock LIMIT ?",  # rule-compliance: ok evidence=data-sync-enumeration
-                [limit],
-            ).fetchall()
-            secucodes = []
-            for r in rows:
-                code = r[0]
-                if code.startswith(("60", "68", "5")):
-                    secucodes.append(f"{code}.SH")
-                elif code.startswith(("0", "3")):
-                    secucodes.append(f"{code}.SZ")
-                elif code.startswith(("4", "8")):
-                    secucodes.append(f"{code}.BJ")
-        except Exception as exc:
-            logger.warning(f"[aif10/financial_history] dim_active_a_stock 读失败: {exc}")  # rule-compliance: ok evidence=data-sync-enumeration
-            return {"capability": "financial_history_200q", "rows": 0, "error": str(exc)}
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS raw_aif10_financial_history (
-            secucode TEXT NOT NULL,
-            report_date TEXT NOT NULL,
-            report_type TEXT,
-            eps DOUBLE,
-            roe_jq DOUBLE,
-            roa_jq DOUBLE,
-            sale_gpr DOUBLE,
-            sale_npr DOUBLE,
-            asset_liab_ratio DOUBLE,
-            tot_or DOUBLE,
-            parent_netprofit DOUBLE,
-            tot_or_yoy DOUBLE,
-            netprofit_yoy DOUBLE,
-            raw_json TEXT,
-            ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (secucode, report_date)
-        )
-    """)
-
-    cli = default_client
-    total = 0
-    t0 = time.time()
-    import json
-    for secucode in secucodes:
-        try:
-            result = cli.get_v1(
-                "RPT_F10_FINANCE_MAINFINADATA",
-                page=1, page_size=200,
-                secucode=secucode,
-            )
-            payload = []
-            for r in (result.get("data") or []):
-                report_date = (r.get("REPORT_DATE") or "")[:10]
-                if not report_date:
-                    continue
-                payload.append(
-                    (
-                        secucode, report_date,
-                        r.get("REPORT_TYPE"),
-                        r.get("EPSJB"),       # 基本 EPS
-                        r.get("ROEJQ"),       # ROE 加权
-                        r.get("ROAJQ"),
-                        r.get("SALEGPR"),     # 销售毛利率
-                        r.get("SALENPR"),     # 销售净利率
-                        r.get("ASSETLIABRATIO"),
-                        r.get("TOTAL_OPERATE_INCOME"),
-                        r.get("PARENT_NETPROFIT"),
-                        r.get("YOY_TOTAL_OPERATE_INCOME"),
-                        r.get("YOY_PARENT_NETPROFIT"),
-                        json.dumps(r, ensure_ascii=False, default=str),
-                    )
-                )
-            if payload:
-                conn.executemany(
-                    """INSERT OR REPLACE INTO raw_aif10_financial_history
-                    (secucode, report_date, report_type, eps, roe_jq, roa_jq,
-                     sale_gpr, sale_npr, asset_liab_ratio, tot_or, parent_netprofit,
-                     tot_or_yoy, netprofit_yoy, raw_json)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    payload,
-                )
-            total += len(payload)
-        except Exception as exc:
-            logger.warning(f"[aif10/financial_history] {secucode} 失败: {exc}")
-            continue
-    conn.commit()
-    conn.close()
-
-    elapsed = time.time() - t0
-    return {
-        "capability": "financial_history_200q",
-        "report_name": "RPT_F10_FINANCE_MAINFINADATA",
-        "raw_table": "raw_aif10_financial_history",
-        "secucodes": len(secucodes),
-        "rows": total,
-        "elapsed_s": round(elapsed, 2),
-    }
-
-
 def summary() -> dict:
     return {
-        "capabilities": list(CAPABILITY_CONFIG.keys()) + ["financial_history_200q"],
-        "n": len(CAPABILITY_CONFIG) + 1,
+        "capabilities": list(CAPABILITY_CONFIG.keys()),
+        "n": len(CAPABILITY_CONFIG),
     }

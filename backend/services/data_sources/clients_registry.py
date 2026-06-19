@@ -178,11 +178,9 @@ CLIENTS: list[ClientSpec] = [
         source_tier=2,
         fallback_chain=["aif10"],
         writes=[
-            TableWriteSpec("raw_aif10_holder_count",        "股东人数",      "quarterly", 24*95),
             TableWriteSpec("raw_aif10_valuation_quantile",  "估值分位",      "t+1",       48),
             TableWriteSpec("raw_aif10_peer_valuation",      "同行排名",      "quarterly", 24*95),
             TableWriteSpec("raw_aif10_forecast_consensus",  "一致预期",      "weekly",    24*7),
-            TableWriteSpec("raw_aif10_financial_history",   "财务长历史 200Q", "quarterly", 24*95),
         ],
         sync_step_id="sync_aif10_*",
     ),

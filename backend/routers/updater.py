@@ -141,9 +141,7 @@ from routers.updater_status import (
 from routers.updater_runtime import _run_blocking_db_task, _run_blocking_market_db_task
 from routers.updater_sync import (
     _step_sync_aif10_capability,
-    _step_sync_aif10_financial_history,
     _step_sync_aif10_forecast_consensus,
-    _step_sync_aif10_holder_count,
     _step_sync_aif10_peer_valuation,
     _step_sync_aif10_valuation_quantile,
     _step_sync_raw as _step_sync_raw_with_hooks,
@@ -475,12 +473,10 @@ RUNNERS = {
     "sync_surveys": _step_sync_surveys,
     "sync_qfii": _step_sync_qfii,
     "sync_lhb": _step_sync_lhb,
-    # P1.5 妙想独家 capability
-    "sync_aif10_holder_count": _step_sync_aif10_holder_count,
+    # P1.5 妙想独家 capability (holder_count→tushare stk_holdernumber / financial_history 已退役 2026-06-19)
     "sync_aif10_valuation_quantile": _step_sync_aif10_valuation_quantile,
     "sync_aif10_peer_valuation": _step_sync_aif10_peer_valuation,
     "sync_aif10_forecast_consensus": _step_sync_aif10_forecast_consensus,
-    "sync_aif10_financial_history": _step_sync_aif10_financial_history,
     "calc_financial_derived": _step_calc_financial_derived,
     "build_current_rel": _step_build_current_rel,
     "build_profiles": _step_build_profiles,
