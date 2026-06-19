@@ -1,0 +1,70 @@
+{
+ "domain": "stock_basic",
+ "api": "stock_basic",
+ "grain": [
+  "ts_code"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "ts_code": "000001.SZ",
+   "symbol": "000001",
+   "name": "平安银行",
+   "area": "深圳",
+   "industry": "银行",
+   "cnspell": "PAYH",
+   "market": "主板",
+   "list_date": "19910403",
+   "act_name": "无实际控制人",
+   "act_ent_type": "无"
+  },
+  {
+   "ts_code": "000002.SZ",
+   "symbol": "000002",
+   "name": "万科A",
+   "area": "深圳",
+   "industry": "全国地产",
+   "cnspell": "WKA",
+   "market": "主板",
+   "list_date": "19910129",
+   "act_name": "无实际控制人",
+   "act_ent_type": "无"
+  },
+  {
+   "ts_code": "000004.SZ",
+   "symbol": "000004",
+   "name": "*ST国华",
+   "area": "深圳",
+   "industry": "软件服务",
+   "cnspell": "*STGH",
+   "market": "主板",
+   "list_date": "19901201",
+   "act_name": "李映彤",
+   "act_ent_type": "自然人"
+  },
+  {
+   "ts_code": "000006.SZ",
+   "symbol": "000006",
+   "name": "深振业A",
+   "area": "深圳",
+   "industry": "区域地产",
+   "cnspell": "SZYA",
+   "market": "主板",
+   "list_date": "19920427",
+   "act_name": "深圳市人民政府国有资产监督管理委员会",
+   "act_ent_type": "地方国企"
+  },
+  {
+   "ts_code": "000007.SZ",
+   "symbol": "000007",
+   "name": "全新好",
+   "area": "深圳",
+   "industry": "其他商业",
+   "cnspell": "QXH",
+   "market": "主板",
+   "list_date": "19920413",
+   "act_name": "无实际控制人",
+   "act_ent_type": "无"
+  }
+ ]
+}

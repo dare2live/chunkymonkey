@@ -142,6 +142,15 @@ def get_active_universe(
 
     stocks = {c for c in codes if len(c) >= 2 and c[:2] in ACTIVE_A_SHARE_PREFIXES}
 
+    # 2026-06-19 身份真相源交集: 只留 dim_active_a_stock (tushare stock_basic 真股清单) 内的码,
+    #   剔除 K线里的指数 benchmark (沪深300=000300 等与 00 前缀共号段者直读 K线漏入 universe)。
+    #   前缀仍作 defense-in-depth 预筛; conn=None (legacy include_st 路径) 回退纯前缀。
+    if conn is not None and _table_exists(conn, "dim_active_a_stock"):  # rule-compliance: ok evidence=identity-truth-source-intersect
+        identity = {str(r[0]).strip() for r in conn.execute(
+            "SELECT stock_code FROM dim_active_a_stock WHERE stock_code IS NOT NULL"  # rule-compliance: ok evidence=identity-truth-source
+        ).fetchall()}
+        stocks &= identity
+
     if not include_st:
         if conn is None:
             raise UniverseDataError("smart DB connection is required for ST name mapping")

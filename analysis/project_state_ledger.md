@@ -777,3 +777,10 @@ loader 误删致 4 处 `import services.experiment_jobs` 悬空崩)。故 S0 = c
   声明 + test_tool_registry stale 块 + check_universe_filter 2 死 exempt (build_ensemble_v4/feature_join_v5
   皆已 reset 删) + 重生 FEATURE_MAP + INDEX §3.3 与 stale row。验收: moth pass=30 fail=0, main.py 122 路由
   装载 OK, universe gate CLEAN。retired_experiments.yaml ensemble 知识条目刻意保留 (非孤儿)。
+- 2026-06-19 universe 身份真相源切 tushare stock_basic + 退役 akshare dim_active (用户: "退役旧表 + 看还有哪些非tushare源"):
+  根因双向 bug 实证 — 旧 get_active_universe 不与真股清单交集 → 漏入指数 000300 + 漏掉真股 8 只(akshare快照stale 24天)。
+  修: 注册 stock_basic 域(tushare full_refresh list_status=L, 不设universe_filter=身份真相源) → security_master 改读
+  raw_tushare_stock_basic 重建 dim(symbol/ts_code后缀权威市场/排北交所, 退役 ak.stock_info_a_code_name + _market_from_code) →
+  get_active_universe 加身份交集。实测 dim 5201→5208(+8真股/-1退市000638), universe 000300出局/4978干净/test_universe 16 passed。
+  全库非tushare源盘点 owner=analysis/non_tushare_source_inventory_20260619.md (akshare22/tdxhub18/aif10 13 + critic抓出tdxhub财务簇盲区,
+  M2-M4 逐簇双轨退役, 不bulk-drop)。akshare stock_info_a_code_name 调用退役(其余 ~10 akshare 备援调用不动)。

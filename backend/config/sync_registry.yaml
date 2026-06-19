@@ -137,6 +137,24 @@ domains:
     freshness_sla_trading_days: 30 # 日历覆盖到未来, 滞后语义不同: 检查 max(cal_date) > today+30
     min_rows_per_batch: 100
 
+  # ── 基础: 真股身份真相源 (universe 身份层, 2026-06-19 替 akshare dim_active 前缀猜市场) ──
+  stock_basic:
+    source: tushare
+    api: stock_basic
+    target_table: raw_tushare_stock_basic
+    # 不设 universe_filter: 本表=universe 身份真相源本身, 保全市场(含北交所/退市)于 raw,
+    #   排除(BSE/ST)下沉到消费侧 (dim_active 重建 + get_active_universe), 防真相源被前缀门误删。
+    grain: [ts_code]
+    batch_mode: full_refresh       # 单接口 ≤6000 行一次拉完全市场 (50次/分, 2000积分)
+    fixed_params:
+      list_status: L               # 在市股 (current active master, like-for-like 替 ak.stock_info_a_code_name); 退市生存者偏差走 PIT 历史宇宙另案
+    pit_anchor: "list_date; 静态身份快照 (含 list_date/delist_date)"
+    available_after: "00:00"
+    data_start: "20200101"         # full_refresh 无回填语义, 占位
+    freshness_sla_trading_days: 30 # 身份快照变动慢
+    min_rows_per_batch: 5000       # 2026-06-19 实测 5529 在市股; <5000 = 截断/throttle
+    allow_empty_batch: false
+
   # ── P0-d: 概念/板块域历史回填 (E8 探底实测起点; 未来增量由 concept-snapshot launchd 续) ──
   dc_member:
     source: tushare

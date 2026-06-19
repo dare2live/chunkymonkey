@@ -103,7 +103,7 @@ EXTRA_UPSTREAM_BY_TABLE = {
     "fact_shareholder_trade":       ("tdxhub.holders", 1),
     "raw_executive_trade":          ("aif10 / akshare", 2),
     "raw_gpcw_dividend":            ("tdxhub.affair (gpcw)", 1),
-    "dim_active_a_stock":           ("akshare tool_trade_date_hist + curated", 3),  # rule-compliance: ok evidence=metadata-registry
+    "dim_active_a_stock":           ("tushare stock_basic (list_status=L, 2026-06-19 切, 排北交所)", 1),  # rule-compliance: ok evidence=metadata-registry
     "dim_trading_calendar":         ("akshare tool_trade_date_hist_sina", 3),
     "dim_holder_alias":             ("manual seed", None),
     # derived (多源派生, 不是单 client 写)

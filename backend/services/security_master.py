@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime, timedelta
 from typing import Dict, Set
 
@@ -23,22 +22,6 @@ logger = logging.getLogger("cm-api")
 
 ACTIVE_STOCK_CACHE_HOURS = 24
 ACTIVE_STOCK_MIN_ROWS = 3000
-
-
-def _disable_proxy_env() -> None:
-    for key in (
-        "http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY",
-        "all_proxy", "ALL_PROXY",
-    ):
-        os.environ.pop(key, None)
-    os.environ["NO_PROXY"] = "*"
-
-
-def _market_from_code(code: str) -> str:
-    text = str(code or "").strip()
-    if text.startswith(("600", "601", "603", "605", "688", "689")):
-        return "SH"
-    return "SZ"
 
 
 def _parse_iso(ts: str):
@@ -73,28 +56,47 @@ def _cache_is_fresh(conn, max_age_hours: int = ACTIVE_STOCK_CACHE_HOURS) -> bool
 
 
 def refresh_active_a_stock_master(conn) -> int:
-    """刷新当前可交易 A 股主数据缓存。"""
-    _disable_proxy_env()
-    import akshare as ak
+    """刷新当前可交易 A 股主数据缓存 (2026-06-19: akshare → tushare stock_basic 身份真相源)。
 
-    df = ak.stock_info_a_code_name()
-    if df is None or df.empty:
-        raise RuntimeError("stock_info_a_code_name returned empty result")
+    源 = raw_tushare_stock_basic (sync_registry stock_basic 域, list_status='L' 在市股)。
+    身份真相源切换 (替旧 akshare bare码 + _market_from_code 前缀猜市场):
+    - stock_code = symbol (6位, 与 K线/消费侧口径一致)
+    - market 列 = ts_code 后缀 (.SH→'SH' / .SZ→'SZ', 权威交易所非前缀猜)
+    - 排北交所 (market='北交所' = exchange BSE, universe 政策); 退市生存者宇宙走 PIT 历史另案
+    schema/列语义不变 → 18/19 消费者零改动 (仅 ingest_holders_tdxhub.py 读 market 列, 仍 'SH'/'SZ')。
+    """
+    import duckdb
+    from services.database_manifest import get_database_manifest
 
-    if "code" not in df.columns or "name" not in df.columns:
-        raise RuntimeError(f"unexpected columns from stock_info_a_code_name: {list(df.columns)}")
+    raw_path = get_database_manifest().path_for("tushare_raw")
+    rconn = duckdb.connect(str(raw_path), read_only=True)  # rule-compliance: ok evidence=只读跨库读身份真相源 raw_tushare_stock_basic (写侧=传入 smartmoney conn), 非业务阈值
+    try:
+        raw_rows = rconn.execute(
+            """
+            SELECT symbol, name, ts_code
+            FROM raw_tushare_stock_basic
+            WHERE market != '北交所'      -- 排北交所 (= exchange BSE), universe 政策
+              AND symbol IS NOT NULL
+            """  # rule-compliance: ok evidence=read-tushare-identity-truth-source
+        ).fetchall()
+    finally:
+        rconn.close()
 
-    frame = df[["code", "name"]].copy()
-    frame["code"] = frame["code"].astype(str).str.strip().str.zfill(6)
-    frame["name"] = frame["name"].astype(str).str.strip()
-    frame = frame[frame["code"].str.fullmatch(r"\d{6}", na=False)]
-    frame = frame.drop_duplicates(subset=["code"]).reset_index(drop=True)
+    if not raw_rows or len(raw_rows) < ACTIVE_STOCK_MIN_ROWS:
+        raise RuntimeError(
+            f"raw_tushare_stock_basic 行数不足 ({len(raw_rows)} < {ACTIVE_STOCK_MIN_ROWS}); "
+            "先 sync stock_basic (services.data_sources.sync_runner --domain stock_basic)"
+        )
 
     now = datetime.now().isoformat()
-    rows = [
-        (row["code"], row["name"], _market_from_code(row["code"]), "akshare_stock_info_a_code_name", now)
-        for _, row in frame.iterrows()
-    ]
+    rows = []
+    for symbol, name, ts_code in raw_rows:
+        code = str(symbol or "").strip().zfill(6)
+        if not code.isdigit() or len(code) != 6:
+            continue
+        suffix = str(ts_code or "").split(".")[-1].upper()
+        market = "SH" if suffix == "SH" else "SZ"   # 北交所(BJ)已 WHERE 排除
+        rows.append((code, str(name or "").strip(), market, "tushare_stock_basic", now))
 
     conn.execute("BEGIN TRANSACTION")
     try:
@@ -112,7 +114,7 @@ def refresh_active_a_stock_master(conn) -> int:
         conn.rollback()
         raise
 
-    logger.info(f"[主数据] 刷新当前A股主数据: {len(rows)} 只")
+    logger.info(f"[主数据] 刷新当前A股主数据(tushare stock_basic): {len(rows)} 只 (排北交所)")
     return len(rows)
 
 

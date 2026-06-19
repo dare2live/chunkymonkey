@@ -101,6 +101,29 @@ def test_get_active_universe(tmp_path, monkeypatch):
     conn.close()
 
 
+def test_get_active_universe_excludes_index_not_in_dim_active(tmp_path):
+    """2026-06-19 身份真相源交集防回退: K线含指数 benchmark (000300 沪深300, 00 前缀过前缀门)
+    但不在 dim_active_a_stock (tushare stock_basic 真股清单) → 必被 universe 剔除。
+    旧逻辑 K线∩前缀−ST 会让 000300 漏入 universe (根因; red→green)。"""
+    import duckdb
+    conn = duckdb.connect(str(tmp_path / "test.duckdb"))
+    conn.execute("CREATE TABLE dim_active_a_stock (stock_code VARCHAR, stock_name VARCHAR)")
+    conn.execute("CREATE TABLE dim_all_ever_listed (stock_code VARCHAR, is_active INTEGER)")
+    conn.execute("INSERT INTO dim_active_a_stock VALUES ('600001', '正常A')")  # 真股清单无 000300 指数
+    conn.execute("CREATE TABLE price_kline_tdxhub (code VARCHAR, freq VARCHAR, date DATE)")
+    conn.execute("""
+        INSERT INTO price_kline_tdxhub VALUES
+            ('600001', 'daily', CURRENT_DATE),
+            ('000300', 'daily', CURRENT_DATE)
+    """)  # K线含真股 + 指数 benchmark (00 前缀)
+    conn.execute("CREATE VIEW v_price_kline_qfq AS SELECT * FROM price_kline_tdxhub")
+    from services.universe import get_active_universe
+    universe = get_active_universe(conn, market_conn=conn)
+    assert "600001" in universe
+    assert "000300" not in universe  # 指数不在真股清单 → 身份交集剔除 (修复点)
+    conn.close()
+
+
 def test_get_active_universe_requires_market_truth_source(monkeypatch):
     from services.universe import UniverseDataError, get_active_universe
 
