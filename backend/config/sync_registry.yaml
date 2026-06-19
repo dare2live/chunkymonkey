@@ -34,6 +34,9 @@ defaults:
     per_interface_per_min: 120     # 单接口 120 次/分钟
     total_per_min: 200             # 多接口合计 200 次/分钟
     max_concurrency: 2             # 并发上限 2
+  # socket read timeout (防 hung: tinyshare 网关无响应时单次读死等 → 全局 socket 超时令其限时失败 →
+  #   退避重试, 不卡死全链。2026-06-19 反例: stk_factor_pro 重试 hung 在无超时 socket 上 71min)。
+  fetch_timeout_seconds: 120
 
 domains:
   # ── P0-a: 资金流 (套一 L2 + 套二 F1 + 退出组件, 一次回填三用) ──

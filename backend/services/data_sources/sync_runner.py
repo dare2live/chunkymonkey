@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import socket
 import threading
 import time
 from collections import defaultdict, deque
@@ -98,7 +99,30 @@ def _warn_if_clamped(domain: str, start_d: str, days: list[str]) -> None:
         log.warning("domain=%s 请求窗口起点 %s 在交易日历内零交易日", domain, start_d)
 
 
-def _by_ts_code_batches(spec: dict[str, Any]) -> list[dict[str, Any]]:
+def _existing_ts_codes(spec: dict[str, Any]) -> set[str]:
+    """target 表已有数据的 ts_code 集 (断点续拉跳过用)。planning 期 tushare_raw 未被本 run 写锁, read_only 查。"""
+    import duckdb
+
+    from services.database_manifest import get_database_manifest
+    table = spec["target_table"]
+    try:
+        path = get_database_manifest().path_for(spec.get("target_db", "tushare_raw"))
+        con = duckdb.connect(str(path), read_only=True)  # rule-compliance: ok evidence=只读查已拉ts_code供断点续拉, 非业务阈值/非主库写
+    except Exception as exc:
+        log.warning("[resume] 无法读 %s 查已拉 ts_code (回退全量拉): %s", table, str(exc)[:80])
+        return set()
+    try:
+        if not con.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_name = ?", [table]
+        ).fetchone():
+            return set()
+        rows = con.execute(f"SELECT DISTINCT ts_code FROM {table} WHERE ts_code IS NOT NULL").fetchall()
+        return {str(r[0]) for r in rows}
+    finally:
+        con.close()
+
+
+def _by_ts_code_batches(spec: dict[str, Any], *, resume: bool = False) -> list[dict[str, Any]]:
     """按股循环批清单 (单股接口如 stk_factor_pro/fina_mainbz)。
 
     股票清单真相源 = services.universe.get_active_universe (单一计算点): 白名单 60/00/30/68
@@ -122,7 +146,15 @@ def _by_ts_code_batches(spec: dict[str, Any]) -> list[dict[str, Any]]:
             return f"{code}.SZ"
         return None  # 白名单补集 (北交所/三板) 不在 universe
 
-    return [{"ts_code": t, **fixed} for c in sorted(codes) if (t := _ts(c))]
+    batch = [{"ts_code": t, **fixed} for c in sorted(codes) if (t := _ts(c))]
+    if resume:
+        done = _existing_ts_codes(spec)
+        if done:
+            n0 = len(batch)
+            batch = [b for b in batch if b["ts_code"] not in done]
+            log.info("[resume] %s 跳过 %d 已拉 ts_code, 剩 %d 待拉 (断点续拉)",
+                     spec["domain"], n0 - len(batch), len(batch))
+    return batch
 
 
 def _quarter_ends(start: str, end: str) -> list[str]:
@@ -513,10 +545,16 @@ def _record_outcome(spec: dict[str, Any], *, ok: bool, last_date: str | None,
 
 
 def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
-               end: str | None = None, registry: dict[str, Any] | None = None) -> dict[str, Any]:
-    """同步单个数据域. 返回 {domain, batches, rows, failed_batches}."""
+               end: str | None = None, resume: bool = False,
+               registry: dict[str, Any] | None = None) -> dict[str, Any]:
+    """同步单个数据域. 返回 {domain, batches, rows, failed_batches}.
+
+    resume: by_ts_code 域跳过 target 表已有数据的 ts_code (full-history 单股拉断点续拉, 省重拉)。
+    """
     reg = registry or load_registry()
     spec = _domain_spec(reg, domain)
+    # socket read timeout (config-driven 防 hung socket 死等; tinyshare 无响应→限时失败→退避重试不卡死)
+    socket.setdefaulttimeout(float(spec.get("fetch_timeout_seconds", 120)))
     adapter = _adapter(spec["source"])
 
     if spec["batch_mode"] == "full_refresh":
@@ -537,7 +575,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
             conn0.close()
         batches = [{"start_date": start_d, "end_date": end_d}]
     elif spec["batch_mode"] == "by_ts_code":
-        batches = _by_ts_code_batches(spec)
+        batches = _by_ts_code_batches(spec, resume=resume)
     elif spec["batch_mode"] == "by_code_list":
         # 显式代码清单循环 (指数/申万行业等 — code 源非 market 股票表): 每 code 一批,
         # code_param 指定参数名 (ts_code/l1_code...), fixed_params 合并 (如指数日线的 start/end)。
@@ -725,6 +763,7 @@ def main() -> int:
     parser.add_argument("--domain", help="sync_registry 域名")
     parser.add_argument("--all-due", action="store_true", help="同步全部注册域 (daily_update 集成入口)")
     parser.add_argument("--backfill", action="store_true", help="从 data_start 全量回填")
+    parser.add_argument("--resume", action="store_true", help="by_ts_code 域断点续拉 (跳过 target 已有 ts_code)")
     parser.add_argument("--start", default=None, help="覆盖起始日 YYYYMMDD")
     parser.add_argument("--end", default=None, help="覆盖结束日 YYYYMMDD")
     parser.add_argument("--drain", action="store_true",
@@ -770,7 +809,7 @@ def main() -> int:
     results = []
     for d in domains:
         try:
-            results.append(run_domain(d, backfill=args.backfill, start=args.start, end=args.end, registry=reg))
+            results.append(run_domain(d, backfill=args.backfill, start=args.start, end=args.end, resume=args.resume, registry=reg))
         except QuotaExhaustedError as exc:
             log.error("配额熔断停链: %s — 剩 %d 域不跑", exc, len(domains) - domains.index(d) - 1)
             results.append({"domain": d, "status": "quota_halt", "error": str(exc)[:200]})
