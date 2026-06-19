@@ -512,3 +512,68 @@ domains:
     freshness_sla_trading_days: 5
     min_rows_per_batch: 1
     allow_empty_batch: true   # 次新股/无财报股 0 行
+
+  # ── P0 (2026-06-17 tushare 选股潜力研究, owner=analysis/tushare_alpha_potential_research_20260617.md): 口径对齐项目(行业=申万/概念=东财, 禁同花顺) ──
+  sw_daily:   # 申万行业日线 (行业口径=申万与项目一致; sector_momentum/行业相对强弱分层; 实弹 439-587 指数/日)
+    source: tushare
+    api: sw_daily
+    target_table: raw_tushare_sw_daily
+    grain: [ts_code, trade_date]
+    batch_mode: by_trade_date
+    pit_anchor: "trade_date; 盘后 -> JOIN t-1"
+    available_after: "18:00"
+    data_start: "20190102"
+    freshness_sla_trading_days: 1
+    min_rows_per_batch: 300       # 实弹 439-587 申万指数/日
+
+  share_float:   # 解禁 (天然前瞻 PIT: ann_date 公告日已知未来 float_date 解禁=0泄露; 出场/风控)
+    source: tushare
+    api: share_float
+    target_table: raw_tushare_share_float
+    grain: [ts_code, ann_date, float_date, holder_name]
+    batch_mode: by_trade_date
+    date_param: ann_date          # 接口按公告日切片 (实弹 ann_date 单日 53-3814 行)
+    pit_anchor: "ann_date 公告日 (float_date 未来解禁=前瞻已知, 0 泄露)"
+    available_after: "t+1"
+    data_start: "20190102"
+    freshness_sla_trading_days: 3
+    min_rows_per_batch: 1
+    allow_empty_batch: true       # 部分交易日无解禁公告
+
+  stk_factor_pro:   # 技术因子专业版 261列 (鱼身延续/鱼尾出场燃料, 三复权); 实弹不支持单日全量必逐股
+    source: tushare
+    api: stk_factor_pro
+    target_table: raw_tushare_stk_factor_pro
+    grain: [ts_code, trade_date]
+    batch_mode: by_ts_code
+    fixed_params: {start_date: "20190102", end_date: "20260618"}   # rule-compliance: ok evidence=逐股窗口2019+对齐K线/GT(实弹单股全史1991-2026太长, 截2019); 单页上限按交易日数远<10000
+    pit_anchor: "trade_date; 盘后 -> JOIN t-1"
+    available_after: "18:00"
+    data_start: "20190102"
+    freshness_sla_trading_days: 1
+    min_rows_per_batch: 1
+
+  stk_holdernumber:   # 股东户数 (筹码集中吸筹前兆, 慢变量分层); 截面enddate返0必逐股
+    source: tushare
+    api: stk_holdernumber
+    target_table: raw_tushare_stk_holdernumber
+    grain: [ts_code, end_date]
+    batch_mode: by_ts_code
+    pit_anchor: "ann_date 公告日 (end_date 报告期 != 可用日, JOIN 必用 ann_date)"
+    available_after: "t+1"
+    data_start: "20190101"
+    freshness_sla_trading_days: 90
+    min_rows_per_batch: 1
+
+  namechange:   # 股票曾用名 (PIT ST 日历真相源, universe 硬门; 与已拉 stock_st 交叉验证); 无参10000截断必逐股
+    source: tushare
+    api: namechange
+    target_table: raw_tushare_namechange
+    grain: [ts_code, start_date]
+    batch_mode: by_ts_code
+    pit_anchor: "ann_date 公告日 (start_date 改名生效日); 用于 PIT 名称区间判 ST"
+    available_after: "t+1"
+    data_start: "19900101"
+    freshness_sla_trading_days: 30
+    min_rows_per_batch: 1
+    allow_empty_batch: true       # 部分股从未改名
