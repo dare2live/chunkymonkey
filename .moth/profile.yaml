@@ -18,7 +18,6 @@ evidence_paths:
   quickstart: docs/chunkyctl_session_quickstart.md
   engineering_governance: docs/engineering_governance.md
   project_constitution: docs/PROJECT_CONSTITUTION.md
-  execution_surface_audit: backend/scripts/audit_execution_surface.py
   codex_global_agents: /Users/dp/.codex/AGENTS.md
   skill_codex_local_ops: /Users/dp/.codex/skills/codex-local-ops/SKILL.md
   skill_architect_controller: /Users/dp/.codex/skills/architect-controller/SKILL.md
