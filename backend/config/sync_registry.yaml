@@ -565,15 +565,3 @@ domains:
     freshness_sla_trading_days: 90
     min_rows_per_batch: 1
 
-  namechange:   # 股票曾用名 (PIT ST 日历真相源, universe 硬门; 与已拉 stock_st 交叉验证); 无参10000截断必逐股
-    source: tushare
-    api: namechange
-    target_table: raw_tushare_namechange
-    grain: [ts_code, start_date]
-    batch_mode: by_ts_code
-    pit_anchor: "ann_date 公告日 (start_date 改名生效日); 用于 PIT 名称区间判 ST"
-    available_after: "t+1"
-    data_start: "19900101"
-    freshness_sla_trading_days: 30
-    min_rows_per_batch: 1
-    allow_empty_batch: true       # 部分股从未改名

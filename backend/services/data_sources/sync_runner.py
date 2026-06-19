@@ -97,24 +97,19 @@ def _warn_if_clamped(domain: str, start_d: str, days: list[str]) -> None:
 
 
 def _by_ts_code_batches(spec: dict[str, Any]) -> list[dict[str, Any]]:
-    """按股循环批清单 (单股接口如 fina_mainbz); 股票清单真相源 = K 线近 45 日活跃 code.
+    """按股循环批清单 (单股接口如 stk_factor_pro/fina_mainbz)。
 
-    smartmoney 连接默认不挂 market 库 — 2026-06-12 chain7 step3 实测 Binder Error
-    (fina_mainbz 0 行回填, 确定性 bug); ATTACH 范式同 services/risk_factors.py。
+    股票清单真相源 = services.universe.get_active_universe (单一计算点): 白名单 60/00/30/68
+    + 非 ST + 非退市 (K线真相源)。2026-06-17 用户: 排除列表=交易日历级硬真相源, 数据拉取也走它
+    — 不拉排除股 (北交所/ST/三板/退市) 的逐股数据 (原内联 tdxhub 45日活跃+前缀 = 第二套 universe
+    定义且漏 ST 排除, 已退役)。
     """
-    from services.database_manifest import get_database_manifest
+    from services.universe import get_active_universe
 
     fixed = dict(spec.get("fixed_params") or {})
-    market_path = get_database_manifest().path_for("market")
     conn0 = _smartmoney_conn()
     try:
-        conn0.execute(f"ATTACH IF NOT EXISTS '{market_path}' AS market (READ_ONLY)")
-        codes = [r[0] for r in conn0.execute(
-            """
-            SELECT DISTINCT code FROM market.price_kline_tdxhub
-            WHERE freq='daily' AND CAST(date AS DATE) >= current_date - INTERVAL 45 DAY
-            """
-        ).fetchall()]
+        codes = get_active_universe(conn0)  # 白名单+非ST+非退市 (排除列表硬真相源)
     finally:
         conn0.close()
 
@@ -123,7 +118,7 @@ def _by_ts_code_batches(spec: dict[str, Any]) -> list[dict[str, Any]]:
             return f"{code}.SH"
         if code.startswith(("0", "3")):
             return f"{code}.SZ"
-        return None  # 北交所/异常前缀不在 universe
+        return None  # 白名单补集 (北交所/三板) 不在 universe
 
     return [{"ts_code": t, **fixed} for c in sorted(codes) if (t := _ts(c))]
 
