@@ -777,8 +777,7 @@ def init_db():
             logger.info(f"[DB] 初始化 {len(categories)} 个排除类别")
         from services.financial_client import ensure_tables as _ensure_fin_tables
         _ensure_fin_tables(conn)
-        from services.financial_indicator_client import ensure_tables as _ensure_fin_indicator_tables
-        _ensure_fin_indicator_tables(conn)
+        # financial_indicator_client 已退役 2026-06-19 (akshare 财务指标表+writer物删)
         from services.capital_client import ensure_tables as _ensure_capital_tables
         _ensure_capital_tables(conn)
         from services.industry_context_engine import ensure_tables as _ensure_industry_context_tables

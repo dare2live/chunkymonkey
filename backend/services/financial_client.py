@@ -1154,7 +1154,7 @@ async def sync_financial_data(
     include_history: bool = True,
     include_snapshot: bool = True,
     include_capital: bool = True,
-    include_indicator: bool = True,
+    include_indicator: bool = False,  # 2026-06-19 akshare financial_indicator 已退役 (表+writer物删)
     history_batch_limit: Optional[int] = None,
 ) -> int:
     """同步最新快照，并增量回填历史财务序列。"""
@@ -1528,30 +1528,14 @@ async def sync_financial_data(
     _emit_progress()
 
     indicator_total = 0
-    if include_indicator:
-        progress["financial_indicator"]["status"] = "running"
-        _emit_progress()
-        try:
-            _check_stop()
-            from services.financial_indicator_client import sync_financial_indicator_data
-            indicator_total = await sync_financial_indicator_data(conn, stock_codes=stock_codes)
-            progress["financial_indicator"].update({
-                "status": "success",
-                "rows": indicator_total,
-            })
-        except Exception as exc:
-            progress["financial_indicator"].update({
-                "status": "failed",
-                "rows": 0,
-                "error": str(exc)[:200],
-            })
-            logger.warning(f"[财务] 扩展财务指标同步失败，跳过本轮: {exc}")
-    else:
-        progress["financial_indicator"].update({
-            "status": "skipped",
-            "rows": 0,
-            "skip_reason": "daily critical sync skips extended indicators",
-        })
+    # akshare financial_indicator (fact/dim/sync_state + financial_indicator_client.py) 已退役 2026-06-19:
+    #   0 live alpha 消费者 (scoring/audit try/except 安全降级); 财务指标走 tushare fina_indicator。
+    #   保留 progress plumbing 兼容旧调用契约 (include_indicator 默认 False), 不再拉取。
+    progress["financial_indicator"].update({
+        "status": "retired",
+        "rows": 0,
+        "skip_reason": "akshare financial_indicator retired 2026-06-19 (use tushare fina_indicator)",
+    })
     _emit_progress()
 
     total = latest_upserts + history_upserts

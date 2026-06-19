@@ -59,7 +59,6 @@ tables:
   dim_all_ever_listed: L1_foundation
   dim_capital_behavior_latest: L1_foundation
   dim_fee_schedule: L1_foundation
-  dim_financial_indicator_latest: L1_foundation
   dim_financial_latest: L1_foundation
   dim_holder_alias: L1_foundation
   dim_liquidity_threshold: L1_foundation
@@ -106,7 +105,6 @@ tables:
   dim_schema_version: infra
   excluded_stocks: infra
   exclusion_categories: infra
-  financial_indicator_sync_state: infra
   mart_data_audit_report: infra
   mart_data_deletion_record: infra
   mart_data_deprecation_record: infra
@@ -127,7 +125,6 @@ tables:
   fact_feature_panel: L2_feature          # @dropped 06-16 reset; builder BROKEN; 重建/退役 pending (非 live)
   fact_feature_panel_candidate: L2_feature
   fact_feature_panel_tdx_keep_challenger: L2_feature
-  fact_financial_indicator_ak: L1_foundation
   fact_fund_holding_tdx_f10: L2_feature
   fact_holder_event: L2_feature
   fact_segment_panel: L2_feature          # 2026-06-16 F0 形态/分层面板 (build_segment_panel.py, tushare PIT, stage+range_pos+MACD零轴+board)

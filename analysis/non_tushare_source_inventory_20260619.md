@@ -92,7 +92,10 @@
 | 2026-06-19 | **raw_aif10_financial_history** (smartmoney) | 5713 | RETIRED (DROP + aif10_capability_client 删 sync_financial_history_200q + updater DAG 6文件 + storage_retention/data_routes) | 0消费者 (50股探针孤儿) |
 | 2026-06-19 | **fact_hsgt_daily** (smartmoney) | 2767 | RETIRED (DROP + build_akshare_panel 删 build_hsgt_daily 留其余5表 + clients_registry/schema_versions/data_layers/data_deprecation/panel_manifest/institution_alpha northbound块/test) | 0消费者 (akshare HSGT停2024-08, NorthboundAlpha消费者已删) |
 
-**已退役 5/6 SAFE_TO_DROP** (749k+ 行)。剩 1: **fact_financial_indicator_ak** (0行空壳, dedicated writer financial_indicator_client + dim_financial_indicator_latest/scoring/audit 纠缠, 需先确认 scoring 死路径)。
+| 2026-06-19 | **fact_financial_indicator_ak**(0) + **dim_financial_indicator_latest**(480) + **financial_indicator_sync_state**(528) (smartmoney) | 1008 | RETIRED (git rm dedicated writer financial_indicator_client.py + financial_client caller 改 retired stub + schema_migrations/clients_registry/schema_versions×2/data_layers×3/test×3) | 0 live alpha消费者 (scoring/audit try/except 安全降级, dormant 层) |
+
+**[OK] 6/6 SAFE_TO_DROP 全部退役** (~750k 行回收)。scoring.py:1875 + audit.py gap块 仍静态引用 financial_indicator 表名但**在 try/except 内安全降级** (dormant scoring 层, reset 重建时一并清, 非 live 破)。
+**剩 KEEP_MIGRATE_FIRST 5 表** (有 live 消费者, M3/M4 双轨先迁后删): raw_capital_dividend_summary(→dim→scoring) · raw_aif10_valuation_quantile/peer_valuation/forecast_consensus(→v3_picture serving) · price_kline(→index_daily, regime/return engine)。
 
 **KEEP_MIGRATE_FIRST (有 live 消费者, 先迁消费侧再删, 勿现删)**: raw_capital_dividend_summary(→dim→scoring) · raw_aif10_valuation_quantile/peer_valuation(→v3_picture serving) · raw_aif10_forecast_consensus(→report_rc) · price_kline(→index_daily, regime/return engine; M3)。
 **待 writer 手术 RETIRE (Batch B, shared writer 精细删)**: fact_financial_indicator_ak(dedicated financial_indicator_client) · fact_hsgt_daily(build_akshare_panel shared) · raw_aif10_holder_count + raw_aif10_financial_history(aif10_capability_client shared, 删2留3)。

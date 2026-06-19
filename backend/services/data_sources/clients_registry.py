@@ -218,20 +218,8 @@ CLIENTS: list[ClientSpec] = [
         ],
         sync_step_id="sync_financial",
     ),
-    ClientSpec(
-        client_id="financial_indicator_client",
-        module="services.financial_indicator_client",
-        description="akshare 财务指标 (ROE / 毛利率等)",
-        upstream_source="akshare:stock_financial_abstract_em",
-        source_tier=3,
-        fallback_chain=["akshare"],
-        writes=[
-            TableWriteSpec("raw_financial_indicator_ak",   "原始指标",   "quarterly", 24*95),
-            TableWriteSpec("dim_financial_indicator_latest","最新指标快照","quarterly", 24*95),
-            TableWriteSpec("fact_financial_indicator_ak",  "指标事实表", "quarterly", 24*95),
-        ],
-        sync_step_id="sync_financial_indicator",
-    ),
+    # financial_indicator_client (akshare 财务指标) 已退役 2026-06-19: 表(fact/dim/raw/sync_state)+writer物删,
+    #   0 live alpha 消费者; 财务指标走 tushare fina_indicator。
     ClientSpec(
         client_id="akshare_client",
         module="services.akshare_client",

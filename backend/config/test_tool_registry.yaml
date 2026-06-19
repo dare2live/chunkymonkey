@@ -1607,10 +1607,9 @@ tools:
     paths:
       - backend/tests/test_build_fundamental_quarterly.py
       - backend/tests/test_capital_client_store.py
-      - backend/tests/test_financial_indicator_client.py
     owner_module: financial_data
     scope: contract
-    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_build_fundamental_quarterly.py backend/tests/test_capital_client_store.py backend/tests/test_financial_indicator_client.py
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_build_fundamental_quarterly.py backend/tests/test_capital_client_store.py
     status: active
     evidence_level: trusted_with_scope
     truth_source: local financial/fundamental ingestion and store fixtures

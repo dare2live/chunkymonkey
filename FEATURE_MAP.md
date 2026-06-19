@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-19 19:17
+> Snapshot: 2026-06-19 19:24
 
 ## 1. 入口面
 
@@ -94,7 +94,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 163 张 | 单 writer 94 | 多 writer 69 | 动态表名写点 25 处 (15 文件)
+统计: 表 161 张 | 单 writer 92 | 多 writer 69 | 动态表名写点 25 处 (15 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -197,7 +197,6 @@
 | 表 | writer |
 |---|---|
 | dim_capital_behavior_latest | backend/services/capital_client.py |
-| dim_financial_indicator_latest | backend/services/financial_indicator_client.py |
 | dim_financial_latest | backend/services/financial_client.py |
 | dim_schema_version | backend/services/schema_versions.py |
 | dim_stock_attention_latest | backend/services/external_attention.py |
@@ -212,7 +211,6 @@
 | fact_feature_panel_candidate | backend/services/schema_core.py |
 | fact_feature_panel_tdx_keep_challenger | backend/services/schema_core.py |
 | fact_financial_derived | backend/services/financial_client.py |
-| fact_financial_indicator_ak | backend/services/financial_indicator_client.py |
 | fact_fundamental_quarterly | backend/scripts/build_fundamental_quarterly.py |
 | fact_hot_rank_daily | backend/scripts/build_akshare_panel.py |
 | fact_jgdy_event | backend/scripts/build_akshare_panel.py |
@@ -293,7 +291,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,858 | calls 边 98,341 | imports 边 13,344 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 8,841 | calls 边 98,090 | imports 边 13,224 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -340,7 +338,7 @@
 | backend/services/scoring.py | 2712 |
 | backend/services/signals_v2.py | 2157 |
 | backend/services/audit.py | 1745 |
-| backend/services/financial_client.py | 1701 |
+| backend/services/financial_client.py | 1685 |
 | backend/scripts/ingest_holders_tdxhub.py | 1545 |
 | backend/services/tdx_f10_extra_client.py | 1478 |
 | backend/scripts/build_price_kline_tdxhub.py | 1461 |
@@ -351,5 +349,5 @@
 
 - chunkyctl 子命令 8 | launchd 任务 1 | router 16 (端点 96)
 - sync_registry 数据域 39
-- 产表 163 (多 writer 69)
+- 产表 161 (多 writer 69)
 

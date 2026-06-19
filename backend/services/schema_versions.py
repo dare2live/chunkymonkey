@@ -46,7 +46,6 @@ FACT_VERSIONS = {
     "fact_jgdy_event": "v1",                 # 机构调研事件
     "fact_lhb_event": "v1",                  # 龙虎榜事件
     "fact_financial_derived": "v1",          # 财务派生
-    "fact_financial_indicator_ak": "v1",     # akshare 财务指标
     "fact_fundamental_quarterly": "v1",      # 基本面季度
     "fact_institution_follow_backtest": "v2",  # 机构跟随回测 (pricing_policy_hash)
     "fact_policy_equity_curve": "v1",        # 策略 equity curve
@@ -225,7 +224,6 @@ MART_VERSIONS = {
 # dim_* 派生类 (静态/缓存型, 不含 raw dim, 12 张)
 DIM_DERIVED_VERSIONS = {
     "dim_capital_behavior_latest": "v1",
-    "dim_financial_indicator_latest": "v1",
     "dim_financial_latest": "v1",
     "dim_stock_archetype_latest": "v1",
     "dim_stock_attention_latest": "v1",

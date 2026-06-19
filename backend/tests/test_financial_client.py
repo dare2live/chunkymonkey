@@ -33,7 +33,6 @@ def _build_raw_record(stock_code: str, report_date: str, *, ingested_at: Optiona
 def _fake_optional_modules() -> dict[str, object]:
     return {
         "services.capital_client": types.SimpleNamespace(sync_capital_behavior_data=_async_zero),
-        "services.financial_indicator_client": types.SimpleNamespace(sync_financial_indicator_data=_async_zero),
     }
 
 
@@ -424,7 +423,7 @@ async def test_sync_financial_data_daily_critical_skips_research_stages():
         final = progress[-1]
         assert final["history_backfill"]["status"] == "skipped"
         assert final["capital_behavior"]["status"] == "skipped"
-        assert final["financial_indicator"]["status"] == "skipped"
+        assert final["financial_indicator"]["status"] == "retired"  # 2026-06-19 akshare financial_indicator 退役
         assert final["snapshot_sync"]["status"] == "partial"
         assert final["snapshot_sync"]["failed_codes"] == 1
         assert final["snapshot_sync"]["skipped_recent"] == 5
