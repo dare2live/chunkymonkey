@@ -1,0 +1,41 @@
+{
+ "domain": "stk_holdernumber",
+ "api": "stk_holdernumber",
+ "grain": [
+  "ts_code",
+  "end_date"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "ts_code": "000001.SZ",
+   "ann_date": "20260425",
+   "end_date": "20260331",
+   "holder_num": "457610"
+  },
+  {
+   "ts_code": "000001.SZ",
+   "ann_date": "20260327",
+   "end_date": "20260227",
+   "holder_num": "462824"
+  },
+  {
+   "ts_code": "000001.SZ",
+   "ann_date": "20260321",
+   "end_date": "20260228",
+   "holder_num": "462824"
+  },
+  {
+   "ts_code": "000001.SZ",
+   "ann_date": "20260321",
+   "end_date": "20251231",
+   "holder_num": "441142"
+  },
+  {
+   "ts_code": "000001.SZ",
+   "ann_date": "20251025",
+   "end_date": "20250930",
+   "holder_num": "453515"
+  }
+ ]
+}

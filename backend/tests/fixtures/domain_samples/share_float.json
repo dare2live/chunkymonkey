@@ -1,0 +1,58 @@
+{
+ "domain": "share_float",
+ "api": "share_float",
+ "grain": [
+  "ts_code",
+  "ann_date",
+  "float_date",
+  "holder_name"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "ts_code": "300888.SZ",
+   "ann_date": "20240520",
+   "float_date": "20250916",
+   "float_share": 406614387,
+   "float_ratio": 69.1177,
+   "holder_name": "稳健集团有限公司",
+   "share_type": "首发原始股"
+  },
+  {
+   "ts_code": "300888.SZ",
+   "ann_date": "20240520",
+   "float_date": "20250916",
+   "float_share": 406614387,
+   "float_ratio": 69.8254,
+   "holder_name": "稳健集团有限公司",
+   "share_type": "首发原始股"
+  },
+  {
+   "ts_code": "000537.SZ",
+   "ann_date": "20240520",
+   "float_date": "20241121",
+   "float_share": 7936507,
+   "float_ratio": 0.4261,
+   "holder_name": "上海国泰君安证券资产管理有限公司(代“国君资管君得山东土地成长单一资产管理计划”)",
+   "share_type": "定增股份"
+  },
+  {
+   "ts_code": "000537.SZ",
+   "ann_date": "20240520",
+   "float_date": "20241121",
+   "float_share": 7936507,
+   "float_ratio": 0.4261,
+   "holder_name": "天津海河融创津京冀智能产业基金合伙企业(有限合伙)",
+   "share_type": "定增股份"
+  },
+  {
+   "ts_code": "000537.SZ",
+   "ann_date": "20240520",
+   "float_date": "20241121",
+   "float_share": 20068027,
+   "float_ratio": 1.0775,
+   "holder_name": "财通基金管理有限公司",
+   "share_type": "定增股份"
+  }
+ ]
+}

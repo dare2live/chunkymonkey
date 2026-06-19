@@ -681,19 +681,6 @@ tools:
     replacement: production regime data audit and walk-forward evidence when strategy validation resumes
     last_verified: "2026-05-27"
 
-  - id: strategy_ensemble_tests
-    paths:
-      - backend/tests/strategies/test_ensemble.py
-    owner_module: strategies.ensemble
-    scope: unit
-    runner: PYTHONPATH=backend python -m pytest -q backend/tests/strategies/test_ensemble.py
-    status: active
-    evidence_level: trusted_with_scope
-    truth_source: synthetic score series and ensemble weighting fixtures
-    risk_reason: verifies allocation/ranking mechanics only; does not prove KPI, forward Sharpe, PBO, or strategy promotion readiness
-    replacement: paper_sim, Phase4, PBO/DSR, and forward evidence when ensemble strategy work resumes
-    last_verified: "2026-05-27"
-
   - id: strategy_institution_follow_pit_tests
     paths:
       - backend/tests/strategies/test_institution_follow_pit.py

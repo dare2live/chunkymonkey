@@ -217,8 +217,8 @@
 | `fact_stock_fundamental_stage_daily` | 基本面阶段 daily |
 | `fact_stock_quality_features` | 质量特征 |
 | `raw_aif10_financial_history` / `raw_gpcw_detail` / `raw_tdx_gpcw_wide` | 财务原始 |
-| `raw_aif10_valuation_quantile.percentile_fifty` | 估值 10Y 分位 (strategy_ensemble 在用) |
-| `raw_aif10_forecast_consensus.compre_rating_num` | 一致预期评分 (strategy_ensemble 在用) |
+| `raw_aif10_valuation_quantile.percentile_fifty` | 估值 10Y 分位 (aif10 源, task#37 待迁/退役; 原 strategy_ensemble 消费者已退役 2026-06-19) |
+| `raw_aif10_forecast_consensus.compre_rating_num` | 一致预期评分 (aif10 源, task#37 待迁/退役; 原 strategy_ensemble 消费者已退役 2026-06-19) |
 | `raw_aif10_peer_valuation` | 同业估值 |
 | **`raw_tushare_forecast`** (业绩预告, 2026-06-14 接入) | **PEAD 预期差事件因子** (alpha 验证程序 S1 第一个基本面接口): type(预增/预减/扭亏/首亏) + p_change_min/max(净利变动幅度) + net_profit_min/max + ann_date(PIT 锚, 早于正式财报). grain=[ts_code,end_date,ann_date]; 实测 17042 行 (2023-2026) |
 | **`raw_tushare_income`** (正式利润表, 2026-06-14 接入) | 96 列全套利润表 (total_revenue/revenue/oper_cost/各费用/operate_profit/n_income/ebit/ebitda...) = 质量/成长因子料 (PEAD 后段慢信号). grain=[ts_code,end_date,f_ann_date,update_flag] (uf=0原始/1订正双推送), PIT 锚 f_ann_date 取 uf=1; by_trade_date date_param=ann_date; 实测 4月 10578 行/5305 股. **express/fina_indicator 已注册** (express=express_vip by_period [sync_runner 加 by_period 分支+单测]; fina_indicator=by_ts_code 2023-2026窗口避100条截断), 回填排队 income 后 (单写锁) |
@@ -297,18 +297,6 @@
 | **reversal_1m_deep** (Phase ψ.α) | reversal_short_term.py | **反转** (20 日跌 10-30%) — 验证结论=unknown (reset 清, 以 goal.md 为准) |
 | **reversal_1w** (Phase ψ.α) | reversal_short_term.py | **反转** (5 日跌 2-10%) |
 | technical_stage (4 stage) | technical_stage.py | classify_technical_stage(closes, volumes) — Stan Weinstein |
-
-### 3.3 多 Alpha Ensemble (strategy_ensemble.py)
-
-**5 alpha 源 + 加权综合** (paper_sim 目前**没用**, 这是设计意图):
-
-| Alpha | weight | 数据源 | 类别 |
-|---|---|---|---|
-| **institution_follow** | **0.40** | `mart_stock_trend.action_score` | 资金流 (主 alpha) |
-| valuation_pct_low | 0.20 | `raw_aif10_valuation_quantile.percentile_fifty` | 基本面价值 |
-| forecast_consensus | 0.15 | `raw_aif10_forecast_consensus.compre_rating_num` | sell-side analyst |
-| momentum_120d | 0.10 | `fact_risk_factors.mom_120d` | 技术 |
-| risk_adjusted_sharpe | 0.15 | `fact_risk_factors.sharpe_60d` | 风险调整 |
 
 ### 3.4 Paper Sim v2 (Phase ψ)
 
@@ -537,7 +525,6 @@ Rule 9: 真金白银 / 第一性原理       — 用户视角严苛门槛
 | **vendor rank 字段 = 分页伪 rank** | [陷阱-永久] `moneyflow_ind_dc.rank` 是每 50 行循环的分页序号 (三评委独立复现 vs 自算全量 rank spearman 仅 0.07-0.084)。**一切 vendor rank/序号类字段必须自算全量截面 rank**, 禁止直接当因子 (E9 纪律件, 2026-06-11) |
 | `mart_sector_momentum` 只 41 行 (2026-04 起) | [BLOCKED] 没历史回测能力, **需 rebuild 全期** |
 | `fact_setup_snapshot` 0 行 | [BLOCKED] 未启用 |
-| **paper_sim 选股 走 strategy_ensemble** | [PASS] Phase ψ.β.4: ensemble mode + `paper_sim_ensemble.yaml` 10 alpha |
 | **5 alpha 主源数据 PIT 时序** | [PASS] β.1 fact_risk_factors / β.2 fact_financial_pit_daily / β.3 fact_capital_flow_pit_daily backfill 完成 (跨 2023-01 → 2026-05) |
 | **fact_institution_event 主 alpha** | ⚠ 只 1 年 (2025-04 起), 无法做 800 天 backfill — β.3 改用 lhb+exec+holder 替代 |
 | **mart_stock_trend.action_score (机构跟随主 alpha)** | [BLOCKED] 仍是 latest 快照 — 未做 PIT 重建 (依赖 fact_institution_event 1 年限制) |

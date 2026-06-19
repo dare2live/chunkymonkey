@@ -35,8 +35,6 @@ EXEMPT_FILES = {
     "backend/scripts/audit_strategy_universe.py",  # audit tool intentional
     "backend/scripts/audit_survivorship.py",  # audit tool intentional
     "backend/scripts/audit_panel_leakage.py",  # audit tool intentional
-    "backend/scripts/build_ensemble_v4_intersect_bc_phase7.py",  # SQL 内联 ST 过滤, rule-compliance 标注
-    "backend/services/labels/feature_join_v5.py",  # SQL 内联 ST 过滤, rule-compliance 标注
 }
 
 # Pattern: SQL containing 'dim_active_a_stock' JOIN without nearby get_active_universe call

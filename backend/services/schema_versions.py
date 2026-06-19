@@ -182,7 +182,6 @@ MART_VERSIONS = {
     "mart_step_fingerprint": "v1",           # step 指纹 (增量驱动)
     "mart_stock_survey_activity": "v1",      # 调研活动
     "mart_prediction_outcome": "v1",         # P2.8 预测 outcome tracker
-    "mart_ensemble_signals": "v1",           # P3.11 多策略 ensemble
     "mart_today_signal_cache": "v2",         # signals_v2 read cache summary row
     "mart_today_signal_cache_signal": "v1",  # signals_v2 bounded per-signal cache rows
     # Phase β/γ/δ/ε 新增 (2026-05-12)

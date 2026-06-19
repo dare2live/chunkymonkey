@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-19 13:58
+> Snapshot: 2026-06-19 15:01
 
 ## 1. 入口面
 
@@ -29,7 +29,7 @@
 
 | router | prefix | 端点数 |
 |---|---|---|
-| data_sources | `/api/data_sources` | 18 |
+| data_sources | `/api/data_sources` | 16 |
 | etf | `/api/etf` | 9 |
 | market | `/api/inst` | 1 |
 | ops_manual_run | `/api/v3/ops` | 3 |
@@ -93,7 +93,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 166 张 | 单 writer 97 | 多 writer 69 | 动态表名写点 25 处 (15 文件)
+统计: 表 165 张 | 单 writer 96 | 多 writer 69 | 动态表名写点 25 处 (15 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -237,7 +237,6 @@
 | mart_data_processing_tool_run | backend/services/data_processing_monitor.py |
 | mart_data_source_failure_queue | backend/services/source_watermarks.py |
 | mart_dual_confirm | backend/services/sector_momentum.py |
-| mart_ensemble_signals | backend/services/strategy_ensemble.py |
 | mart_feature_availability_contract | backend/services/data_quality.py |
 | mart_feature_candidate_score | backend/services/schema_marts.py |
 | mart_feature_drift_histogram | backend/services/ml_lifecycle/drift.py |
@@ -295,7 +294,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,873 | calls 边 100,737 | imports 边 13,865 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 8,858 | calls 边 100,743 | imports 边 13,868 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -303,7 +302,7 @@
 |---|---|
 | services.db | 35 |
 | services.duck_adapter | 33 |
-| services.utils | 33 |
+| services.utils | 32 |
 | services.market_db | 23 |
 | services.industry | 15 |
 | services.tdx_source | 15 |
@@ -351,7 +350,7 @@
 
 ## 5. 概览
 
-- chunkyctl 子命令 8 | launchd 任务 1 | router 16 (端点 98)
+- chunkyctl 子命令 8 | launchd 任务 1 | router 16 (端点 96)
 - sync_registry 数据域 38
-- 产表 166 (多 writer 69)
+- 产表 165 (多 writer 69)
 

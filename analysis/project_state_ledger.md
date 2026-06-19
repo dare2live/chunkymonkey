@@ -766,3 +766,14 @@ loader 误删致 4 处 `import services.experiment_jobs` 悬空崩)。故 S0 = c
   smoke 数据已清 (实 store S1+ 才落真数据)。
 - 下一步 (P1): L0 裸K线基准 — 需重建 OOS walk-forward IC 计算 (reset 删了 walk_forward runner),
   仅 OHLCV 派生基准跑过执行器作标尺。
+- 2026-06-19 退役 ensemble 污染孤儿 (FEATURE_MAP code/table lens 审计旁支): `strategy_ensemble.py`
+  (P3.11 多策略 ensemble builder) 自创建 (51734fa9) 起从未接入 live 链 — 唯一引用是它自暴露的两个
+  FastAPI 端点 (POST /ensemble/run + GET /ensemble/topk, 端点簇外 0 调用); 输出表
+  mart_ensemble_signals 已在 06-14 reset 物删 (manifest L270 备案, 5 库确认 0 残留); 4 alpha 源里
+  mart_stock_trend(0.40)/fact_risk_factors(0.25) 已被 reset drop, 仅 aif10 两源 (task#37 待退役) 尚存。
+  审计法: 多 lens workflow (调用/数据依赖/控制面/姊妹件) + 3 skeptic 对抗证伪 (frontend/调度/隐藏耦合)
+  全部 found_live=False conf=high RETIRE; frontend skeptic 纠正了 find lens 假阴性 (项目确有前端
+  assets/js+bestchoice, 但 ensemble 端点 0 fetch)。处置: git rm builder + 删 2 端点 + 清 schema_versions
+  声明 + test_tool_registry stale 块 + check_universe_filter 2 死 exempt (build_ensemble_v4/feature_join_v5
+  皆已 reset 删) + 重生 FEATURE_MAP + INDEX §3.3 与 stale row。验收: moth pass=30 fail=0, main.py 122 路由
+  装载 OK, universe gate CLEAN。retired_experiments.yaml ensemble 知识条目刻意保留 (非孤儿)。

@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-06-19 08:21:20 CST
+**Snapshot 时间**: 2026-06-19 14:12:28 CST
 
 ## 主线状态
 
@@ -44,28 +44,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `2af8b39d feat: 清验证墓地+恢复干净地基 + universe升交易日历级硬真相源 + 结构型GT重建` |
-| 最近 24h commits | 0 |
-| 未 commit 文件 | 0 |
+| HEAD | `c76b3139 fix: by_ts_code 拉取走 services.universe 排除过滤 + 撤 namechange (用户: 排除列表硬真相源, 不拉退市股)` |
+| 最近 24h commits | 13 |
+| 未 commit 文件 | 4 |
 
 ### 最近 10 commits
 
 ```
-2af8b39d feat: 清验证墓地+恢复干净地基 + universe升交易日历级硬真相源 + 结构型GT重建
-090e383a feat: 主升浪结构型定义重建 — 底→顶>60%+长底+多头排列+平滑, 排北交所/ST/退市, 9072个匹配用户图样型
-e546debd feat: R2可交易性衰减检验 — 二次突破R2 robust(仅0.9%不可买/衰减-0.05pp), 前沿在buyability维站得住
-27ecbf6d docs: Tushare数据资产盘点(10000积分档) — 已拉32域/已用4 live/16死数据 + 未拉可能有价值清单
-d71d66af feat: return↔回撤前沿(culmination) — 二次突破平市真超额+24~32pp但回撤-42~-64%, OOS+152%是§4.2牛beta警报
-cf280837 feat: 出场择时对比 — 脚本auto裁决误导(已纠), 真结论=出场是时长×return/回撤权衡无免费午餐 + CYQ触发器坏
-08c734f8 feat: 3源alt-data(机构调研+龙虎榜+券商)+meta-labeling — 买点无显著regime稳定edge, 入场空间含alt-data穷尽
-2550c061 docs: 记录 tinyshare 限流 120单/200多/并发2 (用户2026-06-17) — CLAUDE§4.3+INDEX§3.7+data_acq
-84a378c8 feat: tushare代理切tinyshare — 旧jiaoch.site反刷量墙弃用, 新网关解封stk_surv机构调研
-9aed0776 feat: 另类数据(龙虎榜+券商预期)买点因子 — ALTDATA_PARTIAL但券商上调在平市真区分(+2.37%vs-0.53%)
+c76b3139 fix: by_ts_code 拉取走 services.universe 排除过滤 + 撤 namechange (用户: 排除列表硬真相源, 不拉退市股)
+6cc321e9 feat: 注册 5 P0 数据域 (tushare 潜力研究, 口径对齐项目)
+1bf1ad6d docs: 修 tushare 研究口径一致 — 撤同花顺第三套资金流/概念 (用户铁律)
+27244469 docs: tushare 10000积分选股潜力研究 — 拉取优先级 (6类评估 241接口)
+29e90954 feat: 沙盒边界水密硬门 — 运行时 guard 堵裸连主库 (审计 BLOCKER)
+d8332e7e docs: 主升浪猎手可执行方案 (架构审计 REVISE + 用户阶段框架) + goal.md 路线更新
+f244e055 chore: 收尾彻底清除 — 7 归档档加"数字全作废"头注 (防误导)
+19837577 feat: 探索沙盒机制 — 隔离区用完直接删, 根治探索散进主代码/文档
+232b800c chore: 彻底清除残留污染期产物 (穷尽 sweep 第二轮, 64 删 + 引用修)
+6b668552 fix: fact_feature_panel 三处虚假 active 声明 → 诚实状态 (架构审计抓到)
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**run startup checks first — scripts/chunkyctl doctor --fast; prioritize data_health blocking_yellow, then stage-opt structural blocker / need_027 blocked-gap triage**
+**4 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 
