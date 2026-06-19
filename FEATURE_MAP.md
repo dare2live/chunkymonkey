@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-19 08:52
+> Snapshot: 2026-06-19 12:37
 
 ## 1. 入口面
 
@@ -89,7 +89,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 166 张 | 单 writer 95 | 多 writer 71 | 动态表名写点 25 处 (15 文件)
+统计: 表 166 张 | 单 writer 97 | 多 writer 69 | 动态表名写点 25 处 (15 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -155,7 +155,6 @@
 | fact_shareholder_plan_tdx_f10 | 2 | backend/services/schema_core.py<br>backend/services/tdx_f10_extra_client.py |
 | fact_shareholder_trade_tdx_b | 2 | backend/services/schema_core.py<br>backend/services/tdx_f10_extra_client.py |
 | fact_stock_fundamental_stage_daily | 2 | backend/scripts/build_picture_daily.py<br>backend/services/picture/ddl.py |
-| fact_stock_technical_stage | 2 | backend/scripts/build_stage_formula_fitness.py<br>backend/services/formula_engine/ddl.py |
 | fact_stock_type_daily | 2 | backend/scripts/build_picture_daily.py<br>backend/services/picture/ddl.py |
 | fact_tdx_gpcw_auto_feature_quarterly | 2 | backend/scripts/build_tdx_gpcw_auto_features.py<br>backend/services/schema_core.py |
 | mart_audit_snapshot_state | 2 | backend/services/audit.py<br>backend/services/schema_marts.py |
@@ -180,7 +179,6 @@
 | mart_pricing_label_data_readiness_gate | 2 | backend/services/pricing_policy_readiness.py<br>backend/services/pricing_schema.py |
 | mart_pricing_label_policy | 2 | backend/services/pricing_policy_records.py<br>backend/services/pricing_schema.py |
 | mart_pricing_label_policy_gate | 2 | backend/services/pricing_policy_records.py<br>backend/services/pricing_schema.py |
-| mart_stage_formula_fitness | 2 | backend/scripts/build_stage_formula_fitness.py<br>backend/services/formula_engine/ddl.py |
 | mart_stock_picture_daily | 2 | backend/scripts/build_picture_daily.py<br>backend/services/picture/ddl.py |
 | mart_stock_trend | 2 | backend/routers/updater_trends.py<br>backend/services/schema_marts.py |
 | mart_tdx_data_need_coverage | 2 | backend/scripts/audit_tdx_data_need_coverage.py<br>backend/services/schema_marts.py |
@@ -226,6 +224,7 @@
 | fact_stock_market_cap_daily | backend/services/primitives/ddl.py |
 | fact_stock_stage_features | backend/services/stock_stage_engine.py |
 | fact_stock_style_daily | backend/services/primitives/ddl.py |
+| fact_stock_technical_stage | backend/services/formula_engine/ddl.py |
 | fact_stock_turtle_features | backend/services/stock_turtle_engine.py |
 | fact_technical_trigger | backend/services/formula_engine/ddl.py |
 | mart_candidate_feature_set_contract | backend/services/data_quality.py |
@@ -255,6 +254,7 @@
 | mart_pipeline_lock | backend/services/pipeline_lock.py |
 | mart_prediction_outcome | backend/services/prediction_outcome.py |
 | mart_sector_momentum | backend/services/sector_momentum.py |
+| mart_stage_formula_fitness | backend/services/formula_engine/ddl.py |
 | mart_step_fingerprint | backend/services/event_engine.py |
 | mart_stock_fund_flow_rank_snapshot_daily | backend/services/schema_marts.py |
 | mart_stock_screening | backend/services/screening_engine.py |
@@ -349,5 +349,5 @@
 
 - chunkyctl 子命令 8 | launchd 任务 1 | router 16 (端点 98)
 - sync_registry 数据域 34
-- 产表 166 (多 writer 71)
+- 产表 166 (多 writer 69)
 

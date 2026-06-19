@@ -144,11 +144,11 @@ Archive notes:
 | `../goal.md` 2026-05-24 and earlier sections | Archived as `../analysis/goal_legacy_20260531.md` |
 | `docs/feasibility_analysis_20260517.md` | Archived as `../analysis/feasibility_analysis_20260517.md` |
 | `docs/first_principles_diagnosis_20260517.md` | Deleted 2026-06-15 (A6); 针对已删模型/特征/serving 层, 地基-reset 偏离 (git history) |
-| `docs/v4_panel_feature_audit_20260517.md` | Archived as `../analysis/v4_panel_feature_audit_20260517.md` |
+| `docs/v4_panel_feature_audit_20260517.md` | Deleted 2026-06-17 (污染期 v4 panel 特征审计, 已删 apparatus; git history) |
 | `docs/MASTER_SYNTHESIS_20260523.md` | Deleted 2026-06-17 (污染期已删 model/ensemble/寻优层验证 findings; git history) |
 | `docs/project_synthesis_20260523.md` | Archived as `../analysis/project_synthesis_20260523.md` |
 | `docs/project_audit_20260523.md` | Archived as `../analysis/project_audit_20260523.md` |
-| `docs/integration_master_plan_20260523.md` | Archived as `../analysis/integration_master_plan_20260523.md` |
+| `docs/integration_master_plan_20260523.md` | Deleted 2026-06-17 (污染期 Track A/B 整合计划, 针对已删模型层; git history) |
 | `docs/optimization_plan_consolidated_20260523.md` | Archived as `../analysis/optimization_plan_consolidated_20260523.md` |
 | `docs/chunkymonkey_architecture_audit_20260517.md` | Deleted 2026-06-15 (A6); 针对已删架构层, 地基-reset 偏离 (git history) |
 | `docs/codegraph_audit_integration_spec.md` | Archived as `../analysis/codegraph_audit_integration_spec.md` |
@@ -173,7 +173,7 @@ Archive notes:
 | `docs/backtester_mcp_integration_20260517.md` | Archived as `../analysis/docs_archive_20260531/backtester_mcp_integration_20260517.md`; active rules in `strategy_validation_contract.md` |
 | `docs/leakage_pattern_catalog.md` | Archived as `../analysis/docs_archive_20260531/leakage_pattern_catalog.md`; active rules in `strategy_validation_contract.md` |
 | `docs/paper_sim_*` | Archived under `../analysis/docs_archive_20260531/`; active rules in `strategy_validation_contract.md` |
-| `docs/v7_forward_decision_framework.md` | Archived as `../analysis/docs_archive_20260531/v7_forward_decision_framework.md`; active rules in `strategy_validation_contract.md` |
+| `docs/v7_forward_decision_framework.md` | Deleted 2026-06-17 (污染期 v7 forward 框架; active rules 在 strategy_validation_contract.md; git history) |
 | `docs/phase4_alpha_root_cause_roadmap.md` | Archived as `../analysis/docs_archive_20260531/phase4_alpha_root_cause_roadmap.md`; active rules in `strategy_validation_contract.md` |
 | `docs/retrain_stall_fix1_patch_draft.md` | Archived as `../analysis/docs_archive_20260531/retrain_stall_fix1_patch_draft.md`; active rules in `strategy_validation_contract.md` |
 | `docs/sue_pit_design_20260517.md` | Archived as `../analysis/docs_archive_20260531/sue_pit_design_20260517.md`; active rules in `strategy_validation_contract.md` |

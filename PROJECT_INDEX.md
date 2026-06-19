@@ -311,7 +311,6 @@
 
 | 模块 | 作用 |
 |---|---|
-| `services/paper_sim/config.py` | yaml loader (portfolio / selection / exit / swap / tx_cost / risk / validation / data) |
 | | selector.py | backtest mode 查 mart_per_formula_stage_optimal (Phase ψ.α B), 0 selection leakage; **Phase ψ.β.5 L2**: ensemble mode 可按 vol_60d 缩放 stop/target/trailing per-stock (`_vol_aware_params`, config flag `selection.vol_aware.enabled`); **Phase ψ.γ.2 L3**: ensemble mode 可 JOIN mart_per_stock_stage_strategy_optimal (24K 行 9-dim OOS) 用 per-stock × stage params 覆盖 default (`_load_per_stock_stage_optimal`, config flag `selection.per_stock_stage.enabled`). 优先级: per_stock_stage > vol_aware > default_holding. |
 | | driver.py | walk-forward 主循环 + VWAP 成交 + swap 决策 |
 | | exit_rules.py | 5 触发优先级 (stop > target_arm > trailing > hp_expired > stage_deterioration) |
@@ -377,9 +376,9 @@
 
 | 主题 | 数量 | 例子 |
 |---|---|---|
-| `build_*` | 49 | build_formula_signals_history, build_signal_context, build_stock_formula_buy_signal_daily, build_daily_position_recommendations, build_picture_daily, build_stage_formula_fitness, build_architecture_inventory |
+| `build_*` | 49 | build_formula_signals_history, build_signal_context, build_stock_formula_buy_signal_daily, build_daily_position_recommendations, build_picture_daily, build_architecture_inventory |
 | `formula_*` | 1 | **formula_limit_up_pullback.py** (涨停回调十字星选股, S/A/B 三档, YAML 配置 `config/formula_limit_up_pullback.yaml`) |
-| `run_*` | 17 | run_paper_sim_v2 (我们主用), run_follow_backtest (机构跟随), run_optuna_*, run_portfolio_mvp |
+| `run_*` | 17 | run_follow_backtest (机构跟随), run_optuna_*, run_portfolio_mvp |
 | `validate_*` | 10 | validate_exclusion_rules 等 |
 | `audit_*` | 5 | **audit_end_to_end.py** (23 项检查) |
 | `backfill_*` | 5 | 各种回填 |
@@ -425,9 +424,6 @@
 | 文件 | 控制什么 |
 |---|---|
 | `backend/config/optuna_config.yaml` | Optuna 治理 (Phase ψ Rule 7/8) — governance/walk_forward/search_space/composite/constraints/execution/output |
-| `backend/config/paper_sim_config.yaml` | Paper Sim v2 hyperparam |
-| `backend/config/paper_sim_momentum.yaml` / `paper_sim_reversal.yaml` / `paper_sim_reversal_deep_only.yaml` | Phase ψ.α ablation 切换 |
-| `backend/config/paper_sim_ensemble.yaml` | **Phase ψ.β.4** ensemble 模式 (13 alpha + regime + vol_aware + per_stock_stage) |
 | `backend/config/field_dictionary.yaml` | **Phase ψ.γ.dict.1** 字段字典 (3 DB × 12 核心表 × 100+ 字段 + 单位 + PIT key + outlier cap + JOIN 模板) — 防 VWAP unit bug 类故障 |
 | `backend/config/recommendation_universe.yaml` | 选股宇宙 |
 | `backend/config/db_partition_tiers.yaml` | **DB 多库分区 tier** (源/特征/服务/实验) + 原子写簇 (关联性检查); 驱动 `backend/scripts/db_partition_migrate.py` (保真迁移引擎: 原 DDL 含 PK + INSERT SELECT, 非 CTAS; dry-run 默认 + 前后验证[行数/EXCEPT/约束/索引] + 绝不 DROP 源; D1a experiment_store 25 表迁验 PASS [暂缓 repoint, live 耦合重]; **D2-minimal feature_store 2 表 fact_feature_panel+validation 迁验 PASS** [解决 build_feature_panel vs daily_update 写锁竞争, repoint 待定]) — owner=analysis/db_management_design_20260614.md |

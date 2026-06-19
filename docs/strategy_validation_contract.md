@@ -112,7 +112,7 @@ This contract supersedes or summarizes:
 | Former doc group | Current state |
 |---|---|
 | `../analysis/docs_archive_20260531/backtester_mcp_integration_20260517.md`, `../analysis/docs_archive_20260531/leakage_pattern_catalog.md` | Gate rules consolidated here |
-| `../analysis/docs_archive_20260531/paper_sim_kpi_compare_plan.md`, `../analysis/docs_archive_20260531/paper_sim_overview_20260520.md`, `../analysis/docs_archive_20260531/v7_forward_decision_framework.md` | Paper/forward rules consolidated here; dated evidence archived |
+| (污染期 paper_sim/forward dated evidence 已删 2026-06-17) | Paper/forward rules consolidated here (规则见本契约); 污染期具体数字证据已清 |
 | `../analysis/docs_archive_20260531/phase4_alpha_root_cause_roadmap.md`, `../analysis/docs_archive_20260531/retrain_stall_fix1_patch_draft.md` | Archived as implementation evidence |
 | `../analysis/docs_archive_20260531/sue_pit_design_20260517.md` | Archived as feature design evidence |
 | `../analysis/docs_archive_20260531/msaf_top_design_20260517.md`, `../analysis/docs_archive_20260531/msaf_p1_institution_baseline_20260518.md`, `../analysis/docs_archive_20260531/msaf_p1b_institution_composite_20260518.md`, `../analysis/docs_archive_20260531/msaf_p4_vol_sizing_research_20260518.md`, `../analysis/docs_archive_20260531/only_stock_scheme_design_20260517.md` | Archived as historical strategy research, not current direction |
