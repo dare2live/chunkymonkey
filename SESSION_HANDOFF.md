@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-06-20 06:32:36 CST
+**Snapshot 时间**: 2026-06-20 06:38:56 CST
 
 ## 主线状态
 
@@ -44,13 +44,14 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `255c2bb1 doc: A0 锁外全done(5 commit) 同步 — 余仅锁门 RUN, 续拉释锁后物化panel+审计注册` |
-| 最近 24h commits | 32 |
-| 未 commit 文件 | 4 |
+| HEAD | `eda381d0 feat: A0 完成 — fact_feature_panel 物化 live + 对抗验证 (F0 地基止血收尾)` |
+| 最近 24h commits | 33 |
+| 未 commit 文件 | 2 |
 
 ### 最近 10 commits
 
 ```
+eda381d0 feat: A0 完成 — fact_feature_panel 物化 live + 对抗验证 (F0 地基止血收尾)
 255c2bb1 doc: A0 锁外全done(5 commit) 同步 — 余仅锁门 RUN, 续拉释锁后物化panel+审计注册
 390c8c3a feat: A0 PIT 负样本 — hard-negative 对照组 fact_rally_entry_negative (结果倒推判别)
 45caf154 doc: A0 进度同步 — a/b/c+死闸防回退 done, 余 RUN 阶段锁门 (续拉释锁后)
@@ -60,12 +61,11 @@ c8d6177c feat: A0 GT 标签拆 — entry-PIT 侧物化 fact_rally_entry_pit (剥
 8a9a2b4c docs: 压缩前保存 — goal.md hunter行指向 refined plan + A0-1进度 + SESSION_HANDOFF 再生
 8d2ad93e feat: A0-1 主升浪 stage 因子恢复进 services (消除 build_feature_panel→experiment 倒挂)
 c5501515 docs: 数据验证+回测 refined plan (tushare字段gap+A股alpha经验+回测best-practice 研究综合)
-91c005b4 feat: sync_runner socket 超时 (根治 hung) + by_ts_code 断点续拉 (用户选: 修socket超时+续拉)
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**4 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**2 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 
