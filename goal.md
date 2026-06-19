@@ -61,18 +61,24 @@
 | P | Workstream | State | Next action |
 |---|---|---|---|
 | P0 | 文档同步 | goal/INDEX reset-rewrite | 立 `moth doc-drift` 固化 (机器对账, 防再漂; mythos §16) |
-| P0 | 重启清理 | **完成** (精准删本轮探索污染: experiment_store 留档行/L2 探索面板/16 探索 runner/49 验证 json/探索 docs+configs/6 探索断言; 保数据底座+sync修复+catalog+mio+G2-G3 治理) | — |
-| **P1** | **alpha 发现方法论 (重建基准)** | **立法层 owner=`docs/MASTER_TOPLEVEL_DESIGN.md §5`** (用户口述监督式范式: 裸K线扫主升浪>60% / MACD episode>30% = ground truth → 入场点 PIT 因子逐层叠 → 分层 → train≤2025-06/OOS→2026-06 → Modal) | 按 D0-D4 执行 (见下) |
+| P0 | 彻底清除污染期产物 | **完成** (2轮穷尽 sweep: DELETE 64 docs/脚本/config/验证结果 + scrub/作废头注~14 + DB 0残留; build_feature_panel BROKEN flag; fact_feature_panel 三处虚假active改诚实) + **沙盒机制根治** (sandbox/ gitignored 用完删 + moth exploration-isolated, 探索不再散进主代码) | — |
+| **P1** | **主升浪猎手执行方案** | **owner=`analysis/zhushenglang_hunter_plan_20260617.md`** (架构审计 REVISE + 用户阶段框架: 识别→分层+切阶段→逐阶段验因子; 短路径鱼身/出场/仓位优先) | Phase 0 地基补全 (build_feature_panel 重建 + GT 标签拆 + 负样本生成器) |
 | P1 | 数据底座研究 | cyq 实测与 tushare qfq 同复权坐标可用 (C0 FAIL=审计比错基准非数据错); 高积分高价值因子已排序 | D0 回填 hk_hold/stk_holdertrade/moneyflow_dc 等 + cyq 解冻 2018 |
 | P2 | 深层解耦 backlog | kept routers 懒加载已删 services / 散落服务自建表 / god-file (framework doc §6) | rebuild 时按 layer 顺手解耦, moth 守不回潮; **不 big-bang** |
 
-## 重建路线 (owner=`docs/MASTER_TOPLEVEL_DESIGN.md §5`)
+## 重建路线 (owner=`analysis/zhushenglang_hunter_plan_20260617.md` + MASTER §5)
 
-- **D0** 数据齐: 高价值因子回填 + cyq 解冻 2018 + tushare catalog 入库可查。
-- **D1** 裸K线扫 ground truth (主升浪 >60% / MACD episode >30%) 落库 = 标签 y。
-- **D2** 入场点 PIT 因子逐层叠加 (量→换手→筹码→资金→板块/概念) + 分层 (市值等)。
-- **D3** train ≤2025-06 建公式 / OOS 2025-06→2026-06 验证。
-- **D4** Modal 规模搜索 + DSR/PBO 多重比较校正 → 每公式最佳参数+因子组合。
+主升浪=**有阶段的过程** (起涨鱼头/主升鱼身/顶部鱼尾), 逐阶段验因子。诚实先验: 个股单点买点 AUC≈0.5
+(SOTA 三方印证) → **主攻鱼身延续/出场择时/仓位 (不依赖买点判别), 买点 secondary 作边际改善**。
+D1 GT 已识别 (rally 9070 + macd 311291, universe 硬门 clean); 缺口 = 分层+切阶段。
+
+- **Phase 0 地基补全** (审计 BLOCKER): build_feature_panel 重建(因子移 services 消除倒挂) / GT 标签拆
+  entry-PIT vs outcome + fwd_complete / PIT 负样本生成器(现全正零负) / 死闸落地(audit_panel_leakage 升强制 + L2-bypass 真断言)。
+- **Phase 1 分层+切阶段** (用户核心缺口): 9070 episode link 形态+申万L2+市值(横截面) + 切起涨/主升/顶部(内部) + 起涨点 T+1 可买入率体检(go/no-go)。
+- **Phase 2 逐阶段验因子** (探索全在 sandbox/): 起涨进场/主升持仓/顶部出场 因子判别力, PIT + 含成本绝对收益(C-R1) + CPCV/PBO。
+- **Phase 3 短路径 honest baseline** (奥卡姆优先): primary规则定方向→池内排名→出场→仓位→含成本 NAV vs 四基准(含 random-entry)。
+- **Phase 4 meta-labeling + Optuna + 含成本 paper_sim → KPI**。
+- 第一 go/no-go: Phase 1.3 可买入率 + Phase 3.2 含成本 NAV; 短路径无正期望 → 不投 Phase 4, 方向题交用户。
 
 ## Operating Reminders
 
