@@ -130,6 +130,12 @@ JOIN → 永远带 `AND x.built_at <= t` / `as_of_date`; 宇宙 → `dim_index_m
 - **公式估算 != measured**: `swap_uplift_estimate` 公式估 → 实测 swap 拉低年化 33pp. 改真实 K 线 forward 反事实. (同类: vol-aware stop/ensemble weights/regime gate hardcode → 全进 Optuna search space + walk-forward OOS。)
 - **行业 taxonomy 切源 = 桶定义变, 历史不可比 (2026-06-15, owner=analysis/industry_migration_tdx_to_sw_20260615.md)**: 切行业分类源 (通达信 13/56/76 → 申万 31/131/337) **不是 1:1 映射**, sector-relative 特征 (*_tdx_l1_rel) 的 PARTITION BY 桶数变 → 跨切换点历史特征/RankIC **不可比**, sector_momentum 板块集合变须全量重算。**禁跨 taxonomy 版本 partition/拼接**; 切换打 `taxonomy_version` 戳分段。另: 申万 index_member_all 默认只拉 is_new='Y' (当前成分) → out_date 100% NULL = **latest-snapshot leakage 变体** (行业切换历史丢失), 必须并拉 is_new='N' (历史剔除区间, out_date 填) 才是真 PIT (实测探针: Y 给当前 out_date空 / N 给历史 out_date填)。
 - **universe 污染 = 实验直扫 K线无过滤 (2026-06-17, owner=services/universe.py)**: 旧 GT/yushen/rally 实验**直扫 price_kline 全部股**(含北交所 92x/83x + ST + 退市)做回测/选股 → 旧 fact_rally_ground_truth 含北交所 3.1% + 白名单内未滤 ST。根因: universe 过滤是可选 helper 非强制, 实验图省事不调。修 (用户决议升交易日历级硬真相源): `assert_universe_clean()` 硬门 (排除股进任何 GT/回测/选股集 = raise, 就像非交易日不能下单) + 三道门 (代码 `check_universe_filter` 拦内联白名单前缀绕过 / 数据 moth GT-0排除股 / 运行时 builder 调硬门) + PIT ST 日历 (raw_tushare_stock_st, 非 dim_active 当前名)。**任何股票集落地前必过 services.universe**, 内联 `('60','00','30','68')` = 第二真相源被门拦。
+- **事件定义点当入场=前瞻泄漏 (2026-06-20, owner=analysis/rally_entry_backtest_d2_20260620.md)**: 用 pivot-low / peak / 局部极值
+  这类 **±窗事后确认的点** 当回测入场/决策点 = look-ahead。pivot-low `lows[i]==min(lows[i-20:i+20])` 用 i+20 未来窗,
+  "这是底" 只有事后 20 日才确认; 在 pivot 当日 T+1 买 = 假设已知是底。实测: 天真入场 90% 胜率/净+5.8%@120d (纯泄漏),
+  现实入场 (pivot+21 确认后, 实时可观测 "20日低点守住") **翻成 -2~-6% 含成本**。**裁决量价买点 (reversal/vol) AUC0.64
+  全是 pivot 前瞻非 alpha** (C-R1: AUC≠赚钱再坐实, 同 Stage1.5 反转族)。**铁律: episode 回测入场/决策只用实时可确认点,
+  禁用 pivot/peak/argmax 等需未来窗的事后点**; 异常漂亮 (90%胜率) = 查泄漏纪律抓出, 救于建在假 edge 上。
 
 ## 5. Optuna 治理
 
