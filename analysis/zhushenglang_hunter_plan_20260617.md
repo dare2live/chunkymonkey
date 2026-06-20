@@ -1,7 +1,8 @@
 # 主升浪猎手 执行方案 (post-reset 干净地基, 2026-06-17)
 
-> 状态: live (north-star 执行计划)。owner: 本文件 + goal.md Active Priority Board。
-> 输入: 架构师审计 wf_4d9f4bbf (REVISE) + 用户阶段框架 (起涨/主升/顶部) + MASTER §5 监督式 episode-first。
+> 状态: live (north-star 执行计划)。**2026-06-20 大重优化** (买点detour全删+方法论锁定+条件化假设验证): §3.5 方法论锁定 / §4 优化后优先级 / §7.5 不可逆闸门 为最新前向纲领, §0-2 范式与地基不变。
+> owner: 本文件 + goal.md Active Priority Board。
+> 输入: 架构师审计 wf_4d9f4bbf + 用户阶段框架 + MASTER §5 监督式 + **本session用户连环纠偏定稿的完整思路**(形态分层选特征非选股/逐日回放无泄漏/含成本判据/先验假设再投Modal)。
 > KPI (goal.md): 年化≥30% / max_dd≥-20% / 超额 HS300>0 / 月胜率≥55%, **含成本 OOS**。
 
 ## 0. 核心范式 (用户定, 不可偏离)
@@ -37,58 +38,59 @@
 | 0.3 | **PIT 负样本生成器**: universe 内同期非-GT 突破/横盘点 + purge+embargo≥250日 + average-uniqueness 权重 | BLOCKER: rally GT 现全正零负, 监督训练无正负边界 |
 | 0.4 | **死/虚闸落地**: audit_panel_leakage 升强制 gate (moth + experiment_jobs); feature-layer-l2-bypass 做成真 moth 断言 (实验禁直读 L0 算因子) | SHOULD_FIX: 现"校验了不执行"死闸 + manifest 散文虚引用 |
 
-## 3. Phase 1 — 分层 + 切阶段 (用户核心缺口: 识别了但没分层)
+## 3. Phase 1 — 分层 + 切阶段 = DONE (2026-06-20)
 
-| # | 交付 |
-|---|---|
-| 1.1 | **横截面分层**: 9070 episode 打标 — link segment_panel(stage/range_pos/MACD@bottom) + 申万L2板块(PIT) + 市值分位 + base长度。物化 `fact_rally_episode_strata` |
-| 1.2 | **内部阶段切分**: 每 episode(底→顶)切 起涨(0-20% of move)/主升(20-80%)/顶部(80-100%) 或按 form 转换点。物化 `fact_rally_stage` (episode×stage×date区间, PIT) |
-| 1.3 | **起涨点 T+1 可买入率体检** (廉价 go/no-go): 9070 bottom+1 一字涨停率/可买入率/扣成本收益分布 + 月度可建仓覆盖率 → 判 episode 结构是否适配月胜率 KPI (审计 skeptic c) |
+`fact_rally_episode_strata`(正9070: cap/base/申万 as-of) + `fact_rally_negative_strata`(负35198, 同口径) +
+`fact_rally_stage`(鱼头/鱼身/鱼尾) + `fact_stock_technical_stage`(Weinstein) 全就位。
 
-## 4. Phase 2 — 逐阶段因子验证 (D2, 探索全在 sandbox/)
+## 3.5 方法论锁定 (2026-06-20 大转折, 用户连环纠偏后定稿; owner=[[feedback-alpha-methodology-adherence]] + CLAUDE §1)
 
-每阶段在分层 GT 上验"哪些因子有判别力" (vs PIT 负样本):
+> 本 session 删了一整条"买点 ML detour"(偏离), 把用户完整思路对齐定稿。后续一切遵此:
+1. **监督式结果倒推**: 已知赢家(9070 episode)反推 PIT 前兆; **禁信号正推**(造因子看 IC)。
+2. **形态分层内选特征, 非选股, 非全市场通用因子**: 已验证 cap-条件化成立(净化后多因子 per-cap GBDT OOS, 跨cap重要性 Spearman 0.39; **小盘=筹码驱动 cyq_spread/winner_rate, 大盘=资金质量 turnover/mf/roe 无筹码**, 大盘vs微盘 ρ≈-0.05; experiment_store d4_stratum SUPPORT_LIGHT_CONDITIONAL)。
+3. **判据 = 含成本逐日回放 OOS 绝对收益**; IC/AUC 仅必要快筛, **不是 AUC**。
+4. **泄漏 = 输入特征用了决策点 t 之后数据**(非相对2025-06; label用未来合法, 时间隔离防的是另一回事)。逐日回放(每日只见≤t, T+1成交)结构上杜绝; 残余审查两条: 信号函数内部 PIT(无全样本统计/PIT复权/as-of行业)+ 参数冻结在回放起点前。
+5. **算力**: 特征面板物化一次, 搜索时不重算(砍100x); 分层=算力+过拟合双控; 先廉价验假设→grill→本地搜→才 Modal(29/34反例)。
+6. **不可逆闸**(见§7.5): 烧OOS/上实盘门要高(含成本KPI+DSR/PBO+按试错打折)+渐进上线+前向对账熔断。
 
-| 阶段 | 验什么因子 | 判据 |
+## 4. 优化后优先级 (后续验证, 按"最快回答30%行不行"排序; 2026-06-20 重定)
+
+> 决胜逻辑: 一切的真裁判 = 含成本逐日回放 OOS 是否达 KPI。P1 之前都是地基, P1 之后(Modal/扩维/上线)都条件化于 P1 过。
+
+| 优先 | 交付 | 为什么这个序 |
 |---|---|---|
-| 起涨(鱼头) | 缩量回踩/明暗共识入/winner低位/板块L2热度/二次突破 | 判别"成主升浪 vs 假突破" |
-| 主升(鱼身) | 多头排列持续/资金持续净入/量价配合/CNIR残差动量 | 判别"主升继续 vs 转顶" |
-| 顶部(鱼尾) | 放量滞涨/winner高位/明买暗卖/CYQ出货预警(px_pctile) | 判别"接近顶部出场" |
+| **P1 决胜 (含成本 honest baseline)** | (a) 确认/补 **leak-free 逐日回放引擎**(现 portfolio_execbacktest 是 rebalance 式, 验是否支持事件驱动逐日扫描或补之); (b) 搭 **cap-条件化 baseline 策略**: 简单 realizable 入场(买点 secondary 不求完美)→ 候选池 → **池内 cap-条件化多因子排名**(小盘筹码族/大盘资金质量族, 本session验出方向)→ 鱼尾出场 → 仓位 → **含成本 NAV**; (c) 对四基准: HS300/等权/不换股/**random-entry-same-exit**。**→ 第一个能回答"30%行不行"。可跑在当前少数因子上, 不必等全面板。** | KPI 是唯一真裁判; 先用最小料过这道闸, 别在没验证前建大基建 |
+| **P2 地基 (模块+数据+config, 用户要求)** | 扩 `fact_feature_panel`: 全因子集(筹码集中度/胜率/换手/资金/板块相对/券商一致预期 report_rc)按各自 PIT 锚物化, **config 驱动**(因子清单+PIT锚进 yaml)+ **单一计算点**(import 不复制); 收 hardcode 桶阈值进 `stratification.yaml` + 修 `build_segment_panel` 双定义 | P1 用最小因子; P2 是工业化基础(给 P4 Modal 大搜索铺料 + 算力洞察落地) |
+| **P3 严谨 + 扩维 (P1 有信号后)** | 多因子 ρ 置换检验(给 0.39 上显著性); 加 base/sector/**regime** 轴(若 cap 单轴不够 KPI); 鱼尾出场 winner_rate×放量组合(单用已证弱 REJECT_STANDALONE_WEAK) | 扩维成本高, 只在 P1 证明方向赚钱后投 |
+| **P4 寻优 (P1 过含成本后, grill)** | Optuna 调参(walk-forward OOS, search space 非空 plan_validator, DSR/PBO/CPCV); 大规模才上 Modal | 不在无 edge 的策略上烧 Modal(29/34反例) |
+| **P5 转正上线** | CPCV/PBO/nested-CV 转正门 → 渐进上线(paper→小仓→加仓)→ 前向对账熔断(感知死, 连续负兑现冻结) | 烧 OOS = 不可逆, 门高+渐进 |
 
-铁律: 特征严格 ≤ decision date (PIT); IC=necessary 快筛 / **含成本绝对收益=sufficient (C-R1)**; CPCV+PBO+nested-CV 防过拟合 (审计: 当前 0 实现, Phase 2 前补); record_verdict 留 experiment_store。
-
-## 5. Phase 3 — 短路径 honest baseline 优先 (奥卡姆, 审计强推, 不等买点完美)
-
-| # | 交付 |
-|---|---|
-| 3.1 | primary 规则(周线多头+二次突破回调确认, PIT-clean)定方向 → 确认上涨候选池 → 池内多因子排名(Phase 2 验出的有效因子) → 出场择时(鱼尾因子) → 仓位管理 → **含成本组合 NAV** |
-| 3.2 | 对四基准归因: HS300 / 等权 / 不换股 / **random-entry-same-exit**(入场 alpha 真对照, 审计 skeptic) |
-
-→ **第一个能回答"30% 行不行"的 honest baseline**。
-
-## 6. Phase 4 — meta-labeling + 寻优 + KPI (D3/D4)
-
-| # | 交付 |
-|---|---|
-| 4.1 | meta-labeling: primary 定方向 + secondary ML(Phase 2 因子)判 true/false breakout, 指标=precision/含成本Sharpe 非 AUC |
-| 4.2 | Optuna 调参 (walk-forward OOS, search space 非空 plan_validator, DSR/PBO/CPCV) |
-| 4.3 | 含成本 paper_sim (T+1/涨停/容量) → KPI 验收 (年化/max_dd/超额/月胜率) |
+## 5. 已沉淀的反例 (本session, 防重踩)
+- 买点 ML detour: 把计划点名 secondary 的买点当主攻四步, 偏离"主攻鱼身延续+出场+仓位"(已全删)。
+- 单因子 AUC 不能判多因子条件化命题(数学盲); 正负样本 year×base×fwd_complete 系统失配虚高 AUC 6-8pp(对抗审查抓, 净化才可信)。
+- 鱼尾 winner_rate 单用弱/太早(早饱和提前79d触发); pivot/peak 当成交点=execution不现实(非泄漏, 措辞校准)。
 
 ## 7. 执行纪律 (贯穿)
 
 - **探索全在 sandbox/** (scripts/sandbox.sh new), 用完删; 裁决→experiment_store; 真 edge→promote backend/services+单测。绝不散进主代码/文档。
-- 每步过法典闸: universe 硬门 / leakage / C-R1(含成本绝对收益) / C-R2(execution-aware) / C-WinReturn / DSR-PBO-CPCV。
-- 异常高数字=leakage 警报 (§4.2), 先查不兴奋。
-- 阶段切分口径 (% of move vs form 转换) + 负样本定义 跑前冻结 prereg (防挪门柱)。
+- 每步过法典闸: universe 硬门 / leakage(输入≤t) / C-R1(含成本绝对收益) / C-R2(execution-aware) / C-WinReturn / DSR-PBO-CPCV。
+- 异常高数字=leakage/confound 警报, 先查不兴奋(本session两次靠对抗审查抓出致命缺陷)。
+- 阶段切分口径 + 负样本定义 + search space 跑前冻结 prereg(防挪门柱)。
+- **重大判断(建系统/烧算力/上线)前开对抗审查 workflow**(本session 实证: 抓出 100x 单位bug + year×base confound, 都是手工漏的)。
 
-## 8. 顺序与依赖
+## 7.5 不可逆闸门纪律 (新, 2026-06-20 用户确立)
+- **烧 OOS**(把测试期折进训练重训): 之后再无独立历史检验, 重训模型的全程回测=in-sample 证明不了任何东西, 唯一裁判变实盘前向。门: 含成本 OOS 达标 + DSR/PBO 显著 + **按 OOS 试错次数打折**(试20个挑1个=最走运非最真)。
+- **上实盘**: 渐进(paper→小仓→加仓)+ 前向对账(预测回填, 连续负兑现 kill-switch)+ 别拿同段累积实盘反复 tweak-recheck(每轮迭代跑前 pre-register)。
+
+## 8. 顺序与依赖 (优化后)
 
 ```
-Phase 0 (地基补全 BLOCKER)  →  Phase 1 (分层+切阶段)  →  Phase 2 (逐阶段验因子, sandbox)
-                                                              ↓
-        Phase 3 (短路径 honest baseline, 奥卡姆优先) ←────────┘
-                                ↓
-        Phase 4 (meta-labeling + Optuna + 含成本 paper_sim → KPI)
+Phase 0-1 (地基+分层) DONE  →  P1 含成本 honest baseline (cap-条件化, 决胜 go/no-go)
+                                         │
+                    含成本无正期望 ──────┴──── 含成本有 edge
+                         ↓                          ↓
+                  方向题交用户             P2 全因子面板(模块+config) ∥ P3 严谨+扩维
+                                                    ↓
+                                         P4 Optuna/Modal(grill) → P5 CPCV/PBO转正 → 渐进上线+前向对账
 ```
-
-第一个 go/no-go: Phase 1.3 (可买入率体检) + Phase 3.2 (短路径含成本 NAV vs 基准)。短路径含成本无正期望 → 不投 Phase 4 长 pipeline, 方向题交用户。
+第一个 go/no-go = **P1 含成本 NAV vs 四基准**。无正期望 → 不投后续长 pipeline, 方向题交用户。
