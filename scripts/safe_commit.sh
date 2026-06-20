@@ -134,6 +134,20 @@ if [[ -n "$exp_staged" ]]; then
     fi
 fi
 
+# 3.8 沙盒隔离门 (实验室产物只留实验室, 2026-06-21 立; 4+次隔离失守根治):
+# C1 backend引用sandbox(FAIL) / C2 控制面嵌未promote(confirmed_by_owner=0)实验结果(WARN) / C3 探索runner漏主脚本(FAIL)。
+echo
+echo "=== Step 3.8: sandbox isolation gate ==="
+if PYTHONPATH=backend python backend/scripts/check_sandbox_isolation.py 2>&1 | tail -12; then
+    echo "[sandbox-isolation] PASS"
+else
+    echo
+    echo "ERROR: 沙盒隔离门 — 测试产物漏进主项目 (C1 backend引用sandbox / C3 探索runner漏主脚本)。"
+    echo "正解: 探索弧产物全留 sandbox; promotion 是方法确认后单独步骤 (真edge confirmed_by_owner=1 才进主项目)。"
+    echo "误报修 check_sandbox_isolation.py 本身, 不 --no-verify 绕。"
+    exit 5
+fi
+
 # 4. Commit message keyword check (manual preview)
 echo
 echo "=== Step 4: commit message keyword ==="

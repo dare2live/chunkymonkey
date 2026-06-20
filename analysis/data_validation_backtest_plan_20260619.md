@@ -1,6 +1,6 @@
 # 数据验证 + 回测方案 Refined Plan (主升浪猎手 · 可执行, 2026-06-19)
 
-> 状态: live (数据/回测能力清单 + gap 仍有效)。**前向执行优先级以 `zhushenglang_hunter_plan_20260617.md` §4 (2026-06-20 优化后) 为准** — 本文件 §4 执行序 (A0→B→C→D→E) 已被 hunter §4 (P1 含成本 honest baseline 决胜 → P2-P5) 取代; 本文件 §1 数据拉取 / §2 因子矩阵 / §3 回测 gap 清单仍是有效参考。owner: 本文件 (数据/gap 部分) + hunter plan §4 (前向优先级)。
+> 状态: live (接下来执行的数据验证+回测路线)。owner: 本文件。
 > 来源: workflow wf_5034f0b3 (5 agents / 482k tokens: tushare字段gap / A股alpha经验 / 回测best-practice / 现状对账 + 综合), 主会话落档。
 > 锚: 真金白银 / R1墙 (IC≠赚钱) / 口径铁律 (申万行业·东财概念·禁同花顺) / execution-aware / 买点 secondary。
 > **实查校验 (写入前已验, 防陈旧)**: `backend/services/formula_engine/factors/` 不存在 (feature_panel BROKEN [confirmed]) · `block_bootstrap_return_null`(experiment_harness.py:147) 仅 test 引用未接裁决 (G1 [confirmed]) · CPCV/PBO 零实现 [confirmed] · `fact_optuna_cumulative_trials` 无 DDL 无 writer [confirmed] · `engine_execution_aware=PASS` live (合约 FAIL note 已陈旧 [confirmed])。

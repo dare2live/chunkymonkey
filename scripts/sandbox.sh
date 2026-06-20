@@ -43,14 +43,15 @@ PYEOF
     echo "wiped all sandbox (留 README) — 主代码/文档/git 0 残留"
     ;;
   check)
-    # 漏检: 探索 runner 漏进 backend/scripts? (pipefail-safe: glob 无匹配 ls 非零不可 die)
-    n=$( { ls backend/scripts/experiment_*.py backend/scripts/analyze_*.py 2>/dev/null || true; } | wc -l | tr -d ' ')
-    if [ "$n" = "0" ]; then
-      echo "[OK] backend/scripts 0 探索 runner (探索都在 sandbox/)"
+    # 隔离门: 实验室产物只留实验室 — C1 backend引用sandbox / C2 控制面嵌未promote实验结果 / C3 探索runner漏主脚本
+    # 完整门 = check_sandbox_isolation.py (覆盖 C1+C2+C3); 不可用时退化到内联 C3 grep
+    if PYTHONPATH=backend python backend/scripts/check_sandbox_isolation.py; then
+      :
+    elif [ $? -eq 127 ] || [ ! -f backend/scripts/check_sandbox_isolation.py ]; then
+      n=$( { ls backend/scripts/experiment_*.py backend/scripts/analyze_*.py 2>/dev/null || true; } | wc -l | tr -d ' ')
+      [ "$n" = "0" ] && echo "[OK fallback] backend/scripts 0 探索 runner" || { echo "[FAIL] $n 探索 runner 漏进 backend/scripts/"; exit 1; }
     else
-      echo "[FAIL] $n 个探索 runner 漏进 backend/scripts/ — 该移到 sandbox/<exp>/:"
-      { ls backend/scripts/experiment_*.py backend/scripts/analyze_*.py 2>/dev/null || true; } | sed 's#^#  #'
-      exit 1
+      echo "[FAIL] 沙盒隔离门未过 (见上)"; exit 1
     fi
     ;;
   *)

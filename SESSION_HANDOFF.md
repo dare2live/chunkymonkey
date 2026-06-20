@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-06-20 10:43:26 CST
+**Snapshot 时间**: 2026-06-21 00:19:38 CST
 
 ## 主线状态
 
@@ -44,23 +44,23 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `c3ac6acd doc: D-step-4a 含成本现实入场裁决 — GBDT edge 真实但远不及 KPI (C-R1)` |
-| 最近 24h commits | 44 |
+| HEAD | `19908acf doc: P1 决胜裁决 — cap-条件化含成本OOS验证方向(beats random+4.6pp)但远未达KPI` |
+| 最近 24h commits | 20 |
 | 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+19908acf doc: P1 决胜裁决 — cap-条件化含成本OOS验证方向(beats random+4.6pp)但远未达KPI
+110fa654 doc: 主升浪猎手计划重优化 — 方法论锁定 + 条件化验证 + 优化后优先级 (P1含成本决胜)
+9d750f99 feat: 负样本分层 fact_rally_negative_strata + 证特征形态条件化(净化后多因子OOS)
+53842401 chore: 全删买点 detour — 方法论重定向回鱼身延续+鱼尾出场 (用户纠偏)
+06bb9432 doc: SESSION_HANDOFF 再生 — D-step-4a C-R1 裁决后快照
 c3ac6acd doc: D-step-4a 含成本现实入场裁决 — GBDT edge 真实但远不及 KPI (C-R1)
 20526d45 doc: 进度保存 — INDEX D-step 状态同步 GBDT 翻案 (0.738) + SESSION_HANDOFF 再生
 0cd1e8d4 doc: D-step-3 翻案 BREAKTHROUGH — 多因子 GBDT 拐点判别 OOS AUC 0.738 (单因子0.61)
 abb77073 doc: 沉淀新反例 — event 定义点(pivot/peak)当入场=前瞻泄漏 (CLAUDE §4.5)
 619171b2 doc: D-step-2 裁决 — 买点 reversal/vol 不可交易 (pivot 前瞻泄漏, C-R1 实证)
-25582e24 feat: doc-drift gate 扩展全活文档 — 机器化拦死引用污染 (用户'保持最新避免污染')
-0db8f5b2 doc: 文档保鲜防污染 — 死引用改指向现gate + reset陈旧档加deprecated头注 (doc-drift passed)
-18085c89 feat: daily_basic 回补 2019 对齐 K线/GT — strata 市值覆盖 83%→100% passed
-81e4c0f4 doc: D-step-1 因子判别 finding — reversal/vol 入场判别稳定(walk-forward passed) 但待含成本验证
-bc854467 doc: C 完成 — F0+B+C 详情移 ledger, goal.md hunter 行精简 → D 焦点
 ```
 
 ## NEXT ACTION (auto-computed)

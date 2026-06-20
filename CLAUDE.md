@@ -68,6 +68,7 @@ ephemeral 探索 (一次性 runner / findings 草稿 / 中间结果 / scratch �
 否则探索散进主代码=反复污染 (本次清 ~100 文件的根因)。`sandbox/` gitignored 用完直接删
 (`sandbox.sh wipe-all`); 唯一跨删存活 = 裁决写 `experiment_store.duckdb` (record_verdict); 真 edge
 才干净重写进 `backend/services/` + 单测。moth `exploration-isolated-in-sandbox` 拦探索 runner 漏进 backend/scripts.
+**promotion 纪律 (2026-06-21 立, 4+次隔离失守根治; 反例: 一条跑偏弧的产物[主库表/builder/控制面KPI/裁决]在方法确认前就 promote 进主项目, wipe sandbox 后主项目仍残留)**: 隔离=脚本进不去**不够**, **产物也不许漏**。探索弧期间(方法未确认)产物全留 sandbox — 派生数据→`sandbox/<exp>/scratch.duckdb`(不往主库建表), findings→`sandbox/<exp>/notes.md`(不往控制面文档写 KPI 结果), runner→sandbox(不进 backend/scripts); 唯一跨 sandbox 写 = `record_verdict`(confirmed_by_owner=0)。**promotion 是方法确认后单独 gated 步**: 真 edge 才重写进 backend/services+单测→主库→控制面引用→`record_verdict(confirmed_by_owner=1)`(带含成本+leakage证据)。**控制面文档只引 confirmed_by_owner=1 结论, 不嵌探索期(=0)结果**。机械门 `check_sandbox_isolation.py` (C1 backend引用sandbox=FAIL / C2 控制面嵌未promote=WARN / C3 探索runner漏主脚本=FAIL), wired into `sandbox.sh check` + `safe_commit` Step 3.8。
 
 ## 4. 数据 / 策略安全 (核心红线)
 
