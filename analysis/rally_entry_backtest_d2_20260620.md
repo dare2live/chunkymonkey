@@ -33,3 +33,32 @@ D-step-1 的 reversal/vol AUC 0.64 + OOS 稳定 **都是真的**, 但**判别的
      (当前 5 panel 因子无这些); 且入场必须现实时点 (无 pivot 前瞻) 重做候选universe。
 - **方法论校正**: 后续任何 episode 级回测, 入场时点必须是**实时可确认点**, 不许用 pivot/peak 等 ±窗定义的事后点
   当入场 (本次教训沉淀)。
+
+## D-step-2 续: 量价+资金 领先因子全盘筛 (2026-06-20, 用户纠偏"用领先因子尽早确认拐点")
+用户 push back: "买点死" 是 defeatist, 目标是用领先因子早确认拐点 (否则全市场量化都不用做)。据此全盘测领先量价+资金
+(daily_basic volume_ratio/turnover 回补2019 + moneyflow 主力/大单), 判别真底(entry_pit) vs 假底(entry_negative):
+
+| 领先因子 (底部/底后窗) | AUC | 读 |
+|---|---|---|
+| volume_ratio 量比(vs短期) | 0.491 | 噪音 |
+| turnover_rate 换手 | 0.587 | 中等 |
+| turnover_rate_f 自由流通换手 | 0.609 | 中等(最强领先量价) |
+| 换手放大 (底前5日 vs 长底基线) | 0.489 | 噪音 (底部仍缩量) |
+| 启动放大 (底后5日 vs 基线) | 0.476 | 噪音; **高放大续涨更差**(派发非吸筹) |
+| 主力净流入占比 (底当日) | 0.574 | 中等 |
+| 大单+特大单净流入 (底后5日) | 0.531 | 噪音; 真假底大单都净流出(散户接盘) |
+
+**第一性原理结论 (重要, 非 defeatist)**: 单股**量价+资金在拐点上, 真底假底几乎一样** (全 AUC 0.46-0.61)。
+边际信息**不在匿名单股量价/资金里** (符合现实: 易抓底则全市场量化发财)。**alpha 大概率在"相对/横截面"信号**:
+板块概念热度 (个股随板块/题材轮动启动) + 市场 regime (牛市背景) + 筹码集中度 (cyq); 主升浪需 tailwind = 横截面非单股。
+**下一步 D-step-3 = 横截面/相对因子** (板块相对强度 + regime + cyq), 多因子 model (非单因子 AUC) + 现实入场点回测。
+
+## D-step-3: 多因子 GBDT model = BREAKTHROUGH (2026-06-20, 用户选"多因子 model 组合")
+板块动量也弱 (sret20 AUC 0.417, 真底反在更弱板块)。单因子全测尽 (量价/资金/板块), 天花板 ~0.6。
+**但 HistGradientBoosting 多因子组合 walk-forward (train<=2022 n25262 / test>=2023 n19006):**
+**OOS AUC = 0.738** (train 0.755, 差0.017 不过拟合), **大幅超单因子 (turnover_f 0.61 / reversal 0.64)**。
+12 特征: base_days/reversal/vol/mom/mf_trend/roe/turnover/turnover_f/volume_ratio/pb/total_mv/net_ratio。
+**结论翻案**: 单因子"买点死"是 defeatist 错判 (用户两次纠偏对); GBDT 抓交互/非线性把弱信号组合成真判别力。
+合法性: walk-forward OOS (非in-sample) + 特征全PIT(<=bottom) + 按年切分无时间泄漏 + 0.738<0.9告警线。
+**仍 C-R1 必要非充分** (D-step-2: AUC0.64含成本亏); 但0.738远强, model-top分位可能真盈利。
+**→ D-step-4 = model 的含成本现实入场回测** (C-R1 裁决) + 特征重要性 + 加板块/regime/cyq (可能再升) + walk-forward多折 + Optuna/Modal 调超参。
