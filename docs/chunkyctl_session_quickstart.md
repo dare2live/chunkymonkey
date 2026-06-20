@@ -1,5 +1,13 @@
 # ChunkyCtl Session Quickstart
 
+> **部分 stale (2026-06-20)**: 下方"手动重建表"表格里的 `build_alpha158_duck` /
+> `build_stage_formula_fitness` / `build_signal_context` / `build_formula_signals_history` 及
+> `audit_execution_surface` / `audit_storage_payloads` / `probe_source_capability` 等命令引用的脚本
+> **在 2026-06-16 reset 已删** (旧 alpha158/formula 管道退役)。**当前管道重建** = `build_feature_panel.py`
+> (L2 因子面板) + `build_rally_ground_truth/entry_pit/negative/episode_strata/stage.py` (主升浪 episode 层) +
+> `build_segment_panel.py`。**启动检查** (doctor/gates/handoff) 部分仍有效。当前阶段/命令以 `../goal.md` +
+> `chunkymonkey-ops` skill 为准, 勿直接运行下方悬空 build_*/audit_* 命令。
+
 ## Recommended New Session Instruction
 
 For a fresh Codex session, the simplest user message is:

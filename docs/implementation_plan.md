@@ -1,5 +1,11 @@
 # ChunkyMonkey Architecture Implementation Plan
 
+> **状态: 大部偏离 / deprecated (2026-06-20)** — 本计划成于 2026-06-16 reset 前, 引用的
+> `audit_*`/`build_*`/`modal_data_push.py` 等多已删, 旧 alpha158/formula 管道已退役。
+> **当前权威执行计划** = `../goal.md` (当前阶段/KPI) + `../analysis/data_validation_backtest_plan_20260619.md`
+> (主升浪猎手 refined plan) + `MASTER_TOPLEVEL_DESIGN.md` (架构骨架)。本文件留作历史架构参考,
+> **勿当现行命令源** (其中脚本命令多已悬空)。
+
 This is the durable execution plan. It describes order, boundaries, gates, and
 acceptance criteria. It must not duplicate every current PASS/WARN/FAIL detail;
 the live ledger is `../goal.md`.

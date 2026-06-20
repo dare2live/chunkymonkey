@@ -90,8 +90,11 @@ but they do not override the active contracts.
 
 ## Active Gate
 
+Doc-drift gate (活索引引用已删代码检测) — the current authoritative gate
+(`audit_docs_graph.py` was retired in the 2026-06-16 reset):
+
 ```bash
-PYTHONPATH=backend python backend/scripts/audit_docs_graph.py --format markdown
+PYTHONPATH=backend python backend/scripts/check_doc_drift.py --check
 ```
 
 For controller-facing docs cleanup readiness, use:
@@ -125,8 +128,9 @@ Current target:
 
 Archive notes:
 
-- `Archived as/under` means the target exists and is checked by
-  `audit_docs_graph.py`.
+- `Archived as/under` means the target exists; archive integrity is currently
+  maintained manually (the former `audit_docs_graph.py` checker was retired in
+  the 2026-06-16 reset; `check_doc_drift.py` covers live-index dangling refs).
 - Some archives intentionally normalize stale `docs/...` references to
   `analysis/...` or add a short historical/status note. Treat archived files as
   evidence, not current operating authority.

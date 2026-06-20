@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-06-20 06:38:56 CST
+**Snapshot 时间**: 2026-06-20 08:44:31 CST
 
 ## 主线状态
 
@@ -44,28 +44,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `eda381d0 feat: A0 完成 — fact_feature_panel 物化 live + 对抗验证 (F0 地基止血收尾)` |
-| 最近 24h commits | 33 |
-| 未 commit 文件 | 2 |
+| HEAD | `18085c89 feat: daily_basic 回补 2019 对齐 K线/GT — strata 市值覆盖 83%→100% passed` |
+| 最近 24h commits | 39 |
+| 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+18085c89 feat: daily_basic 回补 2019 对齐 K线/GT — strata 市值覆盖 83%→100% passed
+81e4c0f4 doc: D-step-1 因子判别 finding — reversal/vol 入场判别稳定(walk-forward passed) 但待含成本验证
+bc854467 doc: C 完成 — F0+B+C 详情移 ledger, goal.md hunter 行精简 → D 焦点
+e970a046 feat: C#48 step2 episode 阶段切分 fact_rally_stage (鱼头/鱼身/鱼尾)
+0a80e5fa doc: C step1 strata done 进度指针 → 续 step2 fact_rally_stage
+3977630f feat: C#48 episode PIT 分层 fact_rally_episode_strata (申万sector+市值+长底)
+b9c865c1 doc: B(#47) tradability go/no-go = GREEN passed — 主升浪起涨点可买入率99.9%
 eda381d0 feat: A0 完成 — fact_feature_panel 物化 live + 对抗验证 (F0 地基止血收尾)
 255c2bb1 doc: A0 锁外全done(5 commit) 同步 — 余仅锁门 RUN, 续拉释锁后物化panel+审计注册
 390c8c3a feat: A0 PIT 负样本 — hard-negative 对照组 fact_rally_entry_negative (结果倒推判别)
-45caf154 doc: A0 进度同步 — a/b/c+死闸防回退 done, 余 RUN 阶段锁门 (续拉释锁后)
-41845922 feat: A0 死闸防回退 — moth 锁住 feature_panel pit_guard 门 + GT outcome 隔离
-c8d6177c feat: A0 GT 标签拆 — entry-PIT 侧物化 fact_rally_entry_pit (剥 outcome 防 X 泄漏)
-00e007c7 feat: A0 接通 feature_panel 物化路径 — 加载器移 services + builder un-broke + pit_guard 门
-8a9a2b4c docs: 压缩前保存 — goal.md hunter行指向 refined plan + A0-1进度 + SESSION_HANDOFF 再生
-8d2ad93e feat: A0-1 主升浪 stage 因子恢复进 services (消除 build_feature_panel→experiment 倒挂)
-c5501515 docs: 数据验证+回测 refined plan (tushare字段gap+A股alpha经验+回测best-practice 研究综合)
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**2 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**run startup checks first — scripts/chunkyctl doctor --fast; prioritize data_health blocking_yellow, then stage-opt structural blocker / need_027 blocked-gap triage**
 
 ## Resilience 配置 (verified)
 

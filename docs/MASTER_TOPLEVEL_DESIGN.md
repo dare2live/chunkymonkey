@@ -22,7 +22,7 @@ KPI (owner=goal.md): 年化≥30% / max_dd≥-20% / 超额HS300>0 / 月胜率≥
 
 ## 2. 总架构 (8层数据 × 4流程域, **data_layers.yaml 唯一驱动**)
 ```
-真相源: data_layers.yaml (表→layer, 85活/56wiped) ── 流程/config 读它, 不自带表清单 (反转, 防重建循环)
+真相源: data_layers.yaml (表→layer; 计数随增删变, 以 data_layers.yaml 实读 + data_layer_audit 为准, 不在此钉死数字) ── 流程/config 读它, 不自带表清单 (反转, 防重建循环)
 ─ 数据层 ───────────────────────────────────────────────────────
  L0_source     tushare_raw + market K线          ← sync_runner (registry 驱动)
  L1_foundation dim/财报PIT/十大股东/LHB/机构      ← from L0

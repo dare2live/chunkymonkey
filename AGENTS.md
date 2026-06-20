@@ -19,8 +19,10 @@ tooling output as authoritative when they conflict.
 - Run `git status --short` before edits. The worktree is often dirty; never
   revert user or peer changes unless explicitly asked.
 - When deleting or retiring scripts, provider paths, startup jobs, cron entries,
-  launchd plists, installers, dashboards, or local automation, run
-  `PYTHONPATH=backend python backend/scripts/audit_execution_surface.py --include-live-launchd --format markdown`.
+  launchd plists, installers, dashboards, or local automation, check the fan-in
+  first with `moth coupling --repo . --impact <name>` (the former
+  `audit_execution_surface.py` was retired in the 2026-06-16 reset; coupling
+  audit + `rg` on launchd/cron/registries replace it).
 - Prefer `rg`, `codegraph`, targeted tests, and read-only DuckDB inspection
   before guessing.
 - Keep `goal.md` current when active objective, priority order, blocker state,
@@ -85,8 +87,9 @@ the selected tests still match the current architecture. A green test is not
 evidence if the tool is proving an obsolete universe, PIT, data-source, or DB
 assumption.
 
-Until `backend/scripts/audit_test_tool_health.py` exists, perform a manual
-pre-test check and state it in the work log:
+Perform a manual pre-test check and state it in the work log (the planned
+`audit_test_tool_health.py` was not built / retired in the 2026-06-16 reset;
+manual check is the current process):
 
 - identify the exact test command and files it will exercise;
 - confirm the test scope and marker are appropriate (`unit`, `contract`,

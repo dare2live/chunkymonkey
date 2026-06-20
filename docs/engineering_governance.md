@@ -1,5 +1,14 @@
 # Engineering Governance Contract
 
+> **部分 stale (2026-06-20)**: 本文引用的 `audit_*` 治理审计套件 (`audit_execution_surface` /
+> `audit_test_tool_health` / `audit_docs_graph` / `audit_storage_payloads` /
+> `audit_portfolio_sizer_profile_attrition`) **在 2026-06-16 reset 已删**。**当前活跃门** =
+> `data_layer_audit.py` / `check_doc_drift.py` / `check_rule_compliance.py` /
+> `check_legacy_flow_integrity.py` / `check_strategy_validation_integrity.py` / `moth assert` /
+> `moth coupling` / codegraph+complexity 配对扫 (详见本文 codegraph 节 + chunkymonkey-ops skill §3)。
+> 下方表中 `audit_*.py` 命令为历史参考, 勿直接运行 (已悬空)。本文规则原则 (最小模块/无 god-file/
+> 删层必删 caller 等) 仍有效。
+
 This is the active engineering rulebook for architecture work after the docs
 consolidation. It absorbs the durable rules from the former top-level design,
 test-tool, agent-parallel, tooling, provider-job, and deprecation docs.

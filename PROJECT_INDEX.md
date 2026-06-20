@@ -2,6 +2,7 @@
 
 > 用于防止对话压缩 / context 丢失导致重复发现项目结构 / 误解数据资产.
 > 内容是**项目地图**, 不是规则 — Codex 规则在 `AGENTS.md`; 当前阶段计划在薄入口 `goal.md`; 历史状态/已完成证据在 `analysis/project_state_ledger.md`; `SESSION_HANDOFF.md` 是生成恢复快照; durable contract 在 `docs/README.md` 指向的 active docs; `CLAUDE.md` 是 legacy Claude-specific history.
+> **文档保鲜 (2026-06-20)**: 全面审计后修死引用 (reset 删的 audit_*/build_* 脚本 → 改指现 gate moth coupling/check_doc_drift + 当前 build_rally_*/feature_panel 管道); `docs/implementation_plan.md` + `docs/chip_distribution_cyq_spec.md` 标 **deprecated** (留历史参考, 勿当现行命令源); `engineering_governance`/`chunkyctl_session_quickstart` 加陈旧头注指现状。检测: `check_doc_drift.py` (活索引悬空) PASS。
 > 2026-06-05 起，旧 GCP / GCS / phase5 monitor / cost tracker 条目只作历史证据，不是可恢复执行面。当前长任务/花钱任务必须走 `backend/config/experiment_jobs.yaml` + `scripts/chunkyctl jobs`，`local` active，`modal` planned/blocked。
 >
 > **目标**: 新接手 (无论 Claude 还是人) 读完此文档**不用看代码 / 不用查 DB** 就能理解:

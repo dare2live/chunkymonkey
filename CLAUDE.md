@@ -124,7 +124,7 @@ JOIN → 永远带 `AND x.built_at <= t` / `as_of_date`; 宇宙 → `dim_index_m
 
 - **in-sample fit 假象**: `mart_per_stock_stage_strategy_optimal` 全期 in-sample + `selector ORDER BY sharpe DESC` → paper_sim "+312%" 假象. 修: walk_forward.expanding_monthly + selector ORDER BY `COALESCE(oos_sharpe, sharpe)` + `governance.enforce_pre_insert` 拒 `walk_forward_mode='none'`.
 - **systemic leakage**: v3.2 `stage_opt_per_stock` MAX(oos_sharpe) GROUP BY stock_code 给每 signal_date 用未来 Optuna (Codex acf48d35 critical, commit 5cc47987).
-- **chain leakage (relative 红线)**: v3 102 features RankIC 0.0353 = relative +75% (未触 absolute 但触 relative), chain 含 inst latest-snapshot + sector 99.978% fallback leakage. 详 [[feedback-codex-critical-no-compromise]].
+- **chain leakage (relative 红线)**: v3 102 features RankIC 0.0353 = relative +75% (未触 absolute 但触 relative), chain 含 inst latest-snapshot + sector 99.978% fallback leakage (Codex CRITICAL: PIT/leakage/真金白银 不折中, §11 存档条款).
 - **含成本红线**: portfolio_backtest +45.4% 当最终决策 (不含 tx_cost/T+1); live 必须含成本 paper_sim, 加成本骤降.
 - **selection bias**: `max_stocks=200` 按 code 排序 → 只取 00 深主板, 创业/科创/沪主 0 只参与 Optuna; 审计只查 DB 层 (5206 PASS) 没查 runner 实际加载数. 改: 全量 universe + 运行时 `validate_loaded_stocks` (板块覆盖+80%).
 - **公式估算 != measured**: `swap_uplift_estimate` 公式估 → 实测 swap 拉低年化 33pp. 改真实 K 线 forward 反事实. (同类: vol-aware stop/ensemble weights/regime gate hardcode → 全进 Optuna search space + walk-forward OOS。)
