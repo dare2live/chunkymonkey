@@ -4,7 +4,7 @@
 > 内容是**项目地图**, 不是规则 — Codex 规则在 `AGENTS.md`; 当前阶段计划在薄入口 `goal.md`; 历史状态/已完成证据在 `analysis/project_state_ledger.md`; `SESSION_HANDOFF.md` 是生成恢复快照; durable contract 在 `docs/README.md` 指向的 active docs; `CLAUDE.md` 是 legacy Claude-specific history.
 > **文档保鲜 (2026-06-20)**: 全面审计后修死引用 (reset 删的 audit_*/build_* 脚本 → 改指现 gate moth coupling/check_doc_drift + 当前 build_rally_*/feature_panel 管道); `docs/implementation_plan.md` + `docs/chip_distribution_cyq_spec.md` 标 **deprecated** (留历史参考, 勿当现行命令源); `engineering_governance`/`chunkyctl_session_quickstart` 死引用改指现 gate/管道 + 陈旧头注。**机器化根治 (用户"保持最新避免污染")**: `check_doc_drift.py` **扩展扫全活文档** (活索引+AGENTS+docs/ 13 档, 非仅活索引 — 故原漏报 AGENTS/docs 死引用); lookbehind 防 mid-path 假阳性(bestchoice/scripts) + 整档 deprecated 头注豁免 + 行级 retired/历史叙事/模板豁免; 6 单测; moth `doc-drift` 断言守 (commit 前拦未来死引用)。现 PASS 悬空=0/13档, 2 deprecated 跳过。
 > 2026-06-05 起，旧 GCP / GCS / phase5 monitor / cost tracker 条目只作历史证据，不是可恢复执行面。当前长任务/花钱任务必须走 `backend/config/experiment_jobs.yaml` + `scripts/chunkyctl jobs`，`local` active，`modal` active(端到端验证 2026-06-20)。
-> **2026-06-20 D-step-2 裁决 (owner=analysis/rally_entry_backtest_d2_20260620.md)**: 主升浪买点 reversal/vol = 不可交易 (含成本现实入场 -2~-6%; 天真入场 90%胜率是 pivot ±窗前瞻泄漏)。新反例入 CLAUDE §4.5 (event 定义点[pivot/peak]当入场=look-ahead)。D 重定向 出场>延续 (goal.md D 行)。
+> **2026-06-20 D 因子矩阵 进展 (owner=analysis/rally_entry_backtest_d2_20260620.md)**: D2 抓出 pivot 前瞻泄漏 (天真入场 90%胜率假, 现实入场单因子 reversal/vol 含成本 -2~-6%; 新反例入 CLAUDE §4.5 event定义点当入场=look-ahead)。D3 单因子全弱(量价/资金/板块 AUC0.46-0.61)后用户选**多因子 model**: **HistGBDT 12因子 walk-forward OOS AUC 0.738**(大幅超单因子0.61, 不过拟合无泄漏)= 真判别力, "买点死"是 defeatist 错判已纠。**待 D4 含成本裁决**(0.738仍C-R1必要非充分)。
 >
 > **目标**: 新接手 (无论 Claude 还是人) 读完此文档**不用看代码 / 不用查 DB** 就能理解:
 > 项目业务 / 架构 / 技术路线 / 数据资产 / 当前进度 / 已知坑 / 常用操作.
