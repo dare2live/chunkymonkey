@@ -136,6 +136,11 @@ JOIN → 永远带 `AND x.built_at <= t` / `as_of_date`; 宇宙 → `dim_index_m
   现实入场 (pivot+21 确认后, 实时可观测 "20日低点守住") **翻成 -2~-6% 含成本**。**裁决量价买点 (reversal/vol) AUC0.64
   全是 pivot 前瞻非 alpha** (C-R1: AUC≠赚钱再坐实, 同 Stage1.5 反转族)。**铁律: episode 回测入场/决策只用实时可确认点,
   禁用 pivot/peak/argmax 等需未来窗的事后点**; 异常漂亮 (90%胜率) = 查泄漏纪律抓出, 救于建在假 edge 上。
+- **per-trade edge 会被 churn 磨没 + 趋势 regime ⟂ 抄底 (2026-06-20, owner=analysis/rally_entry_backtest_d2_20260620.md D4a)**:
+  事件驱动信号 (主升浪入场点) 的 per-trade 含成本收益 (top-decile +5.92%@120d 单调超净负宇宙) **不等于组合可达**。
+  (i) **churn 磨没 edge**: 套"持最高分 top-k + 周期重排"的组合引擎 → 把未持满 horizon 的赢家提前卖 → model≈random (edge 从 +6.6pp 缩到 +1.6pp)。**事件信号必须忠实 fixed-hold (各持满 horizon 到龄), 不能当截面调仓**; 忠实持有才显真 edge (model_decile 年化6.4% vs random -0.2%)。
+  (ii) **趋势 regime gate 证伪**: `指数>MA60` 只在市场已涨时 ON (占13%交易日), 而主升浪入场在**底部** (regime OFF) → 趋势过滤杀光抄底入场 (年化6.4%→-2.3%, dd 还不改善)。**抄底策略 ⟂ 趋势跟随 regime**; dd 控制 (主市场 beta, random 也 -39%) 须 contrarian-超卖 regime / 止损 / vol-target 仓位, 不是趋势 gate。
+  铁律: 判"策略可交易"看**忠实 fixed-hold 组合年化+maxdd 对 KPI**, 非 per-trade 池均值 (会高估); regime 择时方向须与入场方向 (抄底 vs 追涨) 一致。
 
 ## 5. Optuna 治理
 

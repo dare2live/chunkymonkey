@@ -62,3 +62,37 @@ D-step-1 的 reversal/vol AUC 0.64 + OOS 稳定 **都是真的**, 但**判别的
 合法性: walk-forward OOS (非in-sample) + 特征全PIT(<=bottom) + 按年切分无时间泄漏 + 0.738<0.9告警线。
 **仍 C-R1 必要非充分** (D-step-2: AUC0.64含成本亏); 但0.738远强, model-top分位可能真盈利。
 **→ D-step-4 = model 的含成本现实入场回测** (C-R1 裁决) + 特征重要性 + 加板块/regime/cyq (可能再升) + walk-forward多折 + Optuna/Modal 调超参。
+
+## D-step-4a: GBDT model 含成本现实入场裁决 = edge 真实但远不及 KPI (2026-06-20)
+> 引擎: portfolio_execbacktest (T+1 open / 非对称成本 0.11%买 0.16%卖 / 一字板剔篮 / 容量 / 停牌冻结)。
+> realizable 入场: pivot 需 ±LOWWIN(20) 未来窗确认 → 合法只能等确认(bottom+21)入场。OOS AUC 复现 0.730。
+> sandbox=sandbox/d4_entry_backtest (probe.py per-trade + portfolio_sim.py 组合); 裁决 experiment_store run d4a_*。
+
+**per-trade (realizable 晚入场 bottom+21) @120d 含成本净收益**:
+| 桶 (按 score) | 中位净 | 胜率 | |
+|---|---|---|---|
+| model_top10% | **+5.92%** | 62.4% | 含成本净正 |
+| 全体 | −5.62% | 38.1% | 宇宙净负 |
+| model_bottom50% | −7.98% | 31.2% | 单调 ↓ |
+- A 上界 (bottom+1 look-ahead, 仅参考非可交易): top10% +16.22% @120d = 判别力天花板 (timing 免费)。
+- **晚入场 vs 上界缺口 (+5.9% vs +16%)** = realizable 让出初始反弹 (B: 底后5日+5.3%), 早入场是最大 return 杠杆。
+
+**组合级 (忠实 fixed-120d-hold, 等权持有全部 active top-decile)**:
+| 策略 | 年化 | max_dd | sharpe | |
+|---|---|---|---|---|
+| model_decile | **+6.4%** | −28.5% | 0.43 | beats random **+6.6pp** |
+| random_decile | −0.2% | −39.2% | 0.08 | 同宇宙随机基线 |
+| model_decile + regime(趋势) | −2.3% | −29.8% | −0.08 | **regime 杀收益** |
+
+**裁决 (C-R1, 真金白银诚实)**:
+1. **模型 edge 真实**: 忠实持有下 model 选股比随机 +6.6pp 年化, per-trade 单调超全体净负宇宙。判别力(AUC0.73) → realizable 含成本组合价值, 非 IC 幻觉 (区别于 Phase B 33σ 仍 gross 负)。
+2. **但 necessary-not-sufficient**: 6.4%≪KPI 30%; −28.5%≪KPI −20%。AUC 0.73 不足以达 KPI。
+3. **churn 磨没 edge (新反例)**: top_k≪active 的"持最高分N名+周期重排"版 model≈random(+1.6pp), 因重排把未持满120d的赢家提前卖。**事件信号必须忠实 fixed-hold (各持满 horizon), 不能套'持top-k+重排'组合引擎** —— 后者把 per-trade edge 磨没。
+4. **趋势 regime gate 证伪 (新反例, 免走弯路)**: `指数>MA60` 只在市场已涨"ON"(占13%交易日), 而主升浪入场在**底部**(regime OFF) → 趋势过滤杀掉所有抄底入场, 年化6.4%→−2.3% 且 dd 不改善。**抄底策略 ⟂ 趋势跟随 regime**; dd 控制需 contrarian-超卖 regime / 止损 / vol-target 仓位, 非趋势 gate。
+5. **−28.5% dd 主要是市场 beta** (random 也 −39%, 主升浪候选偏小盘, 2023-24 A股熊): 选股解不了, 须仓位/风控层。
+
+**→ D-step-4b 杠杆 (按 return/dd 缺口排序, 用户优先早入场)**:
+(1) **早入场** (用户"尽早确认拐点"): 重建 PIT trailing-low 候选 (无未来窗, 不用 pivot ±窗) + 重训 → 早触发捕反弹 (B+5.9%→逼近 A+16%)。最大 return 杠杆。
+(2) **dd 控制 (非趋势)**: 止损 / vol-target 仓位 / contrarian 超卖 regime。
+(3) **加特征**: 板块热度 + cyq 筹码 (当前12特征无)。
+(4) **鱼尾出场**: 固定120d → 主升浪见顶择时出场。
