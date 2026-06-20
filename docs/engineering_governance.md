@@ -70,9 +70,10 @@ Every new flow, feature, module, table, config file, or threshold must answer:
 Hardcoded business rules are blocked by default. Thresholds, source priority,
 dates, table catalogs, weights, strategy parameters, and resource policies
 belong in config or tables unless a documented exception is safer.
-For `portfolio_sizer` threshold tuning specifically, run
-`backend/scripts/audit_portfolio_sizer_profile_attrition.py` first and treat
-its attrition summary as the required evidence gate before changing
+For `portfolio_sizer` threshold tuning specifically, the former
+`audit_portfolio_sizer_profile_attrition.py` was retired in the 2026-06-16
+reset; produce an equivalent attrition summary manually and treat
+it as the required evidence gate before changing
 `min_n_signals` / `min_wilson_win`.
 
 ## CodeGraph + Complexity
@@ -100,7 +101,7 @@ Before running tests as evidence:
 Primary command:
 
 ```bash
-PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope <registry-id-or-path>
+# retired (2026-06-16 reset): audit_test_tool_health.py 已删; 现手动 pre-test 检查 + 工作日志声明 (见 AGENTS.md)
 ```
 
 ## Controller / Agent Mode
@@ -186,11 +187,11 @@ it to `analysis/`; if it is not useful, delete it.
 | System data health snapshot | `PYTHONPATH=backend python backend/scripts/data_health_snapshot.py --dry-run --format text` (reports `writer_prompt` / owner / sync_step hints in red/yellow rows; use `--format json` for machine consumers) |
 | Dirty worktree buckets | `scripts/chunkyctl worktree --format markdown` |
 | Docs cleanup slice | `scripts/chunkyctl docs --format markdown` |
-| Storage payload / recursive JSON audit | `PYTHONPATH=backend python backend/scripts/audit_storage_payloads.py --format markdown` |
+| Storage payload / recursive JSON audit | retired (2026-06-16 reset; `audit_storage_payloads.py` 已删, 无直接替代) |
 | Pre-task gate | `scripts/chunkyctl preflight "<task>" path/to/scope.py --agent-dispatch "agent:NAME scope/evidence"` |
 | Experiment job plan | `scripts/chunkyctl jobs --family <job-family> --backend local --input-snapshot <snapshot> --objective <why> --rollback-plan <plan> --gate-evidence <gate>=<artifact>` |
-| Docs graph | `PYTHONPATH=backend python backend/scripts/audit_docs_graph.py --format markdown` |
-| Execution surface | `PYTHONPATH=backend python backend/scripts/audit_execution_surface.py --include-live-launchd --format markdown` |
+| Docs graph / 文档漂移 | `PYTHONPATH=backend python backend/scripts/check_doc_drift.py --check` (replaces retired `audit_docs_graph.py`) |
+| Execution surface | `moth coupling --repo . --impact <name>` (replaces retired `audit_execution_surface.py`) |
 | Test tool health | `PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope <scope>` |
 | Safe commit | `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "message"` for local batches; omit `SAFE_COMMIT_NO_PUSH` only when pushing is intended |
 

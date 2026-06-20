@@ -210,7 +210,7 @@ readiness from row counts alone.
 | `complexity.identity_mode=path_kind_message` | Default diff ignores line-number drift and compares finding counts by file/type/message; line numbers remain locating hints |
 | `data/reports/tooling/complexity_baseline.json` exists | `doctor` loads this ignored local artifact by default; refresh it after intentionally accepting the current scanner scope, otherwise stale baselines can make old debt look new |
 | `codegraph.pending.added` matches untracked indexable files | Review/stage by worktree bucket; do not force-sync or bulk stage to silence status |
-| `storage_payload.verdict=FAIL` | Inspect recursive JSON keys and oversized opaque DB payloads with `PYTHONPATH=backend python backend/scripts/audit_storage_payloads.py --format markdown` |
+| `storage_payload.verdict=FAIL` | Inspect recursive JSON keys and oversized opaque DB payloads manually (the `audit_storage_payloads.py` helper was retired in the 2026-06-16 reset) |
 | `storage_payload.summary.reviewed > 0` | Treat as reviewed PASS only when the matching `storage_retention.yaml` rule has owner, classification, caps, and recursive/path-marker guards |
 | `data_health.verdict=FAIL` | Inspect red tables with `PYTHONPATH=backend python backend/scripts/data_health_snapshot.py --dry-run --format text`; treat only blocking assets as startup blockers, and remember that `warning` / `monitor_only` assets are intentionally capped to yellow |
 | `data_health.blocking_yellow > 0` | Inspect `blocking_yellow_tables` and let `scripts/chunkyctl doctor --fast` prioritize those before generic yellow maintenance; blocking-quality yellow assets are actionable even when the verdict is still WARN |
@@ -225,7 +225,7 @@ readiness from row counts alone.
 | `stage_opt.attrition_funnel` / `top_blocked_stage_formula_cells` / `top_blocked_registry_family_cells` exists | Use these evidence fields to locate raw -> filtered -> unique -> blocked -> ready loss, the worst `stage_bin × formula_id` cells, and the worst `registry_scope × formula_family` cells before changing upstream contracts or schemas |
 | `stage_opt.candidate_supply_contract` exists | Treat this as the machine-readable source contract for stage-opt supply: source role, grain, PIT/diagnostic eligibility, allowed consumers, allowed stage bins, and formula scope overrides live in `backend/config/stage_opt_candidate_supply.yaml`; do not re-create these rules in scripts or docs |
 | `stage_opt.next_action_recommendation.focus=upstream_candidate_supply` | Treat this as a supply-side blocker: first check freshness and dependency windows (`fact_signal_context` before `fact_technical_trigger`), then expand upstream formula coverage or signal density only if freshness is aligned. The 2026-06-02 config-only probe series is exhausted, so there is no safe strategy/threshold knob slice left for stage-opt. Evidence-tooling slices are allowed when they make the structural blocker more legible; future production work should be structural redesign or upstream-source work, not another knob-tuning pass. `macd_golden_cross` also carries a `fact_technical_trigger` schema limit note, so do not confuse state rows with a schema-only fix |
-| `need_coverage.blocked_needs` contains `need_027` | Run the dedicated no-persist gate `PYTHONPATH=backend python backend/scripts/probe_source_capability.py --need027-exact-flow-gate --indent 2`; read `exact_flow.source_groups` by provider because AkShare and token-backed TuShare are alternative exact-flow candidates, not an all-sources-AND requirement; treat `need_027` as production-blocked until one source group passes small-batch stability and PIT/freshness, writer, watermark, and failure-queue resolve evidence also pass; `aif10` exact `individual_fund_flow` is unavailable, and the research-side rank snapshot is not a production fallback |
+| `need_coverage.blocked_needs` contains `need_027` | evaluate exact-flow source readiness manually (the `probe_source_capability.py` no-persist gate was retired in the 2026-06-16 reset); read `exact_flow.source_groups` by provider because AkShare and token-backed TuShare are alternative exact-flow candidates, not an all-sources-AND requirement; treat `need_027` as production-blocked until one source group passes small-batch stability and PIT/freshness, writer, watermark, and failure-queue resolve evidence also pass; `aif10` exact `individual_fund_flow` is unavailable, and the research-side rank snapshot is not a production fallback |
 | `--skip-storage-payload` | Use only for emergency startup when the local DuckDB is unavailable; do not claim circular-reference cleanup from a skipped audit |
 
 ## Dirty Resolution Mode
@@ -267,10 +267,8 @@ scripts/chunkyctl doctor --fast
 scripts/chunkyctl worktree --format markdown
 scripts/chunkyctl worktree --bucket startup_tooling --format markdown
 scripts/chunkyctl docs --format markdown
-PYTHONPATH=backend python backend/scripts/audit_execution_surface.py --include-live-launchd --format markdown
-PYTHONPATH=backend python backend/scripts/audit_storage_payloads.py --format markdown
 PYTHONPATH=backend python backend/scripts/data_health_snapshot.py --dry-run --format text
-PYTHONPATH=backend python backend/scripts/probe_source_capability.py --need027-exact-flow-gate --indent 2
+# (audit_execution_surface / audit_storage_payloads / probe_source_capability retired 2026-06-16 reset)
 scripts/chunkyctl preflight "what I am about to change" path/to/file.py
 scripts/chunkyctl audit --run path/to/file.py path/to/test_file.py
 ```
