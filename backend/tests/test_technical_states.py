@@ -322,3 +322,20 @@ def test_mainforce_net_dongcai():
     money = {d: {"net_amount": 1200.0} for d in dates}
     cap = capital_signals(dates, money, {d: 5.0 for d in dates}, window=20)
     assert cap[dates[-1]]["capital_state"] == "主力净流入"            # 东财net_amount>0
+
+def test_volume_signals():
+    """L2成交量② (量比+量能状态+量价配合): 价涨量增=健康/价涨量缩=背离预警。"""
+    from services.technical_states.vol import volume_signals
+    cfg = load_config()
+    dates = [f"2024-01-{i:02d}" for i in range(1, 31)]
+    closes = [10.0] * 21 + [10.0 + 0.2 * j for j in range(1, 10)]   # 后期上涨
+    vols = [1000.0] * 21 + [3000.0] * 9                              # 后期放量
+    out = volume_signals(dates, closes, vols, window=20, cfg=cfg)
+    last = out[dates[-1]]
+    assert last["量能状态"] == "放量" and last["量比"] > 1.5         # 3000/1000=3x 放量
+    assert last["量价配合"] == "价涨量增(健康)"                       # 价涨+放量
+    # 价涨量缩(背离): 涨但缩量
+    vols2 = [3000.0] * 21 + [500.0] * 9                             # 后期缩量
+    out2 = volume_signals(dates, closes, vols2, window=20, cfg=cfg)
+    assert out2[dates[-1]]["量价配合"] == "价涨量缩(背离预警)"
+

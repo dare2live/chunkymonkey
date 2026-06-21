@@ -18,6 +18,7 @@ from services.technical_states.limits import code_to_ts_code, compute_limit_flag
 from services.technical_states.patterns import match_named_patterns
 from services.technical_states.capital import capital_signals
 from services.technical_states.chips import chip_signals
+from services.technical_states.vol import volume_signals
 from services.technical_states.rs import relative_strength
 from services.technical_states import (
     apply_coupling,
@@ -249,6 +250,7 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
     mingan_now = mingan.get(last_date)
     close_by_date = {ohlcv["date"][j]: ohlcv["close"][j] for j in range(len(ohlcv["date"]))}
     chip = chip_signals(ohlcv["date"], load_cyq(code), close_by_date, cfg=cfg)              # 维度④ 筹码
+    vol = volume_signals(ohlcv["date"], ohlcv["close"], ohlcv["volume"], cfg=cfg)           # L2 成交量/量能(量价配合)
     return {
         "code": code, "as_of": last_date,
         "timeframes": tf_read,
@@ -260,6 +262,7 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
         "capital": cap.get(last_date),                                 # 维度③ 资金流向+换手率
         "mingan": mingan_now,                                          # 主力意图+量价背离(暗盘伪维度已砍, 见capital.py裁决)
         "chips": chip.get(last_date),                                  # 维度④ 筹码分布+胜率
+        "vol": vol.get(last_date),                                     # L2 成交量/量能 (量比+量价配合)
         "holders": load_top10_holders(code, as_of=last_date),          # L3 机构: 十大流通股东+动向(report_date带横线同last_date格式)
         "entropy": last.get("entropy"),
         "trend": trend_series(ohlcv, daily_cls),

@@ -149,8 +149,13 @@ function trendSVG(trend, w=820, h=180, opacity=1, dashed=false){
 
 // L2 每日盘面行为
 function layer2Card(base){
-  const cap = base.capital, ch = base.chips, mg = base.mingan;
-  if(!cap && !ch && !mg) return "";
+  const cap = base.capital, ch = base.chips, mg = base.mingan, vol = base.vol;
+  if(!cap && !ch && !mg && !vol) return "";
+  const pvColor = s => /健康|企稳/.test(s||'')?'aligned':/背离|恐慌/.test(s||'')?'conflict':'';
+  const volRow = vol ? `<div class="dim"><span class="dim-k">成交量/量能</span><span class="dim-v">
+    <span class="badge ${vol['量能状态']==='放量'?'info':vol['量能状态']==='缩量'?'':'' }">${vol['量能状态']} ${vol['量比']}x</span>
+    <span class="badge ${pvColor(vol['量价配合'])}">${vol['量价配合']}</span>
+    <span class="src">量比=今量/前20日均量 · 量价配合(价涨量增=真突破/价涨量缩=顶部背离)</span></span></div>` : "";
   const capRow = cap ? `<div class="dim"><span class="dim-k">主力资金/换手</span><span class="dim-v">
     <span class="badge ${cap.capital_state==='主力净流入'?'aligned':cap.capital_state==='主力净流出'?'conflict':''}">${cap.capital_state}</span>
     <span class="badge">${cap.turnover_state}</span>
@@ -173,7 +178,7 @@ function layer2Card(base){
     <span class="src">获利盘 ${ch['获利盘']!=null?ch['获利盘'].toFixed(0)+'%':'—'}${ch['获利盘20日变化']!=null?'('+(ch['获利盘20日变化']>0?'+':'')+ch['获利盘20日变化'].toFixed(0)+')':''} · 套牢盘 ${ch['套牢盘']!=null?ch['套牢盘'].toFixed(0)+'%':'—'}${ch['成本偏度']!=null?' · 成本偏度'+ch['成本偏度'].toFixed(2):''}</span></span></div>` : "";
   return `<div class="layer l2"><div class="layer-hd"><span class="ln">L2</span><span class="lt">每日盘面行为</span>
       <span class="ld">确认形态真伪 · 东财 moneyflow_dc / tushare cyq_perf · 盘后日更 t-1</span></div>
-    <div class="layer-bd">${capRow}${mgRow}${intentRow}${chRow}</div></div>`;
+    <div class="layer-bd">${volRow}${capRow}${mgRow}${intentRow}${chRow}</div></div>`;
 }
 
 // L3 机构 / 十大流通股东 (机构跟随基础, 用户最初设想)
