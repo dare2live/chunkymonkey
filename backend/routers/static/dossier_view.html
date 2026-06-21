@@ -126,13 +126,21 @@ async function loadStock(code, overlay){
   const alignBadge = base.mtf_aligned ? `<span class="badge aligned">日周月一致 ✓</span>` : `<span class="badge conflict">多框矛盾 (诚实并列)</span>`;
   const overlaySVG = afterTrend ? `<svg viewBox="0 0 820 180" width="100%">${trendSVG(base.trend,820,180,0.35)}${trendSVG(afterTrend,820,180,1,true)}</svg>
      <div class="small muted">实线浅=默认值, 虚线亮=调整后 (此股趋势线着色随参数变化)</div>` : `<svg viewBox="0 0 820 180" width="100%">${trendSVG(base.trend)}</svg>`;
+  const ptrend = base.prior_trend ? `<span class="badge ${base.prior_trend==='升'?'aligned':base.prior_trend==='跌'?'conflict':''}">前序趋势: ${base.prior_trend}</span>` : "";
+  const candle = base.today_candle ? `<span class="badge" style="background:#23304a;color:#9cc4ff">当日K线: ${base.today_candle}</span>` : "";
+  const pats = (base.recent_patterns||[]);
+  const seen = {}; const upats = pats.filter(p=>{ const k=p.名称; if(seen[k])return false; seen[k]=1; return true; });
+  const patCard = upats.length ? `<div class="card"><h3>近期命名形态 (态序列模板, 派生标签)</h3>
+    ${upats.map(p=>`<div class="row"><span class="badge" style="background:#2a3a2a;color:#9be0a0">${p.名称}</span>
+      <span class="small muted">完成于 ${p.date} · ${p.provenance}</span></div>`).join("")}</div>` : "";
   document.getElementById("content").innerHTML = `
-    <div class="card"><h2>${code} <span class="small muted">as_of ${base.as_of} · 熵 ${(base.entropy||0).toFixed(2)}</span> ${alignBadge}</h2>
+    <div class="card"><h2>${code} <span class="small muted">as_of ${base.as_of} · 熵 ${(base.entropy||0).toFixed(2)}</span> ${alignBadge} ${ptrend} ${candle}</h2>
       <div class="tf">${["daily","weekly","monthly"].map(k=>`
         <div class="tfbox"><div class="tflabel">${({daily:"日线",weekly:"周线",monthly:"月线"})[k]}</div>
           <div class="tfstate">${tf[k].state||"过渡态"}</div>
           <div class="small muted">${tf[k].desc}</div>${tf[k].sub?`<div class="small">子态: ${tf[k].sub}</div>`:""}</div>`).join("")}</div>
     </div>
+    ${patCard}
     <div class="card"><h3>趋势线 (按形态着色, 非K线)</h3>${overlaySVG}</div>`;
 }
 
