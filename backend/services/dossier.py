@@ -10,8 +10,9 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from services.data_loaders import MARKET_DB
+from services.data_loaders import MARKET_DB, RAW_DB
 from services.duck_adapter import connect as duck_connect
+from services.technical_states.limits import code_to_ts_code, compute_limit_flags, enrich_features
 from services.technical_states import (
     apply_coupling,
     classify_multi_timeframe,
@@ -56,14 +57,37 @@ def load_one(code: str, end: str | None = None,
             "low": [r[3] for r in rows], "close": [r[4] for r in rows], "volume": [r[5] for r in rows]}
 
 
-def _multi_tf(ohlcv: dict, cfg: dict) -> dict:
-    """OHLCV → 多TF 分类 (读 config 三框窗口)。返回 classify_multi_timeframe 结果 + 各框特征序列。"""
+def load_limits(code: str) -> dict:
+    """stk_limit (up/down_limit, A股涨跌停真相源) → {date_iso: (up_limit, down_limit)}。2022+ 才有。"""
+    c = duck_connect(RAW_DB, read_only=True)
+    try:
+        rows = c.execute(
+            "SELECT trade_date, up_limit, down_limit FROM raw_tushare_stk_limit WHERE ts_code = ? ORDER BY trade_date",
+            [code_to_ts_code(code)]).fetchall()
+    finally:
+        c.close()
+    out = {}
+    for td, ul, dl in rows:
+        td = str(td)
+        iso = f"{td[:4]}-{td[4:6]}-{td[6:8]}" if (len(td) == 8 and "-" not in td) else td
+        out[iso] = (ul, dl)
+    return out
+
+
+def _multi_tf(ohlcv: dict, cfg: dict, limit_data: dict | None = None) -> dict:
+    """OHLCV → 多TF 分类 (读 config 三框窗口)。limit_data 给则 enrich 日线(A股涨停修正, D3)。"""
     d = ohlcv
     tf = cfg["timeframes"]
     feats = {name: compute(d["date"], d["open"], d["high"], d["low"], d["close"], d["volume"],
                            timeframe=name, resample_rule=spec.get("resample"),
                            warmup=spec.get("warmup", 120), windows=spec.get("windows"))
              for name, spec in tf.items()}
+    if limit_data:                                          # D3: 涨停日修正日线特征(防放量突破误判)
+        ul = [limit_data.get(dt, (None, None))[0] for dt in d["date"]]
+        dl = [limit_data.get(dt, (None, None))[1] for dt in d["date"]]
+        flags = compute_limit_flags(d["date"], d["open"], d["high"], d["low"], d["close"], ul, dl,
+                                    eps=(cfg.get("涨停") or {}).get("贴板容差", 0.003))
+        enrich_features(feats["daily"], flags, cfg)
     mtf = classify_multi_timeframe(feats["daily"], feats["weekly"], feats["monthly"], cfg)
     return mtf, feats
 
@@ -94,7 +118,7 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
     if not ohlcv:
         return None
     cfg, notes = _effective_cfg(overrides)
-    mtf, feats = _multi_tf(ohlcv, cfg)
+    mtf, feats = _multi_tf(ohlcv, cfg, limit_data=load_limits(code))   # D3 A股涨停修正
     daily_cls = classify_series(feats["daily"], cfg)
     if not mtf:
         return {"code": code, "error": "数据不足 (暖机后无有效 bar)", "trend": []}

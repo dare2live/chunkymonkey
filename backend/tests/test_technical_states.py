@@ -137,3 +137,21 @@ def test_classify_stock_multi_tf_keys():
     assert len(mtf) > 0
     r = next(iter(mtf.values()))
     assert set(r) >= {"daily", "daily_sub", "weekly", "monthly", "mtf_aligned", "entropy"}
+
+
+def test_limits_flags_and_enrich():
+    """D3 A股涨停: 涨停标志识别 + enrich 修正 vol_ratio(封板=最大需求, 防放量突破误判)。"""
+    from services.technical_states.limits import code_to_ts_code, compute_limit_flags, enrich_features
+    assert code_to_ts_code("000513") == "000513.SZ" and code_to_ts_code("600519") == "600519.SH"
+    dates = ["2023-01-03", "2023-01-04"]
+    # bar0 一字涨停(开高低收=11.0, up_limit=11.0); bar1 普通
+    o = [11.0, 10.5]; h = [11.0, 10.8]; l = [11.0, 10.2]; c = [11.0, 10.6]
+    ul = [11.0, 11.66]; dl = [9.0, 9.54]
+    flags = compute_limit_flags(dates, o, h, l, c, ul, dl)
+    assert flags["2023-01-03"]["is_up_limit"] and flags["2023-01-03"]["is_one_word"]
+    assert not flags["2023-01-04"]["is_up_limit"]
+    feats = {"2023-01-03": {"vol_ratio": 0.3}, "2023-01-04": {"vol_ratio": 1.2}}  # 涨停日量缩0.3
+    enrich_features(feats, flags, {"涨停": {"需求proxy量比": 3.0}})
+    assert feats["2023-01-03"]["vol_ratio"] == 3.0       # 封板缩量→proxy(防误判无量假突破)
+    assert feats["2023-01-03"]["is_up_limit"] == 1.0
+    assert feats["2023-01-04"]["vol_ratio"] == 1.2       # 非涨停不改
