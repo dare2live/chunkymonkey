@@ -1,16 +1,17 @@
 """technical_states.capital — 资金流向 + 换手率维度 (档案维度③, 用户点名接入)。
 
 owner=backend/services/technical_states/ + config/technical_states.yaml 资金 段。
-真相源: raw_tushare_moneyflow (主力净额 net_mf_amount, order-size sm/md/lg/elg) + raw_tushare_daily_basic (换手率)。
-描述: 主力净流入/流出(net_mf_amount 20日累计趋势) + 换手活跃度(turnover_rate vs 自身分位)。
-PIT: 资金/换手是盘后数据, 决策侧 JOIN 锚 t-1 (本档案描述用 bar 当日值, 消费侧选股须 t-1)。纯函数。
-注: 真暗盘=Level-2 tick (项目无); tushare moneyflow 只给 order-size 桶, 非真 L2。
+真相源: raw_tushare_moneyflow_dc (东财 net_amount 主力大单净 + net_amount_rate + pct_change) + raw_tushare_daily_basic (换手率)。
+描述: 主力净流入/流出(net_amount 20日累计) + 换手活跃度 + 主力意图(明盘×量价背离)。
+PIT: 资金/换手盘后数据, 决策侧 JOIN 锚 t-1 (档案描述用 bar 当日值, 消费侧选股须 t-1)。纯函数。
+**暗盘伪维度裁决 (2026-06-21 measured, sandbox/mingan_redesign)**: 东财日度桶零和 (elg+lg+md+sm=0) →
+  中小单净 ≡ −大单净, 无独立暗盘维度; 同花顺L2暗盘量级差20x 物理复现不了 (need_027 order-flow BLOCKED 无源)。
+  → 砍伪暗盘 (X_8×中小单 = 明盘的价格加权镜像)。"隐蔽资金"语义改用 **明盘(主力大单净, 89%对齐同花顺明盘) ×
+  价格 量价背离代理** (主力流出但价涨=隐性承接; 流入但价跌=隐性派发), 诚实命名非伪造暗盘金额。
 """
 from __future__ import annotations
 
 import numpy as np
-
-_DONGXIANG = {1: "看多", 2: "做T", 3: "低吸", 4: "看空", 5: "吸筹", 6: "出货", 0: "中性"}
 
 
 def mainforce_net(f: dict) -> float:
@@ -23,56 +24,58 @@ def mainforce_net(f: dict) -> float:
     return (f.get("buy_elg") or 0.0) + (f.get("buy_lg") or 0.0)   # 东财净桶 fallback
 
 
-def _path_weight(o, h, l, c, prev_c) -> float:
-    """X_1..X_8: 日线 OHLC 路径权重 (逐字复刻 TDX 公式 X_8, capped 0.8)。"""
-    if None in (o, h, l, c, prev_c) or not (prev_c and o and h and l):
-        return 0.0
-    x1 = (o - prev_c) / prev_c; x2 = (c - o) / o; x3 = (h - o) / o
-    x4 = (c - h) / h; x5 = (l - o) / o; x6 = (c - l) / l
-    x7 = x1 + x2 + x3 + x4 + x5 + x6
-    return 0.8 if x7 >= 1 else x7
+def _intent_atom(key: str, val, net: float, pct: float, rate: float, c: dict) -> bool:
+    """主力意图单条件原子 (明盘方向/价格方向/主力强弱)。net=主力大单净额(亿), pct=涨跌%, rate=净额占成交额%。"""
+    weak = c.get("主力清淡门", 1.5)   # from yaml: |net_amount_rate| < 此 = 主力参与清淡
+    up = c.get("价格涨门", 0.5)       # from yaml: pct > 此 = 价涨
+    dn = c.get("价格跌门", 0.5)       # from yaml: pct < -此 = 价跌
+    if key == "明盘":
+        return (net > 0) if val == "入" else (net < 0)
+    if key == "价格":
+        return (pct > up) if val == "涨" else (pct < -dn)
+    if key == "明盘弱":               # 主力参与清淡 (净额占成交额比例小)
+        return abs(rate) < weak
+    return False
 
 
-def _dongxiang(liu, ming, an) -> int:
-    """6态动向 (逐字复刻 TDX: 看多1/做T2/低吸3/看空4/吸筹5/出货6/中性0), 按 流向/明盘/暗盘 符号。"""
-    am, aa = abs(ming), abs(an)
-    if liu > 0 and ming > 0 and an > 0: return 1
-    if liu > 0 and ming > 0 and an < 0 and am > aa: return 2
-    if liu > 0 and ming < 0 and an > 0 and aa > am: return 3
-    if liu < 0 and ming < 0 and an < 0: return 4
-    if liu < 0 and ming < 0 and an > 0 and am > aa: return 5
-    if liu < 0 and ming > 0 and an < 0 and aa > am: return 6
-    return 0
+def zhuli_intent(net: float, pct: float, rate: float = 0.0, cfg=None) -> dict:
+    """主力意图解读 (同花顺"暗盘追踪"解读语义, 用**可靠维度重锚**)。
+    **暗盘伪维度裁决 (2026-06-21 measured)**: 东财桶零和 → 中小单净≡−大单净, 无独立暗盘; 同花顺L2暗盘复现不了。
+    → 改用 **明盘(主力大单净 net_amount, 89%对齐同花顺明盘) × 价格** 两个真独立维度 + 量价背离 (隐蔽资金代理)。
+    net=主力大单净额(亿), pct=涨跌%, rate=净额占成交额%(主力强弱)。按 config 主力意图 段有序匹配命中即停。
+    口径: 档案描述维度 (无 forward claim; 选股需含成本OOS另证)。三因子分离: 明盘/量价背离/意图 各独立。
+    返回 {主力意图, 解读, 量价背离}。
+    """
+    c = (cfg or {}).get("主力意图") or {}
+    for rule in c.get("规则", []):
+        cond = rule.get("条件", {})
+        if cond and all(_intent_atom(k, v, net, pct, rate, c) for k, v in cond.items()):
+            return {"主力意图": rule.get("意图"), "解读": rule.get("解读"), "量价背离": rule.get("背离", "")}
+    return {"主力意图": c.get("默认意图", "资金分歧"), "解读": c.get("默认解读", ""), "量价背离": "中性"}
 
 
-def mingan_flow(dates, o, h, l, c, flow_by_date: dict, unit_div: float = 1e4) -> dict:
-    """明暗盘资金 + 今日/三日/五日 动向 (**日度近似 TDX 真L2公式; 非真L2 L2_AMO, 用 moneyflow order-size 桶替代**)。
-    明盘(主力净额)=(elg+lg)买-卖; 暗盘=路径权重X_8 ×(md+sm)signed (近似 X_25); 流向=明+暗; 6态动向。
-    flow_by_date={date:{buy_elg,buy_lg,buy_md,buy_sm,sell_elg,sell_lg,sell_md,sell_sm}} (万元)。unit_div=1e4→亿元。
+def capital_intent(dates, money_by_date: dict, unit_div: float = 1e4, cfg=None) -> dict:
+    """主力意图 + 量价背离 (替代旧 mingan_flow 伪暗盘动向)。
+    明盘 = 主力大单净额 (东财 net_amount, 万元→亿); 量价背离 = 主力净额方向 vs 价格(pct_change) 背离
+    (隐性承接/隐性派发/量价一致); 主力意图 = 明盘×价格 6象限 (config 主力意图 段)。
+    money_by_date={date:{net_amount(万元), net_amount_rate(%), pct_change(%)}}。**三因子分离**: 明盘数值独立, 意图只描述。
     """
     ds = [str(x) for x in dates]
-    ming, an, liu = [], [], []
-    prev_c = None
-    for i, d in enumerate(ds):
-        f = flow_by_date.get(d, {}) or {}
-        w = _path_weight(o[i], h[i], l[i], c[i], prev_c)
-        prev_c = c[i]
-        g = lambda k: (f.get(k) or 0.0)  # noqa: E731
-        m = mainforce_net(f) / unit_div    # 明盘=主力净额(亿, 东财net_amount=大单净, 单一真相源)
-        a = (g("buy_md") + g("buy_sm")) * w / unit_div  # 暗盘=路径权重×东财中小单净(signed, 粗近似非真L2, 方向path驱动)
-        ming.append(m); an.append(a); liu.append(m + a)
+    nets = [(money_by_date.get(d) or {}).get("net_amount") for d in ds]   # 主力大单净 (万元), PIT 顺序
     out = {}
     for i, d in enumerate(ds):
-        if flow_by_date.get(d) is None:
+        f = money_by_date.get(d)
+        if f is None or f.get("net_amount") is None:
             continue
-        row = {"明盘": round(ming[i], 4), "暗盘": round(an[i], 4), "今日流向": round(liu[i], 4),
-               "今日动向": _DONGXIANG[_dongxiang(liu[i], ming[i], an[i])]}
-        if i >= 2:
-            l3, m3, a3 = sum(liu[i - 2:i + 1]), sum(ming[i - 2:i + 1]), sum(an[i - 2:i + 1])
-            row["三日流向"] = round(l3, 4); row["三日动向"] = _DONGXIANG[_dongxiang(l3, m3, a3)]
-        if i >= 4:
-            l5, m5, a5 = sum(liu[i - 4:i + 1]), sum(ming[i - 4:i + 1]), sum(an[i - 4:i + 1])
-            row["五日流向"] = round(l5, 4); row["五日动向"] = _DONGXIANG[_dongxiang(l5, m5, a5)]
+        net_yi = (f.get("net_amount") or 0.0) / unit_div                  # 明盘 (亿, 东财大单净=可靠真信息)
+        rate = f.get("net_amount_rate") or 0.0                            # 净额占成交额% (主力强弱)
+        pct = f.get("pct_change") or 0.0                                  # 当日涨跌%
+        intent = zhuli_intent(net_yi, pct, rate, cfg)
+        row = {"主力净额": round(net_yi, 4), "净额占比": round(rate, 2), "涨跌": round(pct, 2),
+               "主力意图": intent["主力意图"], "意图解读": intent["解读"], "量价背离": intent["量价背离"]}
+        seg = [nets[j] for j in range(max(0, i - 2), i + 1) if nets[j] is not None]   # 3日主力净额累计 (PIT)
+        if seg:
+            row["三日主力净额"] = round(sum(seg) / unit_div, 4)
         out[d] = row
     return out
 

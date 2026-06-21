@@ -260,35 +260,48 @@ def test_capital_and_chip_signals():
     assert last["集中状态"] == "单峰集中"                                    # (11-9)/10=0.2<0.5
 
 
-def test_mingan_flow():
-    """明暗盘动向 (逐字复刻TDX真L2公式, 日度近似): 明盘=主力净额, 暗盘=路径权重×(md+sm), 6态动向。"""
-    from services.technical_states.capital import mingan_flow, _path_weight, _dongxiang
-    # 强阳线路径权重>0
-    assert _path_weight(10.0, 11.0, 9.9, 10.9, 10.0) > 0
-    # 6态动向逐字: 流向>0 明>0 暗>0 = 看多(1)
-    assert _dongxiang(5, 3, 2) == 1
-    assert _dongxiang(5, 3, -1) == 2     # 做T (明>暗)
-    assert _dongxiang(-5, -3, -2) == 4   # 看空
-    assert _dongxiang(-1, -3, 2) == 5    # 吸筹 (流向<0 明<0 暗>0 |明|>|暗|)
+def test_capital_intent():
+    """主力意图 + 量价背离 (暗盘伪维度已砍, 改 明盘×价格 量价背离代理)。
+    evidence: sandbox/mingan_redesign — 东财桶零和+同花顺L2暗盘任何日度口径不可近似(净额54%/gross排序0.283)。"""
+    from services.technical_states.capital import capital_intent
+    cfg = load_config()
     dates = ["2024-01-01", "2024-01-02", "2024-01-03"]
-    o = [10.0, 10.5, 10.8]; h = [10.6, 11.0, 11.2]; l = [9.9, 10.4, 10.7]; c = [10.5, 10.9, 11.1]
-    flow = {d: {"buy_elg": 1000, "buy_lg": 500, "buy_md": 300, "buy_sm": 200,
-                "sell_elg": 400, "sell_lg": 300, "sell_md": 200, "sell_sm": 100} for d in dates}
-    mg = mingan_flow(dates, o, h, l, c, flow)
-    last = mg[dates[-1]]
-    assert "明盘" in last and "暗盘" in last and last["今日动向"] in ("看多","做T","低吸","看空","吸筹","出货","中性")
-    assert "三日动向" in last      # 3日滚动
+    money = {d: {"net_amount": -20000.0, "net_amount_rate": 3.0, "pct_change": 2.5} for d in dates}  # 明出价涨(背离)
+    out = capital_intent(dates, money, cfg=cfg)
+    last = out[dates[-1]]
+    assert last["主力意图"] == "诱空吸筹建仓"        # net<0(主力流出) + 价涨 = 隐蔽承接
+    assert last["量价背离"] == "隐性承接"
+    assert "主力净额" in last and "三日主力净额" in last and "净额占比" in last   # 明盘数值独立保留(三因子分离)
 
 
-def test_mainforce_unified_with_mingan():
-    """口径统一 (东财单一源): mainforce_net=东财net_amount; capital_signals主力净额 与 mingan明盘 同源同符号。"""
-    from services.technical_states.capital import capital_signals, mingan_flow, mainforce_net
-    f = {"net_amount": 1200, "buy_md": 50, "buy_sm": 30}            # 东财: net_amount=主力净额(大单净)
-    assert mainforce_net(f) == 1200                                 # 东财 net_amount 直接
-    assert mainforce_net({"buy_elg": 1000, "buy_lg": 500}) == 1500  # 无net_amount → elg+lg净 fallback
+def test_zhuli_intent_minga_price():
+    """主力意图 6象限 (明盘方向 × 价格方向; 量价背离代理替伪暗盘)。
+    evidence: 同花顺暗盘追踪26条语义 + sandbox/mingan_redesign 标定 (净额/gross 均不可近似L2暗盘)。"""
+    from services.technical_states.capital import zhuli_intent
+    cfg = load_config()
+    def it(net, pct, rate): return zhuli_intent(net, pct, rate, cfg)["主力意图"]   # 主力大单净(亿), 涨跌%, 净额占比%
+    # 主力清淡 (|rate|<1.5)
+    assert it(0.1, 2.0, 1.0) == "洗盘低吸"        # 主力清淡+价涨 = 隐蔽承接
+    assert it(0.1, -2.0, 1.0) == "缩量阴跌"       # 主力清淡+价跌
+    # 背离 (明盘强 rate>=1.5)
+    assert it(-2.0, 2.0, 3.0) == "诱空吸筹建仓"   # 明出+价涨 (恩捷股份型)
+    assert it(2.0, -2.0, 3.0) == "拉高派发诱多"   # 明入+价跌
+    # 量价一致
+    assert it(2.0, 2.0, 3.0) == "主力推升看多"    # 明入+价涨 (晶方/万通型)
+    assert it(-2.0, -2.0, 3.0) == "主力做空出逃"  # 明出+价跌 (赛力斯型)
+    # 价平 → 分歧
+    assert it(2.0, 0.0, 3.0) == "资金分歧"
+    # 量价背离标签 (三因子分离: 背离独立于意图)
+    assert zhuli_intent(-2.0, 2.0, 3.0, cfg)["量价背离"] == "隐性承接"
+    assert zhuli_intent(2.0, -2.0, 3.0, cfg)["量价背离"] == "隐性派发"
+
+
+def test_mainforce_net_dongcai():
+    """主力大单净 (东财单一源): mainforce_net=东财net_amount; capital_signals 主力净流入判定同源。"""
+    from services.technical_states.capital import capital_signals, mainforce_net
+    assert mainforce_net({"net_amount": 1200}) == 1200                # 东财 net_amount 直接
+    assert mainforce_net({"buy_elg": 1000, "buy_lg": 500}) == 1500    # 无net_amount → elg+lg净 fallback
     dates = [f"2024-01-{i:02d}" for i in range(1, 26)]
-    money = {d: f for d in dates}
+    money = {d: {"net_amount": 1200.0} for d in dates}
     cap = capital_signals(dates, money, {d: 5.0 for d in dates}, window=20)
-    mg = mingan_flow(dates, [10.0]*25, [10.5]*25, [9.9]*25, [10.3]*25, money)
-    assert cap[dates[-1]]["capital_state"] == "主力净流入"           # 东财net_amount>0
-    assert mg[dates[-1]]["明盘"] > 0                                 # 明盘同源东财net_amount
+    assert cap[dates[-1]]["capital_state"] == "主力净流入"            # 东财net_amount>0

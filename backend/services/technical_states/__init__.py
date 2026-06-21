@@ -42,7 +42,7 @@ from services.technical_states.limits import (  # noqa: F401
     enrich_features,
 )
 from services.technical_states.patterns import match_named_patterns  # noqa: F401
-from services.technical_states.capital import capital_signals, mainforce_net, mingan_flow  # noqa: F401
+from services.technical_states.capital import capital_signals, mainforce_net, capital_intent, zhuli_intent  # noqa: F401
 from services.technical_states.chips import chip_signals  # noqa: F401
 from services.technical_states.rs import relative_strength  # noqa: F401
 
@@ -52,5 +52,5 @@ __all__ = [
     "apply_coupling", "with_overrides", "list_tunables",
     "compute_limit_flags", "enrich_features", "code_to_ts_code",
     "apply_context", "candle_pattern", "match_named_patterns", "relative_strength",
-    "capital_signals", "mainforce_net", "mingan_flow", "chip_signals",
+    "capital_signals", "mainforce_net", "capital_intent", "zhuli_intent", "chip_signals",
 ]

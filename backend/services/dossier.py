@@ -88,19 +88,19 @@ def _iso(td) -> str:
 
 def load_capital(code: str) -> tuple[dict, dict]:
     """**东财 moneyflow_dc 单一供应商** (维度③, 与项目 概念=东财 同源 口径自洽; flow-vendor=membership-vendor 红线)。
-    → (money_by_date, turnover_by_date)。money_by_date={date:{net_amount(主力净额=大单净), buy_md, buy_sm}}(各档净额, 万元)。
-    东财数据 2023-09 起 (前无资金, 档案描述近期为主)。明盘=net_amount; 暗盘=路径权重×(buy_md+buy_sm)。
+    → (money_by_date, turnover_by_date)。money_by_date={date:{net_amount(主力大单净, 万元), net_amount_rate(占成交额%), pct_change(涨跌%)}}。
+    东财数据 2023-09 起 (前无资金, 档案描述近期为主)。明盘=net_amount; 量价背离=net_amount方向 vs pct_change (暗盘伪维度已砍, 见 capital.py 裁决)。
     """
     ts = code_to_ts_code(code)
     c = duck_connect(RAW_DB, read_only=True)
     try:
         dc = c.execute(
-            "SELECT trade_date, net_amount, buy_md_amount, buy_sm_amount "
+            "SELECT trade_date, net_amount, net_amount_rate, pct_change "
             "FROM raw_tushare_moneyflow_dc WHERE ts_code = ? ORDER BY trade_date", [ts]).fetchall()
         tr = c.execute("SELECT trade_date, turnover_rate FROM raw_tushare_daily_basic WHERE ts_code = ? ORDER BY trade_date", [ts]).fetchall()
     finally:
         c.close()
-    money = {_iso(r[0]): {"net_amount": r[1], "buy_md": r[2], "buy_sm": r[3]} for r in dc}
+    money = {_iso(r[0]): {"net_amount": r[1], "net_amount_rate": r[2], "pct_change": r[3]} for r in dc}
     return (money, {_iso(td): v for td, v in tr})
 
 
@@ -207,8 +207,8 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
     rs_now = rs.get(last_date)
     money, turnover = load_capital(code)                                                    # 维度③ 资金+换手
     cap = capital_signals(ohlcv["date"], money, turnover, cfg=cfg)
-    from services.technical_states.capital import mingan_flow                                # 明暗盘动向(日度近似TDX真L2公式)
-    mingan = mingan_flow(ohlcv["date"], ohlcv["open"], ohlcv["high"], ohlcv["low"], ohlcv["close"], money)
+    from services.technical_states.capital import capital_intent                             # 主力意图+量价背离(暗盘伪维度已砍)
+    mingan = capital_intent(ohlcv["date"], money, cfg=cfg)
     mingan_now = mingan.get(last_date)
     close_by_date = {ohlcv["date"][j]: ohlcv["close"][j] for j in range(len(ohlcv["date"]))}
     chip = chip_signals(ohlcv["date"], load_cyq(code), close_by_date, cfg=cfg)              # 维度④ 筹码
@@ -221,7 +221,7 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
         "recent_patterns": recent_patterns,                            # D5b 近期命名形态(老鸭头等)
         "rs": rs_now,                                                  # RS 相对强度 (强于/弱于大盘, 超额KPI)
         "capital": cap.get(last_date),                                 # 维度③ 资金流向+换手率
-        "mingan": mingan_now,                                          # 明暗盘动向(日度近似TDX真L2公式, 非真L2)
+        "mingan": mingan_now,                                          # 主力意图+量价背离(暗盘伪维度已砍, 见capital.py裁决)
         "chips": chip.get(last_date),                                  # 维度④ 筹码分布+胜率
         "entropy": last.get("entropy"),
         "trend": trend_series(ohlcv, daily_cls),
