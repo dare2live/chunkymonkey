@@ -27,9 +27,9 @@
 **判断法典种子** (人话 → 机器话, 自动执法):
 | 人话 | 机器话 (moth/gate) |
 |---|---|
-| 每张表必声明所属 layer | `moth data-layer-integrity` ✓ |
-| 不留 god-file / 万物互引 | `moth minimal-module-main-routers` + `no-new-godfile` ✓ |
-| 删的层不被启动重建 | `services/schema_layer_filter` ✓ |
+| 每张表必声明所属 layer | `moth data-layer-integrity` [OK] |
+| 不留 god-file / 万物互引 | `moth minimal-module-main-routers` + `no-new-godfile` [OK] |
+| 删的层不被启动重建 | `services/schema_layer_filter` [OK] |
 | 文档不准漂移 | `moth doc-drift` (本轮立) |
 | 数字 measured 可复现 | `check_rule_compliance` + leakage gate |
 
@@ -65,6 +65,7 @@
 | **P1** | **主升浪猎手 (episode-first 结果倒推)** | **owner=`analysis/zhushenglang_hunter_plan_20260617.md` + `data_validation_backtest_plan_20260619.md`**; 5阶段 #46-50 (A0地基→B可买入率→C分层切阶段→**D因子矩阵 Optuna+Modal**→E转正门)。**F0地基 + B tradability + C分层切阶段 = done+对抗验证 (2026-06-19~20, 8 commit, 详 ledger 2026-06-19~20 条)**: 地基全连通 (fact_feature_panel 8.17M PIT / 正9070+hard-neg35198 入场点100%可查因子 / 鱼头鱼尾 fact_rally_stage 切分 panel-join100%); tradability GREEN (可买入率99.9%, 主升浪慢平滑非连板); Modal 端到端就绪 | **→ D 按阶段因子矩阵 (#49, 2026-06-20 用户纠偏重定向; 前期买点 detour 已全删)**: 前期 D-step 起涨点买点判别 (单/多因子二分类) **偏离计划 §0 诚实先验** (买点 AUC≈0.5=secondary, **主攻=鱼身延续+鱼尾出场+仓位+在场时机**) — 已全删重来。**正确路径 (用户确认)**: 在已切 `fact_rally_stage` (起涨630k/主升750k/顶部127k) 上**逐阶段验因子**, 优先级 **鱼尾出场 > 鱼身延续 > 鱼头买点**; **判据 = stage 窗内条件化持有 (持到信号反转非固定调仓) → 含成本绝对收益裁决, IC 仅快筛, 不看 AUC**; 消费者锚定: 鱼身因子=是否继续持有, 鱼尾因子=何时卖 (捕更多主升+避顶部回撤)。先 **CYQ 出货预警 (鱼尾, 0代码高价值: cyq_perf 单峰→多峰/px_pctile)** + 多头排列/资金净入 (鱼身)。owner=`data_validation_backtest_plan_20260619.md` §2.2-2.3 + `zhushenglang_hunter_plan_20260617.md` §0/Phase2-3。**execution 铁律 (非泄漏, 措辞校准)**: 回测出场只用实时可确认点 — 顶是事后 ±窗确认, 禁在事后顶当天卖 (label 可用未来=合法; 成交点用未来=不现实)。残: (e)/GT统一/winsorize/daily_basic2019(task_022abb42) 留后 |
 | **P1** | **数据底座: universe真相源 + 非tushare退役** | **2026-06-19**: universe 身份真相源切 tushare stock_basic (双向bug根治: K线∩前缀漏入指数000300 + stale akshare漏真股 → 加身份交集); 非tushare源全盘点(akshare22/tdxhub18/aif10 13, owner=`analysis/non_tushare_source_inventory_20260619.md`); **6/6 SAFE_TO_DROP 退役 ~838k行**(逐表对抗验证0消费者+shared-writer删X留Y); 排除股全库清+写入门防回潮; ensemble污染孤儿退役; P0拉取(stock_basic/share_float/stk_holdernumber done, stk_factor_pro运行中) | 链完验P0落库 universe-clean; **KEEP_MIGRATE 5表**(aif10 valuation/peer/forecast→v3_picture + dividend_summary→scoring + price_kline→regime)走 M2/M3/M4 双轨先迁后删 |
 | P1 | 数据底座研究 (chips/分位/资金) | cyq 实测与 tushare qfq 同复权坐标可用 (C0 FAIL=审计比错基准非数据错); 高积分高价值因子已排序 | cyq 解冻 2018 + 待评估高价值未拉项 |
+| **P2** | **档案三层 + 筹码精细化 + 残留清理** (2026-06-21, owner=`analysis/session_research_chips_formula_residual_20260621.md`) | 三层架构定稿+落地 (L1价格形态/L2每日盘面[资金/筹码/RS/量价背离]/L3属性背景[机构十大流通股东 done + 板块/基本面待]); 浅色重做 (claude_design 配色) + 机构L3 holderCard; **前端入口收口** (根路由旧v3 React→dossier + design/归档, 用户痛点根治, commit 56e79b14); 资金东财单源 + **砍暗盘伪维度** (measured双向对抗: 东财桶零和+gross 96%假象) →量价背离代理; **公式=episode标注工具** (用户纠正方法论: 知道赢家后用公式标买卖点, 非信号正推冒充结果倒推); GS公式 (动态均线迭代+神奇九转+明暗盘, K线红买绿卖, 中际旭创主升浪验证) = 鱼身鱼尾信号锚 | **待办 (接 D 因子矩阵)**: ①**筹码精细化升级鱼尾CYQ出货预警** (华泰VWAP三角分布+换手递推重建筹码分布, **日度可做**比cyq_perf 5分位精细 + 筹码龄分层 + 分盈亏统计量[均值/标准差/偏度/熵/套牢盘]; **仅L2描述+stage-conditional, 不做端到端AI黑箱/无条件截面撞R1**) ②机构切tushare (fact_top10_holder_period tdx_f10→top10_floatholders, 违默认tushare红线) ③**dim_trading_calendar切tushare** (akshare→raw_tushare_trade_cal, P0 PIT安全 tushare已fresh未接) ④残留清理批次 (confirmed_delete: perf/feature_labels/ui_labels/pipeline_lock/updater机构rebuild步) ⑤L3 sector_context落地 (蓝图就绪 wf_05c60317) |
 | P2 | 深层解耦 backlog | kept routers 懒加载已删 services / 散落服务自建表 / god-file (framework doc §6) | rebuild 时按 layer 顺手解耦, moth 守不回潮; **不 big-bang** |
 
 ## 重建路线 (owner=`analysis/zhushenglang_hunter_plan_20260617.md` + MASTER §5)
