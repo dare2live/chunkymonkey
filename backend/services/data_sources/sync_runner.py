@@ -427,6 +427,14 @@ def _write_batch(conn, spec: dict[str, Any], rows: list[dict[str, Any]]) -> int:
     if missing:
         raise ValueError(f"{table}: api 返回缺 grain 列 {missing} — registry 条目或上游 schema 变了")
 
+    # 批内去重 (复审 HIGH 根因, 2026-06-22): API/分页可返回同 grain 重复行 (limit_list_d 实测单日插14次,
+    # 23116 重复行膨胀涨停家数 14x)。DELETE-INSERT MERGE 只跨批去重不去批内 → 必须先 drop_duplicates(grain),
+    # 否则批内重复直接累积入库 (grain 无 DB 唯一约束兜底)。keep='last' 取最新一条。
+    _ndup = len(df)
+    df = df.drop_duplicates(subset=grain, keep="last")
+    if len(df) < _ndup:
+        log.info("[dedup] %s 批内去重 %d 行 (同 grain 重复)", table, _ndup - len(df))
+
     # universe 写入门 (2026-06-17 用户: 排除列表=交易日历级硬真相源, 排除股不入库):
     # stock-level 域 (universe_filter=true) 写前丢非白名单前缀行 (北交所8x/9x/三板4x); index/concept
     # 域 (sw_daily/dc_index/moneyflow_ind_dc/index_*) 不设此标不受影响。by_trade_date 域重拉全市场

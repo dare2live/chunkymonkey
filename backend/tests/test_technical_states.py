@@ -460,3 +460,25 @@ def test_unlock_signal():
     assert r["临近解禁"] == "20260701" and r["解禁占比"] == 5.0 and r["解禁预警"] is True   # 5%>3%门, 只计90日内
     # 无未来90日解禁 (仅过期 + 远期)
     assert unlock_signal([("20260101", 2.0), ("20271231", 8.0)], "2026-06-18", cfg=cfg)["临近解禁"] is None
+
+
+def test_market_regime():
+    """L3⑥ 市场regime (横切): 大盘真MA斜率+位置 → 牛/震荡/熊 + 涨停情绪(净涨停+炸板率)。PIT (只用≤t)。"""
+    from services.technical_states.regime import market_regime
+    cfg = load_config()
+    dates = [f"2024-{1+i//28:02d}-{1+i%28:02d}" for i in range(60)]
+    # 大盘稳升 (均线上行+价在线上) → 牛市; 净涨停高+炸板率低 → 情绪强
+    idx = [3000.0 * (1.005 ** i) for i in range(60)]
+    senti = {d: {"up": 100, "down": 10, "zha": 20} for d in dates}   # 净涨停90>30, 炸板率20/120=0.17<0.4
+    out = market_regime(dates, idx, senti, cfg=cfg)
+    last = out[dates[-1]]
+    assert last["regime"] == "牛市" and last["大盘趋势"] == "上行"
+    assert last["净涨停"] == 90 and last["情绪"] == "情绪强(风险偏好高)"
+    assert last["炸板率"] == round(20/120, 2)
+    # 大盘跌 (均线下行+价在线下) → 熊市; 跌停>涨停 → 情绪弱
+    idx2 = [3000.0 * (0.99 ** i) for i in range(60)]
+    senti2 = {d: {"up": 5, "down": 50, "zha": 10} for d in dates}    # 净涨停-45<0 → 弱
+    out2 = market_regime(dates, idx2, senti2, cfg=cfg)
+    assert out2[dates[-1]]["regime"] == "熊市" and out2[dates[-1]]["情绪"] == "情绪弱(风险偏好低)"
+    # PIT: 前 2*窗口 日无 regime
+    assert dates[0] not in out

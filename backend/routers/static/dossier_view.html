@@ -276,11 +276,23 @@ function eventsCard(base){
     <div class="layer-bd">${lhbRow}${bkRow}${ulRow}</div></div>`;
 }
 
-// L3 其余属性背景 (市场regime 占位 — ⑥ 待落地)
-function layer3Rest(){
+// L3⑥ 市场 regime (横切非单股: 大盘环境决定进攻/防御; stage-conditional 最外层门)
+function layer3Rest(base){
+  const r = base.regime;
+  if(!r) return "";
+  const regColor = s => s==='牛市'?'aligned':s==='熊市'?'conflict':'';
+  const sentiColor = s => /强/.test(s||'')?'aligned':/弱/.test(s||'')?'conflict':'';
   return `<div class="layer l3"><div class="layer-hd"><span class="ln">L3</span><span class="lt">市场 regime</span>
-      <span class="ld">大盘环境 (横切非单股因子)</span></div>
-    <div class="layer-bd"><span class="ph">市场regime门(大盘趋势/涨停情绪, stage-conditional最外层横切) — 待落地接入(⑥)</span></div></div>`;
+      <span class="ld">大盘环境 · 横切非单股 · stage-conditional 最外层门</span></div>
+    <div class="layer-bd">
+      <div class="dim"><span class="dim-k">大盘环境</span><span class="dim-v">
+        <span class="badge ${regColor(r.regime)}">${r.regime}</span>
+        <span class="badge">大盘趋势 ${r['大盘趋势']||'—'}</span>
+        <span class="src">HS300 真MA斜率+价位 (牛=均线上行+价在线上/熊=下行+线下/震荡=背离)</span></span></div>
+      <div class="dim"><span class="dim-k">涨停情绪</span><span class="dim-v">
+        <span class="badge ${sentiColor(r['情绪'])}">${r['情绪']||'—'}</span>
+        <span class="src">涨停 ${r['涨停家数']!=null?r['涨停家数']:'—'} · 跌停 ${r['跌停家数']!=null?r['跌停家数']:'—'} · 净涨停 ${r['净涨停']!=null?r['净涨停']:'—'}${r['炸板率']!=null?' · 炸板率 '+(r['炸板率']*100).toFixed(0)+'%':''}</span></span></div>
+    </div></div>`;
 }
 
 async function loadStock(code, overlay){
@@ -326,7 +338,7 @@ async function loadStock(code, overlay){
     ${fundamentalsCard(base)}
     ${holderCard(base)}
     ${eventsCard(base)}
-    ${layer3Rest()}
+    ${layer3Rest(base)}
     <div class="layer"><div class="layer-hd"><span class="lt">趋势线</span><span class="ld">按形态着色 · 非K线</span></div>
       <div class="layer-bd">${overlaySVG}</div></div>`;
 }

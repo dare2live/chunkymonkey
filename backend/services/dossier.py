@@ -23,6 +23,7 @@ from services.technical_states.rs import relative_strength
 from services.technical_states.sector_context import sector_regime, concept_labels
 from services.technical_states.fundamentals import fundamental_signals, valuation_signals, analyst_expectation
 from services.technical_states.events import lhb_signal, block_signal, unlock_signal
+from services.technical_states.regime import market_regime
 from services.technical_states import (
     apply_coupling,
     classify_multi_timeframe,
@@ -395,6 +396,35 @@ def load_share_float(code: str, as_of: str | None = None) -> list:
     return [(r[0], r[1]) for r in rows]
 
 
+def load_market_regime(as_of: str | None = None, index_code: str = "000300.SH") -> dict | None:
+    """L3⑥ 市场 regime (横切非单股, PIT 锚 trade_date): 大盘指数 close 序列 + 每日涨跌停情绪 (≤t)。
+    返回 market_regime(...) 在 as_of 当日的 regime dict, 或 None。所有股共享 (大盘环境)。
+    """
+    asof = as_of.replace("-", "") if as_of else None
+    c = duck_connect(RAW_DB, read_only=True)
+    try:
+        iw = "ts_code = ?" + (" AND trade_date <= ?" if asof else "")
+        idx = c.execute(f"SELECT trade_date, close FROM raw_tushare_index_daily WHERE {iw} ORDER BY trade_date",
+                        [index_code] + ([asof] if asof else [])).fetchall()
+        sw = "trade_date <= ?" if asof else "1=1"
+        # COUNT(DISTINCT ts_code) 防 limit_list_d 精确重复行 (实测 23116 重复, 个股最多插14次) 膨胀涨停家数 (复审 HIGH)
+        senti = c.execute(f'SELECT trade_date, "limit", COUNT(DISTINCT ts_code) FROM raw_tushare_limit_list_d '
+                          f'WHERE {sw} GROUP BY trade_date, "limit"', ([asof] if asof else [])).fetchall()
+    finally:
+        c.close()
+    if not idx:
+        return None
+    idx_dates = [_iso(r[0]) for r in idx]
+    idx_close = [r[1] for r in idx]
+    sentiment: dict = {}                                  # {iso_date: {up,down,zha}}
+    for td, lim, n in senti:
+        d = sentiment.setdefault(_iso(td), {})
+        d["up" if lim == "U" else "down" if lim == "D" else "zha"] = n
+    cfg = load_config()
+    reg = market_regime(idx_dates, idx_close, sentiment, cfg=cfg)
+    return reg.get(idx_dates[-1]) if reg else None
+
+
 def _multi_tf(ohlcv: dict, cfg: dict, limit_data: dict | None = None) -> dict:
     """OHLCV → 多TF 分类 (读 config 三框窗口)。limit_data 给则 enrich 日线(A股涨停修正, D3)。"""
     d = ohlcv
@@ -498,6 +528,7 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
               "block": block_signal(load_block_trade(code, as_of=last_date, days=ev_days),    # 大宗交易 (trade_date PIT)
                                     close_by_date, cfg=cfg),
               "unlock": unlock_signal(load_share_float(code, as_of=last_date), last_date, cfg=cfg)}  # 解禁 (ann_date锚 float_date前瞻)
+    regime = load_market_regime(as_of=last_date)                                              # L3⑥ 市场regime (横切, 所有股共享)
     return {
         "code": code, "as_of": last_date,
         "timeframes": tf_read,
@@ -515,6 +546,7 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
         "valuation": valuation,                                        # L3④ 估值 (PE/PB自身分位/股息/市值, trade_date PIT)
         "analyst": analyst,                                            # L3④ 分析师预期 (近6月研报评级/目标价上行空间, report_date PIT)
         "events": events,                                              # L3⑤ 事件催化 (龙虎榜/大宗trade_date PIT + 解禁float_date前瞻)
+        "regime": regime,                                             # L3⑥ 市场regime (横切非单股: 大盘趋势+涨停情绪, stage-conditional最外层)
         "holders": load_top10_holders(code, as_of=last_date),          # L3 机构: 十大流通股东+动向(report_date带横线同last_date格式)
         "entropy": last.get("entropy"),
         "trend": trend_series(ohlcv, daily_cls),
