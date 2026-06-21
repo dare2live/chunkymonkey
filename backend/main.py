@@ -55,7 +55,7 @@ except Exception:
     pass
 
 # FastAPI app
-app = FastAPI(title="Chunky Monkey v2", version="2.0.0")
+app = FastAPI(title="ChunkyMonkey — 股票档案 / 主升浪猎手", version="2.0.0")
 
 
 @app.on_event("startup")
@@ -322,38 +322,23 @@ def render_index_html() -> str:
 if ASSETS_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 
-# v3 设计稿（React CDN，零工具链，详见 开发手册.md §7）
-DESIGN_DIR = PROJECT_ROOT / "design"
-if DESIGN_DIR.exists():
-    app.mount("/v3", StaticFiles(directory=str(DESIGN_DIR), html=False), name="v3-design")
+# 旧 v3 React 设计稿 (design/) 已退役归档 .archive/design_pre_reset_v3/ — 残留审计 wf_9e0eebb2 确证:
+# main.py 根路由曾重定向到 design/ 旧 v3 React 界面 = 用户痛点"打开看到旧前端误导"。
+# 当前唯一 live 前端 = 股票档案 (Stock Dossier) /api/dossier/view。/v3 StaticFiles 挂载已删。
 
 
 @app.get("/")
 async def index():
-    """根路径直接进 v3 设计稿 (旧 vanilla 前端已 Phase ζ 退役)。"""
+    """根路径进股票档案 (Stock Dossier) — 当前唯一 live 前端。旧 v3 React 设计稿/vanilla 前端均已退役 (design/ 归档 .archive/)。"""
     from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/v3/Chunky%20Monkey%20v3.html")
-
-
-@app.get("/legacy")
-@app.get("/legacy/")
-async def legacy_retired():
-    """Phase ζ 收尾: 旧 vanilla 前端正式退役。文件保留在 repo 历史, 但不再对外提供。"""
-    from fastapi.responses import JSONResponse
-    return JSONResponse(
-        status_code=410,
-        content={
-            "ok": False,
-            "error": "legacy_retired",
-            "message": "旧 vanilla 前端已 Phase ζ 退役, 请使用 /v3",
-            "redirect": "/v3/Chunky%20Monkey%20v3.html",
-        },
-    )
+    return RedirectResponse(url="/api/dossier/view")
 
 
 @app.get("/v3")
 @app.get("/v3/")
-async def v3_index():
-    """v3 设计稿入口，重定向到主 HTML。"""
+@app.get("/legacy")
+@app.get("/legacy/")
+async def retired_frontends():
+    """旧前端退役收口: v3 React 设计稿 → .archive/design_pre_reset_v3/; 旧 vanilla → repo 历史。当前前端 = /api/dossier/view。"""
     from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/v3/Chunky%20Monkey%20v3.html")
+    return RedirectResponse(url="/api/dossier/view")
