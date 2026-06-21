@@ -205,3 +205,21 @@ def test_candle_patterns():
     assert candle_pattern(10.3, 10.5, 9.0, 10.5, prior_trend="升", cfg=cfg) == "上吊线"   # 上涨末=看空
     # A股一字板特判 (不判十字星)
     assert candle_pattern(11.0, 11.0, 11.0, 11.0, is_up_limit=True, is_one_word=True, cfg=cfg) == "一字板涨停"
+
+
+def test_named_patterns_pit_no_backfill():
+    """D5b 命名形态: 态序列模板在**完成bar命中, 不回贴历史bar** (PIT三时点); 老鸭头序列匹配。"""
+    from services.technical_states.patterns import match_named_patterns
+    cfg = load_config()
+    # 构造老鸭头序列: 上升通道→缩量回踩→中继平台→放量突破(出水=完成bar)
+    seq = ([("d%02d" % i, "上升通道") for i in range(5)]
+           + [("d%02d" % i, "缩量回踩") for i in range(5, 8)]
+           + [("d%02d" % i, "中继平台") for i in range(8, 12)]
+           + [("d12", "放量突破")])
+    named = match_named_patterns(seq, cfg)
+    assert "d12" in named and any(p["名称"] == "老鸭头" for p in named["d12"])  # 命中在出水bar
+    # PIT: 不回贴鸭头/吸筹段 (d00-d11 不应有老鸭头标签)
+    for d in [s[0] for s in seq[:-1]]:
+        assert not any(p["名称"] == "老鸭头" for p in named.get(d, [])), f"{d} 回贴老鸭头=前瞻泄漏"
+    # provenance 标主观性
+    assert "主观" in [p["provenance"] for p in named["d12"] if p["名称"] == "老鸭头"][0]

@@ -15,6 +15,7 @@ from services.duck_adapter import connect as duck_connect
 from services.technical_states.candles import candle_pattern
 from services.technical_states.context import apply_context
 from services.technical_states.limits import code_to_ts_code, compute_limit_flags, enrich_features
+from services.technical_states.patterns import match_named_patterns
 from services.technical_states import (
     apply_coupling,
     classify_multi_timeframe,
@@ -141,12 +142,16 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
                                   prior_trend=dlast.get("prior_trend"),
                                   is_up_limit=bool(lf.get("is_up_limit")), is_down_limit=bool(lf.get("is_down_limit")),
                                   is_one_word=bool(lf.get("is_one_word")), cfg=cfg)
+    refined_seq = [(d, daily_cls[d].get("refined_dominant")) for d in sorted(daily_cls)]   # D5b 命名形态
+    named = match_named_patterns(refined_seq, cfg)
+    recent_patterns = [{"date": d, **p} for d in sorted(named)[-5:] for p in named[d]]     # 近期完成的命名形态
     return {
         "code": code, "as_of": last_date,
         "timeframes": tf_read,
         "mtf_aligned": last.get("mtf_aligned"),
         "prior_trend": dlast.get("prior_trend"),                       # D4 前序趋势 (位置消歧上下文)
         "today_candle": today_candle,                                  # D5 当日单日K线形态
+        "recent_patterns": recent_patterns,                            # D5b 近期命名形态(老鸭头等)
         "entropy": last.get("entropy"),
         "trend": trend_series(ohlcv, daily_cls),
         "tunables": list_tunables(cfg),
