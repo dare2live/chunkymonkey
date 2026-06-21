@@ -1,0 +1,147 @@
+"""dossier — 股票档案聚合服务 (form 维度解读器, 前端档案视图的后端桥接)。
+
+owner=docs/stock_dossier_master_design.md (P2) + backend/services/technical_states/。
+设计: 实现维度解读器协议的 form 维度 — interpret(单股多TF形态解读)/screen(列符合形态的股票)/series(趋势线非K线)。
+后续维度(板块/资金/筹码)各加一个同协议模块, dossier 聚合层并列调用 (本文件先做 form 维度)。
+PIT: 只用 ≤end 的 bar (load_kline end 截断); universe 排除股不进 screen 集 (assert_universe_clean)。
+趋势线: 不画 K线蜡烛, 用 (date, close, 主态) 分段着色折线 + 降采样, 供前端轻量渲染。
+"""
+from __future__ import annotations
+
+from services.data_loaders import MARKET_DB
+from services.duck_adapter import connect as duck_connect
+from services.technical_states import (
+    apply_coupling,
+    classify_multi_timeframe,
+    classify_series,
+    compute,
+    list_tunables,
+    load_config,
+    with_overrides,
+)
+
+# 主态 → 趋势线着色语义 (前端用; bull绿/bear红/中性灰)
+_STATE_COLOR = {
+    "上升通道": "up", "放量突破": "up", "缩量上涨": "up", "缩量回踩": "up",
+    "下跌通道": "down", "高位滞涨": "down",
+    "低位横盘": "flat",
+}
+
+
+def _effective_cfg(overrides: dict | None):
+    """应用前端参数 override (经边界耦合同步) → effective config + 同步说明。"""
+    cfg = load_config()
+    if not overrides:
+        return cfg, []
+    synced, notes = apply_coupling(overrides, cfg)
+    return with_overrides(cfg, synced), notes
+
+
+def load_one(code: str, end: str | None = None,
+             start: str = "2015-01-01") -> dict | None:  # rule-compliance: ok evidence=serving 档案视图K线加载窗口起始日, 非策略参数(暖机120+足够多TF)
+    """单股 OHLCV (PIT: ≤end); 走中央 adapter 只读 market.duckdb。返回 {date,open,high,low,close,volume} 平行数组。"""
+    where = f"code = ? AND date >= '{start}'" + (f" AND date <= '{end}'" if end else "")
+    c = duck_connect(MARKET_DB, read_only=True)
+    try:
+        rows = c.execute(
+            f"SELECT date, open, high, low, close, volume FROM price_kline_qfq_tushare "
+            f"WHERE {where} ORDER BY date", [code]).fetchall()
+    finally:
+        c.close()
+    if not rows:
+        return None
+    return {"date": [str(r[0]) for r in rows], "open": [r[1] for r in rows], "high": [r[2] for r in rows],
+            "low": [r[3] for r in rows], "close": [r[4] for r in rows], "volume": [r[5] for r in rows]}
+
+
+def _multi_tf(ohlcv: dict, cfg: dict) -> dict:
+    """OHLCV → 多TF 分类 (读 config 三框窗口)。返回 classify_multi_timeframe 结果 + 各框特征序列。"""
+    d = ohlcv
+    tf = cfg["timeframes"]
+    feats = {name: compute(d["date"], d["open"], d["high"], d["low"], d["close"], d["volume"],
+                           timeframe=name, resample_rule=spec.get("resample"),
+                           warmup=spec.get("warmup", 120), windows=spec.get("windows"))
+             for name, spec in tf.items()}
+    mtf = classify_multi_timeframe(feats["daily"], feats["weekly"], feats["monthly"], cfg)
+    return mtf, feats
+
+
+def trend_series(ohlcv: dict, daily_cls: dict, max_points: int = 240) -> list[dict]:
+    """趋势线 (非K线): (date, close, 着色态) 降采样到 ≤max_points; 着色按当日主态 up/down/flat。"""
+    dates, closes = ohlcv["date"], ohlcv["close"]
+    n = len(dates)
+    step = max(1, n // max_points)
+    out = []
+    for i in range(0, n, step):
+        d = dates[i]
+        cls = daily_cls.get(d)
+        dom = cls["dominant"] if cls else None
+        out.append({"date": d, "close": closes[i], "color": _STATE_COLOR.get(dom, "flat"), "state": dom})
+    return out
+
+
+def _desc(cfg: dict, state: str | None) -> str:
+    if not state:
+        return "过渡态 (无清晰主态)"
+    return cfg["状态"].get(state, {}).get("描述", state)
+
+
+def interpret_stock(code: str, end: str | None = None, overrides: dict | None = None) -> dict | None:
+    """单股档案 (form 维度): 多TF 当下解读 + 趋势线 + 可调参数。end=None 取最新; overrides=前端调参。"""
+    ohlcv = load_one(code, end)
+    if not ohlcv:
+        return None
+    cfg, notes = _effective_cfg(overrides)
+    mtf, feats = _multi_tf(ohlcv, cfg)
+    daily_cls = classify_series(feats["daily"], cfg)
+    if not mtf:
+        return {"code": code, "error": "数据不足 (暖机后无有效 bar)", "trend": []}
+    last_date = max(mtf)
+    last = mtf[last_date]
+    tf_read = {}
+    for name in ("daily", "weekly", "monthly"):
+        key = {"daily": "daily", "weekly": "weekly", "monthly": "monthly"}[name]
+        st = last.get(key)
+        tf_read[name] = {"state": st, "desc": _desc(cfg, st),
+                         "sub": last.get("daily_sub") if name == "daily" else None}
+    return {
+        "code": code, "as_of": last_date,
+        "timeframes": tf_read,
+        "mtf_aligned": last.get("mtf_aligned"),
+        "entropy": last.get("entropy"),
+        "trend": trend_series(ohlcv, daily_cls),
+        "tunables": list_tunables(cfg),
+        "coupling_notes": notes,
+    }
+
+
+def screen_pattern(pattern: str, end: str | None = None, limit: int = 40,
+                   overrides: dict | None = None, scan: int = 300) -> dict:
+    """列出最新(≤end) 主态==pattern 的股票 + 各自 mini 趋势线。scan=扫描股票数上限(性能)。
+    universe: price_kline_qfq_tushare 已过 universe 写入门 (排除股不在表), screen 集天然干净。
+    """
+    cfg, notes = _effective_cfg(overrides)
+    c = duck_connect(MARKET_DB, read_only=True)
+    try:
+        codes = [r[0] for r in c.execute(
+            "SELECT DISTINCT code FROM price_kline_qfq_tushare ORDER BY code LIMIT ?", [scan]).fetchall()]
+    finally:
+        c.close()
+    hits = []
+    for code in codes:
+        ohlcv = load_one(code, end)
+        if not ohlcv:
+            continue
+        mtf, feats = _multi_tf(ohlcv, cfg)
+        if not mtf:
+            continue
+        last = mtf[max(mtf)]
+        if last.get("daily") == pattern:
+            daily_cls = classify_series(feats["daily"], cfg)
+            hits.append({"code": code, "sub": last.get("daily_sub"),
+                         "mtf_aligned": last.get("mtf_aligned"),
+                         "trend": trend_series(ohlcv, daily_cls, max_points=80)})
+        if len(hits) >= limit:
+            break
+    return {"pattern": pattern, "desc": _desc(cfg, pattern), "scanned": len(codes),
+            "count": len(hits), "stocks": hits, "coupling_notes": notes}

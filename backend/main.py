@@ -153,6 +153,10 @@ app.include_router(workbench_router, prefix="/api/workbench", tags=["workbench"]
 from routers.data_sources import router as data_sources_router
 app.include_router(data_sources_router, prefix="/api/data_sources", tags=["data_sources"])
 
+# 股票档案视图 (Stock Dossier P2; owner=docs/stock_dossier_master_design.md)
+from routers.dossier import router as dossier_router
+app.include_router(dossier_router, prefix="/api/dossier", tags=["dossier"])
+
 # 策略预设 (P4)
 from routers.strategy_preset import router as strategy_preset_router
 app.include_router(strategy_preset_router, prefix="/api/inst/strategy", tags=["strategy_preset"])

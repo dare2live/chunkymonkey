@@ -1,0 +1,141 @@
+<!-- 股票档案视图 (Stock Dossier P2) — 自包含, 无 node。owner=docs/stock_dossier_master_design.md -->
+<!-- 维度①形态: 多TF解读 + 趋势线(非K线) + 形态股票列表 + 交互调参(边界耦合同步) + before/after叠加 -->
+<meta charset="utf-8">
+<style>
+  :root { --up:#2e9e5b; --down:#d24b4b; --flat:#9aa0a6; --bg:#0f1115; --panel:#1a1d24; --line:#2a2e38; --txt:#e6e8eb; --dim:#9aa0a6; --accent:#4a9eff; }
+  * { box-sizing:border-box; font-family:-apple-system,"PingFang SC",sans-serif; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-size:13px; }
+  .wrap { display:grid; grid-template-columns:300px 1fr; gap:0; height:100vh; }
+  .left { background:var(--panel); border-right:1px solid var(--line); padding:14px; overflow-y:auto; }
+  .right { padding:16px; overflow-y:auto; }
+  h2 { font-size:15px; margin:0 0 10px; } h3 { font-size:13px; color:var(--dim); margin:14px 0 6px; font-weight:600; }
+  input,select { background:#12151b; color:var(--txt); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:13px; }
+  .row { display:flex; align-items:center; gap:8px; margin:6px 0; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px; margin-bottom:12px; }
+  .tf { display:flex; gap:10px; flex-wrap:wrap; }
+  .tfbox { flex:1; min-width:150px; background:#12151b; border:1px solid var(--line); border-radius:8px; padding:10px; }
+  .tflabel { color:var(--dim); font-size:11px; } .tfstate { font-size:16px; font-weight:700; margin:3px 0; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; }
+  .aligned { background:#173a26; color:var(--up); } .conflict { background:#3a2020; color:var(--down); }
+  .slider { display:flex; align-items:center; gap:6px; margin:4px 0; font-size:11px; }
+  .slider input[type=range]{ flex:1; } .slider .val{ width:54px; text-align:right; color:var(--accent); }
+  .coupled { color:#e0a030; } .note { color:#e0a030; font-size:11px; margin:3px 0; }
+  .stocklist { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:10px; }
+  .stockcard { background:#12151b; border:1px solid var(--line); border-radius:8px; padding:8px; cursor:pointer; }
+  .stockcard:hover { border-color:var(--accent); }
+  button { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:7px 12px; cursor:pointer; font-size:13px; }
+  button.ghost { background:#2a2e38; }
+  .muted { color:var(--dim); } .small { font-size:11px; }
+  svg text { fill:var(--dim); font-size:9px; }
+</style>
+
+<div class="wrap">
+  <div class="left">
+    <h2>股票档案</h2>
+    <div class="row"><input id="code" placeholder="股票代码 如 600800" style="flex:1"><button onclick="loadStock()">查</button></div>
+
+    <h3>形态筛选 (列出符合的股票)</h3>
+    <select id="pattern" style="width:100%"></select>
+    <div class="row"><button class="ghost" onclick="runScreen()" style="flex:1">列出符合此形态的股票</button></div>
+
+    <h3>调参微调识别 <span class="small muted">(调一个边界, 关联同步)</span></h3>
+    <div id="sliders"></div>
+    <div class="row"><button class="ghost" onclick="resetParams()" style="flex:1">复位</button></div>
+    <div id="notes"></div>
+  </div>
+
+  <div class="right">
+    <div id="content"><p class="muted">输入股票代码查看档案, 或选形态列出符合的股票。趋势线按形态着色(绿=升/红=跌/灰=横盘)。调参后叠加 before/after 对比。</p></div>
+  </div>
+</div>
+
+<script>
+const API = "/api/dossier";
+let TUN = [], CUR_CODE = null, OVR = {};
+
+function ovStr(){ return Object.entries(OVR).map(([k,v])=>k+":"+v).join(","); }
+
+async function init(){
+  const r = await fetch(`${API}/tunables`).then(x=>x.json());
+  TUN = r.tunables;
+  const sel = document.getElementById("pattern");
+  sel.innerHTML = Object.entries(r.states).map(([s,d])=>`<option value="${s}">${s} — ${d.split('(')[0]}</option>`).join("");
+  renderSliders();
+}
+function renderSliders(){
+  const box = document.getElementById("sliders");
+  box.innerHTML = TUN.map((t,i)=>{
+    const unit = t["单位"]==="百分比"?"%":(t["单位"]==="倍数"?"x":"");
+    const v = (t.param in OVR)?OVR[t.param]:t["当前值"];
+    const min = (t["单位"]==="百分比")?-20:0, max=(t["单位"]==="百分比")?20:(t["单位"]==="倍数"?3:1);
+    const step = (t["单位"]==="比例")?0.01:0.1;
+    const cp = t["耦合"].length?` <span class="coupled" title="${t["耦合"].join(',')}">⇄</span>`:"";
+    return `<div class="slider"><span style="width:120px" title="${t["状态"]}">${t["状态"]}·${t["指标"]}${cp}</span>
+      <input type="range" min="${min}" max="${max}" step="${step}" value="${v}" oninput="onSlide('${t.param}',this.value)">
+      <span class="val" id="v_${i}">${(+v).toFixed(2)}${unit}</span></div>`;
+  }).join("");
+}
+function onSlide(param,val){
+  OVR[param] = +val;
+  const i = TUN.findIndex(t=>t.param===param);
+  if(i>=0){ const t=TUN[i]; const unit=t["单位"]==="百分比"?"%":(t["单位"]==="倍数"?"x":""); document.getElementById("v_"+i).textContent=(+val).toFixed(2)+unit; }
+  if(CUR_CODE) loadStock(CUR_CODE, true);
+}
+function resetParams(){ OVR={}; renderSliders(); document.getElementById("notes").innerHTML=""; if(CUR_CODE) loadStock(CUR_CODE); }
+
+function trendSVG(trend, w=820, h=180, opacity=1, dashed=false){
+  if(!trend.length) return "";
+  const xs=trend.map((_,i)=>i), ys=trend.map(p=>p.close);
+  const minY=Math.min(...ys), maxY=Math.max(...ys);
+  const X=i=>40+i/(trend.length-1)*(w-60), Y=v=>h-20-(v-minY)/((maxY-minY)||1)*(h-40);
+  let segs="";
+  for(let i=1;i<trend.length;i++){
+    const c={up:"var(--up)",down:"var(--down)",flat:"var(--flat)"}[trend[i].color]||"var(--flat)";
+    segs+=`<line x1="${X(i-1)}" y1="${Y(ys[i-1])}" x2="${X(i)}" y2="${Y(ys[i])}" stroke="${c}" stroke-width="2" opacity="${opacity}" ${dashed?'stroke-dasharray="3 3"':''}/>`;
+  }
+  const lbl=[0,Math.floor(trend.length/2),trend.length-1].map(i=>`<text x="${X(i)}" y="${h-6}">${trend[i].date}</text>`).join("");
+  return segs+lbl;
+}
+
+async function loadStock(code, overlay){
+  code = code || document.getElementById("code").value.trim();
+  if(!code) return;
+  CUR_CODE = code; document.getElementById("code").value=code;
+  const base = await fetch(`${API}/stock/${code}`).then(x=>x.json());
+  if(base.error){ document.getElementById("content").innerHTML=`<p class="conflict">${base.error}</p>`; return; }
+  let afterTrend=null, notes=[];
+  if(overlay && Object.keys(OVR).length){
+    const aft = await fetch(`${API}/stock/${code}?ov=${encodeURIComponent(ovStr())}`).then(x=>x.json());
+    afterTrend = aft.trend; notes = aft.coupling_notes||[];
+  }
+  document.getElementById("notes").innerHTML = notes.map(n=>`<div class="note">⇄ ${n}</div>`).join("");
+  const tf = base.timeframes;
+  const alignBadge = base.mtf_aligned ? `<span class="badge aligned">日周月一致 ✓</span>` : `<span class="badge conflict">多框矛盾 (诚实并列)</span>`;
+  const overlaySVG = afterTrend ? `<svg viewBox="0 0 820 180" width="100%">${trendSVG(base.trend,820,180,0.35)}${trendSVG(afterTrend,820,180,1,true)}</svg>
+     <div class="small muted">实线浅=当前参数, 虚线亮=调整后</div>` : `<svg viewBox="0 0 820 180" width="100%">${trendSVG(base.trend)}</svg>`;
+  document.getElementById("content").innerHTML = `
+    <div class="card"><h2>${code} <span class="small muted">as_of ${base.as_of} · 熵 ${(base.entropy||0).toFixed(2)}</span> ${alignBadge}</h2>
+      <div class="tf">${["daily","weekly","monthly"].map(k=>`
+        <div class="tfbox"><div class="tflabel">${({daily:"日线",weekly:"周线",monthly:"月线"})[k]}</div>
+          <div class="tfstate">${tf[k].state||"过渡态"}</div>
+          <div class="small muted">${tf[k].desc}</div>${tf[k].sub?`<div class="small">子态: ${tf[k].sub}</div>`:""}</div>`).join("")}</div>
+    </div>
+    <div class="card"><h3>趋势线 (按形态着色, 非K线)</h3>${overlaySVG}</div>`;
+}
+
+async function runScreen(){
+  const p = document.getElementById("pattern").value;
+  document.getElementById("content").innerHTML = `<p class="muted">扫描中 (${p})...</p>`;
+  const ov = Object.keys(OVR).length?`&ov=${encodeURIComponent(ovStr())}`:"";
+  const r = await fetch(`${API}/screen?pattern=${encodeURIComponent(p)}&limit=40&scan=300${ov}`).then(x=>x.json());
+  document.getElementById("content").innerHTML = `
+    <div class="card"><h2>${p} <span class="small muted">${r.desc}</span></h2>
+      <div class="muted small">扫 ${r.scanned} 股, 命中 ${r.count}${r.coupling_notes&&r.coupling_notes.length?` · 调参: ${r.coupling_notes.join("; ")}`:""}</div></div>
+    <div class="stocklist">${r.stocks.map(s=>`
+      <div class="stockcard" onclick="loadStock('${s.code}')">
+        <b>${s.code}</b> ${s.mtf_aligned?'<span class="badge aligned">一致</span>':''}
+        <div class="small muted">${s.sub||''}</div>
+        <svg viewBox="0 0 160 50" width="100%">${trendSVG(s.trend,160,50)}</svg></div>`).join("")}</div>`;
+}
+init();
+</script>
