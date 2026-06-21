@@ -1,0 +1,62 @@
+# technical_states.yaml — 技术形态识别工具 config (judgment 参数 + 多时间框架, 2026-06-21 立)
+#
+# owner = backend/services/technical_states/。形态识别地基: 给任一股任一时点(日/周/月)识别技术状态(主态+子态)。
+# 公式**结构**在 classifier.py (稳定); 本 config 持**学到的可调参数**(阈值/k/τ/子态分位) — 守宪法 §1.0 judgment→config 不 hardcode。
+# 参数学习走 services.technical_states.tuner (Optuna, sandbox) → 冻结到此 → confirmed_by_owner 转 true。
+
+meta:
+  version: 1
+  tuned_on: "2026-06-21 sandbox/state_quantify P1 (586股 OOS-stable: train软可分0.764≈test0.760, 覆盖100%, 80%干净归类)"
+  confirmed_by_owner: false   # 学习层冻结标记 (true=已对抗验证转正; 现初版待 v3 全宇宙验证刷新)
+
+# 多时间框架: 日线主, 周/月线辅助确认。窗口按 TF 缩放(bar 数): 月线不能用日线的 40/120 bar(=40个月/120个月)。
+# windows: ma=多头排列均线 / er=路径效率R²maxDD窗 / pctile=价格分位窗 / mom=动量窗 / range=区间窗 / vol=量基准窗。
+# 注: 状态参数(states/sub_thresholds)在日线 tune; 周/月线用同参数=近似(量级不同), per-TF tune 是 refinement(tuner)。
+timeframes:
+  daily:   {resample: null, warmup: 120, windows: {ma: [5, 10, 20, 60], er: 40, pctile: 120, mom: 20, range: 60, vol: 20}}
+  weekly:  {resample: "W",  warmup: 60,  windows: {ma: [4, 8, 13, 26],  er: 20, pctile: 52,  mom: 12, range: 26, vol: 10}}
+  monthly: {resample: "ME", warmup: 30,  windows: {ma: [3, 6, 12, 24],  er: 9,  pctile: 24,  mom: 6,  range: 12, vol: 6}}
+
+# 软隶属度 (softmax 温度 τ; min_score=低于此最大分=无清晰主态=过渡态)
+soft:
+  tau: 0.0506
+  min_score: 0.0648
+
+# 顶层状态: 每个 = 学到的阈值参数 + per-state sigmoid 陡度 k (控边界软硬)
+# (公式结构见 classifier.STATE_FORMULAS; 顺序即隶属度向量维度顺序)
+states:
+  低位横盘: {k: 1.054, params: {base_pc: 0.475, base_rp: 0.455}}
+  放量突破: {k: 0.592, params: {brk_mo: 0.053, brk_vr: 1.887}}
+  上升通道: {k: 3.292, params: {up_ms: 0.0655, up_al: 0.628}}
+  缩量上涨: {k: 0.550, params: {shr_vr: 0.795}}
+  高位滞涨: {k: 2.373, params: {top_pc: 0.717, top_mo: 0.0562}}
+  下跌通道: {k: 2.892, params: {dn_ms: -0.0592}}
+  缩量回踩: {k: 2.599, params: {pb_mo: -0.0093, pb_vr: 0.851}}
+
+# 子态: 每个顶层态按修饰量(ER路径效率/maxDD/accel/zvol)分位细分 (所有形态都细分)
+sub_states:
+  低位横盘: [地量横盘, 温和横盘]
+  放量突破: [温和突破, 巨量突破]
+  上升通道: [温和上涨, 震荡上涨, 加速上涨]
+  缩量上涨: [缩量延续]
+  高位滞涨: [放量派发, 缩量惜售]
+  下跌通道: [温和阴跌, 加速杀跌]
+  缩量回踩: [浅回踩, 深回踩]
+
+# 子态分位阈值 (数据驱动, v3 全宇宙 5421股 分布定; 已实证各子态语义准确)
+sub_thresholds:
+  up_er: 0.1633     # 上升通道: ER>此=温和(平滑)
+  up_dd: 0.1376     # 上升通道: maxDD<此 配 ER 高 = 温和
+  up_accel: 0.0051  # 上升通道: accel>此=加速
+  base_zv: -0.7908  # 低位横盘: zvol<此=地量
+  brk_zv: 0.5094    # 放量突破: zvol>此=巨量
+  top_zv: 0.146     # 高位滞涨: zvol>此=放量派发
+  dn_accel: 0.0052  # 下跌通道: accel<-此 且放量 = 加速杀跌
+  pb_dd: 0.158      # 缩量回踩: maxDD>此=深回踩
+
+# 量基准路由 (v2 spec, 不同状态不同放量参照; P6 接入, 现 zvol 主信号)
+volume_baseline:
+  breakout:   {type: box_mean, window: 60}    # 突破: vs 前期横盘箱体量
+  continuation: {type: short_ma, window: 5}   # 持续: vs 近期短均量
+  top:        {type: pctile, window: 120}     # 见顶: 历史分位 climax
+  default:    {type: zscore, window: 20}      # 默认: log-volume z-score
