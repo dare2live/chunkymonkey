@@ -98,10 +98,16 @@ def load_capital(code: str) -> tuple[dict, dict]:
             "sell_sm_amount, sell_md_amount, sell_lg_amount, sell_elg_amount "
             "FROM raw_tushare_moneyflow WHERE ts_code = ? ORDER BY trade_date", [ts]).fetchall()
         tr = c.execute("SELECT trade_date, turnover_rate FROM raw_tushare_daily_basic WHERE ts_code = ? ORDER BY trade_date", [ts]).fetchall()
+        dc = c.execute("SELECT trade_date, net_amount FROM raw_tushare_moneyflow_dc WHERE ts_code = ? ORDER BY trade_date", [ts]).fetchall()  # 东财主力净额(交叉验证)
     finally:
         c.close()
     money = {_iso(r[0]): {"net_mf_amount": r[1], "buy_sm": r[2], "buy_md": r[3], "buy_lg": r[4], "buy_elg": r[5],
-                          "sell_sm": r[6], "sell_md": r[7], "sell_lg": r[8], "sell_elg": r[9]} for r in mf}
+                          "sell_sm": r[6], "sell_md": r[7], "sell_lg": r[8], "sell_elg": r[9],
+                          "dc_net": None} for r in mf}
+    for td, na in dc:                                       # 东财大单净额 (与 tushare elg+lg 同构念, corr0.961)
+        k = _iso(td)
+        if k in money:
+            money[k]["dc_net"] = na
     return (money, {_iso(td): v for td, v in tr})
 
 

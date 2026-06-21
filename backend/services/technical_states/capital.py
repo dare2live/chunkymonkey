@@ -101,9 +101,13 @@ def capital_signals(dates, money_by_date: dict, turnover_by_date: dict,
         cap = ("主力净流入" if cum > inflow_thr else "主力净流出" if cum < -inflow_thr else "资金中性")
         hot = ("换手活跃" if (tpct is not None and tpct > hot_pct)
                else "换手低迷" if (tpct is not None and tpct < cold_pct) else "换手正常")
+        dc = (money_by_date.get(str(dates[i])) or {}).get("dc_net")    # 东财大单净额 交叉验证
+        agree = None if (dc is None or np.isnan(net)) else (np.sign(dc) == np.sign(net))
         out[str(dates[i])] = {
             "主力净额": None if np.isnan(net) else float(net),
             "主力净额20日累计": cum, "换手率": None if np.isnan(tr) else float(tr),
             "换手分位": tpct, "capital_state": cap, "turnover_state": hot,
+            "东财主力净额": None if dc is None else float(dc),         # 双源: tushare elg+lg vs 东财
+            "双源一致": agree,                                          # True=两供应商同向(高置信)
         }
     return out
