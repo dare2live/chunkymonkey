@@ -64,7 +64,10 @@ def load_kline(start: str, end: str | None = None, limit_stocks: int = 0, conn=N
 def load_moneyflow(start: str, conn=None) -> dict[str, dict[str, tuple[float, float]]]:
     """raw_tushare_moneyflow (L0, 盘后) -> {code6: {YYYY-MM-DD: (net_mf_amount, total_flow)}}。
 
-    net_mf_amount = 主力净流入 (大单+特大单, 万元); total_flow = 全单买卖额之和 (同单位, 万元)。
+    net_mf_amount = tushare 厂商**净主动流口径** (≈net_mf_vol×当日VWAP/10, 万元); total_flow = 全单买卖额之和 (万元)。
+    **警告 (reconcile wf_e6a0e9e8 裁决, 2026-06-21)**: net_mf_amount **不是**'大单+特大单(elg+lg)主力净额' — 实测它数学上
+      跟中小单档/价格动量 (corr(net_mf,lg+elg)与corr(net_mf,md+sm)完全镜像, 与大单主力档常反向)。真主力净额请用
+      services.technical_states.capital.mainforce_net (=elg+lg净, =东财dc.net_amount同构念)。此处保留 net_mf 仅作'净主动流/动量代理'。
     PIT 锚 trade_date (盘后更新); 截面特征消费侧决策 JOIN t-1。conn 可注入 (测试)。
     """
     sd = start.replace("-", "")

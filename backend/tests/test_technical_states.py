@@ -247,10 +247,10 @@ def test_capital_and_chip_signals():
     from services.technical_states.chips import chip_signals
     cfg = load_config()
     dates = [f"2024-01-{i:02d}" for i in range(1, 31)]
-    money = {d: {"net_mf_amount": 1000.0} for d in dates}     # 持续净流入
+    money = {d: {"buy_elg": 1000.0, "buy_lg": 500.0, "sell_elg": 200.0, "sell_lg": 100.0} for d in dates}  # elg+lg净>0
     turn = {d: 5.0 for d in dates}
     cap = capital_signals(dates, money, turn, window=20, cfg=cfg)
-    assert cap[dates[-1]]["capital_state"] == "主力净流入"
+    assert cap[dates[-1]]["capital_state"] == "主力净流入"     # 走 mainforce_net(elg+lg) 非 net_mf
     # 筹码: 高获利盘+价在均成本上=获利
     cyq = {d: {"winner_rate": 90.0, "cost_5pct": 9.0, "cost_50pct": 10.0, "cost_95pct": 11.0, "weight_avg": 10.0} for d in dates}
     close = {d: 12.0 for d in dates}
@@ -278,3 +278,18 @@ def test_mingan_flow():
     last = mg[dates[-1]]
     assert "明盘" in last and "暗盘" in last and last["今日动向"] in ("看多","做T","低吸","看空","吸筹","出货","中性")
     assert "三日动向" in last      # 3日滚动
+
+
+def test_mainforce_unified_with_mingan():
+    """口径统一 (reconcile): capital_signals主力净额 与 mingan明盘 同源(elg+lg净), 同符号; 禁用net_mf。"""
+    from services.technical_states.capital import capital_signals, mingan_flow, mainforce_net
+    f = {"buy_elg": 1000, "buy_lg": 500, "sell_elg": 200, "sell_lg": 100, "buy_md": 50, "buy_sm": 30,
+         "sell_md": 40, "sell_sm": 20, "net_mf_amount": -9999}  # net_mf 故意反向, 应被忽略
+    assert mainforce_net(f) == 1200    # (1000+500)-(200+100), 不理 net_mf
+    dates = [f"2024-01-{i:02d}" for i in range(1, 26)]
+    money = {d: f for d in dates}
+    cap = capital_signals(dates, money, {d: 5.0 for d in dates}, window=20)
+    mg = mingan_flow(dates, [10.0]*25, [10.5]*25, [9.9]*25, [10.3]*25, money)
+    # 主力净额(capital)与明盘(mingan)同源同符号 (都正, net_mf的负被忽略)
+    assert cap[dates[-1]]["capital_state"] == "主力净流入"   # elg+lg净>0 (非net_mf的负)
+    assert mg[dates[-1]]["明盘"] > 0

@@ -129,7 +129,7 @@ function dimCard(base){
     <span class="badge ${mgColor(mg['三日动向'])}">三 ${mg['三日动向']||'—'}</span>
     <span class="badge ${mgColor(mg['五日动向'])}">五 ${mg['五日动向']||'—'}</span>
     <span class="small muted">明盘 ${mg['明盘']}亿 / 暗盘 ${mg['暗盘']}亿 · 日度近似(非真L2)</span></div>` : "";
-  return `<div class="card"><h3>多维度解读 (资金/筹码/明暗盘; RS见顶部)</h3>${capRow}${chRow}${mgRow}</div>`;
+  return `<div class="card"><h3>第二层: 量价/资金/筹码 (确认基础层形态; RS见顶部)</h3>${capRow}${chRow}${mgRow}</div>`;
 }
 async function loadStock(code, overlay){
   code = code || document.getElementById("code").value.trim();
@@ -157,6 +157,7 @@ async function loadStock(code, overlay){
       <span class="small muted">完成于 ${p.date} · ${p.provenance}</span></div>`).join("")}</div>` : "";
   document.getElementById("content").innerHTML = `
     <div class="card"><h2>${code} <span class="small muted">as_of ${base.as_of} · 熵 ${(base.entropy||0).toFixed(2)}</span> ${alignBadge} ${ptrend} ${rs} ${candle}</h2>
+      <div class="small muted" style="margin:2px 0 6px">基础层: 价格形态 (日/周/月)</div>
       <div class="tf">${["daily","weekly","monthly"].map(k=>`
         <div class="tfbox"><div class="tflabel">${({daily:"日线",weekly:"周线",monthly:"月线"})[k]}</div>
           <div class="tfstate">${tf[k].state||"过渡态"}</div>

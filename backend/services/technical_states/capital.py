@@ -13,6 +13,15 @@ import numpy as np
 _DONGXIANG = {1: "看多", 2: "做T", 3: "低吸", 4: "看空", 5: "吸筹", 6: "出货", 0: "中性"}
 
 
+def mainforce_net(f: dict) -> float:
+    """**主力(大单+超大单)净额单一真相源** (reconcile wf_e6a0e9e8 裁决: =[b]口径=东财dc.net_amount 同构念)。
+    = (买超大elg+买大lg) - (卖超大elg+卖大lg)。**禁用 tushare net_mf_amount 当主力净额** — 实测 net_mf=厂商
+    净主动流(vol×VWAP)跟中小单/动量, 与大单主力档常反向(600519 5天4天符号相反), 是口径错配。
+    """
+    g = lambda k: (f.get(k) or 0.0)  # noqa: E731
+    return g("buy_elg") + g("buy_lg") - g("sell_elg") - g("sell_lg")
+
+
 def _path_weight(o, h, l, c, prev_c) -> float:
     """X_1..X_8: 日线 OHLC 路径权重 (逐字复刻 TDX 公式 X_8, capped 0.8)。"""
     if None in (o, h, l, c, prev_c) or not (prev_c and o and h and l):
@@ -48,8 +57,8 @@ def mingan_flow(dates, o, h, l, c, flow_by_date: dict, unit_div: float = 1e4) ->
         w = _path_weight(o[i], h[i], l[i], c[i], prev_c)
         prev_c = c[i]
         g = lambda k: (f.get(k) or 0.0)  # noqa: E731
-        m = (g("buy_elg") + g("buy_lg") - g("sell_elg") - g("sell_lg")) / unit_div    # 明盘=主力净额(亿)
-        a = ((g("buy_md") + g("buy_sm")) * w if w > 0 else (g("sell_md") + g("sell_sm")) * w) / unit_div  # 暗盘(signed)
+        m = mainforce_net(f) / unit_div    # 明盘=主力净额(亿, elg+lg 净, 与 capital_signals 同源单一真相源)
+        a = ((g("buy_md") + g("buy_sm")) * w if w > 0 else (g("sell_md") + g("sell_sm")) * w) / unit_div  # 暗盘(signed, 粗近似非真L2)
         ming.append(m); an.append(a); liu.append(m + a)
     out = {}
     for i, d in enumerate(ds):
@@ -69,15 +78,16 @@ def mingan_flow(dates, o, h, l, c, flow_by_date: dict, unit_div: float = 1e4) ->
 
 def capital_signals(dates, money_by_date: dict, turnover_by_date: dict,
                     window: int = 20, cfg=None) -> dict:
-    """资金流向 + 换手率 (PIT ≤t)。
-    money_by_date={date:{net_mf_amount, buy_lg, buy_elg, sell_lg, sell_elg}}; turnover_by_date={date: turnover_rate}。
+    """资金流向 + 换手率 (PIT ≤t)。**主力净额走 mainforce_net(elg+lg) 单一真相源, 与明暗盘明盘同源**
+    (reconcile 裁决: 禁用 net_mf_amount=厂商净主动流非主力净额)。turnover_by_date={date: turnover_rate}。
     返回 {date:{主力净额, 主力净额20日累计, 换手率, 换手分位, capital_state}}。
     """
     c = (cfg or {}).get("资金") or {}
     inflow_thr = c.get("净流入累计门", 0.0)
     hot_pct = c.get("换手活跃分位", 0.8)
     cold_pct = c.get("换手低迷分位", 0.2)
-    nets = np.array([(money_by_date.get(str(d), {}) or {}).get("net_mf_amount", np.nan) for d in dates], float)
+    nets = np.array([mainforce_net(money_by_date.get(str(d), {}) or {}) if money_by_date.get(str(d)) else np.nan
+                     for d in dates], float)   # elg+lg 净 (= 明盘同源), 非 net_mf_amount
     turns = np.array([turnover_by_date.get(str(d), np.nan) for d in dates], float)
     out = {}
     for i in range(window, len(dates)):
