@@ -22,6 +22,7 @@ from services.technical_states.vol import volume_signals
 from services.technical_states.rs import relative_strength
 from services.technical_states.sector_context import sector_regime, concept_labels
 from services.technical_states.fundamentals import fundamental_signals, valuation_signals, analyst_expectation
+from services.technical_states.events import lhb_signal, block_signal, unlock_signal
 from services.technical_states import (
     apply_coupling,
     classify_multi_timeframe,
@@ -121,13 +122,70 @@ def load_cyq(code: str) -> dict:
 
 
 def load_top10_holders(code: str, as_of: str | None = None) -> dict | None:
-    """L3 机构维度: 十大**流通**股东 (free) 最近季 + 本季动向 (新进/增持/减持/退出)。
-    真相源: smartmoney.fact_top10_holder_period (tdx F10, 2017Q4+, 含持股占比/变化/进出标记)。
-    PIT: 取 report_date <= as_of 的最近季 (季报披露滞后, 描述用最近季)。机构跟随=用户最初设想的跟随策略基础。
+    """L3 机构维度: 十大**流通**股东最近季 + 本季动向 (新进/增持/减持/退出)。机构跟随=用户最初设想策略基础。
+    真相源 = **tushare top10_floatholders** (2026-06-22 切, 用户点名"切换到tushare源"; ann_date PIT 公告日);
+    tdx F10 (smartmoney) 降备援 (§4.3 旧源热备不删, tushare 空时 fallback)。PIT: ann_date <= as_of 最近 end_date。
     """
+    return _top10_tushare(code, as_of) or _top10_tdx(code, as_of)   # tushare 主源, tdx 备援
+
+
+def _top10_tushare(code: str, as_of: str | None) -> dict | None:
+    """tushare top10_floatholders: 最近 2 期 (current+prev) diff 出 新进/退出, hold_change 符号出 增持/减持。
+    PIT (复审 HIGH): 同 end_date 可多次公告(修正), 明细必锁 ann_date=MAX(ann_date)<=t 版本, 防 ann_date>t 修正行泄漏。
+    占比用 hold_float_ratio(占流通, 与'流通股东'语义+旧tdx一致) COALESCE hold_ratio(占总, float_ratio NULL 时兜底)。
+    """
+    ts = code_to_ts_code(code)
+    asof = as_of.replace("-", "") if as_of else "99999999"   # None=取最新已公告版 (ann_date<=哨兵=全, MAX选最新)
+    c = duck_connect(RAW_DB, read_only=True)
+    try:
+        if not c.execute("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'raw_tushare_top10_floatholders'").fetchone()[0]:
+            return None
+        eds = [r[0] for r in c.execute("SELECT DISTINCT end_date FROM raw_tushare_top10_floatholders "
+                                       "WHERE ts_code = ? AND ann_date <= ? ORDER BY end_date DESC LIMIT 2",
+                                       [ts, asof]).fetchall()]
+        if not eds:
+            return None
+        cur_ed, prev_ed = eds[0], (eds[1] if len(eds) > 1 else None)
+        # PIT 锁定: 该 end_date 在 t 时点已公告的最新版本 (MAX ann_date<=t), 排除未来修正行
+        pit = ("AND ann_date = (SELECT MAX(ann_date) FROM raw_tushare_top10_floatholders "
+               "WHERE ts_code = ? AND end_date = ? AND ann_date <= ?)")
+        cur = c.execute(f"SELECT holder_name, COALESCE(hold_float_ratio, hold_ratio), hold_change "
+                        f"FROM raw_tushare_top10_floatholders WHERE ts_code = ? AND end_date = ? AND ann_date <= ? "
+                        f"{pit} ORDER BY hold_amount DESC", [ts, cur_ed, asof, ts, cur_ed, asof]).fetchall()
+        prev_names = set()
+        if prev_ed:
+            prev_names = {r[0] for r in c.execute(
+                f"SELECT holder_name FROM raw_tushare_top10_floatholders WHERE ts_code = ? AND end_date = ? "
+                f"AND ann_date <= ? {pit}", [ts, prev_ed, asof, ts, prev_ed, asof]).fetchall()}
+    finally:
+        c.close()
+    if not cur:
+        return None
+    holders, cnt = [], {"新进": 0, "退出": 0, "增持": 0, "减持": 0}
+    cur_names = {h[0] for h in cur}
+    for i, (name, ratio, chg) in enumerate(cur, 1):
+        if prev_ed and name not in prev_names:
+            status = "新进"; cnt["新进"] += 1
+        elif chg is not None and chg > 0:
+            status = "增持"; cnt["增持"] += 1
+        elif chg is not None and chg < 0:
+            status = "减持"; cnt["减持"] += 1
+        else:
+            status = "持平"
+        holders.append({"rank": i, "name": name, "ratio": ratio, "change": status, "change_num": chg})
+    if prev_ed:
+        cnt["退出"] = len(prev_names - cur_names)    # 上季在本季出 top10 = 退出
+    net = (cnt["新进"] + cnt["增持"]) - (cnt["退出"] + cnt["减持"])
+    return {"report_date": cur_ed, "holders": holders, "源": "tushare",
+            "新进": cnt["新进"], "退出": cnt["退出"], "增持": cnt["增持"], "减持": cnt["减持"],
+            "机构动向": "加仓" if net > 0 else "减仓" if net < 0 else "持平"}
+
+
+def _top10_tdx(code: str, as_of: str | None = None) -> dict | None:
+    """tdx F10 备援 (§4.3 旧源热备): smartmoney.fact_top10_holder_period (2017Q4+, change_status 文本进出标记)。"""
     from services.data_loaders import SMARTMONEY_DB
     from collections import Counter
-    asof_norm = as_of.replace("-", "") if as_of else None    # 数据坑: report_date 格式不统一(带/不带横线), 规范化 YYYYMMDD 比较
+    asof_norm = as_of.replace("-", "") if as_of else None    # 数据坑: report_date 格式不统一(带/不带横线), 规范化比较
     c = duck_connect(SMARTMONEY_DB, read_only=True)
     try:
         where_asof = " AND REPLACE(report_date,'-','') <= ?" if asof_norm else ""
@@ -150,7 +208,7 @@ def load_top10_holders(code: str, as_of: str | None = None) -> dict | None:
     cnt = Counter(m for m in moves if m)
     net = (cnt.get("新进", 0) + cnt.get("增持", 0)) - (cnt.get("退出", 0) + cnt.get("减持", 0))   # 机构净加减仓
     return {
-        "report_date": mx,
+        "report_date": mx, "源": "tdx(备援)",
         "holders": [{"rank": r[0], "name": r[1], "ratio": r[2], "change": r[3], "change_num": r[4]} for r in cur],
         "新进": cnt.get("新进", 0), "退出": cnt.get("退出", 0), "增持": cnt.get("增持", 0), "减持": cnt.get("减持", 0),
         "机构动向": "加仓" if net > 0 else "减仓" if net < 0 else "持平",
@@ -287,6 +345,56 @@ def load_analyst_reports(code: str, as_of: str | None = None, months: int = 6) -
     return [(r[0], r[1], (r[2] / 10000.0 if r[2] else r[2])) for r in rows]
 
 
+def load_lhb(code: str, as_of: str | None = None, days: int = 60) -> tuple[list, list]:
+    """L3⑤ 龙虎榜 (PIT 锚 trade_date): 近 days 日上榜明细 + 机构席位净买 (均 ≤t)。
+    返回 (lhb_rows=[(trade_date, net_amount, reason)], inst_rows=[(trade_date, net_buy)] 机构专用席位)。
+    """
+    ts = code_to_ts_code(code)
+    asof = (as_of or date.today().isoformat()).replace("-", "")
+    cutoff = (date.fromisoformat(f"{asof[:4]}-{asof[4:6]}-{asof[6:8]}") - timedelta(days=days)).strftime("%Y%m%d")
+    c = duck_connect(RAW_DB, read_only=True)
+    try:
+        lhb = c.execute("SELECT trade_date, net_amount, reason FROM raw_tushare_top_list "
+                        "WHERE ts_code = ? AND trade_date <= ? AND trade_date >= ? ORDER BY trade_date DESC",
+                        [ts, asof, cutoff]).fetchall()
+        inst = c.execute("SELECT trade_date, net_buy FROM raw_tushare_top_inst "   # 复审 LOW: '%机构%' 覆盖非标准席位(机构席位/客户总部, 漏0.8%), 实测无噪声
+                         "WHERE ts_code = ? AND trade_date <= ? AND trade_date >= ? AND exalter LIKE '%机构%'",
+                         [ts, asof, cutoff]).fetchall()
+    finally:
+        c.close()
+    return [(r[0], r[1], r[2]) for r in lhb], [(r[0], r[1]) for r in inst]
+
+
+def load_block_trade(code: str, as_of: str | None = None, days: int = 60) -> list:
+    """L3⑤ 大宗交易 (PIT 锚 trade_date): 近 days 日大宗 [(trade_date, price, amount)] (≤t)。"""
+    ts = code_to_ts_code(code)
+    asof = (as_of or date.today().isoformat()).replace("-", "")
+    cutoff = (date.fromisoformat(f"{asof[:4]}-{asof[4:6]}-{asof[6:8]}") - timedelta(days=days)).strftime("%Y%m%d")
+    c = duck_connect(RAW_DB, read_only=True)
+    try:
+        rows = c.execute("SELECT trade_date, price, amount FROM raw_tushare_block_trade "
+                         "WHERE ts_code = ? AND trade_date <= ? AND trade_date >= ? ORDER BY trade_date DESC",
+                         [ts, asof, cutoff]).fetchall()
+    finally:
+        c.close()
+    return [(_iso(r[0]), r[1], r[2]) for r in rows]   # trade_date → ISO (匹配 close_by_date 键, 防折溢价 None)
+
+
+def load_share_float(code: str, as_of: str | None = None) -> list:
+    """L3⑤ 解禁 (前瞻事件, PIT 锚 ann_date 公告日 — 公告≤t 时未来 float_date 已知, 0 泄露):
+    返回 [(float_date, float_ratio)] (ann_date<=as_of)。unlock_signal 过滤未来 horizon 内。
+    """
+    ts = code_to_ts_code(code)
+    asof = (as_of or date.today().isoformat()).replace("-", "")
+    c = duck_connect(RAW_DB, read_only=True)
+    try:
+        rows = c.execute("SELECT float_date, float_ratio FROM raw_tushare_share_float "
+                         "WHERE ts_code = ? AND ann_date <= ? ORDER BY float_date", [ts, asof]).fetchall()
+    finally:
+        c.close()
+    return [(r[0], r[1]) for r in rows]
+
+
 def _multi_tf(ohlcv: dict, cfg: dict, limit_data: dict | None = None) -> dict:
     """OHLCV → 多TF 分类 (读 config 三框窗口)。limit_data 给则 enrich 日线(A股涨停修正, D3)。"""
     d = ohlcv
@@ -384,6 +492,12 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
     analyst = analyst_expectation(load_analyst_reports(code, as_of=last_date,                 # L3④ 分析师预期 (report_date PIT)
                                                        months=int((cfg.get("预期") or {}).get("研报窗口月", 6))),
                                   last_close, cfg=cfg)
+    ev_days = int((cfg.get("事件") or {}).get("事件窗口日", 60))                              # L3⑤ 事件催化
+    lhb_rows, inst_rows = load_lhb(code, as_of=last_date, days=ev_days)
+    events = {"lhb": lhb_signal(lhb_rows, inst_rows, cfg=cfg),                                # 龙虎榜 (trade_date PIT)
+              "block": block_signal(load_block_trade(code, as_of=last_date, days=ev_days),    # 大宗交易 (trade_date PIT)
+                                    close_by_date, cfg=cfg),
+              "unlock": unlock_signal(load_share_float(code, as_of=last_date), last_date, cfg=cfg)}  # 解禁 (ann_date锚 float_date前瞻)
     return {
         "code": code, "as_of": last_date,
         "timeframes": tf_read,
@@ -400,6 +514,7 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
         "fundamentals": fund,                                          # L3④ 基本面 (ROE/成长/毛利/负债, ann_date PIT)
         "valuation": valuation,                                        # L3④ 估值 (PE/PB自身分位/股息/市值, trade_date PIT)
         "analyst": analyst,                                            # L3④ 分析师预期 (近6月研报评级/目标价上行空间, report_date PIT)
+        "events": events,                                              # L3⑤ 事件催化 (龙虎榜/大宗trade_date PIT + 解禁float_date前瞻)
         "holders": load_top10_holders(code, as_of=last_date),          # L3 机构: 十大流通股东+动向(report_date带横线同last_date格式)
         "entropy": last.get("entropy"),
         "trend": trend_series(ohlcv, daily_cls),

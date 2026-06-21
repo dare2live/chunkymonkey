@@ -419,3 +419,44 @@ def test_analyst_expectation():
     # 全正向 → 看好
     assert analyst_expectation([("20260601", "买入", 0)] * 5, 100.0, cfg=cfg)["评级倾向"] == "看好"
     assert analyst_expectation([], 100.0, cfg=cfg) is None   # 无研报 graceful
+
+
+def test_lhb_signal():
+    """L3⑤ 龙虎榜: 净买额方向 + 机构席位净买 → 资金异动 (sign/count 为主)。"""
+    from services.technical_states.events import lhb_signal
+    cfg = load_config()
+    # 净买 + 机构净买 → 共振抢筹
+    lhb = [("20260610", 50000000.0, "日涨幅偏离值达7%"), ("20260605", 30000000.0, "连续三日涨幅")]
+    inst = [("20260610", 20000000.0)]
+    r = lhb_signal(lhb, inst, cfg=cfg)
+    assert r["龙虎榜状态"] == "机构游资共振抢筹" and r["上榜次数"] == 2
+    assert r["净买额万"] == 8000.0 and r["机构净买万"] == 2000.0   # 8000万=8e7/1e4
+    # 净卖 → 净卖上榜
+    assert lhb_signal([("20260610", -10000000.0, "卖出")], [], cfg=cfg)["龙虎榜状态"] == "资金净卖上榜"
+    assert lhb_signal([], [], cfg=cfg) is None
+
+
+def test_block_signal():
+    """L3⑤ 大宗交易: 成交价 vs 收盘 折溢价 → 折价抛压/溢价承接。"""
+    from services.technical_states.events import block_signal
+    cfg = load_config()
+    close = {"2026-06-10": 100.0, "2026-06-05": 100.0}   # ISO 键 (匹配 load_block_trade 返回 _iso)
+    # 折价 (成交价 95 vs 收盘 100 = -5%) → 折价抛压; amount 万元
+    r = block_signal([("2026-06-10", 95.0, 5000.0)], close, cfg=cfg)
+    assert r["大宗状态"] == "折价抛压" and abs(r["折溢价"] - (-5.0)) < 0.01
+    assert r["大宗总额亿"] == 0.5   # 5000万 / 1e4 = 0.5亿 (amount 实测万元)
+    # 溢价 (105 vs 100 = +5%) → 溢价承接
+    assert block_signal([("2026-06-05", 105.0, 5000.0)], close, cfg=cfg)["大宗状态"] == "溢价承接"
+    assert block_signal([], close, cfg=cfg) is None
+
+
+def test_unlock_signal():
+    """L3⑤ 解禁 (前瞻事件, ann_date≤t 已知未来 float_date, 0泄露): 未来90日内解禁占比预警。"""
+    from services.technical_states.events import unlock_signal
+    cfg = load_config()
+    # as_of=2026-06-18; 未来解禁 (20260701 占5%) → 预警; 已过期解禁 (20260101) 不计
+    rows = [("20260101", 2.0), ("20260701", 5.0), ("20271231", 8.0)]
+    r = unlock_signal(rows, "2026-06-18", cfg=cfg)
+    assert r["临近解禁"] == "20260701" and r["解禁占比"] == 5.0 and r["解禁预警"] is True   # 5%>3%门, 只计90日内
+    # 无未来90日解禁 (仅过期 + 远期)
+    assert unlock_signal([("20260101", 2.0), ("20271231", 8.0)], "2026-06-18", cfg=cfg)["临近解禁"] is None

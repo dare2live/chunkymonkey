@@ -50,6 +50,7 @@ from services.technical_states.sector_context import sector_regime, concept_labe
 from services.technical_states.fundamentals import (  # noqa: F401
     fundamental_signals, valuation_signals, analyst_expectation,
 )
+from services.technical_states.events import lhb_signal, block_signal, unlock_signal  # noqa: F401
 
 __all__ = [
     "compute", "resample", "FEATURE_KEYS", "load_config",

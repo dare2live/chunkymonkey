@@ -252,11 +252,35 @@ function fundamentalsCard(base){
     <div class="layer-bd">${fundRow}${valRow}${aRow}</div></div>`;
 }
 
-// L3 其余属性背景 (事件催化/市场regime 占位 — ⑤⑥ 待落地)
+// L3⑤ 事件催化 (为什么近期异动 = 龙虎榜资金 + 大宗折溢价 + 解禁前瞻)
+function eventsCard(base){
+  const e = base.events; if(!e) return "";
+  const lhb = e.lhb, bk = e.block, ul = e.unlock;
+  if(!lhb && !bk && !(ul && ul['临近解禁'])) return "";
+  const lhbColor = s => /抢筹|净买/.test(s||'')?'aligned':/净卖/.test(s||'')?'conflict':'';
+  const lhbRow = lhb ? `<div class="dim"><span class="dim-k">龙虎榜</span><span class="dim-v">
+    <span class="badge ${lhbColor(lhb['龙虎榜状态'])}">${lhb['龙虎榜状态']}</span>
+    <span class="badge">上榜 ${lhb['上榜次数']}次</span>
+    ${lhb['机构净买万']?`<span class="badge ${lhb['机构净买万']>0?'aligned':'conflict'}">机构净买 ${Math.round(lhb['机构净买万'])}万</span>`:''}
+    <span class="src">净买额 ${lhb['净买额万']!=null?Math.round(lhb['净买额万'])+'万':'—'} · ${lhb['最近原因']||''} (近60日, trade_date PIT)</span></span></div>` : "";
+  const bkColor = s => /溢价/.test(s||'')?'aligned':/折价/.test(s||'')?'conflict':'';
+  const bkRow = bk ? `<div class="dim"><span class="dim-k">大宗交易</span><span class="dim-v">
+    <span class="badge ${bkColor(bk['大宗状态'])}">${bk['大宗状态']}</span>
+    <span class="badge">${bk['大宗笔数']}笔</span>
+    <span class="src">折溢价 ${bk['折溢价']!=null?(bk['折溢价']>0?'+':'')+bk['折溢价']+'%':'—'} · 总额 ${bk['大宗总额亿']!=null?bk['大宗总额亿']+'亿':'—'} (近60日)</span></span></div>` : "";
+  const ulRow = (ul && ul['临近解禁']) ? `<div class="dim"><span class="dim-k">解禁(前瞻)</span><span class="dim-v">
+    <span class="badge ${ul['解禁预警']?'conflict':''}">${ul['解禁预警']?'解禁压力预警':'临近解禁'}</span>
+    <span class="src">${ul['临近解禁']} 解禁 ${ul['解禁占比']!=null?ul['解禁占比']+'%流通':''} (未来90日, ann_date已知0泄露)</span></span></div>` : "";
+  return `<div class="layer l3"><div class="layer-hd"><span class="ln">L3</span><span class="lt">事件催化</span>
+      <span class="ld">为什么近期异动 · 龙虎榜/大宗 trade_date PIT · 解禁前瞻</span></div>
+    <div class="layer-bd">${lhbRow}${bkRow}${ulRow}</div></div>`;
+}
+
+// L3 其余属性背景 (市场regime 占位 — ⑥ 待落地)
 function layer3Rest(){
-  return `<div class="layer l3"><div class="layer-hd"><span class="ln">L3</span><span class="lt">事件 / 市场regime</span>
-      <span class="ld">催化 + 大盘环境 · 锚 ann_date</span></div>
-    <div class="layer-bd"><span class="ph">龙虎榜/解禁/大宗 · 市场regime门(大盘/涨停情绪, 横切非单股) — 数据已补齐, 待落地接入(⑤⑥)</span></div></div>`;
+  return `<div class="layer l3"><div class="layer-hd"><span class="ln">L3</span><span class="lt">市场 regime</span>
+      <span class="ld">大盘环境 (横切非单股因子)</span></div>
+    <div class="layer-bd"><span class="ph">市场regime门(大盘趋势/涨停情绪, stage-conditional最外层横切) — 待落地接入(⑥)</span></div></div>`;
 }
 
 async function loadStock(code, overlay){
@@ -301,6 +325,7 @@ async function loadStock(code, overlay){
     ${sectorCard(base)}
     ${fundamentalsCard(base)}
     ${holderCard(base)}
+    ${eventsCard(base)}
     ${layer3Rest()}
     <div class="layer"><div class="layer-hd"><span class="lt">趋势线</span><span class="ld">按形态着色 · 非K线</span></div>
       <div class="layer-bd">${overlaySVG}</div></div>`;
