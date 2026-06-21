@@ -8,6 +8,8 @@ PIT: 只用 ≤end 的 bar (load_kline end 截断); universe 排除股不进 scr
 """
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 from services.data_loaders import MARKET_DB
 from services.duck_adapter import connect as duck_connect
 from services.technical_states import (
@@ -115,6 +117,62 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
     }
 
 
+def _latest_daily_dominant(ohlcv: dict, cfg: dict):
+    """单股最新日线主态 (供分布对比, 只算日线省算力)。"""
+    tf = cfg["timeframes"]["daily"]
+    feats = compute(ohlcv["date"], ohlcv["open"], ohlcv["high"], ohlcv["low"], ohlcv["close"], ohlcv["volume"],
+                    timeframe="daily", resample_rule=tf.get("resample"), warmup=tf.get("warmup", 120),
+                    windows=tf.get("windows"))
+    if not feats:
+        return None
+    return classify_series(feats, cfg)[max(feats)]["dominant"]
+
+
+def compare_distribution(overrides: dict, end: str | None = None, scan: int = 200) -> dict:
+    """**全体分布对比 (盲点覆盖)**: 默认参数 vs 调整后参数, 扫 scan 只股, 每股日线特征算一次、双 config 分类,
+    报每形态的股票数 默认→调整后 (Δ) + 翻转的股票 (移入/移出哪个形态)。
+    用户调一个边界, 真实影响在全体层面(放宽阈值会否让形态涌入垃圾股), 非单股视觉能看出。
+    """
+    from collections import Counter
+    cfg_def = load_config()
+    cfg_mod, notes = _effective_cfg(overrides)
+    c = duck_connect(MARKET_DB, read_only=True)
+    try:
+        codes = [r[0] for r in c.execute(
+            "SELECT DISTINCT code FROM price_kline_qfq_tushare ORDER BY code LIMIT ?", [scan]).fetchall()]
+    finally:
+        c.close()
+    # 全体分类只需最新主态 → 只载近窗 (warmup120+er40+缓冲), 不载2015+全史 (性能)
+    recent_start = (date.today() - timedelta(days=600)).isoformat()
+    def_c, mod_c = Counter(), Counter()
+    flips = []
+    n = 0
+    for code in codes:
+        ohlcv = load_one(code, end, start=recent_start)
+        if not ohlcv:
+            continue
+        # 特征与 config 无关, 只算一次; 仅 state_scores 受 config 影响 → 双分类
+        tf = cfg_def["timeframes"]["daily"]
+        feats = compute(ohlcv["date"], ohlcv["open"], ohlcv["high"], ohlcv["low"], ohlcv["close"], ohlcv["volume"],
+                        timeframe="daily", resample_rule=tf.get("resample"), warmup=tf.get("warmup", 120),
+                        windows=tf.get("windows"))
+        if not feats:
+            continue
+        last = max(feats)
+        d_state = classify_series(feats, cfg_def)[last]["dominant"]
+        m_state = classify_series(feats, cfg_mod)[last]["dominant"]
+        def_c[d_state] += 1
+        mod_c[m_state] += 1
+        n += 1
+        if d_state != m_state:
+            flips.append({"code": code, "from": d_state, "to": m_state})
+    states = list(cfg_def["状态"]) + [None]
+    rows = [{"state": s or "过渡态", "default": def_c.get(s, 0), "modified": mod_c.get(s, 0),
+             "delta": mod_c.get(s, 0) - def_c.get(s, 0)} for s in states]
+    return {"scanned": n, "by_pattern": rows, "flips": flips[:60], "flip_count": len(flips),
+            "coupling_notes": notes}
+
+
 def screen_pattern(pattern: str, end: str | None = None, limit: int = 40,
                    overrides: dict | None = None, scan: int = 300) -> dict:
     """列出最新(≤end) 主态==pattern 的股票 + 各自 mini 趋势线。scan=扫描股票数上限(性能)。
@@ -127,9 +185,10 @@ def screen_pattern(pattern: str, end: str | None = None, limit: int = 40,
             "SELECT DISTINCT code FROM price_kline_qfq_tushare ORDER BY code LIMIT ?", [scan]).fetchall()]
     finally:
         c.close()
+    recent_start = (date.today() - timedelta(days=600)).isoformat()   # 只需最新主态+mini趋势, 不载全史 (性能)
     hits = []
     for code in codes:
-        ohlcv = load_one(code, end)
+        ohlcv = load_one(code, end, start=recent_start)
         if not ohlcv:
             continue
         mtf, feats = _multi_tf(ohlcv, cfg)

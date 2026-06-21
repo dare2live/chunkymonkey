@@ -15,7 +15,7 @@ import re
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 
-from services.dossier import interpret_stock, screen_pattern
+from services.dossier import compare_distribution, interpret_stock, screen_pattern
 from services.technical_states import list_tunables, load_config
 
 router = APIRouter()
@@ -57,10 +57,21 @@ def get_screen(pattern: str, end: str | None = None, limit: int = 40, scan: int 
 
 @router.get("/tunables")
 def get_tunables():
-    """可调边界参数 (前端滑块) + 状态描述。"""
+    """可调边界参数 (前端滑块, 当前值=探索默认值) + 状态描述 + 默认值版本。"""
     cfg = load_config()
     return {"tunables": list_tunables(cfg),
-            "states": {s: spec.get("描述", "") for s, spec in cfg["状态"].items()}}
+            "states": {s: spec.get("描述", "") for s, spec in cfg["状态"].items()},
+            "defaults_version": cfg.get("meta", {}).get("version"),
+            "defaults_source": cfg.get("meta", {}).get("tuned_on", "")}
+
+
+@router.get("/compare")
+def get_compare(ov: str, end: str | None = None, scan: int = 200):
+    """**全体分布对比**: 默认参数 vs 调整后参数, 每形态股票数 Δ + 翻转股票 (调参的全体层面影响)。"""
+    ovr = _parse_overrides(ov)
+    if not ovr:
+        return {"error": "无有效调参 (ov 为空)"}
+    return compare_distribution(ovr, end=end, scan=scan)
 
 
 @router.get("/view", response_class=HTMLResponse)

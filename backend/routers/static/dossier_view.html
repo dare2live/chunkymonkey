@@ -20,6 +20,10 @@
   .slider { display:flex; align-items:center; gap:6px; margin:4px 0; font-size:11px; }
   .slider input[type=range]{ flex:1; } .slider .val{ width:54px; text-align:right; color:var(--accent); }
   .coupled { color:#e0a030; } .note { color:#e0a030; font-size:11px; margin:3px 0; }
+  .slider.changed span:first-child { color:var(--accent); font-weight:600; }
+  .slider .val { cursor:pointer; } .slider .val:hover { text-decoration:underline; }
+  .cmp { width:100%; border-collapse:collapse; } .cmp td,.cmp th { padding:5px 8px; border-bottom:1px solid var(--line); text-align:right; font-size:12px; }
+  .cmp th:first-child,.cmp td:first-child { text-align:left; } .pos { color:var(--up); } .neg { color:var(--down); }
   .stocklist { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:10px; }
   .stockcard { background:#12151b; border:1px solid var(--line); border-radius:8px; padding:8px; cursor:pointer; }
   .stockcard:hover { border-color:var(--accent); }
@@ -38,9 +42,10 @@
     <select id="pattern" style="width:100%"></select>
     <div class="row"><button class="ghost" onclick="runScreen()" style="flex:1">列出符合此形态的股票</button></div>
 
-    <h3>调参微调识别 <span class="small muted">(调一个边界, 关联同步)</span></h3>
+    <h3>调参微调识别 <span class="small muted" id="defver"></span></h3>
     <div id="sliders"></div>
-    <div class="row"><button class="ghost" onclick="resetParams()" style="flex:1">复位</button></div>
+    <div class="row"><button onclick="runCompare()" style="flex:2">对比默认值 (全体分布)</button><button class="ghost" onclick="resetParams()" style="flex:1">恢复默认值</button></div>
+    <div class="small muted" id="changed_hint"></div>
     <div id="notes"></div>
   </div>
 
@@ -51,13 +56,16 @@
 
 <script>
 const API = "/api/dossier";
-let TUN = [], CUR_CODE = null, OVR = {};
+let TUN = [], CUR_CODE = null, OVR = {}, DEFAULTS = {};
 
 function ovStr(){ return Object.entries(OVR).map(([k,v])=>k+":"+v).join(","); }
+function unitOf(t){ return t["单位"]==="百分比"?"%":(t["单位"]==="倍数"?"x":""); }
 
 async function init(){
   const r = await fetch(`${API}/tunables`).then(x=>x.json());
   TUN = r.tunables;
+  DEFAULTS = {}; TUN.forEach(t=>DEFAULTS[t.param]=t["当前值"]);   // 探索默认值 (config 当前值)
+  document.getElementById("defver").textContent = `默认值 v${r.defaults_version} · 点数值复位单项`;
   const sel = document.getElementById("pattern");
   sel.innerHTML = Object.entries(r.states).map(([s,d])=>`<option value="${s}">${s} — ${d.split('(')[0]}</option>`).join("");
   renderSliders();
@@ -65,22 +73,27 @@ async function init(){
 function renderSliders(){
   const box = document.getElementById("sliders");
   box.innerHTML = TUN.map((t,i)=>{
-    const unit = t["单位"]==="百分比"?"%":(t["单位"]==="倍数"?"x":"");
-    const v = (t.param in OVR)?OVR[t.param]:t["当前值"];
+    const unit = unitOf(t);
+    const def = DEFAULTS[t.param];
+    const v = (t.param in OVR)?OVR[t.param]:def;
+    const changed = (t.param in OVR) && (+OVR[t.param]!==+def);
     const min = (t["单位"]==="百分比")?-20:0, max=(t["单位"]==="百分比")?20:(t["单位"]==="倍数"?3:1);
     const step = (t["单位"]==="比例")?0.01:0.1;
     const cp = t["耦合"].length?` <span class="coupled" title="${t["耦合"].join(',')}">⇄</span>`:"";
-    return `<div class="slider"><span style="width:120px" title="${t["状态"]}">${t["状态"]}·${t["指标"]}${cp}</span>
+    const dlt = changed?` <span class="small muted">(默认 ${(+def).toFixed(2)}${unit})</span>`:"";
+    return `<div class="slider${changed?' changed':''}"><span style="width:120px" title="${t["状态"]} · 默认 ${(+def).toFixed(2)}${unit}">${t["状态"]}·${t["指标"]}${cp}</span>
       <input type="range" min="${min}" max="${max}" step="${step}" value="${v}" oninput="onSlide('${t.param}',this.value)">
-      <span class="val" id="v_${i}">${(+v).toFixed(2)}${unit}</span></div>`;
+      <span class="val" id="v_${i}" title="点击复位此项到默认值" onclick="resetOne('${t.param}')">${(+v).toFixed(2)}${unit}${dlt}</span></div>`;
   }).join("");
+  const nc = Object.keys(OVR).filter(p=>+OVR[p]!==+DEFAULTS[p]).length;
+  document.getElementById("changed_hint").textContent = nc?`已偏离默认 ${nc} 项`:"全部=探索默认值";
 }
 function onSlide(param,val){
   OVR[param] = +val;
-  const i = TUN.findIndex(t=>t.param===param);
-  if(i>=0){ const t=TUN[i]; const unit=t["单位"]==="百分比"?"%":(t["单位"]==="倍数"?"x":""); document.getElementById("v_"+i).textContent=(+val).toFixed(2)+unit; }
+  renderSliders();
   if(CUR_CODE) loadStock(CUR_CODE, true);
 }
+function resetOne(param){ delete OVR[param]; renderSliders(); if(CUR_CODE) loadStock(CUR_CODE, Object.keys(OVR).length>0); }
 function resetParams(){ OVR={}; renderSliders(); document.getElementById("notes").innerHTML=""; if(CUR_CODE) loadStock(CUR_CODE); }
 
 function trendSVG(trend, w=820, h=180, opacity=1, dashed=false){
@@ -112,7 +125,7 @@ async function loadStock(code, overlay){
   const tf = base.timeframes;
   const alignBadge = base.mtf_aligned ? `<span class="badge aligned">日周月一致 ✓</span>` : `<span class="badge conflict">多框矛盾 (诚实并列)</span>`;
   const overlaySVG = afterTrend ? `<svg viewBox="0 0 820 180" width="100%">${trendSVG(base.trend,820,180,0.35)}${trendSVG(afterTrend,820,180,1,true)}</svg>
-     <div class="small muted">实线浅=当前参数, 虚线亮=调整后</div>` : `<svg viewBox="0 0 820 180" width="100%">${trendSVG(base.trend)}</svg>`;
+     <div class="small muted">实线浅=默认值, 虚线亮=调整后 (此股趋势线着色随参数变化)</div>` : `<svg viewBox="0 0 820 180" width="100%">${trendSVG(base.trend)}</svg>`;
   document.getElementById("content").innerHTML = `
     <div class="card"><h2>${code} <span class="small muted">as_of ${base.as_of} · 熵 ${(base.entropy||0).toFixed(2)}</span> ${alignBadge}</h2>
       <div class="tf">${["daily","weekly","monthly"].map(k=>`
@@ -136,6 +149,23 @@ async function runScreen(){
         <b>${s.code}</b> ${s.mtf_aligned?'<span class="badge aligned">一致</span>':''}
         <div class="small muted">${s.sub||''}</div>
         <svg viewBox="0 0 160 50" width="100%">${trendSVG(s.trend,160,50)}</svg></div>`).join("")}</div>`;
+}
+async function runCompare(){
+  if(!Object.keys(OVR).length){ document.getElementById('content').innerHTML='<p class="muted">先调一个参数, 再看它对全体股票分布的影响 (默认 vs 调整后)。</p>'; return; }
+  document.getElementById('content').innerHTML='<p class="muted">扫描全体股票, 对比默认 vs 调整后分布...</p>';
+  const r = await fetch(`${API}/compare?ov=${encodeURIComponent(ovStr())}&scan=200`).then(x=>x.json());
+  if(r.error){ document.getElementById('content').innerHTML=`<p class="conflict">${r.error}</p>`; return; }
+  const rows = r.by_pattern.map(p=>{
+    const d=p.delta, cls=d>0?'pos':(d<0?'neg':'muted'), sign=d>0?'+':'';
+    return `<tr><td>${p.state}</td><td>${p.default}</td><td>${p.modified}</td><td class="${cls}">${sign}${d}</td></tr>`;
+  }).join("");
+  const flips = r.flips.slice(0,20).map(f=>`<span class="small">${f.code}: ${f.from||'过渡'}→${f.to||'过渡'}</span>`).join(" · ");
+  document.getElementById('content').innerHTML = `
+    <div class="card"><h2>默认值 vs 调整后 — 全体分布对比</h2>
+      <div class="small muted">扫 ${r.scanned} 只股 · 调参: ${(r.coupling_notes||[]).join('; ')||'—'} · 共 ${r.flip_count} 只股形态翻转</div>
+      <div class="small muted" style="margin:6px 0">盲点提醒: 单股看不出调参的全体影响 — 若某形态 Δ 暴涨, 可能是阈值放太松涌入了不该归此类的股。</div>
+      <table class="cmp"><tr><th>形态</th><th>默认</th><th>调整后</th><th>Δ</th></tr>${rows}</table></div>
+    ${r.flip_count?`<div class="card"><h3>翻转的股票 (前20, 点击看档案)</h3><div>${r.flips.slice(0,20).map(f=>`<span class="stockcard" style="display:inline-block;margin:3px;padding:4px 8px" onclick="loadStock('${f.code}')">${f.code} <span class="small muted">${f.from||'过渡'}→${f.to||'过渡'}</span></span>`).join("")}</div></div>`:''}`;
 }
 init();
 </script>
