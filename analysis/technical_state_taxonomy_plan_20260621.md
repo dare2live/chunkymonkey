@@ -140,11 +140,38 @@
 
 ---
 
-## 6. 工具化 / 模块化 / 配置化
+## 6. 工具化 / 模块化 / 配置化 (用户强调: 硬约束)
 
-- config (technical_states.yaml): **层级树**(L1→L2→L3) + 状态声明式条件 + 子态阈值 + **边界事件检测参数** + 量基准路由 + **理论 provenance** + **多套参数预设**。
-- classifier: 解释 config (L1 派生 / L2 软隶属 / L3 子态 / 边界事件 overlay / 上下文消歧)。
-- 前端档案视图: 显示 L1/L2/L3 + 边界事件标记 (前端手调可选, 用户说不强求)。
+> 复杂度上来后(9+态×位置×尺度×命名形态)**绝不堆 monolith**。每个关注点 = 独立单一职责模块, 全 config 驱动,
+> 各有干净接口 + 单测 + PIT安全。加 态/事件/命名形态 = 加 config + (必要时)加模块, 不动既有、不 hardcode。
+
+### 模块分解 (单一职责, 各读同一 config)
+```
+backend/services/technical_states/
+├── features.py     特征计算 (PIT, 多尺度窗口: 单日/短/中/长)            [存在]
+├── classifier.py   L1派生 / L2软隶属态 / L3子态 (声明式config解释器)    [存在, 扩展]
+├── context.py  新  上下文消歧 (位置pctile × 前序态as-of → 同行为分流)
+├── events.py   新  边界事件检测器 (假突破/挖坑/climax/背离, 短序列, overlay)
+├── candles.py  新  单日K线形态 (十字星/锤子/光头光脚, 开高低收几何)
+├── patterns.py 新  命名形态模板匹配 (老鸭头/头肩/cup-handle, 态序列规则)
+├── coupling.py     边界耦合 resolver                                  [存在]
+└── presets.py  新  Optuna预设管理 (最佳+次优, 加载/对比)
+config/technical_states.yaml  全judgment参数: 层级树/状态条件/事件参数/单K阈值/命名模板/预设/provenance
+```
+**编排**: classifier 是 orchestrator — features → L1/L2/L3 + context 消歧; events/candles/patterns 作为 overlay 并列; dossier 聚合层组装成档案维度①。模块间**零循环依赖**, 只 classifier 编排。
+
+### 接口契约 (每模块统一)
+- 输入: PIT 特征/bars + config; 输出: 结构化 dict (态/事件/形态 + 置信度 + 人话描述 + provenance)。
+- 纯函数优先 (可单测, 不碰 DB/全局); DB/IO 留 dossier 服务层。
+
+### 管理 (config 化 + 版本 + 溯源 + 隔离)
+- **判断全进 yaml**: 阈值/锐度/序列窗/模板规则/预设, 业务码只读 config (宪法 §1.0)。
+- **版本+provenance**: config meta.version + 每态 theory_anchor (理论溯源) + 每预设 tuned_by (Optuna study id)。
+- **探索隔离**: Optuna 调参在 sandbox, 验证(无偏差+语义+OOS)后才 promote 进 config + backend/services + 单测; confirmed_by_owner 门。
+- **门**: 每模块单测 (PIT无前瞻 + 语义 + 边界); moth 断言; check_rule_compliance (no hardcode)。
+
+### 前端 (可选, 用户说不强求手调)
+- 档案视图显示 L1/L2/L3 + 边界事件标记 + 命名形态标签 + 多尺度切换; 预设选择(最佳/次优)对比。
 
 ---
 
