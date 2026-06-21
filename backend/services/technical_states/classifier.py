@@ -74,38 +74,36 @@ def state_scores(f: dict, cfg: dict) -> dict:
     return out
 
 
+def _sub_cond_met(cond: dict, f: dict, mmap: dict, thr: dict) -> bool:
+    """单条子态条件: {指标:修饰指标, 大于|小于:子态阈值名}; 阈值=原始量纲(不换算)。NaN→不满足。"""
+    key = mmap.get(cond["指标"])
+    x = f.get(key)
+    if _is_nan(x):
+        return False
+    if "大于" in cond:
+        return x > thr[cond["大于"]]
+    if "小于" in cond:
+        return x < thr[cond["小于"]]
+    return False
+
+
 def _sub_state(top: str, f: dict, cfg: dict) -> str:
-    """主态 top 下按修饰量(路径效率/回撤/加速/量能/位置)分子态; 阈值读 config.子态阈值。
-    放量下跌 = 按价格分位**位置消歧**(高位出货/低位见底SC/中位延续, 用户核心洞察)。
+    """主态 top 下分子态 — **全 config 驱动** (D2: 读 config.子态规则, 消除硬编码)。
+    规则按序匹配, 全 AND 满足即取该子态; 无条件规则=默认。放量下跌=按价格分位位置消歧(config 化)。
     """
-    t = cfg["子态阈值"]
-    er, mdd, ac, zv, pc = f.get("er"), f.get("maxdd"), f.get("accel"), f.get("zvol"), f.get("pctile")
-    if top == "上升通道":
-        if not _is_nan(ac) and ac > t["上升_加速"]:
-            return "加速上涨"
-        if not _is_nan(er) and er > t["上升_路径效率"] and not _is_nan(mdd) and mdd < t["上升_回撤"]:
-            return "温和上涨"
-        return "震荡上涨"
-    if top == "低位横盘":
-        return "地量横盘" if (not _is_nan(zv) and zv < t["低位_量能"]) else "温和横盘"
-    if top == "放量突破":
-        return "巨量突破" if (not _is_nan(zv) and zv > t["突破_量能"]) else "温和突破"
-    if top == "中继平台":
-        return "缩量中继" if (not _is_nan(zv) and zv < t["中继_量能"]) else "震荡中继"
-    if top == "高位滞涨":
-        return "放量派发" if (not _is_nan(zv) and zv > t["高位_量能"]) else "缩量惜售"
-    if top == "下跌通道":
-        return "缩量阴跌" if (not _is_nan(zv) and zv < t["中继_量能"]) else "温和阴跌"
-    if top == "放量下跌":          # 位置消歧 (高位出货 / 低位恐慌见底SC / 中位延续)
-        if not _is_nan(pc) and pc > t["放量下跌_高位"]:
-            return "高位放量下跌"
-        if not _is_nan(pc) and pc < t["放量下跌_低位"]:
-            return "低位放量下跌"
-        return "中位放量下跌"
-    if top == "缩量回踩":
-        return "深回踩" if (not _is_nan(mdd) and mdd > t["回踩_回撤"]) else "浅回踩"
-    subs = cfg["子态"].get(top, [None])
-    return subs[0]
+    rules = cfg.get("子态规则", {}).get(top)
+    if not rules:
+        subs = cfg["子态"].get(top, [None])
+        return subs[0]
+    mmap = cfg.get("修饰指标", {})
+    thr = cfg["子态阈值"]
+    for rule in rules:
+        conds = rule.get("条件")
+        if not conds:                                          # 默认规则 (无条件)
+            return rule["则"]
+        if all(_sub_cond_met(c, f, mmap, thr) for c in conds):
+            return rule["则"]
+    return None
 
 
 def classify_bar(f: dict, cfg: dict | None = None) -> dict:

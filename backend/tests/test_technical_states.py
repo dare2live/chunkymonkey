@@ -112,6 +112,20 @@ def test_coupling_mirror_and_override():
     assert any(t["param"] == "上升通道.均线斜率" and t["耦合"] for t in tun)  # 可枚举且标耦合
 
 
+def test_substate_config_driven():
+    """D2: 子态全 config 驱动 (子态规则), 放量下跌按价格分位位置消歧 (改config阈值即变, 不动代码)。"""
+    from services.technical_states.classifier import _sub_state
+    cfg = load_config()
+    assert "子态规则" in cfg and "放量下跌" in cfg["子态规则"]
+    hi = {"pctile": 0.8, "maxdd": 0.1, "er": 0.1, "accel": 0.0, "zvol": 0.0}
+    lo = {"pctile": 0.1, "maxdd": 0.1, "er": 0.1, "accel": 0.0, "zvol": 0.0}
+    mid = {"pctile": 0.45, "maxdd": 0.1, "er": 0.1, "accel": 0.0, "zvol": 0.0}
+    assert _sub_state("放量下跌", hi, cfg) == "高位放量下跌"   # 位置消歧
+    assert _sub_state("放量下跌", lo, cfg) == "低位放量下跌"
+    assert _sub_state("放量下跌", mid, cfg) == "中位放量下跌"
+    assert _sub_state("上升通道", {"accel": 0.01, "er": 0.0, "maxdd": 0.5}, cfg) == "加速上涨"  # 加速门
+
+
 def test_classify_stock_multi_tf_keys():
     """多TF API 返回结构正确。"""
     n = 400
