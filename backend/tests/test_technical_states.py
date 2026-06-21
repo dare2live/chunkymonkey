@@ -190,3 +190,18 @@ def test_context_revives_pullback():
     assert cls[dates[11]]["context_state"] == "缩量回踩"                         # 前序升+当前mild→复活
     assert cls[dates[11]]["refined_dominant"] == "缩量回踩"
     assert cls[dates[11]]["prior_trend"] == "升"
+
+
+def test_candle_patterns():
+    """D5 单日K线: 几何识别 + 位置消歧(锤子vs上吊同形) + A股一字板特判。"""
+    from services.technical_states.candles import candle_pattern
+    cfg = load_config()
+    # 十字星 (实体极小)
+    assert candle_pattern(10.0, 10.5, 9.5, 10.02, cfg=cfg) == "十字星"
+    # 大阳线 (光头光脚长实体)
+    assert candle_pattern(10.0, 11.0, 10.0, 11.0, cfg=cfg) == "大阳线"
+    # 锤子/上吊 同形, 位置消歧 (长下影 + 实体非doji: body0.2/range1.5=0.13>0.1)
+    assert candle_pattern(10.3, 10.5, 9.0, 10.5, prior_trend="跌", cfg=cfg) == "锤子线"   # 下跌末=看多
+    assert candle_pattern(10.3, 10.5, 9.0, 10.5, prior_trend="升", cfg=cfg) == "上吊线"   # 上涨末=看空
+    # A股一字板特判 (不判十字星)
+    assert candle_pattern(11.0, 11.0, 11.0, 11.0, is_up_limit=True, is_one_word=True, cfg=cfg) == "一字板涨停"

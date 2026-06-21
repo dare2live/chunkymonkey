@@ -12,6 +12,8 @@ from datetime import date, timedelta
 
 from services.data_loaders import MARKET_DB, RAW_DB
 from services.duck_adapter import connect as duck_connect
+from services.technical_states.candles import candle_pattern
+from services.technical_states.context import apply_context
 from services.technical_states.limits import code_to_ts_code, compute_limit_flags, enrich_features
 from services.technical_states import (
     apply_coupling,
@@ -133,11 +135,18 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
             st = dlast.get("refined_dominant") or st                   # 日线用上下文 refine
         tf_read[name] = {"state": st, "desc": _desc(cfg, st),
                          "sub": last.get("daily_sub") if name == "daily" else None}
+    i = len(ohlcv["date"]) - 1                                         # D5 当日单日K线形态
+    lf = feats["daily"].get(last_date, {})
+    today_candle = candle_pattern(ohlcv["open"][i], ohlcv["high"][i], ohlcv["low"][i], ohlcv["close"][i],
+                                  prior_trend=dlast.get("prior_trend"),
+                                  is_up_limit=bool(lf.get("is_up_limit")), is_down_limit=bool(lf.get("is_down_limit")),
+                                  is_one_word=bool(lf.get("is_one_word")), cfg=cfg)
     return {
         "code": code, "as_of": last_date,
         "timeframes": tf_read,
         "mtf_aligned": last.get("mtf_aligned"),
         "prior_trend": dlast.get("prior_trend"),                       # D4 前序趋势 (位置消歧上下文)
+        "today_candle": today_candle,                                  # D5 当日单日K线形态
         "entropy": last.get("entropy"),
         "trend": trend_series(ohlcv, daily_cls),
         "tunables": list_tunables(cfg),
