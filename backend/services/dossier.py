@@ -87,27 +87,20 @@ def _iso(td) -> str:
 
 
 def load_capital(code: str) -> tuple[dict, dict]:
-    """moneyflow(主力净额+order-size桶) + daily_basic换手率 (维度③) → (money_by_date, turnover_by_date)。
-    money_by_date 含 net_mf_amount + buy/sell_sm/md/lg/elg (供明暗盘动向 mingan_flow)。
+    """**东财 moneyflow_dc 单一供应商** (维度③, 与项目 概念=东财 同源 口径自洽; flow-vendor=membership-vendor 红线)。
+    → (money_by_date, turnover_by_date)。money_by_date={date:{net_amount(主力净额=大单净), buy_md, buy_sm}}(各档净额, 万元)。
+    东财数据 2023-09 起 (前无资金, 档案描述近期为主)。明盘=net_amount; 暗盘=路径权重×(buy_md+buy_sm)。
     """
     ts = code_to_ts_code(code)
     c = duck_connect(RAW_DB, read_only=True)
     try:
-        mf = c.execute(
-            "SELECT trade_date, net_mf_amount, buy_sm_amount, buy_md_amount, buy_lg_amount, buy_elg_amount, "
-            "sell_sm_amount, sell_md_amount, sell_lg_amount, sell_elg_amount "
-            "FROM raw_tushare_moneyflow WHERE ts_code = ? ORDER BY trade_date", [ts]).fetchall()
+        dc = c.execute(
+            "SELECT trade_date, net_amount, buy_md_amount, buy_sm_amount "
+            "FROM raw_tushare_moneyflow_dc WHERE ts_code = ? ORDER BY trade_date", [ts]).fetchall()
         tr = c.execute("SELECT trade_date, turnover_rate FROM raw_tushare_daily_basic WHERE ts_code = ? ORDER BY trade_date", [ts]).fetchall()
-        dc = c.execute("SELECT trade_date, net_amount FROM raw_tushare_moneyflow_dc WHERE ts_code = ? ORDER BY trade_date", [ts]).fetchall()  # 东财主力净额(交叉验证)
     finally:
         c.close()
-    money = {_iso(r[0]): {"net_mf_amount": r[1], "buy_sm": r[2], "buy_md": r[3], "buy_lg": r[4], "buy_elg": r[5],
-                          "sell_sm": r[6], "sell_md": r[7], "sell_lg": r[8], "sell_elg": r[9],
-                          "dc_net": None} for r in mf}
-    for td, na in dc:                                       # 东财大单净额 (与 tushare elg+lg 同构念, corr0.961)
-        k = _iso(td)
-        if k in money:
-            money[k]["dc_net"] = na
+    money = {_iso(r[0]): {"net_amount": r[1], "buy_md": r[2], "buy_sm": r[3]} for r in dc}
     return (money, {_iso(td): v for td, v in tr})
 
 

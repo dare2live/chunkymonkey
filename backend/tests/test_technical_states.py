@@ -281,15 +281,14 @@ def test_mingan_flow():
 
 
 def test_mainforce_unified_with_mingan():
-    """口径统一 (reconcile): capital_signals主力净额 与 mingan明盘 同源(elg+lg净), 同符号; 禁用net_mf。"""
+    """口径统一 (东财单一源): mainforce_net=东财net_amount; capital_signals主力净额 与 mingan明盘 同源同符号。"""
     from services.technical_states.capital import capital_signals, mingan_flow, mainforce_net
-    f = {"buy_elg": 1000, "buy_lg": 500, "sell_elg": 200, "sell_lg": 100, "buy_md": 50, "buy_sm": 30,
-         "sell_md": 40, "sell_sm": 20, "net_mf_amount": -9999}  # net_mf 故意反向, 应被忽略
-    assert mainforce_net(f) == 1200    # (1000+500)-(200+100), 不理 net_mf
+    f = {"net_amount": 1200, "buy_md": 50, "buy_sm": 30}            # 东财: net_amount=主力净额(大单净)
+    assert mainforce_net(f) == 1200                                 # 东财 net_amount 直接
+    assert mainforce_net({"buy_elg": 1000, "buy_lg": 500}) == 1500  # 无net_amount → elg+lg净 fallback
     dates = [f"2024-01-{i:02d}" for i in range(1, 26)]
     money = {d: f for d in dates}
     cap = capital_signals(dates, money, {d: 5.0 for d in dates}, window=20)
     mg = mingan_flow(dates, [10.0]*25, [10.5]*25, [9.9]*25, [10.3]*25, money)
-    # 主力净额(capital)与明盘(mingan)同源同符号 (都正, net_mf的负被忽略)
-    assert cap[dates[-1]]["capital_state"] == "主力净流入"   # elg+lg净>0 (非net_mf的负)
-    assert mg[dates[-1]]["明盘"] > 0
+    assert cap[dates[-1]]["capital_state"] == "主力净流入"           # 东财net_amount>0
+    assert mg[dates[-1]]["明盘"] > 0                                 # 明盘同源东财net_amount

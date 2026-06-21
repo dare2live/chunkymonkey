@@ -113,11 +113,10 @@ function trendSVG(trend, w=820, h=180, opacity=1, dashed=false){
 function dimCard(base){
   const cap = base.capital, ch = base.chips;
   if(!cap && !ch) return "";
-  const dz = cap && cap['双源一致']===true ? ' <span class="badge aligned" title="tushare大单净与东财同向">双源✓</span>' : (cap && cap['双源一致']===false ? ' <span class="badge conflict">双源分歧</span>' : '');
   const capRow = cap ? `<div class="row"><span style="width:90px" class="muted small">主力资金/换手</span>
-    <span class="badge ${cap.capital_state==='主力净流入'?'aligned':cap.capital_state==='主力净流出'?'conflict':''}">${cap.capital_state}</span>${dz}
+    <span class="badge ${cap.capital_state==='主力净流入'?'aligned':cap.capital_state==='主力净流出'?'conflict':''}">${cap.capital_state}</span>
     <span class="badge">${cap.turnover_state}</span>
-    <span class="small muted">20日净额 ${cap['主力净额20日累计']?Math.round(cap['主力净额20日累计']):'—'}万 · 换手 ${cap['换手率']!=null?cap['换手率'].toFixed(2)+'%':'—'} · 大单净口径(tushare/东财, 非同花顺暗盘)</span></div>` : "";
+    <span class="small muted">20日净额 ${cap['主力净额20日累计']?Math.round(cap['主力净额20日累计']):'—'}万 · 换手 ${cap['换手率']!=null?cap['换手率'].toFixed(2)+'%':'—'} · 东财大单净口径(与概念同源)</span></div>` : "";
   const chRow = ch ? `<div class="row"><span style="width:90px" class="muted small">筹码</span>
     <span class="badge ${(ch.chip_state||'').includes('派发')?'conflict':(ch.chip_state||'').includes('惜售')?'aligned':''}">${ch.chip_state}</span>
     <span class="badge">${ch['集中状态']||''}</span>

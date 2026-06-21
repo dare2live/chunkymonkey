@@ -14,12 +14,13 @@ _DONGXIANG = {1: "看多", 2: "做T", 3: "低吸", 4: "看空", 5: "吸筹", 6: 
 
 
 def mainforce_net(f: dict) -> float:
-    """**主力(大单+超大单)净额单一真相源** (reconcile wf_e6a0e9e8 裁决: =[b]口径=东财dc.net_amount 同构念)。
-    = (买超大elg+买大lg) - (卖超大elg+卖大lg)。**禁用 tushare net_mf_amount 当主力净额** — 实测 net_mf=厂商
-    净主动流(vol×VWAP)跟中小单/动量, 与大单主力档常反向(600519 5天4天符号相反), 是口径错配。
+    """**主力(大单+超大单)净额单一真相源 = 东财 moneyflow_dc.net_amount** (万元)。
+    **单一供应商=东财**(与项目 概念=东财 同源, flow-vendor=membership-vendor 红线, 口径自洽; 禁同花顺第三套/tushare net_mf)。
+    实测 东财 net_amount ≡ buy_elg+buy_lg (大单净), 各档 buy_* 已是净额。东财数据 2023-09 起。
     """
-    g = lambda k: (f.get(k) or 0.0)  # noqa: E731
-    return g("buy_elg") + g("buy_lg") - g("sell_elg") - g("sell_lg")
+    if f.get("net_amount") is not None:
+        return f["net_amount"]
+    return (f.get("buy_elg") or 0.0) + (f.get("buy_lg") or 0.0)   # 东财净桶 fallback
 
 
 def _path_weight(o, h, l, c, prev_c) -> float:
@@ -57,8 +58,8 @@ def mingan_flow(dates, o, h, l, c, flow_by_date: dict, unit_div: float = 1e4) ->
         w = _path_weight(o[i], h[i], l[i], c[i], prev_c)
         prev_c = c[i]
         g = lambda k: (f.get(k) or 0.0)  # noqa: E731
-        m = mainforce_net(f) / unit_div    # 明盘=主力净额(亿, elg+lg 净, 与 capital_signals 同源单一真相源)
-        a = ((g("buy_md") + g("buy_sm")) * w if w > 0 else (g("sell_md") + g("sell_sm")) * w) / unit_div  # 暗盘(signed, 粗近似非真L2)
+        m = mainforce_net(f) / unit_div    # 明盘=主力净额(亿, 东财net_amount=大单净, 单一真相源)
+        a = (g("buy_md") + g("buy_sm")) * w / unit_div  # 暗盘=路径权重×东财中小单净(signed, 粗近似非真L2, 方向path驱动)
         ming.append(m); an.append(a); liu.append(m + a)
     out = {}
     for i, d in enumerate(ds):
@@ -101,13 +102,9 @@ def capital_signals(dates, money_by_date: dict, turnover_by_date: dict,
         cap = ("主力净流入" if cum > inflow_thr else "主力净流出" if cum < -inflow_thr else "资金中性")
         hot = ("换手活跃" if (tpct is not None and tpct > hot_pct)
                else "换手低迷" if (tpct is not None and tpct < cold_pct) else "换手正常")
-        dc = (money_by_date.get(str(dates[i])) or {}).get("dc_net")    # 东财大单净额 交叉验证
-        agree = None if (dc is None or np.isnan(net)) else (np.sign(dc) == np.sign(net))
         out[str(dates[i])] = {
-            "主力净额": None if np.isnan(net) else float(net),
+            "主力净额": None if np.isnan(net) else float(net),         # 东财 net_amount (大单净, 万元)
             "主力净额20日累计": cum, "换手率": None if np.isnan(tr) else float(tr),
             "换手分位": tpct, "capital_state": cap, "turnover_state": hot,
-            "东财主力净额": None if dc is None else float(dc),         # 双源: tushare elg+lg vs 东财
-            "双源一致": agree,                                          # True=两供应商同向(高置信)
         }
     return out
