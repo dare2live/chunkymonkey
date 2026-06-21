@@ -1,41 +1,70 @@
-<!-- 股票档案视图 (Stock Dossier P2) — 自包含, 无 node。owner=docs/stock_dossier_master_design.md -->
-<!-- 维度①形态: 多TF解读 + 趋势线(非K线) + 形态股票列表 + 交互调参(边界耦合同步) + before/after叠加 -->
+<!-- 股票档案视图 (Stock Dossier) — 自包含, 无 node。owner=docs/stock_dossier_master_design.md -->
+<!-- 三层架构: L1价格形态 / L2每日盘面行为 / L3属性背景。配色沿用深色主线(绿涨红跌蓝accent金warn) -->
 <meta charset="utf-8">
 <style>
-  :root { --up:#2e9e5b; --down:#d24b4b; --flat:#9aa0a6; --bg:#0f1115; --panel:#1a1d24; --line:#2a2e38; --txt:#e6e8eb; --dim:#9aa0a6; --accent:#4a9eff; }
+  :root {
+    /* 当前配色主线 (保留) */
+    --up:#2e9e5b; --down:#d24b4b; --flat:#9aa0a6;
+    --bg:#0f1115; --panel:#1a1d24; --line:#2a2e38;
+    --txt:#e6e8eb; --dim:#9aa0a6; --accent:#4a9eff; --warn:#e0a030;
+    /* 同色系明度梯度 (非新主色, 只补层次) */
+    --card:#1e222b; --inner:#12151b; --line2:#343a48; --faint:#6b7280;
+  }
   * { box-sizing:border-box; font-family:-apple-system,"PingFang SC",sans-serif; }
-  body { margin:0; background:var(--bg); color:var(--txt); font-size:13px; }
-  .wrap { display:grid; grid-template-columns:300px 1fr; gap:0; height:100vh; }
-  .left { background:var(--panel); border-right:1px solid var(--line); padding:14px; overflow-y:auto; }
-  .right { padding:16px; overflow-y:auto; }
-  h2 { font-size:15px; margin:0 0 10px; } h3 { font-size:13px; color:var(--dim); margin:14px 0 6px; font-weight:600; }
-  input,select { background:#12151b; color:var(--txt); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:13px; }
-  .row { display:flex; align-items:center; gap:8px; margin:6px 0; }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px; margin-bottom:12px; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-size:13px; line-height:1.5; -webkit-font-smoothing:antialiased; }
+  .wrap { display:grid; grid-template-columns:292px 1fr; height:100vh; }
+  .left { background:var(--panel); border-right:1px solid var(--line); padding:16px 14px; overflow-y:auto; }
+  .right { padding:18px 20px; overflow-y:auto; }
+  .brand { font-size:15px; font-weight:700; margin:0 0 2px; } .brand small{ color:var(--faint); font-weight:400; font-size:11px; }
+  h3 { font-size:11px; color:var(--faint); margin:18px 0 7px; font-weight:600; letter-spacing:.5px; }
+  input,select { background:var(--inner); color:var(--txt); border:1px solid var(--line2); border-radius:7px; padding:7px 9px; font-size:13px; outline:none; transition:border-color .15s; }
+  input:focus,select:focus { border-color:var(--accent); }
+  button { background:var(--accent); color:#fff; border:0; border-radius:7px; padding:7px 13px; cursor:pointer; font-size:13px; transition:filter .15s; }
+  button:hover { filter:brightness(1.08); } button.ghost { background:var(--line2); }
+  .row { display:flex; align-items:center; gap:8px; margin:7px 0; }
+  /* header bar */
+  .hdr { display:flex; align-items:center; gap:11px; flex-wrap:wrap; padding:13px 17px; background:var(--card); border:1px solid var(--line); border-radius:12px; margin-bottom:14px; }
+  .hdr .code { font-size:21px; font-weight:800; letter-spacing:.5px; }
+  .hdr .asof { font-size:11px; color:var(--faint); }
+  .fresh { margin-left:auto; display:flex; align-items:center; gap:6px; font-size:10px; color:var(--faint); }
+  .dot { width:7px; height:7px; border-radius:50%; display:inline-block; background:var(--up); }
+  /* 三层卡 (L1=accent蓝 L2=up绿 L3=warn金, 全现有色) */
+  .layer { background:var(--card); border:1px solid var(--line); border-radius:12px; margin-bottom:13px; overflow:hidden; }
+  .layer-hd { display:flex; align-items:baseline; gap:9px; padding:10px 15px; border-bottom:1px solid var(--line); }
+  .ln { font-size:10px; font-weight:800; color:#0f1115; padding:1px 6px; border-radius:4px; letter-spacing:.5px; }
+  .l1 .ln{ background:var(--accent); } .l2 .ln{ background:var(--up); } .l3 .ln{ background:var(--warn); }
+  .l1{ border-left:2px solid var(--accent); } .l2{ border-left:2px solid var(--up); } .l3{ border-left:2px solid var(--warn); }
+  .lt { font-size:13px; font-weight:600; } .ld { font-size:10px; color:var(--faint); margin-left:auto; }
+  .layer-bd { padding:13px 15px; }
+  .dim { display:flex; align-items:baseline; gap:9px; margin:7px 0; }
+  .dim-k { width:82px; flex-shrink:0; font-size:11px; color:var(--dim); }
+  .dim-v { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .src { font-size:10px; color:var(--faint); }
   .tf { display:flex; gap:10px; flex-wrap:wrap; }
-  .tfbox { flex:1; min-width:150px; background:#12151b; border:1px solid var(--line); border-radius:8px; padding:10px; }
-  .tflabel { color:var(--dim); font-size:11px; } .tfstate { font-size:16px; font-weight:700; margin:3px 0; }
-  .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; }
-  .aligned { background:#173a26; color:var(--up); } .conflict { background:#3a2020; color:var(--down); }
-  .slider { display:flex; align-items:center; gap:6px; margin:4px 0; font-size:11px; }
-  .slider input[type=range]{ flex:1; } .slider .val{ width:54px; text-align:right; color:var(--accent); }
-  .coupled { color:#e0a030; } .note { color:#e0a030; font-size:11px; margin:3px 0; }
+  .tfbox { flex:1; min-width:146px; background:var(--inner); border:1px solid var(--line); border-radius:9px; padding:11px; }
+  .tflabel { color:var(--faint); font-size:10px; letter-spacing:.5px; } .tfstate { font-size:16px; font-weight:700; margin:4px 0; }
+  .badge { display:inline-block; padding:2px 9px; border-radius:11px; font-size:11px; background:var(--line2); color:var(--dim); white-space:nowrap; }
+  .aligned { background:rgba(46,158,91,.16); color:var(--up); }
+  .conflict { background:rgba(210,75,75,.15); color:var(--down); }
+  .info { background:rgba(74,158,255,.14); color:var(--accent); }
+  .warnb { background:rgba(224,160,48,.15); color:var(--warn); }
+  .slider { display:flex; align-items:center; gap:6px; margin:5px 0; font-size:11px; }
+  .slider input[type=range]{ flex:1; accent-color:var(--accent); } .slider .val{ width:56px; text-align:right; color:var(--accent); cursor:pointer; }
   .slider.changed span:first-child { color:var(--accent); font-weight:600; }
-  .slider .val { cursor:pointer; } .slider .val:hover { text-decoration:underline; }
-  .cmp { width:100%; border-collapse:collapse; } .cmp td,.cmp th { padding:5px 8px; border-bottom:1px solid var(--line); text-align:right; font-size:12px; }
-  .cmp th:first-child,.cmp td:first-child { text-align:left; } .pos { color:var(--up); } .neg { color:var(--down); }
-  .stocklist { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:10px; }
-  .stockcard { background:#12151b; border:1px solid var(--line); border-radius:8px; padding:8px; cursor:pointer; }
+  .coupled { color:var(--warn); } .note { color:var(--warn); font-size:11px; margin:3px 0; } .val:hover { text-decoration:underline; }
+  .cmp { width:100%; border-collapse:collapse; } .cmp td,.cmp th { padding:6px 9px; border-bottom:1px solid var(--line); text-align:right; font-size:12px; }
+  .cmp th { color:var(--faint); font-weight:600; font-size:10px; } .cmp th:first-child,.cmp td:first-child { text-align:left; } .pos { color:var(--up); } .neg { color:var(--down); }
+  .stocklist { display:grid; grid-template-columns:repeat(auto-fill,minmax(158px,1fr)); gap:10px; }
+  .stockcard { background:var(--inner); border:1px solid var(--line); border-radius:9px; padding:9px; cursor:pointer; transition:border-color .15s; }
   .stockcard:hover { border-color:var(--accent); }
-  button { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:7px 12px; cursor:pointer; font-size:13px; }
-  button.ghost { background:#2a2e38; }
-  .muted { color:var(--dim); } .small { font-size:11px; }
-  svg text { fill:var(--dim); font-size:9px; }
+  .muted { color:var(--dim); } .faint { color:var(--faint); } .small { font-size:11px; }
+  .ph { color:var(--faint); font-size:12px; font-style:italic; }
+  svg text { fill:var(--faint); font-size:9px; }
 </style>
 
 <div class="wrap">
   <div class="left">
-    <h2>股票档案</h2>
+    <div class="brand">股票档案 <small>三层解读</small></div>
     <div class="row"><input id="code" placeholder="股票代码 如 600800" style="flex:1"><button onclick="loadStock()">查</button></div>
 
     <h3>形态筛选 (列出符合的股票)</h3>
@@ -47,6 +76,13 @@
     <div class="row"><button onclick="runCompare()" style="flex:2">对比默认值 (全体分布)</button><button class="ghost" onclick="resetParams()" style="flex:1">恢复默认值</button></div>
     <div class="small muted" id="changed_hint"></div>
     <div id="notes"></div>
+
+    <h3>三层架构</h3>
+    <div class="small muted" style="line-height:1.7">
+      <span class="ln" style="background:var(--accent)">L1</span> 价格形态 <span class="faint">几何</span><br>
+      <span class="ln" style="background:var(--up)">L2</span> 每日盘面 <span class="faint">量价资金筹码</span><br>
+      <span class="ln" style="background:var(--warn)">L3</span> 属性背景 <span class="faint">板块/基本面/事件</span>
+    </div>
   </div>
 
   <div class="right">
@@ -110,31 +146,48 @@ function trendSVG(trend, w=820, h=180, opacity=1, dashed=false){
   return segs+lbl;
 }
 
-function dimCard(base){
-  const cap = base.capital, ch = base.chips;
-  if(!cap && !ch) return "";
-  const capRow = cap ? `<div class="row"><span style="width:90px" class="muted small">主力资金/换手</span>
+// L2 每日盘面行为 (资金/筹码/明暗盘 + 数据源标注)
+function layer2Card(base){
+  const cap = base.capital, ch = base.chips, mg = base.mingan;
+  if(!cap && !ch && !mg) return "";
+  const capRow = cap ? `<div class="dim"><span class="dim-k">主力资金/换手</span><span class="dim-v">
     <span class="badge ${cap.capital_state==='主力净流入'?'aligned':cap.capital_state==='主力净流出'?'conflict':''}">${cap.capital_state}</span>
     <span class="badge">${cap.turnover_state}</span>
-    <span class="small muted">20日净额 ${cap['主力净额20日累计']?Math.round(cap['主力净额20日累计']):'—'}万 · 换手 ${cap['换手率']!=null?cap['换手率'].toFixed(2)+'%':'—'} · 东财大单净口径(与概念同源)</span></div>` : "";
-  const chRow = ch ? `<div class="row"><span style="width:90px" class="muted small">筹码</span>
+    <span class="src">20日净额 ${cap['主力净额20日累计']?Math.round(cap['主力净额20日累计']):'—'}万 · 换手 ${cap['换手率']!=null?cap['换手率'].toFixed(2)+'%':'—'}</span></span></div>` : "";
+  const mgRow = mg ? `<div class="dim"><span class="dim-k">主力大单净</span><span class="dim-v">
+    <span class="badge ${mg['主力净额']>0?'aligned':mg['主力净额']<0?'conflict':''}">${mg['主力净额']>0?'净流入':mg['主力净额']<0?'净流出':'中性'} ${mg['主力净额']}亿</span>
+    <span class="badge">占比 ${mg['净额占比']}%</span>
+    <span class="src">涨跌 ${mg['涨跌']>0?'+':''}${mg['涨跌']}%</span></span></div>` : "";
+  const divColor = s => /承接/.test(s||'')?'aligned':/派发/.test(s||'')?'conflict':'';
+  const intentColor = s => /吸筹|看多|低吸|推升/.test(s||'')?'aligned':/做空|派发|阴跌/.test(s||'')?'conflict':'';
+  const intentRow = mg && mg['主力意图'] ? `<div class="dim"><span class="dim-k">主力意图</span><span class="dim-v">
+    <span class="badge ${intentColor(mg['主力意图'])}">${mg['主力意图']}</span>
+    <span class="badge ${divColor(mg['量价背离'])}">${mg['量价背离']||''}</span>
+    <span class="src">${mg['意图解读']||''}</span></span></div>` : "";
+  const chRow = ch ? `<div class="dim"><span class="dim-k">筹码</span><span class="dim-v">
     <span class="badge ${(ch.chip_state||'').includes('派发')?'conflict':(ch.chip_state||'').includes('惜售')?'aligned':''}">${ch.chip_state}</span>
     <span class="badge">${ch['集中状态']||''}</span>
     <span class="badge ${ch['价位状态']==='获利'?'aligned':'conflict'}">${ch['价位状态']||''}</span>
-    <span class="small muted">获利盘 ${ch['获利盘']!=null?ch['获利盘'].toFixed(0)+'%':'—'}${ch['获利盘20日变化']!=null?'('+(ch['获利盘20日变化']>0?'+':'')+ch['获利盘20日变化'].toFixed(0)+')':''}</span></div>` : "";
-  const mg = base.mingan;
-  const divColor = s => /承接/.test(s||'')?'aligned':/派发/.test(s||'')?'conflict':'';
-  const mgRow = mg ? `<div class="row"><span style="width:90px" class="muted small">主力大单净</span>
-    <span class="badge ${mg['主力净额']>0?'aligned':mg['主力净额']<0?'conflict':''}">${mg['主力净额']>0?'净流入':mg['主力净额']<0?'净流出':'中性'} ${mg['主力净额']}亿</span>
-    <span class="badge">占比 ${mg['净额占比']}%</span>
-    <span class="small muted">涨跌 ${mg['涨跌']>0?'+':''}${mg['涨跌']}% · 东财大单净(与概念同源, 89%对齐同花顺明盘)</span></div>` : "";
-  const intentColor = s => /吸筹|看多|低吸|推升/.test(s||'')?'aligned':/做空|派发|阴跌/.test(s||'')?'conflict':'';
-  const intentRow = mg && mg['主力意图'] ? `<div class="row"><span style="width:90px" class="muted small">主力意图</span>
-    <span class="badge ${intentColor(mg['主力意图'])}">${mg['主力意图']}</span>
-    <span class="badge ${divColor(mg['量价背离'])}">${mg['量价背离']||''}</span>
-    <span class="small muted">${mg['意图解读']||''} · 同花顺暗盘语义→明盘×价格量价背离代理(暗盘伪维度已砍)</span></div>` : "";
-  return `<div class="card"><h3>第二层: 量价/资金/筹码 (确认基础层形态; RS见顶部)</h3>${capRow}${chRow}${mgRow}${intentRow}</div>`;
+    <span class="src">获利盘 ${ch['获利盘']!=null?ch['获利盘'].toFixed(0)+'%':'—'}${ch['获利盘20日变化']!=null?'('+(ch['获利盘20日变化']>0?'+':'')+ch['获利盘20日变化'].toFixed(0)+')':''}</span></span></div>` : "";
+  return `<div class="layer l2"><div class="layer-hd"><span class="ln">L2</span><span class="lt">每日盘面行为</span>
+      <span class="ld">确认形态真伪 · 东财 moneyflow_dc / tushare cyq_perf · 盘后日更 t-1</span></div>
+    <div class="layer-bd">${capRow}${mgRow}${intentRow}${chRow}</div></div>`;
 }
+
+// L3 属性背景 (待 sector_context 接入, 先占位列出已定稿维度)
+function layer3Card(base){
+  const sec = base.sector;   // 待接入
+  if(sec){
+    // 真实数据 (sector_context 接入后)
+    return `<div class="layer l3"><div class="layer-hd"><span class="ln">L3</span><span class="lt">属性背景</span>
+        <span class="ld">为什么涨+可持续 · 申万 sw_daily / 东财 dc_member</span></div>
+      <div class="layer-bd"><div class="dim"><span class="dim-k">板块/概念</span><span class="dim-v">${sec.summary||''}</span></div></div></div>`;
+  }
+  return `<div class="layer l3"><div class="layer-hd"><span class="ln">L3</span><span class="lt">属性背景</span>
+      <span class="ld">为什么涨+可持续 · 慢变会调整属性 · 锚 ann_date</span></div>
+    <div class="layer-bd"><div class="ph">板块/概念/行业 · 基本面 · 估值 · 分析师预期 · 事件催化(龙虎榜/解禁/十大流通股东) · 市场regime门 — sector_context 模块蓝图已就绪, 数据已补齐(sw_daily/dc_member), 待落地接入</div></div></div>`;
+}
+
 async function loadStock(code, overlay){
   code = code || document.getElementById("code").value.trim();
   if(!code) return;
@@ -152,24 +205,31 @@ async function loadStock(code, overlay){
   const overlaySVG = afterTrend ? `<svg viewBox="0 0 820 180" width="100%">${trendSVG(base.trend,820,180,0.35)}${trendSVG(afterTrend,820,180,1,true)}</svg>
      <div class="small muted">实线浅=默认值, 虚线亮=调整后 (此股趋势线着色随参数变化)</div>` : `<svg viewBox="0 0 820 180" width="100%">${trendSVG(base.trend)}</svg>`;
   const ptrend = base.prior_trend ? `<span class="badge ${base.prior_trend==='升'?'aligned':base.prior_trend==='跌'?'conflict':''}">前序趋势: ${base.prior_trend}</span>` : "";
-  const candle = base.today_candle ? `<span class="badge" style="background:#23304a;color:#9cc4ff">当日K线: ${base.today_candle}</span>` : "";
+  const candle = base.today_candle ? `<span class="badge info">当日K线: ${base.today_candle}</span>` : "";
   const rs = base.rs ? `<span class="badge ${base.rs.rs_state==='强于大盘'?'aligned':base.rs.rs_state==='弱于大盘'?'conflict':''}">RS: ${base.rs.rs_state}</span>` : "";
   const pats = (base.recent_patterns||[]);
   const seen = {}; const upats = pats.filter(p=>{ const k=p.名称; if(seen[k])return false; seen[k]=1; return true; });
-  const patCard = upats.length ? `<div class="card"><h3>近期命名形态 (态序列模板, 派生标签)</h3>
-    ${upats.map(p=>`<div class="row"><span class="badge" style="background:#2a3a2a;color:#9be0a0">${p.名称}</span>
-      <span class="small muted">完成于 ${p.date} · ${p.provenance}</span></div>`).join("")}</div>` : "";
+  const patRows = upats.length ? `<div class="dim"><span class="dim-k">命名形态</span><span class="dim-v">${upats.map(p=>`<span class="badge aligned">${p.名称}</span><span class="src">${p.date}·${p.provenance}</span>`).join(" ")}</span></div>` : "";
   document.getElementById("content").innerHTML = `
-    <div class="card"><h2>${code} <span class="small muted">as_of ${base.as_of} · 熵 ${(base.entropy||0).toFixed(2)}</span> ${alignBadge} ${ptrend} ${rs} ${candle}</h2>
-      <div class="small muted" style="margin:2px 0 6px">基础层: 价格形态 (日/周/月)</div>
-      <div class="tf">${["daily","weekly","monthly"].map(k=>`
-        <div class="tfbox"><div class="tflabel">${({daily:"日线",weekly:"周线",monthly:"月线"})[k]}</div>
-          <div class="tfstate">${tf[k].state||"过渡态"}</div>
-          <div class="small muted">${tf[k].desc}</div>${tf[k].sub?`<div class="small">子态: ${tf[k].sub}</div>`:""}</div>`).join("")}</div>
+    <div class="hdr">
+      <span class="code">${code}</span>
+      <span class="asof">as_of ${base.as_of} · 熵 ${(base.entropy||0).toFixed(2)}</span>
+      ${alignBadge} ${ptrend} ${rs} ${candle}
+      <span class="fresh"><span class="dot"></span>数据 ${base.as_of} · 形态+量价+资金全口径</span>
     </div>
-    ${dimCard(base)}
-    ${patCard}
-    <div class="card"><h3>趋势线 (按形态着色, 非K线)</h3>${overlaySVG}</div>`;
+    <div class="layer l1"><div class="layer-hd"><span class="ln">L1</span><span class="lt">价格形态</span>
+        <span class="ld">骨架 · 价格走出什么几何 · K线 tushare 前复权(日/周/月)</span></div>
+      <div class="layer-bd">
+        <div class="tf">${["daily","weekly","monthly"].map(k=>`
+          <div class="tfbox"><div class="tflabel">${({daily:"日线",weekly:"周线",monthly:"月线"})[k]}</div>
+            <div class="tfstate">${tf[k].state||"过渡态"}</div>
+            <div class="small muted">${tf[k].desc}</div>${tf[k].sub?`<div class="small">子态: ${tf[k].sub}</div>`:""}</div>`).join("")}</div>
+        ${patRows}
+      </div></div>
+    ${layer2Card(base)}
+    ${layer3Card(base)}
+    <div class="layer"><div class="layer-hd"><span class="lt">趋势线</span><span class="ld">按形态着色 · 非K线</span></div>
+      <div class="layer-bd">${overlaySVG}</div></div>`;
 }
 
 async function runScreen(){
@@ -178,8 +238,9 @@ async function runScreen(){
   const ov = Object.keys(OVR).length?`&ov=${encodeURIComponent(ovStr())}`:"";
   const r = await fetch(`${API}/screen?pattern=${encodeURIComponent(p)}&limit=40&scan=300${ov}`).then(x=>x.json());
   document.getElementById("content").innerHTML = `
-    <div class="card"><h2>${p} <span class="small muted">${r.desc}</span></h2>
-      <div class="muted small">扫 ${r.scanned} 股, 命中 ${r.count}${r.coupling_notes&&r.coupling_notes.length?` · 调参: ${r.coupling_notes.join("; ")}`:""}</div></div>
+    <div class="hdr"><span class="code" style="font-size:17px">${p}</span> <span class="asof">${r.desc}</span>
+      <span class="fresh">扫 ${r.scanned} 股 · 命中 ${r.count}</span></div>
+    ${r.coupling_notes&&r.coupling_notes.length?`<div class="small muted" style="margin:-6px 0 10px">调参: ${r.coupling_notes.join("; ")}</div>`:""}
     <div class="stocklist">${r.stocks.map(s=>`
       <div class="stockcard" onclick="loadStock('${s.code}')">
         <b>${s.code}</b> ${s.mtf_aligned?'<span class="badge aligned">一致</span>':''}
@@ -195,13 +256,15 @@ async function runCompare(){
     const d=p.delta, cls=d>0?'pos':(d<0?'neg':'muted'), sign=d>0?'+':'';
     return `<tr><td>${p.state}</td><td>${p.default}</td><td>${p.modified}</td><td class="${cls}">${sign}${d}</td></tr>`;
   }).join("");
-  const flips = r.flips.slice(0,20).map(f=>`<span class="small">${f.code}: ${f.from||'过渡'}→${f.to||'过渡'}</span>`).join(" · ");
   document.getElementById('content').innerHTML = `
-    <div class="card"><h2>默认值 vs 调整后 — 全体分布对比</h2>
-      <div class="small muted">扫 ${r.scanned} 只股 · 调参: ${(r.coupling_notes||[]).join('; ')||'—'} · 共 ${r.flip_count} 只股形态翻转</div>
-      <div class="small muted" style="margin:6px 0">盲点提醒: 单股看不出调参的全体影响 — 若某形态 Δ 暴涨, 可能是阈值放太松涌入了不该归此类的股。</div>
-      <table class="cmp"><tr><th>形态</th><th>默认</th><th>调整后</th><th>Δ</th></tr>${rows}</table></div>
-    ${r.flip_count?`<div class="card"><h3>翻转的股票 (前20, 点击看档案)</h3><div>${r.flips.slice(0,20).map(f=>`<span class="stockcard" style="display:inline-block;margin:3px;padding:4px 8px" onclick="loadStock('${f.code}')">${f.code} <span class="small muted">${f.from||'过渡'}→${f.to||'过渡'}</span></span>`).join("")}</div></div>`:''}`;
+    <div class="hdr"><span class="code" style="font-size:17px">默认值 vs 调整后</span><span class="asof">全体分布对比</span>
+      <span class="fresh">扫 ${r.scanned} 股 · ${r.flip_count} 只翻转</span></div>
+    <div class="layer"><div class="layer-bd">
+      <div class="small muted">调参: ${(r.coupling_notes||[]).join('; ')||'—'}</div>
+      <div class="small warnb" style="display:inline-block;padding:4px 8px;border-radius:6px;margin:8px 0">盲点提醒: 单股看不出调参的全体影响 — 若某形态 Δ 暴涨, 可能是阈值放太松涌入了不该归此类的股。</div>
+      <table class="cmp"><tr><th>形态</th><th>默认</th><th>调整后</th><th>Δ</th></tr>${rows}</table></div></div>
+    ${r.flip_count?`<div class="layer"><div class="layer-hd"><span class="lt">翻转的股票</span><span class="ld">前20 · 点击看档案</span></div>
+      <div class="layer-bd">${r.flips.slice(0,20).map(f=>`<span class="stockcard" style="display:inline-block;margin:3px;padding:4px 8px" onclick="loadStock('${f.code}')">${f.code} <span class="small muted">${f.from||'过渡'}→${f.to||'过渡'}</span></span>`).join("")}</div></div>`:''}`;
 }
 init();
 </script>
