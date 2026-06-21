@@ -117,6 +117,43 @@ def load_cyq(code: str) -> dict:
             for td, wr, c5, c50, c95, wa in rows}
 
 
+def load_top10_holders(code: str, as_of: str | None = None) -> dict | None:
+    """L3 机构维度: 十大**流通**股东 (free) 最近季 + 本季动向 (新进/增持/减持/退出)。
+    真相源: smartmoney.fact_top10_holder_period (tdx F10, 2017Q4+, 含持股占比/变化/进出标记)。
+    PIT: 取 report_date <= as_of 的最近季 (季报披露滞后, 描述用最近季)。机构跟随=用户最初设想的跟随策略基础。
+    """
+    from services.data_loaders import SMARTMONEY_DB
+    from collections import Counter
+    asof_norm = as_of.replace("-", "") if as_of else None    # 数据坑: report_date 格式不统一(带/不带横线), 规范化 YYYYMMDD 比较
+    c = duck_connect(SMARTMONEY_DB, read_only=True)
+    try:
+        where_asof = " AND REPLACE(report_date,'-','') <= ?" if asof_norm else ""
+        args = [code] + ([asof_norm] if asof_norm else [])
+        mxrow = c.execute(f"SELECT report_date FROM fact_top10_holder_period "
+                          f"WHERE stock_code = ? AND holder_set = 'free'{where_asof} "
+                          f"ORDER BY REPLACE(report_date,'-','') DESC LIMIT 1", args).fetchone()
+        if not mxrow:
+            return None
+        mx = mxrow[0]
+        cur = c.execute("SELECT holder_rank, holder_name_norm, hold_ratio_float, change_status, hold_change_num "
+                        "FROM fact_top10_holder_period WHERE stock_code = ? AND holder_set = 'free' "
+                        "AND report_date = ? AND is_exit_row = false ORDER BY holder_rank", [code, mx]).fetchall()
+        moves = [r[0] for r in c.execute("SELECT change_status FROM fact_top10_holder_period "
+                 "WHERE stock_code = ? AND holder_set = 'free' AND report_date = ?", [code, mx]).fetchall()]
+    finally:
+        c.close()
+    if not cur:
+        return None
+    cnt = Counter(m for m in moves if m)
+    net = (cnt.get("新进", 0) + cnt.get("增持", 0)) - (cnt.get("退出", 0) + cnt.get("减持", 0))   # 机构净加减仓
+    return {
+        "report_date": mx,
+        "holders": [{"rank": r[0], "name": r[1], "ratio": r[2], "change": r[3], "change_num": r[4]} for r in cur],
+        "新进": cnt.get("新进", 0), "退出": cnt.get("退出", 0), "增持": cnt.get("增持", 0), "减持": cnt.get("减持", 0),
+        "机构动向": "加仓" if net > 0 else "减仓" if net < 0 else "持平",
+    }
+
+
 def load_benchmark(ts_code: str) -> dict:
     """基准指数日线 (RS 用; 如 HS300 000300.SH) → {date_iso: close}。"""
     c = duck_connect(RAW_DB, read_only=True)
@@ -223,6 +260,7 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
         "capital": cap.get(last_date),                                 # 维度③ 资金流向+换手率
         "mingan": mingan_now,                                          # 主力意图+量价背离(暗盘伪维度已砍, 见capital.py裁决)
         "chips": chip.get(last_date),                                  # 维度④ 筹码分布+胜率
+        "holders": load_top10_holders(code, as_of=last_date),          # L3 机构: 十大流通股东+动向(report_date带横线同last_date格式)
         "entropy": last.get("entropy"),
         "trend": trend_series(ohlcv, daily_cls),
         "tunables": list_tunables(cfg),

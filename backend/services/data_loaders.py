@@ -22,6 +22,7 @@ from services.universe import is_active_a_share  # config 驱动硬真相源, �
 _MANIFEST = get_database_manifest()
 MARKET_DB = str(_MANIFEST.path_for("market"))       # L1k: price_kline_qfq_tushare (manifest 路由=单一真相源, 不 hardcode .duckdb)
 RAW_DB = str(_MANIFEST.path_for("tushare_raw"))     # L0: raw_tushare_moneyflow / raw_tushare_fina_indicator
+SMARTMONEY_DB = str(_MANIFEST.path_for("smartmoney"))  # 机构/十大流通股东: fact_top10_holder_period / inst_holdings (档案L3机构维度)
 QUALITY_METRIC = "roe_dt"              # 扣非 ROE (剔非经常损益, 质量更干净); tushare fina_indicator 列名
 
 

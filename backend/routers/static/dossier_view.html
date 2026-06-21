@@ -1,65 +1,70 @@
 <!-- 股票档案视图 (Stock Dossier) — 自包含, 无 node。owner=docs/stock_dossier_master_design.md -->
-<!-- 三层架构: L1价格形态 / L2每日盘面行为 / L3属性背景。配色沿用深色主线(绿涨红跌蓝accent金warn) -->
+<!-- 三层架构: L1价格形态 / L2每日盘面 / L3属性背景(含机构档案)。配色=claude_design 浅色系统(reset前v3设计方案) -->
 <meta charset="utf-8">
 <style>
   :root {
-    /* 当前配色主线 (保留) */
-    --up:#2e9e5b; --down:#d24b4b; --flat:#9aa0a6;
-    --bg:#0f1115; --panel:#1a1d24; --line:#2a2e38;
-    --txt:#e6e8eb; --dim:#9aa0a6; --accent:#4a9eff; --warn:#e0a030;
-    /* 同色系明度梯度 (非新主色, 只补层次) */
-    --card:#1e222b; --inner:#12151b; --line2:#343a48; --faint:#6b7280;
+    /* claude_design 浅色系统 (reset前v3设计方案) */
+    --brand:#3657D8; --brand-100:#dbe3fb;
+    --bg:#FAFAFA; --surface:#fff;
+    --ink:#111827; --ink-500:#6b7280; --ink-100:#e5e7eb; --ink-50:#f3f4f6;
+    --ok:#0B9D6A; --ok-100:#dcf4e7; --warn:#d97706; --warn-100:#fef3c7;
+    --bad:#dc2626; --bad-100:#fee2e2; --unknown:#9ca3af;
+    --up:#0B9D6A; --down:#dc2626; --flat:#9ca3af;   /* 趋势线着色 */
   }
   * { box-sizing:border-box; font-family:-apple-system,"PingFang SC",sans-serif; }
-  body { margin:0; background:var(--bg); color:var(--txt); font-size:13px; line-height:1.5; -webkit-font-smoothing:antialiased; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-size:13px; line-height:1.5; -webkit-font-smoothing:antialiased; }
   .wrap { display:grid; grid-template-columns:292px 1fr; height:100vh; }
-  .left { background:var(--panel); border-right:1px solid var(--line); padding:16px 14px; overflow-y:auto; }
-  .right { padding:18px 20px; overflow-y:auto; }
-  .brand { font-size:15px; font-weight:700; margin:0 0 2px; } .brand small{ color:var(--faint); font-weight:400; font-size:11px; }
-  h3 { font-size:11px; color:var(--faint); margin:18px 0 7px; font-weight:600; letter-spacing:.5px; }
-  input,select { background:var(--inner); color:var(--txt); border:1px solid var(--line2); border-radius:7px; padding:7px 9px; font-size:13px; outline:none; transition:border-color .15s; }
-  input:focus,select:focus { border-color:var(--accent); }
-  button { background:var(--accent); color:#fff; border:0; border-radius:7px; padding:7px 13px; cursor:pointer; font-size:13px; transition:filter .15s; }
-  button:hover { filter:brightness(1.08); } button.ghost { background:var(--line2); }
+  .left { background:var(--surface); border-right:1px solid var(--ink-100); padding:16px 14px; overflow-y:auto; }
+  .right { padding:18px 20px; overflow-y:auto; background:var(--bg); }
+  .brand { font-size:15px; font-weight:700; margin:0 0 2px; color:var(--ink); } .brand small { color:var(--ink-500); font-weight:400; font-size:11px; }
+  h3 { font-size:11px; color:var(--ink-500); margin:18px 0 7px; font-weight:600; letter-spacing:.3px; }
+  input,select { background:#fff; color:var(--ink); border:1px solid var(--ink-100); border-radius:8px; padding:7px 9px; font-size:13px; outline:none; transition:border-color .15s; }
+  input:focus,select:focus { border-color:var(--brand); }
+  button { background:var(--brand); color:#fff; border:0; border-radius:8px; padding:7px 13px; cursor:pointer; font-size:13px; transition:filter .15s; }
+  button:hover { filter:brightness(1.05); } button.ghost { background:var(--ink-50); color:var(--ink-500); }
   .row { display:flex; align-items:center; gap:8px; margin:7px 0; }
   /* header bar */
-  .hdr { display:flex; align-items:center; gap:11px; flex-wrap:wrap; padding:13px 17px; background:var(--card); border:1px solid var(--line); border-radius:12px; margin-bottom:14px; }
-  .hdr .code { font-size:21px; font-weight:800; letter-spacing:.5px; }
-  .hdr .asof { font-size:11px; color:var(--faint); }
-  .fresh { margin-left:auto; display:flex; align-items:center; gap:6px; font-size:10px; color:var(--faint); }
-  .dot { width:7px; height:7px; border-radius:50%; display:inline-block; background:var(--up); }
-  /* 三层卡 (L1=accent蓝 L2=up绿 L3=warn金, 全现有色) */
-  .layer { background:var(--card); border:1px solid var(--line); border-radius:12px; margin-bottom:13px; overflow:hidden; }
-  .layer-hd { display:flex; align-items:baseline; gap:9px; padding:10px 15px; border-bottom:1px solid var(--line); }
-  .ln { font-size:10px; font-weight:800; color:#0f1115; padding:1px 6px; border-radius:4px; letter-spacing:.5px; }
-  .l1 .ln{ background:var(--accent); } .l2 .ln{ background:var(--up); } .l3 .ln{ background:var(--warn); }
-  .l1{ border-left:2px solid var(--accent); } .l2{ border-left:2px solid var(--up); } .l3{ border-left:2px solid var(--warn); }
-  .lt { font-size:13px; font-weight:600; } .ld { font-size:10px; color:var(--faint); margin-left:auto; }
-  .layer-bd { padding:13px 15px; }
-  .dim { display:flex; align-items:baseline; gap:9px; margin:7px 0; }
-  .dim-k { width:82px; flex-shrink:0; font-size:11px; color:var(--dim); }
+  .hdr { display:flex; align-items:center; gap:11px; flex-wrap:wrap; padding:14px 18px; background:var(--surface); border:1px solid var(--ink-100); border-radius:12px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+  .hdr .code { font-size:21px; font-weight:800; color:var(--ink); letter-spacing:.3px; }
+  .hdr .asof { font-size:11px; color:var(--ink-500); }
+  .fresh { margin-left:auto; display:flex; align-items:center; gap:6px; font-size:10px; color:var(--ink-500); }
+  .dot { width:7px; height:7px; border-radius:50%; display:inline-block; background:var(--ok); }
+  /* 三层卡 (L1=brand蓝 L2=ok绿 L3=warn橙) */
+  .layer { background:var(--surface); border:1px solid var(--ink-100); border-radius:12px; margin-bottom:13px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+  .layer-hd { display:flex; align-items:baseline; gap:9px; padding:11px 16px; border-bottom:1px solid var(--ink-100); background:var(--ink-50); }
+  .ln { font-size:10px; font-weight:800; color:#fff; padding:1px 7px; border-radius:5px; letter-spacing:.5px; }
+  .l1 .ln{ background:var(--brand); } .l2 .ln{ background:var(--ok); } .l3 .ln{ background:var(--warn); }
+  .l1{ border-left:3px solid var(--brand); } .l2{ border-left:3px solid var(--ok); } .l3{ border-left:3px solid var(--warn); }
+  .lt { font-size:13px; font-weight:600; color:var(--ink); } .ld { font-size:10px; color:var(--ink-500); margin-left:auto; }
+  .layer-bd { padding:14px 16px; }
+  .dim { display:flex; align-items:baseline; gap:9px; margin:8px 0; }
+  .dim-k { width:84px; flex-shrink:0; font-size:11px; color:var(--ink-500); }
   .dim-v { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
-  .src { font-size:10px; color:var(--faint); }
+  .src { font-size:10px; color:var(--unknown); }
   .tf { display:flex; gap:10px; flex-wrap:wrap; }
-  .tfbox { flex:1; min-width:146px; background:var(--inner); border:1px solid var(--line); border-radius:9px; padding:11px; }
-  .tflabel { color:var(--faint); font-size:10px; letter-spacing:.5px; } .tfstate { font-size:16px; font-weight:700; margin:4px 0; }
-  .badge { display:inline-block; padding:2px 9px; border-radius:11px; font-size:11px; background:var(--line2); color:var(--dim); white-space:nowrap; }
-  .aligned { background:rgba(46,158,91,.16); color:var(--up); }
-  .conflict { background:rgba(210,75,75,.15); color:var(--down); }
-  .info { background:rgba(74,158,255,.14); color:var(--accent); }
-  .warnb { background:rgba(224,160,48,.15); color:var(--warn); }
+  .tfbox { flex:1; min-width:146px; background:var(--bg); border:1px solid var(--ink-100); border-radius:10px; padding:11px; }
+  .tflabel { color:var(--ink-500); font-size:10px; letter-spacing:.5px; } .tfstate { font-size:16px; font-weight:700; margin:4px 0; color:var(--ink); }
+  .badge { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:600; background:var(--ink-50); color:var(--ink-500); white-space:nowrap; }
+  .aligned { background:var(--ok-100); color:var(--ok); }
+  .conflict { background:var(--bad-100); color:var(--bad); }
+  .info { background:var(--brand-100); color:var(--brand); }
+  .warnb { background:var(--warn-100); color:var(--warn); }
   .slider { display:flex; align-items:center; gap:6px; margin:5px 0; font-size:11px; }
-  .slider input[type=range]{ flex:1; accent-color:var(--accent); } .slider .val{ width:56px; text-align:right; color:var(--accent); cursor:pointer; }
-  .slider.changed span:first-child { color:var(--accent); font-weight:600; }
+  .slider input[type=range]{ flex:1; accent-color:var(--brand); } .slider .val{ width:56px; text-align:right; color:var(--brand); cursor:pointer; }
+  .slider.changed span:first-child { color:var(--brand); font-weight:600; }
   .coupled { color:var(--warn); } .note { color:var(--warn); font-size:11px; margin:3px 0; } .val:hover { text-decoration:underline; }
-  .cmp { width:100%; border-collapse:collapse; } .cmp td,.cmp th { padding:6px 9px; border-bottom:1px solid var(--line); text-align:right; font-size:12px; }
-  .cmp th { color:var(--faint); font-weight:600; font-size:10px; } .cmp th:first-child,.cmp td:first-child { text-align:left; } .pos { color:var(--up); } .neg { color:var(--down); }
+  .cmp { width:100%; border-collapse:collapse; } .cmp td,.cmp th { padding:6px 9px; border-bottom:1px solid var(--ink-100); text-align:right; font-size:12px; }
+  .cmp th { color:var(--ink-500); font-weight:600; font-size:10px; } .cmp th:first-child,.cmp td:first-child { text-align:left; } .pos { color:var(--ok); } .neg { color:var(--bad); }
   .stocklist { display:grid; grid-template-columns:repeat(auto-fill,minmax(158px,1fr)); gap:10px; }
-  .stockcard { background:var(--inner); border:1px solid var(--line); border-radius:9px; padding:9px; cursor:pointer; transition:border-color .15s; }
-  .stockcard:hover { border-color:var(--accent); }
-  .muted { color:var(--dim); } .faint { color:var(--faint); } .small { font-size:11px; }
-  .ph { color:var(--faint); font-size:12px; font-style:italic; }
-  svg text { fill:var(--faint); font-size:9px; }
+  .stockcard { background:var(--surface); border:1px solid var(--ink-100); border-radius:10px; padding:9px; cursor:pointer; transition:border-color .15s; }
+  .stockcard:hover { border-color:var(--brand); }
+  .muted { color:var(--ink-500); } .faint { color:var(--unknown); } .small { font-size:11px; }
+  .ph { color:var(--unknown); font-size:12px; }
+  /* 机构表 */
+  .htab { width:100%; border-collapse:collapse; font-size:12px; font-variant-numeric:tabular-nums; }
+  .htab td,.htab th { padding:4px 8px; border-bottom:1px solid var(--ink-100); text-align:left; }
+  .htab th { color:var(--ink-500); font-weight:600; font-size:10px; } .htab td.r { text-align:right; }
+  svg text { fill:var(--ink-500); font-size:9px; }
 </style>
 
 <div class="wrap">
@@ -78,10 +83,10 @@
     <div id="notes"></div>
 
     <h3>三层架构</h3>
-    <div class="small muted" style="line-height:1.7">
-      <span class="ln" style="background:var(--accent)">L1</span> 价格形态 <span class="faint">几何</span><br>
-      <span class="ln" style="background:var(--up)">L2</span> 每日盘面 <span class="faint">量价资金筹码</span><br>
-      <span class="ln" style="background:var(--warn)">L3</span> 属性背景 <span class="faint">板块/基本面/事件</span>
+    <div class="small muted" style="line-height:1.9">
+      <span class="ln" style="background:var(--brand)">L1</span> 价格形态 <span class="faint">几何</span><br>
+      <span class="ln" style="background:var(--ok)">L2</span> 每日盘面 <span class="faint">量价资金筹码</span><br>
+      <span class="ln" style="background:var(--warn)">L3</span> 属性背景 <span class="faint">机构/板块/基本面</span>
     </div>
   </div>
 
@@ -100,7 +105,7 @@ function unitOf(t){ return t["单位"]==="百分比"?"%":(t["单位"]==="倍数"
 async function init(){
   const r = await fetch(`${API}/tunables`).then(x=>x.json());
   TUN = r.tunables;
-  DEFAULTS = {}; TUN.forEach(t=>DEFAULTS[t.param]=t["当前值"]);   // 探索默认值 (config 当前值)
+  DEFAULTS = {}; TUN.forEach(t=>DEFAULTS[t.param]=t["当前值"]);
   document.getElementById("defver").textContent = `默认值 v${r.defaults_version} · 点数值复位单项`;
   const sel = document.getElementById("pattern");
   sel.innerHTML = Object.entries(r.states).map(([s,d])=>`<option value="${s}">${s} — ${d.split('(')[0]}</option>`).join("");
@@ -124,17 +129,13 @@ function renderSliders(){
   const nc = Object.keys(OVR).filter(p=>+OVR[p]!==+DEFAULTS[p]).length;
   document.getElementById("changed_hint").textContent = nc?`已偏离默认 ${nc} 项`:"全部=探索默认值";
 }
-function onSlide(param,val){
-  OVR[param] = +val;
-  renderSliders();
-  if(CUR_CODE) loadStock(CUR_CODE, true);
-}
+function onSlide(param,val){ OVR[param] = +val; renderSliders(); if(CUR_CODE) loadStock(CUR_CODE, true); }
 function resetOne(param){ delete OVR[param]; renderSliders(); if(CUR_CODE) loadStock(CUR_CODE, Object.keys(OVR).length>0); }
 function resetParams(){ OVR={}; renderSliders(); document.getElementById("notes").innerHTML=""; if(CUR_CODE) loadStock(CUR_CODE); }
 
 function trendSVG(trend, w=820, h=180, opacity=1, dashed=false){
   if(!trend.length) return "";
-  const xs=trend.map((_,i)=>i), ys=trend.map(p=>p.close);
+  const ys=trend.map(p=>p.close);
   const minY=Math.min(...ys), maxY=Math.max(...ys);
   const X=i=>40+i/(trend.length-1)*(w-60), Y=v=>h-20-(v-minY)/((maxY-minY)||1)*(h-40);
   let segs="";
@@ -146,7 +147,7 @@ function trendSVG(trend, w=820, h=180, opacity=1, dashed=false){
   return segs+lbl;
 }
 
-// L2 每日盘面行为 (资金/筹码/明暗盘 + 数据源标注)
+// L2 每日盘面行为
 function layer2Card(base){
   const cap = base.capital, ch = base.chips, mg = base.mingan;
   if(!cap && !ch && !mg) return "";
@@ -174,18 +175,31 @@ function layer2Card(base){
     <div class="layer-bd">${capRow}${mgRow}${intentRow}${chRow}</div></div>`;
 }
 
-// L3 属性背景 (待 sector_context 接入, 先占位列出已定稿维度)
-function layer3Card(base){
-  const sec = base.sector;   // 待接入
-  if(sec){
-    // 真实数据 (sector_context 接入后)
-    return `<div class="layer l3"><div class="layer-hd"><span class="ln">L3</span><span class="lt">属性背景</span>
-        <span class="ld">为什么涨+可持续 · 申万 sw_daily / 东财 dc_member</span></div>
-      <div class="layer-bd"><div class="dim"><span class="dim-k">板块/概念</span><span class="dim-v">${sec.summary||''}</span></div></div></div>`;
-  }
-  return `<div class="layer l3"><div class="layer-hd"><span class="ln">L3</span><span class="lt">属性背景</span>
-      <span class="ld">为什么涨+可持续 · 慢变会调整属性 · 锚 ann_date</span></div>
-    <div class="layer-bd"><div class="ph">板块/概念/行业 · 基本面 · 估值 · 分析师预期 · 事件催化(龙虎榜/解禁/十大流通股东) · 市场regime门 — sector_context 模块蓝图已就绪, 数据已补齐(sw_daily/dc_member), 待落地接入</div></div></div>`;
+// L3 机构 / 十大流通股东 (机构跟随基础, 用户最初设想)
+function holderCard(base){
+  const h = base.holders;
+  if(!h) return `<div class="layer l3"><div class="layer-hd"><span class="ln">L3</span><span class="lt">机构 / 十大流通股东</span>
+      <span class="ld">smartmoney F10 · 季报披露 · 机构跟随基础</span></div>
+    <div class="layer-bd"><span class="ph">该季无当前流通股东持仓数据</span></div></div>`;
+  const dirColor = h['机构动向']==='加仓'?'aligned':h['机构动向']==='减仓'?'conflict':'';
+  const chColor = c => (c==='新进'||c==='增持')?'aligned':(c==='退出'||c==='减持')?'conflict':'';
+  const rows = h.holders.slice(0,10).map(x=>`<tr><td>${x.rank}</td><td>${x.name}</td>
+    <td class="r">${x.ratio!=null?(+x.ratio).toFixed(2)+'%':'—'}</td>
+    <td><span class="badge ${chColor(x.change)}">${x.change||'—'}</span></td></tr>`).join("");
+  return `<div class="layer l3"><div class="layer-hd"><span class="ln">L3</span><span class="lt">机构 / 十大流通股东</span>
+      <span class="ld">${h.report_date} 季报 · smartmoney F10 · 机构跟随基础</span></div>
+    <div class="layer-bd">
+      <div class="dim"><span class="dim-k">机构动向</span><span class="dim-v">
+        <span class="badge ${dirColor}">${h['机构动向']}</span>
+        <span class="src">新进 ${h['新进']} · 退出 ${h['退出']} · 增持 ${h['增持']} · 减持 ${h['减持']} (本季较上季)</span></span></div>
+      <table class="htab"><tr><th>#</th><th>流通股东</th><th class="r">占流通</th><th>本季</th></tr>${rows}</table></div></div>`;
+}
+
+// L3 其他属性背景 (板块/基本面/估值/事件 占位, sector_context 蓝图就绪)
+function layer3Rest(){
+  return `<div class="layer l3"><div class="layer-hd"><span class="ln">L3</span><span class="lt">板块 / 基本面 / 事件</span>
+      <span class="ld">为什么涨+可持续 · 锚 ann_date</span></div>
+    <div class="layer-bd"><span class="ph">板块/概念/行业 · 基本面 · 估值 · 分析师预期 · 龙虎榜/解禁/大宗 · 市场regime门 — sector_context 蓝图就绪, 数据已补齐(sw_daily/dc_member), 待落地接入</span></div></div>`;
 }
 
 async function loadStock(code, overlay){
@@ -227,7 +241,8 @@ async function loadStock(code, overlay){
         ${patRows}
       </div></div>
     ${layer2Card(base)}
-    ${layer3Card(base)}
+    ${holderCard(base)}
+    ${layer3Rest()}
     <div class="layer"><div class="layer-hd"><span class="lt">趋势线</span><span class="ld">按形态着色 · 非K线</span></div>
       <div class="layer-bd">${overlaySVG}</div></div>`;
 }
