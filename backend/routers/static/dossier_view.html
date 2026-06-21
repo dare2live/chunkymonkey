@@ -110,6 +110,20 @@ function trendSVG(trend, w=820, h=180, opacity=1, dashed=false){
   return segs+lbl;
 }
 
+function dimCard(base){
+  const cap = base.capital, ch = base.chips;
+  if(!cap && !ch) return "";
+  const capRow = cap ? `<div class="row"><span style="width:90px" class="muted small">资金/换手</span>
+    <span class="badge ${cap.capital_state==='主力净流入'?'aligned':cap.capital_state==='主力净流出'?'conflict':''}">${cap.capital_state}</span>
+    <span class="badge">${cap.turnover_state}</span>
+    <span class="small muted">20日净额 ${cap['主力净额20日累计']?Math.round(cap['主力净额20日累计']):'—'}万 · 换手 ${cap['换手率']!=null?cap['换手率'].toFixed(2)+'%':'—'}</span></div>` : "";
+  const chRow = ch ? `<div class="row"><span style="width:90px" class="muted small">筹码</span>
+    <span class="badge ${(ch.chip_state||'').includes('派发')?'conflict':(ch.chip_state||'').includes('惜售')?'aligned':''}">${ch.chip_state}</span>
+    <span class="badge">${ch['集中状态']||''}</span>
+    <span class="badge ${ch['价位状态']==='获利'?'aligned':'conflict'}">${ch['价位状态']||''}</span>
+    <span class="small muted">获利盘 ${ch['获利盘']!=null?ch['获利盘'].toFixed(0)+'%':'—'}${ch['获利盘20日变化']!=null?'('+(ch['获利盘20日变化']>0?'+':'')+ch['获利盘20日变化'].toFixed(0)+')':''}</span></div>` : "";
+  return `<div class="card"><h3>多维度解读 (资金/筹码; RS见顶部)</h3>${capRow}${chRow}</div>`;
+}
 async function loadStock(code, overlay){
   code = code || document.getElementById("code").value.trim();
   if(!code) return;
@@ -141,6 +155,7 @@ async function loadStock(code, overlay){
           <div class="tfstate">${tf[k].state||"过渡态"}</div>
           <div class="small muted">${tf[k].desc}</div>${tf[k].sub?`<div class="small">子态: ${tf[k].sub}</div>`:""}</div>`).join("")}</div>
     </div>
+    ${dimCard(base)}
     ${patCard}
     <div class="card"><h3>趋势线 (按形态着色, 非K线)</h3>${overlaySVG}</div>`;
 }

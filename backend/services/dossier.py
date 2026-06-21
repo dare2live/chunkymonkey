@@ -16,6 +16,8 @@ from services.technical_states.candles import candle_pattern
 from services.technical_states.context import apply_context
 from services.technical_states.limits import code_to_ts_code, compute_limit_flags, enrich_features
 from services.technical_states.patterns import match_named_patterns
+from services.technical_states.capital import capital_signals
+from services.technical_states.chips import chip_signals
 from services.technical_states.rs import relative_strength
 from services.technical_states import (
     apply_coupling,
@@ -76,6 +78,37 @@ def load_limits(code: str) -> dict:
         iso = f"{td[:4]}-{td[4:6]}-{td[6:8]}" if (len(td) == 8 and "-" not in td) else td
         out[iso] = (ul, dl)
     return out
+
+
+def _iso(td) -> str:
+    """tushare YYYYMMDD → ISO date (复用; DRY)。"""
+    td = str(td)
+    return f"{td[:4]}-{td[4:6]}-{td[6:8]}" if (len(td) == 8 and "-" not in td) else td
+
+
+def load_capital(code: str) -> tuple[dict, dict]:
+    """moneyflow主力净额 + daily_basic换手率 (维度③) → (money_by_date, turnover_by_date)。"""
+    ts = code_to_ts_code(code)
+    c = duck_connect(RAW_DB, read_only=True)
+    try:
+        mf = c.execute("SELECT trade_date, net_mf_amount FROM raw_tushare_moneyflow WHERE ts_code = ? ORDER BY trade_date", [ts]).fetchall()
+        tr = c.execute("SELECT trade_date, turnover_rate FROM raw_tushare_daily_basic WHERE ts_code = ? ORDER BY trade_date", [ts]).fetchall()
+    finally:
+        c.close()
+    return ({_iso(td): {"net_mf_amount": v} for td, v in mf}, {_iso(td): v for td, v in tr})
+
+
+def load_cyq(code: str) -> dict:
+    """cyq_perf 筹码分布/胜率 (维度④) → {date_iso: {winner_rate, cost_5/50/95pct, weight_avg}}。"""
+    ts = code_to_ts_code(code)
+    c = duck_connect(RAW_DB, read_only=True)
+    try:
+        rows = c.execute("SELECT trade_date, winner_rate, cost_5pct, cost_50pct, cost_95pct, weight_avg "
+                         "FROM raw_tushare_cyq_perf WHERE ts_code = ? ORDER BY trade_date", [ts]).fetchall()
+    finally:
+        c.close()
+    return {_iso(td): {"winner_rate": wr, "cost_5pct": c5, "cost_50pct": c50, "cost_95pct": c95, "weight_avg": wa}
+            for td, wr, c5, c50, c95, wa in rows}
 
 
 def load_benchmark(ts_code: str) -> dict:
@@ -166,6 +199,10 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
     rs = relative_strength(ohlcv["date"], ohlcv["close"], load_benchmark(rs_cfg.get("基准", "000300.SH")),
                            window=rs_cfg.get("窗口", 20), band=rs_cfg.get("零轴死区", 0.005))
     rs_now = rs.get(last_date)
+    money, turnover = load_capital(code)                                                    # 维度③ 资金+换手
+    cap = capital_signals(ohlcv["date"], money, turnover, cfg=cfg)
+    close_by_date = {ohlcv["date"][j]: ohlcv["close"][j] for j in range(len(ohlcv["date"]))}
+    chip = chip_signals(ohlcv["date"], load_cyq(code), close_by_date, cfg=cfg)              # 维度④ 筹码
     return {
         "code": code, "as_of": last_date,
         "timeframes": tf_read,
@@ -174,6 +211,8 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
         "today_candle": today_candle,                                  # D5 当日单日K线形态
         "recent_patterns": recent_patterns,                            # D5b 近期命名形态(老鸭头等)
         "rs": rs_now,                                                  # RS 相对强度 (强于/弱于大盘, 超额KPI)
+        "capital": cap.get(last_date),                                 # 维度③ 资金流向+换手率
+        "chips": chip.get(last_date),                                  # 维度④ 筹码分布+胜率
         "entropy": last.get("entropy"),
         "trend": trend_series(ohlcv, daily_cls),
         "tunables": list_tunables(cfg),

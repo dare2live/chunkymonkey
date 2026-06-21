@@ -239,3 +239,22 @@ def test_relative_strength():
     bench2 = {dates[i]: 100.0 * (1.03 ** i) for i in range(40)}
     rs2 = relative_strength(dates, stock, bench2, window=20)
     assert rs2[dates[-1]]["rs_state"] == "弱于大盘"
+
+
+def test_capital_and_chip_signals():
+    """维度③资金④筹码: 主力净流入/换手 + 获利盘/集中度/价位 (config阈值)。"""
+    from services.technical_states.capital import capital_signals
+    from services.technical_states.chips import chip_signals
+    cfg = load_config()
+    dates = [f"2024-01-{i:02d}" for i in range(1, 31)]
+    money = {d: {"net_mf_amount": 1000.0} for d in dates}     # 持续净流入
+    turn = {d: 5.0 for d in dates}
+    cap = capital_signals(dates, money, turn, window=20, cfg=cfg)
+    assert cap[dates[-1]]["capital_state"] == "主力净流入"
+    # 筹码: 高获利盘+价在均成本上=获利
+    cyq = {d: {"winner_rate": 90.0, "cost_5pct": 9.0, "cost_50pct": 10.0, "cost_95pct": 11.0, "weight_avg": 10.0} for d in dates}
+    close = {d: 12.0 for d in dates}
+    chip = chip_signals(dates, cyq, close, window=20, cfg=cfg)
+    last = chip[dates[-1]]
+    assert "派发压力" in last["chip_state"] and last["价位状态"] == "获利"   # 高获利盘+价在成本上
+    assert last["集中状态"] == "单峰集中"                                    # (11-9)/10=0.2<0.5
