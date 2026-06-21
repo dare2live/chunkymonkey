@@ -223,3 +223,19 @@ def test_named_patterns_pit_no_backfill():
         assert not any(p["名称"] == "老鸭头" for p in named.get(d, [])), f"{d} 回贴老鸭头=前瞻泄漏"
     # provenance 标主观性
     assert "主观" in [p["provenance"] for p in named["d12"] if p["名称"] == "老鸭头"][0]
+
+
+def test_relative_strength():
+    """RS 相对强度 (评审HIGH盲点): 个股跑赢基准→强于大盘; PIT (RS只用≤t)。"""
+    from services.technical_states.rs import relative_strength
+    dates = [f"2020-01-{i:02d}" for i in range(1, 41)]
+    # 个股翻倍, 基准平 → RS 持续上升 = 强于大盘
+    stock = [10.0 * (1.02 ** i) for i in range(40)]
+    bench = {d: 100.0 for d in dates}
+    rs = relative_strength(dates, stock, bench, window=20)
+    last = rs[dates[-1]]
+    assert last["rs_state"] == "强于大盘" and last["rs_slope"] > 0
+    # 个股弱于基准 (基准涨股票平)
+    bench2 = {dates[i]: 100.0 * (1.03 ** i) for i in range(40)}
+    rs2 = relative_strength(dates, stock, bench2, window=20)
+    assert rs2[dates[-1]]["rs_state"] == "弱于大盘"

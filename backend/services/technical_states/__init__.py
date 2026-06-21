@@ -42,11 +42,12 @@ from services.technical_states.limits import (  # noqa: F401
     enrich_features,
 )
 from services.technical_states.patterns import match_named_patterns  # noqa: F401
+from services.technical_states.rs import relative_strength  # noqa: F401
 
 __all__ = [
     "compute", "resample", "FEATURE_KEYS", "load_config",
     "classify_bar", "classify_series", "classify_stock", "classify_multi_timeframe", "state_scores",
     "apply_coupling", "with_overrides", "list_tunables",
     "compute_limit_flags", "enrich_features", "code_to_ts_code",
-    "apply_context", "candle_pattern", "match_named_patterns",
+    "apply_context", "candle_pattern", "match_named_patterns", "relative_strength",
 ]

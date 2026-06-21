@@ -16,6 +16,7 @@ from services.technical_states.candles import candle_pattern
 from services.technical_states.context import apply_context
 from services.technical_states.limits import code_to_ts_code, compute_limit_flags, enrich_features
 from services.technical_states.patterns import match_named_patterns
+from services.technical_states.rs import relative_strength
 from services.technical_states import (
     apply_coupling,
     classify_multi_timeframe,
@@ -74,6 +75,22 @@ def load_limits(code: str) -> dict:
         td = str(td)
         iso = f"{td[:4]}-{td[4:6]}-{td[6:8]}" if (len(td) == 8 and "-" not in td) else td
         out[iso] = (ul, dl)
+    return out
+
+
+def load_benchmark(ts_code: str) -> dict:
+    """基准指数日线 (RS 用; 如 HS300 000300.SH) → {date_iso: close}。"""
+    c = duck_connect(RAW_DB, read_only=True)
+    try:
+        rows = c.execute("SELECT trade_date, close FROM raw_tushare_index_daily WHERE ts_code = ? ORDER BY trade_date",
+                         [ts_code]).fetchall()
+    finally:
+        c.close()
+    out = {}
+    for td, cl in rows:
+        td = str(td)
+        iso = f"{td[:4]}-{td[4:6]}-{td[6:8]}" if (len(td) == 8 and "-" not in td) else td
+        out[iso] = cl
     return out
 
 
@@ -145,6 +162,10 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
     refined_seq = [(d, daily_cls[d].get("refined_dominant")) for d in sorted(daily_cls)]   # D5b 命名形态
     named = match_named_patterns(refined_seq, cfg)
     recent_patterns = [{"date": d, **p} for d in sorted(named)[-5:] for p in named[d]]     # 近期完成的命名形态
+    rs_cfg = cfg.get("RS") or {}                                                            # RS 相对强度 (vs 大盘)
+    rs = relative_strength(ohlcv["date"], ohlcv["close"], load_benchmark(rs_cfg.get("基准", "000300.SH")),
+                           window=rs_cfg.get("窗口", 20), band=rs_cfg.get("零轴死区", 0.005))
+    rs_now = rs.get(last_date)
     return {
         "code": code, "as_of": last_date,
         "timeframes": tf_read,
@@ -152,6 +173,7 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
         "prior_trend": dlast.get("prior_trend"),                       # D4 前序趋势 (位置消歧上下文)
         "today_candle": today_candle,                                  # D5 当日单日K线形态
         "recent_patterns": recent_patterns,                            # D5b 近期命名形态(老鸭头等)
+        "rs": rs_now,                                                  # RS 相对强度 (强于/弱于大盘, 超额KPI)
         "entropy": last.get("entropy"),
         "trend": trend_series(ohlcv, daily_cls),
         "tunables": list_tunables(cfg),
