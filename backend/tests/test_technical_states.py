@@ -260,6 +260,23 @@ def test_capital_and_chip_signals():
     assert last["集中状态"] == "单峰集中"                                    # (11-9)/10=0.2<0.5
 
 
+def test_chip_distribution_warn():
+    """筹码精细化① (长江分盈亏 + goal CYQ鱼尾出货): 套牢盘/成本偏度/集中度变化/派发预警。"""
+    from services.technical_states.chips import chip_signals
+    cfg = load_config()
+    dates = [f"2024-01-{i:02d}" for i in range(1, 31)]
+    cyq = {}
+    for i, d in enumerate(dates):   # 前20日单峰集中(conc=0.1) → 后期转分散(conc=0.5)+高获利盘+价位获利 = 派发
+        cyq[d] = ({"winner_rate": 90.0, "cost_5pct": 9.5, "cost_50pct": 10.0, "cost_95pct": 10.5, "weight_avg": 10.0} if i < 20
+                  else {"winner_rate": 92.0, "cost_5pct": 8.0, "cost_50pct": 10.0, "cost_95pct": 13.0, "weight_avg": 10.5})
+    close = {d: 12.0 for d in dates}
+    last = chip_signals(dates, cyq, close, window=20, cfg=cfg)[dates[-1]]
+    assert last["套牢盘"] == 8.0                       # 100-92 = 亏损筹码(论文预测力更强)
+    assert last["集中度20日变化"] > 0.1                # 0.5-0.1 单峰转多峰
+    assert last["派发预警"] is True                    # 高获利盘+集中度松动+价位获利 = 鱼尾出货
+    assert abs(last["成本偏度"] - 0.2) < 0.01          # (10.5-10)/((13-8)/2)=0.2 右偏(上方套牢)
+
+
 def test_capital_intent():
     """主力意图 + 量价背离 (暗盘伪维度已砍, 改 明盘×价格 量价背离代理)。
     evidence: sandbox/mingan_redesign — 东财桶零和+同花顺L2暗盘任何日度口径不可近似(净额54%/gross排序0.283)。"""

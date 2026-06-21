@@ -169,7 +169,8 @@ function layer2Card(base){
     <span class="badge ${(ch.chip_state||'').includes('派发')?'conflict':(ch.chip_state||'').includes('惜售')?'aligned':''}">${ch.chip_state}</span>
     <span class="badge">${ch['集中状态']||''}</span>
     <span class="badge ${ch['价位状态']==='获利'?'aligned':'conflict'}">${ch['价位状态']||''}</span>
-    <span class="src">获利盘 ${ch['获利盘']!=null?ch['获利盘'].toFixed(0)+'%':'—'}${ch['获利盘20日变化']!=null?'('+(ch['获利盘20日变化']>0?'+':'')+ch['获利盘20日变化'].toFixed(0)+')':''}</span></span></div>` : "";
+    ${ch['派发预警']?'<span class="badge conflict">派发预警(鱼尾出货)</span>':''}
+    <span class="src">获利盘 ${ch['获利盘']!=null?ch['获利盘'].toFixed(0)+'%':'—'}${ch['获利盘20日变化']!=null?'('+(ch['获利盘20日变化']>0?'+':'')+ch['获利盘20日变化'].toFixed(0)+')':''} · 套牢盘 ${ch['套牢盘']!=null?ch['套牢盘'].toFixed(0)+'%':'—'}${ch['成本偏度']!=null?' · 成本偏度'+ch['成本偏度'].toFixed(2):''}</span></span></div>` : "";
   return `<div class="layer l2"><div class="layer-hd"><span class="ln">L2</span><span class="lt">每日盘面行为</span>
       <span class="ld">确认形态真伪 · 东财 moneyflow_dc / tushare cyq_perf · 盘后日更 t-1</span></div>
     <div class="layer-bd">${capRow}${mgRow}${intentRow}${chRow}</div></div>`;
