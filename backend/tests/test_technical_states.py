@@ -23,9 +23,13 @@ def _series(n, start="2020-01-02"):
 
 def test_config_loads():
     cfg = load_config()
-    assert set(cfg["states"]) == {"低位横盘", "放量突破", "上升通道", "缩量上涨", "高位滞涨", "下跌通道", "缩量回踩"}
+    assert set(cfg["状态"]) == {"低位横盘", "放量突破", "上升通道", "缩量上涨", "高位滞涨", "下跌通道", "缩量回踩"}
     assert "daily" in cfg["timeframes"] and "monthly" in cfg["timeframes"]
     assert cfg["timeframes"]["monthly"]["windows"]["er"] < cfg["timeframes"]["daily"]["windows"]["er"]  # 月线窗更短
+    # 声明式: 状态由人话条件列表定义 (公式结构进 config, J1)
+    up = cfg["状态"]["上升通道"]["条件"]
+    assert all({"指标", "判断", "阈值", "锐度"} <= set(c) for c in up)
+    assert any(c["指标"] == "均线斜率" and c["判断"] == "高于" for c in up)
 
 
 def test_resample_weekly():
@@ -76,6 +80,35 @@ def test_classify_downtrend():
     f = compute(dates, o, h, l, c, v)
     doms = [classify_bar(ff)["dominant"] for ff in list(f.values())[-30:]]
     assert doms.count("下跌通道") >= 15, f"持续跌却没识别下跌通道: {set(doms)}"
+
+
+def test_declarative_evaluator_semantics():
+    """声明式 evaluator: 强升 bar 上升通道分应高于下跌通道 (公式结构从 config 解释正确)。"""
+    from services.technical_states.classifier import state_scores
+    cfg = load_config()
+    n = 200
+    dates = _series(n)
+    c = [10.0 * (1.012 ** i) for i in range(n)]
+    o = h = l = c
+    v = [100000.0] * n
+    f = compute(dates, o, h, l, c, v)
+    last = list(f.values())[-1]
+    sc = state_scores(last, cfg)
+    assert sc["上升通道"] > sc["下跌通道"], f"强升 evaluator 出错: {sc}"
+
+
+def test_coupling_mirror_and_override():
+    """J2 边界耦合: 调上升通道均线斜率 → 下跌通道镜像同步; with_overrides 改的是阈值不动代码。"""
+    from services.technical_states.coupling import apply_coupling, list_tunables, with_overrides
+    cfg = load_config()
+    synced, notes = apply_coupling({"上升通道.均线斜率": 7.0}, cfg)
+    assert synced["下跌通道.均线斜率"] == -7.0, f"互补对称未镜像: {synced}"
+    assert any("镜像" in n for n in notes)
+    eff = with_overrides(cfg, synced)
+    up = [c for c in eff["状态"]["上升通道"]["条件"] if c["指标"] == "均线斜率"][0]
+    assert up["阈值"] == 7.0 and cfg["状态"]["上升通道"]["条件"][0]["阈值"] != 7.0  # 原 cfg 不被改
+    tun = list_tunables(cfg)
+    assert any(t["param"] == "上升通道.均线斜率" and t["耦合"] for t in tun)  # 可枚举且标耦合
 
 
 def test_classify_stock_multi_tf_keys():
