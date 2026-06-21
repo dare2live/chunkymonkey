@@ -23,7 +23,8 @@ def _series(n, start="2020-01-02"):
 
 def test_config_loads():
     cfg = load_config()
-    assert set(cfg["状态"]) == {"低位横盘", "放量突破", "上升通道", "缩量上涨", "高位滞涨", "下跌通道", "缩量回踩"}
+    assert set(cfg["状态"]) == {"低位横盘", "放量突破", "上升通道", "缩量上涨", "中继平台",
+                                "高位滞涨", "下跌通道", "放量下跌", "缩量回踩"}   # D1: +中继平台 +放量下跌
     assert "daily" in cfg["timeframes"] and "monthly" in cfg["timeframes"]
     assert cfg["timeframes"]["monthly"]["windows"]["er"] < cfg["timeframes"]["daily"]["windows"]["er"]  # 月线窗更短
     # 声明式: 状态由人话条件列表定义 (公式结构进 config, J1)

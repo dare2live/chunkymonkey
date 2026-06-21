@@ -75,9 +75,11 @@ def state_scores(f: dict, cfg: dict) -> dict:
 
 
 def _sub_state(top: str, f: dict, cfg: dict) -> str:
-    """主态 top 下按修饰量(路径效率/回撤/加速/量能)分子态; 阈值读 config.子态阈值。"""
+    """主态 top 下按修饰量(路径效率/回撤/加速/量能/位置)分子态; 阈值读 config.子态阈值。
+    放量下跌 = 按价格分位**位置消歧**(高位出货/低位见底SC/中位延续, 用户核心洞察)。
+    """
     t = cfg["子态阈值"]
-    er, mdd, ac, zv = f.get("er"), f.get("maxdd"), f.get("accel"), f.get("zvol")
+    er, mdd, ac, zv, pc = f.get("er"), f.get("maxdd"), f.get("accel"), f.get("zvol"), f.get("pctile")
     if top == "上升通道":
         if not _is_nan(ac) and ac > t["上升_加速"]:
             return "加速上涨"
@@ -88,10 +90,18 @@ def _sub_state(top: str, f: dict, cfg: dict) -> str:
         return "地量横盘" if (not _is_nan(zv) and zv < t["低位_量能"]) else "温和横盘"
     if top == "放量突破":
         return "巨量突破" if (not _is_nan(zv) and zv > t["突破_量能"]) else "温和突破"
+    if top == "中继平台":
+        return "缩量中继" if (not _is_nan(zv) and zv < t["中继_量能"]) else "震荡中继"
     if top == "高位滞涨":
         return "放量派发" if (not _is_nan(zv) and zv > t["高位_量能"]) else "缩量惜售"
     if top == "下跌通道":
-        return "加速杀跌" if (not _is_nan(ac) and ac < -t["下跌_加速"] and not _is_nan(zv) and zv > 0) else "温和阴跌"
+        return "缩量阴跌" if (not _is_nan(zv) and zv < t["中继_量能"]) else "温和阴跌"
+    if top == "放量下跌":          # 位置消歧 (高位出货 / 低位恐慌见底SC / 中位延续)
+        if not _is_nan(pc) and pc > t["放量下跌_高位"]:
+            return "高位放量下跌"
+        if not _is_nan(pc) and pc < t["放量下跌_低位"]:
+            return "低位放量下跌"
+        return "中位放量下跌"
     if top == "缩量回踩":
         return "深回踩" if (not _is_nan(mdd) and mdd > t["回踩_回撤"]) else "浅回踩"
     subs = cfg["子态"].get(top, [None])
@@ -147,7 +157,7 @@ def classify_multi_timeframe(daily_feats: dict, weekly_feats: dict, monthly_feat
     import bisect
     wk_dates = sorted(wk); mo_dates = sorted(mo)
     bull = {"放量突破", "上升通道", "缩量上涨", "缩量回踩"}
-    bear = {"下跌通道", "高位滞涨"}
+    bear = {"下跌通道", "高位滞涨", "放量下跌"}   # 中继平台=neutral (整理)
 
     def _asof(dates, table, d):
         """最近 ≤d 的 bar 主态 (PIT as-of); dates 已排序, bisect O(log n)。"""
