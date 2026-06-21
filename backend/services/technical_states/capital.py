@@ -10,6 +10,62 @@ from __future__ import annotations
 
 import numpy as np
 
+_DONGXIANG = {1: "看多", 2: "做T", 3: "低吸", 4: "看空", 5: "吸筹", 6: "出货", 0: "中性"}
+
+
+def _path_weight(o, h, l, c, prev_c) -> float:
+    """X_1..X_8: 日线 OHLC 路径权重 (逐字复刻 TDX 公式 X_8, capped 0.8)。"""
+    if None in (o, h, l, c, prev_c) or not (prev_c and o and h and l):
+        return 0.0
+    x1 = (o - prev_c) / prev_c; x2 = (c - o) / o; x3 = (h - o) / o
+    x4 = (c - h) / h; x5 = (l - o) / o; x6 = (c - l) / l
+    x7 = x1 + x2 + x3 + x4 + x5 + x6
+    return 0.8 if x7 >= 1 else x7
+
+
+def _dongxiang(liu, ming, an) -> int:
+    """6态动向 (逐字复刻 TDX: 看多1/做T2/低吸3/看空4/吸筹5/出货6/中性0), 按 流向/明盘/暗盘 符号。"""
+    am, aa = abs(ming), abs(an)
+    if liu > 0 and ming > 0 and an > 0: return 1
+    if liu > 0 and ming > 0 and an < 0 and am > aa: return 2
+    if liu > 0 and ming < 0 and an > 0 and aa > am: return 3
+    if liu < 0 and ming < 0 and an < 0: return 4
+    if liu < 0 and ming < 0 and an > 0 and am > aa: return 5
+    if liu < 0 and ming > 0 and an < 0 and aa > am: return 6
+    return 0
+
+
+def mingan_flow(dates, o, h, l, c, flow_by_date: dict, unit_div: float = 1e4) -> dict:
+    """明暗盘资金 + 今日/三日/五日 动向 (**日度近似 TDX 真L2公式; 非真L2 L2_AMO, 用 moneyflow order-size 桶替代**)。
+    明盘(主力净额)=(elg+lg)买-卖; 暗盘=路径权重X_8 ×(md+sm)signed (近似 X_25); 流向=明+暗; 6态动向。
+    flow_by_date={date:{buy_elg,buy_lg,buy_md,buy_sm,sell_elg,sell_lg,sell_md,sell_sm}} (万元)。unit_div=1e4→亿元。
+    """
+    ds = [str(x) for x in dates]
+    ming, an, liu = [], [], []
+    prev_c = None
+    for i, d in enumerate(ds):
+        f = flow_by_date.get(d, {}) or {}
+        w = _path_weight(o[i], h[i], l[i], c[i], prev_c)
+        prev_c = c[i]
+        g = lambda k: (f.get(k) or 0.0)  # noqa: E731
+        m = (g("buy_elg") + g("buy_lg") - g("sell_elg") - g("sell_lg")) / unit_div    # 明盘=主力净额(亿)
+        a = ((g("buy_md") + g("buy_sm")) * w if w > 0 else (g("sell_md") + g("sell_sm")) * w) / unit_div  # 暗盘(signed)
+        ming.append(m); an.append(a); liu.append(m + a)
+    out = {}
+    for i, d in enumerate(ds):
+        if flow_by_date.get(d) is None:
+            continue
+        row = {"明盘": round(ming[i], 4), "暗盘": round(an[i], 4), "今日流向": round(liu[i], 4),
+               "今日动向": _DONGXIANG[_dongxiang(liu[i], ming[i], an[i])]}
+        if i >= 2:
+            l3, m3, a3 = sum(liu[i - 2:i + 1]), sum(ming[i - 2:i + 1]), sum(an[i - 2:i + 1])
+            row["三日流向"] = round(l3, 4); row["三日动向"] = _DONGXIANG[_dongxiang(l3, m3, a3)]
+        if i >= 4:
+            l5, m5, a5 = sum(liu[i - 4:i + 1]), sum(ming[i - 4:i + 1]), sum(an[i - 4:i + 1])
+            row["五日流向"] = round(l5, 4); row["五日动向"] = _DONGXIANG[_dongxiang(l5, m5, a5)]
+        out[d] = row
+    return out
+
 
 def capital_signals(dates, money_by_date: dict, turnover_by_date: dict,
                     window: int = 20, cfg=None) -> dict:

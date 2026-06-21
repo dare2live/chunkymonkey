@@ -258,3 +258,23 @@ def test_capital_and_chip_signals():
     last = chip[dates[-1]]
     assert "派发压力" in last["chip_state"] and last["价位状态"] == "获利"   # 高获利盘+价在成本上
     assert last["集中状态"] == "单峰集中"                                    # (11-9)/10=0.2<0.5
+
+
+def test_mingan_flow():
+    """明暗盘动向 (逐字复刻TDX真L2公式, 日度近似): 明盘=主力净额, 暗盘=路径权重×(md+sm), 6态动向。"""
+    from services.technical_states.capital import mingan_flow, _path_weight, _dongxiang
+    # 强阳线路径权重>0
+    assert _path_weight(10.0, 11.0, 9.9, 10.9, 10.0) > 0
+    # 6态动向逐字: 流向>0 明>0 暗>0 = 看多(1)
+    assert _dongxiang(5, 3, 2) == 1
+    assert _dongxiang(5, 3, -1) == 2     # 做T (明>暗)
+    assert _dongxiang(-5, -3, -2) == 4   # 看空
+    assert _dongxiang(-1, -3, 2) == 5    # 吸筹 (流向<0 明<0 暗>0 |明|>|暗|)
+    dates = ["2024-01-01", "2024-01-02", "2024-01-03"]
+    o = [10.0, 10.5, 10.8]; h = [10.6, 11.0, 11.2]; l = [9.9, 10.4, 10.7]; c = [10.5, 10.9, 11.1]
+    flow = {d: {"buy_elg": 1000, "buy_lg": 500, "buy_md": 300, "buy_sm": 200,
+                "sell_elg": 400, "sell_lg": 300, "sell_md": 200, "sell_sm": 100} for d in dates}
+    mg = mingan_flow(dates, o, h, l, c, flow)
+    last = mg[dates[-1]]
+    assert "明盘" in last and "暗盘" in last and last["今日动向"] in ("看多","做T","低吸","看空","吸筹","出货","中性")
+    assert "三日动向" in last      # 3日滚动

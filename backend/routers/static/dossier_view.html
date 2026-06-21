@@ -122,7 +122,14 @@ function dimCard(base){
     <span class="badge">${ch['集中状态']||''}</span>
     <span class="badge ${ch['价位状态']==='获利'?'aligned':'conflict'}">${ch['价位状态']||''}</span>
     <span class="small muted">获利盘 ${ch['获利盘']!=null?ch['获利盘'].toFixed(0)+'%':'—'}${ch['获利盘20日变化']!=null?'('+(ch['获利盘20日变化']>0?'+':'')+ch['获利盘20日变化'].toFixed(0)+')':''}</span></div>` : "";
-  return `<div class="card"><h3>多维度解读 (资金/筹码; RS见顶部)</h3>${capRow}${chRow}</div>`;
+  const mg = base.mingan;
+  const mgColor = s => ({看多:'aligned',吸筹:'aligned',低吸:'aligned',看空:'conflict',出货:'conflict'})[s]||'';
+  const mgRow = mg ? `<div class="row"><span style="width:90px" class="muted small">明暗盘动向</span>
+    <span class="badge ${mgColor(mg['今日动向'])}">今 ${mg['今日动向']}</span>
+    <span class="badge ${mgColor(mg['三日动向'])}">三 ${mg['三日动向']||'—'}</span>
+    <span class="badge ${mgColor(mg['五日动向'])}">五 ${mg['五日动向']||'—'}</span>
+    <span class="small muted">明盘 ${mg['明盘']}亿 / 暗盘 ${mg['暗盘']}亿 · 日度近似(非真L2)</span></div>` : "";
+  return `<div class="card"><h3>多维度解读 (资金/筹码/明暗盘; RS见顶部)</h3>${capRow}${chRow}${mgRow}</div>`;
 }
 async function loadStock(code, overlay){
   code = code || document.getElementById("code").value.trim();

@@ -87,15 +87,22 @@ def _iso(td) -> str:
 
 
 def load_capital(code: str) -> tuple[dict, dict]:
-    """moneyflow主力净额 + daily_basic换手率 (维度③) → (money_by_date, turnover_by_date)。"""
+    """moneyflow(主力净额+order-size桶) + daily_basic换手率 (维度③) → (money_by_date, turnover_by_date)。
+    money_by_date 含 net_mf_amount + buy/sell_sm/md/lg/elg (供明暗盘动向 mingan_flow)。
+    """
     ts = code_to_ts_code(code)
     c = duck_connect(RAW_DB, read_only=True)
     try:
-        mf = c.execute("SELECT trade_date, net_mf_amount FROM raw_tushare_moneyflow WHERE ts_code = ? ORDER BY trade_date", [ts]).fetchall()
+        mf = c.execute(
+            "SELECT trade_date, net_mf_amount, buy_sm_amount, buy_md_amount, buy_lg_amount, buy_elg_amount, "
+            "sell_sm_amount, sell_md_amount, sell_lg_amount, sell_elg_amount "
+            "FROM raw_tushare_moneyflow WHERE ts_code = ? ORDER BY trade_date", [ts]).fetchall()
         tr = c.execute("SELECT trade_date, turnover_rate FROM raw_tushare_daily_basic WHERE ts_code = ? ORDER BY trade_date", [ts]).fetchall()
     finally:
         c.close()
-    return ({_iso(td): {"net_mf_amount": v} for td, v in mf}, {_iso(td): v for td, v in tr})
+    money = {_iso(r[0]): {"net_mf_amount": r[1], "buy_sm": r[2], "buy_md": r[3], "buy_lg": r[4], "buy_elg": r[5],
+                          "sell_sm": r[6], "sell_md": r[7], "sell_lg": r[8], "sell_elg": r[9]} for r in mf}
+    return (money, {_iso(td): v for td, v in tr})
 
 
 def load_cyq(code: str) -> dict:
@@ -201,6 +208,9 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
     rs_now = rs.get(last_date)
     money, turnover = load_capital(code)                                                    # 维度③ 资金+换手
     cap = capital_signals(ohlcv["date"], money, turnover, cfg=cfg)
+    from services.technical_states.capital import mingan_flow                                # 明暗盘动向(日度近似TDX真L2公式)
+    mingan = mingan_flow(ohlcv["date"], ohlcv["open"], ohlcv["high"], ohlcv["low"], ohlcv["close"], money)
+    mingan_now = mingan.get(last_date)
     close_by_date = {ohlcv["date"][j]: ohlcv["close"][j] for j in range(len(ohlcv["date"]))}
     chip = chip_signals(ohlcv["date"], load_cyq(code), close_by_date, cfg=cfg)              # 维度④ 筹码
     return {
@@ -212,6 +222,7 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
         "recent_patterns": recent_patterns,                            # D5b 近期命名形态(老鸭头等)
         "rs": rs_now,                                                  # RS 相对强度 (强于/弱于大盘, 超额KPI)
         "capital": cap.get(last_date),                                 # 维度③ 资金流向+换手率
+        "mingan": mingan_now,                                          # 明暗盘动向(日度近似TDX真L2公式, 非真L2)
         "chips": chip.get(last_date),                                  # 维度④ 筹码分布+胜率
         "entropy": last.get("entropy"),
         "trend": trend_series(ohlcv, daily_cls),
