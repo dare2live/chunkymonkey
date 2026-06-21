@@ -201,11 +201,36 @@ function holderCard(base){
       <table class="htab"><tr><th>#</th><th>流通股东</th><th class="r">占流通</th><th>本季</th></tr>${rows}</table></div></div>`;
 }
 
-// L3 其他属性背景 (板块/基本面/估值/事件 占位, sector_context 蓝图就绪)
+// L3 板块 / 概念 / 行业 (风口在不在 = 为什么涨; 行业=申万 / 概念=东财, 口径红线 J6)
+function sectorCard(base){
+  const s = base.sector;
+  if(!s || (!s.sw_l1_name && !(s['概念']||[]).length)) return "";
+  const regColor = r => /强势/.test(r||'')?'aligned':/走弱/.test(r||'')?'conflict':'';
+  const reg = s.regime;
+  const indRow = s.sw_l1_name ? `<div class="dim"><span class="dim-k">申万行业</span><span class="dim-v">
+    <span class="badge info">${s.sw_l1_name}${s.sw_l2_name?' · '+s.sw_l2_name:''}</span>
+    <span class="src">行业=申万 PIT 归属 (口径红线: 行业=申万/概念=东财)</span></span></div>` : "";
+  const regRow = reg ? `<div class="dim"><span class="dim-k">板块regime</span><span class="dim-v">
+    <span class="badge ${regColor(reg.regime)}">${reg.regime}</span>
+    <span class="src">vs HS300 超额 ${reg['板块超额']!=null?(reg['板块超额']>0?'+':'')+reg['板块超额']+'%':'—'} · 趋势 ${reg['板块趋势']||'—'} (风口在不在)</span></span></div>` : "";
+  const svs = s.stock_vs_sector;
+  const svsRow = svs ? `<div class="dim"><span class="dim-k">个股vs板块</span><span class="dim-v">
+    <span class="badge ${svs.rs_state==='强于板块'?'aligned':svs.rs_state==='弱于板块'?'conflict':''}">${svs.rs_state}</span>
+    <span class="src">个股相对所属行业指数 (领涨/落后; 复用 Mansfield RS, 基准换行业指数)</span></span></div>` : "";
+  const cons = s['概念']||[];
+  const conRow = cons.length ? `<div class="dim"><span class="dim-k">东财概念</span><span class="dim-v">
+    ${cons.map(c=>`<span class="badge ${c.is_hot?'info':''}">${c.名称}${c.热度!=null?' '+(c.热度>0?'+':'')+c.热度+'%':''}</span>`).join(" ")}
+    <span class="src">概念=东财 · 热度=概念指数近期涨幅 · 热门(>8%) ${s['热门概念数']||0} 个 (纯描述非alpha)</span></span></div>` : "";
+  return `<div class="layer l3"><div class="layer-hd"><span class="ln">L3</span><span class="lt">板块 / 概念 / 行业</span>
+      <span class="ld">为什么涨 · 风口在不在 · 申万行业 + 东财概念</span></div>
+    <div class="layer-bd">${indRow}${regRow}${svsRow}${conRow}</div></div>`;
+}
+
+// L3 其余属性背景 (基本面/估值/分析师预期/事件 占位 — ④⑤⑥ 待落地)
 function layer3Rest(){
-  return `<div class="layer l3"><div class="layer-hd"><span class="ln">L3</span><span class="lt">板块 / 基本面 / 事件</span>
-      <span class="ld">为什么涨+可持续 · 锚 ann_date</span></div>
-    <div class="layer-bd"><span class="ph">板块/概念/行业 · 基本面 · 估值 · 分析师预期 · 龙虎榜/解禁/大宗 · 市场regime门 — sector_context 蓝图就绪, 数据已补齐(sw_daily/dc_member), 待落地接入</span></div></div>`;
+  return `<div class="layer l3"><div class="layer-hd"><span class="ln">L3</span><span class="lt">基本面 / 估值 / 事件</span>
+      <span class="ld">可持续性 · 锚 ann_date</span></div>
+    <div class="layer-bd"><span class="ph">基本面(ROE/增长) · 估值(PE/PB) · 分析师预期(report_rc) · 龙虎榜/解禁/大宗 · 市场regime门 — 数据已补齐, 待落地接入(④⑤⑥)</span></div></div>`;
 }
 
 async function loadStock(code, overlay){
@@ -247,6 +272,7 @@ async function loadStock(code, overlay){
         ${patRows}
       </div></div>
     ${layer2Card(base)}
+    ${sectorCard(base)}
     ${holderCard(base)}
     ${layer3Rest()}
     <div class="layer"><div class="layer-hd"><span class="lt">趋势线</span><span class="ld">按形态着色 · 非K线</span></div>

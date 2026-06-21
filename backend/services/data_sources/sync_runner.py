@@ -583,6 +583,16 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         # 循环避开无参 5000 整截断 (2026-06-13 实测无参全拉 = 整 5000 = top_inst/dc_member 同型截断反例)。
         code_param = spec.get("code_param", "ts_code")
         fixed = dict(spec.get("fixed_params") or {})
+        # ranged by_code_list (指数日线/指标全史回填): end_date 动态化 = latest_completed_trade_date,
+        # 防 §4.4 红线"钉死日期" (hardcode end_date 致 benchmark 永久 stale, daily_update 推不过去).
+        # 仅当 fixed 有 start_date 且未显式 end_date 时注入; --end 覆盖; MERGE on grain 幂等可全史重拉.
+        if "start_date" in fixed and "end_date" not in fixed:
+            from services.utils import latest_completed_trade_date
+            conn0 = _smartmoney_conn()
+            try:
+                fixed["end_date"] = end or latest_completed_trade_date(conn0).replace("-", "")
+            finally:
+                conn0.close()
         batches = [{code_param: c, **fixed} for c in spec["code_list"]]
     elif spec["batch_mode"] == "by_trade_date":
         if backfill:

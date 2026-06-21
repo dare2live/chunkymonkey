@@ -20,6 +20,7 @@ from services.technical_states.capital import capital_signals
 from services.technical_states.chips import chip_signals
 from services.technical_states.vol import volume_signals
 from services.technical_states.rs import relative_strength
+from services.technical_states.sector_context import sector_regime, concept_labels
 from services.technical_states import (
     apply_coupling,
     classify_multi_timeframe,
@@ -171,6 +172,58 @@ def load_benchmark(ts_code: str) -> dict:
     return out
 
 
+def load_sector_membership(code: str, as_of: str | None = None) -> dict:
+    """L3 板块归属 (PIT, 口径红线 J6: 行业=申万 / 概念=东财):
+    - 申万行业: v_sw_industry_pit (in_date<=t AND (out_date NULL OR out_date>t), as-of 取最近段); l1_code 直接=sw_daily ts_code。
+    - 东财概念: dc_member 最近快照<=t (con_code=个股, ts_code=板块BKxxxx.DC); 概念名+热度 JOIN dc_index (dc_member.name=个股名非板块名, 坑)。
+    返回 {sw_l1_code, sw_l1_name, sw_l2_name, concepts:[(code,name)], concept_hot:{code:pct_change%}}。
+    """
+    ts = code_to_ts_code(code)
+    asof = as_of.replace("-", "") if as_of else None       # v_sw_industry_pit / dc_member trade_date 均 YYYYMMDD
+    c = duck_connect(RAW_DB, read_only=True)
+    try:
+        sw_where, sw_args = "", [code]
+        if asof:                                            # PIT: 归属区间含 t (in_date<=t<out_date)
+            sw_where = " AND in_date <= ? AND (out_date IS NULL OR out_date > ?)"
+            sw_args += [asof, asof]
+        sw = c.execute(f"SELECT l1_code, l1_name, l2_name FROM v_sw_industry_pit "
+                       f"WHERE stock_code = ?{sw_where} ORDER BY in_date DESC LIMIT 1", sw_args).fetchone()
+        m_where = " AND trade_date <= ?" if asof else ""    # 东财概念: 最近快照 <= t (PIT)
+        snap = c.execute(f"SELECT MAX(trade_date) FROM raw_tushare_dc_member WHERE con_code = ?{m_where}",
+                         [ts] + ([asof] if asof else [])).fetchone()
+        concepts, hot = [], {}
+        if snap and snap[0]:
+            rows = c.execute(
+                "SELECT m.ts_code, i.name, i.pct_change FROM raw_tushare_dc_member m "
+                "LEFT JOIN raw_tushare_dc_index i ON i.ts_code = m.ts_code AND i.trade_date = m.trade_date "
+                "WHERE m.con_code = ? AND m.trade_date = ?", [ts, snap[0]]).fetchall()
+            for bk, nm, pct in rows:
+                concepts.append((bk, nm or bk))
+                if pct is not None:
+                    hot[bk] = pct
+    finally:
+        c.close()
+    return {"sw_l1_code": sw[0] if sw else None, "sw_l1_name": sw[1] if sw else None,
+            "sw_l2_name": sw[2] if sw else None, "concepts": concepts, "concept_hot": hot}
+
+
+def load_sector_kline(sw_l1_code: str | None, end: str | None = None) -> dict:
+    """申万一级行业指数日线 (sw_daily, ts_code=l1_code 直接对应) → {date_iso: close}。PIT: trade_date<=end。"""
+    if not sw_l1_code:
+        return {}
+    where, args = "ts_code = ?", [sw_l1_code]
+    if end:
+        where += " AND trade_date <= ?"
+        args.append(end.replace("-", ""))                   # end ISO → YYYYMMDD (sw_daily trade_date 口径)
+    c = duck_connect(RAW_DB, read_only=True)
+    try:
+        rows = c.execute(f"SELECT trade_date, close FROM raw_tushare_sw_daily WHERE {where} ORDER BY trade_date",
+                         args).fetchall()
+    finally:
+        c.close()
+    return {_iso(td): cl for td, cl in rows}
+
+
 def _multi_tf(ohlcv: dict, cfg: dict, limit_data: dict | None = None) -> dict:
     """OHLCV → 多TF 分类 (读 config 三框窗口)。limit_data 给则 enrich 日线(A股涨停修正, D3)。"""
     d = ohlcv
@@ -240,7 +293,8 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
     named = match_named_patterns(refined_seq, cfg)
     recent_patterns = [{"date": d, **p} for d in sorted(named)[-5:] for p in named[d]]     # 近期完成的命名形态
     rs_cfg = cfg.get("RS") or {}                                                            # RS 相对强度 (vs 大盘)
-    rs = relative_strength(ohlcv["date"], ohlcv["close"], load_benchmark(rs_cfg.get("基准", "000300.SH")),
+    bench = load_benchmark(rs_cfg.get("基准", "000300.SH"))                                  # HS300 (L2 RS + L3 板块regime 共用)
+    rs = relative_strength(ohlcv["date"], ohlcv["close"], bench,
                            window=rs_cfg.get("窗口", 20), band=rs_cfg.get("零轴死区", 0.005))
     rs_now = rs.get(last_date)
     money, turnover = load_capital(code)                                                    # 维度③ 资金+换手
@@ -251,6 +305,15 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
     close_by_date = {ohlcv["date"][j]: ohlcv["close"][j] for j in range(len(ohlcv["date"]))}
     chip = chip_signals(ohlcv["date"], load_cyq(code), close_by_date, cfg=cfg)              # 维度④ 筹码
     vol = volume_signals(ohlcv["date"], ohlcv["close"], ohlcv["volume"], cfg=cfg)           # L2 成交量/量能(量价配合)
+    sec_mem = load_sector_membership(code, as_of=last_date)                                  # L3 板块/概念 (申万行业+东财概念, PIT)
+    sec_kline = load_sector_kline(sec_mem["sw_l1_code"], end=last_date)                      # 申万一级行业指数日线 {iso:close}
+    sec_dates = sorted(sec_kline)
+    sec_reg = sector_regime(sec_dates, [sec_kline[d] for d in sec_dates], bench, cfg=cfg)    # L3 板块regime (vs HS300, 风口在不在)
+    svs = relative_strength(ohlcv["date"], ohlcv["close"], sec_kline,                        # L2 个股vs板块 (领涨/落后, bench=行业指数)
+                            window=rs_cfg.get("窗口", 20), band=rs_cfg.get("零轴死区", 0.005), bench_label="板块")
+    sector = {"sw_l1_name": sec_mem["sw_l1_name"], "sw_l2_name": sec_mem["sw_l2_name"],
+              "regime": sec_reg.get(last_date), "stock_vs_sector": svs.get(last_date),
+              **concept_labels(sec_mem["concepts"], sec_mem["concept_hot"], cfg=cfg)}
     return {
         "code": code, "as_of": last_date,
         "timeframes": tf_read,
@@ -263,6 +326,7 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
         "mingan": mingan_now,                                          # 主力意图+量价背离(暗盘伪维度已砍, 见capital.py裁决)
         "chips": chip.get(last_date),                                  # 维度④ 筹码分布+胜率
         "vol": vol.get(last_date),                                     # L2 成交量/量能 (量比+量价配合)
+        "sector": sector,                                              # L3 板块/概念 (申万行业regime+个股vs板块+东财概念热度)
         "holders": load_top10_holders(code, as_of=last_date),          # L3 机构: 十大流通股东+动向(report_date带横线同last_date格式)
         "entropy": last.get("entropy"),
         "trend": trend_series(ohlcv, daily_cls),

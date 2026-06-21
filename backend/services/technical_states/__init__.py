@@ -46,6 +46,7 @@ from services.technical_states.capital import capital_signals, mainforce_net, ca
 from services.technical_states.chips import chip_signals  # noqa: F401
 from services.technical_states.vol import volume_signals  # noqa: F401
 from services.technical_states.rs import relative_strength  # noqa: F401
+from services.technical_states.sector_context import sector_regime, concept_labels  # noqa: F401
 
 __all__ = [
     "compute", "resample", "FEATURE_KEYS", "load_config",
@@ -54,4 +55,5 @@ __all__ = [
     "compute_limit_flags", "enrich_features", "code_to_ts_code",
     "apply_context", "candle_pattern", "match_named_patterns", "relative_strength",
     "capital_signals", "mainforce_net", "capital_intent", "zhuli_intent", "chip_signals", "volume_signals",
+    "sector_regime", "concept_labels",
 ]

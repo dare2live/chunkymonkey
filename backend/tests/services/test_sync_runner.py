@@ -204,3 +204,60 @@ def test_quarter_ends_generates_report_periods():
     # 边界: 单期含端点 / 空范围 (无季末日落入)
     assert sr._quarter_ends("20251231", "20251231") == ["20251231"]
     assert sr._quarter_ends("20251201", "20251220") == []
+
+
+class _CapturingAdapter:
+    """记录每批 fetch 收到的 params (验 by_code_list end_date 动态注入)."""
+    def __init__(self, rows):
+        self.rows = list(rows)
+        self.seen_params = []
+
+    def fetch_raw(self, api_name, **params):
+        self.seen_params.append(dict(params))
+        return list(self.rows)
+
+
+def _by_code_list_registry(fixed_params, code_list=None):
+    return _registry(batch_mode="by_code_list", code_param="ts_code",
+                     code_list=code_list or ["000300.SH"], fixed_params=fixed_params,
+                     min_rows_per_batch=1)
+
+
+def test_by_code_list_injects_dynamic_end_date(monkeypatch, tmp_path):
+    """ranged by_code_list (有start_date无end_date) → 注入 latest_completed_trade_date 防钉死日期 stale (§4.4 根治)."""
+    import services.utils as su
+    from services.duck_adapter import connect
+    ad = _CapturingAdapter([{"ts_code": "000300.SH", "trade_date": "20260618", "close": 1.0}])
+    monkeypatch.setattr(sr, "_adapter", lambda src: ad)
+    monkeypatch.setattr(sr, "_target_conn", lambda spec: connect(str(tmp_path / "a.duckdb")))
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: connect(str(tmp_path / "wm.duckdb")))
+    monkeypatch.setattr(sr, "_record_outcome", lambda *a, **k: None)
+    monkeypatch.setattr(su, "latest_completed_trade_date", lambda conn: "2026-06-18")
+    sr.run_domain("demo", registry=_by_code_list_registry({"start_date": "20050101"}))
+    assert ad.seen_params[0].get("end_date") == "20260618"   # 动态 end 注入 (横线去掉)
+    assert ad.seen_params[0].get("start_date") == "20050101"  # start 保留
+
+
+def test_by_code_list_no_inject_without_start_date(monkeypatch, tmp_path):
+    """无 start_date 的 by_code_list (index_member_all is_new 域) 不被误注入 end_date (防误伤冻结快照域)."""
+    from services.duck_adapter import connect
+    ad = _CapturingAdapter([{"ts_code": "801010.SI", "trade_date": "20260618", "close": 1.0}])
+    monkeypatch.setattr(sr, "_adapter", lambda src: ad)
+    monkeypatch.setattr(sr, "_target_conn", lambda spec: connect(str(tmp_path / "b.duckdb")))
+    monkeypatch.setattr(sr, "_record_outcome", lambda *a, **k: None)
+    sr.run_domain("demo", registry=_by_code_list_registry({"is_new": "Y"}, code_list=["801010.SI"]))
+    assert "end_date" not in ad.seen_params[0]                # is_new 域无 start_date → 不注入
+
+
+def test_by_code_list_end_override(monkeypatch, tmp_path):
+    """--end 覆盖优先于 latest_completed_trade_date (回填指定窗口)."""
+    import services.utils as su
+    from services.duck_adapter import connect
+    ad = _CapturingAdapter([{"ts_code": "000300.SH", "trade_date": "20251231", "close": 1.0}])
+    monkeypatch.setattr(sr, "_adapter", lambda src: ad)
+    monkeypatch.setattr(sr, "_target_conn", lambda spec: connect(str(tmp_path / "c.duckdb")))
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: connect(str(tmp_path / "wm.duckdb")))
+    monkeypatch.setattr(sr, "_record_outcome", lambda *a, **k: None)
+    monkeypatch.setattr(su, "latest_completed_trade_date", lambda conn: "2026-06-18")
+    sr.run_domain("demo", end="20251231", registry=_by_code_list_registry({"start_date": "20050101"}))
+    assert ad.seen_params[0].get("end_date") == "20251231"   # --end 覆盖 latest

@@ -13,9 +13,10 @@ import numpy as np
 
 
 def relative_strength(dates, stock_close, bench_by_date: dict, window: int = 20,
-                      band: float = 0.005) -> dict:
+                      band: float = 0.005, bench_label: str = "大盘") -> dict:
     """Mansfield RS (PIT ≤t): RS_ratio=个股/基准(按date对齐), RS_state=RS_ratio vs 其window均线。
-    返回 {date: {rs_ratio, rs_state(强于/弱于/同步大盘), rs_slope}}。band=零轴死区(防抖)。
+    返回 {date: {rs_ratio, rs_state(强于/弱于/同步<bench_label>), rs_slope}}。band=零轴死区(防抖)。
+    bench_label: 基准语义标签 — 大盘(基准=HS300, L2 RS) / 板块(基准=申万行业指数, 个股vs板块相对, dossier 复用)。
     """
     bench = np.array([bench_by_date.get(str(d), np.nan) for d in dates], float)
     sc = np.array([x if x is not None else np.nan for x in stock_close], float)
@@ -32,7 +33,7 @@ def relative_strength(dates, stock_close, bench_by_date: dict, window: int = 20,
             continue
         prev = rs[i - window]
         rs_slope = float((rs[i] - prev) / prev) if (not np.isnan(prev) and prev > 0) else None
-        state = ("强于大盘" if rs[i] > rs_ma * (1 + band)
-                 else "弱于大盘" if rs[i] < rs_ma * (1 - band) else "同步大盘")
+        state = (f"强于{bench_label}" if rs[i] > rs_ma * (1 + band)
+                 else f"弱于{bench_label}" if rs[i] < rs_ma * (1 - band) else f"同步{bench_label}")
         out[str(dates[i])] = {"rs_ratio": float(rs[i]), "rs_state": state, "rs_slope": rs_slope}
     return out

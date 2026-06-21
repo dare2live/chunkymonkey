@@ -339,3 +339,36 @@ def test_volume_signals():
     out2 = volume_signals(dates, closes, vols2, window=20, cfg=cfg)
     assert out2[dates[-1]]["量价配合"] == "价涨量缩(背离预警)"
 
+
+def test_sector_regime():
+    """L3 板块regime: 申万行业指数 vs HS300 超额 + 趋势 → 强势(风口在)/走弱。PIT (只用≤t)。"""
+    from services.technical_states.sector_context import sector_regime
+    cfg = load_config()
+    dates = [f"2024-{1 + i // 28:02d}-{1 + i % 28:02d}" for i in range(90)]
+    # 板块涨, HS300 平 → 大幅超额 + 趋势上 = 强势(风口在)
+    sec_close = [100.0 * (1.01 ** i) for i in range(90)]
+    bench = {d: 1000.0 for d in dates}
+    out = sector_regime(dates, sec_close, bench, cfg=cfg)
+    last = out[dates[-1]]
+    assert last["regime"] == "板块强势(风口在)" and last["板块超额"] > 5.0 and last["板块趋势"] == "上行"
+    # 板块平, HS300 涨 → 负超额 = 走弱
+    bench2 = {d: 1000.0 * (1.01 ** i) for i, d in enumerate(dates)}
+    flat = [100.0] * 90
+    out2 = sector_regime(dates, flat, bench2, cfg=cfg)
+    assert out2[dates[-1]]["regime"] == "板块走弱" and out2[dates[-1]]["板块超额"] < -5.0
+    # PIT: out 不含前 max(窗口) 日 (无回看不出 regime)
+    assert dates[0] not in out
+
+
+def test_concept_labels():
+    """L3 概念标签: 热度排序 top-N + is_hot 标记 (东财dc_index涨幅, 纯描述非alpha)。"""
+    from services.technical_states.sector_context import concept_labels
+    cfg = load_config()
+    concepts = [("BK0001", "白酒"), ("BK0002", "AI算力"), ("BK0003", "冷门概念")]
+    hot = {"BK0001": 2.0, "BK0002": 12.0, "BK0003": None}   # AI算力>8门=热门; 冷门概念无热度
+    out = concept_labels(concepts, hot, cfg=cfg)
+    assert out["概念"][0]["名称"] == "AI算力" and out["概念"][0]["is_hot"] is True   # 热度最高排首
+    assert out["热门概念数"] == 1
+    names = [x["名称"] for x in out["概念"]]
+    assert "白酒" in names and len(out["概念"]) == 3   # 概念展示数=3
+
