@@ -1,0 +1,338 @@
+{
+  "summary": "用股票研究理论(英文权威+中文论坛)对抗式确认7态形态分类, 挖盲点+提供阈值/provenance",
+  "agentCount": 16,
+  "logs": [
+    "研究完成: 8/8 个理论流派"
+  ],
+  "result": {
+    "research_count": 8,
+    "synthesis": {
+      "state_confirmations": [
+        {
+          "state": "1. 低位横盘 (筑底)",
+          "verdict": "强确认",
+          "confirmed_by": [
+            "Weinstein Stage 1 Basing",
+            "Wyckoff Accumulation Phase A-B",
+            "O'Neil Base building",
+            "Minervini Stage 1",
+            "道氏 Accumulation",
+            "量价 Accumulation/VDU",
+            "中文论坛 建仓期/缠论一买后中枢"
+          ],
+          "challenged_by": [
+            "O'Neil: 单一桶丢失 cup/flat-base/double-bottom 几何细分 + 缺前置≥30%上涨过滤(强势股base vs弱势股趴底)"
+          ],
+          "theory_provenance": "7/8 理论一致映射到吸筹/筑底相, 是 7 态里跨源一致度最高的状态。config 当前 价格分位<0.475 + 区间宽度<0.455 + 均线斜率平缓<4% 三条件语义精准。",
+          "threshold_recommendation": "价格分位 0.475 / 区间宽度 0.455 保持数据优先(measured v3全宇宙)。新增软维度(非改阈值): base_duration(横盘持续天数) — 5/8 理论(Wyckoff Cause-Effect/道氏/中文/Weinstein/O'Neil)一致认为横盘时长是后续涨幅的因果先验, config 完全无时长维度。Wyckoff 给区间: daily 4-16周。建议作 prior 特征不作 label(非PIT实测前)。",
+          "verdict_basis": "7源确认direction, 故强确认; O'Neil的几何细分挑战是增量非否定"
+        },
+        {
+          "state": "2. 放量突破 (起涨)",
+          "verdict": "部分确认",
+          "confirmed_by": [
+            "Weinstein Stage 2A breakout",
+            "Wyckoff SOS/jump over creek",
+            "O'Neil pivot breakout",
+            "Minervini VCP pivot breakout",
+            "道氏 量验证起涨",
+            "量价 breakout confirmation",
+            "中文论坛 三买/葛兰碧法则一",
+            "形态确认 confirmed breakout"
+          ],
+          "challenged_by": [
+            "量阈方向分歧(双向): O'Neil/Minervini/道氏/Bulkowski 认为量比1.89(=+89%)偏严, 会漏掉+40~50%的有效突破(recall风险); 中文论坛 tdxzb指标 量比>1.89创20日新高 反而逐字吻合(同谱系)",
+            "锚点错位: config用'距均线>0'(上穿均线), 6+理论要求锚定 pivot/前高阻力/箱顶 — 均线上穿可发生在base中部=假突破",
+            "时序缺失: 全部确认门类理论(Weinstein质量清单/Wyckoff LPS二次确认/O'Neil买入区/形态确认N-bar+收盘) 指出 config 是孤立瞬时态, 无'突破后守住/回踩确认', 会把 UTAD/upthrust假突破/intrabar fakeout 误判为起涨"
+          ],
+          "theory_provenance": "事件层8源全confirm'放量+大涨=突破', 但量阈高低有方向分歧 + 锚点(均线vs pivot)系统性错位 + 时序确认门全缺 → 部分确认。这是真金白银盲点最集中的态。",
+          "threshold_recommendation": "量比 1.89: 另设理论预设对照档。主流权威基准是 ≥50日均量+40~50%(≈量比1.5x, 但基准窗口是50日非config的20日, 20日均量通常更高故等效阈还要再低)。建议: 保留1.89为'巨量突破'子态硬门, 另设'温和突破'下沿≈量比1.5x(+50%) 做 OOS recall 对照, 数据裁决。20日动量5.3%无任何理论一手对应=纯经验校准, 必须OOS验证不可当普适常数。"
+        },
+        {
+          "state": "3. 上升通道 (主升)",
+          "verdict": "强确认",
+          "confirmed_by": [
+            "Weinstein Stage 2 Advancing",
+            "Wyckoff Markup",
+            "O'Neil Stage 2 advance",
+            "Minervini Stage 2/Power Trend",
+            "道氏 公众参与阶段",
+            "量价 Markup harmony",
+            "中文论坛 鱼身/缠论三买后趋势段"
+          ],
+          "challenged_by": [
+            "量价配合缺失: Weinstein/Wyckoff/量价 要求主升'推进放量/回踩缩量', config上升通道态不带量能维度 — '加速上涨'子态若缩量=no-demand背离=衰竭(应归4/5), 不配量会把衰竭误读为加速",
+            "加速上涨=危险信号: Weinstein/Minervini(climax top)/中文(顶背驰) 视末段抛物线加速为接近见顶, 非健康延续 — config'加速上涨'子态语义偏正面",
+            "缺 base-stage 计数(O'Neil): 同样上升通道处于1st/2nd vs 3rd/4th base 风险天差地别, config无记忆维度",
+            "缺峰谷结构验证(道氏): 均线斜率是滞后代理, 真趋势充要条件是 higher highs+higher lows, 均线滞后期会与已破峰谷背离"
+          ],
+          "theory_provenance": "7源一致映射主升相, config 多头排列+斜率+价在均线上 是教科书刻画。强确认。但'加速上涨'子态存在方向性危险(多个理论判它接近见顶), 是该态最需对抗的点。",
+          "threshold_recommendation": "均线斜率 6.55% / 多头排列 0.628 保持数据优先。注意: 全部理论明确斜率%无一手数值(Weinstein目视方向/道氏定性), 6.55%是config自定proxy=低置信度, 必须OOS验证。增量(非改阈值): '加速上涨'子态须叠加量能确认(加速且放量=健康 vs 加速且缩量=衰竭)区分, 否则climax误判风险=真金白银方向错误。"
+        },
+        {
+          "state": "4. 缩量上涨 (动能衰竭预警)",
+          "verdict": "有争议",
+          "confirmed_by": [
+            "量价 No-demand bar(高位语境)",
+            "道氏 量价背离预警",
+            "形态确认 量价背离/OBV未确认",
+            "中文论坛 量价八法(高位价涨量缩)"
+          ],
+          "challenged_by": [
+            "位置无关=核心冲突(5+源一致): Weinstein/Wyckoff/O'Neil/Minervini/中文论坛 全部指出'价涨量缩'语义双向取决于位置 — 低位/base把手/VCP收缩/回踩后的缩量上涨=供给枯竭=看涨(他们会买!); 高位/extended后的缩量上涨才=衰竭。config 一律标'动能衰竭预警'只取了高位语义一半",
+            "真金白银后果: Wyckoff/Minervini明确 — 据此(衰竭)减仓可能砍在 Stage2/VCP 把手的最佳买点上",
+            "命名风险: config子态'缩量延续'与态名'衰竭预警'内部矛盾(延续=中性 vs 衰竭=看空)"
+          ],
+          "theory_provenance": "这是 7 态里理论分歧最大的状态。4源在'高位缩量上涨=衰竭'上confirm, 但5+源强烈challenge其'位置无关一刀切'。判有争议。",
+          "threshold_recommendation": "量比 0.795 保持数据优先(落中文'<0.8缩量'带, 合理)。必须修正的是语义而非阈值: 用'价格分位/是否在base内/均线斜率方向'对缩量上涨分流 — 高位+斜率走平=衰竭(看空), 低位/鱼身+斜率仍陡=供给枯竭(中性偏多)。当前单标签是结构性误判源。子态'缩量延续'宜改名消除内部矛盾。"
+        },
+        {
+          "state": "5. 高位滞涨 (见顶)",
+          "verdict": "部分确认",
+          "confirmed_by": [
+            "Weinstein Stage 3 Topping",
+            "Wyckoff Distribution",
+            "O'Neil climax top/distribution",
+            "Minervini Stage 3",
+            "道氏 派发阶段",
+            "量价 BC/effort-result",
+            "中文论坛 鱼尾/缠论顶背驰"
+          ],
+          "challenged_by": [
+            "顶部缩量子态冲突(Weinstein核心反直觉): Weinstein/Wyckoff/量价 强调顶部 Stage3 是放量派发(下跌周放量>上涨周量), 缩量更像 Stage2回调或 Stage1 — config'缩量惜售'子态把缩量也归见顶, 与顶部量价逻辑方向相反, 可能误判",
+            "静态滞后 vs 动态拐点: config用'均线走平+动量近0'(静态/滞后), 但 Wyckoff UTAD(假突破诱多再跌回=顶部最高点)/Sperandeo 2B(创新高后跌回前高)/Minervini climax top(竭尽缺口)/缠论顶背驰(MACD红柱面积递减) 都是更早的动态见顶信号, config 抓不到'先冲高再反转'这类陷阱",
+            "主判据错位(Weinstein): 顶部主判据是30周均线由升转平+RS转弱, 不是绝对分位 — 单纯高分位但均线仍上升者仍是 Stage2"
+          ],
+          "theory_provenance": "骨架7源confirm(高位+滞涨=派发), '放量派发'子态精准命中。但'缩量惜售'子态有量价方向冲突 + 缺UTAD/2B/顶背驰动态拐点。部分确认。",
+          "threshold_recommendation": "价格分位 0.717 保持数据优先(合理代理)。增量(高价值): 引入 effort-vs-result 背离指标(量能zscore高 但价幅/动量收窄, config已有量能zscore+加速度可组合) — Wyckoff/量价 给的'放量但价幅收窄=派发'是比'动量近0'更硬更早的见顶证据。缠论顶背驰(价新高+MACD红柱递减)可作领先确认。"
+        },
+        {
+          "state": "6. 下跌通道 (下跌)",
+          "verdict": "强确认",
+          "confirmed_by": [
+            "Weinstein Stage 4 Declining",
+            "Wyckoff Markdown",
+            "O'Neil/Stage4",
+            "Minervini Stage 4",
+            "道氏 熊市主跌/死叉",
+            "量价 Markdown/SOW",
+            "中文论坛 一卖后下跌/缠论下跌趋势"
+          ],
+          "challenged_by": [
+            "缺底部反转量能领先信号(量价/Wyckoff): config纯靠均线斜率+动量负, 会错过 Selling Climax/Stopping Volume(放量长下影收高=机构吸收)/No-supply(窄幅缩量=卖盘枯竭) — 这些是 态6→态1 转换的真正触发, 比'均线走平'早数日到数周",
+            "缺反弹失败子结构(Weinstein/Wyckoff): 缩量反弹到均线下失败(LPSY/failing rally)=做空点+不要抄底信号, config未刻画",
+            "缺'阴跌洗盘 vs 真出货'量能/破位判别(中文): 缩量不破大均线=洗盘 vs 放量破位=真下跌 — config无量能维度会把深度挖坑洗盘误判成下跌通道过早出局"
+          ],
+          "theory_provenance": "7源一致映射下跌相, config刻画标准。强确认。但缺底部反转的量能领先信号是该态最大功能缺口(影响鱼尾出场/抄底规避)。",
+          "threshold_recommendation": "均线斜率 -5.92% 保持数据优先(对称proxy, 同上升通道无理论一手数值, 须OOS)。增量: 下跌通道内监测放量climax+stopping volume 作为转入态1的早期触发; 监测'缩量反弹到均线下失败'作做空/规避诱多信号。"
+        },
+        {
+          "state": "7. 缩量回踩 (健康回踩)",
+          "verdict": "部分确认",
+          "confirmed_by": [
+            "Weinstein 回踩30周均线±5%",
+            "Wyckoff LPS/back-up to creek",
+            "O'Neil constructive weakness/pullback add-on",
+            "Minervini VCP收缩/10-20日线回踩",
+            "道氏 次级回调",
+            "量价 No-supply/VDU",
+            "中文论坛 缩量回踩不破/葛兰碧法则三",
+            "形态确认 throwback/pullback"
+          ],
+          "challenged_by": [
+            "缺破位降级路径(道氏/Bulkowski/形态确认): config默认回踩=健康, 无'回踩跌破突破位→降级为突破失败'分支。道氏硬分界: 回撤>2/3(66%)且跌破前一higher low=反转应转下跌通道; Bulkowski: 回踩跌破突破位者后续显著更差(持稳40% vs 跌破29%均涨)。'深回踩'子态正踩在危险边界却无硬门 → 真金白银: 在已失败形态上继续持有/加仓",
+            "缺前序SOS/突破上下文门(Wyckoff/Minervini): 孤立缩量回踩(无前序放量突破)不是LPS, 可能只是下跌中继 — config态7定义无'前序是否有放量突破'上下文",
+            "回踩须真缩量(量价): 深回踩但放量=趋势破坏非健康回踩(转态6), config纯靠回撤深度会漏判",
+            "缺收缩序列(Minervini VCP核心): config只建模单次回踩(单帧), VCP是2-6次逐次减半收缩序列(25→12→6%), 这是最强setup信号"
+          ],
+          "theory_provenance": "主体8源confirm(最贴合理论的态), '升势小幅缩量回调'语义精准。但缺破位降级硬门+前序SOS上下文+VCP收缩序列 → 部分确认。",
+          "threshold_recommendation": "回撤分档(浅/深≈黄金分割1/3-2/3)与道氏/中文一致, 保持。必须新增硬门(非阈值调整): 深回踩须叠加'是否跌破突破位/前一swing low'判别, 破了直接转判下跌通道不留回踩态(道氏+Bulkowski+形态确认 三源一致, 真金白银关键)。量比0.851保持数据优先但回踩须验证真缩量。"
+        }
+      ],
+      "blind_spots": [
+        {
+          "title": "假突破/失败突破态 (UTAD / Upthrust / 2B / failed breakout)",
+          "description": "config'放量突破'只有成功分支, 无'突破→失败/诱多'分支。放量突破态与 Wyckoff UTAD(派发顶部假突破)、Sperandeo 2B(创新高后跌回前高)、形态确认 intrabar fakeout 在突破瞬间几乎同形, 区别只在'突破后是否守住突破位'+'突破时价幅是否相称'。当前 config 逐bar瞬时分类, 把派发顶部的假突破误标成起涨放量突破 → 在最高点追多接盘。",
+          "theory_basis": "跨4源最强一致(真金白银): Wyckoff(UTAD=派发最强确认/往往是顶部最高点)+Minervini(把放量突破必配LPS/BU二次确认)+量价(UTAD)+形态确认理论(Sperandeo 2B+收盘确认+N-bar)。这是除RS外被最多理论独立点名的盲点。",
+          "recommendation": "给'放量突破'加 T+1~T+N '是否守住突破位'确认门(收盘基准, 非盘中) + 新增'失败突破反转'离散态(上破诱多失败=看空)。用 effort/result 背离(量增但价幅/动量收窄)过滤。这是消除追高接盘真金白银红线的最高优先项。",
+          "priority": "high"
+        },
+        {
+          "title": "相对强度 RS 维度 (Mansfield RS / IBD RS rank vs 大盘)",
+          "description": "7态完全是个股绝对量价形态, 0个RS/超额维度(已核 backend/services/technical_states/ 与 config 均无 mansfield/relative_strength/超额)。Weinstein/Minervini 把'RS升破零轴'/'RS rank≥70/90'作为突破真伪与可买主升的硬门槛(非可选)。无RS → 放量突破/上升通道会纳入大量'大盘普涨带起的弱势齐涨股'。",
+          "theory_basis": "2源独立硬门槛(Weinstein四要素之一+Minervini Trend Template硬过滤), 且直接对接项目KPI'超额HS300>0'。Weinstein/Minervini 都视其为区分领涨股vs跟随股的核心, 是 selection 噪音的结构性来源。",
+          "recommendation": "新增正交'相对强度状态'维度(RS升破零轴 / RS在零轴下 / RS rank分位)作为7态的置信度乘子, 不改7态本身。项目已有 sector-relative 特征(*_tdx_l1_rel/sector_momentum)可复用做个股vs大盘/板块超额。直接服务 KPI 超额穿透。",
+          "priority": "high"
+        },
+        {
+          "title": "挖坑式洗盘 / Spring / Shakeout (向下假突破后快速收复)",
+          "description": "主升前/鱼身中主力制造的恐慌性向下假破位(爆量或无量杀跌破关键位, 1-3天内V形收复)。config'缩量回踩'(小幅缩量小负动量)和'下跌通道'(持续负动量)都无法捕捉它: 缩量回踩太温和、下跌通道会把它误判成趋势反转过早出局。在最佳买点(spring收回)处反而触发看空标签。",
+          "theory_basis": "2源独立(Wyckoff Spring #1/#2/#3分级=吸筹决胜测试/最高质量做多点 + 中文论坛'挖坑'=主升浪7特征第3条/最经典鱼头买点)。Wyckoff给量化锚: 跌破→N日快速收回+收回时低量(higher low on lesser volume)。",
+          "recommendation": "新增'假跌破回收'离散态(跌破前期区间下沿 + N日内收回区间 + 收回时量能分级)。可作'缩量回踩'的破位变体加'是否N日内收复'判据。直接服务'主升浪猎手'的起涨点T+1命中率。",
+          "priority": "high"
+        },
+        {
+          "title": "形态确认门 + 滞后双阈值死区 (收盘确认/N-bar/hysteresis deadband)",
+          "description": "config 是逐bar瞬时分类、单阈值无缓冲(已核 classifier.py 无 prev_state/transition/确认逻辑)。在每个态边界(斜率阈/量比阈/分位阈)价格震荡会高频跳变(态3↔态7↔态4反复跳), 软隶属度虽缓和但下游硬决策(调仓)仍被 whipsaw 割。",
+          "theory_basis": "形态确认理论核心(Edwards-Magee 3%穿透/3根K线/收盘确认 + 控制论 hysteresis Enter严/Exit松双阈值)。低成本、无leakage风险, config已有'边界耦合'节是天然挂载点。",
+          "recommendation": "在状态转换层(非分类层)加: 转换需收盘确认(非盘中) + N-bar持有(反1-bar噪音) + 进/出非对称双阈值(死区)。如进上升通道用斜率>6.55%, 跌出用更松阈(如>3%)。挂到config现有'边界耦合'节。",
+          "priority": "medium"
+        },
+        {
+          "title": "底部形态几何细分 (cup-with-handle / flat base / double bottom)",
+          "description": "config'低位横盘'是单一桶。O'Neil 把它细分为三种几何不同的可交易底: cup-handle(深12-33%/≥7周/有把手)、flat base(≤15%/≥5周/窄平台)、double bottom(W形/20-30%/≥7周/买点在中峰)。三者pivot位置、买点、深度容忍、突破后期望完全不同, 混成一态丢失O'Neil核心形态选择信息。",
+          "theory_basis": "主要1源(O'Neil/IBD, Minervini VCP侧面印证收缩几何)。是O'Neil体系核心alpha来源但跨理论一致度低于前4项, 故medium。",
+          "recommendation": "用config已有特征(区间宽度/最大回撤/R²)工程化区分'低位横盘'子态(是否有把手/W形/区间收窄)。注意: 这是单源理论建议, 应作为'低位横盘'的子态探索项而非硬改主态, 先OOS验证几何细分是否真带来forward差异。",
+          "priority": "medium"
+        },
+        {
+          "title": "effort-vs-result 量价背离 (独立可量化维度)",
+          "description": "config 7态都是'价形态+量作辅助过滤', 无以'量价背离'本身为主体的维度。Wyckoff第三定律: 量大但价不动(派发)或价新高但量萎缩(衰竭)。态4(缩量上涨)和态5(放量派发)各捕捉了一半, 但缺独立的、位置敏感的 divergence 度量(量分位vs价分位变化的剪刀差)。",
+          "theory_basis": "3源(Wyckoff effort-result第三定律 + 量价VSA No-demand/No-supply + 道氏量价背离/非确认)。Wyckoff给了罕见量化示例(量翻倍但价幅收窄=反转)。",
+          "recommendation": "用config已有'量能zscore'+'加速度'组合成 effort/result 背离指标(量zscore高 但价幅/动量收窄)。作为顶部/衰竭的领先预警维度(早于均线走平), 横切态4/5。",
+          "priority": "medium"
+        }
+      ],
+      "config_provenance": [
+        {
+          "state": "低位横盘",
+          "anchor": "# 理论锚: Weinstein Stage1筑底 / Wyckoff吸筹Phase A-B / 道氏累积阶段 — 7源一致。聪明钱低位悲观期吸筹, 价低位窄幅+均线走平+量能收缩。盲点: 缺base_duration(横盘时长=后续涨幅的因果先验, Wyckoff 4-16周)"
+        },
+        {
+          "state": "放量突破",
+          "anchor": "# 理论锚: Weinstein Stage2A / Wyckoff SOS / O'Neil pivot突破 — 事件层8源确认。但权威量阈是≥50日均量+40~50%(本config量比1.89=+89%偏严, 基准窗口20日非50日); 锚点应是pivot/前高非均线上穿。盲点: 无突破后守住确认 → 假突破(UTAD/2B)误判风险"
+        },
+        {
+          "state": "上升通道",
+          "anchor": "# 理论锚: Weinstein Stage2主升 / Wyckoff Markup / 道氏公众参与 — 7源一致多头排列+斜率向上。斜率%无理论一手值(6.55%=自定proxy须OOS)。警告: '加速上涨'子态多理论视为接近见顶的climax危险信号非健康延续, 须配量能确认"
+        },
+        {
+          "state": "缩量上涨",
+          "anchor": "# 理论锚: 量价No-demand / 道氏量价背离(高位)。但5+源警告'价涨量缩'位置双向: 低位/base/回踩后=供给枯竭看涨, 高位=衰竭看空。当前'一律衰竭预警'位置无关=误判源, 须按价格分位/斜率分流"
+        },
+        {
+          "state": "高位滞涨",
+          "anchor": "# 理论锚: Weinstein Stage3顶部 / Wyckoff派发 / 缠论顶背驰 — 7源骨架确认。'放量派发'子态精准(顶部=放量非缩量)。盲点: '缩量惜售'子态与Weinstein顶部量价逻辑冲突; 缺UTAD/2B/顶背驰动态拐点(比静态均线走平更早)"
+        },
+        {
+          "state": "下跌通道",
+          "anchor": "# 理论锚: Weinstein Stage4 / Wyckoff Markdown / 道氏熊市主跌 — 7源一致。盲点: 缺底部反转量能领先信号(Selling Climax/Stopping Volume), 是态6→态1转换真触发, 比均线走平早数日数周"
+        },
+        {
+          "state": "缩量回踩",
+          "anchor": "# 理论锚: Weinstein回踩30周均线±5% / Wyckoff LPS / 道氏次级回调 — 8源最贴合。盲点: 缺破位降级硬门(回撤>2/3且破前低=反转转下跌通道, 道氏+Bulkowski三源一致) + 缺前序SOS上下文 + VCP收缩序列(单帧vs序列)"
+        }
+      ],
+      "threshold_deltas": [
+        {
+          "param": "放量突破.量比 (当前 1.89x, 基准20日均量)",
+          "current": "1.89 (=+89% vs 20日均量)",
+          "theory_suggested": "≥50日均量+40~50% (≈量比1.5x; VCP放宽到+30~40%)",
+          "rationale": "6源(O'Neil/Minervini/道氏/Bulkowski/量价/Weinstein周线2x)指当前阈偏严会漏掉+40~89%段有效突破(recall风险), 该段恰是最多真突破发生处。但注意基准窗口差异: 理论用50日均量, config用20日均量(通常更高), 故等效阈还要再低。唯一例外: 中文tdxzb指标'量比1.89创20日新高'逐字吻合(同谱系)。",
+          "action": "另设理论预设"
+        },
+        {
+          "param": "放量突破.二十日动量 (当前 5.3%)",
+          "current": "5.3%",
+          "theory_suggested": "无理论一手对应(道氏不量化单一突破涨幅)",
+          "rationale": "纯经验校准值, 任何理论都不给突破日固定涨幅%。属config自校准, 必须OOS验证不可当普适常数, 不能引文献固定值。",
+          "action": "保持(数据优先)"
+        },
+        {
+          "param": "上升通道.均线斜率 / 下跌通道.均线斜率 (当前 6.55% / -5.92%)",
+          "current": "6.55% / -5.92%",
+          "theory_suggested": "无固定%(Weinstein目视方向/道氏定性/Wyckoff看区间突破量价)",
+          "rationale": "全部理论明确斜率%是config自定proxy无一手数值支撑(Weinstein判据是'目视斜率方向+价格相对位置')。低置信度, 必须OOS验证, 且这两阈通过config'边界耦合'互补对称关联(调一镜像另一)。",
+          "action": "保持(数据优先)"
+        },
+        {
+          "param": "高位滞涨.价格分位 (当前 0.717)",
+          "current": "0.717",
+          "theory_suggested": "Weinstein: 顶部主判据是30周均线由升转平+RS转弱, 非绝对分位; Minervini: 距52周高<25%(绝对距离非区间分位)",
+          "rationale": "高分位是合理代理但理论指出'单纯高分位+均线仍上升=仍Stage2非见顶'。分位本身保持数据优先, 但见顶判定应叠加'均线由升转平'+(若引入)RS转弱, 而非单靠分位。Minervini的'距52周高'与config的'区间分位'不等价。",
+          "action": "保持(数据优先)"
+        },
+        {
+          "param": "缩量上涨.量比 / 缩量回踩.量比 (当前 0.795 / 0.851)",
+          "current": "0.795 / 0.851",
+          "theory_suggested": "中文体系: <0.8缩量 / <0.5严重缩量(VDU); 量价VDU硬阈<50%均量",
+          "rationale": "0.795落中文'<0.8缩量'带合理, 0.851为回踩态略松也合理。阈值保持数据优先。真正问题不在阈值而在缩量上涨的语义(位置无关一刀切, 见state裁决), 及回踩须验证'真缩量'(深回踩放量=趋势破坏)。",
+          "action": "保持(数据优先)"
+        },
+        {
+          "param": "低位横盘 时长维度 (当前: 无)",
+          "current": "无 base_duration 维度",
+          "theory_suggested": "Wyckoff吸筹区 daily 4-16周; <3周累积仅反弹15-30%快速衰竭, 12-20周可撑100-200%",
+          "rationale": "5/8理论(Wyckoff Cause-Effect/道氏/中文/Weinstein/O'Neil)一致认为横盘时长是后续涨幅的因果先验, config完全无时长维度。建议新增 base_duration 作 prior 特征(非label, 非PIT实测前不作判据), 服务forward期望幅度的仓位判断。",
+          "action": "另设理论预设"
+        },
+        {
+          "param": "缩量回踩 破位降级门 (当前: 无)",
+          "current": "无破位硬门(默认回踩=健康)",
+          "theory_suggested": "道氏: 回撤>2/3(66%)且跌破前一higher low=反转; Bulkowski: 跌破突破位后续显著更差; 形态确认: 回踩跌破=突破失败",
+          "rationale": "3源一致(道氏+Bulkowski+形态确认)+真金白银关键: '深回踩'子态正踩危险边界却无硬门, 在已失败形态上继续持有/加仓是直接亏损路径。非阈值调整而是新增硬判别(是否破突破位/前一swing low)。",
+          "action": "建议调整"
+        }
+      ],
+      "overall": "总体吻合度高 (8理论中Weinstein/Wyckoff/O'Neil/Minervini/道氏/量价/中文/形态确认 在'低位筑底→放量突破→主升→见顶→下跌→健康回踩'的生命周期骨架上高度同构, confidence 0.78-0.84)。强确认3态(低位横盘/上升通道/下跌通道, 各7源一致); 部分确认3态(放量突破/高位滞涨/缩量回踩, 骨架对但缺确认门/动态拐点/破位降级); 有争议1态(缩量上涨, 5+源指其'位置无关一刀切'方向冲突)。\\n\\n方法论锚定(mio真相源): 我已核 backend/services/technical_states/(classifier/features/coupling)与config均无RS/确认门/spring/swing结构 — 确认理论点名的盲点是真缺失非部分覆盖。config 当前 confirmed_by_owner=false(探索期v3 sandbox), 故理论数字一律作prior不作override, 阈值裁决数据优先。\\n\\n最重要的2个盲点(真金白银, 跨多源独立一致): (1) 假突破/失败突破态 — config'放量突破'只有成功分支, 与UTAD/2B/intrabar fakeout同形, 4源(Wyckoff/Minervini/量价/形态确认)独立点名, 不识别=在派发顶部假突破处追多接盘, 是7态最危险的方向性错误。修复: 加突破后T+1~N守住突破位的收盘确认门 + effort/result背离过滤。(2) 相对强度RS维度 — 7态0个超额维度, Weinstein/Minervini双源硬门槛, 且直接对接项目KPI'超额HS300>0'; 无RS会把大盘普涨带起的弱势齐涨股纳入放量突破/上升通道, 是selection噪音结构性来源。修复: 新增正交RS状态作7态置信度乘子(复用已有sector-relative特征), 不改7态本身。\\n\\n次级高优先(主升浪猎手北极星相关): 挖坑式洗盘/Spring(Wyckoff+中文双源, 最佳起涨买点反被误判看空) + 缩量回踩破位降级硬门(道氏+Bulkowski+形态确认三源, 防在已失败形态加仓)。\\n\\n争议须修正: '缩量上涨'位置无关一刀切是结构性误判源(据此减仓可能砍在Stage2/VCP把手最佳买点), 须用价格分位/斜率方向分流, 修语义非修阈值。所有斜率%阈(6.55/-5.92)和动量阈(5.3)无理论一手支撑=纯proxy, 必须OOS验证不可当普适常数。\""
+    },
+    "verification": [
+      {
+        "claim": "强确认: 低位横盘(筑底) = 跨源一致度最高的状态, 7/8 理论一致映射到吸筹/筑底相; config 三条件(价格分位<0.475 + 区间宽度<0.455 + 均线斜率平缓<4%)语义精准。",
+        "holds": true,
+        "reason": "核心映射(低位横盘=吸筹/筑底相)是真有权威理论支持, 且确实是跨源一致度最高的状态, 非过度延伸或张冠李戴:\n(1) 道氏理论: accumulation 为 primary trend 第一相, \"smart money 逆大众买入, 价格变动不大\"(=低位横盘); \"line\"=2-3周水平整理(5%区间内)被明确定义为吸筹信号。来源: en.wikipedia.org/wiki/Dow_theory。\n(2) Wyckoff: accumulation = 下跌后在低位 trading range 内的多阶段横向筑底结构(base-building), smart money 在区间内悄悄建仓。来源: chartschool/wyckoffanalytics 等。\n(3) Stan Weinstein Stage 1: 下跌后转横向 base, 30周均线走平, 量能收缩 = 机构吸筹。来源: stageanalysis.net。\n(4) O'Neil/CAN SLIM flat base: 紧致水平区间、回撤<10-15%、至少5周 = 机构吸筹。来源: traderlion / IBD。\n四大独立体系(道氏/Wyckoff/Weinstein/O'Neil)对\"低位+横盘+均线走平=吸筹/筑底\"高度一致, 这正是7态中跨源歧义最小的一个相(吸筹/筑底是几乎每个框架都同名同义的相)。所以\"7/8一致\"\"一致度最高\"的定性成立。\nconfig 三条件(价格分位低 + 区间窄 + 均线斜率平)正好对应理论的三个定性维度(低位 / 紧致区间 / 均线走平), 维度映射语义忠实, 故\"语义精准\"在\"三维度选对\"意义上成立。",
+        "correction": "需区分并加一条 caveat: \"语义精准\"仅指三条件选对了维度(价格水平/区间宽度/均线斜率), 这与理论定性判据一致。但具体阈值(0.475 / 0.455 / 4%)无任何权威理论支撑 — 理论只给定性判据和粗略经验值(flat base 回撤<10-15%, \"line\"在5%区间内, 至少5周; Weinstein 看30周均线走平无固定百分比)。这三个数是工程/拟合选择, 不是理论推导值, 不应表述为\"理论一致映射\"的一部分。建议措辞改为: \"三条件的维度选取与吸筹/筑底理论定性判据一致(语义对齐); 具体阈值为本项目工程标定, 需 OOS 验证, 非理论给定\"。避免把任意数字包装成理论背书(同 §4.2/measured-not-estimated 红线精神)。"
+      },
+      {
+        "claim": "上升通道(主升)= 多MA多头排列+斜率+价在均线上 是教科书刻画 [强确认]; 但'加速上涨'子态方向性危险, 多理论判它接近见顶, 是该态最需对抗的点。",
+        "holds": true,
+        "reason": "两半均经一手权威源证实。Part 1(主升=多头排列+斜率+价在均线上): StockCharts ChartSchool 与 GMMA 文献的 'perfect order'(短期MA组在长期MA组之上、整体上扬扇形发散)正是 config 描述的多头排列; ascending channel 做 higher highs/higher lows、斜率确认趋势强度 — 标准教科书刻画, 强确认成立。Part 2('加速上涨'子态危险且接近见顶): parabolic/blow-off 文献是 TA 中对晚期最强的警告。Groww 原文: 'parabolic phases often mark the final leg of a trend, not the beginning'; ChartGuys/多源称 vertical 加速 = trend exhaustion / 反转前兆。故把加速列为该态最需对抗的子态, 是正确而非过度延伸。",
+        "correction": "仅一处需限定(不影响 holds): 并非所有加速都见顶。突破底部平台的初段加速正是合法主升的开端(legitimate start), 真正危险的是延续一段长升后的'晚期 parabolic 加速'。论断措辞('接近见顶''最需对抗')已恰当 hedge 且方向正确, 但实现时应以'是否已有较长前期升幅 + 量能 climax'区分'起涨段加速'与'终末段加速', 不可一刀切把所有加速判危险。"
+      },
+      {
+        "claim": "强确认: 6. 下跌通道 (下跌) = 7源一致映射下跌相, config刻画标准。强确认。但缺底部反转的量能领先信号是该态最大功能缺口(影响鱼尾出场/抄底规避)。",
+        "holds": false,
+        "reason": "复合论断,分两部分核验。(1) 下跌相映射部分: 真有权威多源支持, 属技术分析基岩。下跌/declining/markdown 相在 Dow Theory(primary downtrend=lower highs+lower lows, 跌时放量)、Stan Weinstein Stage Analysis(Stage 4 Declining Phase)、Wyckoff(markdown phase)等多框架高度一致, \"7源一致\"\"强确认\"对这部分成立。(2) \"量能领先信号\"缺口部分: 措辞与权威理论冲突。底部反转的量能信号在 Wyckoff 确实存在(selling climax 放量→secondary test 缩量→low-volume spring), 但 StockCharts ChartSchool Wyckoff 一手源明确: 底部量能是 CONFIRMING/coincident 指标——量价在 climax 同步, secondary test 时量能 LAGS(滞后于价格测试支撑)——而非 \"领先/leading\" 预测价格反转。\"量能领先信号\"是流行化的过度延伸, 把 Wyckoff 的\"确认/同步\"误述成\"领先\"。此外 \"该态最大功能缺口\" 是无理论支撑的最高级编辑判断(没有任何权威对 gap 排序), 属主观。因论断把一个基岩级真陈述与一个措辞错置(领先≠确认)+ 未证成的最高级(\"最大\")捆绑, 作为整体不能干净成立, 判 holds=false。",
+        "correction": "下跌相部分保留\"强确认\"(多源一致, 基岩)。但纠正两点: (a) 应表述为\"缺底部反转的量能确认/背离信号(volume confirmation/divergence)\", 不是\"量能领先信号\"——按 Wyckoff(StockCharts ChartSchool)与 Dow Theory, 底部量能是确认性/同步指标(selling climax 放量、secondary test 缩量、low-volume spring 显示抛压枯竭), 而非领先预测价格反转的领先指标; 真正可作\"早于价格\"的多是量价背离(price 新低而 volume/OBV 不创新低)这类背离信号, 而非\"量能领先\"。(b) 删去\"最大功能缺口\"的最高级断言——无权威依据为各 gap 排序, 应降级为\"是该态的一个已知功能缺口\"。修正后可成立的说法: \"下跌相 7 源一致映射(强确认); config 刻画下跌结构但未编码底部反转的量价确认/背离信号, 这是该态一个功能缺口, 影响鱼尾出场与抄底规避。\""
+      },
+      {
+        "claim": "高优盲点: 假突破/失败突破态 (UTAD / Upthrust / 2B / failed breakout) — 给'放量突破'加 T+1~T+N '是否守住突破位'确认门(收盘基准, 非盘中) + 新增'失败突破反转'离散态(上破诱多失败=看空)。用 effort/result 背离(量增但价幅/动量收窄)过滤。这是消除追高接盘真金白银红线的最高优先项。",
+        "holds": true,
+        "reason": "四个被点名的形态全部有可归因的权威一手源, 非编造/张冠李戴: (1) UTAD/Upthrust = Wyckoff 方法 Phase C 分布事件, StockCharts ChartSchool 权威教程逐字确认 upthrust 是 bull trap, \"诱多 breakout traders → 在 markdown 前高位派发\" 的机制原文一致; (2) 2B = Victor Sperandeo《Trader Vic — Methods of a Wall Street Master》原创, 定义即 \"上升趋势中创新高但无法延续, 随后跌回前高下方 → 趋势倾向反转\", Bulkowski(thepatternsite.com) 与多个交易源确认, 且给出 41,702 样本统计; (3) 失败突破/bull trap + 收盘基准确认 = 主流 TA 共识 (TradingSim/DailyPriceAction 等), \"收盘前未守住突破位 = 假突破\" 与 \"收盘上破 + 放量才确认\" 均直接支持; (4) effort/result 背离(量增价幅收窄=派发) = Wyckoff 第三法则原教旨, 多源逐字确认. 把它作为'放量突破'的 T+1~T+N 确认门 + 失败突破反转离散态 + effort/result 过滤, 是这些理论的正当应用方向, 直击追高接盘风险。理论映射真实成立。",
+        "correction": "两点校准(不否定核心, 仅防过度声称): (a) '收盘基准非盘中'确认是稳健且广泛传授的标准, 但它来自通用突破确认文献(收盘价过滤盘中假刺穿), 并非 Wyckoff 专门规定 — StockCharts 的 Wyckoff 教程本身未明文要求 closing-basis 确认, 别把'收盘确认'归功于 Wyckoff 原典; 它是正确的工程化选择但属于通用 TA 共识。(b) 形态真实≠独立 alpha: Bulkowski 实测裸 2B 仅约 34% 跑赢基准(下破第二峰时升至 42%), Sperandeo 也强调反转确认须放量配合。因此该项的正确定位是'确认门/盲点修复'(过滤追高接盘, 提升入场质量), 而非可单独产生超额收益的信号; 必须配 effort/result 背离 + 放量回落确认才有效, 且仍需 OOS + 含成本验证, 不可凭'理论支持'直接采信为 edge。时间窗 T+1~T+N 也有出处依据: 2B 在 minor/intermediate/major 高点分别约 1 日内 / 3-5 日 / 7-10 日内破位, 应据级别参数化而非固定单一 N。"
+      },
+      {
+        "claim": "高优盲点: 相对强度 RS 维度 (Mansfield RS / IBD RS rank vs 大盘) — 新增正交'相对强度状态'维度(RS升破零轴 / RS在零轴下 / RS rank分位)作为7态的置信度乘子, 不改7态本身。直接服务 KPI 超额穿透。",
+        "holds": true,
+        "reason": "联网核查三个理论锚点全部坐实, 非过度延伸/张冠李戴:\n\n1) Mansfield RS 升破/跌破零轴 = 真权威概念。源自 Stan Weinstein《Secrets for Profiting in Bull and Bear Markets》, Mansfield RS 用一条零线 (个股 vs S&P500 比值的 52周MA 拉平成 oscillator)。stageanalysis.net 引用原义: 'When the Relative Strength line crosses above the Zero Line... it is outperforming the index... showing stronger relative strength' / 跌破零轴 = underperforming。Weinstein 明确要求 base 突破必须配合 rising relative strength 才确认 — 即 RS 作为对价格结构的确认维度。claim 的 'RS升破零轴 / RS在零轴下' 精确对应。\n\n2) IBD RS rank 分位 = 真概念。O'Neil CAN SLIM 的 'L'(Leader/Laggard) 用 IBD Relative Strength Rating(1-99 百分位, 个股 vs 全市场 52周)。O'Neil 建议只买 RS>=80、避开<70; 实证 1953-1985 最强 500 只大涨前 RS 均值 87。claim 的 'RS rank分位' 对应无误。\n\n3) '正交确认维度'定位有据。文献普遍将 RS 视为独立、forward-looking 维度: RS line 在价格前创新高 = 机构吸筹的先行信号, RS 作为对价格/形态的确认 filter(Weinstein/O'Neil 两派皆如此用), 而非主信号。把 RS 做成'不改7态、只当置信度乘子的确认叠加层'是对该方法论的合理工程化, 与两派将 RS 当 confirming overlay 的用法一致。\n\n项目侧两点(sector-relative 特征 *_tdx_l1_rel/sector_momentum 可复用做个股vs大盘超额、服务超额 KPI)属工程可行性而非理论命题, 内部自洽, 无理论层面可反驳点。综合: 理论映射真实、阈值真实、定位无张冠李戴 → holds=true。",
+        "correction": "无需纠正。仅一处口径提示(不影响 holds): claim 把 Mansfield RS 与 IBD RS rank 并列为'RS维度'是合理的, 但二者粒度不同——Mansfield 是连续 RS 线 vs 单一基准的零轴穿越(方向/状态信号), IBD RS rank 是横截面百分位(相对全市场的强弱排名)。实现时这是两个子特征(时序零轴状态 + 横截面分位), 不是同一个数; 若混为一个乘子需分别建模。另: Weinstein 原法 RS 是'确认门'(突破须配 RS 上行)而非软乘子, 用作连续置信度乘子是合理外推但属工程化决定, 上线前应以含成本 OOS 验证其超额穿透增量, 勿因'有理论支持'而免去实证(项目红线: 相对 baseline 提升>=+50% 需 ablation 验 PIT 干净)。"
+      },
+      {
+        "claim": "高优盲点: 挖坑式洗盘 / Spring / Shakeout (向下假突破后快速收复) — 新增'假跌破回收'离散态(跌破前期区间下沿 + N日内收回区间 + 收回时量能分级)。可作'缩量回踩'的破位变体加'是否N日内收复'判据。",
+        "holds": true,
+        "reason": "核心映射有强权威理论支持, 非编造或张冠李戴。三要素逐项核证:\n\n(1) 形态映射正确。Spring/Shakeout 是 Wyckoff 方法的一级概念。StockCharts ChartSchool (官方 Wyckoff 教程) 原文: \"A 'spring' takes price below the low of the TR and then reverses to close within the TR\" —— 即\"跌破区间下沿后收回区间\", 与论断的\"向下假突破后快速收复\"逐字对应。它被明确归类为 bear trap (诱空陷阱), 目的是大资金洗盘+低位吸筹。中文社区\"挖坑式洗盘\"正是对此的标准译法, 映射干净。\n\n(2) 量能分级条件有 Wyckoff 原教旨依据, 非附会。ChartSchool 原文: \"A low-volume spring (or a low-volume test of a shakeout) indicates that the stock is likely to be ready to move up\"; \"a successful test... typically makes a higher low on lesser volume\"。所以\"收回时量能分级\"作为有效性判据是 Wyckoff 正统 (缩量收回=供给枯竭=高概率起涨), 不是凭空加的。\n\n(3) \"跌破+收回\"作为\"缩量回踩\"的破位变体也成立: bear trap 文献 (多源一致) 强调\"quick reclaim of support within a few candles / same day\"是关键确认信号, 与缩量回踩同属起涨前的最后测试形态, 区别仅在是否真破位下沿。直接服务\"主升浪猎手起涨点 T+1\"这一消费锚点在理论上自洽 (Wyckoff: 成功的 spring/test 是 high-probability 做多时机)。\n\n唯一需提醒 (不构成证伪): 'N日内收回'里的固定 N 是工程化离散选择, 不是任何权威给的硬阈值 —— ChartSchool 明确\"does not specify exact timing requirements\"。但论断把它写成可配置判据('是否N日内收复'), 这是诚实做法, 没有冒充\"权威规定 N=3\"。所以盲点真实存在且映射正确, holds=true。",
+        "correction": "无需推翻, 仅一处需在落地时标注以防 over-fit/张冠李戴: 'N日内收回'的具体 N 值不可声称源自 Wyckoff —— 理论只给\"quick/within a few candles\"的定性要求, 不给数字。N 必须当成纯数据驱动的可优化参数, 进 Optuna search space 做 walk-forward OOS 选取, 且打 unknown 标而非 hardcode 拍脑袋。另两个可强化的真相源细节: (a) Wyckoff 区分 Spring (吸筹区末端, 起涨前) 与 Shakeout (上涨已启动后的再洗盘) —— 服务\"起涨点 T+1\"应优先 Spring/Terminal Shakeout 语义, 否则可能把上涨中继的 shakeout 误当起涨点。(b) Wyckoff 对'成功'的判据不止\"收回区间\", 还要求收回时 (i) 缩量 (ii) 后续测试创 higher low on lesser volume —— 单一'是否N日内收复'布尔判据偏弱, 建议把\"缩量\"和\"higher-low 二次测试\"也纳入离散态的分级, 才贴合理论全貌。"
+      },
+      {
+        "claim": "建议新增\"缩量回踩破位降级门\": 回踩跌破突破位/前一swing low 时降级或离场, 理由声称道氏(回撤>2/3且跌破higher low=反转)+ Bulkowski(跌破突破位后续显著更差)+ 形态确认(回踩跌破=突破失败)三源一致。",
+        "holds": false,
+        "reason": "逐源核实(一手源)后, 三源并非\"一致支持\"该论断, 实际是一真两半: (1) Bulkowski【真且精确】— thepatternsite.com/throwbacks.html 实测: 价格跌回突破位下方后, 后续平均涨幅仅29% vs 留在突破位上方的40%, \"后续显著更差\"成立, 这是论断里唯一干净的一手证据。(2) 道氏【张冠李戴/误拼】— StockCharts ChartSchool 一手源明确: Hamilton 的 1/3~2/3(33~66%)回撤只是描述【次级回调】的 loose guideline, 原文\"should not be construed as rules\"; 真正的反转确认机制是【跌破前一 reaction low(更低低点+随后跌破前低)】, 与66%回撤是两个独立概念。论断把二者用\"且(AND)\"硬拼成\"回撤>66% 且 跌破higher low = 反转\", 道氏从不要求两条件同时满足才算反转 — 跌破前低本身即信号, 66%不是反转判据。(3) 形态确认/突破失败【过度延伸】— Bulkowski 恰恰【明确否认】\"回踩跌破=突破失败\": 跌回突破位下方后 65% 仍会recover继续上行, 他称之为\"动能减弱/profit potential降低\"而非invalidation/failure。TA 里的\"false/failed breakout\"确实存在, 但定义更强(突破不hold、收回区间内、支撑变阻力), 不等于单纯回踩到突破位下方。因此\"回踩跌破=突破失败=反转\"把\"概率上更弱\"夸大成\"形态已废\", 与 Bulkowski 原文相悖。结论: 方向性直觉(对深回踩破位加一道硬保护)有部分真实支撑(Bulkowski 29% vs 40% 是 measured 的真金白银证据), 但论断陈述的\"3源一致+回踩跌破=突破失败/反转\"含道氏误拼 + Bulkowski 过度延伸, 不满足\"真有权威理论一致支持\"的判据。",
+        "correction": "精确说法应拆成两层、并降调: (A) 一手源真正支持的是【概率/期望降级】而非【失败/反转判定】: Bulkowski 实测\"价格跌回突破位下方→后续平均涨幅29% vs 上方40%\", 故\"深回踩跌破突破位\"是 EV 下降信号, 合理做法是【降仓/降级评分/收紧止损】, 不是断言\"突破失败\"。(B) 道氏的反转判据是【跌破前一更低低点(prior swing/reaction low), 且随后反弹不能创新高】, 这本身就是有效的硬判别条件——可直接用作\"破位降级门\"的真相源, 但不要捆绑\"必须先回撤66%\"这个不存在的联合条件(66%只是次级回调的经验区间, 非反转门槛)。(C) 真正的\"突破失败/false breakout\"需要更强证据: 突破后未能守住、收盘重回突破前区间、原突破位由支撑转为阻力——满足这些才叫 failure; 单纯一次回踩到突破位附近(throwback)按 Bulkowski 有~65%概率仍续涨, 不应判死。因此该门设计建议: 触发条件用\"收盘跌破前一 swing low(道氏反转结构)\"作硬门, 用\"回踩跌破突破位\"作降级(非清仓)的软信号(Bulkowski 期望降级), 并区分 throwback(可续涨) vs confirmed false-breakout(支撑变阻力, 才离场)。"
+      }
+    ],
+    "refuted": [
+      {
+        "claim": "强确认: 6. 下跌通道 (下跌) = 7源一致映射下跌相, config刻画标准。强确认。但缺底部反转的量能领先信号是该态最大功能缺口(影响鱼尾出场/抄底规避)。",
+        "holds": false,
+        "reason": "复合论断,分两部分核验。(1) 下跌相映射部分: 真有权威多源支持, 属技术分析基岩。下跌/declining/markdown 相在 Dow Theory(primary downtrend=lower highs+lower lows, 跌时放量)、Stan Weinstein Stage Analysis(Stage 4 Declining Phase)、Wyckoff(markdown phase)等多框架高度一致, \"7源一致\"\"强确认\"对这部分成立。(2) \"量能领先信号\"缺口部分: 措辞与权威理论冲突。底部反转的量能信号在 Wyckoff 确实存在(selling climax 放量→secondary test 缩量→low-volume spring), 但 StockCharts ChartSchool Wyckoff 一手源明确: 底部量能是 CONFIRMING/coincident 指标——量价在 climax 同步, secondary test 时量能 LAGS(滞后于价格测试支撑)——而非 \"领先/leading\" 预测价格反转。\"量能领先信号\"是流行化的过度延伸, 把 Wyckoff 的\"确认/同步\"误述成\"领先\"。此外 \"该态最大功能缺口\" 是无理论支撑的最高级编辑判断(没有任何权威对 gap 排序), 属主观。因论断把一个基岩级真陈述与一个措辞错置(领先≠确认)+ 未证成的最高级(\"最大\")捆绑, 作为整体不能干净成立, 判 holds=false。",
+        "correction": "下跌相部分保留\"强确认\"(多源一致, 基岩)。但纠正两点: (a) 应表述为\"缺底部反转的量能确认/背离信号(volume confirmation/divergence)\", 不是\"量能领先信号\"——按 Wyckoff(StockCharts ChartSchool)与 Dow Theory, 底部量能是确认性/同步指标(selling climax 放量、secondary test 缩量、low-volume spring 显示抛压枯竭), 而非领先预测价格反转的领先指标; 真正可作\"早于价格\"的多是量价背离(price 新低而 volume/OBV 不创新低)这类背离信号, 而非\"量能领先\"。(b) 删去\"最大功能缺口\"的最高级断言——无权威依据为各 gap 排序, 应降级为\"是该态的一个已知功能缺口\"。修正后可成立的说法: \"下跌相 7 源一致映射(强确认); config 刻画下跌结构但未编码底部反转的量价确认/背离信号, 这是该态一个功能缺口, 影响鱼尾出场与抄底规避。\""
+      },
+      {
+        "claim": "建议新增\"缩量回踩破位降级门\": 回踩跌破突破位/前一swing low 时降级或离场, 理由声称道氏(回撤>2/3且跌破higher low=反转)+ Bulkowski(跌破突破位后续显著更差)+ 形态确认(回踩跌破=突破失败)三源一致。",
+        "holds": false,
+        "reason": "逐源核实(一手源)后, 三源并非\"一致支持\"该论断, 实际是一真两半: (1) Bulkowski【真且精确】— thepatternsite.com/throwbacks.html 实测: 价格跌回突破位下方后, 后续平均涨幅仅29% vs 留在突破位上方的40%, \"后续显著更差\"成立, 这是论断里唯一干净的一手证据。(2) 道氏【张冠李戴/误拼】— StockCharts ChartSchool 一手源明确: Hamilton 的 1/3~2/3(33~66%)回撤只是描述【次级回调】的 loose guideline, 原文\"should not be construed as rules\"; 真正的反转确认机制是【跌破前一 reaction low(更低低点+随后跌破前低)】, 与66%回撤是两个独立概念。论断把二者用\"且(AND)\"硬拼成\"回撤>66% 且 跌破higher low = 反转\", 道氏从不要求两条件同时满足才算反转 — 跌破前低本身即信号, 66%不是反转判据。(3) 形态确认/突破失败【过度延伸】— Bulkowski 恰恰【明确否认】\"回踩跌破=突破失败\": 跌回突破位下方后 65% 仍会recover继续上行, 他称之为\"动能减弱/profit potential降低\"而非invalidation/failure。TA 里的\"false/failed breakout\"确实存在, 但定义更强(突破不hold、收回区间内、支撑变阻力), 不等于单纯回踩到突破位下方。因此\"回踩跌破=突破失败=反转\"把\"概率上更弱\"夸大成\"形态已废\", 与 Bulkowski 原文相悖。结论: 方向性直觉(对深回踩破位加一道硬保护)有部分真实支撑(Bulkowski 29% vs 40% 是 measured 的真金白银证据), 但论断陈述的\"3源一致+回踩跌破=突破失败/反转\"含道氏误拼 + Bulkowski 过度延伸, 不满足\"真有权威理论一致支持\"的判据。",
+        "correction": "精确说法应拆成两层、并降调: (A) 一手源真正支持的是【概率/期望降级】而非【失败/反转判定】: Bulkowski 实测\"价格跌回突破位下方→后续平均涨幅29% vs 上方40%\", 故\"深回踩跌破突破位\"是 EV 下降信号, 合理做法是【降仓/降级评分/收紧止损】, 不是断言\"突破失败\"。(B) 道氏的反转判据是【跌破前一更低低点(prior swing/reaction low), 且随后反弹不能创新高】, 这本身就是有效的硬判别条件——可直接用作\"破位降级门\"的真相源, 但不要捆绑\"必须先回撤66%\"这个不存在的联合条件(66%只是次级回调的经验区间, 非反转门槛)。(C) 真正的\"突破失败/false breakout\"需要更强证据: 突破后未能守住、收盘重回突破前区间、原突破位由支撑转为阻力——满足这些才叫 failure; 单纯一次回踩到突破位附近(throwback)按 Bulkowski 有~65%概率仍续涨, 不应判死。因此该门设计建议: 触发条件用\"收盘跌破前一 swing low(道氏反转结构)\"作硬门, 用\"回踩跌破突破位\"作降级(非清仓)的软信号(Bulkowski 期望降级), 并区分 throwback(可续涨) vs confirmed false-breakout(支撑变阻力, 才离场)。"
+      }
+    ]
+  }
+}
