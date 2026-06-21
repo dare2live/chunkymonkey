@@ -16,6 +16,7 @@ from services.technical_states.classifier import (  # noqa: F401
     load_config,
     state_scores,
 )
+from services.technical_states.context import apply_context  # noqa: F401
 from services.technical_states.coupling import (  # noqa: F401
     apply_coupling,
     list_tunables,

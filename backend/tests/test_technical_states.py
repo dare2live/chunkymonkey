@@ -155,3 +155,38 @@ def test_limits_flags_and_enrich():
     assert feats["2023-01-03"]["vol_ratio"] == 3.0       # 封板缩量→proxy(防误判无量假突破)
     assert feats["2023-01-03"]["is_up_limit"] == 1.0
     assert feats["2023-01-04"]["vol_ratio"] == 1.2       # 非涨停不改
+
+
+def test_context_pit_no_lookahead():
+    """D4 上下文层 PIT: 加未来 bar 不改历史 bar 的 context_state/prior_trend (前序只用 ≤t-1)。"""
+    from services.technical_states import classify_series
+    from services.technical_states.context import apply_context
+    cfg = load_config()
+    n = 220
+    dates = _series(n + 40)
+    c = [10.0 * (1.01 ** i) for i in range(n + 40)]    # 稳升
+    o = h = l = c
+    v = [100000.0] * (n + 40)
+    f_all = compute(dates, o, h, l, c, v)
+    cls_short = apply_context(classify_series({d: f_all[d] for d in list(f_all)[:n]}, cfg),
+                              {d: f_all[d] for d in list(f_all)[:n]}, cfg)
+    cls_long = apply_context(classify_series(f_all, cfg), f_all, cfg)
+    common = list(set(cls_short) & set(cls_long))[20:50]
+    for d in common:
+        assert cls_short[d]["prior_trend"] == cls_long[d]["prior_trend"], f"{d} prior_trend 受未来影响"
+        assert cls_short[d]["context_state"] == cls_long[d]["context_state"], f"{d} context_state 受未来影响"
+
+
+def test_context_revives_pullback():
+    """D4: 上下文层用前序升势复活缩量回踩 (确定性: 前序态=上升通道 + 当前 mild 回调 → 缩量回踩)。"""
+    from services.technical_states.context import apply_context
+    cfg = load_config()
+    dates = [f"2020-01-{i:02d}" for i in range(1, 13)]
+    cls = {d: {"dominant": "上升通道", "covered": True} for d in dates[:11]}   # 前11根升势
+    cls[dates[11]] = {"dominant": "中继平台", "covered": True}                  # 当前瞬时态非缩量回踩
+    feats = {d: {"mom20": 0.05, "vol_ratio": 1.1, "ma_dist": 0.04} for d in dates[:11]}
+    feats[dates[11]] = {"mom20": -0.03, "vol_ratio": 0.7, "ma_dist": -0.02}     # 当前: 小幅缩量回调
+    apply_context(cls, feats, cfg)
+    assert cls[dates[11]]["context_state"] == "缩量回踩"                         # 前序升+当前mild→复活
+    assert cls[dates[11]]["refined_dominant"] == "缩量回踩"
+    assert cls[dates[11]]["prior_trend"] == "升"

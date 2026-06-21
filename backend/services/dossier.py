@@ -101,7 +101,7 @@ def trend_series(ohlcv: dict, daily_cls: dict, max_points: int = 240) -> list[di
     for i in range(0, n, step):
         d = dates[i]
         cls = daily_cls.get(d)
-        dom = cls["dominant"] if cls else None
+        dom = (cls.get("refined_dominant") or cls["dominant"]) if cls else None   # D4 上下文 refine
         out.append({"date": d, "close": closes[i], "color": _STATE_COLOR.get(dom, "flat"), "state": dom})
     return out
 
@@ -120,20 +120,24 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
     cfg, notes = _effective_cfg(overrides)
     mtf, feats = _multi_tf(ohlcv, cfg, limit_data=load_limits(code))   # D3 A股涨停修正
     daily_cls = classify_series(feats["daily"], cfg)
+    apply_context(daily_cls, feats["daily"], cfg)                      # D4 上下文层(缩量回踩复活+prior_trend)
     if not mtf:
         return {"code": code, "error": "数据不足 (暖机后无有效 bar)", "trend": []}
     last_date = max(mtf)
     last = mtf[last_date]
+    dlast = daily_cls.get(last_date, {})
     tf_read = {}
     for name in ("daily", "weekly", "monthly"):
-        key = {"daily": "daily", "weekly": "weekly", "monthly": "monthly"}[name]
-        st = last.get(key)
+        st = last.get(name)
+        if name == "daily":
+            st = dlast.get("refined_dominant") or st                   # 日线用上下文 refine
         tf_read[name] = {"state": st, "desc": _desc(cfg, st),
                          "sub": last.get("daily_sub") if name == "daily" else None}
     return {
         "code": code, "as_of": last_date,
         "timeframes": tf_read,
         "mtf_aligned": last.get("mtf_aligned"),
+        "prior_trend": dlast.get("prior_trend"),                       # D4 前序趋势 (位置消歧上下文)
         "entropy": last.get("entropy"),
         "trend": trend_series(ohlcv, daily_cls),
         "tunables": list_tunables(cfg),
