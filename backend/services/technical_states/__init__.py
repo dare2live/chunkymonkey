@@ -47,6 +47,9 @@ from services.technical_states.chips import chip_signals  # noqa: F401
 from services.technical_states.vol import volume_signals  # noqa: F401
 from services.technical_states.rs import relative_strength  # noqa: F401
 from services.technical_states.sector_context import sector_regime, concept_labels  # noqa: F401
+from services.technical_states.fundamentals import (  # noqa: F401
+    fundamental_signals, valuation_signals, analyst_expectation,
+)
 
 __all__ = [
     "compute", "resample", "FEATURE_KEYS", "load_config",

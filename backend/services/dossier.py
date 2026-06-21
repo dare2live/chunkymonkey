@@ -21,6 +21,7 @@ from services.technical_states.chips import chip_signals
 from services.technical_states.vol import volume_signals
 from services.technical_states.rs import relative_strength
 from services.technical_states.sector_context import sector_regime, concept_labels
+from services.technical_states.fundamentals import fundamental_signals, valuation_signals, analyst_expectation
 from services.technical_states import (
     apply_coupling,
     classify_multi_timeframe,
@@ -224,6 +225,68 @@ def load_sector_kline(sw_l1_code: str | None, end: str | None = None) -> dict:
     return {_iso(td): cl for td, cl in rows}
 
 
+def load_fundamentals(code: str, as_of: str | None = None) -> dict | None:
+    """L3 基本面 (PIT 锚 ann_date 公告日, 防财报 leakage): fina_indicator 最近已公告财报指标。
+    取 ann_date <= as_of 的最近一期 (ann_date DESC, end_date DESC); roe_yearly 年化(跨报告期可比)。
+    """
+    ts = code_to_ts_code(code)
+    asof = as_of.replace("-", "") if as_of else None
+    where = "ts_code = ?" + (" AND ann_date <= ?" if asof else "")
+    args = [ts] + ([asof] if asof else [])
+    c = duck_connect(RAW_DB, read_only=True)
+    try:
+        row = c.execute(
+            f"SELECT end_date, roe, roe_yearly, netprofit_yoy, or_yoy, grossprofit_margin, debt_to_assets "
+            f"FROM raw_tushare_fina_indicator WHERE {where} ORDER BY ann_date DESC, end_date DESC LIMIT 1",
+            args).fetchone()
+    finally:
+        c.close()
+    if not row:
+        return None
+    keys = ["end_date", "roe", "roe_yearly", "netprofit_yoy", "or_yoy", "grossprofit_margin", "debt_to_assets"]
+    return dict(zip(keys, row))
+
+
+def load_valuation(code: str, as_of: str | None = None) -> tuple[dict | None, list, list]:
+    """L3 估值 (PIT 锚 trade_date): 最新 daily_basic + pe_ttm/pb ≤t 历史序列 (供自身分位)。
+    返回 (cur dict, pe_hist, pb_hist)。daily_basic 估值字段 (pe/pb/市值) 走 L3; 换手/量比 已在 L2 capital。
+    """
+    ts = code_to_ts_code(code)
+    asof = as_of.replace("-", "") if as_of else None
+    where = "ts_code = ?" + (" AND trade_date <= ?" if asof else "")
+    args = [ts] + ([asof] if asof else [])
+    c = duck_connect(RAW_DB, read_only=True)
+    try:
+        rows = c.execute(
+            f"SELECT trade_date, pe_ttm, pb, ps_ttm, dv_ttm, total_mv FROM raw_tushare_daily_basic "
+            f"WHERE {where} ORDER BY trade_date", args).fetchall()
+    finally:
+        c.close()
+    if not rows:
+        return None, [], []
+    last = rows[-1]
+    cur = {"trade_date": last[0], "pe_ttm": last[1], "pb": last[2], "ps_ttm": last[3],
+           "dv_ttm": last[4], "total_mv": last[5]}
+    return cur, [r[1] for r in rows], [r[2] for r in rows]
+
+
+def load_analyst_reports(code: str, as_of: str | None = None, months: int = 6) -> list[tuple]:
+    """L3 分析师预期 (PIT 锚 report_date 发布日): 近 months 月券商研报 [(report_date, rating, tp)] (均 ≤t)。"""
+    ts = code_to_ts_code(code)
+    asof = (as_of or date.today().isoformat()).replace("-", "")
+    cutoff = (date.fromisoformat(f"{asof[:4]}-{asof[4:6]}-{asof[6:8]}") - timedelta(days=months * 31)).strftime("%Y%m%d")
+    c = duck_connect(RAW_DB, read_only=True)
+    try:
+        rows = c.execute(
+            "SELECT report_date, rating, tp FROM raw_tushare_report_rc "
+            "WHERE ts_code = ? AND report_date <= ? AND report_date >= ? ORDER BY report_date DESC",
+            [ts, asof, cutoff]).fetchall()
+    finally:
+        c.close()
+    # tp 单位实测 = 0.0001元 (tp/10000 = 目标价元; 600519 tp 16204300 → 1620元 vs price 1215; mythos§8 字段单位必实测)
+    return [(r[0], r[1], (r[2] / 10000.0 if r[2] else r[2])) for r in rows]
+
+
 def _multi_tf(ohlcv: dict, cfg: dict, limit_data: dict | None = None) -> dict:
     """OHLCV → 多TF 分类 (读 config 三框窗口)。limit_data 给则 enrich 日线(A股涨停修正, D3)。"""
     d = ohlcv
@@ -314,6 +377,13 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
     sector = {"sw_l1_name": sec_mem["sw_l1_name"], "sw_l2_name": sec_mem["sw_l2_name"],
               "regime": sec_reg.get(last_date), "stock_vs_sector": svs.get(last_date),
               **concept_labels(sec_mem["concepts"], sec_mem["concept_hot"], cfg=cfg)}
+    fund = fundamental_signals(load_fundamentals(code, as_of=last_date), cfg=cfg)             # L3④ 基本面 (ann_date PIT)
+    cur_val, pe_hist, pb_hist = load_valuation(code, as_of=last_date)                         # L3④ 估值 (trade_date PIT)
+    valuation = valuation_signals(cur_val, pe_hist, pb_hist, cfg=cfg)
+    last_close = ohlcv["close"][-1] if ohlcv["close"] else None
+    analyst = analyst_expectation(load_analyst_reports(code, as_of=last_date,                 # L3④ 分析师预期 (report_date PIT)
+                                                       months=int((cfg.get("预期") or {}).get("研报窗口月", 6))),
+                                  last_close, cfg=cfg)
     return {
         "code": code, "as_of": last_date,
         "timeframes": tf_read,
@@ -327,6 +397,9 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
         "chips": chip.get(last_date),                                  # 维度④ 筹码分布+胜率
         "vol": vol.get(last_date),                                     # L2 成交量/量能 (量比+量价配合)
         "sector": sector,                                              # L3 板块/概念 (申万行业regime+个股vs板块+东财概念热度)
+        "fundamentals": fund,                                          # L3④ 基本面 (ROE/成长/毛利/负债, ann_date PIT)
+        "valuation": valuation,                                        # L3④ 估值 (PE/PB自身分位/股息/市值, trade_date PIT)
+        "analyst": analyst,                                            # L3④ 分析师预期 (近6月研报评级/目标价上行空间, report_date PIT)
         "holders": load_top10_holders(code, as_of=last_date),          # L3 机构: 十大流通股东+动向(report_date带横线同last_date格式)
         "entropy": last.get("entropy"),
         "trend": trend_series(ohlcv, daily_cls),

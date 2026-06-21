@@ -226,11 +226,37 @@ function sectorCard(base){
     <div class="layer-bd">${indRow}${regRow}${svsRow}${conRow}</div></div>`;
 }
 
-// L3 其余属性背景 (基本面/估值/分析师预期/事件 占位 — ④⑤⑥ 待落地)
+// L3④ 基本面 / 估值 / 分析师预期 (可持续性 = 涨得有没有基本面支撑)
+function fundamentalsCard(base){
+  const f = base.fundamentals, v = base.valuation, a = base.analyst;
+  if(!f && !v && !a) return "";
+  const fColor = s => /优质/.test(s||'')?'aligned':/偏弱/.test(s||'')?'conflict':'';
+  const vColor = s => s==='低估'?'aligned':s==='高估'?'conflict':'';
+  const fundRow = f ? `<div class="dim"><span class="dim-k">基本面</span><span class="dim-v">
+    <span class="badge ${fColor(f['基本面评'])}">${f['基本面评']}</span>
+    <span class="badge ${f['盈利能力']==='优秀'||f['盈利能力']==='良好'?'aligned':f['盈利能力']==='偏弱'?'conflict':''}">ROE ${f.ROE!=null?f.ROE+'%':'—'}(${f['盈利能力']})</span>
+    <span class="badge ${f['成长性']==='高成长'||f['成长性']==='成长'?'aligned':f['成长性']==='下滑'?'conflict':''}">${f['成长性']}</span>
+    <span class="src">净利同比 ${f['净利增长']!=null?(f['净利增长']>0?'+':'')+f['净利增长']+'%':'—'} · 营收 ${f['营收增长']!=null?(f['营收增长']>0?'+':'')+f['营收增长']+'%':'—'} · 毛利 ${f['毛利率']!=null?f['毛利率']+'%':'—'} · 负债 ${f['负债率']!=null?f['负债率']+'%':'—'} · ${f['报告期']||''}(ann_date PIT)</span></span></div>` : "";
+  const valRow = v ? `<div class="dim"><span class="dim-k">估值</span><span class="dim-v">
+    <span class="badge ${vColor(v['估值状态'])}">${v['估值状态']}</span>
+    <span class="badge">PE ${v.PE!=null?v.PE:'—'}${v['PE分位']!=null?'('+v['PE分位']+'分位)':''}</span>
+    <span class="badge">PB ${v.PB!=null?v.PB:'—'}${v['PB分位']!=null?'('+v['PB分位']+'分位)':''}</span>
+    <span class="src">股息 ${v['股息率']!=null?v['股息率']+'%':'—'} · 市值 ${v['市值亿']!=null?Math.round(v['市值亿'])+'亿':'—'} · 分位=自身历史(低估<30/高估>70)</span></span></div>` : "";
+  const aRow = a ? `<div class="dim"><span class="dim-k">分析师预期</span><span class="dim-v">
+    <span class="badge ${a['评级倾向']==='看好'?'aligned':''}">${a['评级倾向']}</span>
+    <span class="badge">正向 ${a['正向占比']!=null?a['正向占比']+'%':'—'} (${a['研报数']}篇)</span>
+    ${a['上行空间']!=null?`<span class="badge ${a['上行空间']>0?'aligned':'conflict'}">目标价上行 ${a['上行空间']>0?'+':''}${a['上行空间']}%</span>`:''}
+    <span class="src">近6月研报 · A股研报正向偏(占比判别力弱, 看上行空间) · report_date PIT</span></span></div>` : "";
+  return `<div class="layer l3"><div class="layer-hd"><span class="ln">L3</span><span class="lt">基本面 / 估值 / 预期</span>
+      <span class="ld">涨得有没有支撑 · 财报ann_date PIT · 券商研报</span></div>
+    <div class="layer-bd">${fundRow}${valRow}${aRow}</div></div>`;
+}
+
+// L3 其余属性背景 (事件催化/市场regime 占位 — ⑤⑥ 待落地)
 function layer3Rest(){
-  return `<div class="layer l3"><div class="layer-hd"><span class="ln">L3</span><span class="lt">基本面 / 估值 / 事件</span>
-      <span class="ld">可持续性 · 锚 ann_date</span></div>
-    <div class="layer-bd"><span class="ph">基本面(ROE/增长) · 估值(PE/PB) · 分析师预期(report_rc) · 龙虎榜/解禁/大宗 · 市场regime门 — 数据已补齐, 待落地接入(④⑤⑥)</span></div></div>`;
+  return `<div class="layer l3"><div class="layer-hd"><span class="ln">L3</span><span class="lt">事件 / 市场regime</span>
+      <span class="ld">催化 + 大盘环境 · 锚 ann_date</span></div>
+    <div class="layer-bd"><span class="ph">龙虎榜/解禁/大宗 · 市场regime门(大盘/涨停情绪, 横切非单股) — 数据已补齐, 待落地接入(⑤⑥)</span></div></div>`;
 }
 
 async function loadStock(code, overlay){
@@ -273,6 +299,7 @@ async function loadStock(code, overlay){
       </div></div>
     ${layer2Card(base)}
     ${sectorCard(base)}
+    ${fundamentalsCard(base)}
     ${holderCard(base)}
     ${layer3Rest()}
     <div class="layer"><div class="layer-hd"><span class="lt">趋势线</span><span class="ld">按形态着色 · 非K线</span></div>

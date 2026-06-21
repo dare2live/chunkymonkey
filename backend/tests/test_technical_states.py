@@ -372,3 +372,50 @@ def test_concept_labels():
     names = [x["名称"] for x in out["概念"]]
     assert "白酒" in names and len(out["概念"]) == 3   # 概念展示数=3
 
+
+
+def test_fundamental_signals():
+    """L3④ 基本面: roe_yearly(盈利)+净利同比(成长) → 优质/一般/偏弱 (config阈值)。"""
+    from services.technical_states.fundamentals import fundamental_signals
+    cfg = load_config()
+    # 优质: 高ROE + 高成长
+    good = {"end_date": "20251231", "roe": 12.0, "roe_yearly": 20.0, "netprofit_yoy": 40.0,
+            "or_yoy": 25.0, "grossprofit_margin": 60.0, "debt_to_assets": 30.0}
+    r = fundamental_signals(good, cfg=cfg)
+    assert r["基本面评"] == "优质" and r["盈利能力"] == "优秀" and r["成长性"] == "高成长"
+    assert r["ROE"] == 20.0   # 用 roe_yearly 年化(跨报告期可比) 非 roe
+    # 偏弱: 低ROE + 下滑
+    bad = {"end_date": "20251231", "roe_yearly": 5.0, "netprofit_yoy": -20.0, "or_yoy": -5.0,
+           "grossprofit_margin": 20.0, "debt_to_assets": 80.0}
+    assert fundamental_signals(bad, cfg=cfg)["基本面评"] == "偏弱"
+    assert fundamental_signals(None, cfg=cfg) is None   # 无财报 graceful
+
+
+def test_valuation_signals():
+    """L3④ 估值: PE/PB 自身历史分位 (低估<30/高估>70) + 不足样本/亏损 graceful。"""
+    from services.technical_states.fundamentals import valuation_signals
+    cfg = load_config()
+    pe_hist = list(range(10, 110))   # 100 样本 10..109
+    # 当前 PE=15 → 分位约 6% → 低估
+    r = valuation_signals({"pe_ttm": 15.0, "pb": 1.0, "dv_ttm": 3.0, "total_mv": 5000000.0}, pe_hist, list(range(1, 101)), cfg=cfg)
+    assert r["估值状态"] == "低估" and r["PE分位"] < 30
+    assert r["市值亿"] == 500.0   # 5000000万 / 1e4 = 500亿
+    # 当前 PE=105 → 分位约 96% → 高估
+    assert valuation_signals({"pe_ttm": 105.0, "pb": 1.0}, pe_hist, list(range(1, 101)), cfg=cfg)["估值状态"] == "高估"
+    # 亏损(PE<=0)+样本不足 → 分位 None
+    assert valuation_signals({"pe_ttm": -5.0, "pb": 2.0}, [1, 2], [1, 2], cfg=cfg)["估值状态"] == "未知"
+
+
+def test_analyst_expectation():
+    """L3④ 分析师预期: 正向评级占比 + 目标价上行空间 (tp=0 graceful; A股正向偏)。"""
+    from services.technical_states.fundamentals import analyst_expectation
+    cfg = load_config()
+    reps = [("20260601", "买入", 120.0), ("20260520", "增持", 0), ("20260510", "中性", 0)]
+    r = analyst_expectation(reps, 100.0, cfg=cfg)
+    assert r["研报数"] == 3 and r["正向占比"] == 67.0   # 买入+增持=2/3
+    assert r["目标价中位"] == 120.0 and r["上行空间"] == 20.0   # tp=0/超band跳过, 中位120 vs 现价100=+20%
+    # outlier 防护: 异常大 tp (数据错) 被 sane band(10x) 滤除
+    assert analyst_expectation([("20260601", "买入", 999999.0), ("20260520", "买入", 110.0)], 100.0, cfg=cfg)["目标价中位"] == 110.0
+    # 全正向 → 看好
+    assert analyst_expectation([("20260601", "买入", 0)] * 5, 100.0, cfg=cfg)["评级倾向"] == "看好"
+    assert analyst_expectation([], 100.0, cfg=cfg) is None   # 无研报 graceful
