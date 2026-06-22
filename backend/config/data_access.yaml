@@ -64,3 +64,27 @@ entities:
     columns: [ts_code, trade_date, close]
     vendor: tushare
     available_after: eod
+
+  moneyflow_dc:
+    # 东财个股资金 (主力大单净额; flow-vendor=membership-vendor 红线, 与概念=东财同源)
+    db: tushare_raw
+    table: raw_tushare_moneyflow_dc
+    layer: L0
+    code_col: ts_code
+    asof_col: trade_date
+    asof_format: yyyymmdd
+    columns: [ts_code, trade_date, net_amount, net_amount_rate, pct_change]
+    vendor: eastmoney_via_tushare
+    available_after: eod
+
+  cyq:
+    # 长江筹码分布/获利盘 (复权 qfq 空间, 实测核证 CLEAN)
+    db: tushare_raw
+    table: raw_tushare_cyq_perf
+    layer: L0
+    code_col: ts_code
+    asof_col: trade_date
+    asof_format: yyyymmdd
+    columns: [ts_code, trade_date, winner_rate, cost_5pct, cost_50pct, cost_95pct, weight_avg]
+    vendor: tushare
+    available_after: eod

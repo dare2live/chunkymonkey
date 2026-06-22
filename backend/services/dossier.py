@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from services.data_access import get_data_access  # SERVE 读层 (PIT/口径/血缘统一; 替内联 raw 裸查)
 from services.data_loaders import MARKET_DB, RAW_DB
 from services.duck_adapter import connect as duck_connect
 from services.technical_states.candles import candle_pattern
@@ -98,30 +99,20 @@ def load_capital(code: str) -> tuple[dict, dict]:
     → (money_by_date, turnover_by_date)。money_by_date={date:{net_amount(主力大单净, 万元), net_amount_rate(占成交额%), pct_change(涨跌%)}}。
     东财数据 2023-09 起 (前无资金, 档案描述近期为主)。明盘=net_amount; 量价背离=net_amount方向 vs pct_change (暗盘伪维度已砍, 见 capital.py 裁决)。
     """
-    ts = code_to_ts_code(code)
-    c = duck_connect(RAW_DB, read_only=True)
-    try:
-        dc = c.execute(
-            "SELECT trade_date, net_amount, net_amount_rate, pct_change "
-            "FROM raw_tushare_moneyflow_dc WHERE ts_code = ? ORDER BY trade_date", [ts]).fetchall()
-        tr = c.execute("SELECT trade_date, turnover_rate FROM raw_tushare_daily_basic WHERE ts_code = ? ORDER BY trade_date", [ts]).fetchall()
-    finally:
-        c.close()
-    money = {_iso(r[0]): {"net_amount": r[1], "net_amount_rate": r[2], "pct_change": r[3]} for r in dc}
-    return (money, {_iso(td): v for td, v in tr})
+    da = get_data_access()
+    dc = da.get("moneyflow_dc", codes=[code]).rows        # SERVE 读层 (trade_date 已归一 ISO)
+    tr = da.get("valuation", codes=[code]).rows
+    money = {r["trade_date"]: {"net_amount": r["net_amount"], "net_amount_rate": r["net_amount_rate"],
+                               "pct_change": r["pct_change"]} for r in dc}
+    return (money, {r["trade_date"]: r["turnover_rate"] for r in tr})
 
 
 def load_cyq(code: str) -> dict:
     """cyq_perf 筹码分布/胜率 (维度④) → {date_iso: {winner_rate, cost_5/50/95pct, weight_avg}}。"""
-    ts = code_to_ts_code(code)
-    c = duck_connect(RAW_DB, read_only=True)
-    try:
-        rows = c.execute("SELECT trade_date, winner_rate, cost_5pct, cost_50pct, cost_95pct, weight_avg "
-                         "FROM raw_tushare_cyq_perf WHERE ts_code = ? ORDER BY trade_date", [ts]).fetchall()
-    finally:
-        c.close()
-    return {_iso(td): {"winner_rate": wr, "cost_5pct": c5, "cost_50pct": c50, "cost_95pct": c95, "weight_avg": wa}
-            for td, wr, c5, c50, c95, wa in rows}
+    rows = get_data_access().get("cyq", codes=[code]).rows   # SERVE 读层 (trade_date 已归一 ISO)
+    return {r["trade_date"]: {"winner_rate": r["winner_rate"], "cost_5pct": r["cost_5pct"],
+            "cost_50pct": r["cost_50pct"], "cost_95pct": r["cost_95pct"], "weight_avg": r["weight_avg"]}
+            for r in rows}
 
 
 def load_top10_holders(code: str, as_of: str | None = None) -> dict | None:
