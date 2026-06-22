@@ -74,6 +74,13 @@ class DataAccess:
         conn: 可注入 (测试 :memory:); 缺省读层 read_only 开对应库。
         """
         spec = self._reg.entity(entity)
+        # PIT 默认锚 (2026-06-22 P0-3 闭合 conformance 审计抓出的 fail-silent 漏洞): 时序 entity
+        # (有 asof_col) as_of=None 时旧行为 = 不加任何 cutoff 静默返全史 (backtest 误用→未来行泄漏)。
+        # 改: 默认最新完成交易日 (交易日历真相源, 非 wall-clock), 即"as of 最新完成交易日"明确 PIT 点。
+        # conn is None = 生产读路 (dossier/serving); 注入 conn (测试/特殊上下文) 由调用方自控 as_of。
+        if as_of is None and conn is None and getattr(spec, "asof_col", None):
+            from services.calendar import latest_closed_or_raise
+            as_of = latest_closed_or_raise()
         driver = get_driver(spec)
         rows = driver.fetch(spec, codes=codes, start=start, as_of=as_of, conn=conn)
         return DataResult(rows=rows, provenance=spec.provenance(as_of))

@@ -225,6 +225,10 @@ def _today_signal_cache_key(*, freshness_days: int, config: PolicyConfig) -> tup
 
 def _source_max_notice_date(conn) -> str | None:
     try:
+        # PIT 上界走交易日历真相源 (2026-06-22 P0-2): 非 wall-clock CURRENT_DATE — 周末/盘中
+        # CURRENT_DATE admit 未收盘日 → live 信号 cache 新鲜度判定混入未来公告。
+        from services.calendar import latest_closed_or_raise
+        cutoff = latest_closed_or_raise()
         row = conn.execute(
             """
             WITH normalized AS (
@@ -239,8 +243,9 @@ def _source_max_notice_date(conn) -> str | None:
             )
             SELECT MAX(notice_iso) AS max_notice_date
               FROM normalized
-             WHERE TRY_CAST(notice_iso AS DATE) <= CURRENT_DATE
-            """
+             WHERE TRY_CAST(notice_iso AS DATE) <= ?
+            """,
+            [cutoff],
         ).fetchone()
         return str(row["max_notice_date"]) if row and row["max_notice_date"] is not None else None
     except Exception:
@@ -1448,6 +1453,12 @@ def build_today_signals(
     """
     cfg = config or load_config(conn)
     fresh_days = freshness_days or cfg.signal_freshness_days
+    # PIT 窗口锚交易日历真相源 (2026-06-22 P0-1): 上界=最新完成交易日 (非 wall-clock CURRENT_DATE,
+    # 周末/盘中会 admit 未收盘日); 近 fresh_days 窗口下界从该锚回推 (日历天 recency 窗)。
+    from services.calendar import latest_closed_or_raise
+    from datetime import date as _d, timedelta as _td
+    _latest_closed = latest_closed_or_raise()
+    _window_start = (_d.fromisoformat(_latest_closed) - _td(days=int(fresh_days))).isoformat()
     event_columns = _table_columns(conn, "fact_institution_event")
     notice_source_select = (
         "e.notice_date_source" if "notice_date_source" in event_columns else "NULL"
@@ -1485,16 +1496,16 @@ def build_today_signals(
                       THEN substr(e.notice_date,1,4) || '-' || substr(e.notice_date,5,2) || '-' || substr(e.notice_date,7,2)
                   ELSE e.notice_date
               END
-          ) >= CAST(CURRENT_DATE - INTERVAL (?) DAY AS VARCHAR)
+          ) >= ?
           AND (
               CASE
                   WHEN length(e.notice_date) = 8 AND instr(e.notice_date, '-') = 0
                       THEN substr(e.notice_date,1,4) || '-' || substr(e.notice_date,5,2) || '-' || substr(e.notice_date,7,2)
                   ELSE e.notice_date
               END
-          ) <= CAST(CURRENT_DATE AS VARCHAR)
+          ) <= ?
         ORDER BY e.notice_date DESC, e.institution_id
-    """, (fresh_days,)).fetchall()
+    """, (_window_start, _latest_closed)).fetchall()
 
     if not rows:
         return []
