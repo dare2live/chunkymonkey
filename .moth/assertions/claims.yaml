@@ -197,10 +197,10 @@ assertions:
     database: data/feature_store.duckdb
     query: "SELECT count(*) FROM fact_signal_panel"
     expect: {op: ">", value: 0}
-  - id: dossier-serve-migration-ratchet
-    claim: "dossier.py 内联 duck_connect ratchet <=7 (2026-06-22 数据模块 P1 SERVE 读层迁移, 不变量#4 单概念单真相源: dossier 取数全走 services.data_access.DataAccess, 禁内联裸查 raw 表). 进度: 15 loader/scan 已迁(capital/cyq/limits/share_float/block_trade/analyst/benchmark/valuation, 全parity验证), 18→7. 剩 ~10 复杂/leakage敏感 PIT driver 待迁(holders ann_date版本锁/fundamentals latest-per-end_date/sector in-out_date/lhb order敏感/forecast grouping/market_regime聚合). **禁回潮(>11=新增内联裸查违纪)**; 随迁移降基线, →0 时翻硬门 read-no-inline-table. owner=backend/services/dossier.py + analysis/data_module_toplevel_design_20260622.md §4"
+  - id: dossier-serve-no-inline-raw
+    claim: "dossier.py 内联 duck_connect = 0 硬门 (2026-06-22 数据模块 P1 SERVE 读层迁移完成, 不变量#4 单概念单真相源: dossier 18 内联 raw 裸查全部迁到 services.data_access.DataAccess 单一读路, 全 parity 验证 [capital/cyq/limits/share_float/block_trade/analyst/benchmark/valuation/fundamentals/forecast/one/sector_kline/lhb/_top10_tushare/_top10_tdx/sector_membership/market_regime + 2 scan]). >0 = 新增内联裸查违纪 silo 回潮. owner=backend/services/dossier.py + analysis/data_module_toplevel_design_20260622.md §4"
     type: shell
-    command: ["bash", "-c", "grep -c 'duck_connect(' backend/services/dossier.py || echo 0"]
+    command: ["bash", "-c", "grep -c 'duck_connect(' backend/services/dossier.py || true"]
     expect: {op: "<=", value: 0}
   - id: kline-canonical-tushare-only
     claim: "v_price_kline_qfq 切 tushare-only (2026-06-22 切主源根因修复 真相源唯一): 旧 tier-1=price_kline_tdxhub 的 qfq 系统性算错 (把复权因子当后复权式乘数抬高分红股历史价, 实测茅台/比亚迪 raw*adj_factor/latest 重建证 tushare对/tdxhub错, 分叉随adj_factor放大最高89%). tushare(2019+/5431股) 严格超集 tdxhub(2022+/5210股). 用户'没有备用源只有tushare' → 去 akshare/tdxhub fallback. >0 非tushare行 = 残留回潮. owner=backend/services/market_schema.py"
