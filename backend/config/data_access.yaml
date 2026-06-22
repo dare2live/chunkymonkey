@@ -124,3 +124,15 @@ entities:
     columns: [ts_code, trade_date, price, amount]
     vendor: tushare
     available_after: eod
+
+  report_rc:
+    # 券商研报/分析师预期 (PIT 锚=report_date 发布日; tp 单位 ×0.0001元 消费侧 /10000, mythos§8)
+    db: tushare_raw
+    table: raw_tushare_report_rc
+    layer: L0
+    code_col: ts_code
+    asof_col: report_date
+    asof_format: yyyymmdd
+    columns: [ts_code, report_date, rating, tp]
+    vendor: tushare
+    available_after: ann_date

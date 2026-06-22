@@ -345,19 +345,12 @@ def load_valuation(code: str, as_of: str | None = None) -> tuple[dict | None, li
 
 def load_analyst_reports(code: str, as_of: str | None = None, months: int = 6) -> list[tuple]:
     """L3 分析师预期 (PIT 锚 report_date 发布日): 近 months 月券商研报 [(report_date, rating, tp)] (均 ≤t)。"""
-    ts = code_to_ts_code(code)
-    asof = (as_of or date.today().isoformat()).replace("-", "")
-    cutoff = (date.fromisoformat(f"{asof[:4]}-{asof[4:6]}-{asof[6:8]}") - timedelta(days=months * 31)).strftime("%Y%m%d")
-    c = duck_connect(RAW_DB, read_only=True)
-    try:
-        rows = c.execute(
-            "SELECT report_date, rating, tp FROM raw_tushare_report_rc "
-            "WHERE ts_code = ? AND report_date <= ? AND report_date >= ? ORDER BY report_date DESC",
-            [ts, asof, cutoff]).fetchall()
-    finally:
-        c.close()
-    # tp 单位实测 = 0.0001元 (tp/10000 = 目标价元; 600519 tp 16204300 → 1620元 vs price 1215; mythos§8 字段单位必实测)
-    return [(r[0], r[1], (r[2] / 10000.0 if r[2] else r[2])) for r in rows]
+    asof_iso = as_of or date.today().isoformat()
+    cutoff_iso = (date.fromisoformat(asof_iso) - timedelta(days=months * 31)).isoformat()
+    rows = get_data_access().get("report_rc", codes=[code], start=cutoff_iso, as_of=asof_iso).rows
+    rows.reverse()   # ASC → 原显示序 DESC (analyst_expectation order-independent: 丢弃report_date, count+median)
+    # tp 单位实测 = 0.0001元 (tp/10000 = 目标价元; mythos§8 字段单位必实测) — 留 loader (待移 entity clean transform)
+    return [(r["report_date"], r["rating"], (r["tp"] / 10000.0 if r["tp"] else r["tp"])) for r in rows]
 
 
 def load_lhb(code: str, as_of: str | None = None, days: int = 60) -> tuple[list, list]:
