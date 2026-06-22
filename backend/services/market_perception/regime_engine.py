@@ -114,7 +114,7 @@ def compute_regime_for_range(conn, start: str | date, end: str | date) -> pd.Dat
         raise ValueError(f"start {start_day} > end {end_day}")
 
     days = _trading_days(conn, start_day, end_day)
-    if any(d >= date.today() for d in days):
+    if any(d >= date.today() for d in days):   # rule-compliance: ok evidence=PIT守卫拒今日/未来snapshot, wall-clock当上界=保守安全非数据锚
         raise ValueError(f"range {start_day} -> {end_day} includes today/future; PIT requires snapshot_date < today")
     if not days:
         return pd.DataFrame()
@@ -625,7 +625,7 @@ def _guard_regime_payload(payload: dict[str, Any]) -> None:
 
 
 def _validate_snapshot_date(conn, day: date) -> None:
-    today = date.today()
+    today = date.today()   # rule-compliance: ok evidence=PIT守卫_validate_snapshot拒>=今日, 保守上界非数据锚
     if day >= today:
         raise ValueError(f"snapshot_date={day} must be earlier than today={today}")
     row = _fetchone(

@@ -70,7 +70,10 @@ def unlock_signal(float_rows, as_of, *, cfg=None) -> dict | None:
     c = (cfg or {}).get("事件") or {}
     horizon = int(c.get("解禁前瞻日", 90))      # 看未来 N 日内解禁
     warn_ratio = c.get("解禁预警占比", 3.0)     # 未来解禁占流通% > 此 = 压力预警
-    asof = (as_of or date.today().isoformat()).replace("-", "")
+    if not as_of:   # 默认决策日走交易日历真相源 (非 wall-clock date.today; 非交易日/盘前给空数据日)
+        from services.calendar import latest_closed_or_raise
+        as_of = latest_closed_or_raise()
+    asof = as_of.replace("-", "")
     end = (date.fromisoformat(f"{asof[:4]}-{asof[4:6]}-{asof[6:8]}") + timedelta(days=horizon)).strftime("%Y%m%d")
     upcoming = [(fd, fr) for fd, fr in float_rows if fd and asof < str(fd) <= end]   # 未来 horizon 内 (>t 防已解禁)
     if not upcoming:

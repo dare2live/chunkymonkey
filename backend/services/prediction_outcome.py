@@ -68,7 +68,7 @@ def calc_outcomes(conn, *, lookback_days: int = 90) -> dict:
     """
     ensure_table(conn)
     t0 = time.time()
-    today = date.today()
+    today = date.today()   # rule-compliance: ok evidence=对账回溯窗口(选近lookback天预测评估outcome), 非PIT决策锚
     cutoff = (today - timedelta(days=lookback_days)).isoformat()
 
     # 拉近 90 天的预测
@@ -216,7 +216,7 @@ def model_performance_summary(conn, model_id: str | None = None, lookback_days: 
         logger.warning("[prediction_outcome] 拒绝非法 model_id (疑似注入): %r", model_id)
         return {"lookback_days": lookback_days, "summaries": []}
 
-    cutoff = (date.today() - timedelta(days=lookback_days)).isoformat()
+    cutoff = (date.today() - timedelta(days=lookback_days)).isoformat()  # rule-compliance: ok evidence=对账回溯窗口非PIT锚
     where = "WHERE snapshot_date >= ?"
     params: list = [cutoff]
     if model_id:

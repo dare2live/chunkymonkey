@@ -388,7 +388,9 @@ def _summarize_external_attention(
         summary["comment_trade_date"] = latest_source_row["comment_trade_date"] or ""
         summary["last_survey_date"] = latest_source_row["last_survey_date"] or ""
 
-    summary["snapshot_lag_days"] = _days_lag(latest_snapshot_date, date.today().isoformat())
+    # 2026-06-22: snapshot_lag 锚 latest_market_date (交易日历真相源) 与下行 comment_lag 一致, 非 wall-clock
+    # date.today() (后者周末/假日虚高 lag 误报; calendar-usage 门 triage)
+    summary["snapshot_lag_days"] = _days_lag(latest_snapshot_date, latest_market_date)
     summary["comment_trade_lag_days"] = _days_lag(summary["comment_trade_date"], latest_market_date)
 
     try:

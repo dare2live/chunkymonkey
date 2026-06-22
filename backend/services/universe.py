@@ -134,7 +134,7 @@ def get_active_universe(
         codes = {r[0] for r in mkt.execute(
             f"SELECT DISTINCT code FROM {kline_relation} "
             "WHERE freq='daily' "
-            f"AND CAST(date AS DATE) >= CURRENT_DATE - INTERVAL '{no_trade_days} days'"
+            f"AND CAST(date AS DATE) >= CURRENT_DATE - INTERVAL '{no_trade_days} days'"  # rule-compliance: ok evidence=活跃liveness粗启发(近N日历日有K线=在交易), 日历天足够判退市/长停, 非PIT决策锚
         ).fetchall()}
     finally:
         if should_close:
