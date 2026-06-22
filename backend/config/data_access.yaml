@@ -222,3 +222,41 @@ entities:
     columns: [stock_code, report_date, holder_set, holder_rank, holder_name_norm, hold_ratio_float, change_status, hold_change_num, is_exit_row]
     vendor: tdxhub
     available_after: ann_date
+
+  sw_industry:
+    # 申万行业归属 PIT 视图 (RANGE PIT: in_date≤t<out_date; asof_col=in_date 取≤t, 消费侧补 out_date>t 第二腿)
+    db: tushare_raw
+    table: v_sw_industry_pit
+    layer: L1
+    code_col: stock_code
+    asof_col: in_date
+    asof_format: yyyymmdd
+    columns: [stock_code, l1_code, l1_name, l2_name, in_date, out_date]
+    vendor: shenwan
+    available_after: eod
+
+  dc_member:
+    # 东财概念成员 (con_code=个股 ts_code格式, ts_code=板块BKxxxx.DC 字段语义陷阱; 最近快照≤t)
+    db: tushare_raw
+    table: raw_tushare_dc_member
+    layer: L0
+    code_col: con_code
+    code_input: ts_from_plain   # con_code 存 ts_code 格式(600519.SH); 列名非'ts_code'故默认推断失效, 显式声明
+    asof_col: trade_date
+    asof_format: yyyymmdd
+    columns: [con_code, ts_code, trade_date]
+    vendor: eastmoney_via_tushare
+    available_after: eod
+
+  dc_index:
+    # 东财概念指数 (板块码 ts_code=BKxxxx.DC passthrough; 概念名+热度 pct_change)
+    db: tushare_raw
+    table: raw_tushare_dc_index
+    layer: L0
+    code_col: ts_code
+    code_input: ts_passthrough
+    asof_col: trade_date
+    asof_format: yyyymmdd
+    columns: [ts_code, trade_date, name, pct_change]
+    vendor: eastmoney_via_tushare
+    available_after: eod

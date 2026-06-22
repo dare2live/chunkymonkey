@@ -191,33 +191,28 @@ def load_sector_membership(code: str, as_of: str | None = None) -> dict:
     - 东财概念: dc_member 最近快照<=t (con_code=个股, ts_code=板块BKxxxx.DC); 概念名+热度 JOIN dc_index (dc_member.name=个股名非板块名, 坑)。
     返回 {sw_l1_code, sw_l1_name, sw_l2_name, concepts:[(code,name)], concept_hot:{code:pct_change%}}。
     """
-    ts = code_to_ts_code(code)
-    asof = as_of.replace("-", "") if as_of else None       # v_sw_industry_pit / dc_member trade_date 均 YYYYMMDD
-    c = duck_connect(RAW_DB, read_only=True)
-    try:
-        sw_where, sw_args = "", [code]
-        if asof:                                            # PIT: 归属区间含 t (in_date<=t<out_date)
-            sw_where = " AND in_date <= ? AND (out_date IS NULL OR out_date > ?)"
-            sw_args += [asof, asof]
-        sw = c.execute(f"SELECT l1_code, l1_name, l2_name FROM v_sw_industry_pit "
-                       f"WHERE stock_code = ?{sw_where} ORDER BY in_date DESC LIMIT 1", sw_args).fetchone()
-        m_where = " AND trade_date <= ?" if asof else ""    # 东财概念: 最近快照 <= t (PIT)
-        snap = c.execute(f"SELECT MAX(trade_date) FROM raw_tushare_dc_member WHERE con_code = ?{m_where}",
-                         [ts] + ([asof] if asof else [])).fetchone()
-        concepts, hot = [], {}
-        if snap and snap[0]:
-            rows = c.execute(
-                "SELECT m.ts_code, i.name, i.pct_change FROM raw_tushare_dc_member m "
-                "LEFT JOIN raw_tushare_dc_index i ON i.ts_code = m.ts_code AND i.trade_date = m.trade_date "
-                "WHERE m.con_code = ? AND m.trade_date = ?", [ts, snap[0]]).fetchall()
-            for bk, nm, pct in rows:
-                concepts.append((bk, nm or bk))
-                if pct is not None:
-                    hot[bk] = pct
-    finally:
-        c.close()
-    return {"sw_l1_code": sw[0] if sw else None, "sw_l1_name": sw[1] if sw else None,
-            "sw_l2_name": sw[2] if sw else None, "concepts": concepts, "concept_hot": hot}
+    from services.data_access.keys import to_yyyymmdd
+    da = get_data_access()
+    asof_ymd = to_yyyymmdd(as_of) if as_of else "99999999"        # out_date 第二腿比较 (out_date 原生 YYYYMMDD)
+    # 1. 申万行业 RANGE PIT: in_date≤t (SERVE asof_col=in_date) + out_date>t (loader 第二腿) → 取最近段
+    sw_rows = da.get("sw_industry", codes=[code], as_of=as_of).rows
+    valid = [r for r in sw_rows if r["out_date"] is None or str(r["out_date"]) > asof_ymd]
+    sw = max(valid, key=lambda r: r["in_date"]) if valid else None    # 原 ORDER BY in_date DESC LIMIT 1
+    # 2. 东财概念: dc_member 最近快照≤t (con_code=个股) JOIN dc_index 概念名+热度 (J6 口径=东财)
+    dcm = da.get("dc_member", codes=[code], as_of=as_of).rows
+    concepts, hot = [], {}
+    if dcm:
+        snap = max(r["trade_date"] for r in dcm)                      # MAX trade_date≤t
+        boards = [r["ts_code"] for r in dcm if r["trade_date"] == snap]   # 该快照板块码 (ts_code=板块 BKxxxx.DC, 非个股)
+        idx = da.get("dc_index", codes=boards, as_of=snap).rows if boards else []
+        idx_at = {r["ts_code"]: r for r in idx if r["trade_date"] == snap}   # JOIN on ts_code+trade_date
+        for bk in boards:
+            i = idx_at.get(bk)
+            concepts.append((bk, (i["name"] if i else None) or bk))
+            if i and i["pct_change"] is not None:
+                hot[bk] = i["pct_change"]
+    return {"sw_l1_code": sw["l1_code"] if sw else None, "sw_l1_name": sw["l1_name"] if sw else None,
+            "sw_l2_name": sw["l2_name"] if sw else None, "concepts": concepts, "concept_hot": hot}
 
 
 def load_sector_kline(sw_l1_code: str | None, end: str | None = None) -> dict:
