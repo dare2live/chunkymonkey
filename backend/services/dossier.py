@@ -57,18 +57,11 @@ def _effective_cfg(overrides: dict | None):
 def load_one(code: str, end: str | None = None,
              start: str = "2015-01-01") -> dict | None:  # rule-compliance: ok evidence=serving 档案视图K线加载窗口起始日, 非策略参数(暖机120+足够多TF)
     """单股 OHLCV (PIT: ≤end); 走中央 adapter 只读 market.duckdb。返回 {date,open,high,low,close,volume} 平行数组。"""
-    where = f"code = ? AND date >= '{start}'" + (f" AND date <= '{end}'" if end else "")
-    c = duck_connect(MARKET_DB, read_only=True)
-    try:
-        rows = c.execute(
-            f"SELECT date, open, high, low, close, volume FROM price_kline_qfq_tushare "
-            f"WHERE {where} ORDER BY date", [code]).fetchall()
-    finally:
-        c.close()
+    rows = get_data_access().get("kline_qfq", codes=[code], start=start, as_of=end).rows  # ≤end PIT, ASC by date
     if not rows:
         return None
-    return {"date": [str(r[0]) for r in rows], "open": [r[1] for r in rows], "high": [r[2] for r in rows],
-            "low": [r[3] for r in rows], "close": [r[4] for r in rows], "volume": [r[5] for r in rows]}
+    return {"date": [r["date"] for r in rows], "open": [r["open"] for r in rows], "high": [r["high"] for r in rows],
+            "low": [r["low"] for r in rows], "close": [r["close"] for r in rows], "volume": [r["volume"] for r in rows]}
 
 
 def load_limits(code: str) -> dict:
@@ -247,24 +240,14 @@ def load_sector_kline(sw_l1_code: str | None, end: str | None = None) -> dict:
     """申万一级行业指数日线 (sw_daily, ts_code=l1_code 直接对应) → {date_iso: close}。PIT: trade_date<=end。"""
     if not sw_l1_code:
         return {}
-    where, args = "ts_code = ?", [sw_l1_code]
-    if end:
-        where += " AND trade_date <= ?"
-        args.append(end.replace("-", ""))                   # end ISO → YYYYMMDD (sw_daily trade_date 口径)
-    c = duck_connect(RAW_DB, read_only=True)
-    try:
-        rows = c.execute(f"SELECT trade_date, close FROM raw_tushare_sw_daily WHERE {where} ORDER BY trade_date",
-                         args).fetchall()
-    finally:
-        c.close()
-    return {_iso(td): cl for td, cl in rows}
+    rows = get_data_access().get("sw_daily", codes=[sw_l1_code], as_of=end).rows  # ts_passthrough 行业码; trade_date≤end 归一ISO
+    return {r["trade_date"]: r["close"] for r in rows}
 
 
 def load_fundamentals(code: str, as_of: str | None = None) -> dict | None:
     """L3 基本面 (PIT 锚 ann_date 公告日, 防财报 leakage): fina_indicator 最近已公告财报指标。
     取 ann_date <= as_of 的最近一期 (ann_date DESC, end_date DESC); roe_yearly 年化(跨报告期可比)。
     """
-    ts = code_to_ts_code(code)
     keys = ["end_date", "roe", "roe_yearly", "netprofit_yoy", "or_yoy", "grossprofit_margin", "debt_to_assets"]
     rows = get_data_access().get("fundamentals", codes=[code], as_of=as_of).rows  # ann_date≤asof PIT (锚公告日)
     if not rows:

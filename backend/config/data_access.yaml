@@ -161,3 +161,16 @@ entities:
     columns: [ts_code, ann_date, end_date, type, p_change_min, p_change_max]
     vendor: tushare
     available_after: ann_date
+
+  sw_daily:
+    # 申万一级行业指数日线 (ts_code=申万行业码 801xxx, 非股票码 → ts_passthrough; flow-vendor=申万)
+    db: tushare_raw
+    table: raw_tushare_sw_daily
+    layer: L0
+    code_col: ts_code
+    code_input: ts_passthrough
+    asof_col: trade_date
+    asof_format: yyyymmdd
+    columns: [ts_code, trade_date, close]
+    vendor: shenwan
+    available_after: eod
