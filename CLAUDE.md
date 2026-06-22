@@ -206,7 +206,7 @@ commit message 必写 5 项: (1) PIT: 用未来信息了? (2) OOS: walk-forward 
 GCP 执行面 2026-06-05 退役 (本节旧内容引用的 gcp/ 脚本与 yaml 已物理删除)。计算任务唯一
 契约 = `backend/config/experiment_jobs.yaml` + `scripts/chunkyctl jobs --family <f> ...`。
 Backend 状态: `local` active; `modal` 已配 token (2026-06-11, ~/.modal.toml, $30/月额度),
-跑批前仍需 reviewed adapter + artifact-manifest 契约 (见 `docs/implementation_plan.md`)。
+跑批前仍需 reviewed adapter + artifact-manifest 契约 (见 `docs/archive/implementation_plan.md`, 2026-06-22 归档 deprecated 留参考)。
 Long-run checkpoint reuse 规则 owner = `AGENTS.md`.
 
 ## 10. 并发

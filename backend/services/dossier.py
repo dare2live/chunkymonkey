@@ -165,17 +165,21 @@ def _top10_tushare(code: str, as_of: str | None) -> dict | None:
     holders, cnt = [], {"新进": 0, "退出": 0, "增持": 0, "减持": 0}
     cur_names = {h[0] for h in cur}
     for i, (name, ratio, chg) in enumerate(cur, 1):
-        if prev_ed and name not in prev_names:
-            status = "新进"; cnt["新进"] += 1
-        elif chg is not None and chg > 0:
+        # 动向走 tushare **现成 hold_change** (用户: 能获取的就不计算; 实测核证 NaN=新进无前值/0=持平/+=增持/-=减持),
+        # 不再跨季 diff 算新进。NaN 兼容 None(DuckDB NULL) 与 float('nan')。
+        chg = None if (chg is not None and isinstance(chg, float) and chg != chg) else chg
+        if chg is None:
+            status = "新进"; cnt["新进"] += 1     # tushare 对新进股东无前值 → hold_change 留空
+        elif chg > 0:
             status = "增持"; cnt["增持"] += 1
-        elif chg is not None and chg < 0:
+        elif chg < 0:
             status = "减持"; cnt["减持"] += 1
         else:
             status = "持平"
         holders.append({"rank": i, "name": name, "ratio": ratio, "change": status, "change_num": chg})
+    # 退出 = 上季 top10 本季离榜: tushare 当期快照**给不出**离榜股东行 → 唯一须跨季 diff 的状态 (其余全走 hold_change)
     if prev_ed:
-        cnt["退出"] = len(prev_names - cur_names)    # 上季在本季出 top10 = 退出
+        cnt["退出"] = len(prev_names - cur_names)
     net = (cnt["新进"] + cnt["增持"]) - (cnt["退出"] + cnt["减持"])
     return {"report_date": cur_ed, "holders": holders, "源": "tushare",
             "新进": cnt["新进"], "退出": cnt["退出"], "增持": cnt["增持"], "减持": cnt["减持"],
