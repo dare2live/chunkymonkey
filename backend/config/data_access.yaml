@@ -286,3 +286,16 @@ entities:
     columns: [stock_code, report_date, holder_count, forecast_profit_yoy_low, forecast_profit_yoy_high]
     vendor: tdxhub
     available_after: ann_date
+
+  institution_survey:
+    # 机构调研明细 (signals_v2 D8 冷门度; PIT 锚 notice_date 披露日, 实测全 ISO 一致)
+    # 源=借道 tdxhub (smartmoney §4.3 热备); stk_surv tushare 域暂缓(参数语义未核证)
+    db: smartmoney
+    table: raw_institution_surveys
+    layer: L0
+    code_col: stock_code
+    asof_col: notice_date
+    asof_format: iso
+    columns: [stock_code, survey_date, notice_date]
+    vendor: tdxhub
+    available_after: ann_date

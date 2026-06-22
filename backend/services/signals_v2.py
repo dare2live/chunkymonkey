@@ -1266,14 +1266,11 @@ def _load_survey_by_stock(conn, stock_codes: set[str]) -> dict[str, list[tuple[s
     if not stock_codes:
         return {}
     out: dict[str, list[tuple[str, str]]] = {}
-    placeholders = ",".join("?" * len(stock_codes))
     try:
-        rows = conn.execute(
-            f"""SELECT stock_code, survey_date, notice_date
-                FROM raw_institution_surveys
-                WHERE stock_code IN ({placeholders})""",
-            list(stock_codes),
-        ).fetchall()
+        # 2026-06-23 P1-1 SERVE conformance: 内联 raw_institution_surveys → data_access 单读路
+        # (institution_survey entity, notice_date ISO PIT 锚; lineage 声明)。传 conn 避同库重开冲突。
+        from services.data_access import get_data_access
+        rows = get_data_access().get("institution_survey", codes=list(stock_codes), conn=conn).rows
         for r in rows:
             sc = r["stock_code"]
             sd = r["survey_date"]
