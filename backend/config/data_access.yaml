@@ -112,3 +112,15 @@ entities:
     columns: [ts_code, ann_date, float_date, float_ratio]
     vendor: tushare
     available_after: ann_date
+
+  block_trade:
+    # 大宗交易 (折溢价 = 大资金态度)
+    db: tushare_raw
+    table: raw_tushare_block_trade
+    layer: L0
+    code_col: ts_code
+    asof_col: trade_date
+    asof_format: yyyymmdd
+    columns: [ts_code, trade_date, price, amount]
+    vendor: tushare
+    available_after: eod

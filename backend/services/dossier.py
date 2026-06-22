@@ -382,17 +382,11 @@ def load_lhb(code: str, as_of: str | None = None, days: int = 60) -> tuple[list,
 
 def load_block_trade(code: str, as_of: str | None = None, days: int = 60) -> list:
     """L3⑤ 大宗交易 (PIT 锚 trade_date): 近 days 日大宗 [(trade_date, price, amount)] (≤t)。"""
-    ts = code_to_ts_code(code)
-    asof = (as_of or date.today().isoformat()).replace("-", "")
-    cutoff = (date.fromisoformat(f"{asof[:4]}-{asof[4:6]}-{asof[6:8]}") - timedelta(days=days)).strftime("%Y%m%d")
-    c = duck_connect(RAW_DB, read_only=True)
-    try:
-        rows = c.execute("SELECT trade_date, price, amount FROM raw_tushare_block_trade "
-                         "WHERE ts_code = ? AND trade_date <= ? AND trade_date >= ? ORDER BY trade_date DESC",
-                         [ts, asof, cutoff]).fetchall()
-    finally:
-        c.close()
-    return [(_iso(r[0]), r[1], r[2]) for r in rows]   # trade_date → ISO (匹配 close_by_date 键, 防折溢价 None)
+    asof_iso = as_of or date.today().isoformat()
+    cutoff_iso = (date.fromisoformat(asof_iso) - timedelta(days=days)).isoformat()
+    rows = get_data_access().get("block_trade", codes=[code], start=cutoff_iso, as_of=asof_iso).rows  # trade_date 归一 ISO
+    rows.reverse()   # SERVE 返 ASC → 原显示序 DESC (block_signal order-independent: mean+sum)
+    return [(r["trade_date"], r["price"], r["amount"]) for r in rows]
 
 
 def load_share_float(code: str, as_of: str | None = None) -> list:
