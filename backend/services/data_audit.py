@@ -113,7 +113,7 @@ def _load_audit_config() -> dict[str, Any]:
             "cross_table_consistency",
         ],
         "kline_checks": {
-            "source_table": "market.price_kline_tdxhub",
+            "source_table": "market.v_price_kline_qfq",
             "freq": "daily",
             "adjust": "qfq",
             "date_column": "date",
@@ -146,7 +146,7 @@ def _load_audit_config() -> dict[str, Any]:
                 {
                     "name": "kline_universe_coverage",
                     "enabled": True,
-                    "kline_source_table": "market.price_kline_tdxhub",
+                    "kline_source_table": "market.v_price_kline_qfq",
                     "kline_stock_code_column": "code",
                     "universe_tables": [
                         {"table": "dim_active_a_stock", "stock_code_column": "stock_code"},  # rule-compliance: ok evidence=audit-config-reference
@@ -156,7 +156,7 @@ def _load_audit_config() -> dict[str, Any]:
                 {
                     "name": "inactive_still_trading",
                     "enabled": True,
-                    "kline_source_table": "market.price_kline_tdxhub",
+                    "kline_source_table": "market.v_price_kline_qfq",
                     "kline_date_column": "date",
                     "kline_stock_code_column": "code",
                     "recent_days": 10,
@@ -214,7 +214,7 @@ def _trading_lag_days(index: dict, from_date: Any, to_date: Any) -> int | None:
 
 def _check_kline_completeness(conn: duckdb.DuckDBPyConnection) -> CheckResult:
     cfg = AUDIT_RULES.get("kline_checks", {})
-    table = _to_str(cfg.get("source_table"), "market.price_kline_tdxhub")
+    table = _to_str(cfg.get("source_table"), "market.v_price_kline_qfq")
     freq = _to_str(cfg.get("freq"), "daily")
     adjust = _to_str(cfg.get("adjust"), "qfq")
     date_col = _to_str(cfg.get("date_column"), "date")
@@ -255,7 +255,7 @@ def _check_kline_completeness(conn: duckdb.DuckDBPyConnection) -> CheckResult:
 
 def _check_kline_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResult:
     cfg = AUDIT_RULES.get("kline_checks", {})
-    table = _to_str(cfg.get("source_table"), "market.price_kline_tdxhub")
+    table = _to_str(cfg.get("source_table"), "market.v_price_kline_qfq")
     freq = _to_str(cfg.get("freq"), "daily")
     adjust = _to_str(cfg.get("adjust"), "qfq")
     date_col = _to_str(cfg.get("date_column"), "date")
@@ -306,7 +306,7 @@ def _check_kline_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResult:
 
 def _check_board_coverage(conn: duckdb.DuckDBPyConnection) -> CheckResult:
     cfg = AUDIT_RULES.get("kline_checks", {})
-    table = _to_str(cfg.get("source_table"), "market.price_kline_tdxhub")
+    table = _to_str(cfg.get("source_table"), "market.v_price_kline_qfq")
     freq = _to_str(cfg.get("freq"), "daily")
     adjust = _to_str(cfg.get("adjust"), "qfq")
     code_col = _to_str(cfg.get("stock_code_column"), "code")
@@ -327,7 +327,7 @@ def _check_board_coverage(conn: duckdb.DuckDBPyConnection) -> CheckResult:
 
 def _check_date_range(conn: duckdb.DuckDBPyConnection, calendar_svc=latest_completed_trade_date) -> CheckResult:
     cfg = AUDIT_RULES.get("kline_checks", {})
-    table = _to_str(cfg.get("source_table"), "market.price_kline_tdxhub")
+    table = _to_str(cfg.get("source_table"), "market.v_price_kline_qfq")
     freq = _to_str(cfg.get("freq"), "daily")
     adjust = _to_str(cfg.get("adjust"), "qfq")
     date_col = _to_str(cfg.get("date_column"), "date")
@@ -364,7 +364,7 @@ def _check_date_range(conn: duckdb.DuckDBPyConnection, calendar_svc=latest_compl
 
 def _check_volume_sanity(conn: duckdb.DuckDBPyConnection) -> CheckResult:
     cfg = AUDIT_RULES.get("kline_checks", {})
-    table = _to_str(cfg.get("source_table"), "market.price_kline_tdxhub")
+    table = _to_str(cfg.get("source_table"), "market.v_price_kline_qfq")
     freq = _to_str(cfg.get("freq"), "daily")
     adjust = _to_str(cfg.get("adjust"), "qfq")
     code_col = _to_str(cfg.get("stock_code_column"), "code")
@@ -445,7 +445,7 @@ def _check_cross_table_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResu
     if not _rule_enabled(kline_coverage_rule, default=True):
         return CheckResult("cross_table_consistency", "PASS", "cross-table consistency rules are disabled")
 
-    kline_source_table = _to_str(kline_coverage_rule.get("kline_source_table"), "market.price_kline_tdxhub")
+    kline_source_table = _to_str(kline_coverage_rule.get("kline_source_table"), "market.v_price_kline_qfq")
     kline_source_code_col = _to_str(kline_coverage_rule.get("kline_stock_code_column"), kline_code_col)
 
     kline_codes = {c for (c,) in conn.execute(f"""
@@ -493,7 +493,7 @@ def _check_cross_table_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResu
     is_active_col = _to_str(inactive_rule.get("is_active_column"), "is_active")
     inactive_value = _to_int(inactive_rule.get("inactive_value"), 0)
     inactive_table_col_date = _to_str(inactive_rule.get("kline_date_column"), "date")
-    inactive_source_table = _to_str(inactive_rule.get("kline_source_table"), "market.price_kline_tdxhub")
+    inactive_source_table = _to_str(inactive_rule.get("kline_source_table"), "market.v_price_kline_qfq")
     inactive_source_code_col = _to_str(inactive_rule.get("kline_stock_code_column"), kline_source_code_col)
 
     recent_codes = {c for (c,) in conn.execute(f"""

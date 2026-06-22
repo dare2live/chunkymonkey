@@ -1,5 +1,7 @@
 kline_checks:
-  source_table: market.price_kline_tdxhub
+  # 2026-06-22 M3 repoint: 审 canonical serving 源 v_price_kline_qfq (tushare-only, 2019+, freq/adjust 合成)
+  # 非 stale 退役源 price_kline_tdxhub (2022+) — audit 必须审实际 serving 的表; 同时解阻 tdxhub drop。
+  source_table: market.v_price_kline_qfq
   freq: daily
   adjust: qfq
   date_column: date
@@ -13,7 +15,7 @@ kline_checks:
     - "30"
     - "60"
     - "68"
-  min_start_date: "2022-01-01"
+  min_start_date: "2019-01-01"   # 2026-06-22 M3: canonical tushare 起点 2019 (旧 2022 是 tdxhub 范围)
   date_range_tolerance_days: 1
   sample_limit: 5
   gap_sample_limit: 8
@@ -57,7 +59,7 @@ cross_table_consistency:
           stock_code_column: stock_code
     - name: inactive_still_trading
       enabled: true
-      kline_source_table: market.price_kline_tdxhub
+      kline_source_table: market.v_price_kline_qfq   # 2026-06-22 M3 repoint canonical (同上)
       kline_date_column: date
       kline_stock_code_column: code
       recent_days: 10
