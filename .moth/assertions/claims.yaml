@@ -191,6 +191,12 @@ assertions:
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM fact_top10_holder_period WHERE report_date LIKE '%-%'"
     expect: {op: "==", value: 0}
+  - id: signal-panel-b-split-parallel
+    claim: "b分表 (用户 2026-06-22 裁决): L2 连续因子 fact_feature_panel 与 事件信号 fact_signal_panel **分两张同键并列 panel** (键 code×date), signal_assembler 同键 JOIN 取(排名因子+公式条件门)。signal_panel 放公式事件(macd_golden_cross 首个, 加公式=加列 invariant#3), 区别于 segment_panel 的 form 态。行数>0=已物化。owner=backend/scripts/build_signal_panel.py + analysis/data_module_toplevel_design_20260622.md §8.0"
+    type: duckdb_sql
+    database: data/feature_store.duckdb
+    query: "SELECT count(*) FROM fact_signal_panel"
+    expect: {op: ">", value: 0}
   - id: dossier-serve-migration-ratchet
     claim: "dossier.py 内联 duck_connect ratchet <=11 (2026-06-22 数据模块 P1 SERVE 读层迁移, 不变量#4 单概念单真相源: dossier 取数全走 services.data_access.DataAccess, 禁内联裸查 raw 表). 进度: 8 loader 已迁(capital/cyq/limits/share_float/block_trade/analyst/benchmark/valuation, 全parity验证), 18→11. 剩 ~10 复杂/leakage敏感 PIT driver 待迁(holders ann_date版本锁/fundamentals latest-per-end_date/sector in-out_date/lhb order敏感/forecast grouping/market_regime聚合). **禁回潮(>11=新增内联裸查违纪)**; 随迁移降基线, →0 时翻硬门 read-no-inline-table. owner=backend/services/dossier.py + analysis/data_module_toplevel_design_20260622.md §4"
     type: shell

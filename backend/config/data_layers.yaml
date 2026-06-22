@@ -132,6 +132,7 @@ tables:
   fact_fund_holding_tdx_f10: L2_feature
   fact_holder_event: L2_feature
   fact_segment_panel: L2_feature          # 2026-06-16 F0 形态/分层面板 (build_segment_panel.py, tushare PIT, stage+range_pos+MACD零轴+board)
+  fact_signal_panel: L2_feature           # 2026-06-22 b分表事件信号面 (build_signal_panel.py, 平行 feature_panel 同键 code×date; 公式事件 macd_golden_cross, 加公式=加列; signal_assembler 同键JOIN feature_panel)
   fact_setup_snapshot: L2_feature
   fact_shareholder_plan: L2_feature
   fact_shareholder_trade: L2_feature
