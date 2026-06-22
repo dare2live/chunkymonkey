@@ -10,6 +10,7 @@ from services.market_db import (
 )
 
 
+# akshare/旧 price_kline 表 (2026-06-22 起不再进 v_price_kline_qfq, 仅作 HS300 指数 allowlist)
 PRICE_KLINE_DDL = """
 CREATE TABLE price_kline (
     code        TEXT NOT NULL,
@@ -30,172 +31,138 @@ CREATE TABLE price_kline (
 """
 
 
-def test_canonical_kline_prefers_tdxhub_and_fills_fallback_gap():
+# tushare qfq 主表 (2026-06-22 起 v_price_kline_qfq 唯一来源; 只存 OHLCV, 视图合成其余列)
+PRICE_KLINE_QFQ_TUSHARE_DDL = """
+CREATE TABLE price_kline_qfq_tushare (
+    code   TEXT NOT NULL,
+    date   TEXT NOT NULL,
+    open   REAL,
+    high   REAL,
+    low    REAL,
+    close  REAL,
+    volume REAL,
+    amount REAL,
+    PRIMARY KEY (code, date)
+);
+"""
+
+
+def _setup(conn):
+    conn.executescript(PRICE_KLINE_DDL)
+    conn.executescript(PRICE_KLINE_TDXHUB_DDL)
+    conn.executescript(PRICE_KLINE_QFQ_TUSHARE_DDL)
+    conn.executescript(CANONICAL_KLINE_QFQ_VIEW_DDL)
+
+
+def test_canonical_kline_reads_tushare_only_ignores_tdxhub_and_akshare():
+    """tushare-only 契约 (2026-06-22): v_price_kline_qfq 只读 price_kline_qfq_tushare;
+    price_kline_tdxhub (qfq 系统性算错) 与 price_kline (akshare) 都不再进视图。"""
     conn = duck_mem()
     try:
-        conn.executescript(PRICE_KLINE_DDL)
-        conn.executescript(PRICE_KLINE_TDXHUB_DDL)
-        conn.executescript(CANONICAL_KLINE_QFQ_VIEW_DDL)
-        conn.executemany(
-            """
-            INSERT INTO price_kline_tdxhub
-            (code, date, freq, adjust, open, high, low, close, volume, amount, source, batch_id, ingested_at)
-            VALUES (?, ?, 'daily', 'qfq', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                ("000001", "2026-05-04", 10, 11, 9, 10.5, 1000, 10500, "tdxhub", "tdx-1", "2026-05-04"),
-            ],
+        _setup(conn)
+        conn.execute(
+            "INSERT INTO price_kline_qfq_tushare VALUES "
+            "('000001', '2026-05-04', 10, 11, 9, 10.5, 1000, 10500)"
         )
-        conn.executemany(
-            """
-            INSERT INTO price_kline
-            (code, date, freq, adjust, open, high, low, close, volume, amount, source, batch_id, ingested_at)
-            VALUES (?, ?, 'daily', 'qfq', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                ("000001", "2026-05-04", 99, 99, 99, 99.0, 9999, 9999, "eastmoney", "fb-1", "2026-05-04"),
-                ("000001", "2026-05-05", 11, 12, 10, 11.5, 1100, 12650, "eastmoney", "fb-2", "2026-05-05"),
-            ],
+        # tdxhub / akshare 行存在但应被视图忽略 (tushare-only)
+        conn.execute(
+            "INSERT INTO price_kline_tdxhub "
+            "(code, date, freq, adjust, open, high, low, close, volume, amount, source, batch_id, ingested_at) "
+            "VALUES ('000001', '2026-05-04', 'daily', 'qfq', 99, 99, 99, 99, 9999, 9999, 'tdxhub', 'tdx-1', '2026-05-04')"
+        )
+        conn.execute(
+            "INSERT INTO price_kline "
+            "(code, date, freq, adjust, open, high, low, close, volume, amount, source, batch_id, ingested_at) "
+            "VALUES ('000001', '2026-05-05', 'daily', 'qfq', 11, 12, 10, 11.5, 1100, 12650, 'eastmoney', 'fb', '2026-05-05')"
         )
 
         rows = conn.execute(
-            """
-            SELECT code, date, close, factor, source_name, source_tier, is_fallback
-              FROM v_price_kline_qfq
-             ORDER BY date
-            """
+            "SELECT code, date, close, factor, source_name, source_tier, is_fallback "
+            "FROM v_price_kline_qfq ORDER BY date"
         ).fetchall()
 
-        assert [tuple(row) for row in rows] == [
-            ("000001", "2026-05-04", 10.5, 1.0, "tdxhub", 1, False),
-            ("000001", "2026-05-05", 11.5, 1.0, "eastmoney", 3, True),
+        # 只有 tushare 行; tdxhub 同键被忽略 (不取其 99 值); akshare 另一天不进视图
+        assert [tuple(r) for r in rows] == [
+            ("000001", "2026-05-04", 10.5, 1.0, "tushare", 1, False),
         ]
     finally:
         conn.close()
 
 
-def test_canonical_kline_uses_fallback_when_tdxhub_primary_price_is_invalid():
+def test_canonical_kline_excludes_invalid_price_rows_no_fallback():
+    """tushare 行 OHLC 非法 → 排除; 且不回退到 akshare (没有备用源)。"""
     conn = duck_mem()
     try:
-        conn.executescript(PRICE_KLINE_DDL)
-        conn.executescript(PRICE_KLINE_TDXHUB_DDL)
-        conn.executescript(CANONICAL_KLINE_QFQ_VIEW_DDL)
+        _setup(conn)
+        # 非法 tushare 行 (close NULL)
         conn.execute(
-            """
-            INSERT INTO price_kline_tdxhub
-            (code, date, freq, adjust, open, high, low, close, volume, amount, source, batch_id, ingested_at)
-            VALUES ('000001', '2026-05-04', 'daily', 'qfq', NULL, NULL, NULL, NULL, NULL, NULL, 'tdxhub', 'tdx-bad', '2026-05-04')
-            """
+            "INSERT INTO price_kline_qfq_tushare VALUES "
+            "('000001', '2026-05-04', NULL, NULL, NULL, NULL, NULL, NULL)"
         )
+        # akshare 有合法行但不应被当兜底
         conn.execute(
-            """
-            INSERT INTO price_kline
-            (code, date, freq, adjust, open, high, low, close, volume, amount, source, batch_id, ingested_at)
-            VALUES ('000001', '2026-05-04', 'daily', 'qfq', 11, 12, 10, 11.5, 1100, 12650, 'eastmoney', 'fb-good', '2026-05-04')
-            """
+            "INSERT INTO price_kline "
+            "(code, date, freq, adjust, open, high, low, close, volume, amount, source, batch_id, ingested_at) "
+            "VALUES ('000001', '2026-05-04', 'daily', 'qfq', 11, 12, 10, 11.5, 1100, 12650, 'eastmoney', 'fb', '2026-05-04')"
         )
 
-        row = conn.execute(
-            """
-            SELECT close, source_name, source_tier, is_fallback
-              FROM v_price_kline_qfq
-             WHERE code = '000001' AND date = '2026-05-04'
-            """
-        ).fetchone()
-
-        assert tuple(row) == (11.5, "eastmoney", 3, True)
+        n = conn.execute(
+            "SELECT COUNT(*) FROM v_price_kline_qfq WHERE code='000001' AND date='2026-05-04'"
+        ).fetchone()[0]
+        assert n == 0  # 非法 tushare 排除 + 无 akshare 兜底 = 该键缺失 (诚实缺口)
     finally:
         conn.close()
 
 
-def test_canonical_kline_uses_fallback_when_tdxhub_volume_amount_are_invalid():
+def test_canonical_kline_excludes_invalid_volume_amount():
+    """tushare 行 volume/amount 退化 (denormal float) → 排除。"""
     conn = duck_mem()
     try:
-        conn.executescript(PRICE_KLINE_DDL)
-        conn.executescript(PRICE_KLINE_TDXHUB_DDL)
-        conn.executescript(CANONICAL_KLINE_QFQ_VIEW_DDL)
+        _setup(conn)
         conn.execute(
-            """
-            INSERT INTO price_kline_tdxhub
-            (code, date, freq, adjust, open, high, low, close, volume, amount, source, batch_id, ingested_at)
-            VALUES ('000001', '2026-05-04', 'daily', 'qfq', 10, 11, 9, 10.5, 5.877471754111438e-39, 5.877471754111438e-39, 'tdxhub', 'tdx-bad', '2026-05-04')
-            """
+            "INSERT INTO price_kline_qfq_tushare VALUES "
+            "('000001', '2026-05-04', 10, 11, 9, 10.5, 5.877471754111438e-39, 5.877471754111438e-39)"
         )
-        conn.execute(
-            """
-            INSERT INTO price_kline
-            (code, date, freq, adjust, open, high, low, close, volume, amount, source, batch_id, ingested_at)
-            VALUES ('000001', '2026-05-04', 'daily', 'qfq', 11, 12, 10, 11.5, 1100, 12650, 'eastmoney', 'fb-good', '2026-05-04')
-            """
-        )
-
-        row = conn.execute(
-            """
-            SELECT close, source_name, source_tier, is_fallback
-              FROM v_price_kline_qfq
-             WHERE code = '000001' AND date = '2026-05-04'
-            """
-        ).fetchone()
-
-        assert tuple(row) == (11.5, "eastmoney", 3, True)
+        n = conn.execute("SELECT COUNT(*) FROM v_price_kline_qfq").fetchone()[0]
+        assert n == 0
     finally:
         conn.close()
 
 
-def test_canonical_kline_excludes_invalid_fallback_price_rows():
+def test_canonical_kline_excludes_invalid_ohlc_consistency():
+    """tushare 行 high<low 类不自洽 → 排除。"""
     conn = duck_mem()
     try:
-        conn.executescript(PRICE_KLINE_DDL)
-        conn.executescript(PRICE_KLINE_TDXHUB_DDL)
-        conn.executescript(CANONICAL_KLINE_QFQ_VIEW_DDL)
+        _setup(conn)
+        # high(8) < low(10) 不自洽
         conn.execute(
-            """
-            INSERT INTO price_kline
-            (code, date, freq, adjust, open, high, low, close, volume, amount, source, batch_id, ingested_at)
-            VALUES ('000001', '2026-05-04', 'daily', 'qfq', 0, 12, 10, 11.5, 1100, 12650, 'eastmoney', 'fb-bad', '2026-05-04')
-            """
+            "INSERT INTO price_kline_qfq_tushare VALUES "
+            "('000001', '2026-05-04', 9, 8, 10, 9.5, 1000, 9500)"
         )
-
-        row = conn.execute("SELECT COUNT(*) FROM v_price_kline_qfq").fetchone()
-
-        assert row[0] == 0
+        n = conn.execute("SELECT COUNT(*) FROM v_price_kline_qfq").fetchone()[0]
+        assert n == 0
     finally:
         conn.close()
 
 
 def test_tdxhub_upsert_rejects_invalid_rows_and_records_monitor_evidence():
+    """tdxhub upsert 函数 (退役中, 仍守数据质量门): 拒非法行 + 写 monitor 证据。
+    注: 写的是 price_kline_tdxhub 表, 不再进 v_price_kline_qfq (tushare-only)。"""
     conn = duck_mem()
     try:
-        conn.executescript(PRICE_KLINE_DDL)
-        conn.executescript(PRICE_KLINE_TDXHUB_DDL)
-        conn.executescript(CANONICAL_KLINE_QFQ_VIEW_DDL)
+        _setup(conn)
 
         written = upsert_price_kline_tdxhub_rows(
             conn,
             [
                 {
-                    "code": "000001",
-                    "date": "2026-05-04",
-                    "freq": "daily",
-                    "adjust": "qfq",
-                    "open": 10,
-                    "high": 11,
-                    "low": 9,
-                    "close": 10.5,
-                    "volume": 10,
-                    "amount": 10500,
+                    "code": "000001", "date": "2026-05-04", "freq": "daily", "adjust": "qfq",
+                    "open": 10, "high": 11, "low": 9, "close": 10.5, "volume": 10, "amount": 10500,
                 },
                 {
-                    "code": "000002",
-                    "date": "2026-05-04",
-                    "freq": "daily",
-                    "adjust": "qfq",
-                    "open": 20,
-                    "high": 21,
-                    "low": 19,
-                    "close": 20.5,
-                    "volume": 5.877471754111438e-39,
-                    "amount": 5.877471754111438e-39,
+                    "code": "000002", "date": "2026-05-04", "freq": "daily", "adjust": "qfq",
+                    "open": 20, "high": 21, "low": 19, "close": 20.5,
+                    "volume": 5.877471754111438e-39, "amount": 5.877471754111438e-39,
                 },
             ],
             source="tdxhub",
@@ -204,19 +171,12 @@ def test_tdxhub_upsert_rejects_invalid_rows_and_records_monitor_evidence():
 
         row = conn.execute("SELECT COUNT(*) FROM price_kline_tdxhub").fetchone()
         monitor = conn.execute(
-            """
-            SELECT rejected_rows, reason_counts_json
-              FROM mart_data_processing_tool_run
-             WHERE output_table = 'price_kline_tdxhub'
-            """
+            "SELECT rejected_rows, reason_counts_json FROM mart_data_processing_tool_run "
+            "WHERE output_table = 'price_kline_tdxhub'"
         ).fetchone()
         issues = conn.execute(
-            """
-            SELECT reason_code, sample_rows_json
-              FROM mart_data_processing_tool_issue
-             WHERE affected_table = 'price_kline_tdxhub'
-             ORDER BY reason_code
-            """
+            "SELECT reason_code, sample_rows_json FROM mart_data_processing_tool_issue "
+            "WHERE affected_table = 'price_kline_tdxhub' ORDER BY reason_code"
         ).fetchall()
 
         assert written == 1
@@ -252,67 +212,49 @@ def test_canonical_daily_qfq_sql_uses_single_policy_relation_and_optional_lineag
     assert "COALESCE(is_fallback, FALSE) AS is_fallback" in sql
 
 
-def test_tdxhub_upsert_writes_primary_table_for_canonical_reads():
+def test_tdxhub_upsert_writes_table_but_not_canonical_view():
+    """tushare-only 契约 (2026-06-22): tdxhub upsert 仍写 price_kline_tdxhub 表,
+    但 v_price_kline_qfq 已切 tushare-only → tdxhub 行不再出现在 canonical 视图。
+    旧契约 (tdxhub=canonical primary) 已废 — 因 tdxhub qfq 系统性算错。"""
     conn = duck_mem()
     try:
-        conn.executescript(PRICE_KLINE_DDL)
-        conn.executescript(PRICE_KLINE_TDXHUB_DDL)
-        conn.executescript(CANONICAL_KLINE_QFQ_VIEW_DDL)
-        conn.execute(
-            """
-            INSERT INTO price_kline
-            (code, date, freq, adjust, open, high, low, close, volume, amount, source, batch_id, ingested_at)
-            VALUES ('000001', '2026-05-04', 'daily', 'qfq', 1, 1, 1, 1, 1, 1, 'eastmoney', 'fb', '2026-05-04')
-            """
-        )
+        _setup(conn)
 
         written = upsert_price_kline_tdxhub_rows(
             conn,
             [
                 {
-                    "code": "000001",
-                    "date": "2026-05-04",
-                    "freq": "daily",
-                    "adjust": "qfq",
-                    "open": 10,
-                    "high": 11,
-                    "low": 9,
-                    "close": 10.5,
-                    "volume": 10,
-                    "amount": 10500,
-                    "factor": 1.0,
+                    "code": "000001", "date": "2026-05-04", "freq": "daily", "adjust": "qfq",
+                    "open": 10, "high": 11, "low": 9, "close": 10.5,
+                    "volume": 10, "amount": 10500, "factor": 1.0,
                 }
             ],
             source="tdxhub_incremental",
             batch_id="tdx-inc",
         )
 
-        row = conn.execute(
-            """
-            SELECT close, factor, source_name, source_tier, is_fallback
-              FROM v_price_kline_qfq
-             WHERE code = '000001' AND date = '2026-05-04'
-            """
-        ).fetchone()
         primary = conn.execute(
             "SELECT close, source, batch_id FROM price_kline_tdxhub"
         ).fetchone()
+        in_view = conn.execute(
+            "SELECT COUNT(*) FROM v_price_kline_qfq WHERE code='000001' AND date='2026-05-04'"
+        ).fetchone()[0]
 
         assert written == 1
-        assert tuple(row) == (10.5, 1.0, "tdxhub_incremental", 1, False)
         assert tuple(primary) == (10.5, "tdxhub_incremental", "tdx-inc")
+        assert in_view == 0  # tushare-only: tdxhub 行不进视图
     finally:
         conn.close()
 
 
 def test_upsert_price_rows_rejects_non_allowlist_source_governance_v1():
     """governance v1: price_kline 主表 retired except hs300 allowlist.
-    
+
     from yaml: configs/data_governance.yaml schema_contracts.price_kline.allowed_sources
     """
     import pytest
     from services.market_db import upsert_price_rows
-    
+
     conn = duck_mem()
     try:
         conn.executescript(PRICE_KLINE_DDL)

@@ -191,3 +191,9 @@ assertions:
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM fact_top10_holder_period WHERE report_date LIKE '%-%'"
     expect: {op: "==", value: 0}
+  - id: kline-canonical-tushare-only
+    claim: "v_price_kline_qfq 切 tushare-only (2026-06-22 切主源根因修复 真相源唯一): 旧 tier-1=price_kline_tdxhub 的 qfq 系统性算错 (把复权因子当后复权式乘数抬高分红股历史价, 实测茅台/比亚迪 raw*adj_factor/latest 重建证 tushare对/tdxhub错, 分叉随adj_factor放大最高89%). tushare(2019+/5431股) 严格超集 tdxhub(2022+/5210股). 用户'没有备用源只有tushare' → 去 akshare/tdxhub fallback. >0 非tushare行 = 残留回潮. owner=backend/services/market_schema.py"
+    type: duckdb_sql
+    database: data/market.duckdb
+    query: "SELECT count(*) FROM v_price_kline_qfq WHERE source_name <> 'tushare'"
+    expect: {op: "==", value: 0}

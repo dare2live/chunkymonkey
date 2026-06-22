@@ -126,29 +126,36 @@ CREATE INDEX IF NOT EXISTS idx_pkt_adj_code_date
 """
 
 
+# v_price_kline_qfq 切 tushare-only (2026-06-22 切主源根因修复, 真相源唯一):
+#   旧 tier-1=price_kline_tdxhub 的 qfq 系统性算错 (把复权因子当后复权式乘数抬高分红股历史价,
+#   实测茅台/比亚迪 raw*adj_factor/latest 重建证 tushare 对 / tdxhub 错, 分叉随 adj_factor 放大最高 89%).
+#   price_kline_qfq_tushare = 标准前复权, 覆盖 2019+/5431股 = tdxhub(2022+/5210股) 严格超集.
+#   tushare qfq 表只存 OHLCV → 视图合成 freq/adjust/factor/source/batch_id/ingested_at.
+#   "没有备用源只有tushare"(用户 2026-06-22): 去掉 akshare/tdxhub fallback tier — 错 qfq 兜底=qfq
+#   不连续假尖峰 (比缺口有害); 诚实缺口 > 错值 (mio: unknown > 假填). 仅 427行/55股 真缺口待从 raw 补.
+# 注: SQL 串内禁用 -- 注释 (duck_adapter.executescript 的 _split_statements 会在注释处截断语句).
 CANONICAL_KLINE_QFQ_VIEW_DDL = """
 CREATE OR REPLACE VIEW v_price_kline_qfq AS
 WITH primary_rows AS (
     SELECT
         code,
         date,
-        freq,
-        adjust,
+        'daily' AS freq,
+        'qfq' AS adjust,
         open,
         high,
         low,
         close,
         volume,
         amount,
-        COALESCE(factor, 1.0) AS factor,
-        COALESCE(NULLIF(source, ''), 'tdxhub') AS source_name,
+        1.0 AS factor,
+        'tushare' AS source_name,
         1::SMALLINT AS source_tier,
         FALSE AS is_fallback,
-        batch_id,
-        ingested_at
-    FROM price_kline_tdxhub
-    WHERE freq = 'daily' AND adjust = 'qfq'
-      AND open IS NOT NULL AND open > 0
+        CAST(NULL AS VARCHAR) AS batch_id,
+        CAST(NULL AS TIMESTAMP) AS ingested_at
+    FROM price_kline_qfq_tushare
+    WHERE open IS NOT NULL AND open > 0
       AND high IS NOT NULL AND high > 0
       AND low IS NOT NULL AND low > 0
       AND close IS NOT NULL AND close > 0
@@ -156,48 +163,8 @@ WITH primary_rows AS (
       AND amount IS NOT NULL AND amount >= 1e-6
       AND high >= open AND high >= close AND high >= low
       AND low <= open AND low <= close AND low <= high
-),
-fallback_rows AS (
-    SELECT
-        f.code,
-        f.date,
-        f.freq,
-        f.adjust,
-        f.open,
-        f.high,
-        f.low,
-        f.close,
-        f.volume,
-        f.amount,
-        1.0 AS factor,
-        COALESCE(NULLIF(f.source, ''), 'akshare_multi_source') AS source_name,
-        3::SMALLINT AS source_tier,
-        TRUE AS is_fallback,
-        f.batch_id,
-        f.ingested_at
-    FROM price_kline f
-    WHERE f.freq = 'daily'
-      AND f.adjust = 'qfq'
-      AND f.open IS NOT NULL AND f.open > 0
-      AND f.high IS NOT NULL AND f.high > 0
-      AND f.low IS NOT NULL AND f.low > 0
-      AND f.close IS NOT NULL AND f.close > 0
-      AND f.volume IS NOT NULL AND f.volume >= 1e-6
-      AND f.amount IS NOT NULL AND f.amount >= 1e-6
-      AND f.high >= f.open AND f.high >= f.close AND f.high >= f.low
-      AND f.low <= f.open AND f.low <= f.close AND f.low <= f.high
-      AND NOT EXISTS (
-          SELECT 1
-          FROM primary_rows p
-          WHERE p.code = f.code
-            AND p.date = f.date
-            AND p.freq = f.freq
-            AND p.adjust = f.adjust
-      )
 )
 SELECT * FROM primary_rows
-UNION ALL
-SELECT * FROM fallback_rows
 """
 
 
