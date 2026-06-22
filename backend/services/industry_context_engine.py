@@ -176,7 +176,7 @@ def build_stock_industry_context(conn, snapshot_date: Optional[str] = None) -> i
     ensure_tables(conn)
     snapshot_date = snapshot_date or _latest_closed()  # Phase ψ.5: calendar-gated
     now = datetime.now().isoformat()
-    recent_cutoff = (date.today() - timedelta(days=180)).strftime("%Y%m%d")
+    recent_cutoff = (date.today() - timedelta(days=180)).strftime("%Y%m%d")  # rule-compliance: ok evidence=行业context源180日历天recency窗
 
     sector_by_name = {}
     try:

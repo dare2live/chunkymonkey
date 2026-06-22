@@ -98,7 +98,7 @@ def latest_trading_day(conn: Any, *, as_of_date: str | None = None) -> str | Non
         filters.append(f"CAST({date_col} AS DATE) <= CAST(? AS DATE)")
         params = (as_of_date,)
     else:
-        filters.append(f"CAST({date_col} AS DATE) <= CURRENT_DATE")
+        filters.append(f"CAST({date_col} AS DATE) <= CURRENT_DATE")  # rule-compliance: ok evidence=展示读过滤未来行(UI watermark, 非交易决策)
     where = "WHERE " + " AND ".join(filters) if filters else ""
     return _scalar(conn, f"SELECT CAST(MAX({date_col}) AS VARCHAR) FROM dim_trading_calendar {where}", params)
 

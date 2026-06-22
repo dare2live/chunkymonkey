@@ -136,7 +136,7 @@ async def get_holdings(model_id: str = Query("paper_v1")):
             ret_pct = (cur_close / float(open_price) - 1) if open_price else 0.0
             from datetime import date as _date
             try:
-                hd = (_date.today() - _date.fromisoformat(open_date)).days
+                hd = (_date.today() - _date.fromisoformat(open_date)).days  # rule-compliance: ok evidence=持仓天数展示(日历天), 非PIT决策锚
             except Exception:
                 hd = 0
             data.append({
@@ -254,7 +254,7 @@ async def get_pl_attr(window: int = Query(30, ge=1, le=365), model_id: str = Que
         if not _table_exists(conn, "fact_paper_position"):
             return {"ok": True, "data": {"by_formula": []}}
         from datetime import date as _date, timedelta
-        cutoff = (_date.today() - timedelta(days=window)).isoformat()
+        cutoff = (_date.today() - timedelta(days=window)).isoformat()  # rule-compliance: ok evidence=PnL归因展示窗(日历天), 非PIT锚
         rows = conn.execute(
             """
             SELECT COALESCE(reason, 'unknown') AS k, SUM(notional * gross_return) AS pnl

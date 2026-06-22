@@ -246,7 +246,7 @@ def ensure_tables(conn):
 def _load_price_history(mkt_conn, codes: list[str], since_days: int = 420) -> dict[str, list[dict]]:
     history = {code: [] for code in codes}
     chunk_size = 400
-    cutoff = (date.today() - timedelta(days=since_days)).strftime("%Y-%m-%d")
+    cutoff = (date.today() - timedelta(days=since_days)).strftime("%Y-%m-%d")  # rule-compliance: ok evidence=K线载史窗(since_days日历天, 决策锚另由end参数)
     for idx in range(0, len(codes), chunk_size):
         chunk = codes[idx:idx + chunk_size]
         placeholders = ",".join("?" for _ in chunk)

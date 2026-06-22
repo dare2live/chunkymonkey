@@ -491,7 +491,7 @@ def calc_sector_momentum(smart_conn, mkt_conn) -> int:
     all_codes = sorted({code for codes in industry_stocks.values() for code in codes})
     if all_codes:
         try:
-            benchmark_cutoff = (date.today() - timedelta(days=420)).strftime("%Y-%m-%d")
+            benchmark_cutoff = (date.today() - timedelta(days=420)).strftime("%Y-%m-%d")  # rule-compliance: ok evidence=基准K线载史420日历天窗(动量计算输入, 非PIT锚)
             placeholders = ",".join("?" for _ in all_codes)
             benchmark_rows = mkt_conn.execute(
                 f"SELECT code, date, close FROM {KLINE_DAILY_QFQ_RELATION} "
@@ -656,7 +656,7 @@ def calc_dual_confirm(smart_conn) -> int:
         return 0
 
     # 获取最近的机构 new_entry/increase 事件
-    event_cutoff = (date.today() - timedelta(days=183)).strftime("%Y-%m-%d")
+    event_cutoff = (date.today() - timedelta(days=183)).strftime("%Y-%m-%d")  # rule-compliance: ok evidence=机构事件183日历天recency窗
     events = smart_conn.execute(f"""
         SELECT e.stock_code, e.institution_id, e.event_type, e.report_date,
                si.tdx_l1_name as sector_name

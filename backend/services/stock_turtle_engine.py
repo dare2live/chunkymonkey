@@ -41,7 +41,7 @@ def _dist_pct(close_price: Optional[float], level: Optional[float]) -> Optional[
 def _load_price_history(mkt_conn, codes: list[str], since_days: int = 320) -> dict[str, list[dict]]:
     history = {code: [] for code in codes}
     chunk_size = 400
-    cutoff = (date.today() - timedelta(days=since_days)).strftime("%Y-%m-%d")
+    cutoff = (date.today() - timedelta(days=since_days)).strftime("%Y-%m-%d")  # rule-compliance: ok evidence=K线载史窗(since_days日历天)
     for idx in range(0, len(codes), chunk_size):
         chunk = codes[idx:idx + chunk_size]
         placeholders = ",".join("?" for _ in chunk)

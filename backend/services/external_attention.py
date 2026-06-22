@@ -332,7 +332,7 @@ def _aggregate_survey_snapshot(rows: list[dict]) -> dict[str, dict]:
     if not rows:
         return {}
 
-    today = date.today()
+    today = date.today()  # rule-compliance: ok evidence=关注度快照now(akshare日频外部关注度, 非PIT交易锚)
     cutoff_30 = today - timedelta(days=30)
     cutoff_90 = today - timedelta(days=90)
     results = {}
@@ -390,7 +390,7 @@ def sync_external_attention_snapshot(conn) -> int:
     snapshot_date = _latest_closed()  # Phase ψ.5: calendar-gated
     now = datetime.now().isoformat()
     stock_name_map = _load_stock_name_map(conn)
-    survey_start = (date.today() - timedelta(days=90)).strftime("%Y%m%d")
+    survey_start = (date.today() - timedelta(days=90)).strftime("%Y%m%d")  # rule-compliance: ok evidence=akshare调研抓取90日历天窗(数据获取范围, 非PIT锚)
 
     comment_map = _normalize_comment_snapshot(_call_akshare_records("stock_comment_em"))
     survey_map = _aggregate_survey_snapshot(_call_akshare_records("stock_jgdy_tj_em", date=survey_start))
@@ -578,7 +578,7 @@ def _summarize_research_reports(rows: list[dict]) -> dict:
             "monthly_report_count_hint": None,
         }
 
-    today = date.today()
+    today = date.today()  # rule-compliance: ok evidence=关注度快照now(akshare日频外部关注度, 非PIT交易锚)
     cutoff_30 = today - timedelta(days=30)
     cutoff_90 = today - timedelta(days=90)
     rating_counter = Counter()

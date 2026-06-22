@@ -168,7 +168,7 @@ def main() -> int:
     parser.add_argument("--market-db", default=str(DEFAULT_MARKET_DB))
     args = parser.parse_args()
 
-    today = date.today()
+    today = date.today()  # rule-compliance: ok evidence=SLA staleness age 度量(对wall-clock计天龄, 非交易决策)
     log.info(f"=== watermark SLA check @ {today} ===")
 
     smart_conn = duck_connect(args.smartmoney_db, read_only=False)  # need write

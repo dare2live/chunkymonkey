@@ -213,3 +213,8 @@ assertions:
     type: shell
     command: ["bash", "-c", "PYTHONPATH=backend python backend/scripts/check_serve_read_layer.py >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}
+  - id: calendar-usage-clean
+    claim: "交易日历强制使用门全绿 (2026-06-22 P1 升硬门, 第零条规定与 universe 同档执法): check_calendar_usage.py 全量 0 内联绕过交易日历真相源 — B1 wall-clock(date.today/datetime.now)当最新交易日 / B2 SQL CURRENT_DATE-INTERVAL 日历天cutoff / B3 SQL <=CURRENT_DATE 上界锚, 豁免 import services.calendar / `rule-compliance: ok evidence=`合法日历天窗口。真 PIT 锚已修(signals_v2/dossier/events as_of 走 latest_closed_or_raise); 18 合法窗口(载史/recency/展示/SLA-age/provenance)已 evidence。wired safe_commit Step3.95 --strict。>0=新增绕过/回潮。owner=backend/scripts/check_calendar_usage.py"
+    type: shell
+    command: ["bash", "-c", "PYTHONPATH=backend python backend/scripts/check_calendar_usage.py --strict >/dev/null 2>&1 && echo 0 || echo 1"]
+    expect: {op: "<=", value: 0}

@@ -162,6 +162,20 @@ else
     exit 5
 fi
 
+# 3.95 交易日历强制使用门 (2026-06-22 P1 升硬门, 第零条规定与 universe 同档执法):
+# 拦内联绕过交易日历真相源 (wall-clock 当最新/SQL CURRENT_DATE 上界锚); 合法日历天窗口加 evidence 注释。
+echo
+echo "=== Step 3.95: calendar-usage gate (交易日历强制使用) ==="
+if PYTHONPATH=backend python backend/scripts/check_calendar_usage.py --staged --strict; then
+    echo "[calendar-usage] PASS"
+else
+    echo
+    echo "ERROR: 交易日历强制使用门红 — 内联 wall-clock(date.today/datetime.now)当最新交易日 或 SQL <=CURRENT_DATE 上界锚。"
+    echo "正解: services.calendar.latest_closed_or_raise (交易日历真相源); 合法日历天窗口加 # rule-compliance: ok evidence=。"
+    echo "误报修 check_calendar_usage.py 本身, 不 --no-verify 绕。"
+    exit 5
+fi
+
 # 4. Commit message keyword check (manual preview)
 echo
 echo "=== Step 4: commit message keyword ==="

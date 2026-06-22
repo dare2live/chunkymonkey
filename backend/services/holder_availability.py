@@ -209,7 +209,7 @@ def backfill_future_holder_period_page_update_availability(conn) -> dict:
         AND length({page_norm}) = 8
         AND length({report_norm}) = 8
         AND {page_norm} >= {report_norm}
-        AND TRY_CAST({page_iso} AS DATE) <= CURRENT_DATE
+        AND TRY_CAST({page_iso} AS DATE) <= CURRENT_DATE  -- rule-compliance: ok evidence=数据可得性过滤(页面fetched<=now), provenance非交易PIT锚
         AND TRY_CAST({notice_iso} AS DATE) > CURRENT_DATE
     """
     before = conn.execute(
@@ -297,7 +297,7 @@ def backfill_future_holder_period_fetched_at_availability(conn) -> dict:
         AND length({fetched_norm}) = 8
         AND length({report_norm}) = 8
         AND {fetched_norm} >= {report_norm}
-        AND TRY_CAST({fetched_iso} AS DATE) <= CURRENT_DATE
+        AND TRY_CAST({fetched_iso} AS DATE) <= CURRENT_DATE  -- rule-compliance: ok evidence=数据可得性过滤(fetched<=now), provenance非交易PIT锚
         AND TRY_CAST({notice_iso} AS DATE) > CURRENT_DATE
     """
     before = conn.execute(

@@ -146,7 +146,7 @@ def latest_plannable_report_date(today: Optional[date] = None) -> Optional[str]:
 
     规则：今天距离季度末至少 QFII_NOTICE_LAG_DAYS 天才认为足量披露。
     """
-    today = today or date.today()
+    today = today or date.today()  # rule-compliance: ok evidence=qfii季报抓取默认now(季度数据获取)
     cutoff = today - timedelta(days=QFII_NOTICE_LAG_DAYS)
     latest = None
     for year in (cutoff.year, cutoff.year - 1):
