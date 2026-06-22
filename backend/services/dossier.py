@@ -265,21 +265,12 @@ def load_fundamentals(code: str, as_of: str | None = None) -> dict | None:
     取 ann_date <= as_of 的最近一期 (ann_date DESC, end_date DESC); roe_yearly 年化(跨报告期可比)。
     """
     ts = code_to_ts_code(code)
-    asof = as_of.replace("-", "") if as_of else None
-    where = "ts_code = ?" + (" AND ann_date <= ?" if asof else "")
-    args = [ts] + ([asof] if asof else [])
-    c = duck_connect(RAW_DB, read_only=True)
-    try:
-        row = c.execute(
-            f"SELECT end_date, roe, roe_yearly, netprofit_yoy, or_yoy, grossprofit_margin, debt_to_assets "
-            f"FROM raw_tushare_fina_indicator WHERE {where} ORDER BY ann_date DESC, end_date DESC LIMIT 1",
-            args).fetchone()
-    finally:
-        c.close()
-    if not row:
-        return None
     keys = ["end_date", "roe", "roe_yearly", "netprofit_yoy", "or_yoy", "grossprofit_margin", "debt_to_assets"]
-    return dict(zip(keys, row))
+    rows = get_data_access().get("fundamentals", codes=[code], as_of=as_of).rows  # ann_date≤asof PIT (锚公告日)
+    if not rows:
+        return None
+    best = max(rows, key=lambda r: (r["ann_date"], r["end_date"]))   # 原 ORDER BY ann_date DESC, end_date DESC LIMIT 1
+    return {k: best[k] for k in keys}
 
 
 def load_forecast(code: str, as_of: str | None = None) -> dict | None:
@@ -288,26 +279,18 @@ def load_forecast(code: str, as_of: str | None = None) -> dict | None:
     实测 18 股-期 同 (ts,end,ann) 携冲突 type (如 002141 同日 略减-36% vs 预增+636%), ORDER BY 无决胜键 →
     取行非确定性 (表重建即翻方向)。修: 最新 (ann_date,end_date) 组若多 type 自相矛盾 → 不伪造方向, 标"存疑"。
     """
-    ts = code_to_ts_code(code)
-    asof = as_of.replace("-", "") if as_of else None
-    where = "ts_code = ?" + (" AND ann_date <= ?" if asof else "")
-    args = [ts] + ([asof] if asof else [])
     keys = ["type", "p_change_min", "p_change_max", "end_date", "ann_date"]
-    c = duck_connect(RAW_DB, read_only=True)
-    try:
-        rows = c.execute(
-            f"SELECT type, p_change_min, p_change_max, end_date, ann_date FROM raw_tushare_forecast "
-            f"WHERE {where} ORDER BY ann_date DESC, end_date DESC", args).fetchall()
-    finally:
-        c.close()
+    rows = get_data_access().get("forecast", codes=[code], as_of=as_of).rows  # ann_date≤asof PIT (锚公告日)
     if not rows:
         return None
-    top_ann, top_end = rows[0][4], rows[0][3]                     # 最新公告日 + 报告期组
-    group = [r for r in rows if r[4] == top_ann and r[3] == top_end]
-    if len({r[0] for r in group}) > 1:                           # evidence: 实测18股-期同日多type矛盾 → 上游自相矛盾不伪造方向(中性)
+    top_ann = max(r["ann_date"] for r in rows)                   # 最新公告日 (原 ORDER BY ann_date DESC)
+    top_end = max(r["end_date"] for r in rows if r["ann_date"] == top_ann)   # 该公告日最新报告期组
+    group = [r for r in rows if r["ann_date"] == top_ann and r["end_date"] == top_end]
+    if len({r["type"] for r in group}) > 1:                      # evidence: 实测18股-期同日多type矛盾 → 上游自相矛盾不伪造方向(中性)
         return {"type": "存疑(同日多版本)", "p_change_min": None, "p_change_max": None,
                 "end_date": top_end, "ann_date": top_ann}
-    return dict(zip(keys, group[0]))
+    g0 = group[0]
+    return {k: g0[k] for k in keys}
 
 
 def load_valuation(code: str, as_of: str | None = None) -> tuple[dict | None, list, list]:

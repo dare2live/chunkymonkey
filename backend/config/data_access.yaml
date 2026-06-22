@@ -137,3 +137,27 @@ entities:
     columns: [ts_code, report_date, rating, tp]
     vendor: tushare
     available_after: ann_date
+
+  fundamentals:
+    # 财报指标 (PIT 锚=ann_date 公告日, **非 end_date 期末** = leakage 红线 mythos§3a; end_date 报告期仅排序用)
+    db: tushare_raw
+    table: raw_tushare_fina_indicator
+    layer: L0
+    code_col: ts_code
+    asof_col: ann_date
+    asof_format: yyyymmdd
+    columns: [ts_code, ann_date, end_date, roe, roe_yearly, netprofit_yoy, or_yoy, grossprofit_margin, debt_to_assets]
+    vendor: tushare
+    available_after: ann_date
+
+  forecast:
+    # 业绩预告 (前瞻 PEAD; PIT 锚=ann_date 公告日; 修订=新 ann_date 胜)
+    db: tushare_raw
+    table: raw_tushare_forecast
+    layer: L0
+    code_col: ts_code
+    asof_col: ann_date
+    asof_format: yyyymmdd
+    columns: [ts_code, ann_date, end_date, type, p_change_min, p_change_max]
+    vendor: tushare
+    available_after: ann_date
