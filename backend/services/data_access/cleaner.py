@@ -14,8 +14,8 @@ def clean_rows(spec: EntitySpec, columns: list[str], rows: list[tuple]) -> list[
     out: list[dict] = []
     for r in rows:
         d = dict(zip(columns, r))
-        # 主键归一: ts_code → 6 位 (项目内部统一口径)
-        if spec.code_is_ts and spec.code_col in d and d[spec.code_col] is not None:
+        # 主键归一: ts_from_plain 模式 ts_code→6位 (项目内部统一口径); ts_passthrough(指数)/plain 保持
+        if spec.code_mode == "ts_from_plain" and spec.code_col in d and d[spec.code_col] is not None:
             d[spec.code_col] = ts_code_to_code(d[spec.code_col])
         # asof 锚归一: YYYYMMDD → ISO (与决策日同口径)
         if spec.asof_col in d and d[spec.asof_col] is not None:

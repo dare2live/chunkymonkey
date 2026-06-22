@@ -99,6 +99,19 @@ def test_preflight_schema_drift_raises():
         assert "preflight" in str(e) and "kline_qfq" in str(e)
 
 
+def test_index_ts_passthrough_no_conversion():
+    """不变量#1: code_input=ts_passthrough 指数码 000300.SH 直用不转 (code_to_ts_code 股票前缀规则对指数无效)。"""
+    c = duck_mem()
+    c.executescript("CREATE TABLE raw_tushare_index_daily (ts_code TEXT, trade_date TEXT, close REAL);")
+    c.executemany("INSERT INTO raw_tushare_index_daily VALUES (?,?,?)",
+                  [("000300.SH", "20260504", 3800.0), ("000300.SH", "20260505", 3820.0)])
+    da = DataAccess()
+    res = da.get("index_daily", codes=["000300.SH"], as_of="2026-05-05", conn=c)
+    assert len(res.rows) == 2
+    assert res.rows[0]["ts_code"] == "000300.SH"   # passthrough: 指数码保持不归一 6 位
+    assert res.rows[-1]["trade_date"] == "2026-05-05"  # asof 仍归一 ISO
+
+
 def test_registry_loads_core_entities():
     reg = load_registry()
     for e in ("kline_qfq", "moneyflow", "valuation", "index_daily"):

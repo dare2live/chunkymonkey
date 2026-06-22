@@ -31,8 +31,8 @@ class GenericDriver:
         where: list[str] = []
         params: list = []
         if codes:
-            # 输入统一 6 位; ts_code 列需转换后过滤
-            vals = [code_to_ts_code(x) for x in codes] if spec.code_is_ts else list(codes)
+            # 主键模式 (不变量#1): ts_from_plain 6位→ts_code; plain/ts_passthrough 直用 (指数码不转)
+            vals = [code_to_ts_code(x) for x in codes] if spec.code_mode == "ts_from_plain" else list(codes)
             where.append(f"{spec.code_col} IN ({','.join('?' for _ in vals)})")
             params.extend(vals)
         asof_sql, asof_params = asof_clause(spec, as_of, start)

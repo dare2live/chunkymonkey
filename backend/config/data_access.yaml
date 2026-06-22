@@ -59,6 +59,7 @@ entities:
     table: raw_tushare_index_daily
     layer: L0
     code_col: ts_code
+    code_input: ts_passthrough   # 指数码 000300.SH 直用 (code_to_ts_code 股票前缀规则对指数无效)
     asof_col: trade_date
     asof_format: yyyymmdd
     columns: [ts_code, trade_date, close]

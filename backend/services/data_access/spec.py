@@ -24,11 +24,16 @@ class EntitySpec:
     available_after: str = "eod"
     taxonomy_version: str | None = None
     compute_fn: str | None = None   # None = 厂商现成 (raw entity); 非空 = 派生
+    code_input: str = ""            # plain | ts_from_plain | ts_passthrough; 空=按 code_col 推断
 
     @property
-    def code_is_ts(self) -> bool:
-        """code_col 为 ts_code → 输入按 ts_code 过滤, 输出归一 6 位。"""
-        return self.code_col == "ts_code"
+    def code_mode(self) -> str:
+        """主键模式 (不变量#1): plain(6位直用) / ts_from_plain(6位→ts_code过滤,输出归6位) /
+        ts_passthrough(指数码 000300.SH 直用不转, code_to_ts_code 股票前缀规则对指数无效)。
+        """
+        if self.code_input:
+            return self.code_input
+        return "ts_from_plain" if self.code_col == "ts_code" else "plain"
 
     def provenance(self, as_of: str | None) -> dict[str, Any]:
         """携带溯源信封 (血缘 per-entity 面, 非 per-row)。"""
@@ -76,5 +81,6 @@ def load_registry(path: str | Path | None = None) -> AccessRegistry:
             available_after=e.get("available_after", "eod"),
             taxonomy_version=e.get("taxonomy_version"),
             compute_fn=e.get("compute_fn"),
+            code_input=e.get("code_input", ""),
         )
     return AccessRegistry(entities=ents, clean_rules=raw.get("clean_rules") or {})

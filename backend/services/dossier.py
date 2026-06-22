@@ -204,18 +204,8 @@ def _top10_tdx(code: str, as_of: str | None = None) -> dict | None:
 
 def load_benchmark(ts_code: str) -> dict:
     """基准指数日线 (RS 用; 如 HS300 000300.SH) → {date_iso: close}。"""
-    c = duck_connect(RAW_DB, read_only=True)
-    try:
-        rows = c.execute("SELECT trade_date, close FROM raw_tushare_index_daily WHERE ts_code = ? ORDER BY trade_date",
-                         [ts_code]).fetchall()
-    finally:
-        c.close()
-    out = {}
-    for td, cl in rows:
-        td = str(td)
-        iso = f"{td[:4]}-{td[4:6]}-{td[6:8]}" if (len(td) == 8 and "-" not in td) else td
-        out[iso] = cl
-    return out
+    rows = get_data_access().get("index_daily", codes=[ts_code]).rows  # ts_passthrough 指数码直用; trade_date 归一 ISO
+    return {r["trade_date"]: r["close"] for r in rows}
 
 
 def load_sector_membership(code: str, as_of: str | None = None) -> dict:
