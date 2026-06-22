@@ -295,6 +295,18 @@ if [[ "$SKIP_SYNC" == "0" && "$DRY" == "0" ]]; then
         >> "$LOG" 2>&1 || step_degraded "sync_registry drain 有残余缺口或域错误 (见 log)"
 fi
 
+# Step 2.96: 构建 canonical 前复权 K线 (serving 真相源 price_kline_qfq_tushare)
+# 根因修复 (2026-06-22 M3): M1 serving 切了 price_kline_qfq_tushare 但其 build (raw_tushare_daily
+# × adj_factor → qfq) 从未接进 daily_update (sync_registry daily 域注释自承"消费链切换是独立大手术
+# 须review, 本批先 raw 落库双轨")→ serving K线只靠手动重建会 stale。此步在 2.95 raw sync 后全量
+# rebuild (qfq 因 latest-adj rebase 须全量, DuckDB CTAS 秒级), 把 serving K线纳入每日刷新。
+# 必在 2.97 watermark 刷新前 (否则水位反映不出新 K线)。
+if [[ "$SKIP_SYNC" == "0" && "$DRY" == "0" ]]; then
+    log "--- Step 2.96: build canonical qfq K线 (price_kline_qfq_tushare, serving 真相源) ---"
+    PYTHONPATH=backend python backend/scripts/build_price_kline_qfq_tushare.py \
+        >> "$LOG" 2>&1 || step_degraded "canonical qfq K线 build 失败 — serving K线将 stale (fatal 级, 查 log)"
+fi
+
 # Step 2.97: 源域水位刷新 (从真实表派生, 写 mart_data_source_watermark)
 # 根因 (2026-06-13): 调度手动化时旧 cron_daily phase_watermarks 孤儿化 — 检查器 (Step 1
 # SLA) 只读水位从不写, 刷新器无人调 → kline_daily 水位卡死 06-03 而真实表已到 06-12。
