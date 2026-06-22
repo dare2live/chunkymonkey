@@ -210,3 +210,15 @@ entities:
     columns: [ts_code, ann_date, end_date, holder_name, hold_float_ratio, hold_ratio, hold_change, hold_amount]
     vendor: tushare
     available_after: ann_date
+
+  holders_tdx:
+    # 十大流通股东 tdx F10 备援 (§4.3 旧源热备; report_date 已统一 YYYYMMDD, 2026-06-22 双格式消除)
+    db: smartmoney
+    table: fact_top10_holder_period
+    layer: L1
+    code_col: stock_code
+    asof_col: report_date
+    asof_format: yyyymmdd
+    columns: [stock_code, report_date, holder_set, holder_rank, holder_name_norm, hold_ratio_float, change_status, hold_change_num, is_exit_row]
+    vendor: tdxhub
+    available_after: ann_date

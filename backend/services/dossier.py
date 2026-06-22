@@ -149,33 +149,24 @@ def _top10_tushare(code: str, as_of: str | None) -> dict | None:
     if prev_ed:
         cnt["退出"] = len(prev_names - cur_names)
     net = (cnt["新进"] + cnt["增持"]) - (cnt["退出"] + cnt["减持"])
-    return {"report_date": cur_ed, "holders": holders, "源": "tushare",
+    return {"report_date": _iso(cur_ed), "holders": holders, "源": "tushare",   # ISO 与 tdx备援 一致 (invariant#1)
             "新进": cnt["新进"], "退出": cnt["退出"], "增持": cnt["增持"], "减持": cnt["减持"],
             "机构动向": "加仓" if net > 0 else "减仓" if net < 0 else "持平"}
 
 
 def _top10_tdx(code: str, as_of: str | None = None) -> dict | None:
     """tdx F10 备援 (§4.3 旧源热备): smartmoney.fact_top10_holder_period (2017Q4+, change_status 文本进出标记)。"""
-    from services.data_loaders import SMARTMONEY_DB
     from collections import Counter
-    asof_norm = as_of.replace("-", "") if as_of else None    # 数据坑: report_date 格式不统一(带/不带横线), 规范化比较
-    c = duck_connect(SMARTMONEY_DB, read_only=True)
-    try:
-        where_asof = " AND REPLACE(report_date,'-','') <= ?" if asof_norm else ""
-        args = [code] + ([asof_norm] if asof_norm else [])
-        mxrow = c.execute(f"SELECT report_date FROM fact_top10_holder_period "
-                          f"WHERE stock_code = ? AND holder_set = 'free'{where_asof} "
-                          f"ORDER BY REPLACE(report_date,'-','') DESC LIMIT 1", args).fetchone()
-        if not mxrow:
-            return None
-        mx = mxrow[0]
-        cur = c.execute("SELECT holder_rank, holder_name_norm, hold_ratio_float, change_status, hold_change_num "
-                        "FROM fact_top10_holder_period WHERE stock_code = ? AND holder_set = 'free' "
-                        "AND report_date = ? AND is_exit_row = false ORDER BY holder_rank", [code, mx]).fetchall()
-        moves = [r[0] for r in c.execute("SELECT change_status FROM fact_top10_holder_period "
-                 "WHERE stock_code = ? AND holder_set = 'free' AND report_date = ?", [code, mx]).fetchall()]
-    finally:
-        c.close()
+    all_rows = get_data_access().get("holders_tdx", codes=[code], as_of=as_of).rows  # report_date≤asof (已统一YYYYMMDD)
+    free = [r for r in all_rows if r["holder_set"] == "free"]
+    if not free:
+        return None
+    mx = max(r["report_date"] for r in free)                       # 最新报告期 (原 ORDER BY report_date DESC LIMIT 1)
+    cur_rows = sorted((r for r in free if r["report_date"] == mx and not r["is_exit_row"]),
+                      key=lambda r: r["holder_rank"])               # 当期非离榜行, holder_rank 序
+    cur = [(r["holder_rank"], r["holder_name_norm"], r["hold_ratio_float"], r["change_status"], r["hold_change_num"])
+           for r in cur_rows]
+    moves = [r["change_status"] for r in free if r["report_date"] == mx]   # 含离榜行 (原 moves 查无 is_exit 过滤)
     if not cur:
         return None
     cnt = Counter(m for m in moves if m)
