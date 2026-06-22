@@ -208,3 +208,8 @@ assertions:
     database: data/market.duckdb
     query: "SELECT count(*) FROM v_price_kline_qfq WHERE source_name <> 'tushare'"
     expect: {op: "==", value: 0}
+  - id: serve-read-layer-p1-doors
+    claim: "SERVE 读层 P1 验收门 5 道全绿 (2026-06-22 落地计划 §10 P1 gate 原文 'read-no-inline-table/read-no-self-asof/feature-from-l2 + preflight'): 单一执法点 check_serve_read_layer.py, D1 dossier 0内联裸查 / D2 dossier 0直接.execute(自写asof / D3 generic.py调resolver.preflight / D4 data_access.yaml每entity声明链(db+table+layer+vendor+asof_col+code_col)齐全可追溯 / D5 backend/scripts 0 experiment_/analyze_ runner(L2-bypass向量关闭). 已 red→green 实证(注入FROM raw_变红/还原回绿)非print-not-fail. violations>0=P1未完成/回潮. owner=backend/scripts/check_serve_read_layer.py + analysis/data_module_toplevel_design_20260622.md §10"
+    type: shell
+    command: ["bash", "-c", "PYTHONPATH=backend python backend/scripts/check_serve_read_layer.py >/dev/null 2>&1 && echo 0 || echo 1"]
+    expect: {op: "<=", value: 0}

@@ -1,7 +1,7 @@
 """SERVE 读侧统一层 — 数据模块顶层设计 v2 §4 (data_module_toplevel_design_20260622.md)。
 
 唯一取数 + PIT 执行 + 口径清洗点。消费者 (dossier/feature_panel/选股/实验) **全走 DataAccess.get**,
-禁内联 FROM raw_* (moth read-no-inline-table) / 禁自写 asof (moth read-no-self-asof)。
+禁内联 FROM raw_* (check_serve_read_layer D1) / 禁自写 asof (check_serve_read_layer D2)。
 
 四不变量落地: #1 统一主键+PIT (asof/cleaner) · #2 读写边界 (resolver read_only) ·
 #4 单概念单真相源 (data_access.yaml 唯一声明)。血缘: get() 返回带 provenance 信封。

@@ -305,7 +305,7 @@ daily_update 写 L0/部分表时, 前端若跨 7 库 live 裸查 = 与 sync 写�
 | 阶段 | 动作 | gate (绿才进下阶段) |
 |---|---|---|
 | **P0 地基止血** (BLOCKER #46) | feature_panel重建 + GT拆entry-PIT/outcome + 负样本 + cyq winner_rate口径裁决(**已验=复权CLEAN, 解除blocked**) | A0 gate + build-time PIT单测 |
-| **P1 SERVE读层** (根性gap档A) | data_access.yaml + DataAccess(内部分层) + dossier内联迁入 + rally_strata.yaml + cohort基准修正 | moth read-no-inline-table/read-no-self-asof/feature-from-l2 + preflight; 迁移验证同股同as_of数值一致 |
+| **P1 SERVE读层** (根性gap档A) **[2026-06-22 gate 全绿: DONE]** | data_access.yaml(21entity) + DataAccess(resolver/asof/cleaner/keys/generic driver) + dossier 18内联裸查全迁(duck_connect=0, 全parity验证) | **moth serve-read-layer-p1-doors 全绿** (check_serve_read_layer.py 单一执法点: D1 read-no-inline / D2 read-no-self-asof / D3 preflight-wired / D4 lineage-complete / D5 feature-from-l2; red→green 实证 + 5 pytest); 迁移同股同as_of数值一致(parity)。**注: read-no-inline/asof 门=dossier consumer 子集(P1只迁dossier); signals_v2/routers 等未迁 consumer 属 P2/P3 债** |
 | **P2 清库重建** (并轨M1-M4 §9) | codegraph fan-in→物删bestchoice/v3/旧K线/双源→rally从L0重建→机构read-model | 每物删前impact+dry-run重建验证; assert_universe_clean; L2对账 |
 | **P3 协议化+接通+转正门** | DimensionInterpreter(依赖DAG) + 三机构口径实测裁决→1套 + signal_assembler + exit_fn(G7) + 转正门(bootstrap/CPCV/PBO/holdout) + **forward_reconciliation reader(D6)** | 含成本tradability前置(G8); record_verdict已硬门 |
 | **P4 展示产品化** (档A收尾) | 统一read-model + rally候选池视图 + NAV固化表+视图 | moth 前端禁裸SQL |

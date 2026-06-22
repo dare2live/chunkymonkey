@@ -1,6 +1,6 @@
 """PIT asof 门 (不变量#1 PIT锚): 决策 t 只见 asof_col <= t。
 
-读层是 asof 强制的**单一执行点** (consumer 禁自写 ann_date<= ; moth read-no-self-asof 守)。
+读层是 asof 强制的**单一执行点** (consumer 禁自写 ann_date<= ; check_serve_read_layer D2 守)。
 as_of 入参统一 ISO (决策日口径); 按 entity.asof_format 归一后再比较 (跨格式串比较无意义)。
 """
 from __future__ import annotations

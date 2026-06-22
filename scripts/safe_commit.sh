@@ -148,6 +148,20 @@ else
     exit 5
 fi
 
+# 3.9 SERVE 读层 P1 门 (数据模块顶层设计 §10 P1 gate 落地, 2026-06-22):
+# D1 dossier 0内联裸查 / D2 0自写asof / D3 preflight接线 / D4 entity声明链齐全 / D5 L2-bypass关闭。
+echo
+echo "=== Step 3.9: SERVE read-layer P1 doors ==="
+if PYTHONPATH=backend python backend/scripts/check_serve_read_layer.py; then
+    echo "[serve-read-layer] PASS"
+else
+    echo
+    echo "ERROR: SERVE 读层 P1 门红 — consumer 内联裸查/自写asof, 或 entity 声明链断, 或实验runner漏进backend。"
+    echo "正解: consumer 取数走 services.data_access.DataAccess; PIT asof 只在 asof_gate; 实验入 sandbox。"
+    echo "误报修 check_serve_read_layer.py 本身, 不 --no-verify 绕。"
+    exit 5
+fi
+
 # 4. Commit message keyword check (manual preview)
 echo
 echo "=== Step 4: commit message keyword ==="
