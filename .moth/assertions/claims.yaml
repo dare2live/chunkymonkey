@@ -185,3 +185,9 @@ assertions:
     type: shell
     command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python -c \"from services import rally_labels as r; oc=r.outcome_columns(); pf=r.pit_feature_columns(); print('QUARANTINE_OK' if ('bull_aligned' in oc and 'gain_to_peak_pct' in oc and 'base_days' in pf) else 'QUARANTINE_FAIL')\""]
     expect: {op: regex, pattern: "QUARANTINE_OK"}
+  - id: holder-report-date-single-format
+    claim: "fact_top10_holder_period report_date 全 YYYYMMDD 单格式 (2026-06-22 双真相源消灭 mythos§4: 旧 migrate_holders_to_tdxhub verbatim 搬运旧库 ISO → 同字段两套格式[474k YYYYMMDD ingest + 209k ISO migration], 致 MERGE-on-grain 重复 + audit MAX('2026-06-02'<'20260429') 误选丢最新 + 不归一消费者漏命中. writer 加 _compact_date_sql 归一 + 事务回填 dedup 89565 YMD孪生→594128行0丢失. >0 = ISO 复发=双真相源回潮. owner=backend/scripts/migrate_holders_to_tdxhub.py)"
+    type: duckdb_sql
+    database: data/smartmoney.duckdb
+    query: "SELECT count(*) FROM fact_top10_holder_period WHERE report_date LIKE '%-%'"
+    expect: {op: "==", value: 0}

@@ -120,6 +120,17 @@ def _insert_alias_seed(conn: duckdb.DuckDBPyConnection, now_iso: str) -> int:
     return after - before
 
 
+def _compact_date_sql(col: str) -> str:
+    """SQL 等价 services.holders_resolver._compact_date: 剥非数字取前 8 位, <8 位→NULL。
+
+    根因修复 (双真相源消灭, mythos §4): 旧实现把 src_db.holders.report_date 逐字搬运,
+    旧库是 ISO ('2026-03-31') 而 canonical ingest (holders_resolver._compact_date) 产
+    YYYYMMDD → 同表同字段两套格式。统一为 YYYYMMDD (对齐 tushare end_date/ann_date 口径)。
+    """
+    digits = f"regexp_replace(CAST({col} AS VARCHAR), '[^0-9]', '', 'g')"
+    return f"CASE WHEN LENGTH({digits}) >= 8 THEN SUBSTR({digits}, 1, 8) ELSE NULL END"
+
+
 def run_migration(source: str, target: str, *, limit: int = 0) -> dict[str, int]:
     init_db()
     tgt = duckdb.connect(target)
@@ -171,6 +182,7 @@ def run_migration(source: str, target: str, *, limit: int = 0) -> dict[str, int]
         log.info("step 3: fact_top10_holder_period")
         n_before = tgt.execute("select count(*) from fact_top10_holder_period").fetchone()[0]
         change_sql = _change_status_sql("h.change_status")
+        rd_sql = _compact_date_sql("h.report_date")   # 统一 report_date → YYYYMMDD (根因修复)
         tgt.execute(f"""
             INSERT INTO fact_top10_holder_period(
               stock_code, stock_name, market, report_date, holder_set,
@@ -185,7 +197,7 @@ def run_migration(source: str, target: str, *, limit: int = 0) -> dict[str, int]
               notice_date, effective_date, page_update_date,
               source, source_tier, raw_hash, fetched_at, created_at
             )
-            SELECT h.stock_code, h.stock_name, h.market, h.report_date, h.holder_set,
+            SELECT h.stock_code, h.stock_name, h.market, {rd_sql}, h.holder_set,
                    h.holder_rank, h.row_seq,
                    h.holder_name, COALESCE(a.canonical_name, h.holder_name), h.share_class,
                    CAST(h.is_secondary_class AS BOOLEAN), CAST(h.is_exit_row AS BOOLEAN),
@@ -205,7 +217,7 @@ def run_migration(source: str, target: str, *, limit: int = 0) -> dict[str, int]
             ) h
             LEFT JOIN dim_holder_alias a ON a.alias = h.holder_name
             WHERE (
-              h.stock_code, h.report_date, h.holder_set, h.source,
+              h.stock_code, {rd_sql}, h.holder_set, h.source,
               h.is_exit_row, h.holder_rank, h.row_seq, h.share_class
             ) NOT IN (
               SELECT stock_code, report_date, holder_set, source,

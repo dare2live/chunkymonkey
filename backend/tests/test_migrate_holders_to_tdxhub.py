@@ -323,3 +323,45 @@ def test_migrate_holders_uses_direct_sql_and_is_idempotent(monkeypatch, tmp_path
         assert con.execute("SELECT COUNT(*) FROM fact_controlling_shareholder").fetchone()[0] == 1
     finally:
         con.close()
+
+
+def test_migrate_normalizes_iso_report_date(monkeypatch, tmp_path):
+    """根因防回退 (双真相源消灭, mythos §4): 迁移脚本必须把旧库 ISO report_date
+    ('2026-03-31') 归一为 YYYYMMDD, 与 canonical ingest (holders_resolver._compact_date)
+    口径一致。旧实现逐字搬运 h.report_date → 同表同字段两套格式。
+    red→green: 旧码 (SELECT h.report_date 不归一) 下 iso_n==0 断言失败。
+    """
+    source = tmp_path / "source.duckdb"
+    target = tmp_path / "target.duckdb"
+    _create_source(source)
+    _create_target(target)
+    monkeypatch.setattr(subject, "init_db", lambda: None)
+    # 注入一行 ISO 格式 report_date (不同股/期, 不与既有 600519/20260331 碰撞)
+    con = duckdb.connect(str(source))
+    try:
+        con.execute(
+            "INSERT INTO holders VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "000001", "平安银行", "SZ", "2026-03-31", "free", 1, 1,
+                "Holder ISO", "A", "2000股", 2000, "股", 2.5, "机构",
+                "新进", "200股", 200, False, False, "2026-05-04",
+                "tdx_f10", "hashiso", "2026-05-05T01:30:00",
+            ),
+        )
+    finally:
+        con.close()
+
+    subject.run_migration(str(source), str(target))
+
+    con = duckdb.connect(str(target), read_only=True)
+    try:
+        iso_n = con.execute(
+            "SELECT COUNT(*) FROM fact_top10_holder_period WHERE report_date LIKE '%-%'"
+        ).fetchone()[0]
+        assert iso_n == 0, f"迁移后仍有 {iso_n} 行 ISO 格式 = writer 未归一 (双真相源复发)"
+        rd = con.execute(
+            "SELECT report_date FROM fact_top10_holder_period WHERE stock_code = '000001'"
+        ).fetchone()[0]
+        assert rd == "20260331", f"ISO '2026-03-31' 应归一为 '20260331', 实得 {rd!r}"
+    finally:
+        con.close()
