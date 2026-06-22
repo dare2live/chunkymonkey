@@ -199,9 +199,17 @@ def _scalar(conn: duckdb.DuckDBPyConnection, sql: str, params: list[Any] | None 
 
 
 def _trading_index(conn: duckdb.DuckDBPyConnection) -> dict:
-    return {d: i for i, (d,) in enumerate(
+    # key 归一为 date 对象 (dim_trading_calendar.trade_date 是 VARCHAR '2026-12-31'; 不归一则与
+    # _to_date 产出的 date 对象类型不匹配 → 'date in {str}' 永 False → _trading_lag_days 返 None 误判)。
+    # 交易日历=强制前置真相源 (tushare trade_cal→dim_trading_calendar), lag 一律走它, 不自算/不退化日历天。
+    idx: dict = {}
+    for i, (d,) in enumerate(
         conn.execute("SELECT trade_date FROM dim_trading_calendar WHERE is_trading=1 ORDER BY trade_date").fetchall()
-    )}
+    ):
+        dd = _to_date(d)
+        if dd is not None:
+            idx[dd] = i
+    return idx
 
 
 def _trading_lag_days(index: dict, from_date: Any, to_date: Any) -> int | None:
@@ -353,13 +361,19 @@ def _check_date_range(conn: duckdb.DuckDBPyConnection, calendar_svc=latest_compl
     if not cal_d:
         return CheckResult("date_range", "FAIL", "calendar latest date unavailable")
 
-    if abs((mx_d - cal_d).days) > tolerance:
+    # lag 走交易日历真相源 (强制前置, 不自算/不退化日历天): mx_d 落后 cal_d 几个交易日。
+    # 日历天会把周末/假日算进虚高 (06-18→06-22 = 4 日历天但仅 1 交易日: 06-19 假 + 周末) = 误报根因。
+    idx = _trading_index(conn)
+    lag = _trading_lag_days(idx, mx_d, cal_d)
+    if lag is None:
+        return CheckResult("date_range", "FAIL", f"max_date {mx_d} 或 calendar {cal_d} 不在交易日历 (日历前置缺失)")
+    if lag > tolerance:
         return CheckResult(
             "date_range",
             "FAIL",
-            f"max_date {mx_d} deviates from calendar latest {cal_d} by >{tolerance}d",
+            f"max_date {mx_d} 落后日历最新 {cal_d} {lag} 交易日 (>容忍 {tolerance})",
         )
-    return CheckResult("date_range", "PASS", f"min={mn_d} max={mx_d}, calendar={cal_d}")
+    return CheckResult("date_range", "PASS", f"min={mn_d} max={mx_d}, calendar={cal_d}, lag={lag}交易日")
 
 
 def _check_volume_sanity(conn: duckdb.DuckDBPyConnection) -> CheckResult:
