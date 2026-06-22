@@ -20,11 +20,12 @@ def asof_clause(spec: EntitySpec, as_of_iso: str | None, start_iso: str | None) 
     """构造 PIT WHERE 片段 (asof_col <= cutoff [AND >= start])。返回 (sql_片段, params)。"""
     clauses: list[str] = []
     params: list = []
+    col = f'"{spec.asof_col}"'    # 引号化防保留字
     if as_of_iso:
-        clauses.append(f"{spec.asof_col} <= ?")
+        clauses.append(f"{col} <= ?")
         params.append(normalize_cutoff(spec, as_of_iso))
     if start_iso:
-        clauses.append(f"{spec.asof_col} >= ?")
+        clauses.append(f"{col} >= ?")
         params.append(normalize_cutoff(spec, start_iso))
     return (" AND ".join(clauses), params)
 

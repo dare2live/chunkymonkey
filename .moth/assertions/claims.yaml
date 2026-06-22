@@ -73,7 +73,7 @@ assertions:
     command: ["bash", "-c", "grep -c 'include_router' backend/main.py"]
     expect: {op: "<=", value: 45}
   - id: minimal-module-no-new-godfile
-    claim: "god-file (>800行) 数 ratchet <=1 (2026-06-14 立基线: data_quality 4286/scoring 2712/signals_v2 2156 等违最小化模块; 禁新增, 存量逐步拆; 涨破=耦合回潮)"
+    claim: "god-file (>800行) 数 ratchet <=0 (硬门, dossier 全迁完) (2026-06-14 立基线: data_quality 4286/scoring 2712/signals_v2 2156 等违最小化模块; 禁新增, 存量逐步拆; 涨破=耦合回潮)"
     type: shell
     command: ["bash", "-c", "find backend -name '*.py' -not -path '*/__pycache__/*' -not -path '*/tests/*' | xargs wc -l 2>/dev/null | awk '$1>800 && $2!=\"total\"{n++} END{print n+0}'"]
     expect: {op: "<=", value: 23}
@@ -201,7 +201,7 @@ assertions:
     claim: "dossier.py 内联 duck_connect ratchet <=7 (2026-06-22 数据模块 P1 SERVE 读层迁移, 不变量#4 单概念单真相源: dossier 取数全走 services.data_access.DataAccess, 禁内联裸查 raw 表). 进度: 15 loader/scan 已迁(capital/cyq/limits/share_float/block_trade/analyst/benchmark/valuation, 全parity验证), 18→7. 剩 ~10 复杂/leakage敏感 PIT driver 待迁(holders ann_date版本锁/fundamentals latest-per-end_date/sector in-out_date/lhb order敏感/forecast grouping/market_regime聚合). **禁回潮(>11=新增内联裸查违纪)**; 随迁移降基线, →0 时翻硬门 read-no-inline-table. owner=backend/services/dossier.py + analysis/data_module_toplevel_design_20260622.md §4"
     type: shell
     command: ["bash", "-c", "grep -c 'duck_connect(' backend/services/dossier.py || echo 0"]
-    expect: {op: "<=", value: 1}
+    expect: {op: "<=", value: 0}
   - id: kline-canonical-tushare-only
     claim: "v_price_kline_qfq 切 tushare-only (2026-06-22 切主源根因修复 真相源唯一): 旧 tier-1=price_kline_tdxhub 的 qfq 系统性算错 (把复权因子当后复权式乘数抬高分红股历史价, 实测茅台/比亚迪 raw*adj_factor/latest 重建证 tushare对/tdxhub错, 分叉随adj_factor放大最高89%). tushare(2019+/5431股) 严格超集 tdxhub(2022+/5210股). 用户'没有备用源只有tushare' → 去 akshare/tdxhub fallback. >0 非tushare行 = 残留回潮. owner=backend/services/market_schema.py"
     type: duckdb_sql

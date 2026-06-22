@@ -260,3 +260,16 @@ entities:
     columns: [ts_code, trade_date, name, pct_change]
     vendor: eastmoney_via_tushare
     available_after: eod
+
+  limit_list_d:
+    # 涨跌停每日明细 (市场情绪; limit=U涨停/D跌停/Z炸板; "limit" 保留字引号化; 消费侧 COUNT(DISTINCT ts_code) 聚合防重复行膨胀)
+    db: tushare_raw
+    table: raw_tushare_limit_list_d
+    layer: L0
+    code_col: ts_code
+    code_input: ts_passthrough
+    asof_col: trade_date
+    asof_format: yyyymmdd
+    columns: [trade_date, ts_code, limit]
+    vendor: tushare
+    available_after: eod

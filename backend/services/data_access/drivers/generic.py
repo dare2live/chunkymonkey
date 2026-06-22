@@ -27,13 +27,14 @@ class GenericDriver:
 
     @staticmethod
     def _build(spec: EntitySpec, codes, start, as_of) -> tuple[str, list]:
-        cols_sql = ", ".join(spec.columns)
+        cols_sql = ", ".join(f'"{c}"' for c in spec.columns)    # 引号化防保留字列名 (如 limit_list_d 的 "limit")
+        cc = f'"{spec.code_col}"'
         where: list[str] = []
         params: list = []
         if codes:
             # 主键模式 (不变量#1): ts_from_plain 6位→ts_code; plain/ts_passthrough 直用 (指数码不转)
             vals = [code_to_ts_code(x) for x in codes] if spec.code_mode == "ts_from_plain" else list(codes)
-            where.append(f"{spec.code_col} IN ({','.join('?' for _ in vals)})")
+            where.append(f"{cc} IN ({','.join('?' for _ in vals)})")
             params.extend(vals)
         asof_sql, asof_params = asof_clause(spec, as_of, start)
         if asof_sql:
@@ -42,5 +43,5 @@ class GenericDriver:
         sql = f"SELECT {cols_sql} FROM {spec.table}"
         if where:
             sql += " WHERE " + " AND ".join(where)
-        sql += f" ORDER BY {spec.code_col}, {spec.asof_col}"
+        sql += f' ORDER BY {cc}, "{spec.asof_col}"'
         return sql, params

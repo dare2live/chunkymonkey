@@ -10,12 +10,10 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from services.data_access import get_data_access  # SERVE 读层 (PIT/口径/血缘统一; 替内联 raw 裸查)
-from services.data_loaders import MARKET_DB, RAW_DB
-from services.duck_adapter import connect as duck_connect
+from services.data_access import get_data_access  # SERVE 读层 (PIT/口径/血缘统一; dossier 全走它, 0 内联裸查)
 from services.technical_states.candles import candle_pattern
 from services.technical_states.context import apply_context
-from services.technical_states.limits import code_to_ts_code, compute_limit_flags, enrich_features
+from services.technical_states.limits import compute_limit_flags, enrich_features
 from services.technical_states.patterns import match_named_patterns
 from services.technical_states.capital import capital_signals
 from services.technical_states.chips import chip_signals
@@ -316,26 +314,20 @@ def load_market_regime(as_of: str | None = None, index_code: str = "000300.SH") 
     """L3⑥ 市场 regime (横切非单股, PIT 锚 trade_date): 大盘指数 close 序列 + 每日涨跌停情绪 (≤t)。
     返回 market_regime(...) 在 as_of 当日的 regime dict, 或 None。所有股共享 (大盘环境)。
     """
-    asof = as_of.replace("-", "") if as_of else None
-    c = duck_connect(RAW_DB, read_only=True)
-    try:
-        iw = "ts_code = ?" + (" AND trade_date <= ?" if asof else "")
-        idx = c.execute(f"SELECT trade_date, close FROM raw_tushare_index_daily WHERE {iw} ORDER BY trade_date",
-                        [index_code] + ([asof] if asof else [])).fetchall()
-        sw = "trade_date <= ?" if asof else "1=1"
-        # COUNT(DISTINCT ts_code) 防 limit_list_d 精确重复行 (实测 23116 重复, 个股最多插14次) 膨胀涨停家数 (复审 HIGH)
-        senti = c.execute(f'SELECT trade_date, "limit", COUNT(DISTINCT ts_code) FROM raw_tushare_limit_list_d '
-                          f'WHERE {sw} GROUP BY trade_date, "limit"', ([asof] if asof else [])).fetchall()
-    finally:
-        c.close()
+    da = get_data_access()
+    idx = da.get("index_daily", codes=[index_code], as_of=as_of).rows   # ts_passthrough 指数码; trade_date ISO ASC
     if not idx:
         return None
-    idx_dates = [_iso(r[0]) for r in idx]
-    idx_close = [r[1] for r in idx]
+    idx_dates = [r["trade_date"] for r in idx]                          # 已 ISO
+    idx_close = [r["close"] for r in idx]
+    # 涨停情绪: limit_list_d 市场全量, loader-side COUNT(DISTINCT ts_code) per (trade_date, limit) 防重复行膨胀 (复审HIGH)
+    ll = da.get("limit_list_d", as_of=as_of).rows
+    agg: dict = {}
+    for r in ll:
+        agg.setdefault((r["trade_date"], r["limit"]), set()).add(r["ts_code"])
     sentiment: dict = {}                                  # {iso_date: {up,down,zha}}
-    for td, lim, n in senti:
-        d = sentiment.setdefault(_iso(td), {})
-        d["up" if lim == "U" else "down" if lim == "D" else "zha"] = n
+    for (d, lim), codeset in agg.items():
+        sentiment.setdefault(d, {})["up" if lim == "U" else "down" if lim == "D" else "zha"] = len(codeset)
     cfg = load_config()
     reg = market_regime(idx_dates, idx_close, sentiment, cfg=cfg)
     return reg.get(idx_dates[-1]) if reg else None
