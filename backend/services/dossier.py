@@ -303,20 +303,15 @@ def load_lhb(code: str, as_of: str | None = None, days: int = 60) -> tuple[list,
     """L3⑤ 龙虎榜 (PIT 锚 trade_date): 近 days 日上榜明细 + 机构席位净买 (均 ≤t)。
     返回 (lhb_rows=[(trade_date, net_amount, reason)], inst_rows=[(trade_date, net_buy)] 机构专用席位)。
     """
-    ts = code_to_ts_code(code)
-    asof = (as_of or date.today().isoformat()).replace("-", "")
-    cutoff = (date.fromisoformat(f"{asof[:4]}-{asof[4:6]}-{asof[6:8]}") - timedelta(days=days)).strftime("%Y%m%d")
-    c = duck_connect(RAW_DB, read_only=True)
-    try:
-        lhb = c.execute("SELECT trade_date, net_amount, reason FROM raw_tushare_top_list "
-                        "WHERE ts_code = ? AND trade_date <= ? AND trade_date >= ? ORDER BY trade_date DESC",
-                        [ts, asof, cutoff]).fetchall()
-        inst = c.execute("SELECT trade_date, net_buy FROM raw_tushare_top_inst "   # 复审 LOW: '%机构%' 覆盖非标准席位(机构席位/客户总部, 漏0.8%), 实测无噪声
-                         "WHERE ts_code = ? AND trade_date <= ? AND trade_date >= ? AND exalter LIKE '%机构%'",
-                         [ts, asof, cutoff]).fetchall()
-    finally:
-        c.close()
-    return [(r[0], r[1], r[2]) for r in lhb], [(r[0], r[1]) for r in inst]
+    asof_iso = as_of or date.today().isoformat()
+    cutoff_iso = (date.fromisoformat(asof_iso) - timedelta(days=days)).isoformat()
+    da = get_data_access()
+    lhb = da.get("top_list", codes=[code], start=cutoff_iso, as_of=asof_iso).rows
+    lhb.reverse()    # ASC → 原显示序 DESC (last_reason=lhb[0]; lhb_signal sum order-independent, 取最新日reason)
+    inst = da.get("top_inst", codes=[code], start=cutoff_iso, as_of=asof_iso).rows
+    inst = [r for r in inst if r.get("exalter") and "机构" in str(r["exalter"])]   # 机构专用席位 (原 LIKE '%机构%')
+    return ([(r["trade_date"], r["net_amount"], r["reason"]) for r in lhb],
+            [(r["trade_date"], r["net_buy"]) for r in inst])
 
 
 def load_block_trade(code: str, as_of: str | None = None, days: int = 60) -> list:

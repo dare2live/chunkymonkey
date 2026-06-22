@@ -174,3 +174,27 @@ entities:
     columns: [ts_code, trade_date, close]
     vendor: shenwan
     available_after: eod
+
+  top_list:
+    # 龙虎榜上榜明细 (净买额 + 上榜原因)
+    db: tushare_raw
+    table: raw_tushare_top_list
+    layer: L0
+    code_col: ts_code
+    asof_col: trade_date
+    asof_format: yyyymmdd
+    columns: [ts_code, trade_date, net_amount, reason]
+    vendor: tushare
+    available_after: eod
+
+  top_inst:
+    # 龙虎榜机构席位 (exalter 席位名 + 净买; 机构席位 LIKE '机构' 消费侧过滤)
+    db: tushare_raw
+    table: raw_tushare_top_inst
+    layer: L0
+    code_col: ts_code
+    asof_col: trade_date
+    asof_format: yyyymmdd
+    columns: [ts_code, trade_date, net_buy, exalter]
+    vendor: tushare
+    available_after: eod
