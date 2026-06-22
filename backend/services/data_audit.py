@@ -413,7 +413,13 @@ def _check_smartmoney_freshness(conn: duckdb.DuckDBPyConnection, calendar_svc=la
         if not table or not date_col:
             continue
         max_lag_days = _to_int(rule.get("max_lag_days"), default_max_lag)
-        row = _scalar(conn, f"SELECT MAX({date_col}) FROM {table}")
+        # 防御 (2026-06-22): 单条规则的表/列漂移 (reset 删表 / schema 改) 不许崩掉整个 audit —
+        # 镜像 _check_kline_completeness 的 try/except, 坏规则记 FAIL 续跑 (mythos§14: 崩溃门=死门审0项)。
+        try:
+            row = _scalar(conn, f"SELECT MAX({date_col}) FROM {table}")
+        except Exception as exc:
+            fails.append(f"{table}: query failed ({type(exc).__name__})")
+            continue
         latest = _to_date(row)
         if not latest:
             fails.append(f"{table}: no rows")

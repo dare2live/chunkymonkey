@@ -25,18 +25,11 @@ smartmoney_freshness:
     - table: fact_risk_factors
       date_column: calc_date
       max_lag_days: 3
-    - table: fact_sector_momentum_daily
-      date_column: date
-      max_lag_days: 3
-    - table: fact_capital_flow_pit_daily
-      date_column: trade_date
-      max_lag_days: 3
-    - table: mart_sniper_score_daily
-      date_column: signal_date
-      max_lag_days: 3
-    - table: mart_institution_score_daily
-      date_column: signal_date
-      max_lag_days: 3
+    # 2026-06-22 删 4 条陈旧规则: fact_sector_momentum_daily / fact_capital_flow_pit_daily /
+    # mart_sniper_score_daily / mart_institution_score_daily — 均 2026-06-14 地基-reset 删除的
+    # 模型/打分/感知派生层 (实测全库无 或 空表), 规则未同步更新 → 其中一条令 _scalar 抛 CatalogError
+    # 崩掉整个 post-sync audit = 死门 (本次 daily_update 实测暴露)。audit 只监控当前维护的表;
+    # 若 sector_momentum 等重建进 daily_update 再加回规则。防御已加 (data_audit.py _scalar try/except)。
     - table: mart_stock_survey_activity
       date_column: as_of_date
       max_lag_days: 3
