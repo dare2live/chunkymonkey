@@ -198,3 +198,15 @@ entities:
     columns: [ts_code, trade_date, net_buy, exalter]
     vendor: tushare
     available_after: eod
+
+  holders_top10:
+    # 十大流通股东 (PIT 锚=ann_date; 同 end_date 多次公告→消费侧锁 MAX ann_date 版本防修正行泄漏; 复审HIGH)
+    db: tushare_raw
+    table: raw_tushare_top10_floatholders
+    layer: L0
+    code_col: ts_code
+    asof_col: ann_date
+    asof_format: yyyymmdd
+    columns: [ts_code, ann_date, end_date, holder_name, hold_float_ratio, hold_ratio, hold_change, hold_amount]
+    vendor: tushare
+    available_after: ann_date

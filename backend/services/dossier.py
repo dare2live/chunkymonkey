@@ -110,31 +110,24 @@ def _top10_tushare(code: str, as_of: str | None) -> dict | None:
     PIT (复审 HIGH): 同 end_date 可多次公告(修正), 明细必锁 ann_date=MAX(ann_date)<=t 版本, 防 ann_date>t 修正行泄漏。
     占比用 hold_float_ratio(占流通, 与'流通股东'语义+旧tdx一致) COALESCE hold_ratio(占总, float_ratio NULL 时兜底)。
     """
-    ts = code_to_ts_code(code)
-    asof = as_of.replace("-", "") if as_of else "99999999"   # None=取最新已公告版 (ann_date<=哨兵=全, MAX选最新)
-    c = duck_connect(RAW_DB, read_only=True)
-    try:
-        if not c.execute("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'raw_tushare_top10_floatholders'").fetchone()[0]:
-            return None
-        eds = [r[0] for r in c.execute("SELECT DISTINCT end_date FROM raw_tushare_top10_floatholders "
-                                       "WHERE ts_code = ? AND ann_date <= ? ORDER BY end_date DESC LIMIT 2",
-                                       [ts, asof]).fetchall()]
-        if not eds:
-            return None
-        cur_ed, prev_ed = eds[0], (eds[1] if len(eds) > 1 else None)
-        # PIT 锁定: 该 end_date 在 t 时点已公告的最新版本 (MAX ann_date<=t), 排除未来修正行
-        pit = ("AND ann_date = (SELECT MAX(ann_date) FROM raw_tushare_top10_floatholders "
-               "WHERE ts_code = ? AND end_date = ? AND ann_date <= ?)")
-        cur = c.execute(f"SELECT holder_name, COALESCE(hold_float_ratio, hold_ratio), hold_change "
-                        f"FROM raw_tushare_top10_floatholders WHERE ts_code = ? AND end_date = ? AND ann_date <= ? "
-                        f"{pit} ORDER BY hold_amount DESC", [ts, cur_ed, asof, ts, cur_ed, asof]).fetchall()
-        prev_names = set()
-        if prev_ed:
-            prev_names = {r[0] for r in c.execute(
-                f"SELECT holder_name FROM raw_tushare_top10_floatholders WHERE ts_code = ? AND end_date = ? "
-                f"AND ann_date <= ? {pit}", [ts, prev_ed, asof, ts, prev_ed, asof]).fetchall()}
-    finally:
-        c.close()
+    rows = get_data_access().get("holders_top10", codes=[code], as_of=as_of).rows  # ann_date≤asof PIT
+    if not rows:
+        return None
+    eds = sorted({r["end_date"] for r in rows}, reverse=True)[:2]      # 最近 2 期 end_date
+    cur_ed, prev_ed = eds[0], (eds[1] if len(eds) > 1 else None)
+
+    def _locked(ed):   # 该 end_date 在 t 已公告最新版本 (MAX ann_date≤asof), 排除未来修正行 (复审HIGH 版本锁)
+        er = [r for r in rows if r["end_date"] == ed]
+        if not er:
+            return []
+        top_ann = max(r["ann_date"] for r in er)
+        return [r for r in er if r["ann_date"] == top_ann]
+
+    cur_rows = sorted(_locked(cur_ed), key=lambda r: r["hold_amount"] or 0, reverse=True)  # 原 ORDER BY hold_amount DESC
+    cur = [(r["holder_name"],
+            r["hold_float_ratio"] if r["hold_float_ratio"] is not None else r["hold_ratio"],   # 占流通 COALESCE 占总
+            r["hold_change"]) for r in cur_rows]
+    prev_names = {r["holder_name"] for r in _locked(prev_ed)} if prev_ed else set()
     if not cur:
         return None
     holders, cnt = [], {"新进": 0, "退出": 0, "增持": 0, "减持": 0}
