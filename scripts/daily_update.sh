@@ -165,9 +165,11 @@ from services.xdxr_client import sync_xdxr_for_codes
 
 conn = connect("data/market.duckdb")
 try:
+    # 2026-06-22 M3-prep 解耦: xdxr 热备(§4.3 保留)的 code 列表源从将退役的 price_kline_tdxhub
+    # 切 canonical price_kline_qfq_tushare (tushare 超集 5431≥5210 / 同 fresh / 单一真相源, 无 freq 列)
     codes = [r[0] for r in conn.execute(
-        "SELECT DISTINCT code FROM price_kline_tdxhub WHERE freq='daily' "
-        "AND CAST(date AS DATE) >= current_date - INTERVAL 45 DAY").fetchall()]
+        "SELECT DISTINCT code FROM price_kline_qfq_tushare "
+        "WHERE CAST(date AS DATE) >= current_date - INTERVAL 45 DAY").fetchall()]
     st = asyncio.run(sync_xdxr_for_codes(conn, codes))
     print({k: st.get(k) for k in ("status", "total_codes", "success_codes", "rows", "failed_count")})
     total = max(1, st.get("total_codes") or len(codes))
