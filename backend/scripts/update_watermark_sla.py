@@ -68,7 +68,9 @@ DATA_SOURCE_QUERIES = {
     },
     "financial_gpcw_8q": {
         "db": "smartmoney",
-        "query": "SELECT MAX(CAST(report_date AS VARCHAR)) FROM fact_financial_pit_daily",
+        # 2026-06-22 P0-5: fact_financial_pit_daily 2026-06-14 reset 删除 → query 抛 CatalogException
+        # 被吞 → 财报域永不告警(静默腐烂)。改 fact_financial_derived (report_date, live, 23691行)。
+        "query": "SELECT MAX(CAST(report_date AS VARCHAR)) FROM fact_financial_derived",
     },
     "lhb_daily": {
         "db": "smartmoney",
@@ -107,10 +109,18 @@ def _sync_registry_queries() -> dict[str, dict]:
         reg = yaml.safe_load(reg_path.read_text(encoding="utf-8")) or {}
         for name, spec in (reg.get("domains") or {}).items():
             mode = spec.get("batch_mode")
-            if mode in ("by_trade_date", "by_date_range"):
+            if spec.get("freshness_no_probe"):
+                # 季报/事件域 (forecast/income/dividend): ann_date 淡季数周无新数据=正常, 日频 SLA 会
+                # 误报疲劳 (mythos§10); 完整性靠 gap drain 覆盖, 不做日频新鲜度探测。
+                out[f"sync:{name}"] = {"db": "tushare_raw", "no_probe": spec.get("freshness_no_probe")}
+            elif mode in ("by_trade_date", "by_date_range"):
+                # 2026-06-22 P0-6: 日期列从 registry 读 (freshness_date_column 缺省 trade_date) —
+                # 旧硬编 trade_date 撞 report_rc(report_date)/stk_surv(surv_date) 等无该列域
+                # → BinderException 被 try/except 吞 = SLA 永久盲区。
+                date_col = spec.get("freshness_date_column", "trade_date")
                 out[f"sync:{name}"] = {
                     "db": "tushare_raw",
-                    "query": f'SELECT MAX(CAST(trade_date AS VARCHAR)) FROM "{spec["target_table"]}"',
+                    "query": f'SELECT MAX(CAST("{date_col}" AS VARCHAR)) FROM "{spec["target_table"]}"',
                     "sla_days": spec.get("freshness_sla_trading_days"),
                 }
             else:

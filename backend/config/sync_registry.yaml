@@ -285,6 +285,7 @@ domains:
     available_after: "t+1"
     data_start: "20100101"   # 文档未标明; 回填首跑探底校准
     freshness_sla_trading_days: 3
+    freshness_date_column: report_date   # 2026-06-22 P0-6: 研报无trade_date列, SLA探测改report_date(频繁发布日频SLA合理)
     min_rows_per_batch: 1
     allow_empty_batch: true   # 长假后首日可能无新研报
 
@@ -300,6 +301,7 @@ domains:
     available_after: "t+1"
     data_start: "20180102"   # 探底校准 (机构调研 tushare 覆盖较新)
     freshness_sla_trading_days: 5
+    freshness_date_column: surv_date   # 2026-06-22 P0-6: 调研无trade_date列, SLA探测改surv_date
     min_rows_per_batch: 1
     allow_empty_batch: true   # 部分交易日无机构调研披露
 
@@ -347,6 +349,7 @@ domains:
     available_after: "t+1"
     data_start: "20050104"   # 复权主源全史窗; 回填首跑校准
     freshness_sla_trading_days: 5
+    freshness_no_probe: 季报/事件域(ann_date淡季数周无新数据=正常), 日频SLA误报疲劳, 完整性靠gap drain (2026-06-22 P0-6)
     min_rows_per_batch: 0
     allow_empty_batch: true   # 非分红季多数交易日无除权事件
 
@@ -489,6 +492,7 @@ domains:
     available_after: "t+1"
     data_start: "20080101"   # 业绩预告史约 2008 起; 回填首跑探底校准 (落库 min(ann_date) 对账)
     freshness_sla_trading_days: 5   # 预告季末密集平日稀疏 (实弹 20260430/20260828 = 0 行, allow_empty)
+    freshness_no_probe: 业绩预告季节性域, 同上 no 日频探测 (2026-06-22 P0-6)
     min_rows_per_batch: 1
     allow_empty_batch: true   # 多数交易日无新预告
 
@@ -504,6 +508,7 @@ domains:
     available_after: "t+1"
     data_start: "20080101"   # 财报史可回溯 1990s 但接口覆盖以单股探底为准; 回填首跑落库 min(end_date) 对账 (防日历 clamp 反例)
     freshness_sla_trading_days: 5   # 财报季密集平日稀疏
+    freshness_no_probe: 财报季度域(ann_date淡季数周无新数据=正常), 日频SLA误报疲劳, 完整性靠gap drain (2026-06-22 P0-6)
     min_rows_per_batch: 1
     allow_empty_batch: true   # 多数交易日无新财报披露
 
@@ -590,6 +595,7 @@ domains:
     available_after: "t+1"
     data_start: "20190102"
     freshness_sla_trading_days: 3
+    freshness_date_column: ann_date   # 2026-06-22 P0-6: 解禁无trade_date列, SLA探测改ann_date公告日(解禁频繁发布日频SLA合理)
     min_rows_per_batch: 1
     allow_empty_batch: true       # 部分交易日无解禁公告
 

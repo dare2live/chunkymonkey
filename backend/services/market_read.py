@@ -61,10 +61,10 @@ def _quote_price_field(field: str) -> str:
 
 
 def _relation_has_column(conn, relation: str, column: str) -> bool:
-    try:
-        rows = conn.execute(f"DESCRIBE {relation}").fetchall()
-    except Exception:
-        return False
+    # 2026-06-22 P0-9: relation 不可访问 (真相源缺失) 必须 raise — 不吞掉返 False, 否则
+    # 复权因子真相源不可访问时 get_kline_range 静默退化 factor=1.0(不复权) → scoring/return_engine
+    # 错价 (真金白银). 仅 "DESCRIBE 成功但确无该列" 才是合法 False。
+    rows = conn.execute(f"DESCRIBE {relation}").fetchall()   # relation 不可访问→抛, 非吞
     for row in rows:
         try:
             name = row["column_name"]
