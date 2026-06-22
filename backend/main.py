@@ -199,9 +199,8 @@ except Exception as exc:
 from routers.stock_graph import router as stock_graph_router
 app.include_router(stock_graph_router, prefix="/api/v3", tags=["v3_stock_graph"])
 
-# BestChoice tab (2026-05-22 Layer 4 UI 挂载): read-only challenger data, 不动 champion
-from routers.v3_bestchoice import router as v3_bestchoice_router
-app.include_router(v3_bestchoice_router, prefix="/api/v3", tags=["v3_bestchoice"])
+# BestChoice tab 退役 2026-06-22 (P2 清库): v3_bestchoice 路由查的 mart_*_bestchoice_v1 /
+# paper_sim 表 reset 已删 = 服务死表的死代码; 物删 router+service+config (bc_absorbed 另案保留)
 
 # v3_perception_legacy (serving) 退役 2026-06-14 — 查 wiped 感知 mart (L2/L3 已删)
 

@@ -310,33 +310,8 @@ tools:
     replacement: consolidated optuna governance config if these thresholds migrate into a larger shared policy bundle
     last_verified: "2026-06-02"
 
-  - id: bestchoice_pipeline_config_tests
-    paths:
-      - backend/services/bestchoice_config.py
-      - backend/config/bestchoice_pipeline.yaml
-      - backend/tests/test_bestchoice_pipeline_config.py
-      - backend/scripts/import_bestchoice_phase1_candidates.py
-      - backend/scripts/import_bestchoice_phase3_predictions.py
-      - backend/scripts/build_bestchoice_phase2_daily_feed.py
-      - backend/scripts/audit_bestchoice_walkforward_lite.py
-      - backend/scripts/build_bestchoice_context_exit_policy.py
-      - backend/scripts/build_ensemble_v4_bestchoice_predictions.py
-      - backend/scripts/run_daily_ensemble_v4_bc.py
-      - backend/scripts/build_ensemble_v4_bc_stage_filtered.py
-      - backend/scripts/build_ensemble_v4_intersect_bc_phase7.py
-      - backend/scripts/run_paper_sim_bestchoice_phase7.py
-      - backend/scripts/run_optuna_bestchoice_phase8_stoploss.py
-      - backend/scripts/run_paper_sim_ensemble_v4_bc_phase7.py
-      - backend/scripts/register_bc_ensemble_v4_bc.py
-    owner_module: bestchoice
-    scope: unit
-    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_bestchoice_pipeline_config.py
-    status: active
-    evidence_level: trusted_with_scope
-    truth_source: bestchoice pipeline defaults loader, walk-forward date windows, and test fixture YAML
-    risk_reason: if shared BestChoice run IDs or windows drift, multiple adapters and paper-sim scripts will silently split into mismatched universes
-    replacement: keep BestChoice shared defaults centralized in config and keep per-script code thin
-    last_verified: "2026-06-02"
+  # bestchoice_pipeline_config_tests 条目退役 2026-06-22 (P2 清库): 整个 bestchoice/ensemble_v4
+  # serving+phase 脚本族 reset 已删 (查的 mart_*_bestchoice_v1/paper_sim 表也已删); 死代码物删
 
   - id: shared_feature_bins_config_tests
     paths:
