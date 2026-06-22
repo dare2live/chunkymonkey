@@ -123,7 +123,7 @@ def _load_audit_config() -> dict[str, Any]:
             "completeness_threshold": 0.0,
             "gap_max_days": 5,
             "board_prefixes": list(ACTIVE_A_SHARE_PREFIXES),   # services.universe 单一真相源
-            "min_start_date": "2022-01-01",
+            "min_start_date": "2019-01-01",   # rule-compliance: ok evidence=canonical tushare K线起点(raw_tushare_daily实测2019-01-02), fallback镜像 data_audit_rules.yaml kline_checks.min_start_date
             "date_range_tolerance_days": 1,
             "sample_limit": 5,
             "gap_sample_limit": 8,
@@ -131,12 +131,11 @@ def _load_audit_config() -> dict[str, Any]:
         "smartmoney_freshness": {
             "default_max_lag_days": 3,
             "sample_limit": 5,
+            # 2026-06-22 P1-2: 删 4 张 reset 已删表 (fact_sector_momentum_daily/capital_flow_pit/
+            # sniper_score/institution_score) — 与 data_audit_rules.yaml 对齐 (YAML 已清), 否则 YAML
+            # 缺失时此 fallback 重引入死表 → _scalar 抛 CatalogError 复发死门 (P0-1批已修 YAML+防御)。
             "tables": [
                 {"table": "fact_risk_factors", "date_column": "calc_date", "max_lag_days": 3},
-                {"table": "fact_sector_momentum_daily", "date_column": "date", "max_lag_days": 3},
-                {"table": "fact_capital_flow_pit_daily", "date_column": "trade_date", "max_lag_days": 3},
-                {"table": "mart_sniper_score_daily", "date_column": "signal_date", "max_lag_days": 3},
-                {"table": "mart_institution_score_daily", "date_column": "signal_date", "max_lag_days": 3},
                 {"table": "mart_stock_survey_activity", "date_column": "as_of_date", "max_lag_days": 3},
             ],
         },
