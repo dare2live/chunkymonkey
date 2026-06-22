@@ -120,7 +120,7 @@ async def _step_sync_market_data(conn, *, should_stop, update_step, stopped_exce
         monthly_price_codes = {
             r["code"]
             for r in mkt_conn.execute(
-                "SELECT DISTINCT code FROM price_kline WHERE freq='monthly' AND adjust='qfq'"
+                "SELECT DISTINCT code FROM price_kline WHERE freq='monthly' AND adjust='qfq'"  # rule-compliance: ok evidence=writer覆盖检查(查已有monthly码集与入参codes做missing diff), 非派生策略宇宙; 真宇宙=入参codes(调用方已过universe)
             ).fetchall()
         }
         missing_m = [c for c in codes if c not in monthly_price_codes]

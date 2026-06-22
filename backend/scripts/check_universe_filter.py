@@ -39,7 +39,11 @@ EXEMPT_FILES = {
 
 # Pattern: SQL containing 'dim_active_a_stock' JOIN without nearby get_active_universe call
 SQL_PATTERN = re.compile(r"dim_active_a_stock", re.IGNORECASE)
-UNIVERSE_CALL_PATTERN = re.compile(r"get_active_universe|sql_where_active_a_share|sql_where_no_st")
+# 2026-06-22 P0-12: 认 assert_universe_clean(运行时硬门)/in_active_universe(helper) 也是 universe 执法
+UNIVERSE_CALL_PATTERN = re.compile(r"get_active_universe|sql_where_active_a_share|sql_where_no_st|assert_universe_clean|in_active_universe")
+# 2026-06-22 P0-12 盲区2: 从 K线直接派生股票宇宙 (SELECT DISTINCT code FROM price_kline) 无 universe
+# 过滤 = §4.5 universe 污染根因 (实验直扫全部股含北交所/ST)。区别于"读某股K线数据"(WHERE code=?)。
+KLINE_UNIVERSE_SCAN = re.compile(r"DISTINCT\s+(?:code|ts_code)\s+FROM\s+\S*price_kline", re.IGNORECASE)
 
 # 2026-06-17: 硬编码白名单前缀绕过 (universe 升交易日历级真相源). 任何文件内联
 # ('60','00','30','68') 白名单 = 第二真相源 → 必须 import universe.ACTIVE_A_SHARE_PREFIXES.
@@ -115,6 +119,17 @@ def check_file(path: Path, *, include_tests: bool = False) -> list[dict]:
                 "match": stripped[:80],
                 "reason": "硬编码白名单前缀(60/00/30/68)=第二真相源, 应 import services.universe.ACTIVE_A_SHARE_PREFIXES 或调 assert_universe_clean()",
             })
+        # 2026-06-22 P0-12 盲区2: 从 K线派生股票宇宙 (DISTINCT code) 无 universe 过滤 = §4.5 污染根因
+        if KLINE_UNIVERSE_SCAN.search(line) and not has_universe_call:
+            stripped = line.strip()
+            if stripped.startswith("#") or "rule-compliance: ok evidence=" in line:
+                continue
+            findings.append({
+                "file": rel,
+                "line": i,
+                "match": stripped[:80],
+                "reason": "SELECT DISTINCT code FROM price_kline 派生股票宇宙但 file 无 universe 过滤 = §4.5 污染根因(直扫全部股含北交所/ST), 应过 assert_universe_clean()/get_active_universe(); 合法(如writer/已过滤)加 # rule-compliance: ok evidence=",
+            })
     return findings
 
 
@@ -135,10 +150,9 @@ def main() -> int:
     elif args.all:
         files = sorted(REPO_ROOT.rglob("*.py"))
     else:
-        # Default: files changed vs main
-        result = subprocess.run(["git", "diff", "main", "--name-only", "--diff-filter=ACM"],
-                                capture_output=True, text=True, cwd=REPO_ROOT)
-        files = [REPO_ROOT / f for f in result.stdout.strip().split("\n") if f.endswith(".py")]
+        # 2026-06-22 P0-12 盲区1: 默认改全量扫 (旧 default=git diff main → 无 diff 分支假绿).
+        # pre-commit hook 用 --staged (增量); bare 调用 = 全量审计.
+        files = sorted(REPO_ROOT.rglob("*.py"))
     files = _filter_files(files, include_tests=args.include_tests)
 
     all_findings = []
