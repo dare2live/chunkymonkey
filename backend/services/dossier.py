@@ -73,19 +73,8 @@ def load_one(code: str, end: str | None = None,
 
 def load_limits(code: str) -> dict:
     """stk_limit (up/down_limit, A股涨跌停真相源) → {date_iso: (up_limit, down_limit)}。2022+ 才有。"""
-    c = duck_connect(RAW_DB, read_only=True)
-    try:
-        rows = c.execute(
-            "SELECT trade_date, up_limit, down_limit FROM raw_tushare_stk_limit WHERE ts_code = ? ORDER BY trade_date",
-            [code_to_ts_code(code)]).fetchall()
-    finally:
-        c.close()
-    out = {}
-    for td, ul, dl in rows:
-        td = str(td)
-        iso = f"{td[:4]}-{td[4:6]}-{td[6:8]}" if (len(td) == 8 and "-" not in td) else td
-        out[iso] = (ul, dl)
-    return out
+    rows = get_data_access().get("stk_limit", codes=[code]).rows   # SERVE 读层 (trade_date 归一 ISO)
+    return {r["trade_date"]: (r["up_limit"], r["down_limit"]) for r in rows}
 
 
 def _iso(td) -> str:

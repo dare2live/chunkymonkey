@@ -88,3 +88,15 @@ entities:
     columns: [ts_code, trade_date, winner_rate, cost_5pct, cost_50pct, cost_95pct, weight_avg]
     vendor: tushare
     available_after: eod
+
+  stk_limit:
+    # A股涨跌停真相源 (盘前可用; 2022+)
+    db: tushare_raw
+    table: raw_tushare_stk_limit
+    layer: L0
+    code_col: ts_code
+    asof_col: trade_date
+    asof_format: yyyymmdd
+    columns: [ts_code, trade_date, up_limit, down_limit]
+    vendor: tushare
+    available_after: preopen
