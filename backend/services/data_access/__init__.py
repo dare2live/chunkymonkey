@@ -47,6 +47,25 @@ class DataAccess:
     def entity_names(self) -> list[str]:
         return sorted(self._reg.entities)
 
+    def distinct_codes(self, entity: str, limit: int = 0, conn=None) -> list[str]:
+        """entity 的去重 code 清单 (扫描/选股枚举用; 按 code 序; ts_from_plain 归一 6 位)。"""
+        from .keys import ts_code_to_code
+        from . import resolver
+        spec = self._reg.entity(entity)
+        own = conn is None
+        c = conn or resolver.connect_ro(spec.db)
+        try:
+            sql = f"SELECT DISTINCT {spec.code_col} FROM {spec.table} ORDER BY {spec.code_col}"
+            if limit:
+                sql += f" LIMIT {int(limit)}"   # rule-compliance: ok evidence=扫描股数上限(运行时传入, 非策略阈值)
+            rows = c.execute(sql).fetchall()
+        finally:
+            if own:
+                c.close()
+        if spec.code_mode == "ts_from_plain":
+            return [ts_code_to_code(r[0]) for r in rows]
+        return [r[0] for r in rows]
+
     def get(self, entity: str, codes=None, start: str | None = None,
             as_of: str | None = None, conn=None) -> DataResult:
         """取一个 entity 的数据 (PIT asof≤t, 口径已清洗, 带血缘)。

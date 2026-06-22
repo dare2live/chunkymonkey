@@ -513,12 +513,7 @@ def compare_distribution(overrides: dict, end: str | None = None, scan: int = 20
     from collections import Counter
     cfg_def = load_config()
     cfg_mod, notes = _effective_cfg(overrides)
-    c = duck_connect(MARKET_DB, read_only=True)
-    try:
-        codes = [r[0] for r in c.execute(
-            "SELECT DISTINCT code FROM price_kline_qfq_tushare ORDER BY code LIMIT ?", [scan]).fetchall()]
-    finally:
-        c.close()
+    codes = get_data_access().distinct_codes("kline_qfq", limit=scan)   # 扫描股票码清单 (SERVE 读层)
     # 全体分类只需最新主态 → 只载近窗 (warmup120+er40+缓冲), 不载2015+全史 (性能)
     recent_start = (date.today() - timedelta(days=600)).isoformat()
     def_c, mod_c = Counter(), Counter()
@@ -556,12 +551,7 @@ def screen_pattern(pattern: str, end: str | None = None, limit: int = 40,
     universe: price_kline_qfq_tushare 已过 universe 写入门 (排除股不在表), screen 集天然干净。
     """
     cfg, notes = _effective_cfg(overrides)
-    c = duck_connect(MARKET_DB, read_only=True)
-    try:
-        codes = [r[0] for r in c.execute(
-            "SELECT DISTINCT code FROM price_kline_qfq_tushare ORDER BY code LIMIT ?", [scan]).fetchall()]
-    finally:
-        c.close()
+    codes = get_data_access().distinct_codes("kline_qfq", limit=scan)   # 扫描股票码清单 (SERVE 读层)
     recent_start = (date.today() - timedelta(days=600)).isoformat()   # 只需最新主态+mini趋势, 不载全史 (性能)
     hits = []
     for code in codes:
