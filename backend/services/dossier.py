@@ -266,9 +266,18 @@ def load_valuation(code: str, as_of: str | None = None) -> tuple[dict | None, li
     return cur, [r["pe_ttm"] for r in rows], [r["pb"] for r in rows]
 
 
+def _resolve_asof(as_of: str | None) -> str:
+    """as_of 默认 = 最新完成交易日 (交易日历真相源, fail-loud); 不用 wall-clock date.today() —
+    后者非交易日/盘前给个无数据日期 → SERVE 服务空/错 (2026-06-22 calendar-usage 门抓的 PIT 锚 bug)。"""
+    if as_of:
+        return as_of
+    from services.calendar import latest_closed_or_raise
+    return latest_closed_or_raise()
+
+
 def load_analyst_reports(code: str, as_of: str | None = None, months: int = 6) -> list[tuple]:
     """L3 分析师预期 (PIT 锚 report_date 发布日): 近 months 月券商研报 [(report_date, rating, tp)] (均 ≤t)。"""
-    asof_iso = as_of or date.today().isoformat()
+    asof_iso = _resolve_asof(as_of)
     cutoff_iso = (date.fromisoformat(asof_iso) - timedelta(days=months * 31)).isoformat()
     rows = get_data_access().get("report_rc", codes=[code], start=cutoff_iso, as_of=asof_iso).rows
     rows.reverse()   # ASC → 原显示序 DESC (analyst_expectation order-independent: 丢弃report_date, count+median)
@@ -280,7 +289,7 @@ def load_lhb(code: str, as_of: str | None = None, days: int = 60) -> tuple[list,
     """L3⑤ 龙虎榜 (PIT 锚 trade_date): 近 days 日上榜明细 + 机构席位净买 (均 ≤t)。
     返回 (lhb_rows=[(trade_date, net_amount, reason)], inst_rows=[(trade_date, net_buy)] 机构专用席位)。
     """
-    asof_iso = as_of or date.today().isoformat()
+    asof_iso = _resolve_asof(as_of)
     cutoff_iso = (date.fromisoformat(asof_iso) - timedelta(days=days)).isoformat()
     da = get_data_access()
     lhb = da.get("top_list", codes=[code], start=cutoff_iso, as_of=asof_iso).rows
@@ -293,7 +302,7 @@ def load_lhb(code: str, as_of: str | None = None, days: int = 60) -> tuple[list,
 
 def load_block_trade(code: str, as_of: str | None = None, days: int = 60) -> list:
     """L3⑤ 大宗交易 (PIT 锚 trade_date): 近 days 日大宗 [(trade_date, price, amount)] (≤t)。"""
-    asof_iso = as_of or date.today().isoformat()
+    asof_iso = _resolve_asof(as_of)
     cutoff_iso = (date.fromisoformat(asof_iso) - timedelta(days=days)).isoformat()
     rows = get_data_access().get("block_trade", codes=[code], start=cutoff_iso, as_of=asof_iso).rows  # trade_date 归一 ISO
     rows.reverse()   # SERVE 返 ASC → 原显示序 DESC (block_signal order-independent: mean+sum)
@@ -305,7 +314,7 @@ def load_share_float(code: str, as_of: str | None = None) -> list:
     返回 [(float_date, float_ratio)] (ann_date<=as_of)。unlock_signal 过滤未来 horizon 内。
     """
     rows = get_data_access().get("share_float", codes=[code],
-                                 as_of=as_of or date.today().isoformat()).rows  # ann_date≤asof PIT
+                                 as_of=_resolve_asof(as_of)).rows  # ann_date≤asof PIT (交易日历默认非wall-clock)
     rows.sort(key=lambda r: str(r["float_date"]))            # 原 ORDER BY float_date (float_date 保持 raw)
     return [(r["float_date"], r["float_ratio"]) for r in rows]
 
@@ -486,7 +495,7 @@ def compare_distribution(overrides: dict, end: str | None = None, scan: int = 20
     cfg_mod, notes = _effective_cfg(overrides)
     codes = get_data_access().distinct_codes("kline_qfq", limit=scan)   # 扫描股票码清单 (SERVE 读层)
     # 全体分类只需最新主态 → 只载近窗 (warmup120+er40+缓冲), 不载2015+全史 (性能)
-    recent_start = (date.today() - timedelta(days=600)).isoformat()
+    recent_start = (date.today() - timedelta(days=600)).isoformat()  # rule-compliance: ok evidence=载史下界近似窗口非PIT决策点(600日历日≈400交易日足够), 决策锚走 end 参数
     def_c, mod_c = Counter(), Counter()
     flips = []
     n = 0
@@ -523,7 +532,7 @@ def screen_pattern(pattern: str, end: str | None = None, limit: int = 40,
     """
     cfg, notes = _effective_cfg(overrides)
     codes = get_data_access().distinct_codes("kline_qfq", limit=scan)   # 扫描股票码清单 (SERVE 读层)
-    recent_start = (date.today() - timedelta(days=600)).isoformat()   # 只需最新主态+mini趋势, 不载全史 (性能)
+    recent_start = (date.today() - timedelta(days=600)).isoformat()   # rule-compliance: ok evidence=载史下界近似窗口非PIT决策点; 只需最新主态+mini趋势不载全史(性能)
     hits = []
     for code in codes:
         ohlcv = load_one(code, end, start=recent_start)
