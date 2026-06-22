@@ -33,7 +33,11 @@ MANIFEST = REPO / "backend" / "config" / "database_manifest.yaml"
 # 受层级框架管理的业务库 (持声明-layer 的活表): smartmoney 业务控制面 + feature_store L2 面板。
 # market(canonical_source)/tushare_raw(L0 vendor 镜像)/experiment_store(L4 transient) 各有独立 retention 语义,
 # 不进 layer 声明执法 (2026-06-15: feature_store 接入, 否则 L2 分区静默不受管 = 框架本意落空)。
-MANAGED_DBS = ("smartmoney", "feature_store")  # rule-compliance: ok evidence=database_manifest.yaml 业务/特征库
+MANAGED_DBS = ("smartmoney", "feature_store")  # rule-compliance: ok evidence=database_manifest.yaml 业务/特征库 (untagged 检查域: 此2库每表必声明)
+# 2026-06-22 P2: stale 检查(声明了但不在live)须扫全库 — 否则 market/etf 驻留的声明表
+# (price_kline_qfq_tushare 在 market / mart_etf_snapshot_* 在 etf) 被误判 stale。untagged 检查仍只 MANAGED_DBS
+# (不要求声明 market/etf 的 raw 镜像表)。
+STALE_SCAN_DBS = ("smartmoney", "feature_store", "market", "etf")
 
 
 def _db_path(key: str) -> Path:
@@ -41,9 +45,9 @@ def _db_path(key: str) -> Path:
     return REPO / m["databases"][key]["path"]
 
 
-def _live_tables() -> set[str]:
+def _live_tables(dbs=MANAGED_DBS) -> set[str]:
     live: set[str] = set()
-    for key in MANAGED_DBS:
+    for key in dbs:
         path = _db_path(key)
         if not path.exists():
             continue  # planned/未建库跳过 (建后自动纳管)
@@ -64,9 +68,10 @@ def audit() -> dict:
     tagged = reg.get("tables", {})
     live = _live_tables()
 
-    untagged = sorted(live - set(tagged))                       # 活表未声明 layer = 违纪
+    live_all = _live_tables(STALE_SCAN_DBS)                      # 2026-06-22 P2: stale 检查扫全库 (含 market/etf)
+    untagged = sorted(live - set(tagged))                       # 活表未声明 layer = 违纪 (仅 MANAGED_DBS)
     bad_layer = sorted(t for t, l in tagged.items() if l not in layers)  # 声明了不存在的层
-    stale_tag = sorted(set(tagged) - live)                      # 声明了但表已不在 (清理提示, 非 FAIL)
+    stale_tag = sorted(set(tagged) - live_all)                  # 声明了但表全库都不在 = 真wiped (清理提示, 非 FAIL); 非误判 market/etf 驻留
 
     from collections import Counter
     by_layer = dict(Counter(l for t, l in tagged.items() if t in live))

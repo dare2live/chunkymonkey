@@ -97,8 +97,6 @@ tables:
   fact_stock_technical_stage: L1k_kline_intermediate
   mart_macd_state_history: L1k_kline_intermediate
   price_kline_qfq_tushare: L1k_kline_intermediate   # 2026-06-15 tushare 前复权 K线 (回测主源, §4.3; build_price_kline_qfq_tushare.py 从 raw_tushare_daily×adj_factor 建 2019+)
-  _cache_holder_search: display
-  _cache_stock_latest_rd: display
   mart_current_relationship: display
   mart_stock_picture_daily: display
   dim_stock_attention_latest: display      # 2026-06-22 P0-10 补声明: 关注度最新快照 5503行 (UI 展示用)
@@ -127,71 +125,26 @@ tables:
   sys_schema_version: infra
   dim_stock_industry_context_latest: L1_foundation
   dim_strategy_preset: infra
-  fact_controlling_shareholder: L2_feature
   fact_feature_panel: L2_feature          # 2026-06-19 重建物化 live (8.17M行/5427股/2019-2026; mom_60/reversal_20/vol_20/mf_trend_20/roe_dt_asof PIT; entry点JOIN覆盖100%; build_feature_panel.py)
-  fact_feature_panel_candidate: L2_feature
-  fact_feature_panel_tdx_keep_challenger: L2_feature
-  fact_fund_holding_tdx_f10: L2_feature
-  fact_holder_event: L2_feature
   fact_segment_panel: L2_feature          # 2026-06-16 F0 形态/分层面板 (build_segment_panel.py, tushare PIT, stage+range_pos+MACD零轴+board)
   fact_signal_panel: L2_feature           # 2026-06-22 b分表事件信号面 (build_signal_panel.py, 平行 feature_panel 同键 code×date; 公式事件 macd_golden_cross, 加公式=加列; signal_assembler 同键JOIN feature_panel)
   fact_risk_factors: L2_feature           # 2026-06-22 P0-10 补声明 (conformance审计抓 untagged 致 data-layer-integrity 红门): 风险因子日表 4977行 (calc_date, daily_update Step2e build)
   fact_technical_trigger: L2_feature      # 2026-06-22 P0-10 补声明: 技术触发事件 (rows=0 公式工厂待跑; formula 族)
   mart_formula_horizon_evidence: L2_feature  # 2026-06-22 P0-10 补声明: 公式 horizon 证据 (rows=0 公式工厂待跑)
   mart_stage_formula_fitness: L2_feature  # 2026-06-22 P0-10 补声明: 阶段公式适应度 (rows=0 公式工厂待跑; v1 schema drift WARN 另案)
-  fact_setup_snapshot: L2_feature
-  fact_shareholder_plan: L2_feature
-  fact_shareholder_trade: L2_feature
-  fact_shareholder_trade_tdx_b: L2_feature
   fact_stock_industry_context: L1_foundation
-  fact_tdx_gpcw_auto_feature_quarterly: L2_feature
   financial_sync_state: infra
-  market_gap_queue: L2_feature
-  mart_audit_snapshot_state: L2_feature
-  mart_candidate_walkforward_eval: L4_experiment
-  mart_data_source_reassignment_proposal: L2_feature
   mart_dual_confirm: L3_model
   mart_etf_snapshot_latest: L2_feature
   mart_etf_snapshot_state: L2_feature
-  mart_feature_candidate_score: L3_model
-  mart_feature_drift: L4_experiment
-  mart_feature_group_ablation: L4_experiment
-  mart_feature_pit_audit: L2_feature
-  mart_feature_retention_decision: L2_feature
-  mart_institution_industry_stat: L2_feature
-  mart_institution_profile: L2_feature
-  mart_lineage: L2_feature
-  mart_market_perception_audit_log: L2_feature
-  mart_market_perception_daily: L2_feature
-  mart_market_perception_emotion_daily: L2_feature
-  mart_market_perception_leader_follower_daily: L2_feature
-  mart_market_perception_stock_context_daily: L2_feature
-  mart_market_perception_style_daily: L2_feature
-  mart_market_perception_theme_daily: L2_feature
-  mart_market_perception_under_reaction_daily: L2_feature
-  mart_model_feature_lineage: L3_model
-  mart_model_holding_topk_eval: L3_model
-  mart_model_lifecycle: L3_model
-  mart_model_selection_run: L3_model
   mart_sector_momentum: L2_feature
-  mart_stock_fund_flow_rank_snapshot_daily: L2_feature
   mart_stock_screening: L3_model
-  mart_stock_trend: L2_feature
-  mart_strategy_result_registry: L2_feature
-  mart_tdx_challenger_report: L2_feature
-  mart_tdx_data_need_coverage: L2_feature
-  mart_tdx_gpcw_auto_challenger_report: L2_feature
-  mart_tdx_gpcw_auto_feature_cluster: L2_feature
-  mart_tdx_gpcw_auto_feature_score: L3_model
-  mart_tdx_gpcw_auto_optuna_run: L4_experiment
-  mart_tdx_gpcw_auto_pit_audit: L2_feature
-  mart_tdx_gpcw_auto_retention_decision: L2_feature
-  mart_tdx_keep_promotion_gate: L2_feature
   raw_capital_dividend_summary: L0_source
-  raw_tdx_f10_extra_parse_status: L2_feature
-  scan_log: L2_feature
 _notes:
   recreated_empty_2026_06_14: 58 张 L2/L3/L4 表被 app 启动 schema-init(schema_core/schema_marts) 空重建; 数据已删, schema 定义待从 kept schema
     文件移除否则反复重建 (代码清理遗留)。
   scattered_service_create_2026_06_14: 8 张由 kept 服务(financial_client/sector_momentum/screening/dual_confirm 等)import时自建, 非schema_*集中定义。L2/L3
     的(sector_momentum/screening/dual_confirm)是散落重建源, 待服务层 layer 门控(剩余增量解耦)。
+  cleaned_stale_declarations_2026_06_23: 50 张 2026-06-14 reset wiped 表声明从 tables: 清除 (P2 单一真相源=只列活表; conformance审计抓 stale_tag drift)。
+    含 perception层(mart_market_perception_*)/公式工厂(mart_tdx_gpcw_auto_*/feature_candidate)/模型层(mart_model_*/strategy_result)/缓存(_cache_*)等。
+    重建时各自重新声明 layer (declare-on-build)。同步修 data_layer_audit STALE_SCAN_DBS 扩 market/etf 消除 price_kline_qfq_tushare/mart_etf_snapshot 假阳 stale。
