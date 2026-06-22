@@ -314,23 +314,13 @@ def load_valuation(code: str, as_of: str | None = None) -> tuple[dict | None, li
     """L3 估值 (PIT 锚 trade_date): 最新 daily_basic + pe_ttm/pb ≤t 历史序列 (供自身分位)。
     返回 (cur dict, pe_hist, pb_hist)。daily_basic 估值字段 (pe/pb/市值) 走 L3; 换手/量比 已在 L2 capital。
     """
-    ts = code_to_ts_code(code)
-    asof = as_of.replace("-", "") if as_of else None
-    where = "ts_code = ?" + (" AND trade_date <= ?" if asof else "")
-    args = [ts] + ([asof] if asof else [])
-    c = duck_connect(RAW_DB, read_only=True)
-    try:
-        rows = c.execute(
-            f"SELECT trade_date, pe_ttm, pb, ps_ttm, dv_ttm, total_mv FROM raw_tushare_daily_basic "
-            f"WHERE {where} ORDER BY trade_date", args).fetchall()
-    finally:
-        c.close()
+    rows = get_data_access().get("valuation", codes=[code], as_of=as_of).rows  # trade_date≤asof SERVE; ASC
     if not rows:
         return None, [], []
     last = rows[-1]
-    cur = {"trade_date": last[0], "pe_ttm": last[1], "pb": last[2], "ps_ttm": last[3],
-           "dv_ttm": last[4], "total_mv": last[5]}
-    return cur, [r[1] for r in rows], [r[2] for r in rows]
+    cur = {"trade_date": last["trade_date"], "pe_ttm": last["pe_ttm"], "pb": last["pb"],
+           "ps_ttm": last["ps_ttm"], "dv_ttm": last["dv_ttm"], "total_mv": last["total_mv"]}
+    return cur, [r["pe_ttm"] for r in rows], [r["pb"] for r in rows]
 
 
 def load_analyst_reports(code: str, as_of: str | None = None, months: int = 6) -> list[tuple]:
