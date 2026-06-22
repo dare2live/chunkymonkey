@@ -13,6 +13,7 @@ from typing import Any
 import duckdb
 
 from services.calendar import latest_completed_trade_date
+from services.universe import ACTIVE_A_SHARE_PREFIXES   # 单一真相源 (排除股白名单前缀, 替硬编码第二真相源)
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +122,7 @@ def _load_audit_config() -> dict[str, Any]:
             "active_code_column": "stock_code",
             "completeness_threshold": 0.0,
             "gap_max_days": 5,
-            "board_prefixes": ["00", "30", "60", "68"],
+            "board_prefixes": list(ACTIVE_A_SHARE_PREFIXES),   # services.universe 单一真相源
             "min_start_date": "2022-01-01",
             "date_range_tolerance_days": 1,
             "sample_limit": 5,
@@ -317,7 +318,7 @@ def _check_board_coverage(conn: duckdb.DuckDBPyConnection) -> CheckResult:
         WHERE freq=? AND adjust=? AND {code_col} IS NOT NULL
     """, [freq, adjust]).fetchall()
     prefixes = {str(c[0]).zfill(6)[:2] for c in rows}
-    expected_prefixes = {str(p) for p in _as_list(cfg.get("board_prefixes"), ("00", "30", "60", "68"))}
+    expected_prefixes = {str(p) for p in _as_list(cfg.get("board_prefixes"), ACTIVE_A_SHARE_PREFIXES)}
     missing = sorted(expected_prefixes - prefixes)
     if missing:
         return CheckResult("board_coverage", "FAIL", f"missing board prefixes: {', '.join(missing)}; sample: {', '.join(sorted(prefixes)[:sample_limit])}")

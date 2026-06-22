@@ -460,6 +460,33 @@ EXTRA_DEPRECATED_ASSET_BY_TABLE = {
         "deprecated_reason": "Phase ψ.5 removed — no live writer or current consumer remains",
         "replacement_table": None,
     },
+    # 2026-06-22 health 漂移 curation (doctor 排查): reset 删物理表 + 源迁移 tushare 后, 12 红表登记仍 active
+    # 致 data_health 假红。标 deprecated + replacement 指后继 (tushare/申万); tdx holder 表本 session 已切 tushare 主源,
+    # 备援代码路径 (load_top10_holders._top10_tdx) 独立于注册表状态。owner=主会话 (doctor 排查 dim_data_asset 漂移)。
+    "_cache_holder_search": {"purpose": "持仓搜索缓存 (reset 删)", "deprecation_status": "deprecated",
+        "deprecated_reason": "reset 删, 瞬时缓存无 replacement", "replacement_table": None, "quality_gate_level": "monitor_only"},
+    "dim_financial_indicator_latest": {"purpose": "财务指标快照 (akshare, reset 删/改名)", "deprecation_status": "deprecated",
+        "deprecated_reason": "akshare 源退役, 财务指标切 tushare", "replacement_table": "raw_tushare_fina_indicator", "quality_gate_level": "monitor_only"},
+    "financial_indicator_sync_state": {"purpose": "财务同步状态 (改名)", "deprecation_status": "deprecated",
+        "deprecated_reason": "改名 financial_sync_state", "replacement_table": "financial_sync_state", "quality_gate_level": "monitor_only"},
+    "mart_industry_pit_quality": {"purpose": "行业 PIT 质量 (派生 tdx industry, reset 删)", "deprecation_status": "deprecated",
+        "deprecated_reason": "行业切申万 v_sw_industry_pit, 派生 mart 删", "replacement_table": "v_sw_industry_pit", "quality_gate_level": "monitor_only"},
+    "mart_stock_industry_pit": {"purpose": "个股行业 PIT (派生 tdx industry, reset 删)", "deprecation_status": "deprecated",
+        "deprecated_reason": "行业切申万 v_sw_industry_pit", "replacement_table": "v_sw_industry_pit", "quality_gate_level": "monitor_only"},
+    "raw_aif10_financial_history": {"purpose": "aif10 财务史 (reset 删)", "deprecation_status": "deprecated",
+        "deprecated_reason": "aif10 源迁移 tushare (M4)", "replacement_table": "raw_tushare_fina_indicator", "quality_gate_level": "monitor_only"},
+    "raw_aif10_holder_count": {"purpose": "aif10 户数 (reset 删)", "deprecation_status": "deprecated",
+        "deprecated_reason": "aif10 源迁移 tushare", "replacement_table": "raw_tushare_stk_holdernumber", "quality_gate_level": "monitor_only"},
+    "raw_aif10_forecast_consensus": {"purpose": "aif10 一致预期 (stale)", "deprecation_status": "deprecated",
+        "deprecated_reason": "aif10 源迁移; 业绩预告切 tushare forecast (2026-06-22 接入)", "replacement_table": "raw_tushare_forecast", "quality_gate_level": "monitor_only"},
+    "fact_top10_holder_period": {"purpose": "tdx F10 十大流通股东 (切 tushare 后降备援)", "deprecation_status": "deprecated",
+        "deprecated_reason": "2026-06-22 机构切 tushare top10_floatholders 主源, tdx 降备援 (fallback 代码独立)", "replacement_table": "raw_tushare_top10_floatholders", "quality_gate_level": "monitor_only"},
+    "raw_tdx_f10_holder_research": {"purpose": "tdx F10 股东研究 (切 tushare 后降备援)", "deprecation_status": "deprecated",
+        "deprecated_reason": "机构切 tushare, tdx 降备援", "replacement_table": "raw_tushare_top10_floatholders", "quality_gate_level": "monitor_only"},
+    "dim_capital_behavior_latest": {"purpose": "资本行为 (akshare 分红/回购/解禁)", "deprecation_status": "deprecated",
+        "deprecated_reason": "akshare 源退役, 分红/回购/解禁切 tushare", "replacement_table": "raw_tushare_dividend", "quality_gate_level": "monitor_only"},
+    "raw_profit_forecast_snapshot_daily": {"purpose": "盈利预测快照 (stale)", "deprecation_status": "deprecated",
+        "deprecated_reason": "盈利预测切 tushare forecast/report_rc", "replacement_table": "raw_tushare_forecast", "quality_gate_level": "monitor_only"},
 }
 
 DEPRECATED_ASSET_BY_TABLE = EXTRA_DEPRECATED_ASSET_BY_TABLE
