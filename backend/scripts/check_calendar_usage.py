@@ -39,6 +39,10 @@ CALENDAR_IMPORT = re.compile(r"from services\.calendar import|import services\.c
 WALLCLOCK = re.compile(r"datetime\.now\(\)\.date\(\)|date\.today\(\)|datetime\.today\(\)")
 # B2: SQL 日历天 cutoff (current_date - INTERVAL N DAY / now() - INTERVAL)
 SQL_CALDAY = re.compile(r"current_date\s*-\s*(?:INTERVAL|interval)|CURRENT_DATE\s*-\s*(?:INTERVAL|\d)|now\(\)\s*-\s*(?:INTERVAL|interval)", re.IGNORECASE)
+# B3: SQL 上界锚 (col <= CURRENT_DATE / <= CAST(CURRENT_DATE — wall-clock 当 PIT 决策上界, 周末/盘中 admit 未收盘日).
+# 负 lookahead 排除 `CURRENT_DATE -`(那是 B2 lookback 窗口非上界锚) — 2026-06-22 P0-11 修验证器盲区:
+# 旧 SQL_CALDAY 只抓减法窗口, 漏抓裸 <= CURRENT_DATE 真上界锚 (signals_v2:1495/242), architect rule7.
+SQL_UPPER = re.compile(r"(?:<=|<|=)\s*(?:CAST\s*\(\s*)?CURRENT_DATE(?!\s*-)", re.IGNORECASE)
 
 EVIDENCE = "rule-compliance: ok evidence="
 
@@ -77,8 +81,10 @@ def check_file(path: Path) -> list[dict]:
             continue
         if WALLCLOCK.search(line):
             findings.append({"file": rel, "line": i, "kind": "B1 wall-clock-as-latest", "match": s[:90]})
-        elif SQL_CALDAY.search(line):
+        if SQL_CALDAY.search(line):
             findings.append({"file": rel, "line": i, "kind": "B2 SQL 日历天 cutoff", "match": s[:90]})
+        if SQL_UPPER.search(line):   # B3 上界锚 (真 PIT 上界 bug, 区别于 B2 lookback 窗口)
+            findings.append({"file": rel, "line": i, "kind": "B3 SQL CURRENT_DATE 上界锚", "match": s[:90]})
     return findings
 
 

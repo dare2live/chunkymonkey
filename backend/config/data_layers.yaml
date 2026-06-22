@@ -93,6 +93,7 @@ tables:
   inst_holdings: L1_foundation
   inst_institutions: L1_foundation
   mart_stock_survey_activity: L1_foundation
+  fact_stock_attention_snapshot: L1_foundation   # 2026-06-22 P0-10 补声明: 外部关注度快照 5503行 (snapshot_date, daily_update Step2k; akshare 源 §4.3 退役待 M4 迁 tushare)
   fact_stock_technical_stage: L1k_kline_intermediate
   mart_macd_state_history: L1k_kline_intermediate
   price_kline_qfq_tushare: L1k_kline_intermediate   # 2026-06-15 tushare 前复权 K线 (回测主源, §4.3; build_price_kline_qfq_tushare.py 从 raw_tushare_daily×adj_factor 建 2019+)
@@ -100,6 +101,7 @@ tables:
   _cache_stock_latest_rd: display
   mart_current_relationship: display
   mart_stock_picture_daily: display
+  dim_stock_attention_latest: display      # 2026-06-22 P0-10 补声明: 关注度最新快照 5503行 (UI 展示用)
   stock_watchlist: display
   app_settings: infra
   capital_detail_sync_state: infra
@@ -133,6 +135,10 @@ tables:
   fact_holder_event: L2_feature
   fact_segment_panel: L2_feature          # 2026-06-16 F0 形态/分层面板 (build_segment_panel.py, tushare PIT, stage+range_pos+MACD零轴+board)
   fact_signal_panel: L2_feature           # 2026-06-22 b分表事件信号面 (build_signal_panel.py, 平行 feature_panel 同键 code×date; 公式事件 macd_golden_cross, 加公式=加列; signal_assembler 同键JOIN feature_panel)
+  fact_risk_factors: L2_feature           # 2026-06-22 P0-10 补声明 (conformance审计抓 untagged 致 data-layer-integrity 红门): 风险因子日表 4977行 (calc_date, daily_update Step2e build)
+  fact_technical_trigger: L2_feature      # 2026-06-22 P0-10 补声明: 技术触发事件 (rows=0 公式工厂待跑; formula 族)
+  mart_formula_horizon_evidence: L2_feature  # 2026-06-22 P0-10 补声明: 公式 horizon 证据 (rows=0 公式工厂待跑)
+  mart_stage_formula_fitness: L2_feature  # 2026-06-22 P0-10 补声明: 阶段公式适应度 (rows=0 公式工厂待跑; v1 schema drift WARN 另案)
   fact_setup_snapshot: L2_feature
   fact_shareholder_plan: L2_feature
   fact_shareholder_trade: L2_feature

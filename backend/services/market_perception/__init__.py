@@ -1,27 +1,13 @@
-"""Market perception service package."""
+"""Market perception service package — RETIRED (2026-06-14 地基-reset commit 639e0dfb).
 
-from .emotion_engine import compute_emotion_for_date, compute_emotion_for_range
-from .leader_follower_engine import compute_leader_follower_for_date, compute_leader_follower_for_range
-from .regime_engine import compute_regime_for_date, compute_regime_for_range, get_regime_source_max_date
-from .style_rotation_engine import compute_style_rotation_for_date, compute_style_rotation_for_range
-from .stock_context_engine import compute_stock_context_for_date, compute_stock_context_for_range
-from .theme_lifecycle_engine import compute_theme_lifecycle_for_date, compute_theme_lifecycle_for_range
-from .under_reaction_engine import compute_under_reaction_for_date, compute_under_reaction_for_range
+子系统已退役 (main.py 注释 + perception_absorbed/README 佐证)。reset 删了全部 engine
+(emotion/leader_follower/style_rotation/stock_context/theme_lifecycle/under_reaction)
+**以及 .utils** — 残存的 regime_engine.py 仍 `from .utils import` = 自身亦 broken。
+全仓 0 外部消费者 (2026-06-22 conformance 审计 P0-7 实测 rg 确认)。
 
-__all__ = [
-    "compute_emotion_for_date",
-    "compute_emotion_for_range",
-    "compute_leader_follower_for_date",
-    "compute_leader_follower_for_range",
-    "compute_regime_for_date",
-    "compute_regime_for_range",
-    "compute_style_rotation_for_date",
-    "compute_style_rotation_for_range",
-    "compute_stock_context_for_date",
-    "compute_stock_context_for_range",
-    "compute_theme_lifecycle_for_date",
-    "compute_theme_lifecycle_for_range",
-    "compute_under_reaction_for_date",
-    "compute_under_reaction_for_range",
-    "get_regime_source_max_date",
-]
+__init__ 改 import-safe 空壳: 不 re-export 任何已坏子模块, 使 `import services.market_perception`
+不再 ModuleNotFoundError。regime_engine.py/router_serialize.py 死码留盘 (0 引用, 无害),
+全包物删归 P2 cleanup (单独 impact 审计后)。
+"""
+
+__all__: list[str] = []
