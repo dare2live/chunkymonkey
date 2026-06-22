@@ -228,10 +228,14 @@ function sectorCard(base){
 
 // L3④ 基本面 / 估值 / 分析师预期 (可持续性 = 涨得有没有基本面支撑)
 function fundamentalsCard(base){
-  const f = base.fundamentals, v = base.valuation, a = base.analyst;
-  if(!f && !v && !a) return "";
+  const f = base.fundamentals, v = base.valuation, a = base.analyst, fc = base.forecast;
+  if(!f && !v && !a && !fc) return "";
   const fColor = s => /优质/.test(s||'')?'aligned':/偏弱/.test(s||'')?'conflict':'';
   const vColor = s => s==='低估'?'aligned':s==='高估'?'conflict':'';
+  const fcRow = fc ? `<div class="dim"><span class="dim-k">业绩预告(前瞻)</span><span class="dim-v">
+    <span class="badge ${fc['方向']==='利好'?'aligned':fc['方向']==='利空'?'conflict':''}">${fc['预告类型']||'—'}</span>
+    ${fc['高增长前瞻']?'<span class="badge aligned">高增长前瞻</span>':''}
+    <span class="src">净利同比 ${fc['净利变动中值']!=null?(fc['净利变动中值']>0?'+':'')+fc['净利变动中值']+'%':'—'}${fc['幅度下限']!=null&&fc['幅度上限']!=null?'('+fc['幅度下限']+'~'+fc['幅度上限']+'%)':''} · ${fc['报告期']||''} 公告${fc['公告日']||''} (PEAD前瞻, ann_date PIT)</span></span></div>` : "";
   const fundRow = f ? `<div class="dim"><span class="dim-k">基本面</span><span class="dim-v">
     <span class="badge ${fColor(f['基本面评'])}">${f['基本面评']}</span>
     <span class="badge ${f['盈利能力']==='优秀'||f['盈利能力']==='良好'?'aligned':f['盈利能力']==='偏弱'?'conflict':''}">ROE ${f.ROE!=null?f.ROE+'%':'—'}(${f['盈利能力']})</span>
@@ -248,8 +252,8 @@ function fundamentalsCard(base){
     ${a['上行空间']!=null?`<span class="badge ${a['上行空间']>0?'aligned':'conflict'}">目标价上行 ${a['上行空间']>0?'+':''}${a['上行空间']}%</span>`:''}
     <span class="src">近6月研报 · A股研报正向偏(占比判别力弱, 看上行空间) · report_date PIT</span></span></div>` : "";
   return `<div class="layer l3"><div class="layer-hd"><span class="ln">L3</span><span class="lt">基本面 / 估值 / 预期</span>
-      <span class="ld">涨得有没有支撑 · 财报ann_date PIT · 券商研报</span></div>
-    <div class="layer-bd">${fundRow}${valRow}${aRow}</div></div>`;
+      <span class="ld">涨得有没有支撑 · 财报ann_date PIT · 业绩预告前瞻 · 券商研报</span></div>
+    <div class="layer-bd">${fundRow}${fcRow}${valRow}${aRow}</div></div>`;
 }
 
 // L3⑤ 事件催化 (为什么近期异动 = 龙虎榜资金 + 大宗折溢价 + 解禁前瞻)

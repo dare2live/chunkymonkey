@@ -79,6 +79,31 @@ def valuation_signals(cur: dict | None, pe_hist, pb_hist, *, cfg=None) -> dict |
             "估值状态": state}
 
 
+_FORECAST_BULL = ("预增", "扭亏", "略增", "续盈")   # 业绩预告利好类型
+_FORECAST_BEAR = ("预减", "首亏", "续亏", "略减")   # 利空类型 (不确定/其他 = 中性)
+
+
+def forecast_signal(fc: dict | None, *, cfg=None) -> dict | None:
+    """L3 业绩预告 (前瞻 PEAD, PIT 锚 ann_date 公告日): type 方向 + 净利同比变动幅度 → 利好/利空 + 高增长前瞻。
+    fc = 最近已公告预告 dict {type, p_change_min, p_change_max, end_date, ann_date}。dossier L3 前瞻预期链 (鱼头催化)。
+    """
+    if not fc:
+        return None
+    c = (cfg or {}).get("预告") or {}
+    high = c.get("高增长门", 50.0)            # 净利同比中值% > 此 + 利好 = 高增长前瞻
+    typ = fc.get("type")
+    pmin, pmax = fc.get("p_change_min"), fc.get("p_change_max")
+    if pmin is not None and pmax is not None:
+        mid = (pmin + pmax) / 2.0
+    else:
+        mid = pmin if pmin is not None else pmax
+    direction = ("利好" if typ in _FORECAST_BULL else "利空" if typ in _FORECAST_BEAR else "中性")
+    return {"预告类型": typ, "净利变动中值": round(mid, 1) if mid is not None else None,
+            "幅度下限": pmin, "幅度上限": pmax, "方向": direction,
+            "高增长前瞻": bool(direction == "利好" and mid is not None and mid >= high),
+            "报告期": fc.get("end_date"), "公告日": fc.get("ann_date")}
+
+
 # A股正向评级词 fallback (cfg 缺时用; 正式词表走 technical_states.yaml 预期.正向评级词, §3 数据化)。
 # casefold 子串匹配 (Buy/BUY/Outperform 大写变体 + 繁体買進 均命中); 卖出/减持/中性/持有 不在此=非正向。
 _POS_RATINGS = ("买入", "增持", "推荐", "强烈推荐", "强推", "审慎增持", "谨慎增持", "审慎推荐",

@@ -482,3 +482,18 @@ def test_market_regime():
     assert out2[dates[-1]]["regime"] == "熊市" and out2[dates[-1]]["情绪"] == "情绪弱(风险偏好低)"
     # PIT: 前 2*窗口 日无 regime
     assert dates[0] not in out
+
+
+def test_forecast_signal():
+    """L3④ 业绩预告 (前瞻PEAD): type方向(预增/扭亏=利好, 预减/首亏=利空) + 净利幅度中值 → 高增长前瞻。"""
+    from services.technical_states.fundamentals import forecast_signal
+    cfg = load_config()
+    # 预增 + 高幅度 → 利好 + 高增长前瞻
+    r = forecast_signal({"type": "预增", "p_change_min": 52.0, "p_change_max": 88.0,
+                         "end_date": "20250630", "ann_date": "20250716"}, cfg=cfg)
+    assert r["方向"] == "利好" and r["净利变动中值"] == 70.0 and r["高增长前瞻"] is True
+    # 首亏 → 利空 (无幅度 graceful)
+    assert forecast_signal({"type": "首亏", "p_change_min": None, "p_change_max": None}, cfg=cfg)["方向"] == "利空"
+    # 略增 + 低幅度 → 利好但非高增长
+    assert forecast_signal({"type": "略增", "p_change_min": 5.0, "p_change_max": 15.0}, cfg=cfg)["高增长前瞻"] is False
+    assert forecast_signal(None, cfg=cfg) is None

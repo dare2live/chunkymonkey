@@ -21,7 +21,9 @@ from services.technical_states.chips import chip_signals
 from services.technical_states.vol import volume_signals
 from services.technical_states.rs import relative_strength
 from services.technical_states.sector_context import sector_regime, concept_labels
-from services.technical_states.fundamentals import fundamental_signals, valuation_signals, analyst_expectation
+from services.technical_states.fundamentals import (
+    fundamental_signals, valuation_signals, analyst_expectation, forecast_signal,
+)
 from services.technical_states.events import lhb_signal, block_signal, unlock_signal
 from services.technical_states.regime import market_regime
 from services.technical_states import (
@@ -310,6 +312,34 @@ def load_fundamentals(code: str, as_of: str | None = None) -> dict | None:
     return dict(zip(keys, row))
 
 
+def load_forecast(code: str, as_of: str | None = None) -> dict | None:
+    """L3 业绩预告 (前瞻 PEAD, PIT 锚 ann_date 公告日): 取 ann_date<=t 最近一次预告 (修订=新ann_date胜, PIT干净)。
+    raw_tushare_forecast 已在库 (零拉取)。**同日多版本冲突处理 (复审 LOW, measured-not-estimated)**:
+    实测 18 股-期 同 (ts,end,ann) 携冲突 type (如 002141 同日 略减-36% vs 预增+636%), ORDER BY 无决胜键 →
+    取行非确定性 (表重建即翻方向)。修: 最新 (ann_date,end_date) 组若多 type 自相矛盾 → 不伪造方向, 标"存疑"。
+    """
+    ts = code_to_ts_code(code)
+    asof = as_of.replace("-", "") if as_of else None
+    where = "ts_code = ?" + (" AND ann_date <= ?" if asof else "")
+    args = [ts] + ([asof] if asof else [])
+    keys = ["type", "p_change_min", "p_change_max", "end_date", "ann_date"]
+    c = duck_connect(RAW_DB, read_only=True)
+    try:
+        rows = c.execute(
+            f"SELECT type, p_change_min, p_change_max, end_date, ann_date FROM raw_tushare_forecast "
+            f"WHERE {where} ORDER BY ann_date DESC, end_date DESC", args).fetchall()
+    finally:
+        c.close()
+    if not rows:
+        return None
+    top_ann, top_end = rows[0][4], rows[0][3]                     # 最新公告日 + 报告期组
+    group = [r for r in rows if r[4] == top_ann and r[3] == top_end]
+    if len({r[0] for r in group}) > 1:                           # evidence: 实测18股-期同日多type矛盾 → 上游自相矛盾不伪造方向(中性)
+        return {"type": "存疑(同日多版本)", "p_change_min": None, "p_change_max": None,
+                "end_date": top_end, "ann_date": top_ann}
+    return dict(zip(keys, group[0]))
+
+
 def load_valuation(code: str, as_of: str | None = None) -> tuple[dict | None, list, list]:
     """L3 估值 (PIT 锚 trade_date): 最新 daily_basic + pe_ttm/pb ≤t 历史序列 (供自身分位)。
     返回 (cur dict, pe_hist, pb_hist)。daily_basic 估值字段 (pe/pb/市值) 走 L3; 换手/量比 已在 L2 capital。
@@ -520,6 +550,7 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
               "regime": sec_reg.get(last_date), "stock_vs_sector": svs.get(last_date),
               **concept_labels(sec_mem["concepts"], sec_mem["concept_hot"], cfg=cfg)}
     fund = fundamental_signals(load_fundamentals(code, as_of=last_date), cfg=cfg)             # L3④ 基本面 (ann_date PIT)
+    forecast = forecast_signal(load_forecast(code, as_of=last_date), cfg=cfg)                 # L3④ 业绩预告前瞻 (ann_date PIT, PEAD 鱼头催化)
     cur_val, pe_hist, pb_hist = load_valuation(code, as_of=last_date)                         # L3④ 估值 (trade_date PIT)
     valuation = valuation_signals(cur_val, pe_hist, pb_hist, cfg=cfg)
     last_close = ohlcv["close"][-1] if ohlcv["close"] else None
@@ -547,6 +578,7 @@ def interpret_stock(code: str, end: str | None = None, overrides: dict | None = 
         "vol": vol.get(last_date),                                     # L2 成交量/量能 (量比+量价配合)
         "sector": sector,                                              # L3 板块/概念 (申万行业regime+个股vs板块+东财概念热度)
         "fundamentals": fund,                                          # L3④ 基本面 (ROE/成长/毛利/负债, ann_date PIT)
+        "forecast": forecast,                                          # L3④ 业绩预告前瞻 (PEAD 鱼头催化, ann_date PIT)
         "valuation": valuation,                                        # L3④ 估值 (PE/PB自身分位/股息/市值, trade_date PIT)
         "analyst": analyst,                                            # L3④ 分析师预期 (近6月研报评级/目标价上行空间, report_date PIT)
         "events": events,                                              # L3⑤ 事件催化 (龙虎榜/大宗trade_date PIT + 解禁float_date前瞻)
