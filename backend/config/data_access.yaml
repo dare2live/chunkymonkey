@@ -1,0 +1,66 @@
+# SERVE 读侧 entity registry — 数据模块顶层设计 v2 §4.2 (data_module_toplevel_design_20260622.md)
+#
+# 唯一取数声明处 (不变量4 单概念单真相源): consumer 禁内联 FROM raw_* (moth read-no-inline-table 守)。
+# PIT 锚 + 口径清洗由读层强制 (不变量1 统一主键+PIT锚): consumer 不自写 asof (moth read-no-self-asof 守)。
+# 每 entity 是一条声明 = 血缘的"声明链"一环 (展示→entity→源表→sync域→tushare)。
+#
+# 字段:
+#   db            : database_manifest 别名 (路由真相源, 不 hardcode .duckdb)
+#   table         : 物理表名
+#   layer         : data_layers 层 (L0 raw / L1k 复权K线 / L1 / L2 / L3)
+#   code_col      : 个股代码列; code_col=='ts_code' → 输出归一为 6 位
+#   asof_col      : PIT 锚列 (决策 t 只用 asof_col <= t)
+#   asof_format   : iso (YYYY-MM-DD) | yyyymmdd (YYYYMMDD) — 决定 as_of 比较前怎么归一
+#   columns       : 取哪些列 (preflight 会对 schema 核对, 漂移=FAIL)
+#   vendor        : 数据厂商 (血缘 provenance)
+#   available_after: eod 盘后收盘可用 (决策侧 JOIN t-1) | preopen 盘前 | ann_date 公告
+version: 1
+
+clean_rules:
+  # 全局日期口径 (消 _iso 散落副本; 不在 entity 重复定义目标格式)
+  iso_date: {kind: yyyymmdd_to_iso}
+
+entities:
+  kline_qfq:
+    db: market
+    table: price_kline_qfq_tushare
+    layer: L1k
+    code_col: code
+    asof_col: date
+    asof_format: iso
+    columns: [code, date, open, high, low, close, volume, amount]
+    vendor: tushare
+    available_after: eod
+
+  moneyflow:
+    db: tushare_raw
+    table: raw_tushare_moneyflow
+    layer: L0
+    code_col: ts_code
+    asof_col: trade_date
+    asof_format: yyyymmdd
+    columns: [ts_code, trade_date, net_mf_amount]
+    vendor: tushare
+    available_after: eod
+
+  valuation:
+    db: tushare_raw
+    table: raw_tushare_daily_basic
+    layer: L0
+    code_col: ts_code
+    asof_col: trade_date
+    asof_format: yyyymmdd
+    columns: [ts_code, trade_date, pe_ttm, pb, ps_ttm, dv_ttm, turnover_rate, total_mv, circ_mv]
+    vendor: tushare
+    available_after: eod
+
+  index_daily:
+    db: tushare_raw
+    table: raw_tushare_index_daily
+    layer: L0
+    code_col: ts_code
+    asof_col: trade_date
+    asof_format: yyyymmdd
+    columns: [ts_code, trade_date, close]
+    vendor: tushare
+    available_after: eod

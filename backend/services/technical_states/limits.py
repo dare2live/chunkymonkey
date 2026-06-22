@@ -9,12 +9,9 @@ owner=backend/services/technical_states/ + config/technical_states.yaml 涨停 �
 from __future__ import annotations
 
 
-def code_to_ts_code(code: str) -> str:
-    """price_kline code(000513) → tushare ts_code(000513.SZ)。60/68→SH, 00/30→SZ (北交所已排除)。"""
-    pre = code[:2]
-    if pre in ("60", "68") or code[:3] in ("510", "511", "512", "513", "515", "588"):
-        return f"{code}.SH"
-    return f"{code}.SZ"
+# code↔ts_code canonical 归一单一源 = services.data_access.keys (数据层, 不变量#1);
+# 此处 re-export 保留既有 importer 兼容, 不再各自定义 (消双真相源)。
+from services.data_access.keys import code_to_ts_code  # noqa: F401 (re-export)
 
 
 def compute_limit_flags(dates, o, h, l, c, up_limit, down_limit, eps: float = 0.003) -> dict:
