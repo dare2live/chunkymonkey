@@ -399,15 +399,10 @@ def load_share_float(code: str, as_of: str | None = None) -> list:
     """L3⑤ 解禁 (前瞻事件, PIT 锚 ann_date 公告日 — 公告≤t 时未来 float_date 已知, 0 泄露):
     返回 [(float_date, float_ratio)] (ann_date<=as_of)。unlock_signal 过滤未来 horizon 内。
     """
-    ts = code_to_ts_code(code)
-    asof = (as_of or date.today().isoformat()).replace("-", "")
-    c = duck_connect(RAW_DB, read_only=True)
-    try:
-        rows = c.execute("SELECT float_date, float_ratio FROM raw_tushare_share_float "
-                         "WHERE ts_code = ? AND ann_date <= ? ORDER BY float_date", [ts, asof]).fetchall()
-    finally:
-        c.close()
-    return [(r[0], r[1]) for r in rows]
+    rows = get_data_access().get("share_float", codes=[code],
+                                 as_of=as_of or date.today().isoformat()).rows  # ann_date≤asof PIT
+    rows.sort(key=lambda r: str(r["float_date"]))            # 原 ORDER BY float_date (float_date 保持 raw)
+    return [(r["float_date"], r["float_ratio"]) for r in rows]
 
 
 def load_market_regime(as_of: str | None = None, index_code: str = "000300.SH") -> dict | None:

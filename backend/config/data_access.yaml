@@ -100,3 +100,15 @@ entities:
     columns: [ts_code, trade_date, up_limit, down_limit]
     vendor: tushare
     available_after: preopen
+
+  share_float:
+    # 解禁 (前瞻事件; PIT 锚=ann_date 公告日, 公告≤t 时未来 float_date 已知 0泄露)
+    db: tushare_raw
+    table: raw_tushare_share_float
+    layer: L0
+    code_col: ts_code
+    asof_col: ann_date
+    asof_format: yyyymmdd
+    columns: [ts_code, ann_date, float_date, float_ratio]
+    vendor: tushare
+    available_after: ann_date
