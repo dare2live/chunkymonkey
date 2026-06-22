@@ -145,6 +145,6 @@ _notes:
     文件移除否则反复重建 (代码清理遗留)。
   scattered_service_create_2026_06_14: 8 张由 kept 服务(financial_client/sector_momentum/screening/dual_confirm 等)import时自建, 非schema_*集中定义。L2/L3
     的(sector_momentum/screening/dual_confirm)是散落重建源, 待服务层 layer 门控(剩余增量解耦)。
-  cleaned_stale_declarations_2026_06_23: 50 张 2026-06-14 reset wiped 表声明从 tables: 清除 (P2 单一真相源=只列活表; conformance审计抓 stale_tag drift)。
+  cleaned_stale_declarations_2026_06_23: 50 张 2026-06-14 reset wiped 表声明从 tables 段清除 (P2 单一真相源=只列活表; conformance审计抓 stale_tag drift)。
     含 perception层(mart_market_perception_*)/公式工厂(mart_tdx_gpcw_auto_*/feature_candidate)/模型层(mart_model_*/strategy_result)/缓存(_cache_*)等。
     重建时各自重新声明 layer (declare-on-build)。同步修 data_layer_audit STALE_SCAN_DBS 扩 market/etf 消除 price_kline_qfq_tushare/mart_etf_snapshot 假阳 stale。

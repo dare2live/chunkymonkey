@@ -273,3 +273,16 @@ entities:
     columns: [trade_date, ts_code, limit]
     vendor: tushare
     available_after: eod
+
+  financial_gpcw:
+    # 财报 gpcw 派生特征 (signals_v2 D1/D3: holder_count/业绩预告; PIT 锚 report_date ISO 实测全一致)
+    # 源=tdxhub gpcw (smartmoney); §4.3 热备, M4 切 tushare 时改 table=raw_tushare_fina_indicator 一行
+    db: smartmoney
+    table: raw_gpcw_detail
+    layer: L0
+    code_col: stock_code
+    asof_col: report_date
+    asof_format: iso
+    columns: [stock_code, report_date, holder_count, forecast_profit_yoy_low, forecast_profit_yoy_high]
+    vendor: tdxhub
+    available_after: ann_date

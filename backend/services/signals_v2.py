@@ -1193,11 +1193,10 @@ def _load_gpcw_feature_maps(conn) -> dict:
         "forecast_profit_yoy_mid": {}, # D3
     }
     try:
-        rows = conn.execute("""
-            SELECT stock_code, report_date, holder_count,
-                   forecast_profit_yoy_low, forecast_profit_yoy_high
-            FROM raw_gpcw_detail
-        """).fetchall()
+        # 2026-06-23 P1-1 SERVE conformance: 内联 raw_gpcw_detail → data_access 单读路 (lineage 声明,
+        # report_date≤latest_closed PIT 默认锚)。conn 参数保留兼容签名 (本读走读层自有 RO 连接)。
+        from services.data_access import get_data_access
+        rows = get_data_access().get("financial_gpcw", conn=conn).rows  # 用 signals_v2 现有 conn 避免同库重开冲突
         for r in rows:
             k = (r["stock_code"], r["report_date"])
             if r["holder_count"] is not None:
