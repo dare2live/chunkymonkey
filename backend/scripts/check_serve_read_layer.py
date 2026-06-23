@@ -103,6 +103,55 @@ def door_feature_from_l2() -> list[str]:
     return bad
 
 
+# ── 不变量4 执法棘轮 (2026-06-23): 全量扫非成员消费者内联 raw 读 ──
+# D1 硬门只扫 dossier (P1 scope, 伪绿). 本扫覆盖全 backend, 读 member roster 区分
+# 成员(数据模块子模块, 可读 raw)vs 非成员消费者(必走 SERVE). WARN 默认 (--strict 升 exit1),
+# 不动 D1-D5 硬门 (moth serve-read-layer-p1-doors 仍只验 dossier, 保绿).
+MEMBERS_YAML = REPO / "backend" / "config" / "data_module_members.yaml"
+SERVICES_DIR = REPO / "backend" / "services"
+INLINE_RAW_PATS = (r"FROM\s+raw_", r"FROM\s+price_kline\b", r"duck_connect\s*\(", r"duckdb\.connect\s*\(")
+
+
+def _load_members() -> dict:
+    raw = _read(MEMBERS_YAML)
+    return (yaml.safe_load(raw) or {}) if raw else {}
+
+
+def _is_member(path: Path, members: dict) -> bool:
+    rel = str(path.relative_to(REPO))
+    name = path.name
+    if any(rel.startswith(d) for d in members.get("member_dirs", [])):
+        return True
+    if path.parent == SCRIPTS_DIR and any(name.startswith(p) for p in members.get("member_script_prefixes", [])):
+        return True
+    if name in members.get("member_service_files", []):
+        return True
+    return False
+
+
+def scan_consumer_bypass() -> tuple[list[str], list[str]]:
+    """全 backend/services+scripts 非成员内联 raw 读 (不变量4 违规)。返回 (violations, retiring)。"""
+    members = _load_members()
+    retiring_names = set(members.get("source_retiring_temp_members", []))
+    violations, retiring = [], []
+    for base in (SERVICES_DIR, SCRIPTS_DIR):
+        for p in sorted(base.rglob("*.py")):
+            rel = str(p.relative_to(REPO))
+            if "test" in rel or "sandbox" in rel:
+                continue
+            code = _strip_comments_and_docstrings(_read(p))
+            hits = [pat for pat in INLINE_RAW_PATS if re.search(pat, code)]
+            if not hits:
+                continue
+            if p.name in retiring_names:
+                retiring.append(f"{rel} (源退役临时成员, 删源后退役)")
+            elif _is_member(p, members):
+                continue
+            else:
+                violations.append(f"{rel}: 内联命中 {hits}")
+    return violations, retiring
+
+
 DOORS = [
     ("D1 read-no-inline-table", door_read_no_inline_table),
     ("D2 read-no-self-asof", door_read_no_self_asof),
@@ -113,6 +162,15 @@ DOORS = [
 
 
 def main() -> int:
+    if "--bypass-scan" in sys.argv:
+        strict = "--strict" in sys.argv
+        violations, retiring = scan_consumer_bypass()
+        for r in retiring:
+            print(f"[RETIRE] {r}")
+        for v in violations:
+            print(f"[BYPASS] {v}")
+        print(f"consumer_bypass_violations={len(violations)} (源退役临时={len(retiring)})")
+        return 1 if (strict and violations) else 0   # WARN 默认 (不破 dossier 硬门); --strict 升 exit1
     total = 0
     for name, fn in DOORS:
         viol = fn()

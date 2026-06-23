@@ -223,3 +223,8 @@ assertions:
     type: shell
     command: ["bash", "-c", "PYTHONPATH=backend python backend/scripts/check_config_refs.py --check >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}
+  - id: serve-consumer-bypass-ratchet
+    claim: "不变量4(单概念单真相源/SERVE单一读路)执法棘轮: 全量扫非成员消费者内联raw读 ≤2 (baseline post data_loaders迁移). 伪绿D1只扫dossier 1文件→check_serve_read_layer --bypass-scan 读 data_module_members.yaml roster(成员=数据模块子模块可读raw / 非成员消费者必走DataAccess.get)全量照真相: 仅剩 signals_v2(MIN notice_date聚合边缘)+stock_detail_read(展示P2). data_loaders已迁SERVE→feature/signal panel自动继承单一清洗点. >2=新增bypass回潮; 修完降baseline逐步→0升--strict硬门(对标universe assert_universe_clean). owner=check_serve_read_layer.py --bypass-scan + backend/config/data_module_members.yaml"
+    type: shell
+    command: ["bash", "-c", "PYTHONPATH=backend python backend/scripts/check_serve_read_layer.py --bypass-scan 2>/dev/null | grep -oE 'consumer_bypass_violations=[0-9]+' | grep -oE '[0-9]+$'"]
+    expect: {op: "<=", value: 2}
