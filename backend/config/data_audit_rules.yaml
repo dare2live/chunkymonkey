@@ -50,7 +50,7 @@ cross_table_consistency:
   rules:
     - name: kline_universe_coverage
       enabled: true
-      kline_source_table: market.price_kline_tdxhub
+      kline_source_table: market.v_price_kline_qfq   # 2026-06-23 M3: price_kline_tdxhub 物删, 审 canonical serving 源
       kline_stock_code_column: code
       universe_tables:
         - table: dim_active_a_stock

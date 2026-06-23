@@ -89,27 +89,11 @@ CREATE TABLE IF NOT EXISTS price_import_batch (
 """
 
 
+# 2026-06-23 M3: price_kline_tdxhub (股票日线表) DDL 已移除 (表物删 5.3M行)。
+# 根因 §4.5 重建循环: init_market_db→ensure_market_schema 若保留 CREATE IF NOT EXISTS 会重建空表。
+# serving K线真相源 = price_kline_qfq_tushare (build_price_kline_qfq_tushare, daily_update Step 2.96)。
+# 仅保留 adjustment_event (xdxr 除权事件热备 §4.3); 复权质量裁决见下方 v_price_kline_qfq 注释。
 PRICE_KLINE_TDXHUB_DDL = """
-CREATE TABLE IF NOT EXISTS price_kline_tdxhub (
-    code          TEXT NOT NULL,
-    date          TEXT NOT NULL,
-    freq          TEXT NOT NULL DEFAULT 'daily',
-    adjust        TEXT NOT NULL DEFAULT 'qfq',
-    open          REAL,
-    high          REAL,
-    low           REAL,
-    close         REAL,
-    volume        REAL,
-    amount        REAL,
-    factor        REAL,
-    source        TEXT DEFAULT 'tdxhub',
-    batch_id      TEXT,
-    ingested_at   TEXT DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (code, date, freq, adjust)
-);
-CREATE INDEX IF NOT EXISTS idx_pkt_code ON price_kline_tdxhub(code);
-CREATE INDEX IF NOT EXISTS idx_pkt_date ON price_kline_tdxhub(date);
-
 CREATE TABLE IF NOT EXISTS price_kline_tdxhub_adjustment_event (
     code          TEXT NOT NULL,
     event_date    TEXT NOT NULL,
