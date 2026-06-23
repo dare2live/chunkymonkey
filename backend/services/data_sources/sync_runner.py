@@ -126,16 +126,20 @@ def _by_ts_code_batches(spec: dict[str, Any], *, resume: bool = False) -> list[d
     """按股循环批清单 (单股接口如 stk_factor_pro/fina_mainbz)。
 
     股票清单真相源 = services.universe.get_active_universe (单一计算点): 白名单 60/00/30/68
-    + 非 ST + 非退市 (K线真相源)。2026-06-17 用户: 排除列表=交易日历级硬真相源, 数据拉取也走它
+    + 非退市 (K线真相源); 默认非 ST。2026-06-17 用户: 排除列表=交易日历级硬真相源, 数据拉取也走它
     — 不拉排除股 (北交所/ST/三板/退市) 的逐股数据 (原内联 tdxhub 45日活跃+前缀 = 第二套 universe
     定义且漏 ST 排除, 已退役)。
+    **include_st (2026-06-23)**: 域可声明 `include_st: true` 把活跃 ST 股纳入拉取 — 用于**参考/展示数据**
+    (如 top10_floatholders 十大流通股东, dossier 展示任意股含 ST; 否则 ST 股 holder 缺口致删旧源时丢数据,
+    见 analysis/非tushare源_双轨_holders_20260623.md)。策略信号类域保持默认排 ST。
     """
     from services.universe import get_active_universe
 
     fixed = dict(spec.get("fixed_params") or {})
+    include_st = bool(spec.get("include_st", False))
     conn0 = _smartmoney_conn()
     try:
-        codes = get_active_universe(conn0)  # 白名单+非ST+非退市 (排除列表硬真相源)
+        codes = get_active_universe(conn0, include_st=include_st)  # 白名单+非退市 (排除列表硬真相源); include_st 按域
     finally:
         conn0.close()
 

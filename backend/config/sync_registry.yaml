@@ -630,7 +630,8 @@ domains:
     source: tushare      # 实弹核证 (2026-06-22): cols ts_code/ann_date/end_date/holder_name/hold_amount/hold_ratio/hold_change/holder_type; 600519 全拉660行/68期/10per期 无截断
     api: top10_floatholders
     target_table: raw_tushare_top10_floatholders
-    universe_filter: true            # 排除北交所/ST 写入门 (个股级)
+    universe_filter: true            # 写入门按前缀排北交所8x/三板4x (注: 仅前缀, 不排ST)
+    include_st: true                 # 2026-06-23 纳活跃ST股 (holder=参考/展示数据, dossier展示任意股含ST; 否则删tdx旧源丢220活跃ST股holder, 见 analysis/非tushare源_双轨_holders_20260623.md)
     grain: [ts_code, end_date, holder_name]   # 10持有人/期 (period 过滤间歇空, 走 by_ts_code 全拉)
     batch_mode: by_ts_code
     pit_anchor: "ann_date 公告日 (季报披露滞后; end_date 报告期 != 可用日, JOIN 必用 ann_date)"
