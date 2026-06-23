@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-23 19:23
+> Snapshot: 2026-06-23 19:51
 
 ## 1. 入口面
 
@@ -95,7 +95,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 161 张 | 单 writer 92 | 多 writer 69 | 动态表名写点 36 处 (20 文件)
+统计: 表 156 张 | 单 writer 90 | 多 writer 66 | 动态表名写点 36 处 (20 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -146,10 +146,7 @@
 | dim_market_segment | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_price_limit_rules | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_stock_stage_days | 2 | backend/scripts/build_picture_daily.py<br>backend/services/picture/ddl.py |
-| dim_stock_tdx_block | 2 | backend/services/block_client.py<br>backend/services/schema_core.py |
-| dim_stock_tdx_industry | 2 | backend/services/schema_core.py<br>backend/services/tdx_industry_client.py |
 | dim_style_factor | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
-| dim_tdx_block_catalog | 2 | backend/services/block_client.py<br>backend/services/schema_core.py |
 | dim_tdx_gpcw_field | 2 | backend/services/schema_core.py<br>backend/services/tdx_affair_client.py |
 | dim_tdx_gpcw_field_semantic | 2 | backend/scripts/build_tdx_gpcw_auto_features.py<br>backend/services/schema_core.py |
 | dim_trading_calendar | 2 | backend/routers/updater_calendar.py<br>backend/services/schema_core.py |
@@ -208,7 +205,6 @@
 | dim_stock_attention_latest | backend/services/external_attention.py |
 | dim_stock_industry_context_latest | backend/services/industry_context_engine.py |
 | dim_stock_stage_latest | backend/services/stock_stage_engine.py |
-| dim_stock_tdx_industry_history | backend/services/tdx_industry_client.py |
 | dim_stock_turtle_latest | backend/services/stock_turtle_engine.py |
 | dim_strategy_preset | backend/routers/strategy_preset.py |
 | fact_daily_price_status | backend/services/primitives/ddl.py |
@@ -293,11 +289,10 @@
 | raw_lhb_daily | backend/services/lhb_client.py |
 | raw_profit_forecast_snapshot_daily | backend/scripts/ingest_profit_forecast_snapshot.py |
 | raw_qfii_holding_quarterly | backend/services/qfii_client.py |
-| raw_tdx_industry_file_snapshot | backend/services/tdx_industry_client.py |
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 9,424 | calls 边 91,356 | imports 边 11,512 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 9,308 | calls 边 89,220 | imports 边 11,211 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -306,10 +301,10 @@
 | services.duck_adapter | 39 |
 | services.db | 35 |
 | services.utils | 32 |
-| services.market_db | 23 |
+| services.market_db | 22 |
 | services.database_manifest | 15 |
-| services.industry | 15 |
-| services.tdx_source | 15 |
+| services.industry | 14 |
+| services.tdx_source | 14 |
 | services.kline_source | 10 |
 | services.pipeline_manifest | 8 |
 | services.pricing_policy | 8 |
@@ -328,12 +323,12 @@
 | bestchoice/compute.py | 9 |
 | backend/routers/updater_runtime.py | 6 |
 | backend/services/etf_grid_engine.py | 6 |
-| backend/services/gap_queue.py | 5 |
+| backend/services/tdx_source.py | 5 |
 | bestchoice/execution_model.py | 5 |
 | backend/services/data_sources/base.py | 4 |
 | backend/services/etf_engine.py | 4 |
+| backend/services/gap_queue.py | 4 |
 | backend/services/kline_source.py | 4 |
-| backend/services/tdx_source.py | 4 |
 | bestchoice/formula_engine.py | 4 |
 
 ### LOC top 10 (God module 候选)
@@ -348,12 +343,12 @@
 | backend/scripts/ingest_holders_tdxhub.py | 1545 |
 | backend/services/tdx_f10_extra_client.py | 1478 |
 | backend/scripts/build_price_kline_tdxhub.py | 1461 |
-| backend/scripts/seed_dim_data_asset.py | 1330 |
+| backend/scripts/seed_dim_data_asset.py | 1327 |
 | backend/scripts/audit_delivery_readiness.py | 1226 |
 
 ## 5. 概览
 
 - chunkyctl 子命令 8 | launchd 任务 1 | router 16 (端点 97)
 - sync_registry 数据域 40
-- 产表 161 (多 writer 69)
+- 产表 156 (多 writer 66)
 

@@ -63,7 +63,7 @@ tables:
   raw_tdx_f10_holder_count_history: L0_source
   raw_tdx_f10_holder_research: L0_source
   raw_tdx_gpcw_wide: L0_source
-  raw_tdx_industry_file_snapshot: L0_source
+  # raw_tdx_industry_file_snapshot tag 已删 2026-06-23 (东财迁移Stage④ 物删)
   dim_active_a_stock: L1_foundation
   dim_all_ever_listed: L1_foundation
   dim_capital_behavior_latest: L1_foundation
@@ -81,10 +81,7 @@ tables:
   dim_market_segment: L1_foundation
   dim_stock_dc_industry: L1_foundation     # 2026-06-23 东财全套迁移Stage④ 当前行业快照 (serving); 深史as-of走 tushare_raw.v_sw_industry_pit
   dim_stock_dc_concept: L1_foundation      # 2026-06-23 东财概念成员当前快照 (serving)
-  dim_stock_tdx_block: L1_foundation
-  dim_stock_tdx_industry: L1_foundation     # 通达信行业 (S7 起降 tdxhub 热备, 不物删 §4.3)
-  dim_stock_tdx_industry_history: L1_foundation
-  dim_tdx_block_catalog: L1_foundation
+  # 通达信(tdx)行业 dim_stock_tdx_industry/_history/block/catalog tag 已删 2026-06-23 (东财迁移Stage④ 物删, 切东财)
   dim_tdx_gpcw_field: L1_foundation
   dim_tdx_gpcw_field_semantic: L1_foundation
   dim_trading_calendar: L1_foundation

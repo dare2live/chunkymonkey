@@ -305,126 +305,17 @@ async def _step_match_inst(conn) -> int:
     return await _run_blocking_db_task(_step_match_inst_sync)
 
 
-async def _step_sync_industry_with_hooks(
-    conn,
-    *,
-    tracked_stock_names,
-    should_stop,
-    update_step,
-    open_conn,
-) -> int:
-    """通达信行业同步 — 拉取 tdxhy.cfg 并全量 upsert 到 dim_stock_tdx_industry"""
-    from services.tdx_industry_client import sync_tdx_industry
-
-    stock_names = tracked_stock_names(conn)
-    reconcile_gap_queue_snapshot(conn, stock_names=stock_names, datasets=("industry",), commit=True)
-
-    detail = {
-        "industry_sync": {
-            "status": "running",
-            "updated_rows": 0,
-            "source": "",
-            "source_degraded": False,
-            "before_missing": summarize_gap_queue(conn, datasets=("industry",))["datasets"][0]["unresolved"],
-            "after_missing": None,
-            "gap_summary": summarize_gap_queue(conn, datasets=("industry",), limit_per_dataset=6)["datasets"][0],
-        },
-        "block_sync": {
-            "status": "pending",
-            "member_rows": 0,
-            "catalog_rows": 0,
-        },
-    }
-
-    count = 0
-
-    def _push_progress():
-        update_step(
-            conn,
-            "sync_industry",
-            error=json.dumps(detail, ensure_ascii=False),
-            records=count,
-        )
-
-    should_stop()
-    # sync_tdx_industry 是同步函数（TDX 服务器下载 + 本地解析 + executemany），
-    # 放到线程池避免阻塞事件循环。DuckDB 连接不跨线程传递，在 executor 内
-    # 单独开一个连接，写完后主线程的 conn 无需感知（写入同一个 DB 文件）。
-    def _run_in_thread():
-        thread_conn = open_conn(timeout=120)
-        try:
-            return sync_tdx_industry(thread_conn)
-        finally:
-            thread_conn.close()
-
-    tdx_result = await asyncio.get_event_loop().run_in_executor(None, _run_in_thread)
-
-    count = int(tdx_result.get("rows_upserted") or 0)
-    errors = tdx_result.get("errors") or []
-
-    if count == 0:
-        mark_current_missing_as(
-            conn,
-            "industry",
-            status="blocked",
-            reason="通达信行业源无返回，当前未执行补齐",
-            last_error=";".join(errors) or "tdx_industry_source_empty",
-            stock_names=stock_names,
-            commit=False,
-        )
-        gap_summary = summarize_gap_queue(conn, datasets=("industry",), limit_per_dataset=6)["datasets"][0]
-        detail["industry_sync"] = {
-            "status": "blocked",
-            "updated_rows": 0,
-            "source": tdx_result.get("source", ""),
-            "source_degraded": False,
-            "before_missing": detail["industry_sync"]["before_missing"],
-            "after_missing": gap_summary["unresolved"],
-            "reason": "通达信行业源无返回，当前未执行补齐",
-            "errors": errors,
-            "gap_summary": gap_summary,
-        }
-        conn.commit()
-        _push_progress()
-        logger.warning("[通达信行业] 未获取到数据")
-        return 0
-
-    reconcile_gap_queue_snapshot(conn, stock_names=stock_names, datasets=("industry",), commit=False)
-    gap_summary = summarize_gap_queue(conn, datasets=("industry",), limit_per_dataset=6)["datasets"][0]
-    detail["industry_sync"] = {
-        "status": "partial" if gap_summary["unresolved"] else "success",
-        "updated_rows": count,
-        "source": tdx_result.get("source", ""),
-        "source_degraded": False,
-        "before_missing": detail["industry_sync"]["before_missing"],
-        "after_missing": gap_summary["unresolved"],
-        "fetched_at": tdx_result.get("fetched_at"),
-        "l1_count": tdx_result.get("l1_count"),
-        "l2_count": tdx_result.get("l2_count"),
-        "l3_count": tdx_result.get("l3_count"),
-        "errors": errors,
-        "gap_summary": gap_summary,
-    }
-    conn.commit()
-    _push_progress()
-    logger.info(
-        f"[通达信行业] 完成: {count} 只股票, "
-        f"L1={tdx_result.get('l1_count')}/L2={tdx_result.get('l2_count')}/L3={tdx_result.get('l3_count')}"
-    )
-    return count
-
-
 def _step_build_industry_stat_sync(conn, should_stop=None) -> int:
     """计算机构在各行业 (TDX 一二三级) 的表现统计。
 
     [审计 4.4 标注] 口径：**当前行业**
-    事件现任所属股票 → dim_stock_tdx_industry 的当前 tdx_l{1,2,3}。
+    事件现任所属股票 → dim_stock_dc_industry 的当前 tdx_l{1,2,3}。
     这意味着：股票被行业重分类时，历史事件会被映射到最新行业，
     机构过去在某一行业积累的真实能力会被后来的行业映射改写。
 
     Phase 3b-3 之前曾用 fact_institution_event_industry_snapshot 表存事件时点的
     行业快照, 已合并入 fact_institution_event 主表 (sw_level* 字段); 行业重分类
-    历史影响请改读 fact_institution_event 内的 sw_level 字段或 dim_stock_tdx_industry.
+    历史影响请改读 fact_institution_event 内的 sw_level 字段或 dim_stock_dc_industry.
     前端/解释层请明确标注"当前行业口径".
     """
     now = datetime.now().isoformat()
@@ -529,5 +420,5 @@ def _step_build_industry_stat_sync(conn, should_stop=None) -> int:
     except Exception:
         conn.rollback()
         raise
-    logger.info(f"[行业统计] 完成: {count} 条 (基于 dim_stock_tdx_industry)")
+    logger.info(f"[行业统计] 完成: {count} 条 (基于 dim_stock_dc_industry)")
     return count

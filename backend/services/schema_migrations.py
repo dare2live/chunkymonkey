@@ -295,12 +295,7 @@ CREATE INDEX IF NOT EXISTS idx_data_deletion_run ON mart_data_deletion_record(de
 CREATE INDEX IF NOT EXISTS idx_data_deletion_table ON mart_data_deletion_record(table_name, delete_scope);
 DROP TABLE IF EXISTS raw_fetch_batch;
 CREATE INDEX IF NOT EXISTS idx_daas_updated ON dim_active_a_stock(updated_at); -- rule-compliance: ok evidence=schema-definition
-CREATE INDEX IF NOT EXISTS idx_tdx_industry_l1 ON dim_stock_tdx_industry(tdx_l1);
-CREATE INDEX IF NOT EXISTS idx_tdx_industry_l2 ON dim_stock_tdx_industry(tdx_l2);
-CREATE INDEX IF NOT EXISTS idx_tdx_industry_l3 ON dim_stock_tdx_industry(tdx_l3);
-CREATE INDEX IF NOT EXISTS idx_tdx_block_type ON dim_tdx_block_catalog(block_type);
-CREATE INDEX IF NOT EXISTS idx_stock_tdx_block_name ON dim_stock_tdx_block(block_name);
-CREATE INDEX IF NOT EXISTS idx_stock_tdx_block_cat ON dim_stock_tdx_block(block_category);
+-- 通达信(tdx)行业/板块索引已删 2026-06-23 (东财全套迁移 Stage④; 防 schema-init 重建循环)
 CREATE INDEX IF NOT EXISTS idx_inst_type ON inst_institutions(type);
 CREATE INDEX IF NOT EXISTS idx_inst_enabled ON inst_institutions(enabled);
 DROP TABLE IF EXISTS inst_name_aliases;
@@ -593,7 +588,6 @@ def init_db():
             ("mart_current_relationship", "sw_level1"),
             ("mart_current_relationship", "sw_level2"),
             ("mart_current_relationship", "sw_level3"),
-            ("dim_stock_tdx_industry", "sw_x_legacy"),
         ]
         for tbl, col in sw_drop_plan:
             _execute_optional_ddl(conn, f"ALTER TABLE {tbl} DROP COLUMN IF EXISTS {col}")

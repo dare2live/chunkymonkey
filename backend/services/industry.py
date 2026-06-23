@@ -4,7 +4,7 @@ industry.py — 行业解析单点实现 (2026-06-16 S3: 切回申万 SW2021 三
 所有需要行业信息的地方统一通过本模块访问。
 数据源: **dim_stock_dc_industry** (申万当前快照, serving; 2026-06-16 从通达信切回申万, 06-11 ANOVA 实测申万L2
   区分度最优)。列名 tdx_l1/l2/l3(+name) 保留为**位置别名** (level-1/2/3 行业), 值已是申万——仅为最小化消费方改动,
-  真相源/迁移见 analysis/industry_migration_tdx_to_sw_20260615.md。通达信 dim_stock_tdx_industry 降 tdxhub 热备(§4.3)。
+  真相源/迁移见 analysis/industry_migration_tdx_to_sw_20260615.md。通达信行业源已物删 (2026-06-23 切东财 §4.3)。
   **as-of/PIT** (回测) 走 tushare_raw.v_sw_industry_pit (in_date<=t AND (out_date IS NULL OR out_date>t)); 本模块只服务"当前"。
 
 用法约定:
@@ -47,7 +47,7 @@ def industry_level_db_column(level: int, *, snapshot: bool = False) -> str:
     """行业层级在当前物理表中的实际列名。
 
     snapshot=True → fact_setup_snapshot 上的 `snapshot_tdx_l{level}` 列。
-    snapshot=False → dim_stock_tdx_industry 上的 `tdx_l{level}` 列。
+    snapshot=False → dim_stock_dc_industry (INDUSTRY_TABLE) 上的 `tdx_l{level}` 位置别名列。
     """
     _validate_industry_level(level)
     prefix = "snapshot_" if snapshot else ""

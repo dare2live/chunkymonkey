@@ -23,7 +23,7 @@ DATA_DEPRECATION_ASSETS = [
     },
     {
         "table_name": "fact_institution_event_industry_snapshot",
-        "replacement_table": "dim_stock_tdx_industry",
+        "replacement_table": "dim_stock_dc_industry",
         "reason": "Industry snapshot was replaced by direct TDX industry joins.",
     },
     {
@@ -53,7 +53,7 @@ DATA_DEPRECATION_ASSETS = [
     },
     {
         "table_name": "dim_stock_industry",
-        "replacement_table": "dim_stock_tdx_industry",
+        "replacement_table": "dim_stock_dc_industry",
         "reason": "Legacy SW industry table was replaced by TDX industry mapping.",
     },
 ]

@@ -1,0 +1,30 @@
+# 东财全套迁移 Stage④ — 物删通达信(tdx)行业/板块 5 表 (孤儿)
+# owner=analysis/dc_full_migration_plan_20260623.md
+# 前置: fan-in 审计确认全部消费方已切东财/已退役:
+#   - dim_stock_tdx_industry*: 仅 tdx_industry_client 读 (已物删); industry.py 读 INDUSTRY_TABLE=dim_stock_dc_industry
+#   - dim_stock_tdx_block/catalog: 仅 stock_detail_read (死代码, 已物删, dossier 取代用东财概念) + block_client (已物删)
+#   - raw_tdx_industry_file_snapshot: 通达信源文件快照, §4.3 非tushare源退役
+# DDL/索引同删 (schema_core/schema_migrations) 防重建循环; 行业现 = dim_stock_dc_industry, 深史 PIT = v_sw_industry_pit。
+run_id: dc_migrate_stage4_tdx_20260623
+archive_dir: data/archive/lifecycle
+entries:
+  - table: dim_stock_tdx_industry
+    action: drop
+    bucket: dead_after_migration
+    reason: "东财迁移Stage④: 通达信行业孤儿; serving切dim_stock_dc_industry; tdx_industry_client已物删"
+  - table: dim_stock_tdx_industry_history
+    action: drop
+    bucket: dead_after_migration
+    reason: "东财迁移Stage④: 通达信行业历史孤儿; 深史PIT走v_sw_industry_pit"
+  - table: dim_stock_tdx_block
+    action: drop
+    bucket: dead_after_migration
+    reason: "东财迁移Stage④: 通达信板块孤儿; 概念切dim_stock_dc_concept; stock_detail_read死代码已删"
+  - table: dim_tdx_block_catalog
+    action: drop
+    bucket: dead_after_migration
+    reason: "东财迁移Stage④: 通达信板块目录孤儿; 概念切东财"
+  - table: raw_tdx_industry_file_snapshot
+    action: drop
+    bucket: dead_after_migration
+    reason: "东财迁移Stage④: 通达信tdxhy.cfg源文件快照; §4.3非tushare源退役"

@@ -114,7 +114,7 @@ DOMAIN_SPECS = [
         "date_col": "updated_at",
         "parser_version": "dc",
     },
-    # stock_blocks 域已删 (2026-06-23): 原指通达信 dim_stock_tdx_industry, 源退役; 申万行业新鲜度由上方 industry_sw 域跟踪。
+    # stock_blocks 域已删 (2026-06-23): 原指通达信 dim_stock_tdx_industry, 源物删; 行业新鲜度由上方 industry_dc 域 (东财 dim_stock_dc_industry) 跟踪。
     {
         "data_domain": "lhb_daily",
         "source_name": "aif10_lhb",

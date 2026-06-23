@@ -9,8 +9,7 @@
     4. sync_financial           — 同步财务数据
     5. gen_events               — 生成事件
     6. calc_returns             — 计算收益
-    7. sync_industry            — 通达信行业
-    8. calc_financial_derived   — 计算财务指标
+    7. calc_financial_derived   — 计算财务指标 (通达信行业 sync 已退役 2026-06-23, 行业=东财)
     9. build_current_rel        — 构建当前关系
  10. build_profiles           — 机构画像
  11. build_industry_stat      — 行业统计
@@ -89,7 +88,6 @@ from routers.updater_institution import (
     _step_build_industry_stat_sync,
     _step_match_inst,
     _step_match_inst_sync,
-    _step_sync_industry_with_hooks,
 )
 from routers.updater_launcher import (
     UpdaterExecutionDeps,
@@ -388,7 +386,7 @@ def _should_stop():
 
 # Phase 3b-3: fact_institution_event_industry_snapshot 已退役。
 # _capture_missing_event_industry_snapshots + snapshot 表本身均已删除,
-# _step_build_industry_stat_sync / backtest_engine / scoring 统一走 dim_stock_tdx_industry 直 JOIN。
+# _step_build_industry_stat_sync / backtest_engine / scoring 统一走 dim_stock_dc_industry 直 JOIN。
 
 
 async def _step_build_profiles(conn) -> int:
@@ -399,17 +397,6 @@ async def _step_build_profiles(conn) -> int:
 async def _step_build_trends(conn) -> int:
     """计算股票趋势 mart_stock_trend"""
     return await _step_build_trends_with_hooks(conn, should_stop=_raise_if_stop)
-
-
-async def _step_sync_industry(conn) -> int:
-    """通达信行业同步 — 拉取 tdxhy.cfg 并全量 upsert 到 dim_stock_tdx_industry"""
-    return await _step_sync_industry_with_hooks(
-        conn,
-        tracked_stock_names=_tracked_stock_names,
-        should_stop=_raise_if_stop,
-        update_step=_update_step,
-        open_conn=get_conn,
-    )
 
 
 async def _step_build_industry_stat(conn) -> int:
@@ -469,7 +456,6 @@ RUNNERS = {
     "sync_financial": _step_sync_financial,
     "gen_events": _step_gen_events,
     "calc_returns": _step_calc_returns,
-    "sync_industry": _step_sync_industry,
     "sync_surveys": _step_sync_surveys,
     "sync_qfii": _step_sync_qfii,
     "sync_lhb": _step_sync_lhb,

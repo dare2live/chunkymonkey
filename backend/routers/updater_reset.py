@@ -36,7 +36,6 @@ INDUSTRY_RESET_TABLES: list[ResetTable] = [
 
 
 PRESERVED_INDUSTRY_RESET_TABLES = [
-    "dim_stock_tdx_industry",
     "fact_institution_event",
     "inst_holdings",
     "market_kline_daily",

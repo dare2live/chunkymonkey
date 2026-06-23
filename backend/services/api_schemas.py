@@ -25,4 +25,4 @@ class KLineDailyRow(BaseModel):
 
 
 # SW industry parsing classes removed (Phase η++ 2026-05-12): 申万已在 Phase 2/3 退役,
-# 项目全面切换通达信 L2 (dim_stock_tdx_industry). 这两个类无活引用, 直接删除.
+# 行业现切东财 dim_stock_dc_industry (2026-06-23). 这两个 SW 解析类无活引用, 已删除.

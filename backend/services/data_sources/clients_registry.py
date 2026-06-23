@@ -61,33 +61,7 @@ class ClientSpec:
 
 CLIENTS: list[ClientSpec] = [
     # ── tier 1: tdxhub (主源) ─────────────────────────────────────────
-    ClientSpec(
-        client_id="tdx_industry_client",
-        module="services.tdx_industry_client",
-        description="通达信行业三级分类 (申万对照)",
-        upstream_source="tdxhub.block (tdxhy.cfg)",
-        source_tier=1,
-        fallback_chain=["tdxhub"],
-        writes=[
-            TableWriteSpec("raw_tdx_industry_file_snapshot", "tdxhy.cfg 原始快照", "weekly", 24*7),
-            TableWriteSpec("dim_stock_tdx_industry", "股票×行业映射", "weekly", 24*7),
-            TableWriteSpec("dim_stock_tdx_industry_history", "行业归属历史", "weekly", 24*7),
-        ],
-        sync_step_id="sync_tdx_industry",
-    ),
-    ClientSpec(
-        client_id="block_client",
-        module="services.block_client",
-        description="通达信板块归属",
-        upstream_source="tdxhub.block",
-        source_tier=1,
-        fallback_chain=["tdxhub"],
-        writes=[
-            TableWriteSpec("dim_stock_tdx_block", "股票×板块映射", "weekly", 24*7),
-            TableWriteSpec("dim_tdx_block_catalog", "板块目录", "weekly", 24*7),
-        ],
-        sync_step_id="sync_tdx_block",
-    ),
+    # tdx_industry_client + block_client (通达信行业/板块) 已退役物删 2026-06-23 (§4.3 行业/概念全切东财 dim_stock_dc_industry/dc_concept)
     ClientSpec(
         client_id="tdx_affair_client",
         module="services.tdx_affair_client",

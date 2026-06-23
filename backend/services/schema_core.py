@@ -484,39 +484,9 @@ CREATE TABLE IF NOT EXISTS fact_feature_panel_tdx_keep_challenger ( feature_set_
                 updated_at       TEXT
             );
 
-            CREATE TABLE IF NOT EXISTS dim_stock_tdx_industry (
-                stock_code    TEXT PRIMARY KEY,
-                tdx_l1        TEXT,
-                tdx_l2        TEXT,
-                tdx_l3        TEXT,
-                tdx_l1_name   TEXT,
-                tdx_l2_name   TEXT,
-                tdx_l3_name   TEXT,
-                updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS dim_tdx_block_catalog (
-                block_category TEXT NOT NULL,
-                block_name     TEXT NOT NULL,
-                block_file     TEXT NOT NULL,
-                block_type     INTEGER,
-                member_count   INTEGER DEFAULT 0,
-                source         TEXT,
-                updated_at     TEXT,
-                PRIMARY KEY (block_category, block_name)
-            );
-
-            CREATE TABLE IF NOT EXISTS dim_stock_tdx_block (
-                stock_code      TEXT NOT NULL,
-                block_category  TEXT NOT NULL,
-                block_name      TEXT NOT NULL,
-                block_file      TEXT NOT NULL,
-                block_type      INTEGER,
-                code_index      INTEGER,
-                source          TEXT,
-                updated_at      TEXT,
-                PRIMARY KEY (stock_code, block_category, block_name)
-            );
+            -- 通达信(tdx)行业 dim_stock_tdx_industry / 板块 dim_tdx_block_catalog / dim_stock_tdx_block DDL
+            -- 已删 2026-06-23 (东财全套迁移 Stage④, §4.3 行业/概念切东财 dim_stock_dc_industry/dc_concept;
+            -- 删 DDL 防 schema-init 重建循环 — 反例: 删表只删 schema 不删 DDL → 下次 init 复活)
 
             CREATE TABLE IF NOT EXISTS dim_trading_calendar (
                 trade_date  TEXT PRIMARY KEY,

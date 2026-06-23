@@ -16,7 +16,6 @@ CONNECTIVITY_TARGETS = {
 CONNECTIVITY_LABELS = {
     "holdings_source": "股东源",
     "kline_source": "K线源",
-    "industry_source": "行业源",
 }
 
 CONNECTIVITY_CACHE_TTL_SECONDS = 300
@@ -66,29 +65,8 @@ async def _compute_connectivity() -> dict:
                 },
             }
 
-    async def _check_industry():
-        from services.tdx_industry_client import _fetch_tdxhy_bytes
-
-        def _probe():
-            try:
-                data, source = _fetch_tdxhy_bytes()
-                return bool(data), source
-            except Exception:
-                return False, ""
-
-        try:
-            industry_ok, industry_source = await asyncio.wait_for(
-                asyncio.get_event_loop().run_in_executor(None, _probe),
-                timeout=25,
-            )
-            payload = {"industry_source": industry_ok}
-            if industry_source:
-                payload["industry_source_detail"] = industry_source
-            return payload
-        except Exception:
-            return {"industry_source": False}
-
-    parts = await asyncio.gather(_check_holdings(), _check_kline(), _check_industry())
+    # 通达信(tdx)行业连通性探测已删 (2026-06-23 §4.3 行业切东财 dim_stock_dc_industry, tushare 不需探活外部 tdx 服务器)
+    parts = await asyncio.gather(_check_holdings(), _check_kline())
     for part in parts:
         results.update(part)
 
@@ -147,7 +125,6 @@ def get_cached_connectivity() -> dict:
     return {
         "holdings_source": None,
         "kline_source": None,
-        "industry_source": None,
         "message": "尚未执行连通性探测",
         "cached": True,
         "pending": True,

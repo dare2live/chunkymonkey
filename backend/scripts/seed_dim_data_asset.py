@@ -410,18 +410,7 @@ EXTRA_ASSET_CONTRACT_BY_TABLE = {
         "frontend_visibility": "governance_visible",
         "quality_gate_level": "monitor_only",
     },
-    "raw_tdx_industry_file_snapshot": {
-        "asset_grain": "snapshot_date+raw_hash",
-        "asset_cadence": "source_file_snapshot",
-        "coverage_policy": "one_raw_tdxhy_file_per_successful_tdx_industry_sync",
-        "null_policy": "no_null_for_raw_hash_file_name_fetched_at_bytes",
-        "pit_policy": "source_snapshot_before_parsed_dimension_rows",
-        "intended_use": "audit_and_future_industry_pit_backfill_source",
-        "model_eligibility": "not_model_input",
-        "strategy_eligibility": "raw_lineage_for_industry_constraints",
-        "frontend_visibility": "governance_visible",
-        "quality_gate_level": "blocking_when_industry_constraints_enabled",
-    },
+    # raw_tdx_industry_file_snapshot active 登记已删 (2026-06-23 通达信物删, 移入下方 EXTRA_DEPRECATED ledger)
     "mart_macd_state_history": {
         "asset_grain": "stock_code+date+formula_id+state",
         "asset_cadence": "on_demand",
@@ -437,6 +426,14 @@ EXTRA_ASSET_CONTRACT_BY_TABLE = {
 }
 
 EXTRA_DEPRECATED_ASSET_BY_TABLE = {
+    # 东财全套迁移 Stage④ (2026-06-23): 申万当前快照 dim + 通达信(tdx)行业/板块 6 表物删 (§4.3 行业/概念切东财)。
+    # 留 governance ledger row 防 data_health 假红; 行业现 = dim_stock_dc_industry, 深史 PIT = tushare_raw.v_sw_industry_pit。
+    "dim_stock_sw_industry": {"purpose": "申万当前行业快照 (物删④-1, 切东财)", "deprecation_status": "deprecated", "deprecated_reason": "东财迁移Stage④-1 行业切 dim_stock_dc_industry; 深史PIT走v_sw_industry_pit", "replacement_table": "dim_stock_dc_industry"},
+    "dim_stock_tdx_industry": {"purpose": "通达信行业三级 (物删, 切东财)", "deprecation_status": "deprecated", "deprecated_reason": "东财迁移Stage④ 行业切 dim_stock_dc_industry", "replacement_table": "dim_stock_dc_industry"},
+    "dim_stock_tdx_industry_history": {"purpose": "通达信行业归属历史 (物删)", "deprecation_status": "deprecated", "deprecated_reason": "东财迁移Stage④; 深史PIT走v_sw_industry_pit", "replacement_table": "v_sw_industry_pit"},
+    "raw_tdx_industry_file_snapshot": {"purpose": "通达信 tdxhy.cfg 原始快照 (物删)", "deprecation_status": "deprecated", "deprecated_reason": "东财迁移Stage④ 通达信源退役", "replacement_table": None},
+    "dim_stock_tdx_block": {"purpose": "通达信板块归属 (物删, 切东财概念)", "deprecation_status": "deprecated", "deprecated_reason": "东财迁移Stage④ 概念切 dim_stock_dc_concept", "replacement_table": "dim_stock_dc_concept"},
+    "dim_tdx_block_catalog": {"purpose": "通达信板块目录 (物删)", "deprecation_status": "deprecated", "deprecated_reason": "东财迁移Stage④ 概念切东财", "replacement_table": "dim_stock_dc_concept"},
     # Phase ψ.5 removed — dead data. Keep the ledger row for governance, but do
     # not let the missing table stay in yellow health forever.
     "raw_margin_daily": {
