@@ -2,15 +2,21 @@ version: 1
 _doc: '数据层级注册表 (2026-06-14 地基-reset 后立). 单一真相源: 每表声明 layer, 替代 ad-hoc 反复推导. 新表必须在此声明 layer (data_layer_audit + moth 断言强制).
   层级语义见 docs/data_management_framework.md。'
 layers:
+  # 2026-06-23 config最小手术 Step1 (对抗panel wry13dfr0): 层词汇单一真相源。
+  # 消 data_access(短码 L0/L1/L1k) vs 本文件(长码 L0_source/...) 两套词汇无对账 (已核证重复#1)。
+  # 本文件=层词汇唯一定义处; alias=短码引用名; data_access 引 alias 或长键=合法 (check_config_refs Step4 守)。
   L0_source:
+    alias: L0
     desc: 原始 vendor 镜像, 不可重建真相源, 永不删 (re-sync 重建)
     retention: permanent
     rebuild: sync_runner re-sync
   L1_foundation:
+    alias: L1
     desc: 从 L0 直接派生的 PIT 事实+维度 (日历/十大股东/财报PIT/机构/龙虎榜)
     retention: keep
     rebuild: from L0
   L1k_kline_intermediate:
+    alias: L1k
     desc: 仅 OHLCV K线派生 (technical_stage/macd), 无多因子
     retention: keep
     rebuild: from v_price_kline_qfq
@@ -23,16 +29,19 @@ layers:
     retention: keep
     rebuild: runtime
   L2_feature:
+    alias: L2
     desc: 多因子特征工程 (panels/risk_factors/triggers)
     retention: wipeable
     rebuild: from L1, 参数寻优重做
     status: live_rebuilt  # 2026-06-19 fact_feature_panel 重建物化 live (8.17M行/5427股/PIT验证, build_feature_panel.py); fact_segment_panel(形态轴) live
   L3_model:
+    alias: L3
     desc: 模型产出 (scores/predictions/champion/ensemble)
     retention: wipeable
     rebuild: from L2+params
     status: wiped_20260614
   L4_experiment:
+    alias: L4
     desc: 寻优/消融/探索 (optuna/ablation), 只留摘要不留全表
     retention: summary_only
     rebuild: rerun; 知识在 config/experiments/retired_experiments.yaml
