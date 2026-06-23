@@ -78,9 +78,9 @@ assertions:
     command: ["bash", "-c", "find backend -name '*.py' -not -path '*/__pycache__/*' -not -path '*/tests/*' | xargs wc -l 2>/dev/null | awk '$1>800 && $2!=\"total\"{n++} END{print n+0}'"]
     expect: {op: "<=", value: 23}
   - id: watermark-refresher-wired
-    claim: "kline 水位刷新器接在 daily_update Step 2.97 (2026-06-13 修孤儿化; 检查器写器两器官缺一即水位卡死)"
+    claim: "kline 水位刷新器接在 daily_update 管线 store 阶段 (2026-06-13 修孤儿化; 2026-06-23 重设计后接线在 pipeline/store.py 而非 daily_update.sh; 检查器写器两器官缺一即水位卡死)"
     type: shell
-    command: ["grep", "-c", "refresh_source_watermarks.py", "scripts/daily_update.sh"]
+    command: ["grep", "-c", "refresh_source_watermarks.py", "backend/services/pipeline/store.py"]
     expect: {op: ">=", value: 1}
   - id: optuna-require-walk-forward
     claim: "optuna_config 守 require_walk_forward=true (2026-06-14 L0 立: 防过拟合核心 — 业务表禁 in-sample fit 入库; 翻 false = 估计死红线破, stage_opt leakage 反例复发)"

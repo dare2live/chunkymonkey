@@ -11,6 +11,7 @@ version: 1
 member_dirs:
   - backend/services/data_access/      # SERVE 读层 (清洗单一执行点)
   - backend/services/data_sources/     # 采集 sync_runner (acquire)
+  - backend/services/pipeline/         # daily_update 四阶段编排 (获取/清洗/加工/存储) — 数据模块自己的更新引擎, 非外部消费者 (2026-06-23 重设计)
   - backend/services/technical_states/ # 纯函数派生 (读 SERVE 传入序列, 不直连)
   - backend/services/perf/             # 性能/并行基础设施 (shard/reducer, 导快照非消费raw)
 
