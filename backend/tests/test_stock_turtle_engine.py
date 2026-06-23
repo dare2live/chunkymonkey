@@ -42,7 +42,7 @@ def _make_conn():
             forecast_score_v1 REAL
         );
 
-        CREATE TABLE dim_stock_tdx_industry (
+        CREATE TABLE dim_stock_sw_industry (
             stock_code TEXT PRIMARY KEY,
             tdx_l1 TEXT,
             tdx_l2 TEXT,

@@ -90,7 +90,7 @@ def l2_profile_ctes(score_name: str = "institution_l2_score", profile_name: str 
     stocks_in_l2 AS (
       SELECT tdx_l2_name AS l2_name,
              COUNT(DISTINCT stock_code) AS n_stocks
-        FROM dim_stock_tdx_industry
+        FROM dim_stock_sw_industry
        WHERE tdx_l2_name IS NOT NULL
          AND tdx_l2_name != ''
        GROUP BY tdx_l2_name

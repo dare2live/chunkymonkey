@@ -129,6 +129,9 @@ fi
 # 1b. K-line continuity preflight — builder (preflight_panel_build) reset 删除 (L2 panel 层);
 #     K线 gap/新鲜度由 watermark SLA (1a) + Step 2.95 sync_runner 日历 gap 扫描覆盖。
 
+# ════ ACQUIRE 阶段 (纯采集: 只下载/同步外部数据进 raw/L0, 不计算 — 2026-06-23 Gap2 解耦) ════
+#   采集步 (Step 2 ~ 2.95): sync_hs300 / xdxr / LHB / institution_survey / tdx_industry /
+#   external_attention / profit_forecast / sync_runner drain。计算步全在下方 DERIVE 阶段。
 # Step 2: Data sync (tdxhub + akshare)
 if [[ "$SKIP_SYNC" == "0" ]]; then
     log "--- Step 2: Data sync ---"
@@ -192,19 +195,9 @@ finally:
     conn.close()
 PYEOF
 
-        log "--- Step 2e: risk factors sync ---"
-        # rule-compliance: ok evidence=signature-fix-2026-05-19 (Codex patch a85ca8c9 误传 mkt_conn,
-        # calc_risk_factors 只接 conn + kwargs, 修)
-        PYTHONPATH=backend python - <<'PYEOF' >> "$LOG" 2>&1 || step_degraded "risk factors sync 失败"
-import duckdb
-from services.risk_factors import calc_risk_factors
-conn = duckdb.connect("data/smartmoney.duckdb")
-try:
-    print(calc_risk_factors(conn))
-finally:
-    conn.close()
-PYEOF
-
+        # Step 2e risk_factors 已移出 ACQUIRE → DERIVE 阶段 (2026-06-23 Gap2 采集/计算解耦):
+        #   calc_risk_factors 是加工(从 smartmoney 数据算风险因子)非采集; 且原在此跑=在 2.95 drain
+        #   + 2.96 qfq build 之前 → 算的是 stale 数据。移到 DERIVE 阶段 (qfq build 后) 同时修顺序。
         # Step 2f/2g/2h (sector_momentum / capital_flow PIT backfill / sniper+institution score marts)
         # — builder reset 删除 (L2_feature 特征/打分层); 走 alpha 验证程序重建, 不进 daily 数据底座流。
 
@@ -223,23 +216,12 @@ finally:
     conn.close()
 PYEOF
 
-        # 2026-05-22 加 (Stage X2.1): sync_industry 写 dim_stock_tdx_industry_history 累积 PIT 历史
-        # 阻塞 Perception P3 主题扩到概念 + P5 LeaderFollower 扩历史. tdxhub block 无历史 API,
-        # 唯一路径自建 daily snapshot 累积. tdx_industry_client.py 已在 sync 时自动追加历史表.
-        log "--- Step 2j: tdx_industry sync (累积 PIT 历史 for Perception P3/P5) ---"
-        PYTHONPATH=backend python - <<'PYEOF' >> "$LOG" 2>&1 || step_degraded "tdx_industry sync 失败"
-import asyncio
-from services.duck_adapter import connect as duck_connect
-from routers.updater import _step_sync_industry
-conn = duck_connect("data/smartmoney.duckdb")
-try:
-    n = asyncio.run(_step_sync_industry(conn))   # _step_sync_industry -> int
-    # verify history 累积
-    r = conn.execute("SELECT COUNT(DISTINCT snapshot_date), MAX(snapshot_date) FROM dim_stock_tdx_industry_history").fetchone()
-    print(f"tdx_industry: synced_rows={n} history_dates={r[0]} latest_snapshot={r[1]}")
-finally:
-    conn.close()
-PYEOF
+        # Step 2j 通达信(tdx)行业 sync 已删除 (2026-06-23, §4.3 tushare唯一删旧源 + 用户规则"只用 tushare 能
+        #   提供的数据"): 行业分类 tushare 已提供 = 申万 SW2021 (index_member_all/sw_daily, 含 L1/L2/L3 +
+        #   is_new='N' 真 PIT 历史区间), 优于通达信 snapshot 累积。消费方全 repoint dim_stock_sw_industry
+        #   (申万 tushare 源; 列名 tdx_l* 是位置别名值=申万, 兼容零字段改)。申万物化进下方 DERIVE 阶段每日刷新。
+        #   通达信源 (dim_stock_tdx_industry* / tdx_industry_client / Step2j) 物删, owner=
+        #   analysis/industry_migration_tdx_to_sw_20260615.md。原 sync 还崩在 market_gap_queue 缺表 (reset 孤儿)。
 
         # 2026-05-29 加 (市场感知数据接入 P0): external_attention 快照接线
         # 反例: attention 断更 14 天 (停 2026-05-15) 没人发现, 因不在 daily_update + 不在 watermark SLA
@@ -294,6 +276,34 @@ if [[ "$SKIP_SYNC" == "0" && "$DRY" == "0" ]]; then
     log "--- Step 2.96: build canonical qfq K线 (price_kline_qfq_tushare, serving 真相源) ---"
     PYTHONPATH=backend python backend/scripts/build_price_kline_qfq_tushare.py \
         >> "$LOG" 2>&1 || step_degraded "canonical qfq K线 build 失败 — serving K线将 stale (fatal 级, 查 log)"
+fi
+
+# ════ DERIVE 阶段 (加工: 从采集后数据算变量; daily_update 不在 ACQUIRE 里混计算 — 2026-06-23 Gap2) ════
+# Step 2.96b: risk_factors (DERIVE 加工 — 从原 ACQUIRE Step 2e 移来):
+#   calc_risk_factors 从 smartmoney 同步后数据算风险因子 = 加工非采集 (用户 seed: daily_update 不带计算)。
+#   移到 DERIVE 阶段 (qfq build 后, 全部 ACQUIRE 完成后) 同时修原顺序 bug — 原在 2.95 drain + 2.96 qfq 前跑
+#   → 算的是 stale 数据。rule-compliance: ok evidence=signature-fix-2026-05-19 (calc_risk_factors 只接 conn+kwargs)。
+if [[ "$SKIP_SYNC" == "0" && "$DRY" == "0" ]]; then
+    log "--- Step 2.96b: risk_factors (DERIVE 加工, 移自原 ACQUIRE Step 2e) ---"
+    PYTHONPATH=backend python - <<'PYEOF' >> "$LOG" 2>&1 || step_degraded "risk factors 加工失败"
+import duckdb
+from services.risk_factors import calc_risk_factors
+conn = duckdb.connect("data/smartmoney.duckdb")
+try:
+    print(calc_risk_factors(conn))
+finally:
+    conn.close()
+PYEOF
+fi
+
+# Step 2.96c: 申万行业物化 (DERIVE 加工 — 2026-06-23 行业源切 tushare; owner=industry_migration_tdx_to_sw):
+#   通达信 Step2j 已删 (§4.3 删源)。行业分类真相源 = tushare 申万 (raw_tushare_index_member_all, 2.95 已 drain),
+#   build_sw_industry_view.py 幂等重建 v_sw_industry_pit (as-of PIT 视图) + dim_stock_sw_industry (当前快照, serving 读)。
+#   修原孤儿 bug: 该物化步无调用者 → serving 申万表自 06-16 起 stale; 接进每日流 = tushare 行业数据保鲜。
+if [[ "$SKIP_SYNC" == "0" && "$DRY" == "0" ]]; then
+    log "--- Step 2.96c: 申万行业物化 (DERIVE; serving 行业真相源 dim_stock_sw_industry) ---"
+    PYTHONPATH=backend python backend/scripts/build_sw_industry_view.py \
+        >> "$LOG" 2>&1 || step_degraded "申万行业物化失败 — serving 行业将 stale (消费方 LEFT JOIN 退化 NULL)"
 fi
 
 # Step 2.97: 源域水位刷新 (从真实表派生, 写 mart_data_source_watermark)

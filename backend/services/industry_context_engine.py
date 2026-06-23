@@ -212,7 +212,7 @@ def build_stock_industry_context(conn, snapshot_date: Optional[str] = None) -> i
 
     stocks = conn.execute("""
         SELECT stock_code, tdx_l1, tdx_l2, tdx_l1_name, tdx_l2_name
-        FROM dim_stock_tdx_industry
+        FROM dim_stock_sw_industry
     """).fetchall()
 
     conn.execute("DELETE FROM fact_stock_industry_context WHERE snapshot_date = ?", (snapshot_date,))

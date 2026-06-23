@@ -85,13 +85,12 @@ DATA_SOURCE_QUERIES = {
         "query": "SELECT MAX(CAST(report_date AS VARCHAR)) FROM fact_top10_holder_period",
     },
     "industry_sw": {
+        # 2026-06-23 行业源切 tushare-申万: 原查通达信 dim_stock_tdx_industry_history (源已删) →
+        #   改查申万 serving 表 dim_stock_sw_industry.updated_at (daily_update Step 2.96c 每日刷新)。
         "db": "smartmoney",
-        "query": "SELECT MAX(CAST(snapshot_date AS VARCHAR)) FROM dim_stock_tdx_industry_history",
+        "query": "SELECT CAST(MAX(updated_at) AS VARCHAR) FROM dim_stock_sw_industry",
     },
-    "stock_blocks": {
-        "db": "smartmoney",
-        "query": "SELECT MAX(CAST(snapshot_date AS VARCHAR)) FROM dim_stock_tdx_industry_history",
-    },
+    # stock_blocks 域已删 (2026-06-23): 原查通达信表, 源退役; 申万行业新鲜度由 industry_sw 域跟踪。
 }
 
 

@@ -73,7 +73,7 @@ def test_l2_profile_ctes_summarize_scores_and_stock_count():
             )
             """
         )
-        con.execute("CREATE TABLE dim_stock_tdx_industry (stock_code TEXT, tdx_l2_name TEXT)")
+        con.execute("CREATE TABLE dim_stock_sw_industry (stock_code TEXT, tdx_l2_name TEXT)")
         con.execute(
             """
             INSERT INTO fact_institution_follow_backtest VALUES
@@ -83,7 +83,7 @@ def test_l2_profile_ctes_summarize_scores_and_stock_count():
         )
         con.execute(
             """
-            INSERT INTO dim_stock_tdx_industry VALUES
+            INSERT INTO dim_stock_sw_industry VALUES
                 ('000001', '软件服务'),
                 ('000002', '软件服务')
             """
