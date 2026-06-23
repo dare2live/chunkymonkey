@@ -100,6 +100,43 @@
 
 ---
 
+## 1.6 现状细化 + 删源 worklist (2026-06-23 用户令"按现状优化既定方案"; 删源=服务不变量4 非脱离方案)
+
+> 用户 2026-06-23: "现在的删源是为了最终做成这个方案... 根据现在的数据和架构优化既定方案... 现在应该怎么删, 而不是脱离当初这个方案"。
+> → 删源**不是独立任务**, 是达成**不变量4(单概念单真相源)**的手段: 每概念只留 tushare 一条真相路径, 删掉非tushare 旧表/旧路径。
+
+### 1.6.1 根 + 3件 现状 (倒推方案的地基, 已基本扎实)
+| 项 | 状态 (2026-06-23) |
+|---|---|
+| 不变量1 主键+PIT锚 | SERVE asof_gate + cleaner 强制 (live) |
+| 不变量2 写锁=库分区 | 7库分区已建 + SERVE read_only + sandbox_guard 硬门 |
+| 不变量3 可扩展分层 | L2宽panel + feature_registry + read-model切片 (已建) |
+| 不变量4 单概念单真相源 | SERVE单一读路 bypass=0 (moth硬门) + 删源进行中(↓worklist) |
+| **3件·清洗** (SERVE单一读路) | **DONE** (P1, data_loaders/signals_v2/dossier 迁SERVE, bypass清零) |
+| **3件·加工** (L2 panel) | **DONE** (feature_panel/signal_panel/segment_panel 已建, build-time PIT门) |
+| **3件·展示** (read-model切片) | **DONE** (read_model.py (stock,as_of)切片 SERVE喂数, cf90ad63="3件最后一件") |
+| 编排层 (§1.5.2, daily_update退化编排器) | **DONE** (2026-06-23 重设计成四阶段Python管线 backend/services/pipeline/ 获取/清洗/加工/存储; owner=analysis/data_module_architecture_v2_20260623.md = 本节§1.5.2 operationalized) |
+
+### 1.6.2 删源 worklist (服务不变量4; 简化规则, 删"双轨"仪式)
+**规则就一句** (CLAUDE §4.3 2026-06-23 简化): **tushare 有这类数据? 有→用tushare+删旧源 / 没有→删数据。** 不拿旧源验证tushare/不做值比对。
+删旧表前确认 3 条: (1) tushare确有 (2) 已拉全 (覆盖/新鲜对**交易日历+universe**核, 非对旧源; 漏拉先补, 如 holders ST 股 include_st 回补) (3) **读旧表全消费方迁tushare** (铁律11 fan-in, 漏一=删后炸)。三齐→物删(db_lifecycle_delete+deletion_record)+退役旧client。
+
+| 旧源/旧表 | tushare等价 | 状态 / 怎么删 |
+|---|---|---|
+| 通达信行业/概念 + 申万当前dim | 东财 dc_industry/dc_concept (=tushare) | **DONE** (Stage④ 物删通达信6表+申万当前dim+源码; 深史PIT申万视图留) |
+| 通达信/旧 K线 price_kline_tdxhub | tushare price_kline_qfq_tushare | **DONE** (M3 物删) |
+| **holders fact_top10_holder_period** (tdx) | top10_floatholders | tushare已拉全99.62%(ST回补); **待: 迁 event_engine 等consumers→物删** |
+| **tdxhub 财务簇** raw_gpcw_*/fact_financial_derived | fina_indicator/income/balancesheet | tushare有; **待: 迁consumers→物删** (原M4) |
+| **aif10** raw_aif10_* (已断流2026-05-07) | daily_basic分位/report_rc/stk_holdernumber | tushare有等价; **待: 迁/retire**; 孤儿直删 |
+| **akshare 残留** | 多数已迁; external_attention=**无tushare等价→删数据**; benchmark→index_daily | 大部分DONE; external_attention 删数据 / aif10-survey→stk_surv |
+> 注: sync_registry 已无 tdxhub/akshare/aif10 采集域 = **采集侧早已退役**, 剩的纯是消费侧迁移+物删 (旧表是"活的stale源"违不变量4)。
+
+### 1.6.3 编排层细化 (统一采集规划器 — 不变量1+2 operationalized)
+daily_update 四阶段管线已建, 但**采集的"日历定目标→diff存量定增量"对 by_ts_code 事件数据(十大股东/财报)还缺** (现全量重拉或--resume跳整股=存量股新期永不补)。
+→ 补 `AcquisitionPlanner`: by_ts_code 每股 MAX(ann_date)→扫新期增量 (其余 by_trade_date/by_period 已有 watermark 增量) + 每节点 `assert_node_clean` (核交易日历+排除列表+数量)。owner=analysis/data_module_architecture_v2_20260623.md §核心1/2。
+
+---
+
 ## 2. 完整四层架构 (ACQUIRE→STORE→SERVE→CONSUME→DISPLAY + 对称 config)
 
 ```
