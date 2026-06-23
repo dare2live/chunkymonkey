@@ -139,7 +139,10 @@ def scan_consumer_bypass() -> tuple[list[str], list[str]]:
             rel = str(p.relative_to(REPO))
             if "test" in rel or "sandbox" in rel:
                 continue
-            code = _strip_comments_and_docstrings(_read(p))
+            raw = _read(p)
+            if "# serve-exempt:" in raw:   # evidence 豁免 (展示P4/源退役类, 带理由), 不计违规
+                continue
+            code = _strip_comments_and_docstrings(raw)
             hits = [pat for pat in INLINE_RAW_PATS if re.search(pat, code)]
             if not hits:
                 continue

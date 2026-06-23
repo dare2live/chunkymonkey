@@ -1284,14 +1284,12 @@ def _load_survey_by_stock(conn, stock_codes: set[str]) -> dict[str, list[tuple[s
 
 def _load_survey_coverage_start(conn) -> Optional[str]:
     """
-    返回 raw_institution_surveys 里的最早 notice_date（YYYY-MM-DD）。
+    返回 institution_survey 数据覆盖最早 notice_date（YYYY-MM-DD）。
     早于此日期的事件 D8 视为 unknown（数据未覆盖，不算冷门）。
+    2026-06-23 不变量4: 内联 MIN FROM raw_institution_surveys → DataAccess.coverage_start 元数据原语 (SERVE 单读路)。
     """
     try:
-        row = conn.execute(
-            "SELECT MIN(notice_date) AS min_nd FROM raw_institution_surveys"
-        ).fetchone()
-        return row["min_nd"] if row and row["min_nd"] else None
+        return get_data_access().coverage_start("institution_survey", conn=conn)
     except Exception:
         return None
 

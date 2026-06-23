@@ -223,8 +223,8 @@ assertions:
     type: shell
     command: ["bash", "-c", "PYTHONPATH=backend python backend/scripts/check_config_refs.py --check >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}
-  - id: serve-consumer-bypass-ratchet
-    claim: "不变量4(单概念单真相源/SERVE单一读路)执法棘轮: 全量扫非成员消费者内联raw读 ≤2 (baseline post data_loaders迁移). 伪绿D1只扫dossier 1文件→check_serve_read_layer --bypass-scan 读 data_module_members.yaml roster(成员=数据模块子模块可读raw / 非成员消费者必走DataAccess.get)全量照真相: 仅剩 signals_v2(MIN notice_date聚合边缘)+stock_detail_read(展示P2). data_loaders已迁SERVE→feature/signal panel自动继承单一清洗点. >2=新增bypass回潮; 修完降baseline逐步→0升--strict硬门(对标universe assert_universe_clean). owner=check_serve_read_layer.py --bypass-scan + backend/config/data_module_members.yaml"
+  - id: serve-consumer-bypass-zero
+    claim: "不变量4(单概念单真相源/SERVE单一读路)硬门: 全量扫非成员消费者内联raw读 ==0 (已清零, 棘轮锁死). 伪绿D1只扫dossier 1文件→check_serve_read_layer --bypass-scan 读 data_module_members.yaml roster(成员=数据模块子模块可读raw / 非成员消费者必走DataAccess.get/coverage_start)全量执法. 清零路径: data_loaders迁SERVE→feature/signal panel继承; signals_v2 MIN→DataAccess.coverage_start元数据原语(前后一致2025-10-22); stock_detail_read展示→serve-exempt(P4 read-model pending+源退役表). 源退役3 client(financial/institution_survey/tdx_affair)删源后退役不计. >0=新增bypass回潮即红(对标universe assert_universe_clean硬门). owner=check_serve_read_layer.py --bypass-scan + data_module_members.yaml"
     type: shell
     command: ["bash", "-c", "PYTHONPATH=backend python backend/scripts/check_serve_read_layer.py --bypass-scan 2>/dev/null | grep -oE 'consumer_bypass_violations=[0-9]+' | grep -oE '[0-9]+$'"]
-    expect: {op: "<=", value: 2}
+    expect: {op: "<=", value: 0}

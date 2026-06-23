@@ -2,6 +2,11 @@
 
 Keep stock detail price/event assembly in one place so the backend owns the
 canonical timeline facts and routers only orchestrate the response payload.
+
+# serve-exempt: 展示层 (档案 timeline 装配), 内联读 raw_gpcw_detail (report_date COUNT 聚合 + 行读) —
+#   不变量4 豁免理由: (1) 纯展示非决策/因子输入 (2) raw_gpcw_detail = tdxhub 源退役表, 删源(task#56)
+#   迁 financial_gpcw entity 时一并处理 (3) 展示统一走 read-model 切片 = P4 (data_module_toplevel §7,
+#   read-model 层未建)。P4 建 read-model 后本文件改读切片, 移除本豁免。owner=seed §1.5.3 展示.
 """
 
 import asyncio

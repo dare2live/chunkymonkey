@@ -66,6 +66,23 @@ class DataAccess:
             return [ts_code_to_code(r[0]) for r in rows]
         return [r[0] for r in rows]
 
+    def coverage_start(self, entity: str, conn=None) -> str | None:
+        """entity 数据覆盖最早 asof 锚日期 (MIN(asof_col)) — 元数据原语, 非 PIT 行读。
+        供消费侧判 '事件早于数据覆盖起点则跳过' (coverage gate, 非行级 PIT)。
+        无 asof_col / 空表 → None。保 SERVE 单一读路 (不变量4): 消费侧不再内联 MIN FROM raw_。"""
+        from . import resolver
+        spec = self._reg.entity(entity)
+        if not getattr(spec, "asof_col", None):
+            return None
+        own = conn is None
+        c = conn or resolver.connect_ro(spec.db)
+        try:
+            row = c.execute(f"SELECT MIN({spec.asof_col}) FROM {spec.table}").fetchone()
+        finally:
+            if own:
+                c.close()
+        return row[0] if row and row[0] is not None else None
+
     def get(self, entity: str, codes=None, start: str | None = None,
             as_of: str | None = None, conn=None) -> DataResult:
         """取一个 entity 的数据 (PIT asof≤t, 口径已清洗, 带血缘)。
