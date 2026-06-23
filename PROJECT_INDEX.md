@@ -609,6 +609,8 @@ Rule 9: 真金白银 / 第一性原理       — 用户视角严苛门槛
 | "估算 2 min 跑完" → 实际 28 min | Rule 9.5: 不实测就估算 = 失败. 估时间也要小样本先测 |
 | **paper_sim selector 用 mart_per_stock_*_optimal sharpe 排名** | 这是 selection leakage. 修正: walk-forward selector (Phase ψ.α B 已修, 但只对 reversal). 整体业务应走 ensemble |
 | "对话压缩后还在用旧 context" | 修正: 每次启动**先读这个文档 + CLAUDE.md** |
+| **schema SQL 串里 `--` 注释含 `;`** | executescript 朴素按 `;` 切语句, 注释内 `;` 把注释劈成两半 → 后半非法 SQL ParserException (2026-06-23 Stage④-2 我加的 `Stage④; 防...` 炸 CI test_db schema-init). 修: schema_core/schema_migrations 的 SQL 注释**禁含分号** (line195 已记 DDL 禁 `--` 截断, 此为分号变体) |
+| **删表/改SQL后失败按单一模式 grep 一刀切判 pre-existing** | 2026-06-23 我 grep 表名判"32失败全pre-existing", 漏 `syntax error at 防` 这类非表名错 (实际我引入3个). 教训: measured-not-estimated, 删表/改SQL后失败**逐个核因**, 不靠单 pattern; 不确定的用 git stash 跑 baseline 对比 |
 
 ---
 

@@ -485,8 +485,8 @@ CREATE TABLE IF NOT EXISTS fact_feature_panel_tdx_keep_challenger ( feature_set_
             );
 
             -- 通达信(tdx)行业 dim_stock_tdx_industry / 板块 dim_tdx_block_catalog / dim_stock_tdx_block DDL
-            -- 已删 2026-06-23 (东财全套迁移 Stage④, §4.3 行业/概念切东财 dim_stock_dc_industry/dc_concept;
-            -- 删 DDL 防 schema-init 重建循环 — 反例: 删表只删 schema 不删 DDL → 下次 init 复活)
+            -- 已删 2026-06-23 东财全套迁移 Stage四 行业概念切东财 dim_stock_dc_industry/dc_concept
+            -- 删 DDL 防 schema-init 重建循环 (反例 删表只删 schema 不删 DDL 下次 init 复活)
 
             CREATE TABLE IF NOT EXISTS dim_trading_calendar (
                 trade_date  TEXT PRIMARY KEY,

@@ -295,7 +295,7 @@ CREATE INDEX IF NOT EXISTS idx_data_deletion_run ON mart_data_deletion_record(de
 CREATE INDEX IF NOT EXISTS idx_data_deletion_table ON mart_data_deletion_record(table_name, delete_scope);
 DROP TABLE IF EXISTS raw_fetch_batch;
 CREATE INDEX IF NOT EXISTS idx_daas_updated ON dim_active_a_stock(updated_at); -- rule-compliance: ok evidence=schema-definition
--- 通达信(tdx)行业/板块索引已删 2026-06-23 (东财全套迁移 Stage④; 防 schema-init 重建循环)
+-- 通达信(tdx)行业/板块索引已删 2026-06-23 东财全套迁移 Stage四 防 schema-init 重建循环
 CREATE INDEX IF NOT EXISTS idx_inst_type ON inst_institutions(type);
 CREATE INDEX IF NOT EXISTS idx_inst_enabled ON inst_institutions(enabled);
 DROP TABLE IF EXISTS inst_name_aliases;
