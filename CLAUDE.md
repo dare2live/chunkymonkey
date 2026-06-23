@@ -94,23 +94,29 @@ JOIN → 永远带 `AND x.built_at <= t` / `as_of_date`; 宇宙 → `dim_index_m
   必须 ablation 验证每 col 群 PIT 干净度.
 - 干净参考: v3.2 P0b 实测 RankIC 0.0108-0.0203 (跨 5/10/20 horizon) = 干净 PIT 下诚实数字.
 
-### 4.3 数据源全量默认 tushare (用户三次递进决策, 2026-06-11)
+### 4.3 数据源唯一 tushare — 无备份, 删所有非 tushare 源 (用户决议 2026-06-23, 推翻原热备策略)
 
-- **现有的和将来准备接入的所有数据, 默认改接 tushare.** 新数据需求不再做源选型: 查
-  tushare catalog → 单日实弹核证字段/grain/单页上限 → 注册 sync_registry。tushare 没有的
-  能力 (TDX F10 文本类/本地 CYQ 计算) 才落旧源, 且必须在 need contract 记录例外+理由。
-  存量非 tushare 路径 (44 表清单见 analysis/tushare_full_migration_map_20260611.md) 一律
-  是迁移对象: 双轨核对 → 按角色处置。消费侧方向 = tushare 转正、旧源降备援 — 不许把
-  tushare 表述/设计成"兜底/对照", 那是主从倒挂 (被用户纠偏反例).
-- **备用源是热备不是废弃 (用户原话: fallback 也可能会用到)**: tdxhub/miaoxiang 域切换后
-  保持健康 — 坏了照修、SLA 照测 (阈值可放宽到备源档但不许静音); 只有 akshare 等淘汰源
-  才在双轨核对后物理退役. fallback 链顺序随主源切换同步更新 (tushare 主 → tdxhub 备).
-- tdxhub / miaoxiang: 数据质量 100% 可信 (角色 = 备用源). 缺失 = 自己 sync 路径 bug, 优先重拉.
-- akshare: 不稳定 (限频/接口变), 正被 TuShare 替换 (见 goal.md need_027).
+> 状态变更: 原 §4.3 "tdxhub/miaoxiang 热备保留 (fallback 也可能用到)" 2026-06-23 被用户明确推翻 —
+> 原话 "数据源全切 tushare 不热备, 现有数据源删除; 无 tushare 等价的数据丢弃"。接受 tushare 单点
+> (简单 > 韧性)。下方=现行政策; 旧热备条款存档见本节末 [deprecated]。
+
+- **唯一数据源 = tushare.** 现有/未来所有数据接 tushare: 查 catalog → 单日实弹核证字段/grain/
+  单页上限 → 注册 sync_registry。**无热备、无冷备** — 非 tushare 源全是删除对象。
+- **删除纪律 (不可逆, 先核对再删)**: 存量非 tushare (tdxhub/miaoxiang/akshare/aif10) —
+  (a) 有 tushare 等价 → 双轨核对 (具体日+股+字段一致率≥99%, 不看汇总 verdict) 达标 → 切 SERVE
+  主源 → 物删 raw 表 + 退役 client/sync 脚本; (b) **无 tushare 等价 (akshare 外部关注度/部分
+  tdx F10 文本) → 直接丢弃该数据** (用户决议: 丢)。盲删禁止, 双轨核对落
+  analysis/非tushare源_双轨_<日期>.md。物删走 db_lifecycle_delete + deletion_record。
+- **单点接受 (用户决议)**: tushare 网关挂 = 无 fallback (有意识取舍)。tinyshare 间歇空响应/限流
+  照旧防御 (writer 0 行当失败重试 + 退避), 但不再保留任何旧源做灾备。
 - tushare (vendor gateway): 171/239 接口实测可用; 间歇空响应/读超时 — writer 必须
   把 0 行当失败重试; 单页上限必须实测防静默截断 (top_inst 1000 整反例).
   **代理 2026-06-17 切 tinyshare** (旧 jiaoch.site 账户级反刷量墙弃用; tinyshare 自带网关, `import tinyshare as ts; ts.set_token(授权码); ts.pro_api()`, 授权码进 .env TUSHARE_TOKEN).
   **限流 (tinyshare, 用户 2026-06-17): 单接口 120 次/分钟, 多接口 200 次/分钟, 并发上限 2** — 瞬态限流退避几分钟即恢复 (非当日墙不停链, sync_runner 已实现); 旧 tushare 是 150/200.
+
+> [deprecated 存档] 旧热备策略 (2026-06-11~06-23): 曾定 tdxhub/miaoxiang 为热备保留 (用户原话
+> "fallback 也可能会用到"), 切主源后保持健康/SLA 照测, 只 akshare 等淘汰源双轨后退役。
+> 2026-06-23 用户推翻 → 全删无备份。保留此条仅为历史溯源, 勿当现行。
 
 ### 4.4 Root Cause — 严禁忍
 
