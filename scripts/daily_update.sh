@@ -132,26 +132,15 @@ fi
 # Step 2: Data sync (tdxhub + akshare)
 if [[ "$SKIP_SYNC" == "0" ]]; then
     log "--- Step 2: Data sync ---"
-    log "Local sync (tdxhub daily incremental)"
+    log "Local sync (serving K线真相源 = tushare canonical, Step 2.96; tdxhub stock-K线 build 已退役)"
     if [[ "$DRY" == "0" ]]; then
-        # latest_completed_trade_date 自动 target
-        # 2026-05-21 fix: set -e + tdxhub exit 非 0 会让脚本静默终止. 用 if 包装抑制.
-        sync_exit=0
-        if ! PYTHONPATH=backend python backend/scripts/build_price_kline_tdxhub.py \
-            --skip-existing \
-            --workers 4 --connect-timeout 2.5 \
-            --max-server-attempts 9 --per-stock-retry-attempts 2 \
-            --write-batch-rows 5000 --log-every 200 \
-            >> "$LOG" 2>&1; then
-            sync_exit=$?
-        fi
-        log "tdxhub sync exit $sync_exit"
-        # 复审 HIGH: K 线是全链最关键路径, 失败必须送达 — 旧版只 log 即丢弃,
-        # 恰好复刻"断流 4+ 日无人知"的当天静默 (用 if 不用 &&, 防 set -e 误杀)
-        if [[ "$sync_exit" != "0" ]]; then
-            step_degraded "tdxhub K线 sync exit $sync_exit (链继续但 K 线可能 stale)"
-        fi
-        # HS300 benchmark
+        # 2026-06-23 M3: build_price_kline_tdxhub (5.3M 股票日线 → price_kline_tdxhub) 已退役。
+        # serving K线真相源 = price_kline_qfq_tushare (Step 2.96 从 raw_tushare_daily × adj_factor 建;
+        # tushare 5431≥5211 股超集 / 同 fresh 2026-06-18 / 复权质量优于 tdxhub 单日 glitch §2 坑库)。
+        # 实测 price_kline_tdxhub 0 serving 读者 (canonical 视图 tushare-only, grep FROM/JOIN 全空);
+        # xdxr 热备(§4.3) code-list 已切 canonical (Step 2b2 上方)。表物删见 ledger M3。
+        # HS300 benchmark: akshare→price_kline 备援链 (主源 = raw_tushare_index_daily 走 registry Step 2.95;
+        # tdx-write 已 neuter 解耦 price_kline_tdxhub)。benchmark 消费侧切 tushare index_daily = M3后续步。
         PYTHONPATH=backend python backend/scripts/sync_hs300_benchmark_kline.py \
             >> "$LOG" 2>&1 || step_degraded "HS300 sync 失败 (非 fatal)"
         # Step 2b2: xdxr 除权事件 sync — 热备链路 (主源 = tushare dividend/adj_factor)

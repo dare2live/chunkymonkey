@@ -27,6 +27,7 @@ data/*.duckdb
 data/*.duckdb-wal
 data/*.duckdb-shm
 data/*.duckdb.backup_*
+data/*.duckdb.bak_*
 data/*.duckdb.tmp
 data/*.duckdb.tmp/
 data/portfolio_backtest_nav.csv

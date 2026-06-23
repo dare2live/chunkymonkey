@@ -6,9 +6,13 @@ market-regime benchmark and falls back to the tradable ETF proxy (510300) only
 when index data is unavailable. This script keeps 000300 available in the
 canonical K-line view:
 
-1. try TDXHub index bars first;
+1. try TDXHub index bars first (仅用于 staleness 判断, 不再落库);
 2. if TDXHub is missing or stale, fetch a bounded fallback from CSIndex/Sina;
-3. write TDXHub rows to price_kline_tdxhub and fallback rows to price_kline.
+3. write fallback rows to price_kline (akshare 备援链).
+
+2026-06-23 M3: tdx-write 到 price_kline_tdxhub 已 neuter (该表退役物删)。benchmark 000300 主源
+已切 raw_tushare_index_daily (registry 同步 2005~now); 本脚本仅留 price_kline 备援, 待 benchmark
+消费侧 (paper_engine/return_engine) 全切 tushare index_daily 后整体退役。
 """
 from __future__ import annotations
 
@@ -33,7 +37,6 @@ from services.kline_source import records_from_payload
 from services.market_db import (
     get_market_conn,
     init_market_db,
-    upsert_price_kline_tdxhub_rows,
     upsert_price_rows,
 )
 from services.utils import latest_completed_trade_date
@@ -246,17 +249,11 @@ async def run_sync(args: argparse.Namespace) -> dict[str, Any]:
     fallback_source = ""
     fallback_attempts: list[dict[str, Any]] = []
     try:
-        if tdx_rows:
-            normalized_tdx = [
-                {**row, "code": args.code, "freq": "daily", "adjust": "qfq"}
-                for row in tdx_rows
-            ]
-            tdx_written = upsert_price_kline_tdxhub_rows(
-                market_conn,
-                normalized_tdx,
-                source=tdx_source or "tdxhub_index",
-                batch_id=batch_id,
-            )
+        # 2026-06-23 M3: 已 neuter tdx-write 到 price_kline_tdxhub (该表退役物删, 0 serving 读者)。
+        # tdx_rows 仍取数 → 仅驱动下方 staleness 判断决定是否触发 akshare→price_kline 备援。
+        # benchmark 主源已切 raw_tushare_index_daily (registry 同步 2005~now); 此脚本仅留 price_kline
+        # 备援链, 待 benchmark 消费侧 (paper_engine/return_engine) 全切 tushare index_daily 后整体退役。
+        tdx_written = 0  # rule-compliance: ok evidence=M3 neuter, price_kline_tdxhub 退役不再写
         latest_tdx = max((row["date"] for row in tdx_rows), default=None)
         if not latest_tdx or latest_tdx.replace("-", "") < end_date:
             fallback_rows, fallback_source, fallback_attempts = _fetch_fallback_bounded(
