@@ -102,11 +102,12 @@ JOIN → 永远带 `AND x.built_at <= t` / `as_of_date`; 宇宙 → `dim_index_m
 
 - **唯一数据源 = tushare.** 现有/未来所有数据接 tushare: 查 catalog → 单日实弹核证字段/grain/
   单页上限 → 注册 sync_registry。**无热备、无冷备** — 非 tushare 源全是删除对象。
-- **删除纪律 (不可逆, 先核对再删)**: 存量非 tushare (tdxhub/miaoxiang/akshare/aif10) —
-  (a) 有 tushare 等价 → 双轨核对 (具体日+股+字段一致率≥99%, 不看汇总 verdict) 达标 → 切 SERVE
-  主源 → 物删 raw 表 + 退役 client/sync 脚本; (b) **无 tushare 等价 (akshare 外部关注度/部分
-  tdx F10 文本) → 直接丢弃该数据** (用户决议: 丢)。盲删禁止, 双轨核对落
-  analysis/非tushare源_双轨_<日期>.md。物删走 db_lifecycle_delete + deletion_record。
+- **删除纪律 (不可逆; 2026-06-23 用户简化, 推翻旧"双轨核对≥99%一致率"仪式)**: 规则就一句 —
+  **tushare 有这类数据? 有 → 用 tushare, 删旧源; 没有 → 删这数据。** tushare 是唯一真相源, **不拿旧源去验证它,
+  不做 tushare-vs-旧源的值比对** (用户原话: "谁和谁双轨啊")。删旧源前唯一要确认的 = **(1) tushare 确实有这类数据
+  (查 catalog/实弹一只) + (2) 我们把它拉全了** (覆盖/新鲜 对**交易日历+universe**核, 不对旧源; 漏拉先补全, 如 ST 股缺→
+  调 include_st 回补) + (3) **改完读旧表的全部消费方指向 tushare** (铁律: 改前 fan-in 审计全消费方, 漏一个=物删后炸)。
+  三条齐 → 物删旧表 (db_lifecycle_delete + deletion_record) + 退役旧 client/sync。无 tushare 等价 (akshare 外部关注度等) → 直接删数据。
 - **单点接受 (用户决议)**: tushare 网关挂 = 无 fallback (有意识取舍)。tinyshare 间歇空响应/限流
   照旧防御 (writer 0 行当失败重试 + 退避), 但不再保留任何旧源做灾备。
 - tushare (vendor gateway): 171/239 接口实测可用; 间歇空响应/读超时 — writer 必须
