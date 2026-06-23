@@ -444,7 +444,7 @@ def _step_build_industry_stat_sync(conn, should_stop=None) -> int:
                        e.max_drawdown_30d, e.max_drawdown_60d
                 FROM fact_institution_event e
                 INNER JOIN inst_institutions inst ON inst.id = e.institution_id
-                INNER JOIN dim_stock_tdx_industry i ON i.stock_code = e.stock_code
+                INNER JOIN dim_stock_dc_industry i ON i.stock_code = e.stock_code
                 WHERE inst.enabled = 1
                   AND inst.blacklisted = 0
                   AND inst.merged_into IS NULL
@@ -459,7 +459,7 @@ def _step_build_industry_stat_sync(conn, should_stop=None) -> int:
                        e.max_drawdown_30d, e.max_drawdown_60d
                 FROM fact_institution_event e
                 INNER JOIN inst_institutions inst ON inst.id = e.institution_id
-                INNER JOIN dim_stock_tdx_industry i ON i.stock_code = e.stock_code
+                INNER JOIN dim_stock_dc_industry i ON i.stock_code = e.stock_code
                 WHERE inst.enabled = 1
                   AND inst.blacklisted = 0
                   AND inst.merged_into IS NULL
@@ -474,7 +474,7 @@ def _step_build_industry_stat_sync(conn, should_stop=None) -> int:
                        e.max_drawdown_30d, e.max_drawdown_60d
                 FROM fact_institution_event e
                 INNER JOIN inst_institutions inst ON inst.id = e.institution_id
-                INNER JOIN dim_stock_tdx_industry i ON i.stock_code = e.stock_code
+                INNER JOIN dim_stock_dc_industry i ON i.stock_code = e.stock_code
                 WHERE inst.enabled = 1
                   AND inst.blacklisted = 0
                   AND inst.merged_into IS NULL

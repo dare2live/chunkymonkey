@@ -2,7 +2,7 @@
 industry.py — 行业解析单点实现 (2026-06-16 S3: 切回申万 SW2021 三级分类)
 
 所有需要行业信息的地方统一通过本模块访问。
-数据源: **dim_stock_sw_industry** (申万当前快照, serving; 2026-06-16 从通达信切回申万, 06-11 ANOVA 实测申万L2
+数据源: **dim_stock_dc_industry** (申万当前快照, serving; 2026-06-16 从通达信切回申万, 06-11 ANOVA 实测申万L2
   区分度最优)。列名 tdx_l1/l2/l3(+name) 保留为**位置别名** (level-1/2/3 行业), 值已是申万——仅为最小化消费方改动,
   真相源/迁移见 analysis/industry_migration_tdx_to_sw_20260615.md。通达信 dim_stock_tdx_industry 降 tdxhub 热备(§4.3)。
   **as-of/PIT** (回测) 走 tushare_raw.v_sw_industry_pit (in_date<=t AND (out_date IS NULL OR out_date>t)); 本模块只服务"当前"。
@@ -24,7 +24,7 @@ _industry_cache: dict = None
 # 行业口径: 申万 SW2021 (2026-06-16 S3). 列名 tdx_l* = 历史位置别名 (level-1/2/3), 值已是申万 (最小化消费方改动)。
 INDUSTRY_LEVEL_COLUMNS = ("tdx_l1", "tdx_l2", "tdx_l3")
 INDUSTRY_NAME_COLUMNS = ("tdx_l1_name", "tdx_l2_name", "tdx_l3_name")
-INDUSTRY_TABLE = "dim_stock_sw_industry"
+INDUSTRY_TABLE = "dim_stock_dc_industry"
 
 
 def _validate_industry_level(level: int) -> int:
@@ -166,7 +166,7 @@ def load_industry_map(conn) -> dict[str, dict]:
 
 
 def resolve_industry(conn, stock_code: str, ref_date=None) -> dict:
-    """返回 stock_code 的**当前**申万行业 (dim_stock_sw_industry 当前快照)。
+    """返回 stock_code 的**当前**申万行业 (dim_stock_dc_industry 当前快照)。
 
     ref_date: 当前实现**不按 ref_date 做 as-of** (serving 只需当前归属)。需 PIT/历史 as-of (回测) 的,
     改查 tushare_raw.v_sw_industry_pit (WHERE in_date<=t AND (out_date IS NULL OR out_date>t))——别误以为本函数 PIT。

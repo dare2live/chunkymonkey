@@ -13,7 +13,7 @@ def _make_smart_conn():
     conn = duck_mem()
     conn.executescript(
         """
-        CREATE TABLE dim_stock_sw_industry (
+        CREATE TABLE dim_stock_dc_industry (
             stock_code TEXT,
             tdx_l1 TEXT,
             tdx_l2 TEXT,
@@ -59,7 +59,7 @@ def _make_market_conn():
 
 def _seed_industry_rows(conn):
     conn.executemany(
-        "INSERT INTO dim_stock_sw_industry (stock_code, tdx_l1, tdx_l2, tdx_l3, tdx_l1_name, tdx_l2_name, tdx_l3_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO dim_stock_dc_industry (stock_code, tdx_l1, tdx_l2, tdx_l3, tdx_l1_name, tdx_l2_name, tdx_l3_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
             (f"6000{idx:02d}", "T10", "T1001", f"T100{idx:03d}", "电子", "半导体", f"芯片{idx}")
             for idx in range(1, 6)
@@ -121,7 +121,7 @@ def test_calc_dual_confirm_maps_recent_events_to_sector_name():
             ("电子", 72.0, "recovering", 1),
         )
         conn.execute(
-            "INSERT INTO dim_stock_sw_industry (stock_code, tdx_l1, tdx_l2, tdx_l3, tdx_l1_name, tdx_l2_name, tdx_l3_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO dim_stock_dc_industry (stock_code, tdx_l1, tdx_l2, tdx_l3, tdx_l1_name, tdx_l2_name, tdx_l3_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
             ("600001", "T10", "T1001", "T100101", "电子", "半导体", "芯片设计"),
         )
         conn.execute(

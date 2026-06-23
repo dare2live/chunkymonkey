@@ -296,14 +296,14 @@ finally:
 PYEOF
 fi
 
-# Step 2.96c: 申万行业物化 (DERIVE 加工 — 2026-06-23 行业源切 tushare; owner=industry_migration_tdx_to_sw):
-#   通达信 Step2j 已删 (§4.3 删源)。行业分类真相源 = tushare 申万 (raw_tushare_index_member_all, 2.95 已 drain),
-#   build_sw_industry_view.py 幂等重建 v_sw_industry_pit (as-of PIT 视图) + dim_stock_sw_industry (当前快照, serving 读)。
-#   修原孤儿 bug: 该物化步无调用者 → serving 申万表自 06-16 起 stale; 接进每日流 = tushare 行业数据保鲜。
+# Step 2.96c: 东财行业物化 (DERIVE 加工 — 2026-06-23 全项目单一供应商=东财迁移; owner=analysis/dc_full_migration_plan_20260623.md):
+#   行业分类真相源 = 东财 (raw_tushare_dc_index 行业板块 + dc_member, 2.95 已 drain; 东财行业=申万对齐同套桶),
+#   build_dc_industry_view.py 幂等重建 dim_stock_dc_industry (当前快照 serving, level按申万名映射31/127/334) +
+#   dim_stock_dc_concept + v_dc_industry_pit。深史2025前PIT走 v_sw_industry_pit (申万深PIT兜底, 同套桶, 用户拍板选A)。
 if [[ "$SKIP_SYNC" == "0" && "$DRY" == "0" ]]; then
-    log "--- Step 2.96c: 申万行业物化 (DERIVE; serving 行业真相源 dim_stock_sw_industry) ---"
-    PYTHONPATH=backend python backend/scripts/build_sw_industry_view.py \
-        >> "$LOG" 2>&1 || step_degraded "申万行业物化失败 — serving 行业将 stale (消费方 LEFT JOIN 退化 NULL)"
+    log "--- Step 2.96c: 东财行业物化 (DERIVE; serving 行业真相源 dim_stock_dc_industry) ---"
+    PYTHONPATH=backend python backend/scripts/build_dc_industry_view.py \
+        >> "$LOG" 2>&1 || step_degraded "东财行业物化失败 — serving 行业将 stale (消费方 LEFT JOIN 退化 NULL)"
 fi
 
 # Step 2.97: 源域水位刷新 (从真实表派生, 写 mart_data_source_watermark)

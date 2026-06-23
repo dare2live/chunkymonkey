@@ -1802,7 +1802,7 @@ def calculate_stock_scores(conn) -> int:
                f.holder_count, f.holder_count_change_pct, f.float_shares, f.total_shares,
                i.tdx_l1, i.tdx_l2
         FROM dim_financial_latest f
-        LEFT JOIN dim_stock_sw_industry i ON i.stock_code = f.stock_code
+        LEFT JOIN dim_stock_dc_industry i ON i.stock_code = f.stock_code
     """).fetchall()
     for row in fin_rows:
         d = dict(row)
@@ -1873,7 +1873,7 @@ def calculate_stock_scores(conn) -> int:
                    f.asset_turnover_ak, f.inventory_turnover_ak, f.receivables_turnover_ak,
                    f.revenue_growth_yoy_ak, f.net_profit_growth_yoy_ak, i.tdx_l1, i.tdx_l2
             FROM dim_financial_indicator_latest f
-            LEFT JOIN dim_stock_sw_industry i ON i.stock_code = f.stock_code
+            LEFT JOIN dim_stock_dc_industry i ON i.stock_code = f.stock_code
         """).fetchall()
         for row in indicator_rows:
             d = dict(row)

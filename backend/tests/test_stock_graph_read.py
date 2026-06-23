@@ -12,7 +12,7 @@ def test_stock_related_does_not_filter_related_stocks_by_name_cache():
     try:
         conn.execute(
             """
-            CREATE TABLE dim_stock_sw_industry (
+            CREATE TABLE dim_stock_dc_industry (
                 stock_code TEXT,
                 tdx_l1 TEXT,
                 tdx_l1_name TEXT
@@ -23,7 +23,7 @@ def test_stock_related_does_not_filter_related_stocks_by_name_cache():
             "CREATE TABLE dim_active_a_stock (stock_code TEXT, stock_name TEXT)"
         )
         conn.executemany(
-            "INSERT INTO dim_stock_sw_industry VALUES (?, ?, ?)",
+            "INSERT INTO dim_stock_dc_industry VALUES (?, ?, ?)",
             [
                 ("000001", "finance", "金融"),
                 ("000002", "finance", "金融"),
@@ -43,7 +43,7 @@ def test_stock_related_does_not_filter_related_stocks_by_name_cache():
                 "industry": "金融",
                 "relation": "same_industry",
                 "weight": 1.0,
-                "source": "dim_stock_sw_industry",
+                "source": "dim_stock_dc_industry",
             }
         ]
     finally:

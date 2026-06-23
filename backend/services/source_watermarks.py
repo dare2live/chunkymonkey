@@ -104,14 +104,15 @@ DOMAIN_SPECS = [
         "parser_version": "tdxhub_xdxr",
     },
     {
-        # 2026-06-23 行业源切 tushare-申万: 原 tdxhub_block/dim_stock_tdx_industry (通达信) 已删源, serving 行业
-        #   真相源 = dim_stock_sw_industry (申万 SW2021, daily_update Step 2.96c 每日 CREATE OR REPLACE 刷新)。
-        "data_domain": "industry_sw",
-        "source_name": "tushare_index_member",
+        # 2026-06-23 全项目单一供应商=东财迁移 (Stage②): serving 行业真相源 = dim_stock_dc_industry
+        #   (东财行业=申万对齐同套桶, daily_update Step 2.96c build_dc_industry_view 每日刷新)。
+        #   深史2025前PIT走 v_sw_industry_pit (申万深PIT兜底, 选A)。
+        "data_domain": "industry_dc",
+        "source_name": "tushare_dc",
         "source_tier": 1,
-        "table": "dim_stock_sw_industry",
+        "table": "dim_stock_dc_industry",
         "date_col": "updated_at",
-        "parser_version": "sw2021",
+        "parser_version": "dc",
     },
     # stock_blocks 域已删 (2026-06-23): 原指通达信 dim_stock_tdx_industry, 源退役; 申万行业新鲜度由上方 industry_sw 域跟踪。
     {

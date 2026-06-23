@@ -1,7 +1,7 @@
 """股票图谱 read service (Project D MVP).
 
 2026-05-22 用户新加: 主项目股票列表加 multi-tag + 关联弹窗, 找潜在关联 (产业链/龙一龙二/共振).
-基于 Perception 7 mart (`mart_market_perception_*_daily`) + 主项目 `dim_stock_sw_industry`.
+基于 Perception 7 mart (`mart_market_perception_*_daily`) + 主项目 `dim_stock_dc_industry`.
 
 物理边界:
 - 仅 UI 查询层, **不接 ranker / panel / paper_sim / champion**
@@ -55,7 +55,7 @@ def get_stock_tags(conn, stock_code: str, snapshot_date: str | None = None) -> d
     """Return multi-tag dict for stock_code.
 
     Tags pulled from:
-      - dim_stock_sw_industry (industry, always available)
+      - dim_stock_dc_industry (industry, always available)
       - mart_market_perception_stock_context_daily (theme/lifecycle/leader_follow/style/crowding, 6 days history MVP)
     """
     # Resolve snapshot_date
@@ -64,11 +64,11 @@ def get_stock_tags(conn, stock_code: str, snapshot_date: str | None = None) -> d
 
     # Industry (主项目 dim, always available)
     industry: dict[str, Any] = {}
-    if _table_exists(conn, "dim_stock_sw_industry"):
+    if _table_exists(conn, "dim_stock_dc_industry"):
         row = conn.execute(
             """
             SELECT tdx_l1_name, tdx_l2_name, tdx_l3_name, tdx_l1
-              FROM dim_stock_sw_industry
+              FROM dim_stock_dc_industry
              WHERE stock_code = ?
              LIMIT 1
             """,
@@ -137,7 +137,7 @@ def get_stock_tags(conn, stock_code: str, snapshot_date: str | None = None) -> d
             "kind": "industry",
             "label": industry["tdx_l1_name"],
             "sub_label": industry.get("tdx_l2_name"),
-            "source": "dim_stock_sw_industry",
+            "source": "dim_stock_dc_industry",
         })
     if context.get("theme_name"):
         tags.append({
@@ -205,17 +205,17 @@ def get_stock_related(conn, stock_code: str, snapshot_date: str | None = None, l
 
     related: list[dict[str, Any]] = []
 
-    # 1. Same industry (主项目 dim_stock_sw_industry, 不依赖 perception)
-    if _table_exists(conn, "dim_stock_sw_industry"):
+    # 1. Same industry (主项目 dim_stock_dc_industry, 不依赖 perception)
+    if _table_exists(conn, "dim_stock_dc_industry"):
         rows = conn.execute(
             """
             WITH target AS (
-              SELECT tdx_l1 FROM dim_stock_sw_industry WHERE stock_code = ? LIMIT 1
+              SELECT tdx_l1 FROM dim_stock_dc_industry WHERE stock_code = ? LIMIT 1
             )
             SELECT d.stock_code,
                    COALESCE(NULLIF(s.stock_name, ''), d.stock_code) AS stock_name,
                    d.tdx_l1_name
-              FROM dim_stock_sw_industry d
+              FROM dim_stock_dc_industry d
               LEFT JOIN dim_active_a_stock s ON s.stock_code = d.stock_code  -- rule-compliance: ok evidence=code-to-name-mapping
               JOIN target t ON t.tdx_l1 = d.tdx_l1
              WHERE d.stock_code != ?
@@ -230,7 +230,7 @@ def get_stock_related(conn, stock_code: str, snapshot_date: str | None = None, l
                 "industry": r[2],
                 "relation": "same_industry",
                 "weight": 1.0,
-                "source": "dim_stock_sw_industry",
+                "source": "dim_stock_dc_industry",
             })
 
     # 2. Leader/follower edges
