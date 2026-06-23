@@ -52,3 +52,13 @@ def test_run_orchestration_order(monkeypatch, tmp_path):
     rc = run_mod.main(["--dry", "--skip-sync", "--date", "20260101"])
     assert rc == 0
     assert called == ["run_preflight", "run_acquire", "run_clean", "run_process", "run_store"]
+
+
+def test_run_no_flags_parses(monkeypatch, tmp_path):
+    """无 flag (全量真实模式) 也能解析 — 防 bash wrapper 空参传成空字符串 arg 的回归
+    (2026-06-23: wrapper 用 ${arr[@]:-} 在空数组时传 '' → argparse unrecognized arguments)。"""
+    from services.pipeline import run as run_mod
+    for name in ("run_preflight", "run_acquire", "run_clean", "run_process", "run_store"):
+        monkeypatch.setattr(run_mod, name, lambda ctx: None)
+    monkeypatch.setattr("services.pipeline.context.DEGRADED_FLAG", tmp_path / "flag")
+    assert run_mod.main(["--date", "20260101"]) == 0  # 无 --dry/--skip-sync

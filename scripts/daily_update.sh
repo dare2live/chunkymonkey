@@ -28,18 +28,19 @@ if [[ -f "$REPO_ROOT/.env" ]]; then
 fi
 
 # args + env override → 管线 flag
-PIPELINE_ARGS=()
-[[ "${DRY:-0}" == "1" ]] && PIPELINE_ARGS+=(--dry)
-[[ "${SKIP_SYNC:-0}" == "1" ]] && PIPELINE_ARGS+=(--skip-sync)
+# args + env override → 管线 flag (普通字符串非数组: bash 3.2 兼容 + 空则无参,
+# 不用 "${arr[@]:-}" 因空数组+:- 会展开成一个空字符串 arg → argparse "unrecognized arguments:" 报错)。
+# 重复 --dry/--skip-sync 无害: argparse store_true 幂等, 故无需去重。
+ARGS=""
+[[ "${DRY:-0}" == "1" ]] && ARGS="$ARGS --dry"
+[[ "${SKIP_SYNC:-0}" == "1" ]] && ARGS="$ARGS --skip-sync"
 for arg in "$@"; do
     case "$arg" in
-        --dry) PIPELINE_ARGS+=(--dry) ;;
-        --skip-sync) PIPELINE_ARGS+=(--skip-sync) ;;
+        --dry) ARGS="$ARGS --dry" ;;
+        --skip-sync) ARGS="$ARGS --skip-sync" ;;
         *) echo "ERROR: unknown daily_update argument: $arg" >&2; exit 2 ;;
     esac
 done
 
-# 去重 (DRY=1 + --dry 双传时)
-DEDUP_ARGS=($(printf '%s\n' "${PIPELINE_ARGS[@]:-}" | awk 'NF' | sort -u))
-
-exec env PYTHONPATH=backend python -m services.pipeline.run "${DEDUP_ARGS[@]:-}"
+# shellcheck disable=SC2086 — 故意非引号展开: 空 ARGS → 0 参; "--dry" → 1 参 (flag 无空格安全)
+exec env PYTHONPATH=backend python -m services.pipeline.run $ARGS
