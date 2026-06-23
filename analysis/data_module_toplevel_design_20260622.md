@@ -22,8 +22,8 @@
 |---|---|---|---|
 | D1 | **真金白银穿透**: 转正 (confirmed_by_owner=1) 必带含成本绝对收益证据 | `record_verdict` C-R1 raise | [OK] 已硬门 (8处C-R1/C-LEAK实测) |
 | D2 | **leakage-clean 转正门** | `record_verdict` C-LEAK raise | [OK] 已硬门 |
-| D3 | **第二真相源即死**: 同概念物理/算法多份=违宪 | moth 双真相源探针 + DataAccess 单一路由 | [WARN] 部分 (机构动向三口径; top10刚收敛#51) |
-| D4 | **PIT 偏序**: 决策 t 只用 ≤t | 读层 asof 强制 + build-time PIT 单测 | [WARN] 散落, 待 SERVE 收口 |
+| D3 | **第二真相源即死**: 同概念物理/算法多份=违宪 | moth 双真相源探针 + DataAccess 单一路由 | **[实质锁 2026-06-23]**: DataAccess 单一路由强制 (serve-consumer-bypass-zero ==0 硬门 — 即使多表存在, 消费侧禁内联读必走单一 SERVE entity) + 专门探针 kline-canonical-tushare-only/holder-report-date-single-format/config-refs-clean/dossier-serve-no-inline-raw. top10 收敛#51✓. 余 minor: 机构动向三口径专门探针 (单一路由已 mitigated, 消费侧不会各算各; flow-vendor=membership-vendor 红线靠 SERVE entity vendor 字段单源) |
+| D4 | **PIT 偏序**: 决策 t 只用 ≤t | 读层 asof 强制 + build-time PIT 单测 | **[锁 2026-06-23]**: 读层 asof 强制 (SERVE asof_gate, 不变量1) + build-time PIT 门 — feature-panel-pit-guard-wired (assert_pit_clean 运行时) + build-time-pit-declared (每写 feature_store 的 L2 panel builder 必声明 PIT 立场: assert_pit_clean 或 pit-safe-by-construction). 散落已收口 |
 | D5 | **地基不完整冻结上层** | A0 止血 gate (task#46) | [WARN] 进行中 |
 | D6 | **感知死防线**: 实盘预测须 forward 回填对账 | forward_reconciliation reader | [NO] 缺 reader (真缺口, 非 verdict 空头) |
 
