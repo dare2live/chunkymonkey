@@ -216,12 +216,11 @@ finally:
     conn.close()
 PYEOF
 
-        # Step 2j 通达信(tdx)行业 sync 已删除 (2026-06-23, §4.3 tushare唯一删旧源 + 用户规则"只用 tushare 能
-        #   提供的数据"): 行业分类 tushare 已提供 = 申万 SW2021 (index_member_all/sw_daily, 含 L1/L2/L3 +
-        #   is_new='N' 真 PIT 历史区间), 优于通达信 snapshot 累积。消费方全 repoint dim_stock_sw_industry
-        #   (申万 tushare 源; 列名 tdx_l* 是位置别名值=申万, 兼容零字段改)。申万物化进下方 DERIVE 阶段每日刷新。
-        #   通达信源 (dim_stock_tdx_industry* / tdx_industry_client / Step2j) 物删, owner=
-        #   analysis/industry_migration_tdx_to_sw_20260615.md。原 sync 还崩在 market_gap_queue 缺表 (reset 孤儿)。
+        # Step 2j 通达信(tdx)行业 sync 已删除 (2026-06-23, §4.3 tushare唯一删旧源): 行业/概念/资金流全套切东财(DC)。
+        #   当前行业 serving = dim_stock_dc_industry (东财, 列名 tdx_l* 是位置别名值=东财=申万对齐, 兼容零字段改),
+        #   下方 DERIVE 阶段 Step2.96c build_dc_industry_view 每日物化。深史(2025前)PIT as-of 走 tushare_raw.v_sw_industry_pit
+        #   (申万 index_member_all 同套桶兜底, 保留)。通达信源 + 申万当前快照 dim (SW current snapshot) 已物删,
+        #   owner=analysis/dc_full_migration_plan_20260623.md。原 tdx sync 还崩在 market_gap_queue 缺表 (reset 孤儿)。
 
         # 2026-05-29 加 (市场感知数据接入 P0): external_attention 快照接线
         # 反例: attention 断更 14 天 (停 2026-05-15) 没人发现, 因不在 daily_update + 不在 watermark SLA

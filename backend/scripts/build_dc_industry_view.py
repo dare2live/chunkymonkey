@@ -12,7 +12,7 @@
 
 产出 (serving, smartmoney.duckdb):
   - dim_stock_dc_industry: 个股当前快照, 列 tdx_l1/tdx_l1_name/.../tdx_l3_name (位置别名, 值=东财行业=申万对齐),
-    与旧 dim_stock_sw_industry 列名一致 → 消费方纯表名 swap 零字段改。level 按申万名映射 (实测 L1=31/L2=127/L3=334)。
+    沿用历史位置别名列名 → 消费方纯表名 swap 零字段改。level 按申万名映射 (实测 L1=31/L2=127/L3=334)。
   - dim_stock_dc_concept: 个股当前概念成员 (多对多)。
 
 PIT 视图 (tushare_raw.duckdb):

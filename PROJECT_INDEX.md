@@ -213,9 +213,9 @@
 
 | 表 | 数据量 | freshness | 用途 |
 |---|---|---|---|
-| **`dim_stock_dc_industry`** | dim 5211股(1:1) | **新建 2026-06-23 (build_dc_industry_view)** | **东财行业映射** (serving 新真相源, 列 tdx_l1/l2/l3=东财行业=申万对齐, level按申万名映射31/127/334). 全项目单一供应商=东财迁移 (owner=analysis/dc_full_migration_plan_20260623.md): **Stage①②完成** (物化+6消费方/6测试/build_industry_stat JOIN/daily_update Step2.96c/watermark industry_dc 全切dc, 115测试pass); 待 Stage④ 双轨核对后物删申万dim_stock_sw_industry+通达信深层残留 |
+| **`dim_stock_dc_industry`** | dim 5211股(1:1) | **新建 2026-06-23 (build_dc_industry_view)** | **东财行业映射** (serving 新真相源, 列 tdx_l1/l2/l3=东财行业=申万对齐, level按申万名映射31/127/334). 全项目单一供应商=东财迁移 (owner=analysis/dc_full_migration_plan_20260623.md): **Stage①②完成** (物化+6消费方/6测试/build_industry_stat JOIN/daily_update Step2.96c/watermark industry_dc 全切dc, 115测试pass); **Stage④-1完成 2026-06-23** (物删申万当前快照dim, 双轨L1=98.5/L2=97.3/L3=97.3%, 深史兜底v_sw_industry_pit保留); 待 ④-2 通达信industry残留物删 + ④-3 block表前端fork (stock_detail_read live读, 待拍板) |
 | `dim_stock_dc_concept` / `v_dc_industry_pit` | dim 5210股/490概念 + as-of视图 | 新建 2026-06-23 | 东财概念成员 + 东财成员PIT(仅2025+; 深史走v_sw_industry_pit) |
-| `dim_stock_sw_industry` | dim | **每日刷新 (Step 2.96c) → 待退役** | 申万行业 (东财迁移后退役; **index_member_all+v_sw_industry_pit 保留供深史2025前PIT兜底, 东财同套桶**) |
+| ~~`dim_stock_sw_industry`~~ | **已物删 Stage④-1 (2026-06-23)** | db_lifecycle_delete 5847行留痕 | 东财迁移后退役物删 (孤儿/0 live读); **index_member_all + v_sw_industry_pit (tushare_raw) 保留供深史2025前PIT兜底, 东财同套桶; 重建=v_sw_industry_pit WHERE out_date IS NULL** |
 | `dim_stock_tdx_industry` / `_history` | dim / dim history | **源退役冻结 2026-06-23, 待物删** | 通达信行业 (深层源码残留待Stage④清) |
 | `fact_stock_industry_context` | 个股行业上下文 | 取决于跑批 | 衔接 sector_momentum 到个股 |
 | **`mart_sector_momentum`** | **⚠ 只 41 行 / 2026-04-17 → 2026-05-13** | ⚠ **没历史, 不能历史回测** | sector_name/code/level, ma20/60, macd, momentum_score, return_1m/3m/6m/12m, excess_1m |

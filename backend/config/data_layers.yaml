@@ -79,7 +79,8 @@ tables:
   fact_macd_episode_ground_truth: L1_foundation   # 2026-06-17 D1 MACD金叉峰值 (build_macd_episode_ground_truth.py; 金叉买点→持有窗波峰gain>30%; universe硬门; 311k episode/5197股)
   dim_listing_status: L1_foundation
   dim_market_segment: L1_foundation
-  dim_stock_sw_industry: L1_foundation     # 2026-06-16 S3 当前申万行业快照 (serving, 从 v_sw_industry_pit; 替代通达信)
+  dim_stock_dc_industry: L1_foundation     # 2026-06-23 东财全套迁移Stage④ 当前行业快照 (serving); 深史as-of走 tushare_raw.v_sw_industry_pit
+  dim_stock_dc_concept: L1_foundation      # 2026-06-23 东财概念成员当前快照 (serving)
   dim_stock_tdx_block: L1_foundation
   dim_stock_tdx_industry: L1_foundation     # 通达信行业 (S7 起降 tdxhub 热备, 不物删 §4.3)
   dim_stock_tdx_industry_history: L1_foundation

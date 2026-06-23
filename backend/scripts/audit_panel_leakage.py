@@ -51,8 +51,8 @@ from services.duck_adapter import connect  # noqa: E402
 
 # rule-compliance: ok evidence=CLAUDE.md §4.5 known leakage patterns + Phase D 2026-05-22 finding
 KNOWN_LEAKY_MAPPINGS = {
-    "dim_stock_tdx_industry",  # Phase D finding: flat 5616×1, NON-PIT, used in panel sector PARTITION BY
-    "dim_stock_sw_industry",  # likely similar pattern
+    "dim_stock_tdx_industry",  # Phase D finding: flat 5616×1, NON-PIT, used in panel sector PARTITION BY (Stage④待物删)
+    "dim_stock_dc_industry",  # 东财全套迁移 Stage④ (2026-06-23): 接替 sw 当前行业快照, 同 NON-PIT PARTITION BY 风险; 历史 as-of 走 tushare_raw.v_sw_industry_pit
     "dim_stock_concept",  # likely similar
 }
 
