@@ -1,6 +1,8 @@
 """build_segment_panel — F0 形态/分层面板物化 (MASTER §5 L1-L3 segment 层)。
 
 产出: feature_store.duckdb `fact_segment_panel` — 每股每日 PIT 形态 + 分层轴。
+# pit-safe-by-construction: D4 PIT偏序 — 全部列 feat[i] 只用 <=i (stage/range_pos/MACD EMA 递推只用历史,
+#   board 代码前缀, 无 forward/outcome 列); forward 收益不入表即时 join 算。无 lookahead 入 panel。
   列 (全部 <= 当日 i, PIT 干净, 无任何 forward/outcome 列):
     stock_code, date,
     stage           复用 services.formula_engine.classify_technical_stage (Weinstein 5 态)

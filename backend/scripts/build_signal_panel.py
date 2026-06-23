@@ -8,6 +8,7 @@ signal_panel 放**公式事件信号** (布尔/事件), 区别于 segment_panel 
 首个公式: macd_golden_cross (canonical; 参数走 config/formula_macd_golden_cross.yaml 不 hardcode)。
 加公式 = 加列 (invariant#3 可扩展分层), 不加表。
 
+# pit-safe-by-construction: D4 PIT偏序 — feat[i] 只用 <=i (EMA 递推 + 金叉当 bar 确认), 无 lookahead 入 panel。
 PIT: EMA 递推天然只用 ≤i; 金叉 = DIF[i]>DEA[i] AND DIF[i-1]<=DEA[i-1] (当 bar 确认, 不回贴)。
 分层: builder 是 lesson 允许的 L0/L1-read 点 (走 data_loaders.load_kline, 与 feature_panel 同); 探索读物化后 panel。
 edge-gating: 本 builder 建**结构 + 单一确定性公式** (档A 地基); 公式库全量铺开属档B (edge confirmed 后)。
