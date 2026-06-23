@@ -218,3 +218,8 @@ assertions:
     type: shell
     command: ["bash", "-c", "PYTHONPATH=backend python backend/scripts/check_calendar_usage.py --strict >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}
+  - id: config-refs-clean
+    claim: "config 跨文件引用完整性: data_access 的 layer 值全部在 data_layers 定义(长键或 alias 短码), 0 悬空 = 层词汇单一真相源未漂回两套 (2026-06-23 config最小手术 Step1 层词汇统一 + Step4 引用门, 对抗panel wry13dfr0 裁决最小手术)。check_config_refs.py red→green 实证(注入 L99 变红 exit1/还原回绿)。>0=新增 entity 写错层名/层词汇漂移回潮。owner=backend/scripts/check_config_refs.py"
+    type: shell
+    command: ["bash", "-c", "PYTHONPATH=backend python backend/scripts/check_config_refs.py --check >/dev/null 2>&1 && echo 0 || echo 1"]
+    expect: {op: "<=", value: 0}
