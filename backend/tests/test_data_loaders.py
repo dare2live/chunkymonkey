@@ -78,10 +78,13 @@ def test_load_moneyflow_skips_null_net():
 
 def test_load_quality_reports_anndate_iso_and_order():
     c = duckdb.connect(":memory:")
-    c.execute("CREATE TABLE raw_tushare_fina_indicator (ts_code VARCHAR, ann_date VARCHAR, end_date VARCHAR, roe_dt DOUBLE)")
-    c.executemany("INSERT INTO raw_tushare_fina_indicator VALUES (?,?,?,?)", [
-        ("600000.SH", "20240828", "20240630", 0.18),     # 后披露
-        ("600000.SH", "20240430", "20240331", 0.15),     # 先披露
+    # 2026-06-23 SERVE 迁移: load_quality_reports 走 get('fundamentals'), preflight 要求 entity 全声明列
+    c.execute("CREATE TABLE raw_tushare_fina_indicator (ts_code VARCHAR, ann_date VARCHAR, end_date VARCHAR, "
+              "roe DOUBLE, roe_dt DOUBLE, roe_yearly DOUBLE, netprofit_yoy DOUBLE, or_yoy DOUBLE, "
+              "grossprofit_margin DOUBLE, debt_to_assets DOUBLE)")
+    c.executemany("INSERT INTO raw_tushare_fina_indicator VALUES (?,?,?,?,?,?,?,?,?,?)", [
+        ("600000.SH", "20240828", "20240630", 0.20, 0.18, 0.0, 0.0, 0.0, 0.0, 0.0),   # 后披露 (roe_dt=0.18)
+        ("600000.SH", "20240430", "20240331", 0.16, 0.15, 0.0, 0.0, 0.0, 0.0, 0.0),   # 先披露 (roe_dt=0.15)
     ])
     out = load_quality_reports(conn=c)
     reps = out["600000"]

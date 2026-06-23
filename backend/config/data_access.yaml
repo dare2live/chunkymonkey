@@ -39,7 +39,8 @@ entities:
     code_col: ts_code
     asof_col: trade_date
     asof_format: yyyymmdd
-    columns: [ts_code, trade_date, net_mf_amount]
+    # 2026-06-23 清洗迁移: 补 8 档买卖额 (data_loaders total_flow=全单买卖额之和的加工原料; SERVE 服务原始列, 求和=加工层纯函数)
+    columns: [ts_code, trade_date, net_mf_amount, buy_sm_amount, buy_md_amount, buy_lg_amount, buy_elg_amount, sell_sm_amount, sell_md_amount, sell_lg_amount, sell_elg_amount]
     vendor: tushare
     available_after: eod
 
@@ -146,7 +147,8 @@ entities:
     code_col: ts_code
     asof_col: ann_date
     asof_format: yyyymmdd
-    columns: [ts_code, ann_date, end_date, roe, roe_yearly, netprofit_yoy, or_yoy, grossprofit_margin, debt_to_assets]
+    # 2026-06-23 清洗迁移: 补 roe_dt (扣非ROE, data_loaders QUALITY_METRIC; 质量更干净剔非经常损益)
+    columns: [ts_code, ann_date, end_date, roe, roe_dt, roe_yearly, netprofit_yoy, or_yoy, grossprofit_margin, debt_to_assets]
     vendor: tushare
     available_after: ann_date
 
