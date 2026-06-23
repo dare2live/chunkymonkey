@@ -233,3 +233,8 @@ assertions:
     type: shell
     command: ["bash", "-c", "PYTHONPATH=backend python backend/scripts/check_serve_read_layer.py --bypass-scan 2>/dev/null | grep -oE 'consumer_bypass_violations=[0-9]+' | grep -oE '[0-9]+$'"]
     expect: {op: "<=", value: 0}
+  - id: read-model-serve-fed
+    claim: "read-model 展示层 SERVE 喂数 (seed §7.1 档A seam, 2026-06-23 展示件): backend/services/read_model.py (stock_code,as_of)-键去规范化切片 0 内联裸查 raw/price_kline/duck_connect — 经 services.dossier (SERVE 读层装配 DataAccess.get) 取数, 是 SERVE 之上的展示投影非第二取数路径 (不变量4 单一读路). §7.2 写锁安全=只读不裸查热写库. cube 跨档案立体视图=本层 JOIN 切片(P4/档B). >0=read-model 内联裸查=展示层绕 SERVE 第二真相源回潮. owner=backend/services/read_model.py"
+    type: shell
+    command: ["bash", "-c", "grep -cE 'FROM raw_|FROM price_kline|duck_connect\\(|duckdb\\.connect\\(' backend/services/read_model.py || true"]
+    expect: {op: "<=", value: 0}
