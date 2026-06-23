@@ -41,6 +41,18 @@ from services.signals_v2 import (
 
 # ─── fixtures ────────────────────────────────────────────────────────
 
+@pytest.fixture(autouse=True)
+def _align_latest_closed(monkeypatch):
+    """2026-06-23: 引擎 (P0-2) 用 latest_closed_or_raise (PIT 真相源) 替 wall-clock CURRENT_DATE。
+    测试 seed datetime.now() 须对齐引擎 cutoff — 否则真 today > latest_closed (盘后/非交易日) 时
+    '今天'事件被引擎当未来过滤 → stale 失败 (引擎正确, 测试日期没跟上)。mock latest_closed=今天:
+    引擎 cutoff 对齐测试 seed, 测试确定 (不依赖真日历) + 仍验真实 freshness/未来过滤逻辑。
+    signals_v2 函数级 import latest_closed_or_raise (line 230/1452) → patch services.calendar 生效。"""
+    import services.calendar
+    today = datetime.now().strftime("%Y-%m-%d")
+    monkeypatch.setattr(services.calendar, "latest_closed_or_raise", lambda *a, **k: today)
+
+
 @pytest.fixture
 def memdb():
     """In-memory DB with minimal schema + sample events."""
