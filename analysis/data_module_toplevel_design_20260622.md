@@ -103,7 +103,14 @@
 ## 1.6 现状细化 + 删源 worklist (2026-06-23 用户令"按现状优化既定方案"; 删源=服务不变量4 非脱离方案)
 
 > 用户 2026-06-23: "现在的删源是为了最终做成这个方案... 根据现在的数据和架构优化既定方案... 现在应该怎么删, 而不是脱离当初这个方案"。
-> → 删源**不是独立任务**, 是达成**不变量4(单概念单真相源)**的手段: 每概念只留 tushare 一条真相路径, 删掉非tushare 旧表/旧路径。
+> → 删源**不是独立任务**, 是达成**不变量4(单概念单真相源)**的手段: 每概念只留**唯一**真相路径, 删掉旧表/旧路径。
+
+> ### [2026-06-24 现状更新 — 本 session 执行后, 用户令"按现状重新优化文档别凭记忆漂移"]
+> **重大变更 1 — aif10 从"待 retire"反转为"正式启用源" (§4.3 第一个例外, 用户拍板)**:
+> 实测裁决 tushare top10_floatholders **财报季驱动滞后~4个月**(季中权益变动不收, 反例: 紫金入主龙净 6/8 tushare 只到 3/31), 同花顺也季末对齐, tdxhub F10 仅~4期史浅。**东财妙想 aif10 三维全胜**(全市场+含季中ad-hoc+2003深史+结构化+变化100%)。故 **holder 主源破 §4.3"tushare唯一"开第一个例外 = 东财妙想 aif10**。aif10 不再是断流/retire 对象, 是**正式 sanctioned 源**: holder(services/holders_aif10) + 估值分位/同行估值(sync_capability) + QFII。抓取走 datacenter JSON API(requests, 非 crawl4ai/skill)。详 analysis/miaoxiang_aif10_source_decision_20260624.md + CLAUDE §4.3。
+> **重大变更 2 — 旧 updater 22 文件物删 (用户"直接删+UI可重做")**: routers/updater*.py(20)+etf+data_sources 物删; 它们是旧 workbench UI 更新后台骨架(做获取+清洗+加工+存储=用户感"太复杂耦合深"), daily_update 已走干净 4 段 pipeline 不用它。先迁后删: lhb/估值/同行/QFII sync 迁入 pipeline acquire; 前端更新新路径=ops_manual_run API→spawn daily_update.sh→pipeline。孤儿 tdx F10 client(tdx_f10_extra_client/update_tasks/ingest_holders_tdxhub)退役。
+> **重大变更 3 — bypass 诚实修正**: §1.6.1 旧称"bypass=0 moth硬门"是**伪绿**(check_serve_read_layer 只硬扫 dossier.py); 真实 `serve-consumer-bypass-zero` moth observed=**2** — `build_segment_panel.py`+`build_signal_panel.py` 2 个 L2 builder 绕 SERVE 直读 raw 算特征 = 不变量4 实质缺口(真金白银 leakage 风险, =Gap1 task#55, 唯一卡 alpha 的地基洞)。
+> **未变的承重裁决 (别因细节忘了)**: §8.1/§11 — 档A(地基 SERVE/编排/删源)PROCEED, **档B(因子全量/cube 5轴/展示产品化)BLOCK 直到 sandbox 证出含成本可交易 stage-conditional edge**(当前 confirmed_by_owner=0)。最近的 holder/updater/删源 全是档A 地基, 没碰档B。**下一步真正通向赚钱的不是堆地基细节, 是收 Gap1(leakage)→地基够硬→转 edge 确认(档B 前置验收)**。
 
 ### 1.6.1 根 + 3件 现状 (倒推方案的地基, 已基本扎实)
 | 项 | 状态 (2026-06-23) |
@@ -111,7 +118,7 @@
 | 不变量1 主键+PIT锚 | SERVE asof_gate + cleaner 强制 (live) |
 | 不变量2 写锁=库分区 | 7库分区已建 + SERVE read_only + sandbox_guard 硬门 |
 | 不变量3 可扩展分层 | L2宽panel + feature_registry + read-model切片 (已建) |
-| 不变量4 单概念单真相源 | SERVE单一读路 bypass=0 (moth硬门) + 删源进行中(↓worklist) |
+| 不变量4 单概念单真相源 | SERVE单一读路: dossier consumer bypass=0 (但 check_serve_read_layer 只硬扫dossier=伪绿); **真实 `serve-consumer-bypass-zero` moth=2 (build_segment_panel/build_signal_panel 绕SERVE直算特征=Gap1 真金白银缺口, task#55)** + 删源进行中(↓worklist) |
 | **3件·清洗** (SERVE单一读路) | **DONE** (P1, data_loaders/signals_v2/dossier 迁SERVE, bypass清零) |
 | **3件·加工** (L2 panel) | **DONE** (feature_panel/signal_panel/segment_panel 已建, build-time PIT门) |
 | **3件·展示** (read-model切片) | **DONE** (read_model.py (stock,as_of)切片 SERVE喂数, cf90ad63="3件最后一件") |
@@ -125,11 +132,12 @@
 |---|---|---|
 | 通达信行业/概念 + 申万当前dim | 东财 dc_industry/dc_concept (=tushare) | **DONE** (Stage④ 物删通达信6表+申万当前dim+源码; 深史PIT申万视图留) |
 | 通达信/旧 K线 price_kline_tdxhub | tushare price_kline_qfq_tushare | **DONE** (M3 物删) |
-| **holders fact_top10_holder_period** (tdx) | top10_floatholders | tushare已拉全99.62%(ST回补); **待: 迁 event_engine 等consumers→物删** |
+| **holders fact_top10_holder_period** (tdx) | **东财妙想 aif10** (非tushare top10 — §4.3例外, 见上现状更新) | **DONE**: 主源切 aif10(99.6%覆盖/172.5万行/含季中ad-hoc+退出行derive)+ tdx_f10 fact行物删(594k, 单源)+ tdx F10 client 退役. **待: tdx 产品表(户数/增减持/同大股东)重指向+物删**(↓) |
+| **tdx F10 多产品** fact_holder_count_period/fact_shareholder_plan_tdx_f10/fact_common_major_holder_stock | 户数→tushare stk_holdernumber(backfill DONE) / 增减持→tushare stk_holdertrade(域注册,backfill中) / 同大股东个股→aif10 holder derive(机构档案"某机构持哪些股") | **进行中**: backfill 完→重指向 data_quality/registry→物删 tdx 产品表 |
 | **tdxhub 财务簇** raw_gpcw_*/fact_financial_derived | fina_indicator/income/balancesheet | tushare有; **待: 迁consumers→物删** (原M4) |
-| **aif10** raw_aif10_* (已断流2026-05-07) | daily_basic分位/report_rc/stk_holdernumber | tushare有等价; **待: 迁/retire**; 孤儿直删 |
+| **aif10 [立场反转]** | **不再 retire** — holder/估值分位/同行估值/QFII 已切 aif10 主源 (§4.3例外, sanctioned源) | **KEEP**(正式源); 仅 forecast_consensus 走 tushare profit_forecast(已deprecated aif10那条) |
 | **akshare 残留** | 多数已迁; external_attention=**无tushare等价→删数据**; benchmark→index_daily | 大部分DONE; external_attention 删数据 / aif10-survey→stk_surv |
-> 注: sync_registry 已无 tdxhub/akshare/aif10 采集域 = **采集侧早已退役**, 剩的纯是消费侧迁移+物删 (旧表是"活的stale源"违不变量4)。
+> 注: sync_registry 采集域已纯 tushare + **东财妙想 aif10(§4.3例外, holder/估值/QFII)**; 旧 tdxhub/akshare 采集侧早已退役, 剩消费侧迁移+物删 (旧表是"活的stale源"违不变量4)。
 
 ### 1.6.3 编排层细化 (统一采集规划器 — 不变量1+2 operationalized)
 daily_update 四阶段管线已建, 但**采集的"日历定目标→diff存量定增量"对 by_ts_code 事件数据(十大股东/财报)还缺** (现全量重拉或--resume跳整股=存量股新期永不补)。

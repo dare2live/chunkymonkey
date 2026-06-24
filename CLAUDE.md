@@ -100,6 +100,13 @@ JOIN → 永远带 `AND x.built_at <= t` / `as_of_date`; 宇宙 → `dim_index_m
 > 原话 "数据源全切 tushare 不热备, 现有数据源删除; 无 tushare 等价的数据丢弃"。接受 tushare 单点
 > (简单 > 韧性)。下方=现行政策; 旧热备条款存档见本节末 [deprecated]。
 
+> **[2026-06-24 例外 — 用户拍板, 东财妙想 aif10]**: "tushare 唯一" 开**第一个正式例外** = **东财妙想 aif10 (datacenter)**,
+> 用于 **十大流通股东(holder 主源)+ 估值分位/同行估值 + QFII**。理由实测: tushare top10_floatholders **财报季驱动滞后~4个月**
+> (季中权益变动不收, 反例 600388 紫金入主龙净 6/8 tushare 只到 3/31), 这几类 aif10 全市场+含季中ad-hoc+深史全胜。
+> **aif10 不是删除对象, 是 sanctioned 正式源** (services/holders_aif10, aif10_capability_client; datacenter JSON API 直连)。
+> 其余仍 tushare 唯一。详 analysis/miaoxiang_aif10_source_decision_20260624.md + 数据模块宪法 §1.6 现状更新。
+> **判 aif10 例外是否扩大须有 tushare-滞后/缺失实测证据 (像 holder 这样), 不随意开第二个非 tushare 源。**
+
 - **唯一数据源 = tushare.** 现有/未来所有数据接 tushare: 查 catalog → 单日实弹核证字段/grain/
   单页上限 → 注册 sync_registry。**无热备、无冷备** — 非 tushare 源全是删除对象。
 - **删除纪律 (不可逆; 2026-06-23 用户简化, 推翻旧"双轨核对≥99%一致率"仪式)**: 规则就一句 —
