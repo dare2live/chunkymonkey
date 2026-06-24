@@ -2663,11 +2663,12 @@ def _check_holder_availability(
     return evidence
 
 
+# 2026-06-24 tdx F10 退役: holder_count 物删(→tushare stk_holdernumber 2019+替代),
+# common_major 归档冻结(跨公司持股网络, aif10/tushare 无等价, 保留唯一数据不删).
+# 两者从 freshness 剔除(冻结表不该报 stale). fund_holding/shareholder_trade_tdx_b 待跟进triage(同属冻结tdx F10).
 F10_SOURCE_AVAILABILITY_TABLES = (
-    ("fact_holder_count_period", "report_date"),
-    ("fact_common_major_holder_stock", "report_date"),
-    ("fact_fund_holding_tdx_f10", "report_date"),
-    ("fact_shareholder_trade_tdx_b", "change_date"),
+    ("fact_fund_holding_tdx_f10", "report_date"),       # TODO 跟进: 冻结tdx F10, 待source-equiv triage
+    ("fact_shareholder_trade_tdx_b", "change_date"),    # TODO 跟进: 冻结tdx F10, 待source-equiv triage
 )
 
 
@@ -2767,8 +2768,10 @@ def _check_tdx_f10_source_availability(
             _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
             table_evidence[check_name] = violation_count
 
-    plan_table = "fact_shareholder_plan_tdx_f10"
-    if _table_exists(conn, plan_table):
+    # 2026-06-24 archived (冻结快照): tdx F10 源退役, aif10 SHAREHOLDER_CHANGE=实际变动非意向无等价,
+    # 保留表唯一数据不物删, 但从 freshness 剔除 (冻结表不该报 stale). plan_table=None → 跳过检查.
+    plan_table = None  # was "fact_shareholder_plan_tdx_f10" (archived 2026-06-24)
+    if plan_table and _table_exists(conn, plan_table):
         columns = set(_table_columns(conn, plan_table))
         row_count = _count_rows(conn, plan_table)
         plan_evidence: dict[str, Any] = {"exists": True, "rows": row_count}
