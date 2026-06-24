@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-24 20:45
+> Snapshot: 2026-06-24 22:17
 
 ## 1. 入口面
 
@@ -92,7 +92,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 156 张 | 单 writer 100 | 多 writer 56 | 动态表名写点 35 处 (20 文件)
+统计: 表 154 张 | 单 writer 98 | 多 writer 56 | 动态表名写点 35 处 (20 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -201,7 +201,6 @@
 | fact_feature_panel_candidate | backend/services/schema_core.py |
 | fact_feature_panel_tdx_keep_challenger | backend/services/schema_core.py |
 | fact_financial_derived | backend/services/financial_client.py |
-| fact_fund_holding_tdx_f10 | backend/services/schema_core.py |
 | fact_fundamental_quarterly | backend/scripts/build_fundamental_quarterly.py |
 | fact_holder_count_period | backend/services/schema_core.py |
 | fact_hot_rank_daily | backend/scripts/build_akshare_panel.py |
@@ -213,7 +212,6 @@
 | fact_segment_panel | backend/scripts/build_segment_panel.py |
 | fact_setup_snapshot | backend/services/schema_core.py |
 | fact_shareholder_plan_tdx_f10 | backend/services/schema_core.py |
-| fact_shareholder_trade_tdx_b | backend/services/schema_core.py |
 | fact_stock_attention_snapshot | backend/services/external_attention.py |
 | fact_stock_industry_context | backend/services/industry_context_engine.py |
 | fact_stock_liquidity_daily | backend/services/primitives/ddl.py |
@@ -289,7 +287,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,904 | calls 边 62,674 | imports 边 6,655 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 8,897 | calls 边 62,745 | imports 边 6,660 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -322,17 +320,17 @@
 | bestchoice/execution_model.py | 5 |
 | backend/services/data_sources/base.py | 4 |
 | backend/services/kline_source.py | 4 |
+| backend/services/pipeline_manifest.py | 4 |
 | bestchoice/formula_engine.py | 4 |
 | bestchoice/scripts/formula_parameter_search.py | 4 |
 | backend/services/business_facts.py | 3 |
 | backend/services/data_access/keys.py | 3 |
-| backend/services/data_processing_monitor.py | 3 |
 
 ### LOC top 10 (God module 候选)
 
 | 文件 | 行数 |
 |---|---|
-| backend/services/data_quality.py | 4289 |
+| backend/services/data_quality.py | 3836 |
 | backend/services/scoring.py | 2712 |
 | backend/services/signals_v2.py | 2162 |
 | backend/services/audit.py | 1747 |
@@ -347,5 +345,5 @@
 
 - chunkyctl 子命令 8 | launchd 任务 1 | router 12 (端点 56)
 - sync_registry 数据域 41
-- 产表 156 (多 writer 56)
+- 产表 154 (多 writer 56)
 

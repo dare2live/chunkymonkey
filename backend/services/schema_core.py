@@ -125,32 +125,6 @@ CORE_SCHEMA_SQL = """
                 trade_seq        INTEGER
             );
 
-            CREATE TABLE IF NOT EXISTS fact_shareholder_trade_tdx_b (
-                stock_code       TEXT NOT NULL,
-                stock_name       TEXT,
-                market           TEXT,
-                change_period_text TEXT,
-                change_start_date TEXT,
-                change_end_date   TEXT,
-                change_date      TEXT,
-                holder_name      TEXT,
-                holder_name_norm TEXT,
-                shares_change_text TEXT,
-                shares_change    BIGINT,
-                average_price_text TEXT,
-                average_price    DOUBLE,
-                shares_after_text TEXT,
-                shares_after     BIGINT,
-                change_method    TEXT,
-                page_update_date TEXT,
-                source           TEXT NOT NULL,
-                source_tier      SMALLINT NOT NULL DEFAULT 1,
-                raw_hash         TEXT,
-                fetched_at       TEXT,
-                trade_seq        INTEGER NOT NULL DEFAULT 1,
-                PRIMARY KEY (stock_code, raw_hash, trade_seq)
-            );
-
             CREATE TABLE IF NOT EXISTS fact_shareholder_plan_tdx_f10 (
                 stock_code       TEXT NOT NULL,
                 stock_name       TEXT,
@@ -260,28 +234,6 @@ CORE_SCHEMA_SQL = """
                 fetched_at       TEXT,
                 row_seq          INTEGER NOT NULL DEFAULT 1,
                 PRIMARY KEY (stock_code, major_holder_name, peer_stock_code, row_seq)
-            );
-
-            CREATE TABLE IF NOT EXISTS fact_fund_holding_tdx_f10 (
-                stock_code       TEXT NOT NULL,
-                stock_name       TEXT,
-                market           TEXT,
-                report_date      TEXT,
-                report_date_text TEXT,
-                fund_name        TEXT NOT NULL,
-                shares_text      TEXT,
-                shares           BIGINT,
-                float_a_ratio_text TEXT,
-                float_a_ratio    DOUBLE,
-                market_value_text TEXT,
-                market_value     DOUBLE,
-                page_update_date TEXT,
-                source           TEXT NOT NULL,
-                source_tier      SMALLINT NOT NULL DEFAULT 1,
-                raw_hash         TEXT,
-                fetched_at       TEXT,
-                row_seq          INTEGER NOT NULL DEFAULT 1,
-                PRIMARY KEY (stock_code, fund_name, report_date, row_seq)
             );
 
             CREATE TABLE IF NOT EXISTS raw_tdx_f10_extra_parse_status (
