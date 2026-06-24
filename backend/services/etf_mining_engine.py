@@ -41,7 +41,7 @@ def _load_price_rows(mkt_conn, code: str, limit: int = 180) -> list[dict]:
     rows = mkt_conn.execute(
         """
         SELECT date, close
-        FROM etf_price_kline
+        FROM etf_price_kline_qfq_tushare  -- M2 Stage D: tushare qfq (修 mootdx 分红未复权), 旧 etf_price_kline 待 Stage E 物删
         WHERE code = ? AND freq = 'daily' AND adjust = 'qfq'
         ORDER BY date DESC
         LIMIT ?

@@ -225,6 +225,11 @@ class KlineSourceFallbackTests(unittest.IsolatedAsyncioTestCase):
                 sync_kline=True,
                 kline_start_date="20260401",
             )
+            # M2 Stage D: _price_coverage_summary 已 repoint 到 tushare qfq 表 (消费方读它);
+            # fixture 补建该表 (代表 build_etf_kline_qfq_tushare 已跑) 使 coverage 不崩。
+            conn.execute(
+                "CREATE TABLE etf_price_kline_qfq_tushare AS SELECT * FROM etf_price_kline"
+            )
             source_status = _build_etf_source_status(conn, conn)
 
             self.assertEqual(result["list_source"], "tdxhub_1.1.1.1:7709")

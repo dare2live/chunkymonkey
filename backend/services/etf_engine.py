@@ -407,9 +407,9 @@ def calc_etf_momentum(etf_conn, etf_price_conn) -> List[Dict]:
             continue
         cat = row["category"] or _infer_etf_category(code, name)
         prices_60 = etf_price_conn.execute("""
-            SELECT date, high, low, close, amount FROM etf_price_kline
+            SELECT date, high, low, close, amount FROM etf_price_kline_qfq_tushare
             WHERE code = ? AND freq = 'daily' ORDER BY date DESC LIMIT 60
-        """, (code,)).fetchall()
+        """, (code,)).fetchall()  # M2 Stage D: tushare qfq (修 mootdx 分红未复权), 旧 etf_price_kline 待 Stage E 物删
 
         momentum = 0.0
         momentum_60d = 0.0

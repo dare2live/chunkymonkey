@@ -114,7 +114,7 @@ def _price_coverage_summary(mkt_conn) -> dict:
         SELECT MIN(date) AS min_date,
                MAX(date) AS max_date,
                COUNT(DISTINCT code) AS etf_count
-        FROM etf_price_kline
+        FROM etf_price_kline_qfq_tushare  -- M2 Stage D: tushare qfq (修 mootdx 分红未复权), 旧 etf_price_kline 待 Stage E 物删
         WHERE freq = 'daily'
           AND adjust = 'qfq'
         """
