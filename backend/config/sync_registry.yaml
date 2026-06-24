@@ -562,6 +562,7 @@ domains:
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
     grain: [ts_code, end_date, update_flag]   # 实测同 end_date 同 ann_date 仍 2 行 (uf=0原始/1修正) → grain 必含 update_flag (ann_date 不区分修订)
     batch_mode: by_ts_code   # 实测 ann_date/period 均返 0 行 (不可批) → 唯一可行逐股; 100 条/call 硬上限
+    increment_mode: by_report_period   # 2026-06-23 按季报期增量 (日常--all-due跳已最新股); 注: fixed_params end_date 硬编需随季度更新另案
     fixed_params: {start_date: "20230101", end_date: "20260612"}   # rule-compliance: ok evidence=逐股窗口 2023-2026 (对齐 feature_panel; 每股<100行避截断, 全史需多窗口分页另案)
     pit_anchor: "ann_date (行内字段); 财报公告日 -> JOIN t-1 保守; 取 update_flag=1 最新修正版 (<=t 最新 ann_date 行)"
     available_after: "t+1"
@@ -634,6 +635,7 @@ domains:
     include_st: true                 # 2026-06-23 纳活跃ST股 (holder=参考/展示数据, dossier展示任意股含ST; 否则删tdx旧源丢220活跃ST股holder, 见 analysis/非tushare源_双轨_holders_20260623.md)
     grain: [ts_code, end_date, holder_name]   # 10持有人/期 (period 过滤间歇空, 走 by_ts_code 全拉)
     batch_mode: by_ts_code
+    increment_mode: by_report_period   # 2026-06-23 修谄媚死: 日常 --all-due 按最新应披露季报期跳已最新股, 只抓缺新期股 (=十大股东从上一公告日扫增量)
     pit_anchor: "ann_date 公告日 (季报披露滞后; end_date 报告期 != 可用日, JOIN 必用 ann_date)"
     available_after: "t+1"
     data_start: "20190101"

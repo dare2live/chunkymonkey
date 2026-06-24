@@ -122,7 +122,53 @@ def _existing_ts_codes(spec: dict[str, Any]) -> set[str]:
         con.close()
 
 
-def _by_ts_code_batches(spec: dict[str, Any], *, resume: bool = False) -> list[dict[str, Any]]:
+def _latest_expected_report_period(today: str) -> str:
+    """A股最新**应已披露**的季报期 (YYYYMMDD), 交易日历级真相: 取截止日<=today的最新报告期。
+    截止: Q1(0331)→4/30 · 半年(0630)→8/31 · Q3(0930)→10/31 · 年报(1231)→次年4/30 (与Q1同日, Q1期更新)。
+    (today=YYYYMMDD; 用于 by_report_period 增量: 存量股 MAX(end_date) < 此期 = 该补新期)。
+    """
+    y = int(today[:4])
+    # (截止日YYYYMMDD, 报告期YYYYMMDD) 按报告期新→旧; 命中首个 today>=截止 即最新应披露期
+    for deadline, period in (
+        (f"{y}1031", f"{y}0930"),     # 今年Q3
+        (f"{y}0831", f"{y}0630"),     # 今年半年
+        (f"{y}0430", f"{y}0331"),     # 今年Q1 (4/30截止, 同日去年年报但Q1期更新)
+        (f"{y}0430", f"{y-1}1231"),   # 去年年报
+        (f"{y-1}1031", f"{y-1}0930"), # 去年Q3 (今年Q1披露前的最新)
+    ):
+        if today >= deadline:
+            return period
+    return f"{y-1}0930"  # 兜底 (理论不达, today<去年10/31 = 跨年极早期)
+
+
+def _stocks_up_to_date(spec: dict[str, Any], target_period: str, period_col: str = "end_date") -> set[str]:
+    """target 表里 MAX(period_col) >= target_period 的 ts_code (=已有最新应披露期, 增量跳过)。
+    read_only 查 (planning 期 raw 未本run写锁)。表无/列无 → 空集 (全拉)。"""
+    import duckdb
+
+    from services.database_manifest import get_database_manifest
+    table = spec["target_table"]
+    try:
+        path = get_database_manifest().path_for(spec.get("target_db", "tushare_raw"))
+        con = duckdb.connect(str(path), read_only=True)  # rule-compliance: ok evidence=只读查每股最新报告期供增量跳过, 非业务阈值/非主库写
+    except Exception as exc:  # noqa: BLE001
+        log.warning("[increment] 无法读 %s 查最新期 (回退全拉): %s", table, str(exc)[:80])
+        return set()
+    try:
+        if not con.execute("SELECT 1 FROM information_schema.tables WHERE table_name = ?", [table]).fetchone():
+            return set()
+        cols = {r[1] for r in con.execute(f"PRAGMA table_info('{table}')").fetchall()}
+        if period_col not in cols or "ts_code" not in cols:
+            return set()
+        rows = con.execute(
+            f"SELECT ts_code, MAX({period_col}) FROM {table} WHERE ts_code IS NOT NULL GROUP BY ts_code"
+        ).fetchall()
+        return {str(r[0]) for r in rows if r[1] is not None and str(r[1]) >= target_period}
+    finally:
+        con.close()
+
+
+def _by_ts_code_batches(spec: dict[str, Any], *, resume: bool = False, backfill: bool = False) -> list[dict[str, Any]]:
     """按股循环批清单 (单股接口如 stk_factor_pro/fina_mainbz)。
 
     股票清单真相源 = services.universe.get_active_universe (单一计算点): 白名单 60/00/30/68
@@ -151,7 +197,21 @@ def _by_ts_code_batches(spec: dict[str, Any], *, resume: bool = False) -> list[d
         return None  # 白名单补集 (北交所/三板) 不在 universe
 
     batch = [{"ts_code": t, **fixed} for c in sorted(codes) if (t := _ts(c))]
-    if resume:
+
+    # by_report_period 增量 (2026-06-23, 修谄媚死: 旧 by_ts_code 全量重拉或resume跳整股=存量股新季永不补):
+    # 季报类事件域 (十大股东/财报) 用交易日历算"最新应披露报告期", 跳过已有该期的股, 只抓缺新期的股。
+    # = 用户"十大股东从上一公告日到获取日扫增量"。backfill 时全拉 (不增量)。
+    if spec.get("increment_mode") == "by_report_period" and not backfill:
+        import datetime as _dt
+        today = _dt.datetime.now().strftime("%Y%m%d")  # Phase ψ.5 allowlist: 报告期增量参照日(算最新应披露季报期, 非trade-date end-date)
+        target_period = _latest_expected_report_period(today)
+        period_col = spec.get("period_col", "end_date")
+        up_to_date = _stocks_up_to_date(spec, target_period, period_col)
+        n0 = len(batch)
+        batch = [b for b in batch if b["ts_code"] not in up_to_date]
+        log.info("[increment by_report_period] %s 目标期=%s: 跳过 %d 已最新股, 剩 %d 待抓新期",
+                 spec["domain"], target_period, n0 - len(batch), len(batch))
+    elif resume:
         done = _existing_ts_codes(spec)
         if done:
             n0 = len(batch)
@@ -587,7 +647,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
             conn0.close()
         batches = [{"start_date": start_d, "end_date": end_d}]
     elif spec["batch_mode"] == "by_ts_code":
-        batches = _by_ts_code_batches(spec, resume=resume)
+        batches = _by_ts_code_batches(spec, resume=resume, backfill=backfill)
     elif spec["batch_mode"] == "by_code_list":
         # 显式代码清单循环 (指数/申万行业等 — code 源非 market 股票表): 每 code 一批,
         # code_param 指定参数名 (ts_code/l1_code...), fixed_params 合并 (如指数日线的 start/end)。
@@ -803,15 +863,23 @@ def main() -> int:
         for d in domains:
             try:
                 res = drain_domain(d, registry=reg, max_dates=args.max_dates)
+                # by_report_period 域 (十大股东/财报 by_ts_code): 不再"归专门调度"漏掉 — 走增量 run_domain,
+                # _by_ts_code_batches 按交易日历最新应披露期跳过已最新股, 只抓缺新期的股 (修谄媚死: 日常流停更财报/股东)。
+                ts_code_incremental = (
+                    res.get("status") == "unsupported"
+                    and res.get("batch_mode") == "by_ts_code"
+                    and (reg["domains"].get(d) or {}).get("increment_mode") == "by_report_period"
+                )
                 fallback_incremental = (
                     res.get("status") == "drain_inapplicable"
                     or (res.get("status") == "unsupported"
                         and res.get("batch_mode") in ("by_date_range", "full_refresh"))
+                    or ts_code_incremental
                 )
                 if fallback_incremental:
-                    # 非按日域 + allow_empty 域无 gap 语义 → 增量 run_domain (watermark 起点)。
+                    # 非按日域 + allow_empty 域无 gap 语义 → 增量 run_domain (watermark/报告期 起点)。
                     # 复审 HIGH: drain-only 接线下这些域否则零自动同步 = 静默停更同型复发。
-                    # by_ts_code (如 fina_mainbz ~5300 股调用) 仍显式 unsupported, 归专门调度。
+                    # by_ts_code 无 increment_mode (如 stk_factor_pro 日频全市场) 仍 unsupported, 归专门调度。
                     res = run_domain(d, registry=reg)
                     res["mode"] = "incremental_fallback"
                 results.append(res)
