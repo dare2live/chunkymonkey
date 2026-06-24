@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-25 00:13
+> Snapshot: 2026-06-25 00:47
 
 ## 1. 入口面
 
@@ -288,7 +288,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,927 | calls 边 62,766 | imports 边 6,679 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 8,952 | calls 边 62,783 | imports 边 6,689 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -302,9 +302,9 @@
 | services.industry | 13 |
 | services.tdx_source | 11 |
 | services.kline_source | 10 |
+| services.pipeline_manifest | 9 |
 | services.universe | 8 |
 | services.data_sources | 7 |
-| services.pipeline_manifest | 7 |
 | services.pricing_policy | 7 |
 | services.constants | 6 |
 | services.etf_grid_engine | 6 |
@@ -318,10 +318,10 @@
 | backend/services/database_manifest.py | 9 |
 | bestchoice/compute.py | 9 |
 | backend/services/etf_grid_engine.py | 6 |
+| backend/services/pipeline_manifest.py | 6 |
 | bestchoice/execution_model.py | 5 |
 | backend/services/data_sources/base.py | 4 |
 | backend/services/kline_source.py | 4 |
-| backend/services/pipeline_manifest.py | 4 |
 | bestchoice/formula_engine.py | 4 |
 | bestchoice/scripts/formula_parameter_search.py | 4 |
 | backend/services/business_facts.py | 3 |
