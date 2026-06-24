@@ -71,12 +71,12 @@ def _sync_xdxr() -> None:
 
 def _sync_lhb() -> None:
     import asyncio, duckdb, json
-    from routers.updater import _step_sync_lhb
+    from services.lhb_client import sync_lhb_incremental  # 2026-06-24 解耦: 直调 service, 不再依赖 routers.updater
     from .context import db_path
-    # rule-compliance: ok evidence=数据模块管线 member; _step_sync_lhb 需 raw duckdb conn (非 dict-row adapter), 路径走 manifest
+    # rule-compliance: ok evidence=数据模块管线 member; sync_lhb_incremental 需 raw duckdb conn (非 dict-row adapter), 路径走 manifest
     conn = duckdb.connect(db_path("smartmoney"))
     try:
-        print(json.dumps(asyncio.run(_step_sync_lhb(conn)), ensure_ascii=False, default=str))
+        print(json.dumps(asyncio.run(sync_lhb_incremental(conn)), ensure_ascii=False, default=str))
     finally:
         conn.close()
 

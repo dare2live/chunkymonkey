@@ -335,6 +335,48 @@ async def sync_lhb_range(
     }
 
 
+async def sync_lhb_incremental(conn: Any) -> dict:
+    """龙虎榜日度增量同步 (2026-06-24 从 routers.updater_sync._step_sync_lhb 搬迁, 解耦 pipeline 对旧 updater 依赖).
+
+    增量策略: DB 有数据 → 起点=MAX(trade_date)+1 终点=latest_completed_trade_date; DB 空 → 回拉5天兜底;
+    起点>终点 → skipped。逻辑零改 faithful port。
+    """
+    from services.utils import latest_completed_trade_date
+
+    ensure_tables(conn)
+    trade_date = latest_completed_trade_date(conn)
+    if not trade_date:
+        logger.warning("[龙虎榜] 未找到最近完成交易日，跳过同步")
+        return {"count": 0, "status": "skipped", "message": "未找到最近完成交易日"}
+
+    end_dt = datetime.strptime(trade_date, "%Y-%m-%d")
+    row = conn.execute(
+        "SELECT MAX(trade_date) FROM raw_lhb_daily WHERE trade_date IS NOT NULL"
+    ).fetchone()
+    db_max = row[0] if row and row[0] else None
+    if db_max:
+        try:
+            start_dt = datetime.strptime(db_max[:10], "%Y-%m-%d") + timedelta(days=1)
+            if start_dt.date() > end_dt.date():
+                logger.info(f"[龙虎榜] DB 已是最新 (MAX={db_max} >= target={trade_date}), 跳过")
+                return {"count": 0, "status": "skipped", "existing": db_max,
+                        "trade_date": trade_date, "message": f"DB 已最新 (MAX={db_max}), 无需同步"}
+        except ValueError:
+            start_dt = end_dt - timedelta(days=5)
+    else:
+        start_dt = end_dt - timedelta(days=5)   # 首次同步回拉 5 天兜底
+        logger.info("[龙虎榜] 首次同步, 回拉 5 天")
+
+    start_str = start_dt.strftime("%Y-%m-%d")
+    logger.info(f"[龙虎榜] 增量同步 {start_str} ~ {trade_date}")
+    result = await sync_lhb_range(conn, start_str, trade_date)
+    if result.get("status") == "source_unavailable":
+        raise RuntimeError(f"lhb_source_failed:{result.get('error')}")
+    written = int(result.get("written_rows") or 0)
+    return {"count": written, "status": "completed", "written": written,
+            "range": f"{start_str} ~ {trade_date}", "message": f"写入 {written} 条 ({start_str} ~ {trade_date})"}
+
+
 def _iter_monthly_windows(start_date: str, end_date: str) -> list[tuple[str, str]]:
     """按月切分 (YYYY-MM-01, YYYY-MM-末日) 的 (start, end) 对。"""
     start = date.fromisoformat(start_date)
