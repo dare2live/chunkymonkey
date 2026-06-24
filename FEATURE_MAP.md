@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-24 13:59
+> Snapshot: 2026-06-24 14:53
 
 ## 1. 入口面
 
@@ -29,16 +29,12 @@
 
 | router | prefix | 端点数 |
 |---|---|---|
-| data_sources | `/api/data_sources` | 16 |
 | dossier | `/api/dossier` | 5 |
-| etf | `/api/etf` | 9 |
 | market | `/api/inst` | 1 |
 | ops_manual_run | `/api/v3/ops` | 3 |
 | signals | `/api/signals` | 10 |
 | stock_graph | `/api/v3` | 3 |
 | strategy_preset | `/api/inst/strategy` | 4 |
-| updater | `/api/inst` | 13 |
-| updater_lifeboat | `—` | 3 |
 | v3_config | `/api/v3` | 1 |
 | v3_paper | `/api/v3/paper` | 5 |
 | v3_picture | `/api/v3` | 3 |
@@ -96,7 +92,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 156 张 | 单 writer 90 | 多 writer 66 | 动态表名写点 36 处 (20 文件)
+统计: 表 156 张 | 单 writer 94 | 多 writer 62 | 动态表名写点 36 处 (20 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -150,7 +146,6 @@
 | dim_style_factor | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_tdx_gpcw_field | 2 | backend/services/schema_core.py<br>backend/services/tdx_affair_client.py |
 | dim_tdx_gpcw_field_semantic | 2 | backend/scripts/build_tdx_gpcw_auto_features.py<br>backend/services/schema_core.py |
-| dim_trading_calendar | 2 | backend/routers/updater_calendar.py<br>backend/services/schema_core.py |
 | dim_trading_rule | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_trading_session | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | fact_common_major_holder_stock | 2 | backend/services/schema_core.py<br>backend/services/tdx_f10_extra_client.py |
@@ -173,8 +168,6 @@
 | mart_data_source_reassignment_proposal | 2 | backend/scripts/audit_tdx_data_need_coverage.py<br>backend/services/schema_marts.py |
 | mart_data_source_watermark | 2 | backend/services/schema_marts.py<br>backend/services/source_watermarks.py |
 | mart_feature_drift | 2 | backend/services/ml_lifecycle/drift.py<br>backend/services/schema_marts.py |
-| mart_institution_industry_stat | 2 | backend/routers/updater_institution.py<br>backend/services/schema_marts.py |
-| mart_institution_profile | 2 | backend/routers/updater_profiles.py<br>backend/services/schema_marts.py |
 | mart_macd_state_history | 2 | backend/scripts/build_macd_state_history.py<br>backend/services/formula_engine/ddl.py |
 | mart_market_perception_audit_log | 2 | backend/services/schema_marts.py<br>backend/services/schema_migrations.py |
 | mart_market_perception_emotion_daily | 2 | backend/services/schema_marts.py<br>backend/services/schema_migrations.py |
@@ -189,7 +182,6 @@
 | mart_pricing_label_policy | 2 | backend/services/pricing_policy_records.py<br>backend/services/pricing_schema.py |
 | mart_pricing_label_policy_gate | 2 | backend/services/pricing_policy_records.py<br>backend/services/pricing_schema.py |
 | mart_stock_picture_daily | 2 | backend/scripts/build_picture_daily.py<br>backend/services/picture/ddl.py |
-| mart_stock_trend | 2 | backend/routers/updater_trends.py<br>backend/services/schema_marts.py |
 | mart_tdx_data_need_coverage | 2 | backend/scripts/audit_tdx_data_need_coverage.py<br>backend/services/schema_marts.py |
 | mart_tdx_gpcw_file_manifest | 2 | backend/scripts/build_fundamental_quarterly.py<br>backend/services/tdx_affair_client.py |
 | raw_tdx_f10_extra_parse_status | 2 | backend/services/schema_core.py<br>backend/services/tdx_f10_extra_client.py |
@@ -208,6 +200,7 @@
 | dim_stock_stage_latest | backend/services/stock_stage_engine.py |
 | dim_stock_turtle_latest | backend/services/stock_turtle_engine.py |
 | dim_strategy_preset | backend/routers/strategy_preset.py |
+| dim_trading_calendar | backend/services/schema_core.py |
 | fact_daily_price_status | backend/services/primitives/ddl.py |
 | fact_dzjy_event | backend/scripts/build_akshare_panel.py |
 | fact_executive_trade_event | backend/scripts/build_executive_trade_events.py |
@@ -250,6 +243,8 @@
 | mart_formula_horizon_evidence | backend/services/formula_engine/ddl.py |
 | mart_global_data_quality_detail | backend/services/data_quality.py |
 | mart_global_data_quality_gate | backend/services/data_quality.py |
+| mart_institution_industry_stat | backend/services/schema_marts.py |
+| mart_institution_profile | backend/services/schema_marts.py |
 | mart_lineage | backend/services/schema_marts.py |
 | mart_market_perception_daily | backend/services/schema_marts.py |
 | mart_model_feature_lineage | backend/services/schema_marts.py |
@@ -264,6 +259,7 @@
 | mart_stock_screening | backend/services/screening_engine.py |
 | mart_stock_survey_activity | backend/services/institution_survey_client.py |
 | mart_stock_trade_plan | backend/services/picture/ddl.py |
+| mart_stock_trend | backend/services/schema_marts.py |
 | mart_strategy_result_registry | backend/services/schema_marts.py |
 | mart_tdx_challenger_report | backend/services/schema_marts.py |
 | mart_tdx_f10_capability_matrix | backend/services/tdx_f10_extra_client.py |
@@ -293,7 +289,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 9,441 | calls 边 89,386 | imports 边 11,269 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 9,450 | calls 边 89,425 | imports 边 11,283 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -349,7 +345,7 @@
 
 ## 5. 概览
 
-- chunkyctl 子命令 8 | launchd 任务 1 | router 16 (端点 97)
+- chunkyctl 子命令 8 | launchd 任务 1 | router 12 (端点 56)
 - sync_registry 数据域 41
-- 产表 156 (多 writer 66)
+- 产表 156 (多 writer 62)
 

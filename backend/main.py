@@ -109,10 +109,9 @@ app.add_middleware(
 
 # 注册路由
 from routers.market import router as market_router
-from routers.updater import router as updater_router
 
 app.include_router(market_router, prefix="/api/inst", tags=["market"])
-app.include_router(updater_router, prefix="/api/inst", tags=["updater"])
+# routers.updater (20文件路由DAG UI簇) 退役 2026-06-24 — 数据更新走 pipeline (services.pipeline); 旧 workbench 更新 UI 重做 (用户决议)
 # routers.institution (serving) 退役 2026-06-14 地基-reset 收口 — 查 wiped mart_institution_profile/stat (L2/L3 已删)
 
 # 手动任务触发 (2026-06-12 用户决议: 自动调度退役, 更新链改前端按钮手动跑)
@@ -120,9 +119,8 @@ from routers.ops_manual_run import router as ops_manual_run_router
 
 app.include_router(ops_manual_run_router, prefix="/api/v3/ops", tags=["ops"])
 
-from routers.etf import router as etf_router
-
-# 模块化路由注册
+# routers.etf 退役 2026-06-24 — 随旧 updater UI 簇退役 (etf 路由深耦合 updater UI 日志/连通性基础设施); ETF 数据将走 pipeline (M2 tushare fund_daily)
+# 模块化路由注册 (etf 路由已退役; register_modules 保留供未来模块, 当前只读 enabled 状态)
 def register_modules(app):
     try:
         conn = get_conn()
@@ -131,10 +129,6 @@ def register_modules(app):
         conn.close()
     except Exception:
         modules = {"etf": True, "akquant": False}
-
-    if modules.get("etf"):
-        app.include_router(etf_router, prefix="/api/etf", tags=["etf"])
-
     return modules
 
 app_modules = register_modules(app)
@@ -149,9 +143,7 @@ app.include_router(signals_router, prefix="/api/signals", tags=["signals"])
 from routers.workbench import router as workbench_router
 app.include_router(workbench_router, prefix="/api/workbench", tags=["workbench"])
 
-# 数据源 registry (P1)
-from routers.data_sources import router as data_sources_router
-app.include_router(data_sources_router, prefix="/api/data_sources", tags=["data_sources"])
+# routers.data_sources (数据源 registry UI) 退役 2026-06-24 — 随旧 updater UI 簇退役 (它用 updater DAG RUNNERS/STEPS 跑 sync = 另一条 UI 更新路径, 与 pipeline 重复)
 
 # 股票档案视图 (Stock Dossier P2; owner=docs/stock_dossier_master_design.md)
 from routers.dossier import router as dossier_router

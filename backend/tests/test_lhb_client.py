@@ -143,8 +143,9 @@ def test_backfill_iterates_months(monkeypatch):
     assert result["written_rows"] == 6  # 3 months × 2 reasons
 
 
-def test_updater_registers_sync_lhb():
-    from routers import updater
-    step = next((s for s in updater.STEPS if s["id"] == "sync_lhb"), None)
-    assert step is not None and step["group"] == "data"
-    assert updater.RUNNERS["sync_lhb"] is updater._step_sync_lhb
+def test_lhb_sync_wired_in_pipeline_acquire():
+    # 2026-06-24 旧 updater DAG 退役; lhb 增量改走 pipeline acquire 调 service
+    from services.lhb_client import sync_lhb_incremental
+    from services.pipeline import acquire
+    assert callable(sync_lhb_incremental)
+    assert hasattr(acquire, "_sync_lhb")

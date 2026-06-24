@@ -171,9 +171,9 @@ def test_backfill_iterates_quarters(monkeypatch):
     ]
 
 
-def test_updater_registers_sync_qfii():
-    from routers import updater
-    step = next((s for s in updater.STEPS if s["id"] == "sync_qfii"), None)
-    assert step is not None
-    assert step["group"] == "data"
-    assert updater.RUNNERS["sync_qfii"] is updater._step_sync_qfii
+def test_qfii_sync_wired_in_pipeline_acquire():
+    # 2026-06-24 旧 updater DAG 退役; QFII 增量改走 pipeline acquire 调 service
+    from services.qfii_client import sync_qfii_incremental
+    from services.pipeline import acquire
+    assert callable(sync_qfii_incremental)
+    assert hasattr(acquire, "_sync_qfii")
