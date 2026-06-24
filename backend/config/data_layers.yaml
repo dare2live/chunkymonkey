@@ -105,6 +105,7 @@ tables:
   fact_stock_technical_stage: L1k_kline_intermediate
   mart_macd_state_history: L1k_kline_intermediate
   price_kline_qfq_tushare: L1k_kline_intermediate   # 2026-06-15 tushare 前复权 K线 (回测主源, §4.3; build_price_kline_qfq_tushare.py 从 raw_tushare_daily×adj_factor 建 2019+)
+  etf_price_kline_qfq_tushare: L1k_kline_intermediate   # 2026-06-25 M2 Stage C: ETF tushare 前复权 K线 (etf.duckdb; build_etf_kline_qfq_tushare.py 从 raw_tushare_fund_daily×fund_adj 建 2019+; 修 mootdx ETF 分红未复权 bug)
   mart_current_relationship: display
   mart_stock_picture_daily: display
   dim_stock_attention_latest: display      # 2026-06-22 P0-10 补声明: 关注度最新快照 5503行 (UI 展示用)

@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-25 04:01
+> Snapshot: 2026-06-25 05:53
 
 ## 1. 入口面
 
@@ -95,7 +95,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 154 张 | 单 writer 98 | 多 writer 56 | 动态表名写点 35 处 (20 文件)
+统计: 表 154 张 | 单 writer 98 | 多 writer 56 | 动态表名写点 36 处 (21 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -105,6 +105,7 @@
 |---|---|
 | backend/scripts/build_akshare_panel.py | 1 |
 | backend/scripts/build_dc_industry_view.py | 2 |
+| backend/scripts/build_etf_kline_qfq_tushare.py | 1 |
 | backend/scripts/build_executive_trade_events.py | 2 |
 | backend/scripts/build_feature_map.py | 1 |
 | backend/scripts/build_feature_panel.py | 2 |
@@ -290,13 +291,13 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,974 | calls 边 62,797 | imports 边 6,693 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 9,004 | calls 边 62,820 | imports 边 6,702 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
-| services.duck_adapter | 39 |
+| services.duck_adapter | 40 |
 | services.db | 33 |
 | services.utils | 28 |
 | services.market_db | 18 |
@@ -316,7 +317,7 @@
 
 | 文件 | 调用方文件数 |
 |---|---|
-| backend/services/duck_adapter.py | 23 |
+| backend/services/duck_adapter.py | 24 |
 | backend/services/database_manifest.py | 9 |
 | bestchoice/compute.py | 9 |
 | backend/services/etf_grid_engine.py | 6 |

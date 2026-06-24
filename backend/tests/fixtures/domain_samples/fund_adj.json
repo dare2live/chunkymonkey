@@ -1,0 +1,36 @@
+{
+ "domain": "fund_adj",
+ "api": "fund_adj",
+ "grain": [
+  "ts_code",
+  "trade_date"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "ts_code": "150008.SZ",
+   "trade_date": "20190102",
+   "adj_factor": 1.033
+  },
+  {
+   "ts_code": "150009.SZ",
+   "trade_date": "20190102",
+   "adj_factor": 1.304
+  },
+  {
+   "ts_code": "150012.SZ",
+   "trade_date": "20190102",
+   "adj_factor": 1.348
+  },
+  {
+   "ts_code": "150013.SZ",
+   "trade_date": "20190102",
+   "adj_factor": 0.932
+  },
+  {
+   "ts_code": "150016.SZ",
+   "trade_date": "20190102",
+   "adj_factor": 2.165
+  }
+ ]
+}
