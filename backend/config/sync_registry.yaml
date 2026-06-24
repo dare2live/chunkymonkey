@@ -627,6 +627,23 @@ domains:
     freshness_sla_trading_days: 90
     min_rows_per_batch: 1
 
+  stk_holdertrade:   # 股东增减持 (2026-06-24 替 tdx fact_shareholder_plan_tdx_f10; 实测 ann_date 全市场71行/期)
+    source: tushare
+    api: stk_holdertrade
+    target_table: raw_tushare_stk_holdertrade
+    universe_filter: true            # 写前丢非白名单前缀 (北交所/三板)
+    grain: [ts_code, ann_date, holder_name, in_de]   # 同股同日同股东同方向(增/减)一行; 同向多笔 dedup
+    batch_mode: by_ann_date          # 按公告日抓全市场 (事件驱动, 非每日; ann_date watermark 前向增量)
+    date_param: ann_date
+    page_limit: 6000                 # 单日全市场增减持公告, 实测~71/日远低于上限; 设上限防峰值截断
+    allow_empty_batch: true          # 多数交易日无增减持公告 0 行合法
+    freshness_date_column: ann_date  # watermark = MAX(ann_date) 前向
+    pit_anchor: "ann_date 公告日 (增减持披露当日可用; available t+1)"
+    available_after: "t+1"
+    data_start: "20190101"
+    freshness_sla_trading_days: 30   # 增减持较频, 30 交易日 SLA
+    min_rows_per_batch: 1
+
   top10_floatholders:   # 十大流通股东 (档案L3⑤ 机构跟随基础; 切 tushare 替 tdx F10, 用户点名"切换到tushare源")
     source: tushare      # 实弹核证 (2026-06-22): cols ts_code/ann_date/end_date/holder_name/hold_amount/hold_ratio/hold_change/holder_type; 600519 全拉660行/68期/10per期 无截断
     api: top10_floatholders
