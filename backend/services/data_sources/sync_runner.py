@@ -182,6 +182,12 @@ def _by_ts_code_batches(spec: dict[str, Any], *, resume: bool = False, backfill:
     from services.universe import get_active_universe
 
     fixed = dict(spec.get("fixed_params") or {})
+    # mythos §10 data_start 参数口径: 部分 by_ts_code 接口 (如 stk_holdernumber) 不传 start_date
+    # 只返回最近 ~8 期 (实测 600519 无日期 8 行 vs start_date=2019 给 38 行全史) → 回填必须显式传
+    # start_date=data_start 才拿全史; 否则回填"成功"但只覆盖近期 (94min 白跑 0 净新增, 2026-06-24 实测踩坑)。
+    # 增量 (非 backfill) 不传, 拿最近期即可 (覆盖新季); 对本就返全史的接口 (top10 by_ts_code) 传亦无害 (下界=K线对齐)。
+    if backfill and spec.get("data_start") and "start_date" not in fixed:
+        fixed["start_date"] = str(spec["data_start"])
     include_st = bool(spec.get("include_st", False))
     conn0 = _smartmoney_conn()
     try:

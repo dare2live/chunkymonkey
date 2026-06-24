@@ -261,3 +261,42 @@ def test_by_code_list_end_override(monkeypatch, tmp_path):
     monkeypatch.setattr(su, "latest_completed_trade_date", lambda conn: "2026-06-18")
     sr.run_domain("demo", end="20251231", registry=_by_code_list_registry({"start_date": "20050101"}))
     assert ad.seen_params[0].get("end_date") == "20251231"   # --end 覆盖 latest
+
+
+def test_by_ts_code_backfill_injects_start_date(monkeypatch):
+    """mythos §10 data_start 参数口径: by_ts_code 回填必须传 start_date=data_start.
+
+    实测踩坑 (2026-06-24): stk_holdernumber 不传 start_date 只返最近 ~8 期 (600519: 无日期 8 行
+    vs start_date=2019 给 38 行全史) → 回填"成功"但 0 净新增, 94min 白跑。回填注入 start_date,
+    增量不注入 (拿最近期即可覆盖新季)。
+    """
+    import services.universe as uni
+
+    class _StubConn:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(uni, "get_active_universe", lambda conn, include_st=False: {"000001", "600519"})
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: _StubConn())
+    spec = {"domain": "stk_holdernumber", "data_start": "20190101", "batch_mode": "by_ts_code"}
+
+    bf = sr._by_ts_code_batches(spec, backfill=True)
+    inc = sr._by_ts_code_batches(spec, backfill=False)
+
+    assert bf and all(b.get("start_date") == "20190101" for b in bf)   # 回填注入全史下界
+    assert inc and all("start_date" not in b for b in inc)             # 增量不注入 (拿最近期)
+
+
+def test_by_ts_code_backfill_no_data_start_no_injection(monkeypatch):
+    """无 data_start 的 by_ts_code 域回填不被误注入 start_date (防误伤返全史接口)."""
+    import services.universe as uni
+
+    class _StubConn:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(uni, "get_active_universe", lambda conn, include_st=False: {"600519"})
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: _StubConn())
+    spec = {"domain": "demo_full_history", "batch_mode": "by_ts_code"}  # 无 data_start
+    bf = sr._by_ts_code_batches(spec, backfill=True)
+    assert bf and all("start_date" not in b for b in bf)

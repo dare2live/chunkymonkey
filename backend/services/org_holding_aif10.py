@@ -36,7 +36,11 @@ logger = logging.getLogger("cm-api")
 REPORT_NAME = "RPT_MAIN_ORGHOLDDETAIL"     # 机构持仓明细 (按机构)
 SOURCE = "miaoxiang"                        # aif10 datacenter
 SOURCE_TIER = 1                             # evidence: 2026-06-24 用户裁决 aif10 例外扩展 (替 tdx F10)
-PAGE_SIZE = 500                             # SQL LIMIT-like 单页上限 (东财 datacenter 支持)
+# 全市场机构持仓单期 ~83万行 (2025年报实测) → page_size 2000 减页数 (417页 vs 1665页@500),
+# 配高 retry+长 timeout 抗深翻页连接掐断 ("Response ended prematurely" 实测 @500/depth 224)
+PAGE_SIZE = 2000                            # evidence: API 实测接受 2000/页, count=832896 时 417 页
+FETCH_RETRY = 5                             # evidence: 深翻页易断, 高重试退避 (qfii 窄子集无此问题)
+FETCH_TIMEOUT = 60
 # K线对齐: price_kline_qfq_tushare 2019-01-02 起 → 机构持仓回到覆盖它的年报 20181231
 DEFAULT_START_PERIOD = "2018-12-31"         # evidence: K线起点 2019-01-02 (用户 2026-06-24)
 QUARTER_ENDS = ("03-31", "06-30", "09-30", "12-31")
@@ -176,8 +180,23 @@ def ensure_tables(conn: Any) -> None:
 
 
 # ── ① 获取 acquire ───────────────────────────────────────────────────
+_CLIENT = None
+
+
+def _robust_client():
+    """高 retry + 长 timeout 的 aif10 client (全市场深翻页抗连接掐断). 模块级复用 session."""
+    global _CLIENT
+    if _CLIENT is None:
+        from aif10_scraper.client import AIF10Client
+        _CLIENT = AIF10Client(retry=FETCH_RETRY, timeout=FETCH_TIMEOUT)
+    return _CLIENT
+
+
 def _fetch_period(report_date_iso: str) -> list[dict]:
-    """纯采集: aif10 datacenter 拉某报告期全市场机构持仓明细 (by-period batch, 无计算)."""
+    """纯采集: aif10 datacenter 拉某报告期全市场机构持仓明细 (by-period batch, 无计算).
+
+    全市场单期 ~83万行/417页 → 大 page_size + 高 retry client 抗深翻页掐断.
+    """
     from aif10_scraper import fetch_all_pages
     return fetch_all_pages(
         report_name=REPORT_NAME,
@@ -186,6 +205,7 @@ def _fetch_period(report_date_iso: str) -> list[dict]:
         sort_columns="REPORT_DATE,SECURITY_CODE",
         sort_types="-1,1",
         extra_filters=[f"(REPORT_DATE='{report_date_iso}')"],
+        client=_robust_client(),
     ) or []
 
 
