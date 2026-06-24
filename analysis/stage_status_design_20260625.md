@@ -24,11 +24,13 @@
 
 | 件 | 内容 | 风险 |
 |---|---|---|
-| 1. `pipeline/stage_status.py` | `record_stage(conn,stage,status,gate_result)` 薄包 record_pipeline_run(pipeline_name=`pipeline.stage.<s>`); `get_stage_status(conn)`→各stage最新行+派生stale; `upstream_status(conn,stage)` | 低(新模块只读+薄写) |
-| 2. stage_runner+run.py 记状态 | 每阶段跑完 best-effort 记 check_pass/check_fail(degraded判定); clean 的 gate_result=data_audit overall。**best-effort**: manifest 写失败 try/except 不破链(阶段已成功) | 中(touch run.py 关键路径→best-effort隔离+测) |
-| 3. chunkyctl pipeline upstream-gate | 跑 stage X 前查 upstream 最新 status==check_pass, 否则 refuse + 提示 --force 绕过; 上游更新→下游 stale 提示 | 低(stage_runner 内, 切片a已有CLI) |
-| 4. 单测 | 状态写/读/派生stale/upstream门 red→green; daily_update 全链不破(--dry) | — |
-| defer | 前端阶段卡片(产品面, 范围 escalate) | — |
+| 1. `pipeline/stage_status.py` [DONE df8d5e67] | `record_stage`/`get_stage_status`(各stage最新行+派生stale)/`upstream_ok`; 5单测 | 低 |
+| 2. run_and_record [DONE] | run.py全链+stage_runner单跑 每阶段 best-effort 记 check_pass/check_fail(degraded delta判定); clean gate_result=data_audit overall。manifest写try/except不破链+dry跳过 | 中(touch run.py→best-effort隔离, --dry --skip-sync全链exit0验证) |
+| 3. stage_runner upstream-gate [DONE] | `_upstream_refusal`: 跑stage X前 upstream_ok==False→refuse exit2+提示; 状态读失败=放行(best-effort门非硬安全)。`--force`绕过 | 低 |
+| 4. 单测 [DONE] | 18 pipeline单测全绿(状态写/读/派生stale/best-effort不raise/upstream门/force绕)+ daily_update --dry全链不破 | — |
+| defer | 前端阶段卡片(产品面, 范围 escalate 用户) | — |
+
+**§8 backend (b/c-lite) 完整** (件1-4 DONE)。唯一剩 = 前端阶段控制卡片 (产品面, 等用户拍板范围)。每阶段门拆分 M1/M3 = 评估后不做 (data_audit 已是 M2 门 7/7 + watermark 已守 acquire freshness, grow-on-proven-need)。
 
 奥卡姆边界(§8.3): 仅阶段状态(复用manifest)+线性上游门, 不上通用 DAG/拓扑引擎。
 

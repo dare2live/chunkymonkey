@@ -119,3 +119,51 @@ def upstream_ok(conn, stage: str) -> bool:
     if up is None:
         return True
     return up.get("status") == STATUS_CHECK_PASS
+
+
+# ── 件2: 阶段执行 + best-effort 记状态 (run.py 全链 / stage_runner 单跑 共用) ──
+
+def _clean_gate_result() -> str | None:
+    """clean 阶段的 gate_result = data_audit overall (data/reports/data_audit_latest.json)。读不到返 None。"""
+    try:
+        import json
+        from pathlib import Path
+        p = Path(__file__).resolve().parents[3] / "data" / "reports" / "data_audit_latest.json"
+        if p.exists():
+            return str(json.loads(p.read_text(encoding="utf-8")).get("overall") or "") or None
+    except Exception:  # noqa: BLE001 — gate_result 是附加信息, 读失败不影响状态记录
+        return None
+    return None
+
+
+def _record_stage_best_effort(ctx, stage: str, status: str, *, gate_result: str | None = None) -> None:
+    """开 smartmoney conn 记一行阶段状态。**best-effort**: 写失败 try/except 不破链 (阶段已跑完,
+    状态记录是附加观测); dry-run 跳过 (不写 DB)。阶段跑完后才写 = 不与阶段并发写 smartmoney。"""
+    if getattr(ctx, "dry", False):
+        ctx.log(f"  [stage_status] DRY: 跳记状态 {stage}={status}")
+        return
+    try:
+        from services.db_connection import get_conn
+        conn = get_conn()
+        try:
+            record_stage(conn, stage, status, gate_result=gate_result)
+        finally:
+            conn.close()
+        ctx.log(f"  [stage_status] {stage} → {status}" + (f" (gate={gate_result})" if gate_result else ""))
+    except Exception as e:  # noqa: BLE001 — 记状态失败绝不破链 (阶段本身已成功)
+        ctx.log(f"  [stage_status] 记状态失败(不破链, 阶段已跑完): {stage}={status} ({e})")
+
+
+def run_and_record(ctx, stage: str, fn) -> bool:
+    """跑阶段 fn(ctx) + best-effort 记 check_pass/check_fail。返回 True=本阶段无新 degraded。
+
+    check_pass/fail 判定 = 本阶段是否新增 ctx.degraded_msgs (与 run.py/context degraded 续跑模型一致,
+    不改变阶段失败行为, 只附加状态记录)。
+    """
+    before = len(ctx.degraded_msgs)
+    fn(ctx)
+    passed = len(ctx.degraded_msgs) == before
+    status = STATUS_CHECK_PASS if passed else STATUS_CHECK_FAIL
+    gate = _clean_gate_result() if stage == "clean" else None
+    _record_stage_best_effort(ctx, stage, status, gate_result=gate)
+    return passed

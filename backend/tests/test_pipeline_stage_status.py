@@ -59,3 +59,56 @@ def test_unknown_stage_rejected() -> None:
     conn = _conn()
     with pytest.raises(ValueError):
         ss.record_stage(conn, "bogus", ss.STATUS_CHECK_PASS)
+
+
+# ── 件2: run_and_record 状态判定 + best-effort 记录器 ──
+
+def test_run_and_record_status(monkeypatch, tmp_path) -> None:
+    from services.pipeline import context as ctx_mod
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(ctx_mod, "DEGRADED_FLAG", tmp_path / "alert.flag")
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(ss, "_record_stage_best_effort",
+                        lambda ctx, stage, status, **k: calls.append((stage, status)))
+    ctx = PipelineContext(dry=False, date="20990101")
+    try:
+        assert ss.run_and_record(ctx, "acquire", lambda c: None) is True          # 无 degraded → pass
+        assert ss.run_and_record(ctx, "clean", lambda c: c.degraded("boom")) is False  # degrade → fail
+    finally:
+        ctx.close()
+    assert calls == [("acquire", ss.STATUS_CHECK_PASS), ("clean", ss.STATUS_CHECK_FAIL)]
+
+
+def test_record_best_effort_skips_dry(monkeypatch, tmp_path) -> None:
+    """dry-run 不开 conn 不写 DB。"""
+    from services.pipeline import context as ctx_mod
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(ctx_mod, "DEGRADED_FLAG", tmp_path / "alert.flag")
+    opened: list[str] = []
+    monkeypatch.setattr("services.db_connection.get_conn", lambda *a, **k: opened.append("x"))
+    ctx = PipelineContext(dry=True, date="20990101")
+    try:
+        ss._record_stage_best_effort(ctx, "acquire", ss.STATUS_CHECK_PASS)
+    finally:
+        ctx.close()
+    assert opened == []  # dry → 跳过, 不开 smartmoney conn
+
+
+def test_record_best_effort_never_raises(monkeypatch, tmp_path) -> None:
+    """记状态失败 (conn 异常) 绝不破链 — 吞错只记日志。"""
+    from services.pipeline import context as ctx_mod
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(ctx_mod, "DEGRADED_FLAG", tmp_path / "alert.flag")
+
+    def _boom(*a, **k):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr("services.db_connection.get_conn", _boom)
+    ctx = PipelineContext(dry=False, date="20990101")
+    try:
+        ss._record_stage_best_effort(ctx, "acquire", ss.STATUS_CHECK_PASS)  # 不应 raise
+    finally:
+        ctx.close()

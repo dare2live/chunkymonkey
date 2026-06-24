@@ -16,6 +16,7 @@ from .clean import run_clean
 from .context import PipelineContext
 from .preflight import run_preflight
 from .process import run_process
+from .stage_status import run_and_record
 from .store import run_store
 
 
@@ -35,11 +36,11 @@ def main(argv: list[str] | None = None) -> int:
     ctx.reset_degraded_flag()  # 链起跑清前次 flag
 
     try:
-        run_preflight(ctx)   # gate (job 契约 + SLA)
-        run_acquire(ctx)     # ① 获取 →L0
-        run_clean(ctx)       # ② 清洗 L0→L1
-        run_process(ctx)     # ③ 加工 L1→L2
-        run_store(ctx)       # ④ 存储/治理
+        run_preflight(ctx)                          # gate (job 契约 + SLA); 非4阶段之一不记状态
+        run_and_record(ctx, "acquire", run_acquire)  # ① 获取 →L0  (+best-effort 记阶段状态)
+        run_and_record(ctx, "clean", run_clean)      # ② 清洗 L0→L1
+        run_and_record(ctx, "process", run_process)  # ③ 加工 L1→L2
+        run_and_record(ctx, "store", run_store)      # ④ 存储/治理
         ctx.log("=== daily_update DONE (数据底座: preflight / 获取 / 清洗 / 加工 / 存储) ===")
         return 0
     finally:

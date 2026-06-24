@@ -13,12 +13,14 @@ daily_update (services.pipeline.run) 是便捷全链编排 (preflight→acquire�
 from __future__ import annotations
 
 import argparse
+import sys
 from datetime import datetime
 
 from .acquire import run_acquire
 from .clean import run_clean
 from .context import PipelineContext
 from .process import run_process
+from .stage_status import run_and_record
 from .store import run_store
 
 # 固定线性序 (blueprint §8.3: 不上通用 DAG; 仅独立阶段触发)
@@ -30,29 +32,63 @@ STAGES = {
 }
 
 
+def _upstream_refusal(stage: str) -> str | None:
+    """件3: 上游阶段非 check_pass → 返 refusal 提示串; 否则 None (放行)。
+
+    首阶段无上游=放行。状态读失败=放行 (best-effort 门, 非硬安全; 不因状态库不可达卡死运维)。
+    """
+    from .stage_status import STAGE_ORDER, upstream_ok, upstream_status
+    if STAGE_ORDER.index(stage) == 0:
+        return None
+    try:
+        from services.db_connection import get_conn
+        conn = get_conn()
+        try:
+            ok = upstream_ok(conn, stage)
+            up = upstream_status(conn, stage)
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001 — 状态读失败不阻断单跑 (best-effort 门)
+        return None
+    if ok:
+        return None
+    up_name = STAGE_ORDER[STAGE_ORDER.index(stage) - 1]
+    up_status = up.get("status") if up else "?"
+    return (
+        f"REFUSE: 上游阶段 '{up_name}' 当前状态={up_status} (非 check_pass)。"
+        f" 先跑上游 `chunkyctl pipeline {up_name}` 或加 --force 绕过。"
+    )
+
+
 def run_stage(
     stage: str,
     *,
     dry: bool = False,
     skip_sync: bool = False,
     date: str | None = None,
+    force: bool = False,
 ) -> int:
-    """单跑一个阶段。返回 0=干净; 1=本阶段有 degraded (运维需看)。
+    """单跑一个阶段。返回 0=干净; 1=本阶段 degraded; 2=上游未 pass 被拒 (--force 绕过)。
 
     不 reset DEGRADED_FLAG (那是 run.py 全链起跑的动作); 单阶段若 degraded 仍写 flag 告警 (诚实)。
     """
     if stage not in STAGES:
         raise SystemExit(f"unknown stage '{stage}' (choices: {', '.join(STAGES)})")
+    # 件3: refuse-if-upstream-not-pass (让切片a独立触发安全; --force 绕过)
+    if not force:
+        refusal = _upstream_refusal(stage)
+        if refusal is not None:
+            print(refusal, file=sys.stderr)
+            return 2
     # run-date = 运行日期标签 (log/report 命名), 非 trade end-date (同 run.py allowlist; end-date 各脚本内 calendar-gated)
     run_date = date or datetime.now().strftime("%Y%m%d")
     ctx = PipelineContext(dry=dry, skip_sync=skip_sync, date=run_date)
     ctx.log(f"=== ChunkyMonkey pipeline stage '{stage}' {run_date} (独立触发) ===")
-    ctx.log(f"  dry={int(ctx.dry)} skip_sync={int(ctx.skip_sync)}")
+    ctx.log(f"  dry={int(ctx.dry)} skip_sync={int(ctx.skip_sync)} force={int(force)}")
     try:
-        STAGES[stage](ctx)
-        n_degraded = len(ctx.degraded_msgs)
-        if n_degraded:
-            ctx.log(f"=== stage '{stage}' DONE with {n_degraded} degraded (见上; exit 1) ===")
+        passed = run_and_record(ctx, stage, STAGES[stage])  # 件2: 跑 + best-effort 记状态
+        if not passed:
+            ctx.log(f"=== stage '{stage}' DONE with degraded (见上; exit 1) ===")
             return 1
         ctx.log(f"=== stage '{stage}' DONE (clean) ===")
         return 0
@@ -69,8 +105,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dry", action="store_true", help="dry-run, 不写 DB")
     ap.add_argument("--skip-sync", action="store_true", help="跳采集 (用现有数据)")
     ap.add_argument("--date", default=None, help="YYYYMMDD (默认今天; 显式传防跨午夜错位)")
+    ap.add_argument("--force", action="store_true", help="绕过上游 check_pass 门 (运维明知上游状态时)")
     args = ap.parse_args(argv)
-    return run_stage(args.stage, dry=args.dry, skip_sync=args.skip_sync, date=args.date)
+    return run_stage(args.stage, dry=args.dry, skip_sync=args.skip_sync, date=args.date, force=args.force)
 
 
 if __name__ == "__main__":
