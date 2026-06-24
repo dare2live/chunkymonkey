@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-06-21 00:19:38 CST
+**Snapshot 时间**: 2026-06-24 15:47:56 CST
 
 ## 主线状态
 
@@ -44,28 +44,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `19908acf doc: P1 决胜裁决 — cap-条件化含成本OOS验证方向(beats random+4.6pp)但远未达KPI` |
-| 最近 24h commits | 20 |
-| 未 commit 文件 | 0 |
+| HEAD | `759f2b8a doc: 主计划文档按现状重新优化 (用户: 压缩后凭记忆漂移, 重读宪法+按现状调) — aif10立场反转/holder源/bypass诚实` |
+| 最近 24h commits | 25 |
+| 未 commit 文件 | 2 |
 
 ### 最近 10 commits
 
 ```
-19908acf doc: P1 决胜裁决 — cap-条件化含成本OOS验证方向(beats random+4.6pp)但远未达KPI
-110fa654 doc: 主升浪猎手计划重优化 — 方法论锁定 + 条件化验证 + 优化后优先级 (P1含成本决胜)
-9d750f99 feat: 负样本分层 fact_rally_negative_strata + 证特征形态条件化(净化后多因子OOS)
-53842401 chore: 全删买点 detour — 方法论重定向回鱼身延续+鱼尾出场 (用户纠偏)
-06bb9432 doc: SESSION_HANDOFF 再生 — D-step-4a C-R1 裁决后快照
-c3ac6acd doc: D-step-4a 含成本现实入场裁决 — GBDT edge 真实但远不及 KPI (C-R1)
-20526d45 doc: 进度保存 — INDEX D-step 状态同步 GBDT 翻案 (0.738) + SESSION_HANDOFF 再生
-0cd1e8d4 doc: D-step-3 翻案 BREAKTHROUGH — 多因子 GBDT 拐点判别 OOS AUC 0.738 (单因子0.61)
-abb77073 doc: 沉淀新反例 — event 定义点(pivot/peak)当入场=前瞻泄漏 (CLAUDE §4.5)
-619171b2 doc: D-step-2 裁决 — 买点 reversal/vol 不可交易 (pivot 前瞻泄漏, C-R1 实证)
+759f2b8a doc: 主计划文档按现状重新优化 (用户: 压缩后凭记忆漂移, 重读宪法+按现状调) — aif10立场反转/holder源/bypass诚实
+20ca3d45 refactor: 退役孤儿 tdx F10 client 代码 (旧 updater 删后 dead code)
+b35066a8 refactor: 物删旧 updater UI 簇 22 文件 (routers/updater*20+etf+data_sources) — pipeline 唯一更新路径
+7d707403 feat: 迁 aif10估值/同行/QFII sync 进 pipeline acquire (先迁后删旧updater 步骤)
+0b497f86 refactor: pipeline lhb 解耦旧 updater — sync_lhb_incremental 搬进 services.lhb_client
+94d88a66 feat: 注册 tushare stk_holdertrade 域 (增减持) — tdx F10 多产品迁移 step
+b226be56 fix: 修 asset metadata — live holder 表误标 deprecated (旧切tushare计划残留)
+f5a362c8 feat: holder 退役收口 — 物删 tdx_f10 行(aif10 单源) + backfill 验收 99.6% + deprecate tdx ingest
+d882a590 fix: holder aif10 行设 availability_source (PIT 可用日锚, 真金白银)
+2d5630cf feat: holder aif10 增量改水位驱动 (按披露日) + 写入优化 + universe 加载修复
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**run startup checks first — scripts/chunkyctl doctor --fast; prioritize data_health blocking_yellow, then stage-opt structural blocker / need_027 blocked-gap triage**
+**2 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 
