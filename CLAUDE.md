@@ -101,11 +101,17 @@ JOIN → 永远带 `AND x.built_at <= t` / `as_of_date`; 宇宙 → `dim_index_m
 > (简单 > 韧性)。下方=现行政策; 旧热备条款存档见本节末 [deprecated]。
 
 > **[2026-06-24 例外 — 用户拍板, 东财妙想 aif10]**: "tushare 唯一" 开**第一个正式例外** = **东财妙想 aif10 (datacenter)**,
-> 用于 **十大流通股东(holder 主源)+ 估值分位/同行估值 + QFII**。理由实测: tushare top10_floatholders **财报季驱动滞后~4个月**
+> 用于 **十大流通股东(holder 主源)+ 估值分位/同行估值 + QFII + 机构持仓明细(非公募分桶)**。理由实测: tushare top10_floatholders **财报季驱动滞后~4个月**
 > (季中权益变动不收, 反例 600388 紫金入主龙净 6/8 tushare 只到 3/31), 这几类 aif10 全市场+含季中ad-hoc+深史全胜。
-> **aif10 不是删除对象, 是 sanctioned 正式源** (services/holders_aif10, aif10_capability_client; datacenter JSON API 直连)。
+> **aif10 不是删除对象, 是 sanctioned 正式源** (services/holders_aif10, aif10_capability_client, org_holding_aif10; datacenter JSON API 直连)。
 > 其余仍 tushare 唯一。详 analysis/miaoxiang_aif10_source_decision_20260624.md + 数据模块宪法 §1.6 现状更新。
 > **判 aif10 例外是否扩大须有 tushare-滞后/缺失实测证据 (像 holder 这样), 不随意开第二个非 tushare 源。**
+> **[2026-06-24 例外扩展 — 机构持仓明细, 用户拍板]**: tdx F10 退役腾出的 3 表里 **fact_common_major_holder_stock 改接 aif10 RPT_MAIN_ORGHOLDDETAIL**
+> (非公募机构 基金/保险/券商/QFII/法人 分桶持本股; services/org_holding_aif10 → raw_org_holding_aif10; 报告期 REPORT_DATE + 法定披露截止 available_date PIT 锚)。
+> 实测依据 (对抗复核 analysis/aif10_gap_reverification_20260624.md): tushare `fund_portfolio` **仅公募基金**, 非公募机构持仓分桶 = 真·缺失 (tushare 拿不到也算不出)。
+> **复核同时校正第一版对比的 5 处 overclaim** (盈利预测/限售解禁持有人/估值分位/同行排名/分红概率 tushare 其实有或可自算) → 妙想真·独有缩到 2 项 (机构持仓分桶 + 资本运作结构化);
+> 妙想总体定位 = **F10 基本面"及时性补充 + 省自算工具", 非全局替代 tushare** (基石 K线/复权/日历/涨跌停/筹码/资金流 11/12 项 tushare 独有不可替代)。
+> **同批 tdx 退役另 2 表无 aif10/tushare 等价**: 股东户数 fact_holder_count_period → tushare stk_holdernumber 迁移; 增减持计划(意向)+ 关联个股网络 → 归档冻结 (aif10 SHAREHOLDER_CHANGE=实际变动非意向, MAIN_ORGHOLDDETAIL≠跨公司持股网络, 均无源可重接; 仅 3 期/1 年浅 + 无 live 消费方)。
 
 - **唯一数据源 = tushare.** 现有/未来所有数据接 tushare: 查 catalog → 单日实弹核证字段/grain/
   单页上限 → 注册 sync_registry。**无热备、无冷备** — 非 tushare 源全是删除对象。
