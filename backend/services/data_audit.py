@@ -13,7 +13,7 @@ from typing import Any
 import duckdb
 
 from services.calendar import latest_completed_trade_date
-from services.universe import ACTIVE_A_SHARE_PREFIXES   # 单一真相源 (排除股白名单前缀, 替硬编码第二真相源)
+from services.universe import ACTIVE_A_SHARE_PREFIXES, classify_exclusion   # 单一真相源 (板块前缀身份/排除规则)
 
 logger = logging.getLogger(__name__)
 
@@ -482,20 +482,12 @@ def _check_cross_table_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResu
     if not kline_codes:
         return CheckResult("cross_table_consistency", "FAIL", "kline table has no stock codes")
 
-    all_codes: set[str] = set()
-    for universe in _as_list(kline_coverage_rule.get("universe_tables"), []):
-        if not isinstance(universe, dict):
-            continue
-        table = _to_str(universe.get("table"))
-        col = _to_str(universe.get("stock_code_column"), "stock_code")
-        if not table or not col:
-            continue
-        all_codes.update({c for (c,) in conn.execute(f"SELECT {col} FROM {table}").fetchall() if c is not None})
-
-    if not all_codes:
-        return CheckResult("cross_table_consistency", "PASS", "no universe rows configured for consistency checks")
-
-    extras = sorted(c for c in kline_codes if c not in all_codes)
+    # 2026-06-24 cry-wolf 修复: kline 码合法性 = 板块前缀身份真相源 (services.universe.classify_exclusion),
+    # 非 dim 表枚举。旧口径"kline ⊆ dim_active∪dim_all_ever_listed"违项目第一性原理 (K线=真相源;
+    # universe.py 明示"不需要 dim_all_ever_listed"): 退市 A股有真实 K线+合法板块但不在 current stock_basic →
+    # 被误报 (实测 209 全是合法 00/60/30/68 退市股=cry-wolf)。退市由 universe 规则3(K线近90天无交易) PIT 排除,
+    # 不靠 dim 表枚举。此 coverage 仅守"非A股板块(北交所83x/三板/指数) leak 进 A股 K线"。
+    extras = sorted(c for c in kline_codes if classify_exclusion(c) is not None)
 
     inactive_rule = _first_matching_rule(cross_rules, "inactive_still_trading")
     if inactive_rule is None:

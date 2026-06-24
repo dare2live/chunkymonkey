@@ -24,20 +24,17 @@
 **根因**: `_check_kline_consistency` 做两件事 — (a) 重复 (code,date) 检测 [真bug, 保留]; (b) 连续 clean 行的交易日 gap > gap_max_days(5) 即 FAIL [cry-wolf: 停牌>5交易日的合法 gap 被误报, 实测 000004 +10/+36天=停牌]。
 **修复**: 移除 gap-vs-calendar 判定 (clean 丢 source 行已由 check 1 的 clean-vs-source 守, 不重复 calendar 比对); 保留 (a) 重复检测 + (b) **新增** clean 行落在非交易日检测 (clean 不该有非交易日行 = 真不一致)。实测修后 **PASS**。
 
-## 检查 3: cross_table_consistency "209 codes not in universe" — 不是 cry-wolf, 是真 GAP, 升级用户 [RED-LINE]
+## 检查 3: cross_table_consistency "209 codes not in universe" — 第3个 cry-wolf, 已修 ✓ (我曾误判为 survivorship gap, 用户纠正)
 
-**前会话判定**: "209码=退市股历史=生存者正确" → 当 benign cry-wolf。
-**本次实测推翻**:
-- 209 = kline 有、但 `dim_active_a_stock`(5208) 和 `dim_all_ever_listed`(5210) **都没有**的 A股码 (00:93/60:77/30:37/68:2, **非北交所**)。
-- 209 全部**不在** `dim_listing_status` (0/209)。
-- 它们有真实 kline 史, max(date) 散布 2019-2026 (000018 停 2020-01, 000043 停 2019-12 = 退市; 000040 停 2025-03)。
-- = **209 个真实退市/已停 A股, universe 真相源 (dim_all_ever_listed + dim_listing_status) 缺了它们**。
+**演进**: 前会话判"209=生存者正确 benign"; 我一度反向误判为"universe 真相源缺退市股=survivorship 红线 gap, 要补 dim 表"; **用户纠正 → 回 universe.py 真相源核证, 确认我过度纠结了**:
+- `services/universe.py` 文档第一句: **"奥卡姆剃刀: 不需要 dim_all_ever_listed / 快照比对"**。universe = **K线近90天有交易 + 板块前缀白名单(60/00/30/68) + 非ST**, 三条排除规则硬控 (`assert_universe_clean`)。
+- `get_active_universe`: 基 = K线(真相源), dim_active_a_stock 只用作身份交集**剔指数 benchmark**(非 survivorship 白名单), dim_all_ever_listed **完全不用**。
+- 退市股: 数据**本就在 K线史里**(survivorship-正确); 由规则3(K线近90天无交易)PIT 排除当前 universe。**不靠也不需要 dim 表枚举退市股** → 不存在"漏退市=survivorship bias", 因为没人拿 dim_all_ever_listed 当宇宙。
+- 实测: 209 extras + 全部 kline 码都是合法 A股板块 (00/60/30/68, `classify_exclusion` 全返 None, 0 个非法)。
 
-**为何是红线不是 cry-wolf**: kline 含这些退市股 = survivorship-**正确** (好); 但 **universe 表缺它们**。任何回测/选股若用 `dim_all_ever_listed` 当"含退市的全宇宙" → 漏掉这 209 退市股 = **survivorship bias = leakage 红线** (CLAUDE §4.1: 宇宙必含已退市)。cross_table 门**正确报了一个真 gap**, 前会话"生存者正确"判反了 (混淆了"kline 含退市"[对] 与"universe 表完整"[缺])。
+**为何是 cry-wolf**: cross_table 旧口径"kline ⊆ dim_active∪dim_all_ever_listed"= 要求 dim 表完整枚举 kline, **违第一性原理(K线=真相源)+ 重造了第二套 universe 判定**(项目身份真相源是 universe.classify_exclusion 的前缀规则)。退市A股(合法板块+真实K线, 但不在 current stock_basic)被误报。
 
-**为何升级不自主修**: (1) survivorship/真金白银红线; (2) 修需补 universe 真相源 (dim_all_ever_listed + dim_listing_status), 触 25+ 消费方 (§9 审计); (3) 须先 root-cause universe builder 为何漏这 209 (否则补了还会再漏)。= mio 法典"红线 + 高 blast 真相源改 → escalate/焦点执行非自主 relax"。
-
-**保留 cross_table 门 FAIL 状态** (不 relax) — 它在诚实报红线, 直到 universe 补全。
+**修复 (单一真相源 DRY)**: cross_table kline_universe_coverage re-point 到 `services.universe.classify_exclusion` — kline 码合法性 = 板块前缀身份(非 dim 表枚举); 仅"非A股板块(北交所83x/三板/指数) leak 进A股K线"才 flag。退市A股 pass。实测改后 **PASS**, data_audit **7/7 PASS**。(config universe_tables 删, builder 不动, 不补任何退市数据。)
 
 ## 本次改动 + 验证
 | 文件 | 改动 |
@@ -46,7 +43,9 @@
 | config/data_audit_rules.yaml | kline_checks 加 source_raw_table/code/date (clean-vs-source 口径配置) |
 | tests/test_data_audit_kline_completeness.py | 新单测 (clean无损→PASS / clean丢行→FAIL / 源含clean外股→ignore) 3 绿 |
 
-验证: 单测 3 绿; 真实 data_audit kline_completeness PASS (旧 1711 FAIL) + kline_consistency PASS; cross_table_consistency **仍 FAIL (正确, 真 survivorship gap 待补 universe)**。
+验证: 单测 3 绿; 真实 data_audit **7/7 PASS** (kline_completeness 旧1711→PASS / kline_consistency→PASS / cross_table_consistency→PASS)。3 个 cry-wolf 全消灭, 门恢复可信 (无慢性红=无感知死)。
 
-## NEXT (升级用户决策)
-**universe 真相源补全 (survivorship gap)**: root-cause dim_all_ever_listed / dim_listing_status 为何漏 209 真实退市 A股 (查 build_dim_listing_status + 上游 tushare stock_basic list_status 过滤) → 补全 (含退市) → 重建路径防再漏。属红线 + 高 blast 真相源改, 焦点执行。
+## 教训 (沉淀)
+- **不需要补任何退市数据**: 退市股数据本在 K线 (真相源); universe = K线+前缀+ST 排除三规则 (universe.py "不需要 dim_all_ever_listed")。我一度把 dim_all_ever_listed 误当 survivorship 白名单要回补 = 违项目第一性原理, 用户纠正。
+- **审计门别重造第二套 universe 判定**: cross_table 旧口径自建 dim-table 枚举 = 第二真相源, 应消费 universe.classify_exclusion 单一真相源。
+- 校验异常 (31.5%/209) 先回第一手真相源 (universe.py)+实测分类, 别基于"中间表该完整"的假设升级成红线。

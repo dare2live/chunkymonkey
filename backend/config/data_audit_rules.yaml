@@ -60,11 +60,8 @@ cross_table_consistency:
       enabled: true
       kline_source_table: market.v_price_kline_qfq   # 2026-06-23 M3: price_kline_tdxhub 物删, 审 canonical serving 源
       kline_stock_code_column: code
-      universe_tables:
-        - table: dim_active_a_stock
-          stock_code_column: stock_code
-        - table: dim_all_ever_listed
-          stock_code_column: stock_code
+      # 2026-06-24 cry-wolf 修复: 合法性判定改用 services.universe.classify_exclusion (板块前缀身份真相源),
+      # 不再 universe_tables 枚举 (dim_all_ever_listed 不含退市 → 退市A股误报209)。退市由 K线近90天无交易 PIT 排除。
     - name: inactive_still_trading
       enabled: true
       kline_source_table: market.v_price_kline_qfq   # 2026-06-22 M3 repoint canonical (同上)
