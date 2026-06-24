@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-24 10:22
+> Snapshot: 2026-06-24 10:23
 
 ## 1. 入口面
 
@@ -128,8 +128,8 @@
 
 | 表 | writer 数 | writer 文件 |
 |---|---|---|
+| fact_top10_holder_period | 5 | backend/scripts/cleanup_holder_dup.py<br>backend/scripts/ingest_holders_tdxhub.py<br>backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/holders_aif10.py<br>backend/services/schema_core.py |
 | fact_controlling_shareholder | 4 | backend/scripts/ingest_holders_tdxhub.py<br>backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py<br>backend/services/tdx_f10_extra_client.py |
-| fact_top10_holder_period | 4 | backend/scripts/cleanup_holder_dup.py<br>backend/scripts/ingest_holders_tdxhub.py<br>backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
 | fact_shareholder_plan | 3 | backend/scripts/ingest_holders_tdxhub.py<br>backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
 | fact_shareholder_trade | 3 | backend/scripts/ingest_holders_tdxhub.py<br>backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
 | mart_data_deletion_record | 3 | backend/scripts/db_lifecycle_delete.py<br>backend/services/data_deletion.py<br>backend/services/schema_marts.py |

@@ -31,6 +31,9 @@ def run_acquire(ctx: PipelineContext) -> None:
     # Step 2i: institution_survey aif10 sync
     ctx.step(_sync_institution_survey, degraded_msg="institution_survey sync 失败")
 
+    # Step 2i2: 十大流通股东 aif10 增量 (主源, 替退役中的 tdxhub; 按披露日只拉新披露股)
+    ctx.step(lambda: _sync_holders_aif10(ctx), degraded_msg="holders aif10 sync 失败")
+
     # Step 2k: external_attention 快照 (累积 PIT 关注度/调研; 反例 14 天断流无人知)
     ctx.step(_sync_external_attention, degraded_msg="external_attention sync 失败")
 
@@ -87,6 +90,24 @@ def _sync_institution_survey() -> None:
         result = sync_institution_surveys(conn, days_back=180)
         print(f"institution_survey: written={result.get('rows_upserted', 0)} "
               f"mart={result.get('mart_rows', 0)} errors={result.get('errors', [])}")
+    finally:
+        conn.close()
+
+
+def _sync_holders_aif10(ctx) -> None:
+    """十大流通股东 aif10 增量 (主源). since_date 从 ctx.date 推 (注入非 wall-clock)."""
+    import datetime as _dt
+    from services.db import get_conn
+    from services.holders_aif10 import sync_holders_aif10_incremental
+    # 回溯窗口: ctx.date - 45 天 (catch 近期披露 + 漏跑日); ctx.date 由 run.py 注入
+    run_d = _dt.datetime.strptime(ctx.date, "%Y%m%d")  # evidence: ctx.date 注入非 wall-clock (run.py 防跨午夜)
+    since = (run_d - _dt.timedelta(days=45)).strftime("%Y-%m-%d")  # evidence: holder披露增量回溯窗口45天
+    conn = get_conn()
+    try:
+        result = sync_holders_aif10_incremental(conn, since_date=since)
+        print(f"holders_aif10: affected={result.get('affected_stocks', 0)} "
+              f"rows={result.get('rows_written', 0)} exits={result.get('exit_rows', 0)} "
+              f"errors={result.get('errors', [])[:3]}")
     finally:
         conn.close()
 
