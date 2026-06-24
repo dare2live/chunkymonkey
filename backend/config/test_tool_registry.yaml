@@ -1050,20 +1050,6 @@ tools:
     replacement: verified train-log checkpoint coverage and model stability evidence
     last_verified: "2026-05-27"
 
-  - id: feature_walkforward_eval_root_tests
-    paths:
-      - backend/tests/test_run_walkforward_feature_eval.py
-      - backend/tests/test_shareholder_plan_family_walkforward.py
-    owner_module: feature_walkforward
-    scope: contract
-    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_run_walkforward_feature_eval.py backend/tests/test_shareholder_plan_family_walkforward.py
-    status: active
-    evidence_level: trusted_with_scope
-    truth_source: local feature-walkforward and shareholder-plan family fixtures
-    risk_reason: validates feature evaluation mechanics only; does not prove production feature coverage, source freshness, or model promotion readiness
-    replacement: feature lineage/freshness gates and measured walk-forward evidence before model search resumes
-    last_verified: "2026-05-27"
-
   - id: v3_portfolio_builder_backtest_endpoint_root_tests
     paths:
       - backend/tests/test_v3_portfolio_builder.py
@@ -1710,20 +1696,6 @@ tools:
     replacement: source coverage and lineage/freshness audits for business fact tables
     last_verified: "2026-05-27"
 
-  - id: shareholder_plan_research_contract_tests
-    paths:
-      - backend/tests/test_shareholder_plan_feature_family_eval.py
-      - backend/tests/test_shareholder_plan_initial_event.py
-      - backend/tests/test_shareholder_plan_initial_feature_panel.py
-    owner_module: shareholder_plan
-    scope: contract
-    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_shareholder_plan_feature_family_eval.py backend/tests/test_shareholder_plan_initial_event.py backend/tests/test_shareholder_plan_initial_feature_panel.py
-    status: active
-    evidence_level: trusted_with_scope
-    truth_source: shareholder-plan research candidate fixtures
-    risk_reason: research candidate tests are not production model input or promotion evidence
-    replacement: feature lineage/freshness gates and measured walk-forward evidence before model search resumes
-    last_verified: "2026-05-27"
 
   - id: picture_profile_contract_tests
     paths:
