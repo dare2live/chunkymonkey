@@ -35,6 +35,7 @@ EXEMPT_FILES = {
     "backend/scripts/audit_strategy_universe.py",  # audit tool intentional
     "backend/scripts/audit_survivorship.py",  # audit tool intentional
     "backend/scripts/audit_panel_leakage.py",  # audit tool intentional
+    "backend/scripts/migrate_reference_db.py",  # §9迁移工具: 操作 dim_active_a_stock 表本身(搬库), 非取universe选股list
 }
 
 # Pattern: SQL containing 'dim_active_a_stock' JOIN without nearby get_active_universe call

@@ -146,3 +146,18 @@ stages 近线性固定序 (acquire→clean→process→serve), **每阶段状态
 2. 迁移 (mythos §12): 挪表跨文件 = COPY FROM DATABASE **丢约束/索引** → 必 EXPORT/IMPORT + 五件套验收 (行数+抽值+约束数+索引数+upsert冒烟)。一次性有界。
 3. 过度分区 (奥卡姆): 别一表一库, 按写锁域分, 最小高价值 = reference 拆出。
 4. 经 `database_manifest` (已是 DB 分区 config 真相源) 改 alias→path + 迁表 + repoint, 不 hardcode。
+
+### 9.5 执行计划 (用户 2026-06-24 选结构拆 option B; 分可逆阶段, 高风险切换需焦点执行非session尾鲁莽)
+
+> 审计实测: `dim_active_a_stock` (universe真相源) 有 **25 读消费方** + 写方 (security_master/build_dim_listing_status/calendar_extension) + schema DDL (schema_core)。机制 = get_conn (中央工厂 33 调用) ATTACH reference 只读 + smartmoney 留 view (读透明) + 写方 repoint reference + sync_runner 读 reference (撞锁根治)。**高风险** (动 get_conn = 全 app blast)。
+> REF 集 (奥卡姆核心): dim_active_a_stock / dim_all_ever_listed / dim_listing_status / dim_trading_calendar (universe+calendar 读多写少)。静态config dim (fee/rules/segment) 待评估扩。
+
+| Stage | 动作 | 风险/可逆 | 状态 |
+|---|---|---|---|
+| **A 保真建库** | `migrate_reference_db.py --build`: EXPORT/IMPORT 4 表→reference.duckdb (PK/索引 replay, 非COPY FROM DATABASE) + 5件套验收 | 可逆 (smartmoney 不动) | **[DONE 2026-06-24]** 5208/5210/5210/5343 行全 match, PK+idx replay, 2MB |
+| **B manifest+ATTACH** | database_manifest 加 reference alias + get_conn ATTACH reference 只读 + 测 get_conn 能查 reference 表 | 可逆 (revert get_conn) | 待做 |
+| **C 切换 (高风险)** | smartmoney 4表→view 指向 reference + 写方(~5)repoint reference 真表 + sync_runner._smartmoney_conn 的 universe 读改 reference 直读(撞锁根治) + schema DDL 移 reference(重建路径) + 全消费方读冒烟 | 高风险可逆 (备份+revert); 焦点执行非session尾 | 待做 |
+| **D 验收** | 25读消费方 + 写方 + sync_runner + daily 全跑验证 view 透明 + 撞锁消失 (并发 backfill+seed 实测不崩) | — | 待做 |
+| **E 物删 (不可逆)** | 物删 smartmoney 旧 4 表 (view 替代后) + deletion_record | **不可逆, 用户确认** | 待做 |
+
+**A→B→C→D 可逆 (验证失败即 revert); 仅 E 不可逆需确认。** C 是高风险核心 (get_conn 全 app), 建议焦点 session 执行 + 每步读冒烟 + revert-on-fail, 不在长 session 尾鲁莽跑。

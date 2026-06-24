@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-24 19:07
+> Snapshot: 2026-06-24 20:45
 
 ## 1. 入口面
 
@@ -92,7 +92,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 156 张 | 单 writer 101 | 多 writer 55 | 动态表名写点 34 处 (19 文件)
+统计: 表 156 张 | 单 writer 100 | 多 writer 56 | 动态表名写点 35 处 (20 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -115,6 +115,7 @@
 | backend/scripts/build_signal_panel.py | 2 |
 | backend/scripts/db_compact.py | 2 |
 | backend/scripts/db_partition_migrate.py | 2 |
+| backend/scripts/migrate_reference_db.py | 1 |
 | backend/scripts/seed_dim_data_asset.py | 1 |
 | backend/services/aif10_capability_client.py | 3 |
 | backend/services/data_sources/sync_runner.py | 3 |
@@ -141,6 +142,7 @@
 | dim_style_factor | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_tdx_gpcw_field | 2 | backend/services/schema_core.py<br>backend/services/tdx_affair_client.py |
 | dim_tdx_gpcw_field_semantic | 2 | backend/scripts/build_tdx_gpcw_auto_features.py<br>backend/services/schema_core.py |
+| dim_trading_calendar | 2 | backend/scripts/migrate_reference_db.py<br>backend/services/schema_core.py |
 | dim_trading_rule | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_trading_session | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | fact_consumer_alpha_ic_scan | 2 | backend/scripts/build_experiment_store.py<br>backend/services/experiment_store.py |
@@ -192,7 +194,6 @@
 | dim_stock_stage_latest | backend/services/stock_stage_engine.py |
 | dim_stock_turtle_latest | backend/services/stock_turtle_engine.py |
 | dim_strategy_preset | backend/routers/strategy_preset.py |
-| dim_trading_calendar | backend/services/schema_core.py |
 | fact_common_major_holder_stock | backend/services/schema_core.py |
 | fact_daily_price_status | backend/services/primitives/ddl.py |
 | fact_dzjy_event | backend/scripts/build_akshare_panel.py |
@@ -288,7 +289,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,891 | calls 边 62,659 | imports 边 6,650 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 8,904 | calls 边 62,674 | imports 边 6,655 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -346,5 +347,5 @@
 
 - chunkyctl 子命令 8 | launchd 任务 1 | router 12 (端点 56)
 - sync_registry 数据域 41
-- 产表 156 (多 writer 55)
+- 产表 156 (多 writer 56)
 

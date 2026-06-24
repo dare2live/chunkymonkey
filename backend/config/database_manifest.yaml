@@ -15,6 +15,17 @@ databases:
     status: active
     retention_class: governed_control_plane
 
+  reference:
+    path: data/reference.duckdb
+    domain: reference_truth
+    owner: core_pipeline
+    role: "读多写少 universe/identity/calendar reference (dim_active_a_stock/all_ever_listed/listing_status/trading_calendar); 与 facts 写锁解耦, 只读 ATTACH (§9 reference拆库, 2026-06-24 Stage A建库)"
+    default_open_mode: read_write
+    default_attach_mode: read_only
+    online: true
+    status: active  # Stage A 建库 DONE; Stage B-E (get_conn ATTACH/view切换/写方repoint) 焦点执行待做
+    retention_class: governed_control_plane
+
   market:
     path: data/market.duckdb
     domain: market_truth

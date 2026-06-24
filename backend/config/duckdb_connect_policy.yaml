@@ -7,6 +7,7 @@ db_path_literal_policy:
 allowed_raw_connect_paths:
   # db 重建工具: 文件级直接控制是设计 (换名/删除/ATTACH src), 不走 adapter 重试包装
   - scripts/db_split_execute.py
+  - scripts/migrate_reference_db.py  # §9 reference拆库迁移 (跨库ATTACH/EXPORT保真, 2026-06-24)
   - services/analytics.py
   - services/backtest_preflight.py
   - services/bc_absorbed/compute.py
