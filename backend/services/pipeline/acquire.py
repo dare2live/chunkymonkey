@@ -34,6 +34,12 @@ def run_acquire(ctx: PipelineContext) -> None:
     # Step 2i2: 十大流通股东 aif10 增量 (主源, 替退役中的 tdxhub; 按披露日只拉新披露股)
     ctx.step(lambda: _sync_holders_aif10(ctx), degraded_msg="holders aif10 sync 失败")
 
+    # Step 2i3: aif10 估值分位/同行估值 (LIVE, v3_picture 消费; 2026-06-24 迁自旧 updater)
+    ctx.step(_sync_aif10_capabilities, degraded_msg="aif10 capability sync 失败")
+
+    # Step 2j: QFII 季度持股 (外资维度; 2026-06-24 迁自旧 updater)
+    ctx.step(_sync_qfii, degraded_msg="QFII sync 失败")
+
     # Step 2k: external_attention 快照 (累积 PIT 关注度/调研; 反例 14 天断流无人知)
     ctx.step(_sync_external_attention, degraded_msg="external_attention sync 失败")
 
@@ -104,6 +110,32 @@ def _sync_holders_aif10(ctx) -> None:
         print(f"holders_aif10: watermark={result.get('watermark')} "
               f"affected={result.get('affected_stocks', 0)} rows={result.get('rows_written', 0)} "
               f"exits={result.get('exit_rows', 0)} errors={result.get('errors', [])[:3]}")
+    finally:
+        conn.close()
+
+
+def _sync_aif10_capabilities() -> None:
+    """aif10 估值分位/同行估值 (LIVE, v3_picture 消费). sync_capability 自管连接, 直调."""
+    from services.aif10_capability_client import sync_capability
+    # forecast_consensus 已 deprecated (走 pipeline profit_forecast); 只迁 v3_picture 在用的 2 个
+    for cap in ("valuation_quantile", "peer_valuation"):
+        try:
+            r = sync_capability(cap)
+            print(f"aif10/{cap}: rows={r.get('rows', 0)} table={r.get('raw_table')}")
+        except Exception as e:  # noqa: BLE001 — capability 失败不阻塞主流程 (degraded)
+            print(f"aif10/{cap} 失败: {type(e).__name__}: {str(e)[:80]}")
+
+
+def _sync_qfii() -> None:
+    """QFII 季度持股增量 (外资维度). 水位=最近已披露季度末, 已有则跳过."""
+    import asyncio
+    from services.duck_adapter import connect as duck_connect
+    from services.qfii_client import sync_qfii_incremental
+    from .context import db_path
+    conn = duck_connect(db_path("smartmoney"))
+    try:
+        import json
+        print(json.dumps(asyncio.run(sync_qfii_incremental(conn)), ensure_ascii=False, default=str))
     finally:
         conn.close()
 

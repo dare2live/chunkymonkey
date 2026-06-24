@@ -394,3 +394,27 @@ async def backfill_qfii_history(
         "written_rows": total,
         "detail": detail,
     }
+
+
+async def sync_qfii_incremental(conn: Any) -> dict:
+    """QFII 季度持股增量同步 (2026-06-24 从 routers.updater_sync._step_sync_qfii 搬迁, 解耦 pipeline 对旧 updater 依赖).
+
+    只同步"最近一个已披露季度末"(距今>=30天 且 DB 无该季数据)。逻辑零改 faithful port。
+    """
+    ensure_tables(conn)
+    target = latest_plannable_report_date()
+    if not target:
+        return {"count": 0, "status": "skipped", "message": "尚无可同步季度末 (距今 < 30 天)"}
+    row = conn.execute(
+        "SELECT COUNT(*) FROM raw_qfii_holding_quarterly WHERE report_date = ?", (target,)
+    ).fetchone()
+    existing = int(row[0] or 0) if row else 0
+    if existing > 0:
+        return {"count": 0, "status": "skipped", "existing": existing, "report_date": target,
+                "message": f"季度 {target} 已有 {existing} 条, 跳过"}
+    result = await sync_qfii_quarter(conn, target)
+    if result.get("status") == "source_unavailable":
+        raise RuntimeError(f"qfii_source_failed:{result.get('error')}")
+    written = int(result.get("written_rows") or 0)
+    return {"count": written, "status": "completed", "report_date": target, "written": written,
+            "message": f"季度 {target} 写入 {written} 条"}
