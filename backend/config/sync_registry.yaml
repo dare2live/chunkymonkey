@@ -418,7 +418,7 @@ domains:
     available_after: "18:00"
     data_start: "20190102"   # 对齐 A股 daily 窗 (现 mootdx 仅2023+, 本回填扩到2019+; gap drain 可向前扩)
     freshness_sla_trading_days: 1
-    min_rows_per_batch: 1200   # 场内ETF ~1406 (实测20260413 fund_daily场内1406); 单日全基金~1940距2000上限近, 超限截断风险年检
+    min_rows_per_batch: 300   # 2026-06-25 校准: 场内ETF universe 增长 (2019首日仅323 → 2026~1406); floor 设 323 以下防历史误报 (min_rows=粗截断catch; 覆盖完整性靠日历gap核证非此); 上限2000cap (单日全基金~1940) 另年检
     allow_empty_batch: false
 
   fund_adj:
@@ -433,7 +433,7 @@ domains:
     available_after: "18:00"
     data_start: "20190102"
     freshness_sla_trading_days: 1
-    min_rows_per_batch: 1200
+    min_rows_per_batch: 300   # 同 fund_daily: 校准历史ETF增长 (2019~323→2026~1406), floor防误报
     allow_empty_batch: false
 
   # ── 筹码族 (用户点名: 筹码胜率 alpha; 2026-06-12 实弹核证) ──
