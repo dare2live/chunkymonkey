@@ -1,0 +1,1667 @@
+{
+ "_meta": {
+  "generated": "2026-06-24",
+  "tushare_interfaces_total": 240,
+  "aif10_reports_total": 74,
+  "aif10_fetch_ok": 71,
+  "aif10_fetch_empty": 3,
+  "method": "field-level from schema/api(aif10) + catalog(tushare); measured not estimated"
+ },
+ "domains": {
+  "01_行情K线_复权_交易日历": {
+   "verdict": "tushare_only_bedrock",
+   "note": "K线/OHLCV/复权因子/交易日历/涨跌停/集合竞价/分钟线/筹码 = 量化基石. aif10 仅 F10 内嵌'市场表现'(区间涨跌幅) + 实时指标快照, 无逐日 OHLCV, 无复权因子, 无交易日历. 基石不可替代.",
+   "tushare": [
+    {
+     "interface_code": "daily",
+     "title": "A股日线行情",
+     "field_count": 11,
+     "history_start": null
+    },
+    {
+     "interface_code": "pro_bar",
+     "title": "A股复权行情",
+     "field_count": 7,
+     "history_start": null
+    },
+    {
+     "interface_code": "weekly",
+     "title": "周线行情",
+     "field_count": 11,
+     "history_start": null
+    },
+    {
+     "interface_code": "monthly",
+     "title": "月线行情",
+     "field_count": 11,
+     "history_start": null
+    },
+    {
+     "interface_code": "stk_weekly_monthly",
+     "title": "股票周/月线行情(每日更新)",
+     "field_count": 13,
+     "history_start": null
+    },
+    {
+     "interface_code": "stk_week_month_adj",
+     "title": "股票周/月线行情(复权--每日更新)",
+     "field_count": 0,
+     "history_start": null
+    },
+    {
+     "interface_code": "adj_factor",
+     "title": "复权因子",
+     "field_count": 3,
+     "history_start": null
+    },
+    {
+     "interface_code": "bak_daily",
+     "title": "备用行情",
+     "field_count": 31,
+     "history_start": null
+    },
+    {
+     "interface_code": "daily_basic",
+     "title": "每日指标",
+     "field_count": 18,
+     "history_start": null
+    },
+    {
+     "interface_code": "stk_limit",
+     "title": "每日涨跌停价格",
+     "field_count": 5,
+     "history_start": null
+    },
+    {
+     "interface_code": "stk_premarket",
+     "title": "股本情况（盘前）",
+     "field_count": 7,
+     "history_start": null
+    },
+    {
+     "interface_code": "stk_mins",
+     "title": "股票历史分钟行情",
+     "field_count": 8,
+     "history_start": null
+    },
+    {
+     "interface_code": "idx_mins",
+     "title": "股票历史分钟行情",
+     "field_count": 8,
+     "history_start": null
+    },
+    {
+     "interface_code": "rt_k",
+     "title": "A股实时日线",
+     "field_count": 15,
+     "history_start": null
+    },
+    {
+     "interface_code": "rt_min",
+     "title": "A股实时分钟",
+     "field_count": 8,
+     "history_start": null
+    },
+    {
+     "interface_code": "stk_auction",
+     "title": "当日集合竞价",
+     "field_count": 9,
+     "history_start": null
+    },
+    {
+     "interface_code": "stk_auction_o",
+     "title": "股票开盘集合竞价数据",
+     "field_count": 9,
+     "history_start": null
+    },
+    {
+     "interface_code": "stk_auction_c",
+     "title": "股票收盘集合竞价数据",
+     "field_count": 9,
+     "history_start": null
+    },
+    {
+     "interface_code": "suspend_d",
+     "title": "每日停复牌信息",
+     "field_count": 4,
+     "history_start": null
+    },
+    {
+     "interface_code": "trade_cal",
+     "title": "交易日历",
+     "field_count": 4,
+     "history_start": null
+    },
+    {
+     "interface_code": "namechange",
+     "title": "股票曾用名",
+     "field_count": 6,
+     "history_start": null
+    },
+    {
+     "interface_code": "new_share",
+     "title": "IPO新股列表",
+     "field_count": 12,
+     "history_start": null
+    },
+    {
+     "interface_code": "stk_factor",
+     "title": "股票技术因子（量化因子）",
+     "field_count": 35,
+     "history_start": null
+    },
+    {
+     "interface_code": "stk_factor_pro",
+     "title": "股票技术面因子(专业版)",
+     "field_count": 261,
+     "history_start": null
+    },
+    {
+     "interface_code": "cyq_chips",
+     "title": "每日筹码分布",
+     "field_count": 4,
+     "history_start": "数据从2018年开始"
+    },
+    {
+     "interface_code": "cyq_perf",
+     "title": "每日筹码及胜率",
+     "field_count": 11,
+     "history_start": "数据从2018年开始"
+    },
+    {
+     "interface_code": "stk_nineturn",
+     "title": "神奇九转指标",
+     "field_count": 13,
+     "history_start": "数据从20230101开始"
+    },
+    {
+     "interface_code": "index_daily",
+     "title": "指数日线行情",
+     "field_count": 11,
+     "history_start": null
+    },
+    {
+     "interface_code": "index_dailybasic",
+     "title": "大盘指数每日指标",
+     "field_count": 12,
+     "history_start": "2004年1月开始"
+    },
+    {
+     "interface_code": "index_weight",
+     "title": "指数成分和权重",
+     "field_count": 4,
+     "history_start": null
+    },
+    {
+     "interface_code": "moneyflow",
+     "title": "个股资金流向",
+     "field_count": 20,
+     "history_start": "数据开始于2010年"
+    },
+    {
+     "interface_code": "moneyflow_dc",
+     "title": "个股资金流向（DC）",
+     "field_count": 15,
+     "history_start": null
+    }
+   ],
+   "aif10": [
+    {
+     "report_name": "RPT_PCF10_MARKETPER",
+     "subname": "市场表现",
+     "field_count": 13,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "daily"
+    },
+    {
+     "report_name": "RPT_DMSK_NEWINDICATOR",
+     "subname": "最新指标 (扩展)",
+     "field_count": 0,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "empty",
+     "frequency": "daily"
+    }
+   ]
+  },
+  "02_财务报表_三表": {
+   "verdict": "both_have",
+   "note": "三表双方都全. aif10 字段更细(GBALANCE 320 / GCASHFLOWQC 373 列, 含单季拆分 QC + 同比 GRATIO). tushare 报表 by_period 增量成熟+全市场批量. aif10 报表期锚 REPORT_DATE 多数无 NOTICE_DATE 字段(PIT 需外接披露日). tushare 有 disclosure_date(财报披露计划)做 PIT 锚, aif10 无独立披露计划接口.",
+   "tushare": [
+    {
+     "interface_code": "balancesheet",
+     "title": "资产负债表",
+     "field_count": 158,
+     "history_start": null
+    },
+    {
+     "interface_code": "income",
+     "title": "利润表",
+     "field_count": 94,
+     "history_start": null
+    },
+    {
+     "interface_code": "cashflow",
+     "title": "现金流量表",
+     "field_count": 97,
+     "history_start": null
+    },
+    {
+     "interface_code": "express",
+     "title": "业绩快报",
+     "field_count": 32,
+     "history_start": null
+    },
+    {
+     "interface_code": "disclosure_date",
+     "title": "财报披露计划",
+     "field_count": 6,
+     "history_start": null
+    },
+    {
+     "interface_code": "fina_audit",
+     "title": "财务审计意见",
+     "field_count": 7,
+     "history_start": null
+    }
+   ],
+   "aif10": [
+    {
+     "report_name": "RPT_F10_FINANCE_GBALANCE",
+     "subname": "资产负债表",
+     "field_count": 320,
+     "pit_anchor_refined": "report_period_BUT_notice_date_present_PIT_recoverable",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_F10_FINANCE_GINCOME",
+     "subname": "利润表 (累计)",
+     "field_count": 204,
+     "pit_anchor_refined": "report_period_BUT_notice_date_present_PIT_recoverable",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_F10_FINANCE_GINCOMEQC",
+     "subname": "利润表 (单季)",
+     "field_count": 300,
+     "pit_anchor_refined": "report_period_BUT_notice_date_present_PIT_recoverable",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_F10_FINANCE_GCASHFLOW",
+     "subname": "现金流量表 (累计)",
+     "field_count": 255,
+     "pit_anchor_refined": "report_period_BUT_notice_date_present_PIT_recoverable",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_F10_FINANCE_GCASHFLOWQC",
+     "subname": "现金流量表 (单季)",
+     "field_count": 373,
+     "pit_anchor_refined": "report_period_BUT_notice_date_present_PIT_recoverable",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_F10_FINANCE_GRATIO",
+     "subname": "百分比/同比报表",
+     "field_count": 69,
+     "pit_anchor_refined": "report_period_BUT_notice_date_present_PIT_recoverable",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_PCF10_ORIG_REPORT",
+     "subname": "原始财报披露",
+     "field_count": 8,
+     "pit_anchor_refined": "report_period_NOT_disclosure_needs_lag",
+     "fetch_status": "ok",
+     "frequency": "event"
+    }
+   ]
+  },
+  "03_财务指标": {
+   "verdict": "both_have",
+   "note": "ROE/EPS/毛利率/周转率等. tushare fina_indicator 单接口全市场. aif10 主指标(166列)+单季(27)+杜邦(76)三层, 更细. 同为报告期锚.",
+   "tushare": [
+    {
+     "interface_code": "fina_indicator",
+     "title": "财务指标数据",
+     "field_count": 167,
+     "history_start": null
+    }
+   ],
+   "aif10": [
+    {
+     "report_name": "RPT_F10_FINANCE_MAINFINADATA",
+     "subname": "主要指标 (按报告期)",
+     "field_count": 166,
+     "pit_anchor_refined": "report_period_BUT_notice_date_present_PIT_recoverable",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_F10_QTR_MAINFINADATA",
+     "subname": "主要指标 (按单季)",
+     "field_count": 27,
+     "pit_anchor_refined": "report_period_NOT_disclosure_needs_lag",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_PCF10_FINANCEMAINFINADATA",
+     "subname": "最新指标 (财务主指标)",
+     "field_count": 44,
+     "pit_anchor_refined": "report_period_NOT_disclosure_needs_lag",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_F10_FINANCE_DUPONT",
+     "subname": "杜邦分析",
+     "field_count": 76,
+     "pit_anchor_refined": "report_period_BUT_notice_date_present_PIT_recoverable",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    }
+   ]
+  },
+  "04_股东_十大流通_户数_增减持": {
+   "verdict": "both_have_aif10_more_timely",
+   "note": "项目已裁决 aif10 为 holder 主源: tushare top10_floatholders 财报季驱动滞后~4月(季中权益变动不收, 反例 600388 紫金入主龙净 6/8 只到 3/31); aif10 FREEHOLDERS 全市场+含季中ad-hoc+深史. aif10 多: 实控人(RELATION)/持股变动季度差分(SHAREHOLDER_CHANGE)/流通合计. PIT: HOLDERNUM 带 NOTICE_DATE(户数披露日可锚), FREEHOLDERS 用 UPDATE_DATE 当可用日锚.",
+   "tushare": [
+    {
+     "interface_code": "top10_holders",
+     "title": "前十大股东",
+     "field_count": 9,
+     "history_start": null
+    },
+    {
+     "interface_code": "top10_floatholders",
+     "title": "前十大流通股东",
+     "field_count": 9,
+     "history_start": null
+    },
+    {
+     "interface_code": "stk_holdernumber",
+     "title": "股东人数",
+     "field_count": 4,
+     "history_start": null
+    },
+    {
+     "interface_code": "stk_holdertrade",
+     "title": "股东增减持",
+     "field_count": 13,
+     "history_start": null
+    }
+   ],
+   "aif10": [
+    {
+     "report_name": "RPT_F10_EH_FREEHOLDERS",
+     "subname": "十大流通股东 ",
+     "field_count": 46,
+     "pit_anchor_refined": "report_period_BUT_notice_date_present_PIT_recoverable",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_F10_EH_HOLDERS",
+     "subname": "十大股东",
+     "field_count": 27,
+     "pit_anchor_refined": "report_period_NOT_disclosure_needs_lag",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_F10_EH_HOLDERSDATE",
+     "subname": "十大股东 报告期列表",
+     "field_count": 9,
+     "pit_anchor_refined": "report_period_NOT_disclosure_needs_lag",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_F10_EH_FREEHOLDERSDATE",
+     "subname": "十大流通股东 报告期列表",
+     "field_count": 9,
+     "pit_anchor_refined": "report_period_NOT_disclosure_needs_lag",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_F10_SHAREHOLDER_CHANGE",
+     "subname": "十大股东持股变动 (季度差分)",
+     "field_count": 15,
+     "pit_anchor_refined": "report_period_NOT_disclosure_needs_lag",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_F10_FREE_TOTALHOLDNUM",
+     "subname": "流通股东合计",
+     "field_count": 13,
+     "pit_anchor_refined": "report_period_NOT_disclosure_needs_lag",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_F10_EH_HOLDERNUM",
+     "subname": "股东人数趋势",
+     "field_count": 39,
+     "pit_anchor_refined": "report_period_BUT_notice_date_present_PIT_recoverable",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_F10_EH_RELATION",
+     "subname": "实控人",
+     "field_count": 6,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "static"
+    },
+    {
+     "report_name": "RPT_EXECUTIVE_HOLD_DETAILS",
+     "subname": "高管持股变动",
+     "field_count": 20,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "event"
+    },
+    {
+     "report_name": "RPT_F10_TRADE_EXCHANGEHOLD",
+     "subname": "高管及相关人员持股变动",
+     "field_count": 15,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "event"
+    }
+   ]
+  },
+  "05_股东_质押_回购": {
+   "verdict": "tushare_mostly_only",
+   "note": "质押(pledge_stat/detail)+回购(repurchase) tushare 独有, aif10 无对应 F10 报表. 限售解禁双方都有(tushare share_float / aif10 LIFTFUTURE+ACCUMDETAILS 含持有人维度, aif10 解禁明细更细 含 holder_name).",
+   "tushare": [
+    {
+     "interface_code": "pledge_stat",
+     "title": "股权质押统计数据",
+     "field_count": 7,
+     "history_start": null
+    },
+    {
+     "interface_code": "pledge_detail",
+     "title": "股权质押明细",
+     "field_count": 14,
+     "history_start": null
+    },
+    {
+     "interface_code": "repurchase",
+     "title": "股票回购",
+     "field_count": 9,
+     "history_start": null
+    },
+    {
+     "interface_code": "share_float",
+     "title": "限售股解禁",
+     "field_count": 7,
+     "history_start": null
+    }
+   ],
+   "aif10": [
+    {
+     "report_name": "RPTA_APP_LIFTFUTURE",
+     "subname": "限售解禁",
+     "field_count": 12,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "event"
+    },
+    {
+     "report_name": "RPTA_APP_ACCUMDETAILS",
+     "subname": "限售解禁 (持有人维度)",
+     "field_count": 41,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "event"
+    }
+   ]
+  },
+  "06_估值分位_同行估值": {
+   "verdict": "aif10_richer",
+   "note": "tushare 只给当日 PE/PB/PS 点值(daily_basic), 自己算分位. aif10 STOCKVALUATIONTANTILE 直给 PE/PB/PS/PEG 在 1Y/3Y/5Y/10Y 的 30/50/70 分位(预算好)+INDUSTRY_CVALUE 同行估值排名/中值/平均. 项目已沙化 aif10 为估值分位+同行估值正式源. 注: TANTILE 无 date_field(snapshot, 当日快照, 历史回溯需自存).",
+   "tushare": [
+    {
+     "interface_code": "daily_basic",
+     "title": "每日指标",
+     "field_count": 18,
+     "history_start": null
+    }
+   ],
+   "aif10": [
+    {
+     "report_name": "RPT_STOCKVALUATIONTANTILE",
+     "subname": "估值分位",
+     "field_count": 7,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "daily"
+    },
+    {
+     "report_name": "RPT_PCF10_INDUSTRY_CVALUE",
+     "subname": "估值同行比较",
+     "field_count": 27,
+     "pit_anchor_refined": "report_period_NOT_disclosure_needs_lag",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_PCF10_INDUSTRY_GROWTH",
+     "subname": "成长性同行比较",
+     "field_count": 27,
+     "pit_anchor_refined": "report_period_NOT_disclosure_needs_lag",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_PCF10_INDUSTRY_DBFX",
+     "subname": "杜邦分析比较",
+     "field_count": 24,
+     "pit_anchor_refined": "report_period_NOT_disclosure_needs_lag",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_PCF10_INDUSTRY_MARKET",
+     "subname": "公司规模 (同行排序)",
+     "field_count": 20,
+     "pit_anchor_refined": "report_period_NOT_disclosure_needs_lag",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    }
+   ]
+  },
+  "07_分红送转": {
+   "verdict": "both_have_aif10_more",
+   "note": "tushare dividend 单接口含送股/派现/除权日全套. aif10 9 报表拆更细: 分红明细(NOTICE_DATE 锚 PIT可用)+派现概率提示(LITY)+分红排名+融资明细(SEO 增发配股)+除权除息曲线. aif10 派现概率/分红提示是 tushare 没有的预测性栏目.",
+   "tushare": [
+    {
+     "interface_code": "dividend",
+     "title": "分红送股",
+     "field_count": 16,
+     "history_start": null
+    }
+   ],
+   "aif10": [
+    {
+     "report_name": "RPT_F10_DIVIDEND_MAIN",
+     "subname": "分红明细",
+     "field_count": 31,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "event"
+    },
+    {
+     "report_name": "RPT_F10_DIVIDENDNEW_PROFILE",
+     "subname": "分红融资概览",
+     "field_count": 29,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_F10_DIVIDENDNEW_LITY",
+     "subname": "分红提示 (派现概率)",
+     "field_count": 22,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_PCF10_DIVIDENDNEW_RANK",
+     "subname": "分红排名",
+     "field_count": 17,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_F10_DIVIDEND_COMPRE",
+     "subname": "分红汇总 (按年)",
+     "field_count": 9,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "yearly"
+    },
+    {
+     "report_name": "RPT_F10_DIVIDEND_3YEAR",
+     "subname": "近 3 年分红汇总",
+     "field_count": 17,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "yearly"
+    },
+    {
+     "report_name": "RPT_F10_DIVIDEND_SEO",
+     "subname": "融资明细 (增发/配股)",
+     "field_count": 15,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "event"
+    },
+    {
+     "report_name": "RPT_F10_DIVIDEND_CURVE",
+     "subname": "除权除息曲线",
+     "field_count": 16,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "daily"
+    },
+    {
+     "report_name": "RPT_F10_DIVIDEND_EFFECT",
+     "subname": "分红影响",
+     "field_count": 6,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "daily"
+    }
+   ]
+  },
+  "08_机构持股_预测_评级_调研": {
+   "verdict": "aif10_richer",
+   "note": "机构持仓: tushare fund_portfolio 仅公募基金持仓; aif10 ORG_TYPE 分桶(基金/QFII/社保/券商/保险/信托)+按机构明细+QFII专表(DMSK_HOLDERS, 含季中临时公告). 盈利预测/评级: tushare report_rc(卖方预测)+broker_recommend; aif10 评级统计(各档家数)+机构预测(按机构/年度)+预测明细(机构-分析师-发布日 RESEARCHER_DATE PIT锚). 调研: 双方都有(tushare stk_surv / aif10 ORG_SURVEYNEW, NOTICE_DATE PIT锚).",
+   "tushare": [
+    {
+     "interface_code": "fund_portfolio",
+     "title": "公募基金持仓数据",
+     "field_count": 8,
+     "history_start": null
+    },
+    {
+     "interface_code": "report_rc",
+     "title": "卖方盈利预测数据",
+     "field_count": 23,
+     "history_start": "数据从2010年开始"
+    },
+    {
+     "interface_code": "broker_recommend",
+     "title": "券商每月荐股",
+     "field_count": 4,
+     "history_start": null
+    },
+    {
+     "interface_code": "stk_surv",
+     "title": "机构调研表",
+     "field_count": 10,
+     "history_start": null
+    },
+    {
+     "interface_code": "stk_holdertrade",
+     "title": "股东增减持",
+     "field_count": 13,
+     "history_start": null
+    }
+   ],
+   "aif10": [
+    {
+     "report_name": "RPT_F10_MAIN_ORGHOLDDETAILS",
+     "subname": "机构持仓概览 (ORG_TYPE 分桶)",
+     "field_count": 18,
+     "pit_anchor_refined": "report_period_NOT_disclosure_needs_lag",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_MAIN_ORGHOLDDETAIL",
+     "subname": "机构持仓明细 (按机构)",
+     "field_count": 41,
+     "pit_anchor_refined": "report_period_NOT_disclosure_needs_lag",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_DMSK_HOLDERS",
+     "subname": "QFII 持仓 (特殊报表)",
+     "field_count": 40,
+     "pit_anchor_refined": "report_period_BUT_notice_date_present_PIT_recoverable",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_HSF10_RES_ORGRATING",
+     "subname": "评级统计",
+     "field_count": 17,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "weekly"
+    },
+    {
+     "report_name": "RPT_HSF10_RES_ORGPREDICT",
+     "subname": "机构预测 (按机构)",
+     "field_count": 22,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "weekly"
+    },
+    {
+     "report_name": "RPT_HSF10_RESPREDICT_STATISTICS",
+     "subname": "预测均值 (按年度)",
+     "field_count": 15,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "weekly"
+    },
+    {
+     "report_name": "RPT_HSF10_RESPREDICT_COUNTSTATISTICS",
+     "subname": "预测统计扩展",
+     "field_count": 20,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "weekly"
+    },
+    {
+     "report_name": "RPT_HSF10_RES_PREDICTDETAIL",
+     "subname": "预测明细 (机构-分析师-发布日)",
+     "field_count": 25,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "weekly"
+    },
+    {
+     "report_name": "RPT_ORG_SURVEYNEW",
+     "subname": "机构调研 (特殊报表)",
+     "field_count": 31,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "daily"
+    }
+   ]
+  },
+  "09_行业对比_行业分类": {
+   "verdict": "both_have_diff_axis",
+   "note": "行业分类成员: tushare 申万 index_classify/index_member_all(PIT 长史, 项目主用). aif10 行业归属(RELATE_GN)是 snapshot 无 PIT 历史(latest-snapshot leakage 风险, 项目已知红线). 同行财务对比 aif10 更强(成长/估值/杜邦/规模带行业排名). 主营构成双方都有(tushare fina_mainbz / aif10 FN_MAINOP).",
+   "tushare": [
+    {
+     "interface_code": "index_classify",
+     "title": "申万行业分类",
+     "field_count": 7,
+     "history_start": null
+    },
+    {
+     "interface_code": "index_member_all",
+     "title": "申万行业成分构成(分级)",
+     "field_count": 11,
+     "history_start": null
+    },
+    {
+     "interface_code": "sw_daily",
+     "title": "申万行业日线行情",
+     "field_count": 15,
+     "history_start": null
+    },
+    {
+     "interface_code": "fina_mainbz",
+     "title": "主营业务构成",
+     "field_count": 9,
+     "history_start": null
+    },
+    {
+     "interface_code": "stk_ah_comparison",
+     "title": "AH股比价",
+     "field_count": 11,
+     "history_start": "数据从20250812开始"
+    }
+   ],
+   "aif10": [
+    {
+     "report_name": "RPT_F10_RELATE_GN",
+     "subname": "行业归属",
+     "field_count": 7,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "static"
+    },
+    {
+     "report_name": "RPT_PCF10_INDUSTRY_GROWTH",
+     "subname": "成长性同行比较",
+     "field_count": 27,
+     "pit_anchor_refined": "report_period_NOT_disclosure_needs_lag",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_PCF10_INDUSTRY_CVALUE",
+     "subname": "估值同行比较",
+     "field_count": 27,
+     "pit_anchor_refined": "report_period_NOT_disclosure_needs_lag",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_PCF10_INDUSTRY_DBFX",
+     "subname": "杜邦分析比较",
+     "field_count": 24,
+     "pit_anchor_refined": "report_period_NOT_disclosure_needs_lag",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_PCF10_INDUSTRY_MARKET",
+     "subname": "公司规模 (同行排序)",
+     "field_count": 20,
+     "pit_anchor_refined": "report_period_NOT_disclosure_needs_lag",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_F10_RELATE_RANK",
+     "subname": "同行业/概念/地域排名",
+     "field_count": 17,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "daily"
+    },
+    {
+     "report_name": "RPT_F10_FN_MAINOP",
+     "subname": "主营构成 (行业/产品/地区)",
+     "field_count": 27,
+     "pit_anchor_refined": "report_period_NOT_disclosure_needs_lag",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    }
+   ]
+  },
+  "10_龙虎榜": {
+   "verdict": "both_have",
+   "note": "龙虎榜双方都有. tushare top_list(每日明细)+top_inst(机构席位, 注意单页1000整截断坑)+hm_detail(游资明细). aif10 龙虎榜单(操盘版, chunky lhb_client 已用)+营业部买卖(TRADE_DIRECTION). TRADE_DATE 锚 PIT可用. tushare 游资名录(hm_list)是 aif10 没有的.",
+   "tushare": [
+    {
+     "interface_code": "top_list",
+     "title": "龙虎榜每日明细",
+     "field_count": 15,
+     "history_start": "2005年至今"
+    },
+    {
+     "interface_code": "top_inst",
+     "title": "龙虎榜机构明细",
+     "field_count": 10,
+     "history_start": null
+    },
+    {
+     "interface_code": "hm_detail",
+     "title": "游资每日明细",
+     "field_count": 9,
+     "history_start": "数据开始于2022年"
+    },
+    {
+     "interface_code": "hm_list",
+     "title": "游资名录",
+     "field_count": 3,
+     "history_start": null
+    },
+    {
+     "interface_code": "kpl_list",
+     "title": "开盘啦榜单数据",
+     "field_count": 24,
+     "history_start": null
+    },
+    {
+     "interface_code": "limit_list_d",
+     "title": "涨跌停列表（新）",
+     "field_count": 18,
+     "history_start": "数据从2020年开始"
+    }
+   ],
+   "aif10": [
+    {
+     "report_name": "RPT_DAILYBILLBOARD_DETAILSNEW",
+     "subname": "龙虎榜单 (操盘版)",
+     "field_count": 40,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "event"
+    },
+    {
+     "report_name": "RPT_OPERATEDEPT_TRADE",
+     "subname": "龙虎榜营业部 (买/卖)",
+     "field_count": 34,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "event"
+    }
+   ]
+  },
+  "11_大宗交易": {
+   "verdict": "both_have",
+   "note": "双方都有, TRADE_DATE 锚 PIT可用. 字段量级 aif10(38)略多于 tushare. 等价.",
+   "tushare": [
+    {
+     "interface_code": "block_trade",
+     "title": "大宗交易",
+     "field_count": 7,
+     "history_start": null
+    }
+   ],
+   "aif10": [
+    {
+     "report_name": "RPT_DATA_BLOCKTRADE",
+     "subname": "大宗交易",
+     "field_count": 38,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "event"
+    }
+   ]
+  },
+  "12_融资融券": {
+   "verdict": "both_have",
+   "note": "个股两融双方都有(tushare margin_detail / aif10 MARGIN_STATISTICS_STOCKS, TRADE_DATE PIT可用). tushare 多: 两融标的(margin_secs)+转融券/转融资(slb_*). aif10 多: 两融趋势解读(NLP, MARGINTRENDEXPLAIN).",
+   "tushare": [
+    {
+     "interface_code": "margin",
+     "title": "融资融券交易汇总",
+     "field_count": 9,
+     "history_start": null
+    },
+    {
+     "interface_code": "margin_detail",
+     "title": "融资融券交易明细",
+     "field_count": 11,
+     "history_start": null
+    },
+    {
+     "interface_code": "margin_secs",
+     "title": "融资融券标的（盘前更新）",
+     "field_count": 4,
+     "history_start": null
+    },
+    {
+     "interface_code": "slb_sec",
+     "title": "转融券交易汇总",
+     "field_count": 7,
+     "history_start": null
+    },
+    {
+     "interface_code": "slb_len",
+     "title": "转融资交易汇总",
+     "field_count": 6,
+     "history_start": null
+    }
+   ],
+   "aif10": [
+    {
+     "report_name": "RPT_MARGIN_STATISTICS_STOCKS",
+     "subname": "融资融券",
+     "field_count": 33,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "daily"
+    },
+    {
+     "report_name": "RPT_STOCK_MARGINTRENDEXPLAIN",
+     "subname": "融资融券趋势解读",
+     "field_count": 5,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "daily"
+    }
+   ]
+  },
+  "13_北向_陆股通": {
+   "verdict": "both_have_both_degraded",
+   "note": "陆股通持股: tushare hk_hold 个股北向 ~2025-07 停披露(项目已知, live不可用仅历史); aif10 MUTUAL_STOCK_HOLDRANKN(沪深港通持股)同受监管停披露影响. 双方都受上游停披露限制. tushare 多: 沪深股通十大成交(hsgt_top10)+港股通资金流.",
+   "tushare": [
+    {
+     "interface_code": "hk_hold",
+     "title": "沪深港股通持股明细",
+     "field_count": 7,
+     "history_start": null
+    },
+    {
+     "interface_code": "hsgt_top10",
+     "title": "沪深股通十大成交股",
+     "field_count": 11,
+     "history_start": null
+    },
+    {
+     "interface_code": "ggt_top10",
+     "title": "港股通十大成交股",
+     "field_count": 17,
+     "history_start": null
+    },
+    {
+     "interface_code": "moneyflow_hsgt",
+     "title": "沪深港通资金流向",
+     "field_count": 7,
+     "history_start": null
+    },
+    {
+     "interface_code": "ccass_hold",
+     "title": "中央结算系统持股汇总",
+     "field_count": 6,
+     "history_start": null
+    },
+    {
+     "interface_code": "stock_hsgt",
+     "title": "沪深港通股票列表",
+     "field_count": 5,
+     "history_start": "数据从20250812开始"
+    }
+   ],
+   "aif10": [
+    {
+     "report_name": "RPT_MUTUAL_STOCK_HOLDRANKN_NEW",
+     "subname": "沪深港通持股",
+     "field_count": 28,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "daily"
+    }
+   ]
+  },
+  "14_股本结构": {
+   "verdict": "both_have",
+   "note": "股本结构: tushare stk_premarket(盘前股本快照, 总股本/流通); aif10 EH_EQUITY(70列, 历年股本变动 + END_DATE 时序, 含限售/流通拆分, 比 tushare 单点快照更细). 发行信息 aif10 ISSUEINFO.",
+   "tushare": [
+    {
+     "interface_code": "stk_premarket",
+     "title": "股本情况（盘前）",
+     "field_count": 7,
+     "history_start": null
+    },
+    {
+     "interface_code": "stk_managers",
+     "title": "上市公司管理层",
+     "field_count": 12,
+     "history_start": null
+    },
+    {
+     "interface_code": "stk_rewards",
+     "title": "管理层薪酬和持股",
+     "field_count": 7,
+     "history_start": null
+    },
+    {
+     "interface_code": "namechange",
+     "title": "股票曾用名",
+     "field_count": 6,
+     "history_start": null
+    }
+   ],
+   "aif10": [
+    {
+     "report_name": "RPT_F10_EH_EQUITY",
+     "subname": "股本结构 / 历年变动",
+     "field_count": 70,
+     "pit_anchor_refined": "report_period_BUT_notice_date_present_PIT_recoverable",
+     "fetch_status": "ok",
+     "frequency": "event"
+    },
+    {
+     "report_name": "RPT_PCF10_ORG_ISSUEINFO",
+     "subname": "发行信息",
+     "field_count": 25,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "once"
+    }
+   ]
+  },
+  "15_高管": {
+   "verdict": "both_have",
+   "note": "高管名单/简介双方都有(tushare stk_managers / aif10 MANAINTRO). 高管持股变动: tushare stk_holdertrade(含高管) / aif10 EXECUTIVE_HOLD_DETAILS(CHANGE_DATE PIT可用)+EXCHANGEHOLD. 高管薪酬 tushare stk_rewards 独有.",
+   "tushare": [
+    {
+     "interface_code": "stk_managers",
+     "title": "上市公司管理层",
+     "field_count": 12,
+     "history_start": null
+    },
+    {
+     "interface_code": "stk_rewards",
+     "title": "管理层薪酬和持股",
+     "field_count": 7,
+     "history_start": null
+    }
+   ],
+   "aif10": [
+    {
+     "report_name": "RPT_F10_ORGINFO_MANAINTRO",
+     "subname": "高管列表 / 简介",
+     "field_count": 31,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "static"
+    },
+    {
+     "report_name": "RPT_EXECUTIVE_HOLD_DETAILS",
+     "subname": "高管持股变动",
+     "field_count": 20,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "event"
+    },
+    {
+     "report_name": "RPT_F10_TRADE_EXCHANGEHOLD",
+     "subname": "高管及相关人员持股变动",
+     "field_count": 15,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "event"
+    }
+   ]
+  },
+  "16_资本运作_重组_募资": {
+   "verdict": "aif10_only",
+   "note": "重大重组(RECAPITALIZE, NOTICE_DATE 锚)+募资来源(CAPITAL_RAISE)+募投项目进度(CAPITAL_ITEM)+参股控股(HOLDINGORG)+发展历程. tushare 无结构化资本运作 F10 报表(只能从公告全文 anns_d 解析). aif10 独有 gap.",
+   "tushare": [],
+   "aif10": [
+    {
+     "report_name": "RPT_ORG_RECAPITALIZE",
+     "subname": "资本运作 (重大重组)",
+     "field_count": 13,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "event"
+    },
+    {
+     "report_name": "RPT_F10_CAPITAL_RAISE",
+     "subname": "募集资金来源",
+     "field_count": 11,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "event"
+    },
+    {
+     "report_name": "RPT_F10_CAPITAL_ITEM",
+     "subname": "项目进度",
+     "field_count": 10,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "event"
+    },
+    {
+     "report_name": "RPT_F10_PUBLIC_OP_HOLDINGORG",
+     "subname": "参股控股",
+     "field_count": 14,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "static"
+    },
+    {
+     "report_name": "RPT_ORG_COURSECHANGE",
+     "subname": "发展历程",
+     "field_count": 10,
+     "pit_anchor_refined": "disclosure_or_trade_date_PIT_usable",
+     "fetch_status": "ok",
+     "frequency": "event"
+    }
+   ]
+  },
+  "17_概念题材": {
+   "verdict": "both_have_diff_nature",
+   "note": "题材成员: tushare ths_member/dc_member(板块成分, 注意 ths 无 PIT=泄漏红线, 项目已裁出局做分类源). aif10 CORETHEME_BOARDTYPE(概念归属)+CORETHEME_CONTENT(题材亮点/详情文本, NLP). aif10 题材是 F10 静态描述(无 PIT 时序), 适合文本/概念标签非资金流. 概念板块资金流 tushare 独有(moneyflow_cnt_ths/dc).",
+   "tushare": [
+    {
+     "interface_code": "ths_index",
+     "title": "概念和行业指数",
+     "field_count": 6,
+     "history_start": null
+    },
+    {
+     "interface_code": "ths_member",
+     "title": "概念板块成分",
+     "field_count": 7,
+     "history_start": null
+    },
+    {
+     "interface_code": "dc_index",
+     "title": "概念板块",
+     "field_count": 13,
+     "history_start": null
+    },
+    {
+     "interface_code": "dc_member",
+     "title": "板块成分",
+     "field_count": 4,
+     "history_start": null
+    },
+    {
+     "interface_code": "kpl_concept_cons",
+     "title": "开盘啦题材成分",
+     "field_count": 7,
+     "history_start": null
+    },
+    {
+     "interface_code": "dc_concept",
+     "title": null,
+     "field_count": 12,
+     "history_start": "数据从20260203开始"
+    },
+    {
+     "interface_code": "dc_concept_cons",
+     "title": null,
+     "field_count": 8,
+     "history_start": "数据从20260203开始"
+    }
+   ],
+   "aif10": [
+    {
+     "report_name": "RPT_F10_CORETHEME_BOARDTYPE",
+     "subname": "概念题材",
+     "field_count": 13,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "static"
+    },
+    {
+     "report_name": "RPT_F10_CORETHEME_CONTENT",
+     "subname": "题材亮点 / 详情",
+     "field_count": 13,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "static"
+    },
+    {
+     "report_name": "RPT_F10_RELATE_GN",
+     "subname": "行业归属",
+     "field_count": 7,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "static"
+    }
+   ]
+  },
+  "18_资讯公告研报": {
+   "verdict": "both_have_diff_nature",
+   "note": "公告: tushare anns_d(全量公告)+disclosure_date. aif10 经营评述(BUSINESSANALYSIS NLP 全文)+大事提醒(REMIND)+基本资料(BASIC_ORGINFO 57列, 主营/简介). aif10 走独立 news 子域(np-anotice/cnotice/creport, 未注册进 REPORTS, 4 接口待接). 互动易 tushare 独有(irm_qa).",
+   "tushare": [
+    {
+     "interface_code": "anns_d",
+     "title": "上市公司全量公告",
+     "field_count": 6,
+     "history_start": null
+    },
+    {
+     "interface_code": "disclosure_date",
+     "title": "财报披露计划",
+     "field_count": 6,
+     "history_start": null
+    },
+    {
+     "interface_code": "news",
+     "title": "新闻快讯",
+     "field_count": 4,
+     "history_start": null
+    },
+    {
+     "interface_code": "major_news",
+     "title": "新闻通讯",
+     "field_count": 4,
+     "history_start": null
+    },
+    {
+     "interface_code": "cctv_news",
+     "title": "新闻联播",
+     "field_count": 3,
+     "history_start": "数据开始于2017年"
+    },
+    {
+     "interface_code": "irm_qa_sh",
+     "title": "上证E互动",
+     "field_count": 6,
+     "history_start": "数据开始于2023年"
+    },
+    {
+     "interface_code": "irm_qa_sz",
+     "title": "深证互动易",
+     "field_count": 7,
+     "history_start": "数据开始于2010年"
+    },
+    {
+     "interface_code": "research_report",
+     "title": null,
+     "field_count": 10,
+     "history_start": "数据从20170101开始"
+    },
+    {
+     "interface_code": "report_rc",
+     "title": "卖方盈利预测数据",
+     "field_count": 23,
+     "history_start": "数据从2010年开始"
+    }
+   ],
+   "aif10": [
+    {
+     "report_name": "RPT_F10_OP_BUSINESSANALYSIS",
+     "subname": "经营评述 (NLP, 全文)",
+     "field_count": 11,
+     "pit_anchor_refined": "report_period_NOT_disclosure_needs_lag",
+     "fetch_status": "ok",
+     "frequency": "quarterly"
+    },
+    {
+     "report_name": "RPT_F10_REMIND_RELATIONSHIP",
+     "subname": "大事提醒 (字典)",
+     "field_count": 4,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "event"
+    },
+    {
+     "report_name": "RPT_HSF9_BASIC_ORGINFO",
+     "subname": "主营范围 (BUSINESS_SCOPE)",
+     "field_count": 47,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "static"
+    },
+    {
+     "report_name": "RPT_F10_BASIC_ORGINFO",
+     "subname": "基本资料",
+     "field_count": 57,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "static"
+    },
+    {
+     "report_name": "RPT_F10_PUBLIC_COMPANYTPYE",
+     "subname": " 公司类型 (财报模板)",
+     "field_count": 2,
+     "pit_anchor_refined": "no_date_field_static_or_snapshot",
+     "fetch_status": "ok",
+     "frequency": "static"
+    }
+   ]
+  }
+ },
+ "list_a_tushare_only_bedrock": [
+  {
+   "item": "K线 OHLCV (日/周/月/分钟)",
+   "tushare": [
+    "daily",
+    "pro_bar",
+    "weekly",
+    "monthly",
+    "stk_mins"
+   ],
+   "aif10_equivalent": "NONE",
+   "tag": "基石不可替代",
+   "why": "aif10 仅 F10 内嵌'市场表现'区间涨跌幅 + 实时快照, 无逐日 OHLCV. 回测/特征工程地基."
+  },
+  {
+   "item": "复权因子",
+   "tushare": [
+    "adj_factor",
+    "pro_bar(qfq/hfq)"
+   ],
+   "aif10_equivalent": "NONE",
+   "tag": "基石不可替代",
+   "why": "PIT 复权全靠它; aif10 无复权因子接口."
+  },
+  {
+   "item": "交易日历",
+   "tushare": [
+    "trade_cal"
+   ],
+   "aif10_equivalent": "NONE",
+   "tag": "基石不可替代",
+   "why": "项目真相源之一(交易日历级硬门 assert_universe_clean), aif10 无."
+  },
+  {
+   "item": "每日指标 daily_basic (PE/PB/换手/量比/市值)",
+   "tushare": [
+    "daily_basic"
+   ],
+   "aif10_equivalent": "部分(估值分位 TANTILE 给分位但非逐日点值序列)",
+   "tag": "基石近不可替代",
+   "why": "逐日全市场点值序列, aif10 估值是快照分位非时序."
+  },
+  {
+   "item": "涨跌停价 / 集合竞价 / 停复牌",
+   "tushare": [
+    "stk_limit",
+    "stk_auction_o",
+    "stk_auction_c",
+    "suspend_d"
+   ],
+   "aif10_equivalent": "NONE",
+   "tag": "基石不可替代",
+   "why": "execution-aware 回测(涨停剔篮/T+1 open)必需, aif10 无."
+  },
+  {
+   "item": "筹码分布/胜率",
+   "tushare": [
+    "cyq_chips",
+    "cyq_perf"
+   ],
+   "aif10_equivalent": "NONE",
+   "tag": "tushare独有",
+   "why": "筹码集中度/获利盘 alpha, aif10 无."
+  },
+  {
+   "item": "个股资金流向",
+   "tushare": [
+    "moneyflow",
+    "moneyflow_dc",
+    "moneyflow_ths"
+   ],
+   "aif10_equivalent": "NONE",
+   "tag": "tushare独有",
+   "why": "主力/超大单资金流, aif10 F10 无资金流逐日序列."
+  },
+  {
+   "item": "股权质押 (统计+明细)",
+   "tushare": [
+    "pledge_stat",
+    "pledge_detail"
+   ],
+   "aif10_equivalent": "NONE",
+   "tag": "tushare独有",
+   "why": "质押率/平仓风险 alpha, aif10 无对应 F10 报表."
+  },
+  {
+   "item": "股票回购",
+   "tushare": [
+    "repurchase"
+   ],
+   "aif10_equivalent": "NONE",
+   "tag": "tushare独有",
+   "why": "回购事件信号, aif10 无独立回购报表."
+  },
+  {
+   "item": "申万行业分类 PIT 成员",
+   "tushare": [
+    "index_classify",
+    "index_member_all"
+   ],
+   "aif10_equivalent": "RELATE_GN(snapshot无PIT历史)",
+   "tag": "基石近不可替代",
+   "why": "aif10 行业归属是 latest snapshot, 无 out_date 历史区间 = 项目已知 leakage 红线; PIT 行业成员仍靠 tushare 申万."
+  },
+  {
+   "item": "互动易 Q&A",
+   "tushare": [
+    "irm_qa_sh",
+    "irm_qa_sz"
+   ],
+   "aif10_equivalent": "NONE",
+   "tag": "tushare独有",
+   "why": "投资者互动文本 alpha, aif10 无."
+  },
+  {
+   "item": "技术因子库",
+   "tushare": [
+    "stk_factor",
+    "stk_factor_pro",
+    "stk_nineturn"
+   ],
+   "aif10_equivalent": "NONE",
+   "tag": "tushare独有",
+   "why": "预算好的技术指标, aif10 无(项目自算可替)."
+  }
+ ],
+ "list_b_aif10_only_gap_menu": [
+  {
+   "item": "十大流通股东季中ad-hoc变动(主源)",
+   "aif10": [
+    "RPT_F10_EH_FREEHOLDERS",
+    "RPT_DMSK_HOLDERS"
+   ],
+   "alpha_hypothesis": "聪明钱(QFII/社保/牛散)季中权益变动早于财报披露 = 提前信号; 实测 tushare 滞后~4月",
+   "consumer": "holder 因子层(已接 services/holders_aif10), 主升浪猎手筹码维度",
+   "pit_anchor": "[OK] FREEHOLDERS 用 UPDATE_DATE 当可用日锚(项目已实现 availability_source); DMSK_HOLDERS 带 NOTICE_DATE(含临时公告披露日)",
+   "rank": 1,
+   "status": "已 promote 为主源(confirmed)"
+  },
+  {
+   "item": "估值历史分位 (PE/PB/PS/PEG @1Y/3Y/5Y/10Y)",
+   "aif10": [
+    "RPT_STOCKVALUATIONTANTILE"
+   ],
+   "alpha_hypothesis": "估值分位均值回归 / 低估值+催化择时; 预算好省自算",
+   "consumer": "估值因子层 / 选股过滤",
+   "pit_anchor": "[WARN] 无 date_field = 当日快照, 历史回溯需自存每日落库才有 PIT 时序",
+   "rank": 2,
+   "status": "已沙化为正式源(项目 §4.3 例外)"
+  },
+  {
+   "item": "同行估值/成长/杜邦排名",
+   "aif10": [
+    "RPT_PCF10_INDUSTRY_CVALUE",
+    "RPT_PCF10_INDUSTRY_GROWTH",
+    "RPT_PCF10_INDUSTRY_DBFX"
+   ],
+   "alpha_hypothesis": "行业内相对估值/成长排名 = sector-relative alpha, 行业内分位选股",
+   "consumer": "sector-relative 特征层",
+   "pit_anchor": "[WARN] REPORT_DATE 报告期锚, 多数无 NOTICE_DATE, PIT 需外接披露日(财报披露后才可用)",
+   "rank": 3,
+   "status": "已沙化为正式源"
+  },
+  {
+   "item": "机构持仓 ORG_TYPE 分桶 (基金/QFII/社保/险资/券商/信托)",
+   "aif10": [
+    "RPT_F10_MAIN_ORGHOLDDETAILS",
+    "RPT_MAIN_ORGHOLDDETAIL"
+   ],
+   "alpha_hypothesis": "各类机构持仓变动方向 = 资金属性 alpha (社保/QFII 偏价值, 加仓信号)",
+   "consumer": "机构持股因子层",
+   "pit_anchor": "[WARN] END_DATE 报告期锚, 部分带 NOTICE_DATE 可锚披露日",
+   "rank": 4,
+   "status": "gap(QFII 已接 qfii_client)"
+  },
+  {
+   "item": "分红派现概率提示",
+   "aif10": [
+    "RPT_F10_DIVIDENDNEW_LITY",
+    "RPT_F10_DIVIDENDNEW_PROFILE"
+   ],
+   "alpha_hypothesis": "高股息+派现确定性 = 红利因子增强; 派现概率是预测性栏目 tushare 无",
+   "consumer": "红利/股息因子层",
+   "pit_anchor": "[WARN] 概览类无明确披露日, 当快照用",
+   "rank": 5,
+   "status": "gap"
+  },
+  {
+   "item": "盈利预测明细 (机构-分析师-发布日)",
+   "aif10": [
+    "RPT_HSF10_RES_PREDICTDETAIL",
+    "RPT_HSF10_RESPREDICT_STATISTICS",
+    "RPT_HSF10_RES_ORGRATING"
+   ],
+   "alpha_hypothesis": "预期上调/分析师评级变动 = 预期差 alpha(主升浪猎手预期维度)",
+   "consumer": "预期因子层 / 主升浪候选筛",
+   "pit_anchor": "[OK] PREDICTDETAIL 带 RESEARCHER_DATE/PUBLISH_DATE = 发布日真 PIT; ORGRATING STATISTICS_DATE 周度锚",
+   "rank": 6,
+   "status": "gap(高潜, PIT干净)"
+  },
+  {
+   "item": "资本运作 (重组/募资/募投项目)",
+   "aif10": [
+    "RPT_ORG_RECAPITALIZE",
+    "RPT_F10_CAPITAL_RAISE",
+    "RPT_F10_CAPITAL_ITEM"
+   ],
+   "alpha_hypothesis": "重组/再融资事件驱动; 结构化优于 tushare 公告全文解析",
+   "consumer": "事件驱动层",
+   "pit_anchor": "[OK] RECAPITALIZE/CAPITAL_RAISE 带 NOTICE_DATE 公告日 PIT可用",
+   "rank": 7,
+   "status": "gap(tushare 全无结构化对应)"
+  },
+  {
+   "item": "限售解禁 (持有人维度)",
+   "aif10": [
+    "RPTA_APP_LIFTFUTURE",
+    "RPTA_APP_ACCUMDETAILS"
+   ],
+   "alpha_hypothesis": "解禁压力(尤其大股东/定增解禁) = 供给冲击空头信号; aif10 含 holder_name 维度更细",
+   "consumer": "事件驱动/风险层",
+   "pit_anchor": "[OK] LIFT_DATE 解禁日 = 未来已知日, 提前可用",
+   "rank": 8,
+   "status": "gap(tushare share_float 有但无持有人拆分)"
+  },
+  {
+   "item": "经营评述 NLP 全文",
+   "aif10": [
+    "RPT_F10_OP_BUSINESSANALYSIS"
+   ],
+   "alpha_hypothesis": "管理层讨论文本情绪/主题 = NLP alpha",
+   "consumer": "NLP 文本因子层(未来)",
+   "pit_anchor": "[WARN] REPORT_DATE 报告期, PIT 需外接披露日",
+   "rank": 9,
+   "status": "gap(探索性)"
+  },
+  {
+   "item": "题材亮点/详情 (概念描述文本)",
+   "aif10": [
+    "RPT_F10_CORETHEME_CONTENT",
+    "RPT_F10_CORETHEME_BOARDTYPE"
+   ],
+   "alpha_hypothesis": "概念标签/题材热度文本 = 主题轮动标签",
+   "consumer": "概念标签层",
+   "pit_anchor": "[NO] 无 date_field = 静态 snapshot, 无 PIT 时序(latest-snapshot 风险, 单用会 leakage)",
+   "rank": 10,
+   "status": "gap(PIT 不可得, 慎用)"
+  }
+ ],
+ "list_c_both_but_aif10_better": [
+  {
+   "domain": "股东_十大流通",
+   "aif10": "RPT_F10_EH_FREEHOLDERS",
+   "tushare": "top10_floatholders",
+   "why_aif10_better": "tushare 季报驱动滞后~4月不收季中权益变动; aif10 全市场+季中ad-hoc临时公告+深史. 项目已 promote 为主源(物删 tdx_f10, backfill 99.6%).",
+   "evidence": "反例 600388 紫金入主龙净 6/8: tushare 只到 3/31, aif10 收到 6/8"
+  },
+  {
+   "domain": "QFII持仓",
+   "aif10": "RPT_DMSK_HOLDERS",
+   "tushare": "fund_portfolio(仅公募)",
+   "why_aif10_better": "tushare 无独立 QFII 持仓; aif10 QFII 专表含季中临时公告(NOTICE_DATE 含临时公告日).",
+   "evidence": "DMSK_HOLDERS END_DATE=2026-06-08 NOTICE_DATE=2026-06-13 临时公告"
+  },
+  {
+   "domain": "估值分位",
+   "aif10": "RPT_STOCKVALUATIONTANTILE",
+   "tushare": "daily_basic(仅点值自算)",
+   "why_aif10_better": "aif10 预算好 1Y/3Y/5Y/10Y 多窗分位省自算; tushare 只给当日点值.",
+   "evidence": "TANTILE 7字段直给 PE/PB/PS/PEG 30/50/70 分位"
+  },
+  {
+   "domain": "同行财务对比",
+   "aif10": "RPT_PCF10_INDUSTRY_CVALUE/GROWTH/DBFX/MARKET",
+   "tushare": "需自 JOIN 算",
+   "why_aif10_better": "aif10 直给行业平均/中值/排名(估值+成长+杜邦+规模); tushare 需自己分组算.",
+   "evidence": "INDUSTRY_CVALUE 27字段含 PEG/PE/PS 多年度+行业平均/中值/排名"
+  },
+  {
+   "domain": "股本结构时序",
+   "aif10": "RPT_F10_EH_EQUITY",
+   "tushare": "stk_premarket(盘前快照)",
+   "why_aif10_better": "aif10 EQUITY 70列含历年股本变动 END_DATE 时序+限售/流通拆分; tushare 单点快照.",
+   "evidence": "EH_EQUITY 70字段 END_DATE 锚历年变动"
+  }
+ ]
+}
