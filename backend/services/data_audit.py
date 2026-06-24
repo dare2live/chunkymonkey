@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 REPORT_PATH = ROOT / "data" / "reports" / "data_audit_latest.json"
 SMART_DB_PATH = ROOT / "data" / "smartmoney.duckdb"
 MARKET_DB_PATH = ROOT / "data" / "market.duckdb"
+TUSHARE_RAW_DB_PATH = ROOT / "data" / "tushare_raw.duckdb"  # rule-compliance: ok evidence=audit模块固定DB常量(同SMART/MARKET_DB_PATH), data_audit在connect_policy豁免名单; kline_completeness clean-vs-source口径源
 CONFIG_PATH = ROOT / "backend" / "config" / "data_audit_rules.yaml"
 
 
@@ -182,6 +183,8 @@ class CheckResult:
 def _open_conn() -> duckdb.DuckDBPyConnection:
     conn = duckdb.connect(str(SMART_DB_PATH), read_only=True)
     conn.execute(f"ATTACH '{MARKET_DB_PATH}' AS market (READ_ONLY)")
+    if TUSHARE_RAW_DB_PATH.exists():  # kline_completeness clean-vs-source 口径需 raw 源
+        conn.execute(f"ATTACH '{TUSHARE_RAW_DB_PATH}' AS tushare_raw (READ_ONLY)")
     return conn
 
 
@@ -220,44 +223,59 @@ def _trading_lag_days(index: dict, from_date: Any, to_date: Any) -> int | None:
 
 
 def _check_kline_completeness(conn: duckdb.DuckDBPyConnection) -> CheckResult:
+    """M2(clean)阶段完整性门: clean serving K线 是否无损保住 source(raw 源)的所有交易行。
+
+    2026-06-24 cry-wolf 修复: 旧口径拿 clean 比"全交易日历"(隐含假设每股每交易日都有数据)→ 停牌/退市股
+    被当缺口, 实测 1711股/31.5% 误报 (感知死: 门长期红被无视, 真缺口溜过 = 真金白银隐患)。
+    正解 = clean-vs-source: M2 的职责是无损变换 raw_tushare_daily→qfq, 该验的是"clean 丢了 source 有的行吗",
+    与停牌/退市/日历无关 (源本就没有停牌日 = 合法非缺口)。实测新口径 0 丢失行。
+    M1(acquire) 的"是否拉全 tushare" 由 sync watermark/drain 守 (另一阶段的门), 不在此 calendar 比对。
+    口径证据: analysis/kline_completeness_crywolf_fix_20260624.md
+    """
     cfg = AUDIT_RULES.get("kline_checks", {})
-    table = _to_str(cfg.get("source_table"), "market.v_price_kline_qfq")
+    table = _to_str(cfg.get("source_table"), "market.v_price_kline_qfq")   # clean (serving) 表
     freq = _to_str(cfg.get("freq"), "daily")
     adjust = _to_str(cfg.get("adjust"), "qfq")
     date_col = _to_str(cfg.get("date_column"), "date")
     code_col = _to_str(cfg.get("stock_code_column"), "code")
-    threshold = _to_float(cfg.get("completeness_threshold"), 0.0)
     sample_limit = _to_int(cfg.get("sample_limit"), 5)
+    src_table = _to_str(cfg.get("source_raw_table"), "raw_tushare_daily")   # raw 源 (clean 上游)
+    src_code = _to_str(cfg.get("source_raw_code_column"), "ts_code")
+    src_date = _to_str(cfg.get("source_raw_date_column"), "trade_date")
 
+    # lost = source 有但 clean 没有的 (code, date) = clean 丢了 source 行 (M2 变换不无损)。
+    # split_part 去 ts_code 后缀 (.SZ/.SH) 对齐 clean.code; clean.date(VARCHAR '2026-01-02') 去横线对齐 raw(YYYYMMDD)。
+    # 只比 clean 宇宙内的股 (源含未建 clean 的股=universe 问题非 clean-loss, 不在此门)。
     try:
         rows = conn.execute(f"""
-            SELECT {code_col}, MIN({date_col}), MAX({date_col}), COUNT(DISTINCT {date_col})
-            FROM {table}
-            WHERE freq=? AND adjust=?
-            GROUP BY {code_col}
+            WITH src AS (
+                SELECT split_part({src_code}, '.', 1) AS code, {src_date} AS d
+                FROM tushare_raw.{src_table}
+            ),
+            cln AS (
+                SELECT {code_col} AS code, replace(CAST({date_col} AS VARCHAR), '-', '') AS d
+                FROM {table} WHERE freq=? AND adjust=?
+            ),
+            lost AS (
+                SELECT s.code, s.d FROM src s
+                WHERE s.code IN (SELECT DISTINCT code FROM cln)
+                EXCEPT
+                SELECT code, d FROM cln
+            )
+            SELECT code, COUNT(*) AS lost FROM lost GROUP BY code ORDER BY lost DESC
         """, [freq, adjust]).fetchall()
     except Exception as exc:
-        return CheckResult("kline_completeness", "FAIL", f"query failed: {exc}")
+        return CheckResult("kline_completeness", "FAIL", f"query failed (source raw 不可达?): {exc}")
 
     if not rows:
-        return CheckResult("kline_completeness", "FAIL", f"{table} is empty")
-
-    misses: list[str] = []
-    for code, mn, mx, actual in rows:
-        expected = _scalar(
-            conn,
-            "SELECT COUNT(*) FROM dim_trading_calendar WHERE is_trading=1 AND trade_date BETWEEN ? AND ?",
-            [str(mn)[:10], str(mx)[:10]],
-        )
-        expected = int(expected or 0)
-        if expected <= 0:
-            continue
-        missing_ratio = max(0.0, (expected - int(actual or 0)) / expected)
-        if missing_ratio > threshold:
-            misses.append(f"{code}: actual={actual} expected={expected}")
-    if misses:
-        return CheckResult("kline_completeness", "FAIL", f"{len(misses)} stock(s) miss trading days; sample: {', '.join(misses[:sample_limit])}")
-    return CheckResult("kline_completeness", "PASS", "no missing trading days")
+        return CheckResult("kline_completeness", "PASS", "clean lossless vs source (无 source 行被丢)")
+    total_codes = len(rows)
+    total_lost = sum(int(r[1] or 0) for r in rows)
+    sample = ", ".join(f"{code}:{lost}" for code, lost in rows[:sample_limit])
+    return CheckResult(
+        "kline_completeness", "FAIL",
+        f"{total_codes} stock(s) lost {total_lost} source row(s) in clean (M2 非无损); sample: {sample}",
+    )
 
 
 def _check_kline_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResult:
@@ -267,8 +285,7 @@ def _check_kline_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResult:
     adjust = _to_str(cfg.get("adjust"), "qfq")
     date_col = _to_str(cfg.get("date_column"), "date")
     code_col = _to_str(cfg.get("stock_code_column"), "code")
-    gap_max_days = _to_int(cfg.get("gap_max_days"), 5)
-    gap_sample_limit = _to_int(cfg.get("gap_sample_limit"), 8)
+    sample_limit = _to_int(cfg.get("gap_sample_limit"), 8)
 
     dup = conn.execute(f"""
         SELECT {code_col}, {date_col}, COUNT(*)
@@ -284,31 +301,27 @@ def _check_kline_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResult:
     if not idx:
         return CheckResult("kline_consistency", "FAIL", "trading calendar unavailable")
 
+    # 2026-06-24 cry-wolf 修复: 移除"交易日 gap > N 天"判定 — 跨 gap 是停牌(合法), 与全交易日历比 gap
+    # 对停牌股必误报 (实测 000004 +10/+36天=停牌)。clean 丢 source 行已由 kline_completeness(clean-vs-source)守,
+    # 此处不再 calendar 比对。保留: (a) 重复(code,date) (b) clean 行落在非交易日 (clean 不该有非交易日行=真不一致)。
     rows = conn.execute(f"""
-        SELECT {code_col}, {date_col}
+        SELECT DISTINCT {code_col}, {date_col}
         FROM {table}
         WHERE freq=? AND adjust=?
-        ORDER BY {code_col}, {date_col}
     """, [freq, adjust]).fetchall()
     if not rows:
         return CheckResult("kline_consistency", "FAIL", f"{table} is empty")
 
-    prev_code: str | None = None
-    prev_day_idx: int | None = None
-    samples: list[str] = []
+    non_trading: list[str] = []
     for code, d in rows:
         di = _to_date(d)
         if di is None or di not in idx:
-            samples.append(f"{code}:{d}")
-            continue
-        cur = idx[di]
-        if prev_code == code and prev_day_idx is not None and cur - prev_day_idx - 1 > gap_max_days:
-            samples.append(f"{code}: +{cur-prev_day_idx-1} missing trading days")
-        prev_code, prev_day_idx = code, cur
+            non_trading.append(f"{code}:{d}")
 
-    if samples:
-        return CheckResult("kline_consistency", "FAIL", f"duplicates or gaps >{gap_max_days}; sample: {', '.join(samples[:gap_sample_limit])}")
-    return CheckResult("kline_consistency", "PASS", f"no duplicates and no >{gap_max_days} trading-day gaps")
+    if non_trading:
+        return CheckResult("kline_consistency", "FAIL",
+                           f"{len(non_trading)} row(s) on non-trading days; sample: {', '.join(non_trading[:sample_limit])}")
+    return CheckResult("kline_consistency", "PASS", "no duplicate rows, no rows on non-trading days")
 
 
 def _check_board_coverage(conn: duckdb.DuckDBPyConnection) -> CheckResult:

@@ -8,7 +8,15 @@ kline_checks:
   stock_code_column: code
   active_table: dim_active_a_stock
   active_code_column: stock_code
-  completeness_threshold: 0.0
+  # 2026-06-24 cry-wolf 修复 (kline_completeness 口径): 旧口径 clean 比"全交易日历"(假设每股每天交易)
+  # → 停牌/退市股被当缺口, 实测 1711股/31.5% 误报 (感知死: 门长期红被无视, 真缺口溜过)。
+  # 正解 = clean-vs-source: M2(clean)的职责是无损变换 raw→qfq, 该验"clean 丢了 source 有的行吗",
+  # 与停牌/退市/日历无关 (源本就没停牌日=合法)。实测新口径 0 丢失行。M1(acquire)的"拉全tushare"由
+  # sync watermark/drain 守 (另一阶段门), 不在此 calendar 比对。owner=analysis/kline_completeness_crywolf_fix_20260624.md
+  source_raw_table: raw_tushare_daily      # clean 的上游源 (build_price_kline_qfq_tushare 从它×adj_factor 建); 在 tushare_raw 库
+  source_raw_code_column: ts_code          # 带后缀 .SZ/.SH, 比对去后缀对齐 clean.code
+  source_raw_date_column: trade_date       # YYYYMMDD
+  completeness_threshold: 0.0              # 保留: 新口径下 = 任何 clean 丢失 source 行即 FAIL (无损要求, 此时 0.0 正确)
   gap_max_days: 5
   board_prefixes:
     - "00"
