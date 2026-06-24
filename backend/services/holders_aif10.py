@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -232,18 +232,17 @@ def _tuple(row: dict) -> tuple:
 
 
 def _write(conn, rows: list[dict]) -> int:
+    """幂等写: 单股全量重写 (rows 为同一股全期). 按 (stock, source) 一次性删旧再插,
+    避免 per-row DELETE (backfill 1.4M 次→5400 次)。build_rows 返该股全期, 故整体替换正确."""
     if not rows:
         return 0
+    stock = rows[0]["stock_code"]
+    conn.execute(
+        "DELETE FROM fact_top10_holder_period WHERE stock_code=? AND source=?",
+        (stock, SOURCE),
+    )
     placeholders = ", ".join("?" for _ in _COL_KEYS)
     insert_sql = f"INSERT INTO fact_top10_holder_period({HOLDER_COLUMNS}) VALUES ({placeholders})"
-    for r in rows:  # 幂等: 按 UNIQUE key 先删本源同行再插
-        conn.execute(
-            "DELETE FROM fact_top10_holder_period WHERE stock_code=? AND report_date=? "
-            "AND holder_set=? AND source=? AND is_exit_row=? AND holder_rank=? AND row_seq=? "
-            "AND COALESCE(share_class,'')=COALESCE(?,'')",
-            (r["stock_code"], r["report_date"], r["holder_set"], SOURCE,
-             r["is_exit_row"], r["holder_rank"], r["row_seq"], r["share_class"]),
-        )
     conn.executemany(insert_sql, [_tuple(r) for r in rows])
     return len(rows)
 
@@ -266,7 +265,8 @@ def sync_holders_aif10(
 
     if symbols is None:
         from services.universe import get_active_universe
-        symbols = list(get_active_universe())
+        # holder=参考数据含活跃ST股 (沿用 da799268); conn=smart DB (ST名映射真相源)
+        symbols = sorted(get_active_universe(conn, include_st=True))
     else:
         symbols = [s.strip() for s in symbols if s and s.strip()]
     if limit:
@@ -317,22 +317,36 @@ def _affected_stocks_since(client, since_date: str) -> list[str]:
     return sorted(codes)
 
 
-def sync_holders_aif10_incremental(
-    conn, *, since_date: str, start_period: str = DEFAULT_START_PERIOD,
-) -> dict:
-    """日常增量: 先市场级查近期(since_date 起)有新披露的股, 再对这些股 per-stock 同步.
+INCREMENT_SAFETY_DAYS = 7   # evidence: 水位回退重扫边界 catch 同日晚披露 + 东财修正 (幂等无害)
 
-    per-stock 路径拉全期 → 退出推导用完整历史 (正确), 幂等 upsert.
-    since_date 由 caller (pipeline acquire step) 从 ctx.date 推, 不取 wall-clock.
+
+def sync_holders_aif10_incremental(
+    conn, *, start_period: str = DEFAULT_START_PERIOD,
+    safety_days: int = INCREMENT_SAFETY_DAYS,
+    fallback_since: str = DEFAULT_START_PERIOD,
+) -> dict:
+    """日常增量 (水位驱动): 水位 = 存量 MAX(披露日 page_update_date),
+    扫 UPDATE_DATE >= 水位-safety 的股, 对这些股 per-stock 抓全期 → 退出推导 → 幂等覆盖.
+
+    为何盯披露日 (非报告期): 报告期新必带新披露日 (盯披露⊇盯报告期); 东财修正旧期会刷披露日但
+    报告期不变 (盯报告期会漏修正) → 披露日是充分水位。mythos §10: 应有(新披露)−实有(MAX披露日)=缺口,
+    自适应手动不规则运行 (间隔越长水位自动回退越远, 不会因固定窗漏)。
     """
     from aif10_scraper import default_client
     client = default_client
+    row = conn.execute(
+        "SELECT MAX(page_update_date) FROM fact_top10_holder_period WHERE source=?",
+        (SOURCE,)).fetchone()
+    wm = row[0] if row and row[0] else None   # YYYYMMDD
+    base = wm or fallback_since                 # 存量空 (未backfill) → 回退起点
+    since_date = (datetime.strptime(base, "%Y%m%d") - timedelta(days=safety_days)).strftime("%Y-%m-%d")
     affected = _affected_stocks_since(client, since_date)
     if not affected:
         return {"ok": 0, "fail": 0, "rows_written": 0, "exit_rows": 0,
-                "affected_stocks": 0, "since_date": since_date, "errors": []}
+                "affected_stocks": 0, "watermark": wm, "since_date": since_date, "errors": []}
     result = sync_holders_aif10(conn, symbols=affected, start_period=start_period,
                                 progress_every=0)
     result["affected_stocks"] = len(affected)
+    result["watermark"] = wm
     result["since_date"] = since_date
     return result

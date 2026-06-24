@@ -95,19 +95,15 @@ def _sync_institution_survey() -> None:
 
 
 def _sync_holders_aif10(ctx) -> None:
-    """十大流通股东 aif10 增量 (主源). since_date 从 ctx.date 推 (注入非 wall-clock)."""
-    import datetime as _dt
+    """十大流通股东 aif10 增量 (主源). 水位驱动: 扫存量 MAX(披露日) 之后有新披露的股, 无 wall-clock."""
     from services.db import get_conn
     from services.holders_aif10 import sync_holders_aif10_incremental
-    # 回溯窗口: ctx.date - 45 天 (catch 近期披露 + 漏跑日); ctx.date 由 run.py 注入
-    run_d = _dt.datetime.strptime(ctx.date, "%Y%m%d")  # evidence: ctx.date 注入非 wall-clock (run.py 防跨午夜)
-    since = (run_d - _dt.timedelta(days=45)).strftime("%Y-%m-%d")  # evidence: holder披露增量回溯窗口45天
     conn = get_conn()
     try:
-        result = sync_holders_aif10_incremental(conn, since_date=since)
-        print(f"holders_aif10: affected={result.get('affected_stocks', 0)} "
-              f"rows={result.get('rows_written', 0)} exits={result.get('exit_rows', 0)} "
-              f"errors={result.get('errors', [])[:3]}")
+        result = sync_holders_aif10_incremental(conn)
+        print(f"holders_aif10: watermark={result.get('watermark')} "
+              f"affected={result.get('affected_stocks', 0)} rows={result.get('rows_written', 0)} "
+              f"exits={result.get('exit_rows', 0)} errors={result.get('errors', [])[:3]}")
     finally:
         conn.close()
 
