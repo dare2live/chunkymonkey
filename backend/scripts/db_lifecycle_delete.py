@@ -73,6 +73,17 @@ def _is_live_cited(table: str, corpus: list[tuple[Path, str]]) -> str | None:
     return None
 
 
+def _ensure_deletion_record(conn) -> None:
+    """确保留痕表存在 (M2 Stage E: 非 smartmoney 库如 etf/market 首次物删时无此表; schema 对齐中央表)。"""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS mart_data_deletion_record ("
+        "record_id VARCHAR, deletion_run_id VARCHAR, table_name VARCHAR, "
+        "delete_scope VARCHAR, key_column VARCHAR, key_value VARCHAR, "
+        "deleted_rows BIGINT, deleted_files BIGINT, deleted_bytes BIGINT, "
+        "reason VARCHAR, verification_json VARCHAR, deleted_at VARCHAR)"
+    )
+
+
 def _next_seq(conn) -> int:
     n = conn.execute(
         "SELECT count(*) FROM mart_data_deletion_record WHERE deletion_run_id LIKE 'lifecycle_%'"
@@ -86,8 +97,9 @@ def run(manifest_path: Path, execute: bool, force: bool = False) -> int:
     run_id = man.get("run_id", "lifecycle_adhoc")
     archive_dir = REPO / man.get("archive_dir", "data/archive/lifecycle")
 
-    db = _db_path("smartmoney")
-    print(f"=== 生命周期删除 manifest={manifest_path.name} ({len(entries)} 表) db=smartmoney ===")
+    db_alias = man.get("db", "smartmoney")  # M2 Stage E: 支持非 smartmoney 库 (etf/market) 物删; 留痕入该库自身 deletion_record
+    db = _db_path(db_alias)
+    print(f"=== 生命周期删除 manifest={manifest_path.name} ({len(entries)} 表) db={db_alias} ===")
 
     # 1. live 守护 (全部先过一遍, 命中即剔除); --force 跳过 (用于有意删除 live 层, 如地基-reset)
     refused = []
@@ -115,6 +127,7 @@ def run(manifest_path: Path, execute: bool, force: bool = False) -> int:
 
     conn = duck_connect(str(db), read_only=False)
     conn.execute("SET enable_progress_bar=false")
+    _ensure_deletion_record(conn)  # 非 smartmoney 库首次物删可能无留痕表
     dropped, archived, errors = [], [], []
     try:
         seq = _next_seq(conn)

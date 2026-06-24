@@ -1,13 +1,14 @@
-"""建 ETF 前复权 K线 (M2 Stage C: ETF K线源 mootdx/tx → tushare, §4.3) + 与 mootdx 重叠期对账。
+"""建 ETF 前复权 K线 (M2: ETF K线源 mootdx/tx → tushare 单源, §4.3) + vs raw fund_daily 覆盖核证。
 
 owner=analysis/m2_etf_tushare_migration_20260625.md。mirror backend/scripts/build_price_kline_qfq_tushare.py。
-缘起: ETF K线现 etf.duckdb.etf_price_kline 源 mootdx(96.3%)+tx, 1-ETF实弹证 mootdx ETF分红未复权bug(除息日不调)。
+缘起: 旧 etf.duckdb.etf_price_kline 源 mootdx(96.3%)+tx, 实弹证 mootdx ETF分红未复权bug(除息日不调)+陈旧+glitch。
+M2 Stage E (2026-06-25): 旧 etf_price_kline 已物删, ETF K线统一 tushare 单源 (本表)。
 从 tushare raw_tushare_fund_daily + raw_tushare_fund_adj (2019+, 已 universe_filter 场内15/51/56/58) 建前复权 ETF K线。
 
 前复权 (qfq rebased to latest, 同 A股约定): qfq = fund_daily.close × fund_adj.adj_factor / adj_factor_latest_per_code。
   收益 = qfq[t]/qfq[t-1] = 含分红总收益 (PIT: adj 除权日即知)。
-单位对齐 etf_price_kline (实测 mootdx 历史日 vol/amount 1.00× tushare): volume=fund_daily.vol(手, 不转), amount=fund_daily.amount×1000(千元→元)。
-验证: 与 etf_price_kline (mootdx) 重叠期(2023+) 逐日**收益**对账; diff 集中在分红除息日 (mootdx 未复权=错, tushare 对, 见单测/fund_div)。
+单位 (实测对齐): volume=fund_daily.vol(手, 不转), amount=fund_daily.amount×1000(千元→元)。
+验证: vs raw fund_daily (tushare 第一手源) 覆盖核证 (码全覆盖); 复权口径正确性由单测守 (合成纯分红除息), 非对 mootdx。
 """
 from __future__ import annotations
 
@@ -61,32 +62,25 @@ def build(conn, *, attach: bool = True) -> int:
     return n
 
 
-def cross_check(conn) -> dict:
-    """与 etf_price_kline (mootdx) 重叠期(2023+) 逐日收益对账 (rebase 常数在收益抵消)。
-    diff>50bp 预期集中在分红除息日 (mootdx 未复权=错, tushare 对); 报具体日数供人核。"""
+def coverage_check(conn) -> dict:
+    """覆盖核证 vs raw fund_daily (tushare_raw 第一手源, M2 Stage E mootdx 已物删故不再对 mootdx)。
+    qfq 应覆盖全部 fund_daily∩fund_adj (close>0&adj>0, 2019+) 的码; 报 fund_daily 有但 qfq 无的码 (应=0)。
+    复权口径正确性由单测 test_build_etf_kline_qfq_tushare (合成纯分红除息) 守, 非靠 mootdx 对账。"""
+    conn.execute(f"ATTACH IF NOT EXISTS '{TUSHARE_DB}' AS tr (READ_ONLY)")
     row = conn.execute(f"""
-        WITH ts AS (
-            SELECT code, date,
-                   close / LAG(close) OVER (PARTITION BY code ORDER BY date) - 1 AS ret
-            FROM {TARGET} WHERE date >= '2023-01-01'
-        ), moo AS (
-            SELECT code, date,
-                   close / LAG(close) OVER (PARTITION BY code ORDER BY date) - 1 AS ret
-            FROM etf_price_kline WHERE freq='daily' AND adjust='qfq' AND date >= '2023-01-01'
-        )
-        SELECT count(*) AS n,
-               max(abs(ts.ret - moo.ret)) AS max_abs_diff,
-               avg(abs(ts.ret - moo.ret)) AS avg_abs_diff,
-               sum(CASE WHEN abs(ts.ret - moo.ret) > 0.005 THEN 1 ELSE 0 END) AS n_diff_gt50bp
-        FROM ts JOIN moo ON ts.code = moo.code AND ts.date = moo.date
-        WHERE ts.ret IS NOT NULL AND moo.ret IS NOT NULL
+        SELECT
+          (SELECT count(*) FROM {TARGET}) AS qfq_rows,
+          (SELECT count(DISTINCT code) FROM {TARGET}) AS qfq_codes,
+          (SELECT count(DISTINCT substr(d.ts_code,1,6)) FROM tr.raw_tushare_fund_daily d
+             WHERE d.trade_date >= '{START}' AND d.close > 0
+               AND NOT EXISTS (SELECT 1 FROM {TARGET} q WHERE q.code = substr(d.ts_code,1,6))) AS missing_codes
     """).fetchone()
-    return {"n_overlap": row[0], "max_abs_ret_diff": row[1], "avg_abs_ret_diff": row[2], "n_diff_gt_50bp": row[3]}
+    return {"qfq_rows": row[0], "qfq_codes": row[1], "missing_codes": row[2]}
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--check-only", action="store_true")  # rule-compliance: ok evidence=只对账不重建
+    ap.add_argument("--check-only", action="store_true")  # rule-compliance: ok evidence=只覆盖核证不重建
     args = ap.parse_args(argv)
     conn = connect(ETF_DB, read_only=False)
     try:
@@ -94,17 +88,14 @@ def main(argv: list[str] | None = None) -> int:
             n = build(conn)
             r = conn.execute(f"SELECT min(date),max(date),count(DISTINCT code) FROM {TARGET}").fetchone()
             print(f"[build] {TARGET}: {n:,} 行 | {r[0]}~{r[1]} | {r[2]} ETF", flush=True)
-        cc = cross_check(conn)
+        cc = coverage_check(conn)
         conn.execute("CHECKPOINT")
     finally:
         conn.close()
-    pct = (cc["n_diff_gt_50bp"] / cc["n_overlap"] * 100) if cc["n_overlap"] else 0.0
-    print(f"[对账] vs mootdx etf_price_kline 重叠期收益: n={cc['n_overlap']:,} "
-          f"max_abs_diff={cc['max_abs_ret_diff']:.2e} avg={cc['avg_abs_ret_diff']:.2e} "
-          f">50bp={cc['n_diff_gt_50bp']:,} ({pct:.2f}%)")
-    # 预期: diff 集中分红除息日 (mootdx未复权bug); avg≈0 + >50bp占比低 (~年度分红日数/总日数)。
-    ok = cc["avg_abs_ret_diff"] is not None and cc["avg_abs_ret_diff"] < 1e-3 and pct < 1.0
-    print(f"[verdict] {'PASS 收益除分红日外一致 (diff集中除息日=mootdx未复权bug, tushare对见单测)' if ok else 'REVIEW 差异超预期, 先查真相源(fund_div)再 repoint'}")
+    print(f"[覆盖核证] vs raw fund_daily (tushare第一手源): qfq {cc['qfq_rows']:,}行/{cc['qfq_codes']}码; "
+          f"fund_daily有但qfq无的码={cc['missing_codes']}")
+    ok = cc["qfq_rows"] > 0 and cc["missing_codes"] == 0
+    print(f"[verdict] {'PASS qfq覆盖全部fund_daily码 (复权正确性见单测)' if ok else 'REVIEW 有码缺失, 查 fund_daily/fund_adj 同步'}")
     return 0 if ok else 2
 
 
