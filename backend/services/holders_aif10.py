@@ -174,6 +174,8 @@ def _clean(raw: list[dict], *, start_period: str) -> list[dict]:
             "notice_date": upd,
             "effective_date": None,
             "page_update_date": upd,
+            # PIT 可用日锚: 披露日(UPDATE_DATE)即可用日 → event_engine 据此算 available date+1
+            "availability_source": "page_update_date" if upd else "fetched_at_observed",
             "source": SOURCE,
             "source_tier": SOURCE_TIER,
             "raw_hash": None,
@@ -196,6 +198,8 @@ def _derive_exits(clean_rows: list[dict]) -> list[dict]:
     for i in range(1, len(periods)):
         cur, prev = periods[i], periods[i - 1]
         cur_names = set(by_period[cur].keys())
+        # 退出在本期(cur)被获知 → 可用日=本期披露日 (任一本期在榜行的 page_update_date)
+        cur_upd = next(iter(by_period[cur].values())).get("page_update_date")
         rank = 0
         for name, prev_row in by_period[prev].items():
             if name in cur_names:
@@ -210,6 +214,9 @@ def _derive_exits(clean_rows: list[dict]) -> list[dict]:
                 "change_shares_approx": -(prev_row.get("shares_approx") or 0),
                 "hold_change": "退出",
                 "hold_change_num": float(-(prev_row.get("shares_approx") or 0)),
+                "notice_date": cur_upd,
+                "page_update_date": cur_upd,
+                "availability_source": "page_update_date" if cur_upd else "fetched_at_observed",
                 "fetched_at": fetched_at,
                 "created_at": fetched_at,
             })
@@ -227,8 +234,20 @@ def build_rows(client, symbol: str, *, start_period: str = DEFAULT_START_PERIOD)
 
 
 # ── ④ 存储 store ─────────────────────────────────────────────────────
-def _tuple(row: dict) -> tuple:
-    return tuple(row.get(k) for k in _COL_KEYS)
+_AVAIL_COL_CACHE: dict = {}
+
+
+def _has_availability_col(conn) -> bool:
+    """availability_source 列经迁移加入 (非 schema_core 基表 CREATE), 条件写匹配 tdxhub writer."""
+    if "v" not in _AVAIL_COL_CACHE:
+        try:
+            cols = {r[0] for r in conn.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name='fact_top10_holder_period'").fetchall()}
+            _AVAIL_COL_CACHE["v"] = "availability_source" in cols
+        except Exception:  # noqa: BLE001
+            _AVAIL_COL_CACHE["v"] = False
+    return _AVAIL_COL_CACHE["v"]
 
 
 def _write(conn, rows: list[dict]) -> int:
@@ -241,9 +260,14 @@ def _write(conn, rows: list[dict]) -> int:
         "DELETE FROM fact_top10_holder_period WHERE stock_code=? AND source=?",
         (stock, SOURCE),
     )
-    placeholders = ", ".join("?" for _ in _COL_KEYS)
-    insert_sql = f"INSERT INTO fact_top10_holder_period({HOLDER_COLUMNS}) VALUES ({placeholders})"
-    conn.executemany(insert_sql, [_tuple(r) for r in rows])
+    keys = list(_COL_KEYS)
+    cols = HOLDER_COLUMNS
+    if _has_availability_col(conn):   # PIT 可用日锚, event_engine 据此算 available date
+        keys.append("availability_source")
+        cols = f"{HOLDER_COLUMNS}, availability_source"
+    placeholders = ", ".join("?" for _ in keys)
+    insert_sql = f"INSERT INTO fact_top10_holder_period({cols}) VALUES ({placeholders})"
+    conn.executemany(insert_sql, [tuple(r.get(k) for k in keys) for r in rows])
     return len(rows)
 
 

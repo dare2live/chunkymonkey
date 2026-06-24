@@ -57,6 +57,9 @@ def test_clean_maps_fields_and_change():
     assert by_name["紫金矿业"]["holder_set"] == "free"
     assert by_name["紫金矿业"]["source"] == "miaoxiang"
     assert by_name["紫金矿业"]["report_date"] == "20260608"
+    # PIT 可用日锚: 披露日存在 → availability_source='page_update_date' (event_engine 据此算可用日)
+    assert by_name["紫金矿业"]["availability_source"] == "page_update_date"
+    assert by_name["紫金矿业"]["page_update_date"] == "20260613"
 
 
 def test_clean_filters_before_kline_start():
