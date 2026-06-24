@@ -234,6 +234,11 @@ case "$cmd" in
   data-status)
     PYTHONPATH=backend python backend/scripts/data_migration_status.py "$@"
     ;;
+  pipeline)
+    # §8 阶段独立化: 单跑一个阶段 (acquire|clean|process|store), 不连带全链。
+    # 全链编排仍用 scripts/daily_update.sh (python -m services.pipeline.run)。
+    PYTHONPATH=backend python -m services.pipeline.stage_runner "$@"
+    ;;
   *)
     echo "ERROR: unknown chunkyctl command: $cmd" >&2
     usage >&2

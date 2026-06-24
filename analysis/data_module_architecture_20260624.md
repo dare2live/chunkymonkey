@@ -110,7 +110,7 @@ variables:
 
 ### 8.1 每阶段 = 独立模块四件套
 每 stage (acquire/clean/process, 及 serve) 拥有:
-1. **独立触发**: 后端命令 (`chunkyctl pipeline acquire|clean|process|store`, 单跑不连带) + 前端独立按钮。daily_update 退化为"按门顺序链跑全部"的便捷编排, 非唯一入口。
+1. **独立触发** [2026-06-25 后端 DONE]: 后端命令 (`chunkyctl pipeline acquire|clean|process|store`, 单跑不连带) + 前端独立按钮。daily_update 退化为"按门顺序链跑全部"的便捷编排, 非唯一入口。**已实现**: `backend/services/pipeline/stage_runner.py` (run_stage 复用 run.py 同款 4 阶段函数+PipelineContext, degraded→exit1) + `scripts/chunkyctl pipeline` case (→ `python -m services.pipeline.stage_runner`); 单测 test_pipeline_stage_runner.py 4 绿。前端独立按钮属切片 c。
 2. **自带验收门 (用户要的"自己模块检查准确性+完整性")**: 阶段跑完跑**自己输出**的验收 — **完整性**(覆盖 vs 交易日历/universe, 无静默截断/0行) + **准确性**(schema/grain/PIT锚齐, 值域合理)。把现 data_quality 单体后置检查**拆成每阶段前置门** (M1 owns raw门 / M2 owns clean门 / M3 owns feature门)。
 3. **"ready" 信号 + 下游门控**: 验收 pass → 写 ready → 解锁下游 (前端下游按钮 enabled / 后端下游命令 refuse-if-upstream-not-pass)。= "检查通过→提示可以开始计算→点击计算"。
 4. **状态机**: `pipeline_stage_status` 表 (stage / run_at / status∈{not_run/running/done_unchecked/check_pass/check_fail/stale_upstream_changed} / gate_evidence)。上游重跑→下游标 stale 须重验。

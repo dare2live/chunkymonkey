@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-24 22:17
+> Snapshot: 2026-06-25 00:13
 
 ## 1. 入口面
 
@@ -18,6 +18,7 @@
 | `jobs` | provider-neutral experiment job contract / plan. |
 | `map` | regenerate FEATURE_MAP.md machine-derived feature map; --check = drift gate only. |
 | `data-status` |  |
+| `pipeline` |  |
 
 ### launchd 定时任务
 
@@ -287,7 +288,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,897 | calls 边 62,745 | imports 边 6,660 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 8,927 | calls 边 62,766 | imports 边 6,679 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -343,7 +344,7 @@
 
 ## 5. 概览
 
-- chunkyctl 子命令 8 | launchd 任务 1 | router 12 (端点 56)
+- chunkyctl 子命令 9 | launchd 任务 1 | router 12 (端点 56)
 - sync_registry 数据域 41
 - 产表 154 (多 writer 56)
 
