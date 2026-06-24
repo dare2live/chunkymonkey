@@ -631,11 +631,18 @@ domains:
     source: tushare      # 实弹核证 (2026-06-22): cols ts_code/ann_date/end_date/holder_name/hold_amount/hold_ratio/hold_change/holder_type; 600519 全拉660行/68期/10per期 无截断
     api: top10_floatholders
     target_table: raw_tushare_top10_floatholders
-    universe_filter: true            # 写入门按前缀排北交所8x/三板4x (注: 仅前缀, 不排ST)
-    include_st: true                 # 2026-06-23 纳活跃ST股 (holder=参考/展示数据, dossier展示任意股含ST; 否则删tdx旧源丢220活跃ST股holder, 见 analysis/非tushare源_双轨_holders_20260623.md)
-    grain: [ts_code, end_date, holder_name]   # 10持有人/期 (period 过滤间歇空, 走 by_ts_code 全拉)
-    batch_mode: by_ts_code
-    increment_mode: by_report_period   # 2026-06-23 修谄媚死: 日常 --all-due 按最新应披露季报期跳已最新股, 只抓缺新期股 (=十大股东从上一公告日扫增量)
+    universe_filter: true            # 写入门按前缀排北交所8x/三板4x (仅前缀不排ST → by_ann_date抓全市场含ST, include_st 概念已不需要)
+    grain: [ts_code, end_date, holder_name]   # 同(股,期)10持有人
+    batch_mode: by_ann_date          # 2026-06-23 改 (替错的by_report_period): by_ann_date 按公告日抓全市场, tushare 支持。watermark=MAX(ann_date) 前向增量。
+    # 2026-06-24 实测限界 (诚实记): tushare top10_floatholders = 财报季驱动 only。全市场探针 ann_date 5/9~6/20 全 0 行, 最新停在 4/30 (Q1季截止) 报告期20260331。
+    # 即: 季报/年报披露时 (4/30/8/31/10/31/次年4/30) 成批进数据, 两季之间 tushare 不收平时的权益变动快照 (东财收, tushare不收 → tushare 比东财最多滞后 ~4个月)。
+    # 反例: 龙净环保 600388 东财已到报告期 6/8 (平时权益变动), tushare 仍停 3/31 (Q1, 公告4/22), 要等 8月底半年报才更新。
+    # 2026-06-24 决策更新 (用户拍板): holder 主源改 = 东方财富妙想 aif10 (services/holders_aif10.py, pipeline acquire step), 因 aif10 有季中ad-hoc期+史深+全市场。
+    # 本 tushare top10 域 = 已被 aif10 取代, 待 retire 步处置 (与 tdxhub holder 一并退役); by_ann_date 增量保持正确直到处置。详见 analysis/miaoxiang_aif10_source_decision_20260624.md。
+    date_param: ann_date
+    page_limit: 6000                 # 峰值日(年报+Q1截止4/30)>6000行, _fetch_paged offset分页 (实测有第二页)
+    allow_empty_batch: true          # 非披露日/周末公告日 0 行合法 (主动节流避throttle致假空, mythos§8); 增量watermark=MAX(ann_date)前向
+    freshness_date_column: ann_date  # watermark 派生自 MAX(ann_date), 增量从此前向抓
     pit_anchor: "ann_date 公告日 (季报披露滞后; end_date 报告期 != 可用日, JOIN 必用 ann_date)"
     available_after: "t+1"
     data_start: "20190101"

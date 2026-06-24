@@ -616,6 +616,19 @@ def _record_outcome(spec: dict[str, Any], *, ok: bool, last_date: str | None,
         conn.close()
 
 
+def _calendar_days(start: str, end: str) -> list[str]:
+    """全日历日列表 (YYYYMMDD, 含周末) [start, end]。用于 by_ann_date — 公告日可落任意日 (含周末, 实测18%),
+    不能用交易日历过滤 (会漏周末公告)。增量 watermark→today 仅几日, 空日 fetch 返0行廉价。"""
+    import datetime as _dt
+    s = _dt.date(int(start[:4]), int(start[4:6]), int(start[6:8]))
+    e = _dt.date(int(end[:4]), int(end[4:6]), int(end[6:8]))
+    out, d = [], s
+    while d <= e:
+        out.append(d.strftime("%Y%m%d"))
+        d += _dt.timedelta(days=1)
+    return out
+
+
 def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
                end: str | None = None, resume: bool = False,
                registry: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -680,6 +693,26 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         # date_param: API 日期参数名 (默认 trade_date; dividend 用 ex_date / report_rc 用
         # report_date — 锚定列同名, raw 表镜像后 drain 也按它扫 gap)
         date_param = spec.get("date_param", "trade_date")
+        batches = [{date_param: d} for d in days]
+    elif spec["batch_mode"] == "by_ann_date":
+        # 按公告日抓全市场 (十大股东 etc): tushare 支持 ann_date 查全市场, 覆盖季报披露 + ad-hoc 非季末更新
+        # (实测 600388 报告期 20231011=非季末 ad-hoc; 全库 1810 非季末期/2902股)。watermark=最新已抓公告日,
+        # 增量抓 (watermark, today] 全日历日 (公告日含周末); 峰值日 6000 截断由 _fetch_paged page_limit 分页。
+        if backfill:
+            start_d = start or spec["data_start"]
+        else:
+            wm = _last_watermark_date(domain, spec["source"])
+            start_d = start or wm or spec["data_start"]
+        from services.utils import latest_completed_trade_date
+        conn0 = _smartmoney_conn()
+        try:
+            end_d = end or latest_completed_trade_date(conn0).replace("-", "")
+        finally:
+            conn0.close()
+        days = _calendar_days(start_d, end_d)
+        if not backfill and len(days) > 1 and days[0] == (start or _last_watermark_date(domain, spec["source"]) or ""):
+            days = days[1:]  # 增量跳 watermark 当天 (已写过)
+        date_param = spec.get("date_param", "ann_date")
         batches = [{date_param: d} for d in days]
     elif spec["batch_mode"] == "by_period":
         # 报告期循环 (财报快报 express_vip: 按报告期整批, ann_date/trade_date 不可批 — 实弹证伪)。
@@ -873,7 +906,7 @@ def main() -> int:
                 fallback_incremental = (
                     res.get("status") == "drain_inapplicable"
                     or (res.get("status") == "unsupported"
-                        and res.get("batch_mode") in ("by_date_range", "full_refresh"))
+                        and res.get("batch_mode") in ("by_date_range", "full_refresh", "by_ann_date"))
                     or ts_code_incremental
                 )
                 if fallback_incremental:
