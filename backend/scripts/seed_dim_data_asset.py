@@ -97,7 +97,7 @@ EXTRA_WRITER_BY_TABLE = {
 EXTRA_UPSTREAM_BY_TABLE = {
     # 多个 client 链回写, 在 registry 内不太适合归到单一 client
     "raw_tdx_f10_holder_research": ("tdxhub.holders", 1),
-    "fact_top10_holder_period":     ("tdxhub.holders (via HolderResolver tier 1-2)", 1),
+    "fact_top10_holder_period":     ("东财妙想 aif10 (services/holders_aif10, source=miaoxiang)", 1),
     "fact_controlling_shareholder": ("tdxhub.holders", 1),
     "fact_shareholder_plan":        ("tdxhub.holders", 1),
     "fact_shareholder_trade":       ("tdxhub.holders", 1),
@@ -476,10 +476,10 @@ EXTRA_DEPRECATED_ASSET_BY_TABLE = {
         "deprecated_reason": "aif10 源迁移 tushare", "replacement_table": "raw_tushare_stk_holdernumber", "quality_gate_level": "monitor_only"},
     "raw_aif10_forecast_consensus": {"purpose": "aif10 一致预期 (stale)", "deprecation_status": "deprecated",
         "deprecated_reason": "aif10 源迁移; 业绩预告切 tushare forecast (2026-06-22 接入)", "replacement_table": "raw_tushare_forecast", "quality_gate_level": "monitor_only"},
-    "fact_top10_holder_period": {"purpose": "tdx F10 十大流通股东 (切 tushare 后降备援)", "deprecation_status": "deprecated",
-        "deprecated_reason": "2026-06-22 机构切 tushare top10_floatholders 主源, tdx 降备援 (fallback 代码独立)", "replacement_table": "raw_tushare_top10_floatholders", "quality_gate_level": "monitor_only"},
-    "raw_tdx_f10_holder_research": {"purpose": "tdx F10 股东研究 (切 tushare 后降备援)", "deprecation_status": "deprecated",
-        "deprecated_reason": "机构切 tushare, tdx 降备援", "replacement_table": "raw_tushare_top10_floatholders", "quality_gate_level": "monitor_only"},
+    # fact_top10_holder_period 不在此 (2026-06-24 它是 LIVE 十大流通股东表, 主源已切东财妙想 aif10/source=miaoxiang;
+    # 旧 2026-06-22 "切 tushare top10 降备援" 计划已被 aif10 决策取代, 此表非废弃, active 登记见上 EXTRA_UPSTREAM)
+    "raw_tdx_f10_holder_research": {"purpose": "tdx F10 股东研究原文 (退役中)", "deprecation_status": "deprecated",
+        "deprecated_reason": "2026-06-24 十大流通股东主源切东财妙想 aif10, tdx_f10 fact 行已物删; 本 raw 表暂留作恢复网, 物理退役 pending (updater 路由解耦)", "replacement_table": "fact_top10_holder_period", "quality_gate_level": "monitor_only"},
     "dim_capital_behavior_latest": {"purpose": "资本行为 (akshare 分红/回购/解禁)", "deprecation_status": "deprecated",
         "deprecated_reason": "akshare 源退役, 分红/回购/解禁切 tushare", "replacement_table": "raw_tushare_dividend", "quality_gate_level": "monitor_only"},
     "raw_profit_forecast_snapshot_daily": {"purpose": "盈利预测快照 (stale)", "deprecation_status": "deprecated",
