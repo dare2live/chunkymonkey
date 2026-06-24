@@ -102,3 +102,47 @@ variables:
 - 补门: `.moth/` 加 variable-single-compute-point/lineage-complete/lineage-edge-typed/compute-state-declared/domain-coverage
 - 现成复用: `data_access/spec.py` EntitySpec.compute_fn (已埋三态种子) · 61 血缘种子
 - 不碰: 宪法 §8.1/§11 (档A PROCEED/档B BLOCK)
+
+## 8. 阶段独立化 + 门控 + 前端反映 (用户 2026-06-24 升级: 从根本解耦)
+
+> 用户原话: "数据获取/清洗/加工都要独立各管各的, 前端按钮独立; 获取后原始数据在自己模块检查准确性+完整性, 检查通过提示可以开始计算了, 然后前端点击计算; 后端这么设计并体现前端, 从根本解耦明确边界易增删改管理"。
+> = M1/M2/M3 从"daily_update 里顺序跑的函数"升级为**独立可触发 + 自带验收门 + 状态机驱动前端**的 bounded 模块。**修正 §5 早先"砍 DAG 化"**: 用户显式需求=真实触发 (非 premature, architect rule6 撞墙=grow organ), 但只做**阶段状态机**不做通用 DAG 引擎 (奥卡姆)。
+
+### 8.1 每阶段 = 独立模块四件套
+每 stage (acquire/clean/process, 及 serve) 拥有:
+1. **独立触发**: 后端命令 (`chunkyctl pipeline acquire|clean|process|store`, 单跑不连带) + 前端独立按钮。daily_update 退化为"按门顺序链跑全部"的便捷编排, 非唯一入口。
+2. **自带验收门 (用户要的"自己模块检查准确性+完整性")**: 阶段跑完跑**自己输出**的验收 — **完整性**(覆盖 vs 交易日历/universe, 无静默截断/0行) + **准确性**(schema/grain/PIT锚齐, 值域合理)。把现 data_quality 单体后置检查**拆成每阶段前置门** (M1 owns raw门 / M2 owns clean门 / M3 owns feature门)。
+3. **"ready" 信号 + 下游门控**: 验收 pass → 写 ready → 解锁下游 (前端下游按钮 enabled / 后端下游命令 refuse-if-upstream-not-pass)。= "检查通过→提示可以开始计算→点击计算"。
+4. **状态机**: `pipeline_stage_status` 表 (stage / run_at / status∈{not_run/running/done_unchecked/check_pass/check_fail/stale_upstream_changed} / gate_evidence)。上游重跑→下游标 stale 须重验。
+
+### 8.2 前端反映 (M6/控制面)
+阶段控制面板: 每 stage 一张卡 = [运行按钮 enabled iff 上游 pass] + [验收门结果 (完整性/准确性 具体数字)] + [ready→解锁下游提示]。这块 UI 就是 M5 路由中枢/总指挥的操作面 (中枢知每阶段状态+门结果)。
+
+### 8.3 奥卡姆边界
+stages 近线性固定序 (acquire→clean→process→serve), **每阶段状态 + 上游pass门**足够, 不上通用 DAG/拓扑引擎; 真出现复杂分叉依赖再升。M7 ORCHESTRATE 从"固定顺序"→"阶段状态机+门链"(仍薄)。
+
+## 9. DB 文件按模块/写锁域分 — 评估 (用户问)
+
+> 评估结论: **应该, 但精确原则 = "1 文件 = 1 写锁域", 通常对齐模块; 本轮最高价值改动 = 把读多写少 reference 从 smartmoney 大杂烩拆出 (直接根治本轮 contention)。**
+
+### 9.1 现状实测 (文件层)
+| 文件 | 大小 | 内容 | 对齐? |
+|---|---|---|---|
+| tushare_raw | 7.5G | raw_tushare_* vendor 镜像 | ✓ M1 干净 |
+| market | 1.8G | K线/复权 | ~ M2 |
+| feature_store | 1.7G | L2 特征 panel | ✓ M3 干净 |
+| **smartmoney** | 2.8G | **holders/qfii/org_holding facts(写重) + dim/universe/ST(读多写少 reference) + 其它 facts** | ✗ **混多模块** |
+| etf / experiment_store | 106M/268K | ETF / verdicts | niche |
+
+### 9.2 第一性原理 + 建议
+分文件真正用途 = **隔离写锁** (DuckDB 单写锁/文件)。raw/market/feature 已按 stage(=模块) 干净分。**smartmoney 把读多写少 reference 和写重 facts 混一文件 → 本轮户数回填读 universe 撞 seed 写 smartmoney 锁崩 = 实证根因**。
+**最高价值即时改动 = 拆 reference 出 smartmoney**:
+- 新 `reference.duckdb` (读多写少): dim_active / universe / 交易日历 / ST / security_master。所有人只读 ATTACH, 与 facts 写锁彻底解耦 → 根治 contention。
+- smartmoney 留写重 facts, 仅当真并发写再细分 `facts_<域>`。其余维持。
+**精确原则 (对抗性)**: 分区驱动 = **写锁竞争/访问模式** 非"模块纯洁性"。模块不并发写同库可共享文件; 真正必拆 = **读多写少 reference vs 写重 facts** (本轮坑) + **不同 vendor raw** (已分)。
+
+### 9.3 对抗 flag (成本/风险)
+1. 跨库 JOIN: 多 ATTACH, 但 M4 SERVE 已抽象 (entity 知在哪库); reference 小且只读成本低。
+2. 迁移 (mythos §12): 挪表跨文件 = COPY FROM DATABASE **丢约束/索引** → 必 EXPORT/IMPORT + 五件套验收 (行数+抽值+约束数+索引数+upsert冒烟)。一次性有界。
+3. 过度分区 (奥卡姆): 别一表一库, 按写锁域分, 最小高价值 = reference 拆出。
+4. 经 `database_manifest` (已是 DB 分区 config 真相源) 改 alias→path + 迁表 + repoint, 不 hardcode。
