@@ -62,11 +62,18 @@
 
 ## Active Priority Board
 
-> **[2026-06-24 数据模块清理主线 — 压缩防丢; 详 owner=`analysis/data_module_toplevel_design_20260622.md` §1.6 现状更新 + memory `feedback-reread-master-plan-after-compaction`]**
-> 倒推方案 = 北极星赚钱 → 4 地基不变量+编排+删源 = **档A (现在做)**; **档B (因子全量/cube/展示产品化) BLOCK 直到含成本可交易 edge confirmed**。
-> **本 session 已完成 (commit 509acc11~759f2b8a)**: ① holder 主源切**东财妙想 aif10** (§4.3 第一例外, tushare top10 季中滞后~4月; 99.6%覆盖+tdx_f10物删单源+退出行derive) ② 旧 updater 22 文件物删 + 孤儿 tdx F10 client 退役 (daily 走干净4段pipeline; 前端更新新路径=ops_manual_run→daily_update) ③ lhb/估值/同行/QFII sync 迁入 pipeline acquire ④ aif10 valuation/peer PK bug 修复.
-> **[关键-BLOCKER] 唯一卡 alpha 的地基缺口 = Gap1** (`build_segment_panel.py`+`build_signal_panel.py` 2 builder 绕 SERVE 直读 raw 算特征 = leakage 风险; moth `serve-consumer-bypass-zero`=2; task#55)。**收 Gap1 → 地基够硬 → 转 edge 确认 (档B 前置) = 真正通向赚钱。**
-> **immediate next (已调度 wakeup)**: 增减持 stk_holdertrade backfill 完 → tdx 产品(户数/增减持)重指向 data_quality/registry→tushare + 物删 tdx 产品表 → daily_update 真跑验证。
+> **[2026-06-24 架构蓝图驱动: 数据模块顶层重构 — 用户授权架构师排程; owner=`analysis/data_module_architecture_20260624.md`]**
+> 用户决: **数据底座必须做好 + 模块化功能分区, 然后再搭建其他 (档B alpha/strategy)**。架构 = M1-M8 子模块 (按对血缘图一类操作切 owner) + **字典/总指挥 (M5 血缘路由中枢: 声明先行→派生对账→不可绕过闸 = codegraph+moth 融合到数据)** + 变量加工三态 (derived/vendor_precomputed/passthrough=未加工) + 阶段独立化门控前端 (§8) + DB 按写锁域分 (§9)。
+> **实施顺序 (架构师定, 结合实际优化调整)**:
+> - **阶段一 数据底座扎实**: [DONE] daily真跑验证(新holder/估值/qfii/org_holding sync全执行✓) + tdx 3表迁移归档(户数→tushare 284951行/2019+ deprecated; 增减持+关联→archived 保留唯一数据) · **[NEXT] §9 `reference.duckdb` 拆库** (根治本轮户数回填读universe撞smartmoney写锁崩; dim/universe/ST/calendar 只读ATTACH与facts写锁解耦; EXPORT/IMPORT防丢约束) · 2张额外冻结tdx表(fund_holding/shareholder_trade_tdx_b)triage
+> - **阶段二 模块化功能分区 (用户核心)**: §8 阶段独立化 — M1/M2/M3 独立命令(`chunkyctl pipeline acquire|clean|process`)+自带验收门(完整性+准确性)+`pipeline_stage_status`状态机; daily退化为门链编排非唯一入口; + T1 变量加工登记(feature_registry三态+`services/factors/`纯函数层+透传标untransformed)
+> - **阶段三 字典+总指挥 (M5 血缘路由中枢)**: T2 血缘 acquire+consume(缝合sync_registry+data_access+codegraph→`chunkyctl lineage impact/provenance/dead`+drift门)=删/迁前自动fan-in替代手grep(根治本session判错语义) · §8前端阶段控制面 · T3 transform/display字段级血缘 · T4 domain标签+闭环
+> - **阶段四 转场gate**: T0 Gap1 leakage收口(build_segment/signal_panel绕SERVE→0, task#55; 建档B alpha前堵漏)
+> - **→ 然后 其他 (档B, 地基硬+leak堵后才上)**: 主升浪猎手D因子矩阵(#46-50) / dossier残 / 策略cube
+> **建时已定(架构师授权)**: 血缘存储=JSON起(scale再→DuckDB) · 字段级深度=SERVE/特征层字段级+其余表级 · 前端图=阶段四后 · 刷新=commit drift门+手动(非daily自动) · 户数=archived保留(物删可逆性低暂缓, 要DB-lean再删)。
+> **诚实flag (真金白银)**: T0 Gap1 是 alpha 钱路解锁; 用户选先做地基/模块化(平台做对再建上层)=合理战略, 但延后 alpha。最危险=血缘门假绿→图假真(M5门须红绿单测非裸grep)。
+
+> **[2026-06-24 降序]** 以下 alpha/dossier (P1 主升浪猎手 / 股票档案残) = 用户所说"**其他**", **架构地基阶段一~四 done 后才推进** (用户: 数据底座做好+模块化再搭建其他)。dossier 三层已 DONE 故只剩残项; 主升浪 D 因子矩阵押后到地基硬+Gap1 leak 堵。下表保留为 backlog, 非当前主攻。
 
 | P | Workstream | State | Next action |
 |---|---|---|---|
