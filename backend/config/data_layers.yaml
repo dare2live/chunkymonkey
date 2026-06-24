@@ -50,6 +50,7 @@ tables:
   raw_aif10_forecast_consensus: L0_source
   raw_aif10_peer_valuation: L0_source
   raw_aif10_valuation_quantile: L0_source
+  raw_org_holding_aif10: L0_source  # 2026-06-24 补tag (aif10机构持仓明细raw镜像, 前会话漏登致data-layer-integrity FAIL)
   raw_capital_allotment_detail: L0_source
   raw_capital_dividend_detail: L0_source
   raw_capital_repurchase: L0_source
