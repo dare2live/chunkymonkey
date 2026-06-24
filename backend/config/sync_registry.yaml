@@ -400,6 +400,42 @@ domains:
     min_rows_per_batch: 3000  # 2020 年截面 ~3800 只, 同 daily 口径   # 实测 20260610 = 5512 行
     allow_empty_batch: false
 
+  # ── ETF 场内 K线 (M2: mootdx/tx → tushare; 2026-06-25 Stage A 注册, 1-ETF实弹GO) ──
+  # fund_daily(未复权场内基金OHLCV) + fund_adj(复权因子) = ETF qfq 二件套 (同 A股 daily+adj_factor;
+  # qfq=fund_daily.close×adj/latest_adj, Stage C mirror build_price_kline_qfq_tushare)。
+  # 实弹证 (analysis/m2_etf_tushare_migration_20260625.md): 510300 fund_div除息日(0.069/0.088/0.123)
+  # fund_adj精确跳变 → tushare 正确调分红总收益; 旧 mootdx etf_price_kline 没调分红 = 本迁移顺修该bug。
+  # Stage B 回填 / C 建etf qfq+单测 / D repoint 3消费方(etf_engine/snapshot/mining) / E 物删mootdx链(escalate) 待执行。
+  fund_daily:
+    source: tushare
+    api: fund_daily
+    target_table: raw_tushare_fund_daily
+    universe_filter: true
+    universe_filter_prefixes: ["15", "51", "56", "58"]   # 场内ETF (非A股个股60/00/30/68; 实测现etf_price_kline 1622码全在此4前缀)
+    grain: [ts_code, trade_date]
+    batch_mode: by_trade_date     # 实测 trade_date 单日返全场内基金~1940行<2000单页上限; by_ts_code 单只全史 fund_adj 截断2000(top10_floatholders坑) 故必 by_trade_date
+    pit_anchor: "trade_date; 收盘后入库 -> 18:00; 未复权场内基金价, qfq 用 fund_adj 派生 (同 A股)"
+    available_after: "18:00"
+    data_start: "20190102"   # 对齐 A股 daily 窗 (现 mootdx 仅2023+, 本回填扩到2019+; gap drain 可向前扩)
+    freshness_sla_trading_days: 1
+    min_rows_per_batch: 1200   # 场内ETF ~1406 (实测20260413 fund_daily场内1406); 单日全基金~1940距2000上限近, 超限截断风险年检
+    allow_empty_batch: false
+
+  fund_adj:
+    source: tushare
+    api: fund_adj
+    target_table: raw_tushare_fund_adj
+    universe_filter: true
+    universe_filter_prefixes: ["15", "51", "56", "58"]
+    grain: [ts_code, trade_date]
+    batch_mode: by_trade_date     # 必 by_trade_date: by_ts_code 单只全史截断2000(实测510300返2000=cap); 单日全基金<2000安全
+    pit_anchor: "trade_date; 复权因子除权日即知 (PIT 干净, 同 A股 adj_factor)"
+    available_after: "18:00"
+    data_start: "20190102"
+    freshness_sla_trading_days: 1
+    min_rows_per_batch: 1200
+    allow_empty_batch: false
+
   # ── 筹码族 (用户点名: 筹码胜率 alpha; 2026-06-12 实弹核证) ──
   cyq_perf:
     source: tushare

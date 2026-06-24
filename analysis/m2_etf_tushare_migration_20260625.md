@@ -51,4 +51,5 @@ task#35 写 "ETF → tushare + 删 akshare price_kline"。**实测 ETF K线源�
 - min_rows_per_batch ~1200 (场内ETF ~1406, 留余 + 防截断); data_start 待定(tushare ETF 史 510300 到 20120528, 全市场起点核)。
 
 ## NEXT (焦点执行)
-**Stage A**: (a) 加 ETF universe filter 机制 (场内前缀 51/15/56/58, ≠A股filter) (b) 注册 fund_daily+fund_adj 域 (by_trade_date/ETF filter/min_rows~1200) → **B 回填**(长任务可后台, by_trade_date 按日) → **C 建 etf qfq**(fund_daily×adj mirror A股 + 复权口径单测: adj 跳变 vs fund_div) → **D repoint 3 消费方 + 验证**(vs fund_div 非 vs mootdx) → **E 物删 mootdx/tx 链 = escalate**。premise 纠正(mootdx/tx 非 akshare)+ mootdx 分红 bug 已通知用户; M3/M4 任务措辞同样需核实际源。
+**Stage A [DONE 2026-06-25]**: (a) sync_runner 加 config-driven `universe_filter_prefixes` 覆盖 (默认A股60/00/30/68; ETF域覆盖15/51/56/58; 不污染services.universe个股真相源) (b) sync_registry 注册 fund_daily+fund_adj (by_trade_date/universe_filter_prefixes=[15,51,56,58]/min_rows 1200/data_start 20190102)。验证: 20 sync_runner单测绿(含2新: ETF前缀覆盖只留15/51/56/58 + 默认A股不变回归保护); registry解析2域OK; py_compile+YAML合法。
+**→ B 回填**(长任务可后台, by_trade_date 按日; raw_tushare_fund_daily+raw_tushare_fund_adj 2019+; 对交易日历核覆盖) → **C 建 etf qfq**(fund_daily×adj mirror A股 + 复权口径单测: adj 跳变 vs fund_div) → **D repoint 3 消费方 + 验证**(vs fund_div 非 vs mootdx) → **E 物删 mootdx/tx 链 = escalate**。premise 纠正(mootdx/tx 非 akshare)+ mootdx 分红 bug 已通知用户; M3/M4 任务措辞同样需核实际源。

@@ -511,12 +511,15 @@ def _write_batch(conn, spec: dict[str, Any], rows: list[dict[str, Any]]) -> int:
     # 时防排除股回潮 (与一次性 purge 配套, 让清理生效)。
     if spec.get("universe_filter"):
         from services.universe import ACTIVE_A_SHARE_PREFIXES
+        # 默认 A股个股白名单(60/00/30/68); 域可 universe_filter_prefixes 覆盖 (非个股 universe, 如 ETF
+        # =15/51/56/58 场内; config-driven 不 hardcode; ETF 是独立 universe 不进 services.universe 个股真相源)。
+        prefixes = set(spec.get("universe_filter_prefixes") or ACTIVE_A_SHARE_PREFIXES)
         ucol = spec.get("universe_filter_col") or grain[0]
         if ucol in df.columns:
             _n0 = len(df)
-            df = df[df[ucol].astype(str).str[:2].isin(set(ACTIVE_A_SHARE_PREFIXES))]
+            df = df[df[ucol].astype(str).str[:2].isin(prefixes)]
             if len(df) < _n0:
-                log.info("[universe-filter] %s 丢 %d 排除前缀行 (北交所/三板)", table, _n0 - len(df))
+                log.info("[universe-filter] %s 丢 %d 非白名单前缀行 (keep prefixes=%s)", table, _n0 - len(df), sorted(prefixes))
             if df.empty:
                 return 0
 

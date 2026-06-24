@@ -51,6 +51,47 @@ def test_unregistered_domain_rejected():
         sr._domain_spec(sr.load_registry(), "definitely_not_registered")
 
 
+def test_write_batch_universe_filter_etf_prefix_override():
+    """M2: universe_filter_prefixes 覆盖默认A股白名单 → ETF域只留场内ETF前缀(15/51/56/58), 丢A股/LOF."""
+    from services.duck_adapter import connect
+
+    conn = connect(":memory:")
+    spec = sr._domain_spec(_registry(
+        target_table="raw_tushare_fund_daily_test",
+        universe_filter=True,
+        universe_filter_prefixes=["15", "51", "56", "58"],
+    ), "demo")
+    rows = [
+        {"ts_code": "510300.SH", "trade_date": "20260610", "close": 4.6},  # 场内ETF keep
+        {"ts_code": "159915.SZ", "trade_date": "20260610", "close": 2.0},  # 场内ETF keep
+        {"ts_code": "600000.SH", "trade_date": "20260610", "close": 9.0},  # A股 drop
+        {"ts_code": "160001.SZ", "trade_date": "20260610", "close": 1.0},  # LOF drop
+    ]
+    n = sr._write_batch(conn, spec, rows)
+    kept = {r[0] for r in conn.execute("SELECT ts_code FROM raw_tushare_fund_daily_test").fetchall()}
+    assert n == 2 and kept == {"510300.SH", "159915.SZ"}, f"ETF前缀覆盖失败: {kept}"
+    conn.close()
+
+
+def test_write_batch_universe_filter_default_a_share_unchanged():
+    """回归保护: 无 universe_filter_prefixes 覆盖 → 默认A股白名单(60/00/30/68)不变, ETF被丢."""
+    from services.duck_adapter import connect
+
+    conn = connect(":memory:")
+    spec = sr._domain_spec(_registry(
+        target_table="raw_tushare_ashare_test",
+        universe_filter=True,  # 无 prefixes 覆盖 = 默认 A股
+    ), "demo")
+    rows = [
+        {"ts_code": "600000.SH", "trade_date": "20260610", "close": 9.0},  # A股 keep
+        {"ts_code": "510300.SH", "trade_date": "20260610", "close": 4.6},  # ETF drop (默认A股filter)
+    ]
+    n = sr._write_batch(conn, spec, rows)
+    kept = {r[0] for r in conn.execute("SELECT ts_code FROM raw_tushare_ashare_test").fetchall()}
+    assert n == 1 and kept == {"600000.SH"}, f"默认A股filter回归: {kept}"
+    conn.close()
+
+
 def test_write_batch_merge_idempotent():
     """grain MERGE: 同批重跑不翻倍 (幂等回填契约)."""
     from services.duck_adapter import connect
