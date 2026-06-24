@@ -40,6 +40,9 @@ def run_acquire(ctx: PipelineContext) -> None:
     # Step 2j: QFII 季度持股 (外资维度; 2026-06-24 迁自旧 updater)
     ctx.step(_sync_qfii, degraded_msg="QFII sync 失败")
 
+    # Step 2j2: 机构持仓明细 aif10 (非公募机构分桶; 2026-06-24 aif10 例外扩展, 替退役 tdx F10 控股股东表)
+    ctx.step(_sync_org_holding, degraded_msg="org_holding aif10 sync 失败")
+
     # Step 2k: external_attention 快照 (累积 PIT 关注度/调研; 反例 14 天断流无人知)
     ctx.step(_sync_external_attention, degraded_msg="external_attention sync 失败")
 
@@ -136,6 +139,20 @@ def _sync_qfii() -> None:
     try:
         import json
         print(json.dumps(asyncio.run(sync_qfii_incremental(conn)), ensure_ascii=False, default=str))
+    finally:
+        conn.close()
+
+
+def _sync_org_holding() -> None:
+    """机构持仓明细 aif10 季度增量 (非公募机构分桶). 水位=最近足量披露季度末, 已有则跳过."""
+    import asyncio
+    import json
+    from services.duck_adapter import connect as duck_connect
+    from services.org_holding_aif10 import sync_org_holding_incremental
+    from .context import db_path
+    conn = duck_connect(db_path("smartmoney"))
+    try:
+        print(json.dumps(asyncio.run(sync_org_holding_incremental(conn)), ensure_ascii=False, default=str))
     finally:
         conn.close()
 
