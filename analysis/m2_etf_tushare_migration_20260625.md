@@ -35,5 +35,20 @@ task#35 写 "ETF → tushare + 删 akshare price_kline"。**实测 ETF K线源�
 3. **跨库**: etf_price_kline 在 etf.duckdb; raw_tushare_fund_daily 在 tushare_raw.duckdb → C 建 qfq 落哪库 + D 消费方跨库读 (mirror A股: qfq 落 market 或 etf, 消费方 ATTACH)。
 4. **覆盖扩展**: tushare 10年 vs mootdx 3年 → 迁移后 ETF 历史变长 (benefit, 但下游因子/回测窗口变 = 注意不可比段, 同行业taxonomy切源教训)。
 
+## 1-ETF 验证结果 (510300 全史, 2026-06-25 实弹) — GO, 且 M2 = 质量修复非仅整合
+
+**重大发现: tushare ETF qfq 正确, mootdx 有 ETF 分红未复权 bug**。
+- 建 qfq = fund_daily.close × fund_adj.adj_factor / latest_adj (mirror A股), 与 mootdx etf_price_kline 双轨**对收益** (rebase 常数在收益抵消, 同 build_price_kline_qfq_tushare 约定)。
+- 重叠 789 日 (2023-2026): max_ret_diff=0.025, **5 日 >1e-4**, 其余精确。
+- 5 差异日 worst 3 = **2024-01-18 / 2025-06-18 / 2026-01-19**: tushare ret≈0, mootdx ret≈-2.5%。
+- **铁证 (fund_div)**: 510300 除息日精确 = 20240118(div 0.069)/20250618(0.088)/20260119(0.123); fund_adj 在这 3 日精确跳变(+0.026/+0.027/+0.032)。
+- 定论: **tushare fund_daily×fund_adj 正确把 ETF 分红调成总收益(ex日 ret≈0); mootdx 没调(显原始除息跌)。tushare 更对** → M2 不只源整合, 是**修 mootdx ETF 分红未复权 bug** (当前 ETF 动量/因子在~年度分红日算错, 影响 etf_engine/mining 消费方)。
+- **验证口径修正**: 双轨 vs mootdx **不能期望 ≈0** (mootdx 才错); 正确验证 = tushare adj 跳变 vs fund_div 除息日+金额 (510300 已证)。
+
+**Stage A 实测确认 (by_trade_date + universe filter)**:
+- batch_mode = **by_trade_date** (实测 fund_daily/fund_adj trade_date=单日返全基金 ~1940/1960 行 < 2000 cap, 非截断; **by_ts_code 单只全史 fund_adj 截断到 2000** = top10_floatholders 坑, 故必 by_trade_date 同 A股 adj_factor)。
+- **universe_filter 坑**: 现 `universe_filter: true` = A股前缀白名单(60/00/30/68) → **会滤光所有 ETF(51/15/56/58)**! ETF 域**不能复用 A股 filter**, 须 ETF 专属前缀(51/15/56/58, 场内)— 新机制 (services.universe 加 ETF 前缀集 OR writer 层 ETF filter OR registry prefix config)。当日全基金返回含 16/50/52/18(LOF/分级等)需滤到场内 ETF。
+- min_rows_per_batch ~1200 (场内ETF ~1406, 留余 + 防截断); data_start 待定(tushare ETF 史 510300 到 20120528, 全市场起点核)。
+
 ## NEXT (焦点执行)
-Stage A (注册域, 可逆 config + 实弹核单页) → B 回填 (长任务, 可后台) → C qfq 建+单测 → D repoint+双轨 → E 物删 escalate。premise 纠正 (mootdx/tx 非 akshare) 已通知用户; M3/M4 任务定义可能同样需核 (task 措辞 vs 实际源)。
+**Stage A**: (a) 加 ETF universe filter 机制 (场内前缀 51/15/56/58, ≠A股filter) (b) 注册 fund_daily+fund_adj 域 (by_trade_date/ETF filter/min_rows~1200) → **B 回填**(长任务可后台, by_trade_date 按日) → **C 建 etf qfq**(fund_daily×adj mirror A股 + 复权口径单测: adj 跳变 vs fund_div) → **D repoint 3 消费方 + 验证**(vs fund_div 非 vs mootdx) → **E 物删 mootdx/tx 链 = escalate**。premise 纠正(mootdx/tx 非 akshare)+ mootdx 分红 bug 已通知用户; M3/M4 任务措辞同样需核实际源。
