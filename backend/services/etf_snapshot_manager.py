@@ -151,12 +151,14 @@ def _build_etf_source_status(conn, mkt_conn, *, computed_at: Optional[str] = Non
     if universe_state:
         universe_source_updated_at = universe_state["last_success_at"] or universe_state["last_attempt_at"]
 
+    # M2 Stage E: ETF K线源已迁 tushare (etf_price_kline_qfq_tushare), 退役 mootdx etf_sync_state price_kline。
+    # 逐码状态从 tushare 表派生 (全量 CTAS, source 恒 'tushare', 无逐码 sync 时间戳/error)。
     state_rows = mkt_conn.execute(
         """
-        SELECT code, source, min_date, max_date, row_count,
-               last_success_at, last_attempt_at, last_error
-        FROM etf_sync_state
-        WHERE dataset = 'price_kline' AND freq = 'daily' AND adjust = 'qfq'
+        SELECT code, MIN(date) AS min_date, MAX(date) AS max_date, COUNT(*) AS row_count
+        FROM etf_price_kline_qfq_tushare
+        WHERE freq = 'daily' AND adjust = 'qfq'
+        GROUP BY code
         """
     ).fetchall()
     filtered_states = [dict(row) for row in state_rows if row["code"] in etf_codes]
@@ -164,18 +166,9 @@ def _build_etf_source_status(conn, mkt_conn, *, computed_at: Optional[str] = Non
     with_data_codes = {row["code"] for row in with_data}
     missing_codes = sorted(etf_codes - with_data_codes)
 
-    source_breakdown: dict[str, int] = {}
-    latest_success_at = None
+    source_breakdown: dict[str, int] = {"tushare": len(with_data)} if with_data else {}
+    latest_success_at = None   # CTAS 全量重建无逐码 sync 时间戳; 新鲜度看 history_end (max date)
     latest_attempt_at = None
-    for row in with_data:
-        source = row.get("source") or "未知"
-        source_breakdown[source] = source_breakdown.get(source, 0) + 1
-        success_at = row.get("last_success_at")
-        attempt_at = row.get("last_attempt_at")
-        if success_at and (latest_success_at is None or success_at > latest_success_at):
-            latest_success_at = success_at
-        if attempt_at and (latest_attempt_at is None or attempt_at > latest_attempt_at):
-            latest_attempt_at = attempt_at
 
     coverage_2023_count = sum(
         1 for row in with_data

@@ -9,7 +9,7 @@ from conftest import duck_mem  # noqa: E402
 
 import services.akshare_client as akshare_client  # noqa: E402
 import services.etf_db as etf_db  # noqa: E402
-from services.akshare_client import fetch_etf_kline, fetch_etf_list, fetch_etf_list_with_source, test_kline_availability as check_kline_availability  # noqa: E402
+from services.akshare_client import fetch_etf_list, fetch_etf_list_with_source, test_kline_availability as check_kline_availability  # noqa: E402
 from services.etf_engine import sync_etf_universe  # noqa: E402
 from services.kline_source import aggregate_monthly_from_daily  # noqa: E402
 from services.etf_snapshot_manager import _build_etf_source_status  # noqa: E402
@@ -54,29 +54,6 @@ class KlineSourceFallbackTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(probe["effective_source"], "tx")
         self.assertIn("tx fallback", probe["detail"])
         self.assertIn("tdxhub", probe["detail"])
-
-    @patch("services.akshare_client._fetch_daily_akshare_fallbacks", new_callable=AsyncMock)
-    @patch("services.akshare_client._fetch_daily_tdxhub_with_diagnostics", new_callable=AsyncMock)
-    async def test_fetch_etf_kline_falls_back_when_tdxhub_unavailable(self, tdxhub_mock, fallback_mock):
-        tdxhub_mock.return_value = (
-            None,
-            None,
-            {
-                "ok": False,
-                "attempts": [{"server": "119.147.212.81:7709", "error_type": "timeout"}],
-                "summary": "tdxhub timeout (1服)",
-            },
-        )
-        fallback_mock.return_value = (
-            _kline_rows(),
-            "tx",
-            {"ok": True, "attempts": [{"source": "tx", "ok": True}]},
-        )
-
-        rows, source = await fetch_etf_kline("159695", "20260320", "20260410")
-
-        self.assertTrue(rows)
-        self.assertEqual(source, "tx")
 
     @patch("services.akshare_client._fetch_daily_akshare_fallbacks", new_callable=AsyncMock)
     async def test_fetch_daily_with_fallback_skips_tdxhub_when_circuit_is_open(self, fallback_mock):
@@ -207,9 +184,10 @@ class KlineSourceFallbackTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result_rows, rows)
         self.assertEqual(source, "tdxhub_1.1.1.1:7709")
 
-    @patch("services.akshare_client.fetch_etf_kline", new_callable=AsyncMock)
     @patch("services.akshare_client.fetch_etf_list_with_source", new_callable=AsyncMock)
-    async def test_sync_etf_universe_records_list_and_kline_sources(self, list_mock, kline_mock):
+    async def test_sync_etf_universe_records_list_and_status(self, list_mock):
+        # M2 Stage E: sync_etf_universe 只刷新资产池 (K线已迁 tushare, mootdx 取数链退役);
+        # 状态面板 source_breakdown 从 etf_price_kline_qfq_tushare 派生 (source 恒 tushare)。
         conn = duck_mem()
         etf_db._ensure_schema(conn)
         try:
@@ -217,25 +195,23 @@ class KlineSourceFallbackTests(unittest.IsolatedAsyncioTestCase):
                 [{"code": "159695", "name": "通信ETF", "market": "sz", "asset_type": "etf"}],
                 "tdxhub_1.1.1.1:7709",
             )
-            kline_mock.return_value = (_kline_rows(), "tx")
 
-            result = await sync_etf_universe(
-                conn,
-                conn,
-                sync_kline=True,
-                kline_start_date="20260401",
-            )
-            # M2 Stage D: _price_coverage_summary 已 repoint 到 tushare qfq 表 (消费方读它);
-            # fixture 补建该表 (代表 build_etf_kline_qfq_tushare 已跑) 使 coverage 不崩。
+            result = await sync_etf_universe(conn)
+            # fixture 建 tushare qfq 表 + 注 159695 一行 (代表 build_etf_kline_qfq_tushare 已跑)。
             conn.execute(
-                "CREATE TABLE etf_price_kline_qfq_tushare AS SELECT * FROM etf_price_kline"
+                """
+                CREATE TABLE etf_price_kline_qfq_tushare AS
+                SELECT '159695' AS code, '2026-04-01' AS date, 'daily' AS freq, 'qfq' AS adjust,
+                       1.0 AS open, 1.1 AS high, 0.9 AS low, 1.05 AS close,
+                       1000.0 AS volume, 1200.0 AS amount, 'tushare' AS source
+                """
             )
             source_status = _build_etf_source_status(conn, conn)
 
+            self.assertEqual(result["etf_count"], 1)
             self.assertEqual(result["list_source"], "tdxhub_1.1.1.1:7709")
-            self.assertEqual(result["kline_source_breakdown"], [{"source": "tx", "count": 1}])
             self.assertEqual(source_status["universe_source"], "tdxhub_1.1.1.1:7709")
-            self.assertEqual(source_status["source_breakdown"], [{"source": "tx", "count": 1}])
+            self.assertEqual(source_status["source_breakdown"], [{"source": "tushare", "count": 1}])
             self.assertEqual(source_status["kline_etf_count"], 1)
         finally:
             conn.close()

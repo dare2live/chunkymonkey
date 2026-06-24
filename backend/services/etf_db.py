@@ -47,27 +47,9 @@ def _ensure_schema(conn: DuckConn) -> None:
         CREATE INDEX IF NOT EXISTS idx_etf_asset_active
             ON etf_asset_universe(is_active, category);
 
-        CREATE TABLE IF NOT EXISTS etf_price_kline (
-            code        TEXT    NOT NULL,
-            date        TEXT    NOT NULL,
-            freq        TEXT    NOT NULL DEFAULT 'daily',
-            adjust      TEXT    NOT NULL DEFAULT 'qfq',
-            open        REAL,
-            high        REAL,
-            low         REAL,
-            close       REAL,
-            volume      REAL,
-            amount      REAL,
-            source      TEXT,
-            batch_id    TEXT,
-            ingested_at TEXT,
-            PRIMARY KEY (code, date, freq, adjust)
-        );
-        CREATE INDEX IF NOT EXISTS idx_epk_code_freq
-            ON etf_price_kline(code, freq);
-        CREATE INDEX IF NOT EXISTS idx_epk_date
-            ON etf_price_kline(date);
-
+        -- M2 Stage E (2026-06-25): etf_price_kline (mootdx/tx) DDL 已退役物删;
+        -- ETF K线主源 = tushare etf_price_kline_qfq_tushare (build_etf_kline_qfq_tushare.py)。
+        -- etf_sync_state 现仅承载 asset_universe dataset (ETF 资产池同步状态)。
         CREATE TABLE IF NOT EXISTS etf_sync_state (
             dataset         TEXT NOT NULL DEFAULT 'price_kline',
             code            TEXT NOT NULL,
@@ -130,60 +112,6 @@ def _ensure_schema(conn: DuckConn) -> None:
     conn.commit()
 
 
-def upsert_price_rows(conn: DuckConn, rows: list[dict], source: str,
-                      batch_id: str | None = None) -> int:
-    if not rows:
-        return 0
-    now = _now_iso()
-    conn.executemany(
-        "INSERT OR REPLACE INTO etf_price_kline "
-        "(code, date, freq, adjust, open, high, low, close, volume, amount, "
-        " source, batch_id, ingested_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        [
-            (
-                row["code"], row["date"], row.get("freq", "daily"), row.get("adjust", "qfq"),
-                row.get("open"), row.get("high"), row.get("low"), row.get("close"),
-                row.get("volume"), row.get("amount"), source, batch_id, now,
-            )
-            for row in rows
-        ],
-    )
-    conn.commit()
-    return len(rows)
-
-
-def update_sync_state(conn: DuckConn, code: str, freq: str, *,
-                      source: str | None = None,
-                      min_date: str | None = None,
-                      max_date: str | None = None,
-                      row_count: int | None = None,
-                      error: str | None = None) -> None:
-    now = _now_iso()
-    conn.execute(
-        "INSERT INTO etf_sync_state "
-        "(dataset, code, freq, adjust, source, min_date, max_date, "
-        " row_count, last_success_at, last_attempt_at, last_error) "
-        "VALUES ('price_kline',?,?,'qfq',?,?,?,?,?,?,?) "
-        "ON CONFLICT(dataset, code, freq, adjust) DO UPDATE SET "
-        " source=COALESCE(excluded.source, source), "
-        " min_date=COALESCE(excluded.min_date, min_date), "
-        " max_date=COALESCE(excluded.max_date, max_date), "
-        " row_count=COALESCE(excluded.row_count, row_count), "
-        " last_success_at=CASE WHEN excluded.last_error IS NULL "
-        "   THEN excluded.last_success_at ELSE last_success_at END, "
-        " last_attempt_at=excluded.last_attempt_at, "
-        " last_error=excluded.last_error",
-        (
-            code,
-            freq,
-            source,
-            min_date,
-            max_date,
-            row_count,
-            now if error is None else None,
-            now,
-            error,
-        ),
-    )
-    conn.commit()
+# M2 Stage E (2026-06-25): upsert_price_rows + update_sync_state 已退役物删 —
+# 它们只写 etf_price_kline (mootdx/tx, 已物删) + etf_sync_state price_kline 行 (已清);
+# ETF K线主源切 tushare etf_price_kline_qfq_tushare (build_etf_kline_qfq_tushare.py 全量 CTAS)。

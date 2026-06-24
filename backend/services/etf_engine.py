@@ -1,6 +1,5 @@
 import logging
-import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 import math
 from typing import List, Dict, Optional, Callable
 
@@ -17,8 +16,9 @@ from services.constants import (
 logger = logging.getLogger("cm-api")
 
 # ETF 引擎：独立模块，不依赖 scoring.py
-# 数据源：tdxhub（通达信）→ akshare_client.fetch_etf_list / fetch_etf_kline
-# 写入：etf_asset_universe + etf_price_kline（etf.duckdb）
+# ETF 列表源：tdxhub（通达信）→ akshare_client.fetch_etf_list (仅资产池)
+# ETF K线源 (M2 Stage E): tushare etf_price_kline_qfq_tushare (build_etf_kline_qfq_tushare.py)
+# 写入：etf_asset_universe（etf.duckdb）; K线读 tushare qfq 表 (动量计算)
 
 # 进度回调签名：fn(stage: str, current: int, total: int, message: str)
 ProgressCb = Optional[Callable[[str, int, int, str], None]]
@@ -211,22 +211,20 @@ def _rotation_eligible(row: Dict) -> bool:
     return True
 
 
-async def sync_etf_universe(etf_conn, etf_price_conn, sync_kline: bool = True,
-                            kline_days: int = 120,
-                            kline_start_date: Optional[str] = None,
-                            max_etfs: int = None,
+async def sync_etf_universe(etf_conn, max_etfs: int = None,
                             progress_cb: ProgressCb = None) -> Dict[str, int]:
     """
-    从 tdxhub 拉取 ETF 列表写入 etf_asset_universe，并可选地同步 K 线。
+    拉取 ETF 列表写入 etf_asset_universe (仅资产池, 不含 K线)。
+
+    M2 Stage E (2026-06-25): ETF K线已迁 tushare — build_etf_kline_qfq_tushare.py 从
+    raw_tushare_fund_daily×fund_adj 建 etf_price_kline_qfq_tushare; 旧 mootdx 取数链
+    (sync_kline 块 + fetch_etf_kline) 已退役物删, 本函数只刷新 ETF 资产池。
 
     progress_cb(stage, current, total, message) 在关键节点回调，让前端能展示进度条。
 
-    注意：当前 ETF 资产池和 ETF K 线都落在 etf.duckdb，调用方通常传入同一个连接。
-
-    返回 {"etf_count": N, "kline_etf_count": M, "kline_rows": K, ...}
+    返回 {"etf_count": N, "list_source": ...}
     """
-    from services.akshare_client import fetch_etf_kline, fetch_etf_list_with_source
-    from services.etf_db import upsert_price_rows, update_sync_state
+    from services.akshare_client import fetch_etf_list_with_source
 
     def _progress(stage: str, current: int, total: int, message: str) -> None:
         if progress_cb:
@@ -244,10 +242,7 @@ async def sync_etf_universe(etf_conn, etf_price_conn, sync_kline: bool = True,
         _progress("done", 0, 0, "未获取到 ETF 列表")
         return {
             "etf_count": 0,
-            "kline_etf_count": 0,
-            "kline_rows": 0,
             "list_source": list_source or None,
-            "kline_source_breakdown": [],
         }
 
     raw_count = len(etf_list)
@@ -293,98 +288,14 @@ async def sync_etf_universe(etf_conn, etf_price_conn, sync_kline: bool = True,
         _progress("error", 0, total_etfs, f"写入资产池失败：{e}")
         return {
             "etf_count": 0,
-            "kline_etf_count": 0,
-            "kline_rows": 0,
             "list_source": list_source or None,
-            "kline_source_breakdown": [],
         }
 
-    # 2) 同步 K 线（可选）
-    kline_etf_count = 0
-    kline_rows = 0
-    kline_source_breakdown: dict[str, int] = {}
-    if sync_kline:
-        end_dt = datetime.now()
-        start_date = (kline_start_date or "").strip()
-        if start_date:
-            if len(start_date) != 8 or not start_date.isdigit():
-                raise ValueError("kline_start_date 必须是 YYYYMMDD")
-        else:
-            start_dt = end_dt - timedelta(days=kline_days * 2)  # 兼容旧调用
-            start_date = start_dt.strftime("%Y%m%d")
-        end_date = end_dt.strftime("%Y%m%d")
-        batch_id = f"etf_sync_{end_dt.strftime('%Y%m%d_%H%M%S')}"
-
-        logger.info(f"[ETF] 开始同步 K 线 ({start_date}~{end_date}) ...")
-        _progress("sync_kline", 0, total_etfs, f"开始同步 K 线 ({start_date}~{end_date})")
-        log_every = max(10, total_etfs // 20)  # 大约 20 次进度日志
-        for idx, e in enumerate(etf_list):
-            code = e.get("code")
-            if not code:
-                continue
-            try:
-                kline_records, src = await fetch_etf_kline(code, start_date, end_date)
-                if not kline_records:
-                    continue
-                rows = []
-                for r in kline_records:
-                    rows.append({
-                        "code": code,
-                        "date": str(r["date"])[:10],
-                        "freq": "daily",
-                        "adjust": "qfq",
-                        "open": float(r["open"]) if r.get("open") is not None else None,
-                        "high": float(r["high"]) if r.get("high") is not None else None,
-                        "low": float(r["low"]) if r.get("low") is not None else None,
-                        "close": float(r["close"]) if r.get("close") is not None else None,
-                        "volume": float(r["volume"]) if r.get("volume") is not None else None,
-                        "amount": float(r["amount"]) if r.get("amount") is not None else None,
-                    })
-                if rows:
-                    source_name = src or "unknown"
-                    upsert_price_rows(etf_price_conn, rows, source=source_name, batch_id=batch_id)
-                    kline_etf_count += 1
-                    kline_rows += len(rows)
-                    kline_source_breakdown[source_name] = kline_source_breakdown.get(source_name, 0) + 1
-                    try:
-                        update_sync_state(
-                            etf_price_conn, code, "daily",
-                            source=source_name,
-                            min_date=rows[0]["date"],
-                            max_date=rows[-1]["date"],
-                            row_count=len(rows),
-                        )
-                    except Exception:
-                        pass
-            except Exception as ex:
-                logger.debug(f"[ETF] {code} K 线失败: {ex}")
-                continue
-            # 节流：每 50 只让出一次事件循环
-            if idx % 50 == 49:
-                await asyncio.sleep(0)
-            # 周期性进度
-            if (idx + 1) % log_every == 0 or (idx + 1) == total_etfs:
-                logger.info(
-                    f"[ETF] K 线进度 {idx + 1}/{total_etfs}（成功 {kline_etf_count}, 行数 {kline_rows}）"
-                )
-                _progress("sync_kline", idx + 1, total_etfs,
-                          f"K 线进度 {idx + 1}/{total_etfs}（成功 {kline_etf_count}）")
-
-        logger.info(f"[ETF] K 线同步完成: {kline_etf_count}/{etf_count} 只, 共 {kline_rows} 行")
-        _progress("sync_kline", total_etfs, total_etfs,
-                  f"K 线同步完成 {kline_etf_count}/{etf_count} 只 / {kline_rows} 行")
-
-    _progress("done", total_etfs, total_etfs,
-              f"完成：ETF {etf_count} / K 线 {kline_etf_count} / 行数 {kline_rows}")
+    # M2 Stage E: ETF K线已迁 tushare (build_etf_kline_qfq_tushare.py), 旧 mootdx 同步块已退役。
+    _progress("done", total_etfs, total_etfs, f"完成：ETF 资产池 {etf_count} 只")
     return {
         "etf_count": etf_count,
-        "kline_etf_count": kline_etf_count,
-        "kline_rows": kline_rows,
         "list_source": list_source or None,
-        "kline_source_breakdown": [
-            {"source": source, "count": count}
-            for source, count in sorted(kline_source_breakdown.items(), key=lambda item: (-item[1], item[0]))
-        ],
     }
 
 

@@ -37,15 +37,13 @@ class EtfDbTests(unittest.TestCase):
                         )
                     }
 
+                    # M2 Stage E: etf_price_kline (mootdx) DDL 已退役物删, K线源切 tushare qfq 表。
                     self.assertTrue(
-                        {"etf_asset_universe", "etf_price_kline", "mart_etf_snapshot_state"} <= tables
+                        {"etf_asset_universe", "mart_etf_snapshot_state"} <= tables
                     )
+                    self.assertNotIn("etf_price_kline", tables)
                     self.assertEqual(
                         conn.execute("SELECT COUNT(*) AS cnt FROM etf_asset_universe").fetchone()["cnt"],
-                        0,
-                    )
-                    self.assertEqual(
-                        conn.execute("SELECT COUNT(*) AS cnt FROM etf_price_kline").fetchone()["cnt"],
                         0,
                     )
                     self.assertEqual(

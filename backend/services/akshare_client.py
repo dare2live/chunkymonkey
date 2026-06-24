@@ -580,27 +580,9 @@ async def fetch_etf_list() -> list[dict]:
     return results
 
 
-async def fetch_etf_kline(code: str, start_date: str, end_date: str):
-    """获取 ETF K 线，优先 tdxhub，失败后回退股票 K 线降级链。"""
-    rows, source, tdxhub_diag = await _fetch_daily_tdxhub_with_diagnostics(code, start_date, end_date)
-    if rows:
-        return rows, source
-
-    rows_fb, source_fb, diagnostics = await _fetch_daily_akshare_fallbacks(
-        code,
-        start_date,
-        end_date,
-        safe_call=_safe_akshare_call,
-    )
-    if rows_fb:
-        logger.debug(
-            f"[ETF] {code} tdxhub 不可用，回退 {source_fb}（{tdxhub_diag.get('summary') or _summarize_tdxhub_attempts(tdxhub_diag.get('attempts') or [])}）"
-        )
-        return rows_fb, source_fb
-
-    if diagnostics.get("last_error"):
-        logger.warning(f"[ETF] {code} ETF K 线回退失败: {diagnostics['last_error']}")
-    return None, None
+# M2 Stage E (2026-06-25): fetch_etf_kline (mootdx→akshare 降级链) 已退役物删 —
+# ETF K线主源切 tushare (fund_daily×fund_adj → etf_price_kline_qfq_tushare, build_etf_kline_qfq_tushare.py)。
+# 共享 helper (_fetch_daily_tdxhub_with_diagnostics / _fetch_daily_akshare_fallbacks) 保留 (股票K线仍用)。
 
 
 async def fetch_index_kline(code: str, start_date: str, end_date: str):
