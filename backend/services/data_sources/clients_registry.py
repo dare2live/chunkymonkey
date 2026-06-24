@@ -76,23 +76,9 @@ CLIENTS: list[ClientSpec] = [
         ],
         sync_step_id="sync_gpcw_data",
     ),
-    ClientSpec(
-        client_id="tdx_f10_extra_client",
-        module="services.tdx_f10_extra_client",
-        description="通达信 F10 Format B 补充解析",
-        upstream_source="tdxhub.holders raw_tdx_f10_holder_research",
-        source_tier=1,
-        fallback_chain=["tdxhub"],
-        writes=[
-            TableWriteSpec("raw_tdx_f10_holder_count_history", "F10 股东人数变化 raw", "quarterly", 24*95),
-            TableWriteSpec("fact_holder_count_period", "F10 股东人数变化 canonical", "quarterly", 24*95),
-            TableWriteSpec("fact_shareholder_trade_tdx_b", "F10 B 重要股东变动", "event", 24*95),
-            TableWriteSpec("fact_shareholder_plan_tdx_f10", "F10 股东增减持计划", "event", 24*95),
-            TableWriteSpec("fact_common_major_holder_stock", "F10 同大股东个股 schema", "static", 24*365),
-            TableWriteSpec("fact_fund_holding_tdx_f10", "F10 基金持股 schema", "static", 24*365),
-        ],
-        sync_step_id="sync_raw",
-    ),
+    # tdx_f10_extra_client 退役 2026-06-24 (随旧 updater 删, 唯一 caller updater_sync.sync_raw 已删):
+    #   户数→tushare stk_holdernumber / 增减持→tushare stk_holdertrade / 同大股东→aif10 holder derive (机构档案);
+    #   十大流通股东已迁 aif10 (services/holders_aif10). 详 analysis/miaoxiang_aif10_source_decision_20260624.md。
     ClientSpec(
         client_id="xdxr_client",
         module="services.xdxr_client",

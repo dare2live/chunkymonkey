@@ -1,0 +1,67 @@
+{
+ "domain": "top10_floatholders",
+ "api": "top10_floatholders",
+ "grain": [
+  "ts_code",
+  "end_date",
+  "holder_name"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "ts_code": "000001.SZ",
+   "ann_date": "20260425",
+   "end_date": "20260331",
+   "holder_name": "中国平安保险(集团)股份有限公司-集团本级-自有资金",
+   "hold_amount": 9618540236,
+   "hold_ratio": 49.565,
+   "hold_float_ratio": 49.5658,
+   "hold_change": 0.0,
+   "holder_type": "金融机构—保险公司"
+  },
+  {
+   "ts_code": "000001.SZ",
+   "ann_date": "20260425",
+   "end_date": "20260331",
+   "holder_name": "中国平安人寿保险股份有限公司-自有资金",
+   "hold_amount": 1186100488,
+   "hold_ratio": 6.1121,
+   "hold_float_ratio": 6.1122,
+   "hold_change": 0.0,
+   "holder_type": "金融机构—保险公司"
+  },
+  {
+   "ts_code": "000001.SZ",
+   "ann_date": "20260425",
+   "end_date": "20260331",
+   "holder_name": "香港中央结算有限公司",
+   "hold_amount": 570772048,
+   "hold_ratio": 2.9412,
+   "hold_float_ratio": 2.9413,
+   "hold_change": -57519101.0,
+   "holder_type": "一般企业"
+  },
+  {
+   "ts_code": "000001.SZ",
+   "ann_date": "20260425",
+   "end_date": "20260331",
+   "holder_name": "中国平安人寿保险股份有限公司-传统-普通保险产品",
+   "hold_amount": 440478714,
+   "hold_ratio": 2.2698,
+   "hold_float_ratio": 2.2699,
+   "hold_change": 0.0,
+   "holder_type": "保险投资组合"
+  },
+  {
+   "ts_code": "000001.SZ",
+   "ann_date": "20260425",
+   "end_date": "20260331",
+   "holder_name": "中国证券金融股份有限公司",
+   "hold_amount": 339462599,
+   "hold_ratio": 1.7493,
+   "hold_float_ratio": 1.7493,
+   "hold_change": -89770089.0,
+   "holder_type": "金融机构—证券公司"
+  }
+ ]
+}

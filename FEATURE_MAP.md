@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-24 14:53
+> Snapshot: 2026-06-24 14:58
 
 ## 1. 入口面
 
@@ -92,7 +92,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 156 张 | 单 writer 94 | 多 writer 62 | 动态表名写点 36 处 (20 文件)
+统计: 表 155 张 | 单 writer 100 | 多 writer 55 | 动态表名写点 34 处 (19 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -119,20 +119,15 @@
 | backend/services/aif10_capability_client.py | 3 |
 | backend/services/data_sources/sync_runner.py | 3 |
 | backend/services/perf/shard_runner.py | 1 |
-| backend/services/tdx_f10_extra_client.py | 2 |
 
 ### 多 writer 表 (>1 文件写同一张表)
 
 | 表 | writer 数 | writer 文件 |
 |---|---|---|
-| fact_top10_holder_period | 5 | backend/scripts/cleanup_holder_dup.py<br>backend/scripts/ingest_holders_tdxhub.py<br>backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/holders_aif10.py<br>backend/services/schema_core.py |
-| fact_controlling_shareholder | 4 | backend/scripts/ingest_holders_tdxhub.py<br>backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py<br>backend/services/tdx_f10_extra_client.py |
-| fact_shareholder_plan | 3 | backend/scripts/ingest_holders_tdxhub.py<br>backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
-| fact_shareholder_trade | 3 | backend/scripts/ingest_holders_tdxhub.py<br>backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
+| fact_top10_holder_period | 4 | backend/scripts/cleanup_holder_dup.py<br>backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/holders_aif10.py<br>backend/services/schema_core.py |
 | mart_data_deletion_record | 3 | backend/scripts/db_lifecycle_delete.py<br>backend/services/data_deletion.py<br>backend/services/schema_marts.py |
 | mart_etf_snapshot_latest | 3 | backend/services/etf_db.py<br>backend/services/etf_snapshot_manager.py<br>backend/services/schema_marts.py |
 | mart_etf_snapshot_state | 3 | backend/services/etf_db.py<br>backend/services/etf_snapshot_manager.py<br>backend/services/schema_marts.py |
-| raw_tdx_f10_holder_research | 3 | backend/scripts/ingest_holders_tdxhub.py<br>backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
 | dim_active_a_stock | 2 | backend/services/schema_core.py<br>backend/services/security_master.py |
 | dim_data_asset | 2 | backend/scripts/seed_dim_data_asset.py<br>backend/services/schema_core.py |
 | dim_data_source_priority | 2 | backend/scripts/audit_tdx_data_need_coverage.py<br>backend/services/schema_core.py |
@@ -148,16 +143,14 @@
 | dim_tdx_gpcw_field_semantic | 2 | backend/scripts/build_tdx_gpcw_auto_features.py<br>backend/services/schema_core.py |
 | dim_trading_rule | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_trading_session | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
-| fact_common_major_holder_stock | 2 | backend/services/schema_core.py<br>backend/services/tdx_f10_extra_client.py |
 | fact_consumer_alpha_ic_scan | 2 | backend/scripts/build_experiment_store.py<br>backend/services/experiment_store.py |
+| fact_controlling_shareholder | 2 | backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
 | fact_experiment_verdict | 2 | backend/scripts/build_experiment_store.py<br>backend/services/experiment_store.py |
-| fact_fund_holding_tdx_f10 | 2 | backend/services/schema_core.py<br>backend/services/tdx_f10_extra_client.py |
-| fact_holder_count_period | 2 | backend/services/schema_core.py<br>backend/services/tdx_f10_extra_client.py |
 | fact_holder_event | 2 | backend/services/holders_event.py<br>backend/services/schema_core.py |
 | fact_institution_event | 2 | backend/services/event_engine.py<br>backend/services/schema_core.py |
 | fact_risk_factors | 2 | backend/services/data_governance/etl_hook.py<br>backend/services/risk_factors.py |
-| fact_shareholder_plan_tdx_f10 | 2 | backend/services/schema_core.py<br>backend/services/tdx_f10_extra_client.py |
-| fact_shareholder_trade_tdx_b | 2 | backend/services/schema_core.py<br>backend/services/tdx_f10_extra_client.py |
+| fact_shareholder_plan | 2 | backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
+| fact_shareholder_trade | 2 | backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
 | fact_stock_fundamental_stage_daily | 2 | backend/scripts/build_picture_daily.py<br>backend/services/picture/ddl.py |
 | fact_stock_type_daily | 2 | backend/scripts/build_picture_daily.py<br>backend/services/picture/ddl.py |
 | fact_tdx_gpcw_auto_feature_quarterly | 2 | backend/scripts/build_tdx_gpcw_auto_features.py<br>backend/services/schema_core.py |
@@ -184,8 +177,7 @@
 | mart_stock_picture_daily | 2 | backend/scripts/build_picture_daily.py<br>backend/services/picture/ddl.py |
 | mart_tdx_data_need_coverage | 2 | backend/scripts/audit_tdx_data_need_coverage.py<br>backend/services/schema_marts.py |
 | mart_tdx_gpcw_file_manifest | 2 | backend/scripts/build_fundamental_quarterly.py<br>backend/services/tdx_affair_client.py |
-| raw_tdx_f10_extra_parse_status | 2 | backend/services/schema_core.py<br>backend/services/tdx_f10_extra_client.py |
-| raw_tdx_f10_holder_count_history | 2 | backend/services/schema_core.py<br>backend/services/tdx_f10_extra_client.py |
+| raw_tdx_f10_holder_research | 2 | backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
 | raw_tdx_gpcw_wide | 2 | backend/services/schema_core.py<br>backend/services/tdx_affair_client.py |
 
 ### 单 writer 表
@@ -201,13 +193,16 @@
 | dim_stock_turtle_latest | backend/services/stock_turtle_engine.py |
 | dim_strategy_preset | backend/routers/strategy_preset.py |
 | dim_trading_calendar | backend/services/schema_core.py |
+| fact_common_major_holder_stock | backend/services/schema_core.py |
 | fact_daily_price_status | backend/services/primitives/ddl.py |
 | fact_dzjy_event | backend/scripts/build_akshare_panel.py |
 | fact_executive_trade_event | backend/scripts/build_executive_trade_events.py |
 | fact_feature_panel_candidate | backend/services/schema_core.py |
 | fact_feature_panel_tdx_keep_challenger | backend/services/schema_core.py |
 | fact_financial_derived | backend/services/financial_client.py |
+| fact_fund_holding_tdx_f10 | backend/services/schema_core.py |
 | fact_fundamental_quarterly | backend/scripts/build_fundamental_quarterly.py |
+| fact_holder_count_period | backend/services/schema_core.py |
 | fact_hot_rank_daily | backend/scripts/build_akshare_panel.py |
 | fact_jgdy_event | backend/scripts/build_akshare_panel.py |
 | fact_lhb_event | backend/scripts/build_lhb_events.py |
@@ -216,6 +211,8 @@
 | fact_research_report | backend/scripts/build_akshare_panel.py |
 | fact_segment_panel | backend/scripts/build_segment_panel.py |
 | fact_setup_snapshot | backend/services/schema_core.py |
+| fact_shareholder_plan_tdx_f10 | backend/services/schema_core.py |
+| fact_shareholder_trade_tdx_b | backend/services/schema_core.py |
 | fact_stock_attention_snapshot | backend/services/external_attention.py |
 | fact_stock_industry_context | backend/services/industry_context_engine.py |
 | fact_stock_liquidity_daily | backend/services/primitives/ddl.py |
@@ -262,7 +259,6 @@
 | mart_stock_trend | backend/services/schema_marts.py |
 | mart_strategy_result_registry | backend/services/schema_marts.py |
 | mart_tdx_challenger_report | backend/services/schema_marts.py |
-| mart_tdx_f10_capability_matrix | backend/services/tdx_f10_extra_client.py |
 | mart_tdx_gpcw_auto_challenger_report | backend/services/schema_marts.py |
 | mart_tdx_gpcw_auto_feature_cluster | backend/services/schema_marts.py |
 | mart_tdx_gpcw_auto_feature_score | backend/services/schema_marts.py |
@@ -286,30 +282,32 @@
 | raw_lhb_daily | backend/services/lhb_client.py |
 | raw_profit_forecast_snapshot_daily | backend/scripts/ingest_profit_forecast_snapshot.py |
 | raw_qfii_holding_quarterly | backend/services/qfii_client.py |
+| raw_tdx_f10_extra_parse_status | backend/services/schema_core.py |
+| raw_tdx_f10_holder_count_history | backend/services/schema_core.py |
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 9,450 | calls 边 89,425 | imports 边 11,283 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 8,985 | calls 边 63,058 | imports 边 6,654 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
 | services.duck_adapter | 39 |
-| services.db | 36 |
-| services.utils | 32 |
-| services.market_db | 22 |
+| services.db | 33 |
+| services.utils | 28 |
+| services.market_db | 18 |
 | services.database_manifest | 15 |
-| services.industry | 14 |
-| services.tdx_source | 14 |
+| services.industry | 13 |
+| services.tdx_source | 13 |
 | services.kline_source | 10 |
-| services.data_sources | 8 |
 | services.pipeline_manifest | 8 |
-| services.pricing_policy | 8 |
 | services.universe | 8 |
-| routers.updater_runtime | 6 |
+| services.data_sources | 7 |
+| services.pricing_policy | 7 |
 | services.constants | 6 |
 | services.etf_grid_engine | 6 |
+| services.scoring | 6 |
 
 ### 跨文件 fan-in 最高的文件 (近似口径: 唯一定义名 + caller 实际 import 目标模块双过滤)
 
@@ -318,15 +316,15 @@
 | backend/services/duck_adapter.py | 23 |
 | backend/services/database_manifest.py | 9 |
 | bestchoice/compute.py | 9 |
-| backend/routers/updater_runtime.py | 6 |
 | backend/services/etf_grid_engine.py | 6 |
-| backend/services/tdx_source.py | 5 |
 | bestchoice/execution_model.py | 5 |
 | backend/services/data_sources/base.py | 4 |
-| backend/services/etf_engine.py | 4 |
-| backend/services/gap_queue.py | 4 |
 | backend/services/kline_source.py | 4 |
+| backend/services/tdx_source.py | 4 |
 | bestchoice/formula_engine.py | 4 |
+| bestchoice/scripts/formula_parameter_search.py | 4 |
+| backend/services/business_facts.py | 3 |
+| backend/services/data_access/keys.py | 3 |
 
 ### LOC top 10 (God module 候选)
 
@@ -337,15 +335,15 @@
 | backend/services/signals_v2.py | 2162 |
 | backend/services/audit.py | 1747 |
 | backend/services/financial_client.py | 1685 |
-| backend/scripts/ingest_holders_tdxhub.py | 1554 |
-| backend/services/tdx_f10_extra_client.py | 1478 |
 | backend/scripts/build_price_kline_tdxhub.py | 1461 |
 | backend/scripts/seed_dim_data_asset.py | 1327 |
 | backend/scripts/audit_delivery_readiness.py | 1226 |
+| backend/services/storage_retention.py | 1061 |
+| backend/services/etf_grid_engine.py | 1038 |
 
 ## 5. 概览
 
 - chunkyctl 子命令 8 | launchd 任务 1 | router 12 (端点 56)
 - sync_registry 数据域 41
-- 产表 156 (多 writer 62)
+- 产表 155 (多 writer 55)
 

@@ -1,0 +1,78 @@
+{
+ "domain": "stk_holdertrade",
+ "api": "stk_holdertrade",
+ "grain": [
+  "ts_code",
+  "ann_date",
+  "holder_name",
+  "in_de"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "ts_code": "300010.SZ",
+   "ann_date": "20190102",
+   "holder_name": "窦昕",
+   "holder_type": "P",
+   "in_de": "IN",
+   "change_vol": 10076031,
+   "change_ratio": 1.5963,
+   "after_share": 10076031,
+   "after_ratio": 1.5963,
+   "avg_price": 14.77,
+   "total_share": 10076031
+  },
+  {
+   "ts_code": "300010.SZ",
+   "ann_date": "20190102",
+   "holder_name": "窦昕",
+   "holder_type": "P",
+   "in_de": "IN",
+   "change_vol": 13546372,
+   "change_ratio": 2.1461,
+   "after_share": 23622403,
+   "after_ratio": 3.7424,
+   "avg_price": 8.08,
+   "total_share": 23622403
+  },
+  {
+   "ts_code": "300010.SZ",
+   "ann_date": "20190102",
+   "holder_name": "窦昕",
+   "holder_type": "P",
+   "in_de": "IN",
+   "change_vol": 19793934,
+   "change_ratio": 3.1355,
+   "after_share": 43416337,
+   "after_ratio": 6.8775,
+   "avg_price": 7.2,
+   "total_share": 43416337
+  },
+  {
+   "ts_code": "300631.SZ",
+   "ann_date": "20190102",
+   "holder_name": "上海青骓蹑影投资管理合伙企业(有限合伙)",
+   "holder_type": "C",
+   "in_de": "DE",
+   "change_vol": 642600,
+   "change_ratio": 0.9272,
+   "after_share": 7809000,
+   "after_ratio": 11.2677,
+   "avg_price": 15.8966,
+   "total_share": 7809000
+  },
+  {
+   "ts_code": "300631.SZ",
+   "ann_date": "20190102",
+   "holder_name": "上海青骓蹑影投资管理合伙企业(有限合伙)",
+   "holder_type": "C",
+   "in_de": "DE",
+   "change_vol": 421600,
+   "change_ratio": 0.6083,
+   "after_share": 7387400,
+   "after_ratio": 10.6594,
+   "avg_price": 15.94,
+   "total_share": 7387400
+  }
+ ]
+}
