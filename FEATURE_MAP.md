@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-24 17:08
+> Snapshot: 2026-06-24 17:09
 
 ## 1. 入口面
 
@@ -92,7 +92,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 155 张 | 单 writer 100 | 多 writer 55 | 动态表名写点 34 处 (19 文件)
+统计: 表 156 张 | 单 writer 101 | 多 writer 55 | 动态表名写点 34 处 (19 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -280,6 +280,7 @@
 | raw_gpcw_financial | backend/services/financial_client.py |
 | raw_institution_surveys | backend/services/institution_survey_client.py |
 | raw_lhb_daily | backend/services/lhb_client.py |
+| raw_org_holding_aif10 | backend/services/org_holding_aif10.py |
 | raw_profit_forecast_snapshot_daily | backend/scripts/ingest_profit_forecast_snapshot.py |
 | raw_qfii_holding_quarterly | backend/services/qfii_client.py |
 | raw_tdx_f10_extra_parse_status | backend/services/schema_core.py |
@@ -345,5 +346,5 @@
 
 - chunkyctl 子命令 8 | launchd 任务 1 | router 12 (端点 56)
 - sync_registry 数据域 41
-- 产表 155 (多 writer 55)
+- 产表 156 (多 writer 55)
 

@@ -275,6 +275,7 @@
 | `raw_capital_*` (allotment/dividend/repurchase/unlock) | 配股/分红/回购/解禁 |
 | `raw_institution_surveys` | 机构调研 raw |
 | `raw_qfii_holding_quarterly` | QFII 季度持仓 |
+| `raw_org_holding_aif10` | 机构持仓明细 (东财妙想 aif10 MAIN_ORGHOLDDETAIL; 非公募机构 基金/保险/券商/法人/QFII 分桶持本股, report_date 报告期 + 法定披露截止 available_date PIT 锚; 2026-06-24 aif10 例外扩展, 复核确认真·独有 gap=tushare fund_portfolio 仅公募). owner=services/org_holding_aif10.py |
 
 ### 2.6 技术 / 形态 / 信号
 
