@@ -1,5 +1,14 @@
 """每日增量抓取 F10 「股东研究」 → raw 表 → canonical 表.
 
+[DEPRECATED 2026-06-24] 十大流通股东主源已迁 东方财富妙想 aif10
+(services/holders_aif10.py, pipeline acquire step). fact_top10_holder_period 的
+tdx_f10 行已物删, source=miaoxiang 全市场 99.6% 覆盖. **勿再跑本脚本写 top10**
+(会重建 tdx_f10/miaoxiang 双源共存=重复计数). 控股股东/增减持计划/股东交易 3 产品表
+reset 后不存在(死产品). 本脚本+tdxhub.holders client+raw_tdx_f10_holder_research 表
+物理退役 = 需 review 的 follow-up (raw 表 10 消费方须逐个核, mythos §14); 暂留作 raw→fact 恢复网.
+详 analysis/miaoxiang_aif10_source_decision_20260624.md.
+
+
 数据通道走 services.holders_resolver.HolderResolver, 按 source_tier
 顺序 fallback:
   tier 1: tdxhub.holders.HolderFetcher (117 服务器池自动轮询)

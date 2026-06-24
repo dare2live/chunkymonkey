@@ -54,9 +54,16 @@ tushare 该类数据**季中滞后最多 ~4个月** (季报披露才更新, 像�
 **预判已知 gap (待核证)**: 资讯/公告/研报全文 (子域, tushare 无) · 估值分位 RPT_STOCKVALUATIONTANTILE ·
 机构调研/评级/预测 · 更细的股东/机构持股结构.
 
-## 4. 实施待做 (holder 迁移, 本会话后续或下会话)
-1. aif10 holder 抓取接入 chunkymonkey (薄 fetch adapter 或 sync_registry 域, 引擎=aif10_scraper).
-2. backfill 2003+ 全市场 holder 历史 → holder 表.
-3. fan-in 审计 tdxhub holder 表 (`fact_top10_holder_period`) 全消费方 → repoint 到 aif10 源 (铁律11).
-4. tushare top10_floatholders 域处置 (aif10 主源后, tushare 该域降备/删 — 待定; 现有未提交 by_ann_date 改动相应处理).
-5. tdxhub holder client + 表退役物删 (consumer repoint 后).
+## 4. 实施状态 (2026-06-24)
+
+**[DONE] 功能性迁移 + tdx_f10 数据层退役**:
+1. [DONE] aif10 holder 接入 (services/holders_aif10.py 获取/清洗/加工/存储分层 + pipeline acquire Step2i2 + 薄CLI).
+2. [DONE] 全市场 backfill (K线范围 20181231+, 非2003): 5189股/172.5万行/32.8万退出/49min; **覆盖率 99.6%** (5189/5208活跃股, 缺19=次新股 aif10 0行自愈).
+3. [DONE] availability_source='page_update_date' 全覆盖 (0 NULL, PIT 可用日锚).
+4. [DONE] 增量水位驱动 (MAX 披露日, 接 pipeline acquire 自动跑).
+5. [DONE] fan-in 安全核: 无消费方硬过滤 source='tdx_f10' → **物删 fact_top10_holder_period 的 tdx_f10 行 (594k)**, 消费方 smoke PASS (现 miaoxiang-only 单源, 消除双源重复计数).
+
+**[REVIEW-FOLLOWUP] 物理代码/表退役 (自主 loop 不莽撞, 须 review)**:
+6. [PENDING] 退役 ingest_holders_tdxhub.py (已加 DEPRECATED 头, 勿跑) + tdx_f10_extra_client.py (tdxhub.holders client) + 物删 raw_tdx_f10_holder_research 表
+   — 阻塞: raw 表 10 消费方须逐个核 (mythos §14); 控股股东/计划/交易 3 产品表 reset 后不存在(死, 无孤立风险); raw 表暂留作 raw→fact 恢复网.
+7. [PENDING] tushare top10_floatholders 域处置 (sync_registry 无 enabled 字段; 移除条目 + 物删 raw_tushare_top10_floatholders[1消费方 seed_dim_data_asset] + 退 by_ann_date 代码).
