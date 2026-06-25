@@ -1281,42 +1281,6 @@ def test_workbench_data_sources_returns_tdxhub_primary_watermarks_and_feature_li
                 ('f10_source_v3', '2', '股东增减持计划', 'change_end_date',
                  'plan_end_date', FALSE, 100, 80, 20, 3,
                  '2026-01-01', '2026-12-31', '[]', '2026-05-07T10:00:00');
-
-            CREATE TABLE mart_global_data_quality_gate (
-                gate_run_id TEXT,
-                policy_id TEXT,
-                policy_hash TEXT,
-                gate_scope TEXT,
-                gate_status TEXT,
-                blockers_json TEXT,
-                warnings_json TEXT,
-                evidence_json TEXT,
-                started_at TEXT,
-                ended_at TEXT,
-                duration_s DOUBLE
-            );
-            CREATE TABLE mart_global_data_quality_detail (
-                gate_run_id TEXT,
-                domain TEXT,
-                table_name TEXT,
-                column_name TEXT,
-                check_name TEXT,
-                status TEXT,
-                severity TEXT,
-                row_count BIGINT,
-                violation_count BIGINT,
-                reason TEXT,
-                examples_json TEXT,
-                built_at TEXT
-            );
-            INSERT INTO mart_global_data_quality_gate VALUES
-                ('dq_f10_source', 'policy', 'hash', 'production', 'pass',
-                 '[]', '[]', '{}', '2026-05-07T10:00:00', '2026-05-07T10:00:13', 13.0);
-            INSERT INTO mart_global_data_quality_detail VALUES
-                ('dq_f10_source', 'tdx_f10_source_availability',
-                 'fact_shareholder_plan_tdx_f10', 'source_available_date',
-                 'plan_window_used_as_source_date', 'pass', 'blocker',
-                 12062, 0, NULL, '[]', '2026-05-07T10:00:13');
             """
         )
 
@@ -1346,9 +1310,6 @@ def test_workbench_data_sources_returns_tdxhub_primary_watermarks_and_feature_li
         assert data_sources["f10_source_date_audit"]["run_id"] == "f10_source_v3"
         assert data_sources["f10_source_date_audit"]["summary"]["source_notice_candidate_future_occurrences"] == 0
         assert data_sources["f10_source_date_audit"]["summary"]["future_occurrence_count"] == 3
-        assert data_sources["tdx_f10_source_dq"]["gate_run_id"] == "dq_f10_source"
-        assert data_sources["tdx_f10_source_dq"]["gate_status"] == "pass"
-        assert data_sources["tdx_f10_source_dq"]["details"][0]["check_name"] == "plan_window_used_as_source_date"
         assert data_sources["today_signal_cache"]["status"] == "miss"
         assert data_sources["today_signal_cache"]["requires_refresh"] is True
         assert data_sources["blockers"][0]["kind"] == "source_failures"

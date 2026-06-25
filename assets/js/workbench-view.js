@@ -734,7 +734,6 @@
       watermarks: Array.isArray(data.watermarks) ? data.watermarks : [],
       tdxF10Capabilities: Array.isArray(data.tdx_f10_capabilities) ? data.tdx_f10_capabilities : [],
       f10SourceDateAudit: data.f10_source_date_audit || {},
-      tdxF10SourceDq: data.tdx_f10_source_dq || {},
       watermarkCount: Number(data.watermark_count || 0),
       signalCacheTone: (signalCache.requires_refresh || signalCache.stale) ? 'warn' : (signalCache.status || 'unknown'),
     };
@@ -1006,10 +1005,6 @@
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>TDX F10 Source-Date Audit</h3><div class="muted">section semantics / source notice candidates</div></div></div>' +
       renderTdxF10SourceDateAudit(model.f10SourceDateAudit) +
-      '</section>' +
-      '<section class="panel wb-panel">' +
-      '<div class="panel-head"><div><h3>TDX/F10 Source-Date DQ</h3><div class="muted">latest global gate evidence</div></div></div>' +
-      renderTdxF10SourceDq(model.tdxF10SourceDq) +
       '</section>'
     );
   }
@@ -1392,67 +1387,6 @@
       },
       rowCount: normalizedRows.length,
       isEmpty: !audit.run_id,
-    };
-  }
-
-  function renderTdxF10SourceDq(data) {
-    var model = buildTdxF10SourceDateDqModel(data);
-    var details = model.details;
-    if (!model.gateRunId) return renderEmpty('暂无 TDX/F10 source-date DQ gate');
-    var header = '<div class="wb-count-row">' +
-      '<span class="wb-count-pill">status <b>' + esc(model.gateStatus || '-') + '</b></span>' +
-      '<span class="wb-count-pill">blockers <b>' + fmtNum(model.headerCounts.blockerCount) + '</b></span>' +
-      '<span class="wb-count-pill">warnings <b>' + fmtNum(model.headerCounts.warningCount) + '</b></span>' +
-      '<span class="wb-count-pill">checks <b>' + fmtNum(model.headerCounts.checkCount) + '</b></span>' +
-      '</div><div class="muted" style="margin-bottom:10px">gate: <code>' + esc(model.gateRunId || '-') + '</code> · ended ' + esc(model.endedAt || '-') + '</div>';
-    if (!details.length) return header + renderEmpty('暂无 DQ 明细');
-    return header + '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
-      '<thead><tr><th>table</th><th>check</th><th>status</th><th>rows</th><th>violations</th><th>reason</th></tr></thead><tbody>' +
-      details.map(function (row) {
-        return '<tr>' +
-          '<td><code>' + esc(row.tableName) + '</code><div class="muted">' + esc(row.columnName) + '</div></td>' +
-          '<td>' + esc(row.checkName) + '</td>' +
-          '<td>' + pill(row.status, row.statusTone) + '<div class="muted">' + esc(row.severity) + '</div></td>' +
-          '<td>' + fmtNum(row.rowCount) + '</td>' +
-          '<td>' + pill(fmtNum(row.violationCount), row.violationCount ? 'bad' : 'ok') + '</td>' +
-          '<td>' + esc(row.reason) + '</td>' +
-          '</tr>';
-      }).join('') +
-      '</tbody></table></div>';
-  }
-
-  function buildTdxF10SourceDateDqModel(dq) {
-    dq = dq || {};
-    var details = Array.isArray(dq.details) ? dq.details : [];
-    var normalizedDetails = details.map(function (row) {
-      var status = (row && row.status) || '-';
-      return {
-        tableName: (row && row.table_name) || '-',
-        columnName: (row && row.column_name) || '-',
-        checkName: (row && row.check_name) || '-',
-        status: status,
-        statusTone: status === 'pass' ? 'ok' : status === 'fail' ? 'bad' : 'info',
-        severity: (row && row.severity) || '-',
-        rowCount: Number((row && row.row_count) || 0),
-        violationCount: Number((row && row.violation_count) || 0),
-        reason: (row && row.reason) || '-',
-      };
-    });
-    return {
-      gateRunId: dq.gate_run_id || '',
-      gateStatus: dq.gate_status || '-',
-      blockerCount: Number(dq.blocker_count || 0),
-      warningCount: Number(dq.warning_count || 0),
-      endedAt: dq.ended_at || '',
-      summary: dq.summary || {},
-      details: normalizedDetails,
-      headerCounts: {
-        blockerCount: Number(dq.blocker_count || 0),
-        warningCount: Number(dq.warning_count || 0),
-        checkCount: Number(((dq.summary || {}).detail_count) || normalizedDetails.length),
-      },
-      detailCount: normalizedDetails.length,
-      isEmpty: !dq.gate_run_id,
     };
   }
 
@@ -2916,7 +2850,6 @@
     buildPaperSimModel: buildPaperSimModel,
     buildStorageModel: buildStorageModel,
     buildTdxF10SourceDateAuditModel: buildTdxF10SourceDateAuditModel,
-    buildTdxF10SourceDateDqModel: buildTdxF10SourceDateDqModel,
     _renderOverview: renderOverview,
     _renderDataSources: renderDataSources,
     _renderPipelines: renderPipelines,

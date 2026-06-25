@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from services.workbench_tdx_f10_read import build_f10_source_date_audit_view, build_tdx_f10_source_dq_view
+from services.workbench_tdx_f10_read import build_f10_source_date_audit_view  # tdx_f10_source_dq 视图已退役 (2026-06-25)
 
 
 REPO = Path(__file__).resolve().parent.parent.parent

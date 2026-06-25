@@ -17,7 +17,6 @@ from services.workbench_signal_cache_read import (
 )
 from services.workbench_tdx_read import (
     build_f10_source_date_audit_view,
-    build_tdx_f10_source_dq_view,
     build_tdx_server_health_view,
 )
 
@@ -226,7 +225,6 @@ def build_workbench_data_sources(conn: Any, *, limit: int = 30, as_of_date: str 
                 "mart_tdx_server_health",
                 "mart_tdx_f10_capability_matrix",
                 "mart_tdx_f10_source_date_audit",
-                "mart_tdx_f10_source_dq_detail",
             ],
         ),
         "calendar_target": latest_trading_day(conn, as_of_date=as_of_date),
@@ -241,6 +239,5 @@ def build_workbench_data_sources(conn: Any, *, limit: int = 30, as_of_date: str 
         "tdx_server_health": build_tdx_server_health_view(conn, limit=limit),
         "tdx_f10_capabilities": tdx_f10_capabilities,
         "f10_source_date_audit": build_f10_source_date_audit_view(conn, limit=limit),
-        "tdx_f10_source_dq": build_tdx_f10_source_dq_view(conn, limit=limit),
         "blockers": blockers,
     }
