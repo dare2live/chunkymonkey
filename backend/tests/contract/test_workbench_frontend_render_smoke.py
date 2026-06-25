@@ -123,24 +123,6 @@ def test_workbench_frontend_render_smoke_for_all_tabs():
             feature_effects_by_horizon: [{ label_name: 'follow_net_return_90d', horizon_days: 90, feature_name: 'ma_ratio_250', dominant_direction: 'negative', stock_count: 2, avg_abs_corr: 0.4, avg_corr: -0.4, positive_share: 0.1, avg_obs_count: 80 }],
             best_stocks: [{ stock_code: '000001', label_name: 'follow_net_return_90d', horizon_days: 90, horizon_score: 0.16, avg_return: 0.03, compounded_return: 0.18, max_drawdown: -0.12, win_rate: 0.6, volatility: 0.21, path_obs_count: 6, is_baseline: false }],
           },
-          shareholder_plan_family_eval: {
-            run_id: 'plan_family_1',
-            summary: { panel_rows: 1000, row_count: 65, source_family_count: 2, feature_count: 7, label_count: 5, built_at: '2026-05-07T10:47:57' },
-            family_summary: [{ source_family: 'initial_event', label_name: 'follow_net_return_90d', feature_count: 6, panel_rows: 1000, avg_nondefault_pct: 2.3, max_abs_rank_ic: 0.012, max_abs_spread: 0.095, positive_spread_share: 1 }],
-            paired_advantages: [{ feature_name: 'shareholder_plan_decrease_count_180d', label_name: 'follow_net_return_90d', latest_rank_ic: 0.006, initial_rank_ic: 0.012, latest_spread: 0.06, initial_spread: 0.09, abs_spread_advantage: 0.03, latest_nondefault_pct: 8, initial_nondefault_pct: 10 }],
-            top_effects: [{ source_family: 'initial_event', source_table: 'mart_shareholder_plan_initial_event', feature_name: 'shareholder_plan_decrease_count_180d', feature_purpose: 'initial_notice_capital_attention_candidate', label_name: 'follow_net_return_90d', window_days: 180, valid_rows: 980, nondefault_pct: 10, event_rows: 8163, distinct_event_stocks: 2500, ic: 0.04, rank_ic: 0.012, daily_rank_ic_count: 120, positive_rank_ic_share: 0.62, label_mean_when_active: 0.15, label_mean_when_inactive: 0.06, active_inactive_label_spread: 0.09, built_at: '2026-05-07T10:47:57' }],
-          },
-          shareholder_plan_initial_feature_panel: {
-            run_id: 'sp_initial_panel_1',
-            quality: { run_id: 'sp_initial_panel_1', feature_set_id: 'sp_initial_set', panel_rows: 3561243, stock_count: 5143, date_count: 715, min_date: '2023-01-03', max_date: '2025-12-15', initial_event_rows: 8163, matched_event_rows: 6224, active_rows: 257653, active_pct: 7.23, dropped_incomplete_label_rows: 466580, dropped_incomplete_context_rows: 25152, calendar_mismatch_rows: 0, labels: ['follow_net_return_60d', 'follow_net_return_90d'], context_features: ['ret_20d_rank'], initial_features: ['sp_initial_decrease_count_180d'], stage_timings: { total_s: 13.741 } },
-          },
-          shareholder_plan_family_walkforward: {
-            run_id: 'plan_wf_1',
-            summary: { row_count: 2, source_family_count: 2, feature_count: 1, label_count: 1, fold_count: 4, max_valid_fold_count: 2, built_at: '2026-05-07T11:11:01', gate_status_counts: { blocked: 2 } },
-            gate_summary: [{ source_family: 'initial_event', label_name: 'follow_net_return_60d', gate_status: 'blocked', feature_count: 1, max_valid_fold_count: 2, max_signal_rank_ic: 0.012, max_long_short_spread: 0.19, worst_drawdown: -0.07, avg_active_pct: 0.012 }],
-            paired_rows: [{ feature_name: 'shareholder_plan_decrease_count_180d', label_name: 'follow_net_return_60d', latest_gate_status: 'blocked', initial_gate_status: 'blocked', latest_signal_rank_ic: 0.005, initial_signal_rank_ic: 0.012, latest_long_short_spread: 0.05, initial_long_short_spread: 0.19, long_short_advantage: 0.14, latest_valid_fold_count: 1, initial_valid_fold_count: 2 }],
-            top_rows: [{ source_family: 'initial_event', source_table: 'mart_shareholder_plan_initial_event', feature_name: 'shareholder_plan_decrease_count_180d', feature_purpose: 'initial_notice_capital_attention_candidate', label_name: 'follow_net_return_60d', window_days: 180, fold_count: 4, valid_fold_count: 2, gate_status: 'blocked', avg_signal_adjusted_holdout_rank_ic: 0.012, avg_holdout_long_short_spread: 0.19, positive_long_short_fold_share: 1, worst_holdout_long_short_max_drawdown: -0.07, avg_holdout_active_pct: 0.012, min_holdout_active_rows: 29, blockers: ['insufficient_valid_walkforward_folds'], cautions: ['sparse_activation_requires_auxiliary_or_context_use'], built_at: '2026-05-07T11:11:01' }],
-          },
           temporal_synergy: {
             run_id: 'temporal_1',
             quality: { run_id: 'temporal_1', panel_rows: 100, stock_count: 20, feature_count: 3, label_count: 2, dropped_future_source_rows: 1, min_signal_date: '2026-01-01', max_signal_date: '2026-01-20', source_date_filter_applied: true, source_available_date_column: 'source_available_date' },
@@ -255,7 +237,7 @@ def test_workbench_frontend_render_smoke_for_all_tabs():
         render('_renderFeatures', features, ['Registry', 'Feature Search Space', '漂移缓解候选', 'mitigation_1', 'ret_20d']);
         render('_renderDelivery', delivery, ['GO/NO-GO Delivery Board', 'NOT_READY', 'Rejected Challenger', 'PBO=0.626', 'Remaining Gaps']);
         render('_renderPaperSim', paperSim, ['Paper Sim KPI Timeseries', 'Annual Return', '历史 KPI 与参数血缘', 'materialized_snapshot']);
-        render('_renderResearch', research, ['研究队列', 'Ranker 性能', 'Rank Matrix Cache', 'rank_matrix_cache_hit', 'ranker_perf', '个股持股周期画像', 'Top 变量影响', 'ma_ratio_250', '股东计划特征家族', 'plan_family_1', 'initial_event', 'shareholder_plan_decrease_count_180d', '行业 PIT 就绪度', 'industry_pit_1', '时序协同研究', 'signal_a']);
+        render('_renderResearch', research, ['研究队列', 'Ranker 性能', 'Rank Matrix Cache', 'rank_matrix_cache_hit', 'ranker_perf', '个股持股周期画像', 'Top 变量影响', 'ma_ratio_250', '行业 PIT 就绪度', 'industry_pit_1', '时序协同研究', 'signal_a']);
         render('_renderChampion', champion, ['Champion 阻塞上下文', 'deployed', 'champion_a']);
         render('_renderRecommendations', recommendations, ['Primary TopK', 'tdxhub_quote', '平安银行']);
         render('_renderStorage', storage, ['清理计划', '架构清理计划', 'cleanup_1']);
@@ -453,9 +435,6 @@ def test_workbench_research_model_is_pure_and_stable():
           rank_matrix_cache: { summary: { entry_count: 1 }, latest_benchmarks: [{ run_id: 'bm_1' }], cache_entries: [{ table_name: 'cache_1' }] },
           stability_context: { run_id: 'context_1' },
           stock_horizon_profile: { run_id: 'stock_horizon_1', baseline_label: 'follow_net_return_60d' },
-          shareholder_plan_initial_feature_panel: { run_id: 'sp_initial_panel_1' },
-          shareholder_plan_family_eval: { run_id: 'plan_family_1', summary: { row_count: 2 } },
-          shareholder_plan_family_walkforward: { run_id: 'plan_wf_1', summary: { row_count: 2 } },
           temporal_synergy: { run_id: 'temporal_1' },
           industry_pit: { run_id: 'industry_pit_1' },
           feature_drift: { run_id: 'drift_1' },
@@ -465,7 +444,6 @@ def test_workbench_research_model_is_pure_and_stable():
         if (model.tasks.length !== 1 || model.studies.length !== 1 || model.rankerProfiles.length !== 1) throw new Error('list normalization mismatch');
         if (model.rankerPolicy.run_id !== 'schedule_1' || model.rankMatrixCache.summary.entry_count !== 1) throw new Error('policy/cache mismatch');
         if (model.stabilityContext.runId !== 'context_1' || model.stabilityContext.summaryCount !== 0 || model.stockHorizonProfile.run_id !== 'stock_horizon_1') throw new Error('context mismatch');
-        if (model.shareholderPlanInitialPanel.run_id !== 'sp_initial_panel_1' || model.shareholderPlanFamilyWalkforward.run_id !== 'plan_wf_1') throw new Error('shareholder plan mismatch');
         if (model.temporalSynergy.run_id !== 'temporal_1' || model.industryPit.run_id !== 'industry_pit_1' || model.featureDrift.run_id !== 'drift_1') throw new Error('domain mismatch');
         if (model.isEmpty !== false) throw new Error('empty flag mismatch');
         const empty = view.buildResearchModel({});

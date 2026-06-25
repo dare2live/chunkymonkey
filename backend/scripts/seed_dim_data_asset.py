@@ -71,22 +71,6 @@ from services.data_sources.clients_registry import (
 EXTRA_WRITER_BY_TABLE = {
     # Dynamic f-string writers are intentionally kept configurable in code, but
     # static grep cannot infer the concrete target table from imported constants.
-    "mart_shareholder_plan_initial_event": "backend/scripts/build_shareholder_plan_initial_event.py",
-    "mart_shareholder_plan_initial_feature_panel": (
-        "backend/scripts/build_shareholder_plan_initial_feature_panel.py"
-    ),
-    "mart_shareholder_plan_initial_feature_panel_quality": (
-        "backend/scripts/build_shareholder_plan_initial_feature_panel.py"
-    ),
-    "mart_shareholder_plan_feature_family_eval": (
-        "backend/scripts/evaluate_shareholder_plan_feature_families.py"
-    ),
-    "mart_shareholder_plan_family_walkforward": (
-        "backend/scripts/validate_shareholder_plan_family_walkforward.py"
-    ),
-    "mart_shareholder_plan_family_walkforward_summary": (
-        "backend/scripts/validate_shareholder_plan_family_walkforward.py"
-    ),
     "mart_synergy_policy_mtm_rerank": "backend/scripts/rerank_optuna_synergy_mtm.py",
     "mart_synergy_policy_mtm_rerank_summary": "backend/scripts/rerank_optuna_synergy_mtm.py",
     "mart_synergy_policy_mtm_strategy_sweep": "backend/scripts/sweep_synergy_mtm_strategy.py",
@@ -117,30 +101,6 @@ EXTRA_UPSTREAM_BY_TABLE = {
     "mart_stock_trend":             ("derived (build_trends step)", None),
     "mart_stock_screening":         ("derived (calc_screening manual step)", None),
     "mart_macd_state_history":      ("derived from macd_golden_cross state helper", None),
-    "mart_shareholder_plan_initial_event": (
-        "derived from fact_shareholder_plan_tdx_f10",
-        None,
-    ),
-    "mart_shareholder_plan_initial_feature_panel": (
-        "derived from fact_feature_panel + mart_shareholder_plan_initial_event",
-        None,
-    ),
-    "mart_shareholder_plan_initial_feature_panel_quality": (
-        "derived from mart_shareholder_plan_initial_feature_panel",
-        None,
-    ),
-    "mart_shareholder_plan_feature_family_eval": (
-        "derived from fact_feature_panel + fact_shareholder_plan_tdx_f10 + mart_shareholder_plan_initial_event",
-        None,
-    ),
-    "mart_shareholder_plan_family_walkforward": (
-        "derived from fact_feature_panel + shareholder plan feature-family sources",
-        None,
-    ),
-    "mart_shareholder_plan_family_walkforward_summary": (
-        "derived from mart_shareholder_plan_family_walkforward",
-        None,
-    ),
     "mart_synergy_policy_mtm_rerank": (
         "derived from mart_optuna_synergy_trial + validate_synergy_policy_mark_to_market",
         None,
@@ -211,12 +171,6 @@ EXTRA_FRESHNESS_BY_TABLE = {
     "mart_temporal_research_panel": ("on-demand", 24 * 30),
     "mart_tdx_f10_source_date_section_audit": ("on-demand", 24 * 30),
     "mart_architecture_cleanup_plan": ("on-demand", 24 * 30),
-    "mart_shareholder_plan_initial_event": ("event", 48),
-    "mart_shareholder_plan_initial_feature_panel": ("on-demand", 24 * 30),
-    "mart_shareholder_plan_initial_feature_panel_quality": ("on-demand", 24 * 30),
-    "mart_shareholder_plan_feature_family_eval": ("on-demand", 24 * 30),
-    "mart_shareholder_plan_family_walkforward": ("on-demand", 24 * 30),
-    "mart_shareholder_plan_family_walkforward_summary": ("on-demand", 24 * 30),
     "mart_tdx_server_health": ("on-demand", 24 * 30),
     "mart_temporal_research_panel_quality": ("on-demand", 24 * 30),
     # gpcw files are quarter-end source manifests.
@@ -289,78 +243,6 @@ EXTRA_ASSET_CONTRACT_BY_TABLE = {
         "strategy_eligibility": "promotion_and_retrain_gate",
         "frontend_visibility": "governance_visible",
         "quality_gate_level": "blocking",
-    },
-    "mart_shareholder_plan_initial_event": {
-        "asset_grain": "stock_code+initial_notice_date+subject+direction+plan_window",
-        "asset_cadence": "event_derived",
-        "coverage_policy": "only_stocks_with_shareholder_plan_announcements",
-        "null_policy": "sparse_event_rows_allowed_no_silent_missing_source_date",
-        "pit_policy": "source_notice_date_equals_source_available_date",
-        "intended_use": "initial_shareholder_plan_capital_attention_candidate",
-        "model_eligibility": "research_candidate_after_validation",
-        "strategy_eligibility": "capital_attention_auxiliary",
-        "frontend_visibility": "governance_visible",
-        "quality_gate_level": "blocking",
-    },
-    "mart_shareholder_plan_initial_feature_panel": {
-        "asset_grain": "feature_set_id+stock_code+trade_date",
-        "asset_cadence": "on_demand_research",
-        "coverage_policy": "mature_follow_label_rows_on_current_feature_panel",
-        "null_policy": "event_absence_encoded_no_unclassified_nulls",
-        "pit_policy": "initial_event_source_available_date_lte_signal_date",
-        "intended_use": "multivariate_research_panel_for_initial_shareholder_plan_context",
-        "model_eligibility": "not_production_model_input_research_only_until_walkforward_gate",
-        "strategy_eligibility": "capital_attention_auxiliary_context_candidate",
-        "frontend_visibility": "governance_visible",
-        "quality_gate_level": "monitor_only",
-    },
-    "mart_shareholder_plan_initial_feature_panel_quality": {
-        "asset_grain": "run_id",
-        "asset_cadence": "on_demand_research",
-        "coverage_policy": "quality_manifest_for_initial_shareholder_plan_research_panel",
-        "null_policy": "metrics_nullable_only_when_panel_empty",
-        "pit_policy": "documents_initial_feature_panel_pit_and_calendar_checks",
-        "intended_use": "research_panel_quality_gate_and_performance_evidence",
-        "model_eligibility": "not_model_input",
-        "strategy_eligibility": "research_quality_gate",
-        "frontend_visibility": "governance_visible",
-        "quality_gate_level": "monitor_only",
-    },
-    "mart_shareholder_plan_feature_family_eval": {
-        "asset_grain": "run_id+source_family+feature_name+label_name",
-        "asset_cadence": "on_demand_research",
-        "coverage_policy": "current_feature_panel_follow_labels",
-        "null_policy": "metrics_null_allowed_when_daily_rank_ic_insufficient",
-        "pit_policy": "compares_latest_state_and_initial_event_source_available_dates",
-        "intended_use": "shareholder_plan_feature_family_role_decision",
-        "model_eligibility": "not_model_input_research_evidence_only",
-        "strategy_eligibility": "feature_family_selection_evidence",
-        "frontend_visibility": "governance_visible",
-        "quality_gate_level": "monitor_only",
-    },
-    "mart_shareholder_plan_family_walkforward": {
-        "asset_grain": "run_id+source_family+feature_name+label_name+fold_id",
-        "asset_cadence": "on_demand_research",
-        "coverage_policy": "current_feature_panel_follow_labels_walkforward_folds",
-        "null_policy": "metrics_null_allowed_when_fold_signal_is_insufficient",
-        "pit_policy": "inherits_shareholder_plan_source_available_date_policy",
-        "intended_use": "shareholder_plan_feature_family_walkforward_validation",
-        "model_eligibility": "not_model_input_research_evidence_only",
-        "strategy_eligibility": "candidate_validation_before_registry_change",
-        "frontend_visibility": "governance_visible",
-        "quality_gate_level": "monitor_only",
-    },
-    "mart_shareholder_plan_family_walkforward_summary": {
-        "asset_grain": "run_id+source_family+feature_name+label_name",
-        "asset_cadence": "on_demand_research",
-        "coverage_policy": "current_feature_panel_follow_labels_walkforward_summary",
-        "null_policy": "gate_blockers_classify_insufficient_fold_metrics",
-        "pit_policy": "inherits_shareholder_plan_family_walkforward_policy",
-        "intended_use": "shareholder_plan_feature_family_model_candidate_gate",
-        "model_eligibility": "not_model_input_research_evidence_only",
-        "strategy_eligibility": "candidate_validation_before_registry_change",
-        "frontend_visibility": "governance_visible",
-        "quality_gate_level": "monitor_only",
     },
     "mart_synergy_policy_mtm_rerank": {
         "asset_grain": "run_id+optuna_run_id+trial_number",

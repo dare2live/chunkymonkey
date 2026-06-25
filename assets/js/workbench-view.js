@@ -594,9 +594,6 @@
     var rankMatrixCache = model.rankMatrixCache;
     var stabilityContext = model.stabilityContext;
     var stockHorizon = model.stockHorizonProfile;
-    var shareholderPlanInitial = model.shareholderPlanInitialPanel;
-    var shareholderPlan = model.shareholderPlanFamilyEval;
-    var shareholderPlanWf = model.shareholderPlanFamilyWalkforward;
     var temporalSynergy = model.temporalSynergy;
     var industryPit = model.industryPit;
     var featureDrift = model.featureDrift;
@@ -622,15 +619,6 @@
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>个股持股周期画像</h3><div class="muted">run_id: <code>' + esc(stockHorizon.run_id || '-') + '</code> / baseline: <code>' + esc(stockHorizon.baseline_label || 'follow_net_return_60d') + '</code></div></div></div>' +
       renderStockHorizonProfile(stockHorizon) +
-      '</section>' +
-
-      '<section class="panel wb-panel">' +
-      '<div class="panel-head"><div><h3>股东计划特征家族</h3><div class="muted">run_id: <code>' + esc(shareholderPlan.run_id || '-') + '</code></div></div></div>' +
-      renderShareholderPlanInitialPanel(shareholderPlanInitial) +
-      '<div style="margin-top:14px">' +
-      renderShareholderPlanFamilyEval(shareholderPlan) +
-      '</div>' +
-      '<div style="margin-top:14px">' + renderShareholderPlanWalkforward(shareholderPlanWf) + '</div>' +
       '</section>' +
 
       '<section class="panel wb-panel">' +
@@ -677,9 +665,6 @@
     var rankMatrixCache = data.rank_matrix_cache || {};
     var stabilityContext = buildStabilityContextModel(data.stability_context || {});
     var stockHorizonProfile = data.stock_horizon_profile || {};
-    var shareholderPlanInitialPanel = data.shareholder_plan_initial_feature_panel || {};
-    var shareholderPlanFamilyEval = data.shareholder_plan_family_eval || {};
-    var shareholderPlanFamilyWalkforward = data.shareholder_plan_family_walkforward || {};
     var temporalSynergy = data.temporal_synergy || {};
     var industryPit = data.industry_pit || {};
     var featureDrift = data.feature_drift || {};
@@ -692,13 +677,10 @@
       rankMatrixCache: rankMatrixCache,
       stabilityContext: stabilityContext,
       stockHorizonProfile: stockHorizonProfile,
-      shareholderPlanInitialPanel: shareholderPlanInitialPanel,
-      shareholderPlanFamilyEval: shareholderPlanFamilyEval,
-      shareholderPlanFamilyWalkforward: shareholderPlanFamilyWalkforward,
       temporalSynergy: temporalSynergy,
       industryPit: industryPit,
       featureDrift: featureDrift,
-      isEmpty: !schedule.run_id && !tasks.length && !studies.length && !rankerProfiles.length && !rankerPolicy.run_id && !stabilityContext.runId && !stockHorizonProfile.run_id && !shareholderPlanInitialPanel.run_id && !shareholderPlanFamilyEval.run_id && !shareholderPlanFamilyWalkforward.run_id && !temporalSynergy.run_id && !industryPit.run_id && !featureDrift.run_id,
+      isEmpty: !schedule.run_id && !tasks.length && !studies.length && !rankerProfiles.length && !rankerPolicy.run_id && !stabilityContext.runId && !stockHorizonProfile.run_id && !temporalSynergy.run_id && !industryPit.run_id && !featureDrift.run_id,
     };
   }
 
@@ -758,185 +740,6 @@
       '<div><span>缺失 PIT</span><strong>' + fmtNum(data.missing_pit_rows || 0) + '</strong></div>' +
       '<div><span>阻塞</span><strong>' + (blockers.length ? blockers.map(function (b) { return pill(b, 'bad'); }).join('') : pill('none', 'ok')) + '</strong></div>' +
       '</div>';
-  }
-
-  function renderShareholderPlanInitialPanel(data) {
-    data = data || {};
-    var q = data.quality || {};
-    if (!q.run_id) return renderEmpty('暂无初始事件研究面板');
-    var timings = q.stage_timings || {};
-    return '<details class="workbench-section" open>' +
-      '<summary><span class="workbench-section-title">初始事件研究面板</span><span class="muted" style="font-size:11px;font-weight:400"><code>' + esc(q.run_id || '-') + '</code></span></summary>' +
-      '<div class="wb-kv" style="margin-top:8px">' +
-      '<div><span>面板行数</span><strong>' + fmtNum(q.panel_rows || 0) + '</strong></div>' +
-      '<div><span>股票/日期</span><strong>' + fmtNum(q.stock_count || 0) + ' / ' + fmtNum(q.date_count || 0) + '</strong></div>' +
-      '<div><span>事件激活</span><strong>' + fmtPct((q.active_pct || 0) / 100) + '</strong></div>' +
-      '<div><span>匹配事件</span><strong>' + fmtNum(q.matched_event_rows || 0) + ' / ' + fmtNum(q.initial_event_rows || 0) + '</strong></div>' +
-      '<div><span>交易日历不匹配</span><strong>' + fmtNum(q.calendar_mismatch_rows || 0) + '</strong></div>' +
-      '<div><span>构建耗时</span><strong>' + fmtDuration(timings.total_s || 0) + '</strong></div>' +
-      '<div><span>完整标签剔除</span><strong>' + fmtNum(q.dropped_incomplete_label_rows || 0) + '</strong></div>' +
-      '<div><span>完整上下文剔除</span><strong>' + fmtNum(q.dropped_incomplete_context_rows || 0) + '</strong></div>' +
-      '<div><span>窗口</span><strong>' + esc((q.min_date || '-') + ' ~ ' + (q.max_date || '-')) + '</strong></div>' +
-      '<div><span>特征/标签</span><strong>' + fmtNum((q.initial_features || []).length + (q.context_features || []).length) + ' / ' + fmtNum((q.labels || []).length) + '</strong></div>' +
-      '</div>' +
-      '</details>';
-  }
-
-  function renderShareholderPlanFamilyEval(data) {
-    data = data || {};
-    var summary = data.summary || {};
-    var families = data.family_summary || [];
-    var top = data.top_effects || [];
-    var paired = data.paired_advantages || [];
-    if (!data.run_id && !families.length && !top.length && !paired.length) return renderEmpty('暂无股东计划特征家族评估');
-    return '<div class="wb-kv">' +
-      '<div><span>面板行数</span><strong>' + fmtNum(summary.panel_rows || 0) + '</strong></div>' +
-      '<div><span>输出行数</span><strong>' + fmtNum(summary.row_count || 0) + '</strong></div>' +
-      '<div><span>家族/特征</span><strong>' + fmtNum(summary.source_family_count || 0) + ' / ' + fmtNum(summary.feature_count || 0) + '</strong></div>' +
-      '<div><span>标签</span><strong>' + fmtNum(summary.label_count || 0) + '</strong></div>' +
-      '<div><span>built</span><strong>' + esc(summary.built_at || '-').slice(0, 19) + '</strong></div>' +
-      '</div>' +
-      '<div class="wb-grid" style="margin-top:12px">' +
-      '<div>' + renderShareholderPlanFamilySummary(families) + '</div>' +
-      '<div>' + renderShareholderPlanPairedTable(paired) + '</div>' +
-      '</div>' +
-      '<div style="margin-top:12px">' + renderShareholderPlanTopTable(top) + '</div>';
-  }
-
-  function renderShareholderPlanFamilySummary(rows) {
-    if (!rows.length) return renderEmpty('暂无家族汇总');
-    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
-      '<thead><tr><th>家族</th><th>标签</th><th>特征</th><th>激活</th><th>|RankIC|max</th><th>|Spread|max</th><th>正向</th></tr></thead><tbody>' +
-      rows.map(function (row) {
-        return '<tr>' +
-          '<td><code>' + esc(row.source_family || '-') + '</code></td>' +
-          '<td>' + esc(row.label_name || '-') + '</td>' +
-          '<td>' + fmtNum(row.feature_count || 0) + '</td>' +
-          '<td>' + fmtPct((row.avg_nondefault_pct || 0) / 100) + '</td>' +
-          '<td>' + fmtFloat(row.max_abs_rank_ic, 4) + '</td>' +
-          '<td>' + fmtPct(row.max_abs_spread) + '</td>' +
-          '<td>' + fmtPct(row.positive_spread_share) + '</td>' +
-          '</tr>';
-      }).join('') +
-      '</tbody></table></div>';
-  }
-
-  function renderShareholderPlanPairedTable(rows) {
-    if (!rows.length) return renderEmpty('暂无家族对比');
-    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
-      '<thead><tr><th>特征</th><th>标签</th><th>Initial Spread</th><th>Latest Spread</th><th>优势</th><th>激活率</th></tr></thead><tbody>' +
-      rows.map(function (row) {
-        return '<tr>' +
-          '<td><code>' + esc(row.feature_name || '-') + '</code></td>' +
-          '<td>' + esc(row.label_name || '-') + '</td>' +
-          '<td>' + fmtPct(row.initial_spread) + '<div class="muted">IC ' + fmtFloat(row.initial_rank_ic, 4) + '</div></td>' +
-          '<td>' + fmtPct(row.latest_spread) + '<div class="muted">IC ' + fmtFloat(row.latest_rank_ic, 4) + '</div></td>' +
-          '<td>' + fmtPct(row.abs_spread_advantage) + '</td>' +
-          '<td>I ' + fmtPct((row.initial_nondefault_pct || 0) / 100) + '<div class="muted">L ' + fmtPct((row.latest_nondefault_pct || 0) / 100) + '</div></td>' +
-          '</tr>';
-      }).join('') +
-      '</tbody></table></div>';
-  }
-
-  function renderShareholderPlanTopTable(rows) {
-    if (!rows.length) return renderEmpty('暂无股东计划效果');
-    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
-      '<thead><tr><th>家族</th><th>特征</th><th>标签</th><th>Spread</th><th>RankIC</th><th>IC</th><th>激活</th><th>事件</th></tr></thead><tbody>' +
-      rows.map(function (row) {
-        return '<tr>' +
-          '<td><code>' + esc(row.source_family || '-') + '</code><div class="muted">' + esc(row.feature_purpose || '-') + '</div></td>' +
-          '<td><code>' + esc(row.feature_name || '-') + '</code></td>' +
-          '<td>' + esc(row.label_name || '-') + '</td>' +
-          '<td>' + fmtPct(row.active_inactive_label_spread) + '<div class="muted">active ' + fmtPct(row.label_mean_when_active) + '</div></td>' +
-          '<td>' + fmtFloat(row.rank_ic, 4) + '<div class="muted">days ' + fmtNum(row.daily_rank_ic_count || 0) + '</div></td>' +
-          '<td>' + fmtFloat(row.ic, 4) + '</td>' +
-          '<td>' + fmtPct((row.nondefault_pct || 0) / 100) + '</td>' +
-          '<td>' + fmtNum(row.event_rows || 0) + '<div class="muted">stocks ' + fmtNum(row.distinct_event_stocks || 0) + '</div></td>' +
-          '</tr>';
-      }).join('') +
-      '</tbody></table></div>';
-  }
-
-  function renderShareholderPlanWalkforward(data) {
-    data = data || {};
-    var summary = data.summary || {};
-    var gates = data.gate_summary || [];
-    var top = data.top_rows || [];
-    var paired = data.paired_rows || [];
-    if (!data.run_id && !gates.length && !top.length && !paired.length) return renderEmpty('暂无股东计划 walk-forward');
-    return '<div class="panel-subhead"><h4>Walk-forward 候选验证</h4><span class="muted">run_id: <code>' + esc(data.run_id || '-') + '</code></span></div>' +
-      '<div class="wb-kv">' +
-      '<div><span>组合</span><strong>' + fmtNum(summary.row_count || 0) + '</strong></div>' +
-      '<div><span>fold</span><strong>' + fmtNum(summary.fold_count || 0) + '</strong></div>' +
-      '<div><span>标签</span><strong>' + fmtNum(summary.label_count || 0) + '</strong></div>' +
-      '<div><span>状态</span><strong>' + Object.keys(summary.gate_status_counts || {}).map(function (key) { return esc(key) + ' ' + fmtNum((summary.gate_status_counts || {})[key] || 0); }).join(' / ') + '</strong></div>' +
-      '<div><span>built</span><strong>' + esc(summary.built_at || '-').slice(0, 19) + '</strong></div>' +
-      '</div>' +
-      '<div class="wb-grid" style="margin-top:12px">' +
-      '<div>' + renderShareholderPlanWalkforwardGateSummary(gates) + '</div>' +
-      '<div>' + renderShareholderPlanWalkforwardPairs(paired) + '</div>' +
-      '</div>' +
-      '<div style="margin-top:12px">' + renderShareholderPlanWalkforwardTop(top) + '</div>';
-  }
-
-  function renderShareholderPlanWalkforwardGateSummary(rows) {
-    if (!rows.length) return renderEmpty('暂无 walk-forward gate 汇总');
-    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
-      '<thead><tr><th>家族</th><th>标签</th><th>Gate</th><th>特征</th><th>有效fold</th><th>SignalIC</th><th>L/S</th><th>DD</th><th>激活</th></tr></thead><tbody>' +
-      rows.map(function (row) {
-        return '<tr>' +
-          '<td><code>' + esc(row.source_family || '-') + '</code></td>' +
-          '<td>' + esc(row.label_name || '-') + '</td>' +
-          '<td>' + pill(row.gate_status || 'unknown', row.gate_status) + '</td>' +
-          '<td>' + fmtNum(row.feature_count || 0) + '</td>' +
-          '<td>' + fmtNum(row.max_valid_fold_count || 0) + '</td>' +
-          '<td>' + fmtFloat(row.max_signal_rank_ic, 4) + '</td>' +
-          '<td>' + fmtPct(row.max_long_short_spread) + '</td>' +
-          '<td>' + fmtPct(row.worst_drawdown) + '</td>' +
-          '<td>' + fmtPct((row.avg_active_pct || 0) / 100) + '</td>' +
-          '</tr>';
-      }).join('') +
-      '</tbody></table></div>';
-  }
-
-  function renderShareholderPlanWalkforwardPairs(rows) {
-    if (!rows.length) return renderEmpty('暂无 walk-forward 家族对比');
-    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
-      '<thead><tr><th>特征</th><th>标签</th><th>Initial</th><th>Latest</th><th>L/S优势</th><th>有效fold</th></tr></thead><tbody>' +
-      rows.map(function (row) {
-        return '<tr>' +
-          '<td><code>' + esc(row.feature_name || '-') + '</code></td>' +
-          '<td>' + esc(row.label_name || '-') + '</td>' +
-          '<td>' + fmtPct(row.initial_long_short_spread) + '<div class="muted">' + esc(row.initial_gate_status || '-') + ' / IC ' + fmtFloat(row.initial_signal_rank_ic, 4) + '</div></td>' +
-          '<td>' + fmtPct(row.latest_long_short_spread) + '<div class="muted">' + esc(row.latest_gate_status || '-') + ' / IC ' + fmtFloat(row.latest_signal_rank_ic, 4) + '</div></td>' +
-          '<td>' + fmtPct(row.long_short_advantage) + '</td>' +
-          '<td>I ' + fmtNum(row.initial_valid_fold_count || 0) + '<div class="muted">L ' + fmtNum(row.latest_valid_fold_count || 0) + '</div></td>' +
-          '</tr>';
-      }).join('') +
-      '</tbody></table></div>';
-  }
-
-  function renderShareholderPlanWalkforwardTop(rows) {
-    if (!rows.length) return renderEmpty('暂无 walk-forward 明细');
-    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
-      '<thead><tr><th>Gate</th><th>家族</th><th>特征</th><th>标签</th><th>有效fold</th><th>SignalIC</th><th>L/S</th><th>DD</th><th>激活</th><th>阻断</th></tr></thead><tbody>' +
-      rows.map(function (row) {
-        var blockers = (row.blockers || []).join(', ');
-        var cautions = (row.cautions || []).join(', ');
-        return '<tr>' +
-          '<td>' + pill(row.gate_status || 'unknown', row.gate_status) + '</td>' +
-          '<td><code>' + esc(row.source_family || '-') + '</code></td>' +
-          '<td><code>' + esc(row.feature_name || '-') + '</code></td>' +
-          '<td>' + esc(row.label_name || '-') + '</td>' +
-          '<td>' + fmtNum(row.valid_fold_count || 0) + ' / ' + fmtNum(row.fold_count || 0) + '</td>' +
-          '<td>' + fmtFloat(row.avg_signal_adjusted_holdout_rank_ic, 4) + '</td>' +
-          '<td>' + fmtPct(row.avg_holdout_long_short_spread) + '<div class="muted">pos ' + fmtPct(row.positive_long_short_fold_share) + '</div></td>' +
-          '<td>' + fmtPct(row.worst_holdout_long_short_max_drawdown) + '</td>' +
-          '<td>' + fmtPct((row.avg_holdout_active_pct || 0) / 100) + '<div class="muted">min ' + fmtNum(row.min_holdout_active_rows || 0) + '</div></td>' +
-          '<td><span class="muted">' + esc(blockers || cautions || '-') + '</span></td>' +
-          '</tr>';
-      }).join('') +
-      '</tbody></table></div>';
   }
 
   function renderDataSources(data) {

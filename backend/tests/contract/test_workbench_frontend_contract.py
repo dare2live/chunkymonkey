@@ -329,8 +329,6 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "eval cache" in workbench_js
     assert "feature_drift_cache_hit_rate" in workbench_js
     assert "Rank Matrix Cache" in workbench_js
-    assert "Walk-forward 候选验证" in workbench_js
-    assert "renderShareholderPlanWalkforward" in workbench_js
     assert "刷新视图" in workbench_js
     assert "renderReadModelMeta" in workbench_js
     assert "buildReadModelMeta" in workbench_js
