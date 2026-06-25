@@ -1,6 +1,12 @@
 # 数据血缘 + 路由中枢 — 数据管理模块功能设计 (2026-06-24)
 
-> owner: 主会话 (控制面 design spec). 状态: 规划 (用户 2026-06-24 决: 先收 tdx 迁移尾巴再建).
+> owner: 主会话 (控制面 design spec).
+> **状态: T2 (P1 acquire + P2 consume) DONE 2026-06-26** (用户 2026-06-26 拍板"先造 M5-T2 血缘中枢")。
+>   实现: `backend/services/lineage/` (model/builder/query) + `backend/scripts/lineage_cli.py` (chunkyctl lineage build|impact|provenance|dead|show)
+>   + `backend/scripts/check_lineage_drift.py` (safe_commit Step3.96 informational WARN) + `data/lineage/graph.json` (472节点/1191边) + 10 单测。
+>   缝合: acquire←sync_registry(42源→表+PIT锚) / consume←确定性 git-grep fan-in / 表←information_schema 6库 / layer←data_layers。
+>   killer 已验: `lineage impact <table>` 删/迁前自动 fan-in (替代手 grep, 根治本 doc 缘起的痛); dead 检测 19 张已落库未用表。
+>   **余 (押后)**: T3 transform 字段级边 (feature builder/factors 解析) · T4 display 段 + domain 标签 + drift 硬闸 (转正门/CI 强制, 非本地 WARN) · §8 前端图。
 > 触发: 用户洞察 — "拉血缘要拼 9 个 agent 重建 = 现在没有血缘管理; 做成数据管理模块功能,
 > 相当于数据血缘和路由中枢, 从数据获取开始, 源-表-全部字段-字段组合进哪个表-被谁用-在哪展示"。
 > 关联: master plan §1.5 (4 不变量含"血缘", 一直没物化) · CLAUDE §4.3 (删源铁律11 fan-in) · 本次 tdx 迁移反复手动 grep 消费方+判错语义的根因。

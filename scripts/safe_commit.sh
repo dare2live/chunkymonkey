@@ -176,6 +176,21 @@ else
     exit 5
 fi
 
+# 3.96 血缘漂移门 (M5-T2, 2026-06-26): 结构文件 (registry/schema/data_layers/lineage模块) staged 时,
+# 提醒 data/lineage/graph.json 是否随现实漂移。**T2=informational WARN 非 block** (consume 边随任何
+# 引用表的文件漂移, block 会高摩擦; 硬闸排到 T4 转正门/CI, mio §7 本地 hook=快反馈非强制)。
+STAGED_FOR_LINEAGE=$(git diff --cached --name-only | grep -E 'config/(sync_registry|data_access|data_layers|database_manifest|feature_registry)\.yaml|services/lineage/|scripts/(build_|lineage_cli|check_lineage)' || true)
+if [[ -n "$STAGED_FOR_LINEAGE" ]]; then
+    echo
+    echo "=== Step 3.96: lineage drift (结构文件 staged, informational) ==="
+    if PYTHONPATH=backend python backend/scripts/check_lineage_drift.py; then
+        :
+    else
+        echo "[lineage-drift] WARN (非 block): 血缘图与现实漂移 — 跑 chunkyctl lineage build 重生并提交 data/lineage/graph.json"
+        echo "  (T2 informational; 硬闸=T4 转正门; 删/迁表前用 chunkyctl lineage impact <table> 自动 fan-in)"
+    fi
+fi
+
 # 4. Commit message keyword check (manual preview)
 echo
 echo "=== Step 4: commit message keyword ==="

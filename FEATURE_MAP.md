@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-25 23:27
+> Snapshot: 2026-06-26 00:20
 
 ## 1. 入口面
 
@@ -18,7 +18,8 @@
 | `jobs` | provider-neutral experiment job contract / plan. |
 | `map` | regenerate FEATURE_MAP.md machine-derived feature map; --check = drift gate only. |
 | `data-status` |  |
-| `pipeline` |  |
+| `pipeline` | §8 run one stage independently (acquire|clean|process|store); full chain still via daily_update.sh. |
+| `lineage` | M5-T2 血缘路由中枢 (字典+总指挥): impact <table> = 删/迁前自动 fan-in (替代手 grep); build/provenance/dead/show. |
 
 ### launchd 定时任务
 
@@ -291,13 +292,13 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 9,090 | calls 边 57,577 | imports 边 5,636 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 9,178 | calls 边 57,686 | imports 边 5,684 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
-| services.duck_adapter | 40 |
+| services.duck_adapter | 41 |
 | services.db | 33 |
 | services.utils | 28 |
 | services.market_db | 18 |
@@ -317,7 +318,7 @@
 
 | 文件 | 调用方文件数 |
 |---|---|
-| backend/services/duck_adapter.py | 27 |
+| backend/services/duck_adapter.py | 28 |
 | backend/services/database_manifest.py | 9 |
 | bestchoice/compute.py | 9 |
 | backend/services/etf_grid_engine.py | 6 |
@@ -325,10 +326,10 @@
 | bestchoice/execution_model.py | 5 |
 | backend/services/data_sources/base.py | 4 |
 | backend/services/kline_source.py | 4 |
+| backend/services/lineage/model.py | 4 |
 | backend/services/pipeline/context.py | 4 |
 | bestchoice/formula_engine.py | 4 |
 | bestchoice/scripts/formula_parameter_search.py | 4 |
-| backend/services/business_facts.py | 3 |
 
 ### LOC top 10 (God module 候选)
 
@@ -347,7 +348,7 @@
 
 ## 5. 概览
 
-- chunkyctl 子命令 9 | launchd 任务 1 | router 12 (端点 56)
+- chunkyctl 子命令 10 | launchd 任务 1 | router 12 (端点 56)
 - sync_registry 数据域 43
 - 产表 154 (多 writer 56)
 

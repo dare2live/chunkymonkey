@@ -16,6 +16,8 @@ Usage:
   scripts/chunkyctl audit [--run] [scope ...]
   scripts/chunkyctl map [--check]
   scripts/chunkyctl data-status [--format json|table]
+  scripts/chunkyctl pipeline acquire|clean|process|store [--force]
+  scripts/chunkyctl lineage build | impact <table> | provenance <table> | dead | show <table>
 
 Examples:
   scripts/chunkyctl doctor --fast
@@ -37,6 +39,8 @@ Notes:
   audit      = scoped post-change checks; add --run to execute them.
   map        = regenerate FEATURE_MAP.md machine-derived feature map; --check = drift gate only.
   data-status = tushare migration status (registry-driven: landed/never-synced/stale/failures per domain).
+  pipeline   = §8 run one stage independently (acquire|clean|process|store); full chain still via daily_update.sh.
+  lineage    = M5-T2 血缘路由中枢 (字典+总指挥): impact <table> = 删/迁前自动 fan-in (替代手 grep); build/provenance/dead/show.
 EOF
 }
 
@@ -238,6 +242,11 @@ case "$cmd" in
     # §8 阶段独立化: 单跑一个阶段 (acquire|clean|process|store), 不连带全链。
     # 全链编排仍用 scripts/daily_update.sh (python -m services.pipeline.run)。
     PYTHONPATH=backend python -m services.pipeline.stage_runner "$@"
+    ;;
+  lineage)
+    # M5-T2 血缘路由中枢 (字典+总指挥): build | impact <t> | provenance <t> | dead | show <t>
+    # 删/迁表前 `chunkyctl lineage impact <table>` 自动 fan-in (替代手 grep)。
+    PYTHONPATH=backend python backend/scripts/lineage_cli.py "$@"
     ;;
   *)
     echo "ERROR: unknown chunkyctl command: $cmd" >&2
