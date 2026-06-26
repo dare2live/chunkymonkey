@@ -5437,6 +5437,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_loaders.py",
+      "kind": "consume",
+      "src": "table:price_kline_qfq_tushare"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/dossier.py",
       "kind": "consume",
       "src": "table:price_kline_qfq_tushare"
@@ -5929,6 +5935,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:assets/js/data-view.js",
+      "kind": "consume",
+      "src": "table:raw_institution_surveys"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/data_access.yaml",
       "kind": "consume",
       "src": "table:raw_institution_surveys"
@@ -5966,6 +5978,18 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_sources/clients_registry.py",
+      "kind": "consume",
+      "src": "table:raw_institution_surveys"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sources/aif10.py",
+      "kind": "consume",
+      "src": "table:raw_institution_surveys"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sources/akshare.py",
       "kind": "consume",
       "src": "table:raw_institution_surveys"
     },
@@ -6367,6 +6391,18 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sources/aif10.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_block_trade"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/dossier.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_block_trade"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/technical_states/events.py",
       "kind": "consume",
       "src": "table:raw_tushare_block_trade"
@@ -6380,6 +6416,18 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:raw_tushare_cyq_perf"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/dossier.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_cyq_perf"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/read_model.py",
       "kind": "consume",
       "src": "table:raw_tushare_cyq_perf"
     },
@@ -6469,6 +6517,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/dossier.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_daily_basic"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/technical_states/capital.py",
       "kind": "consume",
       "src": "table:raw_tushare_daily_basic"
@@ -6505,6 +6559,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/dossier.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_dc_index"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/pipeline/process.py",
       "kind": "consume",
       "src": "table:raw_tushare_dc_index"
@@ -6530,6 +6590,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/build_dc_industry_view.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_dc_member"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/dossier.py",
       "kind": "consume",
       "src": "table:raw_tushare_dc_member"
     },
@@ -6595,6 +6661,24 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_loaders.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_fina_indicator"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/dossier.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_fina_indicator"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/lineage/query.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_fina_indicator"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/technical_states/fundamentals.py",
       "kind": "consume",
       "src": "table:raw_tushare_fina_indicator"
@@ -6626,6 +6710,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_forecast"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/constants.py",
       "kind": "consume",
       "src": "table:raw_tushare_forecast"
     },
@@ -6709,6 +6799,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/dossier.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_index_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/pipeline/acquire.py",
       "kind": "consume",
       "src": "table:raw_tushare_index_daily"
@@ -6775,6 +6871,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/dossier.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_limit_list_d"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/technical_states/regime.py",
       "kind": "consume",
       "src": "table:raw_tushare_limit_list_d"
@@ -6800,6 +6902,18 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/build_feature_panel.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_moneyflow"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_loaders.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_moneyflow"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sources/tushare.py",
       "kind": "consume",
       "src": "table:raw_tushare_moneyflow"
     },
@@ -6841,6 +6955,18 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sources/tushare.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_moneyflow_dc"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/dossier.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_moneyflow_dc"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/technical_states/capital.py",
       "kind": "consume",
       "src": "table:raw_tushare_moneyflow_dc"
@@ -6877,6 +7003,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/dossier.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_report_rc"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/technical_states/fundamentals.py",
       "kind": "consume",
       "src": "table:raw_tushare_report_rc"
@@ -6890,6 +7022,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:raw_tushare_share_float"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/dossier.py",
       "kind": "consume",
       "src": "table:raw_tushare_share_float"
     },
@@ -6938,6 +7076,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:raw_tushare_stk_limit"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/dossier.py",
       "kind": "consume",
       "src": "table:raw_tushare_stk_limit"
     },
@@ -7021,6 +7165,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/dossier.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_sw_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/technical_states/sector_context.py",
       "kind": "consume",
       "src": "table:raw_tushare_sw_daily"
@@ -7045,6 +7195,18 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/dossier.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_top10_floatholders"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/read_model.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_top10_floatholders"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/data_access.yaml",
       "kind": "consume",
       "src": "table:raw_tushare_top_inst"
@@ -7052,6 +7214,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:raw_tushare_top_inst"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/dossier.py",
       "kind": "consume",
       "src": "table:raw_tushare_top_inst"
     },
@@ -7070,6 +7238,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:raw_tushare_top_list"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/dossier.py",
       "kind": "consume",
       "src": "table:raw_tushare_top_list"
     },
@@ -7088,6 +7262,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:raw_tushare_trade_cal"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/lineage/query.py",
       "kind": "consume",
       "src": "table:raw_tushare_trade_cal"
     },
@@ -7465,12 +7645,20 @@
     }
   ],
   "meta": {
-    "edge_count": 1198,
-    "generated_at": "2026-06-26T02:17:47.429476+00:00",
-    "node_count": 473,
+    "edge_count": 1228,
+    "generated_at": "2026-06-26T02:28:19.413279+00:00",
+    "node_count": 477,
     "version": 1
   },
   "nodes": [
+    {
+      "attrs": {
+        "ctype": "frontend",
+        "path": "assets/js/data-view.js"
+      },
+      "id": "consumer:assets/js/data-view.js",
+      "kind": "consumer"
+    },
     {
       "attrs": {
         "ctype": "frontend",
@@ -8146,6 +8334,14 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/constants.py"
+      },
+      "id": "consumer:backend/services/constants.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/data_access/keys.py"
       },
       "id": "consumer:backend/services/data_access/keys.py",
@@ -8253,6 +8449,14 @@
         "path": "backend/services/data_sources/sources/tdxhub.py"
       },
       "id": "consumer:backend/services/data_sources/sources/tdxhub.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/sources/tushare.py"
+      },
+      "id": "consumer:backend/services/data_sources/sources/tushare.py",
       "kind": "consumer"
     },
     {
@@ -8498,6 +8702,14 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/lineage/query.py"
+      },
+      "id": "consumer:backend/services/lineage/query.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/market_db.py"
       },
       "id": "consumer:backend/services/market_db.py",
@@ -8701,6 +8913,14 @@
         "path": "backend/services/rally_labels.py"
       },
       "id": "consumer:backend/services/rally_labels.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/read_model.py"
+      },
+      "id": "consumer:backend/services/read_model.py",
       "kind": "consumer"
     },
     {
@@ -10016,15 +10236,6 @@
       },
       "id": "source:tushare.trade_cal",
       "kind": "source_interface"
-    },
-    {
-      "attrs": {
-        "db": "reference",
-        "layer": "untagged",
-        "status": "active"
-      },
-      "id": "table:_lock_probe",
-      "kind": "table"
     },
     {
       "attrs": {

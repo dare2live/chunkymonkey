@@ -65,13 +65,21 @@ def provenance(graph: LineageGraph, table: str) -> dict[str, Any]:
 
 
 def dead_tables(graph: LineageGraph) -> list[dict[str, Any]]:
-    """无任何消费方的 live 表 (已落库未用) — 停采候选 / 档B 待挖 backlog。
+    """无任何消费方的 live 派生表 (已落库未用) — 停采候选 / 档B 待挖 backlog。
 
-    排除: declared_not_live (未回填的声明表, 非"采了没用"); 自身是消费扫描会命中的 config/registry 不算消费。
+    排除: declared_not_live (未回填的声明表, 非"采了没用")。
+    **L0 源永不"死" (2026-06-26 修, 反例: raw_tushare_trade_cal/income 被误判死)**: 有 acquire 边
+    (从 vendor 同步) 或 raw_ 前缀 = 源-of-record, re-sync 重建, retention=permanent — "能删必删"
+    只适用派生表 (mart/fact/dim 加工层), 不适用 L0 vendor 镜像。L0 真消费方常经 SERVE entity 别名
+    (dossier.get("fundamentals")) 对表名 grep 不可见, 不能据"无直接 grep 消费"判其死。
     """
     out = []
     for n in graph.nodes_of_kind("table"):
         if n.attrs.get("status") == "declared_not_live":
+            continue
+        tname = n.id.split(":", 1)[1]
+        # L0 源 (有 vendor 采集边 或 raw_ 镜像前缀) 不进死表候选 — 永不删类
+        if graph.edges_to(n.id, kind="acquire") or tname.startswith("raw_"):
             continue
         consumers = graph.edges_from(n.id, kind="consume")
         # 只被 config/test 引用 (无 service/script/router 真消费) 也算 "未真正消费" 的弱信号

@@ -54,9 +54,11 @@ def _live_tables(dbs=MANAGED_DBS) -> set[str]:
         c = duck_connect(str(path), read_only=True)
         try:
             c.execute("SET enable_progress_bar=false")
+            # 排除 _ 前缀瞬态表 (pipeline_lock 的 _lock_probe/_rw_probe 锁探针, 建/即删) —
+            # 否则审计偶遇会误判 untagged → moth data-layer-integrity flicker (2026-06-26 实测)
             live |= {r[0] for r in c.execute(
                 "SELECT table_name FROM duckdb_tables() WHERE schema_name='main'"
-            ).fetchall()}
+            ).fetchall() if not r[0].startswith("_")}
         finally:
             c.close()
     return live

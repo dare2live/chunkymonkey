@@ -10,11 +10,13 @@ from services.lineage.model import Edge, LineageGraph, Node
 
 
 def _synthetic() -> LineageGraph:
-    """source(tushare.x)→table(raw_x)[acquire]; raw_x→consumer(svc.py)[consume]; raw_dead 无消费。"""
+    """source(tushare.x)→table(raw_x)[acquire]; raw_x→consumer(svc.py)[consume];
+    raw_dead = L0 raw 无消费 (不该判死, L0 永不删); mart_dead = 派生表无消费 (真死)。"""
     g = LineageGraph()
     g.add_node(Node("source:tushare.x", "source_interface", {"source": "tushare", "api": "x"}))
     g.add_node(Node("table:raw_x", "table", {"db": "tushare_raw", "layer": "L0_source", "status": "active"}))
     g.add_node(Node("table:raw_dead", "table", {"db": "tushare_raw", "layer": "L0_source", "status": "active"}))
+    g.add_node(Node("table:mart_dead", "table", {"db": "smartmoney", "layer": "L2_feature", "status": "active"}))
     g.add_node(Node("consumer:backend/services/svc.py", "consumer",
                     {"path": "backend/services/svc.py", "ctype": "service"}))
     g.add_edge(Edge("source:tushare.x", "table:raw_x", "acquire", {"pit_anchor": "trade_date"}))
@@ -31,6 +33,7 @@ def test_graph_deterministic_serialization():
     g2.add_node(Node("consumer:backend/services/svc.py", "consumer",
                      {"ctype": "service", "path": "backend/services/svc.py"}))
     g2.add_node(Node("table:raw_dead", "table", {"status": "active", "db": "tushare_raw", "layer": "L0_source"}))
+    g2.add_node(Node("table:mart_dead", "table", {"status": "active", "layer": "L2_feature", "db": "smartmoney"}))
     g2.add_node(Node("table:raw_x", "table", {"layer": "L0_source", "db": "tushare_raw", "status": "active"}))
     g2.add_node(Node("source:tushare.x", "source_interface", {"api": "x", "source": "tushare"}))
     g2.add_edge(Edge("table:raw_x", "consumer:backend/services/svc.py", "consume"))
@@ -82,13 +85,25 @@ def test_provenance_unacquired():
     assert provenance(g, "raw_dead")["acquired"] is False
 
 
-# --- query: dead (无消费方) ---
+# --- query: dead (无消费方的派生表; L0 源永不死) ---
 def test_dead_detects_unconsumed_table():
     g = _synthetic()
     dead = dead_tables(g)
     names = [d["table"] for d in dead]
-    assert "raw_dead" in names      # 无消费 = 死
+    assert "mart_dead" in names     # 派生表无消费 = 真死
     assert "raw_x" not in names     # 有 service 消费 = 活
+    # L0 源排除 (2026-06-26 修): raw_dead 无消费但 raw_ 前缀 = L0 源, 永不判死 (re-sync 重建)
+    assert "raw_dead" not in names
+
+
+def test_dead_excludes_l0_acquired_table():
+    """有 acquire 边的表 (从 vendor 同步) = L0 源, 即便无下游消费也不判死。"""
+    g = LineageGraph()
+    g.add_node(Node("source:tushare.y", "source_interface", {"source": "tushare", "api": "y"}))
+    # 非 raw_ 前缀但有 acquire 边 (e.g. canonical 直接 sync 的表)
+    g.add_node(Node("table:dim_synced", "table", {"db": "smartmoney", "layer": "L1_foundation", "status": "active"}))
+    g.add_edge(Edge("source:tushare.y", "table:dim_synced", "acquire", {}))
+    assert "dim_synced" not in [d["table"] for d in dead_tables(g)]  # acquire 边 → L0 源不死
 
 
 # --- 集成: 真实 build (确定性 + killer 用例) ---
