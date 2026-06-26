@@ -175,7 +175,21 @@ dim 5204→5202 / fact 23691→74192; 茅台全列正确(roe 0.4227/gross 0.898/
 | mart_tdx_f10_capability_matrix | workbench_data_source_read(`_table_exists`守卫优雅降级) + schema_versions | 低风险, 删后降级 |
 | mart_tdx_gpcw_file_manifest | build_fundamental_quarterly(翻案-B: 同写L1 fact_fundamental_quarterly 60528行) + seed + tdx_affair_client | 单元5解耦: 保fact writer去manifest写 + 删orphan test/registry |
 
-**=> "物删 gpcw 簇" = 通达信客户端整体退役步(plan最终步), 一个独立多消费方退役工程**。唯一硬阻塞=raw_gpcw_detail(signals_v2 live真金白银路径, 须像财务迁移一样careful迁+验)。dead auto_features流水线/sync/DDL/单元5解耦是配套清理。**未盲删(盲删炸signals_v2)。需用户决定退役范围/节奏。**
+**=> "物删 gpcw 簇" = 通达信客户端整体退役步(plan最终步), 一个独立多消费方退役工程**。
+
+**gpcw退役 Stage1 DONE (2026-06-26)**: 切 signals_v2 gpcw 依赖 (_load_gpcw_feature_maps 返空 → D1/D3 过滤器 no-op; 删 data_access financial_gpcw entity); signals_v2 78测试全过。**raw_gpcw_detail 的唯一 live 消费方已解除**。用户决议"信号重做不用旧的", D1/D3 不迁 tushare 直接退。
+
+**sync 真相 (measured, 定论)**: `sync_financial_data`(gpcw sina/akshare sync) **全 backend 0 caller** (pipeline/acquire 财务 sync 走 `_sync_registry_drain` registry-driven tushare, 不调 gpcw sync); tdx_affair_client/build_tdx_gpcw_auto_features/build_fundamental_quarterly 均 0 daily caller。**gpcw 摄取流水线全 DEAD, gpcw 7表=冻结 legacy (无 active 写, 不再 sync)**。
+
+**剩余 = 物删 + wholesale 代码退役 (focused session 级, 跨 ~8 live-shared 文件, 不可逆; 安全已确认但规模大不宜 session 尾赶)**:
+1. raw_gpcw_financial: DDL 在 ensure_tables(live calc 共用) + dead sync body export FIN_HISTORY_*/summarize_history_gap_state **被 audit.py import** + 10 sync 测试依赖 → 须连 sync body wholesale 删 + 改 audit import + 删10测试。
+2. raw_gpcw_detail/wide/dim_tdx_gpcw_field/_semantic: DDL 在 schema_core(须删防僵尸) + tdx_affair_client(dead) + build脚本(dead)。
+3. mart_tdx_f10_capability_matrix(workbench _table_exists 优雅降级) + mart_tdx_gpcw_file_manifest(build_fundamental_quarterly 同写 **fact_fundamental_quarterly L1 feature_registry引用须保** → 单元5 解耦)。
+4. 清 ~15 config (data_layers/clients_registry/data_routes/storage_retention/seed/tdx_data_need_coverage/field_dictionary/schema_versions/audit/db_health/data_module_members)。
+5. db_lifecycle_delete 物删 7表 + deletion_record + gates绿 + 对抗验证。
+6. wholesale 退役: tdx_affair_client.py + build_tdx_gpcw_auto_features.py + profile_tdx_gpcw_fields.py + financial_client sync body。
+
+**状态: 财务迁移(correctness)+ signals_v2解耦 DONE; 物删/wholesale退役 = 下一焦点 session 专做 (大件不 session 尾 big-bang, 用户反例: 删探索物没审耦合连崩CI)。gpcw冻结无 active harm。**
 
 ## 要丢的不可再生数据 (诚实标)
 - 增减持意向信号 (无任何源可重建)
