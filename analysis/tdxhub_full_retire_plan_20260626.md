@@ -92,6 +92,53 @@
 
 **单元4 redesign 的真复杂度 (值比对揭示)**: (a) 不能盲信任一源 — gpcw 有质量问题, 须以 tushare(fina_indicator+balancesheet) 为准; (b) fina_indicator update_flag 漂移须先修 grain; (c) 快照→周期模型重设计; (d) 迁移会改财务打分值(scoring/screening), 须 escalate 用户知情(值会变但更准)。**这是聚焦工程项目 + 需用户确认"接受财务打分按更准的tushare值变化"。**
 
+## 单元4 shadow 验证结果 (2026-06-26 workflow wydf17fu8 + controller 亲核)
+
+**已建 dim_financial_latest_shadow (5202行, tushare派生, 不碰 live)**。controller 亲核茅台 600519:
+- **shadow gross_margin=0.8976(89.76%) ✓ 对** (vs live gpcw 0.0871 错) → 迁移**修复 gpcw 数据质量坐实**。net_margin 0.5222 对。
+- 全表: gross_margin shadow中位0.242(合理) vs live中位0.758(gpcw garbage), corr -0.109 = live错非shadow错。
+
+**shadow 暴露 1 个待修 subtlety (promote 前必解)**:
+- **roe 等累计指标周期基准不一致**: fina_indicator "最新期" roe 是季报【累计】值 (茅台2026Q1=10.57%), 多数股最新期是近季 → roe 中位仅0.010(1%) 偏低/不可比。**修: 用 roe_yearly/TTM 或统一取年报期 (end_date like '%1231'), 不裸用最新季累计**。同类: 任何"累计自年初"的指标 (revenue/profit 绝对值) 跨 Q1/年报不可比。比率类 (gross_margin/net_margin/debt_ratio) 不受影响 (比率跨期可比)。
+
+## 单元4 对抗验证过的字段映射 (workflow wydf17fu8, 新session 直接用不必重跑)
+
+> dim_financial_latest 17 列 → tushare 源 (茅台600519实测对账 + 全市场range校验)。**陷阱列已对抗验证标红**。
+
+| dim 列 | tushare 源.列 | 单位转换 | 陷阱/注 |
+|---|---|---|---|
+| roe | fina_indicator.roe | **/100** | 季报累计口径(茅台Q1=10.57→0.106 vs FY=34.46) — **promote前考虑用roe_yearly统一年化** |
+| debt_ratio | fina_indicator.debt_to_assets | /100 | 茅台0.121(FY0.164) |
+| current_ratio | fina_indicator.current_ratio | **不除!** | 倍数非%(茅台7.06, /100=0.07错) |
+| **gross_margin** | fina_indicator.**grossprofit_margin** | /100 | **绝不用 `gross_margin` 列(=毛利【金额】陷阱,同gpcw错)! 用 grossprofit_margin(毛利率%) 茅台89.76→0.898** |
+| net_margin | fina_indicator.netprofit_margin | /100 | 茅台0.522 |
+| revenue_yoy | fina_indicator.tr_yoy | /100 | 内置比手算稳 |
+| profit_yoy | fina_indicator.netprofit_yoy | /100 | |
+| ocf_to_profit | fina_indicator.ocf_to_profit | /100 | 茅台0.717 |
+| **contract_to_revenue** | balancesheet.contract_liab / income.revenue | 金额/金额 | **共同最新期 INTERSECT(茅台bs有20260331但income最新20251231→取20251231); TRY_CAST(contract_liab是VARCHAR); 分母income.revenue非total_revenue** |
+| holder_count | stk_holdernumber.holder_num | TRY_CAST(VARCHAR) | **每(ts_code,end_date)最多3重复行须dedup(ann_date DESC)** |
+| holder_count_change_pct | computed (相邻两期) | 分数 | **dedup后再算lag(否则重复同期当上期→假0)** |
+| float_shares | daily_basic.float_share | ***10000**(万股→股) | 取MAX(trade_date) |
+| total_shares | daily_basic.total_share | ***10000** | |
+| latest_report_date | fina MAX(end_date) | YYYYMMDD→**YYYY-MM-DD** | 消费方字符串比较须带横杠 |
+| history_rows | COUNT(DISTINCT end_date) | 计数 | 非COUNT(*)(有重复) |
+| stock_code/updated_at | meta | substr6位 / now().isoformat | |
+
+**期逻辑**: fina取每股最新期(end_date DESC, ann_date DESC去重); balancesheet+income取两表共同最新期(INTERSECT, 各自ann_date DESC去重); stk_holdernumber/daily_basic独立取最新。**PIT注**: 此dim=latest-snapshot(沿用gpcw口径), 非历史面板; 未来PIT化须ann_date<=t过滤。**实测**: fina_indicator表实际覆盖20191231~20260331(22期, 比config window 2023+多), 故迁移历史覆盖比担心的好。
+
+## 单元4 promote 路线 (新session 接手, shadow 已建+验证)
+
+> **状态: shadow 已建+gross_margin修复验证通过, 待修 roe 周期基准 → promote**。
+> 不可逆物删 gpcw 在最后, 须 shadow 完全验证 + 用户确认财务打分值变化后。
+
+1. **修 roe 周期基准** (上述 subtlety): shadow 派生改累计指标用 roe_yearly/统一年报期; 重建 shadow 重验。
+2. **全列验** (controller): shadow vs live 逐列, 比率类应接近(除gpcw错的gross_margin), 累计类修后接近; 茅台/几只龙头 spot-check。
+3. **promote**: rewrite financial_client.calc_financial_derived 读 tushare (按 shadow 验证过的映射) 替 raw_gpcw_financial; 重新生成 live dim_financial_latest + fact_financial_derived。**escalate 用户**: 财务打分值会变(向正确, gross_margin修复) — 确认接受。
+4. **验 3 消费方**: scoring.py(用 roe/debt/gross/ocf/contract rank, 财务子分会变)/screening(仅float_shares)/stock_stage; schema保留+run不破+财务分合理。注: scoring.py 还有 _ak后缀(akshare另源)+yoy_4q特征表多源, 本次只迁 dim_financial_latest(gpcw部分)。
+5. **物删 gpcw 簇** (escalate): raw_gpcw_detail/financial/wide + dim_tdx_gpcw_field/_semantic (单元4) + 单元5 mart_tdx_f10_*; 同 DDL/config/fan-in 清 (同 Batch1/2 模式)。
+6. **fina_indicator update_flag grain bug** (独立live bug, 单独修): API不返update_flag → grain改[ts_code,end_date,ann_date]或sync_runner容忍; daily sync freshness 需它。用现有2023+数据可先做上述迁移。
+7. shadow 表 dim_financial_latest_shadow 是验证产物, promote 后可 DROP。
+
 ## 要丢的不可再生数据 (诚实标)
 - 增减持意向信号 (无任何源可重建)
 - 户数 1997-2017 深史 (tushare 仅 2018+)
