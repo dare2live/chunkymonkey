@@ -62,7 +62,16 @@
 
 ## Active Priority Board
 
-> **[2026-06-24 架构蓝图驱动: 数据模块顶层重构 — 用户授权架构师排程; owner=`analysis/data_module_architecture_20260624.md`]**
+> **[2026-06-26 宪法锚定 — 真北回 `analysis/data_module_toplevel_design_20260622.md` §1.5 (4地基不变量, 反推宪法; 0624 蓝图是其 operationalize)]**
+> 数据模块存在的唯一理由 = 让北极星(主升浪→含成本OOS可决策)每步在任意 t **PIT干净/可复现/可决策**。反推: 未来细节穷举不完 → 归 **4 地基不变量**, 现在做对=叶子(cube/因子/选股/实盘)即插即用。
+> **现状对账 (4不变量 + 3件 + 编排 = 基本扎实)**:
+> - 不变量1 主键+PIT锚 / 不变量3 可扩展分层 / 3件(清洗SERVE·加工L2panel·展示read-model) / 编排(pipeline四阶段+§8独立化backend) = **DONE**。
+> - 不变量2 读写边界=写锁边界=库分区: 7库分区DONE, 但 **reference 混在 smartmoney** → **§9拆库=完成不变量2**(本session在此坑: "4套连接模型"碎片化; 出路=alias-routing走SERVE, 见阶段一)。
+> - 不变量4 单概念单真相源: SERVE单一读路 + 删源大体DONE, 但 **serve-bypass 残留 = Gap1**(build_segment/signal_panel绕SERVE直算特征=真金白银leakage洞)。M5血缘=不变量4自描述副产品(§1.5.3), T2已DONE。
+> **下一步 = 宪法早写死的真路 (§1.6/§11, 非"高杠杆评估")**: **收 Gap1 (不变量4, 唯一卡alpha的地基洞) + dim表收口走SERVE(顺带出§9坑, §9≡T0汇流) → 不变量4硬 → 转 edge 确认 (档B前置, 真金白银钱路)**。**档B(因子全量/cube/展示产品化)BLOCK 直到 sandbox 证含成本可交易 stage-conditional edge** (confirmed_by_owner=0)。
+> **诚实自检 (宪法§1.5.2/§1.6 警告)**: 别让删源/机械/血缘优化喧宾夺主堆地基细节; 真·通向赚钱 = 收Gap1→转edge, 不是继续深挖§9。M5/§9 都服务不变量但已近"够用", 重心该回 Gap1→edge。
+
+> **[2026-06-24 架构蓝图驱动: 数据模块顶层重构 — owner=`analysis/data_module_architecture_20260624.md` (= 上方宪法0622的 operationalize)]**
 > 用户决: **数据底座必须做好 + 模块化功能分区, 然后再搭建其他 (档B alpha/strategy)**。架构 = M1-M8 子模块 (按对血缘图一类操作切 owner) + **字典/总指挥 (M5 血缘路由中枢: 声明先行→派生对账→不可绕过闸 = codegraph+moth 融合到数据)** + 变量加工三态 (derived/vendor_precomputed/passthrough=未加工) + 阶段独立化门控前端 (§8) + DB 按写锁域分 (§9)。
 > **实施顺序 (架构师定, 结合实际优化调整)**:
 > - **阶段一 数据底座扎实**: [DONE] daily真跑验证(新holder/估值/qfii/org_holding sync全执行✓) + tdx 3表迁移归档(户数→tushare 284951行/2019+ deprecated; 增减持+关联→archived 保留唯一数据) · **§9 `reference.duckdb` 拆库 (用户选结构拆option B)**: **Stage A DONE** (migrate_reference_db.py 保真建 4核心表 dim_active/all_ever/listing_status/trading_calendar, 5件套验收 PASS, smartmoney未动可逆); **Stage B-E [2026-06-26 ultracode 对抗验证后重定性, owner=analysis/section9_reference_split_verified_plan_20260626.md]**: 前提**成立** (2进程锁实测: smartmoney RW 不阻塞 reference RO ATTACH 读 = 主痛 facts写vs universe读真解耦; 残留 dim写vs dim读罕见/短可接受)。但 workflow wxs0iyxin 3-lens 对抗验证全 plan_sound=false: **§9 不是"搬4表", 是"4套并行连接模型(get_conn/直连/注入conn/bestchoice _attach_smart_db)的收口"** —— 原计划 view+ATTACH on get_conn 会在 ≥8 处炸生产 (bestchoice/compute.py JOIN sm.dim / schema_migrations CREATE INDEX on view 硬炸 / 5+直连audit脚本 / 注入conn一大类 / duck_adapter attach吞异常§4.4 / 磁盘污染 / 读触发写 / check_universe_filter闸)。修正序: **Phase 0 连接收口 (真前提, 大可逆重构, dual-write中间态安全不切view)** → Stage C view切换(全break-point修完) → Stage D 验收(测对竞争=写reference+ATTACH非假绿backfill+seed, 含bestchoice链+全pytest) → Stage E 物删(escalate)。**机制定案 [2026-06-26 Occam choice(a) 实测]: alias-routing(SERVE)胜, 非view+ATTACH** — 实测 DuckDB跨进程文件锁是进程级(smartmoney RW阻塞另进程RO open) → 隔离reader连接物理不可能解, **拆库正当Occam没省掉**; 但机制省大头: 4dim表纳data_access SERVE entity+db别名→reference(resolver直连, 无view无ATTACH), §3的8 break-point绝大多数蒸发(无view→无CREATE INDEX硬炸/磁盘污染/attach吞异常)。**§9≡T0(全读走SERVE)的dim切片**=同一份收口工; 残留硬点=cross-db JOIN(少数, dim多是取list非JOIN)。**= 高blast 焦点session 待用户拍板执行窗口** · **[NEXT 安全项] 2张额外冻结tdx表(fund_holding/shareholder_trade_tdx_b)triage**
