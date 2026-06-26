@@ -93,7 +93,6 @@ tables:
   fact_fundamental_quarterly: L1_foundation
   fact_institution_event: L1_foundation
   fact_lhb_event: L1_foundation
-  fact_shareholder_plan_tdx_f10: L1_foundation
   fact_top10_holder_period: L1_foundation
   inst_holdings: L1_foundation
   inst_institutions: L1_foundation

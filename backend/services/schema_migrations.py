@@ -22,8 +22,6 @@ CREATE INDEX IF NOT EXISTS idx_plan_stock_announce ON fact_shareholder_plan(stoc
 CREATE INDEX IF NOT EXISTS idx_plan_raw_hash ON fact_shareholder_plan(stock_code, raw_hash);
 CREATE INDEX IF NOT EXISTS idx_trade_stock_date ON fact_shareholder_trade(stock_code, change_date DESC);
 CREATE INDEX IF NOT EXISTS idx_trade_raw_hash ON fact_shareholder_trade(stock_code, raw_hash);
-CREATE INDEX IF NOT EXISTS idx_shareholder_plan_stock_notice ON fact_shareholder_plan_tdx_f10(stock_code, source_available_date DESC);
-CREATE INDEX IF NOT EXISTS idx_shareholder_plan_subject ON fact_shareholder_plan_tdx_f10(subject);
 CREATE INDEX IF NOT EXISTS idx_common_holder_name ON fact_common_major_holder_stock(major_holder_name);
 ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS report_date_text TEXT;
 ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS hold_ratio_text TEXT;

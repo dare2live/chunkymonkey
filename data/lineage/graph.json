@@ -3135,60 +3135,6 @@
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
-      "src": "table:fact_shareholder_plan_tdx_f10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/experiments/retired_experiments.yaml",
-      "kind": "consume",
-      "src": "table:fact_shareholder_plan_tdx_f10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/feature_registry.yaml",
-      "kind": "consume",
-      "src": "table:fact_shareholder_plan_tdx_f10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/sync_registry.yaml",
-      "kind": "consume",
-      "src": "table:fact_shareholder_plan_tdx_f10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/check_legacy_flow_integrity.py",
-      "kind": "consume",
-      "src": "table:fact_shareholder_plan_tdx_f10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
-      "kind": "consume",
-      "src": "table:fact_shareholder_plan_tdx_f10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_core.py",
-      "kind": "consume",
-      "src": "table:fact_shareholder_plan_tdx_f10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_migrations.py",
-      "kind": "consume",
-      "src": "table:fact_shareholder_plan_tdx_f10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_feature_registry.py",
-      "kind": "consume",
-      "src": "table:fact_shareholder_plan_tdx_f10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
       "src": "table:fact_signal_panel"
     },
     {
@@ -7537,9 +7483,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1210,
-    "generated_at": "2026-06-26T05:34:00.204595+00:00",
-    "node_count": 475,
+    "edge_count": 1201,
+    "generated_at": "2026-06-26T05:39:08.885433+00:00",
+    "node_count": 473,
     "version": 1
   },
   "nodes": [
@@ -9434,14 +9380,6 @@
     {
       "attrs": {
         "ctype": "test",
-        "path": "backend/tests/test_feature_registry.py"
-      },
-      "id": "consumer:backend/tests/test_feature_registry.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
         "path": "backend/tests/test_financial_client.py"
       },
       "id": "consumer:backend/tests/test_financial_client.py",
@@ -10558,15 +10496,6 @@
         "status": "active"
       },
       "id": "table:fact_segment_panel",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:fact_shareholder_plan_tdx_f10",
       "kind": "table"
     },
     {

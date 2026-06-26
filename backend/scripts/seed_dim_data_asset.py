@@ -308,7 +308,7 @@ EXTRA_ASSET_CONTRACT_BY_TABLE = {
 EXTRA_DEPRECATED_ASSET_BY_TABLE = {
     # tdx F10 产品退役 (2026-06-24): 3 张冻结表 (tdx_f10_extra_client 已删, 更新路径死). 0 真实代码消费方.
     "fact_holder_count_period": {"purpose": "股东户数 (tdx F10 已物删 2026-06-26, →tushare)", "deprecation_status": "deleted", "deprecated_reason": "tdx F10退役; tushare stk_holdernumber 2019+ 全史替代 (物删, pre-2019无K线不可用)", "replacement_table": "raw_tushare_stk_holdernumber"},
-    "fact_shareholder_plan_tdx_f10": {"purpose": "股东增减持计划/意向 (归档冻结)", "deprecation_status": "archived", "deprecated_reason": "tdx F10退役; aif10 SHAREHOLDER_CHANGE=实际变动非意向, tushare stk_holdertrade=实际成交非计划, 均无intent等价→保留唯一数据不物删", "replacement_table": None},
+    "fact_shareholder_plan_tdx_f10": {"purpose": "股东增减持计划/意向 (已物删 2026-06-26)", "deprecation_status": "deleted", "deprecated_reason": "tdx F10退役通达信全删; 用户 2026-06-26 拍板物删覆盖归档保留决议; 增减持意向无 tushare/aif10 等价, 永久丢失已知情接受", "replacement_table": None},
     "fact_common_major_holder_stock": {"purpose": "主要股东跨公司持股网络 (归档冻结, 94% peer≠self)", "deprecation_status": "archived", "deprecated_reason": "tdx F10退役; aif10 MAIN_ORGHOLDDETAIL=机构持仓≠跨公司网络, RELATION=实控人单关系, 无等价→保留唯一数据不物删", "replacement_table": None},
     # 东财全套迁移 Stage④ (2026-06-23): 申万当前快照 dim + 通达信(tdx)行业/板块 6 表物删 (§4.3 行业/概念切东财)。
     # 留 governance ledger row 防 data_health 假红; 行业现 = dim_stock_dc_industry, 深史 PIT = tushare_raw.v_sw_industry_pit。

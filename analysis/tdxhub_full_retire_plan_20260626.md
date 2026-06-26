@@ -50,7 +50,7 @@
 **执行复杂度** (须逐单元谨慎, 非快批): (a) DDL 拆除 (schema_core/schema_migrations 精确删表块不碰他表) + config 清 (feature_registry 7声明/data_layers/sync_registry/retired/seed) + 验门绿; (b) 单元6/7 = xdxr/server 子系统退役 (撤 preflight SLA门 + 退役 build_price_kline_tdxhub.py builder + 删 tdx_source ensure/DDL); (c) 单元4/5 = 财务簇需 A1 (balachesheet backfill + financial_client 重写 + repoint 2 JOIN, 真金白银路径)。
 
 **执行单元 checklist** (每单元: 清全 fan-in → 删 DDL → 物删 db_lifecycle_delete+deletion_record → 验门 → commit):
-- [ ] 单元1 增减持: feature_registry 删7声明 + seed/retired/data_layers/sync_registry 清 + schema DDL 删 + 物删 + PROJECT_INDEX 更正
+- [x] 单元1 增减持 (DONE 2026-06-26 Batch2): feature_registry 删7声明 + seed/retired/data_layers/sync_registry 清 + schema DDL 删 + 物删 + PROJECT_INDEX 更正
 - [x] 单元2 户数 (DONE 2026-06-26 Batch1): data_layers/storage_retention/panel_manifest/coverage 清 + schema DDL 删 + 物删 raw_tdx_f10_holder_count_history + fact_holder_count_period
 - [x] 单元3 十大股东raw (DONE 2026-06-26 Batch1): data_layers/storage_retention/seed/audit/data_routes 清 (派生 fact_top10_holder_period KEEP 100% aif10 不动) + schema DDL 删 + 物删 raw_tdx_f10_holder_research
 - [ ] 单元6 xdxr热备: 撤 update_watermark_sla SLA门 + 退役 build_price_kline_tdxhub.py + 物删 price_kline_tdxhub_adjustment_event

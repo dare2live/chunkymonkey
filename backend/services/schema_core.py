@@ -110,42 +110,6 @@ CORE_SCHEMA_SQL = """
                 trade_seq        INTEGER
             );
 
-            CREATE TABLE IF NOT EXISTS fact_shareholder_plan_tdx_f10 (
-                stock_code       TEXT NOT NULL,
-                stock_name       TEXT,
-                market           TEXT,
-                announce_date    TEXT,
-                latest_announce_date TEXT,
-                first_announce_date TEXT,
-                source_notice_date TEXT,
-                source_available_date TEXT,
-                source_date_quality TEXT,
-                subject          TEXT,
-                direction        TEXT,
-                progress         TEXT,
-                start_date       TEXT,
-                end_date         TEXT,
-                target_shares_min_text TEXT,
-                target_shares_min BIGINT,
-                target_shares_text TEXT,
-                target_shares    BIGINT,
-                target_ratio_text TEXT,
-                target_ratio     DOUBLE,
-                target_amount_min_text TEXT,
-                target_amount_min BIGINT,
-                target_amount_max_text TEXT,
-                target_amount_max BIGINT,
-                trade_method     TEXT,
-                reason           TEXT,
-                narrative        TEXT,
-                page_update_date TEXT,
-                source           TEXT NOT NULL,
-                source_tier      SMALLINT NOT NULL DEFAULT 1,
-                raw_hash         TEXT,
-                fetched_at       TEXT,
-                row_seq          INTEGER NOT NULL DEFAULT 1,
-                PRIMARY KEY (stock_code, raw_hash, row_seq)
-            );
 
             CREATE TABLE IF NOT EXISTS fact_common_major_holder_stock (
                 stock_code       TEXT NOT NULL,

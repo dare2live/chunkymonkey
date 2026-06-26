@@ -58,7 +58,7 @@ retired_experiments:
 - subsystem: shareholder_plan_family 股东计划族
   tables_retired_count: 4
   summary: '字段族=family_walkforward + feature_family_eval + initial_feature_panel_quality. 工具=walkforward family 评估. 结论=股东计划特征族实验全删
-    (注: 原始 fact_shareholder_plan_tdx_f10 + raw 在 KEEP). 行=327.'
+    (注: 原始 fact_shareholder_plan_tdx_f10 已物删 2026-06-26 通达信全删, 用户拍板覆盖归档保留). 行=327.'
   retired_date: '2026-06-14'
   retired_run: lifecycle_20260614_reset
 - subsystem: feature-search 特征工程/搜索

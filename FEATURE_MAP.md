@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-26 13:35
+> Snapshot: 2026-06-26 13:40
 
 ## 1. 入口面
 
@@ -96,7 +96,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 152 张 | 单 writer 97 | 多 writer 55 | 动态表名写点 36 处 (21 文件)
+统计: 表 151 张 | 单 writer 96 | 多 writer 55 | 动态表名写点 36 处 (21 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -214,7 +214,6 @@
 | fact_research_report | backend/scripts/build_akshare_panel.py |
 | fact_segment_panel | backend/scripts/build_segment_panel.py |
 | fact_setup_snapshot | backend/services/schema_core.py |
-| fact_shareholder_plan_tdx_f10 | backend/services/schema_core.py |
 | fact_stock_attention_snapshot | backend/services/external_attention.py |
 | fact_stock_industry_context | backend/services/industry_context_engine.py |
 | fact_stock_liquidity_daily | backend/services/primitives/ddl.py |
@@ -290,7 +289,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 9,198 | calls 边 57,699 | imports 边 5,685 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 9,198 | calls 边 57,705 | imports 边 5,691 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -348,5 +347,5 @@
 
 - chunkyctl 子命令 10 | launchd 任务 1 | router 12 (端点 56)
 - sync_registry 数据域 43
-- 产表 152 (多 writer 55)
+- 产表 151 (多 writer 55)
 

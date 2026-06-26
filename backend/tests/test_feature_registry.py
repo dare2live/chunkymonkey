@@ -38,12 +38,6 @@ def test_feature_registry_loads_groups_and_excludes_labels():
     assert registry.features["lhb_inst_buy_count_30d"].feature_role == "capital_attention_auxiliary"
     assert registry.features["lhb_inst_buy_count_30d"].panel_density == "dense_daily_encoded"
     assert registry.features["lhb_inst_buy_count_30d"].null_policy == "encode_no_event_as_zero_or_days_since"
-    plan_spec = registry.features["shareholder_plan_increase_count_180d"]
-    assert plan_spec.model_input is False
-    assert plan_spec.feature_role == "capital_attention_auxiliary"
-    assert plan_spec.source_tables == ("smartmoney.fact_shareholder_plan_tdx_f10",)
-    assert plan_spec.source_event_date_column == "source_notice_date"
-    assert plan_spec.source_available_date_column == "source_available_date"
     assert registry.features["ret_20d"].null_policy == "rolling_warmup_only"
     assert registry.features["close"].null_policy == "no_null"
     assert registry.features["close"].feature_role == "price_level_context"

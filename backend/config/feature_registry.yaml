@@ -172,7 +172,6 @@ groups:
       - smartmoney.fact_institution_event
       - smartmoney.fact_executive_trade_event
       - smartmoney.fact_lhb_event
-      - smartmoney.fact_shareholder_plan_tdx_f10
     features:
       - inst_event_count_30d
       - inst_event_count_60d
@@ -184,48 +183,6 @@ groups:
       - dzjy_count_60d
       - days_since_exec_buy
       - days_since_lhb
-      - shareholder_plan_increase_count_180d:
-          source_tables:
-            - smartmoney.fact_shareholder_plan_tdx_f10
-          source_event_date_column: source_notice_date
-          source_available_date_column: source_available_date
-          notes: TDX F10 shareholder increase-plan count; encoded from source_available_date and held out of production model inputs until validated.
-      - shareholder_plan_decrease_count_180d:
-          source_tables:
-            - smartmoney.fact_shareholder_plan_tdx_f10
-          source_event_date_column: source_notice_date
-          source_available_date_column: source_available_date
-          notes: TDX F10 shareholder decrease-plan count; encoded from source_available_date and held out of production model inputs until validated.
-      - shareholder_plan_completed_count_180d:
-          source_tables:
-            - smartmoney.fact_shareholder_plan_tdx_f10
-          source_event_date_column: source_notice_date
-          source_available_date_column: source_available_date
-          notes: TDX F10 completed shareholder plan count; auxiliary evidence only until stock/horizon validation proves usefulness.
-      - shareholder_plan_increase_amount_max_180d:
-          source_tables:
-            - smartmoney.fact_shareholder_plan_tdx_f10
-          source_event_date_column: source_notice_date
-          source_available_date_column: source_available_date
-          notes: Rolling sum of max planned increase amount from TDX F10 shareholder plans; no-event days encode as zero.
-      - shareholder_plan_decrease_amount_max_180d:
-          source_tables:
-            - smartmoney.fact_shareholder_plan_tdx_f10
-          source_event_date_column: source_notice_date
-          source_available_date_column: source_available_date
-          notes: Rolling sum of max planned decrease amount from TDX F10 shareholder plans; no-event days encode as zero.
-      - days_since_shareholder_plan_increase:
-          source_tables:
-            - smartmoney.fact_shareholder_plan_tdx_f10
-          source_event_date_column: source_notice_date
-          source_available_date_column: source_available_date
-          notes: Calendar days since last TDX F10 increase-plan source availability; no event encodes as -1.
-      - days_since_shareholder_plan_decrease:
-          source_tables:
-            - smartmoney.fact_shareholder_plan_tdx_f10
-          source_event_date_column: source_notice_date
-          source_available_date_column: source_available_date
-          notes: Calendar days since last TDX F10 decrease-plan source availability; no event encodes as -1.
 
   fundamentals:
     enabled: true
