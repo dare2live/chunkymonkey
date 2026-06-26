@@ -53,10 +53,15 @@
 - [x] 单元1 增减持 (DONE 2026-06-26 Batch2): feature_registry 删7声明 + seed/retired/data_layers/sync_registry 清 + schema DDL 删 + 物删 + PROJECT_INDEX 更正
 - [x] 单元2 户数 (DONE 2026-06-26 Batch1): data_layers/storage_retention/panel_manifest/coverage 清 + schema DDL 删 + 物删 raw_tdx_f10_holder_count_history + fact_holder_count_period
 - [x] 单元3 十大股东raw (DONE 2026-06-26 Batch1): data_layers/storage_retention/seed/audit/data_routes 清 (派生 fact_top10_holder_period KEEP 100% aif10 不动) + schema DDL 删 + 物删 raw_tdx_f10_holder_research
-- [ ] 单元6 xdxr热备: 撤 update_watermark_sla SLA门 + 退役 build_price_kline_tdxhub.py + 物删 price_kline_tdxhub_adjustment_event
-- [ ] 单元7 server健康: 删 tdx_source ensure/DDL (随单元6 builder 退役) + 前端冒烟降级 + 物删 mart_tdx_server_health
-- [ ] 单元4 财务簇: A1 (balancesheet backfill + financial_client 重写 + repoint compute.py:3041 + macd_optuna:121) → 物删 gpcw 5表
+- [ ] 单元6 xdxr热备: 撤 update_watermark_sla xdxr SLA(65-68) + 退役 build_price_kline_tdxhub.py + 物删 price_kline_tdxhub_adjustment_event。**[2026-06-26 纠缠发现, 待聚焦解]** `PRICE_KLINE_TDXHUB_DDL`(含adjustment_event)被 market_schema:158 schema-init executescript + market_db:22/market_read:6,161 导入导出 + 3 test fixture(mini_market:40/test_market_db_canonical_kline:52/test_kline_write_calendar_lint:138) + write-lint 编织; 关联独立 worktree 的 4 tdxhub 失败测试。= ~7 文件 K线/xdxr 测试基础设施解耦, 非单删表。
+- [ ] 单元7 server健康: workbench 读有 `_relation_exists` 守卫(降级) + seed_dim:172 freshness + tdx_source server_health 函数(288-491 仅builder调, builder退役后死码) + 物删 mart_tdx_server_health。与单元6 同 builder 子系统一起做。
+- [ ] 单元4 财务簇: A1 (balancesheet backfill[**网络拉数**] + financial_client 重写[真金白银财务排名链] + repoint compute.py:3041 + macd_optuna:121) → 物删 gpcw 5表
 - [ ] 单元5 F10元数据: 解耦 build_fundamental_quarterly (保 fact_fundamental_quarterly writer) + 删 orphan test/registry + 物删 2 mart 表
+- [ ] **通达信客户端整体退役步 (最终)**: tdxhub.py/tdx_source.py/tdx_affair_client.py/workbench_tdx_*.py 客户端适配器 wholesale 退役 (全数据删后, 非 piecemeal)
+
+## 本 session 执行进度 (2026-06-26)
+- **DONE: 单元1/2/3 (4表物删)** — fact_shareholder_plan_tdx_f10 + raw_tdx_f10_holder_research + raw_tdx_f10_holder_count_history + fact_holder_count_period; 全 fan-in 清(schema DDL/feature_registry/config/audit/seed); schema-init smoke + data_layer/config_refs/moth 45/0/0 全验。commit: 7125422d(B1) / 5f33746d(B2)。
+- **剩: 单元6/7 (xdxr/server, ~7文件K线测试基础设施纠缠) + 单元4/5 (财务, 网络backfill+真金白银重写)** — 均需聚焦执行, 非降级期末尾快做。
 
 ## 要丢的不可再生数据 (诚实标)
 - 增减持意向信号 (无任何源可重建)
