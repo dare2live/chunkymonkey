@@ -1,0 +1,29 @@
+# fact_macd_episode_ground_truth 列角色契约 (2026-06-26, owner=backend/services/gt_label_contract.py)
+#
+# 为何存在 (真金白银/感知死): episode-first 结果倒推 — MACD 金叉买点 → forward 是否盈利。
+#   outcome 列 (事后才知的峰涨幅/到峰天数/最大回撤) 当训练 X = leakage 死 ("异常高数字" 根源)。
+#   PIT 审计 (workflow wecndwk2n 对抗验证) 确认 build_macd_episode_ground_truth.py 本身 pit_clean,
+#   但其 outcome 列当前 0 消费方 = 唯一隐患: 若未来策略 builder 误当 X 喂训练 = HIGH leakage。
+#   本契约把每列硬分类, gt_label_contract.assert_no_outcome_leakage + 单测 + moth 执法防误接。
+#
+# 语义来源: backend/scripts/build_macd_episode_ground_truth.py (逐列核对计算窗口)。
+
+entry_anchor: event_date           # 金叉确认 bar = PIT 决策点; fact_feature_panel JOIN 键 (stock_code, event_date)
+
+pit_features: []                   # 本表无 PIT 特征列 (纯锚 + outcome); PIT 因子全经 feature_panel JOIN 取
+
+label: is_win                      # 目标 y (该金叉 episode 是否盈利, forward 定义, 非特征)
+
+outcomes_forbidden_as_x:           # > event_date 事后才知, 绝禁做训练 X (违 = leakage 死)
+  - peak_gain_pct                  # 买点 → 峰涨幅 (forward argmax)
+  - peak_offset_days               # 到峰交易日数 (forward)
+  - max_dd_pct                     # 持有途中最大回撤 path=[event..peak] (forward)
+
+meta:                              # 非特征非 outcome, 元信息
+  - fwd_complete                   # forward 窗完整性 purge 旗标 (日历几何, 非价格信号)
+  - taxonomy_version
+  - built_at
+
+notes: |
+  下游训练只许用 JOIN fact_feature_panel ON (stock_code, event_date) 的 PIT 因子,
+  物理够不到本表 outcome 列。建 X 矩阵前调 gt_label_contract.assert_no_outcome_leakage("macd_episode_gt_columns.yaml", cols)。

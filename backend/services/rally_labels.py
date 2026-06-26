@@ -7,45 +7,32 @@ owner=backend/config/rally_gt_columns.yaml + analysis/data_validation_backtest_p
 """
 from __future__ import annotations
 
-from pathlib import Path
+from services import gt_label_contract as _gc
 
-import yaml
-
-_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "config" / "rally_gt_columns.yaml"
-
-
-def _load() -> dict:
-    return yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8")) or {}
-
-
-_CONTRACT = _load()
+# 2026-06-26 委托通用 gt_label_contract (rally + macd_episode 共用, CLAUDE §3 抽公共); 公共 API 不变。
+_CONTRACT = "rally_gt_columns.yaml"
 
 
 def entry_anchor() -> str:
     """PIT 决策点列 (= entry_signal_date 来源, fact_feature_panel JOIN 键)。"""
-    return _CONTRACT["entry_anchor"]
+    return _gc.entry_anchor(_CONTRACT)
 
 
 def pit_feature_columns() -> list[str]:
     """<=bottom_date 可用, 安全做训练 X 的列。"""
-    return list(_CONTRACT.get("pit_features", []))
+    return _gc.pit_feature_columns(_CONTRACT)
 
 
 def label_column() -> str:
     """目标 y 列。"""
-    return _CONTRACT["label"]
+    return _gc.label_column(_CONTRACT)
 
 
 def outcome_columns() -> list[str]:
     """>bottom_date 事后 outcome, 禁做训练 X 的列。"""
-    return list(_CONTRACT.get("outcomes_forbidden_as_x", []))
+    return _gc.outcome_columns(_CONTRACT)
 
 
 def assert_no_outcome_leakage(columns) -> None:
     """训练特征集守门: 若含任一 outcome 列 -> raise (leakage 死)。下游建 X 矩阵前调。"""
-    bad = sorted(set(columns) & set(outcome_columns()))
-    if bad:
-        raise ValueError(
-            f"GT outcome 列禁做训练 X (leakage 死): {bad}; "
-            f"允许 pit_features={pit_feature_columns()} + fact_feature_panel JOIN 的 PIT 因子。"
-        )
+    _gc.assert_no_outcome_leakage(_CONTRACT, columns)

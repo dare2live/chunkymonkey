@@ -238,3 +238,8 @@ assertions:
     type: shell
     command: ["bash", "-c", "grep -cE 'FROM raw_|FROM price_kline|duck_connect\\(|duckdb\\.connect\\(' backend/services/read_model.py || true"]
     expect: {op: "<=", value: 0}
+  - id: macd-episode-gt-outcome-quarantine
+    claim: "MACD episode GT outcome 列禁做训练 X (2026-06-26 PIT 审计 workflow wecndwk2n 唯一隐患防误接): fact_macd_episode_ground_truth 的 peak_gain_pct/peak_offset_days/max_dd_pct 是 > event_date forward outcome, 当前 0 消费方但若未来策略 builder 误当训练 X 喂模型 = HIGH leakage (异常高数字根源). macd_episode_gt_columns.yaml 契约 + gt_label_contract.assert_no_outcome_leakage 守门 (与 rally-gt-outcome-quarantine 同模式共用 gt_label_contract). 删契约/把 outcome 错分为 pit_feature = 防线破. owner=backend/config/macd_episode_gt_columns.yaml + backend/services/gt_label_contract.py"
+    type: shell
+    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python -c \"from services import gt_label_contract as g; c='macd_episode_gt_columns.yaml'; oc=g.outcome_columns(c); print('MACD_GT_OK' if ('peak_gain_pct' in oc and 'max_dd_pct' in oc and 'peak_offset_days' in oc and g.entry_anchor(c)=='event_date' and g.pit_feature_columns(c)==[]) else 'MACD_GT_FAIL')\""]
+    expect: {op: regex, pattern: "MACD_GT_OK"}
