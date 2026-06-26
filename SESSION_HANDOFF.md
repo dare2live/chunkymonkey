@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-06-24 15:47:56 CST
+**Snapshot 时间**: 2026-06-26 19:22:36 CST
 
 ## 主线状态
 
@@ -44,28 +44,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `759f2b8a doc: 主计划文档按现状重新优化 (用户: 压缩后凭记忆漂移, 重读宪法+按现状调) — aif10立场反转/holder源/bypass诚实` |
-| 最近 24h commits | 25 |
-| 未 commit 文件 | 2 |
+| HEAD | `dbfc665f doc: 通达信全删 单元4 财务迁移 shadow验证DONE + 对抗验证字段映射(交接)` |
+| 最近 24h commits | 23 |
+| 未 commit 文件 | 1 |
 
 ### 最近 10 commits
 
 ```
-759f2b8a doc: 主计划文档按现状重新优化 (用户: 压缩后凭记忆漂移, 重读宪法+按现状调) — aif10立场反转/holder源/bypass诚实
-20ca3d45 refactor: 退役孤儿 tdx F10 client 代码 (旧 updater 删后 dead code)
-b35066a8 refactor: 物删旧 updater UI 簇 22 文件 (routers/updater*20+etf+data_sources) — pipeline 唯一更新路径
-7d707403 feat: 迁 aif10估值/同行/QFII sync 进 pipeline acquire (先迁后删旧updater 步骤)
-0b497f86 refactor: pipeline lhb 解耦旧 updater — sync_lhb_incremental 搬进 services.lhb_client
-94d88a66 feat: 注册 tushare stk_holdertrade 域 (增减持) — tdx F10 多产品迁移 step
-b226be56 fix: 修 asset metadata — live holder 表误标 deprecated (旧切tushare计划残留)
-f5a362c8 feat: holder 退役收口 — 物删 tdx_f10 行(aif10 单源) + backfill 验收 99.6% + deprecate tdx ingest
-d882a590 fix: holder aif10 行设 availability_source (PIT 可用日锚, 真金白银)
-2d5630cf feat: holder aif10 增量改水位驱动 (按披露日) + 写入优化 + universe 加载修复
+dbfc665f doc: 通达信全删 单元4 财务迁移 shadow验证DONE + 对抗验证字段映射(交接)
+6282c023 doc: goal.md architect re-anchor — 四地基对账+调整计划(财务数据质量发现重排优先级)
+c1b12af7 feat: 通达信全删 单元4 值比对 — balancesheet回填DONE + 救出gpcw财务数据质量问题
+612ea145 feat: 通达信全删 单元4 财务迁移 — 注册 balancesheet 域 + 值比对prep揭示模型重设计
+bf65a9d5 doc: 通达信全删 单元4/5 财务迁移 spec + goal 不变量4 删源进度对齐
+0d1b5e37 doc: 通达信全删 plan 更新 — 单元1/2/3 DONE(4表物删) + 单元6/7纠缠发现
+5f33746d feat: 通达信全删 Batch2 — 物删 增减持意向 fact_shareholder_plan_tdx_f10 (单元1, 用户拍板覆盖归档)
+7125422d feat: 通达信全删 Batch1 — 物删 户数+十大股东raw 3表 (单元2/3, 用户拍板)
+11ae3d31 doc: 通达信全删迁移计划 (对抗验证+用户决议) — 7单元授权物删, 逐单元checklist
+8d156979 doc: goal.md Gap1 PIT 审计 DONE 0泄漏 — 不变量4 leakage洞=0 实质收口
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**2 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**1 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 
