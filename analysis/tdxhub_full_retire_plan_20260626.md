@@ -63,6 +63,17 @@
 - **DONE: 单元1/2/3 (4表物删)** — fact_shareholder_plan_tdx_f10 + raw_tdx_f10_holder_research + raw_tdx_f10_holder_count_history + fact_holder_count_period; 全 fan-in 清(schema DDL/feature_registry/config/audit/seed); schema-init smoke + data_layer/config_refs/moth 45/0/0 全验。commit: 7125422d(B1) / 5f33746d(B2)。
 - **剩: 单元6/7 (xdxr/server, ~7文件K线测试基础设施纠缠) + 单元4/5 (财务, 网络backfill+真金白银重写)** — 均需聚焦执行, 非降级期末尾快做。
 
+## 单元4 财务迁移深度发现 (2026-06-26 值比对 prep, 用户选"先值比对"救出真复杂度)
+
+> 用户选"回填balancesheet保留 contract_to_revenue + 先做 gpcw-vs-tushare 值比对"。值比对 prep 阶段实测发现:**财务迁移不是字段重映射, 是数据模型重设计**。
+
+1. **balancesheet API 要 ts_code (不支持 ann_date 批量)** → 域改 `by_ts_code`(同 fina_indicator), 已注册 backfill 2020+ 进行中(PID后台, ~40min)。实弹核证茅台 contract_liab 2026Q1=30.27亿存在。
+2. **fina_indicator 仅 2023+** (gpcw 财务链 2020-12-31~): tushare 派生指标源覆盖比 gpcw 短 ~3年 → 迁移须先把 fina_indicator backfill 扩到 2020 (fixed_params.start_date 20230101→20200101 + 重拉), 否则丢 2020-2022 财务。
+3. **gpcw 是快照模型, tushare 是周期模型** [核心]: gpcw report_date='2026-04-07'/'2026-04-01'(F10 页抓取/快照日, 非季末); tushare income/fina_indicator/balancesheet 是 period 模型(一行/ts_code×end_date季末)。`calc_financial_derived` 的 snapshot-to-snapshot YoY 逻辑 ≠ tushare period-to-period。**重写不是 repoint, 是 derivation 链重设计**(snapshot→period; 输出 dim_financial_latest=每股最新财务仍可从 tushare MAX(end_date) 派生, 但派生逻辑全改)。
+4. **单位差**: fina_indicator roe 是 %(25.0), gpcw 计算的是分数(0.25) → 值比对/迁移须归一。
+
+**=> 单元4 是真金白银财务链【重设计】(snapshot→period 模型 + 2源 by_ts_code backfill 到2020 + derivation 重写 + 值比对 + 验7消费方), 一个聚焦工程项目, 非降级期能收口。本 session 已做: 注册 balancesheet + 实弹核证 contract_liab + 启动 backfill + 文档化设计约束。**
+
 ## 要丢的不可再生数据 (诚实标)
 - 增减持意向信号 (无任何源可重建)
 - 户数 1997-2017 深史 (tushare 仅 2018+)

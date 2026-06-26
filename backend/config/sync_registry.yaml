@@ -548,6 +548,22 @@ domains:
     min_rows_per_batch: 1
     allow_empty_batch: true   # 多数交易日无新财报披露
 
+  balancesheet:   # 完整资产负债表 (2026-06-26 通达信全删 单元4: gpcw 财务链迁 tushare; contract_liab 新准则字段=contract_to_revenue 源, 实弹核证茅台2026Q1 contract_liab=30.27亿; 替代 balancesheet_advrecv 旧stale预收账款拉)
+    source: tushare
+    api: balancesheet
+    target_table: raw_tushare_balancesheet
+    universe_filter: true            # 排除非白名单前缀
+    grain: [ts_code, end_date, update_flag]   # by_ts_code: uf=1 最新订正
+    batch_mode: by_ts_code   # 2026-06-26 实弹: balancesheet API 要 ts_code (不支持 ann_date 批量, 同 fina_indicator); by_trade_date 报 '必填参数 ts_code'
+    increment_mode: by_report_period
+    fixed_params: {start_date: "20200101", end_date: "20260612"}   # contract_liab 2020+ 新准则; 对齐 gpcw 财务链 2020-12-31~ 范围
+    pit_anchor: "ann_date (行内字段); 财报公告日 -> JOIN t-1 保守; update_flag=1 最新修正版 (<=t 最新 ann_date 行)"
+    available_after: "t+1"
+    data_start: "20200101"
+    freshness_sla_trading_days: 5
+    min_rows_per_batch: 1
+    allow_empty_batch: true
+
   balancesheet_advrecv:   # 2026-06-16 用户提议试"预收账款"因子 (假设驱动 validation-first 精简拉, 非投机菜单)
     source: tushare      # 假设: 预收账款(及2020后迁入的合同负债)= 前瞻需求/盈利质量领先信号 (钱先收收入后确认)
     api: balancesheet
