@@ -584,13 +584,6 @@ reassignments:
     migration_required: false
     risk: "low"
     reason: "由 gpcw semantic 自动派生。"
-  - table_name: "fact_holder_count_period"
-    current_source: "TDX F10 extra"
-    proposed_primary_source: "tdxhub_f10"
-    fallback_source: "tdxhub_gpcw"
-    migration_required: false
-    risk: "low"
-    reason: "股东人数历史优先 F10，gpcw 互校。"
   - table_name: "fact_top10_holder_period"
     current_source: "TDX F10/miaoxiang"
     proposed_primary_source: "tdxhub_f10"

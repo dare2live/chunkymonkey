@@ -61,8 +61,6 @@ tables:
   raw_lhb_daily: L0_source
   raw_profit_forecast_snapshot_daily: L0_source
   raw_qfii_holding_quarterly: L0_source
-  raw_tdx_f10_holder_count_history: L0_source
-  raw_tdx_f10_holder_research: L0_source
   raw_tdx_gpcw_wide: L0_source
   # raw_tdx_industry_file_snapshot tag 已删 2026-06-23 (东财迁移Stage④ 物删)
   dim_active_a_stock: L1_foundation
@@ -93,7 +91,6 @@ tables:
   fact_executive_trade_event: L1_foundation
   fact_financial_derived: L1_foundation
   fact_fundamental_quarterly: L1_foundation
-  fact_holder_count_period: L1_foundation
   fact_institution_event: L1_foundation
   fact_lhb_event: L1_foundation
   fact_shareholder_plan_tdx_f10: L1_foundation

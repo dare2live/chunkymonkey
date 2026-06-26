@@ -77,13 +77,6 @@ payload_audit:
       reason: Replacement for the former single-row signals_json blob; one bounded JSON row per signal keeps API cache replayable without recursive nesting.
       max_value_bytes: 8192
       max_total_value_bytes: 67108864
-    - table: raw_tdx_f10_holder_research
-      column: raw_text
-      classification: bounded_raw_source_record
-      owner: tdx_f10_source_ingestion
-      reason: TDX F10 holder raw text is a protected replay source; total volume is acceptable only with bounded individual records and zero recursive keys.
-      max_value_bytes: 65536
-      max_total_value_bytes: 1073741824
     - table: raw_tdx_gpcw_wide
       column: field_values_json
       classification: bounded_raw_source_record
@@ -173,10 +166,6 @@ model_prediction_tables:
     model_id_source_model_id_column: model_id
 
 protected_artifact_tables:
-  - table: raw_tdx_f10_holder_research
-    reason: TDX F10 raw holder snapshots are replayable source records
-  - table: raw_tdx_f10_holder_count_history
-    reason: TDX F10 parsed raw holder-count snapshots support source-date replay
   - table: raw_tdx_f10_extra_parse_status  # @archived wiped-2026-06-14-reset
     reason: TDX F10 parse ledger prevents repeated failed or terminal parses
   - table: mart_tdx_f10_capability_matrix
@@ -189,9 +178,6 @@ protected_artifact_tables:
     reason: per-stock holding horizon selection is recommendation evidence
 
 table_inventory:
-  - table: raw_tdx_f10_holder_research
-    classification: protected_raw_lineage
-    owner: tdx_f10_source_ingestion
     db_alias: smartmoney
     truth_source: tdx_f10_raw_holder_snapshot
     consumers:

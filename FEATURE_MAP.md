@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-26 00:20
+> Snapshot: 2026-06-26 13:35
 
 ## 1. 入口面
 
@@ -96,7 +96,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 154 张 | 单 writer 98 | 多 writer 56 | 动态表名写点 36 处 (21 文件)
+统计: 表 152 张 | 单 writer 97 | 多 writer 55 | 动态表名写点 36 处 (21 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -184,7 +184,6 @@
 | mart_stock_picture_daily | 2 | backend/scripts/build_picture_daily.py<br>backend/services/picture/ddl.py |
 | mart_tdx_data_need_coverage | 2 | backend/scripts/audit_tdx_data_need_coverage.py<br>backend/services/schema_marts.py |
 | mart_tdx_gpcw_file_manifest | 2 | backend/scripts/build_fundamental_quarterly.py<br>backend/services/tdx_affair_client.py |
-| raw_tdx_f10_holder_research | 2 | backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
 | raw_tdx_gpcw_wide | 2 | backend/services/schema_core.py<br>backend/services/tdx_affair_client.py |
 
 ### 单 writer 表
@@ -207,7 +206,6 @@
 | fact_feature_panel_tdx_keep_challenger | backend/services/schema_core.py |
 | fact_financial_derived | backend/services/financial_client.py |
 | fact_fundamental_quarterly | backend/scripts/build_fundamental_quarterly.py |
-| fact_holder_count_period | backend/services/schema_core.py |
 | fact_hot_rank_daily | backend/scripts/build_akshare_panel.py |
 | fact_jgdy_event | backend/scripts/build_akshare_panel.py |
 | fact_lhb_event | backend/scripts/build_lhb_events.py |
@@ -288,11 +286,11 @@
 | raw_profit_forecast_snapshot_daily | backend/scripts/ingest_profit_forecast_snapshot.py |
 | raw_qfii_holding_quarterly | backend/services/qfii_client.py |
 | raw_tdx_f10_extra_parse_status | backend/services/schema_core.py |
-| raw_tdx_f10_holder_count_history | backend/services/schema_core.py |
+| raw_tdx_f10_holder_research | backend/scripts/migrate_holders_to_tdxhub.py |
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 9,178 | calls 边 57,686 | imports 边 5,684 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 9,198 | calls 边 57,699 | imports 边 5,685 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -338,11 +336,11 @@
 | backend/services/data_quality.py | 3836 |
 | backend/services/scoring.py | 2712 |
 | backend/services/signals_v2.py | 2162 |
-| backend/services/audit.py | 1747 |
+| backend/services/audit.py | 1743 |
 | backend/services/financial_client.py | 1685 |
 | backend/scripts/build_price_kline_tdxhub.py | 1461 |
 | backend/scripts/audit_delivery_readiness.py | 1226 |
-| backend/scripts/seed_dim_data_asset.py | 1213 |
+| backend/scripts/seed_dim_data_asset.py | 1211 |
 | backend/services/storage_retention.py | 1061 |
 | backend/services/etf_grid_engine.py | 1038 |
 
@@ -350,5 +348,5 @@
 
 - chunkyctl 子命令 10 | launchd 任务 1 | router 12 (端点 56)
 - sync_registry 数据域 43
-- 产表 154 (多 writer 56)
+- 产表 152 (多 writer 55)
 

@@ -13,8 +13,6 @@ logger = logging.getLogger("cm-api")
 
 SCHEMA_MAINTENANCE_SQL = """
 DROP TABLE IF EXISTS market_raw_holdings;
-CREATE INDEX IF NOT EXISTS idx_raw_tdx_f10_fetched ON raw_tdx_f10_holder_research(fetched_at);
-CREATE INDEX IF NOT EXISTS idx_raw_tdx_f10_stock ON raw_tdx_f10_holder_research(stock_code, fetched_at DESC);
 CREATE INDEX IF NOT EXISTS idx_t10_stock ON fact_top10_holder_period(stock_code, report_date DESC);
 CREATE INDEX IF NOT EXISTS idx_t10_holder ON fact_top10_holder_period(holder_name);
 CREATE INDEX IF NOT EXISTS idx_t10_holder_norm ON fact_top10_holder_period(holder_name_norm);
@@ -26,8 +24,6 @@ CREATE INDEX IF NOT EXISTS idx_trade_stock_date ON fact_shareholder_trade(stock_
 CREATE INDEX IF NOT EXISTS idx_trade_raw_hash ON fact_shareholder_trade(stock_code, raw_hash);
 CREATE INDEX IF NOT EXISTS idx_shareholder_plan_stock_notice ON fact_shareholder_plan_tdx_f10(stock_code, source_available_date DESC);
 CREATE INDEX IF NOT EXISTS idx_shareholder_plan_subject ON fact_shareholder_plan_tdx_f10(subject);
-CREATE INDEX IF NOT EXISTS idx_raw_holder_count_stock_date ON raw_tdx_f10_holder_count_history(stock_code, report_date DESC);
-CREATE INDEX IF NOT EXISTS idx_fact_holder_count_stock_date ON fact_holder_count_period(stock_code, report_date DESC);
 CREATE INDEX IF NOT EXISTS idx_common_holder_name ON fact_common_major_holder_stock(major_holder_name);
 ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS report_date_text TEXT;
 ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS hold_ratio_text TEXT;

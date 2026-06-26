@@ -642,12 +642,8 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
         f"SELECT MAX(COALESCE(NULLIF(notice_date, ''), report_date)) "
         f"FROM fact_top10_holder_period WHERE {_raw_filter}"
     ).fetchone()[0]
-    try:
-        raw_latest_fetched_at = conn.execute(
-            "SELECT MAX(fetched_at) FROM raw_tdx_f10_holder_research"
-        ).fetchone()[0]
-    except Exception:
-        raw_latest_fetched_at = None
+    # raw_tdx_f10_holder_research 已物删 (2026-06-26 通达信全删); fact_top10_holder_period 现 100% aif10/miaoxiang
+    raw_latest_fetched_at = None
     raw_total_periods = _scalar(conn, f"SELECT COUNT(DISTINCT report_date) FROM fact_top10_holder_period WHERE {_raw_filter}")
     raw_periods = conn.execute(
         f"SELECT DISTINCT report_date FROM fact_top10_holder_period WHERE {_raw_filter} ORDER BY report_date DESC LIMIT 5"

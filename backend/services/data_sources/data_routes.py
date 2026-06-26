@@ -92,7 +92,7 @@ DATA_ROUTES = [
     # =================================================================
     {
         "data_name": "十大流通股东 ⭐",
-        "raw_table": "fact_top10_holder_period (raw 层: raw_tdx_f10_holder_research)",
+        "raw_table": "fact_top10_holder_period (源: 东财妙想 aif10)",
         "current": {"source": "tdxhub", "protocol": "tdxhub.holders.HolderFetcher (F10 股东研究 双格式解析)", "status": "connected"},
         "target": None,
         "freshness": "事件 (季报披露驱动)",

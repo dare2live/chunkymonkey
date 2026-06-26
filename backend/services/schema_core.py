@@ -3,21 +3,6 @@
 from __future__ import annotations
 
 CORE_SCHEMA_SQL = """
-            CREATE TABLE IF NOT EXISTS raw_tdx_f10_holder_research (
-                stock_code       TEXT NOT NULL,
-                stock_name       TEXT,
-                market           TEXT,
-                fetched_at       TIMESTAMP NOT NULL,
-                page_update_date DATE,
-                raw_text         TEXT NOT NULL,
-                raw_hash         VARCHAR(64) NOT NULL,
-                bytes_len        INTEGER,
-                server           TEXT,
-                f10_format       TEXT,
-                parser_version   TEXT DEFAULT 'v1',
-                PRIMARY KEY (stock_code, raw_hash)
-            );
-
             CREATE TABLE IF NOT EXISTS fact_top10_holder_period (
                 stock_code        TEXT NOT NULL,
                 stock_name        TEXT,
@@ -160,52 +145,6 @@ CORE_SCHEMA_SQL = """
                 fetched_at       TEXT,
                 row_seq          INTEGER NOT NULL DEFAULT 1,
                 PRIMARY KEY (stock_code, raw_hash, row_seq)
-            );
-
-            CREATE TABLE IF NOT EXISTS raw_tdx_f10_holder_count_history (
-                stock_code       TEXT NOT NULL,
-                stock_name       TEXT,
-                market           TEXT,
-                report_date      TEXT,
-                report_date_text TEXT,
-                holder_count_text TEXT,
-                holder_count     BIGINT,
-                holder_count_change_text TEXT,
-                holder_count_change BIGINT,
-                holder_count_change_pct_text TEXT,
-                holder_count_change_pct DOUBLE,
-                avg_float_shares_text TEXT,
-                avg_float_shares BIGINT,
-                avg_float_shares_change_pct_text TEXT,
-                avg_float_shares_change_pct DOUBLE,
-                close_price_text TEXT,
-                close_price      DOUBLE,
-                page_update_date TEXT,
-                source           TEXT NOT NULL,
-                raw_hash         TEXT NOT NULL,
-                fetched_at       TEXT,
-                row_seq          INTEGER NOT NULL DEFAULT 1,
-                PRIMARY KEY (stock_code, raw_hash, row_seq)
-            );
-
-            CREATE TABLE IF NOT EXISTS fact_holder_count_period (
-                stock_code       TEXT NOT NULL,
-                stock_name       TEXT,
-                market           TEXT,
-                report_date      TEXT NOT NULL,
-                holder_count     BIGINT,
-                holder_count_change BIGINT,
-                holder_count_change_pct DOUBLE,
-                avg_float_shares BIGINT,
-                avg_float_shares_change_pct DOUBLE,
-                close_price      DOUBLE,
-                page_update_date TEXT,
-                source           TEXT NOT NULL,
-                source_tier      SMALLINT NOT NULL DEFAULT 1,
-                raw_hash         TEXT,
-                fetched_at       TEXT,
-                updated_at       TEXT,
-                PRIMARY KEY (stock_code, report_date, source)
             );
 
             CREATE TABLE IF NOT EXISTS fact_common_major_holder_stock (

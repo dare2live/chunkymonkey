@@ -28,7 +28,7 @@ sources:
   fact_capital_flow_pit_daily:
     db: smartmoney.duckdb
     pit_field: trade_date
-    upstream: [fact_lhb_event, fact_executive_trade_event, fact_holder_count_period]
+    upstream: [fact_lhb_event, fact_executive_trade_event]
     sync_script: backend/scripts/backfill_capital_flow_pit.py
     calendar_gate: true
   fact_lhb_event:

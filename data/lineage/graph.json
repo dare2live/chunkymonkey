@@ -2425,6 +2425,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/macd_episode_gt_columns.yaml",
+      "kind": "consume",
+      "src": "table:fact_feature_panel"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/rally_gt_columns.yaml",
       "kind": "consume",
       "src": "table:fact_feature_panel"
@@ -2498,6 +2504,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_sources/clients_registry.py",
+      "kind": "consume",
+      "src": "table:fact_feature_panel"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/gt_label_contract.py",
       "kind": "consume",
       "src": "table:fact_feature_panel"
     },
@@ -2626,42 +2638,6 @@
       "dst": "consumer:backend/tests/test_build_fundamental_quarterly.py",
       "kind": "consume",
       "src": "table:fact_fundamental_quarterly"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_holder_count_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/panel_pipeline_manifest.yaml",
-      "kind": "consume",
-      "src": "table:fact_holder_count_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/tdx_data_need_coverage.yaml",
-      "kind": "consume",
-      "src": "table:fact_holder_count_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
-      "kind": "consume",
-      "src": "table:fact_holder_count_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_core.py",
-      "kind": "consume",
-      "src": "table:fact_holder_count_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_migrations.py",
-      "kind": "consume",
-      "src": "table:fact_holder_count_period"
     },
     {
       "attrs": {},
@@ -2936,6 +2912,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:fact_macd_episode_ground_truth"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/macd_episode_gt_columns.yaml",
       "kind": "consume",
       "src": "table:fact_macd_episode_ground_truth"
     },
@@ -6207,96 +6189,6 @@
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
-      "src": "table:raw_tdx_f10_holder_count_history"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/storage_retention.yaml",
-      "kind": "consume",
-      "src": "table:raw_tdx_f10_holder_count_history"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_core.py",
-      "kind": "consume",
-      "src": "table:raw_tdx_f10_holder_count_history"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_migrations.py",
-      "kind": "consume",
-      "src": "table:raw_tdx_f10_holder_count_history"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:raw_tdx_f10_holder_research"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/storage_retention.yaml",
-      "kind": "consume",
-      "src": "table:raw_tdx_f10_holder_research"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/migrate_holders_to_tdxhub.py",
-      "kind": "consume",
-      "src": "table:raw_tdx_f10_holder_research"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
-      "kind": "consume",
-      "src": "table:raw_tdx_f10_holder_research"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/audit.py",
-      "kind": "consume",
-      "src": "table:raw_tdx_f10_holder_research"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/data_routes.py",
-      "kind": "consume",
-      "src": "table:raw_tdx_f10_holder_research"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/sources/aif10.py",
-      "kind": "consume",
-      "src": "table:raw_tdx_f10_holder_research"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_core.py",
-      "kind": "consume",
-      "src": "table:raw_tdx_f10_holder_research"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_migrations.py",
-      "kind": "consume",
-      "src": "table:raw_tdx_f10_holder_research"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_migrate_holders_to_tdxhub.py",
-      "kind": "consume",
-      "src": "table:raw_tdx_f10_holder_research"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_storage_retention.py",
-      "kind": "consume",
-      "src": "table:raw_tdx_f10_holder_research"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
       "src": "table:raw_tdx_gpcw_wide"
     },
     {
@@ -7645,9 +7537,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1228,
-    "generated_at": "2026-06-26T02:28:19.413279+00:00",
-    "node_count": 477,
+    "edge_count": 1210,
+    "generated_at": "2026-06-26T05:34:00.204595+00:00",
+    "node_count": 475,
     "version": 1
   },
   "nodes": [
@@ -7769,6 +7661,14 @@
         "path": "backend/config/leakage_consumers.yaml"
       },
       "id": "consumer:backend/config/leakage_consumers.yaml",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "config",
+        "path": "backend/config/macd_episode_gt_columns.yaml"
+      },
+      "id": "consumer:backend/config/macd_episode_gt_columns.yaml",
       "kind": "consumer"
     },
     {
@@ -8577,6 +8477,14 @@
         "path": "backend/services/gap_queue.py"
       },
       "id": "consumer:backend/services/gap_queue.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/gt_label_contract.py"
+      },
+      "id": "consumer:backend/services/gt_label_contract.py",
       "kind": "consumer"
     },
     {
@@ -9798,14 +9706,6 @@
     {
       "attrs": {
         "ctype": "test",
-        "path": "backend/tests/test_storage_retention.py"
-      },
-      "id": "consumer:backend/tests/test_storage_retention.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
         "path": "backend/tests/test_universe.py"
       },
       "id": "consumer:backend/tests/test_universe.py",
@@ -10576,15 +10476,6 @@
         "layer": "L1_foundation",
         "status": "active"
       },
-      "id": "table:fact_holder_count_period",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
       "id": "table:fact_institution_event",
       "kind": "table"
     },
@@ -11215,24 +11106,6 @@
         "status": "active"
       },
       "id": "table:raw_qfii_holding_quarterly",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L0_source",
-        "status": "active"
-      },
-      "id": "table:raw_tdx_f10_holder_count_history",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L0_source",
-        "status": "active"
-      },
-      "id": "table:raw_tdx_f10_holder_research",
       "kind": "table"
     },
     {

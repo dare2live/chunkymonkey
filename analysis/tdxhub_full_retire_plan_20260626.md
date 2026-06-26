@@ -51,8 +51,8 @@
 
 **执行单元 checklist** (每单元: 清全 fan-in → 删 DDL → 物删 db_lifecycle_delete+deletion_record → 验门 → commit):
 - [ ] 单元1 增减持: feature_registry 删7声明 + seed/retired/data_layers/sync_registry 清 + schema DDL 删 + 物删 + PROJECT_INDEX 更正
-- [ ] 单元2 户数: data_layers/storage_retention/panel_manifest/coverage 清 + schema DDL 删 + 物删 raw_tdx_f10_holder_count_history + fact_holder_count_period
-- [ ] 单元3 十大股东raw: data_layers/storage_retention/seed/audit/data_routes 清 (派生 fact_top10_holder_period KEEP 100% aif10 不动) + schema DDL 删 + 物删 raw_tdx_f10_holder_research
+- [x] 单元2 户数 (DONE 2026-06-26 Batch1): data_layers/storage_retention/panel_manifest/coverage 清 + schema DDL 删 + 物删 raw_tdx_f10_holder_count_history + fact_holder_count_period
+- [x] 单元3 十大股东raw (DONE 2026-06-26 Batch1): data_layers/storage_retention/seed/audit/data_routes 清 (派生 fact_top10_holder_period KEEP 100% aif10 不动) + schema DDL 删 + 物删 raw_tdx_f10_holder_research
 - [ ] 单元6 xdxr热备: 撤 update_watermark_sla SLA门 + 退役 build_price_kline_tdxhub.py + 物删 price_kline_tdxhub_adjustment_event
 - [ ] 单元7 server健康: 删 tdx_source ensure/DDL (随单元6 builder 退役) + 前端冒烟降级 + 物删 mart_tdx_server_health
 - [ ] 单元4 财务簇: A1 (balancesheet backfill + financial_client 重写 + repoint compute.py:3041 + macd_optuna:121) → 物删 gpcw 5表

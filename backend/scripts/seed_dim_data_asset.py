@@ -80,7 +80,6 @@ EXTRA_WRITER_BY_TABLE = {
 
 EXTRA_UPSTREAM_BY_TABLE = {
     # 多个 client 链回写, 在 registry 内不太适合归到单一 client
-    "raw_tdx_f10_holder_research": ("tdxhub.holders", 1),
     "fact_top10_holder_period":     ("东财妙想 aif10 (services/holders_aif10, source=miaoxiang)", 1),
     "fact_controlling_shareholder": ("tdxhub.holders", 1),
     "fact_shareholder_plan":        ("tdxhub.holders", 1),
@@ -120,7 +119,6 @@ EXTRA_UPSTREAM_BY_TABLE = {
 }
 
 EXTRA_FRESHNESS_BY_TABLE = {
-    "raw_tdx_f10_holder_research": ("t+1", 48),
     "fact_top10_holder_period": ("t+1", 48),
     "fact_shareholder_plan": ("event", 48),
     "fact_shareholder_trade": ("event", 48),
@@ -309,7 +307,7 @@ EXTRA_ASSET_CONTRACT_BY_TABLE = {
 
 EXTRA_DEPRECATED_ASSET_BY_TABLE = {
     # tdx F10 产品退役 (2026-06-24): 3 张冻结表 (tdx_f10_extra_client 已删, 更新路径死). 0 真实代码消费方.
-    "fact_holder_count_period": {"purpose": "股东户数 (tdx F10 物删, →tushare)", "deprecation_status": "deprecated", "deprecated_reason": "tdx F10退役; tushare stk_holdernumber 2019+ 全史替代 (物删, pre-2019无K线不可用)", "replacement_table": "raw_tushare_stk_holdernumber"},
+    "fact_holder_count_period": {"purpose": "股东户数 (tdx F10 已物删 2026-06-26, →tushare)", "deprecation_status": "deleted", "deprecated_reason": "tdx F10退役; tushare stk_holdernumber 2019+ 全史替代 (物删, pre-2019无K线不可用)", "replacement_table": "raw_tushare_stk_holdernumber"},
     "fact_shareholder_plan_tdx_f10": {"purpose": "股东增减持计划/意向 (归档冻结)", "deprecation_status": "archived", "deprecated_reason": "tdx F10退役; aif10 SHAREHOLDER_CHANGE=实际变动非意向, tushare stk_holdertrade=实际成交非计划, 均无intent等价→保留唯一数据不物删", "replacement_table": None},
     "fact_common_major_holder_stock": {"purpose": "主要股东跨公司持股网络 (归档冻结, 94% peer≠self)", "deprecation_status": "archived", "deprecated_reason": "tdx F10退役; aif10 MAIN_ORGHOLDDETAIL=机构持仓≠跨公司网络, RELATION=实控人单关系, 无等价→保留唯一数据不物删", "replacement_table": None},
     # 东财全套迁移 Stage④ (2026-06-23): 申万当前快照 dim + 通达信(tdx)行业/板块 6 表物删 (§4.3 行业/概念切东财)。
@@ -364,7 +362,7 @@ EXTRA_DEPRECATED_ASSET_BY_TABLE = {
         "deprecated_reason": "aif10 源迁移; 业绩预告切 tushare forecast (2026-06-22 接入)", "replacement_table": "raw_tushare_forecast", "quality_gate_level": "monitor_only"},
     # fact_top10_holder_period 不在此 (2026-06-24 它是 LIVE 十大流通股东表, 主源已切东财妙想 aif10/source=miaoxiang;
     # 旧 2026-06-22 "切 tushare top10 降备援" 计划已被 aif10 决策取代, 此表非废弃, active 登记见上 EXTRA_UPSTREAM)
-    "raw_tdx_f10_holder_research": {"purpose": "tdx F10 股东研究原文 (退役中)", "deprecation_status": "deprecated",
+    "raw_tdx_f10_holder_research": {"purpose": "tdx F10 股东研究原文 (已物删 2026-06-26)", "deprecation_status": "deleted",
         "deprecated_reason": "2026-06-24 十大流通股东主源切东财妙想 aif10, tdx_f10 fact 行已物删; 本 raw 表暂留作恢复网, 物理退役 pending (updater 路由解耦)", "replacement_table": "fact_top10_holder_period", "quality_gate_level": "monitor_only"},
     "dim_capital_behavior_latest": {"purpose": "资本行为 (akshare 分红/回购/解禁)", "deprecation_status": "deprecated",
         "deprecated_reason": "akshare 源退役, 分红/回购/解禁切 tushare", "replacement_table": "raw_tushare_dividend", "quality_gate_level": "monitor_only"},
