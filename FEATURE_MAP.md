@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-26 20:23
+> Snapshot: 2026-06-26 22:47
 
 ## 1. 入口面
 
@@ -291,7 +291,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 9,203 | calls 边 57,728 | imports 边 5,675 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 9,203 | calls 边 57,730 | imports 边 5,670 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -336,7 +336,7 @@
 |---|---|
 | backend/services/data_quality.py | 3836 |
 | backend/services/scoring.py | 2712 |
-| backend/services/signals_v2.py | 2162 |
+| backend/services/signals_v2.py | 2140 |
 | backend/services/financial_client.py | 1744 |
 | backend/services/audit.py | 1743 |
 | backend/scripts/build_price_kline_tdxhub.py | 1461 |

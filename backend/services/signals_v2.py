@@ -1188,36 +1188,14 @@ def _load_gpcw_feature_maps(conn) -> dict:
 
     返回 dict: {feature_name: {(stock, date): value}}
     """
-    out = {
-        "holder_count": {},           # D1
-        "forecast_profit_yoy_mid": {}, # D3
+    # 2026-06-26 通达信全删: gpcw 源 (raw_gpcw_detail) 退役 → 不再读。D1 holder_count_yoy / D3
+    # forecast_profit_yoy_mid 返空 map → _apply_hard_rules 的 `if X is not None` 守卫使两过滤器自动 no-op
+    # (优雅降级, 不崩)。用户决议"信号重做不用旧的": signals_v2 是 reset 前过渡引擎, gpcw 过滤器不保留;
+    # 重做信号时 D1/D3 若需要, 从 tushare 重接 (holder→stk_holdernumber / forecast→raw_tushare_forecast)。
+    return {
+        "holder_count": {},           # D1 (gpcw 退役, 空 → 过滤器 no-op)
+        "forecast_profit_yoy_mid": {}, # D3 (同上)
     }
-    try:
-        # 2026-06-23 P1-1 SERVE conformance: 内联 raw_gpcw_detail → data_access 单读路 (lineage 声明,
-        # report_date≤latest_closed PIT 默认锚)。conn 参数保留兼容签名 (本读走读层自有 RO 连接)。
-        from services.data_access import get_data_access
-        rows = get_data_access().get("financial_gpcw", conn=conn).rows  # 用 signals_v2 现有 conn 避免同库重开冲突
-        for r in rows:
-            k = (r["stock_code"], r["report_date"])
-            if r["holder_count"] is not None:
-                try:
-                    out["holder_count"][k] = float(r["holder_count"])
-                except Exception:
-                    pass
-            low = r["forecast_profit_yoy_low"]
-            high = r["forecast_profit_yoy_high"]
-            try:
-                if low is not None and high is not None:
-                    out["forecast_profit_yoy_mid"][k] = (float(low) + float(high)) / 2
-                elif low is not None:
-                    out["forecast_profit_yoy_mid"][k] = float(low)
-                elif high is not None:
-                    out["forecast_profit_yoy_mid"][k] = float(high)
-            except Exception:
-                pass
-    except Exception as exc:
-        logger.warning(f"[signals_v2] 加载 GPCW 特征失败: {exc}")
-    return out
 
 
 def _load_gpcw_holder_count_map(conn) -> dict:
