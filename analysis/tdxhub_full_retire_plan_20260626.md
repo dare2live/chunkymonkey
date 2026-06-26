@@ -128,8 +128,8 @@
 
 ## 单元4 promote 路线 (新session 接手, shadow 已建+验证)
 
-> **状态: shadow 已建+gross_margin修复验证通过, 待修 roe 周期基准 → promote**。
-> 不可逆物删 gpcw 在最后, 须 shadow 完全验证 + 用户确认财务打分值变化后。
+> **状态 (2026-06-26 更新): rewrite + roe修复 + contract BLOCKER修复 + 单测 + 对抗验证(workflow wuxnownvm) 全 DONE → 卡在 escalate 用户确认 promote (步3)**。
+> 不可逆物删 gpcw 在最后, 须 用户确认财务打分值变化后。详见下方"本session promote执行进度"。
 
 1. **修 roe 周期基准** (上述 subtlety): shadow 派生改累计指标用 roe_yearly/统一年报期; 重建 shadow 重验。
 2. **全列验** (controller): shadow vs live 逐列, 比率类应接近(除gpcw错的gross_margin), 累计类修后接近; 茅台/几只龙头 spot-check。
@@ -138,6 +138,30 @@
 5. **物删 gpcw 簇** (escalate): raw_gpcw_detail/financial/wide + dim_tdx_gpcw_field/_semantic (单元4) + 单元5 mart_tdx_f10_*; 同 DDL/config/fan-in 清 (同 Batch1/2 模式)。
 6. **fina_indicator update_flag grain bug** (独立live bug, 单独修): API不返update_flag → grain改[ts_code,end_date,ann_date]或sync_runner容忍; daily sync freshness 需它。用现有2023+数据可先做上述迁移。
 7. shadow 表 dim_financial_latest_shadow 是验证产物, promote 后可 DROP。
+
+## 单元4 本session promote 执行进度 (2026-06-26, model: Opus 4.8)
+
+**代码 DONE (financial_client.py calc_financial_derived 重写)**:
+- 签名 `calc_financial_derived(conn, *, attach=True, write_suffix='')`; 快照→周期模型 SQL 化 (替旧逐行Python);
+  ATTACH tushare_raw READ_ONLY (manifest path_for); 源全按(ts_code,end_date)去重(ann_date/update_flag/built_at DESC);
+  写 fact_financial_derived(周期历史,74192行) + dim_financial_latest(最新快照,5202行)。
+- **两处真金白银修复**: roe←roe_yearly(年化, 非季报累计); gross_margin←grossprofit_margin(毛利率%, 非gross_margin金额陷阱)。
+- fact 的 float/total_shares/holder_count_change_pct 留 NULL (无消费方读fact这几列; dim才填)。
+- **2 新单测** (test_financial_client.py): 守全映射+两修复+去重+单位+INTERSECT+FY-restriction+shadow隔离。12测试全过。
+
+**对抗验证 DONE (workflow wuxnownvm, 3 lens + 综合)**:
+- Lens A 独立重导 12 股×15列 = **0 mismatch** (茅台+银行+地产+亏损+IPO+保险全对)。
+- Lens B 消费方 (scoring/screening/stock_stage) 原样SELECT跑shadow **零破坏** (schema全兼容5202行0报错); 财务分向正确移 (gross garbage 0.755→0.242; roe极值崩坏修)。
+- **Lens C 对抗抓 1 BLOCKER (我自己漏, 茅台落FY口径掩盖)**: contract_to_revenue 期间口径混合 — contract_liab时点÷累计YTD营收, 多数股落Q1(3个月)→虚高4.5-6.8x跨股不可比, scoring绝对门33%股按财季运气压0分。
+
+**BLOCKER 已修 (FY-restriction)**: contract 分子分母锁最新年报期(end_date 1231) → 分母恒12个月可比。验证 (measured):
+- 茅台 0.047 **不变** (本就落FY); 601628 70.93→**10.36** / 601601 27.44→**5.67** / 601319 8.39→**1.85** (与验证者独立FY值逐股精确吻合);
+- contract>0.20压0分 33%→**10.5%** (剩余=真高合同负债保险/地产, 正确)。fact非FY期contract=NULL(诚实)。
+
+**可接受限制 (综合裁决, 不阻塞 promote)**: 亏损股ocf NULL(97%为net_margin<0,语义正确) / 银行无毛利率(101股raw即NULL) /
+roe_yearly Q1年化季节失真(PIT约束下最好年度代理,median差仅3.32pp) / **holder_count_change_pct环比窗口不等(MEDIUM, 1753股非季末披露当上期 → defer builder侧季末过滤, 权重小±0.5~1.5)** / 微利股极值(rank沉底)。
+
+**→ 下一步 = escalate 用户确认接受"财务打分值向正确变化"后 promote (步3-5)**。promote = 调 calc_financial_derived(conn) 无suffix 覆盖 live dim/fact (gpcw raw 仍在, 可逆); 物删 gpcw 簇才不可逆(步5)。
 
 ## 要丢的不可再生数据 (诚实标)
 - 增减持意向信号 (无任何源可重建)

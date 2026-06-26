@@ -1551,135 +1551,194 @@ async def sync_financial_data(
 # 计算派生指标
 # ============================================================
 
-def calc_financial_derived(conn) -> int:
-    """从 raw_gpcw_financial 计算派生指标，写入 fact + dim 表。"""
+# fina_indicator/balancesheet/income/stk_holdernumber 同一 (ts_code,end_date) 常有多版本行
+# (update_flag 0=原始 / 1=更正; restatement). 取最新披露+更正版: ann_date DESC, update_flag DESC, built_at DESC.
+# stk_holdernumber 无 update_flag, 仅用 ann_date/built_at. 实测 fina 21467 组 (ts_code,end_date) 有重复.
+_FINA_DEDUP_ORDER = "ann_date DESC NULLS LAST, update_flag DESC NULLS LAST, built_at DESC NULLS LAST"
+_HOLDER_DEDUP_ORDER = "ann_date DESC NULLS LAST, built_at DESC NULLS LAST"
+
+
+def calc_financial_derived(conn, *, attach: bool = True, write_suffix: str = "") -> int:
+    """从 tushare 周期模型计算派生财务指标，写入 fact + dim 表。
+
+    2026-06-26 通达信全删 单元4: 源从 raw_gpcw_financial (F10 快照模型) 迁移到 tushare 周期模型。
+    迁移动因 = 修复 gpcw 数据质量错 (值比对 救出, 见 analysis/tdxhub_full_retire_plan_20260626.md):
+      - gpcw `revenue` 虚高 ~15x (茅台显示 1.28 万亿 vs 实际 ~1700 亿) → gross_margin 烂 (茅台 8.7% vs 真实 91%)。
+    源映射经 workflow wydf17fu8 对抗验证 + controller 茅台 600519 亲核。两处真金白银修复:
+      1. gross_margin <- fina.grossprofit_margin (毛利率%), 绝不用 fina.gross_margin (=毛利【金额】, 同 gpcw 错)。
+      2. roe <- fina.roe_yearly (年化), 非季报累计 roe — 5196/5202 股最新期=Q1, 累计 roe≈年化 1/4 跨期不可比,
+         而 scoring.py 用绝对阈值 (roe>=0.18→12 分) 按【年度】标定 → 累计口径会把几乎所有股压到最低档。
+    其余比率列 (debt/current/net_margin/ocf/yoy) 跨期可比, 直接 /100 (current_ratio 是倍数不除)。
+    contract_to_revenue 用 bs+income 共同最新期 (INTERSECT, 取两表都有的 MAX end_date), 匹配已验证映射。
+    fact 层 (历史) 的 float_shares/total_shares/holder_count_change_pct 留 NULL: 是 point-in-time/异 grain 量,
+    无任何消费方读 fact 这几列 (audit 只 COUNT, watermark 只 MAX(report_date)); dim 层才填这几列 (有消费方)。
+
+    attach=True: ATTACH 真 tushare_raw (READ_ONLY); attach=False: 假设 `tr` 已 attach (单测注合成数据)。
+    write_suffix: '' 写 live; '_shadow' 写影子表 (promote 前验证用, 不碰 live)。
+    """
     ensure_tables(conn)
-
-    rows = conn.execute("""
-        SELECT * FROM raw_gpcw_financial ORDER BY stock_code, report_date
-    """).fetchall()
-
-    if not rows:
-        logger.info("[财务] 无原始数据，跳过派生计算")
-        return 0
+    if attach:
+        from services.database_manifest import get_database_manifest
+        tr_path = get_database_manifest().path_for("tushare_raw")
+        conn.execute(f"ATTACH IF NOT EXISTS '{tr_path}' AS tr (READ_ONLY)")
 
     now = datetime.now().isoformat()
-    count = 0
+    fact_tbl = f"fact_financial_derived{write_suffix}"
+    dim_tbl = f"dim_financial_latest{write_suffix}"
+    if write_suffix:
+        # 影子表按 live schema 建 (空), 验证用; live 表 ensure_tables 已建
+        conn.execute(f"CREATE TABLE IF NOT EXISTS {fact_tbl} AS SELECT * FROM fact_financial_derived WHERE 1=0")
+        conn.execute(f"CREATE TABLE IF NOT EXISTS {dim_tbl} AS SELECT * FROM dim_financial_latest WHERE 1=0")
 
-    by_stock = defaultdict(list)
-    for row in rows:
-        by_stock[row["stock_code"]].append(dict(row))
+    # 去重后的源 CTE (fact + dim 共用语义, 各自内联以保证单语句原子)
+    fina_dedup = f"""
+        SELECT ts_code, end_date, roe_yearly, debt_to_assets, current_ratio, grossprofit_margin,
+               netprofit_margin, tr_yoy, netprofit_yoy, ocf_to_profit
+        FROM (
+            SELECT *, ROW_NUMBER() OVER (PARTITION BY ts_code, end_date ORDER BY {_FINA_DEDUP_ORDER}) rn
+            FROM tr.raw_tushare_fina_indicator
+        ) WHERE rn = 1
+    """
+    bs_dedup = f"""
+        SELECT ts_code, end_date, TRY_CAST(contract_liab AS DOUBLE) AS contract_liab
+        FROM (
+            SELECT ts_code, end_date, contract_liab,
+                   ROW_NUMBER() OVER (PARTITION BY ts_code, end_date ORDER BY {_FINA_DEDUP_ORDER}) rn
+            FROM tr.raw_tushare_balancesheet
+        ) WHERE rn = 1
+    """
+    inc_dedup = f"""
+        SELECT ts_code, end_date, revenue
+        FROM (
+            SELECT ts_code, end_date, revenue,
+                   ROW_NUMBER() OVER (PARTITION BY ts_code, end_date ORDER BY {_FINA_DEDUP_ORDER}) rn
+            FROM tr.raw_tushare_income
+        ) WHERE rn = 1
+    """
+    # end_date 'YYYYMMDD' -> report_date 'YYYY-MM-DD' (与旧 gpcw 格式一致 + watermark 字符串比较正确)
+    _fmt_rd = "substr({c}.end_date,1,4)||'-'||substr({c}.end_date,5,2)||'-'||substr({c}.end_date,7,2)"
+    _season = ("CASE substr({c}.end_date,5,2) WHEN '03' THEN 'Q1' WHEN '06' THEN 'Q2' "
+               "WHEN '09' THEN 'Q3' WHEN '12' THEN 'Q4' ELSE '' END")
 
-    conn.execute("DELETE FROM fact_financial_derived")
+    # ---- fact_financial_derived: 周期历史 (一行/ts_code×end_date), fina 为期网格 ----
+    conn.execute(f"DELETE FROM {fact_tbl}")
+    conn.execute(f"""
+        INSERT INTO {fact_tbl}
+        (stock_code, report_date, report_season, roe, debt_ratio, current_ratio,
+         gross_margin, net_margin, revenue_yoy, profit_yoy, ocf_to_profit,
+         contract_to_revenue, holder_count_change_pct, float_shares, total_shares, updated_at)
+        WITH fina AS ({fina_dedup}), bs AS ({bs_dedup}), inc AS ({inc_dedup})
+        SELECT
+            substr(f.ts_code,1,6)            AS stock_code,
+            {_fmt_rd.format(c='f')}          AS report_date,
+            {_season.format(c='f')}          AS report_season,
+            f.roe_yearly        / 100.0      AS roe,
+            f.debt_to_assets    / 100.0      AS debt_ratio,
+            f.current_ratio                  AS current_ratio,
+            f.grossprofit_margin/ 100.0      AS gross_margin,
+            f.netprofit_margin  / 100.0      AS net_margin,
+            f.tr_yoy            / 100.0      AS revenue_yoy,
+            f.netprofit_yoy     / 100.0      AS profit_yoy,
+            f.ocf_to_profit     / 100.0      AS ocf_to_profit,
+            -- contract_to_revenue 仅在年报期(1231)算: contract_liab=时点余额, revenue=累计YTD,
+            -- 仅 FY 期 revenue=完整12个月与余额同口径; 非 FY 期(Q1/H1/Q3) revenue 是部分年度→比率虚高跨期不可比(对抗验证 wuxnownvm BLOCKER)。
+            CASE WHEN substr(f.end_date,5,4) = '1231'
+                 THEN bs.contract_liab / NULLIF(inc.revenue, 0) ELSE NULL END AS contract_to_revenue,
+            NULL AS holder_count_change_pct,
+            NULL AS float_shares,
+            NULL AS total_shares,
+            ?    AS updated_at
+        FROM fina f
+        LEFT JOIN bs  ON bs.ts_code  = f.ts_code AND bs.end_date  = f.end_date
+        LEFT JOIN inc ON inc.ts_code = f.ts_code AND inc.end_date = f.end_date
+    """, (now,))
+    fact_count = conn.execute(f"SELECT COUNT(*) FROM {fact_tbl}").fetchone()[0]
 
-    for code, records in by_stock.items():
-        records.sort(key=lambda item: item["report_date"])
-
-        for i, rec in enumerate(records):
-            rd = rec["report_date"]
-            season = _report_season(rd)
-
-            roe = _safe_div(rec.get("net_profit"), rec.get("net_assets"))
-            debt_ratio = _safe_div(rec.get("total_liabilities"), rec.get("total_assets"))
-            current_ratio = _safe_div(rec.get("current_assets"), rec.get("current_liabilities"))
-            gross_margin = _safe_div(rec.get("gross_profit"), rec.get("revenue"))
-            net_margin = _safe_div(rec.get("net_profit"), rec.get("revenue"))
-            ocf_to_profit = _safe_div(rec.get("operating_cashflow"), rec.get("net_profit"))
-            contract_to_revenue = _safe_div(rec.get("contract_liabilities"), rec.get("revenue"))
-
-            revenue_yoy = None
-            profit_yoy = None
-            holder_count_change = None
-
-            target_year = int(rd[:4]) - 1 if rd and len(rd) >= 4 else None
-            target_date = f"{target_year}{rd[4:]}" if target_year else None
-            if target_date:
-                prev_same_q = next((prev for prev in records[:i] if prev["report_date"] == target_date), None)
-                if prev_same_q:
-                    revenue_yoy = _safe_div(
-                        (rec.get("revenue") or 0) - (prev_same_q.get("revenue") or 0),
-                        abs(prev_same_q.get("revenue") or 0) or None,
-                    )
-                    profit_yoy = _safe_div(
-                        (rec.get("net_profit") or 0) - (prev_same_q.get("net_profit") or 0),
-                        abs(prev_same_q.get("net_profit") or 0) or None,
-                    )
-
-            if i > 0:
-                prev_rec = records[i - 1]
-                if rec.get("holder_count") and prev_rec.get("holder_count"):
-                    holder_count_change = _safe_div(
-                        rec["holder_count"] - prev_rec["holder_count"],
-                        prev_rec["holder_count"],
-                    )
-
-            conn.execute("""
-                INSERT OR REPLACE INTO fact_financial_derived
-                (stock_code, report_date, report_season, roe, debt_ratio, current_ratio,
-                 gross_margin, net_margin, revenue_yoy, profit_yoy, ocf_to_profit,
-                 contract_to_revenue, holder_count_change_pct, float_shares, total_shares, updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """, (
-                code,
-                rd,
-                season,
-                roe,
-                debt_ratio,
-                current_ratio,
-                gross_margin,
-                net_margin,
-                revenue_yoy,
-                profit_yoy,
-                ocf_to_profit,
-                contract_to_revenue,
-                holder_count_change,
-                rec.get("float_shares"),
-                rec.get("total_shares"),
-                now,
-            ))
-            count += 1
-
-    conn.execute("DELETE FROM dim_financial_latest")
-    conn.execute("""
-        INSERT INTO dim_financial_latest
+    # ---- dim_financial_latest: 每股最新快照 ----
+    conn.execute(f"DELETE FROM {dim_tbl}")
+    conn.execute(f"""
+        INSERT INTO {dim_tbl}
         (stock_code, latest_report_date, roe, debt_ratio, current_ratio, gross_margin,
          net_margin, revenue_yoy, profit_yoy, ocf_to_profit, contract_to_revenue,
          holder_count, holder_count_change_pct, float_shares, total_shares, history_rows, updated_at)
-        SELECT
-            f.stock_code,
-            f.report_date,
-            f.roe,
-            f.debt_ratio,
-            f.current_ratio,
-            f.gross_margin,
-            f.net_margin,
-            f.revenue_yoy,
-            f.profit_yoy,
-            f.ocf_to_profit,
-            f.contract_to_revenue,
-            r.holder_count,
-            f.holder_count_change_pct,
-            f.float_shares,
-            f.total_shares,
-            hist.history_rows,
-            ?
-        FROM fact_financial_derived f
-        JOIN raw_gpcw_financial r
-          ON f.stock_code = r.stock_code AND f.report_date = r.report_date
-        JOIN (
-            SELECT stock_code, COUNT(*) AS history_rows
-            FROM raw_gpcw_financial
-            GROUP BY stock_code
-        ) hist
-          ON hist.stock_code = f.stock_code
-        WHERE f.report_date = (
-            SELECT MAX(f2.report_date)
-            FROM fact_financial_derived f2
-            WHERE f2.stock_code = f.stock_code
+        WITH fina AS ({fina_dedup}), bs AS ({bs_dedup}), inc AS ({inc_dedup}),
+        fina_latest AS (
+            SELECT * FROM (
+                SELECT *, ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY end_date DESC) rn2 FROM fina
+            ) WHERE rn2 = 1
+        ),
+        fina_hist AS (
+            SELECT ts_code, COUNT(DISTINCT end_date) AS history_rows FROM fina GROUP BY ts_code
+        ),
+        common_period AS (   -- contract: 锁【最新年报期 FY/1231】(bs∩income 都有值的 MAX 1231 期)
+            -- 修复期间口径混合 BLOCKER (对抗验证 wuxnownvm HIGH): contract_liab=时点余额, revenue=累计YTD;
+            -- 只取 FY 期保证分母=完整12个月, 跨股可比, 无季节偏差。茅台共同期本就落 20251231 故值不变(0.047);
+            -- 保险股(601628 Q1→FY)从虚高 70.93 修正回真实 ~10。代价: contract_liab 用 FY 期(可能比最新季稍旧), 但比率口径正确优先。
+            SELECT b.ts_code, MAX(b.end_date) AS end_date
+            FROM bs b JOIN inc i ON b.ts_code = i.ts_code AND b.end_date = i.end_date
+            WHERE b.contract_liab IS NOT NULL AND i.revenue IS NOT NULL AND i.revenue <> 0
+              AND substr(b.end_date,5,4) = '1231'
+            GROUP BY b.ts_code
+        ),
+        contract AS (
+            SELECT c.ts_code, b.contract_liab / NULLIF(i.revenue, 0) AS contract_to_revenue
+            FROM common_period c
+            JOIN bs  b ON b.ts_code = c.ts_code AND b.end_date = c.end_date
+            JOIN inc i ON i.ts_code = c.ts_code AND i.end_date = c.end_date
+        ),
+        hn AS (   -- 户数: 先 (ts_code,end_date) 去重, 再取最新期 + LEAD 上一期算环比
+            SELECT ts_code, end_date, TRY_CAST(holder_num AS BIGINT) AS holder_num
+            FROM (
+                SELECT ts_code, end_date, holder_num,
+                       ROW_NUMBER() OVER (PARTITION BY ts_code, end_date ORDER BY {_HOLDER_DEDUP_ORDER}) rn
+                FROM tr.raw_tushare_stk_holdernumber
+            ) WHERE rn = 1
+        ),
+        holder AS (
+            SELECT ts_code, holder_num AS holder_count,
+                   CASE WHEN prev IS NULL OR prev = 0 THEN NULL
+                        ELSE (holder_num - prev) * 1.0 / prev END AS holder_count_change_pct
+            FROM (
+                SELECT ts_code, holder_num,
+                       LEAD(holder_num) OVER (PARTITION BY ts_code ORDER BY end_date DESC) AS prev,
+                       ROW_NUMBER()    OVER (PARTITION BY ts_code ORDER BY end_date DESC) rk
+                FROM hn
+            ) WHERE rk = 1
+        ),
+        db_latest AS (   -- 流通/总股本: daily_basic 最新日 (万股 -> 股 ×10000)
+            SELECT ts_code, float_share, total_share FROM (
+                SELECT ts_code, float_share, total_share,
+                       ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) rn
+                FROM tr.raw_tushare_daily_basic
+            ) WHERE rn = 1
         )
+        SELECT
+            substr(f.ts_code,1,6)            AS stock_code,
+            {_fmt_rd.format(c='f')}          AS latest_report_date,
+            f.roe_yearly        / 100.0      AS roe,
+            f.debt_to_assets    / 100.0      AS debt_ratio,
+            f.current_ratio                  AS current_ratio,
+            f.grossprofit_margin/ 100.0      AS gross_margin,
+            f.netprofit_margin  / 100.0      AS net_margin,
+            f.tr_yoy            / 100.0      AS revenue_yoy,
+            f.netprofit_yoy     / 100.0      AS profit_yoy,
+            f.ocf_to_profit     / 100.0      AS ocf_to_profit,
+            c.contract_to_revenue            AS contract_to_revenue,
+            h.holder_count                   AS holder_count,
+            h.holder_count_change_pct        AS holder_count_change_pct,
+            db.float_share * 10000.0         AS float_shares,
+            db.total_share * 10000.0         AS total_shares,
+            hist.history_rows                AS history_rows,
+            ?                                AS updated_at
+        FROM fina_latest f
+        LEFT JOIN contract  c    ON c.ts_code    = f.ts_code
+        LEFT JOIN holder    h    ON h.ts_code    = f.ts_code
+        LEFT JOIN db_latest db   ON db.ts_code   = f.ts_code
+        LEFT JOIN fina_hist hist ON hist.ts_code = f.ts_code
     """, (now,))
 
     conn.commit()
-    dim_count = conn.execute("SELECT COUNT(*) FROM dim_financial_latest").fetchone()[0]
-    logger.info(f"[财务] 派生计算完成: {count} 条事实, {dim_count} 条最新快照")
-    return count
+    dim_count = conn.execute(f"SELECT COUNT(*) FROM {dim_tbl}").fetchone()[0]
+    logger.info(f"[财务] 派生计算完成 (tushare 周期模型{'/'+write_suffix if write_suffix else ''}): "
+                f"{fact_count} 条事实, {dim_count} 条最新快照")
+    return fact_count
