@@ -4,6 +4,32 @@
 > 产出: 4 视角 design panel (流水线分层/声明式registry/域纵切/血缘图为脊) → 对抗评分+综合 (wf_0ac4f5b0). 全文综合见本文件.
 > 北极星: 用户 2026-06-24 定调 — "数据模块的 codegraph + 路由器 + 字典 + 总指挥, 增删改先过中枢再干活" + "变量加工 raw→计算→变量→消费, 无加工标未加工" + "分工合理/边界明确/可维护/可扩展/可追踪".
 
+## 实施进度对账 (2026-06-26 — architect re-anchor, 用户"对照蓝图和现状")
+
+| 组件 | 蓝图定位 | 现状 | 证据 |
+|---|---|---|---|
+| M1 ACQUIRE / M2 CLEAN | 保留+收编 | [DONE] 在用 (M1 raw / M2 qfq+data_audit 7/7) | M2 ETF迁tushare DONE |
+| M4 SERVE (23 entity) | DONE | [DONE] DONE | — |
+| M6 DISPLAY / M7 ORCHESTRATE | DONE/保留 | [DONE] DONE | — |
+| **§8 阶段独立化** | 四件套 | [DONE] **backend DONE** (a/b/c-lite: stage_runner+stage_status+upstream门); 前端卡片待 | commit 3af6d/df8d5/ef9f4 |
+| **M5 LINEAGE (T2 acquire+consume)** | 新建脊柱 (North-Star) | [DONE] **T2 DONE** (services/lineage + chunkyctl lineage build/impact/provenance/dead + graph.json 472节点/1191边 + check_lineage_drift + 10单测) | commit 766a12ce |
+| **§9 reference 拆库** | 9.5 view+ATTACH 计划 | [WARN] **机制 REVISED** (见 §9.5 更新): 前提成立(2进程锁实测)但 view+ATTACH 有8 break-point → 定案 **alias-routing**; **§9≡T0 dim切片** | section9_reference_split_verified_plan_20260626.md |
+| **T0 Gap1 (builder→SERVE)** | 最高优先 (leakage) | [WARN] PARTIAL (task#55) | — |
+| **T1 变量三态** | feature_registry 4字段+factors/ | [NO] 未起 | — |
+| **T3/T4 血缘 transform/display + drift硬闸** | 完备化 | [NO] 未起 (T2 后) | — |
+| **M8 +5门** | 补门 | [NO] 未起 | — |
+| 预存债 (非本session引入) | — | moth serve-bypass=3 (lhb/qfii/aif10内联读raw) + signal_cache×2 untagged | stash-baseline 核证 |
+
+**架构师定论 (本 session 新增, ultracode+第一性原理)**: §9 真 blast 源 = **4 套并行连接模型碎片化** (get_conn / 直连 duckdb.connect / 注入conn / bestchoice _attach_smart_db AS sm), 非搬表本身。**§9 Phase 0 (4 dim表收口走 SERVE/resolver) ≡ T0 (全读走 SERVE) 的 dim 切片** = 同一份连接收口工 → 做一次推进两个平台目标。DuckDB 跨进程文件锁是进程级(实测): 隔离连接不可能解, 拆库正当; 但机制走 alias-routing(无view) 非 view+ATTACH。
+
+**下一步优先级 (reconciled, 2026-06-26)**:
+1. **T0/§9-Phase0 汇流: 4 dim表纳 data_access SERVE entity + 收口 4套连接的 dim 读点走 resolver** (= 平台最高杠杆: 同时推 T0 全读走SERVE + §9 dim解耦地基; 高blast 焦点session)。
+2. T1 变量三态 (feature_registry 4字段 + services/factors/) — 阻塞 T3/M5 transform边。
+3. §9 Stage C-E (dim entity 别名→reference + 写方repoint + 物删) — Phase0 收口后变 trivial 别名改。
+4. T3/T4 血缘完备 + M8 补门 (M5 后续)。
+5. 预存债 (serve-bypass=3 / signal_cache tag) 顺手收。
+> 真金白银 caveat (§6 不变): 以上全平台债, **非 alpha 钱路**; T0 收 Gap1(leakage) 是唯一卡 alpha 的洞, 平台地基硬后即转档B edge 确认。
+
 ## 0. 北极星 — 数据模块的 codegraph + 字典 + 总指挥 (闭环)
 
 中枢一个东西四个面: **字典**(每元素唯一登记=codegraph索引) · **路由器**(双向查 从哪来/流去哪/改它炸什么) · **总指挥**(增删改先声明才动手=强制闸) · **变量加工**(raw→计算→变量 的边, 无加工标"未加工").
@@ -25,7 +51,7 @@
 | **M2 CLEAN** `pipeline/clean.py` | L0→L1 写时归一 (复权/格式/单位) | `transform(normalize)` 边; L1 PIT 表+qfq 真相源 | 输出=L1 物化表 | 保留 |
 | **M3 PROCESS** `pipeline/process.py`+builders | L1→L2 **变量加工**, **单一计算点** | `transform(derive)` 边; L2 panel 写权; 纯函数层 | 输入必走 SERVE (D1门); 输出=L2 panel | 收编. **收 Gap1** (2 builder 绕读) |
 | **M4 SERVE** `services/data_access/` (23 entity) | 唯一取数+PIT asof+口径锁+provenance | `consume` 边唯一闸 | `get(entity,codes,as_of)→DataResult{rows,provenance}` | **DONE** 保留 |
-| **M5 LINEAGE** `services/lineage/`+`chunkyctl lineage` ★新 | 缝合 M1-M8 声明成单一可查 DAG, **派生不手维护** | 整图物化+CLI (impact/provenance/dead) | 只读各 registry 投影, 不产真相 | **新建** (脊柱; 61 条种子已有) |
+| **M5 LINEAGE** `services/lineage/`+`chunkyctl lineage` ★新 | 缝合 M1-M8 声明成单一可查 DAG, **派生不手维护** | 整图物化+CLI (impact/provenance/dead) | 只读各 registry 投影, 不产真相 | **T2 DONE 2026-06-26** (acquire+consume 缝合, graph.json 472节点/1191边, impact/provenance/dead 可查, drift门; 余 T3 transform字段级/T4 display+domain) |
 | **M6 DISPLAY** `read_model.py` | `(stock,as_of)` 切片, 禁裸 SQL | `display` 边; read-model 切片 | 输入=SERVE; 输出=自包含 HTML | DONE 保留 |
 | **M7 ORCHESTRATE** `pipeline/run.py`+`context.py` | 跑节点 (独立/幂等/可续), 薄编排 | 执行序; degraded 续跑+告警送达 | `chunkyctl update` | 保留, **不强行 DAG 化** (砍 premature) |
 | **M8 GOVERN** `.moth/`+`check_*.py`+safe_commit | 所有门载体 (45 断言+漂移门) | 图不变量执法 | commit 时拦 | 保留+补 5 门 |
@@ -73,7 +99,7 @@ variables:
 |---|---|---|---|
 | **T0 收 Gap1** ★最高 | build_segment_panel/build_signal_panel 改走 SERVE | `serve-consumer-bypass-zero==0`+PIT 单测 | ④leakage (唯一卡 alpha 的洞) |
 | **T1 变量加工登记** | feature_registry 补 4 字段+建 `factors/` 纯函数层; builder 收编引擎; 透传标 passthrough | `compute-state-declared`+`variable-single-compute-point` | ②变量加工不可追踪 |
-| **T2 血缘 acquire+consume 段** | `lineage build` 缝合 sync_registry+data_access+codegraph→impact/provenance CLI+死字段报告 | `lineage impact` 替代手 grep (tdx 迁移验收) | ①血缘没物化+④删源手 fan-in |
+| **T2 血缘 acquire+consume 段** [DONE]**DONE 2026-06-26** | `lineage build` 缝合 sync_registry+data_access+information_schema+确定性git-grep fan-in→impact/provenance/dead CLI | `lineage impact` 替代手 grep (已用于 §9 4表 fan-in) | ①血缘没物化+④删源手 fan-in 根治 |
 | **T3 血缘 transform+display 段** | 解析 feature_registry+builder→字段级 transform 边+展示映射 | `lineage provenance <card>` 端到端 | ⑤端到端+透传标记 |
 | **T4 闭环+domain 标签** | check_lineage_drift wired safe_commit; registry 打 domain 标签 | 全门绿+drift diff=0 连跑两次 | ③分工/边界成文可执法 |
 
@@ -128,9 +154,9 @@ stages 近线性固定序 (acquire→clean→process→serve), **每阶段状态
 ### 9.1 现状实测 (文件层)
 | 文件 | 大小 | 内容 | 对齐? |
 |---|---|---|---|
-| tushare_raw | 7.5G | raw_tushare_* vendor 镜像 | ✓ M1 干净 |
+| tushare_raw | 7.5G | raw_tushare_* vendor 镜像 | M1 干净 |
 | market | 1.8G | K线/复权 | ~ M2 |
-| feature_store | 1.7G | L2 特征 panel | ✓ M3 干净 |
+| feature_store | 1.7G | L2 特征 panel | M3 干净 |
 | **smartmoney** | 2.8G | **holders/qfii/org_holding facts(写重) + dim/universe/ST(读多写少 reference) + 其它 facts** | ✗ **混多模块** |
 | etf / experiment_store | 106M/268K | ETF / verdicts | niche |
 
@@ -147,9 +173,18 @@ stages 近线性固定序 (acquire→clean→process→serve), **每阶段状态
 3. 过度分区 (奥卡姆): 别一表一库, 按写锁域分, 最小高价值 = reference 拆出。
 4. 经 `database_manifest` (已是 DB 分区 config 真相源) 改 alias→path + 迁表 + repoint, 不 hardcode。
 
-### 9.5 执行计划 (用户 2026-06-24 选结构拆 option B; 分可逆阶段, 高风险切换需焦点执行非session尾鲁莽)
+### 9.5 执行计划
 
-> 审计实测: `dim_active_a_stock` (universe真相源) 有 **25 读消费方** + 写方 (security_master/build_dim_listing_status/calendar_extension) + schema DDL (schema_core)。机制 = get_conn (中央工厂 33 调用) ATTACH reference 只读 + smartmoney 留 view (读透明) + 写方 repoint reference + sync_runner 读 reference (撞锁根治)。**高风险** (动 get_conn = 全 app blast)。
+> **[2026-06-26 SUPERSEDED — 机制重定性, 权威移交 `analysis/section9_reference_split_verified_plan_20260626.md`]**
+> 下方初版 (get_conn ATTACH + smartmoney view) 经 ultracode 8-agent 对抗验证 (workflow wxs0iyxin) + controller 2进程锁实测 **被证伪**:
+> 1. **前提成立** (拆库正当): DuckDB 跨进程文件锁是进程级 (实测 smartmoney RW 阻塞另进程 RO open) → 隔离连接物理不可能解, reference 独立文件是唯一解。
+> 2. **但 view+ATTACH 机制有 ≥8 break-point** (bestchoice第4套连接 JOIN sm.dim 漏判 / schema_migrations CREATE INDEX on view 硬炸 / 5+直连audit脚本 / 注入conn一大类 / duck_adapter attach吞异常§4.4 / 磁盘污染 / 读触发写 / check_universe_filter闸)。
+> 3. **真 blast 源 = 4 套并行连接模型碎片化** (get_conn/直连/注入conn/bestchoice), 非搬表。
+> 4. **机制定案: alias-routing (SERVE) 非 view+ATTACH** — 4 dim表纳 data_access SERVE entity + db别名→reference (resolver 直连, 无view无ATTACH), 8 break-point 绝大多数蒸发。
+> 5. **§9 ≡ T0 (全读走SERVE) 的 dim 切片** = 同一份连接收口工。修正序: Phase0 连接收口(dual-write中间态安全)→ Stage C 别名切换 → D 验收(测对竞争:写reference+ATTACH 非假绿backfill+seed)→ E 物删(escalate)。
+> **以下原表仅留历史溯源 (Stage A DONE 仍有效; B-E 的 view+ATTACH 法已废, 按验证版 spec 走 alias-routing)。**
+
+> [初版, 已偏离] 审计实测: `dim_active_a_stock` (universe真相源) 有 **25 读消费方** + 写方 (security_master/build_dim_listing_status/calendar_extension) + schema DDL (schema_core)。机制 = get_conn (中央工厂 33 调用) ATTACH reference 只读 + smartmoney 留 view (读透明) + 写方 repoint reference + sync_runner 读 reference (撞锁根治)。**高风险** (动 get_conn = 全 app blast)。
 > REF 集 (奥卡姆核心): dim_active_a_stock / dim_all_ever_listed / dim_listing_status / dim_trading_calendar (universe+calendar 读多写少)。静态config dim (fee/rules/segment) 待评估扩。
 
 | Stage | 动作 | 风险/可逆 | 状态 |
