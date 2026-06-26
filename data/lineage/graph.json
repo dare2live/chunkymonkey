@@ -5077,6 +5077,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:mart_today_signal_cache"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/schema_versions.py",
       "kind": "consume",
       "src": "table:mart_today_signal_cache"
@@ -5092,6 +5098,12 @@
       "dst": "consumer:backend/tests/test_signals_v2.py",
       "kind": "consume",
       "src": "table:mart_today_signal_cache"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:mart_today_signal_cache_signal"
     },
     {
       "attrs": {},
@@ -5462,6 +5474,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/pipeline/clean.py",
+      "kind": "consume",
+      "src": "table:price_kline_qfq_tushare"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_lineage.py",
       "kind": "consume",
       "src": "table:price_kline_qfq_tushare"
     },
@@ -5989,6 +6007,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/data_module_members.yaml",
+      "kind": "consume",
+      "src": "table:raw_lhb_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/tdx_data_need_coverage.yaml",
       "kind": "consume",
       "src": "table:raw_lhb_daily"
@@ -6055,6 +6079,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/data_module_members.yaml",
+      "kind": "consume",
+      "src": "table:raw_org_holding_aif10"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/org_holding_aif10.py",
       "kind": "consume",
       "src": "table:raw_org_holding_aif10"
@@ -6098,6 +6128,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:raw_qfii_holding_quarterly"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_module_members.yaml",
       "kind": "consume",
       "src": "table:raw_qfii_holding_quarterly"
     },
@@ -6769,6 +6805,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/lineage/model.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_moneyflow"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_check_serve_read_layer.py",
       "kind": "consume",
       "src": "table:raw_tushare_moneyflow"
@@ -7423,9 +7465,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1191,
-    "generated_at": "2026-06-25T16:19:56.486540+00:00",
-    "node_count": 472,
+    "edge_count": 1198,
+    "generated_at": "2026-06-26T02:17:47.429476+00:00",
+    "node_count": 473,
     "version": 1
   },
   "nodes": [
@@ -7467,6 +7509,14 @@
         "path": "backend/config/data_layers.yaml"
       },
       "id": "consumer:backend/config/data_layers.yaml",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "config",
+        "path": "backend/config/data_module_members.yaml"
+      },
+      "id": "consumer:backend/config/data_module_members.yaml",
       "kind": "consumer"
     },
     {
@@ -8440,6 +8490,14 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/lineage/model.py"
+      },
+      "id": "consumer:backend/services/lineage/model.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/market_db.py"
       },
       "id": "consumer:backend/services/market_db.py",
@@ -9091,6 +9149,14 @@
         "path": "backend/tests/scripts/test_experiment_lhb_exit.py"
       },
       "id": "consumer:backend/tests/scripts/test_experiment_lhb_exit.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_lineage.py"
+      },
+      "id": "consumer:backend/tests/services/test_lineage.py",
       "kind": "consumer"
     },
     {
@@ -9953,6 +10019,15 @@
     },
     {
       "attrs": {
+        "db": "reference",
+        "layer": "untagged",
+        "status": "active"
+      },
+      "id": "table:_lock_probe",
+      "kind": "table"
+    },
+    {
+      "attrs": {
         "db": "smartmoney",
         "layer": "infra",
         "status": "active"
@@ -10586,15 +10661,6 @@
     {
       "attrs": {
         "db": "etf",
-        "layer": "untagged",
-        "status": "active"
-      },
-      "id": "table:mart_etf_sector_rotation",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "etf",
         "layer": "L2_feature",
         "status": "active"
       },
@@ -10608,15 +10674,6 @@
         "status": "active"
       },
       "id": "table:mart_etf_snapshot_state",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "etf",
-        "layer": "untagged",
-        "status": "active"
-      },
-      "id": "table:mart_etf_strategy_comparison",
       "kind": "table"
     },
     {
@@ -10635,15 +10692,6 @@
         "status": "active"
       },
       "id": "table:mart_global_data_quality_gate",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "market",
-        "layer": "untagged",
-        "status": "active"
-      },
-      "id": "table:mart_kline_gcs_sync_run",
       "kind": "table"
     },
     {
@@ -10757,7 +10805,7 @@
     {
       "attrs": {
         "db": "smartmoney",
-        "layer": "untagged",
+        "layer": "display",
         "status": "active"
       },
       "id": "table:mart_today_signal_cache",
@@ -10766,7 +10814,7 @@
     {
       "attrs": {
         "db": "smartmoney",
-        "layer": "untagged",
+        "layer": "display",
         "status": "active"
       },
       "id": "table:mart_today_signal_cache_signal",

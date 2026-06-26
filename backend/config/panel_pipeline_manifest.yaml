@@ -19,8 +19,8 @@ sources:
     db: market.duckdb
     schema: mkt
     pit_field: date
-    description: "K-line raw (PIT, 已 calendar gate filter)"
-    sync_script: backend/scripts/build_price_kline_tdxhub.py
+    description: "K-line qfq (PIT, tushare 前复权, 已 calendar gate filter)"
+    sync_script: backend/scripts/build_price_kline_qfq_tushare.py  # 2026-06-26 repoint: 旧指 build_price_kline_tdxhub.py(只建已M3物删的 price_kline_tdxhub + 现仅维护 adjustment_event 热备); v_price_kline_qfq 真实 build 路径=qfq_tushare (clean.py:17)
     write_lint: services/market_db.filter_kline_rows_by_calendar
   # fact_alpha158_panel: 移除 (2026-06-14 地基-reset 收口) — alpha158 不再是日更管线 (特征层,
   # 旧 panel PIT 不可信已删, daily_update Step 2c 重建循环已切)。重算路径=manual build_alpha158_duck.py

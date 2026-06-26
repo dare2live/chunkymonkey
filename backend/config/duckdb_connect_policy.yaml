@@ -48,7 +48,6 @@ allowed_raw_connect_paths:
   - scripts/build_alpha158_duck.py
   - scripts/build_candle_pattern_daily.py
   - scripts/build_dim_listing_status.py
-  - scripts/build_etf_sector_rotation.py
   - scripts/build_formula_signals_history.py
   - scripts/build_industry_beta_daily.py
   - scripts/build_macd_state_history.py

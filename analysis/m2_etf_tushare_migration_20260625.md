@@ -17,7 +17,7 @@ task#35 写 "ETF → tushare + 删 akshare price_kline"。**实测 ETF K线源�
 ## 消费方 fan-in (repoint 范围小, 3 处 SQL 直读 etf_price_kline)
 1. `etf_engine.calc_etf_momentum` (etf_engine.py:410) — ETF 动量/振幅因子 → snapshot/mining。
 2. `etf_snapshot_manager` (:117) — mart_etf_snapshot_latest 快照 → 前端 /etf/snapshot。
-3. `etf_mining_engine` (:44,238) — mart_etf_strategy_comparison 挖矿 → 前端 /etf/opportunity。
+3. `etf_mining_engine` (:44,238) — ETF 挖矿 → 前端 /etf/opportunity。**[2026-06-26 校正]** 此前写 "mart_etf_strategy_comparison 挖矿" 是 overclaim — 实查 etf_mining_engine 只读 `etf_price_kline_qfq_tushare`+`etf_asset_universe`, comparison 字段是内存计算非读表; `mart_etf_strategy_comparison`(+`mart_etf_sector_rotation`) 已 2026-06-26 物删归档 (0 消费方死工件, run_id=lifecycle_gap1_deadclean_20260626)。
 写方: `etf_db.upsert_price_rows` (etf_engine.py:326 调 fetch_etf_kline)。sync_hs300_benchmark_kline 复用 etf_db 写函数 (非读 etf_price_kline)。前端端点经 services 读层透传 (routers.etf 已退役 2026-06-24)。
 
 ## 迁移分阶段 (可逆自主 A-D; E 物删 escalate, 同 §9 Stage E 模式)
