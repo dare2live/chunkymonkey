@@ -47,7 +47,7 @@ dim 表读/写散在 **4 套互不相通的连接模型**, 给 get_conn 加 ATTA
 - **view+ATTACH**: smartmoney 4表→view→reference; 每个读连接必须 ATTACH reference。覆盖全 4 套连接但要求每套都接 ATTACH + 磁盘污染风险 (B1/B4/磁盘污染)。
 - **alias-routing (resolver)**: data_access 把 4 dim entity 的 db 别名 repoint reference; 走 resolver 的消费方直连 reference 物理库 (无 view, 无 cross-db crash, 最 Occam)。但**只覆盖 SERVE/resolver 路径**, 第2/3/4套连接不经 resolver。
 
-**架构师裁决**: 两者单独都不够 (因 4 套连接碎片化)。**真前提 = 把 dim 表访问收口到单一路径** (Phase 0), 收口后任一机制都成立。倾向: SERVE 消费方走 alias-routing (干净); 收口后剩余非 SERVE 读点统一走 get_conn-with-ATTACH。
+**架构师裁决 [2026-06-26 Occam 分析定案, choice(a) 实测]**: **alias-routing 胜, 不走 view+ATTACH**。实证: (1) 4 dim 表**都不在 data_access** (= 现不走 SERVE 读层); (2) resolver 按 db 别名路由 (`connect_ro(alias)` = duck_connect(manifest.path_for(alias), read_only=True), resolver.py:19-26) → **把 dim entity 的 `db` 别名改 `reference` = resolver 直接 connect_ro reference, 无 view 无 ATTACH 无磁盘污染**。**§3 的 ≥8 break-point 绝大多数随之蒸发** (无 smartmoney view → 无 B2 CREATE INDEX 硬炸 / 无磁盘污染 / 无 B6 attach 吞异常 / 无静默假存在)。**残留硬点 = cross-db JOIN** (facts smartmoney × dim reference 同一 query) 仍需 ATTACH 或拆成"先取 dim list 再 Python filter"; 但多数 dim 读是"取 universe 码 list / 查日历"(get_active_a_stock_codes 返 list) 非 in-SQL JOIN, 这些 alias-routing 干净。**真 Phase 0 = 把 4 dim 表纳入 data_access SERVE entity + 把 4 套连接的 dim 读点收口走 resolver** (= T0 "全读走 SERVE" 目标的一个切片, 见 §7)。
 
 ## 5. 修正后执行序 (focus session, controller-serial 写)
 
@@ -64,4 +64,8 @@ dim 表读/写散在 **4 套互不相通的连接模型**, 给 get_conn 加 ATTA
 
 - §9 是平台债 (解耦写锁 + 库分区), **非 alpha 钱路** — 蓝图 §6 优先级 T0(真金白银) >> 平台债。用户选平台优先 (合理战略) 但延后 alpha。
 - 奥卡姆警示: view+ATTACH 多一层 = 多一个静默炸点 (磁盘污染/锁吞)。若 Phase 0 收口后发现 alias-routing 能覆盖绝大多数, 优先 alias (无 view 间接层)。
-- 第一性原理回看: 原始痛"回填读 universe 撞 facts 写锁"真因 = universe 表与 facts 同库。拆库是一解; 另一解 = universe 读走独立 read_only 短连接 + universe 写短事务 (不拆库不加 ATTACH 层)。**Phase 0 收口连接时一并评估: 是否拆库 vs 仅隔离连接, 哪个更 Occam。** (本 spec 不预判, 留 Phase 0 实测定。)
+- **第一性原理终判 [2026-06-26 choice(a) 实测定案]**: 原始痛"回填读 universe 撞 facts 写锁"真因 = universe/calendar 表与 facts 同库 + **DuckDB 跨进程文件锁是进程级非连接级** (实测 1.5.2: smartmoney RW[进程A]持锁 → 进程B RO 打开直接 'Conflicting lock' 阻塞)。
+  - **隔离 reader 连接 (Option B) 物理不可能解** — reader 进程根本打不开被 RW 锁的 smartmoney 文件, 无论它内部连接怎么结构。**拆库是唯一能解** (reference 独立文件, RO 与 smartmoney RW 不撞, 测A证)。**§9 拆库正当, Occam 没省掉它。**
+  - **但机制 Occam 省了大头**: 不走 view+ATTACH (8 break-point/磁盘污染/魔法), 走 **SERVE alias-routing** (entity db 别名→reference, resolver 直连)。§3 break-point 绝大多数蒸发。
+  - **§9 ≡ T0 (SERVE 收口) 的 dim 切片**: dim/universe/calendar 是 read-by-everything 最该走 SERVE 的表; 把它们收口走 data_access 后, reference 重定向 = 改个别名。§9 与 T0 在 dim 表上**汇流**, 是同一份收口工。
+  - **本质 = "热读路径(universe/calendar)与写重路径(facts)解耦"** — 不是"DB 分区整洁", 是性能/健壮性修 (每次 backfill 不再阻塞全体 universe 读)。
