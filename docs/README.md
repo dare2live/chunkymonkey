@@ -140,25 +140,25 @@ Archive notes:
 | Former file | Current state |
 |---|---|
 | `PLAN_V3.md` | Archived as `../analysis/plan_v3_20260514_archived.md` |
-| `DATA_INTEGRITY_AUDIT_20260517.md` | Archived as `../analysis/data_integrity_audit_20260517.md` |
-| `市场感知开发计划.md` | Archived as `../analysis/market_perception_development_plan_20260520.md` |
+| `DATA_INTEGRITY_AUDIT_20260517.md` | Deleted 2026-06-26 (doc治理: pre-reset stale, git history) |
+| `市场感知开发计划.md` | Deleted 2026-06-26 (doc治理: pre-reset stale, git history) |
 | `docs/implementation_plan_20260611.md` | Deleted 2026-06-15 (A6); 2026-06-11 checkup findings 多已被地基-reset 偏离, active plan in `implementation_plan.md` + `../goal.md` (git history) |
 | `docs/cron_automation_breakage_rca_20260529.md` | Archived as `../analysis/cron_automation_breakage_rca_20260529.md` |
 | `docs/market_perception_codex_prompt.md` | Deleted; superseded by `chunkyctl_session_quickstart.md`, `goal.md`, and active contracts |
 | `../goal.md` 2026-05-24 and earlier sections | Archived as `../analysis/goal_legacy_20260531.md` |
-| `docs/feasibility_analysis_20260517.md` | Archived as `../analysis/feasibility_analysis_20260517.md` |
+| `docs/feasibility_analysis_20260517.md` | Deleted 2026-06-26 (doc治理: pre-reset stale, git history) |
 | `docs/first_principles_diagnosis_20260517.md` | Deleted 2026-06-15 (A6); 针对已删模型/特征/serving 层, 地基-reset 偏离 (git history) |
 | `docs/v4_panel_feature_audit_20260517.md` | Deleted 2026-06-17 (污染期 v4 panel 特征审计, 已删 apparatus; git history) |
 | `docs/MASTER_SYNTHESIS_20260523.md` | Deleted 2026-06-17 (污染期已删 model/ensemble/寻优层验证 findings; git history) |
-| `docs/project_synthesis_20260523.md` | Archived as `../analysis/project_synthesis_20260523.md` |
-| `docs/project_audit_20260523.md` | Archived as `../analysis/project_audit_20260523.md` |
+| `docs/project_synthesis_20260523.md` | Deleted 2026-06-26 (doc治理: pre-reset stale, git history) |
+| `docs/project_audit_20260523.md` | Deleted 2026-06-26 (doc治理: pre-reset stale, git history) |
 | `docs/integration_master_plan_20260523.md` | Deleted 2026-06-17 (污染期 Track A/B 整合计划, 针对已删模型层; git history) |
-| `docs/optimization_plan_consolidated_20260523.md` | Archived as `../analysis/optimization_plan_consolidated_20260523.md` |
+| `docs/optimization_plan_consolidated_20260523.md` | Deleted 2026-06-26 (doc治理: pre-reset stale, git history) |
 | `docs/chunkymonkey_architecture_audit_20260517.md` | Deleted 2026-06-15 (A6); 针对已删架构层, 地基-reset 偏离 (git history) |
-| `docs/codegraph_audit_integration_spec.md` | Archived as `../analysis/codegraph_audit_integration_spec.md` |
-| `docs/gcp_reliability_root_cause_fix.md` | Archived as `../analysis/gcp_reliability_root_cause_fix.md` |
-| `docs/modularization_refactor_plan.md` | Archived as `../analysis/modularization_refactor_plan.md` |
-| `docs/structured_complexity_audit_20260520.md` | Archived as `../analysis/structured_complexity_audit_20260520.md` |
+| `docs/codegraph_audit_integration_spec.md` | Deleted 2026-06-26 (doc治理: pre-reset stale, git history) |
+| `docs/gcp_reliability_root_cause_fix.md` | Deleted 2026-06-26 (doc治理: pre-reset stale, git history) |
+| `docs/modularization_refactor_plan.md` | Deleted 2026-06-26 (doc治理: pre-reset stale, git history) |
+| `docs/structured_complexity_audit_20260520.md` | Deleted 2026-06-26 (doc治理: pre-reset stale, git history) |
 | `docs/agent_parallel_execution_policy.md` | Archived as `../analysis/docs_archive_20260531/agent_parallel_execution_policy.md`; active rules in `engineering_governance.md` |
 | `docs/top_level_design_review.md` | Archived as `../analysis/docs_archive_20260531/top_level_design_review.md`; active rules in `engineering_governance.md` |
 | `docs/test_tool_governance.md` | Archived as `../analysis/docs_archive_20260531/test_tool_governance.md`; active rules in `engineering_governance.md` |

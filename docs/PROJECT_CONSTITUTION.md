@@ -1,6 +1,6 @@
 # ChunkyMonkey 项目宪法 v2
 
-> 生效: 2026-06-11 (用户原话确认 "宪法v2确认"); v1 归档于 analysis/constitution_v1_retired_20260611.md
+> 生效: 2026-06-11 (用户原话确认 "宪法v2确认"); v1 已删 2026-06-26 (doc治理; git history 可溯)
 
 > 最高权威: 代码/配置/流程与本文件冲突时, 本文件优先, 代码必须改. 修改需用户明确同意.
 > v2 重铸依据: 奥卡姆审计 (76% commit 耗在文档/治理维护, 治理机器自我膨胀; 实战有拦截证据的只有 governance gate + plan_validator + review).

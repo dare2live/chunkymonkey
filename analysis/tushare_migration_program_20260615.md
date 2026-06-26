@@ -1,5 +1,7 @@
 ## tushare 全量迁移工程 — 分阶段执行计划 (2026-06-15)
 
+> **[状态校正 2026-06-26 doc治理]** 执行纪律已偏离两处: (1) 文中"消费侧**双轨核对**后物删" = 2026-06-23 简化推翻 (现行: tushare 有就用+删旧源, 不做值比对); (2) "tushare 唯一" 2026-06-24 开东财 aif10 例外 (holder/估值/QFII/机构持仓)。进度: M1 K线 / M2 ETF 迁移已 DONE (commit 链至 d8f5d5a9)。tdxhub 复权 glitch 实证仍有效, 删源纪律以 CLAUDE §4.3 现行版为准。
+
 > 状态: live (执行中)。owner=本文件。上承 `tushare_full_migration_map_20260611.md` (44表范围) + CLAUDE §4.3。
 > 缘起: 用户 2026-06-15 "切 tushare 要退役旧数据删除不是隐藏 + 确保全部数据来自 tushare"。
 > tdxhub 2022-12-30 复权 glitch (比亚迪 tdxhub+210% vs tushare raw+0.87%) 实证 tdxhub K线质量不如 tushare, 强化迁移。

@@ -48,9 +48,8 @@ verify live state with `doctor --fast` before trusting it.
    - Do not read `CLAUDE.md` as a Codex startup or policy source; it is legacy
      Claude-only history unless the user explicitly asks for historical
      migration.
-   - dated bootstrap files such as `analysis/codex_bootstrap_20260527.md` only
-     for command context when compact `goal.md` or the generated handoff still
-     points to it.
+   - dated bootstrap files (pre-reset, now deleted) are not a startup source;
+     use `goal.md` + the generated handoff + `docs/MASTER_TOPLEVEL_DESIGN.md`.
    - Do not default to old `analysis/next_session_prompt_*.md` files; they are
      historical prompts unless `goal.md` explicitly makes one current.
    - Skill dispatch: `$codex-local-ops` owns Codex app/CLI local issues;

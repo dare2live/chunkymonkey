@@ -1,5 +1,7 @@
 # holders_tdx 双轨核对 — tushare top10_floatholders vs tdxhub fact_top10_holder_period
 
+> **[状态校正 2026-06-26 doc治理]** 本文"双轨核对≥99%"方法 + 结论均被取代: (1) 双轨值比对仪式 2026-06-23 用户简化作废 (CLAUDE §4.3); (2) **holder 主源 2026-06-24 定为东财 aif10** (RPT_F10_EH_FREEHOLDERS), 因实测 tushare top10_floatholders 财报季驱动**滞后~4个月** (反例 600388 紫金入主龙净 6/8 tushare 只到 3/31), aif10 全市场+含季中ad-hoc+深史全胜。tdxhub fact_top10_holder_period 已退役。详 `analysis/miaoxiang_aif10_source_decision_20260624.md`。本文留作 holder 源选型溯源。
+
 > 日期: 2026-06-23 · 删源程序 (§4.3 tushare唯一删旧源 · 铁律11 物删前双轨≥99%) · read-only 证据 (物删是后续 gated 步)
 > owner: 本文 + sandbox/holders_dualtrack/probe.py · 消费方: dossier.load_top10_holders = `_top10_tushare(...) or _top10_tdx(...)`
 

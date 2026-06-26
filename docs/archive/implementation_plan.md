@@ -51,7 +51,7 @@ evidence, not production proof. It starts only after framework governance.
 ## Target Architecture
 
 Full design draft (六层契约 + 回测配置化 + 新数据域/新策略挂载范式 + 6 条防发散 gate):
-`../analysis/architecture_framework_design_20260611.md` (2026-06-11 顶层设计, controller verdict PROCEED).
+(2026-06-11 architecture_framework_design 已删 2026-06-26 doc治理; git history 可溯).
 核心立场: 复用 paper_sim v2 / data_sources registry / feature_registry 三骨架, 只补契约+注册制,
 不建新引擎; 新增物总清单 = 2 yaml (sync_registry/strategies) + 2 模块 (sync_runner/strategy_registry)
 + 1 表 (fact_sim_run) + 1 lint。落地顺序见该稿 §6, 挂靠下方 Active Repair Plan 各 Phase。

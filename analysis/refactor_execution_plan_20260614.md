@@ -1,5 +1,7 @@
 ## 重构执行方案 (Phase A 底座收口) — 2026-06-14
 
+> **[状态校正 2026-06-26 doc治理]** Phase A 底座收口多数已 DONE; 当前阶段 = 数据模块地基 (M5 血缘中枢已建; Gap1 builder 走 SERVE 读层收尾 → 转 edge 确认)。"base-edge 是瓶颈" 战略判断仍成立。**4 不变量/创世法真相源 = `analysis/data_module_toplevel_design_20260622.md`**; live 进度以 goal.md 为准, 本文作执行记录留参考。
+
 > 状态: live (执行中)。owner=本文件 (执行清单) + `docs/MASTER_TOPLEVEL_DESIGN.md` §9-10 (骨架)。
 > 缘起: 用户指令"daily_update 保持手动 + 其余数据底座问题制定系统方案并开始"。本文件 = Phase A
 > 的可执行 checklist + 决策记录 + 战略重排理由, 防压缩丢失。
