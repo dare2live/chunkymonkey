@@ -69,7 +69,18 @@
 > - 不变量2 读写边界=写锁边界=库分区: 7库分区DONE, 但 **reference 混在 smartmoney** → **§9拆库=完成不变量2**(本session在此坑: "4套连接模型"碎片化; 出路=alias-routing走SERVE, 见阶段一)。
 > - 不变量4 单概念单真相源: SERVE单一读路 + 删源大体DONE。**[2026-06-26 实测纠正] 消费者绕过SERVE = 0 已闭环** (roster补全 lineage元数据infra + lhb/org_holding_aif10/qfii 采集client, moth `serve-consumer-bypass-zero` 棘轮真绿; **build_segment/signal_panel 是 `build_` 加工成员非违规** —— 此前"绕SERVE直算特征=leakage洞"框定**不准**, bypass-scan 测它们=成员0违规)。**[2026-06-26 Gap1 PIT 审计 DONE — 0 泄漏]** build_ 成员 PIT 锚正确性 ultracode 对抗审计 (workflow wecndwk2n, 6 builder: segment/signal_panel + macd_state + rally_gt/neg + macd_episode_gt) **全 pit_clean survives** (对抗挖 numpy 负索引/qfq f_latest 尺度不变性/warmup/outcome 隔离全守住; controller 独立核 sma/range_pos/stage trailing-causal 一致)。唯一隐患 macd_episode GT outcome 列已建契约+守门+moth 防误接。**Gap1 实质收口**: 不变量4 leakage 洞 = 0。M5血缘=不变量4自描述副产品(§1.5.3), T2 DONE + T3 dead-detection 假死根治 (acquire边/raw_=L0源永不死 + entity consume边 + _前缀瞬态表排除)。**剩 = M4 逐表 fate 决策** (executive_trade/dzjy→block_trade/lhb_event/tdx_gpcw, 各需 §4.3 tushare等价核 + migrate/keep/delete)。**[2026-06-26 通达信全删 进行中 — 删源补不变量4 单一源, 用户决议+对抗验证 owner=analysis/tdxhub_full_retire_plan_20260626.md]**: 7单元授权物删(含2不可逆损失用户拍板: 增减持意向无等价/户数1997-2017深史)。**DONE 单元1/2/3 (4表物删: 增减持/户数/十大股东raw, 全fan-in清+gates绿, commit 7125422d/5f33746d)**。剩单元4/5 (财务簇 = **真金白银 gpcw→tushare 源迁移**: financial_client.calc_financial_derived 重写, dim_financial_latest 7活消费方, balancesheet 网络回填; 非删, 须聚焦专做) + 单元6/7 (xdxr/server, 与独立 worktree 的 K线测试基础设施 PRICE_KLINE_TDXHUB_DDL 冲突, 待 worktree 收口) + 通达信客户端整体退役步。
 > **下一步 = 宪法早写死的真路 (§1.6/§11, 非"高杠杆评估")**: **收 Gap1 (不变量4, 唯一卡alpha的地基洞) + dim表收口走SERVE(顺带出§9坑, §9≡T0汇流) → 不变量4硬 → 转 edge 确认 (档B前置, 真金白银钱路)**。**档B(因子全量/cube/展示产品化)BLOCK 直到 sandbox 证含成本可交易 stage-conditional edge** (confirmed_by_owner=0)。
-> **诚实自检 (宪法§1.5.2/§1.6 警告)**: 别让删源/机械/血缘优化喧宾夺主堆地基细节; 真·通向赚钱 = 收Gap1→转edge, 不是继续深挖§9。M5/§9 都服务不变量但已近"够用", 重心该回 Gap1→edge。
+>
+> **[2026-06-26 architect re-anchor 调整计划 (用户"结合现状推进四地基")]**: 四地基整体扎实度对账 ——
+> - **#1 主键PIT / #3 分层 = DONE** (无剩余)。
+> - **#2 库分区**: 7库DONE; 仅 **§9 reference拆库** 完成它 (high-blast, 与独立 worktree 的 K线测试基础设施 PRICE_KLINE_TDXHUB_DDL 冲突 → 焦点窗口待 worktree 收口)。
+> - **#4 单一真相源**: **leakage洞=0 (Gap1 临界部分 DONE)**; 删源 tail 进行 (M1/M2 K线done; 通达信全删 4/7 物删done; 财务簇=redesign; akshare 22表 M4 待)。
+> **关键真金白银发现重排优先级**: 值比对救出 **gpcw 财务数据本身错** (茅台 gross_margin 8.7% vs 真实/tushare 91%; revenue字段虚高~15x) → 财务迁移**不只是删源, 是修复 alpha 用的财务数据正确性** = 影响任何用财务的 alpha。
+> **调整后优先级 (结合现状)**:
+> 1. **财务迁移 = 最高优先** (修 gpcw 坏数据 + 完成删源#4): rewrite calc_financial_derived 读 tushare (fina_indicator 2023+ 直接含 roe/debt/margin/yoy + balancesheet contract_liab 已回填) 快照→周期模型; 验 dim_financial_latest 7活消费方; escalate "财务打分值变化(向更准)"; 然后物删 gpcw 簇 + 单元5。**单独 live bug: fina_indicator API 不返 update_flag → daily sync 失败, grain 须修 (用现有2023+数据可先做迁移, 扩史/freshness 后续)**。
+> 2. **§9 完成 #2** (焦点窗口, worktree 收口后)。
+> 3. 通达信 6/7 (worktree后) / akshare M4 / 通达信客户端整体退役 = 完成度收尾。
+> 4. **→ 财务数据正确 + 地基硬后 转 edge** (钱路)。
+> **诚实 re-anchor**: 宪法本意是 leakage洞=0 后转 edge 不深挖删源; **但财务数据质量错是真·影响 alpha 的 correctness (非 hygiene)** —— 故财务迁移破例升最高 (修对数据=为 edge 铺路, 不是堆删源细节)。M5血缘/§9 已"够用", 不再深挖。
 
 > **[2026-06-24 架构蓝图驱动: 数据模块顶层重构 — owner=`analysis/data_module_architecture_20260624.md` (= 上方宪法0622的 operationalize)]**
 > 用户决: **数据底座必须做好 + 模块化功能分区, 然后再搭建其他 (档B alpha/strategy)**。架构 = M1-M8 子模块 (按对血缘图一类操作切 owner) + **字典/总指挥 (M5 血缘路由中枢: 声明先行→派生对账→不可绕过闸 = codegraph+moth 融合到数据)** + 变量加工三态 (derived/vendor_precomputed/passthrough=未加工) + 阶段独立化门控前端 (§8) + DB 按写锁域分 (§9)。
