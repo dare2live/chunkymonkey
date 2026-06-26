@@ -14,6 +14,7 @@ member_dirs:
   - backend/services/pipeline/         # daily_update 四阶段编排 (获取/清洗/加工/存储) — 数据模块自己的更新引擎, 非外部消费者 (2026-06-23 重设计)
   - backend/services/technical_states/ # 纯函数派生 (读 SERVE 传入序列, 不直连)
   - backend/services/perf/             # 性能/并行基础设施 (shard/reducer, 导快照非消费raw)
+  - backend/services/lineage/          # M5 血缘中枢 (字典+总指挥; 读 information_schema 元数据描述单一路径架构, 不变量4 自描述副产物, 非消费 PIT 数据)
 
 # scripts 文件名前缀级成员 (basename 前缀)
 member_script_prefixes:
@@ -49,6 +50,11 @@ member_service_files:
   - leakage_probe.py
   - update_watermark_sla.py  # 水位 SLA (infra)
   - data_loaders.py          # 取数底座 (已迁 SERVE; 本身是数据模块成员)
+  # 采集层 source clients — sync 路读自身 raw watermark/count = acquire 行为, 非消费者绕过
+  # (vendor 迁移[akshare→tushare/aif10]属 task#56 正交, 不改"它们是采集成员"的事实)
+  - lhb_client.py            # 龙虎榜采集 (sync_lhb_incremental 读 raw_lhb_daily MAX(trade_date) 水位)
+  - org_holding_aif10.py     # 机构持仓采集 (aif10 sanctioned 源 §4.3; 读 raw_org_holding_aif10 期次存在)
+  - qfii_client.py           # QFII 采集 (aif10 sanctioned 源 §4.3; 读 raw_qfii_holding_quarterly 期次存在)
 
 # 源退役中 = 临时成员 (删源程序 task#56 完成后随 client 退役; 现不算违规, 但标记为待退役)
 source_retiring_temp_members:

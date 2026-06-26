@@ -110,6 +110,8 @@ tables:
   mart_stock_picture_daily: display
   dim_stock_attention_latest: display      # 2026-06-22 P0-10 补声明: 关注度最新快照 5503行 (UI 展示用)
   stock_watchlist: display
+  mart_today_signal_cache: display         # 2026-06-26 补声明: signals_v2 跟随信号 serving 缓存 (routers/signals.py HTTP 服务 UI; 运行时 INSERT OR REPLACE 重建)
+  mart_today_signal_cache_signal: display  # 2026-06-26 同上: 每信号明细缓存行 (signals_v2 ensure_today_signal_cache)
   app_settings: infra
   capital_detail_sync_state: infra
   dim_data_asset: infra

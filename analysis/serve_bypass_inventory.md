@@ -1,5 +1,11 @@
 # SERVE 绕过清单 — 数据流执法基线 (2026-06-23)
 
+> **[状态校正 2026-06-26]** 本清单的**迁移工单部分已实质完成** —— `--bypass-scan` **实测当前 consumer_bypass_violations=0**
+> (P0 data_loaders 已迁 SERVE / build_segment_panel+build_signal_panel 是 `build_` 前缀加工成员非违规 / signals_v2+stock_detail_read 已收口)。
+> 2026-06-26 最后 4 个"违规"经核全是 roster 漏登的合法成员 (lineage 元数据 infra + lhb/org_holding_aif10/qfii 采集层 watermark 读), 已补 data_module_members.yaml → 0。
+> moth `serve-consumer-bypass-zero` 棘轮 ==0 真绿锁死 (新增非成员消费者内联 raw = 硬红)。**下方 P0/P1/P2 表留作分类法 + 历史溯源参考, 不再是 active 工单。**
+> 真正剩余的 Gap1 深层工作 = 逐 builder PIT 锚正确性审计 (build_ 成员读 canonical 时 asof 是否正确), 非"绕过点"问题。
+
 > owner=task#55 (Gap1) + task#56。来源: 数据流地图 Workflow wv6dp6o0k + 主会话 grep 核证。
 > 用途: "强制数据只能从数据管理模块按流程取"(用户诉求)的迁移工单 single source。
 > 纪律: 按真金白银/根性排序; 区分**必迁**(消费 PIT 数据该走 SERVE)vs**合法豁免**(infra/审计/写侧/真相源)。
