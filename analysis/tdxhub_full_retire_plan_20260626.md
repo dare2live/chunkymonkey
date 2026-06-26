@@ -74,6 +74,24 @@
 
 **=> 单元4 是真金白银财务链【重设计】(snapshot→period 模型 + 2源 by_ts_code backfill 到2020 + derivation 重写 + 值比对 + 验7消费方), 一个聚焦工程项目, 非降级期能收口。本 session 已做: 注册 balancesheet + 实弹核证 contract_liab + 启动 backfill + 文档化设计约束。**
 
+## 单元4 值比对结果 (2026-06-26 用户坚持"先值比对", 救出真金白银级发现)
+
+**balancesheet 回填 DONE**: 117084行/4987股/2016-2026/contract_liab非空111226 (by_ts_code; 实弹核证茅台2026Q1=30.27亿)。
+
+**fina_indicator 扩2020 受阻**: 实弹发现 fina_indicator API 现【完全不返 update_flag 列】(2023窄窗也不返), grain=[ts_code,end_date,update_flag]依赖它 → 任何sync报'缺grain列'。既有表95659行有update_flag(曾返)=API/tinyshare漂移。**= 独立 live bug**(fina_indicator 现无法sync), 修=grain改[ts_code,end_date,ann_date]或容忍缺update_flag, 是careful前置任务。已回退扩窗config到20230101。
+
+**值比对 (dim_financial_latest gpcw派生 vs fina_indicator最新期, 5201重叠股)**:
+| 指标 | corr | 中位\|差\| | 判定 |
+|---|---|---|---|
+| net_margin | 0.016 | 0.007 | 表面小差但茅台spot-check匹配(50.3%vs50.5%) |
+| debt_ratio | 0.750 | 0.053 | 中等接近 (茅台15.6%vs16.4%) |
+| **gross_margin** | **-0.109** | 0.53 | **gpcw错!茅台gpcw=8.7% vs fina=91.2%(真实~91%高端白酒)** |
+| roe/yoy | — | — | 期不匹配混淆(gpcw快照H1 vs fina周期年报) |
+
+**真金白银级发现 (spot-check 茅台坐实)**: gpcw `revenue` 字段虚高~15x(茅台显示1.28万亿/实际~1700亿)→ gross_profit/revenue烂; net_margin因分子分母同虚高巧合正确。**=> 当前 gpcw 财务打分用的 gross_margin 是错的; tushare fina_indicator 正确。迁移反而修复数据质量, 但会显著改变scoring/screening输出(向正确)。**
+
+**单元4 redesign 的真复杂度 (值比对揭示)**: (a) 不能盲信任一源 — gpcw 有质量问题, 须以 tushare(fina_indicator+balancesheet) 为准; (b) fina_indicator update_flag 漂移须先修 grain; (c) 快照→周期模型重设计; (d) 迁移会改财务打分值(scoring/screening), 须 escalate 用户知情(值会变但更准)。**这是聚焦工程项目 + 需用户确认"接受财务打分按更准的tushare值变化"。**
+
 ## 要丢的不可再生数据 (诚实标)
 - 增减持意向信号 (无任何源可重建)
 - 户数 1997-2017 深史 (tushare 仅 2018+)

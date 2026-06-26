@@ -616,6 +616,7 @@ domains:
     batch_mode: by_ts_code   # 实测 ann_date/period 均返 0 行 (不可批) → 唯一可行逐股; 100 条/call 硬上限
     increment_mode: by_report_period   # 2026-06-23 按季报期增量 (日常--all-due跳已最新股); 注: fixed_params end_date 硬编需随季度更新另案
     fixed_params: {start_date: "20230101", end_date: "20260612"}   # rule-compliance: ok evidence=逐股窗口 2023-2026 (对齐 feature_panel; 每股<100行避截断, 全史需多窗口分页另案)
+    # 2026-06-26 [扩窗到2020 受阻] 单元4财务迁移欲扩 2020 对齐gpcw, 但实弹发现 fina_indicator API 现【完全不返 update_flag 列】(grain依赖它)→ 任何sync都报'缺grain列update_flag'。既有表95659行有update_flag(曾返)=API/tinyshare漂移。修复=grain改[ts_code,end_date,ann_date]按ann_date区分修订(或sync_runner容忍缺update_flag), 是独立careful任务, 单元4 redesign前置。
     pit_anchor: "ann_date (行内字段); 财报公告日 -> JOIN t-1 保守; 取 update_flag=1 最新修正版 (<=t 最新 ann_date 行)"
     available_after: "t+1"
     data_start: "20230101"   # 当前窗口起点 (全史接口覆盖 ~2012, 老股 >100 行需窗口分页, 全史另案)
