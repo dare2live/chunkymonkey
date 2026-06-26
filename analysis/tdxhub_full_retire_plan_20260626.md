@@ -161,7 +161,21 @@
 **可接受限制 (综合裁决, 不阻塞 promote)**: 亏损股ocf NULL(97%为net_margin<0,语义正确) / 银行无毛利率(101股raw即NULL) /
 roe_yearly Q1年化季节失真(PIT约束下最好年度代理,median差仅3.32pp) / **holder_count_change_pct环比窗口不等(MEDIUM, 1753股非季末披露当上期 → defer builder侧季末过滤, 权重小±0.5~1.5)** / 微利股极值(rank沉底)。
 
-**→ 下一步 = escalate 用户确认接受"财务打分值向正确变化"后 promote (步3-5)**。promote = 调 calc_financial_derived(conn) 无suffix 覆盖 live dim/fact (gpcw raw 仍在, 可逆); 物删 gpcw 簇才不可逆(步5)。
+**PROMOTE DONE (2026-06-26, 用户选"Promote+立即物删gpcw簇")**: calc_financial_derived(conn) 无suffix 已覆盖 live —
+dim 5204→5202 / fact 23691→74192; 茅台全列正确(roe 0.4227/gross 0.898/contract 0.047); gross_margin count>1.0=0(garbage清);
+3消费方(scoring/screening/stock_stage) live SELECT 跑通5202行0报错; watermark MAX(report_date)=2026-03-31。**live 财务数据已是正确 tushare。**
+
+**物删 gpcw 簇 fan-in 审计 (mio铁律11) → 发现远超财务迁移范围, 物删受阻 (诚实标, 未盲删)**:
+财务迁移只迁了 dim_financial_latest(calc_financial_derived)。gpcw raw 表还有**非财务 live 消费方**未迁:
+| gpcw 表 | 非财务消费方 | 删除前置 |
+|---|---|---|
+| raw_gpcw_financial | calc已迁✓; **sync_financial_data 仍写它** + ensure_tables(:100) DDL + audit/db_health/data_routes/clients_registry/data_layers | 退役gpcw sync + 删ensure_tables DDL(防僵尸重建) + 清5引用 |
+| **raw_gpcw_detail** | **signals_v2 LIVE**(router HTTP; `_load_gpcw_feature_maps` 取 holder_count[D1]+forecast_profit_yoy_mid[D3], 经 data_access financial_gpcw entity) + dead builder | **硬阻塞: 须先迁 signals_v2 2特征→tushare(holder_count→stk_holdernumber / forecast→raw_tushare_forecast)**; data_access.yaml:281 注释自承"M4切tushare改一行"但实际2特征异源非一行 |
+| raw_tdx_gpcw_wide / dim_tdx_gpcw_field / dim_tdx_gpcw_field_semantic | **build_tdx_gpcw_auto_features = dead流水线**(0 代码调用点, 仅手动/孤儿) + profile script + schema_core(:DDL) | 退役dead builder + 删schema_core DDL + 清config(storage_retention/seed/tdx_data_need_coverage) |
+| mart_tdx_f10_capability_matrix | workbench_data_source_read(`_table_exists`守卫优雅降级) + schema_versions | 低风险, 删后降级 |
+| mart_tdx_gpcw_file_manifest | build_fundamental_quarterly(翻案-B: 同写L1 fact_fundamental_quarterly 60528行) + seed + tdx_affair_client | 单元5解耦: 保fact writer去manifest写 + 删orphan test/registry |
+
+**=> "物删 gpcw 簇" = 通达信客户端整体退役步(plan最终步), 一个独立多消费方退役工程**。唯一硬阻塞=raw_gpcw_detail(signals_v2 live真金白银路径, 须像财务迁移一样careful迁+验)。dead auto_features流水线/sync/DDL/单元5解耦是配套清理。**未盲删(盲删炸signals_v2)。需用户决定退役范围/节奏。**
 
 ## 要丢的不可再生数据 (诚实标)
 - 增减持意向信号 (无任何源可重建)
