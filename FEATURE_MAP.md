@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-27 12:52
+> Snapshot: 2026-06-27 12:54
 
 ## 1. 入口面
 
@@ -97,7 +97,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 126 张 | 单 writer 76 | 多 writer 50 | 动态表名写点 37 处 (20 文件)
+统计: 表 125 张 | 单 writer 75 | 多 writer 50 | 动态表名写点 37 处 (20 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -252,7 +252,6 @@
 | mart_tdx_gpcw_auto_pit_audit | backend/services/schema_marts.py |
 | mart_tdx_gpcw_auto_retention_decision | backend/services/schema_marts.py |
 | mart_tdx_keep_promotion_gate | backend/services/schema_marts.py |
-| mart_tdx_server_health | backend/services/tdx_source.py |
 | mart_today_signal_cache | backend/services/signals_v2.py |
 | mart_today_signal_cache_signal | backend/services/signals_v2.py |
 | raw_institution_surveys | backend/services/institution_survey_client.py |
@@ -322,5 +321,5 @@
 
 - chunkyctl 子命令 10 | launchd 任务 1 | router 12 (端点 56)
 - sync_registry 数据域 44
-- 产表 126 (多 writer 50)
+- 产表 125 (多 writer 50)
 
