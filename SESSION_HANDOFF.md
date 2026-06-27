@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-06-27 12:33:53 CST
+**Snapshot 时间**: 2026-06-27 13:22:30 CST
 
 ## 主线状态
 
@@ -44,28 +44,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `692536a9 fix: data_health 删表必删caller — 跳过deleted状态 + dim_data_asset注册表reality-sync` |
-| 最近 24h commits | 28 |
-| 未 commit 文件 | 2 |
+| HEAD | `13d105a2 fix: 回滚 C3 source_watermarks kline_daily 过界改动 (修 test 回归)` |
+| 最近 24h commits | 34 |
+| 未 commit 文件 | 3 |
 
 ### 最近 10 commits
 
 ```
+13d105a2 fix: 回滚 C3 source_watermarks kline_daily 过界改动 (修 test 回归)
+76e6fa44 feat: 通达信全删 #15-C4 schema_core/migrations raw_tdx_f10_extra_parse_status DDL 残留删
+c027dac7 feat: 通达信全删 #15-C3 price_kline_tdxhub死代码 + gpcw config + industry feature 残留清
+c666831d feat: 通达信全删 #15-C1 dead脚本物删 (holders_resolver/migrate_holders/check_sina_tdxhub)
+6ad37441 feat: 通达信全删 #13b tdx_source server_health DB函数整段物删
+1d580327 feat: 通达信全删 #13a financial_client dead sync body 整段物删 (1699→715行)
+3900060e doc: goal.md akshare M4 核心 DONE — 12表物删+消费侧切+db_compact+data_health修 (通达信全删收尾)
 692536a9 fix: data_health 删表必删caller — 跳过deleted状态 + dim_data_asset注册表reality-sync
 3f015bbb feat: 通达信全删 M4 akshare external_attention — 退役+物删2表 (用户决cut)
 ab2e5a6e feat: 通达信全删 M4 akshare event/panel — 退役3 builder+物删3表 (用户决cut)
-bf0de44a feat: 通达信全删 M4 akshare capital — 源头退役+物删7表 (用户决cut)
-17ca74dd feat: 通达信全删 M4 akshare capital — 切消费侧依赖(scoring quality_capital→0 / signals_v2 D5解禁门→不过滤)
-d367b59e feat: 全清 — 退役 build_fundamental_quarterly + 物删 fact_fundamental_quarterly (gpcw派生L1)
-7d4dcc38 fix: 全清 — 修 mart-lineage 子系统独立bug (解db_compact阻塞 + 2 pre-existing红测试转绿)
-5874e391 feat: 通达信全删 单元6/7 xdxr/server 退役 — 物删2表 (通达信7数据单元全完成)
-e4ecdcda fix: 修 main 上 4 红 K线测试 + 揭真生产 bug (price_kline_qfq_tushare schema-init 缺失)
-a866f7ec doc: 清理 goal.md/plan worktree 谬误 — §9非worktree-blocked + 单元6/7与main上4红K线测试真纠缠 (用户纠错)
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**2 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**3 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 
