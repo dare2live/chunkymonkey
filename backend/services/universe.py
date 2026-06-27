@@ -200,18 +200,40 @@ def audit_strategy_universe_contamination(
     if not total_picks:
         return {"table": table, "model_id_filter": model_id_filter, "total_picks": 0}
 
-    st_filter = _sql_like_any_prefix("d.stock_name", ST_NAME_PREFIXES)
-    st = conn.execute(f"""
-        SELECT COUNT(*), COUNT(DISTINCT t.{stock_code_col})
-          FROM {table} t LEFT JOIN dim_active_a_stock d ON d.stock_code = t.{stock_code_col} -- rule-compliance: ok evidence=st-name-mapping-audit
-         {where_filter} {and_or} {st_filter}
-    """).fetchone()
+    # §9 拆库: dim_active_a_stock / dim_all_ever_listed 迁 reference, 不再 cross-db JOIN picks×dim。
+    #   改先从 reference dim 取 ST 码集 / 退市码集, 再 count picks WHERE code IN (set)。
+    from services.data_access import resolver
+    from services.security_master import active_stock_name_map
 
-    delisted = conn.execute(f"""
-        SELECT COUNT(*), COUNT(DISTINCT t.{stock_code_col})
-          FROM {table} t JOIN dim_all_ever_listed e ON e.stock_code = t.{stock_code_col}
-         {where_filter} {and_or} e.is_active = 0
-    """).fetchone()
+    name_map = active_stock_name_map(conn=conn)  # rule-compliance: ok evidence=ST name via reference dim helper
+    st_codes = sorted({c for c, n in name_map.items() if is_st_stock(n)})
+    if st_codes:
+        _ph = ",".join("?" for _ in st_codes)
+        st = conn.execute(
+            f"SELECT COUNT(*), COUNT(DISTINCT {stock_code_col}) FROM {table} "
+            f"{where_filter} {and_or} {stock_code_col} IN ({_ph})", st_codes
+        ).fetchone()
+    else:
+        st = (0, 0)
+
+    _dc, _down = resolver.dim_read_conn(conn, "dim_all_ever_listed")  # rule-compliance: ok evidence=delisted set via reference dim helper
+    try:
+        delisted_codes = sorted({
+            str(r[0]) for r in _dc.execute(
+                "SELECT stock_code FROM dim_all_ever_listed WHERE is_active = 0 AND stock_code IS NOT NULL"
+            ).fetchall()
+        })
+    finally:
+        if _down:
+            _dc.close()
+    if delisted_codes:
+        _ph = ",".join("?" for _ in delisted_codes)
+        delisted = conn.execute(
+            f"SELECT COUNT(*), COUNT(DISTINCT {stock_code_col}) FROM {table} "
+            f"{where_filter} {and_or} {stock_code_col} IN ({_ph})", delisted_codes
+        ).fetchone()
+    else:
+        delisted = (0, 0)
 
     neeq = conn.execute(f"""
         SELECT COUNT(*), COUNT(DISTINCT {stock_code_col}) FROM {table}

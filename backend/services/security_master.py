@@ -15,44 +15,28 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, Set
 
 logger = logging.getLogger("cm-api")
 
-ACTIVE_STOCK_CACHE_HOURS = 24
 ACTIVE_STOCK_MIN_ROWS = 3000
 
+# §9 拆库 (2026-06-27): 旧 cache 簇 (_parse_iso/_load_cached_codes/_cache_is_fresh/get_active_a_stock_codes
+#   + ACTIVE_STOCK_CACHE_HOURS) 已删 — get_active_a_stock_codes 0 live 调用方 (git grep 实证), 且其直读
+#   dim_active_a_stock 不走 reference 路由 = Stage E 物删后会炸的 dead 代码。现读路统一走 active_codes()/
+#   active_stock_name_map() (resolver.dim_read_conn auto-fallback reference)。
 
-def _parse_iso(ts: str):
-    if not ts:
-        return None
-    text = str(ts).strip()
-    for fmt in ("%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
-        try:
-            return datetime.strptime(text, fmt)
-        except Exception:
-            continue
-    return None
-
-
-def _load_cached_codes(conn) -> Set[str]:
-    rows = conn.execute(
-        "SELECT stock_code FROM dim_active_a_stock WHERE stock_code IS NOT NULL"  # rule-compliance: ok evidence=table-writer-itself
-    ).fetchall()
-    return {str(r["stock_code"]).strip() for r in rows if r["stock_code"]}
-
-
-def _cache_is_fresh(conn, max_age_hours: int = ACTIVE_STOCK_CACHE_HOURS) -> bool:
-    row = conn.execute(
-        "SELECT COUNT(*) AS cnt, MAX(updated_at) AS latest FROM dim_active_a_stock"  # rule-compliance: ok evidence=table-writer-itself
-    ).fetchone()
-    if not row or (row["cnt"] or 0) < ACTIVE_STOCK_MIN_ROWS or not row["latest"]:
-        return False
-    latest = _parse_iso(row["latest"])
-    if latest is None:
-        return False
-    return latest >= datetime.now() - timedelta(hours=max_age_hours)
+# dim_active_a_stock reference 表 schema (与 schema_core 定义一致; §9 后 reference 是真相源, writer 自带兜底)
+_DIM_ACTIVE_DDL = """
+CREATE TABLE IF NOT EXISTS dim_active_a_stock ( -- rule-compliance: ok evidence=schema-definition (table-writer-itself, reference 真相源兜底)
+    stock_code       TEXT PRIMARY KEY,
+    stock_name       TEXT,
+    market           TEXT,
+    source           TEXT,
+    updated_at       TEXT
+)
+"""
 
 
 def refresh_active_a_stock_master(conn) -> int:
@@ -114,6 +98,7 @@ def refresh_active_a_stock_master(conn) -> int:
 
 def _write_dim_active(conn, rows) -> None:
     """DELETE+INSERT 全量重写主数据表 (事务内, table-writer-itself)。§9 dual-write 复用 (reference + smartmoney)。"""
+    conn.execute(_DIM_ACTIVE_DDL)  # §9: writer 自带 schema 兜底 (reference 库可能尚无表; CREATE IF NOT EXISTS 幂等)
     conn.execute("BEGIN TRANSACTION")
     try:
         conn.execute("DELETE FROM dim_active_a_stock")  # rule-compliance: ok evidence=table-writer-itself
@@ -174,19 +159,3 @@ def active_stock_name_map(codes=None, conn=None) -> Dict[str, str]:
         if own:
             c.close()
     return {str(r[0]): r[1] for r in rows}
-
-
-def get_active_a_stock_codes(conn, max_age_hours: int = ACTIVE_STOCK_CACHE_HOURS) -> Set[str]:
-    """返回当前可交易 A 股代码集合；优先用缓存，必要时刷新。"""
-    if _cache_is_fresh(conn, max_age_hours=max_age_hours):
-        return _load_cached_codes(conn)
-
-    cached = _load_cached_codes(conn)
-    try:
-        refresh_active_a_stock_master(conn)
-        return _load_cached_codes(conn)
-    except Exception as e:
-        if cached:
-            logger.warning(f"[主数据] 刷新当前A股主数据失败，回退旧缓存: {e}")
-            return cached
-        raise

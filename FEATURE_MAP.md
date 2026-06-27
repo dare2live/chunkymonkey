@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-27 20:50
+> Snapshot: 2026-06-27 21:26
 
 ## 1. 入口面
 
@@ -304,7 +304,7 @@
 
 | 文件 | 行数 |
 |---|---|
-| backend/services/data_quality.py | 3875 |
+| backend/services/data_quality.py | 3876 |
 | backend/services/scoring.py | 2687 |
 | backend/services/signals_v2.py | 2134 |
 | backend/services/audit.py | 1568 |

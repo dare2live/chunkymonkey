@@ -587,9 +587,19 @@ def main() -> int:
 
     snapshots: list[dict] = []
     severity_count = {"green": 0, "yellow": 0, "red": 0}
+    # §9 拆库: dim_* 迁 reference 后, 物删 smartmoney 副本 → 健康扫描经 dim_read_conn 路由
+    #   (asset 表在 con[smartmoney] 则用 con; 否则 fall reference RO)。非 dim 资产 con 有表 = 行为不变;
+    #   4 个 dim 资产 Stage E 后 con 无表 → 读 reference 真副本 (避免 COUNT(*) 失败误报 red)。
+    from services.data_access import resolver
     for asset_row in rows:
         asset = dict(asset_row)
-        snap = compute_health_for_table(con, asset, now)
+        _atbl = asset.get("table_name")
+        _acon, _aown = resolver.dim_read_conn(con, _atbl) if _atbl else (con, False)
+        try:
+            snap = compute_health_for_table(_acon, asset, now)
+        finally:
+            if _aown:
+                _acon.close()
         snap["snapshot_at"] = now.isoformat(timespec="seconds")
         snap["quality_gate_level"] = asset.get("quality_gate_level")
         snapshots.append(snap)

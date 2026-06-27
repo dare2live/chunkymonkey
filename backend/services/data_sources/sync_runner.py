@@ -244,12 +244,16 @@ def _quarter_ends(start: str, end: str) -> list[str]:
 
 def _trading_days(start: str, end: str | None = None) -> list[str]:
     """交易日列表 (YYYYMMDD), 真相源 = 项目交易日历 (L0)."""
+    # §9 拆库: dim_trading_calendar 迁 reference。不再开 smartmoney conn (latest_completed_trade_date
+    #   已内部 reference 路由; 日历查询经 dim_read_conn(None,...) 直开 reference RO)。Stage E 物删 smartmoney
+    #   副本后此处不受影响 (本就读 reference)。
     from services.utils import latest_completed_trade_date
+    from services.data_access import resolver
 
-    conn = _smartmoney_conn()
+    end_d = end or latest_completed_trade_date().replace("-", "")
+    cal, cal_own = resolver.dim_read_conn(None, "dim_trading_calendar")  # rule-compliance: ok evidence=calendar truth-source in reference db
     try:
-        end_d = end or latest_completed_trade_date(conn).replace("-", "")
-        rows = conn.execute(
+        rows = cal.execute(
             """
             SELECT replace(CAST(trade_date AS VARCHAR), '-', '') AS d
             FROM dim_trading_calendar
@@ -259,7 +263,8 @@ def _trading_days(start: str, end: str | None = None) -> list[str]:
             [start, end_d],
         ).fetchall()
     finally:
-        conn.close()
+        if cal_own:
+            cal.close()
     return [r[0] for r in rows]
 
 

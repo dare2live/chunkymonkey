@@ -1206,22 +1206,23 @@ def _append_outcome(
 
 
 def _check_calendar(conn: Any, details: list[dict[str, Any]], blockers: list[str], warnings: list[str]) -> dict[str, Any]:
-    if not _table_exists(conn, "dim_trading_calendar"):
-        item = _detail(
-            domain="calendar",
-            table_name="dim_trading_calendar",
-            check_name="table_exists",
-            status="fail",
-            reason="dim_trading_calendar is required before every data fetch or feature build",
-        )
-        _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
-        return {"exists": False}
-
     from services.data_access import resolver
 
-    # rule-compliance: ok evidence=calendar truth-source migrated to reference db; dim_read_conn auto-falls to reference when conn lacks dim_trading_calendar (Stage E physical delete)
+    # §9 拆库: 先 route 到 reference-backed dim 再查存在性。旧版先 _table_exists(conn[smartmoney]) 早退,
+    #   Stage E 物删 smartmoney 副本后会永远 return exists=False (短路 bug); 改为路由后在 routed conn 上判存在。
+    # rule-compliance: ok evidence=calendar truth-source in reference db; dim_read_conn auto-falls reference when conn lacks table
     cal_conn, cal_own = resolver.dim_read_conn(conn, "dim_trading_calendar")
     try:
+        if not _table_exists(cal_conn, "dim_trading_calendar"):
+            item = _detail(
+                domain="calendar",
+                table_name="dim_trading_calendar",
+                check_name="table_exists",
+                status="fail",
+                reason="dim_trading_calendar is required before every data fetch or feature build",
+            )
+            _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
+            return {"exists": False}
         row = cal_conn.execute(
             """
             SELECT COUNT(*) AS rows,
