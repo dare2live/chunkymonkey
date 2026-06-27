@@ -626,20 +626,8 @@ reassignments:
     migration_required: true
     risk: "medium"
     reason: "龙虎榜明细仍需外部源。"
-  - table_name: "raw_capital_dividend_detail"
-    current_source: "akshare"
-    proposed_primary_source: "tdxhub_quote"
-    fallback_source: "miaoxiang"
-    migration_required: true
-    risk: "medium"
-    reason: "除权除息用 TDX，方案细节保留 fallback。"
-  - table_name: "raw_capital_repurchase"
-    current_source: "akshare"
-    proposed_primary_source: "miaoxiang"
-    fallback_source: "akshare"
-    migration_required: false
-    risk: "low"
-    reason: "回购明细 TDX/gpcw 不覆盖。"
+  # raw_capital_dividend_detail / raw_capital_repurchase 规划条目已删 2026-06-27
+  #   (通达信全删 M4: akshare 资本运作 7表物删, 用户决cut不迁移; 旧 proposed tdxhub/miaoxiang 源亦已退役)
   - table_name: "raw_fund_flow_daily"
     current_source: "deprecated stale raw table"
     proposed_primary_source: "akshare"

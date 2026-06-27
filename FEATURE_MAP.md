@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-27 10:41
+> Snapshot: 2026-06-27 10:56
 
 ## 1. 入口面
 
@@ -97,7 +97,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 143 张 | 单 writer 93 | 多 writer 50 | 动态表名写点 40 处 (22 文件)
+统计: 表 137 张 | 单 writer 87 | 多 writer 50 | 动态表名写点 40 处 (22 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -187,7 +187,6 @@
 
 | 表 | writer |
 |---|---|
-| dim_capital_behavior_latest | backend/services/capital_client.py |
 | dim_financial_latest | backend/services/financial_client.py |
 | dim_schema_version | backend/services/schema_versions.py |
 | dim_stock_attention_latest | backend/services/external_attention.py |
@@ -266,11 +265,6 @@
 | mart_tdx_server_health | backend/services/tdx_source.py |
 | mart_today_signal_cache | backend/services/signals_v2.py |
 | mart_today_signal_cache_signal | backend/services/signals_v2.py |
-| raw_capital_allotment_detail | backend/services/capital_client.py |
-| raw_capital_dividend_detail | backend/services/capital_client.py |
-| raw_capital_dividend_summary | backend/services/capital_client.py |
-| raw_capital_repurchase | backend/services/capital_client.py |
-| raw_capital_unlock | backend/services/capital_client.py |
 | raw_executive_trade | backend/scripts/build_executive_trade_events.py |
 | raw_gpcw_financial | backend/services/financial_client.py |
 | raw_institution_surveys | backend/services/institution_survey_client.py |
@@ -283,7 +277,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,914 | calls 边 57,341 | imports 边 5,601 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 8,869 | calls 边 57,184 | imports 边 5,595 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -291,7 +285,7 @@
 |---|---|
 | services.duck_adapter | 40 |
 | services.db | 29 |
-| services.utils | 27 |
+| services.utils | 26 |
 | services.market_db | 16 |
 | services.database_manifest | 15 |
 | services.industry | 13 |
@@ -329,8 +323,8 @@
 | backend/services/data_quality.py | 3836 |
 | backend/services/scoring.py | 2698 |
 | backend/services/signals_v2.py | 2134 |
-| backend/services/audit.py | 1744 |
-| backend/services/financial_client.py | 1716 |
+| backend/services/audit.py | 1719 |
+| backend/services/financial_client.py | 1699 |
 | backend/scripts/audit_delivery_readiness.py | 1226 |
 | backend/scripts/seed_dim_data_asset.py | 1210 |
 | backend/services/storage_retention.py | 1061 |
@@ -341,5 +335,5 @@
 
 - chunkyctl 子命令 10 | launchd 任务 1 | router 12 (端点 56)
 - sync_registry 数据域 44
-- 产表 143 (多 writer 50)
+- 产表 137 (多 writer 50)
 

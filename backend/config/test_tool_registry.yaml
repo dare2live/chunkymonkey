@@ -1563,18 +1563,8 @@ tools:
     replacement: source coverage probe plus freshness/PIT audit before any production fund-flow claim
     last_verified: "2026-06-01"
 
-  - id: fundamental_finance_ingestion_contract_tests
-    paths:
-      - backend/tests/test_capital_client_store.py
-    owner_module: financial_data
-    scope: contract
-    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_capital_client_store.py
-    status: active
-    evidence_level: trusted_with_scope
-    truth_source: local financial/fundamental ingestion and store fixtures
-    risk_reason: protects ingestion/store contract only; does not prove production finance source coverage or current data freshness
-    replacement: source coverage contract plus data_audit after financial-data sync
-    last_verified: "2026-05-27"
+  # fundamental_finance_ingestion_contract_tests (test_capital_client_store.py) 已退役 2026-06-27
+  #   (通达信全删 M4: akshare capital_client + test 物删, 用户决cut)
 
   - id: lhb_ingestion_contract_tests
     paths:

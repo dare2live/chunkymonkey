@@ -1000,28 +1000,7 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
     fin_coverage = _pct(fin_latest_count, financial_universe_stocks)
     fin_tracked_missing = max(holding_stocks - fin_tracked_latest_count, 0)
     fin_tracked_coverage = _pct(fin_tracked_latest_count, holding_stocks)
-    try:
-        capital_latest_count = _scalar(conn, "SELECT COUNT(*) FROM dim_capital_behavior_latest")
-        capital_detail_synced_count = _scalar(conn, """
-            SELECT COUNT(*) FROM capital_detail_sync_state
-            WHERE status IN ('ok', 'partial', 'empty')
-        """)
-        if fin_research_scope > 0:
-            capital_detail_research_ready = _scalar(conn, """
-                SELECT COUNT(*) FROM (
-                    SELECT t.stock_code
-                    FROM mart_stock_trend t
-                    LEFT JOIN capital_detail_sync_state s ON s.stock_code = t.stock_code
-                    WHERE COALESCE(s.status, '') IN ('ok', 'partial', 'empty')
-                )
-            """)
-        else:
-            capital_detail_research_ready = 0
-    except Exception:
-        capital_latest_count = 0
-        capital_detail_synced_count = 0
-        capital_detail_research_ready = 0
-    capital_detail_research_gap = max(fin_research_scope - capital_detail_research_ready, 0)
+    # capital 行为审计已退役 2026-06-27 (通达信全删 M4: akshare 资本运作 7表+writer 物删, 用户决cut)
     try:
         indicator_latest_count = _scalar(conn, "SELECT COUNT(*) FROM dim_financial_indicator_latest")
         indicator_history_ready = _scalar(conn, """
@@ -1250,10 +1229,6 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
                 "research_scope": fin_research_scope,
                 "research_history_ready": fin_research_history_ready,
                 "research_history_gap": fin_research_history_gap,
-                "capital_latest_count": capital_latest_count,
-                "capital_detail_synced_count": capital_detail_synced_count,
-                "capital_detail_research_ready": capital_detail_research_ready,
-                "capital_detail_research_gap": capital_detail_research_gap,
                 "indicator_latest_count": indicator_latest_count,
                 "indicator_history_ready": indicator_history_ready,
                 "indicator_research_ready": indicator_research_ready,

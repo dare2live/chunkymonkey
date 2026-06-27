@@ -62,4 +62,4 @@ source_retiring_temp_members:
   - tdx_f10_extra_client.py
   - institution_survey_client.py
   - financial_client.py        # 财务写侧/manager (含 DELETE; gpcw sync已退役, 现 calc 读 tushare)
-  - capital_client.py
+  # capital_client.py 已退役 2026-06-27 (通达信全删 M4: akshare 资本运作物删, 用户决cut)

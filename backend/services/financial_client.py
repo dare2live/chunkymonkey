@@ -1472,31 +1472,14 @@ async def sync_financial_data(
         + (f"，跳过最近已成功 {skipped_recent} 只" if skipped_recent else "")
     )
 
+    # capital_client (akshare 资本运作) 已退役 2026-06-27 (通达信全删 M4, 用户决cut): 7表+writer物删。
+    # 本 sync_financial_data 整段 = RETIRED 0-live-caller (见 §310 头注), capital 分支随之失活。
     capital_total = 0
-    if include_capital:
-        progress["capital_behavior"]["status"] = "running"
-        _emit_progress()
-        try:
-            _check_stop()
-            from services.capital_client import sync_capital_behavior_data
-            capital_total = await sync_capital_behavior_data(conn, stock_codes=stock_codes)
-            progress["capital_behavior"].update({
-                "status": "success",
-                "rows": capital_total,
-            })
-        except Exception as exc:
-            progress["capital_behavior"].update({
-                "status": "failed",
-                "rows": 0,
-                "error": str(exc)[:200],
-            })
-            logger.warning(f"[财务] 资本行为增强同步失败，跳过本轮: {exc}")
-    else:
-        progress["capital_behavior"].update({
-            "status": "skipped",
-            "rows": 0,
-            "skip_reason": "daily critical sync skips capital behavior",
-        })
+    progress["capital_behavior"].update({
+        "status": "skipped",
+        "rows": 0,
+        "skip_reason": "capital_client retired 2026-06-27 (akshare M4 cut)",
+    })
     _emit_progress()
 
     indicator_total = 0

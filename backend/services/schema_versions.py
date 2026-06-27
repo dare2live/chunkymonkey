@@ -217,7 +217,7 @@ MART_VERSIONS = {
 
 # dim_* 派生类 (静态/缓存型, 不含 raw dim, 12 张)
 DIM_DERIVED_VERSIONS = {
-    "dim_capital_behavior_latest": "v1",
+    # dim_capital_behavior_latest 已物删 2026-06-27 (通达信全删 M4: akshare 资本运作退役, 用户决cut)
     "dim_financial_latest": "v1",
     "dim_stock_archetype_latest": "v1",
     "dim_stock_attention_latest": "v1",

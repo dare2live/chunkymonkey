@@ -51,10 +51,7 @@ tables:
   raw_aif10_peer_valuation: L0_source
   raw_aif10_valuation_quantile: L0_source
   raw_org_holding_aif10: L0_source  # 2026-06-24 补tag (aif10机构持仓明细raw镜像, 前会话漏登致data-layer-integrity FAIL)
-  raw_capital_allotment_detail: L0_source
-  raw_capital_dividend_detail: L0_source
-  raw_capital_repurchase: L0_source
-  raw_capital_unlock: L0_source
+  # raw_capital_* (allotment/dividend_detail/repurchase/unlock/dividend_summary) tag 已删 2026-06-27 (通达信全删 M4: akshare 资本运作物删, 用户决cut)
   # raw_gpcw_detail/raw_gpcw_financial/raw_tdx_gpcw_wide tag 已删 2026-06-27 (通达信全删 gpcw物删)
   raw_institution_surveys: L0_source
   raw_lhb_daily: L0_source
@@ -63,7 +60,7 @@ tables:
   # raw_tdx_industry_file_snapshot tag 已删 2026-06-23 (东财迁移Stage④ 物删)
   dim_active_a_stock: L1_foundation
   dim_all_ever_listed: L1_foundation
-  dim_capital_behavior_latest: L1_foundation
+  # dim_capital_behavior_latest tag 已删 2026-06-27 (通达信全删 M4: akshare 资本运作物删)
   dim_fee_schedule: L1_foundation
   dim_financial_latest: L1_foundation
   dim_holder_alias: L1_foundation
@@ -106,7 +103,7 @@ tables:
   mart_today_signal_cache: display         # 2026-06-26 补声明: signals_v2 跟随信号 serving 缓存 (routers/signals.py HTTP 服务 UI; 运行时 INSERT OR REPLACE 重建)
   mart_today_signal_cache_signal: display  # 2026-06-26 同上: 每信号明细缓存行 (signals_v2 ensure_today_signal_cache)
   app_settings: infra
-  capital_detail_sync_state: infra
+  # capital_detail_sync_state tag 已删 2026-06-27 (通达信全删 M4: akshare 资本运作物删)
   dim_data_asset: infra
   dim_data_source_priority: infra
   dim_price_limit_rules: infra
@@ -144,7 +141,6 @@ tables:
   mart_etf_snapshot_state: L2_feature
   mart_sector_momentum: L2_feature
   mart_stock_screening: L3_model
-  raw_capital_dividend_summary: L0_source
 _notes:
   recreated_empty_2026_06_14: 58 张 L2/L3/L4 表被 app 启动 schema-init(schema_core/schema_marts) 空重建; 数据已删, schema 定义待从 kept schema
     文件移除否则反复重建 (代码清理遗留)。

@@ -757,8 +757,7 @@ def init_db():
         from services.financial_client import ensure_tables as _ensure_fin_tables
         _ensure_fin_tables(conn)
         # financial_indicator_client 已退役 2026-06-19 (akshare 财务指标表+writer物删)
-        from services.capital_client import ensure_tables as _ensure_capital_tables
-        _ensure_capital_tables(conn)
+        # capital_client 已退役 2026-06-27 (通达信全删 M4: akshare 资本运作 7表+writer物删, 用户决cut)
         from services.industry_context_engine import ensure_tables as _ensure_industry_context_tables
         _ensure_industry_context_tables(conn)
         from services.screening_engine import ensure_tables as _ensure_screen_tables

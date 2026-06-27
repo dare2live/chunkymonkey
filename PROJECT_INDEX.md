@@ -294,7 +294,7 @@
 | `fact_holder_event` / `fact_top10_holder_period` / `fact_holder_count_period` | 持股人结构 |
 | `fact_dzjy_event` | 大宗交易 (旧源) |
 | **`raw_tushare_block_trade`** (大宗交易, 2026-06-16 注册) | 用户提议: 机构折价/大单方向, stage 内 alpha 增强候选 (moneyflow 抓不到的机构维度). grain=[ts_code,trade_date,price,vol] (同股同日多笔全留), PIT 锚 trade_date (盘后披露, 决策用 t-1); by_trade_date 2023+. **表未建** (配额墙), 配置就绪待拉. debate 裁决档B: 做事件 confirmation 不做连续因子 |
-| `raw_capital_*` (allotment/dividend/repurchase/unlock) + `dim_capital_behavior_latest` | 配股/分红/回购/解禁 (akshare 源). **2026-06-27 通达信全删 M4 退役中**: 用户决"cut"不迁移 — 消费侧已切 (scoring quality_capital→0 / signals_v2 D5 解禁门→不过滤); 源头 client+物删 follow-up. 档B 若需从 tushare dividend/repurchase/share_float 重接 |
+| ~~`raw_capital_*` + `dim_capital_behavior_latest` + `capital_detail_sync_state`~~ | 配股/分红/回购/解禁 (akshare 源). **2026-06-27 通达信全删 M4 已物删 (7表)**: 用户决"cut"不迁移 — 消费侧切 (scoring quality_capital→0 / signals_v2 D5 解禁门→不过滤) + 源头 capital_client+writer 物删 + config 清; archive parquet 留底 25,370 行 (deletion_record run_id=tdx_full_delete_M4_akshare_capital_20260627). 档B 若需从 tushare dividend/repurchase/share_float 重接 |
 | `raw_institution_surveys` | 机构调研 raw |
 | `raw_qfii_holding_quarterly` | QFII 季度持仓 |
 | `raw_org_holding_aif10` | 机构持仓明细 (东财妙想 aif10 MAIN_ORGHOLDDETAIL; 非公募机构 基金/保险/券商/法人/QFII 分桶持本股, report_date 报告期 + 法定披露截止 available_date PIT 锚; 2026-06-24 aif10 例外扩展, 复核确认真·独有 gap=tushare fund_portfolio 仅公募). owner=services/org_holding_aif10.py; data_layers=L0_source (2026-06-24 补 tag, 修 data-layer-integrity FAIL) |
@@ -400,7 +400,7 @@
 | 模块 | 作用 |
 |---|---|
 | `services/data_sources/` | base / clients_registry / data_routes / fallback / registry — 数据源中央。**tushare 代理网关 2026-06-17 切 tinyshare** (旧 jiaoch.site 反刷量墙弃用): `sources/tushare.py:_pro_api` = `import tinyshare as ts; ts.set_token(授权码); ts.pro_api()` (tinyshare 自带网关, 去 _DataApi__http_url monkeypatch); 授权码进 gitignored .env (TUSHARE_TOKEN); 旧网关解封 stk_surv 机构调研(实测 316 行/日)。sync_registry 已注册 stk_surv 域。**限流(tinyshare): 单接口 120次/分, 多接口 200次/分, 并发 2**(旧 tushare 150/200)。**强制 = config 驱动主动节流**(2026-06-19): 限额在 `sync_registry.yaml defaults.rate_limit`, `sync_runner._RateLimiter` 读 config 每次 fetch_raw 前滑窗节流(撞墙前先睡, no-hardcode 改限额只动 yaml); 瞬态限流措辞退避 `_is_transient_ratelimit`→transient_backoff 作兜底, 真当日墙 `_is_quota_wall` 才停链。**socket 超时根治 hung** (2026-06-19, defaults.fetch_timeout_seconds=120; run_domain `socket.setdefaulttimeout`; 反例: stk_factor_pro 重试 hung 在无超时 socket 71min)。**by_ts_code 断点续拉** `--resume` (`_existing_ts_codes` 跳 target 已有 ts_code, 省重拉)。owner doc=`sources/tushare.py` docstring |
-| `services/akshare_client.py` / `tdx_*_client.py` / `block_client.py` / `capital_client.py` / `lhb_client.py` / `xdxr_client.py` / etc. | 各种数据源 client |
+| `services/akshare_client.py` / `tdx_*_client.py` / `block_client.py` / `lhb_client.py` / `xdxr_client.py` / etc. | 各种数据源 client (注: `capital_client.py` 已物删 2026-06-27, 通达信全删 M4 akshare 资本运作退役) |
 | `services/kline_source.py` / `market_db.py` | K 线源 + market DB 入口 |
 | `services/duck_adapter.py` / `db.py` / `db_health.py` | DuckDB 安全包装 |
 | `services/source_watermarks.py` / `source_policy.py` | sync watermark + policy |

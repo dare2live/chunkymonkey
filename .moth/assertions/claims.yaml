@@ -12,17 +12,17 @@ assertions:
     query: "SELECT count(DISTINCT table_name) FROM duckdb_constraints() WHERE constraint_type IN ('PRIMARY KEY','UNIQUE')"
     expect: {op: ">=", value: 39}
   - id: smartmoney-indexes
-    claim: "索引 >=94 (2026-06-16 重启清理 drop 探索表/缓存后 99→94; 缺=回归)"
+    claim: "索引 >=85 (2026-06-27 通达信全删: gpcw/xdxr/capital 物删后 94→85; 缺=回归)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM duckdb_indexes()"
-    expect: {op: ">=", value: 94}
+    expect: {op: ">=", value: 85}
   - id: smartmoney-tables
-    claim: "表 >=84 (2026-06-16 重启清理 drop 9 张探索/缓存/0行表后 85→84; 增表应显式过决策)"
+    claim: "表 >=78 (2026-06-27 通达信全删 M4: akshare capital 7表物删后 85→78; 含累计 gpcw/xdxr 退役; 增表应显式过决策)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM duckdb_tables()"
-    expect: {op: ">=", value: 84}
+    expect: {op: ">=", value: 78}
   - id: smartmoney-size-band
     claim: "库体量 2-6GB 带内 (2026-06-14 地基-reset 26.6→2.5G; 越界 = 异常膨胀或错库/数据丢失)"
     type: file_size

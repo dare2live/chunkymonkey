@@ -135,23 +135,9 @@ CLIENTS: list[ClientSpec] = [
 
     # ── tier 3: akshare (兜底) ───────────────────────────────────────
     # margin_client ClientSpec removed Phase ψ.5 — dead data (see audit)
-    ClientSpec(
-        client_id="capital_client",
-        module="services.capital_client",
-        description="资本运作 (分红/回购/解禁/配股)",
-        upstream_source="akshare:stock_fhps_em/repurchase/lockup",
-        source_tier=3,
-        fallback_chain=["akshare"],
-        writes=[
-            TableWriteSpec("raw_capital_dividend_summary", "分红汇总",   "t+1", 48),
-            TableWriteSpec("raw_capital_dividend_detail",  "分红明细",   "t+1", 48),
-            TableWriteSpec("raw_capital_repurchase",       "回购",      "t+1", 48),
-            TableWriteSpec("raw_capital_unlock",           "解禁",      "t+1", 48),
-            TableWriteSpec("raw_capital_allotment_detail", "配股明细",   "t+1", 48),
-            TableWriteSpec("dim_capital_behavior_latest",  "资本运作汇总", "t+1", 48),
-        ],
-        sync_step_id="sync_capital",
-    ),
+    # capital_client (akshare 资本运作 分红/回购/解禁/配股) 已退役 2026-06-27 (通达信全删 M4):
+    #   用户决"cut"不迁移 — 7表(raw_capital_* 5 + dim_capital_behavior_latest + capital_detail_sync_state)+writer物删,
+    #   消费侧 scoring/signals_v2 已切; 档B 若需从 tushare dividend/repurchase/share_float 重接。
     ClientSpec(
         client_id="financial_client",
         module="services.financial_client",
