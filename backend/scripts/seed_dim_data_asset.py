@@ -94,7 +94,7 @@ EXTRA_UPSTREAM_BY_TABLE = {
     "fact_lhb_event":               ("derived from raw_lhb_daily", None),
     "fact_technical_trigger":       ("derived from build_formula_signals_history + build_signal_context", None),
     "fact_institution_event":       ("derived (gen_events + return_engine)", None),
-    "fact_fundamental_quarterly":   ("frozen L1 (源 raw_gpcw_* 已 2026-06-27 物删; builder dead, 表冻结保留)", None),
+    # fact_fundamental_quarterly seed 已删 2026-06-27 (通达信全删: gpcw派生表退役物删)
     # mart_tdx_gpcw_field_profile seed 已删 2026-06-27 (通达信全删; 表不存在=从未物化)
     "mart_current_relationship":    ("derived (build_current_relationship)", None),
     "mart_stock_trend":             ("derived (build_trends step)", None),

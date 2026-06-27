@@ -195,8 +195,7 @@ groups:
     null_policy: excluded_until_backfilled
     coverage_universe: active_a_stock_after_first_report
     pit_release_lag_days: 90
-    source_tables:
-      - smartmoney.fact_fundamental_quarterly
+    source_tables: []  # fact_fundamental_quarterly[gpcw派生] 2026-06-27 物删 (通达信全删); 本组全 production_ready:false inactive; 档B alpha 重接 tushare (roe/eps←dim_financial_latest, *_qoq←holder/inst)
     features:
       - shareholder_count_qoq:
           production_ready: false

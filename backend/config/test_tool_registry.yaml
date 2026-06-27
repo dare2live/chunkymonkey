@@ -1565,11 +1565,10 @@ tools:
 
   - id: fundamental_finance_ingestion_contract_tests
     paths:
-      - backend/tests/test_build_fundamental_quarterly.py
       - backend/tests/test_capital_client_store.py
     owner_module: financial_data
     scope: contract
-    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_build_fundamental_quarterly.py backend/tests/test_capital_client_store.py
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_capital_client_store.py
     status: active
     evidence_level: trusted_with_scope
     truth_source: local financial/fundamental ingestion and store fixtures

@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-27 09:25
+> Snapshot: 2026-06-27 10:21
 
 ## 1. 入口面
 
@@ -97,7 +97,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 145 张 | 单 writer 95 | 多 writer 50 | 动态表名写点 40 处 (22 文件)
+统计: 表 143 张 | 单 writer 93 | 多 writer 50 | 动态表名写点 40 处 (22 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -202,7 +202,6 @@
 | fact_feature_panel_candidate | backend/services/schema_core.py |
 | fact_feature_panel_tdx_keep_challenger | backend/services/schema_core.py |
 | fact_financial_derived | backend/services/financial_client.py |
-| fact_fundamental_quarterly | backend/scripts/build_fundamental_quarterly.py |
 | fact_hot_rank_daily | backend/scripts/build_akshare_panel.py |
 | fact_jgdy_event | backend/scripts/build_akshare_panel.py |
 | fact_lhb_event | backend/scripts/build_lhb_events.py |
@@ -263,7 +262,6 @@
 | mart_tdx_gpcw_auto_optuna_run | backend/services/schema_marts.py |
 | mart_tdx_gpcw_auto_pit_audit | backend/services/schema_marts.py |
 | mart_tdx_gpcw_auto_retention_decision | backend/services/schema_marts.py |
-| mart_tdx_gpcw_file_manifest | backend/scripts/build_fundamental_quarterly.py |
 | mart_tdx_keep_promotion_gate | backend/services/schema_marts.py |
 | mart_tdx_server_health | backend/services/tdx_source.py |
 | mart_today_signal_cache | backend/services/signals_v2.py |
@@ -285,21 +283,21 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,959 | calls 边 57,405 | imports 边 5,610 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 8,914 | calls 边 57,343 | imports 边 5,602 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
 | services.duck_adapter | 40 |
-| services.db | 30 |
+| services.db | 29 |
 | services.utils | 27 |
 | services.market_db | 16 |
 | services.database_manifest | 15 |
 | services.industry | 13 |
 | services.kline_source | 10 |
 | services.pipeline_manifest | 9 |
-| services.tdx_source | 9 |
+| services.tdx_source | 8 |
 | services.universe | 8 |
 | services.data_sources | 7 |
 | services.pricing_policy | 7 |
@@ -322,7 +320,7 @@
 | backend/services/kline_source.py | 4 |
 | backend/services/lineage/model.py | 4 |
 | backend/services/pipeline/context.py | 4 |
-| backend/services/tdx_source.py | 4 |
+| bestchoice/formula_engine.py | 4 |
 
 ### LOC top 10 (God module 候选)
 
@@ -343,5 +341,5 @@
 
 - chunkyctl 子命令 10 | launchd 任务 1 | router 12 (端点 56)
 - sync_registry 数据域 44
-- 产表 145 (多 writer 50)
+- 产表 143 (多 writer 50)
 

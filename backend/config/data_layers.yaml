@@ -87,7 +87,7 @@ tables:
   fact_dzjy_event: L1_foundation
   fact_executive_trade_event: L1_foundation
   fact_financial_derived: L1_foundation
-  fact_fundamental_quarterly: L1_foundation
+  # fact_fundamental_quarterly tag 已删 2026-06-27 (通达信全删: gpcw派生表 builder build_fundamental_quarterly 退役物删, 源raw_gpcw_*已删不可重建, 0 live reader)
   fact_institution_event: L1_foundation
   fact_lhb_event: L1_foundation
   fact_top10_holder_period: L1_foundation

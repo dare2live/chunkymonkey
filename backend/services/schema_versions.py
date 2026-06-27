@@ -46,7 +46,7 @@ FACT_VERSIONS = {
     "fact_jgdy_event": "v1",                 # 机构调研事件
     "fact_lhb_event": "v1",                  # 龙虎榜事件
     "fact_financial_derived": "v1",          # 财务派生
-    "fact_fundamental_quarterly": "v1",      # 基本面季度
+    # fact_fundamental_quarterly version 已删 2026-06-27 (通达信全删: gpcw派生表退役物删)
     "fact_institution_follow_backtest": "v2",  # 机构跟随回测 (pricing_policy_hash)
     "fact_policy_equity_curve": "v1",        # 策略 equity curve
     "fact_policy_eval": "v1",                # 策略评估
