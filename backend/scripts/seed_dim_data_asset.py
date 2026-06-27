@@ -94,8 +94,8 @@ EXTRA_UPSTREAM_BY_TABLE = {
     "fact_lhb_event":               ("derived from raw_lhb_daily", None),
     "fact_technical_trigger":       ("derived from build_formula_signals_history + build_signal_context", None),
     "fact_institution_event":       ("derived (gen_events + return_engine)", None),
-    "fact_fundamental_quarterly":   ("derived from raw_gpcw_*", None),
-    "mart_tdx_gpcw_field_profile":  ("derived from raw_tdx_gpcw_wide", None),
+    "fact_fundamental_quarterly":   ("frozen L1 (源 raw_gpcw_* 已 2026-06-27 物删; builder dead, 表冻结保留)", None),
+    # mart_tdx_gpcw_field_profile seed 已删 2026-06-27 (通达信全删; 表不存在=从未物化)
     "mart_current_relationship":    ("derived (build_current_relationship)", None),
     "mart_stock_trend":             ("derived (build_trends step)", None),
     "mart_stock_screening":         ("derived (calc_screening manual step)", None),
@@ -171,8 +171,7 @@ EXTRA_FRESHNESS_BY_TABLE = {
     "mart_architecture_cleanup_plan": ("on-demand", 24 * 30),
     "mart_tdx_server_health": ("on-demand", 24 * 30),
     "mart_temporal_research_panel_quality": ("on-demand", 24 * 30),
-    # gpcw files are quarter-end source manifests.
-    "mart_tdx_gpcw_file_manifest": ("quarterly", 24 * 95),
+    # mart_tdx_gpcw_file_manifest seed 已删 2026-06-27 (通达信全删 gpcw物删)
     "fact_technical_trigger": ("event", 48),
     # Drift is a current champion monitor, not a raw source. Empty rows should
     # be fixed by running compute_feature_drift, not source backfill.

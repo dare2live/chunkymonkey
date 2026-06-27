@@ -55,13 +55,11 @@ tables:
   raw_capital_dividend_detail: L0_source
   raw_capital_repurchase: L0_source
   raw_capital_unlock: L0_source
-  raw_gpcw_detail: L0_source
-  raw_gpcw_financial: L0_source
+  # raw_gpcw_detail/raw_gpcw_financial/raw_tdx_gpcw_wide tag 已删 2026-06-27 (通达信全删 gpcw物删)
   raw_institution_surveys: L0_source
   raw_lhb_daily: L0_source
   raw_profit_forecast_snapshot_daily: L0_source
   raw_qfii_holding_quarterly: L0_source
-  raw_tdx_gpcw_wide: L0_source
   # raw_tdx_industry_file_snapshot tag 已删 2026-06-23 (东财迁移Stage④ 物删)
   dim_active_a_stock: L1_foundation
   dim_all_ever_listed: L1_foundation
@@ -81,8 +79,7 @@ tables:
   dim_stock_dc_industry: L1_foundation     # 2026-06-23 东财全套迁移Stage④ 当前行业快照 (serving); 深史as-of走 tushare_raw.v_sw_industry_pit
   dim_stock_dc_concept: L1_foundation      # 2026-06-23 东财概念成员当前快照 (serving)
   # 通达信(tdx)行业 dim_stock_tdx_industry/_history/block/catalog tag 已删 2026-06-23 (东财迁移Stage④ 物删, 切东财)
-  dim_tdx_gpcw_field: L1_foundation
-  dim_tdx_gpcw_field_semantic: L1_foundation
+  # dim_tdx_gpcw_field/_semantic tag 已删 2026-06-27 (通达信全删 gpcw物删)
   dim_trading_calendar: L1_foundation
   dim_trading_rule: L1_foundation
   dim_trading_session: L1_foundation
@@ -126,8 +123,7 @@ tables:
   mart_pipeline_lock: infra
   mart_pipeline_run_manifest: infra
   mart_step_fingerprint: infra
-  mart_tdx_f10_capability_matrix: infra
-  mart_tdx_gpcw_file_manifest: infra
+  # mart_tdx_f10_capability_matrix/mart_tdx_gpcw_file_manifest tag 已删 2026-06-27 (通达信全删 gpcw物删)
   step_status: infra
   sys_schema_version: infra
   dim_stock_industry_context_latest: L1_foundation

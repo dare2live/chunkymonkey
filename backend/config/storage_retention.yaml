@@ -77,13 +77,7 @@ payload_audit:
       reason: Replacement for the former single-row signals_json blob; one bounded JSON row per signal keeps API cache replayable without recursive nesting.
       max_value_bytes: 8192
       max_total_value_bytes: 67108864
-    - table: raw_tdx_gpcw_wide
-      column: field_values_json
-      classification: bounded_raw_source_record
-      owner: tdx_gpcw_source_ingestion
-      reason: TDX GPCW wide field JSON is a protected replay source; total volume is acceptable only with bounded individual records and zero recursive keys.
-      max_value_bytes: 8192
-      max_total_value_bytes: 536870912
+    # raw_tdx_gpcw_wide retention 条目已删 2026-06-27 (通达信全删 gpcw物删)
     - table: mart_architecture_inventory_asset
       column: api_routes_json
       classification: governed_architecture_inventory_paths
@@ -168,8 +162,7 @@ model_prediction_tables:
 protected_artifact_tables:
   - table: raw_tdx_f10_extra_parse_status  # @archived wiped-2026-06-14-reset
     reason: TDX F10 parse ledger prevents repeated failed or terminal parses
-  - table: mart_tdx_f10_capability_matrix
-    reason: TDX F10 capability and PIT-date matrix is source governance evidence
+  # mart_tdx_f10_capability_matrix 条目已删 2026-06-27 (通达信全删 gpcw物删)
   - table: mart_feature_pit_audit  # @archived wiped-2026-06-14-reset
     reason: PIT audit rows gate feature and model promotion
   - table: mart_feature_pit_coverage_summary

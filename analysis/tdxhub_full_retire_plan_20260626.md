@@ -189,7 +189,12 @@ dim 5204→5202 / fact 23691→74192; 茅台全列正确(roe 0.4227/gross 0.898/
 5. db_lifecycle_delete 物删 7表 + deletion_record + gates绿 + 对抗验证。
 6. wholesale 退役: tdx_affair_client.py + build_tdx_gpcw_auto_features.py + profile_tdx_gpcw_fields.py + financial_client sync body。
 
-**状态: 财务迁移(correctness)+ signals_v2解耦 DONE; 物删/wholesale退役 = 下一焦点 session 专做 (大件不 session 尾 big-bang, 用户反例: 删探索物没审耦合连崩CI)。gpcw冻结无 active harm。**
+**状态 (2026-06-27 用户决"现在careful增量删完", 已完整收口)**: 财务迁移(correctness)+promote上线 + gpcw 簇 7表物删 全 DONE。
+- Stage1: 切 signals_v2 gpcw 依赖(D1/D3 no-op)。
+- Stage2: 物删 3 dead文件(tdx_affair_client/build_tdx_gpcw_auto_features/profile) + schema_core/ensure_tables gpcw DDL移除(防僵尸) + financial_client sync body标RETIRED(保_bootstrap/_parse_*) + db_health gpcw清 + 测试收口(financial留calc/db_health repoint fact_top10) + clients_registry/data_routes/data_module_members清。
+- Stage3: 清 data_layers(7声明)/storage_retention/seed/schema_versions + 单元5 build_fundamental_quarterly标RETIRED(保 fact_fundamental_quarterly L1 冻结) + **db_lifecycle_delete 物删7表** (archive parquet+deletion_record lifecycle_gpcw_retire_20260627) + DROP shadow。
+验收: 0 gpcw残留 + data_layer_audit PASS(87表/0stale) + config_refs PASS + moth PASS 45/0/0 + schema-init无僵尸 + 测试绿(1预存在mart失败非本次)。**gpcw=GONE**。
+**低风险 follow-up (非阻塞, 不在 session 尾做)**: (a) financial_client dead sync body + build_fundamental_quarterly 整段代码物理移除(已标RETIRED, dead 0caller 不zombie, 须保 _bootstrap[ensure_tables依赖]/_parse_float[lhb/qfii/aif10/capital共享]); (b) tdx_data_need_coverage/field_dictionary gpcw 软引用清(gates绿不阻塞); (c) db_compact 缩盘回收 ~156k 行。
 
 ## 要丢的不可再生数据 (诚实标)
 - 增减持意向信号 (无任何源可重建)

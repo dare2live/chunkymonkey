@@ -112,7 +112,7 @@ MART_VERSIONS = {
     "mart_feature_drift_histogram": "v1",
     "mart_challenger_evidence_bundle": "v1",
     "mart_champion_candidate_evaluation": "v1",
-    "mart_tdx_f10_capability_matrix": "v1",
+    # mart_tdx_f10_capability_matrix version 已删 2026-06-27 (通达信全删 gpcw物删)
     "mart_tdx_f10_source_date_section_audit": "v3",
     "mart_feature_catalog_current": "v1",
     "mart_feature_pit_join_plan": "v1",

@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-"""Phase 1 子任务 2: tdxhub Affair.parse 季度财务全量入库 → fact_fundamental_quarterly
+"""[RETIRED 2026-06-27 通达信全删] DEAD — 数据源 gpcw (tdxhub.Affair) 已物删, 本 builder 不可再运行。
+0 daily caller; build_ddl/MANIFEST_DDL 不被 schema-init 调 (不会僵尸重建)。
+产物去向: fact_fundamental_quarterly (L1, feature_registry 引用) = 冻结保留 (源 gpcw 已删, builder dead);
+  mart_tdx_gpcw_file_manifest = 已物删。整段代码物理移除 = 后续低风险 follow-up。勿调用。
 
-数据源: tdxhub.Affair(filename=gpcw<YYYYMMDD>.zip)
+Phase 1 子任务 2 (原): tdxhub Affair.parse 季度财务全量入库 → fact_fundamental_quarterly
+
+数据源 (已退役): tdxhub.Affair(filename=gpcw<YYYYMMDD>.zip)
   - gpcw<YYYYMMDD>.zip 按季末日期命名 (每季度 1 份)
   - 通达信官方财务服务器 120.76.152.87 聚合三大报表 + 机构持仓 + 业绩预告
   - 583 列, 我们只保留对建模有价值的 ~35 个核心列

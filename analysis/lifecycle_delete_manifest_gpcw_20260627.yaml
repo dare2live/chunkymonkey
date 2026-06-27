@@ -1,0 +1,30 @@
+# 通达信全删 gpcw 簇物删 manifest (2026-06-27)
+# 前置: 财务派生已迁 tushare 周期模型 (calc_financial_derived) + promote 上线; signals_v2 gpcw 依赖已切;
+#       gpcw 摄取流水线全 dead (tdx_affair_client/sync_financial_data/build_tdx_gpcw_auto_features 物删或 RETIRED);
+#       schema_core/ensure_tables gpcw DDL 已移除 (防僵尸); config 声明已清。
+# owner=analysis/tdxhub_full_retire_plan_20260626.md
+run_id: lifecycle_gpcw_retire_20260627
+archive_dir: data/archive/lifecycle
+db: smartmoney
+entries:
+  - table: raw_gpcw_financial
+    action: archive
+    reason: "通达信全删: 财务派生源迁 tushare fina_indicator/balancesheet/income (calc_financial_derived); gpcw revenue虚高15x/gross错"
+  - table: raw_gpcw_detail
+    action: archive
+    reason: "通达信全删: signals_v2 D1/D3 gpcw 过滤器已切 (用户'信号重做不用旧的'); 唯一 live 消费方解除"
+  - table: raw_tdx_gpcw_wide
+    action: archive
+    reason: "通达信全删: gpcw 宽字段保留表; 唯一 builder build_tdx_gpcw_auto_features (dead) 已物删"
+  - table: dim_tdx_gpcw_field
+    action: archive
+    reason: "通达信全删: gpcw 字段字典; 唯一 builder dead 已物删"
+  - table: dim_tdx_gpcw_field_semantic
+    action: archive
+    reason: "通达信全删: gpcw 语义字典; dead auto_features 流水线产物, 已物删 builder"
+  - table: mart_tdx_f10_capability_matrix
+    action: archive
+    reason: "通达信全删: F10 能力矩阵; 唯一消费 workbench (_table_exists 守卫优雅降级)"
+  - table: mart_tdx_gpcw_file_manifest
+    action: archive
+    reason: "通达信全删: gpcw 文件 manifest; writer build_fundamental_quarterly (dead, gpcw源已删) RETIRED"
