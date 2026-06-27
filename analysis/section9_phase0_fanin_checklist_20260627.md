@@ -124,3 +124,34 @@
 - **backend/scripts/audit_panel_leakage.py:629** [dim_all_ever_listed] panel leakage 审计脚本不在 map（map 只在意 services）。connect(db, read_only=True) 单库无 reference ATTACH，audit_check_10_survivorship_bias 裸 COUNT FROM dim_all_ever_listed（L629）与 dim_active_a_stock（L635），各自 try/except 吞成 None。 | risk: Stage E 后生存者偏差检的 ever_listed/active 取数失败→None→survivorship 判定逻辑被跳过（panel_stocks < ever_listed*0.95 永不触发）= 审计自废武功假绿，泄漏防线静默失效，违 §4.4 try/except:pass。
 - **backend/scripts/build_macd_state_history.py:63** [dim_trading_calendar] 间接命中：map 只扫了字面表名出现，没追经 helper 的间接访问。此处 smart_conn=get_conn() 后调 latest_completed_trade_date(smart_conn)，该 helper(calendar.py:64) 内部裸 FROM dim_trading_calendar，conn 由调用方提供且无 reference ATTACH。 | risk: Stage E 后 helper 在 get_conn 连接上裸 FROM Catalog Error → macd state history builder 起手即抛 RuntimeError（L67 已有 None 守卫但异常是 Catalog Error 不是 None），构建断。同模式 build_picture_daily.py:64 (get_conn) 与 sync_hs300_benchmark_kline.py:222 (get_business_conn) 均经同一 helper 间接炸。
 - **backend/tests/realdb/test_real_data_consistency.py:49** [dim_trading_calendar] map 完全没纳入 tests/。此测试 _connect_existing(SMART_DB) 真连库后裸 FROM dim_trading_calendar 并调 latest_completed_trade_date(conn)。 | risk: Stage E 后该 realdb 测试在 SMART_DB 连接上裸 FROM → Catalog Error，CI 红。属真连库测试，会卡 commit gate；需同步改成连 reference 或 ATTACH。
+## [2026-06-27 深化] 机制实测裁决 + entity 模型阻抗失配 (执行前必解的设计缺口)
+
+### DuckDB 机制实测 (1.5.2, 像 verified plan 测进程锁)
+| 测 | 结果 | 含义 |
+|---|---|---|
+| 裸 `FROM dim_*` (移reference+ATTACH) | FAIL Catalog Error | 中央 ATTACH **不能**让裸 FROM 解析到 reference |
+| 限定 `reference.dim_*` | OK | 限定名可读 |
+| cross-db JOIN `fact × reference.dim` | OK (需ATTACH) | JOIN 走 ATTACH+限定名 |
+| smartmoney view→reference + 裸FROM | OK 仅ATTACH连接 | view 可行但... |
+| **另开不ATTACH连接读 view** | FAIL 磁盘污染 | **架构师否决 view+ATTACH 理由实测坐实** |
+| search_path 跨库 | FAIL | 不解 |
+
+**机制裁决**: 验证者的"中央 get_conn ATTACH 根治"被实测**证伪** (裸 FROM 不解析 + view 磁盘污染)。**alias-routing/限定名读 reference 是唯一干净路, 73 点改写无捷径**; cross-db JOIN 走 ATTACH+`reference.dim_*`。
+
+### [!] entity 模型阻抗失配 (执行前必解的真设计缺口)
+架构师选"alias-routing via data_access SERVE entity", 但实测 4 dim 不符 entity 模型:
+- **EntitySpec 强制 asof_col + code_col** (spec.py:20/19, PIT+code-centric); 但
+- dim_active/all_ever/listing = **current 快照非 PIT** (set asof_col 会触发 PIT cutoff `<=latest_close` 错滤当前态);
+- **dim_trading_calendar 无 code** (trade_date/is_trading) = 根本不符 code-centric distinct_codes/get(codes) 模型。
+
+→ **dim 读机制设计未决** (3 选项, 影响 SERVE 不变量, 须焦点 session 定):
+- (a) 扩 data_access 支持 current-dim entity 类型 (无 asof PIT + 非 code 形态) — SERVE 模型变更, 最一致;
+- (b) 专用 reference-dim 读/写服务 (connect_ro/rw(reference) 薄 helper, 不进 PIT entity 模型) — 最简但开 SERVE 之外第二读路;
+- (c) 全限定名 `reference.dim_*` + get_conn ATTACH 直读 — 不进 SERVE, 最少抽象但散。
+
+### 还需的 infra (执行前定)
+- **connect_rw(reference)**: resolver 只有 connect_ro (read-only 铁律); dim writer (security_master refresh / build_dim_listing_status) 写 reference 需 RW 路径 = 新 infra + 破 resolver 只读不变量, 须定写侧归属。
+- **读+写耦合**: 每 dim 的读必须见其 writer 输出 → §9 须**逐 dim 整体迁** (全读+writer+DDL+drop 一致), 非逐点; 一个 dim (如 dim_active) 就 ~15 点。
+
+### 结论
+§9 不是机械执行: 有真架构子决策 (dim-读机制 a/b/c + connect_rw 写侧归属) 影响 SERVE 不变量, + 73 点逐 dim 耦合高 blast (whole-app: universe/calendar/scoring/dossier). **执行 = fresh 焦点 session: 先定 dim-读机制设计 → 逐 dim 迁 (Phase0读收口+writer repoint) → Stage C/D → Stage E物删(escalate)**。本 session 已 18+commit, 不鲁莽起。

@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-06-27 15:15:34 CST
+**Snapshot 时间**: 2026-06-27 15:28:35 CST
 
 ## 主线状态
 
@@ -44,13 +44,14 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `18a098b0 doc: goal.md 按现状更新 — 不变量4 DONE + 消 §9 vs edge 旧文档张力 (用户'别被旧文档卡')` |
-| 最近 24h commits | 31 |
-| 未 commit 文件 | 4 |
+| HEAD | `22fd4ec6 doc: §9 Phase0 fan-in 审计 DONE — 73点全清单 + 机制 reframe (四地基#2 gating前置)` |
+| 最近 24h commits | 32 |
+| 未 commit 文件 | 3 |
 
 ### 最近 10 commits
 
 ```
+22fd4ec6 doc: §9 Phase0 fan-in 审计 DONE — 73点全清单 + 机制 reframe (四地基#2 gating前置)
 18a098b0 doc: goal.md 按现状更新 — 不变量4 DONE + 消 §9 vs edge 旧文档张力 (用户'别被旧文档卡')
 49956a5b doc: 通达信全删零残留收尾 DONE — residue ledger + goal/INDEX 同步
 13d105a2 fix: 回滚 C3 source_watermarks kline_daily 过界改动 (修 test 回归)
@@ -60,12 +61,11 @@ c666831d feat: 通达信全删 #15-C1 dead脚本物删 (holders_resolver/migrate
 6ad37441 feat: 通达信全删 #13b tdx_source server_health DB函数整段物删
 1d580327 feat: 通达信全删 #13a financial_client dead sync body 整段物删 (1699→715行)
 3900060e doc: goal.md akshare M4 核心 DONE — 12表物删+消费侧切+db_compact+data_health修 (通达信全删收尾)
-692536a9 fix: data_health 删表必删caller — 跳过deleted状态 + dim_data_asset注册表reality-sync
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**4 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**3 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 
