@@ -120,9 +120,11 @@ tables:
   mart_data_source_failure_queue: infra
   mart_data_source_watermark: infra
   mart_global_data_quality_gate: infra
+  mart_lineage: infra  # 2026-06-27 补声明: schema_marts 定义但未声明致 filter_schema_sql 丢弃CREATE→表不建→mart_data_lineage视图invalid+db_compact卡(消费方 check_panel_lineage/check_registry_promote)
   mart_pipeline_lock: infra
   mart_pipeline_run_manifest: infra
   mart_step_fingerprint: infra
+  mart_strategy_result_registry: infra  # 2026-06-27 补声明: 同上, schema_marts定义但未声明 (策略结果registry)
   # mart_tdx_f10_capability_matrix/mart_tdx_gpcw_file_manifest tag 已删 2026-06-27 (通达信全删 gpcw物删)
   step_status: infra
   sys_schema_version: infra
