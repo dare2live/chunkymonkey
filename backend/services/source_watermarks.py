@@ -54,7 +54,18 @@ CREATE INDEX IF NOT EXISTS idx_source_failure_open
 
 
 DOMAIN_SPECS = [
-    # tdxhub_quote kline_daily spec 已删 2026-06-27 (通达信全删: price_kline_tdxhub 表物删; K线 canonical=tushare v_price_kline_qfq)
+    # NOTE: kline_daily watermark 仍 spec tdxhub_quote(tier1)+akshare(tier3); price_kline_tdxhub 已物删 2026-06-27
+    #   但 watermark refresh 对 table_missing 优雅降级(L430 fallback_reason=table_missing:<t>), 故保留。
+    #   正解 = M3 kline 源迁移时整体 repoint 到 tushare canonical v_price_kline_qfq (非本轮残留清理 scope)。
+    {
+        "data_domain": "kline_daily",
+        "source_name": "tdxhub_quote",
+        "source_tier": 1,
+        "table": "market.price_kline_tdxhub",
+        "date_col": "date",
+        "where": "freq = 'daily' AND adjust = 'qfq'",
+        "parser_version": "tdxhub_qfq_daily",
+    },
     {
         "data_domain": "kline_daily",
         "source_name": "akshare_multi_source",
@@ -63,7 +74,11 @@ DOMAIN_SPECS = [
         "date_col": "date",
         "where": "freq = 'daily' AND adjust = 'qfq'",
         "parser_version": "akshare_fallback_daily",
-        # primary_table fallback refs 已删 2026-06-27 (原指物删 price_kline_tdxhub; akshare price_kline 待 M3 切 tushare)
+        "fallback_reason": "fills keys/dates not yet present in tdxhub qfq daily",
+        "fallback_mode": "fills_primary_gap",
+        "primary_table": "market.price_kline_tdxhub",
+        "primary_date_col": "date",
+        "primary_where": "freq = 'daily' AND adjust = 'qfq'",
         "gap_key_cols": ["code", "date", "freq", "adjust"],
     },
     {
