@@ -75,12 +75,12 @@
 > - **#2 库分区**: 7库DONE; 仅 **§9 reference拆库** 完成它 (high-blast, 与独立 worktree 的 K线测试基础设施 PRICE_KLINE_TDXHUB_DDL 冲突 → 焦点窗口待 worktree 收口)。
 > - **#4 单一真相源**: **leakage洞=0 (Gap1 临界部分 DONE)**; 删源 tail 进行 (M1/M2 K线done; 通达信全删 4/7 物删done; 财务簇=redesign; akshare 22表 M4 待)。
 > **关键真金白银发现重排优先级**: 值比对救出 **gpcw 财务数据本身错** (茅台 gross_margin 8.7% vs 真实/tushare 91%; revenue字段虚高~15x) → 财务迁移**不只是删源, 是修复 alpha 用的财务数据正确性** = 影响任何用财务的 alpha。
-> **调整后优先级 (结合现状)**:
-> 1. **财务迁移 = 最高优先** (修 gpcw 坏数据 + 完成删源#4): rewrite calc_financial_derived 读 tushare (fina_indicator 2023+ 直接含 roe/debt/margin/yoy + balancesheet contract_liab 已回填) 快照→周期模型; 验 dim_financial_latest 7活消费方; escalate "财务打分值变化(向更准)"; 然后物删 gpcw 簇 + 单元5。**单独 live bug: fina_indicator API 不返 update_flag → daily sync 失败, grain 须修 (用现有2023+数据可先做迁移, 扩史/freshness 后续)**。
-> 2. **§9 完成 #2** (焦点窗口, worktree 收口后)。
-> 3. 通达信 6/7 (worktree后) / akshare M4 / 通达信客户端整体退役 = 完成度收尾。
-> 4. **→ 财务数据正确 + 地基硬后 转 edge** (钱路)。
-> **诚实 re-anchor**: 宪法本意是 leakage洞=0 后转 edge 不深挖删源; **但财务数据质量错是真·影响 alpha 的 correctness (非 hygiene)** —— 故财务迁移破例升最高 (修对数据=为 edge 铺路, 不是堆删源细节)。M5血缘/§9 已"够用", 不再深挖。
+> **调整后优先级 (结合现状; 2026-06-27 状态更新)**:
+> 1. **[DONE] 财务迁移 + gpcw 簇物删** (修 gpcw 坏数据 + 完成删源#4 财务部分): calc_financial_derived 重写读 tushare (快照→周期模型, roe←roe_yearly年化 + gross←grossprofit_margin 双真金白银修复 + contract FY-restriction BLOCKER修 [对抗验证 wuxnownvm 抓出, 茅台落FY口径掩盖]); promote 上线 (live dim 5202/fact 74192, gross中位garbage 0.755→0.242); signals_v2 gpcw D1/D3 过滤器切 (用户"信号重做不用旧的"); **gpcw 簇 7表物删** (deletion_record lifecycle_gpcw_retire_20260627; data_layer_audit/moth/config_refs 全绿)。残留低风险 follow-up: financial_client dead sync body + build_fundamental 整段代码物理移除(已标RETIRED dead不zombie) / fina_indicator update_flag grain bug(daily sync, 现有2019-2026数据迁移已成) / tdx_data_need_coverage软引用 / db_compact缩盘。
+> 2. **§9 完成 #2 库分区** (焦点窗口, worktree 收口后) ← **当前主线下一步, 但 high-blast + 与独立 worktree 的 K线测试基础设施 PRICE_KLINE_TDXHUB_DDL 冲突 (blocked, 待 worktree 收口)**。
+> 3. 通达信 6/7 xdxr/server (worktree后) / akshare M4 / 通达信客户端 dead 代码整段物删 = 完成度收尾。
+> 4. **→ 财务数据正确(DONE) + 地基硬后 转 edge** (钱路)。
+> **诚实 re-anchor**: 宪法本意是 leakage洞=0 后转 edge 不深挖删源; **但财务数据质量错是真·影响 alpha 的 correctness (非 hygiene)** —— 故财务迁移破例升最高 (修对数据=为 edge 铺路)，**现已 DONE**。M5血缘/§9 已"够用", 不再深挖。
 
 > **[2026-06-24 架构蓝图驱动: 数据模块顶层重构 — owner=`analysis/data_module_architecture_20260624.md` (= 上方宪法0622的 operationalize)]**
 > 用户决: **数据底座必须做好 + 模块化功能分区, 然后再搭建其他 (档B alpha/strategy)**。架构 = M1-M8 子模块 (按对血缘图一类操作切 owner) + **字典/总指挥 (M5 血缘路由中枢: 声明先行→派生对账→不可绕过闸 = codegraph+moth 融合到数据)** + 变量加工三态 (derived/vendor_precomputed/passthrough=未加工) + 阶段独立化门控前端 (§8) + DB 按写锁域分 (§9)。
