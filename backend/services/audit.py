@@ -965,10 +965,11 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
             )
             """,
         )
+        # 2026-06-27 通达信全删: 财务历史就绪从 raw_gpcw_financial → fact_financial_derived (tushare 周期模型新源)
         fin_history_ready = _scalar(conn, """
             SELECT COUNT(*) FROM (
                 SELECT stock_code
-                FROM raw_gpcw_financial
+                FROM fact_financial_derived
                 GROUP BY stock_code
                 HAVING COUNT(*) >= ?
             )
@@ -979,7 +980,7 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
                 SELECT COUNT(*) FROM (
                     SELECT t.stock_code
                     FROM mart_stock_trend t
-                    LEFT JOIN raw_gpcw_financial r ON r.stock_code = t.stock_code
+                    LEFT JOIN fact_financial_derived r ON r.stock_code = t.stock_code
                     GROUP BY t.stock_code
                     HAVING COUNT(r.report_date) >= ?
                 )
@@ -1554,7 +1555,7 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
                 SELECT COUNT(*) FROM (
                     SELECT t.stock_code
                     FROM mart_stock_trend t
-                    LEFT JOIN raw_gpcw_financial r ON r.stock_code = t.stock_code
+                    LEFT JOIN fact_financial_derived r ON r.stock_code = t.stock_code
                     GROUP BY t.stock_code
                     HAVING COUNT(r.report_date) < ?
                 )

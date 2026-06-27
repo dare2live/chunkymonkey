@@ -239,15 +239,12 @@ CREATE INDEX IF NOT EXISTS idx_mmp_stock_context_date_score ON mart_market_perce
 CREATE INDEX IF NOT EXISTS idx_pipeline_manifest_started ON mart_pipeline_run_manifest(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pipeline_manifest_name_status ON mart_pipeline_run_manifest(pipeline_name, status);
 CREATE INDEX IF NOT EXISTS idx_source_watermark_domain ON mart_data_source_watermark(data_domain, source_tier);
-CREATE INDEX IF NOT EXISTS idx_raw_tdx_gpcw_wide_report ON raw_tdx_gpcw_wide(report_date);
 CREATE INDEX IF NOT EXISTS idx_mart_lineage_output ON mart_lineage(output_table);
 CREATE INDEX IF NOT EXISTS idx_mart_lineage_status ON mart_lineage(last_status, last_run_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mart_model_lifecycle_status ON mart_model_lifecycle(status, deployed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mart_feature_drift_snapshot ON mart_feature_drift(snapshot_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mart_feature_drift_severity ON mart_feature_drift(severity, psi DESC);
 CREATE INDEX IF NOT EXISTS idx_mart_feature_drift_feature_set ON mart_feature_drift(model_id, feature_set_id, snapshot_at DESC);
-CREATE INDEX IF NOT EXISTS idx_tdx_gpcw_auto_quarterly_feature ON fact_tdx_gpcw_auto_feature_quarterly(feature_set_id, feature_name);
-CREATE INDEX IF NOT EXISTS idx_tdx_gpcw_auto_quarterly_asof ON fact_tdx_gpcw_auto_feature_quarterly(feature_set_id, stock_code, available_date);
 CREATE INDEX IF NOT EXISTS idx_feature_candidate_date ON fact_feature_panel_candidate(feature_set_id, date);
 ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS close REAL;
 ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_5d REAL;

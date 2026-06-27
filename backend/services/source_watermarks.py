@@ -87,14 +87,7 @@ DOMAIN_SPECS = [
         "raw_hash_col": "raw_hash",
         "parser_version_col": None,
     },
-    {
-        "data_domain": "financial_gpcw_8q",
-        "source_name": "tdxhub_gpcw",
-        "source_tier": 1,
-        "table": "raw_gpcw_detail",
-        "date_col": "report_date",
-        "parser_version": "tdxhub_gpcw",
-    },
+    # financial_gpcw_8q watermark 条目已删 2026-06-27 (通达信全删 gpcw物删; 财务新鲜度走 tushare registry + update_watermark_sla fact_financial_derived)
     {
         "data_domain": "xdxr",
         "source_name": "tdxhub_xdxr",
