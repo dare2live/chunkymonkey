@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-06-26 19:22:36 CST
+**Snapshot 时间**: 2026-06-27 12:33:53 CST
 
 ## 主线状态
 
@@ -44,28 +44,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `dbfc665f doc: 通达信全删 单元4 财务迁移 shadow验证DONE + 对抗验证字段映射(交接)` |
-| 最近 24h commits | 23 |
-| 未 commit 文件 | 1 |
+| HEAD | `692536a9 fix: data_health 删表必删caller — 跳过deleted状态 + dim_data_asset注册表reality-sync` |
+| 最近 24h commits | 28 |
+| 未 commit 文件 | 2 |
 
 ### 最近 10 commits
 
 ```
-dbfc665f doc: 通达信全删 单元4 财务迁移 shadow验证DONE + 对抗验证字段映射(交接)
-6282c023 doc: goal.md architect re-anchor — 四地基对账+调整计划(财务数据质量发现重排优先级)
-c1b12af7 feat: 通达信全删 单元4 值比对 — balancesheet回填DONE + 救出gpcw财务数据质量问题
-612ea145 feat: 通达信全删 单元4 财务迁移 — 注册 balancesheet 域 + 值比对prep揭示模型重设计
-bf65a9d5 doc: 通达信全删 单元4/5 财务迁移 spec + goal 不变量4 删源进度对齐
-0d1b5e37 doc: 通达信全删 plan 更新 — 单元1/2/3 DONE(4表物删) + 单元6/7纠缠发现
-5f33746d feat: 通达信全删 Batch2 — 物删 增减持意向 fact_shareholder_plan_tdx_f10 (单元1, 用户拍板覆盖归档)
-7125422d feat: 通达信全删 Batch1 — 物删 户数+十大股东raw 3表 (单元2/3, 用户拍板)
-11ae3d31 doc: 通达信全删迁移计划 (对抗验证+用户决议) — 7单元授权物删, 逐单元checklist
-8d156979 doc: goal.md Gap1 PIT 审计 DONE 0泄漏 — 不变量4 leakage洞=0 实质收口
+692536a9 fix: data_health 删表必删caller — 跳过deleted状态 + dim_data_asset注册表reality-sync
+3f015bbb feat: 通达信全删 M4 akshare external_attention — 退役+物删2表 (用户决cut)
+ab2e5a6e feat: 通达信全删 M4 akshare event/panel — 退役3 builder+物删3表 (用户决cut)
+bf0de44a feat: 通达信全删 M4 akshare capital — 源头退役+物删7表 (用户决cut)
+17ca74dd feat: 通达信全删 M4 akshare capital — 切消费侧依赖(scoring quality_capital→0 / signals_v2 D5解禁门→不过滤)
+d367b59e feat: 全清 — 退役 build_fundamental_quarterly + 物删 fact_fundamental_quarterly (gpcw派生L1)
+7d4dcc38 fix: 全清 — 修 mart-lineage 子系统独立bug (解db_compact阻塞 + 2 pre-existing红测试转绿)
+5874e391 feat: 通达信全删 单元6/7 xdxr/server 退役 — 物删2表 (通达信7数据单元全完成)
+e4ecdcda fix: 修 main 上 4 红 K线测试 + 揭真生产 bug (price_kline_qfq_tushare schema-init 缺失)
+a866f7ec doc: 清理 goal.md/plan worktree 谬误 — §9非worktree-blocked + 单元6/7与main上4红K线测试真纠缠 (用户纠错)
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**1 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**2 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 
