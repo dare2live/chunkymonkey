@@ -1,7 +1,8 @@
 """① 获取 (Acquire) — 纯采集: 只下载/同步外部 vendor 数据进 raw/L0, 不计算。
 
 旧 daily_update.sh ACQUIRE 阶段 Step 2 ~ 2.95:
-  HS300 K线 / xdxr 热备 / LHB / institution_survey / external_attention / profit_forecast / sync_runner drain。
+  HS300 K线 / xdxr 热备 / LHB / institution_survey / external_attention / sync_runner drain。
+  (profit_forecast 步 2026-06-27 退役: 通达信全删 M4 akshare 退役, 0 live 读者)
 skip_sync=1 跳整个阶段; dry=1 只跑只读不写。
 """
 from __future__ import annotations
@@ -46,11 +47,8 @@ def run_acquire(ctx: PipelineContext) -> None:
     # Step 2k: external_attention 快照 (累积 PIT 关注度/调研; 反例 14 天断流无人知)
     ctx.step(_sync_external_attention, degraded_msg="external_attention sync 失败")
 
-    # Step 2l: profit_forecast EPS 快照 (景气度 immutable PIT)
-    import datetime as _dt
-    snap = f"{ctx.date[:4]}-{ctx.date[4:6]}-{ctx.date[6:]}"
-    ctx.run_script("backend/scripts/ingest_profit_forecast_snapshot.py",
-                   ["--snapshot-date", snap], degraded_msg="profit_forecast sync 失败")
+    # Step 2l (profit_forecast EPS 快照) 已退役 2026-06-27 (通达信全删 M4: akshare 退役, 用户决cut):
+    #   raw_profit_forecast_snapshot_daily 0 live 读者 (snapshot 设计防leakage但无消费); 档B 若需景气度走 tushare forecast/report_rc。
 
     # Step 2.95: sync_registry 域日历 gap 重放 = 增量 + 修洞统一机制 (终败/漏跑/历史空洞)
     _sync_registry_drain(ctx)

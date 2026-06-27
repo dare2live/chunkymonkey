@@ -39,7 +39,7 @@ allowed_raw_connect_paths:
   - scripts/audit_pit_coverage.py
   - scripts/audit_storage_payloads.py
   - scripts/audit_survivorship_gate.py
-  - scripts/backfill_capital_flow_pit.py
+  # backfill_capital_flow_pit.py 已删 (死链: fact_capital_flow_pit_daily reset 删 + upstream executive_trade 物删)
   - scripts/backfill_financial_pit.py
   - scripts/backfill_risk_factors_history.py
   - scripts/backfill_sector_momentum_history.py
@@ -75,7 +75,7 @@ allowed_raw_connect_paths:
   - scripts/formula_limit_up_pullback.py
   - scripts/import_model_train_log_artifact.py
   - scripts/import_phase5_remote_predictions.py
-  - scripts/ingest_profit_forecast_snapshot.py
+  # ingest_profit_forecast_snapshot.py 已删 2026-06-27 (通达信全删 M4: akshare 盈利预测快照退役)
   - scripts/migrate_holders_to_tdxhub.py
   - scripts/model_monitor_dashboard.py
   - scripts/monitor_optuna_v4.py

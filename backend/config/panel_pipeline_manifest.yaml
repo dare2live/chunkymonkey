@@ -25,12 +25,8 @@ sources:
   # fact_alpha158_panel: 移除 (2026-06-14 地基-reset 收口) — alpha158 不再是日更管线 (特征层,
   # 旧 panel PIT 不可信已删, daily_update Step 2c 重建循环已切)。重算路径=manual build_alpha158_duck.py
   # + pit_guard 核证, 见 database_manifest alpha158 (planned) + model_validation_reliability_design。
-  fact_capital_flow_pit_daily:
-    db: smartmoney.duckdb
-    pit_field: trade_date
-    upstream: [fact_lhb_event, fact_executive_trade_event]
-    sync_script: backend/scripts/backfill_capital_flow_pit.py
-    calendar_gate: true
+  # fact_capital_flow_pit_daily 条目已删 2026-06-27 (死链: 表 reset 已删不存在 + upstream fact_executive_trade_event
+  #   随通达信全删 M4 物删 + sync_script backfill_capital_flow_pit.py 已不存在; 档B 若重建从 tushare 重设计)。
   fact_lhb_event:
     db: smartmoney.duckdb
     pit_field: trade_date

@@ -166,22 +166,36 @@ groups:
     expected_update_frequency: event_driven
     null_policy: encode_no_event_as_zero_or_days_since
     coverage_universe: active_a_stock_trading_days
-    notes: Event-driven data such as LHB and investigations are auxiliary capital-attention signals; daily panel values should be encoded as 0/count/days_since, not NULL.
+    notes: Event-driven data such as LHB and investigations are auxiliary capital-attention signals; daily panel values should be encoded as 0/count/days_since, not NULL. 2026-06-27 通达信全删 M4 — akshare 源 fact_executive_trade_event/fact_dzjy_event/fact_jgdy_event 物删 (用户决cut); exec_buy_*/dzjy/jgdy 特征转 research_only_source_gap, 档B 从 tushare(stk_holdertrade/block_trade)重接。inst_event/lhb 特征源 (fact_institution_event/fact_lhb_event) 保留。
     pit_release_lag_days: 0
     source_tables:
       - smartmoney.fact_institution_event
-      - smartmoney.fact_executive_trade_event
       - smartmoney.fact_lhb_event
     features:
       - inst_event_count_30d
       - inst_event_count_60d
-      - exec_buy_count_90d
-      - exec_buy_ge1_count_90d
+      - exec_buy_count_90d:
+          production_ready: false
+          feature_role: research_only_source_gap
+          null_policy: excluded_until_backfilled
+      - exec_buy_ge1_count_90d:
+          production_ready: false
+          feature_role: research_only_source_gap
+          null_policy: excluded_until_backfilled
       - lhb_inst_buy_count_30d
       - lhb_inst_buy_count_60d
-      - jgdy_count_60d
-      - dzjy_count_60d
-      - days_since_exec_buy
+      - jgdy_count_60d:
+          production_ready: false
+          feature_role: research_only_source_gap
+          null_policy: excluded_until_backfilled
+      - dzjy_count_60d:
+          production_ready: false
+          feature_role: research_only_source_gap
+          null_policy: excluded_until_backfilled
+      - days_since_exec_buy:
+          production_ready: false
+          feature_role: research_only_source_gap
+          null_policy: excluded_until_backfilled
       - days_since_lhb
 
   fundamentals:

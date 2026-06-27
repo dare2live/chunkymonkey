@@ -55,7 +55,7 @@ tables:
   # raw_gpcw_detail/raw_gpcw_financial/raw_tdx_gpcw_wide tag 已删 2026-06-27 (通达信全删 gpcw物删)
   raw_institution_surveys: L0_source
   raw_lhb_daily: L0_source
-  raw_profit_forecast_snapshot_daily: L0_source
+  # raw_profit_forecast_snapshot_daily tag 已删 2026-06-27 (通达信全删 M4: akshare 盈利预测快照物删, 0 live读者)
   raw_qfii_holding_quarterly: L0_source
   # raw_tdx_industry_file_snapshot tag 已删 2026-06-23 (东财迁移Stage④ 物删)
   dim_active_a_stock: L1_foundation
@@ -81,8 +81,7 @@ tables:
   dim_trading_rule: L1_foundation
   dim_trading_session: L1_foundation
   fact_common_major_holder_stock: L1_foundation
-  fact_dzjy_event: L1_foundation
-  fact_executive_trade_event: L1_foundation
+  # fact_dzjy_event/fact_executive_trade_event tag 已删 2026-06-27 (通达信全删 M4: akshare event 表物删, 用户决cut)
   fact_financial_derived: L1_foundation
   # fact_fundamental_quarterly tag 已删 2026-06-27 (通达信全删: gpcw派生表 builder build_fundamental_quarterly 退役物删, 源raw_gpcw_*已删不可重建, 0 live reader)
   fact_institution_event: L1_foundation

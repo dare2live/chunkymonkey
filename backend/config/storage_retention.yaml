@@ -171,15 +171,9 @@ protected_artifact_tables:
     reason: per-stock holding horizon selection is recommendation evidence
 
 table_inventory:
-    db_alias: smartmoney
-    truth_source: tdx_f10_raw_holder_snapshot
-    consumers:
-      - holder_replay
-      - holder_count_pit_lineage
-      - data_health_source_audit
-    compaction_policy: protect_no_compaction_without_verified_copy
-    retention_action: protect_replayability_before_any_retention_change
-    reason: Large F10 raw-text table; needed for raw_hash replay, PIT lineage, and canonical holder fact explainability.
+  # raw_tdx_f10_holder_research 条目已删 2026-06-27 (修 pre-existing YAML 损坏: 通达信全删 tdx F10 退役时 botched 删除
+  #   只删了 `- table:`+classification 头行留下孤儿 body, 致 table_inventory 首项缺 list 头 → YAML 解析在 line 183 炸;
+  #   该表实测已物删=stale, 整条移除既修语法又清残留)。
   - table: dim_stock_tdx_industry_history
     classification: pit_dimension_snapshot
     owner: tdx_industry_client
@@ -192,18 +186,8 @@ table_inventory:
     compaction_policy: protect_no_compaction_without_verified_copy
     retention_action: protect_pit_as_of_history
     reason: PIT industry-classification history for as-of joins; append-on-change keeps it bounded (~67k rows across the active universe). Needed for survivorship-clean sector membership at decision time, not a cache cleanup candidate.
-  - table: raw_profit_forecast_snapshot_daily
-    classification: append_only_source_snapshot
-    owner: ingest_profit_forecast_snapshot
-    db_alias: smartmoney
-    truth_source: tushare_profit_forecast_daily_snapshot
-    consumers:
-      - forecast_upside_live_mart
-      - earnings_surprise_factor
-      - data_health_source_audit
-    compaction_policy: protect_no_compaction_without_verified_copy
-    retention_action: protect_pit_forecast_lineage
-    reason: Append-only daily analyst-forecast snapshots; PIT anchor is snapshot_date. Small today; retained for PIT as-of forecast joins. If growth becomes unbounded, add a rolling snapshot_date policy before any pruning.
+  # raw_profit_forecast_snapshot_daily 已物删 2026-06-27 (通达信全删 M4: akshare 盈利预测快照退役, 用户决cut;
+  #   声称 consumers[forecast_upside_live_mart/earnings_surprise_factor] code 中不存在=死, 0 live 读者; 档B 若需景气度走 tushare forecast/report_rc)。
   - table: fact_stock_attention_snapshot
     classification: append_only_source_snapshot
     owner: external_attention

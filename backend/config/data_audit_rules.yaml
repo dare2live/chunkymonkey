@@ -49,9 +49,7 @@ smartmoney_freshness:
     - table: fact_stock_attention_snapshot
       date_column: snapshot_date
       max_lag_days: 5
-    - table: raw_profit_forecast_snapshot_daily
-      date_column: snapshot_date
-      max_lag_days: 5
+    # raw_profit_forecast_snapshot_daily 规则已删 2026-06-27 (通达信全删 M4: akshare 盈利预测快照物删)
 
 cross_table_consistency:
   sample_limit: 5

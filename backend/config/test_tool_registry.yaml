@@ -1127,18 +1127,8 @@ tools:
     replacement: architecture inventory plus lineage/read-path audit before deleting deprecated data assets
     last_verified: "2026-05-27"
 
-  - id: executive_trade_events_contract_tests
-    paths:
-      - backend/tests/test_build_executive_trade_events.py
-    owner_module: executive_trade_events
-    scope: contract
-    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_build_executive_trade_events.py
-    status: active
-    evidence_level: trusted_with_scope
-    truth_source: local AkShare-style executive trade rows plus in-memory DuckDB raw/fact writer fixtures
-    risk_reason: validates normalization, aggregation, forward-return labeling, and writer mechanics only; it does not prove live AkShare availability, PIT signal usability, or production event freshness
-    replacement: event-source freshness, timestamp/PIT audit, and measured event-study evidence before alpha use
-    last_verified: "2026-05-27"
+  # executive_trade_events_contract_tests (test_build_executive_trade_events.py) 已退役 2026-06-27
+  #   (通达信全删 M4: akshare executive_trade builder+test 物删, 用户决cut)
 
   - id: candidate_feature_set_gc_contract_tests
     paths:
@@ -1496,18 +1486,8 @@ tools:
     replacement: source coverage, data_audit freshness, and profile lineage evidence before production institution-survey claims
     last_verified: "2026-05-27"
 
-  - id: akshare_panel_contract_tests
-    paths:
-      - backend/tests/test_build_akshare_panel.py
-    owner_module: data_sources.akshare
-    scope: unit
-    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_build_akshare_panel.py
-    status: active
-    evidence_level: trusted_with_scope
-    truth_source: local AkShare panel builder fixtures
-    risk_reason: verifies panel-building mechanics only; does not prove live AkShare availability or source freshness
-    replacement: data-source coverage audit and post-sync data_audit freshness checks
-    last_verified: "2026-05-27"
+  # akshare_panel_contract_tests (test_build_akshare_panel.py) 已退役 2026-06-27
+  #   (通达信全删 M4: akshare panel builder+test 物删, 用户决cut)
 
   - id: akshare_source_capability_contract_tests
     paths:

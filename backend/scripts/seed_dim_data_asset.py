@@ -365,8 +365,8 @@ EXTRA_DEPRECATED_ASSET_BY_TABLE = {
         "deprecated_reason": "2026-06-24 十大流通股东主源切东财妙想 aif10, tdx_f10 fact 行已物删; 本 raw 表暂留作恢复网, 物理退役 pending (updater 路由解耦)", "replacement_table": "fact_top10_holder_period", "quality_gate_level": "monitor_only"},
     "dim_capital_behavior_latest": {"purpose": "资本行为 (akshare 分红/回购/解禁, 已物删 2026-06-27)", "deprecation_status": "deleted",
         "deprecated_reason": "2026-06-27 通达信全删 M4: akshare 资本运作 7表+writer 物删 (用户决cut不迁移); 消费侧 scoring/signals_v2 已切; 档B 若需从 tushare dividend/repurchase/share_float 重接", "replacement_table": "raw_tushare_dividend", "quality_gate_level": "monitor_only"},
-    "raw_profit_forecast_snapshot_daily": {"purpose": "盈利预测快照 (stale)", "deprecation_status": "deprecated",
-        "deprecated_reason": "盈利预测切 tushare forecast/report_rc", "replacement_table": "raw_tushare_forecast", "quality_gate_level": "monitor_only"},
+    "raw_profit_forecast_snapshot_daily": {"purpose": "盈利预测快照 (akshare, 已物删 2026-06-27)", "deprecation_status": "deleted",
+        "deprecated_reason": "2026-06-27 通达信全删 M4: akshare 盈利预测快照物删 (用户决cut); 0 live 读者(声称consumer code中不存在); 档B 若需景气度走 tushare forecast/report_rc", "replacement_table": "raw_tushare_forecast", "quality_gate_level": "monitor_only"},
 }
 
 DEPRECATED_ASSET_BY_TABLE = EXTRA_DEPRECATED_ASSET_BY_TABLE

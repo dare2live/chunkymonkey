@@ -41,9 +41,7 @@ FACT_VERSIONS = {
     "fact_institution_event": "v2",          # 机构事件 (公告日 source lineage)
     "fact_chain_alpha_truth": "v1",          # 链路 alpha 真值
     "fact_feature_panel": "v4",              # 特征面板 (含 follow_net_return_* 标签 + K线来源血缘)
-    "fact_dzjy_event": "v1",                 # 大宗交易事件
-    "fact_executive_trade_event": "v1",      # 高管交易事件
-    "fact_jgdy_event": "v1",                 # 机构调研事件
+    # fact_dzjy_event/fact_executive_trade_event/fact_jgdy_event 版本已删 2026-06-27 (通达信全删 M4: akshare event 表物删, 用户决cut)
     "fact_lhb_event": "v1",                  # 龙虎榜事件
     "fact_financial_derived": "v1",          # 财务派生
     # fact_fundamental_quarterly version 已删 2026-06-27 (通达信全删: gpcw派生表退役物删)

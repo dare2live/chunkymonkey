@@ -166,33 +166,11 @@ CLIENTS: list[ClientSpec] = [
         ],
         sync_step_id="sync_kline",
     ),
-    ClientSpec(
-        client_id="akshare_panel_client",
-        module="scripts.build_akshare_panel",
-        description="akshare 事件与日度面板",
-        upstream_source="akshare:stock_jgdy_tj_em/stock_dzjy_mrmx/stock_hsgt_hold_stock_em",
-        source_tier=3,
-        fallback_chain=["akshare"],
-        writes=[
-            TableWriteSpec("fact_jgdy_event", "机构调研事件流", "event", 48),
-            TableWriteSpec("fact_dzjy_event", "大宗交易事件流", "event", 48),
-            TableWriteSpec("fact_hot_rank_daily", "股票热度日度面板", "t+0", 24),
-            TableWriteSpec("fact_research_report", "个股研报事件流", "event", 48),
-            TableWriteSpec("fact_profit_forecast_daily", "分析师盈利预测快照", "t+0", 24),
-        ],
-    ),
-    ClientSpec(
-        client_id="executive_trade_client",
-        module="scripts.build_executive_trade_events",
-        description="东方财富高管/股东增减持事件",
-        upstream_source="akshare:stock_ggcg_em",
-        source_tier=3,
-        fallback_chain=["akshare"],
-        writes=[
-            TableWriteSpec("raw_executive_trade", "高管/股东增减持原始记录", "t+1", 48),
-            TableWriteSpec("fact_executive_trade_event", "高管/股东增减持聚合事件", "event", 48),
-        ],
-    ),
+    # akshare_panel_client (build_akshare_panel: jgdy/dzjy/hot_rank/research_report/profit_forecast) +
+    # executive_trade_client (build_executive_trade_events: raw_executive_trade/fact_executive_trade_event)
+    # 已退役 2026-06-27 (通达信全删 M4: akshare event 表退役, 用户决cut不迁移):
+    #   builder 非 live (不在 pipeline DAG); 喂 panel 的 fact_feature_panel 非 live built; 下游 fact_capital_flow_pit_daily 已 reset 删=死链。
+    #   feature_registry event_activity 的 akshare 源特征 (exec_buy_*/dzjy/jgdy) 标 research_only_source_gap, 档B 从 tushare(block_trade/stk_holdertrade)重接。
 ]
 
 
