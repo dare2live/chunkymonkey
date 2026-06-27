@@ -809,10 +809,8 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
         from services.financial_client import FIN_HISTORY_TARGET_ROWS
     except Exception:
         FIN_HISTORY_TARGET_ROWS = 8
-    try:
-        fin_raw_count = _scalar(conn, "SELECT COUNT(*) FROM raw_gpcw_financial")
-    except Exception:
-        fin_raw_count = 0
+    # raw_gpcw_financial 已物删 2026-06-27 (财务迁 tushare 周期模型); raw 层计数失去意义, 健康看 derived/latest。
+    fin_raw_count = 0
     try:
         fin_derived_count = _scalar(conn, "SELECT COUNT(*) FROM fact_financial_derived")
         fin_latest_count = _scalar(conn, "SELECT COUNT(*) FROM dim_financial_latest")

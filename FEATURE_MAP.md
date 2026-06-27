@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-27 12:31
+> Snapshot: 2026-06-27 12:52
 
 ## 1. 入口面
 
@@ -97,7 +97,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 127 张 | 单 writer 77 | 多 writer 50 | 动态表名写点 37 处 (20 文件)
+统计: 表 126 张 | 单 writer 76 | 多 writer 50 | 动态表名写点 37 处 (20 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -255,7 +255,6 @@
 | mart_tdx_server_health | backend/services/tdx_source.py |
 | mart_today_signal_cache | backend/services/signals_v2.py |
 | mart_today_signal_cache_signal | backend/services/signals_v2.py |
-| raw_gpcw_financial | backend/services/financial_client.py |
 | raw_institution_surveys | backend/services/institution_survey_client.py |
 | raw_lhb_daily | backend/services/lhb_client.py |
 | raw_org_holding_aif10 | backend/services/org_holding_aif10.py |
@@ -265,7 +264,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,715 | calls 边 56,862 | imports 边 5,544 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 8,683 | calls 边 56,706 | imports 边 5,544 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -311,17 +310,17 @@
 | backend/services/data_quality.py | 3836 |
 | backend/services/scoring.py | 2687 |
 | backend/services/signals_v2.py | 2134 |
-| backend/services/financial_client.py | 1699 |
-| backend/services/audit.py | 1570 |
+| backend/services/audit.py | 1568 |
 | backend/scripts/audit_delivery_readiness.py | 1226 |
 | backend/scripts/seed_dim_data_asset.py | 1210 |
 | backend/services/storage_retention.py | 1061 |
 | backend/services/etf_grid_engine.py | 1038 |
 | backend/services/return_engine.py | 1027 |
+| backend/services/schema_marts.py | 1004 |
 
 ## 5. 概览
 
 - chunkyctl 子命令 10 | launchd 任务 1 | router 12 (端点 56)
 - sync_registry 数据域 44
-- 产表 127 (多 writer 50)
+- 产表 126 (多 writer 50)
 
