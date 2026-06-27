@@ -19,7 +19,6 @@ from services.market_read import (
     CANONICAL_KLINE_QFQ_VIEW_DDL,
     DEFAULT_KLINE_DAILY_QFQ_COLUMNS,
     KLINE_DAILY_QFQ_POLICY,
-    PRICE_KLINE_TDXHUB_DDL,
     canonical_kline_daily_qfq_sql,
     get_all_sync_states,
     get_all_xdxr_sync_states,

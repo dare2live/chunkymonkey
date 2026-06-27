@@ -90,24 +90,9 @@ CREATE TABLE IF NOT EXISTS price_import_batch (
 
 
 # 2026-06-23 M3: price_kline_tdxhub (股票日线表) DDL 已移除 (表物删 5.3M行)。
-# 根因 §4.5 重建循环: init_market_db→ensure_market_schema 若保留 CREATE IF NOT EXISTS 会重建空表。
-# serving K线真相源 = price_kline_qfq_tushare (build_price_kline_qfq_tushare, daily_update Step 2.96)。
-# 仅保留 adjustment_event (xdxr 除权事件热备 §4.3); 复权质量裁决见下方 v_price_kline_qfq 注释。
-PRICE_KLINE_TDXHUB_DDL = """
-CREATE TABLE IF NOT EXISTS price_kline_tdxhub_adjustment_event (
-    code          TEXT NOT NULL,
-    event_date    TEXT NOT NULL,
-    event_hash    TEXT NOT NULL,
-    adjust_factor REAL NOT NULL,
-    prev_close    REAL,
-    source        TEXT,
-    batch_id      TEXT,
-    applied_at    TEXT DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (code, event_date, event_hash)
-);
-CREATE INDEX IF NOT EXISTS idx_pkt_adj_code_date
-    ON price_kline_tdxhub_adjustment_event(code, event_date);
-"""
+# 2026-06-27 通达信全删 单元6: price_kline_tdxhub_adjustment_event (xdxr 除权热备) DDL 亦移除 (表物删 735行);
+#   builder build_price_kline_tdxhub.py 已退役物删 (0 caller, manifest 已 repoint qfq_tushare); serving K线真相源 = price_kline_qfq_tushare。
+# PRICE_KLINE_TDXHUB_DDL 常量随之删 (importers market_db/market_read/mini_market/test 同步清)。
 
 
 # v_price_kline_qfq 切 tushare-only (2026-06-22 切主源根因修复, 真相源唯一):
@@ -173,6 +158,5 @@ SELECT * FROM primary_rows
 def ensure_market_schema(conn) -> None:
     """Create or refresh market.duckdb core tables, TDXHub tables, and canonical view."""
     conn.executescript(MARKET_CORE_DDL)
-    conn.executescript(PRICE_KLINE_TDXHUB_DDL)
     conn.executescript(PRICE_KLINE_QFQ_TUSHARE_DDL)  # 须在视图前 (v_price_kline_qfq FROM 此表)
     conn.executescript(CANONICAL_KLINE_QFQ_VIEW_DDL)

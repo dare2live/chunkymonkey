@@ -169,7 +169,7 @@ EXTRA_FRESHNESS_BY_TABLE = {
     "mart_temporal_research_panel": ("on-demand", 24 * 30),
     "mart_tdx_f10_source_date_section_audit": ("on-demand", 24 * 30),
     "mart_architecture_cleanup_plan": ("on-demand", 24 * 30),
-    "mart_tdx_server_health": ("on-demand", 24 * 30),
+    # mart_tdx_server_health seed 已删 2026-06-27 (通达信全删 单元7 物删)
     "mart_temporal_research_panel_quality": ("on-demand", 24 * 30),
     # mart_tdx_gpcw_file_manifest seed 已删 2026-06-27 (通达信全删 gpcw物删)
     "fact_technical_trigger": ("event", 48),

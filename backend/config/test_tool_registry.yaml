@@ -381,12 +381,11 @@ tools:
   - id: dim_active_data_sync_enumeration_tests
     paths:
       - backend/tests/test_block_client.py
-      - backend/tests/test_build_price_kline_tdxhub.py
       - backend/tests/test_financial_client.py
       - backend/tests/test_tdx_kline_fetch_benchmark.py
     owner_module: data_sync
     scope: unit
-    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_block_client.py backend/tests/test_build_price_kline_tdxhub.py backend/tests/test_financial_client.py backend/tests/test_tdx_kline_fetch_benchmark.py
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_block_client.py backend/tests/test_financial_client.py backend/tests/test_tdx_kline_fetch_benchmark.py
     status: active
     evidence_level: trusted_with_scope
     truth_source: data-sync enumeration/cache fixtures; K-line sync output remains the trading truth source

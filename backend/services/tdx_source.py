@@ -34,6 +34,11 @@ DEFAULT_TDX_SERVERS: tuple[tuple[str, int], ...] = (
     ("116.205.163.254", 7709),
 )
 
+# [RETIRED 2026-06-27 通达信全删 单元7] mart_tdx_server_health 表(持久化)已物删; 其 DB 持久化函数
+# (TDX_SERVER_HEALTH_DDL / ensure_tdx_server_health_table / load_tdx_server_health / record_tdx_server_*)
+# 唯一 caller = build_price_kline_tdxhub.py (已退役物删) → 全 dead (0 caller, ensure 仅 builder 调故不会僵尸重建表)。
+# 保留不删因: 与下方 live in-memory circuit-breaker (_server_health/_effective_server_health/_cap_* 等,
+# call_tdx_quotes_with_retry 用) 共享 helper, surgically 删有炸连接池风险。整段移除=后续低风险 follow-up。
 TDX_SERVER_HEALTH_DDL = """
 CREATE TABLE IF NOT EXISTS mart_tdx_server_health (
     server_host TEXT NOT NULL,

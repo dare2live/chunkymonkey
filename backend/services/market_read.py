@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Iterable, Optional
 
-from services.market_schema import CANONICAL_KLINE_QFQ_VIEW_DDL, PRICE_KLINE_TDXHUB_DDL
+from services.market_schema import CANONICAL_KLINE_QFQ_VIEW_DDL
 from services.source_policy import get_capability_policy
 
 
@@ -158,7 +158,6 @@ __all__ = [
     "CANONICAL_KLINE_QFQ_VIEW_DDL",
     "DEFAULT_KLINE_DAILY_QFQ_COLUMNS",
     "KLINE_DAILY_QFQ_POLICY",
-    "PRICE_KLINE_TDXHUB_DDL",
     "canonical_kline_daily_qfq_sql",
     "get_all_sync_states",
     "get_all_xdxr_sync_states",

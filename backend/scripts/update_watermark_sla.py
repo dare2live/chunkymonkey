@@ -62,10 +62,7 @@ DATA_SOURCE_QUERIES = {
         "db": "market",
         "query": "SELECT MAX(CAST(date AS VARCHAR)) FROM v_price_kline_qfq WHERE adjust='qfq' AND freq='daily'",
     },
-    "xdxr": {
-        "db": "market",
-        "query": "SELECT MAX(CAST(event_date AS VARCHAR)) FROM price_kline_tdxhub_adjustment_event",
-    },
+    # xdxr SLA 条目已删 (2026-06-27 通达信全删 单元6: price_kline_tdxhub_adjustment_event 物删; 复权走 tushare adj_factor)
     "financial_gpcw_8q": {
         "db": "smartmoney",
         # 2026-06-22 P0-5: fact_financial_pit_daily 2026-06-14 reset 删除 → query 抛 CatalogException

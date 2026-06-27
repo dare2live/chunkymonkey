@@ -3,11 +3,10 @@ import json
 from conftest import duck_mem
 from services.market_db import (
     CANONICAL_KLINE_QFQ_VIEW_DDL,
-    PRICE_KLINE_TDXHUB_DDL,
     canonical_kline_daily_qfq_sql,
     get_canonical_kline_qfq_relation,
 )
-# upsert_price_kline_tdxhub_rows import 已删 (2026-06-23 M3 退役该写入路径; 测它的 2 测试已删)
+# PRICE_KLINE_TDXHUB_DDL/upsert_price_kline_tdxhub_rows import 已删 (M3+单元6 退役 tdxhub K线写入路径+adjustment_event物删)
 
 
 # akshare/旧 price_kline 表 (2026-06-22 起不再进 v_price_kline_qfq, 仅作 HS300 指数 allowlist)
@@ -49,7 +48,6 @@ CREATE TABLE price_kline_qfq_tushare (
 
 def _setup(conn):
     conn.executescript(PRICE_KLINE_DDL)
-    conn.executescript(PRICE_KLINE_TDXHUB_DDL)
     conn.executescript(PRICE_KLINE_QFQ_TUSHARE_DDL)
     conn.executescript(CANONICAL_KLINE_QFQ_VIEW_DDL)
 

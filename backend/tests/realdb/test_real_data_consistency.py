@@ -130,22 +130,4 @@ def test_real_fallback_rows_do_not_overlap_existing_primary_keys():
         market.close()
 
 
-def test_real_xdxr_adjustment_events_are_unique():
-    market = _connect_existing(MARKET_DB)
-    try:
-        assert _table_exists(market, "price_kline_tdxhub_adjustment_event")
-        duplicate_events = market.execute(
-            """
-            SELECT COUNT(*)
-              FROM (
-                SELECT code, event_date, event_hash, COUNT(*) AS n
-                  FROM price_kline_tdxhub_adjustment_event
-                 GROUP BY code, event_date, event_hash
-                HAVING COUNT(*) > 1
-              )
-            """
-        ).fetchone()[0]
-
-        assert duplicate_events == 0
-    finally:
-        market.close()
+# test_real_xdxr_adjustment_events_are_unique 已删 (2026-06-27 通达信全删 单元6: price_kline_tdxhub_adjustment_event 物删)
