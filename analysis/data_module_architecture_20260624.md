@@ -4,31 +4,35 @@
 > 产出: 4 视角 design panel (流水线分层/声明式registry/域纵切/血缘图为脊) → 对抗评分+综合 (wf_0ac4f5b0). 全文综合见本文件.
 > 北极星: 用户 2026-06-24 定调 — "数据模块的 codegraph + 路由器 + 字典 + 总指挥, 增删改先过中枢再干活" + "变量加工 raw→计算→变量→消费, 无加工标未加工" + "分工合理/边界明确/可维护/可扩展/可追踪".
 
-## 实施进度对账 (2026-06-26 — architect re-anchor, 用户"对照蓝图和现状")
+## 实施进度对账 (2026-06-27 — §9 完成 + 全量核对 workflow wajh30veq 22项逐条核真相源)
+
+> 2026-06-27 更新: §9 Stage E 物删完成 = 四地基全 DONE; 全量核对 (22项查代码/DB/moth/registry/测试, 不信文档自报) 定状态如下。
 
 | 组件 | 蓝图定位 | 现状 | 证据 |
 |---|---|---|---|
-| M1 ACQUIRE / M2 CLEAN | 保留+收编 | [DONE] 在用 (M1 raw / M2 qfq+data_audit 7/7) | M2 ETF迁tushare DONE |
-| M4 SERVE (23 entity) | DONE | [DONE] DONE | — |
+| **四地基/四不变量** | 1主键PIT/2库分区/3分层/4单一源 | [DONE] **全 DONE** (核对全绿) | data_access asof强制 / reference 4dim / data_layer_audit / serve-bypass=0 |
+| M1 ACQUIRE / M2 CLEAN | 保留+收编 | [DONE] 在用 (M1 acquire 44域 / M2 qfq tushare-only+data_audit 7/7) | M2 ETF迁tushare DONE; 债: 9 内联 aif10 step 未进 registry |
+| M3 PROCESS | 收编 | [DONE] L2 panel 物化 (build_*_panel); 风格债: build_segment_panel 直连 market vs build_signal_panel 走 data_loaders (取数模式不统一, 非 leakage, moth bypass=0) | — |
+| M4 SERVE (22 entity) | DONE | [DONE] DONE (薄分发器+generic driver+data_access.yaml 22 entity) | — |
 | M6 DISPLAY / M7 ORCHESTRATE | DONE/保留 | [DONE] DONE | — |
-| **§8 阶段独立化** | 四件套 | [DONE] **backend DONE** (a/b/c-lite: stage_runner+stage_status+upstream门); 前端卡片待 | commit 3af6d/df8d5/ef9f4 |
+| **§8 阶段独立化** | 四件套 | [DONE] **backend DONE** (a/b/c-lite: stage_runner+stage_status+upstream门); **前端卡片 [NO] 未起** (产品面待用户拍板) | commit 3af6d/df8d5/ef9f4 |
 | **M5 LINEAGE (T2 acquire+consume)** | 新建脊柱 (North-Star) | [DONE] **T2 DONE** (services/lineage + chunkyctl lineage build/impact/provenance/dead + graph.json 472节点/1191边 + check_lineage_drift + 10单测) | commit 766a12ce |
-| **§9 reference 拆库** | 9.5 view+ATTACH 计划 | [WARN] **机制 REVISED** (见 §9.5 更新): 前提成立(2进程锁实测)但 view+ATTACH 有8 break-point → 定案 **alias-routing**; **§9≡T0 dim切片** | section9_reference_split_verified_plan_20260626.md |
-| **T0 Gap1 (builder→SERVE)** | 最高优先 (leakage) | [WARN] PARTIAL (task#55) | — |
-| **T1 变量三态** | feature_registry 4字段+factors/ | [NO] 未起 | — |
-| **T3/T4 血缘 transform/display + drift硬闸** | 完备化 | [NO] 未起 (T2 后) | — |
-| **M8 +5门** | 补门 | [NO] 未起 | — |
-| 预存债 (非本session引入) | — | moth serve-bypass=3 (lhb/qfii/aif10内联读raw) + signal_cache×2 untagged | stash-baseline 核证 |
+| **§9 reference 拆库** | 9.5 alias-routing | [DONE] **Stage E 物删 DONE 2026-06-27** (4 dim 迁 reference.duckdb + smartmoney 物删 + 2进程锁解耦实测 PASS + moth section9-dims-in-reference/absent-smartmoney 防回潮断言) | commit a6b48eea; 见 §9.5 |
+| **T0 Gap1 (builder→SERVE)** | 最高优先 (leakage) | [DONE] **闭合** (moth serve-consumer-bypass-zero=0 实跑; build_ 加工成员读 raw 非违规, goal.md 2026-06-26 重定性) | moth bypass=0 |
+| **T1 变量三态** | feature_registry 4字段+factors/ | [WIP] **本轮推进中** (用户 2026-06-27 选"补平台完备项, T1 优先") | — |
+| **T3/T4 血缘 transform/display + drift硬闸** | 完备化 | [NO] 未起 (T1 后) | drift 闸现 informational WARN, T4 才硬化 |
+| **M8 +5门** | 补门 | [NO] 未起 (依赖 T1/T3) | — |
+| 预存债 (非本session引入) | — | moth serve-bypass=0 (源退役临时=1) | stash-baseline 核证 |
 
 **架构师定论 (本 session 新增, ultracode+第一性原理)**: §9 真 blast 源 = **4 套并行连接模型碎片化** (get_conn / 直连 duckdb.connect / 注入conn / bestchoice _attach_smart_db AS sm), 非搬表本身。**§9 Phase 0 (4 dim表收口走 SERVE/resolver) ≡ T0 (全读走 SERVE) 的 dim 切片** = 同一份连接收口工 → 做一次推进两个平台目标。DuckDB 跨进程文件锁是进程级(实测): 隔离连接不可能解, 拆库正当; 但机制走 alias-routing(无view) 非 view+ATTACH。
 
-**下一步优先级 (reconciled, 2026-06-26)**:
-1. **T0/§9-Phase0 汇流: 4 dim表纳 data_access SERVE entity + 收口 4套连接的 dim 读点走 resolver** (= 平台最高杠杆: 同时推 T0 全读走SERVE + §9 dim解耦地基; 高blast 焦点session)。
-2. T1 变量三态 (feature_registry 4字段 + services/factors/) — 阻塞 T3/M5 transform边。
-3. §9 Stage C-E (dim entity 别名→reference + 写方repoint + 物删) — Phase0 收口后变 trivial 别名改。
-4. T3/T4 血缘完备 + M8 补门 (M5 后续)。
-5. 预存债 (serve-bypass=3 / signal_cache tag) 顺手收。
-> 真金白银 caveat (§6 不变): 以上全平台债, **非 alpha 钱路**; T0 收 Gap1(leakage) 是唯一卡 alpha 的洞, 平台地基硬后即转档B edge 确认。
+**下一步优先级 (reconciled, 2026-06-27 — §9+T0 完成后更新)**:
+1. ~~T0/§9-Phase0 汇流~~ **[DONE 2026-06-27]**: §9 Stage E 物删完成 (alias-routing/dim_read_conn, 非 view+ATTACH) + T0 Gap1 闭合 (bypass=0)。
+2. **T1 变量三态 (feature_registry 4字段 + services/factors/) — 本轮推进中** (用户 2026-06-27 选"补平台完备项, T1 最有价值: 因子加工可追踪+防双算")。阻塞 T3/M5 transform边。
+3. T3/T4 血缘完备 (transform 字段级 + display + domain + drift 硬闸) — T1 后。
+4. M8 补 5 门 (variable-single-compute-point 等) — 依赖 T1/T3。
+5. §8 前端阶段卡片 (产品面待用户拍板)。
+> 真金白银 caveat (§6 不变): 以上全平台债, **非 alpha 钱路**; 四地基 + T0(leakage) 已硬, **设计意图是转档B edge 确认**; 用户 2026-06-27 选先补 T1 完备项再转 edge (T3/T4/M8/前端可再缓)。
 
 ## 0. 北极星 — 数据模块的 codegraph + 字典 + 总指挥 (闭环)
 
@@ -187,12 +191,13 @@ stages 近线性固定序 (acquire→clean→process→serve), **每阶段状态
 > [初版, 已偏离] 审计实测: `dim_active_a_stock` (universe真相源) 有 **25 读消费方** + 写方 (security_master/build_dim_listing_status/calendar_extension) + schema DDL (schema_core)。机制 = get_conn (中央工厂 33 调用) ATTACH reference 只读 + smartmoney 留 view (读透明) + 写方 repoint reference + sync_runner 读 reference (撞锁根治)。**高风险** (动 get_conn = 全 app blast)。
 > REF 集 (奥卡姆核心): dim_active_a_stock / dim_all_ever_listed / dim_listing_status / dim_trading_calendar (universe+calendar 读多写少)。静态config dim (fee/rules/segment) 待评估扩。
 
-| Stage | 动作 | 风险/可逆 | 状态 |
-|---|---|---|---|
-| **A 保真建库** | `migrate_reference_db.py --build`: EXPORT/IMPORT 4 表→reference.duckdb (PK/索引 replay, 非COPY FROM DATABASE) + 5件套验收 | 可逆 (smartmoney 不动) | **[DONE 2026-06-24]** 5208/5210/5210/5343 行全 match, PK+idx replay, 2MB |
-| **B manifest+ATTACH** | database_manifest 加 reference alias + get_conn ATTACH reference 只读 + 测 get_conn 能查 reference 表 | 可逆 (revert get_conn) | 待做 |
-| **C 切换 (高风险)** | smartmoney 4表→view 指向 reference + 写方(~5)repoint reference 真表 + sync_runner._smartmoney_conn 的 universe 读改 reference 直读(撞锁根治) + schema DDL 移 reference(重建路径) + 全消费方读冒烟 | 高风险可逆 (备份+revert); 焦点执行非session尾 | 待做 |
-| **D 验收** | 25读消费方 + 写方 + sync_runner + daily 全跑验证 view 透明 + 撞锁消失 (并发 backfill+seed 实测不崩) | — | 待做 |
-| **E 物删 (不可逆)** | 物删 smartmoney 旧 4 表 (view 替代后) + deletion_record | **不可逆, 用户确认** | 待做 |
+> **[2026-06-27 全 DONE — 机制走 alias-routing/dim_read_conn 非 view+ATTACH; B-E 计划已被实际执行路径取代]**
+> 实际执行 (非下表的 view 法): Phase 0 fan-in 审计 (workflow wf_df52c6c6) → chunk1-4 逐 dim reader 迁 resolver.dim_read_conn (auto-fallback reference) + writer dual-write→reference-only → Stage-E 安全账本 (workflow wpa8busnl, 34文件/177读点 + 对抗验证) → Stage E 物删 (db_lifecycle_delete archive+deletion_record) + 移除 smartmoney schema-init DDL 防重建。下表 view+ATTACH 法**已废**, 仅留 Stage A 历史。
 
-**A→B→C→D 可逆 (验证失败即 revert); 仅 E 不可逆需确认。** C 是高风险核心 (get_conn 全 app), 建议焦点 session 执行 + 每步读冒烟 + revert-on-fail, 不在长 session 尾鲁莽跑。
+| Stage | 动作 | 状态 |
+|---|---|---|
+| **A 保真建库** | `migrate_reference_db.py`: EXPORT/IMPORT 4 表→reference.duckdb + 5件套验收 | **[DONE 2026-06-24]** 5208/5210/5210/5343 行全 match |
+| **B-D 读写收口 (alias-routing 实际路径, 非 view)** | 逐 dim reader 迁 dim_read_conn (24触点) + writer reference-only + 2进程锁解耦实测 | **[DONE 2026-06-27]** commit 70657dec/bc213639; CI offline 90 + moth 47/0/0 |
+| **E 物删 (不可逆)** | 物删 smartmoney 4 表 (archive parquet + deletion_record) + 移除 schema-init DDL 防重建 | **[DONE 2026-06-27]** commit a6b48eea; moth section9-dims-absent-smartmoney==0 棘轮锁 |
+
+**§9 全 DONE = 不变量#2 完成 = 四地基全部 DONE。** 实际机制 alias-routing (dim_read_conn 返 reference-主库连接, 裸 FROM 直解析, 非 ATTACH) 比原 view+ATTACH 计划干净 (无 CREATE INDEX on view 硬炸/磁盘污染)。

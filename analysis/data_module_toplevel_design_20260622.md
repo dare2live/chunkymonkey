@@ -113,12 +113,14 @@
 > **未变的承重裁决 (别因细节忘了)**: §8.1/§11 — 档A(地基 SERVE/编排/删源)PROCEED, **档B(因子全量/cube 5轴/展示产品化)BLOCK 直到 sandbox 证出含成本可交易 stage-conditional edge**(当前 confirmed_by_owner=0)。最近的 holder/updater/删源 全是档A 地基, 没碰档B。**下一步真正通向赚钱的不是堆地基细节, 是收 Gap1(leakage)→地基够硬→转 edge 确认(档B 前置验收)**。
 
 ### 1.6.1 根 + 3件 现状 (倒推方案的地基, 已基本扎实)
-| 项 | 状态 (2026-06-23) |
+> **[2026-06-27 四地基全 DONE 更新]**: §9 reference 拆库 Stage E 完成 (不变量2 最后一块) + T0 Gap1 闭合 (bypass=0) → **四不变量全 DONE** (全量核对 workflow wajh30veq 22项, owner=本节 + data_module_architecture_20260624 §7 进度表)。
+
+| 项 | 状态 (2026-06-27) |
 |---|---|
-| 不变量1 主键+PIT锚 | SERVE asof_gate + cleaner 强制 (live) |
-| 不变量2 写锁=库分区 | 7库分区已建 + SERVE read_only + sandbox_guard 硬门 |
-| 不变量3 可扩展分层 | L2宽panel + feature_registry + read-model切片 (已建) |
-| 不变量4 单概念单真相源 | SERVE单一读路: dossier consumer bypass=0 (但 check_serve_read_layer 只硬扫dossier=伪绿); **真实 `serve-consumer-bypass-zero` moth=2 (build_segment_panel/build_signal_panel 绕SERVE直算特征=Gap1 真金白银缺口, task#55)** + 删源进行中(↓worklist) |
+| 不变量1 主键+PIT锚 | **DONE** SERVE asof_gate + cleaner 强制 (live) + resolver.preflight schema门 |
+| 不变量2 写锁=库分区 | **DONE** 7库分区 + **§9 reference 拆库完成** (4 dim 物删迁 reference.duckdb, 2进程锁解耦实测 PASS) + SERVE read_only + sandbox_guard 硬门 |
+| 不变量3 可扩展分层 | **DONE** L2宽panel + feature_registry + read-model切片 + data_layer_audit (77活表全声明) |
+| 不变量4 单概念单真相源 | **DONE** SERVE单一读路 + `serve-consumer-bypass-zero` moth=0 (build_segment/signal_panel = build_ 加工成员非违规, 2026-06-26 重定性) + 删源 (通达信/akshare/gpcw 全删) leakage洞=0 |
 | **3件·清洗** (SERVE单一读路) | **DONE** (P1, data_loaders/signals_v2/dossier 迁SERVE, bypass清零) |
 | **3件·加工** (L2 panel) | **DONE** (feature_panel/signal_panel/segment_panel 已建, build-time PIT门) |
 | **3件·展示** (read-model切片) | **DONE** (read_model.py (stock,as_of)切片 SERVE喂数, cf90ad63="3件最后一件") |
