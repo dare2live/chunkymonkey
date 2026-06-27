@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-06-27 13:22:30 CST
+**Snapshot 时间**: 2026-06-27 13:52:00 CST
 
 ## 主线状态
 
@@ -44,13 +44,14 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `13d105a2 fix: 回滚 C3 source_watermarks kline_daily 过界改动 (修 test 回归)` |
-| 最近 24h commits | 34 |
-| 未 commit 文件 | 3 |
+| HEAD | `49956a5b doc: 通达信全删零残留收尾 DONE — residue ledger + goal/INDEX 同步` |
+| 最近 24h commits | 32 |
+| 未 commit 文件 | 2 |
 
 ### 最近 10 commits
 
 ```
+49956a5b doc: 通达信全删零残留收尾 DONE — residue ledger + goal/INDEX 同步
 13d105a2 fix: 回滚 C3 source_watermarks kline_daily 过界改动 (修 test 回归)
 76e6fa44 feat: 通达信全删 #15-C4 schema_core/migrations raw_tdx_f10_extra_parse_status DDL 残留删
 c027dac7 feat: 通达信全删 #15-C3 price_kline_tdxhub死代码 + gpcw config + industry feature 残留清
@@ -60,12 +61,11 @@ c666831d feat: 通达信全删 #15-C1 dead脚本物删 (holders_resolver/migrate
 3900060e doc: goal.md akshare M4 核心 DONE — 12表物删+消费侧切+db_compact+data_health修 (通达信全删收尾)
 692536a9 fix: data_health 删表必删caller — 跳过deleted状态 + dim_data_asset注册表reality-sync
 3f015bbb feat: 通达信全删 M4 akshare external_attention — 退役+物删2表 (用户决cut)
-ab2e5a6e feat: 通达信全删 M4 akshare event/panel — 退役3 builder+物删3表 (用户决cut)
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**3 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**2 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 
