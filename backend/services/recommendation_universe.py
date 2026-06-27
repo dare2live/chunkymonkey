@@ -73,18 +73,12 @@ def _row_value(row: Any, key: str, index: int) -> Any:
 
 
 def _stock_names(conn: Any, stock_codes: list[str]) -> dict[str, str | None]:
+    # §9 拆库: code→name 读 reference 库 (security_master.active_stock_name_map), 不再走 conn(smartmoney) 直读 dim
     codes = sorted({str(code) for code in stock_codes if code})
-    if not codes or not _table_exists(conn, "dim_active_a_stock"):  # rule-compliance: ok evidence=code-to-name-mapping
-        return {code: None for code in codes}
-    rows = conn.execute(
-        """
-        SELECT stock_code, stock_name
-          FROM dim_active_a_stock  -- rule-compliance: ok evidence=code-to-name-mapping
-         WHERE stock_code = ANY(?)
-        """,
-        (codes,),
-    ).fetchall()
-    names = {str(_row_value(row, "stock_code", 0)): _row_value(row, "stock_name", 1) for row in rows}
+    if not codes:
+        return {}
+    from services.security_master import active_stock_name_map
+    names = dict(active_stock_name_map(codes, conn=conn))
     for code in codes:
         names.setdefault(code, None)
     return names

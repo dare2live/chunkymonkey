@@ -131,6 +131,45 @@ def _write_dim_active(conn, rows) -> None:
         raise
 
 
+def _dim_read_conn(conn):
+    """§9 dim 读路由: conn 有主数据表 (测试 fixture / 过渡期 smartmoney dual 副本) → 用它;
+    否则开 reference RO (Stage E 物删 smartmoney 副本后, 全 reader 原子 fall 到 reference)。返 (conn, own_flag)。"""
+    if conn is not None:
+        try:
+            has = conn.execute(
+                "SELECT 1 FROM information_schema.tables WHERE table_name='dim_active_a_stock' LIMIT 1"  # rule-compliance: ok evidence=table-existence-probe (dim 读路由探测, 非 universe 取数)
+            ).fetchone()
+        except Exception:
+            has = None
+        if has:
+            return conn, False
+    from services.data_access import resolver
+    return resolver.connect_ro("reference"), True
+
+
+def active_stock_name_map(codes=None, conn=None) -> Dict[str, str]:
+    """code→name 映射 (§9 拆库 dim 真相源)。读路由 _dim_read_conn (conn 有表用它/否则 reference)。
+
+    codes=None → 全量; 否则按 codes 过滤。replace 散落主数据表 name-lookup
+    (recommendation/screening/...) 为单一读路 (不变量#2: Stage E 后 reader 落 reference 不撞 smartmoney 写锁)。
+    """
+    c, own = _dim_read_conn(conn)
+    try:
+        if codes:
+            rows = c.execute(
+                "SELECT stock_code, stock_name FROM dim_active_a_stock WHERE stock_code = ANY(?)",  # rule-compliance: ok evidence=code-to-name-mapping
+                (list(codes),),
+            ).fetchall()
+        else:
+            rows = c.execute(
+                "SELECT stock_code, stock_name FROM dim_active_a_stock WHERE stock_code IS NOT NULL"  # rule-compliance: ok evidence=code-to-name-mapping
+            ).fetchall()
+    finally:
+        if own:
+            c.close()
+    return {str(r[0]): r[1] for r in rows}
+
+
 def get_active_a_stock_codes(conn, max_age_hours: int = ACTIVE_STOCK_CACHE_HOURS) -> Set[str]:
     """返回当前可交易 A 股代码集合；优先用缓存，必要时刷新。"""
     if _cache_is_fresh(conn, max_age_hours=max_age_hours):

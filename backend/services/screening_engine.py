@@ -532,11 +532,9 @@ def run_all_screens(smart_conn, mkt_conn) -> int:
         "SELECT stock_code FROM excluded_stocks"
     ).fetchall()}
     active_codes -= excl
-    # code→name 映射仍从 dim_active_a_stock 取 (合法 name-lookup)
-    name_rows = smart_conn.execute(
-        "SELECT stock_code, stock_name FROM dim_active_a_stock WHERE stock_code IS NOT NULL"  # rule-compliance: ok evidence=code-to-name-mapping
-    ).fetchall()
-    name_map = {r["stock_code"]: r["stock_name"] for r in name_rows}
+    # §9 拆库: code→name 读 reference 库 (security_master.active_stock_name_map), 不再 smart_conn 直读 dim
+    from services.security_master import active_stock_name_map
+    name_map = active_stock_name_map(conn=smart_conn)
     stock_map = {c: name_map.get(c, "") for c in active_codes}
 
     if not stock_map:
