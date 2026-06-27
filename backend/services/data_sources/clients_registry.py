@@ -62,20 +62,8 @@ class ClientSpec:
 CLIENTS: list[ClientSpec] = [
     # ── tier 1: tdxhub (主源) ─────────────────────────────────────────
     # tdx_industry_client + block_client (通达信行业/板块) 已退役物删 2026-06-23 (§4.3 行业/概念全切东财 dim_stock_dc_industry/dc_concept)
-    ClientSpec(
-        client_id="tdx_affair_client",
-        module="services.tdx_affair_client",
-        description="通达信季报 (gpcw)",
-        upstream_source="tdxhub.affair (gpcw)",
-        source_tier=1,
-        fallback_chain=["tdxhub"],
-        writes=[
-            TableWriteSpec("raw_gpcw_detail", "财务报表原始 (季频)", "quarterly", 24*95),
-            TableWriteSpec("raw_tdx_gpcw_wide", "TDX gpcw 宽字段保留", "quarterly", 24*95),
-            TableWriteSpec("dim_tdx_gpcw_field", "TDX gpcw 字段字典", "static", 24*365),
-        ],
-        sync_step_id="sync_gpcw_data",
-    ),
+    # tdx_affair_client (通达信季报 gpcw) 退役物删 2026-06-27 (通达信全删: 财务派生迁 tushare 周期模型;
+    #   gpcw raw_detail/wide + dim_field 簇物删; client 0 import dead)。
     # tdx_f10_extra_client 退役 2026-06-24 (随旧 updater 删, 唯一 caller updater_sync.sync_raw 已删):
     #   户数→tushare stk_holdernumber / 增减持→tushare stk_holdertrade / 同大股东→aif10 holder derive (机构档案);
     #   十大流通股东已迁 aif10 (services/holders_aif10). 详 analysis/miaoxiang_aif10_source_decision_20260624.md。
@@ -167,12 +155,12 @@ CLIENTS: list[ClientSpec] = [
     ClientSpec(
         client_id="financial_client",
         module="services.financial_client",
-        description="财务报表 (gpcw 兜底 / 派生指标)",
-        upstream_source="tdxhub.affair (主), akshare 兜底",
+        description="财务派生指标 (tushare 周期模型)",  # 2026-06-27 通达信全删: gpcw兜底退役, calc_financial_derived 读 tushare
+        upstream_source="tushare fina_indicator/balancesheet/income (registry sync)",
         source_tier=1,
-        fallback_chain=["tdxhub", "akshare"],
+        fallback_chain=["tushare"],
         writes=[
-            TableWriteSpec("raw_gpcw_financial",       "财务报表 (兜底写入)",   "quarterly", 24*95),
+            # raw_gpcw_financial 已物删 (2026-06-27): 源迁 tushare 周期模型
             TableWriteSpec("dim_financial_latest",     "最新季报快照", "quarterly", 24*95),
             TableWriteSpec("fact_financial_derived",   "派生财务指标", "quarterly", 24*95),
         ],

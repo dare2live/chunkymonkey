@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 # (table, index_name) — 已知 legacy / redundant secondary index, 启动时如发现就删除.
 REDUNDANT_INDEXES: tuple[tuple[str, str], ...] = (
-    ("raw_gpcw_financial", "idx_rgf_stock_report"),  # 跟 PK (stock_code, report_date) 重复
+    # raw_gpcw_financial/idx_rgf 已移除 (2026-06-27 通达信全删 gpcw物删)
     # fact_top10_holder_period: 旧 idx_fact_hp_* 名称是 refactor 前的 legacy 索引名;
     # 当前 canonical 名称是 idx_t10_*，保留 canonical set，启动时清掉 legacy set。
     ("fact_top10_holder_period", "idx_fact_hp_stock_date"),
@@ -42,7 +42,7 @@ REDUNDANT_INDEXES: tuple[tuple[str, str], ...] = (
 
 # 重点观察的关键表 — 启动时跑 index_count vs storage_count.
 WATCHED_TABLES: tuple[str, ...] = (
-    "raw_gpcw_financial",
+    # raw_gpcw_financial 已移除 (2026-06-27 通达信全删 gpcw物删)
     "fact_top10_holder_period",
 )
 

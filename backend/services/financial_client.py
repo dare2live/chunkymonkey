@@ -96,37 +96,8 @@ def _ensure_columns(conn, table_name: str, columns: dict[str, str]) -> None:
 def ensure_tables(conn):
     """创建财务数据相关表，并补齐增量演进字段。"""
     conn.executescript("""
-        -- 原始层：最新快照 + 历史报表整合后的关键字段（只追加）
-        CREATE TABLE IF NOT EXISTS raw_gpcw_financial (
-            stock_code           TEXT NOT NULL,
-            report_date          TEXT NOT NULL,
-            total_assets         REAL,
-            total_liabilities    REAL,
-            net_assets           REAL,
-            current_assets       REAL,
-            current_liabilities  REAL,
-            revenue              REAL,
-            operating_profit     REAL,
-            net_profit           REAL,
-            operating_cashflow   REAL,
-            total_shares         REAL,
-            float_shares         REAL,
-            holder_count         INTEGER,
-            contract_liabilities REAL,
-            eps                  REAL,
-            nav_per_share        REAL,
-            gross_profit         REAL,
-            inventory            REAL,
-            undistributed_profit REAL,
-            source_file          TEXT,
-            ingested_at          TEXT,
-            PRIMARY KEY (stock_code, report_date)
-        );
-        CREATE INDEX IF NOT EXISTS idx_rgf_report ON raw_gpcw_financial(report_date);
-        -- Phase ψ.5 根因 2 修复: idx_rgf_stock_report 跟 PRIMARY KEY (stock_code, report_date)
-        -- 完全冗余, 删掉以消除 DuckDB ON CONFLICT 时 secondary index 不一致的风险面.
-        -- (老 DB 文件如已有该索引, 在 services/db_health.drop_redundant_indexes() 启动时清理.)
-        -- CREATE INDEX IF NOT EXISTS idx_rgf_stock_report ON raw_gpcw_financial(stock_code, report_date);
+        -- raw_gpcw_financial DDL 已删 (2026-06-27 通达信全删 gpcw物删) 派生源已迁 tushare 周期模型
+        -- calc_financial_derived 读 raw_tushare_fina_indicator/balancesheet/income, gpcw sync 已退役
 
         -- 事实层：派生财务指标（可重算）
         CREATE TABLE IF NOT EXISTS fact_financial_derived (
@@ -187,11 +158,6 @@ def ensure_tables(conn):
         CREATE INDEX IF NOT EXISTS idx_fss_status ON financial_sync_state(status);
     """)
 
-    _ensure_columns(conn, "raw_gpcw_financial", {
-        "notice_date": "TEXT",
-        "report_type": "TEXT",
-        "is_audited": "INTEGER",
-    })
     _ensure_columns(conn, "dim_financial_latest", {
         "net_margin": "REAL",
         "history_rows": "INTEGER DEFAULT 0",
@@ -340,7 +306,13 @@ def _safe_div(a, b):
 
 
 # ============================================================
-# tdxhub 最新快照
+# [RETIRED 2026-06-27 通达信全删] 以下 gpcw sina/akshare 同步路径全 DEAD:
+#   - sync_financial_data + _fetch_*/_parse_finance_record/_upsert_raw_financial 等 0 live caller
+#     (daily 财务 sync 走 registry tushare; calc_financial_derived 已迁 tushare 周期模型)
+#   - 写的 raw_gpcw_financial 已物删 (DDL 从 ensure_tables 移除)
+#   保留仅因: ensure_tables 依赖本段内 _bootstrap_financial_sync_state_phase_columns + 外部模块共享
+#   _parse_float/_parse_int 等工具 (lhb/qfii/aif10/capital_client)。整段代码移除 = 后续低风险 follow-up
+#   (须保 _bootstrap + 共享 _parse_* 工具, 删 sina/akshare 抓取与 sync_financial_data)。勿调用本段。
 # ============================================================
 
 def _parse_finance_record(fin_row: dict) -> dict:

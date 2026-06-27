@@ -224,28 +224,7 @@ CORE_SCHEMA_SQL = """
                 last_updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
-            CREATE TABLE IF NOT EXISTS raw_tdx_gpcw_wide (
-                stock_code       TEXT NOT NULL,
-                report_date      TEXT NOT NULL,
-                source_file      TEXT,
-                field_values_json TEXT NOT NULL,
-                parser_version   TEXT DEFAULT 'tdxhub_gpcw_v1',
-                ingested_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (stock_code, report_date)
-            );
-
-            CREATE TABLE IF NOT EXISTS dim_tdx_gpcw_field (
-                field_key        TEXT PRIMARY KEY,
-                field_index      INTEGER,
-                zh_name          TEXT NOT NULL,
-                db_column        TEXT,
-                unit             TEXT,
-                field_family     TEXT,
-                model_candidate  BOOLEAN DEFAULT FALSE,
-                verified         BOOLEAN DEFAULT FALSE,
-                notes            TEXT,
-                updated_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
+            -- raw_tdx_gpcw_wide / dim_tdx_gpcw_field DDL 已删 (2026-06-27 通达信全删 gpcw物删)
 
             CREATE TABLE IF NOT EXISTS dim_data_source_priority (
                 data_domain TEXT PRIMARY KEY,
@@ -256,39 +235,7 @@ CORE_SCHEMA_SQL = """
                 updated_at TEXT
             );
 
-            CREATE TABLE IF NOT EXISTS dim_tdx_gpcw_field_semantic (
-                field_key TEXT PRIMARY KEY,
-                zh_name TEXT,
-                db_column TEXT,
-                field_index INTEGER,
-                unit TEXT,
-                field_family TEXT,
-                semantic_role TEXT,
-                value_type TEXT,
-                scale_rule TEXT,
-                pit_date_field TEXT,
-                candidate_priority TEXT,
-                exclude_reason TEXT,
-                source_profile_run_id TEXT,
-                mapped_status TEXT,
-                updated_at TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS fact_tdx_gpcw_auto_feature_quarterly (
-                feature_set_id TEXT NOT NULL,
-                stock_code TEXT NOT NULL,
-                report_date TEXT NOT NULL,
-                available_date TEXT NOT NULL,
-                field_key TEXT NOT NULL,
-                feature_name TEXT NOT NULL,
-                feature_family TEXT,
-                transform TEXT NOT NULL,
-                feature_value DOUBLE,
-                source_value DOUBLE,
-                coverage_group TEXT,
-                built_at TEXT,
-                PRIMARY KEY (feature_set_id, stock_code, report_date, feature_name)
-            );
+            -- dim_tdx_gpcw_field_semantic / fact_tdx_gpcw_auto_feature_quarterly DDL 已删 (2026-06-27 通达信全删 gpcw物删, auto_features 流水线 dead)
 
             CREATE TABLE IF NOT EXISTS fact_feature_panel_candidate (
                 feature_set_id   TEXT NOT NULL,

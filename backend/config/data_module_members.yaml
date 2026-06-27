@@ -58,8 +58,8 @@ member_service_files:
 
 # 源退役中 = 临时成员 (删源程序 task#56 完成后随 client 退役; 现不算违规, 但标记为待退役)
 source_retiring_temp_members:
-  - tdx_affair_client.py
+  # tdx_affair_client.py 已退役物删 2026-06-27 (通达信全删 gpcw)
   - tdx_f10_extra_client.py
   - institution_survey_client.py
-  - financial_client.py        # 财务写侧/manager (含 DELETE)
+  - financial_client.py        # 财务写侧/manager (含 DELETE; gpcw sync已退役, 现 calc 读 tushare)
   - capital_client.py

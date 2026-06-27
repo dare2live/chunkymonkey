@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-26 22:47
+> Snapshot: 2026-06-27 08:08
 
 ## 1. 入口面
 
@@ -97,7 +97,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 151 张 | 单 writer 96 | 多 writer 55 | 动态表名写点 40 处 (22 文件)
+统计: 表 145 张 | 单 writer 95 | 多 writer 50 | 动态表名写点 40 处 (22 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -147,8 +147,6 @@
 | dim_price_limit_rules | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_stock_stage_days | 2 | backend/scripts/build_picture_daily.py<br>backend/services/picture/ddl.py |
 | dim_style_factor | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
-| dim_tdx_gpcw_field | 2 | backend/services/schema_core.py<br>backend/services/tdx_affair_client.py |
-| dim_tdx_gpcw_field_semantic | 2 | backend/scripts/build_tdx_gpcw_auto_features.py<br>backend/services/schema_core.py |
 | dim_trading_calendar | 2 | backend/scripts/migrate_reference_db.py<br>backend/services/schema_core.py |
 | dim_trading_rule | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_trading_session | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
@@ -162,7 +160,6 @@
 | fact_shareholder_trade | 2 | backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
 | fact_stock_fundamental_stage_daily | 2 | backend/scripts/build_picture_daily.py<br>backend/services/picture/ddl.py |
 | fact_stock_type_daily | 2 | backend/scripts/build_picture_daily.py<br>backend/services/picture/ddl.py |
-| fact_tdx_gpcw_auto_feature_quarterly | 2 | backend/scripts/build_tdx_gpcw_auto_features.py<br>backend/services/schema_core.py |
 | mart_audit_snapshot_state | 2 | backend/services/audit.py<br>backend/services/schema_marts.py |
 | mart_current_relationship | 2 | backend/services/holdings.py<br>backend/services/schema_marts.py |
 | mart_data_deprecation_record | 2 | backend/services/data_deprecation.py<br>backend/services/schema_marts.py |
@@ -185,8 +182,6 @@
 | mart_pricing_label_policy_gate | 2 | backend/services/pricing_policy_records.py<br>backend/services/pricing_schema.py |
 | mart_stock_picture_daily | 2 | backend/scripts/build_picture_daily.py<br>backend/services/picture/ddl.py |
 | mart_tdx_data_need_coverage | 2 | backend/scripts/audit_tdx_data_need_coverage.py<br>backend/services/schema_marts.py |
-| mart_tdx_gpcw_file_manifest | 2 | backend/scripts/build_fundamental_quarterly.py<br>backend/services/tdx_affair_client.py |
-| raw_tdx_gpcw_wide | 2 | backend/services/schema_core.py<br>backend/services/tdx_affair_client.py |
 
 ### 单 writer 表
 
@@ -268,7 +263,7 @@
 | mart_tdx_gpcw_auto_optuna_run | backend/services/schema_marts.py |
 | mart_tdx_gpcw_auto_pit_audit | backend/services/schema_marts.py |
 | mart_tdx_gpcw_auto_retention_decision | backend/services/schema_marts.py |
-| mart_tdx_gpcw_field_profile | backend/scripts/profile_tdx_gpcw_fields.py |
+| mart_tdx_gpcw_file_manifest | backend/scripts/build_fundamental_quarterly.py |
 | mart_tdx_keep_promotion_gate | backend/services/schema_marts.py |
 | mart_tdx_server_health | backend/services/tdx_source.py |
 | mart_today_signal_cache | backend/services/signals_v2.py |
@@ -279,7 +274,6 @@
 | raw_capital_repurchase | backend/services/capital_client.py |
 | raw_capital_unlock | backend/services/capital_client.py |
 | raw_executive_trade | backend/scripts/build_executive_trade_events.py |
-| raw_gpcw_detail | backend/services/tdx_affair_client.py |
 | raw_gpcw_financial | backend/services/financial_client.py |
 | raw_institution_surveys | backend/services/institution_survey_client.py |
 | raw_lhb_daily | backend/services/lhb_client.py |
@@ -291,20 +285,20 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 9,203 | calls 边 57,730 | imports 边 5,670 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 9,076 | calls 边 57,566 | imports 边 5,657 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
 | services.duck_adapter | 41 |
-| services.db | 33 |
+| services.db | 31 |
 | services.utils | 28 |
 | services.market_db | 18 |
 | services.database_manifest | 15 |
 | services.industry | 13 |
-| services.tdx_source | 11 |
 | services.kline_source | 10 |
+| services.tdx_source | 10 |
 | services.pipeline_manifest | 9 |
 | services.universe | 8 |
 | services.data_sources | 7 |
@@ -317,7 +311,7 @@
 
 | 文件 | 调用方文件数 |
 |---|---|
-| backend/services/duck_adapter.py | 28 |
+| backend/services/duck_adapter.py | 29 |
 | backend/services/database_manifest.py | 9 |
 | bestchoice/compute.py | 9 |
 | backend/services/etf_grid_engine.py | 6 |
@@ -337,8 +331,8 @@
 | backend/services/data_quality.py | 3836 |
 | backend/services/scoring.py | 2712 |
 | backend/services/signals_v2.py | 2140 |
-| backend/services/financial_client.py | 1744 |
 | backend/services/audit.py | 1743 |
+| backend/services/financial_client.py | 1716 |
 | backend/scripts/build_price_kline_tdxhub.py | 1461 |
 | backend/scripts/audit_delivery_readiness.py | 1226 |
 | backend/scripts/seed_dim_data_asset.py | 1211 |
@@ -349,5 +343,5 @@
 
 - chunkyctl 子命令 10 | launchd 任务 1 | router 12 (端点 56)
 - sync_registry 数据域 44
-- 产表 151 (多 writer 55)
+- 产表 145 (多 writer 50)
 
