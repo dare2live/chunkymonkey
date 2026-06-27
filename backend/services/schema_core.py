@@ -139,24 +139,6 @@ CORE_SCHEMA_SQL = """
                 PRIMARY KEY (stock_code, major_holder_name, peer_stock_code, row_seq)
             );
 
-            CREATE TABLE IF NOT EXISTS raw_tdx_f10_extra_parse_status (
-                stock_code       TEXT NOT NULL,
-                raw_hash         TEXT NOT NULL,
-                parsed_at        TEXT,
-                holder_count_rows INTEGER DEFAULT 0,
-                trade_b_rows     INTEGER DEFAULT 0,
-                control_rows     INTEGER DEFAULT 0,
-                common_major_holder_rows INTEGER DEFAULT 0,
-                fund_holding_rows INTEGER DEFAULT 0,
-                fund_holding_rejected_rows INTEGER DEFAULT 0,
-                shareholder_plan_rows INTEGER DEFAULT 0,
-                status           TEXT NOT NULL,
-                status_reason    TEXT,
-                parser_version   TEXT,
-                error            TEXT,
-                PRIMARY KEY (stock_code, raw_hash)
-            );
-
             CREATE TABLE IF NOT EXISTS fact_holder_event (
                 stock_code        TEXT NOT NULL,
                 stock_name        TEXT,

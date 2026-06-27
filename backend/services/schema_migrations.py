@@ -28,11 +28,6 @@ ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS hold_ratio_t
 ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS change_shares BIGINT;
 ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS net_profit_parent_text TEXT;
 ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS net_profit_deducted_text TEXT;
-CREATE INDEX IF NOT EXISTS idx_f10_extra_status_status ON raw_tdx_f10_extra_parse_status(status);
-ALTER TABLE raw_tdx_f10_extra_parse_status ADD COLUMN IF NOT EXISTS fund_holding_rejected_rows INTEGER DEFAULT 0;
-ALTER TABLE raw_tdx_f10_extra_parse_status ADD COLUMN IF NOT EXISTS shareholder_plan_rows INTEGER DEFAULT 0;
-ALTER TABLE raw_tdx_f10_extra_parse_status ADD COLUMN IF NOT EXISTS status_reason TEXT;
-ALTER TABLE raw_tdx_f10_extra_parse_status ADD COLUMN IF NOT EXISTS parser_version TEXT;
 ALTER TABLE fact_controlling_shareholder ADD COLUMN control_chain_text TEXT;
 CREATE INDEX IF NOT EXISTS idx_he_stock ON fact_holder_event(stock_code, report_date DESC);
 CREATE INDEX IF NOT EXISTS idx_he_holder ON fact_holder_event(holder_name_norm);
