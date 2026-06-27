@@ -260,22 +260,11 @@ CORE_SCHEMA_SQL = """
 
 CREATE TABLE IF NOT EXISTS fact_feature_panel_tdx_keep_challenger ( feature_set_id TEXT NOT NULL, stock_code TEXT NOT NULL, date TEXT NOT NULL, regime_flag TEXT, forward_ret_5d REAL, forward_ret_10d REAL, forward_ret_20d REAL, forward_ret_60d REAL, forward_ret_90d REAL, ret_1d REAL, ret_5d REAL, ret_20d REAL, ret_60d REAL, vol_z20d REAL, ma_ratio_5 REAL, ma_ratio_20 REAL, ma_ratio_60 REAL, ma_ratio_250 REAL, rz_balance REAL, rz_chg_5d_pct REAL, kmid REAL, klen REAL, kup REAL, klow REAL, ksft REAL, vol_ratio_5_20 REAL, vol_std_5d REAL, vol_std_20d REAL, range_pos_20 REAL, range_pos_60 REAL, momentum_diff REAL, amount_chg_5d REAL, inst_event_count_30d REAL, inst_event_count_60d REAL, exec_buy_count_90d REAL, exec_buy_ge1_count_90d REAL, lhb_inst_buy_count_30d REAL, lhb_inst_buy_count_60d REAL, jgdy_count_60d REAL, dzjy_count_60d REAL, days_since_exec_buy REAL, days_since_lhb REAL, shareholder_count_qoq REAL, inst_count_qoq REAL, fund_count_qoq REAL, qfii_count_qoq REAL, yjyg_lower_pct REAL, yjyg_upper_pct REAL, roe REAL, eps_basic REAL, hs300_ret_20d REAL, hs300_ret_60d REAL, ret_20d_rank REAL, ret_60d_rank REAL, vol_z20d_rank REAL, amount_chg_5d_rank REAL, rz_balance_rank REAL, rz_chg_5d_pct_rank REAL, ret_20d_tdx_l1_rel REAL, ret_60d_tdx_l1_rel REAL, vol_z20d_tdx_l1_rel REAL, amount_chg_5d_tdx_l1_rel REAL, rz_balance_to_amount20 REAL, forecast_profit_yoy_mid REAL, avg_float_shares_change_pct_tdx REAL, ocf_to_profit_tdx REAL, fund_shares_qoq REAL, forecast_range_width REAL, built_at TEXT, PRIMARY KEY (feature_set_id, stock_code, date) );
 
-            CREATE TABLE IF NOT EXISTS dim_active_a_stock ( -- rule-compliance: ok evidence=schema-definition
-                stock_code       TEXT PRIMARY KEY,
-                stock_name       TEXT,
-                market           TEXT,
-                source           TEXT,
-                updated_at       TEXT
-            );
-
+            -- §9 reference 拆库 Stage E (2026-06-27): active 主数据 与 trading_calendar 的 DDL 已移除  -- rule-compliance: ok evidence=stage-e-ddl-removed (注释非真用, 表迁 reference)
+            --   (迁 reference 库后 smartmoney 副本物删, 删 DDL 防 init_db 重建循环 undo 物删)
+            --   reference 侧 schema owner = migrate_reference_db 加 security_master._DIM_ACTIVE_DDL 加 build_dim_listing_status
             -- 通达信(tdx)行业 dim_stock_tdx_industry / 板块 dim_tdx_block_catalog / dim_stock_tdx_block DDL
             -- 已删 2026-06-23 东财全套迁移 Stage四 行业概念切东财 dim_stock_dc_industry/dc_concept
-            -- 删 DDL 防 schema-init 重建循环 (反例 删表只删 schema 不删 DDL 下次 init 复活)
-
-            CREATE TABLE IF NOT EXISTS dim_trading_calendar (
-                trade_date  TEXT PRIMARY KEY,
-                is_trading  INTEGER DEFAULT 1
-            );
 
             CREATE TABLE IF NOT EXISTS inst_institutions (
                 id           TEXT PRIMARY KEY,

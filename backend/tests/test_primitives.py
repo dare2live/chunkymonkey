@@ -19,7 +19,9 @@ class TestDDL:
         # Phase ψ.5: 4 张 0-row + 0-ref + 0-insert fact 表退役:
         #   fact_daily_price_status / fact_stock_liquidity_daily /
         #   fact_stock_style_daily / fact_stock_market_cap_daily
-        # ensure_primitives_tables 只建剩 8 张 dim 配置/维度表.
+        # §9 reference 拆库 Stage E (2026-06-27): dim_listing_status 迁 reference.duckdb,
+        #   不再由 ensure_primitives_tables 建于 smartmoney (schema owner = build_dim_listing_status)。
+        # ensure_primitives_tables 只建剩 7 张 dim 配置/维度表.
         names = {r[0] for r in conn.execute(
             "SELECT table_name FROM information_schema.tables WHERE table_schema='main'"
         ).fetchall()}
@@ -27,7 +29,6 @@ class TestDDL:
             "dim_price_limit_rules", "dim_market_segment", "dim_trading_rule",
             "dim_fee_schedule", "dim_trading_session",
             "dim_liquidity_threshold",
-            "dim_listing_status",
             "dim_style_factor",
         }
         assert expected.issubset(names)
@@ -36,6 +37,8 @@ class TestDDL:
         assert "fact_stock_liquidity_daily" not in names
         assert "fact_stock_style_daily" not in names
         assert "fact_stock_market_cap_daily" not in names
+        # §9 Stage E: dim_listing_status 迁 reference, 不得在 smartmoney 重建 (防 DDL 重建循环回潮)
+        assert "dim_listing_status" not in names
 
     def test_idempotent(self, conn):
         from services.primitives.ddl import ensure_primitives_tables

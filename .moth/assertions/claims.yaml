@@ -18,22 +18,34 @@ assertions:
     query: "SELECT count(*) FROM duckdb_indexes()"
     expect: {op: ">=", value: 76}
   - id: smartmoney-tables
-    claim: "表 >=73 (2026-06-27 通达信全删 M4: akshare capital 7+event 3+attention 2 表物删后 85→73; 含累计 gpcw/xdxr 退役; 增表应显式过决策)"
+    claim: "表 >=69 (2026-06-27 §9 reference 拆库 Stage E: dim_active/trading_calendar/all_ever_listed/listing_status 4 表物删迁 reference 后 73→69; 此前通达信全删 M4 85→73; 增表应显式过决策)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM duckdb_tables()"
-    expect: {op: ">=", value: 73}
+    expect: {op: ">=", value: 69}
   - id: smartmoney-size-band
     claim: "库体量 0.5-3GB 带内 (2026-06-27 通达信全删 M4 物删10表 + db_compact 紧缩 3.0→0.9G; 越界 = 异常膨胀或错库/数据丢失)"
     type: file_size
     path: data/smartmoney.duckdb
     expect: {op: between, low: 500000000, high: 3000000000}
   - id: calendar-floor
-    claim: "交易日历起点 == 2005-01-04 (2026-06-12 扩展+七项验证 PASS; 回退 = 静默 clamp 复发)"
+    claim: "交易日历起点 == 2005-01-04 (2026-06-12 扩展+七项验证 PASS; 回退 = 静默 clamp 复发)。2026-06-27 §9 拆库: dim_trading_calendar 迁 reference.duckdb, 断言库改 reference"
     type: duckdb_sql
-    database: data/smartmoney.duckdb
+    database: data/reference.duckdb
     query: "SELECT CAST(min(trade_date) AS VARCHAR) FROM dim_trading_calendar"
     expect: {op: "==", value: "2005-01-04"}
+  - id: section9-dims-in-reference
+    claim: "§9 reference 拆库: 4 dim (active/trading_calendar/all_ever_listed/listing_status) 全在 reference.duckdb (2026-06-27 Stage E 迁移真相源; 缺=迁移丢失/回滚)"
+    type: duckdb_sql
+    database: data/reference.duckdb
+    query: "SELECT count(*) FROM duckdb_tables() WHERE table_name IN ('dim_active_a_stock','dim_trading_calendar','dim_all_ever_listed','dim_listing_status')"
+    expect: {op: "==", value: 4}
+  - id: section9-dims-absent-smartmoney
+    claim: "§9 reference 拆库: 4 dim 已从 smartmoney 物删, 不得重建 (2026-06-27 Stage E; >0 = schema-init DDL 重建路径回潮 undo 物删, 不变量#2 读写边界破)"
+    type: duckdb_sql
+    database: data/smartmoney.duckdb
+    query: "SELECT count(*) FROM duckdb_tables() WHERE table_name IN ('dim_active_a_stock','dim_trading_calendar','dim_all_ever_listed','dim_listing_status')"
+    expect: {op: "==", value: 0}
   # retired-db-retained 断言已移除 (2026-06-13 用户授权提前删 v1 旧库 34G — 新库稳定一日重负载验证通过,
   # 回滚窗提前关; 按断言自身契约"到期人工删除后移除本断言"执行)
   - id: dc-member-truncation-pin

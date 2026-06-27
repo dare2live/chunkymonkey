@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-27 21:26
+> Snapshot: 2026-06-27 21:43
 
 ## 1. 入口面
 
@@ -97,7 +97,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 123 张 | 单 writer 77 | 多 writer 46 | 动态表名写点 37 处 (20 文件)
+统计: 表 123 张 | 单 writer 80 | 多 writer 43 | 动态表名写点 37 处 (20 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -134,17 +134,14 @@
 | mart_data_deletion_record | 3 | backend/scripts/db_lifecycle_delete.py<br>backend/services/data_deletion.py<br>backend/services/schema_marts.py |
 | mart_etf_snapshot_latest | 3 | backend/services/etf_db.py<br>backend/services/etf_snapshot_manager.py<br>backend/services/schema_marts.py |
 | mart_etf_snapshot_state | 3 | backend/services/etf_db.py<br>backend/services/etf_snapshot_manager.py<br>backend/services/schema_marts.py |
-| dim_active_a_stock | 2 | backend/services/schema_core.py<br>backend/services/security_master.py |
 | dim_data_asset | 2 | backend/scripts/seed_dim_data_asset.py<br>backend/services/schema_core.py |
 | dim_data_source_priority | 2 | backend/scripts/audit_tdx_data_need_coverage.py<br>backend/services/schema_core.py |
 | dim_fee_schedule | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_liquidity_threshold | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
-| dim_listing_status | 2 | backend/scripts/build_dim_listing_status.py<br>backend/services/primitives/ddl.py |
 | dim_market_segment | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_price_limit_rules | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_stock_stage_days | 2 | backend/scripts/build_picture_daily.py<br>backend/services/picture/ddl.py |
 | dim_style_factor | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
-| dim_trading_calendar | 2 | backend/scripts/migrate_reference_db.py<br>backend/services/schema_core.py |
 | dim_trading_rule | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_trading_session | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | fact_consumer_alpha_ic_scan | 2 | backend/scripts/build_experiment_store.py<br>backend/services/experiment_store.py |
@@ -181,13 +178,16 @@
 
 | 表 | writer |
 |---|---|
+| dim_active_a_stock | backend/services/security_master.py |
 | dim_financial_latest | backend/services/financial_client.py |
 | dim_holder_alias | backend/services/schema_core.py |
+| dim_listing_status | backend/scripts/build_dim_listing_status.py |
 | dim_schema_version | backend/services/schema_versions.py |
 | dim_stock_industry_context_latest | backend/services/industry_context_engine.py |
 | dim_stock_stage_latest | backend/services/stock_stage_engine.py |
 | dim_stock_turtle_latest | backend/services/stock_turtle_engine.py |
 | dim_strategy_preset | backend/routers/strategy_preset.py |
+| dim_trading_calendar | backend/scripts/migrate_reference_db.py |
 | fact_common_major_holder_stock | backend/services/schema_core.py |
 | fact_controlling_shareholder | backend/services/schema_core.py |
 | fact_daily_price_status | backend/services/primitives/ddl.py |
@@ -261,7 +261,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,508 | calls 边 56,253 | imports 边 5,454 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 8,503 | calls 边 56,254 | imports 边 5,436 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -319,5 +319,5 @@
 
 - chunkyctl 子命令 10 | launchd 任务 1 | router 12 (端点 56)
 - sync_registry 数据域 44
-- 产表 123 (多 writer 46)
+- 产表 123 (多 writer 43)
 

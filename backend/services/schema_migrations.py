@@ -274,7 +274,8 @@ CREATE INDEX IF NOT EXISTS idx_model_feature_lineage_model ON mart_model_feature
 CREATE INDEX IF NOT EXISTS idx_data_deletion_run ON mart_data_deletion_record(deletion_run_id);
 CREATE INDEX IF NOT EXISTS idx_data_deletion_table ON mart_data_deletion_record(table_name, delete_scope);
 DROP TABLE IF EXISTS raw_fetch_batch;
-CREATE INDEX IF NOT EXISTS idx_daas_updated ON dim_active_a_stock(updated_at); -- rule-compliance: ok evidence=schema-definition
+-- §9 reference 拆库 Stage E (2026-06-27): idx_daas_updated (active 主数据表索引) 已移除
+--   (active 主数据表迁 reference 库后 smartmoney 副本物删, 删此 INDEX DDL 防 init_db 在已物删 smartmoney 上 CREATE INDEX 报错或重建循环)
 -- 通达信(tdx)行业/板块索引已删 2026-06-23 东财全套迁移 Stage四 防 schema-init 重建循环
 CREATE INDEX IF NOT EXISTS idx_inst_type ON inst_institutions(type);
 CREATE INDEX IF NOT EXISTS idx_inst_enabled ON inst_institutions(enabled);

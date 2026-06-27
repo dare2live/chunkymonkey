@@ -33,11 +33,14 @@ MANIFEST = REPO / "backend" / "config" / "database_manifest.yaml"
 # 受层级框架管理的业务库 (持声明-layer 的活表): smartmoney 业务控制面 + feature_store L2 面板。
 # market(canonical_source)/tushare_raw(L0 vendor 镜像)/experiment_store(L4 transient) 各有独立 retention 语义,
 # 不进 layer 声明执法 (2026-06-15: feature_store 接入, 否则 L2 分区静默不受管 = 框架本意落空)。
-MANAGED_DBS = ("smartmoney", "feature_store")  # rule-compliance: ok evidence=database_manifest.yaml 业务/特征库 (untagged 检查域: 此2库每表必声明)
+# 2026-06-27 §9 reference 拆库: reference 库 (4 dim 真相源, L1_foundation) 接入受管域 —
+#   dim_active/trading_calendar/all_ever_listed/listing_status 物删迁 reference 后须在此声明执法,
+#   否则 dim 分区静默不受管 (同 feature_store 2026-06-15 接入理由)。reference 仅这 4 dim, 全已声明。
+MANAGED_DBS = ("smartmoney", "feature_store", "reference")  # rule-compliance: ok evidence=database_manifest.yaml 业务/特征/基础维度库 (untagged 检查域: 每表必声明)
 # 2026-06-22 P2: stale 检查(声明了但不在live)须扫全库 — 否则 market/etf 驻留的声明表
 # (price_kline_qfq_tushare 在 market / mart_etf_snapshot_* 在 etf) 被误判 stale。untagged 检查仍只 MANAGED_DBS
-# (不要求声明 market/etf 的 raw 镜像表)。
-STALE_SCAN_DBS = ("smartmoney", "feature_store", "market", "etf")
+# (不要求声明 market/etf 的 raw 镜像表)。2026-06-27 §9: reference 加入 (4 dim live 在此)。
+STALE_SCAN_DBS = ("smartmoney", "feature_store", "market", "etf", "reference")
 
 
 def _db_path(key: str) -> Path:

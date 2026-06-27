@@ -124,16 +124,8 @@ CREATE INDEX IF NOT EXISTS idx_fsld_date ON fact_stock_liquidity_daily(date);
 """
 
 
-# 8. 退市风险
-DIM_LISTING_STATUS_DDL = """
-CREATE TABLE IF NOT EXISTS dim_listing_status (
-    stock_code        TEXT PRIMARY KEY,
-    listing_status    TEXT NOT NULL,        -- 'normal' / 'st' / 'star_st' / 'pt' / 'delisting' / 'suspended'
-    status_reason     TEXT,
-    flag_from_date    TEXT,
-    detected_at       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-"""
+# 8. 退市风险 — §9 reference 拆库 Stage E (2026-06-27): DIM_LISTING_STATUS_DDL 已删 (迁 reference.duckdb,
+#    schema owner = build_dim_listing_status.ensure_dim_listing_status_schema; smartmoney 副本物删 + 删 DDL 防重建)。
 
 
 # 9. 风格因子
@@ -194,6 +186,8 @@ def ensure_primitives_tables(conn) -> None:
     conn.executescript(DIM_FEE_SCHEDULE_DDL)
     conn.executescript(DIM_TRADING_SESSION_DDL)
     conn.executescript(DIM_LIQUIDITY_THRESHOLD_DDL)
-    conn.executescript(DIM_LISTING_STATUS_DDL)
+    # §9 reference 拆库 Stage E (2026-06-27): dim_listing_status 不再建于 smartmoney —
+    #   迁 reference.duckdb (build_dim_listing_status.ensure_dim_listing_status_schema 建); smartmoney 副本物删,
+    #   删此 executescript 防 init_db 重建循环。
     conn.executescript(DIM_STYLE_FACTOR_DDL)
     conn.commit()

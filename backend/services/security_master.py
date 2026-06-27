@@ -82,17 +82,17 @@ def refresh_active_a_stock_master(conn) -> int:
         market = "SH" if suffix == "SH" else "SZ"   # 北交所(BJ)已 WHERE 排除
         rows.append((code, str(name or "").strip(), market, "tushare_stock_basic", now))
 
-    # §9 reference 拆库 (2026-06-27): dim_active_a_stock 迁 reference 库。过渡期 dual-write —
-    #   reference (新真相源) + smartmoney (旧副本, 供尚未迁的直读消费者), 全 reader 迁完后 smartmoney 侧物删 (Stage E)。
-    _write_dim_active(conn, rows)  # smartmoney 旧副本 (过渡)
+    # §9 reference 拆库 Stage E (2026-06-27): dim_active_a_stock 已迁 reference 库, smartmoney 副本物删。
+    #   writer 只写 reference 真相源 (不再 dual-write); reader 全经 active_codes/active_stock_name_map
+    #   (resolver.dim_read_conn → reference)。conn 参数保留仅为接口兼容 (调用方传 smartmoney conn), writer 不再用它。
     from services.data_access import resolver
     ref = resolver.connect_rw("reference")
     try:
-        _write_dim_active(ref, rows)  # reference 新真相源
+        _write_dim_active(ref, rows)  # reference 唯一真相源
     finally:
         ref.close()
 
-    logger.info(f"[主数据] 刷新当前A股主数据(tushare stock_basic): {len(rows)} 只 (排北交所; dual-write reference+smartmoney)")
+    logger.info(f"[主数据] 刷新当前A股主数据(tushare stock_basic): {len(rows)} 只 (排北交所; reference-only, Stage E)")
     return len(rows)
 
 

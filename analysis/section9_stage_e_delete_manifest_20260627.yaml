@@ -1,0 +1,29 @@
+# §9 reference 拆库 Stage E — 物删 smartmoney 里 4 dim 副本 (已迁 reference.duckdb)
+# 前置 (全部已完成, 见 commit chunk1-4 + Commit A + DDL 移除):
+#   - 全 reader 经 resolver.dim_read_conn / active_codes / active_stock_name_map / latest_completed_trade_date 路由 reference
+#     (Stage-E 安全账本 workflow 34文件/177读点审计 + 对抗验证, 6 NEEDS_MIGRATION 全修)
+#   - writer reference-only (security_master.refresh 去 dual-write; build_dim_listing_status → reference)
+#   - smartmoney schema-init DDL 全移除 (schema_core/schema_migrations/primitives ddl) 防重建循环
+# action=archive: 先 COPY TO parquet 留底再 DROP (可逆保险) + 写 mart_data_deletion_record 留痕
+# 执行: python backend/scripts/db_lifecycle_delete.py --manifest analysis/section9_stage_e_delete_manifest_20260627.yaml --execute --force
+#   (--force: 4 dim 在 live 面被引用[现 reference 真相源], 有意删 smartmoney 冗余副本; live 守护本会 REFUSE)
+run_id: section9_stage_e_dim_split_20260627
+db: smartmoney
+archive_dir: data/archive/lifecycle
+entries:
+  - table: dim_active_a_stock
+    action: archive
+    bucket: dim_reference_split
+    reason: "§9 Stage E: dim 迁 reference.duckdb 真相源, smartmoney 冗余副本物删 (reader 全 reference 路由 + writer reference-only + DDL 移除)"
+  - table: dim_trading_calendar
+    action: archive
+    bucket: dim_reference_split
+    reason: "§9 Stage E: 交易日历迁 reference.duckdb (静态 seeded 无 live writer), smartmoney 冗余副本物删"
+  - table: dim_all_ever_listed
+    action: archive
+    bucket: dim_reference_split
+    reason: "§9 Stage E: 生存者宇宙迁 reference.duckdb (无 live writer), smartmoney 冗余副本物删"
+  - table: dim_listing_status
+    action: archive
+    bucket: dim_reference_split
+    reason: "§9 Stage E: 退市状态迁 reference.duckdb (build_dim_listing_status writer→reference), smartmoney 冗余副本物删"
