@@ -132,19 +132,9 @@ def _write_dim_active(conn, rows) -> None:
 
 
 def _dim_read_conn(conn):
-    """§9 dim 读路由: conn 有主数据表 (测试 fixture / 过渡期 smartmoney dual 副本) → 用它;
-    否则开 reference RO (Stage E 物删 smartmoney 副本后, 全 reader 原子 fall 到 reference)。返 (conn, own_flag)。"""
-    if conn is not None:
-        try:
-            has = conn.execute(
-                "SELECT 1 FROM information_schema.tables WHERE table_name='dim_active_a_stock' LIMIT 1"  # rule-compliance: ok evidence=table-existence-probe (dim 读路由探测, 非 universe 取数)
-            ).fetchone()
-        except Exception:
-            has = None
-        if has:
-            return conn, False
+    """§9 dim 读路由 (主数据表); 委托 resolver.dim_read_conn 通用实现。"""
     from services.data_access import resolver
-    return resolver.connect_ro("reference"), True
+    return resolver.dim_read_conn(conn, "dim_active_a_stock")  # rule-compliance: ok evidence=dim-read-router (非universe取数, 路由探测)
 
 
 def active_codes(conn=None) -> Set[str]:

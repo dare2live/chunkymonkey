@@ -26,6 +26,24 @@ def connect_ro(alias: str):
     return duck_connect(db_path(alias), read_only=True)
 
 
+def dim_read_conn(conn, table: str):
+    """§9 dim 读路由 (通用): conn 有 table (测试 fixture / 过渡期 smartmoney dual 副本) → 用它;
+    否则开 reference RO (Stage E 物删 smartmoney 副本后, 全 reader 原子 fall reference)。返 (conn, own_flag)。
+
+    dim 表 (active/calendar/...) 迁 reference 库的统一读路 (security_master/calendar 共用)。
+    """
+    if conn is not None:
+        try:
+            has = conn.execute(
+                "SELECT 1 FROM information_schema.tables WHERE table_name=? LIMIT 1", [table]
+            ).fetchone()
+        except Exception:
+            has = None
+        if has:
+            return conn, False
+    return connect_ro("reference"), True
+
+
 def connect_rw(alias: str):
     """写侧连接 (限 dim 真相源 writer, 如 reference universe/calendar 刷新)。
 

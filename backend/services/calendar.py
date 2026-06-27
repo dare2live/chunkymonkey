@@ -35,7 +35,7 @@ class CalendarMissError(RuntimeError):
 
 
 def latest_completed_trade_date(
-    conn,
+    conn=None,
     now: Optional[datetime] = None,
     close_hour: int = DEFAULT_CLOSE_HOUR,
     close_minute: int = DEFAULT_CLOSE_MINUTE,
@@ -59,11 +59,18 @@ def latest_completed_trade_date(
     if (now_local.hour, now_local.minute) < (close_hour, close_minute):
         anchor_date -= timedelta(days=1)
 
-    row = conn.execute(
-        "SELECT MAX(trade_date) AS d FROM dim_trading_calendar "
-        "WHERE is_trading=1 AND trade_date <= ?",
-        (anchor_date.strftime("%Y-%m-%d"),)
-    ).fetchone()
+    # §9 拆库: dim_trading_calendar 迁 reference 库 (resolver.dim_read_conn auto-fallback: conn 有表用它[测试/过渡dual]否则 reference)
+    from services.data_access import resolver
+    c, own = resolver.dim_read_conn(conn, "dim_trading_calendar")
+    try:
+        row = c.execute(
+            "SELECT MAX(trade_date) AS d FROM dim_trading_calendar "
+            "WHERE is_trading=1 AND trade_date <= ?",
+            (anchor_date.strftime("%Y-%m-%d"),)
+        ).fetchone()
+    finally:
+        if own:
+            c.close()
     if not row:
         return None
     if hasattr(row, "keys") and "d" in row.keys():
@@ -94,16 +101,12 @@ def latest_completed_for_kline_write(
         )
         return None
     try:
-        from services.db import get_conn as _get_smart_conn
-        smart_conn = _get_smart_conn()
-        try:
-            return latest_completed_trade_date(
-                smart_conn, now=now,
-                close_hour=KLINE_WRITE_CLOSE_HOUR,
-                close_minute=KLINE_WRITE_CLOSE_MINUTE,
-            )
-        finally:
-            smart_conn.close()
+        # §9 拆库: 直读 reference dim_trading_calendar (conn=None → resolver auto-fallback), 不开 smartmoney (decouple 写锁)
+        return latest_completed_trade_date(
+            now=now,
+            close_hour=KLINE_WRITE_CLOSE_HOUR,
+            close_minute=KLINE_WRITE_CLOSE_MINUTE,
+        )
     except Exception as e:
         if raise_on_miss:
             raise CalendarMissError(
@@ -122,13 +125,8 @@ def latest_closed_or_raise(
 
     适合 deep-call sites (return_engine / scoring / screening 等), 一行替换原 wall-clock.
     """
-    from services.db import get_conn
-
-    conn = get_conn()
-    try:
-        d = latest_completed_trade_date(conn, now=now, close_hour=close_hour, close_minute=close_minute)
-    finally:
-        conn.close()
+    # §9 拆库: 直读 reference dim_trading_calendar (conn=None → resolver auto-fallback), 不开 smartmoney (decouple 写锁)
+    d = latest_completed_trade_date(now=now, close_hour=close_hour, close_minute=close_minute)
     if not d:
         raise CalendarMissError(
             "dim_trading_calendar 未 seed 或表损坏; 拒绝 fallback to wall-clock now."
