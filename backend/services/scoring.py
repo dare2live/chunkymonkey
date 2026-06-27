@@ -1843,24 +1843,10 @@ def calculate_stock_scores(conn) -> int:
                 return rank
         return fin_pct_map.get(("all", "all", metric, stock_code))
 
+    # 2026-06-27 通达信全删/akshare退役: 切 dim_capital_behavior_latest 依赖 (用户决"cut", writer已dead=stale冻结)。
+    # capital_by_stock 空 → 下方 quality_capital 经 `if X is not None` 守卫自然=0 (资本质量子分退役)。
+    # 档B alpha 若需资本行为, 从 tushare(dividend/repurchase/share_float) 重接, 不复用 akshare stale 数据。
     capital_by_stock = {}
-    try:
-        cap_rows = conn.execute("""
-            SELECT stock_code, listed_days, cumulative_dividend, avg_annual_dividend,
-                   dividend_count, financing_total, financing_count, dividend_financing_ratio,
-                   repurchase_count_3y, repurchase_amount_3y, repurchase_ratio_sum_3y,
-                   active_repurchase_count, future_unlock_count_180d, future_unlock_ratio_180d,
-                   future_unlock_count_365d, future_unlock_ratio_365d,
-                   last_dividend_notice_date, dividend_cash_sum_5y, dividend_event_count_5y,
-                   dividend_implemented_count_5y, last_allotment_notice_date,
-                   allotment_count_5y, allotment_ratio_sum_5y, allotment_raised_funds_5y
-            FROM dim_capital_behavior_latest
-        """).fetchall()
-        for row in cap_rows:
-            d = dict(row)
-            capital_by_stock[d["stock_code"]] = d
-    except Exception:
-        capital_by_stock = {}
 
     indicator_by_stock = {}
     indicator_groups = {("all", "all"): []}

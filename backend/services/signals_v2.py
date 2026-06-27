@@ -1319,16 +1319,10 @@ def _enrich_events_with_gpcw(conn, events: list[dict]) -> None:
     hc_map = maps["holder_count"]
     fc_map = maps["forecast_profit_yoy_mid"]
 
-    # D5: 解禁数据从 dim_capital_behavior_latest 加载
+    # D5: 2026-06-27 通达信全删/akshare退役 — 切 dim_capital_behavior_latest 依赖 (用户决"cut")。
+    # unlock_map 空 → 下方 D5 解禁门 future_unlock_ratio_180d 全 None = 不过滤 (解禁风控暂退役)。
+    # 档B alpha 若需解禁风控, 从 tushare share_float (限售解禁) PIT 重接, 不复用 akshare stale 数据。
     unlock_map = {}
-    try:
-        for r in conn.execute(
-            "SELECT stock_code, future_unlock_ratio_180d "
-            "FROM dim_capital_behavior_latest WHERE future_unlock_ratio_180d IS NOT NULL"
-        ).fetchall():
-            unlock_map[r["stock_code"]] = float(r["future_unlock_ratio_180d"])
-    except Exception as exc:
-        logger.warning(f"[signals_v2] 加载 unlock 失败: {exc}")
 
     # D8: 批量加载调研数据 + 覆盖区间
     stock_codes = {ev.get("stock_code") for ev in events if ev.get("stock_code")}

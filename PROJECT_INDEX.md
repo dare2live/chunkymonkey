@@ -294,7 +294,7 @@
 | `fact_holder_event` / `fact_top10_holder_period` / `fact_holder_count_period` | 持股人结构 |
 | `fact_dzjy_event` | 大宗交易 (旧源) |
 | **`raw_tushare_block_trade`** (大宗交易, 2026-06-16 注册) | 用户提议: 机构折价/大单方向, stage 内 alpha 增强候选 (moneyflow 抓不到的机构维度). grain=[ts_code,trade_date,price,vol] (同股同日多笔全留), PIT 锚 trade_date (盘后披露, 决策用 t-1); by_trade_date 2023+. **表未建** (配额墙), 配置就绪待拉. debate 裁决档B: 做事件 confirmation 不做连续因子 |
-| `raw_capital_*` (allotment/dividend/repurchase/unlock) | 配股/分红/回购/解禁 |
+| `raw_capital_*` (allotment/dividend/repurchase/unlock) + `dim_capital_behavior_latest` | 配股/分红/回购/解禁 (akshare 源). **2026-06-27 通达信全删 M4 退役中**: 用户决"cut"不迁移 — 消费侧已切 (scoring quality_capital→0 / signals_v2 D5 解禁门→不过滤); 源头 client+物删 follow-up. 档B 若需从 tushare dividend/repurchase/share_float 重接 |
 | `raw_institution_surveys` | 机构调研 raw |
 | `raw_qfii_holding_quarterly` | QFII 季度持仓 |
 | `raw_org_holding_aif10` | 机构持仓明细 (东财妙想 aif10 MAIN_ORGHOLDDETAIL; 非公募机构 基金/保险/券商/法人/QFII 分桶持本股, report_date 报告期 + 法定披露截止 available_date PIT 锚; 2026-06-24 aif10 例外扩展, 复核确认真·独有 gap=tushare fund_portfolio 仅公募). owner=services/org_holding_aif10.py; data_layers=L0_source (2026-06-24 补 tag, 修 data-layer-integrity FAIL) |
