@@ -84,8 +84,7 @@ EXTRA_UPSTREAM_BY_TABLE = {
     "fact_controlling_shareholder": ("tdxhub.holders", 1),
     "fact_shareholder_plan":        ("tdxhub.holders", 1),
     "fact_shareholder_trade":       ("tdxhub.holders", 1),
-    "raw_executive_trade":          ("aif10 / akshare", 2),
-    "raw_gpcw_dividend":            ("tdxhub.affair (gpcw)", 1),
+    # raw_executive_trade (akshare M4) + raw_gpcw_dividend (gpcw) 源映射已删 2026-06-27 (通达信全删: 表 GONE)
     "dim_active_a_stock":           ("tushare stock_basic (list_status=L, 2026-06-19 切, 排北交所)", 1),  # rule-compliance: ok evidence=metadata-registry
     "dim_trading_calendar":         ("akshare tool_trade_date_hist_sina", 3),
     "dim_holder_alias":             ("manual seed", None),
@@ -161,13 +160,9 @@ EXTRA_FRESHNESS_BY_TABLE = {
     "mart_synergy_policy_mtm_strategy_sweep": ("on-demand", 24 * 30),
     "mart_synergy_policy_mtm_strategy_sweep_summary": ("on-demand", 24 * 30),
     "mart_macd_state_history": ("on-demand", 24 * 30),
-    "mart_tdx_gpcw_auto_challenger_report": ("on-demand", 24 * 30),
-    "mart_tdx_gpcw_auto_feature_cluster": ("on-demand", 24 * 30),
-    "mart_tdx_gpcw_auto_feature_score": ("on-demand", 24 * 30),
-    "mart_tdx_gpcw_auto_optuna_run": ("on-demand", 24 * 30),
-    "mart_tdx_gpcw_auto_retention_decision": ("on-demand", 24 * 30),
+    # mart_tdx_gpcw_auto_* (5) retention 已删 2026-06-27 (通达信全删: gpcw auto-feature 流水线退役, 表 GONE)
     "mart_temporal_research_panel": ("on-demand", 24 * 30),
-    "mart_tdx_f10_source_date_section_audit": ("on-demand", 24 * 30),
+    # mart_tdx_f10_source_date_section_audit retention 已删 2026-06-27 (通达信全删: tdx F10 source-date audit 退役, 表 GONE)
     "mart_architecture_cleanup_plan": ("on-demand", 24 * 30),
     # mart_tdx_server_health seed 已删 2026-06-27 (通达信全删 单元7 物删)
     "mart_temporal_research_panel_quality": ("on-demand", 24 * 30),

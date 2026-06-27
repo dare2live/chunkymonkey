@@ -54,15 +54,7 @@ CREATE INDEX IF NOT EXISTS idx_source_failure_open
 
 
 DOMAIN_SPECS = [
-    {
-        "data_domain": "kline_daily",
-        "source_name": "tdxhub_quote",
-        "source_tier": 1,
-        "table": "market.price_kline_tdxhub",
-        "date_col": "date",
-        "where": "freq = 'daily' AND adjust = 'qfq'",
-        "parser_version": "tdxhub_qfq_daily",
-    },
+    # tdxhub_quote kline_daily spec 已删 2026-06-27 (通达信全删: price_kline_tdxhub 表物删; K线 canonical=tushare v_price_kline_qfq)
     {
         "data_domain": "kline_daily",
         "source_name": "akshare_multi_source",
@@ -71,11 +63,7 @@ DOMAIN_SPECS = [
         "date_col": "date",
         "where": "freq = 'daily' AND adjust = 'qfq'",
         "parser_version": "akshare_fallback_daily",
-        "fallback_reason": "fills keys/dates not yet present in tdxhub qfq daily",
-        "fallback_mode": "fills_primary_gap",
-        "primary_table": "market.price_kline_tdxhub",
-        "primary_date_col": "date",
-        "primary_where": "freq = 'daily' AND adjust = 'qfq'",
+        # primary_table fallback refs 已删 2026-06-27 (原指物删 price_kline_tdxhub; akshare price_kline 待 M3 切 tushare)
         "gap_key_cols": ["code", "date", "freq", "adjust"],
     },
     {

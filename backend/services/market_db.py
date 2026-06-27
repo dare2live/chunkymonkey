@@ -197,67 +197,7 @@ def upsert_price_rows(conn, rows: list[dict], source: str,
     return len(rows)
 
 
-def upsert_price_kline_tdxhub_rows(conn, rows: list[dict],
-                                   source: str = "tdxhub",
-                                   batch_id: str = None) -> int:
-    """
-    [已退役 2026-06-23 M3] tdxhub 股票 K 线写入路径。
-
-    price_kline_tdxhub (5.3M行) 已物删; serving K线真相源 = price_kline_qfq_tushare
-    (build_price_kline_qfq_tushare, daily_update Step 2.96)。本函数仅留 import 兼容
-    (orphan caller: updater_market_data.py, main.py 已 A3 退役)。§4.4 fail-loud:
-    任何 retried 写调用立即 raise, 防静默重建空表 (§4.5 重建循环) 或静默降级。
-    """
-    raise RuntimeError(
-        "upsert_price_kline_tdxhub_rows 已退役 (M3, 2026-06-23): price_kline_tdxhub 物删; "
-        "K线 serving 走 price_kline_qfq_tushare (tushare canonical, daily_update Step 2.96)。"
-        "若需 tdxhub K线热备, 重新立 builder + 在 market_schema 重声明表 DDL。"
-    )
-    if not rows:
-        return 0
-    rows = _clean_kline_rows_for_write(
-        conn,
-        rows,
-        source=source or "tdxhub",
-        output_table="price_kline_tdxhub",
-        batch_id=batch_id,
-    )
-    if not rows:
-        return 0
-    now = _now_iso()
-    conn.executemany(
-        """
-        DELETE FROM price_kline_tdxhub
-         WHERE code = ? AND date = ? AND freq = ? AND adjust = ?
-        """,
-        [
-            (
-                r["code"],
-                r["date"],
-                r.get("freq", "daily"),
-                r.get("adjust", "qfq"),
-            )
-            for r in rows
-        ],
-    )
-    conn.executemany(
-        "INSERT INTO price_kline_tdxhub "
-        "(code, date, freq, adjust, open, high, low, close, volume, amount, "
-        " factor, source, batch_id, ingested_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        [
-            (
-                r["code"], r["date"], r.get("freq", "daily"),
-                r.get("adjust", "qfq"),
-                r.get("open"), r.get("high"), r.get("low"), r.get("close"),
-                r.get("volume"), r.get("amount"), r.get("factor"),
-                source or "tdxhub", batch_id, now,
-            )
-            for r in rows
-        ],
-    )
-    conn.commit()
-    return len(rows)
+# upsert_price_kline_tdxhub_rows 已删 2026-06-27 (通达信全删: price_kline_tdxhub 表物删, 0-live-caller; K线走 tushare canonical)
 
 
 def replace_xdxr_rows(conn, code: str, rows: list[dict], source: str,

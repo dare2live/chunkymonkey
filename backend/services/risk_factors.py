@@ -303,7 +303,7 @@ def calc_risk_factors(conn, *, lookback_days: int = 250, max_stocks: int | None 
         ended_at=utc_now_iso(),
         duration_s=elapsed,
         commit_sha=git_commit_sha(),
-        input_tables=[kline_relation, "price_kline_tdxhub"],  # rule-compliance: ok evidence=lineage-metadata, universe from K-line truth
+        input_tables=[kline_relation],  # rule-compliance: ok evidence=lineage-metadata, universe from K-line truth (price_kline_tdxhub 已物删 2026-06-27, 走 canonical kline_relation)
         output_tables=["fact_risk_factors"],
         perf_summary={
             "lookback_days": int(lookback_days),

@@ -273,7 +273,7 @@ DERIVED_WRITERS: list[ClientSpec] = [
         client_id="build_candidate_feature_panel",
         module="scripts.build_candidate_feature_panel",
         description="候选特征面板 (不替换 champion)",
-        upstream_source="derived: fact_feature_panel + fact_common_major_holder_stock + raw_gpcw_detail",
+        upstream_source="derived: fact_feature_panel + fact_common_major_holder_stock",  # raw_gpcw_detail 已物删 2026-06-27 (通达信全删)
         source_tier=99,
         writes=[
             TableWriteSpec("fact_feature_panel_candidate", "候选特征面板", "on-demand", 24*30),

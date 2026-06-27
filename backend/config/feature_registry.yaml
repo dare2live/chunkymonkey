@@ -130,7 +130,7 @@ groups:
     pit_release_lag_days: 0
     source_tables:
       - market.v_price_kline_qfq
-      - smartmoney.dim_stock_tdx_industry
+      # smartmoney.dim_stock_tdx_industry 已物删 2026-06-27 (通达信全删: tdx 行业分类源退役; sector-relative *_tdx_l1_rel 特征转 research_only_source_gap, 档B 重接 sw 行业)
     required_capabilities:
       - kline_daily
     features:
@@ -146,10 +146,22 @@ groups:
           production_ready: false
           feature_role: research_only_source_gap
           null_policy: excluded_until_backfilled
-      - ret_20d_tdx_l1_rel
-      - ret_60d_tdx_l1_rel
-      - vol_z20d_tdx_l1_rel
-      - amount_chg_5d_tdx_l1_rel
+      - ret_20d_tdx_l1_rel:
+          production_ready: false
+          feature_role: research_only_source_gap
+          null_policy: excluded_until_backfilled
+      - ret_60d_tdx_l1_rel:
+          production_ready: false
+          feature_role: research_only_source_gap
+          null_policy: excluded_until_backfilled
+      - vol_z20d_tdx_l1_rel:
+          production_ready: false
+          feature_role: research_only_source_gap
+          null_policy: excluded_until_backfilled
+      - amount_chg_5d_tdx_l1_rel:
+          production_ready: false
+          feature_role: research_only_source_gap
+          null_policy: excluded_until_backfilled
       - rz_balance_to_amount20:
           production_ready: false
           feature_role: research_only_source_gap
