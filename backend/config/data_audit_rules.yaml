@@ -43,13 +43,8 @@ smartmoney_freshness:
     - table: mart_stock_survey_activity
       date_column: as_of_date
       max_lag_days: 3
-    # 2026-05-29 加 (市场感知数据接入 P0): attention/profit_forecast 接进 daily_update Step 2k/2l 后
-    # 注册 SLA 防再次静默断更. 反例: attention 断更 14 天没人发现因不在 SLA (feedback-data-sync-silent-failure).
-    # akshare 源不稳, max_lag_days 放宽到 5 (vs 默认 3).
-    - table: fact_stock_attention_snapshot
-      date_column: snapshot_date
-      max_lag_days: 5
-    # raw_profit_forecast_snapshot_daily 规则已删 2026-06-27 (通达信全删 M4: akshare 盈利预测快照物删)
+    # fact_stock_attention_snapshot + raw_profit_forecast_snapshot_daily SLA 规则已删 2026-06-27
+    #   (通达信全删 M4: akshare 关注度/盈利预测快照物删, 用户决cut)
 
 cross_table_consistency:
   sample_limit: 5

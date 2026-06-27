@@ -12,22 +12,22 @@ assertions:
     query: "SELECT count(DISTINCT table_name) FROM duckdb_constraints() WHERE constraint_type IN ('PRIMARY KEY','UNIQUE')"
     expect: {op: ">=", value: 39}
   - id: smartmoney-indexes
-    claim: "索引 >=78 (2026-06-27 通达信全删: gpcw/xdxr/capital/akshare-event 物删后 94→78; 缺=回归)"
+    claim: "索引 >=76 (2026-06-27 通达信全删: gpcw/xdxr/capital/akshare-event/attention 物删后 94→76; 缺=回归)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM duckdb_indexes()"
-    expect: {op: ">=", value: 78}
+    expect: {op: ">=", value: 76}
   - id: smartmoney-tables
-    claim: "表 >=75 (2026-06-27 通达信全删 M4: akshare capital 7表+event 3表物删后 85→75; 含累计 gpcw/xdxr 退役; 增表应显式过决策)"
+    claim: "表 >=73 (2026-06-27 通达信全删 M4: akshare capital 7+event 3+attention 2 表物删后 85→73; 含累计 gpcw/xdxr 退役; 增表应显式过决策)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM duckdb_tables()"
-    expect: {op: ">=", value: 75}
+    expect: {op: ">=", value: 73}
   - id: smartmoney-size-band
-    claim: "库体量 2-6GB 带内 (2026-06-14 地基-reset 26.6→2.5G; 越界 = 异常膨胀或错库/数据丢失)"
+    claim: "库体量 0.5-3GB 带内 (2026-06-27 通达信全删 M4 物删10表 + db_compact 紧缩 3.0→0.9G; 越界 = 异常膨胀或错库/数据丢失)"
     type: file_size
     path: data/smartmoney.duckdb
-    expect: {op: between, low: 2000000000, high: 6000000000}
+    expect: {op: between, low: 500000000, high: 3000000000}
   - id: calendar-floor
     claim: "交易日历起点 == 2005-01-04 (2026-06-12 扩展+七项验证 PASS; 回退 = 静默 clamp 复发)"
     type: duckdb_sql

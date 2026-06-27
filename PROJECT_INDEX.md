@@ -408,7 +408,7 @@
 ### 3.8 其他
 
 - `services/sentiment/` — **情绪因子框架** (factor_registry + bin_assigner + window_calculator + survey_builder). 未集成到主选股
-- `services/external_attention.py` — 关注度因子 (`external_attention_score` 已写入 mart_stock_trend)
+- ~~`services/external_attention.py`~~ — 关注度因子 **已物删 2026-06-27 (通达信全删 M4: akshare 东财人气/关注度退役, 用户决cut, 无tushare等价=永久丢)**; 表 fact_stock_attention_snapshot(16511)/dim_stock_attention_latest(5504) archive留底; scoring `external_attention_score`/`external_crowding_penalty` 恒None(优雅降级, mart_stock_trend 列保留但NULL); 档B 若需关注度信号无 tushare 来源
 - `services/event_simulator.py` / `event_engine.py` — 事件模拟引擎 (用于机构跟随 backtest)
 - `services/shareholder_plan_*` (3 文件) — 股东计划相关 alpha
 - `services/feature_registry.py` / `feature_labels.py` / `feature_retention.py` — 特征工程

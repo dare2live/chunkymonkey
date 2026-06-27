@@ -1303,31 +1303,9 @@ tools:
     replacement: event backtest with backtest_preflight, cost model, and real K-line freshness evidence before strategy claims
     last_verified: "2026-05-27"
 
-  - id: external_attention_contract_tests
-    paths:
-      - backend/tests/test_external_attention.py
-    owner_module: external_attention
-    scope: contract
-    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_external_attention.py
-    status: active
-    evidence_level: trusted_with_scope
-    truth_source: local AkShare-style external-attention payload fixtures and cache-copy checks
-    risk_reason: validates payload normalization/detail assembly and cache isolation only; it does not prove live AkShare availability or attention-source freshness
-    replacement: source coverage, freshness audit, and profile lineage evidence before production stock-profile use
-    last_verified: "2026-05-27"
-
-  - id: external_attention_smart_plan_root_tests
-    paths:
-      - backend/tests/test_external_attention_sync_plan.py
-    owner_module: external_attention_smart_plan
-    scope: contract
-    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_external_attention_sync_plan.py
-    status: active
-    evidence_level: trusted_with_scope
-    truth_source: in-memory DuckDB smart-update audit, relationship freshness, attention snapshot, and updater downstream-step fixtures
-    risk_reason: validates smart-plan decision mechanics only; it does not execute data sync, prove production freshness, or authorize provider/long-running updates
-    replacement: updater DAG audit, data_audit, and controlled execution evidence before production update claims
-    last_verified: "2026-05-27"
+  # external_attention_contract_tests (test_external_attention.py) + external_attention_smart_plan_root_tests
+  #   (test_external_attention_sync_plan.py, 文件早已不存在) 已退役 2026-06-27
+  #   (通达信全删 M4: akshare external_attention + test 物删, 用户决cut)
 
   - id: feature_join_v5_leakage_guard_tests
     paths:

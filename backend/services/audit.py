@@ -322,145 +322,9 @@ def _get_suspended_codes(trade_date: str) -> set:
     return codes
 
 
-def _summarize_external_attention(
-    conn,
-    latest_market_date: Optional[str],
-    expected_stocks: int,
-    *,
-    expected_stock_codes: Optional[set[str]] = None,
-) -> dict:
-    summary = {
-        "latest_snapshot_date": "",
-        "snapshot_rows": 0,
-        "comment_covered": 0,
-        "survey_covered": 0,
-        "comment_trade_date": "",
-        "comment_trade_lag_days": None,
-        "last_survey_date": "",
-        "expected_stocks": expected_stocks,
-        "covered_stocks": 0,
-        "missing_stocks": max(expected_stocks, 0),
-        "coverage": 0,
-        "snapshot_lag_days": None,
-        "trend_scope": 0,
-        "trend_scored_stocks": 0,
-        "trend_signal_count": 0,
-    }
+# _summarize_external_attention / _external_attention_plan_reason 已退役 2026-06-27
+#   (通达信全删 M4: akshare external_attention 物删, 用户决cut; 调用点已切)
 
-    try:
-        row = conn.execute(
-            "SELECT MAX(snapshot_date) AS snapshot_date FROM dim_stock_attention_latest"
-        ).fetchone()
-    except Exception:
-        return summary
-
-    latest_snapshot_date = row["snapshot_date"] if row and row["snapshot_date"] else None
-    if not latest_snapshot_date:
-        return summary
-
-    summary["latest_snapshot_date"] = latest_snapshot_date
-    summary["snapshot_rows"] = _scalar(
-        conn,
-        "SELECT COUNT(*) FROM dim_stock_attention_latest WHERE snapshot_date = ?",
-        (latest_snapshot_date,),
-    )
-    summary["comment_covered"] = _scalar(
-        conn,
-        "SELECT COUNT(*) FROM dim_stock_attention_latest WHERE snapshot_date = ? AND comment_available = 1",
-        (latest_snapshot_date,),
-    )
-    summary["survey_covered"] = _scalar(
-        conn,
-        "SELECT COUNT(*) FROM dim_stock_attention_latest WHERE snapshot_date = ? AND survey_available = 1",
-        (latest_snapshot_date,),
-    )
-
-    latest_source_row = conn.execute(
-        """
-        SELECT MAX(comment_trade_date) AS comment_trade_date,
-               MAX(last_survey_date) AS last_survey_date
-        FROM dim_stock_attention_latest
-        WHERE snapshot_date = ?
-        """,
-        (latest_snapshot_date,),
-    ).fetchone()
-    if latest_source_row:
-        summary["comment_trade_date"] = latest_source_row["comment_trade_date"] or ""
-        summary["last_survey_date"] = latest_source_row["last_survey_date"] or ""
-
-    # 2026-06-22: snapshot_lag 锚 latest_market_date (交易日历真相源) 与下行 comment_lag 一致, 非 wall-clock
-    # date.today() (后者周末/假日虚高 lag 误报; calendar-usage 门 triage)
-    summary["snapshot_lag_days"] = _days_lag(latest_snapshot_date, latest_market_date)
-    summary["comment_trade_lag_days"] = _days_lag(summary["comment_trade_date"], latest_market_date)
-
-    try:
-        summary["trend_scope"] = _scalar(conn, "SELECT COUNT(*) FROM mart_stock_trend")
-        summary["trend_scored_stocks"] = _scalar(
-            conn,
-            """
-            SELECT COUNT(*)
-            FROM mart_stock_trend
-            WHERE external_attention_score IS NOT NULL
-               OR COALESCE(attention_comment_trade_date, '') != ''
-               OR COALESCE(external_attention_signal, '') != ''
-            """,
-        )
-        summary["trend_signal_count"] = _scalar(
-            conn,
-            "SELECT COUNT(*) FROM mart_stock_trend WHERE COALESCE(external_attention_signal, '') != ''",
-        )
-    except Exception:
-        pass
-
-    expected_codes = {str(code) for code in (expected_stock_codes or set()) if code}
-    if expected_codes:
-        try:
-            snapshot_rows = conn.execute(
-                "SELECT stock_code FROM dim_stock_attention_latest WHERE snapshot_date = ?",
-                (latest_snapshot_date,),
-            ).fetchall()
-            snapshot_codes = {str(row["stock_code"]) for row in snapshot_rows if row["stock_code"]}
-            summary["expected_stocks"] = len(expected_codes)
-            summary["covered_stocks"] = len(expected_codes & snapshot_codes)
-        except Exception:
-            summary["covered_stocks"] = 0
-        summary["missing_stocks"] = max(len(expected_codes) - int(summary["covered_stocks"] or 0), 0)
-        summary["coverage"] = _pct(summary["covered_stocks"], len(expected_codes))
-    elif expected_stocks > 0:
-        try:
-            summary["covered_stocks"] = _scalar(
-                conn,
-                """
-                SELECT COUNT(DISTINCT c.stock_code)
-                FROM mart_current_relationship c
-                JOIN dim_stock_attention_latest a
-                  ON a.stock_code = c.stock_code
-                 AND a.snapshot_date = ?
-                """,
-                (latest_snapshot_date,),
-            )
-        except Exception:
-            summary["covered_stocks"] = 0
-        summary["missing_stocks"] = max(expected_stocks - int(summary["covered_stocks"] or 0), 0)
-        summary["coverage"] = _pct(summary["covered_stocks"], expected_stocks)
-    else:
-        summary["missing_stocks"] = 0
-
-    return summary
-
-
-def _external_attention_plan_reason(layer: Optional[dict]) -> Optional[str]:
-    info = layer or {}
-    if not info.get("latest_snapshot_date") or not int(info.get("snapshot_rows") or 0):
-        return "无外部关注快照"
-    snapshot_lag_days = info.get("snapshot_lag_days")
-    if isinstance(snapshot_lag_days, (int, float)) and snapshot_lag_days > 0:
-        return f"外部关注快照滞后{int(snapshot_lag_days)}天"
-    missing_stocks = int(info.get("missing_stocks") or 0)
-    expected_stocks = int(info.get("expected_stocks") or 0)
-    if expected_stocks > 0 and missing_stocks > 0:
-        return f"{missing_stocks}只当前股票缺外部关注覆盖"
-    return None
 
 def _needs_stock_score_recalc(planned_steps: list[str]) -> bool:
     # build_turtle_features 已迁出智能更新（不再作为评分项），不再触发股票评分重算
@@ -470,7 +334,7 @@ def _needs_stock_score_recalc(planned_steps: list[str]) -> bool:
             "calc_inst_scores",
             "build_trends",
             "build_stage_features",
-            "build_external_attention",
+            # build_external_attention 已退役 2026-06-27 (通达信全删 M4)
         ]
     )
 
@@ -1064,12 +928,9 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
         stage_feature_count = 0
         turtle_feature_count = 0
 
-    attention = _summarize_external_attention(
-        conn,
-        latest_market_date,
-        expected_current_stocks,
-        expected_stock_codes=expected_current_codes,
-    )
+    # external_attention 审计已退役 2026-06-27 (通达信全删 M4: akshare 东财人气/关注度物删, 用户决cut;
+    #   保留空 dict 防退役源被报成 coverage GAP=长期假告警)。
+    attention = {}
 
     # 收益层：停牌事件技术（已在上方提早计算完毕）
 
@@ -1642,17 +1503,7 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
         plan["skip_reasons"]["calc_risk_factors"] = "行情未变更，无需重算风险因子"
         plan["skip_reasons"]["calc_prediction_outcomes"] = "行情未变更，无需更新预测 outcome"
 
-    # 10b. 外部关注快照
-    attention_reason = _external_attention_plan_reason(audit["layers"].get("external_attention"))
-    if attention_reason:
-        plan["steps"].append("build_external_attention")
-        plan["reason"].append(attention_reason)
-    elif "sync_surveys" in plan["steps"]:
-        # 调研数据是 external_attention 的上游（survey_covered 字段），上游变更必须重算下游
-        plan["steps"].append("build_external_attention")
-        plan["reason"].append("机构调研已更新，重算外部关注快照")
-    else:
-        plan["skip_reasons"]["build_external_attention"] = "外部关注快照已是最新"
+    # 10b. 外部关注快照计划步已退役 2026-06-27 (通达信全删 M4: akshare external_attention 物删, 用户决cut)
 
     # 11. 机构评分
     if any(s in plan["steps"] for s in ["build_profiles", "build_industry_stat"]):

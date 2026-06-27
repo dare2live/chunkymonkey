@@ -51,7 +51,7 @@ FACT_VERSIONS = {
     "fact_policy_trade": "v1",               # 策略交易明细
     "fact_regime_state": "v1",               # 市场 regime
     "fact_stock_archetype": "v1",            # 股票原型
-    "fact_stock_attention_snapshot": "v1",   # 关注度快照
+    # fact_stock_attention_snapshot 版本已删 2026-06-27 (通达信全删 M4: akshare 关注度物删, 用户决cut)
     "fact_stock_industry_context": "v1",     # 行业上下文
     "fact_stock_quality_features": "v1",     # 质量特征
     "fact_stock_stage_features": "v1",       # 阶段特征
@@ -218,7 +218,7 @@ DIM_DERIVED_VERSIONS = {
     # dim_capital_behavior_latest 已物删 2026-06-27 (通达信全删 M4: akshare 资本运作退役, 用户决cut)
     "dim_financial_latest": "v1",
     "dim_stock_archetype_latest": "v1",
-    "dim_stock_attention_latest": "v1",
+    # dim_stock_attention_latest 版本已删 2026-06-27 (通达信全删 M4: akshare 关注度物删)
     "dim_stock_industry_context_latest": "v1",
     "dim_stock_quality_latest": "v1",
     "dim_stock_stage_latest": "v1",

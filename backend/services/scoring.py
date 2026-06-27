@@ -1987,20 +1987,9 @@ def calculate_stock_scores(conn) -> int:
     except Exception:
         industry_context_by_stock = {}
 
+    # 2026-06-27 通达信全删 M4: 切 dim_stock_attention_latest 依赖 (akshare 东财人气/关注度退役, 用户决cut, 无tushare等价=永久丢)。
+    # attention_by_stock 空 → 下方 _external_attention_score(None)→None → 外部关注 boost/池升级/crowding penalty 全优雅降级 (该子信号退役)。
     attention_by_stock = {}
-    try:
-        attention_rows = conn.execute("""
-            SELECT stock_code, comment_trade_date, turnover_rate,
-                   institution_participation, composite_score, rank_change,
-                   focus_index, survey_count_30d, survey_count_90d,
-                   survey_org_total_30d, survey_org_total_90d,
-                   comment_available, survey_available
-            FROM dim_stock_attention_latest
-        """).fetchall()
-        for row in attention_rows:
-            attention_by_stock[row["stock_code"]] = dict(row)
-    except Exception:
-        attention_by_stock = {}
 
     # Phase 1: 机构-股票持仓改从 mart_current_relationship 读取（单一真相源）
     stock_institutions = {}

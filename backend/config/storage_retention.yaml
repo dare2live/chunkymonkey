@@ -188,17 +188,7 @@ table_inventory:
     reason: PIT industry-classification history for as-of joins; append-on-change keeps it bounded (~67k rows across the active universe). Needed for survivorship-clean sector membership at decision time, not a cache cleanup candidate.
   # raw_profit_forecast_snapshot_daily 已物删 2026-06-27 (通达信全删 M4: akshare 盈利预测快照退役, 用户决cut;
   #   声称 consumers[forecast_upside_live_mart/earnings_surprise_factor] code 中不存在=死, 0 live 读者; 档B 若需景气度走 tushare forecast/report_rc)。
-  - table: fact_stock_attention_snapshot
-    classification: append_only_source_snapshot
-    owner: external_attention
-    db_alias: smartmoney
-    truth_source: akshare_external_attention_daily_snapshot
-    consumers:
-      - attention_factor
-      - data_health_source_audit
-    compaction_policy: protect_no_compaction_without_verified_copy
-    retention_action: protect_pit_attention_lineage
-    reason: Append-only daily external-attention snapshots (daily_update Step2k); PIT anchor snapshot_date. akshare 源 §4.3 退役待 M4 迁 tushare; 2026-06-22 P0-10 声明 data_layers 后补 retention (C3 append-only 必声明防膨胀). 增长无界前加 rolling snapshot_date policy.
+  # fact_stock_attention_snapshot 已物删 2026-06-27 (通达信全删 M4: akshare 外部关注度快照退役, 用户决cut; 无tushare等价=永久丢)
   - table: raw_tdx_industry_file_snapshot
     classification: protected_raw_lineage
     owner: tdx_industry_client

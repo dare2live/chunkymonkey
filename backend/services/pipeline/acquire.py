@@ -44,8 +44,8 @@ def run_acquire(ctx: PipelineContext) -> None:
     # Step 2j2: 机构持仓明细 aif10 (非公募机构分桶; 2026-06-24 aif10 例外扩展, 替退役 tdx F10 控股股东表)
     ctx.step(_sync_org_holding, degraded_msg="org_holding aif10 sync 失败")
 
-    # Step 2k: external_attention 快照 (累积 PIT 关注度/调研; 反例 14 天断流无人知)
-    ctx.step(_sync_external_attention, degraded_msg="external_attention sync 失败")
+    # Step 2k (external_attention 快照) 已退役 2026-06-27 (通达信全删 M4: akshare 东财人气/关注度退役, 用户决cut, 无tushare等价=永久丢):
+    #   消费侧 scoring 外部关注 boost/池升级/crowding penalty 优雅降级 (external_attention_score→None)。
 
     # Step 2l (profit_forecast EPS 快照) 已退役 2026-06-27 (通达信全删 M4: akshare 退役, 用户决cut):
     #   raw_profit_forecast_snapshot_daily 0 live 读者 (snapshot 设计防leakage但无消费); 档B 若需景气度走 tushare forecast/report_rc。
@@ -155,18 +155,7 @@ def _sync_org_holding() -> None:
         conn.close()
 
 
-def _sync_external_attention() -> None:
-    from services.duck_adapter import connect as duck_connect
-    from services.external_attention import sync_external_attention_snapshot
-    from .context import db_path
-    conn = duck_connect(db_path("smartmoney"))
-    try:
-        n = sync_external_attention_snapshot(conn)
-        r = conn.execute("SELECT COUNT(DISTINCT snapshot_date), MAX(snapshot_date) "
-                         "FROM fact_stock_attention_snapshot").fetchone()
-        print(f"external_attention: rows={n} history_dates={r[0]} latest={r[1]}")
-    finally:
-        conn.close()
+# _sync_external_attention 已退役 2026-06-27 (通达信全删 M4: akshare external_attention.py 物删, 用户决cut)
 
 
 def _sync_registry_drain(ctx: PipelineContext) -> None:

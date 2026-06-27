@@ -483,7 +483,8 @@ def test_calculate_stock_scores_ranks_strong_new_entry_above_weak_signal(monkeyp
         assert strong["company_quality_score"] == 82.0
         assert strong["company_quality_score_source"] == "quality_feature_v1"
         assert strong["quality_feature_snapshot_date"] == recent_notice
-        assert strong["external_attention_score"] is not None
+        # external_attention 已退役 2026-06-27 (通达信全删 M4: akshare 关注度物删, 用户决cut) → score 恒 None
+        assert strong["external_attention_score"] is None
         assert strong["turtle_setup_state"] == "S2突破触发"
         # turtle 已迁出股票评分体系，delta 恒为 0；score_highlights 不再保证出现"海龟"
         assert strong["turtle_score_delta"] == 0.0
