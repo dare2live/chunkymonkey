@@ -98,6 +98,22 @@ def refresh_active_a_stock_master(conn) -> int:
         market = "SH" if suffix == "SH" else "SZ"   # 北交所(BJ)已 WHERE 排除
         rows.append((code, str(name or "").strip(), market, "tushare_stock_basic", now))
 
+    # §9 reference 拆库 (2026-06-27): dim_active_a_stock 迁 reference 库。过渡期 dual-write —
+    #   reference (新真相源) + smartmoney (旧副本, 供尚未迁的直读消费者), 全 reader 迁完后 smartmoney 侧物删 (Stage E)。
+    _write_dim_active(conn, rows)  # smartmoney 旧副本 (过渡)
+    from services.data_access import resolver
+    ref = resolver.connect_rw("reference")
+    try:
+        _write_dim_active(ref, rows)  # reference 新真相源
+    finally:
+        ref.close()
+
+    logger.info(f"[主数据] 刷新当前A股主数据(tushare stock_basic): {len(rows)} 只 (排北交所; dual-write reference+smartmoney)")
+    return len(rows)
+
+
+def _write_dim_active(conn, rows) -> None:
+    """DELETE+INSERT 全量重写主数据表 (事务内, table-writer-itself)。§9 dual-write 复用 (reference + smartmoney)。"""
     conn.execute("BEGIN TRANSACTION")
     try:
         conn.execute("DELETE FROM dim_active_a_stock")  # rule-compliance: ok evidence=table-writer-itself
@@ -113,9 +129,6 @@ def refresh_active_a_stock_master(conn) -> int:
     except Exception:
         conn.rollback()
         raise
-
-    logger.info(f"[主数据] 刷新当前A股主数据(tushare stock_basic): {len(rows)} 只 (排北交所)")
-    return len(rows)
 
 
 def get_active_a_stock_codes(conn, max_age_hours: int = ACTIVE_STOCK_CACHE_HOURS) -> Set[str]:
