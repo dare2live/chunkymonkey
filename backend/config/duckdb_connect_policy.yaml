@@ -64,7 +64,7 @@ allowed_raw_connect_paths:
   - scripts/build_stage_opt_pit.py
   - scripts/build_stock_formula_optuna.py
   - scripts/build_stock_formula_optuna_v2.py
-  - scripts/check_sina_tdxhub_overlap.py
+  # check_sina_tdxhub_overlap.py 已删 2026-06-27 (dead: 读已物删 price_kline_tdxhub)
   - scripts/cleanup_corrupt_oos_predictions.py
   - scripts/cleanup_deprecated_kline_sources.py
   - scripts/cleanup_holder_dup.py
@@ -76,7 +76,7 @@ allowed_raw_connect_paths:
   - scripts/import_model_train_log_artifact.py
   - scripts/import_phase5_remote_predictions.py
   # ingest_profit_forecast_snapshot.py 已删 2026-06-27 (通达信全删 M4: akshare 盈利预测快照退役)
-  - scripts/migrate_holders_to_tdxhub.py
+  # migrate_holders_to_tdxhub.py 已删 2026-06-27 (dead 一次性迁移脚本, holder 现走 aif10/tushare)
   - scripts/model_monitor_dashboard.py
   - scripts/monitor_optuna_v4.py
   - scripts/nightly_data_audit.py

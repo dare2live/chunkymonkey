@@ -864,18 +864,7 @@ tools:
     replacement: measured Phase4 gate, true train-log PIT evidence, paper_sim KPI, PBO/DSR, and forward validation for the candidate model
     last_verified: "2026-05-27"
 
-  - id: tdx_f10_source_date_audit_root_tests
-    paths:
-      - backend/tests/test_tdx_f10_source_date_audit.py
-    owner_module: tdx_f10_source_date
-    scope: contract
-    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_tdx_f10_source_date_audit.py
-    status: active
-    evidence_level: trusted_with_scope
-    truth_source: in-memory TDX F10 raw-text fixtures and source-date section audit table fixtures
-    risk_reason: verifies source-date classification and future-date counting for sample F10 text only; does not prove full TDX source coverage or current F10 freshness
-    replacement: source coverage audit and PIT/freshness evidence for F10-backed holder and event features
-    last_verified: "2026-05-27"
+  # tdx_f10_source_date_audit_root_tests 已删 2026-06-27 (通达信全删: test + service tdx_f10_source_date_audit 均物删)
 
   - id: updater_audit_route_root_tests
     paths:
@@ -1569,35 +1558,21 @@ tools:
     replacement: source coverage probe plus data_audit K-line freshness
     last_verified: "2026-05-27"
 
-  - id: holders_tdxhub_contract_tests
+  - id: holders_contract_tests
     paths:
       - backend/tests/test_holder_availability.py
-      - backend/tests/test_holders_event.py
-      - backend/tests/test_holders_resolver.py
-      - backend/tests/test_ingest_holders_tdxhub.py
-      - backend/tests/test_migrate_holders_to_tdxhub.py
-    owner_module: holders.tdxhub
+    owner_module: holders
     scope: contract
-    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_holder_availability.py backend/tests/test_holders_event.py backend/tests/test_holders_resolver.py backend/tests/test_ingest_holders_tdxhub.py backend/tests/test_migrate_holders_to_tdxhub.py
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_holder_availability.py
     status: active
     evidence_level: trusted_with_scope
-    truth_source: local holders/F10 availability, raw-ingest, resolver, and migration fixtures
-    risk_reason: protects holder ingestion contracts only; does not prove current TDX source coverage, PIT availability, or production freshness
-    replacement: TDX source coverage, holder PIT/freshness audit, and lineage evidence
-    last_verified: "2026-05-27"
+    truth_source: local holders availability + event fixtures
+    risk_reason: protects holder availability/event contracts only; does not prove current source coverage or PIT freshness
+    replacement: holder PIT/freshness audit + lineage evidence
+    last_verified: "2026-06-27"
+    # 2026-06-27 通达信全删: 删 test_holders_resolver/test_ingest_holders_tdxhub/test_migrate_holders_to_tdxhub (resolver+migrate 脚本物删, holder 走 aif10/tushare)
 
-  - id: tdx_f10_extra_contract_tests
-    paths:
-      - backend/tests/test_tdx_f10_extra_client.py
-    owner_module: tdx_f10_extra
-    scope: contract
-    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_tdx_f10_extra_client.py
-    status: active
-    evidence_level: trusted_with_scope
-    truth_source: local TDX F10 extra client fixtures
-    risk_reason: fixture coverage only; does not prove source freshness or full TDX endpoint coverage
-    replacement: source coverage audit and F10 freshness evidence
-    last_verified: "2026-05-27"
+  # tdx_f10_extra_contract_tests 已删 2026-06-27 (通达信全删: test + service tdx_f10_extra_client 均物删 2026-06-24)
 
   - id: industry_context_contract_tests
     paths:

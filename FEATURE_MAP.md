@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-27 12:54
+> Snapshot: 2026-06-27 13:03
 
 ## 1. 入口面
 
@@ -97,7 +97,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 125 张 | 单 writer 75 | 多 writer 50 | 动态表名写点 37 处 (20 文件)
+统计: 表 124 张 | 单 writer 78 | 多 writer 46 | 动态表名写点 37 处 (20 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -130,7 +130,7 @@
 
 | 表 | writer 数 | writer 文件 |
 |---|---|---|
-| fact_top10_holder_period | 4 | backend/scripts/cleanup_holder_dup.py<br>backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/holders_aif10.py<br>backend/services/schema_core.py |
+| fact_top10_holder_period | 3 | backend/scripts/cleanup_holder_dup.py<br>backend/services/holders_aif10.py<br>backend/services/schema_core.py |
 | mart_data_deletion_record | 3 | backend/scripts/db_lifecycle_delete.py<br>backend/services/data_deletion.py<br>backend/services/schema_marts.py |
 | mart_etf_snapshot_latest | 3 | backend/services/etf_db.py<br>backend/services/etf_snapshot_manager.py<br>backend/services/schema_marts.py |
 | mart_etf_snapshot_state | 3 | backend/services/etf_db.py<br>backend/services/etf_snapshot_manager.py<br>backend/services/schema_marts.py |
@@ -138,7 +138,6 @@
 | dim_data_asset | 2 | backend/scripts/seed_dim_data_asset.py<br>backend/services/schema_core.py |
 | dim_data_source_priority | 2 | backend/scripts/audit_tdx_data_need_coverage.py<br>backend/services/schema_core.py |
 | dim_fee_schedule | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
-| dim_holder_alias | 2 | backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
 | dim_liquidity_threshold | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_listing_status | 2 | backend/scripts/build_dim_listing_status.py<br>backend/services/primitives/ddl.py |
 | dim_market_segment | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
@@ -149,13 +148,10 @@
 | dim_trading_rule | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_trading_session | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | fact_consumer_alpha_ic_scan | 2 | backend/scripts/build_experiment_store.py<br>backend/services/experiment_store.py |
-| fact_controlling_shareholder | 2 | backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
 | fact_experiment_verdict | 2 | backend/scripts/build_experiment_store.py<br>backend/services/experiment_store.py |
 | fact_holder_event | 2 | backend/services/holders_event.py<br>backend/services/schema_core.py |
 | fact_institution_event | 2 | backend/services/event_engine.py<br>backend/services/schema_core.py |
 | fact_risk_factors | 2 | backend/services/data_governance/etl_hook.py<br>backend/services/risk_factors.py |
-| fact_shareholder_plan | 2 | backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
-| fact_shareholder_trade | 2 | backend/scripts/migrate_holders_to_tdxhub.py<br>backend/services/schema_core.py |
 | fact_stock_fundamental_stage_daily | 2 | backend/scripts/build_picture_daily.py<br>backend/services/picture/ddl.py |
 | fact_stock_type_daily | 2 | backend/scripts/build_picture_daily.py<br>backend/services/picture/ddl.py |
 | mart_audit_snapshot_state | 2 | backend/services/audit.py<br>backend/services/schema_marts.py |
@@ -186,12 +182,14 @@
 | 表 | writer |
 |---|---|
 | dim_financial_latest | backend/services/financial_client.py |
+| dim_holder_alias | backend/services/schema_core.py |
 | dim_schema_version | backend/services/schema_versions.py |
 | dim_stock_industry_context_latest | backend/services/industry_context_engine.py |
 | dim_stock_stage_latest | backend/services/stock_stage_engine.py |
 | dim_stock_turtle_latest | backend/services/stock_turtle_engine.py |
 | dim_strategy_preset | backend/routers/strategy_preset.py |
 | fact_common_major_holder_stock | backend/services/schema_core.py |
+| fact_controlling_shareholder | backend/services/schema_core.py |
 | fact_daily_price_status | backend/services/primitives/ddl.py |
 | fact_feature_panel_candidate | backend/services/schema_core.py |
 | fact_feature_panel_tdx_keep_challenger | backend/services/schema_core.py |
@@ -200,6 +198,8 @@
 | fact_rally_ground_truth | backend/scripts/build_rally_ground_truth.py |
 | fact_segment_panel | backend/scripts/build_segment_panel.py |
 | fact_setup_snapshot | backend/services/schema_core.py |
+| fact_shareholder_plan | backend/services/schema_core.py |
+| fact_shareholder_trade | backend/services/schema_core.py |
 | fact_stock_industry_context | backend/services/industry_context_engine.py |
 | fact_stock_liquidity_daily | backend/services/primitives/ddl.py |
 | fact_stock_market_cap_daily | backend/services/primitives/ddl.py |
@@ -259,11 +259,10 @@
 | raw_org_holding_aif10 | backend/services/org_holding_aif10.py |
 | raw_qfii_holding_quarterly | backend/services/qfii_client.py |
 | raw_tdx_f10_extra_parse_status | backend/services/schema_core.py |
-| raw_tdx_f10_holder_research | backend/scripts/migrate_holders_to_tdxhub.py |
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,683 | calls 边 56,706 | imports 边 5,544 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 8,663 | calls 边 56,649 | imports 边 5,544 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -321,5 +320,5 @@
 
 - chunkyctl 子命令 10 | launchd 任务 1 | router 12 (端点 56)
 - sync_registry 数据域 44
-- 产表 125 (多 writer 50)
+- 产表 124 (多 writer 46)
 
