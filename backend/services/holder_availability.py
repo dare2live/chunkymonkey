@@ -72,34 +72,41 @@ def next_trading_day_after(conn, yyyymmdd: str) -> str | None:
         return None
     if conn is None:
         return _plus_days(target, 1)
+    # §9 拆库: dim_trading_calendar 迁 reference 库 (resolver.dim_read_conn auto-fallback: conn 有表用它[测试/过渡dual]否则 reference)  # rule-compliance: ok evidence=dim-read-router (交易日历真相源路由, 非universe取数)
+    from services.data_access import resolver
+    c, own = resolver.dim_read_conn(conn, "dim_trading_calendar")
     try:
-        bounds = conn.execute(
-            """
-            SELECT MIN(REPLACE(CAST(trade_date AS VARCHAR), '-', '')) AS min_date,
-                   MAX(REPLACE(CAST(trade_date AS VARCHAR), '-', '')) AS max_date
-            FROM dim_trading_calendar
-            WHERE is_trading = 1
-            """
-        ).fetchone()
-        min_date = bounds["min_date"] if hasattr(bounds, "keys") else bounds[0]
-        max_date = bounds["max_date"] if hasattr(bounds, "keys") else bounds[1]
-        if not min_date or not max_date or target >= max_date:
+        try:
+            bounds = c.execute(
+                """
+                SELECT MIN(REPLACE(CAST(trade_date AS VARCHAR), '-', '')) AS min_date,
+                       MAX(REPLACE(CAST(trade_date AS VARCHAR), '-', '')) AS max_date
+                FROM dim_trading_calendar
+                WHERE is_trading = 1
+                """
+            ).fetchone()
+            min_date = bounds["min_date"] if hasattr(bounds, "keys") else bounds[0]
+            max_date = bounds["max_date"] if hasattr(bounds, "keys") else bounds[1]
+            if not min_date or not max_date or target >= max_date:
+                return _plus_days(target, 1)
+            if target < min_date and _day_gap(target, min_date) > 10:
+                return _plus_days(target, 1)
+            row = c.execute(
+                """
+                SELECT REPLACE(CAST(trade_date AS VARCHAR), '-', '') AS trade_date
+                FROM dim_trading_calendar
+                WHERE is_trading = 1
+                  AND REPLACE(CAST(trade_date AS VARCHAR), '-', '') > ?
+                ORDER BY REPLACE(CAST(trade_date AS VARCHAR), '-', '')
+                LIMIT 1
+                """,
+                (target,),
+            ).fetchone()
+        except Exception:
             return _plus_days(target, 1)
-        if target < min_date and _day_gap(target, min_date) > 10:
-            return _plus_days(target, 1)
-        row = conn.execute(
-            """
-            SELECT REPLACE(CAST(trade_date AS VARCHAR), '-', '') AS trade_date
-            FROM dim_trading_calendar
-            WHERE is_trading = 1
-              AND REPLACE(CAST(trade_date AS VARCHAR), '-', '') > ?
-            ORDER BY REPLACE(CAST(trade_date AS VARCHAR), '-', '')
-            LIMIT 1
-            """,
-            (target,),
-        ).fetchone()
-    except Exception:
-        return _plus_days(target, 1)
+    finally:
+        if own:
+            c.close()
     if not row:
         return _plus_days(target, 1)
     return row["trade_date"] if hasattr(row, "keys") else row[0]

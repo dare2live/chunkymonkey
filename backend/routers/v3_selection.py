@@ -197,29 +197,33 @@ async def get_board(limit: int = Query(50, ge=1, le=500)):
         latest = conn.execute("SELECT MAX(snapshot_date) FROM mart_stock_selection_summary").fetchone()
         if not latest or not latest[0]:
             return {"ok": True, "data": [], "total": 0}
+        # §9 拆库: 不再 cross-db JOIN dim_active_a_stock (Stage E 后 smartmoney 副本物删),
+        # 改成 fact 先取 code-list → active_stock_name_map(codes, conn) 补 name (helper 内部 _dim_read_conn auto-fallback reference)
         rows = conn.execute(
             """
-            SELECT s.stock_code, COALESCE(d.stock_name, s.stock_code) AS name,
+            SELECT s.stock_code,
                    s.n_30d, s.n_total, s.win_rate, s.avg_ret,
                    s.last_outcome, s.last_select_date, s.last_formula
               FROM mart_stock_selection_summary s
-              LEFT JOIN dim_active_a_stock d ON d.stock_code = s.stock_code  -- rule-compliance: ok evidence=code-to-name-mapping
              WHERE s.snapshot_date = ?
              ORDER BY s.n_30d DESC, s.win_rate DESC NULLS LAST
              LIMIT ?
             """,
             [latest[0], limit],
         ).fetchall()
+        from services.security_master import active_stock_name_map  # rule-compliance: ok evidence=code-to-name-mapping via reference dim helper
+        _codes = [r[0] for r in rows]
+        _name_map = active_stock_name_map(_codes, conn) if _codes else {}
         data = [
             {
-                "code": r[0], "name": r[1],
-                "n30": int(r[2]) if r[2] is not None else 0,
-                "n_total": int(r[3]) if r[3] is not None else 0,
-                "win": float(r[4]) if r[4] is not None else None,
-                "avg_ret": float(r[5]) if r[5] is not None else None,
-                "last_outcome": r[6] or "active",
-                "last_date": r[7],
-                "last_formula": r[8],
+                "code": r[0], "name": _name_map.get(r[0], r[0]),
+                "n30": int(r[1]) if r[1] is not None else 0,
+                "n_total": int(r[2]) if r[2] is not None else 0,
+                "win": float(r[3]) if r[3] is not None else None,
+                "avg_ret": float(r[4]) if r[4] is not None else None,
+                "last_outcome": r[5] or "active",
+                "last_date": r[6],
+                "last_formula": r[7],
             } for r in rows
         ]
         return {"ok": True, "data": data, "total": len(data), "snapshot_date": latest[0]}

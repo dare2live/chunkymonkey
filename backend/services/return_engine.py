@@ -51,12 +51,18 @@ def _next_trading_day(biz_conn, date_str: str) -> Optional[str]:
         normalized = f"{d[:4]}-{d[4:6]}-{d[6:8]}"
     else:
         normalized = date_str
-    row = biz_conn.execute(
-        "SELECT trade_date FROM dim_trading_calendar "
-        "WHERE trade_date > ? AND is_trading = 1 "
-        "ORDER BY trade_date LIMIT 1",
-        (normalized,)
-    ).fetchone()
+    from services.data_access import resolver  # local import: 避循环 (resolver→manifest/duck_adapter)
+    c, own = resolver.dim_read_conn(biz_conn, "dim_trading_calendar")  # rule-compliance: ok evidence=PIT交易日历真相源, conn有表用过渡dual否则reference
+    try:
+        row = c.execute(
+            "SELECT trade_date FROM dim_trading_calendar "
+            "WHERE trade_date > ? AND is_trading = 1 "
+            "ORDER BY trade_date LIMIT 1",
+            (normalized,)
+        ).fetchone()
+    finally:
+        if own:
+            c.close()
     return row["trade_date"] if row else None
 
 
@@ -82,12 +88,18 @@ def _resolve_cost_window(biz_conn, report_date: str) -> tuple[Optional[str], Opt
     if mmdd == "12-31":
         return f"{year}-10-01", normalized, "annual"
 
-    rows = biz_conn.execute(
-        "SELECT trade_date FROM dim_trading_calendar "
-        "WHERE trade_date <= ? AND is_trading = 1 "
-        "ORDER BY trade_date DESC LIMIT 20",
-        (normalized,),
-    ).fetchall()
+    from services.data_access import resolver  # local import: 避循环
+    c, own = resolver.dim_read_conn(biz_conn, "dim_trading_calendar")  # rule-compliance: ok evidence=PIT交易日历真相源, conn有表用过渡dual否则reference
+    try:
+        rows = c.execute(
+            "SELECT trade_date FROM dim_trading_calendar "
+            "WHERE trade_date <= ? AND is_trading = 1 "
+            "ORDER BY trade_date DESC LIMIT 20",
+            (normalized,),
+        ).fetchall()
+    finally:
+        if own:
+            c.close()
     if not rows:
         return normalized, normalized, "special"
     return rows[-1]["trade_date"], rows[0]["trade_date"], "special"
@@ -267,12 +279,18 @@ def _get_exact_daily_field(mkt_conn, code: str, date: str, field: str) -> Option
 
 def _price_after_n_days(biz_conn, mkt_conn, code: str, anchor: str, n: int) -> Optional[float]:
     """取锚点后第 n 个交易日的收盘价"""
-    row = biz_conn.execute(
-        "SELECT trade_date FROM dim_trading_calendar "
-        "WHERE trade_date >= ? AND is_trading = 1 "
-        "ORDER BY trade_date LIMIT 1 OFFSET ?",
-        (anchor, n)
-    ).fetchone()
+    from services.data_access import resolver  # local import: 避循环
+    c, own = resolver.dim_read_conn(biz_conn, "dim_trading_calendar")  # rule-compliance: ok evidence=PIT交易日历真相源, conn有表用过渡dual否则reference
+    try:
+        row = c.execute(
+            "SELECT trade_date FROM dim_trading_calendar "
+            "WHERE trade_date >= ? AND is_trading = 1 "
+            "ORDER BY trade_date LIMIT 1 OFFSET ?",
+            (anchor, n)
+        ).fetchone()
+    finally:
+        if own:
+            c.close()
     if not row:
         return None
     return _get_exact_daily_field(mkt_conn, code, row["trade_date"], "close")
@@ -297,12 +315,18 @@ def _max_drawdown(mkt_conn, code: str, anchor: str, end_date: str) -> Optional[f
 
 def _get_nth_trade_date(biz_conn, anchor: str, n: int) -> Optional[str]:
     """获取锚点后第 n 个交易日的日期"""
-    row = biz_conn.execute(
-        "SELECT trade_date FROM dim_trading_calendar "
-        "WHERE trade_date >= ? AND is_trading = 1 "
-        "ORDER BY trade_date LIMIT 1 OFFSET ?",
-        (anchor, n)
-    ).fetchone()
+    from services.data_access import resolver  # local import: 避循环
+    c, own = resolver.dim_read_conn(biz_conn, "dim_trading_calendar")  # rule-compliance: ok evidence=PIT交易日历真相源, conn有表用过渡dual否则reference
+    try:
+        row = c.execute(
+            "SELECT trade_date FROM dim_trading_calendar "
+            "WHERE trade_date >= ? AND is_trading = 1 "
+            "ORDER BY trade_date LIMIT 1 OFFSET ?",
+            (anchor, n)
+        ).fetchone()
+    finally:
+        if own:
+            c.close()
     return row["trade_date"] if row else None
 
 
@@ -370,9 +394,15 @@ class _TradingCalendarCache:
     """整个 dim_trading_calendar 一次性加载到内存, 二分查找替代 SQL OFFSET/ORDER BY."""
 
     def __init__(self, biz_conn):
-        rows = biz_conn.execute(
-            "SELECT trade_date FROM dim_trading_calendar WHERE is_trading = 1 ORDER BY trade_date"
-        ).fetchall()
+        from services.data_access import resolver  # local import: 避循环
+        c, own = resolver.dim_read_conn(biz_conn, "dim_trading_calendar")  # rule-compliance: ok evidence=PIT交易日历真相源全量缓存, conn有表用过渡dual否则reference
+        try:
+            rows = c.execute(
+                "SELECT trade_date FROM dim_trading_calendar WHERE is_trading = 1 ORDER BY trade_date"
+            ).fetchall()
+        finally:
+            if own:
+                c.close()
         self.days: list[str] = [
             (r["trade_date"] if hasattr(r, "keys") else r[0]) for r in rows
         ]

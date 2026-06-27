@@ -624,16 +624,23 @@ def audit_check_10_survivorship_bias(conn, panel_table: str = "mart_p0a_feature_
             f"SELECT COUNT(DISTINCT stock_code) FROM {_quote_table_name(panel_table)}"
         ).fetchone()
         panel_stocks = r1[0] if r1 else 0
-        # Get ever-listed count (if dim_listing_status exists)
+        # Get ever-listed count (§9: dim 迁 reference, conn 有则用过渡副本, 否则 fall reference)
+        from services.data_access import resolver
+        from services import security_master
         try:
-            r2 = conn.execute("SELECT COUNT(DISTINCT stock_code) FROM dim_all_ever_listed").fetchone()
+            c2, own2 = resolver.dim_read_conn(conn, "dim_all_ever_listed")  # rule-compliance: ok evidence=survivorship audit ever-listed count, §9 reference fallback
+            try:
+                r2 = c2.execute("SELECT COUNT(DISTINCT stock_code) FROM dim_all_ever_listed").fetchone()
+            finally:
+                if own2:
+                    c2.close()
             ever_listed = r2[0] if r2 else 0
         except Exception:
             ever_listed = None
 
         try:
-            r3 = conn.execute("SELECT COUNT(DISTINCT stock_code) FROM dim_active_a_stock").fetchone()
-            active = r3[0] if r3 else 0
+            # dim_active code-list 走 security_master (内部已 dim_read_conn auto-fallback)
+            active = len(security_master.active_codes(conn))
         except Exception:
             active = None
 

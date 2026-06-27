@@ -58,8 +58,16 @@ def main() -> int:
 
     rconn = connect(SMARTMONEY_DB, read_only=True)
     try:
-        trading_days = [r[0] for r in rconn.execute(
-            "SELECT trade_date FROM dim_trading_calendar WHERE is_trading=1 ORDER BY trade_date").fetchall()]
+        from services.data_access import resolver  # noqa: E402  # local import 避循环
+        # dim_trading_calendar 已迁 reference (smartmoney 副本 Stage E 物删); auto-fallback。
+        # rule-compliance: ok evidence=dim reader auto-fallback to reference per §9 拆库迁移
+        _cal_c, _cal_own = resolver.dim_read_conn(rconn, "dim_trading_calendar")
+        try:
+            trading_days = [r[0] for r in _cal_c.execute(
+                "SELECT trade_date FROM dim_trading_calendar WHERE is_trading=1 ORDER BY trade_date").fetchall()]
+        finally:
+            if _cal_own:
+                _cal_c.close()
         episodes = rconn.execute(
             f"SELECT stock_code, bottom_date, base_days, fwd_window_len, is_true_rally "
             f"FROM {SRC} ORDER BY stock_code, bottom_date").fetchall()

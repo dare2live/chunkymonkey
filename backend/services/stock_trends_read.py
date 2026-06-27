@@ -60,33 +60,45 @@ def load_stock_trends_payload(conn) -> dict:
     from services.industry import load_industry_map
     from services.screening_read import load_dual_confirm_snapshot_map, load_screening_snapshot_map
 
+    from services.security_master import active_stock_name_map
+
     blacklist_rows = conn.execute(
         """
         SELECT e.stock_code,
-               COALESCE(
-                   NULLIF(e.stock_name, ''),
-                   d.stock_name,
-                   (
-                       SELECT mr.stock_name
-                       FROM fact_top10_holder_period mr
-                       WHERE mr.stock_code = e.stock_code
-                         AND mr.holder_set = 'free'
-                         AND NOT mr.is_secondary_class
-                         AND NOT mr.is_exit_row
-                       ORDER BY mr.report_date DESC, mr.notice_date DESC
-                       LIMIT 1
-                   ),
-                   e.stock_code
-               ) AS stock_name,
+               NULLIF(e.stock_name, '') AS excluded_stock_name,
+               (
+                   SELECT mr.stock_name
+                   FROM fact_top10_holder_period mr
+                   WHERE mr.stock_code = e.stock_code
+                     AND mr.holder_set = 'free'
+                     AND NOT mr.is_secondary_class
+                     AND NOT mr.is_exit_row
+                   ORDER BY mr.report_date DESC, mr.notice_date DESC
+                   LIMIT 1
+               ) AS holder_stock_name,
                e.reason,
                e.created_at
         FROM excluded_stocks e
-        LEFT JOIN dim_active_a_stock d ON d.stock_code = e.stock_code  -- rule-compliance: ok evidence=code-to-name-mapping
         WHERE e.category = 'MANUAL'
         ORDER BY e.created_at DESC
         """
     ).fetchall()
-    blacklist_map = {row["stock_code"]: dict(row) for row in blacklist_rows}
+    # §9 拆库: dim_active_a_stock code->name 不再 cross-db JOIN, 改 name-map helper (conn 有表用它/否则 reference)  # rule-compliance: ok evidence=code-to-name-mapping
+    _excluded_codes = [row["stock_code"] for row in blacklist_rows]
+    _dim_name_map = active_stock_name_map(codes=_excluded_codes, conn=conn) if _excluded_codes else {}
+    blacklist_map = {}
+    for row in blacklist_rows:
+        rec = dict(row)
+        code = rec["stock_code"]
+        # 还原原 COALESCE 优先级: excluded.stock_name -> dim name -> holder name -> code
+        rec["stock_name"] = (
+            rec.pop("excluded_stock_name", None)
+            or _dim_name_map.get(code)
+            or rec.pop("holder_stock_name", None)
+            or code
+        )
+        rec.pop("holder_stock_name", None)
+        blacklist_map[code] = rec
 
     rows = conn.execute(
         """

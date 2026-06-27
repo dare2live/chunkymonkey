@@ -145,25 +145,36 @@ def _status_counts(conn: Any, table_name: str, *, run_id: str | None = None) -> 
 
 
 def _latest_trading_day(conn: Any, *, as_of_date: str | None = None) -> str | None:
-    if not _table_exists(conn, "dim_trading_calendar"):
-        return None
-    cols = _columns(conn, "dim_trading_calendar")
-    date_col = "trade_date" if "trade_date" in cols else "date" if "date" in cols else None
-    if not date_col:
-        return None
-    filters = []
-    if "is_open" in cols:
-        filters.append("is_open = TRUE")
-    elif "is_trading_day" in cols:
-        filters.append("is_trading_day = TRUE")
-    params: tuple[Any, ...] = ()
-    if as_of_date:
-        filters.append(f"CAST({date_col} AS DATE) <= CAST(? AS DATE)")
-        params = (as_of_date,)
-    else:
-        filters.append(f"CAST({date_col} AS DATE) <= CURRENT_DATE")  # rule-compliance: ok evidence=展示读过滤未来行(UI overview)
-    where = "WHERE " + " AND ".join(filters) if filters else ""
-    return _scalar(conn, f"SELECT CAST(MAX({date_col}) AS VARCHAR) FROM dim_trading_calendar {where}", params)
+    # §9 拆库: dim_trading_calendar 迁 reference 库. 保留动态列探测 + as_of_date 过滤语义
+    # (与 calendar.latest_completed_trade_date 的 close-hour 锚定口径不同, 故不替换为该 helper),
+    # 仅把 conn 经 resolver.dim_read_conn auto-fallback (conn 有表用它[过渡dual]否则 reference).
+    # rule-compliance: ok evidence=read-only-overview-calendar-fallback
+    from services.data_access import resolver
+
+    c, own = resolver.dim_read_conn(conn, "dim_trading_calendar")
+    try:
+        if not _table_exists(c, "dim_trading_calendar"):
+            return None
+        cols = _columns(c, "dim_trading_calendar")
+        date_col = "trade_date" if "trade_date" in cols else "date" if "date" in cols else None
+        if not date_col:
+            return None
+        filters = []
+        if "is_open" in cols:
+            filters.append("is_open = TRUE")
+        elif "is_trading_day" in cols:
+            filters.append("is_trading_day = TRUE")
+        params: tuple[Any, ...] = ()
+        if as_of_date:
+            filters.append(f"CAST({date_col} AS DATE) <= CAST(? AS DATE)")
+            params = (as_of_date,)
+        else:
+            filters.append(f"CAST({date_col} AS DATE) <= CURRENT_DATE")  # rule-compliance: ok evidence=展示读过滤未来行(UI overview)
+        where = "WHERE " + " AND ".join(filters) if filters else ""
+        return _scalar(c, f"SELECT CAST(MAX({date_col}) AS VARCHAR) FROM dim_trading_calendar {where}", params)
+    finally:
+        if own:
+            c.close()
 
 
 def _latest_manifest(conn: Any) -> dict[str, Any] | None:

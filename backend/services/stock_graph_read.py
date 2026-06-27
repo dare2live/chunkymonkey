@@ -83,14 +83,8 @@ def get_stock_tags(conn, stock_code: str, snapshot_date: str | None = None) -> d
             }
 
     # Stock name - rule-compliance: ok evidence=code-to-name-mapping
-    stock_name = None
-    if _table_exists(conn, "dim_active_a_stock"):  # rule-compliance: ok evidence=code-to-name-mapping
-        row = conn.execute(
-            "SELECT stock_name FROM dim_active_a_stock WHERE stock_code = ? LIMIT 1",  # rule-compliance: ok evidence=code-to-name-mapping
-            [stock_code],
-        ).fetchone()
-        if row:
-            stock_name = row[0]
+    from services.security_master import active_stock_name_map  # local import: avoid circular
+    stock_name = active_stock_name_map([stock_code], conn).get(stock_code)
 
     # Perception context (聚合 7 mart 的 stock-level snapshot)
     context: dict[str, Any] = {}
@@ -207,27 +201,31 @@ def get_stock_related(conn, stock_code: str, snapshot_date: str | None = None, l
 
     # 1. Same industry (主项目 dim_stock_dc_industry, 不依赖 perception)
     if _table_exists(conn, "dim_stock_dc_industry"):
+        # §9 拆库: 去 cross-db JOIN — 先取同业 code 列表 (dim_stock_dc_industry 仍主库),
+        # 再用 security_master.active_stock_name_map 补名 (内部 dim_read_conn fall 到 reference)
+        from services.security_master import active_stock_name_map  # local import: avoid circular
         rows = conn.execute(
             """
             WITH target AS (
               SELECT tdx_l1 FROM dim_stock_dc_industry WHERE stock_code = ? LIMIT 1
             )
             SELECT d.stock_code,
-                   COALESCE(NULLIF(s.stock_name, ''), d.stock_code) AS stock_name,
                    d.tdx_l1_name
               FROM dim_stock_dc_industry d
-              LEFT JOIN dim_active_a_stock s ON s.stock_code = d.stock_code  -- rule-compliance: ok evidence=code-to-name-mapping
               JOIN target t ON t.tdx_l1 = d.tdx_l1
              WHERE d.stock_code != ?
              LIMIT ?
             """,
             [stock_code, stock_code, limit],
         ).fetchall()
+        peer_codes = [r[0] for r in rows]
+        name_map = active_stock_name_map(peer_codes, conn) if peer_codes else {}
         for r in rows:
+            nm = name_map.get(r[0]) or ""
             related.append({
                 "stock_code": r[0],
-                "stock_name": r[1],
-                "industry": r[2],
+                "stock_name": nm if nm else r[0],
+                "industry": r[1],
                 "relation": "same_industry",
                 "weight": 1.0,
                 "source": "dim_stock_dc_industry",

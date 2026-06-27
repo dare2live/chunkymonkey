@@ -80,10 +80,17 @@ def main() -> int:
     finally:
         mconn.close()
 
+    from services.data_access import resolver  # noqa: E402
     rconn = connect(SMARTMONEY_DB, read_only=True)
     try:
-        trading_days = [r[0] for r in rconn.execute(
-            "SELECT trade_date FROM dim_trading_calendar WHERE is_trading=1 ORDER BY trade_date").fetchall()]
+        # dim_trading_calendar 已迁 reference 库; conn 有表用它(过渡dual)/否则 reference
+        cconn, cown = resolver.dim_read_conn(rconn, "dim_trading_calendar")  # rule-compliance: ok evidence=reference-fallback dim read via helper
+        try:
+            trading_days = [r[0] for r in cconn.execute(
+                "SELECT trade_date FROM dim_trading_calendar WHERE is_trading=1 ORDER BY trade_date").fetchall()]
+        finally:
+            if cown:
+                cconn.close()
         gt_rows = rconn.execute(
             "SELECT stock_code, CAST(bottom_date AS VARCHAR) FROM fact_rally_ground_truth").fetchall()
     finally:

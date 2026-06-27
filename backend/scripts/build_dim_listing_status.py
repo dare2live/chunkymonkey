@@ -115,8 +115,15 @@ def _source_projection(conn: duckdb.DuckDBPyConnection) -> str:
     """
 
 
-def build_dim_listing_status(db_path: str | Path = SMART_DB) -> dict[str, int]:
-    conn = duckdb.connect(str(db_path))
+def build_dim_listing_status(db_path: str | Path | None = None) -> dict[str, int]:
+    # §9 拆库: dim_all_ever_listed(源) + dim_listing_status(目标) 均迁 reference 库 → 默认连 reference RW
+    #   (db_path 显式传=测试/特殊; None=生产走 reference)。
+    if db_path is None:
+        from services.data_access import resolver
+        conn = resolver.connect_rw("reference")
+    else:
+        from services.duck_adapter import connect as duck_connect
+        conn = duck_connect(str(db_path), read_only=False)  # 显式路径(测试/特殊): sanctioned adapter, RW
     try:
         ensure_dim_listing_status_schema(conn)
         projection = _source_projection(conn)
@@ -146,7 +153,7 @@ def build_dim_listing_status(db_path: str | Path = SMART_DB) -> dict[str, int]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build dim_listing_status from dim_all_ever_listed")
-    parser.add_argument("--db", default=str(SMART_DB), help="Path to smartmoney.duckdb")
+    parser.add_argument("--db", default=None, help="DB path (default=None → reference 库, §9 拆库)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")

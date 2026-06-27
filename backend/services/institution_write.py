@@ -102,30 +102,28 @@ def delete_institution_record(conn, inst_id: str) -> None:
 
 
 def resolve_stock_name(conn, stock_code: str) -> str:
+    # §9 拆库迁移: dim_active_a_stock code→name 走 security_master.active_stock_name_map
+    # (内部 _dim_read_conn auto-fallback reference; Stage E 物删 smartmoney 副本后仍可读)
+    # 原 COALESCE 拆为: 先 dim name-map → 再 fact 回补 → 再落 code 字面。
+    from services import security_master
+
+    name_map = security_master.active_stock_name_map([stock_code], conn)
+    dim_name = (name_map.get(str(stock_code)) or "").strip()
+    if dim_name:
+        return dim_name
+
     row = conn.execute(
         """
-        SELECT COALESCE(
-            (
-                SELECT NULLIF(d.stock_name, '')
-                FROM dim_active_a_stock d -- rule-compliance: ok evidence=code-to-name-mapping
-                WHERE d.stock_code = ?
-                LIMIT 1
-            ),
-            (
-                SELECT mr.stock_name
-                FROM fact_top10_holder_period mr
-                WHERE mr.stock_code = ?
-                  AND mr.holder_set = 'free'
-                  AND NOT mr.is_secondary_class
-                  AND NOT mr.is_exit_row
-                ORDER BY mr.report_date DESC, mr.notice_date DESC
-                LIMIT 1
-            ),
-            ?
-        ) AS stock_name
+        SELECT mr.stock_name
+        FROM fact_top10_holder_period mr
+        WHERE mr.stock_code = ?
+          AND mr.holder_set = 'free'
+          AND NOT mr.is_secondary_class
+          AND NOT mr.is_exit_row
+        ORDER BY mr.report_date DESC, mr.notice_date DESC
         LIMIT 1
         """,
-        (stock_code, stock_code, stock_code),
+        (stock_code,),
     ).fetchone()
     if row and row["stock_name"]:
         return row["stock_name"]

@@ -164,8 +164,12 @@ def latest_required_trade_date(con, now: datetime) -> Optional[str]:
     """
 
     anchor = now.strftime("%Y-%m-%d")
+    # §9 拆库: dim_trading_calendar 迁 reference (resolver.dim_read_conn auto-fallback: con 有表用它[过渡dual]否则 reference)
+    # rule-compliance: ok evidence=section9-reference-migration-calendar-read
+    from services.data_access import resolver
+    c, own = resolver.dim_read_conn(con, "dim_trading_calendar")
     try:
-        row = con.execute(
+        row = c.execute(
             """
             SELECT MAX(trade_date) AS d
               FROM dim_trading_calendar
@@ -176,6 +180,9 @@ def latest_required_trade_date(con, now: datetime) -> Optional[str]:
         ).fetchone()
     except Exception:
         return None
+    finally:
+        if own:
+            c.close()
     if not row:
         return None
     try:
@@ -190,8 +197,12 @@ def trading_lag_hours(con, last_dt: datetime, required_trade_date: Optional[str]
     last_key = _normalize_date_key(last_dt)
     if last_key >= required_trade_date:
         return 0.0
+    # §9 拆库: dim_trading_calendar 迁 reference (resolver.dim_read_conn auto-fallback)
+    # rule-compliance: ok evidence=section9-reference-migration-calendar-read
+    from services.data_access import resolver
+    c, own = resolver.dim_read_conn(con, "dim_trading_calendar")
     try:
-        row = con.execute(
+        row = c.execute(
             """
             SELECT COUNT(*) AS n
               FROM dim_trading_calendar
@@ -203,6 +214,9 @@ def trading_lag_hours(con, last_dt: datetime, required_trade_date: Optional[str]
         ).fetchone()
     except Exception:
         return None
+    finally:
+        if own:
+            c.close()
     try:
         lag_days = int(row["n"] or 0)
     except Exception:

@@ -1217,28 +1217,36 @@ def _check_calendar(conn: Any, details: list[dict[str, Any]], blockers: list[str
         _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
         return {"exists": False}
 
-    row = conn.execute(
-        """
-        SELECT COUNT(*) AS rows,
-               SUM(CASE WHEN trade_date IS NULL OR TRIM(CAST(trade_date AS VARCHAR)) = '' THEN 1 ELSE 0 END) AS null_dates,
-               SUM(CASE WHEN is_trading = 1 THEN 1 ELSE 0 END) AS trading_days,
-               MIN(trade_date) AS min_date,
-               MAX(trade_date) AS max_date
-          FROM dim_trading_calendar
-        """
-    ).fetchone()
-    dup = conn.execute(
-        """
-        SELECT COUNT(*) AS n
-          FROM (
-            SELECT trade_date
+    from services.data_access import resolver
+
+    # rule-compliance: ok evidence=calendar truth-source migrated to reference db; dim_read_conn auto-falls to reference when conn lacks dim_trading_calendar (Stage E physical delete)
+    cal_conn, cal_own = resolver.dim_read_conn(conn, "dim_trading_calendar")
+    try:
+        row = cal_conn.execute(
+            """
+            SELECT COUNT(*) AS rows,
+                   SUM(CASE WHEN trade_date IS NULL OR TRIM(CAST(trade_date AS VARCHAR)) = '' THEN 1 ELSE 0 END) AS null_dates,
+                   SUM(CASE WHEN is_trading = 1 THEN 1 ELSE 0 END) AS trading_days,
+                   MIN(trade_date) AS min_date,
+                   MAX(trade_date) AS max_date
               FROM dim_trading_calendar
-             WHERE trade_date IS NOT NULL
-             GROUP BY trade_date
-            HAVING COUNT(*) > 1
-          )
-        """
-    ).fetchone()
+            """
+        ).fetchone()
+        dup = cal_conn.execute(
+            """
+            SELECT COUNT(*) AS n
+              FROM (
+                SELECT trade_date
+                  FROM dim_trading_calendar
+                 WHERE trade_date IS NOT NULL
+                 GROUP BY trade_date
+                HAVING COUNT(*) > 1
+              )
+            """
+        ).fetchone()
+    finally:
+        if cal_own:
+            cal_conn.close()
     latest = latest_completed_trade_date(conn)
     evidence = {
         "exists": True,
@@ -1367,22 +1375,45 @@ def _check_calendar_alignment(
     blockers: list[str],
     warnings: list[str],
 ) -> dict[str, Any]:
-    if not _table_exists(conn, "dim_trading_calendar"):
-        return {"checked": False, "reason": "calendar_missing"}
+    # §9 拆库: dim_trading_calendar 迁 reference 后不再与 fact(其它库) cross-db JOIN。
+    #   改先从 reference-backed dim 取交易日集合 (dim_read_conn auto-fallback), 再用 set 判 fact 日期是否落非交易日。
+    from services.data_access import resolver
+
+    cal_conn, cal_own = resolver.dim_read_conn(conn, "dim_trading_calendar")  # rule-compliance: ok evidence=calendar trading-day set via reference dim helper
+    try:
+        if not _table_exists(cal_conn, "dim_trading_calendar"):
+            return {"checked": False, "reason": "calendar_missing"}
+        trading_dates = {
+            str(_row_value(r, "trade_date", 0))
+            for r in cal_conn.execute(
+                "SELECT trade_date FROM dim_trading_calendar WHERE is_trading = 1 AND trade_date IS NOT NULL"
+            ).fetchall()
+        }
+    finally:
+        if cal_own:
+            cal_conn.close()
     if date_column not in _table_columns(conn, table_name):
         return {"checked": False, "reason": "date_column_missing"}
     row_count = _count_rows(conn, table_name)
-    row = conn.execute(
-        f"""
-        SELECT COUNT(*) AS n
-          FROM {_quote_table(table_name)} t
-          LEFT JOIN dim_trading_calendar cal
-            ON cal.trade_date = t.{_quote_ident(date_column)}
-           AND cal.is_trading = 1
-         WHERE cal.trade_date IS NULL
-        """
-    ).fetchone()
-    mismatches = int(_row_value(row, "n", 0) or 0)
+    fact_dates = [
+        str(_row_value(r, "d", 0))
+        for r in conn.execute(
+            f"SELECT DISTINCT t.{_quote_ident(date_column)} AS d "
+            f"FROM {_quote_table(table_name)} t "
+            f"WHERE t.{_quote_ident(date_column)} IS NOT NULL"
+        ).fetchall()
+    ]
+    bad_dates = [d for d in fact_dates if d not in trading_dates]
+    if bad_dates:
+        placeholders = ", ".join("?" for _ in bad_dates)
+        bad_row = conn.execute(
+            f"SELECT COUNT(*) AS n FROM {_quote_table(table_name)} "
+            f"WHERE {_quote_ident(date_column)} IN ({placeholders})",
+            bad_dates,
+        ).fetchone()
+        mismatches = int(_row_value(bad_row, "n", 0) or 0)
+    else:
+        mismatches = 0
     item = _detail(
         domain="calendar",
         table_name=table_name,
@@ -2987,10 +3018,18 @@ def _check_recommendation_outputs(
             )
             _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
         non_investable_rows = 0
+        from services.data_access import resolver
+
+        _da_conn, _da_own = resolver.dim_read_conn(conn, "dim_active_a_stock")  # rule-compliance: ok evidence=universe-exclusion guard via reference-backed dim, survives Stage E physical delete
+        try:
+            _dim_active_available = _table_exists(_da_conn, "dim_active_a_stock")  # rule-compliance: ok evidence=probe dim presence via reference router not get_active_universe
+        finally:
+            if _da_own:
+                _da_conn.close()
         if (
             table_name in {"mart_daily_recommendation", "mart_daily_topk_view_cache"}
             and "stock_code" in columns
-            and _table_exists(conn, "dim_active_a_stock")  # rule-compliance: ok evidence=table-exists-check
+            and _dim_active_available
         ):
             rows = conn.execute(
                 f"""

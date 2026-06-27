@@ -204,10 +204,15 @@ def _trading_index(conn: duckdb.DuckDBPyConnection) -> dict:
     # key 归一为 date 对象 (dim_trading_calendar.trade_date 是 VARCHAR '2026-12-31'; 不归一则与
     # _to_date 产出的 date 对象类型不匹配 → 'date in {str}' 永 False → _trading_lag_days 返 None 误判)。
     # 交易日历=强制前置真相源 (tushare trade_cal→dim_trading_calendar), lag 一律走它, 不自算/不退化日历天。
+    from services.data_access import resolver
     idx: dict = {}
-    for i, (d,) in enumerate(
-        conn.execute("SELECT trade_date FROM dim_trading_calendar WHERE is_trading=1 ORDER BY trade_date").fetchall()
-    ):
+    c, own = resolver.dim_read_conn(conn, "dim_trading_calendar")  # rule-compliance: ok evidence=dim迁reference, conn有表用过渡dual否则fall reference
+    try:
+        rows = c.execute("SELECT trade_date FROM dim_trading_calendar WHERE is_trading=1 ORDER BY trade_date").fetchall()
+    finally:
+        if own:
+            c.close()
+    for i, (d,) in enumerate(rows):
         dd = _to_date(d)
         if dd is not None:
             idx[dd] = i
@@ -394,8 +399,6 @@ def _check_volume_sanity(conn: duckdb.DuckDBPyConnection) -> CheckResult:
     freq = _to_str(cfg.get("freq"), "daily")
     adjust = _to_str(cfg.get("adjust"), "qfq")
     code_col = _to_str(cfg.get("stock_code_column"), "code")
-    active_table = _to_str(cfg.get("active_table"), "dim_active_a_stock")  # rule-compliance: ok evidence=audit-config-reference
-    active_code_col = _to_str(cfg.get("active_code_column"), "stock_code")
     neg = int(_scalar(conn, f"""
         SELECT COUNT(*)
         FROM {table}
@@ -405,13 +408,22 @@ def _check_volume_sanity(conn: duckdb.DuckDBPyConnection) -> CheckResult:
     if neg:
         return CheckResult("volume_sanity", "FAIL", f"{neg} rows with negative volume/amount")
 
-    zero_active = int(_scalar(conn, f"""
-        SELECT COUNT(*)
-        FROM {table} p
-        INNER JOIN {active_table} a ON a.{active_code_col}=p.{code_col}
-        WHERE p.freq=? AND p.adjust=?
-          AND COALESCE(p.volume,0)=0 AND COALESCE(p.amount,0)=0
-    """, [freq, adjust]) or 0)
+    # §9 cross-db JOIN 重构: 旧 INNER JOIN {table} x dim_active_a_stock 是 facts(market)xdim cross-db,
+    # dim 迁 reference 后无法直接 JOIN。改先取 active 码集 (security_master.active_codes 内部已 dim_read_conn
+    # auto-fallback reference) 再 WHERE code IN (?) 避 cross-db。
+    from services.security_master import active_codes
+    active_set = active_codes(conn)  # rule-compliance: ok evidence=dim_active迁reference, helper内部dim_read_conn路由
+    if active_set:
+        placeholders = ",".join("?" for _ in active_set)
+        zero_active = int(_scalar(conn, f"""
+            SELECT COUNT(*)
+            FROM {table} p
+            WHERE p.freq=? AND p.adjust=?
+              AND COALESCE(p.volume,0)=0 AND COALESCE(p.amount,0)=0
+              AND p.{code_col} IN ({placeholders})
+        """, [freq, adjust, *sorted(active_set)]) or 0)
+    else:
+        zero_active = 0
     if zero_active:
         return CheckResult("volume_sanity", "FAIL", f"{zero_active} all-zero rows for active stocks")
     return CheckResult("volume_sanity", "PASS", "no negative and no active all-zero rows")
@@ -519,9 +531,15 @@ def _check_cross_table_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResu
         FROM {inactive_source_table}
         WHERE CAST({inactive_table_col_date} AS DATE) >= CURRENT_DATE - INTERVAL '{inactive_days} days'
     """).fetchall() if c is not None}
-    inactive_codes = {c for (c,) in conn.execute(
-        f"SELECT {inactive_code_col} FROM {inactive_table} WHERE {is_active_col} = {inactive_value}"
-    ).fetchall() if c is not None}
+    from services.data_access import resolver
+    _ic, _own = resolver.dim_read_conn(conn, inactive_table)  # rule-compliance: ok evidence=dim_all_ever_listed迁reference, conn有表用过渡dual否则fall reference
+    try:
+        inactive_codes = {c for (c,) in _ic.execute(
+            f"SELECT {inactive_code_col} FROM {inactive_table} WHERE {is_active_col} = {inactive_value}"
+        ).fetchall() if c is not None}
+    finally:
+        if _own:
+            _ic.close()
     wrongly_inactive = inactive_codes & recent_codes
 
     issues = []
