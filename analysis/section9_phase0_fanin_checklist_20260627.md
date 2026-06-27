@@ -166,3 +166,25 @@
   - dim_all_ever_listed/dim_listing_status: universe(JOIN)/data_audit + build_dim_listing_status(writer)。
 - **风险评估**: 40-60 文件 whole-app 连接重构, 每 reader 不同 conn 注入模式 + dual-write/atomic 协调 + 逐文件验证。dims 被到处读 (universe/scoring/dossier/routers) → 一个 conn 路由错 = app-wide Catalog Error。
 - **执行模式**: 安全做法 = writer dual-write (smartmoney+reference 同步) → reader 逐文件迁 reference (每验证, 无 split-brain) → 全迁后 writer reference-only + Stage E 物删。**逐 dim, 多 commit, 建议 fresh session 干净 context 做 (marathon 深度 40+ 文件错误率高)**。connect_rw 已就位, 续做从此起。
+
+## [2026-06-27 执行 chunk1-2 DONE — 模式打通] + 剩余 checklist
+
+**已验证可行的迁移模式** (5 commit: connect_rw / dim_active dual-write / helper+2reader):
+1. **writer dual-write** (security_master.refresh `_write_dim_active` 双写 reference+smartmoney) → reference 同步, reader 可逐迁无 split-brain。
+2. **auto-fallback 读 helper** (`active_stock_name_map(codes,conn)` + `_dim_read_conn`: conn 有表用它[测试fixture/过渡dual]否则 reference) → test-兼容 + Stage E 物删 smartmoney 副本后全 reader 原子 fall reference。
+3. **reader 迁移**: 散落 `FROM dim_active` name-lookup → 调 helper(传 conn)。
+4. **gate 注意**: universe-filter gate 抓 `dim_active_a_stock` 字面 (docstring/探测行也抓) → docstring 避字面"主数据表" + 探测行加 `# rule-compliance: ok evidence=`。
+
+**dim_active 剩余 reader (10/12, 逐个调 helper 或 ATTACH)**:
+- name-lookup → active_stock_name_map(conn): institution_write:110 (嵌套COALESCE子查询, 需抽出) / stock_graph_read:89 (guarded inline)
+- code-list → 需 active_codes(conn) helper: universe:150/161
+- cross-db JOIN (facts×dim, 需 get_conn ATTACH reference + 限定 reference.dim_active): universe:206/212 / stock_graph_read:219 / data_audit:411/523
+- router/scripts: v3_selection:206 / audit_panel_leakage:629 / build_picture_daily
+- writer finalize: refresh 去 smartmoney 写 (Stage E 时)
+- DDL: schema_core:263 / schema_migrations:277 (idx) 移 reference 建库
+
+**余 3 dim** (dim_trading_calendar ~10 reader[calendar/return_engine/regime/JOIN/builders/realdb test] + dim_all_ever_listed/dim_listing_status[universe JOIN/data_audit + build_dim_listing_status writer])。
+
+**Stage E (escalate, 不可逆)**: 全 reader 迁完 + writer reference-only → db_lifecycle_delete smartmoney 4 dim 副本 → reference 唯一真相源。
+
+**checkpoint (诚实)**: 模式打通, 但剩 ~40 per-file 异质改动 (含 ATTACH JOIN + 3 dim + Stage E), whole-app (universe/scoring/dossier/routers/calendar)。25+ commit marathon 深度续做错误率升。建议 fresh session 干净 context 接 (本 spec = 直接执行手册)。
