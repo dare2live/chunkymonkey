@@ -147,6 +147,22 @@ def _dim_read_conn(conn):
     return resolver.connect_ro("reference"), True
 
 
+def active_codes(conn=None) -> Set[str]:
+    """active A 股 code 集 (§9 拆库 dim 真相源; 读路由 _dim_read_conn auto-fallback)。
+
+    replace 散落主数据表 code 直读 (universe identity 交集等) 为单一读路。
+    """
+    c, own = _dim_read_conn(conn)
+    try:
+        rows = c.execute(
+            "SELECT stock_code FROM dim_active_a_stock WHERE stock_code IS NOT NULL"  # rule-compliance: ok evidence=identity-truth-source
+        ).fetchall()
+    finally:
+        if own:
+            c.close()
+    return {str(r[0]).strip() for r in rows if r[0]}
+
+
 def active_stock_name_map(codes=None, conn=None) -> Dict[str, str]:
     """code→name 映射 (§9 拆库 dim 真相源)。读路由 _dim_read_conn (conn 有表用它/否则 reference)。
 

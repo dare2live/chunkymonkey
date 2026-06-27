@@ -145,22 +145,22 @@ def get_active_universe(
     # 2026-06-19 身份真相源交集: 只留 dim_active_a_stock (tushare stock_basic 真股清单) 内的码,
     #   剔除 K线里的指数 benchmark (沪深300=000300 等与 00 前缀共号段者直读 K线漏入 universe)。
     #   前缀仍作 defense-in-depth 预筛; conn=None (legacy include_st 路径) 回退纯前缀。
-    if conn is not None and _table_exists(conn, "dim_active_a_stock"):  # rule-compliance: ok evidence=identity-truth-source-intersect
-        identity = {str(r[0]).strip() for r in conn.execute(
-            "SELECT stock_code FROM dim_active_a_stock WHERE stock_code IS NOT NULL"  # rule-compliance: ok evidence=identity-truth-source
-        ).fetchall()}
-        stocks &= identity
+    # §9 拆库: identity/ST 读 reference dim (security_master active_codes/active_stock_name_map, auto-fallback);
+    #   conn 守卫语义保留 (conn is not None 才 intersect; conn=None legacy 纯前缀)。
+    if conn is not None:
+        from services.security_master import active_codes
+        identity = active_codes(conn)
+        if identity:
+            stocks &= identity
 
     if not include_st:
         if conn is None:
             raise UniverseDataError("smart DB connection is required for ST name mapping")
-        if not _table_exists(conn, "dim_active_a_stock"):  # rule-compliance: ok evidence=table-exists-for-st-name-mapping
-            raise UniverseDataError("dim_active_a_stock is required for ST name mapping")
-        st_filter = _sql_like_any_prefix("stock_name", ST_NAME_PREFIXES)
-        st_codes = {r[0] for r in conn.execute(
-            "SELECT stock_code FROM dim_active_a_stock "  # rule-compliance: ok evidence=st-name-mapping
-            f"WHERE {st_filter}"
-        ).fetchall()}
+        from services.security_master import active_stock_name_map
+        name_map = active_stock_name_map(conn=conn)
+        if not name_map:
+            raise UniverseDataError("dim_active_a_stock (reference) is required for ST name mapping")
+        st_codes = {c for c, n in name_map.items() if is_st_stock(n)}
         stocks -= st_codes
 
     return stocks

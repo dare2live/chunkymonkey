@@ -136,17 +136,25 @@ def test_get_active_universe_requires_market_truth_source(monkeypatch):
         get_active_universe(include_st=True)
 
 
-def test_get_active_universe_requires_st_name_mapping(tmp_path):
+def test_get_active_universe_reads_st_mapping_from_reference(tmp_path):
+    """§9 拆库 (2026-06-27): ST/identity mapping 源从 conn(smartmoney) 迁 reference 库 dim_active_a_stock。
+
+    旧契约 "conn 缺 dim → raise" 已变: 现经 security_master.active_codes/active_stock_name_map
+    auto-fallback 读 reference (always 可用)。传缺 dim 的 conn 不再 raise — 落 reference 读 ST + identity
+    交集 (test code '600001' 不在 reference 真股清单 → 被 identity 交集剔除, 返过滤集非异常)。
+    """
     import duckdb
-    from services.universe import UniverseDataError, get_active_universe
+    from services.universe import get_active_universe
 
     conn = duckdb.connect(str(tmp_path / "test.duckdb"))
     conn.execute("CREATE TABLE price_kline_tdxhub (code VARCHAR, freq VARCHAR, date DATE)")
     conn.execute("INSERT INTO price_kline_tdxhub VALUES ('600001', 'daily', CURRENT_DATE)")
     conn.execute("CREATE VIEW v_price_kline_qfq AS SELECT * FROM price_kline_tdxhub")
 
-    with pytest.raises(UniverseDataError, match="ST name mapping"):
-        get_active_universe(conn, market_conn=conn)
+    # §9: 不再 raise (ST mapping 落 reference); 返 set, 600001 非真股经 identity 交集剔除
+    result = get_active_universe(conn, market_conn=conn)
+    assert isinstance(result, set)
+    assert "600001" not in result
 
     conn.close()
 
