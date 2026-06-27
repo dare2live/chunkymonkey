@@ -155,3 +155,14 @@
 
 ### 结论
 §9 不是机械执行: 有真架构子决策 (dim-读机制 a/b/c + connect_rw 写侧归属) 影响 SERVE 不变量, + 73 点逐 dim 耦合高 blast (whole-app: universe/calendar/scoring/dossier). **执行 = fresh 焦点 session: 先定 dim-读机制设计 → 逐 dim 迁 (Phase0读收口+writer repoint) → Stage C/D → Stage E物删(escalate)**。本 session 已 18+commit, 不鲁莽起。
+
+## [2026-06-27 执行起步 + scope 校准] connect_rw infra DONE + 实测每 dim 规模
+
+- **DONE**: resolver.connect_rw(alias) 加 (dim writer 写 reference RW 路, 配 connect_ro; 不变量#2 显式写侧)。import-safe + moth PASS。= §9 执行第一步 infra。
+- **设计裁决落定**: 专用 reference-dim 读/写路 (connect_ro/rw(reference)), dim 不塞 PIT data_access entity (current 态非 PIT + calendar 无 code)。
+- **scope 实测校准 (measured-not-estimated; 提 B 时低估)**: 每 dim 是 **10-15 reader 文件 whole-app 重构**:
+  - dim_active_a_stock 直读者: recommendation_universe / data_quality / stock_graph_read / data_audit / institution_write / stock_trends_read / screening_engine / universe + scripts(audit_panel_leakage/build_picture_daily) + routers/v3_selection (~12 文件) + writer security_master.refresh (init 触发, 0 服务import=自洽 sync client) + JOIN(universe206/212, stock_graph219, data_audit411) + DDL(schema_core263/migrations277)。
+  - dim_trading_calendar 直读者: calendar/return_engine/regime/data_quality/data_audit + builders(rally/macd/picture) + realdb test (~10 文件)。
+  - dim_all_ever_listed/dim_listing_status: universe(JOIN)/data_audit + build_dim_listing_status(writer)。
+- **风险评估**: 40-60 文件 whole-app 连接重构, 每 reader 不同 conn 注入模式 + dual-write/atomic 协调 + 逐文件验证。dims 被到处读 (universe/scoring/dossier/routers) → 一个 conn 路由错 = app-wide Catalog Error。
+- **执行模式**: 安全做法 = writer dual-write (smartmoney+reference 同步) → reader 逐文件迁 reference (每验证, 无 split-brain) → 全迁后 writer reference-only + Stage E 物删。**逐 dim, 多 commit, 建议 fresh session 干净 context 做 (marathon 深度 40+ 文件错误率高)**。connect_rw 已就位, 续做从此起。

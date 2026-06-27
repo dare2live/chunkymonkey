@@ -26,6 +26,16 @@ def connect_ro(alias: str):
     return duck_connect(db_path(alias), read_only=True)
 
 
+def connect_rw(alias: str):
+    """写侧连接 (限 dim 真相源 writer, 如 reference universe/calendar 刷新)。
+
+    §9 reference 拆库 (2026-06-27): dim 表迁 reference 后, 其 writer (refresh_active_a_stock_master /
+    build_dim_listing_status / calendar sync) 需写 reference RW。read 侧仍 connect_ro (不变量#2 读写分离:
+    reader 永不写, 但 dim writer 是显式写侧, 用本函数路由到 reference 库 RW 句柄)。
+    """
+    return duck_connect(db_path(alias), read_only=False)
+
+
 @lru_cache(maxsize=256)
 def _table_columns(db_path_str: str, table: str) -> frozenset[str]:
     c = duck_connect(db_path_str, read_only=True)
