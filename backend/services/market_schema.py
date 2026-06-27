@@ -117,7 +117,25 @@ CREATE INDEX IF NOT EXISTS idx_pkt_adj_code_date
 #   tushare qfq 表只存 OHLCV → 视图合成 freq/adjust/factor/source/batch_id/ingested_at.
 #   "没有备用源只有tushare"(用户 2026-06-22): 去掉 akshare/tdxhub fallback tier — 错 qfq 兜底=qfq
 #   不连续假尖峰 (比缺口有害); 诚实缺口 > 错值 (mio: unknown > 假填). 仅 427行/55股 真缺口待从 raw 补.
+# serving K线真相源表 = price_kline_qfq_tushare (build_price_kline_qfq_tushare daily Step 2.96 用 CREATE TABLE AS 重建)。
+# 2026-06-27 修复: schema-init 须先声明此表空壳, 否则 v_price_kline_qfq 视图 (FROM 此表) 在新 market.duckdb
+# 上建视图即崩 (生产 init 路径 landmine; 此前 live DB 因 builder 早跑过表已存在掩盖了 bug)。
+# 视图只用 code/date/open/high/low/close/volume/amount 8 列 (其余为字面量); builder DROP+CREATE AS 会覆盖空壳。
 # 注: SQL 串内禁用 -- 注释 (duck_adapter.executescript 的 _split_statements 会在注释处截断语句).
+PRICE_KLINE_QFQ_TUSHARE_DDL = """
+CREATE TABLE IF NOT EXISTS price_kline_qfq_tushare (
+    code   TEXT NOT NULL,
+    date   TEXT NOT NULL,
+    open   REAL,
+    high   REAL,
+    low    REAL,
+    close  REAL,
+    volume REAL,
+    amount REAL,
+    PRIMARY KEY (code, date)
+);
+"""
+
 CANONICAL_KLINE_QFQ_VIEW_DDL = """
 CREATE OR REPLACE VIEW v_price_kline_qfq AS
 WITH primary_rows AS (
@@ -156,4 +174,5 @@ def ensure_market_schema(conn) -> None:
     """Create or refresh market.duckdb core tables, TDXHub tables, and canonical view."""
     conn.executescript(MARKET_CORE_DDL)
     conn.executescript(PRICE_KLINE_TDXHUB_DDL)
+    conn.executescript(PRICE_KLINE_QFQ_TUSHARE_DDL)  # 须在视图前 (v_price_kline_qfq FROM 此表)
     conn.executescript(CANONICAL_KLINE_QFQ_VIEW_DDL)

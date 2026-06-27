@@ -42,13 +42,7 @@ def test_run_quality_audit_uses_financial_universe_for_latest_snapshot_coverage(
                     "INSERT INTO inst_holdings (institution_id, holder_name, stock_code, stock_name, report_date, created_at) VALUES (?, ?, ?, ?, ?, ?)",
                     ("inst_1", "测试机构", "000001", "平安银行", "2026-03-31", "2026-04-14T09:00:00"),
                 )
-                conn.executemany(
-                    "INSERT INTO raw_gpcw_financial (stock_code, report_date, ingested_at) VALUES (?, ?, ?)",
-                    [
-                        ("000001", "2025-12-31", "2026-04-14T09:00:00"),
-                        ("000002", "2025-12-31", "2026-04-14T09:00:00"),
-                    ],
-                )
+                # raw_gpcw_financial insert 已删 (2026-06-27 通达信全删 gpcw物删); 审计财务历史就绪改读 fact_financial_derived
                 conn.executemany(
                     "INSERT INTO fact_financial_derived (stock_code, report_date, updated_at) VALUES (?, ?, ?)",
                     [

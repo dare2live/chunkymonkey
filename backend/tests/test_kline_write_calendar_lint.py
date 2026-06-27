@@ -16,12 +16,11 @@ import pytest
 
 from conftest import duck_mem
 from services.market_db import (
-    CANONICAL_KLINE_QFQ_VIEW_DDL,
-    PRICE_KLINE_TDXHUB_DDL,
     KlineWriteLintError,
     filter_kline_rows_by_calendar,
-    upsert_price_kline_tdxhub_rows,
 )
+# CANONICAL_KLINE_QFQ_VIEW_DDL/PRICE_KLINE_TDXHUB_DDL/upsert_price_kline_tdxhub_rows import 已删
+# (2026-06-27: 测它们的 e2e tdxhub upsert 测试已删, M3 退役该写入路径)
 
 
 PRICE_KLINE_DDL = """
@@ -125,31 +124,3 @@ def test_filter_kline_rows_bypass_env_skips_lint(monkeypatch):
     assert len(filtered) == 2
 
 
-def test_upsert_tdxhub_e2e_rejects_future_dates(monkeypatch):
-    """End-to-end: upsert_price_kline_tdxhub_rows pipeline rejects future-dated rows."""
-    monkeypatch.setattr(
-        "services.market_db._latest_completed_trade_date_for_write",
-        lambda *, raise_on_miss=True: "2026-05-18",
-    )
-
-    conn = duck_mem()
-    try:
-        conn.executescript(PRICE_KLINE_DDL)
-        conn.executescript(PRICE_KLINE_TDXHUB_DDL)
-        conn.executescript(CANONICAL_KLINE_QFQ_VIEW_DDL)
-        written = upsert_price_kline_tdxhub_rows(
-            conn,
-            [
-                _valid_row("600000", "2026-05-18", close=10.0),  # past, keep
-                _valid_row("600000", "2026-05-19", close=10.5),  # future, reject
-            ],
-            source="tdxhub",
-            batch_id="e2e_lint_test",
-        )
-        # written counts only post-filter rows
-        n_in_db = conn.execute("SELECT COUNT(*) FROM price_kline_tdxhub").fetchone()[0]
-        assert n_in_db == 1, f"expected 1 row (2026-05-18 only), got {n_in_db}"
-        max_date = conn.execute("SELECT MAX(date) FROM price_kline_tdxhub").fetchone()[0]
-        assert max_date == "2026-05-18"
-    finally:
-        conn.close()
