@@ -317,7 +317,9 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
     issues = []
     severity = "green"
 
-    if asset.get("deprecation_status") == "deprecated":
+    # deprecated = 仍存在但弃用; deleted = 已物删 (通达信全删退役墓碑) — 两者都不告警 (表缺失/计数失败=预期)
+    _dep_status = asset.get("deprecation_status")
+    if _dep_status in ("deprecated", "deleted"):
         row_count = None
         try:
             row_count = con.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
@@ -331,7 +333,7 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
             "null_rate_pct": None, "source_tier_dist": None,
             "freshness_hours": None, "freshness_ok": True,
             "severity": "green",
-            "issue_summary": f"deprecated asset{suffix}",
+            "issue_summary": f"{_dep_status} asset{suffix}",
             **owner_hint,
         }
 
