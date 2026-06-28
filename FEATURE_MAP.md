@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-28 14:28
+> Snapshot: 2026-06-28 19:45
 
 ## 1. 入口面
 
@@ -87,7 +87,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 52 张 | 单 writer 40 | 多 writer 12 | 动态表名写点 17 处 (10 文件)
+统计: 表 49 张 | 单 writer 37 | 多 writer 12 | 动态表名写点 16 处 (9 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -98,7 +98,6 @@
 | backend/scripts/build_dc_industry_view.py | 2 |
 | backend/scripts/build_etf_kline_qfq_tushare.py | 1 |
 | backend/scripts/build_feature_map.py | 1 |
-| backend/scripts/build_lhb_events.py | 1 |
 | backend/scripts/build_price_kline_qfq_tushare.py | 1 |
 | backend/scripts/db_compact.py | 2 |
 | backend/scripts/db_partition_migrate.py | 2 |
@@ -139,8 +138,6 @@
 | fact_controlling_shareholder | backend/services/schema_core.py |
 | fact_daily_price_status | backend/services/primitives/ddl.py |
 | fact_experiment_verdict | backend/scripts/build_experiment_store.py |
-| fact_holder_event | backend/services/schema_core.py |
-| fact_lhb_event | backend/scripts/build_lhb_events.py |
 | fact_risk_factors | backend/services/data_governance/etl_hook.py |
 | fact_setup_snapshot | backend/services/schema_core.py |
 | fact_shareholder_plan | backend/services/schema_core.py |
@@ -149,7 +146,6 @@
 | fact_stock_market_cap_daily | backend/services/primitives/ddl.py |
 | fact_stock_style_daily | backend/services/primitives/ddl.py |
 | mart_candidate_feature_set_contract | backend/services/data_quality.py |
-| mart_current_relationship | backend/services/holdings.py |
 | mart_data_deprecation_record | backend/services/schema_marts.py |
 | mart_data_processing_tool_issue | backend/services/data_processing_monitor.py |
 | mart_data_processing_tool_run | backend/services/data_processing_monitor.py |
@@ -170,20 +166,20 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 4,717 | calls 边 6,842 | imports 边 1,327 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 4,607 | calls 边 6,653 | imports 边 1,302 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
 | services.duck_adapter | 30 |
-| services.db | 10 |
-| services.utils | 8 |
+| services.db | 9 |
 | services.pipeline_manifest | 7 |
 | services.database_manifest | 6 |
-| services.market_db | 6 |
+| services.utils | 6 |
 | services.data_sources | 5 |
 | services.lineage.model | 5 |
+| services.market_db | 5 |
 | scripts.formula_parameter_search | 4 |
 | services.data_processing_monitor | 4 |
 | services.calendar | 3 |
@@ -213,20 +209,20 @@
 
 | 文件 | 行数 |
 |---|---|
-| backend/services/data_quality.py | 3882 |
+| backend/services/data_quality.py | 3699 |
 | backend/services/storage_retention.py | 1061 |
 | backend/services/data_sources/sync_runner.py | 985 |
-| backend/services/holder_availability.py | 776 |
 | backend/scripts/data_health_snapshot.py | 730 |
 | backend/services/data_audit.py | 613 |
 | backend/services/schema_migrations.py | 594 |
 | backend/services/source_watermarks.py | 570 |
 | backend/services/kline_source.py | 443 |
 | backend/services/gap_queue.py | 437 |
+| backend/services/lhb_client.py | 424 |
 
 ## 5. 概览
 
 - chunkyctl 子命令 10 | launchd 任务 1 | router 3 (端点 8)
 - sync_registry 数据域 43
-- 产表 52 (多 writer 12)
+- 产表 49 (多 writer 12)
 

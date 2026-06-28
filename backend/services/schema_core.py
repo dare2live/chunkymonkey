@@ -139,31 +139,9 @@ CORE_SCHEMA_SQL = """
                 PRIMARY KEY (stock_code, major_holder_name, peer_stock_code, row_seq)
             );
 
-            CREATE TABLE IF NOT EXISTS fact_holder_event (
-                stock_code        TEXT NOT NULL,
-                stock_name        TEXT,
-                holder_name       TEXT NOT NULL,
-                holder_name_norm  TEXT NOT NULL,
-                share_class       TEXT,                       -- 'A' | 'H' | 'B' | NULL
-                report_date       TEXT NOT NULL,              -- 本期报告期
-                prev_report_date  TEXT,                       -- 上一期 (new_entry/exit 可空)
-                event_type        TEXT NOT NULL,              -- new_entry / increase / decrease / unchanged / exit
-                shares_before     BIGINT,
-                shares_after      BIGINT,
-                shares_delta      BIGINT,                     -- after - before (带符号)
-                ratio_float_before DOUBLE,
-                ratio_float_after  DOUBLE,
-                ratio_total_before DOUBLE,
-                ratio_total_after  DOUBLE,
-                holder_type       TEXT,
-                holder_set        TEXT NOT NULL,              -- 'free' | 'all'
-                source            TEXT NOT NULL,
-                source_tier       SMALLINT NOT NULL,
-                raw_hash          TEXT,
-                created_at        TEXT,
-                PRIMARY KEY (stock_code, holder_name_norm, share_class, report_date, event_type, holder_set)
-            );
-
+            -- fact_holder_event DDL 已删 2026-06-28 (Phase 0 机构+事件 serving 退役: 表已物删,
+            --   rebuild_holder_events 派生脚本不存在/run_portfolio_mvp simulator 消费者已退役,
+            --   Phase 3 机构档案以 as-of 跟随口径 披露日 T+1 进出 重建进出事件。注: SQL 注释禁用分号)
             CREATE TABLE IF NOT EXISTS dim_holder_alias (
                 alias            TEXT NOT NULL,              -- TDX 简称 / 别名
                 canonical_name   TEXT NOT NULL,              -- 工商全称

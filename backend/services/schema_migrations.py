@@ -29,9 +29,8 @@ ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS change_share
 ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS net_profit_parent_text TEXT;
 ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS net_profit_deducted_text TEXT;
 ALTER TABLE fact_controlling_shareholder ADD COLUMN control_chain_text TEXT;
-CREATE INDEX IF NOT EXISTS idx_he_stock ON fact_holder_event(stock_code, report_date DESC);
-CREATE INDEX IF NOT EXISTS idx_he_holder ON fact_holder_event(holder_name_norm);
-CREATE INDEX IF NOT EXISTS idx_he_event_type ON fact_holder_event(event_type);
+-- fact_holder_event 索引 DDL 已删 2026-06-28 (Phase 0 机构+事件 serving 退役: 表已物删, 建表 DDL 已删,
+--   否则 executescript 在不存在的表上 CREATE INDEX 会整体失败连累 live 表索引)
 -- dim_data_asset INDEX/ALTER 已删 2026-06-28 (F4 退役: 表+DDL 物删, 职责归并 data_layers/lineage/deprecation_record)
 CREATE INDEX IF NOT EXISTS idx_mart_data_health_snapshot ON mart_data_health(snapshot_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mart_data_health_severity ON mart_data_health(severity, snapshot_at DESC);
@@ -53,9 +52,7 @@ CREATE INDEX IF NOT EXISTS idx_ih_inst ON inst_holdings(institution_id);
 CREATE INDEX IF NOT EXISTS idx_ih_stock ON inst_holdings(stock_code);
 CREATE INDEX IF NOT EXISTS idx_ih_report ON inst_holdings(report_date);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ih_unique_holder_stock_report ON inst_holdings(holder_name, stock_code, report_date);
-CREATE INDEX IF NOT EXISTS idx_event_type ON fact_institution_event(event_type);
-CREATE INDEX IF NOT EXISTS idx_event_date ON fact_institution_event(report_date);
-CREATE INDEX IF NOT EXISTS idx_event_notice ON fact_institution_event(notice_date);
+-- fact_institution_event 索引 DDL 已删 2026-06-28 (Phase 0 机构+事件 serving 退役: 表已物删, 无重建路径)
 CREATE INDEX IF NOT EXISTS idx_setup_snapshot_date ON fact_setup_snapshot(snapshot_date);
 CREATE INDEX IF NOT EXISTS idx_setup_snapshot_tag ON fact_setup_snapshot(setup_tag, snapshot_date);
 CREATE INDEX IF NOT EXISTS idx_setup_snapshot_stock ON fact_setup_snapshot(stock_code);
@@ -111,6 +108,11 @@ def init_db():
         ensure_mart_schema(conn)
         _apply_schema_maintenance(conn)
         conn.commit()
+        # TODO Phase 3 机构档案重建: 下方 mart_institution_profile / fact_institution_event /
+        #   mart_current_relationship / mart_institution_industry_stat 的 inline ALTER migration 是
+        #   2026-06-28 Phase 0 退役的机构 serving mart (表已物删) 的死代码 — try/except 守卫下 dormant 不炸,
+        #   属技术债。Phase 3 机构档案以新 SERVE 架构重建时一并清理/重写, Phase 0 不逐行删 (避免误删
+        #   交织其中的 live 表 fact_top10_holder_period / inst_holdings migration)。
         try:
             conn.execute("ALTER TABLE mart_institution_profile ADD COLUMN win_rate_90d REAL")
         except Exception:  # rule-compliance: ok evidence=db-py-split-schema-defensive
@@ -535,9 +537,7 @@ def init_db():
         conn.commit()
         try:
             for sql in (
-                "CREATE INDEX IF NOT EXISTS idx_fie_stock ON fact_institution_event(stock_code, report_date DESC)",
-                "CREATE INDEX IF NOT EXISTS idx_fie_holder ON fact_institution_event(holder_name, report_date DESC)",
-                "CREATE INDEX IF NOT EXISTS idx_fie_notice_source ON fact_institution_event(notice_date_source)",
+                # fact_institution_event 索引已删 2026-06-28 (Phase 0 机构+事件 serving 退役: 表已物删)
                 "CREATE INDEX IF NOT EXISTS idx_mdr_date_rank ON mart_daily_recommendation(snapshot_date DESC, rank_in_date)",
                 "CREATE INDEX IF NOT EXISTS idx_rf_calc_date ON fact_risk_factors(calc_date DESC)",
                 "CREATE INDEX IF NOT EXISTS idx_po_snap_model ON mart_prediction_outcome(snapshot_date DESC, model_id)",

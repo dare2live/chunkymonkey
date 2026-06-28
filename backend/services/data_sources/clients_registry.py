@@ -180,26 +180,10 @@ CLIENTS: list[ClientSpec] = [
 # ─────────────────────────────────────────────────────────────────────
 
 DERIVED_WRITERS: list[ClientSpec] = [
-    ClientSpec(
-        client_id="rebuild_holder_events",
-        module="scripts.rebuild_holder_events",
-        description="从 fact_top10_holder_period 派生 fact_holder_event",
-        upstream_source="derived: fact_top10_holder_period",
-        source_tier=99,
-        writes=[
-            TableWriteSpec("fact_holder_event", "持仓事件 (lag 派生)", "derived", 48),
-        ],
-    ),
-    ClientSpec(
-        client_id="build_lhb_events",
-        module="scripts.build_lhb_events",
-        description="龙虎榜事件特征派生",
-        upstream_source="derived: raw_lhb_daily",
-        source_tier=99,
-        writes=[
-            TableWriteSpec("fact_lhb_event", "龙虎榜事件特征", "event", 48),
-        ],
-    ),
+    # rebuild_holder_events + build_lhb_events ClientSpec 已删 2026-06-28 (Phase 0 机构+事件 serving 退役):
+    #   fact_holder_event/fact_lhb_event 是死 event 派生 — DB 已无表, 消费者 run_portfolio_mvp simulator 已退役;
+    #   rebuild_holder_events 脚本本已不存在(死注册)。raw_lhb_daily/fact_top10_holder_period 基础表保留,
+    #   Phase 3 机构档案以 as-of 跟随口径(披露日 T+1 进出)重建进出事件, 不复活旧 event 派生。
     ClientSpec(
         client_id="build_feature_panel_duck",
         module="scripts.build_feature_panel_duck",

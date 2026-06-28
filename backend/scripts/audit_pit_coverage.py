@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""PIT coverage audit — 4 critical fact 表 PIT 严格度实测 (#1 数据管理 95→100%).
+"""PIT coverage audit — 3 critical fact 表 PIT 严格度实测 (#1 数据管理 95→100%).
 
 跑 grep 实测:
 - mart_p0a_label_panel: panel build 时 fwd_cost_after_N 都用 PIT-strict labels.build()
 - mart_p0b_oos_predictions: walk_forward_mode 严格 expanding_monthly
-- fact_lhb_event: 用 trade_date 作 PIT, gain_20d/60d 都 forward (历史 t+N)
 - mart_p3_acceptance_result: ann_ret/max_dd 来源 mart_p0a_label_panel JOIN (PIT-strict)
+  (fact_lhb_event 审计已删 2026-06-28 Phase 0: 死 event 派生物删)
 
 输出: 每表 PIT pass / fail + 加权综合 #1 pct.
 
@@ -96,29 +96,7 @@ def check_mart_p0b_oos_predictions(con) -> dict:
     return info
 
 
-def check_fact_lhb_event(con) -> dict:
-    """fact_lhb_event trade_date PIT + gain_20d/60d 是 forward 计算."""
-    info = {"table": "fact_lhb_event"}
-    try:
-        r = con.execute("""
-            SELECT COUNT(*) AS total,
-                   COUNT(*) FILTER (WHERE gain_20d IS NOT NULL) AS has_gain_20d,
-                   MIN(trade_date) AS min_d, MAX(trade_date) AS max_d
-            FROM fact_lhb_event
-        """).fetchone()
-        total, has_g20, min_d, max_d = r
-        info.update({
-            "total_rows": total,
-            "gain_20d_coverage": round(100 * has_g20 / total, 2) if total else None,
-            "date_range": f"{min_d} → {max_d}",
-        })
-        # PASS: gain_20d coverage > 60% (forward 计算需 t+20 后数据, 最近 20d 可缺)
-        info["pit_pass"] = (has_g20 / total > 0.60) if total else False
-        info["pass_reasons"] = [f"gain_20d coverage {round(100*has_g20/total,1)}% > 60%"] if info["pit_pass"] else []
-    except Exception as e:
-        info["pit_pass"] = False
-        info["error"] = str(e)
-    return info
+# check_fact_lhb_event 已删 2026-06-28 (Phase 0 机构+事件 serving 退役: fact_lhb_event 死 event 派生, DB 已无表)
 
 
 def check_mart_p3_acceptance_result(con) -> dict:
@@ -155,7 +133,6 @@ def main() -> int:
         checks = [
             check_mart_p0a_label_panel(con),
             check_mart_p0b_oos_predictions(con),
-            check_fact_lhb_event(con),
             check_mart_p3_acceptance_result(con),
         ]
     finally:

@@ -9,6 +9,7 @@ from services import duck_adapter
 from services.db import get_enabled_modules
 from services.database_manifest import get_database_manifest
 from services.duck_adapter import connect as duck_connect
+from services.schema_layer_filter import keep_stmt
 
 
 def test_default_db_path_comes_from_database_manifest():
@@ -82,3 +83,20 @@ def test_duck_connect_retries_file_lock_conflict(monkeypatch, tmp_path):
         assert len(calls) == 2
     finally:
         conn.close()
+
+
+def test_keep_stmt_strips_leading_comment_before_target_check():
+    """keep_stmt 必须剥离前导 SQL 注释再判 target — 否则 filter_schema_sql 按 ; split 时,
+    无分号注释会粘到下一条语句, segment 以 -- 开头致 CREATE/ALTER target 识别失败 (target=None),
+    退役表语句被误判 keep 而执行。(2026-06-28 实证: fact_institution_event 退役注释粘
+    fact_setup_snapshot 索引, 致 init_db 在不存在的退役表上 CREATE INDEX 报错)。"""
+    keep = {"live_tbl"}
+    wiped = {"wiped_tbl"}
+    # 注释粘连退役表索引 → 必须过滤 (False)
+    assert keep_stmt("-- retire comment line\nCREATE INDEX idx_x ON wiped_tbl(c)", keep, wiped) is False
+    # 注释粘连活层表索引 → 保留 (True)
+    assert keep_stmt("-- comment\nCREATE INDEX idx_y ON live_tbl(c)", keep, wiped) is True
+    # 纯注释 segment → 不执行 (False)
+    assert keep_stmt("-- pure comment only", keep, wiped) is False
+    # 无注释退役表索引 (baseline 路径) → 过滤 (False)
+    assert keep_stmt("CREATE INDEX idx_z ON wiped_tbl(c)", keep, wiped) is False

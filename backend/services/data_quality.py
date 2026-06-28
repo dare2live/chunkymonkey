@@ -2354,185 +2354,6 @@ def _check_market_kline(
     return {"exists": True, "rows": row_count, **checks}
 
 
-def _check_institution_events(
-    conn: Any,
-    details: list[dict[str, Any]],
-    blockers: list[str],
-    warnings: list[str],
-) -> dict[str, Any]:
-    table_name = "fact_institution_event"
-    if not _table_exists(conn, table_name):
-        item = _detail(
-            domain="institution_event",
-            table_name=table_name,
-            check_name="table_exists",
-            status="fail",
-            reason="institution events are required for stock selection",
-        )
-        _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
-        return {"exists": False}
-    columns = _table_columns(conn, table_name)
-    row_count = _count_rows(conn, table_name)
-    evidence: dict[str, Any] = {"exists": True, "rows": row_count}
-    for column in ("stock_code", "notice_date"):
-        if column not in columns:
-            item = _detail(
-                domain="institution_event",
-                table_name=table_name,
-                column_name=column,
-                check_name="required_column_exists",
-                status="fail",
-                row_count=row_count,
-                violation_count=row_count,
-                reason="required event column is missing",
-            )
-            _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
-            continue
-        where = f"{_quote_ident(column)} IS NULL OR TRIM(CAST({_quote_ident(column)} AS VARCHAR)) = ''"
-        missing = _count_rows(conn, table_name, where_sql=where)
-        item = _detail(
-            domain="institution_event",
-            table_name=table_name,
-            column_name=column,
-            check_name="required_value_missing",
-            status="pass" if missing == 0 else "fail",
-            row_count=row_count,
-            violation_count=missing,
-            reason=None if missing == 0 else "institution event required value is missing",
-        )
-        _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
-        evidence[f"{column}_missing"] = missing
-    if "notice_date" in columns:
-        notice_iso = (
-            "CASE "
-            "WHEN length(CAST(notice_date AS VARCHAR)) = 8 AND instr(CAST(notice_date AS VARCHAR), '-') = 0 "
-            "THEN substr(CAST(notice_date AS VARCHAR),1,4) || '-' || "
-            "substr(CAST(notice_date AS VARCHAR),5,2) || '-' || "
-            "substr(CAST(notice_date AS VARCHAR),7,2) "
-            "ELSE CAST(notice_date AS VARCHAR) END"
-        )
-        future_where = f"TRY_CAST(({notice_iso}) AS DATE) > CURRENT_DATE"
-        future_count = _count_rows(conn, table_name, where_sql=future_where)
-        future_bounds = conn.execute(
-            f"""
-            SELECT MIN({notice_iso}) AS min_future_notice_date,
-                   MAX({notice_iso}) AS max_future_notice_date
-              FROM {_quote_table(table_name)}
-             WHERE {future_where}
-            """
-        ).fetchone()
-        future_by_source: list[dict[str, Any]] = []
-        source_notice_future_count = 0
-        observed_source_future_count = 0
-        if "notice_date_source" in columns:
-            future_by_source = [
-                dict(row)
-                for row in conn.execute(
-                    f"""
-                    SELECT COALESCE(NULLIF(notice_date_source, ''), 'unknown') AS notice_date_source,
-                           COUNT(*) AS rows
-                      FROM {_quote_table(table_name)}
-                     WHERE {future_where}
-                     GROUP BY COALESCE(NULLIF(notice_date_source, ''), 'unknown')
-                     ORDER BY rows DESC
-                    """
-                ).fetchall()
-            ]
-            source_notice_future_count = int(
-                next(
-                    (
-                        row["rows"]
-                        for row in future_by_source
-                        if row.get("notice_date_source") == "source_notice"
-                    ),
-                    0,
-                )
-                or 0
-            )
-            observed_source_future_count = sum(
-                int(row["rows"] or 0)
-                for row in future_by_source
-                if row.get("notice_date_source") in {"source_notice", "page_update_date"}
-            )
-        example_columns = [
-            column
-            for column in (
-                "institution_id",
-                "stock_code",
-                "stock_name",
-                "report_date",
-                "notice_date",
-                "notice_date_source",
-                "source_notice_date",
-                "availability_deadline",
-                "event_type",
-            )
-            if column in columns
-        ]
-        severity = "blocker" if observed_source_future_count else "warning"
-        item = _detail(
-            domain="institution_event",
-            table_name=table_name,
-            column_name="notice_date",
-            check_name="future_notice_date",
-            status="pass" if future_count == 0 else "fail",
-            severity=severity,
-            row_count=row_count,
-            violation_count=future_count,
-            reason=None
-            if future_count == 0
-            else (
-                "future observed-source notice rows indicate upstream date corruption"
-                if observed_source_future_count
-                else "future notice_date rows are excluded from live signals; regulatory_deadline rows are plannable fallback dates, not true source disclosure dates"
-            ),
-            examples=_sample_examples(
-                conn,
-                table_name,
-                where_sql=future_where,
-                columns=example_columns,
-                limit=5,
-            )
-            if future_count
-            else [],
-        )
-        _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
-        evidence["future_notice_date_rows"] = future_count
-        if future_by_source:
-            evidence["future_notice_by_source"] = future_by_source
-            evidence["future_source_notice_rows"] = source_notice_future_count
-            evidence["future_observed_source_rows"] = observed_source_future_count
-        evidence["min_future_notice_date"] = (
-            str(future_bounds["min_future_notice_date"])
-            if future_bounds and future_bounds["min_future_notice_date"] is not None
-            else None
-        )
-        evidence["max_future_notice_date"] = (
-            str(future_bounds["max_future_notice_date"])
-            if future_bounds and future_bounds["max_future_notice_date"] is not None
-            else None
-        )
-    if {"price_entry", "price_entry_status"} <= set(columns):
-        where = """
-            (price_entry IS NULL OR price_entry <= 0)
-            AND COALESCE(price_entry_status, '') NOT IN ('future_signal_waiting')
-        """
-        missing = _count_rows(conn, table_name, where_sql=where)
-        item = _detail(
-            domain="institution_event",
-            table_name=table_name,
-            column_name="price_entry",
-            check_name="unclassified_missing_entry_price",
-            status="pass" if missing == 0 else "fail",
-            row_count=row_count,
-            violation_count=missing,
-            reason=None if missing == 0 else "missing entry prices must be future_signal_waiting or fixed",
-        )
-        _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
-        evidence["unclassified_missing_entry_price"] = missing
-    return evidence
-
-
 def _compact_date_expr(column_name: str) -> str:
     quoted = _quote_ident(column_name)
     return (
@@ -3625,7 +3446,6 @@ def record_global_data_quality_gate(
     gate_scope: str = "model_training",
     feature_tables: list[str] | None = None,
     include_market: bool = True,
-    include_institution_events: bool = True,
     include_pipeline_performance: bool = True,
     strict_feature_nulls: bool = True,
     recent_pipeline_limit: int = 200,
@@ -3689,12 +3509,9 @@ def record_global_data_quality_gate(
         evidence["kline"] = _check_market_kline(conn, details, blockers, warnings)
         stage_timings["kline_scan_s"] = round(time.perf_counter() - stage_started, 3)
         _emit_progress(f"kline_scan done elapsed={stage_timings['kline_scan_s']:.3f}s")
-    if include_institution_events:
-        stage_started = time.perf_counter()
-        _emit_progress("institution_event_scan start")
-        evidence["institution_events"] = _check_institution_events(conn, details, blockers, warnings)
-        stage_timings["institution_event_scan_s"] = round(time.perf_counter() - stage_started, 3)
-        _emit_progress(f"institution_event_scan done elapsed={stage_timings['institution_event_scan_s']:.3f}s")
+    # institution_event_scan 已退役 2026-06-28 (Phase 0 机构+事件 serving 退役):
+    #   fact_institution_event 已物删, institution_event 审计域删 (_check_institution_events 函数已删)。
+    #   holder 数据可得性审计由 _check_holder_availability (查 live fact_top10_holder_period) 接管。
     stage_started = time.perf_counter()
     _emit_progress("holder_availability_scan start")
     evidence["holder_availability"] = _check_holder_availability(

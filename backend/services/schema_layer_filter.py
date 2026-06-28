@@ -46,6 +46,13 @@ def keep_stmt(stmt: str, keep: set[str] | None = None, wiped: set[str] | None = 
     s = stmt.strip()
     if not s:
         return False
+    # 剥离前导 SQL 注释行 (-- ...): filter 按 ; split, 无分号的注释会粘到下一条语句;
+    #   若不剥离, segment 以 -- 开头 → 下面 CREATE/ALTER target 正则匹配失败 → target=None
+    #   → 退役表语句被误判 keep 而执行 (2026-06-28 实证: fact_institution_event 退役注释粘
+    #   fact_setup_snapshot 索引, 致 init_db 在不存在的退役表上 CREATE INDEX 报错)。
+    s = "\n".join(ln for ln in s.split("\n") if not ln.lstrip().startswith("--")).strip()
+    if not s:
+        return False  # 纯注释 segment 不执行
     target = None
     if re.match(r"CREATE\s+(?:UNIQUE\s+)?INDEX", s, re.I):
         m = re.search(r"\bON\s+[\"']?(\w+)", s, re.I)
