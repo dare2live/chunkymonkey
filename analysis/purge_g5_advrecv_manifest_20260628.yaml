@@ -1,0 +1,5 @@
+run_id: purge_g5_advrecv_20260628
+db: tushare_raw
+archive_dir: data/archive/purge_processed
+entries:
+  - {table: raw_tushare_balancesheet_advrecv, action: archive, bucket: tushare_retired, reason: "G5 退役: 与 balancesheet 域 contract_liab 重叠(替代预收账款) + by_period drain 无兜底卡2020 + 0 消费方; sync_registry 域删"}

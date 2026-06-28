@@ -4,7 +4,7 @@
 financial_history_200q 50股探针孤儿退役; 留 3 个 LIVE 喂 v3_picture serving):
 - valuation_quantile  估值分位 (RPT_STOCKVALUATIONTANTILE, 日)
 - peer_valuation      同行估值排名 (RPT_PCF10_INDUSTRY_CVALUE, 季)
-- forecast_consensus  一致预期 (RPT_HSF10_RES_ORGRATING, 周)
+  (forecast_consensus 已删 2026-06-28 G5 退役: 0 消费方)
 
 设计:
 - 配置式声明 (CAPABILITY_CONFIG): reportName / pk / 字段映射 / schema_sql
@@ -73,28 +73,7 @@ CAPABILITY_CONFIG: dict[str, dict] = {
         "sort_columns": "REPORT_DATE,SECURITY_CODE",
         "sort_types": "-1,1",
     },
-    "forecast_consensus": {
-        "report_name": "RPT_HSF10_RES_ORGRATING",
-        "raw_table": "raw_aif10_forecast_consensus",
-        "pk_cols": ("secucode", "date_type_code"),
-        "field_map": {
-            "secucode": "SECUCODE",
-            "security_code": "SECURITY_CODE",
-            "security_name_abbr": "SECURITY_NAME_ABBR",
-            "date_type_code": "DATE_TYPE_CODE",  # 1=1月内 2=3月内 3=半年内 4=6月内
-            "date_type": "DATE_TYPE",
-            "compre_rating_num": "COMPRE_RATING_NUM",  # 综合评级值
-            "compre_rating": "COMPRE_RATING",  # 综合评级 ("买入"等)
-            "rating_org_num": "RATING_ORG_NUM",  # 评级机构数
-            "rating_buy_num": "RATING_BUY_NUM",
-            "rating_add_num": "RATING_ADD_NUM",
-            "rating_neutral_num": "RATING_NEUTRAL_NUM",
-            "rating_reduce_num": "RATING_REDUCE_NUM",
-            "rating_sale_num": "RATING_SALE_NUM",
-        },
-        "sort_columns": "",  # 这接口不支持自定义 sort, 传空
-        "sort_types": "",
-    },
+    # forecast_consensus 已删 2026-06-28 (G5 退役: 0 live 消费方 + profit_forecast 已退役 + 同步从未接入 acquire 日常流)
 }
 
 
@@ -301,8 +280,7 @@ def sync_peer_valuation() -> dict:
     return sync_capability("peer_valuation")
 
 
-def sync_forecast_consensus() -> dict:
-    return sync_capability("forecast_consensus")
+# sync_forecast_consensus 已删 2026-06-28 (G5 退役 forecast_consensus)
 
 
 def summary() -> dict:

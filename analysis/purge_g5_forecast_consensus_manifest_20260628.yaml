@@ -1,0 +1,5 @@
+run_id: purge_g5_forecast_consensus_20260628
+db: smartmoney
+archive_dir: data/archive/purge_processed
+entries:
+  - {table: raw_aif10_forecast_consensus, action: archive, bucket: aif10_retired, reason: "G5 退役: 0 live 消费方 + profit_forecast 已退役 + 同步从未接入 acquire 日常流 (数据 27天 stale); 代码引用全清"}

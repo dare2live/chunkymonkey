@@ -58,7 +58,7 @@ CAPABILITY_TO_REPORT = {
     "executive_holding":        "RPT_EXECUTIVE_HOLD_DETAILS",     # 高管持股变动
 
     # ===== 盈利预测 (forecast) =====
-    "forecast_consensus":       "RPT_HSF10_RES_ORGRATING",        # 评级统计
+    # forecast_consensus 已删 2026-06-28 (G5 退役: 0 live 消费方 + profit_forecast 退役)
     "forecast_predict_avg":     "RPT_HSF10_RESPREDICT_STATISTICS",  # 预测均值
 
     # ===== 公司概况 (stock_master) =====
@@ -89,7 +89,6 @@ class Aif10Source(BaseDataSource):
         "block_trade": "daily",
         "margin_stocks": "daily",
         "margin_trend": "daily",
-        "forecast_consensus": "weekly",
         "forecast_predict_avg": "weekly",
         "shareholder_change": "weekly",
         "lift_future": "daily",  # 解禁日期表, 每日更新预告
