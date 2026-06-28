@@ -110,7 +110,9 @@ def _load_audit_config() -> dict[str, Any]:
             "board_coverage",
             "date_range",
             "volume_sanity",
-            "smartmoney_freshness",
+            # smartmoney_freshness check 已删 2026-06-28: 唯二配置表 fact_risk_factors(U4)/
+            #   mart_stock_survey_activity(U5) 已物删, 且无 daily-fresh smartmoney 派生表; 各域新鲜度
+            #   由 update_watermark_sla SLA gate 按正确 per-domain 窗全覆盖 (去重非丢覆盖)。
             "cross_table_consistency",
         ],
         "kline_checks": {
@@ -129,17 +131,7 @@ def _load_audit_config() -> dict[str, Any]:
             "sample_limit": 5,
             "gap_sample_limit": 8,
         },
-        "smartmoney_freshness": {
-            "default_max_lag_days": 3,
-            "sample_limit": 5,
-            # 2026-06-22 P1-2: 删 4 张 reset 已删表 (fact_sector_momentum_daily/capital_flow_pit/
-            # sniper_score/institution_score) — 与 data_audit_rules.yaml 对齐 (YAML 已清), 否则 YAML
-            # 缺失时此 fallback 重引入死表 → _scalar 抛 CatalogError 复发死门 (P0-1批已修 YAML+防御)。
-            "tables": [
-                {"table": "fact_risk_factors", "date_column": "calc_date", "max_lag_days": 3},
-                {"table": "mart_stock_survey_activity", "date_column": "as_of_date", "max_lag_days": 3},
-            ],
-        },
+        # smartmoney_freshness fallback config 已删 2026-06-28 (check 整除, 见 audit_rules 注释)
         "cross_table_consistency": {
             "sample_limit": 5,
             "rules": [
@@ -429,45 +421,8 @@ def _check_volume_sanity(conn: duckdb.DuckDBPyConnection) -> CheckResult:
     return CheckResult("volume_sanity", "PASS", "no negative and no active all-zero rows")
 
 
-def _check_smartmoney_freshness(conn: duckdb.DuckDBPyConnection, calendar_svc=latest_completed_trade_date) -> CheckResult:
-    cfg = AUDIT_RULES.get("smartmoney_freshness", {})
-    rules = _as_list(cfg.get("tables"), [])
-    default_max_lag = _to_int(cfg.get("default_max_lag_days"), 3)
-    sample_limit = _to_int(cfg.get("sample_limit"), 5)
-
-    cal = _to_date(calendar_svc(conn))
-    if not cal:
-        return CheckResult("smartmoney_freshness", "FAIL", "calendar latest date unavailable")
-    idx = _trading_index(conn)
-    if not idx:
-        return CheckResult("smartmoney_freshness", "FAIL", "trading calendar unavailable")
-
-    fails: list[str] = []
-    for rule in rules:
-        if not isinstance(rule, dict):
-            continue
-        table = _to_str(rule.get("table"))
-        date_col = _to_str(rule.get("date_column"))
-        if not table or not date_col:
-            continue
-        max_lag_days = _to_int(rule.get("max_lag_days"), default_max_lag)
-        # 防御 (2026-06-22): 单条规则的表/列漂移 (reset 删表 / schema 改) 不许崩掉整个 audit —
-        # 镜像 _check_kline_completeness 的 try/except, 坏规则记 FAIL 续跑 (mythos§14: 崩溃门=死门审0项)。
-        try:
-            row = _scalar(conn, f"SELECT MAX({date_col}) FROM {table}")
-        except Exception as exc:
-            fails.append(f"{table}: query failed ({type(exc).__name__})")
-            continue
-        latest = _to_date(row)
-        if not latest:
-            fails.append(f"{table}: no rows")
-            continue
-        lag = _trading_lag_days(idx, latest, cal)
-        if lag is None or lag > max_lag_days:
-            fails.append(f"{table}: lag>{lag if lag is not None else '?'} (latest={latest}, calendar={cal})")
-    if fails:
-        return CheckResult("smartmoney_freshness", "FAIL", f"stale smartmoney tables: {', '.join(fails[:sample_limit])}")
-    return CheckResult("smartmoney_freshness", "PASS", "all key smartmoney tables within configured lag")
+# _check_smartmoney_freshness 已删 2026-06-28: 配置表 fact_risk_factors(U4)/mart_stock_survey_activity(U5)
+#   物删 + 无 daily-fresh smartmoney 派生表; 新鲜度由 update_watermark_sla SLA gate 按 per-domain 窗全覆盖。
 
 
 def _check_cross_table_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResult:
@@ -573,7 +528,6 @@ def run_post_sync_audit(step_name: str, strict: bool = True) -> dict[str, Any]:
         "board_coverage": _check_board_coverage,
         "date_range": _check_date_range,
         "volume_sanity": _check_volume_sanity,
-        "smartmoney_freshness": _check_smartmoney_freshness,
         "cross_table_consistency": _check_cross_table_consistency,
     }
     configured_rules = AUDIT_RULES.get("audit_rules", [])
@@ -584,7 +538,6 @@ def run_post_sync_audit(step_name: str, strict: bool = True) -> dict[str, Any]:
             "board_coverage",
             "date_range",
             "volume_sanity",
-            "smartmoney_freshness",
             "cross_table_consistency",
         ]
 
