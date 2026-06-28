@@ -54,11 +54,27 @@ consume: DataAccess.get(entity, codes, as_of) → DataResult{rows, provenance}
 | **M4 SERVE** | 唯一取数+PIT | `services/data_access/` (resolver/spec/asof/keys/drivers) |
 | **四地基** | universe/calendar/security_master + reference 库 | `services/universe/calendar/security_master` + `migrate_reference_db` |
 | **编排** | 采集→清洗→存储 门链 | `services/pipeline/` (acquire/clean/store/run/stage_runner/stage_status/context) |
-| **血缘** | acquire+consume DAG | `services/lineage/` + `chunkyctl lineage` |
-| **治理** | 审计/质量/留痕/门 | `services/audit/data_audit/data_quality/data_deletion/data_deprecation/storage_retention/source_watermarks/source_policy/sandbox_guard` + `.moth/` + `check_*.py` |
+| **血缘** | acquire+consume DAG (producer/consumer 真相源) | `services/lineage/` + `chunkyctl lineage` |
+| **治理** | 审计/质量/留痕/门 | `services/data_audit/data_quality/data_deletion/storage_retention/source_watermarks/source_policy/sandbox_guard` + `.moth/` + `check_*.py` (含 **check_dead_references** 死引用硬门) |
 | **DB infra** | schema/连接/路由 | `services/db/duck_adapter/database_manifest/schema_core/schema_migrations/schema_versions/schema_layer_filter/schema_marts/primitives` |
 
-**治理 mart (11, KEEP)**: mart_data_health / mart_pipeline_run_manifest / mart_data_source_watermark / mart_data_source_failure_queue / mart_data_audit_report / mart_data_deletion_record / mart_data_deprecation_record / mart_global_data_quality_gate / mart_pipeline_lock / mart_step_fingerprint / mart_lineage。
+**治理 mart (10, KEEP)**: mart_data_health / mart_pipeline_run_manifest / mart_data_source_watermark / mart_data_source_failure_queue / mart_data_deletion_record / mart_data_deprecation_record(只读历史) / mart_global_data_quality_gate / mart_pipeline_lock / mart_step_fingerprint / mart_lineage。(mart_data_audit_report 2026-06-28 退役物删: audit 改写 data/reports JSON; services/audit.py 1568行孤儿 + data_deprecation.py 同退役。)
+
+### 3.5 数据登记/路由 + 治理硬门 (2026-06-28 根因根治 F1-F4)
+
+**根因**: 之前每波清理删"供给侧"(模块/表) 漏"需求侧"(引用方); 验收够不到孤儿脚本/懒import/guarded垫片/config死路径 → 残留静默累积。`dim_data_asset` 登记表烂掉(67stale/68漏/0强制) + 同件登记散 5 处。
+
+**数据登记/路由 = 4 真相源 (各有强制门, dim_data_asset 已退役归并进它们)**:
+| 真相源 | 管 | 强制门 |
+|---|---|---|
+| `sync_registry.yaml` | 哪来的 (采集契约) | sync_runner |
+| `data_layers.yaml` | layer + **asset_class A/B** + health 默认/覆盖 | `data_layer_audit` (untagged=0 + **Type A 列纯度**) |
+| `data_access.yaml` | SERVE entity (怎么取+PIT) | resolver.preflight |
+| `lineage` graph | producer/consumer DAG (在哪用) | check_lineage_drift + **check_dead_references** |
+
+**加工分两种 (asset_class, 客观划线"PIT确定性重排 vs 含前瞻/策略")**: **A**=L1_foundation/L1k/display(确定性PIT重排→平台常驻SERVE) / **B**=L2/L3/L4(策略派生→edge隔离, 当前空) / raw=L0 / infra。Type A 层表禁现 forward/label/score/signal/ic/predicted 列 (`data_layer_audit` type_a_leak 门防 Type B 伪装混入)。
+
+**死引用硬门 `check_dead_references.py`** (safe_commit Step3.97 + CI + moth): import-services 库层 / dead-services-ref 全.py / config-dead-path registry列表 — 删任何模块/表/文件引用方没清 = commit 红。**残留无法再静默累积**。
 
 **routers (KEEP)**: ops_manual_run (手动跑数据链) / v3_config / strategy_preset (配置)。无策略 serving HTTP API。
 
