@@ -40,6 +40,12 @@ assertions:
     database: data/reference.duckdb
     query: "SELECT count(*) FROM duckdb_tables() WHERE table_name IN ('dim_active_a_stock','dim_trading_calendar','dim_all_ever_listed','dim_listing_status')"
     expect: {op: "==", value: 4}
+  - id: reference-dims-have-pk
+    claim: "不变量#1 主键: reference 4 dim 全有 DB 强制 PRIMARY KEY (2026-06-28 修 §9 迁移丢 PK 缺口; <4 = de-facto 唯一退化, 真主键不变量破)"
+    type: duckdb_sql
+    database: data/reference.duckdb
+    query: "SELECT count(DISTINCT table_name) FROM duckdb_constraints() WHERE constraint_type='PRIMARY KEY' AND table_name IN ('dim_active_a_stock','dim_trading_calendar','dim_all_ever_listed','dim_listing_status')"
+    expect: {op: "==", value: 4}
   - id: section9-dims-absent-smartmoney
     claim: "§9 reference 拆库: 4 dim 已从 smartmoney 物删, 不得重建 (2026-06-27 Stage E; >0 = schema-init DDL 重建路径回潮 undo 物删, 不变量#2 读写边界破)"
     type: duckdb_sql
