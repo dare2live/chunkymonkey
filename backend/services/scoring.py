@@ -1796,14 +1796,19 @@ def calculate_stock_scores(conn) -> int:
     fin_groups = {("all", "all"): []}
     fin_pct_map = {}
     fin_group_sizes = {}
-    fin_rows = conn.execute("""
-        SELECT f.stock_code, f.latest_report_date, f.roe, f.debt_ratio, f.current_ratio,
-               f.gross_margin, f.ocf_to_profit, f.contract_to_revenue,
-               f.holder_count, f.holder_count_change_pct, f.float_shares, f.total_shares,
-               i.tdx_l1, i.tdx_l2
-        FROM dim_financial_latest f
-        LEFT JOIN dim_stock_dc_industry i ON i.stock_code = f.stock_code
-    """).fetchall()
+    # 2026-06-28 加工层清空: dim_financial_latest (财务 derived) 退役; 缺表→财务维度降级为空
+    #   (raw_tushare 财务保留, 档B edge 重启时重建)。
+    try:
+        fin_rows = conn.execute("""
+            SELECT f.stock_code, f.latest_report_date, f.roe, f.debt_ratio, f.current_ratio,
+                   f.gross_margin, f.ocf_to_profit, f.contract_to_revenue,
+                   f.holder_count, f.holder_count_change_pct, f.float_shares, f.total_shares,
+                   i.tdx_l1, i.tdx_l2
+            FROM dim_financial_latest f
+            LEFT JOIN dim_stock_dc_industry i ON i.stock_code = f.stock_code
+        """).fetchall()
+    except Exception:
+        fin_rows = []
     for row in fin_rows:
         d = dict(row)
         financial_by_stock[d["stock_code"]] = d

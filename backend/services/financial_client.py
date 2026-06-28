@@ -98,46 +98,9 @@ def ensure_tables(conn):
         -- raw_gpcw_financial DDL 已删 (2026-06-27 通达信全删 gpcw物删) 派生源已迁 tushare 周期模型
         -- calc_financial_derived 读 raw_tushare_fina_indicator/balancesheet/income, gpcw sync 已退役
 
-        -- 事实层：派生财务指标（可重算）
-        CREATE TABLE IF NOT EXISTS fact_financial_derived (
-            stock_code              TEXT NOT NULL,
-            report_date             TEXT NOT NULL,
-            report_season           TEXT,
-            roe                     REAL,
-            debt_ratio              REAL,
-            current_ratio           REAL,
-            gross_margin            REAL,
-            net_margin              REAL,
-            revenue_yoy             REAL,
-            profit_yoy              REAL,
-            ocf_to_profit           REAL,
-            contract_to_revenue     REAL,
-            holder_count_change_pct REAL,
-            float_shares            REAL,
-            total_shares            REAL,
-            updated_at              TEXT,
-            PRIMARY KEY (stock_code, report_date)
-        );
-        CREATE INDEX IF NOT EXISTS idx_ffd_report ON fact_financial_derived(report_date);
+        -- 2026-06-28 加工层清空: fact_financial_derived DDL 已删 (财务 derived 退役, raw_tushare 保留)
 
-        -- 维度层：每只股票最新财务快照
-        CREATE TABLE IF NOT EXISTS dim_financial_latest (
-            stock_code              TEXT PRIMARY KEY,
-            latest_report_date      TEXT,
-            roe                     REAL,
-            debt_ratio              REAL,
-            current_ratio           REAL,
-            gross_margin            REAL,
-            revenue_yoy             REAL,
-            profit_yoy              REAL,
-            ocf_to_profit           REAL,
-            contract_to_revenue     REAL,
-            holder_count            INTEGER,
-            holder_count_change_pct REAL,
-            float_shares            REAL,
-            total_shares            REAL,
-            updated_at              TEXT
-        );
+        -- 2026-06-28 加工层清空: dim_financial_latest DDL 已删 (财务 derived 退役)
 
         -- 系统层：财务同步状态
         CREATE TABLE IF NOT EXISTS financial_sync_state (

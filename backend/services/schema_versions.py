@@ -43,7 +43,6 @@ FACT_VERSIONS = {
     "fact_feature_panel": "v4",              # 特征面板 (含 follow_net_return_* 标签 + K线来源血缘)
     # fact_dzjy_event/fact_executive_trade_event/fact_jgdy_event 版本已删 2026-06-27 (通达信全删 M4: akshare event 表物删, 用户决cut)
     "fact_lhb_event": "v1",                  # 龙虎榜事件
-    "fact_financial_derived": "v1",          # 财务派生
     # fact_fundamental_quarterly version 已删 2026-06-27 (通达信全删: gpcw派生表退役物删)
     "fact_institution_follow_backtest": "v2",  # 机构跟随回测 (pricing_policy_hash)
     "fact_policy_equity_curve": "v1",        # 策略 equity curve
@@ -216,7 +215,6 @@ MART_VERSIONS = {
 # dim_* 派生类 (静态/缓存型, 不含 raw dim, 12 张)
 DIM_DERIVED_VERSIONS = {
     # dim_capital_behavior_latest 已物删 2026-06-27 (通达信全删 M4: akshare 资本运作退役, 用户决cut)
-    "dim_financial_latest": "v1",
     "dim_stock_archetype_latest": "v1",
     # dim_stock_attention_latest 版本已删 2026-06-27 (通达信全删 M4: akshare 关注度物删)
     "dim_stock_industry_context_latest": "v1",

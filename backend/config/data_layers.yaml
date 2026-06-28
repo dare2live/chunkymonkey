@@ -62,7 +62,6 @@ tables:
   dim_all_ever_listed: L1_foundation
   # dim_capital_behavior_latest tag 已删 2026-06-27 (通达信全删 M4: akshare 资本运作物删)
   dim_fee_schedule: L1_foundation
-  dim_financial_latest: L1_foundation
   dim_holder_alias: L1_foundation
   dim_liquidity_threshold: L1_foundation
   dim_listing_status: L1_foundation
@@ -76,7 +75,6 @@ tables:
   dim_trading_session: L1_foundation
   fact_common_major_holder_stock: L1_foundation
   # fact_dzjy_event/fact_executive_trade_event tag 已删 2026-06-27 (通达信全删 M4: akshare event 表物删, 用户决cut)
-  fact_financial_derived: L1_foundation
   # fact_fundamental_quarterly tag 已删 2026-06-27 (通达信全删: gpcw派生表 builder build_fundamental_quarterly 退役物删, 源raw_gpcw_*已删不可重建, 0 live reader)
   fact_institution_event: L1_foundation
   fact_lhb_event: L1_foundation
