@@ -44,8 +44,7 @@ FETCH_TIMEOUT = 60
 # K线对齐: price_kline_qfq_tushare 2019-01-02 起 → 机构持仓回到覆盖它的年报 20181231
 DEFAULT_START_PERIOD = "2018-12-31"         # evidence: K线起点 2019-01-02 (用户 2026-06-24)
 QUARTER_ENDS = ("03-31", "06-30", "09-30", "12-31")
-# 季报派生数据距报告期末足量披露的保守滞后 (latest_plannable 用); 法定截止最长 ~4个月 (年报)
-PLANNABLE_LAG_DAYS = 130
+# PLANNABLE_LAG_DAYS 已删 2026-06-28: latest_plannable 改用 disclosure_deadline (监管硬约束) 取代固定130天滞后
 
 
 # ── helpers ──────────────────────────────────────────────────────────
@@ -121,15 +120,19 @@ def enumerate_quarter_ends(start_date: str, end_date: str) -> list[str]:
 
 
 def latest_plannable_report_date(today: Optional[date] = None) -> Optional[str]:
-    """相对 today 最近"足量披露"的季度末 (距今 >= PLANNABLE_LAG_DAYS 天)。"""
+    """相对 today 最近"法定披露截止已过"的季度末 (= 数据应已可得)。
+
+    2026-06-28 修: 改用 disclosure_deadline (监管硬约束) 取代旧 PLANNABLE_LAG_DAYS=130 固定滞后 —
+    130 天把 Q1(截止 04-30) 卡到 8 月才进窗口, 源端早有 Q1 却不抓 (实测 today=06-28 旧逻辑返 Q4 2025,
+    新逻辑返 Q1 2026-03-31)。取截止日 <= today 的最新季度末。
+    """
     today = today or datetime.now(timezone.utc).date()  # rule-compliance: ok evidence=季报增量默认now
-    from datetime import timedelta
-    cutoff = today - timedelta(days=PLANNABLE_LAG_DAYS)
     latest = None
-    for year in (cutoff.year, cutoff.year - 1):
+    for year in (today.year, today.year - 1):
         for md in QUARTER_ENDS:
             d = date.fromisoformat(f"{year}-{md}")
-            if d <= cutoff and (latest is None or d > latest):
+            dl = disclosure_deadline(d.strftime("%Y-%m-%d"))
+            if dl and date.fromisoformat(dl) <= today and (latest is None or d > latest):
                 latest = d
     return latest.strftime("%Y-%m-%d") if latest else None
 
