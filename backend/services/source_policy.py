@@ -28,11 +28,11 @@ class CapabilitySourcePolicy:
 DEFAULT_POLICIES: dict[str, CapabilitySourcePolicy] = {
     "kline_daily": CapabilitySourcePolicy(
         name="kline_daily",
-        primary="tdxhub",
-        fallback=("akshare_multi_source",),
+        primary="tushare",  # 2026-06-28: tdxhub 退役, tushare 唯一源
+        fallback=(),  # 单一供应商, akshare fallback 退役
         canonical_relation="market.v_price_kline_qfq",
-        allow_fallback_for_latest_gap=True,
-        require_fallback_lineage=True,
+        allow_fallback_for_latest_gap=False,
+        require_fallback_lineage=False,
         max_primary_lag_trading_days=1,
     )
 }
@@ -170,13 +170,6 @@ def get_capability_policy(name: str, path: str | Path | None = None) -> Capabili
     return policies[name]
 
 
-def normalize_kline_write_source(source: str | None) -> str:
-    """Return the canonical source label used when writing K-line rows."""
-    raw = str(source or "").strip()
-    if not raw:
-        return "akshare_unknown"
-    if raw == "tdxhub" or raw.startswith("tdxhub_"):
-        return raw
-    if raw.startswith("akshare_"):
-        return raw
-    return f"akshare_{raw}"
+# normalize_kline_write_source 已删 2026-06-28: 死函数 (0 live caller, 仅测试引用),
+#   编码退役的 tdxhub/akshare 写标签逻辑。tushare qfq build 自带 source 标签, hs300 benchmark
+#   用显式 'akshare_csindex_hs300', 均不经此函数。

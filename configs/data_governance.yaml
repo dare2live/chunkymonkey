@@ -1,5 +1,19 @@
+# ============================================================================
+# 状态: SUPERSEDED / 历史参考 (2026-06-28 纯数据平台重建)
+# ----------------------------------------------------------------------------
+# 本文件描述的是 *退役的* tdxhub-primary K线治理 regime, 且 **运行时不加载**
+# (data_governance/config.py 读 field_dictionary.yaml; market_db/kline_source/test 里
+#  对本文件的引用全是注释 provenance, 非代码 load)。
+#
+# 现行真相: K线唯一源 = tushare (M2 clean build → market.price_kline_qfq_tushare,
+#   volume 已归一为 *股* / amount 为 *元*, 非本文档的 lots 口径; canonical 视图
+#   v_price_kline_qfq, 源策略见 backend/config/data_sources.yaml + source_policy.py)。
+# 下方 tdxhub-primary 分层 / price_kline_tdxhub 契约 / mart_p0a/p0b/p3 label-model 血缘
+#   均为退役 regime, 仅留历史参考。准确的 tushare K线契约 + label/model 血缘待 edge 层
+#   从零重建时重新撰写, 不在纯数据平台阶段维护。
+# ============================================================================
 version: 1
-policy_id: kline_governance_v1_tdxhub_primary
+policy_id: kline_governance_v1_tdxhub_primary  # SUPERSEDED 见上 (现行 K线源=tushare)
 effective_date: "2026-05-17"
 owner: data-platform
 

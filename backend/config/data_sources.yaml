@@ -1,12 +1,12 @@
 version: 1
 
+# 2026-06-28: tdxhub/akshare 源退役, K线唯一源 = tushare (M2 clean build → market.v_price_kline_qfq 前复权)。
+# 单一供应商, 无 fallback。capability policy 仅 canonical_relation 被 market_read 消费 (primary/fallback 为 schema 完整性保留)。
 capabilities:
   kline_daily:
-    primary: tdxhub
-    fallback:
-      - akshare_multi_source
+    primary: tushare
+    fallback: []
     canonical_relation: market.v_price_kline_qfq
-    allow_fallback_for_latest_gap: true
-    require_fallback_lineage: true
+    allow_fallback_for_latest_gap: false
+    require_fallback_lineage: false
     max_primary_lag_trading_days: 1
-
