@@ -16,10 +16,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
 import yaml
+
+# Type B 泄漏列模式 (2026-06-28 加工分层 A/B): Type A 层(确定性PIT重排)表禁现这些 = 防 Type B(策略派生)伪装混入。
+# 实测对当前 Type A 表 0 假阳性 (basic 不被 \bic\b 命中)。
+_TYPE_A_LEAK_RE = re.compile(
+    r"forward|_fwd|fwd_|label|_oos|oos_|rank_ic|_ic_|_ic$|\bic\b|score|signal|predicted|pred_|win_rate|sharpe|\btarget", re.I
+)
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "backend"))
@@ -67,6 +74,26 @@ def _live_tables(dbs=MANAGED_DBS) -> set[str]:
     return live
 
 
+def _columns_map(dbs=STALE_SCAN_DBS) -> dict[str, list[str]]:
+    """全库 table_name → 列名 list (用于 Type A 列纯度门; 同名表取首遇库)。"""
+    out: dict[str, list[str]] = {}
+    for key in dbs:
+        path = _db_path(key)
+        if not path.exists():
+            continue
+        c = duck_connect(str(path), read_only=True)
+        try:
+            c.execute("SET enable_progress_bar=false")
+            rows = c.execute(
+                "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema='main'"
+            ).fetchall()
+        finally:
+            c.close()
+        for tbl, col in rows:
+            out.setdefault(tbl, []).append(col)
+    return out
+
+
 def audit() -> dict:
     reg = yaml.safe_load(open(REGISTRY, encoding="utf-8"))
     layers = set(reg.get("layers", {}))
@@ -81,7 +108,20 @@ def audit() -> dict:
     from collections import Counter
     by_layer = dict(Counter(l for t, l in tagged.items() if t in live))
 
-    ok = not untagged and not bad_layer
+    # Type A 列纯度门 (2026-06-28 加工分层 A/B): asset_class=A 的层 (L1_foundation/L1k/display) 表
+    #   禁含 forward/label/score/signal/ic/predicted 等 Type B 列 = 防策略派生伪装成确定性 PIT 重排混入平台。
+    layer_class = {ln: (spec.get("asset_class") if isinstance(spec, dict) else None)
+                   for ln, spec in reg.get("layers", {}).items()}
+    colmap = _columns_map()
+    type_a_leak = []
+    for t, l in tagged.items():
+        if t not in live_all or layer_class.get(l) != "A":
+            continue
+        leaks = [c for c in colmap.get(t, []) if _TYPE_A_LEAK_RE.search(c)]
+        if leaks:
+            type_a_leak.append({"table": t, "layer": l, "leak_cols": sorted(leaks)})
+
+    ok = not untagged and not bad_layer and not type_a_leak
     return {
         "overall": "PASS" if ok else "FAIL",
         "live_tables": len(live),
@@ -89,6 +129,7 @@ def audit() -> dict:
         "by_layer": by_layer,
         "untagged": untagged,           # FAIL: 新表必须声明 layer
         "bad_layer": bad_layer,         # FAIL: 用了未定义的层名
+        "type_a_leak": type_a_leak,     # FAIL: Type A 层表含 Type B(前瞻/策略)列 — 伪装混入
         "stale_tag": stale_tag,         # 提示: 注册表有已删表条目, 清理
     }
 

@@ -23,17 +23,25 @@
 
 | layer | 定义 | 保留 | 重建 |
 |---|---|---|---|
-| **L0_source** | 原始 vendor 镜像 (raw_*), 不可重建真相源 | 永久, 永不删 | sync_runner re-sync |
-| **L1_foundation** | 从 L0 直接派生的 PIT 事实+维度 (日历/十大股东/财报PIT/机构/龙虎榜) | 留 | from L0 |
-| **L1k_kline_intermediate** | 仅 OHLCV K线派生 (technical_stage/macd), 无多因子 | 留 | from v_price_kline_qfq |
-| **display** | 档案展示 (serving L0/L1 给 UI: picture/holders) | 留 | from L1 |
-| **infra** | 治理运行时 (watermark/schema/audit/deletion_record/data_health) | 留 | runtime |
-| **L2_feature** | 多因子特征工程 (panels/risk_factors/triggers) | wipeable | from L1, 参数寻优重做 |
-| **L3_model** | 模型产出 (scores/predictions/champion/ensemble) | wipeable | from L2+params |
-| **L4_experiment** | 寻优/消融/探索 (optuna/ablation) | summary_only | rerun; 知识在 retired_experiments.yaml |
+| layer | asset_class | 定义 | 保留 | 重建 |
+|---|---|---|---|---|
+| **L0_source** | raw | 原始 vendor 镜像 (raw_*), 不可重建真相源 | 永久, 永不删 | sync_runner re-sync |
+| **L1_foundation** | **A** | 从 L0 直接派生的 PIT 事实+维度 (日历/十大股东/财报PIT/机构/龙虎榜) | 留 | from L0 |
+| **L1k_kline_intermediate** | **A** | 仅 OHLCV K线派生 (technical_stage/macd), 无多因子 | 留 | from v_price_kline_qfq |
+| **display** | **A** | 档案展示聚合 (serving L0/L1 给 UI: holders/industry/survey 当前态) | 留 | from L1 |
+| **infra** | infra | 治理运行时 (watermark/schema/audit/deletion_record/data_health) | 留 | runtime |
+| **L2_feature** | **B** | 多因子特征工程 (panels/risk_factors/triggers) | wipeable | from L1, 参数寻优重做 |
+| **L3_model** | **B** | 模型产出 (scores/predictions/champion/ensemble) | wipeable | from L2+params |
+| **L4_experiment** | **B** | 寻优/消融/探索 (optuna/ablation) | summary_only | rerun; 知识在 retired_experiments.yaml |
+
+**加工分两种 (asset_class, 2026-06-28 用户决议, 客观划线)**: 数据平台只留 **Type A** (确定性 PIT 重排:
+只用 ≤t 信息 / 无前瞻 label / 无策略阈值 / 给定 raw 结果唯一 → 常驻平台, SERVE 直吐); **Type B**
+(策略派生: 含 forward/label/score/signal/IC/predicted → edge 层隔离 + 验证门, 读平台经 SERVE)。
+划线**不按"展示vs策略"(主观)**, 按"确定性PIT重排vs含前瞻/策略假设"(客观可门控)。当前平台 Type A 全在 L0/L1/L1k/display, Type B (L2/L3/L4) 清空待 edge 重建。
+**执法**: `data_layer_audit` Type A 列纯度门 — asset_class=A 层表禁现 forward/label/score/signal/ic/predicted 列 (防 Type B 伪装成 Type A 混入)。
 
 **层间规则**: 数据只能从下层 (L0→L1→L2→L3→L4) 单向派生; 上层不可回流污染下层 (PIT/防泄露)。
-**删改语义**: "reset" = wipe L2+L3+L4 (一条 layer 查询, 不靠 import 闭包); 地基 (L0/L1/display/infra) 不动。
+**删改语义**: "reset" = wipe Type B (L2+L3+L4, 一条 layer 查询, 不靠 import 闭包); 地基 Type A+raw+infra (L0/L1/L1k/display/infra) 不动。
 
 ## 3. 三原则 (新模块/表/规则必守)
 

@@ -80,7 +80,7 @@ assertions:
     command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python backend/scripts/check_dead_references.py >/dev/null 2>&1 && echo DEADREF_OK"]
     expect: {op: regex, pattern: "DEADREF_OK"}
   - id: data-layer-integrity
-    claim: "每张活表必在 data_layers.yaml 声明 layer (2026-06-14 地基-reset 立: 层级声明化根治'隐式分层→反复推导+耦合无法分离'; 未声明=违纪, 新表必须先声明)"
+    claim: "每张活表必在 data_layers.yaml 声明 layer + Type A 列纯度 (2026-06-14 层级声明化 + 2026-06-28 加工分层 A/B: asset_class=A 层[L1_foundation/L1k/display=确定性PIT重排]表禁含 forward/label/score/signal/ic/predicted 等 Type B 列, 防策略派生伪装混入平台; 未声明 or Type A 含泄漏列=FAIL)"
     type: shell
     command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python backend/scripts/data_layer_audit.py --check | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)[\"overall\"]==\"PASS\" else 1)' && echo LAYER_OK"]
     expect: {op: regex, pattern: "LAYER_OK"}

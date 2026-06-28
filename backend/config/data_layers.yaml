@@ -1,47 +1,63 @@
 version: 1
 _doc: '数据层级注册表 (2026-06-14 地基-reset 后立). 单一真相源: 每表声明 layer, 替代 ad-hoc 反复推导. 新表必须在此声明 layer (data_layer_audit + moth 断言强制).
   层级语义见 docs/data_management_framework.md。'
+# asset_class (2026-06-28 加工分两种, 用户决议): A/B 映射到 layer (不另起 per-table 字段, 奥卡姆)。
+#   客观划线 = "确定性 PIT 重排 vs 含前瞻/策略假设" (非主观"展示vs策略"):
+#   - raw : L0 vendor 镜像 (不加工)
+#   - A   : 确定性 PIT 重排 (只用<=t信息/无前瞻label/无策略阈值/给定raw结果唯一) → 数据平台常驻, SERVE 直吐
+#   - B   : 策略派生 (含 forward/label/score/signal/IC/predicted) → edge 层隔离+验证门, 读平台经 SERVE
+#   - infra: 治理运行时
+#   执法: data_layer_audit type-A 列纯度门 — Type A 层(L1_foundation/L1k/display)表禁现
+#         forward/label/score/signal/ic/predicted 等列 (防 Type B 伪装成 Type A 混入平台)。
 layers:
   # 2026-06-23 config最小手术 Step1 (对抗panel wry13dfr0): 层词汇单一真相源。
   # 消 data_access(短码 L0/L1/L1k) vs 本文件(长码 L0_source/...) 两套词汇无对账 (已核证重复#1)。
   # 本文件=层词汇唯一定义处; alias=短码引用名; data_access 引 alias 或长键=合法 (check_config_refs Step4 守)。
   L0_source:
     alias: L0
+    asset_class: raw
     desc: 原始 vendor 镜像, 不可重建真相源, 永不删 (re-sync 重建)
     retention: permanent
     rebuild: sync_runner re-sync
   L1_foundation:
     alias: L1
+    asset_class: A
     desc: 从 L0 直接派生的 PIT 事实+维度 (日历/十大股东/财报PIT/机构/龙虎榜)
     retention: keep
     rebuild: from L0
   L1k_kline_intermediate:
     alias: L1k
+    asset_class: A
     desc: 仅 OHLCV K线派生 (technical_stage/macd), 无多因子
     retention: keep
     rebuild: from v_price_kline_qfq
   display:
-    desc: '档案展示 (serving L0/L1 给UI: picture/holders/profile)'
+    asset_class: A
+    desc: '档案展示聚合 (Type A 确定性 PIT 重排给 UI/serving; 禁含前瞻/打分/信号)'
     retention: keep
     rebuild: from L1
   infra:
+    asset_class: infra
     desc: 治理运行时 (watermark/schema/audit/deletion_record/data_health)
     retention: keep
     rebuild: runtime
   L2_feature:
     alias: L2
+    asset_class: B
     desc: 多因子特征工程 (panels/risk_factors/triggers)
     retention: wipeable
     rebuild: from L1, 参数寻优重做
-    status: live_rebuilt  # 2026-06-19 fact_feature_panel 重建物化 live (8.17M行/5427股/PIT验证, build_feature_panel.py); fact_segment_panel(形态轴) live
+    status: wiped_20260628  # 2026-06-28 纯数据平台重建: L2 特征层清空 (U1 物删 panel); edge 层从零重建时复活
   L3_model:
     alias: L3
+    asset_class: B
     desc: 模型产出 (scores/predictions/champion/ensemble)
     retention: wipeable
     rebuild: from L2+params
     status: wiped_20260614
   L4_experiment:
     alias: L4
+    asset_class: B
     desc: 寻优/消融/探索 (optuna/ablation), 只留摘要不留全表
     retention: summary_only
     rebuild: rerun; 知识在 config/experiments/retired_experiments.yaml
