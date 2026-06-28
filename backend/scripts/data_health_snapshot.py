@@ -108,17 +108,7 @@ def find_writer_date_column(columns: list[str]) -> Optional[str]:
     return _find_column(columns, WRITER_DATE_COLUMN_CANDIDATES)
 
 
-def ensure_asset_deprecation_columns(con) -> None:
-    for ddl in (
-        "ALTER TABLE dim_data_asset ADD COLUMN deprecation_status TEXT DEFAULT 'active'",
-        "ALTER TABLE dim_data_asset ADD COLUMN replacement_table TEXT",
-    ):
-        try:
-            con.execute(ddl)
-        except Exception as exc:
-            msg = str(exc).lower()
-            if "duplicate" not in msg and "already exists" not in msg:
-                raise
+# ensure_asset_deprecation_columns 已删 2026-06-28 (F4: dim_data_asset 退役; 退役态走 mart_data_deprecation_record)
 
 
 def open_data_health_connection(*, read_only: bool = False):
@@ -444,26 +434,14 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
             severity = "yellow"
             issues.append(f"{freshness_basis} is {freshness_hours:.1f}h old (SLA {sla_hours}h)")
     elif row_count > 0 and date_col is None and writer_date_col is None and not non_expiring:
-        # 有数据但找不到日期列 — 无法判 freshness, 留 yellow 提示
-        severity = "yellow"
-        issues.append("no date column found for freshness check")
+        # 2026-06-28 F4: 无任何日期/写入列 = 本质静态表 (config dim 如 trading_rule/fee_schedule), 不可做
+        #   freshness 检查 → 视同 static 非过期 (green)。旧 dim_data_asset 给这些表 per-table freshness=static;
+        #   layer 默认无法区分 L1 里的日更 fact vs 静态 dim, 故按"有数据无日期列=静态"通用判定 (不再每次黄噪声)。
+        pass
 
-    # writer 缺失 + 有数据 = registry metadata issue. It is critical only for
-    # active, freshness-governed external assets; static/on-demand/research
-    # artifacts should not turn source health red.
-    if asset.get("writer_module") is None and row_count > 0 and not non_expiring:
-        severity = _max_severity(severity, "yellow")
-        issues.append("orphan_no_writer (data but no active writer)")
-
-    # writer 存在但 0 行 = stale_empty
-    if (
-        asset.get("writer_module") is not None
-        and row_count == 0
-        and expected_freshness not in OPTIONAL_EMPTY_FRESHNESS
-        and not non_expiring
-    ):
-        severity = "red"
-        issues.append("stale_empty (writer registered but never produced rows)")
+    # orphan_no_writer + stale_empty 两 check 已删 2026-06-28 (F4): 二者依赖 dim_data_asset.writer_module
+    #   (已退役); writer/producer 归属 + 孤儿检测现由 lineage (producer 边 + dead 检测) + check_dead_references
+    #   集中管 (碎登记归并: data_health 专注 freshness/row-count/null 健康, 不再重复 writer 归属判定)。
 
     severity = _cap_severity_by_quality_gate(asset, severity)
 
@@ -543,6 +521,64 @@ def build_health_snapshot_report(
     }
 
 
+def _load_assets_from_registry(con) -> list[dict]:
+    """资产清单从 data_layers.yaml (table+layer+asset_class+layer_health_defaults) + sync_registry
+    (raw per-domain freshness) + mart_data_deprecation_record (退役态) 构建 — 取代退役的 dim_data_asset
+    登记表 (2026-06-28 F4 碎登记归并: 不再手维护第5个登记表; 职责: layer/asset_class→data_layers,
+    freshness→layer 默认+sync_registry, producer/consumer→lineage, 退役态→deprecation_record)。
+    只监控本 con(smartmoney) live + reference dim 能读的表 (沿用旧 dim_data_asset smartmoney 范围)。"""
+    import yaml
+    dl = yaml.safe_load((REPO / "backend" / "config" / "data_layers.yaml").read_text(encoding="utf-8"))
+    layer_class = {ln: (s.get("asset_class") if isinstance(s, dict) else None)
+                   for ln, s in dl.get("layers", {}).items()}
+    health_def = dl.get("layer_health_defaults", {})
+    overrides = dl.get("table_health_overrides", {})
+    tables = dl.get("tables", {})
+    sync = yaml.safe_load((REPO / "backend" / "config" / "sync_registry.yaml").read_text(encoding="utf-8"))
+    raw_fresh: dict[str, tuple] = {}
+    for _dom, spec in (sync.get("domains") or {}).items():
+        tt, sla_d = spec.get("target_table"), spec.get("freshness_sla_trading_days")
+        if tt and sla_d:
+            raw_fresh[tt] = (f"t+{sla_d}", int(sla_d) * 24)
+    dep: dict[str, tuple] = {}
+    try:
+        for r in con.execute(
+            "SELECT table_name, deprecation_status, replacement_table FROM mart_data_deprecation_record"
+        ).fetchall():
+            dep[r[0]] = (r[1], r[2])
+    except Exception as e:  # deprecation_record 可空/缺 — 不致命, 记 debug 不静默吞
+        log.debug("deprecation_record read skipped: %s", e)
+    live: set[str] = set()
+    try:
+        live |= {r[0] for r in con.execute(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema='main'").fetchall()}
+    except Exception as e:  # 连接/表枚举失败 — 记 debug 不静默吞
+        log.debug("live table enumeration skipped: %s", e)
+    ref_dims = {"dim_active_a_stock", "dim_trading_calendar", "dim_all_ever_listed", "dim_listing_status"}  # rule-compliance: ok evidence=reference库4dim监控集(非universe取数, 列出data_health经dim_read_conn可读的reference表)
+    monitorable = live | ref_dims
+    assets: list[dict] = []
+    for tbl, layer in tables.items():
+        if tbl not in monitorable:
+            continue  # market/etf raw 等不在本 con 监控域 (沿用旧 smartmoney-scoped 健康范围)
+        # 优先级: per-table override > sync_registry per-domain (raw) > layer 默认
+        if tbl in overrides:
+            o = overrides[tbl]
+            fresh, sla = o.get("expected_freshness", "on-demand"), o.get("sla_hours", 720)
+        elif tbl in raw_fresh:
+            fresh, sla = raw_fresh[tbl]
+        else:
+            d = health_def.get(layer, {})
+            fresh, sla = d.get("expected_freshness", "on-demand"), d.get("sla_hours", 720)
+        dstat, drepl = dep.get(tbl, (None, None))
+        assets.append({
+            "table_name": tbl, "layer": layer, "asset_class": layer_class.get(layer),
+            "expected_freshness": fresh, "sla_hours": sla,
+            "deprecation_status": dstat, "replacement_table": drepl,
+            "writer_module": None, "quality_gate_level": None,
+        })
+    return sorted(assets, key=lambda a: (str(a["layer"]), a["table_name"]))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
@@ -555,35 +591,10 @@ def main() -> int:
 
     con = open_data_health_connection(read_only=args.dry_run)
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    if not args.dry_run:
-        ensure_asset_deprecation_columns(con)
 
-    # 拉所有登记的资产
-    asset_columns = set(get_table_columns(con, "dim_data_asset"))
-    base_cols = [
-        "table_name", "layer", "purpose", "writer_module", "reader_modules",
-        "upstream_source", "source_tier", "expected_freshness", "sla_hours",
-        "consumed_by_views",
-    ]
-    optional_cols = [
-        "deprecation_status", "replacement_table",
-        "asset_grain", "asset_cadence", "coverage_policy", "null_policy",
-        "pit_policy", "intended_use", "model_eligibility",
-        "strategy_eligibility", "frontend_visibility", "quality_gate_level",
-    ]
-    select_cols = list(base_cols)
-    select_cols.extend(
-        col if col in asset_columns else f"NULL AS {col}"
-        for col in optional_cols
-    )
-    rows = con.execute(
-        f"""
-        SELECT {', '.join(select_cols)}
-        FROM dim_data_asset
-        ORDER BY layer, table_name
-        """
-    ).fetchall()
-    log.info("scanning %d assets", len(rows))
+    # 资产清单从 data_layers + sync_registry + deprecation_record 构建 (dim_data_asset 2026-06-28 F4 退役)
+    assets = _load_assets_from_registry(con)
+    log.info("scanning %d assets", len(assets))
 
     snapshots: list[dict] = []
     severity_count = {"green": 0, "yellow": 0, "red": 0}
@@ -591,8 +602,7 @@ def main() -> int:
     #   (asset 表在 con[smartmoney] 则用 con; 否则 fall reference RO)。非 dim 资产 con 有表 = 行为不变;
     #   4 个 dim 资产 Stage E 后 con 无表 → 读 reference 真副本 (避免 COUNT(*) 失败误报 red)。
     from services.data_access import resolver
-    for asset_row in rows:
-        asset = dict(asset_row)
+    for asset in assets:
         _atbl = asset.get("table_name")
         _acon, _aown = resolver.dim_read_conn(con, _atbl) if _atbl else (con, False)
         try:
@@ -696,7 +706,7 @@ def main() -> int:
         ended_at=utc_now_iso(),
         duration_s=time.perf_counter() - run_t0,
         commit_sha=git_commit_sha(REPO),
-        input_tables=["dim_data_asset"],
+        input_tables=["data_layers.yaml", "sync_registry.yaml", "mart_data_deprecation_record"],
         output_tables=["mart_data_health"],
         gate_result="pass" if not red_list else "fail",
         blockers=[s["table_name"] for s in red_list],

@@ -173,39 +173,9 @@ CORE_SCHEMA_SQL = """
                 PRIMARY KEY (alias)
             );
 
-            CREATE TABLE IF NOT EXISTS dim_data_asset (
-                table_name        TEXT PRIMARY KEY,
-                layer             TEXT NOT NULL,              -- raw / dim / fact / mart / sys / cache / other
-                purpose           TEXT,                       -- 一句话用途 (manual fill 推荐)
-                writer_module     TEXT,                       -- 写者文件路径, e.g. backend/scripts/ingest_holders_tdxhub.py
-                reader_modules    TEXT,                       -- JSON 数组: 读者文件列表
-                upstream_source   TEXT,                       -- 'tdxhub.holders' / 'akshare.X' / 'derived'
-                source_tier       SMALLINT,                   -- 1=主, 2=备, 3=兜底, NULL=派生
-                fallback_chain    TEXT,                       -- JSON 数组: [{tier, source, trigger}]
-                expected_freshness TEXT,                      -- 't+0' / 't+1' / 'quarterly' / 'event' / 'static'
-                sla_hours         INTEGER,                    -- 数据延迟超过 N 小时算 yellow
-                consumed_by_views TEXT,                       -- JSON 数组: ['view-stocks', 'view-research']
-                asset_grain       TEXT,                       -- stock_code+date / event / report_period / run_id
-                asset_cadence     TEXT,                       -- trading_day_daily / event_driven / quarterly / on_demand
-                coverage_policy   TEXT,                       -- dense_active_a_stock / sparse_event / periodic_report
-                null_policy       TEXT,                       -- no_null / no_event_is_absence / classified_required
-                pit_policy        TEXT,                       -- same_day_market / source_notice_date / registry_required
-                intended_use      TEXT,                       -- model_training / context / attention / monitoring
-                model_eligibility TEXT,                       -- registered_features_only / encoded_auxiliary_only / blocked
-                strategy_eligibility TEXT,                    -- entry_exit_pricing / filter_context / diagnostics
-                frontend_visibility TEXT,                     -- governance_visible / hidden_internal
-                quality_gate_level TEXT,                      -- blocking / warning / monitor_only
-                is_append_only    BOOLEAN DEFAULT FALSE,
-                deprecation_status TEXT DEFAULT 'active',
-                deprecated_at     TEXT,
-                deprecated_reason TEXT,
-                replacement_table TEXT,
-                schema_version    TEXT DEFAULT 'v1',
-                notes             TEXT,
-                auto_discovered   BOOLEAN DEFAULT TRUE,       -- TRUE=auto-seed, FALSE=人工补
-                last_updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-
+            -- dim_data_asset DDL 已删 2026-06-28 (F4 退役: 烂登记表[67stale/68漏/0强制]职责归并 —
+            --   layer/asset_class→data_layers.yaml, freshness→layer_health_defaults+sync_registry+
+            --   table_health_overrides, producer/consumer→lineage, 退役态→mart_data_deprecation_record)
             -- raw_tdx_gpcw_wide / dim_tdx_gpcw_field DDL 已删 (2026-06-27 通达信全删 gpcw物删)
 
             CREATE TABLE IF NOT EXISTS dim_data_source_priority (

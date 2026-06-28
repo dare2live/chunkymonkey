@@ -62,6 +62,36 @@ layers:
     retention: summary_only
     rebuild: rerun; 知识在 config/experiments/retired_experiments.yaml
     status: wiped_20260614
+
+# 每层健康默认 (2026-06-28 F4 dim_data_asset 退役: data_health 的 per-table freshness/sla 来源搬来此层级。
+#   raw 表更精确的 per-domain freshness 走 sync_registry.freshness_sla_trading_days 覆盖本默认; 退役态走
+#   mart_data_deprecation_record。dim_data_asset 烂登记表退役, 职责归并: layer/asset_class→本文件,
+#   freshness→本默认+sync_registry, producer/consumer→lineage, 退役态→mart_data_deprecation_record。)
+layer_health_defaults:
+  L0_source:              {expected_freshness: 't+1',       sla_hours: 48}
+  # L1_foundation 在纯平台 = 缓变 dim + 季频 holder/inst fact (非日更; 日更在 L1k price_kline + L0 raw),
+  #   故默认 on-demand 宽松; 季频 fact 用 table_health_overrides 给 quarterly 监控。
+  L1_foundation:          {expected_freshness: 'on-demand', sla_hours: 720}
+  L1k_kline_intermediate: {expected_freshness: 't+1',       sla_hours: 48}
+  display:                {expected_freshness: 'on-demand', sla_hours: 720}
+  infra:                  {expected_freshness: 'on-demand', sla_hours: 720}
+  L2_feature:             {expected_freshness: 'on-demand', sla_hours: 720}
+  L3_model:               {expected_freshness: 'on-demand', sla_hours: 720}
+  L4_experiment:          {expected_freshness: 'on-demand', sla_hours: 720}
+
+# per-table 健康覆盖 (2026-06-28 F4: 从退役的 dim_data_asset 搬来; 仅 layer 默认不对的少数表 —
+#   aif10 季频/周频 raw 不在 sync_registry 无法 derive freshness, 故显式覆盖。无日期列的静态 dim 由
+#   data_health "无日期列=静态" 通用判定处理, 不需在此列。)
+table_health_overrides:
+  raw_aif10_peer_valuation:   {expected_freshness: quarterly, sla_hours: 2280}
+  raw_qfii_holding_quarterly: {expected_freshness: quarterly, sla_hours: 2280}
+  raw_aif10_forecast_consensus: {expected_freshness: weekly, sla_hours: 168}
+  raw_org_holding_aif10:      {expected_freshness: quarterly, sla_hours: 2280}  # F10 机构持仓明细=季报驱动
+  # holder/inst 季频 fact (L1_foundation 默认 on-demand, 这里给 quarterly 保留季频监控不误日红)
+  fact_top10_holder_period:        {expected_freshness: quarterly, sla_hours: 2280}
+  fact_common_major_holder_stock:  {expected_freshness: quarterly, sla_hours: 2280}
+  inst_holdings:                   {expected_freshness: quarterly, sla_hours: 2280}
+  inst_institutions:               {expected_freshness: quarterly, sla_hours: 2280}
 tables:
   raw_aif10_forecast_consensus: L0_source
   raw_aif10_peer_valuation: L0_source
@@ -106,7 +136,7 @@ tables:
   mart_stock_survey_activity: display
   app_settings: infra
   # capital_detail_sync_state tag 已删 2026-06-27 (通达信全删 M4: akshare 资本运作物删)
-  dim_data_asset: infra
+  # dim_data_asset tag 已删 2026-06-28 (F4 退役: 烂登记表物删, 职责归并 data_layers/lineage/deprecation_record)
   dim_data_source_priority: infra
   dim_price_limit_rules: infra
   dim_schema_version: infra

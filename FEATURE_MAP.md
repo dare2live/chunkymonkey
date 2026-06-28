@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-28 12:31
+> Snapshot: 2026-06-28 13:42
 
 ## 1. 入口面
 
@@ -88,7 +88,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 53 张 | 单 writer 39 | 多 writer 14 | 动态表名写点 18 处 (11 文件)
+统计: 表 52 张 | 单 writer 40 | 多 writer 12 | 动态表名写点 17 处 (10 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -104,7 +104,6 @@
 | backend/scripts/db_compact.py | 2 |
 | backend/scripts/db_partition_migrate.py | 2 |
 | backend/scripts/migrate_reference_db.py | 1 |
-| backend/scripts/seed_dim_data_asset.py | 1 |
 | backend/services/aif10_capability_client.py | 3 |
 | backend/services/data_sources/sync_runner.py | 3 |
 
@@ -114,7 +113,6 @@
 |---|---|---|
 | fact_top10_holder_period | 3 | backend/scripts/cleanup_holder_dup.py<br>backend/services/holders_aif10.py<br>backend/services/schema_core.py |
 | mart_data_deletion_record | 3 | backend/scripts/db_lifecycle_delete.py<br>backend/services/data_deletion.py<br>backend/services/schema_marts.py |
-| dim_data_asset | 2 | backend/scripts/seed_dim_data_asset.py<br>backend/services/schema_core.py |
 | dim_fee_schedule | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_liquidity_threshold | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_market_segment | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
@@ -122,7 +120,6 @@
 | dim_style_factor | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_trading_rule | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_trading_session | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
-| mart_data_deprecation_record | 2 | backend/services/data_deprecation.py<br>backend/services/schema_marts.py |
 | mart_data_health | 2 | backend/scripts/data_health_snapshot.py<br>backend/services/schema_marts.py |
 | mart_data_source_watermark | 2 | backend/services/schema_marts.py<br>backend/services/source_watermarks.py |
 | mart_pipeline_run_manifest | 2 | backend/services/pipeline_manifest.py<br>backend/services/schema_marts.py |
@@ -154,6 +151,7 @@
 | fact_stock_style_daily | backend/services/primitives/ddl.py |
 | mart_candidate_feature_set_contract | backend/services/data_quality.py |
 | mart_current_relationship | backend/services/holdings.py |
+| mart_data_deprecation_record | backend/services/schema_marts.py |
 | mart_data_processing_tool_issue | backend/services/data_processing_monitor.py |
 | mart_data_processing_tool_run | backend/services/data_processing_monitor.py |
 | mart_data_source_failure_queue | backend/services/source_watermarks.py |
@@ -173,14 +171,14 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 4,777 | calls 边 6,886 | imports 边 1,339 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 4,719 | calls 边 6,859 | imports 边 1,335 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
 | services.duck_adapter | 30 |
-| services.db | 11 |
+| services.db | 10 |
 | services.utils | 8 |
 | services.pipeline_manifest | 7 |
 | services.database_manifest | 6 |
@@ -217,19 +215,19 @@
 | 文件 | 行数 |
 |---|---|
 | backend/services/data_quality.py | 3882 |
-| backend/scripts/seed_dim_data_asset.py | 1194 |
 | backend/services/storage_retention.py | 1061 |
 | backend/services/data_sources/sync_runner.py | 963 |
 | backend/services/holder_availability.py | 776 |
-| backend/scripts/data_health_snapshot.py | 720 |
+| backend/scripts/data_health_snapshot.py | 730 |
 | backend/services/data_audit.py | 613 |
-| backend/services/schema_migrations.py | 608 |
+| backend/services/schema_migrations.py | 594 |
 | backend/services/source_watermarks.py | 570 |
 | backend/services/kline_source.py | 443 |
+| backend/services/gap_queue.py | 437 |
 
 ## 5. 概览
 
 - chunkyctl 子命令 10 | launchd 任务 1 | router 3 (端点 8)
 - sync_registry 数据域 44
-- 产表 53 (多 writer 14)
+- 产表 52 (多 writer 12)
 

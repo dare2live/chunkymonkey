@@ -335,16 +335,8 @@ DERIVED_WRITERS: list[ClientSpec] = [
             TableWriteSpec("mart_tdx_keep_promotion_gate", "TDX keep promotion gate", "on-demand", 24*30),
         ],
     ),
-    ClientSpec(
-        client_id="data_deprecation_records",
-        module="services.data_deprecation / scripts.record_data_deprecations",
-        description="数据资产退役登记记录 (不删表)",
-        upstream_source="derived: dim_data_asset + stale reference audit",
-        source_tier=99,
-        writes=[
-            TableWriteSpec("mart_data_deprecation_record", "数据资产退役记录", "on-demand", 24*30),
-        ],
-    ),
+    # data_deprecation_records client 已删 2026-06-28 (F4: services.data_deprecation 模块退役, 0 writer;
+    #   mart_data_deprecation_record 现为只读历史 mart [schema_marts 建 + data_health 读], 无 active producer)
 ]
 
 
@@ -366,22 +358,8 @@ def get_table_metadata(table: str) -> Optional[tuple[ClientSpec, TableWriteSpec]
     return None
 
 
-def upstream_for_table(table: str) -> tuple[Optional[str], Optional[int]]:
-    """seed_dim_data_asset.py 兼容接口: (upstream_source, source_tier)."""
-    found = get_table_metadata(table)
-    if found is None:
-        return None, None
-    client, _ = found
-    return client.upstream_source, client.source_tier
-
-
-def freshness_for_table(table: str) -> Optional[tuple[str, int]]:
-    """seed_dim_data_asset.py 兼容接口: (freshness, sla_hours)."""
-    found = get_table_metadata(table)
-    if found is None:
-        return None
-    _, w = found
-    return w.freshness, w.sla_hours
+# upstream_for_table / freshness_for_table 已删 2026-06-28 (F4: 仅 seed_dim_data_asset.py 兼容接口用,
+#   seed 随 dim_data_asset 退役, 0 live 用户。表 metadata 仍由 get_table_metadata 提供给 data_health owner_hint)
 
 
 def to_dicts() -> list[dict]:
