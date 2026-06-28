@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-28 12:17
+> Snapshot: 2026-06-28 12:31
 
 ## 1. 入口面
 
@@ -88,7 +88,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 54 张 | 单 writer 40 | 多 writer 14 | 动态表名写点 18 处 (11 文件)
+统计: 表 53 张 | 单 writer 39 | 多 writer 14 | 动态表名写点 18 处 (11 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -152,7 +152,6 @@
 | fact_stock_liquidity_daily | backend/services/primitives/ddl.py |
 | fact_stock_market_cap_daily | backend/services/primitives/ddl.py |
 | fact_stock_style_daily | backend/services/primitives/ddl.py |
-| mart_audit_snapshot_state | backend/services/audit.py |
 | mart_candidate_feature_set_contract | backend/services/data_quality.py |
 | mart_current_relationship | backend/services/holdings.py |
 | mart_data_processing_tool_issue | backend/services/data_processing_monitor.py |
@@ -174,27 +173,27 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 4,811 | calls 边 7,045 | imports 边 1,357 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 4,777 | calls 边 6,886 | imports 边 1,339 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
 | services.duck_adapter | 30 |
-| services.db | 12 |
-| services.utils | 9 |
-| services.market_db | 7 |
+| services.db | 11 |
+| services.utils | 8 |
 | services.pipeline_manifest | 7 |
 | services.database_manifest | 6 |
+| services.market_db | 6 |
 | services.data_sources | 5 |
 | services.lineage.model | 5 |
 | scripts.formula_parameter_search | 4 |
 | services.data_processing_monitor | 4 |
 | services.calendar | 3 |
-| services.industry | 3 |
 | services.lineage | 3 |
 | services.storage_retention | 3 |
 | services.data_deletion | 2 |
+| services.data_governance.config | 2 |
 
 ### 跨文件 fan-in 最高的文件 (近似口径: 唯一定义名 + caller 实际 import 目标模块双过滤)
 
@@ -206,19 +205,18 @@
 | bestchoice/execution_model.py | 5 |
 | backend/services/database_manifest.py | 4 |
 | backend/services/lineage/model.py | 4 |
-| backend/services/market_db.py | 4 |
 | backend/services/pipeline/context.py | 4 |
 | bestchoice/formula_engine.py | 4 |
 | bestchoice/scripts/formula_parameter_search.py | 4 |
 | backend/services/data_access/keys.py | 3 |
+| backend/services/market_db.py | 3 |
 | backend/services/notification/base.py | 3 |
 
 ### LOC top 10 (God module 候选)
 
 | 文件 | 行数 |
 |---|---|
-| backend/services/data_quality.py | 3892 |
-| backend/services/audit.py | 1568 |
+| backend/services/data_quality.py | 3882 |
 | backend/scripts/seed_dim_data_asset.py | 1194 |
 | backend/services/storage_retention.py | 1061 |
 | backend/services/data_sources/sync_runner.py | 963 |
@@ -227,10 +225,11 @@
 | backend/services/data_audit.py | 613 |
 | backend/services/schema_migrations.py | 608 |
 | backend/services/source_watermarks.py | 570 |
+| backend/services/kline_source.py | 443 |
 
 ## 5. 概览
 
 - chunkyctl 子命令 10 | launchd 任务 1 | router 3 (端点 8)
 - sync_registry 数据域 44
-- 产表 54 (多 writer 14)
+- 产表 53 (多 writer 14)
 

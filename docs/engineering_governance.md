@@ -92,7 +92,7 @@ Before running tests as evidence:
 
 | Check | Requirement |
 |---|---|
-| Registry | Selected test files must be registered in `backend/config/test_tool_registry.yaml` |
+| Registry | (test_tool_registry.yaml 2026-06-28 退役: 0 代码消费 + 82% 引已删测试=烂登记从未强制; 测试覆盖由 CI offline 列表 + pytest 直管) |
 | Scope | Unit/contract/integration/realdb/perf/network/gcp scope must match the command |
 | Truth source | K-line for tradeability, calendar for dates, `universe_rules.yaml` for board/limit rules |
 | `dim_active_a_stock` | Code-to-name/cache fixtures only, never active-universe truth |

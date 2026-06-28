@@ -12,25 +12,15 @@ from typing import Any
 
 from services.data_deletion import ensure_data_deletion_tables
 from services.data_processing_monitor import ensure_data_processing_monitor_tables
-# 2026-06-28 重建: feature_registry/pricing_policy/recommendation_universe (策略层) 退役;
-#   data_quality 的策略相关检查 defensive 降级 (缺模块→该检查跳过), 数据平台检查(calendar/kline/null/freshness)不受影响。
-try:
-    from services.feature_registry import load_feature_registry
-except Exception:
-    load_feature_registry = None
+# 2026-06-28 重建: feature_registry/pricing_policy/recommendation_universe (策略层) 已 git rm 退役。
+#   不再 import (死引用); 占位 None → 下游策略相关检查 (feature null/availability/recommendation/pricing)
+#   经 `is None` 守卫自动跳过。数据平台检查 (calendar/kline/null/freshness/lineage) 不受影响。
+#   (深度: 这些 guarded-no-op 检查函数本身可后续整体移除, 非死引用故不阻塞门。)
+load_feature_registry = None
+load_pricing_label_policy = record_pricing_label_policy = None
+explain_universe_exclusions = load_recommendation_universe_policy = None
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso
 from services.pipeline_performance_policy import load_pipeline_performance_policy
-try:
-    from services.pricing_policy import load_pricing_label_policy, record_pricing_label_policy
-except Exception:
-    load_pricing_label_policy = record_pricing_label_policy = None
-try:
-    from services.recommendation_universe import (
-        explain_universe_exclusions,
-        load_recommendation_universe_policy,
-    )
-except Exception:
-    explain_universe_exclusions = load_recommendation_universe_policy = None
 from services.schema_versions import record_actual_version
 from services.utils import latest_completed_trade_date
 

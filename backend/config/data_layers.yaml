@@ -84,6 +84,10 @@ tables:
   etf_price_kline_qfq_tushare: L1k_kline_intermediate   # 2026-06-25 M2 Stage C: ETF tushare 前复权 K线 (etf.duckdb; build_etf_kline_qfq_tushare.py 从 raw_tushare_fund_daily×fund_adj 建 2019+; 修 mootdx ETF 分红未复权 bug)
   # dim_stock_attention_latest tag 已删 2026-06-27 (通达信全删 M4: akshare 关注度物删)
   stock_watchlist: display
+  # mart_stock_survey_activity: Type A 当前状态聚合 (institution_survey_client 每次同步从 raw_institution_surveys
+  #   DELETE/INSERT 重建, as_of_date=同步日, 确定性PIT重排无前瞻=Type A 展示聚合; 2026-06-28 补登记: U5 误删但
+  #   sync 重建路径未除, 实为 live Type A 件; F3 A/B 复核是否保留聚合 vs 仅留 raw)
+  mart_stock_survey_activity: display
   app_settings: infra
   # capital_detail_sync_state tag 已删 2026-06-27 (通达信全删 M4: akshare 资本运作物删)
   dim_data_asset: infra

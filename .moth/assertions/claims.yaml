@@ -74,6 +74,11 @@ assertions:
     type: shell
     command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python backend/scripts/check_doc_drift.py --check | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)[\"overall\"]==\"PASS\" else 1)' && echo DOC_OK"]
     expect: {op: regex, pattern: "DOC_OK"}
+  - id: dead-references-zero
+    claim: "0 死引用 (2026-06-28 根因根治: 删模块/表/文件必同步清引用方; import-services + dead-services-ref + config-dead-path 三道。根因=之前每波清理删供给侧漏需求侧, 验收够不到孤儿脚本/懒import/guarded垫片/config死路径→静默累积)"
+    type: shell
+    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python backend/scripts/check_dead_references.py >/dev/null 2>&1 && echo DEADREF_OK"]
+    expect: {op: regex, pattern: "DEADREF_OK"}
   - id: data-layer-integrity
     claim: "每张活表必在 data_layers.yaml 声明 layer (2026-06-14 地基-reset 立: 层级声明化根治'隐式分层→反复推导+耦合无法分离'; 未声明=违纪, 新表必须先声明)"
     type: shell

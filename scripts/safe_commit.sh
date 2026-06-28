@@ -191,6 +191,21 @@ if [[ -n "$STAGED_FOR_LINEAGE" ]]; then
     fi
 fi
 
+# 3.97 死引用硬门 (2026-06-28 根因根治): 删模块/表/文件后引用方必须同步清。
+# 根因: 之前每波清理删"供给侧"漏"需求侧", 验收够不到孤儿脚本/懒import/guarded垫片/config死路径
+# → 残留静默累积。本门 import-services + dead-services-ref + config-dead-path 机械堵死。**硬闸**。
+echo
+echo "=== Step 3.97: dead-references gate (死引用根治硬门) ==="
+if PYTHONPATH=backend python backend/scripts/check_dead_references.py > /tmp/cm_deadref.out 2>&1; then
+    grep -E "^\[dead-references\] PASS" /tmp/cm_deadref.out || echo "[dead-references] PASS"
+else
+    echo
+    echo "ERROR: 死引用门红 — 删了模块/表/文件但引用方未清 (孤儿脚本/死import/config引死路径):"
+    grep -E "✗|FAIL:" /tmp/cm_deadref.out | head -40
+    echo "正解: 删引用方 / repoint 现存 / 引用方也是残留则一并删。误报修 check_dead_references.py 本身, 不 --no-verify 绕。"
+    exit 5
+fi
+
 # 4. Commit message keyword check (manual preview)
 echo
 echo "=== Step 4: commit message keyword ==="

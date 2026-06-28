@@ -4,94 +4,14 @@ db_path_literal_policy:
   block_data_duckdb_literals: true
   database_manifest_path: database_manifest.yaml
 
+# raw duckdb.connect 白名单 (check_rule_compliance 消费): 这些文件文件级直接控制是设计, 不走 adapter。
+# 2026-06-28 prune: 89→7 (删 82 个引已删模块/脚本的死路径; 纯数据平台重建后大批策略/特征/回测脚本退役)。
+# 新增 raw connect 默认阻断, 须显式加这里 + 理由 (或改用 services.duck_adapter.connect / resolver.connect_ro)。
 allowed_raw_connect_paths:
-  # db 重建工具: 文件级直接控制是设计 (换名/删除/ATTACH src), 不走 adapter 重试包装
-  - scripts/db_split_execute.py
-  - scripts/migrate_reference_db.py  # §9 reference拆库迁移 (跨库ATTACH/EXPORT保真, 2026-06-24)
-  - services/analytics.py
-  - services/backtest_preflight.py
-  - services/bc_absorbed/compute.py
-  - services/bc_absorbed/formula_engine.py
-  - services/bc_absorbed/scripts/daily_formula_picks.py
-  - services/bc_absorbed/scripts/drift_trigger_build.py
-  - services/bc_absorbed/scripts/formula_local_optuna.py
-  - services/bc_absorbed/scripts/formula_local_optuna_aggregate_audit.py
-  - services/bc_absorbed/scripts/formula_local_optuna_batch.py
-  - services/bc_absorbed/scripts/formula_parameter_search.py
-  - services/bc_absorbed/scripts/incremental_eval_build.py
-  - services/bc_absorbed/scripts/macd_golden_cross_backtest.py
-  - services/bc_absorbed/scripts/macd_optuna_backtest.py
-  - services/bc_absorbed/scripts/research_cache_build.py
-  - services/bc_absorbed/scripts/strategy_audit.py
-  - services/bc_absorbed/scripts/strategy_effectiveness_audit.py
-  - services/bc_absorbed/scripts/workflow_checkpoint.py
-  - services/data_audit.py
-  - services/duck_adapter.py
-  - services/features/capital_flow.py
-  - services/features/institution_survey.py
-  - services/features/sector_momentum.py
-  - services/perf/shard_runner.py
-  - services/strategies/regime/regime_state.py
-  - scripts/analyze_macd_feature_buckets.py
-  - scripts/audit_data_completeness.py
-  - scripts/audit_delivery_readiness.py
-  - scripts/audit_lgbm_feature_importance.py
-  - scripts/audit_pit_coverage.py
-  - scripts/audit_storage_payloads.py
-  - scripts/audit_survivorship_gate.py
-  # backfill_capital_flow_pit.py 已删 (死链: fact_capital_flow_pit_daily reset 删 + upstream executive_trade 物删)
-  - scripts/backfill_financial_pit.py
-  - scripts/backfill_risk_factors_history.py
-  - scripts/backfill_sector_momentum_history.py
-  - scripts/backfill_walkforward_eval.py
-  - scripts/backtest_etf_strategies.py
-  - scripts/build_alpha158_duck.py
-  - scripts/build_candle_pattern_daily.py
-  - scripts/build_dim_listing_status.py
-  - scripts/build_formula_signals_history.py
-  - scripts/build_industry_beta_daily.py
-  - scripts/build_macd_state_history.py
-  - scripts/build_mart_stock_pool_assignment.py
-  - scripts/build_mart_stock_regime_full.py
-  - scripts/build_p0a_feature_panel_v3.py
-  - scripts/build_p0a_feature_panel_v4.py
-  - scripts/build_p0a_feature_panel_v5.py
-  - scripts/build_segment_panel.py        # F0 形态/分层面板 build (只读 market + 写 feature_store, manifest 路径)
-  - scripts/build_signal_context.py
-  - scripts/build_sniper_score_daily.py
-  - scripts/build_stage_formula_fitness.py
-  - scripts/measure_form_separation.py     # F1 分离度诊断 (ATTACH 多库 read_only)
-  - scripts/build_stage_opt_pit.py
-  - scripts/build_stock_formula_optuna.py
-  - scripts/build_stock_formula_optuna_v2.py
-  # check_sina_tdxhub_overlap.py 已删 2026-06-27 (dead: 读已物删 price_kline_tdxhub)
-  - scripts/cleanup_corrupt_oos_predictions.py
-  - scripts/cleanup_deprecated_kline_sources.py
-  - scripts/cleanup_holder_dup.py
-  - scripts/cleanup_kline_intraday_20260519.py
-  - scripts/cleanup_leakage_data.py
-  - scripts/compute_forecast_upside_live.py
-  - scripts/eda_phase1a.py
-  - scripts/formula_limit_up_pullback.py
-  - scripts/import_model_train_log_artifact.py
-  - scripts/import_phase5_remote_predictions.py
-  # ingest_profit_forecast_snapshot.py 已删 2026-06-27 (通达信全删 M4: akshare 盈利预测快照退役)
-  # migrate_holders_to_tdxhub.py 已删 2026-06-27 (dead 一次性迁移脚本, holder 现走 aif10/tushare)
-  - scripts/model_monitor_dashboard.py
-  - scripts/monitor_optuna_v4.py
-  - scripts/nightly_data_audit.py
-  - scripts/optimize_per_formula_stage.py
-  - scripts/optimize_per_stock_stage_strategy.py
-  - scripts/optimize_per_stock_strategy.py
-  - scripts/optuna_per_stock_macd.py
-  - scripts/optuna_pullback_doji.py
-  - scripts/param_impact_curve.py
-  - scripts/portfolio_backtest.py
-  - scripts/preflight_panel_build.py
-  - scripts/rebuild_p0a_label_panel.py
-  - scripts/retrain_from_optuna_best.py
-  - scripts/run_msaf_ensemble_paper_sim.py
-  - scripts/run_paper_sim_sizer_ablation.py
-  - scripts/run_phase4_gate_on_msaf.py
-  - scripts/validate_exclusion_rules.py
-  - scripts/validate_sentiment_ic.py
+  - scripts/migrate_reference_db.py        # §9 reference 拆库迁移 (跨库 ATTACH/EXPORT 保真, 2026-06-24)
+  - services/data_audit.py                 # post-sync audit 多库 read_only ATTACH
+  - services/duck_adapter.py               # adapter 本体
+  - scripts/audit_data_completeness.py     # 数据完整性审计 (read_only)
+  - scripts/audit_pit_coverage.py          # PIT 覆盖审计 (read_only)
+  - scripts/build_dim_listing_status.py    # 退市状态 dim 写 reference RW
+  - scripts/cleanup_holder_dup.py          # holder 去重维护

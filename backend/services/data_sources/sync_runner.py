@@ -35,7 +35,7 @@ log = logging.getLogger("sync_runner")
 
 _REPO = Path(__file__).resolve().parents[3]
 _REGISTRY_PATH = _REPO / "backend" / "config" / "sync_registry.yaml"
-SOURCE_TIER_TUSHARE = 2  # from yaml: tdx_data_need_coverage need_027 source_tier
+SOURCE_TIER_TUSHARE = 2  # evidence: tushare = tier-2 源 (source_watermarks DOMAIN_SPECS sync:* 域全 tier 2; SLA_DAYS tier2=2d)
 
 
 def load_registry(path: Path | None = None) -> dict[str, Any]:

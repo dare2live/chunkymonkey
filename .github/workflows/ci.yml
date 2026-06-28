@@ -68,3 +68,9 @@ jobs:
           print(f'  schema_versions: {summary()}')
           print(f'  audit_rules: {len(AUDIT_RULES)}')
           "
+
+      - name: Dead-references gate (死引用根治硬门)
+        run: |
+          # 2026-06-28 根因根治: 删模块/表/文件后引用方必须同步清 (import-services + dead-services-ref + config-dead-path)。
+          # server-side 强制 (本地 hook 够不到的最终防线, mio §7 enforcement 沉到提交者够不到处)。
+          PYTHONPATH=backend python backend/scripts/check_dead_references.py
