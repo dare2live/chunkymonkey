@@ -187,16 +187,6 @@ assertions:
     type: shell
     command: ["bash", "-c", "grep -c 'def enable_sandbox_guard\\|class SandboxBoundaryError\\|def read_only_main' backend/services/sandbox_guard.py"]
     expect: {op: ">=", value: 3}
-  - id: feature-panel-pit-guard-wired
-    claim: "feature_panel 物化前 pit_guard 行为门在岗 (2026-06-19 A0: build_feature_panel 物化 fact_feature_panel 前对价量因子 assert_pit_clean, FAIL 不写表. 新守门防孤儿 mythos§14; 删=L2 物化可带 lookahead 泄漏入 panel)"
-    type: shell
-    command: ["bash", "-c", "grep -c assert_pit_clean backend/scripts/build_feature_panel.py"]
-    expect: {op: ">=", value: 2}
-  - id: build-time-pit-declared
-    claim: "D4 PIT偏序锁 (seed §0.2 D4, 2026-06-23): 每个写 feature_store 的 L2 特征 panel builder 必声明 PIT 立场 — assert_pit_clean 运行时门(feature_panel) 或 # pit-safe-by-construction 标记(segment/signal panel: feat[i]只用<=i, EMA递推/金叉当bar确认, 无forward列). 锁 D4 散落: 防新 L2 builder materialize 不声明 PIT 即带 lookahead 泄漏入 panel 无人察 (mythos§14 孤儿). scope=写 feature_store 的 (采集脚本如 build_akshare_panel 写 fact_* 事件表非 L2 特征, PIT 在读时 asof_gate 故排除). 0=有 L2 panel builder 未声明 PIT 立场. owner=build_*_panel.py docstring + build-time PIT"
-    type: shell
-    command: ["bash", "-c", "bad=0; for f in backend/scripts/build_*panel*.py; do grep -q feature_store \"$f\" || continue; grep -qE 'assert_pit_clean|pit-safe-by-construction' \"$f\" || bad=$((bad+1)); done; echo $bad"]
-    expect: {op: "<=", value: 0}
   - id: rally-gt-outcome-quarantine
     claim: "主升浪 GT outcome 列禁做训练 X (2026-06-19 A0#c: episode-first 结果倒推, gain/peak/dd/bull_aligned 是 forward outcome 当 X=leakage死. rally_gt_columns.yaml 契约 + rally_labels.assert_no_outcome_leakage 守门. 陷阱: bull_aligned 拉升期测名字像入场态; 误分类=泄漏复发)"
     type: shell
@@ -208,12 +198,6 @@ assertions:
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM fact_top10_holder_period WHERE report_date LIKE '%-%'"
     expect: {op: "==", value: 0}
-  - id: signal-panel-b-split-parallel
-    claim: "b分表 (用户 2026-06-22 裁决): L2 连续因子 fact_feature_panel 与 事件信号 fact_signal_panel **分两张同键并列 panel** (键 code×date), signal_assembler 同键 JOIN 取(排名因子+公式条件门)。signal_panel 放公式事件(macd_golden_cross 首个, 加公式=加列 invariant#3), 区别于 segment_panel 的 form 态。行数>0=已物化。owner=backend/scripts/build_signal_panel.py + analysis/data_module_toplevel_design_20260622.md §8.0"
-    type: duckdb_sql
-    database: data/feature_store.duckdb
-    query: "SELECT count(*) FROM fact_signal_panel"
-    expect: {op: ">", value: 0}
   - id: dossier-serve-no-inline-raw
     claim: "dossier.py 内联 duck_connect = 0 硬门 (2026-06-22 数据模块 P1 SERVE 读层迁移完成, 不变量#4 单概念单真相源: dossier 18 内联 raw 裸查全部迁到 services.data_access.DataAccess 单一读路, 全 parity 验证 [capital/cyq/limits/share_float/block_trade/analyst/benchmark/valuation/fundamentals/forecast/one/sector_kline/lhb/_top10_tushare/_top10_tdx/sector_membership/market_regime + 2 scan]). >0 = 新增内联裸查违纪 silo 回潮. owner=backend/services/dossier.py + analysis/data_module_toplevel_design_20260622.md §4"
     type: shell

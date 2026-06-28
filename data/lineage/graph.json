@@ -16,6 +16,19 @@
       "attrs": {
         "grain": [
           "end_date",
+          "ts_code",
+          "update_flag"
+        ],
+        "pit_anchor": "ann_date (行内字段); 财报公告日 -> JOIN t-1 保守; update_flag=1 最新修正版 (<=t 最新 ann_date 行)"
+      },
+      "dst": "table:raw_tushare_balancesheet",
+      "kind": "acquire",
+      "src": "source:tushare.balancesheet"
+    },
+    {
+      "attrs": {
+        "grain": [
+          "end_date",
           "ts_code"
         ],
         "pit_anchor": "ann_date (行内公告日); JOIN 决策日 t 取 ann_date<=t 最新一期。V0 口径: by_period 取每期最新修订(重述 leakage 小, 测向用); 转正改 by_trade_date+update_flag 严 PIT。禁用 end_date 报告期末当锚=leakage。因子必 COALESCE(adv_receipts,contract_liab) (实测茅台 2020 后 adv_receipts=NULL 全迁 contract_liab)"
@@ -595,24 +608,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:capital_detail_sync_state"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/audit.py",
-      "kind": "consume",
-      "src": "table:capital_detail_sync_state"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/capital_client.py",
-      "kind": "consume",
-      "src": "table:capital_detail_sync_state"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_audit_rules.yaml",
       "kind": "consume",
       "src": "table:dim_active_a_stock"
@@ -661,12 +656,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/build_price_kline_tdxhub.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/scripts/check_universe_filter.py",
       "kind": "consume",
       "src": "table:dim_active_a_stock"
@@ -691,12 +680,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/capital_client.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/data_audit.py",
       "kind": "consume",
       "src": "table:dim_active_a_stock"
@@ -709,37 +692,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/external_attention.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/financial_client.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/institution_write.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/recommendation_universe.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_core.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_migrations.py",
       "kind": "consume",
       "src": "table:dim_active_a_stock"
     },
@@ -751,19 +704,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/screening_engine.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/security_master.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/stock_graph_read.py",
       "kind": "consume",
       "src": "table:dim_active_a_stock"
     },
@@ -788,18 +729,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_build_picture_daily.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_build_price_kline_tdxhub.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_financial_client.py",
       "kind": "consume",
       "src": "table:dim_active_a_stock"
     },
@@ -916,54 +845,6 @@
       "dst": "consumer:backend/tests/test_universe.py",
       "kind": "consume",
       "src": "table:dim_all_ever_listed"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:dim_capital_behavior_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
-      "kind": "consume",
-      "src": "table:dim_capital_behavior_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/audit.py",
-      "kind": "consume",
-      "src": "table:dim_capital_behavior_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/capital_client.py",
-      "kind": "consume",
-      "src": "table:dim_capital_behavior_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:dim_capital_behavior_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:dim_capital_behavior_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/scoring.py",
-      "kind": "consume",
-      "src": "table:dim_capital_behavior_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/signals_v2.py",
-      "kind": "consume",
-      "src": "table:dim_capital_behavior_latest"
     },
     {
       "attrs": {},
@@ -1117,6 +998,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/feature_registry.yaml",
+      "kind": "consume",
+      "src": "table:dim_financial_latest"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/audit.py",
       "kind": "consume",
       "src": "table:dim_financial_latest"
@@ -1124,6 +1011,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_sources/clients_registry.py",
+      "kind": "consume",
+      "src": "table:dim_financial_latest"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/data_routes.py",
       "kind": "consume",
       "src": "table:dim_financial_latest"
     },
@@ -1165,6 +1058,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_financial_client.py",
+      "kind": "consume",
+      "src": "table:dim_financial_latest"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_screening_engine.py",
       "kind": "consume",
       "src": "table:dim_financial_latest"
@@ -1183,12 +1082,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/migrate_holders_to_tdxhub.py",
-      "kind": "consume",
-      "src": "table:dim_holder_alias"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
       "kind": "consume",
       "src": "table:dim_holder_alias"
@@ -1202,12 +1095,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/schema_core.py",
-      "kind": "consume",
-      "src": "table:dim_holder_alias"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_migrate_holders_to_tdxhub.py",
       "kind": "consume",
       "src": "table:dim_holder_alias"
     },
@@ -1408,42 +1295,6 @@
       "dst": "consumer:backend/tests/contract/test_workbench_read.py",
       "kind": "consume",
       "src": "table:dim_schema_version"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:dim_stock_attention_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/audit.py",
-      "kind": "consume",
-      "src": "table:dim_stock_attention_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/external_attention.py",
-      "kind": "consume",
-      "src": "table:dim_stock_attention_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:dim_stock_attention_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/scoring.py",
-      "kind": "consume",
-      "src": "table:dim_stock_attention_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_stock_scoring_integration.py",
-      "kind": "consume",
-      "src": "table:dim_stock_attention_latest"
     },
     {
       "attrs": {},
@@ -1707,60 +1558,6 @@
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
-      "src": "table:dim_tdx_gpcw_field"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_tdx_gpcw_auto_features.py",
-      "kind": "consume",
-      "src": "table:dim_tdx_gpcw_field"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/profile_tdx_gpcw_fields.py",
-      "kind": "consume",
-      "src": "table:dim_tdx_gpcw_field"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:dim_tdx_gpcw_field"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_core.py",
-      "kind": "consume",
-      "src": "table:dim_tdx_gpcw_field"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/tdx_affair_client.py",
-      "kind": "consume",
-      "src": "table:dim_tdx_gpcw_field"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:dim_tdx_gpcw_field_semantic"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_tdx_gpcw_auto_features.py",
-      "kind": "consume",
-      "src": "table:dim_tdx_gpcw_field_semantic"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_core.py",
-      "kind": "consume",
-      "src": "table:dim_tdx_gpcw_field_semantic"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
       "src": "table:dim_trading_calendar"
     },
     {
@@ -1784,12 +1581,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/build_picture_daily.py",
-      "kind": "consume",
-      "src": "table:dim_trading_calendar"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_price_kline_tdxhub.py",
       "kind": "consume",
       "src": "table:dim_trading_calendar"
     },
@@ -1879,19 +1670,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/market_perception/regime_engine.py",
-      "kind": "consume",
-      "src": "table:dim_trading_calendar"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/return_engine.py",
-      "kind": "consume",
-      "src": "table:dim_trading_calendar"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_core.py",
       "kind": "consume",
       "src": "table:dim_trading_calendar"
     },
@@ -1927,19 +1706,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/tests/fixtures/mini_market.py",
-      "kind": "consume",
-      "src": "table:dim_trading_calendar"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/tests/realdb/test_real_data_consistency.py",
-      "kind": "consume",
-      "src": "table:dim_trading_calendar"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_build_price_kline_tdxhub.py",
       "kind": "consume",
       "src": "table:dim_trading_calendar"
     },
@@ -2161,18 +1928,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/capital_client.py",
-      "kind": "consume",
-      "src": "table:excluded_stocks"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/financial_client.py",
-      "kind": "consume",
-      "src": "table:excluded_stocks"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/gap_queue.py",
       "kind": "consume",
       "src": "table:excluded_stocks"
@@ -2216,12 +1971,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_audit_financial.py",
-      "kind": "consume",
-      "src": "table:excluded_stocks"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_financial_client.py",
       "kind": "consume",
       "src": "table:excluded_stocks"
     },
@@ -2332,72 +2081,6 @@
       "dst": "consumer:backend/services/schema_migrations.py",
       "kind": "consume",
       "src": "table:fact_common_major_holder_stock"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_dzjy_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_akshare_panel.py",
-      "kind": "consume",
-      "src": "table:fact_dzjy_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:fact_dzjy_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:fact_dzjy_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_executive_trade_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/feature_registry.yaml",
-      "kind": "consume",
-      "src": "table:fact_executive_trade_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/panel_pipeline_manifest.yaml",
-      "kind": "consume",
-      "src": "table:fact_executive_trade_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_executive_trade_events.py",
-      "kind": "consume",
-      "src": "table:fact_executive_trade_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:fact_executive_trade_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:fact_executive_trade_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_build_executive_trade_events.py",
-      "kind": "consume",
-      "src": "table:fact_executive_trade_event"
     },
     {
       "attrs": {},
@@ -2565,6 +2248,78 @@
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
+      "src": "table:fact_feature_panel_candidate"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/database_manifest.yaml",
+      "kind": "consume",
+      "src": "table:fact_feature_panel_candidate"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/storage_retention.yaml",
+      "kind": "consume",
+      "src": "table:fact_feature_panel_candidate"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_quality.py",
+      "kind": "consume",
+      "src": "table:fact_feature_panel_candidate"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/clients_registry.py",
+      "kind": "consume",
+      "src": "table:fact_feature_panel_candidate"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/pricing_policy_readiness.py",
+      "kind": "consume",
+      "src": "table:fact_feature_panel_candidate"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/schema_core.py",
+      "kind": "consume",
+      "src": "table:fact_feature_panel_candidate"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/schema_migrations.py",
+      "kind": "consume",
+      "src": "table:fact_feature_panel_candidate"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/contract/test_workbench_read.py",
+      "kind": "consume",
+      "src": "table:fact_feature_panel_candidate"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_global_data_quality.py",
+      "kind": "consume",
+      "src": "table:fact_feature_panel_candidate"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_pricing_policy.py",
+      "kind": "consume",
+      "src": "table:fact_feature_panel_candidate"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_storage_retention.py",
+      "kind": "consume",
+      "src": "table:fact_feature_panel_candidate"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
       "src": "table:fact_financial_derived"
     },
     {
@@ -2599,45 +2354,21 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/source_watermarks.py",
+      "kind": "consume",
+      "src": "table:fact_financial_derived"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_audit_financial.py",
       "kind": "consume",
       "src": "table:fact_financial_derived"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
+      "dst": "consumer:backend/tests/test_financial_client.py",
       "kind": "consume",
-      "src": "table:fact_fundamental_quarterly"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/feature_registry.yaml",
-      "kind": "consume",
-      "src": "table:fact_fundamental_quarterly"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_fundamental_quarterly.py",
-      "kind": "consume",
-      "src": "table:fact_fundamental_quarterly"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
-      "kind": "consume",
-      "src": "table:fact_fundamental_quarterly"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:fact_fundamental_quarterly"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_build_fundamental_quarterly.py",
-      "kind": "consume",
-      "src": "table:fact_fundamental_quarterly"
+      "src": "table:fact_financial_derived"
     },
     {
       "attrs": {},
@@ -2654,12 +2385,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/routers/signals.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_akshare_panel.py",
       "kind": "consume",
       "src": "table:fact_institution_event"
     },
@@ -2857,12 +2582,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/build_executive_trade_events.py",
-      "kind": "consume",
-      "src": "table:fact_lhb_event"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/scripts/build_lhb_events.py",
       "kind": "consume",
       "src": "table:fact_lhb_event"
@@ -2882,12 +2601,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:fact_lhb_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/market_perception/regime_engine.py",
       "kind": "consume",
       "src": "table:fact_lhb_event"
     },
@@ -3145,42 +2858,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_audit_rules.yaml",
-      "kind": "consume",
-      "src": "table:fact_stock_attention_snapshot"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_stock_attention_snapshot"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/storage_retention.yaml",
-      "kind": "consume",
-      "src": "table:fact_stock_attention_snapshot"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/external_attention.py",
-      "kind": "consume",
-      "src": "table:fact_stock_attention_snapshot"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/pipeline/acquire.py",
-      "kind": "consume",
-      "src": "table:fact_stock_attention_snapshot"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:fact_stock_attention_snapshot"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
       "src": "table:fact_stock_industry_context"
@@ -3385,12 +3062,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/migrate_holders_to_tdxhub.py",
-      "kind": "consume",
-      "src": "table:fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
       "kind": "consume",
       "src": "table:fact_top10_holder_period"
@@ -3463,12 +3134,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/external_attention.py",
-      "kind": "consume",
-      "src": "table:fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/holder_availability.py",
       "kind": "consume",
       "src": "table:fact_top10_holder_period"
@@ -3482,12 +3147,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/holders_event.py",
-      "kind": "consume",
-      "src": "table:fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/holders_resolver.py",
       "kind": "consume",
       "src": "table:fact_top10_holder_period"
     },
@@ -3577,12 +3236,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/tests/test_migrate_holders_to_tdxhub.py",
-      "kind": "consume",
-      "src": "table:fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/tests/test_source_watermarks.py",
       "kind": "consume",
       "src": "table:fact_top10_holder_period"
@@ -3602,12 +3255,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/financial_client.py",
-      "kind": "consume",
-      "src": "table:financial_sync_state"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_financial_client.py",
       "kind": "consume",
       "src": "table:financial_sync_state"
     },
@@ -3889,12 +3536,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/financial_client.py",
-      "kind": "consume",
-      "src": "table:mart_current_relationship"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/holdings.py",
       "kind": "consume",
       "src": "table:mart_current_relationship"
@@ -3938,12 +3579,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_business_facts.py",
-      "kind": "consume",
-      "src": "table:mart_current_relationship"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_financial_client.py",
       "kind": "consume",
       "src": "table:mart_current_relationship"
     },
@@ -4129,6 +3764,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:mart_data_lineage"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/schema_marts.py",
       "kind": "consume",
       "src": "table:mart_data_lineage"
@@ -4165,12 +3806,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/tests/test_market_db_canonical_kline.py",
-      "kind": "consume",
-      "src": "table:mart_data_processing_tool_issue"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
       "kind": "consume",
       "src": "table:mart_data_processing_tool_run"
@@ -4202,12 +3837,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_global_data_quality.py",
-      "kind": "consume",
-      "src": "table:mart_data_processing_tool_run"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_market_db_canonical_kline.py",
       "kind": "consume",
       "src": "table:mart_data_processing_tool_run"
     },
@@ -4498,6 +4127,30 @@
       "dst": "consumer:backend/tests/test_global_data_quality.py",
       "kind": "consume",
       "src": "table:mart_global_data_quality_gate"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:mart_lineage"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/schema_marts.py",
+      "kind": "consume",
+      "src": "table:mart_lineage"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/schema_migrations.py",
+      "kind": "consume",
+      "src": "table:mart_lineage"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_mart_data_lineage_compat.py",
+      "kind": "consume",
+      "src": "table:mart_lineage"
     },
     {
       "attrs": {},
@@ -4923,85 +4576,37 @@
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
-      "src": "table:mart_tdx_f10_capability_matrix"
+      "src": "table:mart_strategy_result_registry"
     },
     {
       "attrs": {},
       "dst": "consumer:backend/config/storage_retention.yaml",
       "kind": "consume",
-      "src": "table:mart_tdx_f10_capability_matrix"
+      "src": "table:mart_strategy_result_registry"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
+      "dst": "consumer:backend/scripts/check_panel_lineage.py",
       "kind": "consume",
-      "src": "table:mart_tdx_f10_capability_matrix"
+      "src": "table:mart_strategy_result_registry"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/workbench_data_source_read.py",
+      "dst": "consumer:backend/scripts/check_registry_promote.py",
       "kind": "consume",
-      "src": "table:mart_tdx_f10_capability_matrix"
+      "src": "table:mart_strategy_result_registry"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
+      "dst": "consumer:backend/services/schema_marts.py",
       "kind": "consume",
-      "src": "table:mart_tdx_gpcw_file_manifest"
+      "src": "table:mart_strategy_result_registry"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/build_fundamental_quarterly.py",
+      "dst": "consumer:backend/tests/test_mart_data_lineage_compat.py",
       "kind": "consume",
-      "src": "table:mart_tdx_gpcw_file_manifest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
-      "kind": "consume",
-      "src": "table:mart_tdx_gpcw_file_manifest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/tdx_affair_client.py",
-      "kind": "consume",
-      "src": "table:mart_tdx_gpcw_file_manifest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
-      "kind": "consume",
-      "src": "table:mart_tdx_server_health"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/tdx_source.py",
-      "kind": "consume",
-      "src": "table:mart_tdx_server_health"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/workbench_data_source_read.py",
-      "kind": "consume",
-      "src": "table:mart_tdx_server_health"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/workbench_tdx_read.py",
-      "kind": "consume",
-      "src": "table:mart_tdx_server_health"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/contract/test_workbench_read.py",
-      "kind": "consume",
-      "src": "table:mart_tdx_server_health"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_build_price_kline_tdxhub.py",
-      "kind": "consume",
-      "src": "table:mart_tdx_server_health"
+      "src": "table:mart_strategy_result_registry"
     },
     {
       "attrs": {},
@@ -5077,19 +4682,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/build_executive_trade_events.py",
-      "kind": "consume",
-      "src": "table:price_kline"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/scripts/build_lhb_events.py",
-      "kind": "consume",
-      "src": "table:price_kline"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_price_kline_tdxhub.py",
       "kind": "consume",
       "src": "table:price_kline"
     },
@@ -5102,12 +4695,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/check_serve_read_layer.py",
-      "kind": "consume",
-      "src": "table:price_kline"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/check_sina_tdxhub_overlap.py",
       "kind": "consume",
       "src": "table:price_kline"
     },
@@ -5221,19 +4808,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/tests/fixtures/mini_market.py",
-      "kind": "consume",
-      "src": "table:price_kline"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/tests/test_audit_financial.py",
-      "kind": "consume",
-      "src": "table:price_kline"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_build_price_kline_tdxhub.py",
       "kind": "consume",
       "src": "table:price_kline"
     },
@@ -5383,12 +4958,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/market_db.py",
-      "kind": "consume",
-      "src": "table:price_kline_qfq_tushare"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/market_schema.py",
       "kind": "consume",
       "src": "table:price_kline_qfq_tushare"
@@ -5443,42 +5012,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/build_price_kline_tdxhub.py",
-      "kind": "consume",
-      "src": "table:price_kline_tdxhub_adjustment_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/update_watermark_sla.py",
-      "kind": "consume",
-      "src": "table:price_kline_tdxhub_adjustment_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/market_schema.py",
-      "kind": "consume",
-      "src": "table:price_kline_tdxhub_adjustment_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/realdb/test_real_data_consistency.py",
-      "kind": "consume",
-      "src": "table:price_kline_tdxhub_adjustment_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_build_price_kline_tdxhub.py",
-      "kind": "consume",
-      "src": "table:price_kline_tdxhub_adjustment_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_price_kline_tdxhub.py",
-      "kind": "consume",
-      "src": "table:price_xdxr"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/data_sources/clients_registry.py",
       "kind": "consume",
       "src": "table:price_xdxr"
@@ -5510,12 +5043,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/xdxr_client.py",
-      "kind": "consume",
-      "src": "table:price_xdxr"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_build_price_kline_tdxhub.py",
       "kind": "consume",
       "src": "table:price_xdxr"
     },
@@ -5620,246 +5147,6 @@
       "dst": "consumer:backend/tests/test_build_picture_daily.py",
       "kind": "consume",
       "src": "table:raw_aif10_valuation_quantile"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:raw_capital_allotment_detail"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/capital_client.py",
-      "kind": "consume",
-      "src": "table:raw_capital_allotment_detail"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:raw_capital_allotment_detail"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_capital_client_store.py",
-      "kind": "consume",
-      "src": "table:raw_capital_allotment_detail"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:raw_capital_dividend_detail"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/tdx_data_need_coverage.yaml",
-      "kind": "consume",
-      "src": "table:raw_capital_dividend_detail"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/capital_client.py",
-      "kind": "consume",
-      "src": "table:raw_capital_dividend_detail"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:raw_capital_dividend_detail"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_capital_client_store.py",
-      "kind": "consume",
-      "src": "table:raw_capital_dividend_detail"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:raw_capital_dividend_summary"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/capital_client.py",
-      "kind": "consume",
-      "src": "table:raw_capital_dividend_summary"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:raw_capital_dividend_summary"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_capital_client_store.py",
-      "kind": "consume",
-      "src": "table:raw_capital_dividend_summary"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:raw_capital_repurchase"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/tdx_data_need_coverage.yaml",
-      "kind": "consume",
-      "src": "table:raw_capital_repurchase"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/capital_client.py",
-      "kind": "consume",
-      "src": "table:raw_capital_repurchase"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:raw_capital_repurchase"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_capital_client_store.py",
-      "kind": "consume",
-      "src": "table:raw_capital_repurchase"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:raw_capital_unlock"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/capital_client.py",
-      "kind": "consume",
-      "src": "table:raw_capital_unlock"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:raw_capital_unlock"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_capital_client_store.py",
-      "kind": "consume",
-      "src": "table:raw_capital_unlock"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
-      "kind": "consume",
-      "src": "table:raw_gpcw_detail"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:raw_gpcw_detail"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/field_dictionary.yaml",
-      "kind": "consume",
-      "src": "table:raw_gpcw_detail"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/tdx_data_need_coverage.yaml",
-      "kind": "consume",
-      "src": "table:raw_gpcw_detail"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_tdx_gpcw_auto_features.py",
-      "kind": "consume",
-      "src": "table:raw_gpcw_detail"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:raw_gpcw_detail"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/signals_v2.py",
-      "kind": "consume",
-      "src": "table:raw_gpcw_detail"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/source_watermarks.py",
-      "kind": "consume",
-      "src": "table:raw_gpcw_detail"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/tdx_affair_client.py",
-      "kind": "consume",
-      "src": "table:raw_gpcw_detail"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:raw_gpcw_financial"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/audit.py",
-      "kind": "consume",
-      "src": "table:raw_gpcw_financial"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:raw_gpcw_financial"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/data_routes.py",
-      "kind": "consume",
-      "src": "table:raw_gpcw_financial"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/db_health.py",
-      "kind": "consume",
-      "src": "table:raw_gpcw_financial"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/financial_client.py",
-      "kind": "consume",
-      "src": "table:raw_gpcw_financial"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_audit_financial.py",
-      "kind": "consume",
-      "src": "table:raw_gpcw_financial"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_db_health.py",
-      "kind": "consume",
-      "src": "table:raw_gpcw_financial"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_financial_client.py",
-      "kind": "consume",
-      "src": "table:raw_gpcw_financial"
     },
     {
       "attrs": {},
@@ -6049,36 +5336,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_audit_rules.yaml",
-      "kind": "consume",
-      "src": "table:raw_profit_forecast_snapshot_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:raw_profit_forecast_snapshot_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/storage_retention.yaml",
-      "kind": "consume",
-      "src": "table:raw_profit_forecast_snapshot_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/ingest_profit_forecast_snapshot.py",
-      "kind": "consume",
-      "src": "table:raw_profit_forecast_snapshot_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
-      "kind": "consume",
-      "src": "table:raw_profit_forecast_snapshot_daily"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
       "src": "table:raw_qfii_holding_quarterly"
@@ -6133,60 +5390,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:raw_tdx_gpcw_wide"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/storage_retention.yaml",
-      "kind": "consume",
-      "src": "table:raw_tdx_gpcw_wide"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/tdx_data_need_coverage.yaml",
-      "kind": "consume",
-      "src": "table:raw_tdx_gpcw_wide"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/profile_tdx_gpcw_fields.py",
-      "kind": "consume",
-      "src": "table:raw_tdx_gpcw_wide"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
-      "kind": "consume",
-      "src": "table:raw_tdx_gpcw_wide"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:raw_tdx_gpcw_wide"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_core.py",
-      "kind": "consume",
-      "src": "table:raw_tdx_gpcw_wide"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_migrations.py",
-      "kind": "consume",
-      "src": "table:raw_tdx_gpcw_wide"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/tdx_affair_client.py",
-      "kind": "consume",
-      "src": "table:raw_tdx_gpcw_wide"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
       "kind": "consume",
       "src": "table:raw_tushare_adj_factor"
@@ -6208,6 +5411,24 @@
       "dst": "consumer:backend/tests/scripts/test_experiment_lhb_exit.py",
       "kind": "consume",
       "src": "table:raw_tushare_adj_factor"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:raw_tushare_balancesheet"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/financial_client.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_balancesheet"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_financial_client.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_balancesheet"
     },
     {
       "attrs": {},
@@ -6361,6 +5582,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/financial_client.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_daily_basic"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/technical_states/capital.py",
       "kind": "consume",
       "src": "table:raw_tushare_daily_basic"
@@ -6374,6 +5601,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_experiment_lhb_exit.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_daily_basic"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_financial_client.py",
       "kind": "consume",
       "src": "table:raw_tushare_daily_basic"
     },
@@ -6505,7 +5738,19 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/data_routes.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_fina_indicator"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/dossier.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_fina_indicator"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/financial_client.py",
       "kind": "consume",
       "src": "table:raw_tushare_fina_indicator"
     },
@@ -6524,6 +5769,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_data_loaders.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_fina_indicator"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_financial_client.py",
       "kind": "consume",
       "src": "table:raw_tushare_fina_indicator"
     },
@@ -6560,6 +5811,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/dossier.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_forecast"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/signals_v2.py",
       "kind": "consume",
       "src": "table:raw_tushare_forecast"
     },
@@ -6614,6 +5871,18 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:raw_tushare_income"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/financial_client.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_income"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_financial_client.py",
       "kind": "consume",
       "src": "table:raw_tushare_income"
     },
@@ -6896,6 +6165,18 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_sources/data_routes.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_stk_holdernumber"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/financial_client.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_stk_holdernumber"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_financial_client.py",
       "kind": "consume",
       "src": "table:raw_tushare_stk_holdernumber"
     },
@@ -7267,6 +6548,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/audit_data_completeness.py",
+      "kind": "consume",
+      "src": "table:v_price_kline_qfq"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/build_macd_state_history.py",
       "kind": "consume",
       "src": "table:v_price_kline_qfq"
@@ -7309,12 +6596,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/market_perception/regime_engine.py",
-      "kind": "consume",
-      "src": "table:v_price_kline_qfq"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/market_read.py",
       "kind": "consume",
       "src": "table:v_price_kline_qfq"
@@ -7334,6 +6615,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/source_policy.py",
+      "kind": "consume",
+      "src": "table:v_price_kline_qfq"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/source_watermarks.py",
       "kind": "consume",
       "src": "table:v_price_kline_qfq"
     },
@@ -7483,9 +6770,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1201,
-    "generated_at": "2026-06-26T05:39:08.885433+00:00",
-    "node_count": 473,
+    "edge_count": 1081,
+    "generated_at": "2026-06-27T14:32:43.911530+00:00",
+    "node_count": 436,
     "version": 1
   },
   "nodes": [
@@ -7788,14 +7075,6 @@
     {
       "attrs": {
         "ctype": "script",
-        "path": "backend/scripts/build_akshare_panel.py"
-      },
-      "id": "consumer:backend/scripts/build_akshare_panel.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
         "path": "backend/scripts/build_dc_industry_view.py"
       },
       "id": "consumer:backend/scripts/build_dc_industry_view.py",
@@ -7820,25 +7099,9 @@
     {
       "attrs": {
         "ctype": "script",
-        "path": "backend/scripts/build_executive_trade_events.py"
-      },
-      "id": "consumer:backend/scripts/build_executive_trade_events.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
         "path": "backend/scripts/build_feature_panel.py"
       },
       "id": "consumer:backend/scripts/build_feature_panel.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
-        "path": "backend/scripts/build_fundamental_quarterly.py"
-      },
-      "id": "consumer:backend/scripts/build_fundamental_quarterly.py",
       "kind": "consumer"
     },
     {
@@ -7879,14 +7142,6 @@
         "path": "backend/scripts/build_price_kline_qfq_tushare.py"
       },
       "id": "consumer:backend/scripts/build_price_kline_qfq_tushare.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
-        "path": "backend/scripts/build_price_kline_tdxhub.py"
-      },
-      "id": "consumer:backend/scripts/build_price_kline_tdxhub.py",
       "kind": "consumer"
     },
     {
@@ -7956,14 +7211,6 @@
     {
       "attrs": {
         "ctype": "script",
-        "path": "backend/scripts/build_tdx_gpcw_auto_features.py"
-      },
-      "id": "consumer:backend/scripts/build_tdx_gpcw_auto_features.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
         "path": "backend/scripts/check_calendar_usage.py"
       },
       "id": "consumer:backend/scripts/check_calendar_usage.py",
@@ -7980,17 +7227,25 @@
     {
       "attrs": {
         "ctype": "script",
-        "path": "backend/scripts/check_serve_read_layer.py"
+        "path": "backend/scripts/check_panel_lineage.py"
       },
-      "id": "consumer:backend/scripts/check_serve_read_layer.py",
+      "id": "consumer:backend/scripts/check_panel_lineage.py",
       "kind": "consumer"
     },
     {
       "attrs": {
         "ctype": "script",
-        "path": "backend/scripts/check_sina_tdxhub_overlap.py"
+        "path": "backend/scripts/check_registry_promote.py"
       },
-      "id": "consumer:backend/scripts/check_sina_tdxhub_overlap.py",
+      "id": "consumer:backend/scripts/check_registry_promote.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "script",
+        "path": "backend/scripts/check_serve_read_layer.py"
+      },
+      "id": "consumer:backend/scripts/check_serve_read_layer.py",
       "kind": "consumer"
     },
     {
@@ -8044,14 +7299,6 @@
     {
       "attrs": {
         "ctype": "script",
-        "path": "backend/scripts/ingest_profit_forecast_snapshot.py"
-      },
-      "id": "consumer:backend/scripts/ingest_profit_forecast_snapshot.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
         "path": "backend/scripts/measure_form_separation.py"
       },
       "id": "consumer:backend/scripts/measure_form_separation.py",
@@ -8060,25 +7307,9 @@
     {
       "attrs": {
         "ctype": "script",
-        "path": "backend/scripts/migrate_holders_to_tdxhub.py"
-      },
-      "id": "consumer:backend/scripts/migrate_holders_to_tdxhub.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
         "path": "backend/scripts/migrate_reference_db.py"
       },
       "id": "consumer:backend/scripts/migrate_reference_db.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
-        "path": "backend/scripts/profile_tdx_gpcw_fields.py"
-      },
-      "id": "consumer:backend/scripts/profile_tdx_gpcw_fields.py",
       "kind": "consumer"
     },
     {
@@ -8167,14 +7398,6 @@
         "path": "backend/services/calendar.py"
       },
       "id": "consumer:backend/services/calendar.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/capital_client.py"
-      },
-      "id": "consumer:backend/services/capital_client.py",
       "kind": "consumer"
     },
     {
@@ -8372,14 +7595,6 @@
     {
       "attrs": {
         "ctype": "service",
-        "path": "backend/services/external_attention.py"
-      },
-      "id": "consumer:backend/services/external_attention.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
         "path": "backend/services/financial_client.py"
       },
       "id": "consumer:backend/services/financial_client.py",
@@ -8455,14 +7670,6 @@
         "path": "backend/services/holders_event.py"
       },
       "id": "consumer:backend/services/holders_event.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/holders_resolver.py"
-      },
-      "id": "consumer:backend/services/holders_resolver.py",
       "kind": "consumer"
     },
     {
@@ -8567,14 +7774,6 @@
         "path": "backend/services/market_db.py"
       },
       "id": "consumer:backend/services/market_db.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/market_perception/regime_engine.py"
-      },
-      "id": "consumer:backend/services/market_perception/regime_engine.py",
       "kind": "consumer"
     },
     {
@@ -8948,22 +8147,6 @@
     {
       "attrs": {
         "ctype": "service",
-        "path": "backend/services/tdx_affair_client.py"
-      },
-      "id": "consumer:backend/services/tdx_affair_client.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/tdx_source.py"
-      },
-      "id": "consumer:backend/services/tdx_source.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
         "path": "backend/services/technical_states/capital.py"
       },
       "id": "consumer:backend/services/technical_states/capital.py",
@@ -9124,14 +8307,6 @@
     {
       "attrs": {
         "ctype": "service",
-        "path": "backend/services/workbench_tdx_read.py"
-      },
-      "id": "consumer:backend/services/workbench_tdx_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
         "path": "backend/services/xdxr_client.py"
       },
       "id": "consumer:backend/services/xdxr_client.py",
@@ -9159,14 +8334,6 @@
         "path": "backend/tests/data_governance/test_etl_hook.py"
       },
       "id": "consumer:backend/tests/data_governance/test_etl_hook.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/fixtures/mini_market.py"
-      },
-      "id": "consumer:backend/tests/fixtures/mini_market.py",
       "kind": "consumer"
     },
     {
@@ -9252,22 +8419,6 @@
     {
       "attrs": {
         "ctype": "test",
-        "path": "backend/tests/test_build_executive_trade_events.py"
-      },
-      "id": "consumer:backend/tests/test_build_executive_trade_events.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_build_fundamental_quarterly.py"
-      },
-      "id": "consumer:backend/tests/test_build_fundamental_quarterly.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
         "path": "backend/tests/test_build_lhb_events.py"
       },
       "id": "consumer:backend/tests/test_build_lhb_events.py",
@@ -9284,14 +8435,6 @@
     {
       "attrs": {
         "ctype": "test",
-        "path": "backend/tests/test_build_price_kline_tdxhub.py"
-      },
-      "id": "consumer:backend/tests/test_build_price_kline_tdxhub.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
         "path": "backend/tests/test_business_facts.py"
       },
       "id": "consumer:backend/tests/test_business_facts.py",
@@ -9303,14 +8446,6 @@
         "path": "backend/tests/test_calendar_gate.py"
       },
       "id": "consumer:backend/tests/test_calendar_gate.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_capital_client_store.py"
-      },
-      "id": "consumer:backend/tests/test_capital_client_store.py",
       "kind": "consumer"
     },
     {
@@ -9500,14 +8635,6 @@
     {
       "attrs": {
         "ctype": "test",
-        "path": "backend/tests/test_migrate_holders_to_tdxhub.py"
-      },
-      "id": "consumer:backend/tests/test_migrate_holders_to_tdxhub.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
         "path": "backend/tests/test_org_holding_aif10.py"
       },
       "id": "consumer:backend/tests/test_org_holding_aif10.py",
@@ -9644,6 +8771,14 @@
     {
       "attrs": {
         "ctype": "test",
+        "path": "backend/tests/test_storage_retention.py"
+      },
+      "id": "consumer:backend/tests/test_storage_retention.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
         "path": "backend/tests/test_universe.py"
       },
       "id": "consumer:backend/tests/test_universe.py",
@@ -9709,7 +8844,7 @@
     {
       "attrs": {
         "api": "balancesheet",
-        "domain": "balancesheet_advrecv",
+        "domain": "balancesheet",
         "source": "tushare"
       },
       "id": "source:tushare.balancesheet",
@@ -10086,15 +9221,6 @@
     },
     {
       "attrs": {
-        "db": "smartmoney",
-        "layer": "infra",
-        "status": "active"
-      },
-      "id": "table:capital_detail_sync_state",
-      "kind": "table"
-    },
-    {
-      "attrs": {
         "db": "reference",
         "layer": "L1_foundation",
         "status": "active"
@@ -10109,15 +9235,6 @@
         "status": "active"
       },
       "id": "table:dim_all_ever_listed",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:dim_capital_behavior_latest",
       "kind": "table"
     },
     {
@@ -10213,15 +9330,6 @@
     {
       "attrs": {
         "db": "smartmoney",
-        "layer": "display",
-        "status": "active"
-      },
-      "id": "table:dim_stock_attention_latest",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
         "layer": "L1_foundation",
         "status": "active"
       },
@@ -10253,24 +9361,6 @@
         "status": "active"
       },
       "id": "table:dim_strategy_preset",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:dim_tdx_gpcw_field",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:dim_tdx_gpcw_field_semantic",
       "kind": "table"
     },
     {
@@ -10365,24 +9455,6 @@
     },
     {
       "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:fact_dzjy_event",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:fact_executive_trade_event",
-      "kind": "table"
-    },
-    {
-      "attrs": {
         "db": "feature_store",
         "layer": "L2_feature",
         "status": "active"
@@ -10393,10 +9465,10 @@
     {
       "attrs": {
         "db": "smartmoney",
-        "layer": "L1_foundation",
+        "layer": "L2_feature",
         "status": "active"
       },
-      "id": "table:fact_financial_derived",
+      "id": "table:fact_feature_panel_candidate",
       "kind": "table"
     },
     {
@@ -10405,7 +9477,7 @@
         "layer": "L1_foundation",
         "status": "active"
       },
-      "id": "table:fact_fundamental_quarterly",
+      "id": "table:fact_financial_derived",
       "kind": "table"
     },
     {
@@ -10505,15 +9577,6 @@
         "status": "active"
       },
       "id": "table:fact_signal_panel",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:fact_stock_attention_snapshot",
       "kind": "table"
     },
     {
@@ -10728,6 +9791,15 @@
     {
       "attrs": {
         "db": "smartmoney",
+        "layer": "infra",
+        "status": "active"
+      },
+      "id": "table:mart_lineage",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "smartmoney",
         "layer": "L1k_kline_intermediate",
         "status": "active"
       },
@@ -10812,25 +9884,7 @@
         "layer": "infra",
         "status": "active"
       },
-      "id": "table:mart_tdx_f10_capability_matrix",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "infra",
-        "status": "active"
-      },
-      "id": "table:mart_tdx_gpcw_file_manifest",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "market",
-        "layer": "untagged",
-        "status": "active"
-      },
-      "id": "table:mart_tdx_server_health",
+      "id": "table:mart_strategy_result_registry",
       "kind": "table"
     },
     {
@@ -10886,15 +9940,6 @@
         "layer": "untagged",
         "status": "active"
       },
-      "id": "table:price_kline_tdxhub_adjustment_event",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "market",
-        "layer": "untagged",
-        "status": "active"
-      },
       "id": "table:price_xdxr",
       "kind": "table"
     },
@@ -10923,71 +9968,6 @@
         "status": "active"
       },
       "id": "table:raw_aif10_valuation_quantile",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L0_source",
-        "status": "active"
-      },
-      "id": "table:raw_capital_allotment_detail",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L0_source",
-        "status": "active"
-      },
-      "id": "table:raw_capital_dividend_detail",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L0_source",
-        "status": "active"
-      },
-      "id": "table:raw_capital_dividend_summary",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L0_source",
-        "status": "active"
-      },
-      "id": "table:raw_capital_repurchase",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L0_source",
-        "status": "active"
-      },
-      "id": "table:raw_capital_unlock",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L0_source",
-        "serve_entity": "financial_gpcw",
-        "status": "active",
-        "vendor": "tdxhub"
-      },
-      "id": "table:raw_gpcw_detail",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L0_source",
-        "status": "active"
-      },
-      "id": "table:raw_gpcw_financial",
       "kind": "table"
     },
     {
@@ -11025,25 +10005,7 @@
         "layer": "L0_source",
         "status": "active"
       },
-      "id": "table:raw_profit_forecast_snapshot_daily",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L0_source",
-        "status": "active"
-      },
       "id": "table:raw_qfii_holding_quarterly",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L0_source",
-        "status": "active"
-      },
-      "id": "table:raw_tdx_gpcw_wide",
       "kind": "table"
     },
     {
@@ -11053,6 +10015,15 @@
         "status": "active"
       },
       "id": "table:raw_tushare_adj_factor",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "status": "active"
+      },
+      "id": "table:raw_tushare_balancesheet",
       "kind": "table"
     },
     {

@@ -219,46 +219,9 @@ CORE_SCHEMA_SQL = """
 
             -- dim_tdx_gpcw_field_semantic / fact_tdx_gpcw_auto_feature_quarterly DDL 已删 (2026-06-27 通达信全删 gpcw物删, auto_features 流水线 dead)
 
-            CREATE TABLE IF NOT EXISTS fact_feature_panel_candidate (
-                feature_set_id   TEXT NOT NULL,
-                stock_code       TEXT NOT NULL,
-                date             TEXT NOT NULL,
-                close            REAL,
-                forward_ret_5d   REAL,
-                forward_ret_10d  REAL,
-                forward_ret_20d  REAL,
-                forward_ret_60d  REAL,
-                forward_ret_90d  REAL,
-                follow_net_return_5d REAL,
-                follow_net_return_10d REAL,
-                follow_net_return_20d REAL,
-                follow_net_return_60d REAL,
-                follow_net_return_90d REAL,
-                common_holder_network_count REAL,
-                fund_holding_shares_tdx_f10 REAL,
-                fund_holding_float_a_ratio_tdx_f10 REAL,
-                fund_holding_market_value_tdx_f10 REAL,
-                holder_count_change_pct_tdx REAL,
-                avg_float_shares_change_pct_tdx REAL,
-                holder_count_acceleration_tdx REAL,
-                top10_concentration_change REAL,
-                tdx_inst_total_shares_qoq REAL,
-                national_team_shares_qoq REAL,
-                qfii_shares_qoq REAL,
-                fund_shares_qoq REAL,
-                social_security_shares_qoq REAL,
-                contract_liabilities_to_revenue REAL,
-                ocf_to_profit_tdx REAL,
-                receivables_to_revenue REAL,
-                inventory_to_revenue REAL,
-                forecast_profit_yoy_mid REAL,
-                forecast_range_width REAL,
-                express_net_profit_yoy REAL,
-                built_at         TEXT,
-                PRIMARY KEY (feature_set_id, stock_code, date)
-            );
+            -- fact_feature_panel_candidate DDL 已删 (2026-06-28 加工层清空: 派生 L2 候选/挑战表退役)
 
-CREATE TABLE IF NOT EXISTS fact_feature_panel_tdx_keep_challenger ( feature_set_id TEXT NOT NULL, stock_code TEXT NOT NULL, date TEXT NOT NULL, regime_flag TEXT, forward_ret_5d REAL, forward_ret_10d REAL, forward_ret_20d REAL, forward_ret_60d REAL, forward_ret_90d REAL, ret_1d REAL, ret_5d REAL, ret_20d REAL, ret_60d REAL, vol_z20d REAL, ma_ratio_5 REAL, ma_ratio_20 REAL, ma_ratio_60 REAL, ma_ratio_250 REAL, rz_balance REAL, rz_chg_5d_pct REAL, kmid REAL, klen REAL, kup REAL, klow REAL, ksft REAL, vol_ratio_5_20 REAL, vol_std_5d REAL, vol_std_20d REAL, range_pos_20 REAL, range_pos_60 REAL, momentum_diff REAL, amount_chg_5d REAL, inst_event_count_30d REAL, inst_event_count_60d REAL, exec_buy_count_90d REAL, exec_buy_ge1_count_90d REAL, lhb_inst_buy_count_30d REAL, lhb_inst_buy_count_60d REAL, jgdy_count_60d REAL, dzjy_count_60d REAL, days_since_exec_buy REAL, days_since_lhb REAL, shareholder_count_qoq REAL, inst_count_qoq REAL, fund_count_qoq REAL, qfii_count_qoq REAL, yjyg_lower_pct REAL, yjyg_upper_pct REAL, roe REAL, eps_basic REAL, hs300_ret_20d REAL, hs300_ret_60d REAL, ret_20d_rank REAL, ret_60d_rank REAL, vol_z20d_rank REAL, amount_chg_5d_rank REAL, rz_balance_rank REAL, rz_chg_5d_pct_rank REAL, ret_20d_tdx_l1_rel REAL, ret_60d_tdx_l1_rel REAL, vol_z20d_tdx_l1_rel REAL, amount_chg_5d_tdx_l1_rel REAL, rz_balance_to_amount20 REAL, forecast_profit_yoy_mid REAL, avg_float_shares_change_pct_tdx REAL, ocf_to_profit_tdx REAL, fund_shares_qoq REAL, forecast_range_width REAL, built_at TEXT, PRIMARY KEY (feature_set_id, stock_code, date) );
+            -- fact_feature_panel_tdx_keep_challenger DDL 已删 (2026-06-28 加工层清空: 派生 L2 候选/挑战表退役)
 
             -- §9 reference 拆库 Stage E (2026-06-27): active 主数据 与 trading_calendar 的 DDL 已移除  -- rule-compliance: ok evidence=stage-e-ddl-removed (注释非真用, 表迁 reference)
             --   (迁 reference 库后 smartmoney 副本物删, 删 DDL 防 init_db 重建循环 undo 物删)

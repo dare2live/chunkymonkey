@@ -1,0 +1,1052 @@
+{
+  "summary": "多agent对抗评审技术形态分层识别方案(7角度+完整性批判+综合裁决)",
+  "agentCount": 10,
+  "logs": [
+    "评审完成: 7/7 角度"
+  ],
+  "result": {
+    "review_count": 7,
+    "critique_count": 2,
+    "reviews": [
+      {
+        "angle": "理论严谨性 — 形态定义/位置消歧/命名形态映射是否符合成熟技术分析理论 (逐态对照 research synthesis 的 state_confirmations + blind_spots + verification/refuted)",
+        "overall_verdict": "REVISE",
+        "decision_calls": [
+          {
+            "point": "2. 放量下跌3分 (独立L2态 vs 1态+位置L3子态)",
+            "call": "REVISE — 高/低/中位3分的理论映射本身是干净的(高位=Wyckoff Distribution/SOW; 低位=Selling Climax/Stopping Volume; 中位=道氏主跌中继), 但不能并列为3个对等L2态。低位放量下跌(SC)是反转事件不是状态, 应归边界事件(选择性高潮)层而非L2状态层; 高位放量下跌(breakdown)与高位滞涨的'放量派发'子态语义重叠须去重。建议: 1个L2'放量下跌'(默认=下跌延续) + 位置作L3子态消歧, 低位变体收口到climax边界事件。",
+            "rationale": "research明确: Selling Climax/Stopping Volume在Wyckoff里是markdown→accumulation转换的触发事件(逐bar放量长下影), 不是可持续的逐bar状态。把它做成与'高位破位'对等的逐bar软隶属态, 会让一个一次性拐点在转换前后多日都被误标为'低位放量下跌', 与边界事件层(§2 选择性高潮)直接打架重复建模。"
+          },
+          {
+            "point": "4. 缩量上涨 (拆高/低两态 vs 1态+位置子态)",
+            "call": "REVISE(倾向位置子态而非两独立态) — research判此态'有争议'(7态里理论分歧最大), 核心病不在'拆几个态'而在当前config把缩量上涨整体归为bull-side(classifier.py line149 bull集含'缩量上涨')且态名'动能衰竭预警'与子态'缩量延续'自相矛盾。修语义优先: 必须按价格分位+均线斜率方向分流(高位走平=No Demand衰竭看空 / 低位/鱼身+斜率仍陡=供给枯竭中性偏多, Wyckoff/Minervini会买)。实现上用1个L2 + 位置L3子态即可承载双语义, 拆成2个独立L2会无谓抬高软隶属维度且两态在过渡带抢分。",
+            "rationale": "research逐字: '5+源一致指出价涨量缩语义双向取决于位置, config一律标动能衰竭预警只取了高位语义一半 ... 据此减仓可能砍在Stage2/VCP把手最佳买点上'(真金白银方向错误)。plan的§3已正确识别要位置化, 但§8-Q4还在纠结'拆2态'是问错了问题——病根是语义单标签+态名内部矛盾, 不是态的数量。"
+          },
+          {
+            "point": "3/7. 边界事件(假突破/挖坑/climax) + 确认门 作为序列overlay vs 逐bar软隶属",
+            "call": "PROCEED(方向对) 但REVISE其归属层 — 假突破(UTAD/2B)/挖坑(Spring)/选择性高潮(SC/BC)是research跨4源最强一致点名的高优盲点, 必须建, plan把它们放在'边界事件(离散转换事件, 短序列逻辑)'层而非逐bar态是理论上正确的(它们定义就是'突破后是否守住'这类跨bar条件)。确认门(收盘基准/N-bar/hysteresis)同理放状态转换层不放分类层是对的。",
+            "rationale": "research verification第4条坐实UTAD/2B/Spring四形态全有权威一手源(Wyckoff Phase C / Sperandeo Trader Vic / StockCharts), 且'收盘确认非盘中'是通用TA共识(注: 别归功于Wyckoff原典)。plan §2把这些列为cross-cutting离散事件、§8-Q3/Q7问'怎么和逐bar软隶属共存'——答案就是它们不进软隶属, 是overlay+FSM转换层, plan的直觉正确。"
+          },
+          {
+            "point": "5. 缩量回踩归属 (下跌大类 vs 上涨大类)",
+            "call": "REVISE — 不是L1归属口径问题, 是缺破位降级硬门的问题(被research列为真金白银关键缺口, 且RESEARCH自身对该门的'三源一致'论证被其verification判refuted, 见issue)。缩量回踩按理论(Weinstein回踩30周均线/Wyckoff LPS/道氏次级回调)归'升势中的回调'即上涨大类是对的, 但必须叠加'是否收盘跌破前一swing low'硬门, 破了直接转判下跌通道、不留回踩态。",
+            "rationale": "research state7部分确认: 缺破位降级硬门=在已失败形态上继续持有/加仓的直接亏损路径。但注意: research原始'回踩跌破=突破失败/反转'的三源一致论断被其自身verification/refuted栏推翻(道氏张冠李戴+Bulkowski过度延伸), 正确口径是'期望降级非失败判定'+触发用'收盘跌破前一swing low'(道氏真判据)。plan若照搬research裁决草案的'破突破位即降级'措辞会继承这个理论错误。"
+          },
+          {
+            "point": "8. RS正交维度 (现在加 vs 后置)",
+            "call": "PROCEED现在加(作正交置信度乘子, 不改主态) — research双源硬门槛(Weinstein四要素之一+Minervini Trend Template), 且直接对接KPI'超额HS300>0', verification第6条联网坐实Mansfield RS零轴穿越+IBD RS rank分位理论真实无张冠李戴。",
+            "rationale": "无RS则放量突破/上升通道会纳入'大盘普涨带起的弱势齐涨股'=selection噪音结构性来源, 直接威胁超额KPI穿透。注意口径(verification提示): Mansfield RS(时序零轴状态)与IBD RS rank(横截面百分位)是两个子特征不是同一数, 须分别建模; Weinstein原法RS是确认门非软乘子, 做连续乘子是合理工程外推但上线前须含成本OOS验增量。"
+          },
+          {
+            "point": "13/15. 单日K线形态 对中期主升浪选股是否有增量",
+            "call": "REVISE(理论严谨性角度: 单日命名形态的定义须标准化且A股特化, 否则张冠李戴) — 单日K线形态(锤子/上吊/十字星)在经典理论里几乎都是'需上下文确认的反转candidate'非独立信号, 单根信息稀疏噪音大, 理论上不应独立输出, 只作短期组合构件。A股±10%涨跌停对单K几何有特殊扭曲: 涨停=光头大阳(marubozu)但非'多方完胜'而是'封板供给截断', 跌停=光头大阴同理; 一字板开高低收几乎重合会被误判为'十字星/doji'(实为停牌式无交易)。",
+            "rationale": "经典蜡烛图理论(Nison)中hammer/hanging man同形, 区别全在位置(下跌末端=hammer看多 / 上涨末端=hanging man看空)——这正是plan §3位置消歧逻辑, 单K不带位置就是张冠李戴。A股涨跌停制度使marubozu/doji的标准西方语义失效, plan §8-Q15已点到'光头光脚=涨停'但未点出一字板假doji陷阱。"
+          },
+          {
+            "point": "14/16. 老鸭头等命名形态 = 模板匹配 vs 独立态; 冲突时以谁为准",
+            "call": "PROCEED(模板匹配派生标签, 不进软隶属) 但REVISE老鸭头模板定义的理论锚定 — 命名形态作'态序列模板匹配的可解释标签'、不进量化软隶属、量化层冲突时以量化层为准, 这个分层是对的(命名层主观画法多, 让它当override会污染量化态)。但plan §3.6给的老鸭头序列定义有偏差需修。",
+            "rationale": "见issue '老鸭头模板序列定义不准'。老鸭头是中文实战形态(非西方经典, 无Bulkowski统计基础), 本质=主升初期的'双重底/二次启动+缩量挖坑', plan的序列'上升通道→缩量回踩→低位/中继横盘→放量突破60日线'把鸭头位置描述为'低位/中继横盘'不准确——老鸭头的鸭头部分是已有一波上涨后的回踩缩量(均线粘合), 不是'低位筑底', 归到'低位横盘'会与筑底语义混淆。"
+          }
+        ],
+        "issues": [
+          {
+            "severity": "high",
+            "title": "缩量上涨态语义=结构性误判源, plan保留了config把它整体归bull-side的错误 (真金白银方向错误)",
+            "fix": "research判此为7态里分歧最大的'有争议'态。当前config(classifier.py line149) bull集合显式含'缩量上涨', 且态名'动能衰竭预警'(看空)与唯一子态'缩量延续'(中性)自相矛盾。plan §3虽提出位置化(高位=衰竭/低位=弱反弹), 但'低位缩量上涨=不追(中性偏空)'的措辞仍偏空, 与research'低位/base/回踩后的缩量上涨=供给枯竭=看涨(Wyckoff/Minervini会买)'方向相反。修: (1)态名去掉'衰竭预警'改中性命名; (2)子态'缩量延续'重命名消除矛盾; (3)位置消歧后低位变体应判'中性偏多(供给枯竭)'非'不追', 否则砍在VCP把手最佳买点; (4)从bull/bear集合移除整体归属, 改为位置条件化归属。"
+          },
+          {
+            "severity": "high",
+            "title": "低位放量下跌(Selling Climax)被错置为逐bar L2状态, 与边界事件层(选择性高潮)重复建模",
+            "fix": "plan §3把'低位放量下跌=恐慌抛售/SC'与'高位放量下跌''下跌中继放量'并列为放量下跌的3个L2精细态。但research明确SC/Stopping Volume是markdown→accumulation的转换触发事件(逐bar放量长下影收高), 是离散拐点不是可持续状态——plan §2自己也把'选择性高潮(Selling Climax)'列入边界事件层。同一现象在L2状态层和边界事件层各建一遍=双重建模冲突。修: 放量下跌L2只保留'高位破位(默认看空)'+'中位延续'两语义(或1态+位置L3), 低位变体完全收口到边界事件'选择性高潮'层, 不在逐bar软隶属里出现。"
+          },
+          {
+            "severity": "high",
+            "title": "缩量回踩破位降级门的理论依据若照搬research裁决草案会继承张冠李戴 (道氏误拼+Bulkowski过度延伸)",
+            "fix": "research synthesis的threshold_deltas/state7声称'回踩跌破突破位=突破失败=反转, 道氏(回撤>2/3且跌破higher low)+Bulkowski+形态确认三源一致'——但research自身的verification/refuted栏已推翻此论断: 道氏的1/3~2/3回撤只是次级回调loose guideline(原文should not be construed as rules), 反转判据是'跌破前一reaction low'(独立概念, 非与66%回撤AND); Bulkowski恰恰否认'回踩跌破=失败'(跌回突破位下方后65%仍续涨, 是EV降级29%vs40%非invalidation)。plan §8-Q5/§2若引此门必须用修正口径: 硬门=收盘跌破前一swing low(道氏真判据, 触发转下跌通道); 回踩跌破突破位=软降级信号(降仓/收紧止损非清仓); 区分throwback(可续涨)vs confirmed false-breakout(支撑变阻力才离场)。不可写'回撤>66%且破前低'的虚构联合条件。"
+          },
+          {
+            "severity": "medium",
+            "title": "放量突破态缺'突破后守住确认', 与UTAD/2B/intrabar fakeout同形=追高接盘红线 (plan已列盲点但须确保锚点+量阈一并修)",
+            "fix": "research将假突破列为'除RS外被最多理论独立点名的盲点'(真金白银最高优先)。plan §2边界事件已列'假突破(Upthrust/UTAD/2B)', 方向对。但须连带修两个被research点名的config系统性错误, plan §2/§7未明确纳入: (1)锚点错位——config放量突破用'距均线>0'(上穿均线), 6+理论要求锚定pivot/前高阻力/箱顶, 均线上穿可发生在base中部=假突破源头; (2)量阈——config量比1.89(+89% vs 20日均量)偏严会漏+40~50%有效突破(recall风险), 权威基准≈50日均量+40~50%(量比1.5x), 应另设理论预设对照档。确认门T+N的N须按级别参数化(2B在minor/intermediate/major高点约1日/3-5日/7-10日内破位)非固定单一N。"
+          },
+          {
+            "severity": "medium",
+            "title": "老鸭头模板序列定义不准 (鸭头位置错置为'低位/中继横盘')",
+            "fix": "plan §3.6老鸭头序列='上升通道(头部)→缩量回踩(鸭脖)→低位/中继横盘(鸭头)→放量突破60日线(鸭嘴/出水)'。理论问题: 老鸭头是中文实战形态(无Bulkowski统计基础, 主观性强须显式标注provenance为'中文论坛/实战'非西方经典), 其鸭头部分是'已有一波上涨后的回踩+均线粘合缩量'(60日线附近的二次启动平台), 不是'低位筑底'语义的'低位横盘'。映射到'低位横盘'(config定义=价格分位<0.475+筑底)会语义冲突——老鸭头发生在中位/相对高位的回踩平台。修: 鸭头映射到'中继平台'(plan新增的中位横盘态)或专门的'回踩后再蓄势'子态, 明确价格分位非低位; 并标注命名形态主观性=模板匹配派生标签(不进软隶属, 量化冲突以量化为准, 与plan §8-Q16一致)。"
+          },
+          {
+            "severity": "medium",
+            "title": "单日K线命名形态缺位置上下文锚定 + A股涨跌停制度对单K几何的语义扭曲未处理",
+            "fix": "plan §3.6单日层列marubozu/doji/hammer/hanging man等。理论问题: (1)经典蜡烛理论(Nison)中hammer与hanging man同几何, 区别全在前序趋势位置(下跌末端=hammer看多/上涨末端=hanging man看空)——单K形态不带位置消歧就是张冠李戴, 必须与plan §3的位置消歧维度强制绑定, 不可独立输出单K标签; (2)A股±10%涨跌停: 涨停板=光头大阳marubozu但语义是'封板供给截断'非'多方完胜', 一字涨停板开高低收近乎重合会被几何判成'doji/十字星'(实为无交易停滞), plan §8-Q15点到'光头光脚=涨停'但漏一字板假doji陷阱。修: 单日形态识别须(a)叠加前序位置才输出方向语义; (b)对涨跌停/一字板特判, 排除几何误判; (c)定位为'短期组合构件'非独立信号(信息稀疏易过拟合, research/Nison一致)。"
+          },
+          {
+            "severity": "low",
+            "title": "加速上涨子态语义偏正面, 但'起涨段加速'vs'末段parabolic加速'未区分 (config已有此问题, plan未修)",
+            "fix": "research verification第2条+state3: 多理论(Weinstein/Minervini climax top/中文顶背驰)视末段抛物线加速为接近见顶非健康延续, 但并非所有加速都见顶——突破底部平台的初段加速是合法主升开端。当前config'加速上涨'子态语义偏正面(归在上升通道下), plan §2/§3未触及。修: '加速上涨'须叠加(a)是否已有较长前期升幅(base-stage/距起涨距离) + (b)量能确认(加速且放量=健康 / 加速且缩量=No-demand衰竭=应归衰竭/见顶)区分起涨段vs末段, 否则climax误判=真金白银方向错误。"
+          },
+          {
+            "severity": "low",
+            "title": "高位滞涨'缩量惜售'子态与顶部量价逻辑方向冲突 (Weinstein核心反直觉, plan未修)",
+            "fix": "research state5: Weinstein/Wyckoff/量价强调顶部Stage3是放量派发(下跌周放量>上涨周量), 缩量更像Stage2回调或Stage1。config'高位滞涨'的'缩量惜售'子态把缩量也归见顶, 与顶部量价逻辑方向相反=可能误判。plan §2列'高位滞涨→放量派发(BC)/缩量惜售'继承了此问题。修: 引入effort-vs-result背离(量能zscore高但价幅/动量收窄=派发, config已有量能zscore+加速度可组合)作更硬更早的见顶证据; '缩量惜售'子态须重新审视是否真属顶部语义, 或降级为'待确认'。"
+          }
+        ],
+        "missing": [
+          "命名形态provenance分级缺失: plan §3.6把西方经典形态(cup-handle/head&shoulders有Bulkowski统计基础)与中文实战形态(老鸭头/仙人指路/旭日东升, 无统计基础+画法主观)混在同一词汇层, 未按'理论可锚定度'分级。理论严谨性要求: 每个命名形态标注provenance来源(西方经典/中文论坛/实战)+主观性等级, 主观性高的须先OOS验证forward差异才进档, 否则就是自创粗分类替代官方细分。",
+          "effort-vs-result量价背离作为独立横切维度缺失: research列为medium盲点(Wyckoff第三定律, 3源)。plan把背离散在'缩量上涨''高位滞涨'各捕一半, 但缺独立的、位置敏感的divergence度量(量分位vs价分位变化的剪刀差)。这是早于均线走平的领先预警维度, 横切态4/5, 理论上是独立可量化维度不应被拆散。",
+          "base-stage计数(第几个底/浪)的理论作用未在L2/命名层落地: plan §2正交维度列了'base-stage计数'但仅当注记。O'Neil明确同样上升通道处于1st/2nd vs 3rd/4th base风险天差地别(后期base失败率剧增), 缺此记忆维度则'上升通道'态无法区分早期主升vs末期衰竭——这与加速上涨子态的见顶判定直接相关, 须落地为real特征非仅注记。",
+          "底部形态几何细分(cup-handle/flat-base/double-bottom)的理论差异未在低位横盘L3落地: research medium盲点(O'Neil单源但是其核心alpha)。三者pivot位置/买点/深度容忍/突破后期望完全不同, plan §2/§5仅把cup-handle/flat-base/double-bottom列为'待评审几何细分'。理论上这是O'Neil体系核心形态选择信息, 至少应作'低位横盘'的探索性L3子态(注: 单源, 须先OOS验证几何细分是否真带forward差异, 非硬改主态)。",
+          "顶部/底部的动态拐点信号(UTAD/2B/顶背驰 在顶; SC/Stopping Volume/Spring 在底)与静态滞后判据的关系未理顺: config高位滞涨/下跌通道用静态滞后判据(均线走平+动量近0), research指出这些动态拐点信号比静态判据早数日到数周。plan把它们分散在边界事件层, 但未说明动态拐点(领先)与L2状态(滞后)在档案里如何并存呈现、谁触发决策——这关系到'鱼尾出场'的及时性(用滞后判据出场=多吃一段下跌)。"
+        ]
+      },
+      {
+        "angle": "可实现性/架构: 声明式 config + 软隶属度 能否表达 位置消歧/边界事件/命名形态/多尺度, 还是需 FSM/序列层/模板引擎; 现有 classifier 改造量与复用/新建拆分",
+        "overall_verdict": "REVISE",
+        "decision_calls": [
+          {
+            "point": "1 — 上下文消歧(前序态)的 PIT 与循环依赖",
+            "call": "可实现, 但必须改成显式两遍(two-pass)架构, 不能在单遍 state_scores 内引用 dominant。Pass-1: 用现有逐bar无状态分类器跑出 dominant_t(只依赖 ≤t 特征, 本就 PIT 干净); Pass-2: 把 prior_dominant = pass1[最近≤t-1 的 dominant] 当成一个 PIT 特征喂进消歧。现有 classify_multi_timeframe 已用 bisect as-of 取 ≤d 的 dominant(L152-155), 这正是 pass-2 取前序态的现成模式, 直接复用。循环依赖只在'同一bar内自引用'才发生 — 强制 prior 用 ≤t-1(严格 strict-less)就消除。决策点说的'纯瞬时 pctile+距前高前低 无前序态'是更简单但信息更弱的退路; 建议 pctile+距前高/前低 先上(零架构改造, 只加3个特征), 前序态消歧作为 v2 增量(需 two-pass)。",
+            "rationale": "现有架构 state_scores 完全无状态(L59-74), 无任何 prev_state 通路; 但 multi_tf 的 as-of bisect 已证明 PIT-clean 取前序态在本模块可行。two-pass 是最小改造(features.py 加 dist_to_prior_high/low 约 15 行; classifier 加一个 pass-1→prior 特征注入约 20 行), 不需要 FSM。"
+          },
+          {
+            "point": "2 — 放量下跌 3 分: 独立 L2 态 vs 1 L2+3 L3",
+            "call": "做成 1 个 L2 母态 + 位置消歧产出的 3 个语义标签, 但消歧维度走'前序态/pctile 特征', 不走 L3 的 _sub_state 硬编码分支。理由: 软隶属是 softmax over L2 states(L112-114), 3 个独立 L2 态会让 membership 维度 +2 且彼此高度共线(同为价跌+放量, 只 pctile 不同)→ softmax 退化(三者瓜分概率, 熵虚高, dominant 不稳)。位置应作为'条件特征'分裂语义, 不作为'并列竞争态'。",
+            "rationale": "softmax 软隶属对'近似互斥'的态才稳; 3 个仅 pctile 不同的态非互斥, 会 whipsaw。当前 _sub_state(L77-98)是硬编码 if/else, 若把 3 分放 L3 又加 3 个硬分支, 违反方案自己的'改 config 不动代码'。正解是把 pctile-band 作为软门条件写进 config(可声明), label 在 evaluator 按 band 派生。"
+          },
+          {
+            "point": "3 — 边界事件 vs 状态: 序列逻辑如何与逐bar软隶属共存",
+            "call": "必须新建独立的'事件检测层'(event overlay), 不能塞进现有 state_scores。这是真正需要架构扩展的点。事件 = 近 N bar 价量序列模式(假突破: 突破后 N 日跌回突破位; spring: 跌破前低后 N 日收回), state_scores 的'单 bar 特征 × 软门取积'(L59-74)结构上无法表达任何跨 bar 序列。设计: 新模块 backend/services/technical_states/events.py, 输入 OHLCV 序列(非单bar feature dict), 输出 {date → [event标签 + 置信度]}, 与 classify_series 并列(非互斥, overlay)。PIT: 事件在 t 触发只看 [t-N, t], 确认门用收盘价非盘中(研究 verification #4 已核: 收盘确认是通用 TA 共识非 Wyckoff 原典, 但正确)。",
+            "rationale": "现有 features.compute 逐 bar 出标量特征, classify_bar 吃单 bar dict — 整条链无序列入口。事件检测要原始 OHLCV 窗口 + 状态机式'突破→守住/跌回'两段判定, 是新数据流。约 80-120 LOC 新模块, 复用 features.resample 做多TF。不改 classifier 核心。"
+          },
+          {
+            "point": "4 — 缩量上涨拆 2 态 vs 1 态+位置子态",
+            "call": "保留 1 个 L2 态 + 位置消歧派生标签(同决策点 2 的处理)。研究(state 4, verdict=有争议, 5+源指其'位置无关一刀切'是误判源)证明 splitting 语义是对的, 但 splitting 维度 = pctile+斜率方向, 不是再开一个竞争 L2 态。",
+            "rationale": "与决策点 2 同构: 高位缩量上涨 vs 低位缩量上涨非互斥(同为价涨量缩), 开 2 个 L2 态污染 softmax。位置作条件特征分流即可, 零额外 softmax 维度。"
+          },
+          {
+            "point": "6 — 横盘三态 pctile 带切分(留缝/硬切)",
+            "call": "用软门(sigmoid)叠 config 边界耦合的'互斥不重叠'约束, 不要硬切。现有 coupling.py 已有'互斥不重叠'关系(低位上界<高位下界, L63-66 校验留过渡带), 这正是为此设计的。中继平台插在中间带, 三态 pctile 边界进边界耦合声明, resolver 保证不重叠不留缝(告警机制 L66)。架构上零新建, 只在 config 加第三态 + 扩展耦合规则到三元有序。",
+            "rationale": "软门天然有重叠区(过渡态由 covered=False/高熵表达, L110/L115), 不需硬切; coupling 的互斥校验已能管 2 元, 扩到 3 元有序需小改 apply_coupling(当前'互斥不重叠'只处理 len==2, L63)。"
+          },
+          {
+            "point": "7 — 确认门加在分类层 vs 独立状态序列层(FSM)",
+            "call": "独立状态序列层, 不改瞬时分类(strong call)。hysteresis/N-bar 确认是'转换判定', 与'瞬时形态识别'是两件事。混进 state_scores 会污染软隶属的可解释性(soft membership 是'此刻像什么', 确认门是'是否已切换')。设计: classify_series 出逐bar dominant 后, 加一个 confirm 后处理层(读 prev confirmed_state + 双阈值死区 + N-bar hold), 输出 confirmed_state 序列。这是轻量 FSM(非完整 FSM, 就是带 hysteresis 的状态保持), 约 40-60 LOC。现有 multi_tf 的 as-of 模式可复用取 prev_confirmed。",
+            "rationale": "研究盲点#4(形态确认门)明确建议'状态转换层(非分类层)'。当前 classifier 0 transition 逻辑(已核, classifier.py 无 prev_state/confirm)。下游硬决策(调仓)被 whipsaw 割 = 真金白银损失, 这层不可省, 但必须独立。"
+          },
+          {
+            "point": "8 — RS 正交维度: 现在加 vs 后置",
+            "call": "后置但优先级最高的后置项。RS 在本模块代码层零基础(已核: backend/services/technical_states/ 与 config 均无 mansfield/relative_strength/超额)。但研究列为 high 盲点且直接对接 KPI'超额HS300>0', 且方案声称可复用 *_tdx_l1_rel/sector_momentum — 注意: 这两个特征在 backend/services/ 其他模块存在(industry_context_engine/scoring/feature_labels), 但 technical_states 模块内不存在, 需新接数据通路(个股 vs HS300/行业的相对强度时序), 非'复用现成函数'。建议作正交置信度乘子(不改 7 态), 与边界事件同期或紧随, 不要拖到最后。",
+            "rationale": "RS 是 selection 噪音结构性来源(大盘普涨带起的弱势齐涨股会被误纳入放量突破/上升通道), 不加则放量突破/上升通道态的'超额穿透'失守。但它是 overlay 乘子(架构上像边界事件 overlay), 不阻塞主态 P1 落地, 故可后置。研究 verification #6 确认 RS 理论锚点全坐实但须含成本 OOS 验证增量。"
+          },
+          {
+            "point": "13 — 4尺度×行为×命名 笛卡尔积爆炸",
+            "call": "REVISE/砍。单日 K 线几何对'中期主升浪选股'是噪音增量为主, 不应独立输出态。建议: 长期(周/月线)= 已有 multi_tf, 复用; 中期 = 现有 L2(60日窗), 复用; 短期(3-10日组合)+ 单日(裸K几何)只作为'边界事件/命名形态的构件特征', 不跑独立 L1→L2→L3 全栈。理由: 方案 §3.5 说'每个尺度都跑完整 L1→L2→L3+命名形态'= 4×(3+7+N子态)×命名 组合爆炸, 且单日尺度无 120 bar 趋势上下文(L1 趋势大类对单 bar 无意义)。现有 compute() 需 warmup≥120(features.py L73), 根本产不出单日尺度特征 — 单日要全新的 candlestick 几何提取器(body%/shadow%, 零 warmup)。",
+            "rationale": "现有 features 架构(120 bar warmup + 趋势/通道特征)与'单日裸K几何'是两套不兼容的特征提取。强行 4 尺度全栈 = 4 套 classifier 实例 + 参数空间 ×4, 直接踩 over-fit 红线(决策点 12)。奥卡姆: 单日/短期降级为事件层/命名层的输入构件, 不是独立解读维度。"
+          },
+          {
+            "point": "14 — 命名形态: 模板匹配 vs 独立态",
+            "call": "模板匹配派生标签, 绝不进软隶属。命名形态(老鸭头=态序列模板)= 派生的可解释标签层, 叠加在量化态+事件之上, 不参与 softmax 竞争。需新建 template engine: 输入 = (dominant 序列 + 事件序列 + 单K几何), 规则 = config 声明的序列/几何模板, 输出 = 命名标签+置信度。这是第 4 个新建组件(events / confirm-FSM / single-bar-geom / template-engine)。模板规则 config 化粒度: 到'态序列 + 几何容差'(如老鸭头 = 上升通道→缩量回踩→低位横盘→放量突破, 各段时长/深度容差进 config)。",
+            "rationale": "命名形态主观(不同人画法不同), 做成软隶属态会引入不可锚定的主观性污染 membership。做成派生标签则: 量化层冲突时(决策点 16)以量化态为准, 命名只是 human-readable overlay。template engine 复用 classify_series 的 dominant 序列做匹配输入。"
+          },
+          {
+            "point": "15 — 单日 K 线形态信息量",
+            "call": "只作短期组合的构件, 不独立输出态。研究/常识一致: 单根 K(十字星/锤子)信息稀疏+噪音大+单独易过拟合。A股 ±10% 限制使光头光脚=涨停有特殊含义(需 A股专属 config), 但这是'特征', 不是'独立解读维度'。",
+            "rationale": "与决策点 13 同向: 单日几何作 events/template 的输入特征, 不跑独立 L1→L2→L3。避免参数空间爆炸。"
+          },
+          {
+            "point": "16 — 命名层 vs 量化层冲突以谁为准",
+            "call": "量化层(态序列)为准, 命名层为派生 overlay + 显式标注冲突(不隐藏)。这与档案系统死亡条款#3(谄媚死: 藏掉矛盾信号)一致 — 冲突时并列显示'量化判X / 模板疑似老鸭头(置信度 Y)', 让人/下游自己权衡。命名置信度 = 模板各段匹配度乘积(类似 state_scores 的软门取积模式, 可复用)。",
+            "rationale": "档案系统 J5/死亡条款#3 要求诚实报冲突。命名层置信度低时不覆盖量化结论, 高时也只是 overlay 标签。"
+          }
+        ],
+        "issues": [
+          {
+            "severity": "critical",
+            "title": "方案核心承诺'加/改状态=改config不动代码'已被现有 L3 _sub_state 硬编码违反; 方案的新增 L3 几何细分会放大这个违反",
+            "fix": "现有 _sub_state()(classifier.py L77-98)是 Python if/else 硬编码(上升通道→加速/温和/震荡, 低位横盘→地量/温和…), 不读 config 的判断逻辑(只读 子态阈值 标量)。方案 §0/§1.4 反复承诺声明式 config, 但 §2 L3 又要加 cup-handle/flat-base/double-bottom 几何细分 — 若沿用 _sub_state 模式就是再加一堆硬编码 if/else, 直接打脸自己的设计原则。必须先把 _sub_state 重写成 config-evaluator(子态也用声明式条件列表, 像 state_scores 那样), 约 30-40 LOC 改造, 才能容纳几何细分而不增硬编码。这是落地前必须裁决的架构债, 不是 nice-to-have。"
+          },
+          {
+            "severity": "critical",
+            "title": "边界事件层 + 确认FSM层 + 单日几何提取器 + 命名模板引擎 = 4个全新组件, 方案把它们说成'config 化叠加'严重低估改造量",
+            "fix": "方案 §4/§6 把边界事件说成'叠加在 L2 之上(overlay)'、命名形态说成'config 化(改config新增)', 暗示是轻量配置扩展。实测: 现有整条链(features.compute 出单bar标量 → classify_bar 吃单bar dict → softmax)零序列入口、零事件检测、零确认逻辑、零模板匹配。4 个组件都需新建独立模块吃原始 OHLCV 序列(非单bar feature): (1) events.py 序列事件检测 ~100 LOC; (2) confirm.py hysteresis-FSM 转换层 ~50 LOC; (3) single_bar_geom.py 蜡烛几何(零warmup, 与现有120-warmup特征不兼容) ~40 LOC; (4) template_engine.py 命名形态匹配 ~80 LOC。总计 ~270 新 LOC vs 现有 392 LOC = 模块体量翻倍。方案应明确列出这 4 个新建组件 + 各自 PIT 契约 + 单测, 不能含糊成'config 叠加'。改造量诚实标注: 现有 classifier/features/coupling 核心可复用~80%, 但功能完整度只覆盖方案的 L1/L2/L3-硬编码部分, 边界事件/命名/多尺度/RS 全是新建。"
+          },
+          {
+            "severity": "high",
+            "title": "位置消歧的两遍架构未在方案中明确, 决策点 1 把 PIT 风险当开放问题而非已有解法",
+            "fix": "决策点 1 问'前序态消歧会不会循环依赖/前瞻'。答案是确定的: 用 two-pass(pass-1 无状态分类出 dominant, pass-2 取 ≤t-1 的 prior_dominant 当特征)+ strict-less(<t 非 ≤t)即 PIT 干净, 且 classify_multi_timeframe 的 bisect as-of(L152-155)已是现成实现模式。方案应直接把 two-pass 写进 §4 识别方法, 而不是留作开放决策。同时 features.py 需新增 dist_to_prior_high/dist_to_prior_low(~15 LOC, 用 bars[:i+1] 的 rolling max/min, PIT 干净)。"
+          },
+          {
+            "severity": "high",
+            "title": "softmax 软隶属维度膨胀风险: 方案倾向把位置消歧的 3 分/2 分做成并列 L2 态, 会让近共线态瓜分概率致 dominant 不稳",
+            "fix": "现有 softmax(classifier.py L112-114)对'近似互斥'的态才稳。放量下跌3分(决策点2)、缩量上涨2分(决策点4)若做成独立 L2 竞争态, 它们仅 pctile 不同(同为价跌放量/价涨缩量), 高度共线 → softmax 退化(熵虚高、dominant whipsaw、covered 判定漂移)。必须把位置作为'条件特征'分裂语义(label 在 evaluator 按 pctile-band 派生), 不作为并列竞争态。这直接影响方案 §5'无偏差/每态非平凡占比'的验证 — 共线态会让占比统计失真。"
+          },
+          {
+            "severity": "high",
+            "title": "单日/短期尺度与现有特征架构不兼容, 4尺度全栈会触 over-fit 红线",
+            "fix": "features.compute 强制 warmup≥120(L73, n<warmup+er_win+5 直接返回空), 趋势/通道特征(ma_slope/er/r2/maxdd)本质需长窗。单日尺度(蜡烛几何 body%/shadow%)零warmup、与此完全不同的提取逻辑。方案 §3.5'每个尺度都跑完整 L1→L2→L3+命名'= 4 套 classifier 实例 + 参数空间×4, 配合 9+态×位置消歧×事件, 直接踩决策点12的 over-fit 红线(CLAUDE §4.2: 参数空间膨胀 in-sample 漂亮 OOS 崩)。修: 长期/中期复用现有 multi_tf+L2; 短期/单日降级为 events/template 的输入构件, 不跑独立全栈。"
+          },
+          {
+            "severity": "medium",
+            "title": "RS 维度声称'复用已有 *_tdx_l1_rel/sector_momentum'但这些在 technical_states 模块内不存在, 是新数据通路",
+            "fix": "已核: backend/services/technical_states/ 与 config 内零 RS/relative_strength/超额。*_tdx_l1_rel/sector_momentum 存在于其他模块(industry_context_engine/scoring/feature_labels)但与本模块无 import 关系。方案把 RS 说成'复用现成特征'低估了接入成本 — 需在 technical_states 内新建个股 vs HS300/行业相对强度的时序特征通路(Mansfield RS 零轴穿越是时序信号、IBD RS rank 是横截面分位, 研究 verification #6 指出这是两个不同子特征需分别建模)。标为正交置信度乘子(不改7态), 但承认是新建非复用。"
+          },
+          {
+            "severity": "medium",
+            "title": "coupling 的'互斥不重叠'校验只处理 len==2, 横盘三态有序边界需扩到三元",
+            "fix": "apply_coupling(coupling.py L63-66)的'互斥不重叠'分支硬编码 len(params)==2(low/high)。横盘三态(低位横盘/中继平台/高位滞涨, 决策点6)需三元有序 pctile 带(a<b<c 不重叠不留缝)。需扩展 apply_coupling 支持 n 元有序校验(~15 LOC), 或新增'多元有序'关系类型。小改, 但方案 §6 把中继平台当'config 加一项'未提这个 resolver 改造。"
+          },
+          {
+            "severity": "medium",
+            "title": "确认门/事件层引入'延迟', 与档案系统'as-of 实时解读'的 PIT 契约需对账",
+            "fix": "确认门(N-bar hold)和事件(突破后 N 日守住)本质引入'决策延迟'。在档案系统 interpret(stock, as_of, tf) 契约下(master_design §2), as_of 当天的态可能是'待确认'(confirmed_state 尚未切换)。这本身 PIT 干净(只用 ≤as_of), 但方案 §2'待确认缓冲'与前端展示需明确: as_of 当天显示'瞬时态(高熵/待确认)'还是'上一 confirmed 态'? 二者都对但语义不同, 下游选股消费时(P6 接 fact_rally_stage)必须用 confirmed_state 防 whipsaw, 前端可显示瞬时态+确认进度。方案需把'瞬时态 vs 确认态'两个输出都落库(双列), 不能只出一个。"
+          },
+          {
+            "severity": "low",
+            "title": "现有 multi_tf 的 bull/bear 集合硬编码, 新增态需同步更新否则 mtf_aligned 失真",
+            "fix": "classify_multi_timeframe(L149-150)硬编码 bull={放量突破,上升通道,缩量上涨,缩量回踩} / bear={下跌通道,高位滞涨}。方案新增'中继平台'(横盘=neutral?)、'放量下跌'(bear)、缩量上涨位置消歧后(高位=bear/低位=neutral)等态时, 这两个集合必须同步, 否则 mtf_aligned 把新态默认当 neutral, 多TF对齐判定失真。建议把 side 映射也移进 config(每态标 bull/bear/neutral 属性), 消除这处硬编码(与方案声明式原则一致)。"
+          }
+        ],
+        "missing": [
+          "落地拆解缺失: 方案 §6 只说'classifier 解释 config + 边界事件 overlay', 但未给出 4 个新建组件(events / confirm-FSM / single-bar-geom / template-engine)的模块边界、输入输出契约、PIT 规则、单测计划。master_design §2 的 DimensionInterpreter 协议(interpret/series/compare/screen)是档案维度的对外契约, 但 technical_states 当前只实现了 classify_* 内部 API, 未实现这 4 个协议接口 — 方案应说明形态维度如何把新增的事件/命名/RS 暴露成 interpret 的 {value,label,desc_cn,confidence}。",
+          "物化落库设计缺失: master_design §6 说选股要全宇宙×全历史 join 则物化 fact_stock_technical_state。方案产出的态/子态/事件/命名/RS/confirmed-态/瞬时-态 是多列还是多表? 边界事件是稀疏标签(大多 bar 无事件), 与逐bar态的存储 grain 不同, 需明确 schema(逐bar态宽表 + 事件 long 表 as-of join? 还是事件也压进逐bar态的事件列?)。无物化 schema = P6 接 fact_rally_stage 因子矩阵无法消费。",
+          "回归测试基线缺失: 现有 8 个单测(test_technical_states.py)只覆盖 config 加载/PIT 无前瞻/上升下跌语义/coupling 镜像/多TF 结构。方案的位置消歧/边界事件/确认门/命名形态全无对应单测设计。尤其边界事件(假突破/spring)和确认门的 PIT 正确性(strict-less 前序态、收盘确认非盘中)是真金白银关键, 必须有'加未来 bar 不改历史事件标签'的 PIT 回归测试(类比现有 test_pit_no_lookahead)。",
+          "改造量 vs over-fit 的取舍优先级缺失: 方案 §7 要 Optuna 调'全部 L2 阈值+k+τ+子态分位+位置消歧+边界事件参数', 但未给参数总数估算。现有 7 态已约 21 个条件阈值 + 8 锐度 + 2 soft + 8 子态阈值 ≈ 40 参数。加位置消歧/3 新态/4 尺度/事件参数后参数量可能 ×3-5。方案需先冻结'最小可验证子集'(建议: 现有7态 + pctile/距前高低消歧 + 假突破/spring 两个最高优事件 + 收盘确认门, 不上单日尺度/不上命名模板/不上 4 尺度全栈), 跑 walk-forward OOS 证增量后再分期扩, 而非一次性铺开 9+态×位置×事件×4尺度。这是守 over-fit 红线的关键缺失。",
+          "A股专属适配在架构层缺失: 决策点15提到 ±10% 涨停对单K几何的特殊含义, 但方案未在特征/事件层给 A股专属处理。涨停板(光头光脚=封板)使'放量突破'的量价语义失真(封板日量可能极小)、T+1 使'突破当日买入'不可执行、一字板使 OHLC 退化。events 层检测假突破/spring 时必须处理涨跌停 bar(封停日不算有效突破确认)。这是 A股形态识别的结构性适配, 方案 §9 列了'A股适配'评审角度但 §2-6 设计未落任何 A股专属 config/逻辑。"
+        ]
+      },
+      {
+        "angle": "PIT安全 / 反前瞻泄漏 (真金白银红线) — 上下文消歧/边界事件序列检测/命名形态模板匹配/确认门滞后的PIT审计",
+        "overall_verdict": "REVISE",
+        "decision_calls": [
+          {
+            "point": "1. 上下文消歧的PIT安全: 用'前序主态(as-of 近K根 dominant)'消歧会不会循环依赖/前瞻?",
+            "call": "PROCEED, 但必须用 STRICT < t 且禁止用'当日 dominant'。现有 classifier._asof 用 bisect_right(<=d) 是对的, 但'前序主态'消歧若取'近K根含当日'就是循环依赖(当日态既是被消歧对象又是消歧输入)。修法: 前序主态特征只读 dominant[:i] (严格不含 bar i 自身), 即 prev_dominant = asof(i-1)。不是'纯瞬时 pctile + 距前高前低'(那丢了用户核心洞察), 而是'pctile(当日, PIT-safe) + 前序主态(严格 i-1 及更早)'。循环依赖只在'用当日态消歧当日态'时出现, 用 i-1 截断即破环。",
+            "rationale": "pctile/距前高前低本身用 bars[:i+1] 是 PIT 干净的(features.py 已确认 wc=c[i-pct_win:i+1] 只含历史+当日收盘, 无未来)。前序态消歧的唯一风险是把 bar i 的 dominant 喂回 bar i 的消歧逻辑形成同期循环。截断到 i-1 即彻底消除, 无前瞻, 无循环。"
+          },
+          {
+            "point": "3. 边界事件 vs 状态: 假突破/挖坑/climax 离散事件 overlay 的序列检测PIT与确认延迟?",
+            "call": "REVISE (BLOCK 若不改)。假突破定义='突破后 N 日跌回突破位'本质上需要 bar t+1..t+N 才能判定。绝对禁止把这个标签回贴到 bar t (突破当日)。必须双标签分离: (a) bar t 出'疑似突破'(瞬时, PIT-safe); (b) '假突破确认'事件落在 bar t+N (confirm_date=t+N), 决策时点=t+N 不是 t。任何把 t+N 的'跌回'结论 as-of 到 t 用于 t 的选股/打分 = 教科书前瞻泄漏, 与 §4.5 'in-sample fit 假象' / UTAD 误判同级真金白银红线。",
+            "rationale": "研究 JSON 明确(verification claim 5 correction): 2B/UTAD 的确认本身是 T+1~T+N 的'是否守住', 时间窗按级别参数化。检测器输出的事件必须带 confirm_date 字段且 confirm_date>=触发日+N; 下游消费(主升浪选股/鱼尾出场)只能在 >=confirm_date 的决策点使用。否则用'未来N日才知道的跌回'去标突破当日='+312% 假象'同构。"
+          },
+          {
+            "point": "7. 确认门层级: hysteresis/N-bar确认加在分类层(改软隶属)还是独立状态序列层(FSM)?",
+            "call": "PROCEED 走独立 FSM 层 (研究亦荐), 但必须钉死: 确认门只引入'滞后'不引入'前瞻'。Enter严/Exit松双阈值 + N-bar 收盘确认, 全部只读 <=t 的收盘价。陷阱: N-bar 确认绝不能实现成'看 t..t+N-1 都满足才在 t 点亮态'(那是把 t+N-1 信息贴回 t)。正解: 在 bar t 点亮'已确认态'的条件是 bar t-N+1..t (全历史)连续满足, 即确认在序列尾部触发, 决策点=t 而非回填到 t-N+1。",
+            "rationale": "hysteresis 本身 0 泄漏(研究 JSON blind_spot 4: 'low-cost, no-leakage')。唯一 lookahead 风险是 N-bar 确认的方向写反: '前向确认'(t 点亮需 t+1..t+N 满足)=前瞻, '后向确认'(t 点亮需 t-N+1..t 满足)=纯滞后安全。文档 §8.7 与 §2 边界事件节都没写清确认窗口方向, 必须在 config/实现里显式标注 backward-only。"
+          },
+          {
+            "point": "11. 多TF的位置消歧: 周/月线'位置'与日线不同步, 三框聚合如何PIT?",
+            "call": "REVISE。现有 classify_multi_timeframe._asof 在 backtest 全历史序列上是 PIT-safe(实测: 周内日 bar 取到的是上一已收周, 不取本周), 但有两个必修缺口: (a) 周/月 bar 的 dominant 用了该周/月完整 OHLCV(close=周五收盘), 周内(周一~周四)日 bar 通过 asof 拿到的是'上周'确认=对的; 但 LIVE 推断时 series 末端是半周, resample 末尾 flush 会吐一根'部分周 bar'(周一~周三)日期=周三, asof(周三) 命中这根部分 bar → train(完整周)/serve(部分周)分布偏移 + 用了当日仍在形成的周收盘。(b) 必须显式禁止把'本周仍在形成'的周 bar 喂给同周任何日 bar。",
+            "rationale": "features.resample 第 49 行末尾 flush 无条件吐最后一个(可能未闭合)周期 bar。backtest 里历史每周都已闭合所以无害, 但同一份 compute() 上线推断即产生 train/serve skew(隐性泄漏变体: serve 端的'周态'语义≠train 端)。修法: resample 加 drop_partial_period 参数, PIT serving 模式丢弃末尾未闭合周期, 或 asof 改为只取 bd 严格属于'已完整闭合周期'的 bar。"
+          },
+          {
+            "point": "14. 命名形态=模板匹配(老鸭头=完整态序列)是否独立态? PIT?",
+            "call": "REVISE。老鸭头/头肩顶/cup-handle 作为'态序列模板'匹配, PIT 风险集中在'锚点对齐'与'未来 bar'两处: (a) 模板里的'鸭嘴张开/突破出水'(序列最后一段)是未来事件, 匹配命中点必须落在序列最后一根 bar(出水日), 不能因为前 4 段已就位就在'鸭头'阶段提前点亮'老鸭头'标签(那是用后段的突破回填前段)。(b) 头肩顶的'颈线'依赖左肩+头+右肩三个 swing point, 右肩 swing 的确认本身需要其后若干 bar 回落确认 swing high — 这又是 N-bar 滞后, 必须 confirm_date 落在右肩确认日之后。命名形态只许作'派生标签', 不进软隶属(避免与逐bar态的PIT口径打架)。",
+            "rationale": "模板匹配=多段态序列的合取, 整个模板的'命中日'= 最后一段满足日(PIT-safe), 但极易实现成'回溯标注整个模板覆盖的历史 bar 都为老鸭头'(把出水日的结论贴回鸭头日)→ 前瞻。研究 JSON 对 swing-point/颈线无一手时间窗, 全是工程参数, 须 confirm_date 化 + Optuna OOS, 不可 hardcode N。"
+          },
+          {
+            "point": "9/12. Optuna 无偏差约束 + over-fit walk-forward 守法 (PIT视角)",
+            "call": "PROCEED 但加硬约束: §7 'sandbox Optuna 调全部阈值'必须 walk-forward expanding_monthly(项目标准), 且无偏差约束(每态占比≥阈值)的'占比'统计必须 train-fold only 计算, 不能用全期(含未来)占比来罚 trial。否则'每态可见'这个约束本身泄漏未来分布。覆盖率/转换矩阵这类验证指标若用全期算, 是诊断可以, 但不能进 Optuna objective(进了=用未来分布选参)。",
+            "rationale": "§4.5 'systemic leakage'(MAX(oos_sharpe) 全期 fit)同构风险: 任何进 objective 的统计量都必须 PIT。无偏差约束是个隐蔽入口——'强制每态占比均衡'若按全宇宙全期分布算, 等于把未来市场结构泄漏进参数选择。memory [[feedback-param-selection-peek]] 已记一处 peek 吹高 3.6x 的教训。"
+          }
+        ],
+        "issues": [
+          {
+            "severity": "critical",
+            "title": "边界事件(假突破/挖坑)的'未来N日才知'结论可能被回填到触发日 → 前瞻泄漏",
+            "fix": "强制事件检测器双时点分离: 触发日 trigger_date=t (出'疑似'), 确认日 confirm_date=t+N (出'假突破/挖坑确认')。事件 record 必带 confirm_date 字段, 下游(选股/打分/出场)只能在 决策点>=confirm_date 时消费该事件。在 classifier/event_detector 加断言 assert decision_date >= event.confirm_date, 违反即 raise。N 进 Optuna search space + walk-forward OOS, 按 minor/intermediate/major 级别参数化(研究: ~1日/3-5日/7-10日), 不 hardcode。写防回退单测: 构造'突破后第3日跌回'样本, 断言第1日的标签里没有'假突破'。"
+          },
+          {
+            "severity": "critical",
+            "title": "命名形态模板匹配可能把序列末段(突破/出水)的结论回贴到前段(鸭头/吸筹)bar → 前瞻",
+            "fix": "模板命中日 = 序列最后一段满足的 bar(出水日/突破日), 严禁回溯标注模板覆盖的历史 bar。实现: 模板匹配返回单一 match_date(=末段确认日) + 可选的回看窗口(仅供展示, 不可进 PIT 特征)。颈线/swing-point 依赖的右肩确认走 N-bar backward 确认(confirm_date>=右肩确认日)。命名形态仅作派生标签, 不进软隶属向量。单测: 老鸭头出水日前一日, 断言该股标签不含'老鸭头'。"
+          },
+          {
+            "severity": "high",
+            "title": "MTF resample 末尾无条件 flush 未闭合周期 bar → LIVE serving 端 train/serve 分布偏移(隐性泄漏变体)",
+            "fix": "features.resample 第49行末尾 flush 加 drop_partial 开关; PIT serving 模式下丢弃末尾未闭合周期(或 classify_multi_timeframe._asof 改为只命中 bd 严格属于已闭合周期的 bar, 即排除 series 最后一个 ISO 周/月若其不完整)。backtest 模式可保留(历史周已闭合无害), 但 serving 必须丢。加单测: series 截断在周三, 断言周态不含本周 bar。"
+          },
+          {
+            "severity": "high",
+            "title": "'前序主态'消歧若取含当日 dominant → 同期循环依赖(当日态既是被消歧对象又是消歧输入)",
+            "fix": "前序主态特征严格用 dominant[:i](不含 bar i): prev_dominant = _asof(dates, table, dates[i-1])。在消歧逻辑入口加断言 prev_state 的来源 bar index < 当前 bar index。pctile/距前高前低保持 bars[:i+1](PIT-safe 已验)。单测: 构造一只股, 断言 bar i 的消歧结果不随 bar i 自身 dominant 改变而改变。"
+          },
+          {
+            "severity": "high",
+            "title": "N-bar 确认门方向若写成'前向'(t点亮需 t+1..t+N 满足) → 前瞻; 必须钉死后向",
+            "fix": "确认门只许 backward-only: bar t 点亮'已确认态'的充要条件是 bar t-N+1..t 连续满足(全历史)。在 config 显式标 confirmation_direction: backward, 实现里禁止任何索引 > t 的访问。Enter严/Exit松双阈值只读 <=t 收盘价。代码级护栏: 确认函数签名只接受 series[:t+1], 物理上拿不到未来 bar。单测: 确认窗口内放一根未来满足 bar, 断言不改变 t 的态。"
+          },
+          {
+            "severity": "medium",
+            "title": "Optuna 无偏差约束(每态占比≥阈值)若用全期分布计算 → 用未来市场结构选参(参数选择泄漏)",
+            "fix": "无偏差约束的占比、覆盖率、转换矩阵等进 objective 的统计量, 一律 train-fold only 计算, 禁用全期(含 OOS 未来)分布。walk-forward expanding_monthly 标准。诊断用全期可以, 但不进 objective。在 optuna runner 加断言: objective 内引用的 panel 切片 max(date) <= fold_train_end。"
+          },
+          {
+            "severity": "medium",
+            "title": "RS 相对强度维度(§8.8)引入大盘/行业数据 JOIN → 跨表 PIT 边界易漏 as_of",
+            "fix": "RS 用 *_tdx_l1_rel/sector_momentum 复用时, 个股 vs 大盘/行业的 JOIN 必带 AND x.as_of_date <= t / built_at <= t(§4.1)。注意研究指出 taxonomy 切源(tdx→sw)桶定义变=历史不可比, RS 的 PARTITION BY 行业须打 taxonomy_version 戳, 禁跨版本拼接。Mansfield RS 零轴(52周MA)是时序量需 PIT 滚动, IBD RS rank 是横截面分位需当日全市场(只用 <=t 收盘), 两者分别 PIT 化。"
+          },
+          {
+            "severity": "low",
+            "title": "vol_ratio 用 bars[:i](排当日)而 pctile/er 用 bars[:i+1](含当日) — 口径不统一, 文档须显式说明非bug",
+            "fix": "features.py 第86/100行量基准 vv[i-vol_w:i] 正确排除当日(盘中量未完整, 防当日量泄漏), 而 pctile/er/range 用收盘价含当日是对的(收盘价 t 时点已知)。两者口径不同是有意的(量 vs 价的可知性不同), 但 config/文档须显式记录此 PIT 约定, 防后续维护者'统一'成 bug。加注释 + 在 strategy_validation_contract 记录。"
+          }
+        ],
+        "missing": [
+          "缺'决策时点(decision_date) vs 形态触发时点(trigger_date) vs 确认时点(confirm_date)'三时点契约。整个方案把'识别'和'决策可用'混为一谈——所有需要后续N日确认的态/事件(假突破/挖坑/突破/swing/老鸭头出水)都必须显式带 confirm_date, 下游只能在 decision_date>=confirm_date 时消费。这是防前瞻的总闸, 方案 §2/§3/§4 完全没有这个字段设计。",
+          "缺 PIT 防回退单测套件设计。方案 §7 只提 Optuna 验证, 没有针对'未来bar不影响当日标签'的单测策略。每个边界事件/命名形态/确认门都需要一个'插入未来满足bar, 断言当日标签不变'的回归测试(项目 §8.2.2 强制)。",
+          "缺 LIVE serving 与 backtest 的口径一致性验证。MTF resample 末尾 flush 的问题暴露了一个系统性盲点: 同一份 compute()/classify() 在 backtest(全历史闭合)与 serving(末端半周/半月)下行为不同。需要一个 train/serve parity 检查(同一截断点两条路径出同样的态)。",
+          "缺事件检测器的'确认窗口 N'的 Optuna search space 声明。方案 §7 列了阈值/k/τ 但没列边界事件的 N(确认延迟天数)。按 §3.6 grill gate + plan_validator, N 无 search space = 白跑风险; 且 N 按形态级别(minor/intermediate/major)差异大(研究: 1/3-5/7-10日), 必须分级参数化不可单值 hardcode。",
+          "缺'消歧用的前序主态自身是否也带确认延迟'的递归PIT分析。若前序主态本身是个需 N-bar 确认的态(如已确认上升通道), 那 prev_dominant 在历史某点的值会随确认而'变'(确认前 None, 确认后点亮)——必须用'当时点已确认'的版本而非'事后回看已确认'的版本, 否则前序态本身就泄漏。方案未触及这层递归。",
+          "缺对 §4.2 异常高数字红线的挂钩。新增 9+态×位置消歧×边界事件×4尺度×命名层, 参数空间爆炸, 任何 RankIC/超额相对 baseline +50% 或绝对 RankIC>0.3 都须强制 ablation 验每态群 PIT 干净度(pit-audit Step 4 micro-ablation)。方案 §8.12 提了 over-fit 但没绑定 §4.2 的具体红线阈值与 ablation 流程。"
+        ]
+      },
+      {
+        "angle": "覆盖完整性 (exhaustiveness/gaps/overlaps/seams) — 方案是否真\"穷尽覆盖全部形态\"",
+        "overall_verdict": "REVISE",
+        "decision_calls": [
+          {
+            "point": "#5 缩量回踩归属 (上涨 vs 下跌大类)",
+            "call": "REVISE — 缩量回踩必须归'上涨'大类(升势中回调), 但归属判据不能只看瞬时 mom20 符号(现 config mom20∈[-8%,-0.93%]=下跌动量带), 必须叠加'前序是否在上升通道/价仍在中长均线上'上下文门。当前实现已埋内部矛盾: classifier.py:149 把缩量回踩 hardcode 进 bull 集合(MTF aligner), 但 L2 条件全在下跌动量区间且无'价在均线上'硬门 — 即 side='bull' 与 L2 判据相互打架。方案 §2 把缩量回踩列在'下跌'L1 下(line 46)又在 §8#5 自问归属未决, 自相矛盾。",
+            "rationale": "真相源是'升势中的小幅回调'本质=趋势仍在(higher-low 结构未破), 不是瞬时动量符号。研究 state7 challenged_by 明确: 孤立缩量回踩(无前序放量突破/SOS 上下文)可能只是下跌中继, config 态7定义无'前序是否有放量突破'上下文 → 不补上下文门, 缩量回踩和下跌通道/下跌中继会抢同一批 bar = 重叠留缝并存。归 bull 的代码已先行但判据没跟上, 是 leakage 风险点(side 标签来源不明)。"
+          },
+          {
+            "point": "#6 横盘三态 pctile 带切分 (不重叠不留缝)",
+            "call": "BLOCK 当前实现 / REVISE 方案 — 必须在落地前补全'中位横盘'并统一 pctile 带定义。现 config 只有 低位横盘(pctile<0.475)+ 高位滞涨(pctile>0.717), 中间 0.475-0.717 的横盘(窄幅+均线走平但价在中位)匹配不到任何横盘态 = 结构性 GAP(留缝)。方案新增'中继平台'填这个洞是对的, 但 §3 line 82 写的位置带是 低<0.3/中0.3-0.7/高>0.7, 与 config 实际 0.475/0.717 不一致 = 文档与实现两套口径。切分方案: 用硬边界 + hysteresis 死区(进/出非对称), 不要软过渡带(软过渡带=低/中/高横盘在边界处软隶属互相渗透, 下游硬决策被 whipsaw)。",
+            "rationale": "用户核心要求是穷尽无缝。现状是真有缝(0.475-0.717 中位横盘无归属), 三态文档口径还不统一。研究边界事件节点名 hysteresis deadband 为高优盲点。pctile 带若用软过渡, 三个横盘态在 0.475 和 0.717 附近会同时拿到非平凡软隶属 = 既重叠又因 max<最低分(0.0648)塌成'过渡' = 既重叠又留缝。"
+          },
+          {
+            "point": "#2 放量下跌 3 分 (3 独立 L2 vs 1 L2+3 子态)",
+            "call": "REVISE — 拆成 1 个 L2'放量下跌' + 3 个位置 L3 子态(高位 breakdown / 低位 SC / 中位中继), 不要 3 个独立 L2。理由: 3 个独立 L2 会让软隶属维度从 9 升到 11, softmax 在 mx>0.0648 门下更易塌'过渡'(覆盖率反降); 且'低位放量下跌=Selling Climax 见底预警'与'下跌通道(加速杀跌子态)'判据高度重叠(都是价跌+放量+低位), 做独立 L2 会和下跌通道抢 bar。位置消歧用 L3 子态(主态=放量下跌, 子态=位置)既保覆盖又不爆维度。",
+            "rationale": "奥卡姆: 位置消歧的本质是'同行为分裂语义', 这恰好是 L3 子态(主态×修饰量)的设计意图, 不需要升 L2。研究 state6 challenged_by: 低位 climax/stopping volume 是态6→态1 转换触发, 本就该挂在下跌通道的子态/边界事件而非独立 L2。"
+          },
+          {
+            "point": "#10 覆盖穷尽的证明 (转换矩阵+归属率 够吗)",
+            "call": "REVISE — 归属率≥95% + 转换矩阵对角占优'不够'证明穷尽, 必须叠加'命名形态清单逐一命中核对'。归属率高只证明'每 bar 有归属', 不证明'归属语义正确且无形态被吞进错误桶'。反例: 中位横盘现在会被 softmax 强行塞进最近的低位横盘或上升通道(归属率仍可能高), 但语义错了 — 高归属率掩盖了 GAP。必须: (a) 枚举研究 8 流派的全部命名形态 → 逐一确认有对应态/事件/显式 deferred; (b) 抽样人工核'被判过渡(covered=False)的 bar'到底是真过渡还是漏态。",
+            "rationale": "用户要的是穷尽覆盖, 而 softmax+最低分门的机制会把'没有合适态'的 bar 要么硬塞进最近态(掩盖 gap), 要么塌成过渡(掩盖漏态)。归属率/转换矩阵都测不出'桶定义本身有洞'。研究覆盖完整性验证节列'理论锚定全覆盖'但方案没给逐态命中核对清单。"
+          },
+          {
+            "point": "#13 尺度×行为笛卡尔积爆炸 (单日 K 线对中期主升浪选股有增量吗)",
+            "call": "REVISE — 4 尺度全跑'完整 L1→L2→L3 + 命名形态'是过度复杂(奥卡姆违规)。覆盖完整性角度: 尺度维度与 L1/L2/L3 正交不等于'每尺度都要穷尽全套', 否则覆盖证明的工作量×4 且大量组合(如月线单根 K 线十字星)无消费者。建议: 单日/短期只输出'命名 K 线形态 + 边界事件构件'(喂给中期态序列模板), 不独立跑 L1/L2/L3; 真正要穷尽覆盖的是中/长期(主升浪鱼身/鱼尾的消费锚点所在)。",
+            "rationale": "消费者锚定(主升浪选股=中期态)是覆盖范围的真相源。穷尽覆盖应聚焦有消费者的尺度; 给无消费者的尺度也要求穷尽=用'完整性'之名做无用功, 且爆炸的组合反而稀释了对核心尺度覆盖的验证力度。"
+          }
+        ],
+        "issues": [
+          {
+            "severity": "critical",
+            "title": "中位横盘 (mid-pctile sideways) 是真实存在的 GAP — 现 7 态留缝, 方案'中继平台'填洞但 pctile 口径与 config 矛盾",
+            "fix": "现 config 横盘只有低位横盘(pctile<0.475)+高位滞涨(pctile>0.717), 0.475-0.717 的横盘(窄幅+均线走平+价中位, 既非筑底也非派发)匹配不到任何横盘态。方案 §2 line 42 新增'中继平台'方向正确, 但: (1) §3 line 82 横盘位置带写成 低<0.3/中0.3-0.7/高>0.7, 与 config 实际 0.475/0.717 完全不同 — 统一为单一权威口径(建议 config 实测带), 三态价格分位轴必须满足 低上界 ≤ 中下界, 中上界 ≤ 高下界, 用 hysteresis 死区填边界。(2) 中继平台与低位横盘的区分不能只靠 pctile, 否则一个回调到中位的强势股 base 会和'拉升中途清洗平台'混淆 — 必须叠加'前序是否经历上升通道'(中继=前升, 低位=前跌/无趋势)。落地前必须证明 0.475-0.717 区间的 bar 实测有非平凡占比落入中继平台而非被塞进相邻态。"
+          },
+          {
+            "severity": "critical",
+            "title": "缩量回踩的 L1 归属在'方案文档(下跌)'、'决策点(未决)'、'代码(bull)'三处自相矛盾 — 直接埋 PIT/语义 leakage",
+            "fix": "方案 §2 line 46 把缩量回踩放在'下跌'L1 下; §8 #5 又自问归属未决; classifier.py:149 已 hardcode 进 bull 集合。三处不一致。裁决: 缩量回踩=升势中回调 → 归'上涨'大类, 但归属判据必须从'瞬时 mom20 符号'(现 config mom20∈[-8%,-0.93%]=下跌动量)改为'前序在上升通道/价仍在中长均线上 + higher-low 未破'的上下文门, 否则它会与'下跌通道初段'和未来的'下跌中继'抢同一批 bar(价跌+缩量)=重叠。同时必须加研究指出的'破位降级硬门'(收盘跌破前一 swing low → 转判下跌, 不留回踩态), 否则缩量回踩态会吞掉真正的趋势反转 = 覆盖错误(把下跌伪装成健康回踩)。"
+          },
+          {
+            "severity": "high",
+            "title": "缩量回踩 vs 挖坑洗盘(Spring) vs 下跌通道初段 三者在'价向下+缩量'区域重叠且无消歧门 — 边界事件与逐 bar 态共存机制未定义",
+            "fix": "研究 Spring 盲点明确: 缩量回踩(小幅)/下跌通道(持续负动量)都无法捕捉挖坑洗盘(跌破区间下沿后 N 日 V 形收复)。方案 §2 把'挖坑洗盘'列为边界事件 overlay, 但 §4 line 128 只说'叠加在 L2 之上(overlay 非互斥态)', 没定义当一根 bar 同时触发 缩量回踩(逐 bar 态)+ 挖坑洗盘(序列事件)时 档案展示/下游消费谁优先。必须明确: 边界事件是离散标记(在转换处), 不进软隶属; 但当 Spring 事件触发时, 该 bar 的逐 bar 主态(可能被判下跌通道)应被事件标签覆盖/升级。否则起涨点 T+1(Spring 收复)会被逐 bar 态误判看空 = 真金白银方向错(研究列为 high)。"
+          },
+          {
+            "severity": "high",
+            "title": "softmax + 最低分(0.0648)门机制使'高归属率'无法证明穷尽 — covered=False 的 bar 混入了'真过渡'和'漏态'两类",
+            "fix": "classifier.py:110 covered=mx>0.0648, 低于则 dominant=None。这意味着两种 bar 都被标'过渡': (a) 真的在两态间过渡, (b) 没有任何态的桶定义匹配它(漏态)。方案 §5 用'归属率≥95%'证穷尽, 但归属率高可由 softmax 硬塞掩盖 gap, 归属率里的'过渡'又混入漏态。修: (1) 对 covered=False 的 bar 做语义抽样, 区分真过渡 vs 漏态; (2) 对每个 dominant, 抽查其 max_score 分布 — 大量贴近 0.0648 门的'勉强归属'bar = 桶定义不贴合(语义虚高覆盖); (3) 补'命名形态逐一命中核对'(枚举 8 流派形态清单), 这才是穷尽的直接证据, 转换矩阵只证'稳定'不证'完整'。"
+          },
+          {
+            "severity": "high",
+            "title": "高位横盘的语义被'高位滞涨(见顶 bias)'独占 — 但'高位横盘=中继(强势股高位整理后续创新高)'与'高位横盘=派发'是两种相反形态, 现只覆盖派发一种",
+            "fix": "方案横盘三态写'高位=派发(出货)'(§3 line 83), 但 O'Neil base-on-base / 高位平台整理后继续突破(强势股二阶段/三阶段 base)是真实存在的看涨高位横盘, 与派发同形(都是高位窄幅)。现 config 高位滞涨态(pctile>0.717+均线走平+动量平缓)+子态(放量派发/缩量惜售)全是看跌语义, 完全不覆盖'高位中继再突破'。这是覆盖漏洞: 高位横盘被一刀切成见顶。修: 高位窄幅整理需用'前序量价 + 整理期量能(缩量整理=蓄势 vs 放量=派发)+ 整理后是否带量突破'分流, 至少给高位滞涨加一个'高位中继(待突破)'子态或边界事件, 否则强势股高位 base 突破(主升浪延续的关键形态)被系统判为见顶 = 鱼身被误杀。"
+          },
+          {
+            "severity": "medium",
+            "title": "假突破/失败突破(UTAD/2B)作为'边界事件'与'放量突破'逐 bar 态的时间错位未解决 — 覆盖上是'同形不同质'的最大漏洞",
+            "fix": "研究列假突破为最高优盲点(4 源独立点名): 放量突破态与 UTAD/2B 在突破瞬间几乎同形, 区别只在突破后 N 日是否守住。方案 §2 列为边界事件并加 N-bar 确认门(§8 #3/#7)。覆盖角度的具体问题: 在突破当日(T), 系统只能判'放量突破'(覆盖上看似无缝), 真相要到 T+1~T+N 才知是真突破还是 UTAD。这是'时间维度的覆盖缝隙'(瞬时分类必然漏)。修: 必须显式建模'放量突破→[待确认窗口]→{确认突破 / 失败突破反转}'的状态序列(FSM), 并在档案上对'突破后未满确认窗口'的 bar 打'待确认'标(而非伪装已是放量突破)。T 时点判定必须可被 T+N 推翻, 且这个推翻不能是 leakage(只能用 ≤当前 t 信息, 即'今天还没跌回'是合法的, '未来会不会跌回'不可用)。"
+          },
+          {
+            "severity": "medium",
+            "title": "命名形态(老鸭头等)= 态序列模板, 但'模板不命中的形态序列'是否留缝未定义 — 命名层覆盖完整性无验收标尺",
+            "fix": "方案 §3.6 命名形态=量化态序列模板匹配。覆盖问题: 命名层只列了有限的'已知命名形态'(老鸭头/头肩顶/双底...), 但真实序列空间无穷, 大量态序列匹配不到任何命名模板。方案没说'未命中命名模板的 bar/序列'是否算覆盖缺失。裁决: 命名层是可解释标签层(锦上添花), 不应纳入'穷尽覆盖'的验收 — 穷尽覆盖只对量化态层(L1/L2/L3+边界事件)要求 100%, 命名层是'已命中即标注, 未命中留空'的开放词汇表, 不追求穷尽。方案 §1 line 17'分层穷尽'和 §5 覆盖验证必须明确这个边界, 否则命名层的开放性会被误当作覆盖漏洞反复纠缠。"
+          },
+          {
+            "severity": "medium",
+            "title": "下跌大类的子态覆盖严重偏薄 — 只有'下跌通道'1 个 L2, 漏'反弹失败/阴跌洗盘 vs 真出货/破位加速'多个真实下跌形态",
+            "fix": "研究 state6 challenged_by 列出下跌态缺: (1) 缩量反弹到均线下失败(LPSY/failing rally)=做空点+不抄底信号; (2) 阴跌洗盘(缩量不破大均线)vs 真出货(放量破位)的判别; (3) 底部 Selling Climax/Stopping Volume(态6→态1 转换触发)。现 config 下跌只有'下跌通道'(温和阴跌/加速杀跌 2 子态), 把上述全压成一个桶。对照上涨大类(放量突破/上升通道/缩量上涨/缩量回踩 4 态)+横盘(将有 3 态), 下跌大类的分辨率严重不对称 = 覆盖偏差。修: 下跌大类至少补'反弹失败'子态/事件 + Selling Climax 边界事件(已在方案边界事件清单, 但要确保和下跌通道逐 bar 态的共存机制定义清楚)。鱼尾出场依赖下跌态的早期识别, 现在分辨率不够。"
+          },
+          {
+            "severity": "low",
+            "title": "L1 三大类判据有'既不上涨也不横盘也不下跌'的边界 bar 无显式归属 — L1 层也可能留缝",
+            "fix": "方案 §2 L1 判据: 上涨=价在均线上+动量正+斜率正; 横盘=斜率近0+窄幅+动量近0; 下跌=价在均线下+动量负+斜率负。这三组条件是'与'逻辑且不互补 — 存在 bar 满足'价在均线上+动量负+斜率正'(刚回调的强势股)等混合态, 不干净落入任一 L1。现实现里 L1 是从 7 个 L2 软隶属反推 dominant 所属大类(side()函数), 没有独立 L1 判据层, 所以 L1 缝隙被 L2 softmax 隐藏。修: 要么明确 L1 由 L2 dominant 反推(则删 §2 L1 独立判据表, 避免双口径), 要么 L1 独立判据必须覆盖混合态(加'过渡/混合'第四类显式归属)。当前文档给了独立 L1 判据表但代码没有 = 文档与实现不一致。"
+          }
+        ],
+        "missing": [
+          "'中位横盘'(中继平台之外, 中位窄幅整理) 在现 7 态是真实 GAP(pctile 0.475-0.717 无横盘态), 方案新增中继平台填洞但没给'落地后该区间 bar 实测占比'的验收门 — 必须证明洞被填上而非被相邻态吞掉。",
+          "'高位横盘=看涨中继(强势股高位 base 再突破)'形态完全缺失 — 现高位横盘被'高位滞涨(见顶)'独占, 一刀切看跌, 漏掉主升浪延续的关键形态(高位平台突破), 会误杀鱼身。",
+          "下跌大类的'反弹失败(failing rally/LPSY)'形态缺失 — 缩量反弹到均线下失败是做空/不抄底信号, 现下跌只有'下跌通道'一个桶, 与上涨大类 4 态分辨率不对称。",
+          "'横盘→突破方向未定'的真过渡态与'漏态'的区分机制缺失 — covered=False 的 bar 同时混入真过渡和无桶可归两类, 方案的归属率证明无法区分, 缺 covered=False bar 的语义抽样验收。",
+          "L1 层混合态(如价在均线上但动量为负的刚回调 bar)的显式归属缺失 — L1 三类判据非互补, 文档给独立判据表但代码靠 L2 反推, 两套口径且都不覆盖混合态。",
+          "边界事件(假突破/挖坑/climax)触发时与逐 bar 主态冲突的'谁覆盖谁'优先级规则缺失 — 方案说 overlay 非互斥, 但没定义档案展示与下游消费在冲突时的裁决, 这是覆盖语义(同一 bar 多标签)的核心未决项。",
+          "命名形态层'未命中任何模板的序列是否算覆盖缺失'的边界声明缺失 — 需明确穷尽覆盖只约束量化态层, 命名层是开放词汇表不追求穷尽, 否则命名层开放性被误当漏洞。",
+          "'放量下跌中位(下跌中继)'与'下跌通道'的去重判据缺失 — 方案 §3 把下跌中继放量列为放量下跌的第三精细态, 但它与下跌通道(加速杀跌子态)在'价跌+放量+中位'高度重叠, 没给消歧门, 会双重计数同一批 bar。"
+        ]
+      },
+      {
+        "angle": "over-fit / 奥卡姆剃刀: 参数空间组合爆炸的必要细分 vs 过度复杂裁剪, 单日K线对中期主升浪的增量vs噪音, in-sample漂亮OOS崩的over-fit风险与walk-forward守法",
+        "overall_verdict": "REVISE",
+        "decision_calls": [
+          {
+            "point": "2 — 放量下跌 3 分: 3 独立 L2 态还是 1 L2 + 3 位置 L3 子态",
+            "call": "1 个 L2 态 + 位置作为正交置信度乘子 (既非 3 独立态也非 3 子态)。绝不拆 3 独立 L2。",
+            "rationale": "拆 3 独立态使软隶属维度 +3 且三者在边界互相抢概率质量 (softmax 零和), 直接放大 whipsaw 与 in-sample 过拟合。位置 (pctile + 前序态) 是连续的 — 把连续量切成 3 硬桶丢信息又造边界噪音。正解: 主态保持'放量下跌'1 个, 位置 (高/中/低) 做成乘子标签 (像 RS 维度一样不改主态)。这同时回答了 §3 的全部'行为×位置'案例: 位置消歧应是 overlay 维度, 不是状态裂变。"
+          },
+          {
+            "point": "4 — 缩量上涨: 拆 高位/低位 两态 还是 1 态 + 位置子态",
+            "call": "BLOCK 当前形态。缩量上涨在 sandbox v2 已实测退化 (8.4% 占比) 并入上升通道。不要重新拆 2 态, 也不要单列 1 态——降为'量价背离' overlay 信号 (effort/result), 位置决定方向。",
+            "rationale": "这是方案与实测证据的直接冲突: notes.md 第 19 行明载'缩量上涨 8.4%退化→并入上升通道子档'。方案 §2 不仅复活它还提议拆 2 态 (决策点4), 是无视已有 OOS 证据。研究也判它'有争议'(5+源指位置无关一刀切是误判源)。正解=删独立态, 用 effort/result 背离做横切 overlay, 高位=衰竭/低位=供给枯竭由位置乘子区分。"
+          },
+          {
+            "point": "9 — Optuna 无偏差约束: 每态占比≥阈值定多少",
+            "call": "BLOCK 这个约束本身。删除'每态占比≥阈值'硬罚分。",
+            "rationale": "这是方案最危险的 over-fit 来源, 比参数膨胀更隐蔽。市场分布本就不均 (下跌态/横盘态天然多, climax 态天然罕见), 强制均衡 = 把 classifier 拟合到一个化妆指标 (占比均匀) 而非 forward 价值。决策点9 自己已嗅到 ('强制均衡会不会反而扭曲') — 答案是会, 且严重。'无偏差可见'的真实需求是'罕见态不被阈值塌缩到 0', 这只需保证每态占比 > 0 (非平凡), 不需要 ≥ 某个均衡阈值。占比应是市场真实分布的产物, 不是优化目标。"
+          },
+          {
+            "point": "12 — 新增态 over-fit: 9+态×位置×边界事件 参数膨胀 OOS 崩",
+            "call": "REVISE — 必须先建 forward-return walk-forward gate 才允许任何新态进 Optuna。当前'OOS稳'是无监督可分性 (margin 0.092≈0.091), 不是 forward 价值 OOS。",
+            "rationale": "致命缺口: 方案全部'OOS稳/覆盖100%/80%干净'都是无监督分离度指标 (notes.md), 零 forward-return 证据。参数从 ~65 膨胀到 ~200 (单尺度) / ~800 (4尺度独立) 时, 在无监督目标上一定能学出'漂亮可分', 但可分 ≠ 预测主升浪。守法方式: (a) 每个新态/事件落地前先用 fact_rally_stage 跑条件化 forward 增量 (含成本绝对收益, 非分离度); (b) 按股+按时间双切 OOS (sandbox 已有此设计但未对 forward 跑); (c) PBO/CPCV 防选择偏差; (d) 无 forward 增量的态不进 config。"
+          },
+          {
+            "point": "13 — 尺度×行为 笛卡尔积爆炸: 哪些尺度有独立价值, 单日K线对中期选股增量vs噪音",
+            "call": "BLOCK 4 尺度全跑。砍到 2 尺度: 中期 (20-60日, 主态层) + 长期 (周/月, 趋势确认)。删单日 + 短期 K线组合作为独立识别层。",
+            "rationale": "消费者锚定: 主升浪猎手在 medium-term episode 上操作 (9070 episode 起涨/主升/顶部, goal.md), 鱼身延续/鱼尾出场都是数周-数月尺度。单日 K 线 (十字星/锤子) 对'是否继续持有主升浪'的增量趋近 0 而噪音极大 (决策点15 自己承认'信息稀疏且噪音大单独用易过拟合')。4 尺度独立跑 = 参数 ×4 + 4 套需各自 forward 验证, 成本爆炸而 ROI 全在中长。单K几何最多作为'放量突破确认门'的构件 (光头光脚=涨停一字, 已有旁路), 不设独立识别层。"
+          },
+          {
+            "point": "14 — 命名形态: 模板匹配派生标签 还是独立识别态",
+            "call": "派生标签层, 绝不进软隶属。且命名形态库砍到 ≤5 个有消费者锚定的 (老鸭头/spring挖坑/UTAD假突破/VCP/W底), 删纯展示性的 26 个词汇表。",
+            "rationale": "命名形态进软隶属 = 与量化态零和抢概率 + 主观画法不可量化锚定 (决策点14 自己点出)。正解: 命名层是量化态序列的可解释翻译 (人话标签), 只读不参与分类。但 26 个命名形态 (§3.6) 绝大多数对主升浪选股零增量 (黄昏之星/纺锤/光脚 对'何时卖'无 forward 锚) — 只保留能映射到鱼头买点 (spring) / 鱼尾出场 (UTAD/顶背驰) / 鱼身持有 (VCP/老鸭头) 的少数, 每个上线前仍需 forward 增量验证。其余进'未来探索'清单, 不进 v1。"
+          },
+          {
+            "point": "10 — 覆盖穷尽证明: 转换矩阵+归属率够吗 还是枚举理论形态清单逐一核对",
+            "call": "REVISE — '穷尽覆盖'是错误的验收标尺, 应替换为'forward 价值覆盖'。归属率/转换矩阵证'描述完整', 不证'对选股有用'。",
+            "rationale": "方案把'每 bar 必有归属、无遗漏无重叠'当核心原则 (§1.2), 但这是为档案系统的完整性服务, 不是为 KPI 服务。追求穷尽覆盖会驱动你加入大量 forward 无价值的态 (为了填满'待确认'缝隙) — 这本身就是 over-fit 诱因。正确标尺: covered≥95% 已由现有 7 态达成 (覆盖100%); 新增态的唯一验收是'带来 forward 条件化增量', 不是'提高覆盖率'。枚举理论形态清单逐一核对 = 张冠李戴风险 + 工程债, 不做。"
+          }
+        ],
+        "issues": [
+          {
+            "severity": "critical",
+            "title": "全部'OOS稳/覆盖100%/80%干净'是无监督可分性, 零 forward-return 证据 — 方案在无价值证明上膨胀参数空间",
+            "fix": "sandbox/state_quantify/notes.md 的 OOS 是 train0.092≈test0.091 的分离度 margin, 与主升浪 forward 收益毫无关系。在任何新态/事件进 config 前, 强制 gate: 用 fact_rally_stage 跑每个候选态/overlay 的条件化 forward 增量 (含成本绝对收益, CPCV/PBO 防选择偏差), 按股+按时间双切 OOS。无 forward 增量的态/事件一律不进 v1, 标 unknown 留探索。验收标尺从'可分性+覆盖率'改为'forward 条件化增量'。"
+          },
+          {
+            "severity": "critical",
+            "title": "缩量上涨态与实测证据直接冲突 — sandbox v2 已判其退化(8.4%)并入上升通道, 方案却复活并提议再拆2态",
+            "fix": "notes.md 第19行明载'缩量上涨 8.4%退化→并入上升通道子档'。删除独立'缩量上涨'L2 态 (决策点4 的两个选项都错)。改为 effort/result 量价背离 overlay (横切上升通道/高位滞涨), 位置 (pctile+斜率) 决定方向: 高位+走平=衰竭看空 / 低位+仍陡=供给枯竭中性。这同时采纳研究的'位置无关一刀切是结构性误判源'裁决。"
+          },
+          {
+            "severity": "critical",
+            "title": "'每态占比≥阈值'无偏差硬约束是隐蔽的 over-fit 引擎 — 把分类器拟合到化妆指标(占比均匀)而非 forward 价值",
+            "fix": "删除 §7 / §1.6 的'每态占比≥阈值否则罚分'硬约束。市场分布天然不均 (climax 罕见/下跌态多), 强制均衡 = 优化错误目标。'罕见态不被塌缩到0'的真实需求只需软约束: 每态占比 > 0 (非平凡), 不设均衡阈值。占比是市场分布的产物, 永不作为 Optuna 优化目标。决策点9 的疑虑应裁定为'会扭曲, 不做'。"
+          },
+          {
+            "severity": "high",
+            "title": "参数空间从 ~65 膨胀到 ~200(单尺度)/~800(4尺度) — 9态×位置×边界事件×4尺度×26命名形态, 在无监督目标上必然学出假漂亮",
+            "fix": "三刀砍: (1) 砍尺度 4→2 (中期主态+长期确认, 删单日/短期独立层); (2) 位置消歧改 overlay 乘子而非状态裂变 (放量下跌/缩量上涨/横盘都不拆独立态); (3) 命名形态 26→≤5 且仅派生标签不进软隶属。砍后参数回落到 ~80-100 量级。每加一个参数都要回答'它对应哪个 forward 增量', 答不出不加。"
+          },
+          {
+            "severity": "high",
+            "title": "单日 K 线形态对中期主升浪选股是噪音不是增量 — 消费者(鱼身持有/鱼尾出场)是数周-数月尺度",
+            "fix": "删除单日 (single bar) 独立识别尺度与 §3.6 单日命名形态层 (十字星/锤子/纺锤等)。主升浪猎手已实测单点买点 AUC≈0.5 (goal.md), 单K几何信息更稀疏噪音更大 (决策点15 自承)。单K几何唯一保留用途=作为'放量突破确认门'的构件 (一字涨停旁路防伪造ER, sandbox 已有此机制), 不设独立态层。"
+          },
+          {
+            "severity": "high",
+            "title": "短期 K 线组合(红三兵/早晨之星等9个)对中期延续/出场零 forward 锚定 — 纯展示性词汇表伪装成识别层",
+            "fix": "删除短期 (3-10日) K线组合作为独立识别尺度。这些组合形态学界实测裸 alpha 极弱 (研究已注 Bulkowski 裸2B仅~34%跑赢), 对'是否继续持有主升浪'无条件化增量。若前端要'说人话'标签, 在中期态序列上派生即可, 不建独立特征/识别层。"
+          },
+          {
+            "severity": "medium",
+            "title": "边界事件 5 个检测器各带 N-bar窗+双阈值(~15参数), 但只有 spring/UTAD 有消费者锚定(鱼头/鱼尾), 其余3个 forward 价值未证",
+            "fix": "边界事件按消费者优先级分期: v1 只做 spring挖坑(鱼头买点) + UTAD假突破(避追高接盘) 两个 (研究列为 high 优先且直接对接 KPI)。量价背离/climax/确认门降为 v2 探索 (确认门是低成本无leakage可先加但不进Optuna, 用固定收盘确认+N-bar即可)。每个边界事件的 N 必须进 Optuna walk-forward 选取并标 unknown, 禁 hardcode (研究明确 Wyckoff 不给固定 N)。"
+          },
+          {
+            "severity": "medium",
+            "title": "命名形态主观画法不可量化锚定, 与量化态冲突时无裁决规则(决策点16) — 引入不可验证的主观层",
+            "fix": "命名层定位为'量化态序列的只读派生翻译', 量化态永远是真相源。冲突 (量化判下跌但模板匹配老鸭头) 一律以量化态为准, 命名标签置信度 = 模板匹配度×量化态隶属度的乘积, 低于阈值不显示。这样命名形态永不能 override 量化判断, 消除主观性进入决策路径。"
+          },
+          {
+            "severity": "medium",
+            "title": "'分层穷尽/每bar必有归属'原则(§1.2)驱动加入 forward 无价值的填缝态 — 把档案完整性误当选股价值",
+            "fix": "区分两个标尺: 档案完整性 (覆盖率, 服务前端可解读) vs 选股价值 (forward 增量, 服务 KPI)。现有 7 态覆盖率已 100%。新增态的验收只看 forward 增量, 不看是否提高覆盖率。删除'枚举所有理论形态清单逐一核对'的穷尽目标 (决策点10) — 那是工程债+张冠李戴风险。"
+          },
+          {
+            "severity": "low",
+            "title": "斜率%阈值(6.55/-5.92)、动量阈(5.3)无理论一手支撑且是 self-tuned proxy, 跨尺度复用会放大 proxy 误差",
+            "fix": "研究已多次标注这些是纯 proxy 须 OOS 验证。若保留多尺度, 每个尺度的斜率/动量阈必须独立 walk-forward 标定 (周/月窗的斜率量纲不同), 禁直接缩放复用日线值。所有这类 proxy 阈值进 config 标注 # measured: sandbox OOS <id>, 无 forward 验证前标 confirmed_by_owner=false。"
+          }
+        ],
+        "missing": [
+          "forward-return 验证 gate 完全缺失: 方案 §5 的'覆盖完整性验证'只有可分性/转换矩阵/语义抽查, 没有一条把状态接到 fact_rally_stage 跑含成本条件化 forward 增量。这是 KPI(含成本年化≥30%/超额>0)的唯一穿透路径, 却完全没有。每个新态/overlay/事件必须有一条'它带来多少 forward 增量'的验收, 否则是为分析而分析。",
+          "PBO/CPCV 防选择偏差缺失: 参数空间膨胀到 ~200+ 时, 在多个 Optuna 目标里挑'最佳+2-3套次优'(§7) 必然有选择偏差。方案没有 PBO(probability of backtest overfitting)或 CPCV 守门, '次优套'之间的挑选本身就是 over-fit 来源。",
+          "增量验证协议缺失(每加一态的 ablation): 方案是'一次性设计 9态+位置+事件+4尺度+命名'的大爆炸式落地, 没有'逐态加入并 ablation 验 forward 增量'的增量协议。正确做法是从现有 7 态出发, 每次只加一个有消费者锚定的 overlay/事件, 验完 forward 增量再加下一个 — 而非一次膨胀到位再回头收拾。",
+          "态/事件的成本预算缺失: 方案没回答'4尺度×9态×命名形态全跑, 全宇宙×全历史的算力/Modal 成本是多少, 谁消费哪些输出'。grill gate 三问(跑完产出什么/谁消费/不跑行不行)对绝大多数新增维度答不出 — 单日/短期/26命名形态的消费者锚定是空的。",
+          "与档案系统 P1 roadmap 的边界缺失: dossier 设计 §7 的 P1 验收是'声明式config+边界耦合+per-TF+物化fact', 范围远小于本方案的爆炸式扩张。本方案实际是把 P1 撑成一个独立大项目, 却没说明哪些进 P1(形态维度成熟)、哪些推迟。范围蔓延(scope creep)未被识别。"
+        ]
+      },
+      {
+        "angle": "A股特性适配 (涨停板±10%/20% · T+1 · 一字板买不进 · 封单vs动量 · 跌停闷杀 · 壳/ST/低价股形态噪音 · 单K几何的A股语义)",
+        "overall_verdict": "REVISE",
+        "decision_calls": [
+          {
+            "point": "§8.2 放量下跌3分 (高/低/中位是3独立L2态还是1态+3位置L3)",
+            "call": "1态+3位置子态, 但低位放量下跌(Selling Climax)必须叠加'是否跌停/封跌停'判别——这是A股特化的硬分叉, 不只是pctile。fix里展开。",
+            "rationale": "A股跌停闷杀(放量跌停板)与普通'恐慌抛售见底'在形态上同为放量大跌, 但跌停封死=次日仍可能一字跌停连续闷杀, 不是Selling Climax见底而是流动性枯竭的下跌中继。纯pctile+前序态分不开这两者, 必须引入 down_limit 命中度(close<=down_limit*0.995 或 low触及down_limit)。raw_tushare_stk_limit 已有此数据但plan未用。"
+          },
+          {
+            "point": "§8.15 单日K线形态的信息量 + A股±10%限制对单K形态(光头光脚=涨停)的特殊含义",
+            "call": "REVISE — plan §8.15自己点了这个问题但没给解法, 且解法错位。光头光脚大阳=涨停不是'强势单K', 一字板更是OHLC全等于up_limit=几何退化(实体100%但根本买不进)。单K几何必须先过limit-board路由: 一字板/T字板/封板 三类单独成态, 不进通用marubozu/光头光脚桶。",
+            "rationale": "A股±10%(主板)/±20%(创业/科创68)硬截断使单K几何系统性失真: (1)一字板 open=high=low=close=up_limit → 实体0% but 涨幅+10%, 通用十字星/一字几何会判'doji=变盘'完全反了; (2)光头大阳(close=high)在A股极高概率=触及涨停, 是'买不进'信号不是'强势可追'信号; (3)±20%创业板与±10%主板同样的'光头光脚'代表的动量幅度差一倍, 单K几何阈值不能跨板块统一。plan §3.6把'光头光脚→marubozu→单K几何(实体%)'直接映射, 漏了limit截断这层A股物理约束。"
+          },
+          {
+            "point": "§8.1 上下文消歧PIT安全(前序主态as-of)",
+            "call": "PIT结构本身OK(features.py已铁律bars[:i+1]+量基准bars[:i]排当日), 不是A股特有问题; 但补一条A股PIT陷阱见missing(stk_limit的pre_close/复权口径)。",
+            "rationale": "前序态消歧的循环依赖是通用PIT问题, 此角度无增量裁断。但A股特有的是: up_limit/down_limit是基于未复权pre_close算的(±10%作用在前收盘价), 而feature panel走price_kline_qfq前复权——limit命中判别必须用未复权raw_tushare_daily或raw_tushare_stk_limit原值比对, 不能在qfq序列上判涨跌停(复权后close≠up_limit)。这是落地时的真金白银口径坑。"
+          },
+          {
+            "point": "§8.12 新增态over-fit风险 + §8.13 尺度×行为笛卡尔积爆炸",
+            "call": "PROCEED方向但A股视角加一条剪枝: 单日尺度对'中期主升浪选股'的增量在A股几乎为0(被limit截断+T+1吞掉), 应降级为'短期组合的构件', 不独立进软隶属/Optuna search space。",
+            "rationale": "A股单日大阳极大比例是涨停(买不进=不可消费), 单日大阴极大比例是跌停(T+1卖不掉=不可消费)。对'鱼身延续/鱼尾出场'这类隔日可执行的消费者, 单日裸K的可交易信息被涨跌停+T+1双重截断, 独立单日态徒增参数空间却无可执行alpha。这正是§8.13问的'单日对中期选股有增量吗'——A股答案: 基本是噪音, 留作短期组合构件即可。"
+          }
+        ],
+        "issues": [
+          {
+            "severity": "critical",
+            "title": "放量突破态在A股结构性失效: 封涨停=缩量不是放量, 一字板volume塌缩会被判成'无量假突破'(方向反)",
+            "fix": "plan §2/§3的'放量突破=量比>1.5~1.89x'判据对A股最强的突破信号(涨停板)系统性误判。A股放量突破有两种物理形态: (A)连续K线动量放量(可正常用量比), (B)涨停封板——封单越强成交越小(挂单买不到), 一字板volume趋近0。用vol_ratio判突破会把最强的一字涨停突破判成'缩量上涨/无量'(看空或不追), 方向完全反。fix: 新增limit-aware突破分支——引入 raw_tushare_stk_limit, 当 close>=up_limit*0.995(封板) 时, 突破强度用'封板/连板'语义(封单额、是否一字、连板数)而非vol_ratio; vol_ratio只对未封板的换手型突破有效。封板态单独标'涨停封板(买不进/需打板)', 是可见性而非可买入信号。这条不修, 放量突破态对A股主升浪起涨点(常以涨停启动)就是结构性瞎眼。"
+          },
+          {
+            "severity": "critical",
+            "title": "T+1未进入任何消费者锚定: 单日/短期态的'可买入率'和出场态的'可卖出率'未做体检, 直接喂Optuna会优化出不可执行的in-sample漂亮态",
+            "fix": "plan §7 Optuna目标(分离×覆盖/纯度/覆盖)、§5验证(归属率/转换矩阵/语义抽查)全程无'可执行性'维度。A股T+1: t日识别的'放量突破/起涨'态, 最快t+1开盘才能买; 若t+1一字涨停则买不进(skip), 若t日已涨停则t日根本没买入窗口。出场同理: '鱼尾/高位放量下跌'态若当日跌停封死, T+1才能卖且可能连续跌停闷杀, 出场态的纸面收益≠可实现收益。fix: (1)每个'入场类'态(放量突破/挖坑回收/缩量回踩起涨)在validation里加'T+1可买入率'(t+1非一字涨停的比例, 复用已有task #47'起涨点T+1可买入率体检'); (2)每个'出场类'态加'T+1可卖出率'(t+1非一字跌停比例); (3)Optuna目标函数或转正门必须含T+1可执行性惩罚, 否则会选出'专挑涨停日起涨'的态——in-sample分离漂亮但OOS含成本必崩(对照§4.5含成本红线: portfolio_backtest +45.4%不含T+1当最终决策的反例)。"
+          },
+          {
+            "severity": "high",
+            "title": "已存在的stk_limit真相源(up_limit/down_limit, PIT-clean 08:40盘前可用, 已universe_filter)被plan完全无视, 涨跌停判别靠形态近似=第二真相源",
+            "fix": "实测: raw_tushare_stk_limit 表已在sync_registry注册(api=stk_limit, target_table=raw_tushare_stk_limit, pit_anchor='8:40盘前更新->t日盘前即可用'罕见当日可用源, universe_filter=true), 给出每股每日精确 up_limit/down_limit。但 backend/services/technical_states/features.py 完全不消费它, plan全文也无一字提及涨跌停价。后果: plan想用'光头光脚/大阳/放量'近似判涨停=拿形态猜一个已有精确真相源的东西(违第一性原理'真相源唯一', 制造第二真相源)。fix: 在features.py或coupling层接入stk_limit, 派生 is_up_limit/is_down_limit/is_one_word_board(open=high=low=close=limit)/封板强度 作为A股专属上下文特征, 喂给放量突破/放量下跌/单K几何的limit-aware分支。这是最低成本最高收益的A股特化(数据现成、PIT干净、盘前可用)。"
+          },
+          {
+            "severity": "high",
+            "title": "±20%板块(创业300/科创688)与±10%主板(60/00)未分板路由, 所有幅度/动量/量比阈值跨板块统一=失真",
+            "fix": "universe含60/00(±10%)+30创业/68科创(±20%)四前缀, 但plan的mom20/range_pct/放量突破涨幅阈/单K几何实体%全是跨板块统一常数。同样'+8%单日'在主板=接近涨停的极端动量, 在创业板=普通中阳; '光头大阳'在主板触顶限于+10%, 创业板可到+20%, 实体%和动量分布完全不同分布。涨跌停态的pctile/分位也会被20%板块的更宽日内波动拉偏。fix: 凡涉及绝对涨跌幅/单K几何阈值/limit命中的判据, 按board_tier(±10% vs ±20%)分组路由阈值(config化, 不hardcode); Optuna按板块分层调参或加board作条件维度。否则creٍ业板的态分布会污染主板, 反之亦然(对照§4.5 selection bias反例: 按code排序只取00深主板的教训, 这里是阈值不分板的镜像问题)。"
+          },
+          {
+            "severity": "high",
+            "title": "低价股/壳股/次新股的形态噪音未过滤: universe只滤ST命名, 低价股(<3元)价格离散化+壳股脉冲式异动会污染态分布与'无偏差'硬约束",
+            "fix": "实测 backend/services/universe.py 排除规则仅3条(前缀/ST命名/90天无交易), 无低价股、无壳股、无次新股(上市<N月数据不足)过滤。A股特有噪音: (1)低价股(1-3元)价格档位粗(0.01元=1%跳), 单K几何/range_pct/十字星判别在低价股上离散化失真; (2)壳股(无基本面+小盘)常脉冲式涨停-跌停异动, 制造大量假'放量突破/放量下跌', 会喂坏Optuna的'无偏差占比≥阈值'硬约束(§7), 让形态分布被垃圾股主导; (3)次新股(上市3-6月内)无120 bar暖机历史(features.py warmup=120), 且开板后剧烈波动不符任何稳态形态。fix: universe或technical_states入口加可选过滤层(config化): 低价股门(close<阈值标low_price_noise但不删, 作子群分析)、次新股门(上市<warmup交易日直接skip, features.py已部分隐含但应显式)、壳股代理(成交额/流通市值下沿门)。至少在§5验证和§7 Optuna约束里把这些子群分开统计, 防垃圾股主导态分布。"
+          },
+          {
+            "severity": "medium",
+            "title": "RS相对强度维度(研究列为high盲点)对A股'普涨齐涨'噪音尤其关键, 但plan §8.8把它列为'可后置'低估了A股权重",
+            "fix": "研究JSON把RS列为2源硬门槛(Weinstein/Minervini)+直接对接KPI超额HS300>0。A股特有放大: A股板块轮动/政策普涨极端(指数一拉全市场跟涨), 无RS的'放量突破/上升通道'会塞满'大盘普涨带起的弱势齐涨股'——这正是A股选股最大的selection噪音源, 比美股更严重。plan §8.8问'现在加还是后置', 我的裁断: A股语境下RS不是可选乘子而是接近必需的去普涨过滤。实测HS300/指数benchmark数据已有(sync_registry: index_daily_benchmark, HS300全史2005+), 且项目已有sector-relative特征(*_tdx_l1_rel/sector_momentum)可复用。fix: RS作正交置信度乘子前置纳入(个股vs HS300超额 + vs 申万L2行业超额), 不改7态, 直接服务超额KPI穿透。后置=放任普涨股污染候选池。"
+          },
+          {
+            "severity": "medium",
+            "title": "挖坑洗盘/Spring态(研究high盲点)在A股需与'跌停闷杀'区分, 否则会把连续跌停的真下跌误判成'假跌破回收'起涨点",
+            "fix": "研究建议新增'假跌破回收'态(跌破区间下沿+N日内收回+收回缩量)服务起涨点。A股陷阱: 主力挖坑(诱空后V形收回)与'利空连续跌停闷杀后的弱反弹'在跌破阶段同形, 但后者收回往往是跌停打开后的无力反弹(放量但涨幅小)而非Spring的缩量收回。若N日内'收回'恰逢跌停打开的技术性反抽, 会把还在下跌通道的票误判成起涨。fix: '假跌破回收'态的破位阶段必须排除'封跌停/一字跌停'(用down_limit命中)——真Spring是可交易的恐慌杀跌(有量能换手), 不是封死跌停的流动性枯竭; 收回判据除缩量外加'收回过程无跌停封板'。直接服务'主升浪猎手起涨点T+1命中率'的真金白银。"
+          },
+          {
+            "severity": "medium",
+            "title": "复权口径×涨跌停判别的PIT坑: feature panel走前复权(qfq), 但涨跌停是未复权pre_close上的±10%, 在qfq序列上判limit会系统性错",
+            "fix": "实测 price_kline_qfq_tushare 是前复权(回测主源), 而 up_limit/down_limit 基于未复权前收盘价计算(A股±10%作用于未复权pre_close)。若在qfq复权后的close上直接比'是否=up_limit'或'单日涨幅是否=10%', 在有分红除权的票上会系统性判错(复权后单日pct≠真实涨跌停幅度, 除权日附近尤甚)。fix: 涨跌停命中判别必须在未复权空间做——直接用 raw_tushare_stk_limit 的 up_limit/down_limit 与 raw_tushare_daily 的未复权 close/high/low 比对得 is_limit, 把这个布尔/强度作为特征带回qfq feature panel, 而不是在qfq价上重算涨跌停。这是落地时极易踩的真金白银口径错误。"
+          }
+        ],
+        "missing": [
+          "涨跌停态本身缺失为一级形态: A股最高频、最具方向含义的单日形态就是涨停/跌停/一字板/T字板/连板, plan的L2/单K层完全没有'涨停封板''跌停闷杀''一字板''连板'这些A股原生态。这不是子态修饰, 是A股特有的一级可识别态(且有现成stk_limit真相源)。应在L2或单K层显式建'涨跌停族'态。",
+          "T+1可执行性维度(可买入率/可卖出率)全缺: §5覆盖验证和§7 Optuna目标都没有'识别到的态在T+1能不能真交易'这一维度。对一个服务实盘选股/出场的档案系统, 不可执行的态=噪音。须把T+1可买入率(入场态)/可卖出率(出场态)做成一等验证指标和转正门(已有task #47可挂)。",
+          "连板/打板语义缺失: A股主升浪起涨极常以涨停甚至连板启动, '连板数''首板/二板''打板封单强度'是A股主升浪猎手的核心可解读维度, plan的'放量突破→上升通道'平滑趋势刻画抓不到这种跳跃式启动。档案系统给'任一股多维度可解读'若漏连板维度=漏掉A股最强动量语义。",
+          "成交额/流动性门缺失(可买入额): 即使态识别正确且可买, A股小盘/低价股的成交额可能小到散户都打滑点, 大资金更买不进。档案的'可解读'应含'这个态在这只票上可投入资金量级'(成交额分位), 否则鱼身延续态在僵尸股上识别出来也无法消费。",
+          "跌停闷杀连续性缺失: '低位放量下跌=见底'的理论判据在A股遇连续跌停(利空闷杀, t/t+1/t+2连续一字跌停)会反向——不是见底是流动性枯竭的延续。须建'连续跌停''跌停打开'子结构区分一次性恐慌杀跌(可能见底)vs连续闷杀(规避), 用down_limit命中连续性判别。",
+          "ST标记的PIT历史缺失风险: universe用当前股票名判ST(is_st_stock按名前缀), 但形态识别是历史回看——历史上某段是ST(±5%涨跌停, 规则不同)、后来摘帽的票, 若用当前名判会错判历史那段的涨跌停幅度和形态。须用PIT ST日历(CLAUDE §4.5提到的raw_tushare_stock_st)而非当前dim名, 否则历史ST期的±5%涨跌停态会被±10%口径污染。"
+        ]
+      },
+      {
+        "angle": "消费者锚定 / 真金白银 (mio协议10): 这套形态识别服务谁的哪一步? 主升浪选股要的是 起涨点识别 / 鱼身续持 / 鱼尾出场 — 三个真金白银决策。我按\"每个态/事件/命名形态直接服务哪个决策\"逐一拷问, 砍掉\"为识别而识别\"的花活。",
+        "overall_verdict": "REVISE",
+        "decision_calls": [
+          {
+            "point": "2 — 放量下跌3分: 独立L2态 还是 1态+3位置L3子态",
+            "call": "1个L2态(放量下跌)+位置L3子态, 但只保留高位/低位两个有决策动作的子态, 砍掉中位(下跌中继放量)。",
+            "rationale": "消费者锚定: 高位放量下跌=鱼尾出场(直接服务出场决策), 低位放量下跌=Selling Climax反转预警(服务起涨点决策的前置)。这两个有明确真金白银动作。但'下跌中继放量'的动作是'延续/规避'——主升浪猎手在下跌通道里本来就不持仓也不入场, 识别它产出的决策=已经在做的事(不碰), 0增量。拆成独立L2态徒增软隶属维度+over-fit面积(§8.12担忧的来源之一)却无消费动作。砍。位置消歧本身=对的方向(研究5+源确认), 但拆几个粒度要按'是否产生新动作'切, 不是按'语义是否不同'切。"
+          },
+          {
+            "point": "1 — 上下文消歧用'前序主态(as-of dominant)'是否引入循环依赖/前瞻",
+            "call": "用纯瞬时 pctile + 距前高/前低 做消歧, 不用'前序主态(near-K dominant)'。位置消歧的真相源是价格位置(瞬时可测), 不是派生的'前序态'。",
+            "rationale": "第一性+真金白银双重理由。(1)真相源: 高位/低位的本质是'价格在历史区间的分位', 这是K线直接可测的瞬时量, 不需要先跑一遍分类器产出'前序dominant态'再回喂——后者是派生中间表(违宪法§1.0)且引入分类器自指(t的态依赖t-1的态依赖...)的状态污染, classifier.py一旦有bug会沿时间轴传染。(2)PIT: 'as-of近K dominant'看似PIT安全, 但'前序趋势'(上涨后/下跌后)用'距前高距前低'+'近N日斜率符号'就能纯瞬时表达, 信息等价却无自指。§8.1把这列为待决策点说明方案自己也不确定——消费者锚定的答案是: 选不引入派生依赖的那个, 除非能证明前序态带来瞬时特征给不了的增量(目前无证据)。"
+          },
+          {
+            "point": "8 — RS正交维度: 现在加 还是 后置",
+            "call": "现在加, 且提为P0(与起涨点确认门并列最高优先), 不是'正交维度可选'。",
+            "rationale": "这是全方案里唯一直接穿透KPI'超额HS300>0'的维度。研究双源硬门槛(Weinstein四要素之一+Minervini Trend Template硬过滤), 且memory feedback-param-selection-peek的教训正是'真alpha≈0源于小盘beta'——RS(个股vs大盘超额)恰好是把'大盘普涨齐涨股'从'真领涨股'里筛掉的结构性工具。没有RS, 放量突破/上升通道会纳入一堆弱势齐涨股, 选出来的'主升浪'可能只是beta。方案把它降级成'置信度乘子(不改主态)'对——但'后置'是错的: 它不是锦上添花, 是KPI达标的必要条件。项目已有 *_tdx_l1_rel/sector_momentum 可复用, 实现成本低, 没有理由后置。"
+          },
+          {
+            "point": "13 — 尺度×行为笛卡尔积爆炸: 单日K线形态对中期主升浪选股有增量吗",
+            "call": "砍掉'单日裸K线形态独立输出'(十字星/锤子/光头光脚 作为独立识别态)。单K几何只作为'短期组合'与'命名形态模板'的构件, 不独立进档案维度①、不进软隶属、不调Optuna。",
+            "rationale": "消费者锚定直接证伪: 主升浪三决策(起涨点/鱼身/鱼尾)的最小有效时间尺度是'多日序列'(突破要守住T+1~N、回踩要看序列、出场要看派发过程)。单根K线(十字星=变盘, 信息稀疏+噪音大, §8.15自己也承认'易过拟合')对'是否续持鱼身'给不了独立动作。A股±10%涨跌停还让光头光脚的语义扭曲(涨停=买不进, 形态再漂亮也不可交易)。这是典型'为识别而识别'的花活——档案'说人话'听起来美, 但消费者(选股决策)不消费单日态的独立输出。保留它作短期组合构件即可(锤子线进'早晨之星'序列才有意义)。砍独立输出=砍掉4尺度里最虚的一档+一大块over-fit面积。"
+          },
+          {
+            "point": "14 — 命名形态(老鸭头/头肩): 模板匹配派生标签 还是 独立识别态",
+            "call": "派生标签(模板匹配), 不进软隶属、不独立调参。且第一批只实现直接服务三决策的少数命名形态(老鸭头/spring挖坑/cup-handle起涨类), 头肩顶/双顶等纯'看空已持仓'类延后, 红三兵/乌云盖顶等纯单日组合美化类砍。",
+            "rationale": "消费者锚定: 命名形态的价值=让档案对人'说人话', 但选股决策消费的是底层量化态/事件, 不是标签。老鸭头本身='上升通道→缩量回踩→横盘→放量突破'的态序列, 它的alpha已经在底层态/事件里了, 命名层只是re-label——独立调参=重复计费且制造'命名层vs量化层冲突'(§8.16自找的麻烦)。把它定为纯派生标签(量化层为准, 命名层只贴名)消除冲突。第一批按'服务哪个决策'筛: 服务起涨点的(老鸭头/spring/cup-handle)先做, 服务出场的(头肩顶)次之, 纯K线美学的(红三兵)砍。否则就是先建一个识别博物馆再找用途——倒置了。"
+          },
+          {
+            "point": "3 — 边界事件 vs 状态: 假突破/挖坑/climax 如何与逐bar软隶属共存",
+            "call": "保留为离散overlay事件(不进软隶属), 且这是全方案最高真金白银价值的部分——假突破(鱼头追高接盘防护)、挖坑spring(鱼头起涨点)、高位climax/破位(鱼尾出场)直接命中三决策。但overlay的触发必须含T+1~N收盘确认门, 不能逐bar瞬时。",
+            "rationale": "消费者锚定: 这4个边界事件是方案里最值钱的——它们恰好是三决策的'扳机'。研究把'假突破/失败突破'列为跨4源最强一致的真金白银盲点(不识别=派发顶假突破处追多接盘), '挖坑spring'是最经典鱼头买点。逐bar软隶属态(上涨/横盘/下跌)只能告诉你'现在是什么', 而事件告诉你'现在该动作'——后者才是消费者要的。overlay/不进软隶属是对的(事件是离散拐点不是连续隶属)。唯一约束: 必须收盘确认+N-bar(研究医嘱), 否则whipsaw把真金白银割掉。"
+          },
+          {
+            "point": "9 — Optuna无偏差约束: '每态占比≥阈值'强制均衡是否扭曲",
+            "call": "删掉'每态占比≥阈值'作为硬罚分约束。无偏差(无塌缩)应改为诊断性WARN, 不进objective。objective只锚定'对三决策的forward增量(含成本超额)'。",
+            "rationale": "真金白银+消费者锚定双重否决。市场真实分布本就不均(下跌态/横盘态远多于放量突破), 强制每态占比达标=为了'形态可见'这个工程美学目标去扭曲分类器, 把不该归入某态的bar硬塞进去——这是把'识别完整性'凌驾于'决策正确性'之上, 本末倒置。消费者不关心'每个态都有非平凡占比', 消费者关心'放量突破态选出来的股forward含成本超额是否>0'。某态自然塌缩为0可能正说明那个态在A股不存在/不可交易(信号), 不是bug。objective应是forward-anchored(选出的股的含成本超额), 无偏差降级为体检指标。"
+          },
+          {
+            "point": "5 — 缩量回踩归L1'下跌'还是'上涨'大类",
+            "call": "归'上涨'大类的回调子态(升势中回踩), 但必须带研究医嘱的破位降级硬门——且按研究verification(holds=false)校正: 破位门触发条件用'收盘跌破前一swing low'(道氏反转结构)作硬门, '回踩跌破突破位'仅作降级(降仓/降评分)软信号, 不是'突破失败/反转'判定。",
+            "rationale": "消费者锚定: 缩量回踩直接服务'鱼身续持'决策(健康回踩=继续持有, 不要被洗下车)。归'下跌'大类会让持仓决策误判'趋势反转该出场'——砍在主升浪的回踩坑里。但研究verification明确推翻了原方案'回踩跌破=突破失败=反转, 三源一致'的表述(道氏误拼+Bulkowski过度延伸, Bulkowski实测跌破突破位后仍65%续涨, 仅EV从40%降到29%)。所以降级门要分两层: 收盘破前低=道氏反转硬门(可出), 回踩跌破突破位=EV降级软信号(降仓不清仓)。不能把'概率变弱'写成'形态已废'——那会在65%还会续涨的股上过早砍仓, 同样亏真金白银。"
+          }
+        ],
+        "issues": [
+          {
+            "severity": "high",
+            "title": "方案缺'消费者锚定'章节: 每个态/事件/形态没有标注'服务三决策中的哪一个', 导致无法区分真金白银功能 vs 识别博物馆",
+            "fix": "在§2分层结构表加一列'服务决策(起涨点/鱼身续持/鱼尾出场/无)'。任何标'无'的态/事件/命名形态进入'砍或降级为纯档案展示'审查队列。这是整个评审的根问题: 方案以'穷尽覆盖K线'为北极星(§0/§1.2/§1.6无偏差可见), 但项目北极星是'主升浪选股KPI达标'。'穷尽覆盖'是手段不是目的——一个永远不产生交易动作的态(如下跌中继放量、纯单日十字星独立输出)识别得再准, 对KPI=0增量。当前方案把'识别完整性'当成了一等目标, 这是消费者锚定的结构性偏离(同memory feedback-alpha-methodology-adherence: 缺消费者锚定→为识别而识别)。"
+          },
+          {
+            "severity": "critical",
+            "title": "Optuna objective 未锚定 forward 含成本超额, 而是锚定'分离度×覆盖/语义符合度/转换矩阵对角占优'——优化了'分类好看'而非'选股赚钱'",
+            "fix": "§7的Optuna目标(均衡分离×覆盖/高分离纯度/高覆盖/理论锚定预设)全是'分类质量'指标, 没有一个是'该态/事件选出的股的forward含成本超额'。这会重演memory feedback-param-selection-peek的覆辙: 分类器在in-sample分得漂亮(高分离纯度), 但分出来的'放量突破'股forward超额≈0(全是小盘beta)。修: 至少一套预设的primary objective必须是'按该态/事件入场的walk-forward含成本超额(vs HS300)', 分离度/覆盖降为约束或次级。没有这个, 整套taxonomy可能是一个OOS漂亮但永远不赚钱的精致分类器。这是真金白银红线: 优化目标=分类美学≠选股盈利, 不修=方向性白跑。"
+          },
+          {
+            "severity": "high",
+            "title": "起涨点决策(三决策里最值钱的鱼头)在L2态层缺位, 只散落在边界事件overlay里, 优先级被'9态穷尽覆盖'稀释",
+            "fix": "主升浪猎手最核心的真金白银动作=买在起涨点(鱼头)。但方案L2态里直接服务起涨点的只有'放量突破'(且研究指出它缺确认门=假突破误判), 真正的起涨信号spring/挖坑被放在'边界事件'(第二梯队)。建议重组优先级: P0=起涨点簇(放量突破+确认门 / spring挖坑回收 / cup-handle出水), 这一簇必须先于'横盘三态边界切分'(§8.6)、'单日K线'(§8.13)、'命名形态词汇层'(§3.6)等做。当前§8把16个决策点平铺, 把'起涨点确认门'(真金白银P0)和'横盘pctile带不留缝'(工程美学)同级排列, 优先级信号丢失。"
+          },
+          {
+            "severity": "medium",
+            "title": "'高位放量下跌=鱼尾出场'方向正确但触发过晚, 缺更早的派发拐点(研究指出UTAD/2B/顶背驰早于均线走平数日)",
+            "fix": "用户核心例子'高位放量下跌→鱼尾出场'方向是真金白银对的(研究Wyckoff Distribution/SOW确认), 评审认可。但'高位放量下跌'已经是破位下跌了——等到这一步出场, 鱼尾的肉已经被吃掉一截。研究明确: 顶部更早的动态拐点是effort-vs-result背离(量增价幅收窄)/UTAD假突破/缠论顶背驰, 早于静态'均线走平+放量下跌'数日。鱼尾出场要赚钱, 出场信号要尽量早。修: 把effort/result背离(方案§2正交维度已列, 研究medium盲点)提为鱼尾出场的领先信号, 与'高位放量下跌'(滞后确认信号)分层——领先信号触发减仓预警, 滞后信号触发清仓。不要只靠最滞后的破位信号出场。"
+          },
+          {
+            "severity": "medium",
+            "title": "L1三大类(上涨/横盘/下跌)对消费者是冗余中间层——选股决策直接消费L2态/事件, L1只是分组标签",
+            "fix": "L1的存在理由(§0用户指定的'先粗分三大类')是组织/可解释, 不是决策。消费者(选股)从不消费'这只股现在是上涨大类'这种粒度——太粗, 不产生动作。建议L1降级为纯派生分组维度(由L2态聚合而来, 不独立调参/不独立验证/不进objective), 而不是独立的识别层跑'价相对均线+动量符号+斜率'三条件再调阈值。这能砍掉一层阈值(L1的均线/动量/斜率阈)和一层验证负担。第一性: L1可由L2态映射出(放量突破/上升通道/缩量上涨→上涨), 不需要独立判据=独立出bug的地方(宪法§1.0能删必删)。"
+          },
+          {
+            "severity": "low",
+            "title": "命名形态主观性(§8.14自承'不同人画法不同')与项目measured-not-estimated红线冲突, 需明确'命名层0判据权'",
+            "fix": "老鸭头/头肩顶的几何主观性(颈线怎么画、把手算几天)天然违背§4.2/measured。修: 在config里把每个命名形态的模板规则写成纯量化序列条件(态序列+几何不等式), 命名只是这些量化条件全满足时贴的标签, 命名层本身0自由判据权、0独立阈值(所有阈值都来自底层量化态/事件的阈值)。这样命名形态不引入任何新的可调参数=不增over-fit面积, 纯做人话翻译。§8.16的'命名vs量化冲突'问题随之消失(量化层永远为准, 命名层无独立判断)。"
+          }
+        ],
+        "missing": [
+          "缺'forward验证'闭环: 方案§5覆盖完整性验证全是'分类质量'(归属率/转换矩阵/无偏差/语义抽查), 0个'按这个态/事件入场的含成本forward超额是多少'。没有forward闭环, 通过§5全部验证的分类器仍可能完全不赚钱。必须加: 每个'服务三决策'的态/事件, 报walk-forward含成本超额(vs HS300)+样本数, 否则不算delivery(项目§6文档纪律: 单分类指标improve不算delivery)。",
+          "缺'可交易性过滤': A股涨停板/T+1对形态的真金白银影响只在§8.13/§8.15一笔带过。起涨点识别出来但当天涨停=买不进(光头光脚大阳=涨停), spring收回当天封板=接不到货。必须有'信号→可执行'的滑点/涨停过滤层, 否则识别出的起涨点是纸面alpha(memory feedback含成本红线: portfolio_backtest+45.4%不含T+1=假象)。这直接决定鱼头能不能真买到。",
+          "缺'与现有主升浪猎手pipeline的接口契约': 方案地基=股票档案系统(维度①), 但没说这套态/事件/形态如何喂给现有的选股决策器。是作为feature进选股模型? 还是作为硬过滤门? 还是作为人工看盘的展示层? 消费方式不同, 验证标准和优先级完全不同。不锚定消费接口=方案悬空(memory feedback-alpha-methodology-adherence: 无消费者锚定是第2次跑偏的根因)。",
+          "缺'砍掉清单'的显式裁决: 方案§8列了16个待决策点全是'怎么做'(how), 没有一个是'这个要不要做/能不能砍'(whether)。一个以'穷尽覆盖'为原则的方案天然倾向只增不减。应有一节显式列'本期不做/砍掉'(如: 下跌中继放量、单日态独立输出、头肩顶等纯出场后置形态、纯K线美学命名形态), 用奥卡姆守住范围, 否则9态×位置×4尺度×命名形态的笛卡尔积(§8.13自己点名的爆炸)会拖垮交付且制造over-fit面积。",
+          "缺'最小可交付切片(MVP)'定义: 方案是一次性铺开9态+边界事件+4尺度+命名词汇层+7新模块。但消费者只需要先验证'起涨点识别能不能提升含成本超额'。应定义P0切片: 起涨点簇(放量突破+确认门 / spring) + RS乘子 + 含成本forward验证, 先证这一刀对KPI有增量, 再扩。一次铺开=赌大方向对(违mio分层非平均: 地基先行, 不是平均用力)。"
+        ]
+      },
+      {
+        "angle": "完整性批判 — 7 角度评审都漏掉的形态/决策点/盲区 (cross-review gap audit)",
+        "overall_verdict": "REVISE",
+        "decision_calls": [
+          {
+            "point": "4 (缩量上涨拆几态) — 所有评审都在'config把缩量上涨归bull'上打转, 全漏了更底层的 config↔design 版本分叉",
+            "call": "BLOCK 任何对'缩量上涨'的拆/改裁决, 直到先裁决 v2(6态)↔v3(7态) 哪个是真相源。实测: 活 config (backend/config/technical_states.yaml meta.version=2, tuned_on=sandbox P1/v3) 含 7 个状态且 缩量上涨 在列 (grep 4 处), test_technical_states.py:26 硬断言状态集合恰为这 7 个; 但 sandbox/state_quantify/notes.md v2 SPEC 第 19 行明写'6 顶层态(缩量上涨 8.4%退化→并入上升通道子档)'。即: 活 config 是 v3(7态保留缩量上涨), notes/design 是 v2(6态删缩量上涨)——两套真相源并存且互相矛盾, plan §2 又在此之上再拆 2 态。",
+            "rationale": "3 个评审(理论/架构/over-fit)都引用 notes.md 第 19 行说'已实测退化要删', 但没有一个去核对活 config 里它根本没删、test 还在锁它。在版本分叉未裁决前讨论'拆 2 态还是 1 态+子态'是空中楼阁——可能 v3 才是 owner 最终选择(覆盖率 100%/80% 干净), notes v2 只是中间探索。这是 chunkymonkey 反复踩的'探索期产物 vs promoted 产物混淆'坑(CLAUDE §3 promotion 纪律), 必须先认定 config(promoted)还是 notes(sandbox)为准, 否则所有缩量上涨裁决都建在流沙上。"
+          },
+          {
+            "point": "全局 (P6 消费者锚定) — 消费者锚定评审强调'接 fact_rally_stage 跑 forward', 但全 7 评审都漏了 fact_rally_stage 自身是 POST-HOC 非 live",
+            "call": "REVISE 所有评审反复要求的'forward-return gate'的可行性前提。实测 build_rally_stage.py 第 7-9 行 docstring: 'stage 标签 = POST-HOC (依赖 peak 事后才知) = 结果倒推分析用 ... 非 live conditioning'; segment_episode 用 (close-bottom)/(peak-bottom) 切段, peak 是未来信息。",
+            "rationale": "消费者锚定评审(及 PIT、over-fit 评审)一致要求'每个态/事件接 fact_rally_stage 验含成本 forward 增量'作为唯一验收。但 fact_rally_stage 的 stage 本身用未来 peak 切分——它只能回答'在已知是鱼身/鱼尾的那段, 这个态的特征长什么样'(描述性), 不能直接当 live forward 收益 gate。真正的 forward 验证要么 (a) 在 stage 窗内做'条件化持有到信号反转'的反事实(goal.md D-step 的判据), 要么 (b) 用 live-confirmable 出场点。没有一个评审区分'post-hoc stage 描述性验证'和'live forward 收益验证'——这正是 goal.md 反复纠偏的'label 可用未来=合法 / 成交点用未来=不现实'。评审把这两者混为'forward gate', 会让方案误以为'接上 fact_rally_stage 就 PIT 干净'。"
+          },
+          {
+            "point": "全局 (DimensionInterpreter 协议) — 架构评审深挖了 classify_* 内部 API, 但全 7 评审都漏了 master_design §2 的 compare/screen 两个对外协议接口与软隶属态的根本不兼容",
+            "call": "REVISE — 软隶属态/边界事件/命名形态如何实现 compare(横截面 peer 排名)和 screen(列出符合某态的所有股, =默认视图)无人回答。master_design §2 协议是 interpret/series/compare/screen 四个, §5/J3 明确默认视图 = screen() 返回的股票列表。",
+            "rationale": "架构评审(可实现性角度)详查了 classify_bar/state_scores/_sub_state/coupling, 但只覆盖 interpret(单股单点)。compare(rank_pct/peer_median)和 screen(filter→股票列表)是档案系统的对外承重接口(默认前端视图 = screen 列表 + peer 对比), 却需要把'软隶属度向量+边界事件 overlay+命名形态标签'压成一个可横截面排序/可过滤的标量或离散标签。一个 bar 同时 0.6 上升通道+0.3 缩量回踩+触发 spring 事件+匹配老鸭头模板, screen('放量突破') 收不收它? compare 按哪个维度排 rank_pct? 没有评审触及, 但这决定了整套 taxonomy 能否真接进档案系统的默认视图。这是 plan §6'dossier 聚合层组装'一句带过、评审集体跳过的接口契约。"
+          },
+          {
+            "point": "全局 (无偏差可见原则的自相矛盾) — over-fit/PIT 评审都建议'删每态占比≥阈值硬约束', 但全漏了 plan §1.6 把'无偏差可见'列为验收标尺#6 与 §5'无塌缩'验证, 删约束=动摇 plan 自己的地基原则",
+            "call": "REVISE — 不能只删 Optuna 约束而不同步修 plan §1.6/§5 的'无偏差可见'原则本身。评审建议删硬约束是对的, 但留着原则#6 会让下一个 session 重新加回来。",
+            "rationale": "两个评审(over-fit/PIT)都正确指出'每态占比≥阈值'是 over-fit 引擎且若用全期分布算=泄漏。但他们只删了 §7 的 Optuna 约束, 没人回到 plan §1.6('每个形态都被充分识别, 无某态塌缩为 0, 否则形态不可见=偏差')和 §5('每个 L2 态在全宇宙都有非平凡占比')这两条被列为最高验收标尺的原则。'无偏差可见'这个原则本身就是错的——climax/spring 天然罕见, 强求'非平凡占比'与'形态真实分布'对立。删约束治标, 删/重写原则#6 才治本。评审没有上溯到原则层, 留下'机械门删了但宪法还在'的复发隐患。"
+          },
+          {
+            "point": "全局 (现有 7 态的 mom20 阈值矛盾) — 覆盖完整性评审查了 pctile 带留缝, 但全漏了 缩量回踩 与 缩量上涨 的 mom20 条件在活 config 里直接冲突重叠",
+            "call": "REVISE — 缩量回踩(config 要求 mom20∈[-8%,-0.93%], 即下跌动量)与 缩量上涨(config 要求 mom20>2%, 即上涨)在 mom20 维度本不重叠, 但二者都靠'量比低于'+'均线斜率>0'(升势)定义, 在 mom20≈0 的过渡带会和 上升通道(mom20>0)三方抢分。实测 config 第 56-61 行 vs 74-80 行。",
+            "rationale": "覆盖评审正确抓了 pctile 带(0.475-0.717 中位横盘留缝), 但没人逐条核对活 config 的 mom20 数轴。缩量回踩的'均线斜率>0(升势)+ mom20 负(回调)+ 量比低'和 上升通道的'均线斜率>0 + mom20>0'共享升势前提, 差别只在 mom20 符号; 而 缩量上涨'均线斜率>0 + mom20>2% + 量比低'与 上升通道在 mom20>2% 区高度共线(都升势, 只量比不同)。这是活 config 已存在的三态共线, 不是 plan 新增的——评审讨论的'softmax 共线退化'问题在当前 config 就已发生, 却没人去 DB 实测这三态的实际 membership 重叠/占比。穷尽覆盖证明缺的是'对现有 config 三态共线的实测占比', 不只是 plan 新态。"
+          }
+        ],
+        "issues": [
+          {
+            "severity": "critical",
+            "title": "config↔notes 版本分叉无人发现: 活 config 是 7 态 v3(含缩量上涨), notes/design 是 6 态 v2(删缩量上涨), 三处评审引 notes 论证却没核对 config 已偏离",
+            "fix": "3 个评审(理论严谨/架构/over-fit)都把 notes.md 第 19 行'缩量上涨 8.4%退化→并入上升通道'当成既成事实来论证'缩量上涨该删', 但实测活 config (backend/config/technical_states.yaml meta.version=2, tuned_on=sandbox P1/v3) 保留 7 态含缩量上涨, test_technical_states.py:26 硬断言这 7 态, classifier.py multi_tf bull 集合也含缩量上涨。即 promoted config = v3(7态保留), sandbox notes = v2(6态删除), 两者矛盾且并存。这是 CLAUDE §3 promotion 纪律的反例(探索期 v2 结论 vs promoted v3 结论混淆)。落地前必须: (1) 裁决 v2 还是 v3 是真相源(config 是 confirmed_by_owner=false 的 promoted, notes 是 sandbox 草稿——按纪律 promoted 优先但 owner 未确认); (2) 若取 v2 则同步改 config+test+classifier bull 集合; (3) plan §2 在认定真相源前不得在缩量上涨上再叠加拆态决策。评审集体在未对账的前提上论证, 结论(删/拆)可能全错向。"
+          },
+          {
+            "severity": "critical",
+            "title": "P6 消费者 fact_rally_stage 是 POST-HOC 非 live, 但全 7 评审把'接 fact_rally_stage 验 forward'当 PIT 干净的终极 gate",
+            "fix": "消费者锚定/PIT/over-fit 三评审一致要求'每个态/事件接 fact_rally_stage 跑含成本 forward 增量'作唯一验收。但 build_rally_stage.py 第 7-9 行明示 stage 用未来 peak 切分(progress=(close-bottom)/(peak-bottom))= POST-HOC 结果倒推, 非 live conditioning。后果: 直接拿 fact_rally_stage 的 stage 标签当 forward 收益 gate, 等于用'已知这段是鱼尾'去验'鱼尾出场态有没有用'——是描述性吻合度, 不是可交易 forward 收益。正解(goal.md D-step 判据): 验收必须是'在 stage 窗内, 用 live-confirmable 的态/事件触发条件化持有到信号反转 → 含成本绝对收益', 出场点只能用 ≤t 信息(顶是事后±窗确认 label 合法, 但成交不能用未来顶)。评审需把'post-hoc stage 描述性验证(IC 快筛)'与'live 反事实 forward 收益(C-R1 裁决)'分开, 否则方案会误以为接上 fact_rally_stage 就万事大吉, 重蹈 goal.md'label 用未来合法 / 成交用未来不现实'的混淆。"
+          },
+          {
+            "severity": "high",
+            "title": "DimensionInterpreter 的 compare/screen 协议与软隶属态不兼容, 架构评审只覆盖 interpret 单股单点",
+            "fix": "master_design §2 协议是 interpret/series/compare/screen 四接口, §5/J3 明确默认前端视图 = screen() 返回股票列表 + compare() 的 peer rank。架构评审(可实现性角度)详查 classify_bar/state_scores/coupling 但只对应 interpret。未回答: (1) screen('放量突破') 如何从'软隶属度向量(一股 0.6 上升+0.3 回踩)+边界事件 overlay+命名形态标签'里判定'符合放量突破'(阈值化软隶属? dominant only? 含 overlay?); (2) compare 的 rank_pct 按哪个标量横截面排(membership 分? 置信度? 哪个态的?); (3) 边界事件(稀疏离散)和命名形态(派生标签)进不进 screen 过滤维度。这是档案系统对外承重接口, 决定 taxonomy 能否接进默认视图, 但 7 评审无一触及。plan §6 'dossier 聚合层组装'一句带过, 必须补 screen/compare 对软隶属+overlay+命名三层的归约规则。"
+          },
+          {
+            "severity": "high",
+            "title": "'无偏差可见'(plan §1.6/§5 验收标尺#6)是错误地基原则, 评审只删了下游 Optuna 约束没上溯删原则",
+            "fix": "over-fit/PIT 评审正确删了 §7'每态占比≥阈值'硬约束(over-fit 引擎+全期分布泄漏)。但 plan §1.6 把'无偏差可见: 每个形态都被充分识别(无某态塌缩为 0), 否则形态不可见=偏差'列为 6 大验收标尺之一, §5 把'每个 L2 态在全宇宙都有非平凡占比(无塌缩)'列为穷尽证明。这两条原则本身错: climax/spring/低位放量下跌天然罕见, '非平凡占比'与'真实市场分布'对立, 强求均衡=拟合化妆指标。评审只动机械门(Optuna 约束)没动宪法(原则#6), 留'门删了但原则还在'的复发隐患——下个 session 会照原则#6 重新加回约束。修: 删/重写 §1.6 原则#6 为'每态占比反映市场真实分布, 罕见态只需 >0 可见, 不追求均衡; 占比永不作优化目标'; §5'无塌缩'改为'占比=0 需归因(该态 A股不存在/被吞/定义错)而非自动判 bug'。"
+          },
+          {
+            "severity": "high",
+            "title": "活 config 现有 7 态已存在三方共线(缩量回踩↔缩量上涨↔上升通道共享升势前提), 覆盖评审只查了 plan 新态没实测现有态占比重叠",
+            "fix": "覆盖完整性评审抓了 pctile 带(0.475-0.717 中位横盘留缝)和 plan 新态共线, 但没去 DB 核对活 config 现有 7 态的实际 membership 重叠。实测 config: 缩量回踩(均线斜率>0 升势 + mom20∈[-8%,-0.93%] + 量比<0.851)、缩量上涨(均线斜率>0 + mom20>2% + 量比<0.795)、上升通道(均线斜率>6.55% + 多头排列 + mom20>0)三态共享'升势(均线斜率/mom 正)'前提, 仅靠 mom20 符号和量比区分, 在 mom20≈0 和量比中性带高度共线。softmax 退化问题(评审讨论 plan 新态时担心的)在当前 config 就已发生。修: 落地前先对现有 7 态在全宇宙跑实测——每态占比、两两 membership 相关性、过渡带(covered=False)bar 的语义抽样, 证明现有桶定义本身不共线, 再谈加新态。评审把'共线风险'全归给 plan 新态, 漏了地基(现有 config)可能已带病。"
+          },
+          {
+            "severity": "medium",
+            "title": "现有 multi_tf bull/bear 硬编码集合若按 v2(删缩量上涨)或 plan(加放量下跌/中继平台)改, mtf_aligned 会静默失真, 但无任何评审给出'改态必须同步改哪些硬编码点'的完整清单",
+            "fix": "架构评审(low issue)提到 classify_multi_timeframe bull/bear 硬编码需同步, 但只点了这一处。实际改态/删态/加态牵动至少 4 处硬编码: (1) classifier.py:149-150 bull/bear 集合(影响 mtf_aligned); (2) _sub_state() L77-98 的 if/elif 主态分支链(每个主态硬编码子态逻辑); (3) test_technical_states.py:26 状态集合断言(改态即测试红); (4) coupling.py 的边界耦合参数引用(config 第 102-111 行按态名引参数, 删/改态名即耦合断链)。没有评审给出'改 taxonomy 的同步改动 checklist'。修: plan §6 模块分解需附'加/删/改一个态的同步改动点清单'(config 状态/子态/子态阈值/边界耦合 + classifier bull-bear/sub_state + test 断言), 否则'改 config 不动代码'的承诺在删/改态时直接破产(加态可能行, 删/改态必动代码)。"
+          },
+          {
+            "severity": "medium",
+            "title": "现有 _sub_state 已是硬编码 if/elif, 评审虽点出但无人发现这直接证伪 config.yaml 注释'加/改状态=改 config 不动代码'的承诺已对子态层失效",
+            "fix": "架构评审(critical issue)正确指出 _sub_state L77-98 是硬编码、新增 L3 几何细分会放大。但更进一步: config/technical_states.yaml 开头注释和 classifier.py docstring 都承诺'加/改状态=改 config 不动本文件', 而活代码里子态层(_sub_state)、L1 派生(side/bull-bear)、多 TF 聚合三处都已硬编码——承诺对 L2 主态成立, 对 L3 子态/L1/MTF 已失效。这不是 plan 引入的债, 是现状已违背自己写的设计原则, 评审当成'plan 的未来风险'而非'地基已存在的原则违背'。修: 诚实标注现状——'声明式 config 驱动'目前只覆盖 L2 主态评分, L3 子态/L1/MTF 是硬编码; plan 若要扩 L3 几何细分必须先把 _sub_state 重写成 config-evaluator(评审已提), 同时修正 config/docstring 的过度承诺措辞(不要写'不动代码', 写'L2 主态改 config / L3 及以上需改 evaluator')。"
+          },
+          {
+            "severity": "medium",
+            "title": "features.compute warmup=120 硬门 + n<warmup+er_win+5 直接返回空, 意味次新股/数据不足股在档案系统里是'无形态'空洞, 但 master_design 的 screen('列出所有股')承诺与此冲突, 无评审发现",
+            "fix": "A股适配评审提了次新股 warmup 问题(medium), 但只当数据质量问题。更深的矛盾: features.py:73 n<warmup+er_win+5(日线=165 bar)直接 return {}, 该股全程无任何态。而 master_design §2 screen 承诺'列出符合某状态的所有股票'、J3'默认看到符合形态的股票列表'。次新股(上市<165 交易日)在档案里既不属任何态也不显式标'数据不足', 会从 screen 结果里静默消失——用户看不到它存在。这对'主升浪猎手'尤其要命: 次新股开板后的首波主升浪是 A股最强形态之一, 却因 warmup 被档案系统完全忽略。修: features 需为不足 warmup 的股返回显式'数据不足/暖机中'状态(非空洞), screen/dossier 层把它们标为'暂不可解读'而非消失; plan §3.5 单日/短期尺度恰好可部分覆盖次新股(零或短 warmup), 这是单日尺度对'中期主升浪选股'的一个被所有评审(都说单日是噪音该砍)忽略的真实增量场景——次新股早期只有单日/短期尺度可解读。"
+          },
+          {
+            "severity": "low",
+            "title": "vol_ratio 用 bars[:i](排当日)、pctile/er 用 bars[:i+1](含当日)的口径差, PIT 评审标为'有意非 bug', 但漏了这使'放量'特征对当日突破天然滞后一bar——live serving 当日永远算不出'今日放量'",
+            "fix": "PIT 评审(low issue)正确指出量基准排当日是有意防盘中量泄漏。但顺带的后果无人提: vol_ratio = vv[i]/mean(vv[i-vol_w:i]) 分子是当日量 vv[i]、分母排当日, 这在 backtest(当日收盘量已知)没问题; 但 live serving 盘中/盘后 t 日, 当日量 vv[i] 要到收盘才完整。放量突破态依赖 vol_ratio>1.89, 意味着 live 当日识别'放量突破'必须等收盘——与 T+1 可执行性叠加后, '放量突破当日'信号最早 t 日收盘出、t+1 才能买。这对'起涨点鱼头'的及时性是结构约束(评审讨论 T+1 但没接到 vol_ratio 当日完整性这一层)。修: 文档明确放量类态是'收盘确认态'(当日盘中不可用), live 档案展示需标注'量待收盘确认'; 这也呼应确认门设计——放量突破天然是收盘确认, 不是盘中瞬时。"
+          }
+        ],
+        "missing": [
+          "真相源裁决缺失 (最大漏洞): 没有任何评审、也没有 plan, 先去对账'活 config(7态v3) vs sandbox notes(6态v2)'哪个是当前真相源就开始评审。整个评审建在'缩量上涨该不该删/拆'上, 而它在活 config 里根本没删、test 还在锁——评审的所有缩量上涨结论可能全错向。落地前第一步必须是 config↔notes 版本对账裁决, 不是讨论拆几态。",
+          "fact_rally_stage 的 POST-HOC 本质 vs forward gate 的兼容性分析缺失: 全 7 评审一致把'接 fact_rally_stage 验 forward'当终极 PIT 干净 gate, 但 fact_rally_stage stage 用未来 peak 切分(描述性, 非 live)。缺'post-hoc stage 描述性吻合(IC 快筛) vs live 反事实含成本收益(C-R1 裁决)'的区分——这是 goal.md 反复纠偏的核心, 评审集体踩了。",
+          "DimensionInterpreter compare/screen 协议对软隶属+边界事件+命名形态三层的归约规则缺失: master_design 的默认前端视图 = screen() 列表 + compare() peer 排名, 但软隶属向量/稀疏 overlay 事件/派生命名标签如何压成可过滤可横截面排序的标量, 无人设计。架构评审只覆盖 interpret(单股单点), 漏了对外承重的 compare/screen。",
+          "现有 7 态地基的实测体检缺失: 评审把共线/留缝/占比失真全归给 plan 新态, 没人去 DB 实测活 config 现有 7 态的占比/两两 membership 相关/过渡带语义。缩量回踩↔缩量上涨↔上升通道在活 config 已三方共线(共享升势前提), softmax 退化现在就可能发生——地基可能已带病, 在病基上加新态无意义。",
+          "次新股/数据不足股在档案系统的显式处理缺失: features warmup=120 硬门让次新股全程无形态、从 screen 结果静默消失, 与 master_design'列出所有股'承诺冲突。且次新股开板首波主升浪是 A股最强形态之一——这恰是所有评审都判'该砍'的单日/短期尺度的真实增量场景(次新股早期只有短尺度可解读), 评审一边倒砍单日尺度时漏了这个反例。",
+          "'无偏差可见'原则(plan §1.6 验收标尺#6 + §5)本身错误的上溯缺失: 评审删了下游 Optuna 占比约束, 但没上溯删/改作为地基原则的'无塌缩=形态可见'。罕见态(climax/spring)天然低占比, 强求均衡=拟合化妆指标。门删了原则还在=复发隐患。",
+          "改/删态的硬编码同步改动 checklist 缺失: '加/改状态=改 config 不动代码'承诺对 L2 主态成立, 但删/改态牵动 classifier bull-bear 集合、_sub_state 分支链、test 断言、coupling 参数引用 4 处硬编码。评审只零散点到 bull-bear 一处, 无完整清单, 'config 驱动'承诺在删/改态场景实际破产。",
+          "现状已违背自身设计原则的诚实标注缺失: _sub_state(L3)/side(L1)/multi_tf(MTF) 三处已硬编码, 但 config 注释和 classifier docstring 仍承诺'不动代码'。评审当成 plan 未来风险, 没认定这是地基现状已违背的原则——应先诚实修正过度承诺措辞, 再谈扩展。"
+        ]
+      },
+      {
+        "angle": "魔鬼代言",
+        "overall_verdict": "REVISE",
+        "decision_calls": [
+          {
+            "point": "10 (覆盖穷尽的证明: 转换矩阵+归属率够吗)",
+            "call": "BLOCK 现有证法。归属率/转换矩阵证的是'我的离散桶把连续空间填满了'(一个恒真的重言式), 不是'桶切在了有判别力的地方'。穷尽是伪命题——连续随机变量你切多少桶都100%覆盖。删掉'穷尽'作为验收目标, 换成唯一有意义的证明: 桶 vs 桶内连续坐标(pctile/斜率), 哪个对下游含成本OOS超额增量更大。增量为0就说明分桶是装饰。",
+            "rationale": "L1判据本身是连续量(均线斜率/动量/分位)的阈值化。证'每bar有归属'等于证'每个实数落在某区间', 永远成立, 零信息。"
+          },
+          {
+            "point": "1 (上下文消歧PIT安全) + 12 (over-fit) + 9 (无偏差约束)",
+            "call": "REVISE。位置消歧不是PIT问题(pctile/前序态都是≤t可算的), 真问题是它把参数空间从'1个行为'炸成'行为×3位置带×4尺度×软隶属', 而消费侧(rally_stage条件化因子)实测干净RankIC才0.01-0.02。§8.9的'无偏差硬约束(每态占比≥阈值)'方向是错的——市场分布本就长尾(下跌态/横盘态占绝大多数, 放量突破极稀有), 强制每态非平凡占比=人为往噪音区灌样本=主动制造over-fit。删掉占比硬约束, 改成'每态在下游有独立边际贡献才保留, 否则塌缩进父态'。",
+            "rationale": "§4.5反例: v3 102特征relative+75%就是chain leakage假象; 9态×位置×尺度的参数膨胀比102特征更危险, 而edge的天花板(0.02 RankIC)极低, 信噪比注定差。"
+          },
+          {
+            "point": "2+4 (放量下跌3分 / 缩量上涨拆2态)",
+            "call": "REVISE为'1态+位置L3', 不是独立L2态。理由非美学而是统计功效: 放量下跌本身在全样本里就稀有, 再×3位置带, '低位放量下跌=Selling Climax'这个最有价值的格子样本数会少到walk-forward每个fold都不够估参数。独立L2态=给稀疏格子单独的软隶属维度和阈值=最容易过拟合的地方。",
+            "rationale": "稀有事件×细分=每格N→0, 这正是§goal.md selection bias与小样本的交叉雷区。"
+          },
+          {
+            "point": "13+15 (尺度笛卡尔积 / 单日K线信息量)",
+            "call": "BLOCK 单日裸K线尺度, defer短期K线组合。十字星/锤子线在A股±10%涨跌停制度下语义被扭曲(光头光脚常=涨跌停一字板=流动性事件非形态), 且单K信息量经学术与实盘反复证伪为接近随机。把它放进'多尺度正交跑完整L1→L3'=4倍参数膨胀换接近0的增量。只保留中期(20-60日, 现有L2尺度), 长期(周/月)做确认乘子。",
+            "rationale": "方案§3.5自己也承认'单K信息稀疏噪音大易过拟合'——既然承认, 就不该让它进笛卡尔积。"
+          },
+          {
+            "point": "16 (命名形态与量化态冲突以谁为准)",
+            "call": "REVISE。这个问题暴露了双层架构的根本病: 既然量化层(态序列)和命名层(老鸭头模板)是同一组K线的两种描述, 命名层就不该是独立可冲突的真相源, 而必须是量化层的纯派生标签(确定性函数, 无独立参数)。一旦命名层有自己的config阈值/置信度, 就有了第二真相源(违宪法§1.0), 必然产生冲突且无裁决依据。命名形态=量化态的只读视图, 冲突=不可能(因为它是函数), 这是唯一干净解。",
+            "rationale": "宪法第一条真相源唯一; 命名层有独立阈值=主从倒挂, 与tushare兜底反例同构。"
+          }
+        ],
+        "issues": [
+          {
+            "severity": "critical",
+            "title": "核心假设一'3大类逐层细化能穷尽'是范畴错误: 趋势/位置都是连续量, 离散分类不存在'穷尽', 只存在'切在哪'。'无遗漏无重叠'是恒真重言式, 零信息",
+            "description": "方案§1.2/§5把'穷尽覆盖'当成可验收的真相。但L1判据(价相对均线+动量符号+斜率)全是连续标量的阈值化。对连续随机变量, 任何一组阈值都100%覆盖且(在硬切下)无重叠——这是平凡的, 不是成就。真正的趋势是路径依赖、多尺度叠加的: 同一根bar在20日窗是'上涨'、60日窗是'下跌'、5日窗是'横盘', 三个都对, 这不是'消歧能解决的多义', 这是趋势本身没有标量定义。证明'归属率≥95%'(§5)证的是'我的桶填满了连续轴'(恒真), 完全没碰到'我的桶边界对应真实的行为相变'这个唯一重要的问题。现有classifier.py已经是连续软隶属(softmax+entropy), 硬分3大类反而是信息损失——把已有的连续坐标量化成3个标签, 下游再也拿不回连续信息。",
+            "fix": "放弃'穷尽分类'作为目标和验收标尺。改为: (a)L1/L2标签只作为人类可读的解释视图(dossier说人话), 绝不作为下游选股的主输入; 下游条件化因子直接吃连续坐标(斜率/分位/动量/路径效率), 不吃离散标签。(b)验收从'归属率/转换矩阵'改为唯一标尺: 离散标签 vs 连续坐标, 在rally_stage含成本OOS超额上的边际增量。增量≤0 → 离散层是纯装饰, 不promote进选股路径(只留前端展示)。(c)接受'一根bar多尺度多标签同时为真'是趋势的本质, 不是bug, 不要试图消歧成单一dominant。"
+          },
+          {
+            "severity": "critical",
+            "title": "核心假设二'位置消歧(pctile+前序态)解决多义'有逻辑循环+把连续位置硬切成3档的二次范畴错误, 且没解决真正的多义来源(尺度)",
+            "description": "三处硬伤: (1)循环: §8.1自己问了——前序主态(as-of dominant)是分类器的输出, 用它当消歧输入=分类依赖自己上一步的输出。即便PIT不前瞻, 它把单bar的瞬时分类变成了路径依赖的状态机, 早期一个误判会沿转换链传播放大(误差累积), 且'dominant'本身在过渡区是低置信的(entropy高), 用一个不确定的标签去消歧另一个标签=噪音×噪音。(2)位置不是3档: 方案§3把pctile硬切>0.7/0.3-0.7/<0.3三带, 但位置是连续的, 0.69和0.71被判成'恐慌底'和'破位顶'语义全反, 而它们K线几乎一样——这制造了比'不消歧'更糟的不稳定性(切点附近翻天覆地)。§8.6自己也问了'pctile带怎么切不留缝', 说明设计者知道这是个没解的洞。(3)真多义没解: 同一行为多义的最大来源是尺度(20日涨/60日跌), 不是位置。位置消歧解决的是'缩量上涨高位vs低位', 但'高位/低位'本身是相对哪个窗口的高低?方案没定义, 等于用一个未定义量去消另一个的歧义。",
+            "fix": "(1)消歧输入禁用'前序dominant标签', 改用纯连续、无分类器自依赖的量: 距前高%/距前低%/N日累计涨幅/位置pctile连续值——这些都PIT干净且不循环。(2)位置永远以连续pctile进下游, 绝不在>0.7/<0.3硬切; 若必须出人话标签, 切点附近用软隶属(已有机制)而非硬判, 并明确标注'切点±0.05为过渡区, 语义不可靠'。(3)先把尺度多义显式建模(同一bar在3个窗口的标签全部输出、并列、不强行收敛成一个dominant), 再谈位置——否则是在未定义的地基上消歧。"
+          },
+          {
+            "severity": "high",
+            "title": "下游消费者(rally_stage条件化因子, 含成本OOS, 干净edge仅0.01-0.02 RankIC)撑不起这个分类体系的复杂度——信噪比注定为负",
+            "description": "docs/stock_dossier_master_design.md明确: 形态维度→下游选股=把维度value当条件化因子接fact_rally_stage, P6验收门是'C-R1/R2/WinReturn(真金白银, 非IC)'。而项目实测干净PIT下RankIC天花板就是0.0108-0.0203(CLAUDE.md§4.2)。这个方案要往这个0.02的薄edge上叠: 9+态×3位置带×4尺度×软隶属×边界事件×命名形态。参数空间膨胀几个数量级, 而可榨取的真实信息量是固定且极小的。结果几乎注定: in-sample每个细分态都'语义漂亮'(因为阈值是调出来的), walk-forward OOS这些细分的边际贡献塌进噪音。§4.5已有同构反例(v3 102特征relative+75%=chain leakage假象)。这不是'守好walk-forward就行'的问题, 是复杂度与可用信息量根本不匹配。",
+            "fix": "复杂度预算倒推: 先用现有7态(已promote)接rally_stage跑含成本OOS, 量出'离散形态标签'相对'连续特征'的边际超额。这个数(很可能接近0)是整个方案复杂度的天花板。每加一层(位置消歧/边界事件/命名形态), 必须先在sandbox证它对含成本OOS超额有独立正贡献(ablation), 才允许进config。没有边际贡献证据的层=禁止promote。把§7的Optuna目标从'分离×覆盖'(in-sample几何指标)改成'下游含成本OOS超额'(唯一真金白银指标)——否则在优化一个与赚钱无关的代理目标。"
+          },
+          {
+            "severity": "high",
+            "title": "'命名形态'(老鸭头/头肩顶)引入主观画法不可量化锚定的真相源, 且§8.16承认会与量化态冲突——这是第二真相源, 违宪法",
+            "description": "§3.6/§8.14/§8.16: 命名形态用模板匹配出'人话标签'。但老鸭头/头肩顶的几何(颈线在哪/把手多深/对称容差)在实战中每个人画法不同, 没有客观真相。一旦给命名层独立的config阈值和置信度(§8.16问'命名置信度怎么定'), 它就成了独立于量化态的第二判断源, §8.16自己问'冲突以谁为准'已经证明这个架构会自相矛盾。这与项目'tushare兜底=主从倒挂'反例、dim_all_ever_listed中间表反例同构: 多一个有独立判断权的层=多一个出bug和打架的地方。命名形态对下游赚钱的增量极可能为0(它只是态序列的重命名), 却带来最大的主观性和维护负担。",
+            "fix": "命名层降级为量化态序列的确定性纯函数派生(只读视图), 零独立参数、零独立阈值、零独立置信度。老鸭头=isinstance(态序列, 模板)的布尔/距离, 完全由量化态决定, 不可能与量化态冲突(因为它就是量化态的函数)。如果某命名形态无法表达成量化态的确定函数(因为太主观), 那就不做, 不要硬塞主观几何进系统。命名形态默认只用于前端展示, 不进选股因子路径, 除非ablation证明它有超出底层态序列的独立OOS增量(几乎不可能, 因为它是函数)。"
+          },
+          {
+            "severity": "medium",
+            "title": "'边界事件overlay'(假突破/挖坑/climax)与逐bar软隶属并存的架构, 确认延迟与PIT/可交易性自相矛盾",
+            "description": "§2/§8.3: 边界事件需短序列逻辑(突破后N日跌回才算假突破)。问题: 要确认'假突破', 必须等N日后看到跌回——但那时鱼尾早跌完了, 事件标签在'能用它做决策的时点'还不可知(PIT下t时刻你不知道t是不是假突破的第一天)。§8.7的hysteresis/N-bar确认同病: 确认延迟=信号滞后=对T+1可交易的A股, 等确认完早错过出场点。方案把'离散事件'和'瞬时软隶属'并列overlay, 但二者的时间语义根本不同(一个是事后才确定的区间判定, 一个是当下瞬时), 强行共存会让下游不知道在某个t时刻到底该信哪个。",
+            "fix": "明确区分两类输出并分开消费: (a)瞬时态(软隶属)=t时刻可决策, 进实时选股; (b)需后验确认的事件(假突破/挖坑)=只能事后标注用于复盘/训练标签, 明确禁止当实时信号。给每个事件标注'确认延迟D日', 下游任何用到该事件的地方必须把决策时点后移D日(或用概率化的'疑似假突破'连续分而非确认后的硬标签)。不要把'事后才知道的真相'伪装成'当下的overlay'。"
+          },
+          {
+            "severity": "medium",
+            "title": "缩量回踩的L1归属(§8.5)暴露分层树本身不是树: 同一形态横跨'上涨'与'下跌'两大类, 证明3大类不是互斥划分",
+            "description": "§8.5自问: 缩量回踩归'下跌'(价在跌)还是'上涨'(升势中回调)?这个问题无解恰恰证伪了'3大类能干净逐层细化'的前提——一个形态的本质属性(健康回调vs趋势反转)跨越了两个本该互斥的L1大类。说明L1的'上涨/横盘/下跌'不是一个干净的划分维度, 而是把'瞬时方向'(回踩时是跌)和'所处趋势阶段'(升势中)这两个正交维度强行压成一个轴。强压的结果就是这种归属悖论, 而且会蔓延: 高位滞涨(价还在涨但要见顶)、低位横盘后的假突破等都有同样的跨类问题。",
+            "fix": "承认'瞬时方向'和'趋势阶段'是两个正交维度, 不要压成一个L1轴。L1拆成两个独立标签: 瞬时方向(当下bar涨/平/跌)×趋势阶段(吸筹/拉升/派发/下跌, 即Weinstein4阶段)。缩量回踩=瞬时方向'跌'+趋势阶段'拉升', 不再有归属悖论。这也更贴合方案自己引用的Weinstein/Wyckoff理论(它们的核心就是'阶段', 不是'今天涨还是跌')。"
+          },
+          {
+            "severity": "low",
+            "title": "现有classifier.py已是连续软隶属(softmax+entropy+covered), 方案在它之上加硬3大类是信息回退, 与'已建'地基矛盾",
+            "description": "classifier.py的classify_bar已输出连续membership字典+entropy+covered, 这已经是'软、连续、可表达多义'的好设计。方案§2的L1硬3大类、§3的位置硬3档, 是在一个已经连续的系统上叠加硬量化, 属于架构回退。且方案多处(§8.6留缝/§8.16冲突/§8.5归属)的痛点, 根源都是'想把连续的东西硬切成离散桶'。",
+            "fix": "保持并扩展现有连续软隶属机制, 不要引入新的硬切层。所有'位置/方向/阶段'都以连续分进下游和前端(前端可显示'70%上升通道+20%高位滞涨'这种软标签, 比硬判'上升通道'更诚实也更稳)。离散标签仅在需要人话沟通时由连续分argmax派生, 且标注其置信度(=该维隶属度), 绝不丢弃底层连续值。"
+          }
+        ],
+        "missing": [
+          "边际贡献的ablation预算: 方案有§5覆盖验证、§7 Optuna, 但完全没有'每加一层细分必须先证它对下游含成本OOS超额有独立正增量'的门。没有这个门, 整个体系就是在优化与赚钱无关的in-sample几何代理指标(分离度/覆盖率), 这恰是项目反复踩的'单分数improve不算delivery'雷。",
+          "连续基线对照: 方案从未问'如果完全不分类, 下游直接吃连续特征(斜率/分位/动量/路径效率), 能达到什么超额?'这个连续基线是判断'离散分类层是否有任何价值'的唯一参照。没有它, 无法回答'分类到底带来了什么', 整个方案可能在重新发明一个比连续特征更差的有损编码。",
+          "尺度多义的正面处理: 方案§3.5把多尺度当成'正交维度各跑一遍', 但回避了核心矛盾——同一bar在不同尺度标签冲突时(20日涨/60日跌)如何向下游表达。这才是'同行为多义'的最大来源(比位置大得多), 而位置消歧根本没碰它。",
+          "失败判据/止损线: 方案有验收标尺(§1)但没有'什么情况下判定整个分类路线失败、回退到纯连续特征'的明确死线。按项目§1.4'失败先承认', 应预设: 若离散标签相对连续基线的含成本OOS边际增量在walk-forward上不显著为正, 则分类层只保留前端展示用途, 不进选股, 不再追加细分。",
+          "A股制度对'位置pctile'的污染: §8.15提了涨跌停对单K, 但没提涨跌停/停牌对pctile和动量的系统性扭曲——连续涨停的股价格分位会瞬间冲顶(假高位)、停牌期间的bar缺失会让斜率/动量失真。位置消歧严重依赖pctile, 而pctile在A股极端行情下不可靠, 这会让'高位/低位'判定在最该准的时候(涨停潮/暴跌)最不准。"
+        ]
+      }
+    ],
+    "synthesis": {
+      "verdict": "REVISE",
+      "decision_resolutions": [
+        {
+          "point": "1. 上下文消歧的 PIT 安全 (前序态 as-of vs 纯瞬时 pctile+距前高低)",
+          "resolution": "两段式: (a) 位置消歧主用纯瞬时连续量 — pctile + 距前高% + 距前低% + N日累计涨幅 (全 bars[:i+1] PIT 干净, 无分类器自依赖, 无循环); (b) '前序主态'仅作 v2 增量, 且必须 two-pass + strict-less(<t-1): pass1 无状态出 dominant, pass2 只取 ≤t-1 已确认版本注入。禁用'含当日 dominant'。前序态自身若带 N-bar 确认延迟, 必须用'当时点已确认'版本而非事后回看版本(递归 PIT)。",
+          "rationale": "PIT 评审证 pctile/距前高低 bars[:i+1] 干净; 消费者锚定+魔鬼代言指出前序 dominant 引入分类器自指(t 态依赖 t-1 态), 早期误判沿链传播 + 过渡区低置信标签去消歧另一标签=噪音×噪音。连续量信息等价却无自指, 优先。前序态留作可选增量, 不是地基。"
+        },
+        {
+          "point": "2. 放量下跌 3 分 (3 独立 L2 vs 1 L2+位置)",
+          "resolution": "1 个 L2 母态'放量下跌'(默认=高位破位看空) + 位置作 overlay 乘子标签(非独立 L2、非硬 L3 分支)。砍掉'下跌中继放量'(主跌途中本就不持仓不入场, 0 决策增量)。低位放量下跌(Selling Climax)完全收口到边界事件层, 不在逐 bar 软隶属出现。",
+          "rationale": "理论+架构+over-fit 三审一致: 3 个仅 pctile 不同的态高度共线→softmax 退化(熵虚高/dominant whipsaw); SC 是离散拐点事件不是可持续状态, 与边界事件层重复建模。消费者锚定: 中位'延续/规避'=已在做的事, 砍。A股审加硬约束: 低位放量下跌须叠 down_limit 命中判别(跌停闷杀≠见底)。"
+        },
+        {
+          "point": "3. 边界事件 vs 状态 (假突破/挖坑/climax 如何与逐 bar 共存)",
+          "resolution": "独立事件 overlay 层 (新建 events.py), 不进软隶属。必须双时点分离: trigger_date=t(出'疑似') + confirm_date=t+N(出确认), 事件 record 带 confirm_date, 下游断言 decision_date>=confirm_date 否则 raise。瞬时态(可决策, 进实时选股) 与 需后验确认事件(只能事后标注/训练 label) 分开消费, 禁把'事后才知的跌回'回贴到 t。当 Spring/SC 触发时该 bar 主态可被事件升级。",
+          "rationale": "研究跨 4 源最强一致盲点(真金白银最高优先), overlay/不进软隶属方向对。但 PIT 评审标 critical: 假突破定义='突破后 N 日跌回'本质需未来 bar, 回贴='+312%'同构前瞻。确认延迟与 A股 T+1 叠加=信号滞后, 必须显式建模而非伪装 overlay。"
+        },
+        {
+          "point": "4. 缩量上涨 (拆 2 态 vs 1 态+位置)",
+          "resolution": "保留为 v3 现有 1 个 L2 态(真相源=promoted config 7 态, 非 sandbox notes 的 6 态 merge 草案), 但必须修语义: (1) 态名'动能衰竭预警'改中性命名, 子态'缩量延续'消矛盾; (2) 从 classifier bull 集合移除整体归属, 改位置条件化(高位走平=No Demand 看空 / 低位+斜率仍陡=供给枯竭中性偏多, Wyckoff/Minervini 会买); (3) 不拆独立 2 态(共线退化)。建议演进为 effort/result 量价背离 overlay。",
+          "rationale": "完整性审揪出关键: 3 审引 notes'8.4%退化已删'当既成事实, 但实测 promoted config 保留 7 态、test 硬锁、tuned_on 标 v3 — v2 merge 草案未 promote, 是 sandbox 探索期产物。真相源裁决 = config(v3 七态)。病根是 config 把它整体归 bull + 态名内部矛盾(真金白银方向错: 低位缩量上涨=VCP 把手最佳买点被标看空), 不是态的数量。"
+        },
+        {
+          "point": "5. 缩量回踩归属 (下跌 vs 上涨大类)",
+          "resolution": "归'上涨'大类(升势中回调), 但归属判据从瞬时 mom20 符号改为上下文门(前序在上升通道/价仍在中长均线上/higher-low 未破)。必须叠破位降级门, 但用修正口径(非 research 草案的张冠李戴): 硬门='收盘跌破前一 swing low'(道氏真判据→转下跌通道清仓); '回踩跌破突破位'仅作 EV 软降级(降仓/收紧止损非清仓, Bulkowski 实测跌破后 65% 仍续涨)。禁写'回撤>66% 且破前低'的虚构联合条件。",
+          "rationale": "代码已 hardcode 进 bull 但 L2 判据全在下跌动量区(side='bull' 与判据打架=leakage 风险)。服务'鱼身续持', 归下跌会误判趋势反转砍在回踩坑。research 原始'回踩跌破=突破失败=反转 三源一致'被其自身 verification 推翻(道氏误拼+Bulkowski 过度延伸), 照搬会继承理论错误。"
+        },
+        {
+          "point": "6. 横盘三态边界 (pctile 带切分)",
+          "resolution": "新增'中继平台'填洞(现 0.475-0.717 中位横盘是真实 GAP)方向对, 但: (1) 统一 pctile 口径 — 文档 §3 写的 0.3/0.7 与 config 实际 0.475/0.717 矛盾, 以 config 实测带为单一权威; (2) 用硬边界+hysteresis 死区(进/出非对称), 不用软过渡带(三横盘态在边界软隶属互渗→下游硬决策 whipsaw); (3) 中继 vs 低位区分不能只靠 pctile, 必叠'前序是否经历上升通道'(中继=前升, 低位=前跌/无趋势); (4) 扩 coupling 的'互斥不重叠'校验从 2 元到 3 元有序。落地前须实测该区间 bar 有非平凡占比真落中继而非被吞。",
+          "rationale": "覆盖审 BLOCK 当前实现(真留缝+口径不统一)。架构审: coupling.py L63 互斥校验硬编码 len==2, 三元需小改。软过渡带会既重叠又留缝。另补:'高位横盘=看涨中继(强势股高位 base 再突破)'当前被'高位滞涨(见顶)'独占一刀切看跌, 漏掉主升浪延续关键形态, 须给高位滞涨加'高位中继(待突破)'子态。"
+        },
+        {
+          "point": "7. 确认门层级 (分类层 vs 独立 FSM 序列层)",
+          "resolution": "独立轻量 FSM 层(confirm.py, 带 hysteresis 的状态保持, 非完整 FSM), 不改瞬时软隶属。Enter 严/Exit 松双阈值 + N-bar 收盘确认。必须钉死 backward-only: bar t 点亮'已确认态'的充要条件是 t-N+1..t 连续满足(全历史), 禁'前向确认'(t 点亮需 t+1..t+N=前瞻)。confirmation_direction: backward 进 config 显式标; 确认函数签名只接受 series[:t+1] 物理拿不到未来 bar。双列落库: 瞬时态(前端展示+确认进度) + confirmed_state(下游选股防 whipsaw)。",
+          "rationale": "研究荐'状态转换层非分类层'; hysteresis 本身 0 泄漏。唯一 lookahead 风险=N-bar 方向写反(PIT 审 high)。混进 state_scores 污染'此刻像什么'的软隶属可解释性。下游硬决策被 whipsaw 割=真金白银损失, 这层不可省但必须独立。"
+        },
+        {
+          "point": "8. RS 正交维度 (现在加 vs 后置)",
+          "resolution": "现在加, 提为 P0(与起涨点确认门并列最高优先), 不是可后置乘子。作正交置信度乘子(不改 7 态)。须分别建模两个子特征: Mansfield RS(vs 大盘 52周MA 零轴穿越=时序信号, PIT 滚动) + IBD RS rank(横截面百分位=当日全市场只用 ≤t 收盘), 不是同一数。JOIN 带 as_of_date<=t, 行业 PARTITION 打 taxonomy_version 戳禁跨版本拼接。承认是 technical_states 模块内新建数据通路(非'复用现成函数')。上线前含成本 OOS 验增量。",
+          "rationale": "唯一直接穿透 KPI'超额HS300>0'的维度。memory feedback-param-selection-peek 教训正是'真alpha≈0源于小盘beta'。A股普涨齐涨极端, 无 RS 则放量突破/上升通道塞满大盘带起的弱势齐涨股=selection 噪音结构源。降级后置=放任普涨股污染候选池。"
+        },
+        {
+          "point": "9. Optuna 无偏差约束量化 (每态占比≥阈值定多少)",
+          "resolution": "删除'每态占比≥阈值'硬罚分约束, 且上溯删/改 plan §1.6 验收标尺#6 与 §5'无塌缩'原则本身。市场分布天然长尾(下跌/横盘态多, climax/spring 罕见), 强制均衡=把分类器拟合到化妆指标(占比均匀)而非 forward 价值, 是比参数膨胀更隐蔽的 over-fit 引擎。真实需求'罕见态不塌缩到 0'只需软约束'每态占比>0(非平凡)'。占比=0 需归因(该态 A股不存在/被吞/定义错)非自动判 bug。占比永不作 objective。进 objective 的任何统计量(占比/覆盖/转换矩阵)必须 train-fold only 计算, 禁全期分布(=泄漏未来市场结构选参)。",
+          "rationale": "over-fit+PIT+魔鬼代言+完整性四审一致。完整性审上溯: 只删 Optuna 门不删地基原则#6=下个 session 照原则重新加回(门删了宪法还在)。PIT 审: 全期占比进 objective=systemic leakage 同构。"
+        },
+        {
+          "point": "10. 覆盖穷尽的证明 (转换矩阵+归属率够吗)",
+          "resolution": "BLOCK 现有证法。'穷尽覆盖'对连续量(趋势/位置都是连续标量阈值化)是恒真重言式(任何阈值都 100% 覆盖)=零信息, 不是成就。验收标尺从'归属率/转换矩阵'(证'描述完整')改为唯一有意义的'forward 价值覆盖': 离散标签 vs 桶内连续坐标(pctile/斜率/动量/路径效率), 哪个对下游含成本 OOS 超额增量更大; 增量≤0=分桶是装饰只留前端展示不进选股。补救措施: (a) 对 covered=False bar 语义抽样区分真过渡 vs 漏态; (b) 命名形态清单逐一命中核对仅对'有消费者锚定的少数形态'做, 不做全 8 流派枚举(张冠李戴+工程债)。穷尽覆盖只约束量化态层, 命名层是开放词汇表不追求穷尽。",
+          "rationale": "魔鬼代言+over-fit: softmax+最低分门会把'无合适态'bar 硬塞最近态(掩盖 gap)或塌过渡(掩盖漏态), 归属率/转换矩阵测不出桶定义有洞。追求穷尽会驱动加 forward 无价值的填缝态=over-fit 诱因。现有 7 态覆盖率已 100%。"
+        },
+        {
+          "point": "11. 多TF 的位置消歧 (周/月线位置与日线不同步)",
+          "resolution": "现有 classify_multi_timeframe._asof bisect 在 backtest 全历史是 PIT-safe, 但必修两缺口: (1) features.resample 末尾无条件 flush 未闭合周期 bar → LIVE serving 末端半周/半月产生 train(完整周)/serve(部分周)分布偏移(隐性泄漏变体)。加 drop_partial_period 开关, PIT serving 模式丢弃末尾未闭合周期, 或 _asof 只命中 bd 严格属于已闭合周期的 bar。(2) 多尺度标签冲突(同 bar 20日涨/60日跌)不强行收敛单一 dominant, 三框标签并列输出由下游/前端权衡。位置消歧在每 TF 内独立算。",
+          "rationale": "PIT 审 high: resample L49 末尾 flush 在 backtest(历史周已闭合)无害, 但同一份 compute() 上线即 train/serve skew。魔鬼代言: 尺度多义是同行为多义最大来源(比位置大), 位置消歧没碰它, 强行消歧成单 dominant 是在未定义地基上消歧。"
+        },
+        {
+          "point": "12. 新增态 over-fit 风险 (参数膨胀 OOS 崩)",
+          "resolution": "REVISE — 强制 forward-return walk-forward gate 才允许任何新态进 Optuna/config。当前全部'OOS稳/覆盖100%/80%干净'是无监督可分性(train0.092≈test0.091 分离度 margin), 零 forward-return 证据。守法: (1) 每个新态/overlay/事件落地前先用 fact_rally_stage 跑条件化 forward 增量(含成本绝对收益), 但须区分 post-hoc 描述性验证 vs live 反事实收益验证(见 add); (2) 按股+按时间双切 OOS + PBO/CPCV 防选择偏差(挑'最佳+2-3 次优'本身有选择偏差); (3) 增量协议 — 从现有 7 态出发每次只加一个有消费者锚定的 overlay/事件 ablation 验完再加, 非一次膨胀到位; (4) 复杂度天花板倒推 = 现有 7 态相对连续特征的边际超额(很可能接近 0)。无 forward 增量的态/事件不进 v1 标 unknown。",
+          "rationale": "§4.5 chain leakage(v3 102 特征 relative+75%)同构; 干净 PIT RankIC 天花板仅 0.0108-0.0203, edge 极薄, 9态×位置×尺度×命名膨胀在无监督目标上必学出假漂亮。可分≠预测主升浪。"
+        },
+        {
+          "point": "13. 尺度×行为笛卡尔积爆炸 (单日 K 线对中期选股有增量吗)",
+          "resolution": "BLOCK 4 尺度全栈 + BLOCK 单日裸 K 线独立识别态。砍到 2 尺度: 中期(20-60日, 现有 L2, 复用) + 长期(周/月, 现有 multi_tf, 作确认乘子)。单日/短期降级为 events/template/确认门的输入构件, 不跑独立 L1→L2→L3、不进软隶属、不调 Optuna。单 K 几何唯一保留用途=放量突破确认门构件(A股光头光脚=涨停一字旁路, 防伪造 ER, sandbox 已有此机制)。例外: 次新股(上市<warmup 165 交易日)早期只有单日/短期尺度可解读, 这是单日尺度对'中期主升浪选股'的真实增量场景(features warmup=120 硬门让次新股从 screen 静默消失), 须给次新股显式'数据不足/暖机中'状态而非空洞。",
+          "rationale": "消费者锚定: 主升浪三决策最小有效尺度=多日序列, 单 K 信息稀疏噪音大(plan §8.15 自承), A股±10%涨跌停扭曲单 K 语义(涨停=买不进, 形态再漂亮不可交易)。4 尺度全栈=参数×4 直接踩 over-fit 红线。features 120-warmup 与单 K 零-warmup 是两套不兼容提取。完整性审揪出次新股反例: 一边倒砍单日时漏了它是次新股早期唯一可解读尺度。"
+        },
+        {
+          "point": "14. 命名形态 = 模板匹配 vs 独立态 (主观性如何锚定)",
+          "resolution": "模板匹配派生标签, 绝不进软隶属/不独立调参/零独立阈值。定为量化态序列的确定性纯函数(老鸭头=isinstance(态序列,模板)的布尔/距离, 完全由量化态决定→不可能与量化态冲突, 因为它是函数)。命名形态库砍到 ≤5 个有消费者锚定的(spring 挖坑=鱼头 / UTAD 假突破+头肩=鱼尾 / VCP+老鸭头=鱼身), 删纯展示性的~21 个(黄昏之星/纺锤/红三兵等对主升浪选股 0 增量)。命名形态须标 provenance 分级(西方经典有 Bulkowski 统计 vs 中文实战无统计主观性高), 主观性高的须先 OSS 验 forward 差异才进档。修老鸭头序列定义: 鸭头是'已有一波上涨后回踩+均线粘合缩量'(中位/相对高位回踩平台), 非'低位筑底', 映射到中继平台非低位横盘。",
+          "rationale": "魔鬼代言: 命名层有独立阈值/置信度=第二真相源(违宪法§1.0, 与 tushare 兜底主从倒挂同构), §8.16 自问'冲突以谁为准'已证架构自相矛盾。做成纯函数则冲突不可能。理论审: 老鸭头无 Bulkowski 基础须标 provenance, 现序列定义把鸭头错置低位筑底。"
+        },
+        {
+          "point": "15. 单日 K 线信息量 (独立输出 vs 短期构件)",
+          "resolution": "只作短期组合/事件/确认门的构件, 不独立输出态、不进软隶属。必须(a)叠加前序位置才输出方向语义(Nison: hammer 与 hanging man 同几何区别全在位置, 不带位置=张冠李戴); (b)A股涨跌停特判 — 涨停板=光头大阳但语义是'封板供给截断'非'多方完胜', 一字板 OHLC 退化会被误判 doji/十字星(实为停牌式无交易), 须 raw_tushare_stk_limit(已注册、PIT 8:40 盘前可用、已 universe_filter)硬真相源判 is_up_limit/is_down_limit/is_one_word_board, 禁拿单 K 几何近似涨跌停(=第二真相源); (c)±10%(60/00)vs±20%(30/68)分板路由阈值, 禁跨板统一。",
+          "rationale": "A股审 critical: 放量突破在 A股结构性失效(封涨停=缩量, 一字板 volume→0 会被 vol_ratio 判'无量假突破'方向反), stk_limit 真相源现成被 plan 完全无视=制造第二真相源。over-fit 审: 单 K 独立态徒增参数无可执行 alpha。"
+        },
+        {
+          "point": "16. 命名形态与量化态一致性 (冲突以谁为准)",
+          "resolution": "量化层(态序列)永远为准, 命名层为只读派生 overlay。因命名形态定为量化态的确定性纯函数(决策点14), 冲突在架构上不可能发生; 命名标签置信度=模板匹配度×量化态隶属度的乘积, 低于阈值不显示。命名层 0 独立判断权→消除主观性进入决策路径。展示时若量化态序列与人工画法直觉不一致, 并列显示'量化判 X / 模板疑似老鸭头(置信度 Y)'(诚实报冲突, 不隐藏), 但下游选股只消费量化层。",
+          "rationale": "档案系统死亡条款#3(谄媚死=藏矛盾信号)要求诚实报冲突。宪法第一条真相源唯一: 命名层有独立判断权=主从倒挂。纯函数化是唯一干净解。"
+        }
+      ],
+      "cut": [
+        "放量下跌'下跌中继放量'(中位)精细态 — 主跌途中本就不持仓不入场, 0 决策增量, 且与下跌通道加速杀跌子态在'价跌+放量+中位'高度重叠双重计数。砍。",
+        "单日裸 K 线作独立识别尺度(跑完整 L1→L2→L3) — 信息稀疏噪音大, A股±10%涨跌停扭曲单 K 语义, 对中期主升浪选股噪音>增量。降为 events/确认门构件。",
+        "短期(3-10日)K 线组合作独立识别尺度(红三兵/早晨之星等9个) — 学界实测裸 alpha 极弱(Bulkowski 裸2B 仅~34%跑赢), 对'是否续持主升浪'无条件化增量。前端要人话标签在中期态序列上派生即可。",
+        "4 尺度全栈中的'每尺度跑完整 L1→L2→L3+命名形态' — 笛卡尔积爆炸(参数×4 踩 over-fit 红线), 砍到 2 尺度(中期主态+长期确认)。",
+        "Optuna'每态占比≥阈值'无偏差硬约束 + plan §1.6 验收标尺#6'无塌缩' + §5'无偏差'原则本身 — 隐蔽 over-fit 引擎(拟合化妆指标), 强制均衡扭曲分类器, 全期占比进 objective=泄漏。删门+删原则。",
+        "'穷尽覆盖'作为核心验收目标(§1.2/§5 归属率≥95%+转换矩阵) — 对连续量是恒真重言式零信息, 换成'forward 价值覆盖'。穷尽只约束量化态层不约束命名层。",
+        "命名形态词汇层~26 个中绝大多数纯展示形态(黄昏之星/纺锤/光脚/乌云盖顶等) — 对主升浪三决策 0 forward 锚, 砍到 ≤5 个有消费者锚定(spring/UTAD/头肩/VCP/老鸭头)。",
+        "命名层的独立 config 阈值/独立置信度自由判据 — 第二真相源违宪, 命名形态降为量化态的确定性纯函数零独立参数。",
+        "L1 三大类作为独立识别判据层(§2 价相对均线+动量+斜率独立判据表) — 与代码 side() 由 L2 反推双口径且都不覆盖混合态; L1 降为 L2 dominant 聚合派生分组标签, 删独立判据表(能删必删, 少一处出 bug)。",
+        "边界事件 v1 范围中的'量价背离/climax/确认门'独立 Optuna 调参 — 降为 v2 探索; 确认门用固定收盘+N-bar 先加不进 Optuna。v1 边界事件只做 spring(鱼头)+UTAD 假突破(避追高)两个最高优。"
+      ],
+      "add": [
+        "真相源裁决前置步(最高优先, 0 工程): plan 在'缩量上涨该不该删/拆'上评审, 但实测 promoted config 是 v3 七态(保留缩量上涨, test 硬锁, tuned_on 标 v3), sandbox notes 的 6 态 merge 是未 promote 的探索期草案。落地第一步=认定 config(v3 七态)为真相源, 同步清理引 notes 的过期论证, 否则所有缩量上涨裁决建在流沙上。",
+        "三时点契约(decision_date / trigger_date / confirm_date)— 防前瞻总闸。所有需 N 日确认的态/事件(假突破/挖坑/突破/swing/老鸭头出水)显式带 confirm_date, 下游只能 decision_date>=confirm_date 时消费, 加 assert 护栏。plan §2/§3/§4 完全缺此字段设计。",
+        "post-hoc 描述性验证 vs live 反事实 forward 收益验证的显式区分 — fact_rally_stage 的 stage 用未来 peak 切分(build_rally_stage.py docstring 实证 POST-HOC)。直接拿 stage 标签当 forward gate=用'已知这段是鱼尾'验'鱼尾出场态有没有用'(描述性吻合非可交易收益)。正解(goal.md D-step): stage 窗内用 live-confirmable 态触发条件化持有到信号反转→含成本绝对收益, 成交点只用 ≤t(顶事后±窗确认 label 合法, 成交不能用未来顶)。全 7 评审集体踩此混淆。",
+        "DimensionInterpreter 的 compare/screen 协议对软隶属+边界事件+命名形态的归约规则 — master_design §2/§5 默认前端视图=screen() 股票列表+compare() peer 排名, 但软隶属向量/稀疏 overlay 事件/派生命名标签如何压成可横截面排序/可过滤的标量无人设计(screen('放量突破')阈值化软隶属? dominant only? 含 overlay?)。架构审只覆盖 interpret(单股单点)。",
+        "物化落库 schema 设计 — 态/子态/事件/命名/RS/confirmed态/瞬时态是多列还是多表? 边界事件是稀疏标签(grain 与逐 bar 态不同), 须明确(逐 bar 态宽表+事件 long 表 as-of join?)。无物化 schema=P6 接 fact_rally_stage 因子矩阵无法消费。",
+        "PIT 防回退单测套件 — 每个边界事件/命名形态/确认门一个'插入未来满足 bar 断言当日标签不变'回归测试(类比 test_pit_no_lookahead, §8.2.2 强制)。现有 8 单测全无对应。",
+        "T+1 可执行性维度(可买入率/可卖出率)进验证与转正门 — 入场态加'T+1 非一字涨停比例'(复用 task#47), 出场态加'T+1 非一字跌停比例'。Optuna objective 或转正门含 T+1 可执行性惩罚, 否则选出'专挑涨停日起涨'的态(in-sample 漂亮 OOS 含成本必崩)。",
+        "raw_tushare_stk_limit 硬真相源接入 features/coupling — 派生 is_up_limit/is_down_limit/is_one_word_board/封板强度, 喂放量突破/放量下跌/单 K limit-aware 分支。最低成本最高收益 A股特化(现成、PIT 干净、8:40 盘前可用)。涨跌停命中判别须在未复权空间做(stk_limit up/down_limit vs raw_tushare_daily 未复权 close/high/low), 不在 qfq 复权价上重算(除权日系统性错)。",
+        "±10%(60/00)vs±20%(30/68)分板阈值路由 — 凡涉绝对涨跌幅/单 K 几何/limit 命中的判据按 board_tier 分组路由(config 化), Optuna 按板块分层或加 board 条件维度。否则创业板态分布污染主板。",
+        "低价股/壳股/次新股噪音过滤层(config 可选)— universe 仅滤 ST 命名, 缺低价股(<3元价格离散化失真)、壳股(脉冲涨停-跌停制造假突破喂坏 Optuna 占比约束)、次新股(<warmup 无暖机)。至少在验证与 Optuna 约束里分子群统计防垃圾股主导态分布。",
+        "PIT ST 日历(raw_tushare_stock_st)替代当前 dim 名判 ST — 历史 ST 期±5%涨跌停规则不同, 用当前名判会污染历史 ST 段的涨跌停态。",
+        "effort-vs-result 量价背离作独立横切维度(早于均线走平的领先见顶预警)+ 鱼尾出场分层(领先信号=effort/result 背离/UTAD/顶背驰触发减仓预警, 滞后信号=高位放量下跌破位触发清仓)— 现只靠最滞后破位出场=多吃一段下跌。",
+        "改/删态的硬编码同步改动 checklist — '改 config 不动代码'承诺对 L2 主态成立, 但删/改态牵动 classifier bull/bear 集合(L149-150)、_sub_state if/elif 分支链(L77-98 实测硬编码)、test 断言(L26)、coupling 参数引用 4 处。加态可能行, 删/改态必动代码。诚实标注现状: 声明式 config 目前只覆盖 L2 主态评分, L3/L1/MTF 已硬编码; 扩 L3 几何细分前先把 _sub_state 重写成 config-evaluator。",
+        "最小可交付切片(MVP/P0)定义 + 连续基线对照 — 先验'起涨点识别+RS 乘子能否提升含成本超额', 且对照'完全不分类直接吃连续特征'的基线超额(判断离散分类层是否有任何价值的唯一参照)。"
+      ],
+      "priority_order": [
+        {
+          "phase": "P-1 真相源对账(0 工程, 阻塞全部)",
+          "what": "裁决 config(v3 七态)为真相源, 清理引 sandbox notes(v2 六态 merge 草案)的过期论证; 实测现有 7 态在全宇宙的占比/两两 membership 相关/covered=False 语义抽样(地基可能已带病: 缩量回踩↔缩量上涨↔上升通道共享升势前提已三方共线)。不在病基上加新态。"
+        },
+        {
+          "phase": "P0 起涨点簇 + RS + 含成本 forward gate(MVP, 真金白银核心)",
+          "what": "(1) 修缩量上涨语义(去衰竭命名/移出 bull 集合/位置条件化) + 缩量回踩归属修正(上下文门+破位降级软门); (2) RS 正交乘子(Mansfield 时序+IBD 横截面分两子特征); (3) 放量突破 limit-aware 分支(接 stk_limit 真相源, 封涨停语义); (4) spring 挖坑 + UTAD 假突破两个边界事件(events.py, 三时点契约+confirm_date); (5) 三时点契约 + PIT 防回退单测 + T+1 可执行性维度; (6) 唯一 gate=接 fact_rally_stage 跑 live 反事实含成本 forward 增量(非 post-hoc 描述), 对照连续基线, PBO/CPCV。无增量不 promote。"
+        },
+        {
+          "phase": "P1 横盘补洞 + 确认门 FSM + 位置消歧",
+          "what": "(1) 中继平台填 0.475-0.717 GAP(硬边界+hysteresis+前序态门, 扩 coupling 3 元有序) + 高位滞涨加'高位中继(待突破)'子态; (2) 独立确认门 FSM(confirm.py, backward-only, 双列落库瞬时态+confirmed_state); (3) 位置消歧用纯瞬时连续量(pctile+距前高低), 删每态占比硬约束+原则#6; (4) 修 resample 末尾 flush(drop_partial, train/serve parity 检查)。每态 ablation 增量验完再加下一个。"
+        },
+        {
+          "phase": "P2 物化落库 + 命名形态(派生标签)+ 下跌态补分辨率",
+          "what": "(1) 物化 schema(逐 bar 态宽表+事件 long 表)接 P6 因子矩阵 + compare/screen 归约规则; (2) ≤5 个命名形态作量化态确定性纯函数(spring/UTAD/头肩/VCP/老鸭头, 修老鸭头序列定义); (3) 下跌大类补'反弹失败(LPSY)'子态/事件 + Selling Climax 边界事件(对称上涨大类分辨率)。"
+        },
+        {
+          "phase": "P3 探索后置(不进 v1)",
+          "what": "effort/result 背离独立维度、量价背离/climax 边界事件、底部几何细分(cup-handle/flat-base/double-bottom 单源须先 OOS 验)、_sub_state 重写为 config-evaluator(承载 L3 几何细分前置)、单日/短期尺度(仅次新股暖机期场景)、前端多尺度切换。每项先 forward 增量验证才进档。"
+        }
+      ],
+      "top_risks": [
+        "forward-return 验证缺失 = 方向性白跑: 全部'OOS稳/覆盖100%/80%干净'是无监督可分性(margin 0.092≈0.091)零 forward 证据, 在干净 PIT RankIC 天花板仅 0.01-0.02 的薄 edge 上膨胀 9态×位置×尺度×命名(参数~65→200/800), 无监督目标上必学出假漂亮, 可分≠预测主升浪。不先建 live 含成本 forward gate, 整套是 OOS 漂亮但永不赚钱的精致分类器。",
+        "前瞻泄漏(2 个 critical): 边界事件'未来 N 日才知的跌回'回贴触发日 + 命名形态末段(出水)结论回贴前段(鸭头)= '+312%'同构真金白银红线。无 trigger/confirm/decision 三时点契约则下游必踩。",
+        "fact_rally_stage POST-HOC 被全 7 评审误当 forward gate: stage 用未来 peak 切分, 直接当验收=描述性吻合非可交易收益, 会让方案误以为'接上就 PIT 干净', 重蹈 goal.md 反复纠偏的'label 用未来合法/成交用未来不现实'混淆。",
+        "A股结构性失效: 放量突破在封涨停(缩量)/一字板(volume→0)被 vol_ratio 判'无量假突破'方向反, 而 A股主升浪起涨常以涨停启动; stk_limit 硬真相源现成却被 plan 完全无视=制造第二真相源 + 涨跌停在 qfq 复权价上误判。不接 limit-aware 分支则对最强起涨信号瞎眼。",
+        "over-fit 隐蔽引擎: '每态占比≥阈值'硬约束 + plan §1.6 无塌缩原则把分类器拟合到化妆指标(占比均匀)而非 forward 价值, 比参数膨胀更隐蔽; 全期占比进 objective=泄漏未来市场结构选参; 只删门不删地基原则则下个 session 重新加回。",
+        "scope creep + 改造量低估: plan 把 4 个全新组件(events/confirm-FSM/single-bar-geom/template-engine ~270 LOC, 模块翻倍)说成'config 叠加'; '改 config 不动代码'承诺对 L3 子态(_sub_state if/elif)/L1/MTF bull-bear 已破产; 一次性铺开 9态+事件+4尺度+命名=赌大方向对(违分层非平均地基先行)。"
+      ],
+      "summary": "能干, 但当前形态 REVISE 不能照搬落地。方向真金白银价值集中在三处(起涨点识别/鱼身续持/鱼尾出场), 这三处对应的 spring/UTAD 边界事件 + RS 维度 + 位置消歧确实是研究跨源点名的高优盲点, 值得做。但方案有六个结构性问题必须改: (1) 真相源未对账 — 三个评审引 sandbox notes 的'缩量上涨已删'当既成事实, 而实测 promoted config 是 v3 七态保留它, 落地第一步必须裁定 config 为准; (2) 缺 forward-return 验证闭环 — 全部'OOS稳'是无监督可分性零 forward 证据, 在 0.01-0.02 薄 edge 上膨胀参数必学出假漂亮, 唯一 gate 应是接 fact_rally_stage 的 live 反事实含成本超额(且须区分 post-hoc 描述 vs 可交易收益, 全 7 评审都踩了这个混淆); (3) 两个前瞻 critical(边界事件/命名形态末段结论回贴)需三时点契约总闸; (4) A股 stk_limit 硬真相源被无视导致放量突破在封涨停时方向反; (5) '每态占比≥阈值'无偏差约束 + 无塌缩原则是隐蔽 over-fit 引擎须连地基原则一起删; (6) 把'穷尽覆盖'当验收对连续量是恒真重言式, 换成 forward 价值覆盖。狠砍: 单日/短期独立尺度、4 尺度全栈、命名形态~21 个纯展示形态、下跌中继放量、命名层独立阈值、L1 独立判据层全删。先做: P-1 真相源对账(0 工程)→ P0 MVP(修缩量上涨/缩量回踩语义 + RS + 放量突破 limit-aware + spring/UTAD 两事件 + 三时点契约 + 含成本 forward gate, 验完起涨点能否提升含成本超额再扩), 不要一次铺开 9态×位置×4尺度×命名。命名形态做成量化态的确定性纯函数(零独立参数)消除主从倒挂与冲突。"
+    },
+    "blocking": [],
+    "critical_issues": [
+      {
+        "severity": "critical",
+        "title": "方案核心承诺'加/改状态=改config不动代码'已被现有 L3 _sub_state 硬编码违反; 方案的新增 L3 几何细分会放大这个违反",
+        "fix": "现有 _sub_state()(classifier.py L77-98)是 Python if/else 硬编码(上升通道→加速/温和/震荡, 低位横盘→地量/温和…), 不读 config 的判断逻辑(只读 子态阈值 标量)。方案 §0/§1.4 反复承诺声明式 config, 但 §2 L3 又要加 cup-handle/flat-base/double-bottom 几何细分 — 若沿用 _sub_state 模式就是再加一堆硬编码 if/else, 直接打脸自己的设计原则。必须先把 _sub_state 重写成 config-evaluator(子态也用声明式条件列表, 像 state_scores 那样), 约 30-40 LOC 改造, 才能容纳几何细分而不增硬编码。这是落地前必须裁决的架构债, 不是 nice-to-have。"
+      },
+      {
+        "severity": "critical",
+        "title": "边界事件层 + 确认FSM层 + 单日几何提取器 + 命名模板引擎 = 4个全新组件, 方案把它们说成'config 化叠加'严重低估改造量",
+        "fix": "方案 §4/§6 把边界事件说成'叠加在 L2 之上(overlay)'、命名形态说成'config 化(改config新增)', 暗示是轻量配置扩展。实测: 现有整条链(features.compute 出单bar标量 → classify_bar 吃单bar dict → softmax)零序列入口、零事件检测、零确认逻辑、零模板匹配。4 个组件都需新建独立模块吃原始 OHLCV 序列(非单bar feature): (1) events.py 序列事件检测 ~100 LOC; (2) confirm.py hysteresis-FSM 转换层 ~50 LOC; (3) single_bar_geom.py 蜡烛几何(零warmup, 与现有120-warmup特征不兼容) ~40 LOC; (4) template_engine.py 命名形态匹配 ~80 LOC。总计 ~270 新 LOC vs 现有 392 LOC = 模块体量翻倍。方案应明确列出这 4 个新建组件 + 各自 PIT 契约 + 单测, 不能含糊成'config 叠加'。改造量诚实标注: 现有 classifier/features/coupling 核心可复用~80%, 但功能完整度只覆盖方案的 L1/L2/L3-硬编码部分, 边界事件/命名/多尺度/RS 全是新建。"
+      },
+      {
+        "severity": "critical",
+        "title": "边界事件(假突破/挖坑)的'未来N日才知'结论可能被回填到触发日 → 前瞻泄漏",
+        "fix": "强制事件检测器双时点分离: 触发日 trigger_date=t (出'疑似'), 确认日 confirm_date=t+N (出'假突破/挖坑确认')。事件 record 必带 confirm_date 字段, 下游(选股/打分/出场)只能在 决策点>=confirm_date 时消费该事件。在 classifier/event_detector 加断言 assert decision_date >= event.confirm_date, 违反即 raise。N 进 Optuna search space + walk-forward OOS, 按 minor/intermediate/major 级别参数化(研究: ~1日/3-5日/7-10日), 不 hardcode。写防回退单测: 构造'突破后第3日跌回'样本, 断言第1日的标签里没有'假突破'。"
+      },
+      {
+        "severity": "critical",
+        "title": "命名形态模板匹配可能把序列末段(突破/出水)的结论回贴到前段(鸭头/吸筹)bar → 前瞻",
+        "fix": "模板命中日 = 序列最后一段满足的 bar(出水日/突破日), 严禁回溯标注模板覆盖的历史 bar。实现: 模板匹配返回单一 match_date(=末段确认日) + 可选的回看窗口(仅供展示, 不可进 PIT 特征)。颈线/swing-point 依赖的右肩确认走 N-bar backward 确认(confirm_date>=右肩确认日)。命名形态仅作派生标签, 不进软隶属向量。单测: 老鸭头出水日前一日, 断言该股标签不含'老鸭头'。"
+      },
+      {
+        "severity": "critical",
+        "title": "中位横盘 (mid-pctile sideways) 是真实存在的 GAP — 现 7 态留缝, 方案'中继平台'填洞但 pctile 口径与 config 矛盾",
+        "fix": "现 config 横盘只有低位横盘(pctile<0.475)+高位滞涨(pctile>0.717), 0.475-0.717 的横盘(窄幅+均线走平+价中位, 既非筑底也非派发)匹配不到任何横盘态。方案 §2 line 42 新增'中继平台'方向正确, 但: (1) §3 line 82 横盘位置带写成 低<0.3/中0.3-0.7/高>0.7, 与 config 实际 0.475/0.717 完全不同 — 统一为单一权威口径(建议 config 实测带), 三态价格分位轴必须满足 低上界 ≤ 中下界, 中上界 ≤ 高下界, 用 hysteresis 死区填边界。(2) 中继平台与低位横盘的区分不能只靠 pctile, 否则一个回调到中位的强势股 base 会和'拉升中途清洗平台'混淆 — 必须叠加'前序是否经历上升通道'(中继=前升, 低位=前跌/无趋势)。落地前必须证明 0.475-0.717 区间的 bar 实测有非平凡占比落入中继平台而非被塞进相邻态。"
+      },
+      {
+        "severity": "critical",
+        "title": "缩量回踩的 L1 归属在'方案文档(下跌)'、'决策点(未决)'、'代码(bull)'三处自相矛盾 — 直接埋 PIT/语义 leakage",
+        "fix": "方案 §2 line 46 把缩量回踩放在'下跌'L1 下; §8 #5 又自问归属未决; classifier.py:149 已 hardcode 进 bull 集合。三处不一致。裁决: 缩量回踩=升势中回调 → 归'上涨'大类, 但归属判据必须从'瞬时 mom20 符号'(现 config mom20∈[-8%,-0.93%]=下跌动量)改为'前序在上升通道/价仍在中长均线上 + higher-low 未破'的上下文门, 否则它会与'下跌通道初段'和未来的'下跌中继'抢同一批 bar(价跌+缩量)=重叠。同时必须加研究指出的'破位降级硬门'(收盘跌破前一 swing low → 转判下跌, 不留回踩态), 否则缩量回踩态会吞掉真正的趋势反转 = 覆盖错误(把下跌伪装成健康回踩)。"
+      },
+      {
+        "severity": "critical",
+        "title": "全部'OOS稳/覆盖100%/80%干净'是无监督可分性, 零 forward-return 证据 — 方案在无价值证明上膨胀参数空间",
+        "fix": "sandbox/state_quantify/notes.md 的 OOS 是 train0.092≈test0.091 的分离度 margin, 与主升浪 forward 收益毫无关系。在任何新态/事件进 config 前, 强制 gate: 用 fact_rally_stage 跑每个候选态/overlay 的条件化 forward 增量 (含成本绝对收益, CPCV/PBO 防选择偏差), 按股+按时间双切 OOS。无 forward 增量的态/事件一律不进 v1, 标 unknown 留探索。验收标尺从'可分性+覆盖率'改为'forward 条件化增量'。"
+      },
+      {
+        "severity": "critical",
+        "title": "缩量上涨态与实测证据直接冲突 — sandbox v2 已判其退化(8.4%)并入上升通道, 方案却复活并提议再拆2态",
+        "fix": "notes.md 第19行明载'缩量上涨 8.4%退化→并入上升通道子档'。删除独立'缩量上涨'L2 态 (决策点4 的两个选项都错)。改为 effort/result 量价背离 overlay (横切上升通道/高位滞涨), 位置 (pctile+斜率) 决定方向: 高位+走平=衰竭看空 / 低位+仍陡=供给枯竭中性。这同时采纳研究的'位置无关一刀切是结构性误判源'裁决。"
+      },
+      {
+        "severity": "critical",
+        "title": "'每态占比≥阈值'无偏差硬约束是隐蔽的 over-fit 引擎 — 把分类器拟合到化妆指标(占比均匀)而非 forward 价值",
+        "fix": "删除 §7 / §1.6 的'每态占比≥阈值否则罚分'硬约束。市场分布天然不均 (climax 罕见/下跌态多), 强制均衡 = 优化错误目标。'罕见态不被塌缩到0'的真实需求只需软约束: 每态占比 > 0 (非平凡), 不设均衡阈值。占比是市场分布的产物, 永不作为 Optuna 优化目标。决策点9 的疑虑应裁定为'会扭曲, 不做'。"
+      },
+      {
+        "severity": "critical",
+        "title": "放量突破态在A股结构性失效: 封涨停=缩量不是放量, 一字板volume塌缩会被判成'无量假突破'(方向反)",
+        "fix": "plan §2/§3的'放量突破=量比>1.5~1.89x'判据对A股最强的突破信号(涨停板)系统性误判。A股放量突破有两种物理形态: (A)连续K线动量放量(可正常用量比), (B)涨停封板——封单越强成交越小(挂单买不到), 一字板volume趋近0。用vol_ratio判突破会把最强的一字涨停突破判成'缩量上涨/无量'(看空或不追), 方向完全反。fix: 新增limit-aware突破分支——引入 raw_tushare_stk_limit, 当 close>=up_limit*0.995(封板) 时, 突破强度用'封板/连板'语义(封单额、是否一字、连板数)而非vol_ratio; vol_ratio只对未封板的换手型突破有效。封板态单独标'涨停封板(买不进/需打板)', 是可见性而非可买入信号。这条不修, 放量突破态对A股主升浪起涨点(常以涨停启动)就是结构性瞎眼。"
+      },
+      {
+        "severity": "critical",
+        "title": "T+1未进入任何消费者锚定: 单日/短期态的'可买入率'和出场态的'可卖出率'未做体检, 直接喂Optuna会优化出不可执行的in-sample漂亮态",
+        "fix": "plan §7 Optuna目标(分离×覆盖/纯度/覆盖)、§5验证(归属率/转换矩阵/语义抽查)全程无'可执行性'维度。A股T+1: t日识别的'放量突破/起涨'态, 最快t+1开盘才能买; 若t+1一字涨停则买不进(skip), 若t日已涨停则t日根本没买入窗口。出场同理: '鱼尾/高位放量下跌'态若当日跌停封死, T+1才能卖且可能连续跌停闷杀, 出场态的纸面收益≠可实现收益。fix: (1)每个'入场类'态(放量突破/挖坑回收/缩量回踩起涨)在validation里加'T+1可买入率'(t+1非一字涨停的比例, 复用已有task #47'起涨点T+1可买入率体检'); (2)每个'出场类'态加'T+1可卖出率'(t+1非一字跌停比例); (3)Optuna目标函数或转正门必须含T+1可执行性惩罚, 否则会选出'专挑涨停日起涨'的态——in-sample分离漂亮但OOS含成本必崩(对照§4.5含成本红线: portfolio_backtest +45.4%不含T+1当最终决策的反例)。"
+      },
+      {
+        "severity": "critical",
+        "title": "Optuna objective 未锚定 forward 含成本超额, 而是锚定'分离度×覆盖/语义符合度/转换矩阵对角占优'——优化了'分类好看'而非'选股赚钱'",
+        "fix": "§7的Optuna目标(均衡分离×覆盖/高分离纯度/高覆盖/理论锚定预设)全是'分类质量'指标, 没有一个是'该态/事件选出的股的forward含成本超额'。这会重演memory feedback-param-selection-peek的覆辙: 分类器在in-sample分得漂亮(高分离纯度), 但分出来的'放量突破'股forward超额≈0(全是小盘beta)。修: 至少一套预设的primary objective必须是'按该态/事件入场的walk-forward含成本超额(vs HS300)', 分离度/覆盖降为约束或次级。没有这个, 整套taxonomy可能是一个OOS漂亮但永远不赚钱的精致分类器。这是真金白银红线: 优化目标=分类美学≠选股盈利, 不修=方向性白跑。"
+      },
+      {
+        "severity": "critical",
+        "title": "config↔notes 版本分叉无人发现: 活 config 是 7 态 v3(含缩量上涨), notes/design 是 6 态 v2(删缩量上涨), 三处评审引 notes 论证却没核对 config 已偏离",
+        "fix": "3 个评审(理论严谨/架构/over-fit)都把 notes.md 第 19 行'缩量上涨 8.4%退化→并入上升通道'当成既成事实来论证'缩量上涨该删', 但实测活 config (backend/config/technical_states.yaml meta.version=2, tuned_on=sandbox P1/v3) 保留 7 态含缩量上涨, test_technical_states.py:26 硬断言这 7 态, classifier.py multi_tf bull 集合也含缩量上涨。即 promoted config = v3(7态保留), sandbox notes = v2(6态删除), 两者矛盾且并存。这是 CLAUDE §3 promotion 纪律的反例(探索期 v2 结论 vs promoted v3 结论混淆)。落地前必须: (1) 裁决 v2 还是 v3 是真相源(config 是 confirmed_by_owner=false 的 promoted, notes 是 sandbox 草稿——按纪律 promoted 优先但 owner 未确认); (2) 若取 v2 则同步改 config+test+classifier bull 集合; (3) plan §2 在认定真相源前不得在缩量上涨上再叠加拆态决策。评审集体在未对账的前提上论证, 结论(删/拆)可能全错向。"
+      },
+      {
+        "severity": "critical",
+        "title": "P6 消费者 fact_rally_stage 是 POST-HOC 非 live, 但全 7 评审把'接 fact_rally_stage 验 forward'当 PIT 干净的终极 gate",
+        "fix": "消费者锚定/PIT/over-fit 三评审一致要求'每个态/事件接 fact_rally_stage 跑含成本 forward 增量'作唯一验收。但 build_rally_stage.py 第 7-9 行明示 stage 用未来 peak 切分(progress=(close-bottom)/(peak-bottom))= POST-HOC 结果倒推, 非 live conditioning。后果: 直接拿 fact_rally_stage 的 stage 标签当 forward 收益 gate, 等于用'已知这段是鱼尾'去验'鱼尾出场态有没有用'——是描述性吻合度, 不是可交易 forward 收益。正解(goal.md D-step 判据): 验收必须是'在 stage 窗内, 用 live-confirmable 的态/事件触发条件化持有到信号反转 → 含成本绝对收益', 出场点只能用 ≤t 信息(顶是事后±窗确认 label 合法, 但成交不能用未来顶)。评审需把'post-hoc stage 描述性验证(IC 快筛)'与'live 反事实 forward 收益(C-R1 裁决)'分开, 否则方案会误以为接上 fact_rally_stage 就万事大吉, 重蹈 goal.md'label 用未来合法 / 成交用未来不现实'的混淆。"
+      },
+      {
+        "severity": "critical",
+        "title": "核心假设一'3大类逐层细化能穷尽'是范畴错误: 趋势/位置都是连续量, 离散分类不存在'穷尽', 只存在'切在哪'。'无遗漏无重叠'是恒真重言式, 零信息",
+        "description": "方案§1.2/§5把'穷尽覆盖'当成可验收的真相。但L1判据(价相对均线+动量符号+斜率)全是连续标量的阈值化。对连续随机变量, 任何一组阈值都100%覆盖且(在硬切下)无重叠——这是平凡的, 不是成就。真正的趋势是路径依赖、多尺度叠加的: 同一根bar在20日窗是'上涨'、60日窗是'下跌'、5日窗是'横盘', 三个都对, 这不是'消歧能解决的多义', 这是趋势本身没有标量定义。证明'归属率≥95%'(§5)证的是'我的桶填满了连续轴'(恒真), 完全没碰到'我的桶边界对应真实的行为相变'这个唯一重要的问题。现有classifier.py已经是连续软隶属(softmax+entropy), 硬分3大类反而是信息损失——把已有的连续坐标量化成3个标签, 下游再也拿不回连续信息。",
+        "fix": "放弃'穷尽分类'作为目标和验收标尺。改为: (a)L1/L2标签只作为人类可读的解释视图(dossier说人话), 绝不作为下游选股的主输入; 下游条件化因子直接吃连续坐标(斜率/分位/动量/路径效率), 不吃离散标签。(b)验收从'归属率/转换矩阵'改为唯一标尺: 离散标签 vs 连续坐标, 在rally_stage含成本OOS超额上的边际增量。增量≤0 → 离散层是纯装饰, 不promote进选股路径(只留前端展示)。(c)接受'一根bar多尺度多标签同时为真'是趋势的本质, 不是bug, 不要试图消歧成单一dominant。"
+      },
+      {
+        "severity": "critical",
+        "title": "核心假设二'位置消歧(pctile+前序态)解决多义'有逻辑循环+把连续位置硬切成3档的二次范畴错误, 且没解决真正的多义来源(尺度)",
+        "description": "三处硬伤: (1)循环: §8.1自己问了——前序主态(as-of dominant)是分类器的输出, 用它当消歧输入=分类依赖自己上一步的输出。即便PIT不前瞻, 它把单bar的瞬时分类变成了路径依赖的状态机, 早期一个误判会沿转换链传播放大(误差累积), 且'dominant'本身在过渡区是低置信的(entropy高), 用一个不确定的标签去消歧另一个标签=噪音×噪音。(2)位置不是3档: 方案§3把pctile硬切>0.7/0.3-0.7/<0.3三带, 但位置是连续的, 0.69和0.71被判成'恐慌底'和'破位顶'语义全反, 而它们K线几乎一样——这制造了比'不消歧'更糟的不稳定性(切点附近翻天覆地)。§8.6自己也问了'pctile带怎么切不留缝', 说明设计者知道这是个没解的洞。(3)真多义没解: 同一行为多义的最大来源是尺度(20日涨/60日跌), 不是位置。位置消歧解决的是'缩量上涨高位vs低位', 但'高位/低位'本身是相对哪个窗口的高低?方案没定义, 等于用一个未定义量去消另一个的歧义。",
+        "fix": "(1)消歧输入禁用'前序dominant标签', 改用纯连续、无分类器自依赖的量: 距前高%/距前低%/N日累计涨幅/位置pctile连续值——这些都PIT干净且不循环。(2)位置永远以连续pctile进下游, 绝不在>0.7/<0.3硬切; 若必须出人话标签, 切点附近用软隶属(已有机制)而非硬判, 并明确标注'切点±0.05为过渡区, 语义不可靠'。(3)先把尺度多义显式建模(同一bar在3个窗口的标签全部输出、并列、不强行收敛成一个dominant), 再谈位置——否则是在未定义的地基上消歧。"
+      }
+    ]
+  }
+}

@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-27 21:43
+> Snapshot: 2026-06-28 08:18
 
 ## 1. 入口面
 
@@ -97,7 +97,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 123 张 | 单 writer 80 | 多 writer 43 | 动态表名写点 37 处 (20 文件)
+统计: 表 120 张 | 单 writer 77 | 多 writer 43 | 动态表名写点 33 处 (18 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -108,7 +108,6 @@
 | backend/scripts/build_dc_industry_view.py | 2 |
 | backend/scripts/build_etf_kline_qfq_tushare.py | 1 |
 | backend/scripts/build_feature_map.py | 1 |
-| backend/scripts/build_feature_panel.py | 2 |
 | backend/scripts/build_lhb_events.py | 1 |
 | backend/scripts/build_macd_episode_ground_truth.py | 2 |
 | backend/scripts/build_price_kline_qfq_tushare.py | 1 |
@@ -116,7 +115,6 @@
 | backend/scripts/build_rally_episode_strata.py | 2 |
 | backend/scripts/build_rally_negatives.py | 2 |
 | backend/scripts/build_rally_stage.py | 2 |
-| backend/scripts/build_signal_panel.py | 2 |
 | backend/scripts/db_compact.py | 2 |
 | backend/scripts/db_partition_migrate.py | 2 |
 | backend/scripts/migrate_reference_db.py | 1 |
@@ -191,12 +189,9 @@
 | fact_common_major_holder_stock | backend/services/schema_core.py |
 | fact_controlling_shareholder | backend/services/schema_core.py |
 | fact_daily_price_status | backend/services/primitives/ddl.py |
-| fact_feature_panel_candidate | backend/services/schema_core.py |
-| fact_feature_panel_tdx_keep_challenger | backend/services/schema_core.py |
 | fact_financial_derived | backend/services/financial_client.py |
 | fact_lhb_event | backend/scripts/build_lhb_events.py |
 | fact_rally_ground_truth | backend/scripts/build_rally_ground_truth.py |
-| fact_segment_panel | backend/scripts/build_segment_panel.py |
 | fact_setup_snapshot | backend/services/schema_core.py |
 | fact_shareholder_plan | backend/services/schema_core.py |
 | fact_shareholder_trade | backend/services/schema_core.py |
@@ -261,7 +256,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,503 | calls 边 56,254 | imports 边 5,436 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 8,503 | calls 边 56,278 | imports 边 5,436 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -319,5 +314,5 @@
 
 - chunkyctl 子命令 10 | launchd 任务 1 | router 12 (端点 56)
 - sync_registry 数据域 44
-- 产表 123 (多 writer 43)
+- 产表 120 (多 writer 43)
 

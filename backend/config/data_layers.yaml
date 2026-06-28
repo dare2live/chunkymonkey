@@ -126,10 +126,6 @@ tables:
   sys_schema_version: infra
   dim_stock_industry_context_latest: L1_foundation
   dim_strategy_preset: infra
-  fact_feature_panel: L2_feature          # 2026-06-19 重建物化 live (8.17M行/5427股/2019-2026; mom_60/reversal_20/vol_20/mf_trend_20/roe_dt_asof PIT; entry点JOIN覆盖100%; build_feature_panel.py)
-  fact_feature_panel_candidate: L2_feature  # 2026-06-27 补声明 (schema_marts init 建空表; 候选特征面板, builder=档B scaffolding; 修 data-layer-integrity untagged)
-  fact_segment_panel: L2_feature          # 2026-06-16 F0 形态/分层面板 (build_segment_panel.py, tushare PIT, stage+range_pos+MACD零轴+board)
-  fact_signal_panel: L2_feature           # 2026-06-22 b分表事件信号面 (build_signal_panel.py, 平行 feature_panel 同键 code×date; 公式事件 macd_golden_cross, 加公式=加列; signal_assembler 同键JOIN feature_panel)
   fact_risk_factors: L2_feature           # 2026-06-22 P0-10 补声明 (conformance审计抓 untagged 致 data-layer-integrity 红门): 风险因子日表 4977行 (calc_date, daily_update Step2e build)
   fact_technical_trigger: L2_feature      # 2026-06-22 P0-10 补声明: 技术触发事件 (rows=0 公式工厂待跑; formula 族)
   mart_formula_horizon_evidence: L2_feature  # 2026-06-22 P0-10 补声明: 公式 horizon 证据 (rows=0 公式工厂待跑)

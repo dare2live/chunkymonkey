@@ -1,0 +1,9 @@
+# 加工层清空 U1 — smartmoney candidate (0行 scaffolding)
+run_id: purge_u1_candidate_20260628
+db: smartmoney
+archive_dir: data/archive/purge_processed
+entries:
+  - table: fact_feature_panel_candidate
+    action: drop
+    bucket: l2_feature_panel
+    reason: "加工层清空: 候选特征面板 0行 scaffolding (档B 旧 experiment builder 已 reset wipe), schema DDL 已删"
