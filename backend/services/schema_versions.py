@@ -37,193 +37,30 @@ logger = logging.getLogger("cm-api.schema_versions")
 # ===========================================================================
 
 # fact_* (事件/快照层, 23 张)
-FACT_VERSIONS = {
-    "fact_institution_event": "v2",          # 机构事件 (公告日 source lineage)
-    "fact_chain_alpha_truth": "v1",          # 链路 alpha 真值
-    "fact_feature_panel": "v4",              # 特征面板 (含 follow_net_return_* 标签 + K线来源血缘)
-    # fact_dzjy_event/fact_executive_trade_event/fact_jgdy_event 版本已删 2026-06-27 (通达信全删 M4: akshare event 表物删, 用户决cut)
-    "fact_lhb_event": "v1",                  # 龙虎榜事件
-    # fact_fundamental_quarterly version 已删 2026-06-27 (通达信全删: gpcw派生表退役物删)
-    "fact_institution_follow_backtest": "v2",  # 机构跟随回测 (pricing_policy_hash)
-    "fact_policy_equity_curve": "v1",        # 策略 equity curve
-    "fact_policy_eval": "v1",                # 策略评估
-    "fact_policy_trade": "v1",               # 策略交易明细
-    "fact_regime_state": "v1",               # 市场 regime
-    "fact_stock_archetype": "v1",            # 股票原型
-    # fact_stock_attention_snapshot 版本已删 2026-06-27 (通达信全删 M4: akshare 关注度物删, 用户决cut)
-    "fact_stock_industry_context": "v1",     # 行业上下文
-    "fact_stock_quality_features": "v1",     # 质量特征
-    "fact_stock_stage_features": "v1",       # 阶段特征
-    "fact_stock_turtle_features": "v1",      # 海龟特征
-    "fact_risk_factors": "v1",               # P1.6 风险因子 (vol/sharpe/dd/mom/skew/kurt)
-    # Phase β/γ/δ/ε 新增 (2026-05-12)
-    "fact_technical_trigger": "v1",          # Phase β: 公式触发信号
-    "fact_stock_technical_stage": "v1",      # Phase β: Stan Weinstein 4 stage
-    "fact_stock_fundamental_stage_daily": "v1",  # Phase γ: 基本面阶段 PIT 日快照
-    "fact_stock_type_daily": "v1",           # Phase γ: 5 状态股票类型
-    "fact_paper_position": "v1",             # Phase δ: 虚拟交易事件
-    "fact_stock_selection_log": "v1",        # Phase ε: 选股事件 PIT log
-    "fact_signal_context": "v1",             # Phase ε++: 每日每股 5 维上下文 (vol/amt/price_pos/stage)
-    # §3.4 十项基础设施 fact 类
-    "fact_daily_price_status": "v1",         # 一字板 / 涨跌停 / 停牌
-    "fact_stock_liquidity_daily": "v1",      # 流动性
-    "fact_stock_style_daily": "v1",          # 风格因子 z-score
-    "fact_stock_market_cap_daily": "v1",     # 市值
-}
+# FACT_VERSIONS: 全部 26 条 fact_* 派生表在纯数据平台重建 (U3/U4/U5 + 白名单裁剪) 已物删,
+#   整 dict 清空 2026-06-28 (institution_event/lhb_event/risk_factors/technical_stage/policy_*/
+#   feature_panel/chain_alpha_truth/... 均退役)。edge 层重建若引入 fact 派生表再逐条登记。
+FACT_VERSIONS: dict[str, str] = {}
 
-# mart_* (集市层, 可重算, 32 张)
+# mart_* (集市层): 纯数据平台只留治理/编排 mart, 全部策略/特征/模型/synergy/p0-p3 mart
+#   在重建 (白名单裁剪 + U2/U5) 已物删, 2026-06-28 trim 至 10 条 KEEP 治理 mart。
 MART_VERSIONS = {
-    "mart_current_relationship": "v1",       # 当前持仓关系 ⭐
-    "mart_daily_recommendation": "v1",       # 每日推荐 topK
-    "mart_daily_recommendation_risk": "v1",
-    "mart_daily_topk_view_cache": "v1",
-    "mart_model_ablation_run": "v1",
-    "mart_feature_association_stat": "v2",
-    "mart_feature_correlation_cluster": "v1",
-    "mart_feature_association_fold": "v1",
-    "mart_feature_rank_matrix_proxy_stat": "v1",
-    "mart_feature_rank_matrix_benchmark": "v1",
-    "mart_feature_rank_matrix_cache_manifest": "v1",
-    "mart_feature_search_space": "v1",
-    "mart_feature_search_space_summary": "v1",
-    "mart_optuna_feature_space_trial": "v1",
-    "mart_model_stability_search_trial": "v6",
-    "mart_model_stability_search_summary": "v1",
-    "mart_model_stability_context_diagnostic": "v1",
-    "mart_model_stability_context_summary": "v2",
-    "mart_drift_safe_candidate_feature": "v1",
-    "mart_drift_safe_candidate_summary": "v1",
-    "mart_drift_safe_candidate_batch_eval": "v1",
-    "mart_drift_safe_candidate_batch_summary": "v1",
-    "mart_feature_drift_root_cause": "v1",
-    "mart_feature_drift_root_cause_summary": "v1",
-    "mart_feature_drift_mitigation_panel_build": "v1",
-    "mart_hybrid_feature_panel_build": "v1",
-    "mart_stock_horizon_profile": "v3",
-    "mart_stock_horizon_feature_effect": "v2",
-    "mart_stock_horizon_selection": "v1",
-    "mart_feature_pit_coverage_summary": "v1",
-    "mart_feature_panel_validation": "v1",
-    "mart_feature_panel_prune_run": "v1",
-    "mart_feature_candidate_coverage": "v1",
-    "mart_feature_drift_histogram": "v1",
-    "mart_challenger_evidence_bundle": "v1",
-    "mart_champion_candidate_evaluation": "v1",
-    # mart_tdx_f10_capability_matrix version 已删 2026-06-27 (通达信全删 gpcw物删)
-    "mart_tdx_f10_source_date_section_audit": "v3",
-    "mart_feature_catalog_current": "v1",
-    "mart_feature_pit_join_plan": "v1",
-    "mart_feature_exclusion_reason": "v1",
-    "mart_model_explanation": "v1",
-    "mart_daily_recommendation_explanation": "v1",
-    "mart_temporal_research_panel": "v1",
-    "mart_temporal_research_panel_quality": "v1",
-    "mart_feature_temporal_relevance": "v1",
-    "mart_feature_bucket_effect": "v1",
-    "mart_feature_relevance_stability": "v1",
-    "mart_feature_pair_synergy": "v1",
-    "mart_feature_interaction_candidate": "v1",
-    "mart_feature_conditional_synergy": "v1",
-    "mart_feature_redundancy_pair": "v1",
-    "mart_feature_cluster_redundancy": "v1",
-    "mart_optuna_synergy_trial": "v1",
-    "mart_optuna_synergy_study_summary": "v1",
-    "mart_synergy_policy_candidate": "v1",
-    "mart_synergy_policy_walkforward": "v2",
-    "mart_synergy_policy_gate": "v2",
-    "mart_synergy_policy_evidence_bundle": "v1",
-    "mart_synergy_policy_mtm_position": "v1",
-    "mart_synergy_policy_mtm_daily_path": "v1",
-    "mart_synergy_policy_mtm_gate": "v1",
-    "mart_synergy_policy_mtm_evidence_bundle": "v1",
-    "mart_synergy_policy_mtm_rerank": "v1",
-    "mart_synergy_policy_mtm_rerank_summary": "v1",
-    "mart_synergy_policy_mtm_strategy_sweep": "v1",
-    "mart_synergy_policy_mtm_strategy_sweep_summary": "v1",
-    "mart_research_schedule_plan": "v1",
-    "mart_architecture_inventory_asset": "v1",
-    "mart_architecture_dependency_edge": "v1",
-    "mart_architecture_inventory_summary": "v1",
-    "mart_architecture_cleanup_plan": "v1",
-    "mart_data_source_failure_queue": "v1",
-    "mart_pipeline_lock": "v1",
-    "mart_pricing_label_policy": "v1",
-    "mart_pricing_label_policy_gate": "v1",
-    "mart_pricing_label_data_readiness_gate": "v1",
-    "mart_global_data_quality_gate": "v1",
-    "mart_global_data_quality_detail": "v1",
-    "mart_feature_null_policy": "v1",
-    "mart_candidate_feature_set_contract": "v1",
-    "mart_feature_availability_contract": "v1",
-    "mart_data_processing_tool_run": "v1",
-    "mart_data_processing_tool_issue": "v1",
-    "mart_data_deletion_record": "v1",
-    "mart_follow_return_label_build": "v1",
-    "mart_follow_return_label_quality": "v1",
-    "mart_data_deprecation_record": "v1",
-    "mart_model_portfolio_curve": "v1",
-    "mart_model_portfolio_summary": "v1",    # 模型组合表现 (cost/return/sharpe)
-    "mart_model_walkforward_fold": "v1",     # walkforward 切分 ⭐
-    "mart_model_walkforward_portfolio_summary": "v1",
-    "mart_model_walkforward_prediction": "v1",
-    "mart_multidim_model": "v1",             # 多维模型注册
-    "mart_multidim_prediction": "v1",        # 多维模型预测
-    "mart_step_fingerprint": "v1",           # step 指纹 (增量驱动)
-    "mart_stock_survey_activity": "v1",      # 调研活动
-    "mart_prediction_outcome": "v1",         # P2.8 预测 outcome tracker
-    "mart_today_signal_cache": "v2",         # signals_v2 read cache summary row
-    "mart_today_signal_cache_signal": "v1",  # signals_v2 bounded per-signal cache rows
-    # Phase β/γ/δ/ε 新增 (2026-05-12)
-    "mart_formula_horizon_evidence": "v1",   # Phase β: 公式 horizon 胜率证据
-    "mart_stage_formula_fitness": "v1",      # Phase β: stage × formula × hd 适配
-    "mart_stock_picture_daily": "v1",        # Phase γ: 5,512 股全画像 fan-out
-    "mart_stock_trade_plan": "v1",           # Phase γ: 8 字段 trade plan
-    "mart_paper_nav": "v1",                  # Phase δ: 虚拟 NAV 日序列
-    "mart_signal_ic": "v1",                  # Phase δ: 公式 Spearman IC
-    "mart_decision_outcome": "v1",           # Phase δ: BUY 决策 outcome
-    "mart_stock_selection_outcome": "v1",    # Phase ε: 选股事件 forward return
-    "mart_stock_selection_summary": "v1",    # Phase ε: 每股 rolling 统计
-    "mart_formula_weight_history": "v1",     # Phase ε: 反馈环公式权重
-    "mart_daily_blended_recommendation": "v1",  # Phase ε+: 反馈环融合后的 daily-topk
-    "mart_model_composite_score": "v1",      # §6.5.1 Risk-adjusted composite
-    "mart_model_edge_flags": "v1",           # §6.5.2 OVERFIT/RISKY/DEAD 三道防线
-    "mart_research_reflection_log": "v1",    # §6.5.3 GEPA 反思日志
-    "mart_stock_formula_optuna": "v1",       # Phase η: per-stock 公式 grid search
-    "mart_daily_formula_buys": "v1",         # Phase η: 每日 T+1 公式推荐
-    "mart_per_stock_optuna_best": "v1",      # Phase η+: per-stock 真 Optuna 最佳配置
-    "mart_daily_position_recommendation": "v4",  # Phase ζ: 加 optimal_stop_pct/target/trailing 暴露寻优明细
-    "mart_stock_survey_features": "v1",          # Phase η++++: 调研热度桶 (IC 60d=0.086 实测验证)
-    "mart_stock_formula_optuna_v2": "v1",        # Phase ε.4: 真实回测 (含 stop/trailing/target + 成本 + 一字板)
-    "mart_per_stock_strategy_optimal": "v3",     # Phase η++++++: 加 K线形态阈值 + 多目标 metrics
-    "mart_stock_formula_buy_signal_daily": "v2", # Phase η+++++ 修正: 8 因子全维 (含 archetype/primary_type)
-    "mart_stage_formula_fitness": "v2",          # Phase η++++++: 重建 6 fund × 6 tech × 5 formula × 7 hp
-    # Phase v3.2 PLAN_V3 (ML ranking + paper_sim ML score)
-    "mart_p0a_label_panel": "v1",                # P0a T+1 VWAP forward 5/10/20d cost-after labels + mask
-    "mart_p0a_feature_label_panel": "v1",        # P0a JOIN alpha158 + risk + financial + events × label
-    "mart_p0a_feature_label_panel_v2": "v1",     # P0a v2: + 6 formula_trigger dummies (stage_opt 删除 Codex Q1 leakage)
-    "mart_p0a_feature_label_panel_v3": "v1",     # P0a v3: + survey 4 + valuation_z 4 + sector 5 + inst_path_a 5 (Codex 7-day plan Day 2-3)
-    "mart_p0b_oos_predictions": "v1",            # P0b walk-forward OOS predictions (1 row per stock×signal_date×model_id)
-    "mart_p0b_lambdamart_v6_predictions": "v1",  # P0b LambdaMART v6 weekly retrain OOS predictions
-    "mart_p0b_walkforward_eval": "v1",           # P0b 每窗 RankIC + IC IR + n_train/n_test
-    "mart_p1_ablation_result": "v1",             # P1 feature group ablation (baseline + drop_one + only_one)
-    "mart_p2_composite_result": "v1",            # P2 composite weight grid search (ret/dd/hp/turnover/cost/capacity)
-    "mart_p3_acceptance_result": "v1",           # P3 final holdout 4 硬验收 + KPI snapshot
-    "mart_champion_model": "v1",                 # P4c 单冠军 + KPI 完整性 Gate (Bailey-LdP deflated SR)
-    "mart_paper_sim_lambdamart_v6_kpi_compare": "v1",  # MSAF Phase 2.1 v6 versus v4 paper_sim KPI table
+    "mart_data_source_failure_queue": "v1",   # 采集失败队列
+    "mart_pipeline_lock": "v1",               # 单 writer 锁
+    "mart_step_fingerprint": "v1",            # step 指纹 (增量驱动)
+    "mart_global_data_quality_gate": "v1",    # 全局质量门
+    "mart_global_data_quality_detail": "v1",  # 质量门明细 (data_quality 按需建)
+    "mart_feature_null_policy": "v1",         # null 策略契约 (data_quality 按需建)
+    "mart_data_processing_tool_run": "v1",    # 数据处理工具 run
+    "mart_data_processing_tool_issue": "v1",  # 数据处理工具 issue
+    "mart_data_deletion_record": "v1",        # 删除留痕
+    "mart_data_deprecation_record": "v1",     # 退役留痕
 }
 
-# dim_* 派生类 (静态/缓存型, 不含 raw dim, 12 张)
+# dim_* 派生类: 只留交易规则/上市状态等基础设施 dim。策略派生 dim
+#   (archetype/quality/stage/turtle/industry_context/stage_days/style_factor latest) 重建已物删,
+#   2026-06-28 trim 至 7 条 KEEP infra dim。
 DIM_DERIVED_VERSIONS = {
-    # dim_capital_behavior_latest 已物删 2026-06-27 (通达信全删 M4: akshare 资本运作退役, 用户决cut)
-    "dim_stock_archetype_latest": "v1",
-    # dim_stock_attention_latest 版本已删 2026-06-27 (通达信全删 M4: akshare 关注度物删)
-    "dim_stock_industry_context_latest": "v1",
-    "dim_stock_quality_latest": "v1",
-    "dim_stock_stage_latest": "v1",
-    "dim_stock_turtle_latest": "v1",
-    # Phase γ 新增 (2026-05-12)
-    "dim_stock_stage_days": "v1",            # Phase γ: 基本面/技术面阶段持续天数
-    # §3.4 十项基础设施 dim 类
     "dim_price_limit_rules": "v1",           # 涨跌停规则
     "dim_market_segment": "v1",              # 市场细分
     "dim_trading_rule": "v1",                # T+1 / 手数 / tick
@@ -231,7 +68,6 @@ DIM_DERIVED_VERSIONS = {
     "dim_trading_session": "v1",             # 盘口时段
     "dim_liquidity_threshold": "v1",         # 流动性阈值
     "dim_listing_status": "v1",              # 退市状态
-    "dim_style_factor": "v1",                # 风格因子定义
 }
 
 # 合并: 业务派生表全集 (raw_* / dim_active_a_stock / dim_trading_calendar 等不进, 它们靠 sync_raw 维护)
