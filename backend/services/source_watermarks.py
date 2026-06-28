@@ -54,51 +54,27 @@ CREATE INDEX IF NOT EXISTS idx_source_failure_open
 
 
 DOMAIN_SPECS = [
-    # NOTE: kline_daily watermark 仍 spec tdxhub_quote(tier1)+akshare(tier3); price_kline_tdxhub 已物删 2026-06-27
-    #   但 watermark refresh 对 table_missing 优雅降级(L430 fallback_reason=table_missing:<t>), 故保留。
-    #   正解 = M3 kline 源迁移时整体 repoint 到 tushare canonical v_price_kline_qfq (非本轮残留清理 scope)。
+    # kline_daily 2026-06-28 repoint tushare canonical (price_kline_tdxhub U6前已物删 + akshare 源退役):
+    #   单一 tier1 = tushare 前复权物化表 price_kline_qfq_tushare (M2 clean build, serving 真相源)。
     {
         "data_domain": "kline_daily",
-        "source_name": "tdxhub_quote",
+        "source_name": "tushare",
         "source_tier": 1,
-        "table": "market.price_kline_tdxhub",
+        "table": "market.price_kline_qfq_tushare",
         "date_col": "date",
-        "where": "freq = 'daily' AND adjust = 'qfq'",
-        "parser_version": "tdxhub_qfq_daily",
-    },
-    {
-        "data_domain": "kline_daily",
-        "source_name": "akshare_multi_source",
-        "source_tier": 3,
-        "table": "market.price_kline",
-        "date_col": "date",
-        "where": "freq = 'daily' AND adjust = 'qfq'",
-        "parser_version": "akshare_fallback_daily",
-        "fallback_reason": "fills keys/dates not yet present in tdxhub qfq daily",
-        "fallback_mode": "fills_primary_gap",
-        "primary_table": "market.price_kline_tdxhub",
-        "primary_date_col": "date",
-        "primary_where": "freq = 'daily' AND adjust = 'qfq'",
-        "gap_key_cols": ["code", "date", "freq", "adjust"],
+        "parser_version": "tushare_qfq_daily",
     },
     {
         "data_domain": "holders_top10_float",
-        "source_name": "tdxhub_holders",
+        "source_name": "miaoxiang",  # 2026-06-28: holder 主源=东财妙想 aif10 (fact_top10_holder_period source='miaoxiang'); 旧标 tdxhub_holders 退役
         "source_tier": 1,
         "table": "fact_top10_holder_period",
         "date_col": "report_date",
         "raw_hash_col": "raw_hash",
         "parser_version_col": None,
     },
-    # financial_gpcw_8q watermark 条目已删 2026-06-27 (通达信全删 gpcw物删; 财务新鲜度走 tushare registry + update_watermark_sla fact_financial_derived)
-    {
-        "data_domain": "xdxr",
-        "source_name": "tdxhub_xdxr",
-        "source_tier": 1,
-        "table": "market.price_xdxr",
-        "date_col": "date",
-        "parser_version": "tdxhub_xdxr",
-    },
+    # financial_gpcw_8q watermark 条目已删 2026-06-27 (通达信全删 gpcw物删; 财务新鲜度走 tushare sync:* 域)
+    # xdxr watermark 域已删 2026-06-28 (xdxr sync acquire 已移除, 复权走 tushare adj_factor; price_xdxr=tdxhub 残留表无 live sync)
     {
         # 2026-06-23 全项目单一供应商=东财迁移 (Stage②): serving 行业真相源 = dim_stock_dc_industry
         #   (东财行业=申万对齐同套桶, daily_update Step 2.96c build_dc_industry_view 每日刷新)。
@@ -135,24 +111,8 @@ DOMAIN_SPECS = [
         "date_col": "report_date",
         "parser_version": "aif10_or_akshare",
     },
-    {
-        "data_domain": "northbound_holding",
-        "source_name": "akshare_hsgt",
-        "source_tier": 3,
-        "table": "legacy_hsgt",
-        "date_col": "date",
-        "parser_version": "akshare",
-        "fallback_reason": "no stable tdxhub/miaoxiang primary in current repo",
-    },
-    {
-        "data_domain": "stock_fund_flow_rank_snapshot",
-        "source_name": "akshare",
-        "source_tier": 3,
-        "table": "mart_stock_fund_flow_rank_snapshot_daily",
-        "date_col": "snapshot_date",
-        "parser_version": "akshare_stock_fund_flow_individual_snapshot_v1",
-        "fallback_reason": "research-side rank snapshot only; exact need_027 flow remains blocked/unknown",
-    },
+    # northbound_holding 域已删 2026-06-28 (akshare 源退役 + legacy_hsgt 表 ABSENT; 个股北向 tushare ~2025-07 停披露)
+    # stock_fund_flow_rank_snapshot 域已删 2026-06-28 (akshare 源退役 + mart_stock_fund_flow_rank_snapshot_daily 表 ABSENT)
 ]
 
 

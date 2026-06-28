@@ -51,7 +51,7 @@ SLA_DAYS = {1: 1, 2: 2, 3: 3}
 # 真实 publish lag 1-2 month 后, SLA 100d 覆盖最坏情况
 # rule-compliance: ok evidence=a-share-disclosure-window
 SLA_DAYS_OVERRIDE = {
-    "financial_gpcw_8q": 100,        # 8 quarter 财报, 季度更新
+    # financial_gpcw_8q override 已删 2026-06-28 (fact_financial_derived U4 退役, DATA_SOURCE_QUERIES 条目同删)
     "holders_top10_float": 100,      # top10 股东季报
     "qfii_holding_quarterly": 100,   # qfii 季报
 }
@@ -63,15 +63,12 @@ DATA_SOURCE_QUERIES = {
         "query": "SELECT MAX(CAST(date AS VARCHAR)) FROM v_price_kline_qfq WHERE adjust='qfq' AND freq='daily'",
     },
     # xdxr SLA 条目已删 (2026-06-27 通达信全删 单元6: price_kline_tdxhub_adjustment_event 物删; 复权走 tushare adj_factor)
-    "financial_gpcw_8q": {
-        "db": "smartmoney",
-        # 2026-06-22 P0-5: fact_financial_pit_daily 2026-06-14 reset 删除 → query 抛 CatalogException
-        # 被吞 → 财报域永不告警(静默腐烂)。改 fact_financial_derived (report_date, live, 23691行)。
-        "query": "SELECT MAX(CAST(report_date AS VARCHAR)) FROM fact_financial_derived",
-    },
+    # financial_gpcw_8q SLA 条目已删 2026-06-28 (fact_financial_derived U4 退役; 财务新鲜度走 tushare
+    #   sync:balancesheet/income/fina_indicator 等 by_report_period 域, _sync_registry_queries 自动覆盖)
     "lhb_daily": {
         "db": "smartmoney",
-        "query": "SELECT MAX(CAST(trade_date AS VARCHAR)) FROM fact_lhb_event",
+        # 2026-06-28: fact_lhb_event U5 退役 → repoint raw_lhb_daily (aif10 龙虎榜 raw, trade_date)
+        "query": "SELECT MAX(CAST(trade_date AS VARCHAR)) FROM raw_lhb_daily",
     },
     "institution_survey": {
         "db": "smartmoney",
