@@ -69,10 +69,14 @@ def check_c2() -> list[str]:
     """控制面文档嵌入未 promote (confirmed_by_owner=0) 的 experiment_store run_id。"""
     try:
         sys.path.insert(0, str(REPO / "backend"))
-        from services.experiment_store import open_store
-        with open_store(read_only=True) as c:
+        # 2026-06-28: services.experiment_store helper 模块退役 → 经平台 sanctioned 读路 resolver.connect_ro (manifest 路由 + read_only)
+        from services.data_access.resolver import connect_ro
+        c = connect_ro("experiment_store")
+        try:
             rows = c.execute(
                 "SELECT run_id FROM fact_experiment_verdict WHERE COALESCE(confirmed_by_owner,0)=0").fetchall()
+        finally:
+            c.close()
         unpromoted = [r[0] for r in rows if r[0]]
     except Exception as e:  # experiment_store 不可用 → 跳过 (degrade gracefully)
         print(f"[C2 skip] experiment_store 不可读 ({str(e)[:60]}), 跳过未-promote 检查", flush=True)

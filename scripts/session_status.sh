@@ -2,7 +2,7 @@
 # session_status.sh — 一键查项目当前交付状态 (用户随时跑, 不依赖 LLM)
 #
 # 输出:
-# 1. audit_delivery_readiness 6 criteria 当前 %
+# 1. (交付准备度 audit 已删 2026-06-28: audit_delivery_readiness 随策略/compute 层退役)
 # 2. Local model-training process
 # 3. Compute backend contract
 # 4. cron entries 状态
@@ -18,11 +18,7 @@ echo "ChunkyMonkey Session Status @ $(date '+%Y-%m-%d %H:%M:%S')"
 echo "=========================================="
 echo ""
 
-# 1. Delivery readiness
-echo "--- 交付准备度 audit ---"
-PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py 2>&1 | \
-    grep -E "PASS|WARN|FAIL|均值" | head -10
-echo ""
+# 1. (交付准备度 audit 已删 2026-06-28: audit_delivery_readiness.py 随策略/compute 层退役)
 
 # 2. Local model training
 echo "--- local model training ---"
@@ -74,7 +70,6 @@ echo ""
 echo "=========================================="
 echo "Next actions (if not in cron):"
 echo "  daily update:        bash scripts/daily_update.sh"
-echo "  audit:               PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py"
-echo "  compute plan:        scripts/chunkyctl jobs --family model_training --model-id <id> --input-snapshot <snapshot> --objective <why> --rollback-plan <plan> --gate-evidence <gate>=<artifact>"
+echo "  数据健康:            scripts/chunkyctl doctor --fast"
 echo "  手动触发入口:        /api/v3/ops/jobs (前端工作台) 或 launchd_job_wrapper CLI"
 echo "=========================================="

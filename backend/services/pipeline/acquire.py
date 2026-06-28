@@ -1,8 +1,10 @@
 """① 获取 (Acquire) — 纯采集: 只下载/同步外部 vendor 数据进 raw/L0, 不计算。
 
-旧 daily_update.sh ACQUIRE 阶段 Step 2 ~ 2.95:
-  HS300 K线 / xdxr 热备 / LHB / institution_survey / external_attention / sync_runner drain。
-  (profit_forecast 步 2026-06-27 退役: 通达信全删 M4 akshare 退役, 0 live 读者)
+ACQUIRE 阶段步骤:
+  LHB / institution_survey / holders_aif10 / aif10 capabilities / QFII / org_holding / sync_runner drain。
+  (HS300 benchmark 2026-06-28 退役 akshare 备援步: 主源=tushare raw_tushare_index_daily 000300 走
+   sync_runner registry 同步, 旧 akshare→price_kline 备援脚本删; profit_forecast/external_attention/
+   xdxr 热备早退役: 通达信全删 + 复权走 tushare adj_factor)
 skip_sync=1 跳整个阶段; dry=1 只跑只读不写。
 """
 from __future__ import annotations
@@ -19,10 +21,8 @@ def run_acquire(ctx: PipelineContext) -> None:
         ctx.log("DRY: 跳过实际 sync (获取阶段全是写操作)")
         return
 
-    # Step 2: HS300 benchmark K线 (akshare→price_kline 备援; 主源 raw_tushare_index_daily 走 Step 2.95 registry)
-    ctx.run_script("backend/scripts/sync_hs300_benchmark_kline.py",
-                   degraded_msg="HS300 sync 失败 (非 fatal)")
-
+    # HS300 benchmark K线: 主源 = tushare raw_tushare_index_daily 000300 (sync_runner registry 同步,
+    #   下方 drain 覆盖)。2026-06-28 删旧 akshare→price_kline 备援步 (akshare 源退役)。
     # xdxr 除权 sync 已移除 (2026-06-28 重建: tdx 热备退役, 复权走 tushare adj_factor)
 
     # Step 2d: LHB event sync

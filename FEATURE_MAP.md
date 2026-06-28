@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-28 11:25
+> Snapshot: 2026-06-28 12:17
 
 ## 1. 入口面
 
@@ -88,7 +88,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 58 张 | 单 writer 44 | 多 writer 14 | 动态表名写点 18 处 (11 文件)
+统计: 表 54 张 | 单 writer 40 | 多 writer 14 | 动态表名写点 18 处 (11 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -136,7 +136,6 @@
 | dim_holder_alias | backend/services/schema_core.py |
 | dim_listing_status | backend/scripts/build_dim_listing_status.py |
 | dim_schema_version | backend/services/schema_versions.py |
-| dim_stock_stage_days | backend/scripts/build_picture_daily.py |
 | dim_strategy_preset | backend/routers/strategy_preset.py |
 | dim_trading_calendar | backend/scripts/migrate_reference_db.py |
 | fact_common_major_holder_stock | backend/services/schema_core.py |
@@ -150,11 +149,9 @@
 | fact_setup_snapshot | backend/services/schema_core.py |
 | fact_shareholder_plan | backend/services/schema_core.py |
 | fact_shareholder_trade | backend/services/schema_core.py |
-| fact_stock_fundamental_stage_daily | backend/scripts/build_picture_daily.py |
 | fact_stock_liquidity_daily | backend/services/primitives/ddl.py |
 | fact_stock_market_cap_daily | backend/services/primitives/ddl.py |
 | fact_stock_style_daily | backend/services/primitives/ddl.py |
-| fact_stock_type_daily | backend/scripts/build_picture_daily.py |
 | mart_audit_snapshot_state | backend/services/audit.py |
 | mart_candidate_feature_set_contract | backend/services/data_quality.py |
 | mart_current_relationship | backend/services/holdings.py |
@@ -169,7 +166,6 @@
 | mart_global_data_quality_gate | backend/services/data_quality.py |
 | mart_lineage | backend/services/schema_marts.py |
 | mart_pipeline_lock | backend/services/pipeline_lock.py |
-| mart_stock_picture_daily | backend/scripts/build_picture_daily.py |
 | mart_stock_survey_activity | backend/services/institution_survey_client.py |
 | raw_institution_surveys | backend/services/institution_survey_client.py |
 | raw_lhb_daily | backend/services/lhb_client.py |
@@ -178,16 +174,16 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 4,921 | calls 边 7,349 | imports 边 1,396 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 4,811 | calls 边 7,045 | imports 边 1,357 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
 | services.duck_adapter | 30 |
-| services.db | 14 |
-| services.utils | 10 |
-| services.market_db | 9 |
+| services.db | 12 |
+| services.utils | 9 |
+| services.market_db | 7 |
 | services.pipeline_manifest | 7 |
 | services.database_manifest | 6 |
 | services.data_sources | 5 |
@@ -196,9 +192,9 @@
 | services.data_processing_monitor | 4 |
 | services.calendar | 3 |
 | services.industry | 3 |
-| services.kline_source | 3 |
 | services.lineage | 3 |
 | services.storage_retention | 3 |
+| services.data_deletion | 2 |
 
 ### 跨文件 fan-in 最高的文件 (近似口径: 唯一定义名 + caller 实际 import 目标模块双过滤)
 
@@ -211,10 +207,10 @@
 | backend/services/database_manifest.py | 4 |
 | backend/services/lineage/model.py | 4 |
 | backend/services/market_db.py | 4 |
+| backend/services/pipeline/context.py | 4 |
 | bestchoice/formula_engine.py | 4 |
 | bestchoice/scripts/formula_parameter_search.py | 4 |
 | backend/services/data_access/keys.py | 3 |
-| backend/services/kline_source.py | 3 |
 | backend/services/notification/base.py | 3 |
 
 ### LOC top 10 (God module 候选)
@@ -223,7 +219,6 @@
 |---|---|
 | backend/services/data_quality.py | 3892 |
 | backend/services/audit.py | 1568 |
-| backend/scripts/audit_delivery_readiness.py | 1226 |
 | backend/scripts/seed_dim_data_asset.py | 1194 |
 | backend/services/storage_retention.py | 1061 |
 | backend/services/data_sources/sync_runner.py | 963 |
@@ -231,10 +226,11 @@
 | backend/scripts/data_health_snapshot.py | 720 |
 | backend/services/data_audit.py | 613 |
 | backend/services/schema_migrations.py | 608 |
+| backend/services/source_watermarks.py | 570 |
 
 ## 5. 概览
 
 - chunkyctl 子命令 10 | launchd 任务 1 | router 3 (端点 8)
 - sync_registry 数据域 44
-- 产表 58 (多 writer 14)
+- 产表 54 (多 writer 14)
 

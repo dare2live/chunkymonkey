@@ -1,6 +1,7 @@
-"""前置 gate (非四阶段之一): experiment job 契约 sanity + watermark SLA。
+"""前置 gate (非四阶段之一): watermark SLA 新鲜度检查。
 
-旧 daily_update.sh Step 0 (job contract) + Step 1 (watermark SLA check + auto-update)。
+(experiment job 契约 sanity 步 2026-06-28 退役: services.experiment_jobs 随策略/compute 层删除,
+ 纯数据平台无 compute backend 契约; preflight 现只做数据新鲜度 SLA 门。)
 """
 from __future__ import annotations
 
@@ -8,15 +9,7 @@ from .context import PipelineContext
 
 
 def run_preflight(ctx: PipelineContext) -> None:
-    ctx.log("--- Preflight: experiment job contract + watermark SLA ---")
-
-    # Step 0: experiment job contract sanity (provider-neutral)
-    def _job_contract():
-        from services.experiment_jobs import load_experiment_job_contract
-        contract = load_experiment_job_contract()
-        ctx.log(f"  job contract: backends={sorted(contract.backends)} "
-                f"families={sorted(contract.families)} local_active={contract.backends['local'].active}")
-    ctx.step(_job_contract, degraded_msg="experiment job contract 加载失败")
+    ctx.log("--- Preflight: watermark SLA 新鲜度检查 ---")
 
     # Step 1a: watermark SLA check + auto-update (exit 2 = alert; 其他非0 = 检查器 crash 同样送达)
     args = ["backend/scripts/update_watermark_sla.py",
