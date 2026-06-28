@@ -131,7 +131,7 @@ EXTRA_FRESHNESS_BY_TABLE = {
     "fact_policy_eval": ("on-demand", 24 * 30),
     "fact_policy_trade": ("on-demand", 24 * 30),
     "mart_audit_snapshot_state": ("on-demand", 24 * 30),
-    "mart_data_audit_report": ("on-demand", 24 * 30),
+    # mart_data_audit_report retention 登记已删 2026-06-28 (残留清扫 E: 孤儿表物删, audit 改写 JSON)
     "mart_etf_snapshot_latest": ("on-demand", 24 * 30),
     "mart_etf_snapshot_state": ("on-demand", 24 * 30),
     "mart_challenger_evidence_bundle": ("on-demand", 24 * 30),

@@ -92,7 +92,7 @@ tables:
   dim_schema_version: infra
   excluded_stocks: infra
   exclusion_categories: infra
-  mart_data_audit_report: infra
+  # mart_data_audit_report 声明已删 2026-06-28 (残留清扫 E: 孤儿表物删, audit 改写 JSON)
   mart_data_deletion_record: infra
   mart_data_deprecation_record: infra
   mart_data_health: infra
