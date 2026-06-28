@@ -525,6 +525,15 @@ def _write_batch(conn, spec: dict[str, Any], rows: list[dict[str, Any]]) -> int:
             df = df[df[ucol].astype(str).str[:2].isin(prefixes)]
             if len(df) < _n0:
                 log.info("[universe-filter] %s 丢 %d 非白名单前缀行 (keep prefixes=%s)", table, _n0 - len(df), sorted(prefixes))
+            # 静默失败门 (2026-06-28 谄媚死根治): universe_filter 丢光整个非空批 = 几乎必是 filter 列漏配
+            #   (如 top_list/top_inst 缺 universe_filter_col → 用 grain[0]=trade_date 过滤前缀'20'全丢)。
+            #   绝不静默 return 0 让 watermark 假进 — raise 让该批记 failure (诚实失败 > 谄媚成功)。
+            if df.empty and _n0 > 0:
+                raise ValueError(
+                    f"universe_filter 把 {table} 整批 {_n0} 行全丢 (filter_col={ucol!r}, prefixes={sorted(prefixes)}); "
+                    f"几乎必是 universe_filter_col 漏配 (该列值不像股票代码)。拒绝静默返0防谄媚死 — "
+                    f"修 sync_registry 该域 universe_filter_col 指向真股票代码列 (如 ts_code/con_code)。"
+                )
             if df.empty:
                 return 0
 
@@ -873,8 +882,15 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
         if own_conn:
             conn.close()
     status = "clean" if not gap else ("drained" if not still_failed and not truncated else "partial")
+    _refilled_days = len(todo) - len(still_failed)
+    # 空补告警 (2026-06-28 谄媚死根治, 防 top_list 式静默丢光): 抓到 gap 天却 0 行落库 = 可疑
+    #   (universe_filter 漏配/写入静默丢)。源端真空洞 (cyq_perf/ths_hot 单日 0 行) 也会触发, 故 WARN 不硬降级,
+    #   但可见 → 不再"drained 成功"假象不留痕。(真 filter-drops-all 已被 _write_batch universe_filter raise 拦成 still_failed。)
+    if _refilled_days > 0 and refilled_rows == 0:
+        log.warning("[empty-drain] %s 抓到 %d 个 gap 天却 0 行落库 — 查 universe_filter 漏配 or 源端真空洞 (status=%s)",
+                    domain, _refilled_days, status)
     result = {"domain": domain, "status": status, "expected_days": len(expected),
-              "gap_days": len(gap), "refilled_days": len(todo) - len(still_failed),
+              "gap_days": len(gap), "refilled_days": _refilled_days,
               "refilled_rows": refilled_rows,
               "still_failed": still_failed[:20], "truncated": truncated}
     if record:  # 送达 (宪法第 5 条): 仍有缺口 → 记 failure; 清干净 → resolve

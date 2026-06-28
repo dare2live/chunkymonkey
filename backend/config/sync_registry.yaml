@@ -246,6 +246,7 @@ domains:
     api: top_list
     target_table: raw_tushare_top_list
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
+    universe_filter_col: ts_code     # 2026-06-28 谄媚死修: 缺此→用 grain[0]=trade_date 过滤前缀'20'整日全丢仍假报成功
     grain: [trade_date, ts_code, reason]   # 同股同日可因多个上榜理由多行
     batch_mode: by_trade_date
     pit_anchor: "trade_date; 龙虎榜盘后公布 -> JOIN t-1"
@@ -260,6 +261,7 @@ domains:
     api: top_inst
     target_table: raw_tushare_top_inst
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
+    universe_filter_col: ts_code     # 2026-06-28 谄媚死修: 缺此→用 grain[0]=trade_date 过滤前缀'20'整日全丢仍假报成功
     grain: [trade_date, ts_code, exalter, side]   # 同席位同股按买卖方向分行 (字段实测在录)
     batch_mode: by_trade_date
     page_limit: 1000          # 实测单页 1000 整上限; runner offset 分页拉全 (中间页败=整批重试)
