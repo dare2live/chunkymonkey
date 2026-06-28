@@ -572,37 +572,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/scoring.py",
-      "kind": "consume",
-      "src": "table:app_settings"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/signals_v2.py",
-      "kind": "consume",
-      "src": "table:app_settings"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/tests/test_db.py",
-      "kind": "consume",
-      "src": "table:app_settings"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_institution_scoring_integration.py",
-      "kind": "consume",
-      "src": "table:app_settings"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_signals_v2.py",
-      "kind": "consume",
-      "src": "table:app_settings"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_stock_scoring_integration.py",
       "kind": "consume",
       "src": "table:app_settings"
     },
@@ -638,18 +608,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/routers/v3_selection.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/audit_panel_leakage.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/scripts/build_picture_daily.py",
       "kind": "consume",
       "src": "table:dim_active_a_stock"
@@ -669,12 +627,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/bc_absorbed/README.md",
       "kind": "consume",
       "src": "table:dim_active_a_stock"
     },
@@ -710,55 +662,13 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/stock_trends_read.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/universe.py",
       "kind": "consume",
       "src": "table:dim_active_a_stock"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/tests/test_audit_financial.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_build_picture_daily.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_global_data_quality.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/tests/test_institution_write.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_recommendation_universe.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_screening_engine.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_stock_graph_read.py",
       "kind": "consume",
       "src": "table:dim_active_a_stock"
     },
@@ -795,12 +705,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/universe_rules.yaml",
-      "kind": "consume",
-      "src": "table:dim_all_ever_listed"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/audit_panel_leakage.py",
       "kind": "consume",
       "src": "table:dim_all_ever_listed"
     },
@@ -902,24 +806,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/workbench_asset_health_read.py",
-      "kind": "consume",
-      "src": "table:dim_data_asset"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/workbench_data_source_read.py",
-      "kind": "consume",
-      "src": "table:dim_data_asset"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/contract/test_workbench_read.py",
-      "kind": "consume",
-      "src": "table:dim_data_asset"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_audit_data_completeness.py",
       "kind": "consume",
       "src": "table:dim_data_asset"
@@ -932,25 +818,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/audit_tdx_data_need_coverage.py",
-      "kind": "consume",
-      "src": "table:dim_data_source_priority"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/schema_core.py",
-      "kind": "consume",
-      "src": "table:dim_data_source_priority"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/workbench_data_source_read.py",
-      "kind": "consume",
-      "src": "table:dim_data_source_priority"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/scripts/test_audit_tdx_data_need_coverage.py",
       "kind": "consume",
       "src": "table:dim_data_source_priority"
     },
@@ -989,90 +857,6 @@
       "dst": "consumer:backend/tests/test_primitives.py",
       "kind": "consume",
       "src": "table:dim_fee_schedule"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:dim_financial_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/feature_registry.yaml",
-      "kind": "consume",
-      "src": "table:dim_financial_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/audit.py",
-      "kind": "consume",
-      "src": "table:dim_financial_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:dim_financial_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/data_routes.py",
-      "kind": "consume",
-      "src": "table:dim_financial_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/financial_client.py",
-      "kind": "consume",
-      "src": "table:dim_financial_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:dim_financial_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/scoring.py",
-      "kind": "consume",
-      "src": "table:dim_financial_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/screening_engine.py",
-      "kind": "consume",
-      "src": "table:dim_financial_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/stock_stage_engine.py",
-      "kind": "consume",
-      "src": "table:dim_financial_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_audit_financial.py",
-      "kind": "consume",
-      "src": "table:dim_financial_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_financial_client.py",
-      "kind": "consume",
-      "src": "table:dim_financial_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_screening_engine.py",
-      "kind": "consume",
-      "src": "table:dim_financial_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_stock_scoring_integration.py",
-      "kind": "consume",
-      "src": "table:dim_financial_latest"
     },
     {
       "attrs": {},
@@ -1137,12 +921,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:dim_listing_status"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/audit_panel_leakage.py",
       "kind": "consume",
       "src": "table:dim_listing_status"
     },
@@ -1286,18 +1064,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/workbench_overview_read.py",
-      "kind": "consume",
-      "src": "table:dim_schema_version"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/contract/test_workbench_read.py",
-      "kind": "consume",
-      "src": "table:dim_schema_version"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
       "src": "table:dim_stock_dc_concept"
@@ -1328,12 +1094,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/audit_panel_leakage.py",
-      "kind": "consume",
-      "src": "table:dim_stock_dc_industry"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/scripts/build_dc_industry_view.py",
       "kind": "consume",
       "src": "table:dim_stock_dc_industry"
@@ -1353,12 +1113,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/update_watermark_sla.py",
-      "kind": "consume",
-      "src": "table:dim_stock_dc_industry"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/akshare_client.py",
       "kind": "consume",
       "src": "table:dim_stock_dc_industry"
     },
@@ -1394,18 +1148,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/industry_context_engine.py",
-      "kind": "consume",
-      "src": "table:dim_stock_dc_industry"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/institution_l2_metrics.py",
-      "kind": "consume",
-      "src": "table:dim_stock_dc_industry"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/pipeline/process.py",
       "kind": "consume",
       "src": "table:dim_stock_dc_industry"
@@ -1418,129 +1160,9 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/scoring.py",
-      "kind": "consume",
-      "src": "table:dim_stock_dc_industry"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/sector_momentum.py",
-      "kind": "consume",
-      "src": "table:dim_stock_dc_industry"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/source_watermarks.py",
       "kind": "consume",
       "src": "table:dim_stock_dc_industry"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/stock_graph_read.py",
-      "kind": "consume",
-      "src": "table:dim_stock_dc_industry"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_industry_context_engine.py",
-      "kind": "consume",
-      "src": "table:dim_stock_dc_industry"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_institution_l2_metrics.py",
-      "kind": "consume",
-      "src": "table:dim_stock_dc_industry"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_sector_momentum.py",
-      "kind": "consume",
-      "src": "table:dim_stock_dc_industry"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_signals_v2.py",
-      "kind": "consume",
-      "src": "table:dim_stock_dc_industry"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_stock_graph_read.py",
-      "kind": "consume",
-      "src": "table:dim_stock_dc_industry"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_stock_scoring_integration.py",
-      "kind": "consume",
-      "src": "table:dim_stock_dc_industry"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_stock_turtle_engine.py",
-      "kind": "consume",
-      "src": "table:dim_stock_dc_industry"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:dim_stock_industry_context_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/audit.py",
-      "kind": "consume",
-      "src": "table:dim_stock_industry_context_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/business_facts.py",
-      "kind": "consume",
-      "src": "table:dim_stock_industry_context_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/industry_context_engine.py",
-      "kind": "consume",
-      "src": "table:dim_stock_industry_context_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_migrations.py",
-      "kind": "consume",
-      "src": "table:dim_stock_industry_context_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:dim_stock_industry_context_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/scoring.py",
-      "kind": "consume",
-      "src": "table:dim_stock_industry_context_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/stock_stage_engine.py",
-      "kind": "consume",
-      "src": "table:dim_stock_industry_context_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_business_facts.py",
-      "kind": "consume",
-      "src": "table:dim_stock_industry_context_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_industry_context_engine.py",
-      "kind": "consume",
-      "src": "table:dim_stock_industry_context_latest"
     },
     {
       "attrs": {},
@@ -1574,25 +1196,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/build_macd_state_history.py",
-      "kind": "consume",
-      "src": "table:dim_trading_calendar"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/scripts/build_picture_daily.py",
-      "kind": "consume",
-      "src": "table:dim_trading_calendar"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_rally_entry_pit.py",
-      "kind": "consume",
-      "src": "table:dim_trading_calendar"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_rally_negatives.py",
       "kind": "consume",
       "src": "table:dim_trading_calendar"
     },
@@ -1652,12 +1256,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/data_sources/sources/akshare.py",
-      "kind": "consume",
-      "src": "table:dim_trading_calendar"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/data_sources/sync_runner.py",
       "kind": "consume",
       "src": "table:dim_trading_calendar"
@@ -1670,37 +1268,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/return_engine.py",
-      "kind": "consume",
-      "src": "table:dim_trading_calendar"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:dim_trading_calendar"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/workbench_data_source_read.py",
-      "kind": "consume",
-      "src": "table:dim_trading_calendar"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/workbench_data_source_watermark_read.py",
-      "kind": "consume",
-      "src": "table:dim_trading_calendar"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/workbench_overview_read.py",
-      "kind": "consume",
-      "src": "table:dim_trading_calendar"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/contract/test_workbench_read.py",
       "kind": "consume",
       "src": "table:dim_trading_calendar"
     },
@@ -1713,12 +1281,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_calendar_gate.py",
-      "kind": "consume",
-      "src": "table:dim_trading_calendar"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_global_data_quality.py",
       "kind": "consume",
       "src": "table:dim_trading_calendar"
     },
@@ -1820,24 +1382,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/etf_engine.py",
-      "kind": "consume",
-      "src": "table:etf_asset_universe"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/etf_mining_engine.py",
-      "kind": "consume",
-      "src": "table:etf_asset_universe"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/etf_snapshot_manager.py",
-      "kind": "consume",
-      "src": "table:etf_asset_universe"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/tests/test_etf_db.py",
       "kind": "consume",
       "src": "table:etf_asset_universe"
@@ -1862,55 +1406,13 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/akshare_client.py",
-      "kind": "consume",
-      "src": "table:etf_price_kline_qfq_tushare"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/etf_db.py",
       "kind": "consume",
       "src": "table:etf_price_kline_qfq_tushare"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/etf_engine.py",
-      "kind": "consume",
-      "src": "table:etf_price_kline_qfq_tushare"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/etf_mining_engine.py",
-      "kind": "consume",
-      "src": "table:etf_price_kline_qfq_tushare"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/etf_snapshot_manager.py",
-      "kind": "consume",
-      "src": "table:etf_price_kline_qfq_tushare"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_kline_sources.py",
-      "kind": "consume",
-      "src": "table:etf_price_kline_qfq_tushare"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/etf_db.py",
-      "kind": "consume",
-      "src": "table:etf_sync_state"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/etf_engine.py",
-      "kind": "consume",
-      "src": "table:etf_sync_state"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/etf_snapshot_manager.py",
       "kind": "consume",
       "src": "table:etf_sync_state"
     },
@@ -1940,37 +1442,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/recommendation_universe.py",
-      "kind": "consume",
-      "src": "table:excluded_stocks"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/schema_core.py",
-      "kind": "consume",
-      "src": "table:excluded_stocks"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/screening_engine.py",
-      "kind": "consume",
-      "src": "table:excluded_stocks"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/stock_trends_read.py",
-      "kind": "consume",
-      "src": "table:excluded_stocks"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/stock_watchlist_read.py",
-      "kind": "consume",
-      "src": "table:excluded_stocks"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_audit_financial.py",
       "kind": "consume",
       "src": "table:excluded_stocks"
     },
@@ -1982,37 +1454,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/tests/test_recommendation_universe.py",
-      "kind": "consume",
-      "src": "table:excluded_stocks"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_screening_engine.py",
-      "kind": "consume",
-      "src": "table:excluded_stocks"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_stock_trends_summary.py",
-      "kind": "consume",
-      "src": "table:excluded_stocks"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_stock_watchlist_read.py",
-      "kind": "consume",
-      "src": "table:excluded_stocks"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:exclusion_categories"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/institution_aux_read.py",
       "kind": "consume",
       "src": "table:exclusion_categories"
     },
@@ -2025,12 +1467,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/schema_migrations.py",
-      "kind": "consume",
-      "src": "table:exclusion_categories"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_institution_aux_read.py",
       "kind": "consume",
       "src": "table:exclusion_categories"
     },
@@ -2084,942 +1520,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/database_manifest.yaml",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/db_partition_tiers.yaml",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/leakage_consumers.yaml",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/macd_episode_gt_columns.yaml",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/rally_gt_columns.yaml",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/storage_retention.yaml",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/tdx_data_need_coverage.yaml",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/audit_panel_leakage.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_feature_panel.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_rally_entry_pit.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_signal_panel.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/check_legacy_flow_integrity.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_deprecation.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_loaders.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_quality.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/gt_label_contract.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/ml_lifecycle/drift.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/pricing_policy_readiness.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/rally_labels.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/contract/test_workbench_frontend_render_smoke.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/contract/test_workbench_read.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_global_data_quality.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:scripts/validate_champion_paper_sim.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_feature_panel_candidate"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/database_manifest.yaml",
-      "kind": "consume",
-      "src": "table:fact_feature_panel_candidate"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/storage_retention.yaml",
-      "kind": "consume",
-      "src": "table:fact_feature_panel_candidate"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_quality.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel_candidate"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel_candidate"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/pricing_policy_readiness.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel_candidate"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_core.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel_candidate"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_migrations.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel_candidate"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/contract/test_workbench_read.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel_candidate"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_global_data_quality.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel_candidate"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_pricing_policy.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel_candidate"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_storage_retention.py",
-      "kind": "consume",
-      "src": "table:fact_feature_panel_candidate"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_financial_derived"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/update_watermark_sla.py",
-      "kind": "consume",
-      "src": "table:fact_financial_derived"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/audit.py",
-      "kind": "consume",
-      "src": "table:fact_financial_derived"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:fact_financial_derived"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/financial_client.py",
-      "kind": "consume",
-      "src": "table:fact_financial_derived"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:fact_financial_derived"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/source_watermarks.py",
-      "kind": "consume",
-      "src": "table:fact_financial_derived"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_audit_financial.py",
-      "kind": "consume",
-      "src": "table:fact_financial_derived"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_financial_client.py",
-      "kind": "consume",
-      "src": "table:fact_financial_derived"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/feature_registry.yaml",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/routers/signals.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_lhb_events.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/audit.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_quality.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/event_engine.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/holder_availability.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/holdings.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/institution_aux_read.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/institution_read.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/institution_scoring_read.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/institution_write.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/pricing_policy_evidence.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/return_engine.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_core.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_migrations.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/scoring.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/sector_momentum.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/signals_v2.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_event_engine_notice_backfill.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_global_data_quality.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_institution_aux_read.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_institution_write.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_pricing_policy.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_sector_momentum.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_signals_v2.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_stock_scoring_integration.py",
-      "kind": "consume",
-      "src": "table:fact_institution_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_lhb_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/feature_registry.yaml",
-      "kind": "consume",
-      "src": "table:fact_lhb_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/panel_pipeline_manifest.yaml",
-      "kind": "consume",
-      "src": "table:fact_lhb_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/audit_data_completeness.py",
-      "kind": "consume",
-      "src": "table:fact_lhb_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/audit_pit_coverage.py",
-      "kind": "consume",
-      "src": "table:fact_lhb_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_lhb_events.py",
-      "kind": "consume",
-      "src": "table:fact_lhb_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
-      "kind": "consume",
-      "src": "table:fact_lhb_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/update_watermark_sla.py",
-      "kind": "consume",
-      "src": "table:fact_lhb_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:fact_lhb_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:fact_lhb_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/sentiment/factor_registry.py",
-      "kind": "consume",
-      "src": "table:fact_lhb_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_build_lhb_events.py",
-      "kind": "consume",
-      "src": "table:fact_lhb_event"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_macd_episode_ground_truth"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/macd_episode_gt_columns.yaml",
-      "kind": "consume",
-      "src": "table:fact_macd_episode_ground_truth"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_macd_episode_ground_truth.py",
-      "kind": "consume",
-      "src": "table:fact_macd_episode_ground_truth"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_rally_entry_negative"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_rally_negatives.py",
-      "kind": "consume",
-      "src": "table:fact_rally_entry_negative"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_rally_entry_pit"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_rally_entry_pit.py",
-      "kind": "consume",
-      "src": "table:fact_rally_entry_pit"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_rally_negatives.py",
-      "kind": "consume",
-      "src": "table:fact_rally_entry_pit"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_rally_episode_strata"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/sync_registry.yaml",
-      "kind": "consume",
-      "src": "table:fact_rally_episode_strata"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_rally_episode_strata.py",
-      "kind": "consume",
-      "src": "table:fact_rally_episode_strata"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_rally_ground_truth"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/rally_gt_columns.yaml",
-      "kind": "consume",
-      "src": "table:fact_rally_ground_truth"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_rally_entry_pit.py",
-      "kind": "consume",
-      "src": "table:fact_rally_ground_truth"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_rally_episode_strata.py",
-      "kind": "consume",
-      "src": "table:fact_rally_ground_truth"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_rally_ground_truth.py",
-      "kind": "consume",
-      "src": "table:fact_rally_ground_truth"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_rally_negatives.py",
-      "kind": "consume",
-      "src": "table:fact_rally_ground_truth"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_rally_stage.py",
-      "kind": "consume",
-      "src": "table:fact_rally_ground_truth"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/rally_labels.py",
-      "kind": "consume",
-      "src": "table:fact_rally_ground_truth"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_rally_stage"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_rally_stage.py",
-      "kind": "consume",
-      "src": "table:fact_rally_stage"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_audit_rules.yaml",
-      "kind": "consume",
-      "src": "table:fact_risk_factors"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_risk_factors"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/field_dictionary.yaml",
-      "kind": "consume",
-      "src": "table:fact_risk_factors"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/panel_pipeline_manifest.yaml",
-      "kind": "consume",
-      "src": "table:fact_risk_factors"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/audit_data_completeness.py",
-      "kind": "consume",
-      "src": "table:fact_risk_factors"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_audit.py",
-      "kind": "consume",
-      "src": "table:fact_risk_factors"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_governance/etl_hook.py",
-      "kind": "consume",
-      "src": "table:fact_risk_factors"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/risk_factors.py",
-      "kind": "consume",
-      "src": "table:fact_risk_factors"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_migrations.py",
-      "kind": "consume",
-      "src": "table:fact_risk_factors"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:fact_risk_factors"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/data_governance/test_etl_hook.py",
-      "kind": "consume",
-      "src": "table:fact_risk_factors"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_segment_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/database_manifest.yaml",
-      "kind": "consume",
-      "src": "table:fact_segment_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/segment_panel.yaml",
-      "kind": "consume",
-      "src": "table:fact_segment_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_segment_panel.py",
-      "kind": "consume",
-      "src": "table:fact_segment_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/measure_form_separation.py",
-      "kind": "consume",
-      "src": "table:fact_segment_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_signal_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_signal_panel.py",
-      "kind": "consume",
-      "src": "table:fact_signal_panel"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_stock_industry_context"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/industry_context_engine.py",
-      "kind": "consume",
-      "src": "table:fact_stock_industry_context"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_migrations.py",
-      "kind": "consume",
-      "src": "table:fact_stock_industry_context"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:fact_stock_industry_context"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_stock_technical_stage"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_picture_daily.py",
-      "kind": "consume",
-      "src": "table:fact_stock_technical_stage"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/formula_engine/ddl.py",
-      "kind": "consume",
-      "src": "table:fact_stock_technical_stage"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/picture/ddl.py",
-      "kind": "consume",
-      "src": "table:fact_stock_technical_stage"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:fact_stock_technical_stage"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_build_picture_daily.py",
-      "kind": "consume",
-      "src": "table:fact_stock_technical_stage"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:fact_technical_trigger"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/experiments/retired_experiments.yaml",
-      "kind": "consume",
-      "src": "table:fact_technical_trigger"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/field_dictionary.yaml",
-      "kind": "consume",
-      "src": "table:fact_technical_trigger"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/stage_opt_candidate_supply.yaml",
-      "kind": "consume",
-      "src": "table:fact_technical_trigger"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/storage_retention.yaml",
-      "kind": "consume",
-      "src": "table:fact_technical_trigger"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/test_tool_registry.yaml",
-      "kind": "consume",
-      "src": "table:fact_technical_trigger"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/audit_data_completeness.py",
-      "kind": "consume",
-      "src": "table:fact_technical_trigger"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_macd_state_history.py",
-      "kind": "consume",
-      "src": "table:fact_technical_trigger"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_picture_daily.py",
-      "kind": "consume",
-      "src": "table:fact_technical_trigger"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
-      "kind": "consume",
-      "src": "table:fact_technical_trigger"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/formula_engine/__init__.py",
-      "kind": "consume",
-      "src": "table:fact_technical_trigger"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/formula_engine/base.py",
-      "kind": "consume",
-      "src": "table:fact_technical_trigger"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/formula_engine/ddl.py",
-      "kind": "consume",
-      "src": "table:fact_technical_trigger"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/formula_engine/macd_golden_cross.py",
-      "kind": "consume",
-      "src": "table:fact_technical_trigger"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:fact_technical_trigger"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/scripts/test_audit_data_completeness.py",
-      "kind": "consume",
-      "src": "table:fact_technical_trigger"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_build_picture_daily.py",
-      "kind": "consume",
-      "src": "table:fact_technical_trigger"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_access.yaml",
       "kind": "consume",
       "src": "table:fact_top10_holder_period"
@@ -3039,12 +1539,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/tdx_data_need_coverage.yaml",
-      "kind": "consume",
-      "src": "table:fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/routers/market.py",
       "kind": "consume",
       "src": "table:fact_top10_holder_period"
     },
@@ -3110,25 +1604,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/data_sources/sources/tdxhub.py",
-      "kind": "consume",
-      "src": "table:fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/db_health.py",
-      "kind": "consume",
-      "src": "table:fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/dossier.py",
-      "kind": "consume",
-      "src": "table:fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/event_engine.py",
       "kind": "consume",
       "src": "table:fact_top10_holder_period"
     },
@@ -3146,12 +1622,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/holders_event.py",
-      "kind": "consume",
-      "src": "table:fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/holdings.py",
       "kind": "consume",
       "src": "table:fact_top10_holder_period"
@@ -3159,12 +1629,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/institution_write.py",
-      "kind": "consume",
-      "src": "table:fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/picture/institution_signal.py",
       "kind": "consume",
       "src": "table:fact_top10_holder_period"
     },
@@ -3194,31 +1658,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/stock_trends_read.py",
-      "kind": "consume",
-      "src": "table:fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_build_picture_daily.py",
-      "kind": "consume",
-      "src": "table:fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/tests/test_db_health.py",
-      "kind": "consume",
-      "src": "table:fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_event_engine_notice_backfill.py",
-      "kind": "consume",
-      "src": "table:fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_global_data_quality.py",
       "kind": "consume",
       "src": "table:fact_top10_holder_period"
     },
@@ -3254,31 +1694,13 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/financial_client.py",
-      "kind": "consume",
-      "src": "table:financial_sync_state"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
       "src": "table:inst_holdings"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/routers/market.py",
-      "kind": "consume",
-      "src": "table:inst_holdings"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/audit.py",
-      "kind": "consume",
-      "src": "table:inst_holdings"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/event_engine.py",
       "kind": "consume",
       "src": "table:inst_holdings"
     },
@@ -3297,18 +1719,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/holdings.py",
-      "kind": "consume",
-      "src": "table:inst_holdings"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/institution_aux_read.py",
-      "kind": "consume",
-      "src": "table:inst_holdings"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/institution_read.py",
       "kind": "consume",
       "src": "table:inst_holdings"
     },
@@ -3338,37 +1748,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/signals_v2.py",
-      "kind": "consume",
-      "src": "table:inst_holdings"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_audit_financial.py",
-      "kind": "consume",
-      "src": "table:inst_holdings"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_event_engine_notice_backfill.py",
-      "kind": "consume",
-      "src": "table:inst_holdings"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_institution_aux_read.py",
-      "kind": "consume",
-      "src": "table:inst_holdings"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/tests/test_institution_write.py",
-      "kind": "consume",
-      "src": "table:inst_holdings"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_signals_v2.py",
       "kind": "consume",
       "src": "table:inst_holdings"
     },
@@ -3398,25 +1778,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/event_engine.py",
-      "kind": "consume",
-      "src": "table:inst_institutions"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/holdings.py",
-      "kind": "consume",
-      "src": "table:inst_institutions"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/institution_aux_read.py",
-      "kind": "consume",
-      "src": "table:inst_institutions"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/institution_read.py",
       "kind": "consume",
       "src": "table:inst_institutions"
     },
@@ -3440,43 +1802,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/signals_v2.py",
-      "kind": "consume",
-      "src": "table:inst_institutions"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/stock_trends_read.py",
-      "kind": "consume",
-      "src": "table:inst_institutions"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_audit_financial.py",
-      "kind": "consume",
-      "src": "table:inst_institutions"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_build_picture_daily.py",
-      "kind": "consume",
-      "src": "table:inst_institutions"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_institution_aux_read.py",
-      "kind": "consume",
-      "src": "table:inst_institutions"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/tests/test_institution_write.py",
-      "kind": "consume",
-      "src": "table:inst_institutions"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_signals_v2.py",
       "kind": "consume",
       "src": "table:inst_institutions"
     },
@@ -3503,114 +1829,6 @@
       "dst": "consumer:backend/services/market_schema.py",
       "kind": "consume",
       "src": "table:market_sync_state"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:mart_current_relationship"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/routers/market.py",
-      "kind": "consume",
-      "src": "table:mart_current_relationship"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
-      "kind": "consume",
-      "src": "table:mart_current_relationship"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/audit.py",
-      "kind": "consume",
-      "src": "table:mart_current_relationship"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/business_facts.py",
-      "kind": "consume",
-      "src": "table:mart_current_relationship"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/holdings.py",
-      "kind": "consume",
-      "src": "table:mart_current_relationship"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/institution_write.py",
-      "kind": "consume",
-      "src": "table:mart_current_relationship"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_marts.py",
-      "kind": "consume",
-      "src": "table:mart_current_relationship"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_migrations.py",
-      "kind": "consume",
-      "src": "table:mart_current_relationship"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:mart_current_relationship"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/scoring.py",
-      "kind": "consume",
-      "src": "table:mart_current_relationship"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/stock_stage_engine.py",
-      "kind": "consume",
-      "src": "table:mart_current_relationship"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_business_facts.py",
-      "kind": "consume",
-      "src": "table:mart_current_relationship"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_holdings.py",
-      "kind": "consume",
-      "src": "table:mart_current_relationship"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_institution_scoring_integration.py",
-      "kind": "consume",
-      "src": "table:mart_current_relationship"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_institution_write.py",
-      "kind": "consume",
-      "src": "table:mart_current_relationship"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_stock_scoring_integration.py",
-      "kind": "consume",
-      "src": "table:mart_current_relationship"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_stock_trends_summary.py",
-      "kind": "consume",
-      "src": "table:mart_current_relationship"
     },
     {
       "attrs": {},
@@ -3663,12 +1881,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:mart_data_deletion_record"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_global_data_quality.py",
       "kind": "consume",
       "src": "table:mart_data_deletion_record"
     },
@@ -3746,24 +1958,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/workbench_asset_health_read.py",
-      "kind": "consume",
-      "src": "table:mart_data_health"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/workbench_data_source_read.py",
-      "kind": "consume",
-      "src": "table:mart_data_health"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/contract/test_workbench_read.py",
-      "kind": "consume",
-      "src": "table:mart_data_health"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
       "src": "table:mart_data_lineage"
@@ -3830,18 +2024,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/workbench_signal_cache_read.py",
-      "kind": "consume",
-      "src": "table:mart_data_processing_tool_run"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_global_data_quality.py",
-      "kind": "consume",
-      "src": "table:mart_data_processing_tool_run"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
       "src": "table:mart_data_source_failure_queue"
@@ -3854,12 +2036,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/audit_tdx_data_need_coverage.py",
-      "kind": "consume",
-      "src": "table:mart_data_source_failure_queue"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/schema_versions.py",
       "kind": "consume",
       "src": "table:mart_data_source_failure_queue"
@@ -3867,12 +2043,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/source_watermarks.py",
-      "kind": "consume",
-      "src": "table:mart_data_source_failure_queue"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/scripts/test_audit_tdx_data_need_coverage.py",
       "kind": "consume",
       "src": "table:mart_data_source_failure_queue"
     },
@@ -3932,30 +2102,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/workbench_data_source_read.py",
-      "kind": "consume",
-      "src": "table:mart_data_source_watermark"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/workbench_data_source_watermark_read.py",
-      "kind": "consume",
-      "src": "table:mart_data_source_watermark"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/workbench_recommendation_read.py",
-      "kind": "consume",
-      "src": "table:mart_data_source_watermark"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/contract/test_workbench_read.py",
-      "kind": "consume",
-      "src": "table:mart_data_source_watermark"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/tests/test_source_watermarks.py",
       "kind": "consume",
       "src": "table:mart_data_source_watermark"
@@ -3970,48 +2116,6 @@
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
-      "src": "table:mart_dual_confirm"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
-      "kind": "consume",
-      "src": "table:mart_dual_confirm"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/audit.py",
-      "kind": "consume",
-      "src": "table:mart_dual_confirm"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/industry_context_engine.py",
-      "kind": "consume",
-      "src": "table:mart_dual_confirm"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/screening_read.py",
-      "kind": "consume",
-      "src": "table:mart_dual_confirm"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/sector_momentum.py",
-      "kind": "consume",
-      "src": "table:mart_dual_confirm"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_sector_momentum.py",
-      "kind": "consume",
-      "src": "table:mart_dual_confirm"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
       "src": "table:mart_etf_snapshot_latest"
     },
     {
@@ -4023,24 +2127,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/etf_db.py",
-      "kind": "consume",
-      "src": "table:mart_etf_snapshot_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/etf_snapshot_manager.py",
-      "kind": "consume",
-      "src": "table:mart_etf_snapshot_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_marts.py",
-      "kind": "consume",
-      "src": "table:mart_etf_snapshot_latest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_migrations.py",
       "kind": "consume",
       "src": "table:mart_etf_snapshot_latest"
     },
@@ -4059,18 +2145,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/etf_db.py",
-      "kind": "consume",
-      "src": "table:mart_etf_snapshot_state"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/etf_snapshot_manager.py",
-      "kind": "consume",
-      "src": "table:mart_etf_snapshot_state"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_marts.py",
       "kind": "consume",
       "src": "table:mart_etf_snapshot_state"
     },
@@ -4079,30 +2153,6 @@
       "dst": "consumer:backend/tests/test_etf_db.py",
       "kind": "consume",
       "src": "table:mart_etf_snapshot_state"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:mart_formula_horizon_evidence"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/formula_engine/__init__.py",
-      "kind": "consume",
-      "src": "table:mart_formula_horizon_evidence"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/formula_engine/ddl.py",
-      "kind": "consume",
-      "src": "table:mart_formula_horizon_evidence"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:mart_formula_horizon_evidence"
     },
     {
       "attrs": {},
@@ -4119,12 +2169,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:mart_global_data_quality_gate"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_global_data_quality.py",
       "kind": "consume",
       "src": "table:mart_global_data_quality_gate"
     },
@@ -4151,48 +2195,6 @@
       "dst": "consumer:backend/tests/test_mart_data_lineage_compat.py",
       "kind": "consume",
       "src": "table:mart_lineage"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:mart_macd_state_history"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/stage_opt_candidate_supply.yaml",
-      "kind": "consume",
-      "src": "table:mart_macd_state_history"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/storage_retention.yaml",
-      "kind": "consume",
-      "src": "table:mart_macd_state_history"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/test_tool_registry.yaml",
-      "kind": "consume",
-      "src": "table:mart_macd_state_history"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_macd_state_history.py",
-      "kind": "consume",
-      "src": "table:mart_macd_state_history"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
-      "kind": "consume",
-      "src": "table:mart_macd_state_history"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/formula_engine/ddl.py",
-      "kind": "consume",
-      "src": "table:mart_macd_state_history"
     },
     {
       "attrs": {},
@@ -4262,114 +2264,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/workbench_overview_read.py",
-      "kind": "consume",
-      "src": "table:mart_pipeline_run_manifest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/workbench_pipeline_read.py",
-      "kind": "consume",
-      "src": "table:mart_pipeline_run_manifest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/workbench_ranker_runtime_read.py",
-      "kind": "consume",
-      "src": "table:mart_pipeline_run_manifest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/workbench_research_meta_read.py",
-      "kind": "consume",
-      "src": "table:mart_pipeline_run_manifest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/workbench_storage_architecture_read.py",
-      "kind": "consume",
-      "src": "table:mart_pipeline_run_manifest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/workbench_storage_read.py",
-      "kind": "consume",
-      "src": "table:mart_pipeline_run_manifest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/contract/test_workbench_read.py",
-      "kind": "consume",
-      "src": "table:mart_pipeline_run_manifest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:mart_sector_momentum"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/experiments/retired_experiments.yaml",
-      "kind": "consume",
-      "src": "table:mart_sector_momentum"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/audit.py",
-      "kind": "consume",
-      "src": "table:mart_sector_momentum"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/industry_context_engine.py",
-      "kind": "consume",
-      "src": "table:mart_sector_momentum"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/sector_momentum.py",
-      "kind": "consume",
-      "src": "table:mart_sector_momentum"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_industry_context_engine.py",
-      "kind": "consume",
-      "src": "table:mart_sector_momentum"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_sector_momentum.py",
-      "kind": "consume",
-      "src": "table:mart_sector_momentum"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:mart_stage_formula_fitness"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/formula_engine/__init__.py",
-      "kind": "consume",
-      "src": "table:mart_stage_formula_fitness"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/formula_engine/ddl.py",
-      "kind": "consume",
-      "src": "table:mart_stage_formula_fitness"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:mart_stage_formula_fitness"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
       "src": "table:mart_step_fingerprint"
@@ -4382,285 +2276,9 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/event_engine.py",
-      "kind": "consume",
-      "src": "table:mart_step_fingerprint"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/schema_versions.py",
       "kind": "consume",
       "src": "table:mart_step_fingerprint"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:mart_stock_picture_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/storage_retention.yaml",
-      "kind": "consume",
-      "src": "table:mart_stock_picture_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/main.py",
-      "kind": "consume",
-      "src": "table:mart_stock_picture_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/routers/v3_paper.py",
-      "kind": "consume",
-      "src": "table:mart_stock_picture_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/routers/v3_picture.py",
-      "kind": "consume",
-      "src": "table:mart_stock_picture_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_picture_daily.py",
-      "kind": "consume",
-      "src": "table:mart_stock_picture_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/picture/__init__.py",
-      "kind": "consume",
-      "src": "table:mart_stock_picture_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/picture/ddl.py",
-      "kind": "consume",
-      "src": "table:mart_stock_picture_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/picture/institution_signal.py",
-      "kind": "consume",
-      "src": "table:mart_stock_picture_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/picture/kline_latest.py",
-      "kind": "consume",
-      "src": "table:mart_stock_picture_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/picture/valuation.py",
-      "kind": "consume",
-      "src": "table:mart_stock_picture_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:mart_stock_picture_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_build_picture_daily.py",
-      "kind": "consume",
-      "src": "table:mart_stock_picture_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_picture_ddl.py",
-      "kind": "consume",
-      "src": "table:mart_stock_picture_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_v3_picture.py",
-      "kind": "consume",
-      "src": "table:mart_stock_picture_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:assets/js/stock-view.js",
-      "kind": "consume",
-      "src": "table:mart_stock_screening"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:mart_stock_screening"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/main.py",
-      "kind": "consume",
-      "src": "table:mart_stock_screening"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
-      "kind": "consume",
-      "src": "table:mart_stock_screening"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/audit.py",
-      "kind": "consume",
-      "src": "table:mart_stock_screening"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/screening_engine.py",
-      "kind": "consume",
-      "src": "table:mart_stock_screening"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/screening_read.py",
-      "kind": "consume",
-      "src": "table:mart_stock_screening"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_screening_engine.py",
-      "kind": "consume",
-      "src": "table:mart_stock_screening"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_audit_rules.yaml",
-      "kind": "consume",
-      "src": "table:mart_stock_survey_activity"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:mart_stock_survey_activity"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_audit.py",
-      "kind": "consume",
-      "src": "table:mart_stock_survey_activity"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:mart_stock_survey_activity"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/data_routes.py",
-      "kind": "consume",
-      "src": "table:mart_stock_survey_activity"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/institution_survey_client.py",
-      "kind": "consume",
-      "src": "table:mart_stock_survey_activity"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:mart_stock_survey_activity"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:mart_strategy_result_registry"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/storage_retention.yaml",
-      "kind": "consume",
-      "src": "table:mart_strategy_result_registry"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/check_panel_lineage.py",
-      "kind": "consume",
-      "src": "table:mart_strategy_result_registry"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/check_registry_promote.py",
-      "kind": "consume",
-      "src": "table:mart_strategy_result_registry"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_marts.py",
-      "kind": "consume",
-      "src": "table:mart_strategy_result_registry"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_mart_data_lineage_compat.py",
-      "kind": "consume",
-      "src": "table:mart_strategy_result_registry"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:mart_today_signal_cache"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:mart_today_signal_cache"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/signals_v2.py",
-      "kind": "consume",
-      "src": "table:mart_today_signal_cache"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_signals_v2.py",
-      "kind": "consume",
-      "src": "table:mart_today_signal_cache"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:mart_today_signal_cache_signal"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/storage_retention.yaml",
-      "kind": "consume",
-      "src": "table:mart_today_signal_cache_signal"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:mart_today_signal_cache_signal"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/signals_v2.py",
-      "kind": "consume",
-      "src": "table:mart_today_signal_cache_signal"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_signals_v2.py",
-      "kind": "consume",
-      "src": "table:mart_today_signal_cache_signal"
     },
     {
       "attrs": {},
@@ -4688,12 +2306,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/build_rally_entry_pit.py",
-      "kind": "consume",
-      "src": "table:price_kline"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/scripts/check_serve_read_layer.py",
       "kind": "consume",
       "src": "table:price_kline"
@@ -4707,12 +2319,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/sync_hs300_benchmark_kline.py",
-      "kind": "consume",
-      "src": "table:price_kline"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/akshare_client.py",
       "kind": "consume",
       "src": "table:price_kline"
     },
@@ -4748,12 +2354,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/etf_snapshot_manager.py",
-      "kind": "consume",
-      "src": "table:price_kline"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/gap_queue.py",
       "kind": "consume",
       "src": "table:price_kline"
@@ -4778,37 +2378,13 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/paper_engine/__init__.py",
-      "kind": "consume",
-      "src": "table:price_kline"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/pipeline/acquire.py",
       "kind": "consume",
       "src": "table:price_kline"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/return_engine.py",
-      "kind": "consume",
-      "src": "table:price_kline"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/source_watermarks.py",
-      "kind": "consume",
-      "src": "table:price_kline"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/technical_states/vol.py",
-      "kind": "consume",
-      "src": "table:price_kline"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_audit_financial.py",
       "kind": "consume",
       "src": "table:price_kline"
     },
@@ -4826,37 +2402,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/tests/test_return_engine_follow_cost.py",
-      "kind": "consume",
-      "src": "table:price_kline"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_screening_engine.py",
-      "kind": "consume",
-      "src": "table:price_kline"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_sector_momentum.py",
-      "kind": "consume",
-      "src": "table:price_kline"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/tests/test_source_watermarks.py",
-      "kind": "consume",
-      "src": "table:price_kline"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_stock_scoring_integration.py",
-      "kind": "consume",
-      "src": "table:price_kline"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_stock_turtle_engine.py",
       "kind": "consume",
       "src": "table:price_kline"
     },
@@ -4880,73 +2426,13 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/build_feature_panel.py",
-      "kind": "consume",
-      "src": "table:price_kline_qfq_tushare"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_macd_episode_ground_truth.py",
-      "kind": "consume",
-      "src": "table:price_kline_qfq_tushare"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/scripts/build_price_kline_qfq_tushare.py",
       "kind": "consume",
       "src": "table:price_kline_qfq_tushare"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/build_rally_entry_pit.py",
-      "kind": "consume",
-      "src": "table:price_kline_qfq_tushare"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_rally_ground_truth.py",
-      "kind": "consume",
-      "src": "table:price_kline_qfq_tushare"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_rally_negatives.py",
-      "kind": "consume",
-      "src": "table:price_kline_qfq_tushare"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_segment_panel.py",
-      "kind": "consume",
-      "src": "table:price_kline_qfq_tushare"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_signal_panel.py",
-      "kind": "consume",
-      "src": "table:price_kline_qfq_tushare"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/scripts/data_layer_audit.py",
-      "kind": "consume",
-      "src": "table:price_kline_qfq_tushare"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/measure_form_separation.py",
-      "kind": "consume",
-      "src": "table:price_kline_qfq_tushare"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_loaders.py",
-      "kind": "consume",
-      "src": "table:price_kline_qfq_tushare"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/dossier.py",
       "kind": "consume",
       "src": "table:price_kline_qfq_tushare"
     },
@@ -4965,12 +2451,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/org_holding_aif10.py",
-      "kind": "consume",
-      "src": "table:price_kline_qfq_tushare"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/pipeline/acquire.py",
       "kind": "consume",
       "src": "table:price_kline_qfq_tushare"
     },
@@ -4995,12 +2475,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_data_access.py",
-      "kind": "consume",
-      "src": "table:price_kline_qfq_tushare"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_data_loaders.py",
       "kind": "consume",
       "src": "table:price_kline_qfq_tushare"
     },
@@ -5037,12 +2511,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/source_watermarks.py",
-      "kind": "consume",
-      "src": "table:price_xdxr"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/xdxr_client.py",
       "kind": "consume",
       "src": "table:price_xdxr"
     },
@@ -5102,18 +2570,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/picture/valuation.py",
-      "kind": "consume",
-      "src": "table:raw_aif10_peer_valuation"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_build_picture_daily.py",
-      "kind": "consume",
-      "src": "table:raw_aif10_peer_valuation"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
       "src": "table:raw_aif10_valuation_quantile"
@@ -5133,18 +2589,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:raw_aif10_valuation_quantile"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/picture/valuation.py",
-      "kind": "consume",
-      "src": "table:raw_aif10_valuation_quantile"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_build_picture_daily.py",
       "kind": "consume",
       "src": "table:raw_aif10_valuation_quantile"
     },
@@ -5204,19 +2648,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/data_sources/sources/akshare.py",
-      "kind": "consume",
-      "src": "table:raw_institution_surveys"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/institution_survey_client.py",
-      "kind": "consume",
-      "src": "table:raw_institution_surveys"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/signals_v2.py",
       "kind": "consume",
       "src": "table:raw_institution_surveys"
     },
@@ -5229,12 +2661,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_institution_survey_client.py",
-      "kind": "consume",
-      "src": "table:raw_institution_surveys"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_signals_v2.py",
       "kind": "consume",
       "src": "table:raw_institution_surveys"
     },
@@ -5402,31 +2828,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/tests/scripts/test_experiment_lf_v0.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_adj_factor"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/scripts/test_experiment_lhb_exit.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_adj_factor"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
-      "kind": "consume",
-      "src": "table:raw_tushare_balancesheet"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/financial_client.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_balancesheet"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_financial_client.py",
       "kind": "consume",
       "src": "table:raw_tushare_balancesheet"
     },
@@ -5456,18 +2858,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/dossier.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_block_trade"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/technical_states/events.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_block_trade"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_access.yaml",
       "kind": "consume",
       "src": "table:raw_tushare_cyq_perf"
@@ -5475,24 +2865,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
-      "kind": "consume",
-      "src": "table:raw_tushare_cyq_perf"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/dossier.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_cyq_perf"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/read_model.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_cyq_perf"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/technical_states/chips.py",
       "kind": "consume",
       "src": "table:raw_tushare_cyq_perf"
     },
@@ -5534,18 +2906,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/tests/scripts/test_experiment_lf_v0.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/scripts/test_experiment_lhb_exit.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_daily"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/tests/test_data_audit_kline_completeness.py",
       "kind": "consume",
       "src": "table:raw_tushare_daily"
@@ -5564,54 +2924,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/build_rally_episode_strata.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_daily_basic"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/measure_form_separation.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_daily_basic"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/dossier.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_daily_basic"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/financial_client.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_daily_basic"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/technical_states/capital.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_daily_basic"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/technical_states/fundamentals.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_daily_basic"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/scripts/test_experiment_lhb_exit.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_daily_basic"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_financial_client.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_daily_basic"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_access.yaml",
       "kind": "consume",
       "src": "table:raw_tushare_dc_index"
@@ -5625,12 +2937,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/build_dc_industry_view.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_dc_index"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/dossier.py",
       "kind": "consume",
       "src": "table:raw_tushare_dc_index"
     },
@@ -5642,12 +2948,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/technical_states/sector_context.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_dc_index"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_access.yaml",
       "kind": "consume",
       "src": "table:raw_tushare_dc_member"
@@ -5661,24 +2961,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/build_dc_industry_view.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_dc_member"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/dossier.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_dc_member"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/technical_states/sector_context.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_dc_member"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/scripts/test_experiment_lf_v0.py",
       "kind": "consume",
       "src": "table:raw_tushare_dc_member"
     },
@@ -5720,19 +3002,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/build_feature_panel.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_fina_indicator"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/scripts/seed_dim_data_asset.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_fina_indicator"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_loaders.py",
       "kind": "consume",
       "src": "table:raw_tushare_fina_indicator"
     },
@@ -5744,37 +3014,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/dossier.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_fina_indicator"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/financial_client.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_fina_indicator"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/lineage/query.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_fina_indicator"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/technical_states/fundamentals.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_fina_indicator"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_data_loaders.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_fina_indicator"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_financial_client.py",
       "kind": "consume",
       "src": "table:raw_tushare_fina_indicator"
     },
@@ -5805,18 +3045,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/constants.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_forecast"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/dossier.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_forecast"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/signals_v2.py",
       "kind": "consume",
       "src": "table:raw_tushare_forecast"
     },
@@ -5858,12 +3086,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/etf_engine.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_fund_daily"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_build_etf_kline_qfq_tushare.py",
       "kind": "consume",
       "src": "table:raw_tushare_fund_daily"
@@ -5871,18 +3093,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
-      "kind": "consume",
-      "src": "table:raw_tushare_income"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/financial_client.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_income"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_financial_client.py",
       "kind": "consume",
       "src": "table:raw_tushare_income"
     },
@@ -5906,19 +3116,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/dossier.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_index_daily"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/pipeline/acquire.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_index_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/technical_states/regime.py",
       "kind": "consume",
       "src": "table:raw_tushare_index_daily"
     },
@@ -5948,12 +3146,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/build_rally_episode_strata.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_index_member_all"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/scripts/build_sw_industry_view.py",
       "kind": "consume",
       "src": "table:raw_tushare_index_member_all"
@@ -5978,24 +3170,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/dossier.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_limit_list_d"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/technical_states/regime.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_limit_list_d"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/scripts/test_experiment_lf_v0.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_limit_list_d"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_access.yaml",
       "kind": "consume",
       "src": "table:raw_tushare_moneyflow"
@@ -6003,18 +3177,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
-      "kind": "consume",
-      "src": "table:raw_tushare_moneyflow"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_feature_panel.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_moneyflow"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_loaders.py",
       "kind": "consume",
       "src": "table:raw_tushare_moneyflow"
     },
@@ -6044,12 +3206,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/tests/test_data_loaders.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_moneyflow"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_access.yaml",
       "kind": "consume",
       "src": "table:raw_tushare_moneyflow_dc"
@@ -6063,18 +3219,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_sources/sources/tushare.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_moneyflow_dc"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/dossier.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_moneyflow_dc"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/technical_states/capital.py",
       "kind": "consume",
       "src": "table:raw_tushare_moneyflow_dc"
     },
@@ -6110,18 +3254,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/dossier.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_report_rc"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/technical_states/fundamentals.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_report_rc"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_access.yaml",
       "kind": "consume",
       "src": "table:raw_tushare_share_float"
@@ -6129,18 +3261,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
-      "kind": "consume",
-      "src": "table:raw_tushare_share_float"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/dossier.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_share_float"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/technical_states/events.py",
       "kind": "consume",
       "src": "table:raw_tushare_share_float"
     },
@@ -6170,18 +3290,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/financial_client.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_stk_holdernumber"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_financial_client.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_stk_holdernumber"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
       "kind": "consume",
       "src": "table:raw_tushare_stk_holdertrade"
@@ -6195,24 +3303,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
-      "kind": "consume",
-      "src": "table:raw_tushare_stk_limit"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/dossier.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_stk_limit"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/technical_states/limits.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_stk_limit"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/scripts/test_experiment_lf_v0.py",
       "kind": "consume",
       "src": "table:raw_tushare_stk_limit"
     },
@@ -6248,18 +3338,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/build_macd_episode_ground_truth.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_stock_st"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_rally_ground_truth.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_stock_st"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/universe.py",
       "kind": "consume",
       "src": "table:raw_tushare_stock_st"
@@ -6284,18 +3362,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/dossier.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_sw_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/technical_states/sector_context.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_sw_daily"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
       "kind": "consume",
       "src": "table:raw_tushare_ths_hot"
@@ -6314,18 +3380,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/dossier.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_top10_floatholders"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/read_model.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_top10_floatholders"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_access.yaml",
       "kind": "consume",
       "src": "table:raw_tushare_top_inst"
@@ -6338,18 +3392,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/dossier.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_top_inst"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/technical_states/events.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_top_inst"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_access.yaml",
       "kind": "consume",
       "src": "table:raw_tushare_top_list"
@@ -6357,24 +3399,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
-      "kind": "consume",
-      "src": "table:raw_tushare_top_list"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/dossier.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_top_list"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/technical_states/events.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_top_list"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/scripts/test_experiment_lhb_exit.py",
       "kind": "consume",
       "src": "table:raw_tushare_top_list"
     },
@@ -6387,18 +3411,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/lineage/query.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_trade_cal"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/scripts/test_experiment_lf_v0.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_trade_cal"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/scripts/test_experiment_lhb_exit.py",
       "kind": "consume",
       "src": "table:raw_tushare_trade_cal"
     },
@@ -6440,12 +3452,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/workbench_signal_cache_read.py",
-      "kind": "consume",
-      "src": "table:step_status"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
       "src": "table:stock_watchlist"
@@ -6464,19 +3470,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/stock_watchlist_read.py",
-      "kind": "consume",
-      "src": "table:stock_watchlist"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/tests/test_institution_write.py",
-      "kind": "consume",
-      "src": "table:stock_watchlist"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_stock_watchlist_read.py",
       "kind": "consume",
       "src": "table:stock_watchlist"
     },
@@ -6554,12 +3548,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/build_macd_state_history.py",
-      "kind": "consume",
-      "src": "table:v_price_kline_qfq"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/scripts/build_picture_daily.py",
       "kind": "consume",
       "src": "table:v_price_kline_qfq"
@@ -6567,12 +3555,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/build_price_kline_qfq_tushare.py",
-      "kind": "consume",
-      "src": "table:v_price_kline_qfq"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_segment_panel.py",
       "kind": "consume",
       "src": "table:v_price_kline_qfq"
     },
@@ -6608,12 +3590,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/picture/kline_latest.py",
-      "kind": "consume",
-      "src": "table:v_price_kline_qfq"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/source_policy.py",
       "kind": "consume",
       "src": "table:v_price_kline_qfq"
@@ -6632,19 +3608,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/tests/test_build_picture_daily.py",
-      "kind": "consume",
-      "src": "table:v_price_kline_qfq"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/tests/test_data_audit_kline_completeness.py",
-      "kind": "consume",
-      "src": "table:v_price_kline_qfq"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_global_data_quality.py",
       "kind": "consume",
       "src": "table:v_price_kline_qfq"
     },
@@ -6656,37 +3620,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/tests/test_return_engine_follow_cost.py",
-      "kind": "consume",
-      "src": "table:v_price_kline_qfq"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_screening_engine.py",
-      "kind": "consume",
-      "src": "table:v_price_kline_qfq"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_sector_momentum.py",
-      "kind": "consume",
-      "src": "table:v_price_kline_qfq"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/tests/test_source_policy.py",
-      "kind": "consume",
-      "src": "table:v_price_kline_qfq"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_stock_scoring_integration.py",
-      "kind": "consume",
-      "src": "table:v_price_kline_qfq"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_stock_turtle_engine.py",
       "kind": "consume",
       "src": "table:v_price_kline_qfq"
     },
@@ -6705,12 +3639,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:v_sw_industry_pit"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/audit_panel_leakage.py",
       "kind": "consume",
       "src": "table:v_sw_industry_pit"
     },
@@ -6740,12 +3668,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/dossier.py",
-      "kind": "consume",
-      "src": "table:v_sw_industry_pit"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/industry.py",
       "kind": "consume",
       "src": "table:v_sw_industry_pit"
@@ -6761,18 +3683,12 @@
       "dst": "consumer:backend/services/source_watermarks.py",
       "kind": "consume",
       "src": "table:v_sw_industry_pit"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/technical_states/sector_context.py",
-      "kind": "consume",
-      "src": "table:v_sw_industry_pit"
     }
   ],
   "meta": {
-    "edge_count": 1081,
-    "generated_at": "2026-06-27T14:32:43.911530+00:00",
-    "node_count": 436,
+    "edge_count": 567,
+    "generated_at": "2026-06-28T02:46:25.935838+00:00",
+    "node_count": 272,
     "version": 1
   },
   "nodes": [
@@ -6782,14 +3698,6 @@
         "path": "assets/js/data-view.js"
       },
       "id": "consumer:assets/js/data-view.js",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "frontend",
-        "path": "assets/js/stock-view.js"
-      },
-      "id": "consumer:assets/js/stock-view.js",
       "kind": "consumer"
     },
     {
@@ -6851,25 +3759,9 @@
     {
       "attrs": {
         "ctype": "config",
-        "path": "backend/config/db_partition_tiers.yaml"
-      },
-      "id": "consumer:backend/config/db_partition_tiers.yaml",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "config",
         "path": "backend/config/experiment_jobs.yaml"
       },
       "id": "consumer:backend/config/experiment_jobs.yaml",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "config",
-        "path": "backend/config/experiments/retired_experiments.yaml"
-      },
-      "id": "consumer:backend/config/experiments/retired_experiments.yaml",
       "kind": "consumer"
     },
     {
@@ -6891,22 +3783,6 @@
     {
       "attrs": {
         "ctype": "config",
-        "path": "backend/config/leakage_consumers.yaml"
-      },
-      "id": "consumer:backend/config/leakage_consumers.yaml",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "config",
-        "path": "backend/config/macd_episode_gt_columns.yaml"
-      },
-      "id": "consumer:backend/config/macd_episode_gt_columns.yaml",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "config",
         "path": "backend/config/panel_pipeline_manifest.yaml"
       },
       "id": "consumer:backend/config/panel_pipeline_manifest.yaml",
@@ -6915,33 +3791,9 @@
     {
       "attrs": {
         "ctype": "config",
-        "path": "backend/config/rally_gt_columns.yaml"
-      },
-      "id": "consumer:backend/config/rally_gt_columns.yaml",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "config",
-        "path": "backend/config/segment_panel.yaml"
-      },
-      "id": "consumer:backend/config/segment_panel.yaml",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "config",
         "path": "backend/config/stage_opt_candidate_supply.yaml"
       },
       "id": "consumer:backend/config/stage_opt_candidate_supply.yaml",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "config",
-        "path": "backend/config/storage_retention.yaml"
-      },
-      "id": "consumer:backend/config/storage_retention.yaml",
       "kind": "consumer"
     },
     {
@@ -6995,49 +3847,9 @@
     {
       "attrs": {
         "ctype": "router",
-        "path": "backend/routers/market.py"
-      },
-      "id": "consumer:backend/routers/market.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "router",
-        "path": "backend/routers/signals.py"
-      },
-      "id": "consumer:backend/routers/signals.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "router",
         "path": "backend/routers/strategy_preset.py"
       },
       "id": "consumer:backend/routers/strategy_preset.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "router",
-        "path": "backend/routers/v3_paper.py"
-      },
-      "id": "consumer:backend/routers/v3_paper.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "router",
-        "path": "backend/routers/v3_picture.py"
-      },
-      "id": "consumer:backend/routers/v3_picture.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "router",
-        "path": "backend/routers/v3_selection.py"
-      },
-      "id": "consumer:backend/routers/v3_selection.py",
       "kind": "consumer"
     },
     {
@@ -7046,30 +3858,6 @@
         "path": "backend/scripts/audit_data_completeness.py"
       },
       "id": "consumer:backend/scripts/audit_data_completeness.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
-        "path": "backend/scripts/audit_panel_leakage.py"
-      },
-      "id": "consumer:backend/scripts/audit_panel_leakage.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
-        "path": "backend/scripts/audit_pit_coverage.py"
-      },
-      "id": "consumer:backend/scripts/audit_pit_coverage.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
-        "path": "backend/scripts/audit_tdx_data_need_coverage.py"
-      },
-      "id": "consumer:backend/scripts/audit_tdx_data_need_coverage.py",
       "kind": "consumer"
     },
     {
@@ -7099,33 +3887,9 @@
     {
       "attrs": {
         "ctype": "script",
-        "path": "backend/scripts/build_feature_panel.py"
-      },
-      "id": "consumer:backend/scripts/build_feature_panel.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
         "path": "backend/scripts/build_lhb_events.py"
       },
       "id": "consumer:backend/scripts/build_lhb_events.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
-        "path": "backend/scripts/build_macd_episode_ground_truth.py"
-      },
-      "id": "consumer:backend/scripts/build_macd_episode_ground_truth.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
-        "path": "backend/scripts/build_macd_state_history.py"
-      },
-      "id": "consumer:backend/scripts/build_macd_state_history.py",
       "kind": "consumer"
     },
     {
@@ -7147,62 +3911,6 @@
     {
       "attrs": {
         "ctype": "script",
-        "path": "backend/scripts/build_rally_entry_pit.py"
-      },
-      "id": "consumer:backend/scripts/build_rally_entry_pit.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
-        "path": "backend/scripts/build_rally_episode_strata.py"
-      },
-      "id": "consumer:backend/scripts/build_rally_episode_strata.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
-        "path": "backend/scripts/build_rally_ground_truth.py"
-      },
-      "id": "consumer:backend/scripts/build_rally_ground_truth.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
-        "path": "backend/scripts/build_rally_negatives.py"
-      },
-      "id": "consumer:backend/scripts/build_rally_negatives.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
-        "path": "backend/scripts/build_rally_stage.py"
-      },
-      "id": "consumer:backend/scripts/build_rally_stage.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
-        "path": "backend/scripts/build_segment_panel.py"
-      },
-      "id": "consumer:backend/scripts/build_segment_panel.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
-        "path": "backend/scripts/build_signal_panel.py"
-      },
-      "id": "consumer:backend/scripts/build_signal_panel.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
         "path": "backend/scripts/build_sw_industry_view.py"
       },
       "id": "consumer:backend/scripts/build_sw_industry_view.py",
@@ -7214,30 +3922,6 @@
         "path": "backend/scripts/check_calendar_usage.py"
       },
       "id": "consumer:backend/scripts/check_calendar_usage.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
-        "path": "backend/scripts/check_legacy_flow_integrity.py"
-      },
-      "id": "consumer:backend/scripts/check_legacy_flow_integrity.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
-        "path": "backend/scripts/check_panel_lineage.py"
-      },
-      "id": "consumer:backend/scripts/check_panel_lineage.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
-        "path": "backend/scripts/check_registry_promote.py"
-      },
-      "id": "consumer:backend/scripts/check_registry_promote.py",
       "kind": "consumer"
     },
     {
@@ -7299,14 +3983,6 @@
     {
       "attrs": {
         "ctype": "script",
-        "path": "backend/scripts/measure_form_separation.py"
-      },
-      "id": "consumer:backend/scripts/measure_form_separation.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
         "path": "backend/scripts/migrate_reference_db.py"
       },
       "id": "consumer:backend/scripts/migrate_reference_db.py",
@@ -7355,14 +4031,6 @@
     {
       "attrs": {
         "ctype": "service",
-        "path": "backend/services/akshare_client.py"
-      },
-      "id": "consumer:backend/services/akshare_client.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
         "path": "backend/services/api_schemas.py"
       },
       "id": "consumer:backend/services/api_schemas.py",
@@ -7374,22 +4042,6 @@
         "path": "backend/services/audit.py"
       },
       "id": "consumer:backend/services/audit.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/bc_absorbed/README.md"
-      },
-      "id": "consumer:backend/services/bc_absorbed/README.md",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/business_facts.py"
-      },
-      "id": "consumer:backend/services/business_facts.py",
       "kind": "consumer"
     },
     {
@@ -7451,22 +4103,6 @@
     {
       "attrs": {
         "ctype": "service",
-        "path": "backend/services/data_governance/etl_hook.py"
-      },
-      "id": "consumer:backend/services/data_governance/etl_hook.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/data_loaders.py"
-      },
-      "id": "consumer:backend/services/data_loaders.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
         "path": "backend/services/data_processing_monitor.py"
       },
       "id": "consumer:backend/services/data_processing_monitor.py",
@@ -7507,22 +4143,6 @@
     {
       "attrs": {
         "ctype": "service",
-        "path": "backend/services/data_sources/sources/akshare.py"
-      },
-      "id": "consumer:backend/services/data_sources/sources/akshare.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/data_sources/sources/tdxhub.py"
-      },
-      "id": "consumer:backend/services/data_sources/sources/tdxhub.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
         "path": "backend/services/data_sources/sources/tushare.py"
       },
       "id": "consumer:backend/services/data_sources/sources/tushare.py",
@@ -7547,14 +4167,6 @@
     {
       "attrs": {
         "ctype": "service",
-        "path": "backend/services/dossier.py"
-      },
-      "id": "consumer:backend/services/dossier.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
         "path": "backend/services/etf_db.py"
       },
       "id": "consumer:backend/services/etf_db.py",
@@ -7563,89 +4175,9 @@
     {
       "attrs": {
         "ctype": "service",
-        "path": "backend/services/etf_engine.py"
-      },
-      "id": "consumer:backend/services/etf_engine.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/etf_mining_engine.py"
-      },
-      "id": "consumer:backend/services/etf_mining_engine.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/etf_snapshot_manager.py"
-      },
-      "id": "consumer:backend/services/etf_snapshot_manager.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/event_engine.py"
-      },
-      "id": "consumer:backend/services/event_engine.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/financial_client.py"
-      },
-      "id": "consumer:backend/services/financial_client.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/formula_engine/__init__.py"
-      },
-      "id": "consumer:backend/services/formula_engine/__init__.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/formula_engine/base.py"
-      },
-      "id": "consumer:backend/services/formula_engine/base.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/formula_engine/ddl.py"
-      },
-      "id": "consumer:backend/services/formula_engine/ddl.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/formula_engine/macd_golden_cross.py"
-      },
-      "id": "consumer:backend/services/formula_engine/macd_golden_cross.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
         "path": "backend/services/gap_queue.py"
       },
       "id": "consumer:backend/services/gap_queue.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/gt_label_contract.py"
-      },
-      "id": "consumer:backend/services/gt_label_contract.py",
       "kind": "consumer"
     },
     {
@@ -7667,14 +4199,6 @@
     {
       "attrs": {
         "ctype": "service",
-        "path": "backend/services/holders_event.py"
-      },
-      "id": "consumer:backend/services/holders_event.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
         "path": "backend/services/holdings.py"
       },
       "id": "consumer:backend/services/holdings.py",
@@ -7686,46 +4210,6 @@
         "path": "backend/services/industry.py"
       },
       "id": "consumer:backend/services/industry.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/industry_context_engine.py"
-      },
-      "id": "consumer:backend/services/industry_context_engine.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/institution_aux_read.py"
-      },
-      "id": "consumer:backend/services/institution_aux_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/institution_l2_metrics.py"
-      },
-      "id": "consumer:backend/services/institution_l2_metrics.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/institution_read.py"
-      },
-      "id": "consumer:backend/services/institution_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/institution_scoring_read.py"
-      },
-      "id": "consumer:backend/services/institution_scoring_read.py",
       "kind": "consumer"
     },
     {
@@ -7795,65 +4279,9 @@
     {
       "attrs": {
         "ctype": "service",
-        "path": "backend/services/ml_lifecycle/drift.py"
-      },
-      "id": "consumer:backend/services/ml_lifecycle/drift.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
         "path": "backend/services/org_holding_aif10.py"
       },
       "id": "consumer:backend/services/org_holding_aif10.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/paper_engine/__init__.py"
-      },
-      "id": "consumer:backend/services/paper_engine/__init__.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/picture/__init__.py"
-      },
-      "id": "consumer:backend/services/picture/__init__.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/picture/ddl.py"
-      },
-      "id": "consumer:backend/services/picture/ddl.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/picture/institution_signal.py"
-      },
-      "id": "consumer:backend/services/picture/institution_signal.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/picture/kline_latest.py"
-      },
-      "id": "consumer:backend/services/picture/kline_latest.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/picture/valuation.py"
-      },
-      "id": "consumer:backend/services/picture/valuation.py",
       "kind": "consumer"
     },
     {
@@ -7915,22 +4343,6 @@
     {
       "attrs": {
         "ctype": "service",
-        "path": "backend/services/pricing_policy_evidence.py"
-      },
-      "id": "consumer:backend/services/pricing_policy_evidence.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/pricing_policy_readiness.py"
-      },
-      "id": "consumer:backend/services/pricing_policy_readiness.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
         "path": "backend/services/primitives/__init__.py"
       },
       "id": "consumer:backend/services/primitives/__init__.py",
@@ -7958,46 +4370,6 @@
         "path": "backend/services/qfii_client.py"
       },
       "id": "consumer:backend/services/qfii_client.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/rally_labels.py"
-      },
-      "id": "consumer:backend/services/rally_labels.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/read_model.py"
-      },
-      "id": "consumer:backend/services/read_model.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/recommendation_universe.py"
-      },
-      "id": "consumer:backend/services/recommendation_universe.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/return_engine.py"
-      },
-      "id": "consumer:backend/services/return_engine.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/risk_factors.py"
-      },
-      "id": "consumer:backend/services/risk_factors.py",
       "kind": "consumer"
     },
     {
@@ -8035,57 +4407,9 @@
     {
       "attrs": {
         "ctype": "service",
-        "path": "backend/services/scoring.py"
-      },
-      "id": "consumer:backend/services/scoring.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/screening_engine.py"
-      },
-      "id": "consumer:backend/services/screening_engine.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/screening_read.py"
-      },
-      "id": "consumer:backend/services/screening_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/sector_momentum.py"
-      },
-      "id": "consumer:backend/services/sector_momentum.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
         "path": "backend/services/security_master.py"
       },
       "id": "consumer:backend/services/security_master.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/sentiment/factor_registry.py"
-      },
-      "id": "consumer:backend/services/sentiment/factor_registry.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/signals_v2.py"
-      },
-      "id": "consumer:backend/services/signals_v2.py",
       "kind": "consumer"
     },
     {
@@ -8107,38 +4431,6 @@
     {
       "attrs": {
         "ctype": "service",
-        "path": "backend/services/stock_graph_read.py"
-      },
-      "id": "consumer:backend/services/stock_graph_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/stock_stage_engine.py"
-      },
-      "id": "consumer:backend/services/stock_stage_engine.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/stock_trends_read.py"
-      },
-      "id": "consumer:backend/services/stock_trends_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/stock_watchlist_read.py"
-      },
-      "id": "consumer:backend/services/stock_watchlist_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
         "path": "backend/services/storage_retention.py"
       },
       "id": "consumer:backend/services/storage_retention.py",
@@ -8147,193 +4439,9 @@
     {
       "attrs": {
         "ctype": "service",
-        "path": "backend/services/technical_states/capital.py"
-      },
-      "id": "consumer:backend/services/technical_states/capital.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/technical_states/chips.py"
-      },
-      "id": "consumer:backend/services/technical_states/chips.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/technical_states/events.py"
-      },
-      "id": "consumer:backend/services/technical_states/events.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/technical_states/fundamentals.py"
-      },
-      "id": "consumer:backend/services/technical_states/fundamentals.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/technical_states/limits.py"
-      },
-      "id": "consumer:backend/services/technical_states/limits.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/technical_states/regime.py"
-      },
-      "id": "consumer:backend/services/technical_states/regime.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/technical_states/sector_context.py"
-      },
-      "id": "consumer:backend/services/technical_states/sector_context.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/technical_states/vol.py"
-      },
-      "id": "consumer:backend/services/technical_states/vol.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
         "path": "backend/services/universe.py"
       },
       "id": "consumer:backend/services/universe.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/workbench_asset_health_read.py"
-      },
-      "id": "consumer:backend/services/workbench_asset_health_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/workbench_data_source_read.py"
-      },
-      "id": "consumer:backend/services/workbench_data_source_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/workbench_data_source_watermark_read.py"
-      },
-      "id": "consumer:backend/services/workbench_data_source_watermark_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/workbench_overview_read.py"
-      },
-      "id": "consumer:backend/services/workbench_overview_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/workbench_pipeline_read.py"
-      },
-      "id": "consumer:backend/services/workbench_pipeline_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/workbench_ranker_runtime_read.py"
-      },
-      "id": "consumer:backend/services/workbench_ranker_runtime_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/workbench_recommendation_read.py"
-      },
-      "id": "consumer:backend/services/workbench_recommendation_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/workbench_research_meta_read.py"
-      },
-      "id": "consumer:backend/services/workbench_research_meta_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/workbench_signal_cache_read.py"
-      },
-      "id": "consumer:backend/services/workbench_signal_cache_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/workbench_storage_architecture_read.py"
-      },
-      "id": "consumer:backend/services/workbench_storage_architecture_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/workbench_storage_read.py"
-      },
-      "id": "consumer:backend/services/workbench_storage_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/xdxr_client.py"
-      },
-      "id": "consumer:backend/services/xdxr_client.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/contract/test_workbench_frontend_render_smoke.py"
-      },
-      "id": "consumer:backend/tests/contract/test_workbench_frontend_render_smoke.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/contract/test_workbench_read.py"
-      },
-      "id": "consumer:backend/tests/contract/test_workbench_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/data_governance/test_etl_hook.py"
-      },
-      "id": "consumer:backend/tests/data_governance/test_etl_hook.py",
       "kind": "consumer"
     },
     {
@@ -8355,14 +4463,6 @@
     {
       "attrs": {
         "ctype": "test",
-        "path": "backend/tests/scripts/test_audit_tdx_data_need_coverage.py"
-      },
-      "id": "consumer:backend/tests/scripts/test_audit_tdx_data_need_coverage.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
         "path": "backend/tests/scripts/test_build_dim_listing_status.py"
       },
       "id": "consumer:backend/tests/scripts/test_build_dim_listing_status.py",
@@ -8379,22 +4479,6 @@
     {
       "attrs": {
         "ctype": "test",
-        "path": "backend/tests/scripts/test_experiment_lf_v0.py"
-      },
-      "id": "consumer:backend/tests/scripts/test_experiment_lf_v0.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/scripts/test_experiment_lhb_exit.py"
-      },
-      "id": "consumer:backend/tests/scripts/test_experiment_lhb_exit.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
         "path": "backend/tests/services/test_lineage.py"
       },
       "id": "consumer:backend/tests/services/test_lineage.py",
@@ -8406,38 +4490,6 @@
         "path": "backend/tests/services/test_sandbox_guard.py"
       },
       "id": "consumer:backend/tests/services/test_sandbox_guard.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_audit_financial.py"
-      },
-      "id": "consumer:backend/tests/test_audit_financial.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_build_lhb_events.py"
-      },
-      "id": "consumer:backend/tests/test_build_lhb_events.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_build_picture_daily.py"
-      },
-      "id": "consumer:backend/tests/test_build_picture_daily.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_business_facts.py"
-      },
-      "id": "consumer:backend/tests/test_business_facts.py",
       "kind": "consumer"
     },
     {
@@ -8475,14 +4527,6 @@
     {
       "attrs": {
         "ctype": "test",
-        "path": "backend/tests/test_data_loaders.py"
-      },
-      "id": "consumer:backend/tests/test_data_loaders.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
         "path": "backend/tests/test_db.py"
       },
       "id": "consumer:backend/tests/test_db.py",
@@ -8507,73 +4551,9 @@
     {
       "attrs": {
         "ctype": "test",
-        "path": "backend/tests/test_event_engine_notice_backfill.py"
-      },
-      "id": "consumer:backend/tests/test_event_engine_notice_backfill.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_financial_client.py"
-      },
-      "id": "consumer:backend/tests/test_financial_client.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_global_data_quality.py"
-      },
-      "id": "consumer:backend/tests/test_global_data_quality.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
         "path": "backend/tests/test_holder_availability.py"
       },
       "id": "consumer:backend/tests/test_holder_availability.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_holdings.py"
-      },
-      "id": "consumer:backend/tests/test_holdings.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_industry_context_engine.py"
-      },
-      "id": "consumer:backend/tests/test_industry_context_engine.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_institution_aux_read.py"
-      },
-      "id": "consumer:backend/tests/test_institution_aux_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_institution_l2_metrics.py"
-      },
-      "id": "consumer:backend/tests/test_institution_l2_metrics.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_institution_scoring_integration.py"
-      },
-      "id": "consumer:backend/tests/test_institution_scoring_integration.py",
       "kind": "consumer"
     },
     {
@@ -8590,14 +4570,6 @@
         "path": "backend/tests/test_institution_write.py"
       },
       "id": "consumer:backend/tests/test_institution_write.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_kline_sources.py"
-      },
-      "id": "consumer:backend/tests/test_kline_sources.py",
       "kind": "consumer"
     },
     {
@@ -8643,22 +4615,6 @@
     {
       "attrs": {
         "ctype": "test",
-        "path": "backend/tests/test_picture_ddl.py"
-      },
-      "id": "consumer:backend/tests/test_picture_ddl.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_pricing_policy.py"
-      },
-      "id": "consumer:backend/tests/test_pricing_policy.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
         "path": "backend/tests/test_primitives.py"
       },
       "id": "consumer:backend/tests/test_primitives.py",
@@ -8670,46 +4626,6 @@
         "path": "backend/tests/test_qfii_client.py"
       },
       "id": "consumer:backend/tests/test_qfii_client.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_recommendation_universe.py"
-      },
-      "id": "consumer:backend/tests/test_recommendation_universe.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_return_engine_follow_cost.py"
-      },
-      "id": "consumer:backend/tests/test_return_engine_follow_cost.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_screening_engine.py"
-      },
-      "id": "consumer:backend/tests/test_screening_engine.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_sector_momentum.py"
-      },
-      "id": "consumer:backend/tests/test_sector_momentum.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_signals_v2.py"
-      },
-      "id": "consumer:backend/tests/test_signals_v2.py",
       "kind": "consumer"
     },
     {
@@ -8731,54 +4647,6 @@
     {
       "attrs": {
         "ctype": "test",
-        "path": "backend/tests/test_stock_graph_read.py"
-      },
-      "id": "consumer:backend/tests/test_stock_graph_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_stock_scoring_integration.py"
-      },
-      "id": "consumer:backend/tests/test_stock_scoring_integration.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_stock_trends_summary.py"
-      },
-      "id": "consumer:backend/tests/test_stock_trends_summary.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_stock_turtle_engine.py"
-      },
-      "id": "consumer:backend/tests/test_stock_turtle_engine.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_stock_watchlist_read.py"
-      },
-      "id": "consumer:backend/tests/test_stock_watchlist_read.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_storage_retention.py"
-      },
-      "id": "consumer:backend/tests/test_storage_retention.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
         "path": "backend/tests/test_universe.py"
       },
       "id": "consumer:backend/tests/test_universe.py",
@@ -8790,14 +4658,6 @@
         "path": "backend/tests/test_utils.py"
       },
       "id": "consumer:backend/tests/test_utils.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_v3_picture.py"
-      },
-      "id": "consumer:backend/tests/test_v3_picture.py",
       "kind": "consumer"
     },
     {
@@ -8822,14 +4682,6 @@
         "path": "scripts/cm.sh"
       },
       "id": "consumer:scripts/cm.sh",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
-        "path": "scripts/validate_champion_paper_sim.py"
-      },
-      "id": "consumer:scripts/validate_champion_paper_sim.py",
       "kind": "consumer"
     },
     {
@@ -9270,15 +5122,6 @@
         "layer": "L1_foundation",
         "status": "active"
       },
-      "id": "table:dim_financial_latest",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
       "id": "table:dim_holder_alias",
       "kind": "table"
     },
@@ -9343,15 +5186,6 @@
         "status": "active"
       },
       "id": "table:dim_stock_dc_industry",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:dim_stock_industry_context_latest",
       "kind": "table"
     },
     {
@@ -9455,159 +5289,6 @@
     },
     {
       "attrs": {
-        "db": "feature_store",
-        "layer": "L2_feature",
-        "status": "active"
-      },
-      "id": "table:fact_feature_panel",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L2_feature",
-        "status": "active"
-      },
-      "id": "table:fact_feature_panel_candidate",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:fact_financial_derived",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:fact_institution_event",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:fact_lhb_event",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:fact_macd_episode_ground_truth",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:fact_rally_entry_negative",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:fact_rally_entry_pit",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:fact_rally_episode_strata",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:fact_rally_ground_truth",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:fact_rally_stage",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L2_feature",
-        "status": "active"
-      },
-      "id": "table:fact_risk_factors",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "feature_store",
-        "layer": "L2_feature",
-        "status": "active"
-      },
-      "id": "table:fact_segment_panel",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "feature_store",
-        "layer": "L2_feature",
-        "status": "active"
-      },
-      "id": "table:fact_signal_panel",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:fact_stock_industry_context",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1k_kline_intermediate",
-        "status": "active"
-      },
-      "id": "table:fact_stock_technical_stage",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L2_feature",
-        "status": "active"
-      },
-      "id": "table:fact_technical_trigger",
-      "kind": "table"
-    },
-    {
-      "attrs": {
         "db": "smartmoney",
         "layer": "L1_foundation",
         "serve_entity": "holders_tdx",
@@ -9651,15 +5332,6 @@
         "status": "active"
       },
       "id": "table:market_sync_state",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "display",
-        "status": "active"
-      },
-      "id": "table:mart_current_relationship",
       "kind": "table"
     },
     {
@@ -9745,15 +5417,6 @@
     },
     {
       "attrs": {
-        "db": "smartmoney",
-        "layer": "L3_model",
-        "status": "active"
-      },
-      "id": "table:mart_dual_confirm",
-      "kind": "table"
-    },
-    {
-      "attrs": {
         "db": "etf",
         "layer": "L2_feature",
         "status": "active"
@@ -9768,15 +5431,6 @@
         "status": "active"
       },
       "id": "table:mart_etf_snapshot_state",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L2_feature",
-        "status": "active"
-      },
-      "id": "table:mart_formula_horizon_evidence",
       "kind": "table"
     },
     {
@@ -9800,15 +5454,6 @@
     {
       "attrs": {
         "db": "smartmoney",
-        "layer": "L1k_kline_intermediate",
-        "status": "active"
-      },
-      "id": "table:mart_macd_state_history",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
         "layer": "infra",
         "status": "active"
       },
@@ -9827,82 +5472,10 @@
     {
       "attrs": {
         "db": "smartmoney",
-        "layer": "L2_feature",
-        "status": "active"
-      },
-      "id": "table:mart_sector_momentum",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L2_feature",
-        "status": "active"
-      },
-      "id": "table:mart_stage_formula_fitness",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
         "layer": "infra",
         "status": "active"
       },
       "id": "table:mart_step_fingerprint",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "display",
-        "status": "active"
-      },
-      "id": "table:mart_stock_picture_daily",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L3_model",
-        "status": "active"
-      },
-      "id": "table:mart_stock_screening",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:mart_stock_survey_activity",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "infra",
-        "status": "active"
-      },
-      "id": "table:mart_strategy_result_registry",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "display",
-        "status": "active"
-      },
-      "id": "table:mart_today_signal_cache",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "display",
-        "status": "active"
-      },
-      "id": "table:mart_today_signal_cache_signal",
       "kind": "table"
     },
     {

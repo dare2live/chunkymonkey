@@ -136,15 +136,32 @@ def test_get_active_universe_requires_market_truth_source(monkeypatch):
         get_active_universe(include_st=True)
 
 
-def test_get_active_universe_reads_st_mapping_from_reference(tmp_path):
+def test_get_active_universe_reads_st_mapping_from_reference(tmp_path, monkeypatch):
     """§9 拆库 (2026-06-27): ST/identity mapping 源从 conn(smartmoney) 迁 reference 库 dim_active_a_stock。
 
     旧契约 "conn 缺 dim → raise" 已变: 现经 security_master.active_codes/active_stock_name_map
     auto-fallback 读 reference (always 可用)。传缺 dim 的 conn 不再 raise — 落 reference 读 ST + identity
     交集 (test code '600001' 不在 reference 真股清单 → 被 identity 交集剔除, 返过滤集非异常)。
+
+    hermetic: 自建 tmp reference 并 monkeypatch resolver.connect_ro, 不依赖真实 data/reference.duckdb
+    (CI offline / 空 data 目录下该文件不存在 → 旧版直读真库 IOException)。
     """
     import duckdb
+    from services.data_access import resolver
     from services.universe import get_active_universe
+
+    # tmp reference: 真股清单 (含一只真股, 无 600001) → fallback 落它做 identity 交集
+    ref_path = tmp_path / "reference.duckdb"
+    rc = duckdb.connect(str(ref_path))
+    rc.execute("CREATE TABLE dim_active_a_stock (stock_code VARCHAR, stock_name VARCHAR)")
+    rc.execute("INSERT INTO dim_active_a_stock VALUES ('600519', '贵州茅台')")
+    rc.close()
+
+    def fake_connect_ro(alias):
+        assert alias == "reference"  # 本测试只该 fallback reference 库
+        return duckdb.connect(str(ref_path), read_only=True)
+
+    monkeypatch.setattr(resolver, "connect_ro", fake_connect_ro)
 
     conn = duckdb.connect(str(tmp_path / "test.duckdb"))
     conn.execute("CREATE TABLE price_kline_tdxhub (code VARCHAR, freq VARCHAR, date DATE)")

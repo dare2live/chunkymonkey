@@ -81,7 +81,7 @@ def run_stage(
             print(refusal, file=sys.stderr)
             return 2
     # run-date = 运行日期标签 (log/report 命名), 非 trade end-date (同 run.py allowlist; end-date 各脚本内 calendar-gated)
-    run_date = date or datetime.now().strftime("%Y%m%d")
+    run_date = date or datetime.now().strftime("%Y%m%d")  # Phase ψ.5 allowlist: run-date 标签非 end-date
     ctx = PipelineContext(dry=dry, skip_sync=skip_sync, date=run_date)
     ctx.log(f"=== ChunkyMonkey pipeline stage '{stage}' {run_date} (独立触发) ===")
     ctx.log(f"  dry={int(ctx.dry)} skip_sync={int(ctx.skip_sync)} force={int(force)}")
