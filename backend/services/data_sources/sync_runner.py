@@ -835,7 +835,11 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     # 它 16:00 截断后会返回今天, 正好defeat本排除 (gate triage 误判: 此处不是 end_date 用途)。
     from zoneinfo import ZoneInfo
     today = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d")  # Phase ψ.5 allowlist: 排除当日非 end_date, 防拉未发布数据
-    expected = [d for d in expected if d < today]
+    # 源端空洞墓碑 (2026-06-28): known_empty_days = 实测探过源端真没数据的交易日 (cyq_perf 06-15 仅1股/
+    #   ths_hot 20240312 源空/moneyflow_dc 起点前)。排出 expected → 不当 gap → 不每天重探 + 不永久 partial 告警疲劳
+    #   (区别于真缺口)。新增前必实测源端确认空 (探测返0/不足且非throttle), 不可拿它掩盖真失败。
+    known_empty = {str(d).replace("-", "") for d in (spec.get("known_empty_days") or [])}
+    expected = [d for d in expected if d < today and d not in known_empty]
     own_conn = conn is None
     conn = conn or _target_conn(spec)
     table = spec["target_table"]

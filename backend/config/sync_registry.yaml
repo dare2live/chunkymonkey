@@ -62,7 +62,8 @@ domains:
     batch_mode: by_trade_date
     pit_anchor: "trade_date; 盘后更新 -> JOIN t-1 (与 moneyflow 同)"
     available_after: "18:00"
-    data_start: "20230901"        # 2026-06-16 实测: 东财个股资金流 ~2023-10 才有 (20230701空/20231009=5419行); 2020-2023空, 不空跑
+    data_start: "20230911"        # 2026-06-28 修: 实测源端真起点=20230911 (旧 20230901 早10天致 20230901-08 假缺口每天重探); 东财个股资金流 ~2023-09 起
+    known_empty_days: ["20231122"]   # 实测源端单日空洞 (探测返0非throttle); 墓碑不再每天重探+告警疲劳
     freshness_sla_trading_days: 1
     min_rows_per_batch: 4000      # 实弹 5419-5965 行 (2023Q4+全宇宙)
     allow_empty_batch: false
@@ -317,6 +318,7 @@ domains:
       data_type: "热股"   # 锁单榜: 全量取 2000 行整 = 多榜合计截断 (实测); 单榜 444 行完整。
                           # 概念/行业板块榜价值另案: 一榜一域条目, registry 范式天然支持
     pit_anchor: "trade_date; 热榜 22:30 更新 -> 当日热度只能 JOIN t+1 决策"
+    known_empty_days: ["20240312"]   # 2026-06-28 实测源端单日空洞 (ths_hot 20240312 返0, 邻日560); 墓碑不再每天重探
     available_after: "22:30"
     data_start: "20240101"   # 热榜历史窗较短; 回填首跑探底校准
     freshness_sla_trading_days: 2
@@ -448,6 +450,7 @@ domains:
     batch_mode: by_trade_date
     pit_anchor: "trade_date; 每日筹码及胜率盘后更新 -> JOIN t-1; winner_rate + cost_5/15/50/85/95pct + weight_avg 实测在录; C0 黑箱审计 20260612 FAIL (J1 spearman 0.8972<0.95 / J2 8.53pp>5 / J3 0.072<0.99) -> winner_rate 疑似未复权坐标口径 (J3 实现缺陷致未确证), 与本地 qfq CYQ 不可直接互换, 消费前必须口径换算或弃用; evidence=analysis/c0_cyq_audit_20260612.json"
     available_after: "18:00"
+    known_empty_days: ["20260615"]   # 2026-06-28 实测源端单日近空 (cyq_perf 20260615 仅1股<min_rows, 邻日~5190); 墓碑不再每天重探
     data_start: "20180101"   # 2026-06-16 解冻 (用户: cyq 2018就有, re-audit 结论 C0 FAIL=审计比错基准/cost分位qfq对齐可用): 实弹确认 tushare cyq_perf 20180102=3094行. 原 20230103 冻结是 C0 误判, 补拉 2018-2022
     freshness_sla_trading_days: 1
     min_rows_per_batch: 2500  # 2026-06-16 降4000->2500: 2018 universe ~3094股(实弹), 4000会误判截断; 近年5512>>2500仍catch半空批
