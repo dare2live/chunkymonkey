@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-06-27 21:47:51 CST
+**Snapshot 时间**: 2026-06-28 10:31:05 CST
 
 ## 主线状态
 
@@ -36,7 +36,7 @@
 
 | 项 | 值 |
 |---|---|
-| Backends | local:active, modal:active |
+| Backends | unavailable |
 | Job plan | `scripts/chunkyctl jobs --family model_training --model-id <id> --input-snapshot <snapshot> --objective <why> --rollback-plan <plan> --gate-evidence <gate>=<artifact>` |
 
 ## Git 状态
@@ -44,28 +44,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `a6b48eea feat: §9 Stage E 物删 — 4 dim 迁 reference 完成不变量#2 = 四地基全部 DONE` |
-| 最近 24h commits | 38 |
-| 未 commit 文件 | 1 |
+| HEAD | `468a843e chore: db_compact 缩盘 + moth size-band 下限更新 (纯数据平台 3.0->0.34G)` |
+| 最近 24h commits | 35 |
+| 未 commit 文件 | 5 |
 
 ### 最近 10 commits
 
 ```
+468a843e chore: db_compact 缩盘 + moth size-band 下限更新 (纯数据平台 3.0->0.34G)
+68a37c0a feat: 重建 schema DDL 策略 trim — init 不再重建策略 mart (smartmoney 70->42 纯数据平台)
+181768a1 feat: 重建 U2/U5 数据表物删 — 策略 mart/事件/处理表 (smartmoney 70→44 纯数据平台)
+a078351e feat: 重建 = 白名单裁剪 — 项目降为纯数据平台 (git rm ~245 策略/serving 文件)
+8c6f8909 feat: 加工层清空 U4 — 财务 derived 退役
+e909e548 feat: 加工层清空 U3 — 主升浪 D1 GT + 技术 stage 退役
+0320a505 feat: 加工层清空 U1 — L2 特征 panel 退役 (用户最严: 只留原始+四地基)
+95a1bb4e doc: 数据模块设计文档更新到最新 — 四地基全 DONE + §9 Stage E 完成 (核对 workflow wajh30veq)
+973842f1 chore: 刷新 SESSION_HANDOFF 快照 (§9 Stage E 完成 = 四地基全 DONE)
 a6b48eea feat: §9 Stage E 物删 — 4 dim 迁 reference 完成不变量#2 = 四地基全部 DONE
-bc213639 feat: §9 Stage-E 安全账本 + Commit A 余 reader 收尾 (5 真问题修, dual-write 保留)
-70657dec feat: §9 dim chunk4 — 24 reader 触点全迁 reference (19直读+5 JOIN重构) + listing writer
-5a2ee11d feat: §9 dim_trading_calendar choke迁 + resolver.dim_read_conn 通用helper
-1d3d98a8 feat: §9 dim_active chunk3 — active_codes helper + universe identity/ST 迁 reference
-b9893e23 feat: market_perception 包整删 (reset 残留孤儿) + 修 candidate untagged
-c2d613c7 doc: §9 执行 chunk1-2 模式打通 + 剩余 checklist (fresh续做手册)
-e2d6fd31 feat: §9 dim_active chunk2 — active_stock_name_map auto-fallback helper + 迁 2 reader
-c93c47f8 feat: §9 dim_active 迁移 chunk1 — writer dual-write reference+smartmoney
-48145b5a feat: §9 执行起步 — resolver.connect_rw infra + scope 实测校准
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**1 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**5 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

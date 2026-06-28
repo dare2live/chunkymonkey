@@ -1,3 +1,5 @@
+> **[SUPERSEDED 2026-06-28 — 项目重建为纯数据平台]**: 本文档描述的策略/serving/edge/M1-M8 架构 (含 L2 加工/dossier/scoring/主升浪 D 因子矩阵) **已随 2026-06-28 重建退役** (代码 ~245 文件 git rm + ~40 加工表物删)。现行真相源 = `analysis/data_platform_architecture_20260628.md` (纯数据平台: 原始 tushare+aif10 + 四地基 + SERVE + 治理)。本文件留作**历史参考**, 勿当现行命令源。四地基不变量部分仍有效 (已并入新文档 §1)。
+
 # 数据模块顶层设计 (Data Module Constitution) — 定稿 v2.0
 
 > **status**: 创世立法 (genesis)。v1 草稿(主会话手写)→ v2 经 13-agent Workflow (7 路现状调研 + 3 竞争提案 + 对抗盲点批判 + 磁盘事实核证) + 主会话 controller 亲验收编。
