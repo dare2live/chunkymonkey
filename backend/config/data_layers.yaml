@@ -108,8 +108,6 @@ tables:
   sys_schema_version: infra
   dim_strategy_preset: infra
   financial_sync_state: infra
-  mart_model_lifecycle: infra              # 2026-06-28 重建: 策略残表 0行 dormant, 治理元数据引用未清待删
-  mart_stock_fund_flow_rank_snapshot_daily: infra  # 2026-06-28 重建: 策略残表 0行 dormant 待删
   mart_etf_snapshot_latest: L2_feature
   mart_etf_snapshot_state: L2_feature
 _notes:
