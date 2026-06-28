@@ -1,0 +1,13 @@
+# 加工层清空 U3 — 主升浪 D1 GT + 技术 stage (archive 可逆)
+run_id: purge_u3_gt_stage_20260628
+db: smartmoney
+archive_dir: data/archive/purge_processed
+entries:
+  - {table: fact_rally_ground_truth, action: archive, bucket: rally_gt, reason: "加工层清空: 主升浪 D1 GT (build_rally_ground_truth 退役)"}
+  - {table: fact_rally_entry_pit, action: archive, bucket: rally_gt, reason: "加工层清空: 主升浪入场 PIT 特征 GT"}
+  - {table: fact_rally_entry_negative, action: archive, bucket: rally_gt, reason: "加工层清空: 主升浪 hard-negative 对照"}
+  - {table: fact_rally_episode_strata, action: archive, bucket: rally_gt, reason: "加工层清空: 主升浪 episode 分层"}
+  - {table: fact_macd_episode_ground_truth, action: archive, bucket: macd_gt, reason: "加工层清空: MACD episode GT"}
+  - {table: fact_stock_technical_stage, action: archive, bucket: stage, reason: "加工层清空: 技术态 stage (formula_engine 派生)"}
+  - {table: fact_rally_stage, action: archive, bucket: stage, reason: "加工层清空: 主升浪 stage"}
+  - {table: mart_macd_state_history, action: archive, bucket: stage, reason: "加工层清空: MACD 状态历史"}

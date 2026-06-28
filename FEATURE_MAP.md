@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-28 08:18
+> Snapshot: 2026-06-28 08:25
 
 ## 1. 入口面
 
@@ -97,7 +97,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 120 张 | 单 writer 77 | 多 writer 43 | 动态表名写点 33 处 (18 文件)
+统计: 表 114 张 | 单 writer 72 | 多 writer 42 | 动态表名写点 23 处 (13 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -109,12 +109,7 @@
 | backend/scripts/build_etf_kline_qfq_tushare.py | 1 |
 | backend/scripts/build_feature_map.py | 1 |
 | backend/scripts/build_lhb_events.py | 1 |
-| backend/scripts/build_macd_episode_ground_truth.py | 2 |
 | backend/scripts/build_price_kline_qfq_tushare.py | 1 |
-| backend/scripts/build_rally_entry_pit.py | 2 |
-| backend/scripts/build_rally_episode_strata.py | 2 |
-| backend/scripts/build_rally_negatives.py | 2 |
-| backend/scripts/build_rally_stage.py | 2 |
 | backend/scripts/db_compact.py | 2 |
 | backend/scripts/db_partition_migrate.py | 2 |
 | backend/scripts/migrate_reference_db.py | 1 |
@@ -156,7 +151,6 @@
 | mart_data_source_reassignment_proposal | 2 | backend/scripts/audit_tdx_data_need_coverage.py<br>backend/services/schema_marts.py |
 | mart_data_source_watermark | 2 | backend/services/schema_marts.py<br>backend/services/source_watermarks.py |
 | mart_feature_drift | 2 | backend/services/ml_lifecycle/drift.py<br>backend/services/schema_marts.py |
-| mart_macd_state_history | 2 | backend/scripts/build_macd_state_history.py<br>backend/services/formula_engine/ddl.py |
 | mart_market_perception_audit_log | 2 | backend/services/schema_marts.py<br>backend/services/schema_migrations.py |
 | mart_market_perception_emotion_daily | 2 | backend/services/schema_marts.py<br>backend/services/schema_migrations.py |
 | mart_market_perception_leader_follower_daily | 2 | backend/services/schema_marts.py<br>backend/services/schema_migrations.py |
@@ -191,7 +185,6 @@
 | fact_daily_price_status | backend/services/primitives/ddl.py |
 | fact_financial_derived | backend/services/financial_client.py |
 | fact_lhb_event | backend/scripts/build_lhb_events.py |
-| fact_rally_ground_truth | backend/scripts/build_rally_ground_truth.py |
 | fact_setup_snapshot | backend/services/schema_core.py |
 | fact_shareholder_plan | backend/services/schema_core.py |
 | fact_shareholder_trade | backend/services/schema_core.py |
@@ -200,9 +193,7 @@
 | fact_stock_market_cap_daily | backend/services/primitives/ddl.py |
 | fact_stock_stage_features | backend/services/stock_stage_engine.py |
 | fact_stock_style_daily | backend/services/primitives/ddl.py |
-| fact_stock_technical_stage | backend/services/formula_engine/ddl.py |
 | fact_stock_turtle_features | backend/services/stock_turtle_engine.py |
-| fact_technical_trigger | backend/services/formula_engine/ddl.py |
 | mart_candidate_feature_set_contract | backend/services/data_quality.py |
 | mart_candidate_walkforward_eval | backend/services/schema_marts.py |
 | mart_data_processing_tool_issue | backend/services/data_processing_monitor.py |
@@ -218,7 +209,6 @@
 | mart_feature_retention_decision | backend/services/schema_marts.py |
 | mart_follow_return_label_build | backend/services/pricing_schema.py |
 | mart_follow_return_label_quality | backend/services/pricing_schema.py |
-| mart_formula_horizon_evidence | backend/services/formula_engine/ddl.py |
 | mart_global_data_quality_detail | backend/services/data_quality.py |
 | mart_global_data_quality_gate | backend/services/data_quality.py |
 | mart_institution_industry_stat | backend/services/schema_marts.py |
@@ -231,7 +221,6 @@
 | mart_pipeline_lock | backend/services/pipeline_lock.py |
 | mart_prediction_outcome | backend/services/prediction_outcome.py |
 | mart_sector_momentum | backend/services/sector_momentum.py |
-| mart_stage_formula_fitness | backend/services/formula_engine/ddl.py |
 | mart_step_fingerprint | backend/services/event_engine.py |
 | mart_stock_fund_flow_rank_snapshot_daily | backend/services/schema_marts.py |
 | mart_stock_screening | backend/services/screening_engine.py |
@@ -256,18 +245,18 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,503 | calls 边 56,278 | imports 边 5,436 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 8,442 | calls 边 56,211 | imports 边 5,400 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
-| services.duck_adapter | 40 |
+| services.duck_adapter | 38 |
 | services.db | 26 |
 | services.utils | 24 |
-| services.database_manifest | 15 |
 | services.market_db | 15 |
 | services.industry | 13 |
+| services.database_manifest | 12 |
 | services.kline_source | 10 |
 | services.pipeline_manifest | 9 |
 | services.universe | 8 |
@@ -282,10 +271,10 @@
 
 | 文件 | 调用方文件数 |
 |---|---|
-| backend/services/duck_adapter.py | 30 |
-| backend/services/database_manifest.py | 9 |
+| backend/services/duck_adapter.py | 28 |
 | bestchoice/compute.py | 9 |
 | backend/services/pipeline_manifest.py | 7 |
+| backend/services/database_manifest.py | 6 |
 | backend/services/etf_grid_engine.py | 6 |
 | backend/services/market_db.py | 6 |
 | backend/services/universe.py | 5 |
@@ -314,5 +303,5 @@
 
 - chunkyctl 子命令 10 | launchd 任务 1 | router 12 (端点 56)
 - sync_registry 数据域 44
-- 产表 120 (多 writer 43)
+- 产表 114 (多 writer 42)
 

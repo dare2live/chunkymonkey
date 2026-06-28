@@ -65,12 +65,6 @@ tables:
   dim_financial_latest: L1_foundation
   dim_holder_alias: L1_foundation
   dim_liquidity_threshold: L1_foundation
-  fact_rally_ground_truth: L1_foundation   # 2026-06-17 D1 结构型主升浪 y (build_rally_ground_truth.py; 用户图样型:长底+多头排列+平滑+底→顶>60%; universe硬门0排除股; 9070主升浪/4347股)
-  fact_rally_entry_pit: L1_foundation   # 2026-06-19 A0#c GT entry-PIT 侧 (build_rally_entry_pit.py; 剥 outcome 防 leakage: entry_signal_date=bottom_date + base_days + fwd_complete; outcome 留 GT 表禁做X, rally_gt_columns.yaml)
-  fact_rally_entry_negative: L1_foundation   # 2026-06-19 A0#d hard-negative 对照组 (build_rally_negatives.py; 同结构pivot-low+长底base>=40+未涨<60% 35198/4846股; ST留消费侧; 下游 UNION entry_pit 训练判别器)
-  fact_rally_episode_strata: L1_foundation   # 2026-06-20 C#48 episode PIT分层 (build_rally_episode_strata.py; 申万sector as-of 99% + 市值PIT 100%(daily_basic回补2019后) + base桶; 9070 episode; 小盘/微盘主导)
-  fact_rally_stage: L1_foundation   # 2026-06-20 C#48 step2 episode阶段切分 (build_rally_stage.py + rally_stage.yaml; 起涨/主升/顶部=鱼头/鱼身/鱼尾 per-date; progress首次跨阈划连续段; 1.5M行; stage=post-hoc分析用; panel join 100%)
-  fact_macd_episode_ground_truth: L1_foundation   # 2026-06-17 D1 MACD金叉峰值 (build_macd_episode_ground_truth.py; 金叉买点→持有窗波峰gain>30%; universe硬门; 311k episode/5197股)
   dim_listing_status: L1_foundation
   dim_market_segment: L1_foundation
   dim_stock_dc_industry: L1_foundation     # 2026-06-23 东财全套迁移Stage④ 当前行业快照 (serving); 深史as-of走 tushare_raw.v_sw_industry_pit
@@ -91,8 +85,6 @@ tables:
   inst_institutions: L1_foundation
   mart_stock_survey_activity: L1_foundation
   # fact_stock_attention_snapshot tag 已删 2026-06-27 (通达信全删 M4: akshare 关注度快照物删, 用户决cut)
-  fact_stock_technical_stage: L1k_kline_intermediate
-  mart_macd_state_history: L1k_kline_intermediate
   price_kline_qfq_tushare: L1k_kline_intermediate   # 2026-06-15 tushare 前复权 K线 (回测主源, §4.3; build_price_kline_qfq_tushare.py 从 raw_tushare_daily×adj_factor 建 2019+)
   etf_price_kline_qfq_tushare: L1k_kline_intermediate   # 2026-06-25 M2 Stage C: ETF tushare 前复权 K线 (etf.duckdb; build_etf_kline_qfq_tushare.py 从 raw_tushare_fund_daily×fund_adj 建 2019+; 修 mootdx ETF 分红未复权 bug)
   mart_current_relationship: display
