@@ -10,15 +10,15 @@ assertions:
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT count(DISTINCT table_name) FROM duckdb_constraints() WHERE constraint_type IN ('PRIMARY KEY','UNIQUE')"
-    expect: {op: ">=", value: 39}
+    expect: {op: ">=", value: 25}
   - id: smartmoney-indexes
-    claim: "索引 >=40 [purge 进行中, U6 设最终值]; 原 >=76 (2026-06-27 通达信全删: gpcw/xdxr/capital/akshare-event/attention 物删后 94→76; 缺=回归)"
+    claim: "索引 >=33 (2026-06-28 重建后 94→37 纯数据平台)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM duckdb_indexes()"
-    expect: {op: ">=", value: 40}
+    expect: {op: ">=", value: 33}
   - id: smartmoney-tables
-    claim: "表 >=40 [purge 进行中 2026-06-28 加工层清空, U6 设最终值]; 原 >=69 (2026-06-27 §9 reference 拆库 Stage E: dim_active/trading_calendar/all_ever_listed/listing_status 4 表物删迁 reference 后 73→69; 此前通达信全删 M4 85→73; 增表应显式过决策)"
+    claim: "表 >=40 (2026-06-28 重建/加工层清空后 70→44 纯数据平台; 增表显式过决策)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM duckdb_tables()"

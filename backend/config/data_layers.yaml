@@ -76,21 +76,14 @@ tables:
   fact_common_major_holder_stock: L1_foundation
   # fact_dzjy_event/fact_executive_trade_event tag 已删 2026-06-27 (通达信全删 M4: akshare event 表物删, 用户决cut)
   # fact_fundamental_quarterly tag 已删 2026-06-27 (通达信全删: gpcw派生表 builder build_fundamental_quarterly 退役物删, 源raw_gpcw_*已删不可重建, 0 live reader)
-  fact_institution_event: L1_foundation
-  fact_lhb_event: L1_foundation
   fact_top10_holder_period: L1_foundation
   inst_holdings: L1_foundation
   inst_institutions: L1_foundation
-  mart_stock_survey_activity: L1_foundation
   # fact_stock_attention_snapshot tag 已删 2026-06-27 (通达信全删 M4: akshare 关注度快照物删, 用户决cut)
   price_kline_qfq_tushare: L1k_kline_intermediate   # 2026-06-15 tushare 前复权 K线 (回测主源, §4.3; build_price_kline_qfq_tushare.py 从 raw_tushare_daily×adj_factor 建 2019+)
   etf_price_kline_qfq_tushare: L1k_kline_intermediate   # 2026-06-25 M2 Stage C: ETF tushare 前复权 K线 (etf.duckdb; build_etf_kline_qfq_tushare.py 从 raw_tushare_fund_daily×fund_adj 建 2019+; 修 mootdx ETF 分红未复权 bug)
-  mart_current_relationship: display
-  mart_stock_picture_daily: display
   # dim_stock_attention_latest tag 已删 2026-06-27 (通达信全删 M4: akshare 关注度物删)
   stock_watchlist: display
-  mart_today_signal_cache: display         # 2026-06-26 补声明: signals_v2 跟随信号 serving 缓存 (routers/signals.py HTTP 服务 UI; 运行时 INSERT OR REPLACE 重建)
-  mart_today_signal_cache_signal: display  # 2026-06-26 同上: 每信号明细缓存行 (signals_v2 ensure_today_signal_cache)
   app_settings: infra
   # capital_detail_sync_state tag 已删 2026-06-27 (通达信全删 M4: akshare 资本运作物删)
   dim_data_asset: infra
@@ -110,23 +103,15 @@ tables:
   mart_pipeline_lock: infra
   mart_pipeline_run_manifest: infra
   mart_step_fingerprint: infra
-  mart_strategy_result_registry: infra  # 2026-06-27 补声明: 同上, schema_marts定义但未声明 (策略结果registry)
   # mart_tdx_f10_capability_matrix/mart_tdx_gpcw_file_manifest tag 已删 2026-06-27 (通达信全删 gpcw物删)
   step_status: infra
   sys_schema_version: infra
-  dim_stock_industry_context_latest: L1_foundation
   dim_strategy_preset: infra
-  fact_risk_factors: L2_feature           # 2026-06-22 P0-10 补声明 (conformance审计抓 untagged 致 data-layer-integrity 红门): 风险因子日表 4977行 (calc_date, daily_update Step2e build)
-  fact_technical_trigger: L2_feature      # 2026-06-22 P0-10 补声明: 技术触发事件 (rows=0 公式工厂待跑; formula 族)
-  mart_formula_horizon_evidence: L2_feature  # 2026-06-22 P0-10 补声明: 公式 horizon 证据 (rows=0 公式工厂待跑)
-  mart_stage_formula_fitness: L2_feature  # 2026-06-22 P0-10 补声明: 阶段公式适应度 (rows=0 公式工厂待跑; v1 schema drift WARN 另案)
-  fact_stock_industry_context: L1_foundation
   financial_sync_state: infra
-  mart_dual_confirm: L3_model
+  mart_model_lifecycle: infra              # 2026-06-28 重建: 策略残表 0行 dormant, 治理元数据引用未清待删
+  mart_stock_fund_flow_rank_snapshot_daily: infra  # 2026-06-28 重建: 策略残表 0行 dormant 待删
   mart_etf_snapshot_latest: L2_feature
   mart_etf_snapshot_state: L2_feature
-  mart_sector_momentum: L2_feature
-  mart_stock_screening: L3_model
 _notes:
   recreated_empty_2026_06_14: 58 张 L2/L3/L4 表被 app 启动 schema-init(schema_core/schema_marts) 空重建; 数据已删, schema 定义待从 kept schema
     文件移除否则反复重建 (代码清理遗留)。

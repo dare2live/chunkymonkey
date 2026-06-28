@@ -298,43 +298,7 @@ MART_SCHEMA_SQL = """
                    updated_at
               FROM mart_lineage;
 
-            CREATE TABLE IF NOT EXISTS mart_strategy_result_registry (
-                result_id           TEXT PRIMARY KEY,
-                source_table        TEXT NOT NULL,
-                source_pk           TEXT NOT NULL,
-                result_type         TEXT NOT NULL,
-                model_id            TEXT,
-                sim_run_id          TEXT,
-                comparison_id       TEXT,
-                variant             TEXT,
-                model_label         TEXT,
-                period_start        TEXT,
-                period_end          TEXT,
-                annual_return       DOUBLE,
-                max_dd              DOUBLE,
-                sharpe              DOUBLE,
-                monthly_win_rate    DOUBLE,
-                rank_ic             DOUBLE,
-                turnover            DOUBLE,
-                leakage_flag        BOOLEAN NOT NULL DEFAULT FALSE,
-                parent_result_id    TEXT,
-                baseline_result_id  TEXT,
-                sim_config_hash     TEXT,
-                param_diff_json     TEXT,
-                params_json         TEXT,
-                lineage_url         TEXT,
-                source_artifact_uri TEXT,
-                production_status   TEXT NOT NULL DEFAULT 'unknown',
-                decision            TEXT NOT NULL DEFAULT 'unknown',
-                decision_reason     TEXT,
-                evidence_json       TEXT NOT NULL DEFAULT '{}',
-                built_at            TIMESTAMP,
-                registered_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_msrr_source
-                ON mart_strategy_result_registry(source_table, source_pk);
-            CREATE INDEX IF NOT EXISTS idx_msrr_model
-                ON mart_strategy_result_registry(model_id, sim_run_id, comparison_id);
+            -- mart_strategy_result_registry DDL + 索引 已删 (2026-06-28 重建: 策略层退役)
 
             CREATE TABLE IF NOT EXISTS mart_model_lifecycle (
                 model_id              TEXT PRIMARY KEY,
@@ -864,55 +828,7 @@ MART_SCHEMA_SQL = """
                 updated_at         TEXT
             );
 
-            CREATE TABLE IF NOT EXISTS mart_current_relationship (
-                institution_id    TEXT NOT NULL,
-                institution_name  TEXT,
-                display_name      TEXT,
-                inst_type         TEXT,
-                stock_code        TEXT NOT NULL,
-                stock_name        TEXT,
-                report_date       TEXT NOT NULL,
-                notice_date       TEXT,
-                holder_rank       INTEGER,
-                hold_amount       REAL,
-                hold_market_cap   REAL,
-                hold_ratio        REAL,
-                hold_change       TEXT,
-                event_type        TEXT,
-                change_pct        REAL,
-                gain_10d          REAL,
-                gain_30d          REAL,
-                gain_60d          REAL,
-                gain_90d          REAL,
-                gain_120d         REAL,
-                max_drawdown_30d  REAL,
-                max_drawdown_60d  REAL,
-                report_season     TEXT,
-                inst_ref_cost     REAL,
-                inst_cost_method  TEXT,
-                premium_pct       REAL,
-                premium_bucket    TEXT,
-                follow_gate       TEXT,
-                follow_gate_reason TEXT,
-                price_entry       REAL,
-                return_to_now     REAL,
-                path_state        TEXT,
-                entry_report_date TEXT,
-                entry_notice_date TEXT,
-                notice_age_days   INTEGER,
-                disclosure_lag_days INTEGER,
-                current_held_days INTEGER,
-                tdx_l1            TEXT,
-                tdx_l2            TEXT,
-                tdx_l3            TEXT,
-                tdx_l1_name       TEXT,
-                tdx_l2_name       TEXT,
-                tdx_l3_name       TEXT,
-                has_return_data   INTEGER DEFAULT 0,
-                has_industry_data INTEGER DEFAULT 0,
-                updated_at        TEXT,
-                PRIMARY KEY (institution_id, stock_code)
-            );
+            -- mart_current_relationship DDL 已删 (2026-06-28 重建: 策略层退役)
 
             CREATE TABLE IF NOT EXISTS mart_stock_fund_flow_rank_snapshot_daily (
                 snapshot_date       DATE NOT NULL,
@@ -973,13 +889,6 @@ MART_SCHEMA_SQL = """
 """
 
 MART_SCHEMA_MIGRATIONS = [
-    "ALTER TABLE mart_strategy_result_registry ADD COLUMN IF NOT EXISTS parent_result_id TEXT",
-    "ALTER TABLE mart_strategy_result_registry ADD COLUMN IF NOT EXISTS baseline_result_id TEXT",
-    "ALTER TABLE mart_strategy_result_registry ADD COLUMN IF NOT EXISTS sim_config_hash TEXT",
-    "ALTER TABLE mart_strategy_result_registry ADD COLUMN IF NOT EXISTS param_diff_json TEXT",
-    "ALTER TABLE mart_strategy_result_registry ADD COLUMN IF NOT EXISTS params_json TEXT",
-    "ALTER TABLE mart_strategy_result_registry ADD COLUMN IF NOT EXISTS lineage_url TEXT",
-    "ALTER TABLE mart_strategy_result_registry ADD COLUMN IF NOT EXISTS source_artifact_uri TEXT",
 ]
 
 __all__ = ["ensure_mart_schema", "ensure_schema"]

@@ -264,33 +264,7 @@ CORE_SCHEMA_SQL = """
                 UNIQUE(holder_name, stock_code, report_date)
             );
 
-            CREATE TABLE IF NOT EXISTS fact_institution_event (
-                institution_id    TEXT NOT NULL,
-                holder_name       TEXT,
-                stock_code        TEXT NOT NULL,
-                stock_name        TEXT,
-                report_date       TEXT NOT NULL,
-                notice_date       TEXT,
-                notice_date_source TEXT,                      -- source_notice | page_update_date | regulatory_deadline | unknown
-                source_notice_date TEXT,                      -- true source disclosure date, NULL when unavailable
-                availability_deadline TEXT,                   -- statutory/plannable fallback date, NULL when not used
-                event_type        TEXT NOT NULL,
-                hold_amount       REAL,
-                prev_hold_amount  REAL,
-                change_amount     REAL,
-                change_pct        REAL,
-                report_season     TEXT,
-                cost_window_start TEXT,
-                cost_window_end   TEXT,
-                inst_ref_cost     REAL,
-                inst_cost_method  TEXT,
-                premium_pct       REAL,
-                premium_bucket    TEXT,
-                follow_gate       TEXT,
-                follow_gate_reason TEXT,
-                created_at        TEXT,
-                PRIMARY KEY (institution_id, stock_code, report_date)
-            );
+            -- fact_institution_event DDL 已删 (2026-06-28 重建: 策略层退役)
 
             CREATE TABLE IF NOT EXISTS stock_watchlist (
                 stock_code          TEXT NOT NULL,
