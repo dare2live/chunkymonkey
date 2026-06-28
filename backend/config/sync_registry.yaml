@@ -540,8 +540,9 @@ domains:
     target_table: raw_tushare_income
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
     grain: [ts_code, end_date, f_ann_date, update_flag]   # 实弹决定性: 仅此组合 0 dup (同 end_date 同 ann_date 仍有 uf=0原始/1订正双推送行); report_type 不入 (2000积分仅'1'合并)
-    batch_mode: by_trade_date
-    date_param: ann_date   # 接口按公告日切片 (实弹单日 141 行干净); ann_date(查询参数) ≠ f_ann_date(grain 用, 实际公告日)
+    batch_mode: by_ts_code   # 2026-06-28 API漂移修: tushare income 现要 ts_code (by_trade_date+ann_date 每批报'必填参数, ts_code'); 同 balancesheet/fina_indicator 同药方
+    increment_mode: by_report_period   # 按报告期增量 (跳已最新股, 抓缺新期; drain ts_code_incremental fallback 接它)
+    fixed_params: {start_date: "20080101"}   # end_date 由 runner 动态 (§4.4 禁钉死)
     pit_anchor: "f_ann_date; 正式财报披露日 (盘中/盘后, 滞后报告期 1-4 月) -> JOIN t-1 保守; 取 update_flag=1 最新订正版 (禁用 end_date 报告期末当锚=leakage)"
     available_after: "t+1"
     data_start: "20080101"   # 财报史可回溯 1990s 但接口覆盖以单股探底为准; 回填首跑落库 min(end_date) 对账 (防日历 clamp 反例)
@@ -662,11 +663,13 @@ domains:
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
     grain: [ts_code, trade_date]
     batch_mode: by_ts_code
-    fixed_params: {start_date: "20190102", end_date: "20260618"}   # rule-compliance: ok evidence=逐股窗口2019+对齐K线/GT(实弹单股全史1991-2026太长, 截2019); 单页上限按交易日数远<10000
+    fixed_params: {start_date: "20190102"}   # 2026-06-28 §4.4 修: 删硬钉 end_date='20260618' (改 runner 动态注入 latest); 逐股窗口2019+对齐K线/GT
     pit_anchor: "trade_date; 盘后 -> JOIN t-1"
     available_after: "18:00"
     data_start: "20190102"
     freshness_sla_trading_days: 1
+    # 注: stk_factor_pro 是 by_ts_code 日频全市场, 无 by_report_period 增量语义 → drain 仍 unsupported 无 fallback。
+    #   日更需专门 by_ts_code 尾部增量调度 (每股拉近N日), 属 edge 重建期工作; 当前靠手动 --domain stk_factor_pro 刷新。
     min_rows_per_batch: 1
 
   stk_holdernumber:   # 股东户数 (筹码集中吸筹前兆, 慢变量分层); 截面enddate返0必逐股

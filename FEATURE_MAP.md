@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-28 14:06
+> Snapshot: 2026-06-28 14:13
 
 ## 1. 入口面
 
@@ -57,7 +57,7 @@
 | forecast | tushare | forecast | raw_tushare_forecast | by_trade_date | 5 |
 | fund_adj | tushare | fund_adj | raw_tushare_fund_adj | by_trade_date | 1 |
 | fund_daily | tushare | fund_daily | raw_tushare_fund_daily | by_trade_date | 1 |
-| income | tushare | income | raw_tushare_income | by_trade_date | 5 |
+| income | tushare | income | raw_tushare_income | by_ts_code | 5 |
 | index_daily_benchmark | tushare | index_daily | raw_tushare_index_daily | by_code_list | 1 |
 | index_dailybasic | tushare | index_dailybasic | raw_tushare_index_dailybasic | by_code_list | 1 |
 | index_member_all | tushare | index_member_all | raw_tushare_index_member_all | by_code_list | 30 |
@@ -216,7 +216,7 @@
 |---|---|
 | backend/services/data_quality.py | 3882 |
 | backend/services/storage_retention.py | 1061 |
-| backend/services/data_sources/sync_runner.py | 979 |
+| backend/services/data_sources/sync_runner.py | 981 |
 | backend/services/holder_availability.py | 776 |
 | backend/scripts/data_health_snapshot.py | 730 |
 | backend/services/data_audit.py | 613 |

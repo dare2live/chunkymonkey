@@ -936,7 +936,9 @@ def main() -> int:
                 fallback_incremental = (
                     res.get("status") == "drain_inapplicable"
                     or (res.get("status") == "unsupported"
-                        and res.get("batch_mode") in ("by_date_range", "full_refresh", "by_ann_date"))
+                        # 2026-06-28: by_code_list (index_dailybasic/index_daily 基准指数清单) drain unsupported,
+                        #   缺它则零自动同步 (静默停更同型); 走 run_domain watermark 增量补缺。
+                        and res.get("batch_mode") in ("by_date_range", "full_refresh", "by_ann_date", "by_code_list"))
                     or ts_code_incremental
                 )
                 if fallback_incremental:
