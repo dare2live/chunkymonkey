@@ -39,26 +39,26 @@ def test_derive_watermark_from_existing_table():
 
 
 def test_refresh_known_source_watermarks_creates_domain_rows():
+    # 2026-06-28: kline_daily watermark repoint tushare (price_kline_tdxhub 物删 → price_kline_qfq_tushare)
     conn = duck_mem()
     try:
         conn.execute("CREATE SCHEMA market")
         conn.execute(
             """
-            CREATE TABLE market.price_kline_tdxhub (
-                date TEXT,
-                freq TEXT,
-                adjust TEXT
+            CREATE TABLE market.price_kline_qfq_tushare (
+                code TEXT,
+                date TEXT
             )
             """
         )
-        conn.execute("INSERT INTO market.price_kline_tdxhub VALUES ('2026-05-05', 'daily', 'qfq')")
+        conn.execute("INSERT INTO market.price_kline_qfq_tushare VALUES ('600519', '2026-05-05')")
         items = refresh_known_source_watermarks(conn)
         stored = conn.execute(
             """
             SELECT row_count
               FROM mart_data_source_watermark
              WHERE data_domain = 'kline_daily'
-               AND source_name = 'tdxhub_quote'
+               AND source_name = 'tushare'
             """
         ).fetchone()
 
