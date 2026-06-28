@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-28 10:23
+> Snapshot: 2026-06-28 10:25
 
 ## 1. 入口面
 
@@ -178,19 +178,19 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 4,978 | calls 边 7,443 | imports 边 1,415 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 4,925 | calls 边 7,380 | imports 边 1,409 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
-| services.duck_adapter | 31 |
-| services.db | 15 |
+| services.duck_adapter | 30 |
+| services.db | 14 |
 | services.utils | 10 |
 | services.market_db | 9 |
 | services.pipeline_manifest | 7 |
-| services.data_sources | 6 |
 | services.database_manifest | 6 |
+| services.data_sources | 5 |
 | services.lineage.model | 5 |
 | scripts.formula_parameter_search | 4 |
 | services.data_processing_monitor | 4 |
@@ -204,7 +204,7 @@
 
 | 文件 | 调用方文件数 |
 |---|---|
-| backend/services/duck_adapter.py | 22 |
+| backend/services/duck_adapter.py | 21 |
 | bestchoice/compute.py | 9 |
 | backend/services/pipeline_manifest.py | 5 |
 | bestchoice/execution_model.py | 5 |
