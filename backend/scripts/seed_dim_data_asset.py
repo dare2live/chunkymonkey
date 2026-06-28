@@ -75,7 +75,7 @@ EXTRA_WRITER_BY_TABLE = {
     "mart_synergy_policy_mtm_rerank_summary": "backend/scripts/rerank_optuna_synergy_mtm.py",
     "mart_synergy_policy_mtm_strategy_sweep": "backend/scripts/sweep_synergy_mtm_strategy.py",
     "mart_synergy_policy_mtm_strategy_sweep_summary": "backend/scripts/sweep_synergy_mtm_strategy.py",
-    "mart_macd_state_history": "backend/scripts/build_macd_state_history.py",
+    # mart_macd_state_history build 登记已删 (2026-06-28 U3 退役: 脚本+表 GONE)
 }
 
 EXTRA_UPSTREAM_BY_TABLE = {
@@ -98,7 +98,7 @@ EXTRA_UPSTREAM_BY_TABLE = {
     "mart_current_relationship":    ("derived (build_current_relationship)", None),
     "mart_stock_trend":             ("derived (build_trends step)", None),
     "mart_stock_screening":         ("derived (calc_screening manual step)", None),
-    "mart_macd_state_history":      ("derived from macd_golden_cross state helper", None),
+    # mart_macd_state_history upstream 登记已删 (2026-06-28 U3 退役: 脚本+表 GONE)
     "mart_synergy_policy_mtm_rerank": (
         "derived from mart_optuna_synergy_trial + validate_synergy_policy_mark_to_market",
         None,
@@ -159,7 +159,7 @@ EXTRA_FRESHNESS_BY_TABLE = {
     "mart_synergy_policy_mtm_rerank_summary": ("on-demand", 24 * 30),
     "mart_synergy_policy_mtm_strategy_sweep": ("on-demand", 24 * 30),
     "mart_synergy_policy_mtm_strategy_sweep_summary": ("on-demand", 24 * 30),
-    "mart_macd_state_history": ("on-demand", 24 * 30),
+    # mart_macd_state_history retention 已删 2026-06-28 (U3 退役: 脚本+表 GONE)
     # mart_tdx_gpcw_auto_* (5) retention 已删 2026-06-27 (通达信全删: gpcw auto-feature 流水线退役, 表 GONE)
     "mart_temporal_research_panel": ("on-demand", 24 * 30),
     # mart_tdx_f10_source_date_section_audit retention 已删 2026-06-27 (通达信全删: tdx F10 source-date audit 退役, 表 GONE)
@@ -285,18 +285,7 @@ EXTRA_ASSET_CONTRACT_BY_TABLE = {
         "quality_gate_level": "monitor_only",
     },
     # raw_tdx_industry_file_snapshot active 登记已删 (2026-06-23 通达信物删, 移入下方 EXTRA_DEPRECATED ledger)
-    "mart_macd_state_history": {
-        "asset_grain": "stock_code+date+formula_id+state",
-        "asset_cadence": "on_demand",
-        "coverage_policy": "macd_active_state_rows_only",
-        "null_policy": "active_state_rows_required_for_rebuilt_window",
-        "pit_policy": "inherits_trigger_kline_calendar",
-        "intended_use": "macd_state_supply_diagnostic",
-        "model_eligibility": "not_model_input",
-        "strategy_eligibility": "diagnostic_only",
-        "frontend_visibility": "governance_visible",
-        "quality_gate_level": "monitor_only",
-    },
+    # mart_macd_state_history asset metadata 登记已删 (2026-06-28 U3 退役: 脚本+表 GONE)
 }
 
 EXTRA_DEPRECATED_ASSET_BY_TABLE = {
