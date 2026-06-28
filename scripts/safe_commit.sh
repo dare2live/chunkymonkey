@@ -73,7 +73,7 @@ fi
 # 3.5 Leakage audit gate — trigger if staged files touch panel build / mart_p0a panel / fact_* tables
 # (2026-05-22 Phase D 反例: dim_stock_tdx_industry retrospective bias missed by manual audit)
 panel_touched=$(git diff --cached --name-only | grep -E "(build_feature_panel|mart_p0a|fact_capital_flow|dim_stock_tdx_industry|build_market_perception)" || true)
-if [[ -n "$panel_touched" ]]; then
+if [[ -n "$panel_touched" && -f backend/scripts/audit_panel_leakage.py ]]; then
     echo
     echo "=== Step 3.5: leakage audit (panel/fact files staged) ==="
     echo "triggered by: $panel_touched"
@@ -101,7 +101,7 @@ fi
 # 逐消费者跑事前探针 (label 当特征 / 单特征 AUC), 任一 HIGH 即阻断。补 3.5 (panel-build SQL) 的
 # 消费方盲区 (S3 漏排 follow_net_return 同型)。
 consumer_touched=$(git diff --cached --name-only | grep -E "leakage_consumers.yaml|run_daily_v7_inference|run_p0b_lambdamart|build_sniper_score|experiment_zhushenglang_s3|build_feature_panel_duck|leakage_detect|leakage_probe" || true)
-if [[ -n "$consumer_touched" ]]; then
+if [[ -n "$consumer_touched" && -f backend/scripts/leakage_probe.py ]]; then
     echo
     echo "=== Step 3.6: leakage consumer gate (消费方/注册表/契约 staged) ==="
     echo "triggered by: $(echo "$consumer_touched" | tr '\n' ' ')"
@@ -120,7 +120,7 @@ fi
 # 必须走 harness/留档层 (phaseD_signal_eval 或 experiment_store), 禁裸跑无留档 → 进 experiment_store
 # 唯一真相源, 防"一脚本一实验丢 analysis/*.json"漂移 (根因审计 H1/H2)。
 exp_staged=$(git diff --cached --name-only | grep -E "^backend/scripts/experiment_.*\.py$" || true)
-if [[ -n "$exp_staged" ]]; then
+if [[ -n "$exp_staged" && -f backend/scripts/check_experiment_harness.py ]]; then
     echo
     echo "=== Step 3.7: experiment harness gate (experiment_*.py staged) ==="
     if PYTHONPATH=backend python backend/scripts/check_experiment_harness.py --staged 2>&1 | tail -15; then

@@ -12,14 +12,25 @@ from typing import Any
 
 from services.data_deletion import ensure_data_deletion_tables
 from services.data_processing_monitor import ensure_data_processing_monitor_tables
-from services.feature_registry import load_feature_registry
+# 2026-06-28 重建: feature_registry/pricing_policy/recommendation_universe (策略层) 退役;
+#   data_quality 的策略相关检查 defensive 降级 (缺模块→该检查跳过), 数据平台检查(calendar/kline/null/freshness)不受影响。
+try:
+    from services.feature_registry import load_feature_registry
+except Exception:
+    load_feature_registry = None
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso
 from services.pipeline_performance_policy import load_pipeline_performance_policy
-from services.pricing_policy import load_pricing_label_policy, record_pricing_label_policy
-from services.recommendation_universe import (
-    explain_universe_exclusions,
-    load_recommendation_universe_policy,
-)
+try:
+    from services.pricing_policy import load_pricing_label_policy, record_pricing_label_policy
+except Exception:
+    load_pricing_label_policy = record_pricing_label_policy = None
+try:
+    from services.recommendation_universe import (
+        explain_universe_exclusions,
+        load_recommendation_universe_policy,
+    )
+except Exception:
+    explain_universe_exclusions = load_recommendation_universe_policy = None
 from services.schema_versions import record_actual_version
 from services.utils import latest_completed_trade_date
 
@@ -376,6 +387,8 @@ def _seed_default_feature_null_policies(conn: Any) -> None:
 
 def _seed_feature_availability_contracts(conn: Any) -> None:
     built_at = datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds")
+    if load_feature_registry is None:  # 2026-06-28 重建: feature_registry 退役, 跳过
+        return
     registry = load_feature_registry()
     rows = [
         (
@@ -2903,7 +2916,7 @@ def _check_recommendation_outputs(
     invalid_rows_total = 0
     multi_primary_dates_total = 0
     non_investable_rows_total = 0
-    universe_policy = load_recommendation_universe_policy()
+    universe_policy = load_recommendation_universe_policy() if load_recommendation_universe_policy else None
     evidence: dict[str, Any] = {
         "exists": False,
         "champion_model_ids": sorted(champion_ids),
@@ -3042,7 +3055,7 @@ def _check_recommendation_outputs(
                 """
             ).fetchall()
             stock_codes = [str(_row_value(row, "stock_code", 0)) for row in rows]
-            exclusions = explain_universe_exclusions(conn, stock_codes, policy=universe_policy)
+            exclusions = explain_universe_exclusions(conn, stock_codes, policy=universe_policy) if (explain_universe_exclusions and universe_policy) else []
             non_investable_rows = sum(1 for code in stock_codes if code in exclusions)
             non_investable_rows_total += non_investable_rows
             examples = [
@@ -3094,6 +3107,8 @@ def _model_feature_contract_violations(feature_cols_raw: Any) -> list[dict[str, 
         return [{"feature_name": "__feature_cols_json__", "reason": "invalid_json"}]
     if not isinstance(feature_cols, list):
         return [{"feature_name": "__feature_cols_json__", "reason": "not_list"}]
+    if load_feature_registry is None:  # 2026-06-28 重建: feature_registry 退役, 跳过
+        return []
     registry = load_feature_registry()
     excluded = set(registry.model_input_excluded)
     violations: list[dict[str, Any]] = []
@@ -3627,9 +3642,10 @@ def record_global_data_quality_gate(
     example_limit: int = 5,
     cleanup_scan_root: Path | str | None = None,
 ) -> dict[str, Any]:
-    policy = load_pricing_label_policy()
+    policy = load_pricing_label_policy() if load_pricing_label_policy else None
     ensure_global_data_quality_tables(conn)
-    record_pricing_label_policy(conn, policy)
+    if record_pricing_label_policy and policy:
+        record_pricing_label_policy(conn, policy)
     started_at = utc_now_iso()
     started = time.perf_counter()
     built_at = datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds")

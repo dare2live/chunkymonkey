@@ -39,13 +39,11 @@ jobs:
       - name: Run offline tests
         run: |
           cd backend
-          # 只跑不依赖网络/db 的地基测试 (2026-06-14 地基-reset 后更新: 移除已删模型测试 test_tdx_source/test_audit_financial)
-          python -m pytest tests/test_utils.py tests/test_kline_sources.py \
-            tests/test_scoring_engine.py tests/test_scoring_composite.py \
+          # 只跑不依赖网络/db 的地基测试 (2026-06-28 重建/白名单裁剪后更新: 策略测试 scoring/oos_ic/
+          #   formula_features/optimization/kline_sources[akshare源] 随策略层退役删除; 留数据平台地基测试)
+          python -m pytest tests/test_utils.py \
             tests/test_db.py tests/test_source_watermarks.py tests/scripts/test_db_compact.py \
-            tests/test_oos_ic.py \
-            tests/test_formula_features_pit.py \
-            tests/test_optimization_layer.py \
+            tests/test_primitives.py tests/test_universe.py tests/test_calendar_gate.py \
             -p no:cacheprovider --tb=short -q || exit 1
 
       - name: Smoke import
@@ -54,18 +52,19 @@ jobs:
           python -c "
           import sys
           sys.path.insert(0, '.')
-          # 地基关键模块 import 必须成功 (2026-06-14 地基-reset 后更新为地基+框架模块, 移除已删模型模块)
+          # 数据平台地基模块 import 必须成功 (2026-06-28 重建/白名单裁剪后更新: 移除已删策略模块 dag_planner/experiment_jobs)
           from services.schema_versions import SCHEMA_VERSIONS, summary
           from services.data_audit import AUDIT_RULES
           from services.api_cache import cached, get_cache_stats
-          from services.dag_planner import topological_waves
           from services.duck_adapter import connect
           from services.database_manifest import get_database_manifest
           from services.data_sources import sync_runner
           from services.schema_layer_filter import filter_schema_sql, keep_stmt
-          from services.experiment_jobs import load_experiment_job_contract
-          assert 'model_training' in load_experiment_job_contract().families
-          print('地基+框架模块 importable')
+          from services.universe import get_active_universe
+          from services.calendar import latest_completed_trade_date
+          from services.security_master import active_codes
+          from services.data_access import DataAccess
+          print('数据平台地基模块 importable')
           print(f'  schema_versions: {summary()}')
           print(f'  audit_rules: {len(AUDIT_RULES)}')
           "

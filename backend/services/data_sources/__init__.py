@@ -15,7 +15,7 @@ from .registry import (
 )
 
 # 模块加载时自动注册内置 source
-from .sources import tdxhub, aif10, tushare, akshare  # noqa: F401
+from .sources import aif10, tushare  # noqa: F401  # tdxhub/akshare 源退役 2026-06-28 重建(tushare唯一+aif10)
 
 __all__ = [
     "BaseDataSource",

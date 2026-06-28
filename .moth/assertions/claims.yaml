@@ -104,51 +104,16 @@ assertions:
     type: shell
     command: ["bash", "-c", "grep -c 'max_realistic_sharpe' backend/config/optuna_config.yaml"]
     expect: {op: ">=", value: 1}
-  - id: l0-search-governance-wired
-    claim: "L0 寻参 runner 接 plan_validator 搜索空间闸 + DSR deflate (2026-06-14: 防过拟合多重比较校正 + 防 29/34 白跑反例; 反孤儿 mythos §14 删任一=寻参失治理)"
-    type: shell
-    command: ["bash", "-c", "grep -cE 'enforce_search_space_nonempty|deflated_sharpe_ratio' backend/services/optimization/formula_param_search.py"]
-    expect: {op: ">=", value: 2}
   - id: legacy-flow-no-pollution
     claim: "老流程污染清除 ratchet (2026-06-14 工具化 reset 教训; 重构验收 gate). 进度: C1 daily_update 无缺失脚本调用 PASS (855->457行删19缺失脚本) + C3 append-only 必 retention PASS (3表声明) + C2 wiped 孤儿引用 238->29 (退役7死serving router/删schema_versions 23版本条目/7config @archived). 余 C2<=43 (2026-06-16 重启清理 drop fact_feature_panel/缓存/探索表 +14 代码 DDL/audit 引用, 待 rebuild 层重构降回; 原 29) = updater 死 builder (build_profiles/trends/industry_stat/screening/sector_momentum 建已删 L2/L3 表) 嵌在 live update-DAG (RUNNERS/STEPS/HARD_DEPS, data_sources/etf 依赖) = 显式 P2 增量解耦 (framework §6: 禁 big-bang 反复破CI). ratchet C2<=29 防回潮, P2 收口后降 0. owner=analysis/refactor_execution_plan_20260614.md"
     type: shell
     command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python -c \"import json,subprocess,os; e=dict(os.environ,PYTHONPATH='backend'); d=json.loads(subprocess.run(['python','backend/scripts/check_legacy_flow_integrity.py'],capture_output=True,text=True,env=e).stdout); c=d['checks']; ok=c['daily_update_scripts']['verdict']=='PASS' and c['append_only_retention']['verdict']=='PASS' and c['no_wiped_refs']['n_stale_refs']<=43; print('LEGACY_OK' if ok else 'LEGACY_PENDING')\""]
     expect: {op: regex, pattern: "LEGACY_OK"}
-  - id: validation-r1-symmetric-gate
-    claim: "R1 对称可交易性门在岗 (2026-06-15 8-lens 对抗复审根因 R1 反哺): anomaly_verdict 是单边门(只抓IC太高), 数学上抓不到 'IC真但long-only含成本亏钱'(Phase B 33σ REAL_EDGE 仍 gross -34.6%). experiment_harness 必有 tradability_verdict -> IC>0 且 net<=0 标 IC_POSITIVE_BUT_UNTRADABLE. 删=R1盲点复发. owner=docs/strategy_validation_contract.md C-R1"
-    type: shell
-    command: ["bash", "-c", "grep -cE 'def tradability_verdict|IC_POSITIVE_BUT_UNTRADABLE' backend/services/experiment_harness.py"]
-    expect: {op: ">=", value: 2}
-  - id: validation-promotion-needs-money
-    claim: "转正章必须看过钱 (2026-06-15 缺陷 N3/自欺死): confirmed_by_owner=1 不许纯凭 IC 置换显著性盖, 必带含成本绝对收益证据 (record_verdict guard raise). 删=系统最强章盖时没看过含成本收益. owner=docs/strategy_validation_contract.md C-R1"
-    type: shell
-    command: ["bash", "-c", "grep -cE '_has_money_evidence|C-R1 BLOCK' backend/services/experiment_store.py"]
-    expect: {op: ">=", value: 2}
-  - id: validation-promotion-needs-leakage-clean
-    claim: "转正章必须 leakage-clean — 真金白银门不可自批绕过 (2026-06-15 用户: commit 时 SKIP_LEAKAGE_AUDIT 自批=门是摆设, 本地 hook 终究可 --no-verify 逃). 真正强制移到提交者够不到的**转正门**: record_verdict confirmed_by_owner=1 须带 leakage-clean 证据 (judges 含 leakage_gate/leakage_clean/pit_audit 显示 clean), 否则 C-LEAK BLOCK raise. 配套: safe_commit Step3.5/3.6 已移除 SKIP 自批逃生 (改硬门; 误报=修 verifier 非 skip). 删=泄漏隐患可盖最强章上 live. owner=docs/strategy_validation_contract.md"
-    type: shell
-    command: ["bash", "-c", "grep -cE '_has_leakage_clean|C-LEAK BLOCK' backend/services/experiment_store.py"]
-    expect: {op: ">=", value: 2}
   - id: leakage-gate-no-self-bypass
     claim: "leakage commit 门无自批 SKIP 逃生 (2026-06-15 用户: 自批绕过=摆设). safe_commit Step3.5/3.6 HIGH=硬 exit 4, 不再认 SKIP_LEAKAGE_AUDIT 自批 (含义性 grep: 不应再有 'SKIP_LEAKAGE_AUDIT.*proceeding' 放行). 误报正解=修 verifier 精度/config (永久), 真紧急=--no-verify(核选项留疤). 复活自批=门退回摆设."
     type: shell
     command: ["bash", "-c", "grep -c 'SKIP_LEAKAGE_AUDIT.*bypass.*proceeding\\|SKIP_LEAKAGE_AUDIT=1 bypass' scripts/safe_commit.sh || true"]
     expect: {op: "==", value: 0}
-  - id: validation-winreturn-codex
-    claim: "C-WinReturn 联合验收门在岗 (2026-06-15 用户: 除胜率还要考核收益率, 目的是真能赚钱非证明有效): experiment_harness.kpi_verdict 须联合 年化 AND max_dd AND 月胜率 AND 胜率x盈亏比期望(positive_expectancy); 胜率=诊断量收益+max_dd=目标量. 删=单凭胜率/IC 放行. owner=docs/strategy_validation_contract.md C-WinReturn"
-    type: shell
-    command: ["bash", "-c", "grep -cE 'def kpi_verdict|positive_expectancy|payoff_ratio' backend/services/experiment_harness.py"]
-    expect: {op: ">=", value: 3}
-  - id: validation-engine-execution-aware
-    claim: "execution-aware 引擎在岗 (2026-06-15 P1 重建, 根因 R2): portfolio_execbacktest 须含 T+1 open 入场 + 涨跌停一字板剔篮 + 非对称成本栈(卖方印花) + 容量诊断 + 停牌冻结. 旧 portfolio_returnbacktest(close 无条件成交)已删. 删=R2 无摩擦市场假设复发, '含成本裁决'变假裁决. owner=docs/strategy_validation_contract.md C-R2"
-    type: shell
-    command: ["bash", "-c", "grep -cE 'def run_execution_backtest|_is_one_line_up|stamp_duty_sell_pct|entry_at_open|capacity' backend/services/portfolio_execbacktest.py"]
-    expect: {op: ">=", value: 4}
-  - id: validation-integrity-gate-green
-    claim: "策略验证完整性 gate 全绿 (2026-06-15 P1 收口): check_strategy_validation_integrity overall=PASS (anomaly_symmetric + promotion_needs_money + kpi_joint_codex + engine_execution_aware 四检查全过). 任一红=R1/R2/C-WinReturn 制度被破坏"
-    type: shell
-    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python backend/scripts/check_strategy_validation_integrity.py 2>/dev/null | python3 -c 'import json,sys; print(\"GATE_\"+json.load(sys.stdin)[\"overall\"])'"]
-    expect: {op: regex, pattern: "GATE_PASS"}
   - id: coupling-no-orphan-refs
     claim: "无孤儿耦合引用 (2026-06-16 用户: 删除暴露 表↔代码↔配置↔DB↔文档↔测试 耦合; moth coupling (引擎全局) 防'删脚本→孤儿测试崩CI collection'/'drop表→moth断言悬空'复发. 删前用 --impact <name> 看爆炸半径)"
     type: shell
@@ -175,11 +140,6 @@ assertions:
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM fact_top10_holder_period WHERE report_date LIKE '%-%'"
     expect: {op: "==", value: 0}
-  - id: dossier-serve-no-inline-raw
-    claim: "dossier.py 内联 duck_connect = 0 硬门 (2026-06-22 数据模块 P1 SERVE 读层迁移完成, 不变量#4 单概念单真相源: dossier 18 内联 raw 裸查全部迁到 services.data_access.DataAccess 单一读路, 全 parity 验证 [capital/cyq/limits/share_float/block_trade/analyst/benchmark/valuation/fundamentals/forecast/one/sector_kline/lhb/_top10_tushare/_top10_tdx/sector_membership/market_regime + 2 scan]). >0 = 新增内联裸查违纪 silo 回潮. owner=backend/services/dossier.py + analysis/data_module_toplevel_design_20260622.md §4"
-    type: shell
-    command: ["bash", "-c", "grep -c 'duck_connect(' backend/services/dossier.py || true"]
-    expect: {op: "<=", value: 0}
   - id: kline-canonical-tushare-only
     claim: "v_price_kline_qfq 切 tushare-only (2026-06-22 切主源根因修复 真相源唯一): 旧 tier-1=price_kline_tdxhub 的 qfq 系统性算错 (把复权因子当后复权式乘数抬高分红股历史价, 实测茅台/比亚迪 raw*adj_factor/latest 重建证 tushare对/tdxhub错, 分叉随adj_factor放大最高89%). tushare(2019+/5431股) 严格超集 tdxhub(2022+/5210股). 用户'没有备用源只有tushare' → 去 akshare/tdxhub fallback. >0 非tushare行 = 残留回潮. owner=backend/services/market_schema.py"
     type: duckdb_sql
@@ -205,9 +165,4 @@ assertions:
     claim: "不变量4(单概念单真相源/SERVE单一读路)硬门: 全量扫非成员消费者内联raw读 ==0 (已清零, 棘轮锁死). 伪绿D1只扫dossier 1文件→check_serve_read_layer --bypass-scan 读 data_module_members.yaml roster(成员=数据模块子模块可读raw / 非成员消费者必走DataAccess.get/coverage_start)全量执法. 清零路径: data_loaders迁SERVE→feature/signal panel继承; signals_v2 MIN→DataAccess.coverage_start元数据原语(前后一致2025-10-22); stock_detail_read展示→serve-exempt(P4 read-model pending+源退役表). 源退役3 client(financial/institution_survey/tdx_affair)删源后退役不计. >0=新增bypass回潮即红(对标universe assert_universe_clean硬门). owner=check_serve_read_layer.py --bypass-scan + data_module_members.yaml"
     type: shell
     command: ["bash", "-c", "PYTHONPATH=backend python backend/scripts/check_serve_read_layer.py --bypass-scan 2>/dev/null | grep -oE 'consumer_bypass_violations=[0-9]+' | grep -oE '[0-9]+$'"]
-    expect: {op: "<=", value: 0}
-  - id: read-model-serve-fed
-    claim: "read-model 展示层 SERVE 喂数 (seed §7.1 档A seam, 2026-06-23 展示件): backend/services/read_model.py (stock_code,as_of)-键去规范化切片 0 内联裸查 raw/price_kline/duck_connect — 经 services.dossier (SERVE 读层装配 DataAccess.get) 取数, 是 SERVE 之上的展示投影非第二取数路径 (不变量4 单一读路). §7.2 写锁安全=只读不裸查热写库. cube 跨档案立体视图=本层 JOIN 切片(P4/档B). >0=read-model 内联裸查=展示层绕 SERVE 第二真相源回潮. owner=backend/services/read_model.py"
-    type: shell
-    command: ["bash", "-c", "grep -cE 'FROM raw_|FROM price_kline|duck_connect\\(|duckdb\\.connect\\(' backend/services/read_model.py || true"]
     expect: {op: "<=", value: 0}

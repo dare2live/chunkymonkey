@@ -23,8 +23,7 @@ def run_acquire(ctx: PipelineContext) -> None:
     ctx.run_script("backend/scripts/sync_hs300_benchmark_kline.py",
                    degraded_msg="HS300 sync 失败 (非 fatal)")
 
-    # Step 2b2: xdxr 除权事件 sync (热备链路, 主源 = tushare dividend/adj_factor)
-    ctx.step(_sync_xdxr, degraded_msg="xdxr sync 失败 (热备链路, 主源 tushare 在 registry)")
+    # xdxr 除权 sync 已移除 (2026-06-28 重建: tdx 热备退役, 复权走 tushare adj_factor)
 
     # Step 2d: LHB event sync
     ctx.step(_sync_lhb, degraded_msg="LHB event sync 失败")
@@ -55,25 +54,6 @@ def run_acquire(ctx: PipelineContext) -> None:
 
 
 # ── 步骤实现 (in-process, 直调 service) ──────────────────────────
-
-def _sync_xdxr() -> None:
-    import asyncio
-    from services.duck_adapter import connect  # xdxr_client 需 dict-row 包装
-    from services.xdxr_client import sync_xdxr_for_codes
-    from .context import db_path
-    conn = connect(db_path("market"))
-    try:
-        # code 列表源 = canonical price_kline_qfq_tushare (M3 后切, tushare 超集单一真相源)
-        # xdxr 同步范围 = 近45日有交易的 code 集 (回溯窗口非 end-date; 非策略universe — 除权事件adj完整性反需含ST/退市, §4.5污染指GT/backtest不适用)
-        _xdxr_code_sql = "SELECT DISTINCT code FROM price_kline_qfq_tushare WHERE CAST(date AS DATE) >= current_date - INTERVAL 45 DAY"  # rule-compliance: ok evidence=xdxr除权sync回溯窗口, 非策略universe/非end-date
-        codes = [r[0] for r in conn.execute(_xdxr_code_sql).fetchall()]
-        st = asyncio.run(sync_xdxr_for_codes(conn, codes))
-        print({k: st.get(k) for k in ("status", "total_codes", "success_codes", "rows", "failed_count")})
-        total = max(1, st.get("total_codes") or len(codes))
-        if (st.get("failed_count") or 0) > total * 0.2:  # >20% 失败 = 链路级故障非个股噪音
-            raise RuntimeError(f"xdxr 失败率 {st.get('failed_count')}/{total} > 20%")
-    finally:
-        conn.close()
 
 
 def _sync_lhb() -> None:

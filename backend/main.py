@@ -107,19 +107,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 注册路由
-from routers.market import router as market_router
+# 注册路由 — 2026-06-28 重建(白名单裁剪): 策略/serving routers 全退役 (signals/dossier/v3_picture/
+#   v3_paper/v3_selection/v3_portfolio_builder/stock_graph/workbench/market), 项目降为纯数据平台。
+#   只留 ops(手动跑数据链) + 配置(strategy_preset/v3_config) routers; 数据走 pipeline + SERVE(data_access)。
 
-app.include_router(market_router, prefix="/api/inst", tags=["market"])
-# routers.updater (20文件路由DAG UI簇) 退役 2026-06-24 — 数据更新走 pipeline (services.pipeline); 旧 workbench 更新 UI 重做 (用户决议)
-# routers.institution (serving) 退役 2026-06-14 地基-reset 收口 — 查 wiped mart_institution_profile/stat (L2/L3 已删)
-
-# 手动任务触发 (2026-06-12 用户决议: 自动调度退役, 更新链改前端按钮手动跑)
+# 手动任务触发 (数据采集/清洗链前端按钮手动跑)
 from routers.ops_manual_run import router as ops_manual_run_router
-
 app.include_router(ops_manual_run_router, prefix="/api/v3/ops", tags=["ops"])
 
-# routers.etf 退役 2026-06-24 — 随旧 updater UI 簇退役 (etf 路由深耦合 updater UI 日志/连通性基础设施); ETF 数据将走 pipeline (M2 tushare fund_daily)
 # 模块化路由注册 (etf 路由已退役; register_modules 保留供未来模块, 当前只读 enabled 状态)
 def register_modules(app):
     try:
@@ -133,79 +128,28 @@ def register_modules(app):
 
 app_modules = register_modules(app)
 
-# routers.screening (serving) 退役 2026-06-14 — 查 wiped mart_stock_screening (L2 已删)
-
-from routers.signals import router as signals_router
-app.include_router(signals_router, prefix="/api/signals", tags=["signals"])
-
-# routers.recommendation (serving) 退役 2026-06-14 — 查 wiped mart_daily_recommendation 等 (L3 已删)
-
-from routers.workbench import router as workbench_router
-app.include_router(workbench_router, prefix="/api/workbench", tags=["workbench"])
-
-# routers.data_sources (数据源 registry UI) 退役 2026-06-24 — 随旧 updater UI 簇退役 (它用 updater DAG RUNNERS/STEPS 跑 sync = 另一条 UI 更新路径, 与 pipeline 重复)
-
-# 股票档案视图 (Stock Dossier P2; owner=docs/stock_dossier_master_design.md)
-from routers.dossier import router as dossier_router
-app.include_router(dossier_router, prefix="/api/dossier", tags=["dossier"])
-
-# 策略预设 (P4)
+# 配置 routers (策略预设 / v3 配置)
 from routers.strategy_preset import router as strategy_preset_router
 app.include_router(strategy_preset_router, prefix="/api/inst/strategy", tags=["strategy_preset"])
-
-# v3_meta (serving 聚合) 退役 2026-06-14 — 查 wiped 模型/感知 mart (L2/L3 已删)
-
-# Phase γ D4: 股票画像 + trade plan (mart_stock_picture_daily / mart_stock_trade_plan)
 from routers.v3_config import router as v3_config_router
 app.include_router(v3_config_router, prefix="/api/v3", tags=["v3_config"])
 
-from routers.v3_picture import router as v3_picture_router
-app.include_router(v3_picture_router, prefix="/api/v3", tags=["v3_picture"])
-
-# Phase δ D4: paper engine (mart_paper_nav / fact_paper_position / mart_signal_ic / mart_decision_outcome)
-from routers.v3_paper import router as v3_paper_router
-app.include_router(v3_paper_router, prefix="/api/v3/paper", tags=["v3_paper"])
-
-# Phase ε D3: 优选追踪 + 反馈闭环
-from routers.v3_selection import router as v3_selection_router
-app.include_router(v3_selection_router, prefix="/api/v3/selection", tags=["v3_selection"])
-
-# v3_views (serving 3视图: 股票/公式/机构) 退役 2026-06-14 — 查 wiped mart (L2/L3 已删)
-
-# Phase η++ : 组合构建器 (3 risk profile, Kelly + Wilson 仓位)
-from routers.v3_portfolio_builder import router as v3_portfolio_builder_router
-app.include_router(v3_portfolio_builder_router, prefix="/api/v3/portfolio", tags=["v3_portfolio"])
-
-# 市场感知 (Market Perception): standalone project at /stock/perception.
+# 市场感知 (Market Perception): standalone project at /stock/perception (guarded fallback)
 PERCEPTION_SRC = Path(__file__).resolve().parents[2] / "perception" / "src"
 if PERCEPTION_SRC.exists() and str(PERCEPTION_SRC) not in sys.path:
     sys.path.insert(0, str(PERCEPTION_SRC))
-# 仅用 standalone perception 项目 (bundled routers/v3_market_perception fallback 退役 2026-06-14 — 查 wiped mart)
 try:
     from perception.router import router as v3_market_perception_router
     app.include_router(v3_market_perception_router, prefix="/api/v3/market_perception", tags=["v3_market_perception"])
 except Exception as exc:
-    logger.warning("standalone perception router unavailable; bundled fallback retired 2026-06-14: %s", exc)
-
-# Project D 股票图谱 (2026-05-22 用户新加): UI 查询层, 基于 Perception 7 mart, 不接 ranker
-from routers.stock_graph import router as stock_graph_router
-app.include_router(stock_graph_router, prefix="/api/v3", tags=["v3_stock_graph"])
+    logger.warning("standalone perception router unavailable: %s", exc)
 
 # BestChoice tab 退役 2026-06-22 (P2 清库): v3_bestchoice 路由查的 mart_*_bestchoice_v1 /
 # paper_sim 表 reset 已删 = 服务死表的死代码; 物删 router+service+config (bc_absorbed 另案保留)
 
 # v3_perception_legacy (serving) 退役 2026-06-14 — 查 wiped 感知 mart (L2/L3 已删)
 
-# 初始化 signals_v2 默认配置（幂等）
-try:
-    _conn = get_conn()
-    try:
-        from services.signals_v2 import ensure_defaults as _signals_v2_defaults
-        _signals_v2_defaults(_conn)
-    finally:
-        _conn.close()
-except Exception as _e:
-    logger.warning(f"signals_v2 ensure_defaults failed: {_e}")
+# signals_v2 默认配置初始化已移除 (2026-06-28 重建: signals_v2 策略 serving 退役)
 
 # 设置选项相关的API (比如开启/关闭功能模块)
 @app.post("/api/settings/modules")

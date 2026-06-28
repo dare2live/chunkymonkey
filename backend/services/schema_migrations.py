@@ -732,12 +732,8 @@ def init_db():
         #   init 调用已移除 — 财务 derived 退役 (raw_tushare 财务保留, 档B 重启时重建); 防 init_db 重建路径。
         # financial_indicator_client 已退役 2026-06-19 (akshare 财务指标表+writer物删)
         # capital_client 已退役 2026-06-27 (通达信全删 M4: akshare 资本运作 7表+writer物删, 用户决cut)
-        from services.industry_context_engine import ensure_tables as _ensure_industry_context_tables
-        _ensure_industry_context_tables(conn)
-        from services.screening_engine import ensure_tables as _ensure_screen_tables
-        _ensure_screen_tables(conn)
-        from services.sector_momentum import ensure_tables as _ensure_sector_tables
-        _ensure_sector_tables(conn)
+        # 2026-06-28 重建(白名单裁剪): industry_context_engine/screening_engine/sector_momentum
+        #   ensure_tables init 调用已移除 — 策略 serving 层退役 (纯净数据平台只留原始+四地基)。
         conn.execute("DROP TABLE IF EXISTS dim_asset_universe")
         conn.commit()
         conn.execute("""

@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-28 08:29
+> Snapshot: 2026-06-28 10:07
 
 ## 1. 入口面
 
@@ -31,18 +31,9 @@
 
 | router | prefix | 端点数 |
 |---|---|---|
-| dossier | `/api/dossier` | 5 |
-| market | `/api/inst` | 1 |
 | ops_manual_run | `/api/v3/ops` | 3 |
-| signals | `/api/signals` | 10 |
-| stock_graph | `/api/v3` | 3 |
 | strategy_preset | `/api/inst/strategy` | 4 |
 | v3_config | `/api/v3` | 1 |
-| v3_paper | `/api/v3/paper` | 5 |
-| v3_picture | `/api/v3` | 3 |
-| v3_portfolio_builder | `/api/v3/portfolio` | 5 |
-| v3_selection | `/api/v3/selection` | 6 |
-| workbench | `/api/workbench` | 10 |
 
 端点全列表在 json (`routes` 键)。
 
@@ -97,7 +88,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 112 张 | 单 writer 70 | 多 writer 42 | 动态表名写点 23 处 (13 文件)
+统计: 表 92 张 | 单 writer 64 | 多 writer 28 | 动态表名写点 18 处 (11 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -116,8 +107,6 @@
 | backend/scripts/seed_dim_data_asset.py | 1 |
 | backend/services/aif10_capability_client.py | 3 |
 | backend/services/data_sources/sync_runner.py | 3 |
-| backend/services/financial_client.py | 4 |
-| backend/services/perf/shard_runner.py | 1 |
 
 ### 多 writer 表 (>1 文件写同一张表)
 
@@ -125,32 +114,23 @@
 |---|---|---|
 | fact_top10_holder_period | 3 | backend/scripts/cleanup_holder_dup.py<br>backend/services/holders_aif10.py<br>backend/services/schema_core.py |
 | mart_data_deletion_record | 3 | backend/scripts/db_lifecycle_delete.py<br>backend/services/data_deletion.py<br>backend/services/schema_marts.py |
-| mart_etf_snapshot_latest | 3 | backend/services/etf_db.py<br>backend/services/etf_snapshot_manager.py<br>backend/services/schema_marts.py |
-| mart_etf_snapshot_state | 3 | backend/services/etf_db.py<br>backend/services/etf_snapshot_manager.py<br>backend/services/schema_marts.py |
 | dim_data_asset | 2 | backend/scripts/seed_dim_data_asset.py<br>backend/services/schema_core.py |
 | dim_data_source_priority | 2 | backend/scripts/audit_tdx_data_need_coverage.py<br>backend/services/schema_core.py |
 | dim_fee_schedule | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_liquidity_threshold | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_market_segment | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_price_limit_rules | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
-| dim_stock_stage_days | 2 | backend/scripts/build_picture_daily.py<br>backend/services/picture/ddl.py |
 | dim_style_factor | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_trading_rule | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_trading_session | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
-| fact_consumer_alpha_ic_scan | 2 | backend/scripts/build_experiment_store.py<br>backend/services/experiment_store.py |
-| fact_experiment_verdict | 2 | backend/scripts/build_experiment_store.py<br>backend/services/experiment_store.py |
-| fact_holder_event | 2 | backend/services/holders_event.py<br>backend/services/schema_core.py |
-| fact_institution_event | 2 | backend/services/event_engine.py<br>backend/services/schema_core.py |
-| fact_risk_factors | 2 | backend/services/data_governance/etl_hook.py<br>backend/services/risk_factors.py |
-| fact_stock_fundamental_stage_daily | 2 | backend/scripts/build_picture_daily.py<br>backend/services/picture/ddl.py |
-| fact_stock_type_daily | 2 | backend/scripts/build_picture_daily.py<br>backend/services/picture/ddl.py |
 | mart_audit_snapshot_state | 2 | backend/services/audit.py<br>backend/services/schema_marts.py |
 | mart_current_relationship | 2 | backend/services/holdings.py<br>backend/services/schema_marts.py |
 | mart_data_deprecation_record | 2 | backend/services/data_deprecation.py<br>backend/services/schema_marts.py |
 | mart_data_health | 2 | backend/scripts/data_health_snapshot.py<br>backend/services/schema_marts.py |
 | mart_data_source_reassignment_proposal | 2 | backend/scripts/audit_tdx_data_need_coverage.py<br>backend/services/schema_marts.py |
 | mart_data_source_watermark | 2 | backend/services/schema_marts.py<br>backend/services/source_watermarks.py |
-| mart_feature_drift | 2 | backend/services/ml_lifecycle/drift.py<br>backend/services/schema_marts.py |
+| mart_etf_snapshot_latest | 2 | backend/services/etf_db.py<br>backend/services/schema_marts.py |
+| mart_etf_snapshot_state | 2 | backend/services/etf_db.py<br>backend/services/schema_marts.py |
 | mart_market_perception_audit_log | 2 | backend/services/schema_marts.py<br>backend/services/schema_migrations.py |
 | mart_market_perception_emotion_daily | 2 | backend/services/schema_marts.py<br>backend/services/schema_migrations.py |
 | mart_market_perception_leader_follower_daily | 2 | backend/services/schema_marts.py<br>backend/services/schema_migrations.py |
@@ -158,12 +138,7 @@
 | mart_market_perception_style_daily | 2 | backend/services/schema_marts.py<br>backend/services/schema_migrations.py |
 | mart_market_perception_theme_daily | 2 | backend/services/schema_marts.py<br>backend/services/schema_migrations.py |
 | mart_market_perception_under_reaction_daily | 2 | backend/services/schema_marts.py<br>backend/services/schema_migrations.py |
-| mart_model_lifecycle | 2 | backend/services/ml_lifecycle/registry.py<br>backend/services/schema_marts.py |
 | mart_pipeline_run_manifest | 2 | backend/services/pipeline_manifest.py<br>backend/services/schema_marts.py |
-| mart_pricing_label_data_readiness_gate | 2 | backend/services/pricing_policy_readiness.py<br>backend/services/pricing_schema.py |
-| mart_pricing_label_policy | 2 | backend/services/pricing_policy_records.py<br>backend/services/pricing_schema.py |
-| mart_pricing_label_policy_gate | 2 | backend/services/pricing_policy_records.py<br>backend/services/pricing_schema.py |
-| mart_stock_picture_daily | 2 | backend/scripts/build_picture_daily.py<br>backend/services/picture/ddl.py |
 | mart_tdx_data_need_coverage | 2 | backend/scripts/audit_tdx_data_need_coverage.py<br>backend/services/schema_marts.py |
 
 ### 单 writer 表
@@ -174,39 +149,38 @@
 | dim_holder_alias | backend/services/schema_core.py |
 | dim_listing_status | backend/scripts/build_dim_listing_status.py |
 | dim_schema_version | backend/services/schema_versions.py |
-| dim_stock_industry_context_latest | backend/services/industry_context_engine.py |
-| dim_stock_stage_latest | backend/services/stock_stage_engine.py |
-| dim_stock_turtle_latest | backend/services/stock_turtle_engine.py |
+| dim_stock_stage_days | backend/scripts/build_picture_daily.py |
 | dim_strategy_preset | backend/routers/strategy_preset.py |
 | dim_trading_calendar | backend/scripts/migrate_reference_db.py |
 | fact_common_major_holder_stock | backend/services/schema_core.py |
+| fact_consumer_alpha_ic_scan | backend/scripts/build_experiment_store.py |
 | fact_controlling_shareholder | backend/services/schema_core.py |
 | fact_daily_price_status | backend/services/primitives/ddl.py |
+| fact_experiment_verdict | backend/scripts/build_experiment_store.py |
+| fact_holder_event | backend/services/schema_core.py |
+| fact_institution_event | backend/services/schema_core.py |
 | fact_lhb_event | backend/scripts/build_lhb_events.py |
+| fact_risk_factors | backend/services/data_governance/etl_hook.py |
 | fact_setup_snapshot | backend/services/schema_core.py |
 | fact_shareholder_plan | backend/services/schema_core.py |
 | fact_shareholder_trade | backend/services/schema_core.py |
-| fact_stock_industry_context | backend/services/industry_context_engine.py |
+| fact_stock_fundamental_stage_daily | backend/scripts/build_picture_daily.py |
 | fact_stock_liquidity_daily | backend/services/primitives/ddl.py |
 | fact_stock_market_cap_daily | backend/services/primitives/ddl.py |
-| fact_stock_stage_features | backend/services/stock_stage_engine.py |
 | fact_stock_style_daily | backend/services/primitives/ddl.py |
-| fact_stock_turtle_features | backend/services/stock_turtle_engine.py |
+| fact_stock_type_daily | backend/scripts/build_picture_daily.py |
 | mart_candidate_feature_set_contract | backend/services/data_quality.py |
 | mart_candidate_walkforward_eval | backend/services/schema_marts.py |
 | mart_data_processing_tool_issue | backend/services/data_processing_monitor.py |
 | mart_data_processing_tool_run | backend/services/data_processing_monitor.py |
 | mart_data_source_failure_queue | backend/services/source_watermarks.py |
-| mart_dual_confirm | backend/services/sector_momentum.py |
 | mart_feature_availability_contract | backend/services/data_quality.py |
 | mart_feature_candidate_score | backend/services/schema_marts.py |
-| mart_feature_drift_histogram | backend/services/ml_lifecycle/drift.py |
+| mart_feature_drift | backend/services/schema_marts.py |
 | mart_feature_group_ablation | backend/services/schema_marts.py |
 | mart_feature_null_policy | backend/services/data_quality.py |
 | mart_feature_pit_audit | backend/services/schema_marts.py |
 | mart_feature_retention_decision | backend/services/schema_marts.py |
-| mart_follow_return_label_build | backend/services/pricing_schema.py |
-| mart_follow_return_label_quality | backend/services/pricing_schema.py |
 | mart_global_data_quality_detail | backend/services/data_quality.py |
 | mart_global_data_quality_gate | backend/services/data_quality.py |
 | mart_institution_industry_stat | backend/services/schema_marts.py |
@@ -215,15 +189,12 @@
 | mart_market_perception_daily | backend/services/schema_marts.py |
 | mart_model_feature_lineage | backend/services/schema_marts.py |
 | mart_model_holding_topk_eval | backend/services/schema_marts.py |
+| mart_model_lifecycle | backend/services/schema_marts.py |
 | mart_model_selection_run | backend/services/schema_marts.py |
 | mart_pipeline_lock | backend/services/pipeline_lock.py |
-| mart_prediction_outcome | backend/services/prediction_outcome.py |
-| mart_sector_momentum | backend/services/sector_momentum.py |
-| mart_step_fingerprint | backend/services/event_engine.py |
 | mart_stock_fund_flow_rank_snapshot_daily | backend/services/schema_marts.py |
-| mart_stock_screening | backend/services/screening_engine.py |
+| mart_stock_picture_daily | backend/scripts/build_picture_daily.py |
 | mart_stock_survey_activity | backend/services/institution_survey_client.py |
-| mart_stock_trade_plan | backend/services/picture/ddl.py |
 | mart_stock_trend | backend/services/schema_marts.py |
 | mart_strategy_result_registry | backend/services/schema_marts.py |
 | mart_tdx_challenger_report | backend/services/schema_marts.py |
@@ -234,8 +205,6 @@
 | mart_tdx_gpcw_auto_pit_audit | backend/services/schema_marts.py |
 | mart_tdx_gpcw_auto_retention_decision | backend/services/schema_marts.py |
 | mart_tdx_keep_promotion_gate | backend/services/schema_marts.py |
-| mart_today_signal_cache | backend/services/signals_v2.py |
-| mart_today_signal_cache_signal | backend/services/signals_v2.py |
 | raw_institution_surveys | backend/services/institution_survey_client.py |
 | raw_lhb_daily | backend/services/lhb_client.py |
 | raw_org_holding_aif10 | backend/services/org_holding_aif10.py |
@@ -243,27 +212,27 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,291 | calls 边 56,096 | imports 边 5,321 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 6,065 | calls 边 8,459 | imports 边 1,768 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
-| services.duck_adapter | 34 |
-| services.db | 25 |
-| services.utils | 23 |
-| services.market_db | 15 |
-| services.industry | 13 |
-| services.kline_source | 10 |
-| services.pipeline_manifest | 9 |
+| services.duck_adapter | 33 |
+| services.db | 15 |
+| services.utils | 10 |
+| services.market_db | 9 |
+| services.pipeline_manifest | 8 |
 | services.data_sources | 7 |
-| services.pricing_policy | 7 |
-| services.tdx_source | 7 |
-| services.constants | 6 |
 | services.database_manifest | 6 |
-| services.etf_grid_engine | 6 |
-| services.scoring | 6 |
 | services.data_processing_monitor | 5 |
+| services.lineage.model | 5 |
+| scripts.formula_parameter_search | 4 |
+| services.industry | 4 |
+| services.kline_source | 4 |
+| services.pricing_policy | 4 |
+| services.scoring | 4 |
+| services.akshare_client | 3 |
 
 ### 跨文件 fan-in 最高的文件 (近似口径: 唯一定义名 + caller 实际 import 目标模块双过滤)
 
@@ -271,35 +240,35 @@
 |---|---|
 | backend/services/duck_adapter.py | 24 |
 | bestchoice/compute.py | 9 |
-| backend/services/pipeline_manifest.py | 7 |
-| backend/services/etf_grid_engine.py | 6 |
-| backend/services/market_db.py | 6 |
+| backend/services/pipeline_manifest.py | 6 |
+| backend/services/market_db.py | 5 |
 | bestchoice/execution_model.py | 5 |
-| backend/services/data_sources/base.py | 4 |
 | backend/services/database_manifest.py | 4 |
 | backend/services/kline_source.py | 4 |
 | backend/services/lineage/model.py | 4 |
 | backend/services/pipeline/context.py | 4 |
-| backend/services/universe.py | 4 |
+| bestchoice/formula_engine.py | 4 |
+| bestchoice/scripts/formula_parameter_search.py | 4 |
+| backend/services/data_access/keys.py | 3 |
 
 ### LOC top 10 (God module 候选)
 
 | 文件 | 行数 |
 |---|---|
-| backend/services/data_quality.py | 3876 |
-| backend/services/scoring.py | 2692 |
-| backend/services/signals_v2.py | 2134 |
+| backend/services/data_quality.py | 3892 |
 | backend/services/audit.py | 1568 |
 | backend/scripts/audit_delivery_readiness.py | 1226 |
 | backend/scripts/seed_dim_data_asset.py | 1205 |
 | backend/services/storage_retention.py | 1061 |
-| backend/services/return_engine.py | 1057 |
-| backend/services/etf_grid_engine.py | 1038 |
 | backend/services/schema_marts.py | 1004 |
+| backend/services/data_sources/sync_runner.py | 963 |
+| backend/services/schema_migrations.py | 807 |
+| backend/services/holder_availability.py | 776 |
+| backend/scripts/data_health_snapshot.py | 720 |
 
 ## 5. 概览
 
-- chunkyctl 子命令 10 | launchd 任务 1 | router 12 (端点 56)
+- chunkyctl 子命令 10 | launchd 任务 1 | router 3 (端点 8)
 - sync_registry 数据域 44
-- 产表 112 (多 writer 42)
+- 产表 92 (多 writer 28)
 
