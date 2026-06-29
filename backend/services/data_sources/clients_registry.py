@@ -95,19 +95,9 @@ CLIENTS: list[ClientSpec] = [
         ],
         sync_step_id="sync_qfii",
     ),
-    ClientSpec(
-        client_id="institution_survey_client",
-        module="services.institution_survey_client",
-        description="机构调研 (aif10 RPT_ORG_SURVEYNEW, akshare 兜底)",
-        upstream_source="aif10:RPT_ORG_SURVEYNEW",
-        source_tier=2,
-        fallback_chain=["aif10", "akshare"],
-        writes=[
-            TableWriteSpec("raw_institution_surveys", "机构调研原始", "t+1", 48),
-            TableWriteSpec("mart_stock_survey_activity", "调研活动派生", "t+1", 48),
-        ],
-        sync_step_id="sync_surveys",
-    ),
+    # institution_survey_client ClientSpec 已删 2026-06-28 (批2 数据源切 tushare): aif10+akshare 源退役,
+    #   调研走 tushare stk_surv (raw_tushare_stk_surv, sync_registry stk_surv 域); raw_institution_surveys
+    #   + mart_stock_survey_activity 物删。机构调研 PIT 锚降级 surv_date+t+1 (tushare stk_surv 无 notice_date)。
     ClientSpec(
         client_id="aif10_capability_client",
         module="services.aif10_capability_client",

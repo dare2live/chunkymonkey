@@ -70,10 +70,8 @@ DATA_SOURCE_QUERIES = {
         # 2026-06-28: fact_lhb_event U5 退役 → repoint raw_lhb_daily (aif10 龙虎榜 raw, trade_date)
         "query": "SELECT MAX(CAST(trade_date AS VARCHAR)) FROM raw_lhb_daily",
     },
-    "institution_survey": {
-        "db": "smartmoney",
-        "query": "SELECT MAX(CAST(survey_date AS VARCHAR)) FROM raw_institution_surveys",
-    },
+    # institution_survey 手动 SLA 域已删 2026-06-28 (批2 切 tushare): stk_surv 在 sync_registry 注册,
+    #   新鲜度由 sync:stk_surv 自动域 (_sync_registry_queries, db=tushare_raw 查 raw_tushare_stk_surv) 覆盖, 不手维护。
     "holders_top10_float": {
         "db": "smartmoney",
         "query": "SELECT MAX(CAST(report_date AS VARCHAR)) FROM fact_top10_holder_period",

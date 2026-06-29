@@ -57,9 +57,8 @@ member_service_files:
   - qfii_client.py           # QFII 采集 (aif10 sanctioned 源 §4.3; 读 raw_qfii_holding_quarterly 期次存在)
 
 # 源退役中 = 临时成员 (删源程序 task#56 完成后随 client 退役; 现不算违规, 但标记为待退役)
-source_retiring_temp_members:
-  # tdx_affair_client.py 已退役物删 2026-06-27 (通达信全删 gpcw)
-  # tdx_f10_extra_client.py 已退役物删 2026-06-24 (通达信全删 tdx F10)
-  - institution_survey_client.py
-  # financial_client.py 已退役物删 2026-06-28 (services.financial_client + dim_financial_latest/fact_financial_derived 物删; 财务走 tushare sync:fina_indicator/balancesheet/income 域)
-  # capital_client.py 已退役 2026-06-27 (通达信全删 M4: akshare 资本运作物删, 用户决cut)
+# source_retiring_temp_members 已全退役完 2026-06-29 (批2 收口): 所有非 tushare/非 sanctioned-aif10 源退役。
+#   tdx_affair_client(2026-06-27 gpcw) / tdx_f10_extra_client(2026-06-24 tdx F10) /
+#   institution_survey_client(2026-06-29 批2 切 tushare stk_surv, aif10+akshare 退役) /
+#   financial_client(2026-06-28, 财务走 tushare sync 域) / capital_client(2026-06-27 akshare 资本运作 cut)。
+source_retiring_temp_members: []

@@ -273,8 +273,8 @@ domains:
     min_rows_per_batch: 1
     allow_empty_batch: true   # 个别日仅游资席位无机构明细, 合法空 (走增量 fallback 非 drain)
 
-  # stk_surv 暂缓注册 (2026-06-11 实测): trade_date=20260610 返回 0 行 — 参数语义未核证
-  # (疑似用 surv_date/ann_date), 0 行不下结论不连发 (并发风控纪律), 与 dc_hot 同列待核批。
+  # stk_surv 已激活注册 (下方 stk_surv 块): raw_tushare_stk_surv 360k 已拉全 (2021-08~ surv_date 新鲜);
+  #   批2 2026-06-28 institution_survey SERVE entity 切此 tushare 唯一源 (旧 aif10+akshare raw_institution_surveys 退役物删)。
 
   report_rc:
     source: tushare

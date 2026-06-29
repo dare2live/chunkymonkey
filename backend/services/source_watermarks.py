@@ -97,11 +97,11 @@ DOMAIN_SPECS = [
     },
     {
         "data_domain": "institution_survey",
-        "source_name": "aif10_survey",
-        "source_tier": 2,
-        "table": "raw_institution_surveys",
-        "date_col": "survey_date",
-        "parser_version": "aif10_or_akshare",
+        "source_name": "tushare",
+        "source_tier": 1,
+        "table": "raw_tushare_stk_surv",
+        "date_col": "surv_date",
+        "parser_version": "tushare",  # 2026-06-28 批2: 切 tushare stk_surv 唯一 (aif10+akshare 退役)
     },
     {
         "data_domain": "qfii_holding_quarterly",

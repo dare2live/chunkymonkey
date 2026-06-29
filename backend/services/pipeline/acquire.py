@@ -28,8 +28,8 @@ def run_acquire(ctx: PipelineContext) -> None:
     # Step 2d: LHB event sync
     ctx.step(_sync_lhb, degraded_msg="LHB event sync 失败")
 
-    # Step 2i: institution_survey aif10 sync
-    ctx.step(_sync_institution_survey, degraded_msg="institution_survey sync 失败")
+    # Step 2i institution_survey aif10+akshare sync 已退役 2026-06-28 (批2 数据源切 tushare 唯一:
+    #   调研走 tushare stk_surv→raw_tushare_stk_surv 由 sync_runner 域 drain, institution_survey_client 退役)
 
     # Step 2i2: 十大流通股东 aif10 增量 (主源, 替退役中的 tdxhub; 按披露日只拉新披露股)
     ctx.step(lambda: _sync_holders_aif10(ctx), degraded_msg="holders aif10 sync 失败")
@@ -68,17 +68,7 @@ def _sync_lhb() -> None:
         conn.close()
 
 
-def _sync_institution_survey() -> None:
-    from services.duck_adapter import connect as duck_connect
-    from services.institution_survey_client import sync_institution_surveys
-    from .context import db_path
-    conn = duck_connect(db_path("smartmoney"))
-    try:
-        result = sync_institution_surveys(conn, days_back=180)
-        print(f"institution_survey: written={result.get('rows_upserted', 0)} "
-              f"mart={result.get('mart_rows', 0)} errors={result.get('errors', [])}")
-    finally:
-        conn.close()
+# _sync_institution_survey 已删 2026-06-28 (批2: institution_survey_client[aif10+akshare] 退役, 切 tushare stk_surv)
 
 
 def _sync_holders_aif10(ctx) -> None:

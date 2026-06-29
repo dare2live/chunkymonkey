@@ -279,14 +279,15 @@ entities:
   # financial_gpcw entity 已删 (2026-06-26 通达信全删): signals_v2 不再读 raw_gpcw_detail (D1/D3 gpcw 过滤器退役)。
 
   institution_survey:
-    # 机构调研明细 (signals_v2 D8 冷门度; PIT 锚 notice_date 披露日, 实测全 ISO 一致)
-    # 源=借道 tdxhub (smartmoney §4.3 热备); stk_surv tushare 域暂缓(参数语义未核证)
-    db: smartmoney
-    table: raw_institution_surveys
+    # 机构调研明细 — 批2 切 tushare 唯一 2026-06-28 (raw_tushare_stk_surv 360k 已拉全 2021-08~)。
+    # PIT 锚=surv_date 调研日; tushare stk_surv 无 notice_date(披露日) → available_after t+1 保守
+    # (调研纪要盘后/隔日披露)。旧 aif10+akshare raw_institution_surveys 已退役物删。
+    db: tushare_raw
+    table: raw_tushare_stk_surv
     layer: L0
-    code_col: stock_code
-    asof_col: notice_date
-    asof_format: iso
-    columns: [stock_code, survey_date, notice_date]
-    vendor: tdxhub
-    available_after: ann_date
+    code_col: ts_code
+    asof_col: surv_date
+    asof_format: yyyymmdd
+    columns: [ts_code, name, surv_date, rece_org, org_type]
+    vendor: tushare
+    available_after: t+1
