@@ -201,20 +201,10 @@ entities:
     vendor: tushare
     available_after: eod
 
-  holders_top10:
-    # 十大流通股东 (PIT 锚=ann_date; 同 end_date 多次公告→消费侧锁 MAX ann_date 版本防修正行泄漏; 复审HIGH)
-    db: tushare_raw
-    table: raw_tushare_top10_floatholders
-    layer: L0
-    code_col: ts_code
-    asof_col: ann_date
-    asof_format: yyyymmdd
-    columns: [ts_code, ann_date, end_date, holder_name, hold_float_ratio, hold_ratio, hold_change, hold_amount]
-    vendor: tushare
-    available_after: ann_date
-
   holders_tdx:
-    # 十大流通股东 tdx F10 备援 (§4.3 旧源热备; report_date 已统一 YYYYMMDD, 2026-06-22 双格式消除)
+    # 十大流通股东 — 主源=东财妙想 aif10 (CLAUDE.md §4.3: aif10 holder 主源, 取代滞后~4个月的 tushare top10_floatholders + 退役的 tdx F10)。
+    # 2026-06-29 批3b: 旧 tushare entity holders_top10 (raw_tushare_top10_floatholders) 物删; holder 唯一 SERVE entity = 本 entity (aif10 主源 fact_top10_holder_period)。
+    # 写入=holders_aif10.sync_holders_aif10 (source='miaoxiang'); PIT 锚=report_date (报告期, 已统一 YYYYMMDD)。entity key 名 holders_tdx 历史遗留, edge 重建时正名。
     db: smartmoney
     table: fact_top10_holder_period
     layer: L1
@@ -222,7 +212,7 @@ entities:
     asof_col: report_date
     asof_format: yyyymmdd
     columns: [stock_code, report_date, holder_set, holder_rank, holder_name_norm, hold_ratio_float, change_status, hold_change_num, is_exit_row]
-    vendor: tdxhub
+    vendor: aif10
     available_after: ann_date
 
   sw_industry:
