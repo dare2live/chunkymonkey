@@ -45,13 +45,8 @@ DROP TABLE IF EXISTS raw_fetch_batch;
 -- §9 reference 拆库 Stage E (2026-06-27): idx_daas_updated (active 主数据表索引) 已移除
 --   (active 主数据表迁 reference 库后 smartmoney 副本物删, 删此 INDEX DDL 防 init_db 在已物删 smartmoney 上 CREATE INDEX 报错或重建循环)
 -- 通达信(tdx)行业/板块索引已删 2026-06-23 东财全套迁移 Stage四 防 schema-init 重建循环
-CREATE INDEX IF NOT EXISTS idx_inst_type ON inst_institutions(type);
-CREATE INDEX IF NOT EXISTS idx_inst_enabled ON inst_institutions(enabled);
+-- inst_institutions / inst_holdings 索引 DDL 已删 (2026-06-29 批3c 机构旧表退役: 两表 archive 物删, 无重建路径)
 DROP TABLE IF EXISTS inst_name_aliases;
-CREATE INDEX IF NOT EXISTS idx_ih_inst ON inst_holdings(institution_id);
-CREATE INDEX IF NOT EXISTS idx_ih_stock ON inst_holdings(stock_code);
-CREATE INDEX IF NOT EXISTS idx_ih_report ON inst_holdings(report_date);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_ih_unique_holder_stock_report ON inst_holdings(holder_name, stock_code, report_date);
 -- fact_institution_event 索引 DDL 已删 2026-06-28 (Phase 0 机构+事件 serving 退役: 表已物删, 无重建路径)
 CREATE INDEX IF NOT EXISTS idx_setup_snapshot_date ON fact_setup_snapshot(snapshot_date);
 CREATE INDEX IF NOT EXISTS idx_setup_snapshot_tag ON fact_setup_snapshot(setup_tag, snapshot_date);
@@ -111,7 +106,7 @@ def init_db():
         #   mart_current_relationship / mart_institution_industry_stat 的 inline ALTER migration 是
         #   2026-06-28 Phase 0 退役的机构 serving mart (表已物删) 的死代码 — try/except 守卫下 dormant 不炸,
         #   属技术债。Phase 3 机构档案以新 SERVE 架构重建时一并清理/重写, Phase 0 不逐行删 (避免误删
-        #   交织其中的 live 表 fact_top10_holder_period / inst_holdings migration)。
+        #   交织其中的 live 表 fact_top10_holder_period migration; inst_holdings 已 2026-06-29 批3c 退役物删)。
         try:
             conn.execute("ALTER TABLE mart_institution_profile ADD COLUMN win_rate_90d REAL")
         except Exception:  # rule-compliance: ok evidence=db-py-split-schema-defensive
@@ -152,15 +147,7 @@ def init_db():
                 conn.execute(f"ALTER TABLE fact_top10_holder_period ADD COLUMN {col}")
             except Exception:  # rule-compliance: ok evidence=db-py-split-schema-defensive
                 pass
-        for col in [
-            "notice_date_source TEXT",
-            "source_notice_date TEXT",
-            "availability_deadline TEXT",
-        ]:
-            try:
-                conn.execute(f"ALTER TABLE inst_holdings ADD COLUMN {col}")
-            except Exception:  # rule-compliance: ok evidence=db-py-split-schema-defensive
-                pass
+        # inst_holdings ALTER migration 已删 (2026-06-29 批3c: inst_holdings 表 archive 物删, 无重建路径)
         for col in [
             "pricing_policy_id TEXT",
             "pricing_policy_hash TEXT",

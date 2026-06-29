@@ -163,40 +163,10 @@ CORE_SCHEMA_SQL = """
             -- 通达信(tdx)行业 dim_stock_tdx_industry / 板块 dim_tdx_block_catalog / dim_stock_tdx_block DDL
             -- 已删 2026-06-23 东财全套迁移 Stage四 行业概念切东财 dim_stock_dc_industry/dc_concept
 
-            CREATE TABLE IF NOT EXISTS inst_institutions (
-                id           TEXT PRIMARY KEY,
-                name         TEXT NOT NULL,
-                display_name TEXT,
-                type         TEXT DEFAULT 'other',
-                enabled      INTEGER DEFAULT 1,
-                blacklisted  INTEGER DEFAULT 0,
-                aliases      TEXT DEFAULT '[]',
-                manual_type  TEXT,
-                merged_into  TEXT,
-                created_at   TEXT,
-                updated_at   TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS inst_holdings (
-                institution_id  TEXT,
-                holder_name     TEXT,
-                holder_type     TEXT,
-                stock_code      TEXT NOT NULL,
-                stock_name      TEXT,
-                report_date     TEXT NOT NULL,
-                notice_date     TEXT,
-                notice_date_source TEXT,                      -- source_notice | page_update_date | regulatory_deadline | unknown
-                source_notice_date TEXT,                      -- true source disclosure date, NULL when unavailable
-                availability_deadline TEXT,                   -- statutory/plannable fallback date, NULL when not used
-                holder_rank     INTEGER,
-                hold_amount     REAL,
-                hold_market_cap REAL,
-                hold_ratio      REAL,
-                hold_change     TEXT,
-                hold_change_num REAL,
-                created_at      TEXT,
-                UNIQUE(holder_name, stock_code, report_date)
-            );
+            -- inst_institutions / inst_holdings DDL 已删 (2026-06-29 批3c 机构旧表退役):
+            --   inst_institutions(240 机构 registry) 加 inst_holdings(34994 机构持仓明细) = 孤儿表
+            --   writer institution_write 模块已 Phase0 物删, 0 真实读消费方 (security_master 仅注释提及)
+            --   机构持仓明细主源切 aif10 raw_org_holding_aif10 (org_holding_aif10 模块), 两表 archive 物删留底
 
             -- fact_institution_event DDL 已删 (2026-06-28 重建: 策略层退役)
 
