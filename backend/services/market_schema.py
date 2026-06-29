@@ -6,87 +6,13 @@ blocks. Constants are re-exported by ``market_db`` for backward compatibility.
 from __future__ import annotations
 
 
-MARKET_CORE_DDL = """
--- K 线数据主表
-CREATE TABLE IF NOT EXISTS price_kline (
-    code        TEXT    NOT NULL,
-    date        TEXT    NOT NULL,
-    freq        TEXT    NOT NULL DEFAULT 'daily',
-    adjust      TEXT    NOT NULL DEFAULT 'qfq',
-    open        REAL,
-    high        REAL,
-    low         REAL,
-    close       REAL,
-    volume      REAL,
-    amount      REAL,
-    source      TEXT,
-    batch_id    TEXT,
-    ingested_at TEXT,
-    PRIMARY KEY (code, date, freq, adjust)
-);
-CREATE INDEX IF NOT EXISTS idx_pk_code_freq
-    ON price_kline(code, freq);
-CREATE INDEX IF NOT EXISTS idx_pk_date
-    ON price_kline(date);
-
--- 除权除息 / 股本变动事件（TDX xdxr）
-CREATE TABLE IF NOT EXISTS price_xdxr (
-    code            TEXT NOT NULL,
-    date            TEXT NOT NULL,
-    category        INTEGER NOT NULL,
-    name            TEXT,
-    fenhong         REAL,
-    peigujia        REAL,
-    songzhuangu     REAL,
-    peigu           REAL,
-    suogu           REAL,
-    panqianliutong  REAL,
-    panhouliutong   REAL,
-    qianzongguben   REAL,
-    houzongguben    REAL,
-    fenshu          REAL,
-    xingquanjia     REAL,
-    source          TEXT,
-    batch_id        TEXT,
-    ingested_at     TEXT,
-    PRIMARY KEY (code, date, category)
-);
-CREATE INDEX IF NOT EXISTS idx_xdxr_code_date
-    ON price_xdxr(code, date);
-
--- 同步状态表（覆盖状态交给审计层推导，不在此表堆字段）
-CREATE TABLE IF NOT EXISTS market_sync_state (
-    dataset         TEXT NOT NULL DEFAULT 'price_kline',
-    code            TEXT NOT NULL,
-    freq            TEXT NOT NULL DEFAULT 'daily',
-    adjust          TEXT NOT NULL DEFAULT 'qfq',
-    source          TEXT,
-    min_date        TEXT,
-    max_date        TEXT,
-    row_count       INTEGER DEFAULT 0,
-    last_success_at TEXT,
-    last_attempt_at TEXT,
-    last_error      TEXT,
-    PRIMARY KEY (dataset, code, freq, adjust)
-);
-
--- 导入批次记录
-CREATE TABLE IF NOT EXISTS price_import_batch (
-    batch_id        TEXT PRIMARY KEY,
-    source_type     TEXT,
-    source_name     TEXT,
-    freq            TEXT,
-    adjust          TEXT,
-    rows_imported   INTEGER DEFAULT 0,
-    min_date        TEXT,
-    max_date        TEXT,
-    started_at      TEXT,
-    finished_at     TEXT,
-    status          TEXT DEFAULT 'running',
-    error           TEXT,
-    detail          TEXT
-);
-"""
+# 2026-06-29 批3a 数据纯化: MARKET_CORE_DDL (price_kline/price_xdxr/market_sync_state/
+#   price_import_batch) 4 表整体退役物删 (db_lifecycle_delete archive 留底, 可逆)。
+#   - price_kline: akshare HS300 指数残留 (1048行), 非 tushare 源 = §4.3 删除对象;
+#   - price_xdxr: tdxhub 复权事件残留 (173781行), 复权已切 price_kline_qfq_tushare PIT 前复权;
+#   - market_sync_state / price_import_batch: 旧 akshare/tdxhub K线管线同步状态/批次记录,
+#     0 live caller (tushare K线走 build_price_kline_qfq_tushare CREATE TABLE AS 重建, 不经此管线)。
+#   serving K线真相源 = price_kline_qfq_tushare → v_price_kline_qfq (下方 DDL 保留, 不受影响)。
 
 
 # 2026-06-23 M3: price_kline_tdxhub (股票日线表) DDL 已移除 (表物删 5.3M行)。
@@ -156,7 +82,6 @@ SELECT * FROM primary_rows
 
 
 def ensure_market_schema(conn) -> None:
-    """Create or refresh market.duckdb core tables, TDXHub tables, and canonical view."""
-    conn.executescript(MARKET_CORE_DDL)
+    """Create or refresh market.duckdb canonical K-line table and view (tushare-only)."""
     conn.executescript(PRICE_KLINE_QFQ_TUSHARE_DDL)  # 须在视图前 (v_price_kline_qfq FROM 此表)
     conn.executescript(CANONICAL_KLINE_QFQ_VIEW_DDL)
