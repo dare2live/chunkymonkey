@@ -1,8 +1,0 @@
-policy_id: production_a_share_investable_v1
-description: Production recommendation universe filter applied after scoring panel load and before ranking.
-require_stock_name: true
-respect_excluded_stocks_table: true
-exclude_name_regex:
-  - '(^|\\s|\\*)ST'
-  - '退'
-exclude_stock_code_prefixes: []

@@ -97,24 +97,9 @@ if [[ -n "$panel_touched" && -f backend/scripts/audit_panel_leakage.py ]]; then
     fi
 fi
 
-# 3.6 消费方泄漏闸 (改了特征面板消费者/注册表/builder 标签契约时): 遍历 leakage_consumers.yaml
-# 逐消费者跑事前探针 (label 当特征 / 单特征 AUC), 任一 HIGH 即阻断。补 3.5 (panel-build SQL) 的
-# 消费方盲区 (S3 漏排 follow_net_return 同型)。
-consumer_touched=$(git diff --cached --name-only | grep -E "leakage_consumers.yaml|run_daily_v7_inference|run_p0b_lambdamart|build_sniper_score|experiment_zhushenglang_s3|build_feature_panel_duck|leakage_detect|leakage_probe" || true)
-if [[ -n "$consumer_touched" && -f backend/scripts/leakage_probe.py ]]; then
-    echo
-    echo "=== Step 3.6: leakage consumer gate (消费方/注册表/契约 staged) ==="
-    echo "triggered by: $(echo "$consumer_touched" | tr '\n' ' ')"
-    if PYTHONPATH=backend python backend/scripts/leakage_probe.py --gate 2>&1 | tail -20; then
-        echo "[leakage-gate] PASS"
-    else
-        echo
-        echo "ERROR: 消费方泄漏闸 HIGH — 特征面板消费者把标签/前瞻列当特征 (S3 同型)。真金白银红线, 不可自批绕过。"
-        echo "正解: 对齐 builder MODEL_INPUT_EXCLUDED_COLS / 补 panel_labels (不手写漏排); 或修 verifier 精度 (误报=验证器bug)。"
-        echo "真紧急 = git commit --no-verify (核选项, 跳全部 hook + 留疤)。真金白银强制在转正门 + CI, 不在 commit。"
-        exit 4
-    fi
-fi
+# 3.6 消费方泄漏闸 已退役 2026-06-28 (残留清理批1c): leakage_consumers.yaml + leakage_probe.py 已删
+#   (特征面板/策略 serving 层退役, 消费方不存在)。真金白银泄漏强制移到转正门 record_verdict(confirmed_by_owner=1
+#   须带 leakage-clean 证据) + CI server-side, 不在本地 commit gate (mio §7: enforcement 沉到提交者够不到处)。
 
 # 3.7 散落死闸 (G3 门#1, owner=docs/conditional_alpha_program.md §4): staged 的 experiment_*.py
 # 必须走 harness/留档层 (phaseD_signal_eval 或 experiment_store), 禁裸跑无留档 → 进 experiment_store
