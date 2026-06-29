@@ -2,7 +2,7 @@
 fastapi>=0.100.0
 uvicorn[standard]>=0.23.0
 httpx>=0.24.0
-akshare>=1.12.0
+# akshare 已删 2026-06-29 (批2c: §4.3 无热备, 全仓 import akshare 清零; lhb/qfii/institution_survey/kline 兜底退役)
 tushare>=1.4.0
 modal>=1.5.0       # compute backend (experiment_jobs modal:active, services/compute/modal_adapter.py)
 numpy

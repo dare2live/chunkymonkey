@@ -1,9 +1,9 @@
 """qfii_client.py — QFII 季度持股数据同步
 
 北向陆股通个股明细自 2024-08-16 停更后，QFII 季报是仍在披露的外资持仓维度。
-来源：akshare.stock_gdfx_holding_detail_em(date, indicator="QFII", symbol=<新进|增加|减少|不变>)
-  - date: "YYYYMMDD" 季度末
-  - symbol: 持股变动类型，需轮询 4 个值覆盖全部状态
+来源：aif10 妙想 RPT_DMSK_HOLDERS (2026-06-29 批2c: akshare 兜底退役 §4.3 无热备, aif10 唯一源)
+  - report_date: "YYYYMMDD" 季度末
+  - symbol: 持股变动类型 (新进/增加/减少/不变)，轮询 4 个值覆盖全部状态
 
 一个 (报告期, 股票, 股东) 在一个季度里对应且仅对应一条记录，其中 change_type
 列保留 4 种状态之一，天然形成自然主键。
@@ -13,7 +13,7 @@
 
 口径：
   report_date   报告期（YYYY-MM-DD，对齐季度末）
-  notice_date   公告日（AkShare 返回的真实披露日，用于防穿越）
+  notice_date   公告日（披露日, 用于防穿越; 季报法定披露截止锚）
   hold_shares   期末持股数量
   change_type   新进 / 增加 / 减少 / 不变
 """
@@ -27,7 +27,7 @@ from typing import Any, Optional
 
 logger = logging.getLogger("cm-api")
 
-QFII_SOURCE = "akshare_stock_gdfx_holding_detail_em"
+QFII_SOURCE = "aif10_RPT_DMSK_HOLDERS"  # 2026-06-29 批2c: akshare 兜底退役 §4.3 无热备, aif10 唯一源
 QFII_SYMBOLS = ("新进", "增加", "减少", "不变")
 QFII_QUARTER_ENDS = ("03-31", "06-30", "09-30", "12-31")
 QFII_NOTICE_LAG_DAYS = 30  # 报告期末 +30 天后才大概率有足量披露
@@ -179,30 +179,16 @@ def _fetch_qfii_aif10(report_date_yyyymmdd: str, symbol: str):
     )
 
 
-def _fetch_qfii_akshare(report_date_yyyymmdd: str, symbol: str):
-    """Fallback: ak.stock_gdfx_holding_detail_em — 妙想故障时容忍."""
-    import akshare as ak
-    df = ak.stock_gdfx_holding_detail_em(date=report_date_yyyymmdd, indicator="QFII", symbol=symbol)
-    if df is None or df.empty:
-        return []
-    return df.to_dict("records")
+# _fetch_qfii_akshare 已删 2026-06-29 (批2c: akshare 兜底退役 §4.3 无热备, QFII 走 aif10 RPT_DMSK_HOLDERS 唯一)
 
 
 def _fetch_qfii_by_symbol(report_date_yyyymmdd: str, symbol: str):
-    """QFII 季度持股: 主源 妙想 + fallback ak.stock_gdfx_holding_detail_em (P0.3).
+    """QFII 季度持股: aif10 妙想 RPT_DMSK_HOLDERS 唯一源 (2026-06-29 批2c: akshare 兜底退役 §4.3 无热备).
 
     report_date_yyyymmdd: 季度末日期 YYYYMMDD (如 20251231).
     symbol: 持股变动 {"新进", "增加", "不变", "减少"}.
     """
-    from services.data_sources.fallback import with_fallback
-
-    rows, _ = with_fallback(
-        "qfii_holding_quarterly",
-        primary_fn=lambda: _fetch_qfii_aif10(report_date_yyyymmdd, symbol),
-        fallback_fn=lambda: _fetch_qfii_akshare(report_date_yyyymmdd, symbol),
-        primary_label="aif10",
-        fallback_label="akshare",
-    )
+    rows = _fetch_qfii_aif10(report_date_yyyymmdd, symbol)
     if not rows:
         return []
     rename_map = {
