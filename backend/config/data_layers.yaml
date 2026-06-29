@@ -108,7 +108,7 @@ tables:
   dim_all_ever_listed: L1_foundation
   # dim_capital_behavior_latest tag 已删 2026-06-27 (通达信全删 M4: akshare 资本运作物删)
   dim_fee_schedule: L1_foundation
-  dim_holder_alias: L1_foundation
+  # dim_holder_alias 已退役物删 2026-06-29 (批3e: TDX holder 别名孤儿维表 0消费方)
   dim_liquidity_threshold: L1_foundation
   dim_listing_status: L1_foundation
   dim_market_segment: L1_foundation
@@ -137,7 +137,7 @@ tables:
   app_settings: infra
   # capital_detail_sync_state tag 已删 2026-06-27 (通达信全删 M4: akshare 资本运作物删)
   # dim_data_asset tag 已删 2026-06-28 (F4 退役: 烂登记表物删, 职责归并 data_layers/lineage/deprecation_record)
-  dim_data_source_priority: infra
+  # dim_data_source_priority 已退役物删 2026-06-29 (批3e: 多源优先级孤儿表, §4.3 单源体制概念废)
   dim_price_limit_rules: infra
   dim_schema_version: infra
   excluded_stocks: infra
@@ -157,7 +157,7 @@ tables:
   step_status: infra
   sys_schema_version: infra
   dim_strategy_preset: infra
-  financial_sync_state: infra
+  # financial_sync_state 已退役物删 2026-06-29 (批3e: financial_client 退役遗留空表 0行)
   mart_etf_snapshot_latest: L2_feature
   mart_etf_snapshot_state: L2_feature
 _notes:

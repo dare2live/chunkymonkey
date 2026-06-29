@@ -142,28 +142,14 @@ CORE_SCHEMA_SQL = """
             -- fact_holder_event DDL 已删 2026-06-28 (Phase 0 机构+事件 serving 退役: 表已物删,
             --   rebuild_holder_events 派生脚本不存在/run_portfolio_mvp simulator 消费者已退役,
             --   Phase 3 机构档案以 as-of 跟随口径 披露日 T+1 进出 重建进出事件。注: SQL 注释禁用分号)
-            CREATE TABLE IF NOT EXISTS dim_holder_alias (
-                alias            TEXT NOT NULL,              -- TDX 简称 / 别名
-                canonical_name   TEXT NOT NULL,              -- 工商全称
-                category         TEXT,                       -- '国家队/央企/外资/...' (可选)
-                note             TEXT,
-                created_at       TEXT,
-                PRIMARY KEY (alias)
-            );
+            -- dim_holder_alias DDL 已删 2026-06-29 (批3e: TDX holder 别名孤儿维表 30行 0消费方物删, TDX 退役)
 
             -- dim_data_asset DDL 已删 2026-06-28 (F4 退役: 烂登记表[67stale/68漏/0强制]职责归并 —
             --   layer/asset_class→data_layers.yaml, freshness→layer_health_defaults+sync_registry+
             --   table_health_overrides, producer/consumer→lineage, 退役态→mart_data_deprecation_record)
             -- raw_tdx_gpcw_wide / dim_tdx_gpcw_field DDL 已删 (2026-06-27 通达信全删 gpcw物删)
 
-            CREATE TABLE IF NOT EXISTS dim_data_source_priority (
-                data_domain TEXT PRIMARY KEY,
-                preferred_source TEXT NOT NULL,
-                fallback_1 TEXT,
-                fallback_2 TEXT,
-                reason TEXT,
-                updated_at TEXT
-            );
+            -- dim_data_source_priority DDL 已删 2026-06-29 (批3e: 多源优先级孤儿表, §4.3 单源体制概念已废, 10行 0消费方物删)
 
             -- dim_tdx_gpcw_field_semantic / fact_tdx_gpcw_auto_feature_quarterly DDL 已删 (2026-06-27 通达信全删 gpcw物删, auto_features 流水线 dead)
 

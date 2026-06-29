@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-29 13:47
+> Snapshot: 2026-06-29 14:02
 
 ## 1. 入口面
 
@@ -87,7 +87,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 46 张 | 单 writer 34 | 多 writer 12 | 动态表名写点 16 处 (9 文件)
+统计: 表 44 张 | 单 writer 32 | 多 writer 12 | 动态表名写点 16 处 (9 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -127,8 +127,6 @@
 | 表 | writer |
 |---|---|
 | dim_active_a_stock | backend/services/security_master.py |
-| dim_data_source_priority | backend/services/schema_core.py |
-| dim_holder_alias | backend/services/schema_core.py |
 | dim_listing_status | backend/scripts/build_dim_listing_status.py |
 | dim_schema_version | backend/services/schema_versions.py |
 | dim_strategy_preset | backend/routers/strategy_preset.py |
@@ -221,5 +219,5 @@
 
 - chunkyctl 子命令 10 | launchd 任务 1 | router 3 (端点 8)
 - sync_registry 数据域 43
-- 产表 46 (多 writer 12)
+- 产表 44 (多 writer 12)
 
