@@ -361,20 +361,7 @@ CORE_SCHEMA_SQL = """
                 created_at       TEXT
             );
 
-            CREATE TABLE IF NOT EXISTS market_gap_queue (
-                dataset         TEXT NOT NULL,
-                stock_code      TEXT NOT NULL,
-                stock_name      TEXT,
-                status          TEXT DEFAULT 'pending',
-                reason          TEXT,
-                last_error      TEXT,
-                source_attempts INTEGER DEFAULT 0,
-                first_seen_at   TEXT,
-                last_attempt_at TEXT,
-                resolved_at     TEXT,
-                updated_at      TEXT,
-                PRIMARY KEY (dataset, stock_code)
-            );
+            -- market_gap_queue DDL 已删 2026-06-28 (残留清理批1: gap_queue.py 退役, 表两库全物删, 0 消费方)
 """
 
 __all__ = ["ensure_core_schema"]

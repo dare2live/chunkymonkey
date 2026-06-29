@@ -4,9 +4,6 @@ import time
 from datetime import datetime
 from typing import Optional
 
-from pydantic import TypeAdapter, ValidationError
-
-from services.api_schemas import KLineDailyRow
 from services.data_processing_monitor import ProcessingToolStats
 
 logger = logging.getLogger("cm-api")
@@ -347,97 +344,3 @@ def aggregate_monthly_from_daily(rows) -> list[dict]:
     return monthly
 
 
-async def fetch_daily_akshare_fallbacks(code: str, start_date: str, end_date: str, *, safe_call):
-    import akshare as ak
-
-    attempts = [
-        (
-            "eastmoney",
-            ak.stock_zh_a_hist,
-            {
-                "symbol": code,
-                "period": "daily",
-                "start_date": start_date,
-                "end_date": end_date,
-                "adjust": "qfq",
-            },
-        ),
-        (
-            "sina",
-            ak.stock_zh_a_daily,
-            {
-                "symbol": market_symbol(code),
-                "start_date": start_date,
-                "end_date": end_date,
-                "adjust": "qfq",
-            },
-        ),
-        (
-            "tx",
-            ak.stock_zh_a_hist_tx,
-            {
-                "symbol": market_symbol(code),
-                "start_date": start_date,
-                "end_date": end_date,
-                "adjust": "qfq",
-            },
-        ),
-    ]
-
-    diagnostics = {
-        "ok": False,
-        "attempts": [],
-        "all_empty": False,
-        "last_error": None,
-    }
-    empty_sources = []
-    last_err = None
-
-    for source, func, kwargs in attempts:
-        attempt = {"source": source, "ok": False}
-        started_at = time.time()
-        try:
-            payload = await safe_call(func, timeout=30, retries=1, **kwargs)
-            rows = normalize_price_rows(payload, source)
-            if rows:
-                try:
-                    TypeAdapter(list[KLineDailyRow]).validate_python(rows)
-                    attempt["ok"] = True
-                    attempt["rows"] = len(rows)
-                    attempt["elapsed_sec"] = round(time.time() - started_at, 3)
-                    diagnostics["attempts"].append(attempt)
-                    diagnostics["ok"] = True
-                    diagnostics["effective_source"] = source
-                    return rows, source, diagnostics
-                except ValidationError as err:
-                    logger.error(f"[日K fallback] {source} 防腐层截断 - Schema校验失败: {err}")
-                    last_err = ValueError(f"{source}: schema validation failed")
-                    empty_sources.append(source)
-                    attempt["error_type"] = "ValidationError"
-                    attempt["error"] = str(err)
-            else:
-                empty_sources.append(source)
-                last_err = ValueError(f"{source}: empty")
-                attempt["error_type"] = "empty"
-                attempt["error"] = "empty"
-        except Exception as err:
-            if looks_like_empty_payload_error(err):
-                empty_sources.append(source)
-                last_err = ValueError(f"{source}: empty")
-                attempt["error_type"] = "empty"
-                attempt["error"] = "empty"
-            else:
-                last_err = err
-                attempt["error_type"] = type(err).__name__
-                attempt["error"] = str(err)
-            logger.debug(f"[日K fallback] {code} {source} 失败: {err}")
-
-        attempt["elapsed_sec"] = round(time.time() - started_at, 3)
-        diagnostics["attempts"].append(attempt)
-
-    diagnostics["all_empty"] = bool(empty_sources and len(empty_sources) == len(attempts))
-    if diagnostics["all_empty"]:
-        diagnostics["last_error"] = "all_sources_empty(eastmoney/sina/tx)"
-    elif last_err:
-        diagnostics["last_error"] = str(last_err)
-    return None, "", diagnostics

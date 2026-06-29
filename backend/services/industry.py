@@ -128,8 +128,7 @@ def industry_complete_condition(*, alias: str = "industry_dim") -> str:
 
     原因：TDX 的 tdxhy.cfg 对 2660+ 股票只提供二级分类（如 银行 T1001、软件服务 T1205
     这类本身就属于末级行业，没有更细的子分类）。若硬性要求 L3 非空，会产生约
-    2239 条永久性"假缺口"，触发 market_gap_queue 将它们标为 blocked，并让
-    build_industry_stat 永久提示"26 家机构行业层级未补齐"。L1+L2 已具有足够
+    2239 条永久性"假缺口" (旧 TDX 口径; market_gap_queue 标记机制已退役 2026-06)。L1+L2 已具有足够
     粒度（~400 个二级行业），能满足机构行业统计所需的聚合口径。L3 保留在 dim
     表中供需要更细分类的场景按需使用。"""
     return " AND ".join(

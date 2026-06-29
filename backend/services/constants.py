@@ -79,18 +79,8 @@ ETF_BROAD_KW: list[str] = [
     "创业板", "深证100", "中证800", "中证2000", "A50", "msci", "MSCI",
 ]
 
-# ──────────────────────────────────────────────
-# 事件类型映射 — 东财 hold_change 字段 → 标准事件类型
-# event_engine + holdings 共用，禁止在其他模块重复定义
-# ──────────────────────────────────────────────
-CHANGE_MAP: dict[str, str] = {
-    "新进": "new_entry",
-    "加仓": "increase",
-    "增加": "increase",
-    "减仓": "decrease",
-    "减少": "decrease",
-    "不变": "unchanged",
-}
+# CHANGE_MAP (东财 hold_change→事件类型映射) 已删 2026-06-28 (残留清理批1: event_engine+holdings serving 退役,
+#   0 外部消费方; holders_aif10 用自己的 _parse_change)。
 
 # ──────────────────────────────────────────────
 # 评分体系常量 — scoring.py 共用，禁止在其他模块硬编码同类值

@@ -56,8 +56,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_ih_unique_holder_stock_report ON inst_hold
 CREATE INDEX IF NOT EXISTS idx_setup_snapshot_date ON fact_setup_snapshot(snapshot_date);
 CREATE INDEX IF NOT EXISTS idx_setup_snapshot_tag ON fact_setup_snapshot(setup_tag, snapshot_date);
 CREATE INDEX IF NOT EXISTS idx_setup_snapshot_stock ON fact_setup_snapshot(stock_code);
-CREATE INDEX IF NOT EXISTS idx_gap_queue_dataset_status ON market_gap_queue(dataset, status);
-CREATE INDEX IF NOT EXISTS idx_gap_queue_status_updated ON market_gap_queue(status, updated_at DESC);"""
+-- market_gap_queue 索引 DDL 已删 2026-06-28 (残留清理批1: gap_queue 退役, 表物删)"""
 
 __all__ = ["init_db", "get_enabled_modules"]
 
@@ -170,20 +169,7 @@ def init_db():
                 conn.execute(f"ALTER TABLE mart_institution_profile ADD COLUMN {col}")
             except Exception:  # rule-compliance: ok evidence=db-py-split-schema-defensive
                 pass
-        for col in [
-            "stock_name TEXT",
-            "reason TEXT",
-            "last_error TEXT",
-            "source_attempts INTEGER DEFAULT 0",
-            "first_seen_at TEXT",
-            "last_attempt_at TEXT",
-            "resolved_at TEXT",
-            "updated_at TEXT",
-        ]:
-            try:
-                conn.execute(f"ALTER TABLE market_gap_queue ADD COLUMN {col}")
-            except Exception:  # rule-compliance: ok evidence=db-py-split-schema-defensive
-                pass
+        # market_gap_queue ALTER 已删 2026-06-28 (残留清理批1: gap_queue 退役, 表物删)
         for col in ["action_score REAL", "leader_inst TEXT",
                      "leader_score REAL", "consensus_count INTEGER", "path_state TEXT",
                      "setup_tag TEXT", "setup_priority INTEGER", "setup_reason TEXT",
