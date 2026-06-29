@@ -1,0 +1,6 @@
+# 批3c2 物删 tdx F10 机构持仓明细 (用户 2026-06-29 拍板一并退役; aif10 raw_org_holding_aif10 取代)
+run_id: purge_batch3c2_fact_common_holder_20260629
+db: smartmoney
+archive_dir: data/archive/purge_batch3
+entries:
+  - {table: fact_common_major_holder_stock, action: archive, bucket: legacy_source, reason: "批3c2: tdx F10 机构持仓明细 76300行 source=tdx_f10, 已被 aif10 raw_org_holding_aif10(336077更全)取代(org_holding_aif10.py docstring标'退役冻结'), 0 SERVE entity+0读消费方, DDL/data_layers已清, 用户拍板退役"}

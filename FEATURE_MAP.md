@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-29 14:45
+> Snapshot: 2026-06-29 14:51
 
 ## 1. 入口面
 
@@ -86,7 +86,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 44 张 | 单 writer 32 | 多 writer 12 | 动态表名写点 16 处 (9 文件)
+统计: 表 43 张 | 单 writer 31 | 多 writer 12 | 动态表名写点 16 处 (9 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -130,7 +130,6 @@
 | dim_schema_version | backend/services/schema_versions.py |
 | dim_strategy_preset | backend/routers/strategy_preset.py |
 | dim_trading_calendar | backend/scripts/migrate_reference_db.py |
-| fact_common_major_holder_stock | backend/services/schema_core.py |
 | fact_consumer_alpha_ic_scan | backend/scripts/build_experiment_store.py |
 | fact_controlling_shareholder | backend/services/schema_core.py |
 | fact_daily_price_status | backend/services/primitives/ddl.py |
@@ -208,8 +207,8 @@
 | backend/services/data_sources/sync_runner.py | 985 |
 | backend/scripts/data_health_snapshot.py | 730 |
 | backend/services/data_audit.py | 613 |
-| backend/services/schema_migrations.py | 567 |
 | backend/services/source_watermarks.py | 563 |
+| backend/services/schema_migrations.py | 562 |
 | backend/scripts/build_feature_map.py | 420 |
 | backend/services/qfii_client.py | 406 |
 | backend/scripts/check_rule_compliance.py | 403 |
@@ -218,5 +217,5 @@
 
 - chunkyctl 子命令 10 | launchd 任务 1 | router 3 (端点 8)
 - sync_registry 数据域 42
-- 产表 44 (多 writer 12)
+- 产表 43 (多 writer 12)
 

@@ -111,33 +111,9 @@ CORE_SCHEMA_SQL = """
             );
 
 
-            CREATE TABLE IF NOT EXISTS fact_common_major_holder_stock (
-                stock_code       TEXT NOT NULL,
-                stock_name       TEXT,
-                market           TEXT,
-                report_date      TEXT,
-                report_date_text TEXT,
-                major_holder_name TEXT NOT NULL,
-                peer_stock_code  TEXT NOT NULL,
-                peer_stock_name  TEXT,
-                shares_text      TEXT,
-                shares           BIGINT,
-                hold_ratio_text  TEXT,
-                hold_ratio       DOUBLE,
-                change_text      TEXT,
-                change_shares    BIGINT,
-                net_profit_parent_text TEXT,
-                net_profit_parent DOUBLE,
-                net_profit_deducted_text TEXT,
-                net_profit_deducted DOUBLE,
-                page_update_date TEXT,
-                source           TEXT NOT NULL,
-                source_tier      SMALLINT NOT NULL DEFAULT 1,
-                raw_hash         TEXT,
-                fetched_at       TEXT,
-                row_seq          INTEGER NOT NULL DEFAULT 1,
-                PRIMARY KEY (stock_code, major_holder_name, peer_stock_code, row_seq)
-            );
+            -- fact_common_major_holder_stock DDL 已删 (2026-06-29 批3c: tdx F10 机构持仓明细旧表退役物删
+            --   76300行 source=tdx_f10, 已被 aif10 raw_org_holding_aif10(336077行 更全)取代, 0 SERVE/读消费方
+            --   用户 2026-06-29 拍板一并退役, archive parquet 留底)
 
             -- fact_holder_event DDL 已删 2026-06-28 (Phase 0 机构+事件 serving 退役: 表已物删,
             --   rebuild_holder_events 派生脚本不存在/run_portfolio_mvp simulator 消费者已退役,

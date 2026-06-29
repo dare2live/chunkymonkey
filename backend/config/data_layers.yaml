@@ -89,7 +89,7 @@ table_health_overrides:
   raw_org_holding_aif10:      {expected_freshness: quarterly, sla_hours: 2280}  # F10 机构持仓明细=季报驱动
   # holder/inst 季频 fact (L1_foundation 默认 on-demand, 这里给 quarterly 保留季频监控不误日红)
   fact_top10_holder_period:        {expected_freshness: quarterly, sla_hours: 2280}
-  fact_common_major_holder_stock:  {expected_freshness: quarterly, sla_hours: 2280}
+  # fact_common_major_holder_stock 已退役物删 2026-06-29 (批3c: tdx F10 机构持仓明细, aif10 raw_org_holding_aif10 取代)
   # inst_holdings / inst_institutions 已退役物删 2026-06-29 (批3c: 机构旧表孤儿, writer Phase0 删, 0读消费方)
 tables:
   # raw_aif10_forecast_consensus 已删 2026-06-28 (G5 退役)
@@ -118,7 +118,7 @@ tables:
   dim_trading_calendar: L1_foundation
   dim_trading_rule: L1_foundation
   dim_trading_session: L1_foundation
-  fact_common_major_holder_stock: L1_foundation
+  # fact_common_major_holder_stock tag 已删 2026-06-29 (批3c 退役物删)
   # fact_dzjy_event/fact_executive_trade_event tag 已删 2026-06-27 (通达信全删 M4: akshare event 表物删, 用户决cut)
   # fact_fundamental_quarterly tag 已删 2026-06-27 (通达信全删: gpcw派生表 builder build_fundamental_quarterly 退役物删, 源raw_gpcw_*已删不可重建, 0 live reader)
   fact_top10_holder_period: L1_foundation

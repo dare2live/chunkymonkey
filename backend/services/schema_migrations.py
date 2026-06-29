@@ -22,12 +22,7 @@ CREATE INDEX IF NOT EXISTS idx_plan_stock_announce ON fact_shareholder_plan(stoc
 CREATE INDEX IF NOT EXISTS idx_plan_raw_hash ON fact_shareholder_plan(stock_code, raw_hash);
 CREATE INDEX IF NOT EXISTS idx_trade_stock_date ON fact_shareholder_trade(stock_code, change_date DESC);
 CREATE INDEX IF NOT EXISTS idx_trade_raw_hash ON fact_shareholder_trade(stock_code, raw_hash);
-CREATE INDEX IF NOT EXISTS idx_common_holder_name ON fact_common_major_holder_stock(major_holder_name);
-ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS report_date_text TEXT;
-ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS hold_ratio_text TEXT;
-ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS change_shares BIGINT;
-ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS net_profit_parent_text TEXT;
-ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS net_profit_deducted_text TEXT;
+-- fact_common_major_holder_stock 索引/ALTER DDL 已删 (2026-06-29 批3c: tdx F10 机构持仓明细表退役物删, aif10 raw_org_holding_aif10 取代)
 ALTER TABLE fact_controlling_shareholder ADD COLUMN control_chain_text TEXT;
 -- fact_holder_event 索引 DDL 已删 2026-06-28 (Phase 0 机构+事件 serving 退役: 表已物删, 建表 DDL 已删,
 --   否则 executescript 在不存在的表上 CREATE INDEX 会整体失败连累 live 表索引)
