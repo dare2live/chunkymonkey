@@ -22,7 +22,5 @@ pipeline_duration_budgets_s:
   build_industry_pit: 120
   validate_synergy_policy_mark_to_market: 300
   build_temporal_synergy_research: 1800
-  build_feature_panel_duck: 600
-  build_candidate_feature_panel: 600
-  build_stock_horizon_profile: 120
-  train_multidim_model: 900
+  # build_feature_panel_duck/build_candidate_feature_panel/build_stock_horizon_profile/train_multidim_model
+  #   timeout 条目已删 2026-06-28 (残留清理批1d: 脚本+ClientSpec 全物删, 特征/模型层退役)

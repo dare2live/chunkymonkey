@@ -47,7 +47,7 @@ member_service_files:
   - audit.py                 # 审计
   - data_health_snapshot.py
   - data_layer_audit.py
-  - leakage_probe.py
+  # leakage_probe.py 已删 2026-06-28 (残留清理批1c: 特征面板 serving 退役)
   - update_watermark_sla.py  # 水位 SLA (infra)
   - data_loaders.py          # 取数底座 (已迁 SERVE; 本身是数据模块成员)
   # 采集层 source clients — sync 路读自身 raw watermark/count = acquire 行为, 非消费者绕过
@@ -61,5 +61,5 @@ source_retiring_temp_members:
   # tdx_affair_client.py 已退役物删 2026-06-27 (通达信全删 gpcw)
   # tdx_f10_extra_client.py 已退役物删 2026-06-24 (通达信全删 tdx F10)
   - institution_survey_client.py
-  - financial_client.py        # 财务写侧/manager (含 DELETE; gpcw sync已退役, 现 calc 读 tushare)
+  # financial_client.py 已退役物删 2026-06-28 (services.financial_client + dim_financial_latest/fact_financial_derived 物删; 财务走 tushare sync:fina_indicator/balancesheet/income 域)
   # capital_client.py 已退役 2026-06-27 (通达信全删 M4: akshare 资本运作物删, 用户决cut)
