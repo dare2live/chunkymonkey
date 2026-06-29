@@ -134,15 +134,9 @@ app.include_router(strategy_preset_router, prefix="/api/inst/strategy", tags=["s
 from routers.v3_config import router as v3_config_router
 app.include_router(v3_config_router, prefix="/api/v3", tags=["v3_config"])
 
-# 市场感知 (Market Perception): standalone project at /stock/perception (guarded fallback)
-PERCEPTION_SRC = Path(__file__).resolve().parents[2] / "perception" / "src"
-if PERCEPTION_SRC.exists() and str(PERCEPTION_SRC) not in sys.path:
-    sys.path.insert(0, str(PERCEPTION_SRC))
-try:
-    from perception.router import router as v3_market_perception_router
-    app.include_router(v3_market_perception_router, prefix="/api/v3/market_perception", tags=["v3_market_perception"])
-except Exception as exc:
-    logger.warning("standalone perception router unavailable: %s", exc)
+# market_perception router 已退役 2026-06-28 (残留清理批1e: 外部 ../perception/ DATA-DEAD —
+#   查的 mart_market_perception_* 表三库全 wipe → 退化 {mart_table_exists:False}, 0 前端消费
+#   /api/v3/market_perception(index.html+assets 零命中); 姊妹 repo /stock/perception 不动, 仅删本项目注册引用)
 
 # BestChoice tab 退役 2026-06-22 (P2 清库): v3_bestchoice 路由查的 mart_*_bestchoice_v1 /
 # paper_sim 表 reset 已删 = 服务死表的死代码; 物删 router+service+config (bc_absorbed 另案保留)
