@@ -25,8 +25,7 @@ def run_acquire(ctx: PipelineContext) -> None:
     #   下方 drain 覆盖)。2026-06-28 删旧 akshare→price_kline 备援步 (akshare 源退役)。
     # xdxr 除权 sync 已移除 (2026-06-28 重建: tdx 热备退役, 复权走 tushare adj_factor)
 
-    # Step 2d: LHB event sync
-    ctx.step(_sync_lhb, degraded_msg="LHB event sync 失败")
+    # Step 2d LHB sync 已退役 2026-06-29 (批2b: LHB 切 tushare top_list/top_inst, 由 sync_runner 域 drain; lhb_client+raw_lhb_daily 退役物删)
 
     # Step 2i institution_survey aif10+akshare sync 已退役 2026-06-28 (批2 数据源切 tushare 唯一:
     #   调研走 tushare stk_surv→raw_tushare_stk_surv 由 sync_runner 域 drain, institution_survey_client 退役)
@@ -56,16 +55,7 @@ def run_acquire(ctx: PipelineContext) -> None:
 # ── 步骤实现 (in-process, 直调 service) ──────────────────────────
 
 
-def _sync_lhb() -> None:
-    import asyncio, duckdb, json
-    from services.lhb_client import sync_lhb_incremental  # 2026-06-24 解耦: 直调 service, 不再依赖 routers.updater
-    from .context import db_path
-    # rule-compliance: ok evidence=数据模块管线 member; sync_lhb_incremental 需 raw duckdb conn (非 dict-row adapter), 路径走 manifest
-    conn = duckdb.connect(db_path("smartmoney"))
-    try:
-        print(json.dumps(asyncio.run(sync_lhb_incremental(conn)), ensure_ascii=False, default=str))
-    finally:
-        conn.close()
+# _sync_lhb 已删 2026-06-29 (批2b: lhb_client 退役, LHB 切 tushare top_list/top_inst)
 
 
 # _sync_institution_survey 已删 2026-06-28 (批2: institution_survey_client[aif10+akshare] 退役, 切 tushare stk_surv)

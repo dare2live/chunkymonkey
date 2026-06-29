@@ -52,7 +52,7 @@ member_service_files:
   - data_loaders.py          # 取数底座 (已迁 SERVE; 本身是数据模块成员)
   # 采集层 source clients — sync 路读自身 raw watermark/count = acquire 行为, 非消费者绕过
   # (vendor 迁移[akshare→tushare/aif10]属 task#56 正交, 不改"它们是采集成员"的事实)
-  - lhb_client.py            # 龙虎榜采集 (sync_lhb_incremental 读 raw_lhb_daily MAX(trade_date) 水位)
+  # lhb_client.py 已退役物删 2026-06-29 (批2b: LHB 切 tushare top_list/top_inst, raw_lhb_daily 物删)
   - org_holding_aif10.py     # 机构持仓采集 (aif10 sanctioned 源 §4.3; 读 raw_org_holding_aif10 期次存在)
   - qfii_client.py           # QFII 采集 (aif10 sanctioned 源 §4.3; 读 raw_qfii_holding_quarterly 期次存在)
 

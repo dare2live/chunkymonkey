@@ -71,21 +71,23 @@ def test_refresh_known_source_watermarks_creates_domain_rows():
 def test_tier_two_rows_do_not_imply_fallback_active_without_fallback_mode():
     conn = duck_mem()
     try:
+        # 中性 tier-2 探针表 (原用 raw_lhb_daily/lhb_daily; 2026-06-29 批2b LHB 切 tushare 退役后改通用名;
+        #   本测试验 source_watermarks 通用 tier-2 逻辑[tier-2 行≠fallback active], 不绑具体域)
         conn.executescript(
             """
-            CREATE TABLE raw_lhb_daily (
+            CREATE TABLE raw_probe_tier2 (
                 trade_date TEXT
             );
-            INSERT INTO raw_lhb_daily VALUES ('2026-05-05');
+            INSERT INTO raw_probe_tier2 VALUES ('2026-05-05');
             """
         )
         item = derive_watermark(conn, {
-            "data_domain": "lhb_daily",
-            "source_name": "aif10_lhb",
+            "data_domain": "probe_tier2",
+            "source_name": "probe_tier2_src",
             "source_tier": 2,
-            "table": "raw_lhb_daily",
+            "table": "raw_probe_tier2",
             "date_col": "trade_date",
-            "parser_version": "aif10",
+            "parser_version": "probe",
         })
 
         assert item["row_count"] == 1

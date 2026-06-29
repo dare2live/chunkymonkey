@@ -99,8 +99,8 @@ tables:
   raw_org_holding_aif10: L0_source  # 2026-06-24 补tag (aif10机构持仓明细raw镜像, 前会话漏登致data-layer-integrity FAIL)
   # raw_capital_* (allotment/dividend_detail/repurchase/unlock/dividend_summary) tag 已删 2026-06-27 (通达信全删 M4: akshare 资本运作物删, 用户决cut)
   # raw_gpcw_detail/raw_gpcw_financial/raw_tdx_gpcw_wide tag 已删 2026-06-27 (通达信全删 gpcw物删)
-  raw_institution_surveys: L0_source
-  raw_lhb_daily: L0_source
+  # raw_institution_surveys 已退役物删 2026-06-29 (批2a: institution_survey 切 tushare stk_surv)
+  # raw_lhb_daily 已退役物删 2026-06-29 (批2b: LHB 切 tushare top_list/top_inst)
   # raw_profit_forecast_snapshot_daily tag 已删 2026-06-27 (通达信全删 M4: akshare 盈利预测快照物删, 0 live读者)
   raw_qfii_holding_quarterly: L0_source
   # raw_tdx_industry_file_snapshot tag 已删 2026-06-23 (东财迁移Stage④ 物删)

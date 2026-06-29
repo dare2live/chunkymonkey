@@ -28,7 +28,7 @@ CAPABILITY_TO_REPORT = {
     "fund_org_holding":         "RPT_MAIN_ORGHOLDDETAIL",       # 基金/机构持仓明细
     "northbound_holding":       "RPT_MUTUAL_STOCK_HOLDRANKN_NEW",  # 沪深港通持股
     # ===== 妙想/aif10 当前接入能力 =====
-    "lhb_daily":                "RPT_DAILYBILLBOARD_DETAILSNEW", # 龙虎榜
+    # lhb_daily capability 已退役 2026-06-29 (批2b: LHB 切 tushare top_list/top_inst)
     "lhb_operatedept":          "RPT_OPERATEDEPT_TRADE",        # 龙虎榜营业部
     "block_trade":              "RPT_DATA_BLOCKTRADE",          # 大宗交易
     "margin_stocks":            "RPT_MARGIN_STATISTICS_STOCKS", # 融资融券 (P6: 替代 margin_client)
@@ -84,7 +84,7 @@ class Aif10Source(BaseDataSource):
         "northbound_holding": "daily",
         "qfii_holding_quarterly": "quarterly",
         "institution_survey": "daily",
-        "lhb_daily": "daily",
+        # lhb_daily 已退役 2026-06-29 (批2b: LHB 切 tushare)
         "lhb_operatedept": "daily",
         "block_trade": "daily",
         "margin_stocks": "daily",
@@ -122,13 +122,7 @@ class Aif10Source(BaseDataSource):
 
         from aif10_scraper import fetch_report
 
-        if capability == "lhb_daily":
-            start = kwargs.get("start_date") or kwargs.get("start")
-            end = kwargs.get("end_date") or kwargs.get("end")
-            if start and end:
-                from services.lhb_client import _fetch_lhb_aif10
-
-                return _fetch_lhb_aif10(str(start), str(end))
+        # lhb_daily capability 已退役 2026-06-29 (批2b: LHB 切 tushare top_list/top_inst, lhb_client 退役物删)
 
         secucode = kwargs.get("secucode") or kwargs.get("code")
         page_size = kwargs.get("page_size", 500)

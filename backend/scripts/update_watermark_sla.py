@@ -65,11 +65,8 @@ DATA_SOURCE_QUERIES = {
     # xdxr SLA 条目已删 (2026-06-27 通达信全删 单元6: price_kline_tdxhub_adjustment_event 物删; 复权走 tushare adj_factor)
     # financial_gpcw_8q SLA 条目已删 2026-06-28 (fact_financial_derived U4 退役; 财务新鲜度走 tushare
     #   sync:balancesheet/income/fina_indicator 等 by_report_period 域, _sync_registry_queries 自动覆盖)
-    "lhb_daily": {
-        "db": "smartmoney",
-        # 2026-06-28: fact_lhb_event U5 退役 → repoint raw_lhb_daily (aif10 龙虎榜 raw, trade_date)
-        "query": "SELECT MAX(CAST(trade_date AS VARCHAR)) FROM raw_lhb_daily",
-    },
+    # lhb_daily 手动 SLA 域已删 2026-06-29 (批2b 切 tushare): top_list/top_inst 在 sync_registry 注册,
+    #   新鲜度由 sync:top_list/sync:top_inst 自动域 (_sync_registry_queries) 覆盖, 不手维护。
     # institution_survey 手动 SLA 域已删 2026-06-28 (批2 切 tushare): stk_surv 在 sync_registry 注册,
     #   新鲜度由 sync:stk_surv 自动域 (_sync_registry_queries, db=tushare_raw 查 raw_tushare_stk_surv) 覆盖, 不手维护。
     "holders_top10_float": {

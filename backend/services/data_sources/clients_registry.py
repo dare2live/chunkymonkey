@@ -71,18 +71,8 @@ CLIENTS: list[ClientSpec] = [
     #   price_xdxr 表批3 物删)。check_dead_references D 扫坐实死登记。
 
     # ── tier 2: aif10 妙想 (主源) ─────────────────
-    ClientSpec(
-        client_id="lhb_client",
-        module="services.lhb_client",
-        description="龙虎榜 (aif10 RPT_DAILYBILLBOARD_DETAILSNEW, akshare 兜底)",
-        upstream_source="aif10:RPT_DAILYBILLBOARD_DETAILSNEW",
-        source_tier=2,
-        fallback_chain=["aif10", "akshare"],
-        writes=[
-            TableWriteSpec("raw_lhb_daily", "龙虎榜原始", "t+1", 48),
-        ],
-        sync_step_id="sync_lhb",
-    ),
+    # lhb_client ClientSpec 已删 2026-06-29 (批2b 数据源切 tushare): LHB 走 tushare top_list/top_inst
+    #   (raw_tushare_top_list 142k / top_inst 178万 已拉全, SERVE entity top_list/top_inst 在); raw_lhb_daily(aif10+akshare) 退役物删。
     ClientSpec(
         client_id="qfii_client",
         module="services.qfii_client",

@@ -87,14 +87,7 @@ DOMAIN_SPECS = [
         "parser_version": "dc",
     },
     # stock_blocks 域已删 (2026-06-23): 原指通达信 dim_stock_tdx_industry, 源物删; 行业新鲜度由上方 industry_dc 域 (东财 dim_stock_dc_industry) 跟踪。
-    {
-        "data_domain": "lhb_daily",
-        "source_name": "aif10_lhb",
-        "source_tier": 2,
-        "table": "raw_lhb_daily",
-        "date_col": "trade_date",
-        "parser_version": "aif10_or_akshare",
-    },
+    # lhb_daily 域已删 2026-06-29 (批2b: LHB 切 tushare top_list/top_inst, 新鲜度由 sync:top_list/sync:top_inst 自动域覆盖)
     {
         "data_domain": "institution_survey",
         "source_name": "tushare",
