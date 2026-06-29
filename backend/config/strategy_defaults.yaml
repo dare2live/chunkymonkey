@@ -1,6 +1,0 @@
-# 策略默认参数 (共享默认口径)
-# 这份配置只定义全局保守默认值, 结果型 per-stock optimal_* 仍在 mart 表里表化。
-stop_pct: -0.06
-target_pct: 0.10
-trailing_pct: 0.025
-label: default_conservative

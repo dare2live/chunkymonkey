@@ -1,5 +1,0 @@
-# Stock-formula optuna thresholds.
-# Bucket floor and high-conviction gates belong to config, not script literals.
-min_n_per_bucket: 3
-min_win_high_conviction: 0.60
-min_n_high_conviction: 5

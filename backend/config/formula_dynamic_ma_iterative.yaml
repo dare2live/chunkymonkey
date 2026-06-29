@@ -1,5 +1,0 @@
-# 动态均线迭代金叉公式参数
-# 2026-06-02: 从 2 轮收至 0 轮，以进一步提升候选供给，保留 X36/X3 交叉结构。
-iterations: 0
-multiplier_up: 1.02
-multiplier_down: 0.98

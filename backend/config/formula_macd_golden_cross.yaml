@@ -1,8 +1,0 @@
-# MACD 金叉公式共享参数
-# 诊断窗口和均线期数统一放到配置里，避免 state-history / trigger 口径分散。
-fast_period: 12
-slow_period: 26
-signal_period: 9
-cross_window: 5
-imminent_days: 10
-imminent_gap_ratio: 0.012
