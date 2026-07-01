@@ -26,7 +26,6 @@
     <nav class="main-nav" id="mainNav">
       <div class="nav-top-bar" style="display:none">
         <button class="nav-group-btn active" data-group="holder">股东挖掘</button>
-        <button class="nav-group-btn" id="nav-group-etf" data-group="etf" style="display:none">ETF研究</button>
       </div>
     </nav>
   </header>
@@ -39,12 +38,6 @@
       <button class="nav-btn" data-view="data">数据链路</button>
       <button class="nav-btn" data-view="model-monitor">模型实验室</button>
       <button class="nav-btn" data-view="dashboard">系统运维</button>
-    </div>
-    <!-- ETF研究二级导航 -->
-    <div class="nav-sub-bar" id="nav-sub-etf" style="display:none">
-      <button class="nav-btn active" data-view="etf" data-etftab="workbench">工作台</button>
-      <button class="nav-btn" data-view="etf" data-etftab="opportunity">机会发现</button>
-      <button class="nav-btn" data-view="etf" data-etftab="list">全量筛选</button>
     </div>
   </div>
 
@@ -398,7 +391,6 @@
         <div id="wb-cohort-container"></div>
         <div id="wb-backtest-container"></div>
         <div id="wb-screening-container"></div>
-        <div id="wb-grid-opt-container"></div>
         <span id="sourcePillHoldings"></span><span id="sourcePillKline"></span><span id="sourcePillIndustry"></span>
         <div id="networkStatus"></div>
         <button id="btnReset" style="display:none"></button>
@@ -444,46 +436,6 @@
     </section>
 
 
-    <!-- ==================== ETF研究 ==================== -->
-    <section class="view" id="view-etf">
-      <!-- ETF 同步控制 -->
-      <div class="panel" style="margin-bottom:14px" id="etf-sync-panel">
-        <div class="panel-head">
-          <span style="font-weight:600">ETF 数据同步</span>
-          <div class="panel-actions">
-            <button class="chip chip-outline" id="btnEtfSync">同步 ETF 数据</button>
-          </div>
-        </div>
-        <div id="etfMsg" class="muted" style="font-size:12px">数据可能非最新，请先点击同步。</div>
-        <div id="etfLogBox"
-          style="margin-top:8px;max-height:160px;overflow:auto;background:color-mix(in srgb, var(--cm-ink-900) 3%, transparent);border:1px solid var(--cm-ink-100);border-radius:6px;padding:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.5">
-        </div>
-      </div>
-
-      <!-- ETF 工作台 -->
-      <div class="etf-tab-content active" id="etftab-workbench">
-        <div id="etfWorkbenchContainer">
-          <div class="muted" style="padding:20px;text-align:center">加载中...</div>
-        </div>
-      </div>
-
-      <!-- 机会发现（市场判断 + 挖掘建议 + 轮动预测） -->
-      <div class="etf-tab-content" id="etftab-opportunity">
-        <div id="etfOpportunityContainer" style="margin-bottom:14px"></div>
-      </div>
-
-      <!-- ETF 全量筛选 -->
-      <div class="etf-tab-content" id="etftab-list">
-        <div class="panel">
-          <div class="panel-head">
-            <span style="font-weight:600">ETF 全量筛选与深度分析</span>
-          </div>
-          <div id="etfCategoryFilter" style="margin-bottom:10px"></div>
-          <div id="etfTableContainer">加载中...</div>
-        </div>
-      </div>
-
-    </section>
 
   </main>
 
@@ -515,12 +467,6 @@
        'assets/js/widgets/screening-panel.js',
        'assets/js/widgets/topk-strip.js',
        'assets/js/widgets/multidim-badge.js',
-       'assets/js/widgets/etf-sector-rotation.js',
-       'assets/js/widgets/grid-optimizer.js',
-       'assets/js/widgets/etf-strategy-compare.js',
-       'assets/js/widgets/etf-analysis.js',
-       'assets/js/widgets/etf-list.js',
-       'assets/js/widgets/etf-opportunity.js',
        'assets/js/widgets/returns-chart.js',
        'assets/js/widgets/type-summary.js',
        'assets/js/widgets/stock-summary.js',
@@ -529,7 +475,6 @@
        'assets/js/widgets/stock-list-controls.js',
        'assets/js/widgets/model-monitor.js',
        'assets/js/widgets/workbench-health.js',
-       'assets/js/widgets/etf-workbench.js',
        'assets/js/stock-view.js',
        'assets/js/data-view.js',
        'assets/js/workbench-view.js',

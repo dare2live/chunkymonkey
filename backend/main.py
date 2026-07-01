@@ -115,7 +115,7 @@ app.add_middleware(
 from routers.ops_manual_run import router as ops_manual_run_router
 app.include_router(ops_manual_run_router, prefix="/api/v3/ops", tags=["ops"])
 
-# 模块化路由注册 (etf 路由已退役; register_modules 保留供未来模块, 当前只读 enabled 状态)
+# 模块化路由注册 (etf 模块 2026-06-29 批3d 整体退役物删; register_modules 保留供未来模块, 当前只读 enabled 状态)
 def register_modules(app):
     try:
         conn = get_conn()
@@ -123,7 +123,7 @@ def register_modules(app):
         modules = get_enabled_modules(conn)
         conn.close()
     except Exception:
-        modules = {"etf": True, "akquant": False}
+        modules = {"akquant": False}
     return modules
 
 app_modules = register_modules(app)
@@ -153,7 +153,7 @@ async def toggle_modules(settings: dict):
         rows = [
             (f"module_{k}_enabled", "1" if v else "0")
             for k, v in settings.items()
-            if k in {"etf", "akquant"}
+            if k in {"akquant"}
         ]
         if rows:
             conn.executemany(
@@ -179,7 +179,7 @@ def build_health_payload() -> dict:
     return {
         "status": "ok",
         "enabled_modules": enabled,
-        "available_modules": ["etf", "akquant"],
+        "available_modules": ["akquant"],
         "module_deps": {"akquant": "远期规划"}
     }
 

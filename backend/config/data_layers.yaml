@@ -125,7 +125,7 @@ tables:
   # inst_holdings / inst_institutions tag 已删 2026-06-29 (批3c 机构旧表退役物删)
   # fact_stock_attention_snapshot tag 已删 2026-06-27 (通达信全删 M4: akshare 关注度快照物删, 用户决cut)
   price_kline_qfq_tushare: L1k_kline_intermediate   # 2026-06-15 tushare 前复权 K线 (回测主源, §4.3; build_price_kline_qfq_tushare.py 从 raw_tushare_daily×adj_factor 建 2019+)
-  etf_price_kline_qfq_tushare: L1k_kline_intermediate   # 2026-06-25 M2 Stage C: ETF tushare 前复权 K线 (etf.duckdb; build_etf_kline_qfq_tushare.py 从 raw_tushare_fund_daily×fund_adj 建 2019+; 修 mootdx ETF 分红未复权 bug)
+  # etf_price_kline_qfq_tushare tag 已删 2026-06-29 (批3d: ETF 子系统整体退役, etf.duckdb 物删)
   # dim_stock_attention_latest tag 已删 2026-06-27 (通达信全删 M4: akshare 关注度物删)
   stock_watchlist: display
   # mart_stock_survey_activity: Type A 当前状态聚合 (institution_survey_client 每次同步从 raw_institution_surveys
@@ -156,8 +156,7 @@ tables:
   sys_schema_version: infra
   dim_strategy_preset: infra
   # financial_sync_state 已退役物删 2026-06-29 (批3e: financial_client 退役遗留空表 0行)
-  mart_etf_snapshot_latest: L2_feature
-  mart_etf_snapshot_state: L2_feature
+  # mart_etf_snapshot_latest/mart_etf_snapshot_state tag 已删 2026-06-29 (批3d: ETF 子系统整体退役物删)
 _notes:
   recreated_empty_2026_06_14: 58 张 L2/L3/L4 表被 app 启动 schema-init(schema_core/schema_marts) 空重建; 数据已删, schema 定义待从 kept schema
     文件移除否则反复重建 (代码清理遗留)。

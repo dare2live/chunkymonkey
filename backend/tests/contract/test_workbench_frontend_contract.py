@@ -34,13 +34,6 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "'assets/js/widgets/stock-list-rows.js'" in index
     assert "'assets/js/widgets/stock-list-controls.js'" in index
     assert "'assets/js/widgets/institution-scorecard.js'" in index
-    assert "'assets/js/widgets/etf-analysis.js'" in index
-    assert "'assets/js/widgets/etf-list.js'" in index
-    assert "'assets/js/widgets/etf-opportunity.js'" in index
-    assert "'assets/js/widgets/etf-sector-rotation.js'" in index
-    assert "'assets/js/widgets/etf-strategy-compare.js'" in index
-    assert "'assets/js/widgets/etf-analysis.js'" in index
-    assert "'assets/js/widgets/etf-workbench.js'" in index
     assert "'assets/js/widgets/model-monitor.js'" in index
     assert "'assets/js/widgets/format-utils.js'" in index
     assert "'assets/js/widgets/institution-scorecard.js'" in index
@@ -63,15 +56,6 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert 'id="btnBatchAlias"' not in index
     assert index.index("'assets/js/widgets/stock-list-rows.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/institution-scorecard.js'") < index.index("'assets/js/app.js'")
-    assert index.index("'assets/js/widgets/etf-analysis.js'") < index.index("'assets/js/app.js'")
-    assert index.index("'assets/js/widgets/etf-list.js'") < index.index("'assets/js/app.js'")
-    assert index.index("'assets/js/widgets/etf-opportunity.js'") < index.index("'assets/js/app.js'")
-    assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/etf-sector-rotation.js'")
-    assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/etf-strategy-compare.js'")
-    assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/etf-opportunity.js'")
-    assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/etf-list.js'")
-    assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/etf-workbench.js'")
-    assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/etf-analysis.js'")
     assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/workbench-health.js'")
     assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/institution-scorecard.js'")
     assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/topk-strip.js'")
@@ -81,10 +65,8 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/screening-panel.js'")
     assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/multidim-badge.js'")
     assert index.index("'assets/js/widgets/topk-strip.js'") < index.index("'assets/js/app.js'")
-    assert index.index("'assets/js/widgets/etf-workbench.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/model-monitor.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/model-monitor.js'")
-    assert index.index("'assets/js/widgets/format-utils.js'") < index.index("'assets/js/widgets/grid-optimizer.js'")
     assert index.index("'assets/js/widgets/workbench-health.js'") < index.index("'assets/js/app.js'")
     assert index.index("'assets/js/settings-view.js'") < index.index("'assets/js/app.js'")
     assert 'onclick="window.App.showView(\'data-health\')"' not in index
@@ -109,22 +91,13 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "StockListRowsWidget" in app_js
     assert "StockListControlsWidget" in app_js
     assert "InstitutionScorecardWidget" in app_js
-    assert "ETFAnalysisWidget" in app_js
-    assert "ETFListWidget" in app_js
-    assert "ETFOpportunityWidget" in app_js
-    assert "ETFWorkbenchWidget" in app_js
     assert "ModelMonitorWidget" in app_js
     assert "WorkbenchHealthWidget" in app_js
-    assert "function loadEtfList()" in app_js
-    assert "function loadEtfOpportunity()" in app_js
-    assert "function loadEtfWorkbench(" in app_js
     assert "function loadModelMonitor()" in app_js
     assert "function refreshWorkbenchHealthBar()" in app_js
     assert "function refreshNetwork()" in app_js
     assert "d.result.kline_source_breakdown.map(function (item)" not in app_js
     assert "d.logs.slice(-30).map(function (line)" not in app_js
-    assert "for (var i = 0; i < d.result.kline_source_breakdown.length; i += 1)" in app_js
-    assert "for (var j = logStart; j < d.logs.length; j += 1)" in app_js
     assert "function loadStocks()" not in app_js
     assert "function loadResearch()" not in app_js
     assert "function loadIndustryOverviewSummary()" not in app_js
@@ -224,7 +197,6 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "function renderHealthInst(" not in app_js
     assert "function renderHealthSignals(" not in app_js
     assert "function renderHealthPipeline(" not in app_js
-    assert "ETF 列表 widget 暂不可用" in app_js
     assert "function renderTabEvidence(content, s)" in stock_view_js
     assert "const followEvents = s.events.filter(e => e.action === 'follow');" not in stock_view_js
     assert "const watchEvents = s.events.filter(e => e.action === 'watch');" not in stock_view_js

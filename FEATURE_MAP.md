@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-06-29 14:51
+> Snapshot: 2026-07-02 06:54
 
 ## 1. 入口面
 
@@ -54,8 +54,6 @@
 | fina_indicator | tushare | fina_indicator | raw_tushare_fina_indicator | by_ts_code | 5 |
 | fina_mainbz | tushare | fina_mainbz | raw_tushare_fina_mainbz | by_ts_code | 130 |
 | forecast | tushare | forecast | raw_tushare_forecast | by_trade_date | 5 |
-| fund_adj | tushare | fund_adj | raw_tushare_fund_adj | by_trade_date | 1 |
-| fund_daily | tushare | fund_daily | raw_tushare_fund_daily | by_trade_date | 1 |
 | income | tushare | income | raw_tushare_income | by_ts_code | 5 |
 | index_daily_benchmark | tushare | index_daily | raw_tushare_index_daily | by_code_list | 1 |
 | index_dailybasic | tushare | index_dailybasic | raw_tushare_index_dailybasic | by_code_list | 1 |
@@ -86,7 +84,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 43 张 | 单 writer 31 | 多 writer 12 | 动态表名写点 16 处 (9 文件)
+统计: 表 41 张 | 单 writer 29 | 多 writer 12 | 动态表名写点 15 处 (8 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -95,7 +93,6 @@
 | 文件 | 写点数 |
 |---|---|
 | backend/scripts/build_dc_industry_view.py | 2 |
-| backend/scripts/build_etf_kline_qfq_tushare.py | 1 |
 | backend/scripts/build_feature_map.py | 1 |
 | backend/scripts/build_price_kline_qfq_tushare.py | 1 |
 | backend/scripts/db_compact.py | 2 |
@@ -146,8 +143,6 @@
 | mart_data_processing_tool_issue | backend/services/data_processing_monitor.py |
 | mart_data_processing_tool_run | backend/services/data_processing_monitor.py |
 | mart_data_source_failure_queue | backend/services/source_watermarks.py |
-| mart_etf_snapshot_latest | backend/services/etf_db.py |
-| mart_etf_snapshot_state | backend/services/etf_db.py |
 | mart_feature_availability_contract | backend/services/data_quality.py |
 | mart_feature_null_policy | backend/services/data_quality.py |
 | mart_global_data_quality_detail | backend/services/data_quality.py |
@@ -159,13 +154,13 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 4,458 | calls 边 6,401 | imports 边 1,234 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 4,338 | calls 边 5,662 | imports 边 994 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
-| services.duck_adapter | 29 |
+| services.duck_adapter | 27 |
 | services.db | 8 |
 | services.pipeline_manifest | 7 |
 | services.database_manifest | 6 |
@@ -185,7 +180,7 @@
 
 | 文件 | 调用方文件数 |
 |---|---|
-| backend/services/duck_adapter.py | 22 |
+| backend/services/duck_adapter.py | 19 |
 | bestchoice/compute.py | 9 |
 | backend/services/pipeline_manifest.py | 5 |
 | bestchoice/execution_model.py | 5 |
@@ -208,7 +203,7 @@
 | backend/scripts/data_health_snapshot.py | 730 |
 | backend/services/data_audit.py | 613 |
 | backend/services/source_watermarks.py | 563 |
-| backend/services/schema_migrations.py | 562 |
+| backend/services/schema_migrations.py | 561 |
 | backend/scripts/build_feature_map.py | 420 |
 | backend/services/qfii_client.py | 406 |
 | backend/scripts/check_rule_compliance.py | 403 |
@@ -216,6 +211,6 @@
 ## 5. 概览
 
 - chunkyctl 子命令 10 | launchd 任务 1 | router 3 (端点 8)
-- sync_registry 数据域 42
-- 产表 43 (多 writer 12)
+- sync_registry 数据域 40
+- 产表 41 (多 writer 12)
 

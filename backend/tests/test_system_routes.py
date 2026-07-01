@@ -17,7 +17,7 @@ def test_health_check(client):
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ok"
-    assert "etf" in payload["available_modules"]
+    assert "akquant" in payload["available_modules"]
 
 
 def test_inst_health_summary_alias_matches_health_contract(client):
@@ -27,7 +27,7 @@ def test_inst_health_summary_alias_matches_health_contract(client):
     payload = response.json()
     assert payload["status"] == "ok"
     assert "enabled_modules" in payload
-    assert "etf" in payload["available_modules"]
+    assert "akquant" in payload["available_modules"]
 
 
 def test_root_redirects_to_v3(client):
@@ -72,7 +72,7 @@ def test_toggle_modules_batches_allowed_settings(client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert conn.rows == [("module_etf_enabled", "1"), ("module_akquant_enabled", "0")]
+    assert conn.rows == [("module_akquant_enabled", "0")]
     assert conn.committed is True
     assert conn.closed is True
 

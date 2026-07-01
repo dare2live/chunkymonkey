@@ -229,16 +229,8 @@ DATA_ROUTES = [
         "client_module": "services/security_master.py",
         "notes": "唯一兜底, 无替代源",
     },
-    {
-        "data_name": "ETF 行情",
-        "raw_table": "etf.duckdb",
-        "current": {"source": "akshare", "protocol": "ak.fund_etf_spot_ths (同花顺源)", "status": "connected"},
-        "target": None,
-        "freshness": "T-0",
-        "step_id": "(ETF 模块独立)",
-        "client_module": "services/etf_engine.py",
-        "notes": "唯一兜底, 同花顺源",
-    },
+    # ETF 行情条目已删 2026-06-29 (批3d: ETF 子系统整体退役物删; 本条目本身已 stale —
+    #   services/etf_engine.py 早已是死代码仅剩 .pyc, ETF K线主源实为 tushare fund_daily/fund_adj 非 akshare)
 ]
 
 

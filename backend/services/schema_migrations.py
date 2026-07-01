@@ -495,8 +495,7 @@ def init_db():
         conn.commit()
         conn.execute("""
             INSERT OR IGNORE INTO app_settings (key, value, updated_at)
-            VALUES ('module_etf_enabled', '1', CURRENT_TIMESTAMP),
-                   ('module_akquant_enabled', '0', CURRENT_TIMESTAMP)
+            VALUES ('module_akquant_enabled', '0', CURRENT_TIMESTAMP)
         """)
         conn.execute("DELETE FROM app_settings WHERE key LIKE 'scoring.stock.%'")
         conn.execute("DELETE FROM app_settings WHERE key LIKE 'scoring.timing.%'")
@@ -555,7 +554,7 @@ def init_db():
 
 def get_enabled_modules(conn) -> dict:
     rows = conn.execute("SELECT key, value FROM app_settings WHERE key LIKE 'module_%_enabled'").fetchall()
-    modules = {"etf": True, "akquant": False}
+    modules = {"akquant": False}
     for r in rows:
         key = r["key"].replace("module_", "").replace("_enabled", "")
         modules[key] = str(r["value"]) == "1"

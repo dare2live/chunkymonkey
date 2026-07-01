@@ -49,12 +49,11 @@ def test_init_db_sets_module_defaults_without_legacy_migration_marker():
             try:
                 rows = conn.execute(
                     "SELECT key, value FROM app_settings WHERE key IN ("
-                    "'module_etf_enabled', 'module_akquant_enabled'"
+                    "'module_akquant_enabled'"
                     ")"
                 ).fetchall()
                 settings = {row[0]: row[1] for row in rows}
 
-                assert settings["module_etf_enabled"] == "1"
                 assert settings["module_akquant_enabled"] == "0"
             finally:
                 conn.close()

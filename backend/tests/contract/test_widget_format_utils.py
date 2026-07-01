@@ -51,38 +51,11 @@ require(process.argv[6]);
 require(process.argv[7]);
 require(process.argv[8]);
 require(process.argv[9]);
-require(process.argv[10]);
-require(process.argv[11]);
-require(process.argv[12]);
-require(process.argv[13]);
-require(process.argv[14]);
-require(process.argv[15]);
-const topkSrc = fs.readFileSync(process.argv[10], 'utf8');
+const topkSrc = fs.readFileSync(process.argv[4], 'utf8');
 if (!topkSrc.includes('WidgetFormatUtils')) {
   throw new Error('TopKStripWidget should use WidgetFormatUtils');
 }
-const opportunitySrc = fs.readFileSync(process.argv[4], 'utf8');
-if (!opportunitySrc.includes('WidgetFormatUtils')) {
-  throw new Error('ETFOpportunityWidget should use WidgetFormatUtils');
-}
-if (opportunitySrc.includes('function etfNum(') || opportunitySrc.includes('function scoreNum(') || opportunitySrc.includes('function signedPct(') || opportunitySrc.includes('function pct(')) {
-  throw new Error('ETFOpportunityWidget local formatters should be removed');
-}
-const etfListSrc = fs.readFileSync(process.argv[5], 'utf8');
-if (!etfListSrc.includes('WidgetFormatUtils')) {
-  throw new Error('ETFListWidget should use WidgetFormatUtils');
-}
-if (etfListSrc.includes('function etfNum(')) {
-  throw new Error('ETFListWidget local etfNum formatter should be removed');
-}
-const strategyCompareSrc = fs.readFileSync(process.argv[3], 'utf8');
-if (!strategyCompareSrc.includes('WidgetFormatUtils')) {
-  throw new Error('ETFStrategyCompareWidget should use WidgetFormatUtils');
-}
-if (strategyCompareSrc.includes('function fmtDD(') || strategyCompareSrc.includes('function fmtWinRate(')) {
-  throw new Error('ETFStrategyCompareWidget local formatters should be removed');
-}
-const signalParamsSrc = fs.readFileSync(process.argv[11], 'utf8');
+const signalParamsSrc = fs.readFileSync(process.argv[5], 'utf8');
 if (!signalParamsSrc.includes('WidgetFormatUtils')) {
   throw new Error('SignalParamsWidget should use WidgetFormatUtils');
 }
@@ -92,45 +65,27 @@ if (signalParamsSrc.includes('function fmtWinRate(')) {
 if (!signalParamsSrc.includes('formatWinRate(')) {
   throw new Error('SignalParamsWidget should call shared win-rate formatter');
 }
-const cohortSrc = fs.readFileSync(process.argv[12], 'utf8');
+const cohortSrc = fs.readFileSync(process.argv[6], 'utf8');
 if (!cohortSrc.includes('WidgetFormatUtils')) {
   throw new Error('CohortCardWidget should use WidgetFormatUtils');
 }
-const backtestSrc = fs.readFileSync(process.argv[13], 'utf8');
+const backtestSrc = fs.readFileSync(process.argv[7], 'utf8');
 if (!backtestSrc.includes('WidgetFormatUtils')) {
   throw new Error('BacktestPanelWidget should use WidgetFormatUtils');
 }
 if (backtestSrc.includes('function fmtWinRate(')) {
   throw new Error('BacktestPanelWidget local win-rate formatter should be removed');
 }
-const screeningSrc = fs.readFileSync(process.argv[14], 'utf8');
+const screeningSrc = fs.readFileSync(process.argv[8], 'utf8');
 if (!screeningSrc.includes('WidgetFormatUtils')) {
   throw new Error('ScreeningPanelWidget should use WidgetFormatUtils');
 }
 if (screeningSrc.includes('function fmt(')) {
   throw new Error('ScreeningPanelWidget local formatter should be removed');
 }
-const badgeSrc = fs.readFileSync(process.argv[15], 'utf8');
+const badgeSrc = fs.readFileSync(process.argv[9], 'utf8');
 if (!badgeSrc.includes('WidgetFormatUtils')) {
   throw new Error('MultidimBadgeWidget should use WidgetFormatUtils');
-}
-if (!globalThis.ETFSectorRotationWidget || typeof globalThis.ETFSectorRotationWidget.mount !== 'function') {
-  throw new Error('ETFSectorRotationWidget exports missing');
-}
-if (!globalThis.ETFStrategyCompareWidget || typeof globalThis.ETFStrategyCompareWidget.mount !== 'function') {
-  throw new Error('ETFStrategyCompareWidget exports missing');
-}
-if (!globalThis.ETFOpportunityWidget || typeof globalThis.ETFOpportunityWidget.mountOpportunity !== 'function') {
-  throw new Error('ETFOpportunityWidget exports missing');
-}
-if (!globalThis.ETFListWidget || typeof globalThis.ETFListWidget.mountEtfList !== 'function') {
-  throw new Error('ETFListWidget exports missing');
-}
-if (!globalThis.ETFWorkbenchWidget || typeof globalThis.ETFWorkbenchWidget.mountEtfWorkbench !== 'function') {
-  throw new Error('ETFWorkbenchWidget exports missing');
-}
-if (!globalThis.ETFAnalysisWidget || typeof globalThis.ETFAnalysisWidget.mountDeepAnalysis !== 'function') {
-  throw new Error('ETFAnalysisWidget exports missing');
 }
 if (!globalThis.WorkbenchHealthWidget || typeof globalThis.WorkbenchHealthWidget.refreshWorkbenchHealthBar !== 'function') {
   throw new Error('WorkbenchHealthWidget exports missing');
@@ -164,12 +119,6 @@ if (!globalThis.MultidimBadgeWidget || typeof globalThis.MultidimBadgeWidget.mou
             "-e",
             script,
             str(REPO / "assets/js/widgets/format-utils.js"),
-            str(REPO / "assets/js/widgets/etf-sector-rotation.js"),
-            str(REPO / "assets/js/widgets/etf-strategy-compare.js"),
-            str(REPO / "assets/js/widgets/etf-opportunity.js"),
-            str(REPO / "assets/js/widgets/etf-list.js"),
-            str(REPO / "assets/js/widgets/etf-workbench.js"),
-            str(REPO / "assets/js/widgets/etf-analysis.js"),
             str(REPO / "assets/js/widgets/workbench-health.js"),
             str(REPO / "assets/js/widgets/institution-scorecard.js"),
             str(REPO / "assets/js/widgets/topk-strip.js"),

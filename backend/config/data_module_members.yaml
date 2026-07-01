@@ -37,7 +37,7 @@ member_service_files:
   - market_db.py             # 写侧
   - market_schema.py         # DDL
   - market_read.py           # K线读 helper (serving 内部)
-  - etf_db.py                # 写侧
+  # etf_db.py 已删 2026-06-29 (批3d: ETF 子系统整体退役物删)
   - experiment_store.py      # L4 store
   - security_master.py       # 身份/dim 真相源
   - universe.py              # 交易日历级硬真相源 (不能依赖派生读层)

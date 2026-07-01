@@ -20,11 +20,7 @@
   var ReturnsChartWidget = window.ReturnsChartWidget || null;
   var TypeSummaryWidget = window.TypeSummaryWidget || null;
   var InstitutionScorecardWidget = window.InstitutionScorecardWidget || null;
-  var ETFListWidget = window.ETFListWidget || null;
-  var ETFOpportunityWidget = window.ETFOpportunityWidget || null;
-  var ETFWorkbenchWidget = window.ETFWorkbenchWidget || null;
   var WorkbenchHealthWidget = window.WorkbenchHealthWidget || null;
-  var etfState = AppNav.getEtfState();
   var instListState = AppListState.inst;
   var stockListState = AppListState.stock;
   var industryViewState = AppListState.industry;
@@ -94,34 +90,24 @@
   // Navigation
   // ============================================================
   // ============================================================
-  // Navigation — 两级：股东挖掘 / ETF研究
+  // Navigation — 股东挖掘
   // ============================================================
   function showGroup(name) {
     AppNav.setCurrentGroup(name);
     setActiveState(document, '.nav-group-btn', function (b) { return b.dataset.group === name; });
     var subHolder = el('nav-sub-holder');
-    var subEtf = el('nav-sub-etf');
     if (subHolder) subHolder.style.display = name === 'holder' ? '' : 'none';
-    if (subEtf) subEtf.style.display = name === 'etf' ? '' : 'none';
     if (name === 'holder') {
       showView('workbench');
-    } else if (name === 'etf') {
-      showView('etf');
     }
   }
 
   function showView(name) {
     setActiveState(document, '.view', function (v) { return v.id === 'view-' + name; });
     // 更新子导航按钮的 active 状态（仅更新当前板块的子导航）
-    var subBar = AppNav.getCurrentGroup() === 'etf' ? el('nav-sub-etf') : el('nav-sub-holder');
+    var subBar = el('nav-sub-holder');
     if (subBar) {
-      setActiveState(subBar, '.nav-btn', function (b) {
-        if (name === 'etf') {
-          // ETF 子导航 active 状态由 etftab 控制
-          return b.dataset.etftab === etfState.currentTab;
-        }
-        return b.dataset.view === name;
-      });
+      setActiveState(subBar, '.nav-btn', function (b) { return b.dataset.view === name; });
     }
     // C6g: stocks 为主入口，signals-v2 tab 下线
     // P2-P5: 新增 data / strategy / settings 三个独立页, 通过 window.XxxView.show() 接入
@@ -136,7 +122,6 @@
       workbench: function () { window.WorkbenchView && window.WorkbenchView.show(); },
       dashboard: loadWorkbench,
       research: loadInstScorecard,
-      etf: loadEtf,
       'model-monitor': loadModelMonitor,
       data: function () { window.CMDataView && window.CMDataView.show(); },
       strategy: function () { window.StrategyView && window.StrategyView.show(); },
@@ -151,39 +136,12 @@
     showView('workbench');
   }
 
-  function showEtfTab(tabName) {
-    AppNav.setEtfTab(tabName);
-    setActiveState(document, '.etf-tab-content', function (c) { return c.id === 'etftab-' + tabName; });
-    // Update ETF sub-nav active state
-    var subEtf = el('nav-sub-etf');
-    if (subEtf) {
-      setActiveState(subEtf, '.nav-btn', function (b) { return b.dataset.etftab === tabName; });
-    }
-    if (tabName === 'workbench') {
-      loadEtfWorkbench();
-      return;
-    }
-    // Lazy-load content for the tab (if cache missing, fetch first)
-    if (!etfState.dataCache && (tabName === 'opportunity' || tabName === 'list')) {
-      loadEtf();
-      return;
-    }
-    if (tabName === 'opportunity') loadEtfOpportunity();
-    if (tabName === 'list') loadEtfList();
-  }
-
   // 顶层板块切换
   bindNodeClicks('.nav-group-btn', function (b) { showGroup(b.dataset.group); });
 
   // 子导航按钮
   bindNodeClicks('.nav-sub-bar .nav-btn', function (b) {
-    if (b.dataset.etftab) {
-      // ETF 子标签
-      showView('etf');
-      showEtfTab(b.dataset.etftab);
-    } else {
-      showView(b.dataset.view);
-    }
+    showView(b.dataset.view);
   });
 
   // Dashboard sub-tabs
@@ -207,11 +165,6 @@
     var badge = el('statusBadge'), r = await api('/health');
     if (r && r.status === 'ok') {
       badge.textContent = 'Online'; badge.className = 'logo-status online';
-
-      // Update dynamic modules nav（仅保留 ETF group 动态显示）
-      var modules = r.enabled_modules || [];
-      var navGroupEtf = el('nav-group-etf');
-      if (navGroupEtf) navGroupEtf.style.display = modules.includes('etf') ? '' : 'none';
     }
     else { badge.textContent = 'Offline'; badge.className = 'logo-status'; }
   }
@@ -274,15 +227,6 @@
       screenSection.addEventListener('toggle', function () {
         if (screenSection.open && window.ScreeningPanelWidget) {
           window.ScreeningPanelWidget.mount('wb-screening-container');
-        }
-      }, { once: true });
-    }
-    // ETF 网格自寻优 widget — 展开时挂载
-    var gridOptSection = document.getElementById('wb-grid-opt-section');
-    if (gridOptSection) {
-      gridOptSection.addEventListener('toggle', function () {
-        if (gridOptSection.open && window.GridOptimizerWidget) {
-          window.GridOptimizerWidget.mount('wb-grid-opt-container');
         }
       }, { once: true });
     }
@@ -416,82 +360,6 @@
     el('stockSearch')?.addEventListener('input', handleStockSearchInput);
     el('btnLifeboat')?.addEventListener('click', runLifeboat);
     refreshOpsJobs();
-    el('btnEtfSync')?.addEventListener('click', async function () {
-      var btn = this;
-      btn.disabled = true; btn.textContent = '同步中...';
-      el('etfMsg').textContent = '正在启动 ETF 同步任务...';
-      var r = await api('/api/etf/sync', { method: 'POST' });
-      if (!r || r.status !== 'ok') {
-        btn.disabled = false; btn.textContent = '同步 ETF 数据';
-        el('etfMsg').textContent = '启动失败: ' + (r?.message || '未知错误');
-        return;
-      }
-      // 启动后台轮询，实时显示进度与日志
-      pollEtfStatus(btn);
-    });
-
-    function pollEtfStatus(btn) {
-      var msgEl = el('etfMsg');
-      var box = el('etfLogBox');
-      var poll = setInterval(async function () {
-        var s = await api('/api/etf/status');
-        var d = s && s.data;
-        if (!d) return;
-        var pct = (d.total > 0) ? Math.round((d.current || 0) / d.total * 100) : 0;
-        var progressTxt = d.total > 0 ? (d.current + ' / ' + d.total + '  (' + pct + '%)') : '';
-        var stageLabel = ({
-          'idle': '等待', 'starting': '启动中', 'fetch_list': '拉取 ETF 列表',
-          'write_universe': '写入资产池', 'sync_kline': '同步 K 线', 'build_snapshot': '重建最新快照',
-          'done': '完成', 'error': '失败'
-        })[d.stage] || d.stage;
-        var listSource = d.result && d.result.list_source ? d.result.list_source : '';
-        var klineBreakdown = '';
-        if (d.result && Array.isArray(d.result.kline_source_breakdown)) {
-          var klineParts = [];
-          for (var i = 0; i < d.result.kline_source_breakdown.length; i += 1) {
-            var item = d.result.kline_source_breakdown[i];
-            klineParts.push((item.source || '未知') + ' · ' + fmt(item.count || 0));
-          }
-          klineBreakdown = klineParts.join(' / ');
-        }
-        var extraSummary = '';
-        if (!d.running && d.result) {
-          extraSummary = '<div style="margin-top:8px;font-size:12px;line-height:1.7;color:var(--cm-ink-700)">' +
-            '<div><strong>资产池来源：</strong>' + esc(listSource || '暂无') + '</div>' +
-            '<div><strong>K线来源分布：</strong>' + esc(klineBreakdown || '暂无') + '</div>' +
-            '<div><strong>快照：</strong>' + esc(d.result.snapshot_id || '-') + ' · <strong>覆盖ETF：</strong>' + esc(fmt(d.result.etf_count || 0)) + ' · <strong>日线ETF：</strong>' + esc(fmt(d.result.kline_etf_count || 0)) + '</div>' +
-            '</div>';
-        }
-        if (msgEl) {
-          msgEl.innerHTML = '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
-            '<span style="font-weight:600">' + esc(stageLabel) + '</span>' +
-            (progressTxt ? '<span class="muted">' + esc(progressTxt) + '</span>' : '') +
-            '<span>' + esc(d.message || '') + '</span>' +
-            '</div>' +
-            (d.total > 0 ? '<div style="margin-top:6px;height:6px;background:var(--cm-ink-100);border-radius:3px;overflow:hidden">' +
-              '<div style="height:100%;width:' + pct + '%;background:' + (d.stage === 'error' ? 'var(--stock-up)' : 'var(--cm-brand-400)') + ';transition:width .3s"></div></div>' : '') +
-            extraSummary;
-        }
-        if (box && d.logs && d.logs.length) {
-          var logLines = [];
-          var logStart = Math.max(d.logs.length - 30, 0);
-          for (var j = logStart; j < d.logs.length; j += 1) {
-            var line = d.logs[j];
-            var color = line.level === 'error' ? 'var(--stock-up)' : (line.level === 'warning' ? 'var(--cm-warn-500)' : 'var(--cm-ink-700)');
-            logLines.push('<div style="color:' + color + '">[' + (line.ts || '').slice(11, 19) + '] ' + esc(line.message) + '</div>');
-          }
-          box.innerHTML = logLines.join('');
-          box.scrollTop = box.scrollHeight;
-        }
-        if (!d.running) {
-          clearInterval(poll);
-          if (btn) { btn.disabled = false; btn.textContent = '同步 ETF 数据'; }
-          if (d.stage === 'done') {
-            loadEtf();
-          }
-        }
-      }, 1500);
-    }
     setInterval(checkHealth, 30000);
   }
 
@@ -504,100 +372,6 @@
     return _initPromise;
   }
 
-  // ============================================================
-  // ETF 研究板块
-  // ============================================================
-  // 主入口：加载 ETF 数据并分别渲染各子标签
-  async function loadEtf(forceRefresh) {
-    if (etfState.currentTab === 'workbench') return loadEtfWorkbench(forceRefresh);
-
-    var path = '/api/etf/list';
-    if (forceRefresh) path += '?force_refresh=true';
-    var r = await api(path);
-    if (!r?.data?.length) {
-      etfState.dataCache = null;
-      var opportunityBox = el('etfOpportunityContainer');
-      if (opportunityBox) opportunityBox.innerHTML = '';
-      var c = el('etfTableContainer');
-      if (c) c.innerHTML = '<div class="muted" style="padding:20px;text-align:center">暂无 ETF 数据，请点击上方同步按钮。</div>';
-      return;
-    }
-    etfState.dataCache = r;
-    // 渲染当前活跃子标签
-    if (etfState.currentTab === 'opportunity') loadEtfOpportunity();
-    if (etfState.currentTab === 'list') loadEtfList();
-  }
-
-  async function loadEtfWorkbench(forceRefresh) {
-    var box = el('etfWorkbenchContainer');
-    if (!box) return;
-    if (!ETFWorkbenchWidget || typeof ETFWorkbenchWidget.mountEtfWorkbench !== 'function') {
-      box.innerHTML = '<div class="panel"><div class="muted" style="padding:28px;text-align:center">ETF 工作台 widget 暂不可用</div></div>';
-      return;
-    }
-    await ETFWorkbenchWidget.mountEtfWorkbench('etfWorkbenchContainer', {
-      api: api,
-      fmtDateTime: fmtDateTime,
-      esc: esc,
-      showEtfTab: showEtfTab,
-    }, forceRefresh);
-  }
-
-  function loadEtfOpportunity() {
-    var r = etfState.dataCache;
-    if (!r?.data?.length) return;
-    var opportunityBox = el('etfOpportunityContainer');
-    if (!opportunityBox) return;
-    if (!ETFOpportunityWidget || typeof ETFOpportunityWidget.mountOpportunity !== 'function') {
-      opportunityBox.innerHTML = '<div class="muted" style="padding:20px;text-align:center">ETF 机会页 widget 暂不可用</div>';
-      return;
-    }
-    ETFOpportunityWidget.mountOpportunity('etfOpportunityContainer', {
-      state: etfState,
-      deepPanelId: 'opportunityDeepPanel',
-      api: api,
-      loadEtfDeepAnalysis: loadEtfDeepAnalysis,
-      showEtfTab: showEtfTab,
-      ETFSectorRotationWidget: window.ETFSectorRotationWidget,
-    });
-  }
-
-  function loadEtfList() {
-    var r = etfState.dataCache;
-    if (!r?.data?.length) return;
-    var c = el('etfTableContainer');
-    if (!c) return;
-    if (!ETFListWidget || typeof ETFListWidget.mountEtfList !== 'function') {
-      c.innerHTML = '<div class="muted" style="padding:20px;text-align:center">ETF 列表 widget 暂不可用</div>';
-      return;
-    }
-    ETFListWidget.mountEtfList({
-      tableId: 'etfTableContainer',
-      filterId: 'etfCategoryFilter',
-      state: etfState,
-      rows: r.data,
-      deepPanelId: 'etfListAnalysisPanel',
-      onAnalyze: function (code, panelId) {
-        loadEtfDeepAnalysis(code, panelId || 'etfListAnalysisPanel');
-      },
-    });
-  }
-
-  // ============================================================
-  // ETF 深度量化分析面板
-  // ============================================================
-  async function loadEtfDeepAnalysis(code, panelId) {
-    panelId = panelId || 'etfDeepAnalysisPanel';
-    if (window.ETFAnalysisWidget && typeof window.ETFAnalysisWidget.mountDeepAnalysis === 'function') {
-      return window.ETFAnalysisWidget.mountDeepAnalysis(code, panelId, {
-        securityIdentityBlock: securityIdentityBlock,
-      });
-    }
-    var panel = el(panelId);
-    if (panel) {
-      panel.innerHTML = '<div class="panel" style="margin-top:14px"><div class="muted" style="padding:20px;text-align:center">ETF 深度分析暂不可用</div></div>';
-    }
-  }
 
   // ============================================================
   // Lifeboat
