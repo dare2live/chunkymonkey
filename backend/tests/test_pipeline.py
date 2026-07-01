@@ -22,8 +22,13 @@ def test_pipeline_package_imports():
     assert hasattr(preflight, "run_preflight")
 
 
-def test_context_degraded_and_log(tmp_path):
+def test_context_degraded_and_log(tmp_path, monkeypatch):
+    from services.pipeline import context
     from services.pipeline.context import PipelineContext
+    # degraded() 写全局 DEGRADED_FLAG (/tmp/chunkymonkey_ALERT_daily_update_degraded.flag) —
+    # 隔离到 tmp_path 防测试污染真实生产告警文件 (2026-06-29 批4发现: 未隔离时 pytest 全量跑
+    # 会把测试字面量"步骤X失败"写进真实 alert flag, 误导下次 session 启动检查)。
+    monkeypatch.setattr(context, "DEGRADED_FLAG", tmp_path / "alert.flag")
     ctx = PipelineContext(dry=True, date="20260101", log_path=tmp_path / "t.log")
     ctx.degraded("步骤X失败")
     assert "步骤X失败" in ctx.degraded_msgs
@@ -31,6 +36,7 @@ def test_context_degraded_and_log(tmp_path):
     ctx.close()
     content = (tmp_path / "t.log").read_text()
     assert "步骤X失败" in content and "普通日志" in content
+    assert "步骤X失败" in (tmp_path / "alert.flag").read_text()
 
 
 def test_context_requires_date():

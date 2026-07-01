@@ -6,23 +6,23 @@ name: chunkymonkey-claims
 # 全部只读; duckdb 连接由 moth 引擎强制 read_only。
 assertions:
   - id: smartmoney-constraint-tables
-    claim: "PK/UNIQUE 约束表 >= 39 (2026-06-14 地基-reset: 删整个模型/特征/寻优层后只剩地基+展示+治理 85 表)"
+    claim: "PK/UNIQUE 约束表 >= 18 (2026-06-29 批4刷新: 批3c/3c2 退役机构旧表 inst_holdings/inst_institutions/fact_common_major_holder_stock 后实测20, 阈值留2缓冲防误报; 增表显式过决策)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT count(DISTINCT table_name) FROM duckdb_constraints() WHERE constraint_type IN ('PRIMARY KEY','UNIQUE')"
-    expect: {op: ">=", value: 25}
+    expect: {op: ">=", value: 18}
   - id: smartmoney-indexes
-    claim: "索引 >=33 (2026-06-28 重建后 94→37 纯数据平台)"
+    claim: "索引 >=21 (2026-06-29 批4刷新: 同上批次退役后实测23, 阈值留2缓冲)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM duckdb_indexes()"
-    expect: {op: ">=", value: 33}
+    expect: {op: ">=", value: 21}
   - id: smartmoney-tables
-    claim: "表 >=40 (2026-06-28 重建/加工层清空后 70→44 纯数据平台; 增表显式过决策)"
+    claim: "表 >=29 (2026-06-29 批4刷新: 批3c/3c2/3e机构旧表+孤儿表退役后实测31, 阈值留2缓冲防误报; 增表显式过决策)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM duckdb_tables()"
-    expect: {op: ">=", value: 40}
+    expect: {op: ">=", value: 29}
   - id: smartmoney-size-band
     claim: "库体量 0.2-3GB 带内 (2026-06-28 重建/加工层清空+db_compact 后 3.0→0.34G 纯数据平台; 越界=异常膨胀或错库)"
     type: file_size
@@ -105,16 +105,9 @@ assertions:
     type: shell
     command: ["grep", "-c", "refresh_source_watermarks.py", "backend/services/pipeline/store.py"]
     expect: {op: ">=", value: 1}
-  - id: optuna-require-walk-forward
-    claim: "optuna_config 守 require_walk_forward=true (2026-06-14 L0 立: 防过拟合核心 — 业务表禁 in-sample fit 入库; 翻 false = 估计死红线破, stage_opt leakage 反例复发)"
-    type: shell
-    command: ["bash", "-c", "grep -c 'require_walk_forward: true' backend/config/optuna_config.yaml"]
-    expect: {op: ">=", value: 1}
-  - id: optuna-realistic-sharpe-cap
-    claim: "optuna_config 守 max_realistic_sharpe 熔断 (2026-06-14 L0 立: 异常高数字=leakage警报非成就; 删=裸K线基准'太好'无人核查)"
-    type: shell
-    command: ["bash", "-c", "grep -c 'max_realistic_sharpe' backend/config/optuna_config.yaml"]
-    expect: {op: ">=", value: 1}
+  # optuna-require-walk-forward / optuna-realistic-sharpe-cap 断言已删 2026-06-29 (批4残留清理:
+  #   Optuna 治理层(services.optimization)随纯数据平台重建整体退役, optuna_config.yaml 已 2026-06-29
+  #   批1b物删(commit c09ae896), 校验对象已不存在 — 死断言, moth tooling_gate FAIL 抓出未跟批1b同清)
   - id: legacy-flow-no-pollution
     claim: "老流程污染清除 ratchet (2026-06-14 工具化 reset 教训; 重构验收 gate). 进度: C1 daily_update 无缺失脚本调用 PASS (855->457行删19缺失脚本) + C3 append-only 必 retention PASS (3表声明) + C2 wiped 孤儿引用 238->29 (退役7死serving router/删schema_versions 23版本条目/7config @archived). 余 C2<=43 (2026-06-16 重启清理 drop fact_feature_panel/缓存/探索表 +14 代码 DDL/audit 引用, 待 rebuild 层重构降回; 原 29) = updater 死 builder (build_profiles/trends/industry_stat/screening/sector_momentum 建已删 L2/L3 表) 嵌在 live update-DAG (RUNNERS/STEPS/HARD_DEPS, data_sources/etf 依赖) = 显式 P2 增量解耦 (framework §6: 禁 big-bang 反复破CI). ratchet C2<=29 防回潮, P2 收口后降 0. owner=analysis/refactor_execution_plan_20260614.md"
     type: shell
