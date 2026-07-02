@@ -50,7 +50,7 @@ member_service_files:
                              #   物化 feature_store fact_rally_ground_truth/negative/strata [Type B edge 隔离];
                              #   与 institution_profile/segments 同性质; 消费方 (D2 标注) 读其产物非 raw)
   - technical_states/        # M3 加工 builder (2026-07-02 B2 正交轴形态识别; upstream=price_kline_qfq+daily/stk_limit原始价触板+index_daily+dim_trading_calendar+dim_stock_segment_daily[E轴]; consumer=D1 GT/D2 L0/C前端档案/B4 stage分布)
-  - market_pulse.py          # M3 加工 builder (2026-07-02 B4: follow-the-money 板块/全市场脉搏, 两链隔离; upstream=moneyflow_ind_dc/dc_index/sw_daily/index_daily/limit_list_d/daily/moneyflow_mkt_dc/index_member_all/dim_stock_segment_daily; consumer=C4 pulse API+D2 板块上下文)
+  - market_pulse.py          # M3 加工 builder (2026-07-02 B4+v2: follow-the-money 板块/全市场脉搏, 两链隔离; upstream=moneyflow_ind_dc/dc_index/sw_daily/index_daily/limit_list_d/daily/moneyflow_mkt_dc/index_member_all/dim_stock_segment_daily +v2: dc_member/moneyflow_dc/margin/index_dailybasic/top_list/top_inst/limit_cpt_list; consumer=C4 pulse API+D2 板块上下文)
   - data_quality.py          # 审计
   - audit.py                 # 审计
   - data_health_snapshot.py

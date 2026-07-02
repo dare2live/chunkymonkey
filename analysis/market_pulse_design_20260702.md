@@ -102,3 +102,36 @@ config/market_pulse.yaml (RS 窗口/quiet 阈值) + data_layers 声明 (display/
 1. 感知/信号两层切分 (感知页只描述不暗示买卖, RS 过滤器进 D 验证) — 同意?
 2. quiet_inflow 定义 (|pct|<1% 且净流入, 连续天数) — 同意/调整?
 3. B4 排序: B2 之后 (默认) 或提前到 B2 之前 (无依赖冲突, 若你想先有感知面) — 选?
+
+---
+
+## v2 增强设计 (2026-07-02 晚, 用户点名缺口 + tushare 全扫调研)
+
+> 输入: 用户"没有概念热力图/没有板块龙头/涨跌数据入模了吗" + 调研 agent 241 接口全扫+20 次实弹核证。
+> 入模澄清 (用户问): 感知层零建模是有意架构; 入模=D2 L1.5 板块上下文消融, 数据全备路径已排。
+
+### v2 第一批 — 已在库零采集成本 (立即)
+1. **content_type 透出** (缺口①): mart_sector_pulse_daily 加列, 行业/概念/地域分开; 前端热力图分 tab。
+2. **龙头三件套** (缺口②): dc_index.leading/leading_code/leading_pct (涨幅龙头, NULL 率 0.2%) +
+   moneyflow_ind_dc.buy_sm_amount_stock (资金龙头) 进板块行; 前端板块行显示双龙头。
+3. **连板/情绪周期深挖**: limit_list_d 未用字段 limit_times/fd_amount/open_times/up_stat/first_time →
+   全市场行加 最高板/n板家数分布/晋级率/秒板数/封单强度。**口径契约: limit_list_d 官方不含 ST**。
+4. **limit_cpt_list 最强板块卡**: 已在库全没用 (2024+); 独立展示卡, 885xxx.TI 同花顺码**禁跨链 JOIN**。
+5. **水位卡增强**: raw_tushare_margin (两融余额+日增, B3 刚回填) + index_dailybasic (大盘 pe/换手分位)。
+6. dc_member × moneyflow_dc 链内聚合: 板块内个股流入宽度 (几成成分在流入, 抗龙头绑架); 成分下钻 API。
+7. top_list/top_inst 日度聚合 (龙虎榜家数/机构净买) 进情绪卡。
+
+### v2 第二批 — 新采集域 (实弹已核证, 按加源 SOP)
+| 域 | 价值 | 史深 (实弹) | 档位 |
+|---|---|---|---|
+| **dc_daily** (东财板块 OHLC) | dc 链获得 RS 双窗能力 + 广度/龙头史深 2025→2020 | 20200102+, 1021 行/日 | 首选 |
+| **kpl_list** (开盘啦) | 涨停原因文本/题材归因/连板状态 — 单表信息量最大 | 20200106+, 217 行/日 | 次选 |
+| **hm_detail + hm_list** (游资) | 游资净买卖聚合=打板资金温度, v1 全无此维度 | ~2022-09+, 322 行/日 | 三 |
+| **daily_info** (官方市场统计) | 沪深成交/换手/平均PE 官方口径 | 深史 | 四 |
+| 缓: dc_hot (去THS化才需)/limit_step (limit_times 自算可覆盖)/dc_concept (接口 20260203 起太新) | | | |
+
+### 不做 (调研否证, 留档防重查)
+ths_* 全系 (vendor 红线) / ci_* 中信 (第三 taxonomy 桶不可比) / stk_account (实测 2019-02 停更) /
+hsgt_top10 (2024-08 后 net/buy/sell 全 None) / slb_* (业务 2024-07 暂停) / fut_holding+cb_daily (整域配套成本>感知边际)。
+**红线**: moneyflow_hsgt north_money **2024-08-19 语义断点** (净买入→成交额, 实测跳 13 倍) —
+库内该表当流向消费=方向性错误, 只许当活跃度且跨断点禁拼接; 消费侧遇到必查此条。

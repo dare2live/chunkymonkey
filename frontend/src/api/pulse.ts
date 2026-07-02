@@ -15,16 +15,23 @@ export interface HeatmapSector {
   values: (number | null)[];
 }
 
+/** dc 链板块类型 (v2 缺口①): 后端白名单 = market_pulse.yaml dc_content_types。 */
+export type DcContentType = "行业" | "概念";
+
 export interface HeatmapResp {
   status: string;
   chain: PulseChain;
+  content_type: string;
   dates: string[]; // YYYYMMDD 升序
   sectors: HeatmapSector[]; // 窗口累计 net_amount 降序, top N
 }
 
-export function fetchHeatmap(opts: { chain?: PulseChain; days?: number; top?: number } = {}) {
+export function fetchHeatmap(
+  opts: { chain?: PulseChain; content_type?: DcContentType; days?: number; top?: number } = {},
+) {
   const q = new URLSearchParams();
   if (opts.chain) q.set("chain", opts.chain);
+  if (opts.content_type) q.set("content_type", opts.content_type);
   if (opts.days !== undefined) q.set("days", String(opts.days));
   if (opts.top !== undefined) q.set("top", String(opts.top));
   const qs = q.toString();
@@ -46,6 +53,7 @@ export interface RotationSector {
 
 export interface RotationResp {
   status: string;
+  chain: PulseChain;
   latest_date: string | null;
   prev_date: string | null;
   sectors: RotationSector[]; // 最新日 rs_rank_4w 升序
@@ -54,6 +62,38 @@ export interface RotationResp {
 export function fetchRotation(opts: { lag?: number } = {}) {
   const qs = opts.lag !== undefined ? `?lag=${opts.lag}` : "";
   return apiGet<RotationResp>(`/api/v3/pulse/rotation${qs}`);
+}
+
+/** v2 dc 资金流轮动行: rank_flow = dc 全体 (行业+概念) 截面资金流排名 (1=流入最强);
+ *  leading/leading_pct = dc_index 涨幅龙头; flow_leader_stock = 资金龙头 (moneyflow_ind_dc);
+ *  inflow_breadth = 当日有个股流数据的成分股中净流入占比 0-1 (dc_member 快照窗内才有, 缺=null)。 */
+export interface DcRotationSector {
+  sector_code: string;
+  sector_name: string;
+  content_type: string | null;
+  pct_change: number | null;
+  net_amount: number | null;
+  rank_flow: number | null;
+  prev_rank_flow: number | null;
+  inflow_breadth: number | null;
+  leading: string | null;
+  leading_pct: number | null;
+  flow_leader_stock: string | null;
+}
+
+export interface DcRotationResp {
+  status: string;
+  chain: PulseChain;
+  latest_date: string | null;
+  prev_date: string | null;
+  sectors: DcRotationSector[]; // 最新日 rank_flow 升序, top 截断
+}
+
+export function fetchDcRotation(opts: { lag?: number; top?: number } = {}) {
+  const q = new URLSearchParams({ chain: "dc_concept" });
+  if (opts.lag !== undefined) q.set("lag", String(opts.lag));
+  if (opts.top !== undefined) q.set("top", String(opts.top));
+  return apiGet<DcRotationResp>(`/api/v3/pulse/rotation?${q.toString()}`);
 }
 
 // ── GET /api/v3/pulse/quiet ────────────────────────────────────────────────
@@ -89,6 +129,20 @@ export interface SentimentPoint {
   limit_down_total: number | null;
   zha_ban_rate: number | null; // Z/(U+Z), 0-1; 源缺日 = null (不知道≠0)
   adv_dec_ratio: number | null;
+  // ── v2 情绪周期 (limit_list_d 族; 口径契约: 官方不含 ST) ──
+  max_limit_times: number | null; // 当日最高连板
+  limit_times_dist_json: string | null; // n板家数 {"1":x,"2":y}; '{}'=源在场真无涨停, null=源缺日
+  promotion_rate: number | null; // 晋级率 0-1: 今日>=2板 ÷ 昨日>=1板; 昨日 0 板 = null
+  sec_board_n: number | null; // 秒板数 (first_time <= 09:30:59 的 U)
+  avg_fd_amount: number | null; // U 行封单均额 (元)
+  open_times_total: number | null; // 炸板总次数 (U+Z 行 open_times 和)
+  // ── v2 水位 ──
+  rzrqye: number | null; // 两融余额 (元, 跨交易所直和; t+1 披露行日期=余额日)
+  rzrqye_chg: number | null; // 两融余额相邻源日差 (元)
+  mkt_pe: number | null; // 大盘 PE (index_dailybasic.pe_ttm, mkt_valuation_code 行)
+  mkt_turnover: number | null; // 大盘换手 (turnover_rate_f 自由流通口径, %)
+  lhb_count: number | null; // 龙虎榜上榜家数 (DISTINCT 股)
+  lhb_inst_net: number | null; // 龙虎榜披露席位净买直和 (元; 源含游资营业部席位非纯机构)
 }
 
 export interface SentimentResp {
@@ -131,4 +185,49 @@ export interface WarningsResp {
 
 export function fetchWarnings() {
   return apiGet<WarningsResp>("/api/v3/pulse/warnings");
+}
+
+// ── GET /api/v3/pulse/strongest ────────────────────────────────────────────
+
+/** limit_cpt_list 最强板块行 (885xxx.TI 同花顺码 — 独立卡, 禁与 dc/sw 链拼接)。 */
+export interface StrongestSector {
+  ts_code: string;
+  name: string;
+  days: number | null; // 连续上榜天数
+  up_stat: string | null; // 连板高度 (如 "3天3板")
+  cons_nums: string | null; // 连板家数 (源为字符串)
+  up_nums: number | null; // 涨停家数
+  pct_chg: number | null; // 板块涨跌幅 (百分数)
+  rank: number | null; // 板块热点排名 (1=最强)
+}
+
+export interface StrongestResp {
+  status: string;
+  trade_date: string | null; // 最近一个有榜的入库日 (冰点日源端无榜合法)
+  sectors: StrongestSector[]; // rank 升序
+}
+
+export function fetchStrongest() {
+  return apiGet<StrongestResp>("/api/v3/pulse/strongest");
+}
+
+// ── GET /api/v3/pulse/members ──────────────────────────────────────────────
+
+export interface MemberRow {
+  con_code: string;
+  name: string | null;
+}
+
+export interface MembersResp {
+  status: string;
+  chain: PulseChain;
+  sector_code: string;
+  as_of: string | null; // dc = 成分快照日; sw 当前成分 = null
+  members: MemberRow[];
+}
+
+export function fetchMembers(opts: { sector_code: string; chain?: PulseChain }) {
+  const q = new URLSearchParams({ sector_code: opts.sector_code });
+  if (opts.chain) q.set("chain", opts.chain);
+  return apiGet<MembersResp>(`/api/v3/pulse/members?${q.toString()}`);
 }

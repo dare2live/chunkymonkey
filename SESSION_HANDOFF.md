@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-07-02 14:10:46 CST
+**Snapshot 时间**: 2026-07-02 19:21:38 CST
 
 ## 主线状态
 
@@ -44,13 +44,16 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `c22ec626 doc: 市场感知 follow-the-money 架构设计 + perception 残留清 (audit measured)` |
-| 最近 24h commits | 18 |
-| 未 commit 文件 | 2 |
+| HEAD | `1b2a1c0a feat: B2 全量验收 + C4 感知页闭环 + D1 前置件 (GT考古/holdout立法/v2设计) — D 线开工就绪` |
+| 最近 24h commits | 21 |
+| 未 commit 文件 | 4 |
 
 ### 最近 10 commits
 
 ```
+1b2a1c0a feat: B2 全量验收 + C4 感知页闭环 + D1 前置件 (GT考古/holdout立法/v2设计) — D 线开工就绪
+e1a42d90 feat: C1/C2 edge 前端骨架 — React+Vite 机构档案页+实盘模拟页
+6abeeaa7 feat: B线基础前置件三件收口 — B3两融域+B4市场感知+B2形态识别重建
 c22ec626 doc: 市场感知 follow-the-money 架构设计 + perception 残留清 (audit measured)
 e37337f4 feat: B1 股票分层模块 — 833万行全史分层标签, 策略cell单一计算点 (measured)
 9e092351 feat: Phase A 机构档案 API — 排名/档案/建仓信号流 (总体路线第一站, measured)
@@ -58,14 +61,11 @@ e37337f4 feat: B1 股票分层模块 — 833万行全史分层标签, 策略cell
 769089b6 doc: 文档保鲜 — changelog 滚动归档 + 正文/goal/地图同步 W1-W2 与总体路线 (audit measured)
 ca1a2707 doc: 总体实施方案顶层定稿 — 主升浪方法论评估+形态/分层架构裁决+全局路线 (audit measured)
 46b854a7 feat: W2 实盘模拟通用件 (手动版) — 各策略共用, 按地基构建 (SERVE第一个正式消费方)
-7787a22e feat: W1 机构画像引擎 promote — edge 第一个正式模块 (探索弧→backend/services)
-b29956e3 doc: 机构跟随探索弧 E1/E2 完成 — episode构建器+收益画像 (sandbox, verdict落库)
-b8ff4cd2 doc: 机构跟随策略设计定稿 v1 — 数据地基实测 + 成本三方案 + episode模型 + execution-aware跟随
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**2 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**4 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

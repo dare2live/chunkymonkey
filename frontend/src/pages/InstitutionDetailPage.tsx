@@ -7,6 +7,7 @@ import { Card, FetchGate } from "../components/Card";
 import { EChart } from "../components/EChart";
 import { fmtDate, fmtInt, fmtPct, pnlClass } from "../format";
 import { useFetch } from "../hooks/useFetch";
+import { UI } from "../theme";
 
 /** 单机构 KPI 卡 (widget 独立取数)。 */
 function KpiCard(props: { holder: string }) {
@@ -72,14 +73,19 @@ function heatmapOption(dims: InstProfileDim[]): EChartsOption {
     rows.map((d) => d.win_rate_alpha),
     rows.map((d) => d.n_closed),
   ];
-  const data: [number, number, number, number | null][] = [];
+  // 分向色阶 绿→白→红 (白=列中位): 深色端格子标签用白字, 浅色端用正文色
+  const data: { value: [number, number, number, number | null]; label: { color: string } }[] = [];
   cols.forEach((col, x) => {
     const vals = col.filter((v): v is number => v !== null);
     const min = Math.min(...vals);
     const max = Math.max(...vals);
     col.forEach((v, y) => {
       const norm = v === null ? 0 : max > min ? (v - min) / (max - min) : 0.5;
-      data.push([x, y, norm, v]);
+      // 白字仅两个饱和极值端 (实测 WCAG: 纯红/纯绿上白字 ~4.4-4.9:1 优于深字 ~3.5-3.9:1)
+      data.push({
+        value: [x, y, norm, v],
+        label: { color: norm >= 0.95 || norm <= 0.02 ? UI.bgPanel : UI.text },
+      });
     });
   });
   const fmtCell = (x: number, raw: number | null) => {
@@ -87,29 +93,31 @@ function heatmapOption(dims: InstProfileDim[]): EChartsOption {
     return x === 2 ? String(Math.round(raw)) : `${(raw * 100).toFixed(1)}%`;
   };
   return {
-    grid: { left: 110, right: 16, top: 8, bottom: 48 },
+    grid: { left: 110, right: 12, top: 8, bottom: 28 },
     xAxis: {
       type: "category",
       data: [...METRICS],
-      axisLabel: { color: "#9da7b3" },
-      axisLine: { lineStyle: { color: "#30363d" } },
+      axisLabel: { color: UI.textDim, fontSize: 11 },
+      axisLine: { show: false },
+      axisTick: { show: false },
     },
     yAxis: {
       type: "category",
       data: yLabels,
-      axisLabel: { color: "#9da7b3", width: 96, overflow: "truncate" },
-      axisLine: { lineStyle: { color: "#30363d" } },
+      axisLabel: { color: UI.textDim, width: 96, overflow: "truncate", fontSize: 11 },
+      axisLine: { show: false },
+      axisTick: { show: false },
     },
     visualMap: {
       min: 0,
       max: 1,
       dimension: 2,
       show: false,
-      inRange: { color: ["#1d3b53", "#2f6f4f", "#b8862d", "#c94a3d"] },
+      inRange: { color: [UI.down, UI.bgPanel, UI.up] },
     },
     tooltip: {
       formatter: (p) => {
-        const v = (p as unknown as { data: [number, number, number, number | null] }).data;
+        const v = (p as unknown as { value: [number, number, number, number | null] }).value;
         return `${yLabels[v[1]]}<br/>${METRICS[v[0]]}: ${fmtCell(v[0], v[3])}`;
       },
     },
@@ -119,13 +127,13 @@ function heatmapOption(dims: InstProfileDim[]): EChartsOption {
         data,
         label: {
           show: true,
-          color: "#e6edf3",
+          color: UI.text,
           formatter: (p) => {
-            const v = p.data as [number, number, number, number | null];
+            const v = p.value as [number, number, number, number | null];
             return fmtCell(v[0], v[3]);
           },
         },
-        itemStyle: { borderColor: "#0d1117", borderWidth: 2 },
+        itemStyle: { borderColor: UI.bgPanel, borderWidth: 2 },
       },
     ],
   };

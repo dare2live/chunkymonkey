@@ -6,6 +6,7 @@ import { Card, FetchGate } from "../components/Card";
 import { EChart } from "../components/EChart";
 import { fmtDate, fmtNum, fmtPct, pnlClass } from "../format";
 import { emitTopic, useFetch } from "../hooks/useFetch";
+import { UI } from "../theme";
 
 const STRATEGY_TAGS = ["manual", "inst_follow"];
 
@@ -79,29 +80,38 @@ function navOption(nav: PaperNavPoint[]): EChartsOption {
     p.bench_close !== null && benchBase ? +(p.bench_close / benchBase).toFixed(4) : null,
   );
   return {
-    grid: { left: 56, right: 16, top: 32, bottom: 32 },
-    legend: { data: ["组合", "HS300"], textStyle: { color: "#9da7b3" }, top: 0 },
+    grid: { left: 52, right: 12, top: 30, bottom: 28 },
+    legend: { data: ["组合", "HS300"], textStyle: { color: UI.textDim, fontSize: 11 }, top: 0 },
     tooltip: { trigger: "axis" },
     xAxis: {
       type: "category",
       data: dates,
-      axisLabel: { color: "#9da7b3" },
-      axisLine: { lineStyle: { color: "#30363d" } },
+      axisLabel: { color: UI.textFaint, fontSize: 11 },
+      axisLine: { show: false },
+      axisTick: { show: false },
     },
     yAxis: {
       type: "value",
       scale: true,
-      axisLabel: { color: "#9da7b3" },
-      splitLine: { lineStyle: { color: "#21262d" } },
+      axisLabel: { color: UI.textFaint, fontSize: 11 },
+      splitLine: { lineStyle: { color: UI.borderSoft } },
     },
     series: [
-      { name: "组合", type: "line", data: navSeries, showSymbol: false, lineStyle: { width: 2, color: "#58a6ff" } },
+      {
+        name: "组合",
+        type: "line",
+        data: navSeries,
+        showSymbol: false,
+        lineStyle: { width: 2, color: UI.accent },
+        itemStyle: { color: UI.accent },
+      },
       {
         name: "HS300",
         type: "line",
         data: benchSeries,
         showSymbol: false,
-        lineStyle: { width: 1.5, type: "dashed", color: "#8b949e" },
+        lineStyle: { width: 1.5, type: "dashed", color: UI.textDim },
+        itemStyle: { color: UI.textDim },
       },
     ],
   };

@@ -1,0 +1,63 @@
+{
+ "domain": "hm_detail",
+ "api": "hm_detail",
+ "grain": [
+  "trade_date",
+  "ts_code",
+  "hm_name",
+  "hm_orgs"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "trade_date": "20220816",
+   "ts_code": "001229.SZ",
+   "ts_name": "魅视科技",
+   "buy_amount": 3712.0,
+   "sell_amount": 5704142.0,
+   "net_amount": -5700430.0,
+   "hm_name": "首板挖掘",
+   "hm_orgs": "东莞证券股份有限公司厦门分公司"
+  },
+  {
+   "trade_date": "20220816",
+   "ts_code": "603279.SH",
+   "ts_name": "景津装备",
+   "buy_amount": 27601712.4,
+   "sell_amount": 0.0,
+   "net_amount": 27601712.4,
+   "hm_name": "首板挖掘",
+   "hm_orgs": "中信证券股份有限公司金华分公司"
+  },
+  {
+   "trade_date": "20220816",
+   "ts_code": "002308.SZ",
+   "ts_name": "威创股份",
+   "buy_amount": 12018954.0,
+   "sell_amount": 0.0,
+   "net_amount": 12018954.0,
+   "hm_name": "首板挖掘",
+   "hm_orgs": "兴业证券股份有限公司厦门分公司"
+  },
+  {
+   "trade_date": "20220816",
+   "ts_code": "600077.SH",
+   "ts_name": "*ST宋都",
+   "buy_amount": 0.0,
+   "sell_amount": 5905912.0,
+   "net_amount": -5905912.0,
+   "hm_name": "量化基金",
+   "hm_orgs": "中国国际金融股份有限公司上海分公司"
+  },
+  {
+   "trade_date": "20220816",
+   "ts_code": "603389.SH",
+   "ts_name": "亚振家居",
+   "buy_amount": 0.0,
+   "sell_amount": 10262534.37,
+   "net_amount": -10262534.37,
+   "hm_name": "量化基金",
+   "hm_orgs": "中国国际金融股份有限公司上海分公司"
+  }
+ ]
+}

@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-02 19:42
+> Snapshot: 2026-07-02 22:58
 
 ## 1. 入口面
 
@@ -32,7 +32,7 @@
 | router | prefix | 端点数 |
 |---|---|---|
 | institution_profile | `—` | 3 |
-| market_pulse | `/api/v3/pulse` | 5 |
+| market_pulse | `/api/v3/pulse` | 7 |
 | ops_manual_run | `/api/v3/ops` | 3 |
 | paper_portfolio | `/api/v3/paper` | 5 |
 | v3_config | `/api/v3` | 1 |
@@ -49,6 +49,8 @@
 | cyq_perf | tushare | cyq_perf | raw_tushare_cyq_perf | by_trade_date | 1 |
 | daily | tushare | daily | raw_tushare_daily | by_trade_date | 1 |
 | daily_basic | tushare | daily_basic | raw_tushare_daily_basic | by_trade_date | 1 |
+| daily_info | tushare | daily_info | raw_tushare_daily_info | by_trade_date | 2 |
+| dc_daily | tushare | dc_daily | raw_tushare_dc_daily | by_trade_date | 2 |
 | dc_index | tushare | dc_index | raw_tushare_dc_index | by_trade_date | 2 |
 | dc_member | tushare | dc_member | raw_tushare_dc_member | by_trade_date | 2 |
 | dividend | tushare | dividend | raw_tushare_dividend | by_trade_date | 5 |
@@ -56,11 +58,14 @@
 | fina_indicator | tushare | fina_indicator | raw_tushare_fina_indicator | by_ts_code | 5 |
 | fina_mainbz | tushare | fina_mainbz | raw_tushare_fina_mainbz | by_ts_code | 130 |
 | forecast | tushare | forecast | raw_tushare_forecast | by_trade_date | 5 |
+| hm_detail | tushare | hm_detail | raw_tushare_hm_detail | by_trade_date | 2 |
+| hm_list | tushare | hm_list | raw_tushare_hm_list | full_refresh | 30 |
 | income | tushare | income | raw_tushare_income | by_ts_code | 5 |
 | index_daily_benchmark | tushare | index_daily | raw_tushare_index_daily | by_code_list | 1 |
 | index_dailybasic | tushare | index_dailybasic | raw_tushare_index_dailybasic | by_code_list | 1 |
 | index_member_all | tushare | index_member_all | raw_tushare_index_member_all | by_code_list | 30 |
 | index_member_all_hist | tushare | index_member_all | raw_tushare_index_member_all | by_code_list | 30 |
+| kpl_list | tushare | kpl_list | raw_tushare_kpl_list | by_trade_date | 2 |
 | limit_cpt_list | tushare | limit_cpt_list | raw_tushare_limit_cpt_list | by_trade_date | 2 |
 | limit_list_d | tushare | limit_list_d | raw_tushare_limit_list_d | by_trade_date | 1 |
 | margin | tushare | margin | raw_tushare_margin | by_trade_date | 2 |
@@ -164,7 +169,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 4,980 | calls 边 6,407 | imports 边 1,163 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 5,018 | calls 边 6,473 | imports 边 1,167 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -212,15 +217,15 @@
 | backend/services/data_sources/sync_runner.py | 985 |
 | backend/scripts/data_health_snapshot.py | 730 |
 | backend/services/data_audit.py | 613 |
+| backend/services/market_pulse.py | 576 |
 | backend/services/schema_migrations.py | 561 |
 | backend/services/source_watermarks.py | 559 |
 | backend/services/rally_gt.py | 492 |
 | backend/scripts/build_feature_map.py | 420 |
-| backend/services/market_pulse.py | 414 |
 
 ## 5. 概览
 
-- chunkyctl 子命令 10 | launchd 任务 1 | router 5 (端点 17)
-- sync_registry 数据域 42
+- chunkyctl 子命令 10 | launchd 任务 1 | router 5 (端点 19)
+- sync_registry 数据域 47
 - 产表 44 (多 writer 12)
 

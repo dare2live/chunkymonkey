@@ -150,6 +150,83 @@ domains:
     min_rows_per_batch: 1         # 2026-07-02 回填实测: 20260403/0430/0618/0626 源端仅 SSE 1 行 (重拉确认非 throttle), 1 行=合法最小
     allow_empty_batch: false
 
+  # ── 市场感知 v2 族 (2026-07-02 调研+实弹; owner=analysis/market_pulse_design_20260702.md v2 第二批) ──
+  dc_daily:                          # 东财板块指数 OHLC (行业/概念/地域全类型): dc 链 RS 双窗 + 广度/龙头史深 2025->2020
+    source: tushare
+    api: dc_daily
+    target_table: raw_tushare_dc_daily
+    # 不设 universe_filter: ts_code 全为 BKxxxx.DC 板块码 (实弹 20260630 前缀 100% 'BK'), 非个股
+    grain: [ts_code, trade_date]     # 实弹 20200102(712行)/20260630(1021行) 均 0 dup
+    batch_mode: by_trade_date
+    page_limit: 5000                 # 实弹 limit/offset 被网关尊重 (limit800: 800+221=1021 拼齐); 当前 1021 行/日单页收齐, 防未来板块扩容截断
+    pit_anchor: "trade_date; 东财板块指数盘后 -> JOIN t-1"
+    available_after: "18:00"
+    data_start: "20200102"           # 实弹边界: 20200102=712行 / 20191231=0行
+    freshness_sla_trading_days: 2
+    min_rows_per_batch: 500          # 实弹最少期 20200102=712 (行业474+概念207+地域31; 现今 496+494+31=1021); <500=截断/半空
+    allow_empty_batch: false
+
+  kpl_list:                          # 开盘啦涨停榜单: lu_desc 涨停原因/theme 题材/status 连板状态/net_change/limit_order (24列)
+    source: tushare
+    api: kpl_list
+    target_table: raw_tushare_kpl_list
+    universe_filter: true            # ts_code 个股 (含北交所) -> 白名单 60/00/30/68 过滤
+    universe_filter_col: ts_code
+    grain: [ts_code, trade_date, tag]  # 实弹 20190102(31)/20240930(642 大涨日)/20260630(168) 均 0 dup; tag 入键防未来炸板/跌停域同表共存撞键
+    batch_mode: by_trade_date
+    # tag 语义 (实弹 20260630): 无参默认 = 涨停单榜 168 行 == 显式 tag=涨停 168 行; 炸板 34/跌停 20 是独立 tag 拉取 0 重叠,
+    #   需要时另开域显式传 tag。注意: 不写 fixed_params — sync_runner by_trade_date 分支不合并 fixed_params
+    #   (ths_hot 反例: 声明 data_type=热股 实际全 8 榜入库, fixed_params 是死配置; 本域靠 API 默认+grain 含 tag 防漂移)。
+    pit_anchor: "trade_date; 开盘啦涨停榜单盘后 -> JOIN t-1"
+    available_after: "18:00"
+    data_start: "20190102"           # 设计稿写 20200106; 实弹 20190102=31行 已有数据 (lu_desc/status/lu_time 0% null) -> 对齐 K线窗口 2019+
+    freshness_sla_trading_days: 2
+    min_rows_per_batch: 10           # 冰点日涨停可能极少; 实弹最少见 20190102=31
+    allow_empty_batch: false
+
+  hm_detail:                         # 游资每日明细 (游资名 x 营业部席位 x 个股买卖): 打板资金温度, v1 全无此维度
+    source: tushare
+    api: hm_detail
+    target_table: raw_tushare_hm_detail
+    universe_filter: true
+    universe_filter_col: ts_code     # 铁律: grain[0]=trade_date, 缺此列名 = top_list 谄媚死反例 (前缀'20'整批全丢仍假报成功)
+    grain: [trade_date, ts_code, hm_name, hm_orgs]  # 实弹: (td,code,hm_name) 不唯一 — 同游资多席位 (20260630 dup82/20240930 dup120); +hm_orgs 营业部后 304/304 + 362/362 全唯一
+    batch_mode: by_trade_date
+    pit_anchor: "trade_date; 游资席位明细盘后归集 (龙虎榜口径, 同 top_list) -> JOIN t-1"
+    available_after: "18:00"
+    data_start: "20220816"           # 实弹二分边界: 20220815=0 / 20220816=161行 (设计稿建议 20220901 偏保守, 20220810=0 复核一致)
+    freshness_sla_trading_days: 2
+    min_rows_per_batch: 20           # 实弹 2022 起步期 117-161 行/日, 近期 304-362; <20=半空嫌疑
+    allow_empty_batch: false
+
+  hm_list:                           # 游资名录 (静态: name/desc/orgs), hm_detail 的 hm_name 维表
+    source: tushare
+    api: hm_list
+    target_table: raw_tushare_hm_list
+    # 不设 universe_filter: 静态名录无股票代码列
+    grain: [name]                    # 实弹 110 行 0 dup
+    batch_mode: full_refresh
+    pit_anchor: "静态名录快照, 无日期语义; 消费按 hm_name JOIN hm_detail"
+    available_after: "00:00"
+    data_start: "20260702"           # full_refresh 无回填语义, 占位 (注册日)
+    freshness_sla_trading_days: 30   # 名录低频变动 (同 stock_basic 口径)
+    min_rows_per_batch: 80           # 实弹 110 行; <80=截断嫌疑
+    allow_empty_batch: false
+
+  daily_info:                        # 官方市场交易统计 (ts_code=市场代码 SH_A/SZ_MAIN/...): 沪深成交/换手/平均PE 官方口径
+    source: tushare
+    api: daily_info
+    target_table: raw_tushare_daily_info
+    # 不设 universe_filter: ts_code 是市场代码非个股
+    grain: [trade_date, ts_code]     # 实弹 20190102(25行)/20260630(11行) 均 0 dup
+    batch_mode: by_trade_date
+    pit_anchor: "trade_date; 交易所每日统计盘后 -> JOIN t-1"
+    available_after: "18:00"
+    data_start: "20190102"           # 对齐项目 K线窗口 (源头更早); 实弹 20190102=25行 在录
+    freshness_sla_trading_days: 2
+    min_rows_per_batch: 8            # 市场码集合随年代变 (2019=25 含 SZ_SME/债券码, 2026=11); <8=半空嫌疑
+    allow_empty_batch: false
+
   # ── P0-c: regime gate 原料 (1 行/日, ROI 最高) ──
   moneyflow_mkt_dc:
     source: tushare

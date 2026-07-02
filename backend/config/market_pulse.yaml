@@ -19,6 +19,12 @@ quiet_min_net_amount: 0       # 流入: net_amount > 该值; 流出: net_amount 
 top_n_sectors: 3              # top/bottom N 板块进 mart_market_pulse_daily.top_sectors_json (aleabitoreddit top3/bottom3);
                               # C4 /pulse/warnings 复用同值做"跌出 RS top-N"预警线 (同一 top3 语义, 不另开阈值)
 
+# ── v2 情绪周期/水位 (2026-07-02 v2 第一批, 契约=设计文档 "v2 增强设计" §1-7) ──
+sec_board_cutoff: "093059"    # 秒板界定: limit_list_d.first_time <= 09:30:59 (开盘一分钟内封板即"秒板");
+                              # 源 first_time 无前导零 (实测样本 "95236"=09:52:36), 引擎比较前 lpad 6 位归一
+mkt_valuation_code: "000300.SH"  # 大盘估值/换手行 (raw_tushare_index_dailybasic; 与 benchmark_code 同值但独立键 —
+                                 # RS 分母与估值口径解耦, 改其一不隐式牵连另一个)
+
 # ── C4 退潮预警 (routers/market_pulse.py 消费; 描述性预警线, 非买卖信号) ──
 warning_quiet_outflow_days: 3 # dc 链连续悄悄流出天数 >= 该值 进退潮预警卡 (C4 契约 2026-07-02 默认, 待用户调参)
 
