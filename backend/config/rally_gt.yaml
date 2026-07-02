@@ -1,0 +1,39 @@
+# rally_gt.yaml — D1 主升浪 GT v2 全部阈值 (判断死红线: builder 只读本文件, 零 hardcode; 修正#10)
+# owner=analysis/d1_gt_v2_design_20260702.md + d1_gt_archaeology_20260702.md §3 (定义) / §4.1 (证据等级)
+#
+# 证据等级标注 (考古 §4.1 照抄):
+#   [双证据]     = v1.5 归档代码常数 + parquet 实测统计逐一对上 (git e909e548~1 / archive purge_processed)
+#   [用户口述锚] = 用户定义"什么算主升浪"的猎物定义 (MASTER §5 口述), 非从数据调出的参数, 不做调参对象 (P2 拍板)
+#   [结构常数]   = 工程拍板, 无敏感性分析留档 — 修正#9: 冻结前跑 LOWWIN/BASEMIN/DDFLOOR ±25% 扰动留档 analysis/
+#
+# holdout: data_end 不在本文件 — 唯一真相源 = holdout_policy.yaml holdout_start (builder 默认读它, 不复制)。
+
+taxonomy_version: v2_20260702   # 设计 P3 拍板: 表名沿用不加 _v2 后缀, 库隔离 (feature_store) + 本列区分版本
+scan_start: "2019-01-01"        # [双证据] K线全史起点 (market.price_kline_qfq_tushare 2019-01-02 起)
+
+episode:
+  gain_min: 0.60           # [用户口述锚] 底→顶 >60% (MASTER §5); parquet 实测 min(gain)=0.6000
+  min_duration_days: 20    # [双证据][结构常数] 峰距底 >=20 日排单日尖峰; parquet min(peak_offset)=20
+  max_forward_days: 250    # [双证据][结构常数] 底→顶前瞻上限 ~1年; parquet max(peak_offset)=250, fwd_window_len 恒 250
+  pivot_low_window: 20     # [双证据][结构常数] 波段底确认窗 (前后 20 日最低, LOWWIN)
+  base_min_days: 40        # [双证据][结构常数] 长底 >=40 日贴底盘整; parquet min(base_days)=40
+  base_lookback_days: 120  # [双证据][结构常数] 长底回看窗 (底前 120 日, BASE_LOOKBACK)
+  base_band_low: 0.85      # [结构常数] 贴底带下界 (close ∈ 底low*[0.85,1.25] = 用户图"长期横盘"的翻译)
+  base_band_high: 1.25     # [结构常数] 贴底带上界
+  dd_floor: -0.30          # [双证据][结构常数] 拉升路径 max_dd 下限 (平滑无深调); parquet min(path_max_dd)=-0.2999
+  bull_align_mode: any_day # P1 拍板: v2 首版保持 v1.5 ∃-日读法 (拉升期 [bottom..peak] 内存在某日 MA5>10>20>30>60);
+                           # 改读法 = taxonomy_version 变更, 历史不可比 — 敏感性并测 min_ratio 变体后由用户拍板 (修正#5)
+  warmup_bars: 60          # [结构常数] 扫描起点 max(pivot_low_window, warmup_bars): MA60 需 60 根热身 (v1.5 同)
+  st_sample_step_bars: 10  # [结构常数] 拉升期 PIT ST 抽样步长 (每 10 根查 is_st_on, v1.5 同)
+
+negative:
+  # pivot/base/gain/forward 参数与正样本共用 episode.* (单一计算点, 修正#8); 本节只放负样本特有结构常数。
+  # purge 距离 = episode.max_forward_days (同股正样本 bottom ±250 根内 forward 窗重叠 = 污染, [双证据])。
+  min_gap_bars: 20         # [双证据][结构常数] 同股负样本间隔 >=20 根, 防贴邻重复 pivot (=LOWWIN, v1.5 同)
+  tail_skip_divisor: 5     # [结构常数] 末端 forward 太短跳过: i < n - max_forward_days//5 (v1.5 同)
+
+strata:
+  base_buckets:            # [双证据] 长底桶界 (v1.5 strata 实测: 短 40-60 / 中 60-100 / 长 >100)
+    短底: [40, 60]
+    中底: [60, 100]
+    长底: [100, null]

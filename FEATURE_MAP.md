@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-02 19:21
+> Snapshot: 2026-07-02 19:42
 
 ## 1. 入口面
 
@@ -88,7 +88,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 44 张 | 单 writer 32 | 多 writer 12 | 动态表名写点 21 处 (10 文件)
+统计: 表 44 张 | 单 writer 32 | 多 writer 12 | 动态表名写点 27 处 (11 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -105,6 +105,7 @@
 | backend/services/aif10_capability_client.py | 3 |
 | backend/services/data_sources/sync_runner.py | 3 |
 | backend/services/market_pulse.py | 4 |
+| backend/services/rally_gt.py | 6 |
 | backend/services/technical_states/__init__.py | 2 |
 
 ### 多 writer 表 (>1 文件写同一张表)
@@ -163,34 +164,34 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 4,913 | calls 边 6,255 | imports 边 1,134 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 4,980 | calls 边 6,407 | imports 边 1,163 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
-| services.duck_adapter | 32 |
-| services.database_manifest | 11 |
+| services.duck_adapter | 33 |
+| services.database_manifest | 12 |
 | services.db | 9 |
 | services.pipeline_manifest | 7 |
 | services.lineage.model | 5 |
 | scripts.formula_parameter_search | 4 |
 | services.data_sources | 4 |
 | services.market_db | 4 |
+| services.universe | 4 |
 | services.utils | 4 |
 | services.calendar | 3 |
 | services.data_processing_monitor | 3 |
 | services.lineage | 3 |
 | services.storage_retention | 3 |
 | services.data_deletion | 2 |
-| services.data_governance.config | 2 |
 
 ### 跨文件 fan-in 最高的文件 (近似口径: 唯一定义名 + caller 实际 import 目标模块双过滤)
 
 | 文件 | 调用方文件数 |
 |---|---|
-| backend/services/duck_adapter.py | 24 |
-| backend/services/database_manifest.py | 10 |
+| backend/services/duck_adapter.py | 25 |
+| backend/services/database_manifest.py | 11 |
 | bestchoice/compute.py | 9 |
 | backend/services/pipeline/context.py | 5 |
 | backend/services/pipeline_manifest.py | 5 |
@@ -213,9 +214,9 @@
 | backend/services/data_audit.py | 613 |
 | backend/services/schema_migrations.py | 561 |
 | backend/services/source_watermarks.py | 559 |
+| backend/services/rally_gt.py | 492 |
 | backend/scripts/build_feature_map.py | 420 |
 | backend/services/market_pulse.py | 414 |
-| backend/services/qfii_client.py | 406 |
 
 ## 5. 概览
 

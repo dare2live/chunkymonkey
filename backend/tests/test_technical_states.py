@@ -113,8 +113,8 @@ def test_output_has_no_direction_semantics():
     assert out
     row = next(iter(out.values()))
     expected = {"axis_pos", "axis_trend", "axis_purity", "axis_vol", "axis_volregime",
-                "axis_pos_score", "axis_trend_score", "axis_purity_score", "axis_vol_score",
-                "axis_volregime_score", "form_label", "form_sub", "weekly_label", "monthly_label",
+                "axis_pos_memb", "axis_trend_memb", "axis_purity_memb", "axis_vol_memb",
+                "axis_volregime_memb", "form_name", "form_sub", "weekly_name", "monthly_name",
                 "is_breakout_event", "base_days", "buyable", "sellable", "is_one_word"}
     assert set(row) == expected
     for forbidden in ("mtf_aligned", "bull", "bear", "side", "direction"):
@@ -164,12 +164,12 @@ def test_live_equals_batch_on_decision_day():
         d = dates[t]
         live = _classify(dates[:t + 1], c[:t + 1], v[:t + 1], cal)
         assert d in live and d in batch, f"决策日 {d} 缺输出"
-        for field in ("form_label", "form_sub", "weekly_label", "monthly_label",
+        for field in ("form_name", "form_sub", "weekly_name", "monthly_name",
                       "axis_pos", "axis_trend", "axis_purity", "axis_vol"):
             assert _same(live[d][field], batch[d][field]), \
                 f"t={d} {field}: live={live[d][field]!r} vs batch={batch[d][field]!r} — 决策日被未来改写 (H1)"
-        n_weekly += live[d]["weekly_label"] is not None
-        n_monthly += live[d]["monthly_label"] is not None
+        n_weekly += live[d]["weekly_name"] is not None
+        n_monthly += live[d]["monthly_name"] is not None
     assert n_weekly >= 6 and n_monthly >= 3, \
         f"weekly/monthly 非空样本不足 ({n_weekly}/{n_monthly}) — 测试空转"
 
@@ -239,7 +239,7 @@ def test_enrich_eff_view_keeps_measured():
 
 
 def test_zero_volume_bar_not_covered():
-    """零成交量 bar → vol_ratio/zvol NaN → 量能轴 None → form_label None (不再伪装量能正常)。"""
+    """零成交量 bar → vol_ratio/zvol NaN → 量能轴 None → form_name None (不再伪装量能正常)。"""
     n = 320
     dates = _weekdays(n)
     cal = _weekdays(n + 30)
@@ -247,7 +247,7 @@ def test_zero_volume_bar_not_covered():
     v[300] = 0.0
     out = _classify(dates, c, v, cal)
     row = out[dates[300]]
-    assert row["axis_vol"] is None and row["form_label"] is None
+    assert row["axis_vol"] is None and row["form_name"] is None
     assert out[dates[299]]["axis_vol"] is not None               # 邻近正常 bar 不受牵连
 
 
@@ -491,8 +491,8 @@ def test_rebuild_all_end_to_end(fix_data):
         assert out["rows"] > 0 and out["codes"] == 2
         last = fix_data["days"][-1].replace("-", "")
         rows = con.execute(f"""
-            SELECT stock_code, axis_pos, axis_trend, axis_vol, axis_volregime, axis_volregime_score,
-                   form_label, weekly_label, monthly_label, buyable, sellable, is_one_word
+            SELECT stock_code, axis_pos, axis_trend, axis_vol, axis_volregime, axis_volregime_memb,
+                   form_name, weekly_name, monthly_name, buyable, sellable, is_one_word
             FROM {ts.TABLE} WHERE trade_date = ? ORDER BY stock_code""", [last]).fetchall()
         assert len(rows) == 2
         for r in rows:

@@ -69,9 +69,9 @@ F0 教训明标: 突破胜率 44.5% 是接刀 — 检测器只做**描述与 GT 
 ```
 stock_code, trade_date,
 axis_pos, axis_trend, axis_purity, axis_vol, axis_volregime,   -- 5 轴值
-axis_pos_score, axis_trend_score, ...                          -- 各轴归一分 [0,1]
-form_label, form_sub                                            -- cell 派生人话标签
-weekly_label, monthly_label                                     -- 已闭合周期 as-of (无方向claim)
+axis_pos_memb, axis_trend_memb, ...                          -- 各轴归一分 [0,1]
+form_name, form_sub                                            -- cell 派生人话标签
+weekly_name, monthly_name                                     -- 已闭合周期 as-of (无方向claim)
 is_breakout_event, base_days, buyable, sellable, is_one_word    -- 事件 overlay + 可成交
 built_at
 ```

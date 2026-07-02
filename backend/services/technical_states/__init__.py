@@ -67,10 +67,10 @@ CREATE TABLE {TABLE} (
     stock_code VARCHAR NOT NULL,
     trade_date VARCHAR NOT NULL,
     axis_pos VARCHAR, axis_trend VARCHAR, axis_purity VARCHAR, axis_vol VARCHAR, axis_volregime VARCHAR,
-    axis_pos_score DOUBLE, axis_trend_score DOUBLE, axis_purity_score DOUBLE, axis_vol_score DOUBLE,
-    axis_volregime_score DOUBLE,
-    form_label VARCHAR, form_sub VARCHAR,
-    weekly_label VARCHAR, monthly_label VARCHAR,
+    axis_pos_memb DOUBLE, axis_trend_memb DOUBLE, axis_purity_memb DOUBLE, axis_vol_memb DOUBLE,
+    axis_volregime_memb DOUBLE,
+    form_name VARCHAR, form_sub VARCHAR,
+    weekly_name VARCHAR, monthly_name VARCHAR,
     is_breakout_event BOOLEAN, base_days INTEGER,
     buyable BOOLEAN, sellable BOOLEAN, is_one_word BOOLEAN,
     built_at TIMESTAMP
@@ -188,14 +188,14 @@ def classify_stock(dates, o, h, l, c, v, *, trading_days, cfg: dict | None = Non
         ev = events.get(k)
         up, down, one = lim.get("is_up_limit"), lim.get("is_down_limit"), lim.get("is_one_word")
         out[k] = {
-            "axis_pos": ax["位置"]["value"], "axis_pos_score": ax["位置"]["score"],
-            "axis_trend": ax["趋势方向"]["value"], "axis_trend_score": ax["趋势方向"]["score"],
-            "axis_purity": ax["趋势纯度"]["value"], "axis_purity_score": ax["趋势纯度"]["score"],
-            "axis_vol": ax["量能"]["value"], "axis_vol_score": ax["量能"]["score"],
-            "axis_volregime": vr, "axis_volregime_score": vscore,
-            "form_label": r["label"], "form_sub": r["sub"],
-            "weekly_label": lab.asof_label(wk_rows, wk_keys, k),
-            "monthly_label": lab.asof_label(mo_rows, mo_keys, k),
+            "axis_pos": ax["位置"]["value"], "axis_pos_memb": ax["位置"]["score"],
+            "axis_trend": ax["趋势方向"]["value"], "axis_trend_memb": ax["趋势方向"]["score"],
+            "axis_purity": ax["趋势纯度"]["value"], "axis_purity_memb": ax["趋势纯度"]["score"],
+            "axis_vol": ax["量能"]["value"], "axis_vol_memb": ax["量能"]["score"],
+            "axis_volregime": vr, "axis_volregime_memb": vscore,
+            "form_name": r["label"], "form_sub": r["sub"],
+            "weekly_name": lab.asof_label(wk_rows, wk_keys, k),
+            "monthly_name": lab.asof_label(mo_rows, mo_keys, k),
             "is_breakout_event": ev is not None,
             "base_days": (ev["base_days"] if ev else None),
             "buyable": (None if up is None else not up),
@@ -208,9 +208,9 @@ def classify_stock(dates, o, h, l, c, v, *, trading_days, cfg: dict | None = Non
 def _row_tuple(code: str, k: str, r: dict) -> tuple:
     return (code, _compact(k),
             r["axis_pos"], r["axis_trend"], r["axis_purity"], r["axis_vol"], r["axis_volregime"],
-            r["axis_pos_score"], r["axis_trend_score"], r["axis_purity_score"], r["axis_vol_score"],
-            r["axis_volregime_score"],
-            r["form_label"], r["form_sub"], r["weekly_label"], r["monthly_label"],
+            r["axis_pos_memb"], r["axis_trend_memb"], r["axis_purity_memb"], r["axis_vol_memb"],
+            r["axis_volregime_memb"],
+            r["form_name"], r["form_sub"], r["weekly_name"], r["monthly_name"],
             r["is_breakout_event"], r["base_days"], r["buyable"], r["sellable"], r["is_one_word"])
 
 

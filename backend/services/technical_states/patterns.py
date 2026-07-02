@@ -3,7 +3,7 @@
 命名形态 (老鸭头/圆弧底突破/顶部派发转跌) = **标签序列有序子序列模板** 的派生纯函数标签。
 PIT 三时点契约 (keep): 模板在完成 bar 命中, 前序在窗口内 <= 完成 bar 逆向找, 严禁回贴历史 bar。
 新词表适配: 瞬时"放量突破"态已删 (C1) — 模板元素 "突破事件" 匹配 breakout overlay 事件
-(is_breakout_event), 其余元素匹配 form_label。加/改形态 = 改 config 不动代码。
+(is_breakout_event), 其余元素匹配 form_name。加/改形态 = 改 config 不动代码。
 纯函数, 无 DB。provenance 标主观性 (主观性高的仅描述不当 alpha)。
 """
 from __future__ import annotations
@@ -32,7 +32,7 @@ def _match_ordered_subsequence(labels: list, events: list, i: int, seq: list, wi
 
 
 def match_named_patterns(seq: list, cfg: dict) -> dict:
-    """seq = [(date, form_label, is_breakout_event), ...] 时间升序 → {完成date: [{名称, provenance}]}。
+    """seq = [(date, form_name, is_breakout_event), ...] 时间升序 → {完成date: [{名称, provenance}]}。
 
     只在完成 bar 命中, 不回贴历史 bar (PIT 三时点, 审查实测 keep: 截断 vs 全量历史命中 0 不一致)。
     """

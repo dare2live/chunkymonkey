@@ -89,8 +89,6 @@ table_health_overrides:
   # holder/inst 季频 fact (L1_foundation 默认 on-demand, 这里给 quarterly 保留季频监控不误日红)
   fact_top10_holder_period:        {expected_freshness: quarterly, sla_hours: 2280}
 tables:
-  raw_tushare_margin_detail: L0_source  # 2026-07-02 B3 两融个股日频 (sync_registry margin_detail 域, D2 L1 叠加层原料)
-  raw_tushare_margin: L0_source         # 2026-07-02 B3 两融交易所汇总 (B4 大盘水位原料)
   raw_aif10_peer_valuation: L0_source
   raw_aif10_valuation_quantile: L0_source
   raw_org_holding_aif10: L0_source  # 2026-06-24 补tag (aif10机构持仓明细raw镜像, 前会话漏登致data-layer-integrity FAIL)
@@ -117,6 +115,11 @@ tables:
   fact_inst_episode: L2_feature            # 机构×股票 episode (成本/收益/alpha/PIT行业/被动标记)
   mart_inst_profile: L2_feature            # 机构总画像 (median_alpha/win_rate/low_sample 护栏)
   mart_inst_profile_dim: L2_feature        # 机构×维度画像 (industry_pit/year/holder_type)
+  # ── D1 主升浪 GT v2 (2026-07-02 services/rally_gt.py; Type B 含前瞻 label/outcome, edge 隔离 feature_store 库;
+  #    设计 P3: smartmoney 只放 Type A, GT 研究半永不 serving; 列契约 rally_gt_columns.yaml + gt_label_contract 执法) ──
+  fact_rally_ground_truth: L2_feature      # 正样本 episode (五层漏斗 + 右删失 embargo; train 窗 <= holdout_start)
+  fact_rally_negative: L2_feature          # hard-negative (同 pivot/长底 setup + fwd 完整 + 未涨; purge ±maxfwd)
+  fact_rally_strata: L2_feature            # episode PIT 分层 (申万 as-of + 长底桶; B1/B2 列待锁释放回填)
   stock_watchlist: display
   paper_position: display        # 2026-07-02 实盘模拟(手动): 用户手选持仓账本 (Type A: 用户操作记录)
   paper_nav_daily: display       # 2026-07-02 实盘模拟: 每日 mark-to-market 快照 (Type A: 给定持仓+价格结果唯一)
