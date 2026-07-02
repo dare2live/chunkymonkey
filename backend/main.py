@@ -133,6 +133,10 @@ app_modules = register_modules(app)
 from routers.v3_config import router as v3_config_router
 app.include_router(v3_config_router, prefix="/api/v3", tags=["v3_config"])
 
+# 实盘模拟 (手动版, 2026-07-02 用户定调: 各策略共用, 手选入池+设仓位, daily_update 时 mark)
+from routers.paper_portfolio import router as paper_portfolio_router
+app.include_router(paper_portfolio_router, prefix="/api/v3/paper", tags=["paper_portfolio"])
+
 # (退役 routers: market_perception/bestchoice/perception_legacy/signals_v2 等 2026-06-14~28 删, 详 ledger + git史)
 
 # 设置选项相关的API (比如开启/关闭功能模块)

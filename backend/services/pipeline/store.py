@@ -21,6 +21,14 @@ def run_store(ctx: PipelineContext) -> None:
         ctx.run_script("backend/scripts/refresh_source_watermarks.py",
                        degraded_msg="watermark refresh 失败 — SLA 体系将持续误报 stale")
 
+    # Step 3.99: 实盘模拟 mark-to-market (2026-07-02 手动版: 用户"点更新数据时随之更新";
+    #   必在 K线清洗步之后 — 读 SERVE kline_qfq/index_daily 最新价快照 nav)
+    if not ctx.dry:
+        def _mark_paper():
+            from services.paper_portfolio import mark_to_market
+            ctx.log(f"[paper_portfolio] {mark_to_market()}")
+        ctx.step(_mark_paper, degraded_msg="paper_portfolio mark-to-market 失败 (实盘模拟快照缺当日)")
+
     # Step 4: storage retention plan (dry-run; append-only 防膨胀)
     if not ctx.dry:
         ctx.run_script("backend/scripts/plan_storage_retention.py",

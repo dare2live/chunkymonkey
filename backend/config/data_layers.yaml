@@ -112,6 +112,8 @@ tables:
   mart_inst_profile: L2_feature            # 机构总画像 (median_alpha/win_rate/low_sample 护栏)
   mart_inst_profile_dim: L2_feature        # 机构×维度画像 (industry_pit/year/holder_type)
   stock_watchlist: display
+  paper_position: display        # 2026-07-02 实盘模拟(手动): 用户手选持仓账本 (Type A: 用户操作记录)
+  paper_nav_daily: display       # 2026-07-02 实盘模拟: 每日 mark-to-market 快照 (Type A: 给定持仓+价格结果唯一)
   app_settings: infra
   dim_price_limit_rules: infra
   dim_schema_version: infra

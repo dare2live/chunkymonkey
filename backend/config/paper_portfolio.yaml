@@ -1,0 +1,13 @@
+# paper_portfolio.yaml — 实盘模拟 (手动版) 配置真相源 (2026-07-02 用户定调)
+# 语义: 用户在各策略选出的股票里手选入池+设仓位; 每日"更新数据"(daily_update) 时 mark-to-market;
+#       统计 胜率/收益率/超额 vs HS300。手动版 (之前的自动 paper_sim 已随重建退役, 本件从零按地基构建)。
+version: 1
+
+init_cash: 1000000          # 初始资金 100 万 (用户定)
+benchmark_entity: index_daily    # 超额基准 SERVE entity
+benchmark_code: "000300.SH"      # HS300 (用户拍板超额基准)
+
+# 手动模拟从简 (用户"不用特别复杂"): 入池/出池按操作日最新完成交易日的 qfq close 计价;
+# 摩擦成本仍计 (真金白银纪律: 无成本的模拟收益虚高)
+commission_rate: 0.00025    # 佣金 万2.5 双边
+stamp_tax_rate: 0.001       # 印花税 千1 卖方
