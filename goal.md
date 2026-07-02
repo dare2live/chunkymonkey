@@ -53,7 +53,7 @@
 **用户决议 (2026-06-28)**: 项目降为**纯净数据平台** —— 只留 ① 原始数据 (tushare 唯一 + aif10 十大流通股东) ② 优化后的四地基 ③ 数据平台代码 (采集/清洗/SERVE/治理)。**所有加工中间变量 + 策略/serving/edge/workbench 层全部退役** (代码 ~245 文件 git rm 可逆 + 数据 ~40 表 archive parquet 留底), 待未来在干净平台上**从零重建** edge。
 
 **平台分层 (当前真相源)**:
-- **M1 采集** (`services/data_sources/` + 各 raw client): vendor → L0 raw (raw_tushare_* + raw_aif10_* + holders/lhb/qfii/org_holding/surveys), 零计算。
+- **M1 采集** (`services/data_sources/` + aif10 client): vendor → L0 raw (raw_tushare_* 40表 + aif10 域 [holders/qfii/org_holding/估值]), 零计算。lhb/surveys 已切 tushare (top_list/top_inst/stk_surv, 批2)。
 - **M2 清洗** (`market_*`/`pipeline/clean`): L0 → L1 qfq (v_price_kline_qfq tushare-only, PIT 复权)。
 - **M4 SERVE** (`services/data_access/`): 唯一取数 + PIT asof + 口径锁 + provenance (raw entity 读路)。
 - **四地基**: ① 主键+PIT锚 ② 读写边界=库分区 (§9 reference.duckdb 拆库 DONE) ③ 可扩展分层 (data_layers L0-L4) ④ 单一真相源 (tushare+aif10, leakage洞=0)。
@@ -61,13 +61,15 @@
 - **血缘** (`services/lineage/`): acquire+consume DAG (impact/provenance/dead CLI)。
 - **治理** (`audit`/`data_audit`/`data_quality`/moth/`check_*`/`storage_retention`/`sandbox_guard`): 11 治理 mart + 全套门。
 
-**库现状**: tushare_raw 7.5G (43 raw) · market (K线/qfq) · reference (4 dim) · smartmoney 0.34G (42 表: raw fact + 配置 dim + 11 治理 mart) · etf · experiment_store。
+**库现状 (2026-07-02 批7 收敛后实测)**: tushare_raw 7.3G (40 raw + 2 PIT行业视图) · market 737M (price_kline_qfq_tushare 831万 → v_price_kline_qfq) · reference (4 dim) · smartmoney 320M (30 表: aif10 域 + dim + 治理 mart) · etf/feature_store 空壳 · experiment_store (verdict 契约)。
 
-**验证 (重建后全绿)**: import main OK + CI offline + 全套 474 passed (10 既存债非 rebuild) + moth 30/0/0 + data_layer_audit PASS(untagged=0) + doc_drift PASS。
+**验证 (2026-07-02 批7 收敛后)**: 全量 pytest 413 passed (10 既存债, stash 基线一致) + CI offline 188 + moth 30/0/0 + data_layer_audit PASS (untagged=0, **stale_tag 首次归零**) + check_dead_references 0 + lineage graph 208节点无死表。
+
+**数据纯化 (批0-7, 2026-06-28~07-02) 已收敛**: 非 tushare/aif10 残表全物删 (ETF 子系统/机构旧表/top10/旧K线管线, archive 留底) + 死代码/config/断言/死闸清零 + 控制面重写 (PROJECT_INDEX 708→300 判断层) + 磁盘 15G→9.5G。4轮 sweep 验 dry, 代码/config/DB 层 is_dry=True。
 
 ## 下一步 (用户定方向)
 
-数据平台已纯净就绪。**edge/策略层从零重建** = 未来主线, 但需用户定方向后启动:
+数据平台已纯净收敛。**edge/策略层从零重建 = 当前主线** (用户已拍板: 5 界面 [股票档案/机构档案/选股台/工作台/首页sim] + React/Vue 重写前端 + "全部分阶段规划好再动手"; 框架 analysis/edge_layer_framework_design_20260628.md + implementation_plan 待按纯化后现状复核启动):
 - 北极星目标仍是**主升浪猎手** (episode-first 结果倒推: 找赢家 episode → 反推 PIT 入场/持有/出场特征 → 含成本 OOS 裁决)。详见 `docs/MASTER_TOPLEVEL_DESIGN.md` §5 (蓝图, 未实现) + `analysis/zhushenglang_hunter_plan_20260617.md` (历史方案, 重建参考)。
 - **D1 Ground Truth 已 archive** (rally/macd episode GT parquet 在 `data/archive/purge_processed/`); edge 重启时从 raw K线**重新生成** (不复用旧 GT)。
 - 重建 edge 必守创世层死亡条款 + 四地基不变量 + 含成本可交易裁决 (R1/R2): IC≠可赚钱; 回测须 execution-aware (涨跌停/T+1 open/非对称成本/容量)。
