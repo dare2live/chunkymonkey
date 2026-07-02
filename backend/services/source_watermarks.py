@@ -88,14 +88,10 @@ DOMAIN_SPECS = [
     },
     # stock_blocks 域已删 (2026-06-23): 原指通达信 dim_stock_tdx_industry, 源物删; 行业新鲜度由上方 industry_dc 域 (东财 dim_stock_dc_industry) 跟踪。
     # lhb_daily 域已删 2026-06-29 (批2b: LHB 切 tushare top_list/top_inst, 新鲜度由 sync:top_list/sync:top_inst 自动域覆盖)
-    {
-        "data_domain": "institution_survey",
-        "source_name": "tushare",
-        "source_tier": 1,
-        "table": "raw_tushare_stk_surv",
-        "date_col": "surv_date",
-        "parser_version": "tushare",  # 2026-06-28 批2: 切 tushare stk_surv 唯一 (aif10+akshare 退役)
-    },
+    # institution_survey 手动域已删 2026-07-02 (批2a 残留真bug修复: repoint 到 tushare_raw 库的
+    #   raw_tushare_stk_surv 后, derive_watermark 用 smartmoney conn 查表 → 假报 table_missing 进
+    #   failure_queue。DOMAIN_SPECS 手动域只适用 smartmoney 库内表 (qfii/holders); sync_registry
+    #   管理的域新鲜度由 sync:stk_surv 自动域覆盖, 同批2b lhb 药方)。
     {
         "data_domain": "qfii_holding_quarterly",
         "source_name": "aif10_qfii",

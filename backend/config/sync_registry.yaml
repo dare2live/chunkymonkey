@@ -440,7 +440,10 @@ domains:
     grain: [ts_code, trade_date]
     batch_mode: by_code_list      # 基准指数清单循环 (非全市场); 每指数一次 ranged 调用
     code_param: ts_code
-    code_list: ["000300.SH", "000905.SH", "000852.SH", "000016.SH", "399006.SZ", "000001.SH", "399001.SZ"]
+    code_list: ["000300.SH", "000905.SH", "000016.SH", "399006.SZ", "000001.SH", "399001.SZ"]
+    # 000852.SH (中证1000) 2026-07-02 从 code_list 移除: 实测 tushare index_dailybasic 不覆盖该指数
+    #   (06-13 起 3 次 sync_batch_failed 全史空返; 现表覆盖=6指数全到 20260701)。regime 特征若需中证1000
+    #   用 index_daily (行情有) 非 dailybasic (估值面源端无)。
     fixed_params: {start_date: "20050101"}   # end_date 由 runner 动态注入 latest_completed_trade_date (§4.4 禁钉死日期; 旧 hardcode 20260612 致 HS300 永久 stale 拖累 RS+板块regime, 2026-06-22 根治). HS300 全史 <5000 行实测无截断险
     pit_anchor: "trade_date; 指数收盘即定, 当日可用 (基准超额无前瞻)"
     data_start: "20050101"
@@ -482,7 +485,10 @@ domains:
     grain: [ts_code, trade_date]
     batch_mode: by_code_list      # 基准指数清单 (regime 特征源: 指数级 total_mv/turnover/pe/pb)
     code_param: ts_code
-    code_list: ["000300.SH", "000905.SH", "000852.SH", "000016.SH", "399006.SZ", "000001.SH", "399001.SZ"]
+    code_list: ["000300.SH", "000905.SH", "000016.SH", "399006.SZ", "000001.SH", "399001.SZ"]
+    # 000852.SH (中证1000) 2026-07-02 从 code_list 移除: 实测 tushare index_dailybasic 不覆盖该指数
+    #   (06-13 起 3 次 sync_batch_failed 全史空返; 现表覆盖=6指数全到 20260701)。regime 特征若需中证1000
+    #   用 index_daily (行情有) 非 dailybasic (估值面源端无)。
     fixed_params: {start_date: "20100101"}   # end_date 由 runner 动态注入 (§4.4 禁钉死日期, 2026-06-22 根治). index_dailybasic 史起约 2010
     pit_anchor: "trade_date; 指数收盘即定当日可用 (regime 特征 JOIN t-1 防边界)"
     data_start: "20100101"
