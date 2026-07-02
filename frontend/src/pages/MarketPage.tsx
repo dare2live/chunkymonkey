@@ -25,7 +25,7 @@ import { Card, FetchGate } from "../components/Card";
 import { EChart } from "../components/EChart";
 import { fmtDate, fmtInt, fmtNum } from "../format";
 import { useFetch } from "../hooks/useFetch";
-import { UI, UI_ALPHA } from "../theme";
+import { UI } from "../theme";
 
 /** rs_* 已是百分点 → 直接带符号显示, 不再 ×100。 */
 function fmtPts(x: number | null | undefined): string {
@@ -641,74 +641,75 @@ function LadderCard() {
   );
 }
 
-// ── 卡4b: 情绪温度时序 (涨停面积 + 跌停线 + 炸板率细线右轴) ────────────────
+// ── 卡4b: 情绪温度条纹带 (climate-stripes 式: 每交易日一根色条, 三条平行光谱;
+//    无合成权重 — 三个变量各占一带, 不造"综合情绪分") ────────────────────────
 
-function sentimentOption(days: SentimentPoint[]): EChartsOption {
-  const dates = days.map((d) => fmtDate(d.trade_date));
-  return {
-    grid: { left: 44, right: 44, top: 30, bottom: 28 },
-    legend: {
-      data: ["涨停家数", "跌停家数", "炸板率%"],
-      textStyle: { color: UI.textDim, fontSize: 11 },
-      itemWidth: 14,
-      itemHeight: 8,
-      top: 0,
-    },
-    tooltip: { trigger: "axis" },
-    xAxis: {
-      type: "category",
-      data: dates,
-      axisLabel: { color: UI.textFaint, fontSize: 11 },
-      axisLine: { show: false },
-      axisTick: { show: false },
-    },
-    yAxis: [
-      {
-        type: "value",
-        name: "家数",
-        axisLabel: { color: UI.textFaint, fontSize: 11 },
-        splitLine: { lineStyle: { color: UI.borderSoft } },
-        nameTextStyle: { color: UI.textFaint, fontSize: 11 },
-      },
-      {
-        type: "value",
-        name: "炸板率%",
-        min: 0,
-        max: 100,
-        axisLabel: { color: UI.textFaint, fontSize: 11 },
-        splitLine: { show: false },
-        nameTextStyle: { color: UI.textFaint, fontSize: 11 },
-      },
-    ],
-    series: [
-      {
-        name: "涨停家数",
-        type: "line",
-        data: days.map((d) => d.limit_up_total),
-        showSymbol: false,
-        lineStyle: { width: 1.5, color: UI.up },
-        itemStyle: { color: UI.up },
-        areaStyle: { color: UI_ALPHA.upArea }, // 浅红半透明面积 = 情绪主视觉
-      },
-      {
-        name: "跌停家数",
-        type: "line",
-        data: days.map((d) => d.limit_down_total),
-        showSymbol: false,
-        lineStyle: { width: 1, color: UI.down },
-        itemStyle: { color: UI.down },
-      },
-      {
-        name: "炸板率%",
-        type: "line",
-        yAxisIndex: 1,
-        data: days.map((d) => (d.zha_ban_rate === null ? null : +(d.zha_ban_rate * 100).toFixed(1))),
-        showSymbol: false,
-        lineStyle: { width: 1, color: UI.warn },
-        itemStyle: { color: UI.warn },
-      },
-    ],
-  };
+/** p95 分位封顶 (防单日极值压扁全带的色阶动态范围)。 */
+function p95(vals: number[]): number {
+  if (!vals.length) return 1;
+  const sorted = [...vals].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] || 1;
+}
+
+/** 白→语义色插值: v/cap 越大颜色越深; null=源缺日显灰纹。 */
+function stripeColor(v: number | null, cap: number, rgb: string): string {
+  if (v === null) return "var(--bg-panel-2)";
+  const t = Math.min(1, v / cap);
+  return `rgba(${rgb}, ${(t * 0.92).toFixed(3)})`;
+}
+
+const STRIPE_RGB = { up: "212, 52, 44", down: "15, 138, 78", warn: "160, 106, 0" } as const;
+
+function StripeRow({
+  label, values, cap, rgb, hoverIdx, onHover,
+}: {
+  label: string; values: (number | null)[]; cap: number; rgb: string;
+  hoverIdx: number | null; onHover: (i: number | null) => void;
+}) {
+  return (
+    <div className="stripe-row">
+      <span className="stripe-label">{label}</span>
+      <div className="stripe-band" onMouseLeave={() => onHover(null)}>
+        {values.map((v, i) => (
+          <span
+            key={i}
+            className={`stripe-cell${hoverIdx === i ? " hover" : ""}`}
+            style={{ background: stripeColor(v, cap, rgb) }}
+            onMouseEnter={() => onHover(i)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SentimentStripes({ days }: { days: SentimentPoint[] }) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const ups = days.map((d) => d.limit_up_total);
+  const downs = days.map((d) => d.limit_down_total);
+  const zhas = days.map((d) => (d.zha_ban_rate === null ? null : d.zha_ban_rate * 100));
+  const upCap = useMemo(() => p95(ups.filter((v): v is number => v !== null)), [days]);
+  const downCap = useMemo(() => p95(downs.filter((v): v is number => v !== null)), [days]);
+  const cur = hoverIdx !== null ? days[hoverIdx] : days[days.length - 1];
+  return (
+    <div>
+      <div className="stripe-readout mono">
+        <span className="stripe-date">{fmtDate(cur.trade_date)}</span>
+        <span>涨停 <b className="pos">{fmtInt(cur.limit_up_total)}</b></span>
+        <span>跌停 <b className="neg">{fmtInt(cur.limit_down_total)}</b></span>
+        <span>炸板率 <b>{cur.zha_ban_rate === null ? "—" : `${(cur.zha_ban_rate * 100).toFixed(1)}%`}</b></span>
+        {hoverIdx === null && <span className="stripe-hint">悬停条纹查看历史</span>}
+      </div>
+      <StripeRow label="涨停" values={ups} cap={upCap} rgb={STRIPE_RGB.up} hoverIdx={hoverIdx} onHover={setHoverIdx} />
+      <StripeRow label="跌停" values={downs} cap={downCap} rgb={STRIPE_RGB.down} hoverIdx={hoverIdx} onHover={setHoverIdx} />
+      <StripeRow label="炸板率" values={zhas} cap={100} rgb={STRIPE_RGB.warn} hoverIdx={hoverIdx} onHover={setHoverIdx} />
+      <div className="stripe-axis">
+        <span>{fmtDate(days[0].trade_date)}</span>
+        <span>{fmtDate(days[Math.floor(days.length / 2)].trade_date)}</span>
+        <span>{fmtDate(days[days.length - 1].trade_date)}</span>
+      </div>
+    </div>
+  );
 }
 
 const SENTIMENT_DAYS = [60, 120, 250] as const;
@@ -716,14 +717,10 @@ const SENTIMENT_DAYS = [60, 120, 250] as const;
 function SentimentCard() {
   const [days, setDays] = useState<number>(120);
   const state = useFetch(() => fetchSentiment({ days }), [days]);
-  const option = useMemo(
-    () => (state.data && state.data.days.length ? sentimentOption(state.data.days) : null),
-    [state.data],
-  );
   const last = state.data?.days.length ? state.data.days[state.data.days.length - 1] : null;
   return (
     <Card
-      title="情绪温度时序 (涨跌停家数 + 炸板率)"
+      title="情绪温度 (每日一格: 涨停 / 跌停 / 炸板率 三条光谱带)"
       extra={
         <div className="tab-group">
           {SENTIMENT_DAYS.map((d) => (
@@ -765,7 +762,7 @@ function SentimentCard() {
                 </span>
               </div>
             )}
-            {option ? <EChart option={option} height={300} /> : null}
+            {state.data?.days.length ? <SentimentStripes days={state.data.days} /> : null}
           </>
         )}
       </FetchGate>
