@@ -291,3 +291,87 @@ def rebuild_all() -> dict[str, Any]:
         return out
     finally:
         con.close()
+
+
+# ── 读侧 API (档案 serving, router 经此访问 — 本模块是数据模块成员 owns 这些表;
+#    PIT 注意: 档案展示"截至今天的全部战绩"给用户手选=合法 (今日决策用今日可得信息);
+#    D 阶段回测选机构必须用 expanding PIT 评级, 禁用本读侧 (设计文档 §4 红线)) ──────
+
+def _ro_conn():
+    return duck_connect(_db("feature_store"), read_only=True)
+
+
+def list_profiles(*, holder_type: str | None = None, min_episodes: int = MIN_EPISODES,
+                  order_by: str = "median_alpha", limit: int = 50) -> list[dict[str, Any]]:
+    """机构排名列表 (默认剔 low_sample; order_by 白名单防注入)。"""
+    order_whitelist = {"median_alpha", "win_rate_alpha", "n_closed", "avg_alpha"}
+    if order_by not in order_whitelist:
+        raise ValueError(f"order_by 只允许 {sorted(order_whitelist)}")
+    con = _ro_conn()
+    try:
+        where, params = ["n_closed >= ?"], [int(min_episodes)]
+        if holder_type:
+            where.append("holder_type = ?")
+            params.append(holder_type)
+        rows = con.execute(f"""
+            SELECT holder, holder_type, n_closed, median_alpha, avg_alpha, win_rate_alpha,
+                   median_ret, avg_hold_days, low_sample
+            FROM mart_inst_profile WHERE {' AND '.join(where)}
+            ORDER BY {order_by} DESC LIMIT ?""", [*params, int(limit)]).fetchall()
+        cols = ["holder", "holder_type", "n_closed", "median_alpha", "avg_alpha",
+                "win_rate_alpha", "median_ret", "avg_hold_days", "low_sample"]
+        return [dict(zip(cols, r)) for r in rows]
+    finally:
+        con.close()
+
+
+def get_profile(holder: str) -> dict[str, Any] | None:
+    """单机构档案: 总体 + 维度表现 + episode 时间线 (前端档案页数据契约)。"""
+    con = _ro_conn()
+    try:
+        head = con.execute(
+            "SELECT holder, holder_type, n_closed, median_alpha, avg_alpha, win_rate_alpha, "
+            "median_ret, avg_hold_days, low_sample FROM mart_inst_profile WHERE holder = ?",
+            [holder]).fetchone()
+        if head is None:
+            return None
+        cols = ["holder", "holder_type", "n_closed", "median_alpha", "avg_alpha",
+                "win_rate_alpha", "median_ret", "avg_hold_days", "low_sample"]
+        out: dict[str, Any] = dict(zip(cols, head))
+        out["dims"] = [dict(zip(["dim_type", "dim_value", "n_closed", "median_alpha",
+                                 "win_rate_alpha", "low_sample"], r)) for r in con.execute(
+            "SELECT dim_type, dim_value, n_closed, median_alpha, win_rate_alpha, low_sample "
+            "FROM mart_inst_profile_dim WHERE holder = ? ORDER BY dim_type, median_alpha DESC",
+            [holder]).fetchall()]
+        out["episodes"] = [dict(zip(["stock", "open_date", "close_date", "status", "ret_c1",
+                                     "alpha_c1", "n_adds", "n_trims", "sw_l1_at_open", "seeded"], r))
+                           for r in con.execute(
+            "SELECT stock, open_date, close_date, status, ret_c1, alpha_c1, n_adds, n_trims, "
+            "sw_l1_at_open, seeded FROM fact_inst_episode WHERE holder = ? "
+            "ORDER BY open_date DESC LIMIT 200", [holder]).fetchall()]
+        return out
+    finally:
+        con.close()
+
+
+def recent_signals(*, days: int = 30, min_holder_episodes: int = MIN_EPISODES,
+                   limit: int = 100) -> list[dict[str, Any]]:
+    """最新建仓信号流 (跟随入口): 近 N 天新开 episode × 该机构历史战绩 (今日视角合法)。"""
+    con = _ro_conn()
+    try:
+        rows = con.execute("""
+            SELECT e.holder, e.stock, e.open_date, e.open_notice, e.holder_type,
+                   e.sw_l1_at_open, e.n_adds,
+                   p.n_closed, p.median_alpha, p.win_rate_alpha
+            FROM fact_inst_episode e
+            JOIN mart_inst_profile p ON p.holder = e.holder
+            WHERE e.status = 'holding' AND NOT e.seeded AND NOT e.is_passive
+              AND p.n_closed >= ?
+              AND strptime(e.open_date, '%Y%m%d') >= now() - to_days(CAST(? AS INTEGER))
+            ORDER BY p.median_alpha DESC, e.open_date DESC LIMIT ?""",
+            [int(min_holder_episodes), int(days), int(limit)]).fetchall()
+        cols = ["holder", "stock", "open_date", "open_notice", "holder_type", "sw_l1_at_open",
+                "n_adds", "holder_n_closed", "holder_median_alpha", "holder_win_rate"]
+        return [dict(zip(cols, r)) for r in rows]
+    finally:
+        con.close()

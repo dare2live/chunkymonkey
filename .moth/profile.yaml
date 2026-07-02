@@ -2,12 +2,7 @@ kind: profile
 name: chunkymonkey
 repo_path: /Users/dp/Documents/M/stock/chunkymonkey
 codegraph_root: .
-complexity_command:
-  - python
-  - /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py
-  - /Users/dp/Documents/M/stock/chunkymonkey
-  - --format
-  - markdown
+# 缺省 = moth 0.3.0 内建分析器(vendored complexity-optimizer, 字节级等价已证)
 complexity_baseline_path: data/reports/tooling/complexity_baseline.json
 evidence_paths:
   agents: AGENTS.md
