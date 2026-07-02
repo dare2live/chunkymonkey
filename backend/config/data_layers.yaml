@@ -106,6 +106,11 @@ tables:
   dim_trading_session: L1_foundation
   fact_top10_holder_period: L1_foundation
   price_kline_qfq_tushare: L1k_kline_intermediate   # 2026-06-15 tushare 前复权 K线 (回测主源, §4.3; build_price_kline_qfq_tushare.py 从 raw_tushare_daily×adj_factor 建 2019+)
+  # ── edge 层第一批 (2026-07-02 机构画像引擎 promote, 探索弧 inst_follow E1/E2; feature_store 库) ──
+  period_windows: L2_feature               # 披露窗口三方案价 (institution_profile.build_period_windows)
+  fact_inst_episode: L2_feature            # 机构×股票 episode (成本/收益/alpha/PIT行业/被动标记)
+  mart_inst_profile: L2_feature            # 机构总画像 (median_alpha/win_rate/low_sample 护栏)
+  mart_inst_profile_dim: L2_feature        # 机构×维度画像 (industry_pit/year/holder_type)
   stock_watchlist: display
   app_settings: infra
   dim_price_limit_rules: infra
