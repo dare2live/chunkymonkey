@@ -128,10 +128,9 @@ tables:
   # etf_price_kline_qfq_tushare tag 已删 2026-06-29 (批3d: ETF 子系统整体退役, etf.duckdb 物删)
   # dim_stock_attention_latest tag 已删 2026-06-27 (通达信全删 M4: akshare 关注度物删)
   stock_watchlist: display
-  # mart_stock_survey_activity: Type A 当前状态聚合 (institution_survey_client 每次同步从 raw_institution_surveys
-  #   DELETE/INSERT 重建, as_of_date=同步日, 确定性PIT重排无前瞻=Type A 展示聚合; 2026-06-28 补登记: U5 误删但
-  #   sync 重建路径未除, 实为 live Type A 件; F3 A/B 复核是否保留聚合 vs 仅留 raw)
-  mart_stock_survey_activity: display
+  # mart_stock_survey_activity tag 已删 2026-07-02 (批7抓漏: 批2a institution_survey 切 tushare stk_surv 时
+  #   表已物删[3867行archive]且 institution_survey_client 重建路径同批退役 — 声明留着 = data_layer_audit
+  #   stale_tag WARN 唯一来源, 死声明清; 调研数据 SERVE 走 institution_survey entity → raw_tushare_stk_surv)
   app_settings: infra
   # capital_detail_sync_state tag 已删 2026-06-27 (通达信全删 M4: akshare 资本运作物删)
   # dim_data_asset tag 已删 2026-06-28 (F4 退役: 烂登记表物删, 职责归并 data_layers/lineage/deprecation_record)
@@ -154,7 +153,7 @@ tables:
   # mart_tdx_f10_capability_matrix/mart_tdx_gpcw_file_manifest tag 已删 2026-06-27 (通达信全删 gpcw物删)
   step_status: infra
   sys_schema_version: infra
-  dim_strategy_preset: infra
+  # dim_strategy_preset tag 已删 2026-07-02 (批7抓漏, 用户批0拍板退役物删: router+表+DDL全清, Phase1 从零设计)
   # financial_sync_state 已退役物删 2026-06-29 (批3e: financial_client 退役遗留空表 0行)
   # mart_etf_snapshot_latest/mart_etf_snapshot_state tag 已删 2026-06-29 (批3d: ETF 子系统整体退役物删)
 _notes:

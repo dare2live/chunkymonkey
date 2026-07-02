@@ -1,14 +1,12 @@
-"""建 tushare 前复权 K线 (消费链切换: tushare 转正主源, §4.3) + 与 tdxhub 重叠期对账。
+"""建 tushare 前复权 K线 (M2 清洗层唯一 builder; K线真相源, §4.3) + 重建后自完整性 sanity。
 
-owner=CLAUDE §4.3 (tushare 主源转正) + sync_registry 注 "消费链切换是独立大手术须 review"。
-缘起: 回测读的 v_price_kline_qfq 建自 tdxhub 备援源只到 2022; 而 raw_tushare_daily+adj_factor 已在库 2019+。
-本脚本从 tushare raw 建前复权 K线 (2019+) 作回测新主源, load_kline 切过去 -> 回测可跨 2020+ 多 regime。
-
-前复权 (qfq rebased to latest, 与 tdxhub 同约定): qfq = raw × adj_factor / adj_factor_latest_per_stock。
-  返回 (收益) = qfq[t]/qfq[t-1] = (raw×f)[t]/(raw×f)[t-1] = 含分红总收益 (PIT: f[t] 除权日即知)。
-  单位对齐 tdxhub: volume 手×100=股, amount 千元×1000=元 (capacity 诊断口径一致)。
-验证 (§11 重大改动 -> 对账): 与 tdxhub v_price_kline_qfq 在 2022+ 重叠期逐日**收益**对账 max_rel_diff (期望≈0);
-  收益匹配 = 两源同一标的同一前复权 (rebase 常数在收益里抵消), 切换安全。不匹配先查不 repoint。
+daily_update Step 2.96 每日 CREATE TABLE AS 全量重建 price_kline_qfq_tushare (market.duckdb),
+v_price_kline_qfq 视图 FROM 本表 = serving/回测 K线唯一读面。
+前复权 (qfq rebased to latest): qfq = raw × adj_factor / adj_factor_latest_per_stock。
+  返回 (收益) = qfq[t]/qfq[t-1] = 含分红总收益 (PIT: f[t] 除权日即知)。
+  单位: volume 手×100=股, amount 千元×1000=元 (2026-06-22 切主源时对齐旧 tdxhub 口径, 消费方按此约定)。
+历史: 原版含 vs tdxhub 重叠期收益对账 (2026-06-22 切主源一次性核证, max_diff 0.03% PASS 后 repoint);
+  tdxhub 链 2026-06 全退役后该对账退化为 self-join 永真式 → 2026-07-02 批7 改为自完整性 sanity。
 """
 from __future__ import annotations
 
@@ -57,26 +55,27 @@ def build(conn) -> int:
     return n
 
 
+# measured: 2026-07-02 实测基线 8,319,172 行 / 5,431 股; floor 留 ~10% 缓冲防日常波动误报
+MIN_ROWS = 7_500_000
+MIN_CODES = 5_000
+
+
 def cross_check(conn) -> dict:
-    """与 tdxhub v_price_kline_qfq 重叠期 (2022+) 逐日收益对账 (rebase 常数在收益里抵消)。"""
+    """重建后自完整性 sanity (2026-07-02 批7 重写 — 死闸修复)。
+
+    原版=vs tdxhub v_price_kline_qfq 重叠期收益对账 (切主源一次性核证); tdxhub 退役后
+    视图 FROM 本表自身 → self-join 恒 diff=0 恒 PASS = 永真式死闸。改为真自检:
+    行数/覆盖不缩水 + 无非法价格行 (视图 WHERE 会过滤坏行, 此处查源表侧防静默丢数)。
+    """
     row = conn.execute(f"""
-        WITH ts AS (
-            SELECT code, date, close,
-                   close / LAG(close) OVER (PARTITION BY code ORDER BY date) - 1 AS ret
-            FROM {TARGET} WHERE date >= '2022-01-04'
-        ), tx AS (
-            SELECT code, date, close,
-                   close / LAG(close) OVER (PARTITION BY code ORDER BY date) - 1 AS ret
-            FROM v_price_kline_qfq WHERE date >= '2022-01-04' AND adjust='qfq'
-        )
-        SELECT count(*) AS n,
-               max(abs(ts.ret - tx.ret)) AS max_abs_diff,
-               avg(abs(ts.ret - tx.ret)) AS avg_abs_diff,
-               sum(CASE WHEN abs(ts.ret - tx.ret) > 0.005 THEN 1 ELSE 0 END) AS n_diff_gt50bp
-        FROM ts JOIN tx ON ts.code = tx.code AND ts.date = tx.date
-        WHERE ts.ret IS NOT NULL AND tx.ret IS NOT NULL
+        SELECT count(*)                                        AS n_rows,
+               count(DISTINCT code)                            AS n_codes,
+               max(date)                                       AS max_date,
+               sum(CASE WHEN close IS NULL OR close <= 0
+                         OR high < low THEN 1 ELSE 0 END)      AS n_bad_price
+        FROM {TARGET}
     """).fetchone()
-    return {"n_overlap": row[0], "max_abs_ret_diff": row[1], "avg_abs_ret_diff": row[2], "n_diff_gt_50bp": row[3]}
+    return {"n_rows": row[0], "n_codes": row[1], "max_date": row[2], "n_bad_price": row[3]}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -93,10 +92,10 @@ def main(argv: list[str] | None = None) -> int:
         conn.execute("CHECKPOINT")
     finally:
         conn.close()
-    print(f"[对账] vs tdxhub v_price_kline_qfq 重叠期收益: n={cc['n_overlap']:,} "
-          f"max_abs_diff={cc['max_abs_ret_diff']:.2e} avg={cc['avg_abs_ret_diff']:.2e} >50bp={cc['n_diff_gt_50bp']:,}")
-    ok = cc["max_abs_ret_diff"] is not None and cc["max_abs_ret_diff"] < 0.02 and cc["n_diff_gt_50bp"] < cc["n_overlap"] * 0.01
-    print(f"[verdict] {'PASS 收益对账一致, 可 repoint load_kline' if ok else 'REVIEW 收益差异偏大, 先查再 repoint'}")
+    print(f"[sanity] {TARGET}: rows={cc['n_rows']:,} codes={cc['n_codes']:,} "
+          f"max_date={cc['max_date']} bad_price={cc['n_bad_price']:,}")
+    ok = cc["n_rows"] >= MIN_ROWS and cc["n_codes"] >= MIN_CODES and cc["n_bad_price"] == 0
+    print(f"[verdict] {'PASS 自完整性检查通过' if ok else 'REVIEW 行数/覆盖缩水或含非法价格行, 先查再消费'}")
     return 0 if ok else 2
 
 

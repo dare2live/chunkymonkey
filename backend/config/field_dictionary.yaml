@@ -1,5 +1,12 @@
 ## field_dictionary.yaml — Phase ψ.γ.dict.1 字段字典 (跨表 schema + 单位 + PIT key 治理)
 ##
+## !! 状态: 大面积 STALE (2026-07-02 批5 标注) !!
+##   本字典建于 reset 前世界; 2026-06-14 地基-reset + 06-28 纯数据平台重建后, 其中大量表段
+##   (fact_financial_pit_daily / fact_risk_factors / fact_signal_context / raw_gpcw_* /
+##    fact_technical_trigger 等) 描述的是**已物删的表** — 勿按图索骥。
+##   当前活表清单以 `FEATURE_MAP.md`(机器版) + data_layers.yaml 为准; 字段语义查 DB PRAGMA 实测。
+##   本文件保留 = join_templates(PIT JOIN 模板仍有效) + 历史字段语义参照; edge 重建时按需重建字典。
+##
 ## 根因: VWAP volume unit bug (akshare_sina=股 vs tdxhub=手) 暴露项目无统一字段单位治理.
 ## 跨表字段命名也不一致 (date / trade_date / calc_date / signal_date), 写代码时易混.
 ##
@@ -57,11 +64,11 @@ databases:
         close:   {type: DOUBLE, unit: CNY, description: "收盘价"}
         volume:
           type: DOUBLE
-          unit: "**MIXED** — tdxhub 数据=手 (100 股), akshare_sina 数据=股 (1 股)"
+          unit: "股 (tushare 单源; builder 已 vol手×100=股 归一, 2026-07-02 批7 更新)"
           warning: |
-            源不一致! _vwap helper (services/paper_sim/driver.py) 必须 sanity-check
-            落在 [low*0.95, high*1.05] 范围内, 选 amt/vol 或 amt/(vol×100) 之一.
-            历史教训: Phase ψ.β.align bug — paper_sim NAV 从 1.6M 暴跌 360K.
+            历史: 旧多源期 MIXED (tdxhub=手/akshare_sina=股) 曾致 paper_sim NAV 1.6M 暴跌 360K
+            (Phase ψ.β.align bug)。现 v_price_kline_qfq 唯一源 = price_kline_qfq_tushare
+            (build_price_kline_qfq_tushare 统一 手×100=股, 千元×1000=元), 单位歧义已消。
         amount:  {type: DOUBLE, unit: CNY, description: "成交额"}
       notes:
         - "前复权 (qfq): 复权因子 PIT 仍是 latest, 严格意义有未来函数 (§11.5 #13)"
@@ -508,8 +515,7 @@ known_inconsistencies:
     - "fact_signal_context.date  vs  fact_risk_factors.calc_date  vs  fact_financial_pit_daily.trade_date"
     - "→ 应统一为 pit_key 角色字段, 物理名保留向后兼容"
   unit_volume:
-    - "v_price_kline_qfq.volume: tdxhub=手, akshare_sina=股"
-    - "→ Phase ψ.β.align _vwap sanity check 已挡; 长期方案: ingest 时 normalize 到 '手'"
+    - "[已解决 2026-07-02] v_price_kline_qfq.volume 多源单位歧义随源退役消除: tushare 单源, builder 归一到股"
   outlier_cap:
     - "holder_count_change_q_pct cap=90 — Phase ψ.β.3 hardcoded in backfill SQL"
     - "→ 长期: 单独 outlier policy yaml + 写入前 governance"

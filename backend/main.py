@@ -109,7 +109,7 @@ app.add_middleware(
 
 # 注册路由 — 2026-06-28 重建(白名单裁剪): 策略/serving routers 全退役 (signals/dossier/v3_picture/
 #   v3_paper/v3_selection/v3_portfolio_builder/stock_graph/workbench/market), 项目降为纯数据平台。
-#   只留 ops(手动跑数据链) + 配置(strategy_preset/v3_config) routers; 数据走 pipeline + SERVE(data_access)。
+#   只留 ops(手动跑数据链) + v3_config(前端参数下发) 两个 routers; 数据走 pipeline + SERVE(data_access)。
 
 # 手动任务触发 (数据采集/清洗链前端按钮手动跑)
 from routers.ops_manual_run import router as ops_manual_run_router
@@ -128,9 +128,9 @@ def register_modules(app):
 
 app_modules = register_modules(app)
 
-# 配置 routers (策略预设 / v3 配置)
-from routers.strategy_preset import router as strategy_preset_router
-app.include_router(strategy_preset_router, prefix="/api/inst/strategy", tags=["strategy_preset"])
+# 配置 routers (v3 配置)
+# strategy_preset router 已退役物删 2026-07-02 (批7抓漏, 用户批0拍板"退役物删": Phase1 工作台
+#   从零设计参数管理不复用旧schema; dim_strategy_preset 表[3条seed]同批物删, DDL在router内自建无重建路径)
 from routers.v3_config import router as v3_config_router
 app.include_router(v3_config_router, prefix="/api/v3", tags=["v3_config"])
 

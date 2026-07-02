@@ -9,9 +9,11 @@
 > **目标**: 新接手 (无论 Claude 还是人) 读完此文档**不用看代码 / 不用查 DB** 就能理解:
 > 项目业务 / 架构 / 技术路线 / 数据资产 / 当前进度 / 已知坑 / 常用操作.
 
-最后更新: **2026-06-06** (TuShare no-persist exact-flow probe wiring + need_027 probe diagnostics hardening + storage retention owner/consumer policy contract + data-source capability router contract + need_027 candidate validation metadata + provider-neutral experiment job contract + execution-surface audit + retired GCP execution surface removal + architect-controller skill install + verify-verifier rule + Moth complexity path normalization + local complexity baseline refresh + data-health dry-run read-only fix + Moth evidence path sync + design-review preflight machine gate + Moth registry instruction-source sync + after-close data refresh + controller-agent preflight hard gate + retention dry-run inventory + storage payload cap recalibration + DB manifest attach policy + DB boundary static gate + holder replay safety + Codex instruction-source boundary + DuckDB capacity audit + need_027 exact-flow probe gate + stage-opt supply/readiness/schema contract + stage-opt signal-date K-line coverage evidence + stage-opt source-aware density diagnostics + stage-opt source freshness/window diagnostics + iFinD MCP research-only routing recheck).
+最后更新: **2026-07-02** (批5 控制面重写: 正文按纯数据平台现状全量重写 708→~290 行 — 数据纯化批0-4+批7 后的 7库/40+30表/78 service/43 scripts/2 routers 实测快照; 计数类归 `FEATURE_MAP.md` 机器版 [`scripts/chunkyctl map` 重生], 本文件只留判断层: 架构/PIT锚/坑/操作。旧正文含大量 reset 前实体 [231py/17routers/6大维度/technical_stage 等] 已随重写清除, 历史见 git)。
 
 ## [INDEX] 最近增量 (只留 7 天, 历史在 analysis/project_index_changelog_archive_20260611.md + ledger)
+
+- **2026-07-02 批5 控制面重写 + 批7 第4轮验dry → 数据纯化宣告收敛**: **[降级期复查 §8.25]** 恢复 Fable 5 后定向复查 6 个降级期 commits (批3a~批4, Opus4.8/Sonnet5 期未标 model-context): 实测 DataAccess.get('holders_tdx') 361行正常(批3b改vendor后首次真实get) + app.js↔index.html DOM id 对账(2缺失=pre-existing且optional-chaining防御) + /health 语义正确 — **0 需修正**。**[批7 抓漏]** 第4轮 sweep 抓出: ①strategy_preset **用户批0拍板"退役物删"但批1-4漏执行** → router git rm + main.py 去include + dim_strategy_preset(3条seed) archive物删 + data_layers 声明清; ②data_routes.py **0 importer 整文件死代码**(虚标 connected) git rm; ③run_multidim_walkforward/shareholder_plan_family_walkforward 2个 0-loader 孤儿yaml git rm (retired_experiments.yaml=刻意知识库保留); ④mart_stock_survey_activity 死声明清(data_layer_audit stale_tag WARN 唯一来源消除); ⑤**cross_check 永真式死闸修复**: build_price_kline_qfq_tushare 的 vs-tdxhub 对账在 tdxhub 退役后退化为 self-join 恒 PASS(死闸变体: 校验对象消失→闸变摆设), 重写为自完整性 sanity(行数/覆盖floor+非法价格行=0), 实测 831万行/5433股 PASS; ⑥6处 stale 声明修(clients_registry QFII fallback_chain 去 akshare/source_watermarks parser_version/schema_core source 枚举/update_watermark_sla tier 注/field_dictionary volume 单位[多源歧义随源退役已消]+头部大面积STALE诚实标记)。**[批5 控制面重写]** PROJECT_INDEX 正文按纯数据平台现状全量重写 708→~300行(计数归 FEATURE_MAP 机器版, 正文只留判断层) + CLAUDE.md §5 Optuna 治理标注"执行面已退役红线待重立"(引用的 optimization/optuna_config 批1b已删) + lineage graph.json 重生(208节点/387边, 6个已删表节点验证已清) + FEATURE_MAP 重生(表40/路由2/域40)。**[收敛裁决]** 4轮 sweep (轮1-3 workflow 201 agents ~120残留→批0-4清; 轮4 机械门+精确grep→本批抓漏后全清), 剩余 grep 命中=墓碑注释+历史语境注释(无害)+前端 stale 展示(data-view.js"tdxhub主供"等, 裁决不修=edge重建注定全删)。**代码/config/DB 层 is_dry=True, 数据纯化阶段(批0-7)宣告收敛**。验证: 全量 pytest 413 passed 精确收敛到已知10 pre-existing(与批3d stash基线一致, 0新回归) + CI offline 188 + moth 30/0/0 + check_dead_references 0 + data_layer_audit 待验(survey_activity 声明清后 stale_tag 应归零)。
 
 - **2026-06-29 残留清理批4 (退役源残留 + 数据库缩盘)**: 数据纯化收尾批。**残留清**: .env 删 CM_TDX_SERVERS(tdxhub全退役0消费方) + EM_MIAOXIANG_TOKEN(用户批0拍板, 实测aif10 datacenter无需token认证0消费方); storage_retention.yaml 删2条死tdx条目(dim_stock_tdx_industry_history/raw_tdx_industry_file_snapshot, 表已东财迁移Stage④物删, consumers 0代码引用)。**doctor/moth 修复**: 跑 doctor --fast 发现 tooling_gate FAIL(moth assert)→ 定位2类漂移: (1) optuna-require-walk-forward/optuna-realistic-sharpe-cap 断言引用 backend/config/optuna_config.yaml **早已被批1b物删**(Optuna治理层services.optimization随纯数据平台重建整体退役, commit c09ae896) — 死断言随之清; (2) smartmoney-constraint-tables/indexes/tables 三条表数量断言阈值随批3c/3c2/3e机构旧表退役过期(观测20/23/31 < 旧阈值25/33/40) — 按当前真实值刷新阈值(18/21/29, 留2缓冲)。**发现真bug并修**: doctor暴露 `/tmp/chunkymonkey_ALERT_daily_update_degraded.flag` 含"步骤X失败"两行(2026-07-02 06:49/06:52) — 溯源非真实daily_update失败, 是 `test_pipeline.py::test_context_degraded_and_log` 未隔离 `PipelineContext.degraded()` 写的全局 `DEGRADED_FLAG` 硬编码路径, pytest全量跑污染真实生产告警文件; 修=monkeypatch隔离到tmp_path, 清测试噪声保留06-28真实历史SLA告警供后续核实。**磁盘缩盘**: 3个过期bak文件删除(smartmoney.duckdb.bak_report_date_fix 2.4G[report_date字段fix已验证落地生效, 后续又经多轮物删, 快照无恢复价值]+feature_store_precompact_bak.duckdb 1.7G+smartmoney_precompact_bak.duckdb 824M, 均doctor验证通过后的标准db_compact bak) + db_compact 缩盘批3系列DROP未回收空间的4库(market 1.3G→0.8G/etf 106M→524K[6表全删只剩治理表]/tushare_raw 8.2G→7.8G[缩幅小因物删行数仅占5%]/smartmoney 0.5G→0.3G), 每库验证表/视图/约束/索引/行数完全对齐0偏差。**总释放 ~10.4G (15G→9.5G)**。验证: CI offline 185 + check_dead_references 0 + moth assert 30/0/0(PASS) + doctor tooling_gate/universe PASS(data_health/alert_flags WARN为pre-existing边界案例, 非本批引入)。
 
@@ -108,601 +110,187 @@
 
 ## 30 秒速览 — 这是什么项目
 
-**Chunky Monkey v2** = A 股**自动选股 + 实盘模拟**系统. 用户(私人投资者)用它筛 5 只股票 / 月度轮换.
+**Chunky Monkey** = A 股量化系统。**当前形态 = 纯数据平台** (2026-06-28 用户决议重建定型):
+策略/serving/edge/workbench 层全退役 (~245 代码文件 + ~40 表物删), 只留 **原始数据 (tushare + aif10) + 四地基 (M1采集/M2清洗/M3加工/M4 SERVE) + 治理**。edge (5 界面: 股票档案/机构档案/选股台/工作台/首页sim) 待以 React/Vue 从零重建 (框架设计见 analysis/edge_layer_framework_design_20260628.md)。
 
-**用户目标 (硬指标, 一切优先级以此为锚)**:
-- 年化 ≥ **+30%**
-- max_drawdown ≥ **-20%**
-- 超额 vs HS300 > 0
+**数据源政策 (CLAUDE.md §4.3)**: 唯一源 = **tushare** (tinyshare 网关, 限流 120/200/2并发) + 正式例外 **aif10** (东财妙想 datacenter, 仅: 十大流通股东/机构持仓分桶/估值分位/同行估值/QFII)。无热备无冷备, 单点有意识接受。tdxhub/akshare/mootdx 等旧源 2026-06 全部退役物删。
 
-**数据基础**: 6,618 股 A 股 K 线 (2022-01 起) + 70K+ 财报 + 35K 机构事件 + 53K 龙虎榜 + 68K 高管增减持 + 大盘 regime + 4 阶段技术形态分类.
-
-**架构主线 (alpha pipeline)**:
-```
-原始数据 → 公式信号 + PIT 因子 → Optuna 调参 (walk-forward) → mart 表
-       → paper_sim selector (按 ensemble score 排名)
-       → simulate_trade (T+1 入场, 含 tx_cost + 涨跌停)
-       → NAV 曲线 → KPI 验证 (6 类 20+ 指标)
-```
-
-**当前最强发现**: 无 — 2026-06-16/17 地基-reset + 清验证墓地后, 所有 reset 前/污染期 alpha 结论 (reversal sharpe / 二次突破超额 / 鱼身 / lgbm 模型 / frontier) 已作废清除。当前态 = **unknown**, 以 `goal.md` Active Priority Board 为准 (CLAUDE §4.2: 不引用文档旧数字, doctor --fast 实测为准)。
-
-**下一步**: 监督式 episode-first 结果倒推 — 结构型主升浪 GT (已重建, 底→顶>60%+长底+多头排列+平滑, universe 硬门 clean) → 逐数据 alpha 验证 (因子对起涨/持仓/出场判别力) → train≤2025-06 / OOS→2026-06 → 含成本 paper_sim → KPI。
-
-## 维护责任 (Rule 9.5 沉淀)
-
-**每次完成一个 phase / commit / 数据 backfill 后, 都要更新本文档**. 具体 checkpoints:
-- 新加数据表 → 加进 §2 (数据资产)
-- 新加 service 模块 / script 入口 → 加进 §3-4
-- 新加 yaml config → 加进 §6
-- 解决了已知坑 → §8 标 [PASS] + 短说明
-- 跑出新 OOS 数据 → 加进 §10
-- 踩了新坑 → §11 + CLAUDE.md Rule 9
-- 加 §14 增量日志 (本 session 做了啥)
-
-不维护 = 下次 session 又要重新摸索 = 用户最大抱怨
+**数据纯化 (批0-4+批7, 2026-06-28~07-02) 已收敛**: 非 tushare/aif10 残表全物删 (archive parquet 留底可逆), 死代码/死 config/死断言清零, 磁盘 15G→9.5G。
 
 ---
 
 ## 0. 用户终极目标 (锚)
 
-> "短期内资产最大幅度增值不缩水"
+> "短期内资产最大幅度增值不缩水" — KPI owner = `goal.md`
 
-3 个 PASS 标准:
-1. 年化 ≥ +30%
-2. max_dd ≥ -20%
-3. 超额 vs HS300 > 0
+1. 年化 ≥ +30%  2. max_dd ≥ -20%  3. 超额 vs HS300 > 0 (月胜率 ≥55%)
 
-基线: 2023-01-03 起, 100 万初始, HS300 benchmark.
+**当前实测态 = unknown (N/A)**: 平台重建期无策略在跑; reset 前所有 alpha 结论已作废 (验证墓地清除, 2026-06-17)。不引用文档旧数字 (CLAUDE §4.2), 以 `scripts/chunkyctl doctor --fast` 实测为准。机构收益口径 (用户拍板): 跟随收益 = 公告日次日买入→扫描到退出时公告日次日卖出, 含成本, 基准 HS300。
 
 ---
 
-## Pipeline 数据流图 (端到端架构)
+## 1. 架构 — 纯数据平台 (2026-06-28 定型)
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│ 0. 原始数据层 (data sources)                                         │
-│   - akshare (K 线 / 财报 / 龙虎榜)  - tdxhub (qfq 复权 K 线)         │
-│   - aif10 (估值 / 一致预期)         - tdx F10 (机构持仓)             │
-│   - 内部模拟器 (event_simulator)                                     │
-└──────────────────────────────────────────────────────────────────────┘
-        │
-        ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│ 1. raw_ 层 (smartmoney.duckdb): 70K 财报 / 53K 龙虎榜 / 35K 机构事件  │
-│    market.duckdb: 6M K 线 / 158K xdxr 事件                           │
-└──────────────────────────────────────────────────────────────────────┘
-        │ sync (POST /api/inst/update/smart) — 含 watermark
-        ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│ 2. fact_ 层 (PIT 时序事实表):                                        │
-│    - fact_stock_technical_stage (2.4M, Stan Weinstein 4 stage)       │
-│    - fact_signal_context (3.3M, vol_r20/price_pos/drawdown_60d/stage)│
-│    - fact_technical_trigger (公式信号触发, 含 strength)              │
-│    - fact_risk_factors (4.8M, Phase ψ.β.1 PIT mom/sharpe/vol)        │
-│    - fact_financial_pit_daily (3.7M, Phase ψ.β.2 PE/PB/ROE/yoy)      │
-│    - fact_capital_flow_pit_daily (858K, Phase ψ.β.3 lhb/exec/holder) │
-│    - fact_regime_state (775, 大盘 bull/bear/sideways)                │
-└──────────────────────────────────────────────────────────────────────┘
-        │ Optuna 调参 (R1 walk-forward, expanding_monthly / train_end_forward)
-        │ governance 守门 (sharpe>5/win>0.95/avg>0.5 reject)
-        ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│ 3. mart_ 业务层 (调参 / 寻优结果):                                   │
-│    - mart_per_formula_stage_optimal (426 OOS 行,                     │
-│         per formula × stage × train_end_date, 最强 setup ↓)          │
-│    - mart_per_stock_stage_strategy_optimal (per-stock × stage 旧表)  │
-│    - mart_formula_horizon_evidence (per formula × hp 全市场)         │
-│    - mart_stock_trend (主 alpha 88 列, 但 ⚠ latest 快照无 PIT)       │
-│    - fact_optuna_governance_log (reject 审计)                        │
-└──────────────────────────────────────────────────────────────────────┘
-        │
-        ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│ 4. paper_sim selector (3 mode):                                      │
-│    - "backtest" 单公式排名 (按 mart_per_formula_stage.oos_sharpe)    │
-│    - "ensemble" 10 alpha zscore 加权 + regime gate (Phase ψ.β.4)     │
-│    - "production" 走 mart_daily_position_recommendation (实盘)        │
-│    选 top 5 + 流动性过滤 (vol_60d ≤ 40% / amount_20d ≥ 5000万)       │
-└──────────────────────────────────────────────────────────────────────┘
-        │ T+1 VWAP 入场
-        ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│ 5. simulate_trade (services/backtest/realistic_engine.py):           │
-│    - T+1 入场 (buy_offset=1, 一字涨停延迟 1 次)                      │
-│    - 5 出场触发: stop_loss > target_arm > trailing > hp_expired      │
-│         > stage_deterioration                                        │
-│    - 含 tx_cost (佣金 0.025% + 印花税 0.05% + 滑点 0.1%)              │
-│    - 含涨跌停 reject_buy (一字涨停不买) / 退市暂停过滤                │
-└──────────────────────────────────────────────────────────────────────┘
-        │ 每日 NAV 更新, swap 决策, 跨日 trailing arm
-        ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│ 6. paper_sim 输出 + KPI:                                             │
-│    - fact_paper_sim_nav (NAV 时序)                                   │
-│    - fact_paper_sim_position (持仓快照)                              │
-│    - fact_paper_sim_trade (BUY/SELL/SWAP_OUT/SWAP_IN)                │
-│    - mart_paper_sim_kpi (6 类 KPI: A 用户标准 / B anti-churn         │
-│         / C robustness / D ablation / E sensitivity / F reality)     │
-└──────────────────────────────────────────────────────────────────────┘
-        │
-        ▼ 决策: 6 类 KPI 全过 → 上线 / 一类不过 → 不上线
-┌──────────────────────────────────────────────────────────────────────┐
-│ 7. 实盘上线 (待 — 还没满足用户 +30%/-20%/超额 HS300)                  │
-└──────────────────────────────────────────────────────────────────────┘
+tushare (tinyshare 网关)──┐
+aif10 (东财 datacenter)───┤
+                          ▼
+  M1 采集 services/data_sources/ (sync_runner + sync_registry.yaml 41域;
+     aif10 走 holders_aif10/org_holding_aif10/qfii_client 直连)
+                          ▼  L0 raw_* (tushare_raw / smartmoney aif10域)
+  M2 清洗  build_price_kline_qfq_tushare (daily×adj_factor→PIT前复权)
+                          ▼  L1k price_kline_qfq_tushare → v_price_kline_qfq (market)
+  M3 加工  build_dc/sw_industry_view (PIT行业视图) · build_dim_listing_status
+                          ▼  L1 dim/fact (smartmoney / reference 4 dim)
+  M4 SERVE services/data_access/ — DataAccess.get(entity, codes, as_of)
+     entity 注册 config/data_access.yaml; 消费方唯一读路 (不变量#4)
+                          ▼
+  [edge 待重建 — 唯一消费方缺位]
+
+  治理: pipeline(daily_update 四阶段) · watermark/SLA · data_health ·
+        lineage(M5) · deletion/deprecation_record · moth/doctor/CI 门
 ```
 
-## 1. 三个 DuckDB 数据库
+**7 库职责** (database_manifest.yaml 单一真相源):
 
-> 权威清单 = `backend/config/database_manifest.yaml` (含 retention_class 生命周期分类, 见 db_management_design §13)。
-| DB | 路径 | 用途 | retention_class |
-|---|---|---|---|
-| `smartmoney.duckdb` | `data/smartmoney.duckdb` | **2.5G / 85表** (2026-06-14 地基-reset: 删整个模型/特征/寻优层144表, 只留基础数据+纯K线中间+档案展示+治理; 26.6→2.5G; 参数寻优重做; 退役实验知识→config/experiments/retired_experiments.yaml) | production_control(地基) |
-| `market.duckdb` | `data/market.duckdb` | K 线 + 行情 (`v_price_kline_qfq`) | canonical_source |
-| `tushare_raw.duckdb` | `data/tushare_raw.duckdb` | TuShare raw 镜像 (raw_tushare_*), sync_runner 独占写, 写锁隔离 | canonical_source (mirror) |
-| `alpha158.duckdb` | (planned, 旧panel 2026-06-14 删) | qlib Alpha158 K线因子库; 旧 panel(418万行/3.5G, PIT不可信)删, 验证Alpha158时干净重算+pit_guard核证 (manifest planned; daily_update Step2c重建循环已切) | rebuildable_feature |
-| `etf.duckdb` | `data/etf.duckdb` | ETF 专用 | governed_source |
-| `experiment_store.duckdb` | active (S0 建, 执行器接入) | alpha 验证实验输出 (verdict/IC scan/lineage/pit_audit), 与 live 隔离; 写入器=experiment_consumer_alpha_validation.py | transient_experiment |
-| `data/scratch/*.duckdb` | (约定) | 测试/探索一次性库, 用完即删, gitignore | disposable_scratch |
-
-**约束** (AGENTS.md / engineering governance DuckDB 段):
-- 永远走 `services.duck_adapter.connect` / `services.db.get_conn`
-- 单写锁, 一次 ATTACH, 不要直接 `duckdb.connect()`
-- raw `duckdb.connect` 允许清单现在 config-owned (`backend/config/duckdb_connect_policy.yaml`) 用于跟踪历史 call sites；新增生产 raw connect line 由 `backend/scripts/check_rule_compliance.py` 默认阻断，确需例外必须有同行/上一行 evidence 注释并进入 review。
-- 新增 `data/*.duckdb` / `.duckdb` 文件名字面量默认阻断；DB 路径应进入 `backend/config/database_manifest.yaml` 或专属 config。
-
----
-
-## 2. 数据资产 — 6 大维度 (完整盘点)
-
-> ⚠ Claude 容易误以为"项目主要数据是 K 线". 错. 6 大维度全有.
-
-### 2.1 大盘 / 指数
-
-| 表 / 字段 | 数据量 | freshness | 用途 |
-|---|---|---|---|
-| `v_price_kline_qfq` (market.duckdb) canonical 日线 qfq | **8.29M 行 / 5431 股 / 2019-01 → 2026-06** | 实时(view) | **2026-06-22 切 tushare-only** (M1, owner=market_schema.py): 旧 tier-1=price_kline_tdxhub 的 qfq **系统性算错** (复权因子当后复权式乘数抬高分红股历史价, 茅台/比亚迪 raw×adj_factor/latest 重建证 tushare对/tdxhub错最高89%分叉); 去 akshare/tdxhub fallback (用户"没有备用源只有tushare"); primary=price_kline_qfq_tushare (标准前复权, 严格超集 tdxhub 2022+). DDL 内禁 `--` 注释(executescript 截断). moth `kline-canonical-tushare-only` 守. 派生表(macd_state/picture/segment)建旧错qfq上 STALE 待重建. **2026-06-23 M3 物删 price_kline_tdxhub (5.3M行/5211股): 0 serving读者(grep FROM/JOIN全空+canonical视图tushare-only); build_price_kline_tdxhub从daily_update移除 + market_schema CREATE删(断§4.5重建循环) + sync_hs300 tdx-write neuter + upsert fail-loud守 + data_audit kline_source repoint canonical; adjustment_event(xdxr热备§4.3)保留; builder/updater_market_data=orphan(main.py已退役)留dormant. moth40/40 PASS** |
-| `price_kline_qfq_tushare` (market.duckdb) **回测前复权主源** | 856万行 / 5755 股 / **2019-01 → 2026-06** | build_price_kline_qfq_tushare.py | 2026-06-15 §4.3 消费链切换: raw_tushare_daily×adj_factor 前复权(rebased, 单位对齐tdxhub); 与tdxhub重叠期收益对账 avg 0.03%一致(max差=tdxhub 2022-12-30 glitch, tushare正确); load_kline 已 repoint; 解锁2020+多regime回测; data_layers=L1k |
-| `etf_price_kline_qfq_tushare` (etf.duckdb) **ETF前复权 K线 tushare 单源 (M2 收口)** | 136万行 / 1826 ETF / **2019-01 → 2026-06** | build_etf_kline_qfq_tushare.py | 2026-06-25 §4.3 M2: raw_tushare_fund_daily×fund_adj 前复权(rebased, OHLC同乘, vol不×100/amount千元×1000); 510300逐码1811==raw MATCH; **修mootdx ETF分红未复权bug+陈旧+glitch**; 7单测(合成数据验复权公式); data_layers=L1k。**M2 全收口**: 3消费方(etf_engine/snapshot/mining)已repoint读此表; 旧 etf_price_kline(mootdx/tx 929k行)已物删archive→parquet留底; mootdx取数链(fetch_etf_kline/sync_kline块)退役。owner=analysis/m2_etf_tushare_migration_20260625.md |
-| `fact_feature_panel` (**feature_store.duckdb** L2) **LIVE** | **8,173,577 行 / 5427股 / 2019-01-30~2026-06-12** | build_feature_panel.py (services.data_loaders + formula_engine 5因子; pit_guard 物化门) | 2026-06-19 A0 重建物化: mom_60/reversal_20/vol_20/mf_trend_20/roe_dt_asof PIT 宽表。**对抗验证**: universe 0违规 / 0 NaN-inf / 独立重算 600519 1784日 0泄漏 / **entry点JOIN覆盖正负样本100%**(命中点 mom100%/mf83%/roe45%)。roe/mom 尾值留 D 阶段 winsorize; data_layers=L2_feature live |
-| `fact_signal_panel` (**feature_store.duckdb** L2) **b分表事件信号面** | **8,293,212 行 / 5431 股 / 2019-01→2026-06** | build_signal_panel.py | 2026-06-22 用户"b分表"裁决: L2 连续因子(feature_panel)与事件信号(signal_panel)分两张同键并列 panel(code×date), signal_assembler 同键JOIN取(排名+公式条件门). 首个公式 macd_golden_cross(金叉326222/3.9%, PIT无前视红线单测); 加公式=加列(invariant#3). 与 feature_panel 同键重叠8.17M(100%对齐). data_layers=L2_feature; moth signal-panel-b-split-parallel 守 |
-| `fact_segment_panel` (**feature_store.duckdb** L2) **形态/分层面板** | (重建中) | build_segment_panel.py (+config segment_panel.yaml) | 直读 price_kline_qfq_tushare 复用 classify_technical_stage 物化 PIT 形态轴: stage(Weinstein5态)+range_pos+dif/dea/macd_hist/macd_above_zero+board; forward 不入表(防 outcome-as-feature); Arrow批插。判别力结论=unknown(逐数据 alpha 验证重做, 见 goal.md); data_layers=L2_feature |
-| `fact_rally_ground_truth` (**smartmoney.duckdb** L1) **D1 主升浪 ground truth 标签y** | **9,070 主升浪 / 4,347股 / 2019+** | build_rally_ground_truth.py (services.universe 硬门 clean) | 2026-06-17 结构型重建(用户图样型, episode-first D1 锚): 底→顶>60% + 长底 + 多头排列(MA5>10>20>30>60) + 平滑(途中max_dd>-30%), 排北交所/ST/退市(assert_universe_clean); event_date=底(bottom_date PIT锚, 特征<=t/label后验); 下游 D2-D4 因子判别力=unknown(逐数据 alpha 验证待跑); data_layers=L1_foundation |
-| `fact_macd_episode_ground_truth` (**smartmoney.duckdb** L1) **D1 MACD金叉峰值 ground truth** | **311,291 episode / 5,197股** | build_macd_episode_ground_truth.py (services.universe 硬门 clean) | 2026-06-17 重建(用户口径: 金叉=买点, 卖点=金叉后波峰探索): 金叉峰值>30%=is_win; peak_gain_pct/peak_offset_days/max_dd_pct; 出场规则判别力=unknown(逐数据验证); data_layers=L1_foundation |
-| `fact_rally_entry_pit` (**smartmoney.duckdb** L1) **GT entry-PIT 侧 (标签拆)** | **9,070 episode / 4,347股 / fwd_complete 90.5%** | build_rally_entry_pit.py (+契约 config/rally_gt_columns.yaml + 守卫 services/rally_labels.py) | 2026-06-19 A0#c: 从 GT 剥出 entry-PIT 侧防 outcome 当训练 X=leakage。entry_signal_date=bottom_date(PIT锚, JOIN fact_feature_panel 键) + base_days(唯一 PIT 入场特征) + **fwd_complete**(bottom+250交易日是否<=数据边缘2026-06-12, False=右删失全在2025/2026); **outcome 列(gain/peak/dd/bull_aligned)不入此表**留 GT 表禁做X (rally_labels.assert_no_outcome_leakage 守门, 单测 red→green)。陷阱: bull_aligned 拉升期测=forward 非入场态; data_layers=L1_foundation |
-| `fact_rally_entry_negative` (**smartmoney.duckdb** L1) **GT hard-negative 对照组** | **35,198 / 4,846股 / pos:neg≈1:3.9** | build_rally_negatives.py (+共享原语 services/rally_detect.py) | 2026-06-19 A0#d: 结果倒推判别器对照组。框架=**hard-negative**(holding PIT-setup恒定隔离涨不涨信号, 非全市场随机): 同结构 pivot-low + 长底(base>=40, 与正样本同 PIT setup) + fwd_complete + **未涨**(forward gain<60%) + purge 同股正样本±250根。无锁生成(K线 market + GT/日历 smartmoney, 不碰 tushare_raw); ST 留消费侧 PIT 硬门(is_st_on)。验证: 0正负重叠/0北交所/0 outcome列/base_days min40。下游 UNION fact_rally_entry_pit(y=1)训练; data_layers=L1_foundation |
-| `fact_rally_episode_strata` (**smartmoney.duckdb** L1) **episode PIT 分层** | **9,070 episode** | build_rally_episode_strata.py | 2026-06-20 C#48: episode 按 PIT 维分层(可live conditioning, 非outcome): **申万sector** as-of join index_member_all(in/out_date PIT, is_new Y+N避§4.5 latest-snapshot)覆盖99% + **市值** daily_basic 底日total_mv 覆盖100%(daily_basic 回补2019对齐 K线/GT, data_start 20190102)→微/小/中/大盘桶 + **base_days** 短/中/长底桶。分布: 小盘+微盘60%+(主升浪小盘主导), 机械/化工/电子/医药板块聚集。form/gain=outcome留GT join不入表; data_layers=L1_foundation |
-| `fact_rally_stage` (**smartmoney.duckdb** L1) **episode 阶段切分(鱼头/鱼身/鱼尾)** | **1,507,894 行 / 9070 episode** | build_rally_stage.py (+config rally_stage.yaml, +单测 test_rally_stage) | 2026-06-20 C#48 step2 (用户核心缺口"没研究鱼头鱼尾"): 每 episode [底,峰] per-date 切 **起涨/主升/顶部**, progress=(close-底)/(峰-底) 首次跨阈(launch_end0.30/main_end0.85, pre-reg config)划连续时间段(单调防pullback错标)。分布 主升50%/起涨42%/**顶部仅8%**(底后慢启动+近峰快冲顶=入场窗宽/出场窗窄, 契合出场最重要)。stage=POST-HOC(依赖peak)分析用非live; 跨库 join feature_panel 三阶段100%命中→D 按stage查PIT因子; data_layers=L1_foundation |
-| `raw_tushare_moneyflow` (tushare_raw) | **738万行 / 5620股 / 2020-01-02→2026-06-12 [DONE]** | sync_runner --domain moneyflow --backfill | 2026-06-15 用户"拉齐2020"回补完成: data_start 20220104→20200101 + min_rows 4000→3000(2020 universe~3740股); .venv/bin/python + source .env (env PATH双前提) |
-| `raw_tushare_moneyflow_dc` (tushare_raw) **东财个股资金流** | **384万行 / 6219股 / 2023-09→2026-06 / 665日 [DONE]** | sync_runner --domain moneyflow_dc --backfill | 2026-06-16 用户"全拉初评有用数据": net_amount/net_amount_rate 东财口径(补 order-size moneyflow); 实测起点~2023-10(东财个股近年才有, data_start 20230901, 前置~20空日 ok:false 但真数据完整); rate=分钟级150/200无日上限 |
-| `raw_tushare_index_member_all` (tushare_raw) **申万行业 PIT** + `v_sw_industry_pit` 视图 | **7787行 (5847当前Y + 1940历史剔除N) / out_date填1940 / 同股多区间1609** | sync_runner --domain index_member_all(_hist) + build_sw_industry_view.py (**2026-06-23 东财迁移后退化为只建 v_sw_industry_pit 深史PIT兜底视图**; 当前行业 serving 已切东财 daily_update Step 2.96c=build_dc_industry_view) | 2026-06-15/16 **行业迁移 S1+S2**: S1 原只拉 is_new='Y' → out_date 100% NULL = latest-snapshot leakage; 加 `index_member_all_hist` 域 (is_new='N' 补真 PIT 区间)。**S2** 建 `v_sw_industry_pit` as-of 视图。**S3** [DONE 2026-06-16] live serving 切申万: build_sw_industry_view.py 加建 smartmoney `dim_stock_sw_industry` 当前快照(5847股, tdx_l* 列名=位置别名/值申万, L1_foundation); industry.py INDUSTRY_TABLE→dim_stock_sw_industry; signals_v2 7 处 JOIN 走 {INDUSTRY_TABLE} 常量(no-hardcode); resolve_industry ref_date 缺陷标注(serving=当前, as-of走视图)。验证 59测试pass/moth32/load_industry_map返申万。**S4** [DONE] 删 STALE 孤儿 mart_stock_industry_pit+quality (4消费者全guard降级/移声明/residue0)。**S6** 初次双轨: 申万5847>通达信5624股, taxonomy不同非系统错位(迁移sound)。**S7** 通达信降tdxhub热备不物删(§4.3)。**迁移功能完成** (serving+探索+KPI全申万PIT)。剩跟进: S6完整1周/S8 index_classify/申万readiness面板重建 (owner=analysis/industry_migration_tdx_to_sw_20260615.md; 06-11 ANOVA 已定 申万L2 主口径)。taxonomy 桶 13→31 历史不可比 (§4.5)。**S8 [DONE 2026-06-23] 删源收尾 (用户规则: 删源≠删数据, tushare 唯一)**: daily_update **Step2j (通达信 sync) 删** (原还崩在 market_gap_queue 缺表) + **申万物化 build_sw_industry_view 接进 DERIVE Step 2.96c** (修原孤儿物化步→serving 申万自 06-16 stale, 现每日 CREATE OR REPLACE 刷新, 实跑 5530→5847股/今天); **6 消费方 + 6 测试 fixture repoint** dim_stock_tdx_industry→dim_stock_sw_industry (sector_momentum/scoring/institution_l2_metrics/stock_graph_read/industry_context_engine; 列名 tdx_l* 别名兼容零字段改; 114 相关测试 pass); **watermark 双配置** (source_watermarks + update_watermark_sla) industry_sw 改指申万表 + 删 stock_blocks 域 + 清 tdxhub_block stale 水位行 (SLA industry_sw=OK)。核对 (铁律11): 申万 5847>通达信 5222 股 / L1-3 全 / 14 次新股申万未收录→NULL 可接受。**S9 [DONE 2026-06-23 东财全套迁移] 申万行 serving 退役**: 行业/概念/资金流单一供应商改东财 (dim_stock_dc_industry/dc_concept), build_sw 退化只建深史视图; 申万当前快照 dim 物删 (Stage④-1) + 通达信 6 表全物删 + 深层源码退役 (Stage④-2: _step_sync_industry/tdx_industry_client/block_client/stock_detail_read 删, DDL/DAG/registry 清防重建循环)。**index_member_all + v_sw_industry_pit 保留供深史2025前PIT兜底** (东财同套桶, 非混口径)。owner=analysis/dc_full_migration_plan_20260623.md |
-| `fact_regime_state` | 775 行 / 2023-02 → 2026-04 [PASS] | 历史可用 | trade_date / regime_id / regime_label (bull/bear/sideways) / regime_prob_json / transition_signal |
-| `dim_market_segment` | dim 表 | 静态 | 市场分段 |
-
-### 2.2 行业 / 板块
-
-| 表 | 数据量 | freshness | 用途 |
-|---|---|---|---|
-| **`dim_stock_dc_industry`** | dim 5211股(1:1) | **新建 2026-06-23 (build_dc_industry_view)** | **东财行业映射** (serving 新真相源, 列 tdx_l1/l2/l3=东财行业=申万对齐, level按申万名映射31/127/334). 全项目单一供应商=东财迁移 (owner=analysis/dc_full_migration_plan_20260623.md): **Stage①②完成** (物化+6消费方/6测试/build_industry_stat JOIN/daily_update Step2.96c/watermark industry_dc 全切dc, 115测试pass); **Stage④完成 2026-06-23** (④-1 物删申万当前快照dim 双轨L1=98.5/L2=97.3/L3=97.3% 深史兜底v_sw_industry_pit保留; ④-2 通达信6表全物删+深层源码退役[tdx_industry_client/block_client/stock_detail_read删+DDL/DAG清]; ④-3 block前端fork 解除=stock_detail_read 死代码已被dossier取代). **东财全套迁移收口** (行业/概念/资金流单一供应商=东财, 通达信+申万当前dim 物删, 深史PIT申万视图兜底) |
-| `dim_stock_dc_concept` / `v_dc_industry_pit` | dim 5210股/490概念 + as-of视图 | 新建 2026-06-23 | 东财概念成员 + 东财成员PIT(仅2025+; 深史走v_sw_industry_pit) |
-| ~~`dim_stock_sw_industry`~~ | **已物删 Stage④-1 (2026-06-23)** | db_lifecycle_delete 5847行留痕 | 东财迁移后退役物删 (孤儿/0 live读); **index_member_all + v_sw_industry_pit (tushare_raw) 保留供深史2025前PIT兜底, 东财同套桶; 重建=v_sw_industry_pit WHERE out_date IS NULL** |
-| ~~`dim_stock_tdx_industry`/`_history`/`dim_stock_tdx_block`/`dim_tdx_block_catalog`/`raw_tdx_industry_file_snapshot`~~ | **已物删 Stage④-2 (2026-06-23)** | db_lifecycle_delete (smartmoney 5表) + market 3表 | 通达信行业/板块全残留物删 (孤儿; 行业切东财 dim_stock_dc_industry, 概念切 dim_stock_dc_concept); 深层源码全退役 (tdx_industry_client/tdx_industry_names/block_client/stock_detail_read 删 + DDL/索引/registry/DAG step 清, 防重建循环); deletion_record run_id=dc_migrate_stage4_tdx_20260623 |
-| `fact_stock_industry_context` | 个股行业上下文 | 取决于跑批 | 衔接 sector_momentum 到个股 |
-| **`mart_sector_momentum`** | **⚠ 只 41 行 / 2026-04-17 → 2026-05-13** | ⚠ **没历史, 不能历史回测** | sector_name/code/level, ma20/60, macd, momentum_score, return_1m/3m/6m/12m, excess_1m |
-| `mart_industry_pit_quality` | ? | PIT | 行业质量 |
-| `mart_stock_industry_pit` | ? | PIT | 个股行业 PIT 评分 |
-| `mart_institution_industry_stat` | ? | — | 机构 × 行业统计 |
-| `research_inst_industry_performance` | 6,564 行 | — | 机构 × 行业 win_rate_10d/30d/60d/120d, avg_gain_10d/30d/60d/120d |
-
-### 2.3 机构跟随 (项目主 alpha, **权重 0.40**)
-
-| 表 | 内容 |
-|---|---|
-| **`mart_stock_trend` (主 alpha, 88 列)** | inst_count_t0/t1/t2 / inst_cap_t0/t1/t2 / inst_trend / cap_trend / latest_events / external_attention_signal / **stock_gate** / turtle_setup_state |
-| `fact_institution_follow_backtest` | cohort × params Grid 回测 (**已 train/holdout 切分** — split='train'/'holdout', cohort_scheme='institution_L2_pit_20240930') |
-| `fact_institution_event` | 机构调研/持仓事件 (KEEP; `fact_jgdy_event` akshare 已物删 2026-06-27 通达信全删 M4) |
-| `mart_institution_industry_stat` | 行业级机构统计 |
-
-### 2.4 基本面 / 质量
-
-| 表 | 内容 |
-|---|---|
-| **`fact_stock_archetype` (22K 行 / 53 列)** | snapshot_date / **net_profit_positive_8q** / **operating_cashflow_positive_8q** / revenue_yoy_positive_4q / profit_yoy_positive_4q / eps_yoy_positive_4q / **high_quality_hits** / growth_hits / cycle_flags |
-| `fact_financial_derived` / `fact_fundamental_quarterly` | 财务衍生 / 季度 |
-| `fact_stock_fundamental_stage_daily` | 基本面阶段 daily |
-| `fact_stock_quality_features` | 质量特征 |
-| `raw_aif10_financial_history` / `raw_gpcw_detail` / `raw_tdx_gpcw_wide` | 财务原始 |
-| `raw_aif10_valuation_quantile.percentile_fifty` | 估值 10Y 分位 (aif10 源, task#37 待迁/退役; 原 strategy_ensemble 消费者已退役 2026-06-19) |
-| `raw_aif10_forecast_consensus.compre_rating_num` | 一致预期评分 (aif10 源, task#37 待迁/退役; 原 strategy_ensemble 消费者已退役 2026-06-19) |
-| `raw_aif10_peer_valuation` | 同业估值 |
-| **`raw_tushare_forecast`** (业绩预告, 2026-06-14 接入) | **PEAD 预期差事件因子** (alpha 验证程序 S1 第一个基本面接口): type(预增/预减/扭亏/首亏) + p_change_min/max(净利变动幅度) + net_profit_min/max + ann_date(PIT 锚, 早于正式财报). grain=[ts_code,end_date,ann_date]; 实测 17042 行 (2023-2026) |
-| **`raw_tushare_income`** (正式利润表, 2026-06-14 接入) | 96 列全套利润表 (total_revenue/revenue/oper_cost/各费用/operate_profit/n_income/ebit/ebitda...) = 质量/成长因子料 (PEAD 后段慢信号). grain=[ts_code,end_date,f_ann_date,update_flag] (uf=0原始/1订正双推送), PIT 锚 f_ann_date 取 uf=1; by_trade_date date_param=ann_date; 实测 4月 10578 行/5305 股. **express/fina_indicator 已注册** (express=express_vip by_period [sync_runner 加 by_period 分支+单测]; fina_indicator=by_ts_code 2023-2026窗口避100条截断), 回填排队 income 后 (单写锁) |
-| **`raw_tushare_balancesheet_advrecv`** (预收账款/合同负债, 2026-06-16 注册) | 用户提议"预收账款"前瞻需求因子: adv_receipts + contract_liab (2020 后迁入) + total_assets. PIT 锚 ann_date; by_period (V0 取每期最新修订). **当前落库 7 期非连续止 2020Q3 = 不可用** (allow_empty=true 旧配置静默吃间歇空响应 + 配额墙截断双因); 已配 allow_empty=false + min_rows_per_batch=1000, 待配额恢复重拉连续季报. debate 裁决档C: 修源前禁入 panel |
-
-### 2.5 资金流 / 事件
-
-| 表 | 内容 |
-|---|---|
-| `fact_hsgt_daily` | 北向资金 daily |
-| `raw_lhb_daily` / `fact_lhb_event` | 龙虎榜 |
-| ~~`fact_executive_trade_event`~~ | 高管增减持 (akshare; **已物删 2026-06-27 通达信全删 M4**, 用户决cut; 67920行archive留底; 档B 若需从 tushare stk_holdertrade 重接) |
-| `fact_shareholder_trade` | 股东交易 (注: tdx_b 变体 2026-06-24 退役; fact_shareholder_trade 自身当前无数据) |
-| `fact_holder_event` / `fact_top10_holder_period` / `fact_holder_count_period` | 持股人结构 |
-| ~~`fact_dzjy_event`~~ | 大宗交易 (akshare 旧源; **已物删 2026-06-27 通达信全删 M4**, 用户决cut; 2062行archive留底; 档B 若需从 tushare block_trade 重接) |
-| **`raw_tushare_block_trade`** (大宗交易, 2026-06-16 注册) | 用户提议: 机构折价/大单方向, stage 内 alpha 增强候选 (moneyflow 抓不到的机构维度). grain=[ts_code,trade_date,price,vol] (同股同日多笔全留), PIT 锚 trade_date (盘后披露, 决策用 t-1); by_trade_date 2023+. **表未建** (配额墙), 配置就绪待拉. debate 裁决档B: 做事件 confirmation 不做连续因子 |
-| ~~`raw_capital_*` + `dim_capital_behavior_latest` + `capital_detail_sync_state`~~ | 配股/分红/回购/解禁 (akshare 源). **2026-06-27 通达信全删 M4 已物删 (7表)**: 用户决"cut"不迁移 — 消费侧切 (scoring quality_capital→0 / signals_v2 D5 解禁门→不过滤) + 源头 capital_client+writer 物删 + config 清; archive parquet 留底 25,370 行 (deletion_record run_id=tdx_full_delete_M4_akshare_capital_20260627). 档B 若需从 tushare dividend/repurchase/share_float 重接 |
-| `raw_institution_surveys` | 机构调研 raw |
-| `raw_qfii_holding_quarterly` | QFII 季度持仓 |
-| `raw_org_holding_aif10` | 机构持仓明细 (东财妙想 aif10 MAIN_ORGHOLDDETAIL; 非公募机构 基金/保险/券商/法人/QFII 分桶持本股, report_date 报告期 + 法定披露截止 available_date PIT 锚; 2026-06-24 aif10 例外扩展, 复核确认真·独有 gap=tushare fund_portfolio 仅公募). owner=services/org_holding_aif10.py; data_layers=L0_source (2026-06-24 补 tag, 修 data-layer-integrity FAIL) |
-
-### 2.6 技术 / 形态 / 信号
-
-| 表 | 内容 |
-|---|---|
-| **`fact_signal_context`** | stock × date / vol_r20 / amt_r20 / amount_20d_avg / price_pos_60d / price_pos_120d / drawdown_60d / **technical_stage** (1/1.5/2/3/4) / built_at |
-| **`fact_stock_technical_stage`** | Stan Weinstein 4 stage (1=底部 / 1.5=突破中 / 2=上升 / 3=顶部 / 4=下跌) |
-| `fact_stock_stage_features` | 阶段特征 |
-| `fact_stock_turtle_features` | 海龟特征 |
-| **`fact_technical_trigger`** | 公式信号触发 (stock × date × formula_id × variant × strength × state × reason_codes_json) |
-| `fact_stock_archetype` (53 列) | 形态原型 (跟基本面共用此表) |
-| `fact_setup_snapshot` | ⚠ **0 行 / 未启用** |
-
-### 2.7 Phase ψ 治理 / 调参产物
-
-| 表 | 用途 |
-|---|---|
-| **`mart_per_stock_stage_strategy_optimal`** | per-stock × variant × stage Optuna 寻优 (Phase ψ R1 后含 OOS 列, 但稀疏信号下大量 governance reject) |
-| **`mart_per_formula_stage_optimal`** (Phase ψ.α B) | per-formula × stage × train_end_date 严格 walk-forward 寻优 (反转因子用此表) |
-| `mart_formula_horizon_evidence` | per (formula × hp) 全市场合并真实历史涨跌 (无 Optuna 调参, 最干净) |
-| `mart_stage_formula_fitness` | cohort fitness (fund × tech × formula × hp) |
-| `mart_stock_formula_optuna_v2` | 旧 per-stock × formula × hp 全宇宙 (337K 行) |
-| `fact_optuna_governance_log` | Phase ψ governance reject 审计 |
-| `mart_market_perception_daily` | Market Perception P1 daily snapshot: regime_score / breadth_state / volatility_state / sentiment_phase, PIT cutoff and built_at |
-
----
-
-## 3. Service 模块 (231 个 .py 文件, 21 个子包)
-
-### 3.1 调参 / 寻优 (Phase ψ)
-
-| 模块 | 文件 | 作用 |
+| 库 | 角色 | 现状 (2026-07-02 实测) |
 |---|---|---|
-| `services/optimization/` | config.py | yaml loader (governance/walk_forward/search_space/composite/constraints/execution/output) |
-| | governance.py | enforce_pre_optimize / enforce_pre_insert (50≤n_trials≤500, sharpe ≤ 5, win ≤ 0.95) |
-| | walk_forward.py | split_dispatch (none/holdout/expanding/expanding_monthly/**train_end_forward**) + assert_no_temporal_leak + list_month_ends |
-| | oos_aggregator.py | aggregate_oos_metrics (multi-window OOS trades 合并) |
-| | composite.py | CompositeWeights.from_config() (7 个权重 ∑=1.0) |
-| | constraints.py | HardConstraints (max_dd, streak, worst_loss, min_traded) |
-| | objectives.py | 8 个 metric (sharpe/calmar/sortino/pain/ulcer/tail/stability/cvar) |
-| | ddl.py | mart_per_stock_*_optimal / mart_per_formula_stage_optimal / fact_optuna_governance_log DDL; log_governance_violations(**manage_txn**: False=与业务表同事务原子提交防 orphan governance, 06-14 D0 发现) |
-| `services/backtest/` | optimize.py | optimize_stock_strategy (R1 expanding_monthly 主流程) |
-| | realistic_engine.py | simulate_trade (T+1 入场, intraday stop/target, 含 tx_cost) |
-| | search_space.py | 5 维 SearchSpace.from_config() (hp/stop/target/trailing/buy_offset) |
-| | objective.py | make_objective Optuna 目标函数工厂 |
-| | filters.py | is_index_code 等 |
+| `tushare_raw` (7.3G) | tushare L0 raw 镜像 | 40 表 + 2 PIT 行业视图, 9268 万行 |
+| `smartmoney` (320M) | aif10 域 + dim + 治理 mart | 30 表 (dim_strategy_preset 批7物删后) |
+| `market` (737M) | K线真相源 | price_kline_qfq_tushare 831万 → v_price_kline_qfq |
+| `reference` (3.8M) | 身份/日历 4 dim | active_a_stock/all_ever_listed/listing_status/trading_calendar |
+| `etf` (524K) | 空壳 | ETF 子系统批3d 整体退役, 只剩 deletion_record |
+| `feature_store` (524K) | 空壳 | L2 特征层已清, edge 重建时 declare-on-build |
+| `experiment_store` (268K) | 实验裁决契约 | record_verdict 4 空表保留 (sandbox 唯一跨删存活面) |
 
-### 3.2 公式 (formula_engine, 4+3 = 7 公式)
+---
 
-| 公式 | 文件 | 类型 |
+## 2. 数据资产 — 判断层 (全量清单/计数 → `FEATURE_MAP.md` 机器版, 勿在此手抄)
+
+**tushare_raw 40 表按业务域** (行数 2026-07-02 实测):
+
+| 域 | 表 (行数) | PIT 锚 |
 |---|---|---|
-| macd_golden_cross | macd_golden_cross.py | 动量 (DIF 上穿 DEA, variant=above/below_zero, **裸金叉无量能**) |
-| turtle_breakout_20/55 | turtle_breakout.py | 动量 (突破 + **量能 > MA20 × 1.3**) |
-| dynamic_ma_iterative_cross | dynamic_ma_iterative.py | 动量 (用户 MQL, 4 均线 + 加权重心 + **1 轮迭代过滤假突破**) |
-| **reversal_1m_mild** (Phase ψ.α) | reversal_short_term.py | **反转** (20 日跌 4-15% + 60 日低波 + 量比正常) |
-| **reversal_1m_deep** (Phase ψ.α) | reversal_short_term.py | **反转** (20 日跌 10-30%) — 验证结论=unknown (reset 清, 以 goal.md 为准) |
-| **reversal_1w** (Phase ψ.α) | reversal_short_term.py | **反转** (5 日跌 2-10%) |
-| technical_stage (4 stage) | technical_stage.py | classify_technical_stage(closes, volumes) — Stan Weinstein |
+| K线基石 | daily(831万) · adj_factor(836万) · stk_factor_pro(768万) · daily_basic(831万) · stk_limit(542万) · suspend_d · trade_cal · stock_basic · stock_st(16万, PIT ST日历) | trade_date, 盘后 |
+| 资金流 | moneyflow(743万) · moneyflow_dc(364万) · moneyflow_ind_dc/mkt_dc · moneyflow_hsgt | trade_date (同步非领先, IC≈0 裁决在案) |
+| 筹码 | cyq_perf(893万) | trade_date |
+| 行业/概念 | dc_member(2333万) · dc_index(22万) · index_member_all(申万, 含is_new=N历史) · sw_daily(90万) + **v_sw_industry_pit / v_dc_industry_pit** (深史 as-of 走视图) | in/out_date PIT |
+| 指数 | index_daily(000300 benchmark) · index_dailybasic | trade_date |
+| 财务 | balancesheet(12万) · income(10万) · fina_indicator(10万, 2023+) · fina_mainbz · express · forecast · dividend | **ann_date** (报告期≠可用日) |
+| 股东/机构 | top_list/top_inst(178万, 龙虎榜主源) · stk_holdernumber(28万) · stk_holdertrade(7万) · stk_surv(36万, 调研) | ann_date/surv_date+t+1 |
+| 事件 | block_trade(11万) · share_float(542万, float_date=前瞻解禁) · limit_list_d/limit_cpt_list | trade_date/ann_date |
+| 情绪/研报 | ths_hot(41万) · report_rc(50万, tp单位0.0001元需/10000) | trade_date/report_date |
 
-### 3.4 Paper Sim v2 (Phase ψ)
+**smartmoney 关键表**: aif10 域 = fact_top10_holder_period(**173万, holder 主源** source=miaoxiang, SERVE entity `holders_tdx`) · raw_org_holding_aif10(**34万, 机构持仓分桶主源**, available_date=法定披露截止 PIT 锚) · raw_aif10_valuation_quantile(9.4万)/peer_valuation · raw_qfii_holding_quarterly(1万)。dim = dc_industry/dc_concept 当前快照 (深史走 tushare_raw PIT 视图) + 交易规则组 (fee/liquidity/segment/price_limit/trading_rule/session)。其余全是治理 mart。
 
-| 模块 | 作用 |
-|---|---|
-| | selector.py | backtest mode 查 mart_per_formula_stage_optimal (Phase ψ.α B), 0 selection leakage; **Phase ψ.β.5 L2**: ensemble mode 可按 vol_60d 缩放 stop/target/trailing per-stock (`_vol_aware_params`, config flag `selection.vol_aware.enabled`); **Phase ψ.γ.2 L3**: ensemble mode 可 JOIN mart_per_stock_stage_strategy_optimal (24K 行 9-dim OOS) 用 per-stock × stage params 覆盖 default (`_load_per_stock_stage_optimal`, config flag `selection.per_stock_stage.enabled`). 优先级: per_stock_stage > vol_aware > default_holding. |
-| | driver.py | walk-forward 主循环 + VWAP 成交 + swap 决策 |
-| | exit_rules.py | 5 触发优先级 (stop > target_arm > trailing > hp_expired > stage_deterioration) |
-| | swap_rules.py | compute_fulfillment / candidate_can_close_gap / evaluate_swap |
-| | sizer.py | wilson_kelly position sizing |
-| | tx_cost.py | 佣金 + 印花税 + 滑点 |
-| | reporter.py | 6 类 KPI (A 用户标准 / B anti-churn / C robustness / D ablation / E sensitivity / F reality_check) |
-| | ddl.py | 4 张 paper_sim 专表 (nav / position / trade / kpi) |
-
-### 3.5 候选 / 推荐 / 选股
-
-| 模块 | 作用 |
-|---|---|
-| `services/buy_signal/` | classify_tier + factor_aggregator + scoring + reasoning + configs + ddl — **6 因子综合 score, 输出 mart_stock_formula_buy_signal_daily** |
-| `services/selection/` | logger / outcome / feedback / summary — 选股事件追踪 |
-| `services/portfolio_walk_forward/` | metrics.py (CAGR / sharpe / max_dd / calmar / monthly_win_rate), liquidity, ... |
-| `services/portfolio_sizer/` | profiles.py 不同风格 sizing |
-| `services/trade_plan/builder.py` | 交易计划生成 |
-| `services/candle_pattern/` | features (6 维 + 1 突破强度) / evaluator / search_space (4 维 Optuna 阈值) |
-| `services/market_perception/` | Market Perception P1: `compute_regime_for_date/range`, PIT-strict market context features written to `mart_market_perception_daily` |
-
-### 3.6 机构 / 行业 / 阶段
-
-| 模块 | 作用 |
-|---|---|
-| ~~`institution_l2_metrics` / `institution_read` / `institution_scoring_read` / `institution_write` / `holdings` / `holder_availability`~~ | 机构 R/W — **全退役** (重建+Phase0 机构 serving 删; Phase3 以新 SERVE 架构 + as-of 跟随口径重建。基础表 inst_institutions/inst_holdings 数据保留) |
-| ~~`services/industry_context_engine.py`~~ | 退役 (sector_momentum 策略层删) |
-| `services/industry.py` / `industry_pit.py` / `industry_overview_read.py` | 行业 PIT + UI 读取 |
-| `services/stock_stage_engine.py` | 阶段特征中间事实层 |
-| `services/stock_turtle_engine.py` | 海龟形态特征 |
-| `services/data_access/` + `config/data_access.yaml` | **SERVE 读侧统一层** (2026-06-22 P1, 数据模块顶层设计 v2 §4, task#52): 读侧唯一取数+PIT+口径清洗点, 消费者全走 `DataAccess.get(entity,codes,start,as_of)->DataResult(rows,provenance)`。薄分发器(__init__)+内部分层防god-module: `keys`(code↔ts_code+日期归一 canonical 单一源, 不变量#1)/`spec`(yaml载入+EntitySpec+provenance信封)/`resolver`(manifest路由+connect read_only 不变量#2+preflight schema自校验)/`asof`(PIT≤t 读层单一执行点)/`cleaner`(code6位/asof ISO 归一)/`drivers/generic`(简单entity取数, 加entity=加yaml条目+可加driver不改本体)。data_access.yaml **21 entity**(kline_qfq/moneyflow/valuation/index_daily/moneyflow_dc/cyq/stk_limit/share_float/block_trade/report_rc/fundamentals/forecast/sw_daily/top_list/top_inst/holders_top10/holders_tdx/sw_industry/dc_member/dc_index/limit_list_d); code_input 3模式(plain/ts_from_plain/ts_passthrough 含指数码+con_code)。血缘=provenance信封声明链。**P1 DONE (2026-06-22): dossier 18 内联裸查全迁完(duck_connect=0), 含 _top10 ann_date 版本锁/sector_membership 3表RANGE-PIT JOIN/market_regime COUNT(DISTINCT)聚合/lhb LIKE 等复杂 loader, 全 parity 验证(逐字或multiset+消费者order/format依赖实测)。** 验收门 = `check_serve_read_layer.py` 单一执法点 (D1 read-no-inline / D2 read-no-self-asof / D3 preflight-wired / D4 lineage-complete / D5 feature-from-l2), red→green 实证 + 5 pytest + moth `serve-read-layer-p1-doors` + wired safe_commit Step 3.9。**门 consumer scope=dossier(P1只迁dossier); signals_v2/routers 等未迁 consumer = P2/P3 债** |
-| `services/data_loaders.py` | **feature_panel 物化输入层** (2026-06-19 A0: 从已删 experiment_* 移进 services, 可注入 conn 可测): `load_kline`(L1k market price_kline_qfq_tushare)/`load_moneyflow`(L0 raw_tushare_moneyflow, net+total_flow)/`load_quality_reports`(L0 raw_tushare_fina_indicator, ann_date ISO PIT 锚)/`in_active_universe`(services.universe config 驱动替内联前缀)。分层契约: build 唯一 L0-read 点, 探索只读物化后 panel (L2-bypass lesson)。**注: 与上 data_access 读层职责分工 — data_loaders 是 feature_panel build 专用 L0 物化输入(写侧), data_access 是消费侧统一读层; P2 待评估 load_kline/moneyflow 是否并入 data_access** |
-
-### 3.7 数据源 / 客户端 / sync
-
-| 模块 | 作用 |
-|---|---|
-| `services/data_sources/` | base / clients_registry / data_routes / fallback / registry — 数据源中央。**tushare 代理网关 2026-06-17 切 tinyshare** (旧 jiaoch.site 反刷量墙弃用): `sources/tushare.py:_pro_api` = `import tinyshare as ts; ts.set_token(授权码); ts.pro_api()` (tinyshare 自带网关, 去 _DataApi__http_url monkeypatch); 授权码进 gitignored .env (TUSHARE_TOKEN); 旧网关解封 stk_surv 机构调研(实测 316 行/日)。sync_registry 已注册 stk_surv 域。**限流(tinyshare): 单接口 120次/分, 多接口 200次/分, 并发 2**(旧 tushare 150/200)。**强制 = config 驱动主动节流**(2026-06-19): 限额在 `sync_registry.yaml defaults.rate_limit`, `sync_runner._RateLimiter` 读 config 每次 fetch_raw 前滑窗节流(撞墙前先睡, no-hardcode 改限额只动 yaml); 瞬态限流措辞退避 `_is_transient_ratelimit`→transient_backoff 作兜底, 真当日墙 `_is_quota_wall` 才停链。**socket 超时根治 hung** (2026-06-19, defaults.fetch_timeout_seconds=120; run_domain `socket.setdefaulttimeout`; 反例: stk_factor_pro 重试 hung 在无超时 socket 71min)。**by_ts_code 断点续拉** `--resume` (`_existing_ts_codes` 跳 target 已有 ts_code, 省重拉)。owner doc=`sources/tushare.py` docstring |
-| `services/akshare_client.py` / `tdx_*_client.py` / `block_client.py` / `lhb_client.py` / `xdxr_client.py` / etc. | 各种数据源 client (注: `capital_client.py` 已物删 2026-06-27, 通达信全删 M4 akshare 资本运作退役) |
-| `services/kline_source.py` / `market_db.py` | K 线源 + market DB 入口 |
-| `services/duck_adapter.py` / `db.py` / `db_health.py` | DuckDB 安全包装 |
-| `services/source_watermarks.py` / `source_policy.py` | sync watermark + policy |
-
-### 3.8 其他
-
-- `services/sentiment/` — **情绪因子框架** (factor_registry + bin_assigner + window_calculator + survey_builder). 未集成到主选股
-- ~~`services/external_attention.py`~~ — 关注度因子 **已物删 2026-06-27 (通达信全删 M4: akshare 东财人气/关注度退役, 用户决cut, 无tushare等价=永久丢)**; 表 fact_stock_attention_snapshot(16511)/dim_stock_attention_latest(5504) archive留底; scoring `external_attention_score`/`external_crowding_penalty` 恒None(优雅降级, mart_stock_trend 列保留但NULL); 档B 若需关注度信号无 tushare 来源
-- `services/event_simulator.py` / `event_engine.py` — 事件模拟引擎 (用于机构跟随 backtest)
-- `services/shareholder_plan_*` (3 文件) — 股东计划相关 alpha
-- `services/feature_registry.py` / `feature_labels.py` / `feature_retention.py` — 特征工程
-- `services/data_lineage/` — 数据血缘
-- `services/ml_lifecycle/` — drift / registry
-- `services/etf_*` — ETF 子系统 (独立, 不影响个股 alpha)
-- `services/trading_config/` — 真实执行模型 (buy_pricing / sell_pricing / slippage / filters / execution_model)
+**PIT 红线速查**: JOIN 财务/股东必用 ann_date/available_date ≤ t (报告期是陷阱); 行业深史必走 v_*_industry_pit (当前快照 dim 只做 serving); K线写侧有 filter_kline_rows_by_calendar 盘中污染防御; universe 必过 services.universe (内联前缀=被门拦)。
 
 ---
 
-## 4. Scripts 入口 (135 个)
+## 3. 代码地图 (backend/, ~78 service .py + 43 scripts)
 
-> 机器枚举的完整入口/产表/依赖清单 → `FEATURE_MAP.md` (`scripts/chunkyctl map` 重生成,
-> 勿手改)。本节只保留人工策展 (哪些重要/怎么用/坑在哪), 计数以 FEATURE_MAP 为准。
+**services/ 顶层职责簇**:
 
-按主题分组:
-
-| 主题 | 数量 | 例子 |
-|---|---|---|
-| `build_*` | 49 | build_formula_signals_history, build_signal_context, build_stock_formula_buy_signal_daily, build_daily_position_recommendations, build_picture_daily, build_architecture_inventory |
-| `formula_*` | 1 | **formula_limit_up_pullback.py** (涨停回调十字星选股, S/A/B 三档, YAML 配置 `config/formula_limit_up_pullback.yaml`) |
-| `run_*` | 17 | run_follow_backtest (机构跟随), run_optuna_*, run_portfolio_mvp |
-| `validate_*` | 10 | validate_exclusion_rules 等 |
-| `audit_*` | 5 | **audit_end_to_end.py** (23 项检查) |
-| `backfill_*` | 5 | 各种回填 |
-| `optimize_*` | 4 | **optimize_per_stock_stage_strategy.py** (Phase ψ R1), **optimize_per_formula_stage.py** (Phase ψ.α B), **optimize_ensemble_full.py** (Phase ψ.γ.1, **20 维 ensemble Optuna**: 13 alpha weights + 2 regime + 3 sigma + hp + max_vol, constrained sharpe, holdout train/test, mart_ensemble_optimal 入库) |
-| `rebuild_*` | 2 | rebuild_stage_formula_fitness |
-| `replay_*` | 2 | replay_paper_history_signflip |
-| `evaluate_*` / `train_*` | 4+2 | 各种评估 + 训练 |
-| `cron_*` | — | cron_daily.py (HTTP wrapper for sync) |
-
-### 4.1 主流水线 (顺序严格)
-
-```
-1. optimize_per_stock_stage_strategy.py    Optuna 9-dim per (stock × variant × stage)  ~16 min
-   或 optimize_per_formula_stage.py        Phase ψ.α B 全局 walk-forward          ~28 min
-2. rebuild_stage_formula_fitness.py        fitness 聚合                          ~1s
-3. build_stock_formula_buy_signal_daily    buy_signal × technical_trigger        快
-4. build_daily_position_recommendations    最终推荐 + 价格                       快
-5. audit_end_to_end.py                     23 项检查 (0 FAIL 才算通过)           ~1 min
-6. portfolio_backtest.py / run_paper_sim_v2.py   walk-forward NAV + KPI         30 min
-```
-
----
-
-## 5. Routers / API (17 个)
-
-| Router | 主功能 |
+| 簇 | 文件 |
 |---|---|
-| `routers/recommendation.py` | 选股推荐 API |
-| `routers/screening.py` | 筛选 |
-| `routers/signals.py` | 信号 |
-| `routers/institution.py` | 机构数据 |
-| `routers/market.py` | 行情 |
-| `routers/etf.py` | ETF |
-| `routers/updater.py` | sync 入口 (POST /api/inst/update/smart) |
-| `routers/workbench.py` | 工作台 |
-| `routers/strategy_preset.py` | 策略预设 |
-| `routers/v3_*` | v3 系列 (meta / paper / picture / portfolio_builder / selection / views) |
+| DB infra | duck_adapter · db_connection · database_manifest · db(smartmoney conn) · market_db/market_read/market_schema(K线) · schema_core/marts/migrations/versions/layer_filter(DDL+init) |
+| 身份/日历/宇宙 | security_master · calendar(latest_closed 交易日历真相源) · universe(硬门 assert_universe_clean) · utils |
+| aif10 采集 | holders_aif10 · org_holding_aif10 · qfii_client · aif10_capability_client |
+| 治理 | data_audit · data_quality · data_health(见scripts) · source_watermarks · storage_retention · data_deletion · data_processing_monitor · pipeline_lock/manifest · sandbox_guard · dependency_guards |
+| 杂项 | constants(评分权重等, ETF段已删) · industry · kline_source(写侧normalize) · api_cache/api_schemas · ui_labels · source_policy · notification/ |
+
+**子包**: data_access/(M4 SERVE, resolver+drivers) · data_sources/(M1, sync_runner+clients_registry+sources/aif10) · pipeline/(daily_update 四阶段 preflight→acquire→clean→process→store) · lineage/(M5 血缘, builder+graph) · data_governance/ · primitives/ · notification/
+
+**scripts/ 43 个按前缀** (前缀=data_module_members 成员资格): `check_*` 17个门 (dead_references/universe_filter/calendar_usage/serve_read_layer/sandbox_isolation/doc_drift/rule_compliance...) · `build_*` 5 (price_kline_qfq_tushare/dc_industry_view/sw_industry_view/dim_listing_status/feature_map) · `ingest_*` 2 (aif10) · `db_*` 4 (compact/lifecycle_delete/dead_table_audit/partition_migrate) · `audit_*` 3 · data_health_snapshot · data_layer_audit · chunkyctl · update_watermark_sla/refresh_source_watermarks · lineage_cli · migrate_reference_db · plan_storage_retention · cleanup_holder_dup
+
+**routers**: 仅 2 live — ops_manual_run(/api/v3/ops 手动跑数据链) + v3_config(/api/v3/config 前端参数下发)。**前端**: index.html + assets/js (vanilla, 股东挖掘单板块; ETF 已删) — edge 重建时"先参考后删"整体换 React/Vue。
 
 ---
 
-## 6. Config 文件 (yaml)
+## 4. Config 面 (真相源 yaml, backend/config/)
 
-| 文件 | 控制什么 |
+| yaml | 职责 |
 |---|---|
-| `backend/config/optuna_config.yaml` | Optuna 治理 (Phase ψ Rule 7/8) — governance/walk_forward/search_space/composite/constraints/execution/output |
-| `backend/config/field_dictionary.yaml` | **Phase ψ.γ.dict.1** 字段字典 (3 DB × 12 核心表 × 100+ 字段 + 单位 + PIT key + outlier cap + JOIN 模板) — 防 VWAP unit bug 类故障 |
-| `backend/config/recommendation_universe.yaml` | 选股宇宙 |
-| `backend/config/db_partition_tiers.yaml` | **DB 多库分区 tier** (源/特征/服务/实验) + 原子写簇 (关联性检查); 驱动 `backend/scripts/db_partition_migrate.py` (保真迁移引擎: 原 DDL 含 PK + INSERT SELECT, 非 CTAS; dry-run 默认 + 前后验证[行数/EXCEPT/约束/索引] + 绝不 DROP 源; D1a experiment_store 25 表迁验 PASS [暂缓 repoint, live 耦合重]; **D2-minimal feature_store 2 表 fact_feature_panel+validation 迁验 PASS** [解决 build_feature_panel vs daily_update 写锁竞争, repoint 待定]) — owner=analysis/db_management_design_20260614.md |
-| `backend/scripts/db_compact.py` | **整库保真缩盘** (删行后回收盘): ATTACH-copy 逐表原 DDL 含 PK + INSERT + 重建索引 + 视图按定义重建 (依赖容忍重试), **绝不 CTAS** (避 06-12 约束 315→1); dry-run 默认; 验证前 DETACH src (information_schema/约束/索引跨 attach 库会双计) + 逐表行数对账全等才换名, 旧库留 `_precompact_bak`。2026-06-14 实测 smartmoney 26.6G→17.5G (-34%, 333表/4视图/821约束/333索引全等) — owner=db_management_design §13.4 |
-| `backend/scripts/db_dead_table_audit.py` | **死表守门** (0行 AND 0字面引用才判死, 保守防误删); 大表过时判定走 lifecycle 分析非本工具 — owner=db_management_design §12 |
-| `backend/scripts/db_lifecycle_delete.py` | **生命周期删除执行器** (可复用): 读删除 manifest, 4 道闸 — (1) live守护 word-boundary grep daily_update脚本集+serving/ensemble/routers, 命中REFUSE (`--force` 跳过用于有意删 live 层如地基-reset); (2) action=archive 先 COPY parquet 再删 (drop 则不归档); (3) mart_data_deletion_record 留痕; (4) 残留扫描悬挂视图 + view 处理 + 周期 CHECKPOINT 防 catalog stale。dry-run默认。2026-06-14 地基-reset 删 144 表/视图 — owner=db_management_design §13.6 |
-| `backend/config/data_layers.yaml` + `backend/scripts/data_layer_audit.py` + `backend/services/schema_layer_filter.py` | **数据层级框架** (2026-06-14 地基-reset 后立, owner=docs/data_management_framework.md): 8层声明式注册表(L0_source/L1_foundation/L1k_kline/display/infra/L2_feature/L3_model/L4_experiment), 144表全声明layer=单一真相源根治"层级隐式→反复推导+耦合"; audit `--check` 未声明=FAIL强制新表声明; schema_layer_filter 让 schema-init 只建活层表(梳理"删表后启动空重建"recreation loop, 接 schema_core/marts/migrations); moth 断言 data-layer-integrity/minimal-module-main-routers/no-new-godfile 自动执法。**2026-06-15 扩 feature_store 纳管**: audit `_live_tables` 从只扫 smartmoney → 扫 MANAGED_DBS=(smartmoney,feature_store), 否则 L2 分区(fact_feature_panel)静默不受层级执法; fact_feature_panel 声明 L2_feature, L2 层 status partial_rebuild |
-| `backend/scripts/check_legacy_flow_integrity.py` | **老流程污染防回潮 gate** (2026-06-14 工具化 reset 6 教训, owner=framework §6): C1 daily_update 无缺失脚本调用(删层必删caller, 防静默degraded假活)/C2 无 wiped 表孤儿引用(238处实测)/C3 append-only(*_history/*_snapshot)必 storage_retention 声明(防无界膨胀=DB巨大根因)。覆盖 schema_layer_filter 之外的污染面(daily_update/散落DDL/config)。moth `legacy-flow-no-pollution` 守; **重构验收 gate**: 重构前红=问题实锤, 老daily_update退役+清孤儿+加retention 转绿。进度 (owner=analysis/refactor_execution_plan_20260614.md): 2026-06-14 A2 完成→**C3 append_only_retention PASS** (3表 retention 声明: dim_stock_tdx_industry_history/raw_profit_forecast_snapshot_daily/raw_tdx_industry_file_snapshot); A3d gate 精度修 (grep 加 -w 词边界防 substring 假阳性[fact_shareholder_plan 误匹配活表 _tdx_f10] + -I/--exclude-dir 跳 __pycache__ 二进制, 238→179); A3a 删 2 真孤儿 config (model_search/champion_registry)→C2 残 149; **A1 daily_update 重写 855→457 行 (删 Step4-8 model/paper_sim/champion + 19 缺失脚本调用, 保留 sync/L1k macd + 加 retention plan/data-health report; DRY 实跑通过)→C1 PASS**; A3b 退役 7 死 serving router (v3_market_perception bundled fallback / recommendation / institution / screening / v3_meta / v3_views / v3_perception_legacy + main.py 注册, app import OK 124 routes)→**C2 149→70**; A3c schema_versions 删 23 wiped version 条目 (版本注册表非 DDL; import/summary 验证 220→195) + 7 config 18 处 wiped ref 加 @archived 标记 (gate 认可豁免; 表均核实 wiped+DB 不存在; yaml 全 valid)→**C2 70→29**; 余 updater_* 死 feature 步骤(29, 子系统被 data_sources/etf live import 故外科清非整体退役) 待。A5 bloat: 删 phase5.duckdb 57M+phase5_exports 101M 死 model 工件 + manifest 去 phase5 分区; archive/ 3.4G reset 回滚网保留待重建 KPI 验证后用户定。**2026-06-15 C2 gate 修(重建表识别)**: `_live_tables`(复用 data_layer_audit, managed-DB live 集) 排除已重建为 live 的 wiped 层表 — fact_feature_panel 重建后 layer 仍 L2 但已 live, 不再误判孤儿(否则其 manifest/config 引用刷爆 stale 41>29); C2 stale 28<=29 ratchet PASS |
-| `backend/scripts/check_strategy_validation_integrity.py` | **策略验证完整性 gate** (2026-06-15 P0 制度先行, 8-lens 对抗复审根因 R1/R2 + 判断法典 C-WinReturn 反哺; owner=docs/strategy_validation_contract.md 判断法典节): 4 检查 — anomaly_symmetric(C-R1: experiment_harness 有 tradability_verdict 对称门)/promotion_needs_money(C-R1: record_verdict 拒无含成本证据转正)/kpi_joint_codex(C-WinReturn: kpi_verdict 联合年化+max_dd+胜率×盈亏比)/engine_execution_aware(C-R2: 单一引擎含涨跌停/非对称成本/容量/T+1 open)。验证器纪律 mythos §13: 引擎检查取单文件全维满足非多文件并集 (防旧 portfolio_backtest 残留 marker 污染)。**P0 gate=P1 引擎验收尺**: engine 检查在引擎重建前 FAIL=预期红色规格。moth `validation-r1-symmetric-gate`/`validation-promotion-needs-money`/`validation-winreturn-codex` 守 |
-| `backend/scripts/audit_panel_leakage.py` + `backend/config/leakage_consumers.yaml` | **泄漏审计 + 消费者注册表** (2026-06-15 post-reset 去硬编码): audit_panel_leakage 原硬编码 default 目标 (mart_p0a_v4[wiped]/build_feature_panel_duck.py[已删]) → **改 config 驱动** (读 leakage_consumers.yaml `audit_panels`, 空=PASS 无幻影审计; CLI `--panel` 仍可显式覆盖), 修"能不硬编码就不硬编码"违纪 + 解 Step3.5 幻影 BLOCK。leakage_consumers post-reset 对账: `consumers: []`(3 历史消费者脚本+面板 reset 全删)/`audit_panels: []`(旧SQL面板已wipe; fact_feature_panel 是 Python builder+code/date schema, SQL-JOIN 审计不适用)。experiment-discipline moth 门加识别 phaseD_signal_eval.evaluate_signal(共享 harness 满足留档+anomaly)+check_split_discipline(leakage门)。待: dim_stock_tdx_industry 非PIT(通达信)→tushare申万PIT 行业迁移 |
-| `backend/services/sandbox_guard.py` + `scripts/sandbox.sh` + `sandbox/` | **探索沙盒边界硬门** (2026-06-17 用户根治探索散进主代码; owner=sandbox/README.md + engineering_governance §Exploration Sandbox): enable_sandbox_guard() monkeypatch duckdb.connect 挡 rw 开主6库 raise SandboxBoundaryError (审计实测沙脚本曾裸连写 market 库) + read_only_main(只读正路) + sandbox_scratch(per-exp); sandbox.sh new/wipe/check (probe 模板带 guard); sandbox/ gitignored 用完删, 唯一跨删存活=experiment_store verdict. moth exploration-isolated-in-sandbox/sandbox-boundary-guard-present 守; test_sandbox_guard 5 测 |
-| `backend/scripts/check_sandbox_isolation.py` | **沙盒隔离门 — 实验室产物只留实验室** (2026-06-21 立, 4+次隔离失守根治: sandbox脚本隔离了但产物[主库表/builder/控制面KPI/裁决]在方法确认前 promote 进主项目=污染): C1 backend引用sandbox(FAIL) / C2 控制面文档嵌未promote(confirmed_by_owner=0)实验结果(WARN) / C3 探索runner漏主脚本(FAIL)。wired into sandbox.sh check + safe_commit Step 3.8; test_check_sandbox_isolation 3测(含C2 red→green); promotion纪律 owner=sandbox/README.md |
-| `docs/stock_dossier_master_design.md` | **股票档案系统 顶层设计 (立法 owner; 2026-06-21 用户"顶层设计统筹规划")**: 给任一股多维度可解读档案(形态/板块概念/资金/筹码/…可无限叠加), 是主升浪猎手的**认识论地基**(看懂股→选股)。**三层信息架构(2026-06-21定稿, 用户"每日更新vs会变"判据 + 4视角Workflow+3lens对抗融合)**: L1价格形态[已建]/L2每日盘面行为(成交量/量比/换手/主力大单净/量价背离/筹码/RS/个股vs板块相对)[部分]/L3会变属性背景(板块概念行业/基本面/估值/分析师预期/事件催化龙虎榜大宗解禁股东/市场regime门)[待建]; 边界=每日更新本股量价数值流(L2内生t-1) vs 慢变会调整外部属性(L3外生锚ann_date); **daily_basic按字段拆**(换手量比→L2/PE-PB-市值→L3 防估值背书误当形态确认=leakage), **板块按用途拆**(个股vs板块相对位置→L2/板块自身regime资金轮动→L3), **regime是横切门非单股因子**(stage-conditional最外层留Optuna学权重)。核心抽象=**维度解读器协议**(interpret/series/compare/screen+config, 加维度=加模块+config 不动框架); 创世层(感知/判断/谄媚死)+判断法典种子(J1人话参数/J2边界耦合同步/J3默认列表+趋势线/J4维度互不耦合); **后续维度数据底座全已在库**(申万PIT v_sw_industry_pit/东财概念dc_member/moneyflow/cyq_perf); 前端=FastAPI+HTML(趋势线非K线+板块对比叠加+交互调参+before/after叠加)。6阶段roadmap(P1形态成熟[声明式人话config+边界耦合]→P2前端→P3/4/5板块/资金/筹码→P6接回选股fact_rally_stage)。Verdict=PROCEED |
-| `backend/services/technical_states/` + `config/technical_states.yaml` | **技术形态识别工具 (形态地基, 后续因子叠加的基础)** (2026-06-21 promote, 经 sandbox state_quantify v1/P0/P1/v3 验证: 全宇宙5421股各状态/子态语义准确+OOS稳+100%覆盖): 给任一股任一时点(日/周/月)识别技术状态+子态+量化特征。**9主态 (D1 下跌侧修复 2026-06-21, probe_v4_descent 重调 软可分0.816)**: 低位横盘/放量突破/上升通道/缩量上涨/**中继平台(新, 填pctile0.475-0.717 GAP, 8.4%)**/高位滞涨/下跌通道(改纯缩量阴跌)/**放量下跌(新, 用户点名缺态, 位置子态 高位出货/低位见底SC/中位延续)**/缩量回踩(瞬时近死态0.01%, 升势回踩=前序态依赖→D4上下文层接管暂占位)。**各自细分**(上升通道→温和/震荡/加速; 放量下跌→位置消歧)。**D2 子态全config驱动**(消除_sub_state硬编码, 评审critical): config 子态规则段(声明式{则,条件:[{指标,大于/小于:阈值名}]})+修饰指标段, classifier 通用evaluator按序匹配, 加/改子态=改config不动代码。**D3 A股涨停修正**(limits.py + config涨停段, 评审critical): 封涨停=缩量被vol_ratio误判'无量假突破'方向反 → raw_tushare_stk_limit硬真相源(up/down_limit已编码板块tier±10/20%不必分板路由)→ 涨停日设需求proxy量比使放量突破不误判 + is_up_limit/is_one_word描述标志 + 涨停突破子态(配config子态规则, classifier零改动); dossier.load_limits接入interpret_stock日线enrich; 实测000513涨停突破子态触发。**D4 上下文层(context.py 两遍架构, 评审决策点1)**: 缩量回踩瞬时死态(0.007%)本质=前序态依赖→pass-2用前序态(as-of≤t-1)refine: 前序窗口主导属升势态+当前mild回调→缩量回踩复活(真实股200股 8.53%); 标 prior_trend(升/平/跌)供位置消歧; refined_dominant=context_state或瞬时dominant。PIT三时点契约(decision_date=t用前序≤t-1+当前t无未来; 边界事件trigger/confirm分离立契约待D5)。dossier interpret_stock apply_context日线; test_context_pit_no_lookahead+test_context_revives_pullback。**D5a 单日K线形态(candles.py)**: 单根开高低收几何→命名(十字星/大阳大阴/锤子/上吊/倒锤/流星/纺锤/一字板); **位置消歧**(锤子=下跌末看多 vs 上吊=上涨末看空 同形, 用prior_trend区分)+ **A股一字板特判**(排假十字星); config单日形态阈值; dossier today_candle; 定位=短期构件非独立alpha。**D5b 命名形态(patterns.py)**: 态序列模板匹配(老鸭头=上升通道→缩量回踩→中继平台→放量突破出水; 圆弧底突破; 顶部派发转跌), 派生纯函数标签(不进软隶属/零独立参数), **PIT三时点(完成bar命中不回贴历史鸭头段)**, provenance主观性分级(中文实战/西方Bulkowski); config命名形态段加形态=改config不动代码; dossier recent_patterns; 实测000027老鸭头+圆弧底突破。**模块化收口**: __init__ 清晰公共API(__all__)+模块架构docstring(features/classifier/coupling/limits/context/candles/patterns 各单一职责)。**D6 前端**(dossier_view): 9态+前序趋势+单日K线+命名形态+RS badge 展示, 浏览器实测截图。**RS 相对强度维度(rs.py, 评审HIGH盲点)**: Mansfield RS 个股 vs 大盘(HS300 000300.SH 真相源 raw_tushare_index_daily)= 强于/弱于/同步大盘, 直服超额HS300>0 KPI(防纳入大盘普涨弱势齐涨股); 正交置信度维度不改7态; PIT(RS只用≤t); config RS段(基准/窗口可换中证500等); dossier.load_benchmark+rs字段; 实测600519强于大盘/000027弱于大盘。横截面RS rank(IBD)留选股层。test_relative_strength。**资金维度③(capital.py)**: moneyflow主力净额20日累计趋势(主力净流入/流出)+ daily_basic换手率自身分位(换手活跃/低迷); config资金段。**筹码维度④(chips.py)**: cyq_perf winner_rate获利盘(0-100量纲)+ 集中度((cost95-cost5)/cost50, 单峰集中/多峰分散)+ 价位(收盘vs weight_avg=获利/套牢)+ 获利盘20日变化(鱼尾派发预警); config筹码段。**筹码精细化①(2026-06-22, 长江《筹码分布因子》分盈亏+goal鱼尾CYQ出货, cyq_perf第一手衍生无重建误差)**: 套牢盘(100-winner_rate=亏损筹码,论文亏损筹码预测力更强)+成本偏度((weight_avg-cost_50)/半宽,右偏=上方套牢)+集中度20日变化(单峰→多峰)+**派发预警(鱼尾出货=高获利盘+集中度松动+价位获利)**; config加集中松动门0.1; 前端L2筹码行加套牢盘/派发预警/偏度。华泰VWAP三角+换手递推重建筹码分布(筹码龄/精细分盈亏统计量)POC已验证(spearman0.826 vs cyq, sandbox/chip_rebuild)留未来增强。test_chip_distribution_warn。 **成交量/量能维度② L2(2026-06-22, vol.py)**: 量比(vol/前20日均量,排当日防泄漏)放量/缩量 + **量价配合**(价涨量增=健康真突破/价涨量缩=顶部背离预警/价跌量增=恐慌出货/价跌量缩=缩量企稳); config成交量段; L1 features已有vol_ratio放量突破内部判据, L2独立成维=量能解读行(双栖不矛盾); __init__ export volume_signals; dossier vol字段+前端L2量能行; test_volume_signals。dossier load_capital/load_cyq + capital/chips字段 + 前端多维度卡; 实测600519主力净流出/低获利盘惜售 vs 000513主力净流入/单峰集中。**模块10个**(+capital+chips), DRY _iso helper。test_capital_and_chip_signals。**主力意图+量价背离(capital.capital_intent+zhuli_intent, 替代旧mingan_flow伪暗盘, 2026-06-21裁决)**: 旧TDX暗盘公式(X_8路径权重×中小单)=伪维度已砍(详见上"暗盘伪维度裁决"); 新设计=明盘(主力大单净net_amount)×价格 量价背离代理, 6象限主力意图(config主力意图段, 明盘×价格方向: 洗盘低吸/缩量阴跌/诱空吸筹建仓/拉高派发诱多/主力推升看多/主力做空出逃) + 量价背离标签(隐性承接/隐性派发/量价一致)。真暗盘需L2逐笔(need_027 order-flow BLOCKED无源)。dossier mingan字段+前端动向行(标日度近似)。test_capital_intent+test_zhuli_intent_minga_price(量价背离6象限)。**模块11个**。**主力资金口径裁决(reconcile wf_e6a0e9e8, 真金白银)**: tushare net_mf_amount **不是主力净额**(=厂商净主动流vol×VWAP, 跟中小单/动量, 与大单主力档常反向corr镜像); 真主力净额=capital.mainforce_net(elg+lg大单净)=东财dc.net_amount同构念(corr0.961)。修: capital_signals+mingan明盘统一走mainforce_net单一真相源(600519实测单日同源9891万); data_loaders docstring纠错(net_mf谎称lg+elg). **2层架构(用户)**: 基础层=价格形态/第二层=量价资金筹码(确认形态)。暗盘=日度粗近似(非真L2 L2_AMO).**同花顺截图核对(15股06-18, 用户暗盘追踪官方账号)**: tushare按供应商区分确认(moneyflow标准/moneyflow_dc东财/moneyflow_ths同花顺); tushare net_mf==moneyflow_ths(同源); 三套主力净额(net_mf/大单净/东财)+暗盘追踪明盘全不同口径(暗盘追踪=L2专有, 天孚ths0.45 vs 截图明盘7.22亿, 日度源复现不了)。主力资金**统一东财单一源 moneyflow_dc.net_amount**(用户决: 与项目概念=东财同源, flow-vendor=membership-vendor红线口径自洽; net_amount≡buy_elg+buy_lg大单净, buy_*为净额万元, 2023-09起)。**暗盘伪维度裁决(2026-06-21 measured, sandbox/mingan_redesign, 用户两轮质疑后双向对抗)**: 同花顺暗盘=L2逐笔专有, 日度moneyflow任何口径不可近似(净额零和镜像→中小单净≡−大单净54%随机; gross买入96%是假象=同花顺只发流入票选择偏差+中小单买入恒正平凡一致, 排序spearman0.283不相关, 全市场分位0/25无判别)。砍伪暗盘(旧mingan_flow X_8×中小单), 资金维度改 **明盘(主力大单净, 89%对齐同花顺明盘)×价格 量价背离代理**: capital_intent+zhuli_intent 6象限(洗盘低吸/缩量阴跌/诱空吸筹建仓/拉高派发诱多/主力推升看多/主力做空出逃, config主力意图段, 明盘×价格方向), 量价背离(隐性承接/隐性派发/量价一致)诚实代理非伪造暗盘金额; 三因子分离(明盘/背离/意图独立)。真暗盘需L2源(need_027 BLOCKED)。弃net_mf/tushare桶+双源flag(单源不需交叉, 去flag顺带消numpy.bool route500)。板块概念行业资金=东财moneyflow_ind_dc(在库,概念+行业, 与个股dc+概念dc_member全东财自洽)。东财数据经tushare API拉(网关聚合东财/同花顺/自有三套)。暗盘14截图标定: **路径权重X_8主驱动**(纯X_8 corr0.830, 换桶0.80几乎不变), 现公式0.806近最优, 误差2.6亿幅度不可复现, 诚实=暗盘方向≈当日K线路径函数与价格部分冗余。iFinD MCP无暗盘(模糊匹配主力净流入), 其主力净流入≠暗盘追踪明盘(同花顺两产品口径不通).**声明式人话 config (P1, J1)**: 状态**公式结构本身进 config**(状态: 人话条件列表 {指标,判断:高于/低于/平缓,阈值:人话单位如"均线斜率高于6.55%",锐度}), 加/改状态=改config不动代码; classifier.py 只持通用 evaluator(解释条件列表成 sigmoid 软门取积)+软隶属度+子态+多TF。**软隶属度**(softmax 温度, 一股可部分属多态+报熵)替 argmax(覆盖70→100%); **多时间框架**(日主+周/月确认 mtf_aligned, 窗口按TF缩放, _asof bisect); PIT(特征≤t, 量基准排当日)。**边界耦合 resolver (P1, J2; coupling.py)**: config 边界耦合 段声明状态间边界关联(上升退出↔下跌进入互补对称/低位<高位价格分位互斥/放量>缩量量比中性带), `apply_coupling` 调一个→镜像同步+人话变化说明, `with_overrides` 产 effective config 供 before/after 重分类, `list_tunables` 枚举可调边界(前端滑块来源)。API: compute/classify_bar/classify_series/classify_stock/classify_multi_timeframe/apply_coupling/with_overrides/list_tunables。test_technical_states 8测(PIT无前瞻+声明式evaluator语义+J2耦合镜像/override/枚举)。真实股600800回归100%covered/7态合理/多TF186天一致; J2 demo放宽斜率阈→上升通道180→296天。待: per-TF tune(现周月用日线参数=近似)+物化fact_stock_technical_state+FSM破位门 |
-| `backend/services/dossier.py` + `backend/routers/dossier.py` + `routers/static/dossier_view.html` | **股票档案前端视图 (P2; 维度①form 解读器 + FastAPI + 自包含HTML)** (2026-06-21, owner=docs/stock_dossier_master_design.md): form 维度解读器 (interpret_stock 单股多TF解读+趋势线+可调参数 / screen_pattern 列符合形态的股票 / trend_series 趋势线非K线按主态着色) + 路由 `/api/dossier/{stock,screen,tunables,view}` (注册 main.py) + 自包含 HTML 档案视图。**实现用户J3/J5/J2/前端要求**: 多TF解读卡(日/周/月状态+人话描述+子态) / 趋势线非K线(SVG分段着色 绿升红跌灰横盘) / 形态筛选列符合股票+mini趋势线 / 滑块调参(⇄标耦合) / 边界耦合同步+人话变化说明 / before-after叠加(实线浅+虚线亮)。J5诚实报冲突: 600800 日跌/周回踩/月升=多框矛盾并列不藏。**默认值/恢复/全体对比 (2026-06-21 用户要求+扩展)**: 默认值=config当前值(探索v2, 前端显版本+每滑块标默认), 恢复默认全部 + 点数值复位单项(resetOne) + 偏离默认高亮计数; 修改vs默认 单股趋势叠加(实线浅默认/虚线亮调整后)。**扩展覆盖盲点** (compare_distribution + /compare): 调参真实影响在**全体层面**非单股 — 扫200股双config分类报每形态股票数Δ+翻转股票+盲点提醒banner(Δ暴涨=阈值松涌入垃圾股); 实证 放宽上升通道斜率→镜像下跌通道松→下跌通道+11/低位横盘-10。性能: compare/screen只载近600日(非全史)scan200约10s。**浏览器实测**(preview)截图证。test_dossier 4测。**前端浅色重做+机构档案L3 (2026-06-21 用户决: 按reset前v3浅色配色方案设计当前项目, 机构档案在三层语境整体设计)**: dossier_view 切 claude_design 浅色系统(--bg#FAFAFA/--brand#3657D8/--ink#111827/语义色ok绿warn橙bad红/圆角pill); 三层卡可视化(L1价格形态brand蓝/L2每日盘面ok绿/L3属性背景warn橙); **L3机构维度接入**(dossier.load_top10_holders读smartmoney.fact_top10_holder_period十大流通股东free口径+本季动向新进/退出/增持/减持+机构动向加减仓=用户最初设想的跟随策略基础; 数据坑: report_date格式不统一带/不带横线须REPLACE规范化; 600519那季全退出行=数据缺返None前端graceful)。实测000513减仓/000651格力减仓/as_of06-18。注: reset前完整v3 React前端(design/含institution-view)git历史在但不恢复(用户决), 按其配色重设计. **L3板块/概念sector_context落地(2026-06-22 ③, sector_context.py)**: dossier.load_sector_membership(申万行业 v_sw_industry_pit PIT in/out_date + 东财概念 dc_member 最近快照≤t JOIN dc_index 取概念名/热度; **坑: dc_member.name=个股名非板块名**, 概念名/热度须 JOIN dc_index)+load_sector_kline(sw_daily ts_code=l1_code 直接对应无后缀转换); interpret_stock 接 sector_regime(申万一级行业指数 vs HS300 超额+趋势=风口在不在)+个股vs板块(复用 rs.relative_strength bench 换行业指数 + bench_label='板块' 参数)+concept_labels(热度 top-N+热门标记); 前端 sectorCard(行业归属/板块regime/个股vs板块/概念热度). **数据底座修复(真金白银 grill 抓)**: sw_daily 断档(全表仅2019全+2020到7月+2026年6月, 2021-2025整段缺)→ `sync_runner --domain sw_daily --drain` 日历 gap 回填. 口径红线 J6=行业申万/概念东财. test_sector_regime+test_concept_labels. **L3④ 基本面/估值/分析师预期落地(2026-06-22, fundamentals.py)**: dossier.load_fundamentals(fina_indicator **ann_date PIT** 锚最近已公告财报, roe_yearly年化跨期可比/netprofit_yoy成长/grossprofit_margin/debt_to_assets) + load_valuation(daily_basic trade_date PIT, pe_ttm/pb 自身历史分位低估<30/高估>70) + load_analyst_reports(report_rc report_date PIT 近6月, **tp单位实测=0.0001元 loader/10000归一化** mythos§8, median+sane band抗outlier); fundamental_signals(优质/一般/偏弱) + valuation_signals(低估/合理/高估) + analyst_expectation(看好/分歧, A股研报正向偏看上行空间, imp_dg全NULL不做评级调整); 前端 fundamentalsCard; config 基本面/估值/预期 段. **业绩预告forecast (2026-06-22, fundamentals.forecast_signal)**: raw_tushare_forecast(已在库零拉取) type现成方向(预增/扭亏/略增/续盈=利好; 预减/首亏/续亏/略减=利空)+ p_change净利同比中值 → 利好/利空 + 高增长前瞻(利好+中值>=50); dossier.load_forecast **ann_date PIT**(取≤t最新公告; 同日多版本冲突18股-期如002141略减vs预增 → 不伪造方向标"存疑中性" measured-not-estimated); PEAD前瞻=dossier最大空白(鱼头催化, 实测300308主升浪期预增+69.6%高增长前瞻); 前端fundamentalsCard业绩预告行. test_fundamental_signals+test_valuation_signals+test_analyst_expectation+test_forecast_signal. **L3⑤ 机构切tushare+事件催化落地(2026-06-22, events.py)**: (a)**机构切tushare**(用户点名): 注册 sync_registry top10_floatholders(api top10_floatholders, by_ts_code全拉, grain[ts_code,end_date,holder_name], ann_date PIT, universe_filter)→backfill→ dossier.load_top10_holders **切 tushare top10_floatholders主源**(_top10_tushare: **动向走tushare现成hold_change**(2026-06-22 用户"能获取的就不计算"; 实测核证 NaN=新进无前值/0=持平/+=增持/-=减持, 不自己跨季算)+ **退出唯一须跨季diff**(离榜股东当期快照给不出)) + **tdx F10降备援**(_top10_tdx, §4.3旧源热备不删, tushare空fallback). (b)**事件催化**: events.py 3纯函数 lhb_signal(龙虎榜top_list净买+top_inst机构专用席位净买→共振抢筹/净卖)+block_signal(大宗block_trade成交价vs收盘折溢价→折价抛压/溢价承接)+unlock_signal(解禁share_float **float_date前瞻事件** ann_date≤t已知0泄露→未来90日解禁占比预警); dossier load_lhb/load_block_trade/load_share_float(trade_date PIT); 前端eventsCard; config 事件段. test_lhb_signal+test_block_signal+test_unlock_signal. **L3⑥ 市场regime门落地(2026-06-22, regime.py)=三层最后一维**: market_regime 纯函数(大盘指数 raw_tushare_index_daily 000300.SH 真MA斜率+价位→牛市/震荡市/熊市 + 涨停情绪 raw_tushare_limit_list_d[limit U涨停/D跌停/Z炸板] 净涨停U-D+炸板率Z/(U+Z)→情绪强/中/弱); dossier.load_market_regime(横切非单股 market-wide, PIT trade_date<=t, 所有股共享当日大盘环境); 前端 layer3Rest 占位换 regimeCard; config regime段(趋势窗口/情绪强弱门/炸板率门 yaml-back). 横切=stage-conditional策略最外层门(大盘环境决定form/factor权重). test_market_regime. **三层架构 L1价格形态+L2每日盘面+L3属性背景 全维度完整**. 待: 多套Optuna预设 + 接主升浪D下游选股 |
-| `backend/scripts/build_experiment_store.py` + `data/experiment_store.duckdb` | **S0 实验台留档基建** (alpha验证程序, owner=alpha_validation_program_spec §8): 隔离 L4 库 (与 live 写锁/数据隔离防污染) 4 留档表 — fact_experiment_verdict(verdict/prereg_hash/judges) / fact_consumer_alpha_ic_scan(data_snapshot×consumer×metric PIT as-of) / pipeline_artifact_lineage(input/output hash 防回溯泄漏) / experiment_pit_audit_log(每步PIT校验); manifest active。**实验三段纪律固化 (2026-06-15 用户)**: `services/experiment_store.py` 共享留档写入器 (每实验 import+调 record_ic_cells/record_verdict/record_pit_check/record_artifact, 路径走 manifest, 防散落JSON) + `services/experiment_harness.py` (leakage_gate 事前 pit_guard 行为门不过BLOCK / anomaly_verdict 事后 §4.2 红线标 pending_ablation 不直接用/弃) + moth `experiment-discipline-tooled` 强制每个算 OOS IC 的 experiment_*.py 三段全走 (缺任一 FAIL); 5 实验全 retrofit, IC cells 留档 16→101。**R1/R2 制度化加固 (2026-06-15 P0)**: experiment_harness 加 `tradability_verdict` (C-R1 对称门: IC>0 但含成本净收益≤0→IC_POSITIVE_BUT_UNTRADABLE, 补 anomaly 单边盲点) + `kpi_verdict` (C-WinReturn 联合门: 年化 AND max_dd AND 月胜率 AND 胜率×盈亏比期望, 胜率=诊断量); experiment_store.record_verdict 加 C-R1 转正 guard (`confirmed_by_owner=1` 无含成本证据 raise). **C-LEAK 转正门 + leakage 门去自批 (2026-06-15 用户拷问"自批skip=门是摆设")**: record_verdict 加 `_has_leakage_clean` guard (confirmed_by_owner=1 须带 leakage-clean 证据[judges 含 leakage_gate/pit_audit 显 clean] 否则 C-LEAK BLOCK — commit-skip 够不到的转正门强制) + phaseD_signal_eval 把 gate 带入 judges; safe_commit Step3.5/3.6 **移除 SKIP_LEAKAGE_AUDIT 自批逃生**改硬 exit (误报=修 verifier 非 skip, verifier-only commit 不触发门=无死锁); 防御纵深=commit硬门+转正门+CI(终极). moth `validation-promotion-needs-leakage-clean`/`leakage-gate-no-self-bypass`; red→green 测试 (money但无leakage→C-LEAK raise). **P2 阶梯 R1 加固 (2026-06-15)**: experiment_harness 加 `block_bootstrap_return_null` (N1 armory: 含成本持有期收益块自助 -> P(累计<=0), 与 rank 显著性正交的绝对收益 null); Gate2 (experiment_ablation_gate2) 两级转正 (N3: REAL_EDGE->STAT_EDGE_CONFIRMED 排序统计显著非 money, confirmed_by_owner=0, money 转正须 tier2) + cohort/top-K 绝对 forward 报告 (N1); cell-scan (experiment_layered_segment_ic) 加 DSR 多重比较去偏 (N17: n_trials=实际cell数, n_eff=n_days/horizon 重叠校正 N15)。25 单测 (test_experiment_harness_codex + test_portfolio_execbacktest). owner=docs/strategy_validation_contract.md 判断法典 |
-| `backend/scripts/experiment_consumer_alpha_validation.py` + `backend/config/experiments/consumer_alpha_matrix.yaml` | **S0 consumer_alpha 验证执行器** (config 驱动, reset 后重建; 复用对象 optimization/walk_forward runner 已删故新建非复活 god-dispatcher): 读 (数据x消费者) 矩阵 yaml (6 候选→7 cell, 映射铁律 event/fundamental/chip/infra→feature_ic, technical→formula_signal) + `experiment_jobs.yaml` `consumer_alpha_validation` family 契约 → gate-before-run (plan().blocked_reasons) → 枚举 cell → S0 dry 空矩阵 (不写假IC) → 写 verdict/lineage/pit_audit 留档 + verdict JSON 落 analysis/。死亡条款守: 矩阵轴走config(判断死, moth `consumer-alpha-axes-in-config-not-code`)/prereg_hash+`--check-prereg`(谄媚死)/PIT每步落档(泄漏死)/dry不造假(估计死)。IC计算留 S3。`backend/services/experiment_jobs.py` 契约loader 同恢复 (337L薄/纯yaml校验/误删, 修4处悬空import) |
-| `backend/config/experiments/formula_candidates.yaml` + `l0_bare_kline_baseline_spec_20260614.md(已删·重启清理)` | **L0 裸K线基准 + 公式候选库** (用户 2026-06-14: 公式全保留为 config 备选省重建 + 裸K线寻优最佳OOS参数作基准 + **不要过拟合**): 9 公式索引 (全 ohlcv_only, 信号参数 yaml 全幸存, 评估器 macd live/其余 recoverable@639e0dfb~1), active 子集 4 (防过拟合池子小) / 其余 candidate 待解锁; L0 spec 定义=walk-forward OOS 寻优最佳参数标尺, 防过拟合第一约束 (OOS选参/DSR/pre-reg/限维度/诚实报弱, 复用幸存 optuna_config.yaml 治理; moth `optuna-require-walk-forward`/`optuna-realistic-sharpe-cap`/`l0-baseline-pool-bounded` 固化); 待重建 walk_forward OOS 引擎+治理层 (reset 删) |
-| oos_ic (已删 2026-06-28 重建, 验证引擎随策略层退役) | **L0 walk-forward OOS RankIC 核心** (Tier-1 引擎心脏, reset 删 runner 后重建): 纯函数无 DB 耦合 — forward_returns(PIT前向收益,只用未来不回看)/cross_sectional_ic(单日截面 spearman, numpy rank 不依赖 scipy, 样本<3→None)/expanding_monthly_windows(R1: min_train6月/forward1月/min_total12月)/oos_rank_ic(只用 OOS test 聚合日度IC→oos_rank_ic+ic_ir, embargo_days 切窗末跨界天[对抗审计修死闸], ic_ir 无偏 ddof=1, 无足够窗→None标unknown)。防过拟合: 选参只看 OOS 不看 train; unknown 不当 0。两层引擎共享窗口+标注原语。14 单测 (red→green PIT + 审计回归 embargo/完整窗) 入 CI |
-| `backend/services/formula_engine/features.py` | **裸K线公式→连续PIT特征提取器** (L0 Tier-1): active 4 公式从核心机制派生连续特征 (MACD柱/MA距离/Donchian通道位置/反转), param 驱动读 formula_*.yaml; feature[i] 只用 bars[:i+1] (PIT); warmup→None。**2026-06-19 A0-1**: 加 3 主升浪 stage 因子 (feature_momentum 鱼身延续/feature_moneyflow_trend 资金确认/feature_asof_quality 财务as-of), 从已删 experiment_* 恢复进 services **消除 build_feature_panel→experiment 倒挂** (单测 test_stage_factors 5 passed PIT边界) |
-| pit_guard (已删 2026-06-28 重建) | **PIT 行为门** (防泄露固化, 黄金标准前瞻检测): feature[i] 对追加未来 bar 不变否则=lookahead泄漏; 公式无关, 抓任何 rolling/EMA/未来引用 bug; red→green 测验它能抓植入泄漏 |
-| `backend/scripts/experiment_l0_baseline.py` | **L0 裸K线基准驱动** (Tier-1 RankIC): v_price_kline_qfq→PIT特征→前向收益→walk-forward OOS RankIC→experiment_store (consumer_id=L0_baseline_<formula>)。**防泄露 3 门固化内联** (门1 PIT行为/门2 切分纪律 check_split_discipline/门3 异常红线 check_metric_anomaly, 任一失败BLOCK, moth `l0-leakage-gates-wired` 反孤儿守)。默认参数=测量; **`--search` 寻参模式** (#17 已实现): 经 plan_validator 闸+search_formula 网格寻 best-OOS-params+DSR, 写 L0_search_*。pre-reg d80e8ce 冻结+grill 后 RUN; **标尺=reversal +0.064 (lookback=20)**, 寻参佐证默认近最优 |
-| `backend/services/portfolio_execbacktest.py` + `backend/config/backtest_execution.yaml` + `backend/tests/test_portfolio_execbacktest.py` | **Tier-2 execution-aware 回测引擎 (2026-06-15 P1 重建; 旧 portfolio_returnbacktest[clean但 R2 缺陷:close 无条件成交]已删, 旧 portfolio_backtest.py[5-07]退役标P2)**: 根因 R2 "信号!=可交易头寸"修复 — T+1 **open** 入场(非close, N14) + 涨停一字板剔篮/跌停顺延(N8/N12) + **非对称成本栈**(卖方印花, N13, config 镜像 paper_sim_momentum tx_cost) + 停牌冻结(缺价不剔篮不归零, N11) + 容量诊断(参与度 vs ADV + 大单溢价, N10, 不编造冲击系数守 measured) + **仓位 policy**(equal/rank/inverse_vol + 空槽留现金 = 连续 exposure 雏形, N4/N6); 联合 metrics(年化/max_dd/sharpe/calmar/月胜率/段胜率/盈亏比/正期望, C-WinReturn)。微结构真相源=backtest_execution.yaml(涨跌停镜像 universe_rules/dim_price_limit_rules, 成本镜像 paper_sim_momentum, 防双真相源)。14 单测手算证伪门(T+1 open/一字板剔篮/非对称成本/停牌冻结/容量/sizing/联合metrics/config加载/**trailing多窗**)。**trailing_metrics (2026-06-15 用户)**: 分 近3/6/12/18/24月/3年/5年/全期 窗口报 年化+月胜率+max_dd, 看策略趋势衰减 (全期均值掩盖: mf_trend 全期+2.53% 但近3m -27%/近24m +14.6% = 近期失效); harness evaluate_signal 自动打印趋势表+入 json。moth `validation-engine-execution-aware`/`validation-integrity-gate-green` 守; gate check_strategy_validation_integrity 4/4 PASS。P3 含成本裁决具体回测数字 reset 清(见 goal.md); 留机制: IC≠可交易(R1)/R2 四类摩擦(T+1 open/一字板剔篮/非对称成本/容量) |
-| `backend/services/optimization/` (deflated_sharpe/plan_validator/formula_param_search) + `backend/config/experiments/formula_search_spaces.yaml` | **L0 寻参治理层** (reset 后最小重建, 只 L0 RankIC 寻参所需非复活策略机器): deflated_sharpe(Bailey-LdP DSR 多重比较去过拟合, stdlib 替 scipy=erf+Acklam) + plan_validator(搜索空间非空闸, 防 29/34 白跑反例, 空→raise) + formula_param_search(网格穷举寻参, 目标 OOS RankIC, 只读 OOS, DSR deflate, 受 plan_validator 闸); search_spaces 小网格(每公式3-9组合=防过拟合)。moth `l0-search-governance-wired` 反孤儿守。寻参 RUN=task#17 (pre-reg+grill, 大计算 Modal) |
-| `backend/config/experiments/retired_experiments.yaml` | **退役实验知识库** (实验模块 config 子目录): 模型/寻优层删全表时把"用了什么(字段族/年限/工具/结论)"留这替代留全表 (用户 2026-06-14: challenger 只留摘要不留全表); 参数寻优重做的历史参照; 14 子系统 (公式工厂/p0a-p0b/multidim/synergy/drift/paper_sim/stage-opt/horizon/market_perception/特征搜索/research_chains 等) |
-| `backend/config/pipeline_performance_policy.yaml` | step budget 预算 |
-| `backend/config/data_sources.yaml` | 数据源 |
-| `backend/config/storage_retention.yaml` | 保留期 |
-| `backend/config/pricing_label_policy.yaml` | 定价标签 |
-| `backend/config/feature_registry.yaml` | 特征注册 |
-| `backend/config/tdx_data_need_coverage.yaml` | TDX 数据需求/source priority/迁移建议 catalog，供 `audit_tdx_data_need_coverage.py` 物化到治理表 |
+| `sync_registry.yaml` | M1 41 域注册 (api/grain/batch_mode/PIT锚/SLA/data_start/墓碑) — 加源必先注册 |
+| `data_access.yaml` | M4 SERVE entity 注册 (db/table/code_col/asof_col/vendor) — 消费方唯一读路 |
+| `data_layers.yaml` | 表→layer(L0/L1/L1k/display/infra) + asset_class(A/B) + freshness — data_layer_audit 执法 |
+| `database_manifest.yaml` | 库 alias→路径/角色/open_mode — 所有连接走它, 禁 hardcode 路径 |
+| `storage_retention.yaml` | append-only 表 retention 契约 + table_inventory 保护条款 |
+| `universe_rules.yaml` | 宇宙前缀/排除规则 (services.universe 读) |
+| `data_module_members.yaml` | 数据模块成员 roster (check_serve_read_layer 执法非成员内联读 raw) |
+| `frontend_config.yaml` | 前端展示参数 (v3_config 下发, 前端零硬编码) |
+| `experiment_jobs.yaml` | 计算任务契约 (local active / modal 已配) |
+| 其它 | data_audit_rules · data_sources(探活) · db_partition_tiers · duckdb_connect_policy · field_dictionary · feature_registry · experiments/retired_experiments(退役实验知识库, 刻意保留) |
 
 ---
 
-## 常用命令 cheatsheet (复制即可跑)
+## 5. 运行面 + 门矩阵
 
-### 安装 (新人首次)
-```bash
-git clone https://github.com/dare2live/chunkymonkey.git
-cd chunkymonkey
-python3 -m venv venv && source venv/bin/activate
-pip install -r backend/requirements.txt
-pip install pre-commit && pre-commit install   # 强制 PROJECT_INDEX 同步检查
-```
+**日常链**: `scripts/daily_update.sh` → `services/pipeline/run.py` 四阶段 (preflight→acquire→clean→process→store); 失败=degraded 续跑 + `/tmp/chunkymonkey_ALERT_daily_update_degraded.flag` (session 启动必查)。手动: `sync_runner --domain <d> --drain` 回填 / ops_manual_run API。
 
-### 数据 backfill / Optuna / paper_sim 运行手册
+**commit 门** (`bash scripts/safe_commit.sh`, 禁裸 git commit): PROJECT_INDEX-sync → sandbox 隔离 → serve-read-layer → calendar-usage → **check_dead_references (Step3.97 硬闸)** → commit-msg 关键词 → push + codegraph sync。
 
-> **2026-06-14 地基-reset 移除**: 模型/特征/寻优/paper_sim 层 (build_signal_context /
-> backfill_risk_factors / optimize_per_formula_stage / run_paper_sim_v2 等) 已删, 参数寻优从零重做。
-> 数据获取 (raw/dim 同步) 走 `sync_runner` (sync_registry.yaml); 重建路线见 `goal.md` 重建路线 +
-> `alpha_validation_program_spec_20260614.md(已删·重启清理)`。地基同步: `scripts/daily_update.sh` (手动)。
-
-### 数据查询 (常用诊断)
-```bash
-# 查 mart 表最强 setup
-duckdb data/smartmoney.duckdb -c "
-SELECT formula_id, stage_filter, COUNT(*) AS n,
-       ROUND(AVG(oos_sharpe),3) AS avg_sh,
-       ROUND(AVG(oos_win_rate)*100,1) AS win
-  FROM mart_per_formula_stage_optimal
- GROUP BY 1, 2 ORDER BY avg_sh DESC LIMIT 10"
-
-# 查 PIT 数据 freshness
-duckdb data/smartmoney.duckdb -c "
-SELECT 'risk_factors' AS t, MIN(calc_date), MAX(calc_date), COUNT(*) FROM fact_risk_factors
-UNION SELECT 'financial', MIN(trade_date), MAX(trade_date), COUNT(*) FROM fact_financial_pit_daily
-UNION SELECT 'capital_flow', MIN(trade_date), MAX(trade_date), COUNT(*) FROM fact_capital_flow_pit_daily
-UNION SELECT 'signal_context', MIN(date), MAX(date), COUNT(*) FROM fact_signal_context"
-```
-
-### 测试 / 验证
-```bash
-# 全部单测 (paper_sim + optuna + backtest + ...)
-cd backend && PYTHONPATH=. pytest tests/ -q
-
-# 地基模块测试 (db/层级/同步)
-cd backend && PYTHONPATH=. pytest tests/test_db.py tests/scripts/test_db_compact.py tests/test_source_watermarks.py -q
-```
-
-### Pre-commit 测试 (避免 hook reject)
-```bash
-# 改完代码后 staged
-git add backend/services/your_file.py
-
-# 测 hook (会告诉你需不需要改 PROJECT_INDEX)
-python3 backend/scripts/check_project_index_sync.py; echo "exit=$?"
-
-# 如果 exit=1 → 改 PROJECT_INDEX.md 加进 §14, 然后 git add PROJECT_INDEX.md
-# 如果 exit=0 → 可以 commit
-```
-
-## 7. CLAUDE.md 规则栈 (现 9 条)
-
-```
-Rule 1: Think Before Coding         — 列假设, 不确定就问, push back
-Rule 2: Simplicity First            — 最少代码, 不 speculative
-Rule 3: Surgical Changes            — 只改必须改的
-Rule 4: Goal-Driven Execution       — 定义成功, 循环验证
-Rule 5: Root Cause Over Patches     — 不打补丁, 找根因
-Rule 6: Measured, Not Estimated     — 不估算, 必须实测
-Rule 7: Anti-Look-Ahead / Leakage   — 普适, 时间维度诚实
-Rule 8: Optuna 治理                 — Rule 7 在调参层落地, config-driven
-Rule 9: 真金白银 / 第一性原理       — 用户视角严苛门槛
-```
+**验证矩阵**: CI offline 8 文件 (test_utils/db/source_watermarks/db_compact/primitives/universe/calendar_gate/check_dead_references, 185 tests) · `moth assert --repo .` (30 断言 claims-vs-reality) · `bash scripts/chunkyctl doctor --fast` (tooling/alert/universe/data_health 4 gate) · data_layer_audit --check。**CI offline 8 文件是子集** — 改动波及其它测试须全量 `pytest tests/` (批3d 教训: offline 盲区漏抓批3a 回归)。
 
 ---
 
-## 8. 已知坑 / 未启用 / 需要修
-
-| 项 | 状态 |
-|---|---|
-| **vendor rank 字段 = 分页伪 rank** | [陷阱-永久] `moneyflow_ind_dc.rank` 是每 50 行循环的分页序号 (三评委独立复现 vs 自算全量 rank spearman 仅 0.07-0.084)。**一切 vendor rank/序号类字段必须自算全量截面 rank**, 禁止直接当因子 (E9 纪律件, 2026-06-11) |
-| `mart_sector_momentum` 只 41 行 (2026-04 起) | [BLOCKED] 没历史回测能力, **需 rebuild 全期** |
-| `fact_setup_snapshot` 0 行 | [BLOCKED] 未启用 |
-| **5 alpha 主源数据 PIT 时序** | [PASS] β.1 fact_risk_factors / β.2 fact_financial_pit_daily / β.3 fact_capital_flow_pit_daily backfill 完成 (跨 2023-01 → 2026-05) |
-| **fact_institution_event 主 alpha** | ⚠ 只 1 年 (2025-04 起), 无法做 800 天 backfill — β.3 改用 lhb+exec+holder 替代 |
-| **mart_stock_trend.action_score (机构跟随主 alpha)** | [BLOCKED] 仍是 latest 快照 — 未做 PIT 重建 (依赖 fact_institution_event 1 年限制) |
-| **aif10 估值/一致预期** | [BLOCKED] 全 latest 快照, 无 PIT, β.2 改用 fact_financial_derived 替代 |
-| **case-based / k-NN 历史相似回测** | [BLOCKED] 未建. 数据基础已有 (fact_signal_context + archetype) |
-| **`fact_regime_state` 在 paper_sim** | [PASS] Phase ψ.β.4: ensemble selector regime_gate (bear 0.3x / sideways 0.7x / bull 1.0x) |
-| sentiment/ 包未集成 | ⚠ 8 文件框架, 未对接 |
-| 大盘指数 K 线 在 paper_sim 当 benchmark | [PASS] 已用作 excess vs HS300 |
-| **fact_signal_context 早期数据缺** | [PASS] Phase ψ.β.4.5 backfill 完成 (2024-03 起, 66% valid_stage) |
-| **fact_stock_technical_stage 早期缺** | [PASS] Phase ψ.β.4.5 backfill 完成 (2023-09-12 起, 2.4M 行) |
-| **mart_per_formula_stage_optimal train_end 范围** | ⏳ 正在重跑 (1260 任务, 5 worker, 含 7 公式 × stage × 35 train_end) |
-| **Optuna 跑批 8h 慢** | [PASS] Phase ψ.β.perf 修 hotspot: _idx O(1) cache + backtest_signals_with_trades 避免重跑 simulate_trade. 重跑预估 3-4h |
-| `fact_stock_archetype` (基本面质量) 只 2026-04 几天 | ⚠ 未 backfill 历史 (待后续 audit) |
-| `fact_financial_derived.revenue_yoy` 对部分股 (如 000001) null | ⚠ derived 表本身 sparse, 不影响其他股 |
-
----
-
-## 9. 关键术语速查
+## 6. 关键术语 + 命名陷阱
 
 | 术语 | 含义 |
 |---|---|
-| **IS** | In-Sample, 调参用的数据 |
-| **OOS** | Out-of-Sample, 调参后**没看过**的数据上的表现 (实盘只能 OOS) |
-| **R1** | 严格 walk-forward — 用户指定标准 |
-| **expanding_monthly** | R1 严格模式: 每月底切, 累积 train + 当月 OOS |
-| **train_end_forward** | Phase ψ.α B: train < d, test = [d, d+forward_days], 写多行支持 paper_sim point-in-time 选 |
-| **leakage** (selection) | t 时选股用了 t+ 才能算的指标 (例 mart.sharpe 全期合并) |
-| **leakage** (look-ahead) | 特征用了未来 K 线 |
-| **CAGR** | (final/initial)^(252/n_days) - 1 — 复利年化 (不是单笔 × N) |
-| **technical_stage** | 1=底部 / 1.5=突破中 / 2=上升 / 3=顶部 / 4=下跌 (Stan Weinstein) |
-| **mart_** | 业务表 (报表 / 聚合) |
-| **fact_** | 事实表 (实际发生) |
-| **raw_** | 原始数据源 |
-| **dim_** | 维度表 (静态 / 缓变) |
+| IS / OOS | In/Out-of-Sample; 实盘只能 OOS |
+| leakage (selection/look-ahead) | t 时用了 t+ 指标 / 特征用未来 K线 |
+| CAGR | (final/initial)^(252/n)−1 复利年化 |
+| raw_/dim_/fact_/mart_ | 原始镜像 / 缓变维度 / 事实 / 治理聚合 |
+| **`holders_tdx` entity** | **命名陷阱**: 实际=aif10 主源 fact_top10_holder_period (tdx 是历史遗留 key, edge 重建时正名) |
+| available_date / ann_date | PIT 可用日 (≠report_date/end_date 报告期) |
+| 墓碑 (known_empty_days) | 源端确认空的交易日, 排出 drain expected 防告警疲劳 |
+| Type A / B (asset_class) | 确定性 PIT 重排(平台常驻) / 含前瞻策略派生(edge 隔离) |
 
 ---
 
-## 10. 已实测数据点
-
-> 2026-06-17 清验证墓地: reset 前/污染期所有 OOS 数字 (reversal sharpe / per-stock×stage 表 / momentum) 已作废清除 — 建于已删模型/寻优层 + 污染 universe。当前实测态 = **unknown**; 结构型主升浪 GT 已重建, 逐数据 alpha 验证待跑。以 `goal.md` + `scripts/chunkyctl doctor --fast` 实测为准, 不引用文档旧数字 (CLAUDE §4.2)。
-
----
-
-## 11. 我 (Claude) 容易踩的坑 (Rule 9.5 沉淀)
+## 7. 已知坑 (Claude 易踩, 跨批验证存活的)
 
 | 坑 | 教训 |
 |---|---|
-| "项目主要数据是 K 线" | **全错**. 6 大数据维度都有. 下结论前先 grep 所有 fact_/mart_/raw_ 表 |
-| "momentum 公式失效 → 项目无 alpha" | 错. 项目还有机构跟随 (0.40 主 alpha) + 估值 + 一致预期 + 情绪 + 行业 + 大盘 regime |
-| "MACD 是裸的" | 错. 跑 Optuna 时叠加 4 维 K 线形态过滤, 不是裸金叉 |
-| "上升趋势 (stage=2) 反转完全无效" | 错. 是**粗糙公式**判 stage=2 回调失败, stage=2 回调本身是合理买点, 需要更精细 |
-| "估算 2 min 跑完" → 实际 28 min | Rule 9.5: 不实测就估算 = 失败. 估时间也要小样本先测 |
-| **paper_sim selector 用 mart_per_stock_*_optimal sharpe 排名** | 这是 selection leakage. 修正: walk-forward selector (Phase ψ.α B 已修, 但只对 reversal). 整体业务应走 ensemble |
-| "对话压缩后还在用旧 context" | 修正: 每次启动**先读这个文档 + CLAUDE.md** |
-| **schema SQL 串里 `--` 注释含 `;`** | executescript 朴素按 `;` 切语句, 注释内 `;` 把注释劈成两半 → 后半非法 SQL ParserException (2026-06-23 Stage④-2 我加的 `Stage④; 防...` 炸 CI test_db schema-init). 修: schema_core/schema_migrations 的 SQL 注释**禁含分号** (line195 已记 DDL 禁 `--` 截断, 此为分号变体) |
-| **删表/改SQL后失败按单一模式 grep 一刀切判 pre-existing** | 2026-06-23 我 grep 表名判"32失败全pre-existing", 漏 `syntax error at 防` 这类非表名错 (实际我引入3个). 教训: measured-not-estimated, 删表/改SQL后失败**逐个核因**, 不靠单 pattern; 不确定的用 git stash 跑 baseline 对比 |
+| schema SQL 串 `--` 注释含 `;` | executescript 按`;`切, 注释被劈→ParserException (踩3次: Stage④/批0/批3e)。SQL 注释**禁分号** |
+| 删表/改SQL后按单一 pattern 判 pre-existing | 逐个核因; 不确定 git stash 跑 baseline 对比 (批3d 用此法确认 10 失败 pre-existing) |
+| CI offline 8 文件当全量 | 是子集; 大改后必全量 pytest (批3a 死测试逃逸到批3d 才被抓) |
+| 测试写真实系统路径 | test_pipeline 曾污染 /tmp 生产告警 flag (批4修); 全局路径必 monkeypatch 隔离 |
+| seed INSERT 复活死 flag | schema_migrations seed 硬编 module_etf_enabled 会在 init_db 复活已删配置 (批3d修); 退役 module 必查 seed |
+| 对话压缩后用旧 context | 启动先读本文档 + CLAUDE.md; 压缩后重读活索引 |
+| agent/handoff 清单粗标 | 必亲核 (误列 build_lhb_events/holder_availability 差点误删) |
+| 子串误报 | price_kline⊂price_kline_qfq_tushare / WidgetFormatUtils 含 etf — grep 用词边界, 悬挂视图告警先核 |
+| db_lifecycle_delete live 守护退化 | serving/ 子目录删除后守护面仅 1 文件 — 物删前手工全 backend grep fan-in (更强) 不依赖该门 |
 
 ---
 
-## 11.5 待办 / 当前 Phase
+## 8. 待办 / 当前 Phase
 
-> 2026-06-17: reset 前的待办清单 / Performance Profile 跑批时间 / Phase ψ 进度 (绑定已删 build_signal_context / risk_factors / optimize_per_formula / paper_sim_v2 流水线) 已清除。当前阶段板 + backlog 以 `goal.md` Active Priority Board 为唯一真相源; 完成项 / 历史证据在 `analysis/project_state_ledger.md`。
+阶段板唯一真相源 = `goal.md`; 历史证据 = `analysis/project_state_ledger.md`。速览:
+- **主线**: edge 5 界面重建 (React/Vue, 全部分阶段规划好再动手 — 用户拍板; 设计 analysis/edge_layer_framework_design_20260628.md + implementation_plan)
+- **pre-existing 10 测试失败** (批3d stash 验证非清理引入, 待修): test_safe_commit×6(Rule10) · test_sync_runner×2(cyq_perf data_start 期望漂移/FakeManifest reference) · test_data_access×1(moneyflow 列 schema 漂移) · test_mart_data_lineage_compat×1(mart_strategy_result_registry 缺失)
+- **data_health 2 yellow** (aif10 季频真滞后, 非 bug) · watermark SLA alert flag (2026-06-28, 待核后清)
+- stk_factor_pro 日更尾部调度 (by_ts_code 无增量 drain, edge 重建期一并做)
 
 ---
 
-## 13. 写本文档的源数据 (供刷新)
+## 9. 写本文档的源数据 (供刷新)
 
-```sql
--- 项目自己维护的架构 inventory (smartmoney.duckdb)
-SELECT * FROM mart_architecture_inventory_summary ORDER BY built_at DESC LIMIT 1;
-SELECT * FROM mart_architecture_inventory_asset WHERE run_id = ?;
-SELECT * FROM mart_data_health;
-SELECT * FROM mart_data_source_watermark;
+```bash
+scripts/chunkyctl map                    # 重生 FEATURE_MAP.md (机器版计数/清单, 勿手改)
+python3 - <<'EOF'                        # 各库表+行数
+import duckdb
+for db in ['tushare_raw','smartmoney','market','reference','etf','feature_store','experiment_store']:
+    c = duckdb.connect(f'data/{db}.duckdb', read_only=True)
+    print(db, c.execute("SELECT count(*), sum(estimated_size) FROM duckdb_tables()").fetchone())
+EOF
+bash scripts/chunkyctl doctor --fast     # live gate 实测
+moth assert --repo .                     # claims-vs-reality
 ```
 
 ---
 
 ## 14. Session 增量更新日志 (已归档)
 
-> 246 条历史增量已移至 `analysis/project_index_changelog_archive_20260611.md` (2026-06-11 文档治理)。
-> 新增历史叙事写 `analysis/project_state_ledger.md`; 本文件只维护上方活索引与最近 7 天增量。
+> 246 条历史增量在 `analysis/project_index_changelog_archive_20260611.md`; 新叙事写 `analysis/project_state_ledger.md`; 本文件只维护活索引 + 最近 7 天增量。

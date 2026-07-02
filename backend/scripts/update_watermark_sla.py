@@ -15,10 +15,10 @@ ChunkyMonkey 交付标准 #1 数据管理: watermark 实填 + sync gap auto-aler
 
 被 daily_update.sh Step 1 调用.
 
-SLA per source_tier (Codex R26 architecture audit doc §4.d 设计):
-- tier 1 (tdxhub/miaoxiang 主源): SLA 1 trading day
-- tier 2 (aif10 二次源): SLA 2 trading days
-- tier 3 (akshare 补充): SLA 3 trading days
+SLA per source_tier (Codex R26 architecture audit doc §4.d 设计; 2026-07-02 批7 源名同步 —
+tdxhub/akshare 已全退役, 现役源 = tushare + aif10/miaoxiang):
+- tier 1 (tushare/miaoxiang 主源): SLA 1 trading day
+- tier 2 (aif10 季频域): SLA 2 trading days
 """
 from __future__ import annotations
 

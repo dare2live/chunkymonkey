@@ -76,10 +76,10 @@ CLIENTS: list[ClientSpec] = [
     ClientSpec(
         client_id="qfii_client",
         module="services.qfii_client",
-        description="QFII 持仓季频 (aif10 RPT_DMSK_HOLDERS, akshare 兜底)",
+        description="QFII 持仓季频 (aif10 RPT_DMSK_HOLDERS 单源; akshare 兜底已批2c 退役)",
         upstream_source="aif10:RPT_DMSK_HOLDERS",
         source_tier=2,
-        fallback_chain=["aif10", "akshare"],
+        fallback_chain=["aif10"],
         writes=[
             TableWriteSpec("raw_qfii_holding_quarterly", "QFII 季频持仓", "quarterly", 24*95),
         ],

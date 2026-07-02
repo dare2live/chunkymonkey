@@ -35,7 +35,7 @@ CORE_SCHEMA_SQL = """
                 effective_date    TEXT,                       -- 公告日 + 1 交易日 (回测 PIT)
                 availability_source TEXT,                      -- source_notice | page_update_date | regulatory_deadline
                 page_update_date  TEXT,                       -- F10 页头 "更新日期"
-                source            TEXT NOT NULL,              -- 'tdx_f10' | 'miaoxiang' | 'akshare'
+                source            TEXT NOT NULL,              -- 现役唯一 'miaoxiang' (tdx_f10/akshare 源已退役)
                 source_tier       SMALLINT NOT NULL,          -- 1 / 2 / 3
                 raw_hash          TEXT,                       -- → raw_tdx_f10_holder_research.raw_hash
                 fetched_at        TEXT,

@@ -102,7 +102,7 @@ DOMAIN_SPECS = [
         "source_tier": 2,
         "table": "raw_qfii_holding_quarterly",
         "date_col": "report_date",
-        "parser_version": "aif10_or_akshare",
+        "parser_version": "aif10",  # akshare 兜底已批2c 退役 (2026-07-02 批7 标签同步)
     },
     # northbound_holding 域已删 2026-06-28 (akshare 源退役 + legacy_hsgt 表 ABSENT; 个股北向 tushare ~2025-07 停披露)
     # stock_fund_flow_rank_snapshot 域已删 2026-06-28 (akshare 源退役 + mart_stock_fund_flow_rank_snapshot_daily 表 ABSENT)

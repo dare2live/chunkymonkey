@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-02 06:54
+> Snapshot: 2026-07-02 08:26
 
 ## 1. 入口面
 
@@ -32,7 +32,6 @@
 | router | prefix | 端点数 |
 |---|---|---|
 | ops_manual_run | `/api/v3/ops` | 3 |
-| strategy_preset | `/api/inst/strategy` | 4 |
 | v3_config | `/api/v3` | 1 |
 
 端点全列表在 json (`routes` 键)。
@@ -84,7 +83,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 41 张 | 单 writer 29 | 多 writer 12 | 动态表名写点 15 处 (8 文件)
+统计: 表 40 张 | 单 writer 28 | 多 writer 12 | 动态表名写点 15 处 (8 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -125,7 +124,6 @@
 | dim_active_a_stock | backend/services/security_master.py |
 | dim_listing_status | backend/scripts/build_dim_listing_status.py |
 | dim_schema_version | backend/services/schema_versions.py |
-| dim_strategy_preset | backend/routers/strategy_preset.py |
 | dim_trading_calendar | backend/scripts/migrate_reference_db.py |
 | fact_consumer_alpha_ic_scan | backend/scripts/build_experiment_store.py |
 | fact_controlling_shareholder | backend/services/schema_core.py |
@@ -154,14 +152,14 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 4,338 | calls 边 5,662 | imports 边 994 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 4,315 | calls 边 5,658 | imports 边 985 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
 | services.duck_adapter | 27 |
-| services.db | 8 |
+| services.db | 7 |
 | services.pipeline_manifest | 7 |
 | services.database_manifest | 6 |
 | services.lineage.model | 5 |
@@ -210,7 +208,7 @@
 
 ## 5. 概览
 
-- chunkyctl 子命令 10 | launchd 任务 1 | router 3 (端点 8)
+- chunkyctl 子命令 10 | launchd 任务 1 | router 2 (端点 4)
 - sync_registry 数据域 40
-- 产表 41 (多 writer 12)
+- 产表 40 (多 writer 12)
 

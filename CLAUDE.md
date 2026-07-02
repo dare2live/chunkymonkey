@@ -151,12 +151,17 @@ JOIN → 永远带 `AND x.built_at <= t` / `as_of_date`; 宇宙 → `dim_index_m
 - **公式估算 != measured**: `swap_uplift_estimate` 公式估 → 实测 swap 拉低年化 33pp. 改真实 K 线 forward 反事实. (同类: vol-aware stop/ensemble weights/regime gate hardcode → 全进 Optuna search space + walk-forward OOS。)
 - **行业 taxonomy 切源 = 桶定义变, 历史不可比 (2026-06-15, owner=analysis/industry_migration_tdx_to_sw_20260615.md)**: 切行业分类源 (通达信 13/56/76 → 申万 31/131/337) **不是 1:1 映射**, sector-relative 特征 (*_tdx_l1_rel) 的 PARTITION BY 桶数变 → 跨切换点历史特征/RankIC **不可比**, sector_momentum 板块集合变须全量重算。**禁跨 taxonomy 版本 partition/拼接**; 切换打 `taxonomy_version` 戳分段。另: 申万 index_member_all 默认只拉 is_new='Y' (当前成分) → out_date 100% NULL = **latest-snapshot leakage 变体** (行业切换历史丢失), 必须并拉 is_new='N' (历史剔除区间, out_date 填) 才是真 PIT (实测探针: Y 给当前 out_date空 / N 给历史 out_date填)。
 - **universe 污染 = 实验直扫 K线无过滤 (2026-06-17, owner=services/universe.py)**: 旧 GT/yushen/rally 实验**直扫 price_kline 全部股**(含北交所 92x/83x + ST + 退市)做回测/选股 → 旧 fact_rally_ground_truth 含北交所 3.1% + 白名单内未滤 ST。根因: universe 过滤是可选 helper 非强制, 实验图省事不调。修 (用户决议升交易日历级硬真相源): `assert_universe_clean()` 硬门 (排除股进任何 GT/回测/选股集 = raise, 就像非交易日不能下单) + 三道门 (代码 `check_universe_filter` 拦内联白名单前缀绕过 / 数据 moth GT-0排除股 / 运行时 builder 调硬门) + PIT ST 日历 (raw_tushare_stock_st, 非 dim_active 当前名)。**任何股票集落地前必过 services.universe**, 内联 `('60','00','30','68')` = 第二真相源被门拦。
-## 5. Optuna 治理
+## 5. Optuna 治理 (状态: 执行面已退役, 红线待 edge 重建时重立)
 
-Owner: `docs/strategy_validation_contract.md` "Optuna Governance" 节 (3 守门点 / R1
-expanding_monthly 标准 / OOS 列约定 / 3 道防线 / `fact_optuna_governance_log` 审计).
-速查: 必走 `services.optimization` 中央层, 不裸调 `study.optimize`; 阈值全走
-`backend/config/optuna_config.yaml`; selector/scoring 只读 `oos_*` 列.
+> 2026-07-02 批5 标注: `services.optimization` 中央层 + `backend/config/optuna_config.yaml` +
+> `fact_optuna_governance_log` 已随 2026-06-28 纯数据平台重建整体退役物删 (批1b commit c09ae896) —
+> 下述速查的**执行面引用全部失效, 勿按图索骥**。哲学红线不变, edge/策略层重建跑任何寻优前
+> **必须先重立等效治理** (中央层封装 + walk-forward 强制 + 阈值 yaml 化), 不裸调 `study.optimize`。
+
+哲学 owner: `docs/strategy_validation_contract.md` "Optuna Governance" 节 (3 守门点 / R1
+expanding_monthly 标准 / OOS 列约定 / 3 道防线)。速查 (重立时的验收标准): 中央层唯一入口;
+阈值全 yaml 不 hardcode; selector/scoring 只读 `oos_*` 列; require_walk_forward +
+max_realistic_sharpe 熔断两条红线必须有等效机械门。
 
 ## 6. 文档纪律
 
