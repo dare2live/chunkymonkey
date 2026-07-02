@@ -1,3 +1,8 @@
+> **状态 (2026-07-02 批5 标注)**: 本契约的**哲学红线仍是 active owner** (PIT/walk-forward/OOS/
+> C-R1/C-R2/含成本裁决 — CLAUDE.md §4/§5 引用它), 但**执行面大部分已随策略层退役**
+> (Optuna 中央层/paper_sim/backtest 引擎已删; check_strategy_validation_integrity 仍在但
+> engine_execution_aware 为"预期红" = edge 重建的验收尺)。edge/策略重建跑任何寻优/回测前, 按本契约重立执行面。
+
 # Strategy Validation And Promotion Contract
 
 This is the active contract for strategy research, backtests, paper simulation,

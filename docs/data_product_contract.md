@@ -129,7 +129,7 @@ without source/PIT/freshness is not production evidence.
 
 ## CYQ And Main-Force Data
 
-`docs/chip_distribution_cyq_spec.md` remains active because CYQ is a key input
+`docs/archive/chip_distribution_cyq_spec.md` (2026-07-02 批5 归档) remains a research reference because CYQ is a key input
 for main-force behavior and 主升浪 validation. It must be implemented only after
 the data contracts are satisfied: float-share history, PIT-safe disclosure
 dates, K-line alignment, validation cases, and production eligibility gates.

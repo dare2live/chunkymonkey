@@ -180,21 +180,14 @@ For local DuckDB freshness repair, fix the writer before running a narrow
 window. Any table with rolling indicators or formula lookback must separate the
 read/compute window from the write/delete window.
 
-| Table family | Safe command shape |
+| Table family | Safe command shape (2026-07-02 批5 更新 — 旧 alpha158/stage/signal 表+builder 已随纯数据平台重建物删) |
 |---|---|
-| `fact_alpha158_panel` | `PYTHONPATH=backend python backend/scripts/build_alpha158_duck.py --start <read_start> --write-start <write_start> --end <end>` |
-| `fact_stock_technical_stage` | `PYTHONPATH=backend python backend/scripts/build_stage_formula_fitness.py --start <read_start> --write-start <write_start> --end <end> --stage-only` |
-| `fact_signal_context` | `PYTHONPATH=backend python backend/scripts/build_signal_context.py --start <read_start> --write-start <write_start> --end <end>` |
-| `fact_technical_trigger` | `PYTHONPATH=backend python backend/scripts/build_formula_signals_history.py --start <read_start> --write-start <write_start> --end <end>` |
+| `price_kline_qfq_tushare` (K线真相源) | `PYTHONPATH=backend .venv/bin/python backend/scripts/build_price_kline_qfq_tushare.py` (全量 CTAS 重建 + 自 sanity) |
+| raw_tushare_* 任一域回填 | `PYTHONPATH=backend .venv/bin/python -m services.data_sources.sync_runner --domain <d> --drain` |
+| PIT 行业视图 | `build_sw_industry_view.py` / `build_dc_industry_view.py` |
+| reference 4 dim | `build_dim_listing_status.py` + `migrate_reference_db.py` |
 
-For stage-opt candidate-supply freshness, refresh dependencies in order:
-`fact_signal_context` first, then `fact_technical_trigger`. Use the latest
-trusted K-line date as `<end>` (`min(latest_completed_trade_date, kline_max)`),
-not the trading-calendar max by itself. A narrow `--write-start` window is valid
-only when `--start` still gives formula/context lookback enough history.
-
-Do not pass a target window as `--start` when the script needs lookback. Use a
-wider `--start` for computation and `--write-start` for replacement. After
+After
 refreshing production DuckDB tables, rerun the relevant data gates, update the
 active decision in `goal.md`, and move detailed evidence to
 `analysis/project_state_ledger.md` or a dated artifact instead of claiming

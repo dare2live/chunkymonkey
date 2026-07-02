@@ -1,3 +1,8 @@
+> **[SUPERSEDED 2026-06-28 — dossier 系统已随纯数据平台重建整体退役]**: 本文描述的实现
+> (services/dossier / technical_states / routers/dossier / read_model / L2 特征维度) **已全部物删**,
+> "已建"字样均指 reset 前状态。留作 **edge 重建"股票档案"界面的历史设计参考** (设计思想仍有价值:
+> 三层认识论/多TF解读/调参对比), 勿当现行系统描述。现行真相源 = analysis/data_platform_architecture_20260628.md。
+
 # 股票档案系统 (Stock Dossier) — 顶层设计 / 统筹规划
 
 > 立法者 owner = 本文件 (2026-06-21, 用户指令"顶层设计统筹规划")。

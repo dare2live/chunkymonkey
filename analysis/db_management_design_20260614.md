@@ -1,3 +1,5 @@
+> **[状态校正 2026-07-02 批5]**: 本 2026-06-14 设计的拆库方向已被采纳并执行完毕 (§9 reference 拆库 2026-06-27 DONE + 批4 db_compact 全库缩盘); 文中"当前痛点"描述均为当时快照。现行库分区真相源 = database_manifest.yaml + data_platform_architecture_20260628.md §2。
+
 # DuckDB 多库管理设计 (按写锁边界分区)
 
 > 状态: 设计提案 (2026-06-14) — 执行前过 grill + 写入面全仓扫描。owner = 本文件; goal.md 薄指针。

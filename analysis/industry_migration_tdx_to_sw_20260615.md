@@ -1,3 +1,5 @@
+> **[状态校正 2026-07-02 批5]**: 迁移已全部执行完成 (申万+东财 PIT 视图落地, tdx 行业簇 2026-06-23 物删)。文中"非终态/待定"字样均为当时状态。现行 = v_sw_industry_pit/v_dc_industry_pit (深史) + dim_stock_dc_industry/concept (当前快照)。taxonomy 切换禁跨版本拼接的红线仍有效 (CLAUDE §4.5)。
+
 # 行业分类迁移: 通达信 → tushare 申万 PIT (2026-06-15)
 
 > **[状态校正 2026-06-26 doc治理]** 行业源决策几经反转, 本文(申万方向)**非终态**: 2026-06-23 `dc_full_migration_plan` 一度改"全局东财(DC)", 2026-06-24 用户又推翻回 **tushare 唯一** (行业=申万分类经 tushare 取)。现行 = tushare 唯一源 + 东财 aif10 仅作 holder/估值/QFII/机构持仓例外 (CLAUDE §4.3)。本文的 taxonomy 历史不可比红线 + is_new Y/N PIT 探针结论仍有效, 取行业源终态以 CLAUDE §4.3 为准。

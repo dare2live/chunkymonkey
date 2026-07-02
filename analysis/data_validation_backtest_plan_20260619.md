@@ -1,3 +1,5 @@
+> **[状态校正 2026-07-02 批5]**: 本 plan 引用的特征层/回测基础设施 (feature_panel/formula_engine/factors/) 已随 2026-06-28 纯数据平台重建**全部物删** — 不可按本计划直接执行。留作 edge 重建时的验证方法论参考 (阶段化验因子/含成本裁决思路仍有效)。现行真相源 = goal.md + data_platform_architecture_20260628.md。
+
 # 数据验证 + 回测方案 Refined Plan (主升浪猎手 · 可执行, 2026-06-19)
 
 > 状态: live (接下来执行的数据验证+回测路线)。owner: 本文件。

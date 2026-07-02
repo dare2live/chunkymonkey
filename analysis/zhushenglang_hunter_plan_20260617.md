@@ -1,3 +1,5 @@
+> **[状态校正 2026-07-02 批5]**: 本方案绑定的执行面 (D1 GT 表/feature panel/验证 harness) 已随 2026-06-28 纯数据平台重建物删 — **方案是历史参考非现行计划**。北极星 (episode-first 结果倒推) 仍有效, edge 重建时按 goal.md"从 raw K线重新生成 GT"重启, 不复用本文引用的表/脚本。
+
 # 主升浪猎手 执行方案 (post-reset 干净地基, 2026-06-17)
 
 > 状态: live (north-star 执行计划)。owner: 本文件 + goal.md Active Priority Board。

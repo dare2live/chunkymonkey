@@ -44,11 +44,11 @@ but they do not override the active contracts.
 | `PROJECT_CONSTITUTION.md` | Constitution: truth sources, architecture layers, hard gates |
 | `MASTER_TOPLEVEL_DESIGN.md` | Global top-level design skeleton (architecture/lineage/roadmap); supersedes retired architecture_reform_context (2026-06-15, lessons in `../analysis/project_state_ledger.md`) |
 | `chunkyctl_session_quickstart.md` | Durable startup and controller workflow |
-| `implementation_plan.md` | Durable execution plan; current phase board remains in `../goal.md` and completed evidence in `../analysis/project_state_ledger.md` |
 | `engineering_governance.md` | Design review, CodeGraph + complexity, tests, agents, provider-job, deletion policy |
 | `data_product_contract.md` | Data needs, lineage, profiles, market perception support, frontend contract |
-| `strategy_validation_contract.md` | Backtest, Optuna/provider jobs, paper_sim, forward, and promotion contract |
-| `chip_distribution_cyq_spec.md` | Active CYQ algorithm/detail spec for main-force profile and 主升浪 validation |
+| `strategy_validation_contract.md` | 策略验证哲学红线 owner (PIT/walk-forward/含成本裁决); 执行面随策略层退役, edge 重建时按它重立 |
+| `archive/chip_distribution_cyq_spec.md` | CYQ 算法研究档 (2026-07-02 批5 归档; 应用层已退役, edge 重建筹码维度时参考) |
+| `archive/stock_dossier_master_design.md` | 股票档案系统设计档 (2026-07-02 批5 归档; dossier 实现已随重建物删, edge"股票档案"界面重建时参考设计思想) |
 | (`zhushenglang_hunter_research_log_20260528.md`) | Deleted 2026-06-17 (污染期 V0-V16 原型 findings, 建于已删 LGBM/ensemble + 错方法论; 教训已 codify 进 CLAUDE §4.5 + 契约; git history) |
 
 ## 状态标头契约 (2026-06-12 新增, 机器执法)

@@ -3,6 +3,7 @@
 > owner: 主会话 (控制面). 状态: 重建定型, 纯数据平台真相源。
 > 取代 `data_module_toplevel_design_20260622.md` + `data_module_architecture_20260624.md` (二者标 superseded, 留历史)。
 > 北极星: 用户 2026-06-28 决议 —— 项目 = **纯净数据平台** (原始数据 tushare+aif10 + 四地基 + SERVE + 治理), 策略/serving/edge/workbench 层全退役, 待未来在干净平台上从零重建 edge。
+> **2026-07-02 更新: 数据纯化 (批0-7) 已收敛** — 非 tushare/aif10 残表全物删, 死代码/config/断言清零, 4轮 sweep 验 dry。本文件个别数字按批2-7 后现状已同步 (40 raw/30表/2 routers), 实时清单见 FEATURE_MAP.md。
 
 ## 0. 为何重建 (创世)
 
@@ -18,7 +19,7 @@
 vendor (tushare + aif10 十大流通股东)
    │  M1 ACQUIRE (零计算, services/data_sources/ + raw client)
    ▼
-L0 raw_* (raw_tushare_* / raw_aif10_* / fact_top10_holder_period / raw_lhb_daily / raw_org_holding_aif10 / raw_qfii / raw_institution_surveys / inst_holdings)
+L0 raw_* (raw_tushare_* 40表 / raw_aif10_* / fact_top10_holder_period / raw_org_holding_aif10 / raw_qfii_holding_quarterly) — lhb/surveys 批2 切 tushare(top_list/top_inst/stk_surv), inst_holdings 批3c 物删
    │  M2 CLEAN (写时归一, market_*/pipeline/clean)
    ▼
 L1 v_price_kline_qfq (tushare-only, PIT 复权) + 配置 dim_*
@@ -37,11 +38,11 @@ consume: DataAccess.get(entity, codes, as_of) → DataResult{rows, provenance}
 
 | 库 | 内容 | 写锁域 |
 |---|---|---|
-| tushare_raw | raw_tushare_* (43 vendor 镜像) | M1 采集 |
-| market | price_kline / price_kline_qfq_tushare / price_xdxr | M2 清洗 |
+| tushare_raw | raw_tushare_* (40 vendor 镜像 + 2 PIT 行业视图; 批2-7 后实测) | M1 采集 |
+| market | price_kline_qfq_tushare → v_price_kline_qfq (批3a 后唯一 K线真相源; 旧 price_kline/price_xdxr 已物删) | M2 清洗 |
 | reference | dim_active_a_stock / dim_trading_calendar / dim_all_ever_listed / dim_listing_status (读多写少) | §9 拆出 |
-| smartmoney | raw fact (holders/lhb/qfii/org_holding/surveys/inst) + 配置 dim_* + 11 治理 mart | 采集+治理 |
-| etf | ETF raw + import batch | M1 ETF |
+| smartmoney | aif10 域 fact (holders/qfii/org_holding/估值) + 配置 dim_* + 治理 mart (30 表) | 采集+治理 |
+| etf | 空壳仅 deletion_record (ETF 子系统批3d 整体退役) | — |
 | experiment_store | 留档 (L4, 当前空; edge 重建后用) | 治理 |
 | feature_store | (L2 特征面板库, 当前仅 deletion_record 留痕; edge 重建后用) | M3 (待重建) |
 
@@ -49,8 +50,8 @@ consume: DataAccess.get(entity, codes, as_of) → DataResult{rows, provenance}
 
 | 模块 | 职责 | 路径 |
 |---|---|---|
-| **M1 ACQUIRE** | vendor→L0 raw 镜像 | `services/data_sources/` (sources: aif10/tushare) + holders_aif10/org_holding_aif10/qfii_client/lhb_client/institution_survey_client/aif10_capability_client/industry |
-| **M2 CLEAN** | L0→L1 qfq 归一 | `services/market_db/market_read/market_schema/kline_source` + `pipeline/clean.py` |
+| **M1 ACQUIRE** | vendor→L0 raw 镜像 | `services/data_sources/` (sources: aif10/tushare) + holders_aif10/org_holding_aif10/qfii_client/aif10_capability_client/industry — lhb_client/institution_survey_client 批2 退役 (切 tushare 域) |
+| **M2 CLEAN** | L0→L1 qfq 归一 | `build_price_kline_qfq_tushare.py` (daily CTAS 重建+自sanity) + `services/market_db/market_read/market_schema/kline_source` + `pipeline/clean.py` |
 | **M4 SERVE** | 唯一取数+PIT | `services/data_access/` (resolver/spec/asof/keys/drivers) |
 | **四地基** | universe/calendar/security_master + reference 库 | `services/universe/calendar/security_master` + `migrate_reference_db` |
 | **编排** | 采集→清洗→存储 门链 | `services/pipeline/` (acquire/clean/store/run/stage_runner/stage_status/context) |
@@ -76,7 +77,7 @@ consume: DataAccess.get(entity, codes, as_of) → DataResult{rows, provenance}
 
 **死引用硬门 `check_dead_references.py`** (safe_commit Step3.97 + CI + moth): import-services 库层 / dead-services-ref 全.py / config-dead-path registry列表 — 删任何模块/表/文件引用方没清 = commit 红。**残留无法再静默累积**。
 
-**routers (KEEP)**: ops_manual_run (手动跑数据链) / v3_config / strategy_preset (配置)。无策略 serving HTTP API。
+**routers (KEEP)**: ops_manual_run (手动跑数据链) / v3_config (前端参数下发)。无策略 serving HTTP API。(strategy_preset 批7 退役物删, 2026-07-02)
 
 ## 4. 重建删除了什么 (history)
 
