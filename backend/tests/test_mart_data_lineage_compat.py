@@ -45,31 +45,5 @@ def test_mart_data_lineage_view_aliases_mart_lineage_for_coverage_metric():
         conn.close()
 
 
-def test_ensure_mart_schema_creates_strategy_result_registry_lineage_columns():
-    conn = duckdb.connect(":memory:")
-    try:
-        ensure_mart_schema(conn)
-
-        cols = {
-            row[1]
-            for row in conn.execute("PRAGMA table_info('mart_strategy_result_registry')").fetchall()
-        }
-
-        assert {
-            "result_id",
-            "source_table",
-            "source_pk",
-            "result_type",
-            "parent_result_id",
-            "baseline_result_id",
-            "sim_config_hash",
-            "param_diff_json",
-            "params_json",
-            "lineage_url",
-            "source_artifact_uri",
-            "decision",
-            "production_status",
-            "evidence_json",
-        }.issubset(cols)
-    finally:
-        conn.close()
+# test_ensure_mart_schema_creates_strategy_result_registry_lineage_columns 已删 2026-07-02:
+# mart_strategy_result_registry 随策略层退役 (schema_marts DDL trim), 测已删表 = pre-existing 失败清偿。

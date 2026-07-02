@@ -16,29 +16,24 @@ import pytest
 from services.data_sources import sync_runner as sr
 
 
-def test_by_ts_code_batches_attaches_market(tmp_path, monkeypatch):
-    market = tmp_path / "market.duckdb"
-    conn = duckdb.connect(str(market))
-    conn.execute("CREATE TABLE price_kline_tdxhub (code VARCHAR, date DATE, freq VARCHAR)")
-    for code in ("600519", "000001", "300750", "830001"):
-        conn.execute(
-            "INSERT INTO price_kline_tdxhub VALUES (?, current_date - 1, 'daily')", [code]
-        )
-    conn.close()
+def test_by_ts_code_batches_suffix_mapping(monkeypatch):
+    """沪深后缀映射方向防反 (dc_member 方向反教训) + fixed_params 透传。
 
-    class FakeManifest:
-        def path_for(self, alias):
-            assert alias == "market"
-            return market
+    2026-07-02 重构 (用户授权"测试合理性优先"): 原版搭假 market 库穿透 manifest→reference→
+    security_master 真实依赖链 = 脆弱集成测试 (universe 源迁移/拆库/缓存三次弄坏它)。
+    本测试真正要守的语义 = 后缀映射方向 (000001→.SZ / 600519→.SH 不许反), universe 获取
+    是 services.universe 单一计算点的职责 (有自己的 test_universe), 此处 mock 掉。
+    """
+    import services.universe as universe_mod
 
-    import services.database_manifest as dm
-
-    monkeypatch.setattr(dm, "get_database_manifest", lambda: FakeManifest())
-    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: duckdb.connect(":memory:"))
+    monkeypatch.setattr(universe_mod, "get_active_universe",
+                        lambda conn, include_st=False: {"600519", "000001", "300750"})
+    class _NoopConn:
+        def close(self): pass
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: _NoopConn())
 
     batches = sr._by_ts_code_batches({"fixed_params": {"period": "20251231"}})
     ts_codes = [b["ts_code"] for b in batches]
-    # 北交所 830001 不在 universe; 沪深映射方向防反
     assert ts_codes == ["000001.SZ", "300750.SZ", "600519.SH"]
     assert all(b["period"] == "20251231" for b in batches)
 
@@ -76,7 +71,7 @@ def test_registry_surgery_contract_20260612():
     assert d["top_list"]["data_start"] == "20180102"
     assert d["top_inst"]["data_start"] == "20180102"
     assert d["adj_factor"]["data_start"] == "20190102"
-    assert d["cyq_perf"]["data_start"] == "20230103"
+    assert d["cyq_perf"]["data_start"] == "20180101"  # 2026-06-16 解冻: C0 误判纠正, catalog 实弹 20180102=3094行
     assert d["limit_list_d"]["data_start"] == "20230103"
 
 

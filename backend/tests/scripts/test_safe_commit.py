@@ -33,6 +33,12 @@ def _make_repo_with_staged_python(tmp_path: Path) -> Path:
     shutil.copy2(SAFE_COMMIT, repo / "scripts" / "safe_commit.sh")
     _write(repo / "backend" / "scripts" / "check_project_index_sync.py", "raise SystemExit(0)\n")
     _write(repo / "backend" / "scripts" / "check_rule_compliance.py", "raise SystemExit(0)\n")
+    # 2026-07-02 沙箱跟上 safe_commit 新门 (3.8 sandbox/3.9 serve/3.95 calendar/3.97 dead-references;
+    #   pre-existing 6失败根因=沙箱缺这些脚本 → python 非0 → exit 5)
+    _write(repo / "backend" / "scripts" / "check_sandbox_isolation.py", "raise SystemExit(0)\n")
+    _write(repo / "backend" / "scripts" / "check_serve_read_layer.py", "raise SystemExit(0)\n")
+    _write(repo / "backend" / "scripts" / "check_calendar_usage.py", "raise SystemExit(0)\n")
+    _write(repo / "backend" / "scripts" / "check_dead_references.py", "print('[dead-references] PASS')\nraise SystemExit(0)\n")
     _write(repo / "README.md", "seed\n")
 
     assert _run(["git", "init"], repo).returncode == 0

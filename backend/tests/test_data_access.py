@@ -29,12 +29,15 @@ def _mem_with_kline():
 
 def _mem_with_moneyflow():
     c = duck_mem()
+    # 2026-07-02 fixture 跟上 entity 声明 (06-23 加 8 档买卖额列, fixture 未同步致 preflight 漂移 FAIL)
     c.executescript(
-        "CREATE TABLE raw_tushare_moneyflow (ts_code TEXT, trade_date TEXT, net_mf_amount REAL);"
+        "CREATE TABLE raw_tushare_moneyflow (ts_code TEXT, trade_date TEXT, net_mf_amount REAL,"
+        " buy_sm_amount REAL, buy_md_amount REAL, buy_lg_amount REAL, buy_elg_amount REAL,"
+        " sell_sm_amount REAL, sell_md_amount REAL, sell_lg_amount REAL, sell_elg_amount REAL);"
     )
     c.executemany(
-        "INSERT INTO raw_tushare_moneyflow VALUES (?,?,?)",
-        [("600519.SH", "20260504", 1234.5), ("600519.SH", "20260505", -678.9)],
+        "INSERT INTO raw_tushare_moneyflow VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        [("600519.SH", "20260504", 1234.5, 1,1,1,1, 1,1,1,1), ("600519.SH", "20260505", -678.9, 1,1,1,1, 1,1,1,1)],
     )
     return c
 
