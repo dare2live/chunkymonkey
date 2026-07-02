@@ -76,8 +76,8 @@ def _write_report_and_alert(ctx: PipelineContext) -> None:
 
     # regime verdict 旧块已删 (2026-06-23 重设计): services.strategies.regime.regime_state 在地基-reset
     # 时删除 (只剩 .pyc), 旧 daily_update report 的 regime 字段自 reset 起恒为 {error} = 死代码。
-    # regime 现 owner = dossier regime.py (market_regime) / market_perception.regime_engine, 非数据底座流;
-    # 若需 regime 进 daily 报告, 单独接活引擎 (不在本数据底座管线职责内)。
+    # regime 旧 owner (dossier regime.py / market_perception.regime_engine) 已随重建全删; 未来 regime =
+    # 市场感知引擎职责 (market_pulse, master plan B4), 不在本数据底座管线职责内。
 
     output["alert_flags"] = alert_flags
     output.update(alert_flags)

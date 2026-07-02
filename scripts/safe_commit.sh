@@ -70,32 +70,10 @@ if ! PYTHONPATH=backend python backend/scripts/check_rule_compliance.py 2>&1 | t
     exit 3
 fi
 
-# 3.5 Leakage audit gate — trigger if staged files touch panel build / mart_p0a panel / fact_* tables
-# (2026-05-22 Phase D 反例: dim_stock_tdx_industry retrospective bias missed by manual audit)
-panel_touched=$(git diff --cached --name-only | grep -E "(build_feature_panel|mart_p0a|fact_capital_flow|dim_stock_tdx_industry|build_market_perception)" || true)
-if [[ -n "$panel_touched" && -f backend/scripts/audit_panel_leakage.py ]]; then
-    echo
-    echo "=== Step 3.5: leakage audit (panel/fact files staged) ==="
-    echo "triggered by: $panel_touched"
-    if PYTHONPATH=backend python backend/scripts/audit_panel_leakage.py 2>&1 | tail -15; then
-        echo "[leakage-audit] OK"
-    else
-        rc=$?
-        if [[ "$rc" == "1" ]]; then
-            echo
-            echo "ERROR: leakage audit HIGH-risk (exit 1) — 真金白银红线门, 不可自批绕过 (2026-06-15 用户: 自批skip=门是摆设)。"
-            echo "正解二选一 (无 SKIP 逃生):"
-            echo "  (a) panel/builder 真泄漏 → 修数据/builder, 不是跳过。"
-            echo "  (b) verifier 误报/stale → 修 audit 精度或 config (false-positive = 验证器 bug, 永久修一次;"
-            echo "      只改 audit_panel_leakage.py/leakage_* 本身不触发本门, 无死锁; 先提交 verifier 修复再提交 panel)。"
-            echo "真紧急 = git commit --no-verify (核选项: 跳全部 hook + 留疤, 非常规逃生)。"
-            echo "真金白银的真正强制不在 commit (本地 hook 终究可 --no-verify), 在**转正门** (record_verdict 须 leakage-clean) + CI。"
-            exit 4
-        else
-            echo "[leakage-audit] MEDIUM/WARN (exit $rc), not blocking。"
-        fi
-    fi
-fi
+# (Step 3.5 leakage audit gate 已删 2026-07-02: 触发实体 build_feature_panel/mart_p0a/
+#   fact_capital_flow/dim_stock_tdx_industry/build_market_perception 全已随重建物删 + audit_panel_leakage.py
+#   不存在 -f 永假 = 双重死块。真金白银泄漏强制在转正门 record_verdict + CI, 详 ledger)
+
 
 # 3.6 消费方泄漏闸 已退役 2026-06-28 (残留清理批1c): leakage_consumers.yaml + leakage_probe.py 已删
 #   (特征面板/策略 serving 层退役, 消费方不存在)。真金白银泄漏强制移到转正门 record_verdict(confirmed_by_owner=1

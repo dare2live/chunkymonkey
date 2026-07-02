@@ -14,14 +14,16 @@
 A. 机构档案 API (SERVE 暴露画像+信号流)          ← 半天, 无依赖, 立即
     │
 B. 基础前置件 (Type A 平台层, 每日数据获取后跑)   ← 用户裁决"前置在所有策略之前"
- ├─ B1 股票分层模块 (segments: 市值/流动性/行业/概念 统一标签表, pipeline process 步)
+ ├─ B1 股票分层模块 [DONE 2026-07-02] (dim_stock_segment_daily 833万行, process 步)
  ├─ B2 形态识别模块 (technical_states 重建: Weinstein stage 等; 旧模块已随重建退役, git 史参照)
- └─ B3 两融采集域 (tushare margin_detail — 用户点名的日更参数, 库中缺)
+ ├─ B3 两融采集域 (tushare margin_detail — 用户点名的日更参数, 库中缺)
+ └─ B4 市场感知引擎 (follow-the-money, mart_sector/market_pulse_daily; 设计=market_pulse_design_20260702.md; 零新增数据源)
     │
 C. edge 前端 v1 (React/Vue)                    ← 可与 B 并行 (依赖 A 不依赖 B)
- ├─ C1 骨架 + 机构档案页 (画像热力图/episode时间线/维度表现)
+ ├─ C1 骨架 + 机构档案页 (画像热力图/episode时间线/维度表现) [A 档案API DONE]
  ├─ C2 实盘模拟页 (入池/组合/nav vs HS300)
- └─ C3 工作台 (数据管线状态, 复用 stage_status)
+ ├─ C3 工作台 (数据管线状态, 复用 stage_status)
+ └─ C4 市场感知页 (资金热力/RS轮动/悄悄流入榜/情绪温度/退潮预警 — 选股台的上游漏斗)
     │
 D. 主升浪猎手 (D1-D4, 依赖 B1+B2)              ← 用户方法论主战场
  ├─ D1 GT 重生成 (train 窗 ≤2025-06; archive 5 parquet 定义参照; holdout 纪律立法 §2.1)
