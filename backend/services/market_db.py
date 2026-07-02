@@ -51,12 +51,7 @@ def init_market_db():
 
 # ---------------------------------------------------------------------------
 # Write-side calendar lint (PIT 盘中污染防御, 通用 K-line writer helper)
-# 2026-06-29 批3a: 旧 akshare/tdxhub K线写管线 (upsert_price_rows/replace_xdxr_rows/
-#   update_sync_state/update_xdxr_sync_state/start_import_batch/finish_import_batch +
-#   _clean_kline_rows_for_write + _now_iso) 整体退役物删 — price_kline/price_xdxr/
-#   market_sync_state/price_import_batch 4 表已物删, 这些函数 0 live caller。
-#   保留 filter_kline_rows_by_calendar: 通用写侧日历 lint, 被 test_kline_write_calendar_lint
-#   + audit_data_completeness (_latest_completed_trade_date_for_write shim) live 使用。
+# (旧写管线函数批3a 已删, 详 ledger; 保留 filter_kline_rows_by_calendar = 通用写侧日历 lint)
 # ---------------------------------------------------------------------------
 
 # Codex review 2026-05-19 a7ffbdb2 HIGH 1: calendar gate 统一到 services/calendar.py.

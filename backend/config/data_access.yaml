@@ -14,6 +14,14 @@
 #   columns       : 取哪些列 (preflight 会对 schema 核对, 漂移=FAIL)
 #   vendor        : 数据厂商 (血缘 provenance)
 #   available_after: eod 盘后收盘可用 (决策侧 JOIN t-1) | preopen 盘前 | ann_date 公告
+#
+# ── 水龙头契约 (2026-07-02 用户定调: 数据与数据源分开管理 — 源=水龙头, entity=桶, SERVE=分水中转) ──
+# entity 名 = 业务概念 (桶), 是消费方唯一可见的名字; vendor (水龙头) 只出现在 raw 表名/vendor 字段/provenance。
+# 换源三步 (消费方零改动): ①新 adapter 落新 raw 表并达标本 entity 契约 (columns/单位/PIT锚) ②新旧对账 ③改本文件 db/table 指针。
+# 命名法 (数据分两类, 按"换了源水还是不是同一桶水"客观划线):
+#   - 事实类 (K线/成交/股东名册/财报数字/涨跌停): 物理世界唯一真相, 源只是通道 → entity 名禁含 vendor 字样。
+#   - 观点类 (行业/概念分类=taxonomy, 资金流单别=vendor算法): 分类体系本身是数据身份 → entity 名必须带体系名
+#     (sw_industry=申万体系 / dc_member=东财概念 / moneyflow_dc=东财单别算法), 换体系=换桶非换水, 历史禁跨体系拼接 (CLAUDE §4.5)。
 version: 1
 
 clean_rules:
@@ -201,10 +209,9 @@ entities:
     vendor: tushare
     available_after: eod
 
-  holders_tdx:
-    # 十大流通股东 — 主源=东财妙想 aif10 (CLAUDE.md §4.3: aif10 holder 主源, 取代滞后~4个月的 tushare top10_floatholders + 退役的 tdx F10)。
-    # 2026-06-29 批3b: 旧 tushare entity holders_top10 (raw_tushare_top10_floatholders) 物删; holder 唯一 SERVE entity = 本 entity (aif10 主源 fact_top10_holder_period)。
-    # 写入=holders_aif10.sync_holders_aif10 (source='miaoxiang'); PIT 锚=report_date (报告期, 已统一 YYYYMMDD)。entity key 名 holders_tdx 历史遗留, edge 重建时正名。
+  holders_top10:
+    # 十大流通股东 (事实类桶 — 股东名册该谁是谁, 与源无关)。2026-07-02 正名 holders_tdx→holders_top10 (水龙头契约: 事实类禁 vendor 名; 0 代码消费方零成本)。
+    # 现水龙头=东财妙想 aif10 (CLAUDE.md §4.3 主源, 取代滞后~4月的 tushare top10_floatholders + 退役 tdx F10); 写入=holders_aif10.sync_holders_aif10 (source='miaoxiang'); PIT 锚=report_date (YYYYMMDD)。
     db: smartmoney
     table: fact_top10_holder_period
     layer: L1

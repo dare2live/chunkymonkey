@@ -6,19 +6,10 @@ blocks. Constants are re-exported by ``market_db`` for backward compatibility.
 from __future__ import annotations
 
 
-# 2026-06-29 批3a 数据纯化: MARKET_CORE_DDL (price_kline/price_xdxr/market_sync_state/
-#   price_import_batch) 4 表整体退役物删 (db_lifecycle_delete archive 留底, 可逆)。
-#   - price_kline: akshare HS300 指数残留 (1048行), 非 tushare 源 = §4.3 删除对象;
-#   - price_xdxr: tdxhub 复权事件残留 (173781行), 复权已切 price_kline_qfq_tushare PIT 前复权;
-#   - market_sync_state / price_import_batch: 旧 akshare/tdxhub K线管线同步状态/批次记录,
-#     0 live caller (tushare K线走 build_price_kline_qfq_tushare CREATE TABLE AS 重建, 不经此管线)。
-#   serving K线真相源 = price_kline_qfq_tushare → v_price_kline_qfq (下方 DDL 保留, 不受影响)。
+# MARKET_CORE_DDL (旧管线4表) 批3a 物删; serving K线真相源 = price_kline_qfq_tushare → v_price_kline_qfq (下方)。
 
 
-# 2026-06-23 M3: price_kline_tdxhub (股票日线表) DDL 已移除 (表物删 5.3M行)。
-# 2026-06-27 通达信全删 单元6: price_kline_tdxhub_adjustment_event (xdxr 除权热备) DDL 亦移除 (表物删 735行);
-#   builder build_price_kline_tdxhub.py 已退役物删 (0 caller, manifest 已 repoint qfq_tushare); serving K线真相源 = price_kline_qfq_tushare。
-# PRICE_KLINE_TDXHUB_DDL 常量随之删 (importers market_db/market_read/mini_market/test 同步清)。
+# [防重建] 旧 K线管线 DDL 均已移除勿复加 (price_kline_tdxhub 簇 06-23~27 / MARKET_CORE_DDL 4表 批3a, 详 ledger + git史)。
 
 
 # v_price_kline_qfq 切 tushare-only (2026-06-22 切主源根因修复, 真相源唯一):

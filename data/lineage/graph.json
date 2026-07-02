@@ -931,12 +931,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:dim_stock_dc_industry"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/industry.py",
       "kind": "consume",
       "src": "table:dim_stock_dc_industry"
@@ -1183,12 +1177,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/data_sources/sources/aif10.py",
       "kind": "consume",
       "src": "table:fact_top10_holder_period"
@@ -1304,12 +1292,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:mart_data_deprecation_record"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_core.py",
       "kind": "consume",
       "src": "table:mart_data_deprecation_record"
     },
@@ -1633,6 +1615,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/field_dictionary.yaml",
+      "kind": "consume",
+      "src": "table:price_kline_qfq_tushare"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/universe_rules.yaml",
       "kind": "consume",
       "src": "table:price_kline_qfq_tushare"
@@ -1646,12 +1634,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/data_layer_audit.py",
-      "kind": "consume",
-      "src": "table:price_kline_qfq_tushare"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
       "kind": "consume",
       "src": "table:price_kline_qfq_tushare"
     },
@@ -2233,19 +2215,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:raw_tushare_stk_surv"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
-      "kind": "consume",
-      "src": "table:raw_tushare_stk_surv"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/update_watermark_sla.py",
       "kind": "consume",
       "src": "table:raw_tushare_stk_surv"
     },
@@ -2353,12 +2323,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_top_list"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
       "kind": "consume",
       "src": "table:raw_tushare_trade_cal"
@@ -2416,18 +2380,6 @@
       "dst": "consumer:backend/services/schema_core.py",
       "kind": "consume",
       "src": "table:sys_schema_version"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_dc_industry_view.py",
-      "kind": "consume",
-      "src": "table:v_dc_industry_pit"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/pipeline/process.py",
-      "kind": "consume",
-      "src": "table:v_dc_industry_pit"
     },
     {
       "attrs": {},
@@ -2536,54 +2488,12 @@
       "dst": "consumer:backend/tests/test_universe.py",
       "kind": "consume",
       "src": "table:v_price_kline_qfq"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
-      "kind": "consume",
-      "src": "table:v_sw_industry_pit"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:v_sw_industry_pit"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_dc_industry_view.py",
-      "kind": "consume",
-      "src": "table:v_sw_industry_pit"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_sw_industry_view.py",
-      "kind": "consume",
-      "src": "table:v_sw_industry_pit"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/industry.py",
-      "kind": "consume",
-      "src": "table:v_sw_industry_pit"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/pipeline/process.py",
-      "kind": "consume",
-      "src": "table:v_sw_industry_pit"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/source_watermarks.py",
-      "kind": "consume",
-      "src": "table:v_sw_industry_pit"
     }
   ],
   "meta": {
-    "edge_count": 387,
-    "generated_at": "2026-07-02T00:25:50.322998+00:00",
-    "node_count": 208,
+    "edge_count": 372,
+    "generated_at": "2026-07-02T01:10:14.632230+00:00",
+    "node_count": 206,
     "version": 1
   },
   "nodes": [
@@ -3798,7 +3708,7 @@
       "attrs": {
         "db": "smartmoney",
         "layer": "L1_foundation",
-        "serve_entity": "holders_tdx",
+        "serve_entity": "holders_top10",
         "status": "active",
         "vendor": "aif10"
       },
@@ -3971,28 +3881,28 @@
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_adj_factor",
       "kind": "table"
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_balancesheet",
       "kind": "table"
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
         "serve_entity": "block_trade",
-        "status": "active",
+        "status": "declared_not_live",
         "vendor": "tushare"
       },
       "id": "table:raw_tushare_block_trade",
@@ -4000,10 +3910,10 @@
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
         "serve_entity": "cyq",
-        "status": "active",
+        "status": "declared_not_live",
         "vendor": "tushare"
       },
       "id": "table:raw_tushare_cyq_perf",
@@ -4011,19 +3921,19 @@
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_daily",
       "kind": "table"
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
         "serve_entity": "valuation",
-        "status": "active",
+        "status": "declared_not_live",
         "vendor": "tushare"
       },
       "id": "table:raw_tushare_daily_basic",
@@ -4031,10 +3941,10 @@
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
         "serve_entity": "dc_index",
-        "status": "active",
+        "status": "declared_not_live",
         "vendor": "eastmoney_via_tushare"
       },
       "id": "table:raw_tushare_dc_index",
@@ -4042,10 +3952,10 @@
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
         "serve_entity": "dc_member",
-        "status": "active",
+        "status": "declared_not_live",
         "vendor": "eastmoney_via_tushare"
       },
       "id": "table:raw_tushare_dc_member",
@@ -4053,28 +3963,28 @@
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_dividend",
       "kind": "table"
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_express",
       "kind": "table"
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
         "serve_entity": "fundamentals",
-        "status": "active",
+        "status": "declared_not_live",
         "vendor": "tushare"
       },
       "id": "table:raw_tushare_fina_indicator",
@@ -4082,19 +3992,19 @@
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_fina_mainbz",
       "kind": "table"
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
         "serve_entity": "forecast",
-        "status": "active",
+        "status": "declared_not_live",
         "vendor": "tushare"
       },
       "id": "table:raw_tushare_forecast",
@@ -4102,19 +4012,19 @@
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_income",
       "kind": "table"
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
         "serve_entity": "index_daily",
-        "status": "active",
+        "status": "declared_not_live",
         "vendor": "tushare"
       },
       "id": "table:raw_tushare_index_daily",
@@ -4122,37 +4032,37 @@
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_index_dailybasic",
       "kind": "table"
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_index_member_all",
       "kind": "table"
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_limit_cpt_list",
       "kind": "table"
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
         "serve_entity": "limit_list_d",
-        "status": "active",
+        "status": "declared_not_live",
         "vendor": "tushare"
       },
       "id": "table:raw_tushare_limit_list_d",
@@ -4160,10 +4070,10 @@
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
         "serve_entity": "moneyflow",
-        "status": "active",
+        "status": "declared_not_live",
         "vendor": "tushare"
       },
       "id": "table:raw_tushare_moneyflow",
@@ -4171,10 +4081,10 @@
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
         "serve_entity": "moneyflow_dc",
-        "status": "active",
+        "status": "declared_not_live",
         "vendor": "eastmoney_via_tushare"
       },
       "id": "table:raw_tushare_moneyflow_dc",
@@ -4182,37 +4092,37 @@
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_moneyflow_hsgt",
       "kind": "table"
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_moneyflow_ind_dc",
       "kind": "table"
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_moneyflow_mkt_dc",
       "kind": "table"
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
         "serve_entity": "report_rc",
-        "status": "active",
+        "status": "declared_not_live",
         "vendor": "tushare"
       },
       "id": "table:raw_tushare_report_rc",
@@ -4220,10 +4130,10 @@
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
         "serve_entity": "share_float",
-        "status": "active",
+        "status": "declared_not_live",
         "vendor": "tushare"
       },
       "id": "table:raw_tushare_share_float",
@@ -4231,37 +4141,37 @@
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_stk_factor_pro",
       "kind": "table"
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_stk_holdernumber",
       "kind": "table"
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_stk_holdertrade",
       "kind": "table"
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
         "serve_entity": "stk_limit",
-        "status": "active",
+        "status": "declared_not_live",
         "vendor": "tushare"
       },
       "id": "table:raw_tushare_stk_limit",
@@ -4269,10 +4179,10 @@
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
         "serve_entity": "institution_survey",
-        "status": "active",
+        "status": "declared_not_live",
         "vendor": "tushare"
       },
       "id": "table:raw_tushare_stk_surv",
@@ -4280,37 +4190,37 @@
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_stock_basic",
       "kind": "table"
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_stock_st",
       "kind": "table"
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_suspend_d",
       "kind": "table"
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
         "serve_entity": "sw_daily",
-        "status": "active",
+        "status": "declared_not_live",
         "vendor": "shenwan"
       },
       "id": "table:raw_tushare_sw_daily",
@@ -4318,19 +4228,19 @@
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_ths_hot",
       "kind": "table"
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
         "serve_entity": "top_inst",
-        "status": "active",
+        "status": "declared_not_live",
         "vendor": "tushare"
       },
       "id": "table:raw_tushare_top_inst",
@@ -4338,10 +4248,10 @@
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
         "serve_entity": "top_list",
-        "status": "active",
+        "status": "declared_not_live",
         "vendor": "tushare"
       },
       "id": "table:raw_tushare_top_list",
@@ -4349,9 +4259,9 @@
     },
     {
       "attrs": {
-        "db": "tushare_raw",
+        "db": "unknown",
         "layer": "untagged",
-        "status": "active"
+        "status": "declared_not_live"
       },
       "id": "table:raw_tushare_trade_cal",
       "kind": "table"
@@ -4385,31 +4295,11 @@
     },
     {
       "attrs": {
-        "db": "tushare_raw",
-        "layer": "untagged",
-        "status": "active"
-      },
-      "id": "table:v_dc_industry_pit",
-      "kind": "table"
-    },
-    {
-      "attrs": {
         "db": "market",
         "layer": "untagged",
         "status": "active"
       },
       "id": "table:v_price_kline_qfq",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "tushare_raw",
-        "layer": "untagged",
-        "serve_entity": "sw_industry",
-        "status": "active",
-        "vendor": "shenwan"
-      },
-      "id": "table:v_sw_industry_pit",
       "kind": "table"
     }
   ]

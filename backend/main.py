@@ -129,21 +129,11 @@ def register_modules(app):
 app_modules = register_modules(app)
 
 # 配置 routers (v3 配置)
-# strategy_preset router 已退役物删 2026-07-02 (批7抓漏, 用户批0拍板"退役物删": Phase1 工作台
-#   从零设计参数管理不复用旧schema; dim_strategy_preset 表[3条seed]同批物删, DDL在router内自建无重建路径)
+# (strategy_preset router 批7 物删, 详 ledger)
 from routers.v3_config import router as v3_config_router
 app.include_router(v3_config_router, prefix="/api/v3", tags=["v3_config"])
 
-# market_perception router 已退役 2026-06-28 (残留清理批1e: 外部 ../perception/ DATA-DEAD —
-#   查的 mart_market_perception_* 表三库全 wipe → 退化 {mart_table_exists:False}, 0 前端消费
-#   /api/v3/market_perception(index.html+assets 零命中); 姊妹 repo /stock/perception 不动, 仅删本项目注册引用)
-
-# BestChoice tab 退役 2026-06-22 (P2 清库): v3_bestchoice 路由查的 mart_*_bestchoice_v1 /
-# paper_sim 表 reset 已删 = 服务死表的死代码; 物删 router+service+config (bc_absorbed 另案保留)
-
-# v3_perception_legacy (serving) 退役 2026-06-14 — 查 wiped 感知 mart (L2/L3 已删)
-
-# signals_v2 默认配置初始化已移除 (2026-06-28 重建: signals_v2 策略 serving 退役)
+# (退役 routers: market_perception/bestchoice/perception_legacy/signals_v2 等 2026-06-14~28 删, 详 ledger + git史)
 
 # 设置选项相关的API (比如开启/关闭功能模块)
 @app.post("/api/settings/modules")

@@ -111,27 +111,9 @@ CORE_SCHEMA_SQL = """
             );
 
 
-            -- fact_common_major_holder_stock DDL 已删 (2026-06-29 批3c: tdx F10 机构持仓明细旧表退役物删
-            --   76300行 source=tdx_f10, 已被 aif10 raw_org_holding_aif10(336077行 更全)取代, 0 SERVE/读消费方
-            --   用户 2026-06-29 拍板一并退役, archive parquet 留底)
-
-            -- fact_holder_event DDL 已删 2026-06-28 (Phase 0 机构+事件 serving 退役: 表已物删,
-            --   rebuild_holder_events 派生脚本不存在/run_portfolio_mvp simulator 消费者已退役,
-            --   Phase 3 机构档案以 as-of 跟随口径 披露日 T+1 进出 重建进出事件。注: SQL 注释禁用分号)
-            -- dim_holder_alias DDL 已删 2026-06-29 (批3e: TDX holder 别名孤儿维表 30行 0消费方物删, TDX 退役)
-
-            -- dim_data_asset DDL 已删 2026-06-28 (F4 退役: 烂登记表[67stale/68漏/0强制]职责归并 —
-            --   layer/asset_class→data_layers.yaml, freshness→layer_health_defaults+sync_registry+
-            --   table_health_overrides, producer/consumer→lineage, 退役态→mart_data_deprecation_record)
-            -- raw_tdx_gpcw_wide / dim_tdx_gpcw_field DDL 已删 (2026-06-27 通达信全删 gpcw物删)
-
-            -- dim_data_source_priority DDL 已删 2026-06-29 (批3e: 多源优先级孤儿表, §4.3 单源体制概念已废, 10行 0消费方物删)
-
-            -- dim_tdx_gpcw_field_semantic / fact_tdx_gpcw_auto_feature_quarterly DDL 已删 (2026-06-27 通达信全删 gpcw物删, auto_features 流水线 dead)
-
-            -- fact_feature_panel_candidate DDL 已删 (2026-06-28 加工层清空: 派生 L2 候选/挑战表退役)
-
-            -- fact_feature_panel_tdx_keep_challenger DDL 已删 (2026-06-28 加工层清空: 派生 L2 候选/挑战表退役)
+            -- [防重建] 已退役表的 DDL 均已移除, 勿在此复加 (fact_common_major_holder_stock / fact_holder_event /
+            --   dim_holder_alias / dim_data_asset / gpcw 簇 / dim_data_source_priority / feature_panel 簇 等,
+            --   2026-06-27~29 数据纯化批删, 逐表记录在 deletion_record + ledger + git史)
 
             -- §9 reference 拆库 Stage E (2026-06-27): active 主数据 与 trading_calendar 的 DDL 已移除  -- rule-compliance: ok evidence=stage-e-ddl-removed (注释非真用, 表迁 reference)
             --   (迁 reference 库后 smartmoney 副本物删, 删 DDL 防 init_db 重建循环 undo 物删)

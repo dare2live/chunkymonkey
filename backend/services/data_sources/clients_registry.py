@@ -61,18 +61,9 @@ class ClientSpec:
 
 CLIENTS: list[ClientSpec] = [
     # ── tier 1: tdxhub (主源) ─────────────────────────────────────────
-    # tdx_industry_client + block_client (通达信行业/板块) 已退役物删 2026-06-23 (§4.3 行业/概念全切东财 dim_stock_dc_industry/dc_concept)
-    # tdx_affair_client (通达信季报 gpcw) 退役物删 2026-06-27 (通达信全删: 财务派生迁 tushare 周期模型;
-    #   gpcw raw_detail/wide + dim_field 簇物删; client 0 import dead)。
-    # tdx_f10_extra_client 退役 2026-06-24 (随旧 updater 删, 唯一 caller updater_sync.sync_raw 已删):
-    #   户数→tushare stk_holdernumber / 增减持→tushare stk_holdertrade / 同大股东→aif10 holder derive (机构档案);
-    #   十大流通股东已迁 aif10 (services/holders_aif10). 详 analysis/miaoxiang_aif10_source_decision_20260624.md。
-    # xdxr_client ClientSpec 已删 2026-06-28 (残留清理批1: services.xdxr_client 模块已删, 复权切 tushare adj_factor;
-    #   price_xdxr 表批3 物删)。check_dead_references D 扫坐实死登记。
+    # 退役 ClientSpec (tdx簇/xdxr/lhb 等 2026-06-23~29 数据纯化删) 详 ledger + deletion_record + git史。
 
     # ── tier 2: aif10 妙想 (主源) ─────────────────
-    # lhb_client ClientSpec 已删 2026-06-29 (批2b 数据源切 tushare): LHB 走 tushare top_list/top_inst
-    #   (raw_tushare_top_list 142k / top_inst 178万 已拉全, SERVE entity top_list/top_inst 在); raw_lhb_daily(aif10+akshare) 退役物删。
     ClientSpec(
         client_id="qfii_client",
         module="services.qfii_client",
@@ -105,19 +96,7 @@ CLIENTS: list[ClientSpec] = [
 
     # ── tier 3: akshare (兜底) ───────────────────────────────────────
     # margin_client ClientSpec removed Phase ψ.5 — dead data (see audit)
-    # capital_client (akshare 资本运作 分红/回购/解禁/配股) 已退役 2026-06-27 (通达信全删 M4):
-    #   用户决"cut"不迁移 — 7表(raw_capital_* 5 + dim_capital_behavior_latest + capital_detail_sync_state)+writer物删,
-    #   消费侧 scoring/signals_v2 已切; 档B 若需从 tushare dividend/repurchase/share_float 重接。
-    # financial_client ClientSpec 已删 2026-06-28 (残留清理批1: services.financial_client 模块已删[U4],
-    #   dim_financial_latest/fact_financial_derived 表已物删; 财务走 tushare sync:fina_indicator/balancesheet/income 域)。
-    # financial_indicator_client (akshare 财务指标) 已退役 2026-06-19。
-    # akshare_client ClientSpec 已删 2026-06-28 (残留清理批1: services.akshare_client 模块已删, K线 tushare 唯一;
-    #   price_kline akshare HS300 表批3 物删, canonical=price_kline_qfq_tushare)。
-    # akshare_panel_client (build_akshare_panel: jgdy/dzjy/hot_rank/research_report/profit_forecast) +
-    # executive_trade_client (build_executive_trade_events: raw_executive_trade/fact_executive_trade_event)
-    # 已退役 2026-06-27 (通达信全删 M4: akshare event 表退役, 用户决cut不迁移):
-    #   builder 非 live (不在 pipeline DAG); 喂 panel 的 fact_feature_panel 非 live built; 下游 fact_capital_flow_pit_daily 已 reset 删=死链。
-    #   feature_registry event_activity 的 akshare 源特征 (exec_buy_*/dzjy/jgdy) 标 research_only_source_gap, 档B 从 tushare(block_trade/stk_holdertrade)重接。
+    # 退役 ClientSpec (capital/financial/akshare 簇 2026-06-19~28 删, 档B 需要时从 tushare 重接) 详 ledger + git史。
 ]
 
 
@@ -127,12 +106,7 @@ CLIENTS: list[ClientSpec] = [
 # ─────────────────────────────────────────────────────────────────────
 
 DERIVED_WRITERS: list[ClientSpec] = [
-    # rebuild_holder_events + build_lhb_events ClientSpec 已删 2026-06-28 (Phase 0 机构+事件 serving 退役):
-    #   fact_holder_event/fact_lhb_event 是死 event 派生 — DB 已无表, 消费者 run_portfolio_mvp simulator 已退役;
-    #   rebuild_holder_events 脚本本已不存在(死注册)。raw_lhb_daily/fact_top10_holder_period 基础表保留,
-    #   Phase 3 机构档案以 as-of 跟随口径(披露日 T+1 进出)重建进出事件, 不复活旧 event 派生。
-    # build_feature_panel_duck / run_daily_topk / train_multidim_model / run_multidim_walkforward ClientSpec
-    #   已删 2026-06-28 (残留清理批1: module=scripts.<已删> + writes 表全物删[策略/特征/模型层退役], D 扫坐实)。
+    # 退役派生 ClientSpec (event/panel/model runner 簇 2026-06-28 删; 机构档案 edge 重建时以披露日 T+1 口径重建) 详 ledger。
     ClientSpec(
         client_id="data_health_snapshot",
         module="scripts.data_health_snapshot",

@@ -174,13 +174,7 @@ table_inventory:
   # raw_tdx_f10_holder_research 条目已删 2026-06-27 (修 pre-existing YAML 损坏: 通达信全删 tdx F10 退役时 botched 删除
   #   只删了 `- table:`+classification 头行留下孤儿 body, 致 table_inventory 首项缺 list 头 → YAML 解析在 line 183 炸;
   #   该表实测已物删=stale, 整条移除既修语法又清残留)。
-  # dim_stock_tdx_industry_history 条目已删 2026-06-29 (批4残留清理: 东财迁移Stage④已物删该表, 0代码消费方
-  #   [industry_neutralization/sector_membership_as_of_join/data_health_source_audit 均不存在], 死条目)
-  # raw_profit_forecast_snapshot_daily 已物删 2026-06-27 (通达信全删 M4: akshare 盈利预测快照退役, 用户决cut;
-  #   声称 consumers[forecast_upside_live_mart/earnings_surprise_factor] code 中不存在=死, 0 live 读者; 档B 若需景气度走 tushare forecast/report_rc)。
-  # fact_stock_attention_snapshot 已物删 2026-06-27 (通达信全删 M4: akshare 外部关注度快照退役, 用户决cut; 无tushare等价=永久丢)
-  # raw_tdx_industry_file_snapshot 条目已删 2026-06-29 (批4残留清理: 东财迁移Stage④已物删该表, 0代码消费方
-  #   [industry_file_replay/tdx_industry_parse_lineage 均不存在], 死条目, 同批 dim_stock_tdx_industry_history 一并清)
+  # (退役表条目已清 — tdx行业/akshare快照簇 2026-06-27~29 物删, 记录在 deletion_record + ledger + git史)
   - table: fact_feature_panel
     classification: current_production_panel
     owner: feature_panel_pipeline

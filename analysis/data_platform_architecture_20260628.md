@@ -92,6 +92,28 @@ consume: DataAccess.get(entity, codes, as_of) → DataResult{rows, provenance}
 
 **schema DDL trim**: schema_marts + schema_migrations 移除 73 句非 KEEP mart 的 CREATE/INDEX/ALTER (防 init_db 重建)。
 
+## 4.5 换源 SOP — 水龙头模型 (2026-07-02 用户定调固化)
+
+**原则**: 数据与数据源分开管理。源=水龙头 (raw 表, 绑 vendor 名), entity=桶 (业务概念, 消费方唯一可见),
+M4 SERVE=分水中转, M5 lineage=水表 (谁接了哪根管)。消费方永远只读桶, 不知道水龙头。
+
+**换源三步 (消费方零改动)**:
+1. **接新水龙头**: sync_registry 注册新域 → 新 raw 表落库 (M1 零计算镜像, 表名绑 vendor 合法);
+   若字段/单位/PIT 锚与 entity 契约不一致, 在 M2 归一层写 adapter/builder 达标 (参照 build_price_kline_qfq_tushare:
+   手→股/千元→元/PIT 前复权 = K线桶的标准水质)。
+2. **对账**: 新旧源重叠期按 entity 契约列逐日对账 (K线对收益率/事实类对值); 达标才切。
+3. **切指针**: 改 data_access.yaml 该 entity 的 db/table 一处 → 消费方零改动。旧源按 §4.3 铁律退役
+   (lineage impact 查 fan-in → 物删 archive 留底 → check_dead_references 挡残留)。
+
+**两类水 (客观划线 = "换源后还是不是同一桶水")**:
+| 类 | 例 | 换源语义 | entity 命名 |
+|---|---|---|---|
+| **事实类** | K线/成交/股东名册/财报数字/涨跌停/解禁 | 换水龙头, 水不变 → 上述三步全适用 | **禁 vendor 名** (kline_qfq/holders_top10) |
+| **观点类** | 行业/概念分类 (taxonomy), 资金流单别 (vendor 算法) | **换桶** — 分类体系是数据身份, 历史不可比 | **必须带体系名** (sw_industry/dc_member/moneyflow_dc), 切换打 taxonomy_version 分段, 禁跨体系拼接 (CLAUDE §4.5 反例) |
+
+**历史教训定位**: tdx行业→申万/东财、akshare→tushare 换源之痛的根因 = SERVE 中转站 2026-06-22 才建成,
+之前一年的消费方全是直连 raw 的强绑定存量 (已随 06-28 重建清光)。今后换源走本 SOP, 痛不复现。
+
 ## 5. 未来 edge 重建 (在干净平台上)
 
 北极星 = 主升浪猎手 (episode-first 结果倒推)。重建必守:

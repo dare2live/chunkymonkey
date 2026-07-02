@@ -106,7 +106,7 @@ def _git_grep_consumers(table: str) -> list[str]:
 
 def _git_grep_entity_consumers(entity: str) -> list[str]:
     """SERVE entity 别名消费方 (T3-a, 2026-06-26 修): DataAccess.get("entity") 用引号字符串,
-    对表名 grep 不可见 → 表被误判无消费 (例: holders_tdx entity 经 SERVE 消费 fact_top10_holder_period; 表名不出现在调用处)。
+    对表名 grep 不可见 → 表被误判无消费 (例: holders_top10 entity 经 SERVE 消费 fact_top10_holder_period; 表名不出现在调用处)。
     grep 引号包裹的 entity 名, 排除 data_access 层自身 (定义/分发 entity 非消费方)。
     over-match 偏保守 = 多报潜在消费方, 删除决策更安全 (under-report 漏判才危险)。
     """
