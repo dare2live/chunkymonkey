@@ -43,6 +43,8 @@ member_service_files:
   - universe.py              # 交易日历级硬真相源 (不能依赖派生读层)
   - kline_source.py          # K线写侧 normalize
   - data_audit.py            # 审计
+  - institution_profile.py   # M3 加工 builder (2026-07-02 W1: 读 raw/L1 物化 feature_store L2 画像;
+                             #   与 build_price_kline_qfq_tushare 同性质; 消费方读其产物走 SERVE entity[A阶段接])
   - data_quality.py          # 审计
   - audit.py                 # 审计
   - data_health_snapshot.py
