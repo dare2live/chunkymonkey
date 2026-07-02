@@ -32,6 +32,8 @@ but they do not override the active contracts.
 | Document | Role |
 |---|---|
 | `../analysis/project_state_ledger.md` | Historical completed-work/status ledger. Query by `rg`/`tail`; do not read start-to-finish during startup. |
+| `../analysis/master_implementation_plan_20260702.md` | **当前路线唯一 owner** (edge+主升浪+机构跟随 顶层实施方案, 用户已批) |
+| `../analysis/institution_follow_strategy_design_20260702.md` | 机构跟随策略设计定稿 (episode/成本三方案/画像/holdout 纪律) |
 | `../SESSION_HANDOFF.md` | Runtime snapshot. It may contain legacy Claude automation text; use facts only, not policy, when it conflicts with current Codex docs. |
 | `../analysis/workflow_checkpoint.md` | Active-pipeline checkpoint only when it says active. Otherwise it is an inactive stub or historical evidence pointer. |
 | `../analysis/handoff_*.md` | Dated handoff evidence. The latest relevant file can guide current work only when consistent with `goal.md` and active docs. |

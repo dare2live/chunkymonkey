@@ -114,7 +114,10 @@ M4 SERVE=分水中转, M5 lineage=水表 (谁接了哪根管)。消费方永远�
 **历史教训定位**: tdx行业→申万/东财、akshare→tushare 换源之痛的根因 = SERVE 中转站 2026-06-22 才建成,
 之前一年的消费方全是直连 raw 的强绑定存量 (已随 06-28 重建清光)。今后换源走本 SOP, 痛不复现。
 
-## 5. 未来 edge 重建 (在干净平台上)
+## 5. edge 重建 (2026-07-02 已开工 — 路线 owner = master_implementation_plan_20260702.md)
+
+> 状态更新: W1 机构画像引擎 (feature_store L2 4表) + W2 实盘模拟 (smartmoney display 2表+/api/v3/paper) 已落地,
+> 均按四地基构建 (SERVE 消费/manifest 路由/config 阈值/data_layers 声明/pipeline 挂钩)。下方原则仍有效:
 
 北极星 = 主升浪猎手 (episode-first 结果倒推)。重建必守:
 - 从 raw K线重新生成 D1 GT (旧 GT archive 仅参考, 不复用)。

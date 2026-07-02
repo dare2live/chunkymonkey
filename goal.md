@@ -69,7 +69,7 @@
 
 ## 下一步 (用户定方向)
 
-数据平台已纯净收敛。**edge/策略层从零重建 = 当前主线** (用户已拍板: 5 界面 [股票档案/机构档案/选股台/工作台/首页sim] + React/Vue 重写前端 + "全部分阶段规划好再动手"; 框架 analysis/edge_layer_framework_design_20260628.md + implementation_plan 待按纯化后现状复核启动):
+数据平台已纯净收敛, **edge 重建已开工** (2026-07-02): 路线唯一 owner = `analysis/master_implementation_plan_20260702.md` (用户已批: A 档案API→B 基础件[分层/形态/两融]∥C 前端React+Vite→D 主升浪[holdout预算立法]→E 整合)。已落地: **W1 机构画像引擎** (mart_inst_profile 9.4万, feature_store L2) + **W2 实盘模拟通用件** (手动, /api/v3/paper/*, 各策略共用)。机构跟随设计 = analysis/institution_follow_strategy_design_20260702.md。原则不变:
 - 北极星目标仍是**主升浪猎手** (episode-first 结果倒推: 找赢家 episode → 反推 PIT 入场/持有/出场特征 → 含成本 OOS 裁决)。详见 `docs/MASTER_TOPLEVEL_DESIGN.md` §5 (蓝图, 未实现) + `analysis/zhushenglang_hunter_plan_20260617.md` (历史方案, 重建参考)。
 - **D1 Ground Truth 已 archive** (rally/macd episode GT parquet 在 `data/archive/purge_processed/`); edge 重启时从 raw K线**重新生成** (不复用旧 GT)。
 - 重建 edge 必守创世层死亡条款 + 四地基不变量 + 含成本可交易裁决 (R1/R2): IC≠可赚钱; 回测须 execution-aware (涨跌停/T+1 open/非对称成本/容量)。
