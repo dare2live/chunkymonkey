@@ -105,6 +105,7 @@ tables:
   dim_trading_rule: L1_foundation
   dim_trading_session: L1_foundation
   fact_top10_holder_period: L1_foundation
+  dim_stock_segment_daily: L1_foundation   # 2026-07-02 B1 股票分层 (市值/换手当日分位段+PIT行业, services/segments.py, 策略cell单一计算点)
   price_kline_qfq_tushare: L1k_kline_intermediate   # 2026-06-15 tushare 前复权 K线 (回测主源, §4.3; build_price_kline_qfq_tushare.py 从 raw_tushare_daily×adj_factor 建 2019+)
   # ── edge 层第一批 (2026-07-02 机构画像引擎 promote, 探索弧 inst_follow E1/E2; feature_store 库) ──
   period_windows: L2_feature               # 披露窗口三方案价 (institution_profile.build_period_windows)

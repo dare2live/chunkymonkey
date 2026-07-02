@@ -23,3 +23,10 @@ def run_process(ctx: PipelineContext) -> None:
     if not ctx.skip_sync:
         ctx.run_script("backend/scripts/build_dc_industry_view.py",
                        degraded_msg="东财行业物化失败 — serving 行业将 stale (消费方 LEFT JOIN 退化 NULL)")
+
+    # 股票分层 dim_stock_segment_daily 增量 (B1 2026-07-02 用户定调"前置在所有策略之前":
+    #   市值/换手当日分位段 + PIT 行业, 所有策略 cell/画像/筛选器的单一计算点)
+    def _seg_latest():
+        from services.segments import build_latest
+        ctx.log(f"[segments] {build_latest()}")
+    ctx.step(_seg_latest, degraded_msg="股票分层增量失败 — segment 标签将 stale (策略 cell/筛选器缺当日)")

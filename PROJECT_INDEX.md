@@ -13,6 +13,8 @@
 
 ## [INDEX] 最近增量 (只留 7 天, 历史在 analysis/project_index_changelog_archive_20260611.md + ledger)
 
+- **2026-07-02 B1 股票分层模块 (基础前置件第一件)**: 用户定调"前置在所有策略之前=数据变量加工基础工作"。services/segments.py + config/segments.yaml (分位法规则真相源: 市值 micro/small/mid/large 20-30-30-20 + 换手三段 — 分位自适应跨年市值漂移, 非绝对阈值) + dim_stock_segment_daily (smartmoney L1, **833万行/1816交易日 2019+全史**) + PIT行业(v_sw_industry_pit as-of) + pipeline process 步增量(build_latest 幂等) + get_segments as-of 查询 helper。**单一计算点**: 策略cell/画像维度/edge筛选器全从此表取, 禁各自算(不变量#4)。概念(东财)不进本表 — 多对多标签非互斥分层, 消费方直查 dc_member (奥卡姆修正)。验收: 分位分布精确(最新日 1038/1556/1557/1038=20/30/30/20) + 行业覆盖100%(缺失0/5189) + face validity(茅台=large/食品饮料) + 2单测(区间边界语义/as-of回退) + roster/data_layers 同步登记(W1反例已吸取)。
+
 - **2026-07-02 Phase A 机构档案 API 完成 (总体路线第一站)**: institution_profile 加读侧 API (list_profiles 排名[order_by 白名单防注入]/get_profile 档案[总体+31维度+episode时间线]/recent_signals 建仓信号流[明星机构近期新开仓=跟随入口]) + routers/institution_profile (/api/v3/inst/profiles[/{holder}]/signals) + main 注册。架构决策: 档案画像=模块自有产物, 按 paper_portfolio 模式 router→service成员读函数→库 (不强行套 PIT entity 模型; **PIT 边界**: 档案展示"截至今天全部战绩"给用户手选=合法[今日决策今日信息], D 阶段回测选机构必须 expanding PIT 评级禁用本读侧 — 红线注释入代码)。真实 API 全链实测: Top5 排名(徐刚 23.3%/84%)/徐开东档案(31维度+126 episodes)/近60天信号流含真实可跟随信号(瑞众人寿 06-08 新进 600388, 战绩 11.3%/n=91)/404 正常。验证: 4 单测(low_sample过滤/注入防线/契约/信号) + 全量 440 passed + bypass=0 + moth 30/0/0。**下一站: B 基础件 (分层/形态/两融) ∥ C 前端**。
 
 - **2026-07-02 institution_profile 补登 roster (moth 门红修复)**: commit 后 moth 抓 serve-consumer-bypass-zero=1 — institution_profile.py duck_connect 直连被判绕过。裁决(同 06-26 lineage/builder 先例): M3 加工 builder 性质(读 raw/L1 物化 L2 画像, 与 build_price_kline_qfq_tushare 同性质)=合法成员漏登非真泄漏, 补入 data_module_members.yaml。验证 bypass=0 + moth 30/0/0。反例沉淀: **新建加工件必同步登 roster** (W1 漏此步)。
