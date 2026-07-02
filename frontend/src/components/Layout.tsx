@@ -4,7 +4,7 @@ const NAV_ITEMS = [
   { to: "/institutions", label: "机构档案", enabled: true },
   { to: "/paper", label: "实盘模拟", enabled: true },
   { to: "/workbench", label: "工作台", enabled: false },
-  { to: "/market", label: "市场感知", enabled: false },
+  { to: "/market", label: "市场感知", enabled: true },
 ];
 
 export function Layout() {

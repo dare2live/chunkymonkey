@@ -38,7 +38,7 @@ member_service_files:
   - market_schema.py         # DDL
   - market_read.py           # K线读 helper (serving 内部)
   # etf_db.py 已删 2026-06-29 (批3d: ETF 子系统整体退役物删)
-  - experiment_store.py      # L4 store
+  - holdout_guard.py         # D 阶段机制门 (2026-07-02 D1 前置: holdout 触碰预算+预注册判据, experiment_store.holdout_touch_log; 原 stale 条目 experiment_store.py 文件不存在已删, 真实建库脚本=scripts/build_experiment_store.py 非 services)
   - security_master.py       # 身份/dim 真相源
   - universe.py              # 交易日历级硬真相源 (不能依赖派生读层)
   - kline_source.py          # K线写侧 normalize

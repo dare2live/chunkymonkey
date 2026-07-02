@@ -141,6 +141,10 @@ app.include_router(paper_portfolio_router, prefix="/api/v3/paper", tags=["paper_
 from routers.institution_profile import router as inst_profile_router
 app.include_router(inst_profile_router, prefix="/api/v3/inst", tags=["institution_profile"])
 
+# 市场感知 (C4, 2026-07-02: 资金热力/RS轮动/悄悄流入流出/情绪温度/退潮预警 — 感知层只描述现状, 零买卖暗示)
+from routers.market_pulse import router as market_pulse_router
+app.include_router(market_pulse_router, prefix="/api/v3/pulse", tags=["market_pulse"])
+
 # (退役 routers: market_perception/bestchoice/perception_legacy/signals_v2 等 2026-06-14~28 删, 详 ledger + git史)
 
 # 设置选项相关的API (比如开启/关闭功能模块)

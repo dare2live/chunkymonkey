@@ -1,0 +1,22 @@
+# Holdout 使用纪律 (D 阶段 §2.1 立法, 2026-07-02)
+# owner=analysis/master_implementation_plan_20260702.md §2.1 + backend/services/holdout_guard.py (执法)
+#
+# 为何存在 (过拟合死): "根据测试结果做优化迭代"若发生在 holdout (2025-06→今) 数据上,
+#   第二次使用起 holdout 退化为验证集, 最终数字系统性乐观。
+# 三条法:
+#   1) 迭代优化只在 train 窗内做 — assert_holdout_untouched 守训练/调参路径;
+#   2) holdout 触碰预算 ≤ touch_budget, 每次触碰前预注册判据 (先写"什么算过"再看数字),
+#      触碰记录进 experiment_store.holdout_touch_log;
+#   3) 最终整合用的参数必须在最后一次 holdout 触碰之前冻结 (freeze_rule)。
+
+holdout_start: "20250601"   # train/holdout 切分日: 训练/调参数据 data_end_date 必须 <= 此日; > 即 raise
+touch_budget: 3             # holdout 全局触碰预算 (跨 experiment 共享 — holdout 是同一份数据, 谁 touch 都在烧)
+require_preregistration: true  # touch 前必须已有未消耗的预注册判据行 (先写判据再看数字, 防事后挪门柱)
+
+# freeze 规则 (当前 = config 文本约定; 机械执法点 = 转正门 record_verdict prereg_hash, edge 重建时接线):
+#   最终整合 (live/verdict) 采用的全部参数, 必须在最后一次 holdout touch **之前**冻结并留档
+#   (criteria_sha256 即冻结判据指纹)。touch 之后再改参数 = 该 touch 作废, 重新消耗预算。
+freeze_rule: >-
+  final integration params must be frozen (criteria registered, sha256 pinned)
+  BEFORE the last holdout touch; any param change after a touch invalidates that
+  touch and consumes another budget unit.

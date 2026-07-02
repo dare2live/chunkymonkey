@@ -109,6 +109,7 @@ databases:
       - fact_consumer_alpha_ic_scan*
       - pipeline_artifact_lineage*
       - experiment_pit_audit_log*
+      - holdout_touch_log*  # 2026-07-02 D1 前置: holdout 纪律触碰账本 (services/holdout_guard.py, §2.1)
 
   tushare_raw:
     path: data/tushare_raw.duckdb

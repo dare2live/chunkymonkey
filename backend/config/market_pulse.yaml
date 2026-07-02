@@ -16,7 +16,11 @@ quiet_px_band_pct: 1.0        # |pct_change| < 1% 视作"价格没动" (设计�
 quiet_min_net_amount: 0       # 流入: net_amount > 该值; 流出: net_amount < -该值 (单位=元, 0=任何净流入/出)
 
 # ── 全市场快照 ──
-top_n_sectors: 3              # top/bottom N 板块进 mart_market_pulse_daily.top_sectors_json (aleabitoreddit top3/bottom3)
+top_n_sectors: 3              # top/bottom N 板块进 mart_market_pulse_daily.top_sectors_json (aleabitoreddit top3/bottom3);
+                              # C4 /pulse/warnings 复用同值做"跌出 RS top-N"预警线 (同一 top3 语义, 不另开阈值)
+
+# ── C4 退潮预警 (routers/market_pulse.py 消费; 描述性预警线, 非买卖信号) ──
+warning_quiet_outflow_days: 3 # dc 链连续悄悄流出天数 >= 该值 进退潮预警卡 (C4 契约 2026-07-02 默认, 待用户调参)
 
 # ── data_start (分链, 全部对齐 sync_registry.yaml 实测源起点, 不外推) ──
 data_start_dc: "20240102"     # from sync_registry: moneyflow_ind_dc data_start (E8 探底实测)

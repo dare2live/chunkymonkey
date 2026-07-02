@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-06-28 10:31:05 CST
+**Snapshot 时间**: 2026-07-02 14:10:46 CST
 
 ## 主线状态
 
@@ -44,28 +44,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `468a843e chore: db_compact 缩盘 + moth size-band 下限更新 (纯数据平台 3.0->0.34G)` |
-| 最近 24h commits | 35 |
-| 未 commit 文件 | 5 |
+| HEAD | `c22ec626 doc: 市场感知 follow-the-money 架构设计 + perception 残留清 (audit measured)` |
+| 最近 24h commits | 18 |
+| 未 commit 文件 | 2 |
 
 ### 最近 10 commits
 
 ```
-468a843e chore: db_compact 缩盘 + moth size-band 下限更新 (纯数据平台 3.0->0.34G)
-68a37c0a feat: 重建 schema DDL 策略 trim — init 不再重建策略 mart (smartmoney 70->42 纯数据平台)
-181768a1 feat: 重建 U2/U5 数据表物删 — 策略 mart/事件/处理表 (smartmoney 70→44 纯数据平台)
-a078351e feat: 重建 = 白名单裁剪 — 项目降为纯数据平台 (git rm ~245 策略/serving 文件)
-8c6f8909 feat: 加工层清空 U4 — 财务 derived 退役
-e909e548 feat: 加工层清空 U3 — 主升浪 D1 GT + 技术 stage 退役
-0320a505 feat: 加工层清空 U1 — L2 特征 panel 退役 (用户最严: 只留原始+四地基)
-95a1bb4e doc: 数据模块设计文档更新到最新 — 四地基全 DONE + §9 Stage E 完成 (核对 workflow wajh30veq)
-973842f1 chore: 刷新 SESSION_HANDOFF 快照 (§9 Stage E 完成 = 四地基全 DONE)
-a6b48eea feat: §9 Stage E 物删 — 4 dim 迁 reference 完成不变量#2 = 四地基全部 DONE
+c22ec626 doc: 市场感知 follow-the-money 架构设计 + perception 残留清 (audit measured)
+e37337f4 feat: B1 股票分层模块 — 833万行全史分层标签, 策略cell单一计算点 (measured)
+9e092351 feat: Phase A 机构档案 API — 排名/档案/建仓信号流 (总体路线第一站, measured)
+81563e40 fix: institution_profile 补登数据模块成员 roster — moth serve-bypass 门红修复 (measured)
+769089b6 doc: 文档保鲜 — changelog 滚动归档 + 正文/goal/地图同步 W1-W2 与总体路线 (audit measured)
+ca1a2707 doc: 总体实施方案顶层定稿 — 主升浪方法论评估+形态/分层架构裁决+全局路线 (audit measured)
+46b854a7 feat: W2 实盘模拟通用件 (手动版) — 各策略共用, 按地基构建 (SERVE第一个正式消费方)
+7787a22e feat: W1 机构画像引擎 promote — edge 第一个正式模块 (探索弧→backend/services)
+b29956e3 doc: 机构跟随探索弧 E1/E2 完成 — episode构建器+收益画像 (sandbox, verdict落库)
+b8ff4cd2 doc: 机构跟随策略设计定稿 v1 — 数据地基实测 + 成本三方案 + episode模型 + execution-aware跟随
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**5 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**2 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

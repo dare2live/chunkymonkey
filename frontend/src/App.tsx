@@ -2,6 +2,7 @@ import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { InstitutionDetailPage } from "./pages/InstitutionDetailPage";
 import { InstitutionsPage } from "./pages/InstitutionsPage";
+import { MarketPage } from "./pages/MarketPage";
 import { PaperPage } from "./pages/PaperPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 
@@ -16,7 +17,7 @@ export function App() {
           <Route path="/institutions/:holder" element={<InstitutionDetailPage />} />
           <Route path="/paper" element={<PaperPage />} />
           <Route path="/workbench" element={<PlaceholderPage title="工作台" />} />
-          <Route path="/market" element={<PlaceholderPage title="市场感知" />} />
+          <Route path="/market" element={<MarketPage />} />
           <Route path="*" element={<Navigate to="/institutions" replace />} />
         </Route>
       </Routes>

@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-02 18:13
+> Snapshot: 2026-07-02 19:21
 
 ## 1. 入口面
 
@@ -32,6 +32,7 @@
 | router | prefix | 端点数 |
 |---|---|---|
 | institution_profile | `—` | 3 |
+| market_pulse | `/api/v3/pulse` | 5 |
 | ops_manual_run | `/api/v3/ops` | 3 |
 | paper_portfolio | `/api/v3/paper` | 5 |
 | v3_config | `/api/v3` | 1 |
@@ -162,14 +163,14 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 4,768 | calls 边 6,160 | imports 边 1,104 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 4,913 | calls 边 6,255 | imports 边 1,134 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
-| services.duck_adapter | 31 |
-| services.database_manifest | 10 |
+| services.duck_adapter | 32 |
+| services.database_manifest | 11 |
 | services.db | 9 |
 | services.pipeline_manifest | 7 |
 | services.lineage.model | 5 |
@@ -188,8 +189,8 @@
 
 | 文件 | 调用方文件数 |
 |---|---|
-| backend/services/duck_adapter.py | 23 |
-| backend/services/database_manifest.py | 9 |
+| backend/services/duck_adapter.py | 24 |
+| backend/services/database_manifest.py | 10 |
 | bestchoice/compute.py | 9 |
 | backend/services/pipeline/context.py | 5 |
 | backend/services/pipeline_manifest.py | 5 |
@@ -197,9 +198,9 @@
 | backend/services/lineage/model.py | 4 |
 | bestchoice/formula_engine.py | 4 |
 | bestchoice/scripts/formula_parameter_search.py | 4 |
+| frontend/src/format.ts | 4 |
+| frontend/src/hooks/useFetch.ts | 4 |
 | backend/services/data_access/keys.py | 3 |
-| backend/services/notification/base.py | 3 |
-| frontend/src/format.ts | 3 |
 
 ### LOC top 10 (God module 候选)
 
@@ -218,7 +219,7 @@
 
 ## 5. 概览
 
-- chunkyctl 子命令 10 | launchd 任务 1 | router 4 (端点 12)
+- chunkyctl 子命令 10 | launchd 任务 1 | router 5 (端点 17)
 - sync_registry 数据域 42
 - 产表 44 (多 writer 12)
 
