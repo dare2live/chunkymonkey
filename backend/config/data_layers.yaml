@@ -89,6 +89,8 @@ table_health_overrides:
   # holder/inst 季频 fact (L1_foundation 默认 on-demand, 这里给 quarterly 保留季频监控不误日红)
   fact_top10_holder_period:        {expected_freshness: quarterly, sla_hours: 2280}
 tables:
+  raw_tushare_margin_detail: L0_source  # 2026-07-02 B3 两融个股日频 (sync_registry margin_detail 域, D2 L1 叠加层原料)
+  raw_tushare_margin: L0_source         # 2026-07-02 B3 两融交易所汇总 (B4 大盘水位原料)
   raw_aif10_peer_valuation: L0_source
   raw_aif10_valuation_quantile: L0_source
   raw_org_holding_aif10: L0_source  # 2026-06-24 补tag (aif10机构持仓明细raw镜像, 前会话漏登致data-layer-integrity FAIL)
@@ -106,6 +108,9 @@ tables:
   dim_trading_session: L1_foundation
   fact_top10_holder_period: L1_foundation
   dim_stock_segment_daily: L1_foundation   # 2026-07-02 B1 股票分层 (市值/换手当日分位段+PIT行业, services/segments.py, 策略cell单一计算点)
+  mart_sector_pulse_daily: display          # 2026-07-02 B4 市场感知 板块×日 两链并列 (services/market_pulse.py, Type A; dc资金流/quiet streak + sw RS/广度/涨跌停)
+  mart_market_pulse_daily: display          # 2026-07-02 B4 市场感知 全市场×日 (大盘水位/涨跌停总量/炸板率/top板块快照)
+  fact_stock_form_daily: L1k_kline_intermediate     # 2026-07-02 B2 形态识别 (services/technical_states, 5正交轴+cell标签+突破事件+可成交flags; Type A 描述层无方向claim)
   price_kline_qfq_tushare: L1k_kline_intermediate   # 2026-06-15 tushare 前复权 K线 (回测主源, §4.3; build_price_kline_qfq_tushare.py 从 raw_tushare_daily×adj_factor 建 2019+)
   # ── edge 层第一批 (2026-07-02 机构画像引擎 promote, 探索弧 inst_follow E1/E2; feature_store 库) ──
   period_windows: L2_feature               # 披露窗口三方案价 (institution_profile.build_period_windows)

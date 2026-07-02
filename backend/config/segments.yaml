@@ -18,3 +18,9 @@ turnover_segments:        # 按换手率 turnover_rate 当日分位
 
 industry_source: v_sw_industry_pit   # 行业=申万L1 PIT (in_date<=t<out_date)
 data_start: "20190102"               # 对齐 K线/daily_basic 窗口
+
+vol_regime:               # 波动 regime 轴 (2026-07-02 B2 设计 H8: 单一计算点落 B1, 形态模块只消费)
+  kline_table: price_kline_qfq_tushare   # K线真相源表 (market 库, 代码 ATTACH 别名 mkt)
+  rv_return_window: 20    # 锚: 已实现波动率 = 滚动 20 交易日 (~1月) 收益 std (低波异象文献月度惯例)
+  rv_pctile_window: 120   # 锚: 半年滚动分位, 对齐 pctile 家族 (F1 §5: rolling 分位, 禁全样本分位=未来信息)
+  threshold: 0.5          # 锚: 中位二分 low_vol/high_vol (B2 任务契约取整值)

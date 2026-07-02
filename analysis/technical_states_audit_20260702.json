@@ -1,0 +1,493 @@
+{
+ "meta": {
+  "date": "2026-07-02",
+  "what": "旧 technical_states (a078351e~1, 2099行) 对抗审查裁决",
+  "workflow": "wf_30c3ac16-771, 19 agents, 5 lens + 逐finding怀疑者实测",
+  "verdict_counts": {
+   "confirmed": 14,
+   "refuted": 0,
+   "low_medium": 31,
+   "keeps": 40
+  }
+ },
+ "confirmed": [
+  {
+   "module": "classifier.py:resample+classify_multi_timeframe (尾部部分周期bar)",
+   "issue": "resample 末尾 flush 会把当前未闭合的周/月输出成一根部分周期 bar → live 逐日重算时决策日 t 的 weekly/monthly 主态取自该部分 bar, 批量回填时同一日期取自上一根已闭合周期 bar, 同一 (股, 日期) 两种口径不一致 — 违反红线'加未来 bar 不许改历史输出'(决策日被改写), 造成 train/serve skew",
+   "severity": "high",
+   "evidence": "executed: 30 个截断点实测, classify_stock(数据到t) 在日期 t 的 weekly 主态与全量批算不同 = 7/30 (23%), monthly = 14/30 (47%); 第二独立采样 40 点 = 15%/40%。样例 2019-08-27 live monthly=None vs batch='上升通道'; 2019-06-12 live weekly='中继平台' vs batch='低位横盘'。内部历史日期 (非截断边界) 1250 个 common date 0 diff — 不稳定只发生在决策日, 但那正是实盘用的那天。注意: 两种口径都只用 <=t 信息, 不是未来信息泄漏, 是输出不可复现+口径分裂。另 features.py:5 docstring '周bar用该周完整数据' 对尾 bar 为假",
+   "recommendation": "fix",
+   "fix_sketch": "统一为'只用已闭合周期 bar': resample 丢弃尾部部分 bar (或打 partial 标记且 _asof 跳过), live 周三看到的 weekly = 上周五闭合 bar, 与批量回填 100% 一致; 节假日缩短周 (最后交易日=周四) 用交易日历判闭合",
+   "verdict": {
+    "verdict": "CONFIRMED",
+    "method": "executed_code",
+    "evidence": "实测复现 (独立采样, 真实 tushare qfq K线 5 股 2019-2026, 每股 30 随机截断点 = 150 点): live=classify_stock(数据到t) vs batch=classify_stock(全量) 在决策日 t 的主态不一致率 — weekly 34/150=23% (与指控者 23% 完全一致), monthly 57/150=38% (指控者 47%/40%, 同量级), daily 0/150 稳定。因果机制直接锁定: 按截断日类型拆分, t=周收盘日时 weekly diff 0/26, t=周中时 34/124=27% — 只有部分周期 bar 在场才分裂。机制单例实测 (600519, t=2025-06-09 周一): resample 尾部 flush (features.py:49-50 无条件输出未闭合周期) 产出 1 天部分周 bar 日期=2025-06-09 (成交量仅为最终整周的 21%, vol_ratio/zvol 失真), live _asof 取该部分 bar, batch 该周 bar 日期=2025-06-13>t 被跳过 → 取上周闭合 bar 2025-06-06; monthly 同理 (live 取部分月 bar vs batch 取 2025-05-30)。内部历史日期 weekly diff=0, 证实不稳定只发生在决策日 — 与指控一致。指控者对代码路径无误读 (classify_stock→compute(resample_rule)→resample flush→_asof 链路真实可达, config timeframes weekly:W/monthly:ME 确实启用 resample); 其\"两种口径都只用<=t信息, 非未来值泄漏而是输出不可复现/口径分裂\"的定性准确, 且确实违反红线\"加未来bar不许改历史输出\"(决策日 t 的 weekly/monthly 在追加未来 bar 后被改写)。resample 自身 docstring \"每周期闭合后才出bar\" 与实现矛盾, features.py:5 \"周bar用该周完整数据\" 对尾 bar 为假 — 均读码证实。指控者数字真跑过的可信度高 (我用不同随机种子+不同股票池独立复现出几乎相同比率)。附加发现 (不影响裁决, 供重建参考): 截断实验暴露第二个独立的重算不稳定机制 — features.compute 的 `if n < warmup+er_win+5: return {}` 早退使 bar i 的特征存在性依赖序列总长 n 而非仅 i (785/785 内部 monthly diff 全由此致: 短史时整个 monthly 表为空, 数据变长后历史日期\"追溯长出\"月线主态), 重建时特征有效性应只依赖 bar 下标, 与部分 bar 修复一并处理。修法建议 (只用已闭合 bar + 交易日历判闭合) 与实测机制吻合, 合理。实验脚本: /private/tmp/claude-501/-Users-dp-Documents-M-stock-chunkymonkey/28476a94-1ee5-4484-bd5c-8c3cf84aae60/scratchpad/exp_partial_bar/{run_exp.py,classify_interior.py,mech_demo.py}"
+   }
+  },
+  {
+   "module": "classifier.py:resample (部分周期bar的量聚合)",
+   "issue": "尾部部分周期 bar 的 volume=部分天数求和, 但 vol_ratio/zvol 基准是完整周期量 → live 周中 weekly vol_ratio 系统性低估 (周一仅~20%), '放量突破'类周线门在 live 周中几乎不可能触发, 批量回填却无此偏置",
+   "severity": "high",
+   "evidence": "executed: resample 构造实测 — 完整周量 500 vs 周一~周三部分周 bar 量 300 (60%); 该 bar 直接进 features.compute 的 vol_ratio 分子。是上一条 finding 的量维度子问题, 同一修法一并消除",
+   "recommendation": "fix",
+   "fix_sketch": "随上条修复自动消除 (丢部分 bar 后不存在部分量); 若选择保留部分 bar 方案则必须按已过交易日数折算量基准",
+   "verdict": {
+    "verdict": "CONFIRMED",
+    "method": "executed_code",
+    "evidence": "全部实测 (脚本 /private/tmp/claude-501/.../scratchpad/exp_partial_vol.py, 跑旧代码本体 features.resample/compute + classifier.classify_multi_timeframe + 真实 config technical_states.yaml)。E1 resample 直测: 日量恒定100, 数据止于周一→尾部周bar被 emit 且 vol=100 (完整周500的20%); 止周二=200/周三=300 — 复现指控者\"500 vs 300 (60%)\"数字, 其实测为真。E2 端到端 compute(weekly, warmup=60, vol窗=10): 尾bar vol_ratio 周一0.179/周二0.357/周三0.582 vs 周五完整0.860; 20随机种子均值: 周一0.195 vs 周五1.009 — \"周一仅~20%\"量级实测成立; zvol 更极端 (周一 -17.0 vs 周五 -1.5)。E3 live vs 回填: 同一周一日期, live 视角 asof 匹配部分bar(vol_ratio 0.179), 回填视角匹配上周五完整bar(0.860) — 不是同一根bar, 加未来日改变了该历史日的 weekly 特征 (违\"加未来bar不改历史输出\"红线); 扫9个历史周一, weekly 主态级不一致 1/9 (特征级偏差100%, 态级翻转视场景)。E4 门效应 (config 放量突破.量比 高于1.75 锐度5.9): 完整突破周 vol_ratio=3.0 → gate 0.9994; 周一即使日量已3x (部分bar vol_ratio=0.6) → gate 0.0011; 正常周一0.2 → 0.0001。状态分=各门乘积, 单此门就压到远低于最低分0.1168 → live 周初\"放量突破\"周线态确实几乎不可能触发。证伪尝试均失败: (a) grep 全模块无任何丢尾bar/[:-1]/折算逻辑, compute 循环含最后bar, _asof 会消费它; (b) 单测 test_pit_no_lookahead 只测 daily 无 resample, 不护此路径; (c) resample docstring 自称\"每周期闭合后才出bar\"但代码尾部 flush 未闭合周期 — 实现与自述矛盾, 非有意设计。两处微小不精确不影响裁决: resample 函数实际在 features.py 非 classifier.py (但调用路径 classifier.classify_stock→compute→resample 真实存在); 部分bar本身只用<=t信息非未来泄漏, 偏差本质是\"部分量 vs 完整周基准\"的分子分母不匹配 + live/回填不对称, 与指控表述一致。修法建议 (随上条丢部分bar自动消除, 或按已过交易日折算量基准) 逻辑成立。"
+   }
+  },
+  {
+   "module": "classifier.py:state_scores L69-72 + _gate L56 + yaml:状态",
+   "issue": "sigmoid 门连乘使分数量纲随条件数(3/4/5)和平缓cap变化, 9 态分数系统性不可比 — argmax dominant、coverage 门、softmax membership 全部继承该偏置",
+   "severity": "high",
+   "evidence": "executed (exp1): 每条件恰在阈值(gate=0.5)时 3条件态分=0.125 vs 5条件态=0.0312 (4x惩罚); 每gate=0.6 时 3条件 0.216 covered=True 而 5条件 0.078 covered=False; 平缓判断的 gate 上限=sigmoid(k*thr)<1 实测各态 max_score: 高位滞涨 0.531 / 中继平台 0.706 / 低位横盘 0.769 vs 其余 1.0 — 完美满足的高位滞涨(0.531)会输给 66% 满足的 3 条件态(0.665), τ=0.05 下 membership 比 e^2.68≈14.6x 偏向后者。缓解: 阈值/锐度是 Optuna 按此代码联合调的, 偏置被部分吸收(合成数据 dominant 分布与 yaml meta 记录大体一致), 但 config 声明的'加状态=只改 yaml'承诺被打破: 给某态加一条条件即静默压缩其分数量纲",
+   "recommendation": "fix",
+   "fix_sketch": "态分改几何均 (∏g)^(1/k) 并除以该态理论 max_score(平缓cap校正), 使各态严格 [0,1] 可比; 改后 τ 与 最低分 必须重调 (它们是 raw 乘积量纲下的调参产物)",
+   "verdict": {
+    "verdict": "PARTIAL",
+    "method": "executed_code",
+    "evidence": "全部实测 (原样 import 旧 classifier.py+features.py+yaml, 见 scratchpad/skeptic_expA_reproduce.py / skeptic_expC_feasibility.py / skeptic_expD_realdata.py)。【复现成立】(1) 阈值处 gate=0.5: 3条件态 prod=0.125 vs 5条件 0.03125, 逐态实测精确复现; (2) 每gate=0.6: 0.6^3=0.216>最低分0.1168 covered, 0.6^5=0.078<0.1168 not covered, 复现; (3) argmax/coverage/softmax 确实全消费 raw 乘积 (classifier.py L113-125 读码+实测), 偏置结构性继承为真; (4) '加条件=静默压缩量纲'为真, config 承诺被打破。【实测数字修正】指控的 max_score 是逐条件独立最大化, 非共享特征联合最大化: 真实联合 max = 高位滞涨 0.503 (非0.531) / 中继平台 0.655 (非0.706, 漏了 pctile 双门带耦合); '其余1.0'错 — 缩量上涨 0.844, 缩量回踩仅 0.245 (比指控更糟, 但指控漏测)。【旗舰场景被证伪】'完美高位滞涨0.531 输给66%满足3条件态0.665 / membership 14.6x 偏向': 9态读同一7特征, 该组合不可行 — 近完美滞涨区 (pctile>=0.95,|slope|<=0.5%,|mom|<=1%) 20000 样本 dominant 翻转 0/20000, 竞争态区内最高分仅 0.24 (远够不到0.665, 因 slope≈0/mom≈0 同时压死所有3条件竞争态的门); 14.6x 是把不同特征向量下的分数硬凑一起算的, 运行时不发生。【真实数据残余影响 (300股/436,727 bar 原 pipeline 全跑)】pipeline 保真: dominant 份额复现 yaml meta (中继平台8.28% vs 记录8.4%, 放量下跌0.55% vs 0.57%, 缩量回踩0.01%) — Optuna 联合调参确实吸收了大部分偏置, '系统性不可比→全部继承'的运行时严重度被夸大; 但残余非零: covered bar 上 raw vs 几何均 argmax 翻转 8.63%, vs /max_score 翻转 11.07%, 存在真·质量倒挂 (例 300392@2019-08-20: 低位横盘每门0.676胜 下跌通道每门0.740, 纯因4条件>3条件); coverage 门按条件数分层通过率 3条件95.9% vs 5条件91.2% (温和不对称, 无饿死)。【修法评估】方向对但低估范围: 不止 τ/最低分要重调 — 全部态阈值/锐度都是 raw 乘积量纲下 Optuna 联调产物; 裸上几何均会复活刻意近死的缩量回踩 (均匀空间 dominant 4.7%→25.3%, 真实数据也现 X→缩量回踩 翻转), 重建时须整体重调。",
+    "corrected": "修正后的正确理解: 数学机制属实 — raw 乘积分数量纲确随条件数(3/4/5)与平缓cap变化, 且 dominant/coverage/softmax 全消费 raw 分数, '给态加条件=静默压缩其量纲'破坏 config 可维护性承诺, 重建时应做每态归一 (几何均+联合max_score校正) 并整体重调全部阈值 (非仅 τ/最低分)。但其严重度定性错误: 这不是运行时'9态系统性错分' — (a) 旗舰反例 (完美滞涨输给66%满足3条件态, membership 14.6x偏向) 在共享特征空间不可行, 实测 0/20000 发生; (b) Optuna 按此代码联合调参已把偏置大部吸收进阈值, 真实A股 43.7万 bar 实测 dominant 份额与 yaml meta 记录一致、5条件态无饿死 (coverage 91.2% vs 95.9%); (c) 真实残余影响 = 8.6~11% 边界模糊 bar 的 dominant 会因归一化翻转 (存在每门满足度倒挂), 属'边界校准偏置+维护性缺陷', 非'全面不可比'。另指控自身'实测'有误: max_score 逐条件独立最大化高估了上限 (真联合值 滞涨0.503/中继0.655), 且漏了 缩量上涨0.844、缩量回踩0.245 两个同样 <1 的态。"
+   }
+  },
+  {
+   "module": "classifier.py:classify_stock/_asof L146-176 + features.py:resample L49-50",
+   "issue": "resample 把当前未完结的周/月部分 bar 也输出 → (a) 加未来 bar 会改开放周期内历史日期的输出(违项目 PIT 红线明文) (b) live 视角(截至当日)与全史回算在同一历史日期的 weekly 态 25% 不一致 = train/serve skew, 回测标签复现不了 live 当时的输出",
+   "severity": "high",
+   "evidence": "executed (exp4/exp5, 合成 GBM 序列): 截到周三 T=2023-10-18 vs 加2根未来bar, 历史日 T 的 monthly 由 上升通道→缩量上涨 (868 重叠日中 1 个开放周期日被改写; 完结周期 0 改写); 40 个抽样历史日 live(截至当日) vs 全史回算: weekly 不一致 10/40=25% (样例 2022-06-02 live=缩量上涨 vs 回算=中继平台)。注: 两个视角都只用 ≤t 信息, 无未来泄漏, 是可复现性/一致性缺陷非 leakage",
+   "recommendation": "fix",
+   "fix_sketch": "resample 只输出已完结周期 (丢弃进行中的部分 bar), 周/月确认统一取上一完结周期 (backtest 与 live 天然一致); 若要盘中周线确认, 回测端必须逐日重建同样的部分 bar",
+   "verdict": {
+    "verdict": "CONFIRMED",
+    "method": "executed_code",
+    "evidence": "全部实测 (executed, 非读码推断), 三层实验均复现指控, 无一处可证伪。\n\n[1] 代码路径核实 (非误读): config technical_states.yaml timeframes 确有 weekly={resample:\"W\"}, monthly={resample:\"ME\"}; classify_stock → compute(resample_rule) → features.py resample() L49-50 循环结束后无条件 flush 尾部进行中周期的部分 bar (日期=该周期内最后一个日线日); classifier.py _asof (L160-163) 取最近 ≤d 的周/月 bar → 截断序列的最后一日会命中该部分 bar。相对 import 结构真实可运行 (搭 pkgroot 后 import 成功)。\n\n[2] 最小确定性实验 (常数价格序列, 排除一切数值巧合): 截到周三 2023-10-18, resample(\"W\") 输出部分 bar (日期 2023-10-18, vol=300=3天); 加 2 根未来 bar 后该 bar 消失, 换成日期 2023-10-20/vol=500 的完整 bar → _asof(≤2023-10-18) 在两个运行里命中不同 bar (2023-10-18 部分 bar vs 2023-10-13 上周完整 bar)。机制 100% 坐实: 加未来 bar 改变历史日期 T 命中的周/月 bar。\n\n[3] 扩展不变性 sweep (指控 exp4 独立复现): 4 条 GBM 路径 × 38 个切点 = 152 cuts, 截断 vs +6 未来 bar 对比全部重叠历史日: 26/152 (17.1%) 的切点有历史日输出被改写; 26/26 全部只改切点日 T 自身 (开放周期边界日), 完结周期 0 改写 — 与指控者 \"868 重叠日中 1 个开放周期日被改写; 完结周期 0\" 的模式完全一致。改写字段: weekly 23 / monthly 3 / mtf_aligned 3 (样例: T=2022-11-29 weekly 缩量上涨→上升通道)。这直接违反任务给定项目红线第二句 \"加未来 bar 不许改历史输出\"。\n\n[4] live vs 全史回算 skew (指控 exp5 独立复现, 样本量放大到 276): 3 路径 × 92 抽样日: daily 不一致 0/276=0%; weekly 34/276=12.3%; monthly 204/276=73.9%。weekday 分解精确印证机制: 周五 (周线完结日) weekly 不一致 0/54=0%, 周一~周四 13.0%-19.3% — 只有开放周才 skew, 完结周期两视角天然一致。指控者的 25% (40 样本) 与我的 12.3% (276 样本) 同量级同方向, 差异是抽样波动; 且 monthly skew (73.9%) 远比指控书面报告的更严重 (部分月 bar 的 vol=sum 只累计已过天数 → vol_ratio/zvol 系统性压低, 态判偏移)。\n\n[5] 证伪尝试全部失败: (a) 非误读代码路径 — 见[1][2]; (b) 指控者对 leakage 定性诚实 — 其注明 \"两视角都只用≤t信息, 非 leakage 是一致性缺陷\" 被我实测支持 (daily 0% 不一致; 单次运行内部分 bar 日期=序列末日, _asof(≤d) 对 d<末日 永不命中它, 无未来信息流入), 但 \"加未来 bar 改历史输出\" 这半句红线确实被违反 (17.1% 切点); (c) 无 config-vs-hardcode 误判成分; (d) 其 \"实测\" 真跑过 — scratchpad 已存在其搭的 pkgroot + __pycache__, 且我独立重跑定性结果一致。\n\n结论: 指控成立。缺陷定性 = 开放周期部分 bar 导致 (a) 历史输出对未来 bar 不稳定 (仅开放周期边界日, 每次 1 日) + (b) 回测标签在所有非周期末交易日复现不了 live 输出 (weekly ~12-19%, monthly ~74% 不一致) = train/serve skew, 非信息泄漏。其修法方向 (只输出完结周期, 周/月确认统一取上一完结周期) 与实测机制吻合。复现脚本: scratchpad/skeptic_exp1_extension.py / skeptic_exp2_sweep.py / skeptic_exp3_skew.py。"
+   }
+  },
+  {
+   "module": "limits.py:29-30 compute_limit_flags",
+   "issue": "一字板检测公式 `is_one = bool(is_up and ...)` 硬性要求涨停, 一字跌停 (o=h=l=c=down_limit, A股最典型'卖不出'场景) 永远 is_one_word=False; candles.py 的 '一字板跌停' 返回分支经由 limits.py flags 不可达 (死代码), 该日被标成语义空洞的 '一字线'",
+   "severity": "high",
+   "evidence": "executed: compute_limit_flags(o=h=l=c=9.0, down_limit=9.0) → {'is_up_limit': False, 'is_down_limit': True, 'is_one_word': False}; candle_pattern 同 bar → '一字线' 而非 '一字板跌停'; 手动传 is_one_word=True 才得 '一字板跌停' (证明分支死); 单测只覆盖一字涨停 (test_technical_states.py:147-151), 与 bug 逃逸一致",
+   "recommendation": "fix",
+   "fix_sketch": "is_one 改为 (is_up or is_down) and abs(o-c)<=tol and (h-l)<=tol; 一字跌停=持仓卖不出, 对退出/风控建模是关键标志, 补一字跌停单测",
+   "verdict": {
+    "verdict": "CONFIRMED",
+    "method": "executed_code",
+    "evidence": "实测 (加载真实 limits.py/candles.py 文件运行, stub 掉 services.data_access.keys 依赖, 未改任何被测代码), 指控全部证据复现且经受住了我的证伪尝试:\n\n[1] 复现指控实测: compute_limit_flags(dates=['2024-01-05'], o=h=l=c=9.0, up_limit=11.0, down_limit=9.0) → {'is_up_limit': False, 'is_down_limit': True, 'is_one_word': False} — 与指控者输出逐字段一致, 其\"实测\"是真跑了。\n\n[2] 死分支实测: 用上述 flags 喂 candle_pattern(9,9,9,9) → '一字线'; 手动传 is_one_word=True, is_down_limit=True → '一字板跌停'。即该分支只有绕过 limits.py 手工传参才可达。\n\n[3] 结构性不可达穷举: 41 个价格点 × up_limit∈{11.0,None} × down_limit∈{9.0,None} 全网格扫 compute_limit_flags, 找到 is_one_word=True 且 is_up_limit=False 的组合 = 0 个。根因是 limits.py:29 `is_one = bool(is_up and ...)` 布尔 AND 硬绑涨停。因此 candles.py:24 的 '一字板跌停' 与末端 '一字线' 两个 else 分支经 limits.py 供给路径永不可达。\n\n[4] 板块 tier 全覆盖: ST ±5% (c=9.5,dl=9.5) 和创业板 ±20% (c=8.0,dl=8.0) 一字跌停均 is_one_word=False → '一字线'。\n\n[5] 特征面污染: enrich_features 对一字跌停日写 is_one_word=0.0, 下游 config 子态规则若按 one_word 计数 (如连续一字板) 同样漏掉\"卖不出\"场景。\n\n[6] 单测缺口证实: grep 全测试文件, '一字板跌停' 和 'is_down_limit' 均 0 命中; test_limits_flags_and_enrich (144-153行) 只测一字涨停; candle_pattern 测试 (207行) 的 '一字板涨停' 是手工传 flags。与 bug 逃逸模式一致。\n\n证伪尝试均失败: (a) \"别处另算 is_one_word?\" — grep 全模块, 唯一生产者是 limits.py, 无替代 wiring; (b) \"刻意窄定义非 bug?\" — limits.py:19 docstring 确实把一字板定义为\"涨停且开=高=低=收(买不进)\", 但 candles.py 模块头明言特判目标是\"涨跌停一字板\"(双向) 且返回契约列明 '一字板跌停', 两模块契约自相矛盾 = 缺陷而非一致设计; (c) 非 PIT/config 误判 — 指控与泄漏/hardcode 无关, 不适用该类翻案。\n\n唯一轻微缓解 (不改判): 一字跌停日经 candles.py:26 rng<=c*无波动幅度 兜底仍标 '一字线' 而非误判十字星, 且 is_down_limit=True 单独可用 — 信息未 100% 丢失, 但命名形态与 is_one_word 特征位均丢失\"卖不出\"语义, 对退出/风控建模的指控实质成立。修法建议 (is_up or is_down) 方向正确, 补一字跌停单测必要。"
+   }
+  },
+  {
+   "module": "classifier.py:126-127,174-175 + yaml:205-211 修饰指标",
+   "issue": "全链无'信号日可成交性'标注 (结构缺口): is_one_word/is_down_limit 算出来后除 candle label 外零消费方 (yaml 修饰指标只映射 涨停:is_up_limit); classify_bar/classify_multi_timeframe 输出 {dominant, sub_state, weekly, monthly, entropy, mtf_aligned} 不含任何 can_buy/can_sell/T+1 字段; 子态'涨停突破'恰是下游最会当买点的态, 但一字板(买不进)与换手板(买得进)在态输出层完全无区分 — 且一字板日 vol_ratio 被 proxy 拉到 3.0 更容易判成涨停突破",
+   "severity": "high",
+   "evidence": "executed+read: grep yaml 全文 is_one_word/is_down_limit 仅 211 行 '涨停: is_up_limit' 一处映射; classify_bar 返回 dict (classifier.py:126) 无 limit 字段; enrich_features 对一字板日同样执行 max(vr,3.0)→3.0 (T4 实测)。下游回测若按'涨停突破'当日入场会系统性高估 (一字板成交量≈0 根本买不进)",
+   "recommendation": "fix",
+   "fix_sketch": "重建时态输出层携带可成交标注: signal_day_buyable = not(收盘封涨停) / signal_day_sellable = not(收盘封跌停), 一字板单独标; 或最低限度把三 limit flags 透传进 classify 输出, 让回测消费方无法'看不见'",
+   "verdict": {
+    "verdict": "CONFIRMED",
+    "method": "executed_code",
+    "evidence": "实测 (非读码推断), 全部在 scratchpad 搭包结构真跑旧代码 (exp_limit_tradability.py + exp2b_breakout.py), 指控四个子命题逐条执行验证全成立:\n\n[1] 消费面扫描 (executed grep + 解析 yaml): is_one_word 0 处 / is_down_limit 0 处出现在 technical_states.yaml; is_up_limit 仅 1 处 (修饰指标 '涨停: is_up_limit', 用于子态规则 L224 涨停突破)。py 侧 is_one_word/is_down_limit 消费方 = limits.py(生产) + candles.py(candle_pattern 形参, 仅出 label 字符串) + 测试。指控者的 grep 结论精确无误。\n\n[2] 输出层无可成交字段 (executed): classify_bar 输出 keys 实测 = [covered, dominant, entropy, membership, sub_state]; classify_multi_timeframe 输出 keys 实测 = [daily, daily_sub, entropy, monthly, mtf_aligned, weekly]。零 can_buy/can_sell/limit/one_word/T+1 字段。\n\n[3] 一字板 vs 换手板输出不可区分 (executed, 决定性实验): 突破日特征下, 一字板 (o=h=l=c=11.0 封死, 原 vol_ratio=0.05, is_one_word=True) 与换手板 (10.2 开拉板, 原 vol_ratio=2.5, is_one_word=False) 走完整链 compute_limit_flags→enrich_features→classify_bar, 两者输出 dominant=放量突破 / sub_state=涨停突破 完全相同, membership 最大差 = 0.00000000, 字段集相同 — 买不进的一字板与买得进的换手板在态输出层数学上不可区分。\n\n[4] proxy 拉高效应 (executed 反事实, 比指控更强): 同一一字板日若不做 vol_ratio proxy (保持 0.05) → dominant=缩量上涨/缩量延续, 放量突破 score=0.0000; enrich 后 proxy 到 3.0 → 放量突破 score 0→0.6705, dominant 翻转为 放量突破/涨停突破。即 proxy 不只是'更容易'判成涨停突破, 而是唯一使其判成涨停突破的机制 — 最买不进的一字板日被主动推进下游最会当买点的态。\n\n补充发现 (加重非减轻): context.py/patterns.py/coupling.py 及 classifier.py 全文 grep 'limit' 零命中 — 高层便捷入口 classify_stock (OHLCV→MTF) 根本不接线 compute_limit_flags/enrich_features, limit 修正全靠外部调用方记得手工先 enrich。\n\n对指控的唯一 nuance (不构成推翻): 信息并未被销毁 — enrich_features 确把 is_one_word/is_down_limit 以 float 0/1 写进 feats dict, 且 compute_limit_flags 是 __init__ 导出的公开 API, 勤快的下游理论上可自行 join; 且 limits.py L19 注释显示作者明知'一字板…买不进'。但 __init__ 文档给的产品面 = classify_series/classify_multi_timeframe 输出, 该输出面把可成交性信息全部丢弃, 指控说的'态输出层完全无区分'是准确的。指控者未误读代码路径 (import 是绝对路径 services.technical_states.* 非相对, 不影响结论), 未把 <=t 信息误判泄漏 (本指控与 PIT 无关), 未把 config 参数误判 hardcode。其修法建议 (态输出携带 signal_day_buyable/一字板单独标, 或最低限度透传三 flags 进 classify 输出) 与实测缺口吻合, 重建时应采纳。"
+   }
+  },
+  {
+   "module": "coupling.py:apply_coupling + yaml:边界耦合[互补对称]",
+   "issue": "互补对称自动镜像是隐藏参数联动且 config 现值已违反声明关系: 上升通道.均线斜率=0.68 / 下跌通道=-2.36 (镜像应为 -0.68), D1 调参后两侧已独立, 但滑块微调上升侧会把 tuned -2.36 静默覆盖成镜像值",
+   "severity": "high",
+   "evidence": "executed: apply_coupling({'上升通道.均线斜率':0.70}) → synced={'下跌通道.均线斜率':-0.7}, tuned -2.36 被丢弃; config 现值 0.68/-2.36 实测非镜像",
+   "recommendation": "drop",
+   "fix_sketch": "删自动镜像 mutation; 边界不变量改成 config load 时的只读校验 assert (违反即 fail loud), 不做静默改值",
+   "verdict": {
+    "verdict": "CONFIRMED",
+    "method": "executed_code",
+    "evidence": "[实测·执行] 用旧代码 coupling.py (importlib 独立加载, 无相对 import 问题) + technical_states.yaml 真实 config 复跑: (1) config 现值 上升通道.均线斜率=0.68 / 下跌通道.均线斜率=-2.36, mirror?=False — 声明的 互补对称 关系已被 config 自身违反 (yaml L53/L83); (2) 独立复现指控者实验: apply_coupling({'上升通道.均线斜率':0.70}) → synced 含 下跌通道.均线斜率=-0.7, with_overrides 后 effective config 下跌侧=-0.7, tuned -2.36 被丢弃 — 指控者的 executed 证据是真跑的, 我得到相同输出; (3) 反向更剧烈: 调下跌侧 -2.36→-2.5 会把上升侧 0.68 镜像成 2.5 (3.7 倍漂移); (4) 调用路径非误读: git 史 59e86f74 backend/services/dossier.py:_effective_cfg 真实 serving 路径 = apply_coupling → with_overrides, 前端滑块 override 必经镜像 mutation; (5) D1 独立调参有据: yaml header \"2026-06-21 D1 9态 Optuna 重调 probe_v4_descent 全宇宙5421股\", 两侧锐度亦不同 (75.4 vs 57.8), 镜像规则是 pre-D1 设计假设未随调参更新。证伪尝试全部失败: 路径没误读 (真实 caller 在 dossier.py)、无 PIT/hardcode 误判维度、指控者实测真实可复现。唯一 nuance: \"静默\"略重 — apply_coupling 返回人话 note (\"镜像同步到 -0.7\") 且上传, 但 note 不披露被覆盖的 tuned 原值 -2.36、无校验阻断, 且 cfg 本体 deepcopy 不落盘 (yaml 不被破坏, 只污染会话 effective config) — 均不改变实质缺陷成立。额外佐证 drop+load-time 校验修法: 实测发现 yaml 第 2 条耦合规则 `关系: 有序升` 在代码分支 (互补对称/互斥不重叠/首项高于其余) 中无匹配 = 死规则, override 低位横盘.价格分位=0.9 与中继平台带重叠时 notes=[] 零告警 — load 时只读 assert 可一并根治。实验脚本: /private/tmp/claude-501/-Users-dp-Documents-M-stock-chunkymonkey/28476a94-1ee5-4484-bd5c-8c3cf84aae60/scratchpad/test_coupling_exp.py"
+   }
+  },
+  {
+   "module": "classifier.py:157-158 vs context.py:15-16 (bull/bear 集合)",
+   "issue": "态的多空方向归属在两个文件各 hardcode 一份且语义相左: classifier 说 缩量回踩=bull/中继平台=neutral, context 说 中继平台=bull/缩量回踩不在 — mtf_aligned 与 prior_trend 对同一态方向判断不一致; 且新态加进 yaml 不会进任何集合=静默 neutral, 破坏'加状态=改config不动代码'的设计承诺",
+   "severity": "high",
+   "evidence": "read-only: classifier.py bull={放量突破,上升通道,缩量上涨,缩量回踩} bear={下跌通道,高位滞涨,放量下跌}; context.py _BULL={放量突破,上升通道,缩量上涨,中继平台} — 两份第二真相源实读确认相左",
+   "recommendation": "fix",
+   "fix_sketch": "每个态在 yaml 加 方向: bull|bear|neutral 字段, classifier/context 都读它; 缺字段 = load 时报错非静默 neutral",
+   "verdict": {
+    "verdict": "CONFIRMED",
+    "method": "executed_code",
+    "evidence": "实测 (真加载旧模块 classifier.py/context.py 运行, 非纯读码; 脚本 exp_ctx/run_exp.py): [1] 集合实读与指控完全一致 — classifier.py:157-158 bull={放量突破,上升通道,缩量上涨,缩量回踩} bear={下跌通道,高位滞涨,放量下跌} (行内注释\"中继平台=neutral (整理)\"); context.py:15-16 _BULL={放量突破,上升通道,缩量上涨,中继平台}; 对称差实算: classifier 独有 缩量回踩, context 独有 中继平台。[2] 行为不一致实测: 三框(日/周/月)全判 中继平台 → mtf_aligned=False (neutral); 同一态做前序窗口主导 → prior_trend='升' 且触发 context_state=缩量回踩 — 同一状态在两条链路方向判定相反, 运行复现。对照组三框全上升通道 → aligned=True。[3] 前序10bar全 缩量回踩 (classifier bull 成员) → prior_trend='平', 与 classifier 判 bull 相左, 运行复现。[4] 新态静默 neutral 实测: yaml 注入明确 bear 语义新态'高台跳水'(动量<-20%+破均线), load_config=裸 yaml.safe_load 零校验不报错, classify 正常出 dominant=高台跳水; 三框全该态 → mtf_aligned=False (对照: 三框全下跌通道=True); 前序全该态 → prior_trend='平'。即方向语义静默丢失, 而 yaml 头声明\"加/改状态=改本文件不动代码\"(technical_states.yaml L4) — 承诺确被破坏, 也违项目红线\"判断规则写 yaml 不 hardcode\"。指控无误读: 两集合是模块级常量非 import 混淆, 无 PIT 误判, 确属代码 hardcode 非 config。两点校准 (不改变裁决): (a) 中继平台 的分歧有证据是刻意 per-purpose 而非意外漂移 — classifier 行内注释明示 neutral, context._BULL 含中继平台与 yaml 上下文.前序态:[上升通道,中继平台,放量突破] 一致 (mtf 问\"当前方向\", prior_trend 问\"前序 regime 归属\", 中继平台=升势中的整理, 两答案可各自成立); 但刻意也不豁免\"方向归属双真相源 hardcode + 新态静默 neutral\"缺陷。(b) 缩量回踩 缺席 context._BULL 实际影响≈0: yaml 自述其 pass-1 近死态(全宇宙0.01%,暂占位), 且 _prior_dominant 只读 pass-1 dominant 不读 refined_dominant。修法建议需修正: 单一 '方向' 字段两处共读会改变现行为之一 (中继平台 要么 mtf 变 aligned 要么 prior 变平) — 应在 yaml 每态给两个属性 (方向: bull|bear|neutral 供 mtf 对齐 + 可作升势前序: bool 供 prior_trend/前序态), 或明确接受语义统一并记录行为变化; 缺字段 load 时报错的建议成立 (现状零校验实测确认)。"
+   }
+  },
+  {
+   "module": "yaml:meta.tuned_on (全部阈值来源=无监督9态软可分0.816)",
+   "issue": "调参目标是无监督可分性, 既不度量描述正确性(vs 理论/人工标注)也不度量 forward 价值, 3位小数阈值是伪精度; 且可分性可被拉高锐度 game (锐度 2.6~75.4 无量纲归一, 百分比指标的锐度作用在内部分数量纲上与比例指标不可比); '完美原型'bar 自身态得分仅 0.48~0.77, 人话描述与门实际行为脱节; meta.confirmed_by_owner=false 即未 promote 的探索产物",
+   "severity": "high",
+   "evidence": "executed: 19 个阈值全部人话取整 (0.406→0.4, 15.65→15, -2.36→-2.5, 1.027→1 等), 30 序列×14400 bar 主态一致率 98.44%, 覆盖率 98.56%→98.52% 基本不变 = 小数精度不携带信息; 高位滞涨完美原型得分实测 0.479",
+   "recommendation": "fix",
+   "fix_sketch": "重建时阈值改理论锚定取整值 (实测标签仅变 1.56%, 代价可忽略); 若再寻优, 目标函数换标注 episode 一致率或下游消费效用, 且锐度按单位归一/固定不进搜索空间",
+   "verdict": {
+    "verdict": "CONFIRMED",
+    "method": "executed_code",
+    "evidence": "证伪失败, 指控核心全部在独立实验中复现 (我未复用指控者脚本, 自建 skeptic_meta/ 隔离包 + 独立合成数据 + 独立取整表)。[doc_check] yaml 自证: L6 \"9态 Optuna 重调, 全宇宙5421股软可分0.816, 描述层非forward\" + L12 tuned_on + L13 confirmed_by_owner:false + L33 \"锐度…D1 v4调\"(锐度确在搜索空间); 全模块无任何 episode/人工标注验证痕迹; 理论锚定字段只锚定态的结构(指标选择+方向), 不锚定数值。[实测1-伪精度] 19 个非人话阈值精确计数=19 (与指控者一致, 其实验可信真跑); 独立取整 18 阈值, 40 合成 regime 循环股 ×31,501 bar 走真 features.compute+classify_series: 主态一致率 98.25%, 覆盖率 97.70%→97.66% — 与指控者 98.44%/98.56→98.52% 在独立数据+独立取整格上互证, 3位小数确不携带标签信息。[实测2-原型脱节] 完美原型自身态得分 0.123~0.768, 比指控的 0.48~0.77 更糟: 缩量上涨原型被 argmax 误判为上升通道(0.557 vs 自身0.231), 缩量回踩原型同样误判(0.321 vs 0.123); 高位滞涨解析天花板=0.531(两个平缓门 sig(k·thr)=0.711×0.746), 指控者 0.479=0.902×0.711×0.746 精确吻合。[实测3-锐度量纲] _gate 中阈值除单位(百分比/100)但锐度 k 不除 → k 作用在内部分数量纲: 过渡宽度 4.39/k 换算人话单位后, 比例门宽 0.12~0.32、倍数门 0.36~1.69, 但百分比门宽 5.8~105 个百分点 (缩量回踩动量门宽 84/105pp = 近平坡, 其 \"-7.25~-0.56%\" 描述是虚构精度) — 量纲不可比属实, 且直接解释原型误判与该态 0.01% 近死。[实测4-game 子项唯一保留] 全锐度 ×{0.25,0.5,1,2,4,8}: 可分性 proxy(平均max隶属/1-熵) 0.75/0.65→峰值~0.91/0.88(2×)→4-8× 回落 — 锐度是目标函数第一杠杆(Δ~+0.23, 阈值小数贡献~0)但**非单调可 game**(有内点最优), \"拉高锐度即可 game\"强形式未获支持; 真实 0.816 度量代码已随 sandbox wipe 灭失无法终裁。[误读排查] 无路径/相对import误读(经真 classifier 复现); 无 config误判hardcode; 无 PIT 误判; 指控者三组数字全部独立复现。[次要 overclaim 两处, 不改实质] (1) \"全部阈值来源=0.816寻优\"过宽 — 子态阈值 yaml 自注\"全宇宙分位\"数据驱动, 整值阈值(4.0/2.0/1.5/0.0)是手设, 寻优产物即那 19 个; (2) \"既不度量描述正确性\"应限定于数值层 — 结构层有 7-8 源理论锚定+评审 wf_e273c118, 缺的是数值阈值 vs 标注的验证。修法建议(理论锚定取整~1.6-1.75%标签代价可忽略 + 再寻优换标注一致率目标 + 锐度按单位归一/出搜索空间)与我的实测全部相容。"
+   }
+  },
+  {
+   "module": "classifier.py:157-158 + context.py:15-16 (bull/bear side map + mtf_aligned)",
+   "issue": "Q2 核心: 旧代码把形态直接当方向信号 — bull/bear 硬编码分组 + mtf_aligned『日周月同向确认』语义, 实测方向完全反转: aligned-bull 是全场最差 forward, aligned-bear 是最好",
+   "severity": "critical",
+   "evidence": "executed (Exp3, 115股 169,803 bars): aligned bull (n=19,458) fwd10 median=-1.57% win=42.5%; aligned bear (n=4,089) median=+0.55% win=52.8%; 对齐越强反转越狠 (bull不对齐 win 46.5% > 对齐 42.5%)。与 F0 s4≥s2 结论同构且被『确认』逻辑放大。另 read-only: 两处 side map 硬编码在 .py 违 config 红线, 且成员不一致 (classifier bull 含缩量回踩/中继平台=neutral; context _BULL 含中继平台/无缩量回踩) = 双真相源",
+   "recommendation": "fix",
+   "fix_sketch": "重建时删除代码级 bull/bear/mtf_aligned 方向语义; 多TF 只输出各框描述态 (无方向 claim); 任何方向/确认判断只许在选股层用含成本 forward gate 立; 若保留 side 分组必须进 yaml 单一源",
+   "verdict": {
+    "verdict": "PARTIAL",
+    "method": "executed_code",
+    "evidence": "【实测, 独立复跑 + 对抗性扩展; 脚本 skeptic_q2_mtf.py / skeptic_q2_refine.py, 数据 price_kline_qfq_tushare 2019-01~2026-07, 116股 159,228 bars】(1) 复现成立: aligned-bull fwd10 median=-1.18% win=44.3% < bull不对齐 win 46.5%; aligned-bear median=+0.08% win=50.1%。方向与指控一致, 量级接近 (指控 n=19,458/-1.57%/42.5% 与我 17,340/-1.18%/44.3% 差异源于 exp_setup.load_klines 的 `select distinct code` 无 ORDER BY → 同 seed 抽到不同股, 非造假); 指控实验确实真跑了。(2) 代码读证: classifier.py:157-158 bull={放量突破,上升通道,缩量上涨,缩量回踩}/bear={下跌通道,高位滞涨,放量下跌}, context.py:15-16 _BULL={放量突破,上升通道,缩量上涨,中继平台}/_BEAR 同——两处 side map 均硬编码 .py, yaml 无任何 方向/side 段 (grep 证), 成员确实不一致 (缩量回踩 vs 中继平台 互斥出现) = 双真相源 + 违\"规则必须YAML\"红线, 指控属实 (缓和注: 两 map 功能不同, mtf side vs prior_trend, context 含中继平台可辩护为回踩前序语义, 但无文档标注差异)。(3) PIT 复核: 周/月 bar 戳期内最后交易日 (features.resample bd=末日), _asof bisect≤t, 无前瞻——指控者没把合法 as-of 误判泄漏, 我也没找到其实验的 PIT 错误。(4) 但\"方向完全反转/aligned-bear是最好\"是 overclaim, 被两个混淆项撑起: (a) 时段结构混淆——月线 warmup 使 aligned 只在 2021+ 存在 (2019-20 aligned=0, 年份 crosstab 证), 其 raw 对比把 2019-20 牛市 bars 全算进不对齐组; (b) 市场择时混淆——限定2021+ & 月线可判 (89,953 bars) 并按同日截面 demean 后: aligned-bear 超额 mean 仅 +0.23%(fwd10)/+0.57%(fwd60), median 为负(-0.40%/-2.95%), win 47.1%/40.7% 均<50%, 且逐年极不稳 (fwd60超额: 2021 +12.8% → 2023 -1.7% → 2025 -7.4% → 2026 -14.0%); 其 raw fwd60 +10.5% 主要是 bear 态聚簇在指数底部(2024占2355/4322)的市场级均值回归, 非个股级可交易信号。(c) \"对齐越强反转越狠\"仅在 win%/median 成立; 超额 mean 上 aligned-bull (+0.068% fwd10/+0.694% fwd60, 后者全组最高) 反而好于不对齐 bull (-0.192%/-1.471%) — 对齐把分布推成彩票形态 (median 最差 -6.3% fwd60/win 35.3% 但右尾最肥, 捞到部分主升浪), 不是单调放大伤害。",
+    "corrected": "正确理解: (A) 确认的部分——bull/bear side map 双份硬编码在 .py 且成员不一致, 违 config 红线, 该修; 且把 bull 形态直接当买入方向信号确实有害: aligned-bull 在所有 horizon 的 win%(35-44%) 和 median 超额(负) 都是全场最差, \"日周月同向确认\"进一步压低 win/median。(B) 修正的部分——不是\"方向完全反转\": aligned-bear 并非可交易的\"最好\", 其 raw 优势主要是市场底部择时假象 (bear 态聚簇指数底), demean 后 mean 优势微弱(+0.2~0.6%)、median 为负、win<50%、逐年翻脸 (2025/2026 深负), 没人应据此\"买 bear 态\"; 同时 aligned-bull 超额 mean 为正且 fwd60 全组最高 (右偏彩票分布, 含真主升浪尾部)。正确结论 = \"形态方向语义不构成可靠 forward 信号 (典型 bar 输给截面, 均值靠肥尾)\", 而非\"信号反着用\"。(C) 修法建议方向正确: 重建时删代码级 bull/bear/mtf_aligned 方向硬语义, 多TF 只输出各框描述态; 方向/确认判断留到选股层用含成本 forward gate 立; 若保留 side 分组必须收敛到 yaml 单一源。附加: aligned-bull 的肥右尾特征提示\"对齐\"作为描述性特征仍可能有筛选价值 (配合尾部捕获型退出), 但必须走 walk-forward 含成本验证, 不许代码预设方向。"
+   }
+  },
+  {
+   "module": "yaml:放量突破 (瞬时态, 无位置/底盘 context 门)",
+   "issue": "Q1+Q2: 放量突破作瞬时独立态 = F0 已证伪的『裸突破当先兆』同构 — 无底盘时长/收缩/位置判据, 实测 71% 在高位触发(追高), forward 全场最差",
+   "severity": "critical",
+   "evidence": "executed (Exp1, 563,554 bars): 放量突破 pctile p10=0.388 p90=1.000, high(>0.7)占比 71.0%; fwd10 mean=-0.23% median=-2.17% win=40.8% (九态最差, 比 F0 s1.5 的 44.5% 更差)。yaml 判据仅 mom20>15.65%+量比>1.75+价在均线上, 零 base-context — F1 §3.3 要求的 3 层 (底盘≥1月+收缩+缩量 → 收盘触发+放量 → 可成交闸) 一层都没有",
+   "recommendation": "fix",
+   "fix_sketch": "突破改 event-in-context 检测器 (overlay 事件非 softmax 态): 前置底部盘整时长+ATR收缩+低换手 → 收盘破位+放量确认 → 一字板/T+1 可成交闸; 瞬时『放量突破』态从主分类删除或仅留档案描述并明标接刀实测",
+   "verdict": {
+    "verdict": "CONFIRMED",
+    "method": "executed_code",
+    "evidence": "【实测复现, 独立样本】用旧代码原文件 (features.compute + classifier.classify_bar + technical_states.yaml, importlib 加载绕过相对 import) 对 market.duckdb price_kline_qfq_tushare 随机 400 股 (seed=42, 前缀 60/00/30/68, 5256 只中抽) 2019-2026 全量跑分类, 543,840 classified bars (指控 Exp1=563,554, 同量级不同抽样)。指控数字全部复现在抽样噪声内: (1) 高位触发: 放量突破 bar 的 pctile p10=0.40/p90=1.00 (指控 0.388/1.000), pctile>0.7 占比 72.3% (指控 71.0%); (2) forward 最差: fwd10 close→close mean=-0.10% (指控 -0.23%), median=-2.08% (指控 -2.17%), win=41.6% (指控 40.8%), 九态中 mean/median/win 三项全部垫底, 全样本 baseline win=48.3%/mean=+0.62%; (3) 市场调整后更稳: 同日截面均值扣除后 excess mean=-0.99% 九态最差 (第二差仅 -0.13%), 分年 2019/2022/2023/2024 四年 excess 排名九态最差、2025 第二差, 仅 2021/2026 牛市年勉强中游 — 非周期假象。(4) config 判据核对: yaml 放量突破 条件确实仅 3 条 {二十日动量>15.65, 量比>1.75, 距均线>0.0}, 零 pctile/底盘时长/收缩/换手判据; D4 上下文层 (context.py + yaml 上下文节) 只 refine 缩量回踩不覆盖放量突破; 命名形态.圆弧底突破 虽有 [下跌通道,低位横盘,放量突破] 序列 context 但那是独立派生标签层非该态的门, 且自标\"仅描述不当alpha\"; 子态 涨停突破 只做标注不做可成交闸。指控的\"实测\"可信 (数字独立复现), 无误读代码路径、无把 <=t 当日信息误判泄漏、无把 config 参数误判 hardcode。两点补充 nuance (不改变裁决): (a) yaml 该态自注\"缺确认门待D4\" — 原作者已知此缺口属未完成设计而非无意识错误, 但 as-shipped 缺陷属实; (b) 实测低位突破 (pctile<=0.5, n=1819) fwd10 win=43.0%/mean=-0.36% 也低于 baseline — 说明只加位置门救不回来, 支持指控主张的完整 3 层 (底盘时长+收缩+确认) 修法方向, 且该修法本身如指控自己所标需接刀实测验证。实验脚本+bars.parquet 存 scratchpad/exp_breakout_verify/。"
+   }
+  },
+  {
+   "module": "classifier.py state_scores + yaml 9态 (单 softmax 混轴标签)",
+   "issue": "Q1: 9 态仍是 F0 证伪的单标签混轴设计 — 位置轴被三种不同方式处理 (横盘按位置切 3 态 / 放量下跌位置只在子态 / 趋势态完全无位置门), 位置×趋势多对多混叠",
+   "severity": "high",
+   "evidence": "executed (Exp1): 混叠受害者实测 — ①缩量上涨 pctile p10-p90=0.25-0.88 (低位13%/高位52%), yaml 自己承认高位=衰竭/低位=供给枯竭语义相反但同一态竞争; ②上升通道 p10=0.47 (26%非高位, 位置不可见); ③下跌通道 p90=0.61 (35%非低位); ④放量下跌 三个语义相反的位置变体(出货/见底/中继)先合并竞争 softmax 再由子态消歧 — 实测 83% 落低位, 高位出货变体饿死仅 3.2%; ⑤forward 方向整体反转复现 (上升通道 median -0.82% win45.5 vs 下跌通道 +0.44% win52.2; 放量下跌最好 +1.70% win56.0)",
+   "recommendation": "fix",
+   "fix_sketch": "按 F1 重建为正交轴 cell: 位置(PTH/pctile) ⊥ 趋势方向(降级为条件桶) ⊥ 趋势纯度(er/r2) ⊥ vol-regime ⊥ 量能; 每轴独立分类, cell=轴组合; softmax 只许在单轴内竞争; 档案层可保留 9 态人话标签但由 cell 派生",
+   "verdict": {
+    "verdict": "PARTIAL",
+    "method": "executed_code",
+    "evidence": "实测 (400股 seed42 前缀60/00/30/68, 565,785 bars, 2019-01~2026-07 qfq日线, market.duckdb v_price_kline_qfq, 原classifier+yaml原样跑, forward=close t→t+h)。【指控成立部分】(1) 结构描述准确 (读码+yaml核验): 9态中仅 低位横盘/中继平台/高位滞涨 3态有价格分位主门 (0.406/0.461-0.769/0.790), 其余6态无位置门; 放量下跌位置仅在子态 (0.6/0.3); 缩量上涨 yaml 自认\"高位=衰竭/低位=供给枯竭...位置消歧待D4\"但子态只有[缩量延续]、D4 context.py 只覆盖缩量回踩 — 消歧从未实现; classify_bar 单一 softmax/argmax 跨全部9态。(2) 指控方实验为真跑, 数值几乎精确复现: 缩量上涨 pctile p10-p90=0.248-0.876 (称0.25-0.88), 低位<0.3=13.1% (称13%), >0.7=52.8% (称52%); 上升通道 p10=0.471 (称0.47), 非高位25.7% (称26%); 下跌通道 p90=0.62 (称0.61), 非低位35.1% (称35%); forward 10d 上升通道 med-0.77%/win45.8 (称-0.82/45.5), 下跌通道 +0.42%/52.0 (称+0.44/52.2), 放量下跌 +1.78%/55.4 (称+1.70/56.0); 放量下跌子态 低位82.7% (称83%)。【指控被证伪部分】(a) \"高位出货变体被softmax饿死\"机制REFUTED: 满足放量下跌硬条件 (mom20<-8.2%,vol_ratio>2.17,ma_dist<0) 的bar在 pctile>0.6 时 dominance 胜率 95.9% (70/73), 反而高于低位桶 87.7% (1851/2111) — 无竞争饿死; 高位仅5.7% (其称3.2%) 是联合事件 base rate (2398个合格bar只有73个在高位, 因pctile是跌后同时点量) 而非架构性挤压; 且子态消歧已产出方向可分的输出标签 (高位放量下跌 10d med 0.00%/win49.4 vs 低位 +2.08%/56.2), 位置信息并未在输出层丢失。(b) forward反转归因混轴REFUTED: 态内按位置分桶不改反转方向 — 上升通道三桶全负 (-0.45/-0.60/-0.82%), 缩量上涨三桶全负且低位最差 (-2.18%, 直接反驳yaml\"低位=供给枯竭看涨\"语义); 反转是动量条件标签撞A股短线反转效应, 换正交cell设计同样存在。【残余实伤】态内位置异质性确有 (下跌通道 低位+0.56 vs 高位-0.03; 缩量上涨 低位win38.9 vs 中位45.0) 但无语义级方向翻转, 最大spread (放量下跌2.1pp) 已被现有子态暴露。",
+    "corrected": "正确理解: (1) 结构指控成立 — 位置轴确实被三种方式不一致处理 (3态主门/放量下跌子态/6态无门), 缩量上涨的位置消歧是yaml自认待办但从未实现的真缺陷, 正交轴重建作为设计清洁性主张成立; (2) 但两条关键因果证据不成立: \"高位放量下跌被softmax竞争饿死\"是错误归因 (实测高位合格bar dominance胜率95.9%>低位87.7%, 稀少=事件base rate, 因pctile在跌后测量; 若要高位出货变体多出现, 该修的是位置锚定时点[跌前pctile]而非拆softmax); \"forward方向反转\"是A股短线反转效应作用于动量标签, 与混轴无关, 正交cell化不会修复它, 不应作为Q1混轴指控的证据; (3) 混轴的实测伤害存在但温和 (态内位置spread 0.4-2.1pp/10d, 无方向翻转), 且最大一处 (放量下跌) 已由子态层消歧覆盖。重建时采纳正交轴方案可以, 但依据应是结构一致性+缩量上涨未消歧缺陷, 而非指控中的饿死机制与反转证据。"
+   }
+  },
+  {
+   "module": "classifier.py _gate/state_scores (sigmoid 连乘打分机制)",
+   "issue": "Q4 根因: 缩量回踩死态既非判据交集过窄也非单纯 softmax 竞争, 而是打分机制缺陷 — score 量级由条件数×锐度决定而非语义贴合度, 5 条低锐度门连乘结构性压死",
+   "severity": "high",
+   "evidence": "executed (Exp1+Exp2): ①判据不窄 — 硬布尔交集 3.75% bars 满足 (21,136/563,554); ②结构性天花板 — mom20 双边带宽 6.7% 但锐度 5.2/4.2 (sigmoid 过渡尺度 1/k≈19-24% ≫ 带宽) → 两门各 cap≈0.54 乘积≤0.29, 再乘 3 门 → 实测全样本 p99=0.1115 < 最低分 0.1168 (仅 0.5% 过线), 理论 max 0.222; ③竞争不公 — 判据满足时 winner (上升42%/低位横盘23%/下跌19%, 3条高锐度门 k 至 75.4 可饱和) score p50=0.358 vs 缩量回踩 0.081, 自己判据区里只赢 0.09%。同机制偏置伤所有多条件态: 天花板 缩量回踩0.22/高位滞涨0.49/中继0.59 vs 上升通道0.98",
+   "recommendation": "fix",
+   "fix_sketch": "打分改条数不变量 (几何平均替代连乘, 或 硬布尔+margin), 锐度按特征真实标准差校准 (k×σ≈常数); 或放弃跨态 softmax 改正交轴内分类。缩量回踩本质=前序依赖态, 保留 context pass-2 方案、瞬时态直接删",
+   "verdict": {
+    "verdict": "CONFIRMED",
+    "method": "executed_code",
+    "evidence": "全部实测 (executed_code, 非读码推断), 三组独立实验均无法推翻指控, 且其\"实测\"数字在独立样本上复现到 3 位有效数字:\n\n【实验A 纯数学天花板 (verify_ceiling.py)】逐字复制旧 classifier._gate/_sig + 原 yaml: mom20 双边带宽 6.69pp vs 1/k 过渡尺度 19.2/23.8pp (指控 19-24% 精确); 双门乘积 max=0.2931 (指控 ≤0.29 精确), 且极值点在 mom20=-7.73% — 落在语义带 (-7.25%,-0.56%) 之外, 直接佐证\"门不编码语义\"; 全态理论 sup: 缩量回踩0.245 / 高位滞涨0.504 / 中继平台0.655 vs 上升通道0.9995 / 下跌通道0.9996 / 放量下跌1.0 (指控 0.22/0.49/0.59/0.98 方向与量级全对, 其 0.222 略低于我的无约束 sup 0.245、高于 553K bars 实测 max 0.169, 应为现实域约束差异, 不影响结论)。\n\n【实验B 真实A股复算 (verify_realdata.py, 独立随机 400 股 / 553,568 bars 2019-2026, market.duckdb price_kline_qfq_tushare + 旧 features.py 原样跑)】①硬布尔交集 3.71% (claim 3.75%) — 判据确实不窄; ②缩量回踩 score p99=0.1116 (claim 0.1115), 过最低分0.1168 仅 0.508% (claim 0.5%); ③判据区内 winner: 上升通道42.7%/低位横盘22.2%/下跌通道18.8% (claim 42/23/19), winner p50=0.358 (claim 0.358 完全一致), 缩量回踩区内 p50=0.081 (claim 0.081 完全一致), 自己判据区只赢 0.112% (claim 0.09%, 同量级); 全样本 dominant 占比 0.0085% ≈ yaml 自称 0.01%。指控者的\"实测\"真跑过 — 不可能凭空编出与独立重跑逐位吻合的分布数。\n\n【根因归因核验】指控三段论全立: (a) 非判据过窄 — 硬交集 3.7% → dominant 0.0085% 的 437 倍衰减全部发生在打分层; (b) 非单纯 softmax 竞争 — 读码证实 dominant=raw score argmax (softmax 仅 membership 报告), 且 99.5% bars 连共享最低分都过不了, 与竞争者无关; (c) \"量级由条件数×锐度决定非语义贴合\" — 代数事实: 判据区内 mom20 恒负, 上升通道自身 mom20>0 硬条件在区内每根 bar 都被违反却仍赢 42.7% (靠 k=75.4 饱和门+仅3条件)。指控还实质性纠正了 yaml 自我诊断 (\"全宇宙0.01%\"暗示态本征稀有 — 实为打分机制 artifact, 瞬时判据本身命中 3.7%)。\n\n【指控者错误排查】无误报因素: 未误读代码路径 (评分机制/argmax/共享阈值均如其述); 未把 config 参数误判 hardcode (其指控对象是机制本身, 阈值/锐度确在 yaml); 无 PIT 误判 (指控不涉泄漏)。唯一 nuance (不降级裁决): 其 fix 第一选项\"几何平均\"单独不够 — 实测区内胜率仅 0.05%→2.09% (上升通道仍赢 37.1%, 因低 k 门即使满足也糊, p50 0.605 vs 0.614), 锐度 k×σ 校准 (其 fix 同句已列) 是必要件非可选件; 采纳 fix 时两件须捆绑, 或直接走其\"context pass-2 + 删瞬时态\"方案 (与 yaml 既有 D4 上下文层设计一致)。"
+   }
+  },
+  {
+   "module": "features.py FEATURE_KEYS (12维特征集)",
+   "issue": "Q5: 波动率 regime 轴真缺 — range_pct 只是 raw-level 部分代理 (ρ=0.71) 且仅当『窄幅』门用, 从未做正交条件化轴; zvol 是量 z 分非价格波动 (ρ=0.006); F1 最硬证据轴不存在",
+   "severity": "high",
+   "evidence": "executed (Exp1, n=300,000): Spearman range_pct↔rv20(20日已实现波动率)=0.709, zvol↔rv20=0.006。read-only: range_pct 只出现在 低位横盘/中继平台 的『区间宽度 低于』门里; 无任何 rolling 分位化 (F1 §5 要求 rolling/expanding 分位, 禁全样本分位); RS 有 rs.py 模块但不在 12 维内, 只是 dossier overlay。增删清单 — 增: ATR/RV rolling percentile (vol-regime 轴, 建议算进 B1 分层表单一计算点), PTH=price/52wk-high (George-Hwang, 与 pctile 家族同但文献验证版), RS vs HS300/行业并入状态特征, 突破 context 特征 (底盘时长/收缩斜率/盘整换手); 保留: pctile/ma_slope/mom20/ma_align/vol_ratio/ma_dist/er/r2/accel/maxdd/zvol (er+r2=F1 推荐的趋势纯度轴, 已实现); range_pct 可留作带宽描述但 regime 分桶职责让给 RV 分位",
+   "recommendation": "fix",
+   "fix_sketch": "特征集 12→15±: 加 rv_pctile(rolling)、pth、rs_ratio 三特征; vol-regime 分桶建议落 B1 dim_stock_segment_daily 加一列 (与市值/换手分位段同表同 PIT 口径), 形态模块只消费",
+   "verdict": {
+    "verdict": "CONFIRMED",
+    "method": "executed_code",
+    "evidence": "证伪失败, 指控各子项全部独立复核成立。(1) 实测复现其 Exp1 (真实数据 market.duckdb price_kline_qfq_tushare, 395 只主板/创业/科创股, 111,587 obs, 按旧 features.py 原逻辑逐 bar 复算): Spearman range_pct↔rv20=+0.698 (指控 0.709, 抽样差内一致), zvol↔rv20=+0.013 (指控 0.006, 一致) — 其\"实测\"是真跑过的, 数字可复现。(2) 怀疑角度\"12 维里其他特征可能覆盖波动率轴\"被实验推翻: 全 12 特征 vs rv20 最高的替代者仅 maxdd=+0.484, er=+0.054/r2=+0.034 (趋势纯度轴非波动轴), 无一充分覆盖; range_pct 本身 0.698 也只是 raw-level 部分代理且未分位化。(3) 读码核实 (无误读 import/路径): features.py FEATURE_KEYS 确为 12 维, grep 全模块 (py+yaml) 零命中 atr/rv/realized/波动率 — 无任何 ATR/RV/波动率分位特征; zvol=log 成交量 z 分 (features.py:100-102), 非价格波动。(4) range_pct 在 technical_states.yaml 仅两处 gate 且均为\"低于\"(窄幅门): 低位横盘 0.409 (L40) / 中继平台 0.487 (L69); 不在 修饰指标/子态规则/上下文层, 从未作 regime 分桶/条件化轴; 阈值虽在 config (非 hardcode 指控, 该点指控者没搞错), 但为固定 raw 值, 无 rolling 分位化 (模块内唯一 rolling 分位是 pctile=价格分位, 非波动)。(5) rs.py 存在 (Mansfield RS) 但 grep 证实无任何模块 import 它, rs 不在 12 维内, classifier 只 import features — \"dossier overlay\"描述准确。(6) doc_check: F1 文档真实存在 = analysis/f1_form_redesign_20260616.md, §3.1 波动率 regime 标 ★\"(强, 最硬)\", §5 L60 原文\"regime 分桶阈值: rolling/expanding 分位, 禁全样本分位 (=未来信息)\", §3.2 明确分层链\"市值→行业→波动率regime\" — 指控对 F1 要求的引用属实, 旧 12 维确实缺这条 F1 最硬证据轴。无 PIT 误判/无 config 误判/无路径误读。修法方向 (加 rv_pctile rolling 分位 + pth + rs_ratio, vol-regime 分桶落 B1 分层表单一计算点) 与 F1 §3.1/§3.2/§5 及 CLAUDE 阈值进 config 红线一致, 合理。实验脚本: scratchpad/q5_vol_regime_check.py。"
+   }
+  }
+ ],
+ "refuted_false_alarms": [],
+ "low_medium_unverified": [
+  {
+   "module": "test_technical_states.py:test_pit_no_lookahead + test_resample_weekly",
+   "issue": "PIT 测试只覆盖日线特征且只查 4/12 个 key, 断言子集取自 set 的任意 30 个 (非确定性); fixture o=h=l=c 单调+恒定量为退化数据 (vol_ratio恒1, zvol sd=0→0, range_pct 平凡), 即便加进断言也验不出问题; 周/月线 resample PIT、classify_multi_timeframe 的 _asof、live-vs-batch 一致性完全没测 — 而实测正是这里以 23%/47% 概率违红线",
+   "severity": "medium",
+   "evidence": "executed+read: 读 test 45-61 行 (仅 ma_slope/mom20/er/pctile 4 key, list(common)[:30] 对 set 取任意子集), test_resample_weekly 只断言 bar 数<日线数+量>=100; 本审查用随机游走 fixture 跑 live-vs-batch 实验立即暴露 15-47% 错配, 现有测试套件全绿却挡不住",
+   "recommendation": "fix",
+   "fix_sketch": "重建时加三条测试: (1) 随机游走+停牌NaN fixture 全 12 特征全 common date 逐位比对 (本审查 exp1 脚本可直接收编); (2) weekly/monthly 截断 vs 全量; (3) live(截断到t重算) vs batch(全量) 决策日一致性 — 修复前该测试应红"
+  },
+  {
+   "module": "features.py:_sma (均线不含当日)",
+   "issue": "_sma 窗口 a[i-w:i] 排除当日 close, 即 MA20 实为 t-20..t-1 均值 — PIT 安全 (保守方向) 但偏离标准 MA 定义 (含当日), 与 docstring '量基准用 bars[:i] 排除当日'的表述矛盾 (价格 MA 也被排除了); yaml 阈值锚定的 Weinstein/Wyckoff 理论源均用标准含当日 MA; 另 loop range(w,n) 使 out[w-1] 白白缺失一根",
+   "severity": "low",
+   "evidence": "executed: _sma(arange(1,31), 5) 在 i=10 处 = 8.0 = mean(a[5:10]) 不含当日 a[10]=11 (含当日应为 9.0)。同类口径不一致: range_pct 窗口 h[i-rng_w:i] 不含当日, pctile 却含当日 (后者合法且任务点名不报)",
+   "recommendation": "fix",
+   "fix_sketch": "重建时价格 MA 改标准含当日 (a[i-w+1:i+1]), 或保留现口径但在 config/docstring 显式声明'滞后一日均线'并确认阈值按此口径调; 二选一, 不许口径与文档矛盾"
+  },
+  {
+   "module": "features.py:12维特征窗口 (含 pctile/er/vol_ratio)",
+   "issue": "裁定: 全部 12 特征窗口严格 <=t, 无前瞻泄漏; pctile 含当日自身属合法 <=t (按任务契约不报); vol_ratio 分子用当日全天量、基准用前 20 日 (EOD 决策合法)",
+   "severity": "low",
+   "evidence": "executed: 随机游走 500+60 bar (含 5 天停牌 NaN 注入), 截断 vs 全量, clean 380 date × 12 特征 + with_nan 370 date × 12 特征逐位比对 = 0 diff (阈值 1e-9, 含 NaN 位置一致性)",
+   "recommendation": "keep",
+   "fix_sketch": "日线特征窗口设计正确, 重建可直接沿用切片逻辑"
+  },
+  {
+   "module": "context.py:_prior_dominant + apply_context",
+   "issue": "裁定: 前序主导态窗口严格用 <i (即 <=t-1) 的分类结果, 当前条件只用 bar t 特征, PIT 干净且非空转",
+   "severity": "low",
+   "evidence": "executed: 随机游走真管道 (classify_series→apply_context) 截断@1200 vs 全量 1400, 1081 个 common date 的 prior_trend/context_state/refined_dominant/dominant 全一致 0 diff; 非空验证: 全量中'缩量回踩'真实触发 79 次 (测试不是 vacuous)。read: range(max(0,i-window), i) 严格排除 i",
+   "recommendation": "keep",
+   "fix_sketch": "两遍架构 pass-2 设计正确, 沿用"
+  },
+  {
+   "module": "patterns.py:match_named_patterns",
+   "issue": "裁定: 模板命中只写完成 bar 不回贴历史, 匹配只读 states[<=i], 历史命中在 append 未来 bar 后逐位稳定",
+   "severity": "low",
+   "evidence": "executed: 真管道 refined 序列截断 vs 全量, 历史命中不一致 = 0; 非空验证: 全量 97 次命中覆盖老鸭头/圆弧底突破/顶部派发转跌 3 形态。read: _match_ordered_subsequence 从 i-1 逆向找前序, 上界=i",
+   "recommendation": "keep",
+   "fix_sketch": "三时点契约的完成bar命中实现正确, 沿用"
+  },
+  {
+   "module": "classifier.py:_asof (周/月 as-of 匹配)",
+   "issue": "裁定: _asof bisect_right(dates,d)-1 只取 bar 日期 <=d 的周期 bar, 而周期 bar 日期=该周期最后交易日、数据只含 <=该日 → 已闭合 bar 的匹配无未来信息进入 (泄漏向量不在这, 在尾部部分 bar 的口径分裂)",
+   "severity": "low",
+   "evidence": "executed+read: exp2 内部 1250 个 common date 0 diff 佐证已闭合周 bar 的 as-of 稳定; 边界实验确认全部错配源自尾部部分 bar, 无一例历史日期匹配到未来周 bar",
+   "recommendation": "keep",
+   "fix_sketch": "as-of 机制本身正确, 修复只需在 bar 生成侧 (resample) 收口"
+  },
+  {
+   "module": "classifier.py:classify_bar L119-123 + yaml:soft.温度=0.05",
+   "issue": "τ=0.05 的 softmax 实质退化为 argmax+窄模糊带(top1-top2 分差>0.2 即 one-hot), '软隶属度'向量对 dominant 之外基本零信息, 熵与 membership_max 秩相关 -0.996 完全冗余",
+   "severity": "medium",
+   "evidence": "executed (exp2, 40 合成序列 12000 bar): membership_max 中位 0.991, 50.7% >0.99, 70.5% >0.90; 熵中位 0.028, 42% <0.01 (但 p95=0.66, 作二值'过渡态旗标'仍有残余区分度); spearman(entropy, membership_max)=-0.9956; 直算: 分差 0.05/0.1/0.2 → top membership 0.731/0.881/0.982",
+   "recommendation": "fix",
+   "fix_sketch": "要真软隶属: τ 提到 ~0.2-0.3 或干脆不做 softmax、直接报各态归一化 gate 分(本身就是 [0,1] 隶属度); dominant/covered 输出不受 τ 影响可沿用; 熵与 membership_max 留一个即可"
+  },
+  {
+   "module": "features.py L84-85 pctile",
+   "issue": "pctile = mean(wc <= c[i]) 把 tie 全计入'低于等于' → 全平/一字板锁死/低价股 tick-tie 序列 pctile 虚高到 1.0, 死平股被高置信误判为'高位滞涨(见顶派发)'",
+   "severity": "medium",
+   "evidence": "executed (exp3): 200bar 全平序列 pctile=1.0 → classify dominant=高位滞涨, covered=True, entropy=0.0025; 横住 70 天(全 tie)同样 pctile=1.0→高位滞涨; midrank 定义下平序列应≈0.5。A股一字板/低流动性股 tie 常见, 非理论边角",
+   "recommendation": "fix",
+   "fix_sketch": "改 midrank 分位: (P(w<c) + 0.5*P(w==c)); 改后 低位/中继/高位 三档 pctile 阈值需按新分布复核"
+  },
+  {
+   "module": "features.py L54-59 _sma (+L83 range_pct 窗口)",
+   "issue": "SMA 用 a[i-w:i] 排除当日收盘, 与教科书 SMA 及自身 docstring('每 bar i 特征用 bars[:i+1], 仅量基准排除当日')矛盾 — ma_dist/ma_slope/ma_align 全部按滞后一天的均线算; range_pct 窗口也排除当日而 pctile 含当日, 口径互不一致",
+   "severity": "low",
+   "evidence": "executed (exp3): _sma([1..30], 5) 在 idx9 = 7.0 (排除当日) vs 教科书含当日 8.0; read-only: features.py docstring L4 与实现矛盾, L83 h[i-rng_w:i] vs L84 c[i-pct_win:i+1]。PIT 安全(只用≤t, 偏保守), 且阈值是按此定义 Optuna 调的 — 内部自洽, 属定义偏移非泄漏",
+   "recommendation": "fix",
+   "fix_sketch": "重建时统一为标准含当日 SMA + 全特征窗口口径对齐并重调阈值; 若沿用旧参数则必须保留旧定义并把 docstring 改对"
+  },
+  {
+   "module": "features.py L86-87 vol_ratio + L100-102 zvol + classifier.py L23 _DEFAULTS",
+   "issue": "零成交量日 zvol 静默=0.0(伪'量能正常'), 全零量窗 vol_ratio=NaN 被 _DEFAULTS 填 1.0(中性) → 停牌/无成交 bar 照常输出主态且 covered=True, 不报'不可分类'",
+   "severity": "low",
+   "evidence": "executed (exp3): 末 10 日 v=0 → vol_ratio=0.0, zvol=0.0; 全零量 → vol_ratio=nan, classify 仍 dominant=高位滞涨 covered=True。无崩溃/无 inf (nanmean 只发 RuntimeWarning)",
+   "recommendation": "fix",
+   "fix_sketch": "v==0 或量窗全 NaN → 该 bar 强制 covered=False (或上游 universe/停牌过滤先剔除); 不要用中性默认值伪装量能正常"
+  },
+  {
+   "module": "features.py L94-96 r2",
+   "issue": "零方差窗(全平)时 SS_tot=0 被 1e-12 guard 引向 r2=1.0='完美对数趋势', 教科书应 undefined/0; 但当前 yaml 的 指标/修饰指标 两表均未消费 r2 = 死特征, 只在重建启用时才踩坑",
+   "severity": "low",
+   "evidence": "executed (exp3): 全平 41bar 窗 r2=1.0; 单调 +1%/日 r2=1.0(正确)。read-only: technical_states.yaml 指标(L24-31)/修饰指标(L204-211) 无 r2 条目",
+   "recommendation": "fix",
+   "fix_sketch": "SS_tot < eps 时 r2 置 0.0 或 NaN; 或重建特征集直接不带 r2 (奥卡姆: 死特征能删则删)"
+  },
+  {
+   "module": "classifier.py L117-118 + yaml:soft.最低分=0.1168",
+   "issue": "覆盖门槛作用在 raw 乘积分 max(vals) 上而非 softmax membership(提问前提与代码不符), 实际语义='条件数相关的几何均 gate 门'(3条件要 0.489 / 4条件 0.585 / 5条件 0.651), 与 membership 解耦且继承条件数偏置; 实测基本不筛",
+   "severity": "low",
+   "evidence": "executed (exp1 D + exp2): 0.1168^(1/k) = 0.489/0.585/0.651 (k=3/4/5); 合成数据 covered 率 98.1%; 解耦例: mx=0.12 其余≈0 时 covered=True 而 top membership 仅 0.579, mx=0.11 vs 次 0.01 时 covered=False 而 top membership 0.88。read-only: classifier.py L117-118 `mx = max(vals); covered = mx > cfg[soft][最低分]` 在 softmax 之前",
+   "recommendation": "fix",
+   "fix_sketch": "分数按 finding#1 归一化后在可比量纲上重调此门; 该 0.1168 是 raw 乘积量纲的 D1 调参产物, 换量纲即作废不可沿用"
+  },
+  {
+   "module": "classifier.py L157-158 bull/bear 集合",
+   "issue": "态→方向映射(bull/bear/neutral) hardcode 在代码里, 违'判断规则进 yaml'红线; yaml 加态/改名时 mtf_aligned 会把新态静默错桶为 neutral 不报错",
+   "severity": "low",
+   "evidence": "read-only: classifier.py L157-158 `bull = {放量突破,上升通道,缩量上涨,缩量回踩}; bear = {下跌通道,高位滞涨,放量下跌}` — 与 yaml '加/改状态=改 config 不动代码'的设计声明(L4-5)直接矛盾",
+   "recommendation": "fix",
+   "fix_sketch": "yaml 每个状态加 `方向: bull|bear|neutral` 字段, classifier 读取; 缺字段时 raise 而非默认 neutral"
+  },
+  {
+   "module": "limits.py:46-48 enrich_features + yaml:129-131 涨停节",
+   "issue": "量比失真修正只做涨停侧不做跌停侧 (不对称): 跌停封死日成交量同样被截断 (买盘消失卖不出), vol_ratio 极低 → 满足下跌通道'量比低于1.50'门, 被判'缩量阴跌/温和阴跌', 而真实语义是供给最大化的恐慌封死 (更接近放量下跌/恐慌类)",
+   "severity": "medium",
+   "evidence": "executed: 跌停日 vr=0.2 经 enrich_features 后仍 0.2 (只 is_up_limit 分支改 vol_ratio); 下跌通道量比软门 sig(7.7*(1.50-0.2))=0.99996 满足, 放量下跌量比门 sig(12.3*(0.2-2.17))≈0 不满足 → 恐慌封死日归入温和缩量阴跌。方向未反 (仍 bear 侧) 但子态语义错",
+   "recommendation": "fix",
+   "fix_sketch": "对称处理: is_down_limit 日设供给proxy (yaml 加 '跌停.供给proxy量比') 或在子态规则用 is_down_limit 消歧 (如 下跌通道+is_down_limit → '跌停封死'子态); 同时评估 zvol 是否需同步修正"
+  },
+  {
+   "module": "limits.py:17,27-30 eps 贴板容差",
+   "issue": "eps=0.003 相对容差过松: 收盘价距板 0.3% 以内的'炸板/贴板未封'日被误判封板 (真封板=原始价空间 close==limit 精确相等, 复权同乘系数等式保持); 同容差还把 0.3% 日内波动的 bar 判成'一字板' (真一字 h==l); 且 eps 阈值在函数默认值与 yaml 贴板容差 两处重复 (双真相源, 违'阈值必须 config')",
+   "severity": "medium",
+   "evidence": "executed: 收10.97 vs 板11.00 (差0.27%, 典型尾盘炸板) → is_up_limit=True; 收10.96 → False (界=10.967); 创业板 收11.97 vs 板12.00 → True; o=10.99/h=11.0/l=10.97/c=11.0 (日内0.3%波动有成交) → is_one_word=True。误判方向: 炸板日其实买得进却被标'封板', 叠加 finding#2 会把可成交日标成不可成交; 炸板也是封板质量差信号 (regime.py 自己就有炸板率指标)",
+   "recommendation": "fix",
+   "fix_sketch": "在原始价空间精确比 (close==up_limit, 2位小数) 或 tick 级容差 (0.01/复权系数), 不用相对0.3%; eps 只从 yaml 读消双真相源; 若必须用复权价, 容差按低价股舍入误差实测标定而非拍 0.003"
+  },
+  {
+   "module": "candles.py:37-40 candle_pattern 位置消歧",
+   "issue": "prior_trend 缺省 (None=无上下文) 时长影线默认判看空形态 (上吊线/流星线): 模块自己强调'不带位置就是张冠李戴', 但缺上下文时不是降级到中性命名而是隐性押注空头方向",
+   "severity": "low",
+   "evidence": "executed: 锤子几何 prior_trend=None → '上吊线'; prior_trend='跌' → '锤子线'; 倒锤几何 None → '流星线'。代码 `'锤子线' if prior_trend == '跌' else '上吊线'` 把 None 与 '升' 同路径",
+   "recommendation": "fix",
+   "fix_sketch": "prior_trend None → 返回几何中性名 ('长下影线'/'长上影线'), 只有明确趋势才给多空含义命名; 顺手清 docstring 幻影返回值 '普通' (实际默认返回纺锤线, 永不返回普通)"
+  },
+  {
+   "module": "capital.py:9,44 '89%对齐同花顺明盘' 声称",
+   "issue": "'net_amount 89%对齐同花顺明盘'这一 measured 声称已不可复核 (同花顺源按 §4.3 tushare-唯一决议已删), 属存档性质证据, 不影响现行逻辑正确性",
+   "severity": "low",
+   "evidence": "read-only: docstring 引 sandbox/mingan_redesign 2026-06-21 裁决; 该数字非任何现行判断的输入 (只是历史选源理由), 核心零和/单位声称已另行实测成立 (见 keeps)",
+   "recommendation": "keep",
+   "fix_sketch": "保留但重建时把该句标注为历史裁决引用 (不可再复现), 避免后人当可复测事实引用"
+  },
+  {
+   "module": "capital.py:41-54 zhuli_intent + yaml:145-175 主力意图节",
+   "issue": "主力意图 6 象限是同花顺'暗盘追踪'叙事移植 (如 明盘弱+价涨='洗盘低吸', 不分净额正负号; 主力流出价涨='诱空吸筹'), 是启发式解读非实测因果 — 但 docstring/yaml 双处已诚实标注'档案描述维度, 无 forward claim, 选股需含成本 OOS 另证', 想当然风险被制度化围住",
+   "severity": "low",
+   "evidence": "read-only: yaml:144 '口径: 档案描述维度 (无forward claim)'; capital.py:46 同句; 规则本身数学无错 (有序匹配, 6象限+默认全覆盖), 底层维度 (明盘net_amount × pct_change) 是实测独立的 (桶零和裁决成立)",
+   "recommendation": "keep",
+   "fix_sketch": "沿用: 叙事标签作档案描述可, 重建时保持'无 forward claim'标注与消费侧隔离 (禁直接进选股打分)"
+  },
+  {
+   "module": "coupling.py:52-71 vs yaml:边界耦合[有序升]",
+   "issue": "yaml 声明 有序升 关系 (低位<中继<高位 价格分位三档排序) 但解释器无此分支 → 排序约束纯装饰零校验; 反向: 代码实现的 互斥不重叠 分支 yaml 从未使用 = 死代码。关系词表在 yaml 与代码各一份且不相交",
+   "severity": "medium",
+   "evidence": "executed: apply_coupling({'低位横盘.价格分位':0.95}) (严重违反排序, 高于高位滞涨下界0.79) → notes=[] 无任何告警; grep 实测代码分支={互补对称,互斥不重叠,首项高于其余}, yaml 关系={互补对称,有序升,首项高于其余}",
+   "recommendation": "fix",
+   "fix_sketch": "load 时校验声明的关系词全部有实现 (未知关系词=报错); 有序升 实现为排序 assert; 删 互斥不重叠 死分支"
+  },
+  {
+   "module": "coupling.py:with_overrides/_set_threshold/list_tunables",
+   "issue": "param key='状态.指标' 对同态重复指标条件不唯一: 中继平台 有两条 价格分位 (高于0.461/低于0.769), 缩量回踩 两条 二十日动量 — override 会同时改上下界摧毁区间带; list_tunables 输出重复 param 前端滑块无法区分",
+   "severity": "medium",
+   "evidence": "executed: with_overrides(cfg,{'中继平台.价格分位':0.60}) → 两条条件都变 (高于0.6/低于0.6) 区间带宽度归零; list_tunables 重复 param 实测 {中继平台.价格分位:2, 缩量回踩.二十日动量:2}",
+   "recommendation": "fix",
+   "fix_sketch": "param key 加判断方向 (状态.指标.高于/低于) 或条件序号; 若按上条建议 drop 掉 override 机制则随之消失"
+  },
+  {
+   "module": "架构: capital/chips/vol/rs/sector_context/fundamentals/events/regime (8/16 文件) + yaml 资金~预告段",
+   "issue": "这 8 个模块是已退役档案系统 (stock_dossier, owner 文档已删) 的维度②-⑥挂件 (资金流/筹码/量能解读/RS/板块/基本面/估值/研报/事件/大盘regime), 与 K线形态识别核心职责无关; yaml ~112/341 行属它们; __init__ 全量 re-export 把包做成档案聚合器, 包名 technical_states 名不副实",
+   "severity": "medium",
+   "evidence": "read-only: __init__.py docstring 自述'档案系统维度①'+import 全部 8 模块; yaml 各段头注明 owner=capital.py(维度③)/chips.py(④)/L3⑤⑥; 项目 memory 载明 dossier 已在纯数据平台重建中整体退役",
+   "recommendation": "fix",
+   "fix_sketch": "重建只收 features/classifier/context/limits/candles/patterns (+config+测试); 8 个挂件及其 yaml 段不迁入, 需要时作为独立档案维度另立模块"
+  },
+  {
+   "module": "yaml 三套条件 DSL (状态.条件 / 子态规则 / 上下文.当前条件)",
+   "issue": "同一语义 (特征 vs 阈值比较) 三种语法三个解释器: 状态条件用 人话指标+判断(高于/低于/平缓)+人话单位(/100换算), 子态规则用 大于/小于+阈值名+原始量纲, 上下文条件用 内部key+大于/小于+原始量纲 (0.01=1%) — 单位约定在同一文件内翻转, 是人工编辑失误温床",
+   "severity": "medium",
+   "evidence": "read-only: classifier._gate / classifier._sub_cond_met / context._ctx_cond_met 三个平行解释器; yaml 上下文段注释自己都要特别标注'当前条件用内部key+原始量纲(0.01=1%)'",
+   "recommendation": "fix",
+   "fix_sketch": "统一为一种条件语法 (人话指标+人话单位+判断词), 单一 evaluator, 子态/上下文只是不同调用点"
+  },
+  {
+   "module": "vol.py/capital.py/fundamentals.py/regime.py 等 cfg=None 默认参数模式",
+   "issue": "周边模块函数签名 cfg=None + 代码内置默认值 (vol.py 放量门 c.get('放量门',1.5) 等) 与 yaml 双份存储: 调用方漏传 cfg 时静默用 hardcode 绕过 yaml, 违'阈值必须 config'红线",
+   "severity": "medium",
+   "evidence": "read-only: vol.py:19-20 `(cfg or {}).get('成交量')`+`c.get('放量门',1.5)`, regime.py:20, fundamentals.py:22 同模式; yaml 成交量.放量门 同值 1.5 双写",
+   "recommendation": "fix",
+   "fix_sketch": "cfg 设为必传 (或缺省即 load_config()), 删代码内阈值默认; 若按剥离建议这些模块不迁入则问题随剥离消失"
+  },
+  {
+   "module": "yaml:量基准 段 (286-291行)",
+   "issue": "量基准 config 段 (突破/持续/见顶/默认 四路由) 无任何代码消费 = 死配置, 注释自称'P6 接入'但接入从未发生",
+   "severity": "low",
+   "evidence": "executed: grep -rn 量基准 *.py 仅命中 features.py/vol.py docstring 注释, 无 cfg['量基准'] / .get('量基准') 读取点",
+   "recommendation": "drop",
+   "fix_sketch": "重建不迁入该段; 若将来做量基准路由再按真消费方写"
+  },
+  {
+   "module": "classifier.py:21-24 _UNIT_DIV/_DEFAULTS/_REQUIRED",
+   "issue": "缺失特征安全缺省 (vol_ratio=1.0/range_pct=0.3/ma_align=0.5/ma_dist=0.0) 与必需特征名单 hardcode 在代码 — 判断规则在代码非 config; range_pct 缺省 0.3 恰在 低位横盘 阈值 0.409 判'满足'一侧, 缺数据时静默偏向某些态",
+   "severity": "low",
+   "evidence": "read-only: classifier.py _DEFAULTS={'vol_ratio':1.0,'range_pct':0.3,'ma_align':0.5,'ma_dist':0.0}, _REQUIRED=('ma_slope','mom20','pctile'); 0.3<0.409 使区间宽度门在缺失时 gate≈0.96 (按锐度28.8 手算)",
+   "recommendation": "fix",
+   "fix_sketch": "缺省值与必需名单移入 yaml soft/指标 段; 或缺失即整 bar 不覆盖 (更诚实)"
+  },
+  {
+   "module": "yaml:子态 vs 子态规则 双枚举; 边界耦合 rule3 说明与参数不符",
+   "issue": "两处小型第二真相源: (a) 子态 列表与 子态规则 各枚举一份子态名, 有规则时列表被忽略, drift 无检测; (b) 边界耦合 rule3 说明文字提及 放量突破/放量下跌 vs 缩量上涨/下跌通道 四个量比参数, 参数 列表只含 2 个, 放量下跌.量比/下跌通道.量比 不受校验 (现值恰好满足但无门)",
+   "severity": "low",
+   "evidence": "read-only: classifier._sub_state 仅在无规则时用 cfg['子态'][top][0]; yaml:282-284 说明 vs 参数 实读不符; 现值 1.75>1.50, 2.17>0.628 手核满足",
+   "recommendation": "fix",
+   "fix_sketch": "load 时校验 子态规则 出现的子态名 ⊆ 子态 列表 (或删列表只留规则); rule3 参数补全 4 项"
+  },
+  {
+   "module": "yaml 中文键名整体",
+   "issue": "中文人话键名本身可用 (实测 yaml.safe_load/解释器/耦合器全链路正常), 是刻意的 J1 设计且对该用户可读性好; 真正的可维护性成本不在中文而在上面几条 (三套 DSL/单位翻转/双真相源), 不应把中文键当问题修",
+   "severity": "low",
+   "evidence": "executed: 全部实验经中文键跑通 0 编码/解析问题; 键名+描述+理论锚定字段使 config 自文档化",
+   "recommendation": "keep",
+   "fix_sketch": "保留中文人话键; 只统一条件语法与单位约定"
+  },
+  {
+   "module": "old_technical_states 包边界 (16 文件: fundamentals/sector_context/capital/chips/events/regime 混入)",
+   "issue": "Q6: 形态模块范围蔓延 — 16 个文件里仅约 7 个是形态识别 (features/classifier/context/limits/candles/patterns/coupling), 其余是档案维度; 新地基已各有归属, 重建时应剥离",
+   "severity": "medium",
+   "evidence": "executed+read-only: B1 dim_stock_segment_daily 实测 8,334,723 行/20190102-20260701, 列 mktcap_seg/turnover_seg/sw_l1/circ_mv/turnover_rate = F1 §3.2 分层骨架 (市值第一层→行业→vol-regime) 的现成单一计算点; margin_detail 已注册 sync_registry (raw_tushare_margin_detail, data_start 20190102, pit_anchor 『t+1 盘前披露→特征 JOIN t-1』) = 新增杠杆资金维度 (补 capital.py 的 moneyflow 主力维, 非替代 fundamentals); sector_context.sector_regime + regime.market_regime 职责与 pending 任务 B4 市场感知引擎 (mart_sector/market_pulse_daily) 完全重叠; fundamentals.valuation_signals 自算 PE/PB 历史分位, 而 smartmoney.duckdb 已有 sanctioned aif10 源 raw_aif10_valuation_quantile (CLAUDE §4.3 例外条款) — 自算版=第二真相源",
+   "recommendation": "fix",
+   "fix_sketch": "重建的形态模块只留 价量形态 (K线真相源): features/classifier/context/limits/candles/patterns; 分层消费 B1 表; 板块/大盘 regime 归 B4; 基本面/估值归 fact_financial_derived + aif10 表; 两融作独立叠加维度严守 JOIN t-1; 各维度在档案 serving 层组装"
+  },
+  {
+   "module": "technical_state_taxonomy_plan_20260621.md v2 必砍清单 vs 旧实现",
+   "issue": "Q3 裁定: 五刀全部砍对, 无砍错; 且旧实现 (v3 yaml) 已落实其中三刀 (命名形态仅3个零参数模板/单日K已构件化/无独立L1层); 唯一警戒 = 放量下跌整态是实测最强 forward 态, 砍『中继』子态可以但不许扩大化砍整态",
+   "severity": "low",
+   "evidence": "executed+read-only: ①占比约束砍对 — 实测真实份额 0.01%-31.4% 天然极不均 (F0 亦证 s1.5 结构性锁死 2.8-4.0%), 强制均衡=拟合化妆; 且 v3 Optuna (probe_v4_descent 含占比健康目标) 调完 缩量回踩仍死 0.0073%, 证明占比约束治不了语义缺陷; ②穷尽覆盖砍对但已被 2026-06-21 治理裁决限定在选股层 — 档案层保留穷尽 (实测 uncovered 仅 5.04%, 档案目标可达); ③单日K降构件对 — candles.py 已是构件 (prior_trend 消歧+一字板特判); ④命名形态26→≤5 对 — yaml 只有 3 个 (老鸭头/圆弧底突破/顶部派发转跌), 零独立参数+完成bar命中不回贴; ⑤L1降级对 — classifier 本无独立 L1, 但代码里 bull/bear map 是逃出 config 的事实 L1 且实测方向反 (见 critical 条), 重建勿复活; 警戒项: 放量下跌 fwd10 median +1.70% win 56.0% 全场最强 (83%低位=恐慌见底桶)",
+   "recommendation": "keep",
+   "fix_sketch": "五刀维持; 执行时带两条边界: 档案层按治理裁决保留穷尽/命名/单日 (验收=描述正确+PIT+涨停正确, 不挂 forward); 放量下跌只砍中位中继子态 (~0.07% bars) 不砍整态"
+  },
+  {
+   "module": "context.py apply_context (缩量回踩 pass-2 复活)",
+   "issue": "Q4 补充: 旧代码自己的两遍架构修复机械上有效 (0.0012%→7.31%) 且 PIT 干净, 但复活后份额从近死直接跳 7.3%, 参数 (前序窗10/mom20<+1% 比瞬时版宽松) 无任何语义/forward 验证",
+   "severity": "medium",
+   "evidence": "executed (Exp4, 60股 85,424 bars): 瞬时 dominant=缩量回踩 1 bar (0.0012%) vs context_state=缩量回踩 6,247 bars (7.313%); PIT 截断测试 0 违规。read-only: yaml 上下文.缩量回踩 当前条件 mom20<0.01 (瞬时版是 <-0.0056), 放宽无 evidence 注释",
+   "recommendation": "fix",
+   "fix_sketch": "保留两遍架构 (设计正确, 与 v2 评审 FSM/上下文方向一致); 重建时对 7.3% 份额做语义抽查 (真回踩 vs 误收的横盘微跌) + 阈值给 evidence, 并把 classifier 的死瞬时态删除避免双定义"
+  },
+  {
+   "module": "limits.py enrich_features (涨停日 vol_ratio 改写 proxy=3.0)",
+   "issue": "边缘: 涨停日把实测 vol_ratio 覆写成合成值 max(vr,3.0) — 方向正确 (防封板缩量误判假突破, 评审 critical 修复) 但污染了 measured 特征本身, 下游任何直接消费 vol_ratio 的分析会拿到伪值",
+   "severity": "low",
+   "evidence": "read-only: limits.py L46-48 原地改写 f['vol_ratio']; is_up_limit/is_one_word flag 已同时存在, 说明消歧完全可用 flag 条件化实现而不必改写测量值; proxy 3.0 在 yaml 有注释但无 measured evidence 标注",
+   "recommendation": "fix",
+   "fix_sketch": "保留 stk_limit 真相源+三 flag (好设计); 改写逻辑改为分类器读 flag 时跳过量比门 (条件化), 不动原始 vol_ratio; proxy 值若保留需 evidence"
+  }
+ ],
+ "keeps": [
+  "[pit] 日线 12 维特征全部窗口严格 <=t: 实测截断 vs 全量 (含停牌 NaN 注入) 380+370 date × 12 特征逐位 0 diff",
+  "[pit] pctile 120日价格分位含当日自身 = 合法 <=t (任务契约点名, 实测稳定, 不是泄漏)",
+  "[pit] context.py 两遍架构: 前序主导态严格用 <=t-1 (range 上界=i), 实测 1081 date 0 diff 且缩量回踩真实触发 79 次非空转",
+  "[pit] patterns.py 完成bar命中不回贴: 实测截断 vs 全量历史命中 0 不一致, 97 次真实命中 (3 形态) 非空转",
+  "[pit] classify_multi_timeframe 的 _asof (bisect_right-1) 对已闭合周期 bar 无未来信息混入: 实测内部 1250 date 0 diff",
+  "[pit] vol_ratio 当日全天量/前20日基准 = EOD 决策合法口径 (读码+日线 PIT 实测覆盖)",
+  "[pit] test_technical_states.py 已有的 context PIT 截断测试 (test_context_pit_no_lookahead) 和 patterns 不回贴测试 (test_named_patterns_pit_no_backfill) 方向正确, 值得保留并按 medium finding 扩强",
+  "[math] 熵归一化公式正确: -Σp·ln(p)/ln(N), N=9 — executed 验证: 9 态同分 → entropy=1.000000, one-hot → 1.6e-7; +1e-12 防 log(0) 偏差可忽略 (提问项3裁定: 公式对)",
+  "[math] er/maxdd/accel/mom20/ma_slope 公式与教科书一致 — executed: 单调 +1%/日序列 er=1.0 (Kaufman ER 定义), maxdd=0.0 (running-max 回撤), accel=0.0 (前后半段对数斜率差), 全平序列 er=0/maxdd=0/accel≈0/ma_slope=0 均合理; 无崩溃无 inf",
+  "[math] 日线特征层 PIT 干净: 加未来 2 bar 后 868 个历史日的全部特征 0 改变 — executed (exp4 对照组); 泄漏问题只在周/月部分 bar (见 finding), 日线通道可直接沿用",
+  "[math] 量基准排除当日 (vol_ratio 用 vv[i-w:i], zvol 用 lv[i-w:i]) 符合'盘中量未完整'的设计意图 — executed + 读码确认与 docstring 一致",
+  "[math] softmax 数值安全: clip(±50) 对 [0,1] 分数 v/τ≤20 永不触发, _sig clip 防 overflow 有效 — 读码+计算验证",
+  "[math] resample 的 ISO 周 (iso_year, iso_week) / 自然月分组键正确处理跨年, _asof 用 bisect_right(≤d) 方向正确; 已完结周期的历史 bar 在加未来数据后 0 改写 — executed (exp4 跨月测试 0 改变)",
+  "[math] 声明式 config evaluator 架构 (人话指标+单位 → _UNIT_DIV 换算 → sigmoid 门) 换算一致无错 — executed exp1 手工复算 百分比/比例/倍数 三种单位的阈值换算与代码输出一致; '阈值进 yaml' 红线本体满足 (除 bull/bear hardcode 一处)",
+  "[math] 子态规则 NaN→不满足(False) 的保守处理正确; 必需特征 (ma_slope/mom20/pctile) NaN → 整 bar covered=False 的兜底正确 — 读码 L64-65/L81-87 + executed (全零量时子态仍可判)",
+  "[math] yaml meta 自我披露诚实: 缩量回踩标注'近死态占位'与实测一致 (12000 合成 bar 中 dominant 0 次), confirmed_by_owner=false 标注在案 — 重建时该态按 D4 上下文层设计处理而非瞬时条件",
+  "[ashare] 涨停判定架构正确 — 无 9.8% 收盘近似, 直接消费 raw_tushare_stk_limit 真相源 up/down_limit (已编码 ST±5%/主板±10%/创业科创±20% tier, 无板块 hardcode 路由): executed 创业板+15% bar 配真 limit=+20% → 正确判非涨停; 上游若错供 10% limit 才会错 (责任在 join 层, 设计上单一真相源符合奥卡姆); 新股无涨跌幅 (limit 双 None) → 安全跳过不误标; ST 收 5% 板正确判涨停。stk_limit 在 sync_registry.yaml:85 + data_access.yaml:102 已注册 (真相源活)",
+  "[ashare] 涨停日量比修正方向正确 (评审 critical 修复有效) — 封死涨停=供给截断缩量, 若不修正会被'量比>1.75'门判无量假突破: executed sig(5.9*(0.3-1.75))=0.0002 (不修正时放量突破门几乎全灭) vs 修正后 max(0.3,3.0)=3.0 → sig=0.99937 门通过; proxy 3.0 > 放量突破量比门 1.75 的设计意图成立; 子态'涨停突破'规则排第一优先于 zvol 判断, 绕开了 zvol 未修正的残余失真",
+  "[ashare] capital.py 字段语义全部实测成立 (对首批真实样本 fixture backend/tests/fixtures/domain_samples/moneyflow_dc.json 逐行验): (1) net_amount ≡ buy_elg_amount+buy_lg_amount, 4/4 非零行 diff=0.0000; (2) 四桶零和 elg+lg+md+sm=0.0000 精确成立 → '中小单净≡−大单净, 暗盘=伪维度' 的砍伪暗盘数学裁决可复现; (3) 单位=万元确证: 用 net_amount/net_amount_rate 反推全日成交额, 平安银行 2023-09-11=7.41亿/万科A=12.52亿 量级合理 (若单位为元则成交额仅7.4万, 荒谬), capital_intent unit_div=1e4 万元→亿 换算正确",
+  "[ashare] PIT 干净: compute_limit_flags 纯 per-bar (executed: 加未来 bar 历史 flag 不变), 当日 close vs 当日 limit (limit 由昨收盘后确定, ≤t); capital 累计窗 nets[i-19:i+1]/3日[i-2:i+1]/换手分位 turns[i-120:i+1] 全部 ≤t (read); 决策侧 t-1 锚已在 docstring 声明留给消费层",
+  "[ashare] candles 一字板特判防假十字星的方向正确 (一字涨停侧 executed 工作正常), A股特判意识 (一字板≠十字星停滞) 值得沿用 — 只需修 finding#1 的跌停侧死分支",
+  "[ashare] 阈值 config 化纪律基本到位: 需求proxy量比/贴板容差/主力清淡门/价格涨跌门/换手分位门 全在 technical_states.yaml, 代码只读 yaml (唯一例外=eps 函数默认值双真相源, 见 finding#4)",
+  "[config] 声明式条件树语义与解释器完全一致 (executed): 2 个特征向量 × 9 态全量 hand-calc (独立按 yaml 语义实现 sigmoid 软门取积) vs state_scores 实际输出, 0 mismatch (精度 1e-12), 覆盖 高于/低于/平缓 三个判断算子",
+  "[config] 单位换算无错位 (executed+read): features.py 输出分数量纲 (ma_slope/mom20/ma_dist 为 0.01=1%), yaml 百分比阈值经 _UNIT_DIV/100 换算后比对, 手算与实际吻合 (如 放量突破.二十日动量 15.65% → 0.1565 vs mom20=0.18 → gate 0.603 双方一致); 平缓 判断 |x|<阈 语义正确",
+  "[config] 子态 config 驱动路由正确 (executed): 放量下跌 位置消歧 pctile=0.65/0.45/0.25 → 高位/中位/低位放量下跌 三路实测正确; 修饰指标 人话名→内部 key 映射 + 子态阈值原始量纲约定自洽",
+  "[config] 软隶属度机制自洽 (executed): softmax(温度0.05)+熵归一+covered 门, f3 主态 entropy 0.0002 干净; exp/overflow clip 防护在位",
+  "[config] 分类对阈值取整鲁棒 (executed): 19 阈值人话取整后 14400 bar 主态一致率 98.44% — 分类边界不是刀锋脆弱, 重建换整数阈值代价极小 (这同时是伪精度证据)",
+  "[config] classifier evaluator 本体小而干净 (~180行, 纯函数无DB), '加主态=改yaml不动代码'对 状态/子态/命名形态 三层成立 (唯一例外=bull/bear 方向集合, 见 findings)",
+  "[config] 核心模块切分 features/classifier/context/limits/candles/patterns 单一职责合理, 值得沿用为重建骨架 (read + 实验中 features→classifier 链路跑通)",
+  "[config] context.py 两遍架构 PIT 契约设计正确 (read): 前序态用 <i 历史窗, 当前条件用 bar t, 无未来引用; 解决瞬时特征表达不了'升势回踩'的真问题",
+  "[empirical] PIT 实测干净, 沿用 features.py 滚动窗设计: Exp4 截断不变性测试 1,576 共同 bar 特征 0 违规 + dominant 0 mismatch (加未来 bar 不改历史输出); 旧单测已有同款 PIT 测试模式 (test L46/L161/L211), 重建照搬",
+  "[empirical] 声明式 config 架构符合红线, 沿用: 状态判据/子态规则/上下文/命名形态/边界耦合全在 yaml, classifier 只是 generic evaluator — 加态=改 config 不动代码 (验证方式: 读码 + 本审查全程仅靠 yaml 即完成机制分析)",
+  "[empirical] 实验 harness 有效性验证: 400 股复现 P-1 真相源对账份额 (上升31.4 vs 31 / 中继7.7 vs 8.4 / 放量下跌0.51 vs 0.57 / 缩量回踩0.01 vs ~0), 说明旧 classifier 行为可复现且本审查结论建立在同一分布上",
+  "[empirical] limits.py A股涨跌停处理骨架正确: stk_limit 硬真相源 (up/down_limit 已编码板块 tier ±10/20%, 免分板路由) + 一字板 flag (开高低收重合+触板) — 保留 (仅 vol_ratio 改写方式需改, 见 findings)",
+  "[empirical] patterns.py 命名形态实现已符合 v2 裁决: 仅 3 模板/零独立参数/态序列有序子序列匹配/完成bar命中不回贴 (PIT 三时点已实现), 直接沿用",
+  "[empirical] candles.py 单日K已构件化: prior_trend 位置消歧 (锤子/上吊同形反义) + A股一字板特判 (防涨停误判十字星) — 符合 v2 『降为构件』裁决, 沿用",
+  "[empirical] context.py 两遍架构 (pass-1 瞬时 + pass-2 前序态 as-of ≤t-1) PIT 安全实测确认, 是前序依赖态 (缩量回踩类) 的正确表达框架 — 架构沿用, 参数需重验",
+  "[empirical] er/r2 趋势纯度特征已在 12 维内 = F1 推荐的 Kaufman ER/回归R² 轴已有实现, 重建直接提升为正交轴",
+  "[empirical] 放量下跌态 (D1 新增) 已修复『下跌侧分辨率缺失』且实测健康: 份额 0.51%, fwd10 median +1.70% win 56.0% 全场最强 — 携带进重建 (低位恐慌见底桶是最有价值的描述 cell 之一)",
+  "[empirical] B1 dim_stock_segment_daily 实测可当分层地基: 8,334,723 行 / 2019-2026 全史 / mktcap_seg+turnover_seg+sw_l1 齐 — F1 §3.2 市值第一层→行业 条件化骨架现成, 形态模块直接消费"
+ ]
+}

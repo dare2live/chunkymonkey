@@ -1,0 +1,71 @@
+{
+ "domain": "margin_detail",
+ "api": "margin_detail",
+ "grain": [
+  "ts_code",
+  "trade_date"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "trade_date": "20190102",
+   "ts_code": "000001.SZ",
+   "rzye": 4113214250,
+   "rqye": 5573386,
+   "rzmre": 60559546,
+   "rqyl": 606462,
+   "rzche": 57889484,
+   "rqchl": 275100,
+   "rqmcl": 83500,
+   "rzrqye": 4118787636
+  },
+  {
+   "trade_date": "20190102",
+   "ts_code": "000002.SZ",
+   "rzye": 1894981608,
+   "rqye": 39504214,
+   "rzmre": 38522201,
+   "rqyl": 1652896,
+   "rzche": 40626207,
+   "rqchl": 54100,
+   "rqmcl": 99700,
+   "rzrqye": 1934485822
+  },
+  {
+   "trade_date": "20190102",
+   "ts_code": "000006.SZ",
+   "rzye": 669447827,
+   "rqye": 2238612,
+   "rzmre": 7510129,
+   "rqyl": 434682,
+   "rzche": 7670520,
+   "rqchl": 58300,
+   "rqmcl": 109500,
+   "rzrqye": 671686439
+  },
+  {
+   "trade_date": "20190102",
+   "ts_code": "000008.SZ",
+   "rzye": 102455493,
+   "rqye": 0,
+   "rzmre": 2740349,
+   "rqyl": 0,
+   "rzche": 3950193,
+   "rqchl": 0,
+   "rqmcl": 0,
+   "rzrqye": 102455493
+  },
+  {
+   "trade_date": "20190102",
+   "ts_code": "000009.SZ",
+   "rzye": 1105617900,
+   "rqye": 308955,
+   "rzmre": 5416215,
+   "rqyl": 71850,
+   "rzche": 10710786,
+   "rqchl": 239100,
+   "rqmcl": 15800,
+   "rzrqye": 1105926855
+  }
+ ]
+}

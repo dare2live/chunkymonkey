@@ -1,0 +1,27 @@
+# market_pulse.yaml — B4 市场感知引擎阈值真相源 (2026-07-02, 契约=analysis/market_pulse_design_20260702.md)
+# 用户定调: "看钱在哪里从哪里流出流向哪里 … 哪里资金悄悄的在流入、哪里悄悄在流出"。
+# 两链并列 (vendor 自洽红线, 任何计算禁跨链 JOIN):
+#   dc_concept  = 东财板块 (moneyflow_ind_dc × dc_index): 资金流/悄悄流入流出/板块内涨跌家数
+#   sw_industry = 申万 L1 (sw_daily × index_daily 基准): RS 双窗 + 涨跌停/广度 (经 B1 分层表聚合)
+# 感知层只描述现状不给买卖暗示; RS top3 过滤器等信号层候选进 D2 消融另验 (设计文档 §1)。
+version: 1
+
+# ── RS 相对强度 (sw 链专属: 板块滚窗累计收益 − HS300 同窗累计收益, 百分点) ──
+rs_window_4w: 20              # 4 周 ≈ 20 交易日 (aleabitoreddit RS 双窗短窗, 设计文档 §2)
+rs_window_12w: 60             # 12 周 ≈ 60 交易日 (长窗)
+benchmark_code: "000300.SH"   # RS 分母基准 (raw_tushare_index_daily; 与 KPI 超额基准同源)
+
+# ── 悄悄流入/流出 (dc 链专属: 价格没动但钱连续进 = 吸筹嫌疑; 反向 = 派发嫌疑) ──
+quiet_px_band_pct: 1.0        # |pct_change| < 1% 视作"价格没动" (设计文档 §2 默认, 待用户调参)
+quiet_min_net_amount: 0       # 流入: net_amount > 该值; 流出: net_amount < -该值 (单位=元, 0=任何净流入/出)
+
+# ── 全市场快照 ──
+top_n_sectors: 3              # top/bottom N 板块进 mart_market_pulse_daily.top_sectors_json (aleabitoreddit top3/bottom3)
+
+# ── data_start (分链, 全部对齐 sync_registry.yaml 实测源起点, 不外推) ──
+data_start_dc: "20240102"     # from sync_registry: moneyflow_ind_dc data_start (E8 探底实测)
+data_start_sw: "20190102"     # from sync_registry: sw_daily data_start (对齐 K线/daily_basic 窗口)
+data_start_market: "20230103" # from sync_registry: limit_list_d data_start; moneyflow_mkt_dc 20230417 起, 之前 mkt_net_amount=NULL
+
+# ── dc 链纳入的东财板块类型 (moneyflow_ind_dc.content_type; 地域板块不进感知面) ──
+dc_content_types: ["行业", "概念"]

@@ -30,3 +30,17 @@ def run_process(ctx: PipelineContext) -> None:
         from services.segments import build_latest
         ctx.log(f"[segments] {build_latest()}")
     ctx.step(_seg_latest, degraded_msg="股票分层增量失败 — segment 标签将 stale (策略 cell/筛选器缺当日)")
+
+    # 市场感知 mart_sector/market_pulse_daily 增量 (B4 2026-07-02 follow-the-money;
+    #   必须在 segments 之后 — B1 表是 sw 链广度/涨跌停聚合的输入, 顺序不可反)
+    def _pulse_latest():
+        from services.market_pulse import build_latest
+        ctx.log(f"[market_pulse] {build_latest()}")
+    ctx.step(_pulse_latest, degraded_msg="市场感知增量失败 — pulse 面板将 stale (C4 感知页/D2 板块上下文缺当日)")
+
+    # 形态识别 fact_stock_form_daily 增量 (B2 2026-07-02 正交轴重建;
+    #   必须在 segments 之后 — E 轴消费 B1 的 rv_pctile/vol_regime 列, 缺列 fail loud)
+    def _form_latest():
+        from services.technical_states import build_latest
+        ctx.log(f"[technical_states] {build_latest()}")
+    ctx.step(_form_latest, degraded_msg="形态识别增量失败 — form 标签将 stale (D1 GT/档案维度①缺当日)")

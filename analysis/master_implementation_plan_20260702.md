@@ -15,17 +15,17 @@ A. 机构档案 API (SERVE 暴露画像+信号流)          ← 半天, 无依�
     │
 B. 基础前置件 (Type A 平台层, 每日数据获取后跑)   ← 用户裁决"前置在所有策略之前"
  ├─ B1 股票分层模块 [DONE 2026-07-02] (dim_stock_segment_daily 833万行, process 步)
- ├─ B2 形态识别模块 (technical_states 重建: Weinstein stage 等; 旧模块已随重建退役, git 史参照)
- ├─ B3 两融采集域 (tushare margin_detail — 用户点名的日更参数, 库中缺)
- └─ B4 市场感知引擎 (follow-the-money, mart_sector/market_pulse_daily; 设计=market_pulse_design_20260702.md; 零新增数据源)
+ ├─ B2 形态识别模块 [代码 DONE 2026-07-02] (正交5轴重建, 旧实现对抗审查 14 缺陷修正; 全量 rebuild 验收中)
+ ├─ B3 两融采集域 [DONE 2026-07-02] (margin_detail 464.9万行 1816/1816 零缺日 + margin 汇总)
+ └─ B4 市场感知引擎 [DONE 2026-07-02] (mart_sector_pulse_daily 33.8万行两链 + market 844行, smoke 过)
     │
-C. edge 前端 v1 (React/Vue)                    ← 可与 B 并行 (依赖 A 不依赖 B)
+C. edge 前端 v1 [骨架 DONE 2026-07-02: React+Vite 档案/实盘模拟页 build 绿]
  ├─ C1 骨架 + 机构档案页 (画像热力图/episode时间线/维度表现) [A 档案API DONE]
  ├─ C2 实盘模拟页 (入池/组合/nav vs HS300)
  ├─ C3 工作台 (数据管线状态, 复用 stage_status)
  └─ C4 市场感知页 (资金热力/RS轮动/悄悄流入榜/情绪温度/退潮预警 — 选股台的上游漏斗)
     │
-D. 主升浪猎手 (D1-D4, 依赖 B1+B2)              ← 用户方法论主战场
+D. 主升浪猎手 (D1-D4, 依赖 B1+B2+B4[板块上下文因子])              ← 用户方法论主战场
  ├─ D1 GT 重生成 (train 窗 ≤2025-06; archive 5 parquet 定义参照; holdout 纪律立法 §2.1)
  ├─ D2 逐层特征消融 (裸K → 日更量价 → 事件类; 机构 episode 特征在事件层交汇 §4)
  ├─ D3 细分策略 (行业/市值/板块 cell 内, 样本量护栏)
@@ -115,7 +115,7 @@ E. 整合: D 产出策略 → 选股台界面 → 用户手选入池 W2 实盘�
 
 ### D. 主升浪猎手 (按用户方法论, 每步细化再 grill)
 - D1: GT 定义冻结 (参照 archive 5 parquet + 旧定义"底→顶>60%+长底+多头排列") → train 窗生成 → **holdout 纪律 (§2.1) 同步立法进 config+experiment_store 门**
-- D2: 逐层消融 — L0 裸K (B2 形态参数) → L1 日更 (量/换手/两融/cyq_perf 筹码) → L2 事件 (龙虎榜/stk_holdertrade 增减持/stk_surv 调研/forecast 盈利预测/**fact_inst_episode 机构信号**) ; 每层 §2.2 判定
+- D2: 逐层消融 — L0 裸K (B2 形态参数) → L1 日更 (量/换手/两融/cyq_perf 筹码) → **L1.5 板块上下文 (B4 pulse: 所在板块资金流/RS/广度/悄悄流入 as-of, 用户确认反哺层)** → L2 事件 (龙虎榜/stk_holdertrade 增减持/stk_surv 调研/forecast 盈利预测/**fact_inst_episode 机构信号**) ; 每层 §2.2 判定
 - D3: 分层细分 (§2.3 从粗到细) — 探索在 sandbox, 结论 record_verdict, promote 走确认
 - D4: holdout 验收 (预注册判据, 预算内)
 - 大规模计算 (若逐层消融×分层需要): Optuna+Modal 届时启用 (有 search space 有消费方才上, grill)

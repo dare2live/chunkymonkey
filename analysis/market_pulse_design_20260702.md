@@ -1,6 +1,6 @@
 # 市场感知 (Market Pulse) — Follow the Money 架构设计 v1 (2026-07-02)
 
-> owner: 主会话。状态: 设计待用户 review, 实现排 master plan **B4** (引擎) + **C4** (前端页)。
+> owner: 主会话。状态: **B4 引擎已实现** (2026-07-02, services/market_pulse.py + 13 单测绿; 全量 rebuild 待回填锁释放后跑); C4 前端页未建。
 > 用户定调 (原话锚): "市场感知无非就是看钱在哪里从哪里流出流向哪里…从板块、行业、概念这种**分层后的
 > 资金流向**及其相应的**涨停和跌停家数、涨跌家数**…感知出资金在哪里、从哪流出、流向哪、**哪里资金悄悄
 > 的在流入、哪里悄悄在流出**"。借鉴 @aleabitoreddit sector-rotation 方法论 (11 ETF 周度 RS 排名→top3 关注
@@ -28,6 +28,7 @@ RS 链全申万 (sw_daily × v_sw_industry_pit)。两链并列展示, **禁跨�
 |---|---|---|---|
 | **感知层 (本设计主体)** | 钱现在在哪/流向哪/悄悄动向 — 同步描述现状给**用户看** | 描述性事实, 无需预测力证明 | Type A 聚合, B4 引擎 + C4 页面, 直接做 |
 | **信号层 (候选)** | RS 动量 top3 过滤器 (aleabitoreddit 主张) / 资金流领先性 | **既有裁决: 概念资金流预测力 IC≈0 (同步非领先)**; RS 行业动量有文献支持但本库未验 | 进 D 阶段消融验证 (D2 事件层旁挂 "板块 regime cell"), **验证过才进策略, 感知页不给买卖暗示** |
+| **反哺因子层 (用户 2026-07-02 确认)** | pulse 指标族整体作为**板块上下文因子**: 个股 t 日特征 = 所在板块 (申万 L1 via B1 + 东财概念 via dc_member) 的 {资金流强度/RS 双窗/涨跌停广度/悄悄流入天数} as-of t | pulse 表本身 Type A PIT 干净, as-of join 无泄漏; 有效性未验 | 作为 D2 消融的独立一层 ("板块上下文层"), 与机构 episode 特征并列; 是否真反哺 = 消融说了算 |
 
 > aleabitoreddit 方法论的可借鉴内核拆解: ①sector rotation 为**第一过滤器** (= 我们的分层 cell 思想, B1 已备)
 > ②RS 4/12 周排名 (信号层候选, D 验证) ③领涨板块内找 stage1 长基底 (= B2 形态识别 + D 主升浪的交集)
@@ -55,6 +56,12 @@ turnover_amt_share      成交额占全市场比
 quiet_inflow_days       连续"悄悄流入"天数 (见下)
 quiet_outflow_days      连续"悄悄流出"天数
 ```
+
+**实现裁决 (2026-07-02 B4 实现定稿, 与上表字面的两处收敛)**:
+- **rs_\* 列 = sw 链专属, dc 链恒 NULL** (vendor 红线保守读法; dc 概念 RS 若 C4 页面真需要再开, 用 dc_index.pct_change 自链算)。top_sectors_json 里 dc top/bottom 按 rank_flow (资金流) 排, sw 按 rs_rank。
+- **turnover_amt_share = sw 链专属** (dc 源无成交额字段, 拒绝 turnover_rate×total_mv 估算 — measured not estimated)。
+- rank_flow 由当日截面 net_amount DESC 重算 (源 rank 字段 = 分页伪 rank, 弃用)。
+- 涨跌停计数: 源当日在场缺组 = 真 0; 源整日缺失 (2023 前) = NULL (不知道≠0)。
 
 **"悄悄流入/流出" 定义** (用户亮点, 阈值进 config/market_pulse.yaml):
 `quiet_inflow = 板块 |pct_change| < quiet_px_band (默认 1%) AND net_amount > 0` 的连续天数
@@ -89,6 +96,7 @@ config/market_pulse.yaml (RS 窗口/quiet 阈值) + data_layers 声明 (display/
 - **B4 市场感知引擎** (1-2天): 排 B2 形态识别之后 (B1 分层已备, 无阻塞可提前); 
 - **C4 市场感知页**: C 线第 4 页 (档案/实盘模拟/工作台之后)。
 - 信号层验证 (RS top3 过滤器是否提升 D 细分策略) = D2 消融的一个 lens, 不单独立项。
+- **反哺因子层 (用户确认)**: mart_sector_pulse_daily 作 D2 "板块上下文层"特征源 — 主升浪起涨点是否更常发生在"资金流入+RS 上升+悄悄吸筹"的板块里, 消融验证; B4 引擎因此升为 D 阶段的前置依赖之一 (与 B1/B2 并列)。
 
 ## 6. 待拍板
 1. 感知/信号两层切分 (感知页只描述不暗示买卖, RS 过滤器进 D 验证) — 同意?

@@ -122,6 +122,34 @@ domains:
     min_rows_per_batch: 0          # 无停牌日合法 0 行 (zero_row_policy 例外: allow_empty)
     allow_empty_batch: true
 
+  # ── 两融族 (B3 2026-07-02 用户点名日更参数, 主升浪 D2 L1 叠加层; 实弹核证见 commit) ──
+  margin_detail:
+    source: tushare
+    api: margin_detail
+    target_table: raw_tushare_margin_detail
+    universe_filter: true            # 实测单日 4372 行含 ETF (510050 等) → 白名单 60/00/30/68 滤成纯个股
+    grain: [ts_code, trade_date]
+    batch_mode: by_trade_date
+    pit_anchor: "trade_date; 交易所 t+1 上午9点前披露 t 日余额 -> t+1 日盘前可用, 特征 JOIN t-1"
+    available_after: "t+1"
+    data_start: "20190102"        # 对齐 K线窗口 (源头 20100331 有, 消费方=D2 特征只需 K线窗内; 实测首日 949 个股)
+    freshness_sla_trading_days: 2  # t+1 披露节奏, 给 1 天缓冲
+    min_rows_per_batch: 800       # 实测 20190102 滤 ETF 后 949 行 (两融标的最少期), 防截断/throttle
+    allow_empty_batch: false
+
+  margin:                          # 交易所汇总 (SSE/SZSE/BSE 2-3 行/日): B4 市场感知大盘水位原料
+    source: tushare
+    api: margin
+    target_table: raw_tushare_margin
+    grain: [trade_date, exchange_id]
+    batch_mode: by_trade_date
+    pit_anchor: "trade_date; 同 margin_detail t+1 盘前披露 -> JOIN t-1"
+    available_after: "t+1"
+    data_start: "20190102"        # 实测首日 2 行 (SSE/SZSE)
+    freshness_sla_trading_days: 2
+    min_rows_per_batch: 1         # 2026-07-02 回填实测: 20260403/0430/0618/0626 源端仅 SSE 1 行 (重拉确认非 throttle), 1 行=合法最小
+    allow_empty_batch: false
+
   # ── P0-c: regime gate 原料 (1 行/日, ROI 最高) ──
   moneyflow_mkt_dc:
     source: tushare

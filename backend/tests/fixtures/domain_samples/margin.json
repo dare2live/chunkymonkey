@@ -1,0 +1,33 @@
+{
+ "domain": "margin",
+ "api": "margin",
+ "grain": [
+  "trade_date",
+  "exchange_id"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "trade_date": "20190102",
+   "exchange_id": "SSE",
+   "rzye": 462351753650,
+   "rzmre": 9073727044,
+   "rzche": 8709349912,
+   "rqye": 5714014114,
+   "rqmcl": 59090736,
+   "rzrqye": 468065767764,
+   "rqyl": null
+  },
+  {
+   "trade_date": "20190102",
+   "exchange_id": "SZSE",
+   "rzye": 287400283127,
+   "rzmre": 6788021385,
+   "rzche": 6381240824,
+   "rqye": 906974907,
+   "rqmcl": 14796634,
+   "rzrqye": 288307258034,
+   "rqyl": null
+  }
+ ]
+}
