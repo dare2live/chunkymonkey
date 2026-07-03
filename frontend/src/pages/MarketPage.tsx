@@ -530,7 +530,7 @@ function QuietTable(props: {
 function QuietCard() {
   const state = useFetch(() => fetchQuiet({ limit: 20 }), []);
   return (
-    <Card title="悄悄流入 / 流出 (价格波动 <1% 且资金连续净流向)">
+    <Card title="悄悄流入 / 流出 (东财板块链; 价格波动 <1% 且资金连续净流向)">
       <FetchGate
         state={state}
         empty={(d) => d.inflow.length === 0 && d.outflow.length === 0}
@@ -720,7 +720,7 @@ function SentimentCard() {
   const last = state.data?.days.length ? state.data.days[state.data.days.length - 1] : null;
   return (
     <Card
-      title="情绪温度 (每日一格: 涨停 / 跌停 / 炸板率 三条光谱带)"
+      title="情绪温度 (limit_list_d 官方口径, 不含 ST; 每日一格: 涨停 / 跌停 / 炸板率 三条光谱带)"
       extra={
         <div className="tab-group">
           {SENTIMENT_DAYS.map((d) => (

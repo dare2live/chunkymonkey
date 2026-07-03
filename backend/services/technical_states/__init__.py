@@ -62,6 +62,11 @@ logger = logging.getLogger(__name__)
 _CFG_PATH = Path(__file__).resolve().parents[2] / "config" / "technical_states.yaml"
 
 TABLE = "fact_stock_form_daily"
+# 列语义澄清 (审计 20260703 finding): axis_*_memb 实存各轴**几何均归一 score** [0,1]
+# (classify_stock 写入 ax[轴]["score"]), **非** softmax membership 概率 —— axes.py classify()
+# 同时算出的 membership (轴内各取值和=1) 未入库, 本列跨取值不求和为 1。
+# 命名沿革: 语义上更该叫 axis_*_score, 但 score/label 等词撞 Type A 纯度门 _TYPE_A_LEAK_RE
+# (2026-07-02 反例) 改名 memb。勿据列名回改语义/回改列名; 消费方 (前端/D2) 按归一 score 解读。
 _DDL = f"""
 CREATE TABLE {TABLE} (
     stock_code VARCHAR NOT NULL,
@@ -188,6 +193,7 @@ def classify_stock(dates, o, h, l, c, v, *, trading_days, cfg: dict | None = Non
         ev = events.get(k)
         up, down, one = lim.get("is_up_limit"), lim.get("is_down_limit"), lim.get("is_one_word")
         out[k] = {
+            # *_memb 列 = ax[轴]["score"] (几何均归一 score, 非 softmax membership; 见 _DDL 上方头注)
             "axis_pos": ax["位置"]["value"], "axis_pos_memb": ax["位置"]["score"],
             "axis_trend": ax["趋势方向"]["value"], "axis_trend_memb": ax["趋势方向"]["score"],
             "axis_purity": ax["趋势纯度"]["value"], "axis_purity_memb": ax["趋势纯度"]["score"],

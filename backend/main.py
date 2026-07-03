@@ -253,16 +253,22 @@ def render_index_html() -> str:
 if ASSETS_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 
-# 旧 v3 React 设计稿 (design/) 已退役归档 .archive/design_pre_reset_v3/ — 残留审计 wf_9e0eebb2 确证:
-# main.py 根路由曾重定向到 design/ 旧 v3 React 界面 = 用户痛点"打开看到旧前端误导"。
-# 当前唯一 live 前端 = 股票档案 (Stock Dossier) /api/dossier/view。/v3 StaticFiles 挂载已删。
+# 前端沿革: 旧 v3 React 设计稿已归档 .archive/; dossier 视图 2026-06-28 退役 (根路由曾指它 → 307→404
+# = 用户"双击 start.command 无法启动"的真相, 2026-07-03 修)。
+# 现行唯一前端 = edge React (frontend/, 2026-07-02): 生产 build 产物挂 /app (vite base=/app/,
+# 避开旧 dossier /assets 挂载); 改前端后 cd frontend && npm run build 刷新产物。
+_EDGE_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+if _EDGE_DIST.exists():
+    app.mount("/app", StaticFiles(directory=str(_EDGE_DIST), html=True), name="edge_app")
 
 
 @app.get("/")
 async def index():
-    """根路径进股票档案 (Stock Dossier) — 当前唯一 live 前端。旧 v3 React 设计稿/vanilla 前端均已退役 (design/ 归档 .archive/)。"""
+    """根路径进 edge 前端 (机构档案/实盘模拟/市场感知)。dist 缺失时提示 build。"""
     from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/api/dossier/view")
+    if _EDGE_DIST.exists():
+        return RedirectResponse(url="/app/")
+    return {"error": "edge 前端产物缺失", "fix": "cd frontend && npm install && npm run build"}
 
 
 @app.get("/v3")

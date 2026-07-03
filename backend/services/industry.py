@@ -1,11 +1,15 @@
 """
-industry.py — 行业解析单点实现 (2026-06-16 S3: 切回申万 SW2021 三级分类)
+industry.py — 行业解析单点实现 (当前口径: 东财 dc 链, 2026-06-23 起)
 
 所有需要行业信息的地方统一通过本模块访问。
-数据源: **dim_stock_dc_industry** (申万当前快照, serving; 2026-06-16 从通达信切回申万, 06-11 ANOVA 实测申万L2
-  区分度最优)。列名 tdx_l1/l2/l3(+name) 保留为**位置别名** (level-1/2/3 行业), 值已是申万——仅为最小化消费方改动,
-  真相源/迁移见 analysis/industry_migration_tdx_to_sw_20260615.md。通达信行业源已物删 (2026-06-23 切东财 §4.3)。
+数据源: **dim_stock_dc_industry** (serving 当前快照; 2026-06-23 起由东财 raw_tushare_dc_member/dc_index
+  构建 [backend/scripts/build_dc_industry_view.py], 值是东财板块码 **BK*.DC** + 板块名, L1/L2/L3 层级按
+  申万同名板块映射定级)。列名 tdx_l1/l2/l3(+name) 保留为**位置别名** (level-1/2/3 行业), 名带 tdx 实装东财值
+  ——仅为最小化消费方改动。沿革: 通达信 → 2026-06-16 申万 SW2021 (S3, ANOVA 实测申万L2 区分度最优) →
+  2026-06-23 东财 dc 链 (CLAUDE §4.3); 通达信/申万快照源均已物删, 迁移见
+  analysis/industry_migration_tdx_to_sw_20260615.md + analysis/dc_full_migration_plan_20260623.md。
   **as-of/PIT** (回测) 走 tushare_raw.v_sw_industry_pit (in_date<=t AND (out_date IS NULL OR out_date>t)); 本模块只服务"当前"。
+  (注意: v_dc_industry_pit 视图**无 out_date**, 非真 PIT, 禁 as-of JOIN — 审计 20260703 finding。)
 
 用法约定:
 - 物化表构建 → load_industry_map() 批量装载
@@ -21,7 +25,7 @@ logger = logging.getLogger(__name__)
 # 模块级缓存
 _industry_cache: dict = None
 
-# 行业口径: 申万 SW2021 (2026-06-16 S3). 列名 tdx_l* = 历史位置别名 (level-1/2/3), 值已是申万 (最小化消费方改动)。
+# 行业口径: 东财 dc 链 (2026-06-23). 列名 tdx_l* = 历史位置别名 (level-1/2/3), 值是东财 BK*.DC 码 (最小化消费方改动)。
 INDUSTRY_LEVEL_COLUMNS = ("tdx_l1", "tdx_l2", "tdx_l3")
 INDUSTRY_NAME_COLUMNS = ("tdx_l1_name", "tdx_l2_name", "tdx_l3_name")
 INDUSTRY_TABLE = "dim_stock_dc_industry"
@@ -90,7 +94,7 @@ def industry_level_value(industry: Optional[dict], level: int) -> str:
 
 
 def with_industry_aliases(industry: Optional[dict]) -> dict:
-    """返回带齐全三级 tdx_l* 键的 dict (TDX 单一口径, 无 sw 别名)。"""
+    """返回带齐全三级 tdx_l* 键的 dict (tdx_l* 为位置别名键单一口径, 无 vendor 别名键)。"""
     result = dict(industry or {})
     for level in (1, 2, 3):
         key = industry_level_alias(level)
@@ -124,13 +128,12 @@ def industry_select_clause(*, alias: str = "industry_dim", prefix: str = "") -> 
 
 
 def industry_complete_condition(*, alias: str = "industry_dim") -> str:
-    """定义行业"完整"的最低口径：必须有 L1 和 L2 即可，L3 为 TDX 可选字段。
+    """定义行业"完整"的最低口径：必须有 L1 和 L2 即可，L3 可选。
 
-    原因：TDX 的 tdxhy.cfg 对 2660+ 股票只提供二级分类（如 银行 T1001、软件服务 T1205
-    这类本身就属于末级行业，没有更细的子分类）。若硬性要求 L3 非空，会产生约
-    2239 条永久性"假缺口" (旧 TDX 口径; market_gap_queue 标记机制已退役 2026-06)。L1+L2 已具有足够
-    粒度（~400 个二级行业），能满足机构行业统计所需的聚合口径。L3 保留在 dim
-    表中供需要更细分类的场景按需使用。"""
+    沿革：该口径立于通达信时代（tdxhy.cfg 对 2660+ 股只有二级分类，硬性要求 L3 非空会产生约
+    2239 条永久性"假缺口"；market_gap_queue 标记机制已退役 2026-06）。现东财 dc 链下保留同口径——
+    东财行业板块按申万同名映射定级，部分板块无 L3 对应（build_dc_industry_view 匹配率 ~99%），
+    L1+L2 粒度已满足聚合统计所需；L3 保留在 dim 表中供需要更细分类的场景按需使用。"""
     return " AND ".join(
         industry_level_nonempty_condition(level, alias=alias) for level in (1, 2)
     )
@@ -160,16 +163,17 @@ def load_industry_map(conn) -> dict[str, dict]:
             "tdx_l3_name": r["tdx_l3_name"],
         }
     _industry_cache = result
-    logger.debug(f"[Industry] Loaded industry map: {len(result)} stocks (TDX)")
+    logger.debug(f"[Industry] Loaded industry map: {len(result)} stocks (dc)")
     return result
 
 
 def resolve_industry(conn, stock_code: str, ref_date=None) -> dict:
-    """返回 stock_code 的**当前**申万行业 (dim_stock_dc_industry 当前快照)。
+    """返回 stock_code 的**当前**行业归属 (dim_stock_dc_industry 当前快照; 东财 BK*.DC 码, 申万名定级)。
 
     ref_date: 当前实现**不按 ref_date 做 as-of** (serving 只需当前归属)。需 PIT/历史 as-of (回测) 的,
     改查 tushare_raw.v_sw_industry_pit (WHERE in_date<=t AND (out_date IS NULL OR out_date>t))——别误以为本函数 PIT。
-    2026-06-16 S3: 此前 ref_date 被静默忽略 (latent bug, 旧通达信快照同样无 PIT); 现切申万快照并显式标注语义。
+    2026-06-16 S3: 此前 ref_date 被静默忽略 (latent bug, 旧通达信快照同样无 PIT); 显式标注当前快照语义
+    (快照源 2026-06-16 申万 → 2026-06-23 东财, 语义不变)。
     """
     global _industry_cache
     if _industry_cache is not None and stock_code in _industry_cache:

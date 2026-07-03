@@ -9,7 +9,12 @@ RELOAD_MODE="${CM_RELOAD:-0}"
 # 绑 0.0.0.0 会把写接口暴露到整个局域网. 需跨机访问时显式 export CM_HOST=0.0.0.0.
 HOST="${CM_HOST:-127.0.0.1}"
 export PATH="/opt/homebrew/opt/python@3.13/libexec/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-PYTHON_BIN="${PYTHON_BIN:-python}"
+# .venv 优先 (项目依赖真相源; homebrew python 有依赖只是巧合面 — ops skill env PATH 双前提陷阱)
+if [[ -x "$ROOT_DIR/.venv/bin/python" ]]; then
+  PYTHON_BIN="${PYTHON_BIN:-$ROOT_DIR/.venv/bin/python}"
+else
+  PYTHON_BIN="${PYTHON_BIN:-python}"
+fi
 
 find_port_pids() {
   lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | sort -u
@@ -102,7 +107,7 @@ export CM_PORT="$PORT"
 
 echo "========================================"
 echo "  ChunkyMonkey 启动中..."
-echo "  地址: http://localhost:$PORT  (/ → /v3 设计稿)"
+echo "  地址: http://localhost:$PORT  (/ → /app edge 前端)"
 echo "  API:  http://localhost:$PORT/docs"
 echo "  Python: $($PYTHON_BIN --version 2>&1)"
 if [[ "$RELOAD_MODE" == "1" ]]; then
@@ -121,14 +126,14 @@ open_frontend_when_ready() {
   local i
   for ((i=1; i<=max_attempts; i++)); do
     if curl -sf "http://localhost:$PORT/health" > /dev/null 2>&1; then
-      echo "✓ 后端就绪 (尝试 ${i} 次), 打开浏览器 http://localhost:$PORT/v3"
+      echo "后端就绪 (尝试 ${i} 次), 打开浏览器 http://localhost:$PORT/app/"
       open "http://localhost:$PORT/" 2>/dev/null || true
       return 0
     fi
     sleep 0.5
   done
   echo "⚠ 后端 30s 内未就绪, 跳过自动打开浏览器"
-  echo "  请手动访问: http://localhost:$PORT/v3"
+  echo "  请手动访问: http://localhost:$PORT/app/"
 }
 
 if [[ "${CM_OPEN_BROWSER:-1}" == "1" ]]; then

@@ -5,6 +5,8 @@ import { defineConfig } from "vite";
 const backendPort = process.env.CM_PORT || "8000";
 
 export default defineConfig({
+  // 生产 build 挂 FastAPI /app 路径 (main.py StaticFiles; 避开旧 dossier /assets 挂载撞路径)
+  base: "/app/",
   plugins: [react()],
   build: {
     rollupOptions: {
