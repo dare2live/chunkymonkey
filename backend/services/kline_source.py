@@ -11,11 +11,8 @@ KLINE_CLEANING_POLICY_ID = "kline_clean_v2_governance_v1_lint"
 KLINE_VALUE_EPSILON = 1e-6
 KLINE_PRICE_FIELDS = ("open", "high", "low", "close")
 
-# from yaml: configs/data_governance.yaml schema_contracts.price_kline_tdxhub.fields.volume.lot_size_shares
-LOT_SIZE_SHARES = 100.0
-# from yaml: configs/data_governance.yaml ingestion_lint.reject.invalid_vwap_close_ratio (governance v1)
-VWAP_CLOSE_RATIO_MIN = 0.5
-VWAP_CLOSE_RATIO_MAX = 1.5
+# invalid_vwap_close_ratio lint 已物删 (2026-07-03 审计修5): tdxhub volume=手 单位遗留,
+# 现行两种源喂入下 100% 误判且零生产调用方; 常数 LOT_SIZE_SHARES/VWAP_CLOSE_RATIO_* 一并删。
 
 
 def looks_like_empty_payload_error(err: Exception) -> bool:
@@ -185,16 +182,6 @@ def clean_price_row(
             issues.append("invalid_ohlc_high_low")
         if low > min(numbers["open"], numbers["close"], high):
             issues.append("invalid_ohlc_high_low")
-
-    # governance v1 lint: invalid_vwap_close_ratio (price_kline_tdxhub.volume unit = lots)
-    if (
-        "volume" in numbers and "amount" in numbers and "close" in numbers
-        and numbers["volume"] > 0 and numbers["close"] > 0
-    ):
-        vwap = numbers["amount"] / (numbers["volume"] * LOT_SIZE_SHARES)
-        ratio = vwap / numbers["close"]
-        if ratio < VWAP_CLOSE_RATIO_MIN or ratio > VWAP_CLOSE_RATIO_MAX:
-            issues.append("invalid_vwap_close_ratio")
 
     if issues:
         return None, sorted(set(issues))

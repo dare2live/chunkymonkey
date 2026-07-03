@@ -1,7 +1,11 @@
-"""market_pulse 单测 — quiet 连续天数 / RS 滚窗数值 / 两链隔离 / 炸板率边界 / 幂等增量 (证伪门)。
+"""market_pulse 单测 — quiet 连续天数 / RS 滚窗数值 / 两链隔离 / 炸板率边界 / 幂等增量 (证伪门)
++ v3: flow_regime 判定序 (6 标签手算 fixture + surge 优先级) / sw L2/L3 聚合数值 / cum_ratio /
+level 列 / 增量 flow 列接续。
 
 fixture 形态 = backend/tests/fixtures/domain_samples/*.json 真实字段契约 (禁抽象命名);
 内存 DuckDB 用 CREATE SCHEMA tr 模拟生产 ATTACH tushare_raw AS tr (两部名同解析)。
+单位契约 (与真实源一致): moneyflow_ind_dc.net_amount=元 / moneyflow.net_mf_amount=万元 /
+moneyflow_dc.net_amount=万元 / dc_index.total_mv=万元 / daily_basic.circ_mv=万元。
 """
 import json
 import sys
@@ -30,6 +34,12 @@ CFG = {
     "sec_board_cutoff": "093059",
     "mkt_valuation_code": "000300.SH",
     "lookback_late_days": 2,   # 迟到列回补窗口 (R1 根因5); 测试缩小到 2 便于手算 (生产值走 yaml)
+    # v3 flow_regime 小窗 (逻辑同构便于手算; 生产值走 yaml)
+    "flow_z_surge": 2.0,
+    "accum_min_streak": 2,
+    "silent_px_band": 1.0,
+    "zscore_window": 3,
+    "cum_window": 3,
 }
 
 D = ["20240102", "20240103", "20240104", "20240105", "20240108"]
@@ -42,13 +52,21 @@ CREATE TABLE tr.raw_tushare_moneyflow_ind_dc (
     buy_sm_amount_stock TEXT);
 CREATE TABLE tr.raw_tushare_dc_index (
     ts_code TEXT, trade_date TEXT, "leading" TEXT, leading_code TEXT, leading_pct DOUBLE,
-    up_num BIGINT, down_num BIGINT);
+    up_num BIGINT, down_num BIGINT, total_mv DOUBLE, level DOUBLE);
 CREATE TABLE tr.raw_tushare_sw_daily (
     ts_code TEXT, trade_date TEXT, close DOUBLE, pct_change DOUBLE, amount DOUBLE);
 CREATE TABLE tr.raw_tushare_index_daily (
     ts_code TEXT, trade_date TEXT, close DOUBLE);
 CREATE TABLE tr.raw_tushare_index_member_all (
-    l1_code TEXT, l1_name TEXT, ts_code TEXT, name TEXT, is_new TEXT);
+    l1_code TEXT, l1_name TEXT, l2_code TEXT, l2_name TEXT, l3_code TEXT, l3_name TEXT,
+    ts_code TEXT, name TEXT, in_date TEXT, out_date TEXT, is_new TEXT);
+CREATE TABLE tr.v_sw_industry_pit (
+    stock_code TEXT, ts_code TEXT, l1_code TEXT, l1_name TEXT, l2_code TEXT, l2_name TEXT,
+    l3_code TEXT, l3_name TEXT, in_date TEXT, out_date TEXT, is_new TEXT);
+CREATE TABLE tr.raw_tushare_moneyflow (
+    ts_code TEXT, trade_date TEXT, net_mf_amount DOUBLE);
+CREATE TABLE tr.raw_tushare_daily_basic (
+    ts_code TEXT, trade_date TEXT, circ_mv DOUBLE);
 CREATE TABLE tr.raw_tushare_limit_list_d (
     ts_code TEXT, trade_date TEXT, "limit" TEXT, limit_times DOUBLE, fd_amount DOUBLE,
     open_times BIGINT, first_time TEXT);
@@ -59,7 +77,7 @@ CREATE TABLE tr.raw_tushare_moneyflow_mkt_dc (
 CREATE TABLE tr.raw_tushare_dc_member (
     trade_date TEXT, ts_code TEXT, con_code TEXT, name TEXT);
 CREATE TABLE tr.raw_tushare_moneyflow_dc (
-    trade_date TEXT, ts_code TEXT, name TEXT, net_amount DOUBLE);
+    trade_date TEXT, ts_code TEXT, name TEXT, net_amount DOUBLE, pct_change DOUBLE);
 CREATE TABLE tr.raw_tushare_margin (
     trade_date TEXT, exchange_id TEXT, rzrqye DOUBLE);
 CREATE TABLE tr.raw_tushare_index_dailybasic (
@@ -73,6 +91,8 @@ CREATE TABLE tr.raw_tushare_limit_cpt_list (
     cons_nums TEXT, up_nums BIGINT, pct_chg DOUBLE, "rank" BIGINT);
 CREATE TABLE dim_stock_segment_daily (
     stock_code TEXT, trade_date TEXT, mktcap_seg TEXT, turnover_seg TEXT, sw_l1 TEXT);
+CREATE TABLE fact_stock_form_daily (
+    stock_code TEXT, trade_date TEXT, form_name TEXT, is_breakout_event BOOLEAN);
 """
 
 
@@ -98,9 +118,10 @@ def _fixture_conn():
         "INSERT INTO tr.raw_tushare_moneyflow_ind_dc VALUES "
         "(?, '地域', 'BK0145.DC', '上海板块', 0.1, 50.0, 999.0, 1.0, '霍普股份')",
         [D[0]])
+    # dc_index: total_mv=200 万元 → sector_mv 2e6 元 (cum_ratio 分母); level=1 → mart 'L1' 透出
     c.executemany(
         "INSERT INTO tr.raw_tushare_dc_index VALUES "
-        "('BK0001.DC', ?, '云煤能源', '600792.SH', 9.98, 10, 5)", [(d,) for d in D])
+        "('BK0001.DC', ?, '云煤能源', '600792.SH', 9.98, 10, 5, 200.0, 1.0)", [(d,) for d in D])
     # v2 inflow_breadth: BK0001 成分快照仅 D3/D4 (dc_member 2025+ 现实 → 其余日 NULL)
     #   D3: 成分 600001/600002/600003/600004, 个股流 +5/-3/+1/缺 → 宽度 = 2/3
     #   D4: 成分 600001/600002, 个股流 -1/0 (net=0 不算流入) → 宽度 = 0.0 (真 0 ≠ NULL)
@@ -109,26 +130,57 @@ def _fixture_conn():
         (D[3], "600003.SZ", "丙"), (D[3], "600004.SZ", "丁"),
         (D[4], "600001.SH", "甲"), (D[4], "600002.SZ", "乙"),
     ])
-    c.executemany("INSERT INTO tr.raw_tushare_moneyflow_dc VALUES (?, ?, ?, ?)", [
-        (D[3], "600001.SH", "甲", 5.0), (D[3], "600002.SZ", "乙", -3.0),
-        (D[3], "600003.SZ", "丙", 1.0),
-        (D[4], "600001.SH", "甲", -1.0), (D[4], "600002.SZ", "乙", 0.0),
+    c.executemany("INSERT INTO tr.raw_tushare_moneyflow_dc VALUES (?, ?, ?, ?, ?)", [
+        (D[3], "600001.SH", "甲", 5.0, 2.0), (D[3], "600002.SZ", "乙", -3.0, -0.5),
+        (D[3], "600003.SZ", "丙", 1.0, 0.3),
+        (D[4], "600001.SH", "甲", -1.0, -1.0), (D[4], "600002.SZ", "乙", 0.0, 0.1),
     ])
-    # sw 链: 2 个 L1 + HS300 基准 (平盘 → rs = 板块自身滚窗收益)。成员行含 v2 下钻列
-    # (ts_code/name/is_new; is_new='N' 历史行必须被 members 下钻排除)
-    c.executemany("INSERT INTO tr.raw_tushare_index_member_all VALUES (?, ?, ?, ?, ?)",
-                  [("801010.SI", "农林牧渔", "000592.SZ", "平潭发展", "Y"),
-                   ("801010.SI", "农林牧渔", "002679.SZ", "福建金森", "Y"),
-                   ("801010.SI", "农林牧渔", "600265.SH", "ST景谷", "N"),
-                   ("801080.SI", "电子", "600100.SH", "同方股份", "Y")])
+    # sw 链: 2 个 L1 (+1 个 L2 行情码, v3) + HS300 基准 (平盘 → rs = 板块自身滚窗收益)。
+    # 成员行含三级码 + PIT 区间 (v3 drill 叶子层; is_new='N'/out_date 已过历史行必须被排除)
+    c.executemany("INSERT INTO tr.raw_tushare_index_member_all VALUES (?,?,?,?,?,?,?,?,?,?,?)", [
+        ("801010.SI", "农林牧渔", "801011.SI", "种植业", "850111.SI", "粮食种植",
+         "000592.SZ", "平潭发展", "20111010", None, "Y"),
+        ("801010.SI", "农林牧渔", "801011.SI", "种植业", "850111.SI", "粮食种植",
+         "002679.SZ", "福建金森", "20120105", None, "Y"),
+        ("801010.SI", "农林牧渔", "801011.SI", "种植业", "850111.SI", "粮食种植",
+         "600001.SH", "甲", "20111010", None, "Y"),
+        ("801010.SI", "农林牧渔", "801011.SI", "种植业", "850111.SI", "粮食种植",
+         "600265.SH", "ST景谷", "20111010", "20211213", "N"),
+        ("801080.SI", "电子", "801081.SI", "半导体", "850811.SI", "数字芯片设计",
+         "600100.SH", "同方股份", "20111010", None, "Y")])
     closes_a = [100.0, 110.0, 121.0, 133.1, 146.41]     # 每日 +10%
     closes_b = [100.0, 100.0, 90.0, 81.0, 72.9]         # 平→连跌10%
+    closes_l2 = [100.0, 105.0, 110.25, 115.76, 121.55]  # L2 种植业 每日 +5%
     c.executemany("INSERT INTO tr.raw_tushare_sw_daily VALUES ('801010.SI', ?, ?, 10.0, 300.0)",
                   list(zip(D, closes_a)))
     c.executemany("INSERT INTO tr.raw_tushare_sw_daily VALUES ('801080.SI', ?, ?, -10.0, 100.0)",
                   list(zip(D, closes_b)))
+    # v3: L2 行情码入 sw_daily → mart 出 L2 行 (amount=50 只进 L2 分区分母, L1 份额不受扰)
+    c.executemany("INSERT INTO tr.raw_tushare_sw_daily VALUES ('801011.SI', ?, ?, 5.0, 50.0)",
+                  list(zip(D, closes_l2)))
     c.executemany("INSERT INTO tr.raw_tushare_index_daily VALUES ('000300.SH', ?, 100.0)",
                   [(d,) for d in D])
+    # v3 sw 链资金流底座: 个股全单净流 (万元) × as-of 归属 (v_sw_industry_pit)。
+    #   600001 (801010/801011/850111): D0-D3 每日 2.0 万元 (D4 无行 → L2 当日 net NULL);
+    #   600003 (801010/801012/850121, 同 L1 异 L2 分支): D0-D4 每日 3.0 万元
+    #   → L1 801010 net: D0-D3 = 5e4 元, D4 = 3e4; L2 801011 net: D0-D3 = 2e4, D4 = NULL。
+    c.executemany("INSERT INTO tr.v_sw_industry_pit VALUES (?,?,?,?,?,?,?,?,?,?,?)", [
+        ("600001", "600001.SH", "801010.SI", "农林牧渔", "801011.SI", "种植业",
+         "850111.SI", "粮食种植", "20111010", None, "Y"),
+        ("600003", "600003.SZ", "801010.SI", "农林牧渔", "801012.SI", "渔业",
+         "850121.SI", "水产养殖", "20111010", None, "Y")])
+    c.executemany("INSERT INTO tr.raw_tushare_moneyflow VALUES ('600001.SH', ?, 2.0)",
+                  [(d,) for d in D[:4]])
+    c.executemany("INSERT INTO tr.raw_tushare_moneyflow VALUES ('600003.SZ', ?, 3.0)",
+                  [(d,) for d in D])
+    # 板块流通市值分母: circ_mv 万元 → 801010 = (100+300)万元 = 4e6 元; 801011 = 1e6 元
+    for d in D:
+        c.execute("INSERT INTO tr.raw_tushare_daily_basic VALUES ('600001.SH', ?, 100.0)", [d])
+        c.execute("INSERT INTO tr.raw_tushare_daily_basic VALUES ('600003.SZ', ?, 300.0)", [d])
+    # v3 drill 叶子层 form (as-of 取每股 <= date 最新行; D2 旧行必须被 D3 行覆盖)
+    c.executemany("INSERT INTO fact_stock_form_daily VALUES (?, ?, ?, ?)", [
+        ("600001", D[2], "上升通道", False),
+        ("600001", D[3], "低位横盘", True)])
     # 个股日线 + B1 分层 (sw 链广度/涨跌停聚合桥)
     for d in D:
         c.execute("INSERT INTO tr.raw_tushare_daily VALUES ('600001.SH', ?, 1.0)", [d])
@@ -181,7 +233,9 @@ def test_config_yaml_contract():
     for key in ("rs_window_4w", "rs_window_12w", "benchmark_code", "quiet_px_band_pct",
                 "quiet_min_net_amount", "top_n_sectors", "data_start_dc", "data_start_sw",
                 "data_start_market", "dc_content_types",
-                "sec_board_cutoff", "mkt_valuation_code", "lookback_late_days"):
+                "sec_board_cutoff", "mkt_valuation_code", "lookback_late_days",
+                "flow_z_surge", "accum_min_streak", "silent_px_band",
+                "zscore_window", "cum_window"):
         assert key in cfg, f"market_pulse.yaml missing key: {key}"
     assert isinstance(cfg["lookback_late_days"], int) and cfg["lookback_late_days"] >= 1
     assert isinstance(cfg["rs_window_4w"], int) and isinstance(cfg["rs_window_12w"], int)
@@ -191,8 +245,14 @@ def test_config_yaml_contract():
     # 秒板界: HHMMSS 6 位字符串 (lpad 归一后字典序可比)
     assert isinstance(cfg["sec_board_cutoff"], str) and len(cfg["sec_board_cutoff"]) == 6
     assert isinstance(cfg["mkt_valuation_code"], str) and cfg["mkt_valuation_code"]
+    # v3 flow_regime 阈值: 类型/正性 (值本身是真相源不冻结)
+    assert float(cfg["flow_z_surge"]) > 0 and float(cfg["silent_px_band"]) > 0
+    assert isinstance(cfg["accum_min_streak"], int) and cfg["accum_min_streak"] >= 1
+    assert isinstance(cfg["zscore_window"], int) and cfg["zscore_window"] >= 2
+    assert isinstance(cfg["cum_window"], int) and cfg["cum_window"] >= 1
     # 引擎 SQL 能用生产 cfg 生成 (阈值注入无语法炸点)
     assert "quiet_inflow_days" in mp._sector_sql(cfg)
+    assert "flow_regime" in mp._sector_sql(cfg)
     assert "limit_times_dist_json" in mp._market_sql(cfg)
 
 
@@ -243,7 +303,9 @@ def test_rs_rolling_window_values():
 
 
 def test_chain_isolation():
-    """两链隔离: dc 行 net_amount 非空/rs 恒 NULL; sw 行 net_amount 恒 NULL/quiet 恒 NULL; 禁跨链串码。"""
+    """两链隔离: dc 行 net_amount 非空/rs 恒 NULL; sw 行 elg/rank_flow/quiet 恒 NULL; 禁跨链串码。
+    v3 变更: sw 链 net_amount 不再恒 NULL (成分个股全单净流聚合, 与 dc 主力口径并列不可比) —
+    但只允许来自 sw 自家聚合 (无 moneyflow/归属数据的 801080 必须仍 NULL, 不知道≠0)。"""
     c = _fixture_conn()
     try:
         mp.rebuild_all(conn=c, cfg=CFG)
@@ -255,10 +317,15 @@ def test_chain_isolation():
         assert bad_dc == 0
         bad_sw = c.execute(f"""
             SELECT COUNT(*) FROM {mp.SECTOR_TABLE} WHERE chain = '{mp.CHAIN_SW}'
-            AND (net_amount IS NOT NULL OR elg_amount IS NOT NULL OR rank_flow IS NOT NULL
+            AND (elg_amount IS NOT NULL OR rank_flow IS NOT NULL
                  OR quiet_inflow_days IS NOT NULL OR quiet_outflow_days IS NOT NULL
                  OR sector_code NOT LIKE '801%')""").fetchone()[0]
         assert bad_sw == 0
+        # sw 无流数据板块: net/flow_regime 全 NULL (不知道≠0, 不伪造 neutral)
+        no_flow = c.execute(f"""
+            SELECT COUNT(*) FROM {mp.SECTOR_TABLE} WHERE sector_code = '801080.SI'
+            AND (net_amount IS NOT NULL OR flow_regime IS NOT NULL)""").fetchone()[0]
+        assert no_flow == 0
         # dc 广度来自 dc_index (vendor 自洽); sw 广度来自 daily×B1
         dc_b = c.execute(f"""
             SELECT up_num, down_num FROM {mp.SECTOR_TABLE}
@@ -348,18 +415,31 @@ def test_build_latest_incremental_idempotent():
         # d6 成分+个股流: 2 成分 1 流入 → 宽度 1/2 (验证 dc_day_where 下推不丢增量日)
         c.executemany("INSERT INTO tr.raw_tushare_dc_member VALUES (?, 'BK0001.DC', ?, ?)",
                       [(d6, "600001.SH", "甲"), (d6, "600002.SZ", "乙")])
-        c.executemany("INSERT INTO tr.raw_tushare_moneyflow_dc VALUES (?, ?, ?, ?)",
-                      [(d6, "600001.SH", "甲", 5.0), (d6, "600002.SZ", "乙", -3.0)])
+        c.executemany("INSERT INTO tr.raw_tushare_moneyflow_dc VALUES (?, ?, ?, ?, ?)",
+                      [(d6, "600001.SH", "甲", 5.0, 1.2), (d6, "600002.SZ", "乙", -3.0, -0.4)])
         c.execute("INSERT INTO tr.raw_tushare_sw_daily VALUES ('801010.SI', ?, 161.051, 10.0, 300.0)", [d6])
         c.execute("INSERT INTO tr.raw_tushare_sw_daily VALUES ('801080.SI', ?, 65.61, -10.0, 100.0)", [d6])
         c.execute("INSERT INTO tr.raw_tushare_index_daily VALUES ('000300.SH', ?, 100.0)", [d6])
         c.execute("INSERT INTO tr.raw_tushare_daily VALUES ('600001.SH', ?, 1.0)", [d6])
+        # v3: sw 流增量 (600003 补 d6 → 801010 net=3e4; 601 无行)
+        c.execute("INSERT INTO tr.raw_tushare_moneyflow VALUES ('600003.SZ', ?, 3.0)", [d6])
+        c.execute("INSERT INTO tr.raw_tushare_daily_basic VALUES ('600003.SZ', ?, 300.0)", [d6])
         out1 = mp.build_latest(conn=c, cfg=CFG)
         assert (out1["dc_added_days"], out1["sw_added_days"], out1["market_added_days"]) == (1, 1, 1)
         row = c.execute(f"""
             SELECT quiet_outflow_days FROM {mp.SECTOR_TABLE}
             WHERE sector_code = 'BK0001.DC' AND trade_date = ?""", [d6]).fetchone()
         assert row[0] == 2, "增量插入的 streak 必须接续历史 (非从 1 重数)"
+        # v3 flow 列跨增量: dc 流出 streak 接续 (D4 -3, d6 -5 → -2), 价稳 → 横盘累积流出;
+        # sw 净流聚合 + streak 接续 (D0-D4 全流入 5 天, d6 第 6 天)
+        v3dc = c.execute(f"""
+            SELECT flow_streak, flow_regime FROM {mp.SECTOR_TABLE}
+            WHERE sector_code = 'BK0001.DC' AND trade_date = ?""", [d6]).fetchone()
+        assert v3dc[0] == -2 and v3dc[1] == "accum_out_silent"
+        v3sw = c.execute(f"""
+            SELECT net_amount, flow_streak FROM {mp.SECTOR_TABLE}
+            WHERE sector_code = '801010.SI' AND trade_date = ?""", [d6]).fetchone()
+        assert v3sw[0] == pytest.approx(30000.0) and v3sw[1] == 6
         # v2 列跨增量: content_type/龙头透传; 宽度日期下推 (d6 有成分+流 → 手算 1/2)
         v2 = c.execute(f"""
             SELECT content_type, flow_leader_stock, inflow_breadth FROM {mp.SECTOR_TABLE}
@@ -570,6 +650,152 @@ def test_v2_limit_ladder_promotion_secboard():
         assert d3["promotion_rate"] is None, "昨日 0 板必须 NULL, 不除零"
         assert d3["sec_board_n"] == 1 and d3["avg_fd_amount"] == pytest.approx(3000.0)
         assert d3["open_times_total"] == 3
+    finally:
+        c.close()
+
+
+# ── v3 (2026-07-03): flow_regime 分类学 / sw L2/L3 聚合 / level / cum_ratio ──
+
+
+# 6 标签 + neutral + 双向 surge 优先级 全覆盖的手算序列 (net 元, pct 百分数):
+# 判定用 CFG 小窗 zw=3 / cw=3 / z_surge=2.0 / min_streak=2 / band=1.0
+_REGIME_DAYS = [f"202402{i:02d}" for i in range(1, 11)]
+_REGIME_SERIES = [
+    # (net, pct, expect_regime, why)
+    (1.0, 0.1, "neutral",          "streak=1<2, z 窗未满"),
+    (2.0, 0.1, "accum_in_silent",  "streak=2, px_cum=1.001^2-1=0.2%<1"),
+    (1.0, 0.1, "accum_in_silent",  "streak=3, px_cum=0.3%"),
+    (10.0, 0.1, "surge_in",        "z=(10-4/3)/0.5774=15.01>=2 且 net>0; streak=4 也满足 accum → surge 优先"),
+    (1.0, 0.1, "accum_in_silent",  "z=(1-13/3)/4.933=-0.68 无脉冲; streak=5, px=0.5%"),
+    (1.0, 2.0, "accum_in_driving", "streak=6, px_cum=1.001^5*1.02-1=2.5%>=1 上行累积"),
+    (-2.0, -0.1, "neutral",        "转向首日 streak=-1"),
+    (-1.0, -0.1, "accum_out_silent", "streak=-2, px_cum=-0.2%"),
+    (-1.0, -3.0, "accum_out_driving", "streak=-3, px_cum=0.999^2*0.97-1=-3.09%<=-1 下行累积"),
+    (-20.0, -0.1, "surge_out",     "z=(-20+4/3)/0.5774=-32.3<=-2 且 net<0; streak=-4 px=-3.2% 也满足 accum_out_driving → surge 优先"),
+]
+
+
+def _regime_conn():
+    """独立小 fixture: 单 dc 板块 10 日脚本化序列 (不与主 fixture 日期域互扰)。"""
+    c = duck_mem()
+    c.executescript(_DDL)
+    c.executemany(
+        "INSERT INTO tr.raw_tushare_moneyflow_ind_dc VALUES "
+        "(?, '行业', 'BK0009.DC', '贵金属', ?, 100.0, ?, ?, '赤峰黄金')",
+        [(d, p, n, n / 2) for d, (n, p, *_) in zip(_REGIME_DAYS, _REGIME_SERIES)])
+    return c
+
+
+def test_v3_flow_regime_taxonomy_and_priority():
+    """flow_regime 判定序: 6 标签逐日手算 + surge 双向优先级 (surge_in 压 accum_in_silent /
+    surge_out 压 accum_out_driving) + z 的 net 同号 guard (由 surge_in 日 net>0 隐式覆盖)。"""
+    c = _regime_conn()
+    try:
+        mp.rebuild_all(conn=c, cfg=CFG)
+        rows = c.execute(f"""
+            SELECT trade_date, flow_streak, flow_z, flow_regime FROM {mp.SECTOR_TABLE}
+            WHERE sector_code = 'BK0009.DC' ORDER BY trade_date""").fetchall()
+        assert len(rows) == len(_REGIME_SERIES)
+        got = [r[3] for r in rows]
+        want = [x[2] for x in _REGIME_SERIES]
+        assert got == want, f"判定序错位: {list(zip(_REGIME_DAYS, got, want))}"
+        # streak 带符号递推
+        assert [r[1] for r in rows] == [1, 2, 3, 4, 5, 6, -1, -2, -3, -4]
+        # flow_z 手算锚点: 尾对齐 (前 3 日窗未满 → NULL); surge 两日
+        assert rows[0][2] is None and rows[1][2] is None and rows[2][2] is None
+        assert rows[3][2] == pytest.approx((10 - 4 / 3) / 0.57735, rel=1e-3)
+        assert rows[9][2] == pytest.approx((-20 + 4 / 3) / 0.57735, rel=1e-3)
+        # 无 dc_index 行 → level/cum_ratio NULL (分母缺, 不知道≠0)
+        nulls = c.execute(f"""
+            SELECT COUNT(*) FROM {mp.SECTOR_TABLE} WHERE sector_code = 'BK0009.DC'
+            AND (level IS NOT NULL OR cum_ratio_20d IS NOT NULL)""").fetchone()[0]
+        assert nulls == 0
+    finally:
+        c.close()
+
+
+def test_v3_sw_level_rows_and_flow_aggregation():
+    """sw 链 L2 聚合数值手算 + level 列 + 同级分区不串: L1 801010 net = 600001(2万)+600003(3万)
+    ×1e4 (万元→元; 600003 在同 L1 异 L2 分支); L2 801011 net 只含 600001; 850111 不在 sw_daily
+    → 无行 (面板基底=sw_daily)。turnover_amt_share/rs_rank 同级分区, L1 数值与 v2 逐 bit 一致。"""
+    c = _fixture_conn()
+    try:
+        mp.rebuild_all(conn=c, cfg=CFG)
+        lv = {r[0]: r[1] for r in c.execute(f"""
+            SELECT sector_code, level FROM {mp.SECTOR_TABLE}
+            WHERE chain = '{mp.CHAIN_SW}' AND trade_date = ?""", [D[0]]).fetchall()}
+        assert lv == {"801010.SI": "L1", "801080.SI": "L1", "801011.SI": "L2"}
+        n_l3 = c.execute(f"SELECT COUNT(*) FROM {mp.SECTOR_TABLE} WHERE sector_code = '850111.SI'").fetchone()[0]
+        assert n_l3 == 0, "无行情码不出行 (面板基底=sw_daily)"
+        l1 = {r[0]: r[1] for r in c.execute(f"""
+            SELECT trade_date, net_amount FROM {mp.SECTOR_TABLE}
+            WHERE sector_code = '801010.SI' ORDER BY trade_date""").fetchall()}
+        assert l1[D[0]] == pytest.approx(50000.0)   # (2+3) 万元 → 元
+        assert l1[D[3]] == pytest.approx(50000.0)
+        assert l1[D[4]] == pytest.approx(30000.0)   # 600001 D4 无流行 → 只剩 600003
+        l2 = {r[0]: r[1] for r in c.execute(f"""
+            SELECT trade_date, net_amount FROM {mp.SECTOR_TABLE}
+            WHERE sector_code = '801011.SI' ORDER BY trade_date""").fetchall()}
+        assert l2[D[0]] == pytest.approx(20000.0)
+        assert l2[D[4]] is None, "成员当日无流数据 → NULL (不知道≠0)"
+        # 同级分区: L1 turnover share 与 v2 一致 (300/400), L2 独占自己分区 = 1.0
+        sh = c.execute(f"""
+            SELECT turnover_amt_share FROM {mp.SECTOR_TABLE}
+            WHERE sector_code = '801011.SI' AND trade_date = ?""", [D[0]]).fetchone()[0]
+        assert sh == pytest.approx(1.0)
+        # rs_rank 同级: L2 801011 独行 rank=1 (不与 31 L1 混排)
+        rk = c.execute(f"""
+            SELECT rs_rank_4w FROM {mp.SECTOR_TABLE}
+            WHERE sector_code = '801011.SI' AND trade_date = ?""", [D[2]]).fetchone()[0]
+        assert rk == 1
+    finally:
+        c.close()
+
+
+def test_v3_cum_ratio_and_dc_level():
+    """cum_ratio_20d 手算 (cw=3): sw 801010 D2 = 15e4/4e6*100 = 3.75%; 窗未满 (D0/D1) → NULL。
+    dc BK0001 D2 = (10+5+7)/2e6*100 = 0.0011%; dc level 透出 (dc_index.level=1 → 'L1',
+    无 dc_index 行的 BK0002 → NULL)。"""
+    c = _fixture_conn()
+    try:
+        mp.rebuild_all(conn=c, cfg=CFG)
+        sw = {r[0]: r[1] for r in c.execute(f"""
+            SELECT trade_date, cum_ratio_20d FROM {mp.SECTOR_TABLE}
+            WHERE sector_code = '801010.SI' ORDER BY trade_date""").fetchall()}
+        assert sw[D[0]] is None and sw[D[1]] is None
+        assert sw[D[2]] == pytest.approx(3.75)
+        assert sw[D[4]] == pytest.approx((5 + 5 + 3) * 1e4 / 4e6 * 100)
+        dc = {r[0]: (r[1], r[2]) for r in c.execute(f"""
+            SELECT trade_date, cum_ratio_20d, level FROM {mp.SECTOR_TABLE}
+            WHERE sector_code = 'BK0001.DC' ORDER BY trade_date""").fetchall()}
+        assert dc[D[0]][0] is None
+        assert dc[D[2]][0] == pytest.approx(22.0 / 2e6 * 100)
+        assert all(v[1] == "L1" for v in dc.values())
+        lvl2 = c.execute(f"""
+            SELECT DISTINCT level FROM {mp.SECTOR_TABLE} WHERE sector_code = 'BK0002.DC'""").fetchall()
+        assert [r[0] for r in lvl2] == [None]
+    finally:
+        c.close()
+
+
+def test_v2_margin_coverage_gate_sse_only_day():
+    """覆盖门 (2026-07-03 审计修1): 仅 SSE 1 行的日 rzrqye 必须 NULL (直和腰斩 ≠ 真值,
+    不知道≠0); rzrqye_chg 在 qualifying 序列上 LAG — 前后 qualifying 日的 chg 跨过 SSE-only 日
+    相减, 不产生 ±腰斩幅度的假摆动, 也不撞 NULL。"""
+    c = _fixture_conn()
+    try:
+        # fixture 已有 D0=150 (SSE+SZSE) / D1=170 (SSE+SZSE); 追加 D2 SSE-only / D3 双所 190
+        c.execute("INSERT INTO tr.raw_tushare_margin VALUES (?, 'SSE', 200.0)", [D[2]])
+        c.executemany("INSERT INTO tr.raw_tushare_margin VALUES (?, ?, ?)", [
+            (D[3], "SSE", 120.0), (D[3], "SZSE", 70.0)])
+        mp.rebuild_all(conn=c, cfg=CFG)
+        m = {r[0]: (r[1], r[2]) for r in c.execute(f"""
+            SELECT trade_date, rzrqye, rzrqye_chg FROM {mp.MARKET_TABLE}""").fetchall()}
+        assert m[D[1]] == (pytest.approx(170.0), pytest.approx(20.0))
+        # SSE-only 日: 覆盖门 → 值/chg 双 NULL (修前: rzrqye=200 直和腰斩, chg=+30 假摆动)
+        assert m[D[2]] == (None, None), "SSE-only 日必须 NULL, 不出腰斩直和"
+        # 下一 qualifying 日: chg 跨过 SSE-only 日 = 190-170 (修前: 190-200=-10 假摆动)
+        assert m[D[3]] == (pytest.approx(190.0), pytest.approx(20.0))
     finally:
         c.close()
 

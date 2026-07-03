@@ -1,13 +1,19 @@
-/** C4 市场感知页 — widget 独立取数 (契约=analysis/market_pulse_design_20260702.md §3)。
- *  红线: 感知层只描述现状 (资金在哪/流向哪/温度如何), 零买卖暗示文案。
+/** C4 市场感知页 — widget 独立取数 (契约=analysis/market_pulse_design_20260702.md §3 + v3 设计)。
+ *  红线: 感知层只描述现状 (资金在哪/流向哪/什么形态/温度如何), 零买卖暗示文案。
+ *  措辞规范 (v3.4 + 2026-07-03 用户纠偏): flow_regime 中文显示名用克制金融术语
+ *  (脉冲/横盘累积/上行累积/下行累积), 禁口语化/戏剧化字样。
  *  布局: 信息漏斗 顶区脉搏 KPI → 钱在哪 (热力/轮动) → 情绪周期 (天梯/温度) → 异动观察。
+ *  v3 交互: 热力图/轮动表/资金流向榜 全模块行点击 → DrillPanel inline 逐层下钻
+ *  (sw L1→L2→L3→成分股 / dc 板块→成分股), 叶子行点击跳 /institutions 检索该股。
  *  配色: 浅色纸感, echarts 颜色走 theme.ts UI 常量 (与 styles.css :root 同步)。 */
 import type { EChartsOption } from "echarts";
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   fetchDcRotation,
+  fetchDrill,
+  fetchFlowBoard,
   fetchHeatmap,
-  fetchQuiet,
   fetchRotation,
   fetchSentiment,
   fetchStrongest,
@@ -16,8 +22,12 @@ import {
 import type {
   DcContentType,
   DcRotationSector,
+  DrillSectorRow,
+  DrillStockRow,
+  FlowBoardRow,
+  FlowRegime,
   HeatmapResp,
-  QuietRow,
+  PulseChain,
   RotationSector,
   SentimentPoint,
 } from "../api/pulse";
@@ -66,6 +76,204 @@ const fmtMD = (d: string) => `${d.slice(4, 6)}-${d.slice(6, 8)}`;
 function signClass(x: number | null | undefined): string {
   if (x === null || x === undefined || Number.isNaN(x) || x === 0) return "";
   return x > 0 ? "pos" : "neg";
+}
+
+// ── v3: 资金流形态 (flow_regime) 展示层 ────────────────────────────────────
+
+/** flow_regime 中文显示名 (克制金融术语, 2026-07-03 用户定稿; key 与引擎入库值一致)。 */
+const REGIME_META: Record<FlowRegime, { label: string; dir: "in" | "out" | "" }> = {
+  surge_in: { label: "脉冲流入", dir: "in" },
+  accum_in_silent: { label: "横盘累积流入", dir: "in" },
+  accum_in_driving: { label: "上行累积流入", dir: "in" },
+  surge_out: { label: "脉冲流出", dir: "out" },
+  accum_out_silent: { label: "横盘累积流出", dir: "out" },
+  accum_out_driving: { label: "下行累积流出", dir: "out" },
+  neutral: { label: "无显著形态", dir: "" },
+};
+
+function RegimeTag({ regime }: { regime: FlowRegime | null | undefined }) {
+  if (!regime || !(regime in REGIME_META)) return <span>—</span>;
+  const m = REGIME_META[regime];
+  return <span className={`regime-tag${m.dir ? ` ${m.dir}` : ""}`}>{m.label}</span>;
+}
+
+/** mini flow-stripe (v3.3): 逐日净流入色带 (红入绿出, 白≈零, 灰=缺日), 高 14px,
+ *  |值| 按 p95 封顶归一防单日极值压扁色阶; hover 原生 title 显日值。 */
+function MiniFlowStripe({ dates, values }: { dates: string[]; values: (number | null)[] }) {
+  const cap = p95(values.filter((v): v is number => v !== null).map(Math.abs));
+  return (
+    <span className="flow-stripe" title="逐日净流入 (红入绿出)">
+      {values.map((v, i) => {
+        let bg = "var(--bg-panel-2)";
+        if (v !== null) {
+          const t = Math.min(1, Math.abs(v) / cap);
+          const rgb = v >= 0 ? STRIPE_RGB.up : STRIPE_RGB.down;
+          bg = `rgba(${rgb}, ${(t * 0.92).toFixed(3)})`;
+        }
+        return (
+          <i
+            key={i}
+            style={{ background: bg }}
+            title={`${fmtDate(dates[i] ?? "")} ${v === null ? "无数据" : fmtAmountCn(v, true)}`}
+          />
+        );
+      })}
+    </span>
+  );
+}
+
+// ── v3: 统一下钻面板 (热力图/轮动表/资金流向榜 三处共用, 防三份实现漂移) ────
+
+export interface DrillTarget {
+  chain: PulseChain;
+  code: string;
+  name: string | null;
+}
+
+function DrillSectorTable(props: {
+  rows: DrillSectorRow[];
+  chain: PulseChain;
+  onEnter: (code: string) => void;
+}) {
+  if (props.rows.length === 0) return <div className="state-hint">该层无子节点数据</div>;
+  const sw = props.chain === "sw_industry";
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>板块</th>
+            <th>层级</th>
+            <th>当日涨跌</th>
+            <th>当日净流</th>
+            <th>资金形态</th>
+            <th>近20日占市值</th>
+            <th>{sw ? "RS 4周 (pp) / 排名" : "资金流排名"}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {props.rows.map((r) => (
+            <tr key={r.sector_code} className="clickable" onClick={() => props.onEnter(r.sector_code)}>
+              <td>{r.sector_name ?? r.sector_code}</td>
+              <td className="mono">{r.level ?? "—"}</td>
+              <td className={`mono ${signClass(r.pct_change)}`}>{fmtPctRaw(r.pct_change)}</td>
+              <td className={`mono ${signClass(r.net_amount)}`}>{fmtAmountCn(r.net_amount, true)}</td>
+              <td>
+                <RegimeTag regime={r.flow_regime} />
+              </td>
+              <td className="mono">
+                {typeof r.cum_ratio_20d === "number" ? `${r.cum_ratio_20d.toFixed(2)}%` : "—"}
+              </td>
+              <td className="mono">
+                {sw
+                  ? `${fmtPts(r.rs_4w)} / ${r.rs_rank_4w ?? "—"}`
+                  : (r.rank_flow ?? "—")}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DrillStockTable(props: { rows: DrillStockRow[] }) {
+  const navigate = useNavigate();
+  if (props.rows.length === 0) return <div className="state-hint">无成分股数据</div>;
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>代码</th>
+            <th>名称</th>
+            <th>20日形态 (B2)</th>
+            <th>资金形态</th>
+            <th>近20日净流</th>
+            <th>当日净流</th>
+            <th>连板</th>
+            <th>当日涨跌</th>
+          </tr>
+        </thead>
+        <tbody>
+          {props.rows.map((r) => (
+            <tr
+              key={r.ts_code}
+              className="clickable"
+              title="点击到机构档案页检索该股"
+              onClick={() => navigate(`/institutions?stock=${encodeURIComponent(r.stock_code)}`)}
+            >
+              <td className="mono">{r.stock_code}</td>
+              <td>{r.name ?? "—"}</td>
+              <td>
+                {r.form_name ?? "—"}
+                {r.is_breakout_event ? <span className="badge-breakout">突破</span> : null}
+              </td>
+              <td>
+                <RegimeTag regime={r.flow_regime} />
+              </td>
+              <td className={`mono ${signClass(r.cum_net)}`}>{fmtAmountCn(r.cum_net, true)}</td>
+              <td className={`mono ${signClass(r.net_amount)}`}>{fmtAmountCn(r.net_amount, true)}</td>
+              <td className="mono">{r.limit_times != null ? `${r.limit_times}板` : "—"}</td>
+              <td className={`mono ${signClass(r.pct_change)}`}>{fmtPctRaw(r.pct_change)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const CRUMB_LEVEL_CN: Record<string, string> = { L1: "一级", L2: "二级", L3: "三级", sector: "板块" };
+
+/** 统一下钻面板: target 为入口板块 (卡片行点击注入); 内部管理当前节点, 面包屑回退。 */
+function DrillPanel(props: { target: DrillTarget; onClose: () => void }) {
+  const { target } = props;
+  const [code, setCode] = useState<string>(target.code);
+  useEffect(() => setCode(target.code), [target.chain, target.code]);
+  const state = useFetch(
+    () => fetchDrill({ chain: target.chain, code }),
+    [target.chain, code],
+  );
+  const d = state.data;
+  return (
+    <div className="drill-panel">
+      <div className="drill-head">
+        <span className="drill-crumbs">
+          {(d?.breadcrumb?.length ? d.breadcrumb : [{ code: target.code, name: target.name, level: "" }]).map(
+            (c, i, arr) => (
+              <span key={c.code}>
+                <button
+                  className={`btn crumb${i === arr.length - 1 ? " active" : ""}`}
+                  onClick={() => setCode(c.code)}
+                  title={c.level ? `${CRUMB_LEVEL_CN[c.level] ?? c.level}` : undefined}
+                >
+                  {c.name ?? c.code}
+                </button>
+                {i < arr.length - 1 && <span className="crumb-sep">›</span>}
+              </span>
+            ),
+          )}
+          {d?.rows_level === "stock" && <span className="crumb-sep">› 成分股</span>}
+        </span>
+        <span className="drill-meta">
+          {d?.date && <span className="inline-ctl">数据日 {fmtDate(d.date)}</span>}
+          <button className="btn" onClick={props.onClose}>
+            收起
+          </button>
+        </span>
+      </div>
+      <FetchGate state={state} empty={(x) => x.rows.length === 0} emptyHint="该节点无下层数据">
+        {(resp) =>
+          resp.rows_level === "stock" ? (
+            <DrillStockTable rows={resp.rows} />
+          ) : (
+            <DrillSectorTable rows={resp.rows} chain={resp.chain} onEnter={setCode} />
+          )
+        }
+      </FetchGate>
+    </div>
+  );
 }
 
 // ── 顶区: 市场脉搏 KPI 带 (大号 mono 数字 + 环比小箭头) ────────────────────
@@ -221,6 +429,7 @@ const HEATMAP_CONTENT_TYPES: DcContentType[] = ["行业", "概念"];
 function HeatmapCard() {
   const [days, setDays] = useState<number>(20);
   const [contentType, setContentType] = useState<DcContentType>("行业");
+  const [drill, setDrill] = useState<DrillTarget | null>(null);
   const state = useFetch(
     () => fetchHeatmap({ chain: "dc_concept", content_type: contentType, days, top: 40 }),
     [days, contentType],
@@ -231,7 +440,7 @@ function HeatmapCard() {
   );
   return (
     <Card
-      title={`资金热力 (东财${contentType} × 近${days}日净流入, 窗口累计前 40)`}
+      title={`资金热力 (东财${contentType} × 近${days}日净流入, 窗口累计前 40; 点击格子下钻成分)`}
       extra={
         <div className="tab-group">
           {HEATMAP_CONTENT_TYPES.map((ct) => (
@@ -256,10 +465,25 @@ function HeatmapCard() {
       }
     >
       <FetchGate state={state} empty={(d) => d.sectors.length === 0} emptyHint="暂无板块资金流数据">
-        {(d) =>
-          option ? <EChart option={option} height={Math.max(240, d.sectors.length * 16 + 60)} /> : null
-        }
+        {(d) => {
+          // y 轴倒序渲染 (heatmapOption 同一 reverse), 点击格子 y 索引 → 板块
+          const rows = [...d.sectors].reverse();
+          return option ? (
+            <EChart
+              option={option}
+              height={Math.max(240, d.sectors.length * 16 + 60)}
+              onClick={(p) => {
+                const cell = p.data as [number, number, number] | undefined;
+                const sec = cell ? rows[cell[1]] : undefined;
+                if (sec) {
+                  setDrill({ chain: "dc_concept", code: sec.sector_code, name: sec.sector_name });
+                }
+              }}
+            />
+          ) : null;
+        }}
       </FetchGate>
+      {drill && <DrillPanel target={drill} onClose={() => setDrill(null)} />}
     </Card>
   );
 }
@@ -301,7 +525,10 @@ function MigrationCell(props: { s: RotationSector }) {
   return <MigrationArrow prev={props.s.prev_rs_rank_4w} cur={props.s.rs_rank_4w} />;
 }
 
-function SwRotationTable(props: { onMeta: (m: string | null) => void }) {
+function SwRotationTable(props: {
+  onMeta: (m: string | null) => void;
+  onDrill: (t: DrillTarget) => void;
+}) {
   const state = useFetch(() => fetchRotation({ lag: 5 }), []);
   const meta = state.data?.latest_date
     ? `最新 ${fmtDate(state.data.latest_date)} · 对比 ${fmtDate(state.data.prev_date)} (5 交易日前)`
@@ -328,7 +555,14 @@ function SwRotationTable(props: { onMeta: (m: string | null) => void }) {
               </thead>
               <tbody>
                 {d.sectors.map((s) => (
-                  <tr key={s.sector_code}>
+                  <tr
+                    key={s.sector_code}
+                    className="clickable"
+                    title="点击逐层下钻 (L1 → L2 → L3 → 成分股)"
+                    onClick={() =>
+                      props.onDrill({ chain: "sw_industry", code: s.sector_code, name: s.sector_name })
+                    }
+                  >
                     <td className="mono">{s.rs_rank_4w ?? "—"}</td>
                     <td>{s.sector_name}</td>
                     <td>
@@ -373,7 +607,10 @@ function LeaderCell(props: { s: DcRotationSector }) {
   );
 }
 
-function DcRotationTable(props: { onMeta: (m: string | null) => void }) {
+function DcRotationTable(props: {
+  onMeta: (m: string | null) => void;
+  onDrill: (t: DrillTarget) => void;
+}) {
   const state = useFetch(() => fetchDcRotation({ lag: 5, top: 20 }), []);
   const meta = state.data?.latest_date
     ? `最新 ${fmtDate(state.data.latest_date)} · 对比 ${fmtDate(state.data.prev_date)} (5 交易日前) · 资金流排名前 20`
@@ -401,7 +638,14 @@ function DcRotationTable(props: { onMeta: (m: string | null) => void }) {
               </thead>
               <tbody>
                 {d.sectors.map((s) => (
-                  <tr key={s.sector_code}>
+                  <tr
+                    key={s.sector_code}
+                    className="clickable"
+                    title="点击下钻成分股"
+                    onClick={() =>
+                      props.onDrill({ chain: "dc_concept", code: s.sector_code, name: s.sector_name })
+                    }
+                  >
                     <td className="mono">{s.rank_flow ?? "—"}</td>
                     <td>{s.sector_name}</td>
                     <td>{s.content_type ?? "—"}</td>
@@ -443,10 +687,11 @@ const ROTATION_TABS = [
 function RotationCard() {
   const [tab, setTab] = useState<"sw" | "dc">("sw");
   const [meta, setMeta] = useState<string | null>(null);
+  const [drill, setDrill] = useState<DrillTarget | null>(null);
   const title =
     tab === "sw"
-      ? "板块轮动 — 申万 L1 RS 排名 (vs HS300, 4周/12周相对强度)"
-      : "板块轮动 — 东财板块资金流排名 (净流入截面排名 + 双龙头 + 流入宽度)";
+      ? "板块轮动 — 申万 L1 RS 排名 (vs HS300, 4周/12周相对强度; 行点击逐层下钻)"
+      : "板块轮动 — 东财板块资金流排名 (净流入截面排名 + 双龙头 + 流入宽度; 行点击下钻)";
   return (
     <Card
       title={title}
@@ -460,6 +705,7 @@ function RotationCard() {
                 className={`btn tab${tab === t.key ? " active" : ""}`}
                 onClick={() => {
                   setMeta(null);
+                  setDrill(null);
                   setTab(t.key);
                 }}
               >
@@ -470,12 +716,17 @@ function RotationCard() {
         </span>
       }
     >
-      {tab === "sw" ? <SwRotationTable onMeta={setMeta} /> : <DcRotationTable onMeta={setMeta} />}
+      {tab === "sw" ? (
+        <SwRotationTable onMeta={setMeta} onDrill={setDrill} />
+      ) : (
+        <DcRotationTable onMeta={setMeta} onDrill={setDrill} />
+      )}
+      {drill && <DrillPanel target={drill} onClose={() => setDrill(null)} />}
     </Card>
   );
 }
 
-// ── 卡3: 悄悄流入 / 悄悄流出榜 (dc 链, 价稳+连续净流向) ────────────────────
+// ── 卡3: 资金流向榜 (v3 — flow_regime 形态分组 + 量级 + mini 条纹; 替代 v1 quiet 榜) ──
 
 /** 连续天数 → GitHub contribution 式方块串 (流入红/流出绿, 上限 8 后 +n)。 */
 function Streak(props: { n: number | null; dir: "in" | "out" }) {
@@ -493,32 +744,49 @@ function Streak(props: { n: number | null; dir: "in" | "out" }) {
   );
 }
 
-function QuietTable(props: {
-  rows: QuietRow[];
-  daysKey: "quiet_inflow_days" | "quiet_outflow_days";
+function FlowBoardTable(props: {
+  rows: FlowBoardRow[];
+  stripeDates: string[];
+  onDrill: (t: DrillTarget) => void;
 }) {
-  if (props.rows.length === 0) return <div className="state-hint">当前无满足条件的板块</div>;
-  const dir = props.daysKey === "quiet_inflow_days" ? "in" : "out";
+  if (props.rows.length === 0) return <div className="state-hint">当前无该组形态的板块</div>;
   return (
     <div className="table-wrap">
       <table>
         <thead>
           <tr>
             <th>板块</th>
-            <th>持续</th>
-            <th>当日净额</th>
+            <th>类型</th>
+            <th>形态</th>
+            <th>累计净额(近20日)</th>
+            <th>占市值</th>
             <th>当日涨跌</th>
+            <th>60日资金条纹</th>
           </tr>
         </thead>
         <tbody>
           {props.rows.map((r) => (
-            <tr key={`${r.chain}|${r.sector_code}`}>
+            <tr
+              key={`${r.chain}|${r.sector_code}`}
+              className="clickable"
+              title="点击下钻成分"
+              onClick={() =>
+                props.onDrill({ chain: r.chain, code: r.sector_code, name: r.sector_name })
+              }
+            >
               <td>{r.sector_name}</td>
+              <td>{r.content_type ?? "—"}</td>
               <td>
-                <Streak n={r[props.daysKey]} dir={dir} />
+                <RegimeTag regime={r.flow_regime} />
               </td>
-              <td className={`mono ${signClass(r.net_amount)}`}>{fmtAmountCn(r.net_amount, true)}</td>
-              <td className="mono">{fmtPctRaw(r.pct_change)}</td>
+              <td className={`mono ${signClass(r.cum_net)}`}>{fmtAmountCn(r.cum_net, true)}</td>
+              <td className="mono">
+                {typeof r.cum_ratio_20d === "number" ? `${r.cum_ratio_20d.toFixed(2)}%` : "—"}
+              </td>
+              <td className={`mono ${signClass(r.pct_change)}`}>{fmtPctRaw(r.pct_change)}</td>
+              <td>
+                <MiniFlowStripe dates={props.stripeDates} values={r.stripe} />
+              </td>
             </tr>
           ))}
         </tbody>
@@ -527,26 +795,51 @@ function QuietTable(props: {
   );
 }
 
-function QuietCard() {
-  const state = useFetch(() => fetchQuiet({ limit: 20 }), []);
+const FLOW_BOARD_TABS = [
+  { key: "in", label: "流入形态" },
+  { key: "out", label: "流出形态" },
+] as const;
+
+function FlowBoardCard() {
+  const [tab, setTab] = useState<"in" | "out">("in");
+  const [drill, setDrill] = useState<DrillTarget | null>(null);
+  const state = useFetch(() => fetchFlowBoard({ chain: "dc_concept", limit: 20, stripe_days: 60 }), []);
   return (
-    <Card title="悄悄流入 / 流出 (东财板块链; 价格波动 <1% 且资金连续净流向)">
+    <Card
+      title="资金流向榜 (东财板块链 · 形态=资金流分类学: 脉冲 / 横盘累积 / 上行·下行累积)"
+      extra={
+        <span style={{ display: "inline-flex", gap: 10, alignItems: "center" }}>
+          {state.data?.trade_date && (
+            <span className="inline-ctl">{fmtDate(state.data.trade_date)}</span>
+          )}
+          <span className="tab-group">
+            {FLOW_BOARD_TABS.map((t) => (
+              <button
+                key={t.key}
+                className={`btn tab${tab === t.key ? " active" : ""}`}
+                onClick={() => setTab(t.key)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </span>
+        </span>
+      }
+    >
       <FetchGate
         state={state}
         empty={(d) => d.inflow.length === 0 && d.outflow.length === 0}
-        emptyHint="当前无价稳+连续净流向的板块"
+        emptyHint="当前无显著资金流形态的板块"
       >
         {(d) => (
-          <>
-            <h3 className="sub-head">悄悄流入 (连续净流入天数降序)</h3>
-            <QuietTable rows={d.inflow} daysKey="quiet_inflow_days" />
-            <h3 className="sub-head" style={{ marginTop: 14 }}>
-              悄悄流出 (连续净流出天数降序)
-            </h3>
-            <QuietTable rows={d.outflow} daysKey="quiet_outflow_days" />
-          </>
+          <FlowBoardTable
+            rows={tab === "in" ? d.inflow : d.outflow}
+            stripeDates={d.stripe_dates}
+            onDrill={setDrill}
+          />
         )}
       </FetchGate>
+      {drill && <DrillPanel target={drill} onClose={() => setDrill(null)} />}
     </Card>
   );
 }
@@ -819,7 +1112,7 @@ function StrongestCard() {
   );
 }
 
-// ── 卡6: 退潮预警 (描述性: 跌出 RS top-N + 连续悄悄流出) ───────────────────
+// ── 卡6: 退潮预警 (描述性: 跌出 RS top-N + 价稳连续净流出) ─────────────────
 
 function WarningsCard() {
   const state = useFetch(fetchWarnings, []);
@@ -866,7 +1159,7 @@ function WarningsCard() {
               </div>
             )}
             <h3 className="sub-head" style={{ marginTop: 14 }}>
-              连续悄悄流出 ≥ {d.thresholds.quiet_outflow_days} 天 (东财板块)
+              价稳连续净流出 ≥ {d.thresholds.quiet_outflow_days} 天 (东财板块)
             </h3>
             {d.quiet_outflows.length === 0 ? (
               <div className="state-hint">无满足条件的板块</div>
@@ -910,7 +1203,7 @@ export function MarketPage() {
     <div className="page">
       <h1>市场感知</h1>
       <p className="page-desc">
-        感知层只描述资金现状与市场温度 (钱在哪 / 流向哪 / 悄悄动向), 不构成任何操作建议。
+        感知层只描述资金现状与市场温度 (钱在哪 / 流向哪 / 什么形态), 不构成任何操作建议。
       </p>
       <PulseBand />
       <div className="section-label">钱在哪 — 资金分布与轮动</div>
@@ -925,7 +1218,7 @@ export function MarketPage() {
       </div>
       <div className="section-label">异动观察</div>
       <div className="grid-3">
-        <QuietCard />
+        <FlowBoardCard />
         <StrongestCard />
         <WarningsCard />
       </div>

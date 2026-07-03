@@ -195,6 +195,48 @@ def test_negative_purge_and_gap():
         assert rd.forward_max_gain(highs, lows, i, maxfwd) < float(EP["gain_min"])
 
 
+def test_purge_set_includes_embargo_censored_bottoms():
+    """修3 (2026-07-03 审计): 被右删失 embargo 剔出 train 的 L4-真 bottom 仍须进负样本 purge 集 —
+    其 ±max_forward_days 根内 pivot 是紧邻(删失)主升浪底的污染负样本, 不得落 fact_rally_negative
+    (修前: kept_bottoms 在 embargo continue 之后收集 → censored bottom 不进 purge, 该 pivot 入库)。"""
+    L = 700
+    maxfwd = int(EP["max_forward_days"])
+    dates = make_dates(L)
+    # 600001: 早 rally 完整落库 (保证 GT 非空, landing 断言可过)
+    rows_a = _kline_rows("600001", 0.65, L, dates=dates)
+    # 600002: 平底 (lows 严格缓降, 无伪 pivot) + 负样本候选 pivot p=379 + censored rally 底 b=619
+    #   b+250 > 699 → embargo 删失; |p-b|=240 < 250 → p 必须被 purge;
+    #   p 自身: forward 窗 [380..629] 完整, 窗内最高 ≈ 拉升前 10 根 (~10.8) → gain ~16% < gain_min。
+    p_idx, b_idx, rise = 379, 619, 80
+    peak_px = 16.5                              # 16.5/9.2-1 = 79% >= gain_min (b 的 rally)
+    closes = np.full(L, 10.0)
+    lows = np.array([10.5 - 0.0005 * k for k in range(L)])
+    highs = closes + 0.02
+    lows[p_idx] = 9.3                           # 负样本候选 pivot (base: closes 10.0 贴 9.3 带内)
+    closes[b_idx], lows[b_idx], highs[b_idx] = 10.02, 9.2, 10.1
+    for k in range(b_idx + 1, L):               # b 后单调拉升 80 根到峰 (bull_align/平滑天然满足)
+        frac = (k - b_idx) / rise
+        cpx = 10.02 + (peak_px - 10.02) * frac
+        closes[k], highs[k], lows[k] = cpx, cpx, cpx - 0.01
+    rows_b = [("600002", dates[k], float(highs[k]), float(lows[k]), float(closes[k]))
+              for k in range(L)]
+    conn, raw = _mk_env(rows_a + rows_b, dates, ["600001", "600002"])
+    try:
+        stats = rally_gt.rebuild(conn=conn, data_end=dates[-1].replace("-", ""), raw_conn=raw)
+        assert stats["funnel"]["E_embargo_censored"] >= 1, "前提: b 必须真被 embargo 删失"
+        gt_codes = [r[0] for r in conn.execute(
+            "SELECT DISTINCT stock_code FROM fact_rally_ground_truth").fetchall()]
+        assert gt_codes == ["600001"], "censored episode 不落 GT (embargo 语义不变)"
+        neg_dates = [r[0] for r in conn.execute(
+            "SELECT CAST(entry_signal_date AS VARCHAR) FROM fact_rally_negative "
+            "WHERE stock_code = '600002'").fetchall()]
+        assert dates[p_idx] not in neg_dates, (
+            f"purge 违规: censored bottom {dates[b_idx]} 的 ±{maxfwd} 根内 pivot "
+            f"{dates[p_idx]} 落进负样本 (修前行为)")
+    finally:
+        conn.close(); raw.close()
+
+
 def test_negative_rejects_incomplete_forward_window():
     n = 400
     highs, lows, closes = _flat_bars_with_dips(n, [200])

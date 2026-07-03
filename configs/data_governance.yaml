@@ -148,8 +148,7 @@ ingestion_lint:
       rule: "volume <= 0 or amount <= 0"
     - name: invalid_ohlc_shape
       rule: "high < max(open, low, close) or low > min(open, high, close)"
-    - name: invalid_vwap_close_ratio
-      rule: "amount / (volume * 100) / close not in [0.5, 1.5]"
+    # invalid_vwap_close_ratio 已物删 (2026-07-03 审计修5): tdxhub volume=手 单位遗留, 现行源 100% 误判
     - name: forbidden_stock_kline_source
       rule: "capability=kline_daily_qfq and source not like 'tdxhub%'"
   warn:

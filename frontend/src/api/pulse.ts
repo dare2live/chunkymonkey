@@ -1,9 +1,23 @@
-/** C4 市场感知 API — 字段契约 = backend/routers/market_pulse.py 返回 (列名 zip, 2026-07-02)。
+/** C4 市场感知 API — 字段契约 = backend/routers/market_pulse.py 返回 (列名 zip, 2026-07-02 v2 / 2026-07-03 v3)。
  *  单位口径: rs_* 已是百分点 (显示不再 ×100); pct_change 是百分数 (2.5 = +2.5%);
- *  zha_ban_rate 是 0-1 比率; net_amount 为源字段原值 (本层不做单位换算 — measured not estimated)。 */
+ *  zha_ban_rate 是 0-1 比率; net_amount 引擎已归一到元 (本层不做单位换算 — measured not estimated)。
+ *  v3 注意: net_amount 两链口径不可比 (dc=东财主力口径 / sw=tushare 全单口径聚合), 禁跨链排同一榜。 */
 import { apiGet } from "./client";
 
 export type PulseChain = "dc_concept" | "sw_industry";
+
+/** 申万层级 (sw 链; dc 链 level 为东财透出值或 null)。 */
+export type SwLevel = "L1" | "L2" | "L3";
+
+/** 资金流形态标签 (v3.1 分类学, 引擎判定序第一命中; key 入库英文, 中文显示名前端映射)。 */
+export type FlowRegime =
+  | "surge_in"
+  | "accum_in_silent"
+  | "accum_in_driving"
+  | "surge_out"
+  | "accum_out_silent"
+  | "accum_out_driving"
+  | "neutral";
 
 // ── GET /api/v3/pulse/heatmap ──────────────────────────────────────────────
 
@@ -27,11 +41,18 @@ export interface HeatmapResp {
 }
 
 export function fetchHeatmap(
-  opts: { chain?: PulseChain; content_type?: DcContentType; days?: number; top?: number } = {},
+  opts: {
+    chain?: PulseChain;
+    content_type?: DcContentType;
+    level?: SwLevel; // v3: 仅 sw 链生效, 默认 L1 (后端契约)
+    days?: number;
+    top?: number;
+  } = {},
 ) {
   const q = new URLSearchParams();
   if (opts.chain) q.set("chain", opts.chain);
   if (opts.content_type) q.set("content_type", opts.content_type);
+  if (opts.level) q.set("level", opts.level);
   if (opts.days !== undefined) q.set("days", String(opts.days));
   if (opts.top !== undefined) q.set("top", String(opts.top));
   const qs = q.toString();
@@ -54,14 +75,18 @@ export interface RotationSector {
 export interface RotationResp {
   status: string;
   chain: PulseChain;
+  level?: SwLevel; // v3 (sw 链): 本次列表的层级
   latest_date: string | null;
   prev_date: string | null;
-  sectors: RotationSector[]; // 最新日 rs_rank_4w 升序
+  sectors: RotationSector[]; // 最新日 rs_rank_4w 升序 (v3: 同级分区排名)
 }
 
-export function fetchRotation(opts: { lag?: number } = {}) {
-  const qs = opts.lag !== undefined ? `?lag=${opts.lag}` : "";
-  return apiGet<RotationResp>(`/api/v3/pulse/rotation${qs}`);
+export function fetchRotation(opts: { lag?: number; level?: SwLevel } = {}) {
+  const q = new URLSearchParams();
+  if (opts.lag !== undefined) q.set("lag", String(opts.lag));
+  if (opts.level) q.set("level", opts.level);
+  const qs = q.toString();
+  return apiGet<RotationResp>(`/api/v3/pulse/rotation${qs ? `?${qs}` : ""}`);
 }
 
 /** v2 dc 资金流轮动行: rank_flow = dc 全体 (行业+概念) 截面资金流排名 (1=流入最强);
@@ -96,28 +121,133 @@ export function fetchDcRotation(opts: { lag?: number; top?: number } = {}) {
   return apiGet<DcRotationResp>(`/api/v3/pulse/rotation?${q.toString()}`);
 }
 
-// ── GET /api/v3/pulse/quiet ────────────────────────────────────────────────
+// ── GET /api/v3/pulse/flow_board (v3, 替代 v1 /quiet) ──────────────────────
 
-export interface QuietRow {
+/** 资金流向榜行: flow_regime 非 neutral 的板块 + 量级 (近 cum_window 日累计) + mini 条纹。 */
+export interface FlowBoardRow {
   chain: PulseChain;
   sector_code: string;
   sector_name: string;
+  level: string | null;
+  content_type: string | null;
   trade_date: string;
   pct_change: number | null;
-  net_amount: number | null;
-  quiet_inflow_days: number | null;
-  quiet_outflow_days: number | null;
+  net_amount: number | null; // 当日净流入 (元; 两链口径不可比)
+  flow_z: number | null; // 突然性 z-score (窗口不满 = null)
+  flow_streak: number | null; // 带符号连续净流向天数 (+流入 / -流出)
+  cum_ratio_20d: number | null; // 近20日累计净流 / 板块市值 (%); 满窗才有
+  flow_regime: FlowRegime;
+  cum_net: number | null; // 近 cum_window 日累计净额 (元)
+  stripe: (number | null)[]; // 与 stripe_dates 对齐的逐日净流序列
 }
 
-export interface QuietResp {
+export interface FlowBoardResp {
   status: string;
-  inflow: QuietRow[]; // quiet_inflow_days 降序
-  outflow: QuietRow[]; // quiet_outflow_days 降序
+  chain: PulseChain;
+  trade_date: string | null;
+  stripe_dates: string[]; // YYYYMMDD 升序
+  inflow: FlowBoardRow[]; // 流入形态组 (cum_ratio 降序, NULL 沉底)
+  outflow: FlowBoardRow[]; // 流出形态组 (镜像)
 }
 
-export function fetchQuiet(opts: { limit?: number } = {}) {
-  const qs = opts.limit !== undefined ? `?limit=${opts.limit}` : "";
-  return apiGet<QuietResp>(`/api/v3/pulse/quiet${qs}`);
+export function fetchFlowBoard(
+  opts: { chain?: PulseChain; level?: SwLevel; limit?: number; stripe_days?: number } = {},
+) {
+  const q = new URLSearchParams();
+  if (opts.chain) q.set("chain", opts.chain);
+  if (opts.level) q.set("level", opts.level);
+  if (opts.limit !== undefined) q.set("limit", String(opts.limit));
+  if (opts.stripe_days !== undefined) q.set("stripe_days", String(opts.stripe_days));
+  const qs = q.toString();
+  return apiGet<FlowBoardResp>(`/api/v3/pulse/flow_board${qs ? `?${qs}` : ""}`);
+}
+
+// ── GET /api/v3/pulse/flow_stripe (v3 mini 温度条纹) ───────────────────────
+
+export interface FlowStripeResp {
+  status: string;
+  chain: PulseChain;
+  sector_code: string;
+  sector_name: string | null;
+  dates: string[]; // 升序
+  values: (number | null)[]; // 逐日净流入 (元)
+}
+
+export function fetchFlowStripe(opts: { code: string; chain?: PulseChain; days?: number }) {
+  const q = new URLSearchParams({ code: opts.code });
+  if (opts.chain) q.set("chain", opts.chain);
+  if (opts.days !== undefined) q.set("days", String(opts.days));
+  return apiGet<FlowStripeResp>(`/api/v3/pulse/flow_stripe?${q.toString()}`);
+}
+
+// ── GET /api/v3/pulse/drill (v3 统一层级下钻) ──────────────────────────────
+
+export interface DrillCrumb {
+  code: string;
+  name: string | null;
+  level: string; // 'L1'|'L2'|'L3'|'sector'
+}
+
+/** 板块层下钻行 (mart 直读; 不适用列 null)。 */
+export interface DrillSectorRow {
+  sector_code: string;
+  sector_name: string | null;
+  level: string | null;
+  content_type: string | null;
+  trade_date: string | null;
+  pct_change: number | null;
+  net_amount: number | null;
+  rank_flow: number | null;
+  rs_4w: number | null;
+  rs_12w: number | null;
+  rs_rank_4w: number | null;
+  flow_z: number | null;
+  flow_streak: number | null;
+  cum_ratio_20d: number | null;
+  flow_regime: FlowRegime | null;
+}
+
+/** 成分股叶子行 (选股落点): 近20日净流 + 实时资金形态 + B2 形态 + 连板。 */
+export interface DrillStockRow {
+  ts_code: string;
+  stock_code: string;
+  name: string | null;
+  trade_date: string | null; // 该股最新流数据日
+  net_amount: number | null;
+  cum_net: number | null;
+  flow_z: number | null;
+  flow_streak: number | null;
+  flow_regime: FlowRegime | null;
+  form_name: string | null;
+  is_breakout_event: boolean | null;
+  limit_times: number | null;
+  pct_change: number | null;
+}
+
+export type DrillResp = {
+  status: string;
+  chain: PulseChain;
+  date: string | null;
+  breadcrumb: DrillCrumb[];
+  member_as_of?: string | null;
+} & (
+  | { rows_level: "stock"; rows: DrillStockRow[] }
+  | { rows_level: "L1" | "L2" | "L3" | "sector" | null; rows: DrillSectorRow[] }
+);
+
+export function fetchDrill(opts: {
+  chain: PulseChain;
+  code?: string | null;
+  date?: string;
+  content_type?: DcContentType;
+  top?: number;
+}) {
+  const q = new URLSearchParams({ chain: opts.chain });
+  if (opts.code) q.set("code", opts.code);
+  if (opts.date) q.set("date", opts.date);
+  if (opts.content_type) q.set("content_type", opts.content_type);
+  if (opts.top !== undefined) q.set("top", String(opts.top));
+  return apiGet<DrillResp>(`/api/v3/pulse/drill?${q.toString()}`);
 }
 
 // ── GET /api/v3/pulse/sentiment ────────────────────────────────────────────

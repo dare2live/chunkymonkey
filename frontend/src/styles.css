@@ -833,3 +833,96 @@ select:focus {
   font-size: 11px;
   color: var(--text-faint);
 }
+
+/* ── v3 资金流形态 / mini flow-stripe / 下钻面板 ─────────────────── */
+
+/* 形态标签: 克制金融术语 (脉冲/横盘累积/上行·下行累积), 红入绿出低饱和底 */
+.regime-tag {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 3px;
+  font-size: 12px;
+  white-space: nowrap;
+  background: var(--bg-panel-2);
+  color: var(--text-dim);
+}
+
+.regime-tag.in {
+  background: rgba(212, 52, 44, 0.09);
+  color: var(--up);
+}
+
+.regime-tag.out {
+  background: rgba(15, 138, 78, 0.09);
+  color: var(--down);
+}
+
+/* mini flow-stripe: 60 日逐日净流入色带 (climate-stripes 横向形态, 高 14px) */
+.flow-stripe {
+  display: inline-flex;
+  width: 132px;
+  height: 14px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--bg-panel-2);
+  vertical-align: middle;
+}
+
+.flow-stripe i {
+  flex: 1;
+  min-width: 1px;
+  display: block;
+}
+
+/* 下钻面板: 卡内 inline 展开, 面包屑 + 下一层表 */
+.drill-panel {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel-2);
+}
+
+.drill-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.drill-crumbs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.drill-crumbs .crumb.active {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.crumb-sep {
+  color: var(--text-faint);
+  font-size: 12px;
+  margin: 0 2px;
+}
+
+.drill-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* B2 突破事件徽标 (叶子层描述性展示, 非买卖暗示) */
+.badge-breakout {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 3px;
+  font-size: 11px;
+  background: rgba(160, 106, 0, 0.12);
+  color: #a06a00;
+}

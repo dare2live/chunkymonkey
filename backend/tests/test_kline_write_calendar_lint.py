@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS price_kline (
 
 
 def _valid_row(code: str, date: str, close: float = 10.0) -> dict:
-    """Construct a row that passes clean_price_row VWAP-close ratio check."""
+    """Construct a row that passes clean_price_row (vwap lint 2026-07-03 已物删, 行本身仍合法)."""
     return {
         "code": code,
         "date": date,
@@ -55,7 +55,7 @@ def _valid_row(code: str, date: str, close: float = 10.0) -> dict:
         "low": close * 0.97,
         "close": close,
         "volume": 100,  # 100 lots
-        "amount": close * 100 * 100,  # vwap = close (lot_size=100)
+        "amount": close * 100 * 100,
         "factor": 1.0,
     }
 

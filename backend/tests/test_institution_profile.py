@@ -1,6 +1,7 @@
 """institution_profile 状态机单测 — 成本/收益正确性证伪门 (promote 纪律)。
 
-覆盖: 新进→增持(加权平均成本)→减持(部分了结)→退出(清仓) 全链数值 + seeded/多轮 episode/无价跳过。
+覆盖: 新进→增持(加权平均成本)→减持(部分了结)→退出(清仓) 全链数值 + seeded/多轮 episode/无价跳过
++ 2026-07-03 审计修2: share_class 混流过滤 / 源重复键去重 (SQL 级) + 状态机三缺陷 (unit 级)。
 """
 import sys
 from pathlib import Path
@@ -9,7 +10,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from services.institution_profile import run_episode_state_machine
+from conftest import duck_mem
+from services.institution_profile import build_episodes, run_episode_state_machine
 
 
 def _row(holder="H", stock="600000", period="20240331", status="新进", is_exit=False,
@@ -26,7 +28,8 @@ def test_full_lifecycle_weighted_cost_and_realized():
         _row(period="20241231", status="退出", is_exit=True, shares=1500, chg=-1500, c1=40.0, c2=40.0, c3=40.0),
     ]
     eps, stats = run_episode_state_machine(rows)
-    assert stats == {"opened": 1, "closed": 1, "seeded": 0, "no_price_skip": 0}
+    assert stats == {"opened": 1, "closed": 1, "seeded": 0, "no_price_skip": 0,
+                     "unpriced_close": 0, "superseded": 0}
     ep = eps[0]
     assert ep["status"] == "closed"
     assert ep["cost_c1"] == pytest.approx(15.0)          # (1000×10 + 1000×20) / 2000
@@ -54,7 +57,8 @@ def test_multi_round_episodes_same_holder_stock():
         _row(period="20240331", status="新进", shares=200, c1=8.0),
     ]
     eps, stats = run_episode_state_machine(rows)
-    assert stats == {"opened": 2, "closed": 1, "seeded": 0, "no_price_skip": 0}
+    assert stats == {"opened": 2, "closed": 1, "seeded": 0, "no_price_skip": 0,
+                     "unpriced_close": 0, "superseded": 0}
     closed = [e for e in eps if e["status"] == "closed"][0]
     holding = [e for e in eps if e["status"] == "holding"][0]
     assert closed["realized_c1"] == pytest.approx(100 * 2.0)
@@ -80,3 +84,107 @@ def test_exit_without_open_is_noop():
     """无开仓的孤儿退出行 (数据起点截断) → 不产生 episode。"""
     eps, stats = run_episode_state_machine([_row(status="退出", is_exit=True, shares=100, chg=-100)])
     assert eps == [] and stats["closed"] == 0
+
+
+# ── 2026-07-03 审计修2c: 状态机三缺陷证伪门 ─────────────────────────────────────
+
+
+def test_exit_with_null_window_price_closes_unpriced():
+    """退出行窗口无价 (c1=None) 也必须关闭 episode (修前被无价跳过吞掉 → 幽灵 holding)。
+    status='unpriced_close': 最终腿 PnL 不可测不计 (不知道≠0), 已实现部分保留, 不进 'closed' 评级。"""
+    rows = [
+        _row(period="20240331", status="新进", shares=100, c1=10.0),
+        _row(period="20240630", status="减持", shares=50, chg=-50, c1=20.0),  # realized 50×10=500
+        _row(period="20240930", status="退出", is_exit=True, shares=50, chg=-50,
+             c1=None, c2=None, c3=None),   # 停牌窗口无价
+    ]
+    eps, stats = run_episode_state_machine(rows)
+    assert stats["unpriced_close"] == 1 and stats["closed"] == 0
+    assert len(eps) == 1
+    ep = eps[0]
+    assert ep["status"] == "unpriced_close", "修前: 退出被吞, status 残留 holding"
+    assert ep["close_date"] == "20240930"
+    assert ep["realized_c1"] == pytest.approx(500.0)   # 只有已实现部分, 最终腿不估价
+
+
+def test_new_entry_over_open_episode_supersedes_not_overwrites():
+    """已开 episode 再见'新进' (中间退出披露缺失) → 旧 episode 按当期窗口价关闭
+    (status='superseded', 不进评级) 再开新 — 修前 dict 直接覆盖 = 旧 episode 静默丢失。"""
+    rows = [
+        _row(period="20240331", status="新进", shares=100, c1=10.0),
+        _row(period="20241231", status="新进", shares=200, c1=16.0),
+    ]
+    eps, stats = run_episode_state_machine(rows)
+    assert stats == {"opened": 2, "closed": 0, "seeded": 0, "no_price_skip": 0,
+                     "unpriced_close": 0, "superseded": 1}
+    assert len(eps) == 2, "修前: 只剩 1 个 episode (旧的被覆盖丢失)"
+    old = [e for e in eps if e["status"] == "superseded"][0]
+    new = [e for e in eps if e["status"] == "holding"][0]
+    assert old["close_date"] == "20241231"
+    assert old["realized_c1"] == pytest.approx(100 * (16.0 - 10.0))  # 按当期窗口价关闭
+    assert new["cost_c1"] == 16.0 and new["shares"] == 200 and new["seeded"] is False
+
+
+# ── 2026-07-03 审计修2a/2b: build_episodes 源查询 (SQL 级证伪门) ─────────────────
+
+
+def _sql_conn():
+    """内存库模拟生产 ATTACH sm/tr (CREATE SCHEMA 两部名同解析) + 手造 period_windows。"""
+    c = duck_mem()
+    c.executescript("""
+    CREATE SCHEMA sm; CREATE SCHEMA tr;
+    CREATE TABLE sm.fact_top10_holder_period (
+        stock_code TEXT, report_date TEXT, holder_name_norm TEXT, change_status TEXT,
+        is_exit_row BOOLEAN, shares_approx DOUBLE, hold_change_num DOUBLE, holder_type TEXT,
+        notice_date TEXT, share_class TEXT, holder_rank INTEGER, row_seq INTEGER, raw_hash TEXT);
+    CREATE TABLE period_windows (
+        stock_code TEXT, report_date TEXT, prev_period TEXT, w_start TEXT, w_end TEXT,
+        c1_vwap DOUBLE, c2_eod DOUBLE, c3_lhb DOUBLE, c3_eff DOUBLE);
+    CREATE TABLE tr.raw_tushare_index_daily (ts_code TEXT, trade_date TEXT, close DOUBLE);
+    CREATE TABLE tr.v_sw_industry_pit (stock_code TEXT, l1_name TEXT, in_date TEXT, out_date TEXT);
+    """)
+    c.executemany("INSERT INTO period_windows VALUES (?,?,?,?,?,?,?,?,?)", [
+        ("600000", "20240331", None, "2024-01-01", "2024-03-31", 10.0, 10.0, None, 10.0),
+        ("600000", "20240630", "20240331", "2024-03-31", "2024-06-30", 20.0, 20.0, None, 20.0),
+    ])
+    return c
+
+
+_HOLDER_ROW_N = 13  # 列数与上方 fixture DDL 一致
+
+
+def test_build_episodes_filters_non_a_share_class():
+    """share_class != 'A' (B/H 股行) 混入 A 股 qfq 价计价 = 价格错配 → 源查询硬滤。"""
+    c = _sql_conn()
+    try:
+        c.executemany(f"INSERT INTO sm.fact_top10_holder_period VALUES ({','.join('?' * _HOLDER_ROW_N)})", [
+            ("600000", "20240331", "基金一号", "新进", False, 100, None, "基金", "20240430", "A", 1, 1, "h1"),
+            ("600000", "20240630", "基金一号", "退出", True, 100, -100, "基金", "20240730", "A", 1, 1, "h2"),
+            ("600000", "20240331", "港资股东", "新进", False, 50, None, "QFII", "20240430", "H", 2, 1, "h3"),
+            ("600000", "20240331", "B股东", "新进", False, 50, None, "法人", "20240430", "B", 3, 1, "h4"),
+        ])
+        build_episodes(c)
+        holders = {r[0] for r in c.execute("SELECT DISTINCT holder FROM fact_inst_episode").fetchall()}
+        assert holders == {"基金一号"}, f"B/H 行必须被滤 (修前混入): {holders}"
+        ep = c.execute("SELECT status, realized_c1 FROM fact_inst_episode").fetchone()
+        assert ep[0] == "closed" and ep[1] == pytest.approx(100 * (20.0 - 10.0))
+    finally:
+        c.close()
+
+
+def test_build_episodes_dedups_source_duplicate_keys():
+    """源 (holder, stock, report_date, is_exit_row) 双行 (实测 60 组) → QUALIFY 稳定序取 1 行;
+    修前双行双计 → 修2c 语义下第二行还会 supersede 出 2 个 episode。"""
+    c = _sql_conn()
+    try:
+        c.executemany(f"INSERT INTO sm.fact_top10_holder_period VALUES ({','.join('?' * _HOLDER_ROW_N)})", [
+            ("600000", "20240331", "基金二号", "新进", False, 100, None, "基金", "20240430", "A", 5, 1, "h5"),
+            ("600000", "20240331", "基金二号", "新进", False, 999, None, "基金", "20240430", "A", 6, 1, "h6"),
+        ])
+        build_episodes(c)
+        rows = c.execute("SELECT status, shares FROM fact_inst_episode WHERE holder = '基金二号'").fetchall()
+        assert len(rows) == 1, f"重复键必须只计一次 (修前 2 个 episode): {rows}"
+        assert rows[0][0] == "holding"
+        assert rows[0][1] == pytest.approx(100.0), "稳定序: holder_rank 最小的主行胜出"
+    finally:
+        c.close()

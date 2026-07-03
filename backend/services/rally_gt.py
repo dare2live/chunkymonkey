@@ -36,8 +36,8 @@ strata (考古 §3.4): 申万 L1/L2 as-of (raw_tushare_index_member_all, in_date
 TODO (主会话 B2 rebuild 锁释放后补, 本次禁碰 smartmoney):
   - fact_rally_strata.mktcap_seg/turnover_seg/vol_regime ← B1 smartmoney.dim_stock_segment_daily
     as-of bottom_date (单一计算点, 修正#7);
-  - fact_rally_strata.axis_pos/axis_purity/form_base_days ← B2 smartmoney.fact_stock_form_daily
-    bottom 日对照;
+  - fact_rally_strata.axis_pos/axis_purity ← B2 smartmoney.fact_stock_form_daily bottom 日对照
+    (form_base_days 已删, 2026-07-03 审计修4: base_days 仅 breakout 事件日落值, 对照不可行);
   - 敏感性留档 (修正#9): LOWWIN/BASEMIN/DDFLOOR ±25% 扰动 × episode 数/分年分布 → analysis/ 附录。
 
 收编清单 (主会话 review 收编用, side-agent 禁改控制面):
@@ -316,7 +316,8 @@ def _write_strata(conn, raw_conn, cfg: dict, built_at) -> None:
             vol_regime    VARCHAR,   -- TODO B1 同上
             axis_pos      VARCHAR,   -- TODO B2 fact_stock_form_daily bottom 日对照
             axis_purity   VARCHAR,   -- TODO B2 同上
-            form_base_days INTEGER,  -- TODO B2 同上 (与 GT base_days 定义对照)
+            -- form_base_days 已删 (2026-07-03 审计修4): 源 base_days 仅 breakout 事件日落值,
+            -- bottom 日几乎从不是 breakout 日 → 5636/5636 全 NULL, B2 base 对照不可行 (奥卡姆)。
             built_at      TIMESTAMP NOT NULL,
             PRIMARY KEY (stock_code, bottom_date)
         )""")
@@ -325,7 +326,7 @@ def _write_strata(conn, raw_conn, cfg: dict, built_at) -> None:
         SELECT g.stock_code, g.bottom_date,
                sec.l1_code, sec.l1_name, sec.l2_code, sec.l2_name,
                g.base_days, {_base_bucket_case(cfg)},
-               NULL, NULL, NULL, NULL, NULL, NULL,
+               NULL, NULL, NULL, NULL, NULL,
                ?
         FROM {GT_TABLE} g
         LEFT JOIN LATERAL (
@@ -442,7 +443,7 @@ def rebuild(conn=None, data_end=None, raw_conn=None) -> dict:
             n_stocks += 1
             delisted = (pd.to_datetime(last_data_date) - pd.to_datetime(str(dts[-1]))).days > int(DELISTED_NO_TRADE_DAYS)
             eps = detect_episodes(code, dts, highs, lows, closes, st_cal, cfg)
-            kept_bottoms: set[str] = set()
+            purge_bottoms: set[str] = set()
             for e in eps:
                 funnel["L0_swing"] += 1
                 if delisted or e["st_in_episode"]:
@@ -457,12 +458,15 @@ def rebuild(conn=None, data_end=None, raw_conn=None) -> dict:
                 if e["path_max_dd_pct"] <= float(ep["dd_floor"]):
                     continue
                 funnel["L4_smooth"] += 1
+                # purge 集语义扩展 (2026-07-03 审计修3): 在 embargo 之前收集 — 被右删失剔出
+                # train 的 L4-真 bottom 也必须进负样本 purge 集, 否则其 ±maxfwd 根内 pivot
+                # 会成为紧邻(删失)主升浪底的污染负样本 (data_end 尾部, 如 2024H1 后段)。
+                purge_bottoms.add(e["bottom_date"])
                 if not rd.forward_complete(e["bottom_date"], trading_days, last_data_date, maxfwd):
                     funnel["E_embargo_censored"] += 1   # v2 右删失 embargo (修正#1/#8)
                     continue
                 keep.append(e)
-                kept_bottoms.add(e["bottom_date"])
-            pos_idx = [k for k, d in enumerate(dts) if str(d) in kept_bottoms]
+            pos_idx = [k for k, d in enumerate(dts) if str(d) in purge_bottoms]
             negatives.extend(detect_negatives(code, dts, highs, lows, closes, pos_idx,
                                               trading_days, last_data_date, cfg))
 

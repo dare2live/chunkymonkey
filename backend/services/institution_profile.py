@@ -7,6 +7,9 @@
   episode = 同机构(holder_name_norm)×同股票 的 建仓(新进,可增持)→部分了结(减持)→清仓(退出)/持有中。
   成本三方案: C1 窗口VWAP(主) / C2 期末价 / C3 龙虎榜机构席位日按额加权(缺→C1); 增持=加权平均成本。
   收益口径: realized_pnl / (cost×peak_shares) [峰值投入分母, 保守]; alpha = ret − 同窗 HS300。
+  alpha_c1 口径 (方法学披露, 2026-07-03 审计修6): 基准 = 期界点到点收盘 (open/close 期各取
+    <= 期界日最近 HS300 收盘), 成本 = 整窗 VWAP — 两窗不严格对齐, alpha 含窗口错位噪声;
+  avg_hold_days = 披露期界日历天 (open_date→close_date), 非真实持仓天数 (期内实际买卖点不可知)。
   纪律: 被动产品(ETF/指数/联接=申赎驱动非选股观点)标记剔除; n<MIN_EPISODES 标 low_sample 不排名;
         行业维度用 PIT 行业 (v_sw_industry_pit as-of 建仓日, 非当前行业)。
 
@@ -101,31 +104,47 @@ def run_episode_state_machine(rows: list[tuple]) -> tuple[list[dict], dict]:
     """
     episodes: list[dict] = []
     open_eps: dict[tuple, dict] = {}
-    stats = {"opened": 0, "closed": 0, "seeded": 0, "no_price_skip": 0}
+    stats = {"opened": 0, "closed": 0, "seeded": 0, "no_price_skip": 0,
+             "unpriced_close": 0, "superseded": 0}
 
-    def _close(ep: dict, prices: tuple, close_date: str, notice: str | None) -> None:
+    def _close(ep: dict, prices: tuple, close_date: str, notice: str | None,
+               status: str = "closed") -> None:
         for k, sell in zip(("c1", "c2", "c3"), prices):
             if sell and ep[f"cost_{k}"]:
                 ep[f"realized_{k}"] += ep["shares"] * (sell - ep[f"cost_{k}"])
-        ep.update(status="closed", close_date=close_date, close_notice=notice)
+        ep.update(status=status, close_date=close_date, close_notice=notice)
         episodes.append(ep)
-        stats["closed"] += 1
+        stats["closed" if status == "closed" else status] += 1
 
     for (holder, stock, period, status, is_exit, shares, chg, htype, notice, c1, c2, c3) in rows:
         key = (holder, stock)
         ep = open_eps.get(key)
+
+        # 退出分支先于无价跳过 (2026-07-03 审计修2c): 退出行即使窗口无价也必须关闭 episode,
+        # 否则退出被吞 → 幽灵 holding。无价 → status='unpriced_close': 最终腿 PnL 不可测
+        # (不知道≠0, 不拿旧窗价估), 已实现部分保留; 富化/画像只认 'closed', 该类不进评级。
+        if is_exit or status == "退出":
+            if ep:
+                if c1 is None:
+                    ep.update(status="unpriced_close", close_date=period, close_notice=notice)
+                    episodes.append(ep)
+                    stats["unpriced_close"] += 1
+                else:
+                    _close(ep, (c1, c2 or c1, c3 or c1), period, notice)
+                del open_eps[key]
+            continue
+
         if c1 is None:
             stats["no_price_skip"] += 1
             continue
         c2, c3 = c2 or c1, c3 or c1
 
-        if is_exit or status == "退出":
-            if ep:
-                _close(ep, (c1, c2, c3), period, notice)
-                del open_eps[key]
-            continue
-
         if status == "新进" or (ep is None and status in ("增持", "减持", "不变")):
+            # '新进'遇已开 episode = 中间退出披露缺失 (2026-07-03 审计修2c): 先按当期窗口价
+            # 关闭旧 episode (status='superseded', 退出时点不可知 → 不进 'closed' 评级),
+            # 再开新 — 禁 dict 直接覆盖静默丢 episode。
+            if ep is not None:
+                _close(ep, (c1, c2, c3), period, notice, status="superseded")
             seeded = status != "新进"
             open_eps[key] = {
                 "holder": holder, "stock": stock, "holder_type": htype,
@@ -173,6 +192,9 @@ _EPISODE_COLS = [
 
 def build_episodes(con) -> dict:
     """事件流 → fact_inst_episode (含 alpha/被动标记/PIT 行业)。"""
+    # share_class='A' (2026-07-03 审计修2a): B/H 股行混入 A 股 qfq 价计价 = 价格错配, 硬滤;
+    # QUALIFY 去重 (修2b): 源 (holder,stock,period,is_exit_row) 存在双行 (实测 60 组) → 状态机
+    # 会双计开/平仓, 稳定序取 1 行 (rank/row_seq 主行优先, notice 新者优先, raw_hash 决胜)。
     rows = con.execute("""
         SELECT h.holder_name_norm, h.stock_code, h.report_date, h.change_status, h.is_exit_row,
                h.shares_approx, h.hold_change_num, h.holder_type, h.notice_date,
@@ -180,6 +202,11 @@ def build_episodes(con) -> dict:
         FROM sm.fact_top10_holder_period h
         JOIN period_windows w ON w.stock_code = h.stock_code AND w.report_date = h.report_date
         WHERE h.holder_name_norm IS NOT NULL AND length(h.report_date) = 8
+          AND h.share_class = 'A'
+        QUALIFY ROW_NUMBER() OVER (
+            PARTITION BY h.holder_name_norm, h.stock_code, h.report_date, h.is_exit_row
+            ORDER BY h.holder_rank NULLS LAST, h.row_seq,
+                     COALESCE(h.notice_date, '') DESC, COALESCE(h.raw_hash, '')) = 1
         ORDER BY h.holder_name_norm, h.stock_code, h.report_date, h.is_exit_row
     """).fetchall()
     episodes, stats = run_episode_state_machine(rows)

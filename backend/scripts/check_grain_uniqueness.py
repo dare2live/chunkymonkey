@@ -117,7 +117,7 @@ def run_checks(
     """全表扫描: 返回 (results, failures)。conn_for(db_alias) 可注入 (单测内存库)。
     exemptions: {table: 到期日 YYYYMMDD} — 未到期的 dup 降为 exempt (不 FAIL), 过期照常 FAIL。"""
     exemptions = exemptions or {}
-    today = today or date.today().strftime("%Y%m%d")  # rule-compliance: ok evidence=豁免到期日=自然日语义 (非交易日锚, 过期自动恢复 FAIL)rade-date end_date
+    today = today or date.today().strftime("%Y%m%d")  # rule-compliance: ok evidence=Phase ψ.5 allowlist 豁免到期日=自然日语义 (非交易日锚, 过期自动恢复 FAIL)rade-date end_date
     conns: dict[str, Any] = {}
     results: list[dict[str, Any]] = []
     try:

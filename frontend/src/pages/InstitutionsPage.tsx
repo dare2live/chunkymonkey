@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { fetchProfiles, fetchSignals } from "../api/inst";
 import { addPosition } from "../api/paper";
 import type { InstSignal, ProfileOrderBy } from "../api/types";
@@ -152,12 +152,43 @@ function FollowCell(props: { signal: InstSignal }) {
 
 function SignalsCard() {
   const navigate = useNavigate();
+  // ?stock=600001: 市场感知页下钻叶子行跳转入口 (v3) — 客户端过滤信号流到该股
+  const [params, setParams] = useSearchParams();
+  const stockFilter = params.get("stock");
   const state = useFetch(() => fetchSignals({ days: 90, limit: 50 }), []);
 
   return (
-    <Card title="最新建仓信号流 (近 90 天)">
-      <FetchGate state={state} empty={(d) => d.length === 0} emptyHint="近 90 天无满足条件的新建仓信号">
-        {(signals) => (
+    <Card
+      title="最新建仓信号流 (近 90 天)"
+      extra={
+        stockFilter ? (
+          <span className="inline-ctl">
+            筛选标的 <b className="mono">{stockFilter}</b>{" "}
+            <button
+              className="btn"
+              onClick={() => {
+                params.delete("stock");
+                setParams(params, { replace: true });
+              }}
+            >
+              清除
+            </button>
+          </span>
+        ) : undefined
+      }
+    >
+      <FetchGate
+        state={state}
+        empty={(d) => d.filter((s) => !stockFilter || s.stock.includes(stockFilter)).length === 0}
+        emptyHint={
+          stockFilter
+            ? `近 90 天无 ${stockFilter} 的新建仓信号 (清除筛选看全部)`
+            : "近 90 天无满足条件的新建仓信号"
+        }
+      >
+        {(all) => {
+          const signals = all.filter((s) => !stockFilter || s.stock.includes(stockFilter));
+          return (
           <div className="table-wrap">
             <table>
               <thead>
@@ -202,7 +233,8 @@ function SignalsCard() {
               </tbody>
             </table>
           </div>
-        )}
+          );
+        }}
       </FetchGate>
     </Card>
   );

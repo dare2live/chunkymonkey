@@ -34,6 +34,20 @@ lookback_late_days: 3         # 每次 build_latest 对最近 N 个已存在源�
                               # 迟到 + 一次失败重放周期 (audit 20260703 pulse finding: margin 实测比
                               # daily 晚 ~9h 到库, 失败进 open 队列由次日晨 drain 补)
 
+# ── v3 资金流形态分类学 (flow_regime, 2026-07-03, 契约=设计文档 "v3 设计" v3.1) ──
+# 三个正交维度: 量级 (cum_ratio 归一到板块市值) × 突然性 (flow_z 对自身历史) × 价格响应 (streak 窗价格累计)。
+# 判定序 (第一命中): surge_in/surge_out (脉冲) → accum_*_silent/driving (累积) → neutral。
+# 标签 key 英文入库; 前端中文显示名 = 脉冲流入/流出 · 横盘累积流入/流出 · 上行/下行累积流入/流出。
+flow_z_surge: 2.5             # 脉冲门: flow_z >= 2.5 且 net>0 → surge_in; <= -2.5 且 net<0 → surge_out
+                              # (net 同号 guard: 深负均值序列里 z 可为正, 防把流出日误标脉冲流入)
+accum_min_streak: 5           # 累积门: 连续同号净流向天数 |flow_streak| >= 5
+silent_px_band: 3.0           # 横盘带 (百分点): streak 窗价格累计 |px_cum| < 3% = 横盘累积;
+                              # >= +3% = 上行累积 (accum_in_driving); <= -3% = 下行累积 (accum_out_driving)
+zscore_window: 120            # flow_z 滚窗: 当日 net 对自身近 120 个交易日 (不含当日) 的 z-score;
+                              # 窗口不满 / std=0 → NULL (尾对齐不外推, 与 RS 同纪律)
+cum_window: 20                # cum_ratio_20d 累计窗: 近 20 交易日累计净流入 / 板块市值 (%);
+                              # 窗口内净流值不足 20 个 → NULL (不知道≠0)
+
 # ── data_start (分链, 全部对齐 sync_registry.yaml 实测源起点, 不外推) ──
 data_start_dc: "20240102"     # from sync_registry: moneyflow_ind_dc data_start (E8 探底实测)
 data_start_sw: "20190102"     # from sync_registry: sw_daily data_start (对齐 K线/daily_basic 窗口)

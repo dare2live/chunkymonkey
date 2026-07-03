@@ -31,3 +31,7 @@ notes: |
   陷阱 (v1.5 契约原话, 历史上反复踩): bull_aligned 反复被误当入场特征 (Explore/INDEX/早期分类都错过)
   — 它在 [bottom..peak] 拉升期测, 入场当时不可知。真正丰富的入场 PIT 特征来自特征面 JOIN
   (stock_code, bottom_date), GT 自带的 PIT 特征只有 base_days 一个 (结构型长底)。
+  fact_rally_strata.axis_* (B2 对照列): warmup 覆盖窗自 2020-01-10 起有效, 2019 bottom 全 NULL
+  = unknown 桶, 消费勿静默丢 (2026-07-03 审计修6)。
+  form_base_days 已删: B2 base 对照不可行 (base_days 仅 breakout 事件日落值, bottom 日几乎
+  从不是 breakout 日, 5636/5636 全 NULL), 2026-07-03 审计裁决。

@@ -1,0 +1,172 @@
+{
+ "meta": {
+  "date": "2026-07-03",
+  "what": "加工层正确性审计波1 (单位语义/GT重算/画像状态机/B2特征; tushare_raw 锁避开面)",
+  "workflow": "wf_6db80598, 5 agents/202 calls",
+  "counts": {
+   "confirmed": 1,
+   "low_medium": 14,
+   "clean": 41
+  },
+  "wave2_pending": "B1/B4 mart 全变量重算 + buyable NULL 17464 行源核证 (锁释放后)"
+ },
+ "confirmed": [
+  {
+   "area": "mart_market_pulse_daily.rzrqye / rzrqye_chg (services/market_pulse.py:525-534 margin_day CTE)",
+   "issue": "两融余额跨交易所直和无覆盖门: 源端仅 SSE 1 行的日子直和缺 SZSE, 余额显示腰斩且相邻两日 rzrqye_chg 出现 ±1.44~1.51 万亿假摆动 (真实两融单日变动 <500 亿), 前端 sentiment 卡直接展示 = 假'万亿级爆减杠杆'信号。代码注释 '数据现实如实入表' 是有意识决定, 但 partial 直和是错误数字而非缺数字, 违反本项目 '不知道≠0' 纪律 (半知道更不该当全知道)。lookback_late_days=3 治愈窗已滑过这 4 天, 永不回补",
+   "severity": "high",
+   "evidence": "executed — smartmoney read_only 重算: 全表 844 行 rzrqye 0 NULL; 腰斩日 4 个 (rzrqye < 0.7×prev): 20260403 13149.44亿 (前日 25986.73亿), 20260430 13838.29亿 (前日 27323.02亿), 20260618 15092.75亿 (前日 29528.86亿), 20260626 15276.74亿 (前日 30329.92亿) — 每个 cur/prev ≈ 0.51 ≈ SSE 单所占比; 受污染 rzrqye_chg 至少 8 值, |chg| top5 全是这些日及其次日: 20260626 -15053.18亿 / 20260622 +14857.56亿 / 20260629 +14760.08亿 / 20260618 -14436.11亿 / 20260506 +13728.84亿",
+   "fix": "margin_day CTE 加覆盖门: SUM(rzrqye) FILTER 仅当当日 exchange_id 集合 ⊇ {SSE,SZSE} (SELECT ... GROUP BY trade_date HAVING COUNT(DISTINCT exchange_id) >= 2), 否则该日 rzrqye=NULL; margin2 的 LAG 改为只跨 qualifying 日算 rzrqye_chg; 同时源侧 margin sync drain 补齐缺所行后靠 build_latest 迟到回补自然治愈 (需把 margin 域的回补检测从固定 3 日窗改为按 raw 覆盖恢复检测, 或一次性对 4 个污染日手动 DELETE+重插)",
+   "verdict": {
+    "verdict": "CONFIRMED",
+    "method": "executed_code",
+    "evidence": "executed — smartmoney read_only 独立重算 (tushare_raw 锁死未碰, 用 mart 全表扫描 + catalog + fixture 替代源核证): (1) 代码核证: services/market_pulse.py:525-534 margin_day CTE = `SELECT trade_date, SUM(rzrqye) FROM tr.raw_tushare_margin GROUP BY 1` 无 exchange_id 覆盖门, 注释自认\"个别日源端仅 SSE 1 行 (sync_registry 实测), 直和口径不齐如实入表\"。(2) 数字逐位对账: 844 行 0 NULL; 全表扫 rzrqye<0.7*prev 恰 4 日, 与指控逐位一致: 20260403 13149.44亿/prev 25986.73亿 ratio 0.5060; 20260430 13838.29亿/27323.02亿 0.5065; 20260618 15092.75亿/29528.86亿 0.5111; 20260626 15276.74亿/30329.92亿 0.5037 — 四日 ratio 全落 0.504-0.511 ≈ SSE 单所占比, 且每次次日满额恢复 (missing-exchange 特征, 非真实去杠杆)。(3) 污染 chg 恰 8 值 = |chg| top8: 20260626 -15053.18 / 20260622 +14857.56 / 20260629 +14760.08 / 20260618 -14436.11 / 20260506 +13728.84 / 20260430 -13484.73 / 20260403 -12837.29 / 20260407 +12700.20 (亿); 排除后 836 clean 值 median|chg|=42.65亿, p99=386.79亿, 史上最大 1076.94亿 (20241008 真实事件) — 假摆动是史上真实极值的 12-14 倍。(4) 语义核证: config/tushare_api_catalog.json margin 接口 output rzrqye=\"融资融券余额(元)\" per-exchange (SSE/SZSE/BSE); tests/fixtures/domain_samples/margin.json 实样 grain=(trade_date,exchange_id) 2 行/日 — 直和仅在全所覆盖时正确, 非单位/口径误读。(5) 永不回补核证: market_pulse.py:692-696 _late_dates 只取 MARKET_TABLE 最近 3 个已存在日 DELETE+重插 (config/market_pulse.yaml lookback_late_days=3); 表 max=20260701, 4 污染日 (4月/6月) 永在窗外, build_latest 不治愈; 仅 rebuild_all 且 raw 已补 SZSE 行才能治 (raw 锁死不可验证是否已补)。(6) 前端暴露核证: routers/market_pulse.py:542 序列化 rzrqye/rzrqye_chg; frontend/src/pages/MarketPage.tsx 卡片直显 value=fmtAmountCn(last.n) + delta=last.n_chg — 假\"万亿级爆减杠杆\"直达用户。\"有意识决定\"抗辩不成立: 同文件 limits0 CTE 纪律是\"源整日缺失→NULL (不知道≠0)\", partial 直和是错数字非缺数字, 与项目自身纪律自相矛盾。修法方向 (覆盖门 HAVING COUNT(DISTINCT exchange_id)>=2 落 NULL + LAG 只跨 qualifying 日 + 污染 4 日重建) 合理。",
+    "corrected": "指控实质全部成立, 两处 headline 数字微修: (1) \"±1.44~1.51 万亿假摆动\" → 实测受污染 8 值全距为 ±1.27~1.51 万亿 (top5 为 1.37~1.51 万亿, 第 5 值 +13728.84亿); (2) \"真实两融单日变动 <500 亿\" → clean 值 p99=386.79亿 但史上真实极值 1076.94亿 (20241008 节后复牌真实事件), \"<500亿\"应表述为常态水平而非硬上限 — 不影响结论, 假摆动仍超真实极值 12-14 倍。另注: \"源端仅 SSE 1 行\"因 tushare_raw 写锁无法直查 raw 表验证, 但由 0.504-0.511 占比 ×4 次 + 次日满额恢复 + builder 注释自认 (sync_registry 实测) + catalog grain 语义四路旁证闭合。"
+   }
+  }
+ ],
+ "refuted": [],
+ "low_medium": [
+  {
+   "area": "mart_sector_pulse_daily 部署态 vs v3 代码 (services/market_pulse.py v3 列 + routers/market_pulse.py /drill /flow_board /flow_stripe)",
+   "issue": "v3 代码已引用 level/flow_z/flow_streak/cum_ratio_20d/flow_regime 列, 但 smartmoney 现库 mart_sector_pulse_daily 仍是 v2 schema (26 列无任何 v3 列), sw 链 net_amount 100% NULL (v2 语义); routers SELECT 这些列会 DuckDB BinderException → /api/v3/pulse 相关端点 500, 直到 rebuild 完成 (rebuild 需 ATTACH tushare_raw, 当前被回填写锁占用不可跑)",
+   "severity": "medium",
+   "evidence": "executed — information_schema.columns 实查: sector 表 26 列止于 inflow_breadth/built_at, 无 level/flow_z/flow_streak/cum_ratio_20d/flow_regime (SELECT cum_ratio_20d 实测 BinderException); sw 链 56296 行 net_amount 56296 NULL (100%); 表最新日 20260701 / 1816 个交易日。build_latest 有 flow_regime 哨兵守卫 (market_pulse.py:688-690) 会触发自动全量重建 — 自愈路径存在但被 tushare_raw 写锁 gate",
+   "fix": "回填锁释放后先跑 market_pulse.rebuild_all() 再放行 v3 前端/router 流量 (或部署序把表重建列为 v3 代码上线前置步); 模块头 '收编清单' 的 smoke (j)(k)(l) 项在重建后必须实际执行"
+  },
+  {
+   "area": "services/kline_source.py:189-197 clean_price_row vwap 校验",
+   "issue": "invalid_vwap_close_ratio 校验的单位假设是 tdxhub 遗留 (amount=元, volume=手×LOT_SIZE=100): 对 tushare daily 原始行 (amount=千元) ratio≈0.001, 对 price_kline_qfq_tushare 行 (volume=股) ratio≈0.01 — 两种现行数据喂进去都会 100% 误判拒行。当前无生产调用方 (仅 2 个测试文件引用) 属死代码, 但作为潜伏单位陷阱违反死引用清零纪律",
+   "severity": "low",
+   "evidence": "executed — 手算: 000001.SZ 20230103 样本 amount=2,971,546.989(千元)/vol=2,194,127.94(手): tushare 原始行 vwap=2971546.989/(2194127.94×100)=0.01354 → ratio=0.01354/13.77=0.000983, 远出界 [0.5,1.5]; qfq 表行 (amount×1000=元, volume×100=股) vwap=2.9715e9/(2.1941e8×100)=0.1354 → ratio=0.00983 同样出界。rg 全仓: clean_price_row 调用方仅 test_kline_write_calendar_lint.py + test_kline_cleaning.py, build_price_kline_qfq_tushare.py 不经过它",
+   "fix": "二选一: (a) 物删 clean_price_row 的 vwap 分支及其测试 (现行唯一 K 线路径不消费); (b) 保留则显式声明输入单位契约 (amount=元, volume=手) 并在 tushare 接入点先做 ×1000/维持手 的归一, 加单测锁两种源单位"
+  },
+  {
+   "area": "fact_rally_strata.form_base_days (B2 对照列)",
+   "issue": "form_base_days 全表死列: 5636/5636 行全 NULL, 设计意图 (rally_gt.py TODO: bottom 日 B2 form base_days 与 GT base_days 定义对照) 落空 — 根因是源列 smartmoney.fact_stock_form_daily.base_days 仅在 is_breakout_event=True 行落值, 而 rally bottom 日几乎从不是 breakout 日",
+   "severity": "low",
+   "evidence": "executed: strata form_base_days NULL=5636/5636; 源列非空率 2994/6,989,500=0.043%; 非空行 form_name 分布全部 is_breakout_event=True (震荡上行 1671/上升通道 609/放量下跌 251...); strata 与 form 表 join 上的 3802 行 f.base_days 全 NULL (form_base_diff=0 因两边全空)",
+   "fix": "二选一: B2 侧让 base_days 在非事件日也计算落值后回填 strata; 或删除该列并在列契约注明 B2 base 对照不可行 (奥卡姆: 无消费方就删)"
+  },
+  {
+   "area": "fact_rally_strata B2 轴列覆盖 (axis_pos/axis_purity) + B1 vol_regime",
+   "issue": "结构性覆盖缺口 (非错值): axis_pos/axis_purity NULL 1834/5636=32.5% — 其中 2019 年 bottom 1561 行全空 (fact_stock_form_daily 最早 trade_date=2020-01-10, B2 ~250 根 warmup), 另 273 行散布 2020-2024 (个股上市初 warmup); vol_regime NULL 1123 行 (2019:918, B1 rv_pctile warmup)。消费侧按形态轴/波动 regime 分层时 2019 全年 cell 系统性缺失",
+   "severity": "low",
+   "evidence": "executed: axis_pos NULL 分年 2019:1561/2020:60/2021:95/2022:71/2023:46/2024:1; form 表范围 20200110~20260701; vol_regime NULL 分年 2019:918/2020:45/2021:76/2022:44/2023:40; 非 NULL 行值对账 0 diff (axis_pos_diff=0, axis_purity_diff=0, vol_regime_diff=0)",
+   "fix": "在 rally_gt_columns.yaml 列契约/文档标注 warmup 覆盖窗 (axis 列自 2020 起有效), 分层消费按 NULL 单列 unknown 桶, 勿静默丢 2019 样本"
+  },
+  {
+   "area": "负样本 purge 集语义 (rally_gt.py detect_negatives pos_idx)",
+   "issue": "purge 集 = 最终落库 GT bottom (builder pos_idx=kept_bottoms), 不含被 embargo 右删失剔除的 L4-真 rally bottom — 与契约字面一致 (契约只说'同股正样本'), 但 2024 上半年负样本可紧邻 2024-05-17 后被删失的真主升浪底; 负样本标签本身按定义仍正确 (自身 low 起 forward gain<0.60 全表 0 违规), 属训练分布注意事项非标签错",
+   "severity": "low",
+   "evidence": "executed: 负样本 vs 落库 GT bottom bar 距离<250 的对 = 0 (31678 全表); 负样本 max entry 与 GT max bottom 同为 2024-05-17 截止 (embargo 机械结果); 删失 rally bottom (>2024-05-17) 不在 purge 集为代码事实 (rally_gt.py L464-465 kept_bottoms 仅含 keep)",
+   "fix": "可选加固: purge 集扩为 L4 通过的全部 bottom (含 embargo 删失), 一行改动 (kept_bottoms 在 embargo continue 前收集); 若维持现状, 在 §3.3 契约补一句显式说明"
+  },
+  {
+   "area": "fact_inst_episode / run_episode_state_machine (institution_profile.py:128-140)",
+   "issue": "状态机'新进'分支无条件覆盖 open_eps[key]: 若该 (holder,stock) 已有未关闭 episode, 旧 episode 既不 close 也不进 holding, 静默丢失 (不进任何产物行)",
+   "severity": "low",
+   "evidence": "executed: 全量流式重放 1,725,799 源事件行, overwrite_lost=50 (旧 episode 被新进覆盖丢弃), 占潜在 episode 50/370,585=0.013%; 表内 closed 318,567+holding 51,968=370,535 与重放存活数精确相等, 证实 builder 同样丢了这 50 个",
+   "fix": "新进遇已开 episode 时先用当期窗口价关闭旧 episode (或 emit 到异常桶), 不要 dict 直接覆盖; 同时上游去重 (见重复键 finding)"
+  },
+  {
+   "area": "run_episode_state_machine c1-NULL 跳过顺序 (institution_profile.py:117-119)",
+   "issue": "c1 is None 跳过检查在 exit 分支之前 → 窗口无价的退出行被丢弃, 对应 episode 永远关不掉, 卡在 holding (或后续被新进覆盖丢失)",
+   "severity": "low",
+   "evidence": "executed: 全量 SQL 分类 c1_vwap IS NULL 的 36,912 跳过行, 其中 is_exit_row=TRUE 111 行 (退出事件被吞, 占全部退出 111/327,970=0.03%); 这些 (holder,stock) 的 episode 以 holding 形态虚留在表",
+   "fix": "exit 行即使 c1 NULL 也应执行关闭 (用最近可得价或最后一个非空窗口价), 或把该 episode 标记 unpriced_close 剔出画像"
+  },
+  {
+   "area": "build_episodes 源过滤 — share_class 混流 (institution_profile.py:176-184)",
+   "issue": "事件查询不过滤 share_class, B 股 7,883 行 + H 股 7,120 行混入; 状态机 key 只有 (holder,stock), 同一机构的 A/B/H 份额事件串成一条流并全部用 A 股 qfq K线价计成本/收益 = 价格错配 + 加权成本互相污染",
+   "severity": "medium",
+   "evidence": "executed: 源表 share_class 分布 A=1,710,222 / B=7,883 / H=7,120 / _=574; 波及 1,300 个 (holder,stock) 对、1,853/370,535 episodes (0.5%), 这些机构档案的 ret/alpha 数值系统性错价 (B/H 份额市价非 A 股价)",
+   "fix": "build_episodes WHERE 加 share_class='A' (或状态机 key 加 share_class 并按各自市场价计价); 重建后受影响 holder 画像刷新"
+  },
+  {
+   "area": "smartmoney fact_top10_holder_period 源数据质量 (holders_aif10)",
+   "issue": "60 组 (holder_name_norm, stock_code, report_date, is_exit_row) 完全重复键 (各 2 行), 同一事件被状态机处理两次 (减持双计 realized / 新进触发覆盖丢失)",
+   "severity": "low",
+   "evidence": "executed: SELECT ... GROUP BY 4 键 HAVING COUNT(*)>1 → 60 组, 多余行 60, 且 multi_class=0 (非 A/B 类差异, 是同类真重复); 是 overwrite_lost=50 的主要来源",
+   "fix": "holders_aif10 清洗层按 (stock, period, holder_name, share_class) 去重; 或 build_episodes 查询侧 QUALIFY ROW_NUMBER()=1"
+  },
+  {
+   "area": "alpha_c1 口径 (build_episodes bench join)",
+   "issue": "方法学披露 (非计算错误): 成本 c1 是 (prev_period, period] 整窗 VWAP, 但基准区间取 open_date 期末点收盘→close_date 期末点收盘; 成本窗与基准窗不对齐, 基准漏算建仓窗口内的指数变动 (docstring 写 '同窗 HS300', 实现是点到点)",
+   "severity": "low",
+   "evidence": "executed: 公式本身逐行成立 (见 clean 三角对账); 口径差异读码核证 institution_profile.py:62-67 (c1 窗口 VWAP) vs :210-221 (bench 点值 as-of open/close_date), 系统性影响全部 318,567 closed episodes, 方向不定",
+   "fix": "如需严格同窗: bench_open 改用与 c1 相同窗口的指数 VWAP/均值; 或在设计文档明示'期界点到点'口径, 消除 docstring 与实现的措辞差"
+  },
+  {
+   "area": "avg_hold_days 定义 (build_profiles)",
+   "issue": "hold_days 定义核证: 日历日差 (date_diff 'day') 非交易日差, 且两端都是披露期末日 report_date — 真实建仓/清仓发生在期内, 名义持有期与真实持有期最大偏差约一个季度",
+   "severity": "low",
+   "evidence": "executed: 按 date_diff('day', strptime(open_date), strptime(close_date)) 对 94,347 个 holder 全量重算 avg_hold_days, diff>1e-9 计数=0 (值正确, 语义=日历差); close_date<open_date 违反 0 行",
+   "fix": "无需改值; 在档案前端/文档标注'披露期界日历天'口径, 避免被当真实持仓天数解读"
+  },
+  {
+   "area": "多TF闭合语义 (weekly_name/monthly_name)",
+   "issue": "weekly/monthly_name 变化日 = 周期最后一个交易日 (周五/月末 EOD), 不是任务预期的\"上周五闭合后首个交易日(周一)才变\"。实现 asof 用 bisect_right(key<=t) 含当日: 周线 bar 在其收盘日当天 EOD 即可见。H1 真正要防的\"未闭合 bar 中途改写\"实测为 0 (无泄漏), 但行为描述与任务/交接口径不符, 消费方若按\"周一才更新\"理解会错一天",
+   "severity": "low",
+   "evidence": "executed: 600519 weekly 105 次变化 / monthly 23 次、300750 weekly 88 次 / monthly 23 次, 100% 落在周期最后交易日 (on period-END=105/23/88/23), 周期中途改写=0, 新周期首日改写=0; 且 5 股全序列 7452 行 weekly_name/monthly_name 与我按\"只见已闭合 bar\"独立重算 0 diff — 实现=设计 (bar 收盘日 EOD 完整, PIT 干净), 仅口径描述问题",
+   "fix": "在 labeler.py/设计文档补一句语义澄清: \"weekly bar 在周期末交易日 EOD 即闭合可见 (与日线用当日收盘同一 EOD 口径), 非次周一才可见\"; 下游消费方文档同步该口径"
+  },
+  {
+   "area": "可成交闸 buyable/sellable/is_one_word (2026-06-15 起)",
+   "issue": "2026-06-15~2026-07-01 共 17,464 行 buyable/sellable/is_one_word NULL, 集中在沪市 (2026-07-01: 688 板 585/585 全部 NULL + 60 开头 877/1674 NULL; 00/30 板 0 NULL) — 建表时上游 raw_tushare_daily/stk_limit 沪市段缺行 (tushare_raw 正在重拉, 疑即本缺口)。风险: build_latest 是 watermark 增量 (只补新日期), 上游回补完成后这些已建行的 NULL 不会自愈; 且这些日涨停日 vol_ratio_eff 退化为实测值 (proxy 缺失), 涨停突破事件可能漏检",
+   "severity": "medium",
+   "evidence": "executed: SELECT trade_date,COUNT(*) WHERE buyable IS NULL AND trade_date LIKE '2026%' → 20260615~20260701 每日 1446~1463 行; 20260612=0; 按板分布 @20260701: 68=585(100%), 60=877/1674, 00/30=0; 对照 2022~2025 四年 buyable_null=0, 2020-2021 100% NULL (stk_limit data_start=2022, \"不知道≠False\"符合设计)",
+   "fix": "tushare_raw 重拉锁释放后 (波2): 核证 raw_tushare_daily/stk_limit 20260615+ 沪市覆盖已补齐, 然后对 fact_stock_form_daily 20260615+ 定向重建 (DELETE+重跑该窗或 rebuild_all), 不能只靠 build_latest; 顺带复核该窗沪市涨停日是否漏 breakout 事件"
+  },
+  {
+   "area": "轴归一常数 (量能/normal 联合 max_score 801 点网格)",
+   "issue": "量能/normal 的联合 max_score 用 801 点网格在 [0,20] 值域求解 (步长 0.025), 相对真值低估 7.8e-05 (0.991922510580 vs 精细网格 0.992000120364) — normal 分数被系统性放大 ~+0.008% 后由 min(x,1.0) cap 截断, 3.017% 的 normal 行 memb 恰好=1.0 (信息被削顶); 其余 10 个轴取值网格误差=0 (极值恰在格点/端点)",
+   "severity": "low",
+   "evidence": "executed: 801grid vs 160001grid 重算 11 个轴取值 max_geo, 唯一超差=量能/normal rel_diff=7.82e-05; 全表 axis_vol='normal' 3,814,882 行中 memb==1.0 有 115,081 行 (3.017%)",
+   "fix": "非必修 (误差上界 7.8e-05, 远低于任何决策阈值)。若要根治: _MAX_GRID 对同特征双门区间取值改自适应加密 (或对 1-D 极值用三分法), 并重建表; 改前后 memb 差异上界即 7.8e-05"
+  }
+ ],
+ "clean": [
+  "[units-semantics] 源字段单位表 16 接口 catalog 原文 + 域样本量级双证 (executed): daily.amount=千元 (000001.SZ 20230103: 2,971,546.989千元=29.7亿 vs close 13.77×vol 2,194,128手×100股=30.2亿 自洽, diff<2%成交价差), pct_chg=% (4.6353); daily_basic.total_mv/circ_mv=万元 (平安银行 26,721,949.36万=2672亿, 手算 total_share 1,940,591.82万股×13.77元=26,721,949万 diff=0); moneyflow 全金额字段=万元; moneyflow_dc.net_amount=万元 (平安银行 4729.39万); moneyflow_ind_dc.net_amount=元 (catalog 原文'净额（元）', 样本 370,898,592=3.7亿/板块日); moneyflow_mkt_dc.net_amount=元 (样本 -43,068,190,720=-431亿/全市场日); margin/margin_detail 全字段=元 (SSE 20190102 rzrqye 468,065,767,764=4681亿, 手算 rzye 4623.52亿+rqye 57.14亿=4680.66亿 diff=0); dc_index.total_mv=万元 (上海板块 829,796,684.8万=8.3万亿); limit_list_d amount/limit_amount/fd_amount/float_mv/total_mv=元 (深桑达 20260612 amount 19.2亿/float_mv 215.3亿/fd_amount 341.7万 全档合理); block_trade vol=万股 amount=万元 (逐位自洽: 10.23×12.7739万股=130.677万元 ≡ amount, diff=0, 3/3 样本行全中); kpl_list net_change/limit_order/amount/free_float=元 (交叉验证: 宇顺电子 free_float 1.131e9 ≈ amount 3.26e7/turnover 3.01%=1.083e9, diff 4.4%); index_dailybasic.total_mv=元 (HS300 20260612: 67.94万亿) turnover_rate=%; sw_daily vol=万股 amount=万元 (申万A指 20260610 amount 261,485,696万=2.61万亿 ≈ 全市场日成交额量级) float_mv/total_mv=万元; top_inst buy/sell/net_buy=元 (catalog 原文'（元）'+样本 2,420,615 元级); moneyflow_hsgt=百万元; 全部 pct 字段 (daily.pct_chg/sw_daily.pct_change/dc_index.pct_change/moneyflow_*_dc.pct_change/limit_list_d.pct_chg)=百分数 (3.5=3.5%) 无一小数口径",
+  "[units-semantics] 消费侧单位换算 8 处逐一对源 (executed): market_pulse sw_flow net_mf_amount×1e4 万→元 ✓ / sw_mv circ_mv×1e4 ✓ / dc sector_mv dc_index.total_mv×1e4 ✓ / router dc叶 moneyflow_dc.net_amount×1e4 ✓ / sw叶 moneyflow.net_mf_amount×1e4 ✓ / kline builder d.vol×100 手→股 + d.amount×1000 千元→元 (build_price_kline_qfq_tushare.py:46-47 注释即契约) ✓ / _flow_annotate_sql _px_cum 用 LN(1+pct/100) 与 %源一致 ✓ / cum_ratio=_cum_net(元)/sector_mv(元)×100 量纲闭合 ✓; yaml 阈值单位与源一致: quiet_min_net_amount=0 (标注单位=元) vs moneyflow_ind_dc 元 ✓, quiet_px_band_pct=1.0 / silent_px_band=3.0 (百分点) vs pct% ✓",
+  "[units-semantics] mart 值逐位重算对账 4 组 diff=0 (executed, fixture 独立样本路径 vs smartmoney 表值): mart_sector_pulse_daily dc BK0450.DC 20240102 net_amount=370,898,592.0 / elg_amount=385,020,096.0 / pct_change=2.69 均与 fixture 逐位相等; BK0437.DC net=250,921,968.0 diff=0; mart_market_pulse_daily 20260611 mkt_net_amount=-43,068,190,720.0 diff=0; 20260612 mkt_pe=14.42 / mkt_turnover=3.0 与 index_dailybasic fixture pe_ttm/turnover_rate_f 逐位相等; rank_flow 独立重算 (net DESC): 20240102 top3=BK0450/BK0437/BK0739 与 fixture 源 rank 1/2/3 一致 (弃用源伪 rank 后重算正确)",
+  "[units-semantics] 两融 '30304.74亿=3.03万亿可疑' 裁决: 非单位错/非重复计数 (executed) — rzrqye=融资余额+融券余额合计口径 (catalog 原文), 跨 SSE/SZSE/BSE 直和正确; 公开锚点三点重算全中: mart 20230103=15451.47亿 vs 公开~1.545万亿 (diff≈0), 20240102=16553.92亿 vs ~1.66万亿 ✓, 20250102=18571.21亿 vs ~1.86万亿 ✓; 时间线内连续增长 20250930 23941.58亿 → 20251231 25406.82亿 → 20260701 30304.74亿, 无 2x 阶跃 (排除重复入库), '~1.9万亿'参照系是 2025 年中旧值。真问题是上面 finding#1 的 4 个 SSE-only 腰斩日, 不是 3.03 万亿本身",
+  "[units-semantics] pct 语义前后端全链无 ×100/÷100 错位 (executed, 逐 call site): 前端 fmtPctRaw (源=百分数, 不再×100) 用于全部 pct_change/pct_chg/leading_pct 7 处; ×100 只用于真小数 — zha_ban_rate=z_n/(u_n+z_n) 小数 ✓, promotion_rate=n_ge2/prev_u_n 小数 ✓; fmtPct(×100) 只喂真小数: institution_profile ret_c1=realized/(cost×shares) / alpha_c1 / win_rate=胜数/总数, paper ret_cum=value/init-1 (round 4 位小数) 全为小数 ✓; mkt_turnover (源=%) 前端直接 toFixed(2)+'%' 不×100 ✓; MarketPage 三个口径共存但每处配对正确",
+  "[units-semantics] 复权语义两处红线核实 (executed 读码): 触板判定全在原始价空间 — technical_states/_SRC_TEMP_SQL (L227-233) 取 raw_tushare_daily.close AS raw_close JOIN raw_tushare_stk_limit, limits.py compute_limit_flags 用 raw_close vs up/down_limit 半 tick 精确比 (L31-32), qfq close 只用于 o=h=l=c 一字几何判 (同乘系数不变性, L36 注释明确) — 无 qfq 价比 up_limit 的混用; 涨幅侧 B2 形态/rally_gt gain_to_peak/RS 双窗/segments rv 全用 price_kline_qfq_tushare ✓; institution_profile 成本与卖价全 qfq (v_price_kline_qfq, 模块头红线) 自洽, c3_lhb 加权平均权重 |net_buy| 元 量纲在分子分母对消 ✓; paper_portfolio entry/mark-to-market/bench 全 qfq 同一口径 ✓",
+  "[units-semantics] frontend fmtAmountCn (假设源=元, /1e8→亿 /1e4→万) 与全部 7 个喂入字段单位一致 (executed): sector/leaf net_amount (dc=元源生, sw=×1e4 后元), rzrqye/rzrqye_chg (margin 元), avg_fd_amount (fd_amount 元, mart 实测范围 964.8万~4.01亿 封单均额量级合理), lhb_inst_net (top_inst 元), mkt_net_amount (元, mart 实测 -2148亿~+869亿 全市场日级合理), cum_net (元); dc 板块极值抽查 -1915.61亿 (20260303 BK0596 融资融券概念, 准全市场宽度概念, 与全市场极值 -2148亿 同量级自洽非单位错; 行业+概念 281,497 行覆盖)",
+  "[units-semantics] 无隐性消费方漏审 (executed rg fan-in): kpl_list/block_trade/margin_detail 当前零加工层消费方 (仅 data_sources 采集侧); moneyflow_hsgt 零消费方; segments.py 对 circ_mv/turnover_rate 只做 PERCENT_RANK 截面排名 (单位无关) + 分位段 yaml 皆 [0,1] 分位数无绝对额阈值; sw_breadth/sw_limits 只用 pct_chg 符号与 limit 字母计数 (单位无关)",
+  "[d1-gt-recompute] 正样本 30 抽样独立重算 (纯 python 自写漏斗, 未 import rally_gt/rally_detect): 30/30 逐位一致 — pivot(±20日最低)=30/30 True, peak_date 30/30 相等, gain_to_peak_pct 30/30 |diff|<5e-5 (如 000153 2020-11-02 表0.6421/手算0.6421; 002073 2020-11-02 表1.6991/手算1.6991), peak_offset 30/30 相等, base_days 30/30 相等 (如 87/87, 120/120), bull_aligned ∃日 MA5>10>20>30>60 独立 cumsum 均线重算 30/30 True 一致, path_max_dd 30/30 |diff|<5e-5 (如 -0.2998/-0.2998 压线行). executed",
+  "[d1-gt-recompute] 全表 census 5636/5636 行在 bottom 索引处独立重算 (第二独立路径, 全量非抽样): pivot/gain/peak_offset/peak_date/base_days/path_max_dd/bull_aligned/漏斗阈值(gain>=0.60, po>=20, base>=40, dd>-0.30, bull) 全部 0 diff. K线输入 4,934,873 行/3,357 股 (market.price_kline_qfq_tushare, close>0, 2019-01-01~2025-06-01). executed",
+  "[d1-gt-recompute] 全表 SQL 窗口第三路径交叉核: GT 5636 行 bottom low==MIN(low) OVER ±20 行违规=0; ROUND(MAX(high) OVER (1,250) FOLLOWING/low-1,4) 与 gain_to_peak_pct diff>5e-5 的行=0; forward 窗 bar 数<250 的行=0 (停牌右删失担忧未实现, GT 与负样本均 0). executed",
+  "[d1-gt-recompute] 负样本 20 抽样独立重算: 20/20 OK — pivot 属性 20/20, base_days 表/手算 20/20 相等 (如 000068 70/70, 002081 120/120) 且全>=40, forward 250 根 max gain 20/20 <0.60 (实测 0.0745~0.5857), fwd_complete 交易日历独立重验 20/20, 与同股 GT bottom bar 距离 min=297 (>250) 或无同股正样本. executed",
+  "[d1-gt-recompute] 负样本全表机械核 31678 行: pivot_fail=0, forward gain>=0.60 的假负=0, purge (与同股 GT bottom bar 距离<250)=0 对, 同股间隔<20 根=0 对, min(base_days)=40, bool_and(fwd_complete)=True, is_true_rally 全 False. executed",
+  "[d1-gt-recompute] embargo 边界全表复核 (reference.dim_trading_calendar 独立 bisect 实现): GT 5636 行 bottom+250 交易日越界 (>2025-05-30=数据末交易日<=holdout_start 2025-06-01) = 0 行; max(bottom_date)=2024-05-17, max(peak_date)=2025-04-25 均<=data_end; 负样本 31678 行 fwd_complete 重验越界=0. executed",
+  "[d1-gt-recompute] 去重语义全表: 同股相邻 episode bottom_date <= 前一 peak_date (covered 区间重叠) = 0/5636 行 (window LAG 全表扫). executed",
+  "[d1-gt-recompute] strata 一致性: 与 GT 1:1 双向 anti-join 孤儿=0/0; strata.base_days 与 GT.base_days 不一致=0; base_bucket 区间 (短[40,60)/中[60,100)/长[100,∞)) 错=0, 分布 短1277/中2604/长1755; B1 三列 (mktcap_seg/turnover_seg/vol_regime) 与 smartmoney.dim_stock_segment_daily bottom 当日精确对账 5636 行 diff=0 (当日无行=0); B2 axis_pos/axis_purity 与 fact_stock_form_daily 匹配行 3802 diff=0. executed",
+  "[d1-gt-recompute] sw L1 替代核证 (tushare_raw 锁, 按指令改道): strata.sw_l1_name (自 join raw index_member_all as-of) vs B1 dim_stock_segment_daily.sw_l1 (独立日频路径) 交叉对账 5636 行 diff=1 (002255 2021-07-29 seg 侧 NULL/strata 有值, strata 更全非缺陷), 双侧 NULL 60/61 高度一致. executed",
+  "[d1-gt-recompute] 元数据/阈值压线: taxonomy_version 单一 v2_20260702, fwd_window_len 恒 250, is_true_rally 全 True, bull_aligned 全 True; GT 分年 2019:1561/2020:1230/2021:1023/2022:1033/2023:623/2024:166 (embargo 后无 2025-26, 与 holdout 立法一致). 审计范围限制 (诚实标注): L1 的 episode 内非-ST 门 (raw_tushare_stock_st) 与身份门 (raw_tushare_stock_basic) 因 tushare_raw 写锁不可连, 本次未独立核证 — 独立重算为无-ST-门超集下表行仍逐位命中, 说明表是我重算集的合法子集, 但 ST 误留/误删无法本轮证伪. executed",
+  "[inst-profile-recompute] executed — status↔close_date NULL 语义全量 370,535 行: closed 318,567 全部 close_date 非空且 ret_c1/alpha_c1 100% 非空, holding 51,968 全部 close_date/ret/alpha 为 NULL, 交叉违反 0 行",
+  "[inst-profile-recompute] executed — ret_c1 全量重算 (closed 318,567 行): ret_c1 vs realized_c1/(cost_c1×peak_shares) mismatch=0, max_absdiff=0.0; eligible_but_null=0, inelig_but_notnull=0",
+  "[inst-profile-recompute] executed — alpha_c1 = ret − bench_ret 三角对账 (无法连 tushare_raw, 用隐含基准反解): implied_bench_close=bench_open×(1+ret−alpha) 在 1,310 个 close_date 组内最大相对散度 1.2e-15, 不一致日期 0; 与 open 侧 bench_open 交叉 1,306 共享日期 max 相对差 2.5e-16 → 公式逐行成立且基准序列全表唯一",
+  "[inst-profile-recompute] executed — bench 序列外部核证为真实 HS300 收盘: fixture index_daily_benchmark 窗口内 5/5 日期全精度相等 (20260608=4713.6358/20260612=4777.3206 等); 历史锚点 20200630=4163.9637, 20211231=4940.3733, 20240930=4017.8545 均为真实 HS300 收盘价",
+  "[inst-profile-recompute] executed — is_passive 重算 (4 个 LIKE 模式 ETF/交易型开放/指数/联接): 370,535 行 diff=0",
+  "[inst-profile-recompute] executed — enrichment QUALIFY 静默丢行风险排除: (holder,stock,open_date,status) 与 (holder,stock,open_date) 重复键均=0",
+  "[inst-profile-recompute] executed — mart_inst_profile 全量对账 94,347 行 (非抽样): 重算行数 94,347 键差 0; n_closed/median_alpha/avg_alpha/win_rate_alpha/median_ret/avg_hold_days/low_sample 七列 diff 全部=0 (容差 1e-12)",
+  "[inst-profile-recompute] executed — mart_inst_profile_dim 全量对账 417,573 行 3 维 (industry_pit/year/holder_type): 键差 0, 任意列值差 0; industry_pit 维 10 行样本数字逐一相等 (诺安先锋×基础化工 n=24 median_alpha 0.216211=0.216211 win 0.7917=0.7917; MORGAN STANLEY×基础化工 n=84 0.034866=0.034866 等 10/10)",
+  "[inst-profile-recompute] executed — 状态机 15 对分层重放 (多episode×3/增+减持×3/seeded×2/holding×2/passive×2/随机×3): 输入 157 源事件行自建 (smartmoney fact_top10_holder_period + period_windows), import 纯函数 run_episode_state_machine → 28 episodes, 与 fact_inst_episode 19 字段 (shares/cost_c1-c3/realized_c1-c3/n_adds/n_trims/peak_shares/seeded/holder_type/notice/close_date) 逐一对账 matched 28/28, mismatch 0, fact 多余行 0; 样本数字: 600486 20250630 closed cost_c1 53.322131=53.322131, realized_c1 48,858,414.1806=48,858,414.1806",
+  "[inst-profile-recompute] executed — 全量流式重放计数对账 (1,725,799 源事件行): replay closed 318,567 + holding 51,968 = 370,535 与表行数精确相等; no_price_skip 36,912 与 builder 语义一致",
+  "[inst-profile-recompute] executed — period_windows 139,255 行独立重算: 5 只随机股全部 139 窗口, w_start/w_end (LAG prev_period 或 −92 天) diff 0, c1_vwap (Σclose×vol/Σvol over (w_start,w_end]) diff 0, c2_eod (最后收盘≤w_end) diff 0 (样本 002203 20190331 c1 7.616767=7.616767); c3_eff=COALESCE(c3_lhb,c1_vwap) 全表违反 0",
+  "[inst-profile-recompute] executed — 源字段语义核证 (holders_aif10.py 读码 + schema_core DDL): shares_approx=aif10 HOLD_NUM 期末持股数, hold_change_num=HOLD_NUM_CHANGE 多态解析 (新进/不变/正=增持/负=减持), 退出行由 period-diff 合成 (上期在榜本期不在, change=−上期持股), 与状态机各分支假设一致; join period_windows 无放大 (join 前后行数相等, 窗口键唯一)",
+  "[inst-profile-recompute] executed — paper_portfolio 2 表 (smartmoney): paper_position=0 行 / paper_nav_daily=0 行 (空池, 无 mark-to-market 数据可对账), schema 与 DDL 逐列一致 (PRI key/NOT NULL/default 'open'); 费率读码 vs config/paper_portfolio.yaml: 买入费=shares×px×0.00025 (commission_rate 万2.5), 卖出费=shares×px×(0.00025+0.001) (佣金+印花税千1 仅卖方), pnl=shares×(exit−entry)−entry_fee−exit_fee, 与 yaml 注释语义 (佣金双边/印花税卖方) 完全一致",
+  "[b2-features-recompute] 特征+5轴+标签 15 位点抽查 (5股 600519/300750/000001/688981/002594 × 2021/2023/2026 各1日): 纯 python 独立重算 ma_dist/ma_slope/mom20/pctile(120d严格分位)/er/vol_ratio/zvol/ma_align/r2/pth → sigmoid 门几何均+联合max归一+argmax, 14 列全部一致 — 4 软轴值 15/15、memb 最大 diff 5.6e-16 (容差 1e-6)、E 轴值+memb diff=0、form_name/form_sub/weekly_name/monthly_name 15/15 (executed)",
+  "[b2-features-recompute] 全序列对账 5 股 × 全部日期 = 7,452 行 × 14 列: 0 处未解释差异。仅 2 行 axis_vol_memb 不同 (688981@20241018 表0.998762770 vs 自算0.963754378; 002594@20250407 表0.999913086 vs 0.994085181) — 实证为涨跌停日 eff-proxy 路径: day_ret +19.99%/-10.00% 触板, 用 max(vol_ratio,3.0)/max(zvol,2.0) 重放后与表值 diff=0.00e+00, 顺带行为级验证 limits.enrich 修正方向正确 (executed; 本审计无 tushare_raw 触板旗标故自算侧缺 proxy)",
+  "[b2-features-recompute] B1 rv_pctile 列自算验证 2 例: 600519@2023-06-15 rv(20日收益std,ddof=1)=0.01305156 → 120日严格分位 0.55000000 vs dim_stock_segment_daily 0.55000000 diff=0; 688981@2026-06-15 rv=0.06471519 → 0.99166667 vs 0.99166667 diff=0, regime 判定 (>=0.5→high_vol) 均一致 (executed)",
+  "[b2-features-recompute] E 轴全表对账 6,989,500 行 (fact JOIN dim_stock_segment_daily): axis_volregime 值 mismatch=0 (IS DISTINCT FROM), axis_volregime_memb 与公式 |rv_pctile-0.5|/0.5 偏差>1e-9 的行=0; axis_volregime NULL 仅 2 行 (000760 20210610/11) 且与 B1 rv_pctile NULL 严格一致 = 诚实缺席传播正确 (executed)",
+  "[b2-features-recompute] cell→标签映射全量验证: yaml 25 条规则 54 组合 (3×3×2×3) 全覆盖 0 漏; 表内 DISTINCT (4轴,form_name,form_sub) 共 92 组 — 53 个非-context 组与 yaml 顺序首中规则 100% 一致 (0 bad), 无 fallback 漏网; 中继平台 39 组 context cell 全部满足 trend=flat 且 pos∈{mid,high} (0 违例); NULL form_name=0, 轴 NULL 与标签 NULL 互证 0 矛盾 (executed)",
+  "[b2-features-recompute] 周/月线闭合行为 (H1): 600519+300750 weekly 105+88 次、monthly 23+23 次标签变化, 未闭合 bar 中途改写=0 — 全部变化发生在周期末交易日 EOD (闭合时点), 与独立重算 as-of 序列 0 diff (口径澄清见 findings[0]) (executed)",
+  "[b2-features-recompute] 突破事件 10 例重放 (000004/000995/002437/002857/300230/300616/301190/600516/601827/603797): 破前60日高 10/10 (如 000004@2022-01-05 close 21.99 > 20.58), 量比>=2.0 (measured, 2.08~8.95) 10/10, 底盘 streak (位置轴∈{low,mid} 连续) 与表 base_days 精确相等 10/10 (62~118 天), rv_pctile(t-1)<=0.5 10/10 (0.017~0.425), 枯量5日中位量比<=1.0 10/10 (0.50~0.96); 全表一致性: 事件无base_days=0 / 非事件有base_days=0 / base_days 值域 [20,250] 合规; buyable 正确性核证依赖 tushare_raw → 按任务标注留待波2 (executed)",
+  "[b2-features-recompute] context 前序语义 3 例重放 (000001@2020-01-17、2020-01-20 缩量回踩 + 300750@2026-06-03 中继平台): 前序10日趋势轴多数派=up 3/3, 缩量回踩硬门 (mom20∈(-0.10,0.01)、vol_ratio_eff<1.0、ma_dist>-0.06) 全过, 中继平台当前轴 flat+high 满足, 自算标签==表 3/3; 另注: 缩量回踩可出现在当前 trend=down 的 cell (~83k 行) 系 yaml 规则本身无当前轴约束, 属设计内语义 (executed)",
+  "[b2-features-recompute] 份额分布 sanity (验收 §7): 最大单标签 震荡上行 31.73% <50%, 最小 缩量上涨 0.85% >0.1%, 突破事件 2,994 行 (事件豁免死标签线); memb 5 列全表值域均在 [0,1], 5 轴取值域与 yaml 完全一致 (executed)",
+  "[b2-features-recompute] axis_*_memb 列语义复核: 实存值 = 几何均归一 score (非 softmax membership), 与 __init__ 头注声明一致, 15/15 位点按 score 语义 diff=0 — 列名沿革已留档, 消费方按归一 score 解读即可 (executed)"
+ ]
+}

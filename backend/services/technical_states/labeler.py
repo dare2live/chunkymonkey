@@ -5,6 +5,8 @@
 - 前序依赖态 (缩量回踩/中继平台) = context 两遍架构 pass-2 (审查 keep: 前序严格 <=t-1 PIT 0 diff):
   pass-1 逐 bar 轴分类 → pass-2 用前序窗口的**趋势轴取值** (非标签) 多数派 + 当前条件 refine。
 - 多 TF: 周/月线特征键 = period_end (features.resample, H1) → as-of `key <= t` 天然只见闭合 bar;
+  闭合口径 (2026-07-03 审计修6): weekly/monthly bar 在周期末交易日 EOD 即闭合可见
+  (与日线同 EOD 口径), 非次周一 — t=周五 EOD 时该周 bar 已可用;
   只输出各框描述标签, **无 mtf_aligned / bull/bear 集合 / 方向 claim** (C2 CRITICAL 裁决)。
 """
 from __future__ import annotations
