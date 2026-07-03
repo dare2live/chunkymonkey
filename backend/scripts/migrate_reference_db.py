@@ -1,5 +1,14 @@
 """§9 reference.duckdb 拆库迁移 — Stage A 保真建库 (架构蓝图 §9, 用户 2026-06-24 选结构拆).
 
+████████████████████████████████████████████████████████████████████████████████
+██ DEPRECATED 2026-07-03 退役 — 破坏性死路径, main 入口已堵死 (R1 根因3) ██
+██ 源表 sm.dim_trading_calendar / dim_active_a_stock 等已在 §9 Stage E 物删; ██
+██ 今天重跑 --build 会先物删 reference 库文件销毁现存唯一交易日历,          ██  # rule-compliance: ok evidence=deprecated warning text, 非代码路径
+██ 再在 describe 已删源表时崩溃 (audit data_foundation_audit_20260703 实测)。 ██
+██ 日历刷新走 services/calendar_builder.build_latest (pipeline acquire 已挂); ██
+██ 本文件只留历史参考 (Stage A 迁移过程留档), 禁止执行。                      ██
+████████████████████████████████████████████████████████████████████████████████
+
 目的: 把读多写少的 universe/identity/calendar reference 表从 smartmoney 大杂烩拆出 →
 reference.duckdb (只读 ATTACH 与 facts 写锁解耦), 根治 sync_runner 回填读 universe 撞 smartmoney 写锁。
 
@@ -111,6 +120,12 @@ def verify(smartmoney_path: str, reference_path: str) -> dict:
 
 
 def main() -> int:
+    raise SystemExit(
+        "2026-07-03 退役: 源表 (smartmoney reference 副本) 已在 §9 Stage E 物删, "
+        "重跑 --build 会先物删 reference 库销毁现存唯一日历再崩溃 (破坏性死路径, R1 根因3)。"  # rule-compliance: ok evidence=deprecated warning text, 非代码路径
+        "日历刷新走 services/calendar_builder.build_latest (pipeline acquire Step 2.96 已挂); "
+        "本文件仅留历史参考。"
+    )
     ap = argparse.ArgumentParser()
     ap.add_argument("--build", action="store_true", help="Stage A 保真建 reference 库 + 验收")
     ap.add_argument("--verify-only", action="store_true", help="只验收已建的 reference 库")

@@ -29,6 +29,7 @@ CFG = {
     "dc_content_types": ["行业", "概念"],
     "sec_board_cutoff": "093059",
     "mkt_valuation_code": "000300.SH",
+    "lookback_late_days": 2,   # 迟到列回补窗口 (R1 根因5); 测试缩小到 2 便于手算 (生产值走 yaml)
 }
 
 D = ["20240102", "20240103", "20240104", "20240105", "20240108"]
@@ -180,8 +181,9 @@ def test_config_yaml_contract():
     for key in ("rs_window_4w", "rs_window_12w", "benchmark_code", "quiet_px_band_pct",
                 "quiet_min_net_amount", "top_n_sectors", "data_start_dc", "data_start_sw",
                 "data_start_market", "dc_content_types",
-                "sec_board_cutoff", "mkt_valuation_code"):
+                "sec_board_cutoff", "mkt_valuation_code", "lookback_late_days"):
         assert key in cfg, f"market_pulse.yaml missing key: {key}"
+    assert isinstance(cfg["lookback_late_days"], int) and cfg["lookback_late_days"] >= 1
     assert isinstance(cfg["rs_window_4w"], int) and isinstance(cfg["rs_window_12w"], int)
     assert 0 < cfg["rs_window_4w"] < cfg["rs_window_12w"]
     assert float(cfg["quiet_px_band_pct"]) > 0
@@ -374,6 +376,49 @@ def test_build_latest_incremental_idempotent():
         dup = c.execute(f"""
             SELECT COUNT(*) FROM (SELECT chain, sector_code, trade_date, COUNT(*) AS n
                                   FROM {mp.SECTOR_TABLE} GROUP BY 1,2,3 HAVING n > 1)""").fetchone()[0]
+        assert dup == 0
+    finally:
+        c.close()
+
+
+def test_build_latest_backfills_late_columns():
+    """迟到列回补 (R1 根因5, 2026-07-03): margin 是 t+1 披露源 — 早跑日行 rzrqye 以 NULL 入库
+    后定格。build_latest 对最近 lookback_late_days 个已存在日 DELETE+重插 → 迟到列治愈;
+    幂等 (行数不变仅列值更新), 无新源日时 added_days 仍为 0。"""
+    c = _fixture_conn()
+    try:
+        mp.rebuild_all(conn=c, cfg=CFG)
+        before_m = c.execute(f"SELECT COUNT(*) FROM {mp.MARKET_TABLE}").fetchone()[0]
+        before_s = c.execute(f"SELECT COUNT(*) FROM {mp.SECTOR_TABLE}").fetchone()[0]
+        # 最近源日 D4: rebuild 时 margin 未披露 (fixture 仅 D0/D1 有) → 行已带 NULL 定格
+        frozen = c.execute(f"SELECT rzrqye, rzrqye_chg FROM {mp.MARKET_TABLE} "
+                           "WHERE trade_date = ?", [D[4]]).fetchone()
+        assert frozen[0] is None and frozen[1] is None
+        # margin t+1 迟到补披露 D4 (SSE+SZSE 直和 180; 前一有数日 D1=170 → chg=+10)
+        c.executemany("INSERT INTO tr.raw_tushare_margin VALUES (?, ?, ?)", [
+            (D[4], "SSE", 120.0), (D[4], "SZSE", 60.0)])
+        out = mp.build_latest(conn=c, cfg=CFG)
+        assert (out["dc_added_days"], out["sw_added_days"], out["market_added_days"]) == (0, 0, 0)
+        assert out["late_refreshed_days"]["market"] == 2   # lookback=2 → D3/D4 重插
+        healed = c.execute(f"SELECT rzrqye, rzrqye_chg FROM {mp.MARKET_TABLE} "
+                           "WHERE trade_date = ?", [D[4]]).fetchone()
+        assert healed[0] == pytest.approx(180.0), "迟到行必须被治愈 (NULL → 实值)"
+        assert healed[1] == pytest.approx(10.0)   # 180 - 170 (LAG 跨窗口边界读全史)
+        # 窗口外日不受影响; 窗口内无源日 (D3) 仍 NULL (不知道≠0, 不伪造)
+        assert c.execute(f"SELECT rzrqye FROM {mp.MARKET_TABLE} WHERE trade_date = ?",
+                         [D[3]]).fetchone()[0] is None
+        assert c.execute(f"SELECT rzrqye FROM {mp.MARKET_TABLE} WHERE trade_date = ?",
+                         [D[1]]).fetchone()[0] == pytest.approx(170.0)
+        # 幂等: 两表行数不变, 无重复行; 再跑一次值稳定
+        assert c.execute(f"SELECT COUNT(*) FROM {mp.MARKET_TABLE}").fetchone()[0] == before_m
+        assert c.execute(f"SELECT COUNT(*) FROM {mp.SECTOR_TABLE}").fetchone()[0] == before_s
+        mp.build_latest(conn=c, cfg=CFG)
+        assert c.execute(f"SELECT COUNT(*) FROM {mp.MARKET_TABLE}").fetchone()[0] == before_m
+        assert c.execute(f"SELECT rzrqye FROM {mp.MARKET_TABLE} WHERE trade_date = ?",
+                         [D[4]]).fetchone()[0] == pytest.approx(180.0)
+        dup = c.execute(f"""
+            SELECT COUNT(*) FROM (SELECT trade_date, COUNT(*) AS n
+                                  FROM {mp.MARKET_TABLE} GROUP BY 1 HAVING n > 1)""").fetchone()[0]
         assert dup == 0
     finally:
         c.close()

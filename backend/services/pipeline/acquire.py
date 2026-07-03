@@ -51,6 +51,12 @@ def run_acquire(ctx: PipelineContext) -> None:
     # Step 2.95: sync_registry 域日历 gap 重放 = 增量 + 修洞统一机制 (终败/漏跑/历史空洞)
     _sync_registry_drain(ctx)
 
+    # Step 2.96: 交易日历 dim 传导 (R1 根因3, 2026-07-03): raw_tushare_trade_cal (2.95 已刷)
+    #   → reference.dim_trading_calendar 增量 MERGE。dim 曾无生产 writer (唯一写方=已封存的
+    #   一次性迁移脚本), horizon 倒计时中 — 本步是 dim 的唯一日常刷新契约。
+    ctx.step(_build_trading_calendar,
+             degraded_msg="交易日历 dim 传导失败 — dim_trading_calendar 停止向未来延伸 (horizon 门将 FAIL)")
+
 
 # ── 步骤实现 (in-process, 直调 service) ──────────────────────────
 
@@ -116,6 +122,12 @@ def _sync_org_holding() -> None:
 
 
 # _sync_external_attention 已退役 2026-06-27 (通达信全删 M4: akshare external_attention.py 物删, 用户决cut)
+
+
+def _build_trading_calendar() -> None:
+    """raw trade_cal → reference.dim_trading_calendar 增量 (R1 根因3 生产刷新契约)."""
+    from services.calendar_builder import build_latest
+    print(f"calendar_builder: {build_latest()}")
 
 
 def _sync_registry_drain(ctx: PipelineContext) -> None:

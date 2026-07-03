@@ -169,6 +169,21 @@ else
     exit 5
 fi
 
+# Step 3.98: grain 唯一性门 (R1 根因1: grain 声明错误在良性期抓, 防批内去重升级成静默销毁;
+#   --strict 默认关 → 跑批写锁期库不可达优雅跳过不阻塞 commit; 豁免带到期日, 过期自动恢复 FAIL)
+echo
+echo "=== Step 3.98: grain-uniqueness gate (grain 持续审计门) ==="
+if PYTHONPATH=backend python backend/scripts/check_grain_uniqueness.py \
+     --exempt mart_sector_pulse_daily:20260710 > /tmp/cm_grain.out 2>&1; then
+    tail -1 /tmp/cm_grain.out
+else
+    echo
+    echo "ERROR: grain 门红 — 某表按声明 grain 有重复组 (grain 声明不足或 MERGE 幂等破坏):"
+    grep -E "FAIL|dup" /tmp/cm_grain.out | head -20
+    echo "正解: 核 grain 是否漏列 (report_rc/block_trade 反例) → 修 registry grain + 重拉自清。误报修脚本本身。"
+    exit 5
+fi
+
 # 4. Commit message keyword check (manual preview)
 echo
 echo "=== Step 4: commit message keyword ==="

@@ -470,11 +470,26 @@ def _missing_dates(con, src_sql: str, params: list[Any]) -> list[str]:
     return [r[0] for r in con.execute(src_sql, params).fetchall()]
 
 
+def _late_dates(con, table: str, n: int, chain: str | None = None) -> list[str]:
+    """表内最近 n 个已存在日期 (迟到列回补窗口; chain 限定板块表分链日期域)。"""
+    if n <= 0:
+        return []
+    where = f"WHERE chain = {_sql_str(chain)}" if chain else ""
+    return [r[0] for r in con.execute(
+        f"SELECT DISTINCT trade_date FROM {table} {where} ORDER BY trade_date DESC LIMIT {int(n)}"
+    ).fetchall()]
+
+
 def build_latest(conn=None, cfg: dict[str, Any] | None = None) -> dict[str, Any]:
-    """增量: 补源已有而 pulse 表缺的日期 (分链检测; 幂等, 无缺日 = no-op)。
+    """增量: 补源已有而 pulse 表缺的日期 (分链检测) + 近 N 日迟到列回补 (DELETE+重插)。
 
     窗口/streak 在全量源历史上重算后只插缺日 → 增量行与全量重建逐 bit 一致 (确定性)。
     顺序: 板块表先补, 全市场表后补 (top_sectors_json 读板块表)。
+
+    迟到列回补 (R1 根因5, 2026-07-03, owner=analysis/data_foundation_root_causes_20260703.md):
+    行一旦插入即定格, 而 t+1 披露域 (margin/龙虎榜/limit) 在早跑日尚未到 raw → 该日行以 NULL
+    (或部分行半值) 入库后永不回补。修法 = 每次增量对最近 lookback_late_days 个**已存在**源日
+    DELETE+重插 — 复用全史窗口/streak 机制, 重插行与全量重建逐 bit 一致, 幂等 (行数不变仅列值治愈)。
     """
     cfg = cfg or _cfg()
     own = conn is None
@@ -494,6 +509,12 @@ def build_latest(conn=None, cfg: dict[str, Any] | None = None) -> dict[str, Any]
         if "content_type" not in cols or "strongest_sectors_json" not in cols:
             return {"mode": "rebuild", **rebuild_all(conn=con, cfg=cfg)}
 
+        # 迟到列回补窗口: 先取"已存在"的最近 N 日 (缺日检测/插入之前取, 不与新插日重叠)
+        late_n = int(cfg["lookback_late_days"])
+        dc_late = _late_dates(con, SECTOR_TABLE, late_n, chain=CHAIN_DC)
+        sw_late = _late_dates(con, SECTOR_TABLE, late_n, chain=CHAIN_SW)
+        mkt_late = _late_dates(con, MARKET_TABLE, late_n)
+
         dc_missing = _missing_dates(con, f"""
             SELECT DISTINCT trade_date FROM tr.raw_tushare_moneyflow_ind_dc
             WHERE trade_date >= ? AND trade_date NOT IN (
@@ -505,14 +526,25 @@ def build_latest(conn=None, cfg: dict[str, Any] | None = None) -> dict[str, Any]
                 SELECT DISTINCT trade_date FROM {SECTOR_TABLE} WHERE chain = '{CHAIN_SW}')
             ORDER BY 1""", [str(cfg["data_start_sw"])])
         sector_rows = 0
-        if dc_missing or sw_missing:
-            dc_where = ("q.trade_date IN (%s)" % ",".join(_sql_str(d) for d in dc_missing)
-                        ) if dc_missing else "1=0"
-            sw_where = ("r.trade_date IN (%s)" % ",".join(_sql_str(d) for d in sw_missing)
-                        ) if sw_missing else "1=0"
+        dc_dates = sorted(set(dc_missing) | set(dc_late))
+        sw_dates = sorted(set(sw_missing) | set(sw_late))
+        if dc_dates or sw_dates:
+            # 迟到回补半边: 先删已存在的近 N 日行, 与缺日合并一次 INSERT 重插 (幂等 DELETE+重插)
+            if dc_late:
+                dc_late_in = ",".join(_sql_str(d) for d in dc_late)
+                con.execute(f"DELETE FROM {SECTOR_TABLE} "
+                            f"WHERE chain = '{CHAIN_DC}' AND trade_date IN ({dc_late_in})")
+            if sw_late:
+                sw_late_in = ",".join(_sql_str(d) for d in sw_late)
+                con.execute(f"DELETE FROM {SECTOR_TABLE} "
+                            f"WHERE chain = '{CHAIN_SW}' AND trade_date IN ({sw_late_in})")
+            dc_where = ("q.trade_date IN (%s)" % ",".join(_sql_str(d) for d in dc_dates)
+                        ) if dc_dates else "1=0"
+            sw_where = ("r.trade_date IN (%s)" % ",".join(_sql_str(d) for d in sw_dates)
+                        ) if sw_dates else "1=0"
             # inflow_breadth 按日独立 → 日期下推裁剪 dc_member 千万行级 JOIN (确定性不变)
-            dc_day_where = ("m.trade_date IN (%s)" % ",".join(_sql_str(d) for d in dc_missing)
-                            ) if dc_missing else "1=0"
+            dc_day_where = ("m.trade_date IN (%s)" % ",".join(_sql_str(d) for d in dc_dates)
+                            ) if dc_dates else "1=0"
             r = con.execute(
                 f"INSERT INTO {SECTOR_TABLE} "
                 f"{_sector_sql(cfg, dc_where, sw_where, dc_day_where)}").fetchone()
@@ -524,14 +556,19 @@ def build_latest(conn=None, cfg: dict[str, Any] | None = None) -> dict[str, Any]
                 SELECT DISTINCT trade_date FROM {MARKET_TABLE})
             ORDER BY 1""", [str(cfg["data_start_market"])])
         market_rows = 0
-        if mkt_missing:
-            where = "d.trade_date IN (%s)" % ",".join(_sql_str(d) for d in mkt_missing)
+        mkt_dates = sorted(set(mkt_missing) | set(mkt_late))
+        if mkt_dates:
+            if mkt_late:
+                mkt_late_in = ",".join(_sql_str(d) for d in mkt_late)
+                con.execute(f"DELETE FROM {MARKET_TABLE} WHERE trade_date IN ({mkt_late_in})")
+            where = "d.trade_date IN (%s)" % ",".join(_sql_str(d) for d in mkt_dates)
             r = con.execute(f"INSERT INTO {MARKET_TABLE} {_market_sql(cfg, where)}").fetchone()
             market_rows = int(r[0]) if r else 0
         con.commit()
         out = {"dc_added_days": len(dc_missing), "sw_added_days": len(sw_missing),
                "sector_rows": sector_rows, "market_added_days": len(mkt_missing),
-               "market_rows": market_rows}
+               "market_rows": market_rows,
+               "late_refreshed_days": {"dc": len(dc_late), "sw": len(sw_late), "market": len(mkt_late)}}
         logger.info("[market_pulse] build_latest: %s", out)
         return out
     finally:

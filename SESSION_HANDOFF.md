@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-07-02 19:21:38 CST
+**Snapshot 时间**: 2026-07-03 07:08:30 CST
 
 ## 主线状态
 
@@ -44,28 +44,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `1b2a1c0a feat: B2 全量验收 + C4 感知页闭环 + D1 前置件 (GT考古/holdout立法/v2设计) — D 线开工就绪` |
-| 最近 24h commits | 21 |
-| 未 commit 文件 | 4 |
+| HEAD | `603651dc feat: 情绪温度可视化重设计 — 曲线换 climate-stripes 温度条纹带` |
+| 最近 24h commits | 24 |
+| 未 commit 文件 | 0 |
 
 ### 最近 10 commits
 
 ```
+603651dc feat: 情绪温度可视化重设计 — 曲线换 climate-stripes 温度条纹带
+2f98f78b feat: B4 v2 感知增强 + 前端浅色重设计 — 概念/龙头缺口闭环 + 5 新域 + 情绪周期仪表盘
+1beb16bc docs: D1 结构常数敏感性留档 + v2 参数冻结 (考古修正#9 关账)
+928d8b72 feat: D1 GT v2 交付 — 主升浪已知答案落库 5636 episode + Type A 纯度门列名根治
 1b2a1c0a feat: B2 全量验收 + C4 感知页闭环 + D1 前置件 (GT考古/holdout立法/v2设计) — D 线开工就绪
 e1a42d90 feat: C1/C2 edge 前端骨架 — React+Vite 机构档案页+实盘模拟页
 6abeeaa7 feat: B线基础前置件三件收口 — B3两融域+B4市场感知+B2形态识别重建
 c22ec626 doc: 市场感知 follow-the-money 架构设计 + perception 残留清 (audit measured)
 e37337f4 feat: B1 股票分层模块 — 833万行全史分层标签, 策略cell单一计算点 (measured)
 9e092351 feat: Phase A 机构档案 API — 排名/档案/建仓信号流 (总体路线第一站, measured)
-81563e40 fix: institution_profile 补登数据模块成员 roster — moth serve-bypass 门红修复 (measured)
-769089b6 doc: 文档保鲜 — changelog 滚动归档 + 正文/goal/地图同步 W1-W2 与总体路线 (audit measured)
-ca1a2707 doc: 总体实施方案顶层定稿 — 主升浪方法论评估+形态/分层架构裁决+全局路线 (audit measured)
-46b854a7 feat: W2 实盘模拟通用件 (手动版) — 各策略共用, 按地基构建 (SERVE第一个正式消费方)
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**4 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**run startup checks first — scripts/chunkyctl doctor --fast; prioritize data_health blocking_yellow, then stage-opt structural blocker / need_027 blocked-gap triage**
 
 ## Resilience 配置 (verified)
 

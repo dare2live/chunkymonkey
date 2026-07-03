@@ -588,6 +588,94 @@ def _write_batch(conn, spec: dict[str, Any], rows: list[dict[str, Any]]) -> int:
     return len(df)
 
 
+# allow_empty 交叉参照门默认阈值 (R1 根因2, 2026-07-03): 交叉域同日行数 > 此值而本域 0 行 = 可疑空。
+# evidence: top_inst 8.5 年 (2018-2026, 2043 有数日) 单日行数 min=286/median=780, 从无 <50 行日;
+#   16 个 0 行缺日 live 探针证实源端全有数据 = allow_empty 静默吞 (audit data_foundation_audit_20260703)。
+_CROSS_CHECK_MIN_DEFAULT = 50
+
+
+def _cross_check_suspicious_empty(
+    conn, reg: dict[str, Any], spec: dict[str, Any], params: dict[str, Any]
+) -> tuple[bool, int, str]:
+    """allow_empty 域 0 行批的交叉参照门 (R1 根因2: 协议层区分"合法空"与"故障空").
+
+    registry 域声明 cross_check_domain (如 top_inst→top_list / block_trade→daily) 时:
+    本域当日 0 行 但 交叉域同日行数 > cross_check_min → 判可疑空 (网关间歇空响应被
+    allow_empty 吞掉的指纹), 调用方入 failure_queue + 计 failed_batches, 不当合法空。
+    交叉表缺失 / 交叉域同日也空 → 合法空放行 (真·市场无数据两域应同空)。
+    返回 (suspicious, cross_rows, cross_table)。
+    """
+    cross_domain = spec.get("cross_check_domain")
+    if not cross_domain:
+        return False, 0, ""
+    d = params.get(spec.get("date_param", "trade_date"))
+    if not d:
+        return False, 0, ""  # 非按日批 (range/full_refresh) 无单日交叉语义
+    known_empty = {str(x).replace("-", "") for x in (spec.get("known_empty_days") or [])}
+    if str(d).replace("-", "") in known_empty:
+        return False, 0, ""  # 墓碑: 实测核证过源端真空的日 (与 drain 同语义) — 不进失败循环
+    try:
+        cross = _domain_spec(reg, cross_domain)
+    except KeyError:
+        log.warning("domain=%s cross_check_domain=%s 未注册 — 交叉门跳过 (修 registry)",
+                    spec["domain"], cross_domain)
+        return False, 0, ""
+    table = cross["target_table"]
+    cross_date_col = cross.get("date_param", "trade_date")
+    own = cross.get("target_db", "tushare_raw") != spec.get("target_db", "tushare_raw")
+    if own:
+        import duckdb
+
+        from services.database_manifest import get_database_manifest
+        c = duckdb.connect(  # rule-compliance: ok evidence=只读查交叉域行数, 非主库写
+            str(get_database_manifest().path_for(cross.get("target_db", "tushare_raw"))),
+            read_only=True)
+    else:
+        c = conn  # 同库: 复用本域写连接查交叉表 (top_inst/top_list 同在 tushare_raw)
+    try:
+        if not c.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_name = ?", [table]
+        ).fetchone():
+            return False, 0, table
+        n = int(c.execute(
+            f'SELECT COUNT(*) FROM "{table}" WHERE "{cross_date_col}" = ?', [d]
+        ).fetchone()[0])
+    finally:
+        if own:
+            c.close()
+    threshold = int(spec.get("cross_check_min", _CROSS_CHECK_MIN_DEFAULT))
+    return n > threshold, n, table
+
+
+def _record_suspicious_empty(spec: dict[str, Any], params: dict[str, Any],
+                             cross_rows: int, cross_table: str) -> None:
+    """可疑空日入 failure_queue (error_type='suspicious_empty') — 可见可追, 非静默接受."""
+    from services.source_watermarks import record_source_failure
+
+    conn = _smartmoney_conn()
+    try:
+        record_source_failure(
+            conn,
+            data_domain=f"sync:{spec['domain']}",
+            source_name=spec["source"],
+            source_tier=SOURCE_TIER_TUSHARE,
+            error_type="suspicious_empty",
+            last_error=json.dumps({
+                "params": params,
+                "cross_check_domain": spec.get("cross_check_domain"),
+                "cross_table": cross_table,
+                "cross_rows": cross_rows,
+            }, ensure_ascii=False),
+            commit=True,
+        )
+        try:
+            conn.commit()
+        except Exception:  # noqa: BLE001 — duckdb autocommit 兼容
+            pass
+    finally:
+        conn.close()
+
+
 def _last_watermark_date(domain: str, source: str) -> str | None:
     conn = _smartmoney_conn()
     try:
@@ -773,6 +861,18 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
             if rows is None:
                 failed.append(params)
                 continue
+            if not rows and spec.get("cross_check_domain"):
+                # allow_empty 域 0 行交叉参照门 (R1 根因2): 0 行只有 allow_empty 路径能走到这
+                # (否则 _fetch_with_retry 已判终败 None); 交叉域同日有数据 = 可疑空非合法空。
+                suspicious, cross_rows, cross_table = _cross_check_suspicious_empty(conn, reg, spec, params)
+                if suspicious:
+                    log.warning(
+                        "suspicious_empty domain=%s params=%s: 本域 0 行但交叉域 %s(%s) 同日 %d 行 "
+                        "— 不当合法空, 入 failure_queue + 计失败批",
+                        domain, params, spec.get("cross_check_domain"), cross_table, cross_rows)
+                    failed.append({**params, "suspect": "suspicious_empty"})
+                    _record_suspicious_empty(spec, params, cross_rows, cross_table)
+                    continue
             if rows and len(rows) < min_rows:
                 log.warning("batch %s 行数 %d < min_rows_per_batch %d (可疑, 仍写入并记 failure)",
                             params, len(rows), min_rows)

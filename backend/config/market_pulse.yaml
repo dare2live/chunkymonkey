@@ -28,6 +28,12 @@ mkt_valuation_code: "000300.SH"  # 大盘估值/换手行 (raw_tushare_index_dai
 # ── C4 退潮预警 (routers/market_pulse.py 消费; 描述性预警线, 非买卖信号) ──
 warning_quiet_outflow_days: 3 # dc 链连续悄悄流出天数 >= 该值 进退潮预警卡 (C4 契约 2026-07-02 默认, 待用户调参)
 
+# ── 迟到列回补 (R1 根因5, 2026-07-03, owner=analysis/data_foundation_root_causes_20260703.md) ──
+lookback_late_days: 3         # 每次 build_latest 对最近 N 个已存在源日 DELETE+重插 (t+1 披露域
+                              # margin/龙虎榜/limit 早跑日 NULL/半值行的治愈窗口)。3 = 覆盖 t+1 常规
+                              # 迟到 + 一次失败重放周期 (audit 20260703 pulse finding: margin 实测比
+                              # daily 晚 ~9h 到库, 失败进 open 队列由次日晨 drain 补)
+
 # ── data_start (分链, 全部对齐 sync_registry.yaml 实测源起点, 不外推) ──
 data_start_dc: "20240102"     # from sync_registry: moneyflow_ind_dc data_start (E8 探底实测)
 data_start_sw: "20190102"     # from sync_registry: sw_daily data_start (对齐 K线/daily_basic 窗口)

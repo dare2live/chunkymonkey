@@ -1,0 +1,425 @@
+{
+ "meta": {
+  "date": "2026-07-03",
+  "what": "数据底座稳定性/准确性对抗审计 (用户点名口径混用+盲点深挖)",
+  "workflow": "wf_d3e6541c, 15 agents/380 tool calls, 5 lens + 逐 finding 怀疑者实测",
+  "counts": {
+   "confirmed": 10,
+   "refuted": 0,
+   "low_medium": 28,
+   "clean": 79
+  }
+ },
+ "confirmed": [
+  {
+   "area": "dim_trading_calendar 生产链",
+   "issue": "交易日历真相源无生产刷新路径: dim_trading_calendar (reference 库) 唯一 writer = 一次性迁移脚本 backend/scripts/migrate_reference_db.py, 无任何 raw_tushare_trade_cal -> dim 传导; 日历只覆盖到 2026-12-31, 距全链断链仅 123 个交易日 (calendar.py 明确拒绝 wall-clock fallback, 2027-01 起所有 gate/sync/特征全断)",
+   "severity": "high",
+   "evidence": "executed: dim_trading_calendar MAX(trade_date)=2026-12-31, 5343 行全 is_trading=1, 今日(2026-07-03)后剩 123 交易日; raw_tushare_trade_cal max=20261231/13162 行 (built_at 2026-07-02 日刷正常); rg 全 backend 'INSERT INTO dim_trading_calendar' 仅命中 migrate_reference_db.py:69 + 测试 fixture (read-only)",
+   "fix": "建 raw_tushare_trade_cal -> dim_trading_calendar 增量 builder 并挂进日常链; 加 audit 门 'max(dim.trade_date) - today < 60 交易日 = FAIL'; 12 月前验证 tushare 已发布 2027 日历",
+   "verdict": {
+    "verdict": "CONFIRMED",
+    "method": "executed_code",
+    "evidence": "全部指控数字实测复现 (executed, read_only): (1) reference.dim_trading_calendar: MIN=2005-01-04 / MAX=2026-12-31 / 5343 行 / SUM(is_trading=1)=5343; trade_date>'2026-07-03' AND is_trading=1 → 123 交易日, 与指控完全一致。(2) raw_tushare_trade_cal: MIN=19901219 / MAX=20261231 / 13162 行 / MAX(built_at)=2026-07-02T01:09Z (full_refresh 日刷正常, is_open 1=8797/0=4365) — raw 侧活, 但 rg 全 backend 'raw_tushare_trade_cal' 消费方 = 0 (仅 lineage 注释), 无任何 raw→dim 传导代码。(3) dim_trading_calendar 写方 rg 全仓: 仅 scripts/migrate_reference_db.py:69 + 测试 fixture, 与指控一致。(4) calendar.py:130-133 latest_closed_or_raise 确实 raise CalendarMissError '拒绝 fallback to wall-clock now' (read_only 读码)。(5) 加重事实 A (executed): migrate_reference_db.py:55/69 从 sm.dim_trading_calendar (smartmoney) 拷贝, 但实测 smartmoney information_schema ILIKE '%calendar%' = 空 (§9 Stage E 已物删) → 唯一写方已不可运行; 且 build() L51-52 先 os.remove(reference.duckdb) 再 describe smartmoney 表 → 今天重跑 --build 会先删掉现存唯一日历再崩溃 = 破坏性死路径。(6) 加重事实 B: sync_registry.yaml:250 注释声称 '检查 max(cal_date) > today+30', 但 rg 'cal_date' 命中 0 个 .py 文件 — 前瞻 horizon SLA 纯注释未实现; data_quality._check_calendar (L1229-1276) 只查 null/dup/trading_days>0, 无 horizon 检查; data_health_snapshot 用 sla_hours=30*24 通用 watermark 新鲜度, full_refresh 日刷永绿。(7) 对照: 同库其他 dim 有生产写方 (security_master.py:89 / build_dim_listing_status.py:123 走 connect_rw('reference')), 唯 dim_trading_calendar 无。证伪尝试全部失败: 无 known_empty 墓碑适用 (dim 非 raw 域); ISO/compact 格式已分别按各表口径查询无混淆; 无任何文档裁决 '日历=年度手动仪式' (sync_registry pit_anchor '年度扩展' 与 data_audit.py:198 'tushare trade_cal→dim_trading_calendar' 箭头均为设计意图, 代码未实现)。",
+    "corrected": "指控核心成立, 唯失败模式描述需修正 + 两处加重: (1) 失败模式不是 '2027-01 起全断' 的响断 — 实测调 latest_completed_trade_date(now=2027-01-15) 和 (now=2027-06-01) 均静默返回 '2026-12-31' 不 raise (MAX(trade_date)<=anchor 永远命中), CalendarMissError 只在表空/损坏时触发。真实模式 = 静默停摆: sync end_d 永久钉死 20261231 → 停止拉新数据; data_audit date_range 的 max_date 与 cal_d 同钉 → lag=0 → 门永绿。比响断更危险 (静默 stale + 假 PASS)。(2) 唯一写方 migrate_reference_db.py 的源表 sm.dim_trading_calendar 已在 Stage E 物删 — 该脚本今天重跑会先删 reference.duckdb 再崩溃, 即连一次性刷新路径都已断且具破坏性。(3) 修法中 '加 audit 门' 需注意 sync_registry 已有一条未实现的注释版 horizon SLA (max(cal_date)>today+30), 应落实成代码而非再写注释; 修法方向 (raw→dim 增量 builder + dim horizon 门 + 12月前验证 tushare 发布 2027 日历) 均成立, raw 侧 full_refresh 空参数拉全量, tushare 发布 2027 后 raw 会自动收到, 只缺 dim 传导。"
+   }
+  },
+  {
+   "area": "top_inst 连续性 (间歇空响应静默缺口)",
+   "issue": "top_inst 2026-06-10~06-25 集中 9 个交易日 0 行, 同日 top_list 均有 75-126 行龙虎榜 (历史 8.5 年仅 7 个缺日, 半月内 9 个 = 间歇空响应被 allow_empty_batch=true 静默吞掉的指纹); drain_domain 对 allow_empty 域显式 drain_inapplicable, 此洞永不自愈; 消费方 market_pulse.py / institution_profile.py 正在 live 读该表, 当月机构席位信号被污染",
+   "severity": "high",
+   "evidence": "executed: 缺日全列=20200325,20200403,20210825,20211201,20220330,20240226,20241017,20260610,20260615,20260616,20260617,20260618,20260622,20260623,20260624,20260625 (16 天, 其中 2026-06 占 9); 对照 top_list 同 16 日行数 62-126 行全在; failure_queue 仅有 2026-06-21 resolved 记录列旧 5 日, 6 月新缺口零记录 = 0 行被当成功",
+   "fix": "手动重拉 top_inst 20260610-20260625 (MERGE 幂等); 机制层: allow_empty 域加交叉参照门 (top_inst 空日但 top_list>阈值 = 可疑重试, 非合法空), 或对可疑空日进 failure_queue 而非静默接受",
+   "verdict": {
+    "verdict": "CONFIRMED",
+    "method": "executed_code",
+    "evidence": "executed: (1) 独立重跑 gap 扫描 (dim_trading_calendar is_trading, replace(trade_date,'-','') 对齐 compact; 全表 trade_date length=8 无格式混淆): raw_tushare_top_inst 2018-01-02~2026-07-01 共 2059 交易日, 缺 16 天, 与指控逐日一致 = 20200325,20200403,20210825,20211201,20220330,20240226,20241017 + 2026-06 的 20260610,20260615,20260616,20260617,20260618,20260622,20260623,20260624,20260625 (9/16); 同 16 日 top_list 行数 62-126 全在。(2) \"合法空日\"不存在: 有数据的 2043 天单日行数 min=286/median=780, <50 行天数=0 — registry 注释前提被实测推翻。(3) 决定性 live 探针 (tinyshare pro.top_inst, 只读): 20260617 源端返回 1468 行, 20260610 返回 1000 行 (撞单页上限), 历史缺日 20200325 也返回 1000 行 — 源端全有数据, 本地 0 行 = 摄入侧被 allow_empty_batch 静默吞掉, 非 vendor 洞。(4) failure_queue 全表仅 1 条 sync:top_inst (first_seen 2026-06-12, resolved 2026-06-21, payload 列历史缺日, occurrence_count=5), 2026-06 新缺口 0 记录 = 0 行被当成功; watermark last_data_date=20260701 且 0626/0629/0630/0701 有 741-826 行, sync 活着跳洞前进。(5) read_only 代码核: sync_runner.py L371-383 allow_empty→0 行 return [] 当成功; L826-830 drain_domain 对 allow_empty 域 drain_inapplicable 永不自愈; 消费方 market_pulse.py L368-371 + institution_profile.py L78 live JOIN raw_tushare_top_inst — 机制指控成立。known_empty_days 键在 top_inst spec 中不存在 (yaml 解析), 无墓碑可解释。",
+    "corrected": "指控核心全部成立, 两处修正/扩充: (1) 修复范围应扩大 — live 探针证明历史 7 个缺日 (至少 20200325 实测 ≥1000 行) 源端同样有数据, 2026-06-21 那条 failure_queue resolved 是假 resolved (标记解决但数据未回), 手动重拉应覆盖全部 16 天而非仅 20260610-20260625; (2) 重拉必须按 registry page_limit=1000 做 offset 分页 (探针 3 天中 2 天撞 1000 整上限, 单页拉取会静默截断)。机制修法 (top_inst 空日 x top_list>阈值 交叉参照门) 有实测支撑: 8.5 年从无 <286 行的日子, 交叉门阈值可放心设高。"
+   }
+  },
+  {
+   "area": "daily_update 调度 (全域新鲜度根因)",
+   "issue": "无任何自动调度在喂 sync: 已装 crontab 只有 codex 日志轮转一条 (头注声称的 daily_update 条目不存在, 引用的 configs/cron/ 目录已不存在), launchd 无 chunkymonkey 条目; 实测落库节奏 = 每 2-6 天手动补一批, SLA=1 的 11 个域 (daily/adj_factor/moneyflow/cyq_perf/stk_limit/daily_basic/sw_daily/stock_st/moneyflow_mkt_dc/index 双表) 在跑批间隔常态违约",
+   "severity": "high",
+   "evidence": "executed: raw_tushare_daily 按 CAST(built_at AS DATE) 分组近 30 天 = 6/11,6/12,6/21(补4日),6/23,6/24,6/28(补3日),7/2(补3日) 共 7 次, 最大间隔 6 天 (6/15->6/21); crontab -l 非注释行仅 rotate_codex_tui_log.sh; ls configs/cron/ 为空; 全 sync 域 watermark last_data_date=20260701, 今日 07:14 CST 无 7/3 运行痕迹 (昨日运行时刻 01:06 UTC=09:06 CST)",
+   "fix": "重装自动调度 (cron 或等效) 跑 daily_update, 并恢复 configs/cron/crontab.txt 真相源文件; 数据 sync 静默失败已是项目第 3 次同型 (memory feedback-data-sync-silent-failure), 调度存在性本身要进 doctor/audit 探活",
+   "verdict": {
+    "verdict": "PARTIAL",
+    "method": "executed_code",
+    "evidence": "复现确认(executed): (1) crontab -l 活跃条目仅 1 条 rotate_codex_tui_log.sh + 孤儿 env 行 CHUNKYMONKEY/PYTHONPATH; 头注声称\"每天 cron 自动跑 daily_update\"但条目不存在; configs/cron/ 目录不存在; launchctl list 无 chunkymonkey; ~/Library/LaunchAgents 无 chunkymonkey plist (repo 内 backend/scripts/launchd/com.chunkymonkey.daily-update.plist 存在但未安装)。 (2) raw_tushare_daily 按 CAST(built_at AS TIMESTAMP) 日分组近 40 天 = 6/11,6/12,6/21(补20260615-18 共4日),6/23,6/24,6/28(补6/24-26),7/2(补6/29-7/1) 共 7 批, 最大 build 间隔 6/12→6/21 = 9 calendar days (中间仅 4 交易日, 日历实测 2026-06-19 端午休市非漏采)。 (3) mart_data_source_watermark: 29 个 sync 域 last_data_date=20260701, 主跑批 2026-07-02 01:06-01:25 UTC=09:06-09:25 CST; 7/2 晚另有零星手动域 (daily_info/hm_detail/dc_daily→20260702)。 (4) 间隔期 wall-clock 违约实测: 6/15-7/2 的 14 个交易日 EOD 中 7 个 (6/16,6/17,6/18,6/25,6/26,6/30,7/1) daily 域滞后>=2 交易日 > SLA=1。 推翻部分(executed+read_only): (a) \"调度丢失=缺陷,修法重装cron+恢复configs/cron\" 被文档裁决推翻 — scripts/daily_update.sh L15 现行头注 \"运行方式 (2026-06-13 用户决议: 本地未上云 + 定时不保证开机在线 → 手动跑, 成熟后上云)\" (2026-06-23 commit 561b0fc4 重写保留=现行); configs/cron 裸 cron 包 + launchd plist x4 是 2026-06-12 commit ce461328 有意退役 git rm (\"delivery_readiness 与 session_status 改手动时代文案\"), 非丢失。\"静默失败第3次同型\"类比不成立: /tmp 无 chunkymonkey_ALERT_*.flag, 无 failure, 是 sanctioned 手动模式。 (b) \"今日07:14无7/3运行\"是弱证据: 手动惯例 ~09:00 CST 跑, 观察时点 07:14/07:31 连 9 点 cron 都未到点; 且此刻 daily lag=1 交易日 (20260701 vs 最近已收盘日 7/2) 未超 SLA=1。 (c) SLA=1 域数 11 不准: config/sync_registry.yaml 实测 14 个 freshness_sla_trading_days=1 (漏 moneyflow_dc/limit_list_d/stk_factor_pro); 其中 stk_factor_pro 卡 20260618 (滞后 9 交易日, 当下活性硬违约) 根因是 sync wiring 非调度。",
+    "corrected": "修正后 finding: 不是\"调度丢失\"缺陷 — 无自动调度是 2026-06-13 用户决议的 sanctioned 手动模式 (daily_update.sh 头注现行: 本地未上云+定时不保证开机在线→手动跑,成熟后上云; configs/cron 与 launchd 自动化 2026-06-12 ce461328 有意退役)。真实存活的问题有三: (1) 已装 crontab 是 stale 残留 — 头注声称\"每天 cron 自动跑 daily_update\"并引用已删除的 configs/cron/, 残留孤儿 env 行, 与现行手动决议自相矛盾, 应清理注释/env 行 (非恢复 cron); (2) 配置-运营矛盾 — sync_registry.yaml 14 个域 freshness_sla_trading_days=1 与手动节奏 (近30天 7 批, 最大间隔 9 calendar days) 结构性冲突, 实测 6/15-7/2 间 7/14 交易日 EOD 滞后>=2 交易日; 且 SLA audit 仅在 pipeline 运行时评估, 间隔期违约对任何 gate 不可见 — 要么 SLA 值改为反映手动节奏 (如 2-3), 要么由用户拍板推翻 2026-06-13 决议上调度, 二者取一, 不应默认重装 cron; (3) 独立单域缺口 stk_factor_pro (SLA=1) 卡 20260618 滞后 9 交易日, 属 sync wiring/回补问题非调度问题, 应单列。审计员的\"调度存在性进 doctor 探活\"建议可保留价值改述为: doctor 应加\"数据时效 vs 声明 SLA\"wall-clock 探针 (与运行时解耦), 而非探 cron 存在性。"
+   }
+  },
+  {
+   "area": "fina_indicator sync 坏死",
+   "issue": "fina_indicator 域 sync 已知完全坏死 (tushare/tinyshare API 漂移不再返回 update_flag 列, grain 依赖它 -> 任何 sync 报缺 grain 列; registry 注释 2026-06-26 自认), 表冻结在 2026-06-14, 落后 13 交易日 > SLA 5; Q2 财报季 (7 月预告/8 月正式) 前不修 = 新财务指标全断, data_access.yaml 有消费登记",
+   "severity": "high",
+   "evidence": "executed: MAX(built_at)=2026-06-14T06:29 UTC, watermark last_data_date=20260612, MAX(ann_date)=20260430, MAX(end_date)=20260331, 5202 股; failure_queue 无 fina_indicator 记录 (坏死后再没尝试过) (read-only: sync_registry.yaml L693 注释确认根因)",
+   "fix": "按 registry 既定方案改 grain 为 [ts_code,end_date,ann_date] (或 sync_runner 容忍缺 update_flag), 8 月前完成; 修后跑增量补 6/14 以来缺口",
+   "verdict": {
+    "verdict": "CONFIRMED",
+    "method": "executed_code",
+    "evidence": "executed (read_only): (1) tushare_raw.raw_tushare_fina_indicator: 95659 行 / 5202 股 / MAX(built_at)=2026-06-14T06:29:15Z / MAX(ann_date)=20260430 / MAX(end_date)=20260331; 全部行 built_at 落在单日 2026-06-14 (built_at daily 分布只有 1 天) = 表冻结属实; update_flag 值分布 '0'=21902/'1'=73757 (历史曾返此列, 与 API 漂移叙事一致)。(2) smartmoney.mart_data_source_watermark sync:fina_indicator: last_data_date=20260612, last_success_at=2026-06-14 06:29:16 — 与指控一致。(3) reference.dim_trading_calendar: 20260612 之后至 20260703 (含) = 14 个交易日 (至 07-02 为 13), 均 > SLA 5 (registry freshness_sla_trading_days: 5)。(4) 决定性活体证据 — /tmp/chunkymonkey_daily_update_20260702.log L343-345: domain=fina_indicator status=error \"raw_tushare_fina_indicator: api 返回缺 grain 列 ['update_flag'] — registry 条目或上游 schema 变了\"; L492 (09:25:24) \"[increment by_report_period] fina_indicator 目标期=20260331: 跳过 4984 已最新股, 剩 14 待抓新期\"; 09:25:33 管道判 \"DEGRADED: sync_registry drain 有残余缺口或域错误\"。即根因在 2026-07-02 夜批仍实弹复现, 非 stale 注释。(5) 同族对照证明缺口真实非\"无新数据可拉\": raw_tushare_income MAX(ann_date)=20260604/built_at=2026-07-02, raw_tushare_balancesheet 同日 synced, raw_tushare_forecast MAX(ann_date)=20260701 — 兄弟财报表 06-28 修复后持续新鲜, 唯 fina_indicator 卡死。(6) 证伪路径全查空: sync_registry.yaml fina_indicator 域无 known_empty_days 墓碑; 日历 ISO/compact 已用 replace 处理; 非手动回填域 (在 --all-due 内每夜跑); 非\"设计如此\" (registry L693 自认待修 + 夜批标 DEGRADED)。(7) 消费登记属实: backend/config/data_access.yaml L150-162 fundamentals 域 → raw_tushare_fina_indicator (roe/roe_dt/netprofit_yoy 等, asof=ann_date)。read_only 佐证: services/data_sources/sync_runner.py L500-503 缺 grain 列即 raise ValueError, 与 registry grain=[ts_code,end_date,update_flag] 组合 = 任何 sync 必死。",
+    "corrected": "核心指控成立, 但 3 处证据细节需修正: (1) \"failure_queue 无 fina_indicator 记录 = 坏死后再没尝试过\" 推断错误 — 夜批 daily_update 每天仍在尝试 (2026-07-02 09:25:24 实录), 缺 grain 列是 merge 前 ValueError, 走 domain-level status=error 报告路径而非 failure_queue (该队列只收批次级终败); 实际情况更有利于指控: 根因活体复现至昨夜。(2) 滞后应为 14 个交易日 (20260612 后至 20260703 含), 13 是数到 07-02 的口径; 不影响 >SLA 5 结论。(3) 修法遗漏一个并发冻结源: registry fixed_params end_date 硬编码 \"20260612\" (注释自认\"需随季度更新另案\") — 只改 grain 不滚动窗口, ann_date>20260612 的新增仍拉不到; 修复需 grain 改 [ts_code,end_date,ann_date] (或容忍缺列) + 窗口 end_date 滚动化, 再补 6/14 以来缺口。另补量化: 当前存量缺口本身不大 (目标期 20260331 仅 14/4998 股缺 + 20260430 后的修订版), 真正风险是前瞻性的 — 7/8 月 Q2 财报季新指标 100% 断流, 与指控的\"8 月前必修\"优先级判断一致。"
+   }
+  },
+  {
+   "area": "pipeline 时序 / mart_market_pulse_daily 增量",
+   "issue": "pulse 增量缺日检测只问\"日期存在否\"不问\"行完整否\": market 表 mkt_missing 按 raw_tushare_daily 日期 NOT IN mart 检测 (market_pulse.py L521-529), sector 表按 moneyflow_ind_dc/sw_daily (L497-506)。行一旦插入即永久定格, 无任何回补路径 (process 只调 build_latest, rebuild_all 仅手动)。margin 是 t+1 披露源: 盘后 t 跑 daily_update 时 K 线 t 已在而 margin t 未披露 → 该日行 rzrqye/rzrqye_chg 以 NULL 入库, 次日 raw 补齐后 mart 永不更新。18:00 前跑则 limit_list_d/top_list/moneyflow_mkt_dc 整族情绪列同样永久 NULL。且实测 crontab 无 daily_update 定时项 (仅 codex log rotate)、launchd 无 chunky 项 = 手动跑时刻任意, 失败窗口真实存在非假设",
+   "severity": "high",
+   "evidence": "executed: raw_tushare_margin 20260701 行 built_at=2026-07-02T10:03:51Z (北京 18:03, t+1 晚间) vs raw_tushare_daily 20260701 built_at=2026-07-02T01:15:43Z (北京 09:15 同晨 drain) — margin 晚到 ~9h; kpl_list 20260702 于 14:15Z (北京 22:15) 拉取失败进 open 失败队列 (drain 重放可补 raw, 但按 F1 机制 mart 不会跟着回补)。当前 mart 无 NULL 残留仅因 07-02 22:54 全量 rebuild: 两表 COUNT(DISTINCT built_at)=1 (market=22:54:06+08, sector=22:54:03+08); rzrqye/lhb_count/mkt_pe 三列 \"NULL 且 raw 有数据\" 交叉全历史 = 0/0/0 天。read-only: 永久定格结论由代码路径推出 (插入后无 UPDATE/重插分支), 未在现库观察到历史实例 (被 rebuild 抹掉)",
+   "fix": "build_latest 加\"迟到列回补\"半边: 最简 = 每次增量对最近 3 个交易日 DELETE+重插 (幂等, 与全量逐 bit 一致, 符合现有确定性契约); 或 market 表插入上限日 = LEAST(raw_daily max, margin max) 类完整性水位 (margin 按 t+1 偏移); 修后在 mart_market_pulse_daily 加防回退测试 (模拟 margin 迟到一天再补, 断言行被治愈)",
+   "verdict": {
+    "verdict": "CONFIRMED",
+    "method": "executed_code",
+    "evidence": "机制 (代码, read-only): market_pulse.py build_latest L497-530 三处检测全部是\"源日期 NOT IN mart 日期\"(dc/sw/mkt), 命中即 INSERT, 全模块无 UPDATE/DELETE+重插分支; rebuild_all 唯一非手动调用 = 自身 schema 守卫 (表缺失/缺 content_type/strongest_sectors_json 哨兵列, L488-495), 稳态永不触发。process.py L36-39 只调 build_latest。失败窗口 (executed): (1) crontab -l 实测仅 codex rotate 一行活跃 (daily_update 无定时项), launchctl 无 chunky 项 — 手动跑时刻任意, 复核属实; (2) run.py degraded-continue 实证: /tmp/chunkymonkey_daily_update_20260702.log [09:25:33] \"DEGRADED: sync_registry drain 有残余缺口或域错误\" 后链继续跑 clean/process/store — acquire 失败不拦 mart 构建; (3) margin t+1 语义实测: raw_tushare_margin 20260701 built_at=2026-07-02T10:03:51Z (北京 18:03) vs raw_tushare_daily 20260701 built_at=2026-07-02T01:15:43Z (北京 09:15), 晚 ~9h, 复核一致; sync_registry margin 条目自注 \"t+1 盘前披露\"; 且 mart_data_source_failure_queue 有 open 行 data_domain=sync:margin, last_error 含 {\"trade_date\":\"20260702\"}, first_seen 2026-07-02 10:04:27 (北京 18:04) — 在 t 当日拉 t 的 margin 实弹失败进队, race 真实; kpl_list 20260702 open 失败 (14:15:31) 也复核属实; (4) mart 现状复核一致: mart_market_pulse_daily 844 行 / mart_sector_pulse_daily 337793 行, 两表 COUNT(DISTINCT built_at)=1 (22:54:06 / 22:54:03 +08), rzrqye/lhb_count/mkt_pe/limit_up_total/mkt_net_amount 五列 \"NULL 且 raw 有该日数据\" 全历史 = 0/0/0/0/0; (5) 新增佐证 (审计员漏): raw margin 20260626 仅 1 行 (SSE-only, failure_queue open 标 below_min_rows), 22:54 rebuild 已把 rzrqye=1.5277e12 焊死入 mart (邻日 20260629=3.0037e12, 20260630=3.0204e12) — drain 若日后补齐 SZSE/BSE 行, raw 治愈而 mart 永远停在半值, 同一冻结机制的\"值陈旧\"变体, NULL 检测根本抓不到。证伪通道全部走空: 无自动 rebuild 路径 / acquire 不 gate process / 设计文档 (market_pulse_design_20260702.md) 无迟到接受裁决, 代码注释只裁\"源端仅 SSE 1 行如实入表\"(部分行现实) 不裁到达时序冻结 / SQL 无 ISO-compact 混淆 (mart trade_date=compact 与 raw 同构直比)。",
+    "corrected": "一处叙事校正 (不改判): 审计员称\"当前 mart 无 NULL 残留仅因 07-02 22:54 全量 rebuild (抹掉历史实例)\" — 实际 git log 显示 market_pulse 挂进 pipeline process 步是 07-02 18:13 (commit 6abeeaa7), 晚于当日唯一晨跑 (09:25:44 process 段日志无 market_pulse/segments 步); 两表本身即诞生于 22:54 rebuild, 增量路径至今从未对新鲜数据执行过 — 没有实例被\"抹掉\", 是从未发生过。缺陷因此是纯前瞻性机制缺陷 (下一次晨跑 drain 完 daily(t) 即触发: margin(t) 若未到, 行 t 的 rzrqye 永久 NULL), 与审计员 read-only 让步一致但归因更干净。另一处窗口收窄: 同一 run 内 acquire (含失败队列重放) 先于 process, 故 t+1 晨跑且源已发布时列会填上 — 冻结只在 race 输掉时咬人 (t 当日晚间跑 / tushare 滞后 / 网关失败), 而 margin 20260702 于 t 当日 18:04 实弹失败进 open 队列证明 race 输掉真实发生。20260626 半值案 (rzrqye=1.53e12 vs 邻日 3.0e12, below_min_rows open) 是已焊死在库的同类活体, 建议修法在审计员方案 (最近 3 交易日 DELETE+重插) 基础上把防回退测试同时覆盖 NULL 治愈与部分行值治愈两个变体。"
+   }
+  },
+  {
+   "area": "raw_tushare_report_rc (grain 声明不足 → 正在发生的静默数据丢失)",
+   "issue": "grain [ts_code,report_date,org_name,report_title] 漏 quarter 列 (一份研报对多个预测年度各出一行), 2026-06-22 批内 drop_duplicates(grain, keep='last') 上线后, 每份新研报只保留 1 个年度的预测行, 其余全部在写入前被静默丢弃; 历史数据 (旧口径多行) 与新数据 (单行) 时序口径断裂",
+   "severity": "critical",
+   "evidence": "executed: 现 grain 下 dup_groups=172,127, excess=325,555/504,236 行 (64.6%); 抽样 20,000 个 dup 组中 quarter 列 20,000/20,000 组值不同 (np 19,686 / eps 19,834 组也随之不同); built_at<2026-06-22 的数据 = 2.83 行/研报, built_at>=2026-06-22 的 473 份研报全部 = 1.00 行/研报; watermark sync:report_rc last_data_date=20260701 (updated 2026-07-02) = 活跃域",
+   "fix": "sync_registry.yaml report_rc 域 grain 追加 quarter; 回拉 2026-06-22 以来的公告窗口补回被丢行 (MERGE 幂等安全); 修后历史多行即合法非 dup, 无需清历史",
+   "verdict": {
+    "verdict": "CONFIRMED",
+    "method": "executed_code",
+    "evidence": "executed (read_only, tushare_raw.duckdb): (1) 现 grain [ts_code,report_date,org_name,report_title] 下 dup_groups=172,127, excess=325,555/504,236 行 — 与指控完全一致; 全量 (非抽样) 172,030/172,127 组 (99.94%) quarter 值不同, np 在 169,672 组 / eps 在 170,506 组不同 = 真·多预测年度行非精确重复 (样例 000902.SZ 中信建投 20200813 一份研报 3 行: 2020Q4/2021Q4/2022Q4, np=84897/100520/121322); grain 追加 quarter 后残留 dup 仅 4,255 组 (0.85%)。 (2) built_at 断点精确对齐: 2026-06-11/12/16/21 批 = 2.89/2.94/2.82/2.65 行/研报 (合计 503,763/178,208=2.83), 2026-06-22 起每批恰 1.00 (35/35, 41/41, 18/18, 73/73, 306/306 = 473/473 份)。 (3) 根因代码实锤: services/data_sources/sync_runner.py:509 `df.drop_duplicates(subset=grain, keep='last')`, git log -L 定位 commit 2546d157 日期 2026-06-22 (动机=limit_list_d 分页重复, report_rc 因 grain 漏 quarter 被误伤)。 (4) 活体证据 (排除\"API 上游变了\"替代解释): /tmp/chunkymonkey_daily_update_20260702.log 报 report_rc 三批 [dedup] 丢 177+246+61=484 行后仅写 306 行 — API 仍返多年度行, 61.3% 在写前被静默丢弃, 与历史 64.6% excess 比率吻合。 (5) 活跃域确认: smartmoney.mart_data_source_watermark sync:report_rc last_data_date=20260701, updated 2026-07-02。反证检查全排除: 非 known_empty 墓碑 (丢失在写前非空批), 无日历 JOIN (report_date 全程 compact), 非回填混淆 (06-16 回填在 dedup 前写入保留多行), 非浮点精度 (quarter=VARCHAR, np 差万级), 无文档裁决 quarter 排除 (sync_registry.yaml:389 grain 注释与 analysis/ 均无)。",
+    "corrected": "指控成立, 仅两处精度修正: (a) \"抽样 20,000/20,000 组 quarter 全不同\" → 全量为 172,030/172,127 (99.94%), 存在 97 组 quarter 全同的真·精确重复; (b) 修法 \"grain 追加 quarter 后历史多行即合法\" 正确, 但需注明追加后仍残留 4,255 组真批内 dup (0.85%) — 这正是 2026-06-22 drop_duplicates 本来要治的合法去重对象, 保留 dedup + 扩 grain 即同时根治两类问题。回拉窗口 = report_date 20260618~20260701 (built_at>=2026-06-22 的 473 份研报所覆盖日期), DELETE-INSERT MERGE 幂等, 补拉即恢复完整多年度行。"
+   }
+  },
+  {
+   "area": "raw_tushare_block_trade (grain 声明不足 → 正在发生的静默数据丢失 + 历史纯重复)",
+   "issue": "grain [ts_code,trade_date,price,vol] 漏 buyer/seller — 同股同日同价同量但不同买卖席位的大宗交易是合法多笔, 06-22 后批内去重把它们静默合并成 1 笔; 另有回填期批内纯重复行 (同一笔复制最多 24 份) 膨胀大宗金额聚合",
+   "severity": "critical",
+   "evidence": "executed: pre-fix (trade_date<20260622) 92,066 个 grain 组中 7,428 组 (8.1%) 含 >1 个不同 buyer|seller 对; post-fix 1,000 组中 0 组多席位对 (按 8.1% 基率期望 ~81 组, 实测 0 = 主动丢弃确证); 另 identical-full-row 纯重复 2,410 组 excess 5,725 行 (样本 300850.SZ 20251111 同价同量同席位 24 份, built_at 同批 2026-06-21); watermark active 20260701",
+   "fix": "grain 追加 buyer,seller (sync_registry block_trade 域); 回拉 20260622+ 补回丢失席位行; 历史纯重复日重拉即被 MERGE DELETE-INSERT 自清",
+   "verdict": {
+    "verdict": "PARTIAL",
+    "method": "executed_code",
+    "evidence": "[executed, read_only DB + live tushare API + eastmoney 独立源交叉] (1) 丢失半边确证且升级为实锤: pre-fix 复现 92,066 grain 组 / 7,428 多席位组 (8.07%, 与指控一致); post-fix trade_date>=20260622 全量恰为 1,000 组 (指控说的\"1,000 组\"不是抽样是全体), 0 组多席位/0 任何重复 — 由 sync_runner.py:509 drop_duplicates(subset=grain) 结构性保证。live API 对照: block_trade(trade_date=20260630) 白名单 140 行 vs DB 119 行 (丢 21, 15.0%), 20260701 API 134 vs DB 111 (丢 23, 17.2%); 实名样本 002698.SZ 20260630 price=11.1 vol=43.0 API 返 2 个不同买方 (申万宏源西部乌鲁木齐北京路 / 国都江苏), DB 只剩 keep='last' 的国都; 002175.SZ 20260701 同型。watermark sync:block_trade last_data_date=20260701, last_success 2026-07-02, consecutive_failures=0 — 丢失每日进行中。(2) \"历史回填纯重复膨胀\"半边证伪: 2,410 组 / excess 5,725 / max 24 数字复现, 但 live tushare 今天对 300850.SZ 20251111 就返回 37 行 (含 24 份完全相同行: vol 5.0万股 @44.17 机构专用→广发武汉中山路), DB 37 行与 API 逐行一致; 东财 datacenter RPT_DATA_BLOCKTRADE 独立源同日同股也是 37 笔 (24×DEAL_VOLUME=50000) — 这是 24 笔真实成交 (不同机构买方被匿名化为同一\"机构专用\"标签), 非管道复制。top-3 重复最重日 DB vs live API 行数: 20250918 975/975, 20250922 585/585, 20250923 330/330 全等 = 回填期零膨胀, 历史金额聚合本来是对的。(3) 干扰项排除: 0 行 NULL grain (无墓碑污染, tushare_raw 无 known_empty 表); trade_date 为 compact VARCHAR, 字符串比较合法无 ISO 陷阱; DOUBLE 精确相等分组只可能拆散组 (少报) 不可能虚构多席位组。(4) 副产物: 20250918 raw API 实有 1001 行 (offset=1000 探回 1 行), 单页上限 1000, 回填该日可能截断 (top_inst 1000 整反例同款, 独立于本指控)。涉及文件: /Users/dp/Documents/M/stock/chunkymonkey/backend/services/data_sources/sync_runner.py:506-511 (批内去重, 2026-06-22 commit 2546d157), /Users/dp/Documents/M/stock/chunkymonkey/backend/config/sync_registry.yaml:660 (grain 声明), /Users/dp/Documents/M/stock/chunkymonkey/data/tushare_raw.duckdb 表 raw_tushare_block_trade。",
+    "corrected": "核心缺陷成立但比指控更严重, 修法必须换: raw_tushare_block_trade 的 grain [ts_code,trade_date,price,vol] 确实不足, 2026-06-22 起批内去重每日静默丢弃 15-17% 行 (实测 20260630 丢 21/140, 20260701 丢 23/134), 丢的既有不同买卖席位行也有完全相同的合法多笔成交行。但 (a) 指控的\"历史回填纯重复膨胀\"不成立 — excess 5,725 行经 tushare live + 东财双源交叉核证是真实多笔匿名机构成交 (300850.SZ 20251111 的 24 份相同行两个 vendor 都返 37 行), 历史数据是 vendor-faithful 的、金额聚合无膨胀, 反而是 post-fix 数据在每日欠计; (b) 指控的修法两条都错: grain 追加 buyer,seller 仍会把 24 笔 buyer/seller 全同的真实成交合并成 1 (数据仍丢), \"历史纯重复日重拉自清\"会物理销毁最多 5,725 行真实成交 (自清=数据销毁)。正确修法: block_trade 这类无自然键的事件清单域, MERGE 键应改为批次键 trade_date (整日 DELETE-INSERT 替换, by_trade_date 批本来就是全日快照), 豁免 grain 级批内去重; 或 grain 加 full-row occurrence 序号列保多重度。另需单独排查 by_trade_date 分页: 20250918 raw 有 1001 行超单页 1000 上限, 确认 sync_runner 翻页逻辑是否取全。"
+   }
+  },
+  {
+   "area": "raw_tushare_top_inst (历史 36% 膨胀 + 2026-06-22 口径断点 + 消费方未去重)",
+   "issue": "回填期 (批内去重修复前) 一个席位按上榜 reason 复制多行 (金额相同), 表内 36% 是重复行; 06-22 后新数据每席位只留 1 行 → 同一聚合跨时间口径不一致; 消费方 institution_profile.py:78 lhb CTE 对 top_inst 直接 SUM 未去重, c3_lhb 机构成本锚被 multi-reason 日双倍加权 (market_pulse.py:371 有 SELECT DISTINCT 防御, institution_profile 没有)",
+   "severity": "high",
+   "evidence": "executed: dup_groups=466,277, excess=643,509/1,785,303 行 (36.0%); 样本 300788.SZ 20190715 机构专用席位 32 行仅 reason 不同、buy/sell/net_buy 全同; 多 reason 股票日上 pre-fix 每席位平均 2.061 行 (91,316/143,709 席位行 >1 reason), post-fix 374 席位行全部 1.0; watermark active 20260701",
+   "fix": "二选一定口径: (a) 全史按现 grain 重拉去重统一为 1 行/席位 (推荐, MERGE 自清), 或 (b) grain 追加 reason 保源形态 + institution_profile lhb CTE 加 DISTINCT; 定稿后 rebuild period_windows / fact_inst_episode / mart_inst_profile",
+   "verdict": {
+    "verdict": "CONFIRMED",
+    "method": "executed_code",
+    "evidence": "executed (read_only, tushare_raw/feature_store/market/smartmoney via database_manifest): (1) 36.0% 精确复现 — 在 sync_registry.yaml:371 声明 grain (trade_date,ts_code,exalter,side) 上: dup_groups=466,277, excess=643,509/1,785,303=36.0%, 与指控逐位一致; (2) 口径断点实锤 — built_at 分层: 回填批 2026-06-13 (1,782,208 行, trade_date 20180102-20260612) grain 组 avg=1.565 行 max=32; post-fix 批 built_at 2026-06-28/07-02 共 3,095 grain 组全部 n=1 (0 组 n>1)。交叉验证: top_list 显示 20260626+ 有 38 个多 reason 股票日, 对应 top_inst 374 席位行 avg=max=1 且每席位 reason 全单一 → reason 多行被丢, 同一聚合跨时间口径不一致成立。断点机制 = sync_runner.py:509 drop_duplicates(subset=grain) (commit 2546d157, 2026-06-22); 回填在修复前 (06-13) 未去重。指控子统计 143,709 席位行精确复现 (我测 91,812 组 n>1 avg 2.145 vs 其 91,316/2.061, 同质微差); (3) 消费方属实 — institution_profile.py:74-84 lhb CTE JOIN raw_tushare_top_inst 直接 SUM(close*ABS(net_buy))/SUM(ABS(net_buy)) 无去重; market_pulse.py:371 确有 SELECT DISTINCT trade_date,ts_code,exalter,net_buy 防御。materiality 实测 (period_windows 真表重算 raw vs DISTINCT): 22,642 个含 c3_lhb 窗口中 4,391 (19.4%) 变动>0.1%, 2,009 (8.9%) >1%, 121 个 >5%, max 28.8% — 非浮点噪声; (4) watermark sync:top_inst last_data_date=20260701 属实 (mart_data_source_watermark); top_inst 无 known_empty_days 墓碑, 无 ISO/compact 混淆 (全部 compact 内比较), 无文档裁决 sanction 跨期口径不一致 (registry grain 注释\"同席位同股按买卖方向分行\"反而证明 36% 是对声明 grain 的违反)。核心指控推翻失败。",
+    "corrected": "指控 3 处实质错误须更正: (1) \"一个席位按 reason 复制多行(金额相同)\" 的刻画部分失实 — 其引用样本 300788.SZ 20190715 机构专用 32 行实测 = 8 reason x 4 个金额互异的真实席位 (8 组 distinct (buy,sell,net_buy)), 并非\"buy/sell/net_buy 全同\"; 全表 466,277 dup 组仅 321,650 (69%) 金额全同, 83,700 组含多个 distinct net_buy = 同名不同席 (exalter='机构专用' 名称碰撞, 非席位唯一键); 消费方相关的机构子集更甚: 37,882/52,193 (72.6%) dup 组是真-多席位。另 buy/sell 两列在两代 reason 命名体系间互换 (net_buy 仅与新式行自洽)。(2) 真-纯重复率 = 25.9% (461,917 行, 含金额的 grain), 36% 中约 18.2 万 excess 行是真实不同席位被误计为重复。(3) 推荐修法 (a) \"全史按现 grain 重拉去重 1 行/席位\" 会永久合并同名不同席的真实机构席位 = 毁数 — post-fix 数据已在发生此损失 (drop_duplicates keep='last' 于非自然键 grain 上), 06-22 后实际是\"每 exalter 名 1 行\"非\"每席位 1 行\", 多机构席位日被静默低配。正确唯一键须含金额元组或 reason (修法 b 方向), 且声明 grain 本身需修正。附带发现: top_inst 缺 20260615-20260625 共 7 个交易日 (top_list 同期全有, 无 known_empty 墓碑) — 独立 coverage 洞, 建议另行处置。"
+   }
+  },
+  {
+   "area": "raw_tushare_share_float (回填批内重复 10.7%)",
+   "issue": "解禁数据回填批 (2026-06-19, 批内去重修复前) 分页重叠致同 grain 行最多复制 38 份 (93.5% 组全行一致, 少数组 float_ratio 分页间微差), 解禁股数/次数聚合当前虚胖 ~10.7%",
+   "severity": "high",
+   "evidence": "executed: dup_groups=549,616, excess=577,798/5,420,502 行 (10.7%); identical-full-row 组 513,833 (excess 519,342); 样本 688235.SH 北京高华盛泽 n=38, float_share 全同、float_ratio 在 0.1678-0.1723 间漂; dup 组 multi_built_at=0/549,616 = 全部单批产生",
+   "fix": "全史重拉 (MERGE on grain 自清, 幂等已修) 或一次性按 grain dedup keep last (float_ratio 微差组取最新); 修后跑一次本审计 SQL 验 0",
+   "verdict": {
+    "verdict": "CONFIRMED",
+    "method": "executed_code",
+    "evidence": "executed (duckdb read_only, tushare_raw raw_tushare_share_float, 5,420,502 rows): (1) grain [ts_code,ann_date,float_date,holder_name] (sync_registry.yaml:719) dup_groups=549,616, excess=577,798 (10.66% of rows), max copies=38 — auditor numbers reproduced exactly. (2) full-row-identical dup groups=513,833 / excess=519,342 (93.5%) — reproduced. (3) dup groups with >1 built_at = 0/549,616 — reproduced; built_at is per-ann_date write batch (1754 distinct on 06-19, 1 ann_date per built_at), backfill window 2026-06-19T07:41:46–08:18:43Z covers 5,420,224/5,420,502 rows. (4) sample 688235.SH 北京高华盛泽: 38 identical rows (float_share 2,301,106, 首发战略配售) with float_ratio drifting 0.1672–0.1729, single built_at 07:57:29Z — reproduced. Refutation attempts all failed: tombstones (0 NULL/empty key cols), calendar format (ann_date 100% compact, no calendar join), domain confusion (post-fix rows built_at>06-20 = 278 rows, 0 dups — dup mass is exclusively the pre-fix 06-19 backfill), float precision (identical-payload excess alone = 510,745 rows = 9.4%, no float comparison involved; only 17/549,616 groups vary share_type so grain is sound), design-ruling (opposite: sync_runner.py:505-511 documents 批内去重 drop_duplicates(subset=grain, keep='last') as 2026-06-22 复审 HIGH root-cause fix, limit_list_d 14x precedent; share_float backfill 06-19 predates it; writer is DELETE-same-grain+INSERT MERGE at :491/:551 and 全史重拉幂等 noted at :696, so both proposed remedies are valid). Paging-overlap mechanism consistent: top dup days raw≈2x unique capped at 6000 (20211224: 6000 raw/3029 uniq; 20221026: 5972/3028), single-call max 6000 per tushare catalog.",
+    "corrected": "Core claim confirmed but impact understated: (a) 解禁次数 (row-count) aggregation inflated +11.93% vs true base (10.66% is excess as share of current rows); (b) 解禁股数 sum(float_share) inflated +81.2%, not ~10.7% — raw 4,851,151,046,901 vs grain-dedup 2,677,415,284,744, because dup groups skew to mega-unlocks (avg float_share 2.22M vs 339K for non-dup groups, 6.5x; e.g. 301047.SZ QM92 n=4 excess 179.1B, 600905.SH 三峡集团 n=10 excess 126.0B). (c) sample float_ratio range is 0.1672–0.1729 (auditor said 0.1678–0.1723). (d) additional defect the claim missed: 614 ann_dates landed exactly 6000 rows (single-call cap) while ~50% dup → those days likely also LOST unique rows to cap truncation, so one-shot keep-last dedup fixes inflation but not completeness — 全史重拉 (MERGE on grain, writer since 2026-06-22 dedups in-batch, post-fix rows show 0 dups) is the correct remedy of the two proposed, then re-run the audit SQL expecting 0."
+   }
+  },
+  {
+   "area": "raw_tushare_forecast (同键矛盾行 19.2%)",
+   "issue": "同 (ts_code,end_date,ann_date) 下存在业绩预告方向相反的多行 (如同日 略减-36.5% 与 预增+636.6% 并存), update_flag 列全 NULL 无法区分修订; 消费方任取一行 = 方向性随机; 且 06-22 后再拉到此类数据会 keep='last' 任意保一行",
+   "severity": "high",
+   "evidence": "executed: dup_groups=3,403, excess=3,407/17,736 行 (19.2%); identical-full-row=0 (全部内容不同); 样本 002141.SZ end_date=20221231 ann_date=20230131 同批存在 type=略减 (p_change -36.5/-24.7) 与 type=预增 (+636.55/+773.58) 两行; update_flag 全 None",
+   "fix": "先实弹核证 tushare forecast 修订语义 (type 或 first_ann_date 是否应入 grain), 再定 grain 扩列或 keep 规则; 清历史矛盾组前对照交易所公告抽查 3-5 例定哪行为真",
+   "verdict": {
+    "verdict": "PARTIAL",
+    "method": "executed_code",
+    "evidence": "executed (duckdb read_only, data/tushare_raw.duckdb): [1] dup 数复现: grain(ts_code,end_date,ann_date) dup_groups=3,403 / dup 行=6,810 / excess=3,407/17,736=19.2%; 全列(含update_flag/summary)完全相同行组=0 — 与指控一致。[2] 但\"矛盾\"构成实测: 3,403 组里 type 不同仅 18 组 (0.53%), 方向相反(正类vs负类并存)仅 5 组 (000409 略减/略增, 002141 略减/预增, 600588 扭亏/续亏±镜像, 603729 预增/首亏镜像, 002745 预减/续盈); 按消费列 (data_access.yaml forecast 只暴露 type,p_change_min,p_change_max) 有歧义的组=20 组/44 行=0.25% 表行。其余 3,382/3,403 组 (99.4%) 消费数值完全一致: 915 组只差 update_flag(0/1对), 2,461 组只差 summary/change_reason 文本格式, 6 组只差 last_parent_net NULL。[3] \"update_flag 全 NULL\"=测伪: 全表 NULL=14,551/'0'=2,268/'1'=917; 916 个 dup 组有 0/1 对可判别修订; 但 20 个真歧义组里 19 组确实全 NULL 不可判 (仅 002238.SZ 可用 flag=1 判)。[4] 样本 002141.SZ/20221231/20230131 复现且更糟: 3 行同批 (built_at 全 2026-06-14T02:30:54), 2x略减(-36.5/-24.7)+1x预增(+636.55/+773.58), net_profit 三行同为 21500-25500; 略减行与 last_parent_net=33865.3 自洽 (21500/33865=-36.5% 吻合), 预增行不自洽 → 略减为真。[5] keep='last' 前瞻风险属实 (read_only 读码+executed 佐证): services/data_sources/sync_runner.py:509 `df.drop_duplicates(subset=grain, keep=\"last\")` 2026-06-22 加; dup 行 built_at 全在 06-14(4,977行)/06-21(1,833行) 即 dedup 上线前, 06-22 后 0 新增 dup; 且 MERGE=DELETE同grain+INSERT, 重拉旧 ann_date 会把历史 dup 组任意坍缩成一行。[6] 排除替代解释: dup 组跨 built_at 批=0 (非手动回填与日常域重叠, 是 API 单次返回同键多行); type 矛盾是分类值差异非浮点精度; known_empty 墓碑机制只管空批不产生行, 与 dup 无关; 日历格式不涉及 (未 JOIN calendar)。[7] \"消费方任取一行\"当前是假设而非现实: lineage graph.json 中 raw_tushare_forecast 消费边仅 data_access.yaml/sync_registry.yaml 两个 config 登记 + constants.py (实为评分权重键名 \"forecast\":0.15, 与本表无关); rg 全仓无任何 py 代码读该表; data_access resolver/drivers 无 dedup 逻辑 (无 drop_duplicates/QUALIFY/row_number), 故风险是未来消费者的契约风险非当前活缺陷。grain 设计 sync_registry.yaml:610 有文档裁决 (修订=不同ann_date故grain含ann_date), vendor 同键同日推多行是设计未预期的源端行为。",
+    "corrected": "raw_tushare_forecast 同 grain (ts_code,end_date,ann_date) 重复属实 (3,403 组/excess 19.2%), 但 19.2% 不是\"矛盾率\": 99.4% 的重复组消费数值完全一致 (只差 update_flag 0/1 对或 summary 文本格式), 真正方向/数值歧义仅 20 组 44 行 (0.25% 表行), 其中方向相反 5 组; 且其中 916 组可用 update_flag(非全NULL, 全表 3,185 行有值) 取 '1' 判别, 仅 19 个歧义组不可判。当前该表 0 个 live 代码消费方 (仅 data_access.yaml 契约登记), \"任取一行方向随机\"是前瞻契约风险非现行缺陷。真实遗留问题两条: (a) 20 个歧义组需清理 (对照交易所公告或 last_parent_net 自洽性判真, 002141 案例 略减 行与 last_parent_net 自洽为真); (b) sync_runner.py:509 批内 keep='last' 对源端同键多行是任意保留, 应改为优先 update_flag='1' / 与 last_parent_net 自洽的行, 防未来重拉时把历史组任意坍缩。"
+   }
+  }
+ ],
+ "refuted": [],
+ "low_medium": [
+  {
+   "area": "backend/scripts/build_dc_industry_view.py (dim_stock_dc_industry 构建)",
+   "issue": "东财板块与申万行业名做跨 vendor INNER JOIN 定级: board_lvl CTE 用 raw_tushare_dc_index.name = 申万 index_member_all l1/l2/l3_name 字符串相等来给东财行业板块分 L1/L2/L3 层, 字面触 'dc↔sw 分类混算' 红线; INNER JOIN 使名字不匹配的东财板块被静默丢弃, 归属这些板块的个股行业列落 NULL, 且申万/东财任一侧改名即静默掉板块, 无监控",
+   "severity": "medium",
+   "evidence": "executed: 20260701 东财行业板块 496 个, 名字匹配申万任一级 492 个 (99.2%), 静默丢弃 4 个 (端到端供应链服务/其他建材Ⅲ/光伏主材/银行Ⅱ); 定级歧义 (同名撞多级) 0 个; dim_stock_dc_industry 5207 股中 tdx_l1 非空 5196 (11 股 L1 缺失)。read-only: 股票→板块归属本身纯东财 (dc_member), 申万名仅作分级字典, 脚本 docstring 有写 'level 按申万名映射' — 字面违规但实质是文档化的定级器, 未入特征/回测路径 (serving display dim)",
+   "fix": "把 4 个未匹配板块的层级处理显式化 (yaml 映射表或明确排除清单), build 时输出匹配率并加机械门 (匹配率 <99% 或丢弃板块数变化即 FAIL/WARN); 或改用东财自带层级信息彻底去掉对申万名的依赖"
+  },
+  {
+   "area": "tushare_raw.v_dc_industry_pit 视图 (build_dc_industry_view.py build_pit_view)",
+   "issue": "视图名带 _pit 且脚本 docstring 声称 '[in_date, out_date) 区间, out_date=NULL 表示当前仍在', 但实际视图定义只输出 MIN(trade_date) AS in_date, 完全没有 out_date 列 — as-of 消费语义 = 个股一旦进过板块永远算成员 (latest-snapshot 泄漏变体), 是潜伏 PIT 陷阱",
+   "severity": "medium",
+   "evidence": "executed: duckdb_views() 实取视图 SQL = 'SELECT stock_code, board_code, min(trade_date) AS in_date FROM runs GROUP BY ...' — 无 out_date; read-only: rg 全仓当前消费方为 0 (仅 pipeline/process.py 注释 + 构建脚本自身), 陷阱尚未被踩",
+   "fix": "补齐 out_date (逐日快照 LAG 间隙检测生成退出日, 参照 v_sw_industry_pit 的 in_date/out_date 语义), 或在补齐前把视图改名去掉 _pit 后缀 + 头注 '禁 as-of JOIN', 防止未来消费方按名字信任其 PIT 语义"
+  },
+  {
+   "area": "raw_tushare_ths_hot (同花顺热榜) 地位 + sync_registry 登记漂移",
+   "issue": "三重悬置: (1) 最后书面裁决是 analysis/dc_full_migration_plan_20260623.md '同花顺: 仅 ths_hot 在库, 评估退役(题材情绪未用)', 之后无转正/豁免文档, 但 registry 仍 active 且 2026-06-28 还在配墓碑维护 — 既非正式 sanctioned 例外也非漏网, 是没关账的悬案; (2) registry 声明 fixed_params data_type=热股 单榜, 实际 9 个榜全入库 (fixed_params 是死配置, sync_registry:179 注释自己承认), 其中含同花顺概念/行业板块榜 .TI 码 — 同花顺板块分类数据以热榜名义进库, 未来被误当分类源与 dc/sw JOIN 的诱饵; (3) 港股/美股/期货/可转债等非 A股标的未过 universe_filter 入库。与 '同花顺出局' 裁决 (针对分类源 ths_member 无 PIT) 不直接冲突 — ths_hot 是热度快照非成分表, 但 sanction 语义已被超范围入库稀释",
+   "severity": "medium",
+   "evidence": "executed: ths_hot 实际 data_type 9 种: 热股 81692 / 可转债 79080 / ETF 78300 / 热基 68085 / 港股 41497 (.HK) / 美股 18580 / 概念板块 17060 (.TI, 366 码) / 行业板块 17041 (.TI, 157 码) / 期货 7784; read-only: rg 消费方 = 0 (仅 sync_runner 采集), 现状无混算违规",
+   "fix": "owner 拍板关账: 退役 (按 20260623 评估结论) 或写正式豁免条款 (参照 aif10 例外格式, 限定 '仅热股/板块热度独立展示, 禁 JOIN'); 同步修 registry 条目反映真实 9 榜语义 (删死 fixed_params) 或 sync 侧过滤回声明范围并清历史超范围行"
+  },
+  {
+   "area": "raw_tushare_kpl_list vs limit_list_d 口径漂移 (预防性)",
+   "issue": "开盘啦含 ST、交易所榜不含 ST, 且 kpl status 是 'N天M板' (含断板) 语义 ≠ limit_list_d limit_times (连续板) — 若未来有人拿 kpl 算连板天梯/情绪指标, 涨停家数系统性偏高 ~11 家/日, 天梯高度极易翻倍级虚高; 极端日两榜收录集合还真分歧 (不止 ST 差)。当前 kpl_list 零消费方, 无现行违规, 但表内无任何防误用标注",
+   "severity": "low",
+   "evidence": "executed: 844 共同交易日, kpl 涨停均 69.9 家/日 vs lld 59.2, 均差 10.7 ≈ kpl 内 ST 涨停均数 10.9; 789/844 天 (93.5%) 差值恰等于 ST 数, 残差 1-2 家 50 天, >10 家仅 2 天 (20240930 极端日: kpl 642 vs lld 659, lld 独有 59 只, kpl 独有非 ST 14 只); 天梯: 近 5 日 lld 最高连板 3/3/3/6/5 vs kpl 含 ST 纯连板 7/6/5/6/5 (20260629-0701 三天翻倍级), kpl 'N天M板' 再放大 (20260630 冰轮环境 11天6板 非 ST); 剥离 ST + 只取 'N连板' 后 kpl 与 lld limit_times 5/5 天完全一致",
+   "fix": "在 sync_registry kpl_list 条目和未来任何消费点写死口径契约: 与 limit_list_d 天梯对齐必须 (非 ST + status 正则 '^\\d+连板') 归一; 前端 kpl 上卡时标注 '开盘啦口径, 含 ST, N天M板含断板'"
+  },
+  {
+   "area": "frontend/src/pages/MarketPage.tsx 口径标注缺口",
+   "issue": "同页并列多 vendor 数据, 两张卡缺口径标注: SentimentCard (情绪温度 涨停/跌停/炸板率光谱带) 数据源同为 limit_list_d 却未标 '官方口径不含 ST' (隔壁 LadderCard 标了); QuietCard (悄悄流入/流出) 是东财链专属数据未标 '东财板块' (热力图/轮动/预警卡都标了)",
+   "severity": "low",
+   "evidence": "read-only: MarketPage.tsx:723 SentimentCard title='情绪温度 (每日一格: 涨停 / 跌停 / 炸板率 三条光谱带)' 无口径词; :533 QuietCard title 无 vendor 词; 对照已标注卡: :561 '连板天梯 (limit_list_d 官方口径, 不含 ST)' / :779 '最强板块榜 (…同花顺口径)' / :234 '资金热力 (东财…)'",
+   "fix": "SentimentCard 标题补 '(limit_list_d 官方口径, 不含 ST)', QuietCard 补 '(东财板块)'; 与连板天梯卡措辞保持一致"
+  },
+  {
+   "area": "backend/services/industry.py 文档漂移 + 通达信命名残留",
+   "issue": "docstring 首段仍写 '数据源: dim_stock_dc_industry (申万当前快照, 2026-06-16 从通达信切回申万)', 与实际矛盾 (该表 2026-06-23 起由东财 dc_member/dc_index 构建, 值是 BK*.DC 码) — 同一 docstring 尾部自己写了切东财, 首尾自相矛盾; 且列名 tdx_l1/l2/l3 是第四套分类 (通达信) 的命名残留, 名下装的是东财值 — 表名 dc、列名 tdx、注释说申万, 三个 vendor 名搅在一个模块里, 是未来 vendor 混淆的命名陷阱 (数据层无通达信/中信残留, 仅命名残留)",
+   "severity": "low",
+   "evidence": "executed: dim_stock_dc_industry.tdx_l1 实际值样例 BK0478.DC/BK0436.DC 等东财码 (5207 行); read-only: industry.py:6 写 '申万当前快照' vs build_dc_industry_view.py 实际 FROM raw_tushare_dc_member/dc_index; 全库 47 表码系后缀仅 TI/DC/SI/SH/SZ/OF/HK, 无 .CI (中信) 无通达信码 — 第四套分类数据零残留",
+   "fix": "改 industry.py docstring 与现状一致 (东财值/申万名定级/tdx_l* 为历史位置别名); 长期择机把 tdx_l* 列名重命名为 level_1/2/3 类中性名 (需 fan-in 审计消费方)"
+  },
+  {
+   "area": "sync 监控盲区: ths_hot 子榜断流",
+   "issue": "ths_hot 的 热基 榜 2026-02-27 后停更 (其余 8 榜正常到 2026-07-01), 表级 freshness SLA (2 交易日) 只看整表 MAX(trade_date), 探不到子榜 (data_type 分组) 断流 — 多榜共表域的静默半断流模式",
+   "severity": "low",
+   "evidence": "executed: 热基 max(trade_date)=20260227 (68085 行止), 同表 热股/ETF/港股 等 max(trade_date)=20260701",
+   "fix": "先随 ths_hot 地位裁决 (上条 finding) 一并处理; 若保留, SLA 探测对多榜域按 grain 中的榜单键 (data_type) 分组探新鲜度, 或至少把 热基断流 记入 known 数据现实注释"
+  },
+  {
+   "area": "report_rc 中段大洞",
+   "issue": "卖方研报覆盖 = 2018-01-02~2020-08-25 + 2026-01-05~今, 中间 2020-08-26~2026-01-04 约 5.4 年整段 0 行 (mid_holes 1299 交易日), 且 data_start=20100101 声明的 2010-2017 也从未回填; allow_empty=true 域 drain 不适用, 永不自愈",
+   "severity": "medium",
+   "evidence": "executed: 按年 distinct report_date = 2018:242, 2019:244, 2020:157, 2026:117, 2021-2025 全部 0; 洞边界 MAX(<20210101)=20200825, MIN(>=20210101)=20260105; 总 have 760/4003 应有日; rg 显示当前无 service 消费方 (仅 registry 登记)",
+   "fix": "要么补跑 2020-08~2025 回填 (by report_date 逐日), 要么把 data_start 改为实际覆盖并在 registry 注明历史洞, 别让完整性口径失真"
+  },
+  {
+   "area": "income 深史稀疏 (声明窗口失真)",
+   "issue": "income data_start=20080101 但 2008-2021 每期仅 ~200-750 股 (5-15% 覆盖), 全量覆盖始于 2022; PIT 财务历史在 2022 前实际不可用, 任何用 2019-2021 财务面的回测会静默偏样本",
+   "severity": "medium",
+   "evidence": "executed: 每期 distinct ts_code: 20191231=567, 20211231=731, 20221231=4209, 20260331=5210; 按年行数 2008-2021 均 787-2290 行/年 vs 2023+ ~19000 行/年; 总 5335 股 73 期",
+   "fix": "决策二选一: by_ts_code 全史回填 2008-2021 (成本高, 需消费方证明), 或把 data_start 改 20220101 + registry 注明深史仅部分股, 消费侧加窗口断言"
+  },
+  {
+   "area": "ths_hot fixed_params 死配置 + 2000 截断",
+   "issue": "registry 声明 fixed_params data_type=热股 锁单榜防 2000 截断, 但 by_trade_date 分支不合并 fixed_params (registry 里 kpl_list 注释自己记录了此机制) -> 表内实际落了 9 个榜 (热股仅占 20%), 且 6 个交易日 total 恰=2000 整 = 多榜合计截断指纹, 这些日热股榜完整性不可信",
+   "severity": "medium",
+   "evidence": "executed: data_type 分布 = 热股 81692 / 可转债 79080 / ETF 78300 / 热基 68085 / 港股 41497 / 美股 18580 / 概念板块 17060 / 行业板块 17041 / 期货 7784; 恰 2000 行日 6 个: 20250611,20250620,20250623,20250625,20250627,20251028 (该 6 日热股行数 379-1475 vs 常态中位 100)",
+   "fix": "sync_runner by_trade_date 分支支持 fixed_params 合并 (或 ths_hot 改专用拉取), 重拉 6 个 2000 整日; 消费侧过滤 data_type='热股' 前提写死"
+  },
+  {
+   "area": "stk_factor_pro 尾部停更",
+   "issue": "stk_factor_pro 停在 20260618, 落后 9 交易日 vs 声明 SLA=1; registry 自认无日更通道 (by_ts_code 无增量语义, drain unsupported, '当前靠手动刷新') — SLA 声明与机制矛盾; 当前 0 代码消费方所以实害为零, 但表 7.7M 行持续腐烂",
+   "severity": "medium",
+   "evidence": "executed: MAX(trade_date)=20260618, 窗口内缺 20260622-20260701 共 8 日, MAX(built_at)=2026-06-19; rg 全 backend 消费方=0 (仅 sync_registry.yaml 自身)",
+   "fix": "要么建 by_ts_code 尾部增量调度 (每股拉近 N 日), 要么把 SLA 改成如实的手动节奏并在 registry 标注, 别留假 SLA"
+  },
+  {
+   "area": "block_trade 中间空洞",
+   "issue": "20250917 单日 0 行而邻日 127/192/975/160 行 — 全市场单日零大宗交易不可能, 是间歇空响应静默缺口实锤; allow_empty=true -> drain 不适用永不自愈 (与 top_inst 同机制缺陷的第二例证)",
+   "severity": "medium",
+   "evidence": "executed: 20250915=127, 20250916=192, 20250917=0(缺), 20250918=975, 20250919=160; 全窗仅此 1 个中洞 (843/844 日)",
+   "fix": "手动重拉 20250917; 机制修法同 top_inst 条 (allow_empty 域行数骤零加可疑判定)"
+  },
+  {
+   "area": "data_start 声明 vs 实际覆盖错位族",
+   "issue": "5 个域声明 data_start 远早于实际落库起点 (回填从未完成或源端无深史): dividend 20050104->实 20230111, forecast 20080101->实 20230103, express 20070101->实 20230331, stk_surv 20180102->实 20210805, index_dailybasic 20100101->实 20140212; 完整性/PIT 审计按声明窗口会系统性高估覆盖",
+   "severity": "medium",
+   "evidence": "executed: 各表 MIN(日期列) 如上; leading 缺日数 dividend 4380, forecast 3649, report_rc 1944(2010-2017), stk_surv 876; index_dailybasic 6 指数齐一从 20140212 起 (000905 20140225), 起点后 missing_within=0",
+   "fix": "逐域裁决: 源端真无深史 -> data_start 改实测起点 (moneyflow_dc 20260628 同型修法); 源端有 -> 补回填; registry 加 '实际落库起点' 对账字段进 audit"
+  },
+  {
+   "area": "failure_queue open 记录",
+   "issue": "2 条 open: (1) sync:kpl_list 20260702 批失败 (22:15 CST 拉取, 表内 0702=0 行, kpl 非 allow_empty 下次 drain 应自愈, 需确认); (2) sync:margin below_min_rows 4 日 — 数据实已在库 (源端仅 SSE 1 行, registry 已按实测降 min_rows=1), 记录是修复前的陈旧噪音未 resolve",
+   "severity": "low",
+   "evidence": "executed: failure_queue open=2/resolved=25; kpl_list WHERE trade_date='20260702' = 0 行; margin 4 疑日 20260403/0430/0618/0626 各 1 行 exchange=SSE 在库, 全窗 1816/1816 日完整",
+   "fix": "下次 sync 后核 kpl 20260702 落库并关单; margin 记录直接 resolve (数据完整)"
+  },
+  {
+   "area": "watermark 退役域残留",
+   "issue": "mart_data_source_watermark 仍存 4 个已物删域的行 (sync:top10_floatholders / sync:balancesheet_advrecv / sync:fund_daily / sync:fund_adj) + institution_survey(tushare) consec_fail=1 残行 — 违反删除纪律 '删表必清引用/登记', SLA 扫描器可能误读",
+   "severity": "low",
+   "evidence": "executed: watermark 57 行中含 top10_floatholders(row_count=0, 2026-06-28), balancesheet_advrecv(20260331, 2026-06-15), fund_daily/fund_adj(20260626, 2026-06-28), institution_survey source=tushare consec_fail=1 row_count=0",
+   "fix": "DELETE 退役域 watermark 行 (走 db_lifecycle 纪律), 并在域退役 checklist 加 'watermark/failure_queue 行清理' 一项"
+  },
+  {
+   "area": "moneyflow_hsgt 缺日无墓碑",
+   "issue": "90 个缺日实为港股假期 (北向关闭日, 每年 2-9 天, 圣诞/复活节/7·1 形态) = 合法真空, 但无墓碑/标注机制, 每轮完整性审计都会重复数出 90 '缺日' 造成噪音; 另提醒: 该表 2024-08-19 语义断点 (净买入->成交额) 消费侧必须分段",
+   "severity": "low",
+   "evidence": "executed: 缺日按年分布 2014:2,2015:7,...,2026:4 (样例 20141225/20141226/20150403/20150407, 20260701=香港回归日), 2734/2824 日; max=20260630 lag=2 在 SLA 内",
+   "fix": "给 hsgt 类域加 '第三方日历真空' 标注 (如 hk_holiday 规则或批量 known_empty_days), 审计口径按 A股日历∩港股开市日"
+  },
+  {
+   "area": "fact_stock_form_daily.axis_*_memb 列语义",
+   "issue": "列名 axis_pos_memb/axis_trend_memb 等暗示 softmax 隶属度 (membership), 实际存的是归一化 score — classify_stock (services/technical_states/__init__.py L191-194) 把 ax['位置']['score'] 写进 *_memb 列, 而 axes.py classify() 同时算出的 membership (softmax, 各取值和=1) 被丢弃。表消费者(前端/D2)不读代码会误读该列为概率隶属度",
+   "severity": "low",
+   "evidence": "executed: 600519@20260701 axis_pos_memb 表值=0.3878406869 = 手算归一 score (自实现 sigmoid 门+801 网格 max_geo, diff=0.00e+00); 若按 softmax 隶属度 (τ=0.25, scores low=0.387841/mid=0.000431/high=0.000000) 应为 exp(1.5514)/Σ=0.702 ≠ 0.388 — 存值确定不是 membership。read-only: __init__.py L191 'axis_pos_memb': ax['位置']['score']",
+   "fix": "二选一: (a) 列改名 axis_*_score (需迁移+消费方同步); (b) 最低成本 — 在表注释/data_layers 登记与 C 前端消费文档写明 *_memb=归一 score [0,1] 非 softmax 概率, 各取值不求和为 1"
+  },
+  {
+   "area": "mart_market_pulse_daily rzrqye 口径",
+   "issue": "margin 单交易所日直和无口径标记: 源端个别日仅 SSE 1 行, 直和 rzrqye 腰斩, LAG 差分 rzrqye_chg 产生 ±1.5 万亿假摆动; sync_registry 注了\"如实入表\"但 mart 无 n_exchanges/口径列, 消费端 (C4 感知页 / 未来 D2 两融水位特征) 无法分辨真降杠杆 vs 口径缺失",
+   "severity": "medium",
+   "evidence": "executed: raw_tushare_margin 每日交易所数分布 1所=4天 / 2所=996天 / 3所=816天; 单所日 20260403/20260430/20260618/20260626。mart 实测 20260626 rzrqye=1,527,673,786,266 (仅SSE) vs 0625=3,032,991,749,139 / 0629=3,003,681,403,983; rzrqye_chg 20260626=-1,505,317,962,873、20260629=+1,476,007,617,717 = 相邻两天 ±1.5T 假信号。另 2 所→3 所 (BSE 加入) 也是一次直和口径断点 (996→816 天)",
+   "fix": "mart 加 margin_exch_n 列, 或单所日 rzrqye/rzrqye_chg 置 NULL (项目哲学: 不知道≠0); rzrqye_chg 只在相邻两源日交易所集合一致时计算; 顺手清失败队列 stale open 项 (sync:margin below_min_rows 4 天, 是 min_rows 降 1 前残留, 数据实际已在表)"
+  },
+  {
+   "area": "sync_registry stk_factor_pro 断流",
+   "issue": "stk_factor_pro 断流 11 个交易日, 声明 freshness_sla_trading_days=1 但失败队列零痕迹、无 ALERT flag — registry 自注 \"by_ts_code 域 drain unsupported 无 fallback, 靠手动 --domain 刷新\", SLA 声明与运营模式自相矛盾, 四道防线对该域全盲 (它是 261 列技术因子源, D2 重建期会被消费)",
+   "severity": "medium",
+   "evidence": "executed: raw_tushare_stk_factor_pro max(trade_date)=20260618 (近6日 4965-4969 行/日); watermark sync:stk_factor_pro last_success_at=2026-06-19 22:01 (UTC-naive), last_data_date=20260618; 日历最新交易日=20260703 → 落后 11 交易日 vs SLA=1; 失败队列 stk_factor_pro 条目=0; ls /tmp/chunkymonkey_ALERT_*.flag 无匹配",
+   "fix": "二选一: (a) 为 by_ts_code 域实现尾部增量 (每股拉近 N 日) 接进 drain; (b) 短期先把 SLA 声明改到与手动节奏一致 + preflight 对 unsupported 域单独告警行, 不允许 SLA=1 却无人巡检的假声明"
+  },
+  {
+   "area": "built_at 完整性 (派生层)",
+   "issue": "raw 层 built_at 覆盖健康 (46/49, 缺 3 为 2 视图+deletion_record 合法), 缺口在派生层: dim_stock_segment_daily (B1 日频派生, 全表无任何时间戳列) / price_kline_qfq_tushare (L1, 列仅 date/code/OHLC) / reference 4 张 dim / feature_store 的 fact_inst_episode、mart_inst_profile(+dim)、period_windows 无 built_at; 且时间戳命名三套并存 (built_at/fetched_at/ingested_at)",
+   "severity": "low",
+   "evidence": "executed: tushare_raw 49 表中无 built_at=3 (v_dc_industry_pit/v_sw_industry_pit/mart_data_deletion_record); smartmoney 36 表中 32 无 built_at, 其中 PIT 相关缺口 dim_stock_segment_daily 锚候选=[] (实测列: stock_code/trade_date/mktcap_seg/turnover_seg/sw_l1/circ_mv/turnover_rate/rv_pctile/vol_regime); market 库 price_kline_qfq_tushare 无 built_at; feature_store 8 表中 5 无 (fact_rally_* 3 表有)。PIT 档案表锚齐: fact_top10_holder_period 有 report_date/notice_date/fetched_at, raw_org_holding_aif10 有 available_date, raw_qfii 有 notice_date, raw_aif10_valuation_quantile 有 ingested_at",
+   "fix": "dim_stock_segment_daily 优先补 built_at (它是所有策略 cell 的分层前置, 无时间戳无法审计何时建的); 其余派生表建表模板统一带 built_at; field_dictionary 收敛 built_at/fetched_at/ingested_at 命名"
+  },
+  {
+   "area": "kpl_list 采集时点",
+   "issue": "kpl_list 20260702 在北京 22:15 (available_after=18:00 声明后 4 小时) 拉取仍失败, 同批 hm_detail (22:31) / daily_info (22:53) / dc_daily (20:38) 均成功拉到 0702 — 单样本无法分辨 vendor 迟发 vs 瞬态 throttle, 若复发应把 kpl_list 的 available_after 后移或加实测注; raw 侧 drain 重放会自愈, 但叠加 F1 机制 raw 自愈 ≠ mart 自愈",
+   "severity": "low",
+   "evidence": "executed: 失败队列 open 条目 sync:kpl_list [{\"trade_date\":\"20260702\"}] last_seen=2026-07-02 14:15:31 (UTC-naive, =北京 22:15); raw_tushare_kpl_list max=20260701 rows@20260702=0, 而 raw_tushare_hm_detail rows@20260702=508 (built 14:31Z)、raw_tushare_daily_info=12 行 (14:53Z)、raw_tushare_dc_daily=1022 行 (12:38Z)",
+   "fix": "观察 1-2 个重放周期: 若 kpl_list 盘后 22 点仍常态 0 行, 把 available_after 实测后移并注明; 本条不需改代码, 但 F1 修复必须覆盖此场景 (raw 隔日补齐后 mart 行回补)"
+  },
+  {
+   "area": "raw_tushare_dc_member (回填批内纯重复, 覆盖 90% 交易日)",
+   "issue": "概念成分表 325/360 个交易日 (20250102-20260526) 含全行一致的批内重复, 成分股计数/板块宽度分母被污染 (~1%); market_pulse.py:151 inflow_breadth 直接 COUNT dc_member JOIN 行",
+   "severity": "medium",
+   "evidence": "executed: dup_groups=231,865, excess=233,544/23,592,480 行 (1.0%); identical-full-row=231,865/231,865 (100% 纯重复), multi_built_at=0 (全部 2026-06-12 回填单批产生); 影响 trade_date 325/360 个, 范围 20250102-20260526",
+   "fix": "受影响日期重拉 (MERGE 自清) 或一次性 dedup; 修后 rebuild 依赖 dc_member 的 mart_sector_pulse_daily inflow_breadth 区段"
+  },
+  {
+   "area": "raw_tushare_moneyflow_ind_dc + mart_sector_pulse_daily (grain 漏 content_type)",
+   "issue": "grain [trade_date,ts_code] 未含 content_type, 同一 BK 码同日出现在 行业+概念 两榜时撞键: 历史双行并存已传导为 mart_sector_pulse_daily 12 组 dup (chain+sector_code+trade_date 重复); 06-22 后再遇双榜日会批内静默丢一边榜单",
+   "severity": "medium",
+   "evidence": "executed: raw 层 dup_groups=12 (全部 20260213, 如 BK0733.DC 包装材料 行业 rank=19 + 概念 rank=50 双行); 按月扫描 codes_in_both: 202602=12, 其余全部月份=0; mart_sector_pulse_daily dup 12 组全在 dc_concept 20260213, content_type 12/12 组不同 (rank_flow 3 组 / quiet_outflow_days 8 组随之漂)",
+   "fix": "sync_registry moneyflow_ind_dc 域 grain 追加 content_type; 重拉 20260213; mart builder 按 chain 过滤 content_type 后 rebuild 该日 sector_pulse (12 行)"
+  },
+  {
+   "area": "raw_tushare_top_list (回填近重复 8.9%)",
+   "issue": "回填批 (2026-06-12) 分页重叠致同 (trade_date,ts_code,reason) 近重复行 (turnover_rate 0.96 vs 0.97 / float_values NULL vs 有值 微差), 龙虎榜行数与金额统计虚胖",
+   "severity": "medium",
+   "evidence": "executed: dup_groups=12,611, excess=12,647/142,800 行 (8.9%); identical-full-row=0 (全部微差近重复); multi_built_at=0/12,611 = 全部单批; 样本 600346.SH 20220411 三行仅 turnover_rate/float_values 微差",
+   "fix": "全史重拉 (grain 已含 reason, 正确; MERGE + 批内去重自清) — 无需改 grain"
+  },
+  {
+   "area": "fact_top10_holder_period / raw_org_holding_aif10 (空串 vs NULL 混用)",
+   "issue": "smartmoney 库 holder 表空串污染: fact_top10_holder_period.market 100% 为 '' (死列), hold_change 36% 为 '' 与 NULL 混用; raw_org_holding_aif10.fund_derivecode 15% 为 ''; 消费方 WHERE x IS NOT NULL 会把 '' 行当有值漏进结果",
+   "severity": "medium",
+   "evidence": "executed: fact_top10_holder_period rows=1,725,799, market=''行数 1,725,799 (100%), hold_change=''行数 623,922 (36.2%); raw_org_holding_aif10 rows=336,077, fund_derivecode=''行数 49,897 (14.8%); 对照 raw 层 kpl_list/hm_detail/limit_list_d 等 10 表空串全 0",
+   "fix": "写入端 ''→NULL 归一 (holders_aif10 / org_holding_aif10 services) + 一次性 UPDATE 清存量; market 列 100% 空考虑直接删列 (奥卡姆)"
+  },
+  {
+   "area": "raw_tushare_ths_hot (grain 列含 NULL → MERGE 永不匹配隐患)",
+   "issue": "430 行 data_type='美股' 的记录 ts_code 与 concept 均为 NULL; grain 列含 NULL 时 MERGE 的 DELETE 条件 t.ts_code=s.ts_code 永不为真 (sync_runner.py:551-552 用 = 比较), 重拉同日会重复累积 (当前尚无 dup, 属隐患)",
+   "severity": "low",
+   "evidence": "executed: ts_code IS NULL 行数=430/409,119, 全部 data_type='美股' 且 concept 同为 NULL (样本 20250619 21:30 快照); 全库 48 域 NULL-grain 扫描仅此 1 处非零; read-only: sync_runner.py:552 DELETE ... WHERE t.\"g\"=s.\"g\" 对 NULL 不匹配",
+   "fix": "写入端过滤无码行 (data_type 白名单排除美股, 或 ts_code NULL 即丢) + 一次性删 430 行存量"
+  },
+  {
+   "area": "财务/股东小表零星 grain 撞键 (stk_holdernumber/express/income/fina_mainbz/dividend)",
+   "issue": "五张表合计 <70 行 excess: stk_holdernumber grain [ts_code,end_date] 下同期多 ann_date 行 (PIT 锚抖动); express 同期两次公告并存 (早行 n_income NULL); income comp_type 异 2 组; fina_mainbz 纯重复 4 行; dividend 实施阶段两 ann_date 3 组",
+   "severity": "low",
+   "evidence": "executed: stk_holdernumber dup=44 组 excess 49 (样本 300831.SZ 20250331 三个 ann_date 20250401/0415/0429, holder_num 同 35430); express dup=5 (601231.SH 20241231: ann 20250110 部分列 NULL vs 20250212 完整); income dup=2 (comp_type 2 vs 7); fina_mainbz identical dup=4; dividend dup=3 (002352.SZ 实施 ann_date 20240829/20241031)",
+   "fix": "重拉即清 (纯重复类); stk_holdernumber/dividend 若消费方需 PIT ann_date 语义则 grain 追加 ann_date, 否则接受 keep-latest 口径并在 pit_anchor 注释写明"
+  },
+  {
+   "area": "库文件膨胀 (market / feature_store ~50% free blocks)",
+   "issue": "market.duckdb 与 feature_store.duckdb 约一半块为 free block (历史删表遗留空洞); DuckDB 会复用不算泄漏, 但文件体积虚占 ~775MB 磁盘",
+   "severity": "low",
+   "evidence": "executed: PRAGMA database_size — market: free_blocks=2,865/5,758 (49.8%, ~716MB); feature_store: free_blocks=235/479 (49.1%, ~59MB); smartmoney: 1,279/7,428 (17.2%); tushare_raw: 1/30,796 (0.003%, 极紧凑); reference: 3/15",
+   "fix": "可选: 空闲时段对 market/feature_store 走 db compact (EXPORT/IMPORT 或 COPY 到新文件) 回收; 非紧急, 新写入会复用 free block"
+  }
+ ],
+ "clean": [
+  "[vendor-mixing] market_pulse 引擎两链数据层隔离实证 (executed): mart_sector_pulse_daily dc 链 281,497 行 rs_4w 非空 0 / sw 链 56,296 行 net_amount 非空 0、inflow_breadth 非空 0; 码系零混杂 — dc 链 sector_code 100% .DC 后缀 (281,497 行), sw 链 100% .SI (56,296 行)",
+  "[vendor-mixing] inflow_breadth 链内性确认: dc_member × moneyflow_dc 全东财 JOIN (读码 market_pulse.py:149-155 + executed 实测值域 [0.0, 1.0], 仅 dc 链 203,873 行非空, dc_member 23,592,480 行 / moneyflow_dc 3,659,895 行均纯 .DC/个股码)",
+  "[vendor-mixing] mart_market_pulse_daily 连板族 (limit_list_d 交易所口径) 与 strongest_sectors_json (limit_cpt_list 同花顺 885xxx.TI, 373 码 12,073 行全 .TI) 只是各自独立 CTE 后按 trade_date LEFT JOIN 并列进同一宽行, 无任何互相计算 (读码 _market_sql limits0/strongest CTE 确认) — 同表并列合法",
+  "[vendor-mixing] sw 链分类源唯一申万: dim_stock_segment_daily.sw_l1 ← v_sw_industry_pit ← raw_tushare_index_member_all (31 个 L1, 7,807 行, in_date/out_date 区间 PIT), segments.py:116-118 as-of JOIN 带 out_date 边界 (读码确认); RS 基准 000300.SH 来自 index_daily (中证, 7 指数码 .SH/.SZ) = sanctioned 基准 JOIN",
+  "[vendor-mixing] routers/market_pulse.py 零跨链混算 (读码全 7 端点): /rotation dc 用 rank_flow、sw 用 rs_rank_4w 各走链内原生序; /members dc→dc_member、sw→index_member_all 分链取数; /heatmap /quiet /warnings 均单链过滤",
+  "[vendor-mixing] kpl_list vs limit_list_d 差值定量收口 (executed): 844 共同日中 789 天 (93.5%) 涨停家数差恰等于 kpl 内 ST 涨停数 (均差 10.7 vs ST 均 10.9), 剥离 ST + 纯 'N连板' 后最高连板 5/5 抽样日与 limit_times 完全一致 — 两源在非 ST 连续板口径下互证一致",
+  "[vendor-mixing] kpl_list 当前零消费方 (read-only: rg backend/services+routers+frontend 0 命中), 仅 registry 采集落库 (131,220 行, tag 全部='涨停', universe_filter 已滤北交所) — 无人拿开盘啦口径算天梯, 现状无违规",
+  "[vendor-mixing] 第四套行业分类数据残留 = 0 (executed): 47 表全量码系后缀盘点仅 TI (同花顺 885xxx) / DC (东财 BK, 1,075-1,097 码) / SI (申万 801xxx, sw_daily 588 码含 L1-L3) / SH/SZ (交易所+中证指数) / OF/HK (ths_hot 基金港股), 无 .CI 中信码、无通达信码",
+  "[vendor-mixing] 全 backend 双 vendor 引用文件穷举扫描 (read-only): 同时引用 sw 链与 dc/ths/kpl 表的文件仅 5 个 (market_pulse 服务+router / build_dc_industry_view / sync_runner / pipeline process), 前二者已核无混算, sync_runner 是 registry 驱动采集无 JOIN, process.py 仅编排注释 — 无漏网混算点",
+  "[vendor-mixing] 前端已有口径标注 (read-only MarketPage.tsx): 最强板块榜卡 :779 '同花顺口径'、连板天梯卡 :561 'limit_list_d 官方口径, 不含 ST'、资金热力 :234 '东财'、轮动 tab :439-440 '申万 RS / 东财资金'、预警卡 :836/:869 '申万 L1 / 东财板块' — 用户点名的 limit_cpt_list 卡确已标同花顺",
+  "[vendor-mixing] vendor 家谱 47 表矩阵 (executed 码系+read-only registry): 东财 6 (dc_daily/dc_index/dc_member/moneyflow_dc/moneyflow_ind_dc/moneyflow_mkt_dc) · 申万 2 (sw_daily/index_member_all) · 同花顺 2 (ths_hot/limit_cpt_list, 即 sanctioned 清单) · 开盘啦 1 (kpl_list) · 游资龙虎榜衍生 2 (hm_detail 201,822 行/hm_list 110 行) · 交易所+官方披露 27 (daily/adj_factor/daily_basic/daily_info/limit_list_d/margin 族/moneyflow_hsgt[注: 2024-08-19 语义断点在案]/stk_limit/suspend_d/top_list/top_inst/block_trade/trade_cal/stock_basic/stock_st/share_float/stk_holdernumber/stk_holdertrade/dividend/财报 7 表/stk_surv) · 中证指数 2 (index_daily/index_dailybasic) · tushare 自算集成 4 (moneyflow/cyq_perf/stk_factor_pro/report_rc) · 内部治理 1 (mart_data_deletion_record)",
+  "[continuity] moneyflow: 1572/1572 应有交易日 0 缺 (20200102-20260701), 7,447,261 行, 无日历外脏日期",
+  "[continuity] moneyflow_dc: 675/675 (墓碑 20231122 排除后 0 缺), 3,659,895 行",
+  "[continuity] limit_list_d: 844/844 0 缺 (20230103 起), 82,593 行",
+  "[continuity] stk_limit: 1086/1086 0 缺, 5,439,243 行",
+  "[continuity] stock_st: 1086/1086 0 缺, 164,556 行 (PIT ST 日历完整)",
+  "[continuity] suspend_d: 1086/1086 0 缺, 15,677 行 (事件域却全日有行)",
+  "[continuity] margin_detail: 1816/1816 0 缺 (20190102 起), 4,649,241 行",
+  "[continuity] margin: 1816/1816 0 缺, 4,444 行 (4 个 SSE 单行日已实测源端如此)",
+  "[continuity] dc_daily: 1572/1572 0 缺且已到 20260702, 1,400,878 行",
+  "[continuity] kpl_list: 1816/1816 0 缺至 20260701 (0702 见 failure_queue finding), 131,220 行",
+  "[continuity] hm_detail: 937/937 0 缺 (20220816 起) 且已到 20260702, 201,822 行",
+  "[continuity] daily_info: 1816/1816 0 缺且已到 20260702, 30,821 行",
+  "[continuity] moneyflow_mkt_dc: 776/776 0 缺 (20230417 起), 776 行 (1 行/日 grain 精确)",
+  "[continuity] dc_member: 360/360 0 缺 (20250102 起), 23,592,480 行",
+  "[continuity] dc_index: 360/360 0 缺, 229,081 行",
+  "[continuity] moneyflow_ind_dc: 602/602 0 缺 (20240102 起), 291,634 行",
+  "[continuity] limit_cpt_list: 602/602 0 缺, 12,073 行",
+  "[continuity] top_list: 2059/2059 0 缺 (20180102 起), 142,800 行 (对照组: 龙虎榜主表无洞)",
+  "[continuity] ths_hot 日期连续性: 601/602+墓碑 20240312 = 0 缺 (内容口径问题另列 finding)",
+  "[continuity] adj_factor: 1816/1816 0 缺, 8,382,531 行",
+  "[continuity] daily: 1816/1816 0 缺, 8,334,736 行 (K线主表无洞)",
+  "[continuity] daily_basic: 1816/1816 0 缺, 8,334,723 行",
+  "[continuity] cyq_perf: 2059/2059 0 缺 (20180102 起, 墓碑 20260615 有 1 股行不影响 distinct), 8,944,195 行",
+  "[continuity] sw_daily: 1816/1816 0 缺, 903,045 行",
+  "[continuity] index_daily: 7 指数各自窗内 missing_within=0 (000300.SH 等 6 指数 5218 天 20050104-20260701 满窗; 399006.SZ 自 20100601 上市起满窗; 000852 虽移出 code_list 历史仍全)",
+  "[continuity] index_dailybasic: 6 指数 20140212 起 missing_within=0 (前段起点错位列 finding 10)",
+  "[continuity] index_member_all(+hist): 7,807 行 / 338 个 L3 / out_date 非空 1940 行 (is_new=N 历史区间在库, 非 latest-snapshot), in_date max 20260605",
+  "[continuity] trade_cal raw: 19901219-20261231 13,162 行, built_at 2026-07-02 (dim 传导断链另列 finding 1)",
+  "[continuity] stock_basic: 5,533 行 built 2026-07-02 (>5000 门槛)",
+  "[continuity] hm_list: 110 行 built 2026-07-02 (>80 门槛)",
+  "[continuity] fina_mainbz: 20251231 单期 25,678 行 — 按年报设计合规, 下期 20260630 于 2026-08 后",
+  "[continuity] balancesheet: 20260331 期 4,998 股在库 (近 6 期 4943-4998 股满覆盖)",
+  "[continuity] stk_holdernumber: end_date max 20260622, SLA 90 内",
+  "[continuity] stk_holdertrade: ann_date 20190102-20260701 连续增量正常",
+  "[continuity] share_float: ann_date 1762/1816 日 (54 缺日=无解禁公告日, 事件域合法), 5,420,502 行至 20260701",
+  "[continuity] forecast/express 当期新鲜度: forecast ann_date 至 20260701, express 20260331 期在库 (深史起点错位列 finding 10)",
+  "[continuity] 全域横切: 47/47 域表非空; 全部日频表 dates_not_in_cal=0 + data_start 前脏行=0 (无日历外脏日期); 已墓碑 3 日 (moneyflow_dc 20231122 / ths_hot 20240312 / cyq_perf 20260615) 排除逻辑生效; 非 allow_empty 的 by_trade_date 域 drain 机制实证有效 (23 个严格日频域全部 0 中洞)",
+  "[processing] mart_sector_pulse_daily.rs_4w: 3板块×2日 (801010/801080/801780.SI × 20260630/20260701) 从 raw_tushare_sw_daily close 滚20行收益% − 000300.SH 同窗手算, 6/6 diff=0.00e+00 (如 801080 20260701 manual=26.3969551643=表值) [executed]",
+  "[processing] mart_sector_pulse_daily.quiet_inflow_days: 3板块×2日逐日递推 (|pct_change|<1.0 且 net_amount>0 连续), 6/6 一致 (BK1467.DC 1→2, BK1610.DC 0→1, BK0475.DC 0→1) [executed]",
+  "[processing] mart_sector_pulse_daily.rank_flow: 当日截面 net_amount DESC RANK 手算 (行业+概念合并 990/991 板块), 6/6 一致 (如 BK1610.DC 20260701 manual=144=表值) [executed]",
+  "[processing] mart_market_pulse_daily.promotion_rate: 20260630 manual=20/106=0.188679245283, 20260701=24/140=0.171428571429, 均与表 diff=0.00e+00 (分母=前一源日 U 行总数) [executed]",
+  "[processing] mart_market_pulse_daily.sec_board_n: lpad(first_time,6,'0')<=093059 的 U 行手算 5/5 和 16/16 一致; lpad 归一确有必要 (两日 109 行 first_time 短于 6 位, 如 '92500') [executed]",
+  "[processing] mart_market_pulse_daily.zha_ban_rate: 20260630 manual=26/(140+26)=0.156626506024, 20260701=73/(151+73)=0.325892857143, diff=0.00e+00 [executed]",
+  "[processing] mart_market_pulse_daily.rzrqye: raw_tushare_margin 3 交易所直和 20260630=3,020,396,491,899 / 20260701=3,030,474,237,454, 与表 diff=0.00e+00 [executed]",
+  "[processing] dim_stock_segment_daily.mktcap_seg: 20260701 手算 PERCENT_RANK (n=5189) 20/50/80 切分, 随机 30 股 mismatch=0/30; 全日分布 micro=1038/small=1556/mid=1557/large=1038 与表完全一致; 边界 circ_mv≈26.7亿/58.1亿/185.0亿(万元×10⁴) [executed]",
+  "[processing] dim_stock_segment_daily.rv_pctile: 600519@20260701 手算 (20日收益 STDDEV_SAMP 的 120 行严格分位) =0.441666666667, 与表 diff=0.00e+00, vol_regime=low_vol 一致 [executed]",
+  "[processing] fact_stock_form_daily.axis_pos: 600519+000004@20260701 自实现 yaml 门 (k=6/0.1 sigmoid, 几何均, 801 网格联合 max_geo) 手算 pctile/pth → axis_pos manual=low=表值, score diff=0.00e+00 (逐位复现) [executed]",
+  "[processing] fact_stock_form_daily.buyable: 600519 (close=1193.01 vs up_limit=1304.04 → True) 与 000004 (0.37=0.37 触板 → False) 均一致; 全日 5107 行与 raw stk_limit |close−up_limit|<0.005 交叉 0 mismatch, 168 触板 (vs limit_list_d U=151, 差 17 = stk_limit 含 ST 的已知口径差) [executed]",
+  "[processing] price_kline_qfq_tushare 复权链: 600519+601398 全史各 1816 行 qfq_close vs raw close×adj_factor/f_latest max_rel_diff=0.000e+00 (600519 经 17 个 adj 版本, 601398 经 14 个); 最新日锚恒等 qfq=raw (1193.01/7.06); 除权日 20260626 (adj 8.4464→8.6463) 与 20260513 (2.4965→2.5546) 前后 spot 精确; 表 8,334,736 行 = raw daily 2019+ 行数, 0 缺行 [executed]",
+  "[processing] 上游键唯一性: sw_daily/index_daily(000300)/moneyflow_ind_dc/limit_list_d 重复键均=0, margin 每日恰 3 行 (SSE/SZSE/BSE), 源新鲜至 20260701 [executed]",
+  "[pit-anchor] margin/margin_detail t+1 声明与实测完全一致: 各 1816 个交易日中当日落库天数 = 0 (全部 t+1 后写入), pit_anchor 声明准确 (executed)",
+  "[pit-anchor] 18:00 声明域无盘中泄漏窗口: daily/top_list/cyq_perf/moneyflow_mkt_dc 当日落库天数=0, moneyflow/limit_list_d 各 1 天且均在 18:00 后 — 0 例 \"当日 18:00 前落库\" 违例 (executed, 共扫 6 域 776-2059 天/域)",
+  "[pit-anchor] 今晨 20260703 07:13 盘前所有 43 域无当日行 = 正常 t+1/盘前状态; 上次 drain 07-02 09:15 北京覆盖至 20260701, B4 新域回填至 20260702 (executed)",
+  "[pit-anchor] mart_market_pulse_daily 当前与 raw 对账一致零残留: 最新行 20260701 rzrqye=3,030,474,237,454 == raw_margin 当日 SUM, lhb_count=91 == top_list DISTINCT ts_code 91; \"NULL 但 raw 有数据\" 交叉检测 rzrqye/lhb_count/mkt_pe 三列全历史 = 0/0/0 天 (executed; 归因 07-02 22:54 全量 rebuild)",
+  "[pit-anchor] 消费侧 JOIN 纪律零越线: 全 backend rg, raw moneyflow/margin 消费方仅 services/market_pulse.py + lineage 登记; feature/episode/rally_gt 零 JOIN 盘后源 — fact_rally_ground_truth 5636 行单一 built_at, max(peak_date)=2025-04-25 遵守 2025-06 前冻结, 列全为 K 线派生 (executed)",
+  "[pit-anchor] pulse 标注一致性 PASS: market_pulse.py 头注明写 rzrqye \"t+1 披露\" (L25-26)、Type A \"t 日行只用 <=t 数据\" (L34)、885xxx.TI 禁跨链 JOIN (L31-32); router 只读 display 表不跨链混算; sync_registry 43 域 100% 带 pit_anchor + available_after 机器可读声明 (read-only)",
+  "[pit-anchor] raw 层 built_at 覆盖 46/49, 缺的 3 个 = 2 个 PIT 视图 + deletion_record (合法豁免); fact_stock_form_daily / fact_rally_* 3 表均有 built_at (executed)",
+  "[pit-anchor] moneyflow_hsgt 20260701 缺行 = 香港回归日休市北向不交易, 非断流: 实测全表历年 '%0701' 行数 = 0 (2020-2026 每年 7 月 1 日均无), 20260630 及之前连续在录 (executed)",
+  "[pit-anchor] B2 反例已正确落地: fact_stock_form_daily max=20260701/1566 天、dim_stock_segment_daily max=20260701/1816 天、mart_sector_pulse_daily 两链 max=20260701 — 三张派生表与 raw K 线水位 20260701 齐平无漂移 (executed)",
+  "[schema-health] grain 幂等: 34/48 registry 域实测 GROUP BY grain 零重复 — 含核心大表 raw_tushare_daily 8,334,736 行 / adj_factor 8,382,531 / daily_basic 8,334,723 / cyq_perf 8,944,195 / stk_factor_pro 7,683,533 / moneyflow 7,447,261 / moneyflow_dc 3,659,895 / stk_limit 5,439,243 / margin_detail 4,649,241 / sw_daily 903,045 / dc_daily 1,400,878 / limit_list_d 82,593 / kpl_list 131,220 / ths_hot 409,119 全 0 dup (executed)",
+  "[schema-health] mart/衍生层 grain: mart_market_pulse_daily 844 行 / dim_stock_segment_daily 8,334,723 / fact_stock_form_daily 6,989,500 / fact_rally_ground_truth 5,636 / fact_rally_negative 31,678 / price_kline_qfq_tushare 8,334,736 / dim_trading_calendar 5,343 — 全部 0 dup (executed; 唯一例外 sector_pulse 12 组见 findings)",
+  "[schema-health] NaN 毒化: 26 张数值密集表逐 DOUBLE 列 isnan() 扫描全 0 — 含 stk_factor_pro 255 个 float 列 / moneyflow 全链 (moneyflow 9 列 + dc 12 列 + ind_dc 7 列 + mkt_dc 9 列) / limit_list_d 9 列 / kpl_list / dc_daily / cyq_perf / mart 全部 (此前 agent 报过的 limit_amount=NaN 现已不存在) (executed)",
+  "[schema-health] INT32 溢出边缘: 全 5 库 0 个 INTEGER/SMALLINT/TINYINT 列 max 值超过类型上限 50%; 37 个 BIGINT 列已实测承载超 INT32 值 (max 达 3.49e12, dc_daily.amount) = 加宽机制事后有效; sync_runner 加宽路径 fail-closed (Conversion 才加宽, 加宽后仍失败即抛, 不静默丢行) (executed + read-only sync_runner.py:557-586)",
+  "[schema-health] NULL-in-grain: 48 域全表扫描, 除 ths_hot 430 行外全 0 — MERGE DELETE-INSERT 的 = 比较无其他 NULL 失配面 (executed)",
+  "[schema-health] raw 层空串: kpl_list (lu_desc/theme 等 10 varchar 列) / hm_detail (hm_orgs 等 6 列) / hm_list / limit_list_d / limit_cpt_list / ths_hot / dc_member / dim_stock_segment_daily / fact_stock_form_daily / mart_sector_pulse_daily 空串行数全 0; raw_qfii_holding_quarterly / raw_aif10_valuation_quantile 93,616 行 / raw_aif10_peer_valuation 亦 0 (executed)",
+  "[schema-health] WAL 残留: 5/5 库 wal_size=0 bytes, data 目录无 stray .wal/.tmp 文件 (executed)",
+  "[schema-health] tushare_raw 文件健康: 8.07GB / 99,627,103 行 = 81 bytes/row, used_blocks 30,795/30,796 (free 仅 1 块) — 大回填后无膨胀, 无需 compact (executed PRAGMA database_size)",
+  "[schema-health] 批内去重 + universe 静默失败门机制本身 (2026-06-22/06-28 修) 在新数据上按声明工作: post-fix 批全部 0 grain dup, drop_duplicates + DELETE-INSERT 幂等闭环 (executed 对照 pre/post 断面) — 问题只在 grain 声明不足的域 (见 findings) 和修复前的历史存量"
+ ]
+}

@@ -1208,7 +1208,20 @@ def _append_outcome(
             blockers.append(token)
 
 
-def _check_calendar(conn: Any, details: list[dict[str, Any]], blockers: list[str], warnings: list[str]) -> dict[str, Any]:
+# 日历 horizon 门阈值 (R1 根因4, 2026-07-03): dim 未来余量 < 60 交易日 = FAIL。
+# evidence: sync_registry.yaml trade_cal 注释 "检查 max(cal_date) > today+30" 从未落码 (静默停摆
+#   模式下 watermark 门永绿, audit data_foundation_audit_20260703 dim_trading_calendar 生产链 finding);
+#   60 交易日 ≈ 3 个月缓冲 — 覆盖 tushare 年度日历发布节奏 (每年 Q4 发次年) + 人工响应期。
+CALENDAR_HORIZON_MIN_TRADING_DAYS = 60
+
+
+def _check_calendar(
+    conn: Any,
+    details: list[dict[str, Any]],
+    blockers: list[str],
+    warnings: list[str],
+    horizon_min_trading_days: int = CALENDAR_HORIZON_MIN_TRADING_DAYS,
+) -> dict[str, Any]:
     from services.data_access import resolver
 
     # §9 拆库: 先 route 到 reference-backed dim 再查存在性。旧版先 _table_exists(conn[smartmoney]) 早退,
@@ -1248,6 +1261,15 @@ def _check_calendar(conn: Any, details: list[dict[str, Any]], blockers: list[str
               )
             """
         ).fetchone()
+        # horizon 前瞻余量 (今日之后仍在日历内的交易日数, 北京时间口径与 latest_completed_trade_date 一致)
+        from zoneinfo import ZoneInfo
+
+        today_iso = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+        horizon_row = cal_conn.execute(
+            "SELECT COUNT(*) FROM dim_trading_calendar "
+            "WHERE is_trading = 1 AND CAST(trade_date AS VARCHAR) > ?",
+            [today_iso],
+        ).fetchone()
     finally:
         if cal_own:
             cal_conn.close()
@@ -1273,6 +1295,27 @@ def _check_calendar(conn: Any, details: list[dict[str, Any]], blockers: list[str
         row_count=evidence["rows"],
         violation_count=violations,
         reason=None if violations == 0 else "calendar has null dates, duplicate dates, or no trading days",
+    )
+    _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
+    # horizon 门 (R1 根因4, 2026-07-03): 日历"新鲜"语义 = 未来余量够用, 非"最近写过"。
+    #   余量 < 阈值 = FAIL (raw→dim 传导断链 或 tushare 未发布次年日历), 落实 sync_registry
+    #   trade_cal 那条只存在于注释里的 horizon SLA 声明。
+    future_td = int(horizon_row[0] or 0) if horizon_row else 0
+    evidence["future_trading_days"] = future_td
+    evidence["horizon_min_trading_days"] = int(horizon_min_trading_days)
+    horizon_ok = future_td >= int(horizon_min_trading_days)
+    item = _detail(
+        domain="calendar",
+        table_name="dim_trading_calendar",
+        check_name="horizon",
+        status="pass" if horizon_ok else "fail",
+        row_count=evidence["rows"],
+        violation_count=0 if horizon_ok else 1,
+        reason=None if horizon_ok else (
+            f"calendar horizon only {future_td} trading days after {today_iso} "
+            f"(< {int(horizon_min_trading_days)}): raw→dim 传导断链或 tushare 未发布次年日历 — "
+            "跑 services.calendar_builder.build_latest 并核 trade_cal sync"
+        ),
     )
     _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
     return evidence

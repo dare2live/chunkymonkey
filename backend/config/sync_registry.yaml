@@ -304,7 +304,7 @@ domains:
     source: tushare
     api: moneyflow_ind_dc
     target_table: raw_tushare_moneyflow_ind_dc
-    grain: [trade_date, ts_code]
+    grain: [trade_date, ts_code, content_type]
     batch_mode: by_trade_date
     pit_anchor: "trade_date; 板块资金流盘后 -> JOIN t-1; rank 字段是分页伪 rank 禁用 (INDEX §8 陷阱)"
     available_after: "18:00"
@@ -377,6 +377,9 @@ domains:
     freshness_sla_trading_days: 2
     min_rows_per_batch: 1
     allow_empty_batch: true   # 个别日仅游资席位无机构明细, 合法空 (走增量 fallback 非 drain)
+    cross_check_domain: top_list   # R1 根因2 交叉参照门 (2026-07-03): 本域 0 行但同日 top_list 行数 > 阈值
+                                   #   = 可疑空入 failure_queue 非合法空。实测支撑: 8.5 年有数日 min=286 行
+                                   #   从无 <50 行日, 16 个 0 行缺日源端全有数据 (audit 20260703 top_inst finding)
 
   # stk_surv 已激活注册 (下方 stk_surv 块): raw_tushare_stk_surv 360k 已拉全 (2021-08~ surv_date 新鲜);
   #   批2 2026-06-28 institution_survey SERVE entity 切此 tushare 唯一源 (旧 aif10+akshare raw_institution_surveys 退役物删)。
@@ -386,7 +389,7 @@ domains:
     api: report_rc
     target_table: raw_tushare_report_rc
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
-    grain: [ts_code, report_date, org_name, report_title]
+    grain: [ts_code, report_date, org_name, report_title, quarter]
     batch_mode: by_trade_date
     date_param: report_date   # 接口日期参数 = 研报日期, 非 trade_date
     pit_anchor: "report_date; 卖方研报发布日 -> JOIN t-1 (研报盘后/隔日入库, 保守 t+1)"
@@ -657,7 +660,7 @@ domains:
     api: block_trade
     target_table: raw_tushare_block_trade
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
-    grain: [ts_code, trade_date, price, vol]   # 同股同日可多笔大宗 (不同价/量), 全留
+    grain: [ts_code, trade_date, price, vol, buyer, seller]   # 同股同日可多笔大宗 (不同价/量), 全留
     batch_mode: by_trade_date
     date_param: trade_date
     data_start: "20230101"   # 对齐 cyq_perf/panel 可用窗 (stage-conditional 测窗)
@@ -666,6 +669,8 @@ domains:
     freshness_sla_trading_days: 5
     min_rows_per_batch: 1
     allow_empty_batch: true   # 部分交易日确无大宗 (真空); 间歇空响应靠尾部 gap 扫描补 (mythos §10)
+    cross_check_domain: daily      # R1 根因2 交叉参照门 (2026-07-03): 大宗 0 笔但全市场正常交易
+                                   #   (daily 同日 > 阈值行) = 可疑空非真空 (block_trade 20250917 空洞同机制第二例证)
   express:   # 业绩快报 (2026-06-14 实弹核证: 介于预告与正式财报, 含 revenue/n_income/eps/roe 实数 — PEAD 二段)
     source: tushare
     api: express_vip   # 关键: 裸 express 强制 ts_code 不可批 → 用 *_vip 按 period 整批 (本 2000积分 token 实弹调通)
@@ -686,7 +691,7 @@ domains:
     api: fina_indicator
     target_table: raw_tushare_fina_indicator
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
-    grain: [ts_code, end_date, update_flag]   # 实测同 end_date 同 ann_date 仍 2 行 (uf=0原始/1修正) → grain 必含 update_flag (ann_date 不区分修订)
+    grain: [ts_code, end_date, ann_date]   # 实测同 end_date 同 ann_date 仍 2 行 (uf=0原始/1修正) → grain 必含 update_flag (ann_date 不区分修订)
     batch_mode: by_ts_code   # 实测 ann_date/period 均返 0 行 (不可批) → 唯一可行逐股; 100 条/call 硬上限
     increment_mode: by_report_period   # 2026-06-23 按季报期增量 (日常--all-due跳已最新股); 注: fixed_params end_date 硬编需随季度更新另案
     fixed_params: {start_date: "20230101", end_date: "20260612"}   # rule-compliance: ok evidence=逐股窗口 2023-2026 (对齐 feature_panel; 每股<100行避截断, 全史需多窗口分页另案)
