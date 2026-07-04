@@ -42,7 +42,10 @@ MART_GRAINS: list[tuple[str, str, list[str]]] = [
     # (db_alias, table, grain)
     ("smartmoney", "dim_stock_segment_daily", ["stock_code", "trade_date"]),          # services/segments.py B1
     ("smartmoney", "fact_stock_form_daily", ["stock_code", "trade_date"]),            # services/technical_states B2
-    ("smartmoney", "mart_sector_pulse_daily", ["chain", "sector_code", "trade_date"]),  # services/market_pulse.py B4
+    ("smartmoney", "mart_sector_pulse_daily", ["chain", "sector_code", "trade_date", "content_type"]),
+    # services/market_pulse.py B4/v3 — content_type 入 grain (2026-07-04 真库首跑实锤): tushare 源
+    # (moneyflow_ind_dc) 12 个板块代码 (如 BK0733.DC 包装材料) 同日**真实**兼具"行业"+"概念"双重归类,
+    # 非脏数据; v3 前端已按 content_type 分 tab (行业/概念) 展示, 天然消费该维度不冲突。
     ("smartmoney", "mart_market_pulse_daily", ["trade_date"]),                        # services/market_pulse.py B4
 ]
 

@@ -16,6 +16,16 @@
 #   data_start     回填起点 (E8 探底/文档实测)
 #   freshness_sla_trading_days  落后超过 N 交易日 = audit FAIL
 #   min_rows_per_batch  单批最低行数 sanity (低于即可疑, 0 行必重试)
+#
+# 连续性/完整性常驻审查键 (backend/scripts/check_continuity_integrity.py 消费, 2026-07-03 R1 根因2/4/6):
+#   known_empty_days   墓碑: 实测源端真空的交易日列表 (探测返 0 非 throttle), 日历缺日审查不计缺
+#   gap_tolerance      日历缺日容忍: none(默认, 键不存在=none)=中间空洞 FAIL / annotate=只标注 WARN
+#                      (事件稀疏域: 多数交易日天然无数据, 如 dividend 非分红季) / hk_holidays=预留值
+#                      (源端假期域如 moneyflow_hsgt 港股假日; 假期日历校验未实现前按 annotate 处理)
+#   freshness_group_col 多榜/多组共表域的分组列 (如 ths_hot data_type): 按组查 MAX(date), 任何组
+#                      落后 > SLA x 3 交易日 = FAIL — 根治"表级新鲜度探不到子榜断流" (热基停 4 个月反例)
+#   dead_groups        分组墓碑: 已裁决死亡的子榜/组列表, 分组新鲜度不再对其告警
+#   (cross_check_domain 同族交叉参照键已在用, 见 top_inst/block_trade 条目)
 
 version: 1
 
@@ -421,6 +431,8 @@ domains:
     api: ths_hot
     target_table: raw_tushare_ths_hot
     grain: [trade_date, data_type, ts_code, rank_time]   # 实测同股同日多时点榜单快照, rank_time 必须入键
+    freshness_group_col: data_type   # 分组新鲜度示例 (2026-07-03): 8 榜共表, 表级 MAX(trade_date) 探不到
+                                     #   单榜断流 (热基 2026-02-27 停更 4 个月反例); 裁决死榜后加 dead_groups 墓碑
     batch_mode: by_trade_date
     fixed_params:
       data_type: "热股"   # 锁单榜: 全量取 2000 行整 = 多榜合计截断 (实测); 单榜 444 行完整。

@@ -416,6 +416,11 @@ def rebuild(conn=None, data_end=None, raw_conn=None) -> dict:
         conn = duck_connect(str(mf.path_for("feature_store")), read_only=False)
         conn.execute(f"ATTACH IF NOT EXISTS '{mf.path_for('market')}' AS mk (READ_ONLY)")
         conn.execute(f"ATTACH IF NOT EXISTS '{mf.path_for('reference')}' AS ref (READ_ONLY)")
+        conn.execute(f"ATTACH IF NOT EXISTS '{mf.path_for('tushare_raw')}' AS tr (READ_ONLY)")
+        # 第三道门 (2026-07-03 用户定调"审查器像交易日历一样强制"): 消费侧连续性硬门 —
+        # 触板判定消费的日频 raw 域有未豁免中间缺口 = raise (缺口喂进 GT = 错误标注)
+        from services.continuity_guard import assert_domains_continuous
+        assert_domains_continuous(["daily", "stk_limit"], conn)
     if own_raw:
         raw_conn = duck_connect(str(mf.path_for("tushare_raw")), read_only=True)
     try:

@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-07-03 07:08:30 CST
+**Snapshot 时间**: 2026-07-04 21:46:17 CST
 
 ## 主线状态
 
@@ -44,28 +44,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `603651dc feat: 情绪温度可视化重设计 — 曲线换 climate-stripes 温度条纹带` |
-| 最近 24h commits | 24 |
-| 未 commit 文件 | 0 |
+| HEAD | `4084fed6 feat: 感知 v3 (flow_regime 六标签+全模块下钻) + 加工层审计波1修复 (rzrqye 假摆动 HIGH 等 8 修)` |
+| 最近 24h commits | 0 |
+| 未 commit 文件 | 13 |
 
 ### 最近 10 commits
 
 ```
+4084fed6 feat: 感知 v3 (flow_regime 六标签+全模块下钻) + 加工层审计波1修复 (rzrqye 假摆动 HIGH 等 8 修)
+436ba2a6 docs: 市场感知 v3 设计定稿 — 资金流形态分类学 + 全模块层级下钻 (用户定调)
+7b0f7714 fix: start.command 双击打开 404 根治 — 根路由指已退役 dossier 视图 + R4 轻修批 7 项
+1b94dd7a feat: 数据底座六根因根治 R0止血+R1机制件 — 2 CRITICAL grain 静默丢失修复 + 四道新门
 603651dc feat: 情绪温度可视化重设计 — 曲线换 climate-stripes 温度条纹带
 2f98f78b feat: B4 v2 感知增强 + 前端浅色重设计 — 概念/龙头缺口闭环 + 5 新域 + 情绪周期仪表盘
 1beb16bc docs: D1 结构常数敏感性留档 + v2 参数冻结 (考古修正#9 关账)
 928d8b72 feat: D1 GT v2 交付 — 主升浪已知答案落库 5636 episode + Type A 纯度门列名根治
 1b2a1c0a feat: B2 全量验收 + C4 感知页闭环 + D1 前置件 (GT考古/holdout立法/v2设计) — D 线开工就绪
 e1a42d90 feat: C1/C2 edge 前端骨架 — React+Vite 机构档案页+实盘模拟页
-6abeeaa7 feat: B线基础前置件三件收口 — B3两融域+B4市场感知+B2形态识别重建
-c22ec626 doc: 市场感知 follow-the-money 架构设计 + perception 残留清 (audit measured)
-e37337f4 feat: B1 股票分层模块 — 833万行全史分层标签, 策略cell单一计算点 (measured)
-9e092351 feat: Phase A 机构档案 API — 排名/档案/建仓信号流 (总体路线第一站, measured)
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**run startup checks first — scripts/chunkyctl doctor --fast; prioritize data_health blocking_yellow, then stage-opt structural blocker / need_027 blocked-gap triage**
+**13 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

@@ -21,6 +21,17 @@ def run_store(ctx: PipelineContext) -> None:
         ctx.run_script("backend/scripts/refresh_source_watermarks.py",
                        degraded_msg="watermark refresh 失败 — SLA 体系将持续误报 stale")
 
+    # Step 2.98: 数据连续性/完整性常驻审查 (R1 根因2/4/6 机械门 2026-07-03: 中间空洞/横截面骤降/
+    #   子榜断流/声明-实测漂移/by_ts_code 断流)。FAIL = degraded + 专属 flag (非 FAIL 自愈清 flag,
+    #   与 /tmp/chunkymonkey_ALERT_*.flag 告警链同模式); read_only 全库扫描, skip_sync 也跑 (库存审查)。
+    if not ctx.dry:
+        ctx.run_script(
+            "backend/scripts/check_continuity_integrity.py",
+            ["--alert-flag", "/tmp/chunkymonkey_ALERT_continuity.flag",
+             "--json-out", f"data/audit/continuity_{ctx.date}.json"],
+            degraded_msg=("continuity/integrity 审查 FAIL — 库存数据缺日/断流/横截面异常 "
+                          f"(详 data/audit/continuity_{ctx.date}.json + ALERT_continuity.flag)"))
+
     # Step 3.99: 实盘模拟 mark-to-market (2026-07-02 手动版: 用户"点更新数据时随之更新";
     #   必在 K线清洗步之后 — 读 SERVE kline_qfq/index_daily 最新价快照 nav)
     if not ctx.dry:

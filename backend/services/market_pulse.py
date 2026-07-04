@@ -635,8 +635,11 @@ def rebuild_all(conn=None, cfg: dict[str, Any] | None = None) -> dict[str, Any]:
             _attach_sources(con)
         con.execute(f"DROP TABLE IF EXISTS {SECTOR_TABLE}")
         con.execute(f"CREATE TABLE {SECTOR_TABLE} AS {_sector_sql(cfg)}")
+        # 索引含 content_type (2026-07-04 真库首跑实锤): 12 个 dc 板块代码同日兼具"行业"+"概念"
+        # 双重归类是 tushare 源真实现象 (如 BK0733.DC 包装材料), 真实唯一键=四列非三列;
+        # check_grain_uniqueness.py MART_GRAINS 同步声明。
         con.execute(f"CREATE INDEX IF NOT EXISTS idx_pulse_sector "
-                    f"ON {SECTOR_TABLE}(chain, sector_code, trade_date)")
+                    f"ON {SECTOR_TABLE}(chain, sector_code, trade_date, content_type)")
         con.execute(f"DROP TABLE IF EXISTS {MARKET_TABLE}")
         con.execute(f"CREATE TABLE {MARKET_TABLE} AS {_market_sql(cfg)}")
         s_rows, s_days = con.execute(

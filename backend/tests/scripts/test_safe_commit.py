@@ -39,6 +39,9 @@ def _make_repo_with_staged_python(tmp_path: Path) -> Path:
     _write(repo / "backend" / "scripts" / "check_serve_read_layer.py", "raise SystemExit(0)\n")
     _write(repo / "backend" / "scripts" / "check_calendar_usage.py", "raise SystemExit(0)\n")
     _write(repo / "backend" / "scripts" / "check_dead_references.py", "print('[dead-references] PASS')\nraise SystemExit(0)\n")
+    # 2026-07-04 沙箱跟上 Step 3.98 (grain-uniqueness 门, 本 session R1 新 wire): 沙箱无真实
+    #   sync_registry/数据库, 未 stub 会真跑该脚本报错退出非0 (与上条同款坑, 非本次逻辑改动引入)。
+    _write(repo / "backend" / "scripts" / "check_grain_uniqueness.py", "print('grain-uniqueness: stub PASS')\nraise SystemExit(0)\n")
     _write(repo / "README.md", "seed\n")
 
     assert _run(["git", "init"], repo).returncode == 0

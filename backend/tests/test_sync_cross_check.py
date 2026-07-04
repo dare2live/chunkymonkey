@@ -155,3 +155,25 @@ def test_real_registry_declares_cross_checks():
         assert cross in reg["domains"], f"交叉域 {cross} 必须已注册"
         assert not reg["domains"][cross].get("allow_empty_batch"), \
             "交叉参照域自身必须非 allow_empty (否则两域同吞时门失明)"
+
+
+def test_universe_filter_all_dropped_code_shape_fingerprint():
+    """假阳性根治 (2026-07-03 share_float 两撞): 被丢行像股票代码=合法长尾 (任意行数);
+    不像 (日期样)=filter 列配错才 raise。"""
+    import pandas as pd
+    from services.data_sources import sync_runner as sr
+
+    spec = {"domain": "t_test_dom", "universe_filter": True, "grain": ["ts_code", "ann_date"], "target_table": "t_test"}
+    bj_batch = pd.DataFrame({"ts_code": [f"83518{i}.BJ" for i in range(8)], "ann_date": ["20240101"] * 8})
+    misconfig = pd.DataFrame({"ts_code": ["20240101", "20240102"], "ann_date": ["20240101"] * 2})
+
+    class _FakeConn:
+        def execute(self, *a, **k):
+            raise AssertionError("空批不应触 SQL")
+        def register(self, *a, **k): pass
+        def unregister(self, *a, **k): pass
+
+    assert sr._write_batch(_FakeConn(), spec, bj_batch.to_dict("records")) == 0  # 8 行全 BJ 合法
+    import pytest as _pt
+    with _pt.raises(ValueError, match="不像股票代码"):
+        sr._write_batch(_FakeConn(), spec, misconfig.to_dict("records"))

@@ -522,17 +522,26 @@ def _write_batch(conn, spec: dict[str, Any], rows: list[dict[str, Any]]) -> int:
         ucol = spec.get("universe_filter_col") or grain[0]
         if ucol in df.columns:
             _n0 = len(df)
+            _df_orig = df
             df = df[df[ucol].astype(str).str[:2].isin(prefixes)]
             if len(df) < _n0:
                 log.info("[universe-filter] %s 丢 %d 非白名单前缀行 (keep prefixes=%s)", table, _n0 - len(df), sorted(prefixes))
             # 静默失败门 (2026-06-28 谄媚死根治): universe_filter 丢光整个非空批 = 几乎必是 filter 列漏配
             #   (如 top_list/top_inst 缺 universe_filter_col → 用 grain[0]=trade_date 过滤前缀'20'全丢)。
             #   绝不静默 return 0 让 watermark 假进 — raise 让该批记 failure (诚实失败 > 谄媚成功)。
+            # 2026-07-03 假阳性根治 (share_float 两撞: 1 行批与 8 行批全为北交所公告, 行数阈值治标):
+            #   本质指纹 = 被丢行的值像不像股票代码 — 像 (6位数字+交易所后缀) = 合法北交所/三板过滤长尾;
+            #   不像 (如 '20260622' 日期样) = universe_filter_col 配错, 才是门要抓的 (top_list 反例)。
             if df.empty and _n0 > 0:
+                _dropped_sample = _df_orig[ucol].astype(str).head(20)
+                if _dropped_sample.str.match(r"^\d{6}\.(SH|SZ|BJ|OC)$").all():
+                    log.warning("[universe-filter] %s 整批 %d 行全为非白名单市场股票 (北交所/三板类合法长尾), 记 0 行继续",
+                                table, _n0)
+                    return 0
                 raise ValueError(
-                    f"universe_filter 把 {table} 整批 {_n0} 行全丢 (filter_col={ucol!r}, prefixes={sorted(prefixes)}); "
-                    f"几乎必是 universe_filter_col 漏配 (该列值不像股票代码)。拒绝静默返0防谄媚死 — "
-                    f"修 sync_registry 该域 universe_filter_col 指向真股票代码列 (如 ts_code/con_code)。"
+                    f"universe_filter 把 {table} 整批 {_n0} 行全丢且值不像股票代码 (filter_col={ucol!r}, "
+                    f"样本={_dropped_sample.head(3).tolist()}); 几乎必是 universe_filter_col 漏配。"
+                    f"拒绝静默返0防谄媚死 — 修 sync_registry 该域 universe_filter_col 指向真股票代码列。"
                 )
             if df.empty:
                 return 0

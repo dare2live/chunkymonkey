@@ -45,6 +45,7 @@ member_service_files:
   - data_audit.py            # 审计
   - institution_profile.py   # M3 加工 builder (2026-07-02 W1: 读 raw/L1 物化 feature_store L2 画像;
                              #   与 build_price_kline_qfq_tushare 同性质; 消费方读其产物走 SERVE entity[A阶段接])
+  - continuity_guard.py      # 消费侧连续性硬门 (2026-07-03 用户定调交易日历级强制: 中间缺口喂进研究=raise; 消费方=rally_gt 第三道门+D2 builder 必接; 采集侧告警=check_continuity_integrity)
   - calendar_builder.py      # M2 dim 刷新 builder (2026-07-03 R1 根因3: raw_tushare_trade_cal→dim_trading_calendar 增量, 挂 acquire Step 2.96; 根治日历孤儿断链)
   - segments.py              # M3 加工 builder (2026-07-02 B1: 读 raw daily_basic+PIT行业 物化分层标签, 单一计算点)
   - rally_gt.py              # D1 GT v2 加工 builder (2026-07-02: 读 market K线 + raw stock_st/stock_basic/index_member_all,
