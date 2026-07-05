@@ -13,6 +13,7 @@ import {
   fetchDcRotation,
   fetchDrill,
   fetchFlowBoard,
+  fetchFlowStripe,
   fetchHeatmap,
   fetchRotation,
   fetchSentiment,
@@ -122,6 +123,122 @@ function MiniFlowStripe({ dates, values }: { dates: string[]; values: (number | 
   );
 }
 
+// ── v3.5: 资金流向曲线 (逐日净流条纹之外的连续趋势视图) ──────────────────────
+// 设计: 单板块用"当日净流(柱) + 累计净流(线)"双轴组合 (细节视图, 缺日置零不连断);
+// 多板块对比用"累计净流(线)"单轴叠加 (趋势对比, 不做柱防止多组柱子互相遮挡)。
+// 累计从窗口首日起算 (非全历史累计), 仅表达"本窗口内资金净流入/流出的持续性", 非绝对仓位。
+
+/** 缺日(null)按0处理后前缀和 — 窗口内累计净流, 用于表达持续性趋势 (非绝对量)。 */
+function cumulativeSeries(values: (number | null)[]): number[] {
+  let acc = 0;
+  return values.map((v) => {
+    acc += v ?? 0;
+    return acc;
+  });
+}
+
+const CURVE_PALETTE = [
+  "#3b66d4", "#d4342c", "#0f8a4e", "#a06a00", "#7d5ba6", "#1f8a8c", "#c2703d", "#5c6bc0",
+];
+
+/** 多板块累计净流对比曲线 (topN 叠加, 单轴; 悬浮框汇总当日各线数值)。 */
+function multiSectorCurveOption(dates: string[], series: { name: string; values: (number | null)[] }[]): EChartsOption {
+  const md = dates.map(fmtMD);
+  return {
+    grid: { left: 64, right: 16, top: 8, bottom: 50 },
+    xAxis: {
+      type: "category",
+      data: md,
+      axisLabel: { color: UI.textFaint, fontSize: 11 },
+      axisLine: { lineStyle: { color: UI.border } },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: "value",
+      axisLabel: { color: UI.textFaint, fontSize: 11, formatter: (v: number) => fmtAmountCn(v) },
+      splitLine: { lineStyle: { color: UI.borderSoft } },
+    },
+    legend: {
+      bottom: 0,
+      type: "scroll",
+      textStyle: { color: UI.textDim, fontSize: 11 },
+      itemWidth: 14,
+      itemHeight: 8,
+    },
+    tooltip: {
+      trigger: "axis",
+      valueFormatter: (v) => fmtAmountCn(v as number, true),
+    },
+    series: series.map((s, i) => ({
+      name: s.name,
+      type: "line",
+      showSymbol: false,
+      smooth: false,
+      lineStyle: { width: 2, color: CURVE_PALETTE[i % CURVE_PALETTE.length] },
+      itemStyle: { color: CURVE_PALETTE[i % CURVE_PALETTE.length] },
+      data: cumulativeSeries(s.values),
+    })),
+  };
+}
+
+/** 单板块细节曲线: 柱=当日净流 (色随涨跌), 线=窗口累计净流 (右轴)。 */
+function sectorDrillCurveOption(dates: string[], values: (number | null)[]): EChartsOption {
+  const md = dates.map(fmtMD);
+  const cum = cumulativeSeries(values);
+  return {
+    grid: { left: 64, right: 64, top: 8, bottom: 28 },
+    xAxis: {
+      type: "category",
+      data: md,
+      axisLabel: { color: UI.textFaint, fontSize: 11 },
+      axisLine: { lineStyle: { color: UI.border } },
+      axisTick: { show: false },
+    },
+    yAxis: [
+      {
+        type: "value",
+        name: "当日净流",
+        nameTextStyle: { color: UI.textFaint, fontSize: 10 },
+        axisLabel: { color: UI.textFaint, fontSize: 11, formatter: (v: number) => fmtAmountCn(v) },
+        splitLine: { lineStyle: { color: UI.borderSoft } },
+      },
+      {
+        type: "value",
+        name: "累计净流",
+        nameTextStyle: { color: UI.textFaint, fontSize: 10 },
+        axisLabel: { color: UI.textFaint, fontSize: 11, formatter: (v: number) => fmtAmountCn(v) },
+        splitLine: { show: false },
+      },
+    ],
+    tooltip: {
+      trigger: "axis",
+      formatter: (params) => {
+        const arr = params as unknown as { seriesName: string; value: number; axisValue: string }[];
+        if (!arr.length) return "";
+        const lines = arr.map((p) => `${p.seriesName}: ${fmtAmountCn(p.value, true)}`);
+        return `${arr[0].axisValue}<br/>${lines.join("<br/>")}`;
+      },
+    },
+    series: [
+      {
+        name: "当日净流",
+        type: "bar",
+        yAxisIndex: 0,
+        data: values.map((v) => (v === null ? null : { value: v, itemStyle: { color: v >= 0 ? UI.up : UI.down } })),
+      },
+      {
+        name: "累计净流",
+        type: "line",
+        yAxisIndex: 1,
+        showSymbol: false,
+        lineStyle: { width: 2, color: UI.accent },
+        itemStyle: { color: UI.accent },
+        data: cum,
+      },
+    ],
+  };
+}
+
 // ── v3: 统一下钻面板 (热力图/轮动表/资金流向榜 三处共用, 防三份实现漂移) ────
 
 export interface DrillTarget {
@@ -227,6 +344,44 @@ function DrillStockTable(props: { rows: DrillStockRow[] }) {
 const CRUMB_LEVEL_CN: Record<string, string> = { L1: "一级", L2: "二级", L3: "三级", sector: "板块" };
 
 /** 统一下钻面板: target 为入口板块 (卡片行点击注入); 内部管理当前节点, 面包屑回退。 */
+const DRILL_CURVE_DAYS = [60, 120, 250] as const;
+
+/** 当前下钻节点的资金流曲线 (柱=当日净流/线=窗口累计净流); 独立取数, 节点切换即重取。 */
+function DrillCurve(props: { chain: PulseChain; code: string; name: string | null }) {
+  const [days, setDays] = useState<number>(120);
+  const state = useFetch(
+    () => fetchFlowStripe({ code: props.code, chain: props.chain, days }),
+    [props.chain, props.code, days],
+  );
+  const option = useMemo(
+    () => (state.data && state.data.dates.length ? sectorDrillCurveOption(state.data.dates, state.data.values) : null),
+    [state.data],
+  );
+  return (
+    <div className="drill-curve">
+      <div className="drill-curve-head">
+        <span className="section-label">
+          {(state.data?.sector_name ?? props.name ?? props.code)} · 资金流向曲线
+        </span>
+        <div className="tab-group">
+          {DRILL_CURVE_DAYS.map((n) => (
+            <button
+              key={n}
+              className={`btn tab${days === n ? " active" : ""}`}
+              onClick={() => setDays(n)}
+            >
+              {n}日
+            </button>
+          ))}
+        </div>
+      </div>
+      <FetchGate state={state} empty={(x) => x.dates.length === 0} emptyHint="该节点暂无资金流历史">
+        {() => (option ? <EChart option={option} height={180} /> : null)}
+      </FetchGate>
+    </div>
+  );
+}
+
 function DrillPanel(props: { target: DrillTarget; onClose: () => void }) {
   const { target } = props;
   const [code, setCode] = useState<string>(target.code);
@@ -263,6 +418,11 @@ function DrillPanel(props: { target: DrillTarget; onClose: () => void }) {
           </button>
         </span>
       </div>
+      <DrillCurve
+        chain={target.chain}
+        code={code}
+        name={(d?.breadcrumb?.length ? d.breadcrumb[d.breadcrumb.length - 1].name : null) ?? target.name}
+      />
       <FetchGate state={state} empty={(x) => x.rows.length === 0} emptyHint="该节点无下层数据">
         {(resp) =>
           resp.rows_level === "stock" ? (
@@ -800,6 +960,45 @@ const FLOW_BOARD_TABS = [
   { key: "out", label: "流出形态" },
 ] as const;
 
+const MULTI_CURVE_TOPN = [3, 5, 8] as const;
+
+/** 多板块累计净流对比曲线: 当前 tab (流入/流出) 前 topN 板块叠加, 复用 flow_board 已取的 stripe。 */
+function MultiSectorCurve(props: { rows: FlowBoardRow[]; stripeDates: string[] }) {
+  const [topN, setTopN] = useState<number>(5);
+  const picked = props.rows.slice(0, topN);
+  const option = useMemo(
+    () =>
+      picked.length
+        ? multiSectorCurveOption(
+            props.stripeDates,
+            picked.map((r) => ({ name: r.sector_name, values: r.stripe })),
+          )
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [picked.map((r) => r.sector_code).join(","), props.stripeDates],
+  );
+  if (!option) return <div className="state-hint">暂无可对比板块</div>;
+  return (
+    <div className="multi-curve">
+      <div className="drill-curve-head">
+        <span className="section-label">累计净流对比 (近{props.stripeDates.length}日, 趋势非绝对仓位)</span>
+        <div className="tab-group">
+          {MULTI_CURVE_TOPN.map((n) => (
+            <button
+              key={n}
+              className={`btn tab${topN === n ? " active" : ""}`}
+              onClick={() => setTopN(n)}
+            >
+              前{n}
+            </button>
+          ))}
+        </div>
+      </div>
+      <EChart option={option} height={220} />
+    </div>
+  );
+}
+
 function FlowBoardCard() {
   const [tab, setTab] = useState<"in" | "out">("in");
   const [drill, setDrill] = useState<DrillTarget | null>(null);
@@ -831,13 +1030,15 @@ function FlowBoardCard() {
         empty={(d) => d.inflow.length === 0 && d.outflow.length === 0}
         emptyHint="当前无显著资金流形态的板块"
       >
-        {(d) => (
-          <FlowBoardTable
-            rows={tab === "in" ? d.inflow : d.outflow}
-            stripeDates={d.stripe_dates}
-            onDrill={setDrill}
-          />
-        )}
+        {(d) => {
+          const rows = tab === "in" ? d.inflow : d.outflow;
+          return (
+            <>
+              <MultiSectorCurve rows={rows} stripeDates={d.stripe_dates} />
+              <FlowBoardTable rows={rows} stripeDates={d.stripe_dates} onDrill={setDrill} />
+            </>
+          );
+        }}
       </FetchGate>
       {drill && <DrillPanel target={drill} onClose={() => setDrill(null)} />}
     </Card>

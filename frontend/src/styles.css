@@ -916,6 +916,33 @@ select:focus {
   gap: 8px;
 }
 
+/* v3.5 资金流向曲线 (下钻面板细节曲线 + 流向榜多板块对比曲线共用头部布局) */
+.drill-curve,
+.multi-curve {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: var(--bg-panel);
+}
+
+.drill-curve-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+
+.drill-curve-head .section-label {
+  margin: 0;
+}
+
+.drill-curve-head .section-label::after {
+  content: none;
+}
+
 /* B2 突破事件徽标 (叶子层描述性展示, 非买卖暗示) */
 .badge-breakout {
   display: inline-block;

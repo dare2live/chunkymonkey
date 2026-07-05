@@ -62,16 +62,27 @@ def test_registry_surgery_contract_20260612():
     # 截断防线: dc 系必须声明 page_limit (catalog 单次上限 5000 实锤)
     assert d["dc_member"]["page_limit"] == 5000
     assert d["dc_index"]["page_limit"] == 5000
+    # 截断防线 (2026-07-05 R4 静默截断实锤三例, 宪法第6条同型反例):
+    # index_dailybasic 无声明时 16 年全量请求被截最近~3000行(早4年历史丢失);
+    # share_float 无声明时全库 390 交易日卡在 5900-6021 (实测真实总量 >=12000, 部分日 >=30916);
+    # block_trade 无声明时 20250918 实测 1001 行 (offset=1000 仍返 1 行) 恰好压线 1000 上限。
+    assert d["index_dailybasic"]["page_limit"] == 3000
+    assert d["share_float"]["page_limit"] == 6000
+    assert d["block_trade"]["page_limit"] == 1000
     # 白跑防线: 2019 年截面 ~3700 只, min_rows 必须 <= 3000
     assert d["daily"]["min_rows_per_batch"] <= 3000
     assert d["adj_factor"]["min_rows_per_batch"] <= 3000
     # drain 收敛: moneyflow_ind_dc 实测 86 行/日为合法全量
     assert d["moneyflow_ind_dc"]["min_rows_per_batch"] <= 86
     # 范围决策: 未批准历史段不进 drain expected (改回更早值必须走 chain10 决策)
-    assert d["top_list"]["data_start"] == "20180102"
-    assert d["top_inst"]["data_start"] == "20180102"
+    # 2026-07-05 二次收窄, 对齐 daily(K线真相源)边界 20190102: R4 K线边界孤立数据审计确认
+    # top_list/top_inst/cyq_perf/index_dailybasic 的唯一实质消费方都按 trade_date 精确等值
+    # JOIN daily 派生视图(mk.v_price_kline_qfq / market_pulse days轴), 边界前数据物删。
+    assert d["top_list"]["data_start"] == "20190102"
+    assert d["top_inst"]["data_start"] == "20190102"
     assert d["adj_factor"]["data_start"] == "20190102"
-    assert d["cyq_perf"]["data_start"] == "20180101"  # 2026-06-16 解冻: C0 误判纠正, catalog 实弹 20180102=3094行
+    assert d["cyq_perf"]["data_start"] == "20190102"
+    assert d["index_dailybasic"]["data_start"] == "20190102"
     assert d["limit_list_d"]["data_start"] == "20230103"
 
 

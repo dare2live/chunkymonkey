@@ -1,5 +1,7 @@
 """by_report_period 增量单测 (2026-06-23 修谄媚死: 十大股东/财报日常流按季报期扫增量)。
-锁: (1) _latest_expected_report_period 季报截止日逻辑; (2) _by_ts_code_batches 增量跳已最新股。
+锁: (1) _latest_expected_report_period 季报截止日逻辑; (2) _by_ts_code_batches 增量跳已最新股;
+(3) end_date 动态注入 (2026-07-04 stk_factor_pro 实弹踩出: 只传 start_date 无 end_date 被
+API 拒绝 "权限不足", 整域每股必败空转数小时零净进展)。
 """
 import sys
 from pathlib import Path
@@ -47,6 +49,35 @@ def test_by_ts_code_increment_skips_up_to_date(monkeypatch):
     monkeypatch.setattr(sr, "_existing_ts_codes", lambda spec: set())
     full = sr._by_ts_code_batches(spec, backfill=True)
     assert len({b["ts_code"] for b in full}) == 3
+
+
+def test_by_ts_code_injects_end_date_when_only_start_date_declared(monkeypatch):
+    """stk_factor_pro 型域 (fixed_params 只声明 start_date): 必须动态补 end_date, 不能裸传
+    start_date 触发 API "权限不足: 请同时提供日期和 ts_code" 拒绝。"""
+    monkeypatch.setattr("services.universe.get_active_universe", lambda conn, include_st=False: ["000001"])
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: _DummyConn())
+    from services import utils as _utils
+    monkeypatch.setattr(_utils, "latest_completed_trade_date", lambda conn: "2026-07-04")
+
+    spec = {"domain": "stk_factor_pro", "fixed_params": {"start_date": "20190102"}, "target_table": "x"}
+    batch = sr._by_ts_code_batches(spec, backfill=True)
+    assert batch, "batch 不应为空"
+    for b in batch:
+        assert b.get("start_date") == "20190102"
+        assert b.get("end_date") == "20260704", f"end_date 未动态注入: {b}"
+
+
+def test_by_ts_code_end_date_not_overridden_when_declared(monkeypatch):
+    """已显式声明 end_date 的域 (如 balancesheet fixed_params 锁窗口) 不应被动态注入覆盖。"""
+    monkeypatch.setattr("services.universe.get_active_universe", lambda conn, include_st=False: ["000001"])
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: _DummyConn())
+
+    spec = {"domain": "balancesheet", "fixed_params": {"start_date": "20200101", "end_date": "20260612"},
+            "target_table": "x"}
+    batch = sr._by_ts_code_batches(spec, backfill=True)
+    assert batch
+    for b in batch:
+        assert b.get("end_date") == "20260612"
 
 
 class _DummyConn:

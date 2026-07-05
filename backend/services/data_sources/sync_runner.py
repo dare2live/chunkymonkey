@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import socket
 import threading
 import time
@@ -100,7 +101,14 @@ def _warn_if_clamped(domain: str, start_d: str, days: list[str]) -> None:
 
 
 def _existing_ts_codes(spec: dict[str, Any]) -> set[str]:
-    """target 表已有数据的 ts_code 集 (断点续拉跳过用)。planning 期 tushare_raw 未被本 run 写锁, read_only 查。"""
+    """target 表已有数据的 ts_code 集 (断点续拉跳过用)。planning 期 tushare_raw 未被本 run 写锁, read_only 查。
+
+    坑 (2026-07-05 income 深史回填 95% 未生效根因): "已有数据" != "已有深史"。若某股票此前
+    因日常增量 sync 已写入近期几行(与本次全历史回填意图无关), --resume 会把它当"已拉过"整股跳过,
+    深史 (2008-2021) 永远拿不到。--resume 仅适合"本次全量回填被中断, 重启跳过本次真已跑完的股票"
+    这个窄场景; 若目标表此前被其它增量流程部分填充过, 真正的全历史回填必须用纯 --backfill
+    (不带 --resume), 否则"回填成功"但只对表里原本 0 行的股票生效 (income 案例: 仅 260/5335=4.9%)。
+    """
     import duckdb
 
     from services.database_manifest import get_database_manifest
@@ -188,6 +196,18 @@ def _by_ts_code_batches(spec: dict[str, Any], *, resume: bool = False, backfill:
     # 增量 (非 backfill) 不传, 拿最近期即可 (覆盖新季); 对本就返全史的接口 (top10 by_ts_code) 传亦无害 (下界=K线对齐)。
     if backfill and spec.get("data_start") and "start_date" not in fixed:
         fixed["start_date"] = str(spec["data_start"])
+    # end_date 动态注入 (2026-07-04 根因修复, stk_factor_pro 实弹踩出): 部分 API (stk_factor_pro
+    # 实测) 拒绝只传 start_date 无 end_date 的查询 ("权限不足: 暂不支持全量查询, 请同时提供
+    # 日期[trade_date 或 start_date+end_date] 和 ts_code") — 全域每股必败, 此前曾整轮空转数小时
+    # 零净进展。只在声明了 start_date 且未显式给 end_date 时补, 用最新完整交易日 (§4.4 禁钉死日期,
+    # 与 by_code_list/by_period 分支同款动态注入语义), 不影响已显式给 end_date 的域 (如 balancesheet)。
+    if "start_date" in fixed and "end_date" not in fixed:
+        from services.utils import latest_completed_trade_date
+        conn0 = _smartmoney_conn()
+        try:
+            fixed["end_date"] = latest_completed_trade_date(conn0).replace("-", "")
+        finally:
+            conn0.close()
     include_st = bool(spec.get("include_st", False))
     conn0 = _smartmoney_conn()
     try:
@@ -458,6 +478,7 @@ def _fetch_paged(adapter, spec: dict[str, Any], params: dict[str, Any]) -> list[
 
 
 _SAMPLE_DIR = _REPO / "backend" / "tests" / "fixtures" / "domain_samples"
+_DEFAULT_SAMPLE_DIR = _SAMPLE_DIR   # 未被 monkeypatch 时的真实 git-tracked 路径, 见下方门判断
 
 
 def _capture_domain_sample(spec: dict[str, Any], rows: list[dict[str, Any]]) -> None:
@@ -467,7 +488,16 @@ def _capture_domain_sample(spec: dict[str, Any], rows: list[dict[str, Any]]) -> 
     fixture 用抽象命名 (C1/600000) 时测试与实现会一致地错。首批写入时把前 5 行
     真实数据存进 git, 任何消费代码的测试必须可用真实形态 — 抽象 fixture 失去借口。
     幂等: 样本文件已存在则跳过 (样本是注册时刻快照, 不随数据漂移)。失败不挡写入。
+
+    单测跑合成/伪域 (monkeypatch adapter + fake registry) 经此函数会把假数据写进
+    git-tracked 目录 (2026-07-04 实测: test_by_trade_date_fixed_params.py 跑一次
+    产生 3 个污染文件) — pytest 运行时用 PYTEST_CURRENT_TEST 环境变量(pytest 标准
+    机制自动设置)跳过存档, 不污染真样本契约。仅当 _SAMPLE_DIR 仍是默认 git-tracked 路径时
+    才跳过; test_domain_sample_captured_on_first_batch 等专测本机制的用例会
+    monkeypatch _SAMPLE_DIR 指向 tmp_path, 此时应正常存档 (测的就是这个存档行为本身)。
     """
+    if os.environ.get("PYTEST_CURRENT_TEST") and _SAMPLE_DIR == _DEFAULT_SAMPLE_DIR:
+        return
     path = _SAMPLE_DIR / f"{spec['domain']}.json"
     if path.exists():
         return
@@ -557,7 +587,12 @@ def _write_batch(conn, spec: dict[str, Any], rows: list[dict[str, Any]]) -> int:
     for col in df.columns:
         if col not in existing:
             conn.execute(f'ALTER TABLE {table} ADD COLUMN "{col}" VARCHAR')
-    key = " AND ".join(f't."{g}" = s."{g}"' for g in grain)
+    # NULL-safe 等值 (2026-07-05 grain 门实锤抓获, ths_hot 美股子榜反例): grain 含可空列时
+    # (如 美股类 ts_code 恒为 NULL, 用 ts_name 区分个股), 普通 `=` 对 NULL 永远算 UNKNOWN/false,
+    # EXISTS 子句永远匹配不到旧行 → 旧行从未被删, 每次 MERGE 都在累积"重复", 实测 430 组 863 行
+    # (2025-06~2025-08 多批次重跑, 每次都插入新副本非覆盖)。改用 IS NOT DISTINCT FROM (DuckDB/SQL
+    # 标准 null-safe 相等) 才能让 NULL=NULL 判真, 旧行才会被正确 DELETE。
+    key = " AND ".join(f't."{g}" IS NOT DISTINCT FROM s."{g}"' for g in grain)
     conn.execute(f"DELETE FROM {table} t WHERE EXISTS (SELECT 1 FROM df s WHERE {key})")
     cols = ", ".join(f'"{c}"' for c in df.columns)
     try:
@@ -813,7 +848,12 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         # date_param: API 日期参数名 (默认 trade_date; dividend 用 ex_date / report_rc 用
         # report_date — 锚定列同名, raw 表镜像后 drain 也按它扫 gap)
         date_param = spec.get("date_param", "trade_date")
-        batches = [{date_param: d} for d in days]
+        # fixed_params 合并 (2026-07-04 根因修复, ths_hot_fund 实弹踩出的死配置):
+        # 此分支此前只拼 {date_param: d}, 完全丢弃 fixed_params — 任何 by_trade_date+fixed_params
+        # 组合域静默失效 (声明 data_type="热基" 却始终请求不到, 只拿到与 date_param 无关的默认返回)。
+        # 与 by_code_list 分支 (L790) 同款合并语义, 批参数优先于 fixed (date_param 不应被 fixed 覆盖)。
+        fixed = dict(spec.get("fixed_params") or {})
+        batches = [{**fixed, date_param: d} for d in days]
     elif spec["batch_mode"] == "by_ann_date":
         # 按公告日抓全市场 (十大股东 etc): tushare 支持 ann_date 查全市场, 覆盖季报披露 + ad-hoc 非季末更新
         # (实测 600388 报告期 20231011=非季末 ad-hoc; 全库 1810 非季末期/2902股)。watermark=最新已抓公告日,

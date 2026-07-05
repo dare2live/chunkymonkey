@@ -15,6 +15,10 @@ npm run dev        # vite dev server, /api 代理到 http://127.0.0.1:${CM_PORT:
 npm run build      # tsc --noEmit + vite build → dist/
 ```
 
+**注意 (2026-07-04)**: `vite.config.ts` 的 `base: "/app/"` (为生产 build 挂载 FastAPI `/app` 路径而设)
+同时影响 `npm run dev` — dev server 首页在 `http://localhost:5173/app/`, 访问根路径 `http://localhost:5173/`
+会一直卡 "Awaiting server..." (资源路径带 /app/ 前缀找不到)。开发时务必带 `/app/` 前缀访问。
+
 ## 页面
 
 | 路由 | 内容 |

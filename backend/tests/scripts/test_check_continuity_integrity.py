@@ -43,7 +43,8 @@ def _mkspec(**kw) -> dict:
     base = {"domain": "dom", "db": "mem", "table": "t", "grain": ["ts_code", "trade_date"],
             "batch_mode": "by_trade_date", "data_start": "20260601", "sla": 1,
             "freshness_date_column": None, "date_param": None, "known_empty_days": set(),
-            "gap_tolerance": "none", "freshness_group_col": None, "dead_groups": []}
+            "gap_tolerance": "none", "freshness_group_col": None, "dead_groups": [],
+            "known_group_gaps": {}}
     base.update(kw)
     return base
 
@@ -159,6 +160,37 @@ def test_cross_section_missing_group_fail_margin_sse_only():
         c.execute("INSERT INTO t VALUES (?, 'SZSE')", [bad_day])
         r2 = cci.check_cross_section(c, spec, tds, tds[-1])
         assert r2["status"] == "pass"
+    finally:
+        c.close()
+
+
+def test_cross_section_known_group_gaps_tombstone_precise_date():
+    """known_group_gaps (2026-07-05 R4 修复): margin/ths_hot 型域某日源端确认只回部分组,
+    需按(日期,组)精确墓碑 — 不能用 dead_groups(永久整组豁免, 会致盲该组未来真断流) 或
+    known_empty_days(只喂 calendar_gaps, 对 cross_section 的 fail_missing_groups 无效,
+    2026-07-05 workflow 实测 patch known_empty_days 后 FAIL 原样复现)。"""
+    tds = _weekdays("20260401", 20)
+    bad_day = tds[15]
+    other_day = tds[10]
+    c = duck_mem()
+    try:
+        c.execute("CREATE TABLE t (trade_date TEXT, exchange_id TEXT)")
+        for d in tds:
+            c.execute("INSERT INTO t VALUES (?, 'SSE')", [d])
+            if d != bad_day:
+                c.execute("INSERT INTO t VALUES (?, 'SZSE')", [d])
+            else:
+                c.execute("INSERT INTO t VALUES (?, 'SSE')", [d])  # 行数持平, 只缺组不缺量, 隔离测 fail_missing_groups
+        spec = _mkspec(grain=["trade_date", "exchange_id"], data_start=tds[0],
+                        known_group_gaps={bad_day: {"SZSE"}})
+        r = cci.check_cross_section(c, spec, tds, tds[-1])
+        assert r["status"] == "pass", f"已墓碑的(日期,组)不应再 FAIL: {r}"
+
+        # 精确匹配: 换一个未墓碑的日期缺同一组, 仍必须 FAIL (不能变成对 SZSE 整组永久放行)
+        c.execute("DELETE FROM t WHERE trade_date = ? AND exchange_id = 'SZSE'", [other_day])
+        r2 = cci.check_cross_section(c, spec, tds, tds[-1])
+        assert r2["status"] == "fail_missing_groups"
+        assert other_day in r2["detail"] and "SZSE" in r2["detail"]
     finally:
         c.close()
 

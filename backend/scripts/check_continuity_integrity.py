@@ -104,6 +104,13 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
             "gap_tolerance": gap_tolerance,
             "freshness_group_col": entry.get("freshness_group_col"),
             "dead_groups": [str(g) for g in (entry.get("dead_groups") or [])],
+            # 2026-07-05 R4 gap 调查发现: known_empty_days/dead_groups 都不覆盖 cross_section 的
+            # fail_missing_groups (前者只喂 calendar_gaps, 后者是永久整组豁免) — margin/ths_hot
+            # 需要"某日某组"级精确墓碑 (源端当日确实只回部分组, 不代表该组永久死或整表当日全空)。
+            "known_group_gaps": {
+                str(d).replace("-", ""): {str(g) for g in (groups or [])}
+                for d, groups in (entry.get("known_group_gaps") or {}).items()
+            },
         })
     return specs
 
@@ -275,8 +282,9 @@ def check_cross_section(conn, spec: dict, trading_days: list[str], latest_expect
             dead = set(spec["dead_groups"])
             baseline = {g for g, c in freq.items()
                         if c >= GROUP_BASELINE_PRESENCE * len(obs_days) and g not in dead}
+            known_group_gaps = spec["known_group_gaps"]
             for d in obs_days:
-                miss = sorted(baseline - day_groups[d])
+                miss = sorted(baseline - day_groups[d] - known_group_gaps.get(d, set()))
                 if miss:
                     group_missing.append(f"{d}缺组[{','.join(miss)}]")
 
