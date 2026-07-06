@@ -7,6 +7,8 @@ module="services.X"/"scripts.X" 字符串字面量 → 14 条死 ClientSpec(modu
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import check_dead_references as cdr  # noqa: E402
@@ -71,9 +73,12 @@ def test_scan_e_skips_not_fails_when_no_db_files_exist(monkeypatch, tmp_path):
 
 def test_known_safe_list_entries_still_match_reality():
     """白名单每条必须仍然成立: (1) 引用方文件仍存在且仍引用该表名 (2) 该表仍确实不存在
-    (若表后来被重建, 条目该删——白名单不能变成"曾经安全, 现在盲区")。"""
+    (若表后来被重建, 条目该删——白名单不能变成"曾经安全, 现在盲区")。
+    CI/无 data/*.duckdb 环境本测试天然验证不了 (跳过非失败, 2026-07-06 CI 实测反例:
+    此前用 assert 硬要求 all_reachable, 在没有真实生产库的 CI 环境里必然红)。"""
     live, all_reachable = cdr._live_table_names()
-    assert all_reachable, "本测试需要真库可达才能验证白名单仍然成立"
+    if not all_reachable:
+        pytest.skip("库不可达 (无 data/*.duckdb 或并发写锁) — 本测试需要真库验证白名单")
     for (rel, tbl), _reason in cdr._SQL_TABLE_REF_KNOWN_SAFE.items():
         p = cdr.BACKEND / rel
         assert p.exists(), f"白名单条目引用的文件 {rel} 已不存在, 该条目该删"
