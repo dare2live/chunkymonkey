@@ -213,7 +213,13 @@ domains:
     #   需要时另开域显式传 tag。注意: 不写 fixed_params — sync_runner by_trade_date 分支不合并 fixed_params
     #   (ths_hot 反例: 声明 data_type=热股 实际全 8 榜入库, fixed_params 是死配置; 本域靠 API 默认+grain 含 tag 防漂移)。
     pit_anchor: "trade_date; 开盘啦涨停榜单盘后 -> JOIN t-1"
-    available_after: "18:00"
+    # 2026-07-06 改 18:00→t+1 (两次独立实测复发, 触发 analysis/data_foundation_audit_20260703.json
+    # 自己订的判据"若复发应把 available_after 后移"): 20260702 22:15 (审计记录) + 20260706 22:40
+    # (本次直接 tushare 探针) 均返回 0 行, 但事后再查均已有数据 (0702=154行/0703=156行, 20260706
+    # 本身此刻仍 0 行待次日验证) — 非源
+    # 故障, 是发布节奏本来就晚于同日晚间, 与 margin/margin_detail 同款 t+1 语义, 不是"18:00 声明
+    # 偏早"能靠挪时间点解决的量级 (挪到几点都可能被下一次更晚发布打脸)。
+    available_after: "t+1"
     data_start: "20190102"           # 设计稿写 20200106; 实弹 20190102=31行 已有数据 (lu_desc/status/lu_time 0% null) -> 对齐 K线窗口 2019+
     freshness_sla_trading_days: 2
     min_rows_per_batch: 10           # 冰点日涨停可能极少; 实弹最少见 20190102=31
@@ -603,7 +609,13 @@ domains:
     grain: [ts_code, trade_date]
     batch_mode: by_trade_date
     pit_anchor: "trade_date; 每日筹码及胜率盘后更新 -> JOIN t-1; winner_rate + cost_5/15/50/85/95pct + weight_avg 实测在录; C0 黑箱审计 20260612 FAIL (J1 spearman 0.8972<0.95 / J2 8.53pp>5 / J3 0.072<0.99) -> winner_rate 疑似未复权坐标口径 (J3 实现缺陷致未确证), 与本地 qfq CYQ 不可直接互换, 消费前必须口径换算或弃用; evidence=analysis/c0_cyq_audit_20260612.json"
-    available_after: "18:00"
+    # 2026-07-06 改 18:00→22:40 (实测: 本日 18:48 手工全流程走查已发现"仍未就绪"; 22:40 直接
+    # tushare 探针 trade_date=20260706 返回 5517 行=全市场量级, 确认已发布)。18:48-22:40 之间
+    # 未做更细粒度探测, 22:40 是"已验证就绪"的下界非精确发布时刻 (可能实际更早, 该保守值只影响
+    # 同日补拉尝试次数不影响正确性 — 历史 2059 天 0 例 18:00 前落库, 见
+    # analysis/data_foundation_audit_20260703.json finding, 原 18:00 本身不算错但太早于"值得去试"
+    # 意义上; 此改动只调"何时值得同日探"的阈值, 非改变数据本身晚发布这一事实)。
+    available_after: "22:40"
     known_empty_days: ["20260615"]   # 2026-06-28 实测源端单日近空 (cyq_perf 20260615 仅1股<min_rows, 邻日~5190); 墓碑不再每天重探
     data_start: "20190102"   # 2026-07-05 二次收窄, 对齐 daily(K线真相源)边界: R4 K线边界孤立数据审计
                               # 确认 cyq_perf 消费方按 trade_date JOIN daily 派生视图, 2018-01-01~2019-01-01
