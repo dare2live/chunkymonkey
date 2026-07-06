@@ -180,15 +180,19 @@ def scan_d_dead_module_literal() -> list[str]:
 
 
 def _live_table_names() -> tuple[set[str], bool]:
-    """现存全部 DuckDB 库 (data/*.duckdb) 里真实存在的表名并集 + 是否每个库都成功打开。
-    库锁定 (并发 sync/backfill/rebuild 持写锁) 或损坏时该库跳过而非整门失败——但调用方必须
-    知道"跳过"发生过, 否则一个被锁的库会让它里面的全部活表误判成死引用 (2026-07-06 实测:
-    rebuild_all() 跑批期间跑本门, smartmoney.duckdb 打不开导致 64 处假阳性, 反例见下方
-    scan_e 的 all_reachable 短路)。"""
+    """现存全部 DuckDB 库 (data/*.duckdb) 里真实存在的表名并集 + 是否已核实到足够可信的库集合。
+    两类"不可信"场景都必须让调用方知道, 否则会把"没法查"误判成"查了确认不存在":
+    (1) 库锁定 (并发 sync/backfill/rebuild 持写锁) 或损坏——该库跳过 (2026-07-06 实测:
+        rebuild_all() 跑批期间跑本门, smartmoney.duckdb 打不开导致 64 处假阳性);
+    (2) **一个库文件都不存在**(CI 全新 checkout, data/*.duckdb 是 gitignored 生产数据从不
+        进 git——2026-07-06 上线当天实测: CI 无任何 .duckdb 文件, glob 返回空列表, 循环体
+        从不执行, all_reachable 停留在初值 True, 误判成"查了 0 个库、确认这些表都不存在",
+        产生 83 处假阳性击穿 CI)。"""
     import duckdb
     names: set[str] = set()
-    all_reachable = True
-    for db in sorted(DATA_DIR.glob("*.duckdb")):  # rule-compliance: ok evidence=通配枚举现存库非硬编码单库名
+    db_files = sorted(DATA_DIR.glob("*.duckdb"))  # rule-compliance: ok evidence=通配枚举现存库非硬编码单库名
+    all_reachable = bool(db_files)  # 空列表(如 CI 无数据) = 不可信, 不能当"查过 0 个库全通过"
+    for db in db_files:
         try:
             # rule-compliance: ok evidence=已登记 duckdb_connect_policy.yaml allowed_raw_connect_paths
             conn = duckdb.connect(str(db), read_only=True)

@@ -52,6 +52,23 @@ def test_scan_e_skips_not_fails_when_db_locked(monkeypatch):
     assert cdr.scan_e_sql_table_refs() == []
 
 
+def test_live_table_names_no_db_files_is_not_reachable(monkeypatch, tmp_path):
+    """一个 .duckdb 文件都不存在时 (CI 全新 checkout, data/*.duckdb 是 gitignored 生产数据从不
+    进 git), all_reachable 必须是 False, 不能停在初值误判成"查了0个库全部通过"。
+    2026-07-06 实测反例: CI 无任何 .duckdb 文件 → glob 空列表 → 循环体从不执行 → 旧实现
+    all_reachable 停在初值 True → 全仓库 83 处正常 SQL 表引用被误判死引用, 击穿 CI。"""
+    monkeypatch.setattr(cdr, "DATA_DIR", tmp_path)  # 空目录, 无 .duckdb 文件
+    live, all_reachable = cdr._live_table_names()
+    assert live == set()
+    assert all_reachable is False, "0 个库文件时必须视为'不可信', 不能当成'确认查过'"
+
+
+def test_scan_e_skips_not_fails_when_no_db_files_exist(monkeypatch, tmp_path):
+    """端到端: DATA_DIR 空 (CI 场景) 时 scan_e 整体跳过 (返回空), 不产生假阳性。"""
+    monkeypatch.setattr(cdr, "DATA_DIR", tmp_path)
+    assert cdr.scan_e_sql_table_refs() == []
+
+
 def test_known_safe_list_entries_still_match_reality():
     """白名单每条必须仍然成立: (1) 引用方文件仍存在且仍引用该表名 (2) 该表仍确实不存在
     (若表后来被重建, 条目该删——白名单不能变成"曾经安全, 现在盲区")。"""
