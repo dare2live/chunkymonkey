@@ -165,6 +165,37 @@ Before deletion, use CodeGraph plus `rg` to check references and run the
 narrowest relevant audit/test. If evidence is historical but still useful, move
 it to `analysis/`; if it is not useful, delete it.
 
+### 退役标准动作清单 (2026-07-06 根因根治)
+
+> 触发: 全面数据审计 (`analysis/comprehensive_data_module_audit_20260706.md`) 诊断"残留
+> 反复出现"= **同一类系统性缺口反复触发**, 非偶然: 3 个历史案例 (`check_panel_lineage.py`
+> 44 天未被发现死引用已删表 / `schema_versions.py` 156 个死版本累积到 91% 才一次性清 /
+> `test_tool_registry.yaml` 0 消费+82%死引用) + 1 个当场活案例 (`check_continuity_integrity.py`
+> 本身刚加入就未同批注册), 结构完全相同: **退役类改动没有标准化 checklist, 每次由执行者
+> 临时决定清理范围**, 而清理范围的定义本身结构性排除了旁支消费者 (治理脚本 SQL 字符串引用/
+> schema 版本注册表/测试工具注册表)。
+
+任何"删表 / 删模块 / 删脚本 / 退役子系统"类改动, commit 前必须逐项确认下列 **5 类消费者**
+都已同批检查 (答不出 = 别删, 先查):
+
+| # | 类别 | 查法 | 机器门 |
+|---|---|---|---|
+| 1 | `backend/services/` `backend/routers/` 代码引用 (import/调用) | `rg -l "<模块名\|表名>" backend/services backend/routers` | `check_dead_references.py` A/B 扫 |
+| 2 | `backend/config/*.yaml` 注册 (路径字面量/module=字面量) | `rg -l "<名称>" backend/config` | `check_dead_references.py` C/D 扫 |
+| 3 | `backend/scripts/check_*.py` 等治理/审计脚本的 **SQL 字符串**引用 (`FROM`/`JOIN` 内联表名, 不是 import) | `rg -l "<表名>" backend/scripts` | `check_dead_references.py` **E 扫** (2026-07-06 新增, 专治这道盲区) |
+| 4 | `backend/tests/` fixture / 测试直连表名 | `rg -l "<名称>" backend/tests` | 无专门机器门 (靠跑测试红) |
+| 5 | `docs/` `analysis/` 文档引用 (历史记录可以留, 但当前生效文档不能悬空指已删对象) | `rg -l "<名称>" docs analysis` | `check_doc_drift.py` (部分覆盖, `analysis/` 按设计排除在扫描外) |
+
+**新增 `check_*.py` 治理脚本的强制义务**: 任何新脚本落地的同一个 commit 里, 必须二选一
+接入 `scripts/safe_commit.sh` (真正影响正确性的用 hard-block) 或 `.github/workflows/ci.yml`
+(至少 WARN 级曝光) —— 否则该脚本自己就是下一个"登记但从未强制"的重演 (2026-07-06 审计
+当场抓到 `check_continuity_integrity.py` 正在犯这个错误, 已随本次一并接入)。
+
+**清理范围的定义本身要包含旁支消费者**: 历史退役 commit 抽查 (`9b82d943`/`639e0dfb`) 显示
+diff 老实对应 commit message 声称的范围, **问题不是清理时偷懒漏做, 而是"这次要清的东西"
+这个概念从一开始就没把 `backend/scripts/check_*.py` 这类治理脚本纳入盘点对象**——所以
+第 3 类必须显式列进每次退役的检查清单, 不能靠"反正 fan-in 审计会扫到"的默认假设。
+
 ## Exploration Sandbox (隔离探索区, owner: `sandbox/README.md`)
 
 2026-06-17 用户根治: ephemeral 探索 (一次性 runner / findings 草稿 / 中间结果 / scratch

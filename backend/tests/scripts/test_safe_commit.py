@@ -42,6 +42,10 @@ def _make_repo_with_staged_python(tmp_path: Path) -> Path:
     # 2026-07-04 沙箱跟上 Step 3.98 (grain-uniqueness 门, 本 session R1 新 wire): 沙箱无真实
     #   sync_registry/数据库, 未 stub 会真跑该脚本报错退出非0 (与上条同款坑, 非本次逻辑改动引入)。
     _write(repo / "backend" / "scripts" / "check_grain_uniqueness.py", "print('grain-uniqueness: stub PASS')\nraise SystemExit(0)\n")
+    # 2026-07-06 沙箱跟上 Step 3.99 (continuity-integrity 门, 全面数据审计根因根治新 wire):
+    #   同款坑, 沙箱无真实 sync_registry/数据库不 stub 会真跑报错退出非0。
+    _write(repo / "backend" / "scripts" / "check_continuity_integrity.py",
+           "print('continuity-integrity: overall=PASS pass=0 warn=0 fail=0 skipped=0 db_unreachable=0 (latest_expected=stub)')\nraise SystemExit(0)\n")
     _write(repo / "README.md", "seed\n")
 
     assert _run(["git", "init"], repo).returncode == 0

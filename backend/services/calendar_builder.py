@@ -9,8 +9,9 @@ pipeline acquire 在 sync_registry drain (trade_cal 增量) 之后每日调 buil
 
 语义裁决 (2026-07-03, 消费方实测 rg is_trading 全仓):
 - dim 现表 5343 行全 is_trading=1 (只存交易日)。全部生产消费方 (services/calendar.py /
-  sync_runner._trading_days / technical_states / rally_gt / data_audit / data_quality /
-  data_health_snapshot) 均 WHERE is_trading=1 (或 truthy) 过滤, 零路径读非交易日行
+  sync_runner._trading_days / technical_states / rally_gt / data_audit /
+  data_health_snapshot / check_continuity_integrity.check_calendar_horizon) 均
+  WHERE is_trading=1 (或 truthy) 过滤, 零路径读非交易日行
   → 保持"只存交易日"语义: 只插 raw is_open=1 行, is_trading 恒 1。
 - 增量 = watermark 语义 (ISO trade_date > MAX(dim.trade_date)), 非 NOT IN 全集
   (CLAUDE §4.5 2026-07-02 反例: NOT IN 噪音; 且 raw 史回溯 19901219 而 dim 契约起点

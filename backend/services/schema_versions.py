@@ -44,13 +44,14 @@ FACT_VERSIONS: dict[str, str] = {}
 
 # mart_* (集市层): 纯数据平台只留治理/编排 mart, 全部策略/特征/模型/synergy/p0-p3 mart
 #   在重建 (白名单裁剪 + U2/U5) 已物删, 2026-06-28 trim 至 10 条 KEEP 治理 mart。
+# 2026-07-06 再删 2 条: mart_global_data_quality_gate/detail 随孤儿 data_quality.py
+#   (3742行, 零调用方) 整体退役, 唯一物化过的 mart_global_data_quality_gate(128行历史数据)
+#   已 db_lifecycle_delete 归档 (data/archive/purge_processed/); mart_feature_null_policy
+#   从未被物化(0行, 只在 data_quality.py 自己的 DDL 字符串里存在过)。
 MART_VERSIONS = {
     "mart_data_source_failure_queue": "v1",   # 采集失败队列
     "mart_pipeline_lock": "v1",               # 单 writer 锁
     "mart_step_fingerprint": "v1",            # step 指纹 (增量驱动)
-    "mart_global_data_quality_gate": "v1",    # 全局质量门
-    "mart_global_data_quality_detail": "v1",  # 质量门明细 (data_quality 按需建)
-    "mart_feature_null_policy": "v1",         # null 策略契约 (data_quality 按需建)
     "mart_data_processing_tool_run": "v1",    # 数据处理工具 run
     "mart_data_processing_tool_issue": "v1",  # 数据处理工具 issue
     "mart_data_deletion_record": "v1",        # 删除留痕

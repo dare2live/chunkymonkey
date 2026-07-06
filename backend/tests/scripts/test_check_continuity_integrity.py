@@ -370,10 +370,13 @@ def test_run_checks_only_filter_and_unreachable_strict():
     def _boom(alias):
         raise RuntimeError("Conflicting lock is held")
 
+    # domain="d1" 显式指名, 排除全局 calendar_horizon (它不挂在任一域上, 靠 wall-clock today
+    # 判前瞻余量, 本测试合成的 10 天历史窗口跟真实"今天"无关, 混进来会让 calendar_horizon
+    # 自己 FAIL 污染这条"db_unreachable 专属语义"断言——它有自己的专门测试)。
     specs = [_mkspec(domain="d1", db="locked")]
-    results, failures = cci.run_checks(specs, _boom, tds, tds[-1])
+    results, failures = cci.run_checks(specs, _boom, tds, tds[-1], domain="d1")
     assert results[0]["status"] == "db_unreachable" and not failures
-    _, failures = cci.run_checks(specs, _boom, tds, tds[-1], strict=True)
+    _, failures = cci.run_checks(specs, _boom, tds, tds[-1], strict=True, domain="d1")
     assert len(failures) == 1
 
     def _fresh(alias):
@@ -411,7 +414,55 @@ def test_run_checks_full_pipeline_on_mem_domain():
         return c
 
     spec = _mkspec(data_start=tds[0])
-    results, failures = cci.run_checks([spec], _fresh, tds, tds[-1], today="20260703")
+    # domain="dom" 显式指名 (= spec 的域), 排除全局 calendar_horizon (它不挂在任一域上, 靠
+    # wall-clock today 判前瞻余量, 与本测试合成的历史 tds 窗口无关——calendar_horizon 有自己
+    # 的专门测试 test_calendar_horizon_*)。
+    results, failures = cci.run_checks([spec], _fresh, tds, tds[-1], today="20260703", domain="dom")
     assert not failures
     assert {r["check"] for r in results} == {"calendar_gaps", "cross_section", "declared_vs_actual"}
     assert all(r["status"] == "pass" for r in results)
+
+
+# ── 检测 6: calendar_horizon (2026-07-06 从孤儿 data_quality.py 迁入) ─────
+
+def test_calendar_horizon_red_green():
+    """today 之后已登记交易日 < 60 = FAIL, >= 60 = PASS (阈值边界)。"""
+    today = "20260701"
+    # FAIL: today 之后只有 59 个交易日
+    tds_short = _weekdays("20260401", 60) + _weekdays("20260702", 59)
+    r = cci.check_calendar_horizon(sorted(tds_short), today)
+    assert r["status"] == "fail" and r["check"] == "calendar_horizon"
+    assert "59" in r["detail"]
+
+    # PASS: today 之后有 61 个交易日
+    tds_ok = _weekdays("20260401", 60) + _weekdays("20260702", 61)
+    r2 = cci.check_calendar_horizon(sorted(tds_ok), today)
+    assert r2["status"] == "pass"
+
+
+def test_calendar_horizon_ignores_past_days():
+    """today 及之前的交易日不计入前瞻余量 (bisect_right 语义: today 当天本身不算"之后")。"""
+    today = "20260701"
+    tds = _weekdays("20260401", 60) + [today] + _weekdays("20260702", 60)
+    r = cci.check_calendar_horizon(sorted(tds), today)
+    assert r["status"] == "pass"
+    assert "60" in r["detail"]  # today 自己不计入 60 个未来交易日
+
+
+def test_calendar_horizon_wired_into_run_checks_global_not_per_domain():
+    """run_checks 里 calendar_horizon 全局跑一次 (不随 registry 域数量重复), domain 过滤器
+    传入非 trade_cal 的具体域名时应跳过 (只对该域自己的检测负责)。"""
+    tds = _weekdays("20260401", 5)
+
+    def _fresh(alias):
+        c = duck_mem()
+        _mktable(c, {d: 3 for d in tds})
+        return c
+
+    specs = [_mkspec(domain="dom1"), _mkspec(domain="dom2")]
+    results, _ = cci.run_checks(specs, _fresh, tds, tds[-1], only="calendar_horizon")
+    assert len(results) == 1, "calendar_horizon 应全局只跑一次, 不随域数重复"
+    assert results[0]["domain"] == "trade_cal"
+
+    results2, _ = cci.run_checks(specs, _fresh, tds, tds[-1], only="calendar_horizon", domain="dom1")
+    assert results2 == [], "显式指定非 trade_cal 的域时, 全局 calendar_horizon 应跳过"

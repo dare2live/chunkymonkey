@@ -69,6 +69,11 @@ def test_registry_surgery_contract_20260612():
     assert d["index_dailybasic"]["page_limit"] == 3000
     assert d["share_float"]["page_limit"] == 6000
     assert d["block_trade"]["page_limit"] == 1000
+    # 2026-07-06 全面数据审计实锤第 N 例: stk_limit 全市场(股票+ETF+B股+北交所混合)总量增长
+    # 跨过服务端隐式单页上限(实测 limit=6000 仍只回 5800, offset=5800 page2 再回 1877 行),
+    # 20260615 起 603/605/688/689/601 前缀连续 3 周静默丢 ~1500 行/天, 现有 continuity gate
+    # 因行数比值卡在阈值上沿而无感。
+    assert d["stk_limit"]["page_limit"] == 5000
     # 白跑防线: 2019 年截面 ~3700 只, min_rows 必须 <= 3000
     assert d["daily"]["min_rows_per_batch"] <= 3000
     assert d["adj_factor"]["min_rows_per_batch"] <= 3000

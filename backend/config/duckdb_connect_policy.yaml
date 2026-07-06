@@ -12,6 +12,7 @@ allowed_raw_connect_paths:
   - services/data_audit.py                 # post-sync audit 多库 read_only ATTACH
   - services/duck_adapter.py               # adapter 本体
   - scripts/audit_data_completeness.py     # 数据完整性审计 (read_only)
-  - scripts/audit_pit_coverage.py          # PIT 覆盖审计 (read_only)
   - scripts/build_dim_listing_status.py    # 退市状态 dim 写 reference RW
   - scripts/cleanup_holder_dup.py          # holder 去重维护
+  - scripts/check_dead_references.py       # 死引用门 E 扫: 逐库枚举现存表名核对 SQL 字符串
+                                            #   引用 (read_only, 2026-07-06 新增, 与 data_audit.py 同性质)

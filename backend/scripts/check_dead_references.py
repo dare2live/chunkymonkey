@@ -7,7 +7,7 @@
   四地基的 dim_data_asset 登记表本该管这事, 但它烂掉(67stale/68漏/仅smartmoney)+从没强制。
 本门把"无死引用"做成机械检查, 让删任何模块/文件时引用方立即报红, 无法再静默累积。
 
-三道静态扫描 (零执行副作用, 不 import 业务脚本):
+四道静态扫描 (零执行副作用, 不 import 业务脚本):
   A. import-services: import services/ + routers/ 库层每个模块, ImportError = FAIL (库层断链)
   B. dead-services-ref: 全 .py 里 `from/import services.X`, X 顶层子模块不存在 = FAIL
        (覆盖孤儿脚本顶层 import + 函数内懒 import + try/except guarded 垫片, 纯静态正则不执行)
@@ -16,6 +16,12 @@
   D. dead-module-literal: 注册表 dataclass 的 `module="services.X"/"scripts.X"` 字符串字面量
        指向不存在的模块/文件 = FAIL (2026-06-28 三轮残留审计坐实的 B 扫盲区: B 只抓 from/import
        语句, 抓不到 ClientSpec module= 字面量 → 14 条死 ClientSpec 系统性逃逸, 死登记反复积累)。
+  E. sql-table-ref: backend/{services,scripts,routers} 的 .py 里 SQL 字符串 FROM/JOIN 引用的
+       fact_/mart_/dim_/raw_/stg_ 表名, 核对现存全部 DuckDB 库 (data/*.duckdb) 里是否真实存在
+       = FAIL (2026-07-06 全面数据审计抓获的核心机制盲区: A-D 全部只处理 Python 符号引用/
+       文件路径, 对 `conn.execute(f"SELECT ... FROM mart_p0b_lambdamart_v6_predictions")` 这类
+       纯 SQL 字符串死引用结构性失明 — check_panel_lineage.py/check_kpi_redlines.py 两个死
+       治理脚本引用已随策略层退役的表, 44 天无人发现直到本次审计实测崩溃复现)。
 
 用法: python backend/scripts/check_dead_references.py [--check]
 退出码: 0=干净 / 1=有死引用
@@ -29,12 +35,39 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
 BACKEND = REPO / "backend"
+DATA_DIR = REPO / "data"
+
+# E 扫已知安全白名单 (2026-07-06 全面数据审计逐条深挖后确认, 非批量豁免):
+# 每条都已亲验双重条件——(1) 引用方代码已用 _table_exists/try-except 守护, 真调用不会崩;
+# (2) 该表被删不是"漏清残留", 而是有明确记录的退役决策 (F4 dim_data_asset 碎登记归并 /
+# U2-U5 mart_model_lifecycle 孤表物删), 且其承担的能力(若有)已确认在别处有替代:
+#   - dim_data_asset 的 coverage_policy(稀疏事件表白名单)已被 data_health_snapshot.py
+#     读 data_layers.yaml table_health_overrides 取代, 非能力真空。
+#   - mart_model_lifecycle 引用是 2026-06-28 U2/U5 批次明确记录的"non-breaking cosmetic
+#     (奥卡姆不churn)"决策, 不是遗漏。
+# 新增条目前必须重复这两步验证, 不能因为"看着安全"就批量加白名单——这正是本门要根治的
+# 反模式 (轻信而非验证)。
+_SQL_TABLE_REF_KNOWN_SAFE: dict[tuple[str, str], str] = {
+    ("services/storage_retention.py", "mart_model_lifecycle"):
+        "2026-06-28 U2/U5 记录 non-breaking cosmetic, _table_exists 双重守护, 不 churn",
+    ("scripts/audit_data_completeness.py", "dim_data_asset"):
+        "F4 退役表; try/except 守护; coverage_policy 能力已被 data_health_snapshot.py "
+        "读 data_layers.yaml table_health_overrides 取代, 非能力真空",
+}
 
 # C 扫描的 path-token 正则: backend/ 前缀可选, services|scripts|tests 下的 .py
 _PY_PATH_RE = re.compile(r"(?:backend/)?(?:services|scripts|tests)/[\w/]+\.py")
 _SERVICES_IMPORT_RE = re.compile(r"(?:from|import)\s+services\.([a-zA-Z0-9_.]+)")
 # D 扫: 注册表 dataclass 的 module="services.X"/"scripts.X"/"routers.X" 字符串字面量 (= 或 :)
 _MODULE_LITERAL_RE = re.compile(r"""\bmodule\s*[=:]\s*["']((?:services|scripts|routers)\.[\w.]+)["']""")
+# E 扫: SQL FROM/JOIN 后跟项目表命名惯例前缀 (与 build_feature_map.py WRITE_RE 同款口径);
+# 动态 f-string 表名 (FROM {table}) 不匹配字面前缀, 自然跳过 (静态无法核实, 不误判)。
+# 前缀后至少 1 个字符 (+非*): 防文档字符串里"禁止 FROM raw_*"这类规则描述被误判成真表名
+# (2026-07-06 实测反例: services/data_access/__init__.py 的门禁说明文字被 * 前的 "raw_" 裸前缀
+# 命中三次, 无真实表名可对; 真表名从不会只是裸前缀本身)。
+_SQL_TABLE_REF_RE = re.compile(
+    r"(?i)\b(?:FROM|JOIN)\s+[\"'`]?((?:fact|mart|dim|raw|stg)_[a-zA-Z0-9_]+)"
+)
 
 
 def _existing_services_submodules() -> set[str]:
@@ -146,12 +179,77 @@ def scan_d_dead_module_literal() -> list[str]:
     return fails
 
 
+def _live_table_names() -> tuple[set[str], bool]:
+    """现存全部 DuckDB 库 (data/*.duckdb) 里真实存在的表名并集 + 是否每个库都成功打开。
+    库锁定 (并发 sync/backfill/rebuild 持写锁) 或损坏时该库跳过而非整门失败——但调用方必须
+    知道"跳过"发生过, 否则一个被锁的库会让它里面的全部活表误判成死引用 (2026-07-06 实测:
+    rebuild_all() 跑批期间跑本门, smartmoney.duckdb 打不开导致 64 处假阳性, 反例见下方
+    scan_e 的 all_reachable 短路)。"""
+    import duckdb
+    names: set[str] = set()
+    all_reachable = True
+    for db in sorted(DATA_DIR.glob("*.duckdb")):  # rule-compliance: ok evidence=通配枚举现存库非硬编码单库名
+        try:
+            # rule-compliance: ok evidence=已登记 duckdb_connect_policy.yaml allowed_raw_connect_paths
+            conn = duckdb.connect(str(db), read_only=True)
+        except Exception:
+            all_reachable = False
+            continue
+        try:
+            names.update(r[0] for r in conn.execute(
+                "SELECT table_name FROM information_schema.tables").fetchall())
+        finally:
+            conn.close()
+    return names, all_reachable
+
+
+def scan_e_sql_table_refs() -> list[str]:
+    """backend/{services,scripts,routers} 的 .py 里 SQL 字符串 FROM/JOIN 引用的
+    fact_/mart_/dim_/raw_/stg_ 表名, 核对现存全部 DuckDB 库里是否真实存在 = 死引用。
+    根因 (2026-07-06 全面数据审计抓获): A-D 四个扫描器全部只处理 Python 符号引用/文件路径,
+    对 `conn.execute(f"SELECT ... FROM mart_p0b_lambdamart_v6_predictions")` 这类纯 SQL
+    字符串死引用结构性失明——check_panel_lineage.py/check_kpi_redlines.py 两个死治理脚本
+    引用已随策略层退役的表, 44 天无人发现直到本次审计实测崩溃复现。
+    动态 f-string 表名 (`FROM {table}`) 不匹配字面前缀正则, 静态无法核实, 自然跳过不误判。
+    任一库被并发写锁占用打不开时整个 E 扫跳过 (返回空, 非 FAIL) ——宁可这次不查, 也不能把
+    "库暂时锁定"误判成"表不存在" (与 check_continuity_integrity.py 的 db_unreachable 语义一致)。"""
+    live, all_reachable = _live_table_names()
+    if not all_reachable:
+        print("[dead-references] E sql-table-ref: 部分 DuckDB 库锁定/不可达, 本轮跳过 (非 FAIL)",
+              file=sys.stderr)
+        return []
+    fails: list[str] = []
+    for sub in ("services", "scripts", "routers"):
+        root = BACKEND / sub
+        if not root.exists():
+            continue
+        for p in sorted(root.rglob("*.py")):
+            rel_str = str(p).replace("\\", "/")
+            if "__pycache__" in rel_str or "/tests/" in rel_str:
+                continue
+            if p.name == "check_dead_references.py":
+                continue  # 门脚本自身 docstring 含示例表名字符串, 排除防假阳性
+            for i, line in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+                if line.strip().startswith("#"):
+                    continue
+                for m in _SQL_TABLE_REF_RE.finditer(line):
+                    tbl = m.group(1)
+                    if tbl in live:
+                        continue
+                    rel = str(p.relative_to(BACKEND)).replace("\\", "/")
+                    if (rel, tbl) in _SQL_TABLE_REF_KNOWN_SAFE:
+                        continue
+                    fails.append(f"E sql-table-ref: {p.relative_to(REPO)}:{i} → 表 {tbl} 不存在于任何现存库")
+    return fails
+
+
 def main() -> int:
     all_fails: list[str] = []
     all_fails += scan_a_import_services()
     all_fails += scan_b_dead_services_ref()
     all_fails += scan_c_config_dead_path()
     all_fails += scan_d_dead_module_literal()
+    all_fails += scan_e_sql_table_refs()
 
     if all_fails:
         print(f"[dead-references] FAIL: {len(all_fails)} 处死引用 (删模块/文件后引用方未清)\n")
@@ -160,7 +258,7 @@ def main() -> int:
         print("\n修法: 删引用方 / repoint 到现存模块/文件 / 若该引用方也是残留则一并删。"
               "\n  (这是 2026-06-28 根因根治门: 删供给侧必同步删需求侧, 不再靠手工 grep。)")
         return 1
-    print("[dead-references] PASS: 0 死引用 (import-services + dead-services-ref + config-dead-path 全绿)")
+    print("[dead-references] PASS: 0 死引用 (import-services + dead-services-ref + config-dead-path + sql-table-ref 全绿)")
     return 0
 
 

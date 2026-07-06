@@ -99,6 +99,15 @@ domains:
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
     grain: [ts_code, trade_date]
     batch_mode: by_trade_date
+    page_limit: 5000   # 2026-07-06 宪法第6条实锤第N例 (全面数据审计抓获): 该域全市场返回含
+                        # 股票+ETF/LOF+B股+北交所混合总量已增长超服务端隐式单页上限 (实测 limit=6000
+                        # 仍只回 5800, offset=5800 page2 再回 1877 行, 合计 7677); 声明缺失
+                        # page_limit 时 _fetch_paged 直接单次调用不分页 → 6/12→6/15 总量跨过该
+                        # 隐式上限首次触发截断, 603/605/688/689/601 前缀(沪主板新代码段+科创板)
+                        # 静默丢 ~1500 行/天连续 3 周 (20260615-20260703 实测), 下游
+                        # fact_stock_form_daily.buyable 同期出现等量 NULL。5000 留出安全边际
+                        # (server 隐式上限观测约 5800, 5000 确保稳定触发分页)。回填见
+                        # analysis/comprehensive_data_module_audit_20260706.md P0#1。
     pit_anchor: "trade_date; 8:40 盘前更新 -> t 日盘前即可用 (罕见的当日可用源)"
     available_after: "08:40"
     data_start: "20190102"   # 2026-07-04 buyable NULL 根因修复: 原 20220104 声明过窄, 实弹探测

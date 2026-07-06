@@ -835,6 +835,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
                 conn0.close()
         batches = [{code_param: c, **fixed} for c in spec["code_list"]]
     elif spec["batch_mode"] == "by_trade_date":
+        wm = None
         if backfill:
             start_d = start or spec["data_start"]
         else:
@@ -842,8 +843,13 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
             start_d = start or wm or spec["data_start"]
         days = _trading_days(start_d, end)
         _warn_if_clamped(domain, start_d, days)
-        # 增量模式跳过 watermark 当天 (已写过)
-        if not backfill and len(days) > 1 and days[0] == (start or _last_watermark_date(domain, spec["source"]) or ""):
+        # 增量模式跳过 watermark 当天 (已写过) — 仅当调用方未显式给 --start (即 start_d 来自
+        # watermark 自动续拉) 才跳。2026-07-06 修复 (全面数据审计引出的独立新 bug, stk_limit
+        # page_limit 回填实测复现): 原判据 `days[0] == (start or wm)` 在调用方显式传 --start
+        # 时恒真 (days[0] 本就是由 start_d=start 算出), 导致任何手工 `--start X --end Y` 范围
+        # 回填都静默丢第一天。手工回填必须完整覆盖调用方要求的区间, 不能被"跳 watermark 当天"
+        # 语义误伤。
+        if not backfill and start is None and len(days) > 1 and days[0] == (wm or ""):
             days = days[1:]
         # date_param: API 日期参数名 (默认 trade_date; dividend 用 ex_date / report_rc 用
         # report_date — 锚定列同名, raw 表镜像后 drain 也按它扫 gap)

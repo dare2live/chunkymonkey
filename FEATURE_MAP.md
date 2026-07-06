@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-05 22:49
+> Snapshot: 2026-07-06 15:49
 
 ## 1. 入口面
 
@@ -93,7 +93,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 44 张 | 单 writer 32 | 多 writer 12 | 动态表名写点 29 处 (12 文件)
+统计: 表 39 张 | 单 writer 27 | 多 writer 12 | 动态表名写点 29 处 (12 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -152,15 +152,10 @@
 | fact_stock_liquidity_daily | backend/services/primitives/ddl.py |
 | fact_stock_market_cap_daily | backend/services/primitives/ddl.py |
 | fact_stock_style_daily | backend/services/primitives/ddl.py |
-| mart_candidate_feature_set_contract | backend/services/data_quality.py |
 | mart_data_deprecation_record | backend/services/schema_marts.py |
 | mart_data_processing_tool_issue | backend/services/data_processing_monitor.py |
 | mart_data_processing_tool_run | backend/services/data_processing_monitor.py |
 | mart_data_source_failure_queue | backend/services/source_watermarks.py |
-| mart_feature_availability_contract | backend/services/data_quality.py |
-| mart_feature_null_policy | backend/services/data_quality.py |
-| mart_global_data_quality_detail | backend/services/data_quality.py |
-| mart_global_data_quality_gate | backend/services/data_quality.py |
 | mart_inst_profile | backend/services/institution_profile.py |
 | mart_inst_profile_dim | backend/services/institution_profile.py |
 | mart_lineage | backend/services/schema_marts.py |
@@ -170,63 +165,63 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 5,336 | calls 边 6,908 | imports 边 1,188 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 5,217 | calls 边 6,317 | imports 边 1,161 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
-| services.duck_adapter | 33 |
+| services.duck_adapter | 30 |
 | services.database_manifest | 12 |
 | services.db | 9 |
-| services.pipeline_manifest | 7 |
-| services.data_sources | 6 |
+| services.data_sources | 7 |
+| services.pipeline_manifest | 6 |
 | services.lineage.model | 5 |
+| services.source_watermarks | 5 |
 | scripts.formula_parameter_search | 4 |
 | services.market_db | 4 |
-| services.source_watermarks | 4 |
 | services.universe | 4 |
-| services.utils | 4 |
 | services.calendar | 3 |
-| services.data_processing_monitor | 3 |
 | services.lineage | 3 |
 | services.storage_retention | 3 |
+| services.utils | 3 |
+| services.data_governance.config | 2 |
 
 ### 跨文件 fan-in 最高的文件 (近似口径: 唯一定义名 + caller 实际 import 目标模块双过滤)
 
 | 文件 | 调用方文件数 |
 |---|---|
-| backend/services/duck_adapter.py | 25 |
+| backend/services/duck_adapter.py | 22 |
 | backend/services/database_manifest.py | 11 |
 | bestchoice/compute.py | 9 |
 | backend/services/pipeline/context.py | 5 |
-| backend/services/pipeline_manifest.py | 5 |
 | bestchoice/execution_model.py | 5 |
 | backend/services/lineage/model.py | 4 |
+| backend/services/pipeline_manifest.py | 4 |
+| backend/services/source_watermarks.py | 4 |
 | bestchoice/formula_engine.py | 4 |
 | bestchoice/scripts/formula_parameter_search.py | 4 |
 | frontend/src/format.ts | 4 |
 | frontend/src/hooks/useFetch.ts | 4 |
-| backend/services/data_access/keys.py | 3 |
 
 ### LOC top 10 (God module 候选)
 
 | 文件 | 行数 |
 |---|---|
-| backend/services/data_quality.py | 3742 |
-| backend/services/data_sources/sync_runner.py | 1134 |
+| backend/services/data_sources/sync_runner.py | 1140 |
 | backend/services/storage_retention.py | 1061 |
 | backend/services/market_pulse.py | 804 |
 | backend/scripts/data_health_snapshot.py | 730 |
+| backend/scripts/check_continuity_integrity.py | 645 |
 | backend/routers/market_pulse.py | 639 |
 | backend/services/data_audit.py | 613 |
-| backend/scripts/check_continuity_integrity.py | 610 |
 | backend/services/schema_migrations.py | 561 |
 | backend/services/source_watermarks.py | 559 |
+| backend/services/rally_gt.py | 501 |
 
 ## 5. 概览
 
 - chunkyctl 子命令 10 | launchd 任务 1 | router 5 (端点 21)
 - sync_registry 数据域 47
-- 产表 44 (多 writer 12)
+- 产表 39 (多 writer 12)
 

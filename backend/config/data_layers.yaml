@@ -133,8 +133,7 @@ tables:
   mart_data_health: infra
   mart_data_source_failure_queue: infra
   mart_data_source_watermark: infra
-  mart_global_data_quality_gate: infra
-  mart_lineage: infra  # 2026-06-27 补声明: schema_marts 定义但未声明致 filter_schema_sql 丢弃CREATE→表不建→mart_data_lineage视图invalid+db_compact卡(消费方 check_panel_lineage/check_registry_promote)
+  mart_lineage: infra  # 2026-06-27 补声明: schema_marts 定义但未声明致 filter_schema_sql 丢弃CREATE→表不建→mart_data_lineage视图invalid+db_compact卡 (原消费方 check_panel_lineage/check_registry_promote 已随孤儿 data_quality.py 系统 2026-07-06 整体退役)
   mart_pipeline_lock: infra
   mart_pipeline_run_manifest: infra
   mart_step_fingerprint: infra

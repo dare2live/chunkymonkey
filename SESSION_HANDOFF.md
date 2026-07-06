@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-07-04 22:49:41 CST
+**Snapshot 时间**: 2026-07-06 15:48:36 CST
 
 ## 主线状态
 
@@ -44,13 +44,14 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `eef8da75 feat: 数据地基根因根治 R1机制件 — 消费侧连续性硬门+审查器首跑+grain三层根因终结` |
+| HEAD | `3033f067 feat: R4 数据连续性审计收口 — 41条逐项闭环 + K线边界孤立数据审计 + 资金流向曲线` |
 | 最近 24h commits | 1 |
-| 未 commit 文件 | 8 |
+| 未 commit 文件 | 27 |
 
 ### 最近 10 commits
 
 ```
+3033f067 feat: R4 数据连续性审计收口 — 41条逐项闭环 + K线边界孤立数据审计 + 资金流向曲线
 eef8da75 feat: 数据地基根因根治 R1机制件 — 消费侧连续性硬门+审查器首跑+grain三层根因终结
 4084fed6 feat: 感知 v3 (flow_regime 六标签+全模块下钻) + 加工层审计波1修复 (rzrqye 假摆动 HIGH 等 8 修)
 436ba2a6 docs: 市场感知 v3 设计定稿 — 资金流形态分类学 + 全模块层级下钻 (用户定调)
@@ -60,12 +61,11 @@ eef8da75 feat: 数据地基根因根治 R1机制件 — 消费侧连续性硬门
 2f98f78b feat: B4 v2 感知增强 + 前端浅色重设计 — 概念/龙头缺口闭环 + 5 新域 + 情绪周期仪表盘
 1beb16bc docs: D1 结构常数敏感性留档 + v2 参数冻结 (考古修正#9 关账)
 928d8b72 feat: D1 GT v2 交付 — 主升浪已知答案落库 5636 episode + Type A 纯度门列名根治
-1b2a1c0a feat: B2 全量验收 + C4 感知页闭环 + D1 前置件 (GT考古/holdout立法/v2设计) — D 线开工就绪
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**8 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**27 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

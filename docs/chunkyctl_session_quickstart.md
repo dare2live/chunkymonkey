@@ -164,7 +164,7 @@ incomplete until this document is updated and the final handoff states whether
 | Crash/terminal recovery | `bash scripts/cm_resume.sh` | Refresh `SESSION_HANDOFF.md` and print the prompt to give Codex; no hidden auto-inject |
 | Session startup | `scripts/chunkyctl doctor --fast` | Get dirty worktree, CodeGraph, complexity, execution-surface, storage-payload, and system data-health snapshot quickly |
 | Historical state lookup | `rg "<topic>" analysis/project_state_ledger.md` or `tail -120 analysis/project_state_ledger.md` | Find completed evidence without loading the whole ledger |
-| Retiring scripts/providers/automation | `PYTHONPATH=backend python backend/scripts/audit_execution_surface.py --include-live-launchd --format markdown` | Prove launchd, cron, installers, dashboards, registries, Moth evidence paths, and live LaunchAgents do not point at deleted or retired execution paths |
+| Retiring scripts/providers/automation | `moth coupling --repo . --impact <name>` + `PYTHONPATH=backend python backend/scripts/check_dead_references.py` (2026-06-28 replaced retired `audit_execution_surface.py`, see `engineering_governance.md` §Automation points) | Prove launchd, cron, installers, dashboards, registries, Moth evidence paths, and code/config/SQL-string references do not point at deleted or retired execution paths |
 | Dirty worktree reported | `scripts/chunkyctl worktree --format markdown` | Show a readable dirty-file bucket summary without mutating git |
 | Dirty bucket drilldown | `scripts/chunkyctl worktree --bucket <name> --format markdown` | Review one bucket's entries and action before staging/deleting anything |
 | Docs cleanup slice | `scripts/chunkyctl docs --format markdown` | Combine docs graph and docs/archive dirty-bucket readiness |

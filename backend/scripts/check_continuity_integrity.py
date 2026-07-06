@@ -6,7 +6,7 @@ block_trade 20250917 中间空洞) + 根因4 (SLA 只测"最近动过"不测"该
 2008-2021 仅 5-15% 覆盖)。把一次性审计 (data_foundation_audit_20260703.json continuity 部分)
 固化为 sync_registry 全域驱动的常驻机械门。
 
-五类检测 (--only 单跑):
+六类检测 (--only 单跑):
   calendar_gaps      日历缺日 (by_trade_date/by_date_range 域): data_start→最新应有交易日逐日对
                      dim_trading_calendar。中间空洞 = FAIL (间歇空响应指纹); 尾部缺日超 SLA = FAIL,
                      未超 = OK。known_empty_days 墓碑排除; gap_tolerance: annotate 降 WARN。
@@ -19,6 +19,9 @@ block_trade 20250917 中间空洞) + 根因4 (SLA 只测"最近动过"不测"该
                      按年行数 / 参照完整年 < 0.3 的年份 = WARN (coverage_note 建议)。
   static_staleness   无日频语义域 (by_ts_code/by_period/by_ann_date/by_code_list/full_refresh):
                      MAX(built_at) 距最新交易日 > SLA x 5 交易日 = WARN (手动刷新域, 只警不 FAIL)。
+  calendar_horizon   dim_trading_calendar 全局单跑 (非按域): today 之后已登记交易日 < 60 = FAIL
+                     (2026-07-06 从孤儿 data_quality.py 迁入真正接进日常跑批, 语义与 static_staleness
+                     互补——那个测"多久没刷新"往回看, 这个测"还能撑多远"往前看)。
 
 任何 FAIL = exit 1。库不可达默认跳过 (写锁期 read_only attach 同样被拒, CLAUDE §4.5 2026-07-02),
 --strict 才 FAIL。
@@ -69,7 +72,7 @@ CROSS_SECTION_GROUP_COLS = ("exchange_id", "data_type")  # grain 含此类列 = 
 GAP_TOLERANCE_VALUES = {"none", "annotate", "hk_holidays"}  # hk_holidays 预留 (源端假期校验未实现, 现按 annotate 处理)
 
 CHECK_IDS = ("calendar_gaps", "cross_section", "group_freshness",
-             "declared_vs_actual", "static_staleness")
+             "declared_vs_actual", "static_staleness", "calendar_horizon")
 
 
 # ── registry 解析 ─────────────────────────────────────────────────────────
@@ -430,6 +433,32 @@ def check_static_staleness(conn, spec: dict, trading_days: list[str], latest_exp
                    f"MAX({probe_col})={mx} 落后 {lag} 交易日 (阈值 {threshold})")
 
 
+# ── 检测 6: 日历前瞻余量 (2026-07-06 从孤儿 data_quality.py 迁入, 真正接进日常跑批) ──
+# 阈值来源 (R1 根因4, 2026-07-03 原始设计): sync_registry.yaml trade_cal 注释 "检查 max(cal_date)
+# > today+30" 从未落码 (静默停摆模式下 watermark 门永绿); 60 交易日 ≈ 3 个月缓冲 — 覆盖 tushare
+# 年度日历发布节奏 (每年 Q4 发次年) + 人工响应期。与 static_staleness 语义互补而非重复:
+# static_staleness 测"多久没刷新"(往回看), 本检测测"已登记的日历还能撑多远"(往前看) ——
+# 即使日历"刚刷新过"也可能只覆盖到未来很浅, 静默限制任何"从今天起数 N 个未来交易日"的运算
+# (embargo/purge 窗口等) 悄悄少算而不报错。
+CALENDAR_HORIZON_MIN_TRADING_DAYS = 60
+
+
+def check_calendar_horizon(trading_days: list[str], today_iso: str) -> dict:
+    """dim_trading_calendar 里 today 之后仍登记的交易日数 < 60 = FAIL (raw→dim 传导断链
+    或 tushare 未发布次年日历); trading_days 复用 _load_calendar() 已加载的全量升序列表,
+    不重复查库。"""
+    spec = {"domain": "trade_cal", "db": "reference", "table": "dim_trading_calendar"}
+    future_n = len(trading_days) - bisect_right(trading_days, today_iso)
+    if future_n < CALENDAR_HORIZON_MIN_TRADING_DAYS:
+        return _result(
+            "calendar_horizon", spec, "fail",
+            f"today={today_iso} 之后仅剩 {future_n} 个已登记交易日 (< {CALENDAR_HORIZON_MIN_TRADING_DAYS})",
+            "跑 services.calendar_builder.build_latest 并核 trade_cal sync (tushare 可能未发布次年日历)")
+    return _result(
+        "calendar_horizon", spec, "pass",
+        f"today={today_iso} 之后剩 {future_n} 个已登记交易日 (阈值 {CALENDAR_HORIZON_MIN_TRADING_DAYS})")
+
+
 # ── 编排 ─────────────────────────────────────────────────────────────────
 
 def run_checks(
@@ -491,6 +520,12 @@ def run_checks(
                     c.close()
                 except Exception:  # noqa: BLE001
                     pass
+    # calendar_horizon: 全局单跑一次, 不挂在任一 registry 域上 (直接查 trading_days 已加载的
+    # dim_trading_calendar 全量列表, 不重复连库)。domain 过滤器只在显式指定其他域时跳过。
+    if (only in (None, "calendar_horizon")) and (domain in (None, "trade_cal")):
+        from zoneinfo import ZoneInfo
+        today_iso = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+        results.append(check_calendar_horizon(trading_days, today_iso))
     failures = [r for r in results if r["status"].startswith("fail")
                 or (strict and r["status"] == "db_unreachable")]
     return results, failures

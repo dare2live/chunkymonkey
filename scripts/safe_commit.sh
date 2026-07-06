@@ -184,6 +184,23 @@ else
     exit 5
 fi
 
+# Step 3.99: continuity-integrity gate (2026-07-06 全面数据审计根因根治 —
+#   check_continuity_integrity.py 自 07-05 加入起就一直未接入 safe_commit/CI, 审计当场抓到
+#   这正是"新增治理脚本未同批注册"模式在本 session 活生生重演; 非 strict 默认库不可达优雅
+#   跳过不阻塞 commit, 只有真 FAIL[calendar_gaps/cross_section/group_freshness/
+#   declared_vs_actual/static_staleness]才 abort)
+echo
+echo "=== Step 3.99: continuity-integrity gate (数据连续性常驻审查) ==="
+if PYTHONPATH=backend python backend/scripts/check_continuity_integrity.py > /tmp/cm_continuity.out 2>&1; then
+    tail -1 /tmp/cm_continuity.out
+else
+    echo
+    echo "ERROR: continuity-integrity 门红 — 某域出现日历缺口/横截面骤降/分组断流/声明-实测漂移/静态域断流:"
+    grep -E "^\[fail\]" /tmp/cm_continuity.out | head -20
+    echo "正解: 核实是真数据缺口(重拉补) 还是 registry 声明漂移(改 data_start/加 known_empty_days)。误报修脚本本身, 不 --no-verify 绕。"
+    exit 5
+fi
+
 # 4. Commit message keyword check (manual preview)
 echo
 echo "=== Step 4: commit message keyword ==="

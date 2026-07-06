@@ -24,8 +24,10 @@ backends:
 
 job_families:
   data_validation:
-    owner_module: data_quality
-    purpose: Validate source freshness, PIT safety, row coverage, and table health before model or backtest work.
+    # owner_module 字段 2026-07-06 移除: 曾指 services/data_quality.py, 该模块零调用方
+    # (孤儿, 从未真正实现调用下方 required_gates 三脚本) 已整体退役; owner_module 本身无
+    # 任何代码消费 (纯描述性字段), 三个 gate 各自独立存在, 无需单一"owner 模块"占位。
+    purpose: Validate source freshness, PIT safety, row coverage, and table health before starting substantive work.
     allowed_backends:
       - local
     command_family: data_validation

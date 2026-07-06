@@ -1,15 +1,15 @@
-"""calendar_builder + 日历 horizon 门单测 (R1 件1, 2026-07-03).
+"""calendar_builder 单测 (R1 件1, 2026-07-03).
 
 锁: (1) raw_tushare_trade_cal → dim_trading_calendar 增量正确性 (watermark 语义, 只延伸不回填
-前史); (2) compact→ISO 转换 + SSE/is_open=1 过滤; (3) raw 缺/空 fail loud; (4) horizon 门
-red-green (余量 59 交易日 FAIL / 61 PASS, 阈值 60)。
+前史); (2) compact→ISO 转换 + SSE/is_open=1 过滤; (3) raw 缺/空 fail loud。
+日历 horizon 门 (前瞻余量 red-green) 2026-07-06 迁至
+backend/tests/scripts/test_check_continuity_integrity.py (孤儿 data_quality.py 整体退役,
+horizon 逻辑真正接进 check_continuity_integrity.py 的 calendar_horizon 检测类型)。
 """
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -17,7 +17,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from conftest import duck_mem
 from services import calendar_builder as cb
-from services import data_quality as dq
 
 _RAW_DDL = ("CREATE TABLE raw_tushare_trade_cal "
             "(exchange TEXT, cal_date TEXT, is_open BIGINT, pretrade_date TEXT)")
@@ -90,57 +89,5 @@ def test_raw_missing_or_empty_fails_loud():
         c.execute("INSERT INTO raw_tushare_trade_cal VALUES ('SZSE', '20260702', 1, NULL)")
         with pytest.raises(RuntimeError):   # 只有非 SSE 行同样算空
             cb.build_latest(conn=c)
-    finally:
-        c.close()
-
-
-# ── horizon 门 (根因4): 落实 sync_registry trade_cal 那条纯注释的前瞻 SLA ──
-
-
-def _dim_with_future_days(n_future: int):
-    """dim fixture: 1 个过去交易日 (preflight trading_days>0) + 今日之后 n_future 个交易日行。
-    horizon 门只数 is_trading=1 且 trade_date > today (北京时间), 行日期无需真为交易日。"""
-    c = duck_mem()
-    c.execute(_DIM_DDL)
-    today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
-    rows = [((today - timedelta(days=10)).isoformat(),)]
-    rows += [((today + timedelta(days=i)).isoformat(),) for i in range(1, n_future + 1)]
-    c.executemany("INSERT INTO dim_trading_calendar VALUES (?, 1)", rows)
-    return c
-
-
-@pytest.mark.parametrize("n_future,expect_fail", [
-    (59, True),    # red: 余量 59 < 60 = FAIL (123 交易日倒计时同型, 只是更晚)
-    (61, False),   # green: 余量 61 >= 60 = PASS
-])
-def test_calendar_horizon_gate_red_green(n_future, expect_fail):
-    c = _dim_with_future_days(n_future)
-    try:
-        details, blockers, warnings = [], [], []
-        evidence = dq._check_calendar(c, details, blockers, warnings)
-        assert evidence["future_trading_days"] == n_future
-        assert evidence["horizon_min_trading_days"] == dq.CALENDAR_HORIZON_MIN_TRADING_DAYS == 60
-        horizon = [d for d in details if d["check_name"] == "horizon"]
-        assert len(horizon) == 1
-        token = "calendar:horizon:dim_trading_calendar"
-        if expect_fail:
-            assert horizon[0]["status"] == "fail" and token in blockers
-        else:
-            assert horizon[0]["status"] == "pass" and token not in blockers
-    finally:
-        c.close()
-
-
-def test_horizon_gate_counts_only_trading_days():
-    """is_trading=0 的未来行不计余量 (语义: 可用交易日, 非日历行数)。"""
-    c = _dim_with_future_days(61)
-    try:
-        today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
-        # 混入 100 个未来非交易日行: 若门误数所有行会假 PASS 更宽
-        c.executemany("INSERT INTO dim_trading_calendar VALUES (?, 0)",
-                      [((today + timedelta(days=200 + i)).isoformat(),) for i in range(100)])
-        details, blockers, warnings = [], [], []
-        evidence = dq._check_calendar(c, details, blockers, warnings)
-        assert evidence["future_trading_days"] == 61
     finally:
         c.close()
