@@ -3,9 +3,14 @@
 > **部分 stale (2026-06-20)**: 本文引用的 `audit_*` 治理审计套件 (`audit_execution_surface` /
 > `audit_test_tool_health` / `audit_docs_graph` / `audit_storage_payloads` /
 > `audit_portfolio_sizer_profile_attrition`) **在 2026-06-16 reset 已删**。**当前活跃门** =
-> `data_layer_audit.py` / `check_doc_drift.py` / `check_rule_compliance.py` /
-> `check_legacy_flow_integrity.py` / `check_strategy_validation_integrity.py` / `moth assert` /
-> `moth coupling` / codegraph+complexity 配对扫 (详见本文 codegraph 节 + chunkymonkey-ops skill §3)。
+> `data_layer_audit.py` / `check_doc_drift.py` / `check_rule_compliance.py` / `check_config_refs.py` /
+> `check_continuity_integrity.py` / `moth assert` / `moth coupling` / codegraph+complexity 配对扫
+> (详见本文 codegraph 节 + chunkymonkey-ops skill §3)。**2026-07-06 更正**: 本行此前误列
+> `check_legacy_flow_integrity.py`(C1 子检查因架构变迁已空转 PASS, 判断力打折, 现只 informational
+> 挂 `safe_commit.sh` Step 3.994 非硬闸) 与 `check_strategy_validation_integrity.py`(设计上就应
+> 保持 FAIL 直到策略层重建, 见 §5, 不接入任何自动门) 为"活跃门"——两者均非本文原意的"能拦
+> commit 的硬闸", 已从本行移除防误导; `check_doc_governance.py` 现挂 informational (Step 3.993,
+> 21 条已知 backlog 待清), 亦非硬闸。
 > 下方表中 `audit_*.py` 命令为历史参考, 勿直接运行 (已悬空)。本文规则原则 (最小模块/无 god-file/
 > 删层必删 caller 等) 仍有效。
 

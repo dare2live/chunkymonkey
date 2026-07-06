@@ -46,6 +46,18 @@ def _make_repo_with_staged_python(tmp_path: Path) -> Path:
     #   同款坑, 沙箱无真实 sync_registry/数据库不 stub 会真跑报错退出非0。
     _write(repo / "backend" / "scripts" / "check_continuity_integrity.py",
            "print('continuity-integrity: overall=PASS pass=0 warn=0 fail=0 skipped=0 db_unreachable=0 (latest_expected=stub)')\nraise SystemExit(0)\n")
+    # 2026-07-06 沙箱跟上 Step 3.991-3.994 (5个此前从未接入任何机制的治理脚本本次批量接线):
+    #   同款坑, config_refs/doc_drift 是硬闸(非0退出会真挡commit), 沙箱无真实 data_layers.yaml/
+    #   活文档不 stub 会真跑报错退出非0; doc_governance/legacy_flow_integrity 是 informational
+    #   (管道不检查退出码) 但仍需 stub 防止脚本本身对着空仓库跑数出未捕获异常污染输出。
+    _write(repo / "backend" / "scripts" / "check_config_refs.py",
+           "print('[config-refs] PASS')\nraise SystemExit(0)\n")
+    _write(repo / "backend" / "scripts" / "check_doc_drift.py",
+           "print('{\"overall\": \"PASS\"}')\nraise SystemExit(0)\n")
+    _write(repo / "backend" / "scripts" / "check_doc_governance.py",
+           "print('doc-governance: stub PASS')\nraise SystemExit(0)\n")
+    _write(repo / "backend" / "scripts" / "check_legacy_flow_integrity.py",
+           "print('{\"overall\": \"PASS\", \"checks\": {}}')\nraise SystemExit(0)\n")
     _write(repo / "README.md", "seed\n")
 
     assert _run(["git", "init"], repo).returncode == 0

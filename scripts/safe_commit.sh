@@ -201,6 +201,56 @@ else
     exit 5
 fi
 
+# Step 3.991/992: 2026-07-06 全面数据审计根因根治 — 治理脚本覆盖率盲区之二: 18 个
+# check_*.py 里 5 个此前完全未接入任何机制(safe_commit/CI/git hooks 都没有)。逐个实测:
+# check_config_refs/check_doc_drift 现在都能跑通且真 PASS, 检查内容仍有价值(层词汇/文档
+# 死引用一致性) → 接成硬闸(与其余静态一致性门同级别)。
+echo
+echo "=== Step 3.991: config-refs gate (data_access/data_layers 层词汇一致性) ==="
+if PYTHONPATH=backend python backend/scripts/check_config_refs.py > /tmp/cm_configrefs.out 2>&1; then
+    tail -2 /tmp/cm_configrefs.out
+else
+    echo
+    echo "ERROR: config-refs 门红 — data_access entity 引用的 layer 词汇在 data_layers.yaml 里没有定义:"
+    cat /tmp/cm_configrefs.out
+    echo "正解: 补 data_layers.yaml 声明 / 改 data_access.yaml 用现存层名。误报修脚本本身, 不 --no-verify 绕。"
+    exit 5
+fi
+
+echo
+echo "=== Step 3.992: doc-drift gate (11 活文档死引用) ==="
+if PYTHONPATH=backend python backend/scripts/check_doc_drift.py > /tmp/cm_docdrift.out 2>&1; then
+    tail -2 /tmp/cm_docdrift.out
+else
+    echo
+    echo "ERROR: doc-drift 门红 — 活文档(活索引/AGENTS/docs)引用了已删文件路径:"
+    cat /tmp/cm_docdrift.out
+    echo "正解: 改文档指向现存路径 / 标 deprecated 头注豁免。误报修脚本本身, 不 --no-verify 绕。"
+    exit 5
+fi
+
+# Step 3.993/994: check_doc_governance / check_legacy_flow_integrity 都能跑通, 但暂不适合
+# 硬闸——check_doc_governance 当前 21 条已知 WARN 待清 (脚本自身设计就是"先 WARN, 清完 backlog
+# 再翻 FAIL", 现在硬挡会拦下与本次改动无关的历史 backlog); check_legacy_flow_integrity 的
+# C1 子检查因架构变迁已空转 PASS (查无可查, 见 P2 记录), 整体判断力打折。两者都先接成
+# informational (不 block), 曝光但不拦, 待 backlog 清完/C1 修复后再考虑升硬闸。
+echo
+echo "=== Step 3.993: doc-governance (informational, 21 条已知 backlog 待清) ==="
+PYTHONPATH=backend python backend/scripts/check_doc_governance.py 2>&1 | tail -3
+
+echo
+echo "=== Step 3.994: legacy-flow-integrity (informational, C1 子检查架构变迁后空转) ==="
+PYTHONPATH=backend python backend/scripts/check_legacy_flow_integrity.py > /tmp/cm_legacyflow.out 2>&1
+python3 -c "
+import json
+try:
+    d = json.load(open('/tmp/cm_legacyflow.out'))
+    checks = d.get('checks', {}) if isinstance(d, dict) else {}
+    print('overall=' + str(d.get('overall')), {k: v.get('verdict') for k, v in checks.items()})
+except Exception:
+    print(open('/tmp/cm_legacyflow.out').read()[-300:])
+"
+
 # 4. Commit message keyword check (manual preview)
 echo
 echo "=== Step 4: commit message keyword ==="

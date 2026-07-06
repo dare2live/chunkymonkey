@@ -737,12 +737,25 @@ def _last_watermark_date(domain: str, source: str) -> str | None:
 
 def _record_outcome(spec: dict[str, Any], *, ok: bool, last_date: str | None,
                     rows: int, error: str | None = None) -> None:
+    """watermark 推进与失败记录解耦 (2026-07-06 全面数据审计根因根治):
+    此前 `ok=False`(range 内任一批失败, 哪怕只有 1 个历史日) 时整个跳过 upsert_watermark ——
+    即便 last_date 已经正确前移到本轮真正成功写到的最新日期, watermark 时间戳仍原地冻结。
+    实测 stk_factor_pro 冻结 17 天 / block_trade 曾冻结 9.5 个月: 只要该域某个 (通常是历史)
+    批次持续失败(suspicious_empty/below_min_rows 等), 后续每次跑批哪怕新日子都写成功了,
+    watermark 也永远推不动——冻结的是"监控信号"本身, 而不是数据真的没更新。
+    修复: watermark 是否推进只看 `last_date 是否有真实前移`(有实际写入进展), 与
+    `ok`(本轮是否存在任何失败批, 用于决定要不要同时记 failure_queue)彻底解耦——
+    两件事不再共用同一个判定字段。全清 (ok=True) 时才 resolve 掉历史失败记录, 半清
+    (仍有失败但确实前移了) 时 watermark 照常推进 + 同时记录这轮的失败批, 不清除历史失败
+    (真失败还在, 不能假装解决了)。"""
     from services.source_watermarks import record_source_failure, resolve_source_failures, upsert_watermark
 
     conn = _smartmoney_conn()
     try:
         domain_key = f"sync:{spec['domain']}"
-        if ok:
+        if last_date:
+            # 只要本轮确实写到了新数据 (last_date 非空), watermark 就该推进——不因同轮里
+            # 另一个不相关批次的失败而冻结监控信号本身。
             upsert_watermark(conn, {
                 "data_domain": domain_key,
                 "source_name": spec["source"],
@@ -752,6 +765,7 @@ def _record_outcome(spec: dict[str, Any], *, ok: bool, last_date: str | None,
                 "row_count": rows,
                 "parser_version": "sync_runner_v1",
             })
+        if ok:
             resolve_source_failures(conn, data_domain=domain_key, source_name=spec["source"], commit=True)
         else:
             record_source_failure(

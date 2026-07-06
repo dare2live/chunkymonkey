@@ -57,6 +57,14 @@ def run_acquire(ctx: PipelineContext) -> None:
     ctx.step(_build_trading_calendar,
              degraded_msg="交易日历 dim 传导失败 — dim_trading_calendar 停止向未来延伸 (horizon 门将 FAIL)")
 
+    # Step 2.97 (2026-07-06 全面数据审计根因根治): raw_tushare_stock_basic (2.95 已刷)
+    #   → reference.dim_active_a_stock 全量重写。写函数早就存在且正确, 但此前从未被任何
+    #   daily_update 步骤调用, 25 个消费方(universe 身份真相源)读的这张表只能靠人工手动
+    #   跑脚本刷新, 实测发现已静默 stale 8 天。本步是 dim_active_a_stock 的唯一日常刷新契约,
+    #   与上一步 dim_trading_calendar 同一模式补齐。
+    ctx.step(_refresh_active_a_stock_master,
+             degraded_msg="dim_active_a_stock 刷新失败 — universe 身份真相源可能继续 stale")  # rule-compliance: ok evidence=写方本身非universe消费
+
 
 # ── 步骤实现 (in-process, 直调 service) ──────────────────────────
 
@@ -128,6 +136,18 @@ def _build_trading_calendar() -> None:
     """raw trade_cal → reference.dim_trading_calendar 增量 (R1 根因3 生产刷新契约)."""
     from services.calendar_builder import build_latest
     print(f"calendar_builder: {build_latest()}")
+
+
+def _refresh_active_a_stock_master() -> None:
+    """raw_tushare_stock_basic → reference.dim_active_a_stock 全量重写 (rule-compliance: ok evidence=写方本身非universe消费)
+    (2026-07-06 全面数据审计根因根治): 写函数 refresh_active_a_stock_master 一直存在且正确,
+    但从未被任何 daily_update 步骤调用过——25 个消费方(universe 身份真相源)读的这张表此前
+    只能靠人工手动跑脚本刷新, 实测发现已静默 stale 8 天。stock_basic 域已由上一步
+    _sync_registry_drain 的 --all-due 覆盖同步 (full_refresh 批模式), 本步紧随其后重建派生表,
+    与 _build_trading_calendar (raw trade_cal → dim_trading_calendar) 同一模式。"""
+    from services.security_master import refresh_active_a_stock_master
+    n = refresh_active_a_stock_master(None)
+    print(f"security_master: refresh_active_a_stock_master rows={n}")
 
 
 def _sync_registry_drain(ctx: PipelineContext) -> None:

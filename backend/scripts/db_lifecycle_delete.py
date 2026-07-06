@@ -3,7 +3,9 @@
 
 按删除 manifest (yaml) 安全删除 L1 探索数据 / 死表, 内置 4 道闸:
   1. live 守护: 每张表删前 word-boundary grep live 服务面 (daily_update 脚本集 + serving/ensemble/scoring/
-     recommendation); 命中 = REFUSE 不删 (safe-by-construction; 2026-06-14 抓出 v6_kpi_compare workflow 漏判)。
+     recommendation/pipeline + backend/scripts/ 治理脚本目录); 命中 = REFUSE 不删
+     (safe-by-construction; 2026-06-14 抓出 v6_kpi_compare workflow 漏判; 2026-07-06 补
+     backend/scripts/ + pipeline/ 扫描范围, 堵住"删表不删治理脚本引用"的结构性盲区)。
   2. 冷归档: action=archive 的表先 COPY TO parquet (verify 文件) 再删 — 防失去 PIT/leakage 再审计能力。
   3. 留痕: 每张删除写 mart_data_deletion_record (行数/schema/reason/归档路径/时间) — validation artifacts 不静默消失。
   4. 残留扫描: 删后扫所有 VIEW 定义有无悬挂引用已删表。
@@ -39,15 +41,23 @@ def _db_path(alias: str) -> Path:
 
 
 def _live_surface() -> list[Path]:
-    """daily_update 调用脚本集 + serving/ensemble/scoring/recommendation = live 服务面。"""
-    out = subprocess.run(
-        r"grep -oE 'backend/scripts/[a-zA-Z0-9_]+\.py' scripts/daily_update.sh | sort -u",
-        shell=True, cwd=REPO, capture_output=True, text=True,
-    ).stdout.split()
-    paths = [REPO / p for p in out]
-    paths.append(REPO / "scripts" / "daily_update.sh")
-    for d in ("serving", "recommendation", "scoring", "ensemble"):
+    """daily_update 调用脚本集 + serving/ensemble/scoring/recommendation + backend/scripts/
+    (治理/审计/build_* 一次性脚本) + backend/services/pipeline/ (真实当前调用图) = live 服务面。
+
+    2026-07-06 全面数据审计根因根治 (owner=analysis/comprehensive_data_module_audit_20260706.md
+    pit_leakage_spotcheck 维度): 原实现只对 `scripts/daily_update.sh` 做正则抓已调用脚本名 +
+    `serving/recommendation/scoring/ensemble` 四个目录——**结构性排除 `backend/scripts/` 整个
+    目录本身**, 导致 data_quality.py 这类"表已删但治理脚本仍用 SQL 字符串引用"的死引用完全
+    检测不到 (审计诊断: 这是"残留反复出现"的核心机制之一, 非偶然)。另: `daily_update.sh`
+    2026-06-23 重设计后已委托 `services.pipeline.run` 模块调用 (不再直接 shell 出
+    `backend/scripts/*.py`), 原正则现在恒抓不到东西 (与 check_legacy_flow_integrity.py 的
+    C1 "PASS by vacuity" 同型问题) —— 改为直接扫 `backend/services/pipeline/` (真实当前调用
+    图, ctx.run_script(...) 的实际调用点) 而非解析已过期的 wrapper 脚本文本。
+    """
+    paths: list[Path] = [REPO / "scripts" / "daily_update.sh"]
+    for d in ("serving", "recommendation", "scoring", "ensemble", "pipeline"):
         paths += list((REPO / "backend" / "services" / d).rglob("*.py"))
+    paths += list((REPO / "backend" / "scripts").glob("*.py"))
     return [p for p in paths if p.exists()]
 
 
