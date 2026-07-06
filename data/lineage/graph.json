@@ -661,12 +661,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/data_quality.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/schema_versions.py",
       "kind": "consume",
       "src": "table:dim_active_a_stock"
@@ -680,6 +674,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/universe.py",
+      "kind": "consume",
+      "src": "table:dim_active_a_stock"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_check_dead_references.py",
       "kind": "consume",
       "src": "table:dim_active_a_stock"
     },
@@ -1135,6 +1135,30 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/primitives/__init__.py",
+      "kind": "consume",
+      "src": "table:dim_style_factor"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/primitives/ddl.py",
+      "kind": "consume",
+      "src": "table:dim_style_factor"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/primitives/seed.py",
+      "kind": "consume",
+      "src": "table:dim_style_factor"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_primitives.py",
+      "kind": "consume",
+      "src": "table:dim_style_factor"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
       "src": "table:dim_trading_calendar"
@@ -1196,12 +1220,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_audit.py",
-      "kind": "consume",
-      "src": "table:dim_trading_calendar"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_quality.py",
       "kind": "consume",
       "src": "table:dim_trading_calendar"
     },
@@ -1507,6 +1525,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:fact_stock_form_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/routers/market_pulse.py",
       "kind": "consume",
       "src": "table:fact_stock_form_daily"
@@ -1586,12 +1610,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/update_watermark_sla.py",
-      "kind": "consume",
-      "src": "table:fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_quality.py",
       "kind": "consume",
       "src": "table:fact_top10_holder_period"
     },
@@ -1682,12 +1700,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_deletion.py",
-      "kind": "consume",
-      "src": "table:mart_data_deletion_record"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_quality.py",
       "kind": "consume",
       "src": "table:mart_data_deletion_record"
     },
@@ -1795,12 +1807,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/data_quality.py",
-      "kind": "consume",
-      "src": "table:mart_data_processing_tool_issue"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/schema_versions.py",
       "kind": "consume",
       "src": "table:mart_data_processing_tool_issue"
@@ -1808,12 +1814,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_processing_monitor.py",
-      "kind": "consume",
-      "src": "table:mart_data_processing_tool_run"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_quality.py",
       "kind": "consume",
       "src": "table:mart_data_processing_tool_run"
     },
@@ -1918,24 +1918,6 @@
       "dst": "consumer:scripts/cm.sh",
       "kind": "consume",
       "src": "table:mart_data_source_watermark"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:mart_global_data_quality_gate"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_quality.py",
-      "kind": "consume",
-      "src": "table:mart_global_data_quality_gate"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:mart_global_data_quality_gate"
     },
     {
       "attrs": {},
@@ -2060,12 +2042,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/experiment_jobs.yaml",
-      "kind": "consume",
-      "src": "table:mart_pipeline_run_manifest"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_quality.py",
       "kind": "consume",
       "src": "table:mart_pipeline_run_manifest"
     },
@@ -2546,6 +2522,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/technical_states/__init__.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_check_dead_references.py",
       "kind": "consume",
       "src": "table:raw_tushare_daily"
     },
@@ -3619,12 +3601,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/data_quality.py",
-      "kind": "consume",
-      "src": "table:v_price_kline_qfq"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/institution_profile.py",
       "kind": "consume",
       "src": "table:v_price_kline_qfq"
@@ -3775,8 +3751,8 @@
     }
   ],
   "meta": {
-    "edge_count": 578,
-    "generated_at": "2026-07-05T14:50:28.068845+00:00",
+    "edge_count": 574,
+    "generated_at": "2026-07-06T07:55:29.344491+00:00",
     "node_count": 270,
     "version": 1
   },
@@ -4147,14 +4123,6 @@
         "path": "backend/services/data_processing_monitor.py"
       },
       "id": "consumer:backend/services/data_processing_monitor.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/data_quality.py"
-      },
-      "id": "consumer:backend/services/data_quality.py",
       "kind": "consumer"
     },
     {
@@ -4563,6 +4531,14 @@
         "path": "backend/tests/test_calendar_gate.py"
       },
       "id": "consumer:backend/tests/test_calendar_gate.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/test_check_dead_references.py"
+      },
+      "id": "consumer:backend/tests/test_check_dead_references.py",
       "kind": "consumer"
     },
     {
@@ -5297,6 +5273,15 @@
     },
     {
       "attrs": {
+        "db": "smartmoney",
+        "layer": "untagged",
+        "status": "active"
+      },
+      "id": "table:dim_style_factor",
+      "kind": "table"
+    },
+    {
+      "attrs": {
         "db": "reference",
         "layer": "L1_foundation",
         "status": "active"
@@ -5466,15 +5451,6 @@
         "status": "active"
       },
       "id": "table:mart_data_source_watermark",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "infra",
-        "status": "active"
-      },
-      "id": "table:mart_global_data_quality_gate",
       "kind": "table"
     },
     {
