@@ -703,72 +703,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_audit_rules.yaml",
-      "kind": "consume",
-      "src": "table:dim_all_ever_listed"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:dim_all_ever_listed"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/universe_rules.yaml",
-      "kind": "consume",
-      "src": "table:dim_all_ever_listed"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_dim_listing_status.py",
-      "kind": "consume",
-      "src": "table:dim_all_ever_listed"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/data_health_snapshot.py",
-      "kind": "consume",
-      "src": "table:dim_all_ever_listed"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/migrate_reference_db.py",
-      "kind": "consume",
-      "src": "table:dim_all_ever_listed"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_access/resolver.py",
-      "kind": "consume",
-      "src": "table:dim_all_ever_listed"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_audit.py",
-      "kind": "consume",
-      "src": "table:dim_all_ever_listed"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/universe.py",
-      "kind": "consume",
-      "src": "table:dim_all_ever_listed"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/scripts/test_build_dim_listing_status.py",
-      "kind": "consume",
-      "src": "table:dim_all_ever_listed"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_universe.py",
-      "kind": "consume",
-      "src": "table:dim_all_ever_listed"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
       "src": "table:dim_fee_schedule"
@@ -838,60 +772,6 @@
       "dst": "consumer:backend/tests/test_primitives.py",
       "kind": "consume",
       "src": "table:dim_liquidity_threshold"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:dim_listing_status"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/build_dim_listing_status.py",
-      "kind": "consume",
-      "src": "table:dim_listing_status"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/data_health_snapshot.py",
-      "kind": "consume",
-      "src": "table:dim_listing_status"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/migrate_reference_db.py",
-      "kind": "consume",
-      "src": "table:dim_listing_status"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/primitives/__init__.py",
-      "kind": "consume",
-      "src": "table:dim_listing_status"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/primitives/ddl.py",
-      "kind": "consume",
-      "src": "table:dim_listing_status"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:dim_listing_status"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/scripts/test_build_dim_listing_status.py",
-      "kind": "consume",
-      "src": "table:dim_listing_status"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_primitives.py",
-      "kind": "consume",
-      "src": "table:dim_listing_status"
     },
     {
       "attrs": {},
@@ -1144,6 +1024,12 @@
       "dst": "consumer:backend/tests/test_technical_states.py",
       "kind": "consume",
       "src": "table:dim_stock_segment_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:dim_style_factor"
     },
     {
       "attrs": {},
@@ -3787,9 +3673,9 @@
     }
   ],
   "meta": {
-    "edge_count": 580,
-    "generated_at": "2026-07-06T14:45:56.823398+00:00",
-    "node_count": 272,
+    "edge_count": 561,
+    "generated_at": "2026-07-06T22:35:02.403250+00:00",
+    "node_count": 267,
     "version": 1
   },
   "nodes": [
@@ -3972,14 +3858,6 @@
     {
       "attrs": {
         "ctype": "script",
-        "path": "backend/scripts/build_dim_listing_status.py"
-      },
-      "id": "consumer:backend/scripts/build_dim_listing_status.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
         "path": "backend/scripts/build_price_kline_qfq_tushare.py"
       },
       "id": "consumer:backend/scripts/build_price_kline_qfq_tushare.py",
@@ -4127,14 +4005,6 @@
         "path": "backend/services/continuity_guard.py"
       },
       "id": "consumer:backend/services/continuity_guard.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/data_access/resolver.py"
-      },
-      "id": "consumer:backend/services/data_access/resolver.py",
       "kind": "consumer"
     },
     {
@@ -4503,14 +4373,6 @@
         "path": "backend/tests/realdb/test_real_data_consistency.py"
       },
       "id": "consumer:backend/tests/realdb/test_real_data_consistency.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/scripts/test_build_dim_listing_status.py"
-      },
-      "id": "consumer:backend/tests/scripts/test_build_dim_listing_status.py",
       "kind": "consumer"
     },
     {
@@ -5235,15 +5097,6 @@
     },
     {
       "attrs": {
-        "db": "reference",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:dim_all_ever_listed",
-      "kind": "table"
-    },
-    {
-      "attrs": {
         "db": "smartmoney",
         "layer": "L1_foundation",
         "status": "active"
@@ -5258,15 +5111,6 @@
         "status": "active"
       },
       "id": "table:dim_liquidity_threshold",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "reference",
-        "layer": "L1_foundation",
-        "status": "active"
-      },
-      "id": "table:dim_listing_status",
       "kind": "table"
     },
     {
@@ -5326,7 +5170,7 @@
     {
       "attrs": {
         "db": "smartmoney",
-        "layer": "untagged",
+        "layer": "L1_foundation",
         "status": "active"
       },
       "id": "table:dim_style_factor",

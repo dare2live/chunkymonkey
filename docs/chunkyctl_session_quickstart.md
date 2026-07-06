@@ -185,7 +185,7 @@ read/compute window from the write/delete window.
 | `price_kline_qfq_tushare` (K线真相源) | `PYTHONPATH=backend .venv/bin/python backend/scripts/build_price_kline_qfq_tushare.py` (全量 CTAS 重建 + 自 sanity) |
 | raw_tushare_* 任一域回填 | `PYTHONPATH=backend .venv/bin/python -m services.data_sources.sync_runner --domain <d> --drain` |
 | PIT 行业视图 | `build_sw_industry_view.py` / `build_dc_industry_view.py` |
-| reference 4 dim | `build_dim_listing_status.py` + `migrate_reference_db.py` |
+| reference dim (2026-07-07 起 2 张: active_a_stock/trading_calendar; all_ever_listed/listing_status 已整表退役) | `services/security_master.refresh_active_a_stock_master` + `services/calendar_builder.build_latest` (均已挂 daily pipeline acquire 阶段, 不再需要手动跑) |
 
 After
 refreshing production DuckDB tables, rerun the relevant data gates, update the

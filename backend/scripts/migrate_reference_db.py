@@ -8,6 +8,11 @@
 ██ 日历刷新走 services/calendar_builder.build_latest (pipeline acquire 已挂); ██
 ██ 本文件只留历史参考 (Stage A 迁移过程留档), 禁止执行。                      ██
 ████████████████████████████████████████████████████████████████████████████████
+██ 2026-07-07 补注: REF_TABLES 下列的 dim_all_ever_listed / dim_listing_status 两张表本身  ██
+██ 已随决策收口整表退役物删 (0 存活 writer / 0 业务读者), 现仅剩 dim_active_a_stock 与     ██
+██ dim_trading_calendar 两张 reference dim 存活。下方列表原样保留, 反映 Stage A 迁移       ██
+██ 当时的真实历史事实, 不代表当前状态。                                                  ██
+████████████████████████████████████████████████████████████████████████████████
 
 目的: 把读多写少的 universe/identity/calendar reference 表从 smartmoney 大杂烩拆出 →
 reference.duckdb (只读 ATTACH 与 facts 写锁解耦), 根治 sync_runner 回填读 universe 撞 smartmoney 写锁。

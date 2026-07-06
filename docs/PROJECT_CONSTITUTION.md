@@ -20,8 +20,12 @@ WHY: v3 RankIC "+75% 提升"实为 latest-snapshot + 99.978% sector fallback 双
 
 **第 3 条 真相源唯一.**
 规则: 每个判断恰有一个真相源 (在交易=K 线有数据, 交易日=日历, 规则与阈值=YAML); 复制的常量、dataclass 默认值、平行 dim 表 = 第二真相源, 禁止.
-WHY: dim_all_ever_listed 快照比对误标 573 只活跃股为退市; 旧印花税 10bps 在减半 3 年后还活在 default 参数里.
-验证: `data_audit.cross_table_consistency` + 双独立路径 diff==0 互证 (如 cost round-trip vs label 层口径); 成本类 dataclass default-free 强制显式构造.
+WHY: dim_all_ever_listed 快照比对误标 573 只活跃股为退市 (该表本身已于 2026-07-07 因无存活 writer +
+0 业务读者整表退役, 见 analysis/dim_all_ever_listed_retirement_20260707.md — 反例本身不再是活风险,
+但教训保留); 旧印花税 10bps 在减半 3 年后还活在 default 参数里.
+验证: `data_audit.cross_table_consistency`(现只剩板块前缀 leak 检测, 原依赖 dim_all_ever_listed 的
+inactive_still_trading 子检查已随该表退役同步移除) + 双独立路径 diff==0 互证 (如 cost round-trip vs
+label 层口径); 成本类 dataclass default-free 强制显式构造.
 
 **第 4 条 Measured not estimated, unknown = NaN.**
 规则: 任何参数/阈值/效果必须能指出"哪段 SQL + 哪个时间窗 + 几行真实历史"测出; 测不出标 unknown, unknown 必须是 NaN 让聚合自动排除, 严禁当 0 参与.

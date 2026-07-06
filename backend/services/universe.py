@@ -182,79 +182,10 @@ def build_limit_up_pct_map(stock_codes) -> dict[str, float]:
     return {code: get_limit_up_pct(code) for code in stock_codes}
 
 
-def audit_strategy_universe_contamination(
-    conn, *, table: str,
-    model_id_col: str = "model_id",
-    stock_code_col: str = "stock_code",
-    model_id_filter: str | None = None,
-) -> dict:
-    """Audit existing strategy predictions for contamination by excluded stocks.
-
-    Returns dict with per-category contamination counts + percentages.
-    """
-    where_filter = f"WHERE {model_id_col} = '{model_id_filter}'" if model_id_filter else ""
-    and_or = "AND" if where_filter else "WHERE"
-
-    total = conn.execute(f"SELECT COUNT(*), COUNT(DISTINCT {stock_code_col}) FROM {table} {where_filter}").fetchone()
-    total_picks, unique_stocks = total[0], total[1]
-    if not total_picks:
-        return {"table": table, "model_id_filter": model_id_filter, "total_picks": 0}
-
-    # §9 拆库: dim_active_a_stock / dim_all_ever_listed 迁 reference, 不再 cross-db JOIN picks×dim。
-    #   改先从 reference dim 取 ST 码集 / 退市码集, 再 count picks WHERE code IN (set)。
-    from services.data_access import resolver
-    from services.security_master import active_stock_name_map
-
-    name_map = active_stock_name_map(conn=conn)  # rule-compliance: ok evidence=ST name via reference dim helper
-    st_codes = sorted({c for c, n in name_map.items() if is_st_stock(n)})
-    if st_codes:
-        _ph = ",".join("?" for _ in st_codes)
-        st = conn.execute(
-            f"SELECT COUNT(*), COUNT(DISTINCT {stock_code_col}) FROM {table} "
-            f"{where_filter} {and_or} {stock_code_col} IN ({_ph})", st_codes
-        ).fetchone()
-    else:
-        st = (0, 0)
-
-    _dc, _down = resolver.dim_read_conn(conn, "dim_all_ever_listed")  # rule-compliance: ok evidence=delisted set via reference dim helper
-    try:
-        delisted_codes = sorted({
-            str(r[0]) for r in _dc.execute(
-                "SELECT stock_code FROM dim_all_ever_listed WHERE is_active = 0 AND stock_code IS NOT NULL"
-            ).fetchall()
-        })
-    finally:
-        if _down:
-            _dc.close()
-    if delisted_codes:
-        _ph = ",".join("?" for _ in delisted_codes)
-        delisted = conn.execute(
-            f"SELECT COUNT(*), COUNT(DISTINCT {stock_code_col}) FROM {table} "
-            f"{where_filter} {and_or} {stock_code_col} IN ({_ph})", delisted_codes
-        ).fetchone()
-    else:
-        delisted = (0, 0)
-
-    neeq = conn.execute(f"""
-        SELECT COUNT(*), COUNT(DISTINCT {stock_code_col}) FROM {table}
-         {where_filter} {and_or} (SUBSTR({stock_code_col}, 1, 1) = '8' OR SUBSTR({stock_code_col}, 1, 1) = '4')
-    """).fetchone()
-
-    etf = conn.execute(f"""
-        SELECT COUNT(*), COUNT(DISTINCT {stock_code_col}) FROM {table}
-         {where_filter} {and_or} (SUBSTR({stock_code_col}, 1, 2) IN ('15','51','56','58'))
-    """).fetchone()
-
-    return {
-        "table": table, "model_id_filter": model_id_filter,
-        "total_picks": total_picks, "unique_stocks": unique_stocks,
-        "st_picks": st[0], "st_stocks": st[1], "st_pct": st[0] / total_picks * 100,
-        "delisted_picks": delisted[0], "delisted_stocks": delisted[1],
-        "delisted_pct": delisted[0] / total_picks * 100,
-        "neeq_picks": neeq[0], "neeq_stocks": neeq[1], "neeq_pct": neeq[0] / total_picks * 100,
-        "etf_picks": etf[0], "etf_stocks": etf[1], "etf_pct": etf[0] / total_picks * 100,
-    }
-
+# audit_strategy_universe_contamination() 2026-07-07 整段退役 (owner=PROJECT_INDEX.md dim_all_ever_listed
+# 决策收口): 审计"策略预测表"(strategy predictions table)是否混入排除股, 但策略/serving/scoring 层已
+# 于 2026-06-28 纯数据平台重建整体退役, 项目里已不存在这类预测表可审; 生产 0 调用方(仅
+# backend/tests/test_universe.py 测试自身), 且其退市码集来源 dim_all_ever_listed 本身也已物删。
 
 # =====================================================================
 # 硬真相源门 (2026-06-17 用户决议: universe 升到交易日历级)

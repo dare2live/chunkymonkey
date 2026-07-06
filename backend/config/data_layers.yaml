@@ -94,13 +94,15 @@ tables:
   raw_org_holding_aif10: L0_source  # 2026-06-24 补tag (aif10机构持仓明细raw镜像, 前会话漏登致data-layer-integrity FAIL)
   raw_qfii_holding_quarterly: L0_source
   dim_active_a_stock: L1_foundation
-  dim_all_ever_listed: L1_foundation
+  # dim_all_ever_listed / dim_listing_status 2026-07-07 整表退役 (owner=PROJECT_INDEX.md 决策收口):
+  # 前者无存活 writer 冻结 10+ 周, 后者 0 业务读者且唯一 builder 无生产调用方, 详见
+  # analysis/dim_all_ever_listed_retirement_20260707.md
   dim_fee_schedule: L1_foundation
   dim_liquidity_threshold: L1_foundation
-  dim_listing_status: L1_foundation
   dim_market_segment: L1_foundation
   dim_stock_dc_industry: L1_foundation     # 2026-06-23 东财全套迁移Stage④ 当前行业快照 (serving); 深史as-of走 tushare_raw.v_sw_industry_pit
   dim_stock_dc_concept: L1_foundation      # 2026-06-23 东财概念成员当前快照 (serving)
+  dim_style_factor: L1_foundation          # 2026-07-06 primitives 第9项风格因子dim补建时漏登记 (6姊妹表已登记), 顺手补上 (owner=analysis/dim_all_ever_listed_retirement_20260707.md doctor 复查抓获, 非本次退役新增表)
   dim_trading_calendar: L1_foundation
   dim_trading_rule: L1_foundation
   dim_trading_session: L1_foundation

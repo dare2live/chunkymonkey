@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-07-06 15:48:36 CST
+**Snapshot 时间**: 2026-07-06 21:12:56 CST
 
 ## 主线状态
 
@@ -44,28 +44,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `3033f067 feat: R4 数据连续性审计收口 — 41条逐项闭环 + K线边界孤立数据审计 + 资金流向曲线` |
-| 最近 24h commits | 1 |
-| 未 commit 文件 | 27 |
+| HEAD | `d4571bc2 feat: by_trade_date 域"今日补拉"机制 — 修 drain 永远排除今天的结构性缺口` |
+| 最近 24h commits | 6 |
+| 未 commit 文件 | 7 |
 
 ### 最近 10 commits
 
 ```
+d4571bc2 feat: by_trade_date 域"今日补拉"机制 — 修 drain 永远排除今天的结构性缺口
+d56c30cd fix: test_known_safe_list_entries_still_match_reality 改 skip 而非 assert (CI 无库场景)
+91f1973c fix: check_dead_references scan_e 修复 CI 假阳性 (0 库文件误判成"确认死引用")
+481dcad7 chore: 重生 lineage graph.json (T2 informational drift 清零)
+fca5531b fix: stk_limit page_limit 静默丢数根治 + 全面数据审计治理机制修复
 3033f067 feat: R4 数据连续性审计收口 — 41条逐项闭环 + K线边界孤立数据审计 + 资金流向曲线
 eef8da75 feat: 数据地基根因根治 R1机制件 — 消费侧连续性硬门+审查器首跑+grain三层根因终结
 4084fed6 feat: 感知 v3 (flow_regime 六标签+全模块下钻) + 加工层审计波1修复 (rzrqye 假摆动 HIGH 等 8 修)
 436ba2a6 docs: 市场感知 v3 设计定稿 — 资金流形态分类学 + 全模块层级下钻 (用户定调)
 7b0f7714 fix: start.command 双击打开 404 根治 — 根路由指已退役 dossier 视图 + R4 轻修批 7 项
-1b94dd7a feat: 数据底座六根因根治 R0止血+R1机制件 — 2 CRITICAL grain 静默丢失修复 + 四道新门
-603651dc feat: 情绪温度可视化重设计 — 曲线换 climate-stripes 温度条纹带
-2f98f78b feat: B4 v2 感知增强 + 前端浅色重设计 — 概念/龙头缺口闭环 + 5 新域 + 情绪周期仪表盘
-1beb16bc docs: D1 结构常数敏感性留档 + v2 参数冻结 (考古修正#9 关账)
-928d8b72 feat: D1 GT v2 交付 — 主升浪已知答案落库 5636 episode + Type A 纯度门列名根治
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**27 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**7 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

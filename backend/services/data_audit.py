@@ -142,21 +142,11 @@ def _load_audit_config() -> dict[str, Any]:
                     "kline_stock_code_column": "code",
                     "universe_tables": [
                         {"table": "dim_active_a_stock", "stock_code_column": "stock_code"},  # rule-compliance: ok evidence=audit-config-reference
-                        {"table": "dim_all_ever_listed", "stock_code_column": "stock_code"},
                     ],
                 },
-                {
-                    "name": "inactive_still_trading",
-                    "enabled": True,
-                    "kline_source_table": "market.v_price_kline_qfq",
-                    "kline_date_column": "date",
-                    "kline_stock_code_column": "code",
-                    "recent_days": 10,
-                    "inactive_table": "dim_all_ever_listed",
-                    "inactive_code_column": "stock_code",
-                    "is_active_column": "is_active",
-                    "inactive_value": 0,
-                },
+                # inactive_still_trading 规则 2026-07-07 整段退役 (同 data_audit_rules.yaml 头注): 依赖已
+                # 物删的 dim_all_ever_listed 判"标记 inactive 但仍在交易", 该表无存活 writer 且外部
+                # is_active 声明源本身已被判定为不再需要 (universe.py K 线活跃真相源原则)。
             ],
         },
     } | loaded
@@ -430,7 +420,6 @@ def _check_cross_table_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResu
     kline_code_col = _to_str(kline_cfg.get("stock_code_column"), "code")
     cross_cfg = AUDIT_RULES.get("cross_table_consistency", {})
     cross_rules = _as_list(cross_cfg.get("rules"), [])
-    sample_limit = _to_int(cross_cfg.get("sample_limit"), 5)
 
     kline_coverage_rule = _first_matching_rule(cross_rules, "kline_universe_coverage")
     if kline_coverage_rule is None:
@@ -456,59 +445,13 @@ def _check_cross_table_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResu
     # 不靠 dim 表枚举。此 coverage 仅守"非A股板块(北交所83x/三板/指数) leak 进 A股 K线"。
     extras = sorted(c for c in kline_codes if classify_exclusion(c) is not None)
 
-    inactive_rule = _first_matching_rule(cross_rules, "inactive_still_trading")
-    if inactive_rule is None:
-        return CheckResult("cross_table_consistency", "FAIL", "missing cross_table_consistency.inactive_still_trading rule")
-    if not _rule_enabled(inactive_rule, default=True):
-        if not extras:
-            return CheckResult(
-                "cross_table_consistency",
-                "PASS",
-                "cross-table consistency passed with optional stale inactive rule disabled",
-            )
-        return CheckResult(
-            "cross_table_consistency",
-            "FAIL",
-            f"{len(extras)} kline codes not in universe tables",
-        )
-
-    inactive_days = _to_int(inactive_rule.get("recent_days"), 10)
-    inactive_table = _to_str(inactive_rule.get("inactive_table"), "dim_all_ever_listed")
-    inactive_code_col = _to_str(inactive_rule.get("inactive_code_column"), "stock_code")
-    is_active_col = _to_str(inactive_rule.get("is_active_column"), "is_active")
-    inactive_value = _to_int(inactive_rule.get("inactive_value"), 0)
-    inactive_table_col_date = _to_str(inactive_rule.get("kline_date_column"), "date")
-    inactive_source_table = _to_str(inactive_rule.get("kline_source_table"), "market.v_price_kline_qfq")
-    inactive_source_code_col = _to_str(inactive_rule.get("kline_stock_code_column"), kline_source_code_col)
-
-    recent_codes = {c for (c,) in conn.execute(f"""
-        SELECT DISTINCT {inactive_source_code_col}
-        FROM {inactive_source_table}
-        WHERE CAST({inactive_table_col_date} AS DATE) >= CURRENT_DATE - INTERVAL '{inactive_days} days'
-    """).fetchall() if c is not None}
-    from services.data_access import resolver
-    _ic, _own = resolver.dim_read_conn(conn, inactive_table)  # rule-compliance: ok evidence=dim_all_ever_listed迁reference, conn有表用过渡dual否则fall reference
-    try:
-        inactive_codes = {c for (c,) in _ic.execute(
-            f"SELECT {inactive_code_col} FROM {inactive_table} WHERE {is_active_col} = {inactive_value}"
-        ).fetchall() if c is not None}
-    finally:
-        if _own:
-            _ic.close()
-    wrongly_inactive = inactive_codes & recent_codes
-
-    issues = []
+    # inactive_still_trading 子检查 2026-07-07 整段退役 (owner=PROJECT_INDEX.md 决策收口): 原逻辑靠
+    # dim_all_ever_listed 声明的 is_active 标记去比对"是否仍在交易", 该表已物删(无存活 writer, 冻结
+    # 10+ 周的快照, 且 universe.py 已确立 K 线本身即活跃真相源) — 少了外部 is_active 声明源, 这个
+    # 检查会退化为拿 K 线跟自己比对的空转; 保留仅剩这里的 kline_universe_coverage(北交所/非A股板块 leak)。
     if extras:
-        issues.append(f"{len(extras)} kline codes not in universe tables")
-    if wrongly_inactive:
-        issues.append(f"{len(wrongly_inactive)} stocks marked inactive but still trading (inactive_value={inactive_value}, recent_days={inactive_days})")
-
-    if issues:
-        sample = ", ".join(sorted(wrongly_inactive)[:sample_limit]) if wrongly_inactive else ""
-        if sample:
-            issues.append(f"sample: {sample}")
-        return CheckResult("cross_table_consistency", "FAIL", "; ".join(issues))
-    return CheckResult("cross_table_consistency", "PASS", "kline codes consistent with universe tables, no wrongly-inactive stocks")
+        return CheckResult("cross_table_consistency", "FAIL", f"{len(extras)} kline codes not in universe tables")
+    return CheckResult("cross_table_consistency", "PASS", "kline codes consistent with universe board-prefix truth source")
 
 
 def _overall_status(checks: list[CheckResult]) -> str:

@@ -60,7 +60,6 @@ def test_get_active_universe(tmp_path, monkeypatch):
     db_path = tmp_path / "test.duckdb"
     conn = duckdb.connect(str(db_path))
     conn.execute("CREATE TABLE dim_active_a_stock (stock_code VARCHAR, stock_name VARCHAR)")
-    conn.execute("CREATE TABLE dim_all_ever_listed (stock_code VARCHAR, is_active INTEGER)")
     # Insert test stocks
     conn.execute("""
         INSERT INTO dim_active_a_stock VALUES
@@ -70,7 +69,6 @@ def test_get_active_universe(tmp_path, monkeypatch):
             ('830001', '北交所A'),
             ('000001', '深主板A'), ('300001', '创业板A'), ('688001', '科创A')
     """)
-    conn.execute("INSERT INTO dim_all_ever_listed VALUES ('600002', 0)")  # 600002 已退市
 
     # 创建模拟 K 线关系, 让退市检查用测试数据 (不依赖真实 market.duckdb)
     conn.execute("CREATE TABLE price_kline_tdxhub (code VARCHAR, freq VARCHAR, date DATE)")
@@ -108,7 +106,6 @@ def test_get_active_universe_excludes_index_not_in_dim_active(tmp_path):
     import duckdb
     conn = duckdb.connect(str(tmp_path / "test.duckdb"))
     conn.execute("CREATE TABLE dim_active_a_stock (stock_code VARCHAR, stock_name VARCHAR)")
-    conn.execute("CREATE TABLE dim_all_ever_listed (stock_code VARCHAR, is_active INTEGER)")
     conn.execute("INSERT INTO dim_active_a_stock VALUES ('600001', '正常A')")  # 真股清单无 000300 指数
     conn.execute("CREATE TABLE price_kline_tdxhub (code VARCHAR, freq VARCHAR, date DATE)")
     conn.execute("""
@@ -176,30 +173,8 @@ def test_get_active_universe_reads_st_mapping_from_reference(tmp_path, monkeypat
     conn.close()
 
 
-def test_audit_contamination(tmp_path):
-    """audit_strategy_universe_contamination detects ST/退市/BSE/ETF in picks."""
-    import duckdb
-    db = duckdb.connect(":memory:")
-    db.execute("CREATE TABLE dim_active_a_stock (stock_code VARCHAR, stock_name VARCHAR)")
-    db.execute("CREATE TABLE dim_all_ever_listed (stock_code VARCHAR, is_active INTEGER)")
-    db.execute("""
-        INSERT INTO dim_active_a_stock VALUES
-            ('600001', '正常'), ('600002', 'ST 测试'), ('830001', '北交所')
-    """)
-    db.execute("INSERT INTO dim_all_ever_listed VALUES ('600003', 0)")
-    db.execute("CREATE TABLE picks (model_id VARCHAR, stock_code VARCHAR)")
-    db.execute("""
-        INSERT INTO picks VALUES
-            ('M1', '600001'), ('M1', '600002'), ('M1', '830001'), ('M1', '600003'),
-            ('M1', '510300')
-    """)
-    from services.universe import audit_strategy_universe_contamination
-    r = audit_strategy_universe_contamination(db, table='picks', model_id_filter='M1')
-    assert r['total_picks'] == 5
-    assert r['st_picks'] == 1  # 600002
-    assert r['delisted_picks'] == 1  # 600003
-    assert r['neeq_picks'] == 1  # 830001
-    assert r['etf_picks'] == 1  # 510300
+# test_audit_contamination 2026-07-07 随 audit_strategy_universe_contamination() 一并退役
+# (owner=PROJECT_INDEX.md dim_all_ever_listed 决策收口): 被测函数已删, 见 services/universe.py。
 
 
 # === 2026-06-17 universe 升交易日历级真相源: 硬验证器 + PIT ST 防回归 ===

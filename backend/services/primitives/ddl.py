@@ -124,8 +124,9 @@ CREATE INDEX IF NOT EXISTS idx_fsld_date ON fact_stock_liquidity_daily(date);
 """
 
 
-# 8. 退市风险 — §9 reference 拆库 Stage E (2026-06-27): DIM_LISTING_STATUS_DDL 已删 (迁 reference.duckdb,
-#    schema owner = build_dim_listing_status.ensure_dim_listing_status_schema; smartmoney 副本物删 + 删 DDL 防重建)。
+# 8. 退市风险 — §9 reference 拆库 Stage E (2026-06-27) 先迁 reference.duckdb (DIM_LISTING_STATUS_DDL
+#    已删, smartmoney 副本物删防重建); 2026-07-07 dim_listing_status 本身随 dim_all_ever_listed 一并
+#    整表退役 (0 业务读者), build_dim_listing_status.py 同批物删。
 
 
 # 9. 风格因子

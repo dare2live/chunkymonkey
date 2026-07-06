@@ -1,0 +1,22 @@
+# dim_all_ever_listed / dim_listing_status 整表退役 (2026-07-07, 用户拍板选项 A)
+# 决策全过程 + 证据见 analysis/dim_all_ever_listed_retirement_20260707.md
+# 前置 (本次全部已完成, 见同批 commit):
+#   - 所有代码引用已清: data_audit.py 去检查分支 / universe.py 去死函数 / build_dim_listing_status.py
+#     整脚本物删 / moth 断言 4→2 / data_layers+schema_versions+duckdb_connect_policy 去登记
+#   - 全量测试 621 passed (626-5, 删的测试均为被删代码自身的测试)
+# action=archive: 先 COPY TO parquet 留底再 DROP (可逆保险) + 写 mart_data_deletion_record 留痕
+# 执行: python backend/scripts/db_lifecycle_delete.py \
+#         --manifest analysis/lifecycle_delete_manifest_dim_all_ever_listed_20260707.yaml --execute
+#   (不带 --force: 代码引用已提前清零, live 守护应通过; 若仍 REFUSE 说明遗漏了引用, 应先补清而非强行 --force)
+run_id: dim_all_ever_listed_retirement_20260707
+db: reference
+archive_dir: data/archive/lifecycle
+entries:
+  - table: dim_all_ever_listed
+    action: archive
+    bucket: vestigial_retirement
+    reason: "无存活 writer (原 builder 2026-04-24 随 SEF 模块清理删除), 数据冻结 10+ 周 (5210行, MAX(updated_at)=2026-04-21); 唯一真业务下游 dim_listing_status 自身 0 消费方; universe.py 已确立 K 线才是活跃真相源。见 analysis/dim_all_ever_listed_retirement_20260707.md"
+  - table: dim_listing_status
+    action: archive
+    bucket: vestigial_retirement
+    reason: "唯一 builder build_dim_listing_status.py 0 生产调用方(仅手动/测试), 未接入任何 sync_registry/daily_update 调度; 表本身在 backend/services/ 与 backend/routers/ 0 业务读者, 与源表 dim_all_ever_listed 一并退役"

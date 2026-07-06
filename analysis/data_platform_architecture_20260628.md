@@ -40,7 +40,7 @@ consume: DataAccess.get(entity, codes, as_of) → DataResult{rows, provenance}
 |---|---|---|
 | tushare_raw | raw_tushare_* (40 vendor 镜像 + 2 PIT 行业视图; 批2-7 后实测) | M1 采集 |
 | market | price_kline_qfq_tushare → v_price_kline_qfq (批3a 后唯一 K线真相源; 旧 price_kline/price_xdxr 已物删) | M2 清洗 |
-| reference | dim_active_a_stock / dim_trading_calendar / dim_all_ever_listed / dim_listing_status (读多写少) | §9 拆出 |
+| reference | dim_active_a_stock / dim_trading_calendar (读多写少); [2026-07-07 已偏离] dim_all_ever_listed/dim_listing_status 此后整表退役, 见 analysis/dim_all_ever_listed_retirement_20260707.md | §9 拆出 |
 | smartmoney | aif10 域 fact (holders/qfii/org_holding/估值) + 配置 dim_* + 治理 mart (30 表) | 采集+治理 |
 | etf | 空壳仅 deletion_record (ETF 子系统批3d 整体退役) | — |
 | experiment_store | 留档 (L4, 当前空; edge 重建后用) | 治理 |

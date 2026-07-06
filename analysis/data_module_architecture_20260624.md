@@ -192,6 +192,9 @@ stages 近线性固定序 (acquire→clean→process→serve), **每阶段状态
 
 > [初版, 已偏离] 审计实测: `dim_active_a_stock` (universe真相源) 有 **25 读消费方** + 写方 (security_master/build_dim_listing_status/calendar_extension) + schema DDL (schema_core)。机制 = get_conn (中央工厂 33 调用) ATTACH reference 只读 + smartmoney 留 view (读透明) + 写方 repoint reference + sync_runner 读 reference (撞锁根治)。**高风险** (动 get_conn = 全 app blast)。
 > REF 集 (奥卡姆核心): dim_active_a_stock / dim_all_ever_listed / dim_listing_status / dim_trading_calendar (universe+calendar 读多写少)。静态config dim (fee/rules/segment) 待评估扩。
+> **[2026-07-07 再更新]** REF 集从 4 缩至 2: `dim_all_ever_listed`/`dim_listing_status`(连同其唯一 builder
+> `build_dim_listing_status.py`)整表退役物删 (无存活 writer / 0 业务读者), 详见
+> analysis/dim_all_ever_listed_retirement_20260707.md。
 
 > **[2026-06-27 全 DONE — 机制走 alias-routing/dim_read_conn 非 view+ATTACH; B-E 计划已被实际执行路径取代]**
 > 实际执行 (非下表的 view 法): Phase 0 fan-in 审计 (workflow wf_df52c6c6) → chunk1-4 逐 dim reader 迁 resolver.dim_read_conn (auto-fallback reference) + writer dual-write→reference-only → Stage-E 安全账本 (workflow wpa8busnl, 34文件/177读点 + 对抗验证) → Stage E 物删 (db_lifecycle_delete archive+deletion_record) + 移除 smartmoney schema-init DDL 防重建。下表 view+ATTACH 法**已废**, 仅留 Stage A 历史。

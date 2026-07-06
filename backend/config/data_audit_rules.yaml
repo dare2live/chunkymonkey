@@ -42,16 +42,11 @@ cross_table_consistency:
       kline_stock_code_column: code
       # 2026-06-24 cry-wolf 修复: 合法性判定改用 services.universe.classify_exclusion (板块前缀身份真相源),
       # 不再 universe_tables 枚举 (dim_all_ever_listed 不含退市 → 退市A股误报209)。退市由 K线近90天无交易 PIT 排除。
-    - name: inactive_still_trading
-      enabled: true
-      kline_source_table: market.v_price_kline_qfq   # 2026-06-22 M3 repoint canonical (同上)
-      kline_date_column: date
-      kline_stock_code_column: code
-      recent_days: 10
-      inactive_table: dim_all_ever_listed
-      inactive_code_column: stock_code
-      is_active_column: is_active
-      inactive_value: 0
+      # 2026-07-07 inactive_still_trading 规则整段退役 (owner=PROJECT_INDEX.md 决策收口): 该子检查依赖
+      # dim_all_ever_listed 判"标记 inactive 但仍在交易"——但项目已改用 K 线本身当活跃真相源
+      # (universe.py "K 线有交易=活跃"), 一旦外部 is_active 声明源(该表)被物删, 检查即失去比对对象、
+      # 沦为无意义的自证; 且该表本身无存活 writer (冻结 10+ 周), 继续依赖只会读到过期快照。
+      # kline_universe_coverage(北交所/非A股板块 leak 检测)不依赖此表, 独立保留。
 
 audit_rules:
   - kline_completeness

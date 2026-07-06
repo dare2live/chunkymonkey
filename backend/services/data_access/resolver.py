@@ -48,8 +48,9 @@ def connect_rw(alias: str):
     """写侧连接 (限 dim 真相源 writer, 如 reference universe/calendar 刷新)。
 
     §9 reference 拆库 (2026-06-27): dim 表迁 reference 后, 其 writer (refresh_active_a_stock_master /
-    build_dim_listing_status / calendar sync) 需写 reference RW。read 侧仍 connect_ro (不变量#2 读写分离:
-    reader 永不写, 但 dim writer 是显式写侧, 用本函数路由到 reference 库 RW 句柄)。
+    calendar sync) 需写 reference RW。read 侧仍 connect_ro (不变量#2 读写分离: reader 永不写, 但 dim
+    writer 是显式写侧, 用本函数路由到 reference 库 RW 句柄)。
+    (build_dim_listing_status 2026-07-07 随 dim_all_ever_listed/dim_listing_status 一并退役, 从此列移除)
     """
     return duck_connect(db_path(alias), read_only=False)
 

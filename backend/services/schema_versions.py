@@ -68,7 +68,7 @@ DIM_DERIVED_VERSIONS = {
     "dim_fee_schedule": "v1",                # 佣金 / 印花税
     "dim_trading_session": "v1",             # 盘口时段
     "dim_liquidity_threshold": "v1",         # 流动性阈值
-    "dim_listing_status": "v1",              # 退市状态
+    # dim_listing_status 2026-07-07 随 dim_all_ever_listed 一并整表退役 (0 业务读者), 见 data_layers.yaml
 }
 
 # 合并: 业务派生表全集 (raw_* / dim_active_a_stock / dim_trading_calendar 等不进, 它们靠 sync_raw 维护)
