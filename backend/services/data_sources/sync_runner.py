@@ -961,6 +961,32 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
     return result
 
 
+def _available_after_passed(spec: dict[str, Any], *, now: Any = None) -> bool:
+    """域声明的 available_after 是否已过 (北京时间口径)。
+
+    根因 (2026-07-06 全面数据审计手工全流程走查抓获): drain_domain 故意排除"今天"(避免对
+    尚未发布数据的当日误判失败), 但 main() --drain 分支此前只在 drain 返回
+    unsupported/drain_inapplicable 时才 fallback 到 run_domain 补今日增量——by_trade_date
+    域 (daily/daily_basic/adj_factor/stk_limit 等 21 个) drain 永远返回受支持状态, 从不
+    fallback, 导致"今天"的数据在跑批当天永远不会真正入库, 只能等下一次手工跑批时被当成
+    "昨天的缺口"补上 (无 cron/launchd, 下一次可能是几天后)。
+    本函数判断"现在是否已经过了这个域声明的发布时刻", 只有过了才值得去试补今天 (避免对
+    18:00/22:30/t+1 这类还没发布的域每次跑批都产生噪音失败)。
+    "t+1"(次日才发布) 域本来就不该同日补, 返回 False (交给 drain 下次当历史缺口自然捕获)。
+    """
+    raw = str(spec.get("available_after") or "").strip()
+    if not raw or raw.lower() == "t+1":
+        return False
+    try:
+        hh, mm = raw.split(":")
+        threshold = (int(hh), int(mm))
+    except (ValueError, AttributeError):
+        return False  # 声明格式异常, 保守当"未到" (与 drain 排除今天同一保守方向, 不误报)
+    from zoneinfo import ZoneInfo
+    now_local = now or datetime.now(ZoneInfo("Asia/Shanghai"))
+    return (now_local.hour, now_local.minute) >= threshold
+
+
 def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
                  conn=None, adapter=None, trading_days: list[str] | None = None,
                  max_dates: int | None = None, record: bool = True) -> dict[str, Any]:
@@ -1106,6 +1132,20 @@ def main() -> int:
                     # by_ts_code 无 increment_mode (如 stk_factor_pro 日频全市场) 仍 unsupported, 归专门调度。
                     res = run_domain(d, registry=reg)
                     res["mode"] = "incremental_fallback"
+                elif ((reg["domains"].get(d) or {}).get("batch_mode") == "by_trade_date"
+                      and _available_after_passed(reg["domains"].get(d) or {})):
+                    # 今日补拉 (2026-07-06 全面数据审计手工全流程走查抓获的根因修复):
+                    # drain_domain 故意排除"今天"(避免误判尚未发布的数据), 但此前没有第二道
+                    # 机制在 available_after 过后回头补——"今天"只能等下一次手工跑批被当"昨天
+                    # 缺口"捕获 (无 cron, 可能几天后)。只在声明的 available_after 已过时才试,
+                    # 避免对 18:00/22:30 还没发布的域每次跑批都产生噪音失败。
+                    # 注意: drain_domain 正常路径 (status=clean/drained/partial) 的返回值不带
+                    # batch_mode 键 (只有早退的 unsupported 分支才带) —— 必须查 registry 声明,
+                    # 不能查 res.get("batch_mode") (那样恒为 None, 本条件永远不触发)。
+                    catchup = run_domain(d, registry=reg)
+                    res["today_catchup"] = catchup
+                    if catchup.get("failed_batches"):
+                        res["today_catchup_failed"] = True
                 results.append(res)
             except QuotaExhaustedError as exc:
                 # 熔断: 配额墙 = 账户级, 续跑其余域只会延长冷却 → 停全链 (区别于单域写锁错)
@@ -1117,7 +1157,8 @@ def main() -> int:
         print(json.dumps(results, ensure_ascii=False, indent=1))
         if any(r.get("status") == "quota_halt" for r in results):
             return 2  # 配额墙专用退出码 (调用方区分'信道墙'与'数据失败')
-        bad = any(r.get("status") in ("partial", "error") or r.get("failed_batches") for r in results)
+        bad = any(r.get("status") in ("partial", "error") or r.get("failed_batches")
+                  or r.get("today_catchup_failed") for r in results)
         return 1 if bad else 0
 
     results = []
