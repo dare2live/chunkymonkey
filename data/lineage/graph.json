@@ -661,6 +661,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/pipeline/acquire.py",
+      "kind": "consume",
+      "src": "table:dim_active_a_stock"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/schema_versions.py",
       "kind": "consume",
       "src": "table:dim_active_a_stock"
@@ -674,6 +680,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/universe.py",
+      "kind": "consume",
+      "src": "table:dim_active_a_stock"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_acquire_active_stock_refresh.py",
       "kind": "consume",
       "src": "table:dim_active_a_stock"
     },
@@ -1273,6 +1285,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_acquire_active_stock_refresh.py",
+      "kind": "consume",
+      "src": "table:dim_trading_calendar"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_calendar_builder.py",
       "kind": "consume",
       "src": "table:dim_trading_calendar"
@@ -1849,6 +1867,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_sync_runner_watermark_decouple.py",
+      "kind": "consume",
+      "src": "table:mart_data_source_failure_queue"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_sync_cross_check.py",
       "kind": "consume",
       "src": "table:mart_data_source_failure_queue"
@@ -1904,6 +1928,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/source_watermarks.py",
+      "kind": "consume",
+      "src": "table:mart_data_source_watermark"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_sync_runner_watermark_decouple.py",
       "kind": "consume",
       "src": "table:mart_data_source_watermark"
     },
@@ -3265,6 +3295,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/pipeline/acquire.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_stock_basic"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/rally_gt.py",
       "kind": "consume",
       "src": "table:raw_tushare_stock_basic"
@@ -3751,9 +3787,9 @@
     }
   ],
   "meta": {
-    "edge_count": 574,
-    "generated_at": "2026-07-06T07:55:29.344491+00:00",
-    "node_count": 270,
+    "edge_count": 580,
+    "generated_at": "2026-07-06T14:45:56.823398+00:00",
+    "node_count": 272,
     "version": 1
   },
   "nodes": [
@@ -4515,6 +4551,22 @@
         "path": "backend/tests/services/test_sync_runner_20260612_fixes.py"
       },
       "id": "consumer:backend/tests/services/test_sync_runner_20260612_fixes.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_sync_runner_watermark_decouple.py"
+      },
+      "id": "consumer:backend/tests/services/test_sync_runner_watermark_decouple.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/test_acquire_active_stock_refresh.py"
+      },
+      "id": "consumer:backend/tests/test_acquire_active_stock_refresh.py",
       "kind": "consumer"
     },
     {
