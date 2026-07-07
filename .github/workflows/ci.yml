@@ -56,7 +56,6 @@ jobs:
           # 数据平台地基模块 import 必须成功 (2026-06-28 重建/白名单裁剪后更新: 移除已删策略模块 dag_planner/experiment_jobs)
           from services.schema_versions import SCHEMA_VERSIONS, summary
           from services.data_audit import AUDIT_RULES
-          from services.api_cache import cached, get_cache_stats
           from services.duck_adapter import connect
           from services.database_manifest import get_database_manifest
           from services.data_sources import sync_runner
