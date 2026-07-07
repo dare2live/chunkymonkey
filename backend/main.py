@@ -271,11 +271,12 @@ async def index():
     return {"error": "edge 前端产物缺失", "fix": "cd frontend && npm install && npm run build"}
 
 
-@app.get("/v3")
-@app.get("/v3/")
-@app.get("/legacy")
-@app.get("/legacy/")
+@app.get("/v3", status_code=410)
+@app.get("/v3/", status_code=410)
+@app.get("/legacy", status_code=410)
+@app.get("/legacy/", status_code=410)
 async def retired_frontends():
-    """旧前端退役收口: v3 React 设计稿 → .archive/design_pre_reset_v3/; 旧 vanilla → repo 历史。当前前端 = /api/dossier/view。"""
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/api/dossier/view")
+    """旧前端退役收口: v3 React 设计稿 → .archive/design_pre_reset_v3/; 旧 vanilla → repo 历史。
+    当前唯一前端 = /app/ (edge React)。2026-07-07 修: 此前误指向已随2026-06-28重建物删的
+    /api/dossier/view (307→404 断链), 改 410 Gone + redirect 字段指现行前端。"""
+    return {"error": "legacy_retired", "redirect": "/app/"}

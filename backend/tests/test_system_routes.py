@@ -30,20 +30,21 @@ def test_inst_health_summary_alias_matches_health_contract(client):
     assert "akquant" in payload["available_modules"]
 
 
-def test_root_redirects_to_v3(client):
-    """Phase ζ: 根路径默认重定向到 v3 设计稿。"""
+def test_root_redirects_to_edge_app(client):
+    """2026-07-07 更新: 根路径重定向到现行唯一前端 /app/ (edge React), 旧 v3 设计稿已退役。"""
     response = client.get("/", follow_redirects=False)
     assert response.status_code in (307, 308)
-    assert "v3" in response.headers.get("location", "").lower()
+    assert "/app" in response.headers.get("location", "").lower()
 
 
-def test_legacy_returns_410_gone(client):
-    """Phase ζ 收尾: 旧 vanilla 前端正式退役, /legacy 返回 410 Gone。"""
-    response = client.get("/legacy", follow_redirects=False)
-    assert response.status_code == 410
-    body = response.json()
-    assert body["error"] == "legacy_retired"
-    assert "/v3" in body["redirect"]
+def test_legacy_and_v3_return_410_gone(client):
+    """旧前端(vanilla /legacy + 已归档 /v3 设计稿)正式退役, 均返回 410 Gone 指向现行 /app/。"""
+    for path in ("/legacy", "/v3"):
+        response = client.get(path, follow_redirects=False)
+        assert response.status_code == 410
+        body = response.json()
+        assert body["error"] == "legacy_retired"
+        assert "/app" in body["redirect"]
 
 
 def test_toggle_modules_batches_allowed_settings(client, monkeypatch):
@@ -77,25 +78,3 @@ def test_toggle_modules_batches_allowed_settings(client, monkeypatch):
     assert conn.closed is True
 
 
-def test_workbench_storage_route_defaults_to_persisted_read_model(client, monkeypatch):
-    from routers import workbench as workbench_router
-
-    calls = []
-
-    class DummyConn:
-        def close(self):
-            pass
-
-    def fake_storage(_conn, *, include_live_plan=True):
-        calls.append(include_live_plan)
-        return {"retention": {"mode": "unavailable"}, "latest_manifest": {}}
-
-    monkeypatch.setattr(workbench_router, "get_conn", lambda: DummyConn())
-    monkeypatch.setattr(workbench_router, "build_workbench_storage", fake_storage)
-
-    response = client.get("/api/workbench/storage")
-    explicit = client.get("/api/workbench/storage?include_live_plan=true")
-
-    assert response.status_code == 200
-    assert explicit.status_code == 200
-    assert calls == [False, True]

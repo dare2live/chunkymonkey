@@ -18,6 +18,7 @@ pytestmark = [
 DATA_DIR = Path(__file__).resolve().parents[3] / "data"
 SMART_DB = DATA_DIR / "smartmoney.duckdb"
 MARKET_DB = DATA_DIR / "market.duckdb"
+REFERENCE_DB = DATA_DIR / "reference.duckdb"
 
 
 def _connect_existing(path: Path):
@@ -40,7 +41,8 @@ def _table_exists(conn, table_name: str) -> bool:
 
 
 def test_real_trading_calendar_is_available_and_has_completed_trade_date():
-    conn = _connect_existing(SMART_DB)
+    # dim_trading_calendar 活在 reference.duckdb (非 smartmoney.duckdb, 2026-07-07 修连错库 bug)。
+    conn = _connect_existing(REFERENCE_DB)
     try:
         assert _table_exists(conn, "dim_trading_calendar")
         count, min_date, max_date = conn.execute(
@@ -58,28 +60,6 @@ def test_real_trading_calendar_is_available_and_has_completed_trade_date():
         assert latest is not None
     finally:
         conn.close()
-
-
-def test_real_tdxhub_kline_reaches_latest_completed_trade_date():
-    smart = _connect_existing(SMART_DB)
-    market = _connect_existing(MARKET_DB)
-    try:
-        latest_trade = latest_completed_trade_date(smart)
-        row = market.execute(
-            """
-            SELECT MAX(date), COUNT(*), COUNT(DISTINCT code)
-              FROM price_kline_tdxhub
-             WHERE freq = 'daily' AND adjust = 'qfq'
-            """
-        ).fetchone()
-
-        assert latest_trade is not None
-        assert row[0] == latest_trade
-        assert row[1] > 1_000_000
-        assert row[2] >= 5_000
-    finally:
-        smart.close()
-        market.close()
 
 
 def test_real_canonical_kline_has_no_duplicate_keys():
@@ -103,31 +83,7 @@ def test_real_canonical_kline_has_no_duplicate_keys():
         market.close()
 
 
-def test_real_fallback_rows_do_not_overlap_existing_primary_keys():
-    market = _connect_existing(MARKET_DB)
-    try:
-        market.execute("SELECT 1 FROM v_price_kline_qfq LIMIT 1").fetchone()
-        canonical_overlap = market.execute(
-            """
-            SELECT COUNT(*)
-              FROM v_price_kline_qfq c
-             WHERE c.is_fallback
-               AND EXISTS (
-                    SELECT 1
-                      FROM price_kline_tdxhub p
-                     WHERE p.code = c.code
-                       AND p.date = c.date
-                       AND p.freq = c.freq
-                       AND p.adjust = c.adjust
-                       AND p.open IS NOT NULL AND p.open > 0
-                       AND p.close IS NOT NULL AND p.close > 0
-               )
-            """
-        ).fetchone()[0]
-
-        assert canonical_overlap == 0
-    finally:
-        market.close()
-
-
 # test_real_xdxr_adjustment_events_are_unique 已删 (2026-06-27 通达信全删 单元6: price_kline_tdxhub_adjustment_event 物删)
+# test_real_tdxhub_kline_reaches_latest_completed_trade_date /
+# test_real_fallback_rows_do_not_overlap_existing_primary_keys 已删 (2026-07-07 全库死代码普查簇5:
+# price_kline_tdxhub 表随更早批次 tdxhub 全删物删, CatalogException 实测确认)

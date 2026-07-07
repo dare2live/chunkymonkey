@@ -41,9 +41,17 @@
 ### 簇7 — kline_source.py 厘清结果: 非重复实现, 是完全孤立的死代码对 (2026-07-07)
 报告原候选问题是"kline_source.py 是否与 pipeline/clean.py 内联清洗逻辑重复", 逐层核实后结论不是"重复"而是"孤立死代码": `pipeline/clean.py` 本身只有40行, 无任何内联清洗逻辑, 只是调度两个既有环节(`build_price_kline_qfq_tushare.py` SQL CTAS 脚本 + `data_audit` post-sync 审计), 两者根本不重叠。真问题在 `kline_source.py` 自身——它是 tdxhub/eastmoney/akshare 多源并存时代的通用行清洗/归一化层(`clean_price_row`/`normalize_price_rows`/`aggregate_monthly_from_daily`, 含"governance v1: volume unit = lots"等 tdxhub 专属注释), `codegraph query` + 全仓库 grep 确认**唯一 Python 导入方是它自己的单测 `test_kline_cleaning.py`**(测的还是已退役的 tdxhub 手/股换算场景), 现行唯一活跃的 qfq 构建器 `build_price_kline_qfq_tushare.py` 只用 `services.duck_adapter` 做纯 SQL 变换, 完全不经过这层 Python 逐行清洗。进一步核实发现 `kline_source.py` 依赖的 `services/data_processing_monitor.py`(`ProcessingToolStats` 类 + `mart_data_processing_tool_run`/`mart_data_processing_tool_issue` 两表 DDL)**唯一消费方就是 kline_source.py 自己**, 且这两张表在真实 `smartmoney.duckdb` 里**从未被创建过**(`SELECT COUNT(*)` 报 Catalog Error 表不存在) —— 双重确认整条链自始至终没被真正启用过, 是 tushare 整合后被架空的完整子系统, 非"和 clean.py 功能重叠"。**执行**: git rm 三件套(`kline_source.py`/`data_processing_monitor.py`/`test_kline_cleaning.py`) + `schema_versions.py` MART_VERSIONS 去两条死表登记 + PROJECT_INDEX.md 治理/杂项行去除引用。全量测试608→603 passed(减5为参数化目录扫描测试随文件数变化, 非回归, 无新增failure)。
 
-## 待执行簇 (占位, 完成后追加小节)
+### 簇5+12 — 测试文件清理 + 路由断链修复 (联动执行, 2026-07-07)
+两簇实为同一根因的不同表现, 一并处理。
 
-- 簇5: 测试文件清理(test_v3_selection.py/test_perf_p1_trade_date.py 删, test_system_routes.py/test_real_data_consistency.py 部分修)
-- 簇12: main.py `/v3` `/legacy` 断链路由修复
+**簇12 根因**: `main.py` 的 `/v3`+`/legacy` 路由自 2026-06-28 重建后一直 `RedirectResponse(url="/api/dossier/view")`, 而 `/api/dossier/view` 本身随重建已被 git rm(策略/serving routers 整批退役), 用户访问这两个旧路径会先看到 307 再撞 404, 是断链而非"已妥善退役"。当前唯一活前端是 `/app/`(edge React, 2026-07-02 挂载, `/` 根路由已在 2026-07-03 修对)。**修**: `/v3`+`/legacy` 四个路径改直接返回 410 Gone JSON(`{"error": "legacy_retired", "redirect": "/app/"}`), 不再走会撞死链的 307。
+
+**簇5 实测结果**(逐文件强制用 `-m realdb`/`CM_REALDB=1` 跑出真 pass/fail, 不采信报告原始猜测):
+- `test_v3_selection.py`: 12/12 FAIL(测 `/api/v3/selection/*` 已退役路由, `KeyError: 'data'`)。git rm。
+- `test_perf_p1_trade_date.py`(`backend/tests/scripts/`): **未删, 与报告原判断不同**。实测显示该测试标 `perf`+`slow`(CI默认排除) 且对目标表 `mart_p0b_oos_predictions` 缺失有 `pytest.skip()` 优雅降级(非 FAIL), 强制跑验证结果是 SKIPPED 不是 FAIL。该表正是簇8判定"未来 edge 重建 schema 契约, 不删"的同一张表——按同一逻辑, 这个已正确 skip-gate 的 perf 测试也不该删, 表重建后会自动激活。
+- `test_system_routes.py`: 实测3 FAIL/3 PASS。`test_root_redirects_to_v3`(断言 location 含"v3") + `test_legacy_returns_410_gone`(断言 redirect 字段含"/v3") 都是给旧架构写的, 随簇12的 main.py 修复一并更新断言为 `/app`; `test_workbench_storage_route_defaults_to_persisted_read_model` 测 `routers.workbench`(2026-06-28 随策略层整批 git rm, 非待重建的边缘表, 是永久退役), import 直接 ImportError, 删除。
+- `test_real_data_consistency.py`(`backend/tests/realdb/`): 实测(`CM_REALDB=1`)3 FAIL/1 PASS。`test_real_tdxhub_kline_reaches_latest_completed_trade_date`+`test_real_fallback_rows_do_not_overlap_existing_primary_keys` 查 `price_kline_tdxhub`(CatalogException, tdxhub 早随更早批次全删物删)——删。`test_real_trading_calendar_is_available_and_has_completed_trade_date` 是**真连错库 bug**(非退役问题): 该测试连 `smartmoney.duckdb` 查 `dim_trading_calendar`, 但该表实际活在 `reference.duckdb`(§9拆库迁移后), 实测 `reference.duckdb` 里表存在且行数(5343)/起始日期(2005-01-04)与测试断言完全吻合——证明断言本身是对的, 只是连错库。改连 `reference.duckdb` 后 2/2 PASS。
+
+全量测试608→603 passed(净删4测试文件+2用例, 无新增failure), main.py import + 路由行为实测验证。
 - 簇1+2: 旧 vanilla JS 前端整体删除 + main.py 死代码 + 15 个 contract 测试
 - 簇13: PROJECT_INDEX.md §1 架构描述最终一致性收口(待簇1/2/12 完成后一次性做)
