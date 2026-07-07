@@ -87,12 +87,12 @@ except: print('0')
 fi
 
 # ============ 4. Compute backend contract ============
+# services.experiment_jobs 已随 2026-06-28 纯数据平台重建物删 (commit a078351e); 直读 yaml 而非死模块。
 COMPUTE_BACKENDS=$(
-PYTHONPATH=backend python - 2>/dev/null <<'PY' || echo "unavailable"
-from services.experiment_jobs import load_experiment_job_contract
-
-contract = load_experiment_job_contract()
-print(", ".join(f"{k}:{v.status}" for k, v in sorted(contract.backends.items())))
+python3 - 2>/dev/null <<'PY' || echo "unavailable"
+import yaml
+d = yaml.safe_load(open("backend/config/experiment_jobs.yaml"))
+print(", ".join(f"{k}:{v.get('status', '?')}" for k, v in sorted(d.get("backends", {}).items())))
 PY
 )
 

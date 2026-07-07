@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-07-06 21:12:56 CST
+**Snapshot 时间**: 2026-07-07 22:37:55 CST
 
 ## 主线状态
 
@@ -36,7 +36,7 @@
 
 | 项 | 值 |
 |---|---|
-| Backends | unavailable |
+| Backends | local:active, modal:active |
 | Job plan | `scripts/chunkyctl jobs --family model_training --model-id <id> --input-snapshot <snapshot> --objective <why> --rollback-plan <plan> --gate-evidence <gate>=<artifact>` |
 
 ## Git 状态
@@ -44,28 +44,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `d4571bc2 feat: by_trade_date 域"今日补拉"机制 — 修 drain 永远排除今天的结构性缺口` |
-| 最近 24h commits | 6 |
-| 未 commit 文件 | 7 |
+| HEAD | `9c5a1824 chore: storage_retention.yaml payload_audit 整段退役 — 双重孤儿(消费脚本已死+全部8表已死)` |
+| 最近 24h commits | 9 |
+| 未 commit 文件 | 28 |
 
 ### 最近 10 commits
 
 ```
-d4571bc2 feat: by_trade_date 域"今日补拉"机制 — 修 drain 永远排除今天的结构性缺口
-d56c30cd fix: test_known_safe_list_entries_still_match_reality 改 skip 而非 assert (CI 无库场景)
-91f1973c fix: check_dead_references scan_e 修复 CI 假阳性 (0 库文件误判成"确认死引用")
-481dcad7 chore: 重生 lineage graph.json (T2 informational drift 清零)
-fca5531b fix: stk_limit page_limit 静默丢数根治 + 全面数据审计治理机制修复
-3033f067 feat: R4 数据连续性审计收口 — 41条逐项闭环 + K线边界孤立数据审计 + 资金流向曲线
-eef8da75 feat: 数据地基根因根治 R1机制件 — 消费侧连续性硬门+审查器首跑+grain三层根因终结
-4084fed6 feat: 感知 v3 (flow_regime 六标签+全模块下钻) + 加工层审计波1修复 (rzrqye 假摆动 HIGH 等 8 修)
-436ba2a6 docs: 市场感知 v3 设计定稿 — 资金流形态分类学 + 全模块层级下钻 (用户定调)
-7b0f7714 fix: start.command 双击打开 404 根治 — 根路由指已退役 dossier 视图 + R4 轻修批 7 项
+9c5a1824 chore: storage_retention.yaml payload_audit 整段退役 — 双重孤儿(消费脚本已死+全部8表已死)
+1166fa3e refactor: data_sources 多源注册表框架精简收口 — 删fallback机制/base+registry, 留sync_runner真实活线
+8d001512 feat: aif10_capability_client 模块整体退役 + 3项顺带发现清理(用户"先深入研究再决定"→workflow验证)
+a74ad13a feat: raw_aif10_peer_valuation(同行估值排名)整表退役 — 唯一消费方v3_picture已随重建死亡
+c1c01398 fix: aif10 SLA 二轮更正 — 逐表实测节奏而非一刀切(peer_valuation实为年度/holder_period实为近日频)
+2b3ac51a fix: doctor 全绿收口 — sync_registry drain瞬态网络gap补齐 + aif10/QFII SLA误报修正 + register()慢路径bug
+56b19bd8 feat: dim_all_ever_listed/dim_listing_status 整表退役 (用户拍板选项A) + 全面文档更新
+be7ab2bc chore: 重生 lineage graph.json 消解 kpl_list/cyq_perf available_after 改动带来的血缘漂移
+78209bd3 fix: kpl_list/cyq_perf available_after 声明实测更正 (18:00→t+1 / 18:00→22:40)
+64a26565 fix: 数据基础"是否具备条件"复审补 4 项 HIGH — live-guard盲区/dim_active_a_stock刷新/watermark冻结/5治理脚本接线
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**7 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**28 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

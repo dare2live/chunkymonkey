@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-07 16:43
+> Snapshot: 2026-07-07 22:42
 
 ## 1. 入口面
 
@@ -93,7 +93,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 38 张 | 单 writer 26 | 多 writer 12 | 动态表名写点 26 处 (11 文件)
+统计: 表 36 张 | 单 writer 24 | 多 writer 12 | 动态表名写点 25 处 (10 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -106,7 +106,6 @@
 | backend/scripts/build_price_kline_qfq_tushare.py | 1 |
 | backend/scripts/db_compact.py | 2 |
 | backend/scripts/db_partition_migrate.py | 2 |
-| backend/scripts/migrate_reference_db.py | 1 |
 | backend/services/calendar_builder.py | 2 |
 | backend/services/data_sources/sync_runner.py | 3 |
 | backend/services/market_pulse.py | 4 |
@@ -117,7 +116,6 @@
 
 | 表 | writer 数 | writer 文件 |
 |---|---|---|
-| fact_top10_holder_period | 3 | backend/scripts/cleanup_holder_dup.py<br>backend/services/holders_aif10.py<br>backend/services/schema_core.py |
 | mart_data_deletion_record | 3 | backend/scripts/db_lifecycle_delete.py<br>backend/services/data_deletion.py<br>backend/services/schema_marts.py |
 | dim_fee_schedule | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_liquidity_threshold | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
@@ -126,6 +124,7 @@
 | dim_style_factor | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_trading_rule | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_trading_session | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
+| fact_top10_holder_period | 2 | backend/services/holders_aif10.py<br>backend/services/schema_core.py |
 | mart_data_health | 2 | backend/scripts/data_health_snapshot.py<br>backend/services/schema_marts.py |
 | mart_data_source_watermark | 2 | backend/services/schema_marts.py<br>backend/services/source_watermarks.py |
 | mart_pipeline_run_manifest | 2 | backend/services/pipeline_manifest.py<br>backend/services/schema_marts.py |
@@ -137,7 +136,6 @@
 | dim_active_a_stock | backend/services/security_master.py |
 | dim_schema_version | backend/services/schema_versions.py |
 | dim_stock_segment_daily | backend/services/segments.py |
-| dim_trading_calendar | backend/scripts/migrate_reference_db.py |
 | fact_consumer_alpha_ic_scan | backend/scripts/build_experiment_store.py |
 | fact_controlling_shareholder | backend/services/schema_core.py |
 | fact_daily_price_status | backend/services/primitives/ddl.py |
@@ -157,13 +155,12 @@
 | mart_inst_profile | backend/services/institution_profile.py |
 | mart_inst_profile_dim | backend/services/institution_profile.py |
 | mart_lineage | backend/services/schema_marts.py |
-| mart_pipeline_lock | backend/services/pipeline_lock.py |
 | raw_org_holding_aif10 | backend/services/org_holding_aif10.py |
 | raw_qfii_holding_quarterly | backend/services/qfii_client.py |
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 5,402 | calls 边 7,275 | imports 边 791 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 5,276 | calls 边 7,017 | imports 边 790 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -221,5 +218,5 @@
 
 - chunkyctl 子命令 10 | launchd 任务 1 | router 5 (端点 21)
 - sync_registry 数据域 47
-- 产表 38 (多 writer 12)
+- 产表 36 (多 writer 12)
 

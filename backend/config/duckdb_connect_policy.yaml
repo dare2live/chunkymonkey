@@ -8,11 +8,12 @@ db_path_literal_policy:
 # 2026-06-28 prune: 89→7 (删 82 个引已删模块/脚本的死路径; 纯数据平台重建后大批策略/特征/回测脚本退役)。
 # 新增 raw connect 默认阻断, 须显式加这里 + 理由 (或改用 services.duck_adapter.connect / resolver.connect_ro)。
 allowed_raw_connect_paths:
-  - scripts/migrate_reference_db.py        # §9 reference 拆库迁移 (跨库 ATTACH/EXPORT 保真, 2026-06-24)
+  # scripts/migrate_reference_db.py 2026-07-07 整脚本退役物删 (git rm; 已 DEPRECATED 禁止执行多日,
+  #   §9迁移早已完成, 见 全库死代码普查 分析文档)
   - services/data_audit.py                 # post-sync audit 多库 read_only ATTACH
   - services/duck_adapter.py               # adapter 本体
   - scripts/audit_data_completeness.py     # 数据完整性审计 (read_only)
   # scripts/build_dim_listing_status.py 2026-07-07 整脚本退役 (随 dim_all_ever_listed/dim_listing_status 一并物删)
-  - scripts/cleanup_holder_dup.py          # holder 去重维护
+  # scripts/cleanup_holder_dup.py 2026-07-07 整脚本退役物删 (一次性历史修复已完成, 239条重复行已清)
   - scripts/check_dead_references.py       # 死引用门 E 扫: 逐库枚举现存表名核对 SQL 字符串
                                             #   引用 (read_only, 2026-07-06 新增, 与 data_audit.py 同性质)

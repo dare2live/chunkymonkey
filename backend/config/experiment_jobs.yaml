@@ -71,7 +71,10 @@ job_families:
       - id: paper_sim_kpi
         kind: table
         required: true
-        table: mart_paper_sim_kpi
+        table: mart_paper_sim_kpi  # 2026-07-07 全库死代码普查实测: 表当前不存在(策略层待edge重建);
+                                    # 本条为backtest_validation job family的未来契约声明非当前活门, 该
+                                    # family 本身也无实际执行器消费(build_experiment_store.py 自述"执行器
+                                    # 待重写"), 保留作重建时的 schema 参考不删
         min_rows: 1
 
   model_training:
@@ -97,12 +100,12 @@ job_families:
       - id: train_log
         kind: table
         required: true
-        table: fact_model_train_log
+        table: fact_model_train_log  # 2026-07-07 全库死代码普查实测: 表当前不存在, 同上未来契约声明, 不删
         min_rows: 1
       - id: predictions
         kind: table
         required: true
-        table: mart_p0b_oos_predictions
+        table: mart_p0b_oos_predictions  # 2026-07-07 全库死代码普查实测: 表当前不存在, 同上未来契约声明, 不删
         min_rows: 1
 
   parameter_search:

@@ -51,14 +51,14 @@ fi
 echo ""
 
 # 4. Compute backend
+# services.experiment_jobs 已随 2026-06-28 纯数据平台重建物删 (commit a078351e); 直读 yaml 而非死模块。
 echo "--- compute backend contract ---"
-PYTHONPATH=backend python - <<'PY' 2>/dev/null || echo "  experiment_jobs contract unavailable"
-from services.experiment_jobs import load_experiment_job_contract
-
-contract = load_experiment_job_contract()
-for backend_id, backend in sorted(contract.backends.items()):
-    print(f"  {backend_id}: status={backend.status} mode={backend.execution_mode}")
-print("  job families:", ", ".join(sorted(contract.families)))
+python3 - <<'PY' 2>/dev/null || echo "  experiment_jobs contract unavailable"
+import yaml
+d = yaml.safe_load(open("backend/config/experiment_jobs.yaml"))
+for backend_id, backend in sorted(d.get("backends", {}).items()):
+    print(f"  {backend_id}: status={backend.get('status', '?')} mode={backend.get('execution_mode', '?')}")
+print("  job families:", ", ".join(sorted(d.get("job_families", {}).keys())))
 PY
 echo ""
 
