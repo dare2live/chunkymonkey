@@ -1,7 +1,7 @@
 """血缘漂移门 (M5-T2) — 重生 vs 提交版 diff (剔时间戳), 漂移=拦 (mythos §13 派生物连跑两次必稳)。
 
 闭环第2腿 "机器对账现实": graph.json 是 registry+代码的投影, 现实改了但 graph 没重生 = 漂移。
-commit 时拦 (wired into safe_commit) — 改 schema/registry/feature_registry/builder/消费方后须 lineage build 重生。
+commit 时拦 (wired into safe_commit) — 改 schema/registry/builder/消费方后须 lineage build 重生。
 
 退出码: 0=一致 (无漂移) / 2=漂移 (须 chunkyctl lineage build 重生并提交) / 3=graph.json 缺失。
 比对剔除 meta.generated_at (唯一必然波动字段, mythos §13); 其余图体须逐字一致。

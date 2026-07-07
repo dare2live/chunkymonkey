@@ -32,12 +32,16 @@
 
 **衍生发现(留给簇10 一并处理, 未在本簇动手)**: 排查过程中发现 `bash scripts/chunkyctl jobs ...` 本身也是死路径 — `backend/scripts/chunkyctl.py` 只实现了 `doctor` 子命令 + 5 个显式 `_RETIRED` 子命令(worktree/docs/preflight/audit/data-status), `jobs` 两者都不在, argparse 会静默走到 `parser.print_help()` 后返回 0(非崩溃, 但也不执行任何跑批调度) — 与簇10 `data-status` 死路径同源, 一并在簇10 处理。
 
+### 簇9 — feature_registry.yaml 删除 (2026-07-07)
+`backend/config/feature_registry.yaml`(297行, model_input_excluded + 各特征组声明)全仓库 grep 确认 0 个 Python `open()`/`yaml.safe_load` 消费方(唯二命中 `check_lineage_drift.py` 和 `scripts/safe_commit.sh` 都只是把文件名列进"这类文件变了要重生 lineage"的触发正则/docstring, 非真读取), 也未登记进 `data_layers.yaml`/`data_module_members.yaml`。git log 溯源: 其消费方(L2 特征 panel builder)已分两批物删——2026-06-28 `0320a505`(U1 L2 特征 panel 退役)+ 2026-06-28 `a078351e`(纯数据平台重建)。git rm 整文件, 同步清 `safe_commit.sh` 触发正则和 `check_lineage_drift.py` docstring 里的过期提及。
+
+### 簇10 — chunkyctl 死路径修复 (2026-07-07)
+两个独立但同源的死路径, 根因都是 2026-06-28 重建把 `chunkyctl.py` 从 1660 行降到"最小重建版"(只留 `doctor` + `_RETIRED` 优雅提示列表)时漏记: **(1) `jobs`** — 旧版 `chunkyctl.py` 曾完整实现过 `run_jobs()`(读 `services.experiment_jobs.load_experiment_job_contract`), 该 loader 随重建物删后 `jobs` 子命令既未重实现也未补进 `_RETIRED`, 实测裸 argparse 报 `invalid choice: 'jobs'`(exit=2), 比其余 5 个已退役命令的统一 JSON 提示更不友好; 补进 `_RETIRED` 元组即可复用既有优雅路径。**(2)`data-status`** — `data-status` 其实**已经**在 `_RETIRED` 里(`chunkyctl.py data-status` 本身工作正常), 真正的 bug 在 `scripts/chunkyctl` shell wrapper: 它对 `data-status` 走了一条独立分支, 直接 `python backend/scripts/data_migration_status.py`(该脚本本体已随更早一批清理物删, 只剩空目录), 完全绕过了 `chunkyctl.py` 已实现的退役提示, 实测直接 `FileNotFoundError` 崩溃(exit=2)。**修**: wrapper 的 `data-status)` 分支改路由到 `chunkyctl.py data-status "$@"`(与 `jobs` 分支的既有写法一致)。两处修完实测均返回 `{"status": "retired", ...}` JSON, exit=0。**未做**: 未重新实现 `jobs`/`data-status` 真实功能(计算任务契约/tushare迁移状态), 因为其依赖(`services.experiment_jobs`/`services.compute.modal_adapter`/`data_migration_status.py`)本身随策略/编排层退役, 重建这些不在本次死代码清理范围内, 是 edge 重建阶段的事。
+
 ## 待执行簇 (占位, 完成后追加小节)
 
 - 簇5: 测试文件清理(test_v3_selection.py/test_perf_p1_trade_date.py 删, test_system_routes.py/test_real_data_consistency.py 部分修)
 - 簇7: kline_source.py vs pipeline/clean.py 内联清洗逻辑重复性厘清
-- 簇9: feature_registry.yaml 删除
-- 簇10: chunkyctl wrapper data-status 死路径修复(含簇8 发现的 jobs 死路径)
 - 簇12: main.py `/v3` `/legacy` 断链路由修复
 - 簇1+2: 旧 vanilla JS 前端整体删除 + main.py 死代码 + 15 个 contract 测试
 - 簇13: PROJECT_INDEX.md §1 架构描述最终一致性收口(待簇1/2/12 完成后一次性做)

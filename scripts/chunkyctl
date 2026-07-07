@@ -236,7 +236,9 @@ case "$cmd" in
     PYTHONPATH=backend python backend/scripts/build_feature_map.py "$@"
     ;;
   data-status)
-    PYTHONPATH=backend python backend/scripts/data_migration_status.py "$@"
+    # backend/scripts/data_migration_status.py 已随重建物删; 直调死路径改路由到
+    # chunkyctl.py 已有的 _RETIRED 优雅提示 (2026-07-07 全库死代码普查簇10)。
+    PYTHONPATH=backend python backend/scripts/chunkyctl.py data-status "$@"
     ;;
   pipeline)
     # §8 阶段独立化: 单跑一个阶段 (acquire|clean|process|store), 不连带全链。

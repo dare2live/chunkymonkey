@@ -110,7 +110,10 @@ def run_doctor(args: argparse.Namespace) -> int:
     return 0 if verdict != "FAIL" else 1
 
 
-_RETIRED = ("worktree", "docs", "preflight", "audit", "data-status")
+_RETIRED = ("worktree", "docs", "preflight", "audit", "data-status", "jobs")
+# jobs 2026-07-07 全库死代码普查补入: services.experiment_jobs 随 2026-06-28 重建物删后
+# jobs 子命令从未重实现也未加入 _RETIRED, 撞了就是裸 argparse "invalid choice" 报错而非本
+# 模块统一的 retired JSON 提示, 见 analysis/dead_code_sweep_20260707.md 簇10。
 
 
 def main() -> int:

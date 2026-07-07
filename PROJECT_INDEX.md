@@ -262,7 +262,7 @@ aif10 (东财 datacenter)───┤
 | `frontend_config.yaml` | 前端展示参数 (v3_config 下发, 前端零硬编码) |
 | `paper_portfolio.yaml` | 实盘模拟 (init_cash 100万/佣金/印花税/基准, W2) |
 | `experiment_jobs.yaml` | 计算任务契约 (local active / modal 已配) |
-| 其它 | data_audit_rules · data_sources(探活) · db_partition_tiers · duckdb_connect_policy · field_dictionary · feature_registry · experiments/retired_experiments(退役实验知识库, 刻意保留) |
+| 其它 | data_audit_rules · data_sources(探活) · db_partition_tiers · duckdb_connect_policy · field_dictionary · experiments/retired_experiments(退役实验知识库, 刻意保留) |
 
 ---
 
