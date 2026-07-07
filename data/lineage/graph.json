@@ -2875,12 +2875,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/data_sources/sources/tushare.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_moneyflow"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/lineage/model.py",
       "kind": "consume",
       "src": "table:raw_tushare_moneyflow"
@@ -2930,12 +2924,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/routers/market_pulse.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_moneyflow_dc"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/sources/tushare.py",
       "kind": "consume",
       "src": "table:raw_tushare_moneyflow_dc"
     },
@@ -3619,9 +3607,9 @@
     }
   ],
   "meta": {
-    "edge_count": 552,
-    "generated_at": "2026-07-07T08:17:50.354300+00:00",
-    "node_count": 263,
+    "edge_count": 550,
+    "generated_at": "2026-07-07T08:43:13.313743+00:00",
+    "node_count": 262,
     "version": 1
   },
   "nodes": [
@@ -3975,14 +3963,6 @@
         "path": "backend/services/data_sources/clients_registry.py"
       },
       "id": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/data_sources/sources/tushare.py"
-      },
-      "id": "consumer:backend/services/data_sources/sources/tushare.py",
       "kind": "consumer"
     },
     {

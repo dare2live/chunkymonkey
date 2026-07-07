@@ -56,13 +56,21 @@ def _domain_spec(registry: dict[str, Any], domain: str) -> dict[str, Any]:
     return spec
 
 
-def _adapter(source_name: str):
-    from services.data_sources import get_registry  # 延迟 import 防环
+_TUSHARE_SOURCE: Any = None
 
-    src = get_registry().get_source(source_name)
-    if src is None:
-        raise KeyError(f"data_sources registry: 未注册 source '{source_name}'")
-    return src
+
+def _adapter(source_name: str):
+    """2026-07-07 精简: 原经 get_registry().get_source() 间接查找已删 (registry.py/base.py
+    多源 fallback 机制 0 消费方物删, 见 analysis/data_sources_registry_retirement_20260707.md)。
+    sync_registry.yaml 47 域全声明 source: tushare, 单例直连即可。"""
+    global _TUSHARE_SOURCE
+    if source_name != "tushare":
+        raise KeyError(f"data_sources: 未知 source '{source_name}' (精简后只剩 tushare)")
+    if _TUSHARE_SOURCE is None:
+        from services.data_sources.sources.tushare import TuShareSource
+
+        _TUSHARE_SOURCE = TuShareSource()
+    return _TUSHARE_SOURCE
 
 
 def _target_conn(spec: dict[str, Any]):
