@@ -88,10 +88,11 @@ layer_health_defaults:
 #   在一年中大部分时间必然黄(数学上不可能满足, 非真滞后)。改 sla_hours=5280(220天) 消除结构性
 #   误报, 当时对 4 张表一刀切统一改, 未逐表核实真实节奏(见下第二轮更正)。
 # 2026-07-07 第二轮更正 (用户追问"同行估值排名是什么, 查一下tushare字段" 引出的连锁核查):
-#   ①raw_aif10_peer_valuation 逐季显式 REPORT_DATE 过滤探测 2024/2025 全部 3/6/9 月季末均返回
-#   0 行, 仅 12-31 年末有数据(2024-12-31=16行/2025-12-31=5611行) —— 该报告实为**年度**快照,
-#   非季度, 第一轮"quarterly"标注是错的。年度节奏下 sla_hours 应覆盖 365 天 + 年报披露后计算
-#   滞后缓冲(参照 disclosure_deadline 年报截止=次年04-30 再加实测已知滞后), 改 14400h(600天)。
+#   ①raw_aif10_peer_valuation(同行估值排名)逐季显式 REPORT_DATE 过滤探测 2024/2025 全部 3/6/9
+#   月季末均返回 0 行, 仅 12-31 年末有数据(2024-12-31=16行/2025-12-31=5611行) —— 该报告实为
+#   **年度**快照非季度, 第一轮"quarterly"标注是错的; 且唯一消费方 v3_picture 已随 2026-06-28
+#   纯数据平台重建整体退役, 该表已成孤儿 —— 用户拍板 2026-07-07 整表物删 (见
+#   analysis/raw_aif10_peer_valuation_retirement_20260707.md), 本行随之移除。
 #   ②fact_top10_holder_period 实测 notice_date 近乎逐日更新(20260701/02/03连续), 是"含季中
 #   ad-hoc"的高频披露流(见 CLAUDE.md §4.3), 第一轮误把它和另外 2 张真季度表一起套用220天——
 #   这会让"停更100天"这种真事故被220天SLA掩盖住, 是本轮修复本身引入的新缺口, 改回 168h(7天,
@@ -99,13 +100,11 @@ layer_health_defaults:
 #   经历史 report_date 分布核实(2025-12-31→2026-03-31 整季度跳变且行数量级一致)确认真季度,
 #   维持 5280h(220天) 不变。
 table_health_overrides:
-  raw_aif10_peer_valuation:   {expected_freshness: annual, sla_hours: 14400}
   raw_qfii_holding_quarterly: {expected_freshness: quarterly, sla_hours: 5280}
   raw_org_holding_aif10:      {expected_freshness: quarterly, sla_hours: 5280}  # F10 机构持仓明细=季报驱动
   # holder/inst 高频 ad-hoc 披露流 (近乎逐日, 非季度; L1_foundation 默认 on-demand 太松故显式覆盖)
   fact_top10_holder_period:        {expected_freshness: daily, sla_hours: 168}
 tables:
-  raw_aif10_peer_valuation: L0_source
   raw_aif10_valuation_quantile: L0_source
   raw_org_holding_aif10: L0_source  # 2026-06-24 补tag (aif10机构持仓明细raw镜像, 前会话漏登致data-layer-integrity FAIL)
   raw_qfii_holding_quarterly: L0_source

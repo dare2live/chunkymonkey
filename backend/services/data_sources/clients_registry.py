@@ -88,8 +88,8 @@ CLIENTS: list[ClientSpec] = [
         fallback_chain=["aif10"],
         writes=[
             TableWriteSpec("raw_aif10_valuation_quantile",  "估值分位",      "t+1",       48),
-            TableWriteSpec("raw_aif10_peer_valuation",      "同行排名",      "quarterly", 24*95),
             # raw_aif10_forecast_consensus 已删 2026-06-28 (G5 退役: 0 消费方)
+            # raw_aif10_peer_valuation 已删 2026-07-07 (0 live 消费方 + 实为年度快照非季度)
         ],
         sync_step_id="sync_aif10_*",
     ),

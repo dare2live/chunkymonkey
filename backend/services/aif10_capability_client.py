@@ -1,13 +1,12 @@
 """通用妙想 capability 同步 — P1.5 (2026-04-28).
 
 接通妙想独家 capability 到 sync step (2026-06-19: holder_count → tushare stk_holdernumber 转正退役;
-financial_history_200q 50股探针孤儿退役; 留 3 个 LIVE 喂 v3_picture serving):
+financial_history_200q 50股探针孤儿退役):
 - valuation_quantile  估值分位 (RPT_STOCKVALUATIONTANTILE, 日/无历史日期维度, 每次覆盖当前值)
-- peer_valuation      同行估值排名 (RPT_PCF10_INDUSTRY_CVALUE, **年** — 2026-07-07 实测更正: 原注
-  "季"是错的, 直接对 vendor 接口逐季度显式 REPORT_DATE 过滤探测 2024/2025 全部 3/6/9 月季末均
-  返回 0 行, 仅 12-31 年末有数据(2024-12-31=16行/2025-12-31=5611行) — 该报告实为年度快照,
-  非季度更新; data_layers.yaml table_health_overrides 已同步改 sla_hours 按年度节奏重估)
-  (forecast_consensus 已删 2026-06-28 G5 退役: 0 消费方)
+  (forecast_consensus 已删 2026-06-28 G5 退役: 0 消费方; peer_valuation 已删 2026-07-07: 唯一消费方
+  v3_picture 已随 2026-06-28 纯数据平台重建整体退役, 表本身成孤儿 + 实测该报告实为年度快照
+  [2024/2025 全部季末探测 0 行仅 12-31 有数据], 用户拍板删表, 见
+  analysis/raw_aif10_peer_valuation_retirement_20260707.md)
 
 设计:
 - 配置式声明 (CAPABILITY_CONFIG): reportName / pk / 字段映射 / schema_sql
@@ -51,32 +50,8 @@ CAPABILITY_CONFIG: dict[str, dict] = {
         "sort_columns": "SECURITY_CODE",
         "sort_types": "1",
     },
-    "peer_valuation": {
-        "report_name": "RPT_PCF10_INDUSTRY_CVALUE",
-        "raw_table": "raw_aif10_peer_valuation",
-        "pk_cols": ("secucode", "report_date"),
-        "field_map": {
-            "secucode": "SECUCODE",
-            "security_code": "SECURITY_CODE",
-            "security_name_abbr": "SECURITY_NAME_ABBR",
-            "report_date": "REPORT_DATE",
-            "industry_code": "INDUSTRY_CODE",
-            "industry_name": "INDUSTRY_NAME",
-            "stock_pe": "STOCK_PE",
-            "industry_pe_avg": "INDUSTRY_PE_AVG",
-            "industry_pe_median": "INDUSTRY_PE_MEDIAN",
-            "stock_pe_rank": "STOCK_PE_RANK",
-            "stock_peg": "STOCK_PEG",
-            "industry_peg_avg": "INDUSTRY_PEG_AVG",
-            "stock_peg_rank": "STOCK_PEG_RANK",
-            "stock_pb": "STOCK_PB",
-            "industry_pb_avg": "INDUSTRY_PB_AVG",
-            "stock_pb_rank": "STOCK_PB_RANK",
-        },
-        "sort_columns": "REPORT_DATE,SECURITY_CODE",
-        "sort_types": "-1,1",
-    },
     # forecast_consensus 已删 2026-06-28 (G5 退役: 0 live 消费方 + profit_forecast 已退役 + 同步从未接入 acquire 日常流)
+    # peer_valuation 已删 2026-07-07 (0 live 消费方, 见模块 docstring)
 }
 
 
@@ -281,10 +256,6 @@ def sync_capability(
 
 def sync_valuation_quantile() -> dict:
     return sync_capability("valuation_quantile")
-
-
-def sync_peer_valuation() -> dict:
-    return sync_capability("peer_valuation")
 
 
 # sync_forecast_consensus 已删 2026-06-28 (G5 退役 forecast_consensus)

@@ -33,7 +33,9 @@ def run_acquire(ctx: PipelineContext) -> None:
     # Step 2i2: 十大流通股东 aif10 增量 (主源, 替退役中的 tdxhub; 按披露日只拉新披露股)
     ctx.step(lambda: _sync_holders_aif10(ctx), degraded_msg="holders aif10 sync 失败")
 
-    # Step 2i3: aif10 估值分位/同行估值 (LIVE, v3_picture 消费; 2026-06-24 迁自旧 updater)
+    # Step 2i3: aif10 估值分位 (2026-06-24 迁自旧 updater; 唯一消费方 v3_picture 已随 2026-06-28
+    #   纯数据平台重建退役, 此步现为纯采集镜像无 live 消费方, 保留仅因写入无害且未来 SERVE 层
+    #   若重建估值维度可直接复用; 同批 peer_valuation 已 2026-07-07 物删, 见 aif10_capability_client.py)
     ctx.step(_sync_aif10_capabilities, degraded_msg="aif10 capability sync 失败")
 
     # Step 2j: QFII 季度持股 (外资维度; 2026-06-24 迁自旧 updater)
@@ -90,10 +92,15 @@ def _sync_holders_aif10(ctx) -> None:
 
 
 def _sync_aif10_capabilities() -> None:
-    """aif10 估值分位/同行估值 (LIVE, v3_picture 消费). sync_capability 自管连接, 直调."""
+    """aif10 估值分位. sync_capability 自管连接, 直调.
+
+    forecast_consensus 已 deprecated (走 pipeline profit_forecast); peer_valuation 已
+    2026-07-07 物删(唯一消费方 v3_picture 已随 2026-06-28 重建退役, 且实测该报告实为年度快照
+    非季度, 见 aif10_capability_client.py 模块 docstring)。valuation_quantile 同样已无
+    live 消费方(同源 v3_picture 退役), 暂保留写入(无害), 未来 SERVE 层重建估值维度可复用。
+    """
     from services.aif10_capability_client import sync_capability
-    # forecast_consensus 已 deprecated (走 pipeline profit_forecast); 只迁 v3_picture 在用的 2 个
-    for cap in ("valuation_quantile", "peer_valuation"):
+    for cap in ("valuation_quantile",):
         try:
             r = sync_capability(cap)
             print(f"aif10/{cap}: rows={r.get('rows', 0)} table={r.get('raw_table')}")

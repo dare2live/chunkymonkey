@@ -38,7 +38,9 @@ CAPABILITY_TO_REPORT = {
 
     # ===== 估值/同行 (peer_snapshot) =====
     "valuation_quantile":       "RPT_STOCKVALUATIONTANTILE",    # PE/PB/PEG 分位 (独家)
-    "peer_valuation":           "RPT_PCF10_INDUSTRY_CVALUE",    # 同行估值排名
+    # peer_valuation (RPT_PCF10_INDUSTRY_CVALUE, 同行估值排名) 2026-07-07 物删: 唯一消费方
+    #   v3_picture 已随 2026-06-28 重建退役, 且实测该报告实为年度快照(非季度), 见
+    #   aif10_capability_client.py 模块 docstring
     "peer_growth":              "RPT_PCF10_INDUSTRY_GROWTH",    # 同行成长性
     "peer_dupont":              "RPT_PCF10_INDUSTRY_DBFX",      # 杜邦同行
 

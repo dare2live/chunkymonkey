@@ -2235,24 +2235,6 @@
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
-      "src": "table:raw_aif10_peer_valuation"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/aif10_capability_client.py",
-      "kind": "consume",
-      "src": "table:raw_aif10_peer_valuation"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:raw_aif10_peer_valuation"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
       "src": "table:raw_aif10_valuation_quantile"
     },
     {
@@ -3673,9 +3655,9 @@
     }
   ],
   "meta": {
-    "edge_count": 561,
-    "generated_at": "2026-07-06T22:35:02.403250+00:00",
-    "node_count": 267,
+    "edge_count": 558,
+    "generated_at": "2026-07-07T06:35:24.595295+00:00",
+    "node_count": 266,
     "version": 1
   },
   "nodes": [
@@ -5457,15 +5439,6 @@
         "vendor": "tushare"
       },
       "id": "table:price_kline_qfq_tushare",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L0_source",
-        "status": "active"
-      },
-      "id": "table:raw_aif10_peer_valuation",
       "kind": "table"
     },
     {

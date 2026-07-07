@@ -1,0 +1,18 @@
+# raw_aif10_peer_valuation (同行估值排名) 整表退役 (2026-07-07, 用户拍板)
+# 决策全过程 + 证据 + 替代方案调研见 analysis/raw_aif10_peer_valuation_retirement_20260707.md
+# 前置 (本次全部已完成):
+#   - 代码引用已清: aif10_capability_client.py 去 CAPABILITY_CONFIG 条目+sync函数 /
+#     acquire.py 去同步循环成员 / sources/aif10.py 去 report 映射 / clients_registry.py
+#     去 TableWriteSpec / data_layers.yaml 去两处登记(table_health_overrides + tables:)
+#   - 全量测试未受影响(该表本身无专属单测)
+# action=archive: 先 COPY TO parquet 留底再 DROP (可逆保险) + 写 mart_data_deletion_record 留痕
+# 执行: python backend/scripts/db_lifecycle_delete.py \
+#         --manifest analysis/lifecycle_delete_manifest_raw_aif10_peer_valuation_20260707.yaml --execute
+run_id: raw_aif10_peer_valuation_retirement_20260707
+db: smartmoney
+archive_dir: data/archive/lifecycle
+entries:
+  - table: raw_aif10_peer_valuation
+    action: archive
+    bucket: dead_consumer_retirement
+    reason: "唯一消费方 v3_picture router 已随 2026-06-28 纯数据平台重建整体退役(main.py确认策略/serving routers全退役含v3_picture), 表本身成孤儿; 且实测该报告(RPT_PCF10_INDUSTRY_CVALUE)实为年度快照非季度(2024/2025全部季末探测0行仅12-31有数据), 原'quarterly'标注是文档错误。用户追问'同行估值排名是什么'引出核查, 拍板整表删除。见 analysis/raw_aif10_peer_valuation_retirement_20260707.md"
