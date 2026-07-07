@@ -5,127 +5,16 @@ defaults:
   require_explicit_execute_flag: true
   large_delete_row_threshold: 1000000
 
-payload_audit:
-  max_value_warn_bytes: 1048576
-  max_value_fail_bytes: 10485760
-  total_value_warn_bytes: 10485760
-  total_value_fail_bytes: 104857600
-  top_sample_rows: 20
-  duplicate_sample_warn_count: 2
-  fail_on_recursive_keyword: true
-  warn_on_path_marker: true
-  payload_column_name_tokens:
-    - json
-    - payload
-    - audit
-    - evidence
-    - summary
-    - signals
-    - blob
-    - bytes
-    - raw_text
-    - raw_json
-    - raw_bytes
-    - command
-    - path
-    - url
-    - artifact
-    - details
-    - preview
-    - warning
-    - blocker
-    - reason
-    - lineage
-  recursive_keywords:
-    - latest_dispatch
-    - queue_items
-    - audit_json
-    - signals_json
-    - preview
-  path_markers:
-    - data/reports/
-    - analysis/
-    - /logs/
-    - .log
-    - file://
-  reviewed_columns:
-    - table: fact_technical_trigger
-      column: reason_codes_json
-      classification: compact_per_signal_reason_codes
-      owner: formula_engine
-      reason: Full-history formula trigger reason-code evidence; row count can grow with signal history, but each value must stay tiny and non-recursive.
-      max_value_bytes: 512
-      max_total_value_bytes: 536870912
-    - table: mart_macd_state_history
-      column: reason_codes_json
-      classification: diagnostic_state_history_evidence
-      owner: formula_engine
-      reason: MACD state history is evidence-only; per-row reason codes are bounded and intentionally retained for candidate-supply audits, so aggregate volume can grow with history without becoming recursive.
-      max_value_bytes: 512
-      max_total_value_bytes: 536870912
-    - table: mart_stock_picture_daily
-      column: institution_top_json
-      classification: bounded_picture_daily_institution_summary
-      owner: picture_daily
-      reason: Daily stock picture keeps a compact top-institution summary per stock/date for UI and recommendation evidence; it must remain bounded and non-recursive.
-      max_value_bytes: 2048
-      max_total_value_bytes: 67108864
-    - table: mart_today_signal_cache_signal
-      column: signal_json
-      classification: bounded_cache_detail_row
-      owner: signals_v2
-      reason: Replacement for the former single-row signals_json blob; one bounded JSON row per signal keeps API cache replayable without recursive nesting.
-      max_value_bytes: 8192
-      max_total_value_bytes: 67108864
-    # raw_tdx_gpcw_wide retention 条目已删 2026-06-27 (通达信全删 gpcw物删)
-    - table: mart_architecture_inventory_asset
-      column: api_routes_json
-      classification: governed_architecture_inventory_paths
-      owner: architecture_inventory
-      reason: Architecture inventory intentionally records route/path references; path markers are lineage evidence, not embedded artifacts.
-      allow_path_marker: true
-      max_value_bytes: 4096
-      max_total_value_bytes: 1048576
-    - table: mart_architecture_inventory_asset
-      column: frontend_api_calls_json
-      classification: governed_architecture_inventory_paths
-      owner: architecture_inventory
-      reason: Architecture inventory intentionally records frontend API path references; path markers are lineage evidence, not embedded artifacts.
-      allow_path_marker: true
-      max_value_bytes: 4096
-      max_total_value_bytes: 1048576
-    - table: mart_paper_sim_kpi
-      column: lineage_url
-      classification: governed_lineage_pointer
-      owner: paper_sim_lineage
-      reason: Lineage URL is an intentional pointer to a report artifact, not a copied artifact payload.
-      allow_path_marker: true
-      max_value_bytes: 512
-      max_total_value_bytes: 1048576
-    - table: mart_strategy_result_registry  # @archived wiped-2026-06-14-reset
-      column: evidence_json
-      classification: governed_strategy_evidence_pointer
-      owner: strategy_result_registry
-      reason: Strategy evidence can include artifact path references; recursive audit payloads remain blocked by recursive-key detection.
-      allow_path_marker: true
-      max_value_bytes: 4096
-      max_total_value_bytes: 1048576
-    - table: mart_strategy_result_registry  # @archived wiped-2026-06-14-reset
-      column: lineage_url
-      classification: governed_lineage_pointer
-      owner: strategy_result_registry
-      reason: Lineage URL is an intentional pointer to a report artifact, not a copied artifact payload.
-      allow_path_marker: true
-      max_value_bytes: 512
-      max_total_value_bytes: 1048576
-    - table: mart_stock_formula_optuna_bestchoice_v1
-      column: source_artifact
-      classification: governed_source_artifact_pointer
-      owner: bestchoice_phase1_import
-      reason: BestChoice candidate rows store source artifact pointers for reproducibility; they must remain short pointers, not embedded artifacts.
-      allow_path_marker: true
-      max_value_bytes: 512
-      max_total_value_bytes: 1048576
+# payload_audit 整段(含 reviewed_columns 10条目)2026-07-07 整段退役删除: 唯一消费脚本
+# backend/scripts/audit_storage_payloads.py 早已随 2026-06-16 前后的代码层 reset(commit
+# 639e0dfb)物删, 现存的 audit_storage_retention_consumers.py / check_legacy_flow_integrity.py
+# 两个治理脚本结构上都不读这个 key(全仓库 grep payload_audit/reviewed_columns 除本文件外 0
+# 命中)。逐表核实: reviewed_columns 引用的 8 张表(fact_technical_trigger/
+# mart_macd_state_history/mart_stock_picture_daily/mart_today_signal_cache_signal/
+# mart_architecture_inventory_asset/mart_paper_sim_kpi/mart_strategy_result_registry[已标
+# @archived]/mart_stock_formula_optuna_bestchoice_v1)在全部7个DuckDB文件里逐一核实,
+# 无一存活(2026-06-28纯数据平台重建批全部物删)——是双重孤儿(消费脚本已死+数据源已死),
+# 非"头痛医头"式只删单条目, 见 analysis/storage_retention_payload_audit_retirement_20260707.md
 
 protected_model_statuses:
   - champion
