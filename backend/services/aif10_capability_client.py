@@ -196,14 +196,18 @@ def sync_capability(
         try:
             import pandas as pd
 
+            # get_conn() 可能返回 DuckConn 包装器 (无 register/unregister, 只有底层 raw 连接有,
+            # 见 source_watermarks.py:180 同款 hasattr 防御) — 此前直接 conn.register 恒 AttributeError,
+            # 被下面 except 静默吞掉退化成 executemany (功能对但每次都慢, 2026-07-07 冒烟测试抓到)。
+            raw = conn.raw if hasattr(conn, "raw") else conn
             payload_df = pd.DataFrame(normalized, columns=proj_cols)
-            conn.register("__aif10_payload", payload_df)
+            raw.register("__aif10_payload", payload_df)
             col_sql = ",".join(proj_cols)
             conn.execute(
                 f"INSERT OR REPLACE INTO {cfg['raw_table']} ({col_sql}) "
                 f"SELECT {col_sql} FROM __aif10_payload"
             )
-            conn.unregister("__aif10_payload")
+            raw.unregister("__aif10_payload")
         except Exception as exc:
             write_method = f"executemany_fallback:{type(exc).__name__}"
             placeholders = ",".join(["?"] * len(proj_cols))

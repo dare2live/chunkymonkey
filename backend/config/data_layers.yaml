@@ -82,12 +82,21 @@ layer_health_defaults:
 # per-table 健康覆盖 (2026-06-28 F4: 从退役的 dim_data_asset 搬来; 仅 layer 默认不对的少数表 —
 #   aif10 季频/周频 raw 不在 sync_registry 无法 derive freshness, 故显式覆盖。无日期列的静态 dim 由
 #   data_health "无日期列=静态" 通用判定处理, 不需在此列。)
+# 2026-07-07 冒烟测试实测更正: 原 sla_hours=2280(95天) 对季报数据结构性过紧 —
+#   org_holding_aif10.disclosure_deadline() 已声明的法定披露截止 (Q1→04-30/Q2→08-31/Q3→10-31/
+#   年报→次年04-30) 换算最长跨季间隔 = Q3(09-30)→年报截止(次年04-30) = 212 天, 意味着 SLA=95天
+#   在一年中大部分时间必然黄(数学上不可能满足, 非真滞后)。实测复现: 07-07 peer_valuation/
+#   org_holding/qfii 三表均 freshness_hours~2350-4510h 超 2280h 报黄, 但逐表核实(a)peer_valuation
+#   实时重探源端 report_date 仍锁 2025-12-31(源确未发布, 非同步失败)(b)org_holding/qfii
+#   latest_plannable_report_date()验证 Q2(06-30)法定截止08-31尚未到, 现持有Q1(03-31)正确非滞后。
+#   改 sla_hours=5280(220天, 覆盖212天最长跨季+缓冲) 消除结构性误报, 真滞后仍会触发(> 220天=
+#   跨两个完整披露周期都没数据才算真异常)。
 table_health_overrides:
-  raw_aif10_peer_valuation:   {expected_freshness: quarterly, sla_hours: 2280}
-  raw_qfii_holding_quarterly: {expected_freshness: quarterly, sla_hours: 2280}
-  raw_org_holding_aif10:      {expected_freshness: quarterly, sla_hours: 2280}  # F10 机构持仓明细=季报驱动
+  raw_aif10_peer_valuation:   {expected_freshness: quarterly, sla_hours: 5280}
+  raw_qfii_holding_quarterly: {expected_freshness: quarterly, sla_hours: 5280}
+  raw_org_holding_aif10:      {expected_freshness: quarterly, sla_hours: 5280}  # F10 机构持仓明细=季报驱动
   # holder/inst 季频 fact (L1_foundation 默认 on-demand, 这里给 quarterly 保留季频监控不误日红)
-  fact_top10_holder_period:        {expected_freshness: quarterly, sla_hours: 2280}
+  fact_top10_holder_period:        {expected_freshness: quarterly, sla_hours: 5280}
 tables:
   raw_aif10_peer_valuation: L0_source
   raw_aif10_valuation_quantile: L0_source
