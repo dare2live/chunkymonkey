@@ -649,12 +649,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/migrate_reference_db.py",
-      "kind": "consume",
-      "src": "table:dim_active_a_stock"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/data_audit.py",
       "kind": "consume",
       "src": "table:dim_active_a_stock"
@@ -907,18 +901,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/api_schemas.py",
-      "kind": "consume",
-      "src": "table:dim_stock_dc_industry"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/industry.py",
-      "kind": "consume",
-      "src": "table:dim_stock_dc_industry"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/pipeline/process.py",
       "kind": "consume",
       "src": "table:dim_stock_dc_industry"
@@ -1088,12 +1070,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/data_health_snapshot.py",
-      "kind": "consume",
-      "src": "table:dim_trading_calendar"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/migrate_reference_db.py",
       "kind": "consume",
       "src": "table:dim_trading_calendar"
     },
@@ -1502,12 +1478,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
-      "kind": "consume",
-      "src": "table:fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/cleanup_holder_dup.py",
       "kind": "consume",
       "src": "table:fact_top10_holder_period"
     },
@@ -1928,12 +1898,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:mart_pipeline_lock"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/pipeline_lock.py",
       "kind": "consume",
       "src": "table:mart_pipeline_lock"
     },
@@ -2533,12 +2497,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/industry.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_dc_member"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/market_pulse.py",
       "kind": "consume",
       "src": "table:raw_tushare_dc_member"
@@ -2594,12 +2552,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
-      "kind": "consume",
-      "src": "table:raw_tushare_forecast"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/constants.py",
       "kind": "consume",
       "src": "table:raw_tushare_forecast"
     },
@@ -3385,12 +3337,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/industry.py",
-      "kind": "consume",
-      "src": "table:v_dc_industry_pit"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/pipeline/process.py",
       "kind": "consume",
       "src": "table:v_dc_industry_pit"
@@ -3410,12 +3356,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/data_sources.yaml",
-      "kind": "consume",
-      "src": "table:v_price_kline_qfq"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/feature_registry.yaml",
       "kind": "consume",
       "src": "table:v_price_kline_qfq"
     },
@@ -3559,12 +3499,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/industry.py",
-      "kind": "consume",
-      "src": "table:v_sw_industry_pit"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/institution_profile.py",
       "kind": "consume",
       "src": "table:v_sw_industry_pit"
@@ -3607,9 +3541,9 @@
     }
   ],
   "meta": {
-    "edge_count": 550,
-    "generated_at": "2026-07-07T08:43:13.313743+00:00",
-    "node_count": 262,
+    "edge_count": 539,
+    "generated_at": "2026-07-07T14:48:26.832066+00:00",
+    "node_count": 255,
     "version": 1
   },
   "nodes": [
@@ -3675,14 +3609,6 @@
         "path": "backend/config/experiment_jobs.yaml"
       },
       "id": "consumer:backend/config/experiment_jobs.yaml",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "config",
-        "path": "backend/config/feature_registry.yaml"
-      },
-      "id": "consumer:backend/config/feature_registry.yaml",
       "kind": "consumer"
     },
     {
@@ -3840,14 +3766,6 @@
     {
       "attrs": {
         "ctype": "script",
-        "path": "backend/scripts/cleanup_holder_dup.py"
-      },
-      "id": "consumer:backend/scripts/cleanup_holder_dup.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
         "path": "backend/scripts/data_health_snapshot.py"
       },
       "id": "consumer:backend/scripts/data_health_snapshot.py",
@@ -3872,14 +3790,6 @@
     {
       "attrs": {
         "ctype": "script",
-        "path": "backend/scripts/migrate_reference_db.py"
-      },
-      "id": "consumer:backend/scripts/migrate_reference_db.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
         "path": "backend/scripts/refresh_source_watermarks.py"
       },
       "id": "consumer:backend/scripts/refresh_source_watermarks.py",
@@ -3896,14 +3806,6 @@
     {
       "attrs": {
         "ctype": "service",
-        "path": "backend/services/api_schemas.py"
-      },
-      "id": "consumer:backend/services/api_schemas.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
         "path": "backend/services/calendar.py"
       },
       "id": "consumer:backend/services/calendar.py",
@@ -3915,14 +3817,6 @@
         "path": "backend/services/calendar_builder.py"
       },
       "id": "consumer:backend/services/calendar_builder.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/constants.py"
-      },
-      "id": "consumer:backend/services/constants.py",
       "kind": "consumer"
     },
     {
@@ -3987,14 +3881,6 @@
         "path": "backend/services/holders_aif10.py"
       },
       "id": "consumer:backend/services/holders_aif10.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/industry.py"
-      },
-      "id": "consumer:backend/services/industry.py",
       "kind": "consumer"
     },
     {
@@ -4107,14 +3993,6 @@
         "path": "backend/services/pipeline/store.py"
       },
       "id": "consumer:backend/services/pipeline/store.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/pipeline_lock.py"
-      },
-      "id": "consumer:backend/services/pipeline_lock.py",
       "kind": "consumer"
     },
     {
