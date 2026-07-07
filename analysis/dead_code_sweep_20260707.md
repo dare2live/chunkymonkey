@@ -38,10 +38,12 @@
 ### 簇10 — chunkyctl 死路径修复 (2026-07-07)
 两个独立但同源的死路径, 根因都是 2026-06-28 重建把 `chunkyctl.py` 从 1660 行降到"最小重建版"(只留 `doctor` + `_RETIRED` 优雅提示列表)时漏记: **(1) `jobs`** — 旧版 `chunkyctl.py` 曾完整实现过 `run_jobs()`(读 `services.experiment_jobs.load_experiment_job_contract`), 该 loader 随重建物删后 `jobs` 子命令既未重实现也未补进 `_RETIRED`, 实测裸 argparse 报 `invalid choice: 'jobs'`(exit=2), 比其余 5 个已退役命令的统一 JSON 提示更不友好; 补进 `_RETIRED` 元组即可复用既有优雅路径。**(2)`data-status`** — `data-status` 其实**已经**在 `_RETIRED` 里(`chunkyctl.py data-status` 本身工作正常), 真正的 bug 在 `scripts/chunkyctl` shell wrapper: 它对 `data-status` 走了一条独立分支, 直接 `python backend/scripts/data_migration_status.py`(该脚本本体已随更早一批清理物删, 只剩空目录), 完全绕过了 `chunkyctl.py` 已实现的退役提示, 实测直接 `FileNotFoundError` 崩溃(exit=2)。**修**: wrapper 的 `data-status)` 分支改路由到 `chunkyctl.py data-status "$@"`(与 `jobs` 分支的既有写法一致)。两处修完实测均返回 `{"status": "retired", ...}` JSON, exit=0。**未做**: 未重新实现 `jobs`/`data-status` 真实功能(计算任务契约/tushare迁移状态), 因为其依赖(`services.experiment_jobs`/`services.compute.modal_adapter`/`data_migration_status.py`)本身随策略/编排层退役, 重建这些不在本次死代码清理范围内, 是 edge 重建阶段的事。
 
+### 簇7 — kline_source.py 厘清结果: 非重复实现, 是完全孤立的死代码对 (2026-07-07)
+报告原候选问题是"kline_source.py 是否与 pipeline/clean.py 内联清洗逻辑重复", 逐层核实后结论不是"重复"而是"孤立死代码": `pipeline/clean.py` 本身只有40行, 无任何内联清洗逻辑, 只是调度两个既有环节(`build_price_kline_qfq_tushare.py` SQL CTAS 脚本 + `data_audit` post-sync 审计), 两者根本不重叠。真问题在 `kline_source.py` 自身——它是 tdxhub/eastmoney/akshare 多源并存时代的通用行清洗/归一化层(`clean_price_row`/`normalize_price_rows`/`aggregate_monthly_from_daily`, 含"governance v1: volume unit = lots"等 tdxhub 专属注释), `codegraph query` + 全仓库 grep 确认**唯一 Python 导入方是它自己的单测 `test_kline_cleaning.py`**(测的还是已退役的 tdxhub 手/股换算场景), 现行唯一活跃的 qfq 构建器 `build_price_kline_qfq_tushare.py` 只用 `services.duck_adapter` 做纯 SQL 变换, 完全不经过这层 Python 逐行清洗。进一步核实发现 `kline_source.py` 依赖的 `services/data_processing_monitor.py`(`ProcessingToolStats` 类 + `mart_data_processing_tool_run`/`mart_data_processing_tool_issue` 两表 DDL)**唯一消费方就是 kline_source.py 自己**, 且这两张表在真实 `smartmoney.duckdb` 里**从未被创建过**(`SELECT COUNT(*)` 报 Catalog Error 表不存在) —— 双重确认整条链自始至终没被真正启用过, 是 tushare 整合后被架空的完整子系统, 非"和 clean.py 功能重叠"。**执行**: git rm 三件套(`kline_source.py`/`data_processing_monitor.py`/`test_kline_cleaning.py`) + `schema_versions.py` MART_VERSIONS 去两条死表登记 + PROJECT_INDEX.md 治理/杂项行去除引用。全量测试608→603 passed(减5为参数化目录扫描测试随文件数变化, 非回归, 无新增failure)。
+
 ## 待执行簇 (占位, 完成后追加小节)
 
 - 簇5: 测试文件清理(test_v3_selection.py/test_perf_p1_trade_date.py 删, test_system_routes.py/test_real_data_consistency.py 部分修)
-- 簇7: kline_source.py vs pipeline/clean.py 内联清洗逻辑重复性厘清
 - 簇12: main.py `/v3` `/legacy` 断链路由修复
 - 簇1+2: 旧 vanilla JS 前端整体删除 + main.py 死代码 + 15 个 contract 测试
 - 簇13: PROJECT_INDEX.md §1 架构描述最终一致性收口(待簇1/2/12 完成后一次性做)

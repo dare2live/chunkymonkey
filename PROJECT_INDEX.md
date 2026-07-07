@@ -227,7 +227,7 @@ aif10 (东财 datacenter)───┤
 
 ---
 
-## 3. 代码地图 (backend/, ~70 service .py + 38 scripts)
+## 3. 代码地图 (backend/, ~68 service .py + 38 scripts)
 
 **services/ 顶层职责簇**:
 
@@ -237,8 +237,8 @@ aif10 (东财 datacenter)───┤
 | 身份/日历/宇宙 | security_master · calendar(latest_closed 交易日历真相源) · universe(硬门 assert_universe_clean) · utils |
 | aif10 采集 | holders_aif10 · org_holding_aif10 · qfii_client (aif10_capability_client 2026-07-07 整模块退役, 见 analysis/aif10_capability_client_retirement_20260707.md) |
 | **edge 件 (2026-07-02 起)** | institution_profile(机构画像引擎, episode状态机+维度画像) · paper_portfolio(实盘模拟手动版, SERVE第一个正式消费方) |
-| 治理 | data_audit · data_quality · data_health(见scripts) · source_watermarks · storage_retention · data_deletion · data_processing_monitor · manifest · sandbox_guard · dependency_guards |
-| 杂项 | kline_source(写侧normalize) · source_policy · notification/ |
+| 治理 | data_audit · data_quality · data_health(见scripts) · source_watermarks · storage_retention · data_deletion · manifest · sandbox_guard · dependency_guards |
+| 杂项 | source_policy · notification/ |
 
 **子包**: data_access/(M4 SERVE, resolver+drivers) · data_sources/(M1, sync_runner+sources/tushare, 2026-07-07 精简收口: registry.py/base.py/sources/aif10.py 整删, 见 analysis/data_sources_registry_retirement_20260707.md) · pipeline/(daily_update 四阶段 preflight→acquire→clean→process→store) · lineage/(M5 血缘, builder+graph) · data_governance/ · primitives/ · notification/
 

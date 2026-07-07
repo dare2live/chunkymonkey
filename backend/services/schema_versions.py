@@ -52,8 +52,6 @@ MART_VERSIONS = {
     "mart_data_source_failure_queue": "v1",   # 采集失败队列
     "mart_pipeline_lock": "v1",               # 单 writer 锁
     "mart_step_fingerprint": "v1",            # step 指纹 (增量驱动)
-    "mart_data_processing_tool_run": "v1",    # 数据处理工具 run
-    "mart_data_processing_tool_issue": "v1",  # 数据处理工具 issue
     "mart_data_deletion_record": "v1",        # 删除留痕
     "mart_data_deprecation_record": "v1",     # 退役留痕
 }
