@@ -79,20 +79,10 @@ CLIENTS: list[ClientSpec] = [
     # institution_survey_client ClientSpec 已删 2026-06-28 (批2 数据源切 tushare): aif10+akshare 源退役,
     #   调研走 tushare stk_surv (raw_tushare_stk_surv, sync_registry stk_surv 域); raw_institution_surveys
     #   + mart_stock_survey_activity 物删。机构调研 PIT 锚降级 surv_date+t+1 (tushare stk_surv 无 notice_date)。
-    ClientSpec(
-        client_id="aif10_capability_client",
-        module="services.aif10_capability_client",
-        description="妙想 F10 能力面板 (4 张 raw + 财务历史)",
-        upstream_source="aif10:F10",
-        source_tier=2,
-        fallback_chain=["aif10"],
-        writes=[
-            TableWriteSpec("raw_aif10_valuation_quantile",  "估值分位",      "t+1",       48),
-            # raw_aif10_forecast_consensus 已删 2026-06-28 (G5 退役: 0 消费方)
-            # raw_aif10_peer_valuation 已删 2026-07-07 (0 live 消费方 + 实为年度快照非季度)
-        ],
-        sync_step_id="sync_aif10_*",
-    ),
+    # aif10_capability_client ClientSpec 已删 2026-07-07: 唯二 capability (valuation_quantile/
+    #   peer_valuation) 唯一消费方 v3_picture 已随 2026-06-28 重建退役且早在其存活期就因
+    #   latest-snapshot leakage 从未被特征管线接入(PIT-safe替代 pe_ttm_z_1y/pb_z_1y 已存在),
+    #   两表本批一并物删, services.aif10_capability_client 模块整体退役 git rm。
 
     # ── tier 3: akshare (兜底) ───────────────────────────────────────
     # margin_client ClientSpec removed Phase ψ.5 — dead data (see audit)

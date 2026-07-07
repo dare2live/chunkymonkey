@@ -1,0 +1,19 @@
+# raw_aif10_valuation_quantile (估值分位) 整表退役 (2026-07-07, 用户拍板 "A")
+# 决策全过程 + 证据见 analysis/aif10_capability_client_retirement_20260707.md
+# 前置 (本次全部已完成):
+#   - 代码引用已清: aif10_capability_client.py 模块整体 git rm / acquire.py 去 Step 2i3 +
+#     _sync_aif10_capabilities() 函数 / sources/aif10.py 整文件 git rm + __init__.py 去 import /
+#     clients_registry.py 去 ClientSpec 条目 / data_layers.yaml 去 tables: 登记 /
+#     test_v3_picture.py 整文件 git rm / test_acquire_active_stock_refresh.py 去死 monkeypatch
+#   - 全量测试 621→619 passed (删2个已删文件自身的测试)
+# action=archive: 先 COPY TO parquet 留底再 DROP (可逆保险) + 写 mart_data_deletion_record 留痕
+# 执行: python backend/scripts/db_lifecycle_delete.py \
+#         --manifest analysis/lifecycle_delete_manifest_raw_aif10_valuation_quantile_20260707.yaml --execute
+run_id: raw_aif10_valuation_quantile_retirement_20260707
+db: smartmoney
+archive_dir: data/archive/lifecycle
+entries:
+  - table: raw_aif10_valuation_quantile
+    action: archive
+    bucket: dead_consumer_retirement
+    reason: "唯一消费方v3_picture router已随2026-06-28纯数据平台重建整体退役; 且实测该表在v3_picture存活期就因无date列(latest-snapshot leakage)从未被特征/回测管线接入, PIT-safe替代(pe_ttm_z_1y/pb_z_1y rolling z-score)早已存在。用户'先深入研究再决定'后workflow多角度核证确认0live消费方, 拍板整表删除。见 analysis/aif10_capability_client_retirement_20260707.md"

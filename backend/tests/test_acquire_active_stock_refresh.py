@@ -40,7 +40,6 @@ def test_run_acquire_wires_active_stock_refresh_step(monkeypatch):
     (不能只是定义了函数却没接进主流程——这正是本次要根治的 bug 模式)。"""
     calls = []
     monkeypatch.setattr(acquire, "_sync_holders_aif10", lambda ctx: calls.append("holders_aif10"))
-    monkeypatch.setattr(acquire, "_sync_aif10_capabilities", lambda: calls.append("aif10_cap"))
     monkeypatch.setattr(acquire, "_sync_qfii", lambda: calls.append("qfii"))
     monkeypatch.setattr(acquire, "_sync_org_holding", lambda: calls.append("org_holding"))
     monkeypatch.setattr(acquire, "_sync_registry_drain", lambda ctx: calls.append("drain"))

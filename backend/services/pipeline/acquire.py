@@ -33,10 +33,11 @@ def run_acquire(ctx: PipelineContext) -> None:
     # Step 2i2: 十大流通股东 aif10 增量 (主源, 替退役中的 tdxhub; 按披露日只拉新披露股)
     ctx.step(lambda: _sync_holders_aif10(ctx), degraded_msg="holders aif10 sync 失败")
 
-    # Step 2i3: aif10 估值分位 (2026-06-24 迁自旧 updater; 唯一消费方 v3_picture 已随 2026-06-28
-    #   纯数据平台重建退役, 此步现为纯采集镜像无 live 消费方, 保留仅因写入无害且未来 SERVE 层
-    #   若重建估值维度可直接复用; 同批 peer_valuation 已 2026-07-07 物删, 见 aif10_capability_client.py)
-    ctx.step(_sync_aif10_capabilities, degraded_msg="aif10 capability sync 失败")
+    # Step 2i3 (aif10 capability sync) 已删 2026-07-07: peer_valuation(07-07先删)+valuation_quantile
+    #   (本批删)是仅剩的两个 capability, 唯一消费方 v3_picture 已随 2026-06-28 重建退役且早在
+    #   v3_picture 活着时就因无 date 列(latest-snapshot leakage)从未被特征管线接入, PIT-safe
+    #   替代(pe_ttm_z_1y/pb_z_1y rolling z-score)已存在; _sync_aif10_capabilities() 整函数随之删除
+    #   (0 消费方的 capability 清空后, 保留一个空 for 循环的 no-op 函数违反能删必删)。
 
     # Step 2j: QFII 季度持股 (外资维度; 2026-06-24 迁自旧 updater)
     ctx.step(_sync_qfii, degraded_msg="QFII sync 失败")
@@ -89,23 +90,6 @@ def _sync_holders_aif10(ctx) -> None:
               f"exits={result.get('exit_rows', 0)} errors={result.get('errors', [])[:3]}")
     finally:
         conn.close()
-
-
-def _sync_aif10_capabilities() -> None:
-    """aif10 估值分位. sync_capability 自管连接, 直调.
-
-    forecast_consensus 已 deprecated (走 pipeline profit_forecast); peer_valuation 已
-    2026-07-07 物删(唯一消费方 v3_picture 已随 2026-06-28 重建退役, 且实测该报告实为年度快照
-    非季度, 见 aif10_capability_client.py 模块 docstring)。valuation_quantile 同样已无
-    live 消费方(同源 v3_picture 退役), 暂保留写入(无害), 未来 SERVE 层重建估值维度可复用。
-    """
-    from services.aif10_capability_client import sync_capability
-    for cap in ("valuation_quantile",):
-        try:
-            r = sync_capability(cap)
-            print(f"aif10/{cap}: rows={r.get('rows', 0)} table={r.get('raw_table')}")
-        except Exception as e:  # noqa: BLE001 — capability 失败不阻塞主流程 (degraded)
-            print(f"aif10/{cap} 失败: {type(e).__name__}: {str(e)[:80]}")
 
 
 def _sync_qfii() -> None:

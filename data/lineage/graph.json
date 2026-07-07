@@ -1519,12 +1519,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/data_sources/sources/aif10.py",
-      "kind": "consume",
-      "src": "table:fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/db_health.py",
       "kind": "consume",
       "src": "table:fact_top10_holder_period"
@@ -2235,24 +2229,6 @@
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
-      "src": "table:raw_aif10_valuation_quantile"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/aif10_capability_client.py",
-      "kind": "consume",
-      "src": "table:raw_aif10_valuation_quantile"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consume",
-      "src": "table:raw_aif10_valuation_quantile"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
       "src": "table:raw_org_holding_aif10"
     },
     {
@@ -2348,12 +2324,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
-      "kind": "consume",
-      "src": "table:raw_tushare_block_trade"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/sources/aif10.py",
       "kind": "consume",
       "src": "table:raw_tushare_block_trade"
     },
@@ -3139,12 +3109,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/data_sources/sources/aif10.py",
-      "kind": "consume",
-      "src": "table:raw_tushare_stk_surv"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/pipeline/acquire.py",
       "kind": "consume",
       "src": "table:raw_tushare_stk_surv"
@@ -3655,9 +3619,9 @@
     }
   ],
   "meta": {
-    "edge_count": 558,
-    "generated_at": "2026-07-07T06:35:24.595295+00:00",
-    "node_count": 266,
+    "edge_count": 552,
+    "generated_at": "2026-07-07T08:17:50.354300+00:00",
+    "node_count": 263,
     "version": 1
   },
   "nodes": [
@@ -3944,14 +3908,6 @@
     {
       "attrs": {
         "ctype": "service",
-        "path": "backend/services/aif10_capability_client.py"
-      },
-      "id": "consumer:backend/services/aif10_capability_client.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
         "path": "backend/services/api_schemas.py"
       },
       "id": "consumer:backend/services/api_schemas.py",
@@ -4019,14 +3975,6 @@
         "path": "backend/services/data_sources/clients_registry.py"
       },
       "id": "consumer:backend/services/data_sources/clients_registry.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/data_sources/sources/aif10.py"
-      },
-      "id": "consumer:backend/services/data_sources/sources/aif10.py",
       "kind": "consumer"
     },
     {
@@ -5439,15 +5387,6 @@
         "vendor": "tushare"
       },
       "id": "table:price_kline_qfq_tushare",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L0_source",
-        "status": "active"
-      },
-      "id": "table:raw_aif10_valuation_quantile",
       "kind": "table"
     },
     {

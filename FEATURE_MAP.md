@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-07 06:34
+> Snapshot: 2026-07-07 16:17
 
 ## 1. 入口面
 
@@ -93,7 +93,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 38 张 | 单 writer 26 | 多 writer 12 | 动态表名写点 29 处 (12 文件)
+统计: 表 38 张 | 单 writer 26 | 多 writer 12 | 动态表名写点 26 处 (11 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -107,7 +107,6 @@
 | backend/scripts/db_compact.py | 2 |
 | backend/scripts/db_partition_migrate.py | 2 |
 | backend/scripts/migrate_reference_db.py | 1 |
-| backend/services/aif10_capability_client.py | 3 |
 | backend/services/calendar_builder.py | 2 |
 | backend/services/data_sources/sync_runner.py | 3 |
 | backend/services/market_pulse.py | 4 |
@@ -164,7 +163,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 5,528 | calls 边 7,451 | imports 边 831 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 5,486 | calls 边 7,388 | imports 边 821 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -174,9 +173,9 @@
 | services.database_manifest | 12 |
 | services.data_sources | 9 |
 | services.db | 9 |
-| services.pipeline_manifest | 6 |
 | services.source_watermarks | 6 |
 | services.lineage.model | 5 |
+| services.pipeline_manifest | 5 |
 | scripts.formula_parameter_search | 4 |
 | services.market_db | 4 |
 | services.universe | 4 |
@@ -194,8 +193,8 @@
 | backend/services/database_manifest.py | 11 |
 | bestchoice/compute.py | 9 |
 | backend/services/pipeline/context.py | 6 |
-| backend/services/pipeline_manifest.py | 6 |
 | backend/services/source_watermarks.py | 6 |
+| backend/services/pipeline_manifest.py | 5 |
 | bestchoice/execution_model.py | 5 |
 | backend/services/lineage/model.py | 4 |
 | bestchoice/formula_engine.py | 4 |

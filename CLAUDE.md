@@ -101,9 +101,13 @@ JOIN → 永远带 `AND x.built_at <= t` / `as_of_date`; 宇宙 → `dim_index_m
 > (简单 > 韧性)。下方=现行政策; 旧热备条款存档见本节末 [deprecated]。
 
 > **[2026-06-24 例外 — 用户拍板, 东财妙想 aif10]**: "tushare 唯一" 开**第一个正式例外** = **东财妙想 aif10 (datacenter)**,
-> 用于 **十大流通股东(holder 主源)+ 估值分位/同行估值 + QFII + 机构持仓明细(非公募分桶)**。理由实测: tushare top10_floatholders **财报季驱动滞后~4个月**
+> 用于 **十大流通股东(holder 主源)+ QFII + 机构持仓明细(非公募分桶)**。理由实测: tushare top10_floatholders **财报季驱动滞后~4个月**
 > (季中权益变动不收, 反例 600388 紫金入主龙净 6/8 tushare 只到 3/31), 这几类 aif10 全市场+含季中ad-hoc+深史全胜。
-> **aif10 不是删除对象, 是 sanctioned 正式源** (services/holders_aif10, aif10_capability_client, org_holding_aif10; datacenter JSON API 直连)。
+> **aif10 不是删除对象, 是 sanctioned 正式源** (services/holders_aif10, org_holding_aif10; datacenter JSON API 直连)。
+> **2026-07-07 更正**: 原文列的"估值分位/同行估值"(`aif10_capability_client.py` 的 valuation_quantile/
+> peer_valuation 两个 capability)已整体退役物删 — 唯一消费方 v3_picture 已随 2026-06-28 重建退役,
+> 且实测两表在 v3_picture 存活期就因 leakage/年度快照缺陷从未真正被特征管线接入, 见
+> analysis/aif10_capability_client_retirement_20260707.md。此例外的现行范围收窄为 holder+QFII+机构持仓明细。
 > 其余仍 tushare 唯一。详 analysis/miaoxiang_aif10_source_decision_20260624.md + 数据模块宪法 §1.6 现状更新。
 > **判 aif10 例外是否扩大须有 tushare-滞后/缺失实测证据 (像 holder 这样), 不随意开第二个非 tushare 源。**
 > **[2026-06-24 例外扩展 — 机构持仓明细, 用户拍板]**: tdx F10 退役腾出的 3 表里 **fact_common_major_holder_stock 改接 aif10 RPT_MAIN_ORGHOLDDETAIL**
