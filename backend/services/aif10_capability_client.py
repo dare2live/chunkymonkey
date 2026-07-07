@@ -2,8 +2,11 @@
 
 接通妙想独家 capability 到 sync step (2026-06-19: holder_count → tushare stk_holdernumber 转正退役;
 financial_history_200q 50股探针孤儿退役; 留 3 个 LIVE 喂 v3_picture serving):
-- valuation_quantile  估值分位 (RPT_STOCKVALUATIONTANTILE, 日)
-- peer_valuation      同行估值排名 (RPT_PCF10_INDUSTRY_CVALUE, 季)
+- valuation_quantile  估值分位 (RPT_STOCKVALUATIONTANTILE, 日/无历史日期维度, 每次覆盖当前值)
+- peer_valuation      同行估值排名 (RPT_PCF10_INDUSTRY_CVALUE, **年** — 2026-07-07 实测更正: 原注
+  "季"是错的, 直接对 vendor 接口逐季度显式 REPORT_DATE 过滤探测 2024/2025 全部 3/6/9 月季末均
+  返回 0 行, 仅 12-31 年末有数据(2024-12-31=16行/2025-12-31=5611行) — 该报告实为年度快照,
+  非季度更新; data_layers.yaml table_health_overrides 已同步改 sla_hours 按年度节奏重估)
   (forecast_consensus 已删 2026-06-28 G5 退役: 0 消费方)
 
 设计:
