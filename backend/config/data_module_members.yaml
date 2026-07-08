@@ -45,7 +45,17 @@ member_service_files:
   - kline_source.py          # K线写侧 normalize
   - data_audit.py            # 审计
   - institution_profile.py   # M3 加工 builder (2026-07-02 W1: 读 raw/L1 物化 feature_store L2 画像;
-                             #   与 build_price_kline_qfq_tushare 同性质; 消费方读其产物走 SERVE entity[A阶段接])
+                             #   与 build_price_kline_qfq_tushare 同性质)。**2026-07-08 决议**: 产物表
+                             #   (mart_inst_profile/mart_inst_profile_dim/fact_inst_episode) 不注册进
+                             #   DataAccess entity — 三表按 holder(机构名)为键非 stock code, 且
+                             #   mart_inst_profile(_dim) 是手动 rebuild_all() 触发的全量快照无 PIT asof
+                             #   列, 不符合 GenericDriver 的 "code IN(...) AND asof<=t" 单表时间序列
+                             #   模型, 硬塞需扩展 DataAccess 本体(违反§4.1"零摩擦"红线)且当前 0 真实
+                             #   消费方(Phase A 未开工, speculative feature 不做)。**正解**: 消费方(未来
+                             #   Phase A 档案 API)走本模块既有读侧 API(list_profiles/get_profile/
+                             #   recent_signals, institution_profile.py:323起, 模块自身 owns 这些表的
+                             #   serving 读路, 与 builder 角色一致), 不经 DataAccess.get()。
+                             #   见 analysis/serve_read_layer_gate_consolidation_20260708.md。
   - continuity_guard.py      # 消费侧连续性硬门 (2026-07-03 用户定调交易日历级强制: 中间缺口喂进研究=raise; 消费方=rally_gt 第三道门+D2 builder 必接; 采集侧告警=check_continuity_integrity)
   - calendar_builder.py      # M2 dim 刷新 builder (2026-07-03 R1 根因3: raw_tushare_trade_cal→dim_trading_calendar 增量, 挂 acquire Step 2.96; 根治日历孤儿断链)
   - segments.py              # M3 加工 builder (2026-07-02 B1: 读 raw daily_basic+PIT行业 物化分层标签, 单一计算点)

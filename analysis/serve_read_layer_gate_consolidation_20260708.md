@@ -28,3 +28,13 @@
 - **Red→Green 实测**(mio architect rule7 要求, 不能只看"0 violations"): 临时在 `backend/services/` 下放一个含 `FROM raw_tushare_daily` + `duckdb.connect(` 的假文件(未登记进 data_module_members.yaml), 门正确报 `[NO] D1 no-consumer-bypass` + `violations=1` + exit 1; 删除假文件后门恢复 `[OK]` + `violations=0` + exit 0。门真的在检测, 不是 print-not-fail。
 - 全量测试/moth/dead-references/doc-drift 全绿(见 commit)。
 - 四个 builder 模块(institution_profile/segments/market_pulse/technical_states)在新 D1 下继续合规(已在 `data_module_members.yaml` 正确登记), 未来任何新写的 edge/策略消费者代码如果内联裸查且未登记角色, commit 时会被真正拦下。
+
+## 补记 (2026-07-08, 独立复核抓出的半空缺口)
+
+用户随后问"是否具备托起后续工作的基础", 一轮独立复核(workflow w11wrsibb)对照本文档"决策"节逐项核实, 抓出一个问题: 上面§"决策"只回答了"4个模块怎么处理"(判定为 builder 角色), 但当初的完整要求还有另一半——"SERVE 层注册 `inst_profile`/`inst_episode` entity", 本次 commit message 把两件事叙述成"一起解决了", 实际后一半从未动过(`grep inst_profile data_access.yaml` 0 命中)。复核明确指出"不接受这种糊弄", 要求要么补注册要么写明确决议。
+
+**结论(2026-07-08 二次收口)**: 读 `institution_profile.py` 三张产物表(`mart_inst_profile`/`mart_inst_profile_dim`/`fact_inst_episode`)结构后确认**不注册**是正确决定, 非偷懒: 三表按 `holder`(机构名)为主键, 不是 `DataAccess.get()` 假设的 stock code; 且 `mart_inst_profile`(_dim) 是 `rebuild_all()` 手动全量重建的当前快照, 没有 PIT asof 列, 结构上塞不进 `GenericDriver` 的 "code IN(...) AND asof<=t" 单表时间序列模型。强行注册要么加假 `code_col`/`asof_col`(语义错误, 埋隐患), 要么扩展 DataAccess 本体支持 holder 键+快照语义(违反§4.1"零摩擦"红线, 且当前 0 真实消费方, Phase A 未开工, 不做 speculative feature)。**正解**: 消费方(未来 Phase A 档案 API)走 `institution_profile.py` 已有的读侧 API(`list_profiles`/`get_profile`/`recent_signals`, 该模块自身 owns 这三张表的 serving 读路, 与其 builder 角色一致, 不经 `DataAccess.get()`)。已更新 `data_module_members.yaml` 里的过期注释("消费方读其产物走 SERVE entity[A阶段接]" → 明确决议+理由)。
+
+同批顺手清了另一个尾巴: `fact_top10_holder_period` SLA 黄灯(173.7h 超 168h)。查明现行 crontab 只剩日志轮转(daily_update 自动化已在 2026-07-03 明确清理), 项目当前是纯手工触发模式, 黄灯是"没人手动点更新"的自然结果非 bug。**用户明确要求"不设计自动化跑批, 现阶段手工点击更新即可"**——手工跑一次 `sync_holders_aif10_incremental` 后 data_health 转 36/36 全绿, 不引入任何调度/自动化代码。
+
+验证: 全量测试562 passed不变, `chunkyctl doctor --fast` 本次会话**首次 verdict=PASS**(此前全程 WARN)。
