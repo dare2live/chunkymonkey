@@ -838,6 +838,8 @@ domains:
     data_start: "20190102"
     freshness_sla_trading_days: 1
     min_rows_per_batch: 300       # 实弹 439-587 申万指数/日
+    known_empty_days: ["20260707"]   # 2026-07-08 实测源端单日空洞 (pro.sw_daily 直连返0行,
+                                      #   同日 daily_basic/cyq_perf 均正常出5194行确认非停牌/非假期); 墓碑不再每天重探
 
   share_float:   # 解禁 (天然前瞻 PIT: ann_date 公告日已知未来 float_date 解禁=0泄露; 出场/风控)
     source: tushare

@@ -383,7 +383,19 @@ def get_profile(holder: str) -> dict[str, Any] | None:
 
 def recent_signals(*, days: int = 30, min_holder_episodes: int = MIN_EPISODES,
                    limit: int = 100) -> list[dict[str, Any]]:
-    """最新建仓信号流 (跟随入口): 近 N 天新开 episode × 该机构历史战绩 (今日视角合法)。"""
+    """近 N 天新开 episode 展示流。
+
+    PIT 锚 (2026-07-08 修, 实测中位滞后31天): 过滤用 open_notice(真实披露日 notice_date),
+    非 open_date(报告期末) — report_date 那一刻市场还看不到该持仓变动, 用它做"近N天"过滤
+    会把季末就该有、两个月后才公开的变动当"最新信号"展示。
+
+    **非跟随回测口径声明**: 本函数只是"最近新开episode"展示流, 返回的 holder_median_alpha/
+    holder_win_rate 是该机构自身历史战绩(自身整窗VWAP成本口径, 见 build_profiles), 不是
+    "跟随该signal的预期收益"。真正 execution-aware 的跟随策略回测(信号日次交易日open入场+
+    涨跌停顺延+成本+PIT expanding-window机构评级)是设计文档
+    analysis/institution_follow_strategy_design_20260702.md §4 定义的独立功能, 尚未实现
+    (E3-E5 探索弧未走), 消费方/前端展示本函数结果时不应暗示"跟随可获得同等收益"。
+    """
     con = _ro_conn()
     try:
         rows = con.execute("""
@@ -394,8 +406,9 @@ def recent_signals(*, days: int = 30, min_holder_episodes: int = MIN_EPISODES,
             JOIN mart_inst_profile p ON p.holder = e.holder
             WHERE e.status = 'holding' AND NOT e.seeded AND NOT e.is_passive
               AND p.n_closed >= ?
-              AND strptime(e.open_date, '%Y%m%d') >= now() - to_days(CAST(? AS INTEGER))
-            ORDER BY p.median_alpha DESC, e.open_date DESC LIMIT ?""",
+              AND e.open_notice IS NOT NULL
+              AND strptime(e.open_notice, '%Y%m%d') >= now() - to_days(CAST(? AS INTEGER))
+            ORDER BY p.median_alpha DESC, e.open_notice DESC LIMIT ?""",
             [int(min_holder_episodes), int(days), int(limit)]).fetchall()
         cols = ["holder", "stock", "open_date", "open_notice", "holder_type", "sw_l1_at_open",
                 "n_adds", "holder_n_closed", "holder_median_alpha", "holder_win_rate"]

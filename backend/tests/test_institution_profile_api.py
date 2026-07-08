@@ -1,5 +1,6 @@
 """institution_profile 读侧 API 单测 (合成 feature_store, mock _ro_conn)。"""
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -57,3 +58,35 @@ def test_recent_signals_star_holder_only(mem):
     sigs = ip.recent_signals(days=36500, min_holder_episodes=10)  # 20990101 远未来, 窗口放大覆盖
     assert len(sigs) == 1 and sigs[0]["holder"] == "牛散A"
     assert sigs[0]["holder_median_alpha"] == pytest.approx(0.15)
+
+
+def test_recent_signals_anchors_on_notice_date_not_report_date(mem):
+    """PIT 红绿测试 (2026-07-08 修复, 实测 notice_date 中位滞后 report_date 31天):
+    real-world 真实场景是"季报期末(report_date)后, 隔了一段时间才披露(notice_date)"——
+    notice_date >= report_date 恒成立。默认 30 天窗口下:
+      迟披露D: report_date=40天前(超出30天窗口) + notice_date=5天前(真实刚披露, 在窗口内)
+        → 必须出现(市场是5天前才知道这次建仓, 是真的"最新信号"); 旧代码按 open_date 过滤
+          会因为 report_date 已经"过期"而漏掉这条明明才刚公开的真实新信号(假阴性)。
+      未披露E: report_date=10天前(在30天窗口内) + notice_date=45天前(早披露过, 已过期)
+        → 必须被排除(不是"最新"信号, 只是report_date凑巧新); 旧代码按 open_date 过滤
+          会误当"最新"展示一条其实早就公开过的旧新闻(时间锚概念本身错位)。
+    """
+    now = datetime.now(timezone.utc)
+    late_report = (now - timedelta(days=40)).strftime("%Y%m%d")
+    late_notice = (now - timedelta(days=5)).strftime("%Y%m%d")
+    stale_report = (now - timedelta(days=10)).strftime("%Y%m%d")
+    stale_notice = (now - timedelta(days=45)).strftime("%Y%m%d")
+    mem.execute(
+        "INSERT INTO fact_inst_episode VALUES "
+        f"('迟披露D','600001','{late_report}','{late_notice}',NULL,'holding',NULL,NULL,0,0,'银行',"
+        "false,false,'个人'), "
+        f"('未披露E','600002','{stale_report}','{stale_notice}',NULL,'holding',NULL,NULL,0,0,'银行',"
+        "false,false,'个人')"
+    )
+    mem.execute("INSERT INTO mart_inst_profile VALUES "
+                "('迟披露D','个人',20,0.3,0.3,0.8,0.3,150,false), "
+                "('未披露E','个人',20,0.3,0.3,0.8,0.3,150,false)")
+    sigs = ip.recent_signals(days=30, min_holder_episodes=10)
+    holders = {s["holder"] for s in sigs}
+    assert "迟披露D" in holders    # notice_date 5天前(窗口内) → 真的是最新信号, 该出现
+    assert "未披露E" not in holders  # notice_date 45天前(窗口外) → 不是最新信号, 该排除
