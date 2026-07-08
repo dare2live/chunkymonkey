@@ -12,12 +12,12 @@
 
 - **codegraph 比 moth 更可信**: `moth coupling --impact industry.py` 报 104 文件命中, 实为文本子串误配(`v_sw_industry_pit`/`sw_industry` 等标识符含 "industry" 子串, 或注释里的中文"行业"), 逐函数核 `codegraph callers` 确认真实 0 调用方。moth 对常见词文件名(constants/industry 等)不可靠, 需 codegraph 复核。
 - **pytest 默认收集 ≠ 活测试**: `pytest.mark.realdb` 标记的测试文件默认被排除(pytest.ini), 需 `-m realdb` 强制跑才能看真实 pass/fail, 用于甄别"看似是测试实则测已删模块"的死测试。
-- **fixture 目录不能一刀切**: 15 个"空壳测试目录"候选中 `backend/tests/fixtures/` 实为 55 个真实 tracked 的 `domain_samples/*.json`(被 `test_market_pulse.py` 消费), 从删除批次中排除, 只删真正只剩 `__init__.py` 的 14 个目录。
+- **fixture 目录不能一刀切**: 15 个"空壳测试目录"候选中 `backend/tests/fixtures/` 实为 52 个真实 tracked 的 `domain_samples/*.json`(被 `test_market_pulse.py` 消费, `git ls-files` 精确核实), 从删除批次中排除, 只删真正只剩 `__init__.py` 的 14 个目录。
 
 ## 已执行簇 (随本文档持续追加)
 
 ### 簇11 — 15 个空壳测试目录 → 实删 14 个 (2026-07-07)
-`backend/tests/{backtest,buy_signal,candle_pattern,features,labels,ml_ranking,optimization,paper_sim,perf,portfolio,portfolio_walk_forward,routers,sentiment,trading_config}/` 仅剩 `__init__.py`(git-tracked 内容为空), 对应功能已随 2026-06-28 重建整体退役, 无任何测试收集。`fixtures/` 因含 55 个真实 fixture 数据被排除。
+`backend/tests/{backtest,buy_signal,candle_pattern,features,labels,ml_ranking,optimization,paper_sim,perf,portfolio,portfolio_walk_forward,routers,sentiment,trading_config}/` 仅剩 `__init__.py`(git-tracked 内容为空), 对应功能已随 2026-06-28 重建整体退役, 无任何测试收集。`fixtures/` 因含 52 个真实 fixture 数据被排除(`git ls-files` 精确核实, 早期估算"约55个"有约5.5%偏差, 2026-07-08 独立核实批修正)。
 
 ### 簇3 — 7 个死 service 文件 (2026-07-07)
 `services/{api_cache,api_schemas,constants,pipeline_lock,pipeline_performance_policy,ui_labels,industry}.py` 逐一用 `codegraph callers` 核每个 public 函数, 确认全部 0 外部调用方(均为 2026-06-28 重建后失去所有消费方的孤儿工具模块)。连带删除 `config/pipeline_performance_policy.yaml`(`pipeline_performance_policy.py` 是其唯一 reader, 内容只引用已删的 builder 脚本)。
@@ -76,6 +76,18 @@ bcac60eb), 本地逐条复现 CI 全部4个 step 验证后确认转绿。**待�
 ### 簇13 — PROJECT_INDEX.md §1 架构描述自相矛盾收口 (2026-07-08)
 本节此前长期停留在2026-06-28"纯数据平台定型"的快照状态(流程图末尾写`[edge 待重建 — 唯一消费方缺位]`), 与同一文档§3代码地图早已存在的"edge 件(2026-07-02 起)"institution_profile/paper_portfolio描述互相矛盾——这正是"簇13"这个名字最初想修的自相矛盾。**执行**: 流程图末尾改为准确描述当前edge重建现状(3 service + 5 routers + React前端); §3 routers/前端行同步更新(3 live→5 live, 旧vanilla前端行改为"已物删"描述); 顺带修正reference库dim计数(4→2, all_ever_listed/listing_status已在2026-07-07早些时候的commit整表退役, 本表此前未同步)。
 
+## 独立核实批 (2026-07-08, 用户"对照方案查看完成情况")
+
+13簇执行完毕后, 用户要求对照方案独立核实完成情况——不采信执行过程中的自我总结。16-agent workflow(13个逐簇核实 + 3个全新残留扫描/全量测试/CI状态)亲自跑命令核实, 结论: **11/13簇PASS无出入, 2簇PARTIAL有真实遗留**:
+
+1. **簇11 fixture数量口径不符**: summary声称"约55个", `git ls-files` 精确核实实为52个(偏差约5.5%)。清理动作本身(删14个空壳目录、保留fixtures/)属实, 只是数字表述不准。**已修**: 更正 PROJECT_INDEX.md + 本文档两处"55个"为精确的"52个"。
+2. **簇13 PROJECT_INDEX.md文档内部自相矛盾未彻底清**: §1架构流程图(line 188)仍残留"reference 4 dim", 与同文件§2表格(line 214)"2 dim"及changelog自述"4→2"互相矛盾——这正是簇13本该修的"自相矛盾"类问题, 但只改了表格文字未同步改流程图。**已修**: 流程图改为"reference 2 dim"。
+3. **簇4 轻微残留(非阻断)**: `backend/scripts/check_universe_filter.py:38` 的 `EXEMPT_FILES` 白名单仍保留一条指向已删除的 `migrate_reference_db.py` 的豁免条目, 因目标文件不存在, 该条目从未被实际触达(纯集合成员, 不影响linter功能), 但属于历史豁免规则未同步清理。**已修**: 移除该条目, 重跑linter确认仍 CLEAN(1117文件检查)。
+
+其余11簇(1+2/3/5/7/8/9/10/12/CI事故)核实agent均报告"无出入", 机械门三道(dead-references/doc-drift/moth)全绿, 全量测试561 passed 0 failed, git工作区在核实前无未提交残留, CI最新状态success。
+
+**教训**: 即使全程走"跑测试+门禁+全量验证"流程, 长链条多批次执行仍会在文档层面(非代码/数据层面)留下人工总结的细节偏差和跨commit未同步的矛盾点——机械门(dead-references/doc-drift/moth)检查的是**当前代码状态**, 不检查"文档内部数字/表述前后一致性"这类问题, 独立核实(尤其是不采信自我总结、亲自重新跑命令)在长任务收尾阶段仍有不可替代的价值。
+
 ## 收官统计
 
-13簇死代码普查执行完毕(2026-07-07~08, 分5批commit)。中途遭遇1次CI事故(见上节)已修复。全量测试从执行前的608 passed收敛到561 passed(净删约50个测试用例, 全部是被删死代码自身的测试, 全程0新增回归)。
+13簇死代码普查执行完毕(2026-07-07~08, 分5批commit + 1次独立核实修正批)。中途遭遇1次CI事故(见上节)已修复。全量测试从执行前的608 passed收敛到561 passed(净删约50个测试用例, 全部是被删死代码自身的测试, 全程0新增回归)。独立核实批发现并修正2处真实文档遗留(fixture计数/架构图自相矛盾)+1处轻微残留(已删脚本的linter豁免条目)。
