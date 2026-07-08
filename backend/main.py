@@ -6,13 +6,11 @@ FastAPI 入口
 
 import logging
 import sys
-import hashlib
-import re
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import Response
 
 # 确保 backend 目录在 path 中
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -204,56 +202,10 @@ async def favicon():
 
 # 静态文件
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-ASSETS_DIR = PROJECT_ROOT / "assets"
-INDEX_HTML = PROJECT_ROOT / "index.html"
-INDEX_ASSET_FILES = [
-    INDEX_HTML,
-    ASSETS_DIR / "css" / "main.css",
-    ASSETS_DIR / "js" / "style-tokens.js",
-    ASSETS_DIR / "js" / "app-cache.js",
-    ASSETS_DIR / "js" / "app-nav.js",
-    ASSETS_DIR / "js" / "app-list-state.js",
-    ASSETS_DIR / "js" / "signal-adapter.js",
-    ASSETS_DIR / "js" / "stock-view.js",
-    ASSETS_DIR / "js" / "data-view.js",
-    ASSETS_DIR / "js" / "strategy-view.js",
-    ASSETS_DIR / "js" / "settings-view.js",
-    ASSETS_DIR / "js" / "app.js",
-]
-INDEX_ASSET_VERSION_PATTERN = re.compile(
-    r"(window\.CM_ASSET_VERSION\s*=\s*')[^']+('\s*;)"
-)
 
-
-def build_index_asset_version() -> str:
-    hasher = hashlib.sha1()
-    for path in INDEX_ASSET_FILES:
-        if not path.exists():
-            continue
-        stat = path.stat()
-        hasher.update(str(path.relative_to(PROJECT_ROOT)).encode("utf-8"))
-        hasher.update(str(stat.st_size).encode("utf-8"))
-        hasher.update(str(stat.st_mtime_ns).encode("utf-8"))
-    return hasher.hexdigest()[:12]
-
-
-def render_index_html() -> str:
-    html = INDEX_HTML.read_text(encoding="utf-8")
-    asset_version = build_index_asset_version()
-    rendered_html, replacements = INDEX_ASSET_VERSION_PATTERN.subn(
-        lambda match: f"{match.group(1)}{asset_version}{match.group(2)}",
-        html,
-        count=1,
-    )
-    if replacements != 1:
-        logger.warning("index.html 未找到唯一的 CM_ASSET_VERSION 注入点，返回原始内容")
-        return html
-    return rendered_html
-
-if ASSETS_DIR.exists():
-    app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
-
-# 前端沿革: 旧 v3 React 设计稿已归档 .archive/; dossier 视图 2026-06-28 退役 (根路由曾指它 → 307→404
+# 前端沿革: 旧 vanilla JS 前端(index.html+assets/js/*, 挂/assets)2026-07-07 全库死代码普查
+# 簇1+2 整体退役物删(render_index_html/build_index_asset_version 无任何路由调用, 确认孤儿);
+# 旧 v3 React 设计稿已归档 .archive/; dossier 视图 2026-06-28 退役 (根路由曾指它 → 307→404
 # = 用户"双击 start.command 无法启动"的真相, 2026-07-03 修)。
 # 现行唯一前端 = edge React (frontend/, 2026-07-02): 生产 build 产物挂 /app (vite base=/app/,
 # 避开旧 dossier /assets 挂载); 改前端后 cd frontend && npm run build 刷新产物。

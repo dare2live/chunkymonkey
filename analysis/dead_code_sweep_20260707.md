@@ -53,5 +53,29 @@
 - `test_real_data_consistency.py`(`backend/tests/realdb/`): 实测(`CM_REALDB=1`)3 FAIL/1 PASS。`test_real_tdxhub_kline_reaches_latest_completed_trade_date`+`test_real_fallback_rows_do_not_overlap_existing_primary_keys` 查 `price_kline_tdxhub`(CatalogException, tdxhub 早随更早批次全删物删)——删。`test_real_trading_calendar_is_available_and_has_completed_trade_date` 是**真连错库 bug**(非退役问题): 该测试连 `smartmoney.duckdb` 查 `dim_trading_calendar`, 但该表实际活在 `reference.duckdb`(§9拆库迁移后), 实测 `reference.duckdb` 里表存在且行数(5343)/起始日期(2005-01-04)与测试断言完全吻合——证明断言本身是对的, 只是连错库。改连 `reference.duckdb` 后 2/2 PASS。
 
 全量测试608→603 passed(净删4测试文件+2用例, 无新增failure), main.py import + 路由行为实测验证。
-- 簇1+2: 旧 vanilla JS 前端整体删除 + main.py 死代码 + 15 个 contract 测试
-- 簇13: PROJECT_INDEX.md §1 架构描述最终一致性收口(待簇1/2/12 完成后一次性做)
+
+## CI 事故记录 (2026-07-07)
+
+批1(cf4280c4)删除 `services/api_cache.py` 时漏了一处引用: `.github/workflows/ci.yml` 的
+"Smoke import" 步骤是硬编码在 YAML 里的裸 `python -c` 脚本(非 pytest 收集, 不在
+`check_dead_references.py` 扫描面内), 其中 `from services.api_cache import cached,
+get_cache_stats` 引用了已删模块。`check_dead_references` gate 只扫 `.py` 文件的 import
+语句, 扫不到 YAML 内嵌 python 字符串里的引用, 导致批1~批4(5个commit)连续 CI 红而未被
+本地/门禁察觉, 直到用户报"CI大量报错"才发现。**修**: 删除该失效 import 行(commit
+bcac60eb), 本地逐条复现 CI 全部4个 step 验证后确认转绿。**待评估**: 是否要给
+`check_dead_references.py` 加第6道扫描面(`.github/workflows/*.yml` 内嵌 python 脚本),
+本次未做(单次事故未构成"频繁"立法门槛, 按 mio 协议#7 "频繁问题才立法"暂不扩展, 留观察)。
+
+### 簇1+2 — 旧 vanilla JS 前端整体删除 (2026-07-08)
+`index.html` + `assets/js/` 全部26个JS文件(app.js/workbench-view.js/stock-view.js等一串互相耦合的旧前端, 此前调研阶段就已确认"不是孤立UI死重, 是一整套更大的老vanilla-JS workbench前端") + `main.py` 对应死代码(`render_index_html()`/`build_index_asset_version()`/`INDEX_ASSET_FILES`/`INDEX_ASSET_VERSION_PATTERN`, 实测确认无任何路由调用`render_index_html()`, `HTMLResponse`导入0使用, `hashlib`/`re`两个仅供此死代码使用的顶层import一并清) + `/assets` static mount。当前唯一活前端已是2026-07-02起重建的 edge React(`frontend/`, 挂`/app`), 根路由`/`已在2026-07-03修复指向它, `/v3`+`/legacy`已在簇12改410 Gone指向它——旧vanilla前端彻底失去唯一入口(此前用户能访问到它的路径已全部指向别处), 确认是纯死代码非"待重建参考对象"。
+
+**连带发现**: `backend/tests/contract/` 目录下15个契约测试(`test_workbench_frontend_contract.py`等)全部测试这套旧前端的DOM结构/入口注册关系, 随前端删除一并git rm, 目录变空后一并移除(无`__init__.py`残留, 与pytest收集无关)。
+
+**执行**: git rm index.html + 整个assets/目录(29个文件, 含1个css) + 15个contract测试 + main.py删约50行死代码。全量测试608(簇5后)→561 passed(净减47个测试用例, 全部是被删文件自身的测试, 0新增failure)。
+
+### 簇13 — PROJECT_INDEX.md §1 架构描述自相矛盾收口 (2026-07-08)
+本节此前长期停留在2026-06-28"纯数据平台定型"的快照状态(流程图末尾写`[edge 待重建 — 唯一消费方缺位]`), 与同一文档§3代码地图早已存在的"edge 件(2026-07-02 起)"institution_profile/paper_portfolio描述互相矛盾——这正是"簇13"这个名字最初想修的自相矛盾。**执行**: 流程图末尾改为准确描述当前edge重建现状(3 service + 5 routers + React前端); §3 routers/前端行同步更新(3 live→5 live, 旧vanilla前端行改为"已物删"描述); 顺带修正reference库dim计数(4→2, all_ever_listed/listing_status已在2026-07-07早些时候的commit整表退役, 本表此前未同步)。
+
+## 收官统计
+
+13簇死代码普查执行完毕(2026-07-07~08, 分5批commit)。中途遭遇1次CI事故(见上节)已修复。全量测试从执行前的608 passed收敛到561 passed(净删约50个测试用例, 全部是被删死代码自身的测试, 全程0新增回归)。

@@ -13,6 +13,8 @@
 
 ## [INDEX] 最近增量 (只留 7 天, 历史在 analysis/project_index_changelog_archive_20260611.md + ledger)
 
+- **2026-07-08 全仓库死代码普查收官 — 簇1+2+13 + CI事故修复(owner=analysis/dead_code_sweep_20260707.md)**: 13簇计划最后两块联动完成。**CI事故**(用户报"CI大量报错"): 批1(cf4280c4)删`services/api_cache.py`时漏了`.github/workflows/ci.yml`"Smoke import"步骤里硬编码的`from services.api_cache import ...`(YAML内嵌裸python脚本, 不在pytest收集也不在`check_dead_references.py`扫描面内)——导致批1~批4连续5个commit CI红而未被察觉, 修复(commit bcac60eb)后本地逐条复现CI全部4个step确认转绿。**簇1+2**: 删`index.html`+`assets/js/`全部26个JS文件(一整套互相耦合的旧vanilla前端)+`main.py`死代码(`render_index_html`/`build_index_asset_version`/`INDEX_ASSET_FILES`等约50行, 实测确认0调用)+15个`backend/tests/contract/`契约测试(测这套旧前端DOM结构, 随前端删除); 当前唯一活前端已是2026-07-02起重建的edge React(挂`/app`), 旧前端已失去唯一入口(根路由/legacy/v3全指向别处), 确认是纯死代码非"待重建参考对象"。**簇13**: 修§1架构流程图自相矛盾——图末尾`[edge 待重建 — 唯一消费方缺位]`与§3早已存在的"edge件(2026-07-02起)"描述矛盾, 改为准确反映当前状态(3 service+5 routers+React前端); §3 routers行3 live→5 live; 顺带补reference库dim计数漂移(4→2, all_ever_listed/listing_status已退役未同步)。全量测试608(簇5后)→561 passed(净删约47个测试用例, 全部是被删死代码自身的测试, 全程0新增回归)。**13簇计划全部完成**, 详见analysis文档"收官统计"节。
+
 - **2026-07-07 (七续) 全仓库死代码普查执行批4 — 簇5+12 联动: 测试清理 + /v3 /legacy 断链路由修复(owner=analysis/dead_code_sweep_20260707.md)**: 两簇同根因一并处理。**簇12**: `main.py` 的 `/v3`+`/legacy` 路由自2026-06-28重建后一直 307 重定向到已随重建物删的 `/api/dossier/view`(先307后404断链), 改直接返回410 Gone JSON指向现行唯一前端`/app/`。**簇5**(逐文件强制`-m realdb`/`CM_REALDB=1`跑出真pass/fail, 不采信报告原始猜测): `test_v3_selection.py`12/12 FAIL(测已退役`/api/v3/selection/*`)删; **`test_perf_p1_trade_date.py` 未删**(与报告原判断不同——实测标`perf`+`slow`默认排除且对缺失表`mart_p0b_oos_predictions`有`pytest.skip()`优雅降级非FAIL, 该表正是簇8判定的"未来edge重建schema契约", 按同逻辑这个已正确skip-gate的测试也保留); `test_system_routes.py`实测3FAIL/3PASS, 2个随簇12路由修复更新断言(v3→/app)+1个(测`routers.workbench`, 2026-06-28随策略层整批退役非待重建)删; `test_real_data_consistency.py`实测3FAIL/1PASS, 2个查已删`price_kline_tdxhub`的删, **1个是真连错库bug**(测试连smartmoney.duckdb查`dim_trading_calendar`, 该表实际活在reference.duckdb, 断言数值[5343行/2005-01-04起点]与reference库实测完全吻合证明断言本身对只是连错库)修正后转PASS。全量测试608→603 passed(净删4测试文件+2用例, 无新增failure)。
 
 - **2026-07-07 (六续) 全仓库死代码普查执行批1 — 簇11/3/4/8(用户"残留删不净"疑虑→拍板"一次性全仓库普查", owner=analysis/dead_code_sweep_20260707.md)**: 前几续零散清理"发现一处堵一处"引发用户疑虑, 改用 entry-point reachability 方法(枚举 main.py/daily_update.sh/safe_commit.sh/CI whitelist/moth/pytest 真实入口点, 反向追踪从未被触达的代码) 100-agent workflow 产出13簇候选, codegraph+moth交叉验证(**方法论发现**: moth text-match 对常见词文件名如 industry.py 不可靠, 104个假阳性命中, 须以 codegraph callers 逐函数复核为准)后用户批准分簇执行。**本批完成4簇**: 簇11删14个空壳测试目录(15个候选中`fixtures/`因含55个真实tracked fixture数据被排除); 簇3删7个死service文件(api_cache/api_schemas/constants/pipeline_lock/pipeline_performance_policy/ui_labels/industry.py, 逐函数codegraph核0调用方)+连带config; 簇4删2个死一次性脚本(migrate_reference_db/cleanup_holder_dup.py)+duckdb_connect_policy.yaml白名单同步收窄; 簇8给experiment_jobs.yaml 3个死表条目(mart_paper_sim_kpi/fact_model_train_log/mart_p0b_oos_predictions)加注(不删job_family结构本身, 判断为未来edge重建的schema契约声明)。**顺带根治**: 排查中发现`session_status.sh`/`session_snapshot.sh`引用的`services.experiment_jobs`模块早随2026-06-28重建物删, 但两脚本用`2>/dev/null||echo unavailable`静默吞掉ModuleNotFoundError, 表现为SESSION_HANDOFF.md长期显示`Backends: unavailable`——这正是用户疑虑的一个实例(一次删除留下静默失败的下游孤儿引用); 改两脚本直接读yaml不依赖已删Python loader, 实测`Backends: local:active, modal:active`恢复正常显示。**衍生发现留簇10处理**: `chunkyctl jobs`子命令本身也是死路径(chunkyctl.py只实现doctor+5个_RETIRED, jobs两者都不在, 静默走print_help()返回0非崩溃)。全量测试608 passed, moth 30/0/0, codegraph sync(修改2/删除24节点)。**待续9簇**: 簇5测试清理/簇7 kline_source重复性厘清/簇9 feature_registry.yaml删除/簇10 chunkyctl死路径修复/簇12路由断链修复/簇1+2旧前端整体删除/簇13 PROJECT_INDEX架构描述最终收口(待1+2+12完成后一次性做)。
@@ -187,11 +189,20 @@ aif10 (东财 datacenter)───┤
   M4 SERVE services/data_access/ — DataAccess.get(entity, codes, as_of)
      entity 注册 config/data_access.yaml; 消费方唯一读路 (不变量#4)
                           ▼
-  [edge 待重建 — 唯一消费方缺位]
+  edge (2026-07-02 起从零重建): institution_profile(机构画像) ·
+     paper_portfolio(实盘模拟) · market_pulse(市场感知) 3 service
+     + 5 routers(/api/v3/*) + edge React 前端(frontend/, 挂 /app)
 
   治理: pipeline(daily_update 四阶段) · watermark/SLA · data_health ·
         lineage(M5) · deletion/deprecation_record · moth/doctor/CI 门
 ```
+
+> **2026-07-07 修 §1 自相矛盾**(全库死代码普查簇13收口): 本节此前长期停留在"2026-06-28
+> 纯数据平台定型"时的快照(`[edge 待重建 — 唯一消费方缺位]`), 与 §3 代码地图早已存在的
+> "edge 件(2026-07-02 起)" institution_profile/paper_portfolio 描述互相矛盾。edge 从
+> 2026-07-02 起已实质重建(3 service + 5 routers + React 前端), 不再是"消费方缺位"状态;
+> 本节流程图已同步。旧 vanilla JS 前端(index.html+assets/js)已确认非"待重建参考对象"而是
+> 死代码, 随死代码普查簇1+2 一并物删(见下方 §3 routers/前端行 + `analysis/dead_code_sweep_20260707.md`)。
 
 **7 库职责** (database_manifest.yaml 单一真相源):
 
@@ -200,7 +211,7 @@ aif10 (东财 datacenter)───┤
 | `tushare_raw` (7.3G+) | tushare L0 raw 镜像 | 42 表 (+margin_detail 464.9万/+margin 4444, B3 2026-07-02) + 2 PIT 行业视图 |
 | `smartmoney` (320M+) | aif10 域 + dim + 治理 mart + 实盘模拟 + B线加工件 | 35 表 (+mart_sector/market_pulse_daily B4 + fact_stock_form_daily B2, 2026-07-02; dim_stock_segment_daily +rv_pctile/vol_regime 列) |
 | `market` (737M) | K线真相源 | price_kline_qfq_tushare 831万 → v_price_kline_qfq |
-| `reference` (3.8M) | 身份/日历 4 dim | active_a_stock/all_ever_listed/listing_status/trading_calendar |
+| `reference` (3.8M) | 身份/日历 2 dim | active_a_stock/trading_calendar (all_ever_listed/listing_status 2026-07-07 整表退役物删, 见下方 changelog) |
 | `etf` (524K) | 空壳 | ETF 子系统批3d 整体退役, 只剩 deletion_record |
 | `feature_store` | edge L2 层 (第一批件) | 机构画像 4 表 (period_windows/fact_inst_episode 37万/mart_inst_profile 9.4万/profile_dim, W1 2026-07-02) |
 | `experiment_store` (268K) | 实验裁决契约 | record_verdict 4 空表保留 (sandbox 唯一跨删存活面) |
@@ -246,7 +257,7 @@ aif10 (东财 datacenter)───┤
 
 **scripts/ 38 个按前缀** (前缀=data_module_members 成员资格; 2026-07-07 全库死代码普查删 migrate_reference_db/cleanup_holder_dup, 见 analysis/dead_code_sweep_20260707.md): `check_*` 17个门 (dead_references/universe_filter/calendar_usage/serve_read_layer/sandbox_isolation/doc_drift/rule_compliance...) · `build_*` 5 (price_kline_qfq_tushare/dc_industry_view/sw_industry_view/dim_listing_status/feature_map) · `ingest_*` 2 (aif10) · `db_*` 4 (compact/lifecycle_delete/dead_table_audit/partition_migrate) · `audit_*` 3 · data_health_snapshot · data_layer_audit · chunkyctl · update_watermark_sla/refresh_source_watermarks · lineage_cli · plan_storage_retention
 
-**routers**: 3 live — ops_manual_run(/api/v3/ops) + v3_config(/api/v3/config) + paper_portfolio(/api/v3/paper/* 实盘模拟, W2)。**前端**: index.html + assets/js (vanilla, 股东挖掘单板块; ETF 已删) — edge 重建时"先参考后删"整体换 React/Vue。
+**routers**: 5 live — ops_manual_run(/api/v3/ops) · v3_config(/api/v3/config) · paper_portfolio(/api/v3/paper/* 实盘模拟, W2) · institution_profile(/api/v3/inst 机构画像) · market_pulse(/api/v3/pulse 市场感知)。**前端**: 唯一现行 = edge React(frontend/, 2026-07-02 起), 生产 build 产物挂 `/app`(vite base=/app/); 根路由 `/` 307→`/app/`; `/v3`+`/legacy` 410 Gone 指向 `/app/`。旧 vanilla JS 前端(index.html+assets/js/*, 26文件)2026-07-07 全库死代码普查簇1+2 整体物删(git rm, 含15个contract测试), 不再是"先参考后删"的保留对象。
 
 ---
 
