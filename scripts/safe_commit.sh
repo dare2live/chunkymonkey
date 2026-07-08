@@ -220,27 +220,33 @@ else
     exit 5
 fi
 
-# Step 3.993/994: check_doc_governance / check_legacy_flow_integrity 都能跑通, 但暂不适合
-# 硬闸——check_doc_governance 当前 21 条已知 WARN 待清 (脚本自身设计就是"先 WARN, 清完 backlog
-# 再翻 FAIL", 现在硬挡会拦下与本次改动无关的历史 backlog); check_legacy_flow_integrity 的
-# C1 子检查因架构变迁已空转 PASS (查无可查, 见 P2 记录), 整体判断力打折。两者都先接成
-# informational (不 block), 曝光但不拦, 待 backlog 清完/C1 修复后再考虑升硬闸。
+# Step 3.993: check_doc_governance 当前 21 条已知 WARN 待清 (脚本自身设计就是"先 WARN, 清完
+# backlog 再翻 FAIL", 现在硬挡会拦下与本次改动无关的历史 backlog), 先接成 informational
+# (不 block), 曝光但不拦, 待 backlog 清完再考虑升硬闸。
 echo
 echo "=== Step 3.993: doc-governance (informational, 21 条已知 backlog 待清) ==="
 PYTHONPATH=backend python backend/scripts/check_doc_governance.py 2>&1 | tail -3
 
+# Step 3.994: legacy-flow-integrity 硬闸 (2026-07-08 收口 owner=analysis/
+# legacy_flow_integrity_gate_fix_20260708.md: C1 此前因 daily_update.sh 重构后扫描源结构性
+# 空转已改扫真实调用图 backend/services/pipeline/*.py, C2/C3 已红绿实测验证检测逻辑健全,
+# 三检当前均真 PASS 非查无可查, 升为真硬闸)。
 echo
-echo "=== Step 3.994: legacy-flow-integrity (informational, C1 子检查架构变迁后空转) ==="
-PYTHONPATH=backend python backend/scripts/check_legacy_flow_integrity.py > /tmp/cm_legacyflow.out 2>&1
-python3 -c "
+echo "=== Step 3.994: legacy-flow-integrity ==="
+if PYTHONPATH=backend python backend/scripts/check_legacy_flow_integrity.py > /tmp/cm_legacyflow.out 2>&1; then
+    python3 -c "
 import json
-try:
-    d = json.load(open('/tmp/cm_legacyflow.out'))
-    checks = d.get('checks', {}) if isinstance(d, dict) else {}
-    print('overall=' + str(d.get('overall')), {k: v.get('verdict') for k, v in checks.items()})
-except Exception:
-    print(open('/tmp/cm_legacyflow.out').read()[-300:])
+d = json.load(open('/tmp/cm_legacyflow.out'))
+checks = d.get('checks', {})
+print('[legacy-flow-integrity] PASS', {k: v.get('verdict') for k, v in checks.items()})
 "
+else
+    cat /tmp/cm_legacyflow.out
+    echo
+    echo "ERROR: legacy-flow-integrity 门红 — daily_update管线调缺失脚本 / 引用已wiped表 / append-only表缺retention声明。"
+    echo "正解: 补脚本/清引用/加retention声明。误报修脚本本身, 不 --no-verify 绕。"
+    exit 5
+fi
 
 # 4. Commit message keyword check (manual preview)
 echo

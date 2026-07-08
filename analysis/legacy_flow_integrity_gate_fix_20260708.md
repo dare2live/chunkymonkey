@@ -40,6 +40,12 @@
 
 `scripts/safe_commit.sh` 原有 `-f backend/scripts/check_experiment_harness.py` 存在性守卫已让这块代码优雅跳过多日(非报错, 非伪装通过), 但留着一段确认永不可达的死代码块本身就是本次死代码普查一直在清理的对象。**执行**: 直接删除 Step 3.7 整个 `if [[ ... ]]; then ... fi` 可执行块, 替换为一行说明性注释记录退役依据(与该文件里 Step 3.5/3.6 已有的"历史退役注释"风格一致)。
 
+## 补记: legacy-flow-integrity 从 informational 升为硬闸
+
+`safe_commit.sh` 原有注释明确写着"check_legacy_flow_integrity 的 C1 子检查因架构变迁已空转 PASS...待 C1 修复后再考虑升硬闸"——C1 修好后, 按这条既定条件把 Step 3.994 从纯 informational(只打印不拦截)升级为真硬闸(`if...then...else exit 5;fi`, 与 Step 3.9 等其余硬闸同构)。`check_doc_governance`(Step 3.993, 因另一个独立原因——21条历史WARN backlog未清——仍保持 informational)未受影响, 未一并升级。
+
+红绿验证: 临时在 `backend/services/pipeline/clean.py` 注入一处指向不存在脚本的引用, 复现 Step 3.994 真实报 `exit 5` 并打印具体错误; 撤销注入后确认 `git diff --stat` 无残留。
+
 ## 验证
 
-全量测试568 passed(新增5单测); moth 29/0/0(修复claims.yaml文字后原coupling-no-orphan-refs一次性FAIL是因为该断言引用本文档路径而本文档当时还没创建, 创建后转绿); doc-drift/dead-references全绿; check_legacy_flow_integrity.py 三检查全PASS且非伪绿(逐条红绿实测); safe_commit.sh `bash -n` 语法校验通过。
+全量测试568 passed(新增5单测); moth 29/0/0(修复claims.yaml文字后原coupling-no-orphan-refs一次性FAIL是因为该断言引用本文档路径而本文档当时还没创建, 创建后转绿); doc-drift/dead-references全绿; check_legacy_flow_integrity.py 三检查全PASS且非伪绿(逐条红绿实测); safe_commit.sh `bash -n` 语法校验通过 + Step 3.994 硬闸红绿验证通过。
