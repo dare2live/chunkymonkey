@@ -114,6 +114,12 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
                 str(d).replace("-", ""): {str(g) for g in (groups or [])}
                 for d, groups in (entry.get("known_group_gaps") or {}).items()
             },
+            # 2026-07-08 补: declared_drift 若已人工核实(coverage_note 写明源端原因+不需改动的
+            # 结论)且登记 data_start_reviewed: true, 门降级为 pass 不再每次重报——WARN 队列该是
+            # "未核实"清单, 不该堆积"已核实但机制不认得"的噪音(否则下次 session 会误判成新问题
+            # 反复重新调查同一件已结案的事)。仅压 declared_drift 这一条, sparse_history/其余
+            # 检测不受影响(那些若仍有信号价值应继续曝光)。
+            "data_start_reviewed": bool(entry.get("data_start_reviewed", False)),
         })
     return specs
 
@@ -257,8 +263,11 @@ def check_cross_section(conn, spec: dict, trading_days: list[str], latest_expect
     if len(seq) < ROW_DIP_MIN_OBS + 1:
         return _result("cross_section", spec, "skipped_insufficient_history",
                        f"窗口内仅 {len(seq)} 观测日 (< {ROW_DIP_MIN_OBS + 1}), 不判骤降")
+    known_empty = spec["known_empty_days"]
     dips: list[str] = []
     for i, (d, n) in enumerate(seq):
+        if d in known_empty:
+            continue   # 已墓碑的源端单日真异常(如 cyq_perf 20260615), 不再重报同一件事
         prior = [c for _, c in seq[max(0, i - ROW_DIP_MEDIAN_WINDOW):i]]
         if len(prior) >= ROW_DIP_MIN_OBS:
             med = statistics.median(prior)
@@ -300,6 +309,15 @@ def check_cross_section(conn, spec: dict, trading_days: list[str], latest_expect
                 f"源端确实部分覆盖 -> 消费侧需口径标记 (mart n_exchanges 类)")
         return _result("cross_section", spec, status, detail, hint)
     if dips:
+        # 2026-07-08 (R4 workflow 2026-07-05 遗留 follow-up 收口, owner=analysis/
+        # r4_completion_20260704.md #13 "row_dip 阈值算法改进"): gap_tolerance 已表达"此域
+        # 事件驱动天然稀疏/高方差, 人工审过"的判断, 但此前只喂了 calendar_gaps 一个检测维度,
+        # 同一份判断没有延伸到 cross_section——两者本是同一件事(该域某些天数量本来就该少),
+        # 不该只因为检测切面不同就重报。annotate/hk_holidays 域降 pass 但留可见痕迹, 不静默吞。
+        if spec["gap_tolerance"] in ("annotate", "hk_holidays"):
+            return _result("cross_section", spec, "pass",
+                           f"行数骤降 {len(dips)} 日 (gap_tolerance={spec['gap_tolerance']}, "
+                           f"已审定事件驱动天然稀疏/高方差, 非缺陷): {_sample_days(dips)}")
         return _result("cross_section", spec, "warn_row_dip",
                        f"行数骤降 {len(dips)} 日: {_sample_days(dips)}",
                        f"重拉核对是否截断/半空批: --domain {spec['domain']} --drain")
@@ -372,9 +390,15 @@ def check_declared_vs_actual(conn, spec: dict, today: str) -> dict:
             drift = 0
             parts.append(f"data_start={declared} 无法解析为日期")
         if drift > DECLARED_DRIFT_CAL_DAYS:
-            status = "warn_declared_drift"
-            parts.append(f"声明 data_start={declared} vs 实测 MIN({col})={actual_min} 偏差 {drift} 自然日")
-            hints.append(f'建议修正 data_start: "{actual_min}" (或完成回填后复核)')
+            if spec.get("data_start_reviewed"):
+                # 2026-07-08: 人工已核实此 drift 系源端问题(coverage_note 记录原因), 不需改动
+                # data_start, 不该每次重报同一件已结案的事——WARN 队列该是"未核实"清单。
+                parts.append(f"声明 data_start={declared} vs 实测 MIN({col})={actual_min} "
+                             f"偏差 {drift} 自然日 (已人工核实, 见 registry coverage_note, 非本项目问题)")
+            else:
+                status = "warn_declared_drift"
+                parts.append(f"声明 data_start={declared} vs 实测 MIN({col})={actual_min} 偏差 {drift} 自然日")
+                hints.append(f'建议修正 data_start: "{actual_min}" (或完成回填后复核)')
 
     yrows = conn.execute(
         f'SELECT substr(CAST("{col}" AS VARCHAR), 1, 4) AS y, COUNT(*) FROM "{table}" '
@@ -398,9 +422,14 @@ def check_declared_vs_actual(conn, spec: dict, today: str) -> dict:
             if ref_n > 0 and (n / frac) / ref_n < SPARSE_YEAR_RATIO:
                 sparse.append(f"{y}({n}行, {(n / frac) / ref_n:.2f}x参照年{ref_year})")
         if sparse:
-            status = "warn_sparse_history" if status == "pass" else status
-            parts.append(f"深史稀疏年份: {_sample_days(sparse, 6, 2)}")
-            hints.append("registry 加 coverage_note 注明可用窗口, 防回测静默偏样本")
+            # 2026-07-08: data_start_reviewed 域的深史稀疏年份与其 declared_drift 是同一份人工
+            # 核实结论覆盖的同一现象(早期孤例行, coverage_note 已一并说明), 不该在压掉 drift 后
+            # 又从 sparse_history 分支重新冒出同一件事——门降级不彻底=噪音仍在只是换了个标签。
+            if not spec.get("data_start_reviewed"):
+                status = "warn_sparse_history" if status == "pass" else status
+                hints.append("registry 加 coverage_note 注明可用窗口, 防回测静默偏样本")
+            parts.append(f"深史稀疏年份: {_sample_days(sparse, 6, 2)}"
+                         + (" (已人工核实, 见 coverage_note)" if spec.get("data_start_reviewed") else ""))
     detail = "; ".join(parts) if parts else f"声明-实测对齐 (MIN({col})={actual_min})"
     return _result("declared_vs_actual", spec, status, detail, "; ".join(hints))
 

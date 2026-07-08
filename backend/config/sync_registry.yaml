@@ -91,6 +91,8 @@ domains:
     data_start: "20230103"        # 2026-06-12: 对齐实际落库防 drain 开闸 (文档支持 2020 起, B 书 W6 需要时回填再改回 20200102)
     freshness_sla_trading_days: 1
     min_rows_per_batch: 10        # 跌停冰点日可能极少, 仅防 0 行
+    gap_tolerance: annotate   # 2026-07-08 实测 20260707(本地86 vs 中位161)逐行 grain-aware 核对
+                              # vendor, 完全一致 0 缺失 — 涨跌停家数本随市场情绪日日波动, 非缺陷
 
   stk_limit:
     source: tushare
@@ -148,6 +150,8 @@ domains:
     freshness_sla_trading_days: 3  # 停牌公告不是每日必有
     min_rows_per_batch: 0          # 无停牌日合法 0 行 (zero_row_policy 例外: allow_empty)
     allow_empty_batch: true
+    gap_tolerance: annotate   # 2026-07-08 实测 5 个骤降日(0609/0610/0706/0707/0708) grain-aware
+                              # 核对 vendor, 逐日行数一致(0610 仅1行差, 忽略) — 停牌家数天然高方差
 
   # ── 两融族 (B3 2026-07-02 用户点名日更参数, 主升浪 D2 L1 叠加层; 实弹核证见 commit) ──
   margin_detail:
@@ -176,14 +180,19 @@ domains:
     freshness_sla_trading_days: 2
     min_rows_per_batch: 1         # 2026-07-02 回填实测: 20260403/0430/0618/0626 源端仅 SSE 1 行 (重拉确认非 throttle), 1 行=合法最小
     allow_empty_batch: false
+    gap_tolerance: annotate   # 2026-07-08: cross_section row_dip 同一现象降 pass (0703 已回补见下方
+                              # known_group_gaps 撤销记录; 0430/0618/0626 复核仍确认源端永久仅 SSE)
     known_group_gaps:             # 2026-07-05 R4 workflow 二次 tinyshare 实测确认(非采集侧漏拉,
                                    #   源端当日就只回 SSE): cross_section fail_missing_groups 精确墓碑
                                    #   (按日期, 非 dead_groups 整组永久豁免 — BSE/SZSE 未来真断流仍应告警)
+                                   # 2026-07-08 撤销 20260703 条目: 当时(07-05)实测源端确实只回 SSE,
+                                   # 但 3 天后(07-08)复核 vendor 已回补 BSE+SZSE 共 3 行(真披露滞后非
+                                   # 永久缺失) — 已重拉补齐本地; 墓碑随之作废, 留着会变成事实错误的
+                                   # "假声明" (0403/0430/0618/0626 复核 vendor 至今仍只回 SSE, 保留)。
       "20260403": [BSE, SZSE]
       "20260430": [BSE, SZSE]
       "20260618": [BSE, SZSE]
       "20260626": [BSE, SZSE]
-      "20260703": [BSE, SZSE]
 
   # ── 市场感知 v2 族 (2026-07-02 调研+实弹; owner=analysis/market_pulse_design_20260702.md v2 第二批) ──
   dc_daily:                          # 东财板块指数 OHLC (行业/概念/地域全类型): dc 链 RS 双窗 + 广度/龙头史深 2025->2020
@@ -224,6 +233,8 @@ domains:
     freshness_sla_trading_days: 2
     min_rows_per_batch: 10           # 冰点日涨停可能极少; 实弹最少见 20190102=31
     allow_empty_batch: false
+    gap_tolerance: annotate   # 2026-07-08 实测 20260521/20260707 骤降日 grain-aware 核对 vendor 逐行
+                              # 一致 0 缺失 — 涨停家数随市场情绪日日剧烈波动, 非缺陷
 
   hm_detail:                         # 游资每日明细 (游资名 x 营业部席位 x 个股买卖): 打板资金温度, v1 全无此维度
     source: tushare
@@ -455,6 +466,10 @@ domains:
     freshness_date_column: report_date   # 2026-06-22 P0-6: 研报无trade_date列, SLA探测改report_date(频繁发布日频SLA合理)
     min_rows_per_batch: 1
     allow_empty_batch: true   # 长假后首日可能无新研报
+    gap_tolerance: annotate   # 2026-07-08: 21 日骤降窗口逐日中位数递减(1041→134研报量自然季节性回落,
+                              # 非泄漏), grain-aware 抽验 20+ 日与vendor一致; 期间另发现 5 个真缺口
+                              # (0611/0612/0618/0702/0706, 已重拉补齐) — 这条 annotate 只覆盖"整体
+                              # 量级递减"本身, 不代表放弃对真缺口的检测(已用实测修正)
     known_empty_days: ["20230106", "20250919"]   # 2026-07-05 实测源端 pro.report_rc 两日均返0行
                                                    # (非采集侧问题), 墓碑排除。另: 2020-09~12 曾发现
                                                    # 4个月真实采集缺口(88交易日), 已回填 6.5万行修复。
@@ -754,6 +769,7 @@ domains:
     freshness_sla_trading_days: 5
     min_rows_per_batch: 1
     allow_empty_batch: true
+    data_start_reviewed: true   # 2026-07-08: declared_drift 门降级 pass, 见下方 coverage_note
     # coverage_note (2026-07-05 R4 workflow 复核 declared_vs_actual "MIN(end_date)=20161231 偏差1096天"警告):
     # 22只2017年报表行(和2018/2019少量)全部是IPO招股书历史披露孤例(list_date=20200103-20200310的
     # 2020年初IPO潮个股), ann_date同批, 非声明错误; data_start=20200101 经2020年覆盖4352只(超当年
@@ -771,10 +787,14 @@ domains:
     page_limit: 1000   # 2026-07-05 R4 后续排查发现: 该域此前无 page_limit 声明。实测 20250918
                        # (源端裸调用/limit=1000,offset=0 均返回恰1000行, offset=1000 还有1行, 真实
                        # 总量=1001) 证实存在与 top_inst 同型的单页1000上限, 无分页会静默截断。补
-                       # page_limit 激活既有 _fetch_paged 分页防线。注: 20250918 本地曾观测179行
-                       # (远低于1001), 疑似另有历史采集问题, 待用本地行数 vs 源端主板过滤后行数
-                       # 复核是否已随本次分页修复一并收敛 (独立跟进任务, 见 spawn_task 记录)。
+                       # page_limit 激活既有 _fetch_paged 分页防线。
+                       # 2026-07-08 收口此前遗留问题: 20250918 本地179行经复核 = 1001原始行套用
+                       # universe_filter(白名单60/00/30/68)后的正确过滤结果(vendor 实测 filtered
+                       # dedup 后同为179, 0缺失) — 并非另有采集问题, 待跟进项已了结。
     data_start: "20230101"   # 对齐 cyq_perf/panel 可用窗 (stage-conditional 测窗)
+    gap_tolerance: annotate   # 2026-07-08 5 个骤降日(0521/0526/0601/0608/0702) grain-aware 核对
+                              # vendor(含 price/vol/buyer/seller 全维度)逐行一致 0 缺失 — 大宗交易
+                              # 笔数随市场情绪日日高方差, 非缺陷
     pit_anchor: "trade_date (大宗当日盘后披露); JOIN 决策日 t 用 trade_date<=t (t-1 保守)"
     available_after: "t+1"
     freshness_sla_trading_days: 5
@@ -821,6 +841,7 @@ domains:
     freshness_sla_trading_days: 5
     min_rows_per_batch: 1
     allow_empty_batch: true   # 次新股/无财报股 0 行
+    data_start_reviewed: true   # 2026-07-08: declared_drift 门降级 pass, 见下方 coverage_note
     # coverage_note (2026-07-05 R4 workflow 复核 declared_vs_actual "偏差1097天"警告):
     # 2019-2022深史稀疏(152/353/427行)ann_date 100% 落在2023-2026, JOIN list_date 同批确认全是新股
     # 招股书历史披露孤例(如001x前缀2021+创业板注册制新股), 非声明错误; 2023年覆盖5201/5246(99.1%)
@@ -898,6 +919,7 @@ domains:
     data_start: "20190101"
     freshness_sla_trading_days: 90
     min_rows_per_batch: 1
+    data_start_reviewed: true   # 2026-07-08: declared_drift 门降级 pass, 见下方 coverage_note
     # coverage_note (2026-07-05 R4 workflow 复核 declared_vs_actual "偏差6031天"警告):
     # MIN(end_date)=20020628 来自3笔孤立记录(300797.SZ/002915.SZ/002937.SZ), 非真实深史覆盖:
     # 300797.SZ 该行 holder_num=20664 与同股 end_date=20200630 那行完全相同 → 强烈指向 tushare 源端

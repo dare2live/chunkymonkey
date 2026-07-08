@@ -141,6 +141,43 @@ def test_cross_section_row_dip_warn_red_green():
         c.close()
 
 
+def test_cross_section_row_dip_gap_tolerance_annotate_downgrades_to_pass():
+    """report_rc/share_float 型: 已审定事件驱动天然高方差域(gap_tolerance=annotate)骤降降 pass,
+    未设域(none, 默认)仍照常 warn_row_dip (red-green 对照)。"""
+    tds = _weekdays("20260401", 30)
+    dip_day = tds[25]
+    counts = {d: 100 for d in tds}
+    counts[dip_day] = 10
+    c = duck_mem()
+    try:
+        _mktable(c, counts)
+        red = cci.check_cross_section(c, _mkspec(data_start=tds[0]), tds, tds[-1])
+        assert red["status"] == "warn_row_dip"
+        green = cci.check_cross_section(
+            c, _mkspec(data_start=tds[0], gap_tolerance="annotate"), tds, tds[-1])
+        assert green["status"] == "pass" and dip_day in green["detail"]
+    finally:
+        c.close()
+
+
+def test_cross_section_row_dip_known_empty_days_tombstone():
+    """cyq_perf 20260615 型: 已墓碑的单日源端真异常不重报 dip, 未墓碑仍照常触发 (red-green)。"""
+    tds = _weekdays("20260401", 30)
+    dip_day = tds[25]
+    counts = {d: 100 for d in tds}
+    counts[dip_day] = 1
+    c = duck_mem()
+    try:
+        _mktable(c, counts)
+        red = cci.check_cross_section(c, _mkspec(data_start=tds[0]), tds, tds[-1])
+        assert red["status"] == "warn_row_dip" and dip_day in red["detail"]
+        green = cci.check_cross_section(
+            c, _mkspec(data_start=tds[0], known_empty_days={dip_day}), tds, tds[-1])
+        assert green["status"] == "pass"
+    finally:
+        c.close()
+
+
 def test_cross_section_missing_group_fail_margin_sse_only():
     """margin SSE-only 型: grain 含 exchange_id, 某日缺 SZSE 组 = FAIL (行在但横截面骤缺组)。"""
     tds = _weekdays("20260401", 20)
@@ -259,6 +296,22 @@ def test_declared_drift_warn_with_suggestion_red_green():
         c.close()
 
 
+def test_declared_drift_reviewed_flag_suppresses_warn_red_green():
+    """balancesheet/fina_indicator/stk_holdernumber 型: 已人工核实(coverage_note)的 drift 不该
+    每次重报——data_start_reviewed=True 时降级 pass, 未设时仍照常 WARN (red-green 对照)。"""
+    c = duck_mem()
+    try:
+        _mktable(c, {"20230111": 10, "20240110": 10, "20250110": 10})
+        red = cci.check_declared_vs_actual(c, _mkspec(data_start="20050104"), today="20260703")
+        assert red["status"] == "warn_declared_drift"
+        green = cci.check_declared_vs_actual(
+            c, _mkspec(data_start="20050104", data_start_reviewed=True), today="20260703")
+        assert green["status"] == "pass"
+        assert "已人工核实" in green["detail"]
+    finally:
+        c.close()
+
+
 def test_sparse_history_years_flagged():
     """income 型深史稀疏: 2021 年行数 < 参照完整年 x 0.3 = WARN 列年份; 正常年不列。"""
     c = duck_mem()
@@ -273,6 +326,26 @@ def test_sparse_history_years_flagged():
         assert r["status"] == "warn_sparse_history"
         assert "2021" in r["detail"] and "2022" not in r["detail"]
         assert "coverage_note" in r["fix_hint"]
+    finally:
+        c.close()
+
+
+def test_declared_drift_reviewed_also_suppresses_sparse_history_relabel():
+    """balancesheet 实况: 压掉 declared_drift 后同一现象不该从 sparse_history 分支重新冒出
+    (同一份 coverage_note 覆盖两者); 未设 reviewed 时 sparse_history 仍照常触发。"""
+    c = duck_mem()
+    try:
+        days_rows = {"20210105": 50}
+        days_rows.update({f"2022{m:02d}10": 100 for m in range(1, 11)})
+        days_rows.update({f"2023{m:02d}10": 100 for m in range(1, 11)})
+        days_rows.update({f"2024{m:02d}10": 100 for m in range(1, 11)})
+        days_rows.update({f"2025{m:02d}10": 120 for m in range(1, 11)})
+        _mktable(c, days_rows)
+        red = cci.check_declared_vs_actual(c, _mkspec(data_start="20210105"), today="20260703")
+        assert red["status"] == "warn_sparse_history"
+        green = cci.check_declared_vs_actual(
+            c, _mkspec(data_start="20210105", data_start_reviewed=True), today="20260703")
+        assert green["status"] == "pass"
     finally:
         c.close()
 
@@ -339,13 +412,16 @@ def test_load_domain_specs_new_keys_and_bad_gap_tolerance(tmp_path):
         "  b:\n    target_table: t_b\n    grain: [trade_date, data_type]\n"
         "    batch_mode: by_trade_date\n    data_start: '20240101'\n"
         "    freshness_sla_trading_days: 2\n"
-        "    freshness_group_col: data_type\n    dead_groups: ['热基']\n",
+        "    freshness_group_col: data_type\n    dead_groups: ['热基']\n"
+        "    data_start_reviewed: true\n",
         encoding="utf-8")
     specs = cci.load_domain_specs(p)
     a = next(s for s in specs if s["domain"] == "a")
     assert a["gap_tolerance"] == "annotate" and a["known_empty_days"] == {"20240312"}
+    assert a["data_start_reviewed"] is False   # 缺省 false
     b = next(s for s in specs if s["domain"] == "b")
     assert b["freshness_group_col"] == "data_type" and b["dead_groups"] == ["热基"]
+    assert b["data_start_reviewed"] is True
     p2 = tmp_path / "bad.yaml"
     p2.write_text(
         "domains:\n  c:\n    target_table: t_c\n    grain: [x]\n"

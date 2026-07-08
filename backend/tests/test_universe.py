@@ -186,12 +186,14 @@ def test_classify_exclusion_whitelist_passes():
 
 
 def test_classify_exclusion_flags_excluded_boards():
+    """断言具体排除原因子串(非仅非空)——排除原因是 config 驱动分类(见 universe_rules.yaml
+    excluded_boards), 光验非空测不出分类映射本身错位(如误标成别的板块名仍然通过)。"""
     from services.universe import classify_exclusion
-    assert classify_exclusion("920819") is not None   # 北交所
-    assert classify_exclusion("832000") is not None   # 北交所/三板
-    assert classify_exclusion("430139") is not None   # 新三板
-    assert classify_exclusion("159915") is not None   # ETF
-    assert classify_exclusion("510300") is not None   # ETF
+    assert "北交所" in classify_exclusion("920819")     # 北交所
+    assert "北交所" in classify_exclusion("832000")     # 北交所/三板
+    assert "新三板" in classify_exclusion("430139")     # 新三板
+    assert "ETF" in classify_exclusion("159915")        # ETF
+    assert "ETF" in classify_exclusion("510300")        # ETF
 
 
 def test_assert_universe_clean_passes_whitelist():

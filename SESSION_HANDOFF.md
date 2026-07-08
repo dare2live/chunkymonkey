@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-07-07 22:37:55 CST
+**Snapshot 时间**: 2026-07-08 19:41:49 CST
 
 ## 主线状态
 
@@ -44,28 +44,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `9c5a1824 chore: storage_retention.yaml payload_audit 整段退役 — 双重孤儿(消费脚本已死+全部8表已死)` |
-| 最近 24h commits | 9 |
-| 未 commit 文件 | 28 |
+| HEAD | `60811466 feat: legacy-flow-integrity 从informational升为真硬闸` |
+| 最近 24h commits | 14 |
+| 未 commit 文件 | 6 |
 
 ### 最近 10 commits
 
 ```
-9c5a1824 chore: storage_retention.yaml payload_audit 整段退役 — 双重孤儿(消费脚本已死+全部8表已死)
-1166fa3e refactor: data_sources 多源注册表框架精简收口 — 删fallback机制/base+registry, 留sync_runner真实活线
-8d001512 feat: aif10_capability_client 模块整体退役 + 3项顺带发现清理(用户"先深入研究再决定"→workflow验证)
-a74ad13a feat: raw_aif10_peer_valuation(同行估值排名)整表退役 — 唯一消费方v3_picture已随重建死亡
-c1c01398 fix: aif10 SLA 二轮更正 — 逐表实测节奏而非一刀切(peer_valuation实为年度/holder_period实为近日频)
-2b3ac51a fix: doctor 全绿收口 — sync_registry drain瞬态网络gap补齐 + aif10/QFII SLA误报修正 + register()慢路径bug
-56b19bd8 feat: dim_all_ever_listed/dim_listing_status 整表退役 (用户拍板选项A) + 全面文档更新
-be7ab2bc chore: 重生 lineage graph.json 消解 kpl_list/cyq_perf available_after 改动带来的血缘漂移
-78209bd3 fix: kpl_list/cyq_perf available_after 声明实测更正 (18:00→t+1 / 18:00→22:40)
-64a26565 fix: 数据基础"是否具备条件"复审补 4 项 HIGH — live-guard盲区/dim_active_a_stock刷新/watermark冻结/5治理脚本接线
+60811466 feat: legacy-flow-integrity 从informational升为真硬闸
+6af3d67e fix: check_legacy_flow_integrity.py C1伪绿收口 + check_experiment_harness.py死代码清理
+08c42513 fix: sw_daily 20260707源端单日空洞墓碑 + 多域尾部断流批量补拉
+7c554840 fix: 数据地基收尾复核抓出的2个真尾巴清零 — doctor首次纯PASS
+7f241587 chore: 重生 lineage graph.json (SERVE读层收口 T2 informational drift 清零)
+9cdccda0 feat: SERVE读层门系统性收口 — 退役伪绿D1/D2, 提升scan_consumer_bypass为默认执法
+e74cb228 fix: 独立核实批发现的2处文档遗留 + 1处轻微残留 — 13簇计划真正收口
+c742d224 feat: 全仓库死代码普查收官 — 簇1+2+13: 旧前端整体删除 + PROJECT_INDEX架构自相矛盾收口
+bcac60eb fix: CI Smoke import 步骤引用已删 services.api_cache — 修连红5次的根因
+faea3594 feat: 全仓库死代码普查执行批4 — 簇5+12: 测试清理 + /v3 /legacy 断链路由修复
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**28 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**6 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

@@ -1297,6 +1297,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/data_module_members.yaml",
+      "kind": "consume",
+      "src": "table:fact_inst_episode"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/institution_profile.py",
       "kind": "consume",
       "src": "table:fact_inst_episode"
@@ -1783,6 +1789,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/data_module_members.yaml",
+      "kind": "consume",
+      "src": "table:mart_inst_profile"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/institution_profile.py",
       "kind": "consume",
       "src": "table:mart_inst_profile"
@@ -1796,6 +1808,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:mart_inst_profile_dim"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_module_members.yaml",
       "kind": "consume",
       "src": "table:mart_inst_profile_dim"
     },
@@ -3511,8 +3529,8 @@
     }
   ],
   "meta": {
-    "edge_count": 534,
-    "generated_at": "2026-07-08T05:28:33.426314+00:00",
+    "edge_count": 537,
+    "generated_at": "2026-07-08T11:42:39.146640+00:00",
     "node_count": 253,
     "version": 1
   },
