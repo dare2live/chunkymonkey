@@ -1669,30 +1669,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/data_processing_monitor.py",
-      "kind": "consume",
-      "src": "table:mart_data_processing_tool_issue"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:mart_data_processing_tool_issue"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_processing_monitor.py",
-      "kind": "consume",
-      "src": "table:mart_data_processing_tool_run"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_versions.py",
-      "kind": "consume",
-      "src": "table:mart_data_processing_tool_run"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
       "src": "table:mart_data_source_failure_queue"
@@ -3025,12 +3001,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:assets/js/data-view.js",
-      "kind": "consume",
-      "src": "table:raw_tushare_stk_surv"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_access.yaml",
       "kind": "consume",
       "src": "table:raw_tushare_stk_surv"
@@ -3541,20 +3511,12 @@
     }
   ],
   "meta": {
-    "edge_count": 539,
-    "generated_at": "2026-07-07T14:48:26.832066+00:00",
-    "node_count": 255,
+    "edge_count": 534,
+    "generated_at": "2026-07-08T05:28:33.426314+00:00",
+    "node_count": 253,
     "version": 1
   },
   "nodes": [
-    {
-      "attrs": {
-        "ctype": "frontend",
-        "path": "assets/js/data-view.js"
-      },
-      "id": "consumer:assets/js/data-view.js",
-      "kind": "consumer"
-    },
     {
       "attrs": {
         "ctype": "config",
@@ -3841,14 +3803,6 @@
         "path": "backend/services/data_deletion.py"
       },
       "id": "consumer:backend/services/data_deletion.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/data_processing_monitor.py"
-      },
-      "id": "consumer:backend/services/data_processing_monitor.py",
       "kind": "consumer"
     },
     {
