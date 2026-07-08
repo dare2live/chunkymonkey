@@ -6,9 +6,17 @@
 工具化 6 教训 (Workflow wa3kxgj13 综合) 成可执行 gate, 这次重构的**验收标尺**: 重构前红=问题实锤,
 重构后绿=把好关。绝不 print-not-fail (mythos §14): 任一 check 失败 overall=FAIL, 非零退出。
 
+2026-07-08 C1 收口(owner=analysis/legacy_flow_integrity_gate_fix_20260708.md): `scripts/daily_update.sh`
+2026-06-23 重设计为瘦 wrapper(委托 `python -m services.pipeline.run`), 不再直接提及任何
+`backend/scripts/*.py` 路径, 原 C1 扫描该文件必然 0 命中 = 伪绿(scan source 本身空转, 与
+db_lifecycle_delete.py::_live_surface() 此前踩过的同型漏洞)。改扫描真实当前调用图
+`backend/services/pipeline/*.py`(ctx.run_script(...)/args=[...] 两种嵌入模式统一走 backend/scripts/
+字面路径正则, 与旧逻辑同一 pattern 只是换了扫描源)。C2/C3 已用红绿注入实测验证检测逻辑本身有效
+(现 0 命中是"当前无违规"的真实状态, 非扫描目标空转), 未改动。
+
 3 检:
-  C1 daily_update 脚本可调: scripts/daily_update.sh 每个 backend/scripts/*.py 调用必须在盘 (删层必删
-     caller; 防调缺失脚本静默 step_degraded 假装管线还活 — 教训#1/#2)。
+  C1 pipeline 脚本可调: backend/services/pipeline/*.py 里每个 backend/scripts/*.py 调用必须在盘
+     (删层必删 caller; 防调缺失脚本静默 step_degraded 假装管线还活 — 教训#1/#2)。
   C2 无 wiped 表孤儿引用: config/schema_versions/routers 不引用 data_layers 标 wiped 的表 (除 @archived
      注释豁免) (防孤儿 stale 引用 — 教训#4)。
   C3 append-only 必 retention: 活层 *_history/*_snapshot 表必在 storage_retention 声明 (防无界膨胀 = DB
@@ -28,7 +36,7 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 DATA_LAYERS = REPO / "backend" / "config" / "data_layers.yaml"
-DAILY_UPDATE = REPO / "scripts" / "daily_update.sh"
+PIPELINE_DIR = REPO / "backend" / "services" / "pipeline"
 STORAGE_RETENTION = REPO / "backend" / "config" / "storage_retention.yaml"
 WIPED_LAYERS = {"L2_feature", "L3_model", "L4_experiment"}
 ARCHIVE_MARKERS = ("@archived", "@deprecated", "已删", "wiped", "archived", "退役", "移除", "reset 删")
@@ -41,12 +49,22 @@ def _layers() -> dict[str, str]:
 
 
 def check_daily_update_scripts() -> dict:
-    """C1: daily_update 每个 backend/scripts/*.py 调用必须在盘。"""
-    if not DAILY_UPDATE.exists():
-        return {"name": "daily_update_scripts", "verdict": "PASS", "missing": [], "note": "no daily_update.sh"}
-    text = DAILY_UPDATE.read_text(encoding="utf-8")
-    called = sorted(set(re.findall(r"backend/scripts/([A-Za-z0-9_]+\.py)", text)))
-    missing = [s for s in called if not (REPO / "backend" / "scripts" / s).exists()]
+    """C1: 真实管线编排(backend/services/pipeline/*.py)里每个 backend/scripts/*.py 调用必须在盘。
+
+    2026-07-08 改扫描源: 旧版扫 scripts/daily_update.sh(2026-06-23 已重设计为瘦 wrapper, 不再
+    直接提及脚本路径, 继续扫它=伪绿)。真实调用图在 backend/services/pipeline/*.py 里, 两种嵌入
+    模式(ctx.run_script("backend/scripts/x.py", ...) / args=["backend/scripts/x.py", ...])都是
+    字面字符串, 同一正则可覆盖两种写法。
+    """
+    if not PIPELINE_DIR.exists():
+        return {"name": "daily_update_scripts", "verdict": "PASS", "missing": [], "note": "no pipeline dir"}
+    called: set[str] = set()
+    for p in sorted(PIPELINE_DIR.glob("*.py")):
+        if p.name == "__init__.py":
+            continue
+        text = p.read_text(encoding="utf-8")
+        called.update(re.findall(r"backend/scripts/([A-Za-z0-9_]+\.py)", text))
+    missing = sorted(s for s in called if not (REPO / "backend" / "scripts" / s).exists())
     return {"name": "daily_update_scripts", "verdict": "FAIL" if missing else "PASS",
             "n_called": len(called), "missing": missing}
 

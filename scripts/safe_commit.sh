@@ -79,23 +79,12 @@ fi
 #   (特征面板/策略 serving 层退役, 消费方不存在)。真金白银泄漏强制移到转正门 record_verdict(confirmed_by_owner=1
 #   须带 leakage-clean 证据) + CI server-side, 不在本地 commit gate (mio §7: enforcement 沉到提交者够不到处)。
 
-# 3.7 散落死闸 (G3 门#1, owner=docs/conditional_alpha_program.md §4): staged 的 experiment_*.py
-# 必须走 harness/留档层 (phaseD_signal_eval 或 experiment_store), 禁裸跑无留档 → 进 experiment_store
-# 唯一真相源, 防"一脚本一实验丢 analysis/*.json"漂移 (根因审计 H1/H2)。
-exp_staged=$(git diff --cached --name-only | grep -E "^backend/scripts/experiment_.*\.py$" || true)
-if [[ -n "$exp_staged" && -f backend/scripts/check_experiment_harness.py ]]; then
-    echo
-    echo "=== Step 3.7: experiment harness gate (experiment_*.py staged) ==="
-    if PYTHONPATH=backend python backend/scripts/check_experiment_harness.py --staged 2>&1 | tail -15; then
-        echo "[experiment-harness] PASS"
-    else
-        echo
-        echo "ERROR: 散落死闸 — staged experiment 脚本裸跑无留档 (不走 phaseD_signal_eval / 不写 experiment_store)。"
-        echo "正解: 实验走 services/phaseD_signal_eval.evaluate_signal (唯一 harness) 或 import experiment_store 留档; 不丢 analysis/*.json。"
-        echo "真豁免 (非 alpha 实验) = check_experiment_harness.py EXEMPT 显式登记 + 理由, 不 --no-verify 绕。"
-        exit 4
-    fi
-fi
+# 3.7 散落死闸已退役 2026-07-08 (全库死代码普查收尾, owner=analysis/legacy_flow_integrity_gate_fix_20260708.md):
+#   check_experiment_harness.py 本体 + 被守护的 harness 层(phaseD_signal_eval.py/experiment_store.py)
+#   + owner 文档(docs/conditional_alpha_program.md)均已随 2026-06-28 纯数据平台重建物删。原有
+#   -f 存在性守卫已优雅跳过多日(非报错), 但触发条件(backend/scripts/experiment_*.py 被 staged)
+#   本身也已被 check_serve_read_layer.py D4(feature-from-l2)硬性禁止(该目录不许有 experiment_*.py
+#   文件存在), 双重确认这块永不会再触发, 整块死代码物删而非继续留守卫。
 
 # 3.8 沙盒隔离门 (实验室产物只留实验室, 2026-06-21 立; 4+次隔离失守根治):
 # C1 backend引用sandbox(FAIL) / C2 控制面嵌未promote(confirmed_by_owner=0)实验结果(WARN) / C3 探索runner漏主脚本(FAIL)。
