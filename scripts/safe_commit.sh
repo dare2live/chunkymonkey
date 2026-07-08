@@ -111,16 +111,18 @@ else
     exit 5
 fi
 
-# 3.9 SERVE 读层 P1 门 (数据模块顶层设计 §10 P1 gate 落地, 2026-06-22):
-# D1 dossier 0内联裸查 / D2 0自写asof / D3 preflight接线 / D4 entity声明链齐全 / D5 L2-bypass关闭。
+# 3.9 SERVE 读层门 (数据模块顶层设计 §10 P1 gate 落地, 2026-06-22; 2026-07-08 系统性收口):
+# D1 全量非成员消费者内联裸查(data_module_members.yaml 区分 builder vs 消费者, 替代原只扫
+# dossier.py 的伪绿门, 见 analysis/serve_read_layer_gate_consolidation_20260708.md) /
+# D2 preflight接线 / D3 entity声明链齐全 / D4 L2-bypass关闭。
 echo
-echo "=== Step 3.9: SERVE read-layer P1 doors ==="
+echo "=== Step 3.9: SERVE read-layer doors ==="
 if PYTHONPATH=backend python backend/scripts/check_serve_read_layer.py; then
     echo "[serve-read-layer] PASS"
 else
     echo
-    echo "ERROR: SERVE 读层 P1 门红 — consumer 内联裸查/自写asof, 或 entity 声明链断, 或实验runner漏进backend。"
-    echo "正解: consumer 取数走 services.data_access.DataAccess; PIT asof 只在 asof_gate; 实验入 sandbox。"
+    echo "ERROR: SERVE 读层门红 — 非成员消费者内联裸查, 或 entity 声明链断, 或实验runner漏进backend。"
+    echo "正解: 消费者取数走 services.data_access.DataAccess; 加工builder登记进 data_module_members.yaml; 实验入 sandbox。"
     echo "误报修 check_serve_read_layer.py 本身, 不 --no-verify 绕。"
     exit 5
 fi

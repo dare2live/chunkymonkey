@@ -1,17 +1,27 @@
-"""SERVE 读层 P1 验收门 — 数据模块顶层设计 §10 P1 gate 的可执行落地。
+"""SERVE 读层验收门 — 数据模块顶层设计 §10 P1 gate 的可执行落地。
 
-计划 (analysis/data_module_toplevel_design_20260622.md line 308) 的 P1 验收标尺白纸黑字:
-  "moth read-no-inline-table / read-no-self-asof / feature-from-l2 + preflight"。
-本脚本把这 4 道门 + lineage-complete 收进**单一执法点** (controller 自持, 真 exit≠0, 可 red→green),
-moth `serve-read-layer-p1-doors` 包它。任何一门红 = P1 未完成 / 回潮。
+2026-07-08 系统性收口 (owner=analysis/serve_read_layer_gate_consolidation_20260708.md):
+原 D1/D2 门硬编码只扫 `backend/services/dossier.py` 一个文件 (2026-06-22 落地时的 P1
+scope="只迁 dossier")。dossier.py 已随 2026-06-28 纯数据平台重建永久删除 (策略/serving
+层整体退役, 不会再迁回), 该文件从此不存在导致 D1/D2 读空字符串必然 0 命中 —— 伪绿
+(pass-by-vacuity), 与本项目 db_lifecycle_delete._live_surface() 曾踩过的结构性排除漏洞
+同型。旧代码注释里其实早写着"D1 硬门只扫 dossier (P1 scope, 伪绿)"并造了一个更完整的
+`scan_consumer_bypass()`(原 `--bypass-scan` 参数, 全量扫 backend/services+scripts, 靠
+`data_module_members.yaml` roster 区分 builder[可读raw, 归 build-time PIT 门管] vs 薄消
+费者[必须走 DataAccess.get, 归本门管]) —— 但这道更完整的检查此前只挂在 moth 断言里,
+`moth assert` 从未接入 safe_commit.sh/CI, 没人被强制跑; 真正跑在 commit-time 硬门位置
+的反而是伪绿的 D1/D2。本次收口: 退役 D1/D2, 把 `scan_consumer_bypass()` 提升为默认执法
+的 D1(替代原两道门的职责), 不再需要额外 flag 才生效。
 
-门 (consumer scope = P1 只迁了 dossier; signals_v2/routers 等未迁 consumer 属 P2/P3 债, 不在本门范围):
-  D1 read-no-inline-table : dossier.py 0 内联 FROM raw_*/price_kline*/duck_connect (单概念单真相源, 不变量#4)
-  D2 read-no-self-asof    : dossier.py 0 直接 .execute( → 不自写 asof SQL (PIT 只在读层 asof_gate 执行, 不变量#1)
-  D3 preflight-wired      : drivers/generic.py 调 resolver.preflight (schema 漂移自检接线)
-  D4 lineage-complete     : data_access.yaml 每 entity 声明链齐全 (db+table+layer+vendor+asof_col+code_col),
-                            追不到声明源=FAIL (line 90 可追溯=确定性走链)
-  D5 feature-from-l2      : backend/scripts 0 个 experiment_/analyze_ 因子 runner
+门:
+  D1 no-consumer-bypass  : backend/services+scripts 全量扫描非成员消费者内联
+                            FROM raw_*/price_kline*/duck_connect(/duckdb.connect( —
+                            成员(data_module_members.yaml 登记的加工 builder)可读 raw,
+                            非成员消费者必须走 DataAccess.get()(单概念单真相源, 不变量#4)
+  D2 preflight-wired      : drivers/generic.py 调 resolver.preflight (schema 漂移自检接线)
+  D3 lineage-complete     : data_access.yaml 每 entity 声明链齐全 (db+table+layer+vendor+asof_col+code_col),
+                            追不到声明源=FAIL (可追溯=确定性走链)
+  D4 feature-from-l2      : backend/scripts 0 个 experiment_/analyze_ 因子 runner
                             (L2-bypass 向量关闭: 实验只能在 sandbox, 按 README 读 L2 panel 不绕 L0 重算)
 
 跑: PYTHONPATH=backend python backend/scripts/check_serve_read_layer.py
@@ -25,13 +35,16 @@ from pathlib import Path
 import yaml
 
 REPO = Path(__file__).resolve().parents[2]
-DOSSIER = REPO / "backend" / "services" / "dossier.py"
 GENERIC = REPO / "backend" / "services" / "data_access" / "drivers" / "generic.py"
 DATA_ACCESS_YAML = REPO / "backend" / "config" / "data_access.yaml"
 SCRIPTS_DIR = REPO / "backend" / "scripts"
+SERVICES_DIR = REPO / "backend" / "services"
+MEMBERS_YAML = REPO / "backend" / "config" / "data_module_members.yaml"
 
-# entity 声明链必填字段 (D4): 缺一 = 追溯断链
+# entity 声明链必填字段 (D3): 缺一 = 追溯断链
 REQUIRED_ENTITY_KEYS = ("db", "table", "layer", "vendor", "asof_col", "code_col")
+
+INLINE_RAW_PATS = (r"FROM\s+raw_", r"FROM\s+price_kline\b", r"duck_connect\s*\(", r"duckdb\.connect\s*\(")
 
 
 def _read(p: Path) -> str:
@@ -49,24 +62,50 @@ def _strip_comments_and_docstrings(src: str) -> str:
     return "\n".join(lines)
 
 
-def door_read_no_inline_table() -> list[str]:
-    code = _strip_comments_and_docstrings(_read(DOSSIER))
-    bad = []
-    for pat in (r"FROM\s+raw_", r"FROM\s+price_kline", r"duck_connect\s*\(", r"duckdb\.connect\s*\("):
-        n = len(re.findall(pat, code))
-        if n:
-            bad.append(f"dossier.py 命中 {pat!r} x{n} (consumer 禁内联裸查, 应走 DataAccess.get)")
-    return bad
+def _load_members() -> dict:
+    raw = _read(MEMBERS_YAML)
+    return (yaml.safe_load(raw) or {}) if raw else {}
 
 
-def door_read_no_self_asof() -> list[str]:
-    code = _strip_comments_and_docstrings(_read(DOSSIER))
-    bad = []
-    # dossier 全委托 data_access → 0 直接 SQL 执行 = 物理上无法自写 asof
-    n = len(re.findall(r"\.execute\s*\(", code)) + len(re.findall(r"\.sql\s*\(", code))
-    if n:
-        bad.append(f"dossier.py 命中 .execute(/.sql( x{n} (自写 SQL→可能自写 asof; PIT 应只在 asof_gate 执行)")
-    return bad
+def _is_member(path: Path, members: dict) -> bool:
+    rel = str(path.relative_to(REPO))
+    name = path.name
+    if any(rel.startswith(d) for d in members.get("member_dirs", [])):
+        return True
+    if path.parent == SCRIPTS_DIR and any(name.startswith(p) for p in members.get("member_script_prefixes", [])):
+        return True
+    if name in members.get("member_service_files", []):
+        return True
+    return False
+
+
+def door_no_consumer_bypass() -> list[str]:
+    """D1: 全 backend/services+scripts 非成员内联 raw 读 (不变量#4 违规)。
+
+    成员 (data_module_members.yaml 登记的加工 builder, 可读 raw/写物化表) 豁免;
+    非成员消费者内联裸查 = 违规, 必须改走 DataAccess.get()。
+    """
+    members = _load_members()
+    retiring_names = set(members.get("source_retiring_temp_members", []))
+    violations: list[str] = []
+    for base in (SERVICES_DIR, SCRIPTS_DIR):
+        for p in sorted(base.rglob("*.py")):
+            rel = str(p.relative_to(REPO))
+            if "test" in rel or "sandbox" in rel:
+                continue
+            raw = _read(p)
+            if "# serve-exempt:" in raw:   # evidence 豁免 (展示P4/源退役类, 带理由), 不计违规
+                continue
+            code = _strip_comments_and_docstrings(raw)
+            hits = [pat for pat in INLINE_RAW_PATS if re.search(pat, code)]
+            if not hits:
+                continue
+            if p.name in retiring_names:
+                continue  # 源退役临时成员: 删源后随之退役, 不算违规也不算长期成员
+            if _is_member(p, members):
+                continue
+            violations.append(f"{rel}: 内联命中 {hits} (非成员消费者禁内联裸查, 应走 DataAccess.get 或登记进 data_module_members.yaml)")
+    return violations
 
 
 def door_preflight_wired() -> list[str]:
@@ -103,77 +142,15 @@ def door_feature_from_l2() -> list[str]:
     return bad
 
 
-# ── 不变量4 执法棘轮 (2026-06-23): 全量扫非成员消费者内联 raw 读 ──
-# D1 硬门只扫 dossier (P1 scope, 伪绿). 本扫覆盖全 backend, 读 member roster 区分
-# 成员(数据模块子模块, 可读 raw)vs 非成员消费者(必走 SERVE). WARN 默认 (--strict 升 exit1),
-# 不动 D1-D5 硬门 (moth serve-read-layer-p1-doors 仍只验 dossier, 保绿).
-MEMBERS_YAML = REPO / "backend" / "config" / "data_module_members.yaml"
-SERVICES_DIR = REPO / "backend" / "services"
-INLINE_RAW_PATS = (r"FROM\s+raw_", r"FROM\s+price_kline\b", r"duck_connect\s*\(", r"duckdb\.connect\s*\(")
-
-
-def _load_members() -> dict:
-    raw = _read(MEMBERS_YAML)
-    return (yaml.safe_load(raw) or {}) if raw else {}
-
-
-def _is_member(path: Path, members: dict) -> bool:
-    rel = str(path.relative_to(REPO))
-    name = path.name
-    if any(rel.startswith(d) for d in members.get("member_dirs", [])):
-        return True
-    if path.parent == SCRIPTS_DIR and any(name.startswith(p) for p in members.get("member_script_prefixes", [])):
-        return True
-    if name in members.get("member_service_files", []):
-        return True
-    return False
-
-
-def scan_consumer_bypass() -> tuple[list[str], list[str]]:
-    """全 backend/services+scripts 非成员内联 raw 读 (不变量4 违规)。返回 (violations, retiring)。"""
-    members = _load_members()
-    retiring_names = set(members.get("source_retiring_temp_members", []))
-    violations, retiring = [], []
-    for base in (SERVICES_DIR, SCRIPTS_DIR):
-        for p in sorted(base.rglob("*.py")):
-            rel = str(p.relative_to(REPO))
-            if "test" in rel or "sandbox" in rel:
-                continue
-            raw = _read(p)
-            if "# serve-exempt:" in raw:   # evidence 豁免 (展示P4/源退役类, 带理由), 不计违规
-                continue
-            code = _strip_comments_and_docstrings(raw)
-            hits = [pat for pat in INLINE_RAW_PATS if re.search(pat, code)]
-            if not hits:
-                continue
-            if p.name in retiring_names:
-                retiring.append(f"{rel} (源退役临时成员, 删源后退役)")
-            elif _is_member(p, members):
-                continue
-            else:
-                violations.append(f"{rel}: 内联命中 {hits}")
-    return violations, retiring
-
-
 DOORS = [
-    ("D1 read-no-inline-table", door_read_no_inline_table),
-    ("D2 read-no-self-asof", door_read_no_self_asof),
-    ("D3 preflight-wired", door_preflight_wired),
-    ("D4 lineage-complete", door_lineage_complete),
-    ("D5 feature-from-l2", door_feature_from_l2),
+    ("D1 no-consumer-bypass", door_no_consumer_bypass),
+    ("D2 preflight-wired", door_preflight_wired),
+    ("D3 lineage-complete", door_lineage_complete),
+    ("D4 feature-from-l2", door_feature_from_l2),
 ]
 
 
 def main() -> int:
-    if "--bypass-scan" in sys.argv:
-        strict = "--strict" in sys.argv
-        violations, retiring = scan_consumer_bypass()
-        for r in retiring:
-            print(f"[RETIRE] {r}")
-        for v in violations:
-            print(f"[BYPASS] {v}")
-        print(f"consumer_bypass_violations={len(violations)} (源退役临时={len(retiring)})")
-        return 1 if (strict and violations) else 0   # WARN 默认 (不破 dossier 硬门); --strict 升 exit1
     total = 0
     for name, fn in DOORS:
         viol = fn()

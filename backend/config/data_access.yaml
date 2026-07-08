@@ -1,7 +1,7 @@
 # SERVE 读侧 entity registry — 数据模块顶层设计 v2 §4.2 (data_module_toplevel_design_20260622.md)
 #
-# 唯一取数声明处 (不变量4 单概念单真相源): consumer 禁内联 FROM raw_* (check_serve_read_layer D1 + moth serve-read-layer-p1-doors 守)。
-# PIT 锚 + 口径清洗由读层强制 (不变量1 统一主键+PIT锚): consumer 不自写 asof (check_serve_read_layer D2 守)。
+# 唯一取数声明处 (不变量4 单概念单真相源): 非成员消费者禁内联 FROM raw_* (check_serve_read_layer D1 + moth serve-read-layer-doors 守; 2026-07-08 收口后 D1 全量扫 backend/services+scripts, 见 data_module_members.yaml)。
+# PIT 锚 + 口径清洗由读层强制 (不变量1 统一主键+PIT锚)。
 # 每 entity 是一条声明 = 血缘的"声明链"一环 (展示→entity→源表→sync域→tushare)。
 #
 # 字段:

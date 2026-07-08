@@ -150,8 +150,8 @@ assertions:
     database: data/market.duckdb
     query: "SELECT count(*) FROM v_price_kline_qfq WHERE source_name <> 'tushare'"
     expect: {op: "==", value: 0}
-  - id: serve-read-layer-p1-doors
-    claim: "SERVE 读层 P1 验收门 5 道全绿 (2026-06-22 落地计划 §10 P1 gate 原文 'read-no-inline-table/read-no-self-asof/feature-from-l2 + preflight'): 单一执法点 check_serve_read_layer.py, D1 dossier 0内联裸查 / D2 dossier 0直接.execute(自写asof / D3 generic.py调resolver.preflight / D4 data_access.yaml每entity声明链(db+table+layer+vendor+asof_col+code_col)齐全可追溯 / D5 backend/scripts 0 experiment_/analyze_ runner(L2-bypass向量关闭). 已 red→green 实证(注入FROM raw_变红/还原回绿)非print-not-fail. violations>0=P1未完成/回潮. owner=backend/scripts/check_serve_read_layer.py + analysis/data_module_toplevel_design_20260622.md §10"
+  - id: serve-read-layer-doors
+    claim: "SERVE 读层验收门全绿 (2026-06-22 落地计划 §10 P1 gate; 2026-07-08 系统性收口 owner=analysis/serve_read_layer_gate_consolidation_20260708.md): 单一执法点 check_serve_read_layer.py, D1 全量 backend/services+scripts 非成员消费者内联裸查(data_module_members.yaml roster 区分 builder[可读raw]/消费者[必走DataAccess.get], 替代原只扫已删除 dossier.py 的伪绿门) / D2 generic.py调resolver.preflight / D3 data_access.yaml每entity声明链(db+table+layer+vendor+asof_col+code_col)齐全可追溯 / D4 backend/scripts 0 experiment_/analyze_ runner(L2-bypass向量关闭). 已 red→green 实证(注入FROM raw_变红/还原回绿)非print-not-fail. violations>0=回潮. owner=backend/scripts/check_serve_read_layer.py + analysis/data_module_toplevel_design_20260622.md §10"
     type: shell
     command: ["bash", "-c", "PYTHONPATH=backend python backend/scripts/check_serve_read_layer.py >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}
@@ -164,9 +164,4 @@ assertions:
     claim: "config 跨文件引用完整性: data_access 的 layer 值全部在 data_layers 定义(长键或 alias 短码), 0 悬空 = 层词汇单一真相源未漂回两套 (2026-06-23 config最小手术 Step1 层词汇统一 + Step4 引用门, 对抗panel wry13dfr0 裁决最小手术)。check_config_refs.py red→green 实证(注入 L99 变红 exit1/还原回绿)。>0=新增 entity 写错层名/层词汇漂移回潮。owner=backend/scripts/check_config_refs.py"
     type: shell
     command: ["bash", "-c", "PYTHONPATH=backend python backend/scripts/check_config_refs.py --check >/dev/null 2>&1 && echo 0 || echo 1"]
-    expect: {op: "<=", value: 0}
-  - id: serve-consumer-bypass-zero
-    claim: "不变量4(单概念单真相源/SERVE单一读路)硬门: 全量扫非成员消费者内联raw读 ==0 (已清零, 棘轮锁死). 伪绿D1只扫dossier 1文件→check_serve_read_layer --bypass-scan 读 data_module_members.yaml roster(成员=数据模块子模块可读raw / 非成员消费者必走DataAccess.get/coverage_start)全量执法. 清零路径: data_loaders迁SERVE→feature/signal panel继承; signals_v2 MIN→DataAccess.coverage_start元数据原语(前后一致2025-10-22); stock_detail_read展示→serve-exempt(P4 read-model pending+源退役表). 源退役3 client(financial/institution_survey/tdx_affair)删源后退役不计. >0=新增bypass回潮即红(对标universe assert_universe_clean硬门). owner=check_serve_read_layer.py --bypass-scan + data_module_members.yaml"
-    type: shell
-    command: ["bash", "-c", "PYTHONPATH=backend python backend/scripts/check_serve_read_layer.py --bypass-scan 2>/dev/null | grep -oE 'consumer_bypass_violations=[0-9]+' | grep -oE '[0-9]+$'"]
     expect: {op: "<=", value: 0}

@@ -4,7 +4,8 @@
 #   它们就是数据模块, 不是"绕过的外人" (解 SERVE 建在 adapter 之上的循环依赖)。
 # 非成员 (策略/信号/展示/回测消费者) 内联读 raw L0 = 违规 → 必须走 services.data_access.DataAccess.get()。
 # owner=analysis/data_module_toplevel_design_20260622.md §1.5 / §2 (ACQUIRE→STORE→SERVE→CONSUME)。
-# 用法: check_serve_read_layer.py --bypass-scan 读本 roster, 扫非成员内联 raw 读 (WARN→后续升硬门)。
+# 用法: check_serve_read_layer.py D1 门读本 roster, 全量扫 backend/services+scripts 非成员内联 raw 读
+#   (2026-07-08 前经 --bypass-scan 单独参数触发, 收口后是 D1 默认硬门, 见 analysis/serve_read_layer_gate_consolidation_20260708.md)。
 version: 1
 
 # 目录级成员 (整包是数据模块)
