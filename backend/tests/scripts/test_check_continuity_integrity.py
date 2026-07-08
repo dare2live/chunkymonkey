@@ -44,7 +44,7 @@ def _mkspec(**kw) -> dict:
             "batch_mode": "by_trade_date", "data_start": "20260601", "sla": 1,
             "freshness_date_column": None, "date_param": None, "known_empty_days": set(),
             "gap_tolerance": "none", "freshness_group_col": None, "dead_groups": [],
-            "known_group_gaps": {}}
+            "known_group_gaps": {}, "row_dip_tolerance": False}
     base.update(kw)
     return base
 
@@ -141,9 +141,14 @@ def test_cross_section_row_dip_warn_red_green():
         c.close()
 
 
-def test_cross_section_row_dip_gap_tolerance_annotate_downgrades_to_pass():
-    """report_rc/share_float 型: 已审定事件驱动天然高方差域(gap_tolerance=annotate)骤降降 pass,
-    未设域(none, 默认)仍照常 warn_row_dip (red-green 对照)。"""
+def test_cross_section_row_dip_tolerance_downgrades_to_pass():
+    """report_rc/share_float 型: 已逐域单独审查的天然高方差域(row_dip_tolerance=true)骤降降 pass,
+    未设域(false, 默认)仍照常 warn_row_dip (red-green 对照)。
+
+    2026-07-08 字段从 gap_tolerance 拆分(owner=analysis/gap_root_cause_20260708.md): stk_surv
+    曾因日历稀疏理由(calendar_gaps 用途)被打 gap_tolerance, 若沿用旧的"gap_tolerance 连带抑制
+    row_dip"逻辑, 会掩盖它同时存在的系统性 page_limit 截断 bug(丢 22%~87%)。row_dip 的容忍
+    必须逐域单独声明, 不得从 gap_tolerance 继承——本测试改用独立的 row_dip_tolerance 字段。"""
     tds = _weekdays("20260401", 30)
     dip_day = tds[25]
     counts = {d: 100 for d in tds}
@@ -154,8 +159,13 @@ def test_cross_section_row_dip_gap_tolerance_annotate_downgrades_to_pass():
         red = cci.check_cross_section(c, _mkspec(data_start=tds[0]), tds, tds[-1])
         assert red["status"] == "warn_row_dip"
         green = cci.check_cross_section(
-            c, _mkspec(data_start=tds[0], gap_tolerance="annotate"), tds, tds[-1])
+            c, _mkspec(data_start=tds[0], row_dip_tolerance=True), tds, tds[-1])
         assert green["status"] == "pass" and dip_day in green["detail"]
+        # gap_tolerance=annotate 单独设置(不带 row_dip_tolerance)不应再抑制 row_dip —— 这正是
+        # 修正的盲区: 日历稀疏判断不该自动延伸到行数骤降判断。
+        still_warn = cci.check_cross_section(
+            c, _mkspec(data_start=tds[0], gap_tolerance="annotate"), tds, tds[-1])
+        assert still_warn["status"] == "warn_row_dip"
     finally:
         c.close()
 
@@ -413,15 +423,17 @@ def test_load_domain_specs_new_keys_and_bad_gap_tolerance(tmp_path):
         "    batch_mode: by_trade_date\n    data_start: '20240101'\n"
         "    freshness_sla_trading_days: 2\n"
         "    freshness_group_col: data_type\n    dead_groups: ['热基']\n"
-        "    data_start_reviewed: true\n",
+        "    data_start_reviewed: true\n    row_dip_tolerance: true\n",
         encoding="utf-8")
     specs = cci.load_domain_specs(p)
     a = next(s for s in specs if s["domain"] == "a")
     assert a["gap_tolerance"] == "annotate" and a["known_empty_days"] == {"20240312"}
     assert a["data_start_reviewed"] is False   # 缺省 false
+    assert a["row_dip_tolerance"] is False     # 缺省 false, 且不从 gap_tolerance 继承
     b = next(s for s in specs if s["domain"] == "b")
     assert b["freshness_group_col"] == "data_type" and b["dead_groups"] == ["热基"]
     assert b["data_start_reviewed"] is True
+    assert b["row_dip_tolerance"] is True
     p2 = tmp_path / "bad.yaml"
     p2.write_text(
         "domains:\n  c:\n    target_table: t_c\n    grain: [x]\n"

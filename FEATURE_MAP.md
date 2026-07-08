@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-08 19:42
+> Snapshot: 2026-07-09 02:58
 
 ## 1. 入口面
 
@@ -57,7 +57,7 @@
 | express | tushare | express_vip | raw_tushare_express | by_period | 5 |
 | fina_indicator | tushare | fina_indicator | raw_tushare_fina_indicator | by_ts_code | 5 |
 | fina_mainbz | tushare | fina_mainbz | raw_tushare_fina_mainbz | by_ts_code | 130 |
-| forecast | tushare | forecast | raw_tushare_forecast | by_trade_date | 5 |
+| forecast | tushare | forecast | raw_tushare_forecast | by_ann_date | 5 |
 | hm_detail | tushare | hm_detail | raw_tushare_hm_detail | by_trade_date | 2 |
 | hm_list | tushare | hm_list | raw_tushare_hm_list | full_refresh | 30 |
 | income | tushare | income | raw_tushare_income | by_ts_code | 5 |
@@ -75,8 +75,8 @@
 | moneyflow_hsgt | tushare | moneyflow_hsgt | raw_tushare_moneyflow_hsgt | by_trade_date | 2 |
 | moneyflow_ind_dc | tushare | moneyflow_ind_dc | raw_tushare_moneyflow_ind_dc | by_trade_date | 2 |
 | moneyflow_mkt_dc | tushare | moneyflow_mkt_dc | raw_tushare_moneyflow_mkt_dc | by_date_range | 1 |
-| report_rc | tushare | report_rc | raw_tushare_report_rc | by_trade_date | 3 |
-| share_float | tushare | share_float | raw_tushare_share_float | by_trade_date | 3 |
+| report_rc | tushare | report_rc | raw_tushare_report_rc | by_ann_date | 3 |
+| share_float | tushare | share_float | raw_tushare_share_float | by_ann_date | 3 |
 | stk_factor_pro | tushare | stk_factor_pro | raw_tushare_stk_factor_pro | by_ts_code | 1 |
 | stk_holdernumber | tushare | stk_holdernumber | raw_tushare_stk_holdernumber | by_ts_code | 90 |
 | stk_holdertrade | tushare | stk_holdertrade | raw_tushare_stk_holdertrade | by_ann_date | 30 |
@@ -158,17 +158,17 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 4,594 | calls 边 4,891 | imports 边 778 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 4,664 | calls 边 4,913 | imports 边 790 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
 | services.duck_adapter | 30 |
+| services.data_sources | 12 |
 | services.database_manifest | 12 |
-| services.data_sources | 9 |
 | services.db | 9 |
-| services.source_watermarks | 6 |
+| services.source_watermarks | 9 |
 | services.lineage.model | 5 |
 | scripts.formula_parameter_search | 4 |
 | services.market_db | 4 |
@@ -186,9 +186,9 @@
 |---|---|
 | backend/services/duck_adapter.py | 26 |
 | backend/services/database_manifest.py | 11 |
+| backend/services/source_watermarks.py | 9 |
 | bestchoice/compute.py | 9 |
 | backend/services/pipeline/context.py | 6 |
-| backend/services/source_watermarks.py | 6 |
 | bestchoice/execution_model.py | 5 |
 | backend/services/lineage/model.py | 4 |
 | backend/services/pipeline_manifest.py | 4 |
@@ -201,11 +201,11 @@
 
 | 文件 | 行数 |
 |---|---|
-| backend/services/data_sources/sync_runner.py | 1203 |
+| backend/services/data_sources/sync_runner.py | 1214 |
 | backend/services/storage_retention.py | 1061 |
 | backend/services/market_pulse.py | 804 |
 | backend/scripts/data_health_snapshot.py | 731 |
-| backend/scripts/check_continuity_integrity.py | 674 |
+| backend/scripts/check_continuity_integrity.py | 685 |
 | backend/routers/market_pulse.py | 639 |
 | backend/services/schema_migrations.py | 561 |
 | backend/services/source_watermarks.py | 559 |

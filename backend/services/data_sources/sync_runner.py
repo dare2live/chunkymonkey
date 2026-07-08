@@ -881,7 +881,18 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         # 组合域静默失效 (声明 data_type="热基" 却始终请求不到, 只拿到与 date_param 无关的默认返回)。
         # 与 by_code_list 分支 (L790) 同款合并语义, 批参数优先于 fixed (date_param 不应被 fixed 覆盖)。
         fixed = dict(spec.get("fixed_params") or {})
-        batches = [{**fixed, date_param: d} for d in days]
+        # split_by (2026-07-08 根因修复, owner=analysis/gap_root_cause_20260708.md): margin 域
+        # 裸调 pro.margin(trade_date=d) 在 2026 年偶发(~0.5%交易日)漏返 BSE/SZSE(vendor 网关对
+        # "无过滤条件汇总查询"存在补全遗漏的怪癖), 但显式加 exchange_id=SSE/SZSE/BSE 逐个查询
+        # 100% 拿全(含历史已发生的漏返日期实测验证)。这不是分页截断(_fetch_paged 管不了),
+        # 是查询形态问题——registry 声明 split_by: {param: 每次显式加的参数名, values: [...]}
+        # 后, 一个交易日展开成 len(values) 个独立 API 调用, 逐个写入(同 grain 幂等 MERGE 安全)。
+        split_by = spec.get("split_by")
+        if split_by:
+            sp_param, sp_values = split_by["param"], list(split_by["values"])
+            batches = [{**fixed, date_param: d, sp_param: v} for d in days for v in sp_values]
+        else:
+            batches = [{**fixed, date_param: d} for d in days]
     elif spec["batch_mode"] == "by_ann_date":
         # 按公告日抓全市场 (十大股东 etc): tushare 支持 ann_date 查全市场, 覆盖季报披露 + ad-hoc 非季末更新
         # (实测 600388 报告期 20231011=非季末 ad-hoc; 全库 1810 非季末期/2902股)。watermark=最新已抓公告日,

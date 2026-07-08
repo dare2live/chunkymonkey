@@ -11,8 +11,10 @@ block_trade 20250917 中间空洞) + 根因4 (SLA 只测"最近动过"不测"该
                      dim_trading_calendar。中间空洞 = FAIL (间歇空响应指纹); 尾部缺日超 SLA = FAIL,
                      未超 = OK。known_empty_days 墓碑排除; gap_tolerance: annotate 降 WARN。
   cross_section      横截面异常 (同域范围): 单日行数 < 近 20 观测日滚动中位 x row_dip_ratio = WARN
-                     (margin SSE-only 部分覆盖型); grain 含 exchange_id/data_type 类分组列的域,
-                     基线组当日缺失 = FAIL。
+                     (row_dip_tolerance: true 域降 pass, 需逐域单独审查声明, 不从 gap_tolerance
+                     继承——2026-07-08 教训: stk_surv 曾因 gap_tolerance 掩盖真实 page_limit 截断
+                     bug, 见 analysis/gap_root_cause_20260708.md); grain 含 exchange_id/data_type
+                     类分组列的域, 基线组当日缺失 = FAIL (known_group_gaps 精确墓碑)。
   group_freshness    分组新鲜度 (声明 freshness_group_col 的域): 各组 MAX(date) 落后 > SLA x 3
                      交易日 = FAIL (ths_hot 子榜断流型); dead_groups 墓碑排除。
   declared_vs_actual data_start 声明 vs 实测 MIN(date) 偏差 > 90 自然日 = WARN (带建议修正值);
@@ -120,6 +122,14 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
             # 反复重新调查同一件已结案的事)。仅压 declared_drift 这一条, sparse_history/其余
             # 检测不受影响(那些若仍有信号价值应继续曝光)。
             "data_start_reviewed": bool(entry.get("data_start_reviewed", False)),
+            # 2026-07-08 从 gap_tolerance 拆分独立字段(owner=analysis/gap_root_cause_20260708.md):
+            # gap_tolerance 原语义只覆盖 calendar_gaps(整日缺失), 曾被泛化误用去连带抑制
+            # cross_section 的 row_dip——代价是任何"因日历稀疏理由"打了 gap_tolerance 的域,
+            # 其行数骤降信号会被无关判断连带静默(stk_surv 正是实例: 2026-07-05 因日历空洞
+            # 是真事件稀疏打了 gap_tolerance, 但它同时存在一个从未被单独审查过的系统性
+            # page_limit 截断 bug, 若沿用旧泛化逻辑会被这个不相关的标签一直掩盖)。row_dip
+            # 抑制必须逐域单独审查+显式声明, 不得从 gap_tolerance 继承。
+            "row_dip_tolerance": bool(entry.get("row_dip_tolerance", False)),
         })
     return specs
 
@@ -309,14 +319,15 @@ def check_cross_section(conn, spec: dict, trading_days: list[str], latest_expect
                 f"源端确实部分覆盖 -> 消费侧需口径标记 (mart n_exchanges 类)")
         return _result("cross_section", spec, status, detail, hint)
     if dips:
-        # 2026-07-08 (R4 workflow 2026-07-05 遗留 follow-up 收口, owner=analysis/
-        # r4_completion_20260704.md #13 "row_dip 阈值算法改进"): gap_tolerance 已表达"此域
-        # 事件驱动天然稀疏/高方差, 人工审过"的判断, 但此前只喂了 calendar_gaps 一个检测维度,
-        # 同一份判断没有延伸到 cross_section——两者本是同一件事(该域某些天数量本来就该少),
-        # 不该只因为检测切面不同就重报。annotate/hk_holidays 域降 pass 但留可见痕迹, 不静默吞。
-        if spec["gap_tolerance"] in ("annotate", "hk_holidays"):
+        # 2026-07-08 修正(owner=analysis/gap_root_cause_20260708.md): 曾用 gap_tolerance 抑制
+        # row_dip(2026-07-08 早前一版逻辑), 但 gap_tolerance 是为 calendar_gaps(整日缺失)设计的
+        # 判断, 与 row_dip(行数骤降但非零)是不同的失效模式, 泛化复用导致真实盲区——stk_surv
+        # 因日历稀疏理由早被打了 gap_tolerance, 结果它同时存在的系统性 page_limit 截断 bug
+        # (丢 22%~87%)被这个不相关的标签连带掩盖, 差点无限期不被发现。row_dip 的容忍必须是
+        # 逐域单独审查后显式声明的独立字段(row_dip_tolerance), 不得从 gap_tolerance 继承。
+        if spec["row_dip_tolerance"]:
             return _result("cross_section", spec, "pass",
-                           f"行数骤降 {len(dips)} 日 (gap_tolerance={spec['gap_tolerance']}, "
+                           f"行数骤降 {len(dips)} 日 (row_dip_tolerance=true, "
                            f"已审定事件驱动天然稀疏/高方差, 非缺陷): {_sample_days(dips)}")
         return _result("cross_section", spec, "warn_row_dip",
                        f"行数骤降 {len(dips)} 日: {_sample_days(dips)}",

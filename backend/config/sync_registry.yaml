@@ -91,8 +91,10 @@ domains:
     data_start: "20230103"        # 2026-06-12: 对齐实际落库防 drain 开闸 (文档支持 2020 起, B 书 W6 需要时回填再改回 20200102)
     freshness_sla_trading_days: 1
     min_rows_per_batch: 10        # 跌停冰点日可能极少, 仅防 0 行
-    gap_tolerance: annotate   # 2026-07-08 实测 20260707(本地86 vs 中位161)逐行 grain-aware 核对
+    row_dip_tolerance: true   # 2026-07-08 实测 20260707(本地86 vs 中位161)逐行 grain-aware 核对
                               # vendor, 完全一致 0 缺失 — 涨跌停家数本随市场情绪日日波动, 非缺陷
+                              # (字段从 gap_tolerance 拆分, 见 check_continuity_integrity.py 说明:
+                              # 此域从无 calendar_gaps 问题, row_dip_tolerance 才是准确语义)
 
   stk_limit:
     source: tushare
@@ -150,8 +152,9 @@ domains:
     freshness_sla_trading_days: 3  # 停牌公告不是每日必有
     min_rows_per_batch: 0          # 无停牌日合法 0 行 (zero_row_policy 例外: allow_empty)
     allow_empty_batch: true
-    gap_tolerance: annotate   # 2026-07-08 实测 5 个骤降日(0609/0610/0706/0707/0708) grain-aware
+    row_dip_tolerance: true   # 2026-07-08 实测 5 个骤降日(0609/0610/0706/0707/0708) grain-aware
                               # 核对 vendor, 逐日行数一致(0610 仅1行差, 忽略) — 停牌家数天然高方差
+                              # (字段从 gap_tolerance 拆分, 此域从无 calendar_gaps 问题)
 
   # ── 两融族 (B3 2026-07-02 用户点名日更参数, 主升浪 D2 L1 叠加层; 实弹核证见 commit) ──
   margin_detail:
@@ -165,7 +168,15 @@ domains:
     available_after: "t+1"
     data_start: "20190102"        # 对齐 K线窗口 (源头 20100331 有, 消费方=D2 特征只需 K线窗内; 实测首日 949 个股)
     freshness_sla_trading_days: 2  # t+1 披露节奏, 给 1 天缓冲
-    min_rows_per_batch: 800       # 实测 20190102 滤 ETF 后 949 行 (两融标的最少期), 防截断/throttle
+    min_rows_per_batch: 2000      # 2026-07-08 从 800 提高(owner=analysis/gap_root_cause_20260708.md):
+                                   # 800 是历史地板值(2019首日949行, 两融标的最少期起点), 但代价是
+                                   # 20260703 真实52%截断(3472→1652)完全测不出(1652>800照样判合法)。
+                                   # 2000 锚定当前(2026)真实基线(实测20260703补齐后3472/20260112
+                                   # 3484)的0.6x安全边际, 与continuity_integrity的row_dip判定同一
+                                   # 比率口径; 两融标的池随监管扩容单调增长不会跌破此值(历史800地板
+                                   # 值只出现在2019年建域初期, 早已backfill完成不受影响)。此域仍是
+                                   # 单点瞬态异常(1/1090历史交易日), 提高阈值让sync_runner自身下次
+                                   # 复发时就能直接捕获进failure_queue, 不必等外部审计脚本抓。
     allow_empty_batch: false
 
   margin:                          # 交易所汇总 (SSE/SZSE/BSE 2-3 行/日): B4 市场感知大盘水位原料
@@ -174,25 +185,19 @@ domains:
     target_table: raw_tushare_margin
     grain: [trade_date, exchange_id]
     batch_mode: by_trade_date
+    split_by: {param: exchange_id, values: [SSE, SZSE, BSE]}   # 2026-07-08 根因修复(owner=
+      # analysis/gap_root_cause_20260708.md): 裸调 pro.margin(trade_date=d) 在2026年偶发
+      # (~0.5%交易日, 20260403/0430/0618/0626/0703共5例)漏返BSE/SZSE——vendor网关对"无过滤条件
+      # 汇总查询"存在补全遗漏怪癖, 非分页截断非披露滞后。显式按 exchange_id 三分片查询100%拿全
+      # (含上述全部历史"漏返"日期实测验证并已重拉补齐, 原 known_group_gaps 墓碑因此整段撤销——
+      # 当时判"永久缺失"是错的, 只是没换对查询形态)。此后每个交易日展开成3次独立调用, 同 grain
+      # 幂等 MERGE, 永久性修复(调用量代价: 日常同步 1→3倍, 已知悉)。
     pit_anchor: "trade_date; 同 margin_detail t+1 盘前披露 -> JOIN t-1"
     available_after: "t+1"
     data_start: "20190102"        # 实测首日 2 行 (SSE/SZSE)
     freshness_sla_trading_days: 2
-    min_rows_per_batch: 1         # 2026-07-02 回填实测: 20260403/0430/0618/0626 源端仅 SSE 1 行 (重拉确认非 throttle), 1 行=合法最小
+    min_rows_per_batch: 1         # split_by 修复后每次调用天然锚定单交易所=1行, 此阈值仍合法
     allow_empty_batch: false
-    gap_tolerance: annotate   # 2026-07-08: cross_section row_dip 同一现象降 pass (0703 已回补见下方
-                              # known_group_gaps 撤销记录; 0430/0618/0626 复核仍确认源端永久仅 SSE)
-    known_group_gaps:             # 2026-07-05 R4 workflow 二次 tinyshare 实测确认(非采集侧漏拉,
-                                   #   源端当日就只回 SSE): cross_section fail_missing_groups 精确墓碑
-                                   #   (按日期, 非 dead_groups 整组永久豁免 — BSE/SZSE 未来真断流仍应告警)
-                                   # 2026-07-08 撤销 20260703 条目: 当时(07-05)实测源端确实只回 SSE,
-                                   # 但 3 天后(07-08)复核 vendor 已回补 BSE+SZSE 共 3 行(真披露滞后非
-                                   # 永久缺失) — 已重拉补齐本地; 墓碑随之作废, 留着会变成事实错误的
-                                   # "假声明" (0403/0430/0618/0626 复核 vendor 至今仍只回 SSE, 保留)。
-      "20260403": [BSE, SZSE]
-      "20260430": [BSE, SZSE]
-      "20260618": [BSE, SZSE]
-      "20260626": [BSE, SZSE]
 
   # ── 市场感知 v2 族 (2026-07-02 调研+实弹; owner=analysis/market_pulse_design_20260702.md v2 第二批) ──
   dc_daily:                          # 东财板块指数 OHLC (行业/概念/地域全类型): dc 链 RS 双窗 + 广度/龙头史深 2025->2020
@@ -233,8 +238,9 @@ domains:
     freshness_sla_trading_days: 2
     min_rows_per_batch: 10           # 冰点日涨停可能极少; 实弹最少见 20190102=31
     allow_empty_batch: false
-    gap_tolerance: annotate   # 2026-07-08 实测 20260521/20260707 骤降日 grain-aware 核对 vendor 逐行
+    row_dip_tolerance: true   # 2026-07-08 实测 20260521/20260707 骤降日 grain-aware 核对 vendor 逐行
                               # 一致 0 缺失 — 涨停家数随市场情绪日日剧烈波动, 非缺陷
+                              # (字段从 gap_tolerance 拆分, 此域从无 calendar_gaps 问题)
 
   hm_detail:                         # 游资每日明细 (游资名 x 营业部席位 x 个股买卖): 打板资金温度, v1 全无此维度
     source: tushare
@@ -452,7 +458,14 @@ domains:
     target_table: raw_tushare_report_rc
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
     grain: [ts_code, report_date, org_name, report_title, quarter]
-    batch_mode: by_trade_date
+    batch_mode: by_ann_date   # 2026-07-08 根因修复(owner=analysis/gap_root_cause_20260708.md,
+      # 本次根因深查最严重发现, 比其余3域加总影响都大): 原 by_trade_date 只在**交易日历**上取
+      # report_date 的枚举值, 但 report_date 是研报**发布日**(真实日历概念), 实测周六/日均有
+      # 大量真实研报(抽样5个周六58-320行/5个周日163-1048行, 跨2022-2026年), 意味着 by_trade_date
+      # 从建域(2019)起就结构性排除了全部约2/7日历天的数据, 20260328(周六602行本地0行)只是这个
+      # 结构性排除的一个可见样本, 不是孤立缺口。改用已有的 by_ann_date 批模式(全日历日枚举,
+      # 与 org_holding 等"公告日含周末"型域同款机制, 见 sync_runner.py `_calendar_days` 注释
+      # "实测18%公告落周末"), date_param 沿用 report_date 无需改动 fixed_params(本域未声明)。
     date_param: report_date   # 接口日期参数 = 研报日期, 非 trade_date
     pit_anchor: "report_date; 卖方研报发布日 -> JOIN t-1 (研报盘后/隔日入库, 保守 t+1)"
     available_after: "t+1"
@@ -466,13 +479,22 @@ domains:
     freshness_date_column: report_date   # 2026-06-22 P0-6: 研报无trade_date列, SLA探测改report_date(频繁发布日频SLA合理)
     min_rows_per_batch: 1
     allow_empty_batch: true   # 长假后首日可能无新研报
-    gap_tolerance: annotate   # 2026-07-08: 21 日骤降窗口逐日中位数递减(1041→134研报量自然季节性回落,
+    row_dip_tolerance: true   # 2026-07-08: 21 日骤降窗口逐日中位数递减(1041→134研报量自然季节性回落,
                               # 非泄漏), grain-aware 抽验 20+ 日与vendor一致; 期间另发现 5 个真缺口
-                              # (0611/0612/0618/0702/0706, 已重拉补齐) — 这条 annotate 只覆盖"整体
-                              # 量级递减"本身, 不代表放弃对真缺口的检测(已用实测修正)
+                              # (0611/0612/0618/0702/0706, 已重拉补齐) — 这条只覆盖"整体量级递减"
+                              # 本身, 不代表放弃对真缺口的检测(已用实测修正; 字段从 gap_tolerance
+                              # 拆分, 此域从无 calendar_gaps 问题)。
+                              # 补记(根因深查 workflow, owner=analysis/gap_root_cause_20260708.md):
+                              # report_rc 存在持续、低幅、数月不收敛的背景噪音(vendor侧研报小范围
+                              # 修订/补录, 7个月后仍有差距不趋零)——这是该域的常态特征非缺陷, 但
+                              # 深查同时抓到一个独立的更大缺口(20260328, vendor 602行本地0行, 100%
+                              # 缺失, 已回填), 证明 annotate 不能被理解成"这域以后再也不用管了":
+                              # row_dip_tolerance 只吞小幅(<7%)日常噪音级别的骤降, 未来若出现类似
+                              # 20260328 这种整日归零的极端骤降, 仍应人工核实非想当然套用本条。
     known_empty_days: ["20230106", "20250919"]   # 2026-07-05 实测源端 pro.report_rc 两日均返0行
                                                    # (非采集侧问题), 墓碑排除。另: 2020-09~12 曾发现
-                                                   # 4个月真实采集缺口(88交易日), 已回填 6.5万行修复。
+                                                   # 4个月真实采集缺口(88交易日), 已回填 6.5万行修复;
+                                                   # 2026-07-08 根因深查又发现独立缺口 20260328(见上)。
 
   stk_surv:
     source: tushare
@@ -490,10 +512,22 @@ domains:
     freshness_date_column: surv_date   # 2026-06-22 P0-6: 调研无trade_date列, SLA探测改surv_date
     min_rows_per_batch: 1
     allow_empty_batch: true   # 部分交易日无机构调研披露
+    page_limit: 200   # 2026-07-08 根因深查(owner=analysis/gap_root_cause_20260708.md)实锤: 该接口
+                       # 裸调/limit>400 均硬顶400行(20260423裸调=400, 但实测真实量2989, 丢87%);
+                       # limit=200分页(offset 0/200/…/2800)精确收齐2989/2989无重复; 7/7历史抽样
+                       # 命中400的交易日复核100%证实被截断, 22%~87%不等——本条2026-07-05曾错误
+                       # 标注"10天已补拉修复", 实为同一截断bug的冰山一角, 见下方全历史重拉记录。
     gap_tolerance: annotate   # 2026-07-05 R4 workflow 逐日全量tinyshare实测: 75个历史空洞中65个
                               # (86.7%, 含2025-09~12约30天稠密簇)源端确认0行=真实事件稀疏; 另10天
                               # (20260613-20260701窗口)已实测源端有数据(144-400行/天)并已补拉修复,
-                              # 非本条容忍范围(增量调度锯齿型漏批, 见 r4_completion_20260704.md)
+                              # 非本条容忍范围(增量调度锯齿型漏批, 见 r4_completion_20260704.md)。
+                              # 此字段语义限定于 calendar_gaps(整日缺失), 不延伸到 cross_section
+                              # row_dip(见 check_continuity_integrity.py 的 row_dip_tolerance 字段,
+                              # 2026-07-08 因本域截断bug曾被gap_tolerance连带掩盖而拆分)。
+    row_dip_tolerance: true   # 2026-07-08 page_limit 修复+全历史重拉(774,855行)后复核: 14 个骤降日
+                              # 抽验4个(20260518/0525/0703/0706)全部用完整分页vendor核对精确一致
+                              # (801/281/188/154 全部吻合), 确认是修复后真实自然波动非残留截断——
+                              # 与本域此前"故意不设此字段留观察"的决定不同, 已用实测更新判断。
 
   ths_hot:
     source: tushare
@@ -537,6 +571,13 @@ domains:
     pit_anchor: "trade_date; 沪深港通当日盘后 -> JOIN t-1"
     available_after: "18:00"
     data_start: "20141117"   # 沪股通开通日
+      # 2026-07-08 复核不改动(owner=analysis/gap_root_cause_20260708.md): pit_anchor文字与
+      # report_rc/forecast同构("JOIN t-1")一度怀疑该套用"K线边界结构性孤立"物删2019年前数据
+      # ——2-agent独立调查+对抗综合裁定**不适用**, 关键区分: 本域grain=[trade_date]是逐日全量
+      # 流水(每交易日必有一行, 描述"当日北向净流入"这一独立完整事实), 不是report_rc/forecast
+      # 那种稀疏事件公告表(只在事件发生那天有行, 精确等值JOIN才有意义, 早于K线边界=永久对不上)。
+      # 2014-2018这段是完整连续的历史时间序列, 不存在"结构性对不上"问题, 只是暂无消费方(与"结构
+      # 性孤立"是两个不同判断)——删除会主动销毁未来K线历史窗口若回补后立刻可用的数据, 维持现状。
     freshness_sla_trading_days: 2
     min_rows_per_batch: 1
     allow_empty_batch: true   # 北向关闭日 (港股假期) 无数据合法
@@ -725,11 +766,25 @@ domains:
     target_table: raw_tushare_forecast
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
     grain: [ts_code, end_date, ann_date]   # 同股同期可修订 (revision 不同 ann_date) → grain 含 ann_date; 实弹峰值日 632 行无截断
-    batch_mode: by_trade_date
+    batch_mode: by_ann_date   # 2026-07-08 根因修复(owner=analysis/gap_root_cause_20260708.md, 与
+      # report_rc 同型): 原 by_trade_date 只在交易日历上枚举, 但 ann_date 是真实披露日历日,
+      # 实测周末确有预告(20260321周六1条/20240622周六4条), by_trade_date 结构性排除这些日期。
+      # 改用 by_ann_date(全日历日枚举), date_param 沿用 ann_date。
     date_param: ann_date   # 接口日期参数 = 业绩预告公告日 (非 trade_date; 实弹 forecast 不支持纯 period 查询)
     pit_anchor: "ann_date; 业绩预告公告日 (盘中/盘后披露) -> JOIN t-1 保守 (PEAD 事件锚, 早于正式财报)"
     available_after: "t+1"
-    data_start: "20080101"   # 业绩预告史约 2008 起; 回填首跑探底校准 (落库 min(ann_date) 对账)
+    data_start: "20190102"   # 2026-07-08 推翻 2026-07-05 R4 workflow"与income同类保留全历史"的
+      # 误判(owner=analysis/gap_root_cause_20260708.md, 用户"2008至今?不是说过跟K线时间周期一样
+      # 么"当场点破矛盾, 2-agent独立复核+对抗综合确认): forecast 的 pit_anchor 与 report_rc
+      # 几乎逐字相同(都是"事件公告日 -> JOIN t-1"精确锚点), git历史证实 forecast/report_rc 曾是
+      # 同批次(commit 00cb09e2/2212a5cf)引入的姐妹消费函数(load_forecast/load_analyst_reports,
+      # 同一套 DataAccess.get(ann_date<=asof) loader 模式), 后随2026-06-28纯数据平台重建同批
+      # 删除——不是"forecast 从未被消费"(income 那种自包含), 是"和 report_rc 曾平级并存于同一
+      # 消费层, 只是这轮打包漏查历史消费代码, 单凭0现存消费方就误套了income的类比"。
+      # daily(K线真相源)边界=20190102(见上方 line 117), 原 20080101 早了11年, 与 report_rc 原
+      # 声明早9年是同一结构性问题, 非程度差异——2019年前的 ann_date 若真按当前 pit_anchor 设计
+      # 重建 PEAD 特征层, 永久 JOIN 不到 daily 对应交易日, "收集了但用不上"。已物删2019年前
+      # 数据 + 改声明对齐, 不再制造用不上的深史假象(与report_rc 2026-07-05 同一处置)。
     freshness_sla_trading_days: 5   # 预告季末密集平日稀疏 (实弹 20260430/20260828 = 0 行, allow_empty)
     freshness_no_probe: 业绩预告季节性域, 同上 no 日频探测 (2026-06-22 P0-6)
     min_rows_per_batch: 1
@@ -792,9 +847,10 @@ domains:
                        # universe_filter(白名单60/00/30/68)后的正确过滤结果(vendor 实测 filtered
                        # dedup 后同为179, 0缺失) — 并非另有采集问题, 待跟进项已了结。
     data_start: "20230101"   # 对齐 cyq_perf/panel 可用窗 (stage-conditional 测窗)
-    gap_tolerance: annotate   # 2026-07-08 5 个骤降日(0521/0526/0601/0608/0702) grain-aware 核对
+    row_dip_tolerance: true   # 2026-07-08 5 个骤降日(0521/0526/0601/0608/0702) grain-aware 核对
                               # vendor(含 price/vol/buyer/seller 全维度)逐行一致 0 缺失 — 大宗交易
-                              # 笔数随市场情绪日日高方差, 非缺陷
+                              # 笔数随市场情绪日日高方差, 非缺陷(字段从 gap_tolerance 拆分, 此域
+                              # 从无 calendar_gaps 问题)
     pit_anchor: "trade_date (大宗当日盘后披露); JOIN 决策日 t 用 trade_date<=t (t-1 保守)"
     available_after: "t+1"
     freshness_sla_trading_days: 5
@@ -820,7 +876,15 @@ domains:
     date_param: period   # 季末日 YYYYMMDD (实弹: ann_date/start/end 全被代理拒)
     pit_anchor: "ann_date (行内字段); 快报披露日盘中/盘后 -> JOIN t-1 保守 (period 仅回填批次键, PIT 锚用行内 ann_date 早于正式财报晚于预告)"
     available_after: "t+1"
-    data_start: "20070101"   # 实测 20071231 已有 316 行; 回填首跑落库 min(end_date) 对账
+    data_start: "20070101"   # 2026-07-08 复核不改动(owner=analysis/gap_root_cause_20260708.md):
+      # forecast/report_rc 因"K线边界结构性孤立"物删2019年前数据后, 曾怀疑本域pit_anchor文字
+      # 结构相同("JOIN t-1")也该套用同一处置——2-agent独立调查+对抗综合裁定**不适用**: forecast
+      # 有实锤历史消费函数(load_forecast(), 与report_rc同批引入同批退役, 证明JOIN语义曾真实
+      # 运作过又被边界打断); express 从未存在过任何消费函数(git log -S 全历史只有注册commit,
+      # 无load_express), **没有消费方就没有可验证的"结构性孤立"逻辑**——"暂无消费方"和"结构性
+      # 孤立"是两个不同的判断, 只有前者不构成物删依据。维持现状, 待真正接特征层消费方时再核实
+      # 其 JOIN 边界, 不预先删除可能有用的历史数据。实测 20071231 已有 316 行; 回填首跑落库
+      # min(end_date) 对账
     freshness_sla_trading_days: 5
     min_rows_per_batch: 1
     allow_empty_batch: true   # 非财报季某 period 增量 0
@@ -868,7 +932,11 @@ domains:
     target_table: raw_tushare_share_float
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
     grain: [ts_code, ann_date, float_date, holder_name]
-    batch_mode: by_trade_date
+    batch_mode: by_ann_date   # 2026-07-08 根因修复(owner=analysis/gap_root_cause_20260708.md, 与
+      # report_rc/forecast 同型, 本域第二个独立根因——第一个是下方 page_limit 截断): 原
+      # by_trade_date 只在交易日历上枚举, 但 ann_date 是解禁公告的真实披露日历日, 实测周末确有
+      # 不小数量的公告(20260321周六12条/20240622周六102条), by_trade_date 结构性排除这些
+      # 日期。改用 by_ann_date(全日历日枚举), date_param 沿用 ann_date。
     date_param: ann_date          # 接口按公告日切片 (实弹 ann_date 单日 53-3814 行)
     page_limit: 6000   # 2026-07-05 P0 静默截断实锤 (R4 workflow 对抗复核抓获, 宪法第6条同型反例):
                        # 该域此前无 page_limit 声明, 全库 390 个交易日卡在 5900-6021 行(疑似同一硬
