@@ -91,6 +91,11 @@ domains:
     data_start: "20230103"        # 2026-06-12: 对齐实际落库防 drain 开闸 (文档支持 2020 起, B 书 W6 需要时回填再改回 20200102)
     freshness_sla_trading_days: 1
     min_rows_per_batch: 10        # 跌停冰点日可能极少, 仅防 0 行
+    page_limit: 1000   # 2026-07-09 根因深查第二轮收尾发现(owner=analysis/gap_root_cause_20260708.md):
+                        # 20250407(全球暴跌日, 真实2836只跌停)本地恰好卡整数2500 = 同步当时网关
+                        # 截断残留(vendor现裸调已返全量, 全历史仅此1天中招, 已重拉补齐2834行)。
+                        # 防御性分页防未来极端行情日复发——与 stk_limit(同为涨跌停榜, 2026-07-06
+                        # 因总量增长跨过隐式上限加page_limit:5000)完全同型场景。
     row_dip_tolerance: true   # 2026-07-08 实测 20260707(本地86 vs 中位161)逐行 grain-aware 核对
                               # vendor, 完全一致 0 缺失 — 涨跌停家数本随市场情绪日日波动, 非缺陷
                               # (字段从 gap_tolerance 拆分, 见 check_continuity_integrity.py 说明:
@@ -458,6 +463,11 @@ domains:
     target_table: raw_tushare_report_rc
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
     grain: [ts_code, report_date, org_name, report_title, quarter]
+    page_limit: 1500   # 2026-07-08/09 根因深查第二轮(23域page_limit横向扫描, owner=analysis/
+      # gap_root_cause_20260708.md)实锤: 该接口裸调硬顶3000行(20210428裸调=3000, 分页拉到3736,
+      # 缺失19.7%), 本地库多个日期恰好卡在整数3000印证同型截断。1500分页安全边际(远低于硬顶),
+      # 已激活 _fetch_paged 既有分页防线。此为 by_ann_date 修复(周末数据)之后独立发现的第二个
+      # 根因, 全历史需再次重新分页回填(见下方 backfill 记录)。
     batch_mode: by_ann_date   # 2026-07-08 根因修复(owner=analysis/gap_root_cause_20260708.md,
       # 本次根因深查最严重发现, 比其余3域加总影响都大): 原 by_trade_date 只在**交易日历**上取
       # report_date 的枚举值, 但 report_date 是研报**发布日**(真实日历概念), 实测周六/日均有
@@ -542,8 +552,13 @@ domains:
                            #   无法通过任何参数拿到, 本地 2026-02-27 停更 = 真断供 (非采集侧漏拉)。
     batch_mode: by_trade_date
     fixed_params:
-      data_type: "热股"   # 锁单榜声明: 实测该参数被接口忽略, 返回固定 8 类混合套餐 (442 行封顶,
-                          # 从不含热基) — 声明值本身不影响返回内容, 保留作意图记录。
+      data_type: "热股"   # 锁单榜声明: 实测该参数被接口忽略, 返回固定 8 类混合套餐 — 声明值本身
+                          # 不影响返回内容, 保留作意图记录。
+    page_limit: 1000   # 2026-07-09 根因深查第二轮(23域page_limit横向扫描, owner=analysis/
+      # gap_root_cause_20260708.md)实锤: 原以为的"442行封顶"是低量日的表面现象, 真实硬顶是2000
+      # 行(本地库多日恰好卡在整数2000印证同型截断), 实测20251028裸调=2000, 分页拉到8769,
+      # **缺失77.2%**——是本次23域扫描里最严重的单一截断案例。1000分页安全边际, 已激活
+      # _fetch_paged 既有分页防线。全历史需重新分页回填(见下方backfill记录)。
     pit_anchor: "trade_date; 热榜 22:30 更新 -> 当日热度只能 JOIN t+1 决策"
     known_empty_days: ["20240312"]   # 2026-06-28 实测源端单日空洞 (ths_hot 20240312 返0, 邻日560); 墓碑不再每天重探
     known_group_gaps:   # 2026-07-05 R4 workflow 二次 tinyshare 实测确认: "热股"(非热基, 两者不同性质)

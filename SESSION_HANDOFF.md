@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-07-09 02:57:13 CST
+**Snapshot 时间**: 2026-07-09 23:08:10 CST
 
 ## 主线状态
 
@@ -44,13 +44,14 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `356ccdc3 fix: 完整审计尾部22项WARN收口 — declared_drift抑制机制 + 12域行数骤降逐个实测(4真缺口回填+2假警报纠偏+6域annotate)` |
-| 最近 24h commits | 9 |
-| 未 commit 文件 | 10 |
+| HEAD | `81d27913 fix: 6域数据缺口根因深查+根治 — margin查询形态/margin_detail阈值/stk_surv page_limit截断/report_rc+forecast+share_float周末数据结构性排除` |
+| 最近 24h commits | 1 |
+| 未 commit 文件 | 1 |
 
 ### 最近 10 commits
 
 ```
+81d27913 fix: 6域数据缺口根因深查+根治 — margin查询形态/margin_detail阈值/stk_surv page_limit截断/report_rc+forecast+share_float周末数据结构性排除
 356ccdc3 fix: 完整审计尾部22项WARN收口 — declared_drift抑制机制 + 12域行数骤降逐个实测(4真缺口回填+2假警报纠偏+6域annotate)
 60811466 feat: legacy-flow-integrity 从informational升为真硬闸
 6af3d67e fix: check_legacy_flow_integrity.py C1伪绿收口 + check_experiment_harness.py死代码清理
@@ -60,12 +61,11 @@
 9cdccda0 feat: SERVE读层门系统性收口 — 退役伪绿D1/D2, 提升scan_consumer_bypass为默认执法
 e74cb228 fix: 独立核实批发现的2处文档遗留 + 1处轻微残留 — 13簇计划真正收口
 c742d224 feat: 全仓库死代码普查收官 — 簇1+2+13: 旧前端整体删除 + PROJECT_INDEX架构自相矛盾收口
-bcac60eb fix: CI Smoke import 步骤引用已删 services.api_cache — 修连红5次的根因
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**10 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**1 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 
