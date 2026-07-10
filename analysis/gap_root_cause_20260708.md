@@ -224,3 +224,51 @@ forecast/share_float 全部 PASS(0 warn/0 fail); stk_surv 仅剩 1 项已知的�
 **最终数据规模**: margin(回填4日)/ margin_detail(阈值调整无需回填)/ stk_surv(1191批,
 774,855行) / report_rc(2745批, 1,604,458行) / forecast(2745批, 47,321行, K线边界修正后
 规模从原计划的6600+日历日大幅收窄) / share_float(2745批, 1584.7万行 + 10日补拉599,926行)。
+
+## 第三轮: 8维度全地基审计 + READY_WITH_FIXES 九项修复 (2026-07-09~10, 用户"全方位检查+设置目标持续推进")
+
+15-agent workflow(8维度并行审计 + HIGH发现对抗复核 + 收敛裁决)对全部47域做了含本战役新学维度的
+全面检查: batch_mode×date_param语义匹配 / 非by_trade_date域page_limit盲区 / 墓碑新鲜度 /
+min_rows校准 / 四地基 / PIT锚一致性 / vendor抽样(正确口径) / 治理门健康。
+
+**裁决: READY_WITH_FIXES** — 干净面: 四地基主体全过(K线1822交易日0缺口/grain 0重复/universe
+纯度100%/日历前瞻119天), 治理门7/7绿, vendor抽样8/8精确一致, 无NOT_READY级损坏。需先修9项
+(4 HIGH + 5 MEDIUM), 全部已执行:
+
+| # | 修复 | 执行 |
+|---|---|---|
+| H1 | stk_surv 周末调研结构性漏采(与report_rc同型, 自建域起; vendor实测财报季周末≥400行/天) | batch_mode→by_ann_date + 全日历回填(2646批/829,417行, **周末新增54,063行**, 实测周六20231028=524行/周日20250427=1803行远超裸调400硬顶) |
+| H2 | ths_hot 周末热榜漏~10-15万行(vendor实测周六394-560行, 含热基死榜停更前周末历史) | batch_mode→by_ann_date + date_param显式声明 + 全日历回填(执行中) |
+| H3 | block_trade 20250917 墓碑过期掩盖真缺口(vendor已补发至210行原始) | 撤墓碑+回填178行(grain去重+白名单后, 与审计预期精确一致) |
+| H4 | margin_detail min_rows=2000 使594个2019-2021真实完整日成drain永久幻影缺口 | sync_runner 新增**时代分段阈值机制**(min_rows_since/min_rows_before, drain与run_domain同口径) + 4个red-green单测(含"旧行为下幻影缺口最小复现"对照组) |
+| M5 | balancesheet/fina_indicator 硬编end_date=20260612(H1财报季新公告结构性拉不到且零告警) | 去硬编, runner动态注入 |
+| M6 | 墓碑9抽4翻转(44%): sw_daily 20260707/moneyflow 20231122/ths_hot组20260703/block_trade 20250917 全部过期 | 4条全撤销(留带日期的撤销记录注释); 沉淀规则"距今<5交易日的空洞禁立墓碑" |
+| M7 | block_trade available_after 双配置矛盾(sync_registry t+1 vs data_access.yaml eod, 21 entity中唯一方向性冲突) | data_access.yaml对齐t+1; spec.py缺省"eod"→"t+1"(不安全缺省方向修正) |
+| M8 | index_daily 隐藏8000上限实锤(裸调恰返8000且头部被砍) / stock_basic 5535逼近6000且是universe身份真相源 | 各声明page_limit(3000, offset分页均实弹验证) + min_rows校准(100→3200) |
+| M9 | fina_indicator pit_anchor "取update_flag=1"对87%行不可执行(API漂移后全NULL) | 改纯ann_date口径 + 清陈旧grain注释 |
+
+**LOW攒批一并落**: min_rows 校准8域(dc_member 1000→7000/dc_index→400/trade_cal→8000/
+moneyflow_ind_dc→600+era-aware/limit_cpt_list→12/stock_st→100/hm_detail→60/ths_hot→250/
+index_dailybasic→1100), index_dailybasic补pit_anchor+available_after(47域唯一双缺),
+index_daily_benchmark补available_after, stk_surv date_param澄清注释, ths_hot dead_groups机制
+断言更正(data_type是输出列名, market才是真输入参数 — 当年"参数被忽略"的裁决测的是不存在的参数),
+adj_factor"唯一盘前"措辞更正, kpl_list pit_anchor文字同步。
+
+**被复核推翻的假警报**(防重查): dc_member "近60日恒定87856"证伪(真实波动30k-89k, vendor核证
+为源端体量); block_trade "泄漏方向"反转(实测当日23:38已可用, 错的是过保守的t+1声明方向而非泄漏)。
+
+### 执行期间新增3个独立发现(全部当场修复)
+
+1. **ths_hot 切换事故(烧~150次API后抓获)**: 切by_ann_date时漏声明date_param, 该分支默认值是
+   "ann_date"(非by_trade_date的"trade_date") → 发给vendor的参数变成未知参数被忽略, 每页返回
+   相同全量→分页永不收敛烧满50页/天防御上限。教训: **切batch_mode必须核对新分支全部默认值差异**,
+   stk_surv同批切换没炸纯因它本来就显式声明了date_param。
+2. **by_ann_date分支"显式--start丢第一天"残留bug**: 单日验证暴露2天范围只跑1批 — by_trade_date
+   分支2026-07-06修过的同款判据bug在by_ann_date分支原样存在(当时只修了一处, 同型判据散落两处
+   未一并修)。已修+实测验证(2批/788行/两天各394行落库)。
+3. **裸python PATH陷阱(机器重启触发, mythos同型第N例)**: 重启后裸`python`从PATH消失+PATH顺序
+   变化使python3解析到系统3.9 → safe_commit.sh/chunkyctl全部治理门command-not-found假红(8个
+   沙箱测试失败)。根治: 两脚本加PY解析器(优先项目venv→python3→python), 替换全部24处裸调用。
+
+**验证**: 全量测试587 passed+1 skipped(8个PATH失败测试全部恢复); stk_surv周末数据实测落库;
+ths_hot回填修正后单日验证精确落库; 6域continuity check全绿。

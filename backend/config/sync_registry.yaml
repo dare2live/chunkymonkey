@@ -73,7 +73,9 @@ domains:
     pit_anchor: "trade_date; 盘后更新 -> JOIN t-1 (与 moneyflow 同)"
     available_after: "18:00"
     data_start: "20230911"        # 2026-06-28 修: 实测源端真起点=20230911 (旧 20230901 早10天致 20230901-08 假缺口每天重探); 东财个股资金流 ~2023-09 起
-    known_empty_days: ["20231122"]   # 实测源端单日空洞 (探测返0非throttle); 墓碑不再每天重探+告警疲劳
+    # known_empty_days ["20231122"] 撤销 2026-07-09 (全审计墓碑复探, owner=analysis/
+    #   gap_root_cause_20260708.md): 实测 vendor 现返 5075 行且本地已在库同 5075 — 某次回填
+    #   已静默补上但豁免声明从未撤销, 墓碑与库内事实矛盾。老墓碑同样会过期, 非只近期日期。
     freshness_sla_trading_days: 1
     min_rows_per_batch: 4000      # 实弹 5419-5965 行 (2023Q4+全宇宙)
     allow_empty_batch: false
@@ -142,7 +144,9 @@ domains:
     available_after: "09:20"
     data_start: "20220104"        # 接口支持 2016+, 项目 K 线窗口 2022+ 对齐
     freshness_sla_trading_days: 1
-    min_rows_per_batch: 50        # ST 股票数量级 100-200
+    min_rows_per_batch: 100       # 2026-07-09 全审计校准: 全历史 histmin=111(20240329), 近60日
+                                   # 中位 208; 本表是 PIT universe 过滤真相源, ST 批腰斩=禁入股
+                                   # 漏进 universe(红线相邻); 100≤histmin 零幻影缺口
 
   suspend_d:
     source: tushare
@@ -174,14 +178,15 @@ domains:
     data_start: "20190102"        # 对齐 K线窗口 (源头 20100331 有, 消费方=D2 特征只需 K线窗内; 实测首日 949 个股)
     freshness_sla_trading_days: 2  # t+1 披露节奏, 给 1 天缓冲
     min_rows_per_batch: 2000      # 2026-07-08 从 800 提高(owner=analysis/gap_root_cause_20260708.md):
-                                   # 800 是历史地板值(2019首日949行, 两融标的最少期起点), 但代价是
-                                   # 20260703 真实52%截断(3472→1652)完全测不出(1652>800照样判合法)。
-                                   # 2000 锚定当前(2026)真实基线(实测20260703补齐后3472/20260112
-                                   # 3484)的0.6x安全边际, 与continuity_integrity的row_dip判定同一
-                                   # 比率口径; 两融标的池随监管扩容单调增长不会跌破此值(历史800地板
-                                   # 值只出现在2019年建域初期, 早已backfill完成不受影响)。此域仍是
-                                   # 单点瞬态异常(1/1090历史交易日), 提高阈值让sync_runner自身下次
-                                   # 复发时就能直接捕获进failure_queue, 不必等外部审计脚本抓。
+                                   # 800 是历史地板值(2019首日949行), 测不出 20260703 真实52%截断
+                                   # (3472→1652)。2000 锚定当前(2026)真实基线 0.6x, 让下次复发直接
+                                   # 进 failure_queue。
+    min_rows_since: "20220104"    # 2026-07-09 全审计HIGH#4修复: 原注释断言"历史低行数不受影响"只对
+                                   # run_domain 成立, 对 drain 不成立(drain 全历史扫"完整日", 2000
+                                   # 阈值会把 594 个 2019-2021 真实完整日[941-1999行, 两融标的池
+                                   # 2021年才扩过2000]永久判成幻影缺口反复重拉不收敛)。时代分段:
+                                   # 本日期起用 2000, 之前用 min_rows_before。
+    min_rows_before: 800          # 2019-2021 时代地板(历史最低 941, 800 全历史零幻影缺口)
     allow_empty_batch: false
 
   margin:                          # 交易所汇总 (SSE/SZSE/BSE 2-3 行/日): B4 市场感知大盘水位原料
@@ -231,7 +236,7 @@ domains:
     # tag 语义 (实弹 20260630): 无参默认 = 涨停单榜 168 行 == 显式 tag=涨停 168 行; 炸板 34/跌停 20 是独立 tag 拉取 0 重叠,
     #   需要时另开域显式传 tag。注意: 不写 fixed_params — sync_runner by_trade_date 分支不合并 fixed_params
     #   (ths_hot 反例: 声明 data_type=热股 实际全 8 榜入库, fixed_params 是死配置; 本域靠 API 默认+grain 含 tag 防漂移)。
-    pit_anchor: "trade_date; 开盘啦涨停榜单盘后 -> JOIN t-1"
+    pit_anchor: "trade_date; 开盘啦涨停榜单, 实测 t+1 才可拉取(两次实测22:15/22:40仍0行, available_after 已改 t+1) -> JOIN t-1"
     # 2026-07-06 改 18:00→t+1 (两次独立实测复发, 触发 analysis/data_foundation_audit_20260703.json
     # 自己订的判据"若复发应把 available_after 后移"): 20260702 22:15 (审计记录) + 20260706 22:40
     # (本次直接 tushare 探针) 均返回 0 行, 但事后再查均已有数据 (0702=154行/0703=156行, 20260706
@@ -259,7 +264,10 @@ domains:
     available_after: "18:00"
     data_start: "20220816"           # 实弹二分边界: 20220815=0 / 20220816=161行 (设计稿建议 20220901 偏保守, 20220810=0 复核一致)
     freshness_sla_trading_days: 2
-    min_rows_per_batch: 20           # 实弹 2022 起步期 117-161 行/日, 近期 304-362; <20=半空嫌疑
+    min_rows_per_batch: 60           # 2026-07-09 全审计校准: 全历史 histmin=69(20230221 真实市场
+                                      # 冰点), 近60日中位 278; 60≤histmin 零幻影缺口(中位x0.6=167
+                                      # 会产生 220 个历史幻影缺口不可用, 龙虎榜家族长周期波动属性);
+                                      # 中间态检测主力=continuity row_dip 邻域相对口径, 此为地板
     allow_empty_batch: false
 
   hm_list:                           # 游资名录 (静态: name/desc/orgs), hm_detail 的 hm_name 维表
@@ -314,7 +322,9 @@ domains:
     available_after: "00:00"
     data_start: "20200101"
     freshness_sla_trading_days: 30 # 日历覆盖到未来, 滞后语义不同: 检查 max(cal_date) > today+30
-    min_rows_per_batch: 100
+    min_rows_per_batch: 8000       # 2026-07-09 全审计校准: 实测全表(=单次 full_refresh 批) 13162
+                                    # 行, 8000≈0.6x; 原 100 对 3000 行级网关截断(本网关惯犯指纹)
+                                    # 无检测力, 若丢未来年份段只剩此门(max(cal_date)检查兜一半)
 
   # ── 基础: 真股身份真相源 (universe 身份层, 2026-06-19 替 akshare dim_active 前缀猜市场) ──
   stock_basic:
@@ -324,7 +334,13 @@ domains:
     # 不设 universe_filter: 本表=universe 身份真相源本身, 保全市场(含北交所/退市)于 raw,
     #   排除(BSE/ST)下沉到消费侧 (dim_active 重建 + get_active_universe), 防真相源被前缀门误删。
     grain: [ts_code]
-    batch_mode: full_refresh       # 单接口 ≤6000 行一次拉完全市场 (50次/分, 2000积分)
+    batch_mode: full_refresh       # 单接口一次拉完全市场 (50次/分, 2000积分); "≤6000 行上限"原为
+                                    # 未实测声明, 2026-07-09 全审计标注
+    page_limit: 3000               # 2026-07-09 全审计MEDIUM修复: 本表=universe 身份真相源, 当前
+                                    # 5535 行已逼近传说的 6000 上限(未实测真值, 上市股~150-250只/年
+                                    # 增长 2-3 年内越线), 若截断恰返 6000 行 > min_rows 5000 门照过
+                                    # =静默丢几百只股。offset 分页 2026-07-09 已实弹验证可用
+                                    # (limit=3000,offset=3000 返 2527 行), 一行配置消雷。
     fixed_params:
       list_status: L               # 在市股 (current active master, like-for-like 替 ak.stock_info_a_code_name); 退市生存者偏差走 PIT 历史宇宙另案
     pit_anchor: "list_date; 静态身份快照 (含 list_date/delist_date)"
@@ -348,7 +364,9 @@ domains:
     data_start: "20250102"   # E8 探底实测 (更早单日无数据, 2026-06-12 复核一致)
     page_limit: 5000         # 2026-06-12: catalog 单次上限 5000 实锤; 无分页曾静默截断 (整 8000/5000 pin, 754 概念单日仅见 27-354)
     freshness_sla_trading_days: 2
-    min_rows_per_batch: 1000
+    min_rows_per_batch: 7000   # 2026-07-09 全审计校准: 全历史 histmin=7919(20250106), 近60日恒
+                                # 87856; 原 1000 对分页中途断供只落 1 页 5000 行(缩水94%)无检测力
+                                # — 该域正是曾静默截断实锤的域; 7000≤histmin 零幻影缺口
 
   dc_index:
     source: tushare
@@ -361,7 +379,8 @@ domains:
     data_start: "20250102"   # E8 探底实测
     page_limit: 5000         # 2026-06-12: catalog 单次上限 5000, 与 dc_member 同防截断
     freshness_sla_trading_days: 2
-    min_rows_per_batch: 100
+    min_rows_per_batch: 400    # 2026-07-09 全审计校准: 全历史 histmin=435(20250424), 近60日中位
+                                # 1022; 400≤histmin 零幻影缺口, 原 100 比率仅 0.10 过松
 
   moneyflow_ind_dc:
     source: tushare
@@ -373,7 +392,13 @@ domains:
     available_after: "18:00"
     data_start: "20240102"   # E8 探底实测
     freshness_sla_trading_days: 2
-    min_rows_per_batch: 50   # 2026-06-12 修正: 2024-2025 年初实测 86 行/日 (仅行业板块) 为合法全量, 原 200 误配致 drain 永不收敛
+    min_rows_per_batch: 600   # 2026-07-09 全审计校准(era-aware): 2026 年稳定 981-1027 行,
+                               # 600≈0.6x 当前基线; 该域正是"原 200 误配致 drain 永不收敛"反例
+                               # 本尊, 时代分段后新老两个时代各自安全
+    min_rows_since: "20260101" # 2024 全年恒 86 行 / 2025 从 86 涨到 982(板块分类扩容) / 2026 起
+                               # 稳定 ~1000 — 本日期前用 min_rows_before, 防 405 个历史真实完整日
+                               # 成 drain 幻影缺口
+    min_rows_before: 80        # 2024-2025 时代地板(histmin=86)
     # coverage_note (2026-07-05 R4 workflow 复核 declared_vs_actual "2024年0.14x参照年2025"警告):
     # 非数据缺失, 是源端行业/概念分类体系逐年扩容(86→579→981个代码)导致的自然行数增长, 2024年
     # 按月分布无连续缺失窗口。不建议加 gap_tolerance(那是日期级空洞用的字段, 这里没有日期空洞)。
@@ -388,7 +413,10 @@ domains:
     available_after: "18:00"
     data_start: "20240102"   # E8 探底实测
     freshness_sla_trading_days: 2
-    min_rows_per_batch: 1
+    min_rows_per_batch: 12    # 2026-07-09 全审计校准: 实测全历史 607 天每天恰 20 行(固定 top-20
+                               # 榜单, 非行数波动域), 12=0.6x20 与 row_dip 同口径; 原 1 等于无保护。
+                               # 若未来真出现 <20 行日(弱市板块不足)会进 failure_queue 一次, 届时
+                               # 按实测下调而非回退 1
     allow_empty_batch: true   # 冰点日可能无涨停板块
 
   # ── 产业链层 L1: 主营业务构成 (Serenity A股化数据底座, 2026-06-11 实测可用) ──
@@ -512,9 +540,18 @@ domains:
     target_table: raw_tushare_stk_surv
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
     grain: [ts_code, surv_date, rece_org]
-    batch_mode: by_trade_date
-    date_param: trade_date    # tushare stk_surv 接口日期参数=trade_date(调研日); 返回列=surv_date
-    pit_anchor: "surv_date 机构调研日 -> JOIN t+1 (调研纪要盘后/隔日披露, 保守可见)"
+    batch_mode: by_ann_date   # 2026-07-09 根因修复(全审计HIGH#1, owner=analysis/
+      # gap_root_cause_20260708.md): 接口 trade_date 参数实际过滤的是 surv_date(调研日, 真实
+      # 日历日概念——业绩说明会/机构调研常落周末), 原 by_trade_date 只在交易日历枚举 → 全部
+      # 周末调研自建域(2021-08)起结构性漏采(本地77万行星期分布周末恒0行; vendor实测财报季
+      # 周末 20231028/20250427 均返400行=恰撞裸调硬顶, 真实量≥400/天)。2026-07-08 的
+      # page_limit 全历史重拉也只重拉了交易日, 未触及此缺口。改全日历日枚举(与 report_rc/
+      # forecast/share_float 同款药方), 全历史非交易日已回填。
+    date_param: trade_date    # tushare stk_surv 接口日期参数名=trade_date(实际按调研日过滤);
+                               # 注意: raw 表无 trade_date 列(镜像列=surv_date), 此键是纯 API
+                               # 参数名; 锚定列走 freshness_date_column=surv_date(2026-07-09
+                               # 全审计LOW澄清, 防未来 drain 扩展误 SELECT trade_date 列)
+    pit_anchor: "surv_date 机构调研日, t+1 盘前可用 -> 决策日 t JOIN surv_date<=t-1 (调研纪要盘后/隔日披露)"
     available_after: "t+1"
     data_start: "20210805"   # 2026-07-04 declared_vs_actual 修正: 300750/002594 两股范围查询确认
                               # 该起点吻合制度性起点 (机构调研纪要 2021 年才有源端数据), 非采集缺口
@@ -545,15 +582,30 @@ domains:
     target_table: raw_tushare_ths_hot
     grain: [trade_date, data_type, ts_code, rank_time]   # 实测同股同日多时点榜单快照, rank_time 必须入键
     freshness_group_col: data_type   # 分组新鲜度: 8 榜共表, 表级 MAX(trade_date) 探不到单榜断流
-    dead_groups: ["热基"]   # 2026-07-04 二次核证坐实死榜 (今早"推翻死榜"的判断本身错误 — 见反例):
-                           #   逐值测试 pro.ths_hot(data_type=X) X∈{热股/热基/概念板块/ETF/不存在值} 全部
-                           #   返回同一份 442 行混合套餐 (热股/ETF/可转债/美股/港股/概念/行业/期货 8类) —
-                           #   接口对 ths_hot 的 data_type 参数已彻底忽略, "热基"在当前 tushare 接口层面
-                           #   无法通过任何参数拿到, 本地 2026-02-27 停更 = 真断供 (非采集侧漏拉)。
-    batch_mode: by_trade_date
+    dead_groups: ["热基"]   # 死榜结论成立(2026-07-09 全审计复测: market='热基' 20260506/20260708
+                           #   均返0行, 源端 2026-02-27 后确实停更, 本地 max=20260227 吻合)。
+                           #   但 2026-07-04 裁决注释里的机制断言有误, 2026-07-09 更正: data_type
+                           #   是**输出列名**, 真正的输入过滤参数是 **market**(实测 market='热股'
+                           #   返97行纯热股 / market='热基' 20260225 停更前控制组返100行纯热基) —
+                           #   当年"逐值测 data_type 全返混合套餐"测的是不存在的输入参数, 网关
+                           #   忽略未知参数返全套餐 ≠ "参数被忽略"。若未来要热基历史(<=20260227)
+                           #   可用 market='热基' 精确回补。
+    batch_mode: by_ann_date   # 2026-07-09 根因修复(全审计HIGH#2, owner=analysis/
+      # gap_root_cause_20260708.md): 同花顺热榜是 App 侧每日更新的真实日历日概念(股民周末照刷),
+      # 原 by_trade_date 只在交易日历枚举 → 全部周末热榜结构性漏采(本地606个日期全落周一至
+      # 周五; vendor实测周六 20260321=394行/20240622=560行, 含热基100行说明回填还能顺带补全
+      # 热基死榜停更前的周末历史)。~260+个周末 × 394-560行/天 ≈ 10-15万行结构性缺失。改全
+      # 日历日枚举; pit_anchor 已是"JOIN t+1 决策"语义, 周末行天然 as-of 到下一交易日, 消费
+      # 侧兼容。全历史非交易日已回填。
+    date_param: trade_date   # 2026-07-10 修切换事故(反例, 烧掉~150次API后抓获): 切 by_ann_date
+      # 时漏声明此键, 而 by_ann_date 分支的 date_param 默认值是 "ann_date"(非 by_trade_date 的
+      # "trade_date") → 实际发给 vendor 的参数变成 ann_date=YYYYMMDD, 网关忽略未知参数每页返回
+      # 相同全量套餐 → 分页永不收敛烧满 50 页防御上限才判败, 每个日历日烧 50 次调用。教训:
+      # **切 batch_mode 必须核对新分支的全部默认值差异**(date_param/日期枚举/watermark 语义),
+      # 不能只改一个键; stk_surv 同批切换没炸纯因它本来就显式声明了 date_param。
     fixed_params:
-      data_type: "热股"   # 锁单榜声明: 实测该参数被接口忽略, 返回固定 8 类混合套餐 — 声明值本身
-                          # 不影响返回内容, 保留作意图记录。
+      data_type: "热股"   # no-op 参数(2026-07-09 更正: market 才是真输入参数, 见 dead_groups 注);
+                          # 现行为=拉全 8 类套餐(符合表设计, grain 含 data_type 区分), 保留作意图记录。
     page_limit: 1000   # 2026-07-09 根因深查第二轮(23域page_limit横向扫描, owner=analysis/
       # gap_root_cause_20260708.md)实锤: 原以为的"442行封顶"是低量日的表面现象, 真实硬顶是2000
       # 行(本地库多日恰好卡在整数2000印证同型截断), 实测20251028裸调=2000, 分页拉到8769,
@@ -567,11 +619,15 @@ domains:
       "20260109": [热股]
       "20260113": [热股]
       "20260122": [热股]
-      "20260703": [热股]
+      # "20260703" 条目撤销 2026-07-09 (全审计墓碑复探): 2026-07-09 page_limit 全历史分页回填
+      # 已带回该日热股97行(vendor 实测同97行在场), 数据在库但墓碑未同步撤销 — 已与事实矛盾。
+      # 其余 3 日实测 market=热股 均仍返 0 行, 墓碑仍成立。
     available_after: "22:30"
     data_start: "20240101"   # 热榜历史窗较短; 回填首跑探底校准
     freshness_sla_trading_days: 2
-    min_rows_per_batch: 50   # 实测单榜 444 行
+    min_rows_per_batch: 250   # 2026-07-09 全审计校准: 近60日中位444/histmin=260(20240314), 250
+                               # ≤histmin 全历史零幻影缺口; 原 50 在 page_limit 防线失效退回半量
+                               # 截断(~222行)时照样放行, 刚实锤过77%截断的域检测阈值必须跟上
     allow_empty_batch: false
 
   # dc_hot 暂缓注册 (2026-06-11): 同为多榜单接口, 参数语义 (market/hot_type 取值) 未实测核证,
@@ -625,7 +681,7 @@ domains:
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
     grain: [ts_code, trade_date]
     batch_mode: by_trade_date
-    pit_anchor: "trade_date; 盘前 9:15-20 当日复权因子入库 -> 当日可用 (唯一盘前可用域)"
+    pit_anchor: "trade_date; 盘前 9:15-20 当日复权因子入库 -> 当日可用 (盘前可用域之一, 另: stk_limit 08:40/stock_st 09:20 — 2026-07-09 全审计更正原'唯一'措辞)"
     available_after: "09:20"
     data_start: "20190102"   # 2026-06-12 范围决策: 对齐 daily (LHB forward 窗+缓冲, 原值 20050104 全史与 chain10 同议)
     freshness_sla_trading_days: 1
@@ -715,11 +771,23 @@ domains:
     # 000852.SH (中证1000) 2026-07-02 从 code_list 移除: 实测 tushare index_dailybasic 不覆盖该指数
     #   (06-13 起 3 次 sync_batch_failed 全史空返; 现表覆盖=6指数全到 20260701)。regime 特征若需中证1000
     #   用 index_daily (行情有) 非 dailybasic (估值面源端无)。
-    fixed_params: {start_date: "20050101"}   # end_date 由 runner 动态注入 latest_completed_trade_date (§4.4 禁钉死日期; 旧 hardcode 20260612 致 HS300 永久 stale 拖累 RS+板块regime, 2026-06-22 根治). HS300 全史 <5000 行实测无截断险
+    fixed_params: {start_date: "20050101"}   # end_date 由 runner 动态注入 latest_completed_trade_date (§4.4 禁钉死日期; 旧 hardcode 20260612 致 HS300 永久 stale 拖累 RS+板块regime, 2026-06-22 根治)
+    page_limit: 3000   # 2026-07-09 全审计MEDIUM修复: 实弹指纹实锤该接口隐藏单次上限=8000整
+                        # (000001.SH 请求 1991 起恰返 8000 行且头部被静默砍到 19930816 = "返回
+                        # 最近N行"教科书截断)。原注释"HS300 全史 <5000 行无截断险"双重过期: 本地
+                        # 每指数已 5223 行越过 5000, 真实上限是 8000 非 5000; 现窗口 ~242 行/年
+                        # 增长约 2037 年自然越 8000, data_start 前移/新增深史指数则立刻触发。
+                        # offset 分页已实弹验证(3000+2223=5223 无重叠全覆盖), 与姊妹域
+                        # index_dailybasic 同款 3000。
     pit_anchor: "trade_date; 指数收盘即定, 当日可用 (基准超额无前瞻)"
+    available_after: "18:00"       # 2026-07-09 全审计LOW修复: pit_anchor 声明"当日可用"但原缺此
+                                    # 机器字段 → _available_after_passed 对缺失返 False(保守) =
+                                    # 同日补拉永不触发, 文字与机器行为矛盾。保守按 18:00 注册。
     data_start: "20050101"
     freshness_sla_trading_days: 1
-    min_rows_per_batch: 100        # 单指数全史数千行; <100 = 截断/异常
+    min_rows_per_batch: 3200       # 2026-07-09 全审计校准: 单指数批 3910(最小 399006.SZ)~5223 行
+                                    # 且批量单调增长, 3200 >已知3000截断指纹 <最小批, 永久安全;
+                                    # 原 100 对 3000 级截断完全测不出(重建/回填场景静默丢 2005-2013 段)
     allow_empty_batch: false
   index_member_all:
     source: tushare
@@ -731,7 +799,9 @@ domains:
     code_list: ["801010.SI","801030.SI","801040.SI","801050.SI","801080.SI","801110.SI","801120.SI","801130.SI","801140.SI","801150.SI","801160.SI","801170.SI","801180.SI","801200.SI","801210.SI","801230.SI","801710.SI","801720.SI","801730.SI","801740.SI","801750.SI","801760.SI","801770.SI","801780.SI","801790.SI","801880.SI","801890.SI","801950.SI","801960.SI","801970.SI","801980.SI"]
     pit_anchor: "in_date/out_date 原生 PIT; JOIN 决策日 t 须 in_date<=t AND (out_date IS NULL OR out_date>t)"
     data_start: "19891101"        # in_date 最早 (申万成分史起点, 实测)
-    freshness_sla_trading_days: 30  # 成分调整低频 (季度级)
+    freshness_sla_trading_days: 30  # 成分调整低频 (季度级)。无 available_after 是有意的(2026-07-09
+                                     # 全审计注): in_date/out_date 区间原生 PIT 表, 无逐日发布时刻
+                                     # 语义, _available_after_passed 对缺失返 False=不做同日补拉, 正确
     min_rows_per_batch: 20         # 单 l1 成分史数十~数百行 (801010 实测 126); <20 可疑
     allow_empty_batch: false
     fixed_params: {is_new: "Y"}    # 当前成分 (out_date NULL=仍在); 2026-06-15 显式化: is_new 默认只 Y, 历史剔除走 _hist 域
@@ -765,13 +835,20 @@ domains:
                        # 声明 → _fetch_paged 走无分页直调, 16 年全量单次请求被网关默认截断只回最近 ~3000 行
                        # (offset=0,limit=3000/6000 均返回恰 3000 行, 且不带 limit 参数的裸调用同样截 3000)。
                        # 分页机制本身仍保留 (防未来任何范围扩大时再次静默截断)。
+    pit_anchor: "trade_date; 指数级估值/换手盘后更新 -> JOIN t-1"   # 2026-07-09 全审计MEDIUM补:
+                                    # 原是 47 域中唯一缺 pit_anchor+available_after 的域(lineage
+                                    # acquire 边写入空锚), 与姊妹域 index_daily_benchmark 对齐补声明
+    available_after: "18:00"        # 保守注册(未做定点探针, 指数级盘后数据惯例时段); JOIN t-1 语义
+                                    # 下声明偏早只影响同日补拉尝试, 不影响回测正确性
     data_start: "20190102"   # 2026-07-05 二次收窄, 对齐 daily(K线真相源)边界: R4 K线边界孤立数据审计
                               # 确认唯一实质消费方 market_pulse.py 的 idxb CTE 被动 LEFT JOIN 到 daily
                               # 驱动的 days 轴, 且外层受 market_pulse.yaml data_start_market(实际20230103)
                               # 裁剪, 2010-2018(13023行, 曾于07-04当日先回填后即于同批发现问题物删)
                               # 永久不可达。20190102 是项目级PIT对齐地基线(比实际消费边界20230103更保守)。
     freshness_sla_trading_days: 1
-    min_rows_per_batch: 50
+    min_rows_per_batch: 1100        # 2026-07-09 全审计校准: 单指数批 1820 行且随窗口单调增长,
+                                     # 1100≈0.6x 永久安全; 原 50 对 page_limit 防线失效后的半空
+                                     # 响应场景无检测力
     allow_empty_batch: false
 
   # ── 基本面/盈利预测族 (alpha 验证程序 S1, 2026-06-14 实弹核证 PASS: PEAD 事件因子, 最大未挖矿) ──
@@ -832,7 +909,11 @@ domains:
     grain: [ts_code, end_date, update_flag]   # by_ts_code: uf=1 最新订正
     batch_mode: by_ts_code   # 2026-06-26 实弹: balancesheet API 要 ts_code (不支持 ann_date 批量, 同 fina_indicator); by_trade_date 报 '必填参数 ts_code'
     increment_mode: by_report_period
-    fixed_params: {start_date: "20200101", end_date: "20260612"}   # contract_liab 2020+ 新准则; 对齐 gpcw 财务链 2020-12-31~ 范围
+    fixed_params: {start_date: "20200101"}   # contract_liab 2020+ 新准则; end_date 由 runner 动态注入
+      # (2026-07-09 全审计MEDIUM修复: 原硬编 end_date:"20260612" 使 2026-06-12 后公告的所有财报
+      # [H1-2026 财报季 7-8 月起]结构性拉不到且被 allow_empty_batch 零告警掩盖 — increment_mode
+      # 反复重拉缺新期的股却永远拿不到窗口外数据。去硬编后与 income 同形态[只给 start_date],
+      # runner 动态 end_date=latest_completed_trade_date, §4.4 禁钉死)
     pit_anchor: "ann_date (行内字段); 财报公告日 -> JOIN t-1 保守; update_flag=1 最新修正版 (<=t 最新 ann_date 行)"
     available_after: "t+1"
     data_start: "20200101"
@@ -871,13 +952,11 @@ domains:
     freshness_sla_trading_days: 5
     min_rows_per_batch: 1
     allow_empty_batch: true   # 部分交易日确无大宗 (真空); 间歇空响应靠尾部 gap 扫描补 (mythos §10)
-    known_empty_days: ["20250917"]   # 2026-07-05 更正: 此前(2026-07-03)误判为"cross_check机制拦到的
-                                      # 真缺口"; 重新回填该日+核对源端内容才发现源端仅有的 2 行
-                                      # (920575.BJ/920982.BJ) 都是北交所股票, 被 universe_filter
-                                      # 按设计正确排除, 本地 0 行是正确行为非漏拉。这是本轮审计里
-                                      # "源端非空就假定是真缺口"的第三个变体反例(前两个是ths_hot
-                                      # 热基案例/report_rc完整性案例), 教训见 memory
-                                      # feedback-verify-content-not-just-row-count.md。
+    # known_empty_days ["20250917"] 撤销 2026-07-09 (全审计墓碑复探, HIGH级翻转): 2026-07-05
+    #   实测时源端确实仅 2 行北交所股(被 universe_filter 正确排除, 当时判断无误), 但本次复探
+    #   vendor 已补发至 210 行原始/186 行白名单个股 — 墓碑过期正在掩盖可补齐的真缺口, 已撤销
+    #   并回填该日。两阶段教训叠加: (1)"源端非空就假定真缺口"要按过滤口径核(07-05 学到);
+    #   (2)"按口径核完是真空"也只是当时快照, vendor 事后补发是常态非例外(07-09 学到)。
     cross_check_domain: daily      # R1 根因2 交叉参照门 (2026-07-03): 大宗 0 笔但全市场正常交易
                                    #   (daily 同日 > 阈值行) = 可疑空非真空的检测线索, 但仍需人工核对
                                    #   内容(如 20250917 案例, 可疑空实为 universe_filter 合法排除)
@@ -909,12 +988,18 @@ domains:
     api: fina_indicator
     target_table: raw_tushare_fina_indicator
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
-    grain: [ts_code, end_date, ann_date]   # 实测同 end_date 同 ann_date 仍 2 行 (uf=0原始/1修正) → grain 必含 update_flag (ann_date 不区分修订)
+    grain: [ts_code, end_date, ann_date]   # 现行 grain=按 ann_date 区分修订 (2026-07-09 清理陈旧注释:
+      # 原注释宣称"grain 必含 update_flag"与实际 grain 自相矛盾 — 该列已随 API 漂移 87% NULL,
+      # 实际 grain 从未含它, 修订靠 ann_date 区分, 与 pit_anchor 现行口径一致)
     batch_mode: by_ts_code   # 实测 ann_date/period 均返 0 行 (不可批) → 唯一可行逐股; 100 条/call 硬上限
     increment_mode: by_report_period   # 2026-06-23 按季报期增量 (日常--all-due跳已最新股); 注: fixed_params end_date 硬编需随季度更新另案
-    fixed_params: {start_date: "20230101", end_date: "20260612"}   # rule-compliance: ok evidence=逐股窗口 2023-2026 (对齐 feature_panel; 每股<100行避截断, 全史需多窗口分页另案)
+    fixed_params: {start_date: "20230101"}   # rule-compliance: ok evidence=逐股窗口 2023 起 (对齐
+      # feature_panel; 每股<100行避截断——2026-07-09 实测当前窗口单股最大 22 行余量 4.5x 假设仍
+      # 成立, 但扩窗到 2020 前必须先声明 page_limit: 100 或多窗口分片, 该接口 100 条/call 硬上限
+      # 实测在案; 全史另案)。end_date 由 runner 动态注入(2026-07-09 全审计MEDIUM修复: 原硬编
+      # "20260612" 使 H1-2026 财报季起新公告结构性拉不到, 与 balancesheet 同批去硬编)
     # 2026-06-26 [扩窗到2020 受阻] 单元4财务迁移欲扩 2020 对齐gpcw, 但实弹发现 fina_indicator API 现【完全不返 update_flag 列】(grain依赖它)→ 任何sync都报'缺grain列update_flag'。既有表95659行有update_flag(曾返)=API/tinyshare漂移。修复=grain改[ts_code,end_date,ann_date]按ann_date区分修订(或sync_runner容忍缺update_flag), 是独立careful任务, 单元4 redesign前置。
-    pit_anchor: "ann_date (行内字段); 财报公告日 -> JOIN t-1 保守; 取 update_flag=1 最新修正版 (<=t 最新 ann_date 行)"
+    pit_anchor: "ann_date (行内字段); 财报公告日 -> JOIN t-1 保守; 同 (ts_code,end_date) 取 <=t 最新 ann_date 行区分修订 (update_flag 已随 API 漂移不可用: 2026-07-09 实测 87% 行该列 NULL[2026-07-03 起新增行全 NULL], 原'取 update_flag=1'规则字面执行会静默丢掉全部近期数据)"
     available_after: "t+1"
     data_start: "20230101"   # 当前窗口起点 (全史接口覆盖 ~2012, 老股 >100 行需窗口分页, 全史另案)
     freshness_sla_trading_days: 5
@@ -938,8 +1023,11 @@ domains:
     data_start: "20190102"
     freshness_sla_trading_days: 1
     min_rows_per_batch: 300       # 实弹 439-587 申万指数/日
-    known_empty_days: ["20260707"]   # 2026-07-08 实测源端单日空洞 (pro.sw_daily 直连返0行,
-                                      #   同日 daily_basic/cyq_perf 均正常出5194行确认非停牌/非假期); 墓碑不再每天重探
+    # known_empty_days ["20260707"] 撤销 2026-07-09 (全审计墓碑复探): 声明次日 vendor 即补发
+    #   (实测现返 439 行且本地已在库), 同步链已重拾数据无损, 但墓碑留着会让未来 rebuild 后的
+    #   gap 审查错误跳过该日。教训(与 margin 20260703 完全同型第2例): vendor 对 T+1~T+3 内的
+    #   近日数据存在延迟补发, "当天实测返0"不构成永久真空证据 — 距今 <5 个交易日的空洞禁止
+    #   立墓碑, 先进 failure_queue 观察窗。
 
   share_float:   # 解禁 (天然前瞻 PIT: ann_date 公告日已知未来 float_date 解禁=0泄露; 出场/风控)
     source: tushare

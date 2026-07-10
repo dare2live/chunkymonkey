@@ -5,6 +5,16 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# python 解析器 (2026-07-10 根治, 与 safe_commit.sh 同款, mythos PATH 陷阱): 优先项目 venv,
+# 回退 python3/python — 裸 `python` 在重启后从 PATH 消失导致 wrapper 全部子命令假死。
+if [[ -x ".venv/bin/python3" ]]; then
+    PY=".venv/bin/python3"
+elif command -v python3 >/dev/null 2>&1; then
+    PY="python3"
+else
+    PY="python"
+fi
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -69,7 +79,7 @@ case "$cmd" in
           ;;
       esac
     done
-    PYTHONPATH=backend python backend/scripts/chunkyctl.py "${args[@]}"
+    PYTHONPATH=backend "$PY" backend/scripts/chunkyctl.py "${args[@]}"
     ;;
   worktree)
     args=(worktree)
@@ -100,7 +110,7 @@ case "$cmd" in
           ;;
       esac
     done
-    PYTHONPATH=backend python backend/scripts/chunkyctl.py "${args[@]}"
+    PYTHONPATH=backend "$PY" backend/scripts/chunkyctl.py "${args[@]}"
     ;;
   docs)
     args=(docs)
@@ -122,7 +132,7 @@ case "$cmd" in
           ;;
       esac
     done
-    PYTHONPATH=backend python backend/scripts/chunkyctl.py "${args[@]}"
+    PYTHONPATH=backend "$PY" backend/scripts/chunkyctl.py "${args[@]}"
     ;;
   preflight)
     task=""
@@ -202,7 +212,7 @@ case "$cmd" in
       exit 2
     fi
     args+=(--task "$task")
-    PYTHONPATH=backend python backend/scripts/chunkyctl.py "${args[@]}"
+    PYTHONPATH=backend "$PY" backend/scripts/chunkyctl.py "${args[@]}"
     ;;
   audit)
     args=(audit)
@@ -227,28 +237,28 @@ case "$cmd" in
           ;;
       esac
     done
-    PYTHONPATH=backend python backend/scripts/chunkyctl.py "${args[@]}"
+    PYTHONPATH=backend "$PY" backend/scripts/chunkyctl.py "${args[@]}"
     ;;
   jobs)
-    PYTHONPATH=backend python backend/scripts/chunkyctl.py jobs "$@"
+    PYTHONPATH=backend "$PY" backend/scripts/chunkyctl.py jobs "$@"
     ;;
   map)
-    PYTHONPATH=backend python backend/scripts/build_feature_map.py "$@"
+    PYTHONPATH=backend "$PY" backend/scripts/build_feature_map.py "$@"
     ;;
   data-status)
     # backend/scripts/data_migration_status.py 已随重建物删; 直调死路径改路由到
     # chunkyctl.py 已有的 _RETIRED 优雅提示 (2026-07-07 全库死代码普查簇10)。
-    PYTHONPATH=backend python backend/scripts/chunkyctl.py data-status "$@"
+    PYTHONPATH=backend "$PY" backend/scripts/chunkyctl.py data-status "$@"
     ;;
   pipeline)
     # §8 阶段独立化: 单跑一个阶段 (acquire|clean|process|store), 不连带全链。
     # 全链编排仍用 scripts/daily_update.sh (python -m services.pipeline.run)。
-    PYTHONPATH=backend python -m services.pipeline.stage_runner "$@"
+    PYTHONPATH=backend "$PY" -m services.pipeline.stage_runner "$@"
     ;;
   lineage)
     # M5-T2 血缘路由中枢 (字典+总指挥): build | impact <t> | provenance <t> | dead | show <t>
     # 删/迁表前 `chunkyctl lineage impact <table>` 自动 fan-in (替代手 grep)。
-    PYTHONPATH=backend python backend/scripts/lineage_cli.py "$@"
+    PYTHONPATH=backend "$PY" backend/scripts/lineage_cli.py "$@"
     ;;
   *)
     echo "ERROR: unknown chunkyctl command: $cmd" >&2

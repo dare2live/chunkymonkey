@@ -21,7 +21,10 @@ class EntitySpec:
     asof_format: str        # 'iso' | 'yyyymmdd'
     columns: tuple[str, ...]
     vendor: str
-    available_after: str = "eod"
+    # 缺省 t+1 (2026-07-09 全审计修复): 原缺省 "eod"(当日可用)是不安全方向 — 未来 entity 漏写
+    # 该键会静默变成"当天可用"声明, 与 sync_runner._available_after_passed 对缺失返 False 的
+    # 保守缺省方向相反。改为最保守的 t+1, 漏写只会导致数据显得晚一天(不泄漏), 不会提前可见。
+    available_after: str = "t+1"
     taxonomy_version: str | None = None
     compute_fn: str | None = None   # None = 厂商现成 (raw entity); 非空 = 派生
     code_input: str = ""            # plain | ts_from_plain | ts_passthrough; 空=按 code_col 推断
@@ -78,7 +81,7 @@ def load_registry(path: str | Path | None = None) -> AccessRegistry:
             asof_format=e["asof_format"],
             columns=tuple(e["columns"]),
             vendor=e["vendor"],
-            available_after=e.get("available_after", "eod"),
+            available_after=e.get("available_after", "t+1"),  # 保守缺省, 与 dataclass 定义同向
             taxonomy_version=e.get("taxonomy_version"),
             compute_fn=e.get("compute_fn"),
             code_input=e.get("code_input", ""),

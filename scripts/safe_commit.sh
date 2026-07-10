@@ -17,6 +17,18 @@
 
 set -euo pipefail
 
+# python 解析器 (2026-07-10 根治, mythos "env PATH 双前提陷阱"第N例实锤): 机器重启后裸 `python`
+# 从 PATH 消失(homebrew 无 python 非版本化符号链) + PATH 顺序变化使 python3 解析到系统 3.9(无
+# duckdb/yaml) → 全部治理门 command-not-found 假红。优先项目 venv(全部依赖保证在), 沙箱/无 venv
+# 环境回退 python3/python(测试 stub 门只用 stdlib, 系统 python3 足够)。
+if [[ -x ".venv/bin/python3" ]]; then
+    PY=".venv/bin/python3"
+elif command -v python3 >/dev/null 2>&1; then
+    PY="python3"
+else
+    PY="python"
+fi
+
 MSG="${1:-}"
 if [[ -z "$MSG" ]]; then
     echo "用法: bash scripts/safe_commit.sh \"commit message\""
@@ -39,7 +51,7 @@ git diff --cached --name-only | head -10
 # 2. PROJECT_INDEX sync check
 echo
 echo "=== Step 2: PROJECT_INDEX sync check ==="
-if ! PYTHONPATH=backend python backend/scripts/check_project_index_sync.py 2>&1 | tail -5; then
+if ! PYTHONPATH=backend "$PY" backend/scripts/check_project_index_sync.py 2>&1 | tail -5; then
     echo
     echo "ERROR: PROJECT_INDEX.md 未同步."
     echo "修法: 更新 PROJECT_INDEX.md 对应活索引节 (历史叙事写 ledger, 不进 INDEX changelog) + git add PROJECT_INDEX.md"
@@ -50,7 +62,7 @@ fi
 # alert_level=optional: 生成失败不挡 commit, 但必须可见 (Platform Runtime Contract)
 echo
 echo "=== Step 2.6: feature map refresh ==="
-if PYTHONPATH=backend python backend/scripts/build_feature_map.py --quiet 2>/dev/null; then
+if PYTHONPATH=backend "$PY" backend/scripts/build_feature_map.py --quiet 2>/dev/null; then
     if [[ -n "$(git status --porcelain -- FEATURE_MAP.md)" ]]; then
         git add FEATURE_MAP.md
         echo "[feature-map] 漂移 → 已重生成并 stage 进本次 commit"
@@ -64,7 +76,7 @@ fi
 # 3. Rule compliance
 echo
 echo "=== Step 3: rule compliance ==="
-if ! PYTHONPATH=backend python backend/scripts/check_rule_compliance.py 2>&1 | tail -5; then
+if ! PYTHONPATH=backend "$PY" backend/scripts/check_rule_compliance.py 2>&1 | tail -5; then
     echo
     echo "ERROR: rule compliance 失败. 见上 error."
     exit 3
@@ -90,7 +102,7 @@ fi
 # C1 backend引用sandbox(FAIL) / C2 控制面嵌未promote(confirmed_by_owner=0)实验结果(WARN) / C3 探索runner漏主脚本(FAIL)。
 echo
 echo "=== Step 3.8: sandbox isolation gate ==="
-if PYTHONPATH=backend python backend/scripts/check_sandbox_isolation.py 2>&1 | tail -12; then
+if PYTHONPATH=backend "$PY" backend/scripts/check_sandbox_isolation.py 2>&1 | tail -12; then
     echo "[sandbox-isolation] PASS"
 else
     echo
@@ -106,7 +118,7 @@ fi
 # D2 preflight接线 / D3 entity声明链齐全 / D4 L2-bypass关闭。
 echo
 echo "=== Step 3.9: SERVE read-layer doors ==="
-if PYTHONPATH=backend python backend/scripts/check_serve_read_layer.py; then
+if PYTHONPATH=backend "$PY" backend/scripts/check_serve_read_layer.py; then
     echo "[serve-read-layer] PASS"
 else
     echo
@@ -120,7 +132,7 @@ fi
 # 拦内联绕过交易日历真相源 (wall-clock 当最新/SQL CURRENT_DATE 上界锚); 合法日历天窗口加 evidence 注释。
 echo
 echo "=== Step 3.95: calendar-usage gate (交易日历强制使用) ==="
-if PYTHONPATH=backend python backend/scripts/check_calendar_usage.py --staged --strict; then
+if PYTHONPATH=backend "$PY" backend/scripts/check_calendar_usage.py --staged --strict; then
     echo "[calendar-usage] PASS"
 else
     echo
@@ -137,7 +149,7 @@ STAGED_FOR_LINEAGE=$(git diff --cached --name-only | grep -E 'config/(sync_regis
 if [[ -n "$STAGED_FOR_LINEAGE" ]]; then
     echo
     echo "=== Step 3.96: lineage drift (结构文件 staged, informational) ==="
-    if PYTHONPATH=backend python backend/scripts/check_lineage_drift.py; then
+    if PYTHONPATH=backend "$PY" backend/scripts/check_lineage_drift.py; then
         :
     else
         echo "[lineage-drift] WARN (非 block): 血缘图与现实漂移 — 跑 chunkyctl lineage build 重生并提交 data/lineage/graph.json"
@@ -150,7 +162,7 @@ fi
 # → 残留静默累积。本门 import-services + dead-services-ref + config-dead-path 机械堵死。**硬闸**。
 echo
 echo "=== Step 3.97: dead-references gate (死引用根治硬门) ==="
-if PYTHONPATH=backend python backend/scripts/check_dead_references.py > /tmp/cm_deadref.out 2>&1; then
+if PYTHONPATH=backend "$PY" backend/scripts/check_dead_references.py > /tmp/cm_deadref.out 2>&1; then
     grep -E "^\[dead-references\] PASS" /tmp/cm_deadref.out || echo "[dead-references] PASS"
 else
     echo
@@ -164,7 +176,7 @@ fi
 #   --strict 默认关 → 跑批写锁期库不可达优雅跳过不阻塞 commit; 豁免带到期日, 过期自动恢复 FAIL)
 echo
 echo "=== Step 3.98: grain-uniqueness gate (grain 持续审计门) ==="
-if PYTHONPATH=backend python backend/scripts/check_grain_uniqueness.py \
+if PYTHONPATH=backend "$PY" backend/scripts/check_grain_uniqueness.py \
      --exempt mart_sector_pulse_daily:20260710 > /tmp/cm_grain.out 2>&1; then
     tail -1 /tmp/cm_grain.out
 else
@@ -182,7 +194,7 @@ fi
 #   declared_vs_actual/static_staleness]才 abort)
 echo
 echo "=== Step 3.99: continuity-integrity gate (数据连续性常驻审查) ==="
-if PYTHONPATH=backend python backend/scripts/check_continuity_integrity.py > /tmp/cm_continuity.out 2>&1; then
+if PYTHONPATH=backend "$PY" backend/scripts/check_continuity_integrity.py > /tmp/cm_continuity.out 2>&1; then
     tail -1 /tmp/cm_continuity.out
 else
     echo
@@ -198,7 +210,7 @@ fi
 # 死引用一致性) → 接成硬闸(与其余静态一致性门同级别)。
 echo
 echo "=== Step 3.991: config-refs gate (data_access/data_layers 层词汇一致性) ==="
-if PYTHONPATH=backend python backend/scripts/check_config_refs.py > /tmp/cm_configrefs.out 2>&1; then
+if PYTHONPATH=backend "$PY" backend/scripts/check_config_refs.py > /tmp/cm_configrefs.out 2>&1; then
     tail -2 /tmp/cm_configrefs.out
 else
     echo
@@ -210,7 +222,7 @@ fi
 
 echo
 echo "=== Step 3.992: doc-drift gate (11 活文档死引用) ==="
-if PYTHONPATH=backend python backend/scripts/check_doc_drift.py > /tmp/cm_docdrift.out 2>&1; then
+if PYTHONPATH=backend "$PY" backend/scripts/check_doc_drift.py > /tmp/cm_docdrift.out 2>&1; then
     tail -2 /tmp/cm_docdrift.out
 else
     echo
@@ -225,7 +237,7 @@ fi
 # (不 block), 曝光但不拦, 待 backlog 清完再考虑升硬闸。
 echo
 echo "=== Step 3.993: doc-governance (informational, 21 条已知 backlog 待清) ==="
-PYTHONPATH=backend python backend/scripts/check_doc_governance.py 2>&1 | tail -3
+PYTHONPATH=backend "$PY" backend/scripts/check_doc_governance.py 2>&1 | tail -3
 
 # Step 3.994: legacy-flow-integrity 硬闸 (2026-07-08 收口 owner=analysis/
 # legacy_flow_integrity_gate_fix_20260708.md: C1 此前因 daily_update.sh 重构后扫描源结构性
@@ -233,8 +245,8 @@ PYTHONPATH=backend python backend/scripts/check_doc_governance.py 2>&1 | tail -3
 # 三检当前均真 PASS 非查无可查, 升为真硬闸)。
 echo
 echo "=== Step 3.994: legacy-flow-integrity ==="
-if PYTHONPATH=backend python backend/scripts/check_legacy_flow_integrity.py > /tmp/cm_legacyflow.out 2>&1; then
-    python3 -c "
+if PYTHONPATH=backend "$PY" backend/scripts/check_legacy_flow_integrity.py > /tmp/cm_legacyflow.out 2>&1; then
+    "$PY" -c "
 import json
 d = json.load(open('/tmp/cm_legacyflow.out'))
 checks = d.get('checks', {})

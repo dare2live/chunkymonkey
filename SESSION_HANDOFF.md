@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-07-09 23:08:10 CST
+**Snapshot 时间**: 2026-07-10 09:03:55 CST
 
 ## 主线状态
 
@@ -44,13 +44,14 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `81d27913 fix: 6域数据缺口根因深查+根治 — margin查询形态/margin_detail阈值/stk_surv page_limit截断/report_rc+forecast+share_float周末数据结构性排除` |
+| HEAD | `1856c0dd fix: 23域page_limit横向扫描收官 — 第9/10例真截断修复(report_rc硬顶3000/ths_hot硬顶2000缺77%) + 4域写入侧缺口复核3假1真` |
 | 最近 24h commits | 1 |
-| 未 commit 文件 | 1 |
+| 未 commit 文件 | 6 |
 
 ### 最近 10 commits
 
 ```
+1856c0dd fix: 23域page_limit横向扫描收官 — 第9/10例真截断修复(report_rc硬顶3000/ths_hot硬顶2000缺77%) + 4域写入侧缺口复核3假1真
 81d27913 fix: 6域数据缺口根因深查+根治 — margin查询形态/margin_detail阈值/stk_surv page_limit截断/report_rc+forecast+share_float周末数据结构性排除
 356ccdc3 fix: 完整审计尾部22项WARN收口 — declared_drift抑制机制 + 12域行数骤降逐个实测(4真缺口回填+2假警报纠偏+6域annotate)
 60811466 feat: legacy-flow-integrity 从informational升为真硬闸
@@ -60,12 +61,11 @@
 7f241587 chore: 重生 lineage graph.json (SERVE读层收口 T2 informational drift 清零)
 9cdccda0 feat: SERVE读层门系统性收口 — 退役伪绿D1/D2, 提升scan_consumer_bypass为默认执法
 e74cb228 fix: 独立核实批发现的2处文档遗留 + 1处轻微残留 — 13簇计划真正收口
-c742d224 feat: 全仓库死代码普查收官 — 簇1+2+13: 旧前端整体删除 + PROJECT_INDEX架构自相矛盾收口
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**1 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**6 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

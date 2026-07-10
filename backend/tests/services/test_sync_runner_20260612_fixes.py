@@ -77,8 +77,12 @@ def test_registry_surgery_contract_20260612():
     # 白跑防线: 2019 年截面 ~3700 只, min_rows 必须 <= 3000
     assert d["daily"]["min_rows_per_batch"] <= 3000
     assert d["adj_factor"]["min_rows_per_batch"] <= 3000
-    # drain 收敛: moneyflow_ind_dc 实测 86 行/日为合法全量
-    assert d["moneyflow_ind_dc"]["min_rows_per_batch"] <= 86
+    # drain 收敛: moneyflow_ind_dc 2024 时代实测 86 行/日为合法全量 — 2026-07-09 起该保证由
+    # 时代分段机制承担(min_rows_before 管 2026 前老时代, min_rows_per_batch 管当前时代 ~1000
+    # 行基线的中间态截断检测), 契约改为: 老时代阈值 <= 86 且分段边界已声明
+    assert d["moneyflow_ind_dc"]["min_rows_before"] <= 86
+    assert d["moneyflow_ind_dc"]["min_rows_since"] == "20260101"
+    assert d["moneyflow_ind_dc"]["min_rows_per_batch"] >= 500  # 当前时代必须有真实检测力
     # 范围决策: 未批准历史段不进 drain expected (改回更早值必须走 chain10 决策)
     # 2026-07-05 二次收窄, 对齐 daily(K线真相源)边界 20190102: R4 K线边界孤立数据审计确认
     # top_list/top_inst/cyq_perf/index_dailybasic 的唯一实质消费方都按 trade_date 精确等值

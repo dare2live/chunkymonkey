@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-09 02:58
+> Snapshot: 2026-07-10 09:45
 
 ## 1. 入口面
 
@@ -81,12 +81,12 @@
 | stk_holdernumber | tushare | stk_holdernumber | raw_tushare_stk_holdernumber | by_ts_code | 90 |
 | stk_holdertrade | tushare | stk_holdertrade | raw_tushare_stk_holdertrade | by_ann_date | 30 |
 | stk_limit | tushare | stk_limit | raw_tushare_stk_limit | by_trade_date | 1 |
-| stk_surv | tushare | stk_surv | raw_tushare_stk_surv | by_trade_date | 5 |
+| stk_surv | tushare | stk_surv | raw_tushare_stk_surv | by_ann_date | 5 |
 | stock_basic | tushare | stock_basic | raw_tushare_stock_basic | full_refresh | 30 |
 | stock_st | tushare | stock_st | raw_tushare_stock_st | by_trade_date | 1 |
 | suspend_d | tushare | suspend_d | raw_tushare_suspend_d | by_trade_date | 3 |
 | sw_daily | tushare | sw_daily | raw_tushare_sw_daily | by_trade_date | 1 |
-| ths_hot | tushare | ths_hot | raw_tushare_ths_hot | by_trade_date | 2 |
+| ths_hot | tushare | ths_hot | raw_tushare_ths_hot | by_ann_date | 2 |
 | top_inst | tushare | top_inst | raw_tushare_top_inst | by_trade_date | 2 |
 | top_list | tushare | top_list | raw_tushare_top_list | by_trade_date | 2 |
 | trade_cal | tushare | trade_cal | raw_tushare_trade_cal | full_refresh | 30 |
@@ -158,17 +158,17 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 4,664 | calls 边 4,913 | imports 边 790 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 4,687 | calls 边 4,931 | imports 边 794 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
 | services.duck_adapter | 30 |
-| services.data_sources | 12 |
+| services.data_sources | 13 |
 | services.database_manifest | 12 |
+| services.source_watermarks | 10 |
 | services.db | 9 |
-| services.source_watermarks | 9 |
 | services.lineage.model | 5 |
 | scripts.formula_parameter_search | 4 |
 | services.market_db | 4 |
@@ -186,7 +186,7 @@
 |---|---|
 | backend/services/duck_adapter.py | 26 |
 | backend/services/database_manifest.py | 11 |
-| backend/services/source_watermarks.py | 9 |
+| backend/services/source_watermarks.py | 10 |
 | bestchoice/compute.py | 9 |
 | backend/services/pipeline/context.py | 6 |
 | bestchoice/execution_model.py | 5 |
@@ -201,7 +201,7 @@
 
 | 文件 | 行数 |
 |---|---|
-| backend/services/data_sources/sync_runner.py | 1214 |
+| backend/services/data_sources/sync_runner.py | 1241 |
 | backend/services/storage_retention.py | 1061 |
 | backend/services/market_pulse.py | 804 |
 | backend/scripts/data_health_snapshot.py | 731 |

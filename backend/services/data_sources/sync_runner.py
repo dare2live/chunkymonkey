@@ -909,8 +909,13 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         finally:
             conn0.close()
         days = _calendar_days(start_d, end_d)
-        if not backfill and len(days) > 1 and days[0] == (start or _last_watermark_date(domain, spec["source"]) or ""):
-            days = days[1:]  # 增量跳 watermark 当天 (已写过)
+        # 增量跳 watermark 当天 — 仅当调用方未显式给 --start 才跳 (2026-07-10 修复: 与
+        # by_trade_date 分支 2026-07-06 同款 bug 的 by_ann_date 残留 — 原判据 `days[0] ==
+        # (start or wm)` 在显式传 --start 时恒真, 手工范围回填静默丢第一天; 实测 ths_hot
+        # --start 20260321 --end 20260322 两天只跑一批丢周六。当时只修了 by_trade_date 分支,
+        # 同型判据散落两处未一并修 = 本次教训)。
+        if not backfill and start is None and len(days) > 1 and days[0] == (_last_watermark_date(domain, spec["source"]) or ""):
+            days = days[1:]
         date_param = spec.get("date_param", "ann_date")
         batches = [{date_param: d} for d in days]
     elif spec["batch_mode"] == "by_period":
@@ -961,9 +966,16 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
                     failed.append({**params, "suspect": "suspicious_empty"})
                     _record_suspicious_empty(spec, params, cross_rows, cross_table)
                     continue
-            if rows and len(rows) < min_rows:
-                log.warning("batch %s 行数 %d < min_rows_per_batch %d (可疑, 仍写入并记 failure)",
-                            params, len(rows), min_rows)
+            # 时代分段阈值 (与 drain_domain 同一口径, 2026-07-09): 批次日期早于 min_rows_since
+            # 的历史回拉批用 min_rows_before 判定, 防止把"早期真实完整但行数低于今日基线"的批
+            # 误报 below_min_rows (margin_detail 2019年941行 vs 今日阈值2000 案例)。
+            batch_date = str(params.get(spec.get("date_param", "trade_date"), "") or "").replace("-", "")
+            mr_since = str(spec.get("min_rows_since", "") or "").replace("-", "")
+            effective_min = min_rows if (not mr_since or not batch_date or batch_date >= mr_since) \
+                else int(spec.get("min_rows_before", 1))
+            if rows and len(rows) < effective_min:
+                log.warning("batch %s 行数 %d < min_rows %d (可疑, 仍写入并记 failure)",
+                            params, len(rows), effective_min)
                 failed.append({**params, "suspect": "below_min_rows"})
             n = _write_batch(conn, spec, rows)
             total_rows += n
@@ -1063,17 +1075,32 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     # "完整日"口径 = 行数达 min_rows 的日; 不足日视同缺口重拉 (MERGE 幂等, 重拉安全)。
     # 复审 HIGH: 旧版 DISTINCT 把 vendor 截断批 (在表但残缺) 当完整, 会洗白 run_domain
     # 标记的 suspect 日且永无重拉机制。
-    threshold = min_rows
+    # 时代分段 (2026-07-09 根因修复, owner=analysis/gap_root_cause_20260708.md 全审计节):
+    # 行数随标的池扩容长期单调增长的域 (margin_detail 2019年941行→2026年3400+行), 静态
+    # min_rows 锚定当前基线后, drain 会把早期"真实完整但行数低于今日阈值"的历史日永久判成
+    # 缺口反复重拉不收敛 (实测 margin_detail 2000 阈值 → 594 个 2019-2021 真实完整日成幻影
+    # 缺口)。registry 可声明 min_rows_since (YYYYMMDD): 该日期(含)之后用 min_rows, 之前用
+    # min_rows_before (缺省 1 = 仅防空日)。不声明 min_rows_since 时行为不变 (全历史同一阈值)。
+    min_rows_since = str(spec.get("min_rows_since", "") or "").replace("-", "")
+    min_rows_before = int(spec.get("min_rows_before", 1))
     try:
         has_table = conn.execute(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?", [table]
         ).fetchone()[0]
         date_col = spec.get("date_param", "trade_date")  # raw 表镜像 api 字段, 锚定列与参数同名
         if has_table:
-            actual = {str(r[0]).replace("-", "")
-                      for r in conn.execute(
-                          f'SELECT "{date_col}" FROM "{table}" GROUP BY 1 HAVING COUNT(*) >= ?',
-                          [threshold]).fetchall()}
+            if min_rows_since:
+                actual = {str(r[0]).replace("-", "")
+                          for r in conn.execute(
+                              f'SELECT "{date_col}" FROM "{table}" GROUP BY 1 '
+                              f'HAVING COUNT(*) >= CASE WHEN REPLACE(CAST("{date_col}" AS VARCHAR), \'-\', \'\') >= ? '
+                              f'THEN ? ELSE ? END',
+                              [min_rows_since, min_rows, min_rows_before]).fetchall()}
+            else:
+                actual = {str(r[0]).replace("-", "")
+                          for r in conn.execute(
+                              f'SELECT "{date_col}" FROM "{table}" GROUP BY 1 HAVING COUNT(*) >= ?',
+                              [min_rows]).fetchall()}
         gap = [d for d in expected if d not in actual]
         truncated = max_dates is not None and len(gap) > max_dates
         # 截断取最新优先 (gap 升序取尾部): backlog 超限时昨日数据必须先落地

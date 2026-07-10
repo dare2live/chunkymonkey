@@ -133,7 +133,10 @@ entities:
     asof_format: yyyymmdd
     columns: [ts_code, trade_date, price, amount]
     vendor: tushare
-    available_after: eod
+    available_after: t+1   # 2026-07-09 全审计HIGH修复: 原声明 eod 与 sync_registry 同域 t+1 方向
+                            # 性矛盾(21 entity 中唯一冲突)。对齐 t+1(保守口径, 消费方 JOIN 只保守
+                            # 不泄漏); 实测当日 23:38 数据已可用, 未来若需当日盘后消费再定点探针
+                            # 实测发布时刻后放宽。
 
   report_rc:
     # 券商研报/分析师预期 (PIT 锚=report_date 发布日; tp 单位 ×0.0001元 消费侧 /10000, mythos§8)

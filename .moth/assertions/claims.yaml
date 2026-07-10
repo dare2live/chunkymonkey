@@ -78,17 +78,17 @@ assertions:
   - id: doc-drift
     claim: "活索引文档 (PROJECT_INDEX/goal) 不引用已删代码文件路径 (2026-06-14 立: mythos §16 漂移默认态对账要机器做 + 用户'及时更新文档'; 历史叙事/模板豁免)"
     type: shell
-    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python backend/scripts/check_doc_drift.py --check | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)[\"overall\"]==\"PASS\" else 1)' && echo DOC_OK"]
+    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_doc_drift.py --check | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)[\"overall\"]==\"PASS\" else 1)' && echo DOC_OK"]
     expect: {op: regex, pattern: "DOC_OK"}
   - id: dead-references-zero
     claim: "0 死引用 (2026-06-28 根因根治: 删模块/表/文件必同步清引用方; import-services + dead-services-ref + config-dead-path 三道。根因=之前每波清理删供给侧漏需求侧, 验收够不到孤儿脚本/懒import/guarded垫片/config死路径→静默累积)"
     type: shell
-    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python backend/scripts/check_dead_references.py >/dev/null 2>&1 && echo DEADREF_OK"]
+    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_dead_references.py >/dev/null 2>&1 && echo DEADREF_OK"]
     expect: {op: regex, pattern: "DEADREF_OK"}
   - id: data-layer-integrity
     claim: "每张活表必在 data_layers.yaml 声明 layer + Type A 列纯度 (2026-06-14 层级声明化 + 2026-06-28 加工分层 A/B: asset_class=A 层[L1_foundation/L1k/display=确定性PIT重排]表禁含 forward/label/score/signal/ic/predicted 等 Type B 列, 防策略派生伪装混入平台; 未声明 or Type A 含泄漏列=FAIL)"
     type: shell
-    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python backend/scripts/data_layer_audit.py --check | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)[\"overall\"]==\"PASS\" else 1)' && echo LAYER_OK"]
+    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend .venv/bin/python3 backend/scripts/data_layer_audit.py --check | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)[\"overall\"]==\"PASS\" else 1)' && echo LAYER_OK"]
     expect: {op: regex, pattern: "LAYER_OK"}
   - id: minimal-module-main-routers
     claim: "main.py 挂载 router 数有上界 (反例 2026-06-14: main import 全 router 致地基-reset 时闭包拉不开; 最小化模块纪律, 涨破阈值=耦合回潮须拆)"
@@ -111,7 +111,7 @@ assertions:
   - id: legacy-flow-no-pollution
     claim: "老流程污染清除 ratchet (2026-06-14 工具化 reset 教训; 重构验收 gate; 2026-07-08 C1 收口 owner=analysis/legacy_flow_integrity_gate_fix_20260708.md). C1 daily_update 脚本可调 PASS(2026-06-23 daily_update.sh 重设计为瘦wrapper后原扫描源伪绿[恒0命中], 改扫真实调用图backend/services/pipeline/*.py, 红绿注入实测验证) + C2 wiped孤儿引用 0(全部L2_feature表现均live, 无残留) + C3 append-only必retention PASS(当前0张_history/_snapshot命名表)。三检均已用注入违规样本红绿验证检测逻辑本身有效, 非扫空目录空转。ratchet收紧至 n_stale_refs==0(原<=43历史宽松阈值已过期), 回潮即红。owner=backend/scripts/check_legacy_flow_integrity.py"
     type: shell
-    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python -c \"import json,subprocess,os; e=dict(os.environ,PYTHONPATH='backend'); d=json.loads(subprocess.run(['python','backend/scripts/check_legacy_flow_integrity.py'],capture_output=True,text=True,env=e).stdout); c=d['checks']; ok=c['daily_update_scripts']['verdict']=='PASS' and c['append_only_retention']['verdict']=='PASS' and c['no_wiped_refs']['n_stale_refs']==0; print('LEGACY_OK' if ok else 'LEGACY_PENDING')\""]
+    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend .venv/bin/python3 -c \"import json,subprocess,os; e=dict(os.environ,PYTHONPATH='backend'); d=json.loads(subprocess.run(['.venv/bin/python3','backend/scripts/check_legacy_flow_integrity.py'],capture_output=True,text=True,env=e).stdout); c=d['checks']; ok=c['daily_update_scripts']['verdict']=='PASS' and c['append_only_retention']['verdict']=='PASS' and c['no_wiped_refs']['n_stale_refs']==0; print('LEGACY_OK' if ok else 'LEGACY_PENDING')\""]
     expect: {op: regex, pattern: "LEGACY_OK"}
   - id: leakage-gate-no-self-bypass
     claim: "leakage commit 门无自批 SKIP 逃生 (2026-06-15 用户: 自批绕过=摆设). safe_commit Step3.5/3.6 HIGH=硬 exit 4, 不再认 SKIP_LEAKAGE_AUDIT 自批 (含义性 grep: 不应再有 'SKIP_LEAKAGE_AUDIT.*proceeding' 放行). 误报正解=修 verifier 精度/config (永久), 真紧急=--no-verify(核选项留疤). 复活自批=门退回摆设."
@@ -153,15 +153,15 @@ assertions:
   - id: serve-read-layer-doors
     claim: "SERVE 读层验收门全绿 (2026-06-22 落地计划 §10 P1 gate; 2026-07-08 系统性收口 owner=analysis/serve_read_layer_gate_consolidation_20260708.md): 单一执法点 check_serve_read_layer.py, D1 全量 backend/services+scripts 非成员消费者内联裸查(data_module_members.yaml roster 区分 builder[可读raw]/消费者[必走DataAccess.get], 替代原只扫已删除 dossier.py 的伪绿门) / D2 generic.py调resolver.preflight / D3 data_access.yaml每entity声明链(db+table+layer+vendor+asof_col+code_col)齐全可追溯 / D4 backend/scripts 0 experiment_/analyze_ runner(L2-bypass向量关闭). 已 red→green 实证(注入FROM raw_变红/还原回绿)非print-not-fail. violations>0=回潮. owner=backend/scripts/check_serve_read_layer.py + analysis/data_module_toplevel_design_20260622.md §10"
     type: shell
-    command: ["bash", "-c", "PYTHONPATH=backend python backend/scripts/check_serve_read_layer.py >/dev/null 2>&1 && echo 0 || echo 1"]
+    command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_serve_read_layer.py >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}
   - id: calendar-usage-clean
     claim: "交易日历强制使用门全绿 (2026-06-22 P1 升硬门, 第零条规定与 universe 同档执法): check_calendar_usage.py 全量 0 内联绕过交易日历真相源 — B1 wall-clock(date.today/datetime.now)当最新交易日 / B2 SQL CURRENT_DATE-INTERVAL 日历天cutoff / B3 SQL <=CURRENT_DATE 上界锚, 豁免 import services.calendar / `rule-compliance: ok evidence=`合法日历天窗口。真 PIT 锚已修(signals_v2/dossier/events as_of 走 latest_closed_or_raise); 18 合法窗口(载史/recency/展示/SLA-age/provenance)已 evidence。wired safe_commit Step3.95 --strict。>0=新增绕过/回潮。owner=backend/scripts/check_calendar_usage.py"
     type: shell
-    command: ["bash", "-c", "PYTHONPATH=backend python backend/scripts/check_calendar_usage.py --strict >/dev/null 2>&1 && echo 0 || echo 1"]
+    command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_calendar_usage.py --strict >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}
   - id: config-refs-clean
     claim: "config 跨文件引用完整性: data_access 的 layer 值全部在 data_layers 定义(长键或 alias 短码), 0 悬空 = 层词汇单一真相源未漂回两套 (2026-06-23 config最小手术 Step1 层词汇统一 + Step4 引用门, 对抗panel wry13dfr0 裁决最小手术)。check_config_refs.py red→green 实证(注入 L99 变红 exit1/还原回绿)。>0=新增 entity 写错层名/层词汇漂移回潮。owner=backend/scripts/check_config_refs.py"
     type: shell
-    command: ["bash", "-c", "PYTHONPATH=backend python backend/scripts/check_config_refs.py --check >/dev/null 2>&1 && echo 0 || echo 1"]
+    command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_config_refs.py --check >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}
