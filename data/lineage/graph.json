@@ -6,7 +6,7 @@
           "trade_date",
           "ts_code"
         ],
-        "pit_anchor": "trade_date; 盘前 9:15-20 当日复权因子入库 -> 当日可用 (唯一盘前可用域)"
+        "pit_anchor": "trade_date; 盘前 9:15-20 当日复权因子入库 -> 当日可用 (盘前可用域之一, 另: stk_limit 08:40/stock_st 09:20 — 2026-07-09 全审计更正原'唯一'措辞)"
       },
       "dst": "table:raw_tushare_adj_factor",
       "kind": "acquire",
@@ -158,7 +158,7 @@
           "end_date",
           "ts_code"
         ],
-        "pit_anchor": "ann_date (行内字段); 财报公告日 -> JOIN t-1 保守; 取 update_flag=1 最新修正版 (<=t 最新 ann_date 行)"
+        "pit_anchor": "ann_date (行内字段); 财报公告日 -> JOIN t-1 保守; 同 (ts_code,end_date) 取 <=t 最新 ann_date 行区分修订 (update_flag 已随 API 漂移不可用: 2026-07-09 实测 87% 行该列 NULL[2026-07-03 起新增行全 NULL], 原'取 update_flag=1'规则字面执行会静默丢掉全部近期数据)"
       },
       "dst": "table:raw_tushare_fina_indicator",
       "kind": "acquire",
@@ -248,7 +248,7 @@
           "trade_date",
           "ts_code"
         ],
-        "pit_anchor": ""
+        "pit_anchor": "trade_date; 指数级估值/换手盘后更新 -> JOIN t-1"
       },
       "dst": "table:raw_tushare_index_dailybasic",
       "kind": "acquire",
@@ -274,7 +274,7 @@
           "trade_date",
           "ts_code"
         ],
-        "pit_anchor": "trade_date; 开盘啦涨停榜单盘后 -> JOIN t-1"
+        "pit_anchor": "trade_date; 开盘啦涨停榜单, 实测 t+1 才可拉取(两次实测22:15/22:40仍0行, available_after 已改 t+1) -> JOIN t-1"
       },
       "dst": "table:raw_tushare_kpl_list",
       "kind": "acquire",
@@ -474,7 +474,7 @@
           "surv_date",
           "ts_code"
         ],
-        "pit_anchor": "surv_date 机构调研日 -> JOIN t+1 (调研纪要盘后/隔日披露, 保守可见)"
+        "pit_anchor": "surv_date 机构调研日, t+1 盘前可用 -> 决策日 t JOIN surv_date<=t-1 (调研纪要盘后/隔日披露)"
       },
       "dst": "table:raw_tushare_stk_surv",
       "kind": "acquire",
@@ -997,6 +997,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_rally_gt.py",
+      "kind": "consume",
+      "src": "table:dim_stock_segment_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_segments.py",
       "kind": "consume",
       "src": "table:dim_stock_segment_daily"
@@ -1465,6 +1471,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_rally_gt.py",
+      "kind": "consume",
+      "src": "table:fact_stock_form_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/data_access.yaml",
       "kind": "consume",
       "src": "table:fact_top10_holder_period"
@@ -1921,6 +1933,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/pipeline/store.py",
+      "kind": "consume",
+      "src": "table:mart_pipeline_run_manifest"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/pipeline_manifest.py",
       "kind": "consume",
       "src": "table:mart_pipeline_run_manifest"
@@ -1940,6 +1958,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/storage_retention.py",
+      "kind": "consume",
+      "src": "table:mart_pipeline_run_manifest"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_pipeline.py",
       "kind": "consume",
       "src": "table:mart_pipeline_run_manifest"
     },
@@ -3529,9 +3553,9 @@
     }
   ],
   "meta": {
-    "edge_count": 537,
-    "generated_at": "2026-07-08T11:42:39.146640+00:00",
-    "node_count": 253,
+    "edge_count": 541,
+    "generated_at": "2026-07-10T13:53:44.166156+00:00",
+    "node_count": 254,
     "version": 1
   },
   "nodes": [
@@ -4325,6 +4349,14 @@
         "path": "backend/tests/test_paper_portfolio.py"
       },
       "id": "consumer:backend/tests/test_paper_portfolio.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/test_pipeline.py"
+      },
+      "id": "consumer:backend/tests/test_pipeline.py",
       "kind": "consumer"
     },
     {

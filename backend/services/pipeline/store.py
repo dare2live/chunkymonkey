@@ -61,6 +61,12 @@ def _write_report_and_alert(ctx: PipelineContext) -> None:
     report_json = REPO / f"data/reports/daily_{ctx.date}.json"
     sla_report = REPO / f"data/audit/watermark_sla_{ctx.date}.json"
 
+    # 2026-07-10 修报告脱钩(全栈审计MEDIUM, owner=analysis/gap_root_cause_20260708.md 第四轮节):
+    # 原四阶段硬编码 "OK" 不读任何真实状态 — 任何 degraded 甚至整段阶段未跑, 报告照写 OK。
+    # 改为整体口径: degraded_msgs 非空 = DEGRADED_PARTIAL(逐阶段归因由 manifest 的
+    # pipeline.stage.* check_pass/check_fail 承担, 报告不重复造第二套归因逻辑, 只保证
+    # "有问题时报告绝不显示全 OK"这条底线)。
+    _has_degraded = len(ctx.degraded_msgs) > 0
     output = {
         "date": ctx.date,
         "dry_run": int(ctx.dry),
@@ -68,8 +74,11 @@ def _write_report_and_alert(ctx: PipelineContext) -> None:
         "scope": "data_foundation (L0/L1/L1k/snapshot/retention)",
         "phase_status": {
             "preflight": "OK" if sla_report.exists() else "ERR",
-            "acquire": "OK", "clean": "OK", "process": "OK", "store": "OK",
+            "chain": "DEGRADED_PARTIAL" if _has_degraded else "OK",
+            "detail": "逐阶段状态见 smartmoney.mart_pipeline_run_manifest pipeline.stage.* 行",
         },
+        "degraded_total": len(ctx.degraded_msgs),
+        "degraded_msgs": list(ctx.degraded_msgs)[:20],
     }
     alert_flags = {"sla_warn": False}
 

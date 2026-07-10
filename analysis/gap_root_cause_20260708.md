@@ -272,3 +272,36 @@ adj_factor"唯一盘前"措辞更正, kpl_list pit_anchor文字同步。
 
 **验证**: 全量测试587 passed+1 skipped(8个PATH失败测试全部恢复); stk_surv周末数据实测落库;
 ths_hot回填修正后单日验证精确落库; 6域continuity check全绿。
+
+## 第四轮: 全栈就绪审计 READY_WITH_FIXES 六项收口 (2026-07-10, 用户"检查数据地基是否具备向上搭建条件")
+
+wf_d4375ef2 全栈审计(采集→清洗→加工→计算→展示→形态识别)裁决 READY_WITH_FIXES, 六项修复全部落地:
+
+| 项 | 修复 | 证据 |
+|---|---|---|
+| A pytest 生产库污染 (HIGH) | test_pipeline monkeypatch `_record_stage_best_effort`+tmp log_path, 不再写生产 manifest | 5测绿; manifest 清 384 行污染(亚秒全链簇), 余 19 真实行 |
+| B clean 审计失败静默 | `_data_audit` n_fail>0 → raise → ctx.step 记 degraded/check_fail; 删死 env DATA_AUDIT_STRICT | test_pipeline_stage_status 绿 |
+| C store 报告硬编码 OK | phase_status 改 `DEGRADED_PARTIAL if _has_degraded` + degraded_total/msgs | 同上 |
+| D ops 死 job tdx_pool_refresh | MANUAL_JOBS 摘除(argv 指向已物删脚本, 点击必败+误导 ALERT); check_dead_references 5道扫描均不覆盖 Path 拼接路径 = 漏检根因 | 余 jobs=['daily_update'] |
+| E org_holding fetched_at 双时区 | 根因: `_INSERT_COLS` 漏列 → UTC 值被丢, INSERT 落 DDL 默认(北京)/UPDATE 落 now()(北京)。修: fetched_at 入列+excluded 传递, 全路径 UTC (家族约定=holders_aif10) | 新 red-green 测: 两路径 fetched_at 距 UTC now <600s (北京墙钟=+28800s 必红) |
+| F rally_gt strata B1/B2 占位 NULL | `_write_strata` 接 ASOF JOIN sm.dim_stock_segment_daily (<=bottom 最近) + 精确 JOIN sm.fact_stock_form_daily (bottom 日); landing 新增非结构性 NULL 硬门 (mktcap_seg/axis_pos 源端实测 0 NULL, 探针 strptime→DATE 方向与写入 strftime→VARCHAR 反向, 单向格式 bug 骗不过两侧) | 14测绿含 ASOF 取底日行(非前日)断言 + join 掐断 red 面 raise |
+
+执行事故 (第3起 TCC 类): 10:50 macOS 撤销 Claude App 全部磁盘授权(触因疑 claude-code 2.1.202 自更新换二进制路径) → 项目全目录 EPERM;
+ths_hot 回填进程靠已开句柄撑 15min 后死于 DuckDB checkpoint FATAL (`active_checkpoint was already set` — checkpoint 需建新文件被 EPERM 卡死内部状态机)。
+恢复: 用户重启 App 重授权 → WAL(.wal+.wal.checkpoint 双文件)重放干净, 0 数据损失 (55万行/10.6万周末行在库); 回填幂等 --start 20250901 断点续跑。
+教训: FDA 授权只对新进程生效; DuckDB 长跑进程遇系统级权限撤销死相 = checkpoint FATAL, WAL 兜底可靠。
+
+验证: 全量 pytest 589 passed / CI 离线列表 188 passed / codegraph sync + complexity 双扫(触碰文件 0 新增) / F 改动经对抗复审 agent (PIT/ASOF语义/假绿面/测试有效性/锁行为)。
+对抗复审抓到 1 处必修: org_holding UTC 回归测试在 GitHub CI(默认 UTC 时区主机)上会假绿(旧 bug 的北京墙钟在 UTC 主机上恰好=UTC, 差值 0), 修: 测试内 `SET TimeZone='Asia/Shanghai'` 钉死 session 时区, 实测验证钉死后旧 bug 显形 28800s 偏差(必红)。
+
+### G/H 收口 (ths_hot 回填 EXIT=0 落 20260709, 释放写锁后执行)
+
+daily_update 追平链跑完(20260708~10)留 2 项 degraded, 逐个查根因(不盲目补拉):
+- **top_inst 20260708**: 单纯漏补(追平窗口边界), 现场 drain 664 行落库解决。
+- **moneyflow_dc 20231122**: 抓到**跨域测量错误** — 2026-07-09"全审计墓碑复探"声称该日已恢复("vendor 现返 5075 行"), 复测发现该域仍 0 行; 追查 5075 这个数字实为姊妹表 `raw_tushare_moneyflow`(个股资金流, 无 `_dc` 后缀)的行数, 该域自身 `pit_anchor` 注释写"与 moneyflow 同"引导误查同名表。用正确表名现场 sync_runner 实弹复测确认 zero_rows(交易日历核实该日 is_trading=1 非节假日), 恢复墓碑并记录根因(防第三次误撤)。全库 continuity gate FAIL→WARN(5 项既有非阻塞标注)。
+
+**GT 重建**(services.rally_gt.rebuild): 5636 episode(与基线完全一致) + 新 B1/B2 硬门静默通过。生产库实测: mktcap_seg/turnover_seg 0 NULL(源端声明一致), axis_pos/axis_purity 32.5% NULL — 与 2026-07-02 设计文档记录的"B2 覆盖率 67.5%"精确吻合(100%-67.5%=32.5%), 证明 JOIN 逻辑与当时探索性验证结果一致, 非新引入偏差。
+
+**post-fix-audit 5 步 (Rule 9.2 #7, 本 commit 含 fix/修复 关键词强制走)**: ①touched artifacts = manifest(已清384行污染)/org_holding fetched_at 列/rally_gt 三表(DROP重建无残留)/sync_registry moneyflow_dc 墓碑; ②downstream stale 排查 = org_holding 历史 33.6万行仍是修复前北京墙钟口径, 是唯一真实残留; ③DB residue check: 核实 daily_update 今日(20260710)未触发 org_holding 增量写入(下次法定披露季度末08-31未到, Q1数据已在库正确跳过) → **无混口径风险**(不存在"部分行UTC部分行北京钟"的中间脏态), 全表统一旧口径可安全盲减; ④process/cache/tmp: 无遗留后台进程(ths_hot/daily_update均已EXIT); ⑤**执行**: `UPDATE raw_org_holding_aif10 SET fetched_at = fetched_at - INTERVAL '8 HOUR'`(smartmoney.duckdb, 336077行全量, 校正前MAX=2026-06-28 06:20晚于当时UTC now出现"未来时间戳"假象, 校正后MAX=2026-06-27 22:20早于当前UTC now, 逻辑自洽) — **cleanup verified 无残留, 0 stale**。
+
+**验证收口**: 全量测试 591 passed(+2 新 B1/B2 测试) / moth 29 pass 0 fail / `dc-member-truncation-pin`(此前写锁挡住未独立验证)现场复核 0 命中截断签名 / ths_hot 最终 637,913 行(周末行 176,300, 高水位 20260709)。

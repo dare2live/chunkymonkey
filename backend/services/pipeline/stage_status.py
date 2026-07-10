@@ -161,7 +161,13 @@ def run_and_record(ctx, stage: str, fn) -> bool:
     不改变阶段失败行为, 只附加状态记录)。
     """
     before = len(ctx.degraded_msgs)
-    fn(ctx)
+    try:
+        fn(ctx)
+    except Exception:
+        # 硬崩 (非 degrade 续跑路径) 也留状态痕迹再抛 — 否则 manifest 缺该阶段行, 崩溃在
+        # 状态面不可见 (全栈审计LOW)。gate_result 不附: 崩溃时 clean gate 产物可能是上轮残留。
+        _record_stage_best_effort(ctx, stage, STATUS_CHECK_FAIL)
+        raise
     passed = len(ctx.degraded_msgs) == before
     status = STATUS_CHECK_PASS if passed else STATUS_CHECK_FAIL
     gate = _clean_gate_result() if stage == "clean" else None

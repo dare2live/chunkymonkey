@@ -218,6 +218,8 @@ def _normalize_rows(raw: list[dict] | None) -> list[dict]:
     if not raw:
         return []
     out: list[dict] = []
+    # 注意: DuckDB 对带 offset 的字符串→TIMESTAMP 是"剥 offset 不换算" (实测 '+08:00' 串
+    # 落墙钟值非 UTC 换算值) — 此处恒 '+00:00' (UTC) 才安全, 换写法前先实测落库值。
     fetched_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     for r in raw:
         stock_code = _normalize_stock_code(r.get("SECURITY_CODE"))
@@ -255,11 +257,15 @@ def _normalize_rows(raw: list[dict] | None) -> list[dict]:
 
 
 # ── ④ 存储 store: upsert ─────────────────────────────────────────────
+# fetched_at 口径 = UTC (家族约定, 与 holders_aif10._utc_now 一致; data_health_snapshot 按 UTC 算新鲜度)。
+# 2026-07-10 修双时区漂移(全栈审计MEDIUM): 原 _INSERT_COLS 漏 fetched_at → _normalize_rows 算好的
+# UTC 被静默丢弃, INSERT 落 DDL DEFAULT CURRENT_TIMESTAMP(北京墙钟)、UPDATE 落 now()(北京墙钟),
+# 同列两口径且全非 UTC → 新鲜度虚高 8h。统一改走 _normalize_rows 的 UTC 值。
 _INSERT_COLS = (
     "report_date, available_date, stock_code, stock_name, org_type_code, org_type_name, "
     "holder_code, holder_name, fund_code, fund_derivecode, fund_manager, fund_type, "
     "total_shares, hold_value, total_shares_ratio, free_shares_ratio, free_market_cap, "
-    "free_shares, fsr_change, fsr_rate_change, change_type, source, source_tier"
+    "free_shares, fsr_change, fsr_rate_change, change_type, source, source_tier, fetched_at"
 )
 _INSERT_KEYS = [c.strip() for c in _INSERT_COLS.split(",")]
 
@@ -275,7 +281,7 @@ def _upsert_rows(conn: Any, rows: list[dict]) -> int:
     conn.executemany(
         f"INSERT INTO raw_org_holding_aif10 ({_INSERT_COLS}) VALUES ({placeholders}) "
         f"ON CONFLICT(report_date, stock_code, holder_code, fund_derivecode) DO UPDATE SET "
-        f"{update_set}, fetched_at = now()",
+        f"{update_set}",
         [tuple(r.get(k) for k in _INSERT_KEYS) for r in rows],
     )
     conn.commit()

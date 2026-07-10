@@ -809,3 +809,12 @@ loader 误删致 4 处 `import services.experiment_jobs` 悬空崩)。故 S0 = c
   per-date 1.5M行; progress首次跨阈连续段; 起涨42%/主升50%/顶部8%=入场窗宽出场窗窄; panel join三阶段100%)。
   Modal端到端验证可用(dare2live, remote容器跑通)。遗留: daily_basic 2019市值补拉(task_022abb42); GT builder
   统一调rally_detect(低优); roe/mom尾值D阶段winsorize; (e)消费侧leakage注册留D(有训练consumer时)。
+
+- **2026-07-10 全栈就绪审计六项收口 + 对抗复审 (owner=analysis/gap_root_cause_20260708.md 第四轮节)**: A pytest生产库污染(manifest清384行)
+  / B clean审计失败→degraded链 / C store报告DEGRADED_PARTIAL真实传导 / D ops死job摘除 / E org_holding fetched_at双时区根治
+  (_INSERT_COLS漏列=computed-but-dropped死字段, 全路径UTC) / F rally_gt strata B1/B2接线(ASOF+精确join, 非结构性NULL硬门双向格式
+  转换防假绿)。对抗复审agent最小实测核证: rally侧全SURVIVES(5636 bottom段表全精确命中/0 dup/0脏值/273 B2 NULL全真warmup),
+  抓1真伤=UTC测试在CI(TZ=UTC)假绿→测试钉SET TimeZone修复(TZ=UTC下旧bug显形28800s实证)。新坑沉淀: mythos §1(TCC中途撤销/FDA只对
+  新进程) §5(checkpoint FATAL+WAL兜底/时间戳三陷阱) §14(红面跨环境) + ops skill §2(fetched_at家族口径/join硬门设计/rebuild-smartmoney
+  互斥) + data-acquisition-integrity #11(回填中断恢复三步)。执行事故: macOS TCC撤销→ths_hot回填死于DuckDB checkpoint FATAL,
+  WAL重放0损失, --start 20250901幂等续跑。遗留待锁释放: 历史fetched_at一次性-8h校正(须在修复版首次写入前) → G GT重建 → H追平+moth+commit。

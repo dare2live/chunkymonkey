@@ -92,16 +92,27 @@ def test_gain_exact_060_accepted():
 
 # ── 2. holdout red-green + 右删失 embargo ───────────────────────────────────────
 
-def _mk_env(kline_rows, calendar_dates, symbols, st_rows=(), member_rows=()):
-    """内存 feature_store conn (ATTACH mk/ref) + 独立 raw conn (默认 catalog = tushare_raw 表)。"""
+def _mk_env(kline_rows, calendar_dates, symbols, st_rows=(), member_rows=(),
+            segment_rows=(), form_rows=()):
+    """内存 feature_store conn (ATTACH mk/ref/sm) + 独立 raw conn (默认 catalog = tushare_raw 表)。"""
     conn = duck_mem()
     conn.execute("ATTACH ':memory:' AS mk")
     conn.execute("ATTACH ':memory:' AS ref")
+    conn.execute("ATTACH ':memory:' AS sm")
     conn.execute("CREATE TABLE mk.price_kline_qfq_tushare "
                  "(code VARCHAR, date VARCHAR, high DOUBLE, low DOUBLE, close DOUBLE)")
     conn.executemany("INSERT INTO mk.price_kline_qfq_tushare VALUES (?,?,?,?,?)", kline_rows)
     conn.execute("CREATE TABLE ref.dim_trading_calendar (trade_date VARCHAR, is_trading BIGINT)")
     conn.executemany("INSERT INTO ref.dim_trading_calendar VALUES (?, 1)", [(d,) for d in calendar_dates])
+    # B1/B2 特征面 (trade_date = YYYYMMDD VARCHAR; 生产表 join 所读列子集)
+    conn.execute("CREATE TABLE sm.dim_stock_segment_daily (stock_code VARCHAR, trade_date VARCHAR, "
+                 "mktcap_seg VARCHAR, turnover_seg VARCHAR, vol_regime VARCHAR)")
+    if segment_rows:
+        conn.executemany("INSERT INTO sm.dim_stock_segment_daily VALUES (?,?,?,?,?)", segment_rows)
+    conn.execute("CREATE TABLE sm.fact_stock_form_daily (stock_code VARCHAR, trade_date VARCHAR, "
+                 "axis_pos VARCHAR, axis_purity VARCHAR)")
+    if form_rows:
+        conn.executemany("INSERT INTO sm.fact_stock_form_daily VALUES (?,?,?,?)", form_rows)
     raw = duck_mem()
     raw.execute("CREATE TABLE raw_tushare_stock_st (ts_code VARCHAR, trade_date VARCHAR)")
     if st_rows:
@@ -138,8 +149,16 @@ def test_holdout_green_and_embargo_censoring():
     # 晚 rally: 同形态但整体右移 350 根 → 底@480, 480+250=730 > 699 → censored
     late = _kline_rows("600002", 0.65, 350, dates=all_dates[350:700])
     data_end = all_dates[699].replace("-", "")
-    conn, raw = _mk_env(early + late, all_dates, ["600001", "600002"],
-                        member_rows=[("801080.SI", "电子", "801081.SI", "半导体", "600001.SH", "20180101", None)])
+    bottom_ymd = all_dates[N_BASE].replace("-", "")
+    prev_ymd = all_dates[N_BASE - 1].replace("-", "")
+    conn, raw = _mk_env(
+        early + late, all_dates, ["600001", "600002"],
+        member_rows=[("801080.SI", "电子", "801081.SI", "半导体", "600001.SH", "20180101", None)],
+        # B1: 底前一日 + 底日两行 → ASOF 必须取底日行 (as-of 最近, 非任意/最早)
+        segment_rows=[("600001", prev_ymd, "mid", "low", "low_vol"),
+                      ("600001", bottom_ymd, "small", "high", "high_vol")],
+        # B2: 底日精确行
+        form_rows=[("600001", bottom_ymd, "bottom_zone", "clean")])
     try:
         stats = rally_gt.rebuild(conn=conn, data_end=data_end, raw_conn=raw)
         codes = [r[0] for r in conn.execute(
@@ -153,12 +172,39 @@ def test_holdout_green_and_embargo_censoring():
         assert str(row[0]) == all_dates[N_BASE]
         assert row[1] is True
         assert row[2] == str(CFG["taxonomy_version"])
-        # strata 1:1 + 申万 as-of 接上 + B1/B2 列留 NULL 待回填
-        srow = conn.execute("SELECT sw_l1_name, base_bucket, mktcap_seg, axis_pos "
-                            "FROM fact_rally_strata").fetchone()
+        # strata 1:1 + 申万 as-of 接上 + B1 ASOF 取底日行(非前日) + B2 底日精确对照
+        srow = conn.execute(
+            "SELECT sw_l1_name, base_bucket, mktcap_seg, turnover_seg, vol_regime, "
+            "axis_pos, axis_purity FROM fact_rally_strata").fetchone()
         assert srow[0] == "电子"
         assert srow[1] is not None
-        assert srow[2] is None and srow[3] is None
+        assert (srow[2], srow[3], srow[4]) == ("small", "high", "high_vol")  # 底日行, 非 prev 的 mid/low
+        assert (srow[5], srow[6]) == ("bottom_zone", "clean")
+    finally:
+        conn.close(); raw.close()
+
+
+def test_strata_b1_join_break_raises_and_structural_null_passes():
+    """B1/B2 landing 门 red-green: 源表有行而 strata NULL = join 失灵 raise;
+    源表无行 (warmup 前结构性 NULL) = 放行。"""
+    all_dates = make_dates(700)
+    rows = _kline_rows("600001", 0.65, 700, dates=all_dates)
+    data_end = all_dates[699].replace("-", "")
+    bottom_ymd = all_dates[N_BASE].replace("-", "")
+    conn, raw = _mk_env(
+        rows, all_dates, ["600001"],
+        segment_rows=[("600001", bottom_ymd, "small", "high", "high_vol")],
+        form_rows=[])   # B2 无行 → axis 结构性 NULL, 门放行 (green 面)
+    try:
+        stats = rally_gt.rebuild(conn=conn, data_end=data_end, raw_conn=raw)
+        assert stats["n_pos"] == 1
+        got = conn.execute("SELECT mktcap_seg, axis_pos FROM fact_rally_strata").fetchone()
+        assert (got[0], got[1]) == ("small", None)   # B1 接上, B2 结构性 NULL
+        # red 面: 人为掐断 B1 值 → 源表有 as-of 行而 strata NULL, 门必 raise
+        conn.execute("UPDATE fact_rally_strata SET mktcap_seg = NULL")
+        with pytest.raises(rally_gt.RallyGTLandingError, match="B1 join"):
+            rally_gt._landing_assertions(conn, CFG, rally_gt._to_iso(data_end),
+                                         all_dates, all_dates[699])
     finally:
         conn.close(); raw.close()
 

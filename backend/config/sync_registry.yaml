@@ -73,9 +73,12 @@ domains:
     pit_anchor: "trade_date; 盘后更新 -> JOIN t-1 (与 moneyflow 同)"
     available_after: "18:00"
     data_start: "20230911"        # 2026-06-28 修: 实测源端真起点=20230911 (旧 20230901 早10天致 20230901-08 假缺口每天重探); 东财个股资金流 ~2023-09 起
-    # known_empty_days ["20231122"] 撤销 2026-07-09 (全审计墓碑复探, owner=analysis/
-    #   gap_root_cause_20260708.md): 实测 vendor 现返 5075 行且本地已在库同 5075 — 某次回填
-    #   已静默补上但豁免声明从未撤销, 墓碑与库内事实矛盾。老墓碑同样会过期, 非只近期日期。
+    known_empty_days: ["20231122"]   # 2026-07-10 撤销之撤销 (owner=analysis/gap_root_cause_20260708.md
+      # 第四轮节): 2026-07-09 那次"实测vendor现返5075行"的撤销测错域 — 5075 行是姊妹表
+      # raw_tushare_moneyflow(个股资金流, 无_dc后缀)的值, 本域 raw_tushare_moneyflow_dc(东财板块
+      # 资金流)当日实测仍 0 行 (邻日 20231120/21/23/24 均 5320+行, 交易日历确认该日 is_trading=1
+      # 非节假日)。表名仅一个后缀之差 + pit_anchor 注释写"与 moneyflow 同"引导误查, 是根因。
+      # 本次墓碑恢复已用正确表名现场 sync_runner 实弹复测 (zero_rows 确认)。
     freshness_sla_trading_days: 1
     min_rows_per_batch: 4000      # 实弹 5419-5965 行 (2023Q4+全宇宙)
     allow_empty_batch: false

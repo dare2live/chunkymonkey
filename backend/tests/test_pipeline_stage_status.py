@@ -112,3 +112,26 @@ def test_record_best_effort_never_raises(monkeypatch, tmp_path) -> None:
         ss._record_stage_best_effort(ctx, "acquire", ss.STATUS_CHECK_PASS)  # 不应 raise
     finally:
         ctx.close()
+
+
+def test_run_and_record_crash_still_records(monkeypatch, tmp_path) -> None:
+    """硬崩 (fn raise, 非 degrade 续跑) 也必须留 check_fail 痕迹再抛 — 否则 manifest
+    缺该阶段行, 崩溃在状态面不可见 (全栈审计LOW, 2026-07-10)。"""
+    from services.pipeline import context as ctx_mod
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(ctx_mod, "DEGRADED_FLAG", tmp_path / "alert.flag")
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(ss, "_record_stage_best_effort",
+                        lambda ctx, stage, status, **k: calls.append((stage, status)))
+
+    def _boom(c):
+        raise RuntimeError("boom")
+
+    ctx = PipelineContext(dry=False, date="20990101")
+    try:
+        with pytest.raises(RuntimeError, match="boom"):
+            ss.run_and_record(ctx, "process", _boom)
+    finally:
+        ctx.close()
+    assert calls == [("process", ss.STATUS_CHECK_FAIL)]  # 崩了也记了, 且如实 fail

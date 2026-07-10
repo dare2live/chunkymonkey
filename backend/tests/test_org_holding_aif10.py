@@ -109,3 +109,29 @@ def test_available_date_no_null_when_quarter_end():
     ).fetchone()[0]
     assert miss == 0  # 标准季度末报告期 PIT 锚全覆盖
     con.close()
+
+
+# ── fetched_at 全路径 UTC 口径 (2026-07-10 修双时区漂移: 原 INSERT 落 DDL 默认北京墙钟/
+#    UPDATE 落 now() 北京墙钟, _normalize_rows 算好的 UTC 被 _INSERT_COLS 漏列静默丢弃) ──
+def test_fetched_at_utc_on_both_insert_and_update_paths():
+    from datetime import datetime, timezone
+    con = duckdb.connect(":memory:")
+    # 钉死 session TZ: 旧 bug 路径 (DDL DEFAULT/now() 落墙钟) 在 UTC 主机 (GitHub CI 默认)
+    # 与 UTC 无差 → 不钉则红面只在 Asia/Shanghai 开发机成立, CI 上永久假绿 (对抗复审实测)。
+    con.execute("SET TimeZone='Asia/Shanghai'")
+    m.ensure_tables(con)
+    tol = 600  # 秒; 北京墙钟误写会偏 8h=28800s, 远超容差
+
+    m._upsert_rows(con, m._normalize_rows(_real_shape_raw()))
+    ins = con.execute("SELECT MAX(fetched_at) FROM raw_org_holding_aif10").fetchone()[0]
+    utc_now = datetime.now(timezone.utc).replace(tzinfo=None)
+    assert abs((ins - utc_now).total_seconds()) < tol, f"INSERT 路径 fetched_at 非 UTC: {ins}"
+
+    # 冲突更新路径同口径
+    rows2 = m._normalize_rows(_real_shape_raw())
+    rows2[0]["total_shares"] = 123.0
+    m._upsert_rows(con, rows2)
+    upd = con.execute("SELECT MAX(fetched_at) FROM raw_org_holding_aif10").fetchone()[0]
+    utc_now = datetime.now(timezone.utc).replace(tzinfo=None)
+    assert abs((upd - utc_now).total_seconds()) < tol, f"UPDATE 路径 fetched_at 非 UTC: {upd}"
+    con.close()
