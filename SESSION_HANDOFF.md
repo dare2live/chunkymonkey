@@ -12,7 +12,7 @@
 速记: `bash scripts/cm_resume.sh` 刷新本快照, 新会话按 quickstart 启动检查。
 定时任务告警: 启动时检查 `/tmp/chunkymonkey_ALERT_*.flag`, 存在 = 有 job 失败未处理。
 
-**Snapshot 时间**: 2026-07-10 21:40:51 CST
+**Snapshot 时间**: 2026-07-10 22:56:27 CST
 
 ## 主线状态
 
@@ -44,13 +44,14 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `1ba1187a fix: 8维度全地基审计READY_WITH_FIXES九项修复 — stk_surv/ths_hot周末结构性漏采+时代分段阈值机制+墓碑44%过期清扫+PATH陷阱根治` |
-| 最近 24h commits | 2 |
-| 未 commit 文件 | 14 |
+| HEAD | `c427d1c9 fix: 全栈就绪审计READY_WITH_FIXES六项收口 + G/H追平 — pipeline状态链诚实化/org_holding双时区/rally_gt strata B1B2接线/moneyflow_dc墓碑跨域测量纠错` |
+| 最近 24h commits | 3 |
+| 未 commit 文件 | 3 |
 
 ### 最近 10 commits
 
 ```
+c427d1c9 fix: 全栈就绪审计READY_WITH_FIXES六项收口 + G/H追平 — pipeline状态链诚实化/org_holding双时区/rally_gt strata B1B2接线/moneyflow_dc墓碑跨域测量纠错
 1ba1187a fix: 8维度全地基审计READY_WITH_FIXES九项修复 — stk_surv/ths_hot周末结构性漏采+时代分段阈值机制+墓碑44%过期清扫+PATH陷阱根治
 1856c0dd fix: 23域page_limit横向扫描收官 — 第9/10例真截断修复(report_rc硬顶3000/ths_hot硬顶2000缺77%) + 4域写入侧缺口复核3假1真
 81d27913 fix: 6域数据缺口根因深查+根治 — margin查询形态/margin_detail阈值/stk_surv page_limit截断/report_rc+forecast+share_float周末数据结构性排除
@@ -60,12 +61,11 @@
 08c42513 fix: sw_daily 20260707源端单日空洞墓碑 + 多域尾部断流批量补拉
 7c554840 fix: 数据地基收尾复核抓出的2个真尾巴清零 — doctor首次纯PASS
 7f241587 chore: 重生 lineage graph.json (SERVE读层收口 T2 informational drift 清零)
-9cdccda0 feat: SERVE读层门系统性收口 — 退役伪绿D1/D2, 提升scan_consumer_bypass为默认执法
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**14 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**3 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

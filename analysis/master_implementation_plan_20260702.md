@@ -15,7 +15,7 @@ A. 机构档案 API (SERVE 暴露画像+信号流)          ← 半天, 无依�
     │
 B. 基础前置件 (Type A 平台层, 每日数据获取后跑)   ← 用户裁决"前置在所有策略之前"
  ├─ B1 股票分层模块 [DONE 2026-07-02] (dim_stock_segment_daily 833万行, process 步)
- ├─ B2 形态识别模块 [代码 DONE 2026-07-02] (正交5轴重建, 旧实现对抗审查 14 缺陷修正; 全量 rebuild 验收中)
+ ├─ B2 形态识别模块 [DONE 2026-07-02, 验收闭环 2026-07-10] (正交5轴重建, 旧实现对抗审查 14 缺陷修正; rally_gt strata B2 join 实测 axis_pos/axis_purity 覆盖率 67.5% 与设计预期精确吻合, 证 rebuild 数据面无回归)
  ├─ B3 两融采集域 [DONE 2026-07-02] (margin_detail 464.9万行 1816/1816 零缺日 + margin 汇总)
  └─ B4 市场感知引擎 [DONE 2026-07-02] (mart_sector_pulse_daily 33.8万行两链 + market 844行, smoke 过)
     │
@@ -26,7 +26,9 @@ C. edge 前端 v1 [骨架 DONE 2026-07-02: React+Vite 档案/实盘模拟页 bui
  └─ C4 市场感知页 (资金热力/RS轮动/悄悄流入榜/情绪温度/退潮预警 — 选股台的上游漏斗)
     │
 D. 主升浪猎手 (D1-D4, 依赖 B1+B2+B4[板块上下文因子])              ← 用户方法论主战场
- ├─ D1 GT 重生成 (train 窗 ≤2025-06; archive 5 parquet 定义参照; holdout 纪律立法 §2.1)
+ ├─ D1 GT 重生成 [DONE 2026-07-02 初版, strata B1/B2 接线收口 2026-07-10] (train 窗 ≤2025-06;
+ │    5636 episode/3357 股, 五层漏斗+右删失embargo, strata 三维完整[申万+B1段表+B2形态表],
+ │    owner=analysis/d1_gt_v2_design_20260702.md, 详见 gap_root_cause_20260708.md 第四轮)
  ├─ D2 逐层特征消融 (裸K → 日更量价 → 事件类; 机构 episode 特征在事件层交汇 §4)
  ├─ D3 细分策略 (行业/市值/板块 cell 内, 样本量护栏)
  └─ D4 OOS 验收 (2025-06→今 holdout, 预注册判据 + 使用预算)
