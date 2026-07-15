@@ -279,7 +279,7 @@ def test_drain_conditional_group_contract_uses_exact_bse_start_boundary():
 
 
 def test_drain_failed_todo_is_not_reported_as_success_watermark_date(monkeypatch):
-    """失败待办日不能进入 last_date；watermark 只认实际成功批。"""
+    """历史完整日和失败待办都不能伪装成本轮成功水位。"""
     conn = connect(":memory:")
     _seed(conn, ["20200101"])
     recorded = {}
@@ -294,8 +294,54 @@ def test_drain_failed_todo_is_not_reported_as_success_watermark_date(monkeypatch
     )
 
     assert result["status"] == "partial"
-    assert recorded["last_date"] == "20200101"
+    assert recorded["last_date"] is None
     assert recorded["ok"] is False
+
+
+def test_drain_partial_refill_watermark_only_uses_successful_todo(monkeypatch):
+    """部分补齐时只推进到本轮真实写入日，不能借用历史 actual。"""
+    conn = connect(":memory:")
+    _seed(conn, ["20200101"])
+    recorded = {}
+    monkeypatch.setattr(sr, "_record_outcome", lambda spec, **kw: recorded.update(kw))
+    result = sr.drain_domain(
+        "demo",
+        registry=_registry(),
+        conn=conn,
+        adapter=FakeAdapter({
+            "20200102": [
+                {"ts_code": "000001.SZ", "trade_date": "20200102", "val": 2.0}
+            ],
+            "20200103": [],
+        }),
+        trading_days=["20200101", "20200102", "20200103"],
+        record=True,
+    )
+
+    assert result["status"] == "partial" and result["refilled_days"] == 1
+    assert recorded["last_date"] == "20200102"
+    assert recorded["ok"] is False
+
+
+def test_drain_clean_audit_does_not_refresh_success_watermark(monkeypatch):
+    """无需 provider 补写的 clean 扫描可关账，但不得伪造新成功时间。"""
+    conn = connect(":memory:")
+    _seed(conn, ["20200101"])
+    recorded = {}
+    monkeypatch.setattr(sr, "_record_outcome", lambda spec, **kw: recorded.update(kw))
+
+    result = sr.drain_domain(
+        "demo",
+        registry=_registry(),
+        conn=conn,
+        adapter=FakeAdapter({}),
+        trading_days=["20200101"],
+        record=True,
+    )
+
+    assert result["status"] == "clean"
+    assert recorded["last_date"] is None
+    assert recorded["ok"] is True and recorded["resolve_failures"] is True
 
 
 def test_drain_records_write_failure_without_claiming_refill(monkeypatch):

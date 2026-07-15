@@ -1617,7 +1617,9 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
               "still_failed": still_failed[:20], "truncated": truncated}
     if record:  # 送达 (宪法第 5 条): 仍有缺口 → 记 failure; 清干净 → resolve
         _record_outcome(spec, ok=status in ("clean", "drained"),
-                        last_date=max(actual | successful_todo) if (actual or successful_todo) else None,
+                        # success watermark 只认本轮真实 provider 写入；历史 actual 只是
+                        # gap 审计证据，不能把 0 写入的 clean/partial 扫描伪装成刚成功。
+                        last_date=max(successful_todo) if successful_todo else None,
                         rows=refilled_rows,
                         error=json.dumps({"drain_still_failed": still_failed[:10]}) if still_failed else None,
                         resolve_failures=status in ("clean", "drained") and not truncated,
