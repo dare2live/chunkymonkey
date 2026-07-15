@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from conftest import duck_mem
 from services.data_sources import sync_runner as sr
-from services.source_watermarks import ensure_source_watermark_schema
+from services.source_watermarks import ensure_source_watermark_schema, upsert_watermark
 
 
 class _NoClose:
@@ -111,6 +111,147 @@ def test_record_outcome_full_success_advances_and_resolves(monkeypatch):
         ["sync:daily_probe"],
     ).fetchone()[0]
     assert open_failures == 0, "全清后历史失败记录必须被 resolve"
+    c.close()
+
+
+def test_full_refresh_success_is_complete_replay_and_resolves_open_failure(monkeypatch):
+    """完整快照成功已覆盖整域，run_domain 必须自行关掉旧整批失败。"""
+    c = duck_mem()
+    ensure_source_watermark_schema(c)
+    shared = _NoClose(c)
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: shared)
+    monkeypatch.setattr(sr, "_target_conn", lambda _spec: shared)
+    monkeypatch.setattr(sr, "_adapter", lambda _source: object())
+    monkeypatch.setattr(
+        sr,
+        "_fetch_logical_batch",
+        lambda *_args: [{"exchange": "SSE", "cal_date": "20261231"}],
+    )
+    monkeypatch.setattr(sr, "_write_batch", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(sr.time, "sleep", lambda _seconds: None)
+    spec = {
+        "domain": "trade_cal_probe",
+        "source": "tushare",
+        "api": "trade_cal",
+        "target_table": "raw_trade_cal_probe",
+        "grain": ["exchange", "cal_date"],
+        "batch_mode": "full_refresh",
+        "freshness_date_column": "cal_date",
+    }
+    sr._record_outcome(spec, ok=False, last_date=None, rows=0, error="old snapshot failed")
+
+    result = sr.run_domain(
+        "trade_cal_probe",
+        registry={"defaults": {}, "domains": {"trade_cal_probe": spec}},
+    )
+
+    assert result["ok"] is True and result["last_date"] == "20261231"
+    open_failures = c.execute(
+        "SELECT COUNT(*) FROM mart_data_source_failure_queue "
+        "WHERE data_domain='sync:trade_cal_probe' AND status != 'resolved'"
+    ).fetchone()[0]
+    assert open_failures == 0
+    c.close()
+
+
+def test_undated_full_refresh_updates_success_without_fabricating_data_date(monkeypatch):
+    """静态快照无日期列时刷新成功时间/行数，但不把运行日伪装成数据日期。"""
+    c = duck_mem()
+    ensure_source_watermark_schema(c)
+    shared = _NoClose(c)
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: shared)
+    monkeypatch.setattr(sr, "_target_conn", lambda _spec: shared)
+    monkeypatch.setattr(sr, "_adapter", lambda _source: object())
+    monkeypatch.setattr(
+        sr,
+        "_fetch_logical_batch",
+        lambda *_args: [{"name": "alpha"}, {"name": "beta"}],
+    )
+    monkeypatch.setattr(sr, "_write_batch", lambda *_args, **_kwargs: 2)
+    monkeypatch.setattr(sr.time, "sleep", lambda _seconds: None)
+    upsert_watermark(
+        c,
+        {
+            "data_domain": "sync:hm_list_probe",
+            "source_name": "tushare",
+            "source_tier": sr.SOURCE_TIER_TUSHARE,
+            "last_success_at": "2026-07-06T00:00:00+00:00",
+            "last_data_date": None,
+            "row_count": 999,
+            "parser_version": "sync_runner_v1",
+        },
+    )
+    spec = {
+        "domain": "hm_list_probe",
+        "source": "tushare",
+        "api": "hm_list",
+        "target_table": "raw_hm_list_probe",
+        "grain": ["name"],
+        "batch_mode": "full_refresh",
+    }
+
+    result = sr.run_domain(
+        "hm_list_probe",
+        registry={"defaults": {}, "domains": {"hm_list_probe": spec}},
+    )
+
+    row = c.execute(
+        "SELECT last_success_at, last_data_date, row_count "
+        "FROM mart_data_source_watermark WHERE data_domain='sync:hm_list_probe'"
+    ).fetchone()
+    assert result["ok"] is True and result["last_date"] is None
+    assert str(row[0]) > "2026-07-06" and row[1] is None and row[2] == 2
+    c.close()
+
+
+def test_failed_full_refresh_neither_resolves_failure_nor_refreshes_success(monkeypatch):
+    """完整快照没抓成时，旧 failure 与旧 success 时间都必须保留。"""
+    c = duck_mem()
+    ensure_source_watermark_schema(c)
+    shared = _NoClose(c)
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: shared)
+    monkeypatch.setattr(sr, "_target_conn", lambda _spec: shared)
+    monkeypatch.setattr(sr, "_adapter", lambda _source: object())
+    monkeypatch.setattr(sr, "_fetch_logical_batch", lambda *_args: None)
+    monkeypatch.setattr(sr.time, "sleep", lambda _seconds: None)
+    upsert_watermark(
+        c,
+        {
+            "data_domain": "sync:stock_basic_probe",
+            "source_name": "tushare",
+            "source_tier": sr.SOURCE_TIER_TUSHARE,
+            "last_success_at": "2026-07-06T00:00:00+00:00",
+            "last_data_date": None,
+            "row_count": 999,
+            "parser_version": "sync_runner_v1",
+        },
+    )
+    spec = {
+        "domain": "stock_basic_probe",
+        "source": "tushare",
+        "api": "stock_basic",
+        "target_table": "raw_stock_basic_probe",
+        "grain": ["ts_code"],
+        "batch_mode": "full_refresh",
+    }
+    sr._record_outcome(spec, ok=False, last_date=None, rows=0, error="old snapshot failed")
+
+    result = sr.run_domain(
+        "stock_basic_probe",
+        registry={"defaults": {}, "domains": {"stock_basic_probe": spec}},
+    )
+
+    row = c.execute(
+        "SELECT last_success_at, row_count FROM mart_data_source_watermark "
+        "WHERE data_domain='sync:stock_basic_probe'"
+    ).fetchone()
+    open_failures = c.execute(
+        "SELECT COUNT(*) FROM mart_data_source_failure_queue "
+        "WHERE data_domain='sync:stock_basic_probe' AND status != 'resolved'"
+    ).fetchone()[0]
+    assert result["ok"] is False and result["failed_batches"] == 1
+    assert str(row[0]).startswith("2026-07-06") and row[1] == 999
+    assert open_failures == 1
     c.close()
 
 

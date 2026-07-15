@@ -984,11 +984,12 @@ def _record_outcome(spec: dict[str, Any], *, ok: bool, last_date: str | None,
     实测 stk_factor_pro 冻结 17 天 / block_trade 曾冻结 9.5 个月: 只要该域某个 (通常是历史)
     批次持续失败(suspicious_empty/below_min_rows 等), 后续每次跑批哪怕新日子都写成功了,
     watermark 也永远推不动——冻结的是"监控信号"本身, 而不是数据真的没更新。
-    修复: watermark 是否推进只看 `last_date 是否有真实前移`(有实际写入进展), 与
-    `ok`(本轮是否存在任何失败批, 用于决定要不要同时记 failure_queue)彻底解耦——
-    两件事不再共用同一个判定字段。普通 run_domain 只有在实际覆盖 failure queue 的日期/期间
-    锚点时才有关账证据；完整、非截断的 drain 重扫也可关账。也就是说，只有覆盖失败锚点的
-    完整重放（日期 drain 或公告日/报告期重放）才能 resolve；
+    修复: 有日期域的 frontier 只看 `last_date 是否有真实前移`；无日期 full-refresh 则只刷新
+    真实 provider success 时间/行数并保留 NULL 日期。两者都与 `ok`(本轮是否存在任何失败批,
+    用于决定要不要同时记 failure_queue)解耦。普通 run_domain 只有在实际覆盖 failure queue
+    的日期/期间锚点时才有关账证据；完整快照成功或完整、非截断的 drain 重扫也可关账。
+    也就是说，只有覆盖失败锚点的完整重放（日期 drain、公告日/报告期重放或 full-refresh）
+    才能 resolve；
     半清时 watermark 可按真实成功日期推进，但真失败继续保留。"""
     from services.source_watermarks import (
         ensure_source_watermark_schema,
@@ -1001,20 +1002,25 @@ def _record_outcome(spec: dict[str, Any], *, ok: bool, last_date: str | None,
     try:
         domain_key = f"sync:{spec['domain']}"
         ensure_source_watermark_schema(conn)
-        if last_date:
+        if last_date or provider_succeeded:
             # 历史显式重放可以成功写到旧日期，但绝不能让 freshness frontier 倒退。
+            # 无日期列的 full-refresh 快照仍须刷新真实 success 时间/行数；这时保留原
+            # last_data_date（可为 NULL），绝不拿运行日伪造数据日期。
             existing = conn.execute(
                 "SELECT last_data_date FROM mart_data_source_watermark "
                 "WHERE data_domain = ? AND source_name = ? AND source_tier = ?",
                 [domain_key, spec["source"], SOURCE_TIER_TUSHARE],
             ).fetchone()
-            candidate = str(last_date).replace("-", "")
             existing_date = (
                 str(existing[0]).replace("-", "")
                 if existing and existing[0]
                 else None
             )
-            monotonic_date = max(candidate, existing_date) if existing_date else candidate
+            if last_date:
+                candidate = str(last_date).replace("-", "")
+                monotonic_date = max(candidate, existing_date) if existing_date else candidate
+            else:
+                monotonic_date = existing_date
             upsert_watermark(conn, {
                 "data_domain": domain_key,
                 "source_name": spec["source"],
@@ -1352,7 +1358,11 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         last_date=last_ok_date,
         rows=total_rows,
         error=err_payload,
-        resolve_failures=ok and replaying_open_failure,
+        # full-refresh 成功已覆盖整个快照，天然是旧整批失败的完整重放证据；普通增量
+        # 仍必须实际覆盖 failure frontier，不能因“今天成功”洗掉历史 gap。
+        resolve_failures=ok and (
+            replaying_open_failure or spec["batch_mode"] == "full_refresh"
+        ),
         failure_type=failure_type,
         provider_succeeded=ok and bool(batches),
     )
