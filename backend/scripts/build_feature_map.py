@@ -129,7 +129,11 @@ def scan_chunkyctl(repo: Path) -> list[list[str]]:
 
 def scan_launchd(repo: Path) -> list[dict]:
     jobs = []
-    for plist in sorted((repo / "configs" / "launchd").glob("*.plist")):
+    plist_paths = {
+        *list((repo / "configs" / "launchd").glob("*.plist")),
+        *list((repo / "backend" / "scripts" / "launchd").glob("*.plist")),
+    }
+    for plist in sorted(plist_paths):
         try:
             d = plistlib.loads(plist.read_bytes())
         except Exception:  # noqa: BLE001 — 单文件坏不挡全图, 显式标注

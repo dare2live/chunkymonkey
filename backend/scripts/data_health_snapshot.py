@@ -1,4 +1,4 @@
-"""数据健康快照 — 每天 09:30 跑一次, 写 mart_data_health.
+"""数据健康快照 — 每次 doctor 或手动数据链运行时刷新, 写 mart_data_health.
 
 为每张登记在 dim_data_asset 里的表实测:
   - row_count: 当前行数

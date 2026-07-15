@@ -59,6 +59,7 @@ def test_warn_if_clamped_empty_window(caplog):
 def test_registry_surgery_contract_20260612():
     reg = sr.load_registry()
     d = reg["domains"]
+    assert reg["defaults"]["auth_expiry_warn_days"] == 14
     # 截断防线: dc 系必须声明 page_limit (catalog 单次上限 5000 实锤)
     assert d["dc_member"]["page_limit"] == 5000
     assert d["dc_index"]["page_limit"] == 5000
@@ -69,6 +70,15 @@ def test_registry_surgery_contract_20260612():
     assert d["index_dailybasic"]["page_limit"] == 3000
     assert d["share_float"]["page_limit"] == 6000
     assert d["block_trade"]["page_limit"] == 1000
+    assert d["trade_cal"]["page_limit"] == 6000
+    assert d["trade_cal"]["write_mode"] == "replace_snapshot"
+    assert d["stock_basic"]["write_mode"] == "replace_snapshot"
+    assert d["trade_cal"]["freshness_date_column"] == "cal_date"
+    assert d["trade_cal"]["fixed_params"] == {"exchange": "SSE"}
+    assert d["margin_detail"]["batch_completeness"]["required_groups"] == ["SH", "SZ"]
+    assert "split_by" not in d["margin_detail"]  # API catalog 无 exchange 参数；传入也被 provider 忽略
+    assert d["stk_factor_pro"]["sync_policy"] == "on_demand"
+    assert "fixed_params" not in d["stk_factor_pro"]
     # 2026-07-06 全面数据审计实锤第 N 例: stk_limit 全市场(股票+ETF+B股+北交所混合)总量增长
     # 跨过服务端隐式单页上限(实测 limit=6000 仍只回 5800, offset=5800 page2 再回 1877 行),
     # 20260615 起 603/605/688/689/601 前缀连续 3 周静默丢 ~1500 行/天, 现有 continuity gate

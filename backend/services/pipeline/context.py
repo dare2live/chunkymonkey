@@ -1,7 +1,8 @@
 """管线共享上下文 + 阶段执行助手 (2026-06-23 daily_update 重设计)。
 
 替代旧 bash 的 log() / step_degraded() / DEGRADED_FLAG / run_script 机制 — 语义保持一致:
-- 所有步骤失败 = degraded (记录 + 续跑, 不中断链), 链尾汇总 + 告警送达 (宪法第5条; 防静默断流)。
+- 普通步骤失败 = degraded (记录 + 续跑); 授权前置硬门失败由 run.py 在四阶段前 exit 3。
+- 链尾汇总 + 告警送达 (宪法第5条; 防静默断流)。
 - log 同时写 /tmp 日志文件 + stdout。
 """
 from __future__ import annotations
@@ -11,6 +12,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 REPO = Path(__file__).resolve().parents[3]
 # degraded 告警 flag (session 启动检查 /tmp/chunkymonkey_ALERT_*.flag); 每次链起跑清, 跑完仍存=本次真实降级
@@ -31,14 +33,22 @@ class PipelineContext:
     skip_sync: bool = False
     date: str = ""  # YYYYMMDD
     log_path: Path | None = None
+    auth_expiry_warning_days: int | None = None
+    tushare_auth_status: dict[str, Any] | None = None
+    writer_lease_id: str | None = None
+    writer_lock_fd: int | None = None
     degraded_msgs: list[str] = field(default_factory=list)
     _log_fh: object = None
 
     def __post_init__(self):
         if not self.date:
             raise ValueError("PipelineContext.date 必填 (YYYYMMDD; 由 run.py 注入, 不取 wall-clock 防跨午夜)")
+        if self.auth_expiry_warning_days is not None and self.auth_expiry_warning_days < 0:
+            raise ValueError("auth_expiry_warning_days 不能为负数")
         if self.log_path is None:
-            self.log_path = Path(f"/tmp/chunkymonkey_daily_update_{self.date}.log")
+            # 日志与告警必须落在同一 runtime 目录。生产默认仍是 /tmp；测试只需隔离
+            # DEGRADED_FLAG 即同时隔离默认日志，避免假日期/假阻断污染真实运维证据。
+            self.log_path = DEGRADED_FLAG.parent / f"chunkymonkey_daily_update_{self.date}.log"
         # 追加模式打开日志 (与旧 bash tee -a 一致)
         self._log_fh = open(self.log_path, "a", encoding="utf-8")
 
@@ -78,6 +88,7 @@ class PipelineContext:
             proc = subprocess.run(
                 cmd, cwd=str(REPO), capture_output=True, text=True,
                 env=self._subprocess_env(),
+                pass_fds=self._subprocess_pass_fds(),
             )
         except Exception as e:  # noqa: BLE001
             self.degraded(f"{degraded_msg} (subprocess 异常 {e})")
@@ -93,10 +104,36 @@ class PipelineContext:
 
     def _subprocess_env(self) -> dict:
         import os
+        from services.writer_lock import (
+            AUTH_VERIFIED_LEASE_ENV,
+            WRITER_LEASE_ENV,
+            WRITER_LOCK_FD_ENV,
+        )
+
         env = dict(os.environ)
         # PYTHONPATH=backend (子脚本 import services.*); 继承 .env (bash 已 source)
         env["PYTHONPATH"] = "backend" + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+        # lease 只由当前 PipelineContext 显式签发。不得透传调用进程里可能残留/伪造的值；
+        # sync_runner 还会核对锁文件 metadata + 直接父 PID，二者同时满足才允许复入。
+        if self.writer_lease_id:
+            env[WRITER_LEASE_ENV] = self.writer_lease_id
+            if self.writer_lock_fd is not None:
+                env[WRITER_LOCK_FD_ENV] = str(self.writer_lock_fd)
+            else:
+                env.pop(WRITER_LOCK_FD_ENV, None)
+            if self.tushare_auth_status is not None:
+                env[AUTH_VERIFIED_LEASE_ENV] = self.writer_lease_id
+            else:
+                env.pop(AUTH_VERIFIED_LEASE_ENV, None)
+        else:
+            env.pop(WRITER_LEASE_ENV, None)
+            env.pop(WRITER_LOCK_FD_ENV, None)
+            env.pop(AUTH_VERIFIED_LEASE_ENV, None)
         return env
+
+    def _subprocess_pass_fds(self) -> tuple[int, ...]:
+        """Keep the real flock descriptor alive across controller child processes."""
+        return (self.writer_lock_fd,) if self.writer_lock_fd is not None else ()
 
     def step(self, fn, *, degraded_msg: str) -> bool:
         """跑一个 in-process 步骤函数 (直调 service); 异常→degraded 续跑。"""

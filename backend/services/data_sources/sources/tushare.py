@@ -1,4 +1,4 @@
-"""TuShare source adapter — 唯一存活的采集入口 (sync_runner.fetch_raw 专用).
+"""TuShare source adapter — 唯一存活的采集入口 + 账户授权事实探针。
 
 代理 = tinyshare (2026-06-17 切, 旧 jiaoch.site 反刷量墙弃用)。授权码进 .env (TUSHARE_TOKEN 等)。
 
@@ -16,16 +16,72 @@
 capability清单/健康检查) 唯一消费方(旧 updater UI, /api/data_sources/* 路由) 已随 2026-06-24
 重建物删, 整套 fallback 机制 0 消费方 (与 sources/aif10.py 同款问题, 已随之删除)。本类原 fetch()
 (capability式, 供 registry.resolve() 用) + healthcheck() (供 registry.healthcheck_all() 用)
-一并删除 (0 调用方); 只留 sync_runner 实际调用的 fetch_raw()。sync_runner._adapter() 已改直接
-实例化本类, 不再经过已删除的 registry.get_source()。
+一并删除 (0 调用方); 只留 sync_runner 实际调用的 fetch_raw() 与 pipeline 前置硬门调用的
+authorization_status()。sync_runner._adapter() 已改直接实例化本类, 不再经过已删除的
+registry.get_source()。
 """
 from __future__ import annotations
 
 import os
+import signal
+import socket
+import threading
+from contextlib import contextmanager
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 
 TOKEN_ENV_VARS = ("TUSHARE_TOKEN", "TUSHARE_PRO_TOKEN", "TS_TOKEN")
+_SHANGHAI = ZoneInfo("Asia/Shanghai")
+_AUTH_TIME_FORMAT = "%Y/%m/%d %H:%M:%S"
+AUTH_FAILURE_REASONS = frozenset({
+    "missing_token",
+    "package_missing",
+    "auth_expired",
+    "auth_denied",
+    "auth_probe_unavailable",
+    "auth_metadata_invalid",
+})
+
+
+class TuShareAuthorizationError(RuntimeError):
+    """Sanitized fail-closed authorization error safe for logs and CLI output."""
+
+    def __init__(self, reason: str):
+        if reason not in AUTH_FAILURE_REASONS:
+            raise ValueError(f"unknown authorization failure reason: {reason}")
+        self.reason = reason
+        super().__init__(f"tushare authorization blocked: {reason}")
+
+
+def _now_shanghai() -> datetime:
+    return datetime.now(_SHANGHAI)
+
+
+def _is_tinyshare_permission_error(exc: BaseException) -> bool:
+    try:
+        import tinyshare
+    except ImportError:
+        return False
+    return isinstance(exc, tinyshare.TinySharePermissionError)
+
+
+def _parse_authorization_metadata(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    try:
+        row = rows[0]
+        opened_at = datetime.strptime(str(row["addDate"]), _AUTH_TIME_FORMAT).replace(tzinfo=_SHANGHAI)
+        expires_at = datetime.strptime(str(row["limitDate"]), _AUTH_TIME_FORMAT).replace(tzinfo=_SHANGHAI)
+        remaining_weeks = int(row["week"])
+        if remaining_weeks < 0 or opened_at > expires_at:
+            raise ValueError("inconsistent authorization metadata")
+    except (IndexError, KeyError, TypeError, ValueError):
+        raise TuShareAuthorizationError("auth_metadata_invalid") from None
+    return {
+        "opened_at": opened_at,
+        "expires_at": expires_at,
+        "remaining_weeks": remaining_weeks,
+    }
 
 
 def _env_token() -> str:
@@ -33,9 +89,7 @@ def _env_token() -> str:
         token = os.environ.get(name, "").strip()
         if token:
             return token
-    raise RuntimeError(
-        "tinyshare 授权码 missing; set one of TUSHARE_TOKEN, TUSHARE_PRO_TOKEN, TS_TOKEN"
-    )
+    raise TuShareAuthorizationError("missing_token")
 
 
 def _pro_api(token: str):
@@ -68,10 +122,85 @@ def _to_records(data: Any) -> list[dict[str, Any]]:
     return []
 
 
+@contextmanager
+def _authorization_timeout(seconds: float):
+    """Bound user() even when the HTTP client forgets to provide its own timeout."""
+    previous_socket_timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(seconds)
+    alarm_supported = (
+        hasattr(signal, "SIGALRM")
+        and hasattr(signal, "setitimer")
+        and threading.current_thread() is threading.main_thread()
+    )
+    previous_handler = None
+    previous_timer = (0.0, 0.0)
+    if alarm_supported:
+        def _raise_timeout(_signum, _frame):
+            raise TimeoutError("authorization probe timed out")
+
+        previous_handler = signal.getsignal(signal.SIGALRM)
+        signal.signal(signal.SIGALRM, _raise_timeout)
+        previous_timer = signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        if alarm_supported:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, previous_handler)
+            if previous_timer[0] > 0:
+                signal.setitimer(signal.ITIMER_REAL, *previous_timer)
+        socket.setdefaulttimeout(previous_socket_timeout)
+
+
+def probe_authorization(source: Any, *, timeout_seconds: float) -> dict[str, Any]:
+    """Run one sanitized authorization probe under a hard, config-owned deadline."""
+    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)) \
+            or timeout_seconds <= 0:
+        raise ValueError("authorization timeout_seconds must be positive")
+    try:
+        with _authorization_timeout(float(timeout_seconds)):
+            return source.authorization_status()
+    except TuShareAuthorizationError:
+        raise
+    except Exception:
+        raise TuShareAuthorizationError("auth_probe_unavailable") from None
+
+
 class TuShareSource:
-    """sync_runner 专用 tushare 适配器 (精简后, 无多源 fallback 机制)。"""
+    """sync_runner + pipeline auth gate 共用适配器 (无多源 fallback)。"""
 
     name = "tushare"
+
+    def authorization_status(self) -> dict[str, Any]:
+        """Probe the active account and return only sanitized authorization metadata."""
+        client_error: str | None = None
+        try:
+            pro = _pro_api(_env_token())
+        except TuShareAuthorizationError:
+            raise
+        except ImportError:
+            client_error = "package_missing"
+        except Exception as exc:
+            client_error = (
+                "auth_denied" if _is_tinyshare_permission_error(exc) else "auth_probe_unavailable"
+            )
+        if client_error is not None:
+            raise TuShareAuthorizationError(client_error)
+
+        probe_error: str | None = None
+        try:
+            rows = _to_records(pro.user())
+        except Exception as exc:
+            probe_error = (
+                "auth_denied" if _is_tinyshare_permission_error(exc) else "auth_probe_unavailable"
+            )
+        if probe_error is not None:
+            raise TuShareAuthorizationError(probe_error)
+
+        status = _parse_authorization_metadata(rows)
+        if status["expires_at"] <= _now_shanghai():
+            raise TuShareAuthorizationError("auth_expired")
+        return status
 
     def fetch_raw(self, api_name: str, **params) -> list[dict[str, Any]]:
         """sync_runner 专用通用入口: 按 api 名直调, 返回 api 字段镜像 records.
@@ -81,11 +210,25 @@ class TuShareSource:
         仅 sync_registry.yaml 驱动的 sync_runner 允许调用。
         """
         token = _env_token()
+        client_error: str | None = None
         try:
             pro = _pro_api(token)
-        except ImportError as exc:
-            raise RuntimeError(f"tinyshare package not installed: {exc}") from exc
-        fn = getattr(pro, api_name, None)
-        if fn is None:
-            return _to_records(pro.query(api_name, **_compact_params(**params)))
-        return _to_records(fn(**_compact_params(**params)))
+        except ImportError:
+            client_error = "package_missing"
+        except Exception as exc:
+            if _is_tinyshare_permission_error(exc):
+                client_error = "auth_denied"
+            else:
+                raise
+        if client_error is not None:
+            raise TuShareAuthorizationError(client_error)
+
+        try:
+            fn = getattr(pro, api_name, None)
+            if fn is None:
+                return _to_records(pro.query(api_name, **_compact_params(**params)))
+            return _to_records(fn(**_compact_params(**params)))
+        except Exception as exc:
+            if not _is_tinyshare_permission_error(exc):
+                raise
+        raise TuShareAuthorizationError("auth_denied")

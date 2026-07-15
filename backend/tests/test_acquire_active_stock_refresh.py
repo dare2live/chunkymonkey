@@ -45,6 +45,10 @@ def test_run_acquire_wires_active_stock_refresh_step(monkeypatch):
     monkeypatch.setattr(acquire, "_sync_registry_drain", lambda ctx: calls.append("drain"))
     monkeypatch.setattr(acquire, "_build_trading_calendar", lambda: calls.append("calendar"))
     monkeypatch.setattr(acquire, "_refresh_active_a_stock_master", lambda: calls.append("active_stock"))
+    monkeypatch.setattr(
+        "services.pipeline.preflight.ensure_tushare_authorized",
+        lambda ctx: calls.append("auth"),
+    )
 
     class _FakeCtx:
         skip_sync = False
@@ -58,6 +62,7 @@ def test_run_acquire_wires_active_stock_refresh_step(monkeypatch):
             return True
 
     acquire.run_acquire(_FakeCtx())
+    assert calls[0] == "auth", "独立 acquire 必须先过授权硬门"
     assert "active_stock" in calls, "dim_active_a_stock 刷新步骤必须真的被 run_acquire 调用"
     # 顺序断言: 紧随 calendar 之后 (raw stock_basic 已被 drain 同步完, 立即重建派生表)
     assert calls.index("active_stock") == calls.index("calendar") + 1

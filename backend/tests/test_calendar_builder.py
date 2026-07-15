@@ -53,9 +53,8 @@ def test_bootstrap_full_copy_iso_and_filters():
         c.close()
 
 
-def test_incremental_watermark_no_prehistory_backfill():
-    """增量 = watermark > MAX(dim): 只延伸未来; raw 更早前史 (dim 起点之前) 不回填;
-    重跑幂等 0 插入。"""
+def test_incremental_repairs_holes_without_prehistory_backfill():
+    """从既有 dim 起点幂等补洞并延伸；更早 raw 前史仍不回填。"""
     c = _conn()
     try:
         c.executemany("INSERT INTO dim_trading_calendar VALUES (?, 1)",
@@ -63,16 +62,17 @@ def test_incremental_watermark_no_prehistory_backfill():
         c.executemany("INSERT INTO raw_tushare_trade_cal VALUES (?, ?, ?, NULL)", [
             ("SSE", "19901219", 1),               # 前史: raw 有但 dim 契约起点后 → 不回填
             ("SSE", "20260702", 1), ("SSE", "20260703", 1),
+            ("SSE", "20260704", 1),               # 中段漏传: 应由自修复补上
             ("SSE", "20260706", 1), ("SSE", "20260707", 1),   # 新日: 延伸
         ])
         out = cb.build_latest(conn=c)
-        assert out["inserted"] == 2 and out["watermark_before"] == "2026-07-03"
-        assert out["dim_max"] == "2026-07-07" and out["dim_rows"] == 4
+        assert out["inserted"] == 3 and out["watermark_before"] == "2026-07-03"
+        assert out["dim_max"] == "2026-07-07" and out["dim_rows"] == 5
         assert c.execute(
             "SELECT COUNT(*) FROM dim_trading_calendar WHERE trade_date < '2026-07-02'"
         ).fetchone()[0] == 0, "watermark 语义: 前史不回填 (回填走人工 rebuild)"
         out2 = cb.build_latest(conn=c)   # 幂等重跑
-        assert out2["inserted"] == 0 and out2["dim_rows"] == 4
+        assert out2["inserted"] == 0 and out2["dim_rows"] == 5
     finally:
         c.close()
 
@@ -89,5 +89,27 @@ def test_raw_missing_or_empty_fails_loud():
         c.execute("INSERT INTO raw_tushare_trade_cal VALUES ('SZSE', '20260702', 1, NULL)")
         with pytest.raises(RuntimeError):   # 只有非 SSE 行同样算空
             cb.build_latest(conn=c)
+    finally:
+        c.close()
+
+
+def test_builder_removes_dim_day_when_raw_revises_open_to_closed():
+    """自修复必须双向收敛；只 ON CONFLICT insert 无法修正 open→closed。"""
+    c = _conn()
+    try:
+        c.execute("INSERT INTO dim_trading_calendar VALUES ('2026-07-15', 1)")
+        c.executemany("INSERT INTO raw_tushare_trade_cal VALUES (?, ?, ?, NULL)", [
+            ("SSE", "20260714", 1),
+            ("SSE", "20260715", 0),
+            ("SSE", "20260716", 1),
+        ])
+        out = cb.build_latest(conn=c)
+        assert out["deleted"] == 1
+        assert c.execute(
+            "SELECT COUNT(*) FROM dim_trading_calendar WHERE trade_date = '2026-07-15'"
+        ).fetchone()[0] == 0
+        assert c.execute(
+            "SELECT COUNT(*) FROM dim_trading_calendar WHERE trade_date = '2026-07-16'"
+        ).fetchone()[0] == 1
     finally:
         c.close()

@@ -71,6 +71,54 @@ def test_scan_e_skips_not_fails_when_no_db_files_exist(monkeypatch, tmp_path):
     assert cdr.scan_e_sql_table_refs() == []
 
 
+def test_scan_f_fails_for_missing_yaml_script_target(tmp_path):
+    """YAML ``script:`` 是执行契约；目标被删后必须由死引用门阻断。"""
+    cfg = tmp_path / "backend" / "config" / "jobs.yaml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text("job:\n  script: backend/scripts/missing_job.py\n", encoding="utf-8")
+
+    assert cdr.scan_f_execution_paths(tmp_path) == [
+        "F yaml-script: backend/config/jobs.yaml:2 → "
+        "backend/scripts/missing_job.py 不存在"
+    ]
+
+
+def test_scan_f_fails_for_missing_plist_program_target(tmp_path):
+    """launchd ProgramArguments 指向已删项目脚本时必须 fail closed。"""
+    plist = tmp_path / "configs" / "launchd" / "com.chunkymonkey.dead.plist"
+    plist.parent.mkdir(parents=True)
+    plist.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>Label</key><string>com.chunkymonkey.dead</string>
+<key>ProgramArguments</key><array>
+<string>/bin/bash</string><string>backend/scripts/missing_job.py</string>
+</array><key>StartInterval</key><integer>60</integer>
+</dict></plist>
+""",
+        encoding="utf-8",
+    )
+
+    assert cdr.scan_f_execution_paths(tmp_path) == [
+        "F plist-program: configs/launchd/com.chunkymonkey.dead.plist → "
+        "backend/scripts/missing_job.py 不存在"
+    ]
+
+
+def test_scan_f_fails_for_installer_referencing_missing_plist(tmp_path):
+    """installer 列出的 label 必须先有 plist，不能 SKIP 后伪装安装成功。"""
+    installer = tmp_path / "configs" / "launchd" / "install_all.sh"
+    installer.parent.mkdir(parents=True)
+    installer.write_text(
+        'PLISTS=(\n  "com.chunkymonkey.missing"\n)\n', encoding="utf-8"
+    )
+
+    assert cdr.scan_f_execution_paths(tmp_path) == [
+        "F installer-plist: configs/launchd/install_all.sh → "
+        "configs/launchd/com.chunkymonkey.missing.plist 不存在"
+    ]
+
+
 def test_known_safe_list_entries_still_match_reality():
     """白名单每条必须仍然成立: (1) 引用方文件仍存在且仍引用该表名 (2) 该表仍确实不存在
     (若表后来被重建, 条目该删——白名单不能变成"曾经安全, 现在盲区")。

@@ -13,8 +13,11 @@ watermark 不该凭空产生一个 None 日期。
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -95,7 +98,10 @@ def test_record_outcome_full_success_advances_and_resolves(monkeypatch):
 
     spec = {"domain": "daily_probe", "source": "tushare"}
     sr._record_outcome(spec, ok=False, last_date=None, rows=0, error="boom")
-    sr._record_outcome(spec, ok=True, last_date="20260706", rows=5200, error=None)
+    sr._record_outcome(
+        spec, ok=True, last_date="20260706", rows=5200, error=None,
+        resolve_failures=True,
+    )
 
     row = _watermark_row(c, "sync:daily_probe")
     assert row[0] == "20260706"
@@ -105,6 +111,26 @@ def test_record_outcome_full_success_advances_and_resolves(monkeypatch):
         ["sync:daily_probe"],
     ).fetchone()[0]
     assert open_failures == 0, "全清后历史失败记录必须被 resolve"
+    c.close()
+
+
+def test_record_outcome_incremental_success_does_not_resolve_historical_failure(monkeypatch):
+    """普通增量成功不是历史 gap 重扫证据，不能洗掉既有 failure。"""
+    c = duck_mem()
+    ensure_source_watermark_schema(c)
+    shared = _NoClose(c)
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: shared)
+
+    spec = {"domain": "block_trade_probe", "source": "tushare"}
+    sr._record_outcome(spec, ok=False, last_date=None, rows=0, error="historical_gap")
+    sr._record_outcome(spec, ok=True, last_date="20260714", rows=83, error=None)
+
+    open_failures = c.execute(
+        "SELECT COUNT(*) FROM mart_data_source_failure_queue "
+        "WHERE data_domain = ? AND status != 'resolved'",
+        ["sync:block_trade_probe"],
+    ).fetchone()[0]
+    assert open_failures > 0
     c.close()
 
 
@@ -121,4 +147,454 @@ def test_record_outcome_total_failure_no_last_date_does_not_fabricate_watermark(
 
     row = _watermark_row(c, "sync:moneyflow_hsgt_probe")
     assert row is None, "完全失败时不该凭空产生 watermark 记录"
+    c.close()
+
+
+def test_historical_replay_never_regresses_existing_watermark(monkeypatch):
+    c = duck_mem()
+    ensure_source_watermark_schema(c)
+    shared = _NoClose(c)
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: shared)
+    spec = {"domain": "daily_probe", "source": "tushare"}
+
+    sr._record_outcome(spec, ok=True, last_date="20260714", rows=100)
+    sr._record_outcome(spec, ok=True, last_date="20260710", rows=50)
+
+    assert _watermark_row(c, "sync:daily_probe")[0] == "20260714"
+    c.close()
+
+
+def test_by_ann_date_failure_does_not_advance_frontier_past_gap(monkeypatch):
+    """无 drain 的公告日域必须把 watermark 留在首个失败之前，下一轮才能重试。"""
+    c = duck_mem()
+    ensure_source_watermark_schema(c)
+    shared = _NoClose(c)
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: shared)
+    monkeypatch.setattr(sr, "_target_conn", lambda _spec: shared)
+    monkeypatch.setattr(sr, "_adapter", lambda _source: object())
+    monkeypatch.setattr(sr, "_pending_failure_start", lambda _spec: None)
+    monkeypatch.setattr(sr, "_calendar_days", lambda _start, _end: ["20260710", "20260711"])
+    monkeypatch.setattr(
+        sr,
+        "eligible_end_date",
+        lambda _spec: sr.DomainEligibility("20260711", False, "test"),
+    )
+    monkeypatch.setattr(
+        sr,
+        "_fetch_logical_batch",
+        lambda _adapter, _spec, params: (
+            None if params["ann_date"] == "20260710" else [{"ann_date": "20260711"}]
+        ),
+    )
+    monkeypatch.setattr(sr, "_write_batch", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(sr.time, "sleep", lambda _seconds: None)
+    spec = {
+        "domain": "forecast_probe",
+        "source": "tushare",
+        "api": "forecast",
+        "target_table": "raw_forecast_probe",
+        "grain": ["ann_date"],
+        "batch_mode": "by_ann_date",
+        "data_start": "20260709",
+        "date_param": "ann_date",
+    }
+    sr._record_outcome(spec, ok=True, last_date="20260709", rows=1)
+
+    result = sr.run_domain(
+        "forecast_probe", registry={"defaults": {}, "domains": {"forecast_probe": spec}}
+    )
+
+    assert result["failed_batches"] == 1
+    assert result["last_date"] is None
+    assert _watermark_row(c, "sync:forecast_probe")[0] == "20260709"
+    c.close()
+
+
+def test_open_non_drain_failure_is_replayed_and_resolved(monkeypatch):
+    """旧失败日期即使早于 watermark，也必须从 failure queue 找回并在全绿重放后关闭。"""
+    c = duck_mem()
+    ensure_source_watermark_schema(c)
+    shared = _NoClose(c)
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: shared)
+    monkeypatch.setattr(sr, "_target_conn", lambda _spec: shared)
+    monkeypatch.setattr(sr, "_adapter", lambda _source: object())
+    monkeypatch.setattr(sr, "_calendar_days", lambda start, _end: [start, "20260711"])
+    monkeypatch.setattr(
+        sr,
+        "eligible_end_date",
+        lambda _spec: sr.DomainEligibility("20260711", False, "test"),
+    )
+    calls = []
+
+    def _fetch(_adapter, _spec, params):
+        calls.append(params["ann_date"])
+        return [{"ann_date": params["ann_date"]}]
+
+    monkeypatch.setattr(sr, "_fetch_logical_batch", _fetch)
+    monkeypatch.setattr(sr, "_write_batch", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(sr.time, "sleep", lambda _seconds: None)
+    spec = {
+        "domain": "forecast_probe",
+        "source": "tushare",
+        "api": "forecast",
+        "target_table": "raw_forecast_probe",
+        "grain": ["ann_date"],
+        "batch_mode": "by_ann_date",
+        "data_start": "20260701",
+        "date_param": "ann_date",
+    }
+    sr._record_outcome(
+        spec,
+        ok=False,
+        last_date="20260711",
+        rows=1,
+        error='[{"ann_date": "20260710", "suspect": "batch_incomplete"}]',
+    )
+
+    result = sr.run_domain(
+        "forecast_probe", registry={"defaults": {}, "domains": {"forecast_probe": spec}}
+    )
+
+    assert result["ok"] is True
+    assert calls[0] == "20260710"
+    open_failures = c.execute(
+        "SELECT COUNT(*) FROM mart_data_source_failure_queue "
+        "WHERE data_domain='sync:forecast_probe' AND status != 'resolved'"
+    ).fetchone()[0]
+    assert open_failures == 0
+    c.close()
+
+
+def test_future_pending_failure_is_not_resolved_before_eligible_end(monkeypatch):
+    """失败日在发布边界之后时，本轮没有覆盖它，哪怕其余批全绿也不能关账。"""
+    c = duck_mem()
+    ensure_source_watermark_schema(c)
+    shared = _NoClose(c)
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: shared)
+    monkeypatch.setattr(sr, "_target_conn", lambda _spec: shared)
+    monkeypatch.setattr(sr, "_adapter", lambda _source: object())
+    monkeypatch.setattr(sr, "_calendar_days", lambda _start, _end: ["20260714"])
+    monkeypatch.setattr(
+        sr,
+        "eligible_end_date",
+        lambda _spec: sr.DomainEligibility("20260714", True, "pending_publish"),
+    )
+    monkeypatch.setattr(
+        sr,
+        "_fetch_logical_batch",
+        lambda *_args: [{"ann_date": "20260714"}],
+    )
+    monkeypatch.setattr(sr, "_write_batch", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(sr.time, "sleep", lambda _seconds: None)
+    spec = {
+        "domain": "forecast_probe",
+        "source": "tushare",
+        "api": "forecast",
+        "target_table": "raw_forecast_probe",
+        "grain": ["ann_date"],
+        "batch_mode": "by_ann_date",
+        "data_start": "20260701",
+        "date_param": "ann_date",
+    }
+    sr._record_outcome(
+        spec,
+        ok=False,
+        last_date="20260714",
+        rows=1,
+        error='[{"ann_date": "20260715", "suspect": "not_yet_replayed"}]',
+    )
+
+    result = sr.run_domain(
+        "forecast_probe", registry={"defaults": {}, "domains": {"forecast_probe": spec}}
+    )
+
+    assert result["ok"] is True and result["pending_today"] is True
+    open_failures = c.execute(
+        "SELECT COUNT(*) FROM mart_data_source_failure_queue "
+        "WHERE data_domain='sync:forecast_probe' AND status != 'resolved'"
+    ).fetchone()[0]
+    assert open_failures == 1
+    c.close()
+
+
+def test_quota_halt_does_not_overwrite_pending_batch_date(monkeypatch):
+    """配额失败有独立 failure type，不能抹掉 sync_batch_failed 的重放锚点。"""
+    c = duck_mem()
+    ensure_source_watermark_schema(c)
+    shared = _NoClose(c)
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: shared)
+    monkeypatch.setattr(sr, "_target_conn", lambda _spec: shared)
+    monkeypatch.setattr(sr, "_adapter", lambda _source: object())
+    monkeypatch.setattr(sr, "_trading_days", lambda _start, _end=None: ["20260714"])
+    monkeypatch.setattr(
+        sr,
+        "eligible_end_date",
+        lambda _spec: sr.DomainEligibility("20260714", False, "test"),
+    )
+    monkeypatch.setattr(
+        sr,
+        "_fetch_logical_batch",
+        lambda *_args: (_ for _ in ()).throw(sr.QuotaExhaustedError("quota")),
+    )
+    spec = {
+        "domain": "daily_probe",
+        "source": "tushare",
+        "api": "daily",
+        "target_table": "raw_daily_probe",
+        "grain": ["ts_code", "trade_date"],
+        "batch_mode": "by_trade_date",
+        "data_start": "20260701",
+    }
+    sr._record_outcome(
+        spec,
+        ok=False,
+        last_date=None,
+        rows=0,
+        error='[{"trade_date": "20260710", "suspect": "fetch_failed"}]',
+    )
+
+    with pytest.raises(sr.QuotaExhaustedError):
+        sr.run_domain(
+            "daily_probe",
+            start="20260714",
+            end="20260714",
+            registry={"defaults": {}, "domains": {"daily_probe": spec}},
+        )
+
+    assert sr._pending_failure_start(spec) == "20260710"
+    types = {
+        row[0]
+        for row in c.execute(
+            "SELECT error_type FROM mart_data_source_failure_queue "
+            "WHERE data_domain='sync:daily_probe' AND status != 'resolved'"
+        ).fetchall()
+    }
+    assert types == {"sync_batch_failed", "sync_quota_halt"}
+
+    sr._record_outcome(
+        spec,
+        ok=True,
+        last_date="20260714",
+        rows=1,
+        provider_succeeded=True,
+    )
+    remaining_types = {
+        row[0]
+        for row in c.execute(
+            "SELECT error_type FROM mart_data_source_failure_queue "
+            "WHERE data_domain='sync:daily_probe' AND status != 'resolved'"
+        ).fetchall()
+    }
+    assert remaining_types == {"sync_batch_failed"}, (
+        "真实 provider 恢复应精确关闭 quota，不能顺带洗掉待重放批失败"
+    )
+    c.close()
+
+
+def test_long_failure_payload_keeps_parseable_earliest_date(monkeypatch):
+    """失败摘要即使原文超过 1000 字符，落库 JSON 也必须完整且可恢复重放锚点。"""
+    c = duck_mem()
+    ensure_source_watermark_schema(c)
+    shared = _NoClose(c)
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: shared)
+    spec = {"domain": "forecast_probe", "source": "tushare"}
+    failures = [
+        {
+            "ann_date": f"202607{day:02d}",
+            "error": "provider-detail-" + ("x" * 260),
+        }
+        for day in range(1, 6)
+    ]
+
+    sr._record_outcome(
+        spec,
+        ok=False,
+        last_date=None,
+        rows=0,
+        error=json.dumps(failures),
+    )
+
+    stored = c.execute(
+        "SELECT last_error FROM mart_data_source_failure_queue "
+        "WHERE data_domain='sync:forecast_probe' AND error_type='sync_batch_failed'"
+    ).fetchone()[0]
+    assert len(stored) < 1000
+    assert json.loads(stored)["earliest_failed_date"] == "20260701"
+    assert sr._pending_failure_start(spec) == "20260701"
+    c.close()
+
+
+def test_later_failure_cannot_move_unresolved_frontier_forward(monkeypatch):
+    """同 failure_id 后写会替换 payload，但未复核的旧最早日期必须被合并保留。"""
+    c = duck_mem()
+    ensure_source_watermark_schema(c)
+    shared = _NoClose(c)
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: shared)
+    spec = {"domain": "forecast_probe", "source": "tushare"}
+
+    sr._record_outcome(
+        spec, ok=False, last_date=None, rows=0,
+        error='[{"ann_date": "20260701"}]',
+    )
+    sr._record_outcome(
+        spec, ok=False, last_date=None, rows=0,
+        error='[{"ann_date": "20260710"}]',
+    )
+
+    assert sr._pending_failure_start(spec) == "20260701"
+    c.close()
+
+
+def test_by_period_failure_keeps_frontier_before_first_failed_period(monkeypatch):
+    c = duck_mem()
+    ensure_source_watermark_schema(c)
+    shared = _NoClose(c)
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: shared)
+    monkeypatch.setattr(sr, "_target_conn", lambda _spec: shared)
+    monkeypatch.setattr(sr, "_adapter", lambda _source: object())
+    monkeypatch.setattr(
+        sr,
+        "eligible_end_date",
+        lambda _spec: sr.DomainEligibility("20260630", False, "test"),
+    )
+    monkeypatch.setattr(
+        sr,
+        "_fetch_logical_batch",
+        lambda _adapter, _spec, params: (
+            None if params["period"] == "20260331" else [{"period": params["period"]}]
+        ),
+    )
+    monkeypatch.setattr(sr, "_write_batch", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(sr.time, "sleep", lambda _seconds: None)
+    spec = {
+        "domain": "express_probe",
+        "source": "tushare",
+        "api": "express_vip",
+        "target_table": "raw_express_probe",
+        "grain": ["period"],
+        "batch_mode": "by_period",
+        "data_start": "20251231",
+        "date_param": "period",
+    }
+    sr._record_outcome(spec, ok=True, last_date="20251231", rows=1)
+
+    result = sr.run_domain(
+        "express_probe", registry={"defaults": {}, "domains": {"express_probe": spec}}
+    )
+
+    assert result["failed_batches"] == 1
+    assert result["last_date"] == "20251231"
+    assert _watermark_row(c, "sync:express_probe")[0] == "20251231"
+    c.close()
+
+
+def test_by_period_open_failure_replays_and_resolves(monkeypatch):
+    c = duck_mem()
+    ensure_source_watermark_schema(c)
+    shared = _NoClose(c)
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: shared)
+    monkeypatch.setattr(sr, "_target_conn", lambda _spec: shared)
+    monkeypatch.setattr(sr, "_adapter", lambda _source: object())
+    monkeypatch.setattr(
+        sr,
+        "eligible_end_date",
+        lambda _spec: sr.DomainEligibility("20260630", False, "test"),
+    )
+    periods = []
+
+    def _fetch(_adapter, _spec, params):
+        periods.append(params["period"])
+        return [{"period": params["period"]}]
+
+    monkeypatch.setattr(sr, "_fetch_logical_batch", _fetch)
+    monkeypatch.setattr(sr, "_write_batch", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(sr.time, "sleep", lambda _seconds: None)
+    spec = {
+        "domain": "express_probe",
+        "source": "tushare",
+        "api": "express_vip",
+        "target_table": "raw_express_probe",
+        "grain": ["period"],
+        "batch_mode": "by_period",
+        "data_start": "20200101",
+        "date_param": "period",
+    }
+    sr._record_outcome(
+        spec,
+        ok=False,
+        last_date="20260630",
+        rows=1,
+        error='[{"period": "20260331"}]',
+    )
+
+    result = sr.run_domain(
+        "express_probe", registry={"defaults": {}, "domains": {"express_probe": spec}}
+    )
+
+    assert result["ok"] is True
+    assert periods == ["20260331", "20260630"]
+    open_failures = c.execute(
+        "SELECT COUNT(*) FROM mart_data_source_failure_queue "
+        "WHERE data_domain='sync:express_probe' AND status != 'resolved'"
+    ).fetchone()[0]
+    assert open_failures == 0
+    c.close()
+
+
+def test_by_period_future_pending_waits_for_eligibility_then_resolves(monkeypatch):
+    c = duck_mem()
+    ensure_source_watermark_schema(c)
+    shared = _NoClose(c)
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: shared)
+    monkeypatch.setattr(sr, "_target_conn", lambda _spec: shared)
+    monkeypatch.setattr(sr, "_adapter", lambda _source: object())
+    eligible = ["20260331"]
+    monkeypatch.setattr(
+        sr,
+        "eligible_end_date",
+        lambda _spec: sr.DomainEligibility(eligible[0], False, "test"),
+    )
+    monkeypatch.setattr(
+        sr,
+        "_fetch_logical_batch",
+        lambda _adapter, _spec, params: [{"period": params["period"]}],
+    )
+    monkeypatch.setattr(sr, "_write_batch", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(sr.time, "sleep", lambda _seconds: None)
+    spec = {
+        "domain": "express_probe",
+        "source": "tushare",
+        "api": "express_vip",
+        "target_table": "raw_express_probe",
+        "grain": ["period"],
+        "batch_mode": "by_period",
+        "data_start": "20200101",
+        "date_param": "period",
+    }
+    sr._record_outcome(
+        spec,
+        ok=False,
+        last_date="20260331",
+        rows=1,
+        error='[{"period": "20260630"}]',
+    )
+
+    sr.run_domain(
+        "express_probe", registry={"defaults": {}, "domains": {"express_probe": spec}}
+    )
+    still_open = c.execute(
+        "SELECT COUNT(*) FROM mart_data_source_failure_queue "
+        "WHERE data_domain='sync:express_probe' AND status != 'resolved'"
+    ).fetchone()[0]
+    assert still_open == 1
+
+    eligible[0] = "20260630"
+    sr.run_domain(
+        "express_probe", registry={"defaults": {}, "domains": {"express_probe": spec}}
+    )
+    now_closed = c.execute(
+        "SELECT COUNT(*) FROM mart_data_source_failure_queue "
+        "WHERE data_domain='sync:express_probe' AND status != 'resolved'"
+    ).fetchone()[0]
+    assert now_closed == 0
     c.close()

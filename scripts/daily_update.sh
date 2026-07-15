@@ -13,17 +13,17 @@
 #   bash scripts/daily_update.sh --date 20260708  # 指定 run-date 标签 (透传管线, 防跨午夜错位)
 #   (env override 兼容: DRY=1 / SKIP_SYNC=1 bash scripts/daily_update.sh)
 #
-# 运行方式 (2026-06-13 用户决议: 本地未上云 + 定时不保证开机在线 → 手动跑, 成熟后上云):
-#   收盘后 (~17:00 数据 publish 后) 跑。Log: /tmp/chunkymonkey_daily_update_<YYYYMMDD>.log
+# 运行方式: manual-only。何时可拉由 pipeline preflight + sync_registry.available_after 判定，
+# 不在 wrapper 复制固定时刻。Log: /tmp/chunkymonkey_daily_update_<YYYYMMDD>.log
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
-# launchd/Homebrew 无裸 python (只 python3) — 前置 venv bin (含 python symlink, 有 FDA 的 python3.13)
+# 前置项目 venv bin，确保解释器与依赖一致。
 export PATH="$REPO_ROOT/.venv/bin:$PATH"
 
-# 统一 env 真相源 = .env (gitignored): TUSHARE token/URL + CM_TDX_SERVERS 可达池
+# 统一 env 真相源 = .env (gitignored): TuShare token/URL
 if [[ -f "$REPO_ROOT/.env" ]]; then
     set -a; source "$REPO_ROOT/.env"; set +a
 fi

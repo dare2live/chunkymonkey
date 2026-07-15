@@ -2,8 +2,8 @@
 fastapi>=0.100.0
 uvicorn[standard]>=0.23.0
 httpx>=0.24.0
-# akshare 已删 2026-06-29 (批2c: §4.3 无热备, 全仓 import akshare 清零; lhb/qfii/institution_survey/kline 兜底退役)
-tushare>=1.4.0
+# akshare/tushare SDK 已退役；生产采集唯一入口 TuShareSource 使用 tinyshare 兼容代理。
+tinyshare==0.1030.0
 modal>=1.5.0       # compute backend (experiment_jobs modal:active, services/compute/modal_adapter.py)
 numpy
 pydantic>=2.0

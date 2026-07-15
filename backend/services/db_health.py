@@ -10,14 +10,14 @@
 策略 (3 层防御, 本文件实现层 1+2):
   1. **删冗余索引**: 删掉已知 legacy / redundant 的 secondary index, 消除 attack
      surface.
-  2. **启动一致性检查**: 后端启动 + cron_daily 跑 sync 前, 比对 table 行数 vs
+  2. **启动一致性检查**: 后端启动 + 手动 pipeline 跑 sync 前, 比对 table 行数 vs
      index 路径; 不一致就 REINDEX (或 DROP+CREATE).
   3. **写入路径走 rowid**: DELETE 走 rowid 而非列条件, 绕索引 (实现在
      financial_client._cleanup_snapshot_stub).
 
 使用:
     from services.db_health import run_startup_checks
-    run_startup_checks(conn)   # backend startup + cron_daily 入口调
+    run_startup_checks(conn)   # backend startup + manual pipeline 入口调
 """
 from __future__ import annotations
 
@@ -127,7 +127,7 @@ def reindex_table(conn, table: str) -> list[str]:
 
 
 def run_startup_checks(conn) -> dict:
-    """后端启动 / cron_daily 入口调用. 返回检查摘要 (写入 manifest 即可).
+    """后端启动 / 手动 pipeline 入口调用. 返回检查摘要 (写入 manifest 即可).
 
     步骤:
       1. drop_redundant_indexes — 删跟 PK 重复的二级索引

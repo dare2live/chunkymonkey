@@ -182,32 +182,6 @@ cross_source_consistency:
     tier2_without_allowlist: "reject and alert."
     tier3_in_canonical_view: "block downstream build."
 
-periodic_audit:
-  script: backend/scripts/nightly_data_audit.py
-  schedule: "nightly after market sync, before label/model/paper_sim builds"
-  checks:
-    - name: vwap_close_ratio_anomaly_count
-      sql_id: vwap_close_ratio
-      threshold:
-        warn_count_gt: 0
-        block_count_gt: 0
-    - name: single_source_proportion_drift
-      sql_id: source_proportion
-      threshold:
-        tier1_ratio_min: 0.999
-        fallback_rows_allowlist_only: true
-        block_non_allowlist_fallback_rows_gt: 0
-    - name: fwd_cost_after_outlier_count
-      sql_id: fwd_cost_after_outliers
-      threshold:
-        abs_value_gt: 1.0
-        block_count_gt: 0
-        block_nan_count_gt: 0
-  failure_response:
-    warn: "write audit report, continue read-only dashboards only"
-    block: "stop label panel, model training, paper_sim, P3 holdout, and champion promotion"
-    alert_path: "data/audit/nightly_data_audit_latest.json plus cron stderr"
-
 deprecation:
   sop_document: docs/engineering_governance.md
   retention_preference: delete_not_archive

@@ -47,6 +47,8 @@ defaults:
   # socket read timeout (防 hung: tinyshare 网关无响应时单次读死等 → 全局 socket 超时令其限时失败 →
   #   退避重试, 不卡死全链。2026-06-19 反例: stk_factor_pro 重试 hung 在无超时 socket 上 71min)。
   fetch_timeout_seconds: 120
+  auth_probe_timeout_seconds: 20 # user() 探针网络边界；持 writer lock 时不得无限挂起
+  auth_expiry_warn_days: 14       # TuShare user() 授权到期预警唯一 owner；preflight 读取，禁止代码散落阈值
 
 domains:
   # ── P0-a: 资金流 (套一 L2 + 套二 F1 + 退出组件, 一次回填三用) ──
@@ -191,6 +193,9 @@ domains:
                                    # 本日期起用 2000, 之前用 min_rows_before。
     min_rows_before: 800          # 2019-2021 时代地板(历史最低 941, 800 全历史零幻影缺口)
     allow_empty_batch: false
+    batch_completeness:            # 必须在 dedup + universe_filter 后验证，失败批零写入/零 watermark
+      group_from: {column: ts_code, transform: exchange_suffix}
+      required_groups: [SH, SZ]    # provider API 不支持 exchange 参数；禁止伪 split_by，缺任一市场即 fail closed
 
   margin:                          # 交易所汇总 (SSE/SZSE/BSE 2-3 行/日): B4 市场感知大盘水位原料
     source: tushare
@@ -198,19 +203,26 @@ domains:
     target_table: raw_tushare_margin
     grain: [trade_date, exchange_id]
     batch_mode: by_trade_date
-    split_by: {param: exchange_id, values: [SSE, SZSE, BSE]}   # 2026-07-08 根因修复(owner=
+    split_by:
+      param: exchange_id
+      values: [SSE, SZSE, BSE]
+      # 2026-07-08 根因修复(owner=
       # analysis/gap_root_cause_20260708.md): 裸调 pro.margin(trade_date=d) 在2026年偶发
       # (~0.5%交易日, 20260403/0430/0618/0626/0703共5例)漏返BSE/SZSE——vendor网关对"无过滤条件
       # 汇总查询"存在补全遗漏怪癖, 非分页截断非披露滞后。显式按 exchange_id 三分片查询100%拿全
       # (含上述全部历史"漏返"日期实测验证并已重拉补齐, 原 known_group_gaps 墓碑因此整段撤销——
-      # 当时判"永久缺失"是错的, 只是没换对查询形态)。此后每个交易日展开成3次独立调用, 同 grain
-      # 幂等 MERGE, 永久性修复(调用量代价: 日常同步 1→3倍, 已知悉)。
+      # 当时判"永久缺失"是错的, 只是没换对查询形态)。此后每个交易日内部执行3次调用，三片
+      # 全部成功并满足 required_groups 后才进入一次原子写；任一片失败则整日零写入。
     pit_anchor: "trade_date; 同 margin_detail t+1 盘前披露 -> JOIN t-1"
     available_after: "t+1"
     data_start: "20190102"        # 实测首日 2 行 (SSE/SZSE)
     freshness_sla_trading_days: 2
-    min_rows_per_batch: 1         # split_by 修复后每次调用天然锚定单交易所=1行, 此阈值仍合法
+    min_rows_per_batch: 2         # 全历史基础交易所为 SSE/SZSE；BSE 由下方时点契约加严
     allow_empty_batch: false
+    batch_completeness:
+      group_from: {column: exchange_id, transform: identity}
+      required_groups: [SSE, SZSE]
+      required_groups_since: {BSE: "20211115"}
 
   # ── 市场感知 v2 族 (2026-07-02 调研+实弹; owner=analysis/market_pulse_design_20260702.md v2 第二批) ──
   dc_daily:                          # 东财板块指数 OHLC (行业/概念/地域全类型): dc 链 RS 双窗 + 广度/龙头史深 2025->2020
@@ -321,6 +333,10 @@ domains:
     target_table: raw_tushare_trade_cal
     grain: [exchange, cal_date]
     batch_mode: full_refresh       # 小表全量刷
+    fixed_params: {exchange: SSE}
+    page_limit: 6000               # 实测 offset 分页 6000+6000+尾页，避免单页截断
+    write_mode: replace_snapshot   # 静态全量镜像；原子替换以删除上游已撤销/修订行
+    freshness_date_column: cal_date
     pit_anchor: "cal_date; 静态日历, 年度扩展"
     available_after: "00:00"
     data_start: "20200101"
@@ -339,6 +355,7 @@ domains:
     grain: [ts_code]
     batch_mode: full_refresh       # 单接口一次拉完全市场 (50次/分, 2000积分); "≤6000 行上限"原为
                                     # 未实测声明, 2026-07-09 全审计标注
+    write_mode: replace_snapshot   # list_status=L 当前在市快照；删除上游已移除代码，禁止 MERGE 留假活跃股
     page_limit: 3000               # 2026-07-09 全审计MEDIUM修复: 本表=universe 身份真相源, 当前
                                     # 5535 行已逼近传说的 6000 上限(未实测真值, 上市股~150-250只/年
                                     # 增长 2-3 年内越线), 若截断恰返 6000 行 > min_rows 5000 门照过
@@ -353,7 +370,7 @@ domains:
     min_rows_per_batch: 5000       # 2026-06-19 实测 5529 在市股; <5000 = 截断/throttle
     allow_empty_batch: false
 
-  # ── P0-d: 概念/板块域历史回填 (E8 探底实测起点; 未来增量由 concept-snapshot launchd 续) ──
+  # ── P0-d: 概念/板块域 (E8 探底实测起点; 仅经 manual pipeline/sync_runner 增量) ──
   dc_member:
     source: tushare
     api: dc_member
@@ -1069,16 +1086,12 @@ domains:
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
     grain: [ts_code, trade_date]
     batch_mode: by_ts_code
-    fixed_params: {start_date: "20260619"}   # 2026-07-05 临时收窄 (完事后改回 "20190102"): 实测该 API 延迟与
-                              # 请求跨度强相关 (全史 2019-2026/261列/单股 ~32s; 窄至~11天 0.27s) — 全量回填
-                              # 5000+股 x 32s = 45+小时不可行, 本次只为补"停11天"尾部缺口, 借窗口收窄跑
-                              # (前提: 2019-20260618 全史此前已完整回填过, 不是首次拉取)。见下方§注释。
+    sync_policy: on_demand          # 0 生产消费者；移出 --all-due。需要实验时必须显式 --start/--end
     pit_anchor: "trade_date; 盘后 -> JOIN t-1"
     available_after: "18:00"
     data_start: "20190102"
     freshness_sla_trading_days: 1
-    # 注: stk_factor_pro 是 by_ts_code 日频全市场, 无 by_report_period 增量语义 → drain 仍 unsupported 无 fallback。
-    #   日更需专门 by_ts_code 尾部增量调度 (每股拉近N日), 属 edge 重建期工作; 当前靠手动 --domain stk_factor_pro 刷新。
+    # 无逐股日更调度；显式窗口按股刷新，避免 5000+ 次无消费者调用。
     min_rows_per_batch: 1
 
   stk_holdernumber:   # 股东户数 (筹码集中吸筹前兆, 慢变量分层); 截面enddate返0必逐股
@@ -1123,4 +1136,3 @@ domains:
   #   datacenter JSON API 直连, 不走 tushare 网关故不在本 registry)。tushare top10 财报季驱动滞后~4个月
   #   (§4.3 实测: 600388 东财 6/8 vs tushare 停 3/31), raw_tushare_top10_floatholders 已物删
   #   (0 builder 消费 + SERVE dossier 已随纯数据平台重建删除)。watermark SLA holders_top10_float 已指向 aif10 fact。
-

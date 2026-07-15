@@ -5,7 +5,7 @@
 # 1. (交付准备度 audit 已删 2026-06-28: audit_delivery_readiness 随策略/compute 层退役)
 # 2. Local model-training process
 # 3. Compute backend contract
-# 4. cron entries 状态
+# 4. manual-only 自动化面状态
 # 5. 关键 background processes
 
 set -uo pipefail
@@ -41,13 +41,12 @@ finally: con.close()
 fi
 echo ""
 
-# 3. cron entries
-echo "--- crontab automation ---"
+# 3. manual-only automation surface
+echo "--- data job automation policy ---"
 CRON_COUNT=$(crontab -l 2>/dev/null | grep -cE "^(\*/[0-9]+|[0-9]+) [0-9*]" || echo 0)
-echo "  cron entries installed: $CRON_COUNT (expected config: daily/nightly/codex/workflow/log-rotate)"
-if [[ "$CRON_COUNT" -lt 5 ]]; then
-    echo "  ACTION: 手动时代 (2026-06-12 决议) — 跑链用 工作台按钮 或 nohup python scripts/launchd_job_wrapper.py daily_update /bin/bash scripts/daily_update.sh"
-fi
+echo "  data jobs mode: manual_only (backend/config/automation_policy.yaml)"
+echo "  all cron entries: $CRON_COUNT (Codex/log rotation may exist; data writers must not)"
+echo "  enforcement: scripts/chunkyctl doctor --fast → automation_surface"
 echo ""
 
 # 4. Compute backend
@@ -68,8 +67,8 @@ pgrep -af "retrain_lambdamart|build_institution|build_sniper|panel_v4" 2>/dev/nu
 
 echo ""
 echo "=========================================="
-echo "Next actions (if not in cron):"
+echo "Next actions:"
 echo "  daily update:        bash scripts/daily_update.sh"
 echo "  数据健康:            scripts/chunkyctl doctor --fast"
-echo "  手动触发入口:        /api/v3/ops/jobs (前端工作台) 或 launchd_job_wrapper CLI"
+echo "  手动触发入口:        /api/v3/ops/jobs (前端工作台) 或 manual_job_wrapper CLI"
 echo "=========================================="

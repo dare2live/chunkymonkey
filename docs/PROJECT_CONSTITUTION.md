@@ -35,9 +35,15 @@ WHY: `swap_uplift_estimate` 公式估算掩盖了实测 swap 拉低年化 33pp; 
 ## 第二章 基础设施红线 (断流即失明)
 
 **第 5 条 告警必须送达用户.**
-规则: 定时任务必须包 wrapper (失败写 `/tmp/chunkymonkey_ALERT_*.flag` + 系统通知, 成功清 flag), 入口走有 FDA 的 launchd python, 禁止裸 cron; "装了定时任务"不算完成.
+规则: 数据写任务执行模式为 `manual_only`，禁止为 ChunkyMonkey 数据任务保留或安装 cron/launchd/
+后台定时触发。受支持的全链入口是 `scripts/daily_update.sh`（或前端手动按钮经
+`manual_job_wrapper.py` 调同一入口）；失败/硬阻断必须写 `/tmp/chunkymonkey_ALERT_*.flag`，
+后续真实 clean 才自清。手动不等于靠人记：日历、授权、writer lease、数据完整性与 failure queue
+均由入口机械守门。此条按用户 2026-07-15“已取消自动跑批”明确决议替代旧 launchd 规则。
 WHY: cron 无 FDA 每天 Operation not permitted 且静默, K 线断流 4+ 交易日无人知晓 (2026-06-11).
-验证: 故意弄失败一次、告警真送达 = 安装完成的唯一标准; session 启动检查 ALERT flag.
+验证: `automation_policy.yaml` + `chunkyctl doctor` 的 `automation_surface` 必须 PASS（扫描 repo/
+用户/系统 launchd、用户与系统 cron、launchctl）；故意制造一次硬阻断，flag 必须可见；session
+启动检查 ALERT flag。任何重新启用自动调度的提案都须用户再次明确批准并修改本条。
 
 **第 6 条 探活走协议层, 0 行当失败.**
 规则: 数据源探活必须发真实协议包收响应 — 代理环境下 TCP connect 恒为 0.00s 假成功, 不作依据; writer 收到 0 行一律当失败入队重试 (<=3 次退避), 不静默落空.

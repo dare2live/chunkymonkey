@@ -1,0 +1,13 @@
+version: 1
+
+data_jobs:
+  mode: manual_only
+  forbidden_command_patterns:
+    - 'com\.chunkymonkey\.(?:daily-update|concept-snapshot)'
+    - '(?:^|\s)(?:\S*/)?scripts/daily_update\.sh(?:\s|$)'
+    - '(?:^|\s)(?:\S*/)?scripts/chunkyctl\s+pipeline(?:\s|$)'
+    - '(?:^|\s)-m\s+services\.pipeline\.(?:run|stage_runner)(?:\s|$)'
+    - '(?:^|\s)-m\s+services\.data_sources\.sync_runner(?:\s|$)'
+    - '(?:^|\s)(?:\S*/)?backend/services/pipeline/(?:run|stage_runner)\.py(?:\s|$)'
+    - '(?:^|\s)(?:\S*/)?backend/services/data_sources/sync_runner\.py(?:\s|$)'
+    - '(?:^|\s)(?:\S*/)?(?:backend/)?scripts/(?:backfill|build|migrate|refresh|rebuild|seed|sync|update)_[^\s]+\.(?:py|sh)(?:\s|$)'

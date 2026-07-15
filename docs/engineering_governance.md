@@ -29,7 +29,8 @@ Historical source files are archived under `analysis/docs_archive_20260531/`.
 | Hidden complexity and stale indexes | CodeGraph and complexity optimizer are a paired gate |
 | Green tests proving old assumptions | Run test-tool health before citing tests as evidence |
 | Provider spend or dirty provider artifacts | Long or paid compute must be a registered `experiment_jobs` plan with gates and artifact contracts; do not revive deleted provider scripts |
-| Automation points at deleted scripts | `check_dead_references.py` must PASS (2026-06-28 起替代已删 `audit_execution_surface.py`); launchd, cron, installers, dashboards, registries, and Moth evidence paths cannot reference missing or retired entrypoints |
+| Automation residue or hidden scheduler | `backend/config/automation_policy.yaml` owns `manual_only`; doctor `automation_surface` + `check_dead_references.py` must PASS. Repo/user/system launchd, user/system cron, launchctl, installers, dashboards, registries, and Moth evidence paths cannot schedule or reference retired data writers |
+| Concurrent supported writers | `pipeline.run`, `pipeline.stage_runner`, and `sync_runner` share one real flock lease; child processes inherit the actual descriptor. This contract deliberately does not claim that every historical internal script is globally intercepted; direct internal writers are not public scheduler entrypoints |
 
 ## Skill Owner Map
 

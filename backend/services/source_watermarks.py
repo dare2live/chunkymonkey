@@ -331,6 +331,7 @@ def resolve_source_failures(
     data_domain: str,
     source_name: str,
     stock_code: str | None = None,
+    error_type: str | None = None,
     commit: bool = False,
 ) -> int:
     ensure_source_watermark_schema(conn)
@@ -344,6 +345,7 @@ def resolve_source_failures(
             and row.get("source_name") == source_name
             and row.get("status") == "open"
             and (stock_code is None or row.get("stock_code") == stock_code)
+            and (error_type is None or row.get("error_type") == error_type)
         )
         if matches:
             resolved += 1

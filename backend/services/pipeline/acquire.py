@@ -16,6 +16,9 @@ def run_acquire(ctx: PipelineContext) -> None:
     if ctx.skip_sync:
         ctx.log("=== ① 获取 ACQUIRE: SKIP (--skip-sync) ===")
         return
+    # 独立 stage 入口也必须走与全链相同的授权硬门；全链已探针时复用 ctx 缓存。
+    from .preflight import ensure_tushare_authorized
+    ensure_tushare_authorized(ctx)
     ctx.log("=== ① 获取 ACQUIRE (纯采集 →L0, 不计算) ===")
     if ctx.dry:
         ctx.log("DRY: 跳过实际 sync (获取阶段全是写操作)")
@@ -148,8 +151,24 @@ def _sync_registry_drain(ctx: PipelineContext) -> None:
     cmd = [_sys.executable, "-m", "services.data_sources.sync_runner",
            "--all-due", "--drain", "--max-dates", "30"]
     ctx.log(f"  $ {' '.join(cmd)}")
-    proc = subprocess.run(cmd, cwd=str(REPO), capture_output=True, text=True, env=ctx._subprocess_env())
+    proc = subprocess.run(
+        cmd,
+        cwd=str(REPO),
+        capture_output=True,
+        text=True,
+        env=ctx._subprocess_env(),
+        pass_fds=ctx._subprocess_pass_fds(),
+    )
     if ctx._log_fh:
         ctx._log_fh.write((proc.stdout or "") + (proc.stderr or "")); ctx._log_fh.flush()
+    if proc.returncode == 3:
+        from services.data_sources.sources.tushare import (
+            AUTH_FAILURE_REASONS,
+            TuShareAuthorizationError,
+        )
+
+        output = (proc.stdout or "") + (proc.stderr or "")
+        reason = next((item for item in AUTH_FAILURE_REASONS if item in output), "auth_denied")
+        raise TuShareAuthorizationError(reason)
     if proc.returncode != 0:
         ctx.degraded("sync_registry drain 有残余缺口或域错误 (见 log)")

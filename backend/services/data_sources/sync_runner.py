@@ -22,15 +22,19 @@ import argparse
 import json
 import logging
 import os
+import re
 import socket
 import threading
 import time
 from collections import defaultdict, deque
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from services.data_sources.sync_preconditions import CalendarFoundationError
 
 log = logging.getLogger("sync_runner")
 
@@ -184,7 +188,14 @@ def _stocks_up_to_date(spec: dict[str, Any], target_period: str, period_col: str
         con.close()
 
 
-def _by_ts_code_batches(spec: dict[str, Any], *, resume: bool = False, backfill: bool = False) -> list[dict[str, Any]]:
+def _by_ts_code_batches(
+    spec: dict[str, Any],
+    *,
+    resume: bool = False,
+    backfill: bool = False,
+    start: str | None = None,
+    end: str | None = None,
+) -> list[dict[str, Any]]:
     """按股循环批清单 (单股接口如 stk_factor_pro/fina_mainbz)。
 
     股票清单真相源 = services.universe.get_active_universe (单一计算点): 白名单 60/00/30/68
@@ -198,6 +209,10 @@ def _by_ts_code_batches(spec: dict[str, Any], *, resume: bool = False, backfill:
     from services.universe import get_active_universe
 
     fixed = dict(spec.get("fixed_params") or {})
+    if start:
+        fixed["start_date"] = start
+    if end and "start_date" in fixed:
+        fixed["end_date"] = end
     # mythos §10 data_start 参数口径: 部分 by_ts_code 接口 (如 stk_holdernumber) 不传 start_date
     # 只返回最近 ~8 期 (实测 600519 无日期 8 行 vs start_date=2019 给 38 行全史) → 回填必须显式传
     # start_date=data_start 才拿全史; 否则回填"成功"但只覆盖近期 (94min 白跑 0 净新增, 2026-06-24 实测踩坑)。
@@ -210,12 +225,9 @@ def _by_ts_code_batches(spec: dict[str, Any], *, resume: bool = False, backfill:
     # 零净进展。只在声明了 start_date 且未显式给 end_date 时补, 用最新完整交易日 (§4.4 禁钉死日期,
     # 与 by_code_list/by_period 分支同款动态注入语义), 不影响已显式给 end_date 的域 (如 balancesheet)。
     if "start_date" in fixed and "end_date" not in fixed:
-        from services.utils import latest_completed_trade_date
-        conn0 = _smartmoney_conn()
-        try:
-            fixed["end_date"] = latest_completed_trade_date(conn0).replace("-", "")
-        finally:
-            conn0.close()
+        eligible = eligible_end_date(spec).eligible_end
+        if eligible:
+            fixed["end_date"] = eligible
     include_st = bool(spec.get("include_st", False))
     conn0 = _smartmoney_conn()
     try:
@@ -398,6 +410,8 @@ def _fetch_with_retry(adapter, spec: dict[str, Any], params: dict[str, Any]) -> 
     transient_backoffs = list(retry.get("transient_backoff_seconds", [60, 120, 180]))
     allow_empty = bool(spec.get("allow_empty_batch"))
     rate_limiter = _get_rate_limiter(spec)
+    from services.data_sources.sources.tushare import TuShareAuthorizationError
+
     last_err: str | None = None
     for i in range(attempts):
         try:
@@ -409,6 +423,8 @@ def _fetch_with_retry(adapter, spec: dict[str, Any], params: dict[str, Any]) -> 
             if allow_empty:
                 return []
             last_err = "zero_rows"
+        except TuShareAuthorizationError:
+            raise  # 账户授权是硬阻断；重试同一批只会制造噪音与额外请求
         except Exception as exc:  # noqa: BLE001 — 重试边界
             last_err = str(exc)[:200]
             if _is_quota_wall(last_err):
@@ -485,6 +501,42 @@ def _fetch_paged(adapter, spec: dict[str, Any], params: dict[str, Any]) -> list[
     return None
 
 
+def _fetch_logical_batch(
+    adapter,
+    spec: dict[str, Any],
+    params: dict[str, Any],
+) -> list[dict[str, Any]] | None:
+    """完整抓取一个逻辑批次；split 分片全部成功后才允许进入同一写事务。"""
+    split_by = spec.get("split_by")
+    if not split_by:
+        return _fetch_paged(adapter, spec, params)
+
+    split_param = str(split_by.get("param") or "")
+    split_values = list(split_by.get("values") or [])
+    if not split_param or not split_values:
+        raise ValueError(f"{spec['domain']}: split_by 必须声明非空 param/values")
+
+    combined: list[dict[str, Any]] = []
+    date_param = str(spec.get("date_param") or "trade_date")
+    batch_date = str(params.get(date_param) or "").replace("-", "")
+    values_since = {
+        str(key).upper(): str(value).replace("-", "")
+        for key, value in (
+            (spec.get("batch_completeness") or {}).get("required_groups_since") or {}
+        ).items()
+    }
+    for value in split_values:
+        since = values_since.get(str(value).upper())
+        if since and batch_date and batch_date < since:
+            continue
+        rows = _fetch_paged(adapter, spec, {**params, split_param: value})
+        if rows is None:
+            # 任一分片终败即整个日期失败；绝不能把已返回分片先写成半截交易日。
+            return None
+        combined.extend(rows)
+    return combined
+
+
 _SAMPLE_DIR = _REPO / "backend" / "tests" / "fixtures" / "domain_samples"
 _DEFAULT_SAMPLE_DIR = _SAMPLE_DIR   # 未被 monkeypatch 时的真实 git-tracked 路径, 见下方门判断
 
@@ -525,14 +577,26 @@ def _capture_domain_sample(spec: dict[str, Any], rows: list[dict[str, Any]]) -> 
         log.warning("域样本存档失败 %s: %s", spec["domain"], str(exc)[:120])
 
 
-def _write_batch(conn, spec: dict[str, Any], rows: list[dict[str, Any]]) -> int:
-    """MERGE on grain: DELETE 同 grain 旧行 + INSERT, 加 built_at (幂等)."""
-    if not rows:
-        return 0
-    _capture_domain_sample(spec, rows)
+class BatchCompletenessError(ValueError):
+    """过滤后的供应方批次不满足 registry 完整性契约，禁止触碰数据库。"""
+
+
+def _prepare_batch_df(
+    spec: dict[str, Any],
+    rows: list[dict[str, Any]],
+    *,
+    effective_min_rows: int | None = None,
+):
+    """先去重、过滤、验完整性，再把批次交给写事务。
+
+    `min_rows_per_batch` 的业务口径是“最终会写入 raw 的行”，不能在 universe
+    filter 前用供应方原始行数判绿；否则 ETF/BJ 等被过滤行会把残缺 A 股批次垫过门。
+    """
     import pandas as pd
 
     df = pd.DataFrame(rows)
+    if df.empty:
+        return df
     df["built_at"] = datetime.now(timezone.utc).isoformat()
     table = spec["target_table"]
     grain: list[str] = list(spec["grain"])
@@ -575,68 +639,155 @@ def _write_batch(conn, spec: dict[str, Any], rows: list[dict[str, Any]]) -> int:
                 if _dropped_sample.str.match(r"^\d{6}\.(SH|SZ|BJ|OC)$").all():
                     log.warning("[universe-filter] %s 整批 %d 行全为非白名单市场股票 (北交所/三板类合法长尾), 记 0 行继续",
                                 table, _n0)
-                    return 0
-                raise ValueError(
-                    f"universe_filter 把 {table} 整批 {_n0} 行全丢且值不像股票代码 (filter_col={ucol!r}, "
-                    f"样本={_dropped_sample.head(3).tolist()}); 几乎必是 universe_filter_col 漏配。"
-                    f"拒绝静默返0防谄媚死 — 修 sync_registry 该域 universe_filter_col 指向真股票代码列。"
-                )
-            if df.empty:
-                return 0
+                else:
+                    raise ValueError(
+                        f"universe_filter 把 {table} 整批 {_n0} 行全丢且值不像股票代码 (filter_col={ucol!r}, "
+                        f"样本={_dropped_sample.head(3).tolist()}); 几乎必是 universe_filter_col 漏配。"
+                        f"拒绝静默返0防谄媚死 — 修 sync_registry 该域 universe_filter_col 指向真股票代码列。"
+                    )
+
+    min_rows = int(
+        spec.get("min_rows_per_batch", 0)
+        if effective_min_rows is None
+        else effective_min_rows
+    )
+    if len(df) < min_rows:
+        raise BatchCompletenessError(
+            f"{spec['domain']}: post_filter_rows={len(df)} < min_rows={min_rows}"
+        )
+
+    contract = spec.get("batch_completeness") or {}
+    group_from = contract.get("group_from") or {}
+    required = {str(v).upper() for v in (contract.get("required_groups") or [])}
+    conditional = {
+        str(group).upper(): str(since).replace("-", "")
+        for group, since in (contract.get("required_groups_since") or {}).items()
+    }
+    date_col = str(spec.get("date_param") or "trade_date")
+    batch_dates = (
+        [str(value).replace("-", "") for value in df[date_col].dropna()]
+        if date_col in df.columns
+        else []
+    )
+    if batch_dates:
+        batch_date = max(batch_dates)
+        required.update(
+            group for group, since in conditional.items() if batch_date >= since
+        )
+    if required:
+        column = str(group_from.get("column") or "")
+        transform = str(group_from.get("transform") or "")
+        if column not in df.columns:
+            raise BatchCompletenessError(
+                f"{spec['domain']}: batch_completeness group column missing: {column!r}"
+            )
+        if transform == "exchange_suffix":
+            observed = {
+                str(value).rsplit(".", 1)[-1].upper()
+                for value in df[column].dropna().astype(str)
+                if "." in str(value)
+            }
+        elif transform == "identity":
+            observed = {
+                str(value).strip().upper()
+                for value in df[column].dropna().astype(str)
+                if str(value).strip()
+            }
+        else:
+            raise ValueError(
+                f"{spec['domain']}: unsupported batch_completeness transform={transform!r}"
+            )
+        missing_groups = sorted(required - observed)
+        if missing_groups:
+            raise BatchCompletenessError(
+                f"{spec['domain']}: required_groups missing={missing_groups}, "
+                f"observed={sorted(observed)}"
+            )
+    return df
+
+
+def _write_batch(
+    conn,
+    spec: dict[str, Any],
+    rows: list[dict[str, Any]],
+    *,
+    effective_min_rows: int | None = None,
+) -> int:
+    """验证后原子 MERGE on grain；失败批不改旧数据。"""
+    if not rows:
+        return 0
+    df = _prepare_batch_df(spec, rows, effective_min_rows=effective_min_rows)
+    if df.empty:
+        return 0
+    _capture_domain_sample(spec, df.to_dict("records"))
+    table = spec["target_table"]
+    grain: list[str] = list(spec["grain"])
 
     # duck_adapter 包装层挡住 DataFrame replacement scan, 显式注册视图
     raw_con = getattr(conn, "_con", conn)
     raw_con.register("df", df)
-    conn.execute(f"CREATE TABLE IF NOT EXISTS {table} AS SELECT * FROM df LIMIT 0")
-    # 列演进: api 新增列时表自动加列 (raw 镜像语义)
-    existing = {r[0] for r in conn.execute(
-        f"SELECT column_name FROM information_schema.columns WHERE table_name = '{table}'"
-    ).fetchall()}
-    for col in df.columns:
-        if col not in existing:
-            conn.execute(f'ALTER TABLE {table} ADD COLUMN "{col}" VARCHAR')
-    # NULL-safe 等值 (2026-07-05 grain 门实锤抓获, ths_hot 美股子榜反例): grain 含可空列时
-    # (如 美股类 ts_code 恒为 NULL, 用 ts_name 区分个股), 普通 `=` 对 NULL 永远算 UNKNOWN/false,
-    # EXISTS 子句永远匹配不到旧行 → 旧行从未被删, 每次 MERGE 都在累积"重复", 实测 430 组 863 行
-    # (2025-06~2025-08 多批次重跑, 每次都插入新副本非覆盖)。改用 IS NOT DISTINCT FROM (DuckDB/SQL
-    # 标准 null-safe 相等) 才能让 NULL=NULL 判真, 旧行才会被正确 DELETE。
-    key = " AND ".join(f't."{g}" IS NOT DISTINCT FROM s."{g}"' for g in grain)
-    conn.execute(f"DELETE FROM {table} t WHERE EXISTS (SELECT 1 FROM df s WHERE {key})")
-    cols = ", ".join(f'"{c}"' for c in df.columns)
     try:
-        conn.execute(f"INSERT INTO {table} ({cols}) SELECT {cols} FROM df")
-    except Exception as exc:
-        # 首批类型推断陷阱 (2026-06-13 chain9 三案实证): 首批列全 NULL/小整数 → 表列被
-        # 建成 INT32, 后续真实数据溢出/字符串进不去 (suspend_timing '09:30-10:00' /
-        # dc_index level '东财二级行业' / fina_mainbz bz_profit 164.7 亿)。
-        # 修法: 按本批 df 的真实 dtype 对冲突列做单调加宽 (int->BIGINT, float->DOUBLE,
-        # 其余->VARCHAR), 重试一次; 仍失败则抛出 (fail-closed, 不静默丢行)。
-        if "Conversion" not in type(exc).__name__ and "Conversion" not in str(exc):
-            raw_con.unregister("df")
-            raise
-        col_types = {r[0]: r[1] for r in conn.execute(
-            f"SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '{table}'"
+        conn.execute(f"CREATE TABLE IF NOT EXISTS {table} AS SELECT * FROM df LIMIT 0")
+        # 列演进 DDL 在数据替换事务前完成；DELETE+INSERT 本身必须不可分割。
+        existing = {r[0] for r in conn.execute(
+            f"SELECT column_name FROM information_schema.columns WHERE table_name = '{table}'"
         ).fetchall()}
-        widened = []
         for col in df.columns:
-            dtype = str(df[col].dtype).lower()  # pandas 3.x 字符串列 dtype='str' (非 'object')
-            cur = col_types.get(col, "")
-            target = None
-            if dtype.startswith("int") and cur in ("INTEGER", "SMALLINT", "TINYINT"):
-                target = "BIGINT"
-            elif dtype.startswith("float") and cur in ("INTEGER", "SMALLINT", "TINYINT", "BIGINT"):
-                target = "DOUBLE"
-            elif dtype in ("object", "str", "string") and cur not in ("VARCHAR", ""):
-                target = "VARCHAR"
-            if target:
-                conn.execute(f'ALTER TABLE {table} ALTER COLUMN "{col}" SET DATA TYPE {target}')
-                widened.append(f"{col}:{cur}->{target}")
-        if not widened:
-            raw_con.unregister("df")
-            raise
-        log.warning("首批类型推断加宽 table=%s %s (重试 INSERT)", table, widened)
-        conn.execute(f"INSERT INTO {table} ({cols}) SELECT {cols} FROM df")
-    raw_con.unregister("df")
+            if col not in existing:
+                conn.execute(f'ALTER TABLE {table} ADD COLUMN "{col}" VARCHAR')
+
+        # NULL-safe 等值: grain 可空时 NULL 必须与 NULL 匹配，重跑才是覆盖而非累积。
+        key = " AND ".join(f't."{g}" IS NOT DISTINCT FROM s."{g}"' for g in grain)
+        cols = ", ".join(f'"{c}"' for c in df.columns)
+        delete_sql = (
+            f"DELETE FROM {table}"
+            if spec.get("write_mode") == "replace_snapshot"
+            else f"DELETE FROM {table} t WHERE EXISTS (SELECT 1 FROM df s WHERE {key})"
+        )
+
+        def _replace_in_transaction() -> None:
+            conn.execute("BEGIN TRANSACTION")
+            try:
+                conn.execute(delete_sql)
+                conn.execute(f"INSERT INTO {table} ({cols}) SELECT {cols} FROM df")
+                conn.execute("COMMIT")
+            except Exception:
+                try:
+                    conn.execute("ROLLBACK")
+                except Exception:  # noqa: BLE001 — 保留原始写故障
+                    log.exception("rollback 失败 table=%s", table)
+                raise
+
+        try:
+            _replace_in_transaction()
+        except Exception as exc:
+            # 首批类型推断陷阱: 先 rollback 恢复旧行，再做单调加宽，最后从 DELETE
+            # 开始重跑完整事务；绝不能在已删除旧行的半状态上只重试 INSERT。
+            if "Conversion" not in type(exc).__name__ and "Conversion" not in str(exc):
+                raise
+            col_types = {r[0]: r[1] for r in conn.execute(
+                f"SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '{table}'"
+            ).fetchall()}
+            widened = []
+            for col in df.columns:
+                dtype = str(df[col].dtype).lower()
+                cur = col_types.get(col, "")
+                target = None
+                if dtype.startswith("int") and cur in ("INTEGER", "SMALLINT", "TINYINT"):
+                    target = "BIGINT"
+                elif dtype.startswith("float") and cur in ("INTEGER", "SMALLINT", "TINYINT", "BIGINT"):
+                    target = "DOUBLE"
+                elif dtype in ("object", "str", "string") and cur not in ("VARCHAR", ""):
+                    target = "VARCHAR"
+                if target:
+                    conn.execute(f'ALTER TABLE {table} ALTER COLUMN "{col}" SET DATA TYPE {target}')
+                    widened.append(f"{col}:{cur}->{target}")
+            if not widened:
+                raise
+            log.warning("首批类型推断加宽 table=%s %s (完整事务重试)", table, widened)
+            _replace_in_transaction()
+    finally:
+        raw_con.unregister("df")
     return len(df)
 
 
@@ -743,8 +894,90 @@ def _last_watermark_date(domain: str, source: str) -> str | None:
         conn.close()
 
 
+def _failure_dates_from_error(raw: Any) -> set[str]:
+    """从合法或被旧 1000 字符边界截断的 failure payload 恢复日期锚点。"""
+    date_keys = {
+        "trade_date", "ann_date", "report_date", "period", "end_date",
+        "ex_date", "still_failed", "drain_still_failed", "earliest_failed_date",
+    }
+    found: set[str] = set()
+
+    def _walk(value: Any, key: str | None = None) -> None:
+        if isinstance(value, dict):
+            for child_key, child in value.items():
+                _walk(child, str(child_key))
+            return
+        if isinstance(value, list):
+            for child in value:
+                _walk(child, key)
+            return
+        if key not in date_keys or value is None:
+            return
+        candidate = str(value).strip().replace("-", "")
+        if len(candidate) == 8 and candidate.isdigit():
+            found.add(candidate)
+
+    if not raw:
+        return found
+    text = str(raw)
+    try:
+        _walk(json.loads(text))
+    except (TypeError, ValueError):
+        # 兼容旧记录：source_watermarks 曾把 JSON 生截到 1000 字符。批次按时间升序，
+        # 首个日期通常仍在前部；只识别明确日期字段，绝不把任意 8 位业务数字当日期。
+        key_pattern = "|".join(sorted(date_keys))
+        for match in re.finditer(
+            rf'"(?:{key_pattern})"\s*:\s*"(\d{{4}}-?\d{{2}}-?\d{{2}})"',
+            text,
+        ):
+            candidate = match.group(1).replace("-", "")
+            if len(candidate) == 8 and candidate.isdigit():
+                found.add(candidate)
+    return found
+
+
+def _compact_failure_error(error: str | None, earliest: str | None) -> str:
+    """生成不会被 1000 字符存储边界截成坏 JSON 的失败摘要。"""
+    payload: dict[str, Any] = {
+        "earliest_failed_date": earliest,
+        "detail": str(error or "")[:400],
+    }
+    encoded = json.dumps(payload, ensure_ascii=False)
+    if len(encoded) >= 900:
+        payload.pop("detail", None)
+        payload["detail_omitted"] = True
+        encoded = json.dumps(payload, ensure_ascii=False)
+    return encoded
+
+
+def _pending_failure_start(spec: dict[str, Any]) -> str | None:
+    """从未关闭的批失败证据提取最早日期，供非 drain 域从缺口前沿重放。"""
+    from services.source_watermarks import ensure_source_watermark_schema
+
+    conn = _smartmoney_conn()
+    try:
+        ensure_source_watermark_schema(conn)
+        rows = conn.execute(
+            "SELECT last_error FROM mart_data_source_failure_queue "
+            "WHERE data_domain = ? AND source_name = ? "
+            "AND error_type = 'sync_batch_failed' AND status != 'resolved'",
+            [f"sync:{spec['domain']}", spec["source"]],
+        ).fetchall()
+    finally:
+        conn.close()
+    found = {
+        date
+        for row in rows
+        for date in _failure_dates_from_error(row[0])
+    }
+    return min(found) if found else None
+
+
 def _record_outcome(spec: dict[str, Any], *, ok: bool, last_date: str | None,
-                    rows: int, error: str | None = None) -> None:
+                    rows: int, error: str | None = None,
+                    resolve_failures: bool = False,
+                    failure_type: str = "sync_batch_failed",
+                    provider_succeeded: bool = False) -> None:
     """watermark 推进与失败记录解耦 (2026-07-06 全面数据审计根因根治):
     此前 `ok=False`(range 内任一批失败, 哪怕只有 1 个历史日) 时整个跳过 upsert_watermark ——
     即便 last_date 已经正确前移到本轮真正成功写到的最新日期, watermark 时间戳仍原地冻结。
@@ -753,35 +986,83 @@ def _record_outcome(spec: dict[str, Any], *, ok: bool, last_date: str | None,
     watermark 也永远推不动——冻结的是"监控信号"本身, 而不是数据真的没更新。
     修复: watermark 是否推进只看 `last_date 是否有真实前移`(有实际写入进展), 与
     `ok`(本轮是否存在任何失败批, 用于决定要不要同时记 failure_queue)彻底解耦——
-    两件事不再共用同一个判定字段。全清 (ok=True) 时才 resolve 掉历史失败记录, 半清
-    (仍有失败但确实前移了) 时 watermark 照常推进 + 同时记录这轮的失败批, 不清除历史失败
-    (真失败还在, 不能假装解决了)。"""
-    from services.source_watermarks import record_source_failure, resolve_source_failures, upsert_watermark
+    两件事不再共用同一个判定字段。普通 run_domain 只有在实际覆盖 failure queue 的日期/期间
+    锚点时才有关账证据；完整、非截断的 drain 重扫也可关账。也就是说，只有覆盖失败锚点的
+    完整重放（日期 drain 或公告日/报告期重放）才能 resolve；
+    半清时 watermark 可按真实成功日期推进，但真失败继续保留。"""
+    from services.source_watermarks import (
+        ensure_source_watermark_schema,
+        record_source_failure,
+        resolve_source_failures,
+        upsert_watermark,
+    )
 
     conn = _smartmoney_conn()
     try:
         domain_key = f"sync:{spec['domain']}"
+        ensure_source_watermark_schema(conn)
         if last_date:
-            # 只要本轮确实写到了新数据 (last_date 非空), watermark 就该推进——不因同轮里
-            # 另一个不相关批次的失败而冻结监控信号本身。
+            # 历史显式重放可以成功写到旧日期，但绝不能让 freshness frontier 倒退。
+            existing = conn.execute(
+                "SELECT last_data_date FROM mart_data_source_watermark "
+                "WHERE data_domain = ? AND source_name = ? AND source_tier = ?",
+                [domain_key, spec["source"], SOURCE_TIER_TUSHARE],
+            ).fetchone()
+            candidate = str(last_date).replace("-", "")
+            existing_date = (
+                str(existing[0]).replace("-", "")
+                if existing and existing[0]
+                else None
+            )
+            monotonic_date = max(candidate, existing_date) if existing_date else candidate
             upsert_watermark(conn, {
                 "data_domain": domain_key,
                 "source_name": spec["source"],
                 "source_tier": SOURCE_TIER_TUSHARE,
                 "last_success_at": datetime.now(timezone.utc).isoformat(),
-                "last_data_date": last_date,
+                "last_data_date": monotonic_date,
                 "row_count": rows,
                 "parser_version": "sync_runner_v1",
             })
         if ok:
-            resolve_source_failures(conn, data_domain=domain_key, source_name=spec["source"], commit=True)
+            if provider_succeeded:
+                # 一次真实 provider 成功足以证明配额墙已恢复，但不能洗掉尚未重放的数据批失败。
+                resolve_source_failures(
+                    conn,
+                    data_domain=domain_key,
+                    source_name=spec["source"],
+                    error_type="sync_quota_halt",
+                    commit=True,
+                )
+            if resolve_failures:
+                resolve_source_failures(
+                    conn,
+                    data_domain=domain_key,
+                    source_name=spec["source"],
+                    commit=True,
+                )
         else:
+            if failure_type == "sync_batch_failed":
+                dates = _failure_dates_from_error(error)
+                previous = conn.execute(
+                    "SELECT last_error FROM mart_data_source_failure_queue "
+                    "WHERE data_domain = ? AND source_name = ? "
+                    "AND error_type = 'sync_batch_failed' AND status != 'resolved'",
+                    [domain_key, spec["source"]],
+                ).fetchall()
+                dates.update(
+                    date
+                    for row in previous
+                    for date in _failure_dates_from_error(row[0])
+                )
+                # 同一 failure_id 后写会替换 last_error；显式保留历史最早未复核 frontier。
+                error = _compact_failure_error(error, min(dates) if dates else None)
             record_source_failure(
                 conn,
                 data_domain=domain_key,
                 source_name=spec["source"],
                 source_tier=SOURCE_TIER_TUSHARE,
-                error_type="sync_batch_failed",
+                error_type=failure_type,
                 last_error=error,
                 commit=True,
             )
@@ -815,12 +1096,32 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
     """
     reg = registry or load_registry()
     spec = _domain_spec(reg, domain)
+    if (
+        spec.get("batch_mode") == "by_ts_code"
+        and spec.get("sync_policy") == "on_demand"
+        and (not start or not end)
+    ):
+        raise ValueError(
+            f"domain={domain} sync_policy=on_demand 要求显式 --start 与 --end，拒绝无界逐股拉取"
+        )
     # socket read timeout (config-driven 防 hung socket 死等; tinyshare 无响应→限时失败→退避重试不卡死)
     socket.setdefaulttimeout(float(spec.get("fetch_timeout_seconds", 120)))
     adapter = _adapter(spec["source"])
+    eligibility: DomainEligibility | None = None
+    replaying_open_failure = False
+
+    def _eligible_or_explicit_end() -> str | None:
+        nonlocal eligibility
+        if end:
+            eligibility = DomainEligibility(
+                str(end).replace("-", ""), False, "explicit_end"
+            )
+        elif eligibility is None:
+            eligibility = eligible_end_date(spec)
+        return eligibility.eligible_end
 
     if spec["batch_mode"] == "full_refresh":
-        batches: list[dict[str, Any]] = [{}]
+        batches: list[dict[str, Any]] = [dict(spec.get("fixed_params") or {})]
     elif spec["batch_mode"] == "by_date_range":
         # 小表 (如大盘资金流 1 行/日) 一次调用拉全范围; 单次上限由 API 决定 (registry 选用前确认)
         if backfill:
@@ -828,16 +1129,12 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         else:
             wm = _last_watermark_date(domain, spec["source"])
             start_d = start or wm or spec["data_start"]
-        from services.utils import latest_completed_trade_date
-
-        conn0 = _smartmoney_conn()
-        try:
-            end_d = end or latest_completed_trade_date(conn0).replace("-", "")
-        finally:
-            conn0.close()
-        batches = [{"start_date": start_d, "end_date": end_d}]
+        end_d = _eligible_or_explicit_end()
+        batches = [{"start_date": start_d, "end_date": end_d}] if end_d else []
     elif spec["batch_mode"] == "by_ts_code":
-        batches = _by_ts_code_batches(spec, resume=resume, backfill=backfill)
+        batches = _by_ts_code_batches(
+            spec, resume=resume, backfill=backfill, start=start, end=end
+        )
     elif spec["batch_mode"] == "by_code_list":
         # 显式代码清单循环 (指数/申万行业等 — code 源非 market 股票表): 每 code 一批,
         # code_param 指定参数名 (ts_code/l1_code...), fixed_params 合并 (如指数日线的 start/end)。
@@ -845,16 +1142,13 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         # 循环避开无参 5000 整截断 (2026-06-13 实测无参全拉 = 整 5000 = top_inst/dc_member 同型截断反例)。
         code_param = spec.get("code_param", "ts_code")
         fixed = dict(spec.get("fixed_params") or {})
-        # ranged by_code_list (指数日线/指标全史回填): end_date 动态化 = latest_completed_trade_date,
+        # ranged by_code_list (指数日线/指标全史回填): end_date 由域 publication eligibility 动态化，
         # 防 §4.4 红线"钉死日期" (hardcode end_date 致 benchmark 永久 stale, daily_update 推不过去).
         # 仅当 fixed 有 start_date 且未显式 end_date 时注入; --end 覆盖; MERGE on grain 幂等可全史重拉.
         if "start_date" in fixed and "end_date" not in fixed:
-            from services.utils import latest_completed_trade_date
-            conn0 = _smartmoney_conn()
-            try:
-                fixed["end_date"] = end or latest_completed_trade_date(conn0).replace("-", "")
-            finally:
-                conn0.close()
+            end_d = _eligible_or_explicit_end()
+            if end_d:
+                fixed["end_date"] = end_d
         batches = [{code_param: c, **fixed} for c in spec["code_list"]]
     elif spec["batch_mode"] == "by_trade_date":
         wm = None
@@ -863,7 +1157,8 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         else:
             wm = _last_watermark_date(domain, spec["source"])
             start_d = start or wm or spec["data_start"]
-        days = _trading_days(start_d, end)
+        end_d = _eligible_or_explicit_end()
+        days = _trading_days(start_d, end_d) if end_d else []
         _warn_if_clamped(domain, start_d, days)
         # 增量模式跳过 watermark 当天 (已写过) — 仅当调用方未显式给 --start (即 start_d 来自
         # watermark 自动续拉) 才跳。2026-07-06 修复 (全面数据审计引出的独立新 bug, stk_limit
@@ -886,13 +1181,9 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         # "无过滤条件汇总查询"存在补全遗漏的怪癖), 但显式加 exchange_id=SSE/SZSE/BSE 逐个查询
         # 100% 拿全(含历史已发生的漏返日期实测验证)。这不是分页截断(_fetch_paged 管不了),
         # 是查询形态问题——registry 声明 split_by: {param: 每次显式加的参数名, values: [...]}
-        # 后, 一个交易日展开成 len(values) 个独立 API 调用, 逐个写入(同 grain 幂等 MERGE 安全)。
-        split_by = spec.get("split_by")
-        if split_by:
-            sp_param, sp_values = split_by["param"], list(split_by["values"])
-            batches = [{**fixed, date_param: d, sp_param: v} for d in days for v in sp_values]
-        else:
-            batches = [{**fixed, date_param: d} for d in days]
+        # 一个日期仍只生成一个逻辑批次；_fetch_logical_batch 内部拉齐所有分片，随后一次原子写。
+        # 旧版把分片直接展开为独立写批，任一交易所失败都会留下半截日且被 watermark 越过。
+        batches = [{**fixed, date_param: d} for d in days]
     elif spec["batch_mode"] == "by_ann_date":
         # 按公告日抓全市场 (十大股东 etc): tushare 支持 ann_date 查全市场, 覆盖季报披露 + ad-hoc 非季末更新
         # (实测 600388 报告期 20231011=非季末 ad-hoc; 全库 1810 非季末期/2902股)。watermark=最新已抓公告日,
@@ -901,21 +1192,28 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
             start_d = start or spec["data_start"]
         else:
             wm = _last_watermark_date(domain, spec["source"])
-            start_d = start or wm or spec["data_start"]
-        from services.utils import latest_completed_trade_date
-        conn0 = _smartmoney_conn()
-        try:
-            end_d = end or latest_completed_trade_date(conn0).replace("-", "")
-        finally:
-            conn0.close()
-        days = _calendar_days(start_d, end_d)
+            pending_start = _pending_failure_start(spec) if start is None else None
+            candidates = [d for d in (wm, pending_start) if d]
+            start_d = start or (min(candidates) if candidates else spec["data_start"])
+            replaying_open_failure = pending_start is not None and start is None
+        end_d = _eligible_or_explicit_end()
+        days = _calendar_days(start_d, end_d) if end_d else []
         # 增量跳 watermark 当天 — 仅当调用方未显式给 --start 才跳 (2026-07-10 修复: 与
         # by_trade_date 分支 2026-07-06 同款 bug 的 by_ann_date 残留 — 原判据 `days[0] ==
         # (start or wm)` 在显式传 --start 时恒真, 手工范围回填静默丢第一天; 实测 ths_hot
         # --start 20260321 --end 20260322 两天只跑一批丢周六。当时只修了 by_trade_date 分支,
         # 同型判据散落两处未一并修 = 本次教训)。
-        if not backfill and start is None and len(days) > 1 and days[0] == (_last_watermark_date(domain, spec["source"]) or ""):
+        if (
+            not backfill
+            and start is None
+            and len(days) > 1
+            and days[0] == (wm or "")
+            and days[0] != (pending_start or "")
+        ):
             days = days[1:]
+        replaying_open_failure = bool(
+            pending_start and pending_start in set(days)
+        ) if not backfill else False
         date_param = spec.get("date_param", "ann_date")
         batches = [{date_param: d} for d in days]
     elif spec["batch_mode"] == "by_period":
@@ -924,27 +1222,30 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
             start_d = start or spec["data_start"]
         else:
             wm = _last_watermark_date(domain, spec["source"])
-            start_d = start or wm or spec["data_start"]
-        from services.utils import latest_completed_trade_date
-
-        conn0 = _smartmoney_conn()
-        try:
-            end_d = end or latest_completed_trade_date(conn0).replace("-", "")
-        finally:
-            conn0.close()
+            pending_start = _pending_failure_start(spec) if start is None else None
+            candidates = [d for d in (wm, pending_start) if d]
+            start_d = start or (min(candidates) if candidates else spec["data_start"])
+            replaying_open_failure = pending_start is not None and start is None
+        end_d = _eligible_or_explicit_end()
         date_param = spec.get("date_param", "period")
-        batches = [{date_param: p} for p in _quarter_ends(start_d, end_d)]
+        periods = _quarter_ends(start_d, end_d) if end_d else []
+        replaying_open_failure = bool(
+            pending_start and pending_start in set(periods)
+        ) if not backfill else False
+        batches = [{date_param: p} for p in periods]
     else:
         raise NotImplementedError(f"batch_mode {spec['batch_mode']} 未实现 (by_ts_code/by_month 按需加)")
 
     conn = _target_conn(spec)
-    total_rows, failed, last_ok_date = 0, [], None
+    total_rows, failed = 0, []
+    successful_dates: set[str] = set()
+    failed_dates: set[str] = set()
     min_rows = int(spec.get("min_rows_per_batch", 0))
     quota_halt = False
     try:
         for params in batches:
             try:
-                rows = _fetch_paged(adapter, spec, params)
+                rows = _fetch_logical_batch(adapter, spec, params)
             except QuotaExhaustedError as exc:
                 # 熔断: 配额墙命中, 停止本域剩余批 (已写批由 finally 保留), 上抛停全链
                 log.error("配额熔断 domain=%s 已写 %d 行后停止剩余 %d 批: %s",
@@ -953,6 +1254,9 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
                 break
             if rows is None:
                 failed.append(params)
+                failed_date = params.get(spec.get("date_param", "trade_date")) or params.get("end_date")
+                if failed_date:
+                    failed_dates.add(str(failed_date).replace("-", ""))
                 continue
             if not rows and spec.get("cross_check_domain"):
                 # allow_empty 域 0 行交叉参照门 (R1 根因2): 0 行只有 allow_empty 路径能走到这
@@ -964,6 +1268,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
                         "— 不当合法空, 入 failure_queue + 计失败批",
                         domain, params, spec.get("cross_check_domain"), cross_table, cross_rows)
                     failed.append({**params, "suspect": "suspicious_empty"})
+                    failed_dates.add(str(params.get(spec.get("date_param", "trade_date"))).replace("-", ""))
                     _record_suspicious_empty(spec, params, cross_rows, cross_table)
                     continue
             # 时代分段阈值 (与 drain_domain 同一口径, 2026-07-09): 批次日期早于 min_rows_since
@@ -973,17 +1278,49 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
             mr_since = str(spec.get("min_rows_since", "") or "").replace("-", "")
             effective_min = min_rows if (not mr_since or not batch_date or batch_date >= mr_since) \
                 else int(spec.get("min_rows_before", 1))
-            if rows and len(rows) < effective_min:
-                log.warning("batch %s 行数 %d < min_rows %d (可疑, 仍写入并记 failure)",
-                            params, len(rows), effective_min)
-                failed.append({**params, "suspect": "below_min_rows"})
-            n = _write_batch(conn, spec, rows)
+            try:
+                n = _write_batch(
+                    conn, spec, rows, effective_min_rows=effective_min
+                )
+            except BatchCompletenessError as exc:
+                # 完整性门在任何 DELETE/INSERT 前执行：partial 批零写入、零 watermark，
+                # 但必须进入本轮失败证据，供 failure_queue/drain 后续重放。
+                log.warning("batch %s 完整性失败 (拒绝写入): %s", params, exc)
+                failed.append({
+                    **params,
+                    "suspect": "batch_incomplete",
+                    "error": str(exc)[:200],
+                })
+                failed_date = params.get(spec.get("date_param", "trade_date")) or params.get("end_date")
+                if failed_date:
+                    failed_dates.add(str(failed_date).replace("-", ""))
+                continue
+            except Exception as exc:  # noqa: BLE001 — 写事务已 rollback；记录后停本域
+                log.error("batch %s 写入失败 (已 rollback): %s", params, exc)
+                failed.append({
+                    **params,
+                    "suspect": "write_failed",
+                    "error_type": type(exc).__name__,
+                })
+                failed_date = params.get(spec.get("date_param", "trade_date")) or params.get("end_date")
+                if failed_date:
+                    failed_dates.add(str(failed_date).replace("-", ""))
+                break
             total_rows += n
             date_key = spec.get("date_param", "trade_date")
             if params.get(date_key):
-                last_ok_date = params[date_key]
+                successful_dates.add(str(params[date_key]).replace("-", ""))
             elif params.get("end_date"):
-                last_ok_date = params["end_date"]
+                successful_dates.add(str(params["end_date"]).replace("-", ""))
+            elif spec.get("freshness_date_column"):
+                freshness_col = str(spec["freshness_date_column"])
+                values = [
+                    str(row[freshness_col]).replace("-", "")
+                    for row in rows
+                    if row.get(freshness_col)
+                ]
+                if values:
+                    successful_dates.add(max(values))
             time.sleep(0.4)  # rule-compliance: ok evidence=vendor-gateway-conn-refused-backoff-2026-06-11
     finally:
         conn.close()
@@ -991,12 +1328,42 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
     # 严格判定: 任一批失败即非 ok — 旧宽松口径 (部分成功=True) 使日志 'ok': True
     # 掩盖 29 批失败 (Fable-5 复查 #14 双标问题); 与 _record_outcome 判定统一
     ok = len(failed) == 0 and not quota_halt
+    completed_dates = successful_dates - failed_dates
+    if failed_dates and spec["batch_mode"] in ("by_ann_date", "by_period"):
+        # 这些域没有交易日 gap drain；frontier 只能推进到首个失败之前，确保下轮会重试缺口。
+        first_failed = min(failed_dates)
+        completed_dates = {date for date in completed_dates if date < first_failed}
+    last_ok_date = max(completed_dates) if completed_dates else None
     err_payload = json.dumps(failed[:5]) if failed else None
+    failure_type = "sync_batch_failed"
     if quota_halt:
-        err_payload = "quota_wall_halt"
-    _record_outcome(spec, ok=ok, last_date=last_ok_date, rows=total_rows, error=err_payload)
+        if failed:
+            err_payload = json.dumps({
+                "quota_wall_halt": True,
+                "failed_batches": failed[:5],
+            })
+        else:
+            # 配额是独立失败类型；不能覆盖 sync_batch_failed 行中的待重放日期。
+            err_payload = "quota_wall_halt"
+            failure_type = "sync_quota_halt"
+    _record_outcome(
+        spec,
+        ok=ok,
+        last_date=last_ok_date,
+        rows=total_rows,
+        error=err_payload,
+        resolve_failures=ok and replaying_open_failure,
+        failure_type=failure_type,
+        provider_succeeded=ok and bool(batches),
+    )
     result = {"domain": domain, "batches": len(batches), "rows": total_rows,
               "failed_batches": len(failed), "last_date": last_ok_date, "ok": ok}
+    if eligibility is not None:
+        result.update({
+            "eligible_end": eligibility.eligible_end,
+            "pending_today": eligibility.pending_today,
+            "eligibility_reason": eligibility.reason,
+        })
     if quota_halt:
         result["quota_halt"] = True
     log.info("sync %s", result)
@@ -1004,6 +1371,64 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         # 上抛由 main 熔断全链 (已写批与 watermark 已落盘, 可恢复)
         raise QuotaExhaustedError(f"domain={domain} 配额墙停链 (已写 {total_rows} 行)")
     return result
+
+
+def _parse_available_after(spec: dict[str, Any]) -> tuple[int, int] | str | None:
+    raw = str(spec.get("available_after") or "").strip()
+    if raw.lower() == "t+1":
+        return "t+1"
+    try:
+        hh, mm = (int(part) for part in raw.split(":"))
+    except (ValueError, AttributeError):
+        return None
+    if not (0 <= hh <= 23 and 0 <= mm <= 59):
+        return None
+    return hh, mm
+
+
+@dataclass(frozen=True)
+class DomainEligibility:
+    """某域在当前时刻可安全同步到的末日，以及今日是否仍待发布。"""
+
+    eligible_end: str | None
+    pending_today: bool
+    reason: str
+
+
+def eligible_end_date(
+    spec: dict[str, Any],
+    *,
+    now: Any = None,
+    trading_days: list[str] | None = None,
+) -> DomainEligibility:
+    """用交易日历 + 域 `available_after` 计算唯一 eligible end。
+
+    `trading_days` 可注入，供 preflight/测试复用同一判断而不复制时点解析。
+    未注入时显式查询到今天，不再经过通用 16:00 completed-date clamp。
+    """
+    from zoneinfo import ZoneInfo
+
+    now_local = now or datetime.now(ZoneInfo("Asia/Shanghai"))
+    if getattr(now_local, "tzinfo", None) is not None:
+        now_local = now_local.astimezone(ZoneInfo("Asia/Shanghai"))
+    today = now_local.strftime("%Y%m%d")
+    days = trading_days
+    if days is None:
+        days = _trading_days(str(spec.get("data_start") or "19900101"), today)
+    days = sorted({str(day).replace("-", "") for day in days if str(day).replace("-", "") <= today})
+    if not days:
+        return DomainEligibility(None, False, "calendar_empty")
+
+    today_is_trading = days[-1] == today
+    availability = _parse_available_after(spec)
+    if not today_is_trading:
+        return DomainEligibility(days[-1], False, "latest_prior_trading_day")
+    if availability == "t+1":
+        return DomainEligibility(days[-2] if len(days) > 1 else None, True, "t_plus_one")
+    if isinstance(availability, tuple) and (now_local.hour, now_local.minute) >= availability:
+        return DomainEligibility(today, False, "published")
+    reason = "pending_publish" if isinstance(availability, tuple) else "invalid_available_after"
+    return DomainEligibility(days[-2] if len(days) > 1 else None, True, reason)
 
 
 def _available_after_passed(spec: dict[str, Any], *, now: Any = None) -> bool:
@@ -1019,17 +1444,12 @@ def _available_after_passed(spec: dict[str, Any], *, now: Any = None) -> bool:
     18:00/22:30/t+1 这类还没发布的域每次跑批都产生噪音失败)。
     "t+1"(次日才发布) 域本来就不该同日补, 返回 False (交给 drain 下次当历史缺口自然捕获)。
     """
-    raw = str(spec.get("available_after") or "").strip()
-    if not raw or raw.lower() == "t+1":
+    availability = _parse_available_after(spec)
+    if not isinstance(availability, tuple):
         return False
-    try:
-        hh, mm = raw.split(":")
-        threshold = (int(hh), int(mm))
-    except (ValueError, AttributeError):
-        return False  # 声明格式异常, 保守当"未到" (与 drain 排除今天同一保守方向, 不误报)
     from zoneinfo import ZoneInfo
     now_local = now or datetime.now(ZoneInfo("Asia/Shanghai"))
-    return (now_local.hour, now_local.minute) >= threshold
+    return (now_local.hour, now_local.minute) >= availability
 
 
 def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
@@ -1049,7 +1469,7 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     spec = _domain_spec(reg, domain)
     if spec.get("batch_mode") != "by_trade_date":
         return {"domain": domain, "status": "unsupported", "batch_mode": spec.get("batch_mode")}
-    if spec.get("allow_empty_batch"):
+    if spec.get("allow_empty_batch") and not spec.get("cross_check_domain"):
         # 空日合法的域 gap 不可判定: 缺口 vs 真空无法区分, 空日会被每日重查永不收敛
         # (dividend 自 2005 年 ~3500 个无除权日会吃光重拉名额 + 永远 partial 告警疲劳)。
         # 这类域走 watermark 增量 (main --drain 分支 fallback run_domain)。
@@ -1057,7 +1477,7 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     expected = trading_days if trading_days is not None else _trading_days(
         str(spec["data_start"]).replace("-", ""))
     # 只修"今日之前"的确定性缺口: 当日数据到位时刻由 available_after 管 (多在 18:00),
-    # 17:00 链里 drain 当日必然假失败。这里**不能**用 latest_completed_trade_date —
+    # 在域 available_after 之前手工运行时，当日必然是假缺口。这里**不能**用通用 completed-date —
     # 它 16:00 截断后会返回今天, 正好defeat本排除 (gate triage 误判: 此处不是 end_date 用途)。
     from zoneinfo import ZoneInfo
     today = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d")  # Phase ψ.5 allowlist: 排除当日非 end_date, 防拉未发布数据
@@ -1070,6 +1490,7 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     conn = conn or _target_conn(spec)
     table = spec["target_table"]
     refilled_rows, still_failed = 0, []
+    successful_todo: set[str] = set()
     actual: set[str] = set()
     min_rows = int(spec.get("min_rows_per_batch", 0))
     # "完整日"口径 = 行数达 min_rows 的日; 不足日视同缺口重拉 (MERGE 幂等, 重拉安全)。
@@ -1101,6 +1522,43 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
                           for r in conn.execute(
                               f'SELECT "{date_col}" FROM "{table}" GROUP BY 1 HAVING COUNT(*) >= ?',
                               [min_rows]).fetchall()}
+            completeness = spec.get("batch_completeness") or {}
+            group_from = completeness.get("group_from") or {}
+            requirements = [
+                (str(group).upper(), None)
+                for group in (completeness.get("required_groups") or [])
+            ]
+            requirements.extend(
+                (str(group).upper(), str(since).replace("-", ""))
+                for group, since in (
+                    completeness.get("required_groups_since") or {}
+                ).items()
+            )
+            transform = str(group_from.get("transform") or "")
+            if requirements:
+                group_col = str(group_from.get("column") or "")
+                if transform == "exchange_suffix":
+                    predicate = (
+                        f'UPPER(SPLIT_PART(CAST("{group_col}" AS VARCHAR), \'.\', 2)) = ?'
+                    )
+                elif transform == "identity":
+                    predicate = f'UPPER(TRIM(CAST("{group_col}" AS VARCHAR))) = ?'
+                else:
+                    raise ValueError(
+                        f"{domain}: unsupported batch_completeness transform={transform!r}"
+                    )
+                for group, since in requirements:
+                    present = {
+                        str(r[0]).replace("-", "")
+                        for r in conn.execute(
+                            f'SELECT "{date_col}" FROM "{table}" '
+                            f'WHERE {predicate} '
+                            f'GROUP BY 1',
+                            [str(group).upper()],
+                        ).fetchall()
+                    }
+                    exempt = {date for date in actual if since and date < since}
+                    actual &= present | exempt
         gap = [d for d in expected if d not in actual]
         truncated = max_dates is not None and len(gap) > max_dates
         # 截断取最新优先 (gap 升序取尾部): backlog 超限时昨日数据必须先落地
@@ -1110,24 +1568,43 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
             adapter = adapter or _adapter(spec["source"])
         for d in todo:
             try:
-                rows = _fetch_paged(adapter, spec, {date_col: d})
+                rows = _fetch_logical_batch(adapter, spec, {date_col: d})
             except QuotaExhaustedError:
                 # 熔断: 已修批保留, 未修日留在 gap 下轮补; 上抛停全链 (不逐日续戳反刷量)
                 log.error("配额熔断 drain domain=%s 已补 %d 行后停止 (剩 %d 缺口日未修)",
                           domain, refilled_rows, len(todo) - todo.index(d))
                 raise
-            if not rows:  # None=终败; [] 理论不可达 (allow_empty 域已前置排除), 防御同终败
+            if not rows:
+                if rows == [] and spec.get("cross_check_domain"):
+                    suspicious, cross_rows, cross_table = _cross_check_suspicious_empty(
+                        conn, reg, spec, {date_col: d}
+                    )
+                    if suspicious and record:
+                        _record_suspicious_empty(
+                            spec, {date_col: d}, cross_rows, cross_table
+                        )
                 still_failed.append(d)
                 continue
-            refilled_rows += _write_batch(conn, spec, rows)
-            if min_rows and len(rows) < min_rows:
-                still_failed.append(d)  # 截断批: 写入 (聊胜于无) 但不算修好, 下轮仍在 gap
+            effective_min = min_rows if (not min_rows_since or d >= min_rows_since) else min_rows_before
+            try:
+                refilled_rows += _write_batch(
+                    conn, spec, rows, effective_min_rows=effective_min
+                )
+            except BatchCompletenessError as exc:
+                log.warning("drain batch %s 完整性失败 (拒绝写入): %s", d, exc)
+                still_failed.append(d)
+                continue
+            except Exception as exc:  # noqa: BLE001 — 已 rollback；记录当前日并停本域
+                log.error("drain batch %s 写入失败 (已 rollback): %s", d, exc)
+                still_failed.append(d)
+                break
+            successful_todo.add(d)
             time.sleep(0.4)  # rule-compliance: ok evidence=同 run_domain 节流口径 vendor-gateway-2026-06-11
     finally:
         if own_conn:
             conn.close()
     status = "clean" if not gap else ("drained" if not still_failed and not truncated else "partial")
-    _refilled_days = len(todo) - len(still_failed)
+    _refilled_days = len(successful_todo)
     # 空补告警 (2026-06-28 谄媚死根治, 防 top_list 式静默丢光): 抓到 gap 天却 0 行落库 = 可疑
     #   (universe_filter 漏配/写入静默丢)。源端真空洞 (cyq_perf/ths_hot 单日 0 行) 也会触发, 故 WARN 不硬降级,
     #   但可见 → 不再"drained 成功"假象不留痕。(真 filter-drops-all 已被 _write_batch universe_filter raise 拦成 still_failed。)
@@ -1140,18 +1617,20 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
               "still_failed": still_failed[:20], "truncated": truncated}
     if record:  # 送达 (宪法第 5 条): 仍有缺口 → 记 failure; 清干净 → resolve
         _record_outcome(spec, ok=status in ("clean", "drained"),
-                        last_date=max(actual | set(todo)) if (actual or todo) else None,
+                        last_date=max(actual | successful_todo) if (actual or successful_todo) else None,
                         rows=refilled_rows,
-                        error=json.dumps({"drain_still_failed": still_failed[:10]}) if still_failed else None)
+                        error=json.dumps({"drain_still_failed": still_failed[:10]}) if still_failed else None,
+                        resolve_failures=status in ("clean", "drained") and not truncated,
+                        provider_succeeded=bool(successful_todo))
     log.info("drain %s", result)
     return result
 
 
-def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
+def _parse_cli_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--domain", help="sync_registry 域名")
-    parser.add_argument("--all-due", action="store_true", help="同步全部注册域 (daily_update 集成入口)")
+    selector = parser.add_mutually_exclusive_group(required=True)
+    selector.add_argument("--domain", help="sync_registry 域名")
+    selector.add_argument("--all-due", action="store_true", help="同步全部注册域 (daily_update 集成入口)")
     parser.add_argument("--backfill", action="store_true", help="从 data_start 全量回填")
     parser.add_argument("--resume", action="store_true", help="by_ts_code 域断点续拉 (跳过 target 已有 ts_code)")
     parser.add_argument("--start", default=None, help="覆盖起始日 YYYYMMDD")
@@ -1159,14 +1638,28 @@ def main() -> int:
     parser.add_argument("--drain", action="store_true",
                         help="日历 gap 重放 (by_trade_date 域): 应有交易日 − 实有 = 缺口逐日重拉")
     parser.add_argument("--max-dates", type=int, default=None, help="drain 单域单次重拉日数上限 (限流边界)")
-    args = parser.parse_args()
+    return parser.parse_args(argv)
+
+
+def _main_unlocked(args: argparse.Namespace | None = None) -> int:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
+    args = args or _parse_cli_args()
 
     reg = load_registry()
-    domains = list(reg["domains"]) if args.all_due else ([args.domain] if args.domain else [])
-    if not domains:
-        parser.error("--domain 或 --all-due 必选其一")
+    domains = (
+        [
+            domain
+            for domain, domain_spec in reg["domains"].items()
+            if domain_spec.get("sync_policy") != "on_demand"
+        ]
+        if args.all_due
+        else ([args.domain] if args.domain else [])
+    )
+    _calendar_preflight(domains)
 
     if args.drain:
+        from services.data_sources.sources.tushare import TuShareAuthorizationError
+
         results = []
         for d in domains:
             try:
@@ -1212,6 +1705,9 @@ def main() -> int:
                 log.error("配额熔断停链 (drain): %s — 剩 %d 域不跑", exc, len(domains) - domains.index(d) - 1)
                 results.append({"domain": d, "status": "quota_halt", "error": str(exc)[:200]})
                 break
+            except TuShareAuthorizationError:
+                # 运行中授权失效仍是账户级硬阻断；必须穿透到 main 稳定返回 exit 3。
+                raise
             except Exception as exc:  # noqa: BLE001 — 单域异常 (如写锁被占) 不挡其余域, 显式入结果非静默
                 results.append({"domain": d, "status": "error", "error": str(exc)[:200]})
         print(json.dumps(results, ensure_ascii=False, indent=1))
@@ -1233,6 +1729,54 @@ def main() -> int:
     if any(r.get("status") == "quota_halt" for r in results):
         return 2
     return 0 if all(r.get("failed_batches") == 0 for r in results) else 1
+
+
+def main() -> int:
+    """CLI 写入口：与 full pipeline/stage/manual API 共用唯一 advisory lock。"""
+    from services.data_sources.sources.tushare import TuShareAuthorizationError
+    from services.writer_lock import WriterLockBusyError, writer_lock
+
+    # help/参数错误必须在 writer lock 与 provider 探针之前完成。
+    args = _parse_cli_args()
+    try:
+        with writer_lock(owner="sync_runner") as lease:
+            try:
+                _authorization_preflight(lease)
+                return _main_unlocked(args)
+            except TuShareAuthorizationError as exc:
+                print(json.dumps({
+                    "status": "authorization_blocked",
+                    "reason": exc.reason,
+                }, ensure_ascii=False))
+                return 3
+            except CalendarFoundationError as exc:
+                print(json.dumps({
+                    "status": "calendar_blocked",
+                    "reason": str(exc),
+                }, ensure_ascii=False))
+                return 4
+    except WriterLockBusyError as exc:
+        log.error("%s", exc)
+        print(json.dumps({"status": "writer_busy", "error": str(exc)}, ensure_ascii=False))
+        return 2
+
+
+def _authorization_preflight(lease) -> dict[str, Any]:
+    """直跑探一次 user()；受验证的父 lease 子进程复用同一授权证明。"""
+    from services.data_sources.sync_preconditions import authorization_preflight
+
+    return authorization_preflight(
+        lease=lease,
+        adapter_factory=_adapter,
+        registry=load_registry(),
+    )
+
+
+def _calendar_preflight(domains: list[str]) -> None:
+    """所有日期驱动直跑入口复用生产日历硬门；仅 trade_cal 单域可 bootstrap。"""
+    from services.data_sources.sync_preconditions import ensure_calendar_foundation
+
+    ensure_calendar_foundation(domains)
 
 
 if __name__ == "__main__":

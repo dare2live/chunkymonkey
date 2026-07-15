@@ -6,9 +6,10 @@
 `scripts/chunkyctl doctor` 因此悬空报 "can't open file"。
 本最小版只串 **reset 后幸存且实测可跑** 的健康检查, **不复活已删模块** (尊重用户主导的 reset 意图):
   1. tooling_gate  — `moth assert` (二进制; 原 moth_snapshot.py 已删, 改直调 CLI)
-  2. alert_flags   — 巡检 /tmp/chunkymonkey_ALERT_*.flag (定时任务失败/降级)
-  3. universe      — check_universe_filter.py --all (排除股写入门)
-  4. data_health   — data_health_snapshot.py --dry-run (表新鲜度/红黄绿)
+  2. automation_surface — manual-only 下阻断数据写 cron/launchd 残留
+  3. alert_flags   — 巡检 /tmp/chunkymonkey_ALERT_*.flag (手动任务失败/降级)
+  4. universe      — check_universe_filter.py --all (排除股写入门)
+  5. data_health   — data_health_snapshot.py --dry-run (表新鲜度/红黄绿)
 其余子命令 (worktree/docs/preflight/audit/data-status) 依赖已删 → 报 retired (当前权威: goal.md / moth / PROJECT_INDEX)。
 完整 doctor 全套 = 部分推翻 reset (需恢复 moth_snapshot 等), 须用户决策后再做。owner=主会话 (analysis 调研 a7649a94)。
 """
@@ -17,10 +18,19 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import os
+import plistlib
+import re
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+
+import yaml
+
+
+_CRONTAB_ENV_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\s*=.*")
+_CRON_ENV_REFERENCE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))")
 
 
 def _run_command(cmd: list[str], *, cwd: Path) -> dict[str, Any]:
@@ -60,7 +70,7 @@ def _aggregate_verdict(sections: list[dict[str, Any]]) -> str:
 
 
 def collect_alert_flags() -> dict[str, Any]:
-    """定时任务失败/降级 flag 巡检 — 把 "启动查 /tmp/chunkymonkey_ALERT_*.flag" 约定变成代码 (删前原样)。"""
+    """手动任务失败/降级 flag 巡检 — 把启动检查约定变成代码。"""
     flags = []
     for path in sorted(glob.glob("/tmp/chunkymonkey_ALERT_*.flag")):
         p = Path(path)
@@ -70,6 +80,220 @@ def collect_alert_flags() -> dict[str, Any]:
             tail = []
         flags.append({"flag": p.name, "last_lines": tail})
     return {"verdict": "PASS" if not flags else "WARN", "count": len(flags), "flags": flags}
+
+
+def _scheduled_plist(payload: dict[str, Any]) -> bool:
+    return bool(
+        payload.get("StartCalendarInterval")
+        or payload.get("StartInterval")
+        or payload.get("KeepAlive")
+        or payload.get("RunAtLoad") is True
+        or payload.get("WatchPaths")
+        or payload.get("QueueDirectories")
+        or payload.get("StartOnMount") is True
+        or payload.get("LaunchEvents")
+    )
+
+
+def _expand_cron_environment(command: str, env: dict[str, str]) -> str:
+    def _replace(match: re.Match[str]) -> str:
+        name = match.group(1) or match.group(2)
+        return env.get(name, match.group(0))
+
+    return _CRON_ENV_REFERENCE.sub(_replace, command)
+
+
+def _scan_cron_text(
+    text: str,
+    *,
+    source: str,
+    repo: Path,
+    patterns: list[re.Pattern[str]],
+) -> list[dict[str, str]]:
+    findings: list[dict[str, str]] = []
+    env = {key: value for key, value in os.environ.items() if isinstance(value, str)}
+    for line_no, line in enumerate(text.splitlines(), 1):
+        command = line.strip()
+        if not command or command.startswith("#"):
+            continue
+        if _CRONTAB_ENV_ASSIGNMENT.fullmatch(command):
+            name, value = command.split("=", 1)
+            env[name.strip()] = value.strip().strip("'\"")
+            continue
+        expanded = _expand_cron_environment(command, env)
+        reason = _automation_match_reason(expanded, repo, patterns)
+        if reason:
+            findings.append({"source": f"{source}:{line_no}", "reason": reason})
+    return findings
+
+
+def _automation_match_reason(
+    text: str, repo: Path, patterns: list[re.Pattern[str]]
+) -> str | None:
+    lowered = text.lower()
+    if "chunkymonkey" in lowered:
+        return "project identity: chunkymonkey"
+    if str(repo) in text:
+        return f"project identity: {repo}"
+    matched = next((pattern.pattern for pattern in patterns if pattern.search(text)), None)
+    return f"matched {matched}" if matched else None
+
+
+def audit_automation_surface(
+    repo: Path,
+    *,
+    home: Path | None = None,
+    system_launchd_dirs: tuple[Path, ...] | None = None,
+    system_cron_files: tuple[Path, ...] | None = None,
+    crontab_text: str | None = None,
+    launchctl_text: str | None = None,
+) -> dict[str, Any]:
+    """Enforce the config-owned manual-only contract across cron and launchd."""
+    policy_path = repo / "backend" / "config" / "automation_policy.yaml"
+    try:
+        policy = yaml.safe_load(policy_path.read_text(encoding="utf-8")) or {}
+        data_jobs = policy["data_jobs"]
+        mode = data_jobs["mode"]
+        if policy.get("version") != 1:
+            raise ValueError(f"unsupported policy version: {policy.get('version')!r}")
+        if mode != "manual_only":
+            raise ValueError(f"unsupported mode: {mode!r}")
+        raw_patterns = data_jobs["forbidden_command_patterns"]
+        if not isinstance(raw_patterns, list) or not raw_patterns:
+            raise ValueError("forbidden_command_patterns must be a non-empty list")
+        patterns = [re.compile(str(p)) for p in raw_patterns]
+    except Exception as exc:  # noqa: BLE001 - missing/bad policy cannot silently permit automation
+        return {
+            "name": "automation_surface",
+            "verdict": "FAIL",
+            "mode": "unknown",
+            "findings": [{"source": str(policy_path), "reason": f"invalid policy: {exc}"}],
+        }
+
+    findings: list[dict[str, str]] = []
+    home = home or Path.home()
+    if system_launchd_dirs is None:
+        system_launchd_dirs = (Path("/Library/LaunchAgents"), Path("/Library/LaunchDaemons"))
+    plist_sources = [
+        ("repo", repo / "configs" / "launchd"),
+        ("repo", repo / "backend" / "scripts" / "launchd"),
+        ("installed", home / "Library" / "LaunchAgents"),
+    ]
+    plist_sources.extend(("system", path) for path in system_launchd_dirs)
+    for source_kind, directory in plist_sources:
+        if not directory.exists():
+            continue
+        try:
+            plist_paths = sorted(directory.glob("*.plist"))
+        except OSError as exc:
+            findings.append({
+                "source": f"{source_kind}:{directory}",
+                "reason": f"cannot audit directory: {type(exc).__name__}",
+            })
+            continue
+        for path in plist_paths:
+            try:
+                payload = plistlib.loads(path.read_bytes())
+            except Exception as exc:  # noqa: BLE001
+                if source_kind == "repo" or "chunkymonkey" in path.name.lower():
+                    findings.append(
+                        {"source": f"{source_kind}:{path}", "reason": f"unparseable plist: {exc}"}
+                    )
+                continue
+            if not _scheduled_plist(payload):
+                continue
+            if source_kind == "repo":
+                findings.append(
+                    {
+                        "source": f"repo:{path.relative_to(repo)}",
+                        "reason": "scheduled plist forbidden by manual_only",
+                    }
+                )
+                continue
+            command = " ".join(
+                [
+                    str(payload.get("Label") or ""),
+                    str(payload.get("Program") or ""),
+                    *map(str, payload.get("ProgramArguments") or []),
+                ]
+            )
+            plist_env = {
+                **{key: value for key, value in os.environ.items() if isinstance(value, str)},
+                **{
+                    str(key): str(value)
+                    for key, value in (payload.get("EnvironmentVariables") or {}).items()
+                },
+            }
+            command = _expand_cron_environment(command, plist_env)
+            reason = _automation_match_reason(command, repo, patterns)
+            if reason:
+                display = path.relative_to(repo) if source_kind == "repo" else path
+                findings.append(
+                    {"source": f"{source_kind}:{display}", "reason": reason}
+                )
+
+    if crontab_text is None:
+        cron_result = _run_command(["crontab", "-l"], cwd=repo)
+        crontab_text = cron_result.get("stdout") or ""
+        cron_error = (cron_result.get("stderr") or "").lower()
+        if cron_result.get("returncode") not in (0, 1) or (
+            cron_result.get("returncode") == 1 and "no crontab" not in cron_error
+        ):
+            findings.append({
+                "source": "crontab",
+                "reason": f"audit command failed rc={cron_result.get('returncode')}",
+            })
+    findings.extend(_scan_cron_text(
+        crontab_text, source="crontab", repo=repo, patterns=patterns
+    ))
+
+    if system_cron_files is None:
+        cron_d = Path("/etc/cron.d")
+        discovered: list[Path] = [Path("/etc/crontab")]
+        if cron_d.exists():
+            try:
+                discovered.extend(sorted(path for path in cron_d.iterdir() if path.is_file()))
+            except OSError as exc:
+                findings.append({
+                    "source": f"system-cron:{cron_d}",
+                    "reason": f"cannot audit directory: {type(exc).__name__}",
+                })
+        system_cron_files = tuple(discovered)
+    for cron_path in system_cron_files:
+        if not cron_path.exists():
+            continue
+        try:
+            cron_text = cron_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            findings.append({
+                "source": f"system-cron:{cron_path}",
+                "reason": f"cannot audit: {type(exc).__name__}",
+            })
+            continue
+        findings.extend(_scan_cron_text(
+            cron_text, source=f"system-cron:{cron_path}", repo=repo, patterns=patterns
+        ))
+
+    if launchctl_text is None:
+        launch_result = _run_command(["launchctl", "list"], cwd=repo)
+        launchctl_text = launch_result.get("stdout") or ""
+        if launch_result.get("returncode") != 0:
+            findings.append({
+                "source": "launchctl",
+                "reason": f"audit command failed rc={launch_result.get('returncode')}",
+            })
+    for line in launchctl_text.splitlines():
+        reason = _automation_match_reason(line, repo, patterns)
+        if reason:
+            findings.append({"source": "launchctl", "reason": reason})
+
+    verdict = "FAIL" if mode == "manual_only" and findings else "PASS"
+    return {
+        "name": "automation_surface",
+        "verdict": verdict,
+        "mode": mode,
+        "findings": findings,
+    }
 
 
 def _moth_gate(repo: Path) -> dict[str, Any]:
@@ -91,11 +315,12 @@ def run_doctor(args: argparse.Namespace) -> int:
     repo = Path(args.repo).expanduser().resolve()
     sections: list[dict[str, Any]] = []
     sections.append(_moth_gate(repo))                                          # 1. moth tooling gate
-    af = collect_alert_flags()                                                 # 2. 告警 flag 巡检
+    sections.append(audit_automation_surface(repo))                            # 2. manual-only 调度面
+    af = collect_alert_flags()                                                 # 3. 告警 flag 巡检
     sections.append({"name": "alert_flags", "verdict": af["verdict"], "count": af["count"], "flags": af["flags"]})
-    uni = _run_command([sys.executable, "backend/scripts/check_universe_filter.py", "--all"], cwd=repo)  # 3. universe
+    uni = _run_command([sys.executable, "backend/scripts/check_universe_filter.py", "--all"], cwd=repo)  # 4. universe
     sections.append({"name": "universe", "verdict": "PASS" if uni["returncode"] == 0 else "FAIL", **_summary(uni)})
-    dh = _run_command([sys.executable, "backend/scripts/data_health_snapshot.py",                # 4. 数据新鲜度
+    dh = _run_command([sys.executable, "backend/scripts/data_health_snapshot.py",                # 5. 数据新鲜度
                        "--dry-run", "--format", "json"], cwd=repo)
     dh_json = _json_from_stdout(dh)
     sections.append({"name": "data_health",
@@ -104,7 +329,7 @@ def run_doctor(args: argparse.Namespace) -> int:
                      "returncode": dh["returncode"]})
     verdict = _aggregate_verdict(sections)
     report = {"command": "doctor", "verdict": verdict, "sections": sections,
-              "note": "最小重建版 (reset 后幸存 4 gate: moth/alert/universe/data_health); "
+              "note": "最小重建版 (5 gate: moth/automation/alert/universe/data_health); "
                       "完整 doctor 需恢复 moth_snapshot/worktree_status 等已删模块 (见文件头注)"}
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if verdict != "FAIL" else 1
@@ -119,7 +344,7 @@ _RETIRED = ("worktree", "docs", "preflight", "audit", "data-status", "jobs")
 def main() -> int:
     parser = argparse.ArgumentParser(prog="chunkyctl", description="项目操作 CLI (2026-06-22 最小重建 doctor)")
     sub = parser.add_subparsers(dest="command")
-    d = sub.add_parser("doctor", help="健康检查 (moth/alert/universe/data_health)")
+    d = sub.add_parser("doctor", help="健康检查 (moth/automation/alert/universe/data_health)")
     d.add_argument("--repo", default=".")
     d.add_argument("--fast", action="store_true")              # wrapper 已 strip; 防直调残留不崩
     d.add_argument("--skip-storage-payload", action="store_true")

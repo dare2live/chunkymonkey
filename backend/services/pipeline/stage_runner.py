@@ -16,10 +16,14 @@ import argparse
 import sys
 from datetime import datetime
 
+from services.data_sources.sources.tushare import TuShareAuthorizationError
+from services.writer_lock import WriterLockBusyError, writer_lock
+
 from .acquire import run_acquire
 from .clean import run_clean
 from .context import PipelineContext
 from .process import run_process
+from .preflight import PipelinePreflightError
 from .stage_status import run_and_record
 from .store import run_store
 
@@ -68,32 +72,58 @@ def run_stage(
     date: str | None = None,
     force: bool = False,
 ) -> int:
-    """单跑一个阶段。返回 0=干净; 1=本阶段 degraded; 2=上游未 pass 被拒 (--force 绕过)。
+    """单跑一个阶段。
+
+    返回 0=干净; 1=本阶段 degraded; 2=上游未 pass; 3=授权阻断;
+    4=writer busy; 5=日历地基阻断。
 
     不 reset DEGRADED_FLAG (那是 run.py 全链起跑的动作); 单阶段若 degraded 仍写 flag 告警 (诚实)。
     """
     if stage not in STAGES:
         raise SystemExit(f"unknown stage '{stage}' (choices: {', '.join(STAGES)})")
-    # 件3: refuse-if-upstream-not-pass (让切片a独立触发安全; --force 绕过)
-    if not force:
-        refusal = _upstream_refusal(stage)
-        if refusal is not None:
-            print(refusal, file=sys.stderr)
-            return 2
     # run-date = 运行日期标签 (log/report 命名), 非 trade end-date (同 run.py allowlist; end-date 各脚本内 calendar-gated)
     run_date = date or datetime.now().strftime("%Y%m%d")  # Phase ψ.5 allowlist: run-date 标签非 end-date
-    ctx = PipelineContext(dry=dry, skip_sync=skip_sync, date=run_date)
-    ctx.log(f"=== ChunkyMonkey pipeline stage '{stage}' {run_date} (独立触发) ===")
-    ctx.log(f"  dry={int(ctx.dry)} skip_sync={int(ctx.skip_sync)} force={int(force)}")
     try:
-        passed = run_and_record(ctx, stage, STAGES[stage])  # 件2: 跑 + best-effort 记状态
-        if not passed:
-            ctx.log(f"=== stage '{stage}' DONE with degraded (见上; exit 1) ===")
-            return 1
-        ctx.log(f"=== stage '{stage}' DONE (clean) ===")
-        return 0
-    finally:
-        ctx.close()
+        with writer_lock(owner=f"pipeline.stage.{stage}") as lease:
+            # 件3: refusal 与阶段执行处于同一写窗口，避免检查后另一 writer 抢先改变状态。
+            if not force:
+                refusal = _upstream_refusal(stage)
+                if refusal is not None:
+                    print(refusal, file=sys.stderr)
+                    return 2
+            ctx = PipelineContext(
+                dry=dry,
+                skip_sync=skip_sync,
+                date=run_date,
+                writer_lease_id=str(lease.lease_id),
+                writer_lock_fd=lease.lock_fd,
+            )
+            ctx.log(f"=== ChunkyMonkey pipeline stage '{stage}' {run_date} (独立触发) ===")
+            ctx.log(f"  dry={int(ctx.dry)} skip_sync={int(ctx.skip_sync)} force={int(force)}")
+            try:
+                if stage == "acquire":
+                    # 与全链 preflight 同一授权门；先于阶段状态记录，授权失败不伪装成已启动采集。
+                    from .preflight import ensure_calendar_ready, ensure_tushare_authorized
+
+                    ensure_calendar_ready(ctx, allow_repair=not dry and not skip_sync)
+                    ensure_tushare_authorized(ctx)
+                passed = run_and_record(ctx, stage, STAGES[stage])  # 件2: 跑 + best-effort 记状态
+                if not passed or ctx.degraded_msgs:
+                    ctx.log(f"=== stage '{stage}' DONE with degraded (见上; exit 1) ===")
+                    return 1
+                ctx.log(f"=== stage '{stage}' DONE (clean) ===")
+                return 0
+            except TuShareAuthorizationError as exc:
+                ctx.degraded(f"AUTH BLOCK: {exc.reason} (stage 未启动; exit 3)")
+                return 3
+            except PipelinePreflightError as exc:
+                ctx.degraded(f"PREFLIGHT BLOCK: {exc.reason} (stage 未启动; exit 5)")
+                return 5
+            finally:
+                ctx.close()
+    except WriterLockBusyError as exc:
+        print(f"WRITER BLOCK: {exc} (stage 未启动; exit 4)", file=sys.stderr)
+        return 4
 
 
 def main(argv: list[str] | None = None) -> int:

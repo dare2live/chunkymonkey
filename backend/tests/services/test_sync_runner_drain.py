@@ -86,6 +86,34 @@ def test_drain_allow_empty_domain_inapplicable():
     assert r["status"] == "drain_inapplicable"
 
 
+def test_drain_allow_empty_domain_with_cross_check_can_refill_gap():
+    """block_trade 类稀疏域有交叉真相门时可 drain，不能永久被 allow_empty 早退。"""
+    conn = connect(":memory:")
+    _seed(conn, [])
+    reg = _registry(allow_empty_batch=True, cross_check_domain="daily")
+    reg["domains"]["daily"] = {
+        "source": "tushare",
+        "api": "daily",
+        "target_table": "raw_tushare_daily",
+        "grain": ["ts_code", "trade_date"],
+        "batch_mode": "by_trade_date",
+    }
+    adapter = FakeAdapter({
+        "20200101": [{"ts_code": "000001.SZ", "trade_date": "20200101", "val": 2.0}]
+    })
+
+    result = sr.drain_domain(
+        "demo",
+        registry=reg,
+        conn=conn,
+        adapter=adapter,
+        trading_days=["20200101"],
+        record=False,
+    )
+
+    assert result["status"] == "drained" and result["refilled_days"] == 1
+
+
 def test_drain_respects_custom_date_param():
     """date_param 域 (如 dividend ex_date): gap 扫描列与 fetch 参数都用它."""
     conn = connect(":memory:")
@@ -125,7 +153,7 @@ def test_drain_treats_below_min_rows_day_as_gap():
 
 
 def test_drain_refetched_truncated_batch_stays_failed():
-    """重拉仍不足 min_rows (vendor 截断) → 写入聊胜于无, 但计 still_failed 不算修好."""
+    """重拉仍不足 min_rows (vendor 截断) → 整批零写并计 still_failed。"""
     conn = connect(":memory:")
     _seed(conn, [])
     adapter = FakeAdapter({"20200101": [
@@ -136,7 +164,163 @@ def test_drain_refetched_truncated_batch_stays_failed():
                         adapter=adapter, trading_days=["20200101"], record=False)
     assert r["status"] == "partial" and r["still_failed"] == ["20200101"]
     n = conn.execute("SELECT COUNT(*) FROM raw_tushare_demo").fetchone()[0]
-    assert n == 2  # 数据已落但不洗白
+    assert n == 0  # 完整性失败批零写入，不能让 partial 覆盖/污染旧快照
+
+
+def test_drain_identity_group_contract_refills_missing_exchange_atomically():
+    """行数够但缺 BSE 的日期仍是 gap；三交易所逻辑批收齐后才能替换。"""
+    conn = connect(":memory:")
+    conn.execute(
+        "CREATE TABLE raw_tushare_demo "
+        "(trade_date VARCHAR, exchange_id VARCHAR, val DOUBLE, built_at TIMESTAMP)"
+    )
+    conn.executemany(
+        "INSERT INTO raw_tushare_demo VALUES (?, ?, 1.0, now())",
+        [("20260701", group) for group in ("SSE", "SZSE", "HKEX")],
+    )
+    reg = _registry(
+        grain=["trade_date", "exchange_id"],
+        min_rows_per_batch=3,
+        split_by={"param": "exchange_id", "values": ["SSE", "SZSE", "BSE"]},
+        batch_completeness={
+            "group_from": {"column": "exchange_id", "transform": "identity"},
+            "required_groups": ["SSE", "SZSE", "BSE"],
+        },
+    )
+
+    class ExchangeAdapter:
+        def __init__(self):
+            self.calls = []
+
+        def fetch_raw(self, _api, **params):
+            self.calls.append(params["exchange_id"])
+            return [{
+                "trade_date": params["trade_date"],
+                "exchange_id": params["exchange_id"],
+                "val": 2.0,
+            }]
+
+    adapter = ExchangeAdapter()
+    result = sr.drain_domain(
+        "demo",
+        registry=reg,
+        conn=conn,
+        adapter=adapter,
+        trading_days=["20260701"],
+        record=False,
+    )
+
+    assert result["status"] == "drained" and result["gap_days"] == 1
+    assert adapter.calls == ["SSE", "SZSE", "BSE"]
+    groups = {
+        row[0]
+        for row in conn.execute(
+            "SELECT exchange_id FROM raw_tushare_demo WHERE trade_date='20260701'"
+        ).fetchall()
+    }
+    assert groups == {"SSE", "SZSE", "BSE", "HKEX"}
+
+
+def test_drain_conditional_group_contract_uses_exact_bse_start_boundary():
+    """北交所开市前一真实交易日两市场完整；20211115 起缺 BSE 必须成为 gap。"""
+    contract = {
+        "group_from": {"column": "exchange_id", "transform": "identity"},
+        "required_groups": ["SSE", "SZSE"],
+        "required_groups_since": {"BSE": "20211115"},
+    }
+
+    before = connect(":memory:")
+    before.execute(
+        "CREATE TABLE raw_tushare_demo "
+        "(trade_date VARCHAR, exchange_id VARCHAR, built_at TIMESTAMP)"
+    )
+    before.executemany(
+        "INSERT INTO raw_tushare_demo VALUES ('20211112', ?, now())",
+        [("SSE",), ("SZSE",)],
+    )
+    before_result = sr.drain_domain(
+        "demo",
+        registry=_registry(
+            grain=["trade_date", "exchange_id"],
+            min_rows_per_batch=2,
+            batch_completeness=contract,
+        ),
+        conn=before,
+        adapter=FakeAdapter({}),
+        trading_days=["20211112"],
+        record=False,
+    )
+    assert before_result["status"] == "clean"
+
+    boundary = connect(":memory:")
+    boundary.execute(
+        "CREATE TABLE raw_tushare_demo "
+        "(trade_date VARCHAR, exchange_id VARCHAR, built_at TIMESTAMP)"
+    )
+    boundary.executemany(
+        "INSERT INTO raw_tushare_demo VALUES ('20211115', ?, now())",
+        [("SSE",), ("SZSE",)],
+    )
+    boundary_result = sr.drain_domain(
+        "demo",
+        registry=_registry(
+            grain=["trade_date", "exchange_id"],
+            min_rows_per_batch=2,
+            batch_completeness=contract,
+        ),
+        conn=boundary,
+        adapter=FakeAdapter({}),
+        trading_days=["20211115"],
+        max_dates=0,
+        record=False,
+    )
+    assert boundary_result["gap_days"] == 1
+    assert boundary_result["status"] == "partial"
+
+
+def test_drain_failed_todo_is_not_reported_as_success_watermark_date(monkeypatch):
+    """失败待办日不能进入 last_date；watermark 只认实际成功批。"""
+    conn = connect(":memory:")
+    _seed(conn, ["20200101"])
+    recorded = {}
+    monkeypatch.setattr(sr, "_record_outcome", lambda spec, **kw: recorded.update(kw))
+    result = sr.drain_domain(
+        "demo",
+        registry=_registry(),
+        conn=conn,
+        adapter=FakeAdapter({"20200102": []}),
+        trading_days=["20200101", "20200102"],
+        record=True,
+    )
+
+    assert result["status"] == "partial"
+    assert recorded["last_date"] == "20200101"
+    assert recorded["ok"] is False
+
+
+def test_drain_records_write_failure_without_claiming_refill(monkeypatch):
+    conn = connect(":memory:")
+    _seed(conn, [])
+    monkeypatch.setattr(
+        sr,
+        "_write_batch",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("disk full")),
+    )
+    recorded = {}
+    monkeypatch.setattr(sr, "_record_outcome", lambda spec, **kw: recorded.update(kw))
+    result = sr.drain_domain(
+        "demo",
+        registry=_registry(),
+        conn=conn,
+        adapter=FakeAdapter({
+            "20200101": [{"ts_code": "000001.SZ", "trade_date": "20200101", "val": 1.0}]
+        }),
+        trading_days=["20200101"],
+        record=True,
+    )
+
+    assert result["status"] == "partial" and result["refilled_days"] == 0
+    assert recorded["ok"] is False and recorded["last_date"] is None
 
 
 def test_drain_truncation_takes_newest_first():

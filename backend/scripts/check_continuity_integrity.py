@@ -481,6 +481,7 @@ def check_static_staleness(conn, spec: dict, trading_days: list[str], latest_exp
 # 即使日历"刚刷新过"也可能只覆盖到未来很浅, 静默限制任何"从今天起数 N 个未来交易日"的运算
 # (embargo/purge 窗口等) 悄悄少算而不报错。
 CALENDAR_HORIZON_MIN_TRADING_DAYS = 60
+_RAW_STATUS_UNCHECKED = object()
 
 
 def check_calendar_horizon(trading_days: list[str], today_iso: str) -> dict:
@@ -488,15 +489,42 @@ def check_calendar_horizon(trading_days: list[str], today_iso: str) -> dict:
     或 tushare 未发布次年日历); trading_days 复用 _load_calendar() 已加载的全量升序列表,
     不重复查库。"""
     spec = {"domain": "trade_cal", "db": "reference", "table": "dim_trading_calendar"}
-    future_n = len(trading_days) - bisect_right(trading_days, today_iso)
+    today = _norm_day(today_iso)
+    normalized_days = sorted({_norm_day(day) for day in trading_days})
+    future_n = len(normalized_days) - bisect_right(normalized_days, today)
     if future_n < CALENDAR_HORIZON_MIN_TRADING_DAYS:
         return _result(
             "calendar_horizon", spec, "fail",
-            f"today={today_iso} 之后仅剩 {future_n} 个已登记交易日 (< {CALENDAR_HORIZON_MIN_TRADING_DAYS})",
+            f"today={today} 之后仅剩 {future_n} 个已登记交易日 (< {CALENDAR_HORIZON_MIN_TRADING_DAYS})",
             "跑 services.calendar_builder.build_latest 并核 trade_cal sync (tushare 可能未发布次年日历)")
     return _result(
         "calendar_horizon", spec, "pass",
-        f"today={today_iso} 之后剩 {future_n} 个已登记交易日 (阈值 {CALENDAR_HORIZON_MIN_TRADING_DAYS})")
+        f"today={today} 之后剩 {future_n} 个已登记交易日 (阈值 {CALENDAR_HORIZON_MIN_TRADING_DAYS})")
+
+
+def check_calendar_today_consistency(
+    trading_days: list[str],
+    today_iso: str,
+    raw_today_is_open: int | None,
+) -> dict:
+    """SSE raw 必须登记今天，且 raw 开闭市状态须与 dim 的“只存交易日”语义一致。"""
+    spec = {"domain": "trade_cal", "db": "reference", "table": "dim_trading_calendar"}
+    today = _norm_day(today_iso)
+    if raw_today_is_open not in (0, 1):
+        return _result(
+            "calendar_horizon", spec, "fail",
+            f"raw_tushare_trade_cal 缺 today={today} 的唯一 SSE 开闭市记录",
+            "在同一 writer lease 下 full-refresh trade_cal，运行 calendar_builder 后重查")
+    dim_has_today = today in {_norm_day(day) for day in trading_days}
+    expected_dim = bool(raw_today_is_open)
+    if dim_has_today != expected_dim:
+        return _result(
+            "calendar_horizon", spec, "fail",
+            f"today={today} raw_is_open={raw_today_is_open} 但 dim_has_today={int(dim_has_today)}",
+            "运行 services.calendar_builder.build_latest 修复 raw→dim 传导后重查")
+    return _result(
+        "calendar_horizon", spec, "pass",
+        f"today={today} raw_is_open={raw_today_is_open} 与 dim 一致")
 
 
 # ── 编排 ─────────────────────────────────────────────────────────────────
@@ -512,6 +540,7 @@ def run_checks(
     row_dip_ratio: float = ROW_DIP_RATIO_DEFAULT,
     today: str | None = None,
     strict: bool = False,
+    raw_today_is_open: int | None | object = _RAW_STATUS_UNCHECKED,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """全域五类检测: 返回 (results, failures)。conn_for(db_alias) 可注入 (单测内存库)。
 
@@ -565,6 +594,11 @@ def run_checks(
     if (only in (None, "calendar_horizon")) and (domain in (None, "trade_cal")):
         from zoneinfo import ZoneInfo
         today_iso = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+        if raw_today_is_open is not _RAW_STATUS_UNCHECKED:
+            results.append(check_calendar_today_consistency(
+                trading_days, today_iso,
+                raw_today_is_open if isinstance(raw_today_is_open, int) else None,
+            ))
         results.append(check_calendar_horizon(trading_days, today_iso))
     failures = [r for r in results if r["status"].startswith("fail")
                 or (strict and r["status"] == "db_unreachable")]
@@ -634,6 +668,27 @@ def _load_calendar() -> tuple[list[str], str]:
     return days, _norm_day(latest)
 
 
+def _load_raw_today_status() -> int | None:
+    """读取今日 SSE 开闭市状态；缺失、重复冲突或非法值一律交给硬门 fail closed。"""
+    from zoneinfo import ZoneInfo
+
+    from services.data_access.resolver import connect_ro
+
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d")  # Phase ψ.5 allowlist: 今日 raw 日历审计，非业务 end_date
+    conn = connect_ro("tushare_raw")
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT TRY_CAST(TRY_CAST(is_open AS DOUBLE) AS INTEGER) "
+            "FROM raw_tushare_trade_cal WHERE exchange = 'SSE' "
+            "AND REPLACE(CAST(cal_date AS VARCHAR), '-', '') = ?",
+            [today],
+        ).fetchall()
+    finally:
+        conn.close()
+    values = {row[0] for row in rows if row and row[0] in (0, 1)}
+    return values.pop() if len(values) == 1 else None
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="数据连续性/完整性常驻审查 (五类; 任何 FAIL = exit 1)")
     ap.add_argument("--json", action="store_true", help="JSON 输出到 stdout")
@@ -650,9 +705,13 @@ def main(argv: list[str] | None = None) -> int:
 
     specs = load_domain_specs()
     trading_days, latest_expected = _load_calendar()
+    raw_today_is_open = _load_raw_today_status() if (
+        args.only in (None, "calendar_horizon") and args.domain in (None, "trade_cal")
+    ) else None
     results, failures = run_checks(
         specs, _default_conn_for, trading_days, latest_expected,
-        only=args.only, domain=args.domain, row_dip_ratio=args.row_dip_ratio, strict=args.strict)
+        only=args.only, domain=args.domain, row_dip_ratio=args.row_dip_ratio, strict=args.strict,
+        raw_today_is_open=raw_today_is_open)
     overall = overall_status(results, strict=args.strict)
     payload = {"overall": overall, "latest_expected": latest_expected,
                "checks": results, "summary": summarize(results)}

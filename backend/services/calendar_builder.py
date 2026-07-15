@@ -13,10 +13,10 @@ pipeline acquire 在 sync_registry drain (trade_cal 增量) 之后每日调 buil
   data_health_snapshot / check_continuity_integrity.check_calendar_horizon) 均
   WHERE is_trading=1 (或 truthy) 过滤, 零路径读非交易日行
   → 保持"只存交易日"语义: 只插 raw is_open=1 行, is_trading 恒 1。
-- 增量 = watermark 语义 (ISO trade_date > MAX(dim.trade_date)), 非 NOT IN 全集
-  (CLAUDE §4.5 2026-07-02 反例: NOT IN 噪音; 且 raw 史回溯 19901219 而 dim 契约起点
-  2005-01-04 — NOT IN 会静默回填 1990-2004 改变 dim 覆盖范围)。中段历史空洞 (理论不应有,
-  日历只向未来延伸) 走人工 rebuild, 不在增量语义内。dim 空表 (重建) → 全量拷贝 raw。
+- 增量 = 保持 dim 既有起点的幂等补洞 + 向未来延伸。raw 史回溯 19901219，而 dim 契约
+  起点是 2005-01-04，所以只从既有 MIN(dim.trade_date) 起做 ON CONFLICT DO NOTHING；既不
+  回填前史，也能修复 raw 已有、dim 漏传的中段交易日；raw 将某日从 open 修订为 closed 时
+  同一事务删除 dim 对应日，保证“只存交易日”双向收敛。dim 空表 (重建) → 全量拷贝 raw。
 - 只取 exchange='SSE' (raw 为多交易所行 SSE/SZSE/...; A 股统一上交所日历口径,
   与 dim 现存 5343 行 = 迁移前 smartmoney 口径一致)。
 - 格式转换: raw cal_date compact YYYYMMDD (VARCHAR) → dim trade_date ISO YYYY-MM-DD
@@ -43,6 +43,11 @@ _DIM_DDL = (
 _RAW_TRADING_ISO = (
     "SELECT DISTINCT strftime(strptime(CAST(cal_date AS VARCHAR), '%Y%m%d'), '%Y-%m-%d') AS trade_date "
     "FROM {raw} WHERE exchange = 'SSE' AND TRY_CAST(TRY_CAST(is_open AS DOUBLE) AS INTEGER) = 1"
+)
+_RAW_SSE_STATUS_ISO = (
+    "SELECT strftime(strptime(CAST(cal_date AS VARCHAR), '%Y%m%d'), '%Y-%m-%d') AS trade_date, "
+    "MAX(TRY_CAST(TRY_CAST(is_open AS DOUBLE) AS INTEGER)) AS is_open "
+    "FROM {raw} WHERE exchange = 'SSE' GROUP BY 1"
 )
 
 
@@ -78,6 +83,7 @@ def build_latest(conn=None) -> dict[str, Any]:
         con = resolver.connect_rw("reference")
     else:
         con = conn
+    transaction_started = False
     try:
         raw_rel = _raw_rel(con)
         raw_src = _RAW_TRADING_ISO.format(raw=raw_rel)
@@ -90,23 +96,39 @@ def build_latest(conn=None) -> dict[str, Any]:
                 "拒绝静默 no-op (dim 会停止延伸, horizon 门会 FAIL)"
             )
         con.execute(_DIM_DDL)
-        wm = con.execute(
-            f"SELECT COALESCE(MAX(CAST(trade_date AS VARCHAR)), '') FROM {DIM_TABLE}"
+        wm, floor, before_rows = con.execute(
+            f"SELECT COALESCE(MAX(CAST(trade_date AS VARCHAR)), ''), "
+            f"COALESCE(MIN(CAST(trade_date AS VARCHAR)), ''), COUNT(*) FROM {DIM_TABLE}"
+        ).fetchone()
+        raw_status_src = _RAW_SSE_STATUS_ISO.format(raw=raw_rel)
+        missing_before = con.execute(
+            f"SELECT COUNT(*) FROM ({raw_src}) src "
+            f"LEFT JOIN {DIM_TABLE} dim ON dim.trade_date = src.trade_date "
+            "WHERE dim.trade_date IS NULL AND (? = '' OR src.trade_date >= ?)",
+            [floor, floor],
         ).fetchone()[0]
-        r = con.execute(
+        con.execute("BEGIN TRANSACTION")
+        transaction_started = True
+        con.execute(
+            f"DELETE FROM {DIM_TABLE} USING ({raw_status_src}) src "
+            f"WHERE {DIM_TABLE}.trade_date = src.trade_date AND src.is_open = 0"
+        )
+        con.execute(
             f"INSERT INTO {DIM_TABLE} (trade_date, is_trading) "
             f"SELECT trade_date, 1 AS is_trading FROM ({raw_src}) "
-            "WHERE trade_date > ? ORDER BY 1",
-            [wm],
-        ).fetchone()
-        inserted = int(r[0]) if r else 0
+            "WHERE (? = '' OR trade_date >= ?) ORDER BY 1 ON CONFLICT DO NOTHING",
+            [floor, floor],
+        )
         dim_max, dim_rows = con.execute(
             f"SELECT MAX(trade_date), COUNT(*) FROM {DIM_TABLE}"
         ).fetchone()
-        if own:
-            con.commit()
+        inserted = int(missing_before)
+        deleted = int(before_rows) + inserted - int(dim_rows)
+        con.commit()
+        transaction_started = False
         out = {
             "inserted": inserted,
+            "deleted": deleted,
             "watermark_before": wm or None,
             "dim_max": dim_max,
             "dim_rows": int(dim_rows),
@@ -114,6 +136,13 @@ def build_latest(conn=None) -> dict[str, Any]:
         }
         logger.info("[calendar_builder] build_latest: %s", out)
         return out
+    except Exception:
+        if transaction_started:
+            try:
+                con.rollback()
+            except Exception:  # noqa: BLE001 - preserve the original calendar failure
+                pass
+        raise
     finally:
         if own:
             con.close()

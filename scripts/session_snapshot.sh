@@ -146,7 +146,7 @@ cat > "$HANDOFF_MD" <<EOF
 
 恢复流程唯一 owner = \`docs/chunkyctl_session_quickstart.md\` (2026-06-11 文档治理收口)。
 速记: \`bash scripts/cm_resume.sh\` 刷新本快照, 新会话按 quickstart 启动检查。
-定时任务告警: 启动时检查 \`/tmp/chunkymonkey_ALERT_*.flag\`, 存在 = 有 job 失败未处理。
+手动任务告警: 启动时检查 \`/tmp/chunkymonkey_ALERT_*.flag\`, 存在 = 有 job 失败未处理。
 
 **Snapshot 时间**: $NOW
 

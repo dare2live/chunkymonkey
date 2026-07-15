@@ -9,9 +9,11 @@
 > **目标**: 新接手 (无论 Claude 还是人) 读完此文档**不用看代码 / 不用查 DB** 就能理解:
 > 项目业务 / 架构 / 技术路线 / 数据资产 / 当前进度 / 已知坑 / 常用操作.
 
-最后更新: **2026-07-02** (批5 控制面重写: 正文按纯数据平台现状全量重写 708→~290 行 — 数据纯化批0-4+批7 后的 7库/40+30表/78 service/43 scripts/2 routers 实测快照; 计数类归 `FEATURE_MAP.md` 机器版 [`scripts/chunkyctl map` 重生], 本文件只留判断层: 架构/PIT锚/坑/操作。旧正文含大量 reset 前实体 [231py/17routers/6大维度/technical_stage 等] 已随重写清除, 历史见 git)。
+最后更新: **2026-07-15** (手动数据更新控制面收口：`manual_only` 自动化策略、真实 writer flock、授权/日历 fail-closed 前置门、逻辑批原子写与 failure frontier；机器计数仍以 `FEATURE_MAP.md` 为准)。
 
 ## [INDEX] 最近增量 (只留 7 天, 历史在 analysis/project_index_changelog_archive_20260611.md + ledger)
+
+- **2026-07-15 手动数据更新控制面与同步完整性修复**: 用户确认已取消自动跑批；仓库内旧约 17:00 launchd plist/installer/wrapper 经 live `launchctl`、用户/系统 cron 与 launchd 扫描确认只是残留并物删，`backend/config/automation_policy.yaml` 成为 `manual_only` 唯一 owner。所有受支持写入口共享真实 `flock`（子进程继承 fd），父链只在真实 lease + 匹配 proof 下复用一次 `user()` 授权结果；日历门核 raw SSE 今日开闭市状态可唯一判定、raw/dim 一致与未来 60 个交易日，并只允许同一 lease 下 `trade_cal→calendar_builder→同门复核` 一次自愈。`split_by` 多市场数据改为“全分片成功→完整性校验→单事务替换”的一个逻辑批；`margin_detail` 强制 SSE/SZSE，BSE 从 `20211115` 起由 registry 单一边界声明；失败日期、quota 与 watermark 各自独立，公告日/报告期前沿不得越过首个失败日。授权当前有效至 `2026-08-12 15:43:00+08:00`；日历 `20260715` PASS；`block_trade@20260710` 已通过系统入口补 61 行。完整生产链和 post-fix 数据审计状态以 `goal.md` 为准。
 
 - **2026-07-10 8维度全地基审计+READY_WITH_FIXES九项修复收官(用户"全方位检查+分类型标准写skill+设置目标持续推进", owner=analysis/gap_root_cause_20260708.md 第三轮节)**: 15-agent workflow(8维度并行+HIGH对抗复核+收敛)裁决 **READY_WITH_FIXES**(四地基/治理门/vendor抽样全干净, 无NOT_READY级损坏; 4 HIGH+5 MEDIUM需先修)。**九项全部执行**: ①stk_surv周末调研结构性漏采→by_ann_date+全日历回填(829,417行, **周末新增54,063行**, 财报季周末实测524-1803行/天远超裸调400硬顶); ②ths_hot周末热榜→同款改造+回填; ③block_trade 20250917墓碑过期→撤销+回填178行; ④margin_detail 2000阈值594个历史幻影缺口→**sync_runner新增时代分段阈值机制**(min_rows_since/min_rows_before, drain+run_domain同口径, 4个red-green含旧行为幻影缺口最小复现对照); ⑤balancesheet/fina_indicator硬编end_date=20260612(H1财报季拉不到)→去硬编动态注入; ⑥墓碑9抽4翻转44%(sw_daily/moneyflow/ths_hot组/block_trade)→全撤销+沉淀"距今<5交易日禁立墓碑"; ⑦block_trade available_after双配置矛盾(registry t+1 vs data_access eod)→对齐t+1+spec.py不安全缺省eod→t+1; ⑧index_daily隐藏8000上限实锤/stock_basic逼近6000(universe身份真相源)→各加page_limit:3000(offset分页实弹验证); ⑨fina_indicator pit_anchor update_flag规则87%行不可执行→改纯ann_date口径。LOW攒批: 8域min_rows校准(dc_member 1000→7000等, 全部锚定histmin零幻影缺口)+index_dailybasic补47域唯一双缺的pit_anchor/available_after+ths_hot dead_groups机制断言更正(market才是真输入参数)。**执行期间新增3独立发现当场修**: ths_hot切换事故(漏声明date_param, by_ann_date分支默认ann_date≠by_trade_date默认trade_date, 未知参数被网关忽略→每天烧50页, ~150次API后抓获; 教训**切batch_mode必须核对新分支全部默认值差异**)/by_ann_date分支"显式--start丢第一天"残留bug(by_trade_date 2026-07-06修过的同款判据散落两处只修了一处)/裸python PATH陷阱(机器重启后python从PATH消失→safe_commit与chunkyctl全部治理门假红, 两脚本加PY解析器[venv优先→python3→python]替换24处裸调用, mythos PATH陷阱同型)。**分类型数据获取标准沉淀成新skill** `~/.claude/skills/data-acquisition-integrity/`(六型各自完整性/准确性/连续性口径+10条跨型验证纪律+新域注册检查单, chunkymonkey-ops已交叉引用)。全量测试587 passed+1 skipped。
 
@@ -197,7 +199,7 @@
 tushare (tinyshare 网关)──┐
 aif10 (东财 datacenter)───┤
                           ▼
-  M1 采集 services/data_sources/ (sync_runner + sync_registry.yaml 41域;
+  M1 采集 services/data_sources/ (sync_runner + sync_preconditions + sync_registry.yaml 47域;
      aif10 走 holders_aif10/org_holding_aif10/qfii_client 直连)
                           ▼  L0 raw_* (tushare_raw / smartmoney aif10域)
   M2 清洗  build_price_kline_qfq_tushare (daily×adj_factor→PIT前复权)
@@ -211,7 +213,7 @@ aif10 (东财 datacenter)───┤
      paper_portfolio(实盘模拟) · market_pulse(市场感知) 3 service
      + 5 routers(/api/v3/*) + edge React 前端(frontend/, 挂 /app)
 
-  治理: pipeline(daily_update 四阶段) · watermark/SLA · data_health ·
+  治理: pipeline(daily_update 四阶段, manual_only) · writer_lock · watermark/SLA · data_health ·
         lineage(M5) · deletion/deprecation_record · moth/doctor/CI 门
 ```
 
@@ -264,14 +266,14 @@ aif10 (东财 datacenter)───┤
 
 | 簇 | 文件 |
 |---|---|
-| DB infra | duck_adapter · db_connection · database_manifest · db(smartmoney conn) · market_db/market_read/market_schema(K线) · schema_core/marts/migrations/versions/layer_filter(DDL+init) |
+| DB infra | duck_adapter · db_connection · database_manifest · writer_lock(受支持写入口真实 flock + 子进程 fd 继承) · db(smartmoney conn) · market_db/market_read/market_schema(K线) · schema_core/marts/migrations/versions/layer_filter(DDL+init) |
 | 身份/日历/宇宙 | security_master · calendar(latest_closed 交易日历真相源) · universe(硬门 assert_universe_clean) · utils |
 | aif10 采集 | holders_aif10 · org_holding_aif10 · qfii_client (aif10_capability_client 2026-07-07 整模块退役, 见 analysis/aif10_capability_client_retirement_20260707.md) |
 | **edge 件 (2026-07-02 起)** | institution_profile(机构画像引擎, episode状态机+维度画像) · paper_portfolio(实盘模拟手动版, SERVE第一个正式消费方) |
 | 治理 | data_audit · data_quality · data_health(见scripts) · source_watermarks · storage_retention · data_deletion · manifest · sandbox_guard · dependency_guards |
 | 杂项 | source_policy · notification/ |
 
-**子包**: data_access/(M4 SERVE, resolver+drivers) · data_sources/(M1, sync_runner+sources/tushare, 2026-07-07 精简收口: registry.py/base.py/sources/aif10.py 整删, 见 analysis/data_sources_registry_retirement_20260707.md) · pipeline/(daily_update 四阶段 preflight→acquire→clean→process→store) · lineage/(M5 血缘, builder+graph) · data_governance/ · primitives/ · notification/
+**子包**: data_access/(M4 SERVE, resolver+drivers) · data_sources/(M1, sync_runner+sync_preconditions+sources/tushare；授权、日历、逻辑批完整性与失败前沿统一守门) · pipeline/(daily_update 四阶段 preflight→acquire→clean→process→store，同一 writer lease) · lineage/(M5 血缘, builder+graph) · data_governance/ · primitives/ · notification/
 
 **scripts/ 38 个按前缀** (前缀=data_module_members 成员资格; 2026-07-07 全库死代码普查删 migrate_reference_db/cleanup_holder_dup, 见 analysis/dead_code_sweep_20260707.md): `check_*` 17个门 (dead_references/universe_filter/calendar_usage/serve_read_layer/sandbox_isolation/doc_drift/rule_compliance...) · `build_*` 5 (price_kline_qfq_tushare/dc_industry_view/sw_industry_view/dim_listing_status/feature_map) · `ingest_*` 2 (aif10) · `db_*` 4 (compact/lifecycle_delete/dead_table_audit/partition_migrate) · `audit_*` 3 · data_health_snapshot · data_layer_audit · chunkyctl · update_watermark_sla/refresh_source_watermarks · lineage_cli · plan_storage_retention
 
@@ -283,7 +285,8 @@ aif10 (东财 datacenter)───┤
 
 | yaml | 职责 |
 |---|---|
-| `sync_registry.yaml` | M1 41 域注册 (api/grain/batch_mode/PIT锚/SLA/data_start/墓碑) — 加源必先注册 |
+| `automation_policy.yaml` | 数据任务执行模式唯一 owner：`manual_only`；doctor 扫 repo/用户/系统 launchd、cron 与 launchctl，发现调度残留即 FAIL |
+| `sync_registry.yaml` | M1 47 域注册 (api/grain/batch_mode/PIT锚/SLA/data_start/墓碑/逻辑批完整性/available_after) — 加源必先注册 |
 | `data_access.yaml` | M4 SERVE entity 注册 (db/table/code_col/asof_col/vendor) — 消费方唯一读路 |
 | `data_layers.yaml` | 表→layer(L0/L1/L1k/display/infra) + asset_class(A/B) + freshness — data_layer_audit 执法 |
 | `database_manifest.yaml` | 库 alias→路径/角色/open_mode — 所有连接走它, 禁 hardcode 路径 |
@@ -299,11 +302,11 @@ aif10 (东财 datacenter)───┤
 
 ## 5. 运行面 + 门矩阵
 
-**日常链**: `scripts/daily_update.sh` → `services/pipeline/run.py` 四阶段 (preflight→acquire→clean→process→store, store 含实盘模拟 mark-to-market 步 W2); 失败=degraded 续跑 + `/tmp/chunkymonkey_ALERT_daily_update_degraded.flag` (session 启动必查)。手动: `sync_runner --domain <d> --drain` 回填 / ops_manual_run API。
+**日常链**: 数据任务为 `manual_only`，唯一全链入口 `scripts/daily_update.sh` → `services/pipeline/run.py` 四阶段 (preflight→acquire→clean→process→store)。preflight 在任何 provider 写之前依次核真实 writer lease、参数less `user()` 授权、今日 SSE raw 日历与 reference dim 一致/未来 horizon；失败硬阻断并留 `/tmp/chunkymonkey_ALERT_*.flag`，真实 clean 才自清。手动 API 只承诺 `accepted=true`，不得在子进程锁握手前声称 started。定向修复仍走 `sync_runner --domain <d> --drain`，不得安装 cron/launchd。
 
 **commit 门** (`bash scripts/safe_commit.sh`, 禁裸 git commit): PROJECT_INDEX-sync → sandbox 隔离 → serve-read-layer → calendar-usage → **check_dead_references (Step3.97 硬闸)** → commit-msg 关键词 → push + codegraph sync。
 
-**验证矩阵**: CI offline 8 文件 (test_utils/db/source_watermarks/db_compact/primitives/universe/calendar_gate/check_dead_references, 185 tests) · `moth assert --repo .` (30 断言 claims-vs-reality) · `bash scripts/chunkyctl doctor --fast` (tooling/alert/universe/data_health 4 gate) · data_layer_audit --check。**CI offline 8 文件是子集** — 改动波及其它测试须全量 `pytest tests/` (批3d 教训: offline 盲区漏抓批3a 回归)。
+**验证矩阵**: CI offline 是子集 · `moth assert --repo .` (当前 29 断言 claims-vs-reality) · `bash scripts/chunkyctl doctor --fast` (tooling/automation/alert/universe/data_health) · data_layer_audit --check · 全域 continuity。**大改必须用项目 `.venv` 跑全量 `PYTHONPATH=backend .venv/bin/python -m pytest backend/tests`**；2026-07-15 当前离线基线 696 passed / 8 deselected。
 
 ---
 
@@ -350,6 +353,7 @@ aif10 (东财 datacenter)───┤
 ## 8. 待办 / 当前 Phase
 
 阶段板唯一真相源 = `goal.md`; 历史证据 = `analysis/project_state_ledger.md`。速览:
+- **当前抢占主线 = 2026-07-15 数据地基闭环**：先完成手动全链抓取、margin_detail 三市场半批修复、watermark/failure/ALERT 只读复核与 post-fix audit；完成后再恢复 D2。
 - **主线 = 总体实施方案** (owner=analysis/master_implementation_plan_20260702.md, 用户已批): A 机构档案 API → (B 基础件[股票分层/形态识别重建/两融域] ∥ C edge 前端 React+Vite) → D 主升浪 D1-D4 (holdout 预算立法) → E 整合选股台+实盘模拟。已完成: W1 机构画像引擎 + W2 实盘模拟通用件。
 - ~~pre-existing 10 测试失败~~ **已全清偿 2026-07-02** (全量 435 passed 0 failed)
 - **data_health 2 yellow** (aif10 季频真滞后, 非 bug)

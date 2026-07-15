@@ -41,7 +41,7 @@ Examples:
   scripts/chunkyctl audit --run --scope backend/scripts/chunkyctl.py --scope backend/tests/scripts/test_chunkyctl.py
 
 Notes:
-  doctor     = project health snapshot, including storage payload recursion/size audit unless skipped.
+  doctor     = project health snapshot, including manual-only automation residue enforcement.
   worktree   = read-only dirty worktree bucket report.
   docs       = docs graph + docs-cleanup worktree-slice readiness.
   jobs       = provider-neutral experiment job contract / plan.

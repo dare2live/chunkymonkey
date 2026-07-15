@@ -16,11 +16,23 @@ import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from services.data_sources import sync_runner as sr
+
+
+@pytest.fixture(autouse=True)
+def _successful_cli_authorization(monkeypatch):
+    monkeypatch.setattr(sr, "_authorization_preflight", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(sr, "_calendar_preflight", lambda _domains: None)
 
 
 def _at(hour: int, minute: int) -> datetime:
     return datetime(2026, 7, 6, hour, minute, tzinfo=ZoneInfo("Asia/Shanghai"))
+
+
+def _at_july_15(hour: int, minute: int) -> datetime:
+    return datetime(2026, 7, 15, hour, minute, tzinfo=ZoneInfo("Asia/Shanghai"))
 
 
 def test_available_after_passed_hh_mm_boundary():
@@ -40,6 +52,77 @@ def test_available_after_passed_missing_or_malformed_is_conservative_false():
     assert sr._available_after_passed({}, now=_at(23, 59)) is False
     assert sr._available_after_passed({"available_after": "garbage"}, now=_at(23, 59)) is False
     assert sr._available_after_passed({"available_after": ""}, now=_at(23, 59)) is False
+
+
+def test_domain_eligibility_uses_domain_publish_time_not_global_close_cutoff():
+    """同一交易日是否 eligible 只看域自己的 available_after；09:20 域不能被 16:00 clamp。"""
+    days = ["20260714", "20260715"]
+    before = sr.eligible_end_date(
+        {"available_after": "18:00", "data_start": "20200101"},
+        now=_at_july_15(17, 59),
+        trading_days=days,
+    )
+    assert before.eligible_end == "20260714" and before.pending_today is True
+
+    morning = sr.eligible_end_date(
+        {"available_after": "09:20", "data_start": "20200101"},
+        now=_at_july_15(9, 21),
+        trading_days=days,
+    )
+    assert morning.eligible_end == "20260715" and morning.pending_today is False
+
+
+def test_t_plus_one_domain_never_targets_current_trade_date():
+    result = sr.eligible_end_date(
+        {"available_after": "t+1", "data_start": "20200101"},
+        now=_at_july_15(23, 59),
+        trading_days=["20260714", "20260715"],
+    )
+    assert result.eligible_end == "20260714"
+    assert result.pending_today is True
+
+
+def test_run_domain_passes_domain_eligible_end_to_calendar(monkeypatch):
+    """run_domain 不得把 end=None 留给通用日历函数再按 16:00 自行截断。"""
+    reg = {
+        "defaults": {"retry": {"max_attempts": 1, "backoff_seconds": [0]}},
+        "domains": {
+            "adj_factor": {
+                "source": "tushare",
+                "api": "adj_factor",
+                "target_table": "raw_adj_factor",
+                "grain": ["ts_code", "trade_date"],
+                "batch_mode": "by_trade_date",
+                "data_start": "20260714",
+                "available_after": "09:20",
+            }
+        },
+    }
+    calendar_calls = []
+    monkeypatch.setattr(
+        sr,
+        "eligible_end_date",
+        lambda spec: sr.DomainEligibility("20260715", False, "published"),
+    )
+    monkeypatch.setattr(
+        sr,
+        "_trading_days",
+        lambda start, end=None: calendar_calls.append((start, end)) or ["20260715"],
+    )
+    monkeypatch.setattr(sr, "_last_watermark_date", lambda domain, source: None)
+    monkeypatch.setattr(sr, "_adapter", lambda source: object())
+    monkeypatch.setattr(sr, "_fetch_paged", lambda adapter, spec, params: [])
+    monkeypatch.setattr(sr, "_record_outcome", lambda *args, **kwargs: None)
+
+    class _Conn:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(sr, "_target_conn", lambda spec: _Conn())
+    result = sr.run_domain("adj_factor", registry=reg)
+
+    assert calendar_calls == [("20260714", "20260715")]
+    assert result["failed_batches"] == 0
 
 
 def test_drain_main_triggers_today_catchup_when_available_after_passed(monkeypatch):

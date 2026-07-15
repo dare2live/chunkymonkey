@@ -7,7 +7,7 @@
   四地基的 dim_data_asset 登记表本该管这事, 但它烂掉(67stale/68漏/仅smartmoney)+从没强制。
 本门把"无死引用"做成机械检查, 让删任何模块/文件时引用方立即报红, 无法再静默累积。
 
-四道静态扫描 (零执行副作用, 不 import 业务脚本):
+六道静态扫描 (零执行副作用, 不 import 业务脚本):
   A. import-services: import services/ + routers/ 库层每个模块, ImportError = FAIL (库层断链)
   B. dead-services-ref: 全 .py 里 `from/import services.X`, X 顶层子模块不存在 = FAIL
        (覆盖孤儿脚本顶层 import + 函数内懒 import + try/except guarded 垫片, 纯静态正则不执行)
@@ -22,6 +22,8 @@
        文件路径, 对 `conn.execute(f"SELECT ... FROM mart_p0b_lambdamart_v6_predictions")` 这类
        纯 SQL 字符串死引用结构性失明 — check_panel_lineage.py/check_kpi_redlines.py 两个死
        治理脚本引用已随策略层退役的表, 44 天无人发现直到本次审计实测崩溃复现)。
+  F. execution-path: YAML ``script:``、plist Program/ProgramArguments、installer→plist 的执行链
+       必须逐跳存在，防已删任务仍被调度配置或安装器静默引用。
 
 用法: python backend/scripts/check_dead_references.py [--check]
 退出码: 0=干净 / 1=有死引用
@@ -29,6 +31,7 @@
 from __future__ import annotations
 
 import importlib
+import plistlib
 import re
 import sys
 from pathlib import Path
@@ -68,6 +71,11 @@ _MODULE_LITERAL_RE = re.compile(r"""\bmodule\s*[=:]\s*["']((?:services|scripts|r
 _SQL_TABLE_REF_RE = re.compile(
     r"(?i)\b(?:FROM|JOIN)\s+[\"'`]?((?:fact|mart|dim|raw|stg)_[a-zA-Z0-9_]+)"
 )
+_YAML_SCRIPT_RE = re.compile(
+    r"^\s*script\s*:\s*[\"']?([^#\"']+?\.(?:py|sh))[\"']?\s*(?:#.*)?$"
+)
+_PLIST_ARRAY_RE = re.compile(r"\bPLISTS\s*=\s*\((.*?)\)", re.DOTALL)
+_PLIST_LABEL_RE = re.compile(r"\bcom\.chunkymonkey\.[a-zA-Z0-9_-]+\b")
 
 
 def _existing_services_submodules() -> set[str]:
@@ -247,6 +255,62 @@ def scan_e_sql_table_refs() -> list[str]:
     return fails
 
 
+def scan_f_execution_paths(repo: Path = REPO) -> list[str]:
+    """YAML/plist execution paths must resolve to real files."""
+    fails: list[str] = []
+    for cfg_dir in (repo / "backend" / "config", repo / "configs"):
+        if not cfg_dir.exists():
+            continue
+        for path in sorted(cfg_dir.rglob("*.yaml")):
+            for line_no, line in enumerate(
+                path.read_text(encoding="utf-8", errors="replace").splitlines(), 1
+            ):
+                match = _YAML_SCRIPT_RE.match(line)
+                if not match:
+                    continue
+                target = match.group(1).strip()
+                if not (repo / target).exists():
+                    fails.append(
+                        f"F yaml-script: {path.relative_to(repo)}:{line_no} → {target} 不存在"
+                    )
+    for launchd_dir in (repo / "configs" / "launchd", repo / "backend" / "scripts" / "launchd"):
+        if not launchd_dir.exists():
+            continue
+        for path in sorted(launchd_dir.glob("*.plist")):
+            try:
+                payload = plistlib.loads(path.read_bytes())
+            except Exception as exc:  # noqa: BLE001 - opaque scheduler config must fail closed
+                fails.append(
+                    f"F plist-parse: {path.relative_to(repo)} → {type(exc).__name__}"
+                )
+                continue
+            program_values = [payload.get("Program"), *(payload.get("ProgramArguments") or [])]
+            for value in program_values:
+                if not value:
+                    continue
+                target = str(value).strip()
+                if Path(target).suffix not in {".py", ".sh"}:
+                    continue
+                candidate = Path(target) if Path(target).is_absolute() else repo / target
+                if not candidate.exists():
+                    fails.append(
+                        f"F plist-program: {path.relative_to(repo)} → {target} 不存在"
+                    )
+    installer_dir = repo / "configs" / "launchd"
+    if installer_dir.exists():
+        for installer in sorted(installer_dir.glob("install*.sh")):
+            text = installer.read_text(encoding="utf-8", errors="replace")
+            for block in _PLIST_ARRAY_RE.findall(text):
+                for label in _PLIST_LABEL_RE.findall(block):
+                    target = installer_dir / f"{label}.plist"
+                    if not target.exists():
+                        fails.append(
+                            f"F installer-plist: {installer.relative_to(repo)} → "
+                            f"{target.relative_to(repo)} 不存在"
+                        )
+    return fails
+
+
 def main() -> int:
     all_fails: list[str] = []
     all_fails += scan_a_import_services()
@@ -254,6 +318,7 @@ def main() -> int:
     all_fails += scan_c_config_dead_path()
     all_fails += scan_d_dead_module_literal()
     all_fails += scan_e_sql_table_refs()
+    all_fails += scan_f_execution_paths()
 
     if all_fails:
         print(f"[dead-references] FAIL: {len(all_fails)} 处死引用 (删模块/文件后引用方未清)\n")
@@ -262,7 +327,7 @@ def main() -> int:
         print("\n修法: 删引用方 / repoint 到现存模块/文件 / 若该引用方也是残留则一并删。"
               "\n  (这是 2026-06-28 根因根治门: 删供给侧必同步删需求侧, 不再靠手工 grep。)")
         return 1
-    print("[dead-references] PASS: 0 死引用 (import-services + dead-services-ref + config-dead-path + sql-table-ref 全绿)")
+    print("[dead-references] PASS: 0 死引用 (imports + config/module + SQL table + execution-path 全绿)")
     return 0
 
 

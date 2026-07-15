@@ -1699,6 +1699,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sync_runner.py",
+      "kind": "consume",
+      "src": "table:mart_data_source_failure_queue"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/schema_versions.py",
       "kind": "consume",
       "src": "table:mart_data_source_failure_queue"
@@ -2377,6 +2383,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_sync_runner_drain.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_check_dead_references.py",
       "kind": "consume",
       "src": "table:raw_tushare_daily"
@@ -2816,6 +2828,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:raw_tushare_margin_detail"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_sync_runner_integrity.py",
       "kind": "consume",
       "src": "table:raw_tushare_margin_detail"
     },
@@ -3271,6 +3289,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_continuity_integrity.py",
+      "kind": "consume",
+      "src": "table:raw_tushare_trade_cal"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/calendar_builder.py",
       "kind": "consume",
       "src": "table:raw_tushare_trade_cal"
@@ -3553,9 +3577,9 @@
     }
   ],
   "meta": {
-    "edge_count": 541,
-    "generated_at": "2026-07-10T13:53:44.166156+00:00",
-    "node_count": 254,
+    "edge_count": 545,
+    "generated_at": "2026-07-15T11:31:15.728685+00:00",
+    "node_count": 256,
     "version": 1
   },
   "nodes": [
@@ -4197,6 +4221,22 @@
         "path": "backend/tests/services/test_sync_runner_20260612_fixes.py"
       },
       "id": "consumer:backend/tests/services/test_sync_runner_20260612_fixes.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_sync_runner_drain.py"
+      },
+      "id": "consumer:backend/tests/services/test_sync_runner_drain.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_sync_runner_integrity.py"
+      },
+      "id": "consumer:backend/tests/services/test_sync_runner_integrity.py",
       "kind": "consumer"
     },
     {

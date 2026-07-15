@@ -43,9 +43,9 @@ Usage:
   cm impact [<id>]      param impact curve (Δ KPI vs param_diff, default variant=champion)
   cm help               本帮助
 
-Resilience:
-  cm install            install cron + launchd (一次性)
-  cm install --status   verify install state
+Resilience (manual by default; legacy snapshot cron only with explicit env opt-in):
+  cm install            inspect manual resilience state
+  cm install --status   inspect resilience state
 EOF
 }
 

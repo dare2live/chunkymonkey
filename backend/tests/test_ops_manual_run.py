@@ -1,0 +1,77 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import pytest
+from fastapi import HTTPException
+
+from routers import ops_manual_run
+
+
+def test_daily_update_remains_registered_through_existing_manual_wrapper():
+    """Retiring launchd must not retire the frontend/manual execution path."""
+    assert "daily_update" in ops_manual_run.MANUAL_JOBS
+    assert ops_manual_run.MANUAL_JOBS["daily_update"]["label"] == (
+        "数据底座五段手动链 (preflight/获取/清洗/加工/存储)"
+    )
+    assert ops_manual_run._WRAPPER.name == "manual_job_wrapper.py"
+    assert ops_manual_run._WRAPPER.is_file()
+
+
+def test_run_job_ignores_stale_process_hint_when_writer_lock_is_free(monkeypatch):
+    """pgrep 可能撞到旧/无关进程；真实 flock 空闲时不能误拒绝手动任务。"""
+    monkeypatch.setattr(
+        ops_manual_run,
+        "writer_lock_status",
+        lambda: SimpleNamespace(busy=False, owner=None, owner_pid=None),
+        raising=False,
+    )
+    monkeypatch.setattr(ops_manual_run, "_is_running", lambda _spec: True)
+    monkeypatch.setattr(ops_manual_run, "_spawn", lambda _job, _spec: 4321)
+
+    assert ops_manual_run.run_job("daily_update") == {
+        "job": "daily_update",
+        "accepted": True,
+        "pid": 4321,
+    }
+
+
+def test_run_job_rejects_real_writer_lock_even_when_process_hint_is_false(monkeypatch):
+    """flock busy 才是 409 真相；pgrep 假阴性不能放行第二个 writer。"""
+    monkeypatch.setattr(
+        ops_manual_run,
+        "writer_lock_status",
+        lambda: SimpleNamespace(busy=True, owner="pipeline", owner_pid=2468),
+    )
+    monkeypatch.setattr(ops_manual_run, "_is_running", lambda _spec: False)
+    monkeypatch.setattr(
+        ops_manual_run,
+        "_spawn",
+        lambda *_args: pytest.fail("busy lock must block before spawn"),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        ops_manual_run.run_job("daily_update")
+
+    assert exc_info.value.status_code == 409
+    assert "owner=pipeline pid=2468" in exc_info.value.detail
+
+
+def test_status_exposes_writer_lock_as_authority_and_pgrep_as_hint(tmp_path, monkeypatch):
+    spec = dict(ops_manual_run.MANUAL_JOBS["daily_update"])
+    spec["log"] = str(tmp_path / "missing.log")
+    spec["extra_flags"] = []
+    monkeypatch.setattr(ops_manual_run, "_FLAG_DIR", tmp_path)
+    monkeypatch.setattr(
+        ops_manual_run,
+        "writer_lock_status",
+        lambda: SimpleNamespace(busy=False, owner=None, owner_pid=None),
+    )
+    monkeypatch.setattr(ops_manual_run, "_is_running", lambda _spec: True)
+
+    payload = ops_manual_run._status_payload("daily_update", spec)
+
+    assert payload["running"] is False
+    assert payload["writer_busy"] is False
+    assert payload["owner"] is None and payload["owner_pid"] is None
+    assert payload["process_hint_running"] is True

@@ -56,8 +56,11 @@ def test_by_ts_code_injects_end_date_when_only_start_date_declared(monkeypatch):
     start_date 触发 API "权限不足: 请同时提供日期和 ts_code" 拒绝。"""
     monkeypatch.setattr("services.universe.get_active_universe", lambda conn, include_st=False: ["000001"])
     monkeypatch.setattr(sr, "_smartmoney_conn", lambda: _DummyConn())
-    from services import utils as _utils
-    monkeypatch.setattr(_utils, "latest_completed_trade_date", lambda conn: "2026-07-04")
+    monkeypatch.setattr(
+        sr,
+        "eligible_end_date",
+        lambda spec: sr.DomainEligibility("20260704", False, "test"),
+    )
 
     spec = {"domain": "stk_factor_pro", "fixed_params": {"start_date": "20190102"}, "target_table": "x"}
     batch = sr._by_ts_code_batches(spec, backfill=True)

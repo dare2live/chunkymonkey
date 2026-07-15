@@ -537,6 +537,31 @@ def test_calendar_horizon_ignores_past_days():
     assert "60" in r["detail"]  # today 自己不计入 60 个未来交易日
 
 
+def test_calendar_horizon_normalizes_iso_today_against_compact_days():
+    """生产日历是 compact；ISO today 不能把全部历史日期误算成未来。"""
+    past = _weekdays("20260101", 99)
+    r = cci.check_calendar_horizon(past, "2026-07-15")
+    assert r["status"] == "fail"
+    assert "仅剩 0" in r["detail"]
+
+
+def test_calendar_today_consistency_requires_raw_row_and_matching_dim_state():
+    future = _weekdays("20260716", 61)
+    missing = cci.check_calendar_today_consistency(future, "2026-07-15", None)
+    assert missing["status"] == "fail"
+
+    mismatch = cci.check_calendar_today_consistency(
+        ["20260715", *future], "2026-07-15", 0
+    )
+    assert mismatch["status"] == "fail"
+
+    open_ok = cci.check_calendar_today_consistency(
+        ["20260715", *future], "2026-07-15", 1
+    )
+    closed_ok = cci.check_calendar_today_consistency(future, "2026-07-15", 0)
+    assert open_ok["status"] == closed_ok["status"] == "pass"
+
+
 def test_calendar_horizon_wired_into_run_checks_global_not_per_domain():
     """run_checks 里 calendar_horizon 全局跑一次 (不随 registry 域数量重复), domain 过滤器
     传入非 trade_cal 的具体域名时应跳过 (只对该域自己的检测负责)。"""

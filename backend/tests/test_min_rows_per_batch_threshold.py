@@ -3,7 +3,7 @@
 背景: margin_detail 的 min_rows_per_batch 曾设 800(锚定 2019 建域首日历史最低点), 但 2026 年真实
 基线已涨到 ~3400+, 800 这个地板值对"腰斩但仍非零"的截断(实测 20260703: 3472→1652)完全测不出——
 1652 > 800, 照样判合法批不进 failure_queue。本门锁定: 同一批次行数, 用旧地板值(800)判定为合法,
-用新地板值(2000)判定为 below_min_rows 进 failed 列表(仍写入, 只是标记可疑)——红绿对照证明阈值
+用新地板值(2000)判定为 below_min_rows 并在写前拒绝整批——红绿对照证明阈值
 提高是有效的, 不是摆设。
 """
 from __future__ import annotations
@@ -85,11 +85,16 @@ def test_old_800_threshold_misses_the_real_truncation(env):
 
 def test_new_2000_threshold_catches_the_same_truncation(env):
     """green: 新地板值 2000 同一批次(1652行)判 below_min_rows, ok=False 进 failure_queue,
-    但数据仍写入(软标记不硬拒绝, 与 sync_runner 现有设计一致)。"""
+    且在 DELETE/INSERT 前 fail closed，不能让残缺批覆盖旧数据。"""
     res = sr.run_domain("margin_detail_test", registry=_registry(min_rows=2000))
     assert res["ok"] is False
     assert res["failed_batches"] == 1
-    assert res["rows"] == TRUNCATED_ROW_COUNT   # 仍写入, 只是标记可疑
+    assert res["rows"] == 0
+    exists = env.execute(
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_name='raw_tushare_margin_detail_test'"
+    ).fetchone()[0]
+    assert exists == 0
 
 
 def test_registry_margin_detail_threshold_is_2000():

@@ -156,6 +156,29 @@ Acceptance rule: any change that affects how a new Codex session should start is
 incomplete until this document is updated and the final handoff states whether
 `docs/chunkyctl_session_quickstart.md` changed or was explicitly unchanged.
 
+## Manual Data-Update Contract (2026-07-15)
+
+- ChunkyMonkey data jobs are `manual_only`. There is no supported cron or
+  launchd data batch; a scheduled plist/script in the repo, user account, or
+  system directories is a blocking residue, not an inactive convenience.
+- The supported full-chain command is
+  `bash scripts/daily_update.sh --date <YYYYMMDD>`. The frontend manual button
+  is an accepted/enqueued request for that same chain; the child flock decides
+  whether execution actually starts, so the API must not claim `started=true`
+  before a lock handshake.
+- Before provider writes, the chain validates today's SSE raw calendar row,
+  raw-to-dim agreement, and at least 60 future trading days. A failed calendar
+  gate may self-repair exactly once under the same writer lease via
+  `trade_cal full refresh -> calendar_builder -> identical gate recheck`;
+  `--dry` validates but never repairs.
+- Authorization uses one parameterless `user()` probe per parent chain, with a
+  config-owned hard timeout. Only a direct child holding the inherited real
+  flock descriptor and matching auth proof may reuse that result. Runtime
+  authorization denial is a hard stop, not a degraded continuation.
+- The supported pipeline/sync entrypoints share a single real flock. Internal
+  one-off writer scripts are not advertised as independent public entrypoints
+  and must never be installed as background automation.
+
 ## Daily Flow
 
 | Moment | Command | Purpose |
@@ -163,6 +186,7 @@ incomplete until this document is updated and the final handoff states whether
 | New session | Point Codex at this document | Lowest-friction default |
 | Crash/terminal recovery | `bash scripts/cm_resume.sh` | Refresh `SESSION_HANDOFF.md` and print the prompt to give Codex; no hidden auto-inject |
 | Session startup | `scripts/chunkyctl doctor --fast` | Get dirty worktree, CodeGraph, complexity, execution-surface, storage-payload, and system data-health snapshot quickly |
+| Manual full data update | `bash scripts/daily_update.sh --date <YYYYMMDD>` | Run calendar/auth preconditions, acquire, clean, process, and store under one inherited writer lease; inspect exit code and ALERT flags |
 | Historical state lookup | `rg "<topic>" analysis/project_state_ledger.md` or `tail -120 analysis/project_state_ledger.md` | Find completed evidence without loading the whole ledger |
 | Retiring scripts/providers/automation | `moth coupling --repo . --impact <name>` + `PYTHONPATH=backend python backend/scripts/check_dead_references.py` (2026-06-28 replaced retired `audit_execution_surface.py`, see `engineering_governance.md` §Automation points) | Prove launchd, cron, installers, dashboards, registries, Moth evidence paths, and code/config/SQL-string references do not point at deleted or retired execution paths |
 | Dirty worktree reported | `scripts/chunkyctl worktree --format markdown` | Show a readable dirty-file bucket summary without mutating git |

@@ -110,7 +110,8 @@ def _write_report_and_alert(ctx: PipelineContext) -> None:
         ctx.log(f"Alerts present (active={','.join(active)}); dispatching notification")
         proc = subprocess.run(
             [sys.executable, "-m", "backend.services.notification.dispatcher", "--report", str(report_json)],
-            cwd=str(REPO), capture_output=True, text=True, env=ctx._subprocess_env())
+            cwd=str(REPO), capture_output=True, text=True, env=ctx._subprocess_env(),
+            pass_fds=ctx._subprocess_pass_fds())
         if ctx._log_fh:
             ctx._log_fh.write((proc.stdout or "") + (proc.stderr or "")); ctx._log_fh.flush()
         if proc.returncode != 0:

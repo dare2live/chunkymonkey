@@ -67,16 +67,24 @@
 
 **数据纯化 (批0-7, 2026-06-28~07-02) 已收敛**: 非 tushare/aif10 残表全物删 (ETF 子系统/机构旧表/top10/旧K线管线, archive 留底) + 死代码/config/断言/死闸清零 + 控制面重写 (PROJECT_INDEX 708→300 判断层) + 磁盘 15G→9.5G。4轮 sweep 验 dry, 代码/config/DB 层 is_dry=True。
 
-## 下一步 (用户定方向)
+## 当前优先级 (2026-07-15 数据地基闭环)
 
-数据平台已纯净收敛, **edge 重建进行中**: 路线唯一 owner = `analysis/master_implementation_plan_20260702.md` (用户已批: A 档案API→B 基础件[分层/形态/两融]∥C 前端React+Vite→D 主升浪[holdout预算立法]→E 整合)。**已落地**: W1 机构画像引擎(mart_inst_profile 9.4万) + W2 实盘模拟通用件(/api/v3/paper/*) + **B1 股票分层**(dim_stock_segment_daily 833万行) + **B2 形态识别**(fact_stock_form_daily, 正交5轴) + **B3 两融采集**(margin_detail 464.9万行) + **B4 市场感知**(mart_sector_pulse_daily) + C 前端骨架(React+Vite) + **D1 GT v2 (2026-07-10 全量收口)**: 从 raw K线全新生成(非复用旧 archive GT) 5636 episode(train 窗≤2025-06, 五层漏斗+右删失embargo) + strata 三维完整接线(申万行业 as-of + B1 段表 ASOF join[mktcap_seg/turnover_seg/vol_regime, 0 NULL] + B2 形态表精确join[axis_pos/axis_purity, warmup期外0 NULL] + 非结构性NULL硬门防join静默断)。机构跟随设计 = analysis/institution_follow_strategy_design_20260702.md。**下一步 = D2 逐层特征消融**(裸K→日更量价→L1.5板块上下文[B4]→L2事件[龙虎榜/机构episode], owner=master_implementation_plan §4 D2)。原则不变:
-- 北极星目标仍是**主升浪猎手** (episode-first 结果倒推: 找赢家 episode → 反推 PIT 入场/持有/出场特征 → 含成本 OOS 裁决)。详见 `docs/MASTER_TOPLEVEL_DESIGN.md` §5 (蓝图, 未实现) + `analysis/zhushenglang_hunter_plan_20260617.md` (历史方案, 重建参考)。
-- D2 消融必守创世层死亡条款 + 四地基不变量 + 含成本可交易裁决 (R1/R2): IC≠可赚钱; 回测须 execution-aware (涨跌停/T+1 open/非对称成本/容量) — 目前**未建**, 是 D3/D4 前必须补的能力栈缺口, 非选做项。
-- archive 的旧策略代码 (git 史) + 数据 (parquet) 仅作重建参考, D1 GT v2 已是**全新生成非复活** (五层漏斗+embargo+strata 逐条实测验证)。
+**当前 objective**: 先闭合手动数据更新控制面与现存缺口，再恢复 D2 特征消融。不得把“进程成功”当“数据齐全”，验收必须同时看交易日历、市场分组、watermark、failure queue 与表内真实行。
+
+**已核实**:
+- 数据任务模式已收敛为 `manual_only`；repo / 用户 / 系统 launchd、cron 与 launchctl 扫描无 ChunkyMonkey 调度。旧约 17:00 plist/installer/wrapper 是仓库残留，不是正在运行的自动跑批。
+- `user()` 授权当前有效：开通 `2026-06-17 10:48:58+08:00`，到期 `2026-08-12 15:43:00+08:00`；token 未变。
+- 日历硬门当前 PASS：`20260715` raw SSE `is_open=1` 与 `dim_trading_calendar` 一致，未来已登记交易日 115（门槛 60）。
+- `block_trade@20260710` 已经由系统同步入口补入 61 行，连续性硬门恢复为无 FAIL；`margin_detail@20260710/13/14` 的单市场半批仍须由修复后的三市场原子批重放。
+- post-fix audit 已修复测试对真实 `/tmp` 日志/告警的污染并清除两个假日期日志；真实 ALERT 证据保持不动。failure queue 中 `sync:margin_detail` / `sync:trade_cal` 仍是待提交后真实链复核、自愈关闭的显式 residual，不得提交前洗绿。
+
+**收口顺序**: 整包 Rule 10 + 本地安全提交 → `bash scripts/daily_update.sh --date 20260715` → 只读复核各域 eligible/pending 语义、两融 SSE/SZSE/BSE 分组、stock_basic 快照、watermark/failure queue/ALERT flags → Moth/CodeGraph/post-fix audit → 状态文档与最终本地提交。尚未到 `available_after` 的域必须如实标 `pending_today`，不得用空批或未来日期伪装完成。
+
+**随后恢复**: D2 逐层特征消融，路线 owner 仍为 `analysis/master_implementation_plan_20260702.md` §4；北极星仍是主升浪 episode-first + 含成本 OOS 裁决，旧 archive 只作参考。
 
 ## Operating Reminders
 
-- 主动用全套工具/skill (不等点名): `mio` (思维真相源) · `chunkymonkey-ops` (操作手册) · `architect-controller` · moth · codegraph · workflow (并发)。
+- 主动用全套工具/skill (不等点名): `mio` (思维真相源) · `architect-controller` · `chunkymonkey-governance` · `chunkymonkey-review-gate` · moth · codegraph · workflow (并发)。
 - 第一性原理真相源: K线=可交易性 / 日历=日期 / config-table-service owner=业务规则; 数据源 tushare 唯一 (+aif10 十大流通股东)。
 - 删确定死的路径直接删, 不留注释/隐藏flag/兼容垫片; 删表必删重建路径 (schema DDL); 不 big-bang 硬删紧耦合层 (按 layer 增量, moth 守)。
 - commit 走 `bash scripts/safe_commit.sh`; 大改动 (数据语义/策略/资金路径) 走对抗复审。
