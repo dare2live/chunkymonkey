@@ -211,8 +211,9 @@ domains:
       # (~0.5%交易日, 20260403/0430/0618/0626/0703共5例)漏返BSE/SZSE——vendor网关对"无过滤条件
       # 汇总查询"存在补全遗漏怪癖, 非分页截断非披露滞后。显式按 exchange_id 三分片查询100%拿全
       # (含上述全部历史"漏返"日期实测验证并已重拉补齐, 原 known_group_gaps 墓碑因此整段撤销——
-      # 当时判"永久缺失"是错的, 只是没换对查询形态)。此后每个交易日内部执行3次调用，三片
-      # 全部成功并满足 required_groups 后才进入一次原子写；任一片失败则整日零写入。
+      # 当时判"永久缺失"是错的, 只是没换对查询形态)。每个交易日只执行当日契约要求的分片：
+      # 2023-02-13 前 SSE/SZSE 两片，自北交所两融启动日起再加 BSE；必需分片全部成功并满足
+      # required_groups 后才进入一次原子写，任一必需片失败则整日零写入。
     pit_anchor: "trade_date; 同 margin_detail t+1 盘前披露 -> JOIN t-1"
     available_after: "t+1"
     data_start: "20190102"        # 实测首日 2 行 (SSE/SZSE)
@@ -222,7 +223,9 @@ domains:
     batch_completeness:
       group_from: {column: exchange_id, transform: identity}
       required_groups: [SSE, SZSE]
-      required_groups_since: {BSE: "20211115"}
+      # 北交所上市日不是两融业务起点。北交所公告〔2023〕9号自 2023-02-13 施行；
+      # 生产 raw 实测该日起 829/829 个交易日连续有 BSE，之前 301 日仅 SSE/SZSE。
+      required_groups_since: {BSE: "20230213"}
 
   # ── 市场感知 v2 族 (2026-07-02 调研+实弹; owner=analysis/market_pulse_design_20260702.md v2 第二批) ──
   dc_daily:                          # 东财板块指数 OHLC (行业/概念/地域全类型): dc 链 RS 双窗 + 广度/龙头史深 2025->2020

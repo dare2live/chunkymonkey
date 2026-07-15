@@ -60,6 +60,60 @@ def test_margin_detail_missing_required_exchange_group_does_not_replace_existing
     assert [(r[0], r[1]) for r in rows] == [("000001.SZ", 20.0), ("600000.SH", 10.0)]
 
 
+def test_margin_bse_write_contract_uses_margin_business_start_and_is_atomic():
+    """2023-02-13 前两所可写；两融启动日起缺 BSE 必须拒写并保留旧完整批。"""
+    conn = connect(":memory:")
+    conn.execute(
+        "CREATE TABLE raw_tushare_margin "
+        "(trade_date VARCHAR, exchange_id VARCHAR, rzye DOUBLE, built_at VARCHAR)"
+    )
+    conn.executemany(
+        "INSERT INTO raw_tushare_margin VALUES ('20230213', ?, 10.0, 'old')",
+        [("SSE",), ("SZSE",), ("BSE",)],
+    )
+    spec = {
+        "domain": "margin",
+        "target_table": "raw_tushare_margin",
+        "grain": ["trade_date", "exchange_id"],
+        "date_param": "trade_date",
+        "min_rows_per_batch": 2,
+        "batch_completeness": {
+            "group_from": {"column": "exchange_id", "transform": "identity"},
+            "required_groups": ["SSE", "SZSE"],
+            "required_groups_since": {"BSE": "20230213"},
+        },
+    }
+
+    assert sr._write_batch(
+        conn,
+        spec,
+        [
+            {"trade_date": "20230210", "exchange_id": "SSE", "rzye": 1.0},
+            {"trade_date": "20230210", "exchange_id": "SZSE", "rzye": 2.0},
+        ],
+    ) == 2
+
+    with pytest.raises(sr.BatchCompletenessError, match="required_groups missing=\\['BSE'\\]"):
+        sr._write_batch(
+            conn,
+            spec,
+            [
+                {"trade_date": "20230213", "exchange_id": "SSE", "rzye": 99.0},
+                {"trade_date": "20230213", "exchange_id": "SZSE", "rzye": 99.0},
+            ],
+        )
+
+    rows = conn.execute(
+        "SELECT exchange_id, rzye, built_at FROM raw_tushare_margin "
+        "WHERE trade_date='20230213' ORDER BY exchange_id"
+    ).fetchall()
+    assert [tuple(row) for row in rows] == [
+        ("BSE", 10.0, "old"),
+        ("SSE", 10.0, "old"),
+        ("SZSE", 10.0, "old"),
+    ]
+
+
 def test_min_rows_is_evaluated_after_dedup_and_universe_filter():
     """被去重或被 universe 排除的行不能帮助批次跨过 min_rows 门。"""
     conn = connect(":memory:")

@@ -159,12 +159,15 @@ def test_no_split_by_domain_unaffected(env):
 @pytest.mark.parametrize(
     "trade_date,expected",
     [
-        ("20211114", ["SSE", "SZSE"]),
-        ("20211115", ["SSE", "SZSE", "BSE"]),
+        ("20211115", ["SSE", "SZSE"]),
+        ("20230210", ["SSE", "SZSE"]),
+        ("20230213", ["SSE", "SZSE", "BSE"]),
     ],
 )
-def test_split_by_respects_exact_market_start_boundary(monkeypatch, trade_date, expected):
-    """北交所开市边界必须精确：前一日不请求，开市当日开始成为必需分片。"""
+def test_split_by_respects_exact_margin_business_start_boundary(
+    monkeypatch, trade_date, expected
+):
+    """北交所两融边界必须精确：启动前不请求，启动日起成为必需分片。"""
     calls = []
 
     class Adapter:
@@ -180,7 +183,7 @@ def test_split_by_respects_exact_market_start_boundary(monkeypatch, trade_date, 
             "param": "exchange_id",
             "values": ["SSE", "SZSE", "BSE"],
         },
-        "batch_completeness": {"required_groups_since": {"BSE": "20211115"}},
+        "batch_completeness": {"required_groups_since": {"BSE": "20230213"}},
         "retry": {"max_attempts": 1, "backoff_seconds": [0]},
     }
     rows = sr._fetch_logical_batch(Adapter(), spec, {"trade_date": trade_date})
@@ -188,7 +191,7 @@ def test_split_by_respects_exact_market_start_boundary(monkeypatch, trade_date, 
     assert [call["exchange_id"] for call in calls] == expected
 
 
-def test_production_margin_market_start_has_one_config_owner():
+def test_production_margin_business_start_has_one_config_owner():
     import yaml
 
     registry = yaml.safe_load(
@@ -196,7 +199,7 @@ def test_production_margin_market_start_has_one_config_owner():
     )
     margin = registry["domains"]["margin"]
     assert margin["batch_completeness"]["required_groups_since"] == {
-        "BSE": "20211115"
+        "BSE": "20230213"
     }
     assert "values_since" not in margin["split_by"]
     assert "min_rows_since" not in margin and margin["min_rows_per_batch"] == 2

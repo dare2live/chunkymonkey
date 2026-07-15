@@ -222,11 +222,11 @@ def test_drain_identity_group_contract_refills_missing_exchange_atomically():
 
 
 def test_drain_conditional_group_contract_uses_exact_bse_start_boundary():
-    """北交所开市前一真实交易日两市场完整；20211115 起缺 BSE 必须成为 gap。"""
+    """北交所两融启动前一交易日两市场完整；20230213 起缺 BSE 才是 gap。"""
     contract = {
         "group_from": {"column": "exchange_id", "transform": "identity"},
         "required_groups": ["SSE", "SZSE"],
-        "required_groups_since": {"BSE": "20211115"},
+        "required_groups_since": {"BSE": "20230213"},
     }
 
     before = connect(":memory:")
@@ -235,7 +235,7 @@ def test_drain_conditional_group_contract_uses_exact_bse_start_boundary():
         "(trade_date VARCHAR, exchange_id VARCHAR, built_at TIMESTAMP)"
     )
     before.executemany(
-        "INSERT INTO raw_tushare_demo VALUES ('20211112', ?, now())",
+        "INSERT INTO raw_tushare_demo VALUES ('20230210', ?, now())",
         [("SSE",), ("SZSE",)],
     )
     before_result = sr.drain_domain(
@@ -247,7 +247,7 @@ def test_drain_conditional_group_contract_uses_exact_bse_start_boundary():
         ),
         conn=before,
         adapter=FakeAdapter({}),
-        trading_days=["20211112"],
+        trading_days=["20230210"],
         record=False,
     )
     assert before_result["status"] == "clean"
@@ -258,7 +258,7 @@ def test_drain_conditional_group_contract_uses_exact_bse_start_boundary():
         "(trade_date VARCHAR, exchange_id VARCHAR, built_at TIMESTAMP)"
     )
     boundary.executemany(
-        "INSERT INTO raw_tushare_demo VALUES ('20211115', ?, now())",
+        "INSERT INTO raw_tushare_demo VALUES ('20230213', ?, now())",
         [("SSE",), ("SZSE",)],
     )
     boundary_result = sr.drain_domain(
@@ -270,7 +270,7 @@ def test_drain_conditional_group_contract_uses_exact_bse_start_boundary():
         ),
         conn=boundary,
         adapter=FakeAdapter({}),
-        trading_days=["20211115"],
+        trading_days=["20230213"],
         max_dates=0,
         record=False,
     )
