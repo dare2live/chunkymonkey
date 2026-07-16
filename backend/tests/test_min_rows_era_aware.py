@@ -1,4 +1,4 @@
-"""min_rows_since/min_rows_before 时代分段阈值机制门 (2026-07-09, owner=analysis/gap_root_cause_20260708.md 全审计HIGH#4).
+"""min_rows_since/min_rows_before 时代分段阈值机制门（历史证据=analysis/gap_root_cause_20260708.md 全审计HIGH#4）。
 
 背景: margin_detail 的 min_rows_per_batch 从 800 提到 2000(锚定当前基线)后, drain_domain 用
 同一个静态值当全历史"完整日"门槛 → 594 个 2019-2021 真实完整日(941-1999行, 两融标的池 2021 年

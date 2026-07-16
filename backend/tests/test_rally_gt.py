@@ -1,4 +1,4 @@
-"""D1 主升浪 GT v2 证伪门单测 (设计 d1_gt_v2_design_20260702.md §4 第一行的 5 组)。
+"""主升浪 ground-truth 证伪门单测 (owner=docs/strategy_validation_contract.md §8.1)。
 
 1. 边界压线: 合成序列 gain=0.599 拒 / 0.601 收 (定义压线, 真 yaml 阈值非测试复制品);
 2. holdout red-green: data_end 越界 raise (入口第一行, 不碰库) / train 窗内落库 + 右删失 embargo 剔除;
@@ -20,7 +20,7 @@ from conftest import duck_mem
 from services import rally_detect as rd
 from services import rally_gt
 from services.gt_label_contract import assert_no_outcome_leakage, entry_anchor, label_column
-from services.holdout_guard import HoldoutBoundaryViolation, load_policy
+from services.holdout_guard import HoldoutBoundaryViolation, load_policy, training_cutoff_before_holdout
 from services.universe import UniverseContaminationError
 
 CFG = rally_gt.load_config()
@@ -139,6 +139,13 @@ def test_holdout_red_data_end_beyond_boundary_raises():
     beyond = str(int(hs) + 100)                       # 越界一个月+
     with pytest.raises(HoldoutBoundaryViolation):
         rally_gt.rebuild(conn=None, data_end=beyond)  # 入口第一行守门, 不碰任何库
+
+
+def test_holdout_start_itself_is_rejected_and_default_is_strictly_before():
+    hs = str(load_policy()["holdout_start"])
+    with pytest.raises(HoldoutBoundaryViolation):
+        rally_gt.rebuild(conn=None, data_end=hs)
+    assert training_cutoff_before_holdout() < hs
 
 
 def test_holdout_green_and_embargo_censoring():

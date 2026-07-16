@@ -51,8 +51,6 @@ DATA_DIR = REPO / "data"
 # 新增条目前必须重复这两步验证, 不能因为"看着安全"就批量加白名单——这正是本门要根治的
 # 反模式 (轻信而非验证)。
 _SQL_TABLE_REF_KNOWN_SAFE: dict[tuple[str, str], str] = {
-    ("services/storage_retention.py", "mart_model_lifecycle"):
-        "2026-06-28 U2/U5 记录 non-breaking cosmetic, _table_exists 双重守护, 不 churn",
     ("scripts/audit_data_completeness.py", "dim_data_asset"):
         "F4 退役表; try/except 守护; coverage_policy 能力已被 data_health_snapshot.py "
         "读 data_layers.yaml table_health_overrides 取代, 非能力真空",

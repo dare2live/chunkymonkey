@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Pre-commit hook: commit-msg stage — 校验 commit message 含 Rule 9.7 self-check 关键词.
+"""Commit-msg gate: require useful engineering/data evidence in the message.
 
-根因: Claude 写 commit message 容易写"fix bug" 这种空说明, 不反映 5-question self-check.
+根因: 空洞 commit message 无法让下一次 controller 判断变更为何安全。
 
-Rule 9.7 要求 commit 前确认:
+Engineering governance 要求 commit 前确认:
   1. PROJECT_INDEX.md 同步了吗?
   2. 测试新加了吗?
   3. 数据 / 跑批 commit log 截图 / 数字 写进 commit message 了吗?
-  4. CLAUDE.md / Rule 9 反例表加了吗?
-  5. Rule 9.1 真金白银 self-check (策略相关 commit)
+  4. AGENTS/goal/PROJECT_INDEX 与 owner docs 对齐了吗?
+  5. 策略相关变更是否有实测成本/PIT/OOS证据?
 
 Hook 检测 commit message body 中是否至少含**任一**关键词组:
 
@@ -23,7 +23,7 @@ GROUP B — 数据/策略类 (涉数据的 commit 该有):
   - 数据: 行/份 数字 (e.g. "10K 行 / 5,000 行 / 800 day")
   - measured: "实测" / "evidence" / "backtest"
 
-GROUP C — 反 Rule 自检 (出错则强制):
+GROUP C — 反模式自检 (出错则强制):
   - "magic" / "拍脑袋" 出现 → 必须有 "evidence" / "yaml" / "measured" / "rule-compliance: ok"
   - "TODO" / "FIXME" / "skip" 出现 → 警告但不 reject
 
@@ -64,7 +64,7 @@ GROUP_B_KEYWORDS = (
     "annual", "年化", "sharpe", "max_dd", "calmar",
 )
 
-# GROUP D: post-fix-audit trigger (Rule 9.2 #7, 用户 2026-05-15 push back)
+# GROUP D: root-cause cleanup trigger (fix 后主动查 stale downstream artifacts)
 # Subject/body 含这些词 → 必须含 cleanup 证据
 POST_FIX_TRIGGER_KEYWORDS = (
     "fix", "修复", "bug", "leakage",
@@ -144,7 +144,7 @@ def main(msg_path: str) -> int:
     require_b = needs_group_b(staged)
     has_b = any(kw in body_only for kw in GROUP_B_KEYWORDS) if require_b else True
 
-    # GROUP D: post-fix-audit (Rule 9.2 #7) — 含 fix/leakage/drop/cleanup 必须含 cleanup 证据
+    # GROUP D: post-fix audit — 含 fix/leakage/drop/cleanup 必须含 cleanup 证据
     # 2026-06-11: 英文触发词改词边界匹配 — 子串匹配把 fixed_params/prefix/dropdown/killer
     # 等标识符误判为 fix/drop/kill 触发 (实证: fixed_params 误触发 GROUP D)
     import re as _re
@@ -162,7 +162,7 @@ def main(msg_path: str) -> int:
 
     # Reject + 提示
     print("=" * 80, file=sys.stderr)
-    print("ERROR: commit message 缺 Rule 9.7 self-check 关键词", file=sys.stderr)
+    print("ERROR: commit message 缺工程交付 self-check 关键词", file=sys.stderr)
     print(file=sys.stderr)
     if not has_a:
         print("MISSING GROUP A (工程类): 至少一个关键词", file=sys.stderr)
@@ -180,15 +180,14 @@ def main(msg_path: str) -> int:
         print(f"  触发: {', '.join(triggered_kws[:5])}", file=sys.stderr)
         print(f"  必须含: {', '.join(POST_FIX_PROOF_KEYWORDS[:6])}", file=sys.stderr)
         print("  例: 'cleanup verified 无残留', 'post-fix-audit 已 5 步走完', 'cleanup_leakage_data 0 row'", file=sys.stderr)
-        print("  根因: Rule 9.2 #7 — fix 后必须主动清 stale artifact (DB row / panel cols / model_id / cache).", file=sys.stderr)
+        print("  根因: engineering governance — fix 后必须主动清 stale artifact (DB row / panel cols / model_id / cache).", file=sys.stderr)
         print("        skill: /post-fix-audit 走 5 步.", file=sys.stderr)
         print(file=sys.stderr)
-    print("修法 (3 选 1):", file=sys.stderr)
+    print("修法 (2 选 1):", file=sys.stderr)
     print("  1. 重写 commit message body, 加 self-check 关键词", file=sys.stderr)
     print("  2. 如果确实是琐碎修改 (e.g. typo / format), 加 '# commit-msg: minimal' 在 body 内", file=sys.stderr)
-    print("  3. `--no-verify` 跳 (慎用, 跳所有 hook)", file=sys.stderr)
     print(file=sys.stderr)
-    print("根因: Rule 9.7 commit 前 5-question self-check.", file=sys.stderr)
+    print("根因: AGENTS.md / engineering governance 的 commit 前 self-check.", file=sys.stderr)
     print("空说明的 commit 下次 session 重读时无法理解为啥这么改 → 文档债.", file=sys.stderr)
     print("=" * 80, file=sys.stderr)
     return 1

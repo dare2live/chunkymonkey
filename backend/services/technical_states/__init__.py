@@ -1,45 +1,26 @@
-"""technical_states — B2 形态识别模块 (正交轴重建, 2026-07-02)。
+"""technical_states — Tier1 股票状态/形态模块（历史编号 B2）。
 
-设计契约 (唯一): analysis/technical_states_rebuild_design_20260702.md;
+设计契约: docs/MASTER_TOPLEVEL_DESIGN.md §7;
 审查证据库: analysis/technical_states_audit_20260702.json (14 confirmed / 40 keeps)。
 
 骨架 (契约 §3, 16 文件 → 7 + config):
   features.py  日线 12+3 维特征 + resample 只闭合 bar (H1/H8/medium)
   axes.py      5 正交轴独立分类 (几何均 + 联合 max_score 归一 + 轴内 softmax; H2/H7)
-  labeler.py   cell→人话标签 + context 两遍 + 多 TF as-of (C2: 无方向语义)
-  breakout.py  突破 event-in-context 检测器 (C1; overlay 事件非态, D1 GT 起涨点原语)
+  labeler.py   cell→人话标签 + context 两遍 + 多 TF as-of（无方向语义）
+  breakout.py  突破 event-in-context 检测器（overlay 事件非态，供 Tier3 GT 研究）
   limits.py    涨跌停/一字板 flags (stk_limit 真相源; H3 双侧 + H4 可成交透传)
   candles.py   单日 K 构件 (prior_trend 消歧; 沿用)
   patterns.py  命名形态 3 模板 (零参数, 完成 bar 命中不回贴; 沿用)
   config/technical_states.yaml  轴判据/cell映射/突破参数/涨跌停 proxy — 理论锚定取整值 (H6)
 
 产物表 (契约 §5): smartmoney.fact_stock_form_daily (Type A 确定性 PIT 重排, 每日 process 步跑)。
-上游: market.price_kline_qfq_tushare (K线真相源) + tushare_raw.raw_tushare_daily/raw_tushare_stk_limit
+上游: market.price_kline_qfq_tushare (当前派生分析输入；非名义成交真相) + tushare_raw.raw_tushare_daily/raw_tushare_stk_limit
   (原始价空间触板判定) + tushare_raw.raw_tushare_index_daily (RS 基准) +
   reference.dim_trading_calendar (周期闭合真相源, H1) + smartmoney.dim_stock_segment_daily
-  (B1: rv_pctile/vol_regime 列, E 轴单一计算点 — 先跑 segments 再跑本模块, 顺序不可反)。
+  (Tier1 context: rv_pctile/vol_regime 列 — 先跑 segments 再跑本模块)。
 入口: rebuild_all (全量) / build_latest (幂等增量)。形态 = 结构层非 alpha (F1 裁决), 无买卖暗示。
 
-──────────────────────────────────────────────────────────────────────
-收编清单 (主会话收编时做, side-agent 不碰控制面文件):
-1. backend/config/data_layers.yaml: fact_stock_form_daily → db=smartmoney, layer 同 B1/B4
-   加工类 (Type A 确定性 PIT 重排; 产物 = 描述层标签, 无 forward claim)。
-2. roster/lineage 登记 (data_module_members.yaml): producer=services/technical_states/;
-   upstream = price_kline_qfq_tushare (market) / raw_tushare_daily / raw_tushare_stk_limit /
-   raw_tushare_index_daily (tushare_raw) / dim_trading_calendar (reference) /
-   dim_stock_segment_daily (B1, E 轴消费); consumer = D1 GT 标注 (长底+突破) / D2 L0 裸K特征 /
-   C 前端档案维度① / B4 感知页 stage 分布 (均未接)。
-3. pipeline process 步挂钩: 挂在 segments.build_latest (B1) 之后 (E 轴消费 B1 新列, 顺序不可反),
-   调 technical_states.build_latest() (无参幂等, 无新日期 no-op)。
-   注意: B1 需先全量重建一次 (segments.rebuild_all) 补 rv_pctile/vol_regime 两列, 否则本模块 fail loud。
-4. 真实数据 smoke (回填锁释放后主会话跑, 契约 §7 验收):
-   (a) segments.rebuild_all() (B1 加列) → technical_states.rebuild_all() 全量 2019+;
-   (b) 份额分布 sanity: 无 >50% 单标签, 无 <0.1% 死标签 (事件除外);
-   (c) 抽查 5 股人工核对 (茅台/宁德时代等已知走势段 vs 标签语义);
-   (d) 缩量回踩/中继平台 context 份额语义抽查 (audit medium: 旧 7.3% 复活份额无语义验证);
-   (e) 突破事件日 buyable/is_one_word 抽查 (H4 消费面可见性)。
-   注: 旧 fact_rally_stage 对齐验收已废弃 (契约 §7: POST-HOC 未来 peak 切分, 不当基准)。
-──────────────────────────────────────────────────────────────────────
+当前边界: 本模块只发布版本化描述状态；未来标签、收益概率和买卖含义必须留在 Tier3 research。
 """
 from __future__ import annotations
 
@@ -66,7 +47,7 @@ TABLE = "fact_stock_form_daily"
 # (classify_stock 写入 ax[轴]["score"]), **非** softmax membership 概率 —— axes.py classify()
 # 同时算出的 membership (轴内各取值和=1) 未入库, 本列跨取值不求和为 1。
 # 命名沿革: 语义上更该叫 axis_*_score, 但 score/label 等词撞 Type A 纯度门 _TYPE_A_LEAK_RE
-# (2026-07-02 反例) 改名 memb。勿据列名回改语义/回改列名; 消费方 (前端/D2) 按归一 score 解读。
+# (2026-07-02 反例) 改名 memb。勿据列名回改语义/回改列名；Tier3 消费方按归一 score 解读。
 _DDL = f"""
 CREATE TABLE {TABLE} (
     stock_code VARCHAR NOT NULL,
@@ -111,9 +92,9 @@ def _assert_b1_ready(con) -> None:
         "SELECT column_name FROM information_schema.columns WHERE table_name = 'dim_stock_segment_daily'"
     ).fetchall()}
     if not cols:
-        raise RuntimeError("dim_stock_segment_daily 不存在 — 先跑 segments.rebuild_all() (B1 前置)")
+        raise RuntimeError("dim_stock_segment_daily 不存在 — 先跑 Tier1 context segments.rebuild_all()")
     if "rv_pctile" not in cols or "vol_regime" not in cols:
-        raise RuntimeError("dim_stock_segment_daily 缺 rv_pctile/vol_regime 列 — 先跑 segments.rebuild_all() 补列 (E 轴单一计算点在 B1)")
+        raise RuntimeError("dim_stock_segment_daily 缺 rv_pctile/vol_regime 列 — 先跑 Tier1 context segments.rebuild_all()")
 
 
 def _trading_days(con) -> list[str]:

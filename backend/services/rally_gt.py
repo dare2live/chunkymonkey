@@ -1,7 +1,7 @@
-"""rally_gt.py — D1 主升浪 GT v2 builder (五层漏斗正样本 + hard-negative + strata, feature_store 落库)。
+"""rally_gt.py — Tier3 主升浪 ground-truth package（历史编号 D1）。
 
-owner=analysis/d1_gt_v2_design_20260702.md (实施定稿) + d1_gt_archaeology_20260702.md §3 (定义) / §4.2 (修正清单)。
-方法论锚: goal.md D1 + MASTER §5 结果倒推 (episode-first: 标出每股每次主升浪, 底=起涨点=PIT 决策锚)。
+owner=docs/strategy_validation_contract.md §8.1 + d1_gt_archaeology_20260702.md (历史定义证据)。
+方法论锚: MASTER Tier3 + strategy validation contract（episode-first，底=起涨点=PIT 决策锚）。
 
 定义 (v1.5 规则本体照搬, 双证据验证 — 考古 §4.1; 阈值全在 backend/config/rally_gt.yaml, 修正#10):
   L0 底→顶 swing: 波段底 (前后 pivot_low_window 最低) → max_forward_days 根内峰,
@@ -16,7 +16,7 @@ owner=analysis/d1_gt_v2_design_20260702.md (实施定稿) + d1_gt_archaeology_20
      剔除 (与负样本 fwd_complete 判定共用 rally_detect.forward_complete, 正负对称)。
 
 holdout 接线 (修正#1): rebuild 入口第一行 assert_holdout_untouched(data_end);
-  data_end 默认 = holdout_policy.yaml holdout_start (20250601, 唯一真相源不复制); K线只读 <= data_end。
+  holdout_start 是 holdout 首日，data_end 默认取其前一自然日；K线只读 <= data_end。
 负样本 (考古 §3.3): 同结构 pivot-low + 长底 (同 PIT setup) + forward 窗完整 + 未涨 (<gain_min);
   purge 同股正样本 bottom ±max_forward_days 根; 同股间隔 >= min_gap_bars;
   ST 留消费侧 PIT 硬门 (is_st_on — ST 是时变量不可一刀切删股, v1.5 同)。
@@ -31,21 +31,14 @@ strata (考古 §3.4): 申万 L1/L2 as-of (raw_tushare_index_member_all, in_date
 
 写: feature_store.fact_rally_ground_truth / fact_rally_negative / fact_rally_strata
   (设计 P3: Type B 含前瞻, edge 隔离 — smartmoney 只放 Type A; DROP 重建, wipeable)。
-读: market.price_kline_qfq_tushare (K线真相源, ATTACH mk) + reference.dim_trading_calendar
+读: market.price_kline_qfq_tushare (当前派生研究输入, ATTACH mk；非名义成交真相) + reference.dim_trading_calendar
   (ATTACH ref) + smartmoney B1/B2 特征面 (ATTACH sm, READ_ONLY) + tushare_raw (独立只读连接
   raw_conn — universe.load_st_calendar 需默认 catalog 直连, 不能跨 ATTACH catalog 解析未限定
   表名; stock_basic / index_member_all 同连接读)。
 用法: PYTHONPATH=backend .venv/bin/python -c "from services.rally_gt import rebuild; print(rebuild())"
 
-状态 (2026-07-10 全栈审计F项收口): B1/B2 strata 列已接线 (原 TODO 占位 NULL 清偿);
-  敏感性留档 (修正#9) 已在设计 doc 附录 (2026-07-02 实测, sandbox/d1_sensitivity)。
-
-收编清单 (主会话 review 收编用, side-agent 禁改控制面):
-  新文件: backend/services/rally_detect.py (共享原语) / backend/services/rally_gt.py (本文件) /
-    backend/services/gt_label_contract.py (契约执法) / backend/config/rally_gt.yaml (阈值) /
-    backend/config/rally_gt_columns.yaml (列契约) / backend/tests/test_rally_gt.py (证伪门)。
-  待主会话: PROJECT_INDEX.md 活索引 + data_layers.yaml 三表声明 (若本 session 未加) + moth 断言 +
-    goal.md/SESSION_HANDOFF 同步 + B1/B2 strata 列回填 + 敏感性分析 + safe_commit。
+当前状态: ground-truth/negative/strata 资产保留为 Tier3 research package；任何 StrategyRelease
+仍须通过统一 B0→B2 消融、PIT/执行/成本和 holdout 契约。
 """
 from __future__ import annotations
 
@@ -67,7 +60,7 @@ from services.gt_label_contract import (
     outcome_columns,
     pit_feature_columns,
 )
-from services.holdout_guard import assert_holdout_untouched, load_policy
+from services.holdout_guard import assert_holdout_untouched, training_cutoff_before_holdout
 from services.universe import (
     DELISTED_NO_TRADE_DAYS,
     assert_universe_clean,
@@ -426,15 +419,15 @@ def _landing_assertions(conn, cfg: dict, data_end_iso: str,
 
 
 def rebuild(conn=None, data_end=None, raw_conn=None) -> dict:
-    """全量重建 D1 主升浪 GT v2 三表 (feature_store, DROP 重建)。返回统计 dict。
+    """全量重建 Tier3 主升浪 GT v2 三表 (feature_store, DROP 重建)。返回统计 dict。
 
     conn: feature_store 写连接 (须已 ATTACH mk=market / ref=reference / sm=smartmoney;
           None=自管+ATTACH)。
-    data_end: train 窗右边界 (YYYYMMDD/YYYY-MM-DD; None=holdout_policy.holdout_start)。
+    data_end: train 窗右边界 (YYYYMMDD/YYYY-MM-DD; None=holdout_start 前一自然日)。
     raw_conn: tushare_raw 只读连接 (默认 catalog 须含 raw_tushare_* 表; None=自管)。
     """
     # 1) holdout 门 — 入口第一行, 任何数据读取之前 (修正#1)
-    data_end = str(data_end) if data_end is not None else str(load_policy()["holdout_start"])
+    data_end = str(data_end) if data_end is not None else training_cutoff_before_holdout()
     assert_holdout_untouched(data_end)
     data_end_iso = _to_iso(data_end)
 

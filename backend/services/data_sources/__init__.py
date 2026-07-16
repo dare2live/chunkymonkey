@@ -5,5 +5,5 @@ capability清单/健康检查, P1 时期为一套多源 UI 设计) 唯一消费�
 /api/data_sources/* 路由)已随 2026-06-24 重建物删, resolve()/list_sources()/
 healthcheck_all() 全仓库 0 调用 — 整个 fallback 机制退役物删。sync_runner.py 原经
 get_registry().get_source() 间接拿 TuShareSource 实例的那条线, 已改直接 import 实例化
-(见 sync_runner.py::_adapter())。见 analysis/data_sources_registry_retirement_20260707.md
+(见 sync_runner.py::_adapter())。历史退役证据见 analysis/project_state_ledger.md。
 """

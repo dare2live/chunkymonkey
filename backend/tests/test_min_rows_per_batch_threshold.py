@@ -1,4 +1,4 @@
-"""min_rows_per_batch 静态地板值校准回归 (2026-07-08, owner=analysis/gap_root_cause_20260708.md).
+"""min_rows_per_batch 静态地板值校准回归（历史证据=analysis/gap_root_cause_20260708.md）。
 
 背景: margin_detail 的 min_rows_per_batch 曾设 800(锚定 2019 建域首日历史最低点), 但 2026 年真实
 基线已涨到 ~3400+, 800 这个地板值对"腰斩但仍非零"的截断(实测 20260703: 3472→1652)完全测不出——

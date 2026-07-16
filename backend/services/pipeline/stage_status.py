@@ -1,6 +1,6 @@
 """§8 切片 b/c-lite: 阶段状态 (复用 mart_pipeline_run_manifest, 不新建中间表)。
 
-grill 裁决 (analysis/stage_status_design_20260625.md): 蓝图字面要新表 pipeline_stage_status, 但 manifest
+架构裁决 (docs/MASTER_TOPLEVEL_DESIGN.md §5.2): 不为阶段状态新建第二张表；现有 manifest
 已是 run 级状态账本(run_id/pipeline_name/status/started_at/gate_result)且 pipeline 步已在写它 → 复用 manifest
 (pipeline_name=`pipeline.stage.<s>`), 不新建第二个状态中间表(单一真相源, 同 universe 由 K线派生不建 dim 表 /
 survivorship 真相在 K线不建枚举表 的教训)。"stale"(上游重跑→下游过时)= 派生计算(upstream.started_at >

@@ -1,6 +1,5 @@
 version: 1
-_doc: '数据层级注册表 (2026-06-14 地基-reset 后立). 单一真相源: 每表声明 layer, 替代 ad-hoc 反复推导. 新表必须在此声明 layer (data_layer_audit + moth 断言强制).
-  层级语义见 docs/data_management_framework.md。'
+_doc: 'Legacy physical-layer registry (NONCONFORMING target architecture). 现有审计、健康度和血缘仍消费它，故 Phase0 保留；L2/L3/L4 等 wiped 词汇仅为兼容旧门，不代表目标业务 Tier。Phase1 迁入模块 contract/data contract 后删除兼容项。目标业务 Tier/传输轴语义只见 docs/MASTER_TOPLEVEL_DESIGN.md。'
 # asset_class (2026-06-28 加工分两种, 用户决议): A/B 映射到 layer (不另起 per-table 字段, 奥卡姆)。
 #   客观划线 = "确定性 PIT 重排 vs 含前瞻/策略假设" (非主观"展示vs策略"):
 #   - raw : L0 vendor 镜像 (不加工)
@@ -92,9 +91,9 @@ layer_health_defaults:
 #   月季末均返回 0 行, 仅 12-31 年末有数据(2024-12-31=16行/2025-12-31=5611行) —— 该报告实为
 #   **年度**快照非季度, 第一轮"quarterly"标注是错的; 且唯一消费方 v3_picture 已随 2026-06-28
 #   纯数据平台重建整体退役, 该表已成孤儿 —— 用户拍板 2026-07-07 整表物删 (见
-#   analysis/raw_aif10_peer_valuation_retirement_20260707.md), 本行随之移除。
+#   analysis/project_state_ledger.md 的数据源退役索引), 本行随之移除。
 #   ②fact_top10_holder_period 实测 notice_date 近乎逐日更新(20260701/02/03连续), 是"含季中
-#   ad-hoc"的高频披露流(见 CLAUDE.md §4.3), 第一轮误把它和另外 2 张真季度表一起套用220天——
+#   ad-hoc"的高频披露流(2026-07-07 live DB 审计, 历史索引见 analysis/project_state_ledger.md), 第一轮误把它和另外 2 张真季度表一起套用220天——
 #   这会让"停更100天"这种真事故被220天SLA掩盖住, 是本轮修复本身引入的新缺口, 改回 168h(7天,
 #   覆盖节假日缓冲) 匹配其真实近日频节奏。③raw_org_holding_aif10/raw_qfii_holding_quarterly
 #   经历史 report_date 分布核实(2025-12-31→2026-03-31 整季度跳变且行数量级一致)确认真季度,
@@ -107,19 +106,19 @@ table_health_overrides:
 tables:
   # raw_aif10_valuation_quantile 2026-07-07 随 aif10_capability_client 模块整体退役物删
   # (唯一消费方 v3_picture 已随 2026-06-28 重建退役, 且早在其存活期就因 latest-snapshot
-  # leakage 从未被特征管线接入), 见 analysis/raw_aif10_valuation_quantile_retirement_20260707.md
+  # leakage 从未被特征管线接入), 历史索引见 analysis/project_state_ledger.md
   raw_org_holding_aif10: L0_source  # 2026-06-24 补tag (aif10机构持仓明细raw镜像, 前会话漏登致data-layer-integrity FAIL)
   raw_qfii_holding_quarterly: L0_source
   dim_active_a_stock: L1_foundation
-  # dim_all_ever_listed / dim_listing_status 2026-07-07 整表退役 (owner=PROJECT_INDEX.md 决策收口):
-  # 前者无存活 writer 冻结 10+ 周, 后者 0 业务读者且唯一 builder 无生产调用方, 详见
-  # analysis/dim_all_ever_listed_retirement_20260707.md
+  # dim_all_ever_listed / dim_listing_status 2026-07-07 整表退役:
+  # 前者无存活 writer 冻结 10+ 周, 后者 0 业务读者且唯一 builder 无生产调用方;
+  # 历史裁决索引见 analysis/project_state_ledger.md。
   dim_fee_schedule: L1_foundation
   dim_liquidity_threshold: L1_foundation
   dim_market_segment: L1_foundation
-  dim_stock_dc_industry: L1_foundation     # 2026-06-23 东财全套迁移Stage④ 当前行业快照 (serving); 深史as-of走 tushare_raw.v_sw_industry_pit
+  dim_stock_dc_industry: L1_foundation     # DC namespace legacy 当前快照；不得用 SW PIT 补成同一 taxonomy
   dim_stock_dc_concept: L1_foundation      # 2026-06-23 东财概念成员当前快照 (serving)
-  dim_style_factor: L1_foundation          # 2026-07-06 primitives 第9项风格因子dim补建时漏登记 (6姊妹表已登记), 顺手补上 (owner=analysis/dim_all_ever_listed_retirement_20260707.md doctor 复查抓获, 非本次退役新增表)
+  dim_style_factor: L1_foundation          # 2026-07-06 primitives 第9项风格因子dim补建时漏登记 (6姊妹表已登记), doctor 复查补齐; writer=services/primitives/ddl.py
   dim_trading_calendar: L1_foundation
   dim_trading_rule: L1_foundation
   dim_trading_session: L1_foundation
@@ -136,12 +135,12 @@ tables:
   mart_inst_profile_dim: L2_feature        # 机构×维度画像 (industry_pit/year/holder_type)
   # ── D1 主升浪 GT v2 (2026-07-02 services/rally_gt.py; Type B 含前瞻 label/outcome, edge 隔离 feature_store 库;
   #    设计 P3: smartmoney 只放 Type A, GT 研究半永不 serving; 列契约 rally_gt_columns.yaml + gt_label_contract 执法) ──
-  fact_rally_ground_truth: L2_feature      # 正样本 episode (五层漏斗 + 右删失 embargo; train 窗 <= holdout_start)
+  fact_rally_ground_truth: L2_feature      # 正样本 episode；train data_end 必须严格早于 holdout_start
   fact_rally_negative: L2_feature          # hard-negative (同 pivot/长底 setup + fwd 完整 + 未涨; purge ±maxfwd)
   fact_rally_strata: L2_feature            # episode PIT 分层 (申万 as-of + 长底桶; B1/B2 列待锁释放回填)
   stock_watchlist: display
-  paper_position: display        # 2026-07-02 实盘模拟(手动): 用户手选持仓账本 (Type A: 用户操作记录)
-  paper_nav_daily: display       # 2026-07-02 实盘模拟: 每日 mark-to-market 快照 (Type A: 给定持仓+价格结果唯一)
+  paper_position: display        # Legacy NONCONFORMING 手工观察条目；非订单/成交/StrategyRelease
+  paper_nav_daily: display       # Legacy qfq-close 观察估值；非 Tier4 paper execution NAV
   app_settings: infra
   dim_price_limit_rules: infra
   dim_schema_version: infra

@@ -55,9 +55,13 @@ EXEMPT_PATH_PREFIXES = (
     "frontend/",
     "docs/",
     "design/",
-    "bestchoice/",            # 2026-05-22 BC migrated from sibling repo, own dev discipline (Track A frozen 2026-05-24)
-    "backend/services/bc_absorbed/",   # 2026-05-24 Track B BC copy initial, grandfathered violations from upstream until Phase 2.3+ refactor
 )
+EXEMPT_PATHS = {
+    # Frozen challenger regression fixtures. The implementation/evidence hashes
+    # are enforced by bestchoice/evidence_manifest.json + the Moth assertion.
+    "bestchoice/scripts/execution_model_smoke.py",
+    "bestchoice/scripts/formula_engine_smoke.py",
+}
 EXEMPT_PATH_SUFFIXES = (
     "/conftest.py",
     "/__init__.py",
@@ -142,6 +146,8 @@ QUOTED_DATA_SEGMENT_RE = re.compile(r"[\"']data[\"']")
 
 
 def is_exempt(path: str) -> bool:
+    if path in EXEMPT_PATHS:
+        return True
     if any(path.startswith(p) for p in EXEMPT_PATH_PREFIXES):
         return True
     if any(path.endswith(s) for s in EXEMPT_PATH_SUFFIXES):

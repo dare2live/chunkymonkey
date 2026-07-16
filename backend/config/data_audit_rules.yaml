@@ -1,6 +1,6 @@
 kline_checks:
-  # 2026-06-22 M3 repoint: 审 canonical serving 源 v_price_kline_qfq (tushare-only, 2019+, freq/adjust 合成)
-  # 非 stale 退役源 price_kline_tdxhub (2022+) — audit 必须审实际 serving 的表; 同时解阻 tdxhub drop。
+  # 审当前 qfq analysis/serving 读面 (tushare-only, 2019+, freq/adjust 合成)。
+  # 本门只证明派生分析面完整性，不把它认证为 nominal execution truth 或 AcceptedPartition。
   source_table: market.v_price_kline_qfq
   freq: daily
   adjust: qfq
@@ -12,7 +12,7 @@ kline_checks:
   # → 停牌/退市股被当缺口, 实测 1711股/31.5% 误报 (感知死: 门长期红被无视, 真缺口溜过)。
   # 正解 = clean-vs-source: M2(clean)的职责是无损变换 raw→qfq, 该验"clean 丢了 source 有的行吗",
   # 与停牌/退市/日历无关 (源本就没停牌日=合法)。实测新口径 0 丢失行。M1(acquire)的"拉全tushare"由
-  # sync watermark/drain 守 (另一阶段门), 不在此 calendar 比对。owner=analysis/kline_completeness_crywolf_fix_20260624.md
+  # sync watermark/drain 守 (另一阶段门), 不在此 calendar 比对。历史口径证据=analysis/kline_completeness_crywolf_fix_20260624.md
   source_raw_table: raw_tushare_daily      # clean 的上游源 (build_price_kline_qfq_tushare 从它×adj_factor 建); 在 tushare_raw 库
   source_raw_code_column: ts_code          # 带后缀 .SZ/.SH, 比对去后缀对齐 clean.code
   source_raw_date_column: trade_date       # YYYYMMDD
@@ -23,7 +23,7 @@ kline_checks:
     - "30"
     - "60"
     - "68"
-  min_start_date: "2019-01-01"   # 2026-06-22 M3: canonical tushare 起点 2019 (旧 2022 是 tdxhub 范围)
+  min_start_date: "2019-01-01"   # 当前 qfq 分析序列起点；非 Tier0 名义价格覆盖承诺
   date_range_tolerance_days: 1
   sample_limit: 5
   gap_sample_limit: 8
@@ -38,7 +38,7 @@ cross_table_consistency:
   rules:
     - name: kline_universe_coverage
       enabled: true
-      kline_source_table: market.v_price_kline_qfq   # 2026-06-23 M3: price_kline_tdxhub 物删, 审 canonical serving 源
+      kline_source_table: market.v_price_kline_qfq   # 当前 qfq 活跃性/分析读面；不用于成交价真实性证明
       kline_stock_code_column: code
       # 2026-06-24 cry-wolf 修复: 合法性判定改用 services.universe.classify_exclusion (板块前缀身份真相源),
       # 不再 universe_tables 枚举 (dim_all_ever_listed 不含退市 → 退市A股误报209)。退市由 K线近90天无交易 PIT 排除。

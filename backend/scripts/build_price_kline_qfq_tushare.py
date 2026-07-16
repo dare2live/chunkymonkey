@@ -1,7 +1,10 @@
-"""建 tushare 前复权 K线 (M2 清洗层唯一 builder; K线真相源, §4.3) + 重建后自完整性 sanity。
+"""Build the current TuShare qfq analysis series and run post-build sanity checks.
+
+This output is a derived serving/research input. It is not nominal execution-price truth and its
+latest-factor full-history rewrite remains a Tier0 lineage/PIT migration item.
 
 daily_update Step 2.96 每日 CREATE TABLE AS 全量重建 price_kline_qfq_tushare (market.duckdb),
-v_price_kline_qfq 视图 FROM 本表 = serving/回测 K线唯一读面。
+v_price_kline_qfq 视图 FROM 本表 = 当前 qfq analysis/serving 兼容读面；不等于 execution truth。
 前复权 (qfq rebased to latest): qfq = raw × adj_factor / adj_factor_latest_per_stock。
   返回 (收益) = qfq[t]/qfq[t-1] = 含分红总收益 (PIT: f[t] 除权日即知)。
   单位: volume 手×100=股, amount 千元×1000=元 (2026-06-22 切主源时对齐旧 tdxhub 口径, 消费方按此约定)。

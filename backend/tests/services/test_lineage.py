@@ -6,6 +6,7 @@ import json
 import pytest
 
 from services.lineage import build_lineage_graph, dead_tables, impact, provenance
+from services.lineage import builder
 from services.lineage.model import Edge, LineageGraph, Node
 
 
@@ -14,13 +15,13 @@ def _synthetic() -> LineageGraph:
     raw_dead = L0 raw 无消费 (不该判死, L0 永不删); mart_dead = 派生表无消费 (真死)。"""
     g = LineageGraph()
     g.add_node(Node("source:tushare.x", "source_interface", {"source": "tushare", "api": "x"}))
-    g.add_node(Node("table:raw_x", "table", {"db": "tushare_raw", "layer": "L0_source", "status": "active"}))
-    g.add_node(Node("table:raw_dead", "table", {"db": "tushare_raw", "layer": "L0_source", "status": "active"}))
-    g.add_node(Node("table:mart_dead", "table", {"db": "smartmoney", "layer": "L2_feature", "status": "active"}))
+    g.add_node(Node("table:tushare_raw.raw_x", "table", {"db": "tushare_raw", "table": "raw_x", "layer": "L0_source", "status": "active"}))
+    g.add_node(Node("table:tushare_raw.raw_dead", "table", {"db": "tushare_raw", "table": "raw_dead", "layer": "L0_source", "status": "active"}))
+    g.add_node(Node("table:smartmoney.mart_dead", "table", {"db": "smartmoney", "table": "mart_dead", "layer": "L2_feature", "status": "active"}))
     g.add_node(Node("consumer:backend/services/svc.py", "consumer",
                     {"path": "backend/services/svc.py", "ctype": "service"}))
-    g.add_edge(Edge("source:tushare.x", "table:raw_x", "acquire", {"pit_anchor": "trade_date"}))
-    g.add_edge(Edge("table:raw_x", "consumer:backend/services/svc.py", "consume"))
+    g.add_edge(Edge("source:tushare.x", "table:tushare_raw.raw_x", "acquire", {"pit_anchor": "trade_date"}))
+    g.add_edge(Edge("table:tushare_raw.raw_x", "consumer:backend/services/svc.py", "consume"))
     return g
 
 
@@ -32,12 +33,12 @@ def test_graph_deterministic_serialization():
     g2 = LineageGraph()
     g2.add_node(Node("consumer:backend/services/svc.py", "consumer",
                      {"ctype": "service", "path": "backend/services/svc.py"}))
-    g2.add_node(Node("table:raw_dead", "table", {"status": "active", "db": "tushare_raw", "layer": "L0_source"}))
-    g2.add_node(Node("table:mart_dead", "table", {"status": "active", "layer": "L2_feature", "db": "smartmoney"}))
-    g2.add_node(Node("table:raw_x", "table", {"layer": "L0_source", "db": "tushare_raw", "status": "active"}))
+    g2.add_node(Node("table:tushare_raw.raw_dead", "table", {"status": "active", "db": "tushare_raw", "table": "raw_dead", "layer": "L0_source"}))
+    g2.add_node(Node("table:smartmoney.mart_dead", "table", {"status": "active", "layer": "L2_feature", "db": "smartmoney", "table": "mart_dead"}))
+    g2.add_node(Node("table:tushare_raw.raw_x", "table", {"layer": "L0_source", "db": "tushare_raw", "table": "raw_x", "status": "active"}))
     g2.add_node(Node("source:tushare.x", "source_interface", {"api": "x", "source": "tushare"}))
-    g2.add_edge(Edge("table:raw_x", "consumer:backend/services/svc.py", "consume"))
-    g2.add_edge(Edge("source:tushare.x", "table:raw_x", "acquire", {"pit_anchor": "trade_date"}))
+    g2.add_edge(Edge("table:tushare_raw.raw_x", "consumer:backend/services/svc.py", "consume"))
+    g2.add_edge(Edge("source:tushare.x", "table:tushare_raw.raw_x", "acquire", {"pit_anchor": "trade_date"}))
     d2 = json.dumps(g2.to_dict(generated_at=None), sort_keys=True, ensure_ascii=False)
     assert d1 == d2  # 插入序无关, 确定性 (drift 门前提)
 
@@ -61,7 +62,7 @@ def test_impact_lists_consumers():
 
 def test_impact_accepts_prefixed_id():
     g = _synthetic()
-    assert impact(g, "table:raw_x") == impact(g, "raw_x")
+    assert impact(g, "table:tushare_raw.raw_x") == impact(g, "tushare_raw.raw_x")
 
 
 def test_impact_missing_table():
@@ -101,9 +102,118 @@ def test_dead_excludes_l0_acquired_table():
     g = LineageGraph()
     g.add_node(Node("source:tushare.y", "source_interface", {"source": "tushare", "api": "y"}))
     # 非 raw_ 前缀但有 acquire 边 (e.g. canonical 直接 sync 的表)
-    g.add_node(Node("table:dim_synced", "table", {"db": "smartmoney", "layer": "L1_foundation", "status": "active"}))
-    g.add_edge(Edge("source:tushare.y", "table:dim_synced", "acquire", {}))
+    g.add_node(Node("table:smartmoney.dim_synced", "table", {"db": "smartmoney", "table": "dim_synced", "layer": "L1_foundation", "status": "active"}))
+    g.add_edge(Edge("source:tushare.y", "table:smartmoney.dim_synced", "acquire", {}))
     assert "dim_synced" not in [d["table"] for d in dead_tables(g)]  # acquire 边 → L0 源不死
+
+
+def test_builder_keeps_same_table_name_in_two_databases(monkeypatch):
+    """跨库同名表必须保留两节点；裸名直引保守挂两边，entity 别名只挂精确 db。"""
+    monkeypatch.setattr(builder, "_live_tables_by_db", lambda: {
+        "market": ["same_name"],
+        "smartmoney": ["same_name"],
+    })
+    monkeypatch.setattr(builder, "_table_layers", lambda: {"same_name": "L2_feature"})
+
+    def fake_yaml(name: str):
+        if name == "sync_registry.yaml":
+            return {
+                "defaults": {"target_db": "market"},
+                "domains": {
+                    "same": {
+                        "source": "vendor",
+                        "api": "same",
+                        "target_table": "same_name",
+                        "grain": ["id"],
+                    }
+                },
+            }
+        if name == "data_access.yaml":
+            return {
+                "entities": {
+                    "smart_same": {
+                        "db": "smartmoney",
+                        "table": "same_name",
+                        "vendor": "internal",
+                    }
+                }
+            }
+        return {}
+
+    monkeypatch.setattr(builder, "_load_yaml", fake_yaml)
+    monkeypatch.setattr(
+        builder,
+        "_git_grep_consumers",
+        lambda table: ["backend/services/direct.py"] if table == "same_name" else [],
+    )
+    monkeypatch.setattr(
+        builder,
+        "_git_grep_entity_consumers",
+        lambda entity: ["backend/services/entity_user.py"] if entity == "smart_same" else [],
+    )
+
+    graph = builder.build_lineage_graph()
+    market = "table:market.same_name"
+    smart = "table:smartmoney.same_name"
+    assert graph.node(market) is not None
+    assert graph.node(smart) is not None
+    assert {edge.dst for edge in graph.edges_from(market, "consume")} == {
+        "consumer:backend/services/direct.py"
+    }
+    assert {edge.dst for edge in graph.edges_from(smart, "consume")} == {
+        "consumer:backend/services/direct.py",
+        "consumer:backend/services/entity_user.py",
+    }
+    assert [edge.dst for edge in graph.edges_from("source:vendor.same", "acquire")] == [market]
+
+    ambiguous = impact(graph, "same_name")
+    assert ambiguous["ambiguous"] is True
+    assert ambiguous["qualified_tables"] == ["market.same_name", "smartmoney.same_name"]
+    assert ambiguous["consumer_count"] == 2
+
+
+@pytest.mark.parametrize(
+    ("scan", "value"),
+    [
+        (builder._git_grep_consumers, "some_table"),
+        (builder._git_grep_entity_consumers, "some_entity"),
+    ],
+)
+def test_consumer_scan_fails_closed_when_git_grep_errors(monkeypatch, scan, value):
+    """Git/index 不可用时不得把扫描错误伪装成零消费者。"""
+    monkeypatch.setattr(
+        builder.subprocess,
+        "run",
+        lambda *args, **kwargs: builder.subprocess.CompletedProcess(
+            args=args[0],
+            returncode=128,
+            stdout="",
+            stderr="fatal: not a git repository",
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="git grep failed"):
+        scan(value)
+
+
+def test_catalog_scan_fails_closed_when_database_cannot_be_read(tmp_path, monkeypatch):
+    db_path = tmp_path / "broken.duckdb"
+    db_path.touch()
+    monkeypatch.setattr(
+        builder,
+        "_load_yaml",
+        lambda name: {
+            "databases": {"market": {"path": str(db_path)}}
+        } if name == "database_manifest.yaml" else {},
+    )
+    monkeypatch.setattr(
+        builder,
+        "_duck_connect",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("catalog locked")),
+    )
+
+    with pytest.raises(RuntimeError, match="lineage catalog scan failed for market"):
+        builder._live_tables_by_db()
 
 
 # --- 集成: 真实 build (确定性 + killer 用例) ---

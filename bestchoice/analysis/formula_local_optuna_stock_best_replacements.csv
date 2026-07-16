@@ -1,3 +1,0 @@
-formula_id,variant_id,stock_code,sell_rule,holding_days,signal_count,win_rate,avg_ret,avg_dd,calmar,delay_buy_rate,delay_sell_rate,score,params
-activity_breakout,local_optuna_t24_vsplit,002718,fixed_60,60,38,0.842105,0.341105,-0.124466,2.740554,0.000000,0.000000,83.965930,"{""big_bull_line"": 8.5, ""max_close_ret"": 8.0, ""min_close_ret"": 1.5, ""signal_cooldown_days"": 6, ""strong_line"": 3.5, ""x15_multiplier"": 1.6}"
-activity_breakout,local_optuna_t24_vsplit,688700,fixed_20,20,57,0.631579,0.088898,-0.098963,0.898296,0.000000,0.017544,68.263412,"{""big_bull_line"": 9.0, ""max_close_ret"": 11.0, ""min_close_ret"": 0.5, ""signal_cooldown_days"": 6, ""strong_line"": 4.5, ""x15_multiplier"": 1.2}"

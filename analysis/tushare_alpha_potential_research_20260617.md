@@ -1,12 +1,14 @@
 # Tushare 10000积分 选股潜力研究 — 拉取优先级 (2026-06-17)
 
-> 状态: live (数据拉取决策依据)。owner: 本文件。
+> 状态：evidence-only；因冻结 Tier0 代码/配置仍引用而暂留，Phase 1 迁移引用后复核删除。
+
+> 以下状态、优先级和 vendor 口径均为 2026-06-17 当时证据，不是当前 owner；现行分类/数据契约见 `docs/MASTER_TOPLEVEL_DESIGN.md`。
 > 方法: 6 类并行评估 241 接口中 A股选股相关者 (catalog backend/config/tushare_api_catalog.json 真实字段),
 > 对主升浪逐阶段 (起涨鱼头/主升鱼身/顶部鱼尾 + 分层 + regime) 潜力打分。
 > 诚实先验偏重: **出场/持仓/分层/资金确认/板块轮动 > 纯买点预测** (买点≈噪音上限)。
 > pulled 标记已交叉核对 32 已拉表 (agent 曾误标 top_list 未拉, 实际已拉 — 已修)。
 
-## 口径一致性铁律 (用户 2026-06-17 再强调, owner=CLAUDE §4 坑库)
+## 当时的口径裁决（已被 2026-07-16 多 namespace 架构取代）
 
 **flow vendor 必须 = membership vendor; 申万只做中性化; 禁同花顺第三套** (口径混用=leakage)。项目现用口径:
 - **行业/板块 = 申万 (SW)**: dim_stock_sw_industry / index_member_all / v_sw_industry_pit (已拉)。行业资金流 = **个股 moneyflow(已拉) 按申万成分聚合**, 不拉别家行业资金流表 (东财 moneyflow_ind_dc 的行业口径≠申万, 只可用于东财概念链, 不可当申万行业流)。sw_daily(申万行业指数量价) 与此口径自洽 → 仍 P0。

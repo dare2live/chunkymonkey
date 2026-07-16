@@ -1,9 +1,11 @@
 # D1 主升浪 GT 考古 (2026-07-02) — archive parquet 实测 + git 定义溯源
 
+> 生命周期：历史证据（evidence-only）。本文保留当时的可复现实测，不拥有当前 GT 定义或实施计划；现行 owner 见 `docs/strategy_validation_contract.md`。
+
 > 目的: D1 GT 重生成 (master plan §D1) 的输入件。旧 GT 表已物删 (2026-06-28 纯数据平台重建),
 > 本文从 `data/archive/purge_processed/*.parquet` 直读实测 (read_parquet, 未进任何库) +
 > git 考古生成脚本历史版本, 把**可复现的定义规则**整理成 v2 草案。
-> 状态: side-agent 草稿, 待主会话 review 收编。
+> 当时状态: side-agent 调研草稿；是否仍适用必须按现行契约和 live 数据重验。
 > 实测环境: .venv/bin/python + duckdb in-memory; 全部数字来自 parquet 逐表 SQL, 非记忆。
 
 ## 1. 七表实测 profile (schema / 行数 / 时间范围 / grain)

@@ -2,7 +2,7 @@
 
 不依赖真 DB: 单测每道门函数对 (干净输入→空, 脏输入→非空), 物理保证门能红。
 2026-07-08 收口: D1(原 D1/D2, dossier 专属伪绿门)改为全量非成员消费者内联裸查扫描,
-见 analysis/serve_read_layer_gate_consolidation_20260708.md。
+历史 red→green 结论已固化为本测试，不再依赖单独的 analysis owner 文档。
 """
 from __future__ import annotations
 

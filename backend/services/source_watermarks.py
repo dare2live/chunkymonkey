@@ -54,8 +54,8 @@ CREATE INDEX IF NOT EXISTS idx_source_failure_open
 
 
 DOMAIN_SPECS = [
-    # kline_daily 2026-06-28 repoint tushare canonical (price_kline_tdxhub U6前已物删 + akshare 源退役):
-    #   单一 tier1 = tushare 前复权物化表 price_kline_qfq_tushare (M2 clean build, serving 真相源)。
+    # kline_daily 当前跟踪 TuShare qfq 派生分析面的新鲜度；这不是 nominal execution truth、
+    # AcceptedPartition 或原始供应商响应的发布水位。
     {
         "data_domain": "kline_daily",
         "source_name": "tushare",
@@ -76,9 +76,8 @@ DOMAIN_SPECS = [
     # financial_gpcw_8q watermark 条目已删 2026-06-27 (通达信全删 gpcw物删; 财务新鲜度走 tushare sync:* 域)
     # xdxr watermark 域已删 2026-06-28 (xdxr sync acquire 已移除, 复权走 tushare adj_factor; price_xdxr=tdxhub 残留表无 live sync)
     {
-        # 2026-06-23 全项目单一供应商=东财迁移 (Stage②): serving 行业真相源 = dim_stock_dc_industry
-        #   (东财行业=申万对齐同套桶, daily_update Step 2.96c build_dc_industry_view 每日刷新)。
-        #   深史2025前PIT走 v_sw_industry_pit (申万深PIT兜底, 选A)。
+        # DC namespace 的 legacy current-snapshot freshness。它不与 SW namespace 等价，
+        # 也不授权用 SW 深史补成同一分类；跨 namespace 只能走显式 versioned crosswalk。
         "data_domain": "industry_dc",
         "source_name": "tushare_dc",
         "source_tier": 1,

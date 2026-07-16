@@ -1,6 +1,8 @@
 # 数据四地基根因分析 — 审计 38 条问题的六个系统性根因 (2026-07-03)
 
-> owner: 主会话。输入: data_foundation_audit_20260703.json (10 confirmed/28 low_medium/79 clean)。
+> 生命周期：历史证据（evidence-only）。本文不拥有当前规则、状态、KPI 或实施计划；现行 owner 以 `docs/README.md` 指向的 owner 文档和 live code/data 为准。
+
+> 当时输入: data_foundation_audit_20260703.json (10 confirmed/28 low_medium/79 clean)。
 > 用户定调: "这些问题属于数据地基的问题, 四地基还有缺陷, 顺根因继续深挖"。
 > 方法: 把 38 条按共同机制聚类 → 每个根因 = 地基的一个结构性缺口, 修根因而非逐条打补丁 (流程根治>单点绕过)。
 

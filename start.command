@@ -81,27 +81,6 @@ cd "$BACKEND_DIR"
 stop_project_server
 check_port_conflict
 
-# ---- akshare 依赖检查 (改成查 pip metadata, 不真 import) ----
-# 之前用 import akshare 触发 mini_racer V8 init, 在 macOS 14+ 崩 (Python quit unexpectedly)
-# 现在用 pip metadata 查版本, 不 import → 不触发 V8
-current_v="$("$PYTHON_BIN" - <<'PY' 2>/dev/null || true
-try:
-    from importlib.metadata import version
-    print(version('akshare'))
-except Exception:
-    print("")
-PY
-)"
-if [[ -n "$current_v" ]]; then
-  echo "akshare: 本地版本 v${current_v} (metadata 查, 未 import → 避 V8 崩溃)"
-else
-  echo "akshare: 未安装; TDX 主链路可启动, akshare 兜底接口会不可用"
-fi
-
-# V8 flags 防 mini_racer 在 macOS 上 partition_alloc 崩溃
-# (akshare → mini_racer → V8 已知 issue: https://github.com/bpcreech/PyMiniRacer)
-export V8_FLAGS="${V8_FLAGS:---no-randomize-hashes --no-sandbox}"
-
 # 传给 FastAPI 进程: CORS 默认 origin 用实际端口拼 (main.py::_resolve_cors_origins)
 export CM_PORT="$PORT"
 

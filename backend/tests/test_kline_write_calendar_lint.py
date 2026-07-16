@@ -1,4 +1,4 @@
-"""Test K-line write-side calendar lint (CLAUDE.md Rule 3 反例 defense).
+"""Test K-line write-side calendar lint (AGENTS.md Tier0 calendar truth).
 
 Codex review 2026-05-19 HIGH 3: 缺最小有效单测覆盖 future-date filter (现有 test 用
 fake row VWAP-close mismatch 被 clean_price_rows 先 reject, lint 没机会跑).
@@ -19,7 +19,7 @@ from services.market_db import (
     KlineWriteLintError,
     filter_kline_rows_by_calendar,
 )
-# CANONICAL_KLINE_QFQ_VIEW_DDL/PRICE_KLINE_TDXHUB_DDL/upsert_price_kline_tdxhub_rows import 已删
+# ANALYSIS_KLINE_QFQ_VIEW_DDL/PRICE_KLINE_TDXHUB_DDL/upsert_price_kline_tdxhub_rows import 已删
 # (2026-06-27: 测它们的 e2e tdxhub upsert 测试已删, M3 退役该写入路径)
 
 
@@ -122,5 +122,3 @@ def test_filter_kline_rows_bypass_env_skips_lint(monkeypatch):
     filtered = filter_kline_rows_by_calendar(rows, raise_on_miss=False)
     # bypass → no filter applied
     assert len(filtered) == 2
-
-

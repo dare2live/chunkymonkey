@@ -1,0 +1,41 @@
+version: 2
+
+# Namespace is part of identity. No namespace may silently backfill or replace another.
+cross_namespace_fallback: forbidden
+
+namespaces:
+  sw_industry:
+    kind: hierarchy
+    membership: pit_interval
+    canonical: false
+  dc_industry:
+    kind: hierarchy
+    membership: current_snapshot_legacy
+    canonical: false
+    source_content_type: 行业
+    source_index_type: 行业板块
+    source_level_map:
+      东财一级行业: L1
+      东财二级行业: L2
+      东财三级行业: L3
+    # 20260716 observed: 5204 stocks, 31/128/337 nodes. Floors detect provider
+    # landing collapse; exact serving-vs-raw parity alone cannot prove source health.
+    current_snapshot_quality_floor:
+      measured_trade_date: "20260716"
+      min_stocks: 5000
+      min_nodes_by_level:
+        L1: 28
+        L2: 120
+        L3: 300
+  dc_concept:
+    kind: multi_label
+    membership: current_snapshot_legacy
+    canonical: false
+    source_content_type: 概念
+    source_index_type: 概念板块
+    # 20260716 observed: 66718 memberships, 5203 stocks, 494 concepts.
+    current_snapshot_quality_floor:
+      measured_trade_date: "20260716"
+      min_memberships: 60000
+      min_stocks: 5000
+      min_nodes: 450

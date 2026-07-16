@@ -1,9 +1,11 @@
 # data_audit cry-wolf 三检查 triage — 2 真修复 + 1 真 gap 升级 (2026-06-24)
 
+> 生命周期：历史证据（evidence-only）。本文不拥有当前 K 线契约或 gate；现行数据真相和验收边界见 `docs/MASTER_TOPLEVEL_DESIGN.md` 与 `docs/engineering_governance.md`。
+
 > 触发: daily 真跑验证暴露 3 个 data_audit FAIL, 前会话 PROJECT_INDEX 记"口径artifact非真缺口
 > (K线中位1804/1810天=正常停牌, 209码=退市股历史=生存者正确)", flag"阶段二§8门要扣停牌"。
 > 本次逐个用**真实数据**核证 (measured-not-estimated): 2 个确是 cry-wolf 已修, **第 3 个是被误判的真 survivorship gap, 升级用户**。
-> owner = 蓝图 §8 (每阶段验收门) data_module_architecture_20260624.md。
+> 当时 owner 已退役；本文只保留 clean-vs-source 口径形成时的实测证据。
 
 ## 背景: data_audit 是 M2(clean)阶段的验收门
 `run_post_sync_audit` (services/data_audit.py) 被 `pipeline/clean.py` Step 3c 调 = clean 阶段跑完的校验环。7 检查; 3 个曾 FAIL。

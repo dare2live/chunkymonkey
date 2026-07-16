@@ -1,4 +1,4 @@
-# SERVE 读侧 entity registry — 数据模块顶层设计 v2 §4.2 (data_module_toplevel_design_20260622.md)
+# SERVE 读侧 entity registry — owner=docs/MASTER_TOPLEVEL_DESIGN.md §3.1/§5.1
 #
 # 唯一取数声明处 (不变量4 单概念单真相源): 非成员消费者禁内联 FROM raw_* (check_serve_read_layer D1 + moth serve-read-layer-doors 守; 2026-07-08 收口后 D1 全量扫 backend/services+scripts, 见 data_module_members.yaml)。
 # PIT 锚 + 口径清洗由读层强制 (不变量1 统一主键+PIT锚)。
@@ -21,7 +21,7 @@
 # 命名法 (数据分两类, 按"换了源水还是不是同一桶水"客观划线):
 #   - 事实类 (K线/成交/股东名册/财报数字/涨跌停): 物理世界唯一真相, 源只是通道 → entity 名禁含 vendor 字样。
 #   - 观点类 (行业/概念分类=taxonomy, 资金流单别=vendor算法): 分类体系本身是数据身份 → entity 名必须带体系名
-#     (sw_industry=申万体系 / dc_member=东财概念 / moneyflow_dc=东财单别算法), 换体系=换桶非换水, 历史禁跨体系拼接 (CLAUDE §4.5)。
+#     (sw_industry=申万体系 / dc_member=东财概念 / moneyflow_dc=东财单别算法)；跨体系不可按名称冒充等价，边界见 MASTER taxonomy contract。
 version: 1
 
 clean_rules:
@@ -214,7 +214,7 @@ entities:
 
   holders_top10:
     # 十大流通股东 (事实类桶 — 股东名册该谁是谁, 与源无关)。2026-07-02 正名 holders_tdx→holders_top10 (水龙头契约: 事实类禁 vendor 名; 0 代码消费方零成本)。
-    # 现水龙头=东财妙想 aif10 (CLAUDE.md §4.3 主源, 取代滞后~4月的 tushare top10_floatholders + 退役 tdx F10); 写入=holders_aif10.sync_holders_aif10 (source='miaoxiang'); PIT 锚=report_date (YYYYMMDD)。
+    # 现水龙头=东财妙想 aif10 (source decision evidence=analysis/miaoxiang_aif10_source_decision_20260624.md, 取代滞后约4月的 tushare top10_floatholders + 退役 tdx F10); 写入=holders_aif10.sync_holders_aif10 (source='miaoxiang'); PIT 锚=report_date (YYYYMMDD)。
     db: smartmoney
     table: fact_top10_holder_period
     layer: L1

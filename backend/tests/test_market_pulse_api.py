@@ -1,6 +1,6 @@
-"""C4 pulse API 单测 — 9 端点结构 + 边界 (空表 / 未知 chain 400 / 未知 content_type|level 400)。
+"""C4 pulse API 单测 — 9 端点结构 + 边界 (空表 / 未知 namespace 400 / 非法 level 400)。
 
-v2 (2026-07-02 第一批) 覆盖: heatmap content_type tab / rotation dc 资金流轮动+双龙头 /
+v2 (2026-07-02 第一批) 覆盖: heatmap taxonomy namespace / rotation dc 资金流轮动+双龙头 /
 sentiment 情绪周期+水位字段 / strongest 最强板块卡 / members 成分下钻 (dc 快照 + sw is_new)。
 v3 (2026-07-03) 覆盖: level 参数默认 L1 (rotation/heatmap 不破坏 v2 契约) / flow_board
 资金流向榜 (regime 分组 + cum_net + stripe, 替代 /quiet) / drill 三层链下钻 (sw L1→L2→L3→
@@ -23,8 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services import market_pulse as mp
 from routers import market_pulse as pulse_api
-from test_market_pulse import CFG, D, _DDL, _fixture_conn
-from conftest import duck_mem
+from test_market_pulse import CFG, D, _fixture_conn
 
 # warnings 阈值测试用固定值 (monkeypatch 注入, 与生产 yaml 解耦; 生产键在场由 config 契约测试守)
 WARN_CFG = {**CFG, "warning_quiet_outflow_days": 3}
@@ -61,6 +60,17 @@ def _api_conn():
         "INSERT INTO tr.raw_tushare_moneyflow_ind_dc VALUES "
         "(?, '行业', 'BK0004.DC', '贵金属', 0.1, 100.0, 20.0, 10.0, '赤峰黄金')",
         [(d,) for d in D])
+    c.executemany(
+        "INSERT INTO tr.raw_tushare_dc_index VALUES "
+        "('BK0003.DC', ?, '概念板块', '阳光电源', '300274.SZ', 1.0, 1, 1, 100.0, NULL)",
+        [(d,) for d in D],
+    )
+    c.executemany(
+        "INSERT INTO tr.raw_tushare_dc_index VALUES "
+        "('BK0004.DC', ?, '行业板块', '赤峰黄金', '600988.SH', 1.0, 1, 1, 100.0, "
+        "'东财一级行业')",
+        [(d,) for d in D],
+    )
     mp.rebuild_all(conn=c, cfg=CFG)
     return c
 
@@ -87,11 +97,21 @@ def client(monkeypatch):
 
 @pytest.fixture
 def empty_client(monkeypatch):
-    """边界: 源表全空 → rebuild 产出空 pulse 表 → 5 端点必须 200 + 空结构 (不 500)。"""
+    """边界: 已发布 mart 暂无行 → 端点必须 200 + 空结构 (不 500)。
+
+    Writer 对空源应 fail closed；API 空读契约用已验证 schema 清空后的表测试，不能要求
+    production rebuild 把 0 行当成功。
+    """
     monkeypatch.setattr(pulse_api, "_load_cfg", lambda: WARN_CFG)
-    c = duck_mem()
-    c.executescript(_DDL)
-    mp.rebuild_all(conn=c, cfg=CFG)
+    c = _api_conn()
+    c.execute(f"DELETE FROM {mp.MARKET_TABLE}")
+    c.execute(f"DELETE FROM {mp.SECTOR_TABLE}")
+    for (table_name,) in c.execute("""
+        SELECT table_name FROM information_schema.tables WHERE table_schema = 'tr'
+    """).fetchall():
+        c.execute(f'DELETE FROM tr."{table_name}"')
+    c.execute("DELETE FROM dim_stock_segment_daily")
+    c.execute("DELETE FROM fact_stock_form_daily")
     try:
         yield _make_client(c)
     finally:
@@ -99,11 +119,12 @@ def empty_client(monkeypatch):
 
 
 def test_heatmap_matrix_topn_and_days(client):
-    # v2 缺口①契约: 默认 content_type=行业 → 只出行业板块 (BK0004 100 > BK0001 20)
+    # 默认 namespace=dc_industry → 只出行业板块 (BK0004 100 > BK0001 20)
     r = client.get("/api/v3/pulse/heatmap")
     assert r.status_code == 200
     body = r.json()
-    assert body["chain"] == mp.CHAIN_DC and body["content_type"] == "行业"
+    assert body["chain"] == mp.CHAIN_DC_INDUSTRY
+    assert "content_type" not in body
     assert body["dates"] == D  # 5 日 <= 默认 20, 升序
     codes = [s["sector_code"] for s in body["sectors"]]
     assert codes == ["BK0004.DC", "BK0001.DC"]
@@ -119,17 +140,31 @@ def test_heatmap_matrix_topn_and_days(client):
     assert r3.json()["dates"] == D[-2:]
 
 
-def test_heatmap_content_type_tab(client):
-    """概念 tab: 只出概念板块 (BK0002 500 > BK0003 -50); 非法 content_type → 400。"""
-    r = client.get("/api/v3/pulse/heatmap?content_type=概念")
+def test_heatmap_exposes_dc_industry_and_concept_as_separate_namespaces(client):
+    industry = client.get(f"/api/v3/pulse/heatmap?chain={mp.CHAIN_DC_INDUSTRY}")
+    concept = client.get(f"/api/v3/pulse/heatmap?chain={mp.CHAIN_DC_CONCEPT}")
+
+    assert industry.status_code == 200 and concept.status_code == 200
+    assert industry.json()["chain"] == mp.CHAIN_DC_INDUSTRY
+    assert concept.json()["chain"] == mp.CHAIN_DC_CONCEPT
+    assert [row["sector_code"] for row in industry.json()["sectors"]] == [
+        "BK0004.DC", "BK0001.DC"
+    ]
+    assert [row["sector_code"] for row in concept.json()["sectors"]] == [
+        "BK0002.DC", "BK0003.DC"
+    ]
+    assert "content_type" not in industry.json()
+    assert "content_type" not in concept.json()
+
+
+def test_heatmap_concept_namespace(client):
+    """概念是独立 namespace，不是 dc_industry 内的 content_type tab。"""
+    r = client.get(f"/api/v3/pulse/heatmap?chain={mp.CHAIN_DC_CONCEPT}")
     assert r.status_code == 200
     body = r.json()
-    assert body["content_type"] == "概念"
+    assert body["chain"] == mp.CHAIN_DC_CONCEPT
     assert [s["sector_code"] for s in body["sectors"]] == ["BK0002.DC", "BK0003.DC"]
     assert body["sectors"][0]["total_net_amount"] == pytest.approx(500.0)
-    r2 = client.get("/api/v3/pulse/heatmap?content_type=地域")
-    assert r2.status_code == 400
-    assert "unknown content_type" in r2.json()["detail"]
 
 
 def test_heatmap_unknown_chain_400(client):
@@ -155,29 +190,33 @@ def test_rotation_rank_migration(client):
 
 
 def test_rotation_dc_chain_leaders_and_rank_flow(client):
-    """v2 dc 资金流轮动: rank_flow 迁移 + 双龙头 + 宽度 + content_type; top 截断。"""
-    r = client.get(f"/api/v3/pulse/rotation?chain={mp.CHAIN_DC}&lag=1")
+    """东财行业与概念分别排名；任一 API 响应不得混入另一 namespace。"""
+    r = client.get(f"/api/v3/pulse/rotation?chain={mp.CHAIN_DC_INDUSTRY}&lag=1")
     assert r.status_code == 200
     body = r.json()
-    assert body["chain"] == mp.CHAIN_DC
+    assert body["chain"] == mp.CHAIN_DC_INDUSTRY
     assert body["latest_date"] == D[4] and body["prev_date"] == D[3]
     codes = [s["sector_code"] for s in body["sectors"]]
-    # D4 net_amount: BK0002 (100) > BK0004 (20) > BK0001 (-3) > BK0003 (-10)
-    assert codes == ["BK0002.DC", "BK0004.DC", "BK0001.DC", "BK0003.DC"]
+    assert codes == ["BK0004.DC", "BK0001.DC"]
     secs = {s["sector_code"]: s for s in body["sectors"]}
     bk1 = secs["BK0001.DC"]
-    assert bk1["rank_flow"] == 3 and bk1["prev_rank_flow"] == 3
+    assert bk1["rank_flow"] == 2 and bk1["prev_rank_flow"] == 2
     assert bk1["content_type"] == "行业"
     assert bk1["leading"] == "云煤能源" and bk1["leading_pct"] == pytest.approx(9.98)
     assert bk1["flow_leader_stock"] == "云煤能源"
     assert bk1["inflow_breadth"] == pytest.approx(0.0)  # D4 成分 2 只全非流入 → 真 0
-    bk2 = secs["BK0002.DC"]
+    concept = client.get(
+        f"/api/v3/pulse/rotation?chain={mp.CHAIN_DC_CONCEPT}&lag=1"
+    ).json()
+    assert concept["chain"] == mp.CHAIN_DC_CONCEPT
+    assert [s["sector_code"] for s in concept["sectors"]] == ["BK0002.DC", "BK0003.DC"]
+    bk2 = concept["sectors"][0]
     assert bk2["rank_flow"] == 1 and bk2["net_amount"] == pytest.approx(100.0)
-    assert bk2["leading"] is None and bk2["flow_leader_stock"] == "万丰奥威"
+    assert bk2["leading"] == "万丰奥威" and bk2["flow_leader_stock"] == "万丰奥威"
     assert bk2["inflow_breadth"] is None  # 无成分快照 → 不知道≠0
     # top 截断
-    r2 = client.get(f"/api/v3/pulse/rotation?chain={mp.CHAIN_DC}&lag=1&top=2")
-    assert [s["sector_code"] for s in r2.json()["sectors"]] == ["BK0002.DC", "BK0004.DC"]
+    r2 = client.get(f"/api/v3/pulse/rotation?chain={mp.CHAIN_DC_CONCEPT}&lag=1&top=1")
+    assert [s["sector_code"] for s in r2.json()["sectors"]] == ["BK0002.DC"]
 
 
 def test_strongest_leaderboard(client):
@@ -199,7 +238,7 @@ def test_members_drilldown(client):
     r = client.get("/api/v3/pulse/members?sector_code=BK0001.DC")
     assert r.status_code == 200
     body = r.json()
-    assert body["chain"] == mp.CHAIN_DC and body["as_of"] == D[4]
+    assert body["chain"] == mp.CHAIN_DC_INDUSTRY and body["as_of"] == D[4]
     assert [m["con_code"] for m in body["members"]] == ["600001.SH", "600002.SZ"]
     assert body["members"][0]["name"] == "甲"
     r2 = client.get(f"/api/v3/pulse/members?sector_code=801010.SI&chain={mp.CHAIN_SW}")
@@ -233,30 +272,29 @@ def test_sentiment_v2_fields(client):
 
 
 def test_flow_board_regime_groups_and_stripe(client):
-    """v3 资金流向榜 (替代 /quiet): 最新 dc 日 D4 按 flow_regime 分组 —
-    inflow: BK0002 上行累积 (px=1.03^5-1=15.9%>=1) + BK0004 横盘累积 (px=0.5%<1);
-    outflow: BK0001 脉冲流出 (z=-2.40<=-2 且 net<0) + BK0003 横盘累积流出。
-    排序: cum_ratio 优先 (BK0001 唯一有 dc_index 市值 → 非 NULL 在前), 余按 cum_net。"""
+    """资金形态榜按 namespace 隔离：行业和概念分别请求、分别排序。"""
     r = client.get("/api/v3/pulse/flow_board")
     assert r.status_code == 200
     body = r.json()
-    assert body["chain"] == mp.CHAIN_DC and body["trade_date"] == D[4]
+    assert body["chain"] == mp.CHAIN_DC_INDUSTRY and body["trade_date"] == D[4]
     inflow = {x["sector_code"]: x for x in body["inflow"]}
-    assert [x["sector_code"] for x in body["inflow"]] == ["BK0002.DC", "BK0004.DC"]  # cum_net 300 > 60
-    assert inflow["BK0002.DC"]["flow_regime"] == "accum_in_driving"
-    assert inflow["BK0002.DC"]["cum_net"] == pytest.approx(300.0)   # cw=3
+    assert [x["sector_code"] for x in body["inflow"]] == ["BK0004.DC"]
     assert inflow["BK0004.DC"]["flow_regime"] == "accum_in_silent"
     assert inflow["BK0004.DC"]["flow_streak"] == 5
-    assert [x["sector_code"] for x in body["outflow"]] == ["BK0001.DC", "BK0003.DC"]
+    assert [x["sector_code"] for x in body["outflow"]] == ["BK0001.DC"]
     out = {x["sector_code"]: x for x in body["outflow"]}
     assert out["BK0001.DC"]["flow_regime"] == "surge_out"
     assert out["BK0001.DC"]["cum_ratio_20d"] == pytest.approx(5.0 / 2e6 * 100)  # (7+1-3)/总市值
-    assert out["BK0003.DC"]["flow_regime"] == "accum_out_silent"
-    assert out["BK0003.DC"]["cum_ratio_20d"] is None  # 无 dc_index 市值 → NULL 沉底
     # stripe: 与 stripe_dates 对齐的逐日净流序列
     assert body["stripe_dates"] == D
-    assert inflow["BK0002.DC"]["stripe"] == [pytest.approx(100.0)] * 5
     assert out["BK0001.DC"]["stripe"] == [pytest.approx(v) for v in (10.0, 5.0, 7.0, 1.0, -3.0)]
+    concept = client.get(f"/api/v3/pulse/flow_board?chain={mp.CHAIN_DC_CONCEPT}").json()
+    assert [x["sector_code"] for x in concept["inflow"]] == ["BK0002.DC"]
+    assert concept["inflow"][0]["flow_regime"] == "accum_in_driving"
+    assert concept["inflow"][0]["cum_net"] == pytest.approx(300.0)
+    assert [x["sector_code"] for x in concept["outflow"]] == ["BK0003.DC"]
+    assert concept["outflow"][0]["flow_regime"] == "accum_out_silent"
+    assert concept["outflow"][0]["cum_ratio_20d"] == pytest.approx(-0.003)
     # stripe_days=0 关闭条纹
     r2 = client.get("/api/v3/pulse/flow_board?stripe_days=0")
     assert r2.json()["stripe_dates"] == [] and r2.json()["inflow"][0]["stripe"] == []
@@ -384,20 +422,19 @@ def test_drill_leaf_fields_complete(client):
 
 
 def test_drill_dc_top_and_leaf(client):
-    """drill dc 链: 顶层=板块列表 (content_type 分组, rank_flow 序, top 截断);
+    """drill 的东财行业/概念顶层由 namespace 分开，行业板块码可进入成分叶子。
     板块码→成分股叶子 (dc_member 最新快照 + moneyflow_dc 东财口径流)。"""
-    r = client.get(f"/api/v3/pulse/drill?chain={mp.CHAIN_DC}")
+    r = client.get(f"/api/v3/pulse/drill?chain={mp.CHAIN_DC_INDUSTRY}")
     body = r.json()
     assert body["rows_level"] == "sector"
     assert [x["sector_code"] for x in body["rows"]] == ["BK0004.DC", "BK0001.DC"]  # 行业 rank_flow 序
     assert body["rows"][0]["flow_regime"] == "accum_in_silent"
-    r2 = client.get(f"/api/v3/pulse/drill?chain={mp.CHAIN_DC}&content_type=概念")
+    r2 = client.get(f"/api/v3/pulse/drill?chain={mp.CHAIN_DC_CONCEPT}")
     assert [x["sector_code"] for x in r2.json()["rows"]] == ["BK0002.DC", "BK0003.DC"]
-    r3 = client.get(f"/api/v3/pulse/drill?chain={mp.CHAIN_DC}&top=1")
+    r3 = client.get(f"/api/v3/pulse/drill?chain={mp.CHAIN_DC_INDUSTRY}&top=1")
     assert [x["sector_code"] for x in r3.json()["rows"]] == ["BK0004.DC"]
-    assert client.get(f"/api/v3/pulse/drill?chain={mp.CHAIN_DC}&content_type=地域").status_code == 400
     # 叶子: BK0001 D4 快照成分 (600001/600002), moneyflow_dc 流 (万元→元)
-    r4 = client.get(f"/api/v3/pulse/drill?chain={mp.CHAIN_DC}&code=BK0001.DC")
+    r4 = client.get(f"/api/v3/pulse/drill?chain={mp.CHAIN_DC_INDUSTRY}&code=BK0001.DC")
     b4 = r4.json()
     assert b4["rows_level"] == "stock" and b4["member_as_of"] == D[4]
     assert b4["breadcrumb"][0]["name"] == "煤炭行业"
@@ -410,7 +447,7 @@ def test_drill_dc_top_and_leaf(client):
     assert leaf["form_name"] == "低位横盘"
     assert leaf["limit_times"] is None                 # D4 无涨停行 → NULL 不猜
     # 未知板块 → 200 空
-    r5 = client.get(f"/api/v3/pulse/drill?chain={mp.CHAIN_DC}&code=BK9999.DC")
+    r5 = client.get(f"/api/v3/pulse/drill?chain={mp.CHAIN_DC_INDUSTRY}&code=BK9999.DC")
     assert r5.status_code == 200 and r5.json()["rows"] == []
 
 
@@ -433,15 +470,19 @@ def test_empty_tables_all_endpoints_200(empty_client):
     for path, empty_shape in [
         ("/api/v3/pulse/heatmap", {"dates": [], "sectors": []}),
         ("/api/v3/pulse/rotation", {"latest_date": None, "prev_date": None, "sectors": []}),
-        (f"/api/v3/pulse/rotation?chain={mp.CHAIN_DC}",
+        (f"/api/v3/pulse/rotation?chain={mp.CHAIN_DC_INDUSTRY}",
+         {"latest_date": None, "prev_date": None, "sectors": []}),
+        (f"/api/v3/pulse/rotation?chain={mp.CHAIN_DC_CONCEPT}",
          {"latest_date": None, "prev_date": None, "sectors": []}),
         ("/api/v3/pulse/flow_board", {"trade_date": None, "stripe_dates": [],
                                       "inflow": [], "outflow": []}),
         (f"/api/v3/pulse/flow_board?chain={mp.CHAIN_SW}", {"inflow": [], "outflow": []}),
         ("/api/v3/pulse/flow_stripe?code=BK0001.DC", {"dates": [], "values": []}),
         ("/api/v3/pulse/drill", {"date": None, "breadcrumb": [], "rows": []}),
-        (f"/api/v3/pulse/drill?chain={mp.CHAIN_DC}", {"date": None, "rows": []}),
-        (f"/api/v3/pulse/drill?chain={mp.CHAIN_DC}&code=BK0001.DC", {"member_as_of": None, "rows": []}),
+        (f"/api/v3/pulse/drill?chain={mp.CHAIN_DC_INDUSTRY}", {"date": None, "rows": []}),
+        (f"/api/v3/pulse/drill?chain={mp.CHAIN_DC_CONCEPT}", {"date": None, "rows": []}),
+        (f"/api/v3/pulse/drill?chain={mp.CHAIN_DC_INDUSTRY}&code=BK0001.DC",
+         {"member_as_of": None, "rows": []}),
         ("/api/v3/pulse/drill?code=801010.SI", {"rows": []}),
         ("/api/v3/pulse/sentiment", {"days": []}),
         ("/api/v3/pulse/warnings", {"rank_dropouts": [], "quiet_outflows": []}),

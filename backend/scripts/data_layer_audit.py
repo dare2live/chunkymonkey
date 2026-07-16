@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""数据层级执法器 (2026-06-14 地基-reset 后立, owner=docs/data_management_framework.md)。
+"""数据层级执法器 (owner=docs/MASTER_TOPLEVEL_DESIGN.md §3-§5)。
 
 固化"层级声明化"纪律, 根治本次 reset 暴露的"层级隐式 → 反复推导 + 耦合无法分离"问题:
   1. 每张活表必须在 backend/config/data_layers.yaml 声明 layer; 未声明 = FAIL (强制新表声明分层)。
@@ -44,10 +44,10 @@ MANIFEST = REPO / "backend" / "config" / "database_manifest.yaml"
 #   dim_active/trading_calendar/all_ever_listed/listing_status 物删迁 reference 后须在此声明执法,
 #   否则 dim 分区静默不受管 (同 feature_store 2026-06-15 接入理由)。reference 仅这 4 dim, 全已声明。
 MANAGED_DBS = ("smartmoney", "feature_store", "reference")  # rule-compliance: ok evidence=database_manifest.yaml 业务/特征/基础维度库 (untagged 检查域: 每表必声明)
-# 2026-06-22 P2: stale 检查(声明了但不在live)须扫全库 — 否则 market/etf 驻留的声明表
-# (price_kline_qfq_tushare 在 market / mart_etf_snapshot_* 在 etf) 被误判 stale。untagged 检查仍只 MANAGED_DBS
+# stale 检查(声明了但不在live)扫当前 manifest 中承载受管表的库；退役 ETF 文件只留删除证据，
+# 不再冒充 active alias。untagged 检查仍只 MANAGED_DBS。
 # (不要求声明 market/etf 的 raw 镜像表)。2026-06-27 §9: reference 加入 (4 dim live 在此)。
-STALE_SCAN_DBS = ("smartmoney", "feature_store", "market", "etf", "reference")
+STALE_SCAN_DBS = ("smartmoney", "feature_store", "market", "reference")
 
 
 def _db_path(key: str) -> Path:

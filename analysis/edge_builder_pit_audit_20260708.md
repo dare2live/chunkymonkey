@@ -1,12 +1,14 @@
 # Edge 加工模块 PIT 安全性审计 (2026-07-08)
 
+> 生命周期：历史证据（evidence-only）。本文记录当时审计结论，不是当前 PIT 证书；现行验证要求见 `docs/strategy_validation_contract.md`，代码与数据必须 live 重验。
+
 ## 背景
 
 用户纠正了此前一处不准确的表述("edge/策略层代码现在还是空的")——`institution_profile.py`/`segments.py`/`technical_states/`/`market_pulse.py`/`rally_gt.py` 这批"加工 builder"模块 2026-07-02 起已经落地并在跑, 只是这两轮"数据地基是否稳固"的审计从未验证过它们内部 JOIN/时间锚逻辑的 PIT 正确性(只验证过它们该不该绕开 DataAccess 这个架构问题)。用户要求"并行查"。
 
 ## 方法
 
-16-agent workflow: 5 个模块各自深度审计(逐 JOIN/窗口函数/复权口径检查项目 CLAUDE.md §4.1 五类 PIT 反模式) + 每条发现独立对抗验证(不采信单一审计员"干净"结论)。
+16-agent workflow: 5 个模块各自深度审计（逐 JOIN/窗口函数/复权口径检查当时采用的五类 PIT 反模式）+ 每条发现独立对抗验证（不采信单一审计员“干净”结论）。现行 PIT 口径以 `docs/strategy_validation_contract.md` 为准。
 
 ## 结论
 

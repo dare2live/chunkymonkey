@@ -1,246 +1,210 @@
-# Engineering Governance Contract
+# Engineering Governance
 
-> **部分 stale (2026-06-20)**: 本文引用的 `audit_*` 治理审计套件 (`audit_execution_surface` /
-> `audit_test_tool_health` / `audit_docs_graph` / `audit_storage_payloads` /
-> `audit_portfolio_sizer_profile_attrition`) **在 2026-06-16 reset 已删**。**当前活跃门** =
-> `data_layer_audit.py` / `check_doc_drift.py` / `check_rule_compliance.py` / `check_config_refs.py` /
-> `check_continuity_integrity.py` / `moth assert` / `moth coupling` / codegraph+complexity 配对扫
-> (详见本文 codegraph 节 + chunkymonkey-ops skill §3)。**2026-07-06 更正**: 本行此前误列
-> `check_legacy_flow_integrity.py`(C1 子检查因架构变迁已空转 PASS, 判断力打折, 现只 informational
-> 挂 `safe_commit.sh` Step 3.994 非硬闸) 与 `check_strategy_validation_integrity.py`(设计上就应
-> 保持 FAIL 直到策略层重建, 见 §5, 不接入任何自动门) 为"活跃门"——两者均非本文原意的"能拦
-> commit 的硬闸", 已从本行移除防误导; `check_doc_governance.py` 现挂 informational (Step 3.993,
-> 21 条已知 backlog 待清), 亦非硬闸。
-> 下方表中 `audit_*.py` 命令为历史参考, 勿直接运行 (已悬空)。本文规则原则 (最小模块/无 god-file/
-> 删层必删 caller 等) 仍有效。
+> 状态：live
+> 生效：2026-07-16
+> 作用：本项目唯一工程执行手册。架构语义归 `MASTER_TOPLEVEL_DESIGN.md`，当前计划归 `goal.md`，研究发布归 `strategy_validation_contract.md`。
 
-This is the active engineering rulebook for architecture work after the docs
-consolidation. It absorbs the durable rules from the former top-level design,
-test-tool, agent-parallel, tooling, provider-job, and deprecation docs.
-Historical source files are archived under `analysis/docs_archive_20260531/`.
+## 1. 权威与启动
 
-## Risk First
+新会话按以下顺序建立 live truth：
 
-| Risk | Rule |
+1. `AGENTS.md`；
+2. `goal.md`；
+3. `git status --short --branch`；
+4. `moth snapshot --repo .`；
+5. `codegraph status .`；
+6. 按任务读取本目录中的唯一 owner 文档；
+7. 用只读 DB/API/命令验证易漂移事实。
+
+`analysis/project_state_ledger.md` 只用 `rg`/`tail` 查询历史。旧 session handoff / workflow checkpoint 体系已退役；恢复状态必须重新读取 git、Moth、CodeGraph 和 live data。`CLAUDE.md` 是 legacy Claude 文件，Codex 默认不读。
+
+## 2. 必用 skills
+
+| 场景 | Skill |
 |---|---|
-| Pretty backtests replacing production evidence | Metrics are `unknown` until measured by current gates |
-| Old docs or chat memory steering work | `goal.md`, `SESSION_HANDOFF.md`, `analysis/workflow_checkpoint.md`, and this docs set are the current surface |
-| Legacy Claude policy steering Codex | `CLAUDE.md` is ignored by default; Codex uses `AGENTS.md`, active docs, skills, and live tooling unless the user explicitly asks for historical migration |
-| Hidden complexity and stale indexes | CodeGraph and complexity optimizer are a paired gate |
-| Green tests proving old assumptions | Run test-tool health before citing tests as evidence |
-| Provider spend or dirty provider artifacts | Long or paid compute must be a registered `experiment_jobs` plan with gates and artifact contracts; do not revive deleted provider scripts |
-| Automation residue or hidden scheduler | `backend/config/automation_policy.yaml` owns `manual_only`; doctor `automation_surface` + `check_dead_references.py` must PASS. Repo/user/system launchd, user/system cron, launchctl, installers, dashboards, registries, and Moth evidence paths cannot schedule or reference retired data writers |
-| Concurrent supported writers | `pipeline.run`, `pipeline.stage_runner`, and `sync_runner` share one real flock lease; child processes inherit the actual descriptor. This contract deliberately does not claim that every historical internal script is globally intercepted; direct internal writers are not public scheduler entrypoints |
+| 判断、架构、取舍 | `$mio` |
+| 广泛架构、模糊拆解、多 agent 总控 | `$architect-controller` |
+| ChunkyMonkey 非平凡执行、数据/策略/PIT/删除/门禁 | `$chunkymonkey-governance` |
+| Debug、TDD、交接 | `$chunkymonkey-debug-delivery` |
+| `.py/.yaml/.sql` 交付或提交前 Rule 10 | `$chunkymonkey-review-gate` |
+| Codex 本地配置、skills、hooks、插件、启动项 | `$codex-local-ops` |
 
-## Skill Owner Map
+Skill 输出是方法约束，不替代 live repo evidence。子 agent 输出是候选证据，controller 负责裁决。
 
-| Scope | Required skill | Rule |
-|---|---|---|
-| Codex Mac app/CLI, plugin sync, startup items, hooks, local automations, compact errors, Codex worktrees, Terminal mail, or monitor residue | `$codex-local-ops` | Diagnose local Codex state first; do not misclassify it as a project hook or business gate |
-| Non-trivial ChunkyMonkey execution, architecture, strategy validation, PIT/leakage, Optuna/provider jobs, deletion, or gate-policy work | `$chunkymonkey-governance` | Run pre-execution governance before edits or expensive commands |
-| Rule 10, commit readiness, blocking code review, or `.py` / `.yaml` / `.sql` slices before commit | `$chunkymonkey-review-gate` | Produce a review verdict and commit trailer before `safe_commit.sh` |
-| Shared tooling state and evidence path discovery | Moth profile `.moth/profile.yaml` | Locate evidence paths and current tooling state; do not redefine business gate rules |
+## 3. 开工前 Grill Gate
 
-## Dirty Worktree Resolution
+任何大重构、跑批、寻优、迁移或付费操作先回答：
 
-Dirty worktree cleanup is a staged delivery process. It is not complete until
-each dirty file is either deleted as proven residue, accepted into a reviewed
-slice, or explicitly left as an owned evidence gap.
+1. 产出是什么，谁消费，不做会怎样；
+2. 输入快照、数据覆盖、参数、依赖和退出条件是否已经验证；
+3. 最便宜的证伪方式是什么；
+4. 失败/中断如何回滚，已完成 checkpoint 如何复用；
+5. 哪个 gate 能把“能运行但无价值”拦住。
 
-| Layer | Scope | Rule |
-|---:|---|---|
-| 0 | Local generated residue | Delete `.DS_Store`, `__pycache__`, `.pytest_cache`, and `.pyc`; do not delete logs/reports/DB artifacts without owner evidence |
-| 1 | Classification | `scripts/chunkyctl worktree --format markdown`; `unknown_count` must be 0 before commit planning |
-| 2 | Slice review | Use `scripts/chunkyctl worktree --bucket <name> --format markdown`; review docs/tooling/updater/data/service/test buckets separately |
-| 3 | Gate proof | Run the slice's CodeGraph, complexity, docs graph, test-tool, py_compile, pytest, or domain audit gates before staging |
-| 4 | Explicit staging | Stage only reviewed file lists; never `git add .` |
-| 5 | Safe commit | Use `scripts/safe_commit.sh`; for local cleanup batches use `SAFE_COMMIT_NO_PUSH=1`; `.py` slices require Rule 10 review or a meaningful skip reason |
+无法回答则不执行。当前不恢复自动跑批，不启动 provider 任务，也不把不存在的 backend 写成 active config。
 
-CodeGraph pending `Added` that equals untracked indexable files is a worktree
-acceptance problem, not something to silence with repeated syncs. Accept the
-files into a reviewed slice or delete them when verified obsolete.
+## 4. CodeGraph、Moth 与复杂度
 
-## Design Review Gate
-
-Every new flow, feature, module, table, config file, or threshold must answer:
-
-| Check | Requirement |
-|---|---|
-| First principles | What must exist for real-money A-share decisions to be trustworthy? |
-| Occam | Can an existing module/table/config own this without a new abstraction? |
-| Owner | Is the owner a YAML/config, data table, service module, or code exception? |
-| Truth source | Which source is authoritative, and which sources are caches or evidence? |
-| Failure mode | What 300616-style failure does this prevent or expose? |
-| Gate | Which script/test blocks drift before production use? |
-
-Hardcoded business rules are blocked by default. Thresholds, source priority,
-dates, table catalogs, weights, strategy parameters, and resource policies
-belong in config or tables unless a documented exception is safer.
-For `portfolio_sizer` threshold tuning specifically, the former
-`audit_portfolio_sizer_profile_attrition.py` was retired in the 2026-06-16
-reset; produce an equivalent attrition summary manually and treat
-it as the required evidence gate before changing
-`min_n_signals` / `min_wilson_win`.
-
-## CodeGraph + Complexity
-
-| Timing | Required action |
-|---|---|
-| Before non-trivial `.py` edits | `codegraph query "<symbol>"` and `codegraph context "<task>"` |
-| After `.py` edits | `codegraph sync .` |
-| After `.py` edits | `/Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py /Users/dp/Documents/M/stock/chunkymonkey/backend --format markdown` |
-| Finding review | Treat scanner output as leads; inspect code before patching |
-| Completion claim | State whether findings are new, historical, fixed, or accepted with reason |
-
-## Test Tool Validity
-
-Before running tests as evidence:
-
-| Check | Requirement |
-|---|---|
-| Registry | (test_tool_registry.yaml 2026-06-28 退役: 0 代码消费 + 82% 引已删测试=烂登记从未强制; 测试覆盖由 CI offline 列表 + pytest 直管) |
-| Scope | Unit/contract/integration/realdb/perf/network/gcp scope must match the command |
-| Truth source | K-line for tradeability, calendar for dates, `universe_rules.yaml` for board/limit rules |
-| `dim_active_a_stock` | Code-to-name/cache fixtures only, never active-universe truth |
-| DB fixtures | Prefer DuckDB memory fixtures unless the test explicitly owns a real DB exception |
-
-Primary command:
+非平凡审计或改动：
 
 ```bash
-# retired (2026-06-16 reset): audit_test_tool_health.py 已删; 现手动 pre-test 检查 + 工作日志声明 (见 AGENTS.md)
+codegraph status .
+codegraph explore "<task or symbols>"
 ```
 
-## Controller / Agent Mode
-
-| Role | Responsibility |
-|---|---|
-| Controller Codex | Direction, scope, gates, architecture decisions, final merge, shared docs, and immediate critical-path work |
-| Default parallelism | Spawn bounded assistant agents by default for independent sidecar investigation unless the user explicitly says not to parallelize, the tool is unavailable, or the work is tightly coupled |
-| Read-only agents | Discovery, graph queries, data inventory, stage-opt/need coverage/storage triage, complexity triage, RCA evidence |
-| Worker agents | Bounded implementation only inside explicitly disjoint file scopes; never revert controller or peer work |
-| `chunkyctl preflight` controller-agent gate | Broad audit/research/architecture/data/debug or 3+ scope tasks must provide `--agent-dispatch` evidence; missing evidence is `controller_agent_dispatch_missing` FAIL, while an explicit `--agent-skip-reason` is a WARN exception |
-
-Parallelize read-only work and independent tests. DuckDB-heavy audits may run in
-parallel only when they use explicit read-only connections. Serialize shared
-docs, commits, provider jobs, materializing/write DuckDB scripts, shared output paths,
-Optuna studies, and edits to the same file.
-
-## Moth Ownership
-
-Moth owns shared tooling state for this repo: profile discovery, evidence paths,
-policy-source boundaries, dirty worktree status, CodeGraph freshness, and
-complexity baseline/current summaries. The active repo-local profile is
-`.moth/profile.yaml`. It may also list local Codex skill files as evidence paths
-so new sessions can find the local-ops, governance, Rule 10, and `CLAUDE.md`
-ignore contracts without relying on chat memory.
-
-ChunkyMonkey owns business gate logic. Keep `stage_opt`, `need_027`,
-`storage_payload`, `data_health`, universe truth-source rules, and test-tool
-validity rules in repo audit scripts, config, and `chunkyctl`; Moth may read or
-surface their generated evidence, but should not redefine their rules.
-
-## Compute Backend / Experiment Jobs
-
-Legacy project-local GCP execution entrypoints were removed on 2026-06-05. That
-retired provider is historical evidence only, not a path to revive with
-comments, guards, hidden flags, or compatibility shims.
-
-The active contract for data validation, backtest validation, model training,
-and parameter search is `backend/config/experiment_jobs.yaml`, surfaced through:
+索引陈旧或代码修改后：
 
 ```bash
-scripts/chunkyctl jobs --family <job-family> --backend local
+codegraph sync .
 ```
 
-`local` is the only active backend. `modal` is a planned backend and must stay
-blocked until a reviewed adapter proves its artifact-manifest contract. Provider
-adapters may execute commands and materialize manifests; business gates remain
-owned by ChunkyMonkey config, services, scripts, and tables.
+Moth 用于共享工具状态和证据路径：
 
-`chunkyctl jobs` must not report a family as ready to run unless the operator
-supplies an input snapshot, objective, rollback plan, and one
-`--gate-evidence <gate>=<artifact-or-command>` token for every required gate in
-the family contract. A backend being `active` only means the backend is
-permitted; it is not launch approval.
+```bash
+moth snapshot --repo .
+moth assert --repo .
+moth coupling --repo . --impact <name>
+```
 
-## Deletion And Deprecation
+Moth 0.3.0 会从进程 cwd 解析 profile 的相对 `repo_path`。因此必须先 `cd` 到待验仓库或
+staged snapshot，再统一使用 `--repo .`；禁止留在主工作树中用绝对 `--repo /tmp/...`
+代验，否则 assertion、evidence path 和 CodeGraph 可能静默回到主工作树。`safe_commit.sh`
+已把这一 cwd 约束做成 exact-index gate。
 
-Verified-dead code, tests, docs, and data artifacts should be deleted for real,
-not hidden behind comments, renamed files, disabled branches, or empty stubs.
-Before deletion, use CodeGraph plus `rg` to check references and run the
-narrowest relevant audit/test. If evidence is historical but still useful, move
-it to `analysis/`; if it is not useful, delete it.
+Moth PASS 只有在 verifier 自身能红、没有 warning 被 regex 洗成 PASS 时才是证据。业务门仍由项目脚本/配置/表拥有，不能搬进 Moth 重写第二套规则。
 
-### 退役标准动作清单 (2026-07-06 根因根治)
+复杂度扫描是线索，不是判决。只有在真实数据规模、调用路径和最小复现证明后才修改性能热点。
 
-> 触发: 全面数据审计 (`analysis/comprehensive_data_module_audit_20260706.md`) 诊断"残留
-> 反复出现"= **同一类系统性缺口反复触发**, 非偶然: 3 个历史案例 (`check_panel_lineage.py`
-> 44 天未被发现死引用已删表 / `schema_versions.py` 156 个死版本累积到 91% 才一次性清 /
-> `test_tool_registry.yaml` 0 消费+82%死引用) + 1 个当场活案例 (`check_continuity_integrity.py`
-> 本身刚加入就未同批注册), 结构完全相同: **退役类改动没有标准化 checklist, 每次由执行者
-> 临时决定清理范围**, 而清理范围的定义本身结构性排除了旁支消费者 (治理脚本 SQL 字符串引用/
-> schema 版本注册表/测试工具注册表)。
+## 5. 测试工具有效性
 
-任何"删表 / 删模块 / 删脚本 / 退役子系统"类改动, commit 前必须逐项确认下列 **5 类消费者**
-都已同批检查 (答不出 = 别删, 先查):
+引用任何测试绿之前，记录：
 
-| # | 类别 | 查法 | 机器门 |
-|---|---|---|---|
-| 1 | `backend/services/` `backend/routers/` 代码引用 (import/调用) | `rg -l "<模块名\|表名>" backend/services backend/routers` | `check_dead_references.py` A/B 扫 |
-| 2 | `backend/config/*.yaml` 注册 (路径字面量/module=字面量) | `rg -l "<名称>" backend/config` | `check_dead_references.py` C/D 扫 |
-| 3 | `backend/scripts/check_*.py` 等治理/审计脚本的 **SQL 字符串**引用 (`FROM`/`JOIN` 内联表名, 不是 import) | `rg -l "<表名>" backend/scripts` | `check_dead_references.py` **E 扫** (2026-07-06 新增, 专治这道盲区) |
-| 4 | `backend/tests/` fixture / 测试直连表名 | `rg -l "<名称>" backend/tests` | 无专门机器门 (靠跑测试红) |
-| 5 | `docs/` `analysis/` 文档引用 (历史记录可以留, 但当前生效文档不能悬空指已删对象) | `rg -l "<名称>" docs analysis` | `check_doc_drift.py` (部分覆盖, `analysis/` 按设计排除在扫描外) |
+- 精确命令和命中的文件；
+- scope 是 unit、contract、integration 还是明确 opt-in 的 realdb/network/perf；
+- fixture 是否使用当前真相源和真实 schema shape；
+- 是否会写共享 DB/输出；
+- 是否能用坏例变红，是否只是自洽/过度 mock；
+- 是否把 warn/proxy/empty selection 当 PASS。
 
-**新增 `check_*.py` 治理脚本的强制义务**: 任何新脚本落地的同一个 commit 里, 必须二选一
-接入 `scripts/safe_commit.sh` (真正影响正确性的用 hard-block) 或 `.github/workflows/ci.yml`
-(至少 WARN 级曝光) —— 否则该脚本自己就是下一个"登记但从未强制"的重演 (2026-07-06 审计
-当场抓到 `check_continuity_integrity.py` 正在犯这个错误, 已随本次一并接入)。
+当前真相源：交易日在日历；名义 K 线/公司行动是交易事实；universe 规则在 `universe_rules.yaml`；分类必须带 namespace/version；`dim_active_a_stock` 只可作身份/名称/cache，不是历史可交易性真相。
 
-**清理范围的定义本身要包含旁支消费者**: 历史退役 commit 抽查 (`9b82d943`/`639e0dfb`) 显示
-diff 老实对应 commit message 声称的范围, **问题不是清理时偷懒漏做, 而是"这次要清的东西"
-这个概念从一开始就没把 `backend/scripts/check_*.py` 这类治理脚本纳入盘点对象**——所以
-第 3 类必须显式列进每次退役的检查清单, 不能靠"反正 fan-in 审计会扫到"的默认假设。
+先跑最窄测试，再按 blast radius 扩大。默认测试使用 DuckDB memory fixture；真实 DB 测试必须显式只读或串行写窗口。
 
-## Exploration Sandbox (隔离探索区, owner: `sandbox/README.md`)
+## 6. 数据与数据库纪律
 
-2026-06-17 用户根治: ephemeral 探索 (一次性 runner / findings 草稿 / 中间结果 / scratch
-数据) **只住 `sandbox/`**, 绝不进 `backend/scripts/`、`analysis/`、`docs/` 或主 DB —— 否则
-探索散进主代码/文档 = 反复污染 = 反复大清理 (这是本次 ~100 文件清理的根因)。
+- 审计默认 `read_only=True`；大表先聚合、抽样或 LIMIT；
+- landing 不做 universe/business filter；过滤发生在 canonical/serve，并保留 reason；
+- 每个发布数据集一个 writer；其他模块只读公开契约；
+- 同一 DuckDB/表/输出目录的写入必须串行；
+- 先 stage/validate，再在一个可证明的事务边界内发布数据与 accepted partition；
+- 0 行、空响应、权限页、字段缺失、超时、连接失败分别分类；不得用 0 行冒充成功；
+- historical decision 必须显式 as-of/available-at；缺失传播 `NULL/unknown`，禁止 latest/0/demo fallback；
+- 修 writer/schema/PIT 后必须检查旧表、cache、JSON、watermark、报告、前端和后台进程残留。
 
-| 规则 | 机制 |
+## 7. 配置与 hardcoding
+
+| 内容 | Owner |
 |---|---|
-| 探索脚本/草稿/结果 → `sandbox/<exp>/`, scratch 数据 → `sandbox/scratch.duckdb` (主 6 库只读) | `bash scripts/sandbox.sh new/list/wipe/wipe-all/check` |
-| `sandbox/` gitignored (除 README) — 探索进不了 git/主代码 | `.gitignore: sandbox/*` + `!sandbox/README.md` |
-| 探索 runner (`experiment_*`/`analyze_*`) 不许在 `backend/scripts/` | moth `exploration-isolated-in-sandbox` (==0) |
-| 用完直接删, 主代码/文档/git 0 残留 | `scripts/sandbox.sh wipe-all` |
-| 唯一跨删存活 = 裁决 → `experiment_store.duckdb` (record_verdict); 真 edge 才 promote (干净重写进 `backend/services/` + 单测, 非 copy) | `services.experiment_store` + `experiment_harness` |
+| 稳定阈值、窗口、优先级、启停、资源政策 | typed YAML/config |
+| 观测事实、分类成员、运行状态、血缘、验收、实验结果 | 数据表或不可变 artifact |
+| 验证、访问顺序、fallback、公开 API | service/module |
+| fixture、数学常数、schema/enum、DDL、小型实现细节 | Python 可接受 |
 
-## Active Tool Commands
+配置必须有类型校验和未知键拒绝。禁止 YAML 编程语言、动态代码拓扑、计划中的假 backend 和状态回写。一个规则只能有一个 owner，不得同时复制在 Python、YAML、SQL 和文档。
 
-| Purpose | Command |
-|---|---|
-| Startup health | `scripts/chunkyctl doctor --fast` |
-| System data health snapshot | `PYTHONPATH=backend python backend/scripts/data_health_snapshot.py --dry-run --format text` (reports `writer_prompt` / owner / sync_step hints in red/yellow rows; use `--format json` for machine consumers) |
-| Dirty worktree buckets | `scripts/chunkyctl worktree --format markdown` |
-| Docs cleanup slice | `scripts/chunkyctl docs --format markdown` |
-| Storage payload / recursive JSON audit | retired (2026-06-16 reset; `audit_storage_payloads.py` 已删, 无直接替代) |
-| Pre-task gate | `scripts/chunkyctl preflight "<task>" path/to/scope.py --agent-dispatch "agent:NAME scope/evidence"` |
-| Experiment job plan | `scripts/chunkyctl jobs --family <job-family> --backend local --input-snapshot <snapshot> --objective <why> --rollback-plan <plan> --gate-evidence <gate>=<artifact>` |
-| Docs graph / 文档漂移 | `PYTHONPATH=backend python backend/scripts/check_doc_drift.py --check` (replaces retired `audit_docs_graph.py`) |
-| Execution surface | `moth coupling --repo . --impact <name>` (replaces retired `audit_execution_surface.py`) |
-| Test tool health | `PYTHONPATH=backend python backend/scripts/audit_test_tool_health.py --scope <scope>` |
-| Safe commit | `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "message"` for local batches; omit `SAFE_COMMIT_NO_PUSH` only when pushing is intended |
+## 8. 并行与 controller
 
-## Archived Sources
+默认并行只读调查、独立测试和不冲突的文件切片。Controller 保留：
 
-This contract supersedes these former active docs:
+- 产品/架构/真相源裁决；
+- 共享 docs、AGENTS、goal、Moth profile；
+- DuckDB 写窗口、运行任务、提交和最终验收；
+- agent patch 的逐文件复核。
 
-| Former doc | Current state |
-|---|---|
-| `../analysis/docs_archive_20260531/top_level_design_review.md` | Archived; rules consolidated here |
-| `../analysis/docs_archive_20260531/test_tool_governance.md` | Archived; registry/gate contract consolidated here |
-| `../analysis/docs_archive_20260531/agent_parallel_execution_policy.md` | Archived; controller/agent rules consolidated here |
-| `../analysis/docs_archive_20260531/tooling_update_review_20260527.md` | Archived; active commands consolidated here |
-| `../analysis/docs_archive_20260531/gcp_controlled_execution_runbook.md` | Archived historical evidence; active provider work now uses `experiment_jobs` |
-| `../analysis/docs_archive_20260531/deprecation_sop.md` | Archived; deletion/deprecation rule consolidated here |
+不得并行：同一文件/配置、同一表/库/输出目录、同一实验 study、最终 merge/commit。Agent 必须知道工作树有其他改动，不得 revert、stage 或 commit 他人内容。
+
+## 9. Dirty worktree
+
+每次修改前后运行：
+
+```bash
+git status --short --branch
+moth snapshot --repo .
+```
+
+先删除有证据的生成残留（`.DS_Store`、源码树内的 `__pycache__`、`.pytest_cache`、`.pyc`）。清理命令必须显式 prune `.venv/`、`node_modules/` 和其他依赖/runtime 目录；TinyShare 的 SDK 本体就是版本化 `.pyc`，把全仓 `*.pyc` 当缓存会在 metadata 仍存在时破坏采集入口。其他未知文件不删、不还原。按 owner 切片审查并显式列出文件；禁止 `git add .`。
+
+如果有他人/前序未提交改动：
+
+1. 冻结其文件清单；
+2. 新工作使用不相交写入面；
+3. gate 报告区分 pre-existing 与本次引入；
+4. 只有 owner 和证据清楚后才分别 stage/commit。
+
+## 10. 删除与目录整理
+
+删除前必须同时检查：
+
+```bash
+moth coupling --repo . --impact <name>
+codegraph explore "<name> callers consumers owners"
+rg -n "<name>" backend scripts docs analysis .moth
+```
+
+并检查 service/router、config、治理脚本 SQL 字符串、tests、docs/Moth/skills 五类消费者。确认替代 owner、历史证据迁移和最窄回归测试后才真删；禁止 renamed-dead、注释墓碑、空 stub 和 archive-of-archive。
+
+项目文档只分三类：
+
+- live authority：`AGENTS.md`、`goal.md` 和 `docs/README.md` 列出的 owner；
+- generated/read model：`FEATURE_MAP.md` 等可重建地图；
+- historical evidence：`analysis/project_state_ledger.md` 或必要的不可复现实证。
+
+过期计划和普通叙述由 git history 保留，不另建 archive 目录。
+
+## 11. 数据更新与自动化
+
+ChunkyMonkey 数据更新模式为 `manual_only`。禁止安装或保留项目数据 cron/launchd/隐藏后台触发器。受支持入口：
+
+```bash
+scripts/chunkyctl doctor --fast
+bash scripts/daily_update.sh --date YYYYMMDD
+```
+
+执行前验证交易日历、授权、writer lease、目标 partition、源 availability 和成本；执行后查真实表内容、accepted state/watermark、failure queue 和 ALERT。进程 exit 0 不是数据齐全证明。
+
+脚本存在不等于正在自动运行；判断自动化必须查 launchd/cron/launchctl/installer/registry 的真实 fan-in。
+
+## 12. 文档门
+
+活文档必须满足：
+
+- 只有一个 owner；本地 Markdown 链接和命令真实存在；
+- 不引用 retired CLI 或已删代码作为现行步骤；
+- `check_doc_governance` 同时 `fails=0` 且 `warns=0`；
+- `check_doc_drift` 无 stale；
+- 生成地图区分 active/retired，不从帮助文字猜生命周期；
+- goal 只写当前 objective/blocker/plan；历史移 ledger。
+
+验收命令：
+
+```bash
+PYTHONPATH=backend python backend/scripts/check_doc_governance.py
+PYTHONPATH=backend python backend/scripts/check_doc_drift.py --check
+```
+
+## 13. Rule 10 与交付
+
+`.py/.yaml/.sql` 或高风险文档/删除切片完成后：
+
+1. 查看 scoped diff；
+2. 用 `$chunkymonkey-review-gate` 做独立审查；
+3. 修复 blocking finding；
+4. 跑目标测试、Moth、CodeGraph sync、`git diff --check`；
+5. 显式 stage 文件列表；
+6. 需要本地提交时使用：
+
+```bash
+SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "<message>"
+```
+
+不 `--no-verify` 绕门，不 amend 已 push commit，不在未授权时 push。交付报告必须区分 `FIXED/PARTIAL/BLOCKED`，列 residual、验收命令和 owner。

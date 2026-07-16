@@ -592,7 +592,7 @@ td.holder-name.clickable:hover {
   color: var(--down);
 }
 
-/* ── KPI 网格 (档案/实盘模拟页) ─────────────────────── */
+/* ── KPI 网格 (档案/观察账本页) ─────────────────────── */
 
 .kpi-grid {
   display: grid;

@@ -58,7 +58,7 @@ app = FastAPI(title="ChunkyMonkey — 股票档案 / 主升浪猎手", version="
 
 @app.on_event("startup")
 async def _db_health_check():
-    """Phase ψ.5 根因 2: 启动时跑 DB 索引一致性检查 + 清冗余索引.
+    """Run the current DB index-consistency check during API startup.
 
     DuckDB ART secondary index 在 ON CONFLICT DO UPDATE / 异常中断写入时偶发
     跟 storage 不一致 (phantom rows in index). 启动检测可避免运行后 sync 路径
@@ -105,9 +105,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 注册路由 — 2026-06-28 重建(白名单裁剪): 策略/serving routers 全退役 (signals/dossier/v3_picture/
-#   v3_paper/v3_selection/v3_portfolio_builder/stock_graph/workbench/market), 项目降为纯数据平台。
-#   只留 ops(手动跑数据链) + v3_config(前端参数下发) 两个 routers; 数据走 pipeline + SERVE(data_access)。
+# 当前路由是过渡期可执行面，不代表项目目的被缩成纯数据平台。Tier1-Tier4 只有在版本化
+# contracts/release/decision evidence 闭合后才重新挂产品路由；Tier0 更新保持 manual-only。
 
 # 手动任务触发 (数据采集/清洗链前端按钮手动跑)
 from routers.ops_manual_run import router as ops_manual_run_router
@@ -126,20 +125,15 @@ def register_modules(app):
 
 app_modules = register_modules(app)
 
-# 配置 routers (v3 配置)
-# (strategy_preset router 批7 物删, 详 ledger)
-from routers.v3_config import router as v3_config_router
-app.include_router(v3_config_router, prefix="/api/v3", tags=["v3_config"])
-
-# 实盘模拟 (手动版, 2026-07-02 用户定调: 各策略共用, 手选入池+设仓位, daily_update 时 mark)
+# Legacy 手工观察账本：NONCONFORMING，不是 Tier4 paper execution/StrategyRelease。
 from routers.paper_portfolio import router as paper_portfolio_router
 app.include_router(paper_portfolio_router, prefix="/api/v3/paper", tags=["paper_portfolio"])
 
-# 机构档案 (Phase A, 2026-07-02: 画像排名/单机构档案/建仓信号流 — 用户手选跟随入口)
+# Tier3 机构披露研究面：只展示 evidence，不发布候选或跟随信号。
 from routers.institution_profile import router as inst_profile_router
 app.include_router(inst_profile_router, prefix="/api/v3/inst", tags=["institution_profile"])
 
-# 市场感知 (C4, 2026-07-02: 资金热力/RS轮动/悄悄流入流出/情绪温度/退潮预警 — 感知层只描述现状, 零买卖暗示)
+# Tier2 市场感知：资金热力/RS/广度/价格响应，只描述现状，零买卖暗示。
 from routers.market_pulse import router as market_pulse_router
 app.include_router(market_pulse_router, prefix="/api/v3/pulse", tags=["market_pulse"])
 
@@ -216,7 +210,7 @@ if _EDGE_DIST.exists():
 
 @app.get("/")
 async def index():
-    """根路径进 edge 前端 (机构档案/实盘模拟/市场感知)。dist 缺失时提示 build。"""
+    """根路径进现有观察前端；research/legacy 页面不等于 Tier4 决策产品。"""
     from fastapi.responses import RedirectResponse
     if _EDGE_DIST.exists():
         return RedirectResponse(url="/app/")
@@ -228,7 +222,7 @@ async def index():
 @app.get("/legacy", status_code=410)
 @app.get("/legacy/", status_code=410)
 async def retired_frontends():
-    """旧前端退役收口: v3 React 设计稿 → .archive/design_pre_reset_v3/; 旧 vanilla → repo 历史。
+    """旧前端退役收口；历史设计稿只保留在 git 历史中。
     当前唯一前端 = /app/ (edge React)。2026-07-07 修: 此前误指向已随2026-06-28重建物删的
     /api/dossier/view (307→404 断链), 改 410 Gone + redirect 字段指现行前端。"""
     return {"error": "legacy_retired", "redirect": "/app/"}

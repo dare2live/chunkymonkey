@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-15 21:11
+> Snapshot: 2026-07-17 00:02
 
 ## 1. 入口面
 
@@ -11,15 +11,9 @@
 | 命令 | 说明 |
 |---|---|
 | `doctor` | project health snapshot, including manual-only automation residue enforcement. |
-| `worktree` | read-only dirty worktree bucket report. |
-| `docs` | docs graph + docs-cleanup worktree-slice readiness. |
-| `preflight` | what gates must run before editing a task. |
-| `audit` | scoped post-change checks; add --run to execute them. |
-| `jobs` | provider-neutral experiment job contract / plan. |
 | `map` | regenerate FEATURE_MAP.md machine-derived feature map; --check = drift gate only. |
-| `data-status` |  |
-| `pipeline` | §8 run one stage independently (acquire|clean|process|store); full chain still via daily_update.sh. |
-| `lineage` | M5-T2 血缘路由中枢 (字典+总指挥): impact <table> = 删/迁前自动 fan-in (替代手 grep); build/provenance/dead/show. |
+| `pipeline` | manually run one declared data stage; full manual chain remains daily_update.sh. |
+| `lineage` | generated dependency projection; impact <table> audits fan-in before delete/migrate. |
 
 ### launchd 定时任务
 
@@ -34,7 +28,6 @@
 | market_pulse | `/api/v3/pulse` | 9 |
 | ops_manual_run | `/api/v3/ops` | 3 |
 | paper_portfolio | `/api/v3/paper` | 5 |
-| v3_config | `/api/v3` | 1 |
 
 端点全列表在 json (`routes` 键)。
 
@@ -92,7 +85,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 34 张 | 单 writer 22 | 多 writer 12 | 动态表名写点 24 处 (10 文件)
+统计: 表 34 张 | 单 writer 22 | 多 writer 12 | 动态表名写点 22 处 (9 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -104,7 +97,6 @@
 | backend/scripts/build_feature_map.py | 1 |
 | backend/scripts/build_price_kline_qfq_tushare.py | 1 |
 | backend/scripts/db_compact.py | 2 |
-| backend/scripts/db_partition_migrate.py | 2 |
 | backend/services/calendar_builder.py | 2 |
 | backend/services/data_sources/sync_runner.py | 2 |
 | backend/services/market_pulse.py | 4 |
@@ -157,63 +149,63 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 5,023 | calls 边 5,271 | imports 边 832 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 3,805 | calls 边 4,109 | imports 边 728 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
-| services.duck_adapter | 31 |
+| services.duck_adapter | 29 |
 | services.data_sources | 15 |
 | services.database_manifest | 12 |
 | services.source_watermarks | 10 |
-| services.db | 9 |
+| services.db | 8 |
 | services.lineage.model | 5 |
 | services.writer_lock | 5 |
-| scripts.formula_parameter_search | 4 |
 | services.data_sources.sources.tushare | 4 |
+| services.lineage | 4 |
 | services.market_db | 4 |
 | services.pipeline_manifest | 4 |
 | services.universe | 4 |
+| scripts.check_doc_governance | 3 |
 | services.calendar | 3 |
-| services.lineage | 3 |
-| services.storage_retention | 3 |
+| services.taxonomy_config | 3 |
 
 ### 跨文件 fan-in 最高的文件 (近似口径: 唯一定义名 + caller 实际 import 目标模块双过滤)
 
 | 文件 | 调用方文件数 |
 |---|---|
-| backend/services/duck_adapter.py | 27 |
+| backend/services/duck_adapter.py | 26 |
 | backend/services/database_manifest.py | 11 |
 | backend/services/source_watermarks.py | 10 |
-| bestchoice/compute.py | 9 |
 | backend/services/pipeline/context.py | 7 |
-| bestchoice/execution_model.py | 5 |
 | backend/services/lineage/model.py | 4 |
 | backend/services/pipeline_manifest.py | 4 |
-| bestchoice/formula_engine.py | 4 |
-| bestchoice/scripts/formula_parameter_search.py | 4 |
 | frontend/src/components/Card.tsx | 4 |
 | frontend/src/format.ts | 4 |
+| frontend/src/hooks/useFetch.ts | 4 |
+| backend/services/data_access/keys.py | 3 |
+| backend/services/notification/base.py | 3 |
+| backend/services/taxonomy_config.py | 3 |
 
 ### LOC top 10 (God module 候选)
 
 | 文件 | 行数 |
 |---|---|
 | backend/services/data_sources/sync_runner.py | 1797 |
-| backend/services/storage_retention.py | 1061 |
-| backend/services/market_pulse.py | 804 |
+| backend/services/market_pulse.py | 1473 |
 | backend/scripts/check_continuity_integrity.py | 744 |
 | backend/scripts/data_health_snapshot.py | 731 |
-| backend/routers/market_pulse.py | 639 |
+| backend/routers/market_pulse.py | 624 |
 | backend/services/schema_migrations.py | 561 |
-| backend/services/source_watermarks.py | 561 |
+| backend/services/source_watermarks.py | 560 |
 | backend/services/data_audit.py | 556 |
-| backend/services/rally_gt.py | 535 |
+| backend/services/rally_gt.py | 528 |
+| backend/scripts/build_feature_map.py | 428 |
 
 ## 5. 概览
 
-- chunkyctl 子命令 10 | launchd 任务 0 | router 5 (端点 21)
+- chunkyctl 子命令 4 | launchd 任务 0 | router 4 (端点 20)
 - sync_registry 数据域 47
 - 产表 34 (多 writer 12)
 

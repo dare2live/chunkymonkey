@@ -1,15 +1,17 @@
-"""market_pulse router — C4 市场感知 API (2026-07-02 v2 / 2026-07-03 v3, 契约=analysis/market_pulse_design_20260702.md §3 + v2 增强 + v3 设计)
+"""market_pulse router — Tier2 市场感知 API。
+
+现行边界: docs/MASTER_TOPLEVEL_DESIGN.md；历史设计证据: analysis/market_pulse_design_20260702.md。
 
 前端契约 (卡片↔API 一一对应, widget 独立取数):
-  GET /api/v3/pulse/heatmap     资金热力图 (板块×近N日 net_amount 矩阵, dc 链默认;
-                                v2: content_type 分 行业/概念 tab; v3: level 参数默认 L1 —
+  GET /api/v3/pulse/heatmap     资金热力图 (板块×近N日 net_amount 矩阵, dc_industry 默认;
+                                DC 行业/概念由 chain namespace 分开; level 参数默认 L1 —
                                 sw 链 v3 起有 net_amount, L2/L3 需显式 level)
   GET /api/v3/pulse/rotation    板块轮动 (sw=RS 双窗排名迁移, v3 加 level 默认 L1 保 v2 契约;
                                 dc=资金流排名迁移 + 涨幅/资金双龙头 + 流入宽度)
   GET /api/v3/pulse/flow_board  资金流向榜 (v3, 替代 v1 /quiet): 最新日 flow_regime 非 neutral
                                 板块分 流入形态/流出形态 两组, 行带 近cum_window日累计净额 +
                                 cum_ratio_20d + mini stripe (逐日净流序列)
-  GET /api/v3/pulse/drill       统一层级下钻 (v3): code 空=顶层 (sw L1 列表 / dc 板块列表);
+  GET /api/v3/pulse/drill       统一层级下钻 (v3): code 空=顶层 (sw L1 / 所选 DC namespace);
                                 sw L1→L2→L3→成分股叶子; dc 板块→成分股叶子。叶子行带
                                 近20日净流入 / 实时 flow_regime (窗口 SQL, 与引擎共用
                                 _flow_annotate_sql) / form_name+is_breakout_event / limit_times。
@@ -88,10 +90,10 @@ _REGIMES_OUT = ("surge_out", "accum_out_silent", "accum_out_driving")  # 流出�
 
 
 def _require_chain(chain: str) -> None:
-    if chain not in (mp.CHAIN_DC, mp.CHAIN_SW):
+    if chain not in mp.PULSE_CHAINS:
         raise HTTPException(
             status_code=400,
-            detail=f"unknown chain: {chain!r} (expect {mp.CHAIN_DC!r}/{mp.CHAIN_SW!r})")
+            detail=f"unknown chain: {chain!r} (expect one of {mp.PULSE_CHAINS!r})")
 
 
 def _require_level(level: str) -> None:
@@ -109,8 +111,7 @@ def _recent_dates(conn, chain: str, n: int) -> list[str]:
 
 
 @router.get("/heatmap")
-def heatmap(chain: str = mp.CHAIN_DC,
-            content_type: str = "行业",
+def heatmap(chain: str = mp.CHAIN_DC_INDUSTRY,
             level: str = "L1",
             days: int = Query(default=20, ge=1, le=250),
             top: int = Query(default=40, ge=1, le=200),
@@ -118,27 +119,18 @@ def heatmap(chain: str = mp.CHAIN_DC,
     """板块×近 N 日 net_amount 矩阵。板块按窗口内累计 net_amount 降序取 top 防爆载
     (dc 链 1000+ 板块)。v3: sw 链 net_amount 不再恒 NULL (成分个股全单净流聚合, 与 dc 主力
     口径并列不可比); level 参数默认 L1 (仅 sw 链生效 — 不滤则 L2/L3 行混入破坏 v2 契约;
-    dc 链板块无申万层级, 该参数忽略)。
-    v2 缺口①: content_type 分 行业/概念 tab (dc 链专用过滤, 白名单=yaml dc_content_types;
-    sw 链行恒 '申万L1', 该参数不适用直接忽略)。"""
+    dc namespace 无申万层级, 该参数忽略)。东财行业/概念直接由 chain 选择，禁止再用
+    content_type 在同一 chain 内二次分流；SW 链按 level 输出申万L1/L2/L3。"""
     _require_chain(chain)
     ct_filter = ""
     ct_params: list[Any] = []
-    if chain == mp.CHAIN_DC:
-        allowed = list(_load_cfg()["dc_content_types"])  # from yaml: dc_content_types
-        if content_type not in allowed:
-            raise HTTPException(status_code=400,
-                                detail=f"unknown content_type: {content_type!r} (expect {allowed})")
-        ct_filter = "AND content_type = ?"
-        ct_params = [content_type]
-    else:
+    if chain == mp.CHAIN_SW:
         _require_level(level)
         ct_filter = "AND level = ?"
         ct_params = [level]
     dates = _recent_dates(conn, chain, days)
     if not dates:
-        return {"status": "ok", "chain": chain, "content_type": content_type,
-                "dates": [], "sectors": []}
+        return {"status": "ok", "chain": chain, "dates": [], "sectors": []}
     ph = ",".join("?" * len(dates))
     rows = conn.execute(f"""
         WITH win AS (
@@ -165,8 +157,7 @@ def heatmap(chain: str = mp.CHAIN_DC,
             by_code[code] = sec
             sectors.append(sec)
         sec["values"][idx[td]] = net
-    return {"status": "ok", "chain": chain, "content_type": content_type,
-            "dates": dates, "sectors": sectors}
+    return {"status": "ok", "chain": chain, "dates": dates, "sectors": sectors}
 
 
 _ROTATION_COLS = ["sector_code", "sector_name", "trade_date", "rs_4w", "rs_12w", "rs_rank_4w"]
@@ -206,19 +197,18 @@ def _rotation_sw(conn, lag: int, level: str) -> dict[str, Any]:
             "latest_date": latest, "prev_date": prev, "sectors": sectors}
 
 
-def _rotation_dc(conn, lag: int, top: int) -> dict[str, Any]:
-    """dc 链资金流轮动 (v2): rank_flow 迁移 + 涨幅龙头/资金龙头/流入宽度。rank_flow 是
-    dc 全体 (行业+概念) 截面排名, 链内原生序 — 不做 RS (vendor 红线, rs_* dc 恒 NULL)。"""
-    dates = _recent_dates(conn, mp.CHAIN_DC, lag + 1)
+def _rotation_dc(conn, chain: str, lag: int, top: int) -> dict[str, Any]:
+    """单个 DC namespace 资金流轮动；行业与概念各自在自己的截面内排名。"""
+    dates = _recent_dates(conn, chain, lag + 1)
     if not dates:
-        return {"status": "ok", "chain": mp.CHAIN_DC,
+        return {"status": "ok", "chain": chain,
                 "latest_date": None, "prev_date": None, "sectors": []}
     latest = dates[-1]
     prev = dates[0] if len(dates) > 1 else None
     rows = conn.execute(f"""
         SELECT {', '.join(_DC_ROTATION_COLS)} FROM {mp.SECTOR_TABLE}
-        WHERE chain = '{mp.CHAIN_DC}' AND trade_date IN (?, ?)
-        ORDER BY sector_code""", [latest, prev or latest]).fetchall()
+        WHERE chain = ? AND trade_date IN (?, ?)
+        ORDER BY sector_code""", [chain, latest, prev or latest]).fetchall()
     keys = [c.strip('"') for c in _DC_ROTATION_COLS]
     merged: dict[str, dict[str, Any]] = {}
     for r in rows:
@@ -238,7 +228,7 @@ def _rotation_dc(conn, lag: int, top: int) -> dict[str, Any]:
             sec["prev_rank_flow"] = d["rank_flow"]
     sectors = sorted(merged.values(),
                      key=lambda s: (s["rank_flow"] is None, s["rank_flow"], s["sector_code"]))
-    return {"status": "ok", "chain": mp.CHAIN_DC, "latest_date": latest, "prev_date": prev,
+    return {"status": "ok", "chain": chain, "latest_date": latest, "prev_date": prev,
             "sectors": sectors[:top]}
 
 
@@ -256,7 +246,7 @@ def rotation(chain: str = mp.CHAIN_SW,
     if chain == mp.CHAIN_SW:
         _require_level(level)
         return _rotation_sw(conn, lag, level)
-    return _rotation_dc(conn, lag, top)
+    return _rotation_dc(conn, chain, lag, top)
 
 
 # 资金流向榜行列 (v3): flow_regime 形态 + 量级 (cum_net/cum_ratio) + 当日值
@@ -266,7 +256,7 @@ _BOARD_COLS = ["chain", "sector_code", "sector_name", "level", "content_type", "
 
 
 @router.get("/flow_board")
-def flow_board(chain: str = mp.CHAIN_DC,
+def flow_board(chain: str = mp.CHAIN_DC_INDUSTRY,
                level: str = "L1",
                limit: int = Query(default=20, ge=1, le=500),
                stripe_days: int = Query(default=60, ge=0, le=250),
@@ -329,7 +319,7 @@ def flow_board(chain: str = mp.CHAIN_DC,
 
 @router.get("/flow_stripe")
 def flow_stripe(code: str,
-                chain: str = mp.CHAIN_DC,
+                chain: str = mp.CHAIN_DC_INDUSTRY,
                 days: int = Query(default=60, ge=1, le=250),
                 conn=Depends(get_pulse_conn)):
     """mini 温度条纹数据 (v3.3): 单板块近 N 日逐日净流入序列 (升序; 红入绿出由前端着色)。
@@ -373,7 +363,7 @@ def _drill_sector_rows(conn, chain: str, date: str | None, codes: list[str] | No
             return d, []
         where += " AND sector_code IN (%s)" % ",".join("?" * len(codes))
         params += codes
-    order = ("ORDER BY (rank_flow IS NULL), rank_flow, sector_code" if chain == mp.CHAIN_DC
+    order = ("ORDER BY (rank_flow IS NULL), rank_flow, sector_code" if chain in mp.DC_CHAINS
              else "ORDER BY (rs_rank_4w IS NULL), rs_rank_4w, sector_code")
     lim = f"LIMIT {int(top)}" if top else ""
     rows = conn.execute(f"""
@@ -440,10 +430,9 @@ def _sw_code_level(conn, code: str) -> tuple[str | None, dict[str, Any]]:
 def drill(chain: str = mp.CHAIN_SW,
           code: str | None = None,
           date: str | None = None,
-          content_type: str = "行业",
           top: int = Query(default=100, ge=1, le=1000),
           conn=Depends(get_drill_conn)):
-    """统一层级下钻 (v3.2): code 空 = 顶层 (sw L1 列表 / dc 板块列表 [content_type 分组]);
+    """统一层级下钻 (v3.2): code 空 = 顶层 (sw L1 列表 / 单个 DC namespace 板块列表);
     sw L1 码 → L2 行列表 → L3 行列表 → 成分股叶子 (index_member_all as-of PIT);
     dc 板块码 → 成分股叶子 (dc_member 最新快照)。响应带 breadcrumb (根→当前节点)。
     vendor 红线: sw 叶资金流 = raw_tushare_moneyflow (tushare 全单口径), dc 叶 =
@@ -452,14 +441,9 @@ def drill(chain: str = mp.CHAIN_SW,
     _require_chain(chain)
     cfg = _load_cfg()
     as_of = date or "99999999"
-    if chain == mp.CHAIN_DC:
-        allowed = list(cfg["dc_content_types"])  # from yaml: dc_content_types
+    if chain in mp.DC_CHAINS:
         if code is None:
-            if content_type not in allowed:
-                raise HTTPException(status_code=400,
-                                    detail=f"unknown content_type: {content_type!r} (expect {allowed})")
-            d, rows = _drill_sector_rows(conn, chain, date, None,
-                                         "AND content_type = ?", [content_type], top)
+            d, rows = _drill_sector_rows(conn, chain, date, None, top=top)
             return {"status": "ok", "chain": chain, "date": d, "rows_level": "sector",
                     "breadcrumb": [], "rows": rows}
         # 叶子: dc_member 该板块 <= as_of 最新快照
@@ -572,13 +556,13 @@ def strongest(conn=Depends(get_pulse_conn)):
 
 @router.get("/members")
 def members(sector_code: str,
-            chain: str = mp.CHAIN_DC,
+            chain: str = mp.CHAIN_DC_INDUSTRY,
             conn=Depends(get_members_conn)):
     """板块成分下钻 (v2 第 6 条): dc = dc_member 该板块最新快照日成分;
     sw = index_member_all 当前成分 (is_new='Y' 快照 — 展示口径, 非 PIT; 特征侧另走
     v_sw_industry_pit, 本端点零入模)。未知板块码 → 200 + 空成分 (不猜)。"""
     _require_chain(chain)
-    if chain == mp.CHAIN_DC:
+    if chain in mp.DC_CHAINS:
         as_of_row = conn.execute(
             "SELECT MAX(trade_date) FROM tr.raw_tushare_dc_member WHERE ts_code = ?",
             [sector_code]).fetchone()
@@ -604,7 +588,7 @@ def warnings(conn=Depends(get_pulse_conn)):
     """退潮预警 (描述性, 非操作建议):
     1) rank_dropouts: 前一入库日 rs_rank_4w <= top_n_sectors 而最新日 > top_n_sectors 的
        sw L1 板块 (跌出 RS top-N; v3 锁 level='L1' — rank 已按同级分区, 不锁则 L2/L3 混入);
-    2) quiet_outflows: dc 链最新日 quiet_outflow_days >= warning_quiet_outflow_days 的板块
+    2) quiet_outflows: 两个 DC namespace 各自最新日 quiet_outflow_days 达阈值的板块
        (价稳连续净流出 = 静默派发嫌疑, 引擎 quiet_* 列语义不变)。"""
     cfg = _load_cfg()
     rank_top = int(cfg["top_n_sectors"])                       # from yaml: top_n_sectors
@@ -624,16 +608,17 @@ def warnings(conn=Depends(get_pulse_conn)):
               AND p.rs_rank_4w <= ? AND c.rs_rank_4w > ?
             ORDER BY p.rs_rank_4w, c.sector_code""",
             [prev_d, latest_d, rank_top, rank_top]).fetchall()]
-    out_cols = ["sector_code", "sector_name", "trade_date", "quiet_outflow_days",
+    out_cols = ["chain", "sector_code", "sector_name", "trade_date", "quiet_outflow_days",
                 "net_amount", "pct_change"]
+    dc_chains = ",".join(mp._sql_str(chain) for chain in mp.DC_CHAINS)
     outflows = [dict(zip(out_cols, r)) for r in conn.execute(f"""
-        SELECT sector_code, sector_name, trade_date, quiet_outflow_days, net_amount, pct_change
+        SELECT chain, sector_code, sector_name, trade_date, quiet_outflow_days, net_amount, pct_change
         FROM {mp.SECTOR_TABLE} p
-        WHERE p.chain = '{mp.CHAIN_DC}'
+        WHERE p.chain IN ({dc_chains})
           AND p.trade_date = (
-              SELECT MAX(trade_date) FROM {mp.SECTOR_TABLE} WHERE chain = '{mp.CHAIN_DC}')
+              SELECT MAX(trade_date) FROM {mp.SECTOR_TABLE} WHERE chain = p.chain)
           AND quiet_outflow_days >= ?
-        ORDER BY quiet_outflow_days DESC, net_amount ASC""", [outflow_min]).fetchall()]
+        ORDER BY chain, quiet_outflow_days DESC, net_amount ASC""", [outflow_min]).fetchall()]
     return {"status": "ok",
             "thresholds": {"rank_top": rank_top, "quiet_outflow_days": outflow_min},
             "rank_dropouts": dropouts, "quiet_outflows": outflows}

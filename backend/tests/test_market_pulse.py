@@ -30,7 +30,16 @@ CFG = {
     "data_start_dc": "20240102",
     "data_start_sw": "20190102",
     "data_start_market": "20230103",
-    "dc_content_types": ["行业", "概念"],
+    "dc_namespaces": ["dc_industry", "dc_concept"],
+    "current_snapshot_quality_floor": {
+        "measured_trade_date": "20240108",
+        "min_rows_by_chain": {
+            "dc_industry": 1,
+            "dc_concept": 1,
+            "sw_industry": 1,
+        },
+    },
+    "dc_level_map": {"东财一级行业": "L1", "东财二级行业": "L2", "东财三级行业": "L3"},
     "sec_board_cutoff": "093059",
     "mkt_valuation_code": "000300.SH",
     "lookback_late_days": 2,   # 迟到列回补窗口 (R1 根因5); 测试缩小到 2 便于手算 (生产值走 yaml)
@@ -51,8 +60,9 @@ CREATE TABLE tr.raw_tushare_moneyflow_ind_dc (
     pct_change DOUBLE, close DOUBLE, net_amount DOUBLE, buy_elg_amount DOUBLE,
     buy_sm_amount_stock TEXT);
 CREATE TABLE tr.raw_tushare_dc_index (
-    ts_code TEXT, trade_date TEXT, "leading" TEXT, leading_code TEXT, leading_pct DOUBLE,
-    up_num BIGINT, down_num BIGINT, total_mv DOUBLE, level DOUBLE);
+    ts_code TEXT, trade_date TEXT, idx_type TEXT,
+    "leading" TEXT, leading_code TEXT, leading_pct DOUBLE,
+    up_num BIGINT, down_num BIGINT, total_mv DOUBLE, level TEXT);
 CREATE TABLE tr.raw_tushare_sw_daily (
     ts_code TEXT, trade_date TEXT, close DOUBLE, pct_change DOUBLE, amount DOUBLE);
 CREATE TABLE tr.raw_tushare_index_daily (
@@ -113,15 +123,21 @@ def _fixture_conn():
         "INSERT INTO tr.raw_tushare_moneyflow_ind_dc VALUES "
         "(?, '概念', 'BK0002.DC', '低空经济', 3.0, 200.0, 100.0, 50.0, '万丰奥威')",
         [(d,) for d in D])
-    # 地域板块: 不在 dc_content_types, 必须被过滤
+    # 地域板块: 不属于启用的 taxonomy namespace, 必须被过滤
     c.execute(
         "INSERT INTO tr.raw_tushare_moneyflow_ind_dc VALUES "
         "(?, '地域', 'BK0145.DC', '上海板块', 0.1, 50.0, 999.0, 1.0, '霍普股份')",
         [D[0]])
-    # dc_index: total_mv=200 万元 → sector_mv 2e6 元 (cum_ratio 分母); level=1 → mart 'L1' 透出
+    # dc_index: total_mv=200 万元 → sector_mv 2e6 元；真实中文 level 经 config 映射为 L1。
     c.executemany(
         "INSERT INTO tr.raw_tushare_dc_index VALUES "
-        "('BK0001.DC', ?, '云煤能源', '600792.SH', 9.98, 10, 5, 200.0, 1.0)", [(d,) for d in D])
+        "('BK0001.DC', ?, '行业板块', '云煤能源', '600792.SH', 9.98, 10, 5, 200.0, "
+        "'东财一级行业')", [(d,) for d in D])
+    c.executemany(
+        "INSERT INTO tr.raw_tushare_dc_index VALUES "
+        "('BK0002.DC', ?, '概念板块', '万丰奥威', '002085.SZ', 8.0, 8, 3, 300.0, NULL)",
+        [(d,) for d in D],
+    )
     # v2 inflow_breadth: BK0001 成分快照仅 D3/D4 (dc_member 2025+ 现实 → 其余日 NULL)
     #   D3: 成分 600001/600002/600003/600004, 个股流 +5/-3/+1/缺 → 宽度 = 2/3
     #   D4: 成分 600001/600002, 个股流 -1/0 (net=0 不算流入) → 宽度 = 0.0 (真 0 ≠ NULL)
@@ -228,20 +244,23 @@ def _fixture_conn():
 
 def test_config_yaml_contract():
     """生产 yaml 契约: 全部键在场, 类型/序关系合法 (值本身是真相源, 不在测试里冻结)。"""
-    cfg = yaml.safe_load(
-        (Path(__file__).resolve().parent.parent / "config" / "market_pulse.yaml").read_text(encoding="utf-8"))
+    cfg = mp._cfg()
+    assert cfg["version"] == 2
     for key in ("rs_window_4w", "rs_window_12w", "benchmark_code", "quiet_px_band_pct",
                 "quiet_min_net_amount", "top_n_sectors", "data_start_dc", "data_start_sw",
-                "data_start_market", "dc_content_types",
+                "data_start_market", "dc_namespaces", "dc_level_map",
                 "sec_board_cutoff", "mkt_valuation_code", "lookback_late_days",
                 "flow_z_surge", "accum_min_streak", "silent_px_band",
-                "zscore_window", "cum_window"):
+                "zscore_window", "cum_window", "current_snapshot_quality_floor"):
         assert key in cfg, f"market_pulse.yaml missing key: {key}"
     assert isinstance(cfg["lookback_late_days"], int) and cfg["lookback_late_days"] >= 1
     assert isinstance(cfg["rs_window_4w"], int) and isinstance(cfg["rs_window_12w"], int)
     assert 0 < cfg["rs_window_4w"] < cfg["rs_window_12w"]
     assert float(cfg["quiet_px_band_pct"]) > 0
-    assert isinstance(cfg["dc_content_types"], list) and cfg["dc_content_types"]
+    assert tuple(cfg["dc_namespaces"]) == mp.DC_CHAINS
+    assert cfg["dc_level_map"] == {
+        "东财一级行业": "L1", "东财二级行业": "L2", "东财三级行业": "L3"
+    }
     # 秒板界: HHMMSS 6 位字符串 (lpad 归一后字典序可比)
     assert isinstance(cfg["sec_board_cutoff"], str) and len(cfg["sec_board_cutoff"]) == 6
     assert isinstance(cfg["mkt_valuation_code"], str) and cfg["mkt_valuation_code"]
@@ -250,6 +269,9 @@ def test_config_yaml_contract():
     assert isinstance(cfg["accum_min_streak"], int) and cfg["accum_min_streak"] >= 1
     assert isinstance(cfg["zscore_window"], int) and cfg["zscore_window"] >= 2
     assert isinstance(cfg["cum_window"], int) and cfg["cum_window"] >= 1
+    floors = cfg["current_snapshot_quality_floor"]
+    assert set(floors["min_rows_by_chain"]) == set(mp.PULSE_CHAINS)
+    assert all(value > 1 for value in floors["min_rows_by_chain"].values())
     # 引擎 SQL 能用生产 cfg 生成 (阈值注入无语法炸点)
     assert "quiet_inflow_days" in mp._sector_sql(cfg)
     assert "flow_regime" in mp._sector_sql(cfg)
@@ -263,7 +285,8 @@ def test_quiet_streak_break_resets():
         mp.rebuild_all(conn=c, cfg=CFG)
         rows = c.execute(f"""
             SELECT trade_date, quiet_inflow_days, quiet_outflow_days FROM {mp.SECTOR_TABLE}
-            WHERE chain = '{mp.CHAIN_DC}' AND sector_code = 'BK0001.DC' ORDER BY trade_date""").fetchall()
+            WHERE chain = '{mp.CHAIN_DC_INDUSTRY}' AND sector_code = 'BK0001.DC'
+            ORDER BY trade_date""").fetchall()
         assert [r[1] for r in rows] == [1, 2, 0, 1, 0], "inflow streak: 断一天必须归零"
         assert [r[2] for r in rows] == [0, 0, 0, 0, 1], "outflow streak: net<0 且价稳才计"
         # 非 quiet 板块 (|pct|>=band) 恒 0
@@ -310,7 +333,8 @@ def test_chain_isolation():
     try:
         mp.rebuild_all(conn=c, cfg=CFG)
         bad_dc = c.execute(f"""
-            SELECT COUNT(*) FROM {mp.SECTOR_TABLE} WHERE chain = '{mp.CHAIN_DC}'
+            SELECT COUNT(*) FROM {mp.SECTOR_TABLE}
+            WHERE chain IN ('{mp.CHAIN_DC_INDUSTRY}', '{mp.CHAIN_DC_CONCEPT}')
             AND (net_amount IS NULL OR rs_4w IS NOT NULL OR rs_rank_4w IS NOT NULL
                  OR limit_up_n IS NOT NULL OR turnover_amt_share IS NOT NULL
                  OR sector_code NOT LIKE 'BK%')""").fetchone()[0]
@@ -338,6 +362,53 @@ def test_chain_isolation():
         # content_type 不在配置白名单 (地域) 不入链
         n_geo = c.execute(f"SELECT COUNT(*) FROM {mp.SECTOR_TABLE} WHERE sector_code = 'BK0145.DC'").fetchone()[0]
         assert n_geo == 0
+    finally:
+        c.close()
+
+
+def test_dc_industry_and_concept_are_distinct_namespaces():
+    """东财行业层级与概念多标签必须以独立 namespace 入 mart，不能再靠 content_type 二次分流。"""
+    c = _fixture_conn()
+    try:
+        mp.rebuild_all(conn=c, cfg=CFG)
+        rows = c.execute(f"""
+            SELECT chain, content_type, level FROM {mp.SECTOR_TABLE}
+            WHERE sector_code IN ('BK0001.DC', 'BK0002.DC') AND trade_date = ?
+            ORDER BY sector_code""", [D[0]]).fetchall()
+        assert [tuple(row) for row in rows] == [
+            (mp.CHAIN_DC_INDUSTRY, "行业", "L1"),
+            (mp.CHAIN_DC_CONCEPT, "概念", None),
+        ]
+        assert mp.PULSE_CHAINS == (
+            mp.CHAIN_DC_INDUSTRY,
+            mp.CHAIN_DC_CONCEPT,
+            mp.CHAIN_SW,
+        )
+    finally:
+        c.close()
+
+
+def test_same_dc_code_can_exist_once_in_each_namespace_without_identity_collision():
+    c = _fixture_conn()
+    try:
+        c.execute(
+            "INSERT INTO tr.raw_tushare_moneyflow_ind_dc VALUES "
+            "(?, '概念', 'BK0001.DC', '煤炭概念', 0.2, 100.0, 99.0, 10.0, '概念龙头')",
+            [D[0]],
+        )
+        mp.rebuild_all(conn=c, cfg=CFG)
+        rows = c.execute(f"""
+            SELECT chain, content_type, level, net_amount FROM {mp.SECTOR_TABLE}
+            WHERE sector_code = 'BK0001.DC' AND trade_date = ? ORDER BY chain""", [D[0]]).fetchall()
+        assert [tuple(row) for row in rows] == [
+            (mp.CHAIN_DC_CONCEPT, "概念", None, 99.0),
+            (mp.CHAIN_DC_INDUSTRY, "行业", "L1", 10.0),
+        ]
+        indexes = {r[0]: bool(r[1]) for r in c.execute("""
+            SELECT index_name, is_unique FROM duckdb_indexes()
+            WHERE index_name IN ('idx_pulse_sector', 'idx_pulse_market')
+        """).fetchall()}
+        assert indexes == {"idx_pulse_sector": True, "idx_pulse_market": True}
     finally:
         c.close()
 
@@ -382,15 +453,17 @@ def test_zha_ban_rate_boundary_and_market_fields():
 
 
 def test_top_sectors_json_snapshot():
-    """两链 top/bottom 快照: dc 按 rank_flow (资金流), sw 按 rs_rank_4w; JSON 可解析。"""
+    """三个 namespace 分别产 top/bottom，不得把东财行业与概念混成一个榜。"""
     c = _fixture_conn()
     try:
         mp.rebuild_all(conn=c, cfg=CFG)
         raw = c.execute(f"SELECT top_sectors_json FROM {mp.MARKET_TABLE} WHERE trade_date = ?",
                         [D[3]]).fetchone()[0]
         snap = json.loads(raw)
-        assert snap["dc_top"][0]["sector_code"] == "BK0002.DC"      # net 100 > 1
-        assert snap["dc_bottom"][0]["sector_code"] == "BK0001.DC"
+        assert snap["dc_industry_top"][0]["sector_code"] == "BK0001.DC"
+        assert snap["dc_industry_bottom"][0]["sector_code"] == "BK0001.DC"
+        assert snap["dc_concept_top"][0]["sector_code"] == "BK0002.DC"
+        assert snap["dc_concept_bottom"][0]["sector_code"] == "BK0002.DC"
         assert snap["sw_top"][0]["sector_code"] == "801010.SI"
         assert snap["sw_bottom"][0]["sector_code"] == "801080.SI"
         # rs 未成窗的早期日: sw 侧无可排名行 → null (不伪造)
@@ -412,6 +485,19 @@ def test_build_latest_incremental_idempotent():
         d6 = "20240109"
         c.execute("INSERT INTO tr.raw_tushare_moneyflow_ind_dc VALUES "
                   "(?, '行业', 'BK0001.DC', '煤炭行业', 0.3, 100.0, -5.0, -2.0, '云煤能源')", [d6])
+        c.execute("INSERT INTO tr.raw_tushare_moneyflow_ind_dc VALUES "
+                  "(?, '概念', 'BK0002.DC', '低空经济', 3.0, 200.0, 100.0, 50.0, '万丰奥威')", [d6])
+        c.execute(
+            "INSERT INTO tr.raw_tushare_dc_index VALUES "
+            "('BK0001.DC', ?, '行业板块', '云煤能源', '600792.SH', 9.98, 10, 5, 200.0, "
+            "'东财一级行业')",
+            [d6],
+        )
+        c.execute(
+            "INSERT INTO tr.raw_tushare_dc_index VALUES "
+            "('BK0002.DC', ?, '概念板块', '万丰奥威', '002085.SZ', 8.0, 8, 3, 300.0, NULL)",
+            [d6],
+        )
         # d6 成分+个股流: 2 成分 1 流入 → 宽度 1/2 (验证 dc_day_where 下推不丢增量日)
         c.executemany("INSERT INTO tr.raw_tushare_dc_member VALUES (?, 'BK0001.DC', ?, ?)",
                       [(d6, "600001.SH", "甲"), (d6, "600002.SZ", "乙")])
@@ -531,6 +617,373 @@ def test_build_latest_rebuilds_on_v1_schema():
         c.close()
 
 
+def test_build_latest_rebuilds_legacy_mixed_dc_namespace():
+    c = _fixture_conn()
+    try:
+        mp.rebuild_all(conn=c, cfg=CFG)
+        c.execute(
+            f"UPDATE {mp.SECTOR_TABLE} SET chain = ? WHERE chain = ?",
+            [mp.CHAIN_DC_CONCEPT, mp.CHAIN_DC_INDUSTRY],
+        )
+        out = mp.build_latest(conn=c, cfg=CFG)
+        assert out.get("mode") == "rebuild"
+        assert c.execute(f"""
+            SELECT COUNT(*) FROM {mp.SECTOR_TABLE}
+            WHERE chain = ? AND content_type = '行业'""", [mp.CHAIN_DC_CONCEPT]).fetchone()[0] == 0
+    finally:
+        c.close()
+
+
+class _FailAfterSql:
+    """Connection proxy that fails after a chosen statement mutated the transaction."""
+
+    def __init__(self, inner, needle: str):
+        self.inner = inner
+        self.needle = " ".join(needle.split()).upper()
+
+    def execute(self, sql, params=None):
+        result = self.inner.execute(sql, params)
+        if self.needle in " ".join(str(sql).split()).upper():
+            raise RuntimeError("injected post-write failure")
+        return result
+
+
+def _pulse_snapshot(c):
+    sectors = [tuple(r) for r in c.execute(f"""
+        SELECT chain, sector_code, trade_date, content_type, net_amount, built_at
+        FROM {mp.SECTOR_TABLE} ORDER BY 1,2,3,4
+    """).fetchall()]
+    market = [tuple(r) for r in c.execute(f"""
+        SELECT trade_date, top_sectors_json, built_at
+        FROM {mp.MARKET_TABLE} ORDER BY 1
+    """).fetchall()]
+    indexes = [tuple(r) for r in c.execute("""
+        SELECT index_name, is_unique FROM duckdb_indexes()
+        WHERE index_name IN ('idx_pulse_sector', 'idx_pulse_market') ORDER BY 1
+    """).fetchall()]
+    return sectors, market, indexes
+
+
+def test_rebuild_failure_after_live_rename_rolls_back_both_tables():
+    c = _fixture_conn()
+    try:
+        mp.rebuild_all(conn=c, cfg=CFG)
+        before = _pulse_snapshot(c)
+        failing = _FailAfterSql(
+            c,
+            f"ALTER TABLE {mp._SECTOR_REBUILD_TABLE} RENAME TO {mp.SECTOR_TABLE}",
+        )
+
+        with pytest.raises(RuntimeError, match="injected post-write failure"):
+            mp.rebuild_all(conn=failing, cfg=CFG)
+
+        assert _pulse_snapshot(c) == before
+        shadows = c.execute("""
+            SELECT COUNT(*) FROM information_schema.tables
+            WHERE table_name LIKE 'mart_%_pulse_daily__next'
+        """).fetchone()[0]
+        assert shadows == 0
+    finally:
+        c.close()
+
+
+def test_increment_failure_rolls_back_sector_and_market_refresh_together():
+    c = _fixture_conn()
+    try:
+        mp.rebuild_all(conn=c, cfg=CFG)
+        before = _pulse_snapshot(c)
+        failing = _FailAfterSql(c, f"INSERT INTO {mp.MARKET_TABLE}")
+
+        with pytest.raises(RuntimeError, match="injected post-write failure"):
+            mp.build_latest(conn=failing, cfg=CFG)
+
+        assert _pulse_snapshot(c) == before
+    finally:
+        c.close()
+
+
+def test_increment_source_day_loss_rolls_back_market_refresh():
+    """迟到窗口内的 accepted market 日不能因源暂缺而被成功少写。"""
+    c = _fixture_conn()
+    try:
+        mp.rebuild_all(conn=c, cfg=CFG)
+        c.execute("DELETE FROM tr.raw_tushare_daily WHERE trade_date = ?", [D[4]])
+        before = _pulse_snapshot(c)
+
+        with pytest.raises(RuntimeError, match="market incremental invalid"):
+            mp.build_latest(conn=c, cfg=CFG)
+
+        assert _pulse_snapshot(c) == before
+    finally:
+        c.close()
+
+
+def test_increment_dc_namespace_loss_rolls_back_both_tables():
+    """同日某个 DC namespace 暂缺时，不得把 accepted namespace/date 静默抹掉。"""
+    c = _fixture_conn()
+    try:
+        mp.rebuild_all(conn=c, cfg=CFG)
+        c.execute(
+            "DELETE FROM tr.raw_tushare_moneyflow_ind_dc "
+            "WHERE trade_date = ? AND content_type = '概念'",
+            [D[4]],
+        )
+        before = _pulse_snapshot(c)
+
+        with pytest.raises(RuntimeError, match="sector incremental invalid"):
+            mp.build_latest(conn=c, cfg=CFG)
+
+        assert _pulse_snapshot(c) == before
+    finally:
+        c.close()
+
+
+def test_increment_new_dc_day_requires_both_namespaces():
+    """新日只到一个 DC namespace 不是 accepted local batch。"""
+    c = _fixture_conn()
+    try:
+        mp.rebuild_all(conn=c, cfg=CFG)
+        before = _pulse_snapshot(c)
+        c.execute(
+            "INSERT INTO tr.raw_tushare_moneyflow_ind_dc VALUES "
+            "('20240109', '行业', 'BK0001.DC', '煤炭行业', 0.3, 100.0, 5.0, 2.0, '云煤能源')"
+        )
+
+        with pytest.raises(RuntimeError, match="sector incremental invalid"):
+            mp.build_latest(conn=c, cfg=CFG)
+
+        assert _pulse_snapshot(c) == before
+    finally:
+        c.close()
+
+
+def test_increment_new_dc_day_rejects_two_namespace_provider_collapse():
+    """新 frontier 即使行业/概念都在，各 1 行也不能冒充完整 accepted batch。"""
+    c = _fixture_conn()
+    try:
+        mp.rebuild_all(conn=c, cfg=CFG)
+        before = _pulse_snapshot(c)
+        d6 = "20240109"
+        c.execute(
+            "INSERT INTO tr.raw_tushare_moneyflow_ind_dc VALUES "
+            "(?, '行业', 'BK9001.DC', '塌缩行业', 0.1, 1.0, 1.0, 1.0, '甲')",
+            [d6],
+        )
+        c.execute(
+            "INSERT INTO tr.raw_tushare_moneyflow_ind_dc VALUES "
+            "(?, '概念', 'BK9002.DC', '塌缩概念', 0.1, 1.0, 1.0, 1.0, '乙')",
+            [d6],
+        )
+        c.execute(
+            "INSERT INTO tr.raw_tushare_dc_index VALUES "
+            "('BK9001.DC', ?, '行业板块', '甲', '600001.SH', 1.0, 1, 1, 1.0, "
+            "'东财一级行业')",
+            [d6],
+        )
+        c.execute(
+            "INSERT INTO tr.raw_tushare_dc_index VALUES "
+            "('BK9002.DC', ?, '概念板块', '乙', '600002.SZ', 1.0, 1, 1, 1.0, NULL)",
+            [d6],
+        )
+        strict_cfg = {
+            **CFG,
+            "current_snapshot_quality_floor": {
+                "measured_trade_date": d6,
+                "min_rows_by_chain": {
+                    "dc_industry": 2,
+                    "dc_concept": 2,
+                    "sw_industry": 1,
+                },
+            },
+        }
+
+        with pytest.raises(RuntimeError, match="current snapshot quality floor"):
+            mp.build_latest(conn=c, cfg=strict_cfg)
+
+        assert _pulse_snapshot(c) == before
+    finally:
+        c.close()
+
+
+def test_first_rebuild_rejects_self_consistent_but_collapsed_current_source():
+    """首次构建没有 accepted baseline，也必须用配置下限拒绝各 namespace 仅 1 行。"""
+    c = _fixture_conn()
+    try:
+        strict_cfg = {
+            **CFG,
+            "current_snapshot_quality_floor": {
+                "measured_trade_date": D[-1],
+                "min_rows_by_chain": {
+                    "dc_industry": 2,
+                    "dc_concept": 2,
+                    "sw_industry": 1,
+                },
+            },
+        }
+
+        with pytest.raises(RuntimeError, match="current snapshot quality floor"):
+            mp.rebuild_all(conn=c, cfg=strict_cfg)
+
+        tables = {row[0] for row in c.execute(
+            "SELECT table_name FROM information_schema.tables"
+        ).fetchall()}
+        assert mp.SECTOR_TABLE not in tables and mp.MARKET_TABLE not in tables
+        assert mp._SECTOR_REBUILD_TABLE not in tables
+        assert mp._MARKET_REBUILD_TABLE not in tables
+    finally:
+        c.close()
+
+
+def test_increment_equal_count_key_replacement_rolls_back():
+    """同日等量换 sector_code 也属于 accepted grain 丢失，不能靠行数蒙混。"""
+    c = _fixture_conn()
+    try:
+        mp.rebuild_all(conn=c, cfg=CFG)
+        before = _pulse_snapshot(c)
+        c.execute(
+            "DELETE FROM tr.raw_tushare_moneyflow_ind_dc "
+            "WHERE trade_date = ? AND content_type = '概念'",
+            [D[4]],
+        )
+        c.execute(
+            "INSERT INTO tr.raw_tushare_moneyflow_ind_dc VALUES "
+            "(?, '概念', 'BK9999.DC', '替换概念', 3.0, 200.0, 100.0, 50.0, '替换股')",
+            [D[4]],
+        )
+
+        with pytest.raises(RuntimeError, match="lost_keys"):
+            mp.build_latest(conn=c, cfg=CFG)
+
+        assert _pulse_snapshot(c) == before
+    finally:
+        c.close()
+
+
+def test_rebuild_requires_dc_namespace_date_parity_and_preserves_live_tables():
+    """全量 shadow 同样拒绝 DC 半日源，失败不能替换旧 live pair。"""
+    c = _fixture_conn()
+    try:
+        mp.rebuild_all(conn=c, cfg=CFG)
+        before = _pulse_snapshot(c)
+        c.execute(
+            "DELETE FROM tr.raw_tushare_moneyflow_ind_dc "
+            "WHERE trade_date = ? AND content_type = '概念'",
+            [D[4]],
+        )
+
+        with pytest.raises(RuntimeError, match="shadow source parity"):
+            mp.rebuild_all(conn=c, cfg=CFG)
+
+        assert _pulse_snapshot(c) == before
+    finally:
+        c.close()
+
+
+def test_rebuild_preserves_accepted_history_when_old_source_grain_disappears():
+    """历史源非矩形可接受，但已发布历史键不能因源回退在重建时静默消失。"""
+    c = _fixture_conn()
+    try:
+        mp.rebuild_all(conn=c, cfg=CFG)
+        before = _pulse_snapshot(c)
+        c.execute(
+            "DELETE FROM tr.raw_tushare_moneyflow_ind_dc "
+            "WHERE trade_date = ? AND content_type = '概念'",
+            [D[0]],
+        )
+
+        with pytest.raises(RuntimeError, match="accepted state regression"):
+            mp.rebuild_all(conn=c, cfg=CFG)
+
+        assert _pulse_snapshot(c) == before
+    finally:
+        c.close()
+
+
+def test_rebuild_shadow_rejects_historical_mappable_grain_loss_without_baseline():
+    """首建没有 accepted baseline 时，全历史 raw↔shadow exact parity 仍须抓漏键。"""
+    c = _fixture_conn()
+    try:
+        mp.rebuild_all(conn=c, cfg=CFG)
+        c.execute(
+            f"CREATE TABLE {mp._SECTOR_REBUILD_TABLE} AS "
+            f"SELECT * FROM {mp.SECTOR_TABLE}"
+        )
+        c.execute(
+            f"CREATE TABLE {mp._MARKET_REBUILD_TABLE} AS "
+            f"SELECT * FROM {mp.MARKET_TABLE}"
+        )
+        c.execute(
+            f"DELETE FROM {mp._SECTOR_REBUILD_TABLE} "
+            "WHERE chain = ? AND trade_date = ?",
+            [mp.CHAIN_DC_CONCEPT, D[0]],
+        )
+        c.execute(f"DROP TABLE {mp.SECTOR_TABLE}")
+        c.execute(f"DROP TABLE {mp.MARKET_TABLE}")
+
+        with pytest.raises(RuntimeError, match="shadow source parity"):
+            mp._validate_rebuild_tables(
+                c,
+                CFG,
+                repair_legacy_dc_namespace=False,
+            )
+    finally:
+        c.close()
+
+
+def test_rebuild_shadow_rejects_null_dc_content_type():
+    """SQL NULL 不得绕过 namespace/content_type fail-closed 契约。"""
+    c = _fixture_conn()
+    try:
+        mp.rebuild_all(conn=c, cfg=CFG)
+        c.execute(
+            f"CREATE TABLE {mp._SECTOR_REBUILD_TABLE} AS "
+            f"SELECT * FROM {mp.SECTOR_TABLE}"
+        )
+        c.execute(
+            f"CREATE TABLE {mp._MARKET_REBUILD_TABLE} AS "
+            f"SELECT * FROM {mp.MARKET_TABLE}"
+        )
+        c.execute(
+            f"UPDATE {mp._SECTOR_REBUILD_TABLE} SET content_type = NULL "
+            "WHERE chain = ? AND trade_date = ?",
+            [mp.CHAIN_DC_CONCEPT, D[0]],
+        )
+
+        with pytest.raises(RuntimeError, match="sector shadow invalid"):
+            mp._validate_rebuild_tables(
+                c,
+                CFG,
+                repair_legacy_dc_namespace=False,
+            )
+    finally:
+        c.close()
+
+
+def test_legacy_namespace_repair_cannot_hide_unrelated_accepted_key_loss():
+    """legacy 身份纠正只能迁移同 grain 行业键，不能放弃 SW/概念/market accepted state。"""
+    c = _fixture_conn()
+    try:
+        mp.rebuild_all(conn=c, cfg=CFG)
+        c.execute(
+            f"UPDATE {mp.SECTOR_TABLE} SET chain = ? "
+            "WHERE chain = ? AND sector_code = 'BK0001.DC' AND trade_date = ?",
+            [mp.CHAIN_DC_CONCEPT, mp.CHAIN_DC_INDUSTRY, D[4]],
+        )
+        before = _pulse_snapshot(c)
+        c.execute(
+            "DELETE FROM tr.raw_tushare_sw_daily "
+            "WHERE ts_code = '801010.SI' AND trade_date = ?",
+            [D[0]],
+        )
+
+        with pytest.raises(RuntimeError, match="accepted state regression"):
+            mp.build_latest(conn=c, cfg=CFG)
+
+        assert _pulse_snapshot(c) == before
+    finally:
+        c.close()
+
+
 def test_get_helpers_asof():
     """as-of 查询: 周末回退最近入库日; chain 过滤; 未知 chain 报错。"""
     c = _fixture_conn()
@@ -539,7 +992,7 @@ def test_get_helpers_asof():
         rows = mp.get_sector_pulse("20240106", chain=mp.CHAIN_SW, conn=c)  # 周六 → 回退 0105
         assert rows and all(r["trade_date"] == D[3] and r["chain"] == mp.CHAIN_SW for r in rows)
         allrows = mp.get_sector_pulse("20240106", conn=c)
-        assert {r["chain"] for r in allrows} == {mp.CHAIN_DC, mp.CHAIN_SW}
+        assert {r["chain"] for r in allrows} == set(mp.PULSE_CHAINS)
         mkt = mp.get_market_pulse("20240106", conn=c)
         assert mkt is not None and mkt["trade_date"] == D[3]
         with pytest.raises(ValueError):
@@ -556,8 +1009,8 @@ def test_get_helpers_asof_semantics():
         # 周末 as_of (20240106) 回退到 20240105; D[4]=20240108 之后的 as_of 取 20240108
         rows = mp.get_sector_pulse("20240106", conn=c)
         assert rows and all(r["trade_date"] == "20240105" for r in rows)
-        dc_only = mp.get_sector_pulse("20240108", chain=mp.CHAIN_DC, conn=c)
-        assert dc_only and all(r["chain"] == mp.CHAIN_DC for r in dc_only)
+        dc_only = mp.get_sector_pulse("20240108", chain=mp.CHAIN_DC_INDUSTRY, conn=c)
+        assert dc_only and all(r["chain"] == mp.CHAIN_DC_INDUSTRY for r in dc_only)
         assert all(r["net_amount"] is not None for r in dc_only)  # dc 链 net_amount 有值
         with pytest.raises(ValueError):
             mp.get_sector_pulse("20240108", chain="ths_industry", conn=c)
@@ -572,7 +1025,7 @@ def test_get_helpers_asof_semantics():
 
 
 def test_v2_content_type_and_leaders_per_chain():
-    """content_type 分链: dc 透出源值 (行业/概念), sw 恒 '申万L1'; 龙头三件套 + 资金龙头只在 dc。"""
+    """content_type 分链: dc 透出源值；sw 必须与 L1/L2/L3 level 一致。"""
     c = _fixture_conn()
     try:
         mp.rebuild_all(conn=c, cfg=CFG)
@@ -581,18 +1034,22 @@ def test_v2_content_type_and_leaders_per_chain():
             FROM {mp.SECTOR_TABLE} WHERE sector_code = 'BK0001.DC' AND trade_date = ?""",
             [D[0]]).fetchone()
         assert tuple(r1) == ("行业", "云煤能源", "600792.SH", pytest.approx(9.98), "云煤能源")
-        # BK0002 无 dc_index 行 → 涨幅龙头 NULL, 资金龙头仍有 (来自 moneyflow_ind_dc)
+        # 当前 catalog parity 要求 BK0002 同日 dc_index 在场；两类龙头分别来自两张源表。
         r2 = c.execute(f"""
             SELECT content_type, "leading", flow_leader_stock FROM {mp.SECTOR_TABLE}
             WHERE sector_code = 'BK0002.DC' AND trade_date = ?""", [D[0]]).fetchone()
-        assert tuple(r2) == ("概念", None, "万丰奥威")
-        # sw 链: content_type 恒 '申万L1', 龙头族恒 NULL (vendor 隔离)
+        assert tuple(r2) == ("概念", "万丰奥威", "万丰奥威")
+        # sw 链: content_type=申万+level，L2/L3 不得再伪装成 L1；龙头族恒 NULL。
         bad_sw = c.execute(f"""
             SELECT COUNT(*) FROM {mp.SECTOR_TABLE} WHERE chain = '{mp.CHAIN_SW}'
-            AND (content_type != '{mp.CONTENT_SW}' OR "leading" IS NOT NULL
+            AND (content_type != '{mp.CONTENT_SW_PREFIX}' || level OR "leading" IS NOT NULL
                  OR leading_code IS NOT NULL OR leading_pct IS NOT NULL
                  OR flow_leader_stock IS NOT NULL OR inflow_breadth IS NOT NULL)""").fetchone()[0]
         assert bad_sw == 0
+        assert c.execute(f"""
+            SELECT COUNT(*) FROM {mp.SECTOR_TABLE}
+            WHERE chain = '{mp.CHAIN_SW}' AND level = 'L2' AND content_type = '申万L2'
+        """).fetchone()[0] > 0
     finally:
         c.close()
 
@@ -691,7 +1148,9 @@ def test_v3_flow_regime_taxonomy_and_priority():
     surge_out 压 accum_out_driving) + z 的 net 同号 guard (由 surge_in 日 net>0 隐式覆盖)。"""
     c = _regime_conn()
     try:
-        mp.rebuild_all(conn=c, cfg=CFG)
+        # This fixture deliberately models one DC chain only. Exercise the sector
+        # expression directly instead of weakening the production rebuild gate.
+        c.execute(f"CREATE TABLE {mp.SECTOR_TABLE} AS {mp._sector_sql(CFG)}")
         rows = c.execute(f"""
             SELECT trade_date, flow_streak, flow_z, flow_regime FROM {mp.SECTOR_TABLE}
             WHERE sector_code = 'BK0009.DC' ORDER BY trade_date""").fetchall()
@@ -754,7 +1213,7 @@ def test_v3_sw_level_rows_and_flow_aggregation():
 
 def test_v3_cum_ratio_and_dc_level():
     """cum_ratio_20d 手算 (cw=3): sw 801010 D2 = 15e4/4e6*100 = 3.75%; 窗未满 (D0/D1) → NULL。
-    dc BK0001 D2 = (10+5+7)/2e6*100 = 0.0011%; dc level 透出 (dc_index.level=1 → 'L1',
+    dc BK0001 D2 = (10+5+7)/2e6*100 = 0.0011%; dc level 透出 (中文源值 → config 'L1',
     无 dc_index 行的 BK0002 → NULL)。"""
     c = _fixture_conn()
     try:

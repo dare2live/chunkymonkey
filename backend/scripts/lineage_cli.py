@@ -8,7 +8,7 @@
   python backend/scripts/lineage_cli.py show <table>        # impact+provenance 合并视图
 
 impact/provenance/dead/show 读 data/lineage/graph.json (没有则即时 build, 提示先 build)。
-owner: analysis/data_lineage_routing_hub_design_20260624.md + services/lineage/。
+owner: docs/MASTER_TOPLEVEL_DESIGN.md + docs/engineering_governance.md + services/lineage/。
 """
 from __future__ import annotations
 

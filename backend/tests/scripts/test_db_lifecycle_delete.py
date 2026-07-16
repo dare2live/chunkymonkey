@@ -1,12 +1,12 @@
 """db_lifecycle_delete live 守护面单测 (2026-07-06 全面数据审计根因根治).
 
-根因 (owner=analysis/comprehensive_data_module_audit_20260706.md pit_leakage_spotcheck 维度):
+历史根因证据=analysis/comprehensive_data_module_audit_20260706.md pit_leakage_spotcheck 维度:
 原 _live_surface() 只扫 daily_update.sh 里正则抓到的脚本名 + serving/recommendation/scoring/
 ensemble 四个目录——结构性排除 backend/scripts/ 整个目录, 导致"表已删但治理脚本仍用 SQL
 字符串引用"这类死引用在删表前完全检测不到 (data_quality.py 3742行零调用方模块正是这样
 潜伏 44+ 天没被发现)。另: daily_update.sh 2026-06-23 重设计后已委托 services.pipeline.run
 模块调用, 原对 daily_update.sh 做正则抓 backend/scripts/*.py 调用名的逻辑现在恒抓不到东西
-(与 check_legacy_flow_integrity.py C1 "PASS by vacuity" 同型)。
+(与历史执行面 verifier 的 "PASS by vacuity" 同型)。
 
 本门锁定: (1) live 守护面必须包含 backend/scripts/*.py (治理/审计脚本); (2) 必须包含
 backend/services/pipeline/*.py (真实当前调用图, 取代已过期的 wrapper 脚本正则解析);

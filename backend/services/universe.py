@@ -128,8 +128,8 @@ def get_active_universe(
             raise UniverseDataError("K-line market DB is required for active universe truth") from exc
 
     try:
-        from services.market_read import get_canonical_kline_qfq_relation
-        kline_relation = get_canonical_kline_qfq_relation()
+        from services.market_read import get_analysis_kline_qfq_relation
+        kline_relation = get_analysis_kline_qfq_relation()
         no_trade_days = int(DELISTED_NO_TRADE_DAYS)
         codes = {r[0] for r in mkt.execute(
             f"SELECT DISTINCT code FROM {kline_relation} "

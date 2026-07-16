@@ -1,16 +1,15 @@
-"""paper_portfolio.py — 实盘模拟 (手动版, 通用件) (2026-07-02 用户定调)
+"""Legacy 手工观察账本；NONCONFORMING，不是 Tier4 paper execution。
 
-语义: 用户在各策略选出的股票里**手选入池+设仓位** (strategy_tag 标来源, 机构跟随=第一个 tag,
-后续策略共用); 初始 100 万 (config); 每日"更新数据" (daily_update) 时 mark-to-market;
-统计 胜率/收益率/超额 vs HS300。手动版 — 旧自动 paper_sim 已随重建退役, 本件从零按地基构建。
+当前只用最新 qfq close 做近似记账，缺订单/成交、T+1、停牌、涨跌停和 nominal execution
+price，因此任何收益、胜率、NAV 只能作为观察值，不能作为 StrategyRelease 或候选信号证据。
 
-地基一致性 (用户红线"新功能用数据地基的功能和能力, 非临时脚本"):
-  - 取价走 SERVE: DataAccess.get('kline_qfq'/'index_daily') — 本模块是纯数据平台第一个正式 CONSUME 方
+现有实现边界:
+  - 取价走 SERVE: DataAccess.get('kline_qfq'/'index_daily')，只适合研究估值
   - 交易日走 services.calendar.latest_closed_or_raise (交易日历真相源, 不 wall-clock)
   - 阈值走 config/paper_portfolio.yaml (init_cash/佣金/印花税 — 判断死红线)
   - 表 = smartmoney display 层 (Type A: mark-to-market 给定持仓+价格结果唯一, 确定性 PIT 重排),
     declare-on-build + data_layers 声明
-  - 挂 pipeline store 阶段 (daily_update 自动 mark), 亦可手动调
+  - 只允许显式手动 mark；已从数据管线 store 阶段移除，避免数据更新暗中改变观察账本
 """
 from __future__ import annotations
 
@@ -36,11 +35,11 @@ def _cfg() -> dict[str, Any]:
 DDL = """
 CREATE TABLE IF NOT EXISTS paper_position (
     position_id   TEXT PRIMARY KEY,
-    strategy_tag  TEXT NOT NULL,              -- 来源策略 (inst_follow / manual / ...)
+    strategy_tag  TEXT NOT NULL,              -- 观察来源标签，不代表已发布策略
     stock_code    TEXT NOT NULL,
-    shares        DOUBLE NOT NULL,            -- 用户设仓位 (按金额入池时换算成股数)
-    entry_date    TEXT NOT NULL,              -- 入池日 (最新完成交易日, ISO)
-    entry_price   DOUBLE NOT NULL,            -- 入池日 qfq close (SERVE)
+    shares        DOUBLE NOT NULL,            -- 观察名义数量 (按金额换算)
+    entry_date    TEXT NOT NULL,              -- 记入日 (最新完成交易日, ISO)
+    entry_price   DOUBLE NOT NULL,            -- 记入日 qfq close；非成交价
     entry_fee     DOUBLE NOT NULL DEFAULT 0,  -- 买入佣金
     exit_date     TEXT,
     exit_price    DOUBLE,
@@ -93,11 +92,11 @@ def _bench_close(as_of: str) -> float | None:
     return float(last["close"])
 
 
-# ── 操作面 (入池/出池) ──────────────────────────────────────────────────────
+# ── 观察账本操作面（兼容函数名保留）────────────────────────────────────────
 
 def add_position(stock_code: str, *, amount: float | None = None, shares: float | None = None,
                  strategy_tag: str = "manual", note: str = "", conn=None) -> dict[str, Any]:
-    """入池: 按金额 (换算股数) 或直接股数; entry_price=最新完成交易日 qfq close。"""
+    """记入观察：entry_price=最新完成交易日 qfq close，不代表可成交价格。"""
     if (amount is None) == (shares is None):
         raise ValueError("amount 与 shares 二选一")
     cfg = _cfg()
@@ -185,7 +184,7 @@ def _cash_and_value(c, as_of: str) -> dict[str, float]:
 
 
 def mark_to_market(as_of: str | None = None, conn=None) -> dict[str, Any]:
-    """每日快照 (daily_update store 阶段自动调, 亦可手动)。幂等: 同日重跑覆盖。"""
+    """显式手工写入观察账本快照；不由 daily_update 自动调用。同日重跑覆盖。"""
     as_of = as_of or _latest_trade_date()
     own = conn is None
     c = conn or get_conn()

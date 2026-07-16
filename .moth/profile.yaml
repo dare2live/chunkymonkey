@@ -1,25 +1,25 @@
 kind: profile
 name: chunkymonkey
-repo_path: /Users/dp/Documents/M/stock/chunkymonkey
+# Moth 0.3.0 resolves a relative repo_path against the process cwd, not this file.
+# Callers must `cd` into the target snapshot and pass `--repo .`; safe_commit enforces it.
+repo_path: .
 codegraph_root: .
-# 缺省 = moth 0.3.0 内建分析器(vendored complexity-optimizer, 字节级等价已证)
-complexity_baseline_path: data/reports/tooling/complexity_baseline.json
 evidence_paths:
   agents: AGENTS.md
   goal: goal.md
-  project_state_ledger: analysis/project_state_ledger.md
-  handoff: SESSION_HANDOFF.md
-  workflow_checkpoint: analysis/workflow_checkpoint.md
-  quickstart: docs/chunkyctl_session_quickstart.md
+  architecture: docs/MASTER_TOPLEVEL_DESIGN.md
+  strategy_validation: docs/strategy_validation_contract.md
   engineering_governance: docs/engineering_governance.md
-  project_constitution: docs/PROJECT_CONSTITUTION.md
+  docs_map: docs/README.md
+  feature_map: FEATURE_MAP.md
+  project_state_ledger: analysis/project_state_ledger.md
   codex_global_agents: /Users/dp/.codex/AGENTS.md
   skill_codex_local_ops: /Users/dp/.codex/skills/codex-local-ops/SKILL.md
   skill_architect_controller: /Users/dp/.codex/skills/architect-controller/SKILL.md
   skill_chunkymonkey_governance: /Users/dp/.codex/skills/chunkymonkey-governance/SKILL.md
+  skill_chunkymonkey_debug_delivery: /Users/dp/.codex/skills/chunkymonkey-debug-delivery/SKILL.md
   skill_chunkymonkey_review_gate: /Users/dp/.codex/skills/chunkymonkey-review-gate/SKILL.md
   docs: docs
-  tooling_reports: data/reports/tooling
 instruction_sources:
   active:
     - AGENTS.md
@@ -29,8 +29,6 @@ instruction_sources:
     - live tooling output
   context_only:
     - analysis/project_state_ledger.md
-    - SESSION_HANDOFF.md
-    - analysis/workflow_checkpoint.md
   ignored_by_default:
     - CLAUDE.md
   legacy_exception: Open CLAUDE.md only when the user explicitly requests historical comparison or migration.
@@ -39,9 +37,10 @@ notes: >
   dirty worktree, CodeGraph, complexity, and evidence path discovery, including
   the local Codex skills that govern startup/local-ops and Rule 10 review. Repo
   audit scripts and chunkyctl own business gates and local execution-surface
-  checks such as stage_opt, need_027, storage_payload, data_health, and
-  launchd/cron/installer references to retired or missing entrypoints. goal.md
-  is the compact live controller board; analysis/project_state_ledger.md is
-  historical evidence and should be queried, not loaded wholesale at startup.
+  checks such as data integrity, taxonomy/PIT, strategy promotion, data health,
+  and launchd/cron/installer references to retired or missing entrypoints.
+  goal.md is the compact live controller board; the three owner contracts under
+  docs/ define architecture, validation, and engineering; project_state_ledger
+  is historical evidence and should be queried, not loaded wholesale.
 assertion_packs:
   - .moth/assertions/claims.yaml

@@ -1,11 +1,15 @@
+# Legacy enforcement roster (NONCONFORMING target architecture) — 当前 SERVE 裸读门仍消费，
+# Phase1 由每个模块的 contract manifest/typed output 边界取代后删除。这里的目录、文件和前缀
+# 是过渡期 code-topology whitelist，不是新架构的业务配置或模块真相源。
+#
 # 数据模块成员 roster — 不变量4 (单概念单真相源 / SERVE 单一读路) 执法 (2026-06-23 边界法决议2)
 #
 # 成员 = 数据模块的子模块本身 (采集/清洗/加工/serving/审计/infra/真相源), 允许连数据源/读 raw —
 #   它们就是数据模块, 不是"绕过的外人" (解 SERVE 建在 adapter 之上的循环依赖)。
 # 非成员 (策略/信号/展示/回测消费者) 内联读 raw L0 = 违规 → 必须走 services.data_access.DataAccess.get()。
-# owner=analysis/data_module_toplevel_design_20260622.md §1.5 / §2 (ACQUIRE→STORE→SERVE→CONSUME)。
+# owner=docs/MASTER_TOPLEVEL_DESIGN.md §3.1/§5.1 (landing→canonical→serve→consumer)。
 # 用法: check_serve_read_layer.py D1 门读本 roster, 全量扫 backend/services+scripts 非成员内联 raw 读
-#   (2026-07-08 前经 --bypass-scan 单独参数触发, 收口后是 D1 默认硬门, 见 analysis/serve_read_layer_gate_consolidation_20260708.md)。
+#   (2026-07-08 前经 --bypass-scan 单独参数触发，现为默认硬门；owner=live gate/tests)。
 version: 1
 
 # 目录级成员 (整包是数据模块)
@@ -39,7 +43,7 @@ member_service_files:
   - market_schema.py         # DDL
   - market_read.py           # K线读 helper (serving 内部)
   # etf_db.py 已删 2026-06-29 (批3d: ETF 子系统整体退役物删)
-  - holdout_guard.py         # D 阶段机制门 (2026-07-02 D1 前置: holdout 触碰预算+预注册判据, experiment_store.holdout_touch_log; 原 stale 条目 experiment_store.py 文件不存在已删, 真实建库脚本=scripts/build_experiment_store.py 非 services)
+  - holdout_guard.py         # 过渡期训练窗口边界门；不声称实现 Tier3 single-touch/release runtime
   - security_master.py       # 身份/dim 真相源
   - universe.py              # 交易日历级硬真相源 (不能依赖派生读层)
   - kline_source.py          # K线写侧 normalize
@@ -55,7 +59,7 @@ member_service_files:
                              #   Phase A 档案 API)走本模块既有读侧 API(list_profiles/get_profile/
                              #   recent_signals, institution_profile.py:323起, 模块自身 owns 这些表的
                              #   serving 读路, 与 builder 角色一致), 不经 DataAccess.get()。
-                             #   见 analysis/serve_read_layer_gate_consolidation_20260708.md。
+                             #   现行边界由模块 typed API 与 check_serve_read_layer.py 共同守护。
   - continuity_guard.py      # 消费侧连续性硬门 (2026-07-03 用户定调交易日历级强制: 中间缺口喂进研究=raise; 消费方=rally_gt 第三道门+D2 builder 必接; 采集侧告警=check_continuity_integrity)
   - calendar_builder.py      # M2 dim 刷新 builder (2026-07-03 R1 根因3: raw_tushare_trade_cal→dim_trading_calendar 增量, 挂 acquire Step 2.96; 根治日历孤儿断链)
   - segments.py              # M3 加工 builder (2026-07-02 B1: 读 raw daily_basic+PIT行业 物化分层标签, 单一计算点)

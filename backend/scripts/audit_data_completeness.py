@@ -32,7 +32,7 @@ UNIVERSE_SIZE_HINT = 5200  # A 股 active universe size
 # mart_p0a_*/fact_capital_flow_pit/fact_risk_factors/fact_technical_trigger/fact_sector_momentum/
 # mart_sniper_score/mart_institution_score)。重建对应层后再加回各自检查。仅存活地基/事件表保留。
 TABLES = [
-    ("market.duckdb", "v_price_kline_qfq", "date", True, "code"),  # rule-compliance: ok evidence=audit-table-list-metadata (2026-06-27 price_kline_tdxhub物删→canonical tushare K线)
+    ("market.duckdb", "v_price_kline_qfq", "date", True, "code"),  # rule-compliance: ok evidence=current qfq analysis-surface inventory; non-execution truth
     # fact_lhb_event 完整性检查已删 2026-06-28 (Phase 0 机构+事件 serving 退役: 死 event 派生, DB 已无表)
 ]
 

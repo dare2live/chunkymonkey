@@ -11,30 +11,49 @@ from typing import Any
 from services.lineage.model import LineageGraph
 
 
-def _norm(table: str) -> str:
-    return table if table.startswith("table:") else f"table:{table}"
+def _table_name(node_id: str) -> str:
+    physical = node_id.split(":", 1)[1]
+    return physical.split(".", 1)[1] if "." in physical else physical
+
+
+def _resolve_table_ids(graph: LineageGraph, table: str) -> list[str]:
+    """解析 db.table 或裸表名；裸名保守返回所有同名物理表。"""
+    value = table.split(":", 1)[1] if table.startswith("table:") else table
+    exact = f"table:{value}"
+    if graph.node(exact) is not None:
+        return [exact]
+    return [
+        n.id for n in graph.nodes_of_kind("table")
+        if n.attrs.get("table", _table_name(n.id)) == value
+    ]
 
 
 def impact(graph: LineageGraph, table: str) -> dict[str, Any]:
     """删/改 <table> 影响的全部消费方 (fan-in), 按 ctype 分组。"""
-    tid = _norm(table)
-    node = graph.node(tid)
+    tids = _resolve_table_ids(graph, table)
+    nodes = [graph.node(tid) for tid in tids]
     consumers: dict[str, list[str]] = {}
-    for e in graph.edges_from(tid, kind="consume"):
-        c = graph.node(e.dst)
-        ctype = (c.attrs.get("ctype") if c else None) or "other"
-        path = (c.attrs.get("path") if c else e.dst) or e.dst
-        consumers.setdefault(ctype, []).append(path)
+    for tid in tids:
+        for e in graph.edges_from(tid, kind="consume"):
+            c = graph.node(e.dst)
+            ctype = (c.attrs.get("ctype") if c else None) or "other"
+            path = (c.attrs.get("path") if c else e.dst) or e.dst
+            consumers.setdefault(ctype, []).append(path)
     for k in consumers:
         consumers[k] = sorted(set(consumers[k]))
     total = sum(len(v) for v in consumers.values())
+    node = nodes[0] if len(nodes) == 1 else None
+    serve_entities = node.attrs.get("serve_entities", []) if node else []
     return {
-        "table": tid.split(":", 1)[1],
-        "exists": node is not None,
-        "status": (node.attrs.get("status") if node else "unknown"),
+        "table": table.split(":", 1)[1] if table.startswith("table:") else table,
+        "exists": bool(nodes),
+        "ambiguous": len(nodes) > 1,
+        "qualified_tables": [tid.split(":", 1)[1] for tid in tids],
+        "status": (node.attrs.get("status") if node else ("multiple" if nodes else "unknown")),
         "db": (node.attrs.get("db") if node else None),
         "layer": (node.attrs.get("layer") if node else None),
-        "serve_entity": (node.attrs.get("serve_entity") if node else None),
+        "serve_entity": serve_entities[0] if len(serve_entities) == 1 else None,
+        "serve_entities": serve_entities,
         "consumer_count": total,
         "consumers_by_type": consumers,
     }
@@ -42,24 +61,29 @@ def impact(graph: LineageGraph, table: str) -> dict[str, Any]:
 
 def provenance(graph: LineageGraph, table: str) -> dict[str, Any]:
     """<table> 从哪采集来 + PIT 锚 (溯源)。"""
-    tid = _norm(table)
-    node = graph.node(tid)
+    tids = _resolve_table_ids(graph, table)
+    nodes = [graph.node(tid) for tid in tids]
     sources = []
-    for e in graph.edges_to(tid, kind="acquire"):
-        s = graph.node(e.src)
-        sources.append({
-            "source_interface": e.src.split(":", 1)[1] if ":" in e.src else e.src,
-            "source": (s.attrs.get("source") if s else None),
-            "api": (s.attrs.get("api") if s else None),
-            "pit_anchor": e.attrs.get("pit_anchor", ""),
-            "grain": e.attrs.get("grain", []),
-        })
+    for tid in tids:
+        for e in graph.edges_to(tid, kind="acquire"):
+            s = graph.node(e.src)
+            sources.append({
+                "physical_table": tid.split(":", 1)[1],
+                "source_interface": e.src.split(":", 1)[1] if ":" in e.src else e.src,
+                "source": (s.attrs.get("source") if s else None),
+                "api": (s.attrs.get("api") if s else None),
+                "pit_anchor": e.attrs.get("pit_anchor", ""),
+                "grain": e.attrs.get("grain", []),
+            })
+    node = nodes[0] if len(nodes) == 1 else None
     return {
-        "table": tid.split(":", 1)[1],
-        "exists": node is not None,
+        "table": table.split(":", 1)[1] if table.startswith("table:") else table,
+        "exists": bool(nodes),
+        "ambiguous": len(nodes) > 1,
+        "qualified_tables": [tid.split(":", 1)[1] for tid in tids],
         "db": (node.attrs.get("db") if node else None),
         "layer": (node.attrs.get("layer") if node else None),
-        "acquired_from": sorted(sources, key=lambda x: x["source_interface"]),
+        "acquired_from": sorted(sources, key=lambda x: (x["physical_table"], x["source_interface"])),
         "acquired": len(sources) > 0,
     }
 
@@ -77,7 +101,7 @@ def dead_tables(graph: LineageGraph) -> list[dict[str, Any]]:
     for n in graph.nodes_of_kind("table"):
         if n.attrs.get("status") == "declared_not_live":
             continue
-        tname = n.id.split(":", 1)[1]
+        tname = n.attrs.get("table", _table_name(n.id))
         # L0 源 (有 vendor 采集边 或 raw_ 镜像前缀) 不进死表候选 — 永不删类
         if graph.edges_to(n.id, kind="acquire") or tname.startswith("raw_"):
             continue
@@ -88,7 +112,8 @@ def dead_tables(graph: LineageGraph) -> list[dict[str, Any]]:
                 ("service", "script", "router", "frontend")]
         if not real:
             out.append({
-                "table": n.id.split(":", 1)[1],
+                "table": tname,
+                "physical_table": n.id.split(":", 1)[1],
                 "db": n.attrs.get("db"),
                 "layer": n.attrs.get("layer"),
                 "ref_count": len(consumers),   # 0 = 全无引用; >0 = 仅 config/test 引用

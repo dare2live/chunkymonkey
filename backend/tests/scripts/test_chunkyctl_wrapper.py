@@ -1,13 +1,17 @@
 from __future__ import annotations
 
-import json
+import importlib.util
 import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 WRAPPER = REPO_ROOT / "scripts" / "chunkyctl"
+FEATURE_MAP_BUILDER = REPO_ROOT / "backend" / "scripts" / "build_feature_map.py"
+RETIRED_COMMANDS = ("worktree", "docs", "preflight", "audit", "data-status", "jobs")
 
 
 def _write(path: Path, text: str) -> None:
@@ -40,48 +44,33 @@ def _run_wrapper(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_preflight_wrapper_forwards_positional_scopes_and_agent_evidence(tmp_path: Path) -> None:
+@pytest.mark.parametrize("command", RETIRED_COMMANDS)
+def test_retired_command_is_rejected_before_backend(command: str, tmp_path: Path) -> None:
     repo = _make_fake_repo(tmp_path)
 
-    result = _run_wrapper(
-        repo,
-        "preflight",
-        "审计 data_health",
-        "goal.md",
-        "--agent-dispatch",
-        "Ptolemy read-only triage",
-    )
+    result = _run_wrapper(repo, command, "probe")
 
-    assert result.returncode == 0
-    assert json.loads(result.stdout) == [
-        "preflight",
-        "--scope",
-        "goal.md",
-        "--agent-dispatch",
-        "Ptolemy read-only triage",
-        "--task",
-        "审计 data_health",
-    ]
+    assert result.returncode != 0
+    assert "retired" in result.stdout.lower()
 
 
-def test_preflight_wrapper_forwards_flag_task_scope_and_skip_reason(tmp_path: Path) -> None:
+def test_help_does_not_advertise_retired_commands(tmp_path: Path) -> None:
     repo = _make_fake_repo(tmp_path)
 
-    result = _run_wrapper(
-        repo,
-        "preflight",
-        "--task=审计 data_health",
-        "--scope=goal.md",
-        "--agent-skip-reason=tool unavailable",
-    )
+    result = _run_wrapper(repo, "--help")
 
     assert result.returncode == 0
-    assert json.loads(result.stdout) == [
-        "preflight",
-        "--scope",
-        "goal.md",
-        "--agent-skip-reason",
-        "tool unavailable",
-        "--task",
-        "审计 data_health",
-    ]
+    for command in RETIRED_COMMANDS:
+        assert f"scripts/chunkyctl {command}" not in result.stdout
+
+
+def test_feature_map_does_not_publish_retired_commands() -> None:
+    spec = importlib.util.spec_from_file_location("build_feature_map", FEATURE_MAP_BUILDER)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    commands = {name for name, _help in module.scan_chunkyctl(REPO_ROOT)}
+
+    assert {"doctor", "map", "pipeline", "lineage"} <= commands
+    assert commands.isdisjoint(RETIRED_COMMANDS)

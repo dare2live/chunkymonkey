@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""死表审计 + 清理工具 (cutover-free DB 瘦身, owner=analysis/db_management_design_20260614.md §12).
+"""死表审计 + 清理工具 (owner=docs/engineering_governance.md §6/§10).
 
 保守规则: 只有 **0 行 AND 0 引用** (backend/ 非测试代码无任一 SELECT/JOIN/INSERT/CREATE 该表名) 才判死表可删。
 → "空但有 writer" 的表 (如 ablation 输出未跑) 被引用检查保护, 不误删。

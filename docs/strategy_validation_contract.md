@@ -1,123 +1,177 @@
-> **状态 (2026-07-02 批5 标注)**: 本契约的**哲学红线仍是 active owner** (PIT/walk-forward/OOS/
-> C-R1/C-R2/含成本裁决 — CLAUDE.md §4/§5 引用它), 但**执行面大部分已随策略层退役**
-> (Optuna 中央层/paper_sim/backtest 引擎已删; check_strategy_validation_integrity 仍在但
-> engine_execution_aware 为"预期红" = edge 重建的验收尺)。edge/策略重建跑任何寻优/回测前, 按本契约重立执行面。
+# Strategy Research And Release Contract
 
-# Strategy Validation And Promotion Contract
+> 状态：live
+> 生效：2026-07-16
+> 作用：Tier 3 研究、策略验证、Tier 4 发布与纸面执行的唯一规则。当前不存在已发布生产策略，所有历史 KPI 均不得当作当前证书。
 
-This is the active contract for strategy research, backtests, paper simulation,
-forward monitoring, and promotion. Historical strategy drafts and evidence are
-archived under `analysis/docs_archive_20260531/`.
+## 1. 风险优先
 
-## Risk First
-
-| Risk | Rule |
+| 风险 | 阻断规则 |
 |---|---|
-| In-sample or proxy result promoted as production | Blocked; use `unknown` until current evidence exists |
-| PIT leakage | Any time `t` decision may only use data available at or before `t` |
-| Unrealistic execution | Include costs, slippage, T+1, limit-up buyability, one-line boards, capacity, and overlap |
-| Search without search space | `plan_validator` must pass before Optuna/provider jobs |
-| Suspiciously good numbers | Sharpe >5, win rate >95%, or annualized >100% triggers leakage/PIT ablation |
+| PIT / availability 泄漏 | 决策时点只能读取当时已经可获得的数据；仅有 `trade_date` 不足以证明可用 |
+| 标签进入特征 | 未来涨幅、episode 结局、持有期收益只可作为 label/evaluation，不可进入特征或状态定义 |
+| 当前复权视图充当成交价 | qfq 用于分析收益；订单和成交必须使用名义可成交价格与当日交易限制 |
+| 一次试验改多个变量 | 每次消融只增加一个命名 feature block，其他数据/样本/成本/执行不变 |
+| 只报胜率或 IC | 必须同时报告收益、盈亏比、回撤、换手、容量和稳定性 |
+| 研究结果直接出候选 | 没有 `StrategyRelease` 的实验不得进入正式 `DecisionBatch` |
+| 失败实验被丢弃 | 失败、无增益和负增益都必须登记，防止重复搜索和选择性报告 |
+| 可疑高指标 | Sharpe、胜率、年化或相对提升异常时先做泄漏/样本/PIT/执行消融，不得庆祝式转正 |
 
-## 判断法典 (Judgment Codex) — owner: this file
+## 2. 标准对象
 
-立法层 (2026-06-15 8-lens 对抗复审根因 R1/R2 + 用户"考核收益率不止胜率, 目的是真能赚钱"反哺)。
-每条人话+机器话双语; 机器话由 `check_strategy_validation_integrity.py` gate + moth `validation-*` 断言执法。
-完整缺陷体系 owner=`analysis/design_deficiencies_extension2_20260615.md` (N1-N30 + 根因链)。
+| 对象 | 最小职责 |
+|---|---|
+| `DatasetSnapshot` | 冻结输入数据集、accepted partitions、universe、时间范围和内容 hash |
+| `FeatureBlock` | 版本化输入列、计算定义、availability 和 config hash |
+| `ExperimentRun` | prereg、假设、数据快照、fold、成本、执行、随机种子和 artifact manifest |
+| `ExperimentVerdict` | 结果、反证、分层稳定性、PIT/成本 gate 和 `accept/reject/inconclusive` |
+| `StrategySpec` | 候选生成、排序、仓位、退出和适用状态的版本化定义 |
+| `StrategyRelease` | 指向一个获准 verdict 和完整构建物的不可变发布记录 |
+| `DecisionBatch` | 某 decision time 使用某 release 和 snapshot 生成的一次决策 |
+| `CandidateSignal` | 股票、方向、理由、风险、证据引用和有效期；不是成交 |
+| `PaperOrder/Fill/Nav` | 按真实交易规则模拟的订单、成交和组合净值 |
 
-| 法典条 | 人话 (任何人能懂) | 机器话 (gate/assert 执行) |
+任何对象缺少上游引用、时间语义或版本，不得用默认值伪装完整。
+
+## 3. 研究基线与消融
+
+所有策略包共用同一阶梯：
+
+| Block | 内容 | 要回答的问题 |
 |---|---|---|
-| **C-R1 验证空间≠盈利空间** | 每日截面 rank-IC 数学上减掉了 cohort 绝对漂移, 而 long-only 赚的恰是它 → 验证空间(rank) ⟂ 盈利空间(含成本绝对NAV)。任何 edge 的**充分**证据 = 含成本绝对收益, IC 仅 necessary 快筛。IC 真 ≠ 能赚钱 (Phase B: 33σ REAL_EDGE 仍 gross -34.6%)。 | `tradability_verdict(ic, net)` 对称门: IC>0 且 net≤0 → `IC_POSITIVE_BUT_UNTRADABLE`; `record_verdict` 拒 `confirmed_by_owner=1` 无含成本 net_return 证据; 验证阶梯 Gate 须含**绝对收益 null** (block bootstrap NAV 符号, 非纯 rank/sharpe 置换)。moth `validation-r1-symmetric-gate` / `validation-promotion-needs-money`。 |
-| **C-R2 信号≠可交易头寸** | 信号是排序(数学对象), 头寸是受涨跌停/T+1/停牌/印花税/流动性约束的物理对象。回测把二者等同 = 假设无摩擦市场, 绝对收益系统性乐观。 | 回测引擎须 execution-aware: 涨跌停一字板剔篮 + 非对称成本栈(卖+印花) + 容量/冲击 + T+1 open 入场(非 close 假成交)。`check_strategy_validation_integrity.engine_execution_aware`=PASS; moth `validation-engine-execution-aware`。 |
-| **C-WinReturn 胜率诊断/收益目标** | 单笔期望=胜率×平均盈−败率×平均亏; 胜率脱离盈亏比无意义 (40%×3:1 完胜 60%×0.5:1)。**胜率=诊断量, 收益率+max_dd=目标量**。仓位管理是把 {edge,胜率,盈亏分布} 转成 {实现收益,回撤} 的传递函数, 是一等设计轴非事后系数。最终目的是真能赚钱, 不是证明策略有效。 | `kpi_verdict(metrics)` 联合门: 年化 AND max_dd AND 月胜率 AND 胜率×盈亏比期望(`positive_expectancy`), 全 AND, 单项不放行; 引擎须报 payoff_ratio/avg_win/avg_loss。moth `validation-winreturn-codex`。 |
-| **C-LEAK 真金白银门不可自批绕过** (2026-06-15) | 自批 skip 的泄漏红线门 = 摆设 (真泄漏可凭看似合理实则错的理由放行); 且本地 git hook 终究可 --no-verify 逃。设计 = 防御纵深 + 把强制移到提交者够不到处。误报别 skip 要修 verifier (architect rule7: 验证器自身坏=P0)。 | commit 门**硬化** (safe_commit Step3.5/3.6 HIGH=硬 exit 4, 无 SKIP_LEAKAGE_AUDIT 自批; 误报修 verifier 精度/config 永久, verifier-only commit 不触发门=无死锁); 真正强制在**转正门** `record_verdict` confirmed_by_owner=1 须带 leakage-clean 证据 (judges 含 leakage_gate/leakage_clean/pit_audit 显 clean) 否则 `C-LEAK BLOCK` raise; 终极=CI server-side。moth `leakage-gate-no-self-bypass` / `validation-promotion-needs-leakage-clean`。 |
+| B0 | 裸 K 线基线 | 仅价格/成交量是否已有可交易 edge？ |
+| B1 | + 股票阶段与形态 | 状态条件化是否提升收益/降低回撤？ |
+| B2 | + 市场感知 | 市场活动、广度、价格响应是否改善时机？ |
+| B3 | + 资金活动证据 | 某一明确 vendor/method 的不平衡代理是否有增益？ |
+| B4 | + 机构或事件 | 披露可用时点后的机构/事件证据是否增益？ |
+| B5 | + 单一公式/组合 | 公式在何种状态与市场上下文中有稳定增量？ |
 
-死亡条款 (wired, 非文本): **感知死** = confirmed cell forward 不兑现自动冻结 (forward_reconciliation job, 读 `fact_experiment_verdict`); **自欺死** = 任何 edge 无含成本绝对收益证据即 BLOCK (C-R1 转正 guard); **泄漏死** = 任何 edge 无 leakage-clean 证据即 BLOCK 转正 (C-LEAK guard, commit-skip 够不到的转正门)。
+同一轮 B0-B5 必须固定：
 
-验证范式 (R1 修正): IC = necessary 快筛 (降级); 含成本 backtest 绝对收益 = sufficient gate (升级)。早期插廉价绝对收益门 (Tier-1.5 可交易性筛: 半衰期→换手预算→成本可活性→容量), 选 cell/因子一律按含成本 OOS 绝对收益, 不按 IC。
+- `DatasetSnapshot` 与 eligible universe；
+- label/episode 定义；
+- train/validation/holdout 切分；
+- 成本、T+1、停牌、涨跌停、容量和仓位规则；
+- 决策时点与 availability policy；
+- 指标计算和统计检验。
 
-## Required Gates
+如果一个 block 只在少数行业、年份或状态有效，结论应是“条件性 feature”，不是全局 alpha。
 
-| Gate | Required checks |
-|---|---|
-| Strategy validation integrity | `anomaly_symmetric`(C-R1), `promotion_needs_money`(C-R1), `kpi_joint_codex`(C-WinReturn), `engine_execution_aware`(C-R2) — `check_strategy_validation_integrity.py` |
-| Backtest preflight | `universe_clean`, `limit_pct_per_board`, `cost_model`, `data_freshness`, `walk_forward`, `signal_pit_spotcheck`, `code_leakage_scan`, `excluded_stocks` |
-| Plan validator | `search_space`, `trial_value`, `formula_runnable`, `cost_efficiency`, `param_scope`, `sample_size_coverage`, `board_coverage`, `output_usable` |
-| Data audit | Run after data sync; stale critical data blocks production evidence |
-| Paper sim | Must use current universe, PIT features, costs, constraints, and explicit excluded stocks |
-| Forward monitor | Promotion requires current, non-proxy forward or accepted paper evidence |
+## 4. 标签、状态和特征边界
 
-## Optuna Governance (durable rules, owner: this file)
+- `StockStateDaily` 与 `PatternEvent` 只使用截至 decision time 可见的数据；
+- 主升浪 `底→顶`、未来涨幅、未来最大回撤等是研究标签；
+- institution episode 的 report date、notice date、effective date 和 available time 必须分开；
+- 市场感知必须从 `MarketContextSnapshot(decision_time)` 读取，禁止按 `trade_date=t` 直连展示 mart；
+- 用未来收益优化状态阈值时，优化后的定义属于策略 feature，不得回写 Tier 1 canonical 状态；
+- 任何 latest snapshot、`MAX(date)` fallback、缺失填 0、demo/mock fallback 都不能作为历史证据。
 
-All Optuna work goes through `services.optimization`; never call `study.optimize`
-bare. Thresholds/ranges/weights/table names live in `backend/config/optuna_config.yaml`.
+PIT 截断测试是硬门：在 cutoff 后增加未来数据，cutoff 前的特征、候选和状态必须逐字段 0 diff。
 
-Three mandatory gates:
+## 5. 时间切分与搜索纪律
 
-| Gate | Rule |
-|---|---|
-| 时序切分 | `walk_forward.split_dispatch(signals)` (default R1 = `expanding_monthly`); Optuna only sees early-window train |
-| 预校验 | `governance.enforce_pre_optimize(n_trials, has_seed=True)` — 50 <= n_trials <= 500, fixed seed |
-| OOS 验证 | best params rerun on test -> `governance.enforce_pre_insert(record)`; rejects `walk_forward_mode='none'`, missing OOS fields, sharpe>5, win>0.95 |
+1. prereg 先于结果：冻结假设、搜索空间、主指标、停止条件和 holdout；
+2. train 只用于拟合；validation 用于模型/参数选择；holdout 最多触碰一次；
+3. 使用 purged walk-forward，并按 label horizon 设置 embargo；
+4. trial 数、公式数、状态 cell、特征组合全部计入多重搜索规模；
+5. 搜索空间必须改变真实策略行为；无 search space 的公式不运行寻优；
+6. 先跑最便宜的 B0/B1 和小样本烟测，再决定是否扩大本地计算；
+7. 当前仅允许本地、人工触发的研究任务。退役 provider、已移除的 job dispatcher 和不存在的执行器不是可用入口。
 
-R1 `expanding_monthly` standard: cut at month end; first `min_train_months` (default 6)
-months are train base; best params from earliest window run on each later OOS month;
-multi-window trades aggregate via `oos_aggregator.aggregate_oos_metrics`; the stored
-sharpe is multi-window OOS truth, never in-sample fit.
+复杂搜索应报告 DSR/PBO 或等价的多重比较与过拟合证据；这些统计量不能替代含成本组合结果。
 
-Business-table contract: every `mart_per_stock_*_optimal` table must carry OOS columns
-(`oos_sharpe/oos_win_rate/oos_avg_ret/oos_n_traded/oos_period_*/walk_forward_mode/`
-`train_n_signals/test_n_signals`); selectors/scoring read only `oos_*`; legacy columns
-(`sharpe/win_rate/avg_ret`) are descriptive. New optimization tables copy this contract.
+## 6. 执行模型
 
-No-future-function defense in depth: (1) data split via `split_expanding_monthly`;
-(2) search space contains strategy behavior params (hp/stop/target/trailing/pattern
-thresholds), never data lookups; (3) insert gate as above. Every reject is logged to
-`fact_optuna_governance_log` (PK=`run_id`, full `record_json` + reason).
+纸面执行至少模拟：
 
-## Mainline After Governance
+- signal 后下一可交易时点入场，默认不能用同日收盘价假成交；
+- T+1、停牌、涨停买不到、跌停卖不出和一字板；
+- 佣金、印花税、滑点与明确的容量/冲击假设；
+- top-K、持仓上限、同票去重、行业/概念集中度和换手；
+- 名义价格订单与成交；qfq 仅用于收益分析或可比序列；
+- 未成交、部分成交、取消和数据 unknown 的显式状态。
 
-Framework governance comes first. After architecture/docs/test/data/tooling gates
-pass, recover the business mainline in this order:
+`CandidateSignal` 不是仓位，`StrategySpec` 不是 `StrategyRelease`，研究收益也不是组合可实现收益。
 
-| Order | Work | Rule |
-|---:|---|---|
-| 0 | 主升浪猎手 serious research and validation | Reproduce the research log, verify data/code boundaries, then run PIT/cost/walk-forward/paper_sim/forward checks |
-| 1 | BestChoice artifact freeze and challenger import | Follow namespaced challenger plan; do not merge directly into champion logic |
-| 2 | 300616 original formula replay | Use 300616 as sentinel: god-view diagnosis first, then PIT-safe rewrite |
-| 3 | 300616 derived formula/search space | `plan_validator` must prove non-empty search space |
-| 4 | Main-project paper_sim | Cost-aware, limit-aware, T+1-aware, with overlap and capacity constraints |
-| 5 | Candidate and holding monitor | Unknown/proxy/stale fields remain explicit |
-| 6 | Profiles/API/frontend | Only after backend evidence and lineage are stable |
+## 7. 指标与裁决
 
-## 主升浪猎手 Validation Boundary
+每个 experiment 至少报告：
 
-主升浪猎手 is the product north star. Any prior research-log win-rate / precision
-figures came from contaminated-universe buy-point exploration (built on the
-now-deleted LGBM/ensemble apparatus + 错方法论) and were cleared 2026-06-17. No
-strategy number counts as a production certificate until revalidated under
-current gates — on the structured 主升浪 ground truth (universe hard-truth-source
-clean, 底→顶>60% + 长底 + 多头排列 + 平滑) via the supervised episode-first
-D1-D4 pipeline.
+- 总收益、年化收益、超额收益；
+- 最大回撤、波动、Sharpe/Calmar；
+- 单笔/按月胜率、平均盈利、平均亏损、盈亏比和期望；
+- 换手、持有期、交易数、容量与集中度；
+- 按年份、市场状态、股票阶段、行业、规模和流动性的稳定性；
+- 与 B0、上一 block、基准指数和现有 challenger 的增量差；
+- 数据覆盖、unknown、未成交和 gate failure 数量。
 
-Minimum validation before using it for real candidates:
+胜率是诊断量，收益与回撤是目标量；任何单指标都不能独立转正。未测量值写 `unknown/NULL`，不填 0。
 
-| Area | Requirement |
-|---|---|
-| Data | Rebuild or locate ground-truth files and confirm hashes/date windows |
-| PIT | Disclosure dates, K-line windows, adjustment factors, and universe membership checked |
-| Execution | Costs, slippage, T+1, limit-up buyability, one-line boards, overlap, capacity |
-| Model | Walk-forward with purge/embargo, seed sensitivity, regime stratification |
-| Evidence | Paper sim + forward monitor before promotion |
+`ExperimentVerdict` 只有三种：
 
-## Archived Sources
+- `accept`：PIT、执行、稳定性和增量均满足 prereg；
+- `reject`：无增益、负增益、过拟合或不可交易；
+- `inconclusive`：数据/覆盖/统计功效不足，不能按 accept 传播。
 
-This contract supersedes or summarizes:
+## 8. 策略包边界
 
-| Former doc group | Current state |
-|---|---|
-| `../analysis/docs_archive_20260531/backtester_mcp_integration_20260517.md`, `../analysis/docs_archive_20260531/leakage_pattern_catalog.md` | Gate rules consolidated here |
-| (污染期 paper_sim/forward dated evidence 已删 2026-06-17) | Paper/forward rules consolidated here (规则见本契约); 污染期具体数字证据已清 |
-| `../analysis/docs_archive_20260531/phase4_alpha_root_cause_roadmap.md`, `../analysis/docs_archive_20260531/retrain_stall_fix1_patch_draft.md` | Archived as implementation evidence |
-| `../analysis/docs_archive_20260531/sue_pit_design_20260517.md` | Archived as feature design evidence |
-| `../analysis/docs_archive_20260531/msaf_top_design_20260517.md`, `../analysis/docs_archive_20260531/msaf_p1_institution_baseline_20260518.md`, `../analysis/docs_archive_20260531/msaf_p1b_institution_composite_20260518.md`, `../analysis/docs_archive_20260531/msaf_p4_vol_sizing_research_20260518.md`, `../analysis/docs_archive_20260531/only_stock_scheme_design_20260517.md` | Archived as historical strategy research, not current direction |
+### 8.1 主升浪猎手
+
+现有 rally ground truth、negative、strata、embargo 和 continuity 资产可以保留。第一条正式闭环为：
+
+1. 冻结并复核 ground truth 定义和数据快照；
+2. 跑 B0 裸 K；
+3. 加 B1 股票状态；
+4. 加 B2 市场感知；
+5. 只有增量成立才引入 B3/B4/B5；
+6. 通过纸面执行后才产生 `StrategyRelease(main_rally_v1)`。
+
+标签表不能被候选生成器直接读取。
+
+### 8.2 机构跟随
+
+机构画像、episode 和历史表现是研究输入，不是“机构身份即买入”的证书。必须使用真实披露可用时间，区分机构自身历史表现与跟随者可实现收益，并在 B4 独立消融。
+
+- 一个持仓/调研事实最早只能在真实 `notice_date/available_at` 之后使用；默认信号成交锚为披露后下一交易日 open，禁止回填 report/effective date；
+- 下一交易日若停牌、涨停买不到或数据 unknown，只能顺延到下一个真实可交易 open，并受版本化 `max_chase_days` 限制；过期记为未成交，不用未来价格选择“最佳”入场；
+- 机构评级、白名单和历史胜率只能用 decision time 之前已披露 episode 做 expanding-window 计算；禁止用全期结果筛选机构后回测早期信号；
+- 跟随者收益必须独立计入披露延迟、追价、未成交、容量和退出约束，不能复用机构自身持有期收益。
+
+大单/超大单、龙虎榜席位或 vendor “主力”字段不得自动映射成机构身份。
+
+### 8.3 选股公式 / BestChoice
+
+每个公式是一个版本化 `FeatureBlock` 或 `StrategySpec`，不是独立数据平台。公式必须在本项目快照、PIT、成本和执行模型下重放。
+
+BestChoice 保持冻结 challenger：
+
+- 先冻结 artifact hash、数据截止日和 lineage；
+- 首次接入只读 namespaced evidence，不覆盖主项目表；
+- 先验证 daily trigger、纸面组合和互补性；
+- 只有正式 `ExperimentVerdict` 支持时才吸收公式代码；
+- 单股历史最优参数或旧 Optuna 报告不等于组合级可交易 edge。
+
+## 9. 发布门
+
+创建 `StrategyRelease` 前必须同时具备：
+
+1. 完整 `DatasetSnapshot` 与 config/code hash；
+2. PIT/availability 截断测试；
+3. walk-forward + embargo + single-touch holdout；
+4. 含成本、T+1、停牌/涨跌停的 paper execution；
+5. B0→目标 block 的逐层消融；
+6. 泄漏和异常高指标反证；
+7. 可复现 artifact manifest；
+8. 明确 `accept` verdict 和适用/失效条件；
+9. forward/paper 监控与自动冻结规则。
+
+任一项缺失，产品最多展示为 `research`，不得进入正式候选。
+
+## 10. 当前裁决
+
+- 当前没有可视为生产证书的策略 KPI；
+- 现有 `holdout_guard.py` 只执行 training end `< holdout_start` 的边界检查；它没有原子 prereg、全局 single-touch、参数冻结或并发写入证明，因此不能满足发布门第 3 条；
+- rally ground truth、technical state、market pulse、institution profile 是可复用资产，不是发布策略；
+- 现有 market pulse 缺 availability/method/config hash，暂只适合当前展示；
+- 现有 paper portfolio 缺正式 release、订单/成交约束，不能作为执行证据；
+- Tier 0 与分类契约闭合前，不启动大规模公式搜索或付费计算。

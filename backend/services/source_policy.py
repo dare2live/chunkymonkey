@@ -19,7 +19,7 @@ class CapabilitySourcePolicy:
     name: str
     primary: str
     fallback: tuple[str, ...]
-    canonical_relation: str | None = None
+    analysis_relation: str | None = None
     allow_fallback_for_latest_gap: bool = False
     require_fallback_lineage: bool = False
     max_primary_lag_trading_days: int | None = None
@@ -30,7 +30,7 @@ DEFAULT_POLICIES: dict[str, CapabilitySourcePolicy] = {
         name="kline_daily",
         primary="tushare",  # 2026-06-28: tdxhub 退役, tushare 唯一源
         fallback=(),  # 单一供应商, akshare fallback 退役
-        canonical_relation="market.v_price_kline_qfq",
+        analysis_relation="market.v_price_kline_qfq",
         allow_fallback_for_latest_gap=False,
         require_fallback_lineage=False,
         max_primary_lag_trading_days=1,
@@ -131,7 +131,7 @@ def _policy_from_raw(name: str, raw: dict[str, Any], base: CapabilitySourcePolic
         name=name,
         primary=str(raw.get("primary", base.primary)),
         fallback=tuple(str(item) for item in (fallback or ())),
-        canonical_relation=raw.get("canonical_relation", base.canonical_relation),
+        analysis_relation=raw.get("analysis_relation", base.analysis_relation),
         allow_fallback_for_latest_gap=bool(
             raw.get("allow_fallback_for_latest_gap", base.allow_fallback_for_latest_gap)
         ),

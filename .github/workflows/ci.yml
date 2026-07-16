@@ -26,9 +26,8 @@ jobs:
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          # 核心依赖 (跳过 mootdx/tdxhub - 私有 repo, CI 不需要)
-          # akshare 是公开依赖；离线测试不访问网络，但 fallback 路径需要 import。
-          pip install fastapi uvicorn duckdb numpy httpx pydantic pytest pytest-asyncio anyio akshare pyyaml
+          # 离线控制面依赖。数据拉取使用本机受管 TinyShare payload，不在 CI 冒充 provider 验证。
+          pip install fastapi uvicorn duckdb numpy httpx pydantic pytest pytest-asyncio anyio pyyaml
 
       - name: Lint (ruff)
         continue-on-error: true  # 不阻塞 (项目历史代码 lint warnings 多)
@@ -39,8 +38,7 @@ jobs:
       - name: Run offline tests
         run: |
           cd backend
-          # 只跑不依赖网络/db 的地基测试 (2026-06-28 重建/白名单裁剪后更新: 策略测试 scoring/oos_ic/
-          #   formula_features/optimization/kline_sources[akshare源] 随策略层退役删除; 留数据平台地基测试)
+          # 只跑不依赖网络/db 的地基测试；已退役策略/旧 provider 测试不冒充当前覆盖。
           python -m pytest tests/test_utils.py \
             tests/test_db.py tests/test_source_watermarks.py tests/scripts/test_db_compact.py \
             tests/test_primitives.py tests/test_universe.py tests/test_calendar_gate.py \

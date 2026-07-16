@@ -21,10 +21,6 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-EXEMPT_PREFIXES = (
-    "bestchoice/",  # Track A FROZEN, original BC code
-    "backend/services/bc_absorbed/",  # Track B initial copy 2026-05-24, grandfathered until Phase 2.2+ full universe wire
-)
 TEST_PREFIXES = (
     "backend/tests/",
 )
@@ -72,8 +68,6 @@ def check_file(path: Path, *, include_tests: bool = False) -> list[dict]:
     if rel in EXEMPT_FILES:
         return []
     if not include_tests and _is_test_path(rel):
-        return []
-    if any(rel.startswith(p) for p in EXEMPT_PREFIXES):
         return []
     if not path.suffix == ".py":
         return []

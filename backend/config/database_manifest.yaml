@@ -8,7 +8,7 @@ databases:
     path: data/smartmoney.duckdb
     domain: business_control_plane
     owner: core_pipeline
-    role: primary business facts, marts, governance evidence, and model outputs
+    role: current business marts, operational/governance evidence, and manual paper state
     default_open_mode: read_write
     default_attach_mode: read_only
     online: true
@@ -19,97 +19,69 @@ databases:
     path: data/reference.duckdb
     domain: reference_truth
     owner: core_pipeline
-    role: "读多写少 universe/identity/calendar reference (dim_active_a_stock/all_ever_listed/listing_status/trading_calendar); 与 facts 写锁解耦, 只读 ATTACH (§9 reference拆库, 2026-06-24 Stage A建库)"
+    role: security identity cache, exchange trading calendar, and deletion evidence; read-only to consumers
     default_open_mode: read_write
     default_attach_mode: read_only
     online: true
-    status: active  # Stage A 建库 DONE; Stage B-E (get_conn ATTACH/view切换/写方repoint) 焦点执行待做
+    status: active
     retention_class: governed_control_plane
+    table_patterns:
+      - dim_active_a_stock
+      - dim_trading_calendar
 
   market:
     path: data/market.duckdb
-    domain: market_truth
+    domain: market_serving
     owner: market_data_pipeline
-    role: K-line, trading calendar, benchmark, and market source truth
+    role: current qfq analysis/serving series plus processing evidence; nominal execution truth is not yet materialized
     default_open_mode: read_write
     default_attach_mode: read_only
     online: true
     status: active
     retention_class: canonical_source_store
+    table_patterns:
+      - price_kline_qfq_tushare
+      - v_price_kline_qfq
 
-  alpha158:
-    path: data/alpha158.duckdb
-    domain: factor_feature_store
-    owner: alpha158_pipeline
+  feature_store:
+    path: data/feature_store.duckdb
+    domain: tier3_research_artifacts
+    owner: research_packages
     role: >-
-      qlib Alpha158 K线技术因子面板 (consumer_alpha 矩阵的因子来源)。2026-06-14 地基-reset 收口:
-      旧 panel (418万行/3.8G, 建于 reset 前 PIT 纪律收紧之前, 不可信任) 已删。重算契约: 验证
-      Alpha158 时用干净 PIT 管道重建 (复用 features.py/oos_ic 模式 + pit_guard 核证), 纳 data_layers
-      L2_feature 治理。见 analysis/model_validation_reliability_design_20260614.md §3/§7。
-    default_open_mode: read_write
-    default_attach_mode: read_only
-    online: false
-    status: planned   # 2026-06-14: 旧不可信 panel 已删; 重算后转 active
-    retention_class: rebuildable_feature_store
-
-  etf:
-    path: data/etf.duckdb
-    domain: etf_data
-    owner: etf_pipeline
-    role: ETF facts and benchmark support data
+      Current institution-profile and rally ground-truth/negative/strata artifacts.
+      This store does not contain the retired generic fact_feature_panel and does
+      not by itself certify PIT safety, experiment validity, or StrategyRelease.
     default_open_mode: read_write
     default_attach_mode: read_only
     online: true
     status: active
-    retention_class: governed_source_store
-
-  # phase5_predictions partition 退役 2026-06-14 — model 层 reset 删除; offline 预测 artifact (.duckdb 文件 57M
-  # + data/phase5_exports/) 已删孤儿。重建 model 层时按 DB 分区契约重新声明。
-
-  feature_store:
-    path: data/feature_store.duckdb
-    domain: feature_cache
-    owner: feature_pipeline
-    role: >-
-      L2 feature panel store (rebuildable). Holds fact_feature_panel (code x date
-      PIT factor columns) built by backend/scripts/build_feature_panel.py from
-      L0/market. Isolated DB = write-lock separation: build writes feature_store
-      while daily_update writes smartmoney (no contention). Experiments/exploration
-      read this panel, NOT L0 raw (moth feature-layer-l2-bypass-ratchet).
-    default_open_mode: read_write
-    default_attach_mode: read_only
-    online: true
-    status: active  # feature_store 库 active; fact_feature_panel 2026-06-19 重建物化 live (8.17M行/5427股, build_feature_panel.py 从 services.data_loaders+formula_engine, pit_guard门+独立重算0泄漏); fact_segment_panel live
     retention_class: rebuildable_feature_store
     table_patterns:
-      - fact_feature_panel  # 2026-06-19 重建物化 live (8.17M行/5427股; PIT验证0泄漏)
-      - fact_feature_panel_candidate*  # @archived wiped-2026-06-14-reset
-      - mart_feature_rank_matrix_cache*
+      - fact_inst_episode
+      - mart_inst_profile*
+      - fact_rally_ground_truth
+      - fact_rally_negative
+      - fact_rally_strata
+      - period_windows
 
   experiment_store:
     path: data/experiment_store.duckdb
     domain: alpha_validation_experiment
-    owner: experiment_pipeline
+    owner: research_evidence_store
     role: >-
-      isolated store for alpha-validation experiment outputs
-      (fact_experiment_verdict, fact_consumer_alpha_ic_scan,
-      pipeline_artifact_lineage, experiment_pit_audit_log). Created at S0 of the
-      alpha validation program. Wipeable after a validation cycle; CONSTRAINT:
-      must NOT be consumed by daily_update live path (isolate experiment from
-      serving to avoid result contamination). Declared ahead of S0 so new tables
-      route here directly (no second migration) — see
-      analysis/db_management_design_20260614.md §13.
+      Existing verdict, IC-scan, artifact-lineage, and PIT-audit evidence tables.
+      It is isolated from daily_update and is not yet the complete research runtime
+      defined by strategy_validation_contract.md.
     default_open_mode: read_write
     default_attach_mode: read_only
     online: true
-    status: active  # 2026-06-14 S0: build_experiment_store.py 建 4 留档表
+    status: active
     retention_class: transient_experiment
     table_patterns:
       - fact_experiment_verdict*
       - fact_consumer_alpha_ic_scan*
       - pipeline_artifact_lineage*
       - experiment_pit_audit_log*
-      - holdout_touch_log*  # 2026-07-02 D1 前置: holdout 纪律触碰账本 (services/holdout_guard.py, §2.1)
 
   tushare_raw:
     path: data/tushare_raw.duckdb
@@ -127,4 +99,3 @@ databases:
     retention_class: source_mirror_rebuildable
     table_patterns:
       - raw_tushare_*
-      - mart_p0a_feature_label_panel*

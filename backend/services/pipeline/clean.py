@@ -1,7 +1,7 @@
-"""② 清洗 (Clean) — L0→L1: 复权归一 + 格式 + PIT 校验。
+"""② 清洗 (Clean) — 当前 qfq 派生分析面 + post-sync 校验。
 
-旧 daily_update.sh: Step 2.96 (build canonical 前复权 K线 = serving 真相源) + Step 3c (data_audit post-sync 校验)。
-qfq build 必在 store 阶段 watermark 刷新前 (否则水位反映不出新 K线), 故归清洗早于加工/存储。
+qfq 是 analysis/serving compatibility surface，不是 nominal execution truth 或 AcceptedPartition。
+它在 store 水位刷新前构建，因此仍位于当前手工管线的 clean 阶段。
 """
 from __future__ import annotations
 
@@ -11,13 +11,13 @@ from .context import PipelineContext
 def run_clean(ctx: PipelineContext) -> None:
     ctx.log("=== ② 清洗 CLEAN (L0→L1 复权归一+校验) ===")
 
-    # Step 2.96: 构建 canonical 前复权 K线 (price_kline_qfq_tushare, serving 真相源)
+    # Step 2.96: 构建 qfq 派生分析面 (price_kline_qfq_tushare)
     # raw_tushare_daily × adj_factor → qfq; latest-adj rebase 须全量 (DuckDB CTAS 秒级)。
     if not ctx.skip_sync and not ctx.dry:
         ctx.run_script("backend/scripts/build_price_kline_qfq_tushare.py",
-                       degraded_msg="canonical qfq K线 build 失败 — serving K线将 stale (fatal 级, 查 log)")
+                       degraded_msg="qfq analysis/serving build 失败 — 研究读面将 stale")
     else:
-        ctx.log("DRY/skip-sync: 跳过 qfq canonical build")
+        ctx.log("DRY/skip-sync: 跳过 qfq analysis build")
 
     # Step 3c: data_audit post-sync (宪法第六条: sync 后必跑审计 = 清洗的校验环)
     if not ctx.dry:
@@ -27,7 +27,7 @@ def run_clean(ctx: PipelineContext) -> None:
 
 
 def _data_audit() -> None:
-    # 2026-07-10 修审计环空转(全栈审计MEDIUM, owner=analysis/gap_root_cause_20260708.md 第四轮节):
+    # 2026-07-10 修审计环空转（历史证据=analysis/gap_root_cause_20260708.md 第四轮节）:
     # 原实现 FAIL 只 print 不上报 — run_and_record 判 check_pass 只看 ctx.degraded_msgs 是否
     # 新增, 审计 FAIL 时 clean 仍记 check_pass, stage_runner 上游门照常放行 process 在审计不过
     # 的数据上加工, 无 flag 无告警 = "审计环是纯观测非门"。改为 FAIL 即 raise, 由外层 ctx.step

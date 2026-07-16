@@ -1,5 +1,7 @@
 # data_sources 多源注册表框架精简收口 (2026-07-07)
 
+> 状态：evidence-only；因冻结 Tier0 代码/配置仍引用而暂留，Phase 1 迁移引用后复核删除。
+
 ## 背景
 
 `sources/aif10.py` 退役后, 用户要求"研究解决方案"处理 `sources/tushare.py` 所在的整套多源

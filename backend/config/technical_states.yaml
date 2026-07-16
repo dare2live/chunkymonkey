@@ -1,6 +1,6 @@
 # technical_states.yaml — B2 形态识别 config (正交轴重建, 2026-07-02)
 #
-# 契约: analysis/technical_states_rebuild_design_20260702.md (设计定稿) +
+# 契约: docs/MASTER_TOPLEVEL_DESIGN.md §7 +
 #       analysis/technical_states_audit_20260702.json (审查裁决)。
 # 阈值纪律 (H6 CONFIRMED): 全部阈值 = 理论锚定取整值 (每条带 `# 锚:` 注释), **不跑 Optuna**
 #   (B2 无 forward 消费方, grill 纪律; 寻优留 D2, 目标函数=标注 episode 一致率/下游效用)。

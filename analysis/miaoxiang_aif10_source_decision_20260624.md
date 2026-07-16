@@ -1,7 +1,9 @@
 # 东财妙想 aif10 作为十大流通股东数据源 — 决策 + 后续计划 (2026-06-24)
 
-> owner: 主会话 (控制面). 状态: 决策已定, 实施待做.
-> 关联: [[非tushare源_双轨_holders_20260623]] · CLAUDE §4.3 · feedback-delete-source-not-data
+> 状态：evidence-only；保留不可替代的数据源裁决证据，当前规则以 `docs/README.md` 指向的 owner 为准。
+
+> 当时状态：源决策已定；实施状态必须 live 重查。本文不拥有当前 pipeline 或配置。
+> 关联证据：`analysis/非tushare源_双轨_holders_20260623.md`。
 
 ## 1. 源决策 (用户拍板 2026-06-24)
 

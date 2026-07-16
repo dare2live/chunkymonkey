@@ -2,9 +2,9 @@ import json
 
 from conftest import duck_mem
 from services.market_db import (
-    CANONICAL_KLINE_QFQ_VIEW_DDL,
-    canonical_kline_daily_qfq_sql,
-    get_canonical_kline_qfq_relation,
+    ANALYSIS_KLINE_QFQ_VIEW_DDL,
+    analysis_kline_daily_qfq_sql,
+    get_analysis_kline_qfq_relation,
 )
 # PRICE_KLINE_TDXHUB_DDL/upsert_price_kline_tdxhub_rows import 已删 (M3+单元6 退役 tdxhub K线写入路径+adjustment_event物删)
 
@@ -49,10 +49,10 @@ CREATE TABLE price_kline_qfq_tushare (
 def _setup(conn):
     conn.executescript(PRICE_KLINE_DDL)
     conn.executescript(PRICE_KLINE_QFQ_TUSHARE_DDL)
-    conn.executescript(CANONICAL_KLINE_QFQ_VIEW_DDL)
+    conn.executescript(ANALYSIS_KLINE_QFQ_VIEW_DDL)
 
 
-def test_canonical_kline_reads_tushare_only_ignores_tdxhub_and_akshare():
+def test_analysis_kline_reads_tushare_only_ignores_tdxhub_and_akshare():
     """tushare-only 契约 (2026-06-22): v_price_kline_qfq 只读 price_kline_qfq_tushare;
     akshare (price_kline) 不再进视图。(price_kline_tdxhub 已 M3 物删, 2026-06-23)。"""
     conn = duck_mem()
@@ -82,7 +82,7 @@ def test_canonical_kline_reads_tushare_only_ignores_tdxhub_and_akshare():
         conn.close()
 
 
-def test_canonical_kline_excludes_invalid_price_rows_no_fallback():
+def test_analysis_kline_excludes_invalid_price_rows_no_fallback():
     """tushare 行 OHLC 非法 → 排除; 且不回退到 akshare (没有备用源)。"""
     conn = duck_mem()
     try:
@@ -107,7 +107,7 @@ def test_canonical_kline_excludes_invalid_price_rows_no_fallback():
         conn.close()
 
 
-def test_canonical_kline_excludes_invalid_volume_amount():
+def test_analysis_kline_excludes_invalid_volume_amount():
     """tushare 行 volume/amount 退化 (denormal float) → 排除。"""
     conn = duck_mem()
     try:
@@ -122,7 +122,7 @@ def test_canonical_kline_excludes_invalid_volume_amount():
         conn.close()
 
 
-def test_canonical_kline_excludes_invalid_ohlc_consistency():
+def test_analysis_kline_excludes_invalid_ohlc_consistency():
     """tushare 行 high<low 类不自洽 → 排除。"""
     conn = duck_mem()
     try:
@@ -138,19 +138,19 @@ def test_canonical_kline_excludes_invalid_ohlc_consistency():
         conn.close()
 
 
-def test_canonical_relation_resolves_for_direct_and_attached_connections():
-    assert get_canonical_kline_qfq_relation() == "v_price_kline_qfq"
-    assert get_canonical_kline_qfq_relation("market") == "market.v_price_kline_qfq"
+def test_analysis_relation_resolves_for_direct_and_attached_connections():
+    assert get_analysis_kline_qfq_relation() == "v_price_kline_qfq"
+    assert get_analysis_kline_qfq_relation("market") == "market.v_price_kline_qfq"
 
 
-def test_canonical_daily_qfq_sql_uses_single_policy_relation_and_optional_lineage():
-    assert canonical_kline_daily_qfq_sql(columns=("code", "date", "amount")) == (
+def test_analysis_daily_qfq_sql_uses_single_policy_relation_and_optional_lineage():
+    assert analysis_kline_daily_qfq_sql(columns=("code", "date", "amount")) == (
         "SELECT code, date, amount\n"
         "FROM market.v_price_kline_qfq\n"
         "WHERE freq='daily' AND adjust='qfq'"
     )
 
-    sql = canonical_kline_daily_qfq_sql(include_source_lineage=True)
+    sql = analysis_kline_daily_qfq_sql(include_source_lineage=True)
 
     assert "FROM market.v_price_kline_qfq" in sql
     assert "factor" in sql

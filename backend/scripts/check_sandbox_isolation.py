@@ -2,14 +2,14 @@
 
 根因 (本次实证): sandbox **脚本**隔离了, 但探索弧的**产物**(主库表/builder/控制面文档 KPI/裁决) 在
   方法确认前就 promote 进主项目 → 跑偏弧的残留污染主代码/文档/库。
-契约 (sandbox/README): 探索弧产物只许两种跨 sandbox 存活 —
-  (1) experiment_store 裁决 (record_verdict);
-  (2) **方法确认后** promote 的真 edge (confirmed_by_owner=1 → backend/services + 单测 + 主库 + 控制面)。
+契约 (sandbox/README): 探索产物默认随 sandbox wipe；值得保留的结果必须重写为有
+snapshot/config/PIT/成本证据的 Tier3 package，并经过 Rule 10。历史 verdict 表不是当前 writer
+或 StrategyRelease。
 本门拦未经 promotion 的测试残留漏进主项目:
   C1 (FAIL): backend/ 代码引用 sandbox/ (测试码漏进主代码)。
-  C2 (WARN): 控制面文档嵌入**未 promote** 的实验结果 (run_id 的 verdict confirmed_by_owner=0)。
+  C2 (WARN): 控制面文档嵌入历史未确认实验 run_id (confirmed_by_owner=0)。
   C3 (FAIL): backend/scripts 有 experiment_*/analyze_* 探索 runner (与 sandbox.sh check 同源)。
-C2 是 WARN (promotion 是判断, 不硬 block, 提示复核); C1/C3 是 FAIL (明确违规)。
+C2 是需要人工闭合的 WARN，但进程返回非零，提交门不得把 WARN 再打印成 PASS；C1/C3 是明确 FAIL。
 
 跑: PYTHONPATH=backend python backend/scripts/check_sandbox_isolation.py
 """
@@ -20,15 +20,18 @@ import subprocess
 import sys
 from pathlib import Path
 
+try:
+    from scripts.check_doc_governance import active_doc_paths
+except ModuleNotFoundError:  # direct ``python backend/scripts/check_sandbox_isolation.py``
+    from check_doc_governance import active_doc_paths
+
 REPO = Path(__file__).resolve().parents[2]
-# 控制面文档 (主会话独占, 禁嵌未 promote 实验结果)
-CONTROL_DOCS = [
-    "goal.md", "PROJECT_INDEX.md", "CLAUDE.md", "AGENTS.md",
-    "analysis/zhushenglang_hunter_plan_20260617.md",
-    "analysis/data_validation_backtest_plan_20260619.md",
-]
 # C1 豁免: 这两个文件天然含 "sandbox" (guard 本体 + 本门本体), 非漏码
-C1_EXEMPT = {"backend/services/sandbox_guard.py", "backend/scripts/check_sandbox_isolation.py"}
+C1_EXEMPT = {
+    "backend/services/sandbox_guard.py",
+    "backend/scripts/check_sandbox_isolation.py",
+    "backend/scripts/check_doc_drift.py",  # detection patterns mention sandbox paths; no runtime import/access
+}
 C1_PAT = re.compile(r"(^|[^\w])(from sandbox|import sandbox|['\"]sandbox/)")
 
 
@@ -65,6 +68,11 @@ def check_c3() -> list[str]:
     return bad
 
 
+def control_doc_paths(root: Path = REPO) -> list[Path]:
+    """Use the same live-document registry as the document gates."""
+    return active_doc_paths(root)
+
+
 def check_c2() -> list[str]:
     """控制面文档嵌入未 promote (confirmed_by_owner=0) 的 experiment_store run_id。"""
     try:
@@ -78,14 +86,11 @@ def check_c2() -> list[str]:
         finally:
             c.close()
         unpromoted = [r[0] for r in rows if r[0]]
-    except Exception as e:  # experiment_store 不可用 → 跳过 (degrade gracefully)
-        print(f"[C2 skip] experiment_store 不可读 ({str(e)[:60]}), 跳过未-promote 检查", flush=True)
-        return []
+    except Exception as e:
+        return [f"UNVERIFIED: experiment_store 不可读 ({str(e)[:60]})"]
     hits = []
-    for d in CONTROL_DOCS:
-        p = REPO / d
-        if not p.exists():
-            continue
+    for p in control_doc_paths(REPO):
+        d = p.relative_to(REPO).as_posix()
         txt = p.read_text(encoding="utf-8")
         for rid in unpromoted:
             if rid in txt:
@@ -115,10 +120,10 @@ def main() -> int:
         print("[C2 WARN] 控制面文档嵌入未 promote (confirmed_by_owner=0) 的实验结果:", flush=True)
         for x in c2:
             print(f"    {x}", flush=True)
-        print("    探索结论应留 experiment_store/sandbox; 方法确认转正 (confirmed_by_owner=1) 后才引用控制面。", flush=True)
+        print("    探索结论不得进入控制面；须按现行 Tier3 contract 重做并独立复核。", flush=True)
     else:
         print("[C2 OK] 控制面文档 0 未-promote 实验结果", flush=True)
-    return 1 if fail else 0
+    return 1 if (fail or c2) else 0
 
 
 if __name__ == "__main__":

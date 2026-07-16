@@ -1,10 +1,12 @@
-"""market_pulse.py — B4 市场感知引擎 (Follow the Money, 2026-07-02 master plan B4)
+"""market_pulse.py — Tier2 市场感知引擎（历史编号 B4/C4）。
 
-设计契约: analysis/market_pulse_design_20260702.md (唯一契约)。
+现行边界: docs/MASTER_TOPLEVEL_DESIGN.md + docs/strategy_validation_contract.md。
+历史设计证据: analysis/market_pulse_design_20260702.md（evidence-only）。
 用户定调: "看钱在哪里从哪里流出流向哪里 … 哪里资金悄悄的在流入、哪里悄悄在流出"。
 
-两链并列 (vendor 自洽红线, 任何计算禁跨链 JOIN):
-  - dc_concept  链: 东财板块 (行业+概念) 资金流 (moneyflow_ind_dc) × 东财板块广度 (dc_index)。
+三个 namespace 并列 (vendor 自洽红线, 任何计算禁跨 namespace JOIN):
+  - dc_industry / dc_concept: 东财行业层级与概念多标签分别落独立 namespace，
+    共用 moneyflow_ind_dc × dc_index 源但禁止混合排名或以 content_type 二次分流。
     专属列: net_amount / elg_amount / rank_flow / quiet_*_days
     + v2: leading/leading_code/leading_pct (dc_index 涨幅龙头) / flow_leader_stock
     (moneyflow_ind_dc.buy_sm_amount_stock 资金龙头) / inflow_breadth (dc_member ×
@@ -13,8 +15,8 @@
   - sw_industry 链: 申万 L1 行情 (sw_daily) × HS300 基准 (index_daily) 算 RS 双窗;
     广度 (raw_tushare_daily) / 涨跌停 (limit_list_d) 经 B1 (dim_stock_segment_daily.sw_l1) 聚合。
     专属列: rs_4w / rs_12w / rs_rank_4w / limit_*_n / turnover_amt_share; net_amount / quiet_* 恒 NULL。
-  - content_type (v2 缺口①): dc 链透出源 content_type (行业|概念; 地域被 dc_content_types
-    白名单挡在引擎外), sw 链恒 '申万L1' (CONTENT_SW)。
+  - content_type: DC 行仅保留供应商原标签作证据；身份和查询边界只认 chain namespace。
+    地域不属于启用 namespace，sw 行按 level 输出 '申万L1'/'申万L2'/'申万L3'。
 
 v2 全市场行新列 (2026-07-02 第一批, 契约=设计文档 "v2 增强设计" 1-7):
   - limit_list_d 情绪周期族 (口径契约: limit_list_d 官方不含 ST):
@@ -55,52 +57,19 @@ v3 (2026-07-03, 契约=设计文档 "v3 设计" v3.1-v3.5):
 
 Type A (确定性 PIT 重排): t 日行只用 <= t 数据 (rolling window 尾对齐, streak 逐日递推),
 无策略阈值判断; 全部阈值读 config/market_pulse.yaml (代码零 hardcode)。
-感知层只描述现状, 不给买卖暗示 (RS top3 过滤器等信号层候选进 D2 消融另验;
-flow_regime 是 D2 特征候选, 有效性由消融裁决, 本层零 claim)。
+感知层只描述现状, 不给买卖暗示；任何过滤器或 flow_regime 增益必须进入 Tier3
+B0→B5 消融，本层零 alpha claim。
 
 产出表 (smartmoney, display 层):
   - mart_sector_pulse_daily  板块×日 (chain 字段隔离两链)
   - mart_market_pulse_daily  全市场×日 1 行
 
-入口: rebuild_all (全量) / build_latest (幂等增量; pipeline process 步在 segments B1 之后调 —
-B1 表是 sw 链广度/涨跌停聚合的输入, 顺序不可反)。
+入口: rebuild_all (全量) / build_latest (幂等增量；在 Tier1 context segments 后运行，
+因为该表是 SW 链广度/涨跌停聚合的显式输入)。
 
 注 (源字段陷阱): moneyflow_ind_dc 原始 rank 字段 = 分页伪 rank (sync_registry pit_anchor +
 INDEX §8 陷阱), 本模块弃用之 — rank_flow 由当日截面 net_amount DESC 重算 (1=流入最强)。
 
-──────────────────────────────────────────────────────────────────────
-收编清单 (主会话收编时做, side-agent 不碰控制面文件):
-1. backend/config/data_layers.yaml: mart_sector_pulse_daily / mart_market_pulse_daily
-   → db=smartmoney, layer=display, 加工类型 Type A (确定性 PIT 重排)。
-2. roster/lineage 登记 (data_module_members.yaml): producer=services/market_pulse.py;
-   upstream = raw_tushare_moneyflow_ind_dc / raw_tushare_dc_index / raw_tushare_sw_daily /
-   raw_tushare_index_daily / raw_tushare_limit_list_d / raw_tushare_daily /
-   raw_tushare_moneyflow_mkt_dc / raw_tushare_index_member_all (L1 码表 + sw 成分下钻) /
-   dim_stock_segment_daily (B1, sw 链聚合桥)
-   + v2 新增: raw_tushare_dc_member / raw_tushare_moneyflow_dc (inflow_breadth) /
-   raw_tushare_margin / raw_tushare_index_dailybasic / raw_tushare_top_list /
-   raw_tushare_top_inst / raw_tushare_limit_cpt_list
-   + v3 新增: raw_tushare_moneyflow + v_sw_industry_pit (sw 链板块净流聚合) /
-   raw_tushare_daily_basic (sw 板块流通市值) / fact_stock_form_daily (B2, 下钻叶子层 form);
-   consumer = C4 /api/v3/pulse/* (v3 增 /drill /flow_stripe /flow_board, 退 /quiet)。
-3. pipeline process 步挂钩: 建议挂在 segments.build_latest (B1) 之后同一 process 段,
-   调用 market_pulse.build_latest() (无参; 幂等, 无新日期时 no-op)。
-4. 真实数据 smoke (回填锁释放后主会话跑): rebuild_all() → 抽查
-   (a) dc 链行数 ≈ 板块数×交易日 (2024+, 早期仅行业 ~86/日);
-   (b) sw 链 v3 行数: 31 L1 + ~134 L2 + ~346 L3 ≈ 511 码/日 (v2 仅 31; 实际以 sw_daily 588 码
-       与 index_member_all 三级码交集为准), rs_4w 前 20 行 NULL (尾对齐);
-   (c) 任一日 SUM(turnover_amt_share)≈1 **按 level 分别成立** (sw 链 3 个分区各自归一);
-   (d) quiet_inflow_days 抽 1 板块人工核对连续性;
-   (e) v2: inflow_breadth 只在 dc_member 覆盖窗 (2025+) 非 NULL 且全落 [0,1]; 抽 1 板块 1 日
-       手核 (成分股数 vs moneyflow_dc net>0 数); (f) limit_times_dist_json 抽 1 日与
-       limit_list_d 按 limit_times GROUP BY 对账; promotion_rate 抽 1 日手算;
-   (g) rzrqye 抽 1 日 = margin 当日 SUM (仅 SSE 1 行的日必须 NULL, 覆盖门); (h) strongest_sectors_json
-       抽 1 日 rank 序与 limit_cpt_list 一致; (i) 增量: build_latest 补 1 日后新列非全 NULL;
-   (j) v3: 抽 1 个 L1 1 日, sw net_amount = 该行业成分股 moneyflow.net_mf_amount 和 ×1e4 手核
-       (as-of 归属); L1 net ≈ Σ 其下 L2 net (成分覆盖差留容差); (k) flow_regime 分布抽查:
-       六标签 + neutral 皆出现, sw 2019 (moneyflow 覆盖前) 行 flow_regime 全 NULL;
-   (l) flow_z 窗口: 每链前 zscore_window 个源日 flow_z 全 NULL (尾对齐)。
-──────────────────────────────────────────────────────────────────────
 """
 from __future__ import annotations
 
@@ -112,21 +81,73 @@ import yaml
 
 from services.database_manifest import get_database_manifest
 from services.duck_adapter import connect as duck_connect
+from services.taxonomy_config import (
+    current_snapshot_quality_floor,
+    source_content_type,
+    source_index_type,
+    source_level_map,
+)
 
 logger = logging.getLogger(__name__)
 
 _CFG_PATH = Path(__file__).resolve().parent.parent / "config" / "market_pulse.yaml"
 
-# chain 标识 = 表内数据词汇 (同表名级常量, 非阈值)
-CHAIN_DC = "dc_concept"
+# chain 标识就是 taxonomy namespace；行业层级与概念多标签不可共享一个值域。
+CHAIN_DC_INDUSTRY = "dc_industry"
+CHAIN_DC_CONCEPT = "dc_concept"
 CHAIN_SW = "sw_industry"
-CONTENT_SW = "申万L1"  # sw 链 content_type 词汇 (dc 链透出源 content_type: 行业|概念)
+DC_CHAINS = (CHAIN_DC_INDUSTRY, CHAIN_DC_CONCEPT)
+PULSE_CHAINS = (*DC_CHAINS, CHAIN_SW)
+CONTENT_SW_PREFIX = "申万"  # 与 r.level 组合，禁止把 L2/L3 伪装为 L1
 SECTOR_TABLE = "mart_sector_pulse_daily"
 MARKET_TABLE = "mart_market_pulse_daily"
+_SECTOR_REBUILD_TABLE = f"{SECTOR_TABLE}__next"
+_MARKET_REBUILD_TABLE = f"{MARKET_TABLE}__next"
+_INTERNAL_SECTOR_TABLES = frozenset({SECTOR_TABLE, _SECTOR_REBUILD_TABLE})
+
+
+def _quality_min_rows(cfg: dict[str, Any]) -> dict[str, int]:
+    """Return typed current-frontier row floors for every published namespace."""
+    spec = cfg.get("current_snapshot_quality_floor")
+    if not isinstance(spec, dict):
+        raise ValueError("market_pulse current_snapshot_quality_floor is required")
+    measured = spec.get("measured_trade_date")
+    if not isinstance(measured, str) or len(measured) != 8 or not measured.isdigit():
+        raise ValueError("market_pulse quality floor measured_trade_date must be YYYYMMDD")
+    raw = spec.get("min_rows_by_chain")
+    if not isinstance(raw, dict) or set(raw) != set(PULSE_CHAINS):
+        raise ValueError(
+            f"market_pulse quality floors must define exactly {PULSE_CHAINS!r}"
+        )
+    if any(isinstance(value, bool) or not isinstance(value, int) or value <= 0
+           for value in raw.values()):
+        raise ValueError("market_pulse quality floors must be positive integers")
+    return {chain: int(raw[chain]) for chain in PULSE_CHAINS}
 
 
 def _cfg() -> dict[str, Any]:
-    return yaml.safe_load(_CFG_PATH.read_text(encoding="utf-8"))
+    cfg = yaml.safe_load(_CFG_PATH.read_text(encoding="utf-8"))
+    namespaces = tuple(cfg.get("dc_namespaces") or ())
+    if namespaces != DC_CHAINS:
+        raise ValueError(f"market_pulse dc_namespaces must be {DC_CHAINS!r}")
+    cfg["dc_content_type_by_namespace"] = {
+        namespace: source_content_type(namespace) for namespace in namespaces
+    }
+    cfg["dc_level_map"] = source_level_map(CHAIN_DC_INDUSTRY)
+    quality = cfg.get("current_snapshot_quality_floor")
+    if not isinstance(quality, dict):
+        raise ValueError("market_pulse current_snapshot_quality_floor is required")
+    industry_floor = current_snapshot_quality_floor(CHAIN_DC_INDUSTRY)
+    concept_floor = current_snapshot_quality_floor(CHAIN_DC_CONCEPT)
+    quality["min_rows_by_chain"] = {
+        CHAIN_DC_INDUSTRY: sum(
+            int(value) for value in industry_floor["min_nodes_by_level"].values()
+        ),
+        CHAIN_DC_CONCEPT: int(concept_floor["min_nodes"]),
+        CHAIN_SW: quality.get("min_sw_mappable_rows"),
+    }
+    _quality_min_rows(cfg)
+    return cfg
 
 
 def _db(alias: str) -> str:
@@ -138,10 +159,29 @@ def _sql_str(v: Any) -> str:
     return "'" + str(v).replace("'", "''") + "'"
 
 
+def _sector_table_identifier(table: str) -> str:
+    """Quote an internal table identifier; never accept caller-provided SQL."""
+    if table not in _INTERNAL_SECTOR_TABLES:
+        raise ValueError(f"unsupported sector table: {table!r}")
+    return f'"{table}"'
+
+
 def _clean_num(col: str) -> str:
     """NaN→NULL 数值清洗片段: tushare pandas ingest 可能落 NaN 而非 NULL (实测 limit_list_d
     样本 limit_amount=NaN), NaN 会毒化 SUM/AVG/MAX; TRY_CAST 兼容源列 int/double/varchar。"""
     return f"(CASE WHEN NOT isnan(TRY_CAST({col} AS DOUBLE)) THEN TRY_CAST({col} AS DOUBLE) END)"
+
+
+def _dc_content_type_by_namespace(cfg: dict[str, Any]) -> dict[str, str]:
+    namespaces = tuple(cfg.get("dc_namespaces") or ())
+    if namespaces != DC_CHAINS:
+        raise ValueError(f"market_pulse dc_namespaces must be {DC_CHAINS!r}")
+    mapping = cfg.get("dc_content_type_by_namespace") or {
+        namespace: source_content_type(namespace) for namespace in namespaces
+    }
+    if set(mapping) != set(DC_CHAINS) or len(set(mapping.values())) != len(DC_CHAINS):
+        raise ValueError("DC namespaces require distinct source content types")
+    return {namespace: str(mapping[namespace]) for namespace in namespaces}
 
 
 def _flow_annotate_sql(cfg: dict[str, Any], base_sql: str, key: str) -> str:
@@ -209,12 +249,13 @@ def _flow_annotate_sql(cfg: dict[str, Any], base_sql: str, key: str) -> str:
 
 def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1",
                 dc_day_where: str = "1=1") -> str:
-    """板块×日面板 SELECT (两链 UNION, 列序=契约序)。
+    """板块×日面板 SELECT (三个 namespace UNION, 列序=契约序)。
 
     窗口/streak (quiet + v3 flow_z/flow_streak/cum) 永远在**全量源历史**上算 (增量插入也一样),
     dc_where/sw_where 只在最外层过滤输出日期 — 保证 rolling RS / streak 跨增量边界正确
     (PIT 尾对齐)。v3 起两个 where 均为**无别名**谓词 (如 "trade_date IN (...)"), 在 flow 标注后的
-    最终 SELECT 按链分别套用 ((chain=dc AND dc_where) OR (chain=sw AND sw_where))。
+    最终 SELECT 按 namespace 分别套用 ((chain IN dc_namespaces AND dc_where) OR
+    (chain=sw_industry AND sw_where))。
     dc_day_where (m. 限定) = inflow_breadth 的增量日期下推: 该聚合按日独立无窗口依赖,
     增量时把 dc_member(千万行级)×moneyflow_dc JOIN 裁剪到缺日, 不动确定性。
     """
@@ -224,17 +265,31 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
     min_amt = float(cfg["quiet_min_net_amount"])
     cw = int(cfg["cum_window"])
     bench = _sql_str(cfg["benchmark_code"])
-    ctypes = ",".join(_sql_str(c) for c in cfg["dc_content_types"])
+    dc_namespaces = DC_CHAINS
+    dc_type_by_namespace = _dc_content_type_by_namespace(cfg)
+    ctypes = ",".join(_sql_str(dc_type_by_namespace[n]) for n in dc_namespaces)
+    dc_chain_expr = "CASE " + " ".join(
+        f"WHEN content_type = {_sql_str(dc_type_by_namespace[namespace])} "
+        f"THEN {_sql_str(namespace)}"
+        for namespace in dc_namespaces
+    ) + " END"
+    dc_chains_sql = ",".join(_sql_str(chain) for chain in DC_CHAINS)
     dc_start = _sql_str(cfg["data_start_dc"])
     sw_start = _sql_str(cfg["data_start_sw"])
-    lvl = _clean_num("i.level")
+    level_map = cfg["dc_level_map"]
+    dc_level_expr = "CASE " + " ".join(
+        f"WHEN CAST(i.level AS VARCHAR) = {_sql_str(source)} THEN {_sql_str(target)}"
+        for source, target in level_map.items()
+    ) + " END"
     panel_sql = f"""
     WITH dc_flow AS (
         -- dc 链底座: 东财板块资金流。rank 原始字段=分页伪 rank, 弃用; rank_flow 当日截面重算。
-        SELECT trade_date, ts_code AS sector_code, name AS sector_name, content_type,
+        SELECT {dc_chain_expr} AS chain, trade_date, ts_code AS sector_code,
+               name AS sector_name, content_type,
                pct_change, net_amount, buy_elg_amount AS elg_amount,
                buy_sm_amount_stock AS flow_leader_stock,
-               RANK() OVER (PARTITION BY trade_date ORDER BY net_amount DESC NULLS LAST) AS rank_flow,
+               RANK() OVER (PARTITION BY trade_date, content_type
+                            ORDER BY net_amount DESC NULLS LAST) AS rank_flow,
                CASE WHEN ABS(pct_change) < {band} AND net_amount > {min_amt} THEN 1 ELSE 0 END AS in_flag,
                CASE WHEN ABS(pct_change) < {band} AND net_amount < -{min_amt} THEN 1 ELSE 0 END AS out_flag
         FROM tr.raw_tushare_moneyflow_ind_dc
@@ -255,18 +310,18 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
     dc_grp AS (
         -- gaps-and-islands: rn 差在连续 flag 段内恒定 → 段 id (断一天 flag=0 即换段)
         SELECT *,
-               ROW_NUMBER() OVER (PARTITION BY sector_code ORDER BY trade_date)
-                 - ROW_NUMBER() OVER (PARTITION BY sector_code, in_flag ORDER BY trade_date) AS g_in,
-               ROW_NUMBER() OVER (PARTITION BY sector_code ORDER BY trade_date)
-                 - ROW_NUMBER() OVER (PARTITION BY sector_code, out_flag ORDER BY trade_date) AS g_out
+               ROW_NUMBER() OVER (PARTITION BY chain, sector_code ORDER BY trade_date)
+                 - ROW_NUMBER() OVER (PARTITION BY chain, sector_code, in_flag ORDER BY trade_date) AS g_in,
+               ROW_NUMBER() OVER (PARTITION BY chain, sector_code ORDER BY trade_date)
+                 - ROW_NUMBER() OVER (PARTITION BY chain, sector_code, out_flag ORDER BY trade_date) AS g_out
         FROM dc_flow
     ),
     dc_quiet AS (
         SELECT *,
                CASE WHEN in_flag = 1 THEN ROW_NUMBER() OVER (
-                    PARTITION BY sector_code, in_flag, g_in ORDER BY trade_date) ELSE 0 END AS quiet_inflow_days,
+                    PARTITION BY chain, sector_code, in_flag, g_in ORDER BY trade_date) ELSE 0 END AS quiet_inflow_days,
                CASE WHEN out_flag = 1 THEN ROW_NUMBER() OVER (
-                    PARTITION BY sector_code, out_flag, g_out ORDER BY trade_date) ELSE 0 END AS quiet_outflow_days
+                    PARTITION BY chain, sector_code, out_flag, g_out ORDER BY trade_date) ELSE 0 END AS quiet_outflow_days
         FROM dc_grp
     ),
     sw_dim AS (
@@ -382,7 +437,7 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
         -- 源当日有数据才把缺组记 0 (真·零涨停); 源整日缺失 (2023 前/断供) 记 NULL (不知道≠0)
         SELECT DISTINCT trade_date FROM tr.raw_tushare_limit_list_d
     )
-    SELECT '{CHAIN_DC}' AS chain, q.sector_code, q.sector_name, q.trade_date,
+    SELECT q.chain, q.sector_code, q.sector_name, q.trade_date,
            CAST(q.pct_change AS DOUBLE) AS pct_change,
            CAST(q.net_amount AS DOUBLE) AS net_amount,
            CAST(q.elg_amount AS DOUBLE) AS elg_amount,
@@ -404,10 +459,8 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
            CAST(i.leading_pct AS DOUBLE) AS leading_pct,
            CAST(q.flow_leader_stock AS VARCHAR) AS flow_leader_stock,
            CAST(br.inflow_breadth AS DOUBLE) AS inflow_breadth,
-           -- v3 level: 透出 dc_index.level (东财行业层级, 数值 1/2/3 → 'L1/2/3' 词汇归一与 sw 同;
-           -- 概念板块/2025 前无 dc_index 行/源 NaN → NULL, 不猜)
-           CAST(CASE WHEN TRY_CAST({lvl} AS INTEGER) IN (1, 2, 3)
-                THEN 'L' || CAST(TRY_CAST({lvl} AS INTEGER) AS VARCHAR) END AS VARCHAR) AS level,
+           -- DC namespace 内按 config 映射真实中文 level；未知/概念/无 dc_index 行 → NULL。
+           CAST(CASE WHEN q.chain = '{CHAIN_DC_INDUSTRY}' THEN {dc_level_expr} END AS VARCHAR) AS level,
            -- cum_ratio 分母: dc_index.total_mv 万元→元 (总市值口径 — 源无流通市值字段, 见头注)
            {_clean_num('i.total_mv')} * 10000.0 AS sector_mv
     FROM dc_quiet q
@@ -433,7 +486,7 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
            CAST(r.turnover_amt_share AS DOUBLE),
            CAST(NULL AS BIGINT),
            CAST(NULL AS BIGINT),
-           CAST('{CONTENT_SW}' AS VARCHAR),
+           CAST('{CONTENT_SW_PREFIX}' || r.level AS VARCHAR),
            CAST(NULL AS VARCHAR),
            CAST(NULL AS VARCHAR),
            CAST(NULL AS DOUBLE),
@@ -463,12 +516,18 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
            CAST(flow_regime AS VARCHAR) AS flow_regime,
            CURRENT_TIMESTAMP AS built_at
     FROM ({ann})
-    WHERE (chain = '{CHAIN_DC}' AND ({dc_where})) OR (chain = '{CHAIN_SW}' AND ({sw_where}))
+    WHERE (chain IN ({dc_chains_sql}) AND ({dc_where}))
+       OR (chain = '{CHAIN_SW}' AND ({sw_where}))
     """
 
 
-def _market_sql(cfg: dict[str, Any], where: str = "1=1") -> str:
-    """全市场×日 SELECT。依赖 mart_sector_pulse_daily 已先建/先补 (top_sectors_json 来源)。
+def _market_sql(
+    cfg: dict[str, Any],
+    where: str = "1=1",
+    *,
+    sector_table: str = SECTOR_TABLE,
+) -> str:
+    """全市场×日 SELECT。依赖同批 sector table (top_sectors_json 来源)。
 
     where 用 d. 限定。快照口径: sw 链按 rs_rank_4w (RS 排名), dc 链按 rank_flow (资金流排名)
     — dc 链 rs 恒 NULL (vendor 红线), 快照用其链内原生排序。
@@ -480,6 +539,7 @@ def _market_sql(cfg: dict[str, Any], where: str = "1=1") -> str:
     sec_cut = _sql_str(cfg["sec_board_cutoff"])
     val_code = _sql_str(cfg["mkt_valuation_code"])
     lt = _clean_num("limit_times")
+    sector_table_sql = _sector_table_identifier(sector_table)
     return f"""
     WITH days AS (
         SELECT DISTINCT trade_date FROM tr.raw_tushare_daily WHERE trade_date >= {mkt_start}
@@ -568,10 +628,16 @@ def _market_sql(cfg: dict[str, Any], where: str = "1=1") -> str:
         SELECT trade_date,
                (list(struct_pack(sector_code := sector_code, sector_name := sector_name, net_amount := net_amount)
                      ORDER BY rank_flow ASC, sector_code)
-                FILTER (WHERE chain = '{CHAIN_DC}' AND rank_flow IS NOT NULL))[1:{n}] AS dc_top,
+                FILTER (WHERE chain = '{CHAIN_DC_INDUSTRY}' AND rank_flow IS NOT NULL))[1:{n}] AS dc_industry_top,
                (list(struct_pack(sector_code := sector_code, sector_name := sector_name, net_amount := net_amount)
                      ORDER BY rank_flow DESC, sector_code)
-                FILTER (WHERE chain = '{CHAIN_DC}' AND rank_flow IS NOT NULL))[1:{n}] AS dc_bottom,
+                FILTER (WHERE chain = '{CHAIN_DC_INDUSTRY}' AND rank_flow IS NOT NULL))[1:{n}] AS dc_industry_bottom,
+               (list(struct_pack(sector_code := sector_code, sector_name := sector_name, net_amount := net_amount)
+                     ORDER BY rank_flow ASC, sector_code)
+                FILTER (WHERE chain = '{CHAIN_DC_CONCEPT}' AND rank_flow IS NOT NULL))[1:{n}] AS dc_concept_top,
+               (list(struct_pack(sector_code := sector_code, sector_name := sector_name, net_amount := net_amount)
+                     ORDER BY rank_flow DESC, sector_code)
+                FILTER (WHERE chain = '{CHAIN_DC_CONCEPT}' AND rank_flow IS NOT NULL))[1:{n}] AS dc_concept_bottom,
                -- v3: sw 快照锁 L1 (rs_rank_4w 已按 level 分区, 不滤则 L2/L3 的 rank<=N 行混入)
                (list(struct_pack(sector_code := sector_code, sector_name := sector_name, rs_4w := rs_4w)
                      ORDER BY rs_rank_4w ASC, sector_code)
@@ -579,7 +645,7 @@ def _market_sql(cfg: dict[str, Any], where: str = "1=1") -> str:
                (list(struct_pack(sector_code := sector_code, sector_name := sector_name, rs_4w := rs_4w)
                      ORDER BY rs_rank_4w DESC, sector_code)
                 FILTER (WHERE chain = '{CHAIN_SW}' AND level = 'L1' AND rs_rank_4w IS NOT NULL))[1:{n}] AS sw_bottom
-        FROM {SECTOR_TABLE}
+        FROM {sector_table_sql}
         GROUP BY 1
     )
     SELECT d.trade_date,
@@ -601,7 +667,10 @@ def _market_sql(cfg: dict[str, Any], where: str = "1=1") -> str:
            CAST(ib.mkt_turnover AS DOUBLE) AS mkt_turnover,
            CAST(lb.lhb_count AS BIGINT) AS lhb_count,
            CAST(li.lhb_inst_net AS DOUBLE) AS lhb_inst_net,
-           CAST(to_json(struct_pack(dc_top := t.dc_top, dc_bottom := t.dc_bottom,
+           CAST(to_json(struct_pack(dc_industry_top := t.dc_industry_top,
+                                    dc_industry_bottom := t.dc_industry_bottom,
+                                    dc_concept_top := t.dc_concept_top,
+                                    dc_concept_bottom := t.dc_concept_bottom,
                                     sw_top := t.sw_top, sw_bottom := t.sw_bottom)) AS VARCHAR) AS top_sectors_json,
            st.strongest_sectors_json AS strongest_sectors_json,
            CURRENT_TIMESTAMP AS built_at
@@ -624,30 +693,412 @@ def _attach_sources(con) -> None:
     con.execute(f"ATTACH IF NOT EXISTS '{_db('tushare_raw')}' AS tr (READ_ONLY)")
 
 
-def rebuild_all(conn=None, cfg: dict[str, Any] | None = None) -> dict[str, Any]:
-    """全量重建两表 (data_start 起)。conn=None 时自管连接并 ATTACH tushare_raw;
-    注入 conn (测试/复用) 时调用方负责 tr.* 可解析 (schema 或 ATTACH)。"""
+def _rollback_after_failure(con) -> None:
+    """Best-effort rollback without hiding the original build/commit error."""
+    try:
+        con.execute("ROLLBACK")
+    except Exception as rollback_error:  # COMMIT constraint failure may auto-rollback.
+        logger.debug("market_pulse rollback already resolved: %s", rollback_error)
+
+
+def _latest_source_dates(
+    con,
+    cfg: dict[str, Any],
+) -> tuple[str | None, str | None, str | None]:
+    dc_types = _dc_content_type_by_namespace(cfg)
+    latest_dc_industry, latest_dc_concept = con.execute("""
+        SELECT MAX(CASE WHEN content_type = ? THEN trade_date END),
+               MAX(CASE WHEN content_type = ? THEN trade_date END)
+        FROM tr.raw_tushare_moneyflow_ind_dc
+        WHERE trade_date >= ? AND content_type IN (?, ?)
+    """, [
+        dc_types[CHAIN_DC_INDUSTRY], dc_types[CHAIN_DC_CONCEPT],
+        str(cfg["data_start_dc"]),
+        dc_types[CHAIN_DC_INDUSTRY], dc_types[CHAIN_DC_CONCEPT],
+    ]).fetchone()
+    latest_sw = con.execute("""
+        SELECT MAX(trade_date) FROM tr.raw_tushare_sw_daily WHERE trade_date >= ?
+    """, [str(cfg["data_start_sw"])]).fetchone()[0]
+    return latest_dc_industry, latest_dc_concept, latest_sw
+
+
+def _current_quality_shortfalls(
+    con,
+    table: str,
+    cfg: dict[str, Any],
+    dates_by_chain: dict[str, str],
+) -> list[str]:
+    """Compare one current source frontier against config-owned namespace floors."""
+    table_sql = _sector_table_identifier(table)
+    floors = _quality_min_rows(cfg)
+    shortfalls: list[str] = []
+    for chain, trade_date in sorted(dates_by_chain.items()):
+        actual = int(con.execute(
+            f"SELECT COUNT(*) FROM {table_sql} WHERE chain = ? AND trade_date = ?",
+            [chain, trade_date],
+        ).fetchone()[0])
+        minimum = floors[chain]
+        if actual < minimum:
+            shortfalls.append(f"{chain}/{trade_date}:{actual}<{minimum}")
+    return shortfalls
+
+
+def _dc_current_source_parity(
+    con,
+    cfg: dict[str, Any],
+    trade_date: str,
+) -> tuple[int, int, int, int]:
+    """Compare current DC money-flow keys with the independent dc_index board catalog."""
+    dc_types = _dc_content_type_by_namespace(cfg)
+    industry_index_type = source_index_type(CHAIN_DC_INDUSTRY)
+    concept_index_type = source_index_type(CHAIN_DC_CONCEPT)
+    return tuple(int(value) for value in con.execute("""
+        WITH flow_raw AS (
+            SELECT CASE
+                     WHEN content_type = ? THEN ?
+                     WHEN content_type = ? THEN ?
+                   END AS chain,
+                   CAST(ts_code AS VARCHAR) AS sector_code
+            FROM tr.raw_tushare_moneyflow_ind_dc
+            WHERE trade_date = ? AND content_type IN (?, ?)
+        ), index_raw AS (
+            SELECT CASE
+                     WHEN idx_type = ? THEN ?
+                     WHEN idx_type = ? THEN ?
+                   END AS chain,
+                   CAST(ts_code AS VARCHAR) AS sector_code
+            FROM tr.raw_tushare_dc_index
+            WHERE trade_date = ? AND idx_type IN (?, ?)
+        ), flow_keys AS (
+            SELECT DISTINCT chain, sector_code FROM flow_raw
+        ), index_keys AS (
+            SELECT DISTINCT chain, sector_code FROM index_raw
+        )
+        SELECT
+            (SELECT COUNT(*) FROM (
+                SELECT * FROM index_keys EXCEPT SELECT * FROM flow_keys
+            )),
+            (SELECT COUNT(*) FROM (
+                SELECT * FROM flow_keys EXCEPT SELECT * FROM index_keys
+            )),
+            (SELECT COUNT(*) FROM (
+                SELECT chain, sector_code FROM flow_raw
+                GROUP BY 1, 2 HAVING COUNT(*) > 1
+            )),
+            (SELECT COUNT(*) FROM (
+                SELECT chain, sector_code FROM index_raw
+                GROUP BY 1, 2 HAVING COUNT(*) > 1
+            ))
+    """, [
+        dc_types[CHAIN_DC_INDUSTRY], CHAIN_DC_INDUSTRY,
+        dc_types[CHAIN_DC_CONCEPT], CHAIN_DC_CONCEPT,
+        trade_date,
+        dc_types[CHAIN_DC_INDUSTRY], dc_types[CHAIN_DC_CONCEPT],
+        industry_index_type, CHAIN_DC_INDUSTRY,
+        concept_index_type, CHAIN_DC_CONCEPT,
+        trade_date,
+        industry_index_type, concept_index_type,
+    ]).fetchone())
+
+
+def _validate_rebuild_tables(
+    con,
+    cfg: dict[str, Any],
+    *,
+    repair_legacy_dc_namespace: bool,
+) -> dict[str, int]:
+    """Fail closed on the shadow batch before either live table is replaced."""
+    s_rows, s_days = con.execute(
+        f"SELECT COUNT(*), COUNT(DISTINCT trade_date) FROM {_SECTOR_REBUILD_TABLE}"
+    ).fetchone()
+    m_rows = con.execute(
+        f"SELECT COUNT(*) FROM {_MARKET_REBUILD_TABLE}"
+    ).fetchone()[0]
+    if not s_rows or not s_days or not m_rows:
+        raise RuntimeError(
+            f"market_pulse shadow empty: sector_rows={s_rows} sector_days={s_days} "
+            f"market_rows={m_rows}"
+        )
+
+    chains = {r[0] for r in con.execute(
+        f"SELECT DISTINCT chain FROM {_SECTOR_REBUILD_TABLE}"
+    ).fetchall()}
+    valid_chains = set(PULSE_CHAINS)
+    chains_valid = bool(chains) and chains <= valid_chains
+    if not chains_valid or chains != valid_chains:
+        raise RuntimeError(
+            f"market_pulse shadow chain mismatch: actual={sorted(chains)} "
+            f"expected={sorted(PULSE_CHAINS)}"
+        )
+
+    dc_types = _dc_content_type_by_namespace(cfg)
+    latest_dc_industry, latest_dc_concept, latest_sw = _latest_source_dates(con, cfg)
+    latest_sw_mappable = con.execute("""
+        WITH sw_dim AS (
+            SELECT l1_code AS code FROM tr.raw_tushare_index_member_all
+            WHERE l1_code IS NOT NULL
+            UNION
+            SELECT l2_code FROM tr.raw_tushare_index_member_all
+            WHERE l2_code IS NOT NULL
+            UNION
+            SELECT l3_code FROM tr.raw_tushare_index_member_all
+            WHERE l3_code IS NOT NULL
+        )
+        SELECT COUNT(DISTINCT s.ts_code)
+        FROM tr.raw_tushare_sw_daily s JOIN sw_dim d ON d.code = s.ts_code
+        WHERE s.trade_date = ?
+    """, [latest_sw]).fetchone()[0] if latest_sw is not None else 0
+    if (latest_dc_industry is None or latest_dc_concept is None or latest_sw is None
+            or latest_dc_industry != latest_dc_concept or not latest_sw_mappable):
+        raise RuntimeError(
+            "market_pulse shadow source parity invalid: "
+            f"latest_dc_industry={latest_dc_industry} "
+            f"latest_dc_concept={latest_dc_concept} latest_sw={latest_sw} "
+            f"latest_sw_mappable={latest_sw_mappable}"
+        )
+
+    dc_missing_flow, dc_unexpected_flow, dc_flow_dups, dc_index_dups = (
+        _dc_current_source_parity(con, cfg, str(latest_dc_industry))
+    )
+    if dc_missing_flow or dc_unexpected_flow or dc_flow_dups or dc_index_dups:
+        raise RuntimeError(
+            "market_pulse shadow source parity invalid: DC current catalog mismatch "
+            f"missing_flow={dc_missing_flow} unexpected_flow={dc_unexpected_flow} "
+            f"flow_duplicates={dc_flow_dups} index_duplicates={dc_index_dups}"
+        )
+
+    quality_shortfalls = _current_quality_shortfalls(
+        con,
+        _SECTOR_REBUILD_TABLE,
+        cfg,
+        {
+            CHAIN_DC_INDUSTRY: str(latest_dc_industry),
+            CHAIN_DC_CONCEPT: str(latest_dc_concept),
+            CHAIN_SW: str(latest_sw),
+        },
+    )
+    if quality_shortfalls:
+        raise RuntimeError(
+            "market_pulse current snapshot quality floor invalid: "
+            f"shortfalls={quality_shortfalls}"
+        )
+
+    # Historical vendor coverage is not rectangular, but every mappable raw grain still has one
+    # deterministic shadow grain. Compare that full set rather than demanding both DC namespaces
+    # on every old date. This also protects a first build, where no accepted table exists yet.
+    (missing_source_keys, unexpected_shadow_keys, duplicate_source_grains,
+     expected_chain_count) = con.execute(f"""
+        WITH sw_dim AS (
+            SELECT DISTINCT code FROM (
+                SELECT l1_code AS code FROM tr.raw_tushare_index_member_all
+                WHERE l1_code IS NOT NULL
+                UNION ALL
+                SELECT l2_code FROM tr.raw_tushare_index_member_all
+                WHERE l2_code IS NOT NULL
+                UNION ALL
+                SELECT l3_code FROM tr.raw_tushare_index_member_all
+                WHERE l3_code IS NOT NULL
+            )
+        ), expected_raw AS (
+            SELECT CASE
+                     WHEN content_type = ? THEN ?
+                     WHEN content_type = ? THEN ?
+                   END AS chain,
+                   CAST(ts_code AS VARCHAR) AS sector_code,
+                   CAST(trade_date AS VARCHAR) AS trade_date
+            FROM tr.raw_tushare_moneyflow_ind_dc
+            WHERE trade_date >= ? AND content_type IN (?, ?)
+            UNION ALL
+            SELECT ? AS chain, CAST(s.ts_code AS VARCHAR), CAST(s.trade_date AS VARCHAR)
+            FROM tr.raw_tushare_sw_daily s
+            JOIN sw_dim d ON d.code = s.ts_code
+            WHERE s.trade_date >= ?
+        ), expected AS (
+            SELECT DISTINCT chain, sector_code, trade_date FROM expected_raw
+        ), actual AS (
+            SELECT chain, sector_code, trade_date FROM {_SECTOR_REBUILD_TABLE}
+        )
+        SELECT
+          (SELECT COUNT(*) FROM (
+              SELECT chain, sector_code, trade_date FROM expected
+              EXCEPT SELECT chain, sector_code, trade_date FROM actual
+          ) missing),
+          (SELECT COUNT(*) FROM (
+              SELECT chain, sector_code, trade_date FROM actual
+              EXCEPT SELECT chain, sector_code, trade_date FROM expected
+          ) unexpected),
+          (SELECT COUNT(*) FROM (
+              SELECT chain, sector_code, trade_date FROM expected_raw
+              GROUP BY chain, sector_code, trade_date HAVING COUNT(*) > 1
+          ) duplicates),
+          (SELECT COUNT(DISTINCT chain) FROM expected)
+    """, [
+        dc_types[CHAIN_DC_INDUSTRY], CHAIN_DC_INDUSTRY,
+        dc_types[CHAIN_DC_CONCEPT], CHAIN_DC_CONCEPT,
+        str(cfg["data_start_dc"]),
+        dc_types[CHAIN_DC_INDUSTRY], dc_types[CHAIN_DC_CONCEPT],
+        CHAIN_SW, str(cfg["data_start_sw"]),
+    ]).fetchone()
+    if (missing_source_keys or unexpected_shadow_keys or duplicate_source_grains
+            or expected_chain_count != len(PULSE_CHAINS)):
+        raise RuntimeError(
+            "market_pulse shadow source parity invalid: "
+            f"missing_source_keys={missing_source_keys} "
+            f"unexpected_shadow_keys={unexpected_shadow_keys} "
+            f"duplicate_source_grains={duplicate_source_grains} "
+            f"expected_chain_count={expected_chain_count}"
+        )
+    bad_dc_types = con.execute(f"""
+        SELECT COUNT(*) FROM {_SECTOR_REBUILD_TABLE}
+        WHERE (chain = ? AND content_type IS DISTINCT FROM ?)
+           OR (chain = ? AND content_type IS DISTINCT FROM ?)""", [
+        CHAIN_DC_INDUSTRY, dc_types[CHAIN_DC_INDUSTRY],
+        CHAIN_DC_CONCEPT, dc_types[CHAIN_DC_CONCEPT],
+    ]).fetchone()[0]
+    null_sector_keys = con.execute(f"""
+        SELECT COUNT(*) FROM {_SECTOR_REBUILD_TABLE}
+        WHERE chain IS NULL OR sector_code IS NULL OR trade_date IS NULL""").fetchone()[0]
+    duplicate_sector_grains = con.execute(f"""
+        SELECT COUNT(*) FROM (
+            SELECT 1 FROM {_SECTOR_REBUILD_TABLE}
+            GROUP BY chain, sector_code, trade_date HAVING COUNT(*) > 1
+        )""").fetchone()[0]
+    if bad_dc_types or null_sector_keys or duplicate_sector_grains:
+        raise RuntimeError(
+            "market_pulse sector shadow invalid: "
+            f"bad_dc_types={bad_dc_types} null_keys={null_sector_keys} "
+            f"duplicate_grains={duplicate_sector_grains}"
+        )
+
+    null_market_keys = con.execute(f"""
+        SELECT COUNT(*) FROM {_MARKET_REBUILD_TABLE} WHERE trade_date IS NULL""").fetchone()[0]
+    duplicate_market_grains = con.execute(f"""
+        SELECT COUNT(*) FROM (
+            SELECT 1 FROM {_MARKET_REBUILD_TABLE}
+            GROUP BY trade_date HAVING COUNT(*) > 1
+        )""").fetchone()[0]
+    expected_market_days = con.execute("""
+        SELECT COUNT(DISTINCT trade_date) FROM tr.raw_tushare_daily
+        WHERE trade_date >= ?""", [str(cfg["data_start_market"])]).fetchone()[0]
+    if null_market_keys or duplicate_market_grains or m_rows != expected_market_days:
+        raise RuntimeError(
+            "market_pulse market shadow invalid: "
+            f"null_keys={null_market_keys} duplicate_grains={duplicate_market_grains} "
+            f"rows={m_rows} expected_days={expected_market_days}"
+        )
+
+    existing_tables = {row[0] for row in con.execute(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_name IN (?, ?)",
+        [SECTOR_TABLE, MARKET_TABLE],
+    ).fetchall()}
+    lost_accepted_sector_keys = 0
+    lost_accepted_market_dates = 0
+    unmapped_legacy_keys = 0
+    if SECTOR_TABLE in existing_tables:
+        accepted_where = ""
+        accepted_params: list[Any] = []
+        if repair_legacy_dc_namespace:
+            accepted_where = (
+                "WHERE NOT (chain = ? AND content_type IS NOT DISTINCT FROM ?)"
+            )
+            accepted_params = [CHAIN_DC_CONCEPT, dc_types[CHAIN_DC_INDUSTRY]]
+            unmapped_legacy_keys = con.execute(f"""
+                SELECT COUNT(*) FROM (
+                    SELECT sector_code, trade_date FROM {SECTOR_TABLE}
+                    WHERE chain = ? AND content_type = ?
+                    EXCEPT
+                    SELECT sector_code, trade_date FROM {_SECTOR_REBUILD_TABLE}
+                    WHERE chain = ? AND content_type = ?
+                )
+            """, [
+                CHAIN_DC_CONCEPT, dc_types[CHAIN_DC_INDUSTRY],
+                CHAIN_DC_INDUSTRY, dc_types[CHAIN_DC_INDUSTRY],
+            ]).fetchone()[0]
+        lost_accepted_sector_keys = con.execute(f"""
+            SELECT COUNT(*) FROM (
+                SELECT chain, sector_code, trade_date FROM {SECTOR_TABLE}
+                {accepted_where}
+                EXCEPT
+                SELECT chain, sector_code, trade_date FROM {_SECTOR_REBUILD_TABLE}
+            )
+        """, accepted_params).fetchone()[0]
+    if MARKET_TABLE in existing_tables:
+        lost_accepted_market_dates = con.execute(f"""
+            SELECT COUNT(*) FROM (
+                SELECT trade_date FROM {MARKET_TABLE}
+                EXCEPT
+                SELECT trade_date FROM {_MARKET_REBUILD_TABLE}
+            )
+        """).fetchone()[0]
+    if lost_accepted_sector_keys or lost_accepted_market_dates or unmapped_legacy_keys:
+        raise RuntimeError(
+            "market_pulse accepted state regression: "
+            f"lost_sector_keys={lost_accepted_sector_keys} "
+            f"lost_market_dates={lost_accepted_market_dates} "
+            f"unmapped_legacy_keys={unmapped_legacy_keys}"
+        )
+    return {"sector_rows": int(s_rows), "sector_days": int(s_days), "market_rows": int(m_rows)}
+
+
+def rebuild_all(
+    conn=None,
+    cfg: dict[str, Any] | None = None,
+    *,
+    repair_legacy_dc_namespace: bool = False,
+) -> dict[str, Any]:
+    """Atomically rebuild both pulse marts from the same source snapshot.
+
+    Shadow build, validation, live-table swap and both unique indexes share one
+    explicit DuckDB transaction. Any build, index or COMMIT failure restores the
+    previous pair; no half-new sector/market state is publishable. By default,
+    every previously accepted grain must survive. ``repair_legacy_dc_namespace``
+    only permits a legacy industry row to move from the wrong concept namespace to
+    the same grain in the industry namespace; it is not a general bypass.
+    """
     cfg = cfg or _cfg()
     own = conn is None
     con = conn or duck_connect(_db("smartmoney"), read_only=False)
     try:
         if own:
             _attach_sources(con)
-        con.execute(f"DROP TABLE IF EXISTS {SECTOR_TABLE}")
-        con.execute(f"CREATE TABLE {SECTOR_TABLE} AS {_sector_sql(cfg)}")
-        # 索引含 content_type (2026-07-04 真库首跑实锤): 12 个 dc 板块代码同日兼具"行业"+"概念"
-        # 双重归类是 tushare 源真实现象 (如 BK0733.DC 包装材料), 真实唯一键=四列非三列;
-        # check_grain_uniqueness.py MART_GRAINS 同步声明。
-        con.execute(f"CREATE INDEX IF NOT EXISTS idx_pulse_sector "
-                    f"ON {SECTOR_TABLE}(chain, sector_code, trade_date, content_type)")
-        con.execute(f"DROP TABLE IF EXISTS {MARKET_TABLE}")
-        con.execute(f"CREATE TABLE {MARKET_TABLE} AS {_market_sql(cfg)}")
-        s_rows, s_days = con.execute(
-            f"SELECT COUNT(*), COUNT(DISTINCT trade_date) FROM {SECTOR_TABLE}").fetchone()
-        m_rows = con.execute(f"SELECT COUNT(*) FROM {MARKET_TABLE}").fetchone()[0]
-        if own:
-            con.execute("CHECKPOINT")
-        out = {"sector_rows": s_rows, "sector_days": s_days, "market_rows": m_rows}
+        con.execute("BEGIN TRANSACTION")
+        try:
+            con.execute(f"DROP TABLE IF EXISTS {_MARKET_REBUILD_TABLE}")
+            con.execute(f"DROP TABLE IF EXISTS {_SECTOR_REBUILD_TABLE}")
+            con.execute(
+                f"CREATE TABLE {_SECTOR_REBUILD_TABLE} AS {_sector_sql(cfg)}"
+            )
+            con.execute(
+                f"CREATE TABLE {_MARKET_REBUILD_TABLE} AS "
+                f"{_market_sql(cfg, sector_table=_SECTOR_REBUILD_TABLE)}"
+            )
+            out = _validate_rebuild_tables(
+                con,
+                cfg,
+                repair_legacy_dc_namespace=repair_legacy_dc_namespace,
+            )
+
+            con.execute(f"DROP TABLE IF EXISTS {MARKET_TABLE}")
+            con.execute(f"DROP TABLE IF EXISTS {SECTOR_TABLE}")
+            con.execute(
+                f"ALTER TABLE {_SECTOR_REBUILD_TABLE} RENAME TO {SECTOR_TABLE}"
+            )
+            con.execute(
+                f"CREATE UNIQUE INDEX idx_pulse_sector ON {SECTOR_TABLE}"
+                "(chain, sector_code, trade_date)"
+            )
+            con.execute(
+                f"ALTER TABLE {_MARKET_REBUILD_TABLE} RENAME TO {MARKET_TABLE}"
+            )
+            con.execute(
+                f"CREATE UNIQUE INDEX idx_pulse_market ON {MARKET_TABLE}(trade_date)"
+            )
+            # DuckConn.commit() intentionally swallows driver errors; SQL COMMIT must propagate.
+            con.execute("COMMIT")
+        except BaseException:
+            _rollback_after_failure(con)
+            raise
         logger.info("[market_pulse] rebuild_all: %s", out)
         return out
     finally:
@@ -669,13 +1120,173 @@ def _late_dates(con, table: str, n: int, chain: str | None = None) -> list[str]:
     ).fetchall()]
 
 
+def _sector_counts_for_targets(
+    con,
+    target_dates_by_chain: dict[str, list[str]],
+) -> dict[tuple[str, str], int]:
+    """Return accepted row counts for every requested namespace/date pair, including zero."""
+    counts = {
+        (chain, trade_date): 0
+        for chain, dates in target_dates_by_chain.items()
+        for trade_date in sorted(set(dates))
+    }
+    for chain, dates in target_dates_by_chain.items():
+        unique_dates = sorted(set(dates))
+        if not unique_dates:
+            continue
+        placeholders = ",".join("?" for _ in unique_dates)
+        rows = con.execute(
+            f"SELECT trade_date, COUNT(*) FROM {SECTOR_TABLE} "
+            f"WHERE chain = ? AND trade_date IN ({placeholders}) GROUP BY trade_date",
+            [chain, *unique_dates],
+        ).fetchall()
+        for trade_date, row_count in rows:
+            counts[(chain, trade_date)] = int(row_count)
+    return counts
+
+
+def _sector_keys_for_targets(
+    con,
+    target_dates_by_chain: dict[str, list[str]],
+) -> set[tuple[str, str, str]]:
+    """Return accepted sector grains inside the refresh scope."""
+    keys: set[tuple[str, str, str]] = set()
+    for chain, dates in target_dates_by_chain.items():
+        unique_dates = sorted(set(dates))
+        if not unique_dates:
+            continue
+        placeholders = ",".join("?" for _ in unique_dates)
+        rows = con.execute(
+            f"SELECT chain, sector_code, trade_date FROM {SECTOR_TABLE} "
+            f"WHERE chain = ? AND trade_date IN ({placeholders})",
+            [chain, *unique_dates],
+        ).fetchall()
+        keys.update((str(row[0]), str(row[1]), str(row[2])) for row in rows)
+    return keys
+
+
+def _validate_incremental_batch(
+    con,
+    cfg: dict[str, Any],
+    *,
+    sector_target_dates_by_chain: dict[str, list[str]],
+    sector_min_rows: dict[tuple[str, str], int],
+    required_sector_keys: set[tuple[str, str, str]],
+    market_dates: list[str],
+) -> None:
+    """Fail closed before COMMIT if a refresh shrinks or drops accepted target grains."""
+    actual_sector_rows = _sector_counts_for_targets(con, sector_target_dates_by_chain)
+    actual_sector_keys = _sector_keys_for_targets(con, sector_target_dates_by_chain)
+    sector_shortfalls = [
+        f"{chain}/{trade_date}:{actual_sector_rows.get((chain, trade_date), 0)}<{minimum}"
+        for (chain, trade_date), minimum in sorted(sector_min_rows.items())
+        if actual_sector_rows.get((chain, trade_date), 0) < minimum
+    ]
+    lost_sector_keys = sorted(required_sector_keys - actual_sector_keys)
+    dc_types = _dc_content_type_by_namespace(cfg)
+    bad_dc_types = con.execute(f"""
+        SELECT COUNT(*) FROM {SECTOR_TABLE}
+        WHERE (chain = ? AND content_type IS DISTINCT FROM ?)
+           OR (chain = ? AND content_type IS DISTINCT FROM ?)""", [
+        CHAIN_DC_INDUSTRY, dc_types[CHAIN_DC_INDUSTRY],
+        CHAIN_DC_CONCEPT, dc_types[CHAIN_DC_CONCEPT],
+    ]).fetchone()[0]
+    null_sector_keys = con.execute(f"""
+        SELECT COUNT(*) FROM {SECTOR_TABLE}
+        WHERE chain IS NULL OR sector_code IS NULL OR trade_date IS NULL""").fetchone()[0]
+    duplicate_sector_grains = con.execute(f"""
+        SELECT COUNT(*) FROM (
+            SELECT 1 FROM {SECTOR_TABLE}
+            GROUP BY chain, sector_code, trade_date HAVING COUNT(*) > 1
+        )""").fetchone()[0]
+    if (sector_shortfalls or lost_sector_keys or bad_dc_types or null_sector_keys
+            or duplicate_sector_grains):
+        raise RuntimeError(
+            "market_pulse sector incremental invalid: "
+            f"shortfalls={sector_shortfalls[:8]} lost_keys={lost_sector_keys[:8]} "
+            f"bad_dc_types={bad_dc_types} "
+            f"null_keys={null_sector_keys} duplicate_grains={duplicate_sector_grains}"
+        )
+
+    latest_dc_industry, latest_dc_concept, latest_sw = _latest_source_dates(con, cfg)
+    latest_target_dates: dict[str, str] = {}
+    dc_target_set = {
+        date
+        for chain in DC_CHAINS
+        for date in sector_target_dates_by_chain.get(chain, [])
+    }
+    if dc_target_set:
+        if (latest_dc_industry is None or latest_dc_concept is None
+                or latest_dc_industry != latest_dc_concept):
+            raise RuntimeError(
+                "market_pulse sector incremental invalid: DC source frontier mismatch "
+                f"industry={latest_dc_industry} concept={latest_dc_concept}"
+            )
+        if str(latest_dc_industry) in dc_target_set:
+            parity = _dc_current_source_parity(con, cfg, str(latest_dc_industry))
+            if any(parity):
+                raise RuntimeError(
+                    "market_pulse sector incremental invalid: DC current catalog mismatch "
+                    f"missing_flow={parity[0]} unexpected_flow={parity[1]} "
+                    f"flow_duplicates={parity[2]} index_duplicates={parity[3]}"
+                )
+            latest_target_dates[CHAIN_DC_INDUSTRY] = str(latest_dc_industry)
+            latest_target_dates[CHAIN_DC_CONCEPT] = str(latest_dc_concept)
+    if (latest_sw is not None
+            and str(latest_sw) in set(sector_target_dates_by_chain.get(CHAIN_SW, []))):
+        latest_target_dates[CHAIN_SW] = str(latest_sw)
+    quality_shortfalls = _current_quality_shortfalls(
+        con,
+        SECTOR_TABLE,
+        cfg,
+        latest_target_dates,
+    )
+    if quality_shortfalls:
+        raise RuntimeError(
+            "market_pulse sector incremental invalid: current snapshot quality floor "
+            f"shortfalls={quality_shortfalls}"
+        )
+
+    if not market_dates:
+        return
+    unique_market_dates = sorted(set(market_dates))
+    placeholders = ",".join("?" for _ in unique_market_dates)
+    actual_market_rows = {
+        trade_date: int(row_count)
+        for trade_date, row_count in con.execute(
+            f"SELECT trade_date, COUNT(*) FROM {MARKET_TABLE} "
+            f"WHERE trade_date IN ({placeholders}) GROUP BY trade_date",
+            unique_market_dates,
+        ).fetchall()
+    }
+    bad_market_dates = [
+        f"{trade_date}:{actual_market_rows.get(trade_date, 0)}"
+        for trade_date in unique_market_dates
+        if actual_market_rows.get(trade_date, 0) != 1
+    ]
+    null_market_keys = con.execute(
+        f"SELECT COUNT(*) FROM {MARKET_TABLE} WHERE trade_date IS NULL"
+    ).fetchone()[0]
+    duplicate_market_grains = con.execute(f"""
+        SELECT COUNT(*) FROM (
+            SELECT 1 FROM {MARKET_TABLE}
+            GROUP BY trade_date HAVING COUNT(*) > 1
+        )""").fetchone()[0]
+    if bad_market_dates or null_market_keys or duplicate_market_grains:
+        raise RuntimeError(
+            "market_pulse market incremental invalid: "
+            f"target_counts={bad_market_dates[:8]} null_keys={null_market_keys} "
+            f"duplicate_grains={duplicate_market_grains}"
+        )
+
+
 def build_latest(conn=None, cfg: dict[str, Any] | None = None) -> dict[str, Any]:
     """增量: 补源已有而 pulse 表缺的日期 (分链检测) + 近 N 日迟到列回补 (DELETE+重插)。
 
     窗口/streak 在全量源历史上重算后只插缺日 → 增量行与全量重建逐 bit 一致 (确定性)。
     顺序: 板块表先补, 全市场表后补 (top_sectors_json 读板块表)。
 
-    迟到列回补 (R1 根因5, 2026-07-03, owner=analysis/data_foundation_root_causes_20260703.md):
+    迟到列回补（历史根因证据: analysis/data_foundation_root_causes_20260703.md）:
     行一旦插入即定格, 而 t+1 披露域 (margin/龙虎榜/limit) 在早跑日尚未到 raw → 该日行以 NULL
     (或部分行半值) 入库后永不回补。修法 = 每次增量对最近 lookback_late_days 个**已存在**源日
     DELETE+重插 — 复用全史窗口/streak 机制, 重插行与全量重建逐 bit 一致, 幂等 (行数不变仅列值治愈)。
@@ -683,6 +1294,7 @@ def build_latest(conn=None, cfg: dict[str, Any] | None = None) -> dict[str, Any]
     cfg = cfg or _cfg()
     own = conn is None
     con = conn or duck_connect(_db("smartmoney"), read_only=False)
+    transaction_open = False
     try:
         if own:
             _attach_sources(con)
@@ -698,32 +1310,71 @@ def build_latest(conn=None, cfg: dict[str, Any] | None = None) -> dict[str, Any]
         if ("content_type" not in cols or "strongest_sectors_json" not in cols
                 or "flow_regime" not in cols):
             return {"mode": "rebuild", **rebuild_all(conn=con, cfg=cfg)}
+        dc_type_by_namespace = _dc_content_type_by_namespace(cfg)
+        legacy_dc_rows = con.execute(f"""
+            SELECT COUNT(*) FROM {SECTOR_TABLE}
+            WHERE chain = ? AND content_type = ?""", [
+                CHAIN_DC_CONCEPT, dc_type_by_namespace[CHAIN_DC_INDUSTRY]
+            ]).fetchone()[0]
+        if legacy_dc_rows:
+            return {
+                "mode": "rebuild",
+                **rebuild_all(conn=con, cfg=cfg, repair_legacy_dc_namespace=True),
+            }
+
+        # DELETE/reinsert of sector + market dates is one accepted local batch.
+        # A failure in either table must leave both previous live tables intact.
+        con.execute("BEGIN TRANSACTION")
+        transaction_open = True
 
         # 迟到列回补窗口: 先取"已存在"的最近 N 日 (缺日检测/插入之前取, 不与新插日重叠)
         late_n = int(cfg["lookback_late_days"])
-        dc_late = _late_dates(con, SECTOR_TABLE, late_n, chain=CHAIN_DC)
+        dc_late_by_namespace = {
+            chain: _late_dates(con, SECTOR_TABLE, late_n, chain=chain) for chain in DC_CHAINS
+        }
+        dc_late = sorted({date for dates in dc_late_by_namespace.values() for date in dates})
         sw_late = _late_dates(con, SECTOR_TABLE, late_n, chain=CHAIN_SW)
         mkt_late = _late_dates(con, MARKET_TABLE, late_n)
 
-        dc_missing = _missing_dates(con, f"""
-            SELECT DISTINCT trade_date FROM tr.raw_tushare_moneyflow_ind_dc
-            WHERE trade_date >= ? AND trade_date NOT IN (
-                SELECT DISTINCT trade_date FROM {SECTOR_TABLE} WHERE chain = '{CHAIN_DC}')
-            ORDER BY 1""", [str(cfg["data_start_dc"])])
+        dc_missing_by_namespace = {
+            chain: _missing_dates(con, f"""
+                SELECT DISTINCT trade_date FROM tr.raw_tushare_moneyflow_ind_dc
+                WHERE trade_date >= ? AND content_type = ? AND trade_date NOT IN (
+                    SELECT DISTINCT trade_date FROM {SECTOR_TABLE} WHERE chain = ?)
+                ORDER BY 1""", [
+                    str(cfg["data_start_dc"]), dc_type_by_namespace[chain], chain
+                ])
+            for chain in DC_CHAINS
+        }
+        dc_missing = sorted({
+            date for dates in dc_missing_by_namespace.values() for date in dates
+        })
         sw_missing = _missing_dates(con, f"""
             SELECT DISTINCT trade_date FROM tr.raw_tushare_sw_daily
             WHERE trade_date >= ? AND trade_date NOT IN (
                 SELECT DISTINCT trade_date FROM {SECTOR_TABLE} WHERE chain = '{CHAIN_SW}')
             ORDER BY 1""", [str(cfg["data_start_sw"])])
-        sector_rows = 0
         dc_dates = sorted(set(dc_missing) | set(dc_late))
         sw_dates = sorted(set(sw_missing) | set(sw_late))
+        # Any DC date is deleted/rebuilt for both namespaces, so both are mandatory targets.
+        # A provider response containing only one namespace must roll the whole local batch back.
+        sector_target_dates_by_chain = {chain: list(dc_dates) for chain in DC_CHAINS}
+        sector_target_dates_by_chain[CHAIN_SW] = list(sw_dates)
+        sector_min_rows = {
+            key: max(1, row_count)
+            for key, row_count in _sector_counts_for_targets(
+                con, sector_target_dates_by_chain
+            ).items()
+        }
+        required_sector_keys = _sector_keys_for_targets(con, sector_target_dates_by_chain)
+        sector_rows = 0
         if dc_dates or sw_dates:
-            # 迟到回补半边: 先删已存在的近 N 日行, 与缺日合并一次 INSERT 重插 (幂等 DELETE+重插)
-            if dc_late:
-                dc_late_in = ",".join(_sql_str(d) for d in dc_late)
+            # 任一 DC namespace 缺日/迟到时，同日两个 namespace 一起删后重建，避免半边重复。
+            if dc_dates:
+                dc_dates_in = ",".join(_sql_str(d) for d in dc_dates)
+                dc_chains_in = ",".join(_sql_str(chain) for chain in DC_CHAINS)
                 con.execute(f"DELETE FROM {SECTOR_TABLE} "
-                            f"WHERE chain = '{CHAIN_DC}' AND trade_date IN ({dc_late_in})")
+                            f"WHERE chain IN ({dc_chains_in}) AND trade_date IN ({dc_dates_in})")
             if sw_late:
                 sw_late_in = ",".join(_sql_str(d) for d in sw_late)
                 con.execute(f"DELETE FROM {SECTOR_TABLE} "
@@ -755,13 +1406,31 @@ def build_latest(conn=None, cfg: dict[str, Any] | None = None) -> dict[str, Any]
             where = "d.trade_date IN (%s)" % ",".join(_sql_str(d) for d in mkt_dates)
             r = con.execute(f"INSERT INTO {MARKET_TABLE} {_market_sql(cfg, where)}").fetchone()
             market_rows = int(r[0]) if r else 0
-        con.commit()
-        out = {"dc_added_days": len(dc_missing), "sw_added_days": len(sw_missing),
+        _validate_incremental_batch(
+            con,
+            cfg,
+            sector_target_dates_by_chain=sector_target_dates_by_chain,
+            sector_min_rows=sector_min_rows,
+            required_sector_keys=required_sector_keys,
+            market_dates=mkt_dates,
+        )
+        # DuckConn.commit() swallows driver errors; SQL COMMIT must propagate.
+        con.execute("COMMIT")
+        transaction_open = False
+        out = {"dc_added_days": len(dc_missing),
+               "dc_added_days_by_namespace": {
+                   chain: len(dc_missing_by_namespace[chain]) for chain in DC_CHAINS
+               },
+               "sw_added_days": len(sw_missing),
                "sector_rows": sector_rows, "market_added_days": len(mkt_missing),
                "market_rows": market_rows,
                "late_refreshed_days": {"dc": len(dc_late), "sw": len(sw_late), "market": len(mkt_late)}}
         logger.info("[market_pulse] build_latest: %s", out)
         return out
+    except BaseException:
+        if transaction_open:
+            _rollback_after_failure(con)
+        raise
     finally:
         if own:
             con.close()
@@ -770,8 +1439,8 @@ def build_latest(conn=None, cfg: dict[str, Any] | None = None) -> dict[str, Any]
 def get_sector_pulse(as_of: str, chain: str | None = None, conn=None) -> list[dict[str, Any]]:
     """as-of 查询: 取 <= as_of 最近一个入库日的板块面板 (chain 可选过滤; as-of 日按链内独立回退,
     dc/sw 源新鲜度不同步时各取各的最近日)。as_of=YYYYMMDD。"""
-    if chain is not None and chain not in (CHAIN_DC, CHAIN_SW):
-        raise ValueError(f"unknown chain: {chain!r} (expect {CHAIN_DC!r}/{CHAIN_SW!r})")
+    if chain is not None and chain not in PULSE_CHAINS:
+        raise ValueError(f"unknown chain: {chain!r} (expect one of {PULSE_CHAINS!r})")
     own = conn is None
     con = conn or duck_connect(_db("smartmoney"), read_only=True)
     try:

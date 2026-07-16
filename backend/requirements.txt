@@ -4,13 +4,12 @@ uvicorn[standard]>=0.23.0
 httpx>=0.24.0
 # akshare/tushare SDK 已退役；生产采集唯一入口 TuShareSource 使用 tinyshare 兼容代理。
 tinyshare==0.1030.0
-modal>=1.5.0       # compute backend (experiment_jobs modal:active, services/compute/modal_adapter.py)
 numpy
 pydantic>=2.0
 PyYAML>=6.0
 
-# 数据源（必需：tdxhub 是 K 线/财务数据的主数据源）
-# 使用自维护 fork (tdxhub)，修复服务器列表和 server 参数 bug
+# Legacy compatibility dependency for retained TDX-backed modules; it is not the
+# Tier0 market-data owner. Current acquisition ownership is declared by sync contracts.
 tdxhub @ git+https://github.com/dare2live/tdxhub.git@b039d8c68fb21543a9ff041f004d75113b5a4e3d
 
 # AI 模型 (LightGBM + Optuna 多维评分)

@@ -1,6 +1,8 @@
 # R4 收尾批 — 审查器首跑 41 条逐项处置 (2026-07-04)
 
-> owner: 主会话。用户定调"必须都做完"。输入: 审查器首跑 (final_rebuild.log 段3, 81 pass/21 warn/20 fail)。
+> 状态：evidence-only；因冻结 Tier0 代码/配置仍引用而暂留，Phase 1 迁移引用后复核删除。
+
+> 当时 owner/输入：历史主会话与审查器首跑 (final_rebuild.log 段3, 81 pass/21 warn/20 fail)；本文不拥有当前 gate。
 > 本文档跟踪逐项处置, 完成后并入收口 commit。
 >
 > **结案状态 (2026-07-05)**: 审查器复跑 `101 pass / 21 warn / 0 fail / 2 skipped` (0 fail, 无残留硬失败)。

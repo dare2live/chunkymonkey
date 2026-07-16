@@ -4,13 +4,47 @@ from __future__ import annotations
 import pathlib
 import argparse
 import json
+import subprocess
 import sys
+
+import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "scripts"))
 
 import chunkyctl  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
+RETIRED_COMMANDS = ("worktree", "docs", "preflight", "audit", "data-status", "jobs")
+
+
+@pytest.mark.parametrize("command", RETIRED_COMMANDS)
+def test_direct_retired_command_exits_nonzero(command):
+    result = subprocess.run(
+        [sys.executable, str(REPO / "backend/scripts/chunkyctl.py"), command],
+        cwd=REPO,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert "retired" in result.stdout.lower()
+
+
+def test_direct_help_does_not_advertise_retired_commands():
+    result = subprocess.run(
+        [sys.executable, str(REPO / "backend/scripts/chunkyctl.py"), "--help"],
+        cwd=REPO,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    for command in RETIRED_COMMANDS:
+        assert command not in result.stdout
 
 
 def test_aggregate_verdict_fail_priority():
@@ -35,6 +69,21 @@ def test_json_from_stdout():
     assert chunkyctl._json_from_stdout({"stdout": '{"verdict":"PASS"}'}) == {"verdict": "PASS"}
     assert chunkyctl._json_from_stdout({"stdout": "not json"}) is None
     assert chunkyctl._json_from_stdout({"stdout": "[1,2]"}) is None   # 非 dict
+
+
+def test_run_command_returns_structured_failure_when_os_blocks_exec(tmp_path, monkeypatch):
+    """受限运行环境拒绝 crontab/launchctl 时 doctor 必须 fail closed，而不是 traceback。"""
+    def blocked_run(*_args, **_kwargs):
+        raise PermissionError(1, "operation not permitted", "crontab")
+
+    monkeypatch.setattr(chunkyctl.subprocess, "run", blocked_run)
+
+    result = chunkyctl._run_command(["crontab", "-l"], cwd=tmp_path)
+
+    assert result["returncode"] == 126
+    assert result["stdout"] == ""
+    assert "PermissionError" in result["stderr"]
+    assert "operation not permitted" in result["stderr"]
 
 
 def test_automation_surface_rejects_scheduled_data_writer_but_not_codex_rotation(tmp_path):

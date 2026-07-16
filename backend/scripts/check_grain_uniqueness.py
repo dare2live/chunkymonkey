@@ -1,6 +1,7 @@
 """check_grain_uniqueness — grain 声明持续审计门 (R1 根因1 机械门, 2026-07-03).
 
-owner=analysis/data_foundation_root_causes_20260703.md 根因1: grain 声明是"猜的"不是"验的" —
+owner=docs/engineering_governance.md；历史根因证据=analysis/data_foundation_root_causes_20260703.md。
+根因1: grain 声明是"猜的"不是"验的" —
 注册时单日抽样查不出低频多行模式 (多年度研报/多席位/双榜), 而 2026-06-22 上线的批内
 drop_duplicates(grain) 把错误 grain 从良性 (多行共存) 升级为恶性 (静默销毁,
 report_rc 漏 quarter / block_trade 漏 buyer,seller 两个 CRITICAL 实证)。
@@ -18,7 +19,7 @@ layer 无 grain 字段 → 此处集中镜像 builder 契约)。任何未豁免�
     ... --strict                                                                   # 库不可达也算 FAIL
         (默认跳过: tushare_raw 重拉期写锁占用时 read_only attach 同样被拒, CLAUDE §4.5 2026-07-02)
 
-wire 建议 (主会话收编): chunkyctl doctor 数据面清单 + moth 断言 `grain-uniqueness-gate-green`。
+接线状态由 safe_commit、Moth 断言和 live gate 验证，不在本文档字符串声称。
 """
 from __future__ import annotations
 
@@ -42,10 +43,9 @@ MART_GRAINS: list[tuple[str, str, list[str]]] = [
     # (db_alias, table, grain)
     ("smartmoney", "dim_stock_segment_daily", ["stock_code", "trade_date"]),          # services/segments.py B1
     ("smartmoney", "fact_stock_form_daily", ["stock_code", "trade_date"]),            # services/technical_states B2
-    ("smartmoney", "mart_sector_pulse_daily", ["chain", "sector_code", "trade_date", "content_type"]),
-    # services/market_pulse.py B4/v3 — content_type 入 grain (2026-07-04 真库首跑实锤): tushare 源
-    # (moneyflow_ind_dc) 12 个板块代码 (如 BK0733.DC 包装材料) 同日**真实**兼具"行业"+"概念"双重归类,
-    # 非脏数据; v3 前端已按 content_type 分 tab (行业/概念) 展示, 天然消费该维度不冲突。
+    ("smartmoney", "mart_sector_pulse_daily", ["chain", "sector_code", "trade_date"]),
+    # services/market_pulse.py B4/v3 — chain 就是 taxonomy namespace。东财行业与东财概念
+    # 分别写入 dc_industry/dc_concept；content_type 只保留供应商原标签作证据，不再参与身份或 grain。
     ("smartmoney", "mart_market_pulse_daily", ["trade_date"]),                        # services/market_pulse.py B4
 ]
 

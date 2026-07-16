@@ -4,7 +4,8 @@
  *  v3 注意: net_amount 两链口径不可比 (dc=东财主力口径 / sw=tushare 全单口径聚合), 禁跨链排同一榜。 */
 import { apiGet } from "./client";
 
-export type PulseChain = "dc_concept" | "sw_industry";
+export type DcPulseChain = "dc_industry" | "dc_concept";
+export type PulseChain = DcPulseChain | "sw_industry";
 
 /** 申万层级 (sw 链; dc 链 level 为东财透出值或 null)。 */
 export type SwLevel = "L1" | "L2" | "L3";
@@ -29,13 +30,9 @@ export interface HeatmapSector {
   values: (number | null)[];
 }
 
-/** dc 链板块类型 (v2 缺口①): 后端白名单 = market_pulse.yaml dc_content_types。 */
-export type DcContentType = "行业" | "概念";
-
 export interface HeatmapResp {
   status: string;
   chain: PulseChain;
-  content_type: string;
   dates: string[]; // YYYYMMDD 升序
   sectors: HeatmapSector[]; // 窗口累计 net_amount 降序, top N
 }
@@ -43,7 +40,6 @@ export interface HeatmapResp {
 export function fetchHeatmap(
   opts: {
     chain?: PulseChain;
-    content_type?: DcContentType;
     level?: SwLevel; // v3: 仅 sw 链生效, 默认 L1 (后端契约)
     days?: number;
     top?: number;
@@ -51,7 +47,6 @@ export function fetchHeatmap(
 ) {
   const q = new URLSearchParams();
   if (opts.chain) q.set("chain", opts.chain);
-  if (opts.content_type) q.set("content_type", opts.content_type);
   if (opts.level) q.set("level", opts.level);
   if (opts.days !== undefined) q.set("days", String(opts.days));
   if (opts.top !== undefined) q.set("top", String(opts.top));
@@ -89,7 +84,7 @@ export function fetchRotation(opts: { lag?: number; level?: SwLevel } = {}) {
   return apiGet<RotationResp>(`/api/v3/pulse/rotation${qs ? `?${qs}` : ""}`);
 }
 
-/** v2 dc 资金流轮动行: rank_flow = dc 全体 (行业+概念) 截面资金流排名 (1=流入最强);
+/** DC 资金流轮动行: rank_flow 在所选 namespace 内截面资金流排名 (1=流入最强);
  *  leading/leading_pct = dc_index 涨幅龙头; flow_leader_stock = 资金龙头 (moneyflow_ind_dc);
  *  inflow_breadth = 当日有个股流数据的成分股中净流入占比 0-1 (dc_member 快照窗内才有, 缺=null)。 */
 export interface DcRotationSector {
@@ -114,8 +109,10 @@ export interface DcRotationResp {
   sectors: DcRotationSector[]; // 最新日 rank_flow 升序, top 截断
 }
 
-export function fetchDcRotation(opts: { lag?: number; top?: number } = {}) {
-  const q = new URLSearchParams({ chain: "dc_concept" });
+export function fetchDcRotation(
+  opts: { chain?: DcPulseChain; lag?: number; top?: number } = {},
+) {
+  const q = new URLSearchParams({ chain: opts.chain ?? "dc_industry" });
   if (opts.lag !== undefined) q.set("lag", String(opts.lag));
   if (opts.top !== undefined) q.set("top", String(opts.top));
   return apiGet<DcRotationResp>(`/api/v3/pulse/rotation?${q.toString()}`);
@@ -239,13 +236,11 @@ export function fetchDrill(opts: {
   chain: PulseChain;
   code?: string | null;
   date?: string;
-  content_type?: DcContentType;
   top?: number;
 }) {
   const q = new URLSearchParams({ chain: opts.chain });
   if (opts.code) q.set("code", opts.code);
   if (opts.date) q.set("date", opts.date);
-  if (opts.content_type) q.set("content_type", opts.content_type);
   if (opts.top !== undefined) q.set("top", String(opts.top));
   return apiGet<DrillResp>(`/api/v3/pulse/drill?${q.toString()}`);
 }
@@ -298,6 +293,7 @@ export interface RankDropout {
 }
 
 export interface QuietOutflowWarning {
+  chain: DcPulseChain;
   sector_code: string;
   sector_name: string;
   trade_date: string;

@@ -1,23 +1,10 @@
-## field_dictionary.yaml — Phase ψ.γ.dict.1 字段字典 (跨表 schema + 单位 + PIT key 治理)
+## Legacy field dictionary — NONCONFORMING target architecture
 ##
-## !! 状态: 大面积 STALE (2026-07-02 批5 标注) !!
-##   本字典建于 reset 前世界; 2026-06-14 地基-reset + 06-28 纯数据平台重建后, 其中大量表段
-##   (fact_financial_pit_daily / fact_risk_factors / fact_signal_context / raw_gpcw_* /
-##    fact_technical_trigger 等) 描述的是**已物删的表** — 勿按图索骥。
-##   当前活表清单以 `FEATURE_MAP.md`(机器版) + data_layers.yaml 为准; 字段语义查 DB PRAGMA 实测。
-##   本文件保留 = join_templates(PIT JOIN 模板仍有效) + 历史字段语义参照; edge 重建时按需重建字典。
-##
-## 根因: VWAP volume unit bug (akshare_sina=股 vs tdxhub=手) 暴露项目无统一字段单位治理.
-## 跨表字段命名也不一致 (date / trade_date / calc_date / signal_date), 写代码时易混.
-##
-## 用途:
-##   1. ETL 写入前 sanity check (单位 / 范围 / PIT key 完整性)
-##   2. Cross-table JOIN 写代码时查"这表的 PIT key 是哪个字段"
-##   3. 新人接手时一图看全核心 schema
-##   4. 单测自动 verify schema 跟字典一致 (防漂移)
-##
-## 维护责任 (Rule 9.5): 新加业务表 / 新增 PIT 字段 / 改单位 — 必须同步更新这里.
-## Pre-commit hook 不强制 (schema 变动频率低), 但 PROJECT_INDEX §2 应同步.
+## !! 状态: 大面积 STALE / 仅兼容未迁移 data_governance 测试面 !!
+## 生产 writer、Tier contract 和发布 gate 不得把本文件当 schema 真相源。Phase1 以 live DB
+## schema + module DatasetContract 迁移仍有价值的单位/PIT 定义后，删除本兼容 registry。
+## 下方大量表段属于已删除的旧 factor/model 世界，只用于兼容现存 data_governance 单测；
+## 不新增条目、不据此生成表，也不用于判断当前表是否存在。当前结构以 live DB schema 为准。
 
 ## 通用约定
 conventions:
@@ -437,7 +424,7 @@ databases:
         built_at:              {type: TEXT}
 
     mart_p3_acceptance_result:
-      description: "P3 final holdout acceptance — 4 硬验收 (用户终极目标 analysis/plan_v3_20260514_archived.md §0.1)"
+      description: "Legacy P3 acceptance schema; not a StrategyRelease. Current release contract: docs/strategy_validation_contract.md"
       fields:
         run_id:               {type: TEXT, role: pk}
         model_id:             {type: TEXT, role: pk}

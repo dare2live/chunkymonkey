@@ -21,8 +21,8 @@ import duckdb
 from services.database_manifest import get_database_manifest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-# 主 6 库 = 探索绝不可 read_write 的真相源 (写它们走正式流程非探索)
-_MAIN_ALIASES = ("smartmoney", "market", "tushare_raw", "feature_store", "etf", "experiment_store")
+# Current manifest databases that exploration must never open read-write.
+_MAIN_ALIASES = ("smartmoney", "market", "tushare_raw", "feature_store", "experiment_store")
 
 _ORIG_CONNECT = duckdb.connect
 _GUARD_ON = False

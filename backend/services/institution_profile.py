@@ -1,7 +1,7 @@
-"""institution_profile.py — 机构画像引擎 (edge"机构档案"数据层, 2026-07-02 探索弧 promote)
+"""Tier3 机构披露研究画像；只提供 evidence，不产生 CandidateSignal 或执行指令。
 
-产品语义 (用户定调): 机构档案逐机构展示 收益/胜率 + 行业/年份/类型维度表现, **用户自己选择跟随**
-(非自动全跟策略 — E2 实测全体机构无 alpha, 分层桶才有信号, verdict=inst_follow_e1e2_20260702)。
+现有档案展示历史收益/胜率与分层表现；这些是披露数据研究结果，不是建仓信号、
+自动跟随策略或 StrategyRelease。
 
 方法 (sandbox/inst_follow 探索弧验证, 三成本方案敏感性稳健):
   episode = 同机构(holder_name_norm)×同股票 的 建仓(新进,可增持)→部分了结(减持)→清仓(退出)/持有中。
@@ -393,7 +393,7 @@ def recent_signals(*, days: int = 30, min_holder_episodes: int = MIN_EPISODES,
     holder_win_rate 是该机构自身历史战绩(自身整窗VWAP成本口径, 见 build_profiles), 不是
     "跟随该signal的预期收益"。真正 execution-aware 的跟随策略回测(信号日次交易日open入场+
     涨跌停顺延+成本+PIT expanding-window机构评级)是设计文档
-    analysis/institution_follow_strategy_design_20260702.md §4 定义的独立功能, 尚未实现
+    docs/strategy_validation_contract.md §8.2 定义的独立功能, 尚未实现
     (E3-E5 探索弧未走), 消费方/前端展示本函数结果时不应暗示"跟随可获得同等收益"。
     """
     con = _ro_conn()

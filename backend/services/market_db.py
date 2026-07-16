@@ -11,12 +11,12 @@ from pathlib import Path
 
 from services.duck_adapter import connect as _duck_connect, DuckConn
 from services.market_read import (
-    CANONICAL_KLINE_QFQ_RELATION,
-    CANONICAL_KLINE_QFQ_VIEW_DDL,
+    ANALYSIS_KLINE_QFQ_RELATION,
+    ANALYSIS_KLINE_QFQ_VIEW_DDL,
     DEFAULT_KLINE_DAILY_QFQ_COLUMNS,
     KLINE_DAILY_QFQ_POLICY,
-    canonical_kline_daily_qfq_sql,
-    get_canonical_kline_qfq_relation,
+    analysis_kline_daily_qfq_sql,
+    get_analysis_kline_qfq_relation,
 )
 from services.market_schema import ensure_market_schema
 
@@ -74,7 +74,7 @@ def filter_kline_rows_by_calendar(
     """Filter rows by latest_completed_trade_date (write-side PIT lint).
 
     通用 K-line writer 写侧日历 lint (Codex review 2026-05-19 CRITICAL): 任何 K线写入前
-    剔除 date > latest_completed_trade_date 的盘中 partial 行 (CLAUDE.md Rule 3 反例防御)。
+    剔除 date > latest_completed_trade_date 的盘中 partial 行 (AGENTS.md Tier0 时间边界)。
 
     max_date_override: batch sync 启动时锁定的 cutoff, 避免跨 15:05 阈值导致同批次不一致.
 

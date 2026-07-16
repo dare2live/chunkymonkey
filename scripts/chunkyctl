@@ -19,38 +19,18 @@ usage() {
   cat <<'EOF'
 Usage:
   scripts/chunkyctl doctor [--fast] [--skip-storage-payload]
-  scripts/chunkyctl worktree [--bucket name] [--format json|markdown]
-  scripts/chunkyctl docs [--format json|markdown]
-  scripts/chunkyctl jobs [--family job-family] [--backend local] [--job-id id] [--model-id id]
-  scripts/chunkyctl preflight "task description" [scope ...] [--agent-dispatch evidence]
-  scripts/chunkyctl audit [--run] [scope ...]
   scripts/chunkyctl map [--check]
-  scripts/chunkyctl data-status [--format json|table]
   scripts/chunkyctl pipeline acquire|clean|process|store [--force]
   scripts/chunkyctl lineage build | impact <table> | provenance <table> | dead | show <table>
 
 Examples:
   scripts/chunkyctl doctor --fast
-  scripts/chunkyctl worktree
-  scripts/chunkyctl worktree --format markdown
-  scripts/chunkyctl worktree --bucket updater_split --format markdown
-  scripts/chunkyctl docs --format markdown
-  scripts/chunkyctl jobs --family model_training --backend local --model-id lgbm_<yyyymmdd> --input-snapshot smartmoney.duckdb@<date> --objective '<why>' --rollback-plan '<stop/discard plan>' --gate-evidence leakage_audit=<artifact> --gate-evidence train_log_integrity=<artifact> --gate-evidence phase4_gate=<artifact>
-  scripts/chunkyctl preflight "拆 updater status glue" backend/routers/updater.py backend/tests/test_updater_status.py
-  scripts/chunkyctl audit --run backend/scripts/chunkyctl.py backend/tests/scripts/test_chunkyctl.py
-  scripts/chunkyctl audit --run --scope backend/scripts/chunkyctl.py --scope backend/tests/scripts/test_chunkyctl.py
 
 Notes:
   doctor     = project health snapshot, including manual-only automation residue enforcement.
-  worktree   = read-only dirty worktree bucket report.
-  docs       = docs graph + docs-cleanup worktree-slice readiness.
-  jobs       = provider-neutral experiment job contract / plan.
-  preflight  = what gates must run before editing a task.
-  audit      = scoped post-change checks; add --run to execute them.
   map        = regenerate FEATURE_MAP.md machine-derived feature map; --check = drift gate only.
-  data-status = tushare migration status (registry-driven: landed/never-synced/stale/failures per domain).
-  pipeline   = §8 run one stage independently (acquire|clean|process|store); full chain still via daily_update.sh.
-  lineage    = M5-T2 血缘路由中枢 (字典+总指挥): impact <table> = 删/迁前自动 fan-in (替代手 grep); build/provenance/dead/show.
+  pipeline   = manually run one declared data stage; full manual chain remains daily_update.sh.
+  lineage    = generated dependency projection; impact <table> audits fan-in before delete/migrate.
 EOF
 }
 
@@ -61,6 +41,17 @@ fi
 
 cmd="$1"
 shift
+
+# Public commands whose implementations were removed by the platform reset.
+# Keep this declaration machine-readable: build_feature_map.py uses it to
+# prevent retired surfaces from reappearing as live capabilities.
+RETIRED_COMMANDS=(worktree docs preflight audit data-status jobs)
+for retired_command in "${RETIRED_COMMANDS[@]}"; do
+  if [[ "$cmd" == "$retired_command" ]]; then
+    echo "ERROR: chunkyctl command '$cmd' is retired and unavailable." >&2
+    exit 2
+  fi
+done
 
 case "$cmd" in
   doctor)
@@ -81,182 +72,16 @@ case "$cmd" in
     done
     PYTHONPATH=backend "$PY" backend/scripts/chunkyctl.py "${args[@]}"
     ;;
-  worktree)
-    args=(worktree)
-    while [[ $# -gt 0 ]]; do
-      case "$1" in
-        --bucket)
-          if [[ $# -lt 2 ]]; then
-            echo "ERROR: --bucket requires a name." >&2
-            usage >&2
-            exit 2
-          fi
-          args+=(--bucket "$2")
-          shift 2
-          ;;
-        --format)
-          if [[ $# -lt 2 ]]; then
-            echo "ERROR: --format requires json or markdown." >&2
-            usage >&2
-            exit 2
-          fi
-          args+=(--format "$2")
-          shift 2
-          ;;
-        *)
-          echo "ERROR: unknown worktree option: $1" >&2
-          usage >&2
-          exit 2
-          ;;
-      esac
-    done
-    PYTHONPATH=backend "$PY" backend/scripts/chunkyctl.py "${args[@]}"
-    ;;
-  docs)
-    args=(docs)
-    while [[ $# -gt 0 ]]; do
-      case "$1" in
-        --format)
-          if [[ $# -lt 2 ]]; then
-            echo "ERROR: --format requires json or markdown." >&2
-            usage >&2
-            exit 2
-          fi
-          args+=(--format "$2")
-          shift 2
-          ;;
-        *)
-          echo "ERROR: unknown docs option: $1" >&2
-          usage >&2
-          exit 2
-          ;;
-      esac
-    done
-    PYTHONPATH=backend "$PY" backend/scripts/chunkyctl.py "${args[@]}"
-    ;;
-  preflight)
-    task=""
-    args=(preflight)
-    while [[ $# -gt 0 ]]; do
-      case "$1" in
-        --task)
-          if [[ $# -lt 2 ]]; then
-            echo "ERROR: preflight --task requires a description." >&2
-            usage >&2
-            exit 2
-          fi
-          task="$2"
-          shift 2
-          ;;
-        --task=*)
-          task="${1#--task=}"
-          shift
-          ;;
-        --scope)
-          if [[ $# -lt 2 ]]; then
-            echo "ERROR: preflight --scope requires a scope." >&2
-            usage >&2
-            exit 2
-          fi
-          args+=(--scope "$2")
-          shift 2
-          ;;
-        --scope=*)
-          args+=(--scope "${1#--scope=}")
-          shift
-          ;;
-        --agent-dispatch)
-          if [[ $# -lt 2 ]]; then
-            echo "ERROR: preflight --agent-dispatch requires evidence." >&2
-            usage >&2
-            exit 2
-          fi
-          args+=(--agent-dispatch "$2")
-          shift 2
-          ;;
-        --agent-dispatch=*)
-          args+=(--agent-dispatch "${1#--agent-dispatch=}")
-          shift
-          ;;
-        --agent-skip-reason)
-          if [[ $# -lt 2 ]]; then
-            echo "ERROR: preflight --agent-skip-reason requires a reason." >&2
-            usage >&2
-            exit 2
-          fi
-          args+=(--agent-skip-reason "$2")
-          shift 2
-          ;;
-        --agent-skip-reason=*)
-          args+=(--agent-skip-reason "${1#--agent-skip-reason=}")
-          shift
-          ;;
-        --*)
-          echo "ERROR: unknown preflight option: $1" >&2
-          usage >&2
-          exit 2
-          ;;
-        *)
-          if [[ -z "$task" ]]; then
-            task="$1"
-          else
-            args+=(--scope "$1")
-          fi
-          shift
-          ;;
-      esac
-    done
-    if [[ -z "$task" ]]; then
-      echo "ERROR: preflight requires a task description." >&2
-      usage >&2
-      exit 2
-    fi
-    args+=(--task "$task")
-    PYTHONPATH=backend "$PY" backend/scripts/chunkyctl.py "${args[@]}"
-    ;;
-  audit)
-    args=(audit)
-    while [[ $# -gt 0 ]]; do
-      case "$1" in
-        --run|--include-stdout)
-          args+=("$1")
-          shift
-          ;;
-        --scope)
-          if [[ $# -lt 2 ]]; then
-            echo "ERROR: audit --scope requires a path." >&2
-            usage >&2
-            exit 2
-          fi
-          args+=(--scope "$2")
-          shift 2
-          ;;
-        *)
-          args+=(--scope "$1")
-          shift
-          ;;
-      esac
-    done
-    PYTHONPATH=backend "$PY" backend/scripts/chunkyctl.py "${args[@]}"
-    ;;
-  jobs)
-    PYTHONPATH=backend "$PY" backend/scripts/chunkyctl.py jobs "$@"
-    ;;
   map)
     PYTHONPATH=backend "$PY" backend/scripts/build_feature_map.py "$@"
     ;;
-  data-status)
-    # backend/scripts/data_migration_status.py 已随重建物删; 直调死路径改路由到
-    # chunkyctl.py 已有的 _RETIRED 优雅提示 (2026-07-07 全库死代码普查簇10)。
-    PYTHONPATH=backend "$PY" backend/scripts/chunkyctl.py data-status "$@"
-    ;;
   pipeline)
-    # §8 阶段独立化: 单跑一个阶段 (acquire|clean|process|store), 不连带全链。
+    # Manual single-stage entrypoint; it never installs or schedules a background job.
     # 全链编排仍用 scripts/daily_update.sh (python -m services.pipeline.run)。
     PYTHONPATH=backend "$PY" -m services.pipeline.stage_runner "$@"
     ;;
   lineage)
-    # M5-T2 血缘路由中枢 (字典+总指挥): build | impact <t> | provenance <t> | dead | show <t>
+    # Generated lineage projection: build | impact <t> | provenance <t> | dead | show <t>
     # 删/迁表前 `chunkyctl lineage impact <table>` 自动 fan-in (替代手 grep)。
     PYTHONPATH=backend "$PY" backend/scripts/lineage_cli.py "$@"
     ;;

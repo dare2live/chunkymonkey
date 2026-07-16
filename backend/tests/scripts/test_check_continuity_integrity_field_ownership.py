@@ -1,4 +1,4 @@
-"""字段所有权契约 (2026-07-08, owner=analysis/gap_root_cause_20260708.md, architect-controller REVISE 裁决).
+"""字段所有权契约（现行 owner=live checker；历史证据=analysis/gap_root_cause_20260708.md）。
 
 背景: sync_registry.yaml 每域字段里, gap_tolerance(为 check_calendar_gaps 设计, 判断"整日缺失"
 是否天然可容忍) 曾被泛化复用去抑制 check_cross_section 的 row_dip(判断"行数骤降但非零")——
@@ -79,7 +79,7 @@ def test_no_field_read_outside_its_declared_owners():
             violations.append(f"{field}: 被未声明的函数读取 {sorted(unexpected)} "
                                f"(契约只允许 {sorted(allowed_owners)})")
     assert not violations, (
-        "字段所有权契约违反 (owner=analysis/gap_root_cause_20260708.md) — "
+        "字段所有权契约违反 (owner=live checker; evidence=analysis/gap_root_cause_20260708.md) — "
         "检测到判断型/事实型字段被跨 check 函数挪用, 与今天修复的 gap_tolerance/row_dip 同型:\n"
         + "\n".join(violations))
 

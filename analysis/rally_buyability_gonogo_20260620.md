@@ -1,11 +1,11 @@
 # 主升浪起涨点可买入率 go/no-go (B #47, 2026-06-20)
 
-> owner: 本文件 (B 阶段 tradability 裁决永久档)。方法论锚=goal.md D1-first + chunkymonkey-ops §0。
+> 生命周期：历史测量快照（evidence-only）。99.9% 绑定当时 GT、数据和执行口径，不是当前 KPI/alpha 证书；现行 owner 见 `docs/strategy_validation_contract.md`。
 > 数据源: fact_rally_entry_pit (9070 正样本入场点) × price_kline_qfq_tushare (T+1 OHLC) × fact_rally_ground_truth (峰/涨幅)。
 
 ## 裁决: GREEN (tradability PASS, 但非 alpha 结论)
 
-结构型主升浪起涨点 **可买入率 99.9%** (T+1 一字涨停板仅 11/9070 = 0.1%), 全年份(2019-2026)/全板块(00/30/60/68) 一致 < 0.2%。
+当时口径下，结构型主升浪起涨点测得 **可买入率 99.9%** (T+1 一字涨停板仅 11/9070 = 0.1%), 全年份(2019-2026)/全板块(00/30/60/68) 一致 < 0.2%。
 
 ## 实测 (measured, 9070 rally)
 

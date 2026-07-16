@@ -9,7 +9,7 @@
  *   POST /paper/mark → mark_to_market 返回 dict
  */
 
-// ── C1 机构档案 ────────────────────────────────────────────────────────────
+// ── Tier3 机构披露研究 evidence ───────────────────────────────────────────
 
 /** GET /api/v3/inst/profiles → {status, profiles: InstProfileRow[]} */
 export interface InstProfileRow {
@@ -70,7 +70,7 @@ export interface InstSignal {
 
 export type ProfileOrderBy = "median_alpha" | "win_rate_alpha" | "n_closed" | "avg_alpha";
 
-// ── C2 实盘模拟 ────────────────────────────────────────────────────────────
+// ── Legacy NONCONFORMING 手工观察账本（不是 paper execution）──────────────
 
 /** GET /api/v3/paper/portfolio → positions[] (routers zip 列名; entry_date 为 ISO YYYY-MM-DD) */
 export interface PaperPosition {

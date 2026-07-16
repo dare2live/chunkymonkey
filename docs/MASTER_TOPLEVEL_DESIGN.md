@@ -1,138 +1,262 @@
-# ChunkyMonkey 综合顶层设计 (Master Top-Level Design)
+# ChunkyMonkey 顶层架构
 
-> **状态更新 2026-07-02**: edge 重建已开工 — 实施路线唯一 owner = `analysis/master_implementation_plan_20260702.md`
-> (A 档案API→B 基础件→C 前端→D 主升浪→E 整合)。本文件仍是全局蓝图骨架 (什么/为什么);
-> 顺序与细节以 master plan 为准。已落地 edge 件: W1 机构画像引擎 + W2 实盘模拟 (2026-07-02)。
+> 状态：live
+> 生效：2026-07-16
+> 作用：项目目的、业务分层、模块边界和迁移顺序的唯一架构真相源。
+> 当前状态与下一步只看 `goal.md`；工程执行规则看 `engineering_governance.md`；研究与发布规则看 `strategy_validation_contract.md`。
 
-> **[2026-06-28 状态注 — 项目重建为纯数据平台]**: 本蓝图描述 数据→因子→策略→验证→KPI 全链愿景。**2026-06-28 重建后, 因子/策略/edge/验证层已退役清空** (代码~245文件+~40表删), 当前只实现**数据层** (采集 tushare+aif10 + 清洗 + SERVE + 四地基 + 治理, owner=`analysis/data_platform_architecture_20260628.md`)。下游链 (§因子/策略/KPI) = **未来在干净平台上重建的蓝图**, 非当前实现。
+## 1. 项目目的
 
-> 2026-06-14 立。本会话全部设计 + 用户对公式/数据的核心想法 + 重构方案的**系统性综合**。
-> 定位: 项目最高层设计真相源, 串起 数据→因子→策略→验证→KPI 全链 + 纪律/工具 + 路线。
-> 各层细节 owner 见文末文档体系; 本文件只给**骨架 + 决策 + 为何**, 不复制细节 (防双真相源)。
-> 固化: 本设计的操作知识 (坑/工具调度/纪律) 沉淀进项目专用 skill `chunkymonkey-ops` (后续开发持续用)。
->
-> **状态 (2026-06-16 重启后, 本文=alpha 方法论单一 owner)**: 用户决议清掉无锁方案的探索污染重新开始, 本文收口为**唯一立法层方法论真相源** (替代已删的 conditional_alpha_program/alpha_validation_program_spec 等探索 doc; §5 收录用户口述监督式范式)。
-> 验证范式 (§6): IC 降级 necessary 快筛, 含成本 execution-aware backtest 绝对收益 = sufficient gate; 判断法典 owner=`docs/strategy_validation_contract.md`。
+ChunkyMonkey 要把 A 股公开数据变成可审计、可复现、可执行的判断链：
 
----
+1. 正确获取并加工交易与基础分类数据；
+2. 描述股票当前阶段、形态和交易状态；
+3. 描述市场资金活动、参与广度和价格响应；
+4. 在统一数据快照上验证机构跟随、主升浪猎手和选股公式；
+5. 只把通过 PIT、样本外和真实执行约束的研究结果发布为候选与纸面交易。
 
-## 0. 北极星 (一句话)
-把 A 股公开数据 (K线/财报/筹码/资金) 转成**真金白银的 KPI 级回报** —— 不是论文不是数字游戏。
-KPI (owner=goal.md): 年化≥30% / max_dd≥-20% / 超额HS300>0 / 月胜率≥55% (含成本 OOS paper_sim, 2023起)。当前=unknown。
+这不是“多抓数据、多建表、多跑公式”的项目。系统价值来自从原始证据到决策的完整闭环，以及每一步都能回答：数据从哪来、何时可知、谁加工、用的哪版规则、为何可信、失败时阻断谁。
 
-## 1. 创世法 (不可变, owner=goal.md)
-**死亡条款** (陌生人可判): ① 感知死=forward不回填对账/异常高回测(RankIC>0.3/sharpe>5/年化>100%)不查leakage上线;
-② 判断死=阈值/权重/策略组合 hardcode 进代码非 config; ③ 谄媚死=报喜不报忧/只调舒服方向。
-**判断法典** (人话→机器话): 每表声明layer→`moth data-layer-integrity`; 不留god-file→`minimal-module-*`;
-删层不被重建→`schema_layer_filter`+`legacy-flow-no-pollution`; 数字measured可复现→`check_rule_compliance`+leakage gate。
+## 2. 架构裁决
 
-## 2. 总架构 (8层数据 × 4流程域, **data_layers.yaml 唯一驱动**)
+当前代码和数据资产可复用，但现有边界不可信。采用渐进式重构，不做大爆炸重写：
+
+- 保留数据源适配、交易日历、K 线、技术状态、市场脉搏、机构画像和主升浪 ground truth 等有效资产；
+- 冻结新增散表、散配置和旁路读取；
+- 先建立契约、唯一 writer、版本和验收证据，再逐模块替换旧路径；
+- 新旧路径 shadow-run 对账通过后才删除旧路径；
+- 物理目录和数据库搬迁晚于语义边界，不以改文件夹制造“已解耦”的假象。
+
+目标不是“零耦合”，而是依赖单向、耦合显式、失败可隔离、模块可替换。
+
+## 3. 两条正交轴
+
+### 3.1 数据传输轴
+
+每个外部数据域都经过同一生命周期：
+
+```text
+provider response
+  -> landing (原样保留，不做业务过滤)
+  -> validate (schema/grain/partition/completeness)
+  -> accepted canonical (标准身份、单位、时间和质量)
+  -> serve/read model (面向消费者的稳定读契约)
 ```
-真相源: data_layers.yaml (表→layer; 计数随增删变, 以 data_layers.yaml 实读 + data_layer_audit 为准, 不在此钉死数字) ── 流程/config 读它, 不自带表清单 (反转, 防重建循环)
-─ 数据层 ───────────────────────────────────────────────────────
- L0_source     tushare_raw + market K线          ← sync_runner (registry 驱动)
- L1_foundation dim/财报PIT/十大股东/LHB/机构      ← from L0
- L1k_kline_int technical_stage/macd (纯OHLCV)     ← from v_price_kline_qfq
- display       档案展示 (UI serving)              ← from L1
- infra         watermark/audit/gate/deletion
-─ 实验层 (不进 daily_update, 走 alpha 验证程序) ──────────────────
- L2_feature / L3_model / L4_experiment           ← experiment_store, S0-S4, 参数寻优重做
-─ 4 流程域 (边界清晰, 各碰各 layer) ──────────────────────────────
- daily-update(L0/L1/L1k/snapshot+retention) · alpha-validation(L2-L4) · serving(display) · infra(治理)
+
+`landing` 是供应商事实；`canonical` 是项目接受的事实；`serve` 是方便消费的投影。三者不能共用一个模糊的“raw/clean”名义，也不能在写 landing 前按股票池过滤。
+
+### 3.2 业务依赖轴
+
+```mermaid
+flowchart TD
+    E["外部数据源"] --> T0A["Tier 0A 市场数据"]
+    E --> T0B["Tier 0B 分类体系"]
+    T0A --> T1["Tier 1 股票状态"]
+    T0B --> T1
+    T0A --> T2["Tier 2 市场感知"]
+    T0B --> T2
+    T1 --> T2
+    T0A --> T3["Tier 3 研究与策略包"]
+    T1 --> T3
+    T2 --> T3
+    T3 --> T4["Tier 4 决策、纸面交易与产品"]
+    O["Ops / Governance"] -.观察与验收.-> T0A
+    O -.观察与验收.-> T0B
+    O -.观察与验收.-> T1
+    O -.观察与验收.-> T2
+    O -.观察与验收.-> T3
+    O -.观察与验收.-> T4
 ```
-核心反转 (重构): daily_update 不再硬编步骤 (自当真相源致删层留死调用); 读 data_layers active 表自动跳 wiped。
 
-## 3. 数据层 (tushare 主源; 验证优先于抓取)
-- **主源 tushare** (171/239 可用, 已抓 29); tdxhub/miaoxiang 备援; akshare 淘汰中。
-- **数据菜单** (owner=backend/config/tushare_api_catalog.json): 137 A股未抓接口评估, **无 high edge** (诚实)。真缺口因子族:
-  现金流质量(cashflow)/机构大宗折价(block_trade)/北向per-stock(ccass/hsgt_top10)/事件日历/杠杆(margin)。
-- **用户 focus (技术类: 资金流/筹码)**: 个股资金流 moneyflow_dc(低PIT) / 筹码 cyq_chips(重建winner_rate) /
-  北向 hsgt_top10+ccass / 大宗 block_trade / 龙虎 hm_detail(10000档, 高PIT须t-1)。
-- **口径铁律**: 行业/概念资金流必须 flow vendor = membership vendor (东财链自洽 dc_member+moneyflow_ind_dc;
-  申万只做中性化; **禁同花顺第三套**)。混用=§4.5 sector leakage 同源。
-- **原则**: 不为没证明的数据建保鲜管道 (architect rule6); 验出 alpha 才抓 (超 L0 标尺 +0.064 才转正)。
+高层可以依赖低层，低层禁止读取高层结果。Ops/Governance 观察各层并记录运行证据，但不拥有业务事实，也不能成为所有模块必须反向依赖的“超级层”。
 
-## 4. 因子层 (因子来源 = 验证矩阵的列)
-> **状态: 已偏离 (2026-06-15 P3 实弹)**。裸 K 线 reversal long-only 含成本 execution-aware 实测年化 -14.06%~-34.69% / max_dd -57%~-81% (IC_POSITIVE_BUT_UNTRADABLE) = A 股结构性不可交易; +0.064 IC 标尺仅作 necessary 快筛, **不再是选层/增量判据**。base 转**慢衰减绝对源** (见 §5/§10, owner=p3_execution_aware_verdict)。
-- **裸K线 L0** (已建, 降级为 base 候选): reversal/macd/ma/turtle, 标尺 reversal OOS RankIC +0.064 (= R1 的 IC⟂盈利活样本)。
-- **Alpha158** (旧panel已删PIT不可信, 验证时干净重算): 64 OHLCV 因子; 入选判据改"含成本 execution-aware backtest 绝对收益", 不再"超+0.064 IC"。
-- **慢衰减绝对源 (Phase D P0/P1)**: 财务质量/资金流 trend/景气/筹码结构 (已在库 daily_basic/moneyflow/cyq_perf); 绝对方向+慢衰减→低换手→成本可 survive。
+## 4. 业务分层与唯一 owner
 
-## 5. 策略层 (用户核心想法: **条件化, 非万能公式**)
+| 层 | 唯一职责 | 发布对象 | 不允许 |
+|---|---|---|---|
+| Tier 0A `market_data` | 日历、证券身份、名义 OHLCV、公司行动、复权因子、可交易规则、供应商资金字段 | `IngestBatch`、`AcceptedPartition`、canonical datasets | 在 landing 前按 universe 丢数据；用 qfq 代替成交价真相 |
+| Tier 0B `classification` | 分类节点、父子关系、成员快照/有效期、跨体系映射 | `TaxonomyNode`、`SecurityMembership`、`TaxonomyCrosswalk` | 按名称把两套体系宣称为等价；把成员事实写进 YAML |
+| Tier 1 `stock_state` | 截至决策时点的股票位置、趋势、纯度、量能、波动和形态事件 | `StockStateDaily`、`PatternEvent` | 未来收益、上涨概率、买卖信号；每个轴一张表 |
+| Tier 2 `market_sensing` | 分类级/市场级的活跃度、方向性成交不平衡代理、参与广度、价格响应和版本化状态 | `SectorObservation`、`MarketContextSnapshot` | 把供应商“主力净流入”称为资金守恒流转；跨口径求和 |
+| Tier 3 `research_runtime` + strategy packages | 冻结快照、基线、消融、PIT/OOS/成本验证、研究裁决 | `DatasetSnapshot`、`ExperimentRun`、`ExperimentVerdict`、`StrategySpec` | 每个策略自建实验框架；用展示 mart 直接做历史特征 |
+| Tier 4 `decision` / `paper_execution` / `product` | 发布策略、生成候选、模拟订单成交、展示可追溯证据 | `StrategyRelease`、`DecisionBatch`、`CandidateSignal`、`PaperOrder/Fill/Nav` | 未发布实验直接变选股建议；用 qfq close 模拟真实成交 |
 
-> ⚠ **执行顺序铁律 (2026-06-16 第2次跑偏反例固化, owner=memory feedback-alpha-methodology-adherence)**: 必须 **D1 (扫赢家 ground truth) FIRST** 再 D2 (因子+分层)。**禁信号正推** (造因子信号→看 IC/收益); 只许结果倒推 (找赢家 episode→反推 PIT 入场特征)。反例: 跳 D1 直接 form×cap×vol cell 挖因子 IC = 跑偏。开工前过 chunkymonkey-ops §0 三问 gate。
+策略包只有三个：`institution_follow`、`main_rally`、`formulas`。它们共享研究和执行契约，不各建一套候选表、回测器或参数系统。
 
-**alpha 发现范式 (用户口述, 2026-06-16 重启定为执行基准 — 监督式 = 结果倒推非信号正推)**:
-1. **裸K线全市场逐股扫 ground truth (标签 y)**: 主升浪 = 每股每次底→顶涨幅 **>60%**; 公式 episode (MACD 范本) = 每次金叉→死叉**盈利>30%** 的赢家。标签全程后验算 (合法, 它是 y)。
-2. **入场点 PIT 特征逐层叠** (一个一个加, 判据=含成本前向收益, 非"赢家里常见"): 量→换手→筹码→个股资金流→板块/概念资金→北向→增减持。
-3. **写公式→评估** (胜率/收益/回撤/持仓周期/抓出多少) **→分层** (大/小市值等, 每公式最佳参数+因子组合)。
-4. **train≤2025-06 建 / OOS 2025-06→2026-06 验** (模拟"2025-06 做的公式对未知一年") → **Modal 规模搜索 + DSR/PBO 按搜索规模校正**。
-- **两铁律**: 特征只用入场及之前 (不碰涨幅自己的未来; S3 AUC0.779 栽在结局量当特征); OOS 段构建时不碰。
-- **数据**: K线+复权统一 tushare qfq (cyq 实测同坐标可用, C0 FAIL=审计比错基准); **高积分高价值因子优先** (hk_hold 北向个股/stk_holdertrade 增减持/moneyflow_dc 资金分层/top10_floatholders 筹码结构)。
-> L0 市场级 reversal 仅 +0.064, **因把所有形态平均了** (低位用reversal/上升用动量互相抵消)。正解=条件化。
-**策略立方体** cell = (Segment 形态 × Feature 因子 × Policy 公式 × **Regime/Timing** × **Execution**), 5 轴 (2026-06-15 扩展 (owner=本文§5, 2026-06-16 重启收口为单一 owner; 法典 C-WinReturn)):
-- **Segment 形态** (用户): 横盘/低位/上升通道/下跌通道/高位 = `technical_stage` (Weinstein 5阶段) + MACD零轴/历史分位(PIT expanding)细分轴。
-- **Policy 公式**: 20公式+主升浪猎手, 找"哪个公式适配哪个形态"。
-- **Feature 因子**: 换手/筹码/资金流/Alpha158 在 cell 内增 alpha (主辅: 主公式出仓, 因子只调制)。
-- **Regime/Timing 轴 (第四, 绝对方向门)**: long/flat/defensive 离散 + 连续 gross-exposure 0-100% (cohort 健康度/regime 驱动)。long-only 的钱主要来自"在对的时候在场" (R1: cohort 绝对漂移 = 被 IC 减掉的水平)。
-- **Execution 轴 (第五, 一等非事后系数)**: sizing(equal/rank/inverse_vol) + exit(time-stop=半衰期/trailing) + 容量/集中度约束 (C-WinReturn: 仓位管理是把 edge 转实现收益+回撤的传递函数)。
-- **第一实验** (已跑, 部分推翻): per-stage L0 IC — 用户低位假设被数据否(Stage1≈0), 赢家 Stage1.5 突破中 +0.156, **但含成本 execution-aware 仍年化 -14% (IC_POSITIVE_BUT_UNTRADABLE)** → 解锁/选 cell 按含成本绝对收益不按 IC (owner=p3 裁决)。
-- **治理**: 维度爆炸用 DSR/PBO 压 (n_trials 如实计全 cell, 非 hardcode); **逐维解锁** (先证含成本绝对收益>0 再加维); 数据驱动 regime 聚类作补充。
-- **宇宙**: `universe.py` 排除 ST/退市/三板/北交所 (前缀非60/00/30/68 + ST名 + 退市no-trade)。
+## 5. “积木”的完整定义
 
-## 6. 验证层 (可靠性阶梯, 防过拟合第一约束; owner=本文§6 + strategy_validation_contract)
-> **状态: 验证范式 R1 修正 (2026-06-15, owner=strategy_validation_contract 判断法典)**。Gate1-5 的 null 全建在 rank/sharpe 空间, **数学上对 long-only 绝对收益盲** (N1: 截面 spearman/置换保留每日收益分布, 崩盘 cohort 可全数过闸; 33σ 仍亏)。修正: **IC=necessary 快筛(降级)**, **含成本 execution-aware backtest 绝对收益=sufficient gate(升级)**; 选 cell 按绝对收益不按 IC。
-> 阶梯加**绝对收益门 (R1)**: `tradability_verdict`(IC>0 且含成本净≤0→IC_POSITIVE_BUT_UNTRADABLE) + `kpi_verdict`(年化 AND max_dd AND 胜率×盈亏比期望, C-WinReturn) + `block_bootstrap_return_null`(NAV 符号 null, 与 rank 置换正交)。两级转正 (N3): Gate2 排序显著=STAT_EDGE_CONFIRMED 非 money; confirmed_by_owner 须含成本证据。执法 gate=`check_strategy_validation_integrity` 4 维 + moth `validation-*`。
+“模块 + 数据 + 配置”方向正确，但还缺契约和证据。一个可组合模块必须同时具备：
+
+| 元素 | 内容 |
+|---|---|
+| Module | 纯逻辑、公开 API、唯一变化原因 |
+| Data | 输入/输出 schema、grain、主键、PIT/availability、来源与版本 |
+| Config | 可调整政策：阈值、窗口、源优先级、启停、资源限制 |
+| Contract | module/version、输入输出、writer、消费者、失败传播、重建/退役规则 |
+| Evidence | batch、accepted partition、config hash、测试、实验和发布裁决 |
+
+模块内部文件不是独立积木。例如 `technical_states/axes.py`、`patterns.py`、`candles.py` 是 `stock_state` 的内部实现，不应各自拥有表、YAML 或跨模块 API。
+
+### 5.1 数据集契约
+
+任何跨模块发布数据集必须声明：
+
+- `dataset_id`、owner 和唯一 writer；
+- 精确 grain、主键和允许的重复语义；
+- event/effective/observed/available/built 时间；
+- 输入 snapshot、source batch、definition/config hash；
+- schema、单位、NULL/unknown 语义；
+- criticality、失败传播和允许的 fallback；
+- 消费者、重建方式、retention 和退役条件。
+
+缺少任一关键项，不得称为 canonical 或策略证据。
+
+### 5.2 何时落表
+
+模块输出只有满足至少一项才持久化：
+
+- 被多个模块复用；
+- 重建成本高；
+- 必须审计或复现；
+- 是正式发布/决策结果。
+
+单次计算、中间矩阵和消融明细优先使用 CTE、内存、临时表或带 manifest 的 artifact。禁止“一模块一表”“一版本一表”“一公式一表”。版本应是列或分区，而不是 `v2/v3` 表名。
+
+### 5.3 配置边界
+
+配置只保存稳定政策，不保存事实和运行状态。禁止写入 active config：
+
+- watermark、last run、失败队列或验收结果；
+- 尚不存在的 backend、模块、表和未来愿景；
+- 分类节点、成员、历史观测；
+- 任意代码拓扑、动态 import 或可执行 YAML DSL。
+
+每个 active config 必须有类型校验；未知键、悬空引用和错误类型 fail closed。显式的 Python wiring 是允许的，依赖关系不必藏进通用 DAG 或插件系统。
+
+## 6. Tier 0 数据地基
+
+### 6.1 交易数据
+
+真相分为三类，不能混为“唯一 K 线”：
+
+- 名义 OHLCV：历史真实可成交价格和数量；
+- 公司行动/复权因子：独立可追溯事实；
+- qfq/收益序列：带方法和 as-of 的派生分析视图。
+
+当前 `v_price_kline_qfq` 对分析有价值，但 `factor=1.0`、`batch_id=NULL`、`ingested_at=NULL` 是占位血缘；它也不能用于纸面成交价。迁移必须保留现有读面，同时补齐名义价格、因子、source batch 和研究快照契约。
+
+一次写入的最小原子链是：
+
+```text
+stage -> validate -> canonical replace/merge -> accepted_partition
 ```
-Gate0 PIT-clean (3门固化: PIT行为门/embargo切分/异常红线; pit_guard)
-Gate1 walk-forward OOS RankIC > +0.064  ← necessary 快筛 (降级, 不再是升级判据)
-Gate2 MC 截面置换 → STAT_EDGE_CONFIRMED (排序显著, 非 money; + 报 cohort/top-K 绝对 forward, N1)
-Gate3 DSR (Bailey-LdP): best 在 N trials 下显著 (n_trials 实计, n_eff=n_days/horizon 重叠校正)
-Gate4 PBO (CSCV): IS-best 在 OOS 仍 best
-Gate5 含成本 execution-aware backtest 绝对收益 (sufficient gate, portfolio_execbacktest):
-      tradability_verdict + kpi_verdict + block_bootstrap_return_null → 含成本年化/max_dd/胜率×盈亏比联合
-   → 全过 + 含成本绝对收益>0 才进实盘候选
-```
-纠错 (N1): feature↔label 截面置换 null 保留每日收益分布, **对 cohort 绝对涨跌恒不变, 不能单独作终验**; 终验=含成本 execution-aware backtest 绝对收益 (NAV 符号 block bootstrap), 不是策略 sharpe (sharpe 仍 rank/风险调整量)。
 
-## 7. 实验台 (alpha 验证程序 S0-S4, owner=本文§7 + experiment_store)
-S0 实验台✓(experiment_store 4留档表 + consumer_alpha family + 执行器) → S1 数据✓ → S2 harness →
-S3 逐数据验证 → S4 判决。留档链: pre-reg(冻结判据 prereg_hash) → verdict JSON → DB → ledger。隔离 live 防污染。
+watermark、连续性、SLA 和待重试清单最终从 `AcceptedPartition` 投影，不再各自回写第二套状态。用 kill-point 测试证明任一步中断都不会出现“数据已变、验收未变”或相反状态。
 
-## 8. 纪律与工具调度 (固化进 skill `chunkymonkey-ops`)
-| 工具 | 何时用 | 守什么 |
+### 6.2 分类体系
+
+“统一口径”指统一身份、时间和访问契约，不指强造一棵全局分类树：
+
+| namespace | 语义 | 结构/可加总性 |
 |---|---|---|
-| **moth** `moth assert --repo .` | commit前/接手/重大改动 | claims-vs-reality 弹仓 (layer/godfile/leakage gate/legacy-flow/防过拟合) |
-| **codegraph** sync/query | substantial change (新service/LOC>50/拆模块/改JOIN) | 耦合/依赖/影响面 |
-| **gate 脚本** | commit + 重构验收 | data_layer_audit / legacy-flow-no-pollution / check_rule_compliance |
-| **grill** (chunkymonkey-governance skill + plan_grill_gate hook) | 跑批/Optuna寻优/新模块前 | 跑了有没有用 (search space非空/前提验/成本) |
-| **Workflow** (ultracode) | 全面 audit/对抗验证/fan-out | 多视角证伪 (本会话: 对抗泄漏审计抓 embargo 死闸) |
-| **safe_commit.sh** | 每次 commit | hook 矩阵 (INDEX同步/rule/no-emoji/self-check/post-fix-audit) |
-| **subagent** (Explore/general) | 跨文件 audit/research | 主对话只带结论 |
-高频 commit+push; 高风险动作(删/force)先问; codex 复审非阻塞但 CRITICAL leakage 完全接受。
+| `listing_venue` | 主板、创业板、科创板等交易属性 | 通常互斥 |
+| `sw_industry` | 申万 L1/L2/L3 | 同级互斥；历史研究主行业体系 |
+| `dc_industry` | 东财行业 L1/L2/L3 | 只在东财链内使用 |
+| `dc_concept` | 东财概念/题材 | 多对多、不可加总 |
+| `region/style/event` | 地域、风格、事件标签 | 正交 facet |
 
-## 9. 重构 (老流程污染清除, owner=system_refactor_architecture)
-教训 (DB 9.1G 根因): 删层必删caller / 删schema留caller=静默degraded / append-only无retention=膨胀 /
-孤儿config引用(238处) / 散落DDL绕schema门(alpha158循环根) / daily_update自当真相源。
-重构 (gate红→绿验收): 退役老daily_update → 清238孤儿引用 → 3表加retention → 散落DDL包layer-gate → bloat回收。
+“板块”只可作为 UI 总称。跨体系映射必须声明 `equivalent/broader/narrower/overlap` 和证据；名称相同只能产生待审候选。东财概念没有官方层级时保持平面标签。
 
-## 10. 路线图 (当前态 → KPI)
+## 7. Tier 1 股票阶段与形态
+
+股票状态分为两种输出：
+
+- `StockStateDaily`：位置、趋势、纯度、量能、波动、可交易性等持续状态；
+- `PatternEvent`：突破、缩量、形态完成等可以并存的时点事件。
+
+状态定义必须带 `definition_version`、`config_hash`、`input_snapshot_id` 和 `eligible_universe_id`。覆盖不足必须给 reason（如历史不足），不能为追求 100% 覆盖而填默认标签。
+
+状态只描述截至当时可见的 K 线/分类事实。根据未来收益调阈值、输出上涨概率或买卖点，立即进入 Tier 3。`main_rally` 的未来涨幅标签是合法 ground truth，但永远不是 Tier 1 输入。
+
+## 8. Tier 2 市场感知
+
+“钱去哪了”在现有公开数据下不能被当作资金守恒事实。系统诚实回答四类问题：
+
+1. `Activity`：成交额、换手、同级成交额占比；
+2. `DirectionalImbalanceProxy`：供应商定义的大单/主力买卖不平衡，必须带 vendor、method、unit；
+3. `Participation`：上涨/下跌、流入覆盖、涨跌停、集中度；
+4. `PriceResponse`：收益、相对强弱、波动、突破和持续性。
+
+概念重叠，不能把概念净额相加解释为全市场资金；行业 L1/L2/L3 也不能跨层重复求和。所有 rolling/rank/regime 必须按 namespace、node type、level 和 method 分区。
+
+`SectorObservation` 保存可审计观测；`MarketContextSnapshot(decision_time)` 负责 availability 对齐；阈值生成的 regime 是带 config hash 的解释，不是基础事实。展示 mart 可以服务当前页面，但没有 `available_at` 的表不得直接用于历史策略。
+
+## 9. Tier 3 研究与策略
+
+统一消融顺序：
+
+```text
+B0 裸 K
+B1 + 股票阶段/形态
+B2 + 市场感知
+B3 + 资金活动证据
+B4 + 机构/事件
+B5 + 单一公式或公式组合
 ```
-[✓] 地基reset (85表/2.5G) + 8层框架 + genesis法
-[✓] S0 实验台 + L0 Tier-1 标尺 (reversal +0.064) + 寻参治理层(DSR)
-[✓] 数据菜单评估 + 可靠性/条件化策略 设计 + 重构架构设计 + 教训工具化(gate)
-[✓] per-stage L0 IC (条件化成立, 赢家 Stage1.5 +0.156; 用户低位假设被否)
-[✓] R1/R2/C-WinReturn 法典工具化 (P0) + execution-aware 引擎删重建 (P1) + 阶梯绝对收益门 (P2)
-[✓] Tier-2 实弹重裁决 (P3): 裸 K 线 reversal long-only **结构性不可交易** (含成本 -14%~-35%, IC_POSITIVE_BUT_UNTRADABLE)
-[ ] **Phase D (当前)**: 转慢衰减绝对源 (财务质量/资金流trend/景气/筹码, 已在库), 选 cell 按含成本 execution-aware 绝对收益不按 IC
-[ ] 策略立方体 5 轴逐维解锁 → 含成本 paper_sim → KPI 达标 → 实盘候选
+
+每步使用同一 universe、标签、fold、成本和执行模型，只改变一个 feature block。报告收益率、胜率、盈亏比、回撤、换手、容量以及按时间/行业/阶段的稳定性。没有增益和负增益都是正式结果。
+
+第一条业务闭环是 `main_rally_v1`：复用现有 rally ground truth，在 Tier0/Tier1/Tier2 契约闭合后跑 B0→B2；机构跟随和公式随后以独立 feature package 接入。BestChoice 只作为冻结 challenger 资产，经 lineage、PIT 和本项目纸面执行验证后才能讨论吸收，禁止直接并入主策略。
+
+## 10. Tier 4 决策与产品
+
+正式链路必须是：
+
+```text
+ExperimentVerdict
+  -> StrategyRelease
+  -> DecisionBatch
+  -> CandidateSignal
+  -> PaperOrder / PaperFill / PaperNav
+  -> DecisionEvidence
 ```
 
-## 11. 文档体系 (防"到处指引到处找"; 整合后)
-- **本文件** = 顶层骨架 (读它先有全局)。**goal.md** = 当前阶段+genesis法+KPI。**PROJECT_INDEX.md** = 活索引(表/模块/脚本)。
-- **owner 细节 doc** (本文件引用, 不复制): data_management_framework(数据层) / strategy_validation_contract(PIT/Optuna + **判断法典 R1/R2/C-WinReturn**) /
-  PROJECT_CONSTITUTION(三原则) / 各 analysis 设计 doc (alpha验证/L0/可靠性/条件化策略/重构架构/数据菜单, 均已加 2026-06-15 偏离头注)。
-- **2026-06-15 现行策略真相源** (P0-P3 固化, 上述旧设计 doc 冲突以此为准): `analysis/design_deficiencies_extension2_20260615.md` (缺陷体系 N1-N30 + 根因 R1/R2 + 5 轴立方体 + 验证范式反转) · `analysis/p3_execution_aware_verdict_20260615.md` (Phase B 含成本实弹裁决 + Phase D 方向) · `analysis/design_deficiencies_and_extension_20260615.md` (base 版 D1-D7)。
-- **skill `chunkymonkey-ops`** = 操作知识固化 (坑/工具调度/纪律/反例), 后续开发持续 invoke。
-- **退役 (2026-06-15 A6 执行)**: git rm 5 已偏离 analysis (first_principles_diagnosis/chunkymonkey_architecture_audit/multi_wave_strategy_300616/system_architecture_audit_20260521/implementation_plan_20260611) + architecture_reform_context (本设计已覆盖); 移 zhushenglang 研究日志 docs/->analysis/ (北极星证据归 evidence 目录)。docs 12->10。
-- **CLAUDE.md** = 瘦身到会话红线 + 指针到本文件/skill (不重复细节)。
+每个候选必须能追到策略发布、实验、数据快照、配置 hash 和决策时点。产品页面可以展示研究中的证据，但必须明确 `research/unknown/stale/blocked/released`，不能用“看起来完整”的 mock、latest fallback 或 qfq 成交价伪装生产能力。
+
+## 11. 迁移顺序
+
+| Phase | 工作 | 退出条件 |
+|---:|---|---|
+| 0 | 收口文档、AGENTS、skills、Moth/CodeGraph 和真实命令面；冻结新增框架/表 | 活文档少且一致，文档门 0 WARN，退役命令不再假绿 |
+| 1 | 定义 `DatasetContract`、writer ownership、`IngestBatch/AcceptedPartition`；迁移一个交易数据域 | 故障注入原子性通过，landing 无业务过滤 |
+| 2 | 重建 K 线角色和 classification PIT 契约 | 名义/qfq/因子可追溯；分类版本、有效期、覆盖门通过 |
+| 3 | 发布版本化 `StockStateDaily/PatternEvent` | 截断不变、增量=全量、覆盖 reason 完整 |
+| 4 | 拆分 observation/context/display，修复市场感知口径 | availability、method、coverage 完整；跨 namespace 不混算 |
+| 5 | 建立冻结 snapshot、实验、裁决和策略发布契约 | B0→B2 主升浪消融可复现且 PIT/成本门通过 |
+| 6 | 逐个接入机构跟随和公式，再建决策/纸面交易/产品 | 每个 candidate 全链可追溯，未发布研究不能越界 |
+
+每个 Phase 都用 strangler 方式迁移：契约先行、旧新并跑、逐字段对账、消费者切换、最后删除旧 writer/表/config。
+
+## 12. 明确不做
+
+- 不建通用插件框架、事件总线、万能 DAG 或新数据库来“解决架构”；
+- 不把所有供应商分类压成一棵树；
+- 不让一个中央 YAML 成为代码拓扑和运行状态数据库；
+- 不按模块数建表，不为版本复制表；
+- 不恢复自动跑批；数据更新保持人工触发、机械守门；
+- 不在 Tier0 未闭合时跑大规模寻优、付费计算或生产选股；
+- 不用更多治理文件掩盖治理文件本身失真。
+
+## 13. 架构验收
+
+一个模块只有同时满足以下条件才算闭合：
+
+1. 有唯一 owner、writer 和公开读契约；
+2. 输入输出带 grain、PIT/availability、版本和血缘；
+3. 配置有类型校验且不保存事实/运行状态；
+4. 失败会阻断正确消费者，不会拖死无关模块；
+5. 同输入和 config hash 可复现；加入未来数据不改变历史输出；
+6. 可独立构建、测试、替换和退役；
+7. 删除它时，上游无需修改，下游能由依赖门精确列出。
+
+未满足这些条件的“模块”，无论目录多整齐、测试多绿，都仍是共享表或配置耦合。

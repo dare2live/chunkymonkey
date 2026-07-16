@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/** 极简事件总线 — 动作 (入池/平仓/mark) 后广播 topic, 订阅该 topic 的卡片各自重取。 */
+/** 极简事件总线 — 观察账本动作后广播 topic，订阅卡片各自重取。 */
 const bus = new EventTarget();
 
 export function emitTopic(topic: string): void {

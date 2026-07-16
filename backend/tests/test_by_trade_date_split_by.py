@@ -1,4 +1,4 @@
-"""by_trade_date + split_by 根因修复门 (2026-07-08, owner=analysis/gap_root_cause_20260708.md).
+"""by_trade_date + split_by 根因修复门（历史证据=analysis/gap_root_cause_20260708.md）。
 
 背景: margin 域裸调 pro.margin(trade_date=d) 在 2026 年偶发(~0.5%交易日)漏返 BSE/SZSE
 (vendor 网关对"无过滤条件汇总查询"的补全遗漏怪癖, 非分页截断非披露滞后)——显式加

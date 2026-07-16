@@ -61,7 +61,7 @@ limit_up_pct:
 # --- 数据源优先级 ---
 data_source:
   active_stocks: "dim_active_a_stock"            # 当前活跃列表 (名字/板块)
-  kline: "price_kline_qfq_tushare"              # K 线 = 交易真相源 (2026-06-17 切 tushare 转正, 旧 tdxhub 降备援)
+  kline: "price_kline_qfq_tushare"              # 当前仅用其交易日期作活跃性证据；qfq 价格不是执行真相
   st_calendar: "raw_tushare_stock_st"           # PIT ST 日历 (历史 t 是否 ST 的真相源)
   trading_calendar: "services.calendar"         # 交易日历 = 日期真相源 (universe 与之同优先级)
   # 不再使用: dim_all_ever_listed (快照不可靠, 2026-05-26 误标 573 只)

@@ -14,7 +14,7 @@ from typing import Any
 
 @dataclass(frozen=True)
 class Node:
-    id: str                      # 全局唯一, 形如 'table:raw_tushare_moneyflow' / 'source:tushare.moneyflow'
+    id: str                      # 全局唯一, 形如 'table:tushare_raw.raw_tushare_moneyflow'
     kind: str                    # source_interface | table | consumer
     attrs: dict[str, Any] = field(default_factory=dict)
 
@@ -99,7 +99,7 @@ class LineageGraph:
     def to_dict(self, *, generated_at: str | None = None) -> dict[str, Any]:
         return {
             "meta": {
-                "version": 1,
+                "version": 2,  # v2: physical table IDs are database-qualified
                 "generated_at": generated_at,   # drift 比对剔除此键
                 "node_count": len(self._nodes),
                 "edge_count": len(self._edges),

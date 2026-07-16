@@ -1,5 +1,5 @@
 # rally_gt.yaml — D1 主升浪 GT v2 全部阈值 (判断死红线: builder 只读本文件, 零 hardcode; 修正#10)
-# owner=analysis/d1_gt_v2_design_20260702.md + d1_gt_archaeology_20260702.md §3 (定义) / §4.1 (证据等级)
+# owner=docs/strategy_validation_contract.md §8.1 + d1_gt_archaeology_20260702.md (历史定义证据)
 #
 # 证据等级标注 (考古 §4.1 照抄):
 #   [双证据]     = v1.5 归档代码常数 + parquet 实测统计逐一对上 (git e909e548~1 / archive purge_processed)

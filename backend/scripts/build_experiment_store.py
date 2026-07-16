@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""S0 实验台留档基建 (alpha 验证程序, owner=analysis/alpha_validation_program_spec_20260614.md §8)。
+"""Legacy experiment evidence store builder; current owner=docs/strategy_validation_contract.md。
 
-在隔离的 experiment_store.duckdb (L4_experiment, 与 live 写锁/数据隔离防污染) 建 4 张留档表:
-verdict / ic_scan / lineage / pit_audit。schema 自 spec §8。幂等 CREATE IF NOT EXISTS。
+在隔离的 experiment_store.duckdb 中建 4 张历史 evidence 表:
+verdict / ic_scan / lineage / pit_audit。幂等 CREATE IF NOT EXISTS。
 PIT 纪律: ic_scan 带 data_snapshot 维度 (as-of); lineage 带 input/output hash + built_at 防 snapshot 回溯泄漏。
 
-地基-reset 后重建: experiment_jobs.py 执行器待重写, 本表是其写入目标 (先立 schema)。
+本脚本只维护历史 evidence-store schema，不声明 job executor、provider backend 或发布资格。
 用法: python backend/scripts/build_experiment_store.py
 """
 from __future__ import annotations
@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS experiment_pit_audit_log (
     detail_json TEXT,
     ts TEXT
 );
+
 """
 
 

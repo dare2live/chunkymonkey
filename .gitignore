@@ -5,7 +5,6 @@
 *.db-shm
 __pycache__/
 *.pyc
-.!.claude/settings.json
 Users/
 data/multidim_models/*.pkl
 data/optuna/
@@ -32,7 +31,6 @@ data/*.duckdb.tmp
 data/*.duckdb.tmp/
 data/portfolio_backtest_nav.csv
 data/scratch/
-data/audit/
 data/reports/
 data/phase5_exports/
 
@@ -42,9 +40,10 @@ data/phase5_exports/
 sandbox/*
 !sandbox/README.md
 
-# Local Codex/skill/plugin metadata; project skills live in $CODEX_HOME or are
-# documented in tracked files, not committed as generated workspace state.
+# Local agent/skill/plugin metadata. Project policy is tracked in AGENTS.md;
+# executable skills live in $CODEX_HOME and are not duplicated in this repo.
 .agents/
+.claude/
 .metadata_never_index
 skills-lock.json
 
@@ -54,12 +53,5 @@ bestchoice/cache_*.duckdb
 bestchoice/analysis/*.duckdb
 bestchoice/.git/
 .venv/
-data/reports/session_snapshot.json
-analysis/workflow_checkpoint.json
 data/concept_snapshots/
 data/archive/
-
-# 本地会话工具链不入 git (INDEX 0611 约定; settings.json 是唯一在册例外)
-.claude/launch.json
-.claude/preview-server.js
-.claude/skills/

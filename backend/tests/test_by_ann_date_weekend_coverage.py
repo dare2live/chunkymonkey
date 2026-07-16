@@ -1,4 +1,4 @@
-"""by_ann_date 覆盖周末日历日回归门 (2026-07-08, owner=analysis/gap_root_cause_20260708.md).
+"""by_ann_date 覆盖周末日历日回归门（历史证据=analysis/gap_root_cause_20260708.md）。
 
 背景: report_rc/forecast/share_float 三域曾用 batch_mode: by_trade_date, 但它们的 date_param
 (report_date/ann_date) 是真实披露日历概念(analyst可以周末发研报/公司可以周末公告), 而

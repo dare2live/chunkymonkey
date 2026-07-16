@@ -12,21 +12,23 @@
 #   2. 跑 backend/scripts/check_project_index_sync.py — 若 fail 提示 + abort
 #   3. 跑 backend/scripts/check_rule_compliance.py — 若 fail 提示 + abort
 #   4. 验 commit message 含 GROUP A + B keyword
-#   4.5 Rule 10 — staged .py 必须含 Codex review 或显式 skip reason
+#   4.5 Rule 10 — 高风险 staged 文件必须有 canonical Codex APPROVE verdict
 #   5. git commit + optional git push + codegraph sync
 
 set -euo pipefail
+
+cd "$(dirname "$0")/.."
 
 # python 解析器 (2026-07-10 根治, mythos "env PATH 双前提陷阱"第N例实锤): 机器重启后裸 `python`
 # 从 PATH 消失(homebrew 无 python 非版本化符号链) + PATH 顺序变化使 python3 解析到系统 3.9(无
 # duckdb/yaml) → 全部治理门 command-not-found 假红。优先项目 venv(全部依赖保证在), 沙箱/无 venv
 # 环境回退 python3/python(测试 stub 门只用 stdlib, 系统 python3 足够)。
 if [[ -x ".venv/bin/python3" ]]; then
-    PY=".venv/bin/python3"
+    PY="$(pwd)/.venv/bin/python3"
 elif command -v python3 >/dev/null 2>&1; then
-    PY="python3"
+    PY="$(command -v python3)"
 else
-    PY="python"
+    PY="$(command -v python)"
 fi
 
 MSG="${1:-}"
@@ -34,8 +36,6 @@ if [[ -z "$MSG" ]]; then
     echo "用法: bash scripts/safe_commit.sh \"commit message\""
     exit 1
 fi
-
-cd "$(dirname "$0")/.."
 
 # 1. Status
 echo "=== Step 1: git status ==="
@@ -48,61 +48,125 @@ fi
 echo "staged: $staged files"
 git diff --cached --name-only | head -10
 
+# Export the exact Git index once and reuse it for every static ownership/map gate.
+# The live worktree may contain another intentionally unstaged slice; it must neither
+# feed a false green nor contaminate generated artifacts for this commit.
+STAGED_INDEX_DIR=$(mktemp -d /tmp/chunkymonkey-staged-index.XXXXXX)
+trap 'rm -rf "$STAGED_INDEX_DIR"' EXIT
+git checkout-index --all --prefix="$STAGED_INDEX_DIR/"
+STAGED_BACKEND="$STAGED_INDEX_DIR/backend"
+
+# Give staged-snapshot checks a real tracked-file inventory without borrowing the
+# parent worktree. Production DuckDB files are ignored, so expose them read-only
+# through symlinks for static import/table/lineage checks that need catalog truth.
+git -C "$STAGED_INDEX_DIR" init -q
+git -C "$STAGED_INDEX_DIR" add -f -A
+mkdir -p "$STAGED_INDEX_DIR/data"
+for db in "$(pwd)"/data/*.duckdb; do
+    [[ -e "$db" ]] || continue
+    ln -s "$db" "$STAGED_INDEX_DIR/data/$(basename "$db")"
+done
+
 # 2. PROJECT_INDEX sync check
 echo
 echo "=== Step 2: PROJECT_INDEX sync check ==="
-if ! PYTHONPATH=backend "$PY" backend/scripts/check_project_index_sync.py 2>&1 | tail -5; then
+if [[ ! -f "$STAGED_BACKEND/scripts/check_project_index_sync.py" ]]; then
+    echo "ERROR: staged snapshot 缺 check_project_index_sync.py，拒绝用 worktree 版本代验。"
+    exit 2
+fi
+if ! PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_project_index_sync.py" 2>&1 | tail -5; then
     echo
     echo "ERROR: PROJECT_INDEX.md 未同步."
     echo "修法: 更新 PROJECT_INDEX.md 对应活索引节 (历史叙事写 ledger, 不进 INDEX changelog) + git add PROJECT_INDEX.md"
     exit 2
 fi
 
-# 2.6 Feature map refresh — 机器派生视图保鲜 (漂移才写盘, 同 commit 带上)
-# alert_level=optional: 生成失败不挡 commit, 但必须可见 (Platform Runtime Contract)
+# 2.6 Feature map gate — 从 Git index 导出 staged snapshot，在隔离目录重建 CodeGraph 后验真。
+# 禁止 safe_commit 自动改写或 stage 当前工作树，避免未提交的其他 dirty slice 混入派生地图。
 echo
-echo "=== Step 2.6: feature map refresh ==="
-if PYTHONPATH=backend "$PY" backend/scripts/build_feature_map.py --quiet 2>/dev/null; then
-    if [[ -n "$(git status --porcelain -- FEATURE_MAP.md)" ]]; then
-        git add FEATURE_MAP.md
-        echo "[feature-map] 漂移 → 已重生成并 stage 进本次 commit"
+echo "=== Step 2.6: feature map gate (staged snapshot, read-only) ==="
+if [[ -f "$STAGED_BACKEND/scripts/build_feature_map.py" ]]; then
+    if ! codegraph init "$STAGED_INDEX_DIR" > "$STAGED_INDEX_DIR/codegraph-sync.out" 2>&1; then
+        tail -20 "$STAGED_INDEX_DIR/codegraph-sync.out"
+        echo "ERROR: staged snapshot CodeGraph 初始化失败，无法验证 FEATURE_MAP。"
+        exit 2
+    fi
+    if ! codegraph sync "$STAGED_INDEX_DIR" >> "$STAGED_INDEX_DIR/codegraph-sync.out" 2>&1; then
+        tail -20 "$STAGED_INDEX_DIR/codegraph-sync.out"
+        echo "ERROR: staged snapshot CodeGraph 构建失败，无法验证 FEATURE_MAP。"
+        exit 2
+    fi
+    if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/build_feature_map.py" --check --quiet; then
+        echo "[feature-map] staged snapshot fresh; current worktree was not modified"
     else
-        echo "[feature-map] fresh"
+        echo "ERROR: staged FEATURE_MAP.md 与 staged source snapshot 不一致。"
+        echo "正解: 在隔离 staged snapshot 上重生、review 后显式 stage；不得提交当前 dirty-tree 派生物。"
+        exit 2
     fi
 else
-    echo "WARNING: [feature-map] 生成失败 (optional 级, 不挡 commit) — 跑 scripts/chunkyctl map 查原因"
+    echo "ERROR: staged snapshot 缺 build_feature_map.py；生成地图门不得静默跳过。"
+    exit 2
+fi
+
+# 2.7 Moth gate — Moth 0.3.0 resolves profile repo_path relative to process cwd.
+# Always enter the exported snapshot before invoking it; passing an absolute --repo
+# from the parent checkout can otherwise make assertions/CodeGraph inspect dirty main.
+echo
+echo "=== Step 2.7: Moth gates (exact staged snapshot) ==="
+if [[ -f "$STAGED_INDEX_DIR/.moth/profile.yaml" ]]; then
+    if ! command -v moth >/dev/null 2>&1; then
+        echo "ERROR: staged snapshot 声明 Moth profile，但 moth CLI 不可用。"
+        exit 2
+    fi
+    if [[ -d "$(pwd)/.venv" && ! -e "$STAGED_INDEX_DIR/.venv" ]]; then
+        ln -s "$(pwd)/.venv" "$STAGED_INDEX_DIR/.venv"
+    fi
+    if ! (cd "$STAGED_INDEX_DIR" && moth assert --repo .); then
+        echo "ERROR: staged snapshot Moth assertions 未闭合。"
+        exit 2
+    fi
+    if ! (cd "$STAGED_INDEX_DIR" && moth coupling --repo .); then
+        echo "ERROR: staged snapshot Moth coupling 未闭合。"
+        exit 2
+    fi
+    echo "[moth] staged snapshot PASS"
+else
+    echo "[moth] no staged profile; not applicable to this fixture/repository"
 fi
 
 # 3. Rule compliance
 echo
 echo "=== Step 3: rule compliance ==="
-if ! PYTHONPATH=backend "$PY" backend/scripts/check_rule_compliance.py 2>&1 | tail -5; then
+if [[ ! -f "$STAGED_BACKEND/scripts/check_rule_compliance.py" ]]; then
+    echo "ERROR: staged snapshot 缺 check_rule_compliance.py，拒绝用 worktree 版本代验。"
+    exit 3
+fi
+if ! PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_rule_compliance.py" 2>&1 | tail -5; then
     echo
     echo "ERROR: rule compliance 失败. 见上 error."
     exit 3
 fi
 
-# (Step 3.5 leakage audit gate 已删 2026-07-02: 触发实体 build_feature_panel/mart_p0a/
-#   fact_capital_flow/dim_stock_tdx_industry/build_market_perception 全已随重建物删 + audit_panel_leakage.py
-#   不存在 -f 永假 = 双重死块。真金白银泄漏强制在转正门 record_verdict + CI, 详 ledger)
+# (Step 3.5 旧 leakage audit gate 已删 2026-07-02: 触发实体与 verifier 同时退役。
+#   safe_commit 不因此声称策略泄漏已验证；策略发布必须另走 docs/strategy_validation_contract.md。)
 
 
-# 3.6 消费方泄漏闸 已退役 2026-06-28 (残留清理批1c): leakage_consumers.yaml + leakage_probe.py 已删
-#   (特征面板/策略 serving 层退役, 消费方不存在)。真金白银泄漏强制移到转正门 record_verdict(confirmed_by_owner=1
-#   须带 leakage-clean 证据) + CI server-side, 不在本地 commit gate (mio §7: enforcement 沉到提交者够不到处)。
+# 3.6 旧消费方 leakage gate 已随当时的特征/策略 serving 层退役。
+#   当前尚无 StrategyRelease，因此本地提交门不冒充 PIT/发布证书。
 
-# 3.7 散落死闸已退役 2026-07-08 (全库死代码普查收尾, owner=analysis/legacy_flow_integrity_gate_fix_20260708.md):
+# 3.7 散落死闸已退役；当前 gate owner=docs/engineering_governance.md + live scripts/tests：
 #   check_experiment_harness.py 本体 + 被守护的 harness 层(phaseD_signal_eval.py/experiment_store.py)
-#   + owner 文档(docs/conditional_alpha_program.md)均已随 2026-06-28 纯数据平台重建物删。原有
+#   + 当时的 conditional-alpha owner 文档均已随 2026-06-28 reset 删除。原有
 #   -f 存在性守卫已优雅跳过多日(非报错), 但触发条件(backend/scripts/experiment_*.py 被 staged)
 #   本身也已被 check_serve_read_layer.py D4(feature-from-l2)硬性禁止(该目录不许有 experiment_*.py
 #   文件存在), 双重确认这块永不会再触发, 整块死代码物删而非继续留守卫。
+#   当前策略研究/发布边界 owner=docs/strategy_validation_contract.md。
 
 # 3.8 沙盒隔离门 (实验室产物只留实验室, 2026-06-21 立; 4+次隔离失守根治):
 # C1 backend引用sandbox(FAIL) / C2 控制面嵌未promote(confirmed_by_owner=0)实验结果(WARN) / C3 探索runner漏主脚本(FAIL)。
 echo
 echo "=== Step 3.8: sandbox isolation gate ==="
-if PYTHONPATH=backend "$PY" backend/scripts/check_sandbox_isolation.py 2>&1 | tail -12; then
+if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_sandbox_isolation.py" 2>&1 | tail -12; then
     echo "[sandbox-isolation] PASS"
 else
     echo
@@ -114,11 +178,11 @@ fi
 
 # 3.9 SERVE 读层门 (数据模块顶层设计 §10 P1 gate 落地, 2026-06-22; 2026-07-08 系统性收口):
 # D1 全量非成员消费者内联裸查(data_module_members.yaml 区分 builder vs 消费者, 替代原只扫
-# dossier.py 的伪绿门, 见 analysis/serve_read_layer_gate_consolidation_20260708.md) /
+# dossier.py 的伪绿门；red→green 证据已固化在对应 tests) /
 # D2 preflight接线 / D3 entity声明链齐全 / D4 L2-bypass关闭。
 echo
 echo "=== Step 3.9: SERVE read-layer doors ==="
-if PYTHONPATH=backend "$PY" backend/scripts/check_serve_read_layer.py; then
+if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_serve_read_layer.py"; then
     echo "[serve-read-layer] PASS"
 else
     echo
@@ -132,7 +196,7 @@ fi
 # 拦内联绕过交易日历真相源 (wall-clock 当最新/SQL CURRENT_DATE 上界锚); 合法日历天窗口加 evidence 注释。
 echo
 echo "=== Step 3.95: calendar-usage gate (交易日历强制使用) ==="
-if PYTHONPATH=backend "$PY" backend/scripts/check_calendar_usage.py --staged --strict; then
+if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_calendar_usage.py" --strict; then
     echo "[calendar-usage] PASS"
 else
     echo
@@ -142,19 +206,20 @@ else
     exit 5
 fi
 
-# 3.96 血缘漂移门 (M5-T2, 2026-06-26): 结构文件 (registry/schema/data_layers/lineage模块) staged 时,
-# 提醒 data/lineage/graph.json 是否随现实漂移。**T2=informational WARN 非 block** (consume 边随任何
-# 引用表的文件漂移, block 会高摩擦; 硬闸排到 T4 转正门/CI, mio §7 本地 hook=快反馈非强制)。
-STAGED_FOR_LINEAGE=$(git diff --cached --name-only | grep -E 'config/(sync_registry|data_access|data_layers|database_manifest)\.yaml|services/lineage/|scripts/(build_|lineage_cli|check_lineage)' || true)
-if [[ -n "$STAGED_FOR_LINEAGE" ]]; then
-    echo
-    echo "=== Step 3.96: lineage drift (结构文件 staged, informational) ==="
-    if PYTHONPATH=backend "$PY" backend/scripts/check_lineage_drift.py; then
-        :
-    else
-        echo "[lineage-drift] WARN (非 block): 血缘图与现实漂移 — 跑 chunkyctl lineage build 重生并提交 data/lineage/graph.json"
-        echo "  (T2 informational; 硬闸=T4 转正门; 删/迁表前用 chunkyctl lineage impact <table> 自动 fan-in)"
-    fi
+# 3.96 血缘漂移门: 每次提交都用同一 staged snapshot + live read-only catalogs 重建对账。
+# 普通 consumer 删除同样会改变 consume edge，不能靠结构文件 regex 猜触发面。
+echo
+echo "=== Step 3.96: lineage drift (staged snapshot, blocking) ==="
+if [[ ! -f "$STAGED_BACKEND/scripts/check_lineage_drift.py" ]]; then
+    echo "ERROR: staged snapshot 缺 check_lineage_drift.py。"
+    exit 5
+fi
+if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_lineage_drift.py"; then
+    echo "[lineage-drift] staged snapshot PASS"
+else
+    echo "ERROR: staged 血缘图与 staged source/config/live catalog 漂移。"
+    echo "正解: 从 exact staged snapshot 重生 data/lineage/graph.json 后显式 stage。"
+    exit 5
 fi
 
 # 3.97 死引用硬门 (2026-06-28 根因根治): 删模块/表/文件后引用方必须同步清。
@@ -162,7 +227,7 @@ fi
 # → 残留静默累积。本门 import-services + dead-services-ref + config-dead-path 机械堵死。**硬闸**。
 echo
 echo "=== Step 3.97: dead-references gate (死引用根治硬门) ==="
-if PYTHONPATH=backend "$PY" backend/scripts/check_dead_references.py > /tmp/cm_deadref.out 2>&1; then
+if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_dead_references.py" > /tmp/cm_deadref.out 2>&1; then
     grep -E "^\[dead-references\] PASS" /tmp/cm_deadref.out || echo "[dead-references] PASS"
 else
     echo
@@ -176,7 +241,7 @@ fi
 #   --strict 默认关 → 跑批写锁期库不可达优雅跳过不阻塞 commit; 豁免带到期日, 过期自动恢复 FAIL)
 echo
 echo "=== Step 3.98: grain-uniqueness gate (grain 持续审计门) ==="
-if PYTHONPATH=backend "$PY" backend/scripts/check_grain_uniqueness.py \
+if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_grain_uniqueness.py" \
      --exempt mart_sector_pulse_daily:20260710 > /tmp/cm_grain.out 2>&1; then
     tail -1 /tmp/cm_grain.out
 else
@@ -194,7 +259,7 @@ fi
 #   declared_vs_actual/static_staleness]才 abort)
 echo
 echo "=== Step 3.99: continuity-integrity gate (数据连续性常驻审查) ==="
-if PYTHONPATH=backend "$PY" backend/scripts/check_continuity_integrity.py > /tmp/cm_continuity.out 2>&1; then
+if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_continuity_integrity.py" > /tmp/cm_continuity.out 2>&1; then
     tail -1 /tmp/cm_continuity.out
 else
     echo
@@ -210,7 +275,7 @@ fi
 # 死引用一致性) → 接成硬闸(与其余静态一致性门同级别)。
 echo
 echo "=== Step 3.991: config-refs gate (data_access/data_layers 层词汇一致性) ==="
-if PYTHONPATH=backend "$PY" backend/scripts/check_config_refs.py > /tmp/cm_configrefs.out 2>&1; then
+if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_config_refs.py" > /tmp/cm_configrefs.out 2>&1; then
     tail -2 /tmp/cm_configrefs.out
 else
     echo
@@ -221,8 +286,8 @@ else
 fi
 
 echo
-echo "=== Step 3.992: doc-drift gate (11 活文档死引用) ==="
-if PYTHONPATH=backend "$PY" backend/scripts/check_doc_drift.py > /tmp/cm_docdrift.out 2>&1; then
+echo "=== Step 3.992: doc-drift gate (live docs + generated map + source/config owners) ==="
+if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_doc_drift.py" > /tmp/cm_docdrift.out 2>&1; then
     tail -2 /tmp/cm_docdrift.out
 else
     echo
@@ -232,31 +297,16 @@ else
     exit 5
 fi
 
-# Step 3.993: check_doc_governance 当前 21 条已知 WARN 待清 (脚本自身设计就是"先 WARN, 清完
-# backlog 再翻 FAIL", 现在硬挡会拦下与本次改动无关的历史 backlog), 先接成 informational
-# (不 block), 曝光但不拦, 待 backlog 清完再考虑升硬闸。
+# Step 3.993: 活文档治理硬闸。WARN 也是未闭合状态，不能随 commit 传播。
 echo
-echo "=== Step 3.993: doc-governance (informational, 21 条已知 backlog 待清) ==="
-PYTHONPATH=backend "$PY" backend/scripts/check_doc_governance.py 2>&1 | tail -3
-
-# Step 3.994: legacy-flow-integrity 硬闸 (2026-07-08 收口 owner=analysis/
-# legacy_flow_integrity_gate_fix_20260708.md: C1 此前因 daily_update.sh 重构后扫描源结构性
-# 空转已改扫真实调用图 backend/services/pipeline/*.py, C2/C3 已红绿实测验证检测逻辑健全,
-# 三检当前均真 PASS 非查无可查, 升为真硬闸)。
-echo
-echo "=== Step 3.994: legacy-flow-integrity ==="
-if PYTHONPATH=backend "$PY" backend/scripts/check_legacy_flow_integrity.py > /tmp/cm_legacyflow.out 2>&1; then
-    "$PY" -c "
-import json
-d = json.load(open('/tmp/cm_legacyflow.out'))
-checks = d.get('checks', {})
-print('[legacy-flow-integrity] PASS', {k: v.get('verdict') for k, v in checks.items()})
-"
+echo "=== Step 3.993: doc-governance (fails=0, warns=0) ==="
+if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_doc_governance.py" > /tmp/cm_docgov.out 2>&1; then
+    tail -3 /tmp/cm_docgov.out
 else
-    cat /tmp/cm_legacyflow.out
+    cat /tmp/cm_docgov.out
     echo
-    echo "ERROR: legacy-flow-integrity 门红 — daily_update管线调缺失脚本 / 引用已wiped表 / append-only表缺retention声明。"
-    echo "正解: 补脚本/清引用/加retention声明。误报修脚本本身, 不 --no-verify 绕。"
+    echo "ERROR: doc-governance 门红 — FAIL/WARN 均不得提交。"
+    echo "正解: 修 owner、退役 CLI、幽灵链接或文档生命周期；不放宽 gate。"
     exit 5
 fi
 
@@ -275,38 +325,16 @@ if [[ "$has_a" == "0" && "$has_minimal" == "0" ]]; then
 fi
 echo "GROUP A match: $has_a, GROUP B match: $has_b, minimal: $has_minimal, codex-skip: $has_skip"
 
-# 4.5. Codex review gate (Rule 10 blocking)
+# 4.5. Codex review gate (Rule 10 blocking; one policy owner shared with commit-msg hook)
 echo
 echo "=== Step 4.5: Codex review gate (Rule 10) ==="
-MIN_CODEX_SKIP_REASON_CHARS=8
-py_staged=$(git diff --cached --name-only -- '*.py' | wc -l | tr -d ' ')
-has_codex=$(echo "$MSG" | grep -cE "Codex-Reviewed:[[:space:]]*(APPROVE_WITH_NOTES|APPROVE)([[:space:]]|$|\\()" || true)
-has_request_changes=$(echo "$MSG" | grep -cE "Codex-Reviewed:[[:space:]]*REQUEST_CHANGES([[:space:]]|$|\\()" || true)
-skip_reason=$(
-    printf '%s\n' "$MSG" | awk '
-        {
-            pos = index($0, "codex-review: skipped reason=");
-            if (pos > 0) {
-                reason = substr($0, pos + length("codex-review: skipped reason="));
-                gsub(/^[[:space:]]+|[[:space:]]+$/, "", reason);
-                if (reason != "") {
-                    print reason;
-                    exit;
-                }
-            }
-        }
-    '
-)
-has_skip_reason=0
-if [[ "${#skip_reason}" -ge "$MIN_CODEX_SKIP_REASON_CHARS" ]]; then
-    has_skip_reason=1
-fi
-if [[ "$py_staged" -gt 0 ]]; then
-    # 2026-06-12 用户决议: Codex review 强制解除 — 改为信息性提示, 不阻塞。
-    # 质量闸保留: 单测 + self-check 5 项 + 重大改动对抗复审 (workflow)。
-    echo "Rule 10 (informational): staged .py=$py_staged, Codex-Reviewed=$has_codex, skip_reason=$has_skip_reason"
+REVIEW_MSG_FILE="$STAGED_INDEX_DIR/COMMIT_EDITMSG"
+printf '%s\n' "$MSG" > "$REVIEW_MSG_FILE"
+if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_codex_review.py" "$REVIEW_MSG_FILE"; then
+    echo "Rule 10 PASS: canonical staged check_codex_review gate"
 else
-    echo "Rule 10 skipped: no staged .py files"
+    echo "ERROR: Rule 10 blocking review gate failed."
+    exit 6
 fi
 
 # 5. Commit + optional push + codegraph
@@ -322,7 +350,12 @@ if [[ "${SAFE_COMMIT_NO_PUSH:-0}" == "1" ]]; then
 else
     git push
 fi
-codegraph sync 2>&1 | tail -1 || true
+if ! codegraph sync 2>&1 | tail -1; then
+    echo
+    echo "ERROR: commit 已创建，但 CodeGraph sync 失败；交付状态为 PARTIAL。"
+    echo "恢复命令: codegraph sync ."
+    exit 7
+fi
 echo
 if [[ "${SAFE_COMMIT_NO_PUSH:-0}" == "1" ]]; then
     echo "DONE: commit + no-push + codegraph sync 完成"

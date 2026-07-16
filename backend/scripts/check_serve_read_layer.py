@@ -1,6 +1,7 @@
 """SERVE 读层验收门 — 数据模块顶层设计 §10 P1 gate 的可执行落地。
 
-2026-07-08 系统性收口 (owner=analysis/serve_read_layer_gate_consolidation_20260708.md):
+2026-07-08 系统性收口（历史结论已并入 project_state_ledger；现行 owner:
+docs/MASTER_TOPLEVEL_DESIGN.md + docs/engineering_governance.md + 本 gate/tests）:
 原 D1/D2 门硬编码只扫 `backend/services/dossier.py` 一个文件 (2026-06-22 落地时的 P1
 scope="只迁 dossier")。dossier.py 已随 2026-06-28 纯数据平台重建永久删除 (策略/serving
 层整体退役, 不会再迁回), 该文件从此不存在导致 D1/D2 读空字符串必然 0 命中 —— 伪绿

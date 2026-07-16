@@ -59,8 +59,166 @@ def test_tpl_re_exempts_placeholders():
     assert _TPL_RE.search("your_file.py 示例")
 
 
-def test_audit_current_repo_passes():
-    # 集成: 当前仓库活文档应 PASS (本次保鲜后 0 悬空)
-    r = audit()
-    assert r["overall"] == "PASS", f"悬空: {r['stale']}"
-    assert r["n_docs"] >= 10
+def test_missing_local_markdown_link_fails_without_scanning_analysis(tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "README.md").write_text(
+        "[missing](missing.md) [web](https://example.com) [anchor](#here)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "analysis").mkdir()
+    (tmp_path / "analysis" / "old.md").write_text(
+        "[historical missing](also_missing.md)\n",
+        encoding="utf-8",
+    )
+
+    r = audit(tmp_path)
+
+    assert r["overall"] == "FAIL"
+    assert r["stale"] == [
+        {"doc": "docs/README.md", "line": 1, "ref": "missing.md", "kind": "markdown_link"}
+    ]
+
+
+def test_nonexistent_explicit_owner_path_fails(tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "contract.md").write_text(
+        "Current route owner=`analysis/missing_plan.md`.\n",
+        encoding="utf-8",
+    )
+
+    r = audit(tmp_path)
+
+    assert r["stale"] == [
+        {
+            "doc": "docs/contract.md",
+            "line": 1,
+            "ref": "analysis/missing_plan.md",
+            "kind": "owner",
+        }
+    ]
+
+
+def test_owner_parser_stops_at_filename_before_prose(tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "analysis").mkdir()
+    (tmp_path / "analysis" / "plan.md").write_text("evidence\n", encoding="utf-8")
+    (tmp_path / "docs" / "contract.md").write_text(
+        "owner=analysis/plan.md。**= current**\n",
+        encoding="utf-8",
+    )
+
+    assert audit(tmp_path)["stale"] == []
+
+
+def test_path_like_owner_with_wildcard_is_not_silently_ignored(tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "contract.md").write_text(
+        "owner=analysis/purge_*.yaml\n",
+        encoding="utf-8",
+    )
+
+    assert audit(tmp_path)["stale"] == [
+        {
+            "doc": "docs/contract.md",
+            "line": 1,
+            "ref": "analysis/purge_*.yaml",
+            "kind": "owner",
+        }
+    ]
+
+
+def test_missing_reference_style_markdown_link_target_fails(tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "contract.md").write_text(
+        "See [plan][current].\n\n[current]: missing.md\n",
+        encoding="utf-8",
+    )
+
+    assert audit(tmp_path)["stale"] == [
+        {
+            "doc": "docs/contract.md",
+            "line": 3,
+            "ref": "missing.md",
+            "kind": "markdown_link",
+        }
+    ]
+
+
+def test_generated_feature_map_is_scanned_but_not_counted_as_human_doc(tmp_path):
+    (tmp_path / "AGENTS.md").write_text("live\n", encoding="utf-8")
+    (tmp_path / "FEATURE_MAP.md").write_text(
+        "[missing projection](docs/missing.md)\n",
+        encoding="utf-8",
+    )
+
+    r = audit(tmp_path)
+
+    assert r["n_docs"] == 1
+    assert r["n_generated_docs"] == 1
+    assert r["stale"] == [
+        {
+            "doc": "FEATURE_MAP.md",
+            "line": 1,
+            "ref": "docs/missing.md",
+            "kind": "markdown_link",
+        }
+    ]
+
+
+def test_existing_absolute_local_markdown_link_is_allowed(tmp_path):
+    (tmp_path / "docs").mkdir()
+    target = tmp_path / "evidence file.md"
+    target.write_text("evidence\n", encoding="utf-8")
+    encoded_target = str(target).replace(" ", "%20")
+    (tmp_path / "docs" / "contract.md").write_text(
+        f"[evidence](<{encoded_target}>)\n",
+        encoding="utf-8",
+    )
+
+    assert audit(tmp_path)["stale"] == []
+
+
+def test_source_config_reference_to_deleted_doc_fails(tmp_path):
+    (tmp_path / "backend" / "config").mkdir(parents=True)
+    (tmp_path / "backend" / "config" / "registry.yaml").write_text(
+        "# owner=analysis/deleted_design.md\n",
+        encoding="utf-8",
+    )
+
+    assert audit(tmp_path)["stale"] == [
+        {
+            "doc": "backend/config/registry.yaml",
+            "line": 1,
+            "ref": "analysis/deleted_design.md",
+            "kind": "source_doc_ref",
+        }
+    ]
+
+
+def test_source_cannot_keep_legacy_claude_section_as_owner(tmp_path):
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "gate.sh").write_text(
+        "# follow CLAUDE.md Rule 10.6\n",
+        encoding="utf-8",
+    )
+
+    assert audit(tmp_path)["stale"] == [
+        {
+            "doc": "scripts/gate.sh",
+            "line": 1,
+            "ref": "CLAUDE.md Rule 10.6",
+            "kind": "legacy_claude_owner",
+        }
+    ]
+
+
+def test_third_party_and_built_frontend_sources_are_not_scanned(tmp_path):
+    for rel in ("frontend/node_modules/pkg/index.js", "frontend/dist/app.js"):
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("// owner=analysis/vendor_missing.md\n", encoding="utf-8")
+
+    result = audit(tmp_path)
+
+    assert result["stale"] == []
+    assert result["n_source_files"] == 0

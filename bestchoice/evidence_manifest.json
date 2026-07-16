@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "status": "historical_frozen_challenger",
+  "data_cutoff": "2026-05-19",
+  "files": {
+    "formula_engine.py": {
+      "sha256": "5096d4778a2b8f34afd1c1f5dfcf7b1033294fa5e421b76ec46d340202a82379"
+    },
+    "execution_model.py": {
+      "sha256": "22f58cde4d981c9ca01a038a9db031aee5efb5c9441813c49b6073618f075216"
+    },
+    "analysis/formula_local_optuna_batch_adoption.csv": {
+      "sha256": "c8ca8b53d47672c20884137325e5a052cf51ba9babe96f0024417e3e48fc6f54",
+      "rows": 26005,
+      "columns": 70,
+      "unique_key": ["stock_code", "formula_id"]
+    },
+    "analysis/stock_formula_best.csv": {
+      "sha256": "333531c602d93d3ca1498425c7df17258ff9bcf61ddfbb21eeba5171bf02d3e8",
+      "rows": 21302,
+      "columns": 14,
+      "unique_key": ["stock_code", "formula_id"]
+    }
+  },
+  "formula_ids": [
+    "gs_pullback_confirm",
+    "gs_raw_buy",
+    "ma_base_breakout",
+    "activity_breakout",
+    "volume_base_breakout"
+  ],
+  "adoption_decision_counts": {
+    "candidate": 1146,
+    "reject": 24859
+  },
+  "candidate_formula_counts": {
+    "activity_breakout": 652,
+    "gs_pullback_confirm": 144,
+    "gs_raw_buy": 233,
+    "ma_base_breakout": 0,
+    "volume_base_breakout": 117
+  }
+}

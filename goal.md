@@ -1,91 +1,127 @@
 # ChunkyMonkey Goal
 
-> 当前阶段契约 only。完成项 → `analysis/project_state_ledger.md`;运行态 →
-> `SESSION_HANDOFF.md`。保持 < 165 行;item 完成就移 ledger 只留当前决策/blocker。
+> 状态：live controller board
+> 更新：2026-07-16
+> 只保存当前 objective、已裁决事项、blocker 和下一步。完成证据追加到 `analysis/project_state_ledger.md`。
 
-## Document Contract
+## 当前 objective
 
-| Document | Owns | Startup use |
+停止继续对旧架构做局部补洞，按 `docs/MASTER_TOPLEVEL_DESIGN.md` 建立可组合、可替换、可审计的数据与策略系统。
+
+近期只做两件事：
+
+1. Phase 0：收口文档、AGENTS、skills、Moth/CodeGraph、真实 CLI 和文档门；
+2. Phase 1：用现有未提交的数据完整性修复作为第一个 Tier0 迁移切片，建立 `IngestBatch/AcceptedPartition`、landing/canonical 边界和原子验收。
+
+Tier0 未闭合前，不启动大规模公式寻优、付费计算、生产候选或自动跑批。
+
+## 产品层级（已裁决）
+
+| 层 | 目的 | 首个正式输出 |
 |---|---|---|
-| `docs/MASTER_TOPLEVEL_DESIGN.md` | 综合顶层设计骨架 (数据→因子→策略→验证→KPI) — **注: 策略/edge 段为未来蓝图, 当前未实现** | 先读它有全局 |
-| `goal.md` | 当前阶段目标 / 优先级 / genesis 法 / 路线 | Read first |
-| `analysis/project_state_ledger.md` | 完成项 / 历史状态 / 证据 | `rg`/`tail` 查, 不全读 |
-| `analysis/data_platform_architecture_20260628.md` | **纯数据平台架构 (重建后真相源)** | 数据平台权威 |
-| `SESSION_HANDOFF.md` | 运行态恢复快照 | Context-only, 以 live gate 为准 |
-| `docs/data_management_framework.md` | 数据层级框架 + 三原则 + 自动执法 | 数据管理权威 |
-| `docs/chunkyctl_session_quickstart.md` | 启动流程 | 启动契约 |
-| `docs/README.md` | docs 地图 + 权属 | 文档权威图 |
+| Tier 0A 市场数据 | 正确获取日历、身份、名义 K 线、公司行动、复权与供应商事实 | accepted canonical partition |
+| Tier 0B 分类 | 版本化行业树、概念标签、成员快照和证据化 crosswalk | taxonomy node + membership |
+| Tier 1 股票状态 | 描述当前阶段、形态和事件，不预测未来 | stock state + pattern event |
+| Tier 2 市场感知 | 描述活跃度、不平衡代理、广度和价格响应 | market context snapshot |
+| Tier 3 研究/策略 | 裸 K → 状态 → 市场 → 机构/公式逐层消融 | experiment verdict + strategy spec |
+| Tier 4 决策/产品 | 只消费已发布策略，生成候选和纸面成交证据 | strategy release + decision batch |
 
-## 创世层 (项目法, 重建的验收标尺)
+依赖只能向下。Ops/Governance 观察全部层级，但不拥有业务事实。
 
-**为何存在**: 把 A 股公开数据 (K线/财报/筹码/资金) 转成真金白银的 KPI 级回报 —— 不是论文, 不是数字游戏 (用户原话: "真金白银投入的")。
+## 架构硬决定
 
-**死亡条款** (≤3, 陌生人可判):
-1. **感知死** — forward 预测从不回填对账 / 异常高回测 (RankIC>0.3, sharpe>5, 年化>100%) 不查 leakage 就上线。
-2. **判断死** — 阈值/权重/策略组合 hardcode 进代码而非 config。
-3. **谄媚死** — 报喜不报忧 (0 STRONG_BUY / Gate FAIL 不先讲) / 只调对你舒服的方向。
+1. “积木”是 `module + data + config + contract + evidence`，不是目录加 YAML。
+2. landing 保留供应商原始响应；universe/business filter 不得发生在 landing 前。
+3. 名义 OHLCV 是成交真相；qfq 是带方法/as-of/lineage 的派生分析视图。
+4. 分类统一契约、不统一值域：申万、东财行业、东财概念保持 namespace。
+5. “资金去哪”只表达活动度、方向性成交不平衡代理、参与广度和价格响应，不宣称资金守恒流转。
+6. 股票状态与未来标签分离；主升浪 ground truth 永不进入 Tier 1 输入。
+7. 一数据集一 writer；只持久化跨模块、昂贵、需审计或正式发布的输出。
+8. 配置只保存稳定政策；运行状态、分类成员、未来模块和 code topology 不进 active YAML。
+9. 采用 strangler 迁移：契约先行、旧新并跑、对账、切消费者、最后删除旧路径。
+10. 数据更新保持 `manual_only`，不恢复 cron/launchd/隐藏后台触发。
 
-**判断法典种子** (人话 → 机器话, 自动执法):
-| 人话 | 机器话 (moth/gate) |
-|---|---|
-| 每张表必声明所属 layer | `moth data-layer-integrity` |
-| 不留 god-file / 万物互引 | `moth minimal-module-main-routers` + `no-new-godfile` |
-| 删的层不被启动重建 | `services/schema_layer_filter` + schema DDL 只留 KEEP 集 |
-| 文档不准漂移 | `moth doc-drift` |
-| 数字 measured 可复现 | `check_rule_compliance` |
-| 数据源唯一 tushare (+aif10 十大流通股东) | §4.3; sync_registry 唯一采集契约 |
+## Live 证据与 P0 缺陷
 
-## North-Star KPI (唯一 owner: 本文件) — **未来目标 (策略层重建后才适用)**
+现有资产可保留：交易日历和数据源适配、K 线、技术状态、市场脉搏、机构画像、主升浪 ground truth、BestChoice 公式 challenger。
 
-| 指标 | 角色 | 目标 | 口径 |
-|---|---|---|---|
-| 年化收益 | **目标量** | >= +30% | 含成本 OOS paper_sim, 100 万初始 |
-| 最大回撤 | 特征化输出 | 不设硬上限 | 报为"拿到最高胜率/收益所需承受的回撤", 与年化/胜率成对呈现 |
-| 超额 vs HS300 | 目标量 | > 0 | 真实基准 (小盘 cohort 对标中证1000/2000) |
-| 月胜率 | 诊断量 | >= 55% | walk-forward OOS 月度; 单独不放行 |
-| 胜率×盈亏比期望 | 诊断量 | > 0 | positive_expectancy |
+已确认的 P0/P1 架构缺口：
 
-**C-WinReturn**: 胜率是诊断量, 收益率+max_dd 是目标量; 全 AND 单项不放行。仓位管理是一等设计轴。
-**当前 KPI = `unknown` (N/A)** —— 策略/edge 层 2026-06-28 重建中清空, 无 live 策略可测; edge 在干净平台上重建后才有数字。不许引用历史旧数字。
+- `sync_runner` 在写 provider 表前执行 universe filter，landing 契约不纯；
+- target data 与 watermark/failure outcome 分库写，缺少同一 accepted-partition 原子证据；
+- qfq 每日以最新因子全史重算，serving view 的 factor/batch/ingested_at 是占位，不能兼任名义成交和血缘真相；
+- 旧 `v_dc_industry_pit` 只有 first-seen、没有 `out_date/content_type`；writer 已退役，live DB 残留 view 待 Phase 1 只读核验后清理；
+- 东财行业与申万按名称对齐，实测存在成员和名称差异，不能称同一桶；
+- market pulse 的 namespace/content_type/grain 已修并于 2026-07-16 原子重建；仍缺 `available_at/method/config_hash/coverage`，只能用于展示，不能直接做历史特征；
+- stock state 和 market regime 输出缺 definition/config/input snapshot 版本证据；
+- 研究层没有统一 snapshot/experiment/release，paper surface 不是正式执行模型。
+- 旧 storage-retention/legacy-flow 门存在空库存或读取失败仍放行的假绿，已退役；正式 dataset lifecycle/retention contract 尚待 Phase 1 建立；
+- 当前 holdout helper 只守训练边界，不具备原子 prereg、全局 single-touch、参数冻结或并发证据。
 
-## 项目现状: 纯数据平台 (2026-06-28 重建定型)
+## 当前工作树冻结面
 
-**用户决议 (2026-06-28)**: 项目降为**纯净数据平台** —— 只留 ① 原始数据 (tushare 唯一 + aif10 十大流通股东) ② 优化后的四地基 ③ 数据平台代码 (采集/清洗/SERVE/治理)。**所有加工中间变量 + 策略/serving/edge/workbench 层全部退役** (代码 ~245 文件 git rm 可逆 + 数据 ~40 表 archive parquet 留底), 待未来在干净平台上**从零重建** edge。
+以下 8 个 tracked 文件与 2 个 untracked WIP 是进入本轮前已有的独立 Tier0 dirty slice，
+Phase 0 不得覆盖、还原或混合提交：
 
-**平台分层 (当前真相源)**:
-- **M1 采集** (`services/data_sources/` + aif10 client): vendor → L0 raw (raw_tushare_* 40表 + aif10 域 [holders/qfii/org_holding/估值]), 零计算。lhb/surveys 已切 tushare (top_list/top_inst/stk_surv, 批2)。
-- **M2 清洗** (`market_*`/`pipeline/clean`): L0 → L1 qfq (v_price_kline_qfq tushare-only, PIT 复权)。
-- **M4 SERVE** (`services/data_access/`): 唯一取数 + PIT asof + 口径锁 + provenance (raw entity 读路)。
-- **四地基**: ① 主键+PIT锚 ② 读写边界=库分区 (§9 reference.duckdb 拆库 DONE) ③ 可扩展分层 (data_layers L0-L4) ④ 单一真相源 (tushare+aif10, leakage洞=0)。
-- **编排** (`pipeline/`): acquire/clean/store/run/stage_runner; daily 门链。
-- **血缘** (`services/lineage/`): acquire+consume DAG (impact/provenance/dead CLI)。
-- **治理** (`audit`/`data_audit`/`data_quality`/moth/`check_*`/`storage_retention`/`sandbox_guard`): 11 治理 mart + 全套门。
+```text
+backend/config/sync_registry.yaml
+backend/scripts/check_continuity_integrity.py
+backend/scripts/update_watermark_sla.py
+backend/services/data_sources/sync_runner.py
+backend/tests/scripts/test_check_continuity_integrity.py
+backend/tests/scripts/test_update_watermark_sla.py
+backend/tests/services/test_sync_runner_20260612_fixes.py
+backend/tests/services/test_sync_runner_integrity.py
+```
 
-**库现状 (2026-07-02 批7 收敛后实测)**: tushare_raw 7.3G (40 raw + 2 PIT行业视图) · market 737M (price_kline_qfq_tushare 831万 → v_price_kline_qfq) · reference (4 dim) · smartmoney 320M (30 表: aif10 域 + dim + 治理 mart) · etf/feature_store 空壳 · experiment_store (verdict 契约)。
+两个 untracked WIP basename 为 `batch_integrity.py` 与 `test_batch_integrity.py`；精确位置以 live
+`git status` 为准，它们刻意不进入 Phase 0 index。
 
-**验证 (2026-07-02 批7 收敛后)**: 全量 pytest 413 passed (10 既存债, stash 基线一致) + CI offline 188 + moth 30/0/0 + data_layer_audit PASS (untagged=0, **stale_tag 首次归零**) + check_dead_references 0 + lineage graph 208节点无死表。
+现状：`main...origin/main [ahead 4]`；不 push。
 
-**数据纯化 (批0-7, 2026-06-28~07-02) 已收敛**: 非 tushare/aif10 残表全物删 (ETF 子系统/机构旧表/top10/旧K线管线, archive 留底) + 死代码/config/断言/死闸清零 + 控制面重写 (PROJECT_INDEX 708→300 判断层) + 磁盘 15G→9.5G。4轮 sweep 验 dry, 代码/config/DB 层 is_dry=True。
+## 执行计划
 
-## 当前优先级 (2026-07-15 数据地基闭环)
+### Phase 0 — 控制面收口（完成；本提交固化）
 
-**当前 objective**: 先闭合手动数据更新控制面与现存缺口，再恢复 D2 特征消融。不得把“进程成功”当“数据齐全”，验收必须同时看交易日历、市场分组、watermark、failure queue 与表内真实行。
+- [x] 现场代码、DB、Moth、CodeGraph 与三路对抗架构审计；
+- [x] 重写顶层架构、研究验证和工程治理 owner；
+- [x] 压缩 `AGENTS.md`、`PROJECT_INDEX.md`、docs map；
+- [x] 合并删除旧 constitution/data/quickstart/archive 和已吸收设计稿；
+- [x] 修退役 chunkyctl 命令、文档 gate、Rule 10 和 lineage 同名跨库假绿；
+- [x] 退役 storage-retention/legacy-flow 假绿，holdout 降为诚实的边界 helper，修 qfq shadow-truth、taxonomy namespace 与 paper/institution 过度声称；
+- [x] BestChoice 收缩为 hash/shape 可校验的冻结 challenger，删除第二 control plane、旧 App/runners 和伪发布证据；
+- [x] 同步 `.moth/profile.yaml`、assertions、项目专属 skills 和本地 hook；
+- [x] focused/full tests、Moth、CodeGraph、doc gates、diff check；
+- [x] Rule 10 双独立终审 `APPROVE_WITH_NOTES`；与冻结 Tier0 patch 分离进入本提交。
 
-**已核实**:
-- 数据任务模式已收敛为 `manual_only`；repo / 用户 / 系统 launchd、cron 与 launchctl 扫描无 ChunkyMonkey 调度。旧约 17:00 plist/installer/wrapper 是仓库残留，不是正在运行的自动跑批。
-- `user()` 授权当前有效：开通 `2026-06-17 10:48:58+08:00`，到期 `2026-08-12 15:43:00+08:00`；token 未变。
-- 日历硬门当前 PASS：`20260715` raw SSE `is_open=1` 与 `dim_trading_calendar` 一致，未来已登记交易日 115（门槛 60）。
-- `block_trade@20260710` 已经由系统同步入口补入 61 行，连续性硬门恢复为无 FAIL；`margin_detail@20260710/13/14` 的单市场半批仍须由修复后的三市场原子批重放。
-- post-fix audit 已修复测试对真实 `/tmp` 日志/告警的污染并清除两个假日期日志；真实 ALERT 证据保持不动。failure queue 中 `sync:margin_detail` / `sync:trade_cal` 仍是待提交后真实链复核、自愈关闭的显式 residual，不得提交前洗绿。
+Phase 0 退出条件：
 
-**收口顺序**: 整包 Rule 10 + 本地安全提交 → `bash scripts/daily_update.sh --date 20260715` → 只读复核各域 eligible/pending 语义、两融 SSE/SZSE/BSE 分组、stock_basic 快照、watermark/failure queue/ALERT flags → Moth/CodeGraph/post-fix audit → 状态文档与最终本地提交。尚未到 `available_after` 的域必须如实标 `pending_today`，不得用空批或未来日期伪装完成。
+- 活的人类 owner 只剩 `AGENTS.md`、`goal.md` 和 docs 三份契约；
+- 文档 gate `fails=0 warns=0`，本地 link/CLI lifecycle 无漂移；
+- FEATURE_MAP 不把 retired 命令列为 active；
+- Moth 不再用包含 WARN 的 PASS 字符串制造 29/0/0；
+- skills/Moth/AGENTS 指向同一架构和真实命令；
+- 除冻结 Tier0 slice 外无未知 dirty residue。
 
-**随后恢复**: D2 逐层特征消融，路线 owner 仍为 `analysis/master_implementation_plan_20260702.md` §4；北极星仍是主升浪 episode-first + 含成本 OOS 裁决，旧 archive 只作参考。
+### Phase 1 — Tier0 accepted partition
 
-## Operating Reminders
+1. 为当前 K 线或一个小型交易数据域定义 typed `DatasetContract`；
+2. 分离 landing 与 canonical filter；
+3. 建立 `IngestBatch` 与 `AcceptedPartition`；
+4. 做 fetch/validate/publish/accept kill-point 测试；
+5. 从 accepted state 投影 watermark/SLA/failure；
+6. 旧新路径 shadow-run 与逐 partition 对账；
+7. 通过后再推广到其他域。
 
-- 主动用全套工具/skill (不等点名): `mio` (思维真相源) · `architect-controller` · `chunkymonkey-governance` · `chunkymonkey-review-gate` · moth · codegraph · workflow (并发)。
-- 第一性原理真相源: K线=可交易性 / 日历=日期 / config-table-service owner=业务规则; 数据源 tushare 唯一 (+aif10 十大流通股东)。
-- 删确定死的路径直接删, 不留注释/隐藏flag/兼容垫片; 删表必删重建路径 (schema DDL); 不 big-bang 硬删紧耦合层 (按 layer 增量, moth 守)。
-- commit 走 `bash scripts/safe_commit.sh`; 大改动 (数据语义/策略/资金路径) 走对抗复审。
-- 历史详情 (reset 前 Strategy Portfolio / 旧 board / 重建删除清单 / live gate) 见 ledger + archive; 不在本文件保留。
+### 后续
+
+Tier0 K 线/分类 → 版本化 stock state → market context → 主升浪 B0/B1/B2 → 机构跟随和公式逐个 feature package → strategy release/decision/paper/product。
+
+## 当前 blocker / 禁止误报
+
+- Phase 0 控制面已闭合；下一执行面是冻结 Tier0 slice 的独立复审与 Phase 1 accepted-partition 迁移；
+- 2026-07-16 手工链已验证核心行情到日，但 `margin_detail` 7 月 10—15 供应商仅返沪市半批；冻结 Tier0 patch 仍待整体复审和独立提交；
+- continuity 未按域使用 `available_after`、all-due 对 `unsupported` 域不计 bad，均属冻结 Tier0 verifier 缺口；
+- 当前没有发布策略、正式候选或可信当前 KPI；
+- `doctor --fast` 的 data health 绿不等于架构闭合；alert flag 和 failure queue 仍需按真实数据验证；
+- 任何 `retired` 子命令 exit 0、WARN 被 Moth 当 PASS、fixture 与真实 schema 不同，都视为 verifier defect，不是可接受绿灯。

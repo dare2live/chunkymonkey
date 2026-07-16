@@ -24,7 +24,7 @@ assertions:
     query: "SELECT count(*) FROM duckdb_tables()"
     expect: {op: ">=", value: 29}
   - id: smartmoney-size-band
-    claim: "库体量 0.2-3GB 带内 (2026-06-28 重建/加工层清空+db_compact 后 3.0→0.34G 纯数据平台; 越界=异常膨胀或错库)"
+    claim: "smartmoney 当前 control/serving 库体量 0.2-3GB 带内；越界提示异常膨胀、错库或 retention 漂移，不代表项目是纯数据平台"
     type: file_size
     path: data/smartmoney.duckdb
     expect: {op: between, low: 200000000, high: 3000000000}
@@ -66,17 +66,27 @@ assertions:
     command: ["grep", "-ci", "utc", "backend/services/source_watermarks.py"]
     expect: {op: ">=", value: 1}
   - id: doc-governance
-    claim: "文档治理执法器 PASS (幽灵引用/superseded 断链/goal 行数/docs 文件数; 状态标头契约 owner=docs/README.md)"
+    claim: "活文档治理严格 PASS: fails=0 且 warns=0；不存在幽灵链接、退役 CLI 活引用或第二 owner (owner=docs/README.md)"
     type: shell
     command: ["python3", "backend/scripts/check_doc_governance.py"]
-    expect: {op: regex, pattern: "verdict=PASS"}
+    expect: {op: regex, pattern: "verdict=PASS fails=0 warns=0"}
+  - id: bestchoice-frozen-evidence
+    claim: "BestChoice 仅是冻结 challenger 证据包；两个实现与两份机器证据的 hash、shape、唯一键、candidate/reject 和五公式分布必须与 manifest 精确一致"
+    type: shell
+    command: ["python3", "-B", "-m", "bestchoice.scripts.verify_frozen_evidence"]
+    expect: {op: regex, pattern: "verify_frozen_evidence: ok"}
   - id: quota-circuit-breaker
     claim: "信道配额熔断在盘 (2026-06-13 代理 jiaoch.site 反刷量墙定层; 删除=逐日续戳烧配额复发)"
     type: shell
     command: ["grep", "-c", "_is_quota_wall\\|QuotaExhaustedError", "backend/services/data_sources/sync_runner.py"]
     expect: {op: ">=", value: 3}
+  - id: tinyshare-runtime-payload
+    claim: "TinyShare 不只存在 dist-info；版本化 pyc 运行载荷必须导出 pro_api 和权限/连接异常类型，防全仓 cache 清理误删 provider 本体后仍假装已安装"
+    type: shell
+    command: [".venv/bin/python", "-c", "import tinyshare; assert hasattr(tinyshare,'pro_api'); assert hasattr(tinyshare,'TinySharePermissionError'); assert hasattr(tinyshare,'TinyShareConnectionError'); print('TINYSHARE_RUNTIME_OK')"]
+    expect: {op: regex, pattern: "TINYSHARE_RUNTIME_OK"}
   - id: doc-drift
-    claim: "活索引文档 (PROJECT_INDEX/goal) 不引用已删代码文件路径 (2026-06-14 立: mythos §16 漂移默认态对账要机器做 + 用户'及时更新文档'; 历史叙事/模板豁免)"
+    claim: "活文档、生成地图以及 source/config 中的文档 owner 均存在；不继续引用 legacy CLAUDE 章节"
     type: shell
     command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_doc_drift.py --check | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)[\"overall\"]==\"PASS\" else 1)' && echo DOC_OK"]
     expect: {op: regex, pattern: "DOC_OK"}
@@ -96,30 +106,22 @@ assertions:
     command: ["bash", "-c", "grep -c 'include_router' backend/main.py"]
     expect: {op: "<=", value: 45}
   - id: minimal-module-no-new-godfile
-    claim: "god-file (>800行) 数 ratchet <=0 (硬门, dossier 全迁完) (2026-06-14 立基线: data_quality 4286/scoring 2712/signals_v2 2156 等违最小化模块; 禁新增, 存量逐步拆; 涨破=耦合回潮)"
+    claim: "god-file (>800行) 存量 ratchet <=3；observed count 由 live 命令给出，上界不冒充当前实测"
     type: shell
     command: ["bash", "-c", "find backend -name '*.py' -not -path '*/__pycache__/*' -not -path '*/tests/*' | xargs wc -l 2>/dev/null | awk '$1>800 && $2!=\"total\"{n++} END{print n+0}'"]
-    expect: {op: "<=", value: 23}
+    expect: {op: "<=", value: 3}
   - id: watermark-refresher-wired
     claim: "kline 水位刷新器接在 daily_update 管线 store 阶段 (2026-06-13 修孤儿化; 2026-06-23 重设计后接线在 pipeline/store.py 而非 daily_update.sh; 检查器写器两器官缺一即水位卡死)"
     type: shell
     command: ["grep", "-c", "refresh_source_watermarks.py", "backend/services/pipeline/store.py"]
     expect: {op: ">=", value: 1}
-  # optuna-require-walk-forward / optuna-realistic-sharpe-cap 断言已删 2026-06-29 (批4残留清理:
-  #   Optuna 治理层(services.optimization)随纯数据平台重建整体退役, optuna_config.yaml 已 2026-06-29
-  #   批1b物删(commit c09ae896), 校验对象已不存在 — 死断言, moth tooling_gate FAIL 抓出未跟批1b同清)
-  - id: legacy-flow-no-pollution
-    claim: "老流程污染清除 ratchet (2026-06-14 工具化 reset 教训; 重构验收 gate; 2026-07-08 C1 收口 owner=analysis/legacy_flow_integrity_gate_fix_20260708.md). C1 daily_update 脚本可调 PASS(2026-06-23 daily_update.sh 重设计为瘦wrapper后原扫描源伪绿[恒0命中], 改扫真实调用图backend/services/pipeline/*.py, 红绿注入实测验证) + C2 wiped孤儿引用 0(全部L2_feature表现均live, 无残留) + C3 append-only必retention PASS(当前0张_history/_snapshot命名表)。三检均已用注入违规样本红绿验证检测逻辑本身有效, 非扫空目录空转。ratchet收紧至 n_stale_refs==0(原<=43历史宽松阈值已过期), 回潮即红。owner=backend/scripts/check_legacy_flow_integrity.py"
+  - id: safe-commit-rule10-blocking
+    claim: "safe_commit 和 commit-msg 共用 backend/scripts/check_codex_review.py 的高风险 staged 文件判定；只接受 APPROVE/APPROVE_WITH_NOTES，任意 REQUEST_CHANGES 均阻断；策略 PIT/发布证书仍由 strategy validation contract 独立负责"
     type: shell
-    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend .venv/bin/python3 -c \"import json,subprocess,os; e=dict(os.environ,PYTHONPATH='backend'); d=json.loads(subprocess.run(['.venv/bin/python3','backend/scripts/check_legacy_flow_integrity.py'],capture_output=True,text=True,env=e).stdout); c=d['checks']; ok=c['daily_update_scripts']['verdict']=='PASS' and c['append_only_retention']['verdict']=='PASS' and c['no_wiped_refs']['n_stale_refs']==0; print('LEGACY_OK' if ok else 'LEGACY_PENDING')\""]
-    expect: {op: regex, pattern: "LEGACY_OK"}
-  - id: leakage-gate-no-self-bypass
-    claim: "leakage commit 门无自批 SKIP 逃生 (2026-06-15 用户: 自批绕过=摆设). safe_commit Step3.5/3.6 HIGH=硬 exit 4, 不再认 SKIP_LEAKAGE_AUDIT 自批 (含义性 grep: 不应再有 'SKIP_LEAKAGE_AUDIT.*proceeding' 放行). 误报正解=修 verifier 精度/config (永久), 真紧急=--no-verify(核选项留疤). 复活自批=门退回摆设."
-    type: shell
-    command: ["bash", "-c", "grep -c 'SKIP_LEAKAGE_AUDIT.*bypass.*proceeding\\|SKIP_LEAKAGE_AUDIT=1 bypass' scripts/safe_commit.sh || true"]
-    expect: {op: "==", value: 0}
+    command: ["bash", "-c", "grep -q 'check_codex_review.py' scripts/safe_commit.sh && grep -q 'has_rejected_codex_review' backend/scripts/check_codex_review.py && grep -q 'REQUEST_CHANGES_REVIEW_RE' backend/scripts/check_codex_review.py && grep -q 'exit 6' scripts/safe_commit.sh && echo RULE10_BLOCKING"]
+    expect: {op: regex, pattern: "RULE10_BLOCKING"}
   - id: coupling-no-orphan-refs
-    claim: "无孤儿耦合引用 (2026-06-16 用户: 删除暴露 表↔代码↔配置↔DB↔文档↔测试 耦合; moth coupling (引擎全局) 防'删脚本→孤儿测试崩CI collection'/'drop表→moth断言悬空'复发. 删前用 --impact <name> 看爆炸半径)"
+    claim: "Moth 可枚举的表/脚本/config/assertion 耦合无孤儿；source/config→文档引用由独立 doc-drift assertion 覆盖，不把本 claim 夸大为全仓证明"
     type: shell
     command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && moth coupling --repo . 2>&1 | grep -o 'verdict=[A-Z]*' | head -1"]
     expect: {op: regex, pattern: "verdict=PASS"}
@@ -129,12 +131,12 @@ assertions:
     command: ["bash", "-c", "grep -c 'def assert_universe_clean\\|class UniverseContaminationError' backend/services/universe.py"]
     expect: {op: ">=", value: 2}
   - id: exploration-isolated-in-sandbox
-    claim: "探索隔离在 sandbox/ 不污染主代码 (2026-06-17 用户根治: 探索脚本/findings草稿/结果散进 backend/scripts+analysis+docs = 反复污染根因, 本对话清~100文件). sandbox/ gitignored 用完直接删 (scripts/sandbox.sh); 探索 runner (experiment_*/analyze_*) 不许在 backend/scripts (该在 sandbox/<exp>/); 唯一跨删存活=experiment_store verdict. 复活=污染根因复发. owner=sandbox/README.md"
+    claim: "探索隔离在 sandbox/ 不污染主代码 (2026-06-17 用户根治: 探索脚本/findings草稿/结果散进 backend/scripts+analysis+docs = 反复污染根因, 本对话清~100文件). sandbox/ gitignored 且默认整包清理; 探索 runner (experiment_*/analyze_*) 不许在 backend/scripts (该在 sandbox/<exp>/). 需要晋升的结果必须按现行 Tier3 契约重写、经 Rule 10 审核并由正式 owner 接管; 当前没有跨删存活的 verdict writer. 复活旧路径=污染根因复发. owner=sandbox/README.md"
     type: shell
     command: ["bash", "-c", "{ ls backend/scripts/experiment_*.py backend/scripts/analyze_*.py 2>/dev/null || true; } | wc -l | tr -d ' '"]
     expect: {op: "==", value: 0}
   - id: sandbox-boundary-guard-present
-    claim: "沙盒边界硬门在岗 (2026-06-17 用户: 边界要水密非约定; 审计 wf_6185abb2 实测沙脚本能裸 duckdb.connect 主库 rw 真写了 market 库). services.sandbox_guard 提供 enable_sandbox_guard (monkeypatch 挡 rw 开主6库 raise SandboxBoundaryError) + read_only_main (只读正路) + sandbox_scratch (per-exp); sandbox.sh new 模板首行调 guard. 删=边界退回纯约定, 探索可写坏主库. owner=sandbox/README.md"
+    claim: "沙盒边界硬门在岗 (2026-06-17 用户: 边界要水密非约定; 审计 wf_6185abb2 实测沙脚本能裸 duckdb.connect 主库 rw 真写了 market 库). services.sandbox_guard 提供 enable_sandbox_guard (monkeypatch 挡 rw 打开 database_manifest 登记的主存储并 raise SandboxBoundaryError) + read_only_main (只读正路) + sandbox_scratch (per-exp); sandbox.sh new 模板首行调 guard. 删=边界退回纯约定, 探索可写坏主库. owner=sandbox/README.md"
     type: shell
     command: ["bash", "-c", "grep -c 'def enable_sandbox_guard\\|class SandboxBoundaryError\\|def read_only_main' backend/services/sandbox_guard.py"]
     expect: {op: ">=", value: 3}
@@ -144,14 +146,14 @@ assertions:
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM fact_top10_holder_period WHERE report_date LIKE '%-%'"
     expect: {op: "==", value: 0}
-  - id: kline-canonical-tushare-only
-    claim: "v_price_kline_qfq 切 tushare-only (2026-06-22 切主源根因修复 真相源唯一): 旧 tier-1=price_kline_tdxhub 的 qfq 系统性算错 (把复权因子当后复权式乘数抬高分红股历史价, 实测茅台/比亚迪 raw*adj_factor/latest 重建证 tushare对/tdxhub错, 分叉随adj_factor放大最高89%). tushare(2019+/5431股) 严格超集 tdxhub(2022+/5210股). 用户'没有备用源只有tushare' → 去 akshare/tdxhub fallback. >0 非tushare行 = 残留回潮. owner=backend/services/market_schema.py"
+  - id: qfq-serving-tushare-only
+    claim: "v_price_kline_qfq 当前 serving view 只含 tushare 派生行；此断言不把 qfq 认证为 nominal canonical 或 execution truth，factor/batch/as-of 血缘仍是 Tier0 迁移缺口"
     type: duckdb_sql
     database: data/market.duckdb
     query: "SELECT count(*) FROM v_price_kline_qfq WHERE source_name <> 'tushare'"
     expect: {op: "==", value: 0}
   - id: serve-read-layer-doors
-    claim: "SERVE 读层验收门全绿 (2026-06-22 落地计划 §10 P1 gate; 2026-07-08 系统性收口 owner=analysis/serve_read_layer_gate_consolidation_20260708.md): 单一执法点 check_serve_read_layer.py, D1 全量 backend/services+scripts 非成员消费者内联裸查(data_module_members.yaml roster 区分 builder[可读raw]/消费者[必走DataAccess.get], 替代原只扫已删除 dossier.py 的伪绿门) / D2 generic.py调resolver.preflight / D3 data_access.yaml每entity声明链(db+table+layer+vendor+asof_col+code_col)齐全可追溯 / D4 backend/scripts 0 experiment_/analyze_ runner(L2-bypass向量关闭). 已 red→green 实证(注入FROM raw_变红/还原回绿)非print-not-fail. violations>0=回潮. owner=backend/scripts/check_serve_read_layer.py + analysis/data_module_toplevel_design_20260622.md §10"
+    claim: "过渡期 SERVE 读层门全绿：check_serve_read_layer.py 扫全量非成员 consumer bypass、resolver preflight、entity 声明链与 backend 探索 runner；红例固化在 live tests。Phase1 后由 module contract/typed output 取代 roster。"
     type: shell
     command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_serve_read_layer.py >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}

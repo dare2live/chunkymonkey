@@ -36,7 +36,7 @@ MANUAL_JOBS: dict[str, dict[str, Any]] = {
     # concept_snapshot (E7) 2026-06-13 物理摘除: 实测 20260610/11 两份快照均 8000 行整
     # 截断 (真实日量 ~90k), observed 事件全是伪影; dc 系历史 tushare 可随时回拉, 快照
     # 是冗余中间层 — 留可点按钮 = 误导 (产物入 fact_concept_event 污染 LF 实验面)。
-    # tdx_pool_refresh 2026-07-10 摘除(全栈审计MEDIUM, owner=analysis/gap_root_cause_20260708.md
+    # tdx_pool_refresh 2026-07-10 摘除（历史证据=analysis/gap_root_cause_20260708.md
     # 第四轮节): 其 argv 指向的 refresh_tdx_server_pool.py 已随 tdx 全源退役物删, 按钮点击会
     # spawn 注定失败的进程并经 manual_job_wrapper 写 ALERT flag 制造误导告警。check_dead_
     # references 六道扫描仍不覆盖 Python Path 拼接 — tdx 退役残留漏进 SERVE 层的实例。

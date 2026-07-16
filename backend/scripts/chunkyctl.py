@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
-"""chunkyctl — 项目操作 CLI (2026-06-22 **最小重建 doctor**)。
+"""ChunkyMonkey operations CLI (owner: AGENTS.md + engineering governance).
 
-背景: reset commit 639e0dfb ("代码层reset到地基删771") 删掉了原 1660 行 chunkyctl.py 连同其依赖
-(moth_snapshot / worktree_status / audit_docs_graph / data_lineage/registry + 5/7 个 audit 脚本),
-`scripts/chunkyctl doctor` 因此悬空报 "can't open file"。
-本最小版只串 **reset 后幸存且实测可跑** 的健康检查, **不复活已删模块** (尊重用户主导的 reset 意图):
+This surface intentionally stays small. It exposes the live manual-only Tier0/ops checks:
   1. tooling_gate  — `moth assert` (二进制; 原 moth_snapshot.py 已删, 改直调 CLI)
   2. automation_surface — manual-only 下阻断数据写 cron/launchd 残留
   3. alert_flags   — 巡检 /tmp/chunkymonkey_ALERT_*.flag (手动任务失败/降级)
   4. universe      — check_universe_filter.py --all (排除股写入门)
   5. data_health   — data_health_snapshot.py --dry-run (表新鲜度/红黄绿)
-其余子命令 (worktree/docs/preflight/audit/data-status) 依赖已删 → 报 retired (当前权威: goal.md / moth / PROJECT_INDEX)。
-完整 doctor 全套 = 部分推翻 reset (需恢复 moth_snapshot 等), 须用户决策后再做。owner=主会话 (analysis 调研 a7649a94)。
+Retired commands are fail-closed compatibility names, not dormant workflows or future promises.
 """
 from __future__ import annotations
 
@@ -39,6 +35,13 @@ def _run_command(cmd: list[str], *, cwd: Path) -> dict[str, Any]:
                            stderr=subprocess.PIPE, check=False)
     except FileNotFoundError as exc:                       # 工具不在 PATH (如 moth 未装) → 不崩, 报缺
         return {"cmd": cmd, "returncode": 127, "stdout": "", "stderr": f"command not found: {exc}"}
+    except OSError as exc:                                # sandbox/OS 拒绝执行 → 结构化失败, 由调用方 fail closed
+        return {
+            "cmd": cmd,
+            "returncode": 126,
+            "stdout": "",
+            "stderr": f"{type(exc).__name__}: {exc}",
+        }
     return {"cmd": cmd, "returncode": r.returncode, "stdout": r.stdout, "stderr": r.stderr}
 
 
@@ -329,19 +332,24 @@ def run_doctor(args: argparse.Namespace) -> int:
                      "returncode": dh["returncode"]})
     verdict = _aggregate_verdict(sections)
     report = {"command": "doctor", "verdict": verdict, "sections": sections,
-              "note": "最小重建版 (5 gate: moth/automation/alert/universe/data_health); "
-                      "完整 doctor 需恢复 moth_snapshot/worktree_status 等已删模块 (见文件头注)"}
+              "note": "当前权威快检只聚合 5 个独立 gate: "
+                      "moth/automation/alert/universe/data_health；已退役子命令不构成缺口"}
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if verdict != "FAIL" else 1
 
 
 _RETIRED = ("worktree", "docs", "preflight", "audit", "data-status", "jobs")
-# jobs 2026-07-07 全库死代码普查补入: services.experiment_jobs 随 2026-06-28 重建物删后
-# jobs 子命令从未重实现也未加入 _RETIRED, 撞了就是裸 argparse "invalid choice" 报错而非本
-# 模块统一的 retired JSON 提示, 见 analysis/dead_code_sweep_20260707.md 簇10。
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] in _RETIRED:
+        command = argv[0]
+        print(json.dumps({"command": command, "status": "retired",
+                          "note": f"{command} 的实现已退役，当前不可用。"},
+                         ensure_ascii=False), file=sys.stderr)
+        return 2
+
     parser = argparse.ArgumentParser(prog="chunkyctl", description="项目操作 CLI (2026-06-22 最小重建 doctor)")
     sub = parser.add_subparsers(dest="command")
     d = sub.add_parser("doctor", help="健康检查 (moth/automation/alert/universe/data_health)")
@@ -349,16 +357,9 @@ def main() -> int:
     d.add_argument("--fast", action="store_true")              # wrapper 已 strip; 防直调残留不崩
     d.add_argument("--skip-storage-payload", action="store_true")
     d.add_argument("--fail-on-dirty-worktree", action="store_true")
-    for name in _RETIRED:
-        sub.add_parser(name)
-    args, _unknown = parser.parse_known_args()
+    args, _unknown = parser.parse_known_args(argv)
     if args.command == "doctor":
         return run_doctor(args)
-    if args.command in _RETIRED:
-        print(json.dumps({"command": args.command, "status": "retired",
-                          "note": f"{args.command} 依赖在 reset commit 639e0dfb 被删, 未重建 "
-                                  f"(当前权威: goal.md / moth assert / PROJECT_INDEX)"}, ensure_ascii=False))
-        return 0
     parser.print_help()
     return 0
 

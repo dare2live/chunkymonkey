@@ -1,22 +1,19 @@
 #!/usr/bin/env python3
-"""东财(DC)行业/概念物化 — 全项目单一供应商=东财迁移 (owner=analysis/dc_full_migration_plan_20260623.md)。
+"""Legacy DC namespace 当前快照物化器；目标契约见 MASTER Tier0B。
 
-决策 (已锁 2026-06-23): 行业=东财(dc_member 行业板块, =申万对齐同套桶) / 概念=东财 / 资金流=东财。
-通达信+申万行业 dim 退役; 申万 index_member_all + v_sw_industry_pit **保留**专供深史(2025前)PIT兜底
-(东财 dc_member 逐日快照仅 2025+, episode_strata 深史 as-of 走申万深PIT, 同套桶非混口径)。
+当前快照按 DC 自身 level 词汇映射，不再以 SW 名称猜层级。它仍缺版本化 membership
+有效期和 evidence crosswalk，因此只能服务迁移期展示，不是 canonical classification PIT。
 
 真相源 = tushare_raw.duckdb:
   - raw_tushare_dc_index (idx_type='行业板块'/'概念板块', 板块目录)
   - raw_tushare_dc_member (板块→成分股, 逐日 trade_date 快照, 2025+)
-  - raw_tushare_index_member_all (申万 L1/L2/L3 名集, 仅作"东财板块名→级别"映射参照; 东财行业名99%∈申万名)
 
 产出 (serving, smartmoney.duckdb):
-  - dim_stock_dc_industry: 个股当前快照, 列 tdx_l1/tdx_l1_name/.../tdx_l3_name (位置别名, 值=东财行业=申万对齐),
-    沿用历史位置别名列名 → 消费方纯表名 swap 零字段改。level 按申万名映射 (实测 L1=31/L2=127/L3=334)。
+  - dim_stock_dc_industry: legacy 个股当前快照，仍沿用 tdx_* 位置别名；待迁移。
   - dim_stock_dc_concept: 个股当前概念成员 (多对多)。
 
-PIT 视图 (tushare_raw.duckdb):
-  - v_dc_industry_pit: dc_member 逐日快照 as-of (in_date/out_date 区间), 仅 2025+ 有效, 2025前 NULL。
+旧 `v_dc_industry_pit` writer 已退役：原实现只有 first-seen，没有 out_date/content_type，
+不能继续生成假 PIT。现存 DB view 仅作待清理 residue，不得被新 consumer 使用。
 """
 from __future__ import annotations
 
@@ -28,44 +25,87 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "backend"))
 
 from services.duck_adapter import connect  # noqa: E402
+from services.taxonomy_config import (  # noqa: E402
+    current_snapshot_quality_floor,
+    source_index_type,
+    source_level_map,
+)
 
 TRAW = "data/tushare_raw.duckdb"   # rule-compliance: ok evidence=东财源表所在库 (database_manifest tushare_raw)
 SMARTMONEY = "data/smartmoney.duckdb"  # rule-compliance: ok evidence=live serving 主库
 DIM_IND = "dim_stock_dc_industry"
 DIM_CON = "dim_stock_dc_concept"
-PIT_VIEW = "v_dc_industry_pit"
+_DIM_IND_NEXT = f"{DIM_IND}__next"
+_DIM_CON_NEXT = f"{DIM_CON}__next"
+
+
+def _sql_str(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _dc_level_case(column: str = "i.level") -> str:
+    mapping = source_level_map("dc_industry")
+    clauses = " ".join(
+        f"WHEN CAST({column} AS VARCHAR) = {_sql_str(source)} THEN {int(level[1:])}"
+        for source, level in mapping.items()
+    )
+    return f"CASE {clauses} END"
 
 
 def _latest_dates(c) -> tuple[str, str]:
-    idx_last = c.execute("SELECT MAX(trade_date) FROM traw.raw_tushare_dc_index WHERE idx_type='行业板块'").fetchone()[0]
-    mem_last = c.execute(
-        "SELECT MAX(trade_date) FROM traw.raw_tushare_dc_member WHERE trade_date <= ?", [idx_last]
+    industry_type = source_index_type("dc_industry")
+    concept_type = source_index_type("dc_concept")
+    industry_last, concept_last = c.execute("""
+        SELECT MAX(CASE WHEN idx_type = ? THEN trade_date END),
+               MAX(CASE WHEN idx_type = ? THEN trade_date END)
+        FROM traw.raw_tushare_dc_index
+        WHERE idx_type IN (?, ?)
+    """, [industry_type, concept_type, industry_type, concept_type]).fetchone()
+    member_last = c.execute(
+        "SELECT MAX(trade_date) FROM traw.raw_tushare_dc_member"
     ).fetchone()[0]
-    return idx_last, mem_last
+    frontier = (industry_last, concept_last, member_last)
+    if any(value is None for value in frontier) or len(set(frontier)) != 1:
+        raise RuntimeError(
+            "DC current snapshot source frontier mismatch: "
+            f"industry_index={industry_last} concept_index={concept_last} "
+            f"member={member_last}"
+        )
+    return str(industry_last), str(member_last)
 
 
 def build_current_dims() -> None:
-    """当前快照 dim (serving): 东财行业 (level 按申万名映射) + 东财概念。"""
+    """Build and atomically publish the two validated DC current-snapshot dims."""
     c = connect(SMARTMONEY, read_only=False, attach={"traw": {"path": TRAW, "read_only": True}})
+    transaction_open = False
     try:
         idx_last, mem_last = _latest_dates(c)
-        # 行业 dim: 个股→其行业板块(3层) pivot 成 L1/L2/L3 (按申万名定级)
+        if not idx_last or not mem_last:
+            raise RuntimeError(
+                f"DC current snapshot source frontier missing: idx={idx_last} mem={mem_last}"
+            )
+        # Internal residue is never accepted state. Remove it before the publish transaction so
+        # a rollback cannot resurrect an older abandoned shadow.
+        c.execute(f"DROP TABLE IF EXISTS {_DIM_IND_NEXT}")
+        c.execute(f"DROP TABLE IF EXISTS {_DIM_CON_NEXT}")
+        c.execute("BEGIN TRANSACTION")
+        transaction_open = True
+
+        # 行业 dim: 个股→其 DC 行业板块，按 DC 源 level 映射为 L1/L2/L3。
+        level_case = _dc_level_case("i.level")
+        industry_index_type = source_index_type("dc_industry")
+        concept_index_type = source_index_type("dc_concept")
         c.execute(f"""
-        CREATE OR REPLACE TABLE {DIM_IND} AS
-        WITH sw AS (
-            SELECT DISTINCT l1_name AS n, 1 AS lvl FROM traw.raw_tushare_index_member_all WHERE l1_name IS NOT NULL
-            UNION SELECT DISTINCT l2_name, 2 FROM traw.raw_tushare_index_member_all WHERE l2_name IS NOT NULL
-            UNION SELECT DISTINCT l3_name, 3 FROM traw.raw_tushare_index_member_all WHERE l3_name IS NOT NULL
-        ),
-        board_lvl AS (
-            SELECT i.ts_code AS board_code, i.name AS board_name, sw.lvl
-            FROM traw.raw_tushare_dc_index i JOIN sw ON i.name = sw.n
-            WHERE i.trade_date = '{idx_last}' AND i.idx_type = '行业板块'
+        CREATE TABLE {_DIM_IND_NEXT} AS
+        WITH board_lvl AS (
+            SELECT i.ts_code AS board_code, i.name AS board_name, {level_case} AS lvl
+            FROM traw.raw_tushare_dc_index i
+            WHERE i.trade_date = ? AND i.idx_type = ?
         ),
         sb AS (
             SELECT SPLIT_PART(m.con_code, '.', 1) AS stock_code, bl.board_code, bl.board_name, bl.lvl
             FROM traw.raw_tushare_dc_member m JOIN board_lvl bl ON m.ts_code = bl.board_code
-            WHERE m.trade_date = '{mem_last}'
+            WHERE m.trade_date = ?
         )
         SELECT stock_code,
             MAX(CASE WHEN lvl=1 THEN board_code END) AS tdx_l1,
@@ -76,59 +116,220 @@ def build_current_dims() -> None:
             MAX(CASE WHEN lvl=3 THEN board_name END) AS tdx_l3_name,
             CURRENT_TIMESTAMP AS updated_at
         FROM sb GROUP BY stock_code
-        """)
+        """, [idx_last, industry_index_type, mem_last])
         # 概念 dim: 个股→概念板块 (多对多, 保留 board 列表)
         c.execute(f"""
-        CREATE OR REPLACE TABLE {DIM_CON} AS
+        CREATE TABLE {_DIM_CON_NEXT} AS
         SELECT SPLIT_PART(m.con_code, '.', 1) AS stock_code, m.ts_code AS concept_code,
                i.name AS concept_name, CURRENT_TIMESTAMP AS updated_at
         FROM traw.raw_tushare_dc_member m
-        JOIN traw.raw_tushare_dc_index i ON m.ts_code = i.ts_code AND i.trade_date = '{idx_last}'
-        WHERE i.idx_type = '概念板块' AND m.trade_date = '{mem_last}'
-        """)
-        print(f"[done] {DIM_IND} + {DIM_CON} (东财当前快照, idx={idx_last} mem={mem_last})")
-    finally:
-        c.close()
+        JOIN traw.raw_tushare_dc_index i ON m.ts_code = i.ts_code AND i.trade_date = ?
+        WHERE i.idx_type = ? AND m.trade_date = ?
+        """, [idx_last, concept_index_type, mem_last])
 
+        if not _validate_dims(
+            c,
+            industry_table=_DIM_IND_NEXT,
+            concept_table=_DIM_CON_NEXT,
+            idx_last=idx_last,
+            mem_last=mem_last,
+        ):
+            raise RuntimeError(
+                "DC current snapshot validation failed; accepted tables were not published"
+            )
 
-def build_pit_view() -> None:
-    """as-of PIT 视图 (dc_member 逐日快照 → 区间), 仅 2025+ 有效。"""
-    c = connect(TRAW, read_only=False)
-    try:
-        # 逐日快照 → 每股每板块的 [in_date, out_date) 区间 (out_date=NULL 表示当前仍在)
-        c.execute(f"""
-        CREATE OR REPLACE VIEW {PIT_VIEW} AS
-        WITH snap AS (
-            SELECT DISTINCT SPLIT_PART(con_code, '.', 1) AS stock_code, ts_code AS board_code, trade_date
-            FROM raw_tushare_dc_member
-        ),
-        runs AS (
-            SELECT stock_code, board_code, trade_date,
-                   LAG(trade_date) OVER (PARTITION BY stock_code, board_code ORDER BY trade_date) AS prev_d
-            FROM snap
+        c.execute(f"DROP TABLE IF EXISTS {DIM_CON}")
+        c.execute(f"DROP TABLE IF EXISTS {DIM_IND}")
+        c.execute(f"ALTER TABLE {_DIM_IND_NEXT} RENAME TO {DIM_IND}")
+        c.execute(f"ALTER TABLE {_DIM_CON_NEXT} RENAME TO {DIM_CON}")
+        c.execute(
+            f"CREATE UNIQUE INDEX idx_dc_industry_stock ON {DIM_IND}(stock_code)"
         )
-        SELECT stock_code, board_code, MIN(trade_date) AS in_date
-        FROM runs GROUP BY stock_code, board_code
-        """)
-        print(f"[done] {PIT_VIEW} (东财成员 as-of PIT, 仅 2025+; 深史走 v_sw_industry_pit)")
+        c.execute(
+            f"CREATE UNIQUE INDEX idx_dc_concept_grain "
+            f"ON {DIM_CON}(stock_code, concept_code)"
+        )
+        c.execute("COMMIT")
+        transaction_open = False
+        print(f"[done] {DIM_IND} + {DIM_CON} (东财当前快照, idx={idx_last} mem={mem_last})")
+    except BaseException:
+        if transaction_open:
+            try:
+                c.execute("ROLLBACK")
+            except Exception:
+                pass
+        raise
     finally:
         c.close()
+
+
+def _validate_dims(
+    sm,
+    *,
+    industry_table: str,
+    concept_table: str,
+    idx_last: str,
+    mem_last: str,
+) -> bool:
+    """Validate one industry/concept table pair against the same raw source frontier."""
+    level_case = _dc_level_case("i.level")
+    industry_index_type = source_index_type("dc_industry")
+    concept_index_type = source_index_type("dc_concept")
+    industry = sm.execute(f"""
+            WITH board_lvl AS (
+                SELECT i.ts_code AS board_code, i.name AS board_name, {level_case} AS lvl
+                FROM traw.raw_tushare_dc_index i
+                WHERE i.trade_date = ? AND i.idx_type = ?
+            ), sb AS (
+                SELECT SPLIT_PART(m.con_code, '.', 1) AS stock_code,
+                       bl.board_code, bl.board_name, bl.lvl
+                FROM traw.raw_tushare_dc_member m
+                JOIN board_lvl bl ON m.ts_code = bl.board_code
+                WHERE m.trade_date = ?
+            ), expected AS (
+                SELECT stock_code,
+                    MAX(CASE WHEN lvl=1 THEN board_code END) AS tdx_l1,
+                    MAX(CASE WHEN lvl=1 THEN board_name END) AS tdx_l1_name,
+                    MAX(CASE WHEN lvl=2 THEN board_code END) AS tdx_l2,
+                    MAX(CASE WHEN lvl=2 THEN board_name END) AS tdx_l2_name,
+                    MAX(CASE WHEN lvl=3 THEN board_code END) AS tdx_l3,
+                    MAX(CASE WHEN lvl=3 THEN board_name END) AS tdx_l3_name
+                FROM sb GROUP BY stock_code
+            ), actual AS (
+                SELECT stock_code, tdx_l1, tdx_l1_name, tdx_l2, tdx_l2_name,
+                       tdx_l3, tdx_l3_name FROM {industry_table}
+            )
+            SELECT
+                (SELECT COUNT(*) FROM expected),
+                (SELECT COUNT(*) FROM actual),
+                (SELECT COUNT(DISTINCT stock_code) FROM actual),
+                (SELECT COUNT(DISTINCT tdx_l1) FROM expected),
+                (SELECT COUNT(DISTINCT tdx_l2) FROM expected),
+                (SELECT COUNT(DISTINCT tdx_l3) FROM expected),
+                (SELECT COUNT(DISTINCT tdx_l1) FROM actual),
+                (SELECT COUNT(DISTINCT tdx_l2) FROM actual),
+                (SELECT COUNT(DISTINCT tdx_l3) FROM actual),
+                (SELECT COUNT(*) FROM (
+                    SELECT * FROM expected EXCEPT SELECT * FROM actual
+                ) missing),
+                (SELECT COUNT(*) FROM (
+                    SELECT * FROM actual EXCEPT SELECT * FROM expected
+                ) unexpected),
+                (SELECT COUNT(*) FROM (
+                    SELECT stock_code, lvl FROM sb
+                    GROUP BY stock_code, lvl HAVING COUNT(DISTINCT board_code) > 1
+                ) ambiguous),
+                (SELECT COUNT(*) FROM actual WHERE stock_code IS NULL),
+                (SELECT COUNT(*) FROM actual
+                 WHERE (tdx_l1 IS NULL) IS DISTINCT FROM (tdx_l1_name IS NULL)
+                    OR (tdx_l2 IS NULL) IS DISTINCT FROM (tdx_l2_name IS NULL)
+                    OR (tdx_l3 IS NULL) IS DISTINCT FROM (tdx_l3_name IS NULL)),
+                (SELECT COUNT(*) FROM board_lvl WHERE lvl IS NULL)
+    """, [idx_last, industry_index_type, mem_last]).fetchone()
+    industry_floor = current_snapshot_quality_floor("dc_industry")
+    level_floor = industry_floor["min_nodes_by_level"]
+    industry_ok = (
+        int(industry[0]) > 0
+        and int(industry[1]) == int(industry[0]) == int(industry[2])
+        and tuple(int(industry[index]) for index in range(3, 6))
+        == tuple(int(industry[index]) for index in range(6, 9))
+        and int(industry[9]) == 0
+        and int(industry[10]) == 0
+        and int(industry[11]) == 0
+        and int(industry[12]) == 0
+        and int(industry[13]) == 0
+        and int(industry[14]) == 0
+        and int(industry[2]) >= int(industry_floor["min_stocks"])
+        and all(
+            int(industry[index]) >= int(level_floor[level])
+            for index, level in zip(range(6, 9), ("L1", "L2", "L3"))
+        )
+    )
+    print(
+        f"[verify] {industry_table}: actual={industry[1]}行/{industry[2]}股 "
+        f"expected={industry[0]}股; DC L1/L2/L3 actual="
+        f"{industry[6]}/{industry[7]}/{industry[8]} expected="
+        f"{industry[3]}/{industry[4]}/{industry[5]}; "
+        f"missing={industry[9]} unexpected={industry[10]} ambiguous={industry[11]} "
+        f"null_keys={industry[12]} bad_code_name_pairs={industry[13]} "
+        f"unmapped_levels={industry[14]}; "
+        f"floor=stocks>={industry_floor['min_stocks']} nodes>={level_floor}"
+    )
+
+    concept = sm.execute(f"""
+            WITH expected AS (
+                SELECT SPLIT_PART(m.con_code, '.', 1) AS stock_code,
+                       m.ts_code AS concept_code, i.name AS concept_name
+                FROM traw.raw_tushare_dc_member m
+                JOIN traw.raw_tushare_dc_index i
+                  ON m.ts_code = i.ts_code AND i.trade_date = ?
+                WHERE i.idx_type = ? AND m.trade_date = ?
+            ), actual AS (
+                SELECT stock_code, concept_code, concept_name FROM {concept_table}
+            )
+            SELECT
+                (SELECT COUNT(*) FROM expected),
+                (SELECT COUNT(*) FROM actual),
+                (SELECT COUNT(DISTINCT stock_code) FROM expected),
+                (SELECT COUNT(DISTINCT stock_code) FROM actual),
+                (SELECT COUNT(DISTINCT concept_code) FROM expected),
+                (SELECT COUNT(DISTINCT concept_code) FROM actual),
+                (SELECT COUNT(DISTINCT (stock_code, concept_code)) FROM expected),
+                (SELECT COUNT(DISTINCT (stock_code, concept_code)) FROM actual),
+                (SELECT COUNT(*) FROM (
+                    SELECT * FROM expected EXCEPT SELECT * FROM actual
+                ) missing),
+                (SELECT COUNT(*) FROM (
+                    SELECT * FROM actual EXCEPT SELECT * FROM expected
+                ) unexpected),
+                (SELECT COUNT(*) FROM actual
+                 WHERE stock_code IS NULL OR concept_code IS NULL OR concept_name IS NULL)
+    """, [idx_last, concept_index_type, mem_last]).fetchone()
+    concept_floor = current_snapshot_quality_floor("dc_concept")
+    concept_ok = (
+        int(concept[0]) > 0
+        and tuple(int(concept[index]) for index in range(1, 8, 2))
+        == tuple(int(concept[index]) for index in range(0, 7, 2))
+        and int(concept[0]) == int(concept[6]) == int(concept[7])
+        and int(concept[8]) == 0
+        and int(concept[9]) == 0
+        and int(concept[10]) == 0
+        and int(concept[1]) >= int(concept_floor["min_memberships"])
+        and int(concept[3]) >= int(concept_floor["min_stocks"])
+        and int(concept[5]) >= int(concept_floor["min_nodes"])
+    )
+    print(
+        f"[verify] {concept_table}: actual={concept[1]}行/{concept[3]}股/{concept[5]}概念 "
+        f"expected={concept[0]}行/{concept[2]}股/{concept[4]}概念; "
+        f"missing={concept[8]} unexpected={concept[9]} null_keys={concept[10]}; floor="
+        f"{concept_floor['min_memberships']}行/{concept_floor['min_stocks']}股/"
+        f"{concept_floor['min_nodes']}概念"
+    )
+    samp = sm.execute(
+        f"SELECT stock_code, tdx_l1_name, tdx_l2_name, tdx_l3_name "
+        f"FROM {industry_table} LIMIT 3"
+    ).fetchall()
+    print(f"[verify] 样本: {samp}")
+    ok = industry_ok and concept_ok
+    print(f"[verify] dim {'PASS' if ok else 'FAIL'}")
+    return ok
 
 
 def verify() -> int:
-    sm = connect(SMARTMONEY, read_only=True)
+    sm = connect(
+        SMARTMONEY,
+        read_only=True,
+        attach={"traw": {"path": TRAW, "read_only": True}},
+    )
     try:
-        r = sm.execute(f"SELECT COUNT(*), COUNT(DISTINCT stock_code), COUNT(DISTINCT tdx_l1_name), COUNT(DISTINCT tdx_l2_name), COUNT(DISTINCT tdx_l3_name) FROM {DIM_IND}").fetchone()
-        # rule-compliance: ok evidence=验证 fixture (行业 dim 1:1 + 申万对齐桶数)
-        l1_ok = 28 <= r[2] <= 34
-        cov_ok = r[0] == r[1] and r[0] >= 5000
-        print(f"[verify] {DIM_IND}: {r[0]}行/{r[1]}股(1:1={r[0]==r[1]}) L1桶={r[2]} L2桶={r[3]} L3桶={r[4]} (申万对照31/131/337)")
-        cn = sm.execute(f"SELECT COUNT(DISTINCT stock_code), COUNT(DISTINCT concept_code) FROM {DIM_CON}").fetchone()
-        print(f"[verify] {DIM_CON}: {cn[0]}股 / {cn[1]}概念")
-        samp = sm.execute(f"SELECT stock_code, tdx_l1_name, tdx_l2_name, tdx_l3_name FROM {DIM_IND} LIMIT 3").fetchall()
-        print(f"[verify] 样本: {samp}")
-        ok = l1_ok and cov_ok
-        print(f"[verify] dim {'PASS' if ok else 'FAIL'}")
+        idx_last, mem_last = _latest_dates(sm)
+        ok = _validate_dims(
+            sm,
+            industry_table=DIM_IND,
+            concept_table=DIM_CON,
+            idx_last=idx_last,
+            mem_last=mem_last,
+        )
         return 0 if ok else 1
     finally:
         sm.close()
@@ -140,7 +341,6 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if not args.verify:
         build_current_dims()
-        build_pit_view()
     return verify()
 
 

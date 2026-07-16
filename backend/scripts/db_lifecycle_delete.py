@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""生命周期删除执行器 (可复用, owner=analysis/db_management_design_20260614.md §13.6)。
+"""生命周期删除执行器 (owner=docs/engineering_governance.md §6/§10)。
 
 按删除 manifest (yaml) 安全删除 L1 探索数据 / 死表, 内置 4 道闸:
   1. live 守护: 每张表删前 word-boundary grep live 服务面 (daily_update 脚本集 + serving/ensemble/scoring/
@@ -44,14 +44,15 @@ def _live_surface() -> list[Path]:
     """daily_update 调用脚本集 + serving/ensemble/scoring/recommendation + backend/scripts/
     (治理/审计/build_* 一次性脚本) + backend/services/pipeline/ (真实当前调用图) = live 服务面。
 
-    2026-07-06 全面数据审计根因根治 (owner=analysis/comprehensive_data_module_audit_20260706.md
+    2026-07-06 全面数据审计根因根治（历史证据=analysis/comprehensive_data_module_audit_20260706.md；
+    现行 owner=docs/engineering_governance.md
     pit_leakage_spotcheck 维度): 原实现只对 `scripts/daily_update.sh` 做正则抓已调用脚本名 +
     `serving/recommendation/scoring/ensemble` 四个目录——**结构性排除 `backend/scripts/` 整个
     目录本身**, 导致 data_quality.py 这类"表已删但治理脚本仍用 SQL 字符串引用"的死引用完全
     检测不到 (审计诊断: 这是"残留反复出现"的核心机制之一, 非偶然)。另: `daily_update.sh`
     2026-06-23 重设计后已委托 `services.pipeline.run` 模块调用 (不再直接 shell 出
-    `backend/scripts/*.py`), 原正则现在恒抓不到东西 (与 check_legacy_flow_integrity.py 的
-    C1 "PASS by vacuity" 同型问题) —— 改为直接扫 `backend/services/pipeline/` (真实当前调用
+    `backend/scripts/*.py`), 原正则现在恒抓不到东西（历史执行面 verifier 的同型
+    "PASS by vacuity" 问题）—— 改为直接扫 `backend/services/pipeline/` (真实当前调用
     图, ctx.run_script(...) 的实际调用点) 而非解析已过期的 wrapper 脚本文本。
     """
     paths: list[Path] = [REPO / "scripts" / "daily_update.sh"]

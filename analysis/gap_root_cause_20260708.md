@@ -1,8 +1,10 @@
 # 数据缺口根因深查 (2026-07-08)
 
+> 生命周期：历史证据（evidence-only）。本文不拥有当前规则、状态、KPI 或实施计划；现行 owner 以 `docs/README.md` 指向的 owner 文档和 live code/data 为准。
+
 ## 背景
 
-用户在完整审计尾部22项WARN收口([continuity_gate_tail_closure_20260708.md](continuity_gate_tail_closure_20260708.md))后追问"这些缺口的根因都要找到并修复"——不满足于"回填了这几个日期",要求找出每个缺口
+用户在完整审计尾部 WARN 收口后追问"这些缺口的根因都要找到并修复"——不满足于"回填了这几个日期",要求找出每个缺口
 为什么会发生、并系统性修掉。8-agent workflow(4域并行深查 + 收敛综合 + 3角度对抗复核)先做了
 第一轮诊断,随后我在实现阶段又抓到2个workflow本身没抓到的独立根因(margin`known_group_gaps`
 墓碑过期 / report_rc-forecast-share_float 的 by_trade_date 结构性排除周末数据)。本文档是最终

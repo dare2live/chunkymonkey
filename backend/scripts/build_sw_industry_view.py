@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""申万行业 **深史 PIT as-of 视图** builder (兜底, owner=analysis/dc_full_migration_plan_20260623.md)。
+"""申万行业 **深史 PIT as-of 视图** builder (owner=docs/MASTER_TOPLEVEL_DESIGN.md §6.2)。
 
-> 2026-06-23 东财全套迁移 Stage④: 当前行业 serving 已切东财 dim_stock_dc_industry。
-> 本脚本退化为**只建 v_sw_industry_pit 深史兜底视图** (2025前 episode_strata as-of 用), 不再建当前快照 dim。
+本脚本只建 SW namespace 的 v_sw_industry_pit，供明确声明 SW taxonomy 的消费者使用。
+它不是 DC namespace 的深史兜底；两者只能通过显式、版本化 crosswalk 比较。
 > 当前快照 dim_stock_sw_industry 已物删 (孤儿); 其重建路径 = 本视图 WHERE out_date IS NULL, 不再维护独立 dim。
 
 真相源 = tushare_raw.raw_tushare_index_member_all (S1 已补 is_new='N' 历史区间, out_date 填)。
@@ -42,7 +42,7 @@ def build() -> None:
         c.execute(DDL)
     finally:
         c.close()
-    print(f"[done] {VIEW} (CREATE OR REPLACE, 源 {SRC}; 深史 PIT 兜底, 当前 serving 走东财)")
+    print(f"[done] {VIEW} (CREATE OR REPLACE, 源 {SRC}; SW namespace PIT only)")
 
 
 def verify() -> int:

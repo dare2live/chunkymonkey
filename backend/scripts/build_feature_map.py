@@ -118,11 +118,15 @@ def scan_routes(repo: Path) -> dict[str, dict]:
 
 
 def scan_chunkyctl(repo: Path) -> list[list[str]]:
-    """bash wrapper 的 case 分支 = 对用户可见子命令清单."""
+    """枚举 bash wrapper 的活跃 case 分支，排除其显式退役命令。"""
     src = (repo / "scripts" / "chunkyctl").read_text(encoding="utf-8", errors="replace")
+    retired_match = re.search(r"^RETIRED_COMMANDS=\(([^)]*)\)\s*$", src, re.MULTILINE)
+    retired = set(retired_match.group(1).split()) if retired_match else set()
     cmds = []
     for m in re.finditer(r"^\s{2}([a-z][a-z-]*)\)\s*$", src, re.MULTILINE):
-        cmds.append(m.group(1))
+        command = m.group(1)
+        if command not in retired:
+            cmds.append(command)
     helps = dict(re.findall(r"^\s+(\w[\w-]*)\s{2,}(.+)$", src, re.MULTILINE))
     return [[c, helps.get(c, "").lstrip("= ")] for c in cmds]
 

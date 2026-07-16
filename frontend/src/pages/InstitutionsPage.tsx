@@ -90,7 +90,7 @@ function RankingCard() {
   );
 }
 
-/** 信号行内跟随: 点按钮展开金额输入 → POST /paper/positions (strategy_tag=inst_follow)。 */
+/** 披露事件可显式记入 legacy 观察账本；这不是跟随信号或成交动作。 */
 function FollowCell(props: { signal: InstSignal }) {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
@@ -109,10 +109,10 @@ function FollowCell(props: { signal: InstSignal }) {
       const d = await addPosition({
         stock_code: props.signal.stock,
         amount: amt,
-        strategy_tag: "inst_follow",
-        note: `跟随 ${props.signal.holder}`,
+        strategy_tag: "inst_disclosure_observation",
+        note: `观察披露机构 ${props.signal.holder}`,
       });
-      setMsg(`已入池 ${d.shares} 股 @ ${d.entry_price}`);
+      setMsg(`已记入观察 ${d.shares} 股 @ ${d.entry_price}（qfq 近似值）`);
       setOpen(false);
       emitTopic("paper");
     } catch (e) {
@@ -126,7 +126,7 @@ function FollowCell(props: { signal: InstSignal }) {
     <div className="follow-cell">
       {!open ? (
         <button className="btn btn-primary" onClick={() => setOpen(true)}>
-          入池跟随
+          记入观察
         </button>
       ) : (
         <span className="follow-form">
@@ -159,7 +159,7 @@ function SignalsCard() {
 
   return (
     <Card
-      title="最新建仓信号流 (近 90 天)"
+      title="最新披露事件研究流 (近 90 天)"
       extra={
         stockFilter ? (
           <span className="inline-ctl">
@@ -182,8 +182,8 @@ function SignalsCard() {
         empty={(d) => d.filter((s) => !stockFilter || s.stock.includes(stockFilter)).length === 0}
         emptyHint={
           stockFilter
-            ? `近 90 天无 ${stockFilter} 的新建仓信号 (清除筛选看全部)`
-            : "近 90 天无满足条件的新建仓信号"
+            ? `近 90 天无 ${stockFilter} 的披露事件 (清除筛选看全部)`
+            : "近 90 天无满足条件的披露事件"
         }
       >
         {(all) => {
@@ -199,7 +199,7 @@ function SignalsCard() {
                   <th>披露日</th>
                   <th>行业(PIT)</th>
                   <th>机构战绩 (超额中位 / 胜率 / n)</th>
-                  <th>跟随</th>
+                  <th>观察账本</th>
                 </tr>
               </thead>
               <tbody>

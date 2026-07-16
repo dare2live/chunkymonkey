@@ -1,4 +1,5 @@
-/** C4 市场感知页 — widget 独立取数 (契约=analysis/market_pulse_design_20260702.md §3 + v3 设计)。
+/** Tier2 市场感知页 — widget 独立取数；现行边界见 docs/MASTER_TOPLEVEL_DESIGN.md。
+ *  历史交互证据: analysis/market_pulse_design_20260702.md（evidence-only）。
  *  红线: 感知层只描述现状 (资金在哪/流向哪/什么形态/温度如何), 零买卖暗示文案。
  *  措辞规范 (v3.4 + 2026-07-03 用户纠偏): flow_regime 中文显示名用克制金融术语
  *  (脉冲/横盘累积/上行累积/下行累积), 禁口语化/戏剧化字样。
@@ -21,7 +22,7 @@ import {
   fetchWarnings,
 } from "../api/pulse";
 import type {
-  DcContentType,
+  DcPulseChain,
   DcRotationSector,
   DrillSectorRow,
   DrillStockRow,
@@ -72,6 +73,15 @@ function parseLadder(j: string | null): [string, number][] {
 }
 
 const fmtMD = (d: string) => `${d.slice(4, 6)}-${d.slice(6, 8)}`;
+
+const DC_NAMESPACE_TABS: { key: DcPulseChain; label: string }[] = [
+  { key: "dc_industry", label: "东财行业" },
+  { key: "dc_concept", label: "东财概念" },
+];
+
+function dcNamespaceLabel(chain: DcPulseChain): string {
+  return chain === "dc_industry" ? "行业" : "概念";
+}
 
 /** 涨跌语义 class (A股红涨绿跌); 0/缺失无色。 */
 function signClass(x: number | null | undefined): string {
@@ -584,15 +594,14 @@ function heatmapOption(resp: HeatmapResp): EChartsOption {
 }
 
 const HEATMAP_DAYS = [10, 20, 60] as const;
-const HEATMAP_CONTENT_TYPES: DcContentType[] = ["行业", "概念"];
 
 function HeatmapCard() {
   const [days, setDays] = useState<number>(20);
-  const [contentType, setContentType] = useState<DcContentType>("行业");
+  const [dcChain, setDcChain] = useState<DcPulseChain>("dc_industry");
   const [drill, setDrill] = useState<DrillTarget | null>(null);
   const state = useFetch(
-    () => fetchHeatmap({ chain: "dc_concept", content_type: contentType, days, top: 40 }),
-    [days, contentType],
+    () => fetchHeatmap({ chain: dcChain, days, top: 40 }),
+    [days, dcChain],
   );
   const option = useMemo(
     () => (state.data && state.data.sectors.length ? heatmapOption(state.data) : null),
@@ -600,16 +609,19 @@ function HeatmapCard() {
   );
   return (
     <Card
-      title={`资金热力 (东财${contentType} × 近${days}日净流入, 窗口累计前 40; 点击格子下钻成分)`}
+      title={`资金热力 (东财${dcNamespaceLabel(dcChain)} × 近${days}日净流入, 窗口累计前 40; 点击格子下钻成分)`}
       extra={
         <div className="tab-group">
-          {HEATMAP_CONTENT_TYPES.map((ct) => (
+          {DC_NAMESPACE_TABS.map((item) => (
             <button
-              key={ct}
-              className={`btn tab${contentType === ct ? " active" : ""}`}
-              onClick={() => setContentType(ct)}
+              key={item.key}
+              className={`btn tab${dcChain === item.key ? " active" : ""}`}
+              onClick={() => {
+                setDrill(null);
+                setDcChain(item.key);
+              }}
             >
-              {ct}
+              {item.label}
             </button>
           ))}
           {HEATMAP_DAYS.map((d) => (
@@ -636,7 +648,7 @@ function HeatmapCard() {
                 const cell = p.data as [number, number, number] | undefined;
                 const sec = cell ? rows[cell[1]] : undefined;
                 if (sec) {
-                  setDrill({ chain: "dc_concept", code: sec.sector_code, name: sec.sector_name });
+                  setDrill({ chain: dcChain, code: sec.sector_code, name: sec.sector_name });
                 }
               }}
             />
@@ -768,10 +780,14 @@ function LeaderCell(props: { s: DcRotationSector }) {
 }
 
 function DcRotationTable(props: {
+  chain: DcPulseChain;
   onMeta: (m: string | null) => void;
   onDrill: (t: DrillTarget) => void;
 }) {
-  const state = useFetch(() => fetchDcRotation({ lag: 5, top: 20 }), []);
+  const state = useFetch(
+    () => fetchDcRotation({ chain: props.chain, lag: 5, top: 20 }),
+    [props.chain],
+  );
   const meta = state.data?.latest_date
     ? `最新 ${fmtDate(state.data.latest_date)} · 对比 ${fmtDate(state.data.prev_date)} (5 交易日前) · 资金流排名前 20`
     : null;
@@ -803,7 +819,7 @@ function DcRotationTable(props: {
                     className="clickable"
                     title="点击下钻成分股"
                     onClick={() =>
-                      props.onDrill({ chain: "dc_concept", code: s.sector_code, name: s.sector_name })
+                      props.onDrill({ chain: props.chain, code: s.sector_code, name: s.sector_name })
                     }
                   >
                     <td className="mono">{s.rank_flow ?? "—"}</td>
@@ -839,19 +855,19 @@ function DcRotationTable(props: {
   );
 }
 
-const ROTATION_TABS = [
-  { key: "sw", label: "申万 RS" },
-  { key: "dc", label: "东财资金" },
-] as const;
+const ROTATION_TABS: { key: PulseChain; label: string }[] = [
+  { key: "sw_industry", label: "申万 RS" },
+  ...DC_NAMESPACE_TABS,
+];
 
 function RotationCard() {
-  const [tab, setTab] = useState<"sw" | "dc">("sw");
+  const [tab, setTab] = useState<PulseChain>("sw_industry");
   const [meta, setMeta] = useState<string | null>(null);
   const [drill, setDrill] = useState<DrillTarget | null>(null);
   const title =
-    tab === "sw"
+    tab === "sw_industry"
       ? "板块轮动 — 申万 L1 RS 排名 (vs HS300, 4周/12周相对强度; 行点击逐层下钻)"
-      : "板块轮动 — 东财板块资金流排名 (净流入截面排名 + 双龙头 + 流入宽度; 行点击下钻)";
+      : `板块轮动 — 东财${dcNamespaceLabel(tab)}资金流排名 (namespace 内净流入排名 + 双龙头 + 流入宽度; 行点击下钻)`;
   return (
     <Card
       title={title}
@@ -876,10 +892,10 @@ function RotationCard() {
         </span>
       }
     >
-      {tab === "sw" ? (
+      {tab === "sw_industry" ? (
         <SwRotationTable onMeta={setMeta} onDrill={setDrill} />
       ) : (
-        <DcRotationTable onMeta={setMeta} onDrill={setDrill} />
+        <DcRotationTable chain={tab} onMeta={setMeta} onDrill={setDrill} />
       )}
       {drill && <DrillPanel target={drill} onClose={() => setDrill(null)} />}
     </Card>
@@ -1001,17 +1017,33 @@ function MultiSectorCurve(props: { rows: FlowBoardRow[]; stripeDates: string[] }
 
 function FlowBoardCard() {
   const [tab, setTab] = useState<"in" | "out">("in");
+  const [dcChain, setDcChain] = useState<DcPulseChain>("dc_industry");
   const [drill, setDrill] = useState<DrillTarget | null>(null);
-  const state = useFetch(() => fetchFlowBoard({ chain: "dc_concept", limit: 20, stripe_days: 60 }), []);
+  const state = useFetch(
+    () => fetchFlowBoard({ chain: dcChain, limit: 20, stripe_days: 60 }),
+    [dcChain],
+  );
   return (
     <Card
-      title="资金流向榜 (东财板块链 · 形态=资金流分类学: 脉冲 / 横盘累积 / 上行·下行累积)"
+      title={`资金流向榜 (东财${dcNamespaceLabel(dcChain)} · 形态=资金流分类学: 脉冲 / 横盘累积 / 上行·下行累积)`}
       extra={
         <span style={{ display: "inline-flex", gap: 10, alignItems: "center" }}>
           {state.data?.trade_date && (
             <span className="inline-ctl">{fmtDate(state.data.trade_date)}</span>
           )}
           <span className="tab-group">
+            {DC_NAMESPACE_TABS.map((item) => (
+              <button
+                key={item.key}
+                className={`btn tab${dcChain === item.key ? " active" : ""}`}
+                onClick={() => {
+                  setDrill(null);
+                  setDcChain(item.key);
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
             {FLOW_BOARD_TABS.map((t) => (
               <button
                 key={t.key}

@@ -8,7 +8,7 @@ import { fmtDate, fmtNum, fmtPct, pnlClass } from "../format";
 import { emitTopic, useFetch } from "../hooks/useFetch";
 import { UI } from "../theme";
 
-const STRATEGY_TAGS = ["manual", "inst_follow"];
+const STRATEGY_TAGS = ["manual_observation", "inst_disclosure_observation"];
 
 /** 组合概览卡: KPI 走 /portfolio, 现金/市值走 /nav 最新快照 (kpi 不含这两项)。 */
 function OverviewCard() {
@@ -61,7 +61,7 @@ function OverviewCard() {
                 </div>
               </div>
               {!last && (
-                <div className="state-hint">尚无 nav 快照 — 点右上「更新数据」生成首个 mark-to-market 快照</div>
+                <div className="state-hint">尚无估值快照 — 点右上「手动估值」生成 qfq-close 观察值</div>
               )}
             </>
           );
@@ -121,8 +121,8 @@ function NavChartCard() {
   const state = useFetch(fetchNav, [], ["paper"]);
   const option = useMemo(() => (state.data && state.data.length ? navOption(state.data) : null), [state.data]);
   return (
-    <Card title="净值曲线 (归一, 组合 vs HS300)">
-      <FetchGate state={state} empty={(d) => d.length === 0} emptyHint="暂无 nav 数据 — 入池后点「更新数据」开始记录">
+    <Card title="观察估值曲线 (归一, 组合 vs HS300)">
+      <FetchGate state={state} empty={(d) => d.length === 0} emptyHint="暂无估值数据 — 记入观察后点「手动估值」开始记录">
         {() => (option ? <EChart option={option} height={300} /> : null)}
       </FetchGate>
     </Card>
@@ -135,12 +135,12 @@ function PositionsCard() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const doClose = async (positionId: string, stock: string) => {
-    if (!window.confirm(`确认平仓 ${stock} (按最新完成交易日收盘价)?`)) return;
+    if (!window.confirm(`确认结束观察 ${stock}（按最新完成交易日 qfq close 近似记账）?`)) return;
     setBusyId(positionId);
     setMsg(null);
     try {
       const d = await closePosition(positionId);
-      setMsg(`已平仓 ${d.stock_code}: 盈亏 ${fmtNum(d.pnl, 0)} 元 (${d.ret_pct}%)`);
+      setMsg(`已结束观察 ${d.stock_code}: 近似盈亏 ${fmtNum(d.pnl, 0)} 元 (${d.ret_pct}%)`);
       emitTopic("paper");
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
@@ -150,9 +150,9 @@ function PositionsCard() {
   };
 
   return (
-    <Card title="持仓明细">
+    <Card title="观察条目">
       {msg && <div className="banner-info">{msg}</div>}
-      <FetchGate state={state} empty={(d) => d.positions.length === 0} emptyHint="空池 — 用下方表单或机构信号流入池">
+      <FetchGate state={state} empty={(d) => d.positions.length === 0} emptyHint="暂无观察条目 — 用下方表单或机构披露研究流记入">
         {({ positions }) => (
           <div className="table-wrap">
             <table>
@@ -161,12 +161,12 @@ function PositionsCard() {
                   <th>代码</th>
                   <th>策略</th>
                   <th>股数</th>
-                  <th>入池日</th>
-                  <th>成本价</th>
+                  <th>记入日</th>
+                  <th>记入价(qfq)</th>
                   <th>状态</th>
-                  <th>平仓日</th>
-                  <th>平仓价</th>
-                  <th title="毛盈亏 = 股数×(平仓价−成本价), 不含费; open 仓浮盈需逐股现价端点 (后端暂无)">
+                  <th>结束日</th>
+                  <th>结束价(qfq)</th>
+                  <th title="近似盈亏 = 股数×(结束 qfq−记入 qfq), 不含真实成交约束">
                     毛盈亏(不含费)
                   </th>
                   <th>操作</th>
@@ -198,7 +198,7 @@ function PositionsCard() {
                             disabled={busyId === p.position_id}
                             onClick={() => doClose(p.position_id, p.stock_code)}
                           >
-                            {busyId === p.position_id ? "…" : "平仓"}
+                            {busyId === p.position_id ? "…" : "结束观察"}
                           </button>
                         )}
                       </td>
@@ -238,7 +238,7 @@ function AddPositionCard() {
     setBusy(true);
     try {
       const d = await addPosition({ stock_code: stockCode, amount: amt, strategy_tag: tag, note });
-      setMsg(`已入池 ${d.stock_code}: ${d.shares} 股 @ ${d.entry_price} (费 ${d.fee})`);
+      setMsg(`已记入观察 ${d.stock_code}: ${d.shares} 股 @ ${d.entry_price}（估算费 ${d.fee}）`);
       setStockCode("");
       setAmount("");
       setNote("");
@@ -251,7 +251,7 @@ function AddPositionCard() {
   };
 
   return (
-    <Card title="手动入池">
+    <Card title="手动记入观察">
       <div className="form-row">
         <label>
           股票代码
@@ -288,7 +288,7 @@ function AddPositionCard() {
           <input value={note} onChange={(e) => setNote(e.target.value)} disabled={busy} />
         </label>
         <button className="btn btn-primary" onClick={submit} disabled={busy}>
-          {busy ? "提交中…" : "入池"}
+          {busy ? "提交中…" : "记入观察"}
         </button>
       </div>
       {err && <div className="state-error-inline">{err}</div>}
@@ -317,7 +317,7 @@ function MarkButton() {
     <div className="mark-ctl">
       {msg && <span className="mark-msg">{msg}</span>}
       <button className="btn btn-primary" onClick={doMark} disabled={busy}>
-        {busy ? "更新中…" : "更新数据"}
+        {busy ? "估值中…" : "手动估值"}
       </button>
     </div>
   );
@@ -327,7 +327,10 @@ export function PaperPage() {
   return (
     <div className="page">
       <div className="page-head">
-        <h1>实盘模拟</h1>
+        <div>
+          <h1>手工观察账本</h1>
+          <p className="state-hint">NONCONFORMING：qfq-close 近似记账，不是订单/成交模拟或策略发布证据。</p>
+        </div>
         <MarkButton />
       </div>
       <OverviewCard />

@@ -1,6 +1,8 @@
 # 市场感知 (Market Pulse) — Follow the Money 架构设计 v1 (2026-07-02)
 
-> owner: 主会话。状态: **B4 引擎已实现** (2026-07-02, services/market_pulse.py + 13 单测绿; 全量 rebuild 待回填锁释放后跑); C4 前端页未建。
+> 生命周期：历史设计与实测证据（evidence-only）。现行市场感知边界由 `docs/MASTER_TOPLEVEL_DESIGN.md` 和 `docs/strategy_validation_contract.md` 拥有；实现状态与数据水位必须 live 重查。
+
+> 当时状态: **B4 引擎已实现** (2026-07-02, services/market_pulse.py + 13 单测绿; 全量 rebuild 当时待跑); C4 前端页当时未建。
 > 用户定调 (原话锚): "市场感知无非就是看钱在哪里从哪里流出流向哪里…从板块、行业、概念这种**分层后的
 > 资金流向**及其相应的**涨停和跌停家数、涨跌家数**…感知出资金在哪里、从哪流出、流向哪、**哪里资金悄悄
 > 的在流入、哪里悄悄在流出**"。借鉴 @aleabitoreddit sector-rotation 方法论 (11 ETF 周度 RS 排名→top3 关注

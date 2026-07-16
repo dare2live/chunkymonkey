@@ -1,6 +1,7 @@
 """calendar_builder — raw_tushare_trade_cal → reference.dim_trading_calendar 增量传导.
 
-R1 根因 3 修复 (owner=analysis/data_foundation_root_causes_20260703.md):
+R1 根因 3 修复（历史证据: analysis/data_foundation_root_causes_20260703.md；
+现行边界: docs/MASTER_TOPLEVEL_DESIGN.md）:
 dim_trading_calendar 唯一 writer 曾是一次性迁移脚本 migrate_reference_db.py (其源表
 sm.dim_trading_calendar 已在 §9 Stage E 物删 = 破坏性死路径, 已封存); raw 侧 trade_cal 域
 full_refresh 日刷正常 (max=20261231) 但零传导 → 日历 horizon 倒计时 (审计 2026-07-03 时点剩
