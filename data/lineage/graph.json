@@ -2317,6 +2317,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_update_watermark_sla.py",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_data_source_watermark"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_sync_runner_watermark_decouple.py",
       "kind": "consume",
       "src": "table:smartmoney.mart_data_source_watermark"
@@ -3241,6 +3247,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_safe_commit.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin_detail"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_sync_runner_integrity.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_margin_detail"
@@ -3799,9 +3811,9 @@
     }
   ],
   "meta": {
-    "edge_count": 582,
-    "generated_at": "2026-07-16T16:03:25.411251+00:00",
-    "node_count": 259,
+    "edge_count": 584,
+    "generated_at": "2026-07-17T01:34:44.717483+00:00",
+    "node_count": 261,
     "version": 2
   },
   "nodes": [
@@ -4403,6 +4415,22 @@
         "path": "backend/tests/scripts/test_check_grain_uniqueness.py"
       },
       "id": "consumer:backend/tests/scripts/test_check_grain_uniqueness.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/scripts/test_safe_commit.py"
+      },
+      "id": "consumer:backend/tests/scripts/test_safe_commit.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/scripts/test_update_watermark_sla.py"
+      },
+      "id": "consumer:backend/tests/scripts/test_update_watermark_sla.py",
       "kind": "consumer"
     },
     {

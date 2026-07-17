@@ -5,6 +5,7 @@ ChunkyMonkey 交付标准 #1 数据管理: watermark 实填 + sync gap auto-aler
 
 每个 data source 跑 actual max date 跟 watermark.last_data_date 对比:
 - actual > watermark → 自动 update watermark
+- 有 registry 完整性契约时，watermark > verified complete frontier → 显式纠错回落
 - actual - current_date > SLA threshold → alert (log + JSON report)
 - watermark stale > SLA threshold → alert (即使没数据 update)
 
@@ -26,6 +27,7 @@ import argparse
 import json
 import logging
 import sys
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -35,6 +37,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
 from services.duck_adapter import connect as duck_connect
+from services.data_sources.batch_integrity import (  # noqa: E402
+    VerifiedBatchFrontier,
+    latest_complete_batch,
+)
 
 DEFAULT_SMARTMONEY_DB = REPO_ROOT / "data" / "smartmoney.duckdb"
 DEFAULT_MARKET_DB = REPO_ROOT / "data" / "market.duckdb"
@@ -42,6 +48,14 @@ DEFAULT_OUTPUT = REPO_ROOT / "data" / "audit" / "watermark_sla_latest.json"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("watermark_sla")
+
+
+@dataclass(frozen=True)
+class ActualFrontierProbe:
+    actual_date: str | None
+    verified_frontier: VerifiedBatchFrontier | None
+    state: str
+    error: str | None = None
 
 # SLA threshold by source_tier (trading days)
 SLA_DAYS = {1: 1, 2: 2, 3: 3}
@@ -105,6 +119,14 @@ def _sync_registry_queries() -> dict[str, dict]:
                     "query": f'SELECT MAX(CAST("{date_col}" AS VARCHAR)) FROM "{spec["target_table"]}"',
                     "sla_days": spec.get("freshness_sla_trading_days"),
                 }
+                if (
+                    spec.get("batch_completeness")
+                    or int(spec.get("min_rows_per_batch", 0)) > 0
+                ):
+                    out[f"sync:{name}"]["verified_complete_spec"] = {
+                        **spec,
+                        "domain": name,
+                    }
             else:
                 # 季度 (by_ts_code) / 日历 (full_refresh) 无日频新鲜度语义 — 显式标注, 不静默当 OK
                 out[f"sync:{name}"] = {"db": "tushare_raw", "no_probe": f"batch_mode={mode}"}
@@ -113,19 +135,97 @@ def _sync_registry_queries() -> dict[str, dict]:
     return out
 
 
-def _query_actual_max_date(conns: dict, queries: dict, data_domain: str) -> str | None:
+def _query_actual_frontier(
+    conns: dict, queries: dict, data_domain: str
+) -> ActualFrontierProbe:
     spec = queries.get(data_domain)
-    if not spec or spec.get("no_probe"):
-        return None
+    if not spec:
+        return ActualFrontierProbe(None, None, "no_mapping")
+    if spec.get("no_probe"):
+        return ActualFrontierProbe(None, None, "no_probe")
     conn = conns.get(spec["db"])
     if conn is None:
-        return None  # 库不可达 — 调用方按 DB_LOCKED_UNVERIFIED 显式标注
+        return ActualFrontierProbe(None, None, "db_unavailable")
     try:
+        if spec.get("verified_complete_spec"):
+            frontier = latest_complete_batch(conn, spec["verified_complete_spec"])
+            if frontier is None:
+                return ActualFrontierProbe(None, None, "no_complete_batch")
+            return ActualFrontierProbe(frontier.last_date, frontier, "verified")
         r = conn.execute(spec["query"]).fetchone()
-        return r[0] if r and r[0] else None
+        actual = r[0] if r and r[0] else None
+        return ActualFrontierProbe(actual, None, "observed" if actual else "no_data")
     except Exception as e:
         log.warning(f"  query failed for {data_domain}: {e}")
+        return ActualFrontierProbe(None, None, "probe_error", str(e)[:300])
+
+
+def _query_actual_max_date(conns: dict, queries: dict, data_domain: str) -> str | None:
+    return _query_actual_frontier(conns, queries, data_domain).actual_date
+
+
+def _probe_gate(state: str) -> tuple[str | None, bool]:
+    """Map probe evidence to a fail-closed status before reconciliation/SLA checks."""
+    return {
+        "no_mapping": ("NO_QUERY_MAPPING", False),
+        "no_probe": ("NO_PROBE_RULE", False),
+        "db_unavailable": ("DB_LOCKED_UNVERIFIED", False),
+        "no_complete_batch": ("NO_COMPLETE_BATCH", True),
+        "no_data": ("NO_DATA", True),
+        "probe_error": ("PROBE_ERROR", True),
+    }.get(state, (None, False))
+
+
+def _watermark_reconcile_direction(
+    watermark_date: str | None,
+    actual_date: str | None,
+    *,
+    verified_complete: bool,
+) -> str | None:
+    """Forward is always safe; rollback requires an explicit verified frontier."""
+    if not watermark_date or not actual_date:
         return None
+    watermark = str(watermark_date)[:10].replace("-", "")
+    actual = str(actual_date)[:10].replace("-", "")
+    if watermark < actual:
+        return "forward"
+    if watermark > actual and verified_complete:
+        return "rollback"
+    return None
+
+
+def _apply_watermark_reconcile(
+    conn,
+    *,
+    data_domain: str,
+    source_name: str,
+    source_tier: int,
+    actual_date: str,
+    verified_frontier: VerifiedBatchFrontier | None,
+) -> None:
+    if verified_frontier is not None:
+        conn.execute(
+            "UPDATE mart_data_source_watermark "
+            "SET last_data_date = ?, row_count = ?, "
+            "last_success_at = CAST(? AS TIMESTAMP), "
+            "updated_at = CURRENT_TIMESTAMP "
+            "WHERE data_domain = ? AND source_name = ? AND source_tier = ?",
+            [
+                verified_frontier.last_date,
+                verified_frontier.row_count,
+                verified_frontier.last_success_at,
+                data_domain,
+                source_name,
+                source_tier,
+            ],
+        )
+        return
+    conn.execute(
+        "UPDATE mart_data_source_watermark "
+        "SET last_data_date = ?, updated_at = CURRENT_TIMESTAMP "
+        "WHERE data_domain = ? AND source_name = ? AND source_tier = ?",
+        [actual_date, data_domain, source_name, source_tier],
+    )
 
 
 def _days_since(date_str: str | None, today: date) -> int | None:
@@ -179,7 +279,11 @@ def main() -> int:
         for row in watermark_rows:
             data_domain, source_name, source_tier, watermark_date, updated_at = row
 
-            actual_date = _query_actual_max_date(conns, queries, data_domain)
+            probe = _query_actual_frontier(
+                conns, queries, data_domain
+            )
+            actual_date = probe.actual_date
+            verified_frontier = probe.verified_frontier
             actual_days = _days_since(actual_date, today)
             watermark_days = _days_since(watermark_date, today)
             # SLA 优先序: registry per-domain > 季度 override > tier 默认
@@ -188,30 +292,41 @@ def main() -> int:
                    or SLA_DAYS_OVERRIDE.get(data_domain)
                    or SLA_DAYS.get(source_tier, 3))
 
-            status = "OK"
-            alert = False
-            if qspec.get("no_probe"):
-                status = "NO_PROBE_RULE"  # 季度/日历域: 无日频语义, 显式标注非 OK
-            elif not qspec:
-                status = "NO_QUERY_MAPPING"  # 既不在手维护表也不在 registry — 防线缺口可见化
-            elif qspec.get("db") == "tushare_raw" and raw_conn is None:
-                status = "DB_LOCKED_UNVERIFIED"  # 回填期暂态, 不告警但不许伪装 OK
+            probe_status, alert = _probe_gate(probe.state)
+            status = probe_status or "OK"
+            if alert:
+                log.warning(
+                    f"  [ALERT] {data_domain}/{source_name}: probe={probe.state} "
+                    f"error={probe.error or '-'}"
+                )
 
-            # 1. watermark out of date vs actual
-            if actual_date and watermark_date:
-                aw = _days_since(actual_date, today)
-                ww = _days_since(watermark_date, today)
-                if aw is not None and ww is not None and ww > aw:
-                    status = "STALE_WATERMARK"  # auto-fix
-                    if not args.dry_run:
-                        smart_conn.execute(
-                            "UPDATE mart_data_source_watermark "
-                            "SET last_data_date = ?, updated_at = CURRENT_TIMESTAMP "
-                            "WHERE data_domain = ? AND source_name = ?",
-                            [actual_date, data_domain, source_name],
-                        )
-                        n_update += 1
-                        log.info(f"  [UPDATE] {data_domain}/{source_name}: {watermark_date} → {actual_date}")
+            # 1. watermark 与 actual 对账。普通 raw MAX 只允许前推；只有 registry 完整性
+            # 契约算出的 verified frontier 才能证明现水位无效并安全回落。
+            reconcile = _watermark_reconcile_direction(
+                watermark_date,
+                actual_date,
+                verified_complete=verified_frontier is not None,
+            )
+            if reconcile:
+                status = (
+                    "INVALID_WATERMARK_FRONTIER"
+                    if reconcile == "rollback"
+                    else "STALE_WATERMARK"
+                )
+                if not args.dry_run:
+                    _apply_watermark_reconcile(
+                        smart_conn,
+                        data_domain=data_domain,
+                        source_name=source_name,
+                        source_tier=source_tier,
+                        actual_date=str(actual_date),
+                        verified_frontier=verified_frontier,
+                    )
+                    n_update += 1
+                    log.info(
+                        f"  [UPDATE:{reconcile}] {data_domain}/{source_name}: "
+                        f"{watermark_date} → {actual_date}"
+                    )
 
             # 2. actual data stale vs SLA
             if actual_days is not None and actual_days > sla:
@@ -219,12 +334,13 @@ def main() -> int:
                 if actual_days > sla + 3:  # 3 day buffer for weekend
                     status = "DATA_STALE_VS_SLA"
                     alert = True
-                    n_alert += 1
                     log.warning(
                         f"  [ALERT] {data_domain}/{source_name}: actual {actual_date} "
                         f"({actual_days}d ago) > SLA {sla}d (tier {source_tier})"
                     )
 
+            if alert:
+                n_alert += 1
             results.append({
                 "data_domain": data_domain,
                 "source_name": source_name,
@@ -236,6 +352,10 @@ def main() -> int:
                 "sla_days": sla,
                 "status": status,
                 "alert": alert,
+                "verified_complete_frontier": verified_frontier is not None,
+                "watermark_reconcile": reconcile,
+                "probe_state": probe.state,
+                "probe_error": probe.error,
             })
 
         # registry 域 ∪ watermark 行: 从未成功 sync 的注册域没有 watermark 行 →

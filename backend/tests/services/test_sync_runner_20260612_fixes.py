@@ -76,6 +76,10 @@ def test_registry_surgery_contract_20260612():
     assert d["trade_cal"]["freshness_date_column"] == "cal_date"
     assert d["trade_cal"]["fixed_params"] == {"exchange": "SSE"}
     assert d["margin_detail"]["batch_completeness"]["required_groups"] == ["SH", "SZ"]
+    assert d["margin_detail"]["write_mode"] == "replace_partition"
+    assert d["margin_detail"]["partition_by"] == ["trade_date"]
+    assert d["margin"]["write_mode"] == "replace_partition"
+    assert d["margin"]["partition_by"] == ["trade_date"]
     assert "split_by" not in d["margin_detail"]  # API catalog 无 exchange 参数；传入也被 provider 忽略
     assert d["stk_factor_pro"]["sync_policy"] == "on_demand"
     assert "fixed_params" not in d["stk_factor_pro"]

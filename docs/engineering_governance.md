@@ -73,6 +73,8 @@ staged snapshot，再统一使用 `--repo .`；禁止留在主工作树中用绝
 
 Moth PASS 只有在 verifier 自身能红、没有 warning 被 regex 洗成 PASS 时才是证据。业务门仍由项目脚本/配置/表拥有，不能搬进 Moth 重写第二套规则。
 
+代码提交适格与实时数据就绪是两个状态机。`safe_commit.sh` 必须校验 live continuity 的 JSON、扫描面、交易日锚、计数和退出码一致性，并原样报告 `READY / DEGRADED / UNVERIFIED / BLOCKED`；空扫描、skipped、库不可达或 WARN 都不得冒充 READY。verifier 崩溃/坏报告仍阻断提交，但有效的供应商/数据库数据 FAIL 只阻断数据更新、下游消费和发布，不得造成“数据坏了，所以修复代码也无法提交”的死锁。任何非 READY 状态下，提交都不等于 Tier0 就绪；continuity 直接检查、故障队列、ALERT、日更管线以及 doctor 对现存 flag 的读面继续保持非绿，直到真实数据修复并单独复验。
+
 复杂度扫描是线索，不是判决。只有在真实数据规模、调用路径和最小复现证明后才修改性能热点。
 
 ## 5. 测试工具有效性

@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-17 00:02
+> Snapshot: 2026-07-17 09:31
 
 ## 1. 入口面
 
@@ -149,7 +149,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 3,805 | calls 边 4,109 | imports 边 728 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 3,880 | calls 边 4,280 | imports 边 745 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -158,8 +158,9 @@
 | services.duck_adapter | 29 |
 | services.data_sources | 15 |
 | services.database_manifest | 12 |
-| services.source_watermarks | 10 |
+| services.source_watermarks | 11 |
 | services.db | 8 |
+| services.data_sources.batch_integrity | 5 |
 | services.lineage.model | 5 |
 | services.writer_lock | 5 |
 | services.data_sources.sources.tushare | 4 |
@@ -169,7 +170,6 @@
 | services.universe | 4 |
 | scripts.check_doc_governance | 3 |
 | services.calendar | 3 |
-| services.taxonomy_config | 3 |
 
 ### 跨文件 fan-in 最高的文件 (近似口径: 唯一定义名 + caller 实际 import 目标模块双过滤)
 
@@ -177,8 +177,9 @@
 |---|---|
 | backend/services/duck_adapter.py | 26 |
 | backend/services/database_manifest.py | 11 |
-| backend/services/source_watermarks.py | 10 |
+| backend/services/source_watermarks.py | 11 |
 | backend/services/pipeline/context.py | 7 |
+| backend/services/data_sources/batch_integrity.py | 4 |
 | backend/services/lineage/model.py | 4 |
 | backend/services/pipeline_manifest.py | 4 |
 | frontend/src/components/Card.tsx | 4 |
@@ -186,15 +187,14 @@
 | frontend/src/hooks/useFetch.ts | 4 |
 | backend/services/data_access/keys.py | 3 |
 | backend/services/notification/base.py | 3 |
-| backend/services/taxonomy_config.py | 3 |
 
 ### LOC top 10 (God module 候选)
 
 | 文件 | 行数 |
 |---|---|
-| backend/services/data_sources/sync_runner.py | 1797 |
+| backend/services/data_sources/sync_runner.py | 1855 |
 | backend/services/market_pulse.py | 1473 |
-| backend/scripts/check_continuity_integrity.py | 744 |
+| backend/scripts/check_continuity_integrity.py | 808 |
 | backend/scripts/data_health_snapshot.py | 731 |
 | backend/routers/market_pulse.py | 624 |
 | backend/services/schema_migrations.py | 561 |

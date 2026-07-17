@@ -1,7 +1,7 @@
 # PROJECT_INDEX — Current Project Map
 
 > 状态：live navigation，非规则 owner
-> 更新：2026-07-16
+> 更新：2026-07-17
 > 当前目标看 `goal.md`；架构看 `docs/MASTER_TOPLEVEL_DESIGN.md`；机器入口与 writer 清单看 `FEATURE_MAP.md` 和 CodeGraph。
 
 ## 1. Authority
@@ -20,7 +20,7 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | 数据与适配资产丰富；landing/canonical/accepted-state 边界待重建 |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | legacy raw 发布已具 batch 完整性与事务回滚；landing/canonical/accepted-state 边界待 Phase 1 重建 |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
 | T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 当前展示可用；分类解释、measurement、regime 和 persistence 耦合，暂不可直接做 PIT 特征 |
@@ -57,6 +57,7 @@ AGENTS.md
 | CodeGraph refresh | `codegraph sync .` |
 | Doc governance | `PYTHONPATH=backend python backend/scripts/check_doc_governance.py` |
 | Doc drift | `PYTHONPATH=backend python backend/scripts/check_doc_drift.py --check` |
+| Live continuity | `PYTHONPATH=backend python backend/scripts/check_continuity_integrity.py` (`FAIL` 直接非零) |
 | Local reviewed commit | `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "<message>"` |
 
 已移除的 ChunkyCtl 子命令不是工作流，调用必须返回非零；不要在活文档或生成地图中把任何 retired lifecycle 重新列为 active。
@@ -65,7 +66,7 @@ AGENTS.md
 
 | Priority | Defect | Consequence |
 |---:|---|---|
-| P0 | Provider rows filtered before landing; target/outcome state not atomic | Raw truth and run truth can diverge |
+| P0 | Provider rows still lack durable verbatim landing and accepted-partition facts | Legacy raw transaction can roll back, but source response, rejection and accepted truth remain conflated |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
 | P1 | Live DC snapshot/pulse tables predate namespace fix until manual rebuild | Code contract is fixed but stored rows still need controlled reconciliation |
@@ -75,6 +76,10 @@ AGENTS.md
 | P1 | Docs/CLI gates previously treated retired/warn as PASS | Tooling green did not prove executable reality |
 
 The current migration and blockers are maintained only in `goal.md`.
+
+`safe_commit.sh` separately reports live continuity as `READY / DEGRADED / UNVERIFIED / BLOCKED`.
+Only verifier/report contradictions block a repair commit; every non-READY state still blocks Tier0
+consumption/release and must be closed by a separate continuity rerun.
 
 ## 6. Target package boundaries
 

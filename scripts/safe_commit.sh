@@ -252,22 +252,154 @@ else
     exit 5
 fi
 
-# Step 3.99: continuity-integrity gate (2026-07-06 全面数据审计根因根治 —
+# Step 3.99: continuity-integrity evidence (2026-07-06 全面数据审计根因根治 —
 #   check_continuity_integrity.py 自 07-05 加入起就一直未接入 safe_commit/CI, 审计当场抓到
 #   这正是"新增治理脚本未同批注册"模式在本 session 活生生重演; 非 strict 默认库不可达优雅
-#   跳过不阻塞 commit, 只有真 FAIL[calendar_gaps/cross_section/group_freshness/
-#   declared_vs_actual/static_staleness]才 abort)
+#   跳过。2026-07-17 分离 code fitness 与 mutable data readiness：provider/DB 的 live FAIL
+#   必须原样曝光并继续阻断 daily pipeline/消费 readiness，但不能让修复该故障的代码也无法提交。
+#   静态 verifier/测试本身仍由前述 exact-index gates + Rule 10 阻断。
 echo
-echo "=== Step 3.99: continuity-integrity gate (数据连续性常驻审查) ==="
-if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_continuity_integrity.py" > /tmp/cm_continuity.out 2>&1; then
-    tail -1 /tmp/cm_continuity.out
-else
-    echo
-    echo "ERROR: continuity-integrity 门红 — 某域出现日历缺口/横截面骤降/分组断流/声明-实测漂移/静态域断流:"
-    grep -E "^\[fail\]" /tmp/cm_continuity.out | head -20
-    echo "正解: 核实是真数据缺口(重拉补) 还是 registry 声明漂移(改 data_start/加 known_empty_days)。误报修脚本本身, 不 --no-verify 绕。"
+echo "=== Step 3.99: continuity-integrity evidence (live data readiness) ==="
+CONTINUITY_JSON="$STAGED_INDEX_DIR/.continuity.json"
+CONTINUITY_ERR="$STAGED_INDEX_DIR/.continuity.err"
+set +e
+PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_continuity_integrity.py" \
+    --json > "$CONTINUITY_JSON" 2> "$CONTINUITY_ERR"
+continuity_rc=$?
+set -e
+
+# A live data FAIL may coexist with code fitness, but the verifier itself must be trustworthy:
+# parseable JSON, coherent counts/overall, and an exit code that agrees with the report.
+if ! continuity_state=$("$PY" - "$CONTINUITY_JSON" "$continuity_rc" <<'PY'
+import json
+import sys
+from collections import Counter
+
+path, raw_rc = sys.argv[1], sys.argv[2]
+try:
+    with open(path, encoding="utf-8") as handle:
+        payload = json.load(handle)
+    overall = payload["overall"]
+    latest_expected = payload["latest_expected"]
+    checks = payload["checks"]
+    counts = payload["summary"]["counts"]
+    if not isinstance(payload, dict) or overall not in {"PASS", "WARN", "FAIL"}:
+        raise ValueError("invalid overall/checks")
+    if not isinstance(checks, list) or not isinstance(counts, dict):
+        raise ValueError("invalid checks/counts")
+    if not isinstance(latest_expected, str) or len(latest_expected) != 8 or not latest_expected.isdigit():
+        raise ValueError(f"invalid latest_expected={latest_expected!r}")
+    if not checks:
+        raise ValueError("empty checks cannot establish readiness")
+
+    actual = Counter()
+    for index, row in enumerate(checks):
+        if not isinstance(row, dict):
+            raise ValueError(f"check[{index}] is not an object")
+        status = row.get("status")
+        for field in ("check", "domain", "table", "detail"):
+            if not isinstance(row.get(field), str):
+                raise ValueError(f"check[{index}] missing string {field}")
+        category = (
+            "fail" if isinstance(status, str) and status.startswith("fail")
+            else "warn" if isinstance(status, str) and status.startswith("warn")
+            else "pass" if status == "pass"
+            else "db_unreachable" if status == "db_unreachable"
+            else "skipped" if isinstance(status, str) and status.startswith("skipped")
+            else None
+        )
+        if category is None:
+            raise ValueError(f"check[{index}] invalid status={status!r}")
+        actual[category] += 1
+
+    allowed_categories = {"pass", "warn", "fail", "skipped", "db_unreachable"}
+    unknown_categories = set(counts) - allowed_categories
+    if unknown_categories:
+        raise ValueError(f"unknown count categories={sorted(unknown_categories)}")
+    declared = {}
+    for category in sorted(allowed_categories):
+        value = counts.get(category, 0)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"invalid count {category}={value!r}")
+        declared[category] = value
+        if value != actual[category]:
+            raise ValueError(
+                f"summary/check mismatch {category}: declared={value} actual={actual[category]}"
+            )
+    fail_count = declared["fail"]
+    warn_count = declared["warn"]
+    skipped_count = declared["skipped"]
+    db_unreachable = declared["db_unreachable"]
+    expected_overall = "FAIL" if fail_count else "WARN" if warn_count else "PASS"
+    if overall != expected_overall:
+        raise ValueError(f"overall/count mismatch: {overall} vs {expected_overall}")
+    expected_rc = 1 if overall == "FAIL" else 0
+    if int(raw_rc) != expected_rc:
+        raise ValueError(f"exit/report mismatch: rc={raw_rc} overall={overall}")
+except Exception as exc:
+    print(f"invalid:{type(exc).__name__}:{exc}", file=sys.stderr)
+    raise SystemExit(1)
+
+if overall == "FAIL":
+    state = "BLOCKED"
+elif db_unreachable or skipped_count:
+    state = "UNVERIFIED"
+elif overall == "WARN":
+    state = "DEGRADED"
+else:
+    state = "READY"
+print(
+    f"{state}|{overall}|{declared['pass']}|{fail_count}|{warn_count}|"
+    f"{skipped_count}|{db_unreachable}"
+)
+PY
+); then
+    echo "CONTINUITY VERIFIER ERROR — malformed/missing report or exit/report contradiction."
+    cat "$CONTINUITY_ERR" 2>/dev/null || true
+    head -20 "$CONTINUITY_JSON" 2>/dev/null || true
     exit 5
 fi
+
+IFS='|' read -r continuity_class continuity_overall continuity_pass continuity_fail \
+    continuity_warn continuity_skipped continuity_db <<< "$continuity_state"
+echo "continuity-integrity: overall=$continuity_overall pass=$continuity_pass fail=$continuity_fail warn=$continuity_warn skipped=$continuity_skipped db_unreachable=$continuity_db"
+
+print_continuity_nonpass() {
+    "$PY" - "$CONTINUITY_JSON" <<'PY'
+import json
+import sys
+
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+for item in [row for row in payload["checks"] if row["status"] != "pass"][:20]:
+    print(f"[{item['status']}] {item['check']} {item['domain']} {item['table']}: {item['detail']}")
+PY
+}
+
+case "$continuity_class" in
+    BLOCKED )
+        echo "LIVE DATA READINESS: BLOCKED — non-blocking for code commit"
+        print_continuity_nonpass
+        echo "code commit continues; COMMIT ALLOWED != TIER0 DATA READY."
+        echo "修复/重拉后须单独重跑 continuity；禁止调阈值、墓碑或伪数据洗绿。"
+        ;;
+    UNVERIFIED )
+        echo "LIVE DATA READINESS: UNVERIFIED — skipped/DB-unreachable checks prevent a readiness claim."
+        print_continuity_nonpass
+        echo "COMMIT ALLOWED != TIER0 DATA READY."
+        ;;
+    DEGRADED )
+        echo "LIVE DATA READINESS: DEGRADED — continuity warnings remain."
+        print_continuity_nonpass
+        echo "COMMIT ALLOWED != TIER0 DATA READY."
+        ;;
+    READY )
+        echo "LIVE DATA READINESS: READY"
+        ;;
+    * )
+        echo "CONTINUITY VERIFIER ERROR — unknown classification: $continuity_state"
+        exit 5
+        ;;
+esac
 
 # Step 3.991/992: 2026-07-06 全面数据审计根因根治 — 治理脚本覆盖率盲区之二: 18 个
 # check_*.py 里 5 个此前完全未接入任何机制(safe_commit/CI/git hooks 都没有)。逐个实测:

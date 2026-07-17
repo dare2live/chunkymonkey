@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import importlib.util
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -116,6 +117,88 @@ def test_calendar_gaps_iso_stored_dates_normalized():
         _mktable(c, {d: 2 for d in tds}, iso=True)
         r = cci.check_calendar_gaps(c, _mkspec(), tds, tds[-1])
         assert r["status"] == "pass"
+    finally:
+        c.close()
+
+
+def test_calendar_gaps_treats_incomplete_required_groups_as_missing():
+    """日期虽存在但缺必需市场仍是缺口，不能被 DISTINCT(date) 洗白。"""
+    tds = _weekdays("20260601", 10)
+    partial = tds[5]
+    c = duck_mem()
+    try:
+        c.execute("CREATE TABLE t (ts_code TEXT, trade_date TEXT, built_at TEXT)")
+        rows = []
+        for day in tds:
+            rows.append(("600000.SH", day, "2026-06-30T00:00:00+00:00"))
+            if day != partial:
+                rows.append(("000001.SZ", day, "2026-06-30T00:00:00+00:00"))
+        c.executemany("INSERT INTO t VALUES (?, ?, ?)", rows)
+        spec = _mkspec(
+            data_start=tds[0],
+            min_rows_per_batch=2,
+            min_rows_since="",
+            min_rows_before=1,
+            batch_completeness={
+                "group_from": {"column": "ts_code", "transform": "exchange_suffix"},
+                "required_groups": ["SH", "SZ"],
+            },
+        )
+
+        result = cci.check_calendar_gaps(c, spec, tds, tds[-1])
+
+        assert result["status"] == "fail_interior_gaps"
+        assert partial in result["detail"]
+    finally:
+        c.close()
+
+
+def test_calendar_gaps_treats_below_min_rows_day_as_missing_without_group_contract():
+    """仅声明 min_rows 的域也不能让一行截断批被 DISTINCT(date) 洗绿。"""
+    tds = _weekdays("20260601", 10)
+    partial = tds[5]
+    c = duck_mem()
+    try:
+        _mktable(c, {day: (1 if day == partial else 3) for day in tds})
+        spec = _mkspec(
+            data_start=tds[0],
+            min_rows_per_batch=3,
+            min_rows_since="",
+            min_rows_before=1,
+            batch_completeness={},
+        )
+
+        result = cci.check_calendar_gaps(c, spec, tds, tds[-1])
+
+        assert result["status"] == "fail_interior_gaps"
+        assert partial in result["detail"]
+    finally:
+        c.close()
+
+
+def test_calendar_gaps_applies_same_universe_filter_as_write_path():
+    """被写前门排除的 BJ/ETF residue 不能帮助连续性门跨过 min_rows。"""
+    day = "20260601"
+    c = duck_mem()
+    try:
+        c.execute("CREATE TABLE t (ts_code TEXT, trade_date TEXT)")
+        c.executemany(
+            "INSERT INTO t VALUES (?, ?)",
+            [("600000.SH", day), ("000001.SZ", day), ("830001.BJ", day)],
+        )
+        spec = _mkspec(
+            data_start=day,
+            min_rows_per_batch=3,
+            min_rows_since="",
+            min_rows_before=1,
+            batch_completeness={},
+            universe_filter=True,
+            sla=0,
+        )
+
+        result = cci.check_calendar_gaps(c, spec, [day], day)
+
+        assert result["status"] == "fail_stale_tail"
     finally:
         c.close()
 
@@ -418,7 +501,10 @@ def test_load_domain_specs_new_keys_and_bad_gap_tolerance(tmp_path):
         "domains:\n"
         "  a:\n    target_table: t_a\n    grain: [x]\n    batch_mode: by_trade_date\n"
         "    data_start: '20240101'\n    freshness_sla_trading_days: 2\n"
+        "    available_after: '09:20'\n"
         "    gap_tolerance: annotate\n    known_empty_days: ['20240312']\n"
+        "    min_rows_per_batch: 3\n    universe_filter: true\n"
+        "    universe_filter_col: ts_code\n    universe_filter_prefixes: ['60', '00']\n"
         "  b:\n    target_table: t_b\n    grain: [trade_date, data_type]\n"
         "    batch_mode: by_trade_date\n    data_start: '20240101'\n"
         "    freshness_sla_trading_days: 2\n"
@@ -430,6 +516,10 @@ def test_load_domain_specs_new_keys_and_bad_gap_tolerance(tmp_path):
     assert a["gap_tolerance"] == "annotate" and a["known_empty_days"] == {"20240312"}
     assert a["data_start_reviewed"] is False   # 缺省 false
     assert a["row_dip_tolerance"] is False     # 缺省 false, 且不从 gap_tolerance 继承
+    assert a["min_rows_per_batch"] == 3 and a["universe_filter"] is True
+    assert a["universe_filter_col"] == "ts_code"
+    assert a["universe_filter_prefixes"] == ["60", "00"]
+    assert a["available_after"] == "09:20"
     b = next(s for s in specs if s["domain"] == "b")
     assert b["freshness_group_col"] == "data_type" and b["dead_groups"] == ["热基"]
     assert b["data_start_reviewed"] is True
@@ -474,6 +564,74 @@ def test_run_checks_only_filter_and_unreachable_strict():
 
     results, _ = cci.run_checks([_mkspec()], _fresh, tds, tds[-1], only="calendar_gaps")
     assert {r["check"] for r in results} == {"calendar_gaps"}
+
+
+def test_run_checks_uses_each_domains_available_after_frontier():
+    """同一时刻早发布域应查今日，t+1 域仍只查前一交易日。"""
+    tds = ["20260715", "20260716"]
+
+    def _conn_with_only_yesterday(_alias):
+        c = duck_mem()
+        _mktable(c, {"20260715": 3})
+        return c
+
+    now = datetime(2026, 7, 16, 9, 21, tzinfo=ZoneInfo("Asia/Shanghai"))
+    published = _mkspec(
+        available_after="09:20",
+        data_start=tds[0],
+        sla=0,
+    )
+    pending = _mkspec(
+        domain="t_plus_one",
+        available_after="t+1",
+        data_start=tds[0],
+        sla=0,
+    )
+
+    published_results, _ = cci.run_checks(
+        [published],
+        _conn_with_only_yesterday,
+        tds,
+        tds[0],
+        only="calendar_gaps",
+        domain="dom",
+        now=now,
+    )
+    pending_results, _ = cci.run_checks(
+        [pending],
+        _conn_with_only_yesterday,
+        tds,
+        tds[0],
+        only="calendar_gaps",
+        domain="t_plus_one",
+        now=now,
+    )
+
+    assert published_results[0]["status"] == "fail_stale_tail"
+    assert pending_results[0]["status"] == "pass"
+
+
+def test_run_checks_skips_when_domain_has_no_eligible_partition_yet():
+    """首个交易日尚未到域可用时点时，没有前一分区可查，不能回退全局 frontier 误报。"""
+    day = "20260716"
+
+    def _empty_table(_alias):
+        c = duck_mem()
+        _mktable(c, {})
+        return c
+
+    results, failures = cci.run_checks(
+        [_mkspec(available_after="t+1", data_start=day, sla=0)],
+        _empty_table,
+        [day],
+        day,
+        only="calendar_gaps",
+        domain="dom",
+        now=datetime(2026, 7, 16, 12, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+
+    assert not failures
+    assert results[0]["status"] == "skipped_not_yet_eligible"
 
 
 def test_overall_status_and_alert_flag_write_selfheal(tmp_path):

@@ -178,6 +178,8 @@ domains:
     universe_filter: true            # 实测单日 4372 行含 ETF (510050 等) → 白名单 60/00/30/68 滤成纯个股
     grain: [ts_code, trade_date]
     batch_mode: by_trade_date
+    write_mode: replace_partition    # 完整性门通过后整日替换，清除上游已撤销/旧 partial grain
+    partition_by: [trade_date]
     pit_anchor: "trade_date; 交易所 t+1 上午9点前披露 t 日余额 -> t+1 日盘前可用, 特征 JOIN t-1"
     available_after: "t+1"
     data_start: "20190102"        # 对齐 K线窗口 (源头 20100331 有, 消费方=D2 特征只需 K线窗内; 实测首日 949 个股)
@@ -203,6 +205,8 @@ domains:
     target_table: raw_tushare_margin
     grain: [trade_date, exchange_id]
     batch_mode: by_trade_date
+    write_mode: replace_partition    # 多市场逻辑批完整后整日原子替换，禁止旧分片残留
+    partition_by: [trade_date]
     split_by:
       param: exchange_id
       values: [SSE, SZSE, BSE]

@@ -187,11 +187,22 @@ def test_run_domain_records_incomplete_batch_without_advancing_watermark(monkeyp
     assert old == 20.0
 
 
-def test_non_conversion_insert_failure_rolls_back_delete_and_unregisters_view():
-    """任意 INSERT 故障都必须保住被替换旧行，并清理临时 DataFrame view。"""
+@pytest.mark.parametrize(
+    "write_config",
+    [{}, {"write_mode": "replace_partition", "partition_by": ["day"]}],
+)
+def test_non_conversion_insert_failure_rolls_back_delete_and_unregisters_view(
+    write_config,
+):
+    """grain/整分区 DELETE 后的 INSERT 故障都必须回滚并清理临时 view。"""
     inner = connect(":memory:")
-    inner.execute("CREATE TABLE raw_atomic (k VARCHAR, v INTEGER, built_at VARCHAR)")
-    inner.execute("INSERT INTO raw_atomic VALUES ('same', 1, 'old')")
+    inner.execute(
+        "CREATE TABLE raw_atomic (day VARCHAR, k VARCHAR, v INTEGER, built_at VARCHAR)"
+    )
+    inner.executemany(
+        "INSERT INTO raw_atomic VALUES (?, ?, ?, 'old')",
+        [("20260714", "same", 1), ("20260714", "sibling", 2), ("20260711", "keep", 3)],
+    )
 
     class _FailInsert:
         _con = inner._con
@@ -201,14 +212,113 @@ def test_non_conversion_insert_failure_rolls_back_delete_and_unregisters_view():
                 raise RuntimeError("simulated disk write failure")
             return inner.execute(sql, params)
 
-    spec = {"domain": "atomic", "target_table": "raw_atomic", "grain": ["k"]}
+    spec = {
+        "domain": "atomic",
+        "target_table": "raw_atomic",
+        "grain": ["day", "k"],
+        **write_config,
+    }
     with pytest.raises(RuntimeError, match="simulated disk write failure"):
-        sr._write_batch(_FailInsert(), spec, [{"k": "same", "v": 2}])
+        sr._write_batch(
+            _FailInsert(),
+            spec,
+            [{"day": "20260714", "k": "same", "v": 9}],
+        )
 
-    row = inner.execute("SELECT k, v, built_at FROM raw_atomic").fetchone()
-    assert tuple(row) == ("same", 1, "old")
+    rows = inner.execute(
+        "SELECT day, k, v, built_at FROM raw_atomic ORDER BY day, k"
+    ).fetchall()
+    assert [tuple(row) for row in rows] == [
+        ("20260711", "keep", 3, "old"),
+        ("20260714", "same", 1, "old"),
+        ("20260714", "sibling", 2, "old"),
+    ]
     with pytest.raises(Exception):
         inner.execute("SELECT * FROM df").fetchall()
+
+
+def test_first_publish_insert_failure_leaves_no_empty_target_table():
+    """首批 CREATE 与 INSERT 必须同事务；写失败不能留下会被误认成已发布的空表。"""
+    inner = connect(":memory:")
+
+    class _FailFirstInsert:
+        _con = inner._con
+
+        def execute(self, sql, params=None):
+            if str(sql).lstrip().upper().startswith("INSERT INTO RAW_FIRST_PUBLISH"):
+                raise RuntimeError("simulated first publish failure")
+            return inner.execute(sql, params)
+
+    with pytest.raises(RuntimeError, match="simulated first publish failure"):
+        sr._write_batch(
+            _FailFirstInsert(),
+            {
+                "domain": "first_publish",
+                "target_table": "raw_first_publish",
+                "grain": ["day", "key"],
+            },
+            [{"day": "20260716", "key": "x", "value": 1}],
+        )
+
+    exists = inner.execute(
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_name='raw_first_publish'"
+    ).fetchone()[0]
+    assert exists == 0
+
+
+def test_conversion_retry_failure_rolls_back_schema_and_old_rows():
+    """真实 Conversion 后的第二次 INSERT 再失败，类型加宽和数据替换必须一起回滚。"""
+    inner = connect(":memory:")
+    inner.execute("CREATE TABLE raw_widen_atomic (k VARCHAR, value INTEGER)")
+    inner.execute("INSERT INTO raw_widen_atomic VALUES ('old', 7)")
+
+    class _FailRetryInsert:
+        _con = inner._con
+        insert_calls = 0
+
+        def execute(self, sql, params=None):
+            if str(sql).lstrip().upper().startswith("INSERT INTO RAW_WIDEN_ATOMIC"):
+                self.insert_calls += 1
+                if self.insert_calls == 2:
+                    raise RuntimeError("simulated retry insert failure")
+            return inner.execute(sql, params)
+
+    wrapped = _FailRetryInsert()
+    with pytest.raises(RuntimeError, match="simulated retry insert failure"):
+        sr._write_batch(
+            wrapped,
+            {
+                "domain": "widen_atomic",
+                "target_table": "raw_widen_atomic",
+                "grain": ["k"],
+            },
+            [{"k": "new", "value": 16_472_341_619.53}],
+        )
+
+    assert [tuple(row) for row in inner.execute(
+        "SELECT k, value FROM raw_widen_atomic ORDER BY k"
+    ).fetchall()] == [("old", 7)]
+    assert inner.execute(
+        "SELECT data_type FROM information_schema.columns "
+        "WHERE table_name='raw_widen_atomic' AND column_name='value'"
+    ).fetchone()[0] == "INTEGER"
+    with pytest.raises(Exception):
+        inner.execute("SELECT * FROM df").fetchall()
+
+
+def test_provider_payload_missing_grain_is_rejected_before_any_table_mutation():
+    conn = connect(":memory:")
+    with pytest.raises(ValueError, match="api 返回缺 grain 列.*ts_code"):
+        sr._write_batch(
+            conn,
+            _margin_spec(target_table="raw_missing_grain"),
+            [{"trade_date": "20260716", "rzye": 1}],
+        )
+    assert conn.execute(
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_name='raw_missing_grain'"
+    ).fetchone()[0] == 0
 
 
 def test_replace_snapshot_removes_rows_absent_from_new_full_refresh():
@@ -237,6 +347,187 @@ def test_replace_snapshot_removes_rows_absent_from_new_full_refresh():
     assert [tuple(r) for r in conn.execute(
         "SELECT exchange, cal_date, is_open FROM raw_calendar"
     ).fetchall()] == [("SSE", "20260715", 0)]
+
+
+def test_replace_partition_removes_stale_grains_without_touching_other_days():
+    """完整日重拉应替换整个日期分区，不能留下新批已撤销的旧 grain。"""
+    conn = connect(":memory:")
+    conn.execute(
+        "CREATE TABLE raw_partition "
+        "(trade_date VARCHAR, exchange_id VARCHAR, value INTEGER, built_at VARCHAR)"
+    )
+    conn.executemany(
+        "INSERT INTO raw_partition VALUES (?, ?, ?, 'old')",
+        [
+            ("20260714", "SSE", 1),
+            ("20260714", "SZSE", 1),
+            ("20260714", "BSE", 1),
+            ("20260714", "STALE", 1),
+            ("20260711", "KEEP", 7),
+        ],
+    )
+    spec = {
+        "domain": "partition_probe",
+        "target_table": "raw_partition",
+        "grain": ["trade_date", "exchange_id"],
+        "write_mode": "replace_partition",
+        "partition_by": ["trade_date"],
+        "min_rows_per_batch": 3,
+        "batch_completeness": {
+            "group_from": {"column": "exchange_id", "transform": "identity"},
+            "required_groups": ["SSE", "SZSE", "BSE"],
+        },
+    }
+
+    sr._write_batch(
+        conn,
+        spec,
+        [
+            {"trade_date": "20260714", "exchange_id": "SSE", "value": 2},
+            {"trade_date": "20260714", "exchange_id": "SZSE", "value": 2},
+            {"trade_date": "20260714", "exchange_id": "BSE", "value": 2},
+        ],
+    )
+
+    rows = conn.execute(
+        "SELECT trade_date, exchange_id, value FROM raw_partition "
+        "ORDER BY trade_date, exchange_id"
+    ).fetchall()
+    assert [tuple(row) for row in rows] == [
+        ("20260711", "KEEP", 7),
+        ("20260714", "BSE", 2),
+        ("20260714", "SSE", 2),
+        ("20260714", "SZSE", 2),
+    ]
+
+
+def test_replace_partition_rejects_multi_partition_batch_without_touching_old_rows():
+    """不同日期不能合并凑齐门槛后把两个完整旧分区同时写成半批。"""
+    conn = connect(":memory:")
+    conn.execute(
+        "CREATE TABLE raw_partition "
+        "(trade_date VARCHAR, exchange_id VARCHAR, value INTEGER, built_at VARCHAR)"
+    )
+    conn.executemany(
+        "INSERT INTO raw_partition VALUES (?, ?, 1, 'old')",
+        [
+            ("20260711", "SSE"),
+            ("20260711", "SZSE"),
+            ("20260714", "SSE"),
+            ("20260714", "SZSE"),
+        ],
+    )
+    spec = {
+        "domain": "partition_probe",
+        "target_table": "raw_partition",
+        "grain": ["trade_date", "exchange_id"],
+        "write_mode": "replace_partition",
+        "partition_by": ["trade_date"],
+        "min_rows_per_batch": 2,
+        "batch_completeness": {
+            "group_from": {"column": "exchange_id", "transform": "identity"},
+            "required_groups": ["SSE", "SZSE"],
+        },
+    }
+
+    with pytest.raises(sr.BatchCompletenessError, match="exactly one partition"):
+        sr._write_batch(
+            conn,
+            spec,
+            [
+                {"trade_date": "20260711", "exchange_id": "SSE", "value": 9},
+                {"trade_date": "20260714", "exchange_id": "SZSE", "value": 9},
+            ],
+        )
+
+    rows = conn.execute(
+        "SELECT trade_date, exchange_id, value, built_at FROM raw_partition "
+        "ORDER BY trade_date, exchange_id"
+    ).fetchall()
+    assert [tuple(row) for row in rows] == [
+        ("20260711", "SSE", 1, "old"),
+        ("20260711", "SZSE", 1, "old"),
+        ("20260714", "SSE", 1, "old"),
+        ("20260714", "SZSE", 1, "old"),
+    ]
+
+
+@pytest.mark.parametrize("payload_date", [None, "20230210"])
+def test_write_batch_rejects_response_partition_different_from_request(payload_date):
+    """请求日是写授权边界；NULL/错日响应都不能删错分区或绕过条件组门。"""
+    conn = connect(":memory:")
+    conn.execute(
+        "CREATE TABLE raw_partition "
+        "(trade_date VARCHAR, exchange_id VARCHAR, value INTEGER, built_at VARCHAR)"
+    )
+    conn.executemany(
+        "INSERT INTO raw_partition VALUES ('20260714', ?, 1, 'old')",
+        [("SSE",), ("SZSE",), ("BSE",)],
+    )
+    spec = {
+        "domain": "partition_probe",
+        "target_table": "raw_partition",
+        "grain": ["trade_date", "exchange_id"],
+        "write_mode": "replace_partition",
+        "partition_by": ["trade_date"],
+        "date_param": "trade_date",
+        "min_rows_per_batch": 2,
+        "batch_completeness": {
+            "group_from": {"column": "exchange_id", "transform": "identity"},
+            "required_groups": ["SSE", "SZSE"],
+            "required_groups_since": {"BSE": "20230213"},
+        },
+    }
+
+    with pytest.raises(sr.BatchCompletenessError, match="requested partition"):
+        sr._write_batch(
+            conn,
+            spec,
+            [
+                {"trade_date": payload_date, "exchange_id": "SSE", "value": 9},
+                {"trade_date": payload_date, "exchange_id": "SZSE", "value": 9},
+            ],
+            expected_partition={"trade_date": "20260714"},
+        )
+
+    rows = conn.execute(
+        "SELECT exchange_id, value, built_at FROM raw_partition ORDER BY exchange_id"
+    ).fetchall()
+    assert [tuple(row) for row in rows] == [
+        ("BSE", 1, "old"),
+        ("SSE", 1, "old"),
+        ("SZSE", 1, "old"),
+    ]
+
+
+def test_unknown_write_mode_is_rejected_instead_of_silent_merge():
+    conn = connect(":memory:")
+    conn.execute(
+        "CREATE TABLE raw_partition "
+        "(trade_date VARCHAR, exchange_id VARCHAR, value INTEGER, built_at VARCHAR)"
+    )
+    conn.executemany(
+        "INSERT INTO raw_partition VALUES ('20260714', ?, 1, 'old')",
+        [("SSE",), ("STALE",)],
+    )
+    spec = {
+        "domain": "partition_probe",
+        "target_table": "raw_partition",
+        "grain": ["trade_date", "exchange_id"],
+        "write_mode": "replace_partiton",
+        "partition_by": ["trade_date"],
+    }
+
+    with pytest.raises(ValueError, match="unsupported write_mode"):
+        sr._write_batch(
+            conn,
+            spec,
+            [{"trade_date": "20260714", "exchange_id": "SSE", "value": 9}],
+        )
+
+    assert [tuple(row) for row in conn.execute(
+        "SELECT exchange_id, value, built_at FROM raw_partition ORDER BY exchange_id"
+    ).fetchall()] == [("SSE", 1, "old"), ("STALE", 1, "old")]
 
 
 def test_by_ts_code_explicit_window_is_applied_to_every_stock(monkeypatch):
@@ -279,6 +570,30 @@ def test_all_due_skips_on_demand_domains(monkeypatch):
 
     assert sr.main() == 0
     assert calls == ["daily"]
+
+
+def test_all_due_drain_selected_unsupported_domain_exits_nonzero(monkeypatch):
+    reg = {
+        "domains": {
+            "unsupported_daily": {
+                "batch_mode": "by_ts_code",
+                "sync_policy": "manual_only",
+            }
+        }
+    }
+    monkeypatch.setattr(sr, "load_registry", lambda: reg)
+    monkeypatch.setattr(
+        sr,
+        "drain_domain",
+        lambda domain, **kwargs: {
+            "domain": domain,
+            "status": "unsupported",
+            "batch_mode": "by_ts_code",
+        },
+    )
+    monkeypatch.setattr(sys, "argv", ["sync_runner.py", "--all-due", "--drain"])
+
+    assert sr.main() == 1
 
 
 def test_full_refresh_merges_fixed_params_and_uses_freshness_column(monkeypatch):

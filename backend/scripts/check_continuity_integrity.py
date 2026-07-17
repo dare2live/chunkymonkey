@@ -54,6 +54,7 @@ from typing import Any, Callable
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import yaml  # noqa: E402
+from services.data_sources.batch_integrity import complete_batch_dates  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 REGISTRY_PATH = REPO / "backend" / "config" / "sync_registry.yaml"
@@ -103,6 +104,7 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
             "batch_mode": entry.get("batch_mode", ""),
             "data_start": str(entry.get("data_start", "")).replace("-", ""),
             "sla": int(entry.get("freshness_sla_trading_days", 5)),  # evidence: registry 全域均声明; 缺省 5 仅防御
+            "available_after": entry.get("available_after"),
             "freshness_date_column": entry.get("freshness_date_column"),
             "date_param": entry.get("date_param"),
             "known_empty_days": {str(d).replace("-", "") for d in (entry.get("known_empty_days") or [])},
@@ -130,6 +132,13 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
             # page_limit 截断 bug, 若沿用旧泛化逻辑会被这个不相关的标签一直掩盖)。row_dip
             # 抑制必须逐域单独审查+显式声明, 不得从 gap_tolerance 继承。
             "row_dip_tolerance": bool(entry.get("row_dip_tolerance", False)),
+            "min_rows_per_batch": int(entry.get("min_rows_per_batch", 0)),
+            "min_rows_since": str(entry.get("min_rows_since") or "").replace("-", ""),
+            "min_rows_before": int(entry.get("min_rows_before", 1)),
+            "batch_completeness": entry.get("batch_completeness") or {},
+            "universe_filter": bool(entry.get("universe_filter", False)),
+            "universe_filter_col": entry.get("universe_filter_col"),
+            "universe_filter_prefixes": entry.get("universe_filter_prefixes"),
         })
     return specs
 
@@ -203,9 +212,13 @@ def check_calendar_gaps(conn, spec: dict, trading_days: list[str], latest_expect
     if col is None:
         return _result("calendar_gaps", spec, "skipped_no_date_col",
                        "无可解析日期列 (freshness_date_column/date_param/trade_date/end_date/ann_date 均缺)")
-    present = {_norm_day(r[0]) for r in
-               conn.execute(f'SELECT DISTINCT "{col}" FROM "{table}"').fetchall()
-               if r[0] is not None}
+    if spec.get("batch_completeness") or int(spec.get("min_rows_per_batch", 0)) > 0:
+        # 截断批/缺市场不能用 DISTINCT(date) 洗白；与 sync drain/SLA 共用完整口径。
+        present = complete_batch_dates(conn, spec)
+    else:
+        present = {_norm_day(r[0]) for r in
+                   conn.execute(f'SELECT DISTINCT "{col}" FROM "{table}"').fetchall()
+                   if r[0] is not None}
     lo, hi = spec["data_start"], latest_expected
     expected = trading_days[bisect_left(trading_days, lo):bisect_right(trading_days, hi)]
     if not expected:
@@ -541,6 +554,7 @@ def run_checks(
     today: str | None = None,
     strict: bool = False,
     raw_today_is_open: int | None | object = _RAW_STATUS_UNCHECKED,
+    now: Any = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """全域五类检测: 返回 (results, failures)。conn_for(db_alias) 可注入 (单测内存库)。
 
@@ -550,6 +564,7 @@ def run_checks(
     conns: dict[str, Any] = {}
     conn_errors: dict[str, str] = {}
     results: list[dict[str, Any]] = []
+    from services.data_sources.sync_runner import eligible_end_date
 
     def _conn(alias: str):
         if alias not in conns:
@@ -570,13 +585,62 @@ def run_checks(
                                        f"库不可达: {conn_errors.get(spec['db'], '写锁/缺文件')}"))
                 continue
             daily = spec["batch_mode"] in DAILY_BATCH_MODES
+            domain_latest_expected = latest_expected
+            not_yet_eligible = False
+            eligibility = None
+            if daily:
+                eligibility = eligible_end_date(
+                    spec,
+                    now=now,
+                    trading_days=trading_days,
+                )
+                if eligibility.eligible_end:
+                    domain_latest_expected = eligibility.eligible_end
+                else:
+                    not_yet_eligible = True
             if daily and (only in (None, "calendar_gaps")):
-                results.append(check_calendar_gaps(conn, spec, trading_days, latest_expected))
+                results.append(
+                    _result(
+                        "calendar_gaps",
+                        spec,
+                        "skipped_not_yet_eligible",
+                        f"当前无已到可用时点的交易分区 ({eligibility.reason})",
+                    )
+                    if not_yet_eligible
+                    else check_calendar_gaps(
+                        conn, spec, trading_days, domain_latest_expected
+                    )
+                )
             if daily and (only in (None, "cross_section")):
-                results.append(check_cross_section(conn, spec, trading_days, latest_expected,
-                                                   row_dip_ratio=row_dip_ratio))
+                results.append(
+                    _result(
+                        "cross_section",
+                        spec,
+                        "skipped_not_yet_eligible",
+                        f"当前无已到可用时点的交易分区 ({eligibility.reason})",
+                    )
+                    if not_yet_eligible
+                    else check_cross_section(
+                        conn,
+                        spec,
+                        trading_days,
+                        domain_latest_expected,
+                        row_dip_ratio=row_dip_ratio,
+                    )
+                )
             if spec["freshness_group_col"] and (only in (None, "group_freshness")):
-                results.append(check_group_freshness(conn, spec, trading_days, latest_expected))
+                results.append(
+                    _result(
+                        "group_freshness",
+                        spec,
+                        "skipped_not_yet_eligible",
+                        f"当前无已到可用时点的交易分区 ({eligibility.reason})",
+                    )
+                    if not_yet_eligible
+                    else check_group_freshness(
+                        conn, spec, trading_days, domain_latest_expected
+                    )
+                )
             if spec["batch_mode"] != "full_refresh" and (only in (None, "declared_vs_actual")):
                 # full_refresh 域 data_start 是占位 (注册日), 无回填语义, 不对账
                 results.append(check_declared_vs_actual(conn, spec, today))

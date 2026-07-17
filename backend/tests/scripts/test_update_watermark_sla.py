@@ -5,6 +5,10 @@ import importlib.util
 import sys
 from pathlib import Path
 
+from conftest import duck_mem
+from services.data_sources.batch_integrity import VerifiedBatchFrontier
+from services.source_watermarks import ensure_source_watermark_schema, upsert_watermark
+
 SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "update_watermark_sla.py"
 SPEC = importlib.util.spec_from_file_location("update_watermark_sla", SCRIPT_PATH)
 sla = importlib.util.module_from_spec(SPEC)
@@ -29,10 +33,199 @@ def test_daily_domains_probe_trade_date_quarterly_no_probe():
     q = queries["sync:moneyflow"]
     assert "trade_date" in q["query"] and q["db"] == "tushare_raw"
     assert q["sla_days"] is not None  # registry per-domain SLA 优先于 tier 默认
+    assert queries["sync:daily"].get("verified_complete_spec")
     assert queries["sync:fina_mainbz"].get("no_probe")  # by_ts_code 季度域显式 no_probe
+
+
+def test_min_rows_only_domain_uses_verified_frontier_instead_of_raw_max_date():
+    raw = duck_mem()
+    raw.execute("CREATE TABLE raw_probe (ts_code TEXT, trade_date TEXT, built_at TEXT)")
+    raw.executemany(
+        "INSERT INTO raw_probe VALUES (?, ?, ?)",
+        [
+            ("600000.SH", "20260709", "2026-07-10T00:00:00Z"),
+            ("000001.SZ", "20260709", "2026-07-10T00:00:00Z"),
+            ("300001.SZ", "20260709", "2026-07-10T00:00:00Z"),
+            ("600000.SH", "20260710", "2026-07-11T00:00:00Z"),
+        ],
+    )
+    verified_spec = {
+        "target_table": "raw_probe",
+        "grain": ["ts_code", "trade_date"],
+        "date_param": "trade_date",
+        "min_rows_per_batch": 3,
+    }
+
+    probe = sla._query_actual_frontier(
+        {"tushare_raw": raw},
+        {
+            "sync:x": {
+                "db": "tushare_raw",
+                "query": "SELECT MAX(trade_date) FROM raw_probe",
+                "verified_complete_spec": verified_spec,
+            }
+        },
+        "sync:x",
+    )
+
+    assert probe.state == "verified"
+    assert probe.actual_date == "20260709"
+    assert probe.verified_frontier is not None
+    assert probe.verified_frontier.row_count == 3
 
 
 def test_query_actual_returns_none_when_db_unreachable():
     """库不可达 → None (调用方标 DB_LOCKED_UNVERIFIED), 不抛不伪装."""
     queries = {"sync:x": {"db": "tushare_raw", "query": "SELECT 1"}}
     assert sla._query_actual_max_date({"tushare_raw": None}, queries, "sync:x") is None
+
+
+def test_verified_probe_empty_and_query_error_fail_closed():
+    raw = duck_mem()
+    raw.execute("CREATE TABLE raw_probe (ts_code TEXT, trade_date TEXT)")
+    spec = {
+        "target_table": "raw_probe",
+        "grain": ["ts_code", "trade_date"],
+        "date_param": "trade_date",
+        "min_rows_per_batch": 2,
+        "batch_completeness": {
+            "group_from": {"column": "ts_code", "transform": "exchange_suffix"},
+            "required_groups": ["SH", "SZ"],
+        },
+    }
+
+    empty_probe = sla._query_actual_frontier(
+        {"tushare_raw": raw},
+        {"sync:x": {"db": "tushare_raw", "verified_complete_spec": spec}},
+        "sync:x",
+    )
+    assert empty_probe.state == "no_complete_batch"
+    assert sla._probe_gate(empty_probe.state) == ("NO_COMPLETE_BATCH", True)
+
+    broken_probe = sla._query_actual_frontier(
+        {"tushare_raw": raw},
+        {
+            "sync:x": {
+                "db": "tushare_raw",
+                "verified_complete_spec": {**spec, "date_param": "missing_date"},
+            }
+        },
+        "sync:x",
+    )
+    assert broken_probe.state == "probe_error"
+    assert sla._probe_gate(broken_probe.state) == ("PROBE_ERROR", True)
+
+
+def test_verified_frontier_can_correct_invalid_watermark_backward_only_with_proof():
+    assert sla._watermark_reconcile_direction(
+        "20260714", "20260709", verified_complete=True
+    ) == "rollback"
+    assert sla._watermark_reconcile_direction(
+        "20260714", "20260709", verified_complete=False
+    ) is None
+    assert sla._watermark_reconcile_direction(
+        "20260708", "20260709", verified_complete=False
+    ) == "forward"
+
+
+def test_verified_frontier_excludes_partial_latest_batch_and_repairs_metadata():
+    raw = duck_mem()
+    raw.execute(
+        "CREATE TABLE raw_probe (ts_code TEXT, trade_date TEXT, built_at TEXT)"
+    )
+    raw.executemany(
+        "INSERT INTO raw_probe VALUES (?, ?, ?)",
+        [
+            ("600000.SH", "20260709", "2026-07-10T06:48:49+00:00"),
+            ("000001.SZ", "20260709", "2026-07-10T06:48:49+00:00"),
+            ("600000.SH", "20260710", "2026-07-15T02:31:00+00:00"),
+        ],
+    )
+    spec = {
+        "target_table": "raw_probe",
+        "grain": ["ts_code", "trade_date"],
+        "date_param": "trade_date",
+        "min_rows_per_batch": 2,
+        "batch_completeness": {
+            "group_from": {"column": "ts_code", "transform": "exchange_suffix"},
+            "required_groups": ["SH", "SZ"],
+        },
+    }
+    queries = {
+        "sync:probe": {
+            "db": "tushare_raw",
+            "verified_complete_spec": spec,
+        }
+    }
+
+    probe = sla._query_actual_frontier(
+        {"tushare_raw": raw}, queries, "sync:probe"
+    )
+    actual_date, frontier = probe.actual_date, probe.verified_frontier
+
+    assert actual_date == "20260709"
+    assert frontier is not None and frontier.row_count == 2
+    assert str(frontier.last_success_at).startswith("2026-07-10T06:48:49")
+
+    smart = duck_mem()
+    ensure_source_watermark_schema(smart)
+    upsert_watermark(
+        smart,
+        {
+            "data_domain": "sync:probe",
+            "source_name": "tushare",
+            "source_tier": 2,
+            "last_success_at": "2026-07-15T11:54:54+00:00",
+            "last_data_date": "20260710",
+            "row_count": 0,
+        },
+    )
+    sla._apply_watermark_reconcile(
+        smart,
+        data_domain="sync:probe",
+        source_name="tushare",
+        source_tier=2,
+        actual_date=actual_date,
+        verified_frontier=frontier,
+    )
+    row = smart.execute(
+        "SELECT last_data_date, row_count, last_success_at "
+        "FROM mart_data_source_watermark WHERE data_domain='sync:probe'"
+    ).fetchone()
+    assert row[0] == "20260709" and row[1] == 2
+    assert str(row[2]).startswith("2026-07-10 06:48:49")
+
+
+def test_reconcile_updates_only_exact_watermark_primary_key_and_clears_unverified_time():
+    smart = duck_mem()
+    ensure_source_watermark_schema(smart)
+    for tier in (1, 2):
+        upsert_watermark(
+            smart,
+            {
+                "data_domain": "sync:probe",
+                "source_name": "tushare",
+                "source_tier": tier,
+                "last_success_at": "2026-07-15T11:54:54+00:00",
+                "last_data_date": "20260714",
+                "row_count": 99,
+            },
+        )
+
+    sla._apply_watermark_reconcile(
+        smart,
+        data_domain="sync:probe",
+        source_name="tushare",
+        source_tier=2,
+        actual_date="20260709",
+        verified_frontier=VerifiedBatchFrontier("20260709", 2, None),
+    )
+
+    rows = smart.execute(
+        "SELECT source_tier, last_data_date, row_count, last_success_at "
+        "FROM mart_data_source_watermark ORDER BY source_tier"
+    ).fetchall()
+    assert tuple(rows[0][i] for i in range(3)) == (1, "20260714", 99)
+    assert str(rows[0][3]).startswith("2026-07-15 11:54:54")
+    assert tuple(rows[1][i] for i in range(3)) == (2, "20260709", 2)
+    assert rows[1][3] is None

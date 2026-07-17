@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -28,6 +29,44 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def _continuity_report(
+    *, overall: str = "PASS", statuses: tuple[str, ...] = ("pass",)
+) -> dict:
+    checks = []
+    counts = {"pass": 0, "warn": 0, "fail": 0, "skipped": 0, "db_unreachable": 0}
+    for status in statuses:
+        checks.append({
+            "status": status,
+            "check": "calendar_gaps",
+            "domain": "margin_detail",
+            "table": "raw_tushare_margin_detail",
+            "detail": "fixture detail",
+            "fix_hint": "fixture hint",
+        })
+        category = (
+            "fail" if status.startswith("fail")
+            else "warn" if status.startswith("warn")
+            else "pass" if status == "pass"
+            else "db_unreachable" if status == "db_unreachable"
+            else "skipped"
+        )
+        counts[category] += 1
+    return {
+        "overall": overall,
+        "latest_expected": "20260716",
+        "checks": checks,
+        "summary": {"counts": counts, "by_check": {"calendar_gaps": counts.copy()}},
+    }
+
+
+def _write_continuity_stub(repo: Path, payload: dict, *, rc: int) -> None:
+    rendered = json.dumps(payload, ensure_ascii=False)
+    _write(
+        repo / "backend" / "scripts" / "check_continuity_integrity.py",
+        f"print({rendered!r})\nraise SystemExit({rc})\n",
+    )
+
+
 def _make_repo_with_staged_python(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     (repo / "scripts").mkdir(parents=True)
@@ -49,8 +88,7 @@ def _make_repo_with_staged_python(tmp_path: Path) -> Path:
     _write(repo / "backend" / "scripts" / "check_grain_uniqueness.py", "print('grain-uniqueness: stub PASS')\nraise SystemExit(0)\n")
     # 2026-07-06 沙箱跟上 Step 3.99 (continuity-integrity 门, 全面数据审计根因根治新 wire):
     #   同款坑, 沙箱无真实 sync_registry/数据库不 stub 会真跑报错退出非0。
-    _write(repo / "backend" / "scripts" / "check_continuity_integrity.py",
-           "print('continuity-integrity: overall=PASS pass=0 warn=0 fail=0 skipped=0 db_unreachable=0 (latest_expected=stub)')\nraise SystemExit(0)\n")
+    _write_continuity_stub(repo, _continuity_report(), rc=0)
     # Step 3.991-3.994 都是硬闸；空测试仓库必须提供确定性 stub。
     _write(repo / "backend" / "scripts" / "check_config_refs.py",
            "print('[config-refs] PASS')\nraise SystemExit(0)\n")
@@ -228,6 +266,236 @@ def test_doc_governance_failure_blocks_commit(tmp_path: Path) -> None:
     assert result.returncode == 5
     assert "doc-governance 门红" in result.stdout
     assert "SAFE_COMMIT_DRY_RUN=1" not in result.stdout
+
+
+def test_live_continuity_failure_blocks_data_readiness_not_code_commit(tmp_path: Path) -> None:
+    """可变 live DB/provider 故障必须显式曝光，但不能形成“坏了所以修复代码也无法提交”的死锁。"""
+    repo = _make_repo_with_staged_python(tmp_path)
+    _write_continuity_stub(
+        repo,
+        _continuity_report(overall="FAIL", statuses=("fail_stale_tail",)),
+        rc=1,
+    )
+    assert _run(
+        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
+    ).returncode == 0
+
+    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
+
+    assert result.returncode == 0
+    assert "LIVE DATA READINESS: BLOCKED" in result.stdout
+    assert "code commit continues" in result.stdout
+    assert "COMMIT ALLOWED != TIER0 DATA READY" in result.stdout
+    assert "Rule 10 PASS" in result.stdout
+    assert "SAFE_COMMIT_DRY_RUN=1" in result.stdout
+
+
+def test_live_continuity_bad_json_is_verifier_error(tmp_path: Path) -> None:
+    repo = _make_repo_with_staged_python(tmp_path)
+    _write(
+        repo / "backend" / "scripts" / "check_continuity_integrity.py",
+        "print('not-json')\nraise SystemExit(1)\n",
+    )
+    assert _run(
+        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
+    ).returncode == 0
+
+    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
+
+    assert result.returncode == 5
+    assert "CONTINUITY VERIFIER ERROR" in result.stdout
+    assert "SAFE_COMMIT_DRY_RUN=1" not in result.stdout
+
+
+def test_live_continuity_exit_report_mismatch_is_verifier_error(tmp_path: Path) -> None:
+    repo = _make_repo_with_staged_python(tmp_path)
+    _write_continuity_stub(
+        repo,
+        _continuity_report(overall="FAIL", statuses=("fail_stale_tail",)),
+        rc=0,
+    )
+    assert _run(
+        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
+    ).returncode == 0
+
+    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
+
+    assert result.returncode == 5
+    assert "CONTINUITY VERIFIER ERROR" in result.stdout
+    assert "SAFE_COMMIT_DRY_RUN=1" not in result.stdout
+
+
+def test_live_continuity_db_unreachable_is_unverified_not_ready(tmp_path: Path) -> None:
+    repo = _make_repo_with_staged_python(tmp_path)
+    _write_continuity_stub(
+        repo,
+        _continuity_report(overall="PASS", statuses=("db_unreachable",)),
+        rc=0,
+    )
+    assert _run(
+        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
+    ).returncode == 0
+
+    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
+
+    assert result.returncode == 0
+    assert "LIVE DATA READINESS: UNVERIFIED" in result.stdout
+    assert "db_unreachable=1" in result.stdout
+    assert "LIVE DATA READINESS: READY" not in result.stdout
+    assert "SAFE_COMMIT_DRY_RUN=1" in result.stdout
+
+
+def test_live_continuity_summary_mismatch_is_verifier_error(tmp_path: Path) -> None:
+    repo = _make_repo_with_staged_python(tmp_path)
+    payload = _continuity_report(overall="PASS", statuses=("pass",))
+    payload["summary"]["counts"]["pass"] = 0
+    _write_continuity_stub(repo, payload, rc=0)
+    assert _run(
+        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
+    ).returncode == 0
+
+    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
+
+    assert result.returncode == 5
+    assert "CONTINUITY VERIFIER ERROR" in result.stdout
+
+
+def test_live_continuity_empty_scan_surface_is_verifier_error(tmp_path: Path) -> None:
+    repo = _make_repo_with_staged_python(tmp_path)
+    _write_continuity_stub(repo, _continuity_report(statuses=()), rc=0)
+    assert _run(
+        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
+    ).returncode == 0
+
+    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
+
+    assert result.returncode == 5
+    assert "CONTINUITY VERIFIER ERROR" in result.stdout
+
+
+def test_live_continuity_missing_latest_expected_is_verifier_error(tmp_path: Path) -> None:
+    repo = _make_repo_with_staged_python(tmp_path)
+    payload = _continuity_report()
+    del payload["latest_expected"]
+    _write_continuity_stub(repo, payload, rc=0)
+    assert _run(
+        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
+    ).returncode == 0
+
+    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
+
+    assert result.returncode == 5
+    assert "CONTINUITY VERIFIER ERROR" in result.stdout
+
+
+def test_live_continuity_skipped_scan_is_unverified(tmp_path: Path) -> None:
+    repo = _make_repo_with_staged_python(tmp_path)
+    _write_continuity_stub(
+        repo,
+        _continuity_report(statuses=("skipped_missing_table",)),
+        rc=0,
+    )
+    assert _run(
+        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
+    ).returncode == 0
+
+    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
+
+    assert result.returncode == 0
+    assert "LIVE DATA READINESS: UNVERIFIED" in result.stdout
+    assert "skipped=1" in result.stdout
+    assert "skipped_missing_table" in result.stdout
+
+
+def test_live_continuity_warn_is_degraded_and_visible(tmp_path: Path) -> None:
+    repo = _make_repo_with_staged_python(tmp_path)
+    _write_continuity_stub(
+        repo,
+        _continuity_report(overall="WARN", statuses=("warn_row_dip",)),
+        rc=0,
+    )
+    assert _run(
+        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
+    ).returncode == 0
+
+    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
+
+    assert result.returncode == 0
+    assert "LIVE DATA READINESS: DEGRADED" in result.stdout
+    assert "warn=1" in result.stdout
+    assert "warn_row_dip" in result.stdout
+
+
+def test_live_continuity_warn_plus_db_is_unverified_without_hiding_warn(tmp_path: Path) -> None:
+    repo = _make_repo_with_staged_python(tmp_path)
+    _write_continuity_stub(
+        repo,
+        _continuity_report(
+            overall="WARN", statuses=("warn_row_dip", "db_unreachable")
+        ),
+        rc=0,
+    )
+    assert _run(
+        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
+    ).returncode == 0
+
+    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
+
+    assert result.returncode == 0
+    assert "LIVE DATA READINESS: UNVERIFIED" in result.stdout
+    assert "warn=1" in result.stdout
+    assert "db_unreachable=1" in result.stdout
+    assert "warn_row_dip" in result.stdout
+
+
+def test_live_continuity_fail_plus_db_is_blocked_without_hiding_db(tmp_path: Path) -> None:
+    repo = _make_repo_with_staged_python(tmp_path)
+    _write_continuity_stub(
+        repo,
+        _continuity_report(
+            overall="FAIL", statuses=("fail_stale_tail", "db_unreachable")
+        ),
+        rc=1,
+    )
+    assert _run(
+        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
+    ).returncode == 0
+
+    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
+
+    assert result.returncode == 0
+    assert "LIVE DATA READINESS: BLOCKED" in result.stdout
+    assert "fail=1" in result.stdout
+    assert "db_unreachable=1" in result.stdout
+    assert "db_unreachable" in result.stdout
+
+
+def test_live_continuity_pass_with_nonzero_exit_is_verifier_error(tmp_path: Path) -> None:
+    repo = _make_repo_with_staged_python(tmp_path)
+    _write_continuity_stub(repo, _continuity_report(), rc=1)
+    assert _run(
+        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
+    ).returncode == 0
+
+    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
+
+    assert result.returncode == 5
+    assert "CONTINUITY VERIFIER ERROR" in result.stdout
+
+
+def test_live_continuity_unknown_count_category_is_verifier_error(tmp_path: Path) -> None:
+    repo = _make_repo_with_staged_python(tmp_path)
+    payload = _continuity_report()
+    payload["summary"]["counts"]["future_category"] = 999
+    _write_continuity_stub(repo, payload, rc=0)
+    assert _run(
+        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
+    ).returncode == 0
+
+    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
+
+    assert result.returncode == 5
+    assert "CONTINUITY VERIFIER ERROR" in result.stdout
 
 
 def test_stale_staged_feature_map_blocks_even_when_worktree_is_dirty(tmp_path: Path) -> None:

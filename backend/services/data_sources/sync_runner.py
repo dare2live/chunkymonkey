@@ -34,6 +34,7 @@ from typing import Any
 
 import yaml
 
+from services.data_sources.batch_integrity import complete_batch_dates
 from services.data_sources.sync_preconditions import CalendarFoundationError
 
 log = logging.getLogger("sync_runner")
@@ -586,6 +587,7 @@ def _prepare_batch_df(
     rows: list[dict[str, Any]],
     *,
     effective_min_rows: int | None = None,
+    expected_partition: dict[str, Any] | None = None,
 ):
     """先去重、过滤、验完整性，再把批次交给写事务。
 
@@ -645,6 +647,61 @@ def _prepare_batch_df(
                         f"样本={_dropped_sample.head(3).tolist()}); 几乎必是 universe_filter_col 漏配。"
                         f"拒绝静默返0防谄媚死 — 修 sync_registry 该域 universe_filter_col 指向真股票代码列。"
                     )
+
+    if str(spec.get("write_mode") or "merge_grain") == "replace_partition":
+        partition_by = [str(column) for column in spec.get("partition_by") or []]
+        missing_partition = [column for column in partition_by if column not in df.columns]
+        if not partition_by or missing_partition:
+            raise ValueError(
+                f"{spec['domain']}: replace_partition requires present partition_by; "
+                f"configured={partition_by}, missing={missing_partition}"
+            )
+        if df[partition_by].isna().any(axis=None):
+            reason = (
+                "response does not match requested partition: observed NULL"
+                if expected_partition is not None
+                else "requires exactly one partition and partition values cannot be NULL"
+            )
+            raise BatchCompletenessError(
+                f"{spec['domain']}: replace_partition {reason}"
+            )
+        observed_partitions = df[partition_by].drop_duplicates()
+        if len(observed_partitions) != 1:
+            raise BatchCompletenessError(
+                f"{spec['domain']}: replace_partition requires exactly one partition; "
+                f"observed={observed_partitions.astype(str).to_dict('records')[:5]}"
+            )
+        if expected_partition is not None:
+            missing_expected = [
+                column for column in partition_by
+                if column not in expected_partition or expected_partition[column] is None
+            ]
+            if missing_expected:
+                raise BatchCompletenessError(
+                    f"{spec['domain']}: requested partition missing keys={missing_expected}"
+                )
+
+            def _normalise_partition_value(column: str, value: Any) -> str:
+                text = str(value).strip()
+                if column == str(spec.get("date_param") or "trade_date"):
+                    return text[:10].replace("-", "")
+                return text
+
+            observed = observed_partitions.iloc[0].to_dict()
+            mismatches = {
+                column: {
+                    "requested": expected_partition[column],
+                    "observed": observed[column],
+                }
+                for column in partition_by
+                if _normalise_partition_value(column, observed[column])
+                != _normalise_partition_value(column, expected_partition[column])
+            }
+            if mismatches:
+                raise BatchCompletenessError(
+                    f"{spec['domain']}: response does not match requested partition: "
+                    f"{mismatches}"
+                )
 
     min_rows = int(
         spec.get("min_rows_per_batch", 0)
@@ -712,14 +769,24 @@ def _write_batch(
     rows: list[dict[str, Any]],
     *,
     effective_min_rows: int | None = None,
+    expected_partition: dict[str, Any] | None = None,
 ) -> int:
     """验证后原子 MERGE on grain；失败批不改旧数据。"""
+    write_mode = str(spec.get("write_mode") or "merge_grain")
+    if write_mode not in {"merge_grain", "replace_snapshot", "replace_partition"}:
+        raise ValueError(
+            f"{spec['domain']}: unsupported write_mode={write_mode!r}"
+        )
     if not rows:
         return 0
-    df = _prepare_batch_df(spec, rows, effective_min_rows=effective_min_rows)
+    df = _prepare_batch_df(
+        spec,
+        rows,
+        effective_min_rows=effective_min_rows,
+        expected_partition=expected_partition,
+    )
     if df.empty:
         return 0
-    _capture_domain_sample(spec, df.to_dict("records"))
     table = spec["target_table"]
     grain: list[str] = list(spec["grain"])
 
@@ -727,27 +794,54 @@ def _write_batch(
     raw_con = getattr(conn, "_con", conn)
     raw_con.register("df", df)
     try:
-        conn.execute(f"CREATE TABLE IF NOT EXISTS {table} AS SELECT * FROM df LIMIT 0")
-        # 列演进 DDL 在数据替换事务前完成；DELETE+INSERT 本身必须不可分割。
-        existing = {r[0] for r in conn.execute(
-            f"SELECT column_name FROM information_schema.columns WHERE table_name = '{table}'"
-        ).fetchall()}
-        for col in df.columns:
-            if col not in existing:
-                conn.execute(f'ALTER TABLE {table} ADD COLUMN "{col}" VARCHAR')
-
         # NULL-safe 等值: grain 可空时 NULL 必须与 NULL 匹配，重跑才是覆盖而非累积。
         key = " AND ".join(f't."{g}" IS NOT DISTINCT FROM s."{g}"' for g in grain)
         cols = ", ".join(f'"{c}"' for c in df.columns)
-        delete_sql = (
-            f"DELETE FROM {table}"
-            if spec.get("write_mode") == "replace_snapshot"
-            else f"DELETE FROM {table} t WHERE EXISTS (SELECT 1 FROM df s WHERE {key})"
-        )
+        if write_mode == "replace_snapshot":
+            delete_sql = f"DELETE FROM {table}"
+        elif write_mode == "replace_partition":
+            partition_by = list(spec.get("partition_by") or [])
+            missing_partition = [column for column in partition_by if column not in df.columns]
+            if not partition_by or missing_partition:
+                raise ValueError(
+                    f"{spec['domain']}: replace_partition requires present partition_by; "
+                    f"configured={partition_by}, missing={missing_partition}"
+                )
+            partition_key = " AND ".join(
+                f't."{column}" IS NOT DISTINCT FROM s."{column}"'
+                for column in partition_by
+            )
+            delete_sql = (
+                f"DELETE FROM {table} t WHERE EXISTS "
+                f"(SELECT 1 FROM df s WHERE {partition_key})"
+            )
+        elif write_mode == "merge_grain":
+            delete_sql = f"DELETE FROM {table} t WHERE EXISTS (SELECT 1 FROM df s WHERE {key})"
+        else:  # validated before any table/view mutation
+            raise AssertionError(f"unreachable write_mode={write_mode!r}")
 
-        def _replace_in_transaction() -> None:
+        def _replace_in_transaction(
+            widen_types: dict[str, str] | None = None,
+        ) -> None:
             conn.execute("BEGIN TRANSACTION")
             try:
+                # 首次建表、schema 演进与数据替换属于同一发布事务；后续故障不得
+                # 留下空 target 或半演进 schema，让控制面误认作已发布数据集。
+                conn.execute(
+                    f"CREATE TABLE IF NOT EXISTS {table} AS SELECT * FROM df LIMIT 0"
+                )
+                existing = {r[0] for r in conn.execute(
+                    "SELECT column_name FROM information_schema.columns "
+                    f"WHERE table_name = '{table}'"
+                ).fetchall()}
+                for col in df.columns:
+                    if col not in existing:
+                        conn.execute(f'ALTER TABLE {table} ADD COLUMN "{col}" VARCHAR')
+                for col, target_type in (widen_types or {}).items():
+                    conn.execute(
+                        f'ALTER TABLE {table} ALTER COLUMN "{col}" '
+                        f'SET DATA TYPE {target_type}'
+                    )
                 conn.execute(delete_sql)
                 conn.execute(f"INSERT INTO {table} ({cols}) SELECT {cols} FROM df")
                 conn.execute("COMMIT")
@@ -768,7 +862,7 @@ def _write_batch(
             col_types = {r[0]: r[1] for r in conn.execute(
                 f"SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '{table}'"
             ).fetchall()}
-            widened = []
+            widen_types: dict[str, str] = {}
             for col in df.columns:
                 dtype = str(df[col].dtype).lower()
                 cur = col_types.get(col, "")
@@ -780,14 +874,18 @@ def _write_batch(
                 elif dtype in ("object", "str", "string") and cur not in ("VARCHAR", ""):
                     target = "VARCHAR"
                 if target:
-                    conn.execute(f'ALTER TABLE {table} ALTER COLUMN "{col}" SET DATA TYPE {target}')
-                    widened.append(f"{col}:{cur}->{target}")
-            if not widened:
+                    widen_types[col] = target
+            if not widen_types:
                 raise
+            widened = [
+                f"{col}:{col_types.get(col, '')}->{target}"
+                for col, target in widen_types.items()
+            ]
             log.warning("首批类型推断加宽 table=%s %s (完整事务重试)", table, widened)
-            _replace_in_transaction()
+            _replace_in_transaction(widen_types)
     finally:
         raw_con.unregister("df")
+    _capture_domain_sample(spec, df.to_dict("records"))
     return len(df)
 
 
@@ -1286,7 +1384,14 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
                 else int(spec.get("min_rows_before", 1))
             try:
                 n = _write_batch(
-                    conn, spec, rows, effective_min_rows=effective_min
+                    conn,
+                    spec,
+                    rows,
+                    effective_min_rows=effective_min,
+                    expected_partition={
+                        column: params.get(column)
+                        for column in spec.get("partition_by") or []
+                    } if spec.get("write_mode") == "replace_partition" else None,
                 )
             except BatchCompletenessError as exc:
                 # 完整性门在任何 DELETE/INSERT 前执行：partial 批零写入、零 watermark，
@@ -1515,60 +1620,8 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     min_rows_since = str(spec.get("min_rows_since", "") or "").replace("-", "")
     min_rows_before = int(spec.get("min_rows_before", 1))
     try:
-        has_table = conn.execute(
-            "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?", [table]
-        ).fetchone()[0]
         date_col = spec.get("date_param", "trade_date")  # raw 表镜像 api 字段, 锚定列与参数同名
-        if has_table:
-            if min_rows_since:
-                actual = {str(r[0]).replace("-", "")
-                          for r in conn.execute(
-                              f'SELECT "{date_col}" FROM "{table}" GROUP BY 1 '
-                              f'HAVING COUNT(*) >= CASE WHEN REPLACE(CAST("{date_col}" AS VARCHAR), \'-\', \'\') >= ? '
-                              f'THEN ? ELSE ? END',
-                              [min_rows_since, min_rows, min_rows_before]).fetchall()}
-            else:
-                actual = {str(r[0]).replace("-", "")
-                          for r in conn.execute(
-                              f'SELECT "{date_col}" FROM "{table}" GROUP BY 1 HAVING COUNT(*) >= ?',
-                              [min_rows]).fetchall()}
-            completeness = spec.get("batch_completeness") or {}
-            group_from = completeness.get("group_from") or {}
-            requirements = [
-                (str(group).upper(), None)
-                for group in (completeness.get("required_groups") or [])
-            ]
-            requirements.extend(
-                (str(group).upper(), str(since).replace("-", ""))
-                for group, since in (
-                    completeness.get("required_groups_since") or {}
-                ).items()
-            )
-            transform = str(group_from.get("transform") or "")
-            if requirements:
-                group_col = str(group_from.get("column") or "")
-                if transform == "exchange_suffix":
-                    predicate = (
-                        f'UPPER(SPLIT_PART(CAST("{group_col}" AS VARCHAR), \'.\', 2)) = ?'
-                    )
-                elif transform == "identity":
-                    predicate = f'UPPER(TRIM(CAST("{group_col}" AS VARCHAR))) = ?'
-                else:
-                    raise ValueError(
-                        f"{domain}: unsupported batch_completeness transform={transform!r}"
-                    )
-                for group, since in requirements:
-                    present = {
-                        str(r[0]).replace("-", "")
-                        for r in conn.execute(
-                            f'SELECT "{date_col}" FROM "{table}" '
-                            f'WHERE {predicate} '
-                            f'GROUP BY 1',
-                            [str(group).upper()],
-                        ).fetchall()
-                    }
-                    exempt = {date for date in actual if since and date < since}
-                    actual &= present | exempt
+        actual = complete_batch_dates(conn, spec)
         gap = [d for d in expected if d not in actual]
         truncated = max_dates is not None and len(gap) > max_dates
         # 截断取最新优先 (gap 升序取尾部): backlog 超限时昨日数据必须先落地
@@ -1598,7 +1651,12 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
             effective_min = min_rows if (not min_rows_since or d >= min_rows_since) else min_rows_before
             try:
                 refilled_rows += _write_batch(
-                    conn, spec, rows, effective_min_rows=effective_min
+                    conn,
+                    spec,
+                    rows,
+                    effective_min_rows=effective_min,
+                    expected_partition={date_col: d}
+                    if spec.get("write_mode") == "replace_partition" else None,
                 )
             except BatchCompletenessError as exc:
                 log.warning("drain batch %s 完整性失败 (拒绝写入): %s", d, exc)
@@ -1725,7 +1783,7 @@ def _main_unlocked(args: argparse.Namespace | None = None) -> int:
         print(json.dumps(results, ensure_ascii=False, indent=1))
         if any(r.get("status") == "quota_halt" for r in results):
             return 2  # 配额墙专用退出码 (调用方区分'信道墙'与'数据失败')
-        bad = any(r.get("status") in ("partial", "error") or r.get("failed_batches")
+        bad = any(r.get("status") in ("partial", "error", "unsupported") or r.get("failed_batches")
                   or r.get("today_catchup_failed") for r in results)
         return 1 if bad else 0
 

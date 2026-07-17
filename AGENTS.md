@@ -172,6 +172,12 @@ Before citing tests, perform the test-tool validity check from
 real source shape, writable outputs, and a bad case that turns red. A green test
 for an obsolete universe, PIT, provider, table or retired command is no evidence.
 
+Code fitness and live data readiness are separate gates. `safe_commit.sh` reports
+live continuity as `READY`, `DEGRADED`, `UNVERIFIED`, or `BLOCKED` without hiding
+warnings, skipped checks, or provider/DB failures. Non-ready states continue to
+block Tier0 consumption and release; a successful code commit never upgrades
+them to ready.
+
 ## 9. Controller and parallel work
 
 Parallel read-only discovery, independent tests and disjoint file scopes by
