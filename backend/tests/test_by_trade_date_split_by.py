@@ -25,6 +25,7 @@ D = "20260701"
 REG = {
     "defaults": {
         "target_db": "tushare_raw",
+        "fetch_timeout_seconds": 120,
         "retry": {"max_attempts": 1, "backoff_seconds": [0]},
     },
     "domains": {

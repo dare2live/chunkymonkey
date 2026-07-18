@@ -172,6 +172,7 @@ ChunkyMonkey 数据更新模式为 `manual_only`。禁止安装或保留项目�
 scripts/chunkyctl doctor --fast
 scripts/chunkyctl sync --domain DOMAIN [--drain --max-dates N]
 scripts/chunkyctl sync --domain DOMAIN --backfill --start YYYYMMDD --end YYYYMMDD
+scripts/chunkyctl sync --domain margin --backfill --start YYYYMMDD --end YYYYMMDD --max-dates N
 bash scripts/daily_update.sh --date YYYYMMDD
 ```
 

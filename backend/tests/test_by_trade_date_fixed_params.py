@@ -25,7 +25,7 @@ from services.source_watermarks import ensure_source_watermark_schema
 D = "20260701"
 
 REG = {
-    "defaults": {"target_db": "tushare_raw"},
+    "defaults": {"target_db": "tushare_raw", "fetch_timeout_seconds": 120},
     "domains": {
         "synthetic_fixed_domain": {
             "source": "tushare", "api": "ths_hot",

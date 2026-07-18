@@ -35,7 +35,7 @@ ACCEPTED_EVIDENCE_FIELDS = (
 )
 
 BATCH_EVIDENCE_FIELDS = (
-    "accepted_partition_value",
+    "evidence_partition_value",
     "batch_id",
     "dataset_id",
     "status",
@@ -290,17 +290,28 @@ def load_margin_evidence_snapshot(
                 scope_params,
             )
         )
+        batch_scope = ""
+        batch_scope_params: list[Any] = [DATASET_ID, DATASET_ID]
+        if partition_value is not None:
+            batch_scope = (
+                "AND ((a.batch_id IS NOT NULL AND a.partition_value = ?) "
+                "OR (b.status = 'LANDED' AND b.partition_value = ?))"
+            )
+            batch_scope_params.extend((partition_value, partition_value))
         batch_rows = _rows(
             conn.execute(
                 f"""
-                SELECT a.partition_value,
+                SELECT COALESCE(a.partition_value, b.partition_value),
                        {', '.join(f'b.{field}' for field in BATCH_EVIDENCE_FIELDS[1:])}
-                  FROM {ACCEPTED_TABLE} a
-                  JOIN {INGEST_BATCH_TABLE} b ON b.batch_id = a.batch_id
-                 WHERE {scope_sql}
-                 ORDER BY a.partition_value, b.batch_id
+                  FROM {INGEST_BATCH_TABLE} b
+                  LEFT JOIN {ACCEPTED_TABLE} a
+                    ON a.batch_id = b.batch_id AND a.dataset_id = ?
+                 WHERE b.dataset_id = ?
+                   AND (a.batch_id IS NOT NULL OR b.status = 'LANDED')
+                   {batch_scope}
+                 ORDER BY COALESCE(a.partition_value, b.partition_value), b.batch_id
                 """,
-                scope_params,
+                batch_scope_params,
             )
         )
         landing_rows = _rows(

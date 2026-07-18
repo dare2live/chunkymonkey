@@ -18,7 +18,6 @@ from services.data_sources.margin_evidence import (
     BATCH_EVIDENCE_FIELDS,
     CANONICAL_EVIDENCE_FIELDS,
     LANDING_EVIDENCE_FIELDS,
-    LEGACY_EVIDENCE_FIELDS,
     MarginEvidenceSnapshot,
 )
 from services.data_sources.margin_schema import (
@@ -50,6 +49,7 @@ class MarginReconcileCode(str, Enum):
     ACCEPTED_PARTITION_DUPLICATE = "ACCEPTED_PARTITION_DUPLICATE"
     INGEST_BATCH_MISSING = "INGEST_BATCH_MISSING"
     INGEST_BATCH_DUPLICATE = "INGEST_BATCH_DUPLICATE"
+    UNRESOLVED_LANDING = "UNRESOLVED_LANDING"
     BATCH_DATASET_MISMATCH = "BATCH_DATASET_MISMATCH"
     BATCH_PARTITION_MISMATCH = "BATCH_PARTITION_MISMATCH"
     BATCH_NOT_ACCEPTED = "BATCH_NOT_ACCEPTED"
@@ -68,6 +68,21 @@ class MarginReconcileCode(str, Enum):
     NULL_MISMATCH = "NULL_MISMATCH"
     VALUE_MISMATCH = "VALUE_MISMATCH"
     QUERY_ERROR = "QUERY_ERROR"
+
+
+# Historical repair may replace only formal publication evidence after the
+# already-accepted chain has been proved and the discrepancy is confined to
+# the legacy comparison surface.  New reconcile codes default to BLOCKED until
+# this owner explicitly classifies them.
+HISTORY_REPAIRABLE_CODES = frozenset(
+    {
+        MarginReconcileCode.LEGACY_ROW_MISSING,
+        MarginReconcileCode.LEGACY_ROW_EXTRA,
+        MarginReconcileCode.LEGACY_DUPLICATE_GRAIN,
+        MarginReconcileCode.NULL_MISMATCH,
+        MarginReconcileCode.VALUE_MISMATCH,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -94,10 +109,34 @@ class MarginReconcileReport:
     canonical_row_count: int | None
     legacy_row_count: int | None
     issues: tuple[MarginReconcileIssue, ...]
+    accepted_content_hash: str | None = None
+    recoverable_landing_batch_id: str | None = None
+    recoverable_landing_payload_hash: str | None = None
+    unresolved_landing_batch_ids: tuple[str, ...] = ()
 
     @property
     def ok(self) -> bool:
         return self.status is MarginReconcileStatus.PARITY
+
+
+@dataclass(frozen=True)
+class MarginHistoryComparison:
+    """Pure pre-publication comparison of one candidate with legacy truth."""
+
+    partition_value: str
+    candidate_row_count: int
+    legacy_row_count: int
+    candidate_hash: str | None
+    legacy_hash: str | None
+    issues: tuple[MarginReconcileIssue, ...]
+
+    @property
+    def ok(self) -> bool:
+        return not self.issues
+
+    @property
+    def issue_codes(self) -> tuple[MarginReconcileCode, ...]:
+        return tuple(sorted({issue.code for issue in self.issues}, key=lambda code: code.value))
 
 
 _INTEGER_TYPES = {
@@ -159,6 +198,10 @@ def _report(
     accepted_row_count: int | None = None,
     canonical_row_count: int | None = None,
     legacy_row_count: int | None = None,
+    accepted_content_hash: str | None = None,
+    recoverable_landing_batch_id: str | None = None,
+    recoverable_landing_payload_hash: str | None = None,
+    unresolved_landing_batch_ids: tuple[str, ...] = (),
 ) -> MarginReconcileReport:
     frozen_issues = tuple(issues)
     return MarginReconcileReport(
@@ -174,6 +217,10 @@ def _report(
         canonical_row_count=canonical_row_count,
         legacy_row_count=legacy_row_count,
         issues=frozen_issues,
+        accepted_content_hash=accepted_content_hash,
+        recoverable_landing_batch_id=recoverable_landing_batch_id,
+        recoverable_landing_payload_hash=recoverable_landing_payload_hash,
+        unresolved_landing_batch_ids=unresolved_landing_batch_ids,
     )
 
 
@@ -187,6 +234,10 @@ def _with_issue(
         accepted_row_count=report.accepted_row_count,
         canonical_row_count=report.canonical_row_count,
         legacy_row_count=report.legacy_row_count,
+        accepted_content_hash=report.accepted_content_hash,
+        recoverable_landing_batch_id=report.recoverable_landing_batch_id,
+        recoverable_landing_payload_hash=report.recoverable_landing_payload_hash,
+        unresolved_landing_batch_ids=report.unresolved_landing_batch_ids,
     )
 
 
@@ -395,323 +446,20 @@ def _canonical_source_issue(
     return None
 
 
-def _reconcile_margin_partition_snapshot(
-    partition_value: Any,
-    *,
-    contract,
-    evidence_snapshot: MarginEvidenceSnapshot,
-) -> MarginReconcileReport:
-    """Evaluate one already loaded partition without opening a proof bypass."""
-    partition = _partition(partition_value)
-    if partition is None:
-        return _report(
-            str(partition_value or ""),
-            (
-                MarginReconcileIssue(
-                    MarginReconcileCode.INVALID_PARTITION,
-                    f"expected a real YYYYMMDD partition, got {partition_value!r}",
-                ),
-            ),
-        )
-
-    legacy_table = contract.compatibility_table
-    if (
-        evidence_snapshot.contract is not contract
-        or not evidence_snapshot.include_legacy
-        or evidence_snapshot.partition_value not in (None, partition)
-    ):
-        return _report(
-            partition,
-            (
-                MarginReconcileIssue(
-                    MarginReconcileCode.QUERY_ERROR,
-                    "margin evidence snapshot scope/contract is incompatible",
-                ),
-            ),
-        )
-    if (scope_error := evidence_snapshot.scope_error()) is not None:
-        return _report(
-            partition,
-            (
-                MarginReconcileIssue(
-                    MarginReconcileCode.QUERY_ERROR,
-                    scope_error,
-                ),
-            ),
-        )
-    schema_issues = _snapshot_schema_issues(evidence_snapshot, legacy_table)
-    if schema_issues:
-        return _report(partition, schema_issues)
-    if evidence_snapshot.load_error:
-        return _report(
-            partition,
-            (
-                MarginReconcileIssue(
-                    MarginReconcileCode.QUERY_ERROR,
-                    evidence_snapshot.load_error,
-                ),
-            ),
-        )
+def _business_row_issues(
+    candidate_rows: list[dict[str, Any]], legacy_rows: list[dict[str, Any]]
+) -> list[MarginReconcileIssue]:
+    """Apply the canonical/legacy value rules without requiring publication."""
 
     issues: list[MarginReconcileIssue] = []
-    accepted_batch_id: str | None = None
-    accepted_row_count: int | None = None
-    canonical_row_count: int | None = None
-    legacy_row_count: int | None = None
-
-    try:
-        accepted_rows = [
-            tuple(row[:8])
-            for row in evidence_snapshot.accepted_rows
-            if str(row[1]) == partition
-        ]
-        if not accepted_rows:
-            return _report(
-                partition,
-                (
-                    MarginReconcileIssue(
-                        MarginReconcileCode.ACCEPTED_PARTITION_MISSING,
-                        "no accepted pointer exists for the requested margin partition",
-                    ),
-                ),
-            )
-        if len(accepted_rows) != 1:
-            return _report(
-                partition,
-                (
-                    MarginReconcileIssue(
-                        MarginReconcileCode.ACCEPTED_PARTITION_DUPLICATE,
-                        f"expected one accepted pointer, found {len(accepted_rows)}",
-                    ),
-                ),
-            )
-
-        accepted = accepted_rows[0]
-        accepted_batch_id = str(accepted[2])
-        accepted_row_count = int(accepted[6])
-        accepted_contract_evidence = (
-            str(accepted[3]),
-            str(accepted[4]),
-            str(accepted[5]),
-        )
-        current_contract_evidence = (
-            contract.contract_version,
-            contract.contract_hash,
-            contract.config_hash,
-        )
-        if accepted_contract_evidence != current_contract_evidence:
-            issues.append(
-                MarginReconcileIssue(
-                    MarginReconcileCode.CURRENT_CONTRACT_MISMATCH,
-                    "accepted pointer was published under a non-current contract/config",
-                    accepted_value=accepted_contract_evidence,
-                    legacy_value=current_contract_evidence,
-                )
-            )
-        batch_rows = []
-        for row in evidence_snapshot.batch_rows:
-            value = dict(zip(BATCH_EVIDENCE_FIELDS, row, strict=True))
-            if str(value["batch_id"]) != accepted_batch_id:
-                continue
-            batch_rows.append(
-                (
-                    value["batch_id"],
-                    value["dataset_id"],
-                    value["partition_value"],
-                    value["status"],
-                    value["contract_version"],
-                    value["contract_hash"],
-                    value["config_hash"],
-                    value["canonical_row_count"],
-                    value["canonical_hash"],
-                )
-            )
-        batch = batch_rows[0] if len(batch_rows) == 1 else None
-        if not batch_rows:
-            issues.append(
-                MarginReconcileIssue(
-                    MarginReconcileCode.INGEST_BATCH_MISSING,
-                    f"accepted pointer batch_id={accepted_batch_id!r} does not exist",
-                )
-            )
-        elif len(batch_rows) != 1:
-            issues.append(
-                MarginReconcileIssue(
-                    MarginReconcileCode.INGEST_BATCH_DUPLICATE,
-                    f"batch_id={accepted_batch_id!r} has {len(batch_rows)} rows",
-                )
-            )
-        else:
-            if str(batch[1]) != DATASET_ID:
-                issues.append(
-                    MarginReconcileIssue(
-                        MarginReconcileCode.BATCH_DATASET_MISMATCH,
-                        f"batch dataset_id={batch[1]!r} expected={DATASET_ID!r}",
-                    )
-                )
-            if str(batch[2]) != partition:
-                issues.append(
-                    MarginReconcileIssue(
-                        MarginReconcileCode.BATCH_PARTITION_MISMATCH,
-                        f"batch partition={batch[2]!r} expected={partition!r}",
-                    )
-                )
-            if str(batch[3]) != "ACCEPTED":
-                issues.append(
-                    MarginReconcileIssue(
-                        MarginReconcileCode.BATCH_NOT_ACCEPTED,
-                        f"accepted pointer targets batch status={batch[3]!r}",
-                    )
-                )
-            accepted_evidence = (
-                str(accepted[3]),
-                str(accepted[4]),
-                str(accepted[5]),
-                accepted_row_count,
-                str(accepted[7]),
-            )
-            batch_evidence = (
-                str(batch[4]),
-                str(batch[5]),
-                str(batch[6]),
-                None if batch[7] is None else int(batch[7]),
-                None if batch[8] is None else str(batch[8]),
-            )
-            if accepted_evidence != batch_evidence:
-                issues.append(
-                    MarginReconcileIssue(
-                        MarginReconcileCode.ACCEPTANCE_EVIDENCE_MISMATCH,
-                        "accepted pointer contract/config/count/hash contradict ingest_batch",
-                        accepted_value=accepted_evidence,
-                        legacy_value=batch_evidence,
-                    )
-                )
-
-        landing_payload_rows = [
-            (value["fragment_exchange_id"], value["payload_json"])
-            for row in evidence_snapshot.landing_rows
-            if str(
-                (value := dict(zip(LANDING_EVIDENCE_FIELDS, row, strict=True)))[
-                    "batch_id"
-                ]
-            )
-            == accepted_batch_id
-        ]
-        canonical_fields = (
-            *MARGIN_FIELDS,
-            "ingest_batch_id",
-            "contract_version",
-            "config_hash",
-        )
-        canonical_values = []
-        for row in evidence_snapshot.canonical_rows:
-            value = dict(zip(CANONICAL_EVIDENCE_FIELDS, row, strict=True))
-            if str(value["accepted_partition_value"]) != partition:
-                continue
-            canonical_values.append(tuple(value[field] for field in canonical_fields))
-        legacy_values = []
-        for row in evidence_snapshot.legacy_rows:
-            value = dict(zip(LEGACY_EVIDENCE_FIELDS, row, strict=True))
-            if str(value["accepted_partition_value"]) != partition:
-                continue
-            legacy_values.append(tuple(value[field] for field in MARGIN_FIELDS))
-        canonical_rows = _row_dicts(canonical_values, canonical_fields)
-        legacy_rows = _row_dicts(legacy_values, MARGIN_FIELDS)
-        canonical_row_count = len(canonical_rows)
-        legacy_row_count = len(legacy_rows)
-    except Exception as exc:
-        issues.append(
-            MarginReconcileIssue(
-                MarginReconcileCode.QUERY_ERROR,
-                f"read-only margin reconciliation query failed: {str(exc)[:500]}",
-            )
-        )
-        return _report(
-            partition,
-            issues,
-            accepted_batch_id=accepted_batch_id,
-            accepted_row_count=accepted_row_count,
-            canonical_row_count=canonical_row_count,
-            legacy_row_count=legacy_row_count,
-        )
-
-    if canonical_row_count != accepted_row_count:
-        issues.append(
-            MarginReconcileIssue(
-                MarginReconcileCode.CANONICAL_COUNT_MISMATCH,
-                f"accepted row_count={accepted_row_count} canonical rows={canonical_row_count}",
-                accepted_value=accepted_row_count,
-                legacy_value=canonical_row_count,
-            )
-        )
-
-    if not landing_payload_rows:
-        issues.append(
-            MarginReconcileIssue(
-                MarginReconcileCode.ACCEPTED_CONTENT_HASH_MISMATCH,
-                "accepted batch has no retained landing payload to prove content",
-            )
-        )
-    else:
-        try:
-            source_rows = _landing_business_rows(landing_payload_rows, partition)
-            source_hash = canonical_content_hash(source_rows)
-        except (InvalidOperation, ValueError, TypeError) as exc:
-            issues.append(
-                MarginReconcileIssue(
-                    MarginReconcileCode.ACCEPTED_CONTENT_HASH_MISMATCH,
-                    f"accepted landing content is invalid: {str(exc)[:300]}",
-                )
-            )
-        else:
-            evidence_hashes = [str(accepted[7])]
-            if batch is not None:
-                evidence_hashes.append(str(batch[8]))
-            if any(value != source_hash for value in evidence_hashes):
-                issues.append(
-                    MarginReconcileIssue(
-                        MarginReconcileCode.ACCEPTED_CONTENT_HASH_MISMATCH,
-                        "accepted landing hash contradicts pointer or ingest evidence",
-                        accepted_value=tuple(evidence_hashes),
-                        legacy_value=source_hash,
-                    )
-                )
-            source_issue = _canonical_source_issue(source_rows, canonical_rows)
-            if source_issue is not None:
-                issues.append(source_issue)
-
-    for row in canonical_rows:
-        if str(row["ingest_batch_id"]) != accepted_batch_id:
-            issues.append(
-                MarginReconcileIssue(
-                    MarginReconcileCode.CANONICAL_BATCH_MISMATCH,
-                    "canonical row does not belong to the accepted batch",
-                    grain=_grain(row),
-                    accepted_value=accepted_batch_id,
-                    legacy_value=str(row["ingest_batch_id"]),
-                )
-            )
-        expected_evidence = (str(accepted[3]), str(accepted[5]))
-        actual_evidence = (str(row["contract_version"]), str(row["config_hash"]))
-        if actual_evidence != expected_evidence:
-            issues.append(
-                MarginReconcileIssue(
-                    MarginReconcileCode.CANONICAL_EVIDENCE_MISMATCH,
-                    "canonical row contract/config differs from accepted pointer",
-                    grain=_grain(row),
-                    accepted_value=expected_evidence,
-                    legacy_value=actual_evidence,
-                )
-            )
-
-    canonical_by_grain = _group_rows(canonical_rows)
+    candidate_by_grain = _group_rows(candidate_rows)
     legacy_by_grain = _group_rows(legacy_rows)
-    for grain, rows in sorted(canonical_by_grain.items()):
+    for grain, rows in sorted(candidate_by_grain.items()):
         if len(rows) > 1:
             issues.append(
                 MarginReconcileIssue(
                     MarginReconcileCode.CANONICAL_DUPLICATE_GRAIN,
-                    f"canonical grain has {len(rows)} rows",
+                    f"candidate canonical grain has {len(rows)} rows",
                     grain=grain,
                 )
             )
@@ -725,76 +473,133 @@ def _reconcile_margin_partition_snapshot(
                 )
             )
 
-    canonical_grains = set(canonical_by_grain)
+    candidate_grains = set(candidate_by_grain)
     legacy_grains = set(legacy_by_grain)
-    for grain in sorted(canonical_grains - legacy_grains):
+    for grain in sorted(candidate_grains - legacy_grains):
         issues.append(
             MarginReconcileIssue(
                 MarginReconcileCode.LEGACY_ROW_MISSING,
-                "accepted canonical grain is absent from the legacy projection",
+                "candidate canonical grain is absent from the legacy projection",
                 grain=grain,
             )
         )
-    for grain in sorted(legacy_grains - canonical_grains):
+    for grain in sorted(legacy_grains - candidate_grains):
         issues.append(
             MarginReconcileIssue(
                 MarginReconcileCode.LEGACY_ROW_EXTRA,
-                "legacy projection contains a grain absent from accepted canonical",
+                "legacy projection contains a grain absent from candidate canonical",
                 grain=grain,
             )
         )
 
-    for grain in sorted(canonical_grains & legacy_grains):
-        if len(canonical_by_grain[grain]) != 1 or len(legacy_by_grain[grain]) != 1:
+    for grain in sorted(candidate_grains & legacy_grains):
+        if len(candidate_by_grain[grain]) != 1 or len(legacy_by_grain[grain]) != 1:
             continue
-        canonical = canonical_by_grain[grain][0]
+        candidate = candidate_by_grain[grain][0]
         legacy = legacy_by_grain[grain][0]
         for field in NUMERIC_FIELDS:
-            accepted_value = canonical[field]
+            candidate_value = candidate[field]
             legacy_value = legacy[field]
-            if (accepted_value is None) != (legacy_value is None):
+            if (candidate_value is None) != (legacy_value is None):
                 issues.append(
                     MarginReconcileIssue(
                         MarginReconcileCode.NULL_MISMATCH,
-                        "accepted canonical and legacy nullability differ",
+                        "candidate canonical and legacy nullability differ",
                         grain=grain,
                         field=field,
-                        accepted_value=accepted_value,
+                        accepted_value=candidate_value,
                         legacy_value=legacy_value,
                     )
                 )
                 continue
-            if accepted_value is None:
+            if candidate_value is None:
                 continue
             try:
-                equal = _decimal(accepted_value) == _decimal(legacy_value)
+                equal = _decimal(candidate_value) == _decimal(legacy_value)
             except (InvalidOperation, ValueError, TypeError):
                 equal = False
             if not equal:
                 issues.append(
                     MarginReconcileIssue(
                         MarginReconcileCode.VALUE_MISMATCH,
-                        "accepted canonical and legacy numeric values differ",
+                        "candidate canonical and legacy numeric values differ",
                         grain=grain,
                         field=field,
-                        accepted_value=accepted_value,
+                        accepted_value=candidate_value,
                         legacy_value=legacy_value,
                     )
                 )
+    return issues
 
-    return _report(
-        partition,
-        issues,
-        accepted_batch_id=accepted_batch_id,
-        accepted_row_count=accepted_row_count,
-        canonical_row_count=canonical_row_count,
-        legacy_row_count=legacy_row_count,
+
+def _history_content_hash(rows: list[dict[str, Any]]) -> str | None:
+    """Hash business values using the canonical writer's normalization."""
+
+    try:
+        normalized = []
+        for row in rows:
+            normalized.append(
+                {
+                    "trade_date": _compact_trade_date(row["trade_date"]),
+                    "exchange_id": str(row["exchange_id"]),
+                    **{
+                        field: None if row[field] is None else _decimal(row[field])
+                        for field in NUMERIC_FIELDS
+                    },
+                }
+            )
+        return canonical_content_hash(normalized)
+    except (InvalidOperation, KeyError, TypeError, ValueError):
+        return None
+
+
+def compare_margin_history_rows(
+    partition_value: Any,
+    candidate_rows: Iterable[dict[str, Any]],
+    legacy_rows: Iterable[dict[str, Any]],
+) -> MarginHistoryComparison:
+    """Compare a validated history candidate before either surface is mutated."""
+
+    partition = _partition(partition_value)
+    candidate = [dict(row) for row in candidate_rows]
+    legacy = [dict(row) for row in legacy_rows]
+    if partition is None:
+        issues = (
+            MarginReconcileIssue(
+                MarginReconcileCode.INVALID_PARTITION,
+                f"expected a real YYYYMMDD partition, got {partition_value!r}",
+            ),
+        )
+        return MarginHistoryComparison(
+            str(partition_value or ""), len(candidate), len(legacy), None, None, issues
+        )
+    try:
+        issues = tuple(_business_row_issues(candidate, legacy))
+    except (KeyError, TypeError, ValueError) as exc:
+        issues = (
+            MarginReconcileIssue(
+                MarginReconcileCode.QUERY_ERROR,
+                f"history comparison rows are malformed: {str(exc)[:300]}",
+            ),
+        )
+    return MarginHistoryComparison(
+        partition_value=partition,
+        candidate_row_count=len(candidate),
+        legacy_row_count=len(legacy),
+        candidate_hash=_history_content_hash(candidate),
+        legacy_hash=_history_content_hash(legacy),
+        issues=issues,
     )
 
 
+
+
 __all__ = [
+    "HISTORY_REPAIRABLE_CODES",
+    "MarginHistoryComparison",
     "MarginReconcileCode",
     "MarginReconcileIssue",
     "MarginReconcileReport",
     "MarginReconcileStatus",
+    "compare_margin_history_rows",
 ]

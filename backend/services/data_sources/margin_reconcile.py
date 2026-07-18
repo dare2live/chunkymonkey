@@ -15,10 +15,12 @@ from services.data_sources.margin_legacy_reconcile import (
     MarginReconcileReport,
     MarginReconcileStatus,
     _partition,
-    _reconcile_margin_partition_snapshot,
     _report,
     _snapshot_schema_issues,
     _with_issue,
+)
+from services.data_sources.margin_reconcile_snapshot import (
+    _reconcile_margin_partition_snapshot,
 )
 from services.data_sources.margin_state import (
     MarginStateError,

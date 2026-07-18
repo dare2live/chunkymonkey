@@ -16,12 +16,19 @@ import pytest
 pytestmark = pytest.mark.usefixtures("deterministic_margin_calendar")
 
 from services.data_sources import margin_ingest as mi
+from services.data_sources import margin_history_ingest as mhi
 from services.data_sources import sync_runner as sr
 from services.data_sources.contracts import load_dataset_contract
 from services.data_sources.margin_acceptance import (
     MarginFragment,
     MarginLandingBatch,
     land_margin_batch,
+)
+from services.data_sources.margin_legacy_reconcile import (
+    MarginReconcileCode,
+    MarginReconcileIssue,
+    MarginReconcileReport,
+    MarginReconcileStatus,
 )
 from services.data_sources.margin_validation import MarginValidationError
 from services.duck_adapter import connect
@@ -55,7 +62,9 @@ def _spec() -> dict:
             "values": ["SSE", "SZSE", "BSE"],
         },
         "retry": {"max_attempts": 1, "backoff_seconds": [0]},
+        "fetch_timeout_seconds": 120,
         "min_rows_per_batch": 2,
+        "history_replay": {"max_partitions_per_run": 20},
     }
 
 
@@ -104,6 +113,18 @@ def test_only_the_typed_margin_dataset_activates_the_formal_seam():
             {**spec, "dataset_contract": {"dataset_id": "tier0.other"}}
         )
     assert mi.contract_for_spec({"domain": "daily"}) is None
+
+
+def test_history_resource_cap_does_not_rewrite_the_dataset_contract_hash():
+    spec = sr.domain_spec(sr.load_registry(), "margin")
+    baseline = mi.contract_for_spec(spec)
+    changed_cap = mi.contract_for_spec({
+        **spec,
+        "history_replay": {"max_partitions_per_run": 1},
+    })
+
+    assert changed_cap.contract_hash == baseline.contract_hash
+    assert changed_cap.config_hash == baseline.config_hash
 
 
 @pytest.mark.parametrize(
@@ -407,7 +428,8 @@ def test_existing_landed_batch_is_validated_and_published_without_provider_refet
     monkeypatch.setattr(
         mi,
         "find_current_landed_margin_batch",
-        lambda *_args, **_kwargs: calls.append("find") or "existing-landed",
+        lambda *_args, **_kwargs: calls.append("find")
+        or mi.RecoverableMarginLanding("existing-landed", "payload-hash"),
     )
     monkeypatch.setattr(
         mi,
@@ -461,7 +483,9 @@ def test_legacy_raw_failure_leaves_landed_unaccepted_for_next_recovery(monkeypat
     monkeypatch.setattr(
         mi,
         "find_current_landed_margin_batch",
-        lambda *_args, **_kwargs: "existing-landed",
+        lambda *_args, **_kwargs: mi.RecoverableMarginLanding(
+            "existing-landed", "payload-hash"
+        ),
     )
     monkeypatch.setattr(
         mi,
@@ -825,7 +849,7 @@ def test_drain_rechecks_accepted_shadow_parity_without_refetching_provider():
         conn.close()
 
 
-def test_run_and_drain_share_the_same_margin_partition_executor(monkeypatch):
+def test_history_and_drain_use_distinct_formal_margin_executors(monkeypatch):
     contract = replace(
         _contract("SSE", "SZSE", "BSE"), coverage_start="20240102"
     )
@@ -840,7 +864,7 @@ def test_run_and_drain_share_the_same_margin_partition_executor(monkeypatch):
         "defaults": {"target_db": "tushare_raw"},
         "domains": {"margin": spec},
     }
-    calls: list[str] = []
+    calls: list[tuple[str, str]] = []
 
     class Conn:
         def close(self):
@@ -873,13 +897,54 @@ def test_run_and_drain_share_the_same_margin_partition_executor(monkeypatch):
         mi,
         "project_ops_state",
         lambda *_args, **_kwargs: SimpleNamespace(
-            frontier="20240102", row_count=3, accepted_at=OBSERVED_AT
+            frontier="20240102", row_count=3, accepted_at=OBSERVED_AT,
+            ready=True, missing=(), reconcile_failures=(),
+        ),
+    )
+    from services.data_sources import margin_reconcile
+
+    missing = MarginReconcileReport(
+        dataset_id=DATASET_ID,
+        partition_value="20240102",
+        status=MarginReconcileStatus.FAILED,
+        accepted_batch_id=None,
+        accepted_row_count=None,
+        canonical_row_count=None,
+        legacy_row_count=None,
+        issues=(MarginReconcileIssue(
+            MarginReconcileCode.ACCEPTED_PARTITION_MISSING,
+            "history checkpoint is missing",
+        ),),
+    )
+    monkeypatch.setattr(
+        margin_reconcile,
+        "reconcile_margin_partitions",
+        lambda *_args, **_kwargs: (missing,),
+    )
+    monkeypatch.setattr(
+        mhi,
+        "prove_history_execution_checkpoint",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        mhi,
+        "execute_history_partition",
+        lambda *args, **_kwargs: calls.append(
+            ("history", args[3]["trade_date"])
+        ) or mhi.MarginHistoryIngestOutcome(
+            kind=mhi.MarginHistoryIngestKind.ACCEPTED,
+            partition_value="20240102",
+            batch_id="history-batch",
+            row_count=3,
+            content_hash="history-hash",
+            candidate_hash="history-hash",
+            legacy_hash="history-hash",
         ),
     )
     monkeypatch.setattr(
         mi,
         "execute_partition_outcome",
-        lambda **kwargs: calls.append(kwargs["params"]["trade_date"])
+        lambda **kwargs: calls.append(("drain", kwargs["params"]["trade_date"]))
         or mi.FormalMarginPartitionOutcome(kind="accepted", rows=3),
     )
     monkeypatch.setattr(
@@ -896,7 +961,8 @@ def test_run_and_drain_share_the_same_margin_partition_executor(monkeypatch):
     )
 
     run_result = sr.run_domain(
-        "margin", backfill=True, start="20240102", end="20240102", registry=registry
+        "margin", backfill=True, start="20240102", end="20240102",
+        max_dates=1, registry=registry
     )
     drain_result = sr.drain_domain(
         "margin",
@@ -907,7 +973,7 @@ def test_run_and_drain_share_the_same_margin_partition_executor(monkeypatch):
         record=False,
     )
 
-    assert calls == ["20240102", "20240102"]
+    assert calls == [("history", "20240102"), ("drain", "20240102")]
     assert run_result["ok"] is True and run_result["rows"] == 3
     assert drain_result["status"] == "drained" and drain_result["refilled_rows"] == 3
 
@@ -947,13 +1013,14 @@ def test_explicit_margin_end_cannot_cross_current_eligible_horizon(monkeypatch):
     )
 
     with pytest.raises(ValueError, match="eligible horizon"):
-        sr.run_domain(
-            "margin",
-            backfill=True,
-            start="20260717",
-            end="20260717",
-            registry=registry,
-        )
+            sr.run_domain(
+                "margin",
+                backfill=True,
+                start="20260717",
+                end="20260717",
+                max_dates=1,
+                registry=registry,
+            )
 
 
 def test_margin_drain_injected_dates_cannot_bypass_eligible_horizon(monkeypatch):
@@ -1038,6 +1105,39 @@ def test_mid_run_margin_authorization_failure_projects_accepted_state_before_exi
     )
     monkeypatch.setattr(sr, "trading_days", lambda *_args: [PARTITION])
     monkeypatch.setattr(mi, "accepted_dates", lambda *_args, **_kwargs: set())
+    if mode == "run":
+        from services.data_sources import margin_reconcile
+
+        missing = MarginReconcileReport(
+            dataset_id=DATASET_ID,
+            partition_value=PARTITION,
+            status=MarginReconcileStatus.FAILED,
+            accepted_batch_id=None,
+            accepted_row_count=None,
+            canonical_row_count=None,
+            legacy_row_count=None,
+            issues=(MarginReconcileIssue(
+                MarginReconcileCode.ACCEPTED_PARTITION_MISSING,
+                "history checkpoint is missing",
+            ),),
+        )
+        monkeypatch.setattr(
+            margin_reconcile,
+            "reconcile_margin_partitions",
+            lambda *_args, **_kwargs: (missing,),
+        )
+        monkeypatch.setattr(
+            mhi,
+            "prove_history_execution_checkpoint",
+            lambda *_args, **_kwargs: None,
+        )
+        monkeypatch.setattr(
+            mhi,
+            "execute_history_partition",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                TuShareAuthorizationError("auth_denied")
+            ),
+        )
     monkeypatch.setattr(
         mi,
         "execute_partition",
@@ -1060,6 +1160,7 @@ def test_mid_run_margin_authorization_failure_projects_accepted_state_before_exi
                 backfill=True,
                 start=PARTITION,
                 end=PARTITION,
+                max_dates=1,
                 registry=registry,
             )
         else:

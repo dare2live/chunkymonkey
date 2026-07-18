@@ -233,8 +233,12 @@ domains:
       group_from: {column: exchange_id, transform: identity}
       required_groups: [SSE, SZSE]
       # 北交所上市日不是两融业务起点。北交所公告〔2023〕9号自 2023-02-13 施行；
-      # 生产 raw 实测该日起 829/829 个交易日连续有 BSE，之前 301 日仅 SSE/SZSE。
+      # 此前只要求 SSE/SZSE，自业务生效日起同时要求 BSE。
       required_groups_since: {BSE: "20230213"}
+    history_replay:
+      # manual-only 历史迁移的单次资源硬上限；调用方仍必须显式传更小或相等的 --max-dates。
+      # 首错停、compare-before-write 和 checkpoint proof 是代码不变量，不可配置降级。
+      max_partitions_per_run: 20
     dataset_contract:
       dataset_id: tier0.market_data.margin_exchange_daily
       contract_version: "2"

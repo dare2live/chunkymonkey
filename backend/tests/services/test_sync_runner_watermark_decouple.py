@@ -165,7 +165,10 @@ def test_full_refresh_success_is_complete_replay_and_resolves_open_failure(monke
 
     result = sr.run_domain(
         "trade_cal_probe",
-        registry={"defaults": {}, "domains": {"trade_cal_probe": spec}},
+        registry={
+            "defaults": {"fetch_timeout_seconds": 120},
+            "domains": {"trade_cal_probe": spec},
+        },
     )
 
     assert result["ok"] is True and result["last_date"] == "20261231"
@@ -215,7 +218,10 @@ def test_undated_full_refresh_updates_success_without_fabricating_data_date(monk
 
     result = sr.run_domain(
         "hm_list_probe",
-        registry={"defaults": {}, "domains": {"hm_list_probe": spec}},
+        registry={
+            "defaults": {"fetch_timeout_seconds": 120},
+            "domains": {"hm_list_probe": spec},
+        },
     )
 
     row = c.execute(
@@ -261,7 +267,10 @@ def test_failed_full_refresh_neither_resolves_failure_nor_refreshes_success(monk
 
     result = sr.run_domain(
         "stock_basic_probe",
-        registry={"defaults": {}, "domains": {"stock_basic_probe": spec}},
+        registry={
+            "defaults": {"fetch_timeout_seconds": 120},
+            "domains": {"stock_basic_probe": spec},
+        },
     )
 
     row = c.execute(
@@ -365,7 +374,11 @@ def test_by_ann_date_failure_does_not_advance_frontier_past_gap(monkeypatch):
     sr._record_outcome(spec, ok=True, last_date="20260709", rows=1)
 
     result = sr.run_domain(
-        "forecast_probe", registry={"defaults": {}, "domains": {"forecast_probe": spec}}
+        "forecast_probe",
+        registry={
+            "defaults": {"fetch_timeout_seconds": 120},
+            "domains": {"forecast_probe": spec},
+        },
     )
 
     assert result["failed_batches"] == 1
@@ -416,7 +429,11 @@ def test_open_non_drain_failure_is_replayed_and_resolved(monkeypatch):
     )
 
     result = sr.run_domain(
-        "forecast_probe", registry={"defaults": {}, "domains": {"forecast_probe": spec}}
+        "forecast_probe",
+        registry={
+            "defaults": {"fetch_timeout_seconds": 120},
+            "domains": {"forecast_probe": spec},
+        },
     )
 
     assert result["ok"] is True
@@ -469,7 +486,11 @@ def test_future_pending_failure_is_not_resolved_before_eligible_end(monkeypatch)
     )
 
     result = sr.run_domain(
-        "forecast_probe", registry={"defaults": {}, "domains": {"forecast_probe": spec}}
+        "forecast_probe",
+        registry={
+            "defaults": {"fetch_timeout_seconds": 120},
+            "domains": {"forecast_probe": spec},
+        },
     )
 
     assert result["ok"] is True and result["pending_today"] is True
@@ -522,7 +543,10 @@ def test_quota_halt_does_not_overwrite_pending_batch_date(monkeypatch):
             "daily_probe",
             start="20260714",
             end="20260714",
-            registry={"defaults": {}, "domains": {"daily_probe": spec}},
+            registry={
+                "defaults": {"fetch_timeout_seconds": 120},
+                "domains": {"daily_probe": spec},
+            },
         )
 
     assert sr._pending_failure_start(spec) == "20260710"
@@ -643,7 +667,11 @@ def test_by_period_failure_keeps_frontier_before_first_failed_period(monkeypatch
     sr._record_outcome(spec, ok=True, last_date="20251231", rows=1)
 
     result = sr.run_domain(
-        "express_probe", registry={"defaults": {}, "domains": {"express_probe": spec}}
+        "express_probe",
+        registry={
+            "defaults": {"fetch_timeout_seconds": 120},
+            "domains": {"express_probe": spec},
+        },
     )
 
     assert result["failed_batches"] == 1
@@ -692,7 +720,11 @@ def test_by_period_open_failure_replays_and_resolves(monkeypatch):
     )
 
     result = sr.run_domain(
-        "express_probe", registry={"defaults": {}, "domains": {"express_probe": spec}}
+        "express_probe",
+        registry={
+            "defaults": {"fetch_timeout_seconds": 120},
+            "domains": {"express_probe": spec},
+        },
     )
 
     assert result["ok"] is True
@@ -744,7 +776,11 @@ def test_by_period_future_pending_waits_for_eligibility_then_resolves(monkeypatc
     )
 
     sr.run_domain(
-        "express_probe", registry={"defaults": {}, "domains": {"express_probe": spec}}
+        "express_probe",
+        registry={
+            "defaults": {"fetch_timeout_seconds": 120},
+            "domains": {"express_probe": spec},
+        },
     )
     still_open = c.execute(
         "SELECT COUNT(*) FROM mart_data_source_failure_queue "
@@ -754,7 +790,11 @@ def test_by_period_future_pending_waits_for_eligibility_then_resolves(monkeypatc
 
     eligible[0] = "20260630"
     sr.run_domain(
-        "express_probe", registry={"defaults": {}, "domains": {"express_probe": spec}}
+        "express_probe",
+        registry={
+            "defaults": {"fetch_timeout_seconds": 120},
+            "domains": {"express_probe": spec},
+        },
     )
     now_closed = c.execute(
         "SELECT COUNT(*) FROM mart_data_source_failure_queue "

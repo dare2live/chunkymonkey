@@ -157,7 +157,7 @@ def _prove_margin_pointer(
     batch_matches = batches_by_id.get(batch_id, [])
     batch = batch_matches[0] if len(batch_matches) == 1 else None
     if batch is None or (
-        str(batch["accepted_partition_value"]) != partition
+        str(batch["evidence_partition_value"]) != partition
         or str(batch["dataset_id"]) != DATASET_ID
         or str(batch["status"]) != "ACCEPTED"
         or _partition(batch["partition_value"]) != partition

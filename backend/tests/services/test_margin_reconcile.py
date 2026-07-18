@@ -156,6 +156,37 @@ def _seed_accepted_partition(
     return rows
 
 
+def _land_unresolved_partition(
+    database,
+    batch_id: str,
+    *,
+    partition: str = PARTITION,
+    available_at: datetime | None = None,
+) -> None:
+    rows = _rows_for(partition)
+    stamp = available_at or (AVAILABLE_AT + timedelta(minutes=1))
+    land_margin_batch(
+        database,
+        MarginLandingBatch(
+            batch_id=batch_id,
+            partition_value=partition,
+            observed_at=stamp,
+            available_at=stamp,
+            fragments=tuple(
+                MarginFragment(
+                    exchange_id=exchange_id,
+                    request={
+                        "trade_date": partition,
+                        "exchange_id": exchange_id,
+                    },
+                    rows=(row,),
+                )
+                for exchange_id, row in rows.items()
+            ),
+        ),
+    )
+
+
 def _seed_accepted_facts(database) -> None:
     _seed_accepted_partition(database, PARTITION, available_at=AVAILABLE_AT)
 
@@ -440,6 +471,53 @@ def test_batch_reconcile_rejects_snapshot_load_error(conn):
     )[0]
 
     assert _codes(report) == {MarginReconcileCode.QUERY_ERROR}
+
+
+def test_reconcile_exposes_content_bound_current_landing(conn):
+    _land_unresolved_partition(conn, "current-unresolved")
+
+    report = reconcile_margin_partition(conn, PARTITION)
+
+    assert _codes(report) == {MarginReconcileCode.UNRESOLVED_LANDING}
+    assert report.recoverable_landing_batch_id == "current-unresolved"
+    assert report.recoverable_landing_payload_hash == conn.execute(
+        "SELECT payload_hash FROM ingest_batch WHERE batch_id='current-unresolved'"
+    ).fetchone()[0]
+    assert report.unresolved_landing_batch_ids == ("current-unresolved",)
+
+
+def test_reconcile_marks_stale_or_ambiguous_landing_nonrecoverable(conn):
+    _land_unresolved_partition(conn, "stale-unresolved")
+    conn.execute(
+        "UPDATE ingest_batch SET contract_hash='stale' "
+        "WHERE batch_id='stale-unresolved'"
+    )
+
+    stale = reconcile_margin_partition(conn, PARTITION)
+
+    assert MarginReconcileCode.UNRESOLVED_LANDING in _codes(stale)
+    assert stale.recoverable_landing_batch_id is None
+    assert stale.recoverable_landing_payload_hash is None
+    assert stale.unresolved_landing_batch_ids == ("stale-unresolved",)
+
+    conn.execute("DELETE FROM landing_tushare_margin WHERE batch_id='stale-unresolved'")
+    conn.execute("DELETE FROM ingest_batch WHERE batch_id='stale-unresolved'")
+    _land_unresolved_partition(conn, "ambiguous-a")
+    _land_unresolved_partition(
+        conn,
+        "ambiguous-b",
+        available_at=AVAILABLE_AT + timedelta(minutes=2),
+    )
+
+    ambiguous = reconcile_margin_partition(conn, PARTITION)
+
+    assert MarginReconcileCode.UNRESOLVED_LANDING in _codes(ambiguous)
+    assert ambiguous.recoverable_landing_batch_id is None
+    assert ambiguous.recoverable_landing_payload_hash is None
+    assert ambiguous.unresolved_landing_batch_ids == (
+        "ambiguous-a",
+        "ambiguous-b",
+    )
 
 
 def test_reconcile_reproves_retained_landing_lineage(conn):

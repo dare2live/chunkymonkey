@@ -20,7 +20,7 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | `margin` 是首个 v2 typed availability + landing/canonical/accepted tracer；读取边界为 evidence snapshot → state/reconcile → readiness/projection，当前仅两日 accepted，其他域仍待逐个迁移 |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | `margin` 是首个 v2 typed availability + landing/canonical/accepted tracer；读取边界为 evidence snapshot → state/reconcile → readiness/projection，历史写边界为 typed request/plan/result → checkpoint → runtime/ingest，当前仍仅两日 accepted，其他域仍待逐个迁移 |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
 | T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 当前展示可用；分类解释、measurement、regime 和 persistence 耦合，暂不可直接做 PIT 特征 |
@@ -50,7 +50,7 @@ AGENTS.md
 |---|---|
 | Health | `scripts/chunkyctl doctor --fast` |
 | Manual full data update | `bash scripts/daily_update.sh --date YYYYMMDD` |
-| Manual single-domain sync/canary/replay | `scripts/chunkyctl sync --domain DOMAIN [--drain --max-dates N]` 或 `--backfill --start YYYYMMDD --end YYYYMMDD`（强制单域，拒绝 `--all-due`） |
+| Manual single-domain sync/canary/replay | `scripts/chunkyctl sync --domain DOMAIN [--drain --max-dates N]`；formal margin history 使用 `--backfill --start YYYYMMDD --end YYYYMMDD --max-dates N`（强制单域，拒绝 `--all-due`） |
 | Shared tooling snapshot | `moth snapshot --repo .` |
 | Business/tool assertions | `moth assert --repo .` |
 | Coupling/deletion impact | `moth coupling --repo . --impact <name>` |
@@ -104,6 +104,11 @@ First establish `DatasetContract` and writer ownership around existing files. Mo
 当前 margin read path 的物理 owner：`margin_evidence.py` 负责固定查询快照，`margin_state.py` 负责
 accepted proof，`margin_legacy_reconcile.py`/`margin_reconcile.py` 负责纯比较与现场编排，
 `margin_readiness.py`/`margin_projections.py` 只在上层组合结果；依赖不得反向。
+
+当前 margin history path 的物理 owner：`margin_history_contract.py` 定义稳定 evidence 类型与 hash，
+`margin_history.py` 负责静态 request/plan/checkpoint，`margin_history_runtime.py` 负责首错停循环，
+`margin_history_ingest.py` 负责逐分区原子 compare/publish；共享 provider timeout 只由
+`sync_registry.yaml` 配置并经 `runtime_limits.py` 在副作用前验证。
 
 ## 7. Generated map discipline
 

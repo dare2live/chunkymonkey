@@ -14,10 +14,12 @@ from typing import Any, Callable, Literal
 from uuid import uuid4
 
 from services.data_sources.batch_integrity import BatchCompletenessError
-from services.data_sources.contracts import dataset_contract_from_spec
+from services.data_sources.contracts import DatasetContract, dataset_contract_from_spec
 from services.data_sources.margin_acceptance import (
     MarginFragment,
     MarginLandingBatch,
+    RecoverableMarginLanding,
+    ValidatedMarginBatch,
     accept_margin_batch,
     find_current_landed_margin_batch,
     land_margin_batch,
@@ -38,6 +40,7 @@ from services.data_sources.margin_validation import MarginValidationError
 
 
 log = logging.getLogger(__name__)
+_UNPLANNED_LANDING = object()
 
 
 FragmentCallback = Callable[
@@ -55,6 +58,15 @@ class LegacyWriteError(RuntimeError):
 
 class MarginReconcileError(RuntimeError):
     """Accepted canonical and the legacy shadow are not partition-identical."""
+
+
+class MarginHistoryBatchIncomplete(BatchCompletenessError):
+    """A durable history observation failed a stable validation/acceptance code."""
+
+    def __init__(self, detail: str, *, batch_id: str, rejection_code: str):
+        super().__init__(detail)
+        self.batch_id = batch_id
+        self.rejection_code = rejection_code
 
 
 FormalMarginOutcomeKind = Literal[
@@ -295,21 +307,21 @@ class _MarginTraceAdapter:
         return "error", "provider_error", "logical fragment did not complete"
 
 
-def execute_partition(
+def _prepare_margin_partition(
     conn,
     adapter,
     spec: dict[str, Any],
     params: dict[str, Any],
     *,
     fetch_logical_batch: FetchLogicalBatch,
-    write_batch: WriteBatch,
     quota_wall_classifier: QuotaWallClassifier | None = None,
     contract=None,
-    effective_min_rows: int | None = None,
     observed_at: datetime | None = None,
     batch_id: str | None = None,
-) -> int:
-    """Recover/fetch, validate, update legacy raw, then formally accept."""
+    known_landed_batch: RecoverableMarginLanding | None | object = _UNPLANNED_LANDING,
+) -> tuple[DatasetContract, str, str, ValidatedMarginBatch]:
+    """Recover or fetch one durable landing and return its validated candidate."""
+
     contract = contract or contract_for_spec(spec)
     if contract is None or contract.dataset_id != DATASET_ID:
         raise ValueError("margin partition executor requires the formal margin contract")
@@ -342,9 +354,12 @@ def execute_partition(
             "provider fetch is blocked"
         )
 
-    evidence_batch_id = find_current_landed_margin_batch(
-        conn, partition, contract=contract
+    landed = (
+        find_current_landed_margin_batch(conn, partition, contract=contract)
+        if known_landed_batch is _UNPLANNED_LANDING
+        else known_landed_batch
     )
+    evidence_batch_id = landed.batch_id if landed is not None else None
     fetch_error: Exception | None = None
     if evidence_batch_id is None:
         trace_adapter = _MarginTraceAdapter(
@@ -444,11 +459,15 @@ def execute_partition(
                 f"accepted={rejection.status}/{rejection.rejection_code}"
             ) from exc
         if fetch_error is not None:
+            setattr(fetch_error, "history_batch_id", evidence_batch_id)
             raise fetch_error
-        raise BatchCompletenessError(
-            f"formal margin validation rejected partition={partition} code={exc.code}"
+        raise MarginHistoryBatchIncomplete(
+            f"formal margin validation rejected partition={partition} code={exc.code}",
+            batch_id=str(evidence_batch_id),
+            rejection_code=exc.code,
         ) from exc
     if fetch_error is not None:
+        setattr(fetch_error, "history_batch_id", evidence_batch_id)
         raise fetch_error
     if (
         str(prepared.batch_id) != str(evidence_batch_id)
@@ -457,6 +476,36 @@ def execute_partition(
         raise RuntimeError(
             "validated margin batch identity contradicts requested partition"
         )
+    return contract, partition, str(evidence_batch_id), prepared
+
+
+def execute_partition(
+    conn,
+    adapter,
+    spec: dict[str, Any],
+    params: dict[str, Any],
+    *,
+    fetch_logical_batch: FetchLogicalBatch,
+    write_batch: WriteBatch,
+    quota_wall_classifier: QuotaWallClassifier | None = None,
+    contract=None,
+    effective_min_rows: int | None = None,
+    observed_at: datetime | None = None,
+    batch_id: str | None = None,
+) -> int:
+    """Recover/fetch, validate, update legacy raw, then formally accept."""
+
+    contract, partition, evidence_batch_id, prepared = _prepare_margin_partition(
+        conn,
+        adapter,
+        spec,
+        params,
+        fetch_logical_batch=fetch_logical_batch,
+        quota_wall_classifier=quota_wall_classifier,
+        contract=contract,
+        observed_at=observed_at,
+        batch_id=batch_id,
+    )
     rows = [dict(row) for row in prepared.legacy_rows]
     if not rows:
         raise RuntimeError("validated margin batch returned no legacy rows")

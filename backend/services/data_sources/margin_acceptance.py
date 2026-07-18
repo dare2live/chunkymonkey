@@ -56,6 +56,14 @@ class MarginLandingBatch:
 
 
 @dataclass(frozen=True)
+class RecoverableMarginLanding:
+    """Identity and content binding for one reusable Tx-A checkpoint."""
+
+    batch_id: str
+    payload_hash: str
+
+
+@dataclass(frozen=True)
 class AcceptanceOutcome:
     status: str
     batch_id: str
@@ -338,9 +346,46 @@ def land_margin_batch(
     return batch_id
 
 
+def prove_current_landed_margin_batch(
+    rows: Iterable[Iterable[Any]], *, contract
+) -> RecoverableMarginLanding | None:
+    """Prove that zero or one LANDED row is reusable by the current contract."""
+
+    frozen = tuple(tuple(row) for row in rows)
+    if len(frozen) > 1:
+        raise MarginAcceptanceError(
+            f"ambiguous LANDED margin checkpoints count={len(frozen)}"
+        )
+    if not frozen:
+        return None
+    row = frozen[0]
+    if len(row) != 7:
+        raise MarginAcceptanceError("malformed LANDED margin checkpoint evidence")
+    batch_id = str(row[0] or "").strip()
+    payload_hash = str(row[6] or "").strip()
+    if not batch_id or not payload_hash:
+        raise MarginAcceptanceError(
+            "LANDED margin checkpoint requires non-empty batch_id/payload_hash"
+        )
+    actual = tuple(str(row[index]) for index in range(1, 6))
+    expected = (
+        contract.contract_version,
+        contract.contract_hash,
+        contract.config_hash,
+        contract.source,
+        contract.writer,
+    )
+    if actual != expected:
+        raise MarginAcceptanceError(
+            f"stale LANDED margin checkpoint batch_id={batch_id!r}; "
+            "adjudicate it before fetching another observation"
+        )
+    return RecoverableMarginLanding(batch_id=batch_id, payload_hash=payload_hash)
+
+
 def find_current_landed_margin_batch(
     conn, partition_value: Any, *, contract=None
-) -> str | None:
+) -> RecoverableMarginLanding | None:
     """Find the sole recoverable Tx-A checkpoint for the current contract.
 
     A stale or ambiguous LANDED checkpoint is a hard contradiction: silently
@@ -352,34 +397,17 @@ def find_current_landed_margin_batch(
     rows = conn.execute(
         f"""
         SELECT batch_id, contract_version, contract_hash, config_hash,
-               source_name, writer_id
+               source_name, writer_id, payload_hash
           FROM {INGEST_BATCH_TABLE}
          WHERE dataset_id = ? AND partition_value = ? AND status = 'LANDED'
          ORDER BY landed_at, batch_id
         """,
         [DATASET_ID, partition],
     ).fetchall()
-    if len(rows) > 1:
-        raise MarginAcceptanceError(
-            f"ambiguous LANDED margin checkpoints partition={partition} count={len(rows)}"
-        )
-    if not rows:
-        return None
-    row = rows[0]
-    actual = tuple(str(row[index]) for index in range(1, 6))
-    expected = (
-        contract.contract_version,
-        contract.contract_hash,
-        contract.config_hash,
-        contract.source,
-        contract.writer,
-    )
-    if actual != expected:
-        raise MarginAcceptanceError(
-            f"stale LANDED margin checkpoint batch_id={row[0]!r}; "
-            "adjudicate it before fetching another observation"
-        )
-    return str(row[0])
+    try:
+        return prove_current_landed_margin_batch(rows, contract=contract)
+    except MarginAcceptanceError as exc:
+        raise MarginAcceptanceError(f"partition={partition}: {exc}") from exc
 
 
 def _validate_loaded_margin_batch(

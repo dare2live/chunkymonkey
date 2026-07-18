@@ -49,6 +49,16 @@ class MarginProjectionResult:
     missing: tuple[str, ...]
     reconcile_failures: tuple[MarginReconcileProjectionFailure, ...]
 
+    @property
+    def ready(self) -> bool:
+        """True only when a non-empty expected set is complete and reconciled."""
+
+        return bool(
+            self.expected
+            and not self.missing
+            and not self.reconcile_failures
+        )
+
 
 def _partition(value: Any) -> str:
     compact = str(value or "").replace("-", "")

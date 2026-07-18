@@ -159,7 +159,10 @@ def test_hhmm_announcement_axis_can_publish_on_weekend():
 def test_run_domain_passes_domain_eligible_end_to_calendar(monkeypatch):
     """run_domain 不得把 end=None 留给通用日历函数再按 16:00 自行截断。"""
     reg = {
-        "defaults": {"retry": {"max_attempts": 1, "backoff_seconds": [0]}},
+        "defaults": {
+            "fetch_timeout_seconds": 120,
+            "retry": {"max_attempts": 1, "backoff_seconds": [0]},
+        },
         "domains": {
             "adj_factor": {
                 "source": "tushare",
@@ -201,7 +204,10 @@ def test_run_domain_passes_domain_eligible_end_to_calendar(monkeypatch):
 
 def test_nonformal_future_end_is_rejected_before_provider_adapter(monkeypatch):
     reg = {
-        "defaults": {"retry": {"max_attempts": 1, "backoff_seconds": [0]}},
+        "defaults": {
+            "fetch_timeout_seconds": 120,
+            "retry": {"max_attempts": 1, "backoff_seconds": [0]},
+        },
         "domains": {
             "demo": {
                 "source": "tushare",
@@ -237,7 +243,10 @@ def test_nonformal_future_end_is_rejected_before_provider_adapter(monkeypatch):
 
 def test_full_refresh_rejects_date_bounds_before_provider_or_target_db(monkeypatch):
     reg = {
-        "defaults": {"retry": {"max_attempts": 1, "backoff_seconds": [0]}},
+        "defaults": {
+            "fetch_timeout_seconds": 120,
+            "retry": {"max_attempts": 1, "backoff_seconds": [0]},
+        },
         "domains": {
             "snapshot": {
                 "source": "tushare",
@@ -276,7 +285,10 @@ def test_public_cli_rejects_future_window_before_any_precondition_side_effect(
     import services.writer_lock as writer_lock_module
 
     reg = {
-        "defaults": {"retry": {"max_attempts": 1, "backoff_seconds": [0]}},
+        "defaults": {
+            "fetch_timeout_seconds": 120,
+            "retry": {"max_attempts": 1, "backoff_seconds": [0]},
+        },
         "domains": {
             "daily": {
                 "source": "tushare",
@@ -342,7 +354,7 @@ def test_public_cli_rejects_bounded_drain_flags_before_side_effects(
     import services.writer_lock as writer_lock_module
 
     reg = {
-        "defaults": {},
+        "defaults": {"fetch_timeout_seconds": 120},
         "domains": {
             "daily": {
                 "batch_mode": "by_trade_date",
@@ -388,7 +400,7 @@ def test_on_demand_cli_requires_both_bounds_before_side_effects(
     import services.writer_lock as writer_lock_module
 
     reg = {
-        "defaults": {},
+        "defaults": {"fetch_timeout_seconds": 120},
         "domains": {
             "factor": {
                 "batch_mode": "by_ts_code",
@@ -480,7 +492,10 @@ def test_by_code_list_explicit_start_and_end_reach_provider(monkeypatch):
             pass
 
     reg = {
-        "defaults": {"retry": {"max_attempts": 1, "backoff_seconds": [0]}},
+        "defaults": {
+            "fetch_timeout_seconds": 120,
+            "retry": {"max_attempts": 1, "backoff_seconds": [0]},
+        },
         "domains": {
             "index_daily": {
                 "source": "tushare",
@@ -520,7 +535,12 @@ def test_by_code_list_explicit_start_and_end_reach_provider(monkeypatch):
 
 def test_drain_main_supported_domain_never_double_fetches_today(monkeypatch):
     """drain 已按 eligible horizon 覆盖今日时，main 不得再调用 run_domain。"""
-    reg = {"domains": {"daily": {"batch_mode": "by_trade_date", "available_after": "00:00"}}}
+    reg = {
+        "defaults": {"fetch_timeout_seconds": 120},
+        "domains": {
+            "daily": {"batch_mode": "by_trade_date", "available_after": "00:00"}
+        },
+    }
     monkeypatch.setattr(sr, "load_registry", lambda: reg)
     # Force the retired branch on the old implementation so this test first
     # proves red; ``raising=False`` keeps the assertion valid after deletion.
@@ -548,7 +568,15 @@ def test_drain_main_supported_domain_never_double_fetches_today(monkeypatch):
 
 def test_drain_main_uses_only_drain_before_publish(monkeypatch):
     """发布时间以前也只执行 drain；eligibility 由 drain 内部统一决定。"""
-    reg = {"domains": {"dc_member": {"batch_mode": "by_trade_date", "available_after": "18:00"}}}
+    reg = {
+        "defaults": {"fetch_timeout_seconds": 120},
+        "domains": {
+            "dc_member": {
+                "batch_mode": "by_trade_date",
+                "available_after": "18:00",
+            }
+        },
+    }
     monkeypatch.setattr(sr, "load_registry", lambda: reg)
     monkeypatch.setattr(sr, "_available_after_passed", lambda spec, now=None: False, raising=False)
     monkeypatch.setattr(sr, "drain_domain",
@@ -563,7 +591,12 @@ def test_drain_main_uses_only_drain_before_publish(monkeypatch):
 
 def test_drain_main_propagates_supported_domain_failure_without_second_fetch(monkeypatch):
     """同日抓取失败由 drain 的 partial 传播，不能再抓一次掩盖或放大失败。"""
-    reg = {"domains": {"daily": {"batch_mode": "by_trade_date", "available_after": "00:00"}}}
+    reg = {
+        "defaults": {"fetch_timeout_seconds": 120},
+        "domains": {
+            "daily": {"batch_mode": "by_trade_date", "available_after": "00:00"}
+        },
+    }
     monkeypatch.setattr(sr, "load_registry", lambda: reg)
     monkeypatch.setattr(sr, "_available_after_passed", lambda spec, now=None: True, raising=False)
     monkeypatch.setattr(sr, "drain_domain",
@@ -580,11 +613,16 @@ def test_drain_main_propagates_supported_domain_failure_without_second_fetch(mon
 def test_drain_main_fallback_incremental_domain_not_double_called(monkeypatch):
     """已走 fallback_incremental 路径 (drain_inapplicable/unsupported) 的域不应再额外触发
     今日补拉 (if/elif 互斥, 防重复调用 run_domain)。"""
-    reg = {"domains": {"allow_empty_events": {
-        "batch_mode": "by_trade_date",
-        "available_after": "08:40",
-        "allow_empty_batch": True,
-    }}}
+    reg = {
+        "defaults": {"fetch_timeout_seconds": 120},
+        "domains": {
+            "allow_empty_events": {
+                "batch_mode": "by_trade_date",
+                "available_after": "08:40",
+                "allow_empty_batch": True,
+            }
+        },
+    }
     monkeypatch.setattr(sr, "load_registry", lambda: reg)
     monkeypatch.setattr(sr, "_available_after_passed", lambda spec, now=None: True, raising=False)
     monkeypatch.setattr(sr, "drain_domain",

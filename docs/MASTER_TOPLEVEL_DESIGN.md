@@ -122,6 +122,20 @@ runner、writer、read model、projection、pipeline 与 audit 必须透传该�
 周期 group 集合必须在运行副作用前证明与合同兼容；重复、非规范或缺失分片不能先集合化后洗掉。
 裸 `t+1` 没有说明交易日/日历日/公告日等轴，只能作为未迁移 legacy 提示，不能跨域推广。
 
+`coverage_start` 是当前 generation 承诺的完整覆盖义务，不是早期分区的 acceptance 禁区。历史
+预迁移冻结 active contract/config hash，以 `AcceptedPartition` 的完整 lineage proof 加逐分区
+`PARITY` 作为可复用 checkpoint；只有全地平线零 missing、零非 parity、零未决 landing 后，才可
+原子提升 full-coverage generation。新 generation 若只扩 coverage，可以通过机器证明的精确
+predecessor 关系消费旧 generation 证据，但旧 batch/pointer/canonical 的 version/hash 不得改写、
+复制或重标；schema、grain、source、writer、availability、group completeness 等任一语义变化都
+必须拒绝兼容继承。
+
+formal 历史执行必须显式声明 start/end/单次分区上限，按最老缺口优先，并把 accepted+proof+
+parity 分区从 provider 计划中剔除。仍由 legacy consumer 提供迁移参照时，provider candidate 必须
+先与未改写 legacy 做 grain/NULL/数值全量比较；只有完全一致才允许发布 canonical，任何冲突保留
+landing 证据、首错停批且禁止 legacy DML。全局 projection 继续诚实描述服务义务，本次窗口外
+缺口与 cap deferred 不能冒充本批失败或成功。
+
 ### 5.2 何时落表
 
 模块输出只有满足至少一项才持久化：

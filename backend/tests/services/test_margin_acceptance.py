@@ -317,7 +317,13 @@ def test_recovery_discovery_and_pure_validation_preserve_provider_shape(conn):
     batch = _batch("recovery-checkpoint")
     land_margin_batch(conn, batch)
 
-    assert find_current_landed_margin_batch(conn, PARTITION) == batch.batch_id
+    recoverable = find_current_landed_margin_batch(conn, PARTITION)
+    assert recoverable is not None
+    assert recoverable.batch_id == batch.batch_id
+    assert recoverable.payload_hash == conn.execute(
+        "SELECT payload_hash FROM ingest_batch WHERE batch_id = ?",
+        [batch.batch_id],
+    ).fetchone()[0]
     validated = validate_margin_batch(conn, batch.batch_id)
 
     assert validated.batch_id == batch.batch_id

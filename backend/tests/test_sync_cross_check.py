@@ -22,7 +22,7 @@ from services.source_watermarks import ensure_source_watermark_schema
 D = "20260610"   # top_inst 实缺日之一 (audit 实测同日 top_list 有 75-126 行)
 
 REG = {
-    "defaults": {"target_db": "tushare_raw"},
+    "defaults": {"target_db": "tushare_raw", "fetch_timeout_seconds": 120},
     "domains": {
         "top_inst": {
             "source": "tushare", "api": "top_inst",

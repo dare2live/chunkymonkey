@@ -49,7 +49,7 @@ class _CapturingAdapter:
 
 def _registry(batch_mode: str) -> dict:
     return {
-        "defaults": {"target_db": "tushare_raw"},
+        "defaults": {"target_db": "tushare_raw", "fetch_timeout_seconds": 120},
         "domains": {
             "report_rc_test": {
                 "source": "tushare", "api": "report_rc",

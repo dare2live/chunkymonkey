@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -17,7 +18,9 @@ from services.data_sources.margin_acceptance import (
 )
 from services.data_sources.margin_projections import (
     GAP_FAILURE_TYPE,
+    MarginProjectionResult,
     MarginProjectionError,
+    MarginReconcileProjectionFailure,
     RECONCILE_FAILURE_TYPE,
     derive_margin_accepted_state,
     project_margin_accepted_state,
@@ -34,6 +37,31 @@ from services.source_watermarks import (
 
 
 PARTITION = "20260715"
+
+
+def test_projection_ready_is_derived_from_real_typed_evidence():
+    ready = MarginProjectionResult(
+        frontier=PARTITION,
+        row_count=3,
+        accepted_at=datetime(2026, 7, 16, 1, 5, tzinfo=timezone.utc),
+        expected=(PARTITION,),
+        accepted=(PARTITION,),
+        missing=(),
+        reconcile_failures=(),
+    )
+
+    assert ready.ready is True
+    assert replace(ready, expected=()).ready is False
+    assert replace(ready, missing=(PARTITION,)).ready is False
+    assert replace(
+        ready,
+        reconcile_failures=(
+            MarginReconcileProjectionFailure(
+                partition_value=PARTITION,
+                issue_codes=("FORMAL_EVIDENCE_INVALID",),
+            ),
+        ),
+    ).ready is False
 
 
 def _raise_ops_factory_error():

@@ -267,3 +267,28 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   新增大文件门恢复为 3 个既有例外，Moth assertions `30/30 PASS`，完整 backend suite 为
   `1107 passed / 8 deselected`。本切片未写主库、未拉历史、未切消费者、未扩第二域；它只解除受控
   历史 rollout 的读取规模前置阻塞。
+
+### 2026-07-18 — margin history migration grill evidence
+
+- 全史目标快照为 `20190102—20260716` 共 1827 个交易日、legacy 4485 行；按当时只读生产
+  分布，`20230213` 起 831/831 日含 BSE，之前 996 日只有 SSE/SZSE。计数是审计快照而非稳定
+  配置；active registry 只保存北交所两融业务生效日与两/三市场分段规则。
+
+### 2026-07-18 — margin history execution gate
+
+- 正式 `margin` history 入口现要求显式 start/end/max-dates，registry cap=20；typed
+  request/plan/result、oldest-first、accepted+PARITY skip、精确 LANDED 恢复、compare-before-publish、
+  首错停与稳定 evidence hash 已进入唯一 `chunkyctl sync` 路径。accepted checkpoint 绑定
+  batch/row/content hash，LANDED 绑定 batch/payload hash；冲突只保留 landing，不覆盖 legacy；
+- 所有 selected domain 的 provider timeout 都从同一 registry snapshot 静态验证；缺失、类型错、
+  非正数、NaN/Inf 与超过平台 `threading.TIMEOUT_MAX` 的值均在 calendar、writer lock、授权、
+  adapter 和 target DB 前失败，history 内另保留防御性复核。合法旧测试 fixture 只补同一配置，
+  未放宽缺失/非法红例或业务断言；
+- 只读全史 dry plan 固定 contract hash=`d65b6510374fbd2c6d79e9836d0ede7bb41cb232a0cd46d909a7682a11137e8f`、
+  config hash=`6dd2428b75b66e750efc6a7b252841422a82eb9dbfb4be2188c572c5e4f412be`、
+  plan hash=`79f0aed1fc29afb2c20eba383c1e284d47377f7876e7213175812a8557da2376`；
+  1827 日中 1825 日待迁移、2 日 skip，`--max-dates 1` 只选 `20190102`，其余 1824 日 deferred；
+- 最终同步/保证金广域回归 `383 passed`，完整 backend suite `1215 passed / 8 deselected`；
+  Feature Map 连续两次 fresh、Moth `30/30 PASS`、CodeGraph current、`git diff --check` 通过。
+  本门验证未调用 provider、未写 live DB、未安装自动任务；下一步只能先跑 `20190102` 单日 canary，
+  成功后再跑 `20230213` BSE 分段边界，不能跳到全史或 consumer cutover。

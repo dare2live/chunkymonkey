@@ -26,7 +26,6 @@ import json
 import logging
 import os
 import re
-import socket
 import threading
 import time
 from collections import defaultdict, deque
@@ -36,7 +35,7 @@ from typing import Any, Callable
 
 import yaml
 
-from services.data_sources import margin_ingest
+from services.data_sources import margin_history, margin_history_runtime, margin_ingest
 from services.data_sources.availability import (
     DomainEligibility,
     OperationWindow,
@@ -48,6 +47,10 @@ from services.data_sources.availability import (
 from services.data_sources.batch_integrity import (
     BatchCompletenessError,
     complete_batch_dates,
+)
+from services.data_sources.runtime_limits import (
+    apply_fetch_socket_timeout,
+    fetch_socket_timeout_seconds,
 )
 from services.data_sources.sync_preconditions import CalendarFoundationError
 from services.data_sources.sources.tushare import TuShareAuthorizationError
@@ -1222,8 +1225,38 @@ def _calendar_days(start: str, end: str) -> list[str]:
     return out
 
 
+def _run_margin_history_domain(
+    domain: str,
+    spec: dict[str, Any],
+    *,
+    contract,
+    request: margin_history.MarginHistoryRequest,
+    eligibility: DomainEligibility,
+) -> dict[str, Any]:
+    """Delegate formal history policy; the generic runner owns no history loop."""
+
+    payload = margin_history_runtime.run_margin_history_domain(
+        domain,
+        spec,
+        contract=contract,
+        request=request,
+        eligibility=eligibility,
+        target_conn_factory=_target_conn,
+        adapter_factory=_adapter,
+        trading_days=trading_days,
+        fetch_logical_batch=_fetch_logical_batch,
+        quota_wall_classifier=_is_quota_wall,
+        ops_conn_factory=_smartmoney_conn,
+        authorization_error_type=TuShareAuthorizationError,
+        quota_error_type=QuotaExhaustedError,
+    )
+    log.info("formal margin history %s", payload)
+    return payload
+
+
 def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
                end: str | None = None, resume: bool = False,
+               max_dates: int | None = None,
                registry: dict[str, Any] | None = None) -> dict[str, Any]:
     """同步单个数据域. 返回 {domain, batches, rows, failed_batches}.
 
@@ -1232,6 +1265,23 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
     reg = registry or load_registry()
     spec = domain_spec(reg, domain)
     margin_contract = margin_ingest.contract_for_spec(spec)
+    margin_history_request: margin_history.MarginHistoryRequest | None = None
+    if margin_contract is not None and backfill:
+        if resume:
+            raise SyncWindowError(
+                "formal margin backfill does not accept --resume"
+            )
+        margin_history_request = margin_history.validate_margin_history_request(
+            domain,
+            spec,
+            start=start,
+            end=end,
+            max_dates=max_dates,
+        )
+    elif max_dates is not None:
+        raise SyncWindowError(
+            "--max-dates is only valid for --drain or formal margin --backfill"
+        )
     batch_mode = str(spec["batch_mode"])
     if batch_mode == "full_refresh" and (start is not None or end is not None):
         raise SyncWindowError(
@@ -1260,6 +1310,17 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
             eligibility,
             requested_start=planned_start,
             requested_end=planned_end,
+        )
+
+    if margin_history_request is not None:
+        if eligibility is None:
+            raise SyncWindowError("formal margin history requires dated eligibility")
+        return _run_margin_history_domain(
+            domain,
+            spec,
+            contract=margin_contract,
+            request=margin_history_request,
+            eligibility=eligibility,
         )
 
     def _operation_end() -> str | None:
@@ -1428,7 +1489,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
 
     # Side-effectful provider/DB boundaries come only after the operation
     # window has been proven within the live publication frontier.
-    socket.setdefaulttimeout(float(spec.get("fetch_timeout_seconds", 120)))
+    apply_fetch_socket_timeout(spec)
     adapter = _adapter(spec["source"])
     conn = _target_conn(spec)
     total_rows, failed = 0, []
@@ -2044,7 +2105,12 @@ def _parse_cli_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--end", default=None, help="覆盖结束日 YYYYMMDD")
     parser.add_argument("--drain", action="store_true",
                         help="日历 gap 重放 (by_trade_date 域): 应有交易日 − 实有 = 缺口逐日重拉")
-    parser.add_argument("--max-dates", type=int, default=None, help="drain 单域单次重拉日数上限 (限流边界)")
+    parser.add_argument(
+        "--max-dates",
+        type=int,
+        default=None,
+        help="drain 或 formal margin history 的单次日期上限",
+    )
     return parser.parse_args(argv)
 
 
@@ -2080,14 +2146,23 @@ def _preflight_cli_request_shape(
         raise SyncWindowError(
             "--drain cannot be combined with --start/--end/--backfill/--resume"
         )
+    formal_margin_domains: list[str] = []
     for domain in domains:
         spec = domain_spec(registry, domain)
         try:
-            margin_ingest.contract_for_spec(spec)
+            fetch_socket_timeout_seconds(spec)
+        except ValueError as exc:
+            raise SyncWindowError(
+                f"domain={domain} provider timeout invalid: {exc}"
+            ) from exc
+        try:
+            contract = margin_ingest.contract_for_spec(spec)
         except ValueError as exc:
             raise SyncWindowError(
                 f"domain={domain} formal plan invalid: {exc}"
             ) from exc
+        if contract is not None and domain == "margin":
+            formal_margin_domains.append(domain)
         if (
             not args.drain
             and str(spec.get("batch_mode")) == "by_ts_code"
@@ -2097,6 +2172,27 @@ def _preflight_cli_request_shape(
             raise SyncWindowError(
                 f"domain={domain} sync_policy=on_demand requires both --start and --end"
             )
+    is_margin_history = bool(args.backfill and formal_margin_domains)
+    if is_margin_history:
+        if args.domain != "margin" or domains != ["margin"]:
+            raise SyncWindowError(
+                "formal margin backfill requires exactly --domain margin"
+            )
+        if args.resume:
+            raise SyncWindowError(
+                "formal margin backfill does not accept --resume"
+            )
+        margin_history.validate_margin_history_request(
+            "margin",
+            domain_spec(registry, "margin"),
+            start=args.start,
+            end=args.end,
+            max_dates=args.max_dates,
+        )
+    elif args.max_dates is not None and not args.drain:
+        raise SyncWindowError(
+            "--max-dates is only valid for --drain or formal margin --backfill"
+        )
     if args.start is None and args.end is None:
         return
     from zoneinfo import ZoneInfo
@@ -2126,6 +2222,16 @@ def _preflight_explicit_operation_windows(
         return
     for domain in domains:
         spec = domain_spec(registry, domain)
+        contract = margin_ingest.contract_for_spec(spec)
+        margin_history_request = None
+        if args.backfill and contract is not None and domain == "margin":
+            margin_history_request = margin_history.validate_margin_history_request(
+                domain,
+                spec,
+                start=args.start,
+                end=args.end,
+                max_dates=args.max_dates,
+            )
         fixed = dict(spec.get("fixed_params") or {})
         batch_mode = str(spec["batch_mode"])
         planned_start = args.start
@@ -2138,6 +2244,48 @@ def _preflight_explicit_operation_windows(
             requested_start=planned_start,
             requested_end=planned_end,
         )
+        if margin_history_request is not None:
+            margin_history.prove_margin_history_sessions(
+                margin_history_request,
+                trading_days(
+                    margin_history_request.start,
+                    margin_history_request.end,
+                ),
+            )
+
+
+def _history_halt_evidence(exc: BaseException) -> dict[str, Any] | None:
+    """Expose an exact resumable checkpoint attached by the history executor."""
+
+    result = getattr(exc, "history_result", None)
+    if not isinstance(result, margin_history.MarginHistoryResult):
+        return None
+    return {
+        "plan_hash": result.plan_hash,
+        "result_hash": result.result_hash,
+        "attempted_dates": list(result.attempted_dates),
+        "accepted_dates": list(result.accepted_dates),
+        "failed_dates": list(result.failed_dates),
+        "deferred_dates": list(result.deferred_dates),
+        "next_start": result.next_start,
+        "accepted_evidence": [
+            {
+                "partition_value": item.partition_value,
+                "batch_id": item.batch_id,
+                "row_count": item.row_count,
+                "content_hash": item.content_hash,
+            }
+            for item in result.accepted_evidence
+        ],
+        "failures": [
+            {
+                "partition_value": item.partition_value,
+                "code": item.code,
+                "evidence_hash": item.evidence_hash,
+            }
+            for item in result.failures
+        ],
+    }
 
 
 def _main_unlocked(
@@ -2185,7 +2333,10 @@ def _main_unlocked(
             except QuotaExhaustedError as exc:
                 # 熔断: 配额墙 = 账户级, 续跑其余域只会延长冷却 → 停全链 (区别于单域写锁错)
                 log.error("配额熔断停链 (drain): %s — 剩 %d 域不跑", exc, len(selected) - selected.index(d) - 1)
-                results.append({"domain": d, "status": "quota_halt", "error": str(exc)[:200]})
+                halt = {"domain": d, "status": "quota_halt", "error": str(exc)[:200]}
+                if (evidence := _history_halt_evidence(exc)) is not None:
+                    halt["history_result"] = evidence
+                results.append(halt)
                 break
             except TuShareAuthorizationError:
                 # 运行中授权失效仍是账户级硬阻断；必须穿透到 main 稳定返回 exit 3。
@@ -2205,17 +2356,22 @@ def _main_unlocked(
     results = []
     for d in selected:
         try:
-            results.append(run_domain(
-                d,
-                backfill=args.backfill,
-                start=args.start,
-                end=args.end,
-                resume=args.resume,
-                registry=reg,
-            ))
+            run_kwargs = {
+                "backfill": args.backfill,
+                "start": args.start,
+                "end": args.end,
+                "resume": args.resume,
+                "registry": reg,
+            }
+            if args.max_dates is not None:
+                run_kwargs["max_dates"] = args.max_dates
+            results.append(run_domain(d, **run_kwargs))
         except QuotaExhaustedError as exc:
             log.error("配额熔断停链: %s — 剩 %d 域不跑", exc, len(selected) - selected.index(d) - 1)
-            results.append({"domain": d, "status": "quota_halt", "error": str(exc)[:200]})
+            halt = {"domain": d, "status": "quota_halt", "error": str(exc)[:200]}
+            if (evidence := _history_halt_evidence(exc)) is not None:
+                halt["history_result"] = evidence
+            results.append(halt)
             break
     print(json.dumps(results, ensure_ascii=False, indent=1))
     if any(r.get("status") == "quota_halt" for r in results):
@@ -2254,10 +2410,13 @@ def main() -> int:
                 _authorization_preflight(lease, registry=reg)
                 return _main_unlocked(args, reg, domains)
             except TuShareAuthorizationError as exc:
-                print(json.dumps({
+                payload = {
                     "status": "authorization_blocked",
                     "reason": exc.reason,
-                }, ensure_ascii=False))
+                }
+                if (evidence := _history_halt_evidence(exc)) is not None:
+                    payload["history_result"] = evidence
+                print(json.dumps(payload, ensure_ascii=False))
                 return 3
             except CalendarFoundationError as exc:
                 print(json.dumps({

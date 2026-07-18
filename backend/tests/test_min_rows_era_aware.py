@@ -35,7 +35,13 @@ def _registry(with_era: bool) -> dict:
     if with_era:
         entry["min_rows_since"] = "20220104"
         entry["min_rows_before"] = 800
-    return {"defaults": {"target_db": "tushare_raw"}, "domains": {"md_era_test": entry}}
+    return {
+        "defaults": {
+            "target_db": "tushare_raw",
+            "fetch_timeout_seconds": 120,
+        },
+        "domains": {"md_era_test": entry},
+    }
 
 
 class _NoClose:

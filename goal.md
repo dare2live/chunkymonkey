@@ -9,10 +9,12 @@
 停止继续对旧架构做局部补洞，按 `docs/MASTER_TOPLEVEL_DESIGN.md` 建立可组合、可替换、可审计的数据与策略系统。
 
 当前继续 Phase 1 的 `margin` Tier0 tracer。两日 canary 已闭合；全历史读取前置门也已把
-accepted-state/reconcile 收敛为固定 6 条主库只读查询和一次分区级权威证明。下一既定
-rollout 是受控历史迁移：先 grill 成本、边界和 checkpoint，再由 manual-only 公共入口分批
-回放并逐分区验收。全史 parity 前不切业务消费者，不扩到第二域；Phase 0 证据在 ledger 和
-git history。
+accepted-state/reconcile 收敛为固定 6 条主库只读查询和一次分区级权威证明。Phase 1.1
+Grill 已裁决全史目标为 `20190102—live eligible frontier`，但也证伪现有 backfill 会重拉已
+accepted 分区、先覆盖 legacy 再自证 parity、首错后继续烧请求且没有可复用结果契约。下一
+既定 rollout 因此不是直接拉数，而是先补窄 `margin_history` 执行门；门通过后才由
+manual-only 公共入口分批回放并逐分区验收。全史 parity 前不提升 v3 coverage、不切业务
+消费者、不扩到第二域；Phase 0 证据在 ledger 和 git history。
 
 Tier0 未闭合前，不启动大规模公式寻优、付费计算、生产候选或自动跑批。
 
@@ -44,35 +46,15 @@ Tier0 未闭合前，不启动大规模公式寻优、付费计算、生产候�
 
 ## Live 证据与剩余架构缺口
 
-2026-07-17—18 `margin` canary 的当前事实：
+2026-07-17—18 `margin` canary 的详细证据已固化在 ledger；当前控制面只保留决策所需事实：
 
-- contract v2 把 publication eligibility 定义为
-  `trading_day / next_trading_session_at / 09:00`，并纳入 config/contract hash；coverage 为
-  `20260715—20260716`，两日各 3 个 provider fragment、3 行 canonical、BSE/SSE/SZSE 齐全，
-  当前 `AcceptedPartition` 正好 2 条；
-- 两日 content hash 为 `ab6703…0a5`、`f47e04…d76`，逐分区 reconcile 均 `PARITY`；
-- accepted frontier/watermark 均为 `20260716 / 3`，parser=`margin_accepted_contract_2`，
-  open margin failure=0、fallback=false；幂等重跑 gap/refill/rows 均为 0；
-- `20260718` 周六实盘证伪裸 `t+1` 无法表达日历轴：供应商 `20260717` 当时仅 SSE=1、
-  SZSE/BSE=0；两次 v1 批均拒绝且未写 accepted/legacy/watermark。正式 margin 改用 typed
-  availability 后已通过受支持入口重发两日 v2 批，旧 v1/rejected 批只保留为不可变历史、当前
-  pointer 均为 0；普通 sync 与 drain 共用同一 eligibility resolver，均只认 expected 到
-  `20260716`、零 provider call，failure queue 已闭合；
-- provider 的 `20260716/BSE/rqmcl=NULL` 按 nullable 契约原样保留，禁止补 0；
-- 同一次执行只从同一 registry snapshot 派生一个 immutable contract 对象，并沿 runner、
-  acceptance/recovery、accepted state、reconcile/projection、pipeline、continuity/SLA 全链透传；
-  publication 重证由低层 validation owner 统一实现，read model 不再反向依赖 write orchestrator；
-- formal transport 的 batch mode、date parameter、write mode 和 split groups，以及 drain/on-demand/
-  full-refresh 的请求形状，都在 calendar、writer lock、provider adapter 和目标 DB 之前 fail closed；
-- 受管 provider runtime 完整 backend suite 为 `1080 passed / 8 deselected`；
-- 正式表只有 2 日/6 行；legacy margin 有 1827 日/4485 行，业务消费者仍只读 legacy，
-  因此 canary 通过不等于历史迁移或 Tier0 全局闭合。
-- accepted-state、readiness 与 reconcile 现共用一个 immutable set-based evidence snapshot：
-  schema inventory 加 accepted/batch/landing/canonical/legacy 共固定 6 条主库查询，N=1 与
-  N=20 均为 `(6, 6)`；交易日历只预处理一次，逐分区 cutoff 用二分。公开 reconcile、accepted
-  state 和 readiness 不再接收 snapshot/proof/state 注入，scope 夹带、schema drift、landing
-  lineage、premature publication、跨连接/跨代证据和单分区故障污染均有 fail-closed 反例门；
-  live 两分区仍 `PARITY`；完整 suite 为 `1107 passed / 8 deselected`。
+- v2 availability 为 `trading_day / next_trading_session_at / 09:00`；`20260715—16` 两日
+  accepted/canonical 各 3 行、逐分区 `PARITY`，frontier/watermark=`20260716 / 3`；
+- 周六反例已证伪裸 `t+1`；旧 v1/rejected 批不改写，nullable `rqmcl=NULL` 不补 0；
+- 单次 registry snapshot 派生一个 immutable contract；transport/request shape 在任何写锁、
+  provider adapter 或目标 DB 前 fail closed；
+- accepted-state/readiness/reconcile 共用固定 6-query evidence snapshot 和一次日历预处理；
+- 正式表仍仅 2 日/6 行，legacy 为 1827 日/4485 行且消费者未切，故 Tier0 全史未闭合。
 
 仍存在的架构缺口：
 
@@ -106,10 +88,18 @@ Tier0 未闭合前，不启动大规模公式寻优、付费计算、生产候�
 
 ### Phase 1.1 — margin 受控历史迁移
 
-- [ ] 执行前 grill：确认目标消费者、历史边界、provider 成本、可复用 checkpoint、停止与回滚条件；
-- [ ] 只用 `chunkyctl sync --domain margin --backfill` 分批回放，不安装自动任务；
+- [x] 执行前 grill：目标为正式 canonical 历史预迁移，legacy consumer 暂不切；边界为
+  `20190102—eligible frontier`、当前精确 1827 个交易日/4485 个 provider fragment；accepted
+  pointer + `PARITY` 是可复用 checkpoint，LANDED 是零 refetch 恢复点；首错停、legacy 冲突
+  零覆盖；
+- [x] 在 provider 历史调用前补 `margin_history` typed request/plan/result：显式
+  start/end/max-dates、oldest-first cap、accepted+PARITY skip、compare-before-write、首错停和
+  稳定 evidence hash；
+- [ ] 只用 `chunkyctl sync --domain margin --backfill --start ... --end ... --max-dates ...`
+  分批回放，不安装自动任务；
 - [ ] 每批核对 accepted batch/config hash、正行数、期望交易日和逐分区 parity；
-- [ ] 全史闭合后才单独规划 consumer shadow/cutover；第二数据域和 legacy 删除仍不混入本 rollout。
+- [ ] 全史闭合后才把 v2 历史证据按精确 predecessor proof 原子提升为 v3 full-coverage，再单独
+  规划 consumer shadow/cutover；第二数据域和 legacy 删除仍不混入本 rollout。
 
 ### 后续
 
@@ -120,6 +110,11 @@ Tier0 K 线/分类 → 版本化 stock state → market context → 主升浪 B0
 - margin canary 没有未闭合数据缺口，但 2 日 cross-section 只能 `skipped_insufficient_history`，不能声称历史稳定；
 - 正式 margin 历史仍未迁移；固定查询门只解除执行前置阻塞，不等于允许无 checkpoint 一次性拉取
   1827 日，也不等于 consumer cutover；
+- 当前 provider 授权有效期为 `2026-06-17 10:48:58+08:00—2026-08-12 15:43:00+08:00`，但
+  服务端剩余额度未知、磁盘仅约 9.8 GiB；runner 门和单日 canary 未通过前仍为历史执行 NO-GO；
+- `coverage_start=20260715` 是 v2 当前服务义务，不是历史准入下限。预迁移期间冻结 v2 hash；
+  不得中途改 coverage 洗绿或使 checkpoint 漂移。全史闭合后才能以兼容 payload 证明和原子
+  generation head 提升 v3，旧 v2 batch/pointer/canonical 不改写、不重标；
 - 第二正式数据域前必须先抽出 runner 拥有的 outcome-to-loop policy；禁止在现有超过 2000 行的 `sync_runner.py` 继续复制 dataset-specific 分支，也不借机发明通用插件/DAG；
 - legacy `source_watermarks` standalone helper 的 failure-queue DROP/recreate 仍缺 outer transaction；margin 已有外层事务，不受此 P1 影响；
 - 全局 SLA 仍有 `lhb_daily`、`qfii_holding_quarterly` 无 mapping 及 `sync:margin_detail` stale 三个告警；strict continuity 另判 `cyq_perf` 超 SLA，而 SLA 报告却标 `OK`，该 verifier 口径分歧阻断全局 READY；不能用 margin 单域通过洗绿全链，也不能反向抹掉该单域证据；
