@@ -12,12 +12,18 @@ import json
 from types import MappingProxyType
 from typing import Any
 
+from services.data_sources.accepted_schema import (
+    ACCEPTED_PARTITION_DDL,
+    ACCEPTED_TABLE,
+    INGEST_BATCH_DDL,
+    INGEST_BATCH_TABLE,
+    verify_accepted_evidence_schema,
+)
+
 
 DATASET_ID = "tier0.market_data.margin_exchange_daily"
-INGEST_BATCH_TABLE = "ingest_batch"
 LANDING_TABLE = "landing_tushare_margin"
 CANONICAL_TABLE = "canonical_margin_exchange_daily"
-ACCEPTED_TABLE = "accepted_partition"
 MARGIN_SCHEMA_ID = "tier0.market_data.margin_exchange_daily.canonical"
 MARGIN_SCHEMA_VERSION = "1"
 
@@ -298,35 +304,7 @@ _CANONICAL_PRIMARY_KEY_SQL = ", ".join(MARGIN_SCHEMA_CONTRACT["primary_key"])
 
 
 _DDL = (
-    f"""
-    CREATE TABLE IF NOT EXISTS {INGEST_BATCH_TABLE} (
-        batch_id VARCHAR PRIMARY KEY,
-        dataset_id VARCHAR NOT NULL,
-        contract_version VARCHAR NOT NULL,
-        contract_hash VARCHAR NOT NULL,
-        config_hash VARCHAR NOT NULL,
-        writer_id VARCHAR NOT NULL,
-        partition_value VARCHAR NOT NULL,
-        source_name VARCHAR NOT NULL,
-        status VARCHAR NOT NULL CHECK (status IN ('LANDED', 'REJECTED', 'ACCEPTED')),
-        request_json VARCHAR NOT NULL,
-        fragment_outcomes_json VARCHAR NOT NULL,
-        expected_fragment_count INTEGER NOT NULL,
-        completed_fragment_count INTEGER NOT NULL,
-        failed_fragment_count INTEGER NOT NULL,
-        landing_row_count BIGINT NOT NULL,
-        canonical_row_count BIGINT,
-        payload_hash VARCHAR NOT NULL,
-        canonical_hash VARCHAR,
-        observed_at TIMESTAMPTZ NOT NULL,
-        available_at TIMESTAMPTZ NOT NULL,
-        landed_at TIMESTAMPTZ NOT NULL,
-        validated_at TIMESTAMPTZ,
-        accepted_at TIMESTAMPTZ,
-        rejection_code VARCHAR,
-        rejection_detail VARCHAR
-    )
-    """,
+    INGEST_BATCH_DDL,
     f"""
     CREATE TABLE IF NOT EXISTS {LANDING_TABLE} (
         batch_id VARCHAR NOT NULL,
@@ -345,33 +323,10 @@ _DDL = (
         PRIMARY KEY ({_CANONICAL_PRIMARY_KEY_SQL})
     )
     """,
-    f"""
-    CREATE TABLE IF NOT EXISTS {ACCEPTED_TABLE} (
-        dataset_id VARCHAR NOT NULL,
-        partition_value VARCHAR NOT NULL,
-        batch_id VARCHAR NOT NULL UNIQUE,
-        contract_version VARCHAR NOT NULL,
-        contract_hash VARCHAR NOT NULL,
-        config_hash VARCHAR NOT NULL,
-        row_count BIGINT NOT NULL CHECK (row_count > 0),
-        content_hash VARCHAR NOT NULL,
-        observed_at TIMESTAMPTZ NOT NULL,
-        available_at TIMESTAMPTZ NOT NULL,
-        accepted_at TIMESTAMPTZ NOT NULL,
-        PRIMARY KEY (dataset_id, partition_value)
-    )
-    """,
+    ACCEPTED_PARTITION_DDL,
 )
 
 _FORMAL_COLUMNS = {
-    INGEST_BATCH_TABLE: {
-        "batch_id", "dataset_id", "contract_version", "contract_hash", "config_hash",
-        "writer_id", "partition_value", "source_name", "status", "request_json",
-        "fragment_outcomes_json", "expected_fragment_count", "completed_fragment_count",
-        "failed_fragment_count", "landing_row_count", "canonical_row_count", "payload_hash",
-        "canonical_hash", "observed_at", "available_at", "landed_at", "validated_at",
-        "accepted_at", "rejection_code", "rejection_detail",
-    },
     LANDING_TABLE: {
         "batch_id", "fragment_exchange_id", "fragment_ordinal", "row_ordinal",
         "request_json", "payload_json", "row_hash",
@@ -379,26 +334,9 @@ _FORMAL_COLUMNS = {
     CANONICAL_TABLE: {
         *_CANONICAL_FIELD_BY_NAME,
     },
-    ACCEPTED_TABLE: {
-        "dataset_id", "partition_value", "batch_id", "contract_version", "contract_hash",
-        "config_hash", "row_count", "content_hash", "observed_at", "available_at",
-        "accepted_at",
-    },
 }
 
 _FORMAL_TYPE_OVERRIDES = {
-    INGEST_BATCH_TABLE: {
-        "expected_fragment_count": "INTEGER",
-        "completed_fragment_count": "INTEGER",
-        "failed_fragment_count": "INTEGER",
-        "landing_row_count": "BIGINT",
-        "canonical_row_count": "BIGINT",
-        "observed_at": "TIMESTAMP WITH TIME ZONE",
-        "available_at": "TIMESTAMP WITH TIME ZONE",
-        "landed_at": "TIMESTAMP WITH TIME ZONE",
-        "validated_at": "TIMESTAMP WITH TIME ZONE",
-        "accepted_at": "TIMESTAMP WITH TIME ZONE",
-    },
     LANDING_TABLE: {
         "fragment_ordinal": "INTEGER",
         "row_ordinal": "INTEGER",
@@ -408,46 +346,28 @@ _FORMAL_TYPE_OVERRIDES = {
         for name, field in _CANONICAL_FIELD_BY_NAME.items()
         if str(field["duckdb_type"]) != "VARCHAR"
     },
-    ACCEPTED_TABLE: {
-        "row_count": "BIGINT",
-        "observed_at": "TIMESTAMP WITH TIME ZONE",
-        "available_at": "TIMESTAMP WITH TIME ZONE",
-        "accepted_at": "TIMESTAMP WITH TIME ZONE",
-    },
 }
 
 _EXPECTED_PRIMARY_KEYS = {
-    INGEST_BATCH_TABLE: ("batch_id",),
     LANDING_TABLE: ("batch_id", "fragment_ordinal", "row_ordinal"),
     CANONICAL_TABLE: tuple(MARGIN_SCHEMA_CONTRACT["primary_key"]),
-    ACCEPTED_TABLE: ("dataset_id", "partition_value"),
 }
-_EXPECTED_UNIQUE_KEYS = {ACCEPTED_TABLE: {("batch_id",)}}
+_EXPECTED_UNIQUE_KEYS: dict[str, set[tuple[str, ...]]] = {}
 _EXPECTED_NOT_NULL = {
-    INGEST_BATCH_TABLE: {
-        "batch_id", "dataset_id", "contract_version", "contract_hash", "config_hash",
-        "writer_id", "partition_value", "source_name", "status", "request_json",
-        "fragment_outcomes_json", "expected_fragment_count", "completed_fragment_count",
-        "failed_fragment_count", "landing_row_count", "payload_hash", "observed_at",
-        "available_at", "landed_at",
-    },
     LANDING_TABLE: set(_FORMAL_COLUMNS[LANDING_TABLE]),
     CANONICAL_TABLE: {
         name
         for name, field in _CANONICAL_FIELD_BY_NAME.items()
         if not bool(field["nullable"])
     },
-    ACCEPTED_TABLE: set(_FORMAL_COLUMNS[ACCEPTED_TABLE]),
 }
 _EXPECTED_CHECK_MARKERS = {
-    INGEST_BATCH_TABLE: ("STATUSIN'LANDED','REJECTED','ACCEPTED'",),
     CANONICAL_TABLE: tuple(
         f"{name.upper()}IN"
         + ",".join(f"'{str(value).upper()}'" for value in field["allowed_values"])
         for name, field in _CANONICAL_FIELD_BY_NAME.items()
         if field.get("allowed_values")
     ),
-    ACCEPTED_TABLE: ("ROW_COUNT>0",),
 }
 
 
@@ -502,6 +422,7 @@ def ensure_margin_acceptance_schema(conn) -> None:
     try:
         for statement in _DDL:
             conn.execute(statement)
+        verify_accepted_evidence_schema(conn, error_type=MarginAcceptanceError)
         for table, expected in _FORMAL_COLUMNS.items():
             actual_types = _columns(conn, table)
             actual = set(actual_types)

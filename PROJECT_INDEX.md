@@ -1,7 +1,7 @@
 # PROJECT_INDEX — Current Project Map
 
 > 状态：live navigation，非规则 owner
-> 更新：2026-07-18
+> 更新：2026-07-19
 > 当前目标看 `goal.md`；架构看 `docs/MASTER_TOPLEVEL_DESIGN.md`；机器入口与 writer 清单看 `FEATURE_MAP.md` 和 CodeGraph。
 
 ## 1. Authority
@@ -20,7 +20,7 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | `margin` 是首个 v2 typed availability + landing/canonical/accepted tracer；读取边界为 evidence snapshot → state/reconcile → readiness/projection，历史写边界为 typed request/plan/result → checkpoint → runtime/ingest，当前仍仅两日 accepted，其他域仍待逐个迁移 |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | `accepted_schema.py` 统一固定 batch/pointer DDL 与 catalog/schema 约束验证；当前唯一 formal 数据仍是冻结的错误-scope margin external aggregate。calendar/Kline/ST accepted truth、trusted loader 与生产 consumer 尚未建立，live readiness 保持 `NOT_EVALUATED` |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
 | T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 当前展示可用；分类解释、measurement、regime 和 persistence 耦合，暂不可直接做 PIT 特征 |
@@ -67,7 +67,7 @@ AGENTS.md
 
 | Priority | Defect | Consequence |
 |---:|---|---|
-| P0 | 只有 `margin` tracer 具备 durable provider landing、accepted partition 与 accepted-state Ops projection | 其他 legacy sync 域仍把 source response、rejection、canonical publication 和运行水位混在旧边界，必须逐域迁移 |
+| P0 | 共享 accepted-evidence schema 已抽出，但只有冻结 margin tracer 使用；calendar/Kline/ST 仍无正式 accepted generation | 其他 legacy sync 域仍把 source response、rejection、canonical publication 和运行水位混在旧边界，必须逐域迁移 |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
 | P1 | Live DC snapshot/pulse tables predate namespace fix until manual rebuild | Code contract is fixed but stored rows still need controlled reconciliation |
@@ -104,6 +104,11 @@ First establish `DatasetContract` and writer ownership around existing files. Mo
 当前 margin read path 的物理 owner：`margin_evidence.py` 负责固定查询快照，`margin_state.py` 负责
 accepted proof，`margin_legacy_reconcile.py`/`margin_reconcile.py` 负责纯比较与现场编排，
 `margin_readiness.py`/`margin_projections.py` 只在上层组合结果；依赖不得反向。
+
+共享 accepted evidence 的物理 owner 是 `backend/services/data_sources/accepted_schema.py`；它只拥有
+`ingest_batch` / `accepted_partition` 的固定 DDL 与结构验证，不拥有任何 domain completeness、writer、
+availability 或 consumer 语义。现有 `dim_trading_calendar` 仍是 open-day serve projection，不是 accepted
+immutable generation。
 
 旧 margin history request/runtime/writer/CLI 已退役物删。冻结 v2 只由 `margin_evidence.py`、
 `margin_state.py`、reconcile/readiness/projection 读侧保留不可变审计证据；不存在受支持的继续写入旁路。

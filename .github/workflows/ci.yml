@@ -43,6 +43,8 @@ jobs:
             tests/test_db.py tests/test_source_watermarks.py tests/scripts/test_db_compact.py \
             tests/test_primitives.py tests/test_universe.py tests/test_calendar_gate.py \
             tests/test_check_dead_references.py \
+            tests/services/test_accepted_schema.py \
+            tests/services/test_margin_acceptance.py \
             tests/services/test_population_scope.py \
             tests/services/test_sync_execution_policy.py \
             tests/services/test_runtime_limits.py \

@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-18 22:54
+> Snapshot: 2026-07-19 07:08
 
 ## 1. 入口面
 
@@ -86,7 +86,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 34 张 | 单 writer 22 | 多 writer 12 | 动态表名写点 30 处 (11 文件)
+统计: 表 34 张 | 单 writer 22 | 多 writer 12 | 动态表名写点 30 处 (12 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -99,8 +99,9 @@
 | backend/scripts/build_price_kline_qfq_tushare.py | 1 |
 | backend/scripts/db_compact.py | 2 |
 | backend/services/calendar_builder.py | 2 |
+| backend/services/data_sources/accepted_schema.py | 2 |
 | backend/services/data_sources/margin_acceptance.py | 4 |
-| backend/services/data_sources/margin_schema.py | 4 |
+| backend/services/data_sources/margin_schema.py | 2 |
 | backend/services/data_sources/sync_runner.py | 2 |
 | backend/services/market_pulse.py | 4 |
 | backend/services/rally_gt.py | 6 |
@@ -152,15 +153,15 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 4,756 | calls 边 5,632 | imports 边 1,089 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 4,795 | calls 边 5,685 | imports 边 1,097 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
-| services.duck_adapter | 33 |
+| services.duck_adapter | 34 |
 | services.data_sources | 23 |
-| services.data_sources.margin_schema | 13 |
+| services.data_sources.margin_schema | 14 |
 | services.database_manifest | 13 |
 | services.source_watermarks | 13 |
 | services.data_sources.contracts | 11 |
@@ -178,17 +179,17 @@
 
 | 文件 | 调用方文件数 |
 |---|---|
-| backend/services/duck_adapter.py | 27 |
+| backend/services/duck_adapter.py | 28 |
 | backend/services/source_watermarks.py | 13 |
 | backend/services/database_manifest.py | 11 |
 | backend/services/data_sources/contracts.py | 9 |
 | backend/services/data_sources/margin_evidence.py | 7 |
 | backend/services/pipeline/context.py | 7 |
+| backend/services/data_sources/margin_schema.py | 6 |
 | backend/services/data_sources/margin_state.py | 6 |
 | backend/services/data_sources/margin_validation.py | 6 |
 | backend/services/universe.py | 6 |
 | backend/services/data_sources/margin_acceptance.py | 5 |
-| backend/services/data_sources/margin_schema.py | 5 |
 | backend/services/data_sources/availability.py | 4 |
 
 ### LOC top 10 (God module 候选)
@@ -203,8 +204,8 @@
 | backend/services/data_sources/margin_acceptance.py | 714 |
 | backend/routers/market_pulse.py | 624 |
 | backend/services/data_sources/margin_legacy_reconcile.py | 605 |
-| backend/services/data_sources/margin_schema.py | 579 |
 | backend/services/schema_migrations.py | 561 |
+| backend/services/source_watermarks.py | 560 |
 
 ## 5. 概览
 

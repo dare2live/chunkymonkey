@@ -344,3 +344,27 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - Status remains `PARTIAL/BLOCKED_FOR_DATA_USE`: only one formal dataset exists and it is the disabled external
   margin aggregate. Accepted calendar/Kline/ST source contracts, DB loader/writers and a read-only/live canary
   remain after the OS upgrade. No provider call or live DB write occurred.
+
+### 2026-07-19 — system-upgrade checkpoint: shared acceptance primitive and calendar rejection
+
+- `ingest_batch` and `accepted_partition` fixed DDL/constraint verification moved from the margin-specific schema
+  into one shared accepted-evidence primitive. Margin keeps the same public table constants, four-table creation
+  order, error type and atomic rollback behavior. The shared verifier now pins one current DuckDB catalog/schema;
+  adversarial attached databases with same-named tables can neither lend missing constraints nor contaminate a
+  valid target-table verdict. The new red cases and margin rollback compatibility test are part of mandatory CI.
+- A proposed calendar contract was deliberately deleted after Rule 10 `REQUEST_CHANGES`: it called the mutable,
+  open-day-only `dim_trading_calendar` an immutable full generation even though the real builder deletes closed
+  days and updates the table in place. The proposal also failed to bind full-refresh/write mode, completeness,
+  pagination and availability, and its YAML self-declared code topology without proving runtime consumption.
+  The accepted design therefore remains unchanged: preserve open and closed provider dates in an immutable
+  accepted generation, bind source batch/content/completeness/availability/accepted-time evidence, and treat the
+  existing dim table only as a serve projection.
+- Controller verification after the correction: shared/margin focused suite `67 passed`; wider accepted/margin/
+  existing-calendar regression `377 passed`; the exact CI offline list `364 passed`; full backend suite
+  `1180 passed / 8 deselected`. Independent Rule 10 rerun ended `APPROVE`; Moth assertions `30/30 PASS`,
+  CodeGraph current, doc governance/drift and `git diff --check` passed, and the rejected calendar files are absent.
+  `chunkyctl doctor --fast` intentionally remains overall `FAIL` only because `population_readiness` is
+  `NOT_EVALUATED`; static population contract, manual-only automation and current data-health sections pass.
+  No provider call, live DB DDL/DML, automation change, consumer cutover or data publication occurred. Tier0
+  remains `PARTIAL/BLOCKED_FOR_DATA_USE`, and the restart point is calendar accepted-generation writer/reader
+  design rather than another wrapper around the old dim.

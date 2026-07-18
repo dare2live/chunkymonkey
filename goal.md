@@ -1,7 +1,7 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-18
+> 更新：2026-07-19
 > 只保存当前 objective、已裁决事项、blocker 和下一步。完成证据追加到 `analysis/project_state_ledger.md`。
 
 ## 当前 objective
@@ -74,9 +74,14 @@ Tier0 未闭合前，不启动公式寻优、付费计算、生产候选或自�
 - [x] 从 `universe_rules.yaml` 派生 factory-owned typed immutable policy snapshot；正式 eligibility 固定为
   `traded_on_observation_date`，90 日窗口只留给 legacy 当前枚举；
 - [x] DatasetContract 绑定 typed population scope，transport completeness 与 publication eligibility 分离；
+- [x] 将 `ingest_batch` / `accepted_partition` 的固定 DDL 与约束 verifier 从 margin owner 抽为共享原语；
+  verifier 绑定当前 DuckDB catalog/schema，同名 attached table 不能补齐或污染目标表约束；
+- [ ] calendar accepted generation 尚未建立。Rule 10 已否决把 open-only、原地更新的
+  `dim_trading_calendar` 包装成 immutable full generation；下一实现必须保留开市与休市原始日，绑定
+  source batch/content/completeness/availability/accepted time，再把现表降为 serve projection；
 - [ ] 静态 scope 已能在 calendar/writer/auth/adapter/DB 前阻断；exact-date resolver 的信任契约已裁决，
-  但对抗审查否决了未绑定 availability/completeness 的初稿并已撤下。三个 accepted truth source、trusted
-  loader、resolver 与正式 writer/consumer 均待接通；
+  但 calendar、nominal Kline、same-day ST 三个 accepted truth source、trusted loader、resolver 与正式
+  writer/consumer 均待接通；
 - [x] verifier 已删除 shape-mutation 假坏例并区分 worktree/index，binder/resolver 对抗测试已变红；
   Moth、doctor、safe-commit/CI 已接 static gate，doctor 将 live NOT_EVALUATED 独立判为 FAIL。
 
@@ -89,6 +94,8 @@ Tier0 未闭合前，不启动公式寻优、付费计算、生产候选或自�
   completeness 与 calendar generation 的初稿未进入检查点，避免把自洽 hash 冒充 accepted truth；
 - 当前 static population contract PASS 只说明 1 个 formal external aggregate contract 合法，明确输出
   `live_readiness=NOT_EVALUATED`；Tier0 仍 BLOCKED，升级后从本节继续，不得抓数或切消费者。
+- 2026-07-19 保存的新增代码仅是 shared accepted-evidence schema 原语；calendar 错误契约原型已撤下，
+  不得据此声称 calendar generation、数据抓取或 live readiness 有任何进展。
 
 ### Phase 1.1B — margin / market-pulse 首个迁移
 
