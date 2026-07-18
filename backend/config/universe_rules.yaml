@@ -5,10 +5,15 @@
 #
 # === 真相源优先级 (2026-06-17 用户决议: 升级到交易日历级) ===
 # 交易日历 (dim_trading_calendar) 是"日期"的硬真相源 — 非交易日不能下单。
-# 本 universe 是"股票"的硬真相源, 同等优先级 — 排除列表里的股票永不进任何
-# 验证/回测/GT/选股。强制点: services.universe.assert_universe_clean() (硬门, 任何
-# 最终股票集必入) + check_universe_filter.py 拦内联 K线前缀过滤绕过 (代码门)。
-# owner: services/universe.py (单一计算点) + 本文件 (规则) + K线/stock_st (真相数据)。
+# 本 universe 是"股票"的硬真相源, 与交易日历同等优先级。2026-07-18 对抗复核
+# 已证明 legacy assert_universe_clean/check_universe_filter 只覆盖静态前缀和代码形状，
+# 没有形成统一 PIT 发布门；它们不得再被引用为完整硬门证据。恢复路径由
+# goal.md Phase 1.1A 负责：typed policy snapshot + population scope + row-level PIT gate。
+# owner: services/universe.py (政策快照) + 本文件 (规则) + 名义K线/stock_st (真相数据)。
+
+policy:
+  id: "active_a_share_trading_universe"
+  version: 2
 
 # --- 包含规则 (白名单, 只有这些前缀才进 universe) ---
 include:
@@ -17,19 +22,24 @@ include:
     - "00"    # 深主板
     - "30"    # 创业板 (涨跌停 20%)
     - "68"    # 科创板 (涨跌停 20%)
+  exchange_ids:
+    - "SSE"   # 上海证券交易所
+    - "SZSE"  # 深圳证券交易所
+  venue_by_prefix:
+    "60": {exchange_id: "SSE", ts_suffix: "SH"}
+    "68": {exchange_id: "SSE", ts_suffix: "SH"}
+    "00": {exchange_id: "SZSE", ts_suffix: "SZ"}
+    "30": {exchange_id: "SZSE", ts_suffix: "SZ"}
+
+# --- 正式发布 eligibility ---
+# 这是项目股票池的精确定义，不是“上市状态”的别名：观察日有名义日 K 线才表示
+# 当日实际交易；无 K 线（停牌、已退市或尚未上市）均不进入该日项目输出。
+eligibility:
+  rule: "traded_on_observation_date"
+  calendar_exchange_id: "SSE"
 
 # --- 排除规则 ---
 exclude:
-  # ST/退市风险警示股
-  st_name_patterns:
-    - "ST"     # ST + *ST
-    - "*ST"
-
-  # 退市判定: K 线无交易天数
-  delisted:
-    source: "kline"  # 从 K 线判断, 不从快照表
-    no_trade_days: 90  # 连续 90 个自然日无交易 = 退市/长期停牌
-
   # 排除板块 taxonomy (用于 assert_universe_clean 的清晰报错; 白名单的补集)
   excluded_boards:
     "8": "北交所/新三板 (8x)"
@@ -58,10 +68,14 @@ limit_up_pct:
   "30": 0.20   # 创业板
   "68": 0.20   # 科创板
 
-# --- 数据源优先级 ---
-data_source:
-  active_stocks: "dim_active_a_stock"            # 当前活跃列表 (名字/板块)
-  kline: "price_kline_qfq_tushare"              # 当前仅用其交易日期作活跃性证据；qfq 价格不是执行真相
-  st_calendar: "raw_tushare_stock_st"           # PIT ST 日历 (历史 t 是否 ST 的真相源)
-  trading_calendar: "services.calendar"         # 交易日历 = 日期真相源 (universe 与之同优先级)
-  # 不再使用: dim_all_ever_listed (快照不可靠, 2026-05-26 误标 573 只)
+# --- 正式 PIT 依赖（dataset id；必须是 accepted source evidence） ---
+truth_source:
+  nominal_kline: "tier0.market_data.nominal_ohlcv_daily"
+  st_membership: "tier0.security_identity.stock_st_daily"
+  trading_calendar: "tier0.market_data.trading_calendar"
+
+# --- legacy 当前枚举（不得参与历史 PIT policy/hash） ---
+current_enumeration:
+  identity_source: "dim_active_a_stock"
+  st_name_patterns: ["ST", "*ST"]
+  no_recent_kline_days: 90

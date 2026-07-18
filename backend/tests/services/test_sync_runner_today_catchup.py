@@ -160,6 +160,7 @@ def test_run_domain_passes_domain_eligible_end_to_calendar(monkeypatch):
     """run_domain 不得把 end=None 留给通用日历函数再按 16:00 自行截断。"""
     reg = {
         "defaults": {
+            "execution_policy": {"mode": "enabled", "reason": "active"},
             "fetch_timeout_seconds": 120,
             "retry": {"max_attempts": 1, "backoff_seconds": [0]},
         },
@@ -205,6 +206,7 @@ def test_run_domain_passes_domain_eligible_end_to_calendar(monkeypatch):
 def test_nonformal_future_end_is_rejected_before_provider_adapter(monkeypatch):
     reg = {
         "defaults": {
+            "execution_policy": {"mode": "enabled", "reason": "active"},
             "fetch_timeout_seconds": 120,
             "retry": {"max_attempts": 1, "backoff_seconds": [0]},
         },
@@ -244,6 +246,7 @@ def test_nonformal_future_end_is_rejected_before_provider_adapter(monkeypatch):
 def test_full_refresh_rejects_date_bounds_before_provider_or_target_db(monkeypatch):
     reg = {
         "defaults": {
+            "execution_policy": {"mode": "enabled", "reason": "active"},
             "fetch_timeout_seconds": 120,
             "retry": {"max_attempts": 1, "backoff_seconds": [0]},
         },
@@ -286,6 +289,7 @@ def test_public_cli_rejects_future_window_before_any_precondition_side_effect(
 
     reg = {
         "defaults": {
+            "execution_policy": {"mode": "enabled", "reason": "active"},
             "fetch_timeout_seconds": 120,
             "retry": {"max_attempts": 1, "backoff_seconds": [0]},
         },
@@ -354,7 +358,10 @@ def test_public_cli_rejects_bounded_drain_flags_before_side_effects(
     import services.writer_lock as writer_lock_module
 
     reg = {
-        "defaults": {"fetch_timeout_seconds": 120},
+        "defaults": {
+            "fetch_timeout_seconds": 120,
+            "execution_policy": {"mode": "enabled", "reason": "active"},
+        },
         "domains": {
             "daily": {
                 "batch_mode": "by_trade_date",
@@ -400,7 +407,10 @@ def test_on_demand_cli_requires_both_bounds_before_side_effects(
     import services.writer_lock as writer_lock_module
 
     reg = {
-        "defaults": {"fetch_timeout_seconds": 120},
+        "defaults": {
+            "fetch_timeout_seconds": 120,
+            "execution_policy": {"mode": "enabled", "reason": "active"},
+        },
         "domains": {
             "factor": {
                 "batch_mode": "by_ts_code",
@@ -441,11 +451,9 @@ def test_on_demand_cli_requires_both_bounds_before_side_effects(
         [],
     ],
 )
-def test_formal_margin_cli_rejects_invalid_split_groups_before_side_effects(
-    monkeypatch, capsys, values
+def test_formal_margin_contract_rejects_invalid_split_groups_while_execution_frozen(
+    values,
 ):
-    import services.writer_lock as writer_lock_module
-
     source = sr.load_registry()
     margin = {
         **source["domains"]["margin"],
@@ -455,28 +463,15 @@ def test_formal_margin_cli_rejects_invalid_split_groups_before_side_effects(
         **source,
         "domains": {**source["domains"], "margin": margin},
     }
-    events = []
-    monkeypatch.setattr(sr, "load_registry", lambda: registry)
-    monkeypatch.setattr(
-        sr, "_calendar_preflight", lambda _domains: events.append("calendar")
-    )
-    monkeypatch.setattr(
-        sr,
-        "_authorization_preflight",
-        lambda *_args, **_kwargs: events.append("authorization"),
-    )
-    monkeypatch.setattr(
-        writer_lock_module,
-        "writer_lock",
-        lambda *_args, **_kwargs: pytest.fail("invalid formal plan acquired lock"),
-    )
-    monkeypatch.setattr(
-        sys, "argv", ["sync_runner.py", "--domain", "margin"]
-    )
+    spec = sr.domain_spec(registry, "margin")
 
-    assert sr.main() == 5
-    assert events == []
-    assert "split_by.values" in capsys.readouterr().out
+    with pytest.raises(
+        sr.PopulationScopeExecutionError,
+        match="dataset contract invalid.*split_by.values",
+    ) as caught:
+        sr._formal_dataset_contract_for_spec(spec)
+
+    assert caught.value.reason == "invalid_dataset_contract"
 
 
 def test_by_code_list_explicit_start_and_end_reach_provider(monkeypatch):
@@ -493,6 +488,7 @@ def test_by_code_list_explicit_start_and_end_reach_provider(monkeypatch):
 
     reg = {
         "defaults": {
+            "execution_policy": {"mode": "enabled", "reason": "active"},
             "fetch_timeout_seconds": 120,
             "retry": {"max_attempts": 1, "backoff_seconds": [0]},
         },
@@ -536,7 +532,10 @@ def test_by_code_list_explicit_start_and_end_reach_provider(monkeypatch):
 def test_drain_main_supported_domain_never_double_fetches_today(monkeypatch):
     """drain 已按 eligible horizon 覆盖今日时，main 不得再调用 run_domain。"""
     reg = {
-        "defaults": {"fetch_timeout_seconds": 120},
+        "defaults": {
+            "fetch_timeout_seconds": 120,
+            "execution_policy": {"mode": "enabled", "reason": "active"},
+        },
         "domains": {
             "daily": {"batch_mode": "by_trade_date", "available_after": "00:00"}
         },
@@ -569,7 +568,10 @@ def test_drain_main_supported_domain_never_double_fetches_today(monkeypatch):
 def test_drain_main_uses_only_drain_before_publish(monkeypatch):
     """发布时间以前也只执行 drain；eligibility 由 drain 内部统一决定。"""
     reg = {
-        "defaults": {"fetch_timeout_seconds": 120},
+        "defaults": {
+            "fetch_timeout_seconds": 120,
+            "execution_policy": {"mode": "enabled", "reason": "active"},
+        },
         "domains": {
             "dc_member": {
                 "batch_mode": "by_trade_date",
@@ -592,7 +594,10 @@ def test_drain_main_uses_only_drain_before_publish(monkeypatch):
 def test_drain_main_propagates_supported_domain_failure_without_second_fetch(monkeypatch):
     """同日抓取失败由 drain 的 partial 传播，不能再抓一次掩盖或放大失败。"""
     reg = {
-        "defaults": {"fetch_timeout_seconds": 120},
+        "defaults": {
+            "fetch_timeout_seconds": 120,
+            "execution_policy": {"mode": "enabled", "reason": "active"},
+        },
         "domains": {
             "daily": {"batch_mode": "by_trade_date", "available_after": "00:00"}
         },
@@ -614,7 +619,10 @@ def test_drain_main_fallback_incremental_domain_not_double_called(monkeypatch):
     """已走 fallback_incremental 路径 (drain_inapplicable/unsupported) 的域不应再额外触发
     今日补拉 (if/elif 互斥, 防重复调用 run_domain)。"""
     reg = {
-        "defaults": {"fetch_timeout_seconds": 120},
+        "defaults": {
+            "fetch_timeout_seconds": 120,
+            "execution_policy": {"mode": "enabled", "reason": "active"},
+        },
         "domains": {
             "allow_empty_events": {
                 "batch_mode": "by_trade_date",

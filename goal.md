@@ -8,21 +8,20 @@
 
 停止继续对旧架构做局部补洞，按 `docs/MASTER_TOPLEVEL_DESIGN.md` 建立可组合、可替换、可审计的数据与策略系统。
 
-当前继续 Phase 1 的 `margin` Tier0 tracer。两日 canary 已闭合；全历史读取前置门也已把
-accepted-state/reconcile 收敛为固定 6 条主库只读查询和一次分区级权威证明。Phase 1.1
-Grill 已裁决全史目标为 `20190102—live eligible frontier`，但也证伪现有 backfill 会重拉已
-accepted 分区、先覆盖 legacy 再自证 parity、首错后继续烧请求且没有可复用结果契约。下一
-既定 rollout 因此不是直接拉数，而是先补窄 `margin_history` 执行门；门通过后才由
-manual-only 公共入口分批回放并逐分区验收。全史 parity 前不提升 v3 coverage、不切业务
-消费者、不扩到第二域；Phase 0 证据在 ledger 和 git history。
+Phase 1.1 已从“补齐 margin v2 历史”改为“恢复与交易日历同级的 eligible-universe 硬门”。
+只读复核证明 v2 把 Tushare 的 transport shape（SSE/SZSE/BSE）误升为项目业务范围，现有
+universe checker 与 Moth assertion 均是假绿；因此停止 `20260709/BSE` 裁决、重观察和后续回放。
+旧 v2 batch/landing/canonical 保持不可变审计证据，但不得提升 full-coverage generation、切消费者
+或冒充项目 universe 数据。下一既定动作是先闭合 typed population scope、统一 policy snapshot、
+真实 red gate，再以 margin/market-pulse 为首个迁移切片。
 
-Tier0 未闭合前，不启动大规模公式寻优、付费计算、生产候选或自动跑批。
+Tier0 未闭合前，不启动公式寻优、付费计算、生产候选或自动跑批。
 
 ## 产品层级（已裁决）
 
 | 层 | 目的 | 首个正式输出 |
 |---|---|---|
-| Tier 0A 市场数据 | 正确获取日历、身份、名义 K 线、公司行动、复权与供应商事实 | accepted canonical partition |
+| Tier 0A 市场数据 | 日历、身份、名义 K 线、公司行动、复权与供应商事实 | accepted canonical partition |
 | Tier 0B 分类 | 版本化行业树、概念标签、成员快照和证据化 crosswalk | taxonomy node + membership |
 | Tier 1 股票状态 | 描述当前阶段、形态和事件，不预测未来 | stock state + pattern event |
 | Tier 2 市场感知 | 描述活跃度、不平衡代理、广度和价格响应 | market context snapshot |
@@ -34,92 +33,84 @@ Tier0 未闭合前，不启动大规模公式寻优、付费计算、生产候�
 ## 架构硬决定
 
 1. “积木”是 `module + data + config + contract + evidence`，不是目录加 YAML。
-2. landing 保留供应商原始响应；universe/business filter 不得发生在 landing 前。
-3. 名义 OHLCV 是成交真相；qfq 是带方法/as-of/lineage 的派生分析视图。
-4. 分类统一契约、不统一值域：申万、东财行业、东财概念保持 namespace。
-5. “资金去哪”只表达活动度、方向性成交不平衡代理、参与广度和价格响应，不宣称资金守恒流转。
-6. 股票状态与未来标签分离；主升浪 ground truth 永不进入 Tier 1 输入。
-7. 一数据集一 writer；只持久化跨模块、昂贵、需审计或正式发布的输出。
-8. 配置只保存稳定政策；运行状态、分类成员、未来模块和 code topology 不进 active YAML。
-9. 采用 strangler 迁移：契约先行、旧新并跑、对账、切消费者、最后删除旧路径。
-10. 数据更新保持 `manual_only`，不恢复 cron/launchd/隐藏后台触发。
+2. landing 保留已请求的供应商原始响应；universe/business filter 在 canonical/serve 执行并记录 reason。
+3. 交易日历管“何时”，eligible universe 管“谁/哪个市场”；两者是同级、不可绕过的发布前置门。
+4. 每个正式数据集必须声明 `raw_evidence`、`external_aggregate` 或 `project_universe_pit` population scope，
+   并携带同一 immutable universe policy id/version/hash；缺失即 fail closed。
+5. 外部交易所汇总只能表达供应商/交易所定义的总体，不能冒充项目股票池；项目聚合必须由可逐证券
+   执行 PIT 过滤的明细生成。后来退市不得反向删除其当时合格的历史，避免生存者偏差。
+6. 名义 OHLCV 是成交真相；qfq 是带方法/as-of/lineage 的派生分析视图。
+7. 分类统一契约、不统一值域：申万、东财行业、东财概念保持 namespace。
+8. “资金去哪”只表达活动度、方向性不平衡代理、参与广度和价格响应，不宣称资金守恒流转。
+9. 一数据集一 writer；配置只保存稳定政策；运行状态、成员事实和 code topology 不进 active YAML。
+10. 采用 strangler 迁移；数据更新保持 `manual_only`，不恢复 cron/launchd/隐藏触发。
 
-## Live 证据与剩余架构缺口
+## Live 证据与已推翻前提
 
-2026-07-17—18 `margin` canary 的详细证据已固化在 ledger；当前控制面只保留决策所需事实：
-
-- v2 availability 为 `trading_day / next_trading_session_at / 09:00`；`20260715—16` 两日
-  accepted/canonical 各 3 行、逐分区 `PARITY`，frontier/watermark=`20260716 / 3`；
-- 周六反例已证伪裸 `t+1`；旧 v1/rejected 批不改写，nullable `rqmcl=NULL` 不补 0；
-- 单次 registry snapshot 派生一个 immutable contract；transport/request shape 在任何写锁、
-  provider adapter 或目标 DB 前 fail closed；
-- accepted-state/readiness/reconcile 共用固定 6-query evidence snapshot 和一次日历预处理；
-- 正式表仍仅 2 日/6 行，legacy 为 1827 日/4485 行且消费者未切，故 Tier0 全史未闭合。
-
-仍存在的架构缺口：
-
-- 只有 margin tracer 具备纯 landing、accepted partition 和原子 Ops 投影；其他 legacy sync 域尚未迁移；
-- 其余 16 个 legacy `available_after=t+1` 域混有 trading-day、announcement、period 和
-  by-security 语义；保持旧行为但不得再把 transport/batch mode 当 availability 轴，须逐域迁移到 typed policy；
-- qfq 每日以最新因子全史重算，serving view 的 factor/batch/ingested_at 是占位，不能兼任名义成交和血缘真相；
-- 东财行业与申万按名称对齐，实测存在成员和名称差异，不能称同一桶；
-- market pulse 仍读 legacy margin，canary 后未纳入本 rollout 重建；其 `20260716` 物化行的
-  `rzrqye/rzrqye_chg` 仍为 NULL，且缺 `available_at/method/config_hash/coverage`，不能作为
-  本次 Tier0 验收或历史特征证据；
-- stock state 和 market regime 输出缺 definition/config/input snapshot 版本证据；
-- 研究层没有统一 snapshot/experiment/release，paper surface 不是正式执行模型。
-- 当前 holdout helper 只守训练边界，不具备原子 prereg、全局 single-touch、参数冻结或并发证据。
+- `universe_rules.yaml` 白名单仅 `60/00/30/68`，排除 BSE/新老三板、ST 与不再合格证券；
+- 47 个同步域中 30 个声明 `universe_filter`，仅 6 个 `by_ts_code` 请求前走较完整当前 universe；
+  其余 24 个只做前缀过滤，不执行 ST/退市 PIT；formal `margin` 反而显式要求 BSE；
+- `check_universe_filter.py --all` 对 `*ST` 坏例仍放行并报告 `CLEAN (1103 files)`；Moth 只 grep
+  gate symbol 是否存在，没有证明 registry、contract、writer 或 consumer 真消费它；
+- live `raw_tushare_daily` 最新日有 208 只 PIT-ST；市场脉搏 855 日中 854 日的涨跌广度会因剔除
+  ST 改变，龙虎榜最新 74 只中有 7 只 ST；SW/DC 成员与下钻也存在 BSE/ST 泄漏；
+- legacy margin 有 SSE/SZSE 各 1827 日、BSE 831 日；formal v2 accepted=1823 日、canonical=4473 行，
+  含 BSE 827 行。market pulse 830 日计入 BSE，4 日连日增方向被改变；
+- `20260709` 仍为未发布 LANDED，唯一冲突是 BSE `rqmcl NULL != 0`；没有 apply、re-fetch、legacy DML
+  或 consumer cutover。该 observation 现判为 out-of-scope，不再是需闭合的项目数据缺陷；
+- `margin_detail` 是逐证券原料，现有坏前缀和 PIT-ST 交集为 0，但截至 `20260714` 且 SZ 分片更旧；
+  它可生成新项目口径，不能冒充交易所官方汇总，也尚未具备正式 accepted history。
 
 ## 执行计划
 
-### Phase 0 — 控制面收口
+### Phase 0 / Phase 1 — 控制面与 accepted-partition 原语
 
-已完成；完成项不在 goal 重复维护，以 ledger、owner docs 和 git history 为证。
+已完成的 contract、atomic acceptance/Ops、manual-only 入口、canary 与固定查询证据保留在 ledger；
+它们证明机制可复用，不证明错误 population scope 的 v2 可继续发布。
 
-### Phase 1 — Tier0 accepted partition
+### Phase 1.1A — universe contract 与真门（当前）
 
-- [x] 为 margin 定义 typed `DatasetContract`、不可变 schema/hash 和唯一 writer；
-- [x] 建立 provider landing、validate/publish/accept 与 recovery 原子边界；
-- [x] 从 accepted state 投影 watermark/SLA/failure，并让 Tier0 失败阻断下游；
-- [x] 建立 manual-only `chunkyctl sync` 公共入口，保留授权/日历/writer lock；
-- [x] 完成 20260715—16 live canary、逐分区 parity、no-refetch 和 acquire gate；
-- [x] 消除全历史前约 `6 + 13N` 的读取路径，建立固定 6-query 与 calendar operation-count 门；
-- [x] 闭合 post-fix、最终 Rule 10、Moth/CodeGraph、owner docs 和本地安全提交。
+- [x] 暂停 BSE 观测裁决、重观察与 provider 写入，删除未提交错误支线；
+- [x] 从 `universe_rules.yaml` 派生 factory-owned typed immutable policy snapshot；正式 eligibility 固定为
+  `traded_on_observation_date`，90 日窗口只留给 legacy 当前枚举；
+- [x] DatasetContract 绑定 typed population scope，transport completeness 与 publication eligibility 分离；
+- [ ] 静态 scope 已能在 calendar/writer/auth/adapter/DB 前阻断；exact-date resolver 的信任契约已裁决，
+  但对抗审查否决了未绑定 availability/completeness 的初稿并已撤下。三个 accepted truth source、trusted
+  loader、resolver 与正式 writer/consumer 均待接通；
+- [x] verifier 已删除 shape-mutation 假坏例并区分 worktree/index，binder/resolver 对抗测试已变红；
+  Moth、doctor、safe-commit/CI 已接 static gate，doctor 将 live NOT_EVALUATED 独立判为 FAIL。
 
-### Phase 1.1 — margin 受控历史迁移
+### 2026-07-18 系统升级检查点（PARTIAL）
 
-- [x] 执行前 grill：目标为正式 canonical 历史预迁移，legacy consumer 暂不切；边界为
-  `20190102—eligible frontier`、当前精确 1827 个交易日/4485 个 provider fragment；accepted
-  pointer + `PARITY` 是可复用 checkpoint，LANDED 是零 refetch 恢复点；首错停、legacy 冲突
-  零覆盖；
-- [x] 在 provider 历史调用前补 `margin_history` typed request/plan/result：显式
-  start/end/max-dates、oldest-first cap、accepted+PARITY skip、compare-before-write、首错停和
-  稳定 evidence hash；
-- [ ] 只用 `chunkyctl sync --domain margin --backfill --start ... --end ... --max-dates ...`
-  分批回放，不安装自动任务；
-- [ ] 每批核对 accepted batch/config hash、正行数、期望交易日和逐分区 parity；
-- [ ] 全史闭合后才把 v2 历史证据按精确 predecessor proof 原子提升为 v3 full-coverage，再单独
-  规划 consumer shadow/cutover；第二数据域和 legacy 删除仍不混入本 rollout。
+- legacy margin history writer/runtime/CLI 旁路已物删；`margin` 前台入口在任何 provider/DB 副作用前以
+  `execution_blocked / scope_blocked` 退出，残留 acceptance mechanic 也按 live DB identity 物理拒写；
+  旧 accepted generation 只保留审计读证据；
+- resolver 语义已固定为 accepted calendar + exact-date nominal Kline + same-day ST；未能证明 availability、
+  completeness 与 calendar generation 的初稿未进入检查点，避免把自洽 hash 冒充 accepted truth；
+- 当前 static population contract PASS 只说明 1 个 formal external aggregate contract 合法，明确输出
+  `live_readiness=NOT_EVALUATED`；Tier0 仍 BLOCKED，升级后从本节继续，不得抓数或切消费者。
+
+### Phase 1.1B — margin / market-pulse 首个迁移
+
+- [ ] 冻结 v2 为错误 scope 的不可变审计 generation；语义变化不得继承其 predecessor parity；
+- [ ] 分立 `external venue-reported margin aggregate` 与 `project-universe margin aggregate`，确定实际消费者；
+- [ ] 若项目指标保留，从完整 `margin_detail` accepted canonical + PIT universe 派生，记录过滤原因、
+  input snapshot、available_at、method/unit/coverage/config hash；
+- [ ] breadth、龙虎榜、SW/DC 聚合与 drill 统一消费同一 PIT universe；旧 pulse 先标不可信，再 shadow
+  重建并逐日对账，API/UI 只在新 generation 验收后切换。
 
 ### 后续
 
-Tier0 K 线/分类 → 版本化 stock state → market context → 主升浪 B0/B1/B2 → 机构跟随和公式逐个 feature package → strategy release/decision/paper/product。
+按 consumer 风险顺序迁移其余 legacy 域，再进入 Tier0 K 线/分类 → stock state → market context →
+主升浪 B0/B1/B2 → 机构跟随和公式 feature package → strategy release/decision/paper/product。
 
 ## 当前 blocker / 禁止误报
 
-- margin canary 没有未闭合数据缺口，但 2 日 cross-section 只能 `skipped_insufficient_history`，不能声称历史稳定；
-- 正式 margin 历史仍未迁移；固定查询门只解除执行前置阻塞，不等于允许无 checkpoint 一次性拉取
-  1827 日，也不等于 consumer cutover；
-- 当前 provider 授权有效期为 `2026-06-17 10:48:58+08:00—2026-08-12 15:43:00+08:00`，但
-  服务端剩余额度未知、磁盘仅约 9.8 GiB；runner 门和单日 canary 未通过前仍为历史执行 NO-GO；
-- `coverage_start=20260715` 是 v2 当前服务义务，不是历史准入下限。预迁移期间冻结 v2 hash；
-  不得中途改 coverage 洗绿或使 checkpoint 漂移。全史闭合后才能以兼容 payload 证明和原子
-  generation head 提升 v3，旧 v2 batch/pointer/canonical 不改写、不重标；
-- 第二正式数据域前必须先抽出 runner 拥有的 outcome-to-loop policy；禁止在现有超过 2000 行的 `sync_runner.py` 继续复制 dataset-specific 分支，也不借机发明通用插件/DAG；
-- legacy `source_watermarks` standalone helper 的 failure-queue DROP/recreate 仍缺 outer transaction；margin 已有外层事务，不受此 P1 影响；
-- 全局 SLA 仍有 `lhb_daily`、`qfii_holding_quarterly` 无 mapping 及 `sync:margin_detail` stale 三个告警；strict continuity 另判 `cyq_perf` 超 SLA，而 SLA 报告却标 `OK`，该 verifier 口径分歧阻断全局 READY；不能用 margin 单域通过洗绿全链，也不能反向抹掉该单域证据；
-- 当前没有发布策略、正式候选或可信当前 KPI；
-- 正式 margin 历史尚未迁移，任何 business consumer cutover、raw+canonical 混读或 legacy 删除均禁止；
-- legacy market-pulse 当前物化未随 canary 刷新；其重建会写 Tier1/Tier2 共享输出，归消费者
-  rollout 串行验收，不得为美化本次 Tier0 报告越界执行；
-- 任何 `retired` 子命令 exit 0、WARN 被 Moth 当 PASS、fixture 与真实 schema 不同，都视为 verifier defect，不是可接受绿灯。
+- 当前 margin v2 与 market pulse population scope 错误，禁止 provider 调用、live DB 写、consumer cutover；
+- raw/landing 可保留排除对象作为证据，不能据此声称正式输出已通过 eligible-universe 门；
+- 交易所汇总无法剔除 ST/退市/ETF，改成仅 SSE/SZSE 仍不等于项目股票池；
+- 正式日级股票池按 t 日实际名义 K 线 + t 日 ST 处理，禁止用今天状态清洗全史；退市整理期仍有成交
+  但业务要求排除时，必须新增 temporal status source，不能把 exact-Kline 口径冒充该语义；
+- 现有 accepted=1823 日只证明 frozen v2 内部自洽，不证明业务范围正确；
+- 全局 SLA/continuity 仍有既有告警，单域修复不能洗绿全链；当前无可信 KPI、发布策略或候选；
+- verifier 必须证明坏例会红且退出码传播；函数存在、WARN、fixture 自洽、当前绿都不是交付证据。

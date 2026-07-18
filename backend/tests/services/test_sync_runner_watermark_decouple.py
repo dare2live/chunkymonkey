@@ -25,6 +25,8 @@ from conftest import duck_mem
 from services.data_sources import sync_runner as sr
 from services.source_watermarks import ensure_source_watermark_schema, upsert_watermark
 
+ENABLED_EXECUTION_POLICY = {"mode": "enabled", "reason": "active"}
+
 
 class _NoClose:
     def __init__(self, inner):
@@ -166,7 +168,10 @@ def test_full_refresh_success_is_complete_replay_and_resolves_open_failure(monke
     result = sr.run_domain(
         "trade_cal_probe",
         registry={
-            "defaults": {"fetch_timeout_seconds": 120},
+            "defaults": {
+                "fetch_timeout_seconds": 120,
+                "execution_policy": ENABLED_EXECUTION_POLICY,
+            },
             "domains": {"trade_cal_probe": spec},
         },
     )
@@ -219,7 +224,10 @@ def test_undated_full_refresh_updates_success_without_fabricating_data_date(monk
     result = sr.run_domain(
         "hm_list_probe",
         registry={
-            "defaults": {"fetch_timeout_seconds": 120},
+            "defaults": {
+                "fetch_timeout_seconds": 120,
+                "execution_policy": ENABLED_EXECUTION_POLICY,
+            },
             "domains": {"hm_list_probe": spec},
         },
     )
@@ -268,7 +276,10 @@ def test_failed_full_refresh_neither_resolves_failure_nor_refreshes_success(monk
     result = sr.run_domain(
         "stock_basic_probe",
         registry={
-            "defaults": {"fetch_timeout_seconds": 120},
+            "defaults": {
+                "fetch_timeout_seconds": 120,
+                "execution_policy": ENABLED_EXECUTION_POLICY,
+            },
             "domains": {"stock_basic_probe": spec},
         },
     )
@@ -376,7 +387,10 @@ def test_by_ann_date_failure_does_not_advance_frontier_past_gap(monkeypatch):
     result = sr.run_domain(
         "forecast_probe",
         registry={
-            "defaults": {"fetch_timeout_seconds": 120},
+            "defaults": {
+                "fetch_timeout_seconds": 120,
+                "execution_policy": ENABLED_EXECUTION_POLICY,
+            },
             "domains": {"forecast_probe": spec},
         },
     )
@@ -431,7 +445,10 @@ def test_open_non_drain_failure_is_replayed_and_resolved(monkeypatch):
     result = sr.run_domain(
         "forecast_probe",
         registry={
-            "defaults": {"fetch_timeout_seconds": 120},
+            "defaults": {
+                "fetch_timeout_seconds": 120,
+                "execution_policy": ENABLED_EXECUTION_POLICY,
+            },
             "domains": {"forecast_probe": spec},
         },
     )
@@ -488,7 +505,10 @@ def test_future_pending_failure_is_not_resolved_before_eligible_end(monkeypatch)
     result = sr.run_domain(
         "forecast_probe",
         registry={
-            "defaults": {"fetch_timeout_seconds": 120},
+            "defaults": {
+                "fetch_timeout_seconds": 120,
+                "execution_policy": ENABLED_EXECUTION_POLICY,
+            },
             "domains": {"forecast_probe": spec},
         },
     )
@@ -544,7 +564,10 @@ def test_quota_halt_does_not_overwrite_pending_batch_date(monkeypatch):
             start="20260714",
             end="20260714",
             registry={
-                "defaults": {"fetch_timeout_seconds": 120},
+                "defaults": {
+                    "fetch_timeout_seconds": 120,
+                    "execution_policy": ENABLED_EXECUTION_POLICY,
+                },
                 "domains": {"daily_probe": spec},
             },
         )
@@ -669,7 +692,10 @@ def test_by_period_failure_keeps_frontier_before_first_failed_period(monkeypatch
     result = sr.run_domain(
         "express_probe",
         registry={
-            "defaults": {"fetch_timeout_seconds": 120},
+            "defaults": {
+                "fetch_timeout_seconds": 120,
+                "execution_policy": ENABLED_EXECUTION_POLICY,
+            },
             "domains": {"express_probe": spec},
         },
     )
@@ -722,7 +748,10 @@ def test_by_period_open_failure_replays_and_resolves(monkeypatch):
     result = sr.run_domain(
         "express_probe",
         registry={
-            "defaults": {"fetch_timeout_seconds": 120},
+            "defaults": {
+                "fetch_timeout_seconds": 120,
+                "execution_policy": ENABLED_EXECUTION_POLICY,
+            },
             "domains": {"express_probe": spec},
         },
     )
@@ -778,7 +807,10 @@ def test_by_period_future_pending_waits_for_eligibility_then_resolves(monkeypatc
     sr.run_domain(
         "express_probe",
         registry={
-            "defaults": {"fetch_timeout_seconds": 120},
+            "defaults": {
+                "fetch_timeout_seconds": 120,
+                "execution_policy": ENABLED_EXECUTION_POLICY,
+            },
             "domains": {"express_probe": spec},
         },
     )
@@ -792,7 +824,10 @@ def test_by_period_future_pending_waits_for_eligibility_then_resolves(monkeypatc
     sr.run_domain(
         "express_probe",
         registry={
-            "defaults": {"fetch_timeout_seconds": 120},
+            "defaults": {
+                "fetch_timeout_seconds": 120,
+                "execution_policy": ENABLED_EXECUTION_POLICY,
+            },
             "domains": {"express_probe": spec},
         },
     )

@@ -50,7 +50,7 @@ AGENTS.md
 |---|---|
 | Health | `scripts/chunkyctl doctor --fast` |
 | Manual full data update | `bash scripts/daily_update.sh --date YYYYMMDD` |
-| Manual single-domain sync/canary/replay | `scripts/chunkyctl sync --domain DOMAIN [--drain --max-dates N]`；formal margin history 使用 `--backfill --start YYYYMMDD --end YYYYMMDD --max-dates N`（强制单域，拒绝 `--all-due`） |
+| Manual single-domain sync/canary/replay | `scripts/chunkyctl sync --domain DOMAIN [--drain --max-dates N]`；disabled/formal domains fail closed before provider/DB |
 | Shared tooling snapshot | `moth snapshot --repo .` |
 | Business/tool assertions | `moth assert --repo .` |
 | Coupling/deletion impact | `moth coupling --repo . --impact <name>` |
@@ -105,10 +105,9 @@ First establish `DatasetContract` and writer ownership around existing files. Mo
 accepted proof，`margin_legacy_reconcile.py`/`margin_reconcile.py` 负责纯比较与现场编排，
 `margin_readiness.py`/`margin_projections.py` 只在上层组合结果；依赖不得反向。
 
-当前 margin history path 的物理 owner：`margin_history_contract.py` 定义稳定 evidence 类型与 hash，
-`margin_history.py` 负责静态 request/plan/checkpoint，`margin_history_runtime.py` 负责首错停循环，
-`margin_history_ingest.py` 负责逐分区原子 compare/publish；共享 provider timeout 只由
-`sync_registry.yaml` 配置并经 `runtime_limits.py` 在副作用前验证。
+旧 margin history request/runtime/writer/CLI 已退役物删。冻结 v2 只由 `margin_evidence.py`、
+`margin_state.py`、reconcile/readiness/projection 读侧保留不可变审计证据；不存在受支持的继续写入旁路。
+共享 provider timeout 只由 `sync_registry.yaml` 配置并经 `runtime_limits.py` 在副作用前验证。
 
 ## 7. Generated map discipline
 

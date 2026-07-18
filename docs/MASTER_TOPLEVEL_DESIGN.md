@@ -107,6 +107,8 @@ flowchart TD
 - publication availability 的显式 `axis/rule/at`；transport/batch mode 只负责如何枚举请求，
   不得隐式决定数据何时可用；
 - 输入 snapshot、source batch、definition/config hash；
+- population scope：`raw_evidence`、`external_aggregate` 或 `project_universe_pit`，以及同一次执行
+  使用的 universe policy id/version/hash；
 - schema、单位、NULL/unknown 语义；
 - criticality、失败传播和允许的 fallback；
 - 消费者、重建方式、retention 和退役条件。
@@ -121,6 +123,31 @@ runner、writer、read model、projection、pipeline 与 audit 必须透传该�
 等值但不同代的配置。formal dataset 的 batch mode、date parameter、write mode、分片字段和全生命
 周期 group 集合必须在运行副作用前证明与合同兼容；重复、非规范或缺失分片不能先集合化后洗掉。
 裸 `t+1` 没有说明交易日/日历日/公告日等轴，只能作为未迁移 legacy 提示，不能跨域推广。
+
+population scope 与 availability 是正交的两条硬轴：交易日历回答“何时可用”，eligible universe
+回答“哪些证券/市场可进入该发布对象”。landing 保存已请求的供应商原始响应，不执行业务过滤；
+canonical/serve 必须消费一次加载的 immutable universe policy snapshot，并把 accepted/excluded 行数、
+reason 与 policy hash 写入证据。三类 scope 不得混用：
+
+- `raw_evidence` 只证明供应商实际返回了什么，可含 BSE、新老三板、ST、退市或非股票对象；
+- `external_aggregate` 保留交易所/供应商定义的总体，必须明确 venue、population、method 和 unit，
+  不能命名或宣传为项目股票池统计；交易所级一行无法证明其中每只证券都符合项目 universe；
+- `project_universe_pit` 的当前正式日级定义是 `traded_on_observation_date`：accepted 交易日历证明 t 开市，
+  accepted 名义日 K 线给出 t 日实际交易证券，再按合法 venue/board 与 accepted t 日 ST 成员过滤。
+  停牌、已终止交易或尚未上市因 t 日无 K 线而排除；股票后来退市不得反向删除其过去实际交易日。
+  “退市整理期仍交易也排除”是更强的 temporal-status 语义，只有新增 PIT 身份/status 真相源后才可声称。
+
+该日级门的 accepted 证据契约在实现前必须同时满足：calendar 使用不可变全量 generation 并从 contract
+重算 t 的开放性与 cutoff；nominal Kline/ST 使用 t 日 accepted partition；三者由同一 read-only DB/
+registry snapshot 的 trusted loader 读取并复算 canonical/projection hash、grain 唯一性、正向完整性和
+availability。验证码/权限页、失败 envelope、任意自报 completeness、未来 observation、事后 backfill、
+0 行以及 caller 自构造 ref 一律不能满足门。输出可用时间取三源 `max(available_at, accepted_at)`；配置的
+include/exclude 前缀不得重叠。上述 proof/loader 未接通前，状态只能是 `NOT_EVALUATED/BLOCKED`。
+
+transport completeness 只验证请求/响应分片，不能决定 publication population。正式 runner 必须在
+calendar、writer lock、authorization、adapter 和 DB I/O 前拒绝静态 scope 矛盾，在 canonical/serve
+发布前拒绝 row-level PIT 污染。同一执行只能从一个 registry snapshot 和一个 universe policy
+snapshot 派生 contract；runner、writer、state、audit 与 consumer 禁止下游重载配置或自行内联白名单。
 
 `coverage_start` 是当前 generation 承诺的完整覆盖义务，不是早期分区的 acceptance 禁区。历史
 预迁移冻结 active contract/config hash，以 `AcceptedPartition` 的完整 lineage proof 加逐分区
@@ -214,7 +241,10 @@ watermark、连续性、SLA 和待重试清单最终从 `AcceptedPartition` 投�
 
 概念重叠，不能把概念净额相加解释为全市场资金；行业 L1/L2/L3 也不能跨层重复求和。所有 rolling/rank/regime 必须按 namespace、node type、level 和 method 分区。
 
-`SectorObservation` 保存可审计观测；`MarketContextSnapshot(decision_time)` 负责 availability 对齐；阈值生成的 regime 是带 config hash 的解释，不是基础事实。展示 mart 可以服务当前页面，但没有 `available_at` 的表不得直接用于历史策略。
+`SectorObservation` 保存可审计观测；`MarketContextSnapshot(decision_time)` 负责 availability 与
+eligible universe 对齐。外部交易所汇总与项目 universe 派生指标必须分名、分 method、分 lineage，
+不能在同一列静默替换。阈值生成的 regime 是带 config hash 的解释，不是基础事实。展示 mart 可以
+服务当前页面，但没有 `available_at`、population scope 和 universe policy hash 的表不得直接用于历史策略。
 
 ## 9. Tier 3 研究与策略
 

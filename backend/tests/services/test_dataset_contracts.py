@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from services.data_sources import margin_ingest
 from services.data_sources.contracts import (
     dataset_contract_from_spec,
     load_dataset_contract,
@@ -78,6 +79,23 @@ def _spec() -> dict:
             "retirement_condition": "replacement_contract_and_consumer_cutover",
         },
     }
+
+
+def _frozen_margin_transport_spec() -> dict:
+    spec = _spec()
+    spec.update(
+        {
+            "domain": "margin",
+            "batch_mode": "by_trade_date",
+            "date_param": "trade_date",
+            "write_mode": "replace_partition",
+            "split_by": {
+                "param": "exchange_id",
+                "values": ["SSE", "SZSE", "BSE"],
+            },
+        }
+    )
+    return spec
 
 
 def test_dataset_contract_from_spec_builds_typed_margin_contract() -> None:
@@ -159,6 +177,42 @@ def test_repository_margin_entry_loads_as_the_formal_contract() -> None:
     assert contract.allowed_fallbacks == ()
     assert contract.schema_id == MARGIN_SCHEMA_ID
     assert contract.schema_hash == MARGIN_SCHEMA_HASH
+
+
+def test_frozen_margin_v2_transport_contract_is_exact_and_read_only() -> None:
+    contract = margin_ingest.contract_for_spec(_frozen_margin_transport_spec())
+
+    assert contract is not None
+    assert contract.dataset_id == "tier0.market_data.margin_exchange_daily"
+    assert contract.batch_completeness.required_groups_for("20230210") == (
+        "SSE",
+        "SZSE",
+    )
+    assert contract.batch_completeness.required_groups_for("20230213") == (
+        "BSE",
+        "SSE",
+        "SZSE",
+    )
+    assert not hasattr(margin_ingest, "execute_partition")
+    assert not hasattr(margin_ingest, "execute_partition_outcome")
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("batch_mode", "by_date_range"),
+        ("date_param", "end_date"),
+        ("write_mode", "merge"),
+        ("split_by", {"param": "exchange", "values": ["SSE", "SZSE", "BSE"]}),
+        ("split_by", {"param": "exchange_id", "values": ["SSE", "SZSE"]}),
+    ],
+)
+def test_frozen_margin_v2_rejects_transport_drift(key: str, value: object) -> None:
+    spec = _frozen_margin_transport_spec()
+    spec[key] = value
+
+    with pytest.raises(ValueError, match="formal margin transport wiring drift"):
+        margin_ingest.contract_for_spec(spec)
 
 
 def test_repository_schema_fingerprint_matches_code_owned_semantics() -> None:

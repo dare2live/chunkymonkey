@@ -7,6 +7,8 @@ import sys
 from services.data_sources import sync_runner as sr
 from services.duck_adapter import connect
 
+_ENABLED_EXECUTION = {"mode": "enabled", "reason": "active"}
+
 
 @pytest.fixture(autouse=True)
 def _successful_cli_authorization(monkeypatch):
@@ -152,6 +154,7 @@ def test_run_domain_records_incomplete_batch_without_advancing_watermark(monkeyp
         "defaults": {
             "fetch_timeout_seconds": 120,
             "retry": {"max_attempts": 1, "backoff_seconds": [0]},
+            "execution_policy": _ENABLED_EXECUTION,
         },
         "domains": {"margin_detail": _margin_spec()},
     }
@@ -556,7 +559,10 @@ def test_by_ts_code_explicit_window_is_applied_to_every_stock(monkeypatch):
 
 def test_all_due_skips_on_demand_domains(monkeypatch):
     reg = {
-        "defaults": {"fetch_timeout_seconds": 120},
+        "defaults": {
+            "fetch_timeout_seconds": 120,
+            "execution_policy": _ENABLED_EXECUTION,
+        },
         "domains": {
             "daily": {"batch_mode": "by_trade_date"},
             "stk_factor_pro": {"batch_mode": "by_ts_code", "sync_policy": "on_demand"},
@@ -578,7 +584,10 @@ def test_all_due_skips_on_demand_domains(monkeypatch):
 
 def test_all_due_drain_selected_unsupported_domain_exits_nonzero(monkeypatch):
     reg = {
-        "defaults": {"fetch_timeout_seconds": 120},
+        "defaults": {
+            "fetch_timeout_seconds": 120,
+            "execution_policy": _ENABLED_EXECUTION,
+        },
         "domains": {
             "unsupported_daily": {
                 "batch_mode": "by_ts_code",
@@ -624,6 +633,7 @@ def test_full_refresh_merges_fixed_params_and_uses_freshness_column(monkeypatch)
         "defaults": {
             "fetch_timeout_seconds": 120,
             "retry": {"max_attempts": 1, "backoff_seconds": [0]},
+            "execution_policy": _ENABLED_EXECUTION,
         },
         "domains": {
             "trade_cal": {
@@ -731,7 +741,10 @@ def test_drain_loop_authorization_failure_is_not_swallowed(monkeypatch, capsys):
     from services.data_sources.sources.tushare import TuShareAuthorizationError
 
     reg = {
-        "defaults": {"fetch_timeout_seconds": 120},
+        "defaults": {
+            "fetch_timeout_seconds": 120,
+            "execution_policy": _ENABLED_EXECUTION,
+        },
         "domains": {
             "daily": {"batch_mode": "by_trade_date"},
             "later": {"batch_mode": "by_trade_date"},
@@ -772,6 +785,7 @@ def test_run_domain_records_database_write_failure(monkeypatch):
         "defaults": {
             "fetch_timeout_seconds": 120,
             "retry": {"max_attempts": 1, "backoff_seconds": [0]},
+            "execution_policy": _ENABLED_EXECUTION,
         },
         "domains": {
             "daily": {

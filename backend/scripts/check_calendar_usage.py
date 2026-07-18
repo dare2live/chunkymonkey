@@ -9,7 +9,8 @@
   B1 wall-clock 当"最新交易日": datetime.now()/date.today() 决定 latest/cutoff → 必须 latest_completed_trade_date
   B2 SQL 日历天 cutoff: current_date - INTERVAL N DAY / CURRENT_DATE - N (对 trade_date 列做新鲜度/窗口) → 应走日历
 
-豁免: 文件 import services.calendar (已用日历真相源) / 同行 `# rule-compliance: ok evidence=` (合法日历天窗口, 写明理由) / calendar.py 本体 / 测试。
+豁免: 同行 `# rule-compliance: ok evidence=`（合法日历天窗口，写明理由）/
+calendar.py 本体 / 测试。仅 import 日历服务不能豁免同文件中的 wall-clock 绕过。
 
 跑: PYTHONPATH=backend python backend/scripts/check_calendar_usage.py [--staged] [--strict]
 --strict: 有违规 exit 1 (硬门模式, wired pre-commit); 默认 scanner 模式 exit 0 只报清单。
@@ -32,9 +33,6 @@ EXEMPT_FILES = {
 EXEMPT_PREFIXES = (
     "backend/tests/",
 )
-# import 了日历服务 = 已接真相源 (低层 fn 误用由 fail-loud wrapper 单独治, 不在本门范围)
-CALENDAR_IMPORT = re.compile(r"from services\.calendar import|import services\.calendar|services\.calendar\.")
-
 # B1: wall-clock 当"最新/今天"做交易日决策 (calendar.py 点名禁)
 WALLCLOCK = re.compile(r"datetime\.now\(\)\.date\(\)|date\.today\(\)|datetime\.today\(\)")
 # B2: SQL 日历天 cutoff (current_date - INTERVAL N DAY / now() - INTERVAL)
@@ -72,8 +70,6 @@ def check_file(path: Path) -> list[dict]:
         text = path.read_text(encoding="utf-8")
     except Exception:
         return []
-    if CALENDAR_IMPORT.search(text):
-        return []  # 文件已接日历真相源
     findings: list[dict] = []
     for i, line in enumerate(text.split("\n"), 1):
         s = line.strip()
@@ -94,6 +90,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--strict", action="store_true", help="有违规 exit 1 (硬门)")
     args = ap.parse_args(argv)
     files = _staged_py() if args.staged else _all_py()
+    if not files:
+        print("[calendar-usage] FAIL — tracked Python scan is empty")
+        return 1
     all_findings: list[dict] = []
     for f in files:
         all_findings.extend(check_file(f))

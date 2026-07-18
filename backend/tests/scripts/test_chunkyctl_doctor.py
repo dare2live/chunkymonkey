@@ -54,8 +54,74 @@ def test_aggregate_verdict_fail_priority():
     assert chunkyctl._aggregate_verdict([{"verdict": "WARN"}, {"verdict": "FAIL"}]) == "FAIL"
     # returncode!=0 (无 verdict) → FAIL
     assert chunkyctl._aggregate_verdict([{"returncode": 1}]) == "FAIL"
-    # WARN 带 returncode!=0 仍 WARN (moth 不在 PATH 降级场景)
+    # PASS cannot launder a failed process; explicit WARN remains the optional-tool path.
+    assert chunkyctl._aggregate_verdict([{"verdict": "PASS", "returncode": 9}]) == "FAIL"
     assert chunkyctl._aggregate_verdict([{"verdict": "WARN", "returncode": 127}]) == "WARN"
+
+
+@pytest.mark.parametrize(
+    ("result", "error"),
+    [
+        (
+            {"returncode": 9, "stdout": '{"verdict":"PASS","summary":{"total":1}}'},
+            "non-zero",
+        ),
+        ({"returncode": 0, "stdout": "not json"}, "not a JSON object"),
+        ({"returncode": 0, "stdout": '{"verdict":"PASS","summary":{"total":0}}'}, "empty summary"),
+    ],
+)
+def test_data_health_section_fails_closed_on_exit_or_report_mismatch(result, error):
+    section = chunkyctl._data_health_section(result)
+
+    assert section["verdict"] == "FAIL"
+    assert error in section["error"]
+
+
+def test_data_health_section_accepts_nonempty_consistent_report():
+    section = chunkyctl._data_health_section(
+        {
+            "returncode": 0,
+            "stdout": '{"verdict":"PASS","summary":{"total":36,"green":36}}',
+        }
+    )
+
+    assert section == {
+        "name": "data_health",
+        "verdict": "PASS",
+        "summary": {"total": 36, "green": 36},
+        "returncode": 0,
+    }
+
+
+def test_population_sections_keep_static_pass_separate_from_live_readiness():
+    contract, readiness = chunkyctl._population_sections(
+        {
+            "returncode": 0,
+            "stdout": json.dumps(
+                {
+                    "verdict": "PASS",
+                    "source_count": 150,
+                    "formal_dataset_count": 1,
+                    "scope_counts": {"external_aggregate": 1},
+                    "live_readiness": "NOT_EVALUATED",
+                }
+            ),
+        }
+    )
+
+    assert contract["verdict"] == "PASS"
+    assert readiness["status"] == "NOT_EVALUATED"
+    assert readiness["verdict"] == "FAIL"
+
+
+def test_population_contract_cannot_launder_nonzero_or_malformed_report():
+    for result in (
+        {"returncode": 9, "stdout": '{"verdict":"PASS"}'},
+        {"returncode": 0, "stdout": "not json"},
+    ):
+        contract, readiness = chunkyctl._population_sections(result)
+        assert contract["verdict"] == "FAIL"
+        assert readiness["verdict"] == "FAIL"
 
 
 def test_collect_alert_flags_no_flags(tmp_path, monkeypatch):
@@ -150,7 +216,17 @@ def test_doctor_blocks_when_automation_surface_fails(tmp_path, monkeypatch, caps
     monkeypatch.setattr(
         chunkyctl,
         "_run_command",
-        lambda *_args, **_kwargs: {"cmd": [], "returncode": 0, "stdout": '{"verdict":"PASS"}', "stderr": ""},
+        lambda command, **_kwargs: {
+            "cmd": command,
+            "returncode": 0,
+            "stdout": (
+                '{"verdict":"PASS","source_count":1,"formal_dataset_count":1,'
+                '"scope_counts":{"external_aggregate":1},"live_readiness":"NOT_EVALUATED"}'
+                if any("check_universe_filter.py" in part for part in command)
+                else '{"verdict":"PASS","summary":{"total":1}}'
+            ),
+            "stderr": "",
+        },
     )
 
     rc = chunkyctl.run_doctor(argparse.Namespace(repo=str(tmp_path)))
@@ -162,7 +238,8 @@ def test_doctor_blocks_when_automation_surface_fails(tmp_path, monkeypatch, caps
         "tooling_gate",
         "automation_surface",
         "alert_flags",
-        "universe",
+        "population_contract",
+        "population_readiness",
         "data_health",
     ]
 

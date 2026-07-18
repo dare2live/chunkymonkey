@@ -87,9 +87,13 @@ Moth PASS 只有在 verifier 自身能红、没有 warning 被 regex 洗成 PASS
 - fixture 是否使用当前真相源和真实 schema shape；
 - 是否会写共享 DB/输出；
 - 是否能用坏例变红，是否只是自洽/过度 mock；
+- universe 坏例是否同时覆盖 BSE/新老三板、t 日 ST、t 日已不合格、未来才退市，且未来状态不得
+  改写过去结果；exchange aggregate 与逐证券 project universe 必须用不相等反例证明没有混称；
 - 是否把 warn/proxy/empty selection 当 PASS。
 
-当前真相源：交易日在日历；名义 K 线/公司行动是交易事实；universe 规则在 `universe_rules.yaml`；分类必须带 namespace/version；`dim_active_a_stock` 只可作身份/名称/cache，不是历史可交易性真相。
+当前真相源：交易日在日历；正式日级 universe 用 t 日名义 K 线 + t 日 ST + venue/board policy；
+90 日 K 线窗口只可用于 legacy 当前枚举。分类必须带 namespace/version；`dim_active_a_stock` 只可作
+身份/名称/cache，不是历史可交易性真相。
 
 先跑最窄测试，再按 blast radius 扩大。默认测试使用 DuckDB memory fixture；真实 DB 测试必须显式只读或串行写窗口。
 
@@ -97,6 +101,10 @@ Moth PASS 只有在 verifier 自身能红、没有 warning 被 regex 洗成 PASS
 
 - 审计默认 `read_only=True`；大表先聚合、抽样或 LIMIT；
 - landing 不做 universe/business filter；过滤发生在 canonical/serve，并保留 reason；
+- 每个正式数据集声明 `raw_evidence`、`external_aggregate` 或 `project_universe_pit` population scope；
+  缺 policy id/version/hash 或用 external aggregate 冒充项目股票池时 fail closed；
+- 交易日历与 universe policy 从同一次执行快照派生并贯穿 fetch/validate/accept/audit/consumer；
+  禁止 runner 与下游各自重读 YAML、内联前缀或用今天的退市/ST 状态清洗历史；
 - 每个发布数据集一个 writer；其他模块只读公开契约；
 - 同一 DuckDB/表/输出目录的写入必须串行；
 - 先 stage/validate，再在一个可证明的事务边界内发布数据与 accepted partition；
@@ -172,7 +180,6 @@ ChunkyMonkey 数据更新模式为 `manual_only`。禁止安装或保留项目�
 scripts/chunkyctl doctor --fast
 scripts/chunkyctl sync --domain DOMAIN [--drain --max-dates N]
 scripts/chunkyctl sync --domain DOMAIN --backfill --start YYYYMMDD --end YYYYMMDD
-scripts/chunkyctl sync --domain margin --backfill --start YYYYMMDD --end YYYYMMDD --max-dates N
 bash scripts/daily_update.sh --date YYYYMMDD
 ```
 

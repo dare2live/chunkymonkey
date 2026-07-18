@@ -8,12 +8,14 @@
 #   source         数据源 adapter 名 (services/data_sources registry)
 #   api            源 API 名 (tushare pro 接口名)
 #   target_db      database_manifest.yaml 里的库 alias (新域一律 tushare_raw, 与主库写锁解耦)
-#   target_table   raw 表名 (api 字段镜像 + built_at, 不加工 — 加工归特征层)
+#   target_table   legacy compatibility 表；声明 universe_filter 的域会在写前删行，
+#                  因而不是完整 provider landing，也不能作为正式 raw_evidence acceptance
 #   grain          MERGE 主键 (幂等重跑)
 #   batch_mode     by_trade_date (一次调用全市场一天) / by_ts_code / by_month / full_refresh
 #   pit_anchor     PIT 锚点列 + 可用时刻语义 (特征 JOIN 纪律的机器可读声明)
 #   available_after legacy PIT/调度提示；裸 t+1 尚未声明日期轴，不得扩写其语义
 #   availability_policy formal dataset 的 typed 发布时间契约 (axis/rule/at)，是 eligibility 唯一 owner
+#   execution_policy typed 执行许可 (mode/reason)；disabled 域仍可只读加载契约与状态，但任何 sync 入口必须在副作用前阻断
 #   data_start     回填起点 (E8 探底/文档实测)
 #   freshness_sla_trading_days  落后超过 N 交易日 = audit FAIL
 #   min_rows_per_batch  单批最低行数 sanity (低于即可疑, 0 行必重试)
@@ -31,6 +33,9 @@
 version: 1
 
 defaults:
+  execution_policy:
+    mode: enabled
+    reason: active
   retry:
     max_attempts: 3
     backoff_seconds: [5, 30, 120]
@@ -201,6 +206,18 @@ domains:
       required_groups: [SH, SZ]    # provider API 不支持 exchange 参数；禁止伪 split_by，缺任一市场即 fail closed
 
   margin:                          # 交易所汇总 (SSE/SZSE/BSE 2-3 行/日): B4 市场感知大盘水位原料
+    execution_policy:
+      mode: disabled
+      reason: scope_blocked
+    # 这是供应商按交易所定义的外部汇总人口，不是项目可交易股票池。
+    # BSE 在此只描述原响应/旧 generation 的覆盖，不能流入 project_universe_pit。
+    population_scope:
+      kind: external_aggregate
+      venue_field: exchange_id
+      venue_ids: [SSE, SZSE, BSE]
+      population_label: venue_reported_margin_population
+      method: tushare_margin_exchange_summary
+      unit: provider_declared_fields
     source: tushare
     api: margin
     target_table: raw_tushare_margin
@@ -235,10 +252,6 @@ domains:
       # 北交所上市日不是两融业务起点。北交所公告〔2023〕9号自 2023-02-13 施行；
       # 此前只要求 SSE/SZSE，自业务生效日起同时要求 BSE。
       required_groups_since: {BSE: "20230213"}
-    history_replay:
-      # manual-only 历史迁移的单次资源硬上限；调用方仍必须显式传更小或相等的 --max-dates。
-      # 首错停、compare-before-write 和 checkpoint proof 是代码不变量，不可配置降级。
-      max_partitions_per_run: 20
     dataset_contract:
       dataset_id: tier0.market_data.margin_exchange_daily
       contract_version: "2"
@@ -379,13 +392,13 @@ domains:
                                     # 行, 8000≈0.6x; 原 100 对 3000 行级网关截断(本网关惯犯指纹)
                                     # 无检测力, 若丢未来年份段只剩此门(max(cal_date)检查兜一半)
 
-  # ── 基础: 真股身份真相源 (universe 身份层, 2026-06-19 替 akshare dim_active 前缀猜市场) ──
+  # ── 基础: 当前在市请求枚举快照（禁止作为历史 PIT 身份真相） ──
   stock_basic:
     source: tushare
     api: stock_basic
     target_table: raw_tushare_stock_basic
-    # 不设 universe_filter: 本表=universe 身份真相源本身, 保全市场(含北交所/退市)于 raw,
-    #   排除(BSE/ST)下沉到消费侧 (dim_active 重建 + get_active_universe), 防真相源被前缀门误删。
+    # 不设 universe_filter: 保留供应商 list_status=L 当前快照中的全部 venue（含北交所）。
+    # 它不含退市历史，也没有 delist_date，不能与历史数据交集；仅供 current by-ts-code 枚举。
     grain: [ts_code]
     batch_mode: full_refresh       # 单接口一次拉完全市场 (50次/分, 2000积分); "≤6000 行上限"原为
                                     # 未实测声明, 2026-07-09 全审计标注
@@ -397,7 +410,7 @@ domains:
                                     # (limit=3000,offset=3000 返 2527 行), 一行配置消雷。
     fixed_params:
       list_status: L               # 在市股 (current active master, like-for-like 替 ak.stock_info_a_code_name); 退市生存者偏差走 PIT 历史宇宙另案
-    pit_anchor: "list_date; 静态身份快照 (含 list_date/delist_date)"
+    pit_anchor: "current_snapshot_only; list_date 非历史 membership interval"
     available_after: "00:00"
     data_start: "20200101"         # full_refresh 无回填语义, 占位
     freshness_sla_trading_days: 30 # 身份快照变动慢

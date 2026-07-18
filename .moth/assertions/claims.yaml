@@ -125,11 +125,11 @@ assertions:
     type: shell
     command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && moth coupling --repo . 2>&1 | grep -o 'verdict=[A-Z]*' | head -1"]
     expect: {op: regex, pattern: "verdict=PASS"}
-  - id: universe-hard-gate-present
-    claim: "universe 硬门在岗 (2026-06-17 用户: 排除列表升交易日历级; assert_universe_clean 是任何GT/回测/选股最终股票集必过的硬门. 删=污染可复发)"
+  - id: universe-population-contract-static
+    claim: "universe 静态契约与对抗单测通过；只证明 typed scope/policy/binder 行为，不证明 accepted calendar/Kline/ST live readiness，后者仍为 NOT_EVALUATED"
     type: shell
-    command: ["bash", "-c", "grep -c 'def assert_universe_clean\\|class UniverseContaminationError' backend/services/universe.py"]
-    expect: {op: ">=", value: 2}
+    command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 -m pytest -q backend/tests/services/test_population_scope.py backend/tests/scripts/test_check_universe_filter.py >/dev/null && PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_universe_filter.py --format json | .venv/bin/python3 -c 'import json,sys; r=json.load(sys.stdin); assert r[\"verdict\"]==\"PASS\" and r[\"live_readiness\"]==\"NOT_EVALUATED\"; print(\"STATIC_POPULATION_CONTRACT_PASS_LIVE_NOT_EVALUATED\")'"]
+    expect: {op: regex, pattern: "STATIC_POPULATION_CONTRACT_PASS_LIVE_NOT_EVALUATED"}
   - id: exploration-isolated-in-sandbox
     claim: "探索隔离在 sandbox/ 不污染主代码 (2026-06-17 用户根治: 探索脚本/findings草稿/结果散进 backend/scripts+analysis+docs = 反复污染根因, 本对话清~100文件). sandbox/ gitignored 且默认整包清理; 探索 runner (experiment_*/analyze_*) 不许在 backend/scripts (该在 sandbox/<exp>/). 需要晋升的结果必须按现行 Tier3 契约重写、经 Rule 10 审核并由正式 owner 接管; 当前没有跨删存活的 verdict writer. 复活旧路径=污染根因复发. owner=sandbox/README.md"
     type: shell
@@ -158,7 +158,7 @@ assertions:
     command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_serve_read_layer.py >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}
   - id: calendar-usage-clean
-    claim: "交易日历强制使用门全绿 (2026-06-22 P1 升硬门, 第零条规定与 universe 同档执法): check_calendar_usage.py 全量 0 内联绕过交易日历真相源 — B1 wall-clock(date.today/datetime.now)当最新交易日 / B2 SQL CURRENT_DATE-INTERVAL 日历天cutoff / B3 SQL <=CURRENT_DATE 上界锚, 豁免 import services.calendar / `rule-compliance: ok evidence=`合法日历天窗口。真 PIT 锚已修(signals_v2/dossier/events as_of 走 latest_closed_or_raise); 18 合法窗口(载史/recency/展示/SLA-age/provenance)已 evidence。wired safe_commit Step3.95 --strict。>0=新增绕过/回潮。owner=backend/scripts/check_calendar_usage.py"
+    claim: "交易日历静态强制门全绿：导入 calendar 不再豁免整文件，空扫描失败关闭；B1 wall-clock 当最新交易日、B2/B3 SQL wall-clock cutoff 均阻断，显式 evidence 仅豁免具体合法行。owner=backend/scripts/check_calendar_usage.py"
     type: shell
     command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_calendar_usage.py --strict >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}

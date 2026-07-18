@@ -79,6 +79,20 @@ Rules:
 
 - landing preserves the provider response; universe/business filtering occurs
   later and must record a reason;
+- every formal dataset declares one typed population scope: `raw_evidence`,
+  `external_aggregate`, or `project_universe_pit`. Availability answers when;
+  the universe policy answers who/which venue. Both are blocking and one
+  immutable policy snapshot must flow through runner, writer, state, audit and
+  consumers;
+- external venue aggregates cannot prove constituent eligibility and must not
+  masquerade as project-universe metrics. Project aggregates require
+  security-grained PIT filtering. A later delisting must not rewrite an earlier
+  eligible observation;
+- the formal daily project population is `traded_on_observation_date`: accepted
+  calendar + exact-date nominal Kline membership - same-day ST - excluded
+  board/venue. The 90-day Kline window is legacy current enumeration only. A
+  stronger rule that excludes a still-trading delisting period requires a
+  separately accepted temporal-status source;
 - nominal price is execution truth; qfq is a derived analysis view and must
   carry method/as-of/lineage;
 - `stage -> validate -> publish -> accepted_partition` must have a proven
@@ -162,7 +176,6 @@ Supported data entrypoints:
 scripts/chunkyctl doctor --fast
 scripts/chunkyctl sync --domain DOMAIN [--drain --max-dates N]
 scripts/chunkyctl sync --domain DOMAIN --backfill --start YYYYMMDD --end YYYYMMDD
-scripts/chunkyctl sync --domain margin --backfill --start YYYYMMDD --end YYYYMMDD --max-dates N
 bash scripts/daily_update.sh --date YYYYMMDD
 ```
 

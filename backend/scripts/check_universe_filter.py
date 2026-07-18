@@ -1,173 +1,276 @@
 #!/usr/bin/env python3
-"""L8 enforcement: lint code for direct dim_active_a_stock usage instead of universe.get_active_universe.
+"""Static population-contract gate; live accepted-data readiness is separate.
 
-Per user push: 'Universe filter 必用 get_active_universe()' — currently doc-only.
-This script enforces it via lint check.
-
-Usage:
-  PYTHONPATH=backend python backend/scripts/check_universe_filter.py [--staged] [--include-tests]
-
-Exit code:
-  0 = clean
-  1 = violations found (block commit if used in pre-commit hook)
+The checker proves that a non-empty source snapshot and every formal registry
+dataset bind through the production DatasetContract/population-scope code.  It
+does not claim that accepted calendar/K-line/ST evidence exists; doctor reports
+that independent runtime gate.
 """
 
 from __future__ import annotations
 
 import argparse
-import re
+from collections import Counter
+from collections.abc import Callable, Mapping
+import json
+from pathlib import Path
 import subprocess
 import sys
-from pathlib import Path
+import tempfile
+from typing import Any, Literal
+
+import yaml
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TEST_PREFIXES = (
-    "backend/tests/",
+BACKEND_ROOT = REPO_ROOT / "backend"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+from services.data_sources.contracts import dataset_contract_from_spec  # noqa: E402
+from services.data_sources.population_scope import (  # noqa: E402
+    ExternalAggregateScope,
+    ProjectUniversePitScope,
+    RawEvidenceScope,
+    bind_execution_contract,
 )
-EXEMPT_FILES = {
-    "backend/services/universe.py",  # the implementation itself
-    "backend/tests/test_universe.py",  # test fixtures
-    "backend/scripts/check_universe_filter.py",  # this file
-    "backend/scripts/audit_strategy_universe.py",  # audit tool intentional
-    "backend/scripts/audit_survivorship.py",  # audit tool intentional
-    "backend/scripts/audit_panel_leakage.py",  # audit tool intentional
+from services.data_sources.sync_runner import domain_spec  # noqa: E402
+from services.universe import (  # noqa: E402
+    UniverseDataError,
+    UniversePolicy,
+    load_universe_policy,
+    verify_universe_policy,
+)
+
+
+REGISTRY_RELATIVE_PATH = Path("backend/config/sync_registry.yaml")
+POLICY_RELATIVE_PATH = Path("backend/config/universe_rules.yaml")
+TEST_PREFIXES = ("backend/tests/", "tests/")
+SourceMode = Literal["worktree", "index"]
+_SCOPE_TYPES = {
+    "raw_evidence": RawEvidenceScope,
+    "external_aggregate": ExternalAggregateScope,
+    "project_universe_pit": ProjectUniversePitScope,
 }
 
-# Pattern: SQL containing 'dim_active_a_stock' JOIN without nearby get_active_universe call
-SQL_PATTERN = re.compile(r"dim_active_a_stock", re.IGNORECASE)
-# 2026-06-22 P0-12: 认 assert_universe_clean(运行时硬门)/in_active_universe(helper) 也是 universe 执法
-UNIVERSE_CALL_PATTERN = re.compile(r"get_active_universe|sql_where_active_a_share|sql_where_no_st|assert_universe_clean|in_active_universe")
-# 2026-06-22 P0-12 盲区2: 从 K线直接派生股票宇宙 (SELECT DISTINCT code FROM price_kline) 无 universe
-# 过滤 = §4.5 universe 污染根因 (实验直扫全部股含北交所/ST)。区别于"读某股K线数据"(WHERE code=?)。
-KLINE_UNIVERSE_SCAN = re.compile(r"DISTINCT\s+(?:code|ts_code)\s+FROM\s+\S*price_kline", re.IGNORECASE)
 
-# 2026-06-17: 硬编码白名单前缀绕过 (universe 升交易日历级真相源). 任何文件内联
-# ('60','00','30','68') 白名单 = 第二真相源 → 必须 import universe.ACTIVE_A_SHARE_PREFIXES.
-# 这是污染复发的根 (实验/旧GT 内联前缀或干脆不过滤直扫 K线).
-_WHITELIST_PREFIXES = ("60", "00", "30", "68")
+def _issue(code: str, message: str, **context: Any) -> dict[str, Any]:
+    issue: dict[str, Any] = {"code": code, "message": message}
+    issue.update(context)
+    return issue
 
 
-def _has_board_whitelist_literal(line: str) -> bool:
-    """line 是否硬编码了完整白名单前缀 (4 个全在, 任意序)."""
-    return all((f"'{p}'" in line) or (f'"{p}"' in line) for p in _WHITELIST_PREFIXES)
+def _git(repo: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args], cwd=repo, capture_output=True, text=True, check=False
+    )
 
 
-def _is_test_path(rel: str) -> bool:
-    return any(rel.startswith(prefix) for prefix in TEST_PREFIXES)
+def source_inventory(
+    repo: Path, *, mode: SourceMode, include_tests: bool = False
+) -> tuple[tuple[str, ...], list[dict[str, Any]]]:
+    """Enumerate exactly the worktree or Git-index source snapshot."""
+
+    args = (
+        ["ls-files", "-z"]
+        if mode == "index"
+        else ["ls-files", "-co", "--exclude-standard", "-z"]
+    )
+    result = _git(repo, args)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip() or "unknown git error"
+        return (), [_issue("source_scan_failed", f"git inventory failed: {detail}")]
+    paths = []
+    for relative in result.stdout.split("\0"):
+        if not relative.endswith(".py"):
+            continue
+        if not include_tests and relative.startswith(TEST_PREFIXES):
+            continue
+        if mode == "worktree" and not (repo / relative).is_file():
+            continue
+        paths.append(relative)
+    return tuple(sorted(set(paths))), []
 
 
-def _filter_files(files: list[Path], *, include_tests: bool) -> list[Path]:
-    if include_tests:
-        return files
-    return [path for path in files if not _is_test_path(str(path.relative_to(REPO_ROOT)))]
+def _index_text(repo: Path, relative: Path) -> str:
+    result = _git(repo, ["show", f":{relative.as_posix()}"])
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip() or "missing index file"
+        raise OSError(detail)
+    return result.stdout
 
 
-def check_file(path: Path, *, include_tests: bool = False) -> list[dict]:
-    """Returns list of violation dicts."""
-    rel = str(path.relative_to(REPO_ROOT))
-    if rel in EXEMPT_FILES:
-        return []
-    if not include_tests and _is_test_path(rel):
-        return []
-    if not path.suffix == ".py":
-        return []
-    try:
-        text = path.read_text(encoding="utf-8")
-    except Exception:
-        return []
-    findings = []
-    lines = text.split("\n")
-    has_universe_call = bool(UNIVERSE_CALL_PATTERN.search(text))
-    for i, line in enumerate(lines, 1):
-        if SQL_PATTERN.search(line):
-            stripped = line.strip()
-            if stripped.startswith("#"):
-                continue
-            # rule-compliance evidence comment OK
-            if "rule-compliance: ok evidence=" in line:
-                continue
-            # If file has universe call but specific line is dim_active JOIN, still flag unless evidence
-            if not has_universe_call:
-                findings.append({
-                    "file": rel,
-                    "line": i,
-                    "match": stripped[:80],
-                    "reason": "dim_active_a_stock 直接使用, 应改 get_active_universe() (universe.py)",
-                })
-            elif "JOIN" in line.upper() or "INNER" in line.upper() or "FROM" in line.upper():
-                # Has universe call elsewhere in file, but specific JOIN line warrants check
-                findings.append({
-                    "file": rel,
-                    "line": i,
-                    "match": stripped[:80],
-                    "reason": "dim_active_a_stock 在 JOIN/FROM, file 有 get_active_universe 但 此处 direct — 验证是否 intentional. 加 # rule-compliance: ok evidence=... 跳过.",
-                })
-        # 2026-06-17: 硬编码白名单前缀绕过 (universe 升真相源后必拦)
-        if _has_board_whitelist_literal(line):
-            stripped = line.strip()
-            if stripped.startswith("#") or "rule-compliance: ok evidence=" in line:
-                continue
-            findings.append({
-                "file": rel,
-                "line": i,
-                "match": stripped[:80],
-                "reason": "硬编码白名单前缀(60/00/30/68)=第二真相源, 应 import services.universe.ACTIVE_A_SHARE_PREFIXES 或调 assert_universe_clean()",
-            })
-        # 2026-06-22 P0-12 盲区2: 从 K线派生股票宇宙 (DISTINCT code) 无 universe 过滤 = §4.5 污染根因
-        if KLINE_UNIVERSE_SCAN.search(line) and not has_universe_call:
-            stripped = line.strip()
-            if stripped.startswith("#") or "rule-compliance: ok evidence=" in line:
-                continue
-            findings.append({
-                "file": rel,
-                "line": i,
-                "match": stripped[:80],
-                "reason": "SELECT DISTINCT code FROM price_kline 派生股票宇宙但 file 无 universe 过滤 = §4.5 污染根因(直扫全部股含北交所/ST), 应过 assert_universe_clean()/get_active_universe(); 合法(如writer/已过滤)加 # rule-compliance: ok evidence=",
-            })
-    return findings
-
-
-def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--staged", action="store_true",
-                   help="check only git-staged files (for pre-commit hook)")
-    p.add_argument("--all", action="store_true", default=False,
-                   help="check all .py files (default = changed since main)")
-    p.add_argument("--include-tests", action="store_true",
-                   help="include backend/tests fixtures in the lint scan")
-    args = p.parse_args()
-
-    if args.staged:
-        result = subprocess.run(["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-                                capture_output=True, text=True, cwd=REPO_ROOT)
-        files = [REPO_ROOT / f for f in result.stdout.strip().split("\n") if f.endswith(".py")]
-    elif args.all:
-        files = sorted(REPO_ROOT.rglob("*.py"))
+def _registry(
+    repo: Path, registry_path: Path, mode: SourceMode
+) -> dict[str, Any]:
+    if mode == "index" and registry_path == repo / REGISTRY_RELATIVE_PATH:
+        text = _index_text(repo, REGISTRY_RELATIVE_PATH)
     else:
-        # 2026-06-22 P0-12 盲区1: 默认改全量扫 (旧 default=git diff main → 无 diff 分支假绿).
-        # pre-commit hook 用 --staged (增量); bare 调用 = 全量审计.
-        files = sorted(REPO_ROOT.rglob("*.py"))
-    files = _filter_files(files, include_tests=args.include_tests)
+        text = registry_path.read_text(encoding="utf-8")
+    raw = yaml.safe_load(text)
+    if not isinstance(raw, dict) or not isinstance(raw.get("domains"), dict):
+        raise ValueError("registry root/domains must be mappings")
+    return raw
 
-    all_findings = []
-    for path in files:
-        if path.exists():
-            all_findings.extend(check_file(path, include_tests=args.include_tests))
 
-    if not all_findings:
-        print(f"[L8 universe-filter] CLEAN ({len(files)} files checked)")
-        return 0
+def _policy(repo: Path, mode: SourceMode) -> UniversePolicy:
+    if mode == "worktree":
+        return load_universe_policy(repo / POLICY_RELATIVE_PATH)
+    text = _index_text(repo, POLICY_RELATIVE_PATH)
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", encoding="utf-8") as handle:
+        handle.write(text)
+        handle.flush()
+        return load_universe_policy(handle.name)
 
-    print(f"[L8 universe-filter] {len(all_findings)} violation(s):")
-    for f in all_findings:
-        print(f"  {f['file']}:{f['line']}: {f['match']}")
-        print(f"    {f['reason']}")
-    print()
-    print("修法 (3 选 1):")
-    print("  1. 改用 from services.universe import get_active_universe + filter_active_a_share")
-    print("  2. 加 # rule-compliance: ok evidence=<reason> 注释跳过 (need justification)")
-    print("  3. 文件加 from services.universe import get_active_universe (file-level intent)")
-    return 1
+
+def _audit_formal_contracts(
+    registry: Mapping[str, Any],
+    *,
+    policy_snapshot: UniversePolicy,
+) -> tuple[int, dict[str, int], list[dict[str, Any]]]:
+    issues: list[dict[str, Any]] = []
+    domains = registry["domains"]
+    formal_names = sorted(
+        name
+        for name, entry in domains.items()
+        if isinstance(entry, Mapping) and "dataset_contract" in entry
+    )
+    if not formal_names:
+        return 0, {}, [
+            _issue("no_formal_datasets", "registry contains no formal datasets")
+        ]
+
+    scope_counts: Counter[str] = Counter()
+    for domain in formal_names:
+        try:
+            spec = domain_spec(dict(registry), domain)
+            contract = dataset_contract_from_spec(domain, spec)
+            raw_scope = spec.get("population_scope")
+            kind = raw_scope.get("kind") if isinstance(raw_scope, Mapping) else None
+            injected = policy_snapshot if kind == "project_universe_pit" else None
+            bound = bind_execution_contract(contract, spec, injected)
+        except (KeyError, TypeError, ValueError) as exc:
+            issues.append(
+                _issue(
+                    "population_scope_invalid",
+                    f"formal dataset contract/scope is invalid: {exc}",
+                    domain=domain,
+                )
+            )
+            continue
+
+        expected_type = _SCOPE_TYPES.get(kind)
+        if expected_type is None or type(bound.accepted_scope) is not expected_type:
+            issues.append(
+                _issue(
+                    "population_scope_kind_mismatch",
+                    "declared scope kind differs from production-bound type",
+                    domain=domain,
+                    scope_kind=kind,
+                )
+            )
+            continue
+        if kind == "project_universe_pit" and bound.universe_policy is not policy_snapshot:
+            issues.append(
+                _issue(
+                    "universe_policy_not_injected",
+                    "project scope lost the exact policy snapshot",
+                    domain=domain,
+                )
+            )
+            continue
+        if kind != "project_universe_pit" and bound.universe_policy is not None:
+            issues.append(
+                _issue(
+                    "non_project_scope_has_policy",
+                    "non-project scope retained project universe policy",
+                    domain=domain,
+                )
+            )
+            continue
+        scope_counts[str(kind)] += 1
+    return len(formal_names), dict(sorted(scope_counts.items())), issues
+
+
+def audit_repository(
+    repo: Path = REPO_ROOT,
+    *,
+    registry_path: Path | None = None,
+    include_tests: bool = False,
+    source_mode: SourceMode = "worktree",
+    policy_loader: Callable[[], UniversePolicy] | None = None,
+) -> dict[str, Any]:
+    repo = Path(repo)
+    sources, issues = source_inventory(
+        repo, mode=source_mode, include_tests=include_tests
+    )
+    if not sources:
+        issues.append(
+            _issue("no_source", f"{source_mode} contains zero Python source files")
+        )
+
+    formal_count = 0
+    scope_counts: dict[str, int] = {}
+    try:
+        registry = _registry(
+            repo,
+            registry_path or repo / REGISTRY_RELATIVE_PATH,
+            source_mode,
+        )
+        policy_snapshot = (
+            policy_loader() if policy_loader is not None else _policy(repo, source_mode)
+        )
+        verify_universe_policy(policy_snapshot)
+        formal_count, scope_counts, contract_issues = _audit_formal_contracts(
+            registry, policy_snapshot=policy_snapshot
+        )
+        issues.extend(contract_issues)
+    except (OSError, TypeError, ValueError, UniverseDataError, yaml.YAMLError) as exc:
+        issues.append(_issue("contract_inputs_unreadable", str(exc)))
+
+    return {
+        "verdict": "FAIL" if issues else "PASS",
+        "source_mode": source_mode,
+        "source_count": len(sources),
+        "formal_dataset_count": formal_count,
+        "scope_counts": scope_counts,
+        "issues": issues,
+        "live_readiness": "NOT_EVALUATED",
+    }
+
+
+def _render_text(report: Mapping[str, Any]) -> str:
+    lines = [
+        "[population-contract] "
+        f"{report['verdict']} mode={report['source_mode']} "
+        f"source_count={report['source_count']} "
+        f"formal_dataset_count={report['formal_dataset_count']} "
+        f"scope_counts={report['scope_counts']} "
+        "live_readiness=NOT_EVALUATED"
+    ]
+    for issue in report["issues"]:
+        domain = f" domain={issue['domain']}" if issue.get("domain") else ""
+        lines.append(f"  - {issue['code']}{domain}: {issue['message']}")
+    return "\n".join(lines)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--staged", action="store_true", help="audit Git-index snapshot")
+    mode.add_argument("--all", action="store_true", help="audit live worktree snapshot")
+    parser.add_argument("--include-tests", action="store_true")
+    parser.add_argument("--format", choices=("text", "json"), default="text")
+    args = parser.parse_args(argv)
+    report = audit_repository(
+        include_tests=args.include_tests,
+        source_mode="index" if args.staged else "worktree",
+    )
+    if args.format == "json":
+        print(json.dumps(report, ensure_ascii=False, sort_keys=True))
+    else:
+        print(_render_text(report))
+    return 0 if report["verdict"] == "PASS" else 1
 
 
 if __name__ == "__main__":

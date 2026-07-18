@@ -7,7 +7,7 @@ owner=docs/strategy_validation_contract.md §8.1 + d1_gt_archaeology_20260702.md
   L0 底→顶 swing: 波段底 (前后 pivot_low_window 最低) → max_forward_days 根内峰,
      峰/底-1 >= gain_min (60%), 峰距 >= min_duration_days (排单日尖峰); 同股 covered 去重。
   L1 universe: 前缀白名单 (services.universe) + 身份真相源 (raw_tushare_stock_basic, 排 K线里
-     非个股码) + 非退市 (末K线距数据末 <= DELISTED_NO_TRADE_DAYS 自然日) + episode 内非 ST
+     非个股码) + 有近期K线 (末K线距数据末 <= NO_RECENT_KLINE_DAYS 自然日) + episode 内非 ST
      (PIT ST 日历 raw_tushare_stock_st, 每 st_sample_step_bars 根抽样)。
   L2 多头排列: 拉升期 [bottom..peak] 内∃某日 MA5>MA10>MA20>MA30>MA60 (bull_align_mode=any_day, P1 拍板)。
   L3 长底: 底前 base_lookback_days 内 >= base_min_days 日收盘落在 底low*[band_low, band_high]。
@@ -62,7 +62,7 @@ from services.gt_label_contract import (
 )
 from services.holdout_guard import assert_holdout_untouched, training_cutoff_before_holdout
 from services.universe import (
-    DELISTED_NO_TRADE_DAYS,
+    NO_RECENT_KLINE_DAYS,
     assert_universe_clean,
     is_active_a_share,
     is_st_on,
@@ -473,12 +473,12 @@ def rebuild(conn=None, data_end=None, raw_conn=None) -> dict:
             if len(dts) < int(ep["base_lookback_days"]):
                 continue
             n_stocks += 1
-            delisted = (pd.to_datetime(last_data_date) - pd.to_datetime(str(dts[-1]))).days > int(DELISTED_NO_TRADE_DAYS)
+            no_recent_kline = (pd.to_datetime(last_data_date) - pd.to_datetime(str(dts[-1]))).days > int(NO_RECENT_KLINE_DAYS)
             eps = detect_episodes(code, dts, highs, lows, closes, st_cal, cfg)
             purge_bottoms: set[str] = set()
             for e in eps:
                 funnel["L0_swing"] += 1
-                if delisted or e["st_in_episode"]:
+                if no_recent_kline or e["st_in_episode"]:
                     continue
                 funnel["L1_universe"] += 1
                 if not e["bull_aligned"]:

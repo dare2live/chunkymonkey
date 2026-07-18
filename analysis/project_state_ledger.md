@@ -292,3 +292,55 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   Feature Map 连续两次 fresh、Moth `30/30 PASS`、CodeGraph current、`git diff --check` 通过。
   本门验证未调用 provider、未写 live DB、未安装自动任务；下一步只能先跑 `20190102` 单日 canary，
   成功后再跑 `20230213` BSE 分段边界，不能跳到全史或 consumer cutover。
+
+### 2026-07-18 — margin history rollout and universe-scope superseding verdict
+
+- 正式公共入口先后验收 `20190102` 两市场 canary（batch=`margin:20190102:03c4ff2892364cd1ae905ac58473df7a`、
+  rows=2、content hash=`7be443ff…ebcfc`）与 `20230213` 三市场 canary
+  （batch=`margin:20230213:87a2ad26b3ba4e188693c9142e1ad3d5`、rows=3、content hash=
+  `c82b907c…640f`），随后按 cap=20、oldest-first、首错停回放。主库只读复验为 accepted=
+  `1823` 日/`4473` 行、canonical=`1823` 日/`4473` 行、legacy=`1827` 日/`4485` 行；消费者与
+  frozen v2 contract/config 均未切换；
+- 首错 `20260709` batch=`margin:20260709:5332c102407841a4b14896b1b69a5494` 保持 `LANDED`：
+  expected/completed/failed fragments=`3/3/0`、landing rows=`3`、payload hash=`7f807b1d…6c47d`。
+  candidate hash=`12b5ec4c…d65eb`、legacy hash=`09bb6d40…32ba4`；唯一 issue 为
+  `(20260709,BSE,rqmcl)` 的 Tushare `NULL` 对 legacy `0`，未写 canonical、accepted 或 legacy；
+- 北交所官网同日 summary JSONP 六个重叠字段与 legacy BSE 行一致，raw SHA256=
+  `d12f07e6bd4bda103a4de5c51db9b18957f8fc4708f52dfc54f762db04b10311`；官网 XLS 的
+  “融券卖出量（股）”同为 `0.00`，SHA256=`602fce61ea0595deed1bf0a51d8c8d905f0ba63591e6b21dcfedef8a0f3c40fa`。
+  这只证明 provider observation 有矛盾，不授权覆盖 frozen v2；
+- 用户重申 BSE、新老三板、ST、退市属于与交易日历同级的排除门后，controller 对 registry、代码、
+  live DB 和 consumer 做了重新证伪：47 个同步域中 30 个声明 `universe_filter`，仅 6 个
+  `by_ts_code` 在请求前走较完整当前 universe，24 个只做前缀过滤；formal margin 无过滤且从
+  `20230213` 起硬性要求 BSE。`check_universe_filter.py --all` 对 `*ST` 坏例仍放行并报告
+  `CLEAN (1103 files)`，Moth assertion 只检查 gate symbol 存在，均为 false green；
+- live 影响：formal canonical 已含 BSE 827 行；market pulse 830 日把 BSE 计入两融总额并有 4 日
+  改变沪深日增方向；`raw_tushare_daily` 最新日有 208 只 PIT-ST，855 个 pulse 日中 854 日的
+  涨跌广度会因剔除 ST 改变，龙虎榜最新 74 只中有 7 只 ST，SW/DC 成员与下钻也有同类泄漏；
+- superseding verdict=`BLOCK v2 rollout / PROCEED population-scope correction`。问题不是再补四日，
+  而是 transport completeness 被误升为 business canonical scope。BSE 专项裁决原型未 apply、未提交、
+  未重拉 provider，随后从 worktree 删除；旧 batch/landing/canonical 只作不可变错误-scope 证据，
+  不得继承为 full-coverage generation 或切消费者。
+
+### 2026-07-18 — system-upgrade checkpoint: universe gate reconstruction
+
+- Formal policy is now factory-owned and semantically rehashed. Its daily rule is
+  `traded_on_observation_date`; the 90-day heuristic remains only in legacy current enumeration.
+  The production scope binder rejects an exchange-grained aggregate relabelled as a security-grained
+  project universe and requires `ts_code`, observation-time partition anchoring and trading-day availability.
+- The recent-window resolver was rejected and removed. The accepted design requires one read snapshot containing
+  versioned calendar generation, exact-date nominal Kline and exact-date ST proofs, with contract-derived
+  availability/completeness and positive provider-envelope evidence. Red-team counterexamples proved that
+  self-consistent hashes alone can launder future partitions, permission pages and incomplete calendars; that
+  implementation was deliberately withheld from this checkpoint rather than patched into another false green.
+- The old margin history request/runtime/writer/CLI modules and their obsolete self-contained tests were
+  physically removed. The retained v2 surface is read-only evidence/state/reconcile/projection; the supported
+  margin CLI exits `execution_blocked / scope_blocked` before provider or DB access, and the residual acceptance
+  mechanic refuses the live `tushare_raw.duckdb` by verified DB identity before schema or DML.
+- Static population verification now distinguishes live worktree from Git index, includes untracked production
+  source in worktree mode, removes the invalid “any Kline scan is wrong” regex and shape-mutation bad-case count,
+  and reports `live_readiness=NOT_EVALUATED`. Full backend regression before final withdrawal was green; focused
+  doctor/population/safe-commit gates also pass, while live doctor intentionally returns overall FAIL.
+- Status remains `PARTIAL/BLOCKED_FOR_DATA_USE`: only one formal dataset exists and it is the disabled external
+  margin aggregate. Accepted calendar/Kline/ST source contracts, DB loader/writers and a read-only/live canary
+  remain after the OS upgrade. No provider call or live DB write occurred.

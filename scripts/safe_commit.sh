@@ -206,6 +206,38 @@ else
     exit 5
 fi
 
+# 3.955 population contract gate.  This is intentionally static: it proves the
+# staged registry/policy/binder contract and keeps live accepted-data readiness
+# separate (continuity/doctor may remain BLOCKED without blocking a code commit).
+echo
+echo "=== Step 3.955: population-contract gate (staged snapshot) ==="
+POPULATION_JSON="$STAGED_INDEX_DIR/.population-contract.json"
+if ! PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_universe_filter.py" \
+    --format json > "$POPULATION_JSON"; then
+    cat "$POPULATION_JSON" 2>/dev/null || true
+    echo "ERROR: staged population contract gate failed."
+    exit 5
+fi
+if ! "$PY" - "$POPULATION_JSON" <<'PY'
+import json
+import sys
+
+report = json.load(open(sys.argv[1], encoding="utf-8"))
+if report.get("verdict") != "PASS":
+    raise SystemExit("population contract verdict is not PASS")
+if report.get("live_readiness") not in {"NOT_EVALUATED", "BLOCKED", "DEGRADED", "READY"}:
+    raise SystemExit("population live_readiness is missing or invalid")
+if not isinstance(report.get("formal_dataset_count"), int) or report["formal_dataset_count"] <= 0:
+    raise SystemExit("population formal dataset inventory is empty")
+print(
+    "[population-contract] staged PASS; "
+    f"live_readiness={report['live_readiness']} (not upgraded by code commit)"
+)
+PY
+then
+    exit 5
+fi
+
 # 3.96 血缘漂移门: 每次提交都用同一 staged snapshot + live read-only catalogs 重建对账。
 # 普通 consumer 删除同样会改变 consume edge，不能靠结构文件 regex 猜触发面。
 echo

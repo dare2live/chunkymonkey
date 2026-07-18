@@ -8,8 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Iterable
 
+from services.database_manifest import get_database_manifest
 from services.data_sources.margin_schema import (
     ACCEPTED_TABLE,
     CANONICAL_TABLE,
@@ -32,6 +34,26 @@ from services.data_sources.margin_validation import (
     canonical_content_hash,
     validate_margin_publication_time,
 )
+
+
+_FROZEN_LIVE_DB = get_database_manifest().path_for("tushare_raw").resolve()
+
+
+def _block_frozen_live_write(conn) -> None:
+    """Make the wrong-scope v2 generation physically read-only in the live DB."""
+
+    try:
+        databases = conn.execute("PRAGMA database_list").fetchall()
+    except Exception as exc:
+        raise MarginAcceptanceError(
+            "cannot prove target DB identity; frozen margin write fails closed"
+        ) from exc
+    for row in databases:
+        raw_path = str(row[-1] or "")
+        if raw_path and Path(raw_path).expanduser().resolve() == _FROZEN_LIVE_DB.resolve():
+            raise MarginAcceptanceError(
+                "margin v2 live writes are frozen: execution_blocked / scope_blocked"
+            )
 
 
 @dataclass(frozen=True)
@@ -203,6 +225,7 @@ def land_margin_batch(
     after_step: Callable[[str], None] | None = None,
 ) -> str:
     """Tx-A: persist the complete provider response without semantic filtering."""
+    _block_frozen_live_write(conn)
     contract = _contract(contract)
     ensure_margin_acceptance_schema(conn)
     batch_id = str(batch.batch_id or "").strip()
@@ -378,7 +401,7 @@ def prove_current_landed_margin_batch(
     if actual != expected:
         raise MarginAcceptanceError(
             f"stale LANDED margin checkpoint batch_id={batch_id!r}; "
-            "adjudicate it before fetching another observation"
+            "resolve its contract/scope before fetching another observation"
         )
     return RecoverableMarginLanding(batch_id=batch_id, payload_hash=payload_hash)
 
@@ -565,6 +588,7 @@ def accept_margin_batch(
     after_step: Callable[[str], None] | None = None,
 ) -> AcceptanceOutcome:
     """Tx-B: validate committed landing, then atomically publish canonical + pointer."""
+    _block_frozen_live_write(conn)
     contract = _contract(contract)
     ensure_margin_acceptance_schema(conn)
     batch = _load_margin_batch(conn, batch_id)
@@ -667,6 +691,7 @@ def recover_margin_batch(
     after_step: Callable[[str], None] | None = None,
 ) -> AcceptanceOutcome:
     """Recover a LANDED batch or prove an ACK-lost ACCEPTED batch is already durable."""
+    _block_frozen_live_write(conn)
     contract = _contract(contract)
     ensure_margin_acceptance_schema(conn)
     row = conn.execute(

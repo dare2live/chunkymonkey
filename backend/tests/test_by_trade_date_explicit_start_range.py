@@ -28,7 +28,11 @@ from services.data_sources import sync_runner as sr
 from services.source_watermarks import ensure_source_watermark_schema
 
 REG = {
-    "defaults": {"target_db": "tushare_raw", "fetch_timeout_seconds": 120},
+    "defaults": {
+        "target_db": "tushare_raw",
+        "fetch_timeout_seconds": 120,
+        "execution_policy": {"mode": "enabled", "reason": "active"},
+    },
     "domains": {
         "synthetic_trade_date_domain": {
             "source": "tushare", "api": "stk_limit",

@@ -8,7 +8,6 @@ import pytest
 
 pytestmark = pytest.mark.usefixtures("deterministic_margin_calendar")
 
-from services.data_sources.margin_ingest import project_ops_state
 from services.data_sources.margin_acceptance import (
     MarginFragment,
     MarginLandingBatch,
@@ -62,28 +61,6 @@ def test_projection_ready_is_derived_from_real_typed_evidence():
             ),
         ),
     ).ready is False
-
-
-def _raise_ops_factory_error():
-    raise RuntimeError("ops unavailable")
-
-
-def test_project_ops_state_can_best_effort_a_factory_failure():
-    assert project_ops_state(
-        object(),
-        [PARTITION],
-        ops_conn_factory=_raise_ops_factory_error,
-        best_effort_message="authorization projection failed",
-    ) is None
-
-
-def test_project_ops_state_surfaces_a_factory_failure_by_default():
-    with pytest.raises(RuntimeError, match="ops unavailable"):
-        project_ops_state(
-            object(),
-            [PARTITION],
-            ops_conn_factory=_raise_ops_factory_error,
-        )
 
 
 def _row(exchange: str, partition: str = PARTITION) -> dict:

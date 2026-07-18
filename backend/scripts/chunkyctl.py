@@ -5,8 +5,9 @@ This surface intentionally stays small. It exposes the live manual-only Tier0/op
   1. tooling_gate  — `moth assert` (二进制; 原 moth_snapshot.py 已删, 改直调 CLI)
   2. automation_surface — manual-only 下阻断数据写 cron/launchd 残留
   3. alert_flags   — 巡检 /tmp/chunkymonkey_ALERT_*.flag (手动任务失败/降级)
-  4. universe      — check_universe_filter.py --all (排除股写入门)
-  5. data_health   — data_health_snapshot.py --dry-run (表新鲜度/红黄绿)
+  4. population_contract  — typed scope/policy static contract
+  5. population_readiness — accepted calendar/Kline/ST live evidence (独立阻断)
+  6. data_health          — data_health_snapshot.py --dry-run (表新鲜度/红黄绿)
 Retired commands are fail-closed compatibility names, not dormant workflows or future promises.
 """
 from __future__ import annotations
@@ -65,11 +66,100 @@ def _aggregate_verdict(sections: list[dict[str, Any]]) -> str:
     saw_warn = False
     for sec in sections:
         v, rc = sec.get("verdict"), sec.get("returncode")
-        if v == "FAIL" or (rc is not None and rc != 0 and v not in ("WARN", "PASS")):
+        # A child report cannot launder a failed process into PASS.  WARN with a
+        # non-zero code remains reserved for an explicitly degraded optional
+        # tool (currently only missing Moth, normalized by _moth_gate).
+        if v == "FAIL" or (rc is not None and rc != 0 and v != "WARN"):
             return "FAIL"
         if v == "WARN":
             saw_warn = True
     return "WARN" if saw_warn else "PASS"
+
+
+def _data_health_section(result: dict[str, Any]) -> dict[str, Any]:
+    """Validate both process status and the data-health report shape."""
+
+    report = _json_from_stdout(result)
+    summary = None if report is None else (
+        report.get("summary") or report.get("severity_counts")
+    )
+    reported_verdict = None if report is None else report.get("verdict")
+    valid_summary = (
+        isinstance(summary, dict)
+        and isinstance(summary.get("total"), int)
+        and not isinstance(summary.get("total"), bool)
+        and summary["total"] > 0
+    )
+    valid_report = reported_verdict in ("PASS", "WARN", "FAIL") and valid_summary
+    verdict = (
+        reported_verdict
+        if result.get("returncode") == 0 and valid_report
+        else "FAIL"
+    )
+    section: dict[str, Any] = {
+        "name": "data_health",
+        "verdict": verdict,
+        "summary": summary,
+        "returncode": result.get("returncode"),
+    }
+    if result.get("returncode") != 0:
+        section["error"] = "data-health process returned non-zero"
+    elif report is None:
+        section["error"] = "data-health output is not a JSON object"
+    elif not valid_report:
+        section["error"] = "data-health report has invalid verdict or empty summary"
+    return section
+
+
+def _population_sections(result: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Keep static population wiring distinct from accepted-data readiness."""
+
+    report = _json_from_stdout(result)
+    valid = bool(
+        result.get("returncode") == 0
+        and report is not None
+        and report.get("verdict") == "PASS"
+        and isinstance(report.get("source_count"), int)
+        and report["source_count"] > 0
+        and isinstance(report.get("formal_dataset_count"), int)
+        and report["formal_dataset_count"] > 0
+        and isinstance(report.get("scope_counts"), dict)
+        and report.get("live_readiness") in (
+            "READY",
+            "DEGRADED",
+            "BLOCKED",
+            "NOT_EVALUATED",
+        )
+    )
+    contract = {
+        "name": "population_contract",
+        "verdict": "PASS" if valid else "FAIL",
+        "returncode": result.get("returncode"),
+        "formal_dataset_count": None if report is None else report.get("formal_dataset_count"),
+        "scope_counts": None if report is None else report.get("scope_counts"),
+    }
+    if not valid:
+        contract["error"] = "population contract report/exit is invalid"
+
+    readiness = None if report is None else report.get("live_readiness")
+    readiness_verdict = {
+        "READY": "PASS",
+        "DEGRADED": "WARN",
+        "BLOCKED": "FAIL",
+        "NOT_EVALUATED": "FAIL",
+    }.get(readiness, "FAIL")
+    population_readiness = {
+        "name": "population_readiness",
+        "verdict": readiness_verdict,
+        "status": readiness or "INVALID",
+        "reason": (
+            "accepted calendar/nominal-Kline/ST evidence and production consumer "
+            "wiring are not yet proved"
+            if readiness == "NOT_EVALUATED"
+            else None
+        ),
+    }
+    return contract, population_readiness
 
 
 def collect_alert_flags() -> dict[str, Any]:
@@ -321,19 +411,19 @@ def run_doctor(args: argparse.Namespace) -> int:
     sections.append(audit_automation_surface(repo))                            # 2. manual-only 调度面
     af = collect_alert_flags()                                                 # 3. 告警 flag 巡检
     sections.append({"name": "alert_flags", "verdict": af["verdict"], "count": af["count"], "flags": af["flags"]})
-    uni = _run_command([sys.executable, "backend/scripts/check_universe_filter.py", "--all"], cwd=repo)  # 4. universe
-    sections.append({"name": "universe", "verdict": "PASS" if uni["returncode"] == 0 else "FAIL", **_summary(uni)})
-    dh = _run_command([sys.executable, "backend/scripts/data_health_snapshot.py",                # 5. 数据新鲜度
+    population = _run_command(                                                  # 4/5. population contract/readiness
+        [sys.executable, "backend/scripts/check_universe_filter.py", "--format", "json"],
+        cwd=repo,
+    )
+    sections.extend(_population_sections(population))
+    dh = _run_command([sys.executable, "backend/scripts/data_health_snapshot.py",                # 6. 数据新鲜度
                        "--dry-run", "--format", "json"], cwd=repo)
-    dh_json = _json_from_stdout(dh)
-    sections.append({"name": "data_health",
-                     "verdict": (dh_json or {}).get("verdict", "PASS" if dh["returncode"] == 0 else "FAIL"),
-                     "summary": (dh_json or {}).get("summary") or (dh_json or {}).get("severity_counts"),
-                     "returncode": dh["returncode"]})
+    sections.append(_data_health_section(dh))
     verdict = _aggregate_verdict(sections)
     report = {"command": "doctor", "verdict": verdict, "sections": sections,
-              "note": "当前权威快检只聚合 5 个独立 gate: "
-                      "moth/automation/alert/universe/data_health；已退役子命令不构成缺口"}
+              "note": "当前权威快检聚合 6 个独立 gate: moth/automation/alert/"
+                      "population_contract/population_readiness/data_health；"
+                      "静态契约 PASS 不升级 live readiness"}
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if verdict != "FAIL" else 1
 
@@ -352,7 +442,10 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(prog="chunkyctl", description="项目操作 CLI (2026-06-22 最小重建 doctor)")
     sub = parser.add_subparsers(dest="command")
-    d = sub.add_parser("doctor", help="健康检查 (moth/automation/alert/universe/data_health)")
+    d = sub.add_parser(
+        "doctor",
+        help="健康检查 (moth/automation/alert/population contract+readiness/data_health)",
+    )
     d.add_argument("--repo", default=".")
     d.add_argument("--fast", action="store_true")              # wrapper 已 strip; 防直调残留不崩
     d.add_argument("--skip-storage-payload", action="store_true")

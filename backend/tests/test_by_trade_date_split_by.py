@@ -26,6 +26,7 @@ REG = {
     "defaults": {
         "target_db": "tushare_raw",
         "fetch_timeout_seconds": 120,
+        "execution_policy": {"mode": "enabled", "reason": "active"},
         "retry": {"max_attempts": 1, "backoff_seconds": [0]},
     },
     "domains": {

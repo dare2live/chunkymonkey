@@ -39,6 +39,7 @@ def _registry(with_era: bool) -> dict:
         "defaults": {
             "target_db": "tushare_raw",
             "fetch_timeout_seconds": 120,
+            "execution_policy": {"mode": "enabled", "reason": "active"},
         },
         "domains": {"md_era_test": entry},
     }

@@ -4,12 +4,12 @@
   1. 按 batch_mode 切批 (交易日历驱动, 不 hardcode 日期)
   2. 调 source adapter fetch_raw (api 字段镜像, 不加工)
   3. 写 raw 表 (target_db 库, MERGE on grain, 加 built_at) — 幂等重跑
-  4. legacy 域 watermark + failure_queue；formal 域显式 dispatch 到数据集 owner
+  4. legacy 域 watermark + failure_queue；formal 域在执行契约闭合前 fail closed
   5. 0 行 = 失败重试 (宪法 v2 第 6 条; allow_empty_batch 条目除外)
 
 写锁纪律: raw 表写 tushare_raw.duckdb (manifest 注册), 与 smartmoney 主库锁解耦;
-margin formal 状态机由 ``margin_ingest`` 独立拥有；runner 仅注入通用 fetch/write/
-connection callbacks，避免数据集证据语义回流进通用分页器。
+margin v2 当前只保留冻结契约与 accepted-state 只读证据；旧 provider/write
+状态机已退役，不能绕过执行策略与 population-scope 门。
 
 watermark/failure_queue 在 smartmoney (既有表), 写入窗口短。
 
@@ -29,13 +29,15 @@ import re
 import threading
 import time
 from collections import defaultdict, deque
+from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 import yaml
 
-from services.data_sources import margin_history, margin_history_runtime, margin_ingest
+from services.data_sources import margin_ingest
 from services.data_sources.availability import (
     DomainEligibility,
     OperationWindow,
@@ -60,6 +62,186 @@ log = logging.getLogger("sync_runner")
 _REPO = Path(__file__).resolve().parents[3]
 _REGISTRY_PATH = _REPO / "backend" / "config" / "sync_registry.yaml"
 SOURCE_TIER_TUSHARE = 2  # evidence: tushare = tier-2 源 (source_watermarks DOMAIN_SPECS sync:* 域全 tier 2; SLA_DAYS tier2=2d)
+
+_EXECUTION_POLICY_KEYS = frozenset({"mode", "reason"})
+_EXECUTION_REASON = re.compile(r"[a-z][a-z0-9_]*\Z")
+
+
+@dataclass(frozen=True)
+class DomainExecutionPolicy:
+    """Typed permission to enter side-effectful synchronization."""
+
+    mode: Literal["enabled", "disabled"]
+    reason: str
+
+
+class ExecutionPolicyError(ValueError):
+    """A domain is disabled or its configured execution policy is invalid."""
+
+    def __init__(
+        self,
+        domain: str,
+        *,
+        mode: str,
+        reason: str,
+        detail: str,
+    ) -> None:
+        self.domain = domain
+        self.mode = mode
+        self.reason = reason
+        super().__init__(f"domain={domain} {detail}")
+
+
+class PopulationScopeExecutionError(ValueError):
+    """A formal dataset cannot enter execution without one propagated scope."""
+
+    def __init__(self, domain: str, *, reason: str, detail: str) -> None:
+        self.domain = domain
+        self.reason = reason
+        super().__init__(f"domain={domain} {detail}")
+
+
+def _invalid_execution_policy(domain: str, detail: str) -> ExecutionPolicyError:
+    return ExecutionPolicyError(
+        domain,
+        mode="invalid",
+        reason="invalid_execution_policy",
+        detail=detail,
+    )
+
+
+def execution_policy_for_spec(spec: Mapping[str, Any]) -> DomainExecutionPolicy:
+    """Resolve one policy without loading registry YAML or touching runtime state."""
+
+    domain = str(spec.get("domain") or "unknown")
+    if "execution_policy" not in spec:
+        raise _invalid_execution_policy(domain, "missing execution_policy")
+    raw = spec.get("execution_policy")
+    if not isinstance(raw, Mapping):
+        raise _invalid_execution_policy(
+            domain, "execution_policy must be a mapping"
+        )
+    missing = sorted(_EXECUTION_POLICY_KEYS - set(raw))
+    unknown = sorted(set(raw) - _EXECUTION_POLICY_KEYS)
+    if missing:
+        raise _invalid_execution_policy(
+            domain,
+            f"missing execution_policy keys: {', '.join(missing)}",
+        )
+    if unknown:
+        raise _invalid_execution_policy(
+            domain,
+            f"unknown execution_policy keys: {', '.join(unknown)}",
+        )
+    mode = raw["mode"]
+    if mode not in ("enabled", "disabled"):
+        raise _invalid_execution_policy(
+            domain, f"unsupported execution policy mode={mode!r}"
+        )
+    reason = raw["reason"]
+    if not isinstance(reason, str) or _EXECUTION_REASON.fullmatch(reason) is None:
+        raise _invalid_execution_policy(
+            domain, "execution policy reason contains malformed value"
+        )
+    return DomainExecutionPolicy(mode=mode, reason=reason)
+
+
+def _require_execution_enabled(spec: Mapping[str, Any]) -> DomainExecutionPolicy:
+    policy = execution_policy_for_spec(spec)
+    if policy.mode == "disabled":
+        domain = str(spec.get("domain") or "unknown")
+        raise ExecutionPolicyError(
+            domain,
+            mode=policy.mode,
+            reason=policy.reason,
+            detail=f"execution disabled: {policy.reason}",
+        )
+    return policy
+
+
+def _preflight_execution_policies(
+    registry: dict[str, Any], domains: list[str]
+) -> None:
+    """Reject any disabled selected domain before calendar/lock/provider/DB."""
+
+    for domain in domains:
+        _require_execution_enabled(domain_spec(registry, domain))
+
+
+def _formal_dataset_contract_for_spec(spec: Mapping[str, Any]):
+    """Parse any formal dataset; margin-specific checks remain additive."""
+
+    domain = str(spec.get("domain") or "unknown")
+    try:
+        margin_contract = None
+        if domain == "margin":
+            # Margin can never fall through to the generic legacy runner by
+            # deleting its contract: its formal identity is blocking even when
+            # a caller injects a mutated registry.
+            margin_contract = margin_ingest.contract_for_spec(dict(spec))
+        if "dataset_contract" not in spec:
+            return None
+        from services.data_sources.contracts import dataset_contract_from_spec
+
+        contract = dataset_contract_from_spec(domain, spec)
+        if domain == "margin":
+            if margin_contract is None or (
+                margin_contract.contract_hash != contract.contract_hash
+                or margin_contract.config_hash != contract.config_hash
+            ):
+                raise ValueError("margin-specific and generic contracts disagree")
+    except (TypeError, ValueError) as exc:
+        raise PopulationScopeExecutionError(
+            domain,
+            reason="invalid_dataset_contract",
+            detail=f"dataset contract invalid: {exc}",
+        ) from exc
+    return contract
+
+
+def _require_formal_population_execution(spec: Mapping[str, Any], contract) -> None:
+    """Validate a formal scope, then block until that exact object is propagated.
+
+    The frozen margin v2 runner accepts only ``DatasetContract``.  Allowing a
+    successfully parsed population scope to be discarded here would recreate
+    the same false gate.  A future generation must pass the returned
+    ``DatasetExecutionContract`` through acceptance/state/audit before this
+    temporary terminal block can be removed.
+    """
+
+    if contract is None:
+        return
+    domain = str(spec.get("domain") or getattr(contract, "domain", "unknown"))
+    from services.data_sources.population_scope import bind_execution_contract
+
+    raw_scope = spec.get("population_scope")
+    policy = None
+    if isinstance(raw_scope, Mapping) and raw_scope.get("kind") == "project_universe_pit":
+        from services.universe import load_universe_policy
+
+        policy = load_universe_policy()
+    try:
+        bind_execution_contract(contract, spec, policy)
+    except (TypeError, ValueError) as exc:
+        raise PopulationScopeExecutionError(
+            domain,
+            reason="invalid_population_scope",
+            detail=f"population scope invalid: {exc}",
+        ) from exc
+    raise PopulationScopeExecutionError(
+        domain,
+        reason="execution_contract_not_propagated",
+        detail="population scope parsed but DatasetExecutionContract is not propagated",
+    )
+
+
+def _preflight_formal_population_scopes(
+    registry: dict[str, Any], domains: list[str]
+) -> None:
+    for domain in domains:
+        spec = domain_spec(registry, domain)
+        contract = _formal_dataset_contract_for_spec(spec)
+        _require_formal_population_execution(spec, contract)
 
 
 def load_registry(path: Path | None = None) -> dict[str, Any]:
@@ -1225,35 +1407,6 @@ def _calendar_days(start: str, end: str) -> list[str]:
     return out
 
 
-def _run_margin_history_domain(
-    domain: str,
-    spec: dict[str, Any],
-    *,
-    contract,
-    request: margin_history.MarginHistoryRequest,
-    eligibility: DomainEligibility,
-) -> dict[str, Any]:
-    """Delegate formal history policy; the generic runner owns no history loop."""
-
-    payload = margin_history_runtime.run_margin_history_domain(
-        domain,
-        spec,
-        contract=contract,
-        request=request,
-        eligibility=eligibility,
-        target_conn_factory=_target_conn,
-        adapter_factory=_adapter,
-        trading_days=trading_days,
-        fetch_logical_batch=_fetch_logical_batch,
-        quota_wall_classifier=_is_quota_wall,
-        ops_conn_factory=_smartmoney_conn,
-        authorization_error_type=TuShareAuthorizationError,
-        quota_error_type=QuotaExhaustedError,
-    )
-    log.info("formal margin history %s", payload)
-    return payload
-
-
 def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
                end: str | None = None, resume: bool = False,
                max_dates: int | None = None,
@@ -1262,26 +1415,13 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
 
     resume: by_ts_code 域跳过 target 表已有数据的 ts_code (full-history 单股拉断点续拉, 省重拉)。
     """
-    reg = registry or load_registry()
+    reg = registry if registry is not None else load_registry()
     spec = domain_spec(reg, domain)
-    margin_contract = margin_ingest.contract_for_spec(spec)
-    margin_history_request: margin_history.MarginHistoryRequest | None = None
-    if margin_contract is not None and backfill:
-        if resume:
-            raise SyncWindowError(
-                "formal margin backfill does not accept --resume"
-            )
-        margin_history_request = margin_history.validate_margin_history_request(
-            domain,
-            spec,
-            start=start,
-            end=end,
-            max_dates=max_dates,
-        )
-    elif max_dates is not None:
-        raise SyncWindowError(
-            "--max-dates is only valid for --drain or formal margin --backfill"
-        )
+    _require_execution_enabled(spec)
+    formal_contract = _formal_dataset_contract_for_spec(spec)
+    _require_formal_population_execution(spec, formal_contract)
+    if max_dates is not None:
+        raise SyncWindowError("--max-dates is only valid for --drain")
     batch_mode = str(spec["batch_mode"])
     if batch_mode == "full_refresh" and (start is not None or end is not None):
         raise SyncWindowError(
@@ -1310,17 +1450,6 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
             eligibility,
             requested_start=planned_start,
             requested_end=planned_end,
-        )
-
-    if margin_history_request is not None:
-        if eligibility is None:
-            raise SyncWindowError("formal margin history requires dated eligibility")
-        return _run_margin_history_domain(
-            domain,
-            spec,
-            contract=margin_contract,
-            request=margin_history_request,
-            eligibility=eligibility,
         )
 
     def _operation_end() -> str | None:
@@ -1377,17 +1506,8 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         if backfill:
             start_d = start or spec["data_start"]
         else:
-            if margin_contract is not None:
-                accepted_frontier = margin_ingest.accepted_frontier(
-                    spec,
-                    contract=margin_contract,
-                    target_conn_factory=_target_conn,
-                )
-                wm = accepted_frontier.last_date if accepted_frontier else None
-                start_d = start or wm or margin_contract.coverage_start
-            else:
-                wm = _last_watermark_date(domain, spec["source"])
-                start_d = start or wm or spec["data_start"]
+            wm = _last_watermark_date(domain, spec["source"])
+            start_d = start or wm or spec["data_start"]
         end_d = _operation_end()
         days = trading_days(start_d, end_d) if end_d else []
         _warn_if_clamped(domain, start_d, days)
@@ -1397,14 +1517,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         # 时恒真 (days[0] 本就是由 start_d=start 算出), 导致任何手工 `--start X --end Y` 范围
         # 回填都静默丢第一天。手工回填必须完整覆盖调用方要求的区间, 不能被"跳 watermark 当天"
         # 语义误伤。
-        if margin_contract is not None and not backfill and start is None:
-            # Formal margin progress is an AcceptedPartition frontier.  Filter
-            # the whole closed interval, including the one-day case where the
-            # frontier already equals eligible_end; that case must perform zero
-            # provider calls.  Explicit start/backfill remains allowed to
-            # rebuild history before the projection coverage boundary.
-            days = [day for day in days if wm is None or day > wm]
-        elif not backfill and start is None and len(days) > 1 and days[0] == (wm or ""):
+        if not backfill and start is None and len(days) > 1 and days[0] == (wm or ""):
             days = days[1:]
         # date_param: API 日期参数名 (默认 trade_date; dividend 用 ex_date / report_rc 用
         # report_date — 锚定列同名, raw 表镜像后 drain 也按它扫 gap)
@@ -1474,19 +1587,6 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
     else:
         raise NotImplementedError(f"batch_mode {spec['batch_mode']} 未实现 (by_ts_code/by_month 按需加)")
 
-    margin_projection_expected: list[str] = []
-    if margin_contract is not None:
-        # Projection coverage follows today's publication eligibility, not an
-        # explicit historical operation window.  Otherwise replaying an older
-        # partition could incorrectly downscope freshness or reject a newer,
-        # already accepted partition as "unexpected".
-        projection_end = eligibility.eligible_end if eligibility is not None else None
-        margin_projection_expected = (
-            trading_days(margin_contract.coverage_start, projection_end)
-            if projection_end
-            else []
-        )
-
     # Side-effectful provider/DB boundaries come only after the operation
     # window has been proven within the live publication frontier.
     apply_fetch_socket_timeout(spec)
@@ -1497,94 +1597,12 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
     failed_dates: set[str] = set()
     min_rows = int(spec.get("min_rows_per_batch", 0))
     quota_halt = False
-    margin_projection = None
     try:
         for params in batches:
             batch_date = str(params.get(spec.get("date_param", "trade_date"), "") or "").replace("-", "")
             mr_since = str(spec.get("min_rows_since", "") or "").replace("-", "")
             effective_min = min_rows if (not mr_since or not batch_date or batch_date >= mr_since) \
                 else int(spec.get("min_rows_before", 1))
-            if margin_contract is not None:
-                outcome = margin_ingest.execute_partition_outcome(
-                    conn=conn,
-                    adapter=adapter,
-                    spec=spec,
-                    params=params,
-                    contract=margin_contract,
-                    effective_min_rows=effective_min,
-                    fetch_logical_batch=_fetch_logical_batch,
-                    write_batch=_write_batch,
-                    quota_wall_classifier=_is_quota_wall,
-                    authorization_error_type=TuShareAuthorizationError,
-                    quota_error_type=QuotaExhaustedError,
-                )
-                if outcome.kind == "authorization_failed":
-                    margin_ingest.project_ops_state(
-                        conn,
-                        margin_projection_expected,
-                        contract=margin_contract,
-                        ops_conn_factory=_smartmoney_conn,
-                        provider_succeeded=bool(successful_dates),
-                        best_effort_message=(
-                            "formal margin authorization failure projection also failed"
-                        ),
-                    )
-                    raise outcome.require_error()
-                if outcome.kind == "quota_halt":
-                    exc = outcome.require_error()
-                    log.error("配额熔断 domain=%s 已写 %d 行后停止剩余批: %s",
-                              domain, total_rows, exc)
-                    quota_halt = True
-                    break
-                if outcome.kind == "batch_incomplete":
-                    exc = outcome.require_error()
-                    log.warning("batch %s formal margin 验收失败 (legacy raw 未写): %s", params, exc)
-                    failed.append({
-                        **params,
-                        "suspect": "batch_incomplete",
-                        "error": str(exc)[:200],
-                    })
-                    failed_date = params.get(spec.get("date_param", "trade_date")) or params.get("end_date")
-                    if failed_date:
-                        failed_dates.add(str(failed_date).replace("-", ""))
-                    continue
-                if outcome.kind == "legacy_write_failed":
-                    exc = outcome.require_error()
-                    log.error(
-                        "batch %s legacy shadow 写入失败 "
-                        "(durable LANDED checkpoint 保留，formal 尚未发布): %s",
-                        params,
-                        exc,
-                    )
-                    failed.append({
-                        **params,
-                        "suspect": "write_failed",
-                        "error_type": type(exc.__cause__ or exc).__name__,
-                    })
-                    failed_date = params.get(spec.get("date_param", "trade_date")) or params.get("end_date")
-                    if failed_date:
-                        failed_dates.add(str(failed_date).replace("-", ""))
-                    break
-                if outcome.kind == "reconcile_failed":
-                    exc = outcome.require_error()
-                    log.error("batch %s formal margin shadow parity failed: %s", params, exc)
-                    failed.append({
-                        **params,
-                        "suspect": "shadow_reconcile_failed",
-                        "error": str(exc)[:200],
-                    })
-                    failed_date = params.get(spec.get("date_param", "trade_date"))
-                    if failed_date:
-                        failed_dates.add(str(failed_date).replace("-", ""))
-                    break
-                if outcome.kind != "accepted":
-                    raise RuntimeError(f"unknown formal margin outcome={outcome.kind!r}")
-                total_rows += outcome.rows
-                date_key = spec.get("date_param", "trade_date")
-                if params.get(date_key):
-                    successful_dates.add(str(params[date_key]).replace("-", ""))
-                time.sleep(0.4)  # rule-compliance: ok evidence=existing serialized provider cadence
-                continue
             try:
                 rows = _fetch_logical_batch(adapter, spec, params)
             except QuotaExhaustedError as exc:
@@ -1666,38 +1684,6 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
                 if values:
                     successful_dates.add(max(values))
             time.sleep(0.4)  # rule-compliance: ok evidence=vendor-gateway-conn-refused-backoff-2026-06-11
-        if margin_contract is not None:
-            margin_projection = margin_ingest.project_ops_state(
-                conn,
-                margin_projection_expected,
-                contract=margin_contract,
-                ops_conn_factory=_smartmoney_conn,
-                provider_succeeded=bool(successful_dates),
-                quota_error="quota_wall_halt" if quota_halt else None,
-            )
-            for missing_partition in getattr(margin_projection, "missing", ()):
-                if missing_partition in failed_dates:
-                    continue
-                failed.append({
-                    spec.get("date_param", "trade_date"): missing_partition,
-                    "suspect": "accepted_partition_gap",
-                    "repair": "rerun with --drain",
-                })
-                failed_dates.add(missing_partition)
-            for parity_failure in getattr(
-                margin_projection, "reconcile_failures", ()
-            ):
-                partition = parity_failure.partition_value
-                if partition in failed_dates:
-                    continue
-                failed.append({
-                    spec.get("date_param", "trade_date"): partition,
-                    "suspect": "shadow_reconcile_failed",
-                    "issue_codes": list(parity_failure.issue_codes),
-                })
-                failed_dates.add(partition)
-        else:
-            margin_projection = None
     finally:
         conn.close()
 
@@ -1722,26 +1708,20 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
             # 配额是独立失败类型；不能覆盖 sync_batch_failed 行中的待重放日期。
             err_payload = "quota_wall_halt"
             failure_type = "sync_quota_halt"
-    if margin_contract is not None:
-        # No generic monotonic watermark/failure event for the formal dataset.
-        # The exact AcceptedPartition-derived projection above is the only Ops
-        # writer and may legitimately downshift or clear stale legacy state.
-        last_ok_date = margin_projection.frontier
-    else:
-        _record_outcome(
-            spec,
-            ok=ok,
-            last_date=last_ok_date,
-            rows=total_rows,
-            error=err_payload,
-            # full-refresh 成功已覆盖整个快照，天然是旧整批失败的完整重放证据；普通增量
-            # 仍必须实际覆盖 failure frontier，不能因“今天成功”洗掉历史 gap。
-            resolve_failures=ok and (
-                replaying_open_failure or spec["batch_mode"] == "full_refresh"
-            ),
-            failure_type=failure_type,
-            provider_succeeded=ok and bool(batches),
-        )
+    _record_outcome(
+        spec,
+        ok=ok,
+        last_date=last_ok_date,
+        rows=total_rows,
+        error=err_payload,
+        # full-refresh 成功已覆盖整个快照，天然是旧整批失败的完整重放证据；普通增量
+        # 仍必须实际覆盖 failure frontier，不能因“今天成功”洗掉历史 gap。
+        resolve_failures=ok and (
+            replaying_open_failure or spec["batch_mode"] == "full_refresh"
+        ),
+        failure_type=failure_type,
+        provider_succeeded=ok and bool(batches),
+    )
     result = {"domain": domain, "batches": len(batches), "rows": total_rows,
               "failed_batches": len(failed), "last_date": last_ok_date, "ok": ok}
     if eligibility is not None:
@@ -1844,7 +1824,7 @@ def eligible_end_date(
 def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
                  conn=None, adapter=None, expected_trading_days: list[str] | None = None,
                  max_dates: int | None = None, record: bool = True) -> dict[str, Any]:
-    """日历 gap 重放；formal margin 使用 expected − AcceptedPartition.
+    """日历 gap 重放；仅用于仍受支持的 legacy by-trade-date 域。
 
     真相源 = 交易日历 + target_table 本身 (宪法第 1 条), 不依赖 failure_queue 中间
     记录 — queue 按 (域,源,错误类型) 聚合不存日期, 且漏拉/调度漏跑/历史空洞它
@@ -1854,9 +1834,11 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     unsupported, 不静默跳过。allow_empty_batch 域的"重查确认空"与终败分开报。
     conn/adapter/trading_days/record 可注入 (单测); 生产路径全走真相源。
     """
-    reg = registry or load_registry()
+    reg = registry if registry is not None else load_registry()
     spec = domain_spec(reg, domain)
-    margin_contract = margin_ingest.contract_for_spec(spec)
+    _require_execution_enabled(spec)
+    formal_contract = _formal_dataset_contract_for_spec(spec)
+    _require_formal_population_execution(spec, formal_contract)
     if spec.get("batch_mode") != "by_trade_date":
         return {"domain": domain, "status": "unsupported", "batch_mode": spec.get("batch_mode")}
     if spec.get("allow_empty_batch") and not spec.get("cross_check_domain"):
@@ -1866,27 +1848,6 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
         return {"domain": domain, "status": "drain_inapplicable", "reason": "allow_empty 域走增量"}
     if expected_trading_days is not None:
         expected = list(expected_trading_days)
-        if margin_contract is not None and expected:
-            # The injected list is a test/recovery seam, not an admission
-            # bypass.  Formal datasets still prove its closed interval against
-            # the same live publication frontier before any provider/DB write.
-            eligibility = eligible_end_date(spec)
-            normalized = [
-                resolve_operation_window(
-                    eligibility,
-                    requested_start=value,
-                    requested_end=value,
-                ).effective_end
-                for value in expected
-            ]
-            expected = [value for value in normalized if value is not None]
-            real_sessions = set(trading_days(min(expected), max(expected)))
-            non_sessions = sorted(set(expected) - real_sessions)
-            if non_sessions:
-                raise SyncWindowError(
-                    "injected formal margin partitions are not trading sessions: "
-                    f"{non_sessions}"
-                )
     else:
         eligibility = eligible_end_date(spec)
         expected = (
@@ -1905,14 +1866,10 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     #   (区别于真缺口)。新增前必实测源端确认空 (探测返0/不足且非throttle), 不可拿它掩盖真失败。
     known_empty = {str(d).replace("-", "") for d in (spec.get("known_empty_days") or [])}
     expected = [d for d in expected if d not in known_empty]
-    if margin_contract is not None:
-        expected = [d for d in expected if d >= margin_contract.coverage_start]
     own_conn = conn is None
     conn = conn or _target_conn(spec)
-    table = spec["target_table"]
     refilled_rows, still_failed = 0, []
     successful_todo: set[str] = set()
-    actual: set[str] = set()
     min_rows = int(spec.get("min_rows_per_batch", 0))
     # "完整日"口径 = 行数达 min_rows 的日; 不足日视同缺口重拉 (MERGE 幂等, 重拉安全)。
     # 复审 HIGH: 旧版 DISTINCT 把 vendor 截断批 (在表但残缺) 当完整, 会洗白 run_domain
@@ -1925,14 +1882,9 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     # min_rows_before (缺省 1 = 仅防空日)。不声明 min_rows_since 时行为不变 (全历史同一阈值)。
     min_rows_since = str(spec.get("min_rows_since", "") or "").replace("-", "")
     min_rows_before = int(spec.get("min_rows_before", 1))
-    margin_projection = None
     try:
         date_col = spec.get("date_param", "trade_date")  # raw 表镜像 api 字段, 锚定列与参数同名
-        actual = (
-            margin_ingest.accepted_dates(conn, contract=margin_contract)
-            if margin_contract is not None
-            else complete_batch_dates(conn, spec)
-        )
+        actual = complete_batch_dates(conn, spec)
         gap = [d for d in expected if d not in actual]
         truncated = max_dates is not None and len(gap) > max_dates
         # 截断取最新优先 (gap 升序取尾部): backlog 超限时昨日数据必须先落地
@@ -1942,73 +1894,6 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
             adapter = adapter or _adapter(spec["source"])
         for d in todo:
             effective_min = min_rows if (not min_rows_since or d >= min_rows_since) else min_rows_before
-            if margin_contract is not None:
-                outcome = margin_ingest.execute_partition_outcome(
-                    conn=conn,
-                    adapter=adapter,
-                    spec=spec,
-                    params={date_col: d},
-                    contract=margin_contract,
-                    effective_min_rows=effective_min,
-                    fetch_logical_batch=_fetch_logical_batch,
-                    write_batch=_write_batch,
-                    quota_wall_classifier=_is_quota_wall,
-                    authorization_error_type=TuShareAuthorizationError,
-                    quota_error_type=QuotaExhaustedError,
-                )
-                if outcome.kind == "authorization_failed":
-                    margin_ingest.project_ops_state(
-                        conn,
-                        expected,
-                        contract=margin_contract,
-                        ops_conn_factory=_smartmoney_conn,
-                        provider_succeeded=bool(successful_todo),
-                        record=record,
-                        best_effort_message=(
-                            "formal margin authorization failure projection also failed"
-                        ),
-                    )
-                    raise outcome.require_error()
-                if outcome.kind == "quota_halt":
-                    exc = outcome.require_error()
-                    log.error("配额熔断 drain domain=%s 已补 %d 行后停止 (剩 %d 缺口日未修)",
-                              domain, refilled_rows, len(todo) - todo.index(d))
-                    margin_ingest.project_ops_state(
-                        conn,
-                        expected,
-                        contract=margin_contract,
-                        ops_conn_factory=_smartmoney_conn,
-                        provider_succeeded=bool(successful_todo),
-                        record=record,
-                        quota_error=str(exc),
-                    )
-                    raise exc
-                if outcome.kind == "batch_incomplete":
-                    exc = outcome.require_error()
-                    log.warning("drain batch %s formal margin 验收失败 (legacy raw 未写): %s", d, exc)
-                    still_failed.append(d)
-                    continue
-                if outcome.kind == "legacy_write_failed":
-                    exc = outcome.require_error()
-                    log.error(
-                        "drain batch %s legacy shadow 写入失败 "
-                        "(durable LANDED checkpoint 保留，formal 尚未发布): %s",
-                        d,
-                        exc,
-                    )
-                    still_failed.append(d)
-                    break
-                if outcome.kind == "reconcile_failed":
-                    exc = outcome.require_error()
-                    log.error("drain batch %s formal margin shadow parity failed: %s", d, exc)
-                    still_failed.append(d)
-                    break
-                if outcome.kind != "accepted":
-                    raise RuntimeError(f"unknown formal margin outcome={outcome.kind!r}")
-                refilled_rows += outcome.rows
-                successful_todo.add(d)
-                time.sleep(0.4)  # rule-compliance: ok evidence=existing serialized provider cadence
-                continue
             try:
                 rows = _fetch_logical_batch(adapter, spec, {date_col: d})
             except QuotaExhaustedError:
@@ -2046,20 +1931,6 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
                 break
             successful_todo.add(d)
             time.sleep(0.4)  # rule-compliance: ok evidence=同 run_domain 节流口径 vendor-gateway-2026-06-11
-        if margin_contract is not None:
-            margin_projection = margin_ingest.project_ops_state(
-                conn,
-                expected,
-                contract=margin_contract,
-                ops_conn_factory=_smartmoney_conn,
-                provider_succeeded=bool(successful_todo),
-                record=record,
-            )
-            for parity_failure in getattr(
-                margin_projection, "reconcile_failures", ()
-            ):
-                if parity_failure.partition_value not in still_failed:
-                    still_failed.append(parity_failure.partition_value)
     finally:
         if own_conn:
             conn.close()
@@ -2079,7 +1950,7 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
               "gap_days": len(gap), "refilled_days": _refilled_days,
               "refilled_rows": refilled_rows,
               "still_failed": still_failed[:20], "truncated": truncated}
-    if record and margin_contract is None:  # legacy 域仍走运行事件投影
+    if record:
         _record_outcome(spec, ok=status in ("clean", "drained"),
                         # success watermark 只认本轮真实 provider 写入；历史 actual 只是
                         # gap 审计证据，不能把 0 写入的 clean/partial 扫描伪装成刚成功。
@@ -2088,8 +1959,6 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
                         error=json.dumps({"drain_still_failed": still_failed[:10]}) if still_failed else None,
                         resolve_failures=status in ("clean", "drained") and not truncated,
                         provider_succeeded=bool(successful_todo))
-    elif record and margin_projection is not None:
-        result["last_date"] = margin_projection.frontier
     log.info("drain %s", result)
     return result
 
@@ -2109,7 +1978,7 @@ def _parse_cli_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--max-dates",
         type=int,
         default=None,
-        help="drain 或 formal margin history 的单次日期上限",
+        help="drain 的单次日期上限",
     )
     return parser.parse_args(argv)
 
@@ -2146,7 +2015,6 @@ def _preflight_cli_request_shape(
         raise SyncWindowError(
             "--drain cannot be combined with --start/--end/--backfill/--resume"
         )
-    formal_margin_domains: list[str] = []
     for domain in domains:
         spec = domain_spec(registry, domain)
         try:
@@ -2155,14 +2023,6 @@ def _preflight_cli_request_shape(
             raise SyncWindowError(
                 f"domain={domain} provider timeout invalid: {exc}"
             ) from exc
-        try:
-            contract = margin_ingest.contract_for_spec(spec)
-        except ValueError as exc:
-            raise SyncWindowError(
-                f"domain={domain} formal plan invalid: {exc}"
-            ) from exc
-        if contract is not None and domain == "margin":
-            formal_margin_domains.append(domain)
         if (
             not args.drain
             and str(spec.get("batch_mode")) == "by_ts_code"
@@ -2172,27 +2032,8 @@ def _preflight_cli_request_shape(
             raise SyncWindowError(
                 f"domain={domain} sync_policy=on_demand requires both --start and --end"
             )
-    is_margin_history = bool(args.backfill and formal_margin_domains)
-    if is_margin_history:
-        if args.domain != "margin" or domains != ["margin"]:
-            raise SyncWindowError(
-                "formal margin backfill requires exactly --domain margin"
-            )
-        if args.resume:
-            raise SyncWindowError(
-                "formal margin backfill does not accept --resume"
-            )
-        margin_history.validate_margin_history_request(
-            "margin",
-            domain_spec(registry, "margin"),
-            start=args.start,
-            end=args.end,
-            max_dates=args.max_dates,
-        )
-    elif args.max_dates is not None and not args.drain:
-        raise SyncWindowError(
-            "--max-dates is only valid for --drain or formal margin --backfill"
-        )
+    if args.max_dates is not None and not args.drain:
+        raise SyncWindowError("--max-dates is only valid for --drain")
     if args.start is None and args.end is None:
         return
     from zoneinfo import ZoneInfo
@@ -2222,16 +2063,6 @@ def _preflight_explicit_operation_windows(
         return
     for domain in domains:
         spec = domain_spec(registry, domain)
-        contract = margin_ingest.contract_for_spec(spec)
-        margin_history_request = None
-        if args.backfill and contract is not None and domain == "margin":
-            margin_history_request = margin_history.validate_margin_history_request(
-                domain,
-                spec,
-                start=args.start,
-                end=args.end,
-                max_dates=args.max_dates,
-            )
         fixed = dict(spec.get("fixed_params") or {})
         batch_mode = str(spec["batch_mode"])
         planned_start = args.start
@@ -2244,48 +2075,6 @@ def _preflight_explicit_operation_windows(
             requested_start=planned_start,
             requested_end=planned_end,
         )
-        if margin_history_request is not None:
-            margin_history.prove_margin_history_sessions(
-                margin_history_request,
-                trading_days(
-                    margin_history_request.start,
-                    margin_history_request.end,
-                ),
-            )
-
-
-def _history_halt_evidence(exc: BaseException) -> dict[str, Any] | None:
-    """Expose an exact resumable checkpoint attached by the history executor."""
-
-    result = getattr(exc, "history_result", None)
-    if not isinstance(result, margin_history.MarginHistoryResult):
-        return None
-    return {
-        "plan_hash": result.plan_hash,
-        "result_hash": result.result_hash,
-        "attempted_dates": list(result.attempted_dates),
-        "accepted_dates": list(result.accepted_dates),
-        "failed_dates": list(result.failed_dates),
-        "deferred_dates": list(result.deferred_dates),
-        "next_start": result.next_start,
-        "accepted_evidence": [
-            {
-                "partition_value": item.partition_value,
-                "batch_id": item.batch_id,
-                "row_count": item.row_count,
-                "content_hash": item.content_hash,
-            }
-            for item in result.accepted_evidence
-        ],
-        "failures": [
-            {
-                "partition_value": item.partition_value,
-                "code": item.code,
-                "evidence_hash": item.evidence_hash,
-            }
-            for item in result.failures
-        ],
-    }
 
 
 def _main_unlocked(
@@ -2296,8 +2085,10 @@ def _main_unlocked(
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
     args = args or _parse_cli_args()
 
-    reg = registry or load_registry()
+    reg = registry if registry is not None else load_registry()
     selected = domains or _selected_domains(args, reg)
+    _preflight_execution_policies(reg, selected)
+    _preflight_formal_population_scopes(reg, selected)
     if registry is None:
         _calendar_preflight(selected)
 
@@ -2334,8 +2125,6 @@ def _main_unlocked(
                 # 熔断: 配额墙 = 账户级, 续跑其余域只会延长冷却 → 停全链 (区别于单域写锁错)
                 log.error("配额熔断停链 (drain): %s — 剩 %d 域不跑", exc, len(selected) - selected.index(d) - 1)
                 halt = {"domain": d, "status": "quota_halt", "error": str(exc)[:200]}
-                if (evidence := _history_halt_evidence(exc)) is not None:
-                    halt["history_result"] = evidence
                 results.append(halt)
                 break
             except TuShareAuthorizationError:
@@ -2369,8 +2158,6 @@ def _main_unlocked(
         except QuotaExhaustedError as exc:
             log.error("配额熔断停链: %s — 剩 %d 域不跑", exc, len(selected) - selected.index(d) - 1)
             halt = {"domain": d, "status": "quota_halt", "error": str(exc)[:200]}
-            if (evidence := _history_halt_evidence(exc)) is not None:
-                halt["history_result"] = evidence
             results.append(halt)
             break
     print(json.dumps(results, ensure_ascii=False, indent=1))
@@ -2389,9 +2176,28 @@ def main() -> int:
     reg = load_registry()
     domains = _selected_domains(args, reg)
     try:
+        _preflight_execution_policies(reg, domains)
+        _preflight_formal_population_scopes(reg, domains)
         _preflight_cli_request_shape(args, reg, domains)
         _calendar_preflight(domains)
         _preflight_explicit_operation_windows(args, reg, domains)
+    except ExecutionPolicyError as exc:
+        print(json.dumps({
+            "status": "execution_blocked",
+            "domain": exc.domain,
+            "mode": exc.mode,
+            "reason": exc.reason,
+            "error": str(exc),
+        }, ensure_ascii=False))
+        return 6
+    except PopulationScopeExecutionError as exc:
+        print(json.dumps({
+            "status": "population_scope_blocked",
+            "domain": exc.domain,
+            "reason": exc.reason,
+            "error": str(exc),
+        }, ensure_ascii=False))
+        return 7
     except SyncWindowError as exc:
         print(json.dumps({
             "status": "operation_window_blocked",
@@ -2414,8 +2220,6 @@ def main() -> int:
                     "status": "authorization_blocked",
                     "reason": exc.reason,
                 }
-                if (evidence := _history_halt_evidence(exc)) is not None:
-                    payload["history_result"] = evidence
                 print(json.dumps(payload, ensure_ascii=False))
                 return 3
             except CalendarFoundationError as exc:
@@ -2445,7 +2249,7 @@ def _authorization_preflight(
     return authorization_preflight(
         lease=lease,
         adapter_factory=_adapter,
-        registry=registry or load_registry(),
+        registry=registry if registry is not None else load_registry(),
     )
 
 

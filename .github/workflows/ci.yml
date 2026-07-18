@@ -43,7 +43,17 @@ jobs:
             tests/test_db.py tests/test_source_watermarks.py tests/scripts/test_db_compact.py \
             tests/test_primitives.py tests/test_universe.py tests/test_calendar_gate.py \
             tests/test_check_dead_references.py \
+            tests/services/test_population_scope.py \
+            tests/services/test_sync_execution_policy.py \
+            tests/services/test_runtime_limits.py \
+            tests/scripts/test_check_universe_filter.py \
+            tests/scripts/test_check_calendar_usage.py \
             -p no:cacheprovider --tb=short -q || exit 1
+
+      - name: Population and calendar static gates
+        run: |
+          PYTHONPATH=backend python backend/scripts/check_universe_filter.py --format json
+          PYTHONPATH=backend python backend/scripts/check_calendar_usage.py --strict
 
       - name: Smoke import
         run: |

@@ -21,14 +21,13 @@ Usage:
   scripts/chunkyctl doctor [--fast] [--skip-storage-payload]
   scripts/chunkyctl sync --domain DOMAIN [--drain] [--max-dates N]
   scripts/chunkyctl sync --domain DOMAIN --backfill --start YYYYMMDD --end YYYYMMDD
-  scripts/chunkyctl sync --domain margin --backfill --start YYYYMMDD --end YYYYMMDD --max-dates N
   scripts/chunkyctl map [--check]
   scripts/chunkyctl pipeline acquire|clean|process|store [--force]
   scripts/chunkyctl lineage build | impact <table> | provenance <table> | dead | show <table>
 
 Examples:
   scripts/chunkyctl doctor --fast
-  scripts/chunkyctl sync --domain margin --backfill --start 20260715 --end 20260716 --max-dates 2
+  scripts/chunkyctl sync --domain daily --backfill --start 20260715 --end 20260716
 
 Notes:
   doctor     = project health snapshot, including manual-only automation residue enforcement.

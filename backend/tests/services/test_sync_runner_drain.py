@@ -9,6 +9,7 @@ def _registry(**domain_overrides):
     return {
         "version": 1,
         "defaults": {
+            "execution_policy": {"mode": "enabled", "reason": "active"},
             "fetch_timeout_seconds": 120,
             "retry": {"max_attempts": 2, "backoff_seconds": [0, 0]},
             "zero_row_policy": "fail",

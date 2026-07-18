@@ -1,14 +1,223 @@
 """Tests for backend/services/universe.py (ST filter added 2026-05-22)."""
+from copy import deepcopy
+from dataclasses import FrozenInstanceError
 import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from services.universe import (
     is_active_a_share, is_st_stock, sql_where_active_a_share, sql_where_no_st,
     ACTIVE_A_SHARE_PREFIXES,
 )
+
+
+def _valid_policy_mapping() -> dict:
+    return {
+        "policy": {
+            "id": "active_a_share_trading_universe",
+            "version": 2,
+        },
+        "include": {
+            "board_prefixes": ["60", "00", "30", "68"],
+            "exchange_ids": ["SSE", "SZSE"],
+            "venue_by_prefix": {
+                "60": {"exchange_id": "SSE", "ts_suffix": "SH"},
+                "68": {"exchange_id": "SSE", "ts_suffix": "SH"},
+                "00": {"exchange_id": "SZSE", "ts_suffix": "SZ"},
+                "30": {"exchange_id": "SZSE", "ts_suffix": "SZ"},
+            },
+        },
+        "eligibility": {
+            "rule": "traded_on_observation_date",
+            "calendar_exchange_id": "SSE",
+        },
+        "exclude": {
+            "excluded_boards": {
+                "8": "北交所/新三板 (8x)",
+                "4": "新三板 (4x)",
+                "92": "北交所 (92x)",
+            },
+        },
+        "limit_up_pct": {
+            "60": 0.10,
+            "00": 0.10,
+            "30": 0.20,
+            "68": 0.20,
+        },
+        "truth_source": {
+            "nominal_kline": "tier0.market_data.nominal_ohlcv_daily",
+            "st_membership": "tier0.security_identity.stock_st_daily",
+            "trading_calendar": "tier0.market_data.trading_calendar",
+        },
+        "current_enumeration": {
+            "identity_source": "dim_active_a_stock",
+            "st_name_patterns": ["ST", "*ST"],
+            "no_recent_kline_days": 90,
+        },
+    }
+
+
+def _write_policy(path: Path, raw: dict) -> Path:
+    path.write_text(
+        yaml.safe_dump(raw, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_universe_policy_snapshot_is_immutable_and_complete():
+    from services.universe import UNIVERSE_POLICY
+
+    assert UNIVERSE_POLICY.policy_id == "active_a_share_trading_universe"
+    assert UNIVERSE_POLICY.policy_version == 2
+    assert UNIVERSE_POLICY.allowed_board_prefixes == ("60", "00", "30", "68")
+    assert UNIVERSE_POLICY.allowed_exchange_ids == ("SSE", "SZSE")
+    assert [
+        (rule.board_prefix, rule.exchange_id, rule.ts_suffix)
+        for rule in UNIVERSE_POLICY.venue_rules
+    ] == [
+        ("60", "SSE", "SH"),
+        ("68", "SSE", "SH"),
+        ("00", "SZSE", "SZ"),
+        ("30", "SZSE", "SZ"),
+    ]
+    assert UNIVERSE_POLICY.eligibility_rule == "traded_on_observation_date"
+    assert UNIVERSE_POLICY.calendar_exchange_id == "SSE"
+    assert UNIVERSE_POLICY.nominal_kline_source == "tier0.market_data.nominal_ohlcv_daily"
+    assert UNIVERSE_POLICY.st_membership_source == "tier0.security_identity.stock_st_daily"
+    assert UNIVERSE_POLICY.trading_calendar_source == "tier0.market_data.trading_calendar"
+    assert len(UNIVERSE_POLICY.config_hash) == 64
+
+    with pytest.raises(FrozenInstanceError):
+        UNIVERSE_POLICY.policy_version = 2
+
+
+def test_project_exchange_gate_rejects_bse_and_uses_injected_snapshot():
+    from services.universe import (
+        UNIVERSE_POLICY,
+        UniverseContaminationError,
+        assert_project_exchange_ids_allowed,
+    )
+
+    assert assert_project_exchange_ids_allowed(
+        ["SSE", "SZSE"], policy=UNIVERSE_POLICY, context="margin"
+    ) is True
+    with pytest.raises(UniverseContaminationError, match=r"BSE.*margin"):
+        assert_project_exchange_ids_allowed(
+            ["SSE", "BSE"], policy=UNIVERSE_POLICY, context="margin"
+        )
+    for invalid in ([], ["SSE", "SSE"], ["sse"]):
+        with pytest.raises(UniverseContaminationError):
+            assert_project_exchange_ids_allowed(
+                invalid, policy=UNIVERSE_POLICY, context="margin"
+            )
+
+    with pytest.raises(TypeError, match="load_universe_policy"):
+        type(UNIVERSE_POLICY)()
+    with pytest.raises(UniverseContaminationError, match="explicit factory-owned"):
+        assert_project_exchange_ids_allowed(["SSE"], policy=None)
+
+
+@pytest.mark.parametrize(
+    ("mutate", "match"),
+    [
+        (
+            lambda raw: raw["include"].update(
+                board_prefixes=["60", "00", "60"]
+            ),
+            "board_prefixes.*duplicate",
+        ),
+        (
+            lambda raw: raw["include"].update(exchange_ids=[]),
+            "exchange_ids.*non-empty",
+        ),
+        (
+            lambda raw: raw["include"].update(exchange_ids=["SSE", "szse"]),
+            "exchange_ids.*malformed",
+        ),
+        (
+            lambda raw: raw["current_enumeration"].update(st_name_patterns=["ST", ""]),
+            "st_name_patterns.*non-empty",
+        ),
+        (
+            lambda raw: raw["current_enumeration"].update(no_recent_kline_days=0),
+            "no_recent_kline_days.*positive integer",
+        ),
+        (
+            lambda raw: raw["eligibility"].update(rule="recent_kline_window"),
+            "eligibility.rule.*traded_on_observation_date",
+        ),
+        (
+            lambda raw: raw["exclude"]["excluded_boards"].update({"60": "conflict"}),
+            "board_prefixes overlaps.*excluded_boards",
+        ),
+        (
+            lambda raw: raw["include"]["venue_by_prefix"]["60"].update(ts_suffix="SZH"),
+            "ts_suffix.*malformed",
+        ),
+        (
+            lambda raw: raw["truth_source"].update(st_membership=""),
+            "st_membership.*non-empty",
+        ),
+        (
+            lambda raw: raw["policy"].update(extra="unknown"),
+            "policy unknown keys",
+        ),
+    ],
+)
+def test_load_universe_policy_rejects_invalid_values(tmp_path, mutate, match):
+    from services.universe import UniverseDataError, load_universe_policy
+
+    raw = _valid_policy_mapping()
+    mutate(raw)
+    path = _write_policy(tmp_path / "universe_rules.yaml", raw)
+
+    with pytest.raises(UniverseDataError, match=match):
+        load_universe_policy(path)
+
+
+def test_universe_policy_hash_is_stable_for_semantically_equal_ordering(tmp_path):
+    from services.universe import load_universe_policy
+
+    raw = _valid_policy_mapping()
+    first = load_universe_policy(_write_policy(tmp_path / "first.yaml", raw))
+
+    reordered = deepcopy(raw)
+    reordered["include"]["board_prefixes"].reverse()
+    reordered["include"]["exchange_ids"].reverse()
+    reordered["current_enumeration"]["st_name_patterns"].reverse()
+    reordered["exclude"]["excluded_boards"] = dict(
+        reversed(list(reordered["exclude"]["excluded_boards"].items()))
+    )
+    reordered["limit_up_pct"] = dict(
+        reversed(list(reordered["limit_up_pct"].items()))
+    )
+    second = load_universe_policy(
+        _write_policy(tmp_path / "second.yaml", reordered)
+    )
+
+    assert first.config_hash == second.config_hash
+
+    changed_source = deepcopy(raw)
+    changed_source["truth_source"]["st_membership"] = (
+        "tier0.security_identity.stock_st_daily_v2"
+    )
+    third = load_universe_policy(
+        _write_policy(tmp_path / "third.yaml", changed_source)
+    )
+    assert third.config_hash != first.config_hash
+
+    changed_current_only = deepcopy(raw)
+    changed_current_only["current_enumeration"]["identity_source"] = (
+        "dim_active_a_stock_v2"
+    )
+    fourth = load_universe_policy(
+        _write_policy(tmp_path / "fourth.yaml", changed_current_only)
+    )
+    assert fourth.config_hash == first.config_hash
 
 
 def test_active_a_share_prefixes_match_spec():

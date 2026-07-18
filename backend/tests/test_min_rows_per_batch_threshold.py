@@ -25,7 +25,11 @@ TRUNCATED_ROW_COUNT = 1652   # 实测 2026-07-08 发现的真实截断行数
 
 def _registry(min_rows: int) -> dict:
     return {
-        "defaults": {"target_db": "tushare_raw", "fetch_timeout_seconds": 120},
+        "defaults": {
+            "target_db": "tushare_raw",
+            "fetch_timeout_seconds": 120,
+            "execution_policy": {"mode": "enabled", "reason": "active"},
+        },
         "domains": {
             "margin_detail_test": {
                 "source": "tushare", "api": "margin_detail",
