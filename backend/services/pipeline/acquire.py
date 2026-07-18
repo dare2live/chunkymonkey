@@ -214,7 +214,7 @@ def _assert_margin_shadow_parity(ctx: PipelineContext) -> None:
     """Read-only gate over every current accepted canary partition."""
 
     from services.data_sources import margin_ingest, sync_runner
-    from services.data_sources.margin_state import evaluate_margin_readiness
+    from services.data_sources.margin_readiness import evaluate_margin_readiness
     from services.duck_adapter import connect
 
     spec = sync_runner.domain_spec(sync_runner.load_registry(), "margin")

@@ -2791,7 +2791,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/data_sources/margin_reconcile.py",
+      "dst": "consumer:backend/services/data_sources/margin_legacy_reconcile.py",
       "kind": "consume",
       "src": "table:tushare_raw.ingest_batch"
     },
@@ -4100,7 +4100,7 @@
   ],
   "meta": {
     "edge_count": 632,
-    "generated_at": "2026-07-18T02:49:29.033510+00:00",
+    "generated_at": "2026-07-18T06:13:49.156348+00:00",
     "node_count": 277,
     "version": 2
   },
@@ -4396,17 +4396,17 @@
     {
       "attrs": {
         "ctype": "service",
-        "path": "backend/services/data_sources/margin_projections.py"
+        "path": "backend/services/data_sources/margin_legacy_reconcile.py"
       },
-      "id": "consumer:backend/services/data_sources/margin_projections.py",
+      "id": "consumer:backend/services/data_sources/margin_legacy_reconcile.py",
       "kind": "consumer"
     },
     {
       "attrs": {
         "ctype": "service",
-        "path": "backend/services/data_sources/margin_reconcile.py"
+        "path": "backend/services/data_sources/margin_projections.py"
       },
-      "id": "consumer:backend/services/data_sources/margin_reconcile.py",
+      "id": "consumer:backend/services/data_sources/margin_projections.py",
       "kind": "consumer"
     },
     {

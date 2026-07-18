@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-18 10:47
+> Snapshot: 2026-07-18 14:12
 
 ## 1. 入口面
 
@@ -152,7 +152,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 4,528 | calls 边 5,407 | imports 边 962 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 4,624 | calls 边 5,521 | imports 边 1,036 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -162,17 +162,17 @@
 | services.data_sources | 20 |
 | services.source_watermarks | 13 |
 | services.database_manifest | 12 |
-| services.data_sources.margin_schema | 10 |
-| services.data_sources.contracts | 8 |
+| services.data_sources.margin_schema | 11 |
+| services.data_sources.contracts | 9 |
 | services.db | 8 |
 | services.data_sources.batch_integrity | 7 |
+| services.data_sources.margin_validation | 7 |
 | services.data_sources.margin_acceptance | 6 |
-| services.data_sources.margin_validation | 6 |
+| services.data_sources.margin_evidence | 6 |
+| services.data_sources.margin_state | 6 |
 | services.data_sources.sources.tushare | 5 |
 | services.lineage.model | 5 |
 | services.writer_lock | 5 |
-| services.data_sources.availability | 4 |
-| services.lineage | 4 |
 
 ### 跨文件 fan-in 最高的文件 (近似口径: 唯一定义名 + caller 实际 import 目标模块双过滤)
 
@@ -181,15 +181,15 @@
 | backend/services/duck_adapter.py | 31 |
 | backend/services/source_watermarks.py | 13 |
 | backend/services/database_manifest.py | 11 |
-| backend/services/data_sources/contracts.py | 8 |
+| backend/services/data_sources/contracts.py | 9 |
 | backend/services/pipeline/context.py | 7 |
-| backend/services/data_sources/margin_acceptance.py | 5 |
+| backend/services/data_sources/margin_acceptance.py | 6 |
+| backend/services/data_sources/margin_evidence.py | 6 |
+| backend/services/data_sources/margin_state.py | 6 |
 | backend/services/data_sources/margin_schema.py | 5 |
+| backend/services/data_sources/margin_validation.py | 5 |
 | backend/services/data_sources/availability.py | 4 |
 | backend/services/data_sources/batch_integrity.py | 4 |
-| backend/services/data_sources/margin_validation.py | 4 |
-| backend/services/lineage/model.py | 4 |
-| backend/services/pipeline_manifest.py | 4 |
 
 ### LOC top 10 (God module 候选)
 
@@ -198,9 +198,9 @@
 | backend/services/data_sources/sync_runner.py | 2303 |
 | backend/services/market_pulse.py | 1473 |
 | backend/scripts/check_continuity_integrity.py | 949 |
-| backend/services/data_sources/margin_reconcile.py | 761 |
+| backend/services/data_sources/margin_legacy_reconcile.py | 800 |
 | backend/scripts/data_health_snapshot.py | 731 |
-| backend/services/data_sources/margin_acceptance.py | 657 |
+| backend/services/data_sources/margin_acceptance.py | 661 |
 | backend/routers/market_pulse.py | 624 |
 | backend/services/data_sources/margin_schema.py | 579 |
 | backend/services/schema_migrations.py | 561 |

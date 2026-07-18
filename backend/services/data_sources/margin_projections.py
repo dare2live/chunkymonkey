@@ -7,9 +7,13 @@ from datetime import datetime
 from typing import Any, Iterable
 
 from services.data_sources.contracts import load_dataset_contract
-from services.data_sources.margin_reconcile import reconcile_margin_partition
+from services.data_sources.margin_evidence import (
+    MarginEvidenceLoadError,
+    load_margin_evidence_snapshot,
+)
+from services.data_sources.margin_reconcile import _reconcile_margin_partitions_snapshot
 from services.data_sources.margin_schema import DATASET_ID, INGEST_BATCH_TABLE
-from services.data_sources.margin_state import accepted_margin_partitions
+from services.data_sources.margin_state import _accepted_margin_partitions_snapshot
 from services.source_watermarks import (
     ensure_source_watermark_schema,
     record_source_failure,
@@ -206,7 +210,20 @@ def derive_margin_accepted_state(
         for value in expected_partitions
         if (partition := _partition(value)) >= contract.coverage_start
     }))
-    accepted_items = accepted_margin_partitions(raw_conn, contract=contract)
+    try:
+        evidence_snapshot = load_margin_evidence_snapshot(
+            raw_conn,
+            contract=contract,
+            include_legacy=True,
+        )
+    except MarginEvidenceLoadError as exc:
+        raise MarginProjectionError(str(exc)) from exc
+    accepted_items = _accepted_margin_partitions_snapshot(
+        raw_conn,
+        contract=contract,
+        evidence_snapshot=evidence_snapshot,
+        partition_value=evidence_snapshot.partition_value,
+    )
     accepted_by_partition = {
         item.partition_value: item for item in accepted_items
     }
@@ -228,10 +245,14 @@ def derive_margin_accepted_state(
     )
     latest = accepted_by_partition[max(accepted)] if accepted else None
     reconcile_failures: list[MarginReconcileProjectionFailure] = []
-    for partition in accepted:
-        report = reconcile_margin_partition(
-            raw_conn, partition, contract=contract
-        )
+    reports = _reconcile_margin_partitions_snapshot(
+        raw_conn,
+        tuple(accepted),
+        contract=contract,
+        snapshot=evidence_snapshot,
+    )
+    for report in reports:
+        partition = report.partition_value
         if report.ok:
             continue
         issue_codes = tuple(sorted({issue.code.value for issue in report.issues}))

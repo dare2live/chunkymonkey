@@ -8,9 +8,11 @@
 
 停止继续对旧架构做局部补洞，按 `docs/MASTER_TOPLEVEL_DESIGN.md` 建立可组合、可替换、可审计的数据与策略系统。
 
-当前只收口 Phase 1 的 `margin` Tier0 tracer：accepted canonical、逐分区 shadow
-reconcile、控制面投影、live evidence 和最终提交门。canary 验收前后都不切业务消费者，
-不扩到第二域；Phase 0 已完成，证据在 ledger 和 git history。
+当前继续 Phase 1 的 `margin` Tier0 tracer。两日 canary 已闭合；全历史读取前置门也已把
+accepted-state/reconcile 收敛为固定 6 条主库只读查询和一次分区级权威证明。下一既定
+rollout 是受控历史迁移：先 grill 成本、边界和 checkpoint，再由 manual-only 公共入口分批
+回放并逐分区验收。全史 parity 前不切业务消费者，不扩到第二域；Phase 0 证据在 ledger 和
+git history。
 
 Tier0 未闭合前，不启动大规模公式寻优、付费计算、生产候选或自动跑批。
 
@@ -65,6 +67,12 @@ Tier0 未闭合前，不启动大规模公式寻优、付费计算、生产候�
 - 受管 provider runtime 完整 backend suite 为 `1080 passed / 8 deselected`；
 - 正式表只有 2 日/6 行；legacy margin 有 1827 日/4485 行，业务消费者仍只读 legacy，
   因此 canary 通过不等于历史迁移或 Tier0 全局闭合。
+- accepted-state、readiness 与 reconcile 现共用一个 immutable set-based evidence snapshot：
+  schema inventory 加 accepted/batch/landing/canonical/legacy 共固定 6 条主库查询，N=1 与
+  N=20 均为 `(6, 6)`；交易日历只预处理一次，逐分区 cutoff 用二分。公开 reconcile、accepted
+  state 和 readiness 不再接收 snapshot/proof/state 注入，scope 夹带、schema drift、landing
+  lineage、premature publication、跨连接/跨代证据和单分区故障污染均有 fail-closed 反例门；
+  live 两分区仍 `PARITY`；完整 suite 为 `1107 passed / 8 deselected`。
 
 仍存在的架构缺口：
 
@@ -93,9 +101,15 @@ Tier0 未闭合前，不启动大规模公式寻优、付费计算、生产候�
 - [x] 从 accepted state 投影 watermark/SLA/failure，并让 Tier0 失败阻断下游；
 - [x] 建立 manual-only `chunkyctl sync` 公共入口，保留授权/日历/writer lock；
 - [x] 完成 20260715—16 live canary、逐分区 parity、no-refetch 和 acquire gate；
+- [x] 消除全历史前约 `6 + 13N` 的读取路径，建立固定 6-query 与 calendar operation-count 门；
 - [x] 闭合 post-fix、最终 Rule 10、Moth/CodeGraph、owner docs 和本地安全提交。
 
-扩展全史或第二域、切消费者和删除 legacy 属下一次明确授权的 rollout，不混入本 canary。
+### Phase 1.1 — margin 受控历史迁移
+
+- [ ] 执行前 grill：确认目标消费者、历史边界、provider 成本、可复用 checkpoint、停止与回滚条件；
+- [ ] 只用 `chunkyctl sync --domain margin --backfill` 分批回放，不安装自动任务；
+- [ ] 每批核对 accepted batch/config hash、正行数、期望交易日和逐分区 parity；
+- [ ] 全史闭合后才单独规划 consumer shadow/cutover；第二数据域和 legacy 删除仍不混入本 rollout。
 
 ### 后续
 
@@ -104,7 +118,8 @@ Tier0 K 线/分类 → 版本化 stock state → market context → 主升浪 B0
 ## 当前 blocker / 禁止误报
 
 - margin canary 没有未闭合数据缺口，但 2 日 cross-section 只能 `skipped_insufficient_history`，不能声称历史稳定；
-- full-history 前必须消除 accepted/reconcile 的约 `6 + 13N` SQL 路径；约 1800 日会接近 2.34 万次查询；
+- 正式 margin 历史仍未迁移；固定查询门只解除执行前置阻塞，不等于允许无 checkpoint 一次性拉取
+  1827 日，也不等于 consumer cutover；
 - 第二正式数据域前必须先抽出 runner 拥有的 outcome-to-loop policy；禁止在现有超过 2000 行的 `sync_runner.py` 继续复制 dataset-specific 分支，也不借机发明通用插件/DAG；
 - legacy `source_watermarks` standalone helper 的 failure-queue DROP/recreate 仍缺 outer transaction；margin 已有外层事务，不受此 P1 影响；
 - 全局 SLA 仍有 `lhb_daily`、`qfii_holding_quarterly` 无 mapping 及 `sync:margin_detail` stale 三个告警；strict continuity 另判 `cyq_perf` 超 SLA，而 SLA 报告却标 `OK`，该 verifier 口径分歧阻断全局 READY；不能用 margin 单域通过洗绿全链，也不能反向抹掉该单域证据；

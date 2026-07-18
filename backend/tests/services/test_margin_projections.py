@@ -17,10 +17,14 @@ from services.data_sources.margin_acceptance import (
 )
 from services.data_sources.margin_projections import (
     GAP_FAILURE_TYPE,
+    MarginProjectionError,
     RECONCILE_FAILURE_TYPE,
+    derive_margin_accepted_state,
     project_margin_accepted_state,
 )
 from services.data_sources.margin_schema import ACCEPTED_TABLE
+from services.data_sources.margin_readiness import evaluate_margin_readiness
+from services.data_sources.margin_state import MarginStateError, accepted_margin_partitions
 from services.duck_adapter import connect
 from services.source_watermarks import (
     ensure_source_watermark_schema,
@@ -120,8 +124,9 @@ def _accept(
     *,
     batch_id: str = "projected-accepted",
     legacy: bool = True,
+    stamp: datetime | None = None,
 ) -> None:
-    stamp = datetime(2026, 7, 16, 1, 5, tzinfo=timezone.utc)
+    stamp = stamp or datetime(2026, 7, 16, 1, 5, tzinfo=timezone.utc)
     batch = _batch(
         partition,
         batch_id=batch_id,
@@ -131,6 +136,89 @@ def _accept(
     assert accept_margin_batch(raw, batch.batch_id).status == "ACCEPTED"
     if legacy:
         _seed_legacy(raw, partition)
+
+
+class _QueryCountingConnection:
+    """Count read statements without weakening the real DuckDB execution path."""
+
+    def __init__(self, wrapped):
+        self.wrapped = wrapped
+        self.statements: list[str] = []
+
+    def execute(self, statement: str, parameters=None):
+        normalized = " ".join(statement.split()).upper()
+        self.statements.append(normalized)
+        assert normalized.startswith(("SELECT ", "WITH "))
+        if parameters is None:
+            return self.wrapped.execute(statement)
+        return self.wrapped.execute(statement, parameters)
+
+
+class _SchemaProbeFailure:
+    def execute(self, statement: str, parameters=None):
+        raise RuntimeError("forced schema probe failure")
+
+
+def test_schema_probe_failure_cannot_masquerade_as_no_formal_tables():
+    broken = _SchemaProbeFailure()
+
+    with pytest.raises(MarginStateError, match="schema evidence query failed"):
+        accepted_margin_partitions(broken)
+    with pytest.raises(MarginProjectionError, match="schema evidence query failed"):
+        derive_margin_accepted_state(broken, [PARTITION])
+
+
+def _full_read_counts(partitions: tuple[str, ...]) -> tuple[int, int]:
+    raw = connect(":memory:")
+    try:
+        ensure_margin_acceptance_schema(raw)
+        for partition in partitions:
+            next_session = datetime.strptime(partition, "%Y%m%d") + timedelta(days=1)
+            while next_session.weekday() >= 5:
+                next_session += timedelta(days=1)
+            _accept(
+                raw,
+                partition,
+                batch_id=f"query-scale-{partition}",
+                stamp=next_session.replace(
+                    hour=1,
+                    minute=5,
+                    tzinfo=timezone.utc,
+                ),
+            )
+        counted = _QueryCountingConnection(raw)
+
+        result = derive_margin_accepted_state(counted, partitions)
+
+        assert result.accepted == partitions
+        assert result.reconcile_failures == ()
+        projection_count = len(counted.statements)
+
+        readiness_conn = _QueryCountingConnection(raw)
+        readiness = evaluate_margin_readiness(
+            readiness_conn,
+            partitions,
+            eligible_end=partitions[-1],
+            eligibility_reason="published",
+        )
+        assert readiness.ready is True
+        return projection_count, len(readiness_conn.statements)
+    finally:
+        raw.close()
+
+
+def test_projection_read_count_is_bounded_by_surfaces_not_partition_count():
+    partitions = []
+    cursor = datetime(2026, 7, 15)
+    while len(partitions) < 20:
+        if cursor.weekday() < 5:
+            partitions.append(cursor.strftime("%Y%m%d"))
+        cursor += timedelta(days=1)
+
+    one_partition = _full_read_counts(("20260715",))
+    twenty_partitions = _full_read_counts(tuple(partitions))
+
+    assert twenty_partitions == one_partition == (6, 6)
 
 
 def _seed_old_raw_watermark(ops) -> None:

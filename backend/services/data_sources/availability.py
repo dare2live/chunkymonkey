@@ -7,6 +7,7 @@ their provider timing has independent evidence.
 """
 from __future__ import annotations
 
+from bisect import bisect_left
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from typing import Any, Literal, Mapping, Sequence
@@ -66,6 +67,40 @@ class OperationWindow:
     requested_start: str | None
     requested_end: str | None
     effective_end: str | None
+
+
+@dataclass(frozen=True)
+class TradingSessionIndex:
+    """Normalized immutable sessions reusable across publication proofs."""
+
+    days: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.days, tuple):
+            raise SyncWindowError("trading session index days must be an immutable tuple")
+        previous: str | None = None
+        for day in self.days:
+            if not isinstance(day, str) or len(day) != 8 or not day.isdigit():
+                raise SyncWindowError(f"invalid trading session index day={day!r}")
+            try:
+                datetime.strptime(day, "%Y%m%d")
+            except ValueError as exc:
+                raise SyncWindowError(
+                    f"invalid trading session index day={day!r}"
+                ) from exc
+            if previous is not None and day <= previous:
+                raise SyncWindowError(
+                    "trading session index days must be strictly increasing and unique"
+                )
+            previous = day
+
+
+def prepare_trading_session_index(
+    trading_day_values: Sequence[str],
+) -> TradingSessionIndex:
+    return TradingSessionIndex(
+        tuple(sorted({_compact_date(value, "trading_day") for value in trading_day_values}))
+    )
 
 
 def _text(value: Any, field: str, owner: str) -> str:
@@ -192,7 +227,7 @@ def publication_cutoff(
     policy: AvailabilityPolicy,
     *,
     partition_value: Any,
-    trading_day_values: Sequence[str] = (),
+    trading_day_values: Sequence[str] | TradingSessionIndex = (),
 ) -> datetime:
     """Return the earliest policy-approved publication instant in Shanghai.
 
@@ -210,20 +245,25 @@ def publication_cutoff(
             + timedelta(days=offset)
         )
     else:
-        days = sorted({_compact_date(value, "trading_day") for value in trading_day_values})
-        if partition not in days:
+        index = (
+            trading_day_values
+            if isinstance(trading_day_values, TradingSessionIndex)
+            else prepare_trading_session_index(trading_day_values)
+        )
+        position = bisect_left(index.days, partition)
+        if position >= len(index.days) or index.days[position] != partition:
             raise SyncWindowError(
                 f"partition={partition} is not present in the trading calendar"
             )
         if policy.rule == "same_day_at":
             cutoff_day = datetime.strptime(partition, "%Y%m%d").date()
         else:
-            next_sessions = [value for value in days if value > partition]
-            if not next_sessions:
+            successor = position + 1
+            if successor >= len(index.days):
                 raise SyncWindowError(
                     f"trading calendar has no session after partition={partition}"
                 )
-            cutoff_day = datetime.strptime(next_sessions[0], "%Y%m%d").date()
+            cutoff_day = datetime.strptime(index.days[successor], "%Y%m%d").date()
     return datetime.combine(
         cutoff_day,
         policy.at,
@@ -272,7 +312,9 @@ __all__ = [
     "DomainEligibility",
     "OperationWindow",
     "SyncWindowError",
+    "TradingSessionIndex",
     "availability_policy_from_mapping",
+    "prepare_trading_session_index",
     "publication_cutoff",
     "resolve_availability_frontier",
     "resolve_operation_window",

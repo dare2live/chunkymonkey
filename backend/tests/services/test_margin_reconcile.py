@@ -6,31 +6,43 @@ the reconciler must reject.
 """
 from __future__ import annotations
 
+import inspect
 import json
-from datetime import datetime, timezone
-from decimal import Decimal
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
 
 from services.data_sources.contracts import load_dataset_contract
+from services.data_sources.margin_evidence import load_margin_evidence_snapshot
 from services.data_sources.margin_acceptance import (
+    MarginFragment,
+    MarginLandingBatch,
     MARGIN_FIELDS,
-    canonical_content_hash,
+    accept_margin_batch,
     ensure_margin_acceptance_schema,
+    land_margin_batch,
 )
 from services.data_sources.margin_reconcile import (
     MarginReconcileCode,
     MarginReconcileStatus,
+    _reconcile_margin_partitions_snapshot,
     reconcile_margin_partition,
+    reconcile_margin_partitions,
 )
+from services.data_sources.margin_validation import _batch_payload_hash
 from services.duck_adapter import connect
+
+
+pytestmark = pytest.mark.usefixtures("deterministic_margin_calendar")
 
 
 DATASET_ID = "tier0.market_data.margin_exchange_daily"
 PARTITION = "20260715"
 AVAILABLE_AT = datetime(2026, 7, 16, 1, 0, tzinfo=timezone.utc)
-OBSERVED_AT = datetime(2026, 7, 16, 1, 5, tzinfo=timezone.utc)
+SECOND_PARTITION = "20260716"
+SECOND_AVAILABLE_AT = datetime(2026, 7, 17, 1, 0, tzinfo=timezone.utc)
 
 _ROWS: dict[str, dict[str, Any]] = {
     "BSE": {
@@ -89,9 +101,8 @@ def _ensure_legacy_shadow(database) -> None:
     )
 
 
-def _replace_legacy_shadow(database, rows: dict[str, dict[str, Any]]) -> None:
-    """Populate legacy explicitly; acceptance must not be the writer under test."""
-    database.execute("DELETE FROM raw_tushare_margin")
+def _append_legacy_shadow(database, rows: dict[str, dict[str, Any]]) -> None:
+    """Append legacy rows explicitly; acceptance is not the writer under test."""
     database.executemany(
         f"""
         INSERT INTO raw_tushare_margin ({', '.join(MARGIN_FIELDS)}, built_at)
@@ -101,146 +112,52 @@ def _replace_legacy_shadow(database, rows: dict[str, dict[str, Any]]) -> None:
     )
 
 
+def _replace_legacy_shadow(database, rows: dict[str, dict[str, Any]]) -> None:
+    """Populate legacy explicitly; acceptance must not be the writer under test."""
+    database.execute("DELETE FROM raw_tushare_margin")
+    _append_legacy_shadow(database, rows)
+
+
+def _rows_for(partition: str) -> dict[str, dict[str, Any]]:
+    return {
+        exchange_id: {**row, "trade_date": partition}
+        for exchange_id, row in _ROWS.items()
+    }
+
+
+def _seed_accepted_partition(
+    database,
+    partition: str,
+    *,
+    available_at: datetime,
+) -> dict[str, dict[str, Any]]:
+    """Create coherent evidence through the production landing/accept boundary."""
+    rows = _rows_for(partition)
+    batch_id = f"accepted-margin-{partition}"
+    batch = MarginLandingBatch(
+        batch_id=batch_id,
+        partition_value=partition,
+        observed_at=available_at,
+        available_at=available_at,
+        fragments=tuple(
+            MarginFragment(
+                exchange_id=exchange_id,
+                request={
+                    "trade_date": partition,
+                    "exchange_id": exchange_id,
+                },
+                rows=(row,),
+            )
+            for exchange_id, row in rows.items()
+        ),
+    )
+    land_margin_batch(database, batch)
+    assert accept_margin_batch(database, batch_id).status == "ACCEPTED"
+    return rows
+
+
 def _seed_accepted_facts(database) -> None:
-    """Create a coherent accepted pointer and canonical partition directly."""
-    batch_id = "accepted-margin-20260715"
-    candidate_rows = [
-        {
-            field: (
-                Decimal(str(row[field]))
-                if field in MARGIN_FIELDS[2:] and row[field] is not None
-                else row[field]
-            )
-            for field in MARGIN_FIELDS
-        }
-        for row in _ROWS.values()
-    ]
-    content_hash = canonical_content_hash(candidate_rows)
-    database.execute(
-        """
-        INSERT INTO ingest_batch (
-            batch_id, dataset_id, contract_version, contract_hash, config_hash,
-            writer_id, partition_value, source_name, status, request_json,
-            fragment_outcomes_json, expected_fragment_count, completed_fragment_count,
-            failed_fragment_count, landing_row_count, canonical_row_count, payload_hash,
-            canonical_hash, observed_at, available_at, landed_at, validated_at, accepted_at
-        ) VALUES (
-            ?, ?, '1', 'contract-hash-v1', 'config-hash-v1',
-            'services.data_sources.margin_acceptance', ?, 'tushare', 'ACCEPTED', '{}',
-            '[]', 3, 3, 0, 3, 3, 'payload-hash-v1', ?, ?, ?, ?, ?, ?
-        )
-        """,
-        [
-            batch_id,
-            DATASET_ID,
-            PARTITION,
-            content_hash,
-            OBSERVED_AT,
-            AVAILABLE_AT,
-            OBSERVED_AT,
-            OBSERVED_AT,
-            OBSERVED_AT,
-        ],
-    )
-    database.executemany(
-        """
-        INSERT INTO landing_tushare_margin (
-            batch_id, fragment_exchange_id, fragment_ordinal, row_ordinal,
-            request_json, payload_json, row_hash
-        ) VALUES (?, ?, ?, 1, '{}', ?, ?)
-        """,
-        [
-            (
-                batch_id,
-                exchange_id,
-                fragment_ordinal,
-                json.dumps(row, sort_keys=True, separators=(",", ":")),
-                f"source-row-hash-{exchange_id}",
-            )
-            for fragment_ordinal, (exchange_id, row) in enumerate(_ROWS.items(), start=1)
-        ],
-    )
-    database.executemany(
-        f"""
-        INSERT INTO canonical_margin_exchange_daily (
-            {', '.join(MARGIN_FIELDS)}, available_at, ingest_batch_id,
-            source_row_hash, contract_version, config_hash, built_at
-        ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '1', 'config-hash-v1', ?
-        )
-        """,
-        [
-            (
-                f"{PARTITION[:4]}-{PARTITION[4:6]}-{PARTITION[6:]}",
-                *(row[field] for field in MARGIN_FIELDS[1:]),
-                AVAILABLE_AT,
-                batch_id,
-                f"source-row-hash-{exchange_id}",
-                OBSERVED_AT,
-            )
-            for exchange_id, row in _ROWS.items()
-        ],
-    )
-    database.execute(
-        """
-        INSERT INTO accepted_partition (
-            dataset_id, partition_value, batch_id, contract_version, contract_hash,
-            config_hash, row_count, content_hash, observed_at, available_at, accepted_at
-        ) VALUES (?, ?, ?, '1', 'contract-hash-v1', 'config-hash-v1', 3, ?, ?, ?, ?)
-        """,
-        [
-            DATASET_ID,
-            PARTITION,
-            batch_id,
-            content_hash,
-            OBSERVED_AT,
-            AVAILABLE_AT,
-            OBSERVED_AT,
-        ],
-    )
-    # The green fixture must represent the current typed contract.  Using two
-    # mutually consistent fake hashes would let stale accepted evidence pass a
-    # shadow reconcile after a contract/config change.
-    contract = load_dataset_contract("margin")
-    database.execute(
-        """
-        UPDATE ingest_batch
-           SET contract_version = ?, contract_hash = ?, config_hash = ?
-         WHERE batch_id = ?
-        """,
-        [
-            contract.contract_version,
-            contract.contract_hash,
-            contract.config_hash,
-            batch_id,
-        ],
-    )
-    database.execute(
-        """
-        UPDATE accepted_partition
-           SET contract_version = ?, contract_hash = ?, config_hash = ?
-         WHERE dataset_id = ? AND partition_value = ?
-        """,
-        [
-            contract.contract_version,
-            contract.contract_hash,
-            contract.config_hash,
-            DATASET_ID,
-            PARTITION,
-        ],
-    )
-    database.execute(
-        """
-        UPDATE canonical_margin_exchange_daily
-           SET contract_version = ?, config_hash = ?
-         WHERE trade_date = CAST(? AS DATE)
-        """,
-        [
-            contract.contract_version,
-            contract.config_hash,
-            f"{PARTITION[:4]}-{PARTITION[4:6]}-{PARTITION[6:]}",
-        ],
-    )
+    _seed_accepted_partition(database, PARTITION, available_at=AVAILABLE_AT)
 
 
 @pytest.fixture
@@ -258,6 +175,83 @@ def _codes(report) -> set[MarginReconcileCode]:
     return {issue.code for issue in report.issues}
 
 
+def test_public_reconcile_apis_expose_no_proof_bypass():
+    from services.data_sources import (
+        margin_legacy_reconcile,
+        margin_readiness,
+        margin_state,
+    )
+
+    assert "_accepted_proof" not in inspect.signature(
+        reconcile_margin_partition
+    ).parameters
+    assert "_accepted_proof" not in inspect.signature(
+        reconcile_margin_partitions
+    ).parameters
+    assert "evidence_snapshot" not in inspect.signature(
+        reconcile_margin_partition
+    ).parameters
+    assert "evidence_snapshot" not in inspect.signature(
+        reconcile_margin_partitions
+    ).parameters
+    assert "evidence_snapshot" not in inspect.signature(
+        margin_state.accepted_margin_partitions
+    ).parameters
+    assert "evidence_snapshot" not in inspect.signature(
+        margin_state.load_margin_accepted_state
+    ).parameters
+    assert "accepted_state" not in inspect.signature(
+        margin_readiness.evaluate_margin_readiness
+    ).parameters
+    assert not hasattr(margin_state, "prove_margin_partitions")
+    for alias in (
+        "append_margin_reconcile_issue",
+        "build_margin_reconcile_report",
+        "compare_margin_legacy_partition",
+        "margin_snapshot_schema_issues",
+        "normalize_margin_partition",
+    ):
+        assert not hasattr(margin_legacy_reconcile, alias)
+
+
+def test_cross_connection_snapshot_cannot_make_tampered_evidence_green(conn):
+    from services.data_sources import margin_state
+
+    contract = load_dataset_contract("margin")
+    stale_clean = load_margin_evidence_snapshot(
+        conn,
+        contract=contract,
+        partition_value=PARTITION,
+        include_legacy=True,
+    )
+    other = connect(":memory:")
+    try:
+        ensure_margin_acceptance_schema(other)
+        _ensure_legacy_shadow(other)
+        _seed_accepted_facts(other)
+        _replace_legacy_shadow(other, _ROWS)
+        other.execute(
+            "UPDATE landing_tushare_margin SET row_hash = 'tampered' "
+            "WHERE batch_id = 'accepted-margin-20260715' AND row_ordinal = 1"
+        )
+
+        report = reconcile_margin_partition(other, PARTITION)
+        assert _codes(report) == {MarginReconcileCode.FORMAL_EVIDENCE_INVALID}
+        with pytest.raises(TypeError):
+            reconcile_margin_partition(
+                other,
+                PARTITION,
+                evidence_snapshot=stale_clean,
+            )
+        with pytest.raises(TypeError):
+            margin_state.accepted_margin_partitions(
+                other,
+                evidence_snapshot=stale_clean,
+            )
+    finally:
+        other.close()
+
+
 class _ReadOnlySpy:
     """Reject SQL writes so a green report is also a proof of read-only use."""
 
@@ -268,10 +262,83 @@ class _ReadOnlySpy:
     def execute(self, statement: str, parameters=None):
         normalized = " ".join(statement.split()).upper()
         self.statements.append(normalized)
-        assert normalized.startswith(("SELECT ", "DESCRIBE ", "WITH ", "EXPLAIN "))
+        assert normalized.startswith(("SELECT ", "WITH "))
         if parameters is None:
             return self.wrapped.execute(statement)
         return self.wrapped.execute(statement, parameters)
+
+
+class _CountingRows:
+    def __init__(self, rows):
+        self.rows = tuple(rows)
+        self.visits = 0
+
+    def __iter__(self):
+        for row in self.rows:
+            self.visits += 1
+            yield row
+
+
+def test_proof_comparison_visits_each_master_row_a_constant_number_of_times(
+    conn, monkeypatch
+):
+    from services.data_sources import margin_reconcile
+
+    partitions = [PARTITION]
+    cursor = datetime.strptime(PARTITION, "%Y%m%d") + timedelta(days=1)
+    while len(partitions) < 20:
+        if cursor.weekday() < 5:
+            partition = cursor.strftime("%Y%m%d")
+            next_session = cursor + timedelta(days=1)
+            while next_session.weekday() >= 5:
+                next_session += timedelta(days=1)
+            rows = _seed_accepted_partition(
+                conn,
+                partition,
+                available_at=next_session.replace(
+                    hour=1,
+                    tzinfo=timezone.utc,
+                ),
+            )
+            _append_legacy_shadow(conn, rows)
+            partitions.append(partition)
+        cursor += timedelta(days=1)
+
+    contract = load_dataset_contract("margin")
+    snapshot = load_margin_evidence_snapshot(
+        conn,
+        contract=contract,
+        include_legacy=True,
+    )
+    counted_snapshot_rows = _CountingRows(snapshot.accepted_rows)
+    counted_proof_rows: list[_CountingRows] = []
+    real_prove = margin_reconcile._prove_margin_partitions_snapshot
+
+    def _counted_prove(*args, **kwargs):
+        proofs = real_prove(*args, **kwargs)
+        counted = _CountingRows(proofs.accepted)
+        counted_proof_rows.append(counted)
+        return replace(proofs, accepted=counted)
+
+    monkeypatch.setattr(
+        margin_reconcile,
+        "_prove_margin_partitions_snapshot",
+        _counted_prove,
+    )
+    reports = _reconcile_margin_partitions_snapshot(
+        conn,
+        tuple(partitions),
+        contract=contract,
+        snapshot=replace(
+            snapshot,
+            accepted_rows=counted_snapshot_rows,
+        ),
+    )
+
+    assert all(report.status is MarginReconcileStatus.PARITY for report in reports)
+    assert counted_snapshot_rows.visits == 3 * len(partitions)
+    assert len(counted_proof_rows) == 1
+    assert counted_proof_rows[0].visits == len(partitions)
 
 
 def test_exact_parity_is_green_and_reconcile_attempts_no_writes(conn):
@@ -289,6 +356,221 @@ def test_exact_parity_is_green_and_reconcile_attempts_no_writes(conn):
     assert report.legacy_row_count == 3
     assert report.issues == ()
     assert spy.statements
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "UPDATE ingest_batch SET config_hash = 'bad' WHERE batch_id = 'accepted-margin-20260715'",
+        "UPDATE canonical_margin_exchange_daily SET rzye = rzye + 1 WHERE exchange_id = 'SSE'",
+        "UPDATE raw_tushare_margin SET rzye = rzye + 1 WHERE exchange_id = 'SSE'",
+    ],
+)
+def test_set_based_reconcile_preserves_single_partition_failure_semantics(conn, tamper):
+    conn.execute(tamper)
+
+    single = reconcile_margin_partition(conn, PARTITION)
+    batched = reconcile_margin_partitions(conn, [PARTITION])[0]
+
+    assert batched == single
+
+
+def test_batch_reconcile_rejects_snapshot_scope_drift(conn):
+    contract = load_dataset_contract("margin")
+    snapshot = load_margin_evidence_snapshot(
+        conn,
+        contract=contract,
+        partition_value=PARTITION,
+        include_legacy=True,
+    )
+    wrong_scope = replace(snapshot, partition_value="20260716")
+
+    report = _reconcile_margin_partitions_snapshot(
+        conn,
+        (PARTITION,),
+        contract=contract,
+        snapshot=wrong_scope,
+    )[0]
+
+    assert _codes(report) == {MarginReconcileCode.QUERY_ERROR}
+
+
+def test_scoped_snapshot_rejects_rows_outside_its_declared_partition(conn):
+    second_rows = _seed_accepted_partition(
+        conn,
+        SECOND_PARTITION,
+        available_at=SECOND_AVAILABLE_AT,
+    )
+    _append_legacy_shadow(conn, second_rows)
+    contract = load_dataset_contract("margin")
+    all_partitions = load_margin_evidence_snapshot(
+        conn,
+        contract=contract,
+        partition_value=None,
+        include_legacy=True,
+    )
+    contaminated_scope = replace(all_partitions, partition_value=PARTITION)
+
+    report = _reconcile_margin_partitions_snapshot(
+        conn,
+        (PARTITION,),
+        contract=contract,
+        snapshot=contaminated_scope,
+    )[0]
+
+    assert report.status is MarginReconcileStatus.FAILED
+    assert _codes(report) == {MarginReconcileCode.QUERY_ERROR}
+
+
+def test_batch_reconcile_rejects_snapshot_load_error(conn):
+    contract = load_dataset_contract("margin")
+    snapshot = load_margin_evidence_snapshot(
+        conn,
+        contract=contract,
+        partition_value=PARTITION,
+        include_legacy=True,
+    )
+    broken = replace(snapshot, load_error="forced incoherent evidence read")
+
+    report = _reconcile_margin_partitions_snapshot(
+        conn,
+        (PARTITION,),
+        contract=contract,
+        snapshot=broken,
+    )[0]
+
+    assert _codes(report) == {MarginReconcileCode.QUERY_ERROR}
+
+
+def test_reconcile_reproves_retained_landing_lineage(conn):
+    conn.execute(
+        "UPDATE landing_tushare_margin SET row_hash = 'bad' "
+        "WHERE batch_id = 'accepted-margin-20260715' AND row_ordinal = 1"
+    )
+
+    report = reconcile_margin_partition(conn, PARTITION)
+
+    assert _codes(report) == {MarginReconcileCode.FORMAL_EVIDENCE_INVALID}
+
+
+def test_batch_reconcile_isolates_formal_proof_failure_to_its_partition(conn):
+    second_rows = _seed_accepted_partition(
+        conn,
+        SECOND_PARTITION,
+        available_at=SECOND_AVAILABLE_AT,
+    )
+    _append_legacy_shadow(conn, second_rows)
+    conn.execute(
+        "UPDATE landing_tushare_margin SET row_hash = 'bad' "
+        "WHERE batch_id = ? AND row_ordinal = 1",
+        [f"accepted-margin-{SECOND_PARTITION}"],
+    )
+
+    reports = {
+        report.partition_value: report
+        for report in reconcile_margin_partitions(
+            conn,
+            [PARTITION, SECOND_PARTITION],
+        )
+    }
+
+    assert reports[PARTITION].status is MarginReconcileStatus.PARITY
+    assert reports[PARTITION].issues == ()
+    assert reports[SECOND_PARTITION].status is MarginReconcileStatus.FAILED
+    assert (
+        MarginReconcileCode.FORMAL_EVIDENCE_INVALID
+        in _codes(reports[SECOND_PARTITION])
+    )
+
+
+def test_coherent_premature_publication_cannot_fake_parity(conn):
+    """Even rehashed, mutually matching evidence must obey the PIT cutoff."""
+    premature = datetime(2026, 7, 15, 0, 0, tzinfo=timezone.utc)
+    batch = conn.execute(
+        """
+        SELECT source_name, contract_version, contract_hash, config_hash,
+               request_json, fragment_outcomes_json
+          FROM ingest_batch
+         WHERE batch_id = 'accepted-margin-20260715'
+        """
+    ).fetchone()
+    row_signatures = [
+        f"{fragment_ordinal}:{row_ordinal}:{row_hash}"
+        for fragment_ordinal, row_ordinal, row_hash in conn.execute(
+            """
+            SELECT fragment_ordinal, row_ordinal, row_hash
+              FROM landing_tushare_margin
+             WHERE batch_id = 'accepted-margin-20260715'
+             ORDER BY fragment_ordinal, row_ordinal
+            """
+        ).fetchall()
+    ]
+    payload_hash = _batch_payload_hash(
+        partition=PARTITION,
+        source=str(batch[0]),
+        contract_version=str(batch[1]),
+        contract_hash=str(batch[2]),
+        config_hash=str(batch[3]),
+        observed_at=premature,
+        available_at=premature,
+        requests=json.loads(str(batch[4])),
+        outcomes=json.loads(str(batch[5])),
+        row_signatures=row_signatures,
+    )
+    conn.execute(
+        """
+        UPDATE ingest_batch
+           SET observed_at = ?, available_at = ?, payload_hash = ?
+         WHERE batch_id = 'accepted-margin-20260715'
+        """,
+        [premature, premature, payload_hash],
+    )
+    conn.execute(
+        """
+        UPDATE accepted_partition
+           SET observed_at = ?, available_at = ?
+         WHERE dataset_id = ? AND partition_value = ?
+        """,
+        [premature, premature, DATASET_ID, PARTITION],
+    )
+    conn.execute(
+        """
+        UPDATE canonical_margin_exchange_daily
+           SET available_at = ?
+         WHERE trade_date = CAST(? AS DATE)
+        """,
+        [premature, f"{PARTITION[:4]}-{PARTITION[4:6]}-{PARTITION[6:]}"],
+    )
+
+    report = reconcile_margin_partition(conn, PARTITION)
+
+    formal = [
+        issue for issue in report.issues
+        if issue.code is MarginReconcileCode.FORMAL_EVIDENCE_INVALID
+    ]
+    assert len(formal) == 1
+    assert "PREMATURE_PUBLICATION" in formal[0].detail
+
+
+def test_public_reconcile_types_publication_calendar_loader_failure(
+    conn,
+    monkeypatch,
+):
+    from services.data_sources import margin_validation
+
+    def fail_calendar_load(_partition, *, limit=None):
+        raise RuntimeError("forced publication calendar failure")
+
+    monkeypatch.setattr(
+        margin_validation,
+        "load_margin_publication_sessions",
+        fail_calendar_load,
+    )
+
+    report = reconcile_margin_partition(conn, PARTITION)
+
+    assert report.status is MarginReconcileStatus.FAILED
+    assert report.issues
 
 
 def test_mutually_consistent_stale_acceptance_fails_current_contract_gate(conn):
@@ -432,7 +714,26 @@ def test_duplicate_legacy_grain_is_typed_and_not_silently_collapsed(conn):
     assert report.legacy_row_count == 4
 
 
-def test_required_column_schema_drift_is_typed(conn):
+@pytest.mark.parametrize(
+    ("table", "column"),
+    [
+        ("accepted_partition", "observed_at"),
+        ("ingest_batch", "writer_id"),
+        ("landing_tushare_margin", "request_json"),
+        ("canonical_margin_exchange_daily", "source_row_hash"),
+    ],
+    ids=("accepted-pointer", "ingest-batch", "landing", "canonical"),
+)
+def test_formal_required_column_schema_drift_stays_typed(conn, table, column):
+    conn.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
+
+    report = reconcile_margin_partition(conn, PARTITION)
+
+    assert report.status is MarginReconcileStatus.FAILED
+    assert _codes(report) == {MarginReconcileCode.SCHEMA_MISMATCH}
+
+
+def test_legacy_required_column_schema_drift_is_typed(conn):
     conn.execute("ALTER TABLE raw_tushare_margin DROP COLUMN rqyl")
 
     report = reconcile_margin_partition(conn, PARTITION)

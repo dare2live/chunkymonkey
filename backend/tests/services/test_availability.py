@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -8,7 +8,9 @@ import pytest
 from services.data_sources.availability import (
     DomainEligibility,
     SyncWindowError,
+    TradingSessionIndex,
     availability_policy_from_mapping,
+    prepare_trading_session_index,
     publication_cutoff,
     resolve_availability_frontier,
     resolve_operation_window,
@@ -70,6 +72,55 @@ def test_publication_cutoff_fails_closed_without_successor_session():
             _policy("trading_day", "next_trading_session_at"),
             partition_value="20260717",
             trading_day_values=["20260717"],
+        )
+
+
+def test_prepared_trading_sessions_are_normalized_once_not_per_partition(
+    monkeypatch,
+):
+    from services.data_sources import availability
+
+    sessions = tuple(
+        (datetime(2026, 1, 1) + timedelta(days=offset)).strftime("%Y%m%d")
+        for offset in range(100)
+    )
+    calls = 0
+    original = availability._compact_date
+
+    def counted(value, field):
+        nonlocal calls
+        calls += 1
+        return original(value, field)
+
+    monkeypatch.setattr(availability, "_compact_date", counted)
+    index = prepare_trading_session_index(sessions)
+    for partition in sessions[:-1]:
+        publication_cutoff(
+            _policy("trading_day", "next_trading_session_at"),
+            partition_value=partition,
+            trading_day_values=index,
+        )
+
+    assert calls == len(sessions) + len(sessions) - 1
+
+
+@pytest.mark.parametrize(
+    "days",
+    [
+        ("20260715", "20260717", "20260716"),
+        ("20260715", "20260715", "20260716"),
+        ("20260715", "20260716", "not-a-date"),
+    ],
+    ids=("unordered", "duplicate", "invalid"),
+)
+def test_direct_trading_session_index_construction_fails_closed(days):
+    """A caller must not bypass normalization by instantiating the type directly."""
+
+    with pytest.raises(SyncWindowError, match="trading session index"):
+        publication_cutoff(
+            _policy("trading_day", "next_trading_session_at"),
+            partition_value="20260715",
+            trading_day_values=TradingSessionIndex(days),
         )
 
 

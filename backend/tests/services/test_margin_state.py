@@ -14,10 +14,10 @@ from services.data_sources.margin_acceptance import (
     ensure_margin_acceptance_schema,
     land_margin_batch,
 )
+from services.data_sources.margin_readiness import evaluate_margin_readiness
 from services.data_sources.margin_state import (
     MarginStateError,
     accepted_margin_dates,
-    evaluate_margin_readiness,
     latest_accepted_margin_frontier,
     load_margin_accepted_state,
     missing_accepted_margin_dates,
@@ -29,11 +29,12 @@ from services.duck_adapter import connect
 
 
 PARTITION = "20260715"
+SECOND_PARTITION = "20260716"
 
 
-def _row(exchange: str) -> dict:
+def _row(exchange: str, partition: str = PARTITION) -> dict:
     return {
-        "trade_date": PARTITION,
+        "trade_date": partition,
         "exchange_id": exchange,
         "rzye": 100,
         "rzmre": 10,
@@ -45,18 +46,24 @@ def _row(exchange: str) -> dict:
     }
 
 
-def _accept(conn) -> None:
-    available = datetime(2026, 7, 16, 1, 0, tzinfo=timezone.utc)
+def _accept(
+    conn,
+    *,
+    partition: str = PARTITION,
+    batch_id: str = "accepted-state",
+    available: datetime | None = None,
+) -> None:
+    available = available or datetime(2026, 7, 16, 1, 0, tzinfo=timezone.utc)
     batch = MarginLandingBatch(
-        batch_id="accepted-state",
-        partition_value=PARTITION,
+        batch_id=batch_id,
+        partition_value=partition,
         observed_at=available,
         available_at=available,
         fragments=tuple(
             MarginFragment(
                 exchange_id=exchange,
-                request={"trade_date": PARTITION, "exchange_id": exchange},
-                rows=(_row(exchange),),
+                request={"trade_date": partition, "exchange_id": exchange},
+                rows=(_row(exchange, partition),),
             )
             for exchange in ("SSE", "SZSE", "BSE")
         ),
@@ -95,7 +102,7 @@ def test_frontier_is_derived_from_proven_accepted_partition():
         conn.close()
 
 
-def test_typed_accepted_state_and_readiness_share_one_proven_snapshot():
+def test_typed_accepted_state_and_readiness_are_derived_from_live_evidence():
     conn = connect(":memory:")
     try:
         ensure_margin_acceptance_schema(conn)
@@ -113,9 +120,8 @@ def test_typed_accepted_state_and_readiness_share_one_proven_snapshot():
             eligible_end="20260716",
             eligibility_reason="t_plus_one",
             reconcile=False,
-            accepted_state=state,
         )
-        assert readiness.accepted_state is state
+        assert readiness.accepted_state == state
         assert readiness.expected == (PARTITION, "20260716")
         assert readiness.missing == ("20260716",)
         assert readiness.unexpected == ()
@@ -125,8 +131,28 @@ def test_typed_accepted_state_and_readiness_share_one_proven_snapshot():
         conn.close()
 
 
+def test_readiness_public_api_rejects_injected_accepted_state():
+    conn = connect(":memory:")
+    try:
+        ensure_margin_acceptance_schema(conn)
+        _accept(conn)
+        old_state = load_margin_accepted_state(conn)
+
+        with pytest.raises(TypeError):
+            evaluate_margin_readiness(
+                conn,
+                [PARTITION],
+                eligible_end=PARTITION,
+                eligibility_reason="published",
+                reconcile=True,
+                accepted_state=old_state,
+            )
+    finally:
+        conn.close()
+
+
 def test_readiness_reconcile_failure_is_typed_and_blocking(monkeypatch):
-    from services.data_sources import margin_reconcile
+    from services.data_sources import margin_readiness
 
     conn = connect(":memory:")
     try:
@@ -134,10 +160,10 @@ def test_readiness_reconcile_failure_is_typed_and_blocking(monkeypatch):
         _accept(conn)
         issue = SimpleNamespace(code=SimpleNamespace(value="VALUE_MISMATCH"))
         monkeypatch.setattr(
-            margin_reconcile,
-            "reconcile_margin_partition",
-            lambda _conn, _partition, **_kwargs: SimpleNamespace(
-                ok=False, issues=(issue,)
+            margin_readiness,
+            "_reconcile_margin_partitions_snapshot",
+            lambda _conn, partitions, **_kwargs: tuple(
+                SimpleNamespace(ok=False, issues=(issue,)) for _ in partitions
             ),
         )
 
@@ -156,7 +182,12 @@ def test_readiness_reconcile_failure_is_typed_and_blocking(monkeypatch):
 
 
 def test_readiness_uses_one_injected_contract_snapshot(monkeypatch):
-    from services.data_sources import contracts, margin_reconcile, margin_state
+    from services.data_sources import (
+        contracts,
+        margin_readiness,
+        margin_reconcile,
+        margin_state,
+    )
     from services.data_sources.contracts import load_dataset_contract
 
     conn = connect(":memory:")
@@ -165,7 +196,7 @@ def test_readiness_uses_one_injected_contract_snapshot(monkeypatch):
         _accept(conn)
         planned = load_dataset_contract("margin")
         monkeypatch.setattr(
-            margin_state,
+            margin_readiness,
             "load_dataset_contract",
             lambda _domain: pytest.fail("readiness reloaded contract B"),
         )
@@ -180,13 +211,15 @@ def test_readiness_uses_one_injected_contract_snapshot(monkeypatch):
             lambda _domain: pytest.fail("reconcile reloaded contract D"),
         )
         reconciled_contracts = []
+
+        def _reconcile_with_contract(_conn, partitions, **kwargs):
+            reconciled_contracts.append(kwargs.get("contract"))
+            return tuple(SimpleNamespace(ok=True, issues=()) for _ in partitions)
+
         monkeypatch.setattr(
-            margin_reconcile,
-            "reconcile_margin_partition",
-            lambda _conn, _partition, **kwargs: reconciled_contracts.append(
-                kwargs.get("contract")
-            )
-            or SimpleNamespace(ok=True, issues=()),
+            margin_readiness,
+            "_reconcile_margin_partitions_snapshot",
+            _reconcile_with_contract,
         )
 
         readiness = evaluate_margin_readiness(

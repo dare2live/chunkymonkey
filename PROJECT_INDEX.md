@@ -20,7 +20,7 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | `margin` 已是首个 v2 typed availability + landing/canonical/accepted tracer；其他域仍待逐个迁移，不能把 canary 当成全史或全局 Tier0 闭合 |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | `margin` 是首个 v2 typed availability + landing/canonical/accepted tracer；读取边界为 evidence snapshot → state/reconcile → readiness/projection，当前仅两日 accepted，其他域仍待逐个迁移 |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
 | T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 当前展示可用；分类解释、measurement、regime 和 persistence 耦合，暂不可直接做 PIT 特征 |
@@ -100,6 +100,10 @@ ops/governance    jobs, alerts, projections and gates
 ```
 
 First establish `DatasetContract` and writer ownership around existing files. Move physical files only when a bounded-context migration has a passing shadow comparison.
+
+当前 margin read path 的物理 owner：`margin_evidence.py` 负责固定查询快照，`margin_state.py` 负责
+accepted proof，`margin_legacy_reconcile.py`/`margin_reconcile.py` 负责纯比较与现场编排，
+`margin_readiness.py`/`margin_projections.py` 只在上层组合结果；依赖不得反向。
 
 ## 7. Generated map discipline
 

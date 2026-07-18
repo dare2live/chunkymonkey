@@ -190,6 +190,18 @@ projection 仍保留 live eligibility frontier。该入口是手动命令，不�
 reconcile/projection、pipeline 与 continuity/SLA 必须透传同一对象。测试应使用 `is` 证明 identity，
 不能用 dataclass 值相等制造“同一合同”的假绿。
 
+accepted-state/readiness/reconcile 必须从同一个 immutable evidence snapshot 消费正式事实。快照读取
+按物理 surface 做 set-based 查询，主库查询数不得随 partition 数增长；schema inventory 查询故障、
+表/列缺失和 0 行必须保持不同 failure taxonomy。声明为单分区的快照不得夹带其他分区；公开
+reconcile、accepted-state 和 readiness API 不接受 snapshot、proof、旧 state 或其他绕过参数，
+只能从传入连接现场加载。快照复用只允许发生在同一调用栈的私有 helper 内。权威 proof 由 state
+owner 逐分区裁决并一次复用已验证的
+trading-session index，使坏分区不能污染好分区。规模门同时检查固定 query count、calendar
+operation count 和坏例 turning red，不能只用小样本耗时作证。
+
+readiness 属于 state 与 reconcile 之上的 orchestration，必须单向依赖二者；state/proof 层不得
+反向 import reconcile。拆文件后要检查静态依赖图，不得用 function-local import 掩盖循环。
+
 裁决分两层：单域 canary 只由该域的 accepted partition、reconcile、projection 与 failure
 证据裁决；full pipeline、消费者切换和发布仍受全局 continuity/SLA/failure 阻断。全局告警
 不能洗绿单域，也不能反向抹掉已经闭合的单域证据。

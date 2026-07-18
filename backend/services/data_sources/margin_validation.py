@@ -5,9 +5,14 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, Iterable
 
-from services.data_sources.availability import SyncWindowError, publication_cutoff
+from services.data_sources.availability import (
+    SyncWindowError,
+    TradingSessionIndex,
+    prepare_trading_session_index,
+    publication_cutoff,
+)
 from services.data_sources.margin_schema import (
     LANDING_TABLE,
     MARGIN_FIELDS,
@@ -78,7 +83,7 @@ def validate_margin_publication_time(
     partition: str,
     available_at: datetime | str,
     *,
-    trading_day_values: tuple[str, ...] | None = None,
+    trading_day_values: tuple[str, ...] | TradingSessionIndex | None = None,
 ) -> datetime:
     """Prove one margin observation was not published before its typed cutoff."""
 
@@ -162,6 +167,8 @@ def _candidate_rows(
     partition: str,
     contract,
     batch: dict[str, Any],
+    *,
+    landed_rows: Iterable[tuple[Any, ...]] | None = None,
 ) -> list[dict[str, Any]]:
     try:
         requests = json.loads(batch["request_json"])
@@ -256,16 +263,20 @@ def _candidate_rows(
             f"expected={sorted(expected)} observed={sorted(observed_groups)}",
         )
 
-    landed = conn.execute(
-        f"""
-        SELECT fragment_exchange_id, fragment_ordinal, row_ordinal,
-               request_json, payload_json, row_hash
-          FROM {LANDING_TABLE}
-         WHERE batch_id = ?
-         ORDER BY fragment_ordinal, row_ordinal
-        """,
-        [batch_id],
-    ).fetchall()
+    landed = (
+        list(landed_rows)
+        if landed_rows is not None
+        else conn.execute(
+            f"""
+            SELECT fragment_exchange_id, fragment_ordinal, row_ordinal,
+                   request_json, payload_json, row_hash
+              FROM {LANDING_TABLE}
+             WHERE batch_id = ?
+             ORDER BY fragment_ordinal, row_ordinal
+            """,
+            [batch_id],
+        ).fetchall()
+    )
     rows_by_ordinal: dict[int, list[tuple[Any, ...]]] = {}
     row_signatures: list[str] = []
     for landed_row in landed:

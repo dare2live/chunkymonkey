@@ -459,7 +459,7 @@ def test_margin_pipeline_gate_consumes_one_typed_readiness_verdict(
     monkeypatch, tmp_path
 ):
     from services import duck_adapter
-    from services.data_sources import margin_ingest, margin_state, sync_runner
+    from services.data_sources import margin_ingest, margin_readiness, sync_runner
     from services.pipeline import acquire
     from services.pipeline.context import PipelineContext
 
@@ -491,7 +491,7 @@ def test_margin_pipeline_gate_consumes_one_typed_readiness_verdict(
         lambda _spec: planned_contract,
     )
     monkeypatch.setattr(
-        margin_state,
+        margin_readiness,
         "evaluate_margin_readiness",
         lambda actual, expected, **kwargs: calls.append(
             (actual, tuple(expected), kwargs.get("contract"))
@@ -522,7 +522,7 @@ def test_margin_pipeline_gate_consumes_one_typed_readiness_verdict(
 
 def test_margin_pipeline_gate_blocks_typed_readiness_failure(monkeypatch, tmp_path):
     from services import duck_adapter
-    from services.data_sources import margin_ingest, margin_state, sync_runner
+    from services.data_sources import margin_ingest, margin_readiness, sync_runner
     from services.pipeline import acquire
     from services.pipeline.context import PipelineContext
 
@@ -546,7 +546,7 @@ def test_margin_pipeline_gate_blocks_typed_readiness_failure(monkeypatch, tmp_pa
         lambda _spec: SimpleNamespace(coverage_start="20260715"),
     )
     monkeypatch.setattr(
-        margin_state,
+        margin_readiness,
         "evaluate_margin_readiness",
         lambda _conn, _expected, **_kwargs: SimpleNamespace(
             ready=False,

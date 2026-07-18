@@ -502,7 +502,11 @@ def _prove_accepted_outcome(
     try:
         matches = [
             item
-            for item in accepted_margin_partitions(conn, contract=contract)
+            for item in accepted_margin_partitions(
+                conn,
+                contract=contract,
+                partition_value=partition,
+            )
             if item.partition_value == partition and item.batch_id == batch_id
         ]
     except MarginStateError as exc:

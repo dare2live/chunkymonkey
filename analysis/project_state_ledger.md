@@ -245,3 +245,25 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   并另行治理 legacy `source_watermarks` standalone helper 的非原子 failure-queue 更新。全局 strict
   continuity 另判 `cyq_perf` 超 SLA，而 SLA 报告仍标 `OK`，属于后续 Ops verifier 口径残留，
   不得用来反向抹掉本 canary 的 accepted/parity 证据，也不能在未修前声称全局 READY。
+
+### 2026-07-18 — margin full-history read preflight
+
+- 将 accepted pointer、batch、landing、canonical 和 legacy comparison 收敛到一个 immutable
+  `MarginEvidenceSnapshot`；schema inventory 加五个 set-based surface read 固定为 6 条主库
+  `SELECT`，不构造随 N 增长的 `IN`，删除 public reconcile 的逐分区 SQL fallback 和 proof 注入面；
+- N=1 与 N=20 的 projection/readiness 均实测 `(6, 6)`；交易日历由一次规范化索引加逐分区
+  `bisect` 取 successor，1827 分区对抗测量的 `_compact_date` 调用从 3,341,583 降至 3,655，
+  cutoff 循环从约 11.106 秒降至约 0.019 秒；乱序、重复和非法索引构造均 fail closed；
+- Rule 10 多轮反例进一步闭合 scope 内容夹带、schema query 与 schema drift 混型、landing
+  row-hash/request/ordinal 丢失、自洽 premature publication、坏 B 污染好 A、calendar read 异常逃逸、
+  public `_accepted_proof` 绕过和旧 accepted state 与新 snapshot 混代；最终跨连接反例又证明旧
+  clean snapshot 可把已污染的新连接洗成 `PARITY`，因此所有 authoritative public reconcile、
+  accepted-state/readiness 入口均删除 snapshot/state 注入，只有同一调用栈的私有 helper 可复用现场
+  snapshot；正式 schema 缺列仍稳定返回 `SCHEMA_MISMATCH`，真实查询故障返回 `QUERY_ERROR`；
+- `data/tushare_raw.duckdb` 以 `read_only=True` 复验：accepted=`20260715/20260716`、canonical=6，
+  projection/readiness 各 6 条主库查询，两分区均 `PARITY`，missing/unexpected/reconcile failure 全空；
+  reconcile 同样固定 6 条查询；readiness orchestration 上移为独立模块，依赖图收敛为
+  `readiness -> reconcile/state`、`reconcile -> legacy/state`，不再靠局部 import 隐藏循环；结构拆分后
+  新增大文件门恢复为 3 个既有例外，Moth assertions `30/30 PASS`，完整 backend suite 为
+  `1107 passed / 8 deselected`。本切片未写主库、未拉历史、未切消费者、未扩第二域；它只解除受控
+  历史 rollout 的读取规模前置阻塞。
