@@ -51,19 +51,12 @@ def test_by_ts_code_increment_skips_up_to_date(monkeypatch):
     assert len({b["ts_code"] for b in full}) == 3
 
 
-def test_by_ts_code_injects_end_date_when_only_start_date_declared(monkeypatch):
-    """stk_factor_pro 型域 (fixed_params 只声明 start_date): 必须动态补 end_date, 不能裸传
-    start_date 触发 API "权限不足: 请同时提供日期和 ts_code" 拒绝。"""
+def test_by_ts_code_consumes_planned_end_when_only_start_date_declared(monkeypatch):
+    """planner 提供的 eligible end 必须注入逐股请求，helper 不得另算第二个 frontier。"""
     monkeypatch.setattr("services.universe.get_active_universe", lambda conn, include_st=False: ["000001"])
     monkeypatch.setattr(sr, "_smartmoney_conn", lambda: _DummyConn())
-    monkeypatch.setattr(
-        sr,
-        "eligible_end_date",
-        lambda spec: sr.DomainEligibility("20260704", False, "test"),
-    )
-
     spec = {"domain": "stk_factor_pro", "fixed_params": {"start_date": "20190102"}, "target_table": "x"}
-    batch = sr._by_ts_code_batches(spec, backfill=True)
+    batch = sr._by_ts_code_batches(spec, backfill=True, end="20260704")
     assert batch, "batch 不应为空"
     for b in batch:
         assert b.get("start_date") == "20190102"

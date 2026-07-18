@@ -9,12 +9,20 @@ skip_sync=1 跳整个阶段; dry=1 只跑只读不写。
 """
 from __future__ import annotations
 
+import json
+
 from .context import PipelineContext
+
+
+class Tier0AcquireError(RuntimeError):
+    """A blocking Tier0 dataset was not proven ready for downstream stages."""
 
 
 def run_acquire(ctx: PipelineContext) -> None:
     if ctx.skip_sync:
         ctx.log("=== ① 获取 ACQUIRE: SKIP (--skip-sync) ===")
+        if not ctx.dry:
+            _assert_margin_shadow_parity(ctx)
         return
     # 独立 stage 入口也必须走与全链相同的授权硬门；全链已探针时复用 ctx 缓存。
     from .preflight import ensure_tushare_authorized
@@ -170,5 +178,78 @@ def _sync_registry_drain(ctx: PipelineContext) -> None:
         output = (proc.stdout or "") + (proc.stderr or "")
         reason = next((item for item in AUTH_FAILURE_REASONS if item in output), "auth_denied")
         raise TuShareAuthorizationError(reason)
+    try:
+        results = json.loads(proc.stdout or "")
+    except (TypeError, ValueError) as exc:
+        raise Tier0AcquireError(
+            "sync_registry did not return parseable per-domain evidence; "
+            "formal margin readiness is unknown"
+        ) from exc
+    if not isinstance(results, list) or any(not isinstance(item, dict) for item in results):
+        raise Tier0AcquireError("sync_registry per-domain evidence must be a JSON list")
+    margin_results = [item for item in results if item.get("domain") == "margin"]
+    if len(margin_results) != 1:
+        raise Tier0AcquireError(
+            f"formal margin result cardinality must be one, got {len(margin_results)}"
+        )
+    margin = margin_results[0]
+    if (
+        margin.get("status") not in {"clean", "drained"}
+        or margin.get("still_failed")
+        or margin.get("truncated")
+        or margin.get("today_catchup_failed")
+    ):
+        raise Tier0AcquireError(
+            "formal margin did not close accepted/reconcile gates: "
+            f"status={margin.get('status')!r} "
+            f"still_failed={margin.get('still_failed')!r} "
+            f"truncated={margin.get('truncated')!r}"
+        )
+    _assert_margin_shadow_parity(ctx)
     if proc.returncode != 0:
         ctx.degraded("sync_registry drain 有残余缺口或域错误 (见 log)")
+
+
+def _assert_margin_shadow_parity(ctx: PipelineContext) -> None:
+    """Read-only gate over every current accepted canary partition."""
+
+    from services.data_sources import margin_ingest, sync_runner
+    from services.data_sources.margin_state import evaluate_margin_readiness
+    from services.duck_adapter import connect
+
+    spec = sync_runner.domain_spec(sync_runner.load_registry(), "margin")
+    contract = margin_ingest.contract_for_spec(spec)
+    if contract is None:
+        raise Tier0AcquireError("formal margin registry lost its typed contract")
+    eligibility = sync_runner.eligible_end_date(spec)
+    expected = (
+        sync_runner.trading_days(contract.coverage_start, eligibility.eligible_end)
+        if eligibility.eligible_end is not None
+        else []
+    )
+    conn = connect(ctx.db("tushare_raw"), read_only=True)
+    try:
+        readiness = evaluate_margin_readiness(
+            conn,
+            expected,
+            contract=contract,
+            eligible_end=eligibility.eligible_end,
+            eligibility_reason=eligibility.reason,
+        )
+        if not readiness.ready:
+            failures = [
+                (failure.partition_value, list(failure.issue_codes))
+                for failure in readiness.reconcile_failures
+            ]
+            raise Tier0AcquireError(
+                "formal margin readiness failed: "
+                f"eligible_end={readiness.eligible_end!r} "
+                f"eligibility={readiness.eligibility_reason!r} "
+                f"expected={len(readiness.expected)} "
+                f"accepted={len(readiness.accepted_state.partitions)} "
+                f"missing={list(readiness.missing)} "
+                f"unexpected={list(readiness.unexpected)} "
+                f"reconcile_failures={failures}"
+            )
+    finally:
+        conn.close()

@@ -3,6 +3,7 @@
 锁住: (1) 包/各阶段可 import (防 port 笔误回归); (2) PipelineContext degraded/log 机制;
 (3) run.main 编排顺序 preflight→获取→清洗→加工→存储 (monkeypatch 阶段, 不碰真 DB/网络)。
 """
+import json
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -357,6 +358,215 @@ def test_run_returns_one_when_any_stage_degrades(monkeypatch, tmp_path):
     assert "DONE with degraded" in (tmp_path / "run.log").read_text()
 
 
+def test_tier0_acquire_block_stops_every_downstream_stage(monkeypatch, tmp_path):
+    from services.pipeline import run as run_mod
+    from services.pipeline.acquire import Tier0AcquireError
+    from services.pipeline.context import PipelineContext
+
+    called = []
+    monkeypatch.setattr(
+        run_mod,
+        "PipelineContext",
+        lambda **kw: PipelineContext(**{**kw, "log_path": tmp_path / "run.log"}),
+    )
+    monkeypatch.setattr("services.pipeline.context.DEGRADED_FLAG", tmp_path / "flag")
+    monkeypatch.setattr(run_mod, "run_preflight", lambda _ctx: called.append("preflight"))
+    monkeypatch.setattr(
+        run_mod,
+        "run_acquire",
+        lambda _ctx: (_ for _ in ()).throw(Tier0AcquireError("margin partial")),
+    )
+    for name in ("run_clean", "run_process", "run_store"):
+        monkeypatch.setattr(run_mod, name, lambda _ctx, _name=name: called.append(_name))
+
+    assert run_mod.main(["--dry", "--date", "20260101"]) == 5
+    assert called == ["preflight"]
+    assert "TIER0 BLOCK" in (tmp_path / "run.log").read_text()
+
+
+def test_sync_registry_margin_partial_is_a_tier0_block(monkeypatch, tmp_path):
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=1,
+            stdout=json.dumps(
+                [
+                    {
+                        "domain": "margin",
+                        "status": "partial",
+                        "still_failed": ["20260716"],
+                        "truncated": False,
+                    }
+                ]
+            ),
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(
+        acquire,
+        "_assert_margin_shadow_parity",
+        lambda _ctx: pytest.fail("parity cannot run after a partial margin result"),
+    )
+    ctx = PipelineContext(date="20260717", log_path=tmp_path / "run.log")
+    try:
+        with pytest.raises(acquire.Tier0AcquireError, match="did not close"):
+            acquire._sync_registry_drain(ctx)
+    finally:
+        ctx.close()
+
+
+def test_unrelated_sync_failure_degrades_only_after_margin_gate_passes(
+    monkeypatch, tmp_path
+):
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=1,
+            stdout=json.dumps(
+                [
+                    {
+                        "domain": "margin",
+                        "status": "clean",
+                        "still_failed": [],
+                        "truncated": False,
+                    },
+                    {"domain": "other", "status": "partial"},
+                ]
+            ),
+            stderr="",
+        ),
+    )
+    gates = []
+    monkeypatch.setattr(
+        acquire, "_assert_margin_shadow_parity", lambda _ctx: gates.append("margin")
+    )
+    ctx = PipelineContext(date="20260717", log_path=tmp_path / "run.log")
+    try:
+        acquire._sync_registry_drain(ctx)
+        assert gates == ["margin"]
+        assert len(ctx.degraded_msgs) == 1
+    finally:
+        ctx.close()
+
+
+def test_margin_pipeline_gate_consumes_one_typed_readiness_verdict(
+    monkeypatch, tmp_path
+):
+    from services import duck_adapter
+    from services.data_sources import margin_ingest, margin_state, sync_runner
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    class FakeConn:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    conn = FakeConn()
+    calls = []
+    planned_contract = SimpleNamespace(coverage_start="20260715")
+    monkeypatch.setattr(duck_adapter, "connect", lambda *_a, **_k: conn)
+    monkeypatch.setattr(sync_runner, "load_registry", lambda: {})
+    monkeypatch.setattr(sync_runner, "domain_spec", lambda _reg, _domain: {})
+    monkeypatch.setattr(
+        sync_runner,
+        "eligible_end_date",
+        lambda _spec: SimpleNamespace(eligible_end="20260716", reason="t_plus_one"),
+    )
+    monkeypatch.setattr(
+        sync_runner,
+        "trading_days",
+        lambda _start, _end: ["20260715", "20260716"],
+    )
+    monkeypatch.setattr(
+        margin_ingest,
+        "contract_for_spec",
+        lambda _spec: planned_contract,
+    )
+    monkeypatch.setattr(
+        margin_state,
+        "evaluate_margin_readiness",
+        lambda actual, expected, **kwargs: calls.append(
+            (actual, tuple(expected), kwargs.get("contract"))
+        )
+        or SimpleNamespace(
+            ready=True,
+            eligible_end="20260716",
+            eligibility_reason="t_plus_one",
+            expected=("20260715", "20260716"),
+            accepted_state=SimpleNamespace(partitions=(object(), object())),
+            missing=(),
+            unexpected=(),
+            reconcile_failures=(),
+        ),
+    )
+    ctx = PipelineContext(date="20260717", log_path=tmp_path / "run.log")
+    try:
+        acquire._assert_margin_shadow_parity(ctx)
+    finally:
+        ctx.close()
+
+    assert len(calls) == 1
+    assert calls[0][0] is conn
+    assert calls[0][1] == ("20260715", "20260716")
+    assert calls[0][2] is planned_contract
+    assert conn.closed is True
+
+
+def test_margin_pipeline_gate_blocks_typed_readiness_failure(monkeypatch, tmp_path):
+    from services import duck_adapter
+    from services.data_sources import margin_ingest, margin_state, sync_runner
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    conn = SimpleNamespace(close=lambda: None)
+    monkeypatch.setattr(duck_adapter, "connect", lambda *_a, **_k: conn)
+    monkeypatch.setattr(sync_runner, "load_registry", lambda: {})
+    monkeypatch.setattr(sync_runner, "domain_spec", lambda _reg, _domain: {})
+    monkeypatch.setattr(
+        sync_runner,
+        "eligible_end_date",
+        lambda _spec: SimpleNamespace(eligible_end="20260716", reason="t_plus_one"),
+    )
+    monkeypatch.setattr(
+        sync_runner,
+        "trading_days",
+        lambda _start, _end: ["20260715", "20260716"],
+    )
+    monkeypatch.setattr(
+        margin_ingest,
+        "contract_for_spec",
+        lambda _spec: SimpleNamespace(coverage_start="20260715"),
+    )
+    monkeypatch.setattr(
+        margin_state,
+        "evaluate_margin_readiness",
+        lambda _conn, _expected, **_kwargs: SimpleNamespace(
+            ready=False,
+            eligible_end="20260716",
+            eligibility_reason="t_plus_one",
+            expected=("20260715", "20260716"),
+            accepted_state=SimpleNamespace(partitions=(object(),)),
+            missing=("20260716",),
+            unexpected=(),
+            reconcile_failures=(),
+        ),
+    )
+    ctx = PipelineContext(date="20260717", log_path=tmp_path / "run.log")
+    try:
+        with pytest.raises(acquire.Tier0AcquireError, match="missing=\\['20260716'\\]"):
+            acquire._assert_margin_shadow_parity(ctx)
+    finally:
+        ctx.close()
+
+
 def test_preflight_dry_run_still_probes_auth_and_caches_sanitized_status(monkeypatch, tmp_path):
     from services.pipeline import preflight
     from services.pipeline.context import PipelineContext
@@ -392,6 +602,152 @@ def test_preflight_dry_run_still_probes_auth_and_caches_sanitized_status(monkeyp
 
     assert calls == ["user"]
     assert ctx.tushare_auth_status == status
+
+
+def test_post_acquire_sla_replaces_preflight_alert_after_accepted_repair(
+    monkeypatch, tmp_path
+):
+    """采集前 alert 只是 before 证据；AcceptedPartition 修复后最终报告必须消费 after。"""
+    from services.pipeline import context, preflight, store
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(context, "REPO", tmp_path)
+    monkeypatch.setattr(store, "REPO", tmp_path)
+    monkeypatch.setattr(preflight, "ensure_calendar_ready", lambda *_a, **_k: None)
+
+    accepted = {"ready": False}
+    outputs = []
+
+    def fake_run(cmd, **kwargs):
+        output_arg = cmd[cmd.index("--json-output") + 1]
+        outputs.append(output_arg)
+        output_path = Path(kwargs["cwd"]) / output_arg
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        alert = not accepted["ready"]
+        output_path.write_text(
+            json.dumps(
+                {
+                    "n_updates": 0,
+                    "n_alerts": int(alert),
+                    "sources": [
+                        {"source_name": "tushare", "alert": alert},
+                    ],
+                }
+            )
+        )
+        return SimpleNamespace(returncode=2 if alert else 0, stdout="", stderr="")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    ctx = PipelineContext(
+        dry=True,
+        skip_sync=True,
+        date="20260717",
+        log_path=tmp_path / "pipeline.log",
+    )
+    try:
+        preflight.run_preflight(ctx)
+        assert ctx.degraded_msgs == []
+        accepted["ready"] = True
+        store.run_store(ctx)
+    finally:
+        ctx.close()
+
+    before = json.loads(
+        (tmp_path / "data/audit/watermark_sla_before_20260717.json").read_text()
+    )
+    after = json.loads(
+        (tmp_path / "data/audit/watermark_sla_20260717.json").read_text()
+    )
+    report = json.loads((tmp_path / "data/reports/daily_20260717.json").read_text())
+    assert before["n_alerts"] == 1
+    assert after["n_alerts"] == 0
+    assert report["sla_summary"]["n_alerts"] == 0
+    assert report["sla_warn"] is False
+    assert report["phase_status"]["preflight"] == "OK"
+    assert report["phase_status"]["post_acquire_sla"] == "OK"
+    assert report["phase_status"]["chain"] == "OK"
+    assert outputs == [
+        "data/audit/watermark_sla_before_20260717.json",
+        "data/audit/watermark_sla_20260717.json",
+    ]
+
+
+def test_post_acquire_sla_alert_is_the_final_degraded_verdict(monkeypatch, tmp_path):
+    """Store 重算仍有 alert 时才把 SLA 作为本次最终 degraded 结论。"""
+    from services.pipeline import context, store
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(context, "REPO", tmp_path)
+    monkeypatch.setattr(store, "REPO", tmp_path)
+
+    def fake_run(cmd, **kwargs):
+        if "--json-output" not in cmd:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        output_arg = cmd[cmd.index("--json-output") + 1]
+        output_path = Path(kwargs["cwd"]) / output_arg
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            json.dumps(
+                {
+                    "n_updates": 0,
+                    "n_alerts": 1,
+                    "sources": [{"source_name": "tushare", "alert": True}],
+                }
+            )
+        )
+        return SimpleNamespace(returncode=2, stdout="", stderr="")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    ctx = PipelineContext(
+        dry=True,
+        skip_sync=True,
+        date="20260717",
+        log_path=tmp_path / "pipeline.log",
+    )
+    try:
+        store.run_store(ctx)
+    finally:
+        ctx.close()
+
+    report = json.loads((tmp_path / "data/reports/daily_20260717.json").read_text())
+    assert any("post-acquire watermark SLA alert" in msg for msg in ctx.degraded_msgs)
+    assert report["sla_warn"] is True
+    assert report["phase_status"]["chain"] == "DEGRADED_PARTIAL"
+
+
+def test_post_acquire_sla_crash_cannot_reuse_same_day_stale_artifact(
+    monkeypatch, tmp_path
+):
+    """checker crash 前先删同日旧 artifact，最终报告不得拿旧绿结果冒充 after。"""
+    from services.pipeline import context, store
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(context, "REPO", tmp_path)
+    monkeypatch.setattr(store, "REPO", tmp_path)
+    stale = tmp_path / "data/audit/watermark_sla_20260717.json"
+    stale.parent.mkdir(parents=True)
+    stale.write_text(json.dumps({"n_alerts": 0, "sources": []}))
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *_a, **_k: SimpleNamespace(returncode=1, stdout="", stderr="boom"),
+    )
+    ctx = PipelineContext(
+        dry=True,
+        skip_sync=True,
+        date="20260717",
+        log_path=tmp_path / "pipeline.log",
+    )
+    try:
+        store.run_store(ctx)
+    finally:
+        ctx.close()
+
+    report = json.loads((tmp_path / "data/reports/daily_20260717.json").read_text())
+    assert not stale.exists()
+    assert report["phase_status"]["post_acquire_sla"] == "ERR"
+    assert report["phase_status"]["chain"] == "DEGRADED_PARTIAL"
+    assert "sla_summary" not in report
+    assert any("最终 SLA 失明" in msg for msg in ctx.degraded_msgs)
 
 
 def test_authorization_probe_uses_configured_socket_timeout_and_restores_it(monkeypatch, tmp_path):

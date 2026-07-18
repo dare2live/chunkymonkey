@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from .context import REPO, PipelineContext
+from .preflight import run_watermark_sla_check
 
 
 def run_store(ctx: PipelineContext) -> None:
@@ -32,6 +33,17 @@ def run_store(ctx: PipelineContext) -> None:
             degraded_msg=("continuity/integrity 审查 FAIL — 库存数据缺日/断流/横截面异常 "
                           f"(详 data/audit/continuity_{ctx.date}.json + ALERT_continuity.flag)"))
 
+    # Step 2.99: acquisition 后重算同一 SLA 投影。preflight 仅保留 before/readiness 证据，
+    # 最终报告和告警只消费此 post-acquire artifact，避免已修复分区仍被旧报告误报。
+    sla_output_rel = f"data/audit/watermark_sla_{ctx.date}.json"
+    sla_returncode = run_watermark_sla_check(ctx, output_rel=sla_output_rel)
+    if sla_returncode == 2:
+        ctx.degraded(f"post-acquire watermark SLA alert (见 {sla_output_rel})")
+    elif sla_returncode != 0:
+        ctx.degraded(
+            f"post-acquire watermark SLA 检查器 crash (exit {sla_returncode}) — 最终 SLA 失明"
+        )
+
     # Step 5: data-health 报告 + 告警送达
     _write_report_and_alert(ctx)
 
@@ -44,6 +56,7 @@ def _write_report_and_alert(ctx: PipelineContext) -> None:
     (REPO / "data/reports").mkdir(parents=True, exist_ok=True)
     (REPO / "data/audit").mkdir(parents=True, exist_ok=True)
     report_json = REPO / f"data/reports/daily_{ctx.date}.json"
+    preflight_sla_report = REPO / f"data/audit/watermark_sla_before_{ctx.date}.json"
     sla_report = REPO / f"data/audit/watermark_sla_{ctx.date}.json"
 
     # 2026-07-10 修报告脱钩（历史证据=analysis/gap_root_cause_20260708.md 第四轮节）:
@@ -58,9 +71,14 @@ def _write_report_and_alert(ctx: PipelineContext) -> None:
         "log": str(ctx.log_path),
         "scope": "data_foundation (L0/L1/L1k/snapshot)",
         "phase_status": {
-            "preflight": "OK" if sla_report.exists() else "ERR",
+            "preflight": "OK" if preflight_sla_report.exists() else "ERR",
+            "post_acquire_sla": "OK" if sla_report.exists() else "ERR",
             "chain": "DEGRADED_PARTIAL" if _has_degraded else "OK",
             "detail": "逐阶段状态见 smartmoney.mart_pipeline_run_manifest pipeline.stage.* 行",
+        },
+        "sla_evidence": {
+            "preflight": str(preflight_sla_report),
+            "post_acquire": str(sla_report),
         },
         "degraded_total": len(ctx.degraded_msgs),
         "degraded_msgs": list(ctx.degraded_msgs)[:20],

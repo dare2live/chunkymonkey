@@ -73,6 +73,11 @@ def env(monkeypatch):
     monkeypatch.setattr(sr, "_target_conn", lambda spec: shared)
     monkeypatch.setattr(sr, "_smartmoney_conn", lambda: shared)
     monkeypatch.setattr(sr, "_last_watermark_date", lambda domain, source: None)
+    monkeypatch.setattr(
+        sr,
+        "eligible_end_date",
+        lambda _spec: sr.DomainEligibility(END, False, "historical_test_window"),
+    )
     monkeypatch.setattr(sr, "_RATE_LIMITER", None)
     monkeypatch.setattr(sr, "_RATE_LIMITER_INIT", False)
     yield c, adapter
@@ -82,7 +87,7 @@ def env(monkeypatch):
 def test_by_trade_date_excludes_weekend_red(env, monkeypatch):
     """red: 旧 by_trade_date 只在交易日历枚举, 周末(20260321/22)不会出现在任何批次里。"""
     _c, adapter = env
-    monkeypatch.setattr(sr, "_trading_days", lambda start, end=None: ["20260320"])  # 周五唯一交易日
+    monkeypatch.setattr(sr, "trading_days", lambda start, end=None: ["20260320"])  # 周五唯一交易日
     res = sr.run_domain("report_rc_test", backfill=True, start=START, end=END,
                          registry=_registry("by_trade_date"))
     assert res["ok"] is True

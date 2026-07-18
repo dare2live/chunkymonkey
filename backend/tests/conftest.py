@@ -9,7 +9,10 @@ commit/rollback/close + Row dict 索引。新测试不要引入其它内存数�
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
+
+import pytest
 
 # 让所有 backend/tests/* 都能 ``from conftest import duck_mem``
 TEST_DIR = Path(__file__).resolve().parent
@@ -26,6 +29,37 @@ def duck_mem(*, attach: dict | None = None) -> DuckConn:
     """返回一个内存 DuckDB 连接。"""
 
     return _duck_connect(":memory:", attach=attach)
+
+
+@pytest.fixture
+def deterministic_margin_calendar(monkeypatch):
+    """Keep acceptance tests isolated from the workstation reference DB.
+
+    Policy-specific weekend/holiday behavior is tested separately with explicit
+    calendar vectors; ordinary transaction tests only need a stable partition
+    and its next weekday session.
+    """
+
+    from services.data_sources import margin_validation
+
+    def _days(
+        partition: str, *, limit: int | None = 2
+    ) -> tuple[str, ...]:
+        current = datetime.strptime(partition, "%Y%m%d").date()
+        values = [partition]
+        target = limit if limit is not None else 32
+        following = current
+        while len(values) < target:
+            following += timedelta(days=1)
+            if following.weekday() < 5:
+                values.append(following.strftime("%Y%m%d"))
+        return tuple(values)
+
+    monkeypatch.setattr(
+        margin_validation,
+        "load_margin_publication_sessions",
+        _days,
+    )
 
 
 # 历史 import 形式: 一些测试 ``from conftest import duck_mem``;

@@ -85,17 +85,28 @@ databases:
 
   tushare_raw:
     path: data/tushare_raw.duckdb
-    domain: tushare_raw_mirror
-    owner: sync_runner
+    domain: tier0_market_data
+    owner: tier0.market_data
     role: >-
-      TuShare raw api-mirror tables (raw_tushare_*), written only by
-      services/data_sources/sync_runner.py per sync_registry.yaml entries.
+      TuShare Tier0 store containing raw api-mirror tables (raw_tushare_*) and
+      the first formal margin landing/canonical/accepted boundary. Raw mirrors
+      are written only by services/data_sources/sync_runner.py; formal margin
+      publication is written only by services/data_sources/margin_acceptance.py.
+      Dataset-level writer and retention truth lives in the typed sync_registry
+      contract; this manifest owns the physical database boundary.
       Separate file = write-lock isolation from smartmoney (2026-06-11 DB
       management decision: new domains never grow the monolith).
     default_open_mode: read_write
     default_attach_mode: read_only
     online: true
     status: active
-    retention_class: source_mirror_rebuildable
+    retention_class: canonical_source_store
     table_patterns:
       - raw_tushare_*
+      - ingest_batch
+      - landing_tushare_margin
+      - canonical_margin_exchange_daily
+      - accepted_partition
+    notes:
+      - raw_tushare_* is replayable compatibility data written by sync_runner.
+      - Formal margin tables are permanent evidence under the margin dataset contract; never delete this database as a rebuildable raw mirror.

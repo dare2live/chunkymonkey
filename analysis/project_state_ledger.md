@@ -182,3 +182,66 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 和数据契约接管边界后迁移、收缩或删除。
 
 删除不等于抹去历史：git history、数据库 deletion/audit records、测试和可重建报告仍是证据。重新引用历史方案前必须先证明它仍适配当前架构。
+
+### 2026-07-17—18 — Phase 1 margin Tier0 tracer canary
+
+- 按顶层设计只落地首个 `margin` tracer：typed `DatasetContract`、不可变 schema/hash、
+  provider landing、validate/publish/accept、`AcceptedPartition`、accepted-state Ops projection、
+  逐分区 shadow reconcile 和唯一 writer；没有扩到第二域、切换消费者或删除 legacy；
+- v2 contract 将 publication eligibility 明确定义为
+  `axis=trading_day/rule=next_trading_session_at/at=09:00`；schema hash=
+  `8935c9be0741707330b7db9fc775a5ec2e71ab24dbf1095124d3d36dcd48f6ff`、config hash=
+  `6dd2428b75b66e750efc6a7b252841422a82eb9dbfb4be2188c572c5e4f412be`、contract hash=
+  `d65b6510374fbd2c6d79e9836d0ede7bb41cb232a0cd46d909a7682a11137e8f`；transport/batch mode
+  不再承担 availability 语义，默认、显式回放和 drain 共用同一 eligibility/window resolver；
+- 正式手工入口 `scripts/chunkyctl sync --domain margin --drain --max-dates 2` 在授权、交易日历和
+  writer lock 前置门后接收 `20260715—20260716`：两日各 3 个交易所 fragment/3 行 canonical，
+  content hash=`ab6703…0a5`、`f47e04…d76`，两分区均 `PARITY`；同入口幂等复跑
+  gap/refill/rows=`0/0/0`，未重拉 provider 数据；
+- accepted frontier 与唯一 watermark 均为 `20260716/3`，parser=`margin_accepted_contract_2`，
+  open margin failure=0、fallback=false、projection drift 为空；SLA probe 对 margin 为
+  `OK/verified`。默认 SLA 报告仍诚实保留 3 个无关全局 alert：两项 no-mapping 与
+  `margin_detail` stale；
+- Rule 10 对抗反例先后证伪并修复九处假绿：Ops watermark/failure queue 改为同一显式事务，
+  registry 缺失/畸形或无 query mapping 改为 fail closed；零 accepted gap 仍重验 shadow parity，
+  失败连续返回 `partial` 且持久投影、不重拉 provider；`chunkyctl sync` 禁止 `--all-due` 并强制
+  单一 `--domain`；默认增量遇到 frontier 之前的 accepted 内部缺口也必须失败并指向 `--drain`，
+  不再用最新水位洗白；四个正式事务的 rollback 失败也不再被 `except: pass` 吞掉，而是保留
+  主异常与 traceback，并附加“连接状态未知”的 rollback 证据。原聚焦 contract/integration/pipeline
+  回归 453 passed；新增四路径故障注入后 `test_margin_acceptance.py` 55 passed，受管 `.venv`
+  完整 backend suite 最终 1080 passed/8 deselected。系统 Python 缺 TinyShare 导致的 4 个 import failure
+  由同一代码在项目受管 provider 运行时全绿证伪为错误解释器，不冒充代码修复。Moth assertions
+  30/30 PASS，CodeGraph current，文档与生成地图 fresh；
+- `20260718` 周六跨日审计又证伪共享门：裸 `t+1` 原先在非交易日直接纳入最近交易日，
+  drain 又绕过 `eligible_end_date` 自算 `<today`，且 `empty + not_attempted` 被连带跳过状态覆盖成
+  `FRAGMENT_FAILED`。生产探针以 `20260716/SZSE=1` 为控制，`20260717` 实测 SSE=1、SZSE=0、
+  BSE=0；两次 v1 尝试均完整落为 immutable `REJECTED`，accepted/legacy/watermark 零变化。
+  正式 margin 随后经公共 `--backfill --start 20260715 --end 20260716` 重发 v2 两日/6 行；当前
+  accepted pointers 全部指向 v2，旧 v1 accepted/rejected/landing 只保留历史且 current matches=0，
+  canonical/legacy 内容 hash 不变、reconcile 仍为 `PARITY`。公共 drain 复验 expected=2、
+  gap/refill/rows=0，普通 sync batches/rows/failed=0、eligible_end=`20260716`、零 provider call；
+  显式未来 end 和注入未来 drain 都在 adapter/DB/writer 前拒绝，历史 end 仅限制操作窗口而不伪造
+  实时 eligibility；
+- 最终对抗审查继续用反例推翻入口绿灯：单次执行现在从同一 registry snapshot 只派生一个
+  immutable contract 对象，并沿 runner、accept/recover、state、reconcile/projection、pipeline、
+  continuity 与 SLA 以对象 identity 透传；publication calendar/cutoff validator 下沉到
+  `margin_validation`，消除 state 对 acceptance 私有 helper 的反向依赖。accepted pointer 先做本地
+  contract identity fail-fast，再只读一次 calendar snapshot 重证所有 current partition 的 cutoff；
+  continuity 同样消费 typed policy，`20260718` 周六反例只要求 `20260715—16`，不再用裸 `t+1`
+  误纳尚未发布的 `20260717`。formal transport 对 batch mode/date param/write mode/split param/全生命
+  周期 group 集合及重复、小写、空值做副作用前验证；drain 混用 replay flags、on-demand 缺单侧边界、
+  full-refresh 带日期边界和所有 future window 也在 calendar/lock/auth/provider/DB 前稳定拒绝。
+  最终正式入口普通 sync 返回 batches/rows/failed=`0/0/0`、eligible_end=`20260716`；drain 返回
+  expected/gap/refill/rows=`2/0/0/0`。单域 strict continuity 为 PASS（2 pass、1 个因仅两日而
+  skipped），SLA dry-run 对 margin 为 `OK/verified`、projection drift 为空，同时保留 3 个无关全局 alert；
+- registry 中另有 16 个裸 `available_after=t+1` legacy 域，覆盖 trade-date、ann-date、period 和
+  by-security 四类传输面。它们保留迁移前行为，未被 margin 的 trading-day 语义批量重定义；后续须
+  逐域声明 typed axis/rule/clock 并版本化，不能再从 `batch_mode` 推断 publication availability；
+- 数据更新继续 `manual_only`；只读现场核验无 ChunkyMonkey cron/launchd/launchctl/installer。
+  provider 授权开通 `2026-06-17T10:48:58+08:00`、到期 `2026-08-12T15:43:00+08:00`；
+- 本 canary 不证明全史闭合：正式 accepted coverage 仅 2 日/6 行，legacy 为 1827 日/4485 行；
+  market-pulse 仍读 legacy 且未随本 rollout 重建。全史前还要批量化约 `6 + 13N` 查询路径，
+  第二正式域前要先抽 runner 的 outcome-to-loop policy，禁止继续复制 dataset-specific 分支；
+  并另行治理 legacy `source_watermarks` standalone helper 的非原子 failure-queue 更新。全局 strict
+  continuity 另判 `cyq_perf` 超 SLA，而 SLA 报告仍标 `OK`，属于后续 Ops verifier 口径残留，
+  不得用来反向抹掉本 canary 的 accepted/parity 证据，也不能在未修前声称全局 READY。

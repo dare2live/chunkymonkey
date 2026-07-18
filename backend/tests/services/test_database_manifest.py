@@ -14,6 +14,23 @@ def test_database_manifest_resolves_repo_relative_paths():
     assert manifest.require("market").default_attach_read_only is True
 
 
+def test_tushare_store_manifest_uses_durable_tier0_boundary():
+    spec = load_database_manifest().require("tushare_raw")
+
+    assert spec.domain == "tier0_market_data"
+    assert spec.owner == "tier0.market_data"
+    assert spec.retention_class == "canonical_source_store"
+    assert {
+        "raw_tushare_*",
+        "ingest_batch",
+        "landing_tushare_margin",
+        "canonical_margin_exchange_daily",
+        "accepted_partition",
+    }.issubset(spec.table_patterns)
+    assert any("sync_runner" in note for note in spec.notes)
+    assert any("permanent evidence" in note for note in spec.notes)
+
+
 def test_database_manifest_builds_read_only_attach_map(tmp_path):
     config_path = tmp_path / "database_manifest.yaml"
     config_path.write_text(

@@ -12,6 +12,7 @@ import importlib.util
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -121,6 +122,80 @@ def test_calendar_gaps_iso_stored_dates_normalized():
         c.close()
 
 
+def test_margin_cross_section_requires_accepted_evidence(monkeypatch):
+    from services.data_sources import margin_state
+
+    c = duck_mem()
+    try:
+        c.execute(
+            "CREATE TABLE canonical_margin_exchange_daily ("
+            "trade_date DATE, exchange_id VARCHAR, ingest_batch_id VARCHAR)"
+        )
+        monkeypatch.setattr(
+            margin_state,
+            "accepted_margin_partitions",
+            lambda _conn, **_kwargs: (),
+        )
+        spec = _mkspec(
+            domain="margin",
+            table="canonical_margin_exchange_daily",
+            grain=["trade_date", "exchange_id"],
+            accepted_margin=True,
+        )
+
+        result = cci.check_cross_section(c, spec, ["20260715"], "20260715")
+
+        assert result["status"] == "fail_no_accepted_partitions"
+    finally:
+        c.close()
+
+
+def test_margin_cross_section_excludes_orphan_canonical_rows(monkeypatch):
+    from services.data_sources import margin_state
+
+    days = _weekdays("20260701", 6)
+    c = duck_mem()
+    try:
+        c.execute(
+            "CREATE TABLE canonical_margin_exchange_daily ("
+            "trade_date DATE, exchange_id VARCHAR, ingest_batch_id VARCHAR)"
+        )
+        accepted = []
+        rows = []
+        for index, day in enumerate(days):
+            batch_id = f"accepted-{index}"
+            accepted.append(
+                SimpleNamespace(partition_value=day, batch_id=batch_id)
+            )
+            iso = f"{day[:4]}-{day[4:6]}-{day[6:]}"
+            rows.extend((iso, exchange, batch_id) for exchange in ("SSE", "SZSE", "BSE"))
+        # A large unaccepted row set must not distort counts or establish coverage.
+        orphan_day = f"{days[-1][:4]}-{days[-1][4:6]}-{days[-1][6:]}"
+        rows.extend((orphan_day, f"ORPHAN-{index}", "unaccepted") for index in range(50))
+        c.executemany(
+            "INSERT INTO canonical_margin_exchange_daily VALUES (?, ?, ?)", rows
+        )
+        monkeypatch.setattr(
+            margin_state,
+            "accepted_margin_partitions",
+                lambda _conn, **_kwargs: tuple(accepted),
+        )
+        spec = _mkspec(
+            domain="margin",
+            table="canonical_margin_exchange_daily",
+            grain=["trade_date", "exchange_id"],
+            accepted_margin=True,
+            data_start=days[0],
+        )
+
+        result = cci.check_cross_section(c, spec, days, days[-1])
+
+        assert result["status"] == "pass"
+        assert result["detail"].startswith("6 观测日无骤降")
+    finally:
+        c.close()
+
+
 def test_calendar_gaps_treats_incomplete_required_groups_as_missing():
     """日期虽存在但缺必需市场仍是缺口，不能被 DISTINCT(date) 洗白。"""
     tds = _weekdays("20260601", 10)
@@ -149,6 +224,30 @@ def test_calendar_gaps_treats_incomplete_required_groups_as_missing():
 
         assert result["status"] == "fail_interior_gaps"
         assert partial in result["detail"]
+    finally:
+        c.close()
+
+
+def test_margin_calendar_gaps_ignore_legacy_raw_and_require_accepted_pointer():
+    """Legacy raw ahead cannot make the formal margin continuity gate green."""
+    day = "20260715"
+    c = duck_mem()
+    try:
+        c.execute("CREATE TABLE raw_tushare_margin(trade_date VARCHAR)")
+        c.execute("INSERT INTO raw_tushare_margin VALUES ('20991231')")
+        spec = _mkspec(
+            domain="margin",
+            table="canonical_margin_exchange_daily",
+            grain=["trade_date", "exchange_id"],
+            data_start=day,
+            sla=0,
+            accepted_margin=True,
+        )
+
+        result = cci.check_calendar_gaps(c, spec, [day], day)
+
+        assert result["status"] == "fail_stale_tail"
+        assert day in result["detail"]
     finally:
         c.close()
 
@@ -538,7 +637,112 @@ def test_real_registry_parses_with_ths_hot_group_col():
     assert len(specs) >= 30
     th = next(s for s in specs if s["domain"] == "ths_hot")
     assert th["freshness_group_col"] == "data_type"
+    margin = next(s for s in specs if s["domain"] == "margin")
+    assert margin["accepted_margin"] is True
+    assert margin["table"] == "canonical_margin_exchange_daily"
+    assert margin["data_start"] == "20260715"
+    assert margin["availability_policy"] == {
+        "axis": "trading_day",
+        "rule": "next_trading_session_at",
+        "at": "09:00",
+    }
     assert all(s["gap_tolerance"] in cci.GAP_TOLERANCE_VALUES for s in specs)
+
+
+def test_margin_continuity_weekend_frontier_uses_typed_contract(monkeypatch):
+    from services.data_sources import margin_state
+
+    spec = next(
+        item for item in cci.load_domain_specs() if item["domain"] == "margin"
+    )
+    spec["sla"] = 0
+    accepted_state = SimpleNamespace(
+        dates=frozenset({"20260715", "20260716"}),
+        partitions=(),
+        batch_by_partition={},
+    )
+    seen = []
+    monkeypatch.setattr(
+        margin_state,
+        "load_margin_accepted_state",
+        lambda _conn, *, contract=None: seen.append(contract) or accepted_state,
+    )
+    conn = duck_mem()
+
+    results, failures = cci.run_checks(
+        [spec],
+        lambda _alias: conn,
+        ["20260715", "20260716", "20260717"],
+        "20260717",
+        only="calendar_gaps",
+        now=datetime(2026, 7, 18, 12, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+
+    assert failures == []
+    assert results[0]["status"] == "pass"
+    assert "2 应有交易日全在库" in results[0]["detail"]
+    assert len(seen) == 1
+    assert seen[0] is spec["_margin_contract"]
+
+
+def test_margin_continuity_reuses_one_contract_and_accepted_snapshot(monkeypatch):
+    from services.data_sources import margin_state, sync_runner
+
+    days = _weekdays("20260715", 6)
+    spec = next(
+        item for item in cci.load_domain_specs() if item["domain"] == "margin"
+    )
+    planned = spec["_margin_contract"]
+    batches = {day: f"batch-{index}" for index, day in enumerate(days)}
+    accepted_state = SimpleNamespace(
+        dates=frozenset(days),
+        partitions=tuple(
+            SimpleNamespace(partition_value=day, batch_id=batch_id)
+            for day, batch_id in batches.items()
+        ),
+        batch_by_partition=batches,
+    )
+    seen = []
+    monkeypatch.setattr(
+        margin_state,
+        "load_margin_accepted_state",
+        lambda _conn, *, contract=None: seen.append(contract) or accepted_state,
+    )
+    monkeypatch.setattr(
+        sync_runner,
+        "eligible_end_date",
+        lambda _spec, **_kwargs: SimpleNamespace(
+            eligible_end=days[-1], reason="published"
+        ),
+    )
+    conn = duck_mem()
+    conn.execute(
+        "CREATE TABLE canonical_margin_exchange_daily ("
+        "trade_date DATE, exchange_id VARCHAR, ingest_batch_id VARCHAR)"
+    )
+    conn.executemany(
+        "INSERT INTO canonical_margin_exchange_daily VALUES (?, ?, ?)",
+        [
+            (
+                f"{day[:4]}-{day[4:6]}-{day[6:]}",
+                exchange,
+                batches[day],
+            )
+            for day in days
+            for exchange in ("SSE", "SZSE", "BSE")
+        ],
+    )
+
+    results, _failures = cci.run_checks(
+        [spec], lambda _alias: conn, days, days[-1]
+    )
+
+    assert {item["check"] for item in results} >= {
+        "calendar_gaps",
+        "cross_section",
+    }
+    assert len(seen) == 1
+    assert seen[0] is planned
 
 
 def test_run_checks_only_filter_and_unreachable_strict():

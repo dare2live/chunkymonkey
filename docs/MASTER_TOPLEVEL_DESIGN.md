@@ -104,12 +104,23 @@ flowchart TD
 - `dataset_id`、owner 和唯一 writer；
 - 精确 grain、主键和允许的重复语义；
 - event/effective/observed/available/built 时间；
+- publication availability 的显式 `axis/rule/at`；transport/batch mode 只负责如何枚举请求，
+  不得隐式决定数据何时可用；
 - 输入 snapshot、source batch、definition/config hash；
 - schema、单位、NULL/unknown 语义；
 - criticality、失败传播和允许的 fallback；
 - 消费者、重建方式、retention 和退役条件。
 
 缺少任一关键项，不得称为 canonical 或策略证据。
+
+availability policy 必须经过类型校验并进入 contract/config hash。默认增量、显式历史回放和
+drain 只能消费同一个 eligibility resolver：显式 future bound 或注入的未来 partition 必须在
+provider adapter、目标 DB 和 writer I/O 前失败；历史回放上限只收窄本次操作窗口，不能覆盖真实
+frontier 或控制面投影。一次 plan 只能从一个 registry snapshot 派生一个 immutable contract，
+runner、writer、read model、projection、pipeline 与 audit 必须透传该对象，不能在下游重新读出
+等值但不同代的配置。formal dataset 的 batch mode、date parameter、write mode、分片字段和全生命
+周期 group 集合必须在运行副作用前证明与合同兼容；重复、非规范或缺失分片不能先集合化后洗掉。
+裸 `t+1` 没有说明交易日/日历日/公告日等轴，只能作为未迁移 legacy 提示，不能跨域推广。
 
 ### 5.2 何时落表
 
@@ -228,7 +239,7 @@ ExperimentVerdict
 | Phase | 工作 | 退出条件 |
 |---:|---|---|
 | 0 | 收口文档、AGENTS、skills、Moth/CodeGraph 和真实命令面；冻结新增框架/表 | 活文档少且一致，文档门 0 WARN，退役命令不再假绿 |
-| 1 | 定义 `DatasetContract`、writer ownership、`IngestBatch/AcceptedPartition`；迁移一个交易数据域 | 故障注入原子性通过，landing 无业务过滤 |
+| 1 | 定义 `DatasetContract`、writer ownership、`IngestBatch/AcceptedPartition`；迁移一个交易数据域 | 唯一 writer、故障注入原子性和 landing 纯度通过；watermark/SLA/failure 只从 accepted state 投影；live canary 逐分区通过当前契约与 shadow parity。canary 覆盖不足时不切业务消费者、不做 raw+canonical 混读；满足完整历史地平线后才切换并删除 legacy |
 | 2 | 重建 K 线角色和 classification PIT 契约 | 名义/qfq/因子可追溯；分类版本、有效期、覆盖门通过 |
 | 3 | 发布版本化 `StockStateDaily/PatternEvent` | 截断不变、增量=全量、覆盖 reason 完整 |
 | 4 | 拆分 observation/context/display，修复市场感知口径 | availability、method、coverage 完整；跨 namespace 不混算 |

@@ -64,6 +64,59 @@ def test_help_does_not_advertise_retired_commands(tmp_path: Path) -> None:
         assert f"scripts/chunkyctl {command}" not in result.stdout
 
 
+def test_sync_delegates_to_production_runner_with_project_env(tmp_path: Path) -> None:
+    repo = _make_fake_repo(tmp_path)
+    _write(repo / ".env", "TUSHARE_TOKEN=test-only-token\n")
+    fake_python = repo / ".venv" / "bin" / "python3"
+    _write(
+        fake_python,
+        "#!/usr/bin/env bash\n"
+        "printf 'token=%s\\n' \"${TUSHARE_TOKEN:-missing}\"\n"
+        "printf 'args=%s\\n' \"$*\"\n",
+    )
+    fake_python.chmod(0o755)
+
+    result = _run_wrapper(
+        repo, "sync", "--domain", "margin", "--drain", "--max-dates", "2"
+    )
+
+    assert result.returncode == 0
+    assert "token=test-only-token" in result.stdout
+    assert (
+        "args=-m services.data_sources.sync_runner "
+        "--domain margin --drain --max-dates 2"
+    ) in result.stdout
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ("sync", "--all-due"),
+        ("sync", "--drain", "--max-dates", "2"),
+    ],
+)
+def test_sync_rejects_any_non_single_domain_invocation(
+    args: tuple[str, ...], tmp_path: Path
+) -> None:
+    repo = _make_fake_repo(tmp_path)
+
+    result = _run_wrapper(repo, *args)
+
+    assert result.returncode == 2
+    assert "single-domain" in result.stdout
+
+
+def test_sync_help_is_the_wrapper_contract_not_runner_all_due(tmp_path: Path) -> None:
+    repo = _make_fake_repo(tmp_path)
+
+    result = _run_wrapper(repo, "sync", "--help")
+
+    assert result.returncode == 0
+    assert "scripts/chunkyctl sync --domain DOMAIN" in result.stdout
+    assert "--backfill --start YYYYMMDD --end YYYYMMDD" in result.stdout
+    assert "--all-due" not in result.stdout
+
+
 def test_feature_map_does_not_publish_retired_commands() -> None:
     spec = importlib.util.spec_from_file_location("build_feature_map", FEATURE_MAP_BUILDER)
     assert spec is not None and spec.loader is not None
@@ -72,5 +125,5 @@ def test_feature_map_does_not_publish_retired_commands() -> None:
 
     commands = {name for name, _help in module.scan_chunkyctl(REPO_ROOT)}
 
-    assert {"doctor", "map", "pipeline", "lineage"} <= commands
+    assert {"doctor", "sync", "map", "pipeline", "lineage"} <= commands
     assert commands.isdisjoint(RETIRED_COMMANDS)

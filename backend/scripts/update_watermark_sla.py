@@ -91,7 +91,11 @@ DATA_SOURCE_QUERIES = {
 }
 
 
-def _sync_registry_queries() -> dict[str, dict]:
+class SyncRegistrySLAError(RuntimeError):
+    """The registry cannot prove the complete sync-domain SLA inventory."""
+
+
+def _sync_registry_queries(*, registry_path: Path | None = None) -> dict[str, dict]:
     """sync:* 域 SLA 查询从 sync_registry.yaml 自动生成 — registry 驱动, 不手维护.
 
     复审 HIGH (2026-06-11): sync:* 域无 DATA_SOURCE_QUERIES 条目 → actual=None →
@@ -100,12 +104,36 @@ def _sync_registry_queries() -> dict[str, dict]:
     import yaml
 
     out: dict[str, dict] = {}
-    reg_path = REPO_ROOT / "backend" / "config" / "sync_registry.yaml"
+    reg_path = registry_path or REPO_ROOT / "backend" / "config" / "sync_registry.yaml"
     try:
         reg = yaml.safe_load(reg_path.read_text(encoding="utf-8")) or {}
-        for name, spec in (reg.get("domains") or {}).items():
+        if not isinstance(reg, dict):
+            raise TypeError("registry root must be a mapping")
+        domains = reg.get("domains")
+        if not isinstance(domains, dict) or not domains:
+            raise ValueError("registry domains must be a non-empty mapping")
+        defaults = reg.get("defaults") or {}
+        if not isinstance(defaults, dict):
+            raise TypeError("registry defaults must be a mapping")
+        from services.data_sources.margin_ingest import contract_for_spec
+
+        for name, spec in domains.items():
+            if not isinstance(name, str) or not name or not isinstance(spec, dict):
+                raise TypeError("registry domain entries must be named mappings")
             mode = spec.get("batch_mode")
-            if spec.get("freshness_no_probe"):
+            contract_spec = dict(defaults)
+            contract_spec.update(spec)
+            contract_spec["domain"] = name
+            margin_contract = contract_for_spec(contract_spec)
+            if margin_contract is not None:
+                out[f"sync:{name}"] = {
+                    "db": "tushare_raw",
+                    "accepted_margin": True,
+                    "_margin_contract": margin_contract,
+                    "sla_days": spec.get("freshness_sla_trading_days"),
+                    "parser_version": f"margin_accepted_contract_{margin_contract.contract_version}",
+                }
+            elif spec.get("freshness_no_probe"):
                 # 季报/事件域 (forecast/income/dividend): ann_date 淡季数周无新数据=正常, 日频 SLA 会
                 # 误报疲劳 (mythos§10); 完整性靠 gap drain 覆盖, 不做日频新鲜度探测。
                 out[f"sync:{name}"] = {"db": "tushare_raw", "no_probe": spec.get("freshness_no_probe")}
@@ -130,8 +158,10 @@ def _sync_registry_queries() -> dict[str, dict]:
             else:
                 # 季度 (by_ts_code) / 日历 (full_refresh) 无日频新鲜度语义 — 显式标注, 不静默当 OK
                 out[f"sync:{name}"] = {"db": "tushare_raw", "no_probe": f"batch_mode={mode}"}
-    except Exception as e:  # noqa: BLE001 — registry 读失败必须可见, 不能让全部 sync 域回到盲区
-        log.warning(f"sync_registry SLA 条目生成失败 (sync:* 域回到盲区!): {e}")
+    except Exception as exc:  # noqa: BLE001 — incomplete inventory is a blocking SLA failure
+        raise SyncRegistrySLAError(
+            f"sync_registry unverified: {type(exc).__name__}"
+        ) from exc
     return out
 
 
@@ -147,6 +177,17 @@ def _query_actual_frontier(
     if conn is None:
         return ActualFrontierProbe(None, None, "db_unavailable")
     try:
+        if spec.get("accepted_margin"):
+            from services.data_sources.margin_state import (
+                load_margin_accepted_state,
+            )
+
+            frontier = load_margin_accepted_state(
+                conn, contract=spec.get("_margin_contract")
+            ).frontier
+            if frontier is None:
+                return ActualFrontierProbe(None, None, "no_complete_batch")
+            return ActualFrontierProbe(frontier.last_date, frontier, "verified")
         if spec.get("verified_complete_spec"):
             frontier = latest_complete_batch(conn, spec["verified_complete_spec"])
             if frontier is None:
@@ -167,13 +208,69 @@ def _query_actual_max_date(conns: dict, queries: dict, data_domain: str) -> str 
 def _probe_gate(state: str) -> tuple[str | None, bool]:
     """Map probe evidence to a fail-closed status before reconciliation/SLA checks."""
     return {
-        "no_mapping": ("NO_QUERY_MAPPING", False),
+        "no_mapping": ("NO_QUERY_MAPPING", True),
         "no_probe": ("NO_PROBE_RULE", False),
-        "db_unavailable": ("DB_LOCKED_UNVERIFIED", False),
+        # Preflight runs before the writer lease and Store reruns after release;
+        # either boundary must fail closed if accepted evidence cannot be read.
+        "db_unavailable": ("DB_LOCKED_UNVERIFIED", True),
         "no_complete_batch": ("NO_COMPLETE_BATCH", True),
         "no_data": ("NO_DATA", True),
         "probe_error": ("PROBE_ERROR", True),
     }.get(state, (None, False))
+
+
+def _accepted_projection_drift(
+    *,
+    watermark_date: str | None,
+    watermark_row_count: int | None,
+    watermark_parser_version: str | None,
+    frontier: VerifiedBatchFrontier,
+    expected_parser_version: str,
+) -> list[str]:
+    """Audit the formal margin projection without becoming a second writer."""
+    drift: list[str] = []
+    compact_watermark = str(watermark_date or "").replace("-", "")
+    compact_accepted = str(frontier.last_date or "").replace("-", "")
+    if compact_watermark != compact_accepted:
+        drift.append(f"last_data_date={compact_watermark or None}!={compact_accepted}")
+    if int(watermark_row_count or 0) != int(frontier.row_count):
+        drift.append(f"row_count={int(watermark_row_count or 0)}!={frontier.row_count}")
+    if str(watermark_parser_version or "") != expected_parser_version:
+        drift.append(
+            f"parser_version={watermark_parser_version!r}!={expected_parser_version!r}"
+        )
+    return drift
+
+
+def _registered_domain_without_watermark_result(
+    conns: dict,
+    queries: dict,
+    data_domain: str,
+    qspec: dict,
+    today: date,
+) -> dict:
+    """Probe a registered domain even when no watermark row exists."""
+    probe = _query_actual_frontier(conns, queries, data_domain)
+    status, alert = _probe_gate(probe.state)
+    if probe.state in ("verified", "observed"):
+        status, alert = "MISSING_WATERMARK", True
+    actual_days = _days_since(probe.actual_date, today)
+    return {
+        "data_domain": data_domain,
+        "source_name": "tushare",
+        "source_tier": 2,
+        "watermark_date": None,
+        "actual_date": probe.actual_date,
+        "actual_days_ago": actual_days,
+        "watermark_days_ago": None,
+        "sla_days": qspec.get("sla_days") or SLA_DAYS[2],
+        "status": status or "NEVER_SYNCED",
+        "alert": alert,
+        "verified_complete_frontier": probe.verified_frontier is not None,
+        "watermark_reconcile": None,
+        "probe_state": probe.state,
+        "probe_error": probe.error,
+    }
 
 
 def _watermark_reconcile_direction(
@@ -250,6 +347,20 @@ def main() -> int:
     parser.add_argument("--market-db", default=str(DEFAULT_MARKET_DB))
     args = parser.parse_args()
 
+    try:
+        registry_queries = _sync_registry_queries()
+    except Exception as exc:  # noqa: BLE001 — never retain a stale green artifact on inventory loss
+        try:
+            Path(args.json_output).unlink(missing_ok=True)
+        except OSError as unlink_exc:
+            log.error(
+                "cannot remove stale SLA artifact after registry failure: %s",
+                type(unlink_exc).__name__,
+            )
+        log.error("sync_registry SLA inventory blocked: %s", exc)
+        return 3
+    queries = {**DATA_SOURCE_QUERIES, **registry_queries}
+
     today = date.today()  # rule-compliance: ok evidence=SLA staleness age 度量(对wall-clock计天龄, 非交易决策)
     log.info(f"=== watermark SLA check @ {today} ===")
 
@@ -264,11 +375,11 @@ def main() -> int:
         raw_conn = duck_connect(str(get_database_manifest().path_for("tushare_raw")), read_only=True)
     except Exception as e:  # noqa: BLE001 — 锁竞争是回填期常态, 显式降级不挡 SLA 主流程
         log.warning(f"tushare_raw 不可达 (回填链占锁?): {e}")
-    queries = {**DATA_SOURCE_QUERIES, **_sync_registry_queries()}
     conns = {"market": market_conn, "smartmoney": smart_conn, "tushare_raw": raw_conn}
     try:
         watermark_rows = smart_conn.execute(
-            "SELECT data_domain, source_name, source_tier, last_data_date, updated_at "
+            "SELECT data_domain, source_name, source_tier, last_data_date, updated_at, "
+            "row_count, parser_version "
             "FROM mart_data_source_watermark ORDER BY data_domain, source_name"
         ).fetchall()
         log.info(f"  watermark rows: {len(watermark_rows)}")
@@ -277,7 +388,15 @@ def main() -> int:
         n_update = 0
         n_alert = 0
         for row in watermark_rows:
-            data_domain, source_name, source_tier, watermark_date, updated_at = row
+            (
+                data_domain,
+                source_name,
+                source_tier,
+                watermark_date,
+                updated_at,
+                watermark_row_count,
+                watermark_parser_version,
+            ) = row
 
             probe = _query_actual_frontier(
                 conns, queries, data_domain
@@ -302,31 +421,49 @@ def main() -> int:
 
             # 1. watermark 与 actual 对账。普通 raw MAX 只允许前推；只有 registry 完整性
             # 契约算出的 verified frontier 才能证明现水位无效并安全回落。
-            reconcile = _watermark_reconcile_direction(
-                watermark_date,
-                actual_date,
-                verified_complete=verified_frontier is not None,
-            )
-            if reconcile:
-                status = (
-                    "INVALID_WATERMARK_FRONTIER"
-                    if reconcile == "rollback"
-                    else "STALE_WATERMARK"
+            reconcile = None
+            projection_drift: list[str] = []
+            if qspec.get("accepted_margin") and verified_frontier is not None:
+                projection_drift = _accepted_projection_drift(
+                    watermark_date=watermark_date,
+                    watermark_row_count=watermark_row_count,
+                    watermark_parser_version=watermark_parser_version,
+                    frontier=verified_frontier,
+                    expected_parser_version=qspec["parser_version"],
                 )
-                if not args.dry_run:
-                    _apply_watermark_reconcile(
-                        smart_conn,
-                        data_domain=data_domain,
-                        source_name=source_name,
-                        source_tier=source_tier,
-                        actual_date=str(actual_date),
-                        verified_frontier=verified_frontier,
+                if projection_drift:
+                    status = "ACCEPTED_PROJECTION_DRIFT"
+                    alert = True
+                    log.warning(
+                        f"  [ALERT] {data_domain}/{source_name}: accepted projection "
+                        f"drift={projection_drift}"
                     )
-                    n_update += 1
-                    log.info(
-                        f"  [UPDATE:{reconcile}] {data_domain}/{source_name}: "
-                        f"{watermark_date} → {actual_date}"
+            elif not qspec.get("accepted_margin"):
+                reconcile = _watermark_reconcile_direction(
+                    watermark_date,
+                    actual_date,
+                    verified_complete=verified_frontier is not None,
+                )
+                if reconcile:
+                    status = (
+                        "INVALID_WATERMARK_FRONTIER"
+                        if reconcile == "rollback"
+                        else "STALE_WATERMARK"
                     )
+                    if not args.dry_run:
+                        _apply_watermark_reconcile(
+                            smart_conn,
+                            data_domain=data_domain,
+                            source_name=source_name,
+                            source_tier=source_tier,
+                            actual_date=str(actual_date),
+                            verified_frontier=verified_frontier,
+                        )
+                        n_update += 1
+                        log.info(
+                            f"  [UPDATE:{reconcile}] {data_domain}/{source_name}: "
+                            f"{watermark_date} → {actual_date}"
+                        )
 
             # 2. actual data stale vs SLA
             if actual_days is not None and actual_days > sla:
@@ -356,6 +493,7 @@ def main() -> int:
                 "watermark_reconcile": reconcile,
                 "probe_state": probe.state,
                 "probe_error": probe.error,
+                "projection_drift": projection_drift,
             })
 
         # registry 域 ∪ watermark 行: 从未成功 sync 的注册域没有 watermark 行 →
@@ -363,12 +501,12 @@ def main() -> int:
         seen_domains = {r[0] for r in watermark_rows}
         for qd, qspec in queries.items():
             if qd.startswith("sync:") and qd not in seen_domains:
-                results.append({
-                    "data_domain": qd, "source_name": "tushare", "source_tier": 2,
-                    "watermark_date": None, "actual_date": None, "actual_days_ago": None,
-                    "watermark_days_ago": None, "sla_days": qspec.get("sla_days"),
-                    "status": "NEVER_SYNCED", "alert": False,
-                })
+                missing_result = _registered_domain_without_watermark_result(
+                    conns, queries, qd, qspec, today
+                )
+                if missing_result["alert"]:
+                    n_alert += 1
+                results.append(missing_result)
 
         # Write JSON report
         Path(args.json_output).parent.mkdir(parents=True, exist_ok=True)

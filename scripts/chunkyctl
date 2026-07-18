@@ -19,15 +19,19 @@ usage() {
   cat <<'EOF'
 Usage:
   scripts/chunkyctl doctor [--fast] [--skip-storage-payload]
+  scripts/chunkyctl sync --domain DOMAIN [--drain] [--max-dates N]
+  scripts/chunkyctl sync --domain DOMAIN --backfill --start YYYYMMDD --end YYYYMMDD
   scripts/chunkyctl map [--check]
   scripts/chunkyctl pipeline acquire|clean|process|store [--force]
   scripts/chunkyctl lineage build | impact <table> | provenance <table> | dead | show <table>
 
 Examples:
   scripts/chunkyctl doctor --fast
+  scripts/chunkyctl sync --domain margin --backfill --start 20260715 --end 20260716
 
 Notes:
   doctor     = project health snapshot, including manual-only automation residue enforcement.
+  sync       = manual single-domain provider sync through the production runner and writer lock.
   map        = regenerate FEATURE_MAP.md machine-derived feature map; --check = drift gate only.
   pipeline   = manually run one declared data stage; full manual chain remains daily_update.sh.
   lineage    = generated dependency projection; impact <table> audits fan-in before delete/migrate.
@@ -71,6 +75,49 @@ case "$cmd" in
       esac
     done
     PYTHONPATH=backend "$PY" backend/scripts/chunkyctl.py "${args[@]}"
+    ;;
+  sync)
+    # Public manual data boundary: load the same gitignored provider env as the
+    # full daily wrapper, then delegate every policy/calendar/lock decision to
+    # the production runner.  This command installs no scheduler.
+    domain_count=0
+    expect_domain_value=0
+    for arg in "$@"; do
+      if [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
+        usage
+        exit 0
+      fi
+      if [[ "$arg" == "--all-due" ]]; then
+        echo "ERROR: single-domain sync forbids --all-due; use daily_update.sh for the full chain." >&2
+        exit 2
+      fi
+      if [[ $expect_domain_value -eq 1 ]]; then
+        if [[ -z "$arg" || "$arg" == --* ]]; then
+          echo "ERROR: single-domain sync requires a value after --domain." >&2
+          exit 2
+        fi
+        domain_count=$((domain_count + 1))
+        expect_domain_value=0
+        continue
+      fi
+      if [[ "$arg" == "--domain" ]]; then
+        expect_domain_value=1
+      elif [[ "$arg" == --domain=* ]]; then
+        if [[ -z "${arg#--domain=}" ]]; then
+          echo "ERROR: single-domain sync requires a non-empty --domain value." >&2
+          exit 2
+        fi
+        domain_count=$((domain_count + 1))
+      fi
+    done
+    if [[ $expect_domain_value -eq 1 || $domain_count -ne 1 ]]; then
+      echo "ERROR: single-domain sync requires exactly one --domain DOMAIN." >&2
+      exit 2
+    fi
+    if [[ -f ".env" ]]; then
+      set -a; source ".env"; set +a
+    fi
+    PYTHONPATH=backend "$PY" -m services.data_sources.sync_runner "$@"
     ;;
   map)
     PYTHONPATH=backend "$PY" backend/scripts/build_feature_map.py "$@"

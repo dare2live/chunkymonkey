@@ -4,6 +4,9 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 from conftest import duck_mem
 from services.data_sources.batch_integrity import VerifiedBatchFrontier
@@ -28,6 +31,42 @@ def test_sync_registry_queries_cover_all_domains():
         assert f"sync:{name}" in queries, f"sync:{name} 不在 SLA 防线 — 注册域静默缺席"
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "domains: [not-a-mapping]\n",
+        "version: 1\n",
+        "domains:\n  margin: broken\n",
+    ],
+)
+def test_sync_registry_queries_rejects_unverifiable_registry(tmp_path: Path, payload: str):
+    registry = tmp_path / "sync_registry.yaml"
+    registry.write_text(payload, encoding="utf-8")
+
+    with pytest.raises(Exception, match="sync_registry.*unverified"):
+        sla._sync_registry_queries(registry_path=registry)
+
+
+def test_main_registry_failure_removes_stale_artifact_and_exits_nonzero(
+    tmp_path: Path, monkeypatch
+):
+    output = tmp_path / "watermark_sla.json"
+    output.write_text('{"stale": true}', encoding="utf-8")
+
+    def _registry_failure():
+        raise RuntimeError("sync_registry unverified: injected")
+
+    monkeypatch.setattr(sla, "_sync_registry_queries", _registry_failure)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["update_watermark_sla.py", "--json-output", str(output)],
+    )
+
+    assert sla.main() != 0
+    assert not output.exists()
+
+
 def test_daily_domains_probe_trade_date_quarterly_no_probe():
     queries = sla._sync_registry_queries()
     q = queries["sync:moneyflow"]
@@ -35,6 +74,95 @@ def test_daily_domains_probe_trade_date_quarterly_no_probe():
     assert q["sla_days"] is not None  # registry per-domain SLA 优先于 tier 默认
     assert queries["sync:daily"].get("verified_complete_spec")
     assert queries["sync:fina_mainbz"].get("no_probe")  # by_ts_code 季度域显式 no_probe
+
+
+def test_margin_sla_uses_accepted_state_not_legacy_raw_max():
+    queries = sla._sync_registry_queries()
+    assert queries["sync:margin"].get("accepted_margin") is True
+    assert "query" not in queries["sync:margin"]
+
+    raw = duck_mem()
+    raw.execute("CREATE TABLE raw_tushare_margin(trade_date VARCHAR)")
+    raw.execute("INSERT INTO raw_tushare_margin VALUES ('20991231')")
+
+    probe = sla._query_actual_frontier(
+        {"tushare_raw": raw}, queries, "sync:margin"
+    )
+
+    assert probe.state == "no_complete_batch"
+    assert probe.actual_date is None
+
+
+def test_margin_sla_uses_registry_contract_snapshot(monkeypatch):
+    from services.data_sources import margin_state
+
+    queries = sla._sync_registry_queries()
+    planned = queries["sync:margin"]["_margin_contract"]
+    frontier = VerifiedBatchFrontier(
+        last_date="20260716", row_count=3, last_success_at="2026-07-16"
+    )
+    seen = []
+    monkeypatch.setattr(
+        margin_state,
+        "load_margin_accepted_state",
+        lambda _conn, *, contract=None: seen.append(contract)
+        or SimpleNamespace(frontier=frontier),
+    )
+
+    probe = sla._query_actual_frontier(
+        {"tushare_raw": object()}, queries, "sync:margin"
+    )
+
+    assert probe.state == "verified"
+    assert probe.actual_date == "20260716"
+    assert len(seen) == 1
+    assert seen[0] is planned
+
+
+def test_registered_margin_without_watermark_probes_and_alerts_on_no_acceptance():
+    queries = sla._sync_registry_queries()
+    raw = duck_mem()
+    raw.execute("CREATE TABLE raw_tushare_margin(trade_date VARCHAR)")
+    raw.execute("INSERT INTO raw_tushare_margin VALUES ('20991231')")
+
+    result = sla._registered_domain_without_watermark_result(
+        {"tushare_raw": raw},
+        queries,
+        "sync:margin",
+        queries["sync:margin"],
+        sla.date(2026, 7, 17),
+    )
+
+    assert result["status"] == "NO_COMPLETE_BATCH"
+    assert result["probe_state"] == "no_complete_batch"
+    assert result["actual_date"] is None
+    assert result["alert"] is True
+
+
+def test_accepted_margin_sla_audits_projection_without_mutating_it():
+    frontier = VerifiedBatchFrontier(
+        last_date="20260715",
+        row_count=3,
+        last_success_at="2026-07-16T01:05:00+00:00",
+    )
+    assert sla._accepted_projection_drift(
+        watermark_date="2026-07-15",
+        watermark_row_count=3,
+        watermark_parser_version="margin_accepted_contract_1",
+        frontier=frontier,
+        expected_parser_version="margin_accepted_contract_1",
+    ) == []
+    assert sla._accepted_projection_drift(
+        watermark_date="20260716",
+        watermark_row_count=99,
+        watermark_parser_version="sync_runner_v1",
+        frontier=frontier,
+        expected_parser_version="margin_accepted_contract_1",
+    ) == [
+        "last_data_date=20260716!=20260715",
+        "row_count=99!=3",
+        "parser_version='sync_runner_v1'!='margin_accepted_contract_1'",
+    ]
 
 
 def test_min_rows_only_domain_uses_verified_frontier_instead_of_raw_max_date():
@@ -78,6 +206,11 @@ def test_query_actual_returns_none_when_db_unreachable():
     """库不可达 → None (调用方标 DB_LOCKED_UNVERIFIED), 不抛不伪装."""
     queries = {"sync:x": {"db": "tushare_raw", "query": "SELECT 1"}}
     assert sla._query_actual_max_date({"tushare_raw": None}, queries, "sync:x") is None
+    assert sla._probe_gate("db_unavailable") == ("DB_LOCKED_UNVERIFIED", True)
+
+
+def test_no_mapping_is_a_blocking_probe_failure():
+    assert sla._probe_gate("no_mapping") == ("NO_QUERY_MAPPING", True)
 
 
 def test_verified_probe_empty_and_query_error_fail_closed():

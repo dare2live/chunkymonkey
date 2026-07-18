@@ -12,7 +12,8 @@
 #   grain          MERGE 主键 (幂等重跑)
 #   batch_mode     by_trade_date (一次调用全市场一天) / by_ts_code / by_month / full_refresh
 #   pit_anchor     PIT 锚点列 + 可用时刻语义 (特征 JOIN 纪律的机器可读声明)
-#   available_after 盘后可用时刻 (HH:MM, 't+1' = 次日盘前; 决定特征 JOIN t 还是 t-1)
+#   available_after legacy PIT/调度提示；裸 t+1 尚未声明日期轴，不得扩写其语义
+#   availability_policy formal dataset 的 typed 发布时间契约 (axis/rule/at)，是 eligibility 唯一 owner
 #   data_start     回填起点 (E8 探底/文档实测)
 #   freshness_sla_trading_days  落后超过 N 交易日 = audit FAIL
 #   min_rows_per_batch  单批最低行数 sanity (低于即可疑, 0 行必重试)
@@ -218,8 +219,12 @@ domains:
       # 当时判"永久缺失"是错的, 只是没换对查询形态)。每个交易日只执行当日契约要求的分片：
       # 2023-02-13 前 SSE/SZSE 两片，自北交所两融启动日起再加 BSE；必需分片全部成功并满足
       # required_groups 后才进入一次原子写，任一必需片失败则整日零写入。
-    pit_anchor: "trade_date; 同 margin_detail t+1 盘前披露 -> JOIN t-1"
+    pit_anchor: "trade_date; 同 margin_detail 下一交易日盘前披露 -> JOIN t-1"
     available_after: "t+1"
+    availability_policy:
+      axis: trading_day
+      rule: next_trading_session_at
+      at: "09:00"                 # margin_detail 声明“上午 9 点前”；09:00 取保守可验证边界
     data_start: "20190102"        # 实测首日 2 行 (SSE/SZSE)
     freshness_sla_trading_days: 2
     min_rows_per_batch: 2         # 全历史基础交易所为 SSE/SZSE；BSE 由下方时点契约加严
@@ -230,6 +235,24 @@ domains:
       # 北交所上市日不是两融业务起点。北交所公告〔2023〕9号自 2023-02-13 施行；
       # 生产 raw 实测该日起 829/829 个交易日连续有 BSE，之前 301 日仅 SSE/SZSE。
       required_groups_since: {BSE: "20230213"}
+    dataset_contract:
+      dataset_id: tier0.market_data.margin_exchange_daily
+      contract_version: "2"
+      schema_id: tier0.market_data.margin_exchange_daily.canonical
+      schema_hash: 8935c9be0741707330b7db9fc775a5ec2e71ab24dbf1095124d3d36dcd48f6ff
+      coverage_start: "20260715"
+      canonical_table: canonical_margin_exchange_daily
+      owner: tier0.market_data
+      writer: services.data_sources.margin_acceptance
+      criticality: blocking
+      failure_policy: fail_closed
+      allowed_fallbacks: []
+      consumers:
+        - services.data_sources.margin_reconcile
+        - services.data_sources.margin_state
+      retention: permanent
+      rebuild_policy: replay_landing_then_refetch
+      retirement_condition: replacement_contract_and_consumer_cutover
 
   # ── 市场感知 v2 族 (2026-07-02 调研+实弹; owner=analysis/market_pulse_design_20260702.md v2 第二批) ──
   dc_daily:                          # 东财板块指数 OHLC (行业/概念/地域全类型): dc 链 RS 双窗 + 广度/龙头史深 2025->2020
@@ -807,9 +830,8 @@ domains:
                         # offset 分页已实弹验证(3000+2223=5223 无重叠全覆盖), 与姊妹域
                         # index_dailybasic 同款 3000。
     pit_anchor: "trade_date; 指数收盘即定, 当日可用 (基准超额无前瞻)"
-    available_after: "18:00"       # 2026-07-09 全审计LOW修复: pit_anchor 声明"当日可用"但原缺此
-                                    # 机器字段 → _available_after_passed 对缺失返 False(保守) =
-                                    # 同日补拉永不触发, 文字与机器行为矛盾。保守按 18:00 注册。
+    available_after: "18:00"       # legacy eligibility resolver 的保守当日发布时间；正式迁移时
+                                    # 须以 typed axis/rule/at 取代，不能从 batch_mode 推断。
     data_start: "20050101"
     freshness_sla_trading_days: 1
     min_rows_per_batch: 3200       # 2026-07-09 全审计校准: 单指数批 3910(最小 399006.SZ)~5223 行
@@ -826,9 +848,9 @@ domains:
     code_list: ["801010.SI","801030.SI","801040.SI","801050.SI","801080.SI","801110.SI","801120.SI","801130.SI","801140.SI","801150.SI","801160.SI","801170.SI","801180.SI","801200.SI","801210.SI","801230.SI","801710.SI","801720.SI","801730.SI","801740.SI","801750.SI","801760.SI","801770.SI","801780.SI","801790.SI","801880.SI","801890.SI","801950.SI","801960.SI","801970.SI","801980.SI"]
     pit_anchor: "in_date/out_date 原生 PIT; JOIN 决策日 t 须 in_date<=t AND (out_date IS NULL OR out_date>t)"
     data_start: "19891101"        # in_date 最早 (申万成分史起点, 实测)
-    freshness_sla_trading_days: 30  # 成分调整低频 (季度级)。无 available_after 是有意的(2026-07-09
-                                     # 全审计注): in_date/out_date 区间原生 PIT 表, 无逐日发布时刻
-                                     # 语义, _available_after_passed 对缺失返 False=不做同日补拉, 正确
+    freshness_sla_trading_days: 30  # 成分调整低频 (季度级)。无 available_after 是有意的：
+                                     # in_date/out_date 区间原生 PIT 表，无逐日发布时刻语义；
+                                     # legacy resolver 保守地不纳入当日。
     min_rows_per_batch: 20         # 单 l1 成分史数十~数百行 (801010 实测 126); <20 可疑
     allow_empty_batch: false
     fixed_params: {is_new: "Y"}    # 当前成分 (out_date NULL=仍在); 2026-06-15 显式化: is_new 默认只 Y, 历史剔除走 _hist 域

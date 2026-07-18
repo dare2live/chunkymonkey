@@ -15,7 +15,7 @@ from datetime import datetime
 from services.data_sources.sources.tushare import TuShareAuthorizationError
 from services.writer_lock import WriterLockBusyError, writer_lock
 
-from .acquire import run_acquire
+from .acquire import Tier0AcquireError, run_acquire
 from .clean import run_clean
 from .context import PipelineContext
 from .preflight import PipelinePreflightError, run_preflight
@@ -56,6 +56,9 @@ def _run_locked(
         except TuShareAuthorizationError as exc:
             ctx.degraded(f"AUTH BLOCK during acquire: {exc.reason} (后续阶段未启动; exit 3)")
             return 3
+        except Tier0AcquireError as exc:
+            ctx.degraded(f"TIER0 BLOCK during acquire: {exc} (后续阶段未启动; exit 5)")
+            return 5
         run_and_record(ctx, "clean", run_clean)      # ② 清洗 L0→L1
         run_and_record(ctx, "process", run_process)  # ③ 加工 L1→L2
         run_and_record(ctx, "store", run_store)      # ④ 存储/治理

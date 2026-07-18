@@ -83,6 +83,22 @@ Rules:
   carry method/as-of/lineage;
 - `stage -> validate -> publish -> accepted_partition` must have a proven
   atomic boundary;
+- transport/batch mode never defines publication availability. A formal
+  dataset declares a typed `axis/rule/at` policy in its versioned contract and
+  config hash; default sync, explicit replay and drain must consume one
+  eligibility resolver;
+- reject an explicit or injected future partition before adapter, database or
+  writer I/O. A historical replay cap must not replace the live eligibility
+  frontier in status or projections;
+- derive one immutable contract from one registry snapshot per execution and
+  pass that same object through acceptance, state, reconcile, projections,
+  pipeline and audits; downstream config reloads are forbidden;
+- validate a formal dataset's transport wiring and request shape before
+  calendar, writer-lock, authorization, provider-adapter or target-DB side
+  effects; never normalize duplicates into an apparently valid set;
+- legacy naked `available_after=t+1` tokens retain their pre-migration behavior
+  and must not be generalized; migrate each domain only after its event-time
+  axis is proven;
 - 0 rows, permission pages, schema changes, timeout and connection failure are
   different outcomes; fail closed;
 - watermark/SLA/failure queue should be projections of accepted facts, not
@@ -144,8 +160,15 @@ Supported data entrypoints:
 
 ```bash
 scripts/chunkyctl doctor --fast
+scripts/chunkyctl sync --domain DOMAIN [--drain --max-dates N]
+scripts/chunkyctl sync --domain DOMAIN --backfill --start YYYYMMDD --end YYYYMMDD
 bash scripts/daily_update.sh --date YYYYMMDD
 ```
+
+`chunkyctl sync` is the manual single-domain boundary for controlled repair,
+canary and replay. It loads the project provider environment, then delegates to
+the production runner's authorization, calendar and writer-lock gates; it does
+not bypass the full pipeline's Tier0 blocking rules or install automation.
 
 Before long/paid work state objective, consumer, snapshot, runtime/cost, gates,
 artifact path, stop and rollback plan. Current local execution is the only

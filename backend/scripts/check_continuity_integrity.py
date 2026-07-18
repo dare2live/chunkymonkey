@@ -84,11 +84,24 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
     """sync_registry 全域 → 审查 spec 列表 (含连续性新键; gap_tolerance 非法值 = 立即报错)。"""
     raw = yaml.safe_load((registry_path or REGISTRY_PATH).read_text(encoding="utf-8"))
     defaults = raw.get("defaults") or {}
+    if not isinstance(defaults, dict):
+        raise ValueError("sync_registry defaults must be a mapping")
     default_db = defaults.get("target_db", "tushare_raw")
+    from services.data_sources.margin_ingest import contract_for_spec
+
     specs: list[dict[str, Any]] = []
     for domain, entry in (raw.get("domains") or {}).items():
         entry = entry or {}
-        table = entry.get("target_table")
+        contract_spec = dict(defaults)
+        contract_spec.update(entry)
+        contract_spec["domain"] = domain
+        margin_contract = contract_for_spec(contract_spec)
+        accepted_margin = margin_contract is not None
+        table = (
+            margin_contract.canonical_table
+            if accepted_margin
+            else entry.get("target_table")
+        )
         if not table:
             continue
         gap_tolerance = entry.get("gap_tolerance", "none")
@@ -102,7 +115,18 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
             "table": table,
             "grain": list(entry.get("grain") or []),
             "batch_mode": entry.get("batch_mode", ""),
-            "data_start": str(entry.get("data_start", "")).replace("-", ""),
+            "data_start": str(
+                margin_contract.coverage_start
+                if accepted_margin
+                else entry.get("data_start", "")
+            ).replace("-", ""),
+            "accepted_margin": accepted_margin,
+            "_margin_contract": margin_contract,
+            "availability_policy": (
+                margin_contract.availability_policy.payload()
+                if accepted_margin
+                else entry.get("availability_policy")
+            ),
             "sla": int(entry.get("freshness_sla_trading_days", 5)),  # evidence: registry 全域均声明; 缺省 5 仅防御
             "available_after": entry.get("available_after"),
             "freshness_date_column": entry.get("freshness_date_column"),
@@ -202,17 +226,46 @@ def _sample_days(days: list[str], head: int = 5, tail: int = 3) -> str:
 
 # ── 检测 1: 日历缺日 ─────────────────────────────────────────────────────
 
-def check_calendar_gaps(conn, spec: dict, trading_days: list[str], latest_expected: str) -> dict:
+def check_calendar_gaps(
+    conn,
+    spec: dict,
+    trading_days: list[str],
+    latest_expected: str,
+    *,
+    accepted_state=None,
+) -> dict:
     """data_start→latest_expected 逐交易日对账: 中间空洞=FAIL / 尾部超 SLA=FAIL / 墓碑排除 /
     gap_tolerance=annotate|hk_holidays 时中间空洞降 WARN (标注不失败)。"""
     table = spec["table"]
-    if not _table_exists(conn, table):
+    if spec.get("accepted_margin"):
+        from services.data_sources.margin_state import (
+            MarginStateError,
+            load_margin_accepted_state,
+        )
+
+        try:
+            state = accepted_state or load_margin_accepted_state(
+                conn, contract=spec.get("_margin_contract")
+            )
+            present = set(state.dates)
+        except MarginStateError as exc:
+            return _result(
+                "calendar_gaps",
+                spec,
+                "fail_accepted_state",
+                f"accepted margin evidence contradictory: {exc}",
+            )
+        col = "AcceptedPartition"
+    elif not _table_exists(conn, table):
         return _result("calendar_gaps", spec, "skipped_missing_table", "表不存在 (域注册未拉/重建期)")
-    col = _resolve_date_col(conn, table, spec)
-    if col is None:
+    else:
+        col = _resolve_date_col(conn, table, spec)
+    if not spec.get("accepted_margin") and col is None:
         return _result("calendar_gaps", spec, "skipped_no_date_col",
                        "无可解析日期列 (freshness_date_column/date_param/trade_date/end_date/ann_date 均缺)")
-    if spec.get("batch_completeness") or int(spec.get("min_rows_per_batch", 0)) > 0:
+    if spec.get("accepted_margin"):
+        pass
+    elif spec.get("batch_completeness") or int(spec.get("min_rows_per_batch", 0)) > 0:
         # 截断批/缺市场不能用 DISTINCT(date) 洗白；与 sync drain/SLA 共用完整口径。
         present = complete_batch_dates(conn, spec)
     else:
@@ -263,11 +316,41 @@ def check_calendar_gaps(conn, spec: dict, trading_days: list[str], latest_expect
 
 # ── 检测 2: 横截面行数异常 (部分覆盖) ────────────────────────────────────
 
-def check_cross_section(conn, spec: dict, trading_days: list[str], latest_expected: str,
-                        row_dip_ratio: float = ROW_DIP_RATIO_DEFAULT) -> dict:
+def check_cross_section(
+    conn,
+    spec: dict,
+    trading_days: list[str],
+    latest_expected: str,
+    row_dip_ratio: float = ROW_DIP_RATIO_DEFAULT,
+    *,
+    accepted_state=None,
+) -> dict:
     """近 60 交易日: 单日行数 < 近 20 观测日滚动中位 x ratio = WARN;
     grain 含 exchange_id/data_type 类分组列: 基线组当日缺失 = FAIL (margin SSE-only 型)。"""
     table = spec["table"]
+    accepted_batches: dict[str, str] | None = None
+    if spec.get("accepted_margin"):
+        from services.data_sources.margin_state import load_margin_accepted_state
+
+        try:
+            state = accepted_state or load_margin_accepted_state(
+                conn, contract=spec.get("_margin_contract")
+            )
+        except Exception as exc:  # noqa: BLE001 — audit boundary must fail closed
+            return _result(
+                "cross_section",
+                spec,
+                "fail_accepted_state",
+                f"accepted margin evidence contradictory: {exc}",
+            )
+        if not state.partitions:
+            return _result(
+                "cross_section",
+                spec,
+                "fail_no_accepted_partitions",
+                "no AcceptedPartition evidence exists for formal margin cross-section",
+            )
+        accepted_batches = state.batch_by_partition
     if not _table_exists(conn, table):
         return _result("cross_section", spec, "skipped_missing_table", "表不存在")
     col = _resolve_date_col(conn, table, spec)
@@ -278,10 +361,21 @@ def check_cross_section(conn, spec: dict, trading_days: list[str], latest_expect
     if not window:
         return _result("cross_section", spec, "skipped_empty_window", "日历窗口为空")
     bound = _date_bound(conn, table, col, window[0])
-    rows = conn.execute(
-        f'SELECT "{col}", COUNT(*) FROM "{table}" WHERE "{col}" >= ? GROUP BY 1', [bound]
-    ).fetchall()
-    counts = {_norm_day(d): int(n) for d, n in rows if d is not None}
+    if accepted_batches is None:
+        rows = conn.execute(
+            f'SELECT "{col}", COUNT(*) FROM "{table}" WHERE "{col}" >= ? GROUP BY 1', [bound]
+        ).fetchall()
+        counts = {_norm_day(d): int(n) for d, n in rows if d is not None}
+    else:
+        rows = conn.execute(
+            f'SELECT "{col}", ingest_batch_id FROM "{table}" WHERE "{col}" >= ?',
+            [bound],
+        ).fetchall()
+        counts: dict[str, int] = {}
+        for day, batch_id in rows:
+            compact = _norm_day(day)
+            if accepted_batches.get(compact) == str(batch_id):
+                counts[compact] = counts.get(compact, 0) + 1
     seq = [(d, counts[d]) for d in window if d in counts]
     if len(seq) < ROW_DIP_MIN_OBS + 1:
         return _result("cross_section", spec, "skipped_insufficient_history",
@@ -301,9 +395,21 @@ def check_cross_section(conn, spec: dict, trading_days: list[str], latest_expect
     gcols = [g for g in spec["grain"] if g in CROSS_SECTION_GROUP_COLS]
     if gcols and gcols[0] in _columns(conn, table):
         gcol = gcols[0]
-        grows = conn.execute(
-            f'SELECT "{col}", "{gcol}" FROM "{table}" WHERE "{col}" >= ? GROUP BY 1, 2', [bound]
-        ).fetchall()
+        if accepted_batches is None:
+            grows = conn.execute(
+                f'SELECT "{col}", "{gcol}" FROM "{table}" WHERE "{col}" >= ? GROUP BY 1, 2', [bound]
+            ).fetchall()
+        else:
+            candidate_groups = conn.execute(
+                f'SELECT "{col}", "{gcol}", ingest_batch_id '
+                f'FROM "{table}" WHERE "{col}" >= ? GROUP BY 1, 2, 3',
+                [bound],
+            ).fetchall()
+            grows = [
+                (day, group)
+                for day, group, batch_id in candidate_groups
+                if accepted_batches.get(_norm_day(day)) == str(batch_id)
+            ]
         day_groups: dict[str, set] = {}
         for d, g in grows:
             if d is not None:
@@ -592,12 +698,28 @@ def run_checks(
                 eligibility = eligible_end_date(
                     spec,
                     now=now,
-                    trading_days=trading_days,
+                    trading_day_values=trading_days,
                 )
                 if eligibility.eligible_end:
                     domain_latest_expected = eligibility.eligible_end
                 else:
                     not_yet_eligible = True
+            accepted_state = None
+            accepted_state_error = None
+            if (
+                spec.get("accepted_margin")
+                and daily
+                and not not_yet_eligible
+                and only in (None, "calendar_gaps", "cross_section")
+            ):
+                from services.data_sources.margin_state import load_margin_accepted_state
+
+                try:
+                    accepted_state = load_margin_accepted_state(
+                        conn, contract=spec.get("_margin_contract")
+                    )
+                except Exception as exc:  # noqa: BLE001 — audit boundary must fail closed
+                    accepted_state_error = exc
             if daily and (only in (None, "calendar_gaps")):
                 results.append(
                     _result(
@@ -607,8 +729,19 @@ def run_checks(
                         f"当前无已到可用时点的交易分区 ({eligibility.reason})",
                     )
                     if not_yet_eligible
+                    else _result(
+                        "calendar_gaps",
+                        spec,
+                        "fail_accepted_state",
+                        f"accepted margin evidence contradictory: {accepted_state_error}",
+                    )
+                    if accepted_state_error is not None
                     else check_calendar_gaps(
-                        conn, spec, trading_days, domain_latest_expected
+                        conn,
+                        spec,
+                        trading_days,
+                        domain_latest_expected,
+                        accepted_state=accepted_state,
                     )
                 )
             if daily and (only in (None, "cross_section")):
@@ -620,12 +753,20 @@ def run_checks(
                         f"当前无已到可用时点的交易分区 ({eligibility.reason})",
                     )
                     if not_yet_eligible
+                    else _result(
+                        "cross_section",
+                        spec,
+                        "fail_accepted_state",
+                        f"accepted margin evidence contradictory: {accepted_state_error}",
+                    )
+                    if accepted_state_error is not None
                     else check_cross_section(
                         conn,
                         spec,
                         trading_days,
                         domain_latest_expected,
                         row_dip_ratio=row_dip_ratio,
+                        accepted_state=accepted_state,
                     )
                 )
             if spec["freshness_group_col"] and (only in (None, "group_freshness")):

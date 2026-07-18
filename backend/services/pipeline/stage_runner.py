@@ -19,7 +19,7 @@ from datetime import datetime
 from services.data_sources.sources.tushare import TuShareAuthorizationError
 from services.writer_lock import WriterLockBusyError, writer_lock
 
-from .acquire import run_acquire
+from .acquire import Tier0AcquireError, run_acquire
 from .clean import run_clean
 from .context import PipelineContext
 from .process import run_process
@@ -119,6 +119,9 @@ def run_stage(
             except PipelinePreflightError as exc:
                 ctx.degraded(f"PREFLIGHT BLOCK: {exc.reason} (stage 未启动; exit 5)")
                 return 5
+            except Tier0AcquireError as exc:
+                ctx.degraded(f"TIER0 BLOCK: {exc} (acquire check_fail; exit 1)")
+                return 1
             finally:
                 ctx.close()
     except WriterLockBusyError as exc:

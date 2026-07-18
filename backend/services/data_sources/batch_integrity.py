@@ -13,6 +13,10 @@ from typing import Any
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
+class BatchCompletenessError(ValueError):
+    """A provider batch cannot satisfy its registry completeness contract."""
+
+
 @dataclass(frozen=True)
 class VerifiedBatchFrontier:
     last_date: str

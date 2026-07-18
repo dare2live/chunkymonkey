@@ -170,7 +170,7 @@ def test_run_domain_records_incomplete_batch_without_advancing_watermark(monkeyp
             pass
 
     monkeypatch.setattr(sr, "_target_conn", lambda spec: _NoClose(conn))
-    monkeypatch.setattr(sr, "_trading_days", lambda start, end=None: ["20260714"])
+    monkeypatch.setattr(sr, "trading_days", lambda start, end=None: ["20260714"])
     monkeypatch.setattr(sr, "_record_outcome", lambda spec, **kwargs: recorded.update(kwargs))
     monkeypatch.setattr(sr.time, "sleep", lambda seconds: None)
 
@@ -773,7 +773,7 @@ def test_run_domain_records_database_write_failure(monkeypatch):
         },
     }
     monkeypatch.setattr(sr, "_adapter", lambda source: object())
-    monkeypatch.setattr(sr, "_trading_days", lambda start, end=None: ["20260715"])
+    monkeypatch.setattr(sr, "trading_days", lambda start, end=None: ["20260715"])
     monkeypatch.setattr(sr, "_fetch_paged", lambda *args: [
         {"ts_code": "000001.SZ", "trade_date": "20260715"}
     ])

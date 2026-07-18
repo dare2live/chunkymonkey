@@ -41,7 +41,8 @@ Skill 输出是方法约束，不替代 live repo evidence。子 agent 输出是
 4. 失败/中断如何回滚，已完成 checkpoint 如何复用；
 5. 哪个 gate 能把“能运行但无价值”拦住。
 
-无法回答则不执行。当前不恢复自动跑批，不启动 provider 任务，也不把不存在的 backend 写成 active config。
+无法回答则不执行。provider 任务只允许经 Grill Gate 后从明确手工入口启动；禁止自动、
+隐式或后台启动，也不把不存在的 backend 写成 active config。
 
 ## 4. CodeGraph、Moth 与复杂度
 
@@ -169,8 +170,29 @@ ChunkyMonkey 数据更新模式为 `manual_only`。禁止安装或保留项目�
 
 ```bash
 scripts/chunkyctl doctor --fast
+scripts/chunkyctl sync --domain DOMAIN [--drain --max-dates N]
+scripts/chunkyctl sync --domain DOMAIN --backfill --start YYYYMMDD --end YYYYMMDD
 bash scripts/daily_update.sh --date YYYYMMDD
 ```
+
+单域修洞、回放和 canary 只走 `chunkyctl sync`；它加载项目 provider 环境并复用生产
+runner 的授权、交易日历和 writer lock，不是第二套采集逻辑，也不会安装调度。全链验证仍走
+`daily_update.sh`，单域成功不能替代下游 Tier0 blocking、SLA 和 consumer gate。
+
+显式回放边界必须在 provider adapter、目标数据库和 writer I/O 前经过与默认/drain 相同的
+eligibility resolver；未来 partition fail closed。`--drain` 不得混用 start/end/backfill/resume，
+on-demand by-security 必须同时给出 start/end，full-refresh 不接受日期边界。formal transport 的
+batch mode、date parameter、write mode 与分片列表也必须在 calendar、writer lock 和授权探针前
+完成静态合同验证。历史 `--end` 只限制本次 operation window，输出状态和 accepted-state
+projection 仍保留 live eligibility frontier。该入口是手动命令，不创建调度器。
+
+一次执行只能从一个 registry snapshot 生成一个 immutable contract 对象；accept/recover、state、
+reconcile/projection、pipeline 与 continuity/SLA 必须透传同一对象。测试应使用 `is` 证明 identity，
+不能用 dataclass 值相等制造“同一合同”的假绿。
+
+裁决分两层：单域 canary 只由该域的 accepted partition、reconcile、projection 与 failure
+证据裁决；full pipeline、消费者切换和发布仍受全局 continuity/SLA/failure 阻断。全局告警
+不能洗绿单域，也不能反向抹掉已经闭合的单域证据。
 
 执行前验证交易日历、授权、writer lease、目标 partition、源 availability 和成本；执行后查真实表内容、accepted state/watermark、failure queue 和 ALERT。进程 exit 0 不是数据齐全证明。
 

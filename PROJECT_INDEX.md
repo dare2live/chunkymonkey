@@ -1,7 +1,7 @@
 # PROJECT_INDEX — Current Project Map
 
 > 状态：live navigation，非规则 owner
-> 更新：2026-07-17
+> 更新：2026-07-18
 > 当前目标看 `goal.md`；架构看 `docs/MASTER_TOPLEVEL_DESIGN.md`；机器入口与 writer 清单看 `FEATURE_MAP.md` 和 CodeGraph。
 
 ## 1. Authority
@@ -20,7 +20,7 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | legacy raw 发布已具 batch 完整性与事务回滚；landing/canonical/accepted-state 边界待 Phase 1 重建 |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | `margin` 已是首个 v2 typed availability + landing/canonical/accepted tracer；其他域仍待逐个迁移，不能把 canary 当成全史或全局 Tier0 闭合 |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
 | T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 当前展示可用；分类解释、measurement、regime 和 persistence 耦合，暂不可直接做 PIT 特征 |
@@ -33,7 +33,7 @@ AGENTS.md
 
 | Area | Role |
 |---|---|
-| `data/tushare_raw.duckdb` | TuShare landing/source tables；当前部分表仍带业务过滤，迁移目标是 provider-preserving landing |
+| `data/tushare_raw.duckdb` | TuShare legacy `raw_tushare_*` compatibility 表，以及 formal margin 的 `ingest_batch`、provider landing、canonical 与 accepted pointer；其他域仍待 provider-preserving landing 迁移 |
 | `data/market.duckdb` | K 线 serving/派生数据；qfq 不等于名义成交价真相 |
 | `data/reference.duckdb` | 交易日历、身份/reference 数据 |
 | `data/smartmoney.duckdb` | 当前 mart、profiles、ops/control evidence |
@@ -49,7 +49,8 @@ AGENTS.md
 | Purpose | Active entrypoint |
 |---|---|
 | Health | `scripts/chunkyctl doctor --fast` |
-| Manual data update | `bash scripts/daily_update.sh --date YYYYMMDD` |
+| Manual full data update | `bash scripts/daily_update.sh --date YYYYMMDD` |
+| Manual single-domain sync/canary/replay | `scripts/chunkyctl sync --domain DOMAIN [--drain --max-dates N]` 或 `--backfill --start YYYYMMDD --end YYYYMMDD`（强制单域，拒绝 `--all-due`） |
 | Shared tooling snapshot | `moth snapshot --repo .` |
 | Business/tool assertions | `moth assert --repo .` |
 | Coupling/deletion impact | `moth coupling --repo . --impact <name>` |
@@ -66,7 +67,7 @@ AGENTS.md
 
 | Priority | Defect | Consequence |
 |---:|---|---|
-| P0 | Provider rows still lack durable verbatim landing and accepted-partition facts | Legacy raw transaction can roll back, but source response, rejection and accepted truth remain conflated |
+| P0 | 只有 `margin` tracer 具备 durable provider landing、accepted partition 与 accepted-state Ops projection | 其他 legacy sync 域仍把 source response、rejection、canonical publication 和运行水位混在旧边界，必须逐域迁移 |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
 | P1 | Live DC snapshot/pulse tables predate namespace fix until manual rebuild | Code contract is fixed but stored rows still need controlled reconciliation |

@@ -311,7 +311,7 @@
           "exchange_id",
           "trade_date"
         ],
-        "pit_anchor": "trade_date; 同 margin_detail t+1 盘前披露 -> JOIN t-1"
+        "pit_anchor": "trade_date; 同 margin_detail 下一交易日盘前披露 -> JOIN t-1"
       },
       "dst": "table:tushare_raw.raw_tushare_margin",
       "kind": "acquire",
@@ -1333,6 +1333,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_validation.py",
+      "kind": "consume",
+      "src": "table:reference.dim_trading_calendar"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/sync_runner.py",
       "kind": "consume",
       "src": "table:reference.dim_trading_calendar"
@@ -2251,6 +2257,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_projections.py",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_data_source_failure_queue"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_sync_runner_watermark_decouple.py",
       "kind": "consume",
       "src": "table:smartmoney.mart_data_source_failure_queue"
@@ -2287,6 +2299,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_projections.py",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_data_source_watermark"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/sync_runner.py",
       "kind": "consume",
       "src": "table:smartmoney.mart_data_source_watermark"
@@ -2318,6 +2336,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_update_watermark_sla.py",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_data_source_watermark"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_projections.py",
       "kind": "consume",
       "src": "table:smartmoney.mart_data_source_watermark"
     },
@@ -2650,6 +2674,216 @@
       "dst": "consumer:backend/services/schema_core.py",
       "kind": "consume",
       "src": "table:smartmoney.sys_schema_version"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/database_manifest.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_schema.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_database_manifest.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_dataset_contracts.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_acceptance.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_reconcile.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_runner_seam.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_state.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/database_manifest.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_margin_exchange_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_margin_exchange_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_schema.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_margin_exchange_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_continuity_integrity.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_margin_exchange_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_database_manifest.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_margin_exchange_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_dataset_contracts.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_margin_exchange_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_acceptance.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_margin_exchange_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_reconcile.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_margin_exchange_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_runner_seam.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_margin_exchange_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_state.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_margin_exchange_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/database_manifest.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_reconcile.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_schema.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_database_manifest.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_dataset_contracts.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_acceptance.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_projections.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_reconcile.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_runner_seam.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_state.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/database_manifest.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_margin"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_schema.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_margin"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_database_manifest.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_margin"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_dataset_contracts.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_margin"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_acceptance.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_margin"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_reconcile.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_margin"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_state.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_margin"
     },
     {
       "attrs": {},
@@ -3223,7 +3457,61 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_acceptance.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_continuity_integrity.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_update_watermark_sla.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_dataset_contracts.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_acceptance.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_projections.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_reconcile.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_runner_seam.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_state.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_margin"
     },
@@ -3811,9 +4099,9 @@
     }
   ],
   "meta": {
-    "edge_count": 584,
-    "generated_at": "2026-07-17T01:34:44.717483+00:00",
-    "node_count": 261,
+    "edge_count": 632,
+    "generated_at": "2026-07-18T02:49:29.033510+00:00",
+    "node_count": 277,
     "version": 2
   },
   "nodes": [
@@ -4095,6 +4383,46 @@
         "path": "backend/services/data_sources/clients_registry.py"
       },
       "id": "consumer:backend/services/data_sources/clients_registry.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/margin_acceptance.py"
+      },
+      "id": "consumer:backend/services/data_sources/margin_acceptance.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/margin_projections.py"
+      },
+      "id": "consumer:backend/services/data_sources/margin_projections.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/margin_reconcile.py"
+      },
+      "id": "consumer:backend/services/data_sources/margin_reconcile.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/margin_schema.py"
+      },
+      "id": "consumer:backend/services/data_sources/margin_schema.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/margin_validation.py"
+      },
+      "id": "consumer:backend/services/data_sources/margin_validation.py",
       "kind": "consumer"
     },
     {
@@ -4436,9 +4764,65 @@
     {
       "attrs": {
         "ctype": "test",
+        "path": "backend/tests/services/test_database_manifest.py"
+      },
+      "id": "consumer:backend/tests/services/test_database_manifest.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_dataset_contracts.py"
+      },
+      "id": "consumer:backend/tests/services/test_dataset_contracts.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
         "path": "backend/tests/services/test_lineage.py"
       },
       "id": "consumer:backend/tests/services/test_lineage.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_margin_acceptance.py"
+      },
+      "id": "consumer:backend/tests/services/test_margin_acceptance.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_margin_projections.py"
+      },
+      "id": "consumer:backend/tests/services/test_margin_projections.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_margin_reconcile.py"
+      },
+      "id": "consumer:backend/tests/services/test_margin_reconcile.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_margin_runner_seam.py"
+      },
+      "id": "consumer:backend/tests/services/test_margin_runner_seam.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_margin_state.py"
+      },
+      "id": "consumer:backend/tests/services/test_margin_state.py",
       "kind": "consumer"
     },
     {
@@ -5671,6 +6055,46 @@
         "table": "sys_schema_version"
       },
       "id": "table:smartmoney.sys_schema_version",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "status": "active",
+        "table": "accepted_partition"
+      },
+      "id": "table:tushare_raw.accepted_partition",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "status": "active",
+        "table": "canonical_margin_exchange_daily"
+      },
+      "id": "table:tushare_raw.canonical_margin_exchange_daily",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "status": "active",
+        "table": "ingest_batch"
+      },
+      "id": "table:tushare_raw.ingest_batch",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "status": "active",
+        "table": "landing_tushare_margin"
+      },
+      "id": "table:tushare_raw.landing_tushare_margin",
       "kind": "table"
     },
     {

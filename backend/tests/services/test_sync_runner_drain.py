@@ -55,7 +55,7 @@ def test_drain_refills_only_gap_days():
     _seed(conn, ["20200101", "20200103"])
     adapter = FakeAdapter({"20200102": [{"ts_code": "000001.SZ", "trade_date": "20200102", "val": 2.0}]})
     r = sr.drain_domain("demo", registry=_registry(), conn=conn, adapter=adapter,
-                        trading_days=["20200101", "20200102", "20200103"], record=False)
+                        expected_trading_days=["20200101", "20200102", "20200103"], record=False)
     assert adapter.calls == ["20200102"]
     assert r["status"] == "drained" and r["gap_days"] == 1 and r["refilled_days"] == 1
     n = conn.execute("SELECT COUNT(*) FROM raw_tushare_demo WHERE trade_date='20200102'").fetchone()[0]
@@ -66,8 +66,37 @@ def test_drain_clean_when_no_gap():
     conn = connect(":memory:")
     _seed(conn, ["20200101"])
     r = sr.drain_domain("demo", registry=_registry(), conn=conn, adapter=FakeAdapter({}),
-                        trading_days=["20200101"], record=False)
+                        expected_trading_days=["20200101"], record=False)
     assert r["status"] == "clean" and r["gap_days"] == 0 and r["refilled_rows"] == 0
+
+
+def test_drain_uses_the_domain_eligibility_owner_for_expected_days(monkeypatch):
+    conn = connect(":memory:")
+    _seed(conn, ["20200101"])
+    calendar_calls = []
+    monkeypatch.setattr(
+        sr,
+        "eligible_end_date",
+        lambda _spec: sr.DomainEligibility(
+            "20200101", True, "t_plus_one_awaiting_next_trading_day"
+        ),
+    )
+    monkeypatch.setattr(
+        sr,
+        "trading_days",
+        lambda start, end=None: calendar_calls.append((start, end)) or ["20200101"],
+    )
+
+    result = sr.drain_domain(
+        "demo",
+        registry=_registry(available_after="t+1"),
+        conn=conn,
+        adapter=FakeAdapter({}),
+        record=False,
+    )
+
+    assert calendar_calls == [("20200101", "20200101")]
+    assert result["status"] == "clean"
 
 
 def test_drain_terminal_failure_stays_listed_not_silent():
@@ -76,7 +105,7 @@ def test_drain_terminal_failure_stays_listed_not_silent():
     _seed(conn, [])
     adapter = FakeAdapter({"20200101": []})  # zero_row_policy=fail → 重试后终败
     r = sr.drain_domain("demo", registry=_registry(), conn=conn, adapter=adapter,
-                        trading_days=["20200101"], record=False)
+                        expected_trading_days=["20200101"], record=False)
     assert r["status"] == "partial" and r["still_failed"] == ["20200101"]
 
 
@@ -107,7 +136,7 @@ def test_drain_allow_empty_domain_with_cross_check_can_refill_gap():
         registry=reg,
         conn=conn,
         adapter=adapter,
-        trading_days=["20200101"],
+        expected_trading_days=["20200101"],
         record=False,
     )
 
@@ -128,7 +157,7 @@ def test_drain_respects_custom_date_param():
     adapter = ParamCapture({"20200102": [{"ts_code": "000001.SZ", "ex_date": "20200102", "val": 2.0}]})
     reg = _registry(date_param="ex_date", grain=["ts_code", "ex_date"])
     r = sr.drain_domain("demo", registry=reg, conn=conn, adapter=adapter,
-                        trading_days=["20200101", "20200102"], record=False)
+                        expected_trading_days=["20200101", "20200102"], record=False)
     assert r["status"] == "drained" and r["refilled_days"] == 1
 
 
@@ -145,7 +174,7 @@ def test_drain_treats_below_min_rows_day_as_gap():
     full = [{"ts_code": f"00000{i}.SZ", "trade_date": "20200101", "val": 1.0} for i in range(3)]
     adapter = FakeAdapter({"20200101": full})
     r = sr.drain_domain("demo", registry=_registry(min_rows_per_batch=3), conn=conn,
-                        adapter=adapter, trading_days=["20200101"], record=False)
+                        adapter=adapter, expected_trading_days=["20200101"], record=False)
     assert adapter.calls == ["20200101"]
     assert r["status"] == "drained" and r["gap_days"] == 1
     n = conn.execute("SELECT COUNT(*) FROM raw_tushare_demo WHERE trade_date='20200101'").fetchone()[0]
@@ -161,7 +190,7 @@ def test_drain_refetched_truncated_batch_stays_failed():
         {"ts_code": "000002.SZ", "trade_date": "20200101", "val": 2.0},
     ]})
     r = sr.drain_domain("demo", registry=_registry(min_rows_per_batch=3), conn=conn,
-                        adapter=adapter, trading_days=["20200101"], record=False)
+                        adapter=adapter, expected_trading_days=["20200101"], record=False)
     assert r["status"] == "partial" and r["still_failed"] == ["20200101"]
     n = conn.execute("SELECT COUNT(*) FROM raw_tushare_demo").fetchone()[0]
     assert n == 0  # 完整性失败批零写入，不能让 partial 覆盖/污染旧快照
@@ -206,7 +235,7 @@ def test_drain_identity_group_contract_refills_missing_exchange_atomically():
         registry=reg,
         conn=conn,
         adapter=adapter,
-        trading_days=["20260701"],
+        expected_trading_days=["20260701"],
         record=False,
     )
 
@@ -247,7 +276,7 @@ def test_drain_conditional_group_contract_uses_exact_bse_start_boundary():
         ),
         conn=before,
         adapter=FakeAdapter({}),
-        trading_days=["20230210"],
+        expected_trading_days=["20230210"],
         record=False,
     )
     assert before_result["status"] == "clean"
@@ -270,7 +299,7 @@ def test_drain_conditional_group_contract_uses_exact_bse_start_boundary():
         ),
         conn=boundary,
         adapter=FakeAdapter({}),
-        trading_days=["20230213"],
+        expected_trading_days=["20230213"],
         max_dates=0,
         record=False,
     )
@@ -289,7 +318,7 @@ def test_drain_failed_todo_is_not_reported_as_success_watermark_date(monkeypatch
         registry=_registry(),
         conn=conn,
         adapter=FakeAdapter({"20200102": []}),
-        trading_days=["20200101", "20200102"],
+        expected_trading_days=["20200101", "20200102"],
         record=True,
     )
 
@@ -314,7 +343,7 @@ def test_drain_partial_refill_watermark_only_uses_successful_todo(monkeypatch):
             ],
             "20200103": [],
         }),
-        trading_days=["20200101", "20200102", "20200103"],
+        expected_trading_days=["20200101", "20200102", "20200103"],
         record=True,
     )
 
@@ -335,7 +364,7 @@ def test_drain_clean_audit_does_not_refresh_success_watermark(monkeypatch):
         registry=_registry(),
         conn=conn,
         adapter=FakeAdapter({}),
-        trading_days=["20200101"],
+        expected_trading_days=["20200101"],
         record=True,
     )
 
@@ -361,7 +390,7 @@ def test_drain_records_write_failure_without_claiming_refill(monkeypatch):
         adapter=FakeAdapter({
             "20200101": [{"ts_code": "000001.SZ", "trade_date": "20200101", "val": 1.0}]
         }),
-        trading_days=["20200101"],
+        expected_trading_days=["20200101"],
         record=True,
     )
 
@@ -377,7 +406,7 @@ def test_drain_truncation_takes_newest_first():
                for d in ["20200101", "20200102", "20200103"]}
     adapter = FakeAdapter(payload)
     r = sr.drain_domain("demo", registry=_registry(), conn=conn, adapter=adapter,
-                        trading_days=["20200101", "20200102", "20200103"],
+                        expected_trading_days=["20200101", "20200102", "20200103"],
                         max_dates=1, record=False)
     assert adapter.calls == ["20200103"]  # 最新优先
     assert r["truncated"] is True
@@ -390,7 +419,7 @@ def test_drain_max_dates_truncation_reports_partial():
     payload = {d: [{"ts_code": "000001.SZ", "trade_date": d, "val": 1.0}]
                for d in ["20200101", "20200102", "20200103"]}
     r = sr.drain_domain("demo", registry=_registry(), conn=conn, adapter=FakeAdapter(payload),
-                        trading_days=["20200101", "20200102", "20200103"],
+                        expected_trading_days=["20200101", "20200102", "20200103"],
                         max_dates=2, record=False)
     assert r["truncated"] is True and r["status"] == "partial" and r["refilled_days"] == 2
 
@@ -447,7 +476,7 @@ def test_run_domain_ok_strict_any_failure_is_not_ok(monkeypatch):
     recorded = {}
     monkeypatch.setattr(sr, "_adapter", lambda name: adapter)
     monkeypatch.setattr(sr, "_target_conn", lambda spec: conn)
-    monkeypatch.setattr(sr, "_trading_days", lambda start, end=None: ["20200101", "20200102"])
+    monkeypatch.setattr(sr, "trading_days", lambda start, end=None: ["20200101", "20200102"])
     monkeypatch.setattr(sr, "_last_watermark_date", lambda d, s: None)
     monkeypatch.setattr(sr, "_record_outcome",
                         lambda spec, **kw: recorded.update(kw))
@@ -479,7 +508,7 @@ def test_domain_sample_captured_on_first_batch(tmp_path, monkeypatch):
     """根因 A 契约: 首批写入自动存真实样本入 fixtures; 已存在不覆盖 (注册时刻快照)."""
     monkeypatch.setattr(sr, "_SAMPLE_DIR", tmp_path)
     conn = connect(":memory:")
-    spec = sr._domain_spec(_registry(), "demo")
+    spec = sr.domain_spec(_registry(), "demo")
     rows = [{"ts_code": "BK0145.DC", "trade_date": "20200101", "val": 1.0}]
     sr._write_batch(conn, spec, rows)
     import json as _json

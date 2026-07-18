@@ -1,17 +1,16 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-16
+> 更新：2026-07-18
 > 只保存当前 objective、已裁决事项、blocker 和下一步。完成证据追加到 `analysis/project_state_ledger.md`。
 
 ## 当前 objective
 
 停止继续对旧架构做局部补洞，按 `docs/MASTER_TOPLEVEL_DESIGN.md` 建立可组合、可替换、可审计的数据与策略系统。
 
-近期只做两件事：
-
-1. Phase 0：收口文档、AGENTS、skills、Moth/CodeGraph、真实 CLI 和文档门；
-2. Phase 1：用现有未提交的数据完整性修复作为第一个 Tier0 迁移切片，建立 `IngestBatch/AcceptedPartition`、landing/canonical 边界和原子验收。
+当前只收口 Phase 1 的 `margin` Tier0 tracer：accepted canonical、逐分区 shadow
+reconcile、控制面投影、live evidence 和最终提交门。canary 验收前后都不切业务消费者，
+不扩到第二域；Phase 0 已完成，证据在 ledger 和 git history。
 
 Tier0 未闭合前，不启动大规模公式寻优、付费计算、生产候选或自动跑批。
 
@@ -41,77 +40,62 @@ Tier0 未闭合前，不启动大规模公式寻优、付费计算、生产候�
 9. 采用 strangler 迁移：契约先行、旧新并跑、对账、切消费者、最后删除旧路径。
 10. 数据更新保持 `manual_only`，不恢复 cron/launchd/隐藏后台触发。
 
-## Live 证据与 P0 缺陷
+## Live 证据与剩余架构缺口
 
-现有资产可保留：交易日历和数据源适配、K 线、技术状态、市场脉搏、机构画像、主升浪 ground truth、BestChoice 公式 challenger。
+2026-07-17—18 `margin` canary 的当前事实：
 
-已确认的 P0/P1 架构缺口：
+- contract v2 把 publication eligibility 定义为
+  `trading_day / next_trading_session_at / 09:00`，并纳入 config/contract hash；coverage 为
+  `20260715—20260716`，两日各 3 个 provider fragment、3 行 canonical、BSE/SSE/SZSE 齐全，
+  当前 `AcceptedPartition` 正好 2 条；
+- 两日 content hash 为 `ab6703…0a5`、`f47e04…d76`，逐分区 reconcile 均 `PARITY`；
+- accepted frontier/watermark 均为 `20260716 / 3`，parser=`margin_accepted_contract_2`，
+  open margin failure=0、fallback=false；幂等重跑 gap/refill/rows 均为 0；
+- `20260718` 周六实盘证伪裸 `t+1` 无法表达日历轴：供应商 `20260717` 当时仅 SSE=1、
+  SZSE/BSE=0；两次 v1 批均拒绝且未写 accepted/legacy/watermark。正式 margin 改用 typed
+  availability 后已通过受支持入口重发两日 v2 批，旧 v1/rejected 批只保留为不可变历史、当前
+  pointer 均为 0；普通 sync 与 drain 共用同一 eligibility resolver，均只认 expected 到
+  `20260716`、零 provider call，failure queue 已闭合；
+- provider 的 `20260716/BSE/rqmcl=NULL` 按 nullable 契约原样保留，禁止补 0；
+- 同一次执行只从同一 registry snapshot 派生一个 immutable contract 对象，并沿 runner、
+  acceptance/recovery、accepted state、reconcile/projection、pipeline、continuity/SLA 全链透传；
+  publication 重证由低层 validation owner 统一实现，read model 不再反向依赖 write orchestrator；
+- formal transport 的 batch mode、date parameter、write mode 和 split groups，以及 drain/on-demand/
+  full-refresh 的请求形状，都在 calendar、writer lock、provider adapter 和目标 DB 之前 fail closed；
+- 受管 provider runtime 完整 backend suite 为 `1080 passed / 8 deselected`；
+- 正式表只有 2 日/6 行；legacy margin 有 1827 日/4485 行，业务消费者仍只读 legacy，
+  因此 canary 通过不等于历史迁移或 Tier0 全局闭合。
 
-- `sync_runner` 在写 provider 表前执行 universe filter，landing 契约不纯；
-- target data 与 watermark/failure outcome 分库写，缺少同一 accepted-partition 原子证据；
+仍存在的架构缺口：
+
+- 只有 margin tracer 具备纯 landing、accepted partition 和原子 Ops 投影；其他 legacy sync 域尚未迁移；
+- 其余 16 个 legacy `available_after=t+1` 域混有 trading-day、announcement、period 和
+  by-security 语义；保持旧行为但不得再把 transport/batch mode 当 availability 轴，须逐域迁移到 typed policy；
 - qfq 每日以最新因子全史重算，serving view 的 factor/batch/ingested_at 是占位，不能兼任名义成交和血缘真相；
-- 旧 `v_dc_industry_pit` 只有 first-seen、没有 `out_date/content_type`；writer 已退役，live DB 残留 view 待 Phase 1 只读核验后清理；
 - 东财行业与申万按名称对齐，实测存在成员和名称差异，不能称同一桶；
-- market pulse 的 namespace/content_type/grain 已修并于 2026-07-16 原子重建；仍缺 `available_at/method/config_hash/coverage`，只能用于展示，不能直接做历史特征；
+- market pulse 仍读 legacy margin，canary 后未纳入本 rollout 重建；其 `20260716` 物化行的
+  `rzrqye/rzrqye_chg` 仍为 NULL，且缺 `available_at/method/config_hash/coverage`，不能作为
+  本次 Tier0 验收或历史特征证据；
 - stock state 和 market regime 输出缺 definition/config/input snapshot 版本证据；
 - 研究层没有统一 snapshot/experiment/release，paper surface 不是正式执行模型。
-- 旧 storage-retention/legacy-flow 门存在空库存或读取失败仍放行的假绿，已退役；正式 dataset lifecycle/retention contract 尚待 Phase 1 建立；
 - 当前 holdout helper 只守训练边界，不具备原子 prereg、全局 single-touch、参数冻结或并发证据。
-
-## 当前工作树冻结面
-
-以下 8 个 tracked 文件与 2 个 untracked WIP 是进入本轮前已有的独立 Tier0 dirty slice，
-Phase 0 不得覆盖、还原或混合提交：
-
-```text
-backend/config/sync_registry.yaml
-backend/scripts/check_continuity_integrity.py
-backend/scripts/update_watermark_sla.py
-backend/services/data_sources/sync_runner.py
-backend/tests/scripts/test_check_continuity_integrity.py
-backend/tests/scripts/test_update_watermark_sla.py
-backend/tests/services/test_sync_runner_20260612_fixes.py
-backend/tests/services/test_sync_runner_integrity.py
-```
-
-两个 untracked WIP basename 为 `batch_integrity.py` 与 `test_batch_integrity.py`；精确位置以 live
-`git status` 为准，它们刻意不进入 Phase 0 index。
-
-现状：`main...origin/main [ahead 4]`；不 push。
 
 ## 执行计划
 
-### Phase 0 — 控制面收口（完成；本提交固化）
+### Phase 0 — 控制面收口
 
-- [x] 现场代码、DB、Moth、CodeGraph 与三路对抗架构审计；
-- [x] 重写顶层架构、研究验证和工程治理 owner；
-- [x] 压缩 `AGENTS.md`、`PROJECT_INDEX.md`、docs map；
-- [x] 合并删除旧 constitution/data/quickstart/archive 和已吸收设计稿；
-- [x] 修退役 chunkyctl 命令、文档 gate、Rule 10 和 lineage 同名跨库假绿；
-- [x] 退役 storage-retention/legacy-flow 假绿，holdout 降为诚实的边界 helper，修 qfq shadow-truth、taxonomy namespace 与 paper/institution 过度声称；
-- [x] BestChoice 收缩为 hash/shape 可校验的冻结 challenger，删除第二 control plane、旧 App/runners 和伪发布证据；
-- [x] 同步 `.moth/profile.yaml`、assertions、项目专属 skills 和本地 hook；
-- [x] focused/full tests、Moth、CodeGraph、doc gates、diff check；
-- [x] Rule 10 双独立终审 `APPROVE_WITH_NOTES`；与冻结 Tier0 patch 分离进入本提交。
-
-Phase 0 退出条件：
-
-- 活的人类 owner 只剩 `AGENTS.md`、`goal.md` 和 docs 三份契约；
-- 文档 gate `fails=0 warns=0`，本地 link/CLI lifecycle 无漂移；
-- FEATURE_MAP 不把 retired 命令列为 active；
-- Moth 不再用包含 WARN 的 PASS 字符串制造 29/0/0；
-- skills/Moth/AGENTS 指向同一架构和真实命令；
-- 除冻结 Tier0 slice 外无未知 dirty residue。
+已完成；完成项不在 goal 重复维护，以 ledger、owner docs 和 git history 为证。
 
 ### Phase 1 — Tier0 accepted partition
 
-1. 为当前 K 线或一个小型交易数据域定义 typed `DatasetContract`；
-2. 分离 landing 与 canonical filter；
-3. 建立 `IngestBatch` 与 `AcceptedPartition`；
-4. 做 fetch/validate/publish/accept kill-point 测试；
-5. 从 accepted state 投影 watermark/SLA/failure；
-6. 旧新路径 shadow-run 与逐 partition 对账；
-7. 通过后再推广到其他域。
+- [x] 为 margin 定义 typed `DatasetContract`、不可变 schema/hash 和唯一 writer；
+- [x] 建立 provider landing、validate/publish/accept 与 recovery 原子边界；
+- [x] 从 accepted state 投影 watermark/SLA/failure，并让 Tier0 失败阻断下游；
+- [x] 建立 manual-only `chunkyctl sync` 公共入口，保留授权/日历/writer lock；
+- [x] 完成 20260715—16 live canary、逐分区 parity、no-refetch 和 acquire gate；
+- [x] 闭合 post-fix、最终 Rule 10、Moth/CodeGraph、owner docs 和本地安全提交。
+
+扩展全史或第二域、切消费者和删除 legacy 属下一次明确授权的 rollout，不混入本 canary。
 
 ### 后续
 
@@ -119,9 +103,13 @@ Tier0 K 线/分类 → 版本化 stock state → market context → 主升浪 B0
 
 ## 当前 blocker / 禁止误报
 
-- Phase 0 控制面已闭合；下一执行面是冻结 Tier0 slice 的独立复审与 Phase 1 accepted-partition 迁移；
-- 2026-07-16 手工链已验证核心行情到日，但 `margin_detail` 7 月 10—15 供应商仅返沪市半批；冻结 Tier0 patch 仍待整体复审和独立提交；
-- continuity 未按域使用 `available_after`、all-due 对 `unsupported` 域不计 bad，均属冻结 Tier0 verifier 缺口；
+- margin canary 没有未闭合数据缺口，但 2 日 cross-section 只能 `skipped_insufficient_history`，不能声称历史稳定；
+- full-history 前必须消除 accepted/reconcile 的约 `6 + 13N` SQL 路径；约 1800 日会接近 2.34 万次查询；
+- 第二正式数据域前必须先抽出 runner 拥有的 outcome-to-loop policy；禁止在现有超过 2000 行的 `sync_runner.py` 继续复制 dataset-specific 分支，也不借机发明通用插件/DAG；
+- legacy `source_watermarks` standalone helper 的 failure-queue DROP/recreate 仍缺 outer transaction；margin 已有外层事务，不受此 P1 影响；
+- 全局 SLA 仍有 `lhb_daily`、`qfii_holding_quarterly` 无 mapping 及 `sync:margin_detail` stale 三个告警；strict continuity 另判 `cyq_perf` 超 SLA，而 SLA 报告却标 `OK`，该 verifier 口径分歧阻断全局 READY；不能用 margin 单域通过洗绿全链，也不能反向抹掉该单域证据；
 - 当前没有发布策略、正式候选或可信当前 KPI；
-- `doctor --fast` 的 data health 绿不等于架构闭合；alert flag 和 failure queue 仍需按真实数据验证；
+- 正式 margin 历史尚未迁移，任何 business consumer cutover、raw+canonical 混读或 legacy 删除均禁止；
+- legacy market-pulse 当前物化未随 canary 刷新；其重建会写 Tier1/Tier2 共享输出，归消费者
+  rollout 串行验收，不得为美化本次 Tier0 报告越界执行；
 - 任何 `retired` 子命令 exit 0、WARN 被 Moth 当 PASS、fixture 与真实 schema 不同，都视为 verifier defect，不是可接受绿灯。

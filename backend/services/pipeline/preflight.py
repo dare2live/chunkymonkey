@@ -26,6 +26,58 @@ class PipelinePreflightError(RuntimeError):
         super().__init__(f"pipeline preflight blocked: {reason}")
 
 
+def run_watermark_sla_check(ctx: PipelineContext, *, output_rel: str) -> int:
+    """复用唯一 SLA 脚本生成指定时点证据；同日重跑前移除旧文件以 fail closed。"""
+    import json
+    import subprocess
+    import sys as _sys
+
+    from .context import REPO
+
+    output_path = REPO / output_rel
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.unlink(missing_ok=True)
+    args = [
+        "backend/scripts/update_watermark_sla.py",
+        "--json-output",
+        output_rel,
+    ]
+    if ctx.dry:
+        args.insert(1, "--dry-run")
+    proc = subprocess.run(
+        [_sys.executable] + args,
+        cwd=str(REPO),
+        capture_output=True,
+        text=True,
+        env=ctx._subprocess_env(),
+        pass_fds=ctx._subprocess_pass_fds(),
+    )
+    if ctx._log_fh:
+        ctx._log_fh.write((proc.stdout or "") + (proc.stderr or ""))
+        ctx._log_fh.flush()
+    if proc.returncode in (0, 2):
+        try:
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+            n_alerts = payload["n_alerts"]
+            sources = payload["sources"]
+            if (
+                isinstance(n_alerts, bool)
+                or not isinstance(n_alerts, int)
+                or n_alerts < 0
+                or not isinstance(sources, list)
+                or (proc.returncode == 2) != (n_alerts > 0)
+            ):
+                raise ValueError("exit code / n_alerts / sources contract mismatch")
+        except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            output_path.unlink(missing_ok=True)
+            ctx.log(
+                f"watermark SLA checker returned invalid artifact {output_rel}: "
+                f"{type(exc).__name__}"
+            )
+            return 1
+    return proc.returncode
+
+
 def _auth_expiry_warning_days(ctx: PipelineContext) -> int:
     if ctx.auth_expiry_warning_days is not None:
         return ctx.auth_expiry_warning_days
@@ -172,22 +224,15 @@ def run_preflight(ctx: PipelineContext) -> None:
     ensure_tushare_authorized(ctx)
     ctx.log("--- Preflight: watermark SLA 新鲜度检查 ---")
 
-    # Step 1a: watermark SLA check + auto-update (exit 2 = alert; 其他非0 = 检查器 crash 同样送达)
-    args = ["backend/scripts/update_watermark_sla.py",
-            "--json-output", f"data/audit/watermark_sla_{ctx.date}.json"]
-    if ctx.dry:
-        args.insert(1, "--dry-run")
-    # update_watermark_sla 用 exit code 2 表 SLA alert → 不能当普通失败; 用专用判定
-    import subprocess, sys as _sys
-    from .context import REPO
-    proc = subprocess.run([_sys.executable] + args, cwd=str(REPO),
-                          capture_output=True, text=True, env=ctx._subprocess_env(),
-                          pass_fds=ctx._subprocess_pass_fds())
-    if ctx._log_fh:
-        ctx._log_fh.write((proc.stdout or "") + (proc.stderr or "")); ctx._log_fh.flush()
-    if proc.returncode == 2:
-        ctx.degraded(f"watermark SLA alert (见 data/audit/watermark_sla_{ctx.date}.json)")
-    elif proc.returncode != 0:
+    # Step 1a: before/readiness 证据。alert 可能由本次 acquire 修复，最终 verdict 留给 Store 重算。
+    output_rel = f"data/audit/watermark_sla_before_{ctx.date}.json"
+    returncode = run_watermark_sla_check(ctx, output_rel=output_rel)
+    if returncode == 2:
+        ctx.log(
+            f"Preflight watermark SLA alert recorded in {output_rel}; "
+            "final verdict deferred to post-acquire Store check"
+        )
+    elif returncode != 0:
         # 检查器本身 crash 比检查出 alert 更该送达 (旧版严重度倒挂只 log)
-        ctx.degraded(f"watermark SLA 检查器 crash (exit {proc.returncode}) — SLA 体系失明")
+        ctx.degraded(f"watermark SLA 检查器 crash (exit {returncode}) — SLA 体系失明")
     # 1b: K线 continuity 由 SLA(1a) + acquire 的 sync_runner 日历 gap 扫描覆盖 (builder reset 删)

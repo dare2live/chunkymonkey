@@ -63,7 +63,7 @@ def test_drain_era_aware_old_complete_day_not_phantom_gap(monkeypatch):
     ensure_source_watermark_schema(c)
     _seed(c)
     r = sr.drain_domain("md_era_test", registry=_registry(with_era=True), conn=_NoClose(c),
-                         adapter=None, trading_days=[OLD_DAY, NEW_DAY], record=False)
+                         adapter=None, expected_trading_days=[OLD_DAY, NEW_DAY], record=False)
     assert r["status"] == "clean", f"941行的2019完整日不该是缺口: {r}"
     c.close()
 
@@ -84,7 +84,7 @@ def test_drain_without_era_field_old_day_is_phantom_gap(monkeypatch):
                     for i in range(941)]   # vendor 重拉也只有 941 行(真实完整量)
 
     r = sr.drain_domain("md_era_test", registry=_registry(with_era=False), conn=_NoClose(c),
-                         adapter=_A(), trading_days=[OLD_DAY, NEW_DAY], record=False)
+                         adapter=_A(), expected_trading_days=[OLD_DAY, NEW_DAY], record=False)
     assert calls, "旧行为下老日应被判缺口并重拉"
     assert r["status"] == "partial", f"重拉后仍 <2000, 旧行为下永久 partial(幻影缺口): {r}"
     c.close()
@@ -108,7 +108,7 @@ def test_drain_era_aware_new_day_truncation_still_caught(monkeypatch):
                     for i in range(3472)]   # vendor 真实全量
 
     r = sr.drain_domain("md_era_test", registry=_registry(with_era=True), conn=_NoClose(c),
-                         adapter=_A(), trading_days=[OLD_DAY, NEW_DAY], record=False)
+                         adapter=_A(), expected_trading_days=[OLD_DAY, NEW_DAY], record=False)
     assert len(calls) == 1 and calls[0]["trade_date"] == NEW_DAY, \
         f"只有新时代截断日该被重拉, 实际: {calls}"
     assert r["status"] == "drained", f"补齐 3472 行后应收敛: {r}"
@@ -130,7 +130,7 @@ def test_run_domain_era_aware_no_false_below_min_rows(monkeypatch):
     monkeypatch.setattr(sr, "_adapter", lambda name: _A())
     monkeypatch.setattr(sr, "_target_conn", lambda spec: shared)
     monkeypatch.setattr(sr, "_smartmoney_conn", lambda: shared)
-    monkeypatch.setattr(sr, "_trading_days", lambda start, end=None: [OLD_DAY, NEW_DAY])
+    monkeypatch.setattr(sr, "trading_days", lambda start, end=None: [OLD_DAY, NEW_DAY])
     monkeypatch.setattr(sr, "_last_watermark_date", lambda domain, source: None)
     monkeypatch.setattr(sr, "_RATE_LIMITER", None)
     monkeypatch.setattr(sr, "_RATE_LIMITER_INIT", False)

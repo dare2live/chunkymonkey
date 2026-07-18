@@ -63,6 +63,29 @@ def test_record_outcome_advances_watermark_on_partial_failure(monkeypatch):
     c.close()
 
 
+def test_record_outcome_can_project_the_accepted_timestamp_exactly(monkeypatch):
+    """Accepted projections must not replace durable accepted_at with wall-clock now."""
+    c = duck_mem()
+    ensure_source_watermark_schema(c)
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: _NoClose(c))
+
+    sr._record_outcome(
+        {"domain": "margin", "source": "tushare"},
+        ok=True,
+        last_date="20260715",
+        rows=3,
+        success_at="2026-07-16T01:05:00+00:00",
+    )
+
+    row = c.execute(
+        "SELECT last_data_date, row_count, last_success_at "
+        "FROM mart_data_source_watermark WHERE data_domain = 'sync:margin'"
+    ).fetchone()
+    assert tuple(row[index] for index in range(2)) == ("20260715", 3)
+    assert str(row[2]).startswith("2026-07-16 01:05:00")
+    c.close()
+
+
 def test_record_outcome_does_not_resolve_failures_on_partial_success(monkeypatch):
     """部分成功时不应清除历史失败记录 (真失败还在, 不能假装解决了)——failure_queue
     里这个域应仍有未 resolve 的记录。"""
@@ -466,7 +489,7 @@ def test_quota_halt_does_not_overwrite_pending_batch_date(monkeypatch):
     monkeypatch.setattr(sr, "_smartmoney_conn", lambda: shared)
     monkeypatch.setattr(sr, "_target_conn", lambda _spec: shared)
     monkeypatch.setattr(sr, "_adapter", lambda _source: object())
-    monkeypatch.setattr(sr, "_trading_days", lambda _start, _end=None: ["20260714"])
+    monkeypatch.setattr(sr, "trading_days", lambda _start, _end=None: ["20260714"])
     monkeypatch.setattr(
         sr,
         "eligible_end_date",
