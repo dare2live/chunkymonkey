@@ -6,7 +6,7 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + 单日 K/ST canary；eligible frontier=`20260717` READY；缺连续历史覆盖/下一交易日）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false` — PIT 池 vs unfiltered 广度分歧为预期，禁切）。**E0 FIXED（gate+mirror off）**：三域 MATCH → `cutover_allowed=true`；formal writes=`formal_only`；provider-field 读 prefer canonical；canary `DatasetSnapshot` 已冻；feature_store 画像=typed enrichment PARTIAL（非 blanket legacy）。**E smoke 可开**；**E 全量消融仍禁**（canary scope）。Fable5 **REVISE** 已吸收。
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + 单日 K/ST canary；eligible frontier=`20260717` READY；缺连续历史覆盖/下一交易日）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false` — PIT 池 vs unfiltered 广度分歧为预期，禁切）。**E0 FIXED（gate+mirror off）**：三域 MATCH → `cutover_allowed=true`；formal writes=`formal_only`；provider-field 读 prefer canonical；canary `DatasetSnapshot` 已冻；feature_store 画像=typed enrichment PARTIAL（非 blanket legacy）。**E in progress（honest canary）**：`institution_follow` B0 scaffold + PIT/holdout hooks + verdict path；canary 仅 `inconclusive`/`blocked:canary_scope_only`，禁假 accept；**全量 B0→B4 消融仍禁**。Fable5 **REVISE** 已吸收。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -85,9 +85,16 @@
   `phase_e_ablation=blocked_canary_scope_only`。
   **残余（不挡 smoke，挡全量消融）**：非 canary 分区 mass accept（禁本刀）；
   enrichment 历史行仍依赖 legacy join。
-- **E PARTIAL-unblocked（smoke）** snapshot gate + `surface_status` smoke
-  **可开**（`test_phase_e_smoke`）；**禁** `institution_follow` B0→B4 策略
-  消融直至更广 snapshot。**F** main_rally。**G** 公式+BestChoice。**H** Release/名义价纸面。
+- **E in progress（honest canary）** E0 FIXED 前置已满足。`institution_follow_b0`
+  scaffold：消费 disclosure `DatasetSnapshot` + `surface_status`；B0 bare-K
+  ExperimentRun 骨架（PIT hooks declared + holdout exercised）；裁决路径
+  accept/reject/inconclusive，canary scope → `inconclusive` +
+  `blocked`/`reason=canary_scope_only`（overclaim accept 抛错）。
+  `test_phase_e_smoke` + `test_institution_follow_b0` 绿。**禁** Optuna/
+  全历史/付费搜索、B-pit mart cutover、mass disclosure backfill；**禁**把
+  canary scaffold 当 claimable B0。**残余**：更广 snapshot + 名义 K 基线实测
+  + walk-forward/paper → 真 B0→B4。**F** main_rally。**G** 公式+BestChoice。
+  **H** Release/名义价纸面。
 
 ## 边做边测
 
@@ -95,4 +102,4 @@
 
 ## Blocker / 禁止误报
 
-margin/pulse scope 错：禁 provider/live 写/cutover。交易所汇总≠沪深池。accepted=1823≠业务正确。continuity 告警未清除。函数存在/WARN/fixture 绿≠交付。Tier0=`BLOCKED`/`NOT_EVALUATED`。E0 canary snapshot 绿 / Phase E smoke 绿 ≠ 可跑 institution_follow 全量消融；feature_store field-level PARTIAL ≠ ACCEPTED。
+margin/pulse scope 错：禁 provider/live 写/cutover。交易所汇总≠沪深池。accepted=1823≠业务正确。continuity 告警未清除。函数存在/WARN/fixture 绿≠交付。Tier0=`BLOCKED`/`NOT_EVALUATED`。E0 FIXED + B0 scaffold 绿 ≠ claimable B0/accept；canary `inconclusive`/`canary_scope_only` ≠ 全量消融；feature_store field-level PARTIAL ≠ ACCEPTED。

@@ -885,3 +885,24 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   beyond canary, B-pit cutover, margin thaw.
 - Dual-write tests updated: default `legacy_rows_written=0`; parity asserts
   kept behind `enable_legacy_mirror=True`.
+
+### 2026-07-19 — Phase E start: institution_follow B0 scaffold (honest canary)
+
+- **E0 FIXED** (prior). **E in progress** (this slice).
+- Added `services/institution_follow_b0.py`: consumes frozen disclosure
+  `DatasetSnapshot` + research `surface_status`; builds B0 bare-K
+  `ExperimentRun` skeleton with declared PIT hooks + exercised holdout
+  boundary; `ExperimentVerdict` path accept/reject/inconclusive.
+- **Canary honesty**: under `scope=canary_accepted_partitions` /
+  `phase_e_ablation=blocked_canary_scope_only`, default verdict is
+  `inconclusive` + `blocked` + `reason=canary_scope_only`;
+  `force_accept` / `requested_verdict=accept` raises
+  `CanaryScopeOverclaimError`. Broader-scope scaffold still cannot accept
+  without measured metrics (`scaffold_metrics_unknown`).
+- Tests: `test_institution_follow_b0` (+ keep `test_phase_e_smoke`); CI wired.
+- **Did not**: Optuna/full-history/paid search; B-pit mart cutover; mass
+  disclosure backfill; claimable B0 paper baseline.
+- **Residual for real B0→B4**: broader DatasetSnapshot (beyond canary
+  partitions); measured bare-K baseline on nominal OHLCV + eligible
+  universe; purged walk-forward/embargo/single-touch holdout exercise;
+  paper execution with costs/T+1/limits; then B1→B4 single-block ablation.
