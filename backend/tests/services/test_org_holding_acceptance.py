@@ -84,7 +84,7 @@ def test_inventory_declares_org_holding_formal_writers_strangler() -> None:
     item = inventory["org_holding"]
     assert item["landing_writer"] is not None
     assert item["canonical_writer"] is not None
-    assert item["runtime_state"] == "formal_path_ready_legacy_direct_write"
+    assert item["runtime_state"] == "formal_default_legacy_mirror"
     assert item["conformity"] == "NONCONFORMING"
     permit = authorize_nonconforming_direct_write(
         "org_holding", conformity="NONCONFORMING"

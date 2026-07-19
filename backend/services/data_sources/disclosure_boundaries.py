@@ -1,15 +1,15 @@
 """E0 disclosure-domain strangler: typed contracts + fail-closed formal claims.
 
-Transport/research boundary only.  All three disclosure domains now declare
-formal landing→validate→accept writers; legacy research still reads
-compatibility tables under ``NONCONFORMING`` until cutover
-(``formal_path_ready_legacy_direct_write``).
+Transport/research boundary only.  All three disclosure domains declare formal
+landing→validate→accept writers; production new writes default to
+formal→legacy-mirror (``formal_default_legacy_mirror``).  Research still reads
+compatibility tables under ``NONCONFORMING`` until consumer cutover.
 
 This module:
 
 - inventories the three disclosure domains named by goal E0;
-- authorizes legacy direct writes only when labeled ``NONCONFORMING`` and
-  runtime_state is still a strangler (not cutover);
+- authorizes legacy-only direct writes only when labeled ``NONCONFORMING`` and
+  runtime_state is still a strangler (escape hatch; not production default);
 - refuses DatasetSnapshot freeze until E0 cutover; landing/accepted/canonical
   claims require declared writers;
 - attests research surfaces as NONCONFORMING without rewriting payloads.
@@ -25,6 +25,7 @@ Conformity = Literal["NONCONFORMING"]
 RuntimeState = Literal[
     "direct_write_strangler",
     "formal_path_ready_legacy_direct_write",
+    "formal_default_legacy_mirror",
 ]
 TrustStatus = Literal["NONCONFORMING", "BLOCKED", "NOT_EVALUATED", "READY"]
 
@@ -55,6 +56,7 @@ _STRANGLER_STATES = frozenset(
     {
         "direct_write_strangler",
         "formal_path_ready_legacy_direct_write",
+        "formal_default_legacy_mirror",
     }
 )
 
@@ -133,7 +135,7 @@ _DISCLOSURE_BOUNDARIES: dict[str, DisclosureDomainBoundary] = {
         target_table="fact_top10_holder_period",
         availability_axis="notice_date",
         availability_rule="event_time_notice_or_page_update",
-        runtime_state="formal_path_ready_legacy_direct_write",
+        runtime_state="formal_default_legacy_mirror",
         landing_writer=(
             "services.data_sources.holders_top10_acceptance.land_holders_top10_batch"
         ),
@@ -148,7 +150,7 @@ _DISCLOSURE_BOUNDARIES: dict[str, DisclosureDomainBoundary] = {
         target_table="raw_org_holding_aif10",
         availability_axis="available_date",
         availability_rule="disclosure_deadline_upper_bound",
-        runtime_state="formal_path_ready_legacy_direct_write",
+        runtime_state="formal_default_legacy_mirror",
         landing_writer=(
             "services.data_sources.org_holding_acceptance.land_org_holding_batch"
         ),
@@ -163,7 +165,7 @@ _DISCLOSURE_BOUNDARIES: dict[str, DisclosureDomainBoundary] = {
         target_table="raw_tushare_stk_holdertrade",
         availability_axis="ann_date",
         availability_rule="announcement_date_event_time",
-        runtime_state="formal_path_ready_legacy_direct_write",
+        runtime_state="formal_default_legacy_mirror",
         landing_writer=(
             "services.data_sources.stk_holdertrade_acceptance.land_stk_holdertrade_batch"
         ),
@@ -206,11 +208,12 @@ def require_disclosure_boundary(domain: str) -> DisclosureDomainBoundary:
 def authorize_nonconforming_direct_write(
     domain: str, *, conformity: str
 ) -> DisclosureWritePermit:
-    """Permit legacy direct writes only when explicitly labeled NONCONFORMING.
+    """Permit legacy-only direct writes when explicitly labeled NONCONFORMING.
 
-    Formal conformity labels fail closed.  Declaring land/accept writers alone
-    does not retire direct writes — cutover (runtime_state leave strangler)
-    does.  Formal publication must use the land→accept writers + handoff.
+    Escape hatch for tests/emergency.  Production writers must use
+    ``disclosure_dual_write`` (formal land→accept then legacy mirror).
+    Formal conformity labels fail closed.  Cutover (leaving strangler states)
+    retires this permit entirely.
     """
 
     boundary = require_disclosure_boundary(domain)
@@ -303,10 +306,15 @@ def attest_disclosure_research_surface() -> DisclosureResearchSurfaceReport:
             availability_axis=item.availability_axis,
             reason=(
                 (
-                    "formal_land_accept_exists_but_research_still_reads_legacy_"
-                    "compatibility_table; "
-                    if item.landing_writer is not None
-                    else "direct_writer_bypasses_landing_validate_accept; "
+                    "formal_default_legacy_mirror_active_but_research_still_reads_"
+                    "legacy_compatibility_table; "
+                    if item.runtime_state == "formal_default_legacy_mirror"
+                    else (
+                        "formal_land_accept_exists_but_research_still_reads_legacy_"
+                        "compatibility_table; "
+                        if item.landing_writer is not None
+                        else "direct_writer_bypasses_landing_validate_accept; "
+                    )
                 )
                 + f"availability_axis={item.availability_axis}; "
                 + "cannot freeze DatasetSnapshot or serve as accepted truth"
@@ -321,10 +329,12 @@ def attest_disclosure_research_surface() -> DisclosureResearchSurfaceReport:
         domains=domains,
         notes=(
             "e0_disclosure_formalization_in_progress",
-            "three_domains_formal_path_ready_legacy_direct_write_strangler",
+            "three_domains_formal_default_legacy_mirror",
+            "production_writes_formal_then_mirror_legacy",
             "legacy_research_reads_allowed_with_nonconforming_label",
             "institution_follow_blocked_until_e0_closed",
-            "dataset_snapshot_blocked_until_direct_write_retirement",
+            "dataset_snapshot_blocked_until_research_cutover",
+            "api_v3_inst_not_cut_to_canonical_until_shadow_parity",
             "b_pit_cutover_remains_blocked_separately",
         ),
     )

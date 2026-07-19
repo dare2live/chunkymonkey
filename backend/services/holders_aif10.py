@@ -250,12 +250,10 @@ def _has_availability_col(conn) -> bool:
     return _AVAIL_COL_CACHE["v"]
 
 
-def _write(conn, rows: list[dict]) -> int:
-    """幂等写: 单股全量重写 (rows 为同一股全期). 按 (stock, source) 一次性删旧再插,
-    避免 per-row DELETE (backfill 1.4M 次→5400 次)。build_rows 返该股全期, 故整体替换正确.
+def _write_legacy_direct(conn, rows: list[dict]) -> int:
+    """NONCONFORMING escape hatch / dual-write mirror target.
 
-    E0: direct fact write is NONCONFORMING (no landing→accept).  Formal/accepted
-    claims fail closed via authorize_nonconforming_direct_write.
+    Production default is ``_write`` → formal land→accept then this mirror.
     """
     if not rows:
         return 0
@@ -278,6 +276,25 @@ def _write(conn, rows: list[dict]) -> int:
     insert_sql = f"INSERT INTO fact_top10_holder_period({cols}) VALUES ({placeholders})"
     conn.executemany(insert_sql, [tuple(r.get(k) for k in keys) for r in rows])
     return len(rows)
+
+
+def _write(conn, rows: list[dict]) -> int:
+    """幂等写: formal land→accept by notice_date, then mirror legacy fact table.
+
+    单股全量重写语义保留在 legacy mirror (DELETE stock+source 再插). Formal
+    canonical merges per notice_date so other stocks on the same partition
+    are not wiped.
+    """
+    if not rows:
+        return 0
+    from services.data_sources.disclosure_dual_write import (
+        write_holders_top10_formal_then_mirror,
+    )
+
+    outcome = write_holders_top10_formal_then_mirror(
+        conn, rows, mirror=_write_legacy_direct
+    )
+    return int(outcome.legacy_rows_written)
 
 
 def sync_holders_aif10(

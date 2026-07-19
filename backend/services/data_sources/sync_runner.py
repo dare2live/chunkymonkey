@@ -1134,6 +1134,40 @@ def _refuse_disclosure_formal_via_naked_write_batch(
             )
 
 
+def _route_disclosure_formal_dual_write(
+    conn,
+    domain: str,
+    spec: Mapping[str, Any],
+    rows: list[dict[str, Any]],
+) -> int | None:
+    """E0: stk_holdertrade production writes go formal→legacy-mirror by default.
+
+    Returns written count when routed; ``None`` leaves the naked merge path.
+    Explicit ``legacy_direct_only`` keeps the NONCONFORMING escape hatch.
+    """
+
+    from services.data_sources.disclosure_boundaries import disclosure_boundary
+
+    boundary = disclosure_boundary(domain)
+    if boundary is None:
+        return None
+    if boundary.runtime_state != "formal_default_legacy_mirror":
+        return None
+    if boundary.landing_writer is None or boundary.canonical_writer is None:
+        return None
+    if bool(spec.get("legacy_direct_only")):
+        return None
+    if domain != "stk_holdertrade":
+        # holders/org_holding use aif10 writers, not registry _write_batch.
+        return None
+    from services.data_sources.disclosure_dual_write import (
+        write_stk_holdertrade_formal_then_mirror,
+    )
+
+    outcome = write_stk_holdertrade_formal_then_mirror(conn, rows)
+    return int(outcome.legacy_rows_written)
+
+
 def _write_batch(
     conn,
     spec: dict[str, Any],
@@ -1161,6 +1195,13 @@ def _write_batch(
     )
     if df.empty:
         return 0
+    # After universe/grain prep: disclosure formal→mirror (keeps filter semantics).
+    prepared_rows = df.to_dict(orient="records")
+    routed = _route_disclosure_formal_dual_write(
+        conn, domain, spec, prepared_rows
+    )
+    if routed is not None:
+        return routed
     table = spec["target_table"]
     grain: list[str] = list(spec["grain"])
 

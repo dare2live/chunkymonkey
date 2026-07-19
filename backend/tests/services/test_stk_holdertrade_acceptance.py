@@ -84,7 +84,7 @@ def test_inventory_declares_stk_holdertrade_formal_writers_strangler() -> None:
     item = inventory["stk_holdertrade"]
     assert item["landing_writer"] is not None
     assert item["canonical_writer"] is not None
-    assert item["runtime_state"] == "formal_path_ready_legacy_direct_write"
+    assert item["runtime_state"] == "formal_default_legacy_mirror"
     assert item["conformity"] == "NONCONFORMING"
     permit = authorize_nonconforming_direct_write(
         "stk_holdertrade", conformity="NONCONFORMING"

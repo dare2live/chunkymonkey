@@ -715,7 +715,8 @@ def runtime_surface() -> dict[str, Any]:
         "landing_table": LANDING_TABLE,
         "canonical_table": CANONICAL_TABLE,
         "writer_id": WRITER_ID,
-        "legacy_direct_write": "nonconforming_strangler",
+        "production_write": "formal_default_legacy_mirror",
+        "legacy_direct_write": "nonconforming_escape_hatch",
         "dataset_snapshot": "blocked_until_e0_cutover",
         "provider_sync": "fixture_or_authorized_manual_only",
     }

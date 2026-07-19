@@ -270,8 +270,8 @@ _INSERT_COLS = (
 _INSERT_KEYS = [c.strip() for c in _INSERT_COLS.split(",")]
 
 
-def _upsert_rows(conn: Any, rows: list[dict]) -> int:
-    """E0: direct raw upsert is NONCONFORMING until landing→accept exists."""
+def _upsert_rows_legacy_direct(conn: Any, rows: list[dict]) -> int:
+    """NONCONFORMING escape hatch / dual-write mirror target."""
     if not rows:
         return 0
     from services.data_sources.disclosure_boundaries import (
@@ -292,6 +292,20 @@ def _upsert_rows(conn: Any, rows: list[dict]) -> int:
     )
     conn.commit()
     return len(rows)
+
+
+def _upsert_rows(conn: Any, rows: list[dict]) -> int:
+    """E0 default: formal land→accept by available_date, then legacy upsert mirror."""
+    if not rows:
+        return 0
+    from services.data_sources.disclosure_dual_write import (
+        write_org_holding_formal_then_mirror,
+    )
+
+    outcome = write_org_holding_formal_then_mirror(
+        conn, rows, mirror=_upsert_rows_legacy_direct
+    )
+    return int(outcome.legacy_rows_written)
 
 
 # ── 编排 ─────────────────────────────────────────────────────────────

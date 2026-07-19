@@ -25,7 +25,7 @@ AGENTS.md
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
 | T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 展示可用但 breadth/margin UNTRUSTED（B-ext）；分类/measurement/regime 耦合，暂不可直接做 PIT 特征；禁当项目池直至 B-pit |
-| T3 institution | `institution_profile.py` + `holders_aif10.py` + `disclosure_boundaries.py` + `*_acceptance.py` (holders/org/stk) + `disclosure_event_partition.py` + router/tests | **首个正式策略包目标**；E0：三域 land→accept tracer 齐；研究仍读 legacy NONCONFORMING；直写未退役 → DatasetSnapshot/E 仍 BLOCKED |
+| T3 institution | `institution_profile.py` + `holders_aif10.py` + `disclosure_boundaries.py` + `disclosure_dual_write.py` + `*_acceptance.py` (holders/org/stk) + `disclosure_event_partition.py` + router/tests | **首个正式策略包目标**；E0：三域 formal→legacy-mirror 默认写；研究仍读 legacy NONCONFORMING；未切 API → DatasetSnapshot/E 仍 BLOCKED |
 | T3 main rally | `rally_gt.py`, `rally_detect.py`, rally config/tests | GT 资产成熟；在机构首包之后接入同一 runtime |
 | T3 formulas | `bestchoice/FROZEN.md` + `evidence_manifest.json` | 冻结 challenger；Phase G 前不吸收 |
 | T4 decision/paper | `paper_portfolio.py`, frontend observation page | Legacy NONCONFORMING 观察账本；不是 paper execution |

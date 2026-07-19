@@ -26,7 +26,7 @@ def test_inventory_declares_three_disclosure_domains() -> None:
     assert inventory["holders_top10"]["canonical_writer"] is not None
     assert (
         inventory["holders_top10"]["runtime_state"]
-        == "formal_path_ready_legacy_direct_write"
+        == "formal_default_legacy_mirror"
     )
     assert inventory["org_holding"]["adapter"] == "miaoxiang"
     assert inventory["org_holding"]["target_table"] == "raw_org_holding_aif10"
@@ -35,7 +35,7 @@ def test_inventory_declares_three_disclosure_domains() -> None:
     assert inventory["org_holding"]["canonical_writer"] is not None
     assert (
         inventory["org_holding"]["runtime_state"]
-        == "formal_path_ready_legacy_direct_write"
+        == "formal_default_legacy_mirror"
     )
     assert inventory["stk_holdertrade"]["adapter"] == "tushare"
     assert inventory["stk_holdertrade"]["target_table"] == "raw_tushare_stk_holdertrade"
@@ -44,13 +44,13 @@ def test_inventory_declares_three_disclosure_domains() -> None:
     assert inventory["stk_holdertrade"]["canonical_writer"] is not None
     assert (
         inventory["stk_holdertrade"]["runtime_state"]
-        == "formal_path_ready_legacy_direct_write"
+        == "formal_default_legacy_mirror"
     )
     for item in inventory.values():
         assert item["conformity"] == "NONCONFORMING"
         assert item["population_kind"] == "raw_evidence"
         assert item["formal_write"] == "forbidden"
-        assert item["runtime_state"] == "formal_path_ready_legacy_direct_write"
+        assert item["runtime_state"] == "formal_default_legacy_mirror"
         assert item["landing_writer"] is not None
         assert item["canonical_writer"] is not None
 
@@ -102,7 +102,12 @@ def test_research_attestation_is_nonconforming_never_ready() -> None:
     for item in report.domains:
         assert item.status == "NONCONFORMING"
         assert item.population_kind == "raw_evidence"
-        assert "landing" in item.reason or "accepted" in item.reason
+        assert (
+            "legacy" in item.reason
+            or "landing" in item.reason
+            or "mirror" in item.reason
+        )
+    assert "formal_default_legacy_mirror" in " ".join(report.notes)
     payload = report.as_dict()
     assert payload["overall_status"] == "NONCONFORMING"
     assert payload["cutover_allowed"] is False

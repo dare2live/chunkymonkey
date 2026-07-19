@@ -722,3 +722,26 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Still blocks full E0 / DatasetSnapshot freeze**: retire three direct
   writes; switch research reads off legacy tables; freeze DatasetSnapshot;
   then E may start.
+
+### 2026-07-19 — E0 slice4: formal→legacy-mirror default write path
+
+- **PARTIAL / E0 in progress**：advanced strangler from
+  `formal_path_ready_legacy_direct_write` → `formal_default_legacy_mirror`.
+  - New `disclosure_dual_write`: production writes formal land→accept then
+    mirror provider rows to compatibility tables; formal REJECT skips mirror
+    (fail closed).
+  - Wired: `holders_aif10._write` (notice_date merge so per-stock sync does
+    not wipe other stocks), `org_holding_aif10._upsert_rows`,
+    `sync_runner._write_batch` for `stk_holdertrade` (escape via
+    `legacy_direct_only` / `_write_legacy_direct` / `_upsert_rows_legacy_direct`
+    + `authorize_nonconforming_direct_write`).
+  - Fixture parity tests (`test_disclosure_dual_write`) prove formal↔legacy
+    provider-field equality (org REAL/DOUBLE rounded). CI includes the suite.
+  - `/api/v3/inst` **not** cut to canonical (no live shadow compare yet).
+  - `DatasetSnapshot` / `cutover_allowed=false` unchanged — research still
+    reads legacy NONCONFORMING.
+- **Retirement plan (documented in goal)**: live/shadow formal↔legacy compare
+  → cut research/API reads to canonical → stop mirror → retire NONCONFORMING
+  escape hatch → freeze DatasetSnapshot → unblock E.
+- No institution_follow ablation, no B-pit mart cutover, no margin thaw, no
+  mass fetch.
