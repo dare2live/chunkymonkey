@@ -1050,3 +1050,37 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Residual for B2/B4**: B2 market-sensing ablation under same
   snapshot/folds/costs; B4 institution/event only after B2; refresh
   form for frontier day; stronger Tier1 publish/PIT zero-diff contract.
+
+### 2026-07-19 — Phase E: measured B2 market-sensing (project breadth)
+
+- **E PARTIAL** (B0/B1 reject; B2 short-window accept under prereg gates).
+- Added `MarketContextSnapshot` + `institution_follow_b2(_measure).py`.
+  Method=`signal_day_board_filtered_nominal_breadth`;
+  population=`project_universe_pit_shadow`; risk-on when adv≥dec.
+  **Honesty**: refuses legacy `mart_market_pulse_daily` /
+  `attest_market_pulse_scope` UNTRUSTED path (no silent latest fallback;
+  missing `available_at` recorded). B-pit `cutover_allowed=false` unchanged;
+  does not read wrong-scope margin.
+- Identical B0 snapshot/folds/costs/paper via `eligible_by_day` day gate.
+- Form frontier refresh **blocked**: `fact_stock_form_daily` max=`20260716`;
+  qfq serving max=`2026-07-16` so `technical_states.build_latest` no-ops for
+  `20260717` (accepted nominal K exists; qfq lag).
+- Live 40d (`20260522`–`20260717`):
+
+  | block | ret | max_dd | win | payoff | turn | n | holdout ret | verdict | claimable |
+  |---|---:|---:|---:|---:|---:|---:|---:|---|---|
+  | B0 | −24.4% | 33.5% | 0.45 | 0.93 | 1.45 | 145 | +5.9% | reject | false |
+  | B1 | −39.6% | 41.9% | 0.39 | 0.92 | 1.45 | 145 | +4.0% | reject | false |
+  | B2 | +0.34% | 13.7% | 0.52 | 0.99 | 0.60 | 60 | +5.9% | accept | true |
+
+  B2 coverage: day_cov=1.0, risk_on_days=16/40. Δ(B2−B0) ret≈+24.8pp,
+  dd≈−19.8pp. Holdout ret identical to B0 (holdout days all risk-on — not
+  independent holdout lift). Surface remains
+  `tier3_research_evidence_only` — accept ≠ StrategyRelease.
+- Tests: `test_institution_follow_b2` (8) + CI wire; pulse-source fail-closed.
+- **Did not**: Optuna, B4, B-pit mart cutover, margin thaw, qfq/form frontier
+  rebuild, multi-year backfill.
+- **Residual for B4**: institution/event FeatureBlock under same
+  snapshot/folds/costs after disclosure availability; do not stack on B2
+  accept as production; refresh form when qfq catches `20260717`; optional
+  longer-window stability before release.
