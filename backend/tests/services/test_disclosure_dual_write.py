@@ -190,6 +190,46 @@ def test_inventory_runtime_state_is_formal_default_legacy_mirror() -> None:
         refuse_accepted_publication_claim("holders_top10", "DatasetSnapshot")
 
 
+def test_accept_holders_partition_from_legacy_noop_mirror(conn) -> None:
+    """Canary path: formal accept from pre-seeded legacy without wiping history."""
+    from services.holders_aif10 import accept_holders_top10_partition_from_legacy
+
+    seed = [
+        _holders_row(holder_rank=1, holder_name="甲"),
+        _holders_row(holder_rank=2, holder_name="乙"),
+        _holders_row(
+            stock_code="000001",
+            notice_date="20260101",
+            holder_name="其它期不应被删",
+        ),
+    ]
+    # Seed legacy via escape hatch (pre-canary state).
+    from services.holders_aif10 import _write_legacy_direct
+
+    _write_legacy_direct(conn, [seed[0], seed[1]])
+    _write_legacy_direct(conn, [seed[2]])
+
+    outcome = accept_holders_top10_partition_from_legacy(
+        conn, PARTITION_HOLDERS, rewrite_legacy=False
+    )
+    assert outcome.status == "ACCEPTED"
+    assert outcome.partitions == (PARTITION_HOLDERS,)
+    assert outcome.canonical_rows == 2
+    # Other-period legacy row survives no-op mirror.
+    other = conn.execute(
+        f"""
+        SELECT COUNT(*) FROM {HOLDERS_LEGACY}
+         WHERE stock_code = '000001' AND notice_date = '20260101'
+        """
+    ).fetchone()[0]
+    assert other == 1
+    canon = conn.execute(
+        f"SELECT COUNT(*) FROM {HOLDERS_CANONICAL} WHERE notice_date = ?",
+        [PARTITION_HOLDERS],
+    ).fetchone()[0]
+    assert canon == 2
+
+
 def test_holders_dual_write_formal_legacy_parity(conn) -> None:
     rows = [
         _holders_row(holder_rank=1, holder_name="香港中央结算有限公司"),

@@ -770,3 +770,35 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   4. stop legacy mirror + retire NONCONFORMING escape hatch;
   5. then freeze DatasetSnapshot / unblock E (`institution_follow`).
 - No institution_follow, no B-pit mart cutover, no margin thaw.
+
+### 2026-07-19 — E0 slice6: live holders_top10 accepted canary (shadow MATCH)
+
+- **PARTIAL / E0 in progress**：diagnosed why dual-write had not created
+  canonical tables — wiring already in `holders_aif10._write` →
+  `write_holders_top10_formal_then_mirror`; production sync simply had not
+  run since merge. Target DB is `data/smartmoney.duckdb` (correct; not
+  tushare_raw). No wiring bug.
+- **Canary entry**: `accept_holders_top10_partition_from_legacy` +
+  `ingest_holders_aif10.py --accept-legacy-partition YYYYMMDD` (default
+  no-op legacy mirror).
+- **Canary (narrow, no mass backfill, no provider fetch)**: replayed legacy
+  `fact_top10_holder_period` rows for `notice_date=20260717` (73 rows / 6
+  stocks) through formal land→accept with **no-op legacy mirror** (avoid
+  stock-wide DELETE of other periods). Outcome:
+  - DuckDB: `data/smartmoney.duckdb`
+  - `batch_id=holders_top10:20260717:3cbe897f7736`
+  - `landing_miaoxiang_holders_top10`=73;
+    `canonical_top10_float_holders_period`=73; `accepted_partition` row_count=73
+  - domain shadow `holders_top10` / `20260717` → **MATCH** (mismatch_count=0)
+  - research overall → **PARTIAL** (`cutover_allowed=false`); org_holding
+    latest legacy partition `20260430` (~292k rows) still
+    `canonical_table_unavailable`; stk_holdertrade both tables absent
+- Skipped org/stk canaries this slice (not equally tiny; org min partition
+  ≫ holders canary).
+- `/api/v3/inst` default read **not** switched to canonical.
+- **Still required before research cutover + DatasetSnapshot freeze**:
+  1. org_holding + stk_holdertrade accepted canaries + live MATCH;
+  2. switch research/API reads to canonical;
+  3. stop legacy mirror + retire NONCONFORMING escape hatch;
+  4. freeze DatasetSnapshot / unblock E.
+- No institution_follow, no B-pit mart cutover, no margin thaw.

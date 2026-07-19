@@ -123,6 +123,11 @@ tables:
   dim_trading_rule: L1_foundation
   dim_trading_session: L1_foundation
   fact_top10_holder_period: L1_foundation
+  # E0 holders_top10 formal land→accept (smartmoney; 2026-07-19 canary notice_date=20260717)
+  landing_miaoxiang_holders_top10: L0_source
+  canonical_top10_float_holders_period: L1_foundation
+  accepted_partition: infra                 # formal accept pointer (shared control table)
+  ingest_batch: infra                       # landing batch evidence
   dim_stock_segment_daily: L1_foundation   # 2026-07-02 B1 股票分层 (市值/换手当日分位段+PIT行业, services/segments.py, 策略cell单一计算点)
   mart_sector_pulse_daily: display          # 2026-07-02 B4 市场感知 板块×日 两链并列 (services/market_pulse.py, Type A; dc资金流/quiet streak + sw RS/广度/涨跌停)
   mart_market_pulse_daily: display          # 2026-07-02 B4 市场感知 全市场×日 (大盘水位/涨跌停总量/炸板率/top板块快照)

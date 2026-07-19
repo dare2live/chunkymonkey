@@ -297,6 +297,50 @@ def _write(conn, rows: list[dict]) -> int:
     return int(outcome.legacy_rows_written)
 
 
+def accept_holders_top10_partition_from_legacy(
+    conn, notice_date: str, *, rewrite_legacy: bool = False
+):
+    """E0 canary: land→accept one notice_date from existing legacy rows.
+
+    Default keeps legacy untouched (no stock-wide DELETE).  Production sync
+    still uses ``_write`` (formal + legacy mirror) when fetching from aif10.
+    """
+    from services.data_sources.disclosure_dual_write import (
+        write_holders_top10_formal_then_mirror,
+    )
+    from services.data_sources.holders_top10_schema import PROVIDER_FIELDS
+
+    digits = "".join(ch for ch in str(notice_date or "") if ch.isdigit())
+    if len(digits) < 8:
+        raise ValueError(f"notice_date must be YYYYMMDD, got {notice_date!r}")
+    partition = digits[:8]
+    cols = ", ".join(PROVIDER_FIELDS)
+    raw = conn.execute(
+        f"""
+        SELECT {cols}
+          FROM fact_top10_holder_period
+         WHERE source = ?
+           AND replace(CAST(notice_date AS VARCHAR), '-', '') = ?
+         ORDER BY stock_code, holder_rank, row_seq, holder_name
+        """,
+        [SOURCE, partition],
+    ).fetchall()
+    rows = [dict(zip(PROVIDER_FIELDS, row, strict=True)) for row in raw]
+    if not rows:
+        raise ValueError(
+            f"no legacy miaoxiang rows for notice_date={partition}"
+        )
+
+    def _noop_mirror(_conn, material):
+        return len(material)
+
+    return write_holders_top10_formal_then_mirror(
+        conn,
+        rows,
+        mirror=_write_legacy_direct if rewrite_legacy else _noop_mirror,
+    )
+
+
 def sync_holders_aif10(
     conn,
     *,

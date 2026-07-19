@@ -71,16 +71,17 @@
   available/ann 轴；`/api/v3/inst/*` 带 `disclosure_conformity` +
   `disclosure_shadow` sidecar，**不改**研究数值。
   **三域 land→accept + dual-write FIXED**：`formal_default_legacy_mirror`。
-  **读侧 shadow FIXED（fixture）**：`disclosure_shadow_compare` 比对 legacy
-  compatibility vs accepted canonical 的 provider 字段投影；MATCH 与故意
-  drift 均可测；`cutover_allowed` 恒 false（含 MATCH）。live smartmoney 抽样：
-  legacy 有行、canonical 表尚未落库 → `overall_status=UNAVAILABLE`（诚实；
-  非 MATCH）。**仍阻 E0 闭合 / DatasetSnapshot 冻结**（证据清单）：
-  1) 生产 dual-write 跑出 accepted canonical partitions（三域）；
-  2) live/bounded shadow 三域 `MATCH`（非仅 fixture）；
-  3) 研究读路径切 canonical（`/api/v3/inst` + institution_profile 上游）；
-  4) 停 legacy mirror + 撤 NONCONFORMING escape hatch；
-  5) 再冻 DatasetSnapshot。未闭合则 **E=BLOCKED**。
+  **读侧 shadow FIXED**：`disclosure_shadow_compare`；`cutover_allowed` 恒
+  false。**live holders canary FIXED**：`data/smartmoney.duckdb`
+  `notice_date=20260717` → accepted
+  `holders_top10:20260717:3cbe897f7736`（73 行）+ shadow **MATCH**；
+  research overall **PARTIAL**（org/stk 仍 `canonical_table_unavailable` /
+  `both_tables_unavailable`）。根因=dual-write 已接线但合并后未跑生产 sync，
+  非错 DB。**仍阻 E0 闭合 / DatasetSnapshot 冻结**：
+  1) org_holding + stk_holdertrade 各至少一 accepted partition + live MATCH；
+  2) 研究读路径切 canonical（`/api/v3/inst` + institution_profile 上游）；
+  3) 停 legacy mirror + 撤 NONCONFORMING escape hatch；
+  4) 再冻 DatasetSnapshot。未闭合则 **E=BLOCKED**。
 - **E** `institution_follow_v1`（首包；B0→B4）。**F** main_rally。**G** 公式+BestChoice。**H** Release/名义价纸面。
 
 ## 边做边测
