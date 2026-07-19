@@ -48,7 +48,7 @@
 
 控制面原语/margin 冻结/all-due 前阻断/doctor `NOT_EVALUATED` FAIL/calendar 隔离原型：见 ledger。≠业务就绪。
 
-- **A（当前）** A1 **complete**；A2 **complete**（typed `availability{axis,rule,at}`；formal landing/canonical ≠ legacy raw；DDL 仅 explicit bootstrap；`calendar_runtime.publish_accepted_calendar_generation` live-capable；dim=`serve_projection` 非 accepted；sync 禁 legacy raw 落穿；无 provider canary）。下一步 **A3** 名义K+ST+`traded_on_observation_date` resolver；A4 landing 纯度；A5 adapter 三界。出口：对抗测绿且 `live_readiness` 可评估；禁抓数/切消费者。
+- **A（当前）** A1/A2 **complete**；A3 **PARTIAL**（`observation_population.resolve_traded_on_observation_date` + trusted loaders；policy v3 对齐 calendar dataset id；`live_readiness` 经 loader 评估非写死；K/ST accepted writer 仍缺 → residual `NOT_EVALUATED/BLOCKED`）。下一步 **A4** landing 纯度；A5 adapter 三界。出口：对抗测绿且 `live_readiness` 可评估；禁抓数/切消费者。
 - **B** external vs project-universe；pulse 脱离错误 raw；shadow 后切读面。
 - **C** Tier1/2 正式 lineage（definition/config/snapshot/universe/available_at）。
 - **D** `DatasetSnapshot`→`ExperimentVerdict` 最小链 + PIT 截断。

@@ -18,7 +18,7 @@ def _valid_policy_mapping() -> dict:
     return {
         "policy": {
             "id": "active_a_share_trading_universe",
-            "version": 2,
+            "version": 3,
         },
         "include": {
             "board_prefixes": ["60", "00", "30", "68"],
@@ -50,7 +50,7 @@ def _valid_policy_mapping() -> dict:
         "truth_source": {
             "nominal_kline": "tier0.market_data.nominal_ohlcv_daily",
             "st_membership": "tier0.security_identity.stock_st_daily",
-            "trading_calendar": "tier0.market_data.trading_calendar",
+            "trading_calendar": "tier0.reference.sse_trading_calendar_generation",
         },
         "current_enumeration": {
             "identity_source": "dim_active_a_stock",
@@ -72,7 +72,7 @@ def test_universe_policy_snapshot_is_immutable_and_complete():
     from services.universe import UNIVERSE_POLICY
 
     assert UNIVERSE_POLICY.policy_id == "active_a_share_trading_universe"
-    assert UNIVERSE_POLICY.policy_version == 2
+    assert UNIVERSE_POLICY.policy_version == 3
     assert UNIVERSE_POLICY.allowed_board_prefixes == ("60", "00", "30", "68")
     assert UNIVERSE_POLICY.allowed_exchange_ids == ("SSE", "SZSE")
     assert [
@@ -88,11 +88,14 @@ def test_universe_policy_snapshot_is_immutable_and_complete():
     assert UNIVERSE_POLICY.calendar_exchange_id == "SSE"
     assert UNIVERSE_POLICY.nominal_kline_source == "tier0.market_data.nominal_ohlcv_daily"
     assert UNIVERSE_POLICY.st_membership_source == "tier0.security_identity.stock_st_daily"
-    assert UNIVERSE_POLICY.trading_calendar_source == "tier0.market_data.trading_calendar"
+    assert (
+        UNIVERSE_POLICY.trading_calendar_source
+        == "tier0.reference.sse_trading_calendar_generation"
+    )
     assert len(UNIVERSE_POLICY.config_hash) == 64
 
     with pytest.raises(FrozenInstanceError):
-        UNIVERSE_POLICY.policy_version = 2
+        UNIVERSE_POLICY.policy_version = 3
 
 
 def test_project_exchange_gate_rejects_bse_and_uses_injected_snapshot():

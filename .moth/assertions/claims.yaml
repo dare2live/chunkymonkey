@@ -126,10 +126,10 @@ assertions:
     command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && moth coupling --repo . 2>&1 | grep -o 'verdict=[A-Z]*' | head -1"]
     expect: {op: regex, pattern: "verdict=PASS"}
   - id: universe-population-contract-static
-    claim: "universe 静态契约与对抗单测通过；只证明 typed scope/policy/binder 行为，不证明 accepted calendar/Kline/ST live readiness，后者仍为 NOT_EVALUATED"
+    claim: "universe 静态契约与对抗单测通过；live_readiness 经 observation loaders 评估且不得伪 READY（允许 NOT_EVALUATED/BLOCKED）"
     type: shell
-    command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 -m pytest -q backend/tests/services/test_population_scope.py backend/tests/scripts/test_check_universe_filter.py >/dev/null && PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_universe_filter.py --format json | .venv/bin/python3 -c 'import json,sys; r=json.load(sys.stdin); assert r[\"verdict\"]==\"PASS\" and r[\"live_readiness\"]==\"NOT_EVALUATED\"; print(\"STATIC_POPULATION_CONTRACT_PASS_LIVE_NOT_EVALUATED\")'"]
-    expect: {op: regex, pattern: "STATIC_POPULATION_CONTRACT_PASS_LIVE_NOT_EVALUATED"}
+    command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 -m pytest -q backend/tests/services/test_population_scope.py backend/tests/scripts/test_check_universe_filter.py backend/tests/services/test_observation_population.py >/dev/null && PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_universe_filter.py --format json | .venv/bin/python3 -c 'import json,sys; r=json.load(sys.stdin); assert r[\"verdict\"]==\"PASS\" and r[\"live_readiness\"] in {\"NOT_EVALUATED\",\"BLOCKED\"} and r[\"live_readiness\"]!=\"READY\" and r.get(\"live_readiness_detail\",{}).get(\"reasons\"); print(\"STATIC_POPULATION_CONTRACT_PASS_LIVE_NOT_READY\")'"]
+    expect: {op: regex, pattern: "STATIC_POPULATION_CONTRACT_PASS_LIVE_NOT_READY"}
   - id: exploration-isolated-in-sandbox
     claim: "探索隔离在 sandbox/ 不污染主代码 (2026-06-17 用户根治: 探索脚本/findings草稿/结果散进 backend/scripts+analysis+docs = 反复污染根因, 本对话清~100文件). sandbox/ gitignored 且默认整包清理; 探索 runner (experiment_*/analyze_*) 不许在 backend/scripts (该在 sandbox/<exp>/). 需要晋升的结果必须按现行 Tier3 契约重写、经 Rule 10 审核并由正式 owner 接管; 当前没有跨删存活的 verdict writer. 复活旧路径=污染根因复发. owner=sandbox/README.md"
     type: shell

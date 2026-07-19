@@ -28,6 +28,9 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from services.data_sources.contracts import dataset_contract_from_spec  # noqa: E402
+from services.data_sources.observation_population import (  # noqa: E402
+    evaluate_observation_population_readiness,
+)
 from services.data_sources.population_scope import (  # noqa: E402
     ExternalAggregateScope,
     ProjectUniversePitScope,
@@ -211,6 +214,11 @@ def audit_repository(
 
     formal_count = 0
     scope_counts: dict[str, int] = {}
+    live_readiness = "NOT_EVALUATED"
+    live_readiness_detail: dict[str, Any] = {
+        "status": "NOT_EVALUATED",
+        "reasons": ["policy_or_registry_unavailable"],
+    }
     try:
         registry = _registry(
             repo,
@@ -225,6 +233,9 @@ def audit_repository(
             registry, policy_snapshot=policy_snapshot
         )
         issues.extend(contract_issues)
+        readiness = evaluate_observation_population_readiness(policy_snapshot)
+        live_readiness = readiness.status
+        live_readiness_detail = readiness.as_dict()
     except (OSError, TypeError, ValueError, UniverseDataError, yaml.YAMLError) as exc:
         issues.append(_issue("contract_inputs_unreadable", str(exc)))
 
@@ -235,7 +246,8 @@ def audit_repository(
         "formal_dataset_count": formal_count,
         "scope_counts": scope_counts,
         "issues": issues,
-        "live_readiness": "NOT_EVALUATED",
+        "live_readiness": live_readiness,
+        "live_readiness_detail": live_readiness_detail,
     }
 
 
@@ -246,8 +258,11 @@ def _render_text(report: Mapping[str, Any]) -> str:
         f"source_count={report['source_count']} "
         f"formal_dataset_count={report['formal_dataset_count']} "
         f"scope_counts={report['scope_counts']} "
-        "live_readiness=NOT_EVALUATED"
+        f"live_readiness={report['live_readiness']}"
     ]
+    detail = report.get("live_readiness_detail") or {}
+    for reason in detail.get("reasons") or ():
+        lines.append(f"  - live_readiness_reason: {reason}")
     for issue in report["issues"]:
         domain = f" domain={issue['domain']}" if issue.get("domain") else ""
         lines.append(f"  - {issue['code']}{domain}: {issue['message']}")

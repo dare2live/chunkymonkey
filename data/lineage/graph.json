@@ -3037,6 +3037,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_observation_population.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_sync_execution_policy.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily"
@@ -4159,9 +4165,9 @@
     }
   ],
   "meta": {
-    "edge_count": 642,
-    "generated_at": "2026-07-19T12:29:46.446600+00:00",
-    "node_count": 286,
+    "edge_count": 643,
+    "generated_at": "2026-07-19T12:32:50.433696+00:00",
+    "node_count": 287,
     "version": 2
   },
   "nodes": [
@@ -4939,6 +4945,14 @@
         "path": "backend/tests/services/test_margin_state.py"
       },
       "id": "consumer:backend/tests/services/test_margin_state.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_observation_population.py"
+      },
+      "id": "consumer:backend/tests/services/test_observation_population.py",
       "kind": "consumer"
     },
     {

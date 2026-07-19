@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-19 20:29
+> Snapshot: 2026-07-19 20:32
 
 ## 1. 入口面
 
@@ -156,7 +156,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 5,168 | calls 边 6,280 | imports 边 1,306 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 5,226 | calls 边 6,338 | imports 边 1,332 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -167,13 +167,13 @@
 | services.data_sources.margin_schema | 14 |
 | services.database_manifest | 13 |
 | services.source_watermarks | 13 |
+| services.data_sources.calendar_schema | 12 |
 | services.data_sources.contracts | 11 |
-| services.data_sources.calendar_schema | 10 |
 | services.data_sources.accepted_schema | 9 |
+| services.universe | 9 |
 | services.db | 8 |
 | services.data_sources.calendar_contract | 7 |
 | services.data_sources.margin_evidence | 7 |
-| services.universe | 7 |
 | services.data_sources.batch_integrity | 6 |
 | services.data_sources.calendar_acceptance | 6 |
 | services.data_sources.margin_state | 6 |
@@ -186,6 +186,7 @@
 | backend/services/source_watermarks.py | 13 |
 | backend/services/database_manifest.py | 11 |
 | backend/services/data_sources/contracts.py | 9 |
+| backend/services/universe.py | 8 |
 | backend/services/data_sources/calendar_contract.py | 7 |
 | backend/services/data_sources/calendar_schema.py | 7 |
 | backend/services/data_sources/margin_evidence.py | 7 |
@@ -193,7 +194,6 @@
 | backend/services/data_sources/margin_schema.py | 6 |
 | backend/services/data_sources/margin_state.py | 6 |
 | backend/services/data_sources/margin_validation.py | 6 |
-| backend/services/universe.py | 6 |
 
 ### LOC top 10 (God module 候选)
 

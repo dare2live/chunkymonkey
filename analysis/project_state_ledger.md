@@ -451,3 +451,20 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - 对抗测：`test_calendar_{contract,acceptance,runtime,reader,schema}` + `test_sync_execution_policy`
   = `120 passed`。未做 provider fetch、live DDL、consumer cutover。Tier0 仍
   `BLOCKED` / `live_readiness=NOT_EVALUATED`（缺 accepted K/ST）。下一刀 A3。
+
+### 2026-07-19 — Phase A3 traded_on_observation_date resolver (PARTIAL)
+
+- A3 **PARTIAL**：新增 `observation_population.py`：
+  - trusted loaders：calendar→`open_calendar_truth`；nominal K/ST → fail-closed
+    `NOT_EVALUATED`（`accepted_writer_pending`，禁 raw/dim/qfq 冒充）。
+  - `resolve_traded_on_observation_date`：开市 ∩ 名义K 成员 − ST − 非白名单 board；
+    拒未来 observation、不可见 partition、0 行 K。
+  - `evaluate_observation_population_readiness` 接入 `check_universe_filter`：
+    `live_readiness` 经真评估（当前 live 常见 `BLOCKED`：calendar schema 不完整 + K/ST
+    writer 未建），不再硬编码常量。
+- `universe_rules.yaml` policy **v3**：`trading_calendar` =
+  `tier0.reference.sse_trading_calendar_generation`（对齐 A2 dataset id）。
+- 对抗测：`test_observation_population` + universe/population_scope/check_universe_filter
+  相关 = `84 passed`。
+- **BLOCKED residual（需后续或授权 canary，非本刀）**：名义 K / ST accepted partition
+  writer+schema+live 发表未建；无 provider mass fetch。下一刀 A4 landing 纯度。

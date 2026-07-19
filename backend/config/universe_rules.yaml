@@ -3,17 +3,16 @@
 # 第一性原理: K 线有交易 = 在交易. 没有 = 不在.
 # 奥卡姆剃刀: 不需要中间表 (dim_all_ever_listed), K 线就是真相源.
 #
-# === 真相源优先级 (2026-06-17 用户决议: 升级到交易日历级) ===
-# 交易日历 (dim_trading_calendar) 是"日期"的硬真相源 — 非交易日不能下单。
-# 本 universe 是"股票"的硬真相源, 与交易日历同等优先级。2026-07-18 对抗复核
-# 已证明 legacy assert_universe_clean/check_universe_filter 只覆盖静态前缀和代码形状，
-# 没有形成统一 PIT 发布门；它们不得再被引用为完整硬门证据。恢复路径由
-# goal.md Phase 1.1A 负责：typed policy snapshot + population scope + row-level PIT gate。
-# owner: services/universe.py (政策快照) + 本文件 (规则) + 名义K线/stock_st (真相数据)。
+# === 真相源优先级 ===
+# 正式日期真相 = accepted SSE calendar generation（非 dim_trading_calendar serve projection）。
+# 正式股票日级人口 = traded_on_observation_date（accepted 名义K ∩ ¬ST ∩ board 白名单）。
+# legacy assert_universe_clean/check_universe_filter 静态前缀审计 ≠ 完整 PIT 门；
+# row-level 证明见 observation_population.resolve_traded_on_observation_date。
+# owner: services/universe.py + 本文件 + observation_population.py。
 
 policy:
   id: "active_a_share_trading_universe"
-  version: 2
+  version: 3
 
 # --- 包含规则 (白名单, 只有这些前缀才进 universe) ---
 include:
@@ -72,7 +71,7 @@ limit_up_pct:
 truth_source:
   nominal_kline: "tier0.market_data.nominal_ohlcv_daily"
   st_membership: "tier0.security_identity.stock_st_daily"
-  trading_calendar: "tier0.market_data.trading_calendar"
+  trading_calendar: "tier0.reference.sse_trading_calendar_generation"
 
 # --- legacy 当前枚举（不得参与历史 PIT policy/hash） ---
 current_enumeration:
