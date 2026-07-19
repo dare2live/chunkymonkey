@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, Mapping
+from uuid import uuid4
 
 from services.data_sources.disclosure_dataset_snapshot import (
     DISCLOSURE_SNAPSHOT_RELPATH,
@@ -216,8 +216,9 @@ def build_b0_run(
         if cutover_allowed is not None
         else bool(payload.get("cutover_allowed"))
     )
-    frozen_at = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    experiment_id = f"{STRATEGY_PACKAGE}:{BLOCK_ID}:{snap_id}:{frozen_at}"
+    # run_id is a scaffold identity token (not a trade_date / end_date).
+    run_id = uuid4().hex[:12]
+    experiment_id = f"{STRATEGY_PACKAGE}:{BLOCK_ID}:{snap_id}:{run_id}"
 
     notes = [
         "b0_bare_k_scaffold_only",
