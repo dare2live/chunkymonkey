@@ -21,7 +21,7 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；calendar + 单日 K/ST accepted canary（`20260717`）已落地；doctor 当日 frontier 仍可 NOT_EVALUATED。残余=连续覆盖；无 mass fetch / cutover |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；calendar + 单日 K/ST canary（`20260717`）；default readiness 评 eligible frontier（非 calendar-today）→ READY。残余=连续覆盖/下一交易日；无 mass fetch / cutover |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
 | T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 展示可用但 breadth/margin UNTRUSTED（B-ext）；分类/measurement/regime 耦合，暂不可直接做 PIT 特征；禁当项目池直至 B-pit |
@@ -68,7 +68,7 @@ AGENTS.md
 
 | Priority | Defect | Consequence |
 |---:|---|---|
-| P0 | K/ST 仅单日 canary（`20260717`）；无连续覆盖/今日 frontier | B-pit mart/cutover 仍禁；doctor 当日 NOT_EVALUATED 诚实；扩窗须再授权 |
+| P0 | K/ST 仅单日 canary（`20260717`）；无连续历史覆盖/下一交易日 | B-pit mart/cutover 仍禁；eligible frontier READY；扩窗须再授权 |
 | P0 | 披露域 miaoxiang aif10 直写 fact（无 landing/accepted） | Phase E 冻结 DatasetSnapshot 不可满足；标 NONCONFORMING，归 E0 |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
@@ -125,9 +125,11 @@ calendar 按 `calendar_contract.py`、`calendar_schema.py`、`calendar_landing.p
 `capture_and_publish_authorized_calendar_generation`。名义 K/ST 按
 `nominal_ohlcv_*` / `stock_st_*` + 共享 `security_day_partition.py` /
 `security_day_capture.py` 分责；authorized 单日入口
-`capture_and_publish_authorized_*_partition`。`trade_cal`/`daily`/`stock_st` =
-`authorized_manual_generation` + `on_demand`（禁 all-due；K/ST 禁 drain）；
-sync 禁 legacy raw。margin 仍 scope_blocked / frozen。
+`capture_and_publish_authorized_*_partition`。`observation_population.py` 的 default
+readiness 经 `resolve_eligible_observation_date`（accepted calendar ∩ K/ST
+`availability_policy`）评 frontier，不索要周末/节假 calendar-today 分区。
+`trade_cal`/`daily`/`stock_st` = `authorized_manual_generation` + `on_demand`
+（禁 all-due；K/ST 禁 drain）；sync 禁 legacy raw。margin 仍 scope_blocked / frozen。
 
 旧 margin history request/runtime/writer/CLI 已退役物删。冻结 v2 只由 `margin_evidence.py`、
 `margin_state.py`、reconcile/readiness/projection 读侧保留不可变审计证据；不存在受支持的继续写入旁路。

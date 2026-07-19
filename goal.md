@@ -6,7 +6,7 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + 单日 K/ST accepted canary 已落地；缺连续覆盖/今日 frontier）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（广度/shadow 已有；mart/cutover 仍未授权）。Fable5 **REVISE** 已吸收（见 ledger）。禁 E0/institution_follow 生产至 A/B 足够。
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + 单日 K/ST canary；eligible frontier=`20260717` READY；缺连续历史覆盖/下一交易日）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；mart/cutover 仍未授权）。Fable5 **REVISE** 已吸收（见 ledger）。禁 E0/institution_follow 生产至 A/B 足够。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -54,15 +54,17 @@
   `authorized_manual_generation` + `sync_policy=on_demand`（禁 --all-due）。
   Live accepted：SSE calendar generation（13162 行）+ `20260717` nominal OHLCV
   （5522 行，`daily:20260717:20260719T132225Z`）+ ST（211 行，
-  `stock_st:20260717:20260719T132222Z`）。`evaluate_observation_population_readiness
-  (observation_date=20260717)=READY`，population=4989；doctor 对**当日**
-  frontier 仍 `NOT_EVALUATED`（无 20260719 K/ST 分区，诚实）。margin 仍冻结。
-  下一刀：受控扩窗/今日 eligible 单日（仍禁 mass backfill / margin 解冻 /
-  pulse cutover）；B-pit shadow 可读 canary 日后再谈 mart。
+  `stock_st:20260717:20260719T132222Z`）。Eligible frontier（日历+availability）=
+  `20260717`（周末无新缺口；未做 mass backfill）。Default
+  `evaluate_observation_population_readiness` 现解析该 frontier（非 calendar-today）
+  → `READY`，population=4989；doctor `population_readiness=PASS`。margin 仍冻结。
+  下一刀：下一交易日 eligible 单日（仍禁 mass backfill / margin 解冻 /
+  pulse cutover）。
 - **B-ext FIXED（诚实化）** scope + shadow + sentiment sidecar + 前端 UNTRUSTED 标注；
   mart 数值未改、`cutover_allowed=false`。残余=B-pit 数值切读。
-- **B-pit PARTIAL** 广度/shadow 已有；**未**接 pulse mart / 未 cutover。A3 单日
-  K/ST 已可支撑 canary 日 resolver；连续覆盖与 cutover 仍未授权。
+- **B-pit PARTIAL** 广度/shadow 已有；**未**接 pulse mart / 未 cutover。Canary 日
+  `20260717` shadow：project adv/dec=386/4571 ratio≈0.0844 vs unfiltered
+  proxy≈0.0964，`ratios_match=false`，`cutover_allowed=false`（默认禁切）。
 - **C** Tier1/2 正式 lineage。**D** `DatasetSnapshot`→`ExperimentVerdict` + PIT 截断。
 - **E0（E 硬前置）** 披露域 formal 化：holders/org_holding/stk_holdertrade → adapter/landing/canonical + notice/`available_at` 契约。未完成则 **E=BLOCKED**。
 - **E** `institution_follow_v1`（首包；B0→B4）。**F** main_rally。**G** 公式+BestChoice。**H** Release/名义价纸面。

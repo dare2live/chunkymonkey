@@ -65,12 +65,18 @@ def test_worktree_includes_untracked_source_and_omits_deleted_file(tmp_path: Pat
     assert report["formal_dataset_count"] == 1
     assert report["scope_counts"] == {"external_aggregate": 1}
     # live_readiness must be evaluated via observation loaders, not a dead constant.
+    # Hosts with an accepted eligible-frontier canary may honestly report READY;
+    # offline/missing hosts stay NOT_EVALUATED/BLOCKED with explicit reasons.
     assert report["live_readiness"] in {"NOT_EVALUATED", "BLOCKED", "DEGRADED", "READY"}
-    assert report["live_readiness"] != "READY"
     detail = report["live_readiness_detail"]
     assert detail["status"] == report["live_readiness"]
-    assert any("nominal_ohlcv" in reason for reason in detail["reasons"])
-    assert any("stock_st" in reason for reason in detail["reasons"])
+    assert detail.get("reasons")
+    if report["live_readiness"] == "READY":
+        assert detail.get("observation_date")
+        assert any("accepted_calendar_kline_st" in reason for reason in detail["reasons"])
+    else:
+        assert any("nominal_ohlcv" in reason for reason in detail["reasons"])
+        assert any("stock_st" in reason for reason in detail["reasons"])
 
 
 def test_index_mode_uses_staged_inventory_not_clean_worktree(tmp_path: Path) -> None:

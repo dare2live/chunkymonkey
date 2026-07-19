@@ -92,6 +92,7 @@ class ObservationPopulationReadiness:
     policy_id: str
     policy_version: int
     policy_hash: str
+    observation_date: date | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -103,6 +104,11 @@ class ObservationPopulationReadiness:
             "policy_id": self.policy_id,
             "policy_version": self.policy_version,
             "policy_hash": self.policy_hash,
+            "observation_date": (
+                None
+                if self.observation_date is None
+                else self.observation_date.strftime("%Y%m%d")
+            ),
         }
 
 
@@ -421,6 +427,61 @@ def resolve_traded_on_observation_date(
     )
 
 
+def resolve_eligible_observation_date(
+    decision_time: datetime,
+    calendar: CalendarTruth,
+) -> date:
+    """Resolve the binding K+ST publishable observation date (no calendar-today).
+
+    Uses accepted open sessions plus the typed ``availability_policy`` on the
+    nominal OHLCV and stock_st domains.  The frontier is the earlier of the two
+    eligible ends so population readiness never asks for an unpublished day.
+    """
+
+    from zoneinfo import ZoneInfo
+
+    from services.data_sources.availability import resolve_availability_frontier
+    from services.data_sources.nominal_ohlcv_schema import DOMAIN as DAILY_DOMAIN
+    from services.data_sources.stock_st_schema import DOMAIN as ST_DOMAIN
+
+    cutoff = _as_aware(decision_time, field="decision_time")
+    now_local = cutoff.astimezone(ZoneInfo("Asia/Shanghai"))
+    today = now_local.date()
+    coverage_end = min(today, calendar.evidence.coverage_end)
+    if coverage_end < calendar.evidence.coverage_start:
+        raise ObservationPopulationUnavailable(
+            "NOT_EVALUATED",
+            "eligible_observation_date_outside_calendar_coverage "
+            f"today={today.isoformat()} coverage="
+            f"{calendar.evidence.coverage_start.isoformat()}.."
+            f"{calendar.evidence.coverage_end.isoformat()}",
+        )
+    open_days = calendar.open_dates(calendar.evidence.coverage_start, coverage_end)
+    trading_day_values = tuple(day.strftime("%Y%m%d") for day in open_days)
+    if not trading_day_values:
+        raise ObservationPopulationUnavailable(
+            "NOT_EVALUATED",
+            "eligible_observation_date_calendar_empty",
+        )
+
+    eligible_ends: list[str] = []
+    for domain in (DAILY_DOMAIN, ST_DOMAIN):
+        eligibility = resolve_availability_frontier(
+            domain.availability_policy,
+            now=now_local,
+            trading_day_values=trading_day_values,
+        )
+        if eligibility.eligible_end is None:
+            raise ObservationPopulationUnavailable(
+                "NOT_EVALUATED",
+                "no_eligible_observation_date "
+                f"domain={domain.domain} reason={eligibility.reason}",
+            )
+        eligible_ends.append(eligibility.eligible_end)
+    frontier = min(eligible_ends)
+    return datetime.strptime(frontier, "%Y%m%d").date()
+
+
 def evaluate_observation_population_readiness(
     policy: UniversePolicy,
     *,
@@ -434,11 +495,17 @@ def evaluate_observation_population_readiness(
 
     This is the honest live_readiness seam: it always runs the loaders.  Missing
     accepted K/ST writers currently yield ``NOT_EVALUATED``, never a false READY.
+
+    When ``observation_date`` is omitted, the default is the eligible K+ST
+    publication frontier from accepted calendar + typed availability policy —
+    never a closed calendar-today (weekend/holiday) partition that cannot exist.
     """
 
     policy = _require_policy(policy)
     cutoff = decision_time or datetime.now(timezone.utc)
-    day = observation_date or cutoff.date()
+    if cutoff.tzinfo is None:
+        cutoff = cutoff.replace(tzinfo=timezone.utc)
+    day = observation_date
     reasons: list[str] = []
     status: ReadinessStatus = "READY"
 
@@ -453,7 +520,9 @@ def evaluate_observation_population_readiness(
 
     try:
         calendar = (calendar_loader or load_accepted_calendar)(cutoff, policy)
-        if not calendar.is_open(day) and observation_date is not None:
+        if day is None:
+            day = resolve_eligible_observation_date(cutoff, calendar)
+        elif not calendar.is_open(day):
             _note(
                 ObservationPopulationUnavailable(
                     "BLOCKED",
@@ -464,6 +533,11 @@ def evaluate_observation_population_readiness(
         _note(ObservationPopulationUnavailable(exc.status, exc.reason))
     except ObservationPopulationUnavailable as exc:
         _note(exc)
+
+    if day is None:
+        # Calendar/eligibility failed before a frontier could be named; keep
+        # loaders fail-closed against the decision calendar date as last resort.
+        day = cutoff.astimezone(timezone.utc).date()
 
     try:
         (nominal_kline_loader or load_accepted_nominal_kline_membership)(
@@ -488,6 +562,7 @@ def evaluate_observation_population_readiness(
         policy_id=policy.policy_id,
         policy_version=policy.policy_version,
         policy_hash=policy.config_hash,
+        observation_date=day,
     )
 
 
@@ -512,6 +587,7 @@ __all__ = [
     "load_accepted_calendar",
     "load_accepted_nominal_kline_membership",
     "load_accepted_st_membership",
+    "resolve_eligible_observation_date",
     "refuse_legacy_population_surface",
     "resolve_traded_on_observation_date",
 ]

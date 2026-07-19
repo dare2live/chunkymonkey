@@ -45,16 +45,31 @@ def _partition(dataset_id: str, day: date, *, rows: int = 2) -> AcceptedPartitio
 
 
 def _open_calendar():
+    from datetime import timedelta
+
     evidence = SimpleNamespace(
         generation_id="cal-gen-1",
         content_hash="d" * 64,
         usable_at=DECISION.replace(hour=7),
+        coverage_start=date(2026, 1, 1),
+        coverage_end=date(2026, 12, 31),
     )
 
     class _Truth:
         def is_open(self, value):
             day = value if isinstance(value, date) else date.fromisoformat(str(value))
             return day.weekday() < 5
+
+        def open_dates(self, start, end):
+            first = start if isinstance(start, date) else date.fromisoformat(str(start))
+            last = end if isinstance(end, date) else date.fromisoformat(str(end))
+            days = []
+            cursor = first
+            while cursor <= last:
+                if cursor.weekday() < 5:
+                    days.append(cursor)
+                cursor += timedelta(days=1)
+            return tuple(days)
 
     truth = _Truth()
     truth.evidence = evidence
@@ -355,6 +370,44 @@ def test_evaluate_readiness_runs_loaders_and_stays_not_evaluated_live() -> None:
         for reason in readiness.reasons
     )
     assert any("calendar" in reason for reason in readiness.reasons)
+
+
+def test_default_readiness_uses_eligible_frontier_not_calendar_today() -> None:
+    """Weekend/holiday defaults must not demand non-existent calendar-today partitions."""
+
+    from zoneinfo import ZoneInfo
+
+    policy = _policy()
+    # Saturday evening Shanghai — eligible K+ST frontier is Friday 20260717.
+    saturday_sh = datetime(2026, 7, 18, 21, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+    seen: list[date] = []
+
+    def _kline(day, _cutoff, _policy):
+        seen.append(day)
+        return (
+            _partition(NOMINAL_KLINE_DATASET_ID, day, rows=1),
+            frozenset({"600000.SH"}),
+        )
+
+    def _st(day, _cutoff, _policy):
+        seen.append(day)
+        return (
+            _partition(ST_MEMBERSHIP_DATASET_ID, day, rows=1),
+            frozenset({"600001.SH"}),
+        )
+
+    readiness = evaluate_observation_population_readiness(
+        policy,
+        decision_time=saturday_sh,
+        calendar_loader=lambda *_: _open_calendar(),
+        nominal_kline_loader=_kline,
+        st_membership_loader=_st,
+    )
+    assert readiness.status == "READY"
+    assert readiness.observation_date == OPEN_DAY
+    assert readiness.as_dict()["observation_date"] == "20260717"
+    assert seen == [OPEN_DAY, OPEN_DAY]
+    assert CLOSED_DAY not in seen
 
 
 def test_legacy_surfaces_are_hard_walled() -> None:

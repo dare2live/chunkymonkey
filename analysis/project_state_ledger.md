@@ -624,3 +624,21 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   - Doctor now surfaces `live_readiness_detail.reasons` instead of a generic stub.
 - 未做：mass backfill、margin 解冻、pulse/B-pit mart cutover、连续多日覆盖。
   Next：受控扩窗/今日 eligible 单日；B-pit shadow 可对 canary 日读 accepted 源。
+
+### 2026-07-19 — A3 eligible-frontier readiness (no new sync)
+
+- **PARTIAL / frontier READY**：周末实测 `eligible_end(daily|stock_st)=20260717`
+  （`latest_prior_trading_day`）；last accepted = eligible end → **无缺失 frontier
+  日可 sync**（禁 mass history backfill；未调用 provider）。
+- Code: `resolve_eligible_observation_date` + default
+  `evaluate_observation_population_readiness` 改用日历 open sessions ∩ K/ST
+  typed `availability_policy` 前沿，不再对 calendar-today（如周日）索要不可能存在
+  的分区。Readiness 报告含 `observation_date`。
+- Proof: default readiness → `READY` / `observation_date=20260717`；
+  population=4989；`scripts/chunkyctl doctor --fast` →
+  `population_readiness=PASS`（tooling_gate 仍随 dirty worktree 变）。
+- B-pit shadow（仍禁 cutover）：`20260717` project breadth adv/dec=386/4571
+  ratio≈0.08445；unfiltered accepted-canonical proxy≈0.09638；
+  `ratios_match=false`；`cutover_allowed=false`。
+- 未做：下一交易日单日 sync、mass backfill、margin 解冻、pulse mart cutover。
+  Next：周一/下一 eligible 交易日授权单日 K+ST。
