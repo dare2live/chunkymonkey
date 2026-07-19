@@ -2,7 +2,7 @@
 
 > 状态：live navigation，非规则 owner
 > 更新：2026-07-19
-> 当前目标看 `goal.md`（Phase A→H；策略首包=机构跟随；多源=契约可换；边做边测）。
+> 当前目标看 `goal.md`（A→H；B-ext/B-pit；E0 披露 formal；策略首包=机构跟随；多源=契约可换目标态；边做边测）。
 > 架构看 `docs/MASTER_TOPLEVEL_DESIGN.md`；机器入口与 writer 清单看 `FEATURE_MAP.md` 和 CodeGraph。
 
 ## 1. Authority
@@ -21,11 +21,11 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | Phase A 代码出口：A1–A5 闭合（calendar runtime、observation resolver、landing purity、`formal_boundaries`；legacy raw 墙在 contract handoff 之后）。`live_readiness` 可评估（多为 BLOCKED）。K/ST accepted writer + calendar canary 仍缺；无 provider mass fetch / consumer cutover |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整（含名义 K/ST accepted writers）；`live_readiness` 可评估（多为 BLOCKED=无 live partition）。残余=live partitions + 授权 canary；无 mass fetch / cutover |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
-| T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 当前展示可用；分类解释、measurement、regime 和 persistence 耦合，暂不可直接做 PIT 特征 |
-| T3 institution | `institution_profile.py` + router/tests | **首个正式策略包目标**；现仅为 research evidence，待 Phase D/E |
+| T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 当前展示可用；分类解释、measurement、regime 和 persistence 耦合，暂不可直接做 PIT 特征；B-ext 前勿当项目池 |
+| T3 institution | `institution_profile.py` + `holders_aif10.py` + router/tests | **首个正式策略包目标**；披露主源=miaoxiang aif10 **NONCONFORMING**（无 landing）；待 E0→D/E |
 | T3 main rally | `rally_gt.py`, `rally_detect.py`, rally config/tests | GT 资产成熟；在机构首包之后接入同一 runtime |
 | T3 formulas | `bestchoice/FROZEN.md` + `evidence_manifest.json` | 冻结 challenger；Phase G 前不吸收 |
 | T4 decision/paper | `paper_portfolio.py`, frontend observation page | Legacy NONCONFORMING 观察账本；不是 paper execution |
@@ -68,14 +68,16 @@ AGENTS.md
 
 | Priority | Defect | Consequence |
 |---:|---|---|
-| P0 | 名义 K/ST/calendar accepted writers 已就绪，live partitions/canary 未 bootstrap | `traded_on_observation_date` 代码路径完备；live 仍诚实 BLOCKED/NOT_EVALUATED（data-plane） |
+| P0 | calendar/K/ST live accepted partitions + 授权 canary 未 bootstrap（A3 data-plane residual） | B-pit / 真 universe 证明阻塞；缺库/无 schema 时 loader 诚实 NOT_EVALUATED，非 IOException |
+| P0 | 披露域 miaoxiang aif10 直写 fact（无 landing/accepted） | Phase E 冻结 DatasetSnapshot 不可满足；标 NONCONFORMING，归 E0 |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
+| P1 | formal `boundary_inventory` 仅为静态/测试资源，非 doctor readiness 证书；canary_pending 域无 countdown 出口 | 豁免不可见即永久；须在 goal/ledger 跟踪 canary 授权点 |
 | P1 | Live DC snapshot/pulse tables predate namespace fix until manual rebuild | Code contract is fixed but stored rows still need controlled reconciliation |
-| P1 | Market pulse mixes taxonomy, measurements, rolling/regime, write/read | One 800-line module owns multiple change reasons and incomparable methods |
+| P1 | Market pulse mixes taxonomy, measurements, rolling/regime, write/read；仍读错误 scope raw | B-ext 必先切断；One 800-line module owns multiple change reasons |
 | P1 | Stock state/market regime rows lack config/input version | Historical outputs cannot prove which definition produced them |
 | P1 | No shared dataset snapshot/experiment/release chain | Strategy evidence cannot reach decision/product safely |
-| P1 | Docs/CLI gates previously treated retired/warn as PASS | Tooling green did not prove executable reality |
+| P1 | Docs/CLI gates previously treated retired/warn as PASS；事实性断言（如“仅 TuShare”）不在 gate 覆盖 | Tooling green did not prove executable reality |
 
 The current migration and blockers are maintained only in `goal.md`.
 

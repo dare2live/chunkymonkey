@@ -4,15 +4,56 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from services.data_sources.accepted_schema import ACCEPTED_TABLE
+from services.data_sources.accepted_schema import (
+    ACCEPTED_TABLE,
+    verify_accepted_evidence_schema,
+)
 from services.data_sources.security_day_partition import (
     SecurityDayAcceptedPartition,
     SecurityDayDomain,
     SecurityDayError,
     _aware,
+    _columns,
     canonical_content_hash,
-    ensure_security_day_schema,
 )
+
+
+def verify_security_day_read_schema(conn, domain: SecurityDayDomain) -> None:
+    """Read-only schema proof for trusted loaders — never CREATE/DDL."""
+
+    expected_landing = {
+        "batch_id",
+        "row_ordinal",
+        "request_json",
+        "payload_json",
+        "row_hash",
+    }
+    expected_canonical = {
+        str(field["name"]) for field in tuple(domain.schema_payload["fields"])
+    }
+    try:
+        verify_accepted_evidence_schema(conn, error_type=SecurityDayError)
+        landing_cols = set(_columns(conn, domain.landing_table))
+        canonical_cols = set(_columns(conn, domain.canonical_table))
+    except SecurityDayError:
+        raise
+    except Exception as exc:
+        raise SecurityDayError(
+            f"no_accepted_security_day_schema dataset_id={domain.dataset_id} "
+            f"read_failed={str(exc)[:200]}"
+        ) from exc
+    if landing_cols != expected_landing:
+        raise SecurityDayError(
+            f"{domain.landing_table} schema drift: "
+            f"missing={sorted(expected_landing - landing_cols)} "
+            f"extra={sorted(landing_cols - expected_landing)}"
+        )
+    if canonical_cols != expected_canonical:
+        raise SecurityDayError(
+            f"{domain.canonical_table} schema drift: "
+            f"missing={sorted(expected_canonical - canonical_cols)} "
+            f"extra={sorted(canonical_cols - expected_canonical)}"
+        )
 
 
 def load_accepted_security_day_partition(
@@ -26,7 +67,7 @@ def load_accepted_security_day_partition(
 ) -> SecurityDayAcceptedPartition:
     """Fail-closed reader for one accepted security-day partition."""
 
-    ensure_security_day_schema(conn, domain)
+    verify_security_day_read_schema(conn, domain)
     cutoff = _aware(decision_time, "decision_time")
     partition = observation_date.strftime("%Y%m%d")
     pointer = conn.execute(
@@ -186,4 +227,5 @@ def lineage_fields() -> tuple[dict[str, Any], ...]:
 __all__ = [
     "lineage_fields",
     "load_accepted_security_day_partition",
+    "verify_security_day_read_schema",
 ]

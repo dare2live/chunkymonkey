@@ -43,6 +43,7 @@ def load_accepted_stock_st_membership_from_conn(
         status = (
             "NOT_EVALUATED"
             if detail.startswith("no_accepted_partition")
+            or detail.startswith("no_accepted_security_day_schema")
             or "not_visible_at_decision_time" in detail
             else "BLOCKED"
         )
@@ -55,8 +56,9 @@ def open_accepted_stock_st_membership(
 ) -> SecurityDayAcceptedPartition:
     from services.data_access.resolver import connect_ro
 
-    conn = connect_ro("tushare_raw")
+    conn = None
     try:
+        conn = connect_ro("tushare_raw")
         return load_accepted_stock_st_membership_from_conn(
             conn, observation_date, decision_time
         )
@@ -69,7 +71,8 @@ def open_accepted_stock_st_membership(
             f"read_failed={str(exc)[:300]}",
         ) from exc
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 __all__ = [

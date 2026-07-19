@@ -304,6 +304,23 @@ def _prove_partition_usable(
             )
 
 
+def _prove_membership_parity(
+    ref: AcceptedPartitionRef,
+    members: frozenset[str],
+    *,
+    source_label: str,
+) -> None:
+    """Envelope row_count must equal distinct membership cardinality."""
+
+    size = len(members)
+    if int(ref.row_count) != size:
+        raise ObservationPopulationUnavailable(
+            "BLOCKED",
+            f"accepted_{source_label}_row_count_membership_parity_failed "
+            f"row_count={ref.row_count} membership_size={size}",
+        )
+
+
 def resolve_traded_on_observation_date(
     observation_date: date | str,
     decision_time: datetime | str,
@@ -358,10 +375,20 @@ def resolve_traded_on_observation_date(
         observation_date=day,
         decision_time=cutoff,
     )
+    _prove_membership_parity(kline_ref, traded, source_label="nominal_kline")
+    _prove_membership_parity(st_ref, st_members, source_label="stock_st")
     if not traded:
         raise ObservationPopulationUnavailable(
             "BLOCKED",
             "accepted_nominal_kline_partition_has_zero_rows "
+            f"date={day.isoformat()}",
+        )
+    if not st_members:
+        # Zero-row accepted ST is not proof of "no ST names"; that needs an
+        # explicit empty-partition attestation (not yet defined). Fail closed.
+        raise ObservationPopulationUnavailable(
+            "BLOCKED",
+            "accepted_stock_st_partition_has_zero_rows "
             f"date={day.isoformat()}",
         )
 

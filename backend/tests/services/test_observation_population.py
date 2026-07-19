@@ -84,6 +84,61 @@ def test_live_kline_and_st_loaders_fail_closed_without_live_partitions() -> None
     assert "stock_st" in st.value.reason or "no_accepted" in st.value.reason
 
 
+def test_missing_tushare_raw_db_is_not_evaluated(monkeypatch) -> None:
+    """CI/offline: missing DuckDB must not escape as raw IOException."""
+
+    import duckdb
+
+    from services.data_access import resolver as data_resolver
+    from services.data_sources.observation_population import (
+        evaluate_observation_population_readiness,
+    )
+
+    def _missing(_alias: str):
+        raise duckdb.IOException(
+            'Cannot open database "data/tushare_raw.duckdb" in read-only mode: '
+            "database does not exist"
+        )
+
+    monkeypatch.setattr(data_resolver, "connect_ro", _missing)
+    policy = _policy()
+    with pytest.raises(ObservationPopulationUnavailable) as kline:
+        load_accepted_nominal_kline_membership(OPEN_DAY, DECISION, policy)
+    assert kline.value.status == "NOT_EVALUATED"
+    assert "read_failed" in kline.value.reason
+
+    readiness = evaluate_observation_population_readiness(
+        policy,
+        decision_time=DECISION,
+        observation_date=OPEN_DAY,
+        calendar_loader=lambda *_: (_ for _ in ()).throw(
+            ObservationPopulationUnavailable(
+                "NOT_EVALUATED", "no_accepted_calendar_generation"
+            )
+        ),
+    )
+    assert readiness.status == "NOT_EVALUATED"
+    assert any("read_failed" in reason or "nominal_ohlcv" in reason for reason in readiness.reasons)
+
+
+def test_live_loaders_fail_closed_when_raw_db_missing(monkeypatch) -> None:
+    """CI/offline hosts without tushare_raw.duckdb must not raise IOException."""
+
+    def _boom(*_a, **_k):
+        raise OSError("Cannot open database in read-only mode: database does not exist")
+
+    monkeypatch.setattr("services.data_access.resolver.connect_ro", _boom)
+    policy = _policy()
+    with pytest.raises(ObservationPopulationUnavailable) as kline:
+        load_accepted_nominal_kline_membership(OPEN_DAY, DECISION, policy)
+    assert kline.value.status == "NOT_EVALUATED"
+    assert "read_failed" in kline.value.reason or "no_accepted" in kline.value.reason
+
+    with pytest.raises(ObservationPopulationUnavailable) as st:
+        load_accepted_st_membership(OPEN_DAY, DECISION, policy)
+    assert st.value.status == "NOT_EVALUATED"
+
+
 def test_resolve_excludes_st_and_wrong_board_with_injected_accepted_sources() -> None:
     policy = _policy()
     kline_ref = _partition(NOMINAL_KLINE_DATASET_ID, OPEN_DAY, rows=4)
@@ -156,12 +211,80 @@ def test_zero_row_kline_partition_is_blocked() -> None:
                 frozenset(),
             ),
             st_membership_loader=lambda *_: (
+                _partition(ST_MEMBERSHIP_DATASET_ID, OPEN_DAY, rows=1),
+                frozenset({"600001.SH"}),
+            ),
+        )
+    assert caught.value.status == "BLOCKED"
+    assert "accepted_nominal_kline_partition_has_zero_rows" in caught.value.reason
+
+
+def test_zero_row_st_partition_is_blocked() -> None:
+    """Accepted ST with zero rows is not silent 'no exclusions' — fail closed.
+
+    Empty ST membership requires a future explicit empty-partition attestation;
+    until then a zero-row accepted ST partition is BLOCKED.
+    """
+
+    policy = _policy()
+    with pytest.raises(ObservationPopulationUnavailable) as caught:
+        resolve_traded_on_observation_date(
+            OPEN_DAY,
+            DECISION,
+            policy,
+            calendar_loader=lambda *_: _open_calendar(),
+            nominal_kline_loader=lambda *_: (
+                _partition(NOMINAL_KLINE_DATASET_ID, OPEN_DAY, rows=2),
+                frozenset({"600000.SH", "000001.SZ"}),
+            ),
+            st_membership_loader=lambda *_: (
                 _partition(ST_MEMBERSHIP_DATASET_ID, OPEN_DAY, rows=0),
                 frozenset(),
             ),
         )
     assert caught.value.status == "BLOCKED"
-    assert "zero_rows" in caught.value.reason
+    assert "accepted_stock_st_partition_has_zero_rows" in caught.value.reason
+
+
+def test_row_count_membership_parity_is_required() -> None:
+    policy = _policy()
+    with pytest.raises(ObservationPopulationUnavailable) as kline:
+        resolve_traded_on_observation_date(
+            OPEN_DAY,
+            DECISION,
+            policy,
+            calendar_loader=lambda *_: _open_calendar(),
+            nominal_kline_loader=lambda *_: (
+                _partition(NOMINAL_KLINE_DATASET_ID, OPEN_DAY, rows=100),
+                frozenset({"600000.SH"}),
+            ),
+            st_membership_loader=lambda *_: (
+                _partition(ST_MEMBERSHIP_DATASET_ID, OPEN_DAY, rows=1),
+                frozenset({"600001.SH"}),
+            ),
+        )
+    assert kline.value.status == "BLOCKED"
+    assert "row_count_membership_parity_failed" in kline.value.reason
+    assert "nominal_kline" in kline.value.reason
+
+    with pytest.raises(ObservationPopulationUnavailable) as st:
+        resolve_traded_on_observation_date(
+            OPEN_DAY,
+            DECISION,
+            policy,
+            calendar_loader=lambda *_: _open_calendar(),
+            nominal_kline_loader=lambda *_: (
+                _partition(NOMINAL_KLINE_DATASET_ID, OPEN_DAY, rows=1),
+                frozenset({"600000.SH"}),
+            ),
+            st_membership_loader=lambda *_: (
+                _partition(ST_MEMBERSHIP_DATASET_ID, OPEN_DAY, rows=5),
+                frozenset(),
+            ),
+        )
+    assert st.value.status == "BLOCKED"
+    assert "row_count_membership_parity_failed" in st.value.reason
+    assert "stock_st" in st.value.reason
 
 
 def test_partition_not_visible_at_decision_time_is_not_evaluated() -> None:
@@ -185,8 +308,8 @@ def test_partition_not_visible_at_decision_time_is_not_evaluated() -> None:
             calendar_loader=lambda *_: _open_calendar(),
             nominal_kline_loader=lambda *_: (future_ref, frozenset({"600000.SH"})),
             st_membership_loader=lambda *_: (
-                _partition(ST_MEMBERSHIP_DATASET_ID, OPEN_DAY),
-                frozenset(),
+                _partition(ST_MEMBERSHIP_DATASET_ID, OPEN_DAY, rows=1),
+                frozenset({"600001.SH"}),
             ),
         )
     assert caught.value.status == "NOT_EVALUATED"
