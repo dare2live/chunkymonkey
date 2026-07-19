@@ -1,0 +1,50 @@
+{
+  "cutover_allowed": true,
+  "domains": {
+    "holders_top10": {
+      "accepted_at": "2026-07-19 22:17:28.622784+08",
+      "batch_id": "holders_top10:20260717:3cbe897f7736",
+      "config_hash": "ccc150bae6af0458e8ba74045b9b7443efe1732d8d7ee0c1987371d815652fb5",
+      "content_hash": "2a7556dcd0b0435c2bdcff5a25161d91526f1c1a45c4bb0003d4fe49a6506200",
+      "contract_hash": "103193282273498ce78d886ac68cb144c1769db218ab51cd3c973fee5f55ecce",
+      "contract_version": "1",
+      "dataset_id": "tier0.disclosure.top10_float_holders_period",
+      "partition": "20260717",
+      "row_count": 73
+    },
+    "org_holding": {
+      "accepted_at": "2026-07-19 22:25:42.453534+08",
+      "batch_id": "org_holding:20190430:7de391f74f7e",
+      "config_hash": "2e38ffe4ec43baf33503f82149a371a0cdb3f4052f20d12406b5a4d3fc80f062",
+      "content_hash": "53f8e52c02dbd62c36a290f0d04e266690bd9513648c8d029dbd7715cb7f224d",
+      "contract_hash": "1701884fb66d5fd64b5ead937eca7746b1f686a98f4d880fd65016870a739040",
+      "contract_version": "1",
+      "dataset_id": "tier0.disclosure.org_holding_detail_period",
+      "partition": "20190430",
+      "row_count": 43697
+    },
+    "stk_holdertrade": {
+      "accepted_at": "2026-07-19 22:25:48.662175+08",
+      "batch_id": "stk_holdertrade:20260706:837beb755ca5",
+      "config_hash": "b99484d5e1c304df767f1a9e6b61e98d019cc70298f58f78df304da70e8ce55a",
+      "content_hash": "f808cea51d5ce60fcf82ba6f764a8ee0e602760cf8d7e16d335c008d0e582e45",
+      "contract_hash": "7ac5ea189b7526fa7bd1aaea577c5ba8510eaa3649e9b7d0485a5d4514b89885",
+      "contract_version": "1",
+      "dataset_id": "tier0.disclosure.stock_holder_trade_announcement",
+      "partition": "20260706",
+      "row_count": 9
+    }
+  },
+  "frozen_at": "2026-07-19T14:34:23.044461+00:00",
+  "notes": [
+    "minimal_e0_gate_snapshot",
+    "points_at_accepted_canary_partitions_only",
+    "institution_follow_ablation_still_blocked",
+    "feature_store_profiles_not_included"
+  ],
+  "phase_e_ablation": "blocked_canary_scope_only",
+  "relpath": "data/lineage/disclosure_dataset_snapshot.json",
+  "scope": "canary_accepted_partitions",
+  "shadow_overall_status": "MATCH",
+  "snapshot_id": "disclosure_e0_holders_top10:20260717-org_holding:20190430-stk_holdertrade:20260706"
+}

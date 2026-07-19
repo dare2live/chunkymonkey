@@ -40,7 +40,7 @@ def mem(monkeypatch):
 
 
 def test_research_envelope_labels_disclosure_nonconforming(mem, monkeypatch):
-    """E0: research UI keeps payload; conformity + shadow sidecars; no cutover."""
+    """E0: unavailable shadow → NONCONFORMING + cutover false + read policy."""
     from services.data_sources.disclosure_shadow_compare import empty_disclosure_shadow
 
     monkeypatch.setattr(
@@ -65,6 +65,9 @@ def test_research_envelope_labels_disclosure_nonconforming(mem, monkeypatch):
     shadow = body["disclosure_shadow"]
     assert shadow["cutover_allowed"] is False
     assert shadow["overall_status"] == "UNAVAILABLE"
+    policy = body["disclosure_read_policy"]
+    assert policy["cutover_allowed"] is False
+    assert policy["feature_store_profiles_status"] == "PARTIAL"
     assert {d["domain"] for d in shadow["domains"]} == {
         "holders_top10",
         "org_holding",
@@ -72,40 +75,52 @@ def test_research_envelope_labels_disclosure_nonconforming(mem, monkeypatch):
     }
 
 
-def test_research_envelope_surfaces_shadow_match_without_cutover(mem, monkeypatch):
-    """Shadow MATCH still keeps research numbers on legacy and cutover=false."""
+def test_research_envelope_allows_cutover_on_three_domain_match(mem, monkeypatch):
+    """Three-domain MATCH → cutover_allowed; profiles stay PARTIAL residual."""
     from services.data_sources.disclosure_shadow_compare import (
         DisclosureDomainShadowReport,
         DisclosureShadowCompareReport,
     )
 
+    def _d(name: str, partition: str) -> DisclosureDomainShadowReport:
+        return DisclosureDomainShadowReport(
+            domain=name,
+            partition=partition,
+            status="MATCH",
+            legacy_row_count=2,
+            canonical_row_count=2,
+            compared_fields=("stock_code", "hold_ratio_float"),
+            rows_match=True,
+            mismatch_count=0,
+            sample_mismatches=(),
+            issues=("disclosure_shadow_compare_only",),
+        )
+
     matched = DisclosureShadowCompareReport(
         overall_status="MATCH",
-        cutover_allowed=False,
+        cutover_allowed=True,
         domains=(
-            DisclosureDomainShadowReport(
-                domain="holders_top10",
-                partition="20260429",
-                status="MATCH",
-                legacy_row_count=2,
-                canonical_row_count=2,
-                compared_fields=("stock_code", "hold_ratio_float"),
-                rows_match=True,
-                mismatch_count=0,
-                sample_mismatches=(),
-                issues=("disclosure_shadow_compare_only",),
-            ),
+            _d("holders_top10", "20260717"),
+            _d("org_holding", "20190430"),
+            _d("stk_holdertrade", "20260706"),
         ),
-        notes=("disclosure_shadow_compare_only", "cutover_allowed_false"),
+        notes=("disclosure_shadow_compare_sidecar", "cutover_allowed_true"),
     )
     monkeypatch.setattr(
         inst_router, "_disclosure_shadow_sidecar", lambda: matched.as_dict()
     )
     body = inst_router._research_envelope(profiles=[{"holder": "牛散A", "n_closed": 50}])
     assert body["profiles"] == [{"holder": "牛散A", "n_closed": 50}]
-    assert body["cutover_allowed"] is False
+    assert body["cutover_allowed"] is True
     assert body["disclosure_shadow"]["overall_status"] == "MATCH"
-    assert body["disclosure_shadow"]["cutover_allowed"] is False
+    assert body["disclosure_read_policy"]["cutover_allowed"] is True
+    assert body["disclosure_conformity"]["overall_status"] == "PARTIAL"
+    assert body["disclosure_conformity"]["e0_phase"] == "gate_closed_canary"
+    by_domain = {
+        d["domain"]: d for d in body["disclosure_read_policy"]["domains"]
+    }
+    assert by_domain["holders_top10"]["source"] == "canonical"
+    assert by_domain["holders_top10"]["conformity"] == "ACCEPTED"
 
 
 def test_list_profiles_filters_low_sample(mem):

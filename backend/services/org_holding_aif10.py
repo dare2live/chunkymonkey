@@ -270,15 +270,25 @@ _INSERT_COLS = (
 _INSERT_KEYS = [c.strip() for c in _INSERT_COLS.split(",")]
 
 
-def _upsert_rows_legacy_direct(conn: Any, rows: list[dict]) -> int:
-    """NONCONFORMING escape hatch / dual-write mirror target."""
+def _upsert_rows_legacy_direct(
+    conn: Any, rows: list[dict], *, as_mirror: bool = True
+) -> int:
+    """Deprecated legacy mirror target / test escape."""
     if not rows:
         return 0
     from services.data_sources.disclosure_boundaries import (
+        authorize_legacy_mirror_write,
         authorize_nonconforming_direct_write,
     )
 
-    authorize_nonconforming_direct_write("org_holding", conformity="NONCONFORMING")
+    if as_mirror:
+        authorize_legacy_mirror_write("org_holding")
+    else:
+        authorize_nonconforming_direct_write(
+            "org_holding",
+            conformity="NONCONFORMING",
+            allow_test_escape=True,
+        )
     placeholders = ", ".join("?" for _ in _INSERT_KEYS)
     update_set = ", ".join(
         f"{k} = excluded.{k}" for k in _INSERT_KEYS

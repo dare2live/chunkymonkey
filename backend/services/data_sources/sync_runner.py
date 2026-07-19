@@ -1055,8 +1055,14 @@ def _prepare_batch_df(
     return df
 
 
-def _authorize_disclosure_legacy_raw_write(domain: str) -> None:
-    """E0: disclosure registry domains may keep legacy raw writes only as NONCONFORMING."""
+def _authorize_disclosure_legacy_raw_write(
+    domain: str, *, legacy_direct_only: bool = False
+) -> None:
+    """E0: naked legacy raw writes require explicit legacy_direct_only test escape.
+
+    Production disclosure domains route through formal dual-write; this permit is
+    not issued on the default path.
+    """
 
     from services.data_sources.disclosure_boundaries import (
         DisclosureBoundaryError,
@@ -1066,8 +1072,14 @@ def _authorize_disclosure_legacy_raw_write(domain: str) -> None:
 
     if disclosure_boundary(domain) is None:
         return
+    if not legacy_direct_only:
+        return
     try:
-        authorize_nonconforming_direct_write(domain, conformity="NONCONFORMING")
+        authorize_nonconforming_direct_write(
+            domain,
+            conformity="NONCONFORMING",
+            allow_test_escape=True,
+        )
     except DisclosureBoundaryError as exc:
         raise ExecutionPolicyError(
             domain,
@@ -1178,7 +1190,7 @@ def _write_batch(
 ) -> int:
     """验证后原子 MERGE on grain；失败批不改旧数据。"""
     domain = str(spec.get("domain") or "")
-    _authorize_disclosure_legacy_raw_write(domain)
+    legacy_direct_only = bool(spec.get("legacy_direct_only"))
     _refuse_disclosure_formal_via_naked_write_batch(domain, spec)
     write_mode = str(spec.get("write_mode") or "merge_grain")
     if write_mode not in {"merge_grain", "replace_snapshot", "replace_partition"}:
@@ -1202,6 +1214,22 @@ def _write_batch(
     )
     if routed is not None:
         return routed
+    # Naked merge path: disclosure domains require explicit legacy_direct_only.
+    from services.data_sources.disclosure_boundaries import disclosure_boundary
+
+    if disclosure_boundary(domain) is not None and not legacy_direct_only:
+        raise ExecutionPolicyError(
+            domain,
+            mode="disabled",
+            reason="naked_disclosure_write_retired",
+            detail=(
+                "disclosure domains default to formal dual-write; "
+                "set legacy_direct_only for test/emergency naked merge"
+            ),
+        )
+    _authorize_disclosure_legacy_raw_write(
+        domain, legacy_direct_only=legacy_direct_only
+    )
     table = spec["target_table"]
     grain: list[str] = list(spec["grain"])
 

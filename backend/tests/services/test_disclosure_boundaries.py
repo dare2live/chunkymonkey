@@ -55,14 +55,32 @@ def test_inventory_declares_three_disclosure_domains() -> None:
         assert item["canonical_writer"] is not None
 
 
-def test_nonconforming_direct_write_is_authorized_with_explicit_label() -> None:
+def test_nonconforming_direct_write_requires_test_escape() -> None:
+    with pytest.raises(
+        DisclosureBoundaryError, match="naked_nonconforming_escape_retired"
+    ):
+        authorize_nonconforming_direct_write(
+            "holders_top10", conformity="NONCONFORMING"
+        )
     permit = authorize_nonconforming_direct_write(
-        "holders_top10", conformity="NONCONFORMING"
+        "holders_top10",
+        conformity="NONCONFORMING",
+        allow_test_escape=True,
     )
     assert permit.domain == "holders_top10"
     assert permit.conformity == "NONCONFORMING"
     assert permit.target_table == "fact_top10_holder_period"
     assert permit.publication == "nonconforming_direct_write"
+
+
+def test_legacy_mirror_write_authorized_for_dual_write() -> None:
+    from services.data_sources.disclosure_boundaries import (
+        authorize_legacy_mirror_write,
+    )
+
+    permit = authorize_legacy_mirror_write("holders_top10")
+    assert permit.publication == "legacy_mirror_of_formal_accept"
+    assert permit.target_table == "fact_top10_holder_period"
 
 
 def test_formal_conformity_claim_fails_closed_without_accepted_path() -> None:
@@ -81,7 +99,7 @@ def test_formal_conformity_claim_fails_closed_without_accepted_path() -> None:
 
 
 def test_accepted_publication_claims_fail_closed() -> None:
-    # All three domains have formal writers: path claims allowed; DatasetSnapshot blocked.
+    # Path claims allowed; DatasetSnapshot blocked until cutover_allowed.
     for domain in ("holders_top10", "org_holding", "stk_holdertrade"):
         for claim in ("accepted", "canonical", "landing", "accepted_partition"):
             refuse_accepted_publication_claim(domain, claim)
@@ -91,6 +109,9 @@ def test_accepted_publication_claims_fail_closed() -> None:
             refuse_formal_disclosure_write_without_accepted_path(
                 domain, publication_claim="DatasetSnapshot"
             )
+        refuse_accepted_publication_claim(
+            domain, "DatasetSnapshot", cutover_allowed=True
+        )
 
 
 def test_research_attestation_is_nonconforming_never_ready() -> None:
@@ -117,6 +138,8 @@ def test_research_attestation_is_nonconforming_never_ready() -> None:
 def test_unknown_domain_fails_closed() -> None:
     assert disclosure_boundary("daily") is None
     with pytest.raises(DisclosureBoundaryError, match="unknown_disclosure_domain"):
-        authorize_nonconforming_direct_write("daily", conformity="NONCONFORMING")
+        authorize_nonconforming_direct_write(
+            "daily", conformity="NONCONFORMING", allow_test_escape=True
+        )
     with pytest.raises(DisclosureBoundaryError, match="unknown_disclosure_domain"):
         refuse_accepted_publication_claim("daily", "accepted")

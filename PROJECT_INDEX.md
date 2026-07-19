@@ -25,7 +25,7 @@ AGENTS.md
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
 | T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 展示可用但 breadth/margin UNTRUSTED（B-ext）；分类/measurement/regime 耦合，暂不可直接做 PIT 特征；禁当项目池直至 B-pit |
-| T3 institution | `institution_profile.py` + `holders_aif10.py` + `disclosure_boundaries.py` + `disclosure_dual_write.py` + `disclosure_shadow_compare.py` + `*_acceptance.py` (holders/org/stk) + router/tests | **首个正式策略包目标**；E0：formal→legacy-mirror 写 + multi-DB `/api/v3/inst` shadow；研究数值仍 legacy；live 三域 canary MATCH（holders/org/stk）但未切读 → DatasetSnapshot/E 仍 BLOCKED |
+| T3 institution | `institution_profile.py` + `disclosure_research_read.py` + `disclosure_dataset_snapshot.py` + dual-write/shadow/boundaries + `*_acceptance.py` + router/tests | **首个正式策略包目标**；E0 gate FIXED：三域 MATCH → `cutover_allowed`；provider-field prefer canonical；canary `data/lineage/disclosure_dataset_snapshot.json`；feature_store PARTIAL；E 消融仍禁 |
 | T3 main rally | `rally_gt.py`, `rally_detect.py`, rally config/tests | GT 资产成熟；在机构首包之后接入同一 runtime |
 | T3 formulas | `bestchoice/FROZEN.md` + `evidence_manifest.json` | 冻结 challenger；Phase G 前不吸收 |
 | T4 decision/paper | `paper_portfolio.py`, frontend observation page | Legacy NONCONFORMING 观察账本；不是 paper execution |
@@ -69,7 +69,7 @@ AGENTS.md
 | Priority | Defect | Consequence |
 |---:|---|---|
 | P0 | K/ST 仅单日 canary（`20260717`）；无连续历史覆盖/下一交易日 | B-pit mart/cutover 仍禁；eligible frontier READY；扩窗须再授权 |
-| P0 | 披露域 E0 未闭合（三域 live canary MATCH；研究仍读 legacy） | 研究切读 canonical → 停 mirror → DatasetSnapshot；institution_follow 仍不可满足 |
+| P0 | E0 gate 已绿但 canary-only + feature_store PARTIAL + mirror deprecated-active | 禁 institution_follow 消融；下一刀停 mirror / enrichment cutover / 扩 accepted 分区（非本刀 mass backfill） |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
 | P1 | formal `boundary_inventory` 仅为静态/测试资源，非 doctor readiness 证书（`formal_boundaries` 文案已澄清）；canary_pending 域无 countdown 出口 | 豁免不可见即永久；须在 goal/ledger 跟踪 canary 授权点 |

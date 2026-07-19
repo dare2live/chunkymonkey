@@ -179,9 +179,16 @@ def test_inventory_runtime_state_is_formal_default_legacy_mirror() -> None:
     for domain in ("holders_top10", "org_holding", "stk_holdertrade"):
         assert inventory[domain]["runtime_state"] == "formal_default_legacy_mirror"
         assert inventory[domain]["conformity"] == "NONCONFORMING"
-        # Escape hatch remains for emergency legacy-only; not production default.
+        assert inventory[domain]["legacy_mirror_deprecated"] is True
+        # Naked escape is test-only; production uses dual-write mirror permit.
+        with pytest.raises(
+            DisclosureBoundaryError, match="naked_nonconforming_escape_retired"
+        ):
+            authorize_nonconforming_direct_write(
+                domain, conformity="NONCONFORMING"
+            )
         permit = authorize_nonconforming_direct_write(
-            domain, conformity="NONCONFORMING"
+            domain, conformity="NONCONFORMING", allow_test_escape=True
         )
         assert permit.publication == "nonconforming_direct_write"
     report = attest_disclosure_research_surface()
@@ -203,11 +210,11 @@ def test_accept_holders_partition_from_legacy_noop_mirror(conn) -> None:
             holder_name="其它期不应被删",
         ),
     ]
-    # Seed legacy via escape hatch (pre-canary state).
+    # Seed legacy via test escape (pre-canary state).
     from services.holders_aif10 import _write_legacy_direct
 
-    _write_legacy_direct(conn, [seed[0], seed[1]])
-    _write_legacy_direct(conn, [seed[2]])
+    _write_legacy_direct(conn, [seed[0], seed[1]], as_mirror=False)
+    _write_legacy_direct(conn, [seed[2]], as_mirror=False)
 
     outcome = accept_holders_top10_partition_from_legacy(
         conn, PARTITION_HOLDERS, rewrite_legacy=False
@@ -250,6 +257,7 @@ def test_accept_org_holding_partition_from_legacy_noop_mirror(conn) -> None:
                 stock_code="000001",
             ),
         ],
+        as_mirror=False,
     )
     outcome = accept_org_holding_partition_from_legacy(
         conn, PARTITION_ORG, rewrite_legacy=False
@@ -277,7 +285,9 @@ def test_accept_stk_holdertrade_partition_from_legacy_noop_mirror(conn) -> None:
     from services.data_sources.stk_holdertrade_schema import PROVIDER_FIELDS
 
     authorize_nonconforming_direct_write(
-        "stk_holdertrade", conformity="NONCONFORMING"
+        "stk_holdertrade",
+        conformity="NONCONFORMING",
+        allow_test_escape=True,
     )
     conn.execute(
         f"""

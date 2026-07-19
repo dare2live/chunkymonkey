@@ -1,8 +1,9 @@
 """E0 read-side shadow: legacy research tables vs accepted canonical projection.
 
-Compares provider-field projections that research ultimately depends on.  Never
-rewrites ``/api/v3/inst`` payload numbers and never authorizes cutover —
-``cutover_allowed`` stays false even on perfect MATCH.
+Compares provider-field projections that research ultimately depends on.
+``cutover_allowed`` is true only when all three inventory domains MATCH on the
+partitions serving the response (honest serve-side gate).  Sidecar remains
+observational; research read policy decides canonical vs legacy fallback.
 """
 from __future__ import annotations
 
@@ -117,7 +118,7 @@ class DisclosureDomainShadowReport:
 
 @dataclass(frozen=True)
 class DisclosureShadowCompareReport:
-    """Read-only legacy vs canonical disclosure delta — never authorizes cutover."""
+    """Read-only legacy vs canonical disclosure delta for cutover evidence."""
 
     overall_status: OverallStatus
     cutover_allowed: bool
@@ -469,8 +470,8 @@ def compare_disclosure_research_shadow(
 ) -> DisclosureShadowCompareReport:
     """Shadow-compare all E0 disclosure domains for research cutover evidence.
 
-    Matching projections alone never set ``cutover_allowed`` — serve cutover
-    needs consumer switch evidence + DatasetSnapshot gate beyond this helper.
+    ``cutover_allowed`` is true only when the full three-domain inventory is
+    selected and every domain MATCH on the partitions serving the response.
 
     ``domain_conns`` routes a domain to a different DuckDB connection when
     legacy/canonical live outside the default DB (stk_holdertrade → tushare_raw).
@@ -505,12 +506,27 @@ def compare_disclosure_research_shadow(
     else:
         overall = "UNAVAILABLE"
 
+    from services.data_sources.disclosure_research_read import (
+        cutover_allowed_from_shadow,
+    )
+
+    provisional = DisclosureShadowCompareReport(
+        overall_status=overall,
+        cutover_allowed=False,
+        domains=domain_reports,
+        notes=(),
+    )
+    allowed = cutover_allowed_from_shadow(provisional)
+
     notes = [
-        "disclosure_shadow_compare_only",
-        "cutover_requires_research_consumer_switch_and_dataset_snapshot_gate",
-        "api_v3_inst_payload_numbers_unchanged",
-        "cutover_allowed_false",
+        "disclosure_shadow_compare_sidecar",
+        "cutover_allowed_requires_three_domain_match_on_serving_partitions",
     ]
+    if allowed:
+        notes.append("cutover_allowed_true")
+        notes.append("research_read_prefers_canonical_for_matched_domains")
+    else:
+        notes.append("cutover_allowed_false")
     if overall == "MATCH":
         notes.append("fixture_or_sample_provider_fields_match")
     if overall == "MISMATCH":
@@ -520,7 +536,7 @@ def compare_disclosure_research_shadow(
 
     return DisclosureShadowCompareReport(
         overall_status=overall,
-        cutover_allowed=False,
+        cutover_allowed=allowed,
         domains=domain_reports,
         notes=tuple(notes),
     )

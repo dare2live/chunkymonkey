@@ -17,6 +17,12 @@
 数据: 全走 database_manifest 路由 (smartmoney holder 事件 / market qfq K线 / tushare_raw 龙虎榜+HS300+PIT行业)。
 产物: feature_store (L2_feature, declare-on-build, data_layers 已声明) — fact_inst_episode /
       mart_inst_profile / mart_inst_profile_dim。wipeable, 全量重建 (rebuild_all)。
+
+E0 read note: disclosure provider-field consumers prefer accepted canonical via
+``disclosure_research_read`` when shadow MATCH.  This rebuild still reads
+``sm.fact_top10_holder_period`` because episode enrichment columns
+(holder_name_norm / share_class / shares_approx / …) are absent from the
+canonical provider projection — labeled PARTIAL until a later enrichment cutover.
 """
 from __future__ import annotations
 
@@ -30,6 +36,8 @@ logger = logging.getLogger(__name__)
 
 MIN_EPISODES = 10   # 画像排名样本量护栏 (设计定稿 §3: <10 标 low_sample 不进排名)
 LOOKBACK_FIRST_WINDOW_DAYS = 92  # 首个披露期无 prev → 回看一季 (成本窗口下界)
+# Honest residual: rebuild source until canonical carries enrichment columns.
+HOLDERS_REBUILD_SOURCE = "legacy_compatibility_enrichment_partial"
 
 # 被动产品判定 (E2 实测: ETF/联接申赎驱动的名册进出非选股观点, 混入会把指数 beta 当机构技能)
 PASSIVE_NAME_PATTERNS = ("%ETF%", "%交易型开放%", "%指数%", "%联接%")

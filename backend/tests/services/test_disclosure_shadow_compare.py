@@ -194,7 +194,7 @@ def _seed_all_matched(conn) -> None:
     )
 
 
-def test_shadow_match_never_allows_cutover(conn) -> None:
+def test_shadow_match_allows_cutover_for_three_domains(conn) -> None:
     _seed_all_matched(conn)
     report = compare_disclosure_research_shadow(
         conn,
@@ -205,7 +205,7 @@ def test_shadow_match_never_allows_cutover(conn) -> None:
         },
     )
     assert report.overall_status == "MATCH"
-    assert report.cutover_allowed is False
+    assert report.cutover_allowed is True
     by_domain = {item.domain: item for item in report.domains}
     assert set(by_domain) == {"holders_top10", "org_holding", "stk_holdertrade"}
     for item in report.domains:
@@ -215,9 +215,9 @@ def test_shadow_match_never_allows_cutover(conn) -> None:
         assert item.legacy_row_count >= 1
         assert item.canonical_row_count == item.legacy_row_count
     payload = report.as_dict()
-    assert payload["cutover_allowed"] is False
+    assert payload["cutover_allowed"] is True
     assert payload["overall_status"] == "MATCH"
-    assert "disclosure_shadow_compare_only" in payload["notes"]
+    assert "cutover_allowed_true" in payload["notes"]
 
 
 def test_shadow_domain_conns_routes_stk_to_secondary_db(conn) -> None:
@@ -263,7 +263,7 @@ def test_shadow_domain_conns_routes_stk_to_secondary_db(conn) -> None:
             domain_conns={"stk_holdertrade": stk_db},
         )
         assert report.overall_status == "MATCH"
-        assert report.cutover_allowed is False
+        assert report.cutover_allowed is True
         stk = next(d for d in report.domains if d.domain == "stk_holdertrade")
         assert stk.status == "MATCH"
     finally:
@@ -307,8 +307,12 @@ def test_shadow_detects_missing_canonical_side(conn) -> None:
     )
     from services.holders_aif10 import _write_legacy_direct
 
-    authorize_nonconforming_direct_write("holders_top10", conformity="NONCONFORMING")
-    _write_legacy_direct(conn, [_holders_row()])
+    authorize_nonconforming_direct_write(
+        "holders_top10",
+        conformity="NONCONFORMING",
+        allow_test_escape=True,
+    )
+    _write_legacy_direct(conn, [_holders_row()], as_mirror=False)
     report = compare_disclosure_research_shadow(
         conn, partitions={"holders_top10": PARTITION_HOLDERS}
     )
@@ -345,4 +349,5 @@ def test_org_date_normalization_does_not_false_mismatch(conn) -> None:
     )
     org = next(d for d in report.domains if d.domain == "org_holding")
     assert org.status == "MATCH"
+    # Single-domain sample is not the full inventory → cutover stays false.
     assert report.cutover_allowed is False

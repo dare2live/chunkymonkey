@@ -250,18 +250,30 @@ def _has_availability_col(conn) -> bool:
     return _AVAIL_COL_CACHE["v"]
 
 
-def _write_legacy_direct(conn, rows: list[dict]) -> int:
-    """NONCONFORMING escape hatch / dual-write mirror target.
+def _write_legacy_direct(
+    conn, rows: list[dict], *, as_mirror: bool = True
+) -> int:
+    """Deprecated legacy mirror target / test escape.
 
-    Production default is ``_write`` → formal land→accept then this mirror.
+    Production default is ``_write`` → formal land→accept then this mirror
+    (``as_mirror=True``).  Naked legacy-only writes require ``as_mirror=False``
+    plus test escape authorization.
     """
     if not rows:
         return 0
     from services.data_sources.disclosure_boundaries import (
+        authorize_legacy_mirror_write,
         authorize_nonconforming_direct_write,
     )
 
-    authorize_nonconforming_direct_write("holders_top10", conformity="NONCONFORMING")
+    if as_mirror:
+        authorize_legacy_mirror_write("holders_top10")
+    else:
+        authorize_nonconforming_direct_write(
+            "holders_top10",
+            conformity="NONCONFORMING",
+            allow_test_escape=True,
+        )
     stock = rows[0]["stock_code"]
     conn.execute(
         "DELETE FROM fact_top10_holder_period WHERE stock_code=? AND source=?",

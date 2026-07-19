@@ -87,7 +87,9 @@ def test_inventory_declares_stk_holdertrade_formal_writers_strangler() -> None:
     assert item["runtime_state"] == "formal_default_legacy_mirror"
     assert item["conformity"] == "NONCONFORMING"
     permit = authorize_nonconforming_direct_write(
-        "stk_holdertrade", conformity="NONCONFORMING"
+        "stk_holdertrade",
+        conformity="NONCONFORMING",
+        allow_test_escape=True,
     )
     assert permit.publication == "nonconforming_direct_write"
     with pytest.raises(DisclosureBoundaryError, match="dataset_snapshot"):

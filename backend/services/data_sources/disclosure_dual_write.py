@@ -1,9 +1,10 @@
-"""E0 strangler dual-write: formal land→accept then legacy compatibility mirror.
+"""E0 strangler dual-write: formal land→accept then deprecated legacy mirror.
 
-Production disclosure writers route here by default.  Legacy-only direct writes
-remain available only via ``authorize_nonconforming_direct_write`` escape hatch
-(tests/emergency).  Research still reads compatibility tables; DatasetSnapshot
-and ``/api/v3/inst`` cutover stay blocked until live shadow MATCH + consumer switch.
+Production disclosure writers route here by default.  Legacy mirror remains
+active for one more slice (``legacy_mirror_deprecated``) so feature-store
+enrichment columns stay continuous; research provider-field reads prefer
+accepted canonical when shadow MATCH.  Naked NONCONFORMING direct writes are
+test-escape only.
 """
 from __future__ import annotations
 
@@ -361,12 +362,10 @@ def write_stk_holdertrade_formal_then_mirror(
 
     def _default_mirror(c, legacy_rows: list[dict[str, Any]]) -> int:
         from services.data_sources.disclosure_boundaries import (
-            authorize_nonconforming_direct_write,
+            authorize_legacy_mirror_write,
         )
 
-        authorize_nonconforming_direct_write(
-            "stk_holdertrade", conformity="NONCONFORMING"
-        )
+        authorize_legacy_mirror_write("stk_holdertrade")
         cols = list(PROVIDER_FIELDS)
         placeholders = ", ".join("?" for _ in cols)
         col_sql = ", ".join(cols)

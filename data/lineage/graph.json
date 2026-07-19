@@ -1489,6 +1489,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/disclosure_dataset_snapshot.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/disclosure_event_partition.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -2173,7 +2179,19 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/disclosure_dataset_snapshot.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_top10_holder_period"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/disclosure_dual_write.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_top10_holder_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/disclosure_research_read.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_top10_holder_period"
     },
@@ -2996,6 +3014,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_sources/disclosure_boundaries.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/disclosure_dataset_snapshot.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
     },
@@ -4687,9 +4711,9 @@
     }
   ],
   "meta": {
-    "edge_count": 730,
-    "generated_at": "2026-07-19T14:27:18.725486+00:00",
-    "node_count": 323,
+    "edge_count": 734,
+    "generated_at": "2026-07-19T14:35:29.739103+00:00",
+    "node_count": 325,
     "version": 2
   },
   "nodes": [
@@ -5008,6 +5032,14 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/data_sources/disclosure_dataset_snapshot.py"
+      },
+      "id": "consumer:backend/services/data_sources/disclosure_dataset_snapshot.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/data_sources/disclosure_dual_write.py"
       },
       "id": "consumer:backend/services/data_sources/disclosure_dual_write.py",
@@ -5019,6 +5051,14 @@
         "path": "backend/services/data_sources/disclosure_event_partition.py"
       },
       "id": "consumer:backend/services/data_sources/disclosure_event_partition.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/disclosure_research_read.py"
+      },
+      "id": "consumer:backend/services/data_sources/disclosure_research_read.py",
       "kind": "consumer"
     },
     {

@@ -7,9 +7,9 @@
 数据经 services.institution_profile 读侧 (数据模块成员 owns feature_store 画像表);
 该端点不产生 CandidateSignal、StrategyRelease 或买卖建议。
 
-E0: payload numbers unchanged; ``disclosure_conformity`` + ``disclosure_shadow``
-sidecars mark NONCONFORMING / shadow parity.  ``cutover_allowed`` stays false;
-research numbers are not switched to canonical.
+E0: disclosure provider-field reads prefer accepted canonical when shadow MATCH;
+``cutover_allowed`` is true only on three-domain MATCH.  Feature-store profile
+numbers remain PARTIAL (legacy enrichment).  ``disclosure_shadow`` sidecar stays.
 """
 from __future__ import annotations
 
@@ -20,6 +20,9 @@ from fastapi import APIRouter, HTTPException, Query
 from services import institution_profile as ip
 from services.data_sources.disclosure_boundaries import (
     attest_disclosure_research_surface,
+)
+from services.data_sources.disclosure_research_read import (
+    build_disclosure_read_policy,
 )
 from services.data_sources.disclosure_shadow_compare import (
     compare_disclosure_research_shadow,
@@ -33,7 +36,7 @@ SURFACE_STATUS = "tier3_research_evidence_only"
 
 
 def _disclosure_shadow_sidecar() -> dict[str, Any]:
-    """Read-only bounded shadow; fail closed. Never rewrites research numbers.
+    """Read-only bounded shadow; fail closed.
 
     holders_top10 / org_holding live on smartmoney; stk_holdertrade on
     tushare_raw (sync_registry target_db). Route domain_conns accordingly.
@@ -72,14 +75,16 @@ def _disclosure_shadow_sidecar() -> dict[str, Any]:
 
 
 def _research_envelope(**payload):
-    report = attest_disclosure_research_surface()
     shadow = _disclosure_shadow_sidecar()
+    read_policy = build_disclosure_read_policy(shadow)
+    report = attest_disclosure_research_surface(read_policy)
     return {
         "status": "ok",
         "surface_status": SURFACE_STATUS,
         "disclosure_conformity": report.as_dict(),
         "disclosure_shadow": shadow,
-        "cutover_allowed": False,
+        "disclosure_read_policy": read_policy.as_dict(),
+        "cutover_allowed": bool(read_policy.cutover_allowed),
         **payload,
     }
 

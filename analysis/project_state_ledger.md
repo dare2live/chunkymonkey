@@ -830,3 +830,31 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   1. switch research/API reads to canonical;
   2. stop legacy mirror + retire NONCONFORMING escape hatch;
   3. freeze DatasetSnapshot / unblock E.
+
+### 2026-07-19 — E0 slice8: research cutover + DatasetSnapshot gate
+
+- **E0 FIXED (gate)** / **E PARTIAL-unblocked (smoke only)**.
+- Live shadow still overall **MATCH** on canary partitions; `cutover_allowed`
+  now **true** iff all three inventory domains MATCH on serving partitions
+  (honest policy; no longer hard-false).
+- **Research read policy** (`disclosure_research_read.py`): MATCH domains
+  prefer accepted canonical tables; missing/diverge → legacy_fallback with
+  `NONCONFORMING`/`PARTIAL`. `/api/v3/inst` exposes `disclosure_read_policy`
+  + `cutover_allowed` from policy. Feature-store institution profiles remain
+  **PARTIAL** (rebuild still needs legacy enrichment columns absent from
+  canonical provider projection) — `HOLDERS_REBUILD_SOURCE` documented.
+- **Writes**: legacy mirror **deprecated but active** one more slice
+  (`authorize_legacy_mirror_write`); naked `authorize_nonconforming_direct_write`
+  retired from production (requires `allow_test_escape` /
+  sync `legacy_direct_only`).
+- **DatasetSnapshot**: froze
+  `data/lineage/disclosure_dataset_snapshot.json`
+  (`scope=canary_accepted_partitions`,
+  `phase_e_ablation=blocked_canary_scope_only`) pointing at:
+  - holders `20260717` / `holders_top10:20260717:3cbe897f7736` (73)
+  - org `20190430` / `org_holding:20190430:7de391f74f7e` (43697)
+  - stk `20260706` / `stk_holdertrade:20260706:837beb755ca5` (9)
+- **E unblock honesty**: snapshot gate green for smoke/contract wiring;
+  **no** institution_follow B0→B4 ablation; no mass backfill; no B-pit/margin.
+- **Residual**: stop mirror; feature_store enrichment cutover; broaden accepted
+  partitions beyond canary.

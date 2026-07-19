@@ -70,12 +70,14 @@ def test_inventory_declares_holders_formal_writers_strangler() -> None:
     assert holders["canonical_writer"] is not None
     assert holders["runtime_state"] == "formal_default_legacy_mirror"
     assert holders["conformity"] == "NONCONFORMING"
-    # Legacy research direct write still permitted under strangler.
+    # Naked legacy direct write is test-escape only.
     permit = authorize_nonconforming_direct_write(
-        "holders_top10", conformity="NONCONFORMING"
+        "holders_top10",
+        conformity="NONCONFORMING",
+        allow_test_escape=True,
     )
     assert permit.publication == "nonconforming_direct_write"
-    # DatasetSnapshot freeze remains blocked.
+    # DatasetSnapshot freeze remains blocked without cutover_allowed.
     with pytest.raises(DisclosureBoundaryError, match="dataset_snapshot"):
         refuse_accepted_publication_claim("holders_top10", "DatasetSnapshot")
     report = attest_disclosure_research_surface()
