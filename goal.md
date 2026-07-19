@@ -6,9 +6,9 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）：名义 K/ST accepted writer+schema+loader+resolver 对抗测绿；残余仅为 data-plane（live accepted partitions / 授权 canary，无 mass fetch、无 consumer cutover）。下一刀 **Phase B**（external vs project-universe；pulse 脱离错误 raw）。
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；data-plane 残余=live accepted partitions / 授权 canary（无 mass fetch、无 cutover）。下一刀 **B-ext**（external_aggregate 诚实化）。**B-pit** 阻塞于 A3 data-plane residual。Fable5 **REVISE** 已吸收（见 ledger）。
 
-已拍板：多源=契约可换 adapter；首策略包=`institution_follow`；边做边测（坏例先红→绿→窄回归）。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
+已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
 ## 产品层级（已裁决）
 
@@ -35,25 +35,26 @@
 8. “资金”=活动度/代理/广度/响应，非守恒。
 9. 一数据集一 writer；YAML 只存政策。
 10. strangler + `manual_only`。
-11. Provider=adapter；真相在 accepted/canonical。
+11. Provider=adapter；真相在 accepted/canonical；契约可换是目标，非宣称现已单源。
 12. 切片红→绿；静态 PASS≠`live_readiness`。
 
 ## Live 证据与已推翻前提
 
 - 白名单仅 `60/00/30/68`；多数域仅前缀过滤；margin v2/pulse 含 BSE 错误 scope。
 - universe/Moth 曾假绿；live ST 污染 breadth/龙虎榜/SW/DC。
-- margin accepted=1823 只证冻结自洽；`20260709/BSE` 出 scope。细节见 ledger。
+- margin accepted=1823 只证冻结自洽；`20260709/BSE` 出 scope。
+- **多源实况**：TuShare=正式 registry 域唯一 live adapter；东财妙想 aif10/`miaoxiang` 已是十大流通股东等披露域 live 主源（`holders_aif10` 直写 fact，无 landing/accepted）= **NONCONFORMING**，待 E0 formal 化。细节见 ledger。
 
 ## 执行计划（A→H）
 
 控制面原语/margin 冻结/all-due 前阻断/doctor `NOT_EVALUATED` FAIL/calendar 隔离原型：见 ledger。≠业务就绪。
 
-- **A** A1–A5 **FIXED**（含 A3：名义 OHLCV + ST land→accept→reader→resolver；formal boundary 已墙 legacy raw；sync `accepted_partition_pending`）。`live_readiness` 可评估（live 常见 BLOCKED/NOT_EVALUATED=无 accepted partition，非缺 writer）。禁 mass fetch/切消费者。→ 进 **B**。
-- **B（进行中）** external vs project-universe；pulse/breadth 停把错误 scope raw margin/BSE 当项目池；shadow/reconcile；旧 pulse 标 untrusted 至 cutover。
-- **C** Tier1/2 正式 lineage（definition/config/snapshot/universe/available_at）。
-- **D** `DatasetSnapshot`→`ExperimentVerdict` 最小链 + PIT 截断。
-- **E** `institution_follow_v1`（首包；B0→B4；跟随收益独立）。
-- **F** main_rally B0–B2。**G** 公式+BestChoice。**H** Release/名义价纸面/产品。
+- **A** A1–A5 **FIXED**。`live_readiness` 可评估（常见 BLOCKED=无 live accepted partition）。禁 mass fetch/切消费者。残余 data-plane：calendar/K/ST live partitions + 授权 canary（owner=下一聚焦 session 授权请求）。
+- **B-ext（下一/可开工）** external_aggregate 重标；pulse 脱错误 raw margin/BSE；不假装项目池。
+- **B-pit（阻塞 A3 data-plane）** project_universe_pit 广度/resolver 消费者迁移；shadow 后切读面。未闭合 A3 residual 不得宣称 B 完成。
+- **C** Tier1/2 正式 lineage。**D** `DatasetSnapshot`→`ExperimentVerdict` + PIT 截断。
+- **E0（E 硬前置）** 披露域 formal 化：holders/org_holding/stk_holdertrade → adapter/landing/canonical + notice/`available_at` 契约。未完成则 **E=BLOCKED**。
+- **E** `institution_follow_v1`（首包；B0→B4）。**F** main_rally。**G** 公式+BestChoice。**H** Release/名义价纸面。
 
 ## 边做边测
 
@@ -61,4 +62,4 @@
 
 ## Blocker / 禁止误报
 
-margin/pulse scope 错：禁 provider/live 写/cutover。交易所汇总≠沪深池。accepted=1823≠业务正确。continuity 告警未清除。函数存在/WARN/fixture 绿≠交付。Tier0=`BLOCKED`/`NOT_EVALUATED`。
+margin/pulse scope 错：禁 provider/live 写/cutover。交易所汇总≠沪深池。accepted=1823≠业务正确。continuity 告警未清除。函数存在/WARN/fixture 绿≠交付。Tier0=`BLOCKED`/`NOT_EVALUATED`。披露域 NONCONFORMING≠可进 E。

@@ -72,7 +72,7 @@ AGENTS.md
 | P0 | 披露域 miaoxiang aif10 直写 fact（无 landing/accepted） | Phase E 冻结 DatasetSnapshot 不可满足；标 NONCONFORMING，归 E0 |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
-| P1 | formal `boundary_inventory` 仅为静态/测试资源，非 doctor readiness 证书；canary_pending 域无 countdown 出口 | 豁免不可见即永久；须在 goal/ledger 跟踪 canary 授权点 |
+| P1 | formal `boundary_inventory` 仅为静态/测试资源，非 doctor readiness 证书（`formal_boundaries` 文案已澄清）；canary_pending 域无 countdown 出口 | 豁免不可见即永久；须在 goal/ledger 跟踪 canary 授权点 |
 | P1 | Live DC snapshot/pulse tables predate namespace fix until manual rebuild | Code contract is fixed but stored rows still need controlled reconciliation |
 | P1 | Market pulse mixes taxonomy, measurements, rolling/regime, write/read；仍读错误 scope raw | B-ext 必先切断；One 800-line module owns multiple change reasons |
 | P1 | Stock state/market regime rows lack config/input version | Historical outputs cannot prove which definition produced them |

@@ -119,7 +119,7 @@ PIT 截断测试是硬门：在 cutoff 后增加未来数据，cutoff 前的特�
 
 ### 8.1 机构跟随（第一条正式闭环）
 
-机构画像、episode 和历史表现是研究输入，不是“机构身份即买入”的证书。第一条正式闭环为 `institution_follow_v1`：
+机构画像、episode 和历史表现是研究输入，不是“机构身份即买入”的证书。第一条正式闭环为 `institution_follow_v1`，且硬依赖 goal **E0**（披露域已进 landing→accept→canonical；miaoxiang/aif10 直写路径不得充当冻结 snapshot）：
 
 1. 冻结披露类 `DatasetSnapshot`（含 notice/available 语义与沪深 PIT universe）；
 2. 跑 B0 裸 K 基线；
@@ -130,10 +130,11 @@ PIT 截断测试是硬门：在 cutoff 后增加未来数据，cutoff 前的特�
 
 硬约束：
 
-- 一个持仓/调研事实最早只能在真实 `notice_date/available_at` 之后使用；默认信号成交锚为披露后下一交易日 open，禁止回填 report/effective date；
+- 一个持仓/调研事实最早只能在真实 `notice_date/available_at` 之后使用；**`notice_date` 为 NULL 的行契约级排除**（不得仅在某一查询面过滤后从别的读面漏进）；默认信号成交锚为披露后下一交易日 open，禁止回填 report/effective date；
 - 下一交易日若停牌、涨停买不到或数据 unknown，只能顺延到下一个真实可交易 open，并受版本化 `max_chase_days` 限制；过期记为未成交，不用未来价格选择“最佳”入场；
 - 机构评级、白名单和历史胜率只能用 decision time 之前已披露 episode 做 expanding-window 计算；禁止用全期结果筛选机构后回测早期信号；
-- 跟随者收益必须独立计入披露延迟、追价、未成交、容量和退出约束，不能复用机构自身持有期收益。
+- 跟随者收益必须独立计入披露延迟、追价、未成交、容量和退出约束，不能复用机构自身持有期收益；
+- **t 日 project universe 的可证明语义默认是 EOD**：须在 t 日名义 K/ST accepted 且 `usable_at ≤ decision_time` 之后才能证明成员；`DecisionBatch.decision_time` 不得早于该证明点却声称已解析当日池（盘中决策需另立契约，禁止 silently 复用 EOD 成员）。
 
 大单/超大单、龙虎榜席位或 vendor “主力”字段不得自动映射成机构身份。
 

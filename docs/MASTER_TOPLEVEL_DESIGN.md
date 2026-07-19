@@ -263,7 +263,7 @@ B5 + 单一公式或公式组合
 
 第一条正式策略闭环是 `institution_follow_v1`：在 Tier0 硬门、Tier1/2 发布契约与研究运行时最小闭环之后，以披露 `available_at` 约束跑 B0→B1→B2→B4；跟随者可实现收益必须独立于机构自身持有收益。`main_rally` 与公式包随后接入同一 runtime。BestChoice 只作为冻结 challenger 资产，经 lineage、PIT 和本项目纸面执行验证后才能讨论吸收，禁止直接并入主策略。
 
-Provider 是可替换 adapter：业务真相在 accepted/canonical，不绑定单一供应商；当前仅接入 TuShare，第二源只加 adapter 与 landing 映射，不改 Tier1–4 读契约。不做双源 silent merge，不建通用插件框架。
+Provider 是可替换 adapter：业务真相在 accepted/canonical，不绑定单一供应商。正式 registry 域当前唯一 live adapter 是 TuShare；契约可换（第二源只加 adapter + landing 映射、不改 Tier1–4 读契约）是**目标态**，不是“仓库里只有一个供应商”的现状声明。东财妙想 aif10/`miaoxiang` 已是十大流通股东等披露域的 live 主写路径，但绕过 landing/accepted/canonical，现状标 **NONCONFORMING**，必须经披露域 formal 化（goal **E0**）迁入同一 transport，禁止 silent merge 或假装单源。不做通用插件框架。
 
 ## 10. Tier 4 决策与产品
 
@@ -286,11 +286,13 @@ ExperimentVerdict
 
 | Phase | 工作 | 退出条件 |
 |---:|---|---|
-| A | Tier0 硬门：contract 传播与 attestation、calendar accepted generation、名义 K/ST resolver、landing 纯度、adapter 边界 | `traded_on_observation_date` 可证明；对抗坏例变红；`live_readiness` 可评估；未切错误 scope 消费者 |
-| B | 首个正确 population 迁移（external vs project-universe；pulse/breadth 脱离错误 raw） | shadow 对账或显式 reject；读面切换有证据 |
+| A | Tier0 硬门：contract 传播与 attestation、calendar accepted generation、名义 K/ST resolver、landing 纯度、adapter 边界 | 代码路径可证明；对抗坏例变红；`live_readiness` 可评估；data-plane residual（live partitions/canary）单列，不洗绿 |
+| B-ext | external_aggregate 诚实化；pulse/breadth 脱离错误 raw/BSE 冒充项目池 | 指标 scope 标签正确；旧读面标 untrusted 或显式 reject |
+| B-pit | project_universe_pit 迁移（依赖 A 的 live accepted K/ST/calendar + 授权 canary） | shadow 对账后切读面；未闭合 A residual 不得宣称 B 完成 |
 | C | 版本化 `StockStateDaily`/`PatternEvent`/`MarketContextSnapshot` | 截断不变；definition/config/snapshot/universe/available_at 齐全 |
 | D | 研究运行时：`DatasetSnapshot` / `ExperimentRun` / `ExperimentVerdict` | PIT 截断门；一烟测闭环 |
-| E | **机构跟随 v1（第一条正式策略包）** | B0→B4 消融；披露时点与跟随者收益门通过；无 Release 不出正式候选 |
+| E0 | **披露域 formal 化（E 硬前置）**：holders/org_holding/stk_holdertrade → adapter/landing/canonical + notice/`available_at` | NONCONFORMING 直写路径退役或隔离；冻结披露 DatasetSnapshot 可证明 |
+| E | **机构跟随 v1（第一条正式策略包）** | 依赖 E0；B0→B4 消融；披露时点与跟随者收益门通过；无 Release 不出正式候选 |
 | F | 主升浪 B0→B2 | 与 E 共享 runtime；状态/感知增量可复现 |
 | G | 公式包 + BestChoice 对决 | namespaced 重放；B5 单块；异常高指标先反证 |
 | H | 决策 / 名义价纸面 / 产品 | candidate 全链可追溯；NONCONFORMING 观察账本隔离或退役 |

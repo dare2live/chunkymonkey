@@ -1,11 +1,17 @@
 """Formal adapter → landing → canonical writer boundaries.
 
-Transport axis only.  Business tiers must not own these seams.  TuShare is the
-sole live adapter; accepted truth is always the landing/canonical pair, never
-the adapter response object itself.
+Transport axis only.  Business tiers must not own these seams.
+
+``LIVE_ADAPTER`` is the only adapter allowed for domains **registered in this
+inventory**.  That is not a claim that the whole repository has a single live
+provider: disclosure paths such as miaoxiang/aif10 currently write facts outside
+this inventory and are NONCONFORMING until E0 formalization.  Accepted truth for
+formal domains is always the landing/canonical pair, never the adapter response.
 
 Domains registered here must never fall through to legacy ``_write_batch`` raw
-replace/merge.  Runtime may still be disabled/retired pending canary.
+replace/merge.  ``runtime_state`` values (including former ``writers_pending``
+and current ``*_canary_pending``) are explicit migration debt tracked in
+goal/ledger — not silent permanent exemptions.
 """
 from __future__ import annotations
 
@@ -129,7 +135,7 @@ def refuse_legacy_raw_write_for_formal_domain(domain: str) -> None:
 
 
 def boundary_inventory() -> tuple[dict[str, str], ...]:
-    """Static inventory for doctor/gates; does not claim live readiness."""
+    """Static inventory for audits/unit tests; not a doctor readiness certificate."""
 
     return tuple(
         {

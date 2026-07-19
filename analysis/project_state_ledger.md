@@ -509,3 +509,15 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   live DDL bootstrap、consumer cutover。
 - **Phase A 代码完整**：A1–A5 均 FIXED。残余仅 data-plane（calendar/K/ST live
   accepted partitions + 授权 canary）。下一阶段 B。
+
+### 2026-07-19 — Fable5 scheme review REVISE absorbed
+
+- Verdict **REVISE**（agent `dc8394ca-3077-41d7-b392-af9f2f7dcde1`）：MASTER/goal
+  「当前仅接入 TuShare」与实况矛盾 — `holders_aif10`/`miaoxiang` aif10 为披露域
+  live 主源且直写 fact（无 landing/accepted）。adapter-only 裁决保留为**目标态**。
+- 方案修订落地：goal/MASTER 拆 **B-ext** / **B-pit**（B-pit 闸在 A3 data-plane）；
+  新增 **E0** 披露域 formal 化（E 硬前置）；strategy §8.1 补 NULL `notice_date`
+  契约排除 + t 日 universe EOD/`decision_time` 语义；PROJECT_INDEX 登记
+  NONCONFORMING 披露源与 `boundary_inventory` 非 readiness 证书。
+- Resolver 对抗缺口关闭：accepted ST 零行 fail-closed；`row_count`↔membership
+  基数 parity。未开工 institution_follow 生产、未 mass fetch；margin 仍冻结。
