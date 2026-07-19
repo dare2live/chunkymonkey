@@ -1084,3 +1084,39 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   snapshot/folds/costs after disclosure availability; do not stack on B2
   accept as production; refresh form when qfq catches `20260717`; optional
   longer-window stability before release.
+
+### 2026-07-19 — Phase E: measured B4 institution/event + B2 holdout-lift challenge
+
+- **E PARTIAL** (B0/B1/B2 reject; B4 inconclusive on thin disclosure coverage).
+- Added `institution_follow_b4(_measure).py`: FeatureBlock
+  `institution_event_holders_disclosure_v0`.
+  **PIT**: snapshot `holders_top10.date_set` →
+  `canonical_top10_float_holders_period`; NULL `notice_date` excluded;
+  usable iff `notice_date <= t` and `available_at` calendar date `<= t`;
+  signal = first trading day episode becomes usable; increase statuses
+  `增持`/`新进` (non-exit); entry next open + `max_chase_days=3` (§8.1;
+  chase wired into `simulate_paper_fills` via `B0Prereg.max_chase_days`).
+  Coverage gates: min event_days≥10, fraction≥0.25, unique stocks≥20 —
+  prefer inconclusive over fake accept.
+- **Stability gate**: `evaluate_holdout_lift_vs_b0` requires strict holdout
+  lift vs B0 for claimable accept. Wired into B2 + B4 finalize.
+  Live B2 holdout ret equals B0 → **withdraws** prior short-window
+  `accept`/`claimable=true` → `reject` / `holdout_lift_vs_b0_unmet`.
+- Live 40d (`20260522`–`20260717`):
+
+  | block | ret | max_dd | win | payoff | turn | n | holdout ret | verdict | claimable |
+  |---|---:|---:|---:|---:|---:|---:|---:|---|---|
+  | B0 | −24.4% | 33.5% | 0.45 | 0.93 | 1.45 | 145 | +5.9% | reject | false |
+  | B1 | −39.6% | 41.9% | 0.39 | 0.92 | 1.45 | 145 | +4.0% | reject | false |
+  | B2 | +0.34% | 13.7% | 0.52 | 0.99 | 0.60 | 60 | +5.9% | reject | false |
+  | B4 | n/a | n/a | n/a | n/a | n/a | n/a | n/a | inconclusive | false |
+
+  B4 coverage: event_days=4/40, unique_stocks=11, episodes=11 →
+  `b4_disclosure_event_coverage_insufficient`. B2 stability:
+  lift=0.0 vs B0 holdout.
+- Tests: `test_institution_follow_b4` + B2 holdout-lift unit; CI wired.
+- **Did not**: StrategyRelease, Optuna, B-pit cutover, margin thaw, mass
+  backfill, paper product promotion.
+- **Residual for release/paper product**: broader disclosure snapshot +
+  longer window before any claimable accept; form/qfq frontier
+  `20260717`; Tier1/Tier2 formal publish/PIT; no production candidate.

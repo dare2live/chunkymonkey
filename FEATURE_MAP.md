@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-19 23:40
+> Snapshot: 2026-07-19 23:50
 
 ## 1. 入口面
 
@@ -160,7 +160,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 6,585 | calls 边 7,756 | imports 边 2,150 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 6,698 | calls 边 7,941 | imports 边 2,254 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -173,14 +173,14 @@
 | services.database_manifest | 15 |
 | services.data_sources.margin_schema | 14 |
 | services.universe | 14 |
+| services.data_sources.holders_top10_schema | 13 |
 | services.source_watermarks | 13 |
 | services.data_sources.calendar_schema | 12 |
-| services.data_sources.holders_top10_schema | 12 |
+| services.institution_follow_b0_measure | 12 |
 | services.data_sources.contracts | 11 |
 | services.data_sources.disclosure_boundaries | 11 |
+| services.institution_follow_edge_gates | 10 |
 | services.data_sources.stk_holdertrade_schema | 9 |
-| services.db | 9 |
-| services.data_sources.availability | 8 |
 
 ### 跨文件 fan-in 最高的文件 (近似口径: 唯一定义名 + caller 实际 import 目标模块双过滤)
 
@@ -191,13 +191,13 @@
 | backend/services/source_watermarks.py | 13 |
 | backend/services/data_sources/disclosure_boundaries.py | 11 |
 | backend/services/universe.py | 11 |
+| backend/services/institution_follow_edge_gates.py | 10 |
 | backend/services/data_sources/contracts.py | 9 |
 | backend/services/data_sources/accepted_schema.py | 7 |
 | backend/services/data_sources/calendar_contract.py | 7 |
 | backend/services/data_sources/calendar_schema.py | 7 |
 | backend/services/data_sources/margin_evidence.py | 7 |
-| backend/services/pipeline/context.py | 7 |
-| backend/services/data_sources/margin_schema.py | 6 |
+| backend/services/institution_follow_b0.py | 7 |
 
 ### LOC top 10 (God module 候选)
 
@@ -206,13 +206,13 @@
 | backend/services/data_sources/sync_runner.py | 2864 |
 | backend/services/market_pulse.py | 1473 |
 | backend/scripts/check_continuity_integrity.py | 949 |
-| backend/services/institution_follow_b0_measure.py | 783 |
 | backend/services/data_sources/security_day_partition.py | 778 |
 | backend/services/data_sources/holders_top10_acceptance.py | 776 |
 | backend/services/institution_follow_b0.py | 762 |
 | backend/services/universe.py | 755 |
 | backend/scripts/data_health_snapshot.py | 731 |
 | backend/services/data_sources/calendar_acceptance.py | 728 |
+| backend/services/data_sources/margin_acceptance.py | 714 |
 
 ## 5. 概览
 

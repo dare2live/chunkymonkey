@@ -1,14 +1,14 @@
-"""institution_follow B2 market-sensing block (Phase E measured ablation).
+"""institution_follow B4 institution/event block (Phase E measured ablation).
 
 Adds one named FeatureBlock on top of B0 bare-K under the same disclosure
 ``DatasetSnapshot``, folds, costs and paper execution. Gates top-K on
-``MarketContextSnapshot`` risk-on (project-board nominal breadth) when coverage
-is sufficient; pulse mart / missing available_at fail closed.
+PIT-safe holder increase events (``notice_date`` / ``available_at``) with
+§8.1 next-open chase. Prefer inconclusive when disclosure coverage is thin.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal, Mapping
+from typing import Any, Literal, Mapping, Sequence
 from uuid import uuid4
 
 from services.institution_follow_b0 import (
@@ -33,51 +33,54 @@ from services.institution_follow_edge_gates import (
     evaluate_accept_edge_gates,
     evaluate_holdout_lift_vs_b0,
 )
-from services.institution_follow_b2_measure import (
+from services.institution_follow_b4_measure import (
     DEFINITION_VERSION,
+    MAX_CHASE_DAYS,
     METHOD_ID,
     POPULATION_KIND,
-    REASON_B2_CONTEXT_COVERAGE_INSUFFICIENT,
-    REASON_B2_NO_B0_CONTEXT,
-    REASON_B2_PAPER_MEASURED,
-    REASON_B2_PULSE_UNTRUSTED,
-    SOURCE_NOMINAL_BARS,
-    MeasuredB2Result,
-    build_context_by_day,
-    measure_b2_paper,
+    REASON_B4_DISCLOSURE_COVERAGE_INSUFFICIENT,
+    REASON_B4_NO_B0_CONTEXT,
+    REASON_B4_PAPER_MEASURED,
+    DisclosureEpisode,
+    MeasuredB4Result,
+    episodes_from_holder_rows,
+    load_holder_rows_for_snapshot,
+    measure_b4_paper,
+    open_holders_conn,
 )
 
-BLOCK_ID = "B2"
-FEATURE_BLOCK_ID = "market_sensing_project_breadth_v0"
-REASON_B2_SCAFFOLD_NO_MEASURED_EDGE = "b2_scaffold_market_sensing_not_measured"
-REASON_B2_DEPENDS_ON_B0 = "b2_requires_b0_protocol_context"
+BLOCK_ID = "B4"
+FEATURE_BLOCK_ID = "institution_event_holders_disclosure_v0"
+REASON_B4_SCAFFOLD_NO_MEASURED_EDGE = "b4_scaffold_institution_event_not_measured"
+REASON_B4_DEPENDS_ON_B0 = "b4_requires_b0_protocol_context"
 
 VerdictKind = Literal["accept", "reject", "inconclusive"]
 
 
 @dataclass(frozen=True)
-class MarketSensingFeatureBlock:
-    """Declared B2 feature block — definition + optional measured status."""
+class InstitutionEventFeatureBlock:
+    """Declared B4 feature block — definition + optional measured status."""
 
     block_id: str = FEATURE_BLOCK_ID
     ablation_parent: str = "B0"
     inputs: tuple[str, ...] = (
         "accepted_nominal_ohlcv_daily",
-        "MarketContextSnapshot",
+        "DatasetSnapshot.holders_top10",
+        "canonical_top10_float_holders_period",
     )
     outputs: tuple[str, ...] = (
-        "market_risk_on",
-        "project_board_adv_dec_ratio",
+        "disclosure_event_eligible",
+        "institution_increase_score",
     )
-    availability: str = "decision_time_eod_available_at_required"
+    availability: str = "notice_date_and_available_at_required_null_excluded"
     status: str = "declared"
     note: str = (
-        "Gate B0 top-K on EOD project-board breadth risk-on "
-        f"(method={METHOD_ID}; population={POPULATION_KIND}); "
-        "refuse UNTRUSTED pulse mart; same snapshot/folds/costs/paper as B0"
+        "Gate B0 top-K on PIT-safe holder increase events "
+        f"(method={METHOD_ID}; chase≤{MAX_CHASE_DAYS}); "
+        "same snapshot/folds/costs/paper as B0; thin coverage → inconclusive"
     )
     definition_version: str = DEFINITION_VERSION
-    config_hash: str = "risk_on_adv_dec_ratio_ge_1_v0"
+    config_hash: str = "increase_event_day_chase3_v0"
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -92,12 +95,12 @@ class MarketSensingFeatureBlock:
             "definition_version": self.definition_version,
             "method": METHOD_ID,
             "population_kind": POPULATION_KIND,
-            "b_pit_cutover_allowed": False,
+            "max_chase_days": MAX_CHASE_DAYS,
         }
 
 
 @dataclass(frozen=True)
-class InstitutionFollowB2Run:
+class InstitutionFollowB4Run:
     experiment_id: str
     strategy_package: str
     block: str
@@ -105,9 +108,9 @@ class InstitutionFollowB2Run:
     snapshot_scope: str
     phase_e_ablation: str
     surface_status: str
-    feature_block: MarketSensingFeatureBlock
+    feature_block: InstitutionEventFeatureBlock
     b0: InstitutionFollowB0Run
-    measured_b2: MeasuredB2Result | None
+    measured_b4: MeasuredB4Result | None
     notes: tuple[str, ...]
     artifact_manifest: dict[str, Any]
 
@@ -122,27 +125,31 @@ class InstitutionFollowB2Run:
             "surface_status": self.surface_status,
             "feature_block": self.feature_block.as_dict(),
             "b0": self.b0.as_dict(),
-            "measured_b2": (
-                self.measured_b2.as_dict() if self.measured_b2 else None
+            "measured_b4": (
+                self.measured_b4.as_dict() if self.measured_b4 else None
             ),
             "notes": list(self.notes),
             "artifact_manifest": dict(self.artifact_manifest),
         }
 
 
-def _run_measured_b2(
+def _run_measured_b4(
     b0: InstitutionFollowB0Run,
+    snapshot: Mapping[str, Any],
     *,
     nominal_conn=None,
+    holders_conn=None,
     bars_by_day: Mapping[str, Any] | None = None,
-    context_by_day: Mapping[str, Any] | None = None,
-    source: str = SOURCE_NOMINAL_BARS,
-) -> MeasuredB2Result | None:
+    episodes: Sequence[DisclosureEpisode] | None = None,
+    holder_rows: Sequence[Mapping[str, Any]] | None = None,
+) -> MeasuredB4Result | None:
     if b0.measured_b0 is None:
         return None
     days = list(b0.measured_b0.walk_forward.trading_days)
     owned_nominal = False
+    owned_holders = False
     n_conn = nominal_conn
+    h_conn = holders_conn
     try:
         if bars_by_day is None:
             if n_conn is None:
@@ -154,36 +161,49 @@ def _run_measured_b2(
         else:
             bars = {str(k): list(v) for k, v in bars_by_day.items()}  # type: ignore[arg-type]
 
-        ctx = None
-        if context_by_day is not None:
-            ctx = {str(k): v for k, v in context_by_day.items()}
-        elif source != SOURCE_NOMINAL_BARS:
-            ctx = build_context_by_day(bars, days, source=source)
+        null_excl = 0
+        miss_avail = 0
+        if episodes is not None:
+            eps = tuple(episodes)
+        else:
+            rows: list[Mapping[str, Any]]
+            if holder_rows is not None:
+                rows = list(holder_rows)
+            else:
+                if h_conn is None:
+                    h_conn = open_holders_conn()
+                    owned_holders = True
+                rows = load_holder_rows_for_snapshot(h_conn, snapshot)
+            eps, null_excl, miss_avail = episodes_from_holder_rows(rows)
 
-        return measure_b2_paper(
+        return measure_b4_paper(
             bars,
             b0_measured=b0.measured_b0,
-            context_by_day=ctx,
-            source=source,
+            episodes=eps,
+            null_notice_excluded=null_excl,
+            missing_available_at_excluded=miss_avail,
         )
     finally:
         if owned_nominal and n_conn is not None:
             n_conn.close()
+        if owned_holders and h_conn is not None:
+            h_conn.close()
 
 
-def build_b2_run(
+def build_b4_run(
     *,
     snapshot: Mapping[str, Any] | None = None,
     surface_status: str = REQUIRED_SURFACE_STATUS,
     b0_run: InstitutionFollowB0Run | None = None,
     measure_b0_paper: bool = True,
-    measure_b2_paper_flag: bool = True,
+    measure_b4_paper_flag: bool = True,
     nominal_conn=None,
+    holders_conn=None,
     bars_by_day: Mapping[str, Any] | None = None,
-    context_by_day: Mapping[str, Any] | None = None,
-    source: str = SOURCE_NOMINAL_BARS,
-) -> InstitutionFollowB2Run:
-    """Build B2 bound to the same snapshot/B0 context; measure when ready."""
+    episodes: Sequence[DisclosureEpisode] | None = None,
+    holder_rows: Sequence[Mapping[str, Any]] | None = None,
+) -> InstitutionFollowB4Run:
+    """Build B4 bound to the same snapshot/B0 context; measure when ready."""
 
     payload = dict(snapshot) if snapshot is not None else load_frozen_disclosure_snapshot()
     if surface_status != REQUIRED_SURFACE_STATUS:
@@ -198,19 +218,21 @@ def build_b2_run(
         nominal_conn=nominal_conn,
         bars_by_day=bars_by_day,
     )
-    measured: MeasuredB2Result | None = None
+    measured: MeasuredB4Result | None = None
     canary = is_canary_scope(payload)
     if (
-        measure_b2_paper_flag
+        measure_b4_paper_flag
         and not canary
         and base.measured_b0 is not None
     ):
-        measured = _run_measured_b2(
+        measured = _run_measured_b4(
             base,
+            payload,
             nominal_conn=nominal_conn,
+            holders_conn=holders_conn,
             bars_by_day=bars_by_day,
-            context_by_day=context_by_day,
-            source=source,
+            episodes=episodes,
+            holder_rows=holder_rows,
         )
 
     run_id = uuid4().hex[:12]
@@ -219,11 +241,12 @@ def build_b2_run(
     )
     fb_status = "declared"
     notes = [
-        "b2_market_sensing_block",
+        "b4_institution_event_block",
         "one_block_ablation_on_b0",
-        "project_board_breadth_not_pulse_mart",
-        "b_pit_cutover_allowed_false",
-        "no_optuna_no_accept_without_edge_gates",
+        "pit_notice_date_available_at",
+        "chase_next_open_max_3",
+        "no_optuna_no_strategy_release",
+        "prefer_inconclusive_if_coverage_thin",
     ]
     if is_canary_scope(payload):
         notes.append("canary_scope_blocks_claimable_verdict")
@@ -231,31 +254,28 @@ def build_b2_run(
     if str(payload.get("scope") or "") == BOUNDED_SCOPE:
         notes.append("bounded_scope_inherits_b0_protocol_context")
     if measured is None:
-        notes.append(REASON_B2_SCAFFOLD_NO_MEASURED_EDGE)
+        notes.append(REASON_B4_SCAFFOLD_NO_MEASURED_EDGE)
         fb_status = "declared_scaffold"
     else:
-        notes.append("measured_b2_paper_attempted")
+        notes.append("measured_b4_paper_attempted")
         if not measured.coverage.sufficient:
             notes.append(measured.reason)
-            if measured.reason == REASON_B2_PULSE_UNTRUSTED:
-                fb_status = "pulse_untrusted_fail_closed"
-            else:
-                fb_status = "coverage_insufficient"
+            fb_status = "coverage_insufficient"
         else:
             fb_status = "measured_gated"
-            notes.append(REASON_B2_PAPER_MEASURED)
+            notes.append(REASON_B4_PAPER_MEASURED)
 
-    feature_block = MarketSensingFeatureBlock(status=fb_status)
+    feature_block = InstitutionEventFeatureBlock(status=fb_status)
     metrics_label = "unknown"
     paper_label = "not_run"
     if measured is not None:
         if not measured.coverage.sufficient:
-            metrics_label = "market_context_coverage_insufficient"
+            metrics_label = "disclosure_event_coverage_insufficient"
         elif measured.measured is not None:
             metrics_label = "paper_metrics_measured"
             paper_label = "measured"
 
-    return InstitutionFollowB2Run(
+    return InstitutionFollowB4Run(
         experiment_id=experiment_id,
         strategy_package=STRATEGY_PACKAGE,
         block=BLOCK_ID,
@@ -265,28 +285,29 @@ def build_b2_run(
         surface_status=surface_status,
         feature_block=feature_block,
         b0=base,
-        measured_b2=measured,
+        measured_b4=measured,
         notes=tuple(notes),
         artifact_manifest={
-            "kind": "institution_follow_b2",
+            "kind": "institution_follow_b4",
             "feature_block": feature_block.as_dict(),
             "metrics": metrics_label,
             "paper_fills": paper_label,
-            "measured_b2": measured.as_dict() if measured else None,
+            "measured_b4": measured.as_dict() if measured else None,
             "b0_experiment_id": base.experiment_id,
             "method": METHOD_ID,
             "population_kind": POPULATION_KIND,
+            "max_chase_days": MAX_CHASE_DAYS,
         },
     )
 
 
-def finalize_b2_verdict(
-    run: InstitutionFollowB2Run,
+def finalize_b4_verdict(
+    run: InstitutionFollowB4Run,
     *,
     requested_verdict: VerdictKind | None = None,
     force_accept: bool = False,
 ) -> ExperimentVerdict:
-    """B2 verdict: coverage/trust → edge gates; never fake improve/accept."""
+    """B4 verdict: coverage → edge gates → holdout lift; never fake accept."""
 
     wants_accept = requested_verdict == "accept" or force_accept
     if is_canary_scope(
@@ -297,7 +318,7 @@ def finalize_b2_verdict(
     ) or run.snapshot_scope == CANARY_SCOPE:
         if wants_accept:
             raise CanaryScopeOverclaimError(
-                "canary_scope_only blocks B2 accept"
+                "canary_scope_only blocks B4 accept"
             )
         return ExperimentVerdict(
             verdict="inconclusive",
@@ -308,17 +329,17 @@ def finalize_b2_verdict(
             claimable=False,
             details={
                 "feature_block": run.feature_block.as_dict(),
-                "note": "B2 under canary cannot claim",
+                "note": "B4 under canary cannot claim",
             },
         )
 
     b0_verdict = finalize_b0_verdict(run.b0, requested_verdict=None)
-    measured = run.measured_b2
+    measured = run.measured_b4
 
     if measured is None:
         return ExperimentVerdict(
             verdict="inconclusive",
-            reason=REASON_B2_SCAFFOLD_NO_MEASURED_EDGE,
+            reason=REASON_B4_SCAFFOLD_NO_MEASURED_EDGE,
             blocked=True,
             experiment_id=run.experiment_id,
             block=run.block,
@@ -329,8 +350,8 @@ def finalize_b2_verdict(
                 "b0_verdict": b0_verdict.as_dict(),
                 "metrics": "unknown",
                 "paper_fills": "not_run",
-                "depends_on": REASON_B2_DEPENDS_ON_B0,
-                "note": "B2 paper not run (missing B0 measured context)",
+                "depends_on": REASON_B4_DEPENDS_ON_B0,
+                "note": "B4 paper not run (missing B0 measured context)",
             },
         )
 
@@ -346,17 +367,17 @@ def finalize_b2_verdict(
                 "requested_verdict": requested_verdict,
                 "feature_block": run.feature_block.as_dict(),
                 "b0_verdict": b0_verdict.as_dict(),
-                "market_context_coverage": measured.coverage.as_dict(),
+                "disclosure_event_coverage": measured.coverage.as_dict(),
                 "b0_metrics": (
                     measured.b0_metrics.as_dict()
                     if measured.b0_metrics
                     else None
                 ),
-                "metrics": "market_context_coverage_insufficient",
+                "metrics": "disclosure_event_coverage_insufficient",
                 "paper_fills": "not_run",
                 "note": (
-                    "MarketContextSnapshot coverage/trust insufficient; "
-                    "not a fake B2 improve; pulse mart refused when UNTRUSTED"
+                    "Disclosure event coverage/PIT thin on bounded snapshot; "
+                    "not a fake B4 improve — prefer inconclusive"
                 ),
             },
         )
@@ -367,6 +388,10 @@ def finalize_b2_verdict(
         measured.measured.metrics,
         measured.measured.holdout_metrics,
         prereg=measured.measured.prereg,
+    )
+    stability = evaluate_holdout_lift_vs_b0(
+        measured.measured.holdout_metrics,
+        measured.b0_holdout_metrics,
     )
     details = {
         "requested_verdict": requested_verdict,
@@ -382,12 +407,13 @@ def finalize_b2_verdict(
         ),
         "metrics": measured.measured.metrics.as_dict(),
         "holdout_metrics": measured.measured.holdout_metrics.as_dict(),
-        "delta_b2_minus_b0": (
+        "delta_b4_minus_b0": (
             measured.delta.as_dict() if measured.delta else None
         ),
-        "market_context_coverage": measured.coverage.as_dict(),
+        "disclosure_event_coverage": measured.coverage.as_dict(),
         "walk_forward": measured.measured.walk_forward.as_dict(),
         "accept_edge_gates": edge.as_dict(),
+        "holdout_lift_stability": stability.as_dict(),
         "paper_fills": "measured",
         "protocol_claimable": measured.claimable,
         "b0_protocol_claimable": bool(
@@ -395,7 +421,7 @@ def finalize_b2_verdict(
         ),
         "method": METHOD_ID,
         "population_kind": POPULATION_KIND,
-        "b_pit_cutover_allowed": False,
+        "max_chase_days": MAX_CHASE_DAYS,
     }
 
     if not measured.claimable:
@@ -408,15 +434,9 @@ def finalize_b2_verdict(
             claimable=False,
             details={
                 **details,
-                "note": "B2 paper measured but protocol power insufficient",
+                "note": "B4 paper measured but protocol power insufficient",
             },
         )
-
-    stability = evaluate_holdout_lift_vs_b0(
-        measured.measured.holdout_metrics,
-        measured.b0_holdout_metrics,
-    )
-    details["holdout_lift_stability"] = stability.as_dict()
 
     if edge.passed and stability.passed:
         return ExperimentVerdict(
@@ -429,8 +449,8 @@ def finalize_b2_verdict(
             details={
                 **details,
                 "note": (
-                    "B2 protocol + accept edge gates + holdout lift vs B0 "
-                    "passed"
+                    "B4 protocol + accept edge gates + holdout lift vs B0 "
+                    "passed (still ≠ StrategyRelease)"
                 ),
             },
         )
@@ -446,9 +466,8 @@ def finalize_b2_verdict(
             details={
                 **details,
                 "note": (
-                    "B2 short-window edge gates passed but holdout return "
-                    "does not strictly beat B0 — not independent lift; "
-                    "claimable=false (≠ StrategyRelease)"
+                    "B4 edge gates passed but holdout does not strictly beat "
+                    "B0 — claimable=false"
                 ),
             },
         )
@@ -463,15 +482,15 @@ def finalize_b2_verdict(
         details={
             **details,
             "note": (
-                "B2 measured under identical folds/costs; accept edge "
+                "B4 measured under identical folds/costs; accept edge "
                 "gates unmet — claimable=false"
             ),
-            "depends_on": REASON_B2_NO_B0_CONTEXT,
+            "depends_on": REASON_B4_NO_B0_CONTEXT,
         },
     )
 
 
-def run_b2_scaffold(
+def run_b4_scaffold(
     *,
     snapshot: Mapping[str, Any] | None = None,
     surface_status: str = REQUIRED_SURFACE_STATUS,
@@ -479,43 +498,45 @@ def run_b2_scaffold(
     force_accept: bool = False,
     b0_run: InstitutionFollowB0Run | None = None,
     measure_b0_paper: bool = True,
-    measure_b2_paper_flag: bool = True,
+    measure_b4_paper_flag: bool = True,
     nominal_conn=None,
+    holders_conn=None,
     bars_by_day: Mapping[str, Any] | None = None,
-    context_by_day: Mapping[str, Any] | None = None,
-    source: str = SOURCE_NOMINAL_BARS,
-) -> tuple[InstitutionFollowB2Run, ExperimentVerdict]:
-    run = build_b2_run(
+    episodes: Sequence[DisclosureEpisode] | None = None,
+    holder_rows: Sequence[Mapping[str, Any]] | None = None,
+) -> tuple[InstitutionFollowB4Run, ExperimentVerdict]:
+    run = build_b4_run(
         snapshot=snapshot,
         surface_status=surface_status,
         b0_run=b0_run,
         measure_b0_paper=measure_b0_paper,
-        measure_b2_paper_flag=measure_b2_paper_flag,
+        measure_b4_paper_flag=measure_b4_paper_flag,
         nominal_conn=nominal_conn,
+        holders_conn=holders_conn,
         bars_by_day=bars_by_day,
-        context_by_day=context_by_day,
-        source=source,
+        episodes=episodes,
+        holder_rows=holder_rows,
     )
-    return run, finalize_b2_verdict(
+    return run, finalize_b4_verdict(
         run,
         requested_verdict=requested_verdict,
         force_accept=force_accept,
     )
 
 
-run_b2_measured = run_b2_scaffold
+run_b4_measured = run_b4_scaffold
 
 
 __all__ = [
     "BLOCK_ID",
     "FEATURE_BLOCK_ID",
-    "REASON_B2_CONTEXT_COVERAGE_INSUFFICIENT",
-    "REASON_B2_DEPENDS_ON_B0",
-    "REASON_B2_SCAFFOLD_NO_MEASURED_EDGE",
-    "InstitutionFollowB2Run",
-    "MarketSensingFeatureBlock",
-    "build_b2_run",
-    "finalize_b2_verdict",
-    "run_b2_measured",
-    "run_b2_scaffold",
+    "REASON_B4_DEPENDS_ON_B0",
+    "REASON_B4_DISCLOSURE_COVERAGE_INSUFFICIENT",
+    "REASON_B4_SCAFFOLD_NO_MEASURED_EDGE",
+    "InstitutionEventFeatureBlock",
+    "InstitutionFollowB4Run",
+    "build_b4_run",
+    "finalize_b4_verdict",
+    "run_b4_measured",
+    "run_b4_scaffold",
 ]

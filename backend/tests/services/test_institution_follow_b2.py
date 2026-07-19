@@ -32,6 +32,10 @@ from services.institution_follow_b2_measure import (
     measure_market_context_coverage,
     refuse_pulse_mart_as_market_context,
 )
+from services.institution_follow_edge_gates import (
+    REASON_HOLDOUT_LIFT_UNMET,
+    evaluate_holdout_lift_vs_b0,
+)
 
 
 def _canary_snapshot(**overrides):
@@ -278,6 +282,19 @@ def test_b2_measured_vs_b0_reports_delta_and_rejects_on_edge_gates() -> None:
         assert verdict.reason == REASON_PROTOCOL_READY_EDGE_UNMET
     assert verdict.details["delta_b2_minus_b0"] is not None
     assert verdict.details["b_pit_cutover_allowed"] is False
+
+
+def test_holdout_lift_stability_rejects_equal_b0_holdout() -> None:
+    class _M:
+        def __init__(self, ret):
+            self.total_return = ret
+            self.max_drawdown = 0.1
+            self.n_trades_completed = 40
+
+    # Mirrors live B2 suspicion: holdout ret identical to B0.
+    stab = evaluate_holdout_lift_vs_b0(_M(0.059), _M(0.059))
+    assert stab.passed is False
+    assert stab.reason == REASON_HOLDOUT_LIFT_UNMET
 
 
 def test_b2_scaffold_without_measure_never_accepts() -> None:

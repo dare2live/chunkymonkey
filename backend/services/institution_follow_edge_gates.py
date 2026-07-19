@@ -1,4 +1,4 @@
-"""Prereg accept edge gates for institution_follow B0/B1 paper verdicts."""
+"""Prereg accept edge gates for institution_follow B0/B1/B2/B4 paper verdicts."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -28,9 +28,12 @@ class _PreregProto(Protocol):
 REASON_SHORT_WINDOW = "measured_short_window_insufficient_power"
 REASON_EDGE_GATES_UNMET = "accept_edge_gates_unmet"
 REASON_EDGE_GATES_PASSED = "accept_edge_gates_passed"
+REASON_HOLDOUT_LIFT_UNMET = "holdout_lift_vs_b0_unmet"
 MIN_HOLDOUT_NET_RETURN_ACCEPT = 0.0
 MAX_DRAWDOWN_ACCEPT = 0.25
 REQUIRE_EVAL_TOTAL_RETURN_POSITIVE = True
+# Cheap short-window stability: claimable accept needs strict holdout lift vs B0.
+REQUIRE_HOLDOUT_LIFT_VS_B0 = True
 
 
 @dataclass(frozen=True)
@@ -118,14 +121,84 @@ def evaluate_accept_edge_gates(
     )
 
 
+@dataclass(frozen=True)
+class HoldoutLiftStabilityResult:
+    """Strict holdout lift vs B0 — challenges short-window coincidental accepts."""
+
+    passed: bool
+    reason: str
+    checks: dict[str, Any]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "passed": self.passed,
+            "reason": self.reason,
+            "checks": dict(self.checks),
+            "require_holdout_lift_vs_b0": REQUIRE_HOLDOUT_LIFT_VS_B0,
+        }
+
+
+def evaluate_holdout_lift_vs_b0(
+    block_holdout: _MetricsProto,
+    b0_holdout: _MetricsProto | None,
+    *,
+    require_strict_lift: bool = REQUIRE_HOLDOUT_LIFT_VS_B0,
+) -> HoldoutLiftStabilityResult:
+    """Fail closed when block holdout return does not strictly beat B0 holdout.
+
+    Equal holdout (common when the block does not change holdout-day
+    eligibility) is **not** independent lift — reject claimable accept.
+    """
+
+    block_ret = block_holdout.total_return
+    b0_ret = b0_holdout.total_return if b0_holdout is not None else None
+    checks = {
+        "block_holdout_total_return": block_ret,
+        "b0_holdout_total_return": b0_ret,
+        "require_strict_lift": require_strict_lift,
+        "b0_holdout_present": b0_holdout is not None,
+    }
+    if not require_strict_lift:
+        return HoldoutLiftStabilityResult(
+            passed=True,
+            reason="holdout_lift_gate_disabled",
+            checks=checks,
+        )
+    if b0_holdout is None or b0_ret is None or block_ret is None:
+        checks["lift"] = None
+        return HoldoutLiftStabilityResult(
+            passed=False,
+            reason=REASON_HOLDOUT_LIFT_UNMET,
+            checks=checks,
+        )
+    lift = float(block_ret) - float(b0_ret)
+    checks["lift"] = lift
+    checks["lift_ok"] = lift > 0.0
+    if lift > 0.0:
+        return HoldoutLiftStabilityResult(
+            passed=True,
+            reason="holdout_lift_vs_b0_passed",
+            checks=checks,
+        )
+    return HoldoutLiftStabilityResult(
+        passed=False,
+        reason=REASON_HOLDOUT_LIFT_UNMET,
+        checks=checks,
+    )
+
+
 __all__ = [
     "AcceptEdgeGateResult",
+    "HoldoutLiftStabilityResult",
     "MAX_DRAWDOWN_ACCEPT",
     "MIN_HOLDOUT_NET_RETURN_ACCEPT",
     "REASON_EDGE_GATES_PASSED",
     "REASON_EDGE_GATES_UNMET",
+    "REASON_HOLDOUT_LIFT_UNMET",
     "REASON_SHORT_WINDOW",
     "REQUIRE_EVAL_TOTAL_RETURN_POSITIVE",
+    "REQUIRE_HOLDOUT_LIFT_VS_B0",
     "evaluate_accept_edge_gates",
+    "evaluate_holdout_lift_vs_b0",
     "evaluate_protocol_power",
 ]
