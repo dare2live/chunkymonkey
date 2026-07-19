@@ -21,7 +21,7 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | Phase A 代码出口：A1–A5 闭合（calendar runtime、observation resolver、landing purity、`formal_boundaries`）。`live_readiness` 可评估（多为 BLOCKED）。K/ST accepted writer + calendar canary 仍缺；无 provider mass fetch / consumer cutover |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | Phase A 代码出口：A1–A5 闭合（calendar runtime、observation resolver、landing purity、`formal_boundaries`；legacy raw 墙在 contract handoff 之后）。`live_readiness` 可评估（多为 BLOCKED）。K/ST accepted writer + calendar canary 仍缺；无 provider mass fetch / consumer cutover |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
 | T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 当前展示可用；分类解释、measurement、regime 和 persistence 耦合，暂不可直接做 PIT 特征 |

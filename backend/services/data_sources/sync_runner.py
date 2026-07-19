@@ -1497,11 +1497,12 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
     reg = registry if registry is not None else load_registry()
     spec = domain_spec(reg, domain)
     _require_execution_enabled(spec)
-    _refuse_formal_legacy_raw_path(domain)
     formal_contract = _formal_dataset_contract_for_spec(spec)
     formal_execution = _require_formal_population_execution(spec, formal_contract)
     if formal_execution is not None:
         return _refuse_formal_domain_runtime(domain, formal_execution)
+    # After formal handoff/refusal: never fall into legacy raw for walled domains.
+    _refuse_formal_legacy_raw_path(domain)
     if max_dates is not None:
         raise SyncWindowError("--max-dates is only valid for --drain")
     batch_mode = str(spec["batch_mode"])
@@ -1919,11 +1920,11 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     reg = registry if registry is not None else load_registry()
     spec = domain_spec(reg, domain)
     _require_execution_enabled(spec)
-    _refuse_formal_legacy_raw_path(domain)
     formal_contract = _formal_dataset_contract_for_spec(spec)
     formal_execution = _require_formal_population_execution(spec, formal_contract)
     if formal_execution is not None:
         return _refuse_formal_domain_runtime(domain, formal_execution)
+    _refuse_formal_legacy_raw_path(domain)
     if spec.get("batch_mode") != "by_trade_date":
         return {"domain": domain, "status": "unsupported", "batch_mode": spec.get("batch_mode")}
     if spec.get("allow_empty_batch") and not spec.get("cross_check_domain"):
