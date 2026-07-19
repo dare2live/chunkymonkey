@@ -1,0 +1,88 @@
+"""B-pit: project-universe breadth from observation membership (fail-closed)."""
+from __future__ import annotations
+
+from datetime import date, datetime, timezone
+
+import pytest
+
+from services.data_sources.observation_population import (
+    NOMINAL_KLINE_DATASET_ID,
+    ST_MEMBERSHIP_DATASET_ID,
+    AcceptedPartitionRef,
+    ObservationMembership,
+)
+from services.data_sources.project_universe_breadth import (
+    ProjectUniverseBreadthUnavailable,
+    compute_project_universe_breadth,
+    refuse_legacy_raw_daily_as_project_universe_breadth,
+)
+
+
+def _ref(dataset_id: str, day: date, rows: int = 2) -> AcceptedPartitionRef:
+    stamp = datetime(2024, 1, 2, 18, 0, tzinfo=timezone.utc)
+    return AcceptedPartitionRef(
+        dataset_id=dataset_id,
+        partition_value=day.strftime("%Y%m%d"),
+        batch_id="batch-1",
+        contract_hash="c" * 64,
+        config_hash="f" * 64,
+        content_hash="a" * 64,
+        row_count=rows,
+        available_at=stamp,
+        accepted_at=stamp,
+    )
+
+
+def _membership(codes: tuple[str, ...]) -> ObservationMembership:
+    day = date(2024, 1, 2)
+    return ObservationMembership(
+        observation_date=day,
+        decision_time=datetime(2024, 1, 2, 18, 0, tzinfo=timezone.utc),
+        ts_codes=codes,
+        calendar_generation_id="cal-1",
+        calendar_content_hash="b" * 64,
+        nominal_kline=_ref(NOMINAL_KLINE_DATASET_ID, day, rows=len(codes)),
+        st_membership=_ref(ST_MEMBERSHIP_DATASET_ID, day, rows=1),
+        universe_policy_id="traded_on_observation_date",
+        universe_policy_version=1,
+        universe_policy_hash="p" * 64,
+        excluded_st_count=0,
+        excluded_board_count=0,
+    )
+
+
+def test_breadth_uses_only_membership_codes() -> None:
+    report = compute_project_universe_breadth(
+        _membership(("600000.SH", "000001.SZ")),
+        rows=(
+            {"ts_code": "600000.SH", "pct_chg": 1.2},
+            {"ts_code": "000001.SZ", "pct_chg": -0.5},
+            {"ts_code": "830001.BJ", "pct_chg": 9.0},  # out of membership
+            {"ts_code": "600001.SH", "pct_chg": 2.0},  # out of membership
+        ),
+    )
+    assert report.adv_n == 1
+    assert report.dec_n == 1
+    assert report.flat_n == 0
+    assert report.adv_dec_ratio == pytest.approx(1.0)
+    assert report.population_kind == "project_universe_pit"
+    assert report.row_count_used == 2
+    assert report.ignored_outside_membership == 2
+
+
+def test_missing_membership_rows_fail_closed() -> None:
+    with pytest.raises(ProjectUniverseBreadthUnavailable, match="incomplete_membership_bars"):
+        compute_project_universe_breadth(
+            _membership(("600000.SH", "000001.SZ")),
+            rows=({"ts_code": "600000.SH", "pct_chg": 1.0},),
+        )
+
+
+def test_empty_membership_blocked() -> None:
+    with pytest.raises(ProjectUniverseBreadthUnavailable, match="empty_membership"):
+        compute_project_universe_breadth(_membership(()), rows=())
+
+
+def test_refuse_legacy_raw_daily_claim() -> None:
+    with pytest.raises(RuntimeError, match="cannot_satisfy_project_universe"):
+        refuse_legacy_raw_daily_as_project_universe_breadth("project_universe_pit")

@@ -544,25 +544,16 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   `test_sentiment_v2_fields` trust 断言。无 mart rewrite、无 cutover、无
   mass fetch。下一：前端/读面消费 trust；B-pit 等 A3 data-plane。
 
-### 2026-07-19 — B-ext slice3: API shadow_reconcile + UI untrusted labels
-
-- **B-ext FIXED（诚实化）**：`/pulse/sentiment` 增加只读 `shadow_reconcile`
- （有 `tr.raw_tushare_margin` 时做 venue 对比；无 attach fail-closed）；
-  MarketPage 脉搏/情绪卡标注 UNTRUSTED 与「交易所汇总/raw」，不改数值。
-- 对抗：`test_sentiment_v2_fields` shadow BLOCKED + cutover false。
-  残余：mart 仍发错误 scope 数（待 B-pit cutover）；生产 shadow 可能
-  `margin_raw_not_attached`。
-
 ### 2026-07-19 — B-ext slice3: shadow on sentiment + frontend trust + A3 canary BLOCKED
 
-- **B-ext PARTIAL（代码面收口，非 FIXED）**：
+- **B-ext FIXED（诚实化代码路径；数值未切）**：
   - `/api/v3/pulse/sentiment` 增加 `shadow_reconcile`；生产 pulse conn 无 `tr`
     时尽力 `ATTACH … READ_ONLY`，失败记 `margin_raw_not_attached`（fail-closed，
     不编造 PARITY/cutover）。
   - 前端 PulseBand/SentimentCard 消费 `population_scope.overall_status`（及
     shadow verdict）做 UNTRUSTED 标注；KPI 标签标明 raw / 交易所汇总。
-  - 对抗测：`test_market_pulse_shadow_reconcile` + `test_market_pulse_api` =
-    20 passed（含 shadow BLOCKED on latest fixture day）。
+  - 对抗测：`test_market_pulse_shadow_reconcile` + `test_sentiment_v2_fields`
+    shadow BLOCKED / cutover false passed。
 - **A3 data-plane residual 实测 BLOCKED（未跑 canary）**：
   - registry：`trade_cal`/`daily`/`stock_st` = `execution_policy.mode=disabled`；
     `margin` = `scope_blocked`。
@@ -572,3 +563,10 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
     `execution_policy` 或等价授权）+ 缺 live accepted calendar generation。
     本 session 不 mass backfill、不解冻 margin、不切 B-pit 数值。
 - 未做：E0/institution_follow 生产、consumer cutover、provider fetch。
+
+### 2026-07-19 — B-pit slice1: project_universe_breadth (no cutover)
+
+- **PARTIAL**：新增 `project_universe_breadth.compute_project_universe_breadth` —
+  仅用 `ObservationMembership.ts_codes` + 显式 bar；缺席/重复 fail-closed；
+  拒 raw daily 冒充 project_universe_pit。未接 mart、未 cutover。
+- 对抗：`test_project_universe_breadth`。阻塞：A3 live partitions / canary。

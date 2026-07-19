@@ -6,7 +6,7 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane residual=BLOCKED**（无 authorized canary + 无 live calendar/K accepted）。**B-ext PARTIAL**（trust/shadow/FE 已落地，无数值 cutover）。**B-pit** 仍阻塞于 A3。Fable5 **REVISE** 已吸收（见 ledger）。禁 E0/institution_follow 生产至 A/B 足够。
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane residual=BLOCKED**（无 authorized canary + 无 live calendar/K accepted）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（广度计算器已有；接 mart/cutover 阻塞于 A3）。Fable5 **REVISE** 已吸收（见 ledger）。禁 E0/institution_follow 生产至 A/B 足够。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -56,11 +56,10 @@
   landing·canonical 表；仅有 legacy `raw_tushare_stock_st` + margin accepted
   （margin 仍 `scope_blocked`）。未授权 → **不跑** provider/manual canary。
   下一授权点：窄 calendar generation canary（再 K/ST），禁 mass backfill / margin 解冻。
-- **B-ext（PARTIAL，代码面可收）** scope + shadow + sentiment
-  `population_scope`/`shadow_reconcile`/`cutover_allowed=false` + 前端 trust 标注；
-  live margin attach 尽力（失败 `margin_raw_not_attached` fail-closed）。mart 数值未改、无 cutover。
-  残余仅 B-pit 数值切读（需 A3）。
-- **B-pit（阻塞 A3 data-plane）** project_universe_pit 广度/resolver 消费者迁移；shadow 后切读面。未闭合 A3 data-plane residual 不得宣称 B 完成。
+- **B-ext FIXED（诚实化）** scope + shadow + sentiment sidecar + 前端 UNTRUSTED 标注；
+  mart 数值未改、`cutover_allowed=false`。残余=B-pit 数值切读。
+- **B-pit PARTIAL** `project_universe_breadth` 已落地（membership-only，fail-closed）；
+  **未**接 pulse mart / 未 cutover。完整 B 需 A3 live partitions + shadow 证据后再切读面。
 - **C** Tier1/2 正式 lineage。**D** `DatasetSnapshot`→`ExperimentVerdict` + PIT 截断。
 - **E0（E 硬前置）** 披露域 formal 化：holders/org_holding/stk_holdertrade → adapter/landing/canonical + notice/`available_at` 契约。未完成则 **E=BLOCKED**。
 - **E** `institution_follow_v1`（首包；B0→B4）。**F** main_rally。**G** 公式+BestChoice。**H** Release/名义价纸面。
