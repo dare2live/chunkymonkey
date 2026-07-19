@@ -4,6 +4,39 @@
     "holders_top10": {
       "accepted": [
         {
+          "accepted_at": "2026-07-19 23:55:08.058348+08",
+          "batch_id": "holders_top10:20260508:efa517dec905",
+          "config_hash": "6e0c721f3b28756dca6e18e806db649a04b22b2c86b54bcbddca0475014df3a9",
+          "content_hash": "7d302fa6ed1ea549fe43dae91209763d819d70d2141ddda30c406289a6bd2aa5",
+          "contract_hash": "33422fa9469269c68074a119f9cb07014b852349ab2c7ca9937a24eb83bedaf1",
+          "contract_version": "2",
+          "dataset_id": "tier0.disclosure.top10_float_holders_period",
+          "partition": "20260508",
+          "row_count": 80
+        },
+        {
+          "accepted_at": "2026-07-19 23:55:08.438771+08",
+          "batch_id": "holders_top10:20260616:a9e8f8e3fb7b",
+          "config_hash": "6e0c721f3b28756dca6e18e806db649a04b22b2c86b54bcbddca0475014df3a9",
+          "content_hash": "6f07d092c1fc419d53d177e8db5e22d2a5101e255c9da2d31c49dbcf3ec23355",
+          "contract_hash": "33422fa9469269c68074a119f9cb07014b852349ab2c7ca9937a24eb83bedaf1",
+          "contract_version": "2",
+          "dataset_id": "tier0.disclosure.top10_float_holders_period",
+          "partition": "20260616",
+          "row_count": 84
+        },
+        {
+          "accepted_at": "2026-07-19 23:55:07.291583+08",
+          "batch_id": "holders_top10:20260618:f149f765d2ac",
+          "config_hash": "6e0c721f3b28756dca6e18e806db649a04b22b2c86b54bcbddca0475014df3a9",
+          "content_hash": "51fe8c74a2ec32b9c11ff6f52ea61c097fa96e01d0770f9004c74ec94ad4bf1c",
+          "contract_hash": "33422fa9469269c68074a119f9cb07014b852349ab2c7ca9937a24eb83bedaf1",
+          "contract_version": "2",
+          "dataset_id": "tier0.disclosure.top10_float_holders_period",
+          "partition": "20260618",
+          "row_count": 92
+        },
+        {
           "accepted_at": "2026-07-19 22:55:44.234701+08",
           "batch_id": "holders_top10:20260619:3f6f5a7419c3",
           "config_hash": "6e0c721f3b28756dca6e18e806db649a04b22b2c86b54bcbddca0475014df3a9",
@@ -13,6 +46,50 @@
           "dataset_id": "tier0.disclosure.top10_float_holders_period",
           "partition": "20260619",
           "row_count": 12
+        },
+        {
+          "accepted_at": "2026-07-19 23:55:06.89952+08",
+          "batch_id": "holders_top10:20260623:64c81b301c33",
+          "config_hash": "6e0c721f3b28756dca6e18e806db649a04b22b2c86b54bcbddca0475014df3a9",
+          "content_hash": "ba1c0af7841543a680fcb159de732712c2754dda7ab36d3ec0923abe5ea95d4d",
+          "contract_hash": "33422fa9469269c68074a119f9cb07014b852349ab2c7ca9937a24eb83bedaf1",
+          "contract_version": "2",
+          "dataset_id": "tier0.disclosure.top10_float_holders_period",
+          "partition": "20260623",
+          "row_count": 112
+        },
+        {
+          "accepted_at": "2026-07-19 23:55:07.672767+08",
+          "batch_id": "holders_top10:20260703:0b14fbbdc756",
+          "config_hash": "6e0c721f3b28756dca6e18e806db649a04b22b2c86b54bcbddca0475014df3a9",
+          "content_hash": "26c894611bff7ce728728f30dff16f65e2c64af327a1b9a06e5180a9e3c44cf5",
+          "contract_hash": "33422fa9469269c68074a119f9cb07014b852349ab2c7ca9937a24eb83bedaf1",
+          "contract_version": "2",
+          "dataset_id": "tier0.disclosure.top10_float_holders_period",
+          "partition": "20260703",
+          "row_count": 98
+        },
+        {
+          "accepted_at": "2026-07-19 23:56:20.502832+08",
+          "batch_id": "holders_top10:20260709:3774f443680f",
+          "config_hash": "6e0c721f3b28756dca6e18e806db649a04b22b2c86b54bcbddca0475014df3a9",
+          "content_hash": "d3fbfeec7f850fc15b2add8e5090179429f81e1bd1605b66220b3cfe45fcc95e",
+          "contract_hash": "33422fa9469269c68074a119f9cb07014b852349ab2c7ca9937a24eb83bedaf1",
+          "contract_version": "2",
+          "dataset_id": "tier0.disclosure.top10_float_holders_period",
+          "partition": "20260709",
+          "row_count": 68
+        },
+        {
+          "accepted_at": "2026-07-19 23:56:20.87531+08",
+          "batch_id": "holders_top10:20260710:b177aa56e868",
+          "config_hash": "6e0c721f3b28756dca6e18e806db649a04b22b2c86b54bcbddca0475014df3a9",
+          "content_hash": "0c2cd99823740311416aac59773a9ad466dc2d532f2989ddeba805ec4fcfba54",
+          "contract_hash": "33422fa9469269c68074a119f9cb07014b852349ab2c7ca9937a24eb83bedaf1",
+          "contract_version": "2",
+          "dataset_id": "tier0.disclosure.top10_float_holders_period",
+          "partition": "20260710",
+          "row_count": 69
         },
         {
           "accepted_at": "2026-07-19 22:55:43.878305+08",
@@ -56,7 +133,14 @@
       "contract_version": "1",
       "dataset_id": "tier0.disclosure.top10_float_holders_period",
       "date_set": [
+        "20260508",
+        "20260616",
+        "20260618",
         "20260619",
+        "20260623",
+        "20260703",
+        "20260709",
+        "20260710",
         "20260713",
         "20260714",
         "20260717"
@@ -167,7 +251,7 @@
       "row_count": 15
     }
   },
-  "frozen_at": "2026-07-19T14:57:16.608499+00:00",
+  "frozen_at": "2026-07-19T15:56:32.179881+00:00",
   "notes": [
     "bounded_accepted_partitions_snapshot",
     "explicit_per_domain_date_sets",
@@ -182,5 +266,5 @@
   "relpath": "data/lineage/disclosure_dataset_snapshot.json",
   "scope": "bounded_accepted_partitions",
   "shadow_overall_status": "MATCH",
-  "snapshot_id": "disclosure_bounded_holders_top10:20260619,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713"
+  "snapshot_id": "disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713"
 }

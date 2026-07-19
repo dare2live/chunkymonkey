@@ -33,7 +33,19 @@ _SERVING = {
 # Bounded broaden — recent/small accepts (+ canaries). Org 20260430 is a
 # documented stock subset (600519,000001), not full-universe.
 _BOUNDED_SETS = {
-    "holders_top10": ["20260619", "20260713", "20260714", "20260717"],
+    "holders_top10": [
+        "20260508",
+        "20260616",
+        "20260618",
+        "20260619",
+        "20260623",
+        "20260703",
+        "20260709",
+        "20260710",
+        "20260713",
+        "20260714",
+        "20260717",
+    ],
     "org_holding": ["20190430", "20260430"],
     "stk_holdertrade": ["20260518", "20260608", "20260706", "20260713"],
 }

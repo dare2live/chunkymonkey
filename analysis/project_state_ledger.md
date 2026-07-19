@@ -1120,3 +1120,37 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Residual for release/paper product**: broader disclosure snapshot +
   longer window before any claimable accept; form/qfq frontier
   `20260717`; Tier1/Tier2 formal publish/PIT; no production candidate.
+
+### 2026-07-19 — Phase E: bounded holders expand + B4 remeasure
+
+- **E PARTIAL** (B0/B1/B2/B4 all `reject` / `claimable=false`; no StrategyRelease).
+- **Bounded holders_top10 legacy-accept** (+7 small recent notice_date
+  partitions; cap≤15; skipped April mass + `DUPLICATE_GRAIN` dates):
+  `20260508(80)`, `20260616(84)`, `20260618(92)`, `20260623(112)`,
+  `20260703(98)`, `20260709(68)`, `20260710(69)`. Kept prior
+  `20260619/0713/0714/0717`. Rejected attempt `20260707` (intra grain
+  dup). No org_holding mass backfill.
+- Refreshed `disclosure_dataset_snapshot.json` via
+  `freeze_disclosure_dataset_snapshot.py --bounded` (holders date_set=11;
+  shadow serving canaries still MATCH / `cutover_allowed=true`).
+- Re-ran same 40d protocol (`20260522`–`20260717`):
+
+  | block | ret | max_dd | win | payoff | turn | n | holdout ret | verdict | claimable |
+  |---|---:|---:|---:|---:|---:|---:|---:|---|---|
+  | B0 | −24.4% | 33.5% | 0.45 | 0.93 | 1.45 | 145 | +5.9% | reject | false |
+  | B1 | −39.6% | 41.9% | 0.39 | 0.92 | 1.45 | 145 | +4.0% | reject | false |
+  | B2 | +0.34% | 13.7% | 0.52 | 0.99 | 0.60 | 60 | +5.9% | reject | false |
+  | B4 | −6.1% | 8.3% | 0.50 | 0.60 | 0.40 | 40 | +1.0% | reject | false |
+
+  **B4 coverage (now sufficient)**: event_days=11/40, frac=0.275,
+  unique_stocks=60, episodes=62 → `disclosure_event_coverage_ready`.
+  Edge: holdout_ok / dd_ok / trades_ok; **eval_total_return≈−6.1%** →
+  `accept_edge_gates_unmet`. Holdout lift vs B0: −4.9pp → also unmet.
+  Did **not** loosen coverage/edge gates.
+- Tests/fixtures: institution_follow b0–b4 date_set aligned; freeze CLI
+  `_BOUNDED_SETS` updated.
+- **Did not**: StrategyRelease, Optuna, B-pit cutover, margin thaw,
+  multi-year/org mass backfill.
+- **Residual**: longer window / broader disclosure for stability; form/qfq
+  frontier `20260717`; Tier1/Tier2 formal publish/PIT; no production
+  candidate.
