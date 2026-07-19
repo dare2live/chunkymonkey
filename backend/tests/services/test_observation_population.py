@@ -69,17 +69,19 @@ def test_policy_truth_sources_align_with_accepted_dataset_ids() -> None:
     assert policy.st_membership_source == ST_MEMBERSHIP_DATASET_ID
 
 
-def test_live_kline_and_st_loaders_fail_closed_without_accepted_writers() -> None:
+def test_live_kline_and_st_loaders_fail_closed_without_live_partitions() -> None:
+    """Writers exist; live DB without accepted partitions still fail closed."""
+
     policy = _policy()
     with pytest.raises(ObservationPopulationUnavailable) as kline:
         load_accepted_nominal_kline_membership(OPEN_DAY, DECISION, policy)
-    assert kline.value.status == "NOT_EVALUATED"
-    assert "nominal_ohlcv" in kline.value.reason
+    assert kline.value.status in {"NOT_EVALUATED", "BLOCKED"}
+    assert "nominal_ohlcv" in kline.value.reason or "no_accepted" in kline.value.reason
 
     with pytest.raises(ObservationPopulationUnavailable) as st:
         load_accepted_st_membership(OPEN_DAY, DECISION, policy)
-    assert st.value.status == "NOT_EVALUATED"
-    assert "stock_st" in st.value.reason
+    assert st.value.status in {"NOT_EVALUATED", "BLOCKED"}
+    assert "stock_st" in st.value.reason or "no_accepted" in st.value.reason
 
 
 def test_resolve_excludes_st_and_wrong_board_with_injected_accepted_sources() -> None:

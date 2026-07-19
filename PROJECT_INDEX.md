@@ -68,7 +68,7 @@ AGENTS.md
 
 | Priority | Defect | Consequence |
 |---:|---|---|
-| P0 | 名义 K/ST accepted writer 未建；calendar accepted 未 live bootstrap/canary | `traded_on_observation_date` 不能 live 证明；`live_readiness` 诚实 BLOCKED/NOT_EVALUATED |
+| P0 | 名义 K/ST/calendar accepted writers 已就绪，live partitions/canary 未 bootstrap | `traded_on_observation_date` 代码路径完备；live 仍诚实 BLOCKED/NOT_EVALUATED（data-plane） |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
 | P1 | Live DC snapshot/pulse tables predate namespace fix until manual rebuild | Code contract is fixed but stored rows still need controlled reconciliation |

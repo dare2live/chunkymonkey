@@ -6,7 +6,7 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码出口已达**（A1–A5）；残余为 K/ST accepted writer + 授权 calendar canary（无抓数/无 cutover）。下一阶段 **Phase B**（external vs project-universe；pulse 脱离错误 raw）。
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）：名义 K/ST accepted writer+schema+loader+resolver 对抗测绿；残余仅为 data-plane（live accepted partitions / 授权 canary，无 mass fetch、无 consumer cutover）。下一刀 **Phase B**（external vs project-universe；pulse 脱离错误 raw）。
 
 已拍板：多源=契约可换 adapter；首策略包=`institution_follow`；边做边测（坏例先红→绿→窄回归）。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -48,8 +48,8 @@
 
 控制面原语/margin 冻结/all-due 前阻断/doctor `NOT_EVALUATED` FAIL/calendar 隔离原型：见 ledger。≠业务就绪。
 
-- **A** A1/A2/A4/A5 **complete**；A3 **PARTIAL**（resolver+evaluable `live_readiness`；K/ST accepted writer 仍缺）。出口对抗测绿；`live_readiness` 可评估（现多为 BLOCKED）；禁抓数/切消费者。→ 进 **B**。
-- **B（下一）** external vs project-universe；pulse 脱离错误 raw；shadow 后切读面。
+- **A** A1–A5 **FIXED**（含 A3：名义 OHLCV + ST land→accept→reader→resolver；formal boundary 已墙 legacy raw；sync `accepted_partition_pending`）。`live_readiness` 可评估（live 常见 BLOCKED/NOT_EVALUATED=无 accepted partition，非缺 writer）。禁 mass fetch/切消费者。→ 进 **B**。
+- **B（进行中）** external vs project-universe；pulse/breadth 停把错误 scope raw margin/BSE 当项目池；shadow/reconcile；旧 pulse 标 untrusted 至 cutover。
 - **C** Tier1/2 正式 lineage（definition/config/snapshot/universe/available_at）。
 - **D** `DatasetSnapshot`→`ExperimentVerdict` 最小链 + PIT 截断。
 - **E** `institution_follow_v1`（首包；B0→B4；跟随收益独立）。

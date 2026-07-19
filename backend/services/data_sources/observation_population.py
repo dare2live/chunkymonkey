@@ -7,10 +7,10 @@ Formal daily project population (MASTER §5.1):
 3. accepted same-day ST membership is excluded;
 4. venue/board prefixes come from one factory-owned UniversePolicy snapshot.
 
-Until nominal Kline/ST accepted partitions exist in the live DB, trusted loaders
-fail closed with ``NOT_EVALUATED`` / ``BLOCKED``.  Legacy raw/dim/qfq surfaces
-cannot satisfy this gate.  Callers may inject test loaders; production uses the
-live trusted loaders below.
+Trusted loaders read accepted partitions only.  Missing live partitions fail
+closed with ``NOT_EVALUATED`` / ``BLOCKED``.  Legacy raw/dim/qfq surfaces cannot
+satisfy this gate.  Callers may inject test loaders; production uses the live
+trusted loaders below.
 """
 from __future__ import annotations
 
@@ -188,16 +188,33 @@ def load_accepted_nominal_kline_membership(
     decision_time: datetime,
     policy: UniversePolicy,
 ) -> tuple[AcceptedPartitionRef, frozenset[str]]:
-    """Fail closed until an accepted nominal OHLCV partition writer exists."""
+    """Trusted nominal OHLCV loader — never falls back to raw/qfq/dim."""
+
+    from services.data_sources.nominal_ohlcv_reader import (
+        NominalOhlcvTruthUnavailable,
+        open_accepted_nominal_ohlcv_membership,
+    )
 
     _require_policy(policy)
-    _as_date(observation_date, field="observation_date")
-    _as_aware(decision_time, field="decision_time")
-    raise ObservationPopulationUnavailable(
-        "NOT_EVALUATED",
-        "no_accepted_nominal_ohlcv_partition "
-        f"dataset_id={NOMINAL_KLINE_DATASET_ID} "
-        "accepted_writer_pending",
+    day = _as_date(observation_date, field="observation_date")
+    cutoff = _as_aware(decision_time, field="decision_time")
+    try:
+        part = open_accepted_nominal_ohlcv_membership(day, cutoff)
+    except NominalOhlcvTruthUnavailable as exc:
+        raise ObservationPopulationUnavailable(exc.status, exc.reason) from exc
+    return (
+        AcceptedPartitionRef(
+            dataset_id=part.dataset_id,
+            partition_value=part.partition_value,
+            batch_id=part.batch_id,
+            contract_hash=part.contract_hash,
+            config_hash=part.config_hash,
+            content_hash=part.content_hash,
+            row_count=part.row_count,
+            available_at=part.available_at,
+            accepted_at=part.accepted_at,
+        ),
+        part.ts_codes,
     )
 
 
@@ -206,16 +223,33 @@ def load_accepted_st_membership(
     decision_time: datetime,
     policy: UniversePolicy,
 ) -> tuple[AcceptedPartitionRef, frozenset[str]]:
-    """Fail closed until an accepted stock_st partition writer exists."""
+    """Trusted same-day ST loader — never falls back to raw exclude lists."""
+
+    from services.data_sources.stock_st_reader import (
+        StockStTruthUnavailable,
+        open_accepted_stock_st_membership,
+    )
 
     _require_policy(policy)
-    _as_date(observation_date, field="observation_date")
-    _as_aware(decision_time, field="decision_time")
-    raise ObservationPopulationUnavailable(
-        "NOT_EVALUATED",
-        "no_accepted_stock_st_partition "
-        f"dataset_id={ST_MEMBERSHIP_DATASET_ID} "
-        "accepted_writer_pending",
+    day = _as_date(observation_date, field="observation_date")
+    cutoff = _as_aware(decision_time, field="decision_time")
+    try:
+        part = open_accepted_stock_st_membership(day, cutoff)
+    except StockStTruthUnavailable as exc:
+        raise ObservationPopulationUnavailable(exc.status, exc.reason) from exc
+    return (
+        AcceptedPartitionRef(
+            dataset_id=part.dataset_id,
+            partition_value=part.partition_value,
+            batch_id=part.batch_id,
+            contract_hash=part.contract_hash,
+            config_hash=part.config_hash,
+            content_hash=part.content_hash,
+            row_count=part.row_count,
+            available_at=part.available_at,
+            accepted_at=part.accepted_at,
+        ),
+        part.ts_codes,
     )
 
 

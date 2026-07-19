@@ -146,14 +146,34 @@ domains:
                                # 对 2019 年这类真实但较小的历史批次误报。
 
   stock_st:
+    execution_policy:
+      mode: disabled
+      # Runtime land→accept 已就绪；禁 legacy raw 写与未授权 provider canary。
+      # 正式发表用 stock_st_runtime.publish_accepted_stock_st_partition。
+      reason: accepted_partition_pending
+    population_scope:
+      kind: raw_evidence
+      population_label: provider_response
+      usage: evidence_only
+    security_day_partition:
+      contract_version: "1"
+      coverage_start: "20220104"
+      schema_hash: 5b1c04ad582ebc79265ec077ae35aded40b24cc937372e9dd05d2a0f994273e4
     source: tushare
     api: stock_st
+    target_db: tushare_raw
+    # legacy compatibility only — not accepted publication identity
     target_table: raw_tushare_stock_st
-    universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
+    universe_filter: true            # serve/canonical filter evidence only; landing preserves provider
     grain: [ts_code, trade_date]
     batch_mode: by_trade_date
+    partition_by: [trade_date]
     pit_anchor: "trade_date; 9:20 盘前更新 -> t 日盘前可用; 历史每日 ST 名单 = PIT universe 过滤真相源"
     available_after: "09:20"
+    availability_policy:
+      axis: trading_day
+      rule: same_day_at
+      at: "09:20"
     data_start: "20220104"        # 接口支持 2016+, 项目 K 线窗口 2022+ 对齐
     freshness_sla_trading_days: 1
     min_rows_per_batch: 100       # 2026-07-09 全审计校准: 全历史 histmin=111(20240329), 近60日
@@ -789,14 +809,34 @@ domains:
   # data_start 起步 20190102 (覆盖项目全部回测窗+3年缓冲); 需更早历史时改小 data_start,
   # gap drain 会自动补老缺口 (日历 gap 扫描天然支持向前扩窗)。
   daily:
+    execution_policy:
+      mode: disabled
+      # Runtime land→accept 已就绪；禁 legacy raw 写与未授权 provider canary。
+      # 正式发表用 nominal_ohlcv_runtime.publish_accepted_nominal_ohlcv_partition。
+      reason: accepted_partition_pending
+    population_scope:
+      kind: raw_evidence
+      population_label: provider_response
+      usage: evidence_only
+    security_day_partition:
+      contract_version: "1"
+      coverage_start: "20190102"
+      schema_hash: fd84a583a868a967980d1a5759fd8ac7b607f9847267b000ca0b0d0f900f8551
     source: tushare
     api: daily
+    target_db: tushare_raw
+    # legacy compatibility only — not accepted publication identity
     target_table: raw_tushare_daily
-    universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
+    universe_filter: true            # serve/canonical filter evidence only; landing preserves provider
     grain: [ts_code, trade_date]
     batch_mode: by_trade_date
+    partition_by: [trade_date]
     pit_anchor: "trade_date; 收盘后 15-16 点入库 -> 保守 18:00; 未复权价, 复权用 adj_factor 派生"
     available_after: "18:00"
+    availability_policy:
+      axis: trading_day
+      rule: same_day_at
+      at: "18:00"
     data_start: "20190102"
     freshness_sla_trading_days: 1
     min_rows_per_batch: 3000   # 2019 年截面 ~3700 只 (2026-06-12 grill 修正, 原 4000); 全市场行数距单次上限 6000 仅 ~9%, 超限截断风险年检

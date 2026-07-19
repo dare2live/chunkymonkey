@@ -26,13 +26,15 @@ def test_inventory_declares_three_boundaries_for_formal_domains() -> None:
     inventory = {item["domain"]: item for item in boundary_inventory()}
     assert inventory["margin"]["runtime_state"] == "retired_readonly"
     assert inventory["trade_cal"]["runtime_state"] == "accepted_runtime_ready_canary_pending"
-    assert inventory["daily"]["runtime_state"] == "writers_pending"
-    assert inventory["stock_st"]["runtime_state"] == "writers_pending"
+    assert inventory["daily"]["runtime_state"] == "accepted_runtime_ready_canary_pending"
+    assert inventory["stock_st"]["runtime_state"] == "accepted_runtime_ready_canary_pending"
     for item in inventory.values():
         assert item["adapter"] == "tushare"
         assert item["legacy_raw_write"] == "forbidden"
         assert item["landing_writer"]
         assert item["canonical_writer"]
+        assert not str(item["landing_writer"]).startswith("pending:")
+        assert not str(item["canonical_writer"]).startswith("pending:")
 
 
 def test_trade_cal_and_margin_cannot_use_legacy_raw_writer() -> None:
@@ -42,10 +44,11 @@ def test_trade_cal_and_margin_cannot_use_legacy_raw_writer() -> None:
         refuse_legacy_raw_write_for_formal_domain("margin")
 
 
-def test_writers_pending_domains_are_not_write_walled_yet() -> None:
-    # daily/stock_st remain on temporary legacy path until accepted writers exist.
-    refuse_legacy_raw_write_for_formal_domain("daily")
-    refuse_legacy_raw_write_for_formal_domain("stock_st")
+def test_daily_and_stock_st_cannot_use_legacy_raw_writer() -> None:
+    with pytest.raises(FormalBoundaryError, match="formal_legacy_raw_write_forbidden"):
+        refuse_legacy_raw_write_for_formal_domain("daily")
+    with pytest.raises(FormalBoundaryError, match="formal_legacy_raw_write_forbidden"):
+        refuse_legacy_raw_write_for_formal_domain("stock_st")
 
 
 def test_enabled_trade_cal_still_blocked_by_formal_boundary(monkeypatch) -> None:

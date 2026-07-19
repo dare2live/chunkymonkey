@@ -50,22 +50,21 @@ _FORMAL_BOUNDARIES: dict[str, FormalDomainBoundary] = {
         dataset_id="tier0.reference.sse_trading_calendar_generation",
         runtime_state="accepted_runtime_ready_canary_pending",
     ),
-    # Declared for A3/A5 visibility; writers not yet implemented.
     "daily": FormalDomainBoundary(
         domain="daily",
         adapter=LIVE_ADAPTER,
-        landing_writer="pending:nominal_ohlcv_landing",
-        canonical_writer="pending:nominal_ohlcv_accept",
+        landing_writer="services.data_sources.nominal_ohlcv_acceptance.land_nominal_ohlcv_batch",
+        canonical_writer="services.data_sources.nominal_ohlcv_acceptance.accept_nominal_ohlcv_batch",
         dataset_id="tier0.market_data.nominal_ohlcv_daily",
-        runtime_state="writers_pending",
+        runtime_state="accepted_runtime_ready_canary_pending",
     ),
     "stock_st": FormalDomainBoundary(
         domain="stock_st",
         adapter=LIVE_ADAPTER,
-        landing_writer="pending:stock_st_landing",
-        canonical_writer="pending:stock_st_accept",
+        landing_writer="services.data_sources.stock_st_acceptance.land_stock_st_batch",
+        canonical_writer="services.data_sources.stock_st_acceptance.accept_stock_st_batch",
         dataset_id="tier0.security_identity.stock_st_daily",
-        runtime_state="writers_pending",
+        runtime_state="accepted_runtime_ready_canary_pending",
     ),
 }
 
@@ -103,14 +102,12 @@ def require_live_adapter(adapter_name: str, *, domain: str) -> str:
 
 
 def refuse_legacy_raw_write_for_formal_domain(domain: str) -> None:
-    """Hard wall for domains whose formal writers exist or are canary-ready.
-
-    ``writers_pending`` domains remain on the temporary legacy path until their
-    landing/accept modules land; they are inventory-visible but not write-walled.
-    """
+    """Hard wall for domains whose formal writers exist or are canary-ready."""
 
     boundary = formal_boundary(domain)
-    if boundary is None or boundary.runtime_state == "writers_pending":
+    if boundary is None:
+        return
+    if boundary.runtime_state == "writers_pending":
         return
     if boundary.legacy_raw_write != "forbidden":
         raise FormalBoundaryError(

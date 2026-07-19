@@ -649,7 +649,8 @@ def test_full_refresh_merges_fixed_params_and_uses_freshness_column(monkeypatch)
             "execution_policy": _ENABLED_EXECUTION,
         },
         "domains": {
-            "trade_cal": {
+            # Non-formal probe domain: trade_cal itself is now formally write-walled.
+            "probe_full_refresh": {
                 "source": "tushare",
                 "api": "trade_cal",
                 "target_table": "raw_trade_cal",
@@ -668,7 +669,7 @@ def test_full_refresh_merges_fixed_params_and_uses_freshness_column(monkeypatch)
     monkeypatch.setattr(sr, "_record_outcome", lambda spec, **kw: recorded.update(kw))
     monkeypatch.setattr(sr.time, "sleep", lambda seconds: None)
 
-    result = sr.run_domain("trade_cal", registry=reg)
+    result = sr.run_domain("probe_full_refresh", registry=reg)
 
     assert calls == [{"exchange": "SSE", "limit": 6000, "offset": 0}]
     assert result["last_date"] == "20261231"
@@ -699,6 +700,26 @@ def test_fetch_authorization_error_is_not_retried():
 def test_cli_authorization_failure_exits_three_before_domain_execution(monkeypatch, capsys):
     from services.data_sources.sources.tushare import TuShareAuthorizationError
 
+    # Use an enabled legacy domain; formal daily/stock_st/trade_cal are disabled.
+    monkeypatch.setattr(
+        sr,
+        "load_registry",
+        lambda: {
+            "defaults": {
+                "execution_policy": _ENABLED_EXECUTION,
+                "fetch_timeout_seconds": 120,
+            },
+            "domains": {
+                "adj_factor": {
+                    "source": "tushare",
+                    "api": "adj_factor",
+                    "target_table": "raw_tushare_adj_factor",
+                    "grain": ["ts_code", "trade_date"],
+                    "batch_mode": "by_trade_date",
+                }
+            },
+        },
+    )
     ran = []
     monkeypatch.setattr(
         sr,
@@ -709,7 +730,7 @@ def test_cli_authorization_failure_exits_three_before_domain_execution(monkeypat
         raising=False,
     )
     monkeypatch.setattr(sr, "_main_unlocked", lambda *_args: ran.append(True) or 0)
-    monkeypatch.setattr(sys, "argv", ["sync_runner.py", "--domain", "daily"])
+    monkeypatch.setattr(sys, "argv", ["sync_runner.py", "--domain", "adj_factor"])
 
     assert sr.main() == 3
     assert ran == []
@@ -738,13 +759,32 @@ def test_cli_help_does_not_acquire_authorization(monkeypatch, capsys):
 def test_cli_mid_run_authorization_failure_also_exits_three(monkeypatch, capsys):
     from services.data_sources.sources.tushare import TuShareAuthorizationError
 
+    monkeypatch.setattr(
+        sr,
+        "load_registry",
+        lambda: {
+            "defaults": {
+                "execution_policy": _ENABLED_EXECUTION,
+                "fetch_timeout_seconds": 120,
+            },
+            "domains": {
+                "adj_factor": {
+                    "source": "tushare",
+                    "api": "adj_factor",
+                    "target_table": "raw_tushare_adj_factor",
+                    "grain": ["ts_code", "trade_date"],
+                    "batch_mode": "by_trade_date",
+                }
+            },
+        },
+    )
     monkeypatch.setattr(sr, "_authorization_preflight", lambda *_args, **_kwargs: {})
     monkeypatch.setattr(
         sr,
         "_main_unlocked",
         lambda *_args: (_ for _ in ()).throw(TuShareAuthorizationError("auth_denied")),
     )
-    monkeypatch.setattr(sys, "argv", ["sync_runner.py", "--domain", "daily"])
+    monkeypatch.setattr(sys, "argv", ["sync_runner.py", "--domain", "adj_factor"])
     assert sr.main() == 3
     assert "auth_denied" in capsys.readouterr().out
 
@@ -783,12 +823,31 @@ def test_cli_calendar_failure_exits_four_before_domain_execution(monkeypatch, ca
 
     monkeypatch.setattr(
         sr,
+        "load_registry",
+        lambda: {
+            "defaults": {
+                "execution_policy": _ENABLED_EXECUTION,
+                "fetch_timeout_seconds": 120,
+            },
+            "domains": {
+                "adj_factor": {
+                    "source": "tushare",
+                    "api": "adj_factor",
+                    "target_table": "raw_tushare_adj_factor",
+                    "grain": ["ts_code", "trade_date"],
+                    "batch_mode": "by_trade_date",
+                }
+            },
+        },
+    )
+    monkeypatch.setattr(
+        sr,
         "_calendar_preflight",
         lambda _domains: (_ for _ in ()).throw(
             CalendarFoundationError("calendar_not_ready")
         ),
     )
-    monkeypatch.setattr(sys, "argv", ["sync_runner.py", "--domain", "daily"])
+    monkeypatch.setattr(sys, "argv", ["sync_runner.py", "--domain", "adj_factor"])
     assert sr.main() == 4
     assert "calendar_blocked" in capsys.readouterr().out
 
@@ -801,7 +860,8 @@ def test_run_domain_records_database_write_failure(monkeypatch):
             "execution_policy": _ENABLED_EXECUTION,
         },
         "domains": {
-            "daily": {
+            # Avoid formal daily boundary; this proves legacy write-failure recording.
+            "probe_daily": {
                 "source": "tushare",
                 "api": "daily",
                 "target_table": "raw_daily",
@@ -827,7 +887,21 @@ def test_run_domain_records_database_write_failure(monkeypatch):
             pass
 
     monkeypatch.setattr(sr, "_target_conn", lambda spec: _Conn())
-    result = sr.run_domain("daily", start="20260715", end="20260715", registry=reg)
+    result = sr.run_domain("probe_daily", start="20260715", end="20260715", registry=reg)
 
     assert result["failed_batches"] == 1 and result["last_date"] is None
     assert recorded["ok"] is False and recorded["last_date"] is None
+
+
+def test_formal_daily_sync_is_disabled_before_provider_io(monkeypatch):
+    """Live daily accepted writers exist; sync remains canary-gated."""
+
+    for name in ("_adapter", "_target_conn", "_write_batch", "_fetch_paged"):
+        monkeypatch.setattr(
+            sr,
+            name,
+            lambda *a, _n=name, **k: (_ for _ in ()).throw(AssertionError(_n)),
+        )
+    with pytest.raises(sr.ExecutionPolicyError) as caught:
+        sr.run_domain("daily")
+    assert caught.value.reason == "accepted_partition_pending"

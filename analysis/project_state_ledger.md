@@ -488,3 +488,24 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Phase A 代码出口**：A1–A5 对抗测绿；`live_readiness` 经 loader 评估（live 常见 BLOCKED：
   calendar 未 bootstrap + K/ST writer 未建）。未做 provider mass fetch、consumer cutover；
   margin 仍 scope_blocked/frozen。下一阶段 B。
+
+### 2026-07-19 — Phase A3 residual closed (FIXED) + Phase A honest complete
+
+- A3 **FIXED**：名义 OHLCV / same-day ST accepted writers 落地：
+  - shared `security_day_partition` Tx-A/Tx-B（landing→validate→canonical replace→
+    `accepted_partition`）；域模块
+    `nominal_ohlcv_{schema,contract,acceptance,runtime,reader}` +
+    `stock_st_{schema,contract,acceptance,runtime,reader}`。
+  - dataset ids 对齐 UniversePolicy：`tier0.market_data.nominal_ohlcv_daily` /
+    `tier0.security_identity.stock_st_daily`；population=`raw_evidence`；
+    availability=`trading_day/same_day_at`（18:00 / 09:20）。
+  - `observation_population` trusted loaders 改读 accepted reader；无 live partition
+    仍 fail-closed（`NOT_EVALUATED`/`BLOCKED`），禁 raw/qfq/dim 冒充。
+  - `formal_boundaries`：daily/stock_st → `accepted_runtime_ready_canary_pending`；
+    legacy `_write_batch` 硬墙。registry sync `execution_policy.disabled` /
+    `accepted_partition_pending`。
+- 对抗测：`test_nominal_ohlcv_acceptance`（publish/premature/kill-point/reader/
+  resolver e2e）+ formal/observation/sync 相关绿。未做 provider mass fetch、
+  live DDL bootstrap、consumer cutover。
+- **Phase A 代码完整**：A1–A5 均 FIXED。残余仅 data-plane（calendar/K/ST live
+  accepted partitions + 授权 canary）。下一阶段 B。

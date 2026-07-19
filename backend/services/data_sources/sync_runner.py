@@ -296,6 +296,8 @@ def _refuse_formal_legacy_raw_path(domain: str) -> None:
         reason = (
             "accepted_generation_pending"
             if domain == "trade_cal"
+            else "accepted_partition_pending"
+            if domain in {"daily", "stock_st"}
             else exc.reason
         )
         raise ExecutionPolicyError(
