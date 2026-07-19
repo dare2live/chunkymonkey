@@ -1,0 +1,597 @@
+{
+  "blocks": {
+    "b0": "data/lineage/phase_e_experiment_verdicts/b0.json",
+    "b1": "data/lineage/phase_e_experiment_verdicts/b1.json",
+    "b2": "data/lineage/phase_e_experiment_verdicts/b2.json",
+    "b4": "data/lineage/phase_e_experiment_verdicts/b4.json"
+  },
+  "form_qfq_frontier": {
+    "note": "raw_tushare_daily/adj_factor and qfq/form max remain 20260716; nominal accepted K exists for 20260717.",
+    "requested": "20260717",
+    "status": "still_blocked"
+  },
+  "frozen_at": "2026-07-19T16:02:50.670101+00:00",
+  "kind": "phase_e_experiment_verdict_manifest",
+  "ladder": [
+    {
+      "block": "b0",
+      "claimable": false,
+      "metrics_summary": {
+        "accept_edge_gates": {
+          "checks": {
+            "drawdown_ok": false,
+            "eval_ok": false,
+            "eval_total_return": -0.2444917543108437,
+            "holdout_net_return": 0.0590065893341134,
+            "holdout_net_return_gt": 0.0,
+            "holdout_ok": true,
+            "max_drawdown": 0.33473976150647355,
+            "max_drawdown_accept": 0.25,
+            "min_trades_accept": 30,
+            "n_trades_completed": 145,
+            "protocol_power": true,
+            "protocol_reason": "protocol_power_sufficient",
+            "require_eval_total_return_positive": true,
+            "trades_ok": true
+          },
+          "passed": false,
+          "reason": "accept_edge_gates_unmet"
+        },
+        "coverage": {
+          "accepted_nominal_day_count": 40,
+          "accepted_nominal_partitions": [
+            "20260522",
+            "20260525",
+            "20260526",
+            "20260527",
+            "20260528",
+            "20260529",
+            "20260601",
+            "20260602",
+            "20260603",
+            "20260604",
+            "20260605",
+            "20260608",
+            "20260609",
+            "20260610",
+            "20260611",
+            "20260612",
+            "20260615",
+            "20260616",
+            "20260617",
+            "20260618",
+            "20260622",
+            "20260623",
+            "20260624",
+            "20260625",
+            "20260626",
+            "20260629",
+            "20260630",
+            "20260701",
+            "20260702",
+            "20260703",
+            "20260706",
+            "20260707",
+            "20260708",
+            "20260709",
+            "20260710",
+            "20260713",
+            "20260714",
+            "20260715",
+            "20260716",
+            "20260717"
+          ],
+          "details": {
+            "a3_daily_accepted_thin": false,
+            "disclosure_date_count": 16,
+            "disclosure_dates_on_accepted_k": [
+              "20260608",
+              "20260616",
+              "20260618",
+              "20260623",
+              "20260703",
+              "20260706",
+              "20260709",
+              "20260710",
+              "20260713",
+              "20260714",
+              "20260717"
+            ],
+            "measured_at": "2026-07-19T16:02:47.316980+00:00",
+            "min_required_nominal_days": 5,
+            "nominal_dataset_id": "tier0.market_data.nominal_ohlcv_daily"
+          },
+          "disclosure_date_sets": {
+            "holders_top10": [
+              "20260508",
+              "20260616",
+              "20260618",
+              "20260619",
+              "20260623",
+              "20260703",
+              "20260709",
+              "20260710",
+              "20260713",
+              "20260714",
+              "20260717"
+            ],
+            "org_holding": [
+              "20190430",
+              "20260430"
+            ],
+            "stk_holdertrade": [
+              "20260518",
+              "20260608",
+              "20260706",
+              "20260713"
+            ]
+          },
+          "overlapping_eligible_window": [
+            "20260522",
+            "20260717"
+          ],
+          "reason": "measured_nominal_window_ready",
+          "status": "MEASURED",
+          "sufficient_for_measured_b0": true
+        },
+        "holdout_lift_stability": null,
+        "holdout_metrics": {
+          "annualized_return": "unknown",
+          "capacity": "unknown",
+          "details": {
+            "avg_loss": -0.06144141893579813,
+            "avg_win": 0.08911859140159123,
+            "daily_bag_count": 1,
+            "mean_trade_net_return": 0.05900658933411336,
+            "payoff_ratio_status": "measured"
+          },
+          "excess_return": "unknown",
+          "max_drawdown": 0.0,
+          "n_incomplete_exit": 0,
+          "n_signals": 1,
+          "n_trades_completed": 5,
+          "n_unfilled": 0,
+          "payoff_ratio": 1.4504644089472243,
+          "sharpe": "unknown",
+          "stability_by_year": "unknown",
+          "total_return": 0.0590065893341134,
+          "turnover": 1.0,
+          "win_rate": 0.8
+        },
+        "metrics": {
+          "annualized_return": "unknown",
+          "capacity": "unknown",
+          "details": {
+            "avg_loss": -0.06112659237653092,
+            "avg_win": 0.05701294955685521,
+            "daily_bag_count": 29,
+            "mean_trade_net_return": -0.008167487371909551,
+            "payoff_ratio_status": "measured"
+          },
+          "excess_return": "unknown",
+          "max_drawdown": 0.33473976150647355,
+          "n_incomplete_exit": 0,
+          "n_signals": 38,
+          "n_trades_completed": 145,
+          "n_unfilled": 45,
+          "payoff_ratio": 0.9327028931314171,
+          "sharpe": "unknown",
+          "stability_by_year": "unknown",
+          "total_return": -0.2444917543108437,
+          "turnover": 1.45,
+          "win_rate": 0.4482758620689655
+        }
+      },
+      "reason": "measured_protocol_ready_edge_gates_unmet",
+      "strategy_release": false,
+      "verdict": "reject"
+    },
+    {
+      "block": "b1",
+      "claimable": false,
+      "metrics_summary": {
+        "accept_edge_gates": {
+          "checks": {
+            "drawdown_ok": false,
+            "eval_ok": false,
+            "eval_total_return": -0.3964162105322484,
+            "holdout_net_return": 0.03953308805279332,
+            "holdout_net_return_gt": 0.0,
+            "holdout_ok": true,
+            "max_drawdown": 0.41937029575618645,
+            "max_drawdown_accept": 0.25,
+            "min_trades_accept": 30,
+            "n_trades_completed": 145,
+            "protocol_power": true,
+            "protocol_reason": "protocol_power_sufficient",
+            "require_eval_total_return_positive": true,
+            "trades_ok": true
+          },
+          "passed": false,
+          "reason": "accept_edge_gates_unmet"
+        },
+        "holdout_lift_stability": null,
+        "holdout_metrics": {
+          "annualized_return": "unknown",
+          "capacity": "unknown",
+          "details": {
+            "avg_loss": -0.0058897727289281,
+            "avg_win": 0.0698149952406076,
+            "daily_bag_count": 1,
+            "mean_trade_net_return": 0.03953308805279332,
+            "payoff_ratio_status": "measured"
+          },
+          "excess_return": "unknown",
+          "max_drawdown": 0.0,
+          "n_incomplete_exit": 0,
+          "n_signals": 1,
+          "n_trades_completed": 5,
+          "n_unfilled": 0,
+          "payoff_ratio": 11.853597490732628,
+          "sharpe": "unknown",
+          "stability_by_year": "unknown",
+          "total_return": 0.03953308805279332,
+          "turnover": 1.0,
+          "win_rate": 0.6
+        },
+        "metrics": {
+          "annualized_return": "unknown",
+          "capacity": "unknown",
+          "details": {
+            "avg_loss": -0.0631526516905161,
+            "avg_win": 0.05818499970042195,
+            "daily_bag_count": 29,
+            "mean_trade_net_return": -0.01629121391194692,
+            "payoff_ratio_status": "measured"
+          },
+          "excess_return": "unknown",
+          "max_drawdown": 0.41937029575618645,
+          "n_incomplete_exit": 0,
+          "n_signals": 38,
+          "n_trades_completed": 145,
+          "n_unfilled": 45,
+          "payoff_ratio": 0.9213389801201306,
+          "sharpe": "unknown",
+          "stability_by_year": "unknown",
+          "total_return": -0.3964162105322484,
+          "turnover": 1.45,
+          "win_rate": 0.38620689655172413
+        }
+      },
+      "reason": "measured_protocol_ready_edge_gates_unmet",
+      "strategy_release": false,
+      "verdict": "reject"
+    },
+    {
+      "block": "b2",
+      "claimable": false,
+      "metrics_summary": {
+        "accept_edge_gates": {
+          "checks": {
+            "drawdown_ok": true,
+            "eval_ok": true,
+            "eval_total_return": 0.0034299953905252423,
+            "holdout_net_return": 0.0590065893341134,
+            "holdout_net_return_gt": 0.0,
+            "holdout_ok": true,
+            "max_drawdown": 0.13707917314490603,
+            "max_drawdown_accept": 0.25,
+            "min_trades_accept": 30,
+            "n_trades_completed": 60,
+            "protocol_power": true,
+            "protocol_reason": "protocol_power_sufficient",
+            "require_eval_total_return_positive": true,
+            "trades_ok": true
+          },
+          "passed": true,
+          "reason": "accept_edge_gates_passed"
+        },
+        "coverage": {
+          "day_coverage": 1.0,
+          "days_with_ready_context": 40,
+          "definition_version": "market_sensing_project_breadth_v0",
+          "details": {
+            "missing_available_at_days": 0,
+            "pulse_cutover_allowed": false,
+            "source_preferred": "accepted_nominal_ohlcv_daily_bars_by_day",
+            "untrusted_days": 0
+          },
+          "method": "signal_day_board_filtered_nominal_breadth",
+          "min_adv_dec_ratio_risk_on": 1.0,
+          "min_context_day_coverage": 0.9,
+          "population_kind": "project_universe_pit_shadow",
+          "reason": "market_context_coverage_ready",
+          "risk_on_days": 16,
+          "status": "MEASURED",
+          "sufficient": true,
+          "trading_days": [
+            "20260522",
+            "20260525",
+            "20260526",
+            "20260527",
+            "20260528",
+            "20260529",
+            "20260601",
+            "20260602",
+            "20260603",
+            "20260604",
+            "20260605",
+            "20260608",
+            "20260609",
+            "20260610",
+            "20260611",
+            "20260612",
+            "20260615",
+            "20260616",
+            "20260617",
+            "20260618",
+            "20260622",
+            "20260623",
+            "20260624",
+            "20260625",
+            "20260626",
+            "20260629",
+            "20260630",
+            "20260701",
+            "20260702",
+            "20260703",
+            "20260706",
+            "20260707",
+            "20260708",
+            "20260709",
+            "20260710",
+            "20260713",
+            "20260714",
+            "20260715",
+            "20260716",
+            "20260717"
+          ]
+        },
+        "holdout_lift_stability": {
+          "checks": {
+            "b0_holdout_present": true,
+            "b0_holdout_total_return": 0.0590065893341134,
+            "block_holdout_total_return": 0.0590065893341134,
+            "lift": 0.0,
+            "lift_ok": false,
+            "require_strict_lift": true
+          },
+          "passed": false,
+          "reason": "holdout_lift_vs_b0_unmet",
+          "require_holdout_lift_vs_b0": true
+        },
+        "holdout_metrics": {
+          "annualized_return": "unknown",
+          "capacity": "unknown",
+          "details": {
+            "avg_loss": -0.06144141893579813,
+            "avg_win": 0.08911859140159123,
+            "daily_bag_count": 1,
+            "mean_trade_net_return": 0.05900658933411336,
+            "payoff_ratio_status": "measured"
+          },
+          "excess_return": "unknown",
+          "max_drawdown": 0.0,
+          "n_incomplete_exit": 0,
+          "n_signals": 1,
+          "n_trades_completed": 5,
+          "n_unfilled": 0,
+          "payoff_ratio": 1.4504644089472243,
+          "sharpe": "unknown",
+          "stability_by_year": "unknown",
+          "total_return": 0.0590065893341134,
+          "turnover": 1.0,
+          "win_rate": 0.8
+        },
+        "metrics": {
+          "annualized_return": "unknown",
+          "capacity": "unknown",
+          "details": {
+            "avg_loss": -0.05724950981444659,
+            "avg_win": 0.05665882996873954,
+            "daily_bag_count": 12,
+            "mean_trade_net_return": 0.0016031324068662442,
+            "payoff_ratio_status": "measured"
+          },
+          "excess_return": "unknown",
+          "max_drawdown": 0.13707917314490603,
+          "n_incomplete_exit": 0,
+          "n_signals": 16,
+          "n_trades_completed": 60,
+          "n_unfilled": 20,
+          "payoff_ratio": 0.9896823597682928,
+          "sharpe": "unknown",
+          "stability_by_year": "unknown",
+          "total_return": 0.0034299953905252423,
+          "turnover": 0.6,
+          "win_rate": 0.5166666666666667
+        }
+      },
+      "reason": "holdout_lift_vs_b0_unmet",
+      "strategy_release": false,
+      "verdict": "reject"
+    },
+    {
+      "block": "b4",
+      "claimable": false,
+      "metrics_summary": {
+        "accept_edge_gates": {
+          "checks": {
+            "drawdown_ok": true,
+            "eval_ok": false,
+            "eval_total_return": -0.06096280026022083,
+            "holdout_net_return": 0.010256337641390667,
+            "holdout_net_return_gt": 0.0,
+            "holdout_ok": true,
+            "max_drawdown": 0.08320077009069426,
+            "max_drawdown_accept": 0.25,
+            "min_trades_accept": 30,
+            "n_trades_completed": 40,
+            "protocol_power": true,
+            "protocol_reason": "protocol_power_sufficient",
+            "require_eval_total_return_positive": true,
+            "trades_ok": true
+          },
+          "passed": false,
+          "reason": "accept_edge_gates_unmet"
+        },
+        "coverage": {
+          "definition_version": "institution_event_holders_disclosure_v0",
+          "details": {
+            "increase_statuses": [
+              "增持",
+              "新进"
+            ],
+            "null_notice_policy": "b4_null_notice_date_excluded",
+            "pit_rule": "notice_date_and_available_at_date_le_signal_day",
+            "source_table": "canonical_top10_float_holders_period"
+          },
+          "episode_count": 62,
+          "event_day_fraction": 0.275,
+          "event_days": 11,
+          "max_chase_days": 3,
+          "method": "notice_available_increase_event_day",
+          "min_event_day_fraction": 0.25,
+          "min_event_days": 10,
+          "min_unique_signal_stocks": 20,
+          "missing_available_at_excluded": 0,
+          "null_notice_excluded": 0,
+          "population_kind": "disclosure_snapshot_canonical_holders",
+          "reason": "disclosure_event_coverage_ready",
+          "status": "MEASURED",
+          "sufficient": true,
+          "trading_days": [
+            "20260522",
+            "20260525",
+            "20260526",
+            "20260527",
+            "20260528",
+            "20260529",
+            "20260601",
+            "20260602",
+            "20260603",
+            "20260604",
+            "20260605",
+            "20260608",
+            "20260609",
+            "20260610",
+            "20260611",
+            "20260612",
+            "20260615",
+            "20260616",
+            "20260617",
+            "20260618",
+            "20260622",
+            "20260623",
+            "20260624",
+            "20260625",
+            "20260626",
+            "20260629",
+            "20260630",
+            "20260701",
+            "20260702",
+            "20260703",
+            "20260706",
+            "20260707",
+            "20260708",
+            "20260709",
+            "20260710",
+            "20260713",
+            "20260714",
+            "20260715",
+            "20260716",
+            "20260717"
+          ],
+          "unique_signal_stocks": 60
+        },
+        "holdout_lift_stability": {
+          "checks": {
+            "b0_holdout_present": true,
+            "b0_holdout_total_return": 0.0590065893341134,
+            "block_holdout_total_return": 0.010256337641390667,
+            "lift": -0.048750251692722735,
+            "lift_ok": false,
+            "require_strict_lift": true
+          },
+          "passed": false,
+          "reason": "holdout_lift_vs_b0_unmet",
+          "require_holdout_lift_vs_b0": true
+        },
+        "holdout_metrics": {
+          "annualized_return": "unknown",
+          "capacity": "unknown",
+          "details": {
+            "avg_loss": -0.012296709789408167,
+            "avg_win": 0.016700065478761746,
+            "daily_bag_count": 1,
+            "mean_trade_net_return": 0.010256337641390655,
+            "payoff_ratio_status": "measured"
+          },
+          "excess_return": "unknown",
+          "max_drawdown": 0.0,
+          "n_incomplete_exit": 0,
+          "n_signals": 3,
+          "n_trades_completed": 9,
+          "n_unfilled": 0,
+          "payoff_ratio": 1.3580921860208843,
+          "sharpe": "unknown",
+          "stability_by_year": "unknown",
+          "total_return": 0.010256337641390667,
+          "turnover": 1.8,
+          "win_rate": 0.7777777777777778
+        },
+        "metrics": {
+          "annualized_return": "unknown",
+          "capacity": "unknown",
+          "details": {
+            "avg_loss": -0.030980367160912386,
+            "avg_win": 0.0185917373015017,
+            "daily_bag_count": 8,
+            "mean_trade_net_return": -0.006194314929705344,
+            "payoff_ratio_status": "measured"
+          },
+          "excess_return": "unknown",
+          "max_drawdown": 0.08320077009069426,
+          "n_incomplete_exit": 0,
+          "n_signals": 10,
+          "n_trades_completed": 40,
+          "n_unfilled": 0,
+          "payoff_ratio": 0.6001135236692322,
+          "sharpe": "unknown",
+          "stability_by_year": "unknown",
+          "total_return": -0.06096280026022083,
+          "turnover": 0.4,
+          "win_rate": 0.5
+        }
+      },
+      "reason": "measured_protocol_ready_edge_gates_unmet",
+      "strategy_release": false,
+      "verdict": "reject"
+    }
+  ],
+  "overall": {
+    "any_claimable": false,
+    "note": "First-class failed/no-gain experiment on bounded window; do not loosen gates; next=longer-window stability OR stop until new data.",
+    "status": "measured_reject_no_gain",
+    "strategy_release": false
+  },
+  "phase_e_ablation": "bounded_scope_measured_b0_short_window",
+  "protocol": {
+    "accept_edge_gates": true,
+    "embargo": 1,
+    "execution": "t+1_paper_nominal",
+    "folds": 3,
+    "holdout_days": 2,
+    "holdout_lift_vs_b0": true
+  },
+  "schema_version": 1,
+  "snapshot_hash": "0f4aec1ca7669397e38d2811ebb6e3edcbabf9125d9ecd7bde6ce501f829d11e",
+  "snapshot_id": "disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713",
+  "snapshot_relpath": "data/lineage/disclosure_dataset_snapshot.json",
+  "snapshot_scope": "bounded_accepted_partitions",
+  "window": {
+    "end": "20260717",
+    "label": "bounded_40d_nominal_k",
+    "start": "20260522"
+  }
+}

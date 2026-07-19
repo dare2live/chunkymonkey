@@ -1154,3 +1154,33 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Residual**: longer window / broader disclosure for stability; form/qfq
   frontier `20260717`; Tier1/Tier2 formal publish/PIT; no production
   candidate.
+
+### 2026-07-20 — Phase E checkpoint: measured reject / no-gain artifacts
+
+- **E checkpointed** as a first-class **failed/no-gain** experiment on the
+  bounded 40d window — **not** a reason to loosen gates.
+- Persisted ExperimentVerdict artifacts (idempotent regenerate via
+  `backend/scripts/persist_phase_e_experiment_verdicts.py`):
+  `data/lineage/phase_e_experiment_verdicts/{manifest,b0,b1,b2,b4}.json`
+  bound to disclosure snapshot_hash
+  `0f4aec1ca7669397e38d2811ebb6e3edcbabf9125d9ecd7bde6ce501f829d11e`
+  (`snapshot_id` = bounded holders×11 + org/stk sets).
+- Ladder (all `claimable=false`, `strategy_release=false`):
+
+  | block | ret | max_dd | n | holdout | verdict | reason |
+  |---|---:|---:|---:|---:|---|---|
+  | B0 | −24.4% | 33.5% | 145 | +5.9% | reject | edge unmet |
+  | B1 | −39.6% | 41.9% | 145 | +4.0% | reject | edge unmet |
+  | B2 | +0.34% | 13.7% | 60 | +5.9% | reject | holdout_lift_vs_b0_unmet |
+  | B4 | −6.1% | 8.3% | 40 | +1.0% | reject | edge unmet (eval ret<0) |
+
+- **B2 honesty**: earlier short-window `accept`/`claimable=true` was
+  **withdrawn** when holdout ret equaled B0 (lift=0); edge gates alone are
+  insufficient without strict holdout lift.
+- Optional form/qfq refresh for `20260717`: **still blocked** —
+  `raw_tushare_daily`/`adj_factor` max=`20260716`, qfq max=`2026-07-16`,
+  `fact_stock_form_daily` max=`20260716` (nominal accepted K for
+  `20260717` exists; analysis surface lag).
+- **Did not**: Optuna, gate threshold changes, B-pit cutover, margin thaw,
+  mass backfill, StrategyRelease.
+- **Next**: longer-window stability **or** stop until new data.

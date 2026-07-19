@@ -69,7 +69,7 @@ AGENTS.md
 | Priority | Defect | Consequence |
 |---:|---|---|
 | P0 | K/ST ~40 日已接受（`20260522`–`20260717`）；下一交易日未到；禁 mass backfill | B-pit mart/cutover 仍禁；eligible frontier READY |
-| P0 | E0 FIXED；B0/B1/B2/B4 reject（B4 覆盖够测仍 edge unmet）；enrichment 历史仍 field-level PARTIAL | E PARTIAL；无 claimable accept；下一刀更长窗/稳定性或 F（非 Optuna / 非 mass backfill / 非 B-pit cutover / 非 StrategyRelease） |
+| P0 | E checkpointed measured reject/no-gain（B0–B4 claimable=false；artifacts under `data/lineage/phase_e_experiment_verdicts/`）；enrichment 历史仍 field-level PARTIAL | 下一刀更长窗稳定性 **或** stop until new data（非 Optuna / 非松门 / 非 mass backfill / 非 B-pit cutover / 非 StrategyRelease） |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
 | P1 | formal `boundary_inventory` 仅为静态/测试资源，非 doctor readiness 证书（`formal_boundaries` 文案已澄清）；canary_pending 域无 countdown 出口 | 豁免不可见即永久；须在 goal/ledger 跟踪 canary 授权点 |

@@ -102,3 +102,32 @@ def test_phase_e_smoke_dataset_snapshot_gate_and_surface_status() -> None:
         or "blocked" in ablation
         or ablation == "bounded_scope_measured_b0_short_window"
     )
+
+
+def test_phase_e_checkpoint_verdict_artifacts_reject_no_gain() -> None:
+    """Committed Phase E ladder artifacts: all reject / claimable=false."""
+
+    root = Path(__file__).resolve().parents[3]
+    manifest_path = root / "data/lineage/phase_e_experiment_verdicts/manifest.json"
+    assert manifest_path.is_file(), f"missing Phase E verdict manifest at {manifest_path}"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest.get("overall", {}).get("status") == "measured_reject_no_gain"
+    assert manifest.get("overall", {}).get("any_claimable") is False
+    assert manifest.get("overall", {}).get("strategy_release") is False
+    snap_path = root / DISCLOSURE_SNAPSHOT_RELPATH
+    import hashlib
+
+    expected_hash = hashlib.sha256(snap_path.read_bytes()).hexdigest()
+    assert manifest.get("snapshot_hash") == expected_hash
+    blocks = manifest.get("blocks") or {}
+    for name in ("b0", "b1", "b2", "b4"):
+        rel = blocks.get(name)
+        assert rel, f"manifest missing block {name}"
+        payload = json.loads((root / rel).read_text(encoding="utf-8"))
+        assert payload.get("verdict") == "reject"
+        assert payload.get("claimable") is False
+        assert payload.get("strategy_release") is False
+        assert payload.get("snapshot_hash") == expected_hash
+    # B2 short-window accept was withdrawn — holdout lift gate records unmet.
+    b2 = json.loads((root / blocks["b2"]).read_text(encoding="utf-8"))
+    assert b2.get("reason") == "holdout_lift_vs_b0_unmet"

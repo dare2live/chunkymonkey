@@ -3583,6 +3583,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/persist_phase_e_experiment_verdicts.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_audit.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily"
@@ -4813,9 +4819,9 @@
     }
   ],
   "meta": {
-    "edge_count": 751,
-    "generated_at": "2026-07-19T15:50:48.896305+00:00",
-    "node_count": 336,
+    "edge_count": 752,
+    "generated_at": "2026-07-19T16:04:08.047884+00:00",
+    "node_count": 337,
     "version": 2
   },
   "nodes": [
@@ -5033,6 +5039,14 @@
         "path": "backend/scripts/freeze_disclosure_dataset_snapshot.py"
       },
       "id": "consumer:backend/scripts/freeze_disclosure_dataset_snapshot.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "script",
+        "path": "backend/scripts/persist_phase_e_experiment_verdicts.py"
+      },
+      "id": "consumer:backend/scripts/persist_phase_e_experiment_verdicts.py",
       "kind": "consumer"
     },
     {

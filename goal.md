@@ -1,14 +1,14 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-19
+> 更新：2026-07-20
 > 只保存当前 objective、已裁决事项、blocker 和下一步。完成证据追加到 `analysis/project_state_ledger.md`。
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + ~40 交易日名义 K/ST accepted；eligible frontier=`20260717` READY；窗 `20260522`–`20260717`；仍禁 mass backfill / 下一交易日未到）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false` — PIT 池 vs unfiltered 广度分歧为预期，禁切）。**E0 FIXED（gate+mirror off）**：三域 MATCH → `cutover_allowed=true`；formal writes=`formal_only`；provider-field 读 prefer canonical；canary `DatasetSnapshot` 已冻；feature_store 画像=typed enrichment PARTIAL（非 blanket legacy）。**E PARTIAL（bounded measured B0+B1+B2+B4 paper）**：disclosure snapshot=`bounded_accepted_partitions` / `phase_e_ablation=bounded_scope_measured_b0_short_window`；40 日名义 K purged WF（3 folds）+ T+1 paper；**accept edge gates**（holdout net>0、max DD≤25%、min trades≥30、eval total_return>0）+ **holdout-lift vs B0 稳定性门**。Live：B0/B1 `reject`；B2 短窗 edge 过但 holdout=B0 → **`reject` / `holdout_lift_vs_b0_unmet` / `claimable=false`**；B4 扩 holders date_set 后覆盖够测 → eval ret<0 → **`reject` / `accept_edge_gates_unmet`**（非假 accept）。均 ≠ StrategyRelease。Fable5 **REVISE** 已吸收。
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + ~40 交易日名义 K/ST accepted；eligible frontier=`20260717` READY；窗 `20260522`–`20260717`；仍禁 mass backfill / 下一交易日未到）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false`）。**E0 FIXED（gate+mirror off）**。**E = measured reject / no-gain（checkpointed）**：40 日窗 B0–B4 全 `reject` / `claimable=false`（B0−24%、B1−40%、B2+0.3% 但 holdout_lift unmet、B4−6% 覆盖够仍 edge unmet）；artifacts=`data/lineage/phase_e_experiment_verdicts/`；**无 StrategyRelease**。这是一等公民失败实验，**不**因此松门。下一刀=更长窗稳定性 **或** 停到有新数据；禁 Optuna / gate-loosening / B-pit cutover / margin thaw / mass backfill。
 
-已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。短窗 B2 无独立 holdout lift ≠ `StrategyRelease` / 生产候选。
+已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
 ## 产品层级（已裁决）
 
@@ -43,7 +43,7 @@
 - 白名单仅 `60/00/30/68`；多数域仅前缀过滤；margin v2/pulse 含 BSE 错误 scope。
 - universe/Moth 曾假绿；live ST 污染 breadth/龙虎榜/SW/DC。
 - margin accepted=1823 只证冻结自洽；`20260709/BSE` 出 scope。
-- **多源实况**：TuShare=正式 registry 域唯一 live adapter；东财妙想 aif10/`miaoxiang` 已是十大流通股东等披露域 live 主源。E0：三域写=`formal_only`（默认停 legacy mirror；test/escape only）；研究 provider-field 读 prefer canonical（MATCH）；feature_store 画像 typed enrichment PARTIAL。细节见 ledger。
+- **多源实况**：TuShare=正式 registry 域唯一 live adapter；东财妙想 aif10/`miaoxiang` 已是十大流通股东等披露域 live 主源。E0：三域写=`formal_only`；研究读 prefer canonical（MATCH）；feature_store 画像 typed enrichment PARTIAL。细节见 ledger。
 
 ## 执行计划（A→H）
 
@@ -52,66 +52,35 @@
 - **A** A1–A5 **FIXED**。`live_readiness` 可评估。禁 mass fetch/切消费者。
   **A3 data-plane PARTIAL**：`trade_cal`/`daily`/`stock_st` =
   `authorized_manual_generation` + `sync_policy=on_demand`（禁 --all-due）。
-  Live accepted：SSE calendar generation + 名义 K/ST
-  `20260522`–`20260717`（40 交易日；含 frontier；缺省日自 legacy raw 经 formal land→accept）。
-  例：`daily:20260717:…` 5522 行 / `stock_st:20260717:…` 211 行。
-  Eligible frontier（日历+availability）=`20260717`。formal daily/stock_st CLI
-  现支持同日或 ≤40 交易日短窗（逐日 accept；禁 `--backfill`/无界/多年）。Default
+  Live accepted：SSE calendar + 名义 K/ST `20260522`–`20260717`（40 交易日；含 frontier）。
+  Eligible frontier=`20260717`。formal daily/stock_st 支持同日或 ≤40 交易日短窗。
   `evaluate_observation_population_readiness` → `READY`；doctor
   `population_readiness=PASS`。margin 仍冻结。下一刀：下一交易日 eligible
   单日（仍禁 mass backfill / margin 解冻 / pulse cutover）。
-- **B-ext FIXED（诚实化）** scope + shadow + sentiment sidecar + 前端 UNTRUSTED 标注；
+- **B-ext FIXED（诚实化）** scope + shadow + sentiment sidecar + 前端 UNTRUSTED；
   mart 数值未改、`cutover_allowed=false`。残余=B-pit 数值切读。
 - **B-pit PARTIAL** 广度/shadow 已有；**未**接 pulse mart / 未 cutover。Canary 日
-  `20260717` shadow：project adv/dec=386/4571 ratio≈0.0844 vs unfiltered
-  proxy≈0.0964，`ratios_match=false`，`cutover_allowed=false`（默认禁切）。
+  `20260717`：PIT vs unfiltered 分歧 → `cutover_allowed=false`。
 - **C** Tier1/2 正式 lineage。**D** `DatasetSnapshot`→`ExperimentVerdict` + PIT 截断。
-- **E0 FIXED（gate+mirror off；E 硬前置）** 三域 inventory + land→accept +
-  shadow sidecar + research read policy + formal_only writes。
-  **cutover 规则**：`cutover_allowed=true` **仅当** holders/org/stk 三域在
-  serving partitions 上 shadow **MATCH**（live 已 MATCH）。
-  **读路径**：`disclosure_research_read` 对 MATCH 域 prefer canonical；缺失/
-  分歧 fail-closed → legacy + `NONCONFORMING`/`PARTIAL`；`/api/v3/inst` 暴露
-  `disclosure_read_policy` + `feature_store_field_status`。
-  **画像**：`disclosure_enrichment_projection` = canonical spine + typed
-  legacy join；holders enrichment 列已进 canonical schema v2；历史 canary
-  缺口仍 field-level **PARTIAL**（非 blanket legacy-only）。
-  **写路径**：`formal_only`（默认**停** legacy mirror）；mirror /
-  naked `NONCONFORMING` 仅 `allow_test_escape` / env /
-  `legacy_direct_only` / `enable_legacy_mirror`。
-  **DatasetSnapshot FIXED（bounded）**：
+- **E0 FIXED（gate+mirror off；E 硬前置）** 三域 MATCH → `cutover_allowed=true`；
+  formal writes=`formal_only`；research read prefer canonical；
   `data/lineage/disclosure_dataset_snapshot.json` →
-  `scope=bounded_accepted_partitions`，
+  `scope=bounded_accepted_partitions` /
   `phase_e_ablation=bounded_scope_measured_b0_short_window`；
-  holders`20260508/0616/0618/0619/0623/0703/0709/0710/0713/0714/0717`
-  （+7 small recent legacy-accept；禁 April 季报 mass）；
-  org`20190430`+`20260430`(stock subset 600519,000001)；
-  stk`20260518/20260608/20260706/20260713` + hashes。
-  Serving cutover shadow 仍 MATCH on canary 三域。
-  **残余（不挡 smoke，挡全量消融）**：org 全市场 recent mass accept（禁）；
-  enrichment 历史行仍依赖 legacy join。
-- **E PARTIAL（bounded measured B0+B1+B2+B4 paper）** E0 FIXED 前置已满足。
-  `institution_follow_b0` + `_measure`：40 日 `20260522`–`20260717` purged WF
-  （embargo=1、holdout=2、3 folds）+ T+1 paper。**Accept edge gates（prereg）**：
-  holdout net return > 0；eval total_return > 0；max DD ≤ 0.25；
-  n_trades ≥ 30；**另** `holdout_lift_vs_b0`（严格 > B0 holdout）挑战短窗
-  巧合 accept。Live B0：ret≈−24.4%、max_dd≈33.5%、win≈0.45、payoff≈0.93、
-  turnover≈1.45、n=145；holdout≈+5.9% → `reject` / `claimable=false`。
-  **B1**：state 条件化；ret≈−39.6% → `reject`。
-  **B2**：project-board breadth risk-on；ret≈+0.34%、max_dd≈13.7%、n=60；
-  holdout≈+5.9%**=B0** → edge 过但 **`reject` / `holdout_lift_vs_b0_unmet`**
-  （撤回短窗 accept 声称）。
-  **B4**：`canonical_top10_float_holders_period` + 扩后 snapshot date_set；PIT=
-  `notice_date`∧`available_at` 日历日 ≤ signal day（NULL notice 排除）；
-  信号=首次可用增持/新进事件日；entry=次日 open + `max_chase_days=3`。
-  Live 覆盖：**event_days=11/40、frac=0.275、unique_stocks=60、episodes=62**
-  （门槛够）→ paper ret≈−6.1%、max_dd≈8.3%、n=40；holdout≈+1.0%
-  ＜B0 → **`reject` / `accept_edge_gates_unmet`**（eval ret<0；未松门）。
-  Tests：`_b0`+`_b1`+`_b2`+`_b4`+phase_e smoke。
-  **禁** Optuna/全历史/B-pit cutover/margin thaw/multi-year backfill /
-  StrategyRelease。
-  **残余**：更长窗/更广披露再测稳定性；form 缺 `20260717`；正式
-  Tier1/Tier2 publish/PIT 零差契约仍薄；无跨年稳定性前禁 release。
+  holders date_set=11；org/stk canary+small sets。Serving shadow MATCH。
+  残余：org 全市场 mass（禁）；enrichment 历史仍 field-level PARTIAL。
+- **E checkpointed = measured reject / no-gain（非松门理由）**
+  Protocol：40 日 `20260522`–`20260717` purged WF（3 folds）+ T+1 paper；
+  accept edge gates + `holdout_lift_vs_b0`。Live ladder（全 `claimable=false`）：
+  B0 ret≈−24.4% → `reject`；B1≈−39.6% → `reject`；
+  B2≈+0.34% edge 过但 holdout=B0 → `reject`/`holdout_lift_vs_b0_unmet`
+  （**撤回**短窗 accept 声称）；B4 覆盖够（event_days=11/40）仍 eval≈−6.1% →
+  `reject`/`accept_edge_gates_unmet`。Artifacts：
+  `data/lineage/phase_e_experiment_verdicts/{manifest,b0,b1,b2,b4}.json`
+  （`persist_phase_e_experiment_verdicts.py` 幂等 regenerate）。
+  form/qfq `20260717` **still blocked**（raw/qfq/form max=`20260716`）。
+  **Next**：更长窗稳定性 **或** stop until new data。**禁** Optuna /
+  gate-loosening / B-pit cutover / margin thaw / mass backfill / StrategyRelease。
   **F** main_rally。**G** 公式+BestChoice。**H** Release/名义价纸面。
 
 ## 边做边测
@@ -120,4 +89,4 @@
 
 ## Blocker / 禁止误报
 
-margin/pulse scope 错：禁 provider/live 写/cutover。交易所汇总≠沪深池。accepted=1823≠业务正确。continuity 告警未清除。函数存在/WARN/fixture 绿≠交付。Tier0=`BLOCKED`/`NOT_EVALUATED`。E0 FIXED + measured paper ≠ claimable release；B0/B1/B2/B4 均 `claimable=false`（B2 holdout lift；B4 edge eval ret<0）；均 ≠ StrategyRelease / 生产候选 / B-pit cutover；canary `canary_scope_only` ≠ 全量消融；feature_store field-level PARTIAL ≠ ACCEPTED。
+margin/pulse scope 错：禁 provider/live 写/cutover。交易所汇总≠沪深池。accepted=1823≠业务正确。continuity 告警未清除。函数存在/WARN/fixture 绿≠交付。Tier0=`BLOCKED`/`NOT_EVALUATED`。E measured reject ≠ claimable release；B0/B1/B2/B4 均 `claimable=false`；均 ≠ StrategyRelease / 生产候选；松门禁；canary ≠ 全量消融；feature_store field-level PARTIAL ≠ ACCEPTED。
