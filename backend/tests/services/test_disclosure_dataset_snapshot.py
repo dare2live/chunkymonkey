@@ -232,6 +232,65 @@ def test_freeze_writes_minimal_snapshot_on_match(conn, tmp_path: Path) -> None:
         assert part["content_hash"]
         assert int(part["row_count"]) >= 1
         assert part["batch_id"]
+        assert part["date_set"] == [part["partition"]]
+        assert len(part["accepted"]) == 1
     payload = json.loads(out.read_text(encoding="utf-8"))
     assert payload["relpath"] == DISCLOSURE_SNAPSHOT_RELPATH
     assert payload["phase_e_ablation"] == "blocked_canary_scope_only"
+
+
+def test_freeze_bounded_partition_sets(conn, tmp_path: Path) -> None:
+    """Explicit multi-date sets → bounded_accepted_partitions scope."""
+
+    write_holders_top10_formal_then_mirror(
+        conn, [_holders_row()], observed_at=OBSERVED_HOLDERS,
+        enable_legacy_mirror=True,
+    )
+    write_org_holding_formal_then_mirror(
+        conn, [_org_row()], observed_at=OBSERVED_ORG,
+        enable_legacy_mirror=True,
+    )
+    write_stk_holdertrade_formal_then_mirror(
+        conn, [_stk_row()], observed_at=OBSERVED_STK,
+        enable_legacy_mirror=True,
+    )
+    # Second stk ann_date keeps grain disjoint; cutover shadow stays on canary.
+    observed_stk2 = datetime(
+        2019, 1, 3, 18, 0, tzinfo=ZoneInfo("Asia/Shanghai")
+    ).astimezone(timezone.utc)
+    write_stk_holdertrade_formal_then_mirror(
+        conn,
+        [_stk_row(ann_date="20190103")],
+        observed_at=observed_stk2,
+        available_at=observed_stk2,
+        enable_legacy_mirror=True,
+    )
+    shadow = compare_disclosure_research_shadow(
+        conn,
+        partitions={
+            "holders_top10": PARTITION_HOLDERS,
+            "org_holding": PARTITION_ORG,
+            "stk_holdertrade": PARTITION_STK,
+        },
+    )
+    assert shadow.cutover_allowed is True
+
+    out = tmp_path / "disclosure_dataset_snapshot_bounded.json"
+    snap = freeze_disclosure_dataset_snapshot(
+        {"holders_top10": conn, "org_holding": conn, "stk_holdertrade": conn},
+        shadow=shadow,
+        path=out,
+        partition_sets={
+            "holders_top10": [PARTITION_HOLDERS],
+            "org_holding": [PARTITION_ORG],
+            "stk_holdertrade": [PARTITION_STK, "20190103"],
+        },
+        extra_notes=("test_bounded",),
+    )
+    assert snap.scope == "bounded_accepted_partitions"
+    assert snap.phase_e_ablation == "bounded_scope_wf_paper_still_blocked"
+    assert snap.domains["stk_holdertrade"]["date_set"] == sorted(
+        [PARTITION_STK, "20190103"]
+    )
+    assert len(snap.domains["stk_holdertrade"]["accepted"]) == 2
+    assert "test_bounded" in snap.notes

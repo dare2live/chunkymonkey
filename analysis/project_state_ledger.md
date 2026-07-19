@@ -906,3 +906,28 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   partitions); measured bare-K baseline on nominal OHLCV + eligible
   universe; purged walk-forward/embargo/single-touch holdout exercise;
   paper execution with costs/T+1/limits; then B1→B4 single-block ablation.
+
+### 2026-07-19 — Phase E: bounded disclosure accepts + measured B0 coverage
+
+- **E PARTIAL** (honest measured B0; not claimable).
+- **Bounded legacy-accept** (no multi-year mass backfill):
+  - holders_top10 `+20260714(23)/20260713(22)/20260619(12)` (keep `20260717`)
+  - stk_holdertrade `+20260713(15)/20260608(7)/20260518(5)` (keep `20260706`)
+  - org_holding `+20260430` stock subset `600519,000001` (2139 rows; keep
+    full canary `20190430`); full recent org universe not accepted
+- **DatasetSnapshot refresh**:
+  `scope=bounded_accepted_partitions`,
+  `phase_e_ablation=bounded_scope_wf_paper_still_blocked` (cleared
+  `blocked_canary_scope_only`); explicit per-domain `date_set` + `accepted[]`
+  hashes; serving cutover shadow still MATCH on canary partitions.
+- **B0 measurement**: `measure_bare_k_coverage` against accepted nominal
+  OHLCV; live A3 window = `{20260717}` only (1 < min 5) → verdict
+  `inconclusive` / `measured_coverage_insufficient` / `claimable=false`.
+  Canary overclaim path retained. No Optuna / B-pit cutover / margin thaw.
+- CLI: `backend/scripts/freeze_disclosure_dataset_snapshot.py --bounded`.
+- Tests: `test_institution_follow_b0` + `test_disclosure_dataset_snapshot`
+  bounded freeze + `test_phase_e_smoke` updated.
+- **Residual for WF/paper/B1**: expand accepted nominal K to ≥5 eligible
+  days overlapping disclosure window; purged walk-forward + paper fills;
+  then B1 stock-state block. Org full-universe `20260430` still out of
+  scope (subset only).

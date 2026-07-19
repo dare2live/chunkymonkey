@@ -46,13 +46,25 @@ def test_phase_e_smoke_dataset_snapshot_gate_and_surface_status() -> None:
     assert snap_path.is_file(), f"missing canary DatasetSnapshot at {snap_path}"
     payload = json.loads(snap_path.read_text(encoding="utf-8"))
     assert payload.get("cutover_allowed") is True
-    assert payload.get("scope") == "canary_accepted_partitions"
-    assert payload.get("phase_e_ablation") == "blocked_canary_scope_only"
-    assert set(payload.get("domains") or {}) >= {
+    assert payload.get("scope") in {
+        "canary_accepted_partitions",
+        "bounded_accepted_partitions",
+    }
+    assert payload.get("phase_e_ablation") in {
+        "blocked_canary_scope_only",
+        "bounded_scope_wf_paper_still_blocked",
+    }
+    domains = payload.get("domains") or {}
+    assert set(domains) >= {
         "holders_top10",
         "org_holding",
         "stk_holdertrade",
     }
+    if payload.get("scope") == "bounded_accepted_partitions":
+        for name in ("holders_top10", "org_holding", "stk_holdertrade"):
+            date_set = domains[name].get("date_set") or []
+            assert len(date_set) >= 2, f"{name} needs bounded date_set"
+            assert domains[name].get("accepted")
 
     shadow = DisclosureShadowCompareReport(
         overall_status="MATCH",
@@ -81,5 +93,6 @@ def test_phase_e_smoke_dataset_snapshot_gate_and_surface_status() -> None:
     }
     assert envelope["surface_status"] == "tier3_research_evidence_only"
     assert envelope["cutover_allowed"] is True
-    # Ablation remains blocked at snapshot scope — smoke only.
-    assert payload["phase_e_ablation"] == "blocked_canary_scope_only"
+    # Full B0→B4 ablation remains blocked; bounded scope only unlocks measured B0 attempt.
+    assert "ablation" in payload["phase_e_ablation"] or "blocked" in payload["phase_e_ablation"]
+    assert payload["phase_e_ablation"] != "eligible_full_b0_b4"
