@@ -21,7 +21,7 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1/A2 已闭合；A3 `observation_population` 提供 `traded_on_observation_date` resolver + fail-closed K/ST loaders；`live_readiness` 可评估（当前多为 BLOCKED：无 accepted K/ST writer / calendar 未 bootstrap）。无 provider canary、无 consumer cutover |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | Phase A 代码出口：A1–A5 闭合（calendar runtime、observation resolver、landing purity、`formal_boundaries`）。`live_readiness` 可评估（多为 BLOCKED）。K/ST accepted writer + calendar canary 仍缺；无 provider mass fetch / consumer cutover |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
 | T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 当前展示可用；分类解释、measurement、regime 和 persistence 耦合，暂不可直接做 PIT 特征 |
@@ -68,7 +68,7 @@ AGENTS.md
 
 | Priority | Defect | Consequence |
 |---:|---|---|
-| P0 | A3 resolver 已接线但名义 K/ST accepted writer 未建；A4 landing 已停止写前删行（serve=`universe_serve_filter`） | 日级项目池不能 live 证明；legacy 域仍缺 formal adapter→landing→canonical 三界（A5） |
+| P0 | 名义 K/ST accepted writer 未建；calendar accepted 未 live bootstrap/canary | `traded_on_observation_date` 不能 live 证明；`live_readiness` 诚实 BLOCKED/NOT_EVALUATED |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
 | P1 | Live DC snapshot/pulse tables predate namespace fix until manual rebuild | Code contract is fixed but stored rows still need controlled reconciliation |

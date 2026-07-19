@@ -478,3 +478,13 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   （BJ 计入 min_rows），与 serve 过滤解耦。
 - 对抗测：`test_universe_serve_filter` + batch/sync/continuity 相关更新绿。无 provider
   fetch、无 consumer cutover。下一刀 A5。
+
+### 2026-07-19 — Phase A5 formal adapter/landing/canonical boundaries + Phase A exit
+
+- A5 **FIXED**：新增 `formal_boundaries.py` — inventory 声明 margin/trade_cal/daily/stock_st
+  三界（adapter=tushare only；landing/canonical writer 路径；runtime_state）。
+  sync_runner 对非 `writers_pending` 域硬墙 legacy `_write_batch`；`_adapter` 只许 tushare。
+- daily/stock_st 仍 `writers_pending`（临时 legacy 路径，A3 residual）。
+- **Phase A 代码出口**：A1–A5 对抗测绿；`live_readiness` 经 loader 评估（live 常见 BLOCKED：
+  calendar 未 bootstrap + K/ST writer 未建）。未做 provider mass fetch、consumer cutover；
+  margin 仍 scope_blocked/frozen。下一阶段 B。

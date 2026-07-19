@@ -282,26 +282,27 @@ def _refuse_formal_domain_runtime(domain: str, execution) -> dict[str, Any]:
     )
 
 
-def _refuse_legacy_trade_cal_raw_path(domain: str) -> None:
-    """trade_cal must never fall through to legacy raw replace_snapshot."""
+def _refuse_formal_legacy_raw_path(domain: str) -> None:
+    """Formal domains with active boundaries never fall through to legacy raw."""
 
-    if domain != "trade_cal":
-        return
-    from services.data_sources.calendar_runtime import (
-        CalendarRuntimeError,
-        refuse_legacy_calendar_raw_write,
+    from services.data_sources.formal_boundaries import (
+        FormalBoundaryError,
+        refuse_legacy_raw_write_for_formal_domain,
     )
 
     try:
-        refuse_legacy_calendar_raw_write(
-            detail="sync_runner legacy path cannot publish accepted calendar"
+        refuse_legacy_raw_write_for_formal_domain(domain)
+    except FormalBoundaryError as exc:
+        reason = (
+            "accepted_generation_pending"
+            if domain == "trade_cal"
+            else exc.reason
         )
-    except CalendarRuntimeError as exc:
         raise ExecutionPolicyError(
             domain,
             mode="disabled",
-            reason="accepted_generation_pending",
-            detail=str(exc),
+            reason=reason,
+            detail=exc.detail,
         ) from exc
 
 
@@ -347,10 +348,19 @@ _TUSHARE_SOURCE: Any = None
 def _adapter(source_name: str):
     """2026-07-07 精简: 原经 get_registry().get_source() 间接查找已删 (registry.py/base.py
     多源 fallback 机制 0 消费方物删, 见 analysis/data_sources_registry_retirement_20260707.md)。
-    sync_registry.yaml 47 域全声明 source: tushare, 单例直连即可。"""
+    sync_registry.yaml 47 域全声明 source: tushare, 单例直连即可。A5: formal 边界只许 tushare。"""
     global _TUSHARE_SOURCE
-    if source_name != "tushare":
-        raise KeyError(f"data_sources: 未知 source '{source_name}' (精简后只剩 tushare)")
+    from services.data_sources.formal_boundaries import (
+        FormalBoundaryError,
+        require_live_adapter,
+    )
+
+    try:
+        require_live_adapter(source_name, domain="*")
+    except FormalBoundaryError as exc:
+        raise KeyError(
+            f"data_sources: 未知 source '{source_name}' (精简后只剩 tushare)"
+        ) from exc
     if _TUSHARE_SOURCE is None:
         from services.data_sources.sources.tushare import TuShareSource
 
@@ -1487,7 +1497,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
     reg = registry if registry is not None else load_registry()
     spec = domain_spec(reg, domain)
     _require_execution_enabled(spec)
-    _refuse_legacy_trade_cal_raw_path(domain)
+    _refuse_formal_legacy_raw_path(domain)
     formal_contract = _formal_dataset_contract_for_spec(spec)
     formal_execution = _require_formal_population_execution(spec, formal_contract)
     if formal_execution is not None:
@@ -1909,7 +1919,7 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     reg = registry if registry is not None else load_registry()
     spec = domain_spec(reg, domain)
     _require_execution_enabled(spec)
-    _refuse_legacy_trade_cal_raw_path(domain)
+    _refuse_formal_legacy_raw_path(domain)
     formal_contract = _formal_dataset_contract_for_spec(spec)
     formal_execution = _require_formal_population_execution(spec, formal_contract)
     if formal_execution is not None:

@@ -6,7 +6,7 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。当前开工 **Phase A（Tier0 硬门）**：A1 contract/attestation → A2 calendar accepted → A3 K/ST resolver → A4 landing 纯度 → A5 adapter 边界。
+按 MASTER 建立可审计沪深判断链。**Phase A 代码出口已达**（A1–A5）；残余为 K/ST accepted writer + 授权 calendar canary（无抓数/无 cutover）。下一阶段 **Phase B**（external vs project-universe；pulse 脱离错误 raw）。
 
 已拍板：多源=契约可换 adapter；首策略包=`institution_follow`；边做边测（坏例先红→绿→窄回归）。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -48,8 +48,8 @@
 
 控制面原语/margin 冻结/all-due 前阻断/doctor `NOT_EVALUATED` FAIL/calendar 隔离原型：见 ledger。≠业务就绪。
 
-- **A（当前）** A1/A2 **complete**；A3 **PARTIAL**（resolver+loaders；K/ST writer 仍缺）；A4 **complete**（写前不再 `universe_filter` 删行；`universe_serve_filter`+policy hash；landing completeness 计全量 provider 行）。下一步 **A5** adapter/landing/canonical 边界。出口：对抗测绿且 `live_readiness` 可评估；禁抓数/切消费者。
-- **B** external vs project-universe；pulse 脱离错误 raw；shadow 后切读面。
+- **A** A1/A2/A4/A5 **complete**；A3 **PARTIAL**（resolver+evaluable `live_readiness`；K/ST accepted writer 仍缺）。出口对抗测绿；`live_readiness` 可评估（现多为 BLOCKED）；禁抓数/切消费者。→ 进 **B**。
+- **B（下一）** external vs project-universe；pulse 脱离错误 raw；shadow 后切读面。
 - **C** Tier1/2 正式 lineage（definition/config/snapshot/universe/available_at）。
 - **D** `DatasetSnapshot`→`ExperimentVerdict` 最小链 + PIT 截断。
 - **E** `institution_follow_v1`（首包；B0→B4；跟随收益独立）。

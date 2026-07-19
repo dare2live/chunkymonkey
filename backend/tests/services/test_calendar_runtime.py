@@ -268,7 +268,7 @@ def test_enabled_trade_cal_still_cannot_use_legacy_raw_writer(monkeypatch) -> No
     with pytest.raises(sr.ExecutionPolicyError) as caught:
         sr.run_domain("trade_cal", registry=registry)
     assert caught.value.reason == "accepted_generation_pending"
-    assert "legacy_calendar_raw_write_forbidden" in str(caught.value)
+    assert "legacy _write_batch/raw replace is forbidden" in str(caught.value)
 
 
 def test_bootstrap_is_explicit_entrypoint() -> None:
