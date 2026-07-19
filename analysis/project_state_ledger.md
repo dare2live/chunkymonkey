@@ -521,3 +521,13 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   NONCONFORMING 披露源与 `boundary_inventory` 非 readiness 证书。
 - Resolver 对抗缺口关闭：accepted ST 零行 fail-closed；`row_count`↔membership
   基数 parity。未开工 institution_follow 生产、未 mass fetch；margin 仍冻结。
+
+### 2026-07-19 — B-ext slice1: market_pulse_scope UNTRUSTED attestation
+
+- **PARTIAL**：新增 `market_pulse_scope.attest_market_pulse_scope` —
+  legacy mart 字段 `adv_dec_ratio`=`raw_evidence` UNTRUSTED；
+  `rzrqye`/`rzrqye_chg`=`external_aggregate` UNTRUSTED（含 BSE 注记）。
+  `refuse_project_universe_claim_for_legacy_pulse` 硬墙。
+- 对抗测：`test_market_pulse_scope` 4 passed。不改 mart 列/router payload、无
+  consumer cutover、无 provider fetch。下一刀：shadow reconcile + 读面旁路
+  trust 字段（仍不切数值）。
