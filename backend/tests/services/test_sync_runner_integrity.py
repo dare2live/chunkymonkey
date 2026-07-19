@@ -1009,8 +1009,23 @@ def test_formal_daily_authorized_short_window_publishes_each_trading_day(monkeyp
     assert result["failed_batches"] == 0
 
 
+def test_formal_daily_short_window_allows_up_to_40_trading_days(monkeypatch):
+    days = [f"20260{i:03d}" for i in range(1, 41)]  # exactly 40
+    monkeypatch.setattr(sr, "trading_days", lambda start, end=None: days)
+    got = sr._require_authorized_short_trade_date_window(
+        "daily",
+        backfill=False,
+        resume=False,
+        start="20260001",
+        end="20260040",
+        max_dates=None,
+    )
+    assert got == days
+    assert len(got) == sr.AUTHORIZED_SECURITY_DAY_MAX_WINDOW_DAYS
+
+
 def test_formal_daily_short_window_refuses_mass_backfill(monkeypatch):
-    days = [f"20260{i:03d}" for i in range(1, 16)]  # 15 synthetic days
+    days = [f"20260{i:03d}" for i in range(1, 46)]  # 45 > 40
     monkeypatch.setattr(sr, "trading_days", lambda start, end=None: days)
     with pytest.raises(sr.SyncWindowError, match="refuse mass backfill"):
         sr._require_authorized_short_trade_date_window(
@@ -1018,7 +1033,16 @@ def test_formal_daily_short_window_refuses_mass_backfill(monkeypatch):
             backfill=False,
             resume=False,
             start="20260001",
-            end="20260015",
+            end="20260045",
+            max_dates=None,
+        )
+    with pytest.raises(sr.SyncWindowError, match="refuse --backfill"):
+        sr._require_authorized_short_trade_date_window(
+            "daily",
+            backfill=True,
+            resume=False,
+            start="20260717",
+            end="20260717",
             max_dates=None,
         )
 

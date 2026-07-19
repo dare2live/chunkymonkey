@@ -15,6 +15,7 @@ from services.institution_follow_b0 import (
     REASON_CANARY_SCOPE_ONLY,
     REASON_MEASURED_COVERAGE_INSUFFICIENT,
     REASON_MEASURED_SHORT_WINDOW,
+    REASON_PROTOCOL_READY_EDGE_UNMET,
     REQUIRED_SURFACE_STATUS,
     STRATEGY_PACKAGE,
     build_b0_run,
@@ -95,20 +96,29 @@ class _FakeNominalConn:
         return None
 
 
-def _synthetic_window_bars(n_days: int = 8) -> dict[str, list[dict]]:
+def _weekday_compact_days(n_days: int, *, start: str = "20260401") -> list[str]:
+    from datetime import date
+
+    y, m, d = int(start[:4]), int(start[4:6]), int(start[6:8])
+    out: list[str] = []
+    while len(out) < n_days:
+        cur = date(y, m, d)
+        if cur.weekday() < 5:
+            out.append(cur.strftime("%Y%m%d"))
+        nxt = date.fromordinal(cur.toordinal() + 1)
+        y, m, d = nxt.year, nxt.month, nxt.day
+    return out
+
+
+def _synthetic_window_bars(
+    n_days: int = 8, *, days: list[str] | None = None
+) -> dict[str, list[dict]]:
     """Build a tiny tradable panel for paper-fill unit tests."""
 
-    # Eight calendar-like compact dates in July 2026.
-    days = [
-        "20260708",
-        "20260709",
-        "20260710",
-        "20260713",
-        "20260714",
-        "20260715",
-        "20260716",
-        "20260717",
-    ][:n_days]
+    if days is None:
+        days = _weekday_compact_days(n_days, start="20260708")
+    else:
+        days = list(days)[:n_days]
     codes = ["600000.SH", "000001.SZ", "300001.SZ", "688001.SH", "600519.SH"]
     bars: dict[str, list[dict]] = {}
     for i, day in enumerate(days):
@@ -171,8 +181,12 @@ def test_b0_scaffold_consumes_frozen_snapshot_and_surface_status() -> None:
         if run.bare_k_coverage.sufficient_for_measured_b0:
             assert run.measured_b0 is not None
             assert run.artifact_manifest["paper_fills"] == "measured"
-            assert verdict.reason == REASON_MEASURED_SHORT_WINDOW
             assert verdict.blocked is True
+            assert verdict.claimable is False
+            if run.measured_b0.claimable:
+                assert verdict.reason == REASON_PROTOCOL_READY_EDGE_UNMET
+            else:
+                assert verdict.reason == REASON_MEASURED_SHORT_WINDOW
             assert run.bare_k_coverage.accepted_nominal_day_count >= (
                 MIN_ACCEPTED_NOMINAL_DAYS_FOR_MEASURED_B0
             )
@@ -294,6 +308,21 @@ def test_short_window_uses_honest_minimal_wf_protocol() -> None:
     assert plan.reason == REASON_MEASURED_SHORT_WINDOW
 
 
+def test_full_purged_wf_at_40_days_is_claimable_protocol() -> None:
+    """Prereg floor (40 trading days) must leave room for 3 purged eval folds."""
+
+    days = _weekday_compact_days(MIN_DAYS_FULL_PURGED_WF)
+    assert len(days) == MIN_DAYS_FULL_PURGED_WF
+    plan = plan_walk_forward(days)
+    assert plan.protocol == "purged_walk_forward"
+    assert plan.claimable_protocol is True
+    assert len(plan.folds) >= 3
+    assert plan.reason == "purged_walk_forward_ready"
+    for fold in plan.folds:
+        assert fold.eval_dates
+        assert fold.embargo_dates
+
+
 def test_paper_fills_t1_nominal_with_costs_and_limit_stubs() -> None:
     bars = _synthetic_window_bars(8)
     # Force limit-up buy block on 600000 entry day after first signal.
@@ -363,6 +392,24 @@ def test_measured_short_window_verdict_inconclusive_not_claimable() -> None:
     assert verdict.blocked is True
     assert verdict.reason == REASON_MEASURED_SHORT_WINDOW
     assert verdict.details["metrics"]["capacity"] == UNKNOWN
+
+
+def test_measured_40d_protocol_ready_still_not_accept() -> None:
+    days = _weekday_compact_days(MIN_DAYS_FULL_PURGED_WF)
+    bars = _synthetic_window_bars(len(days), days=days)
+    run = build_b0_run(
+        snapshot=_bounded_snapshot(),
+        nominal_conn=_FakeNominalConn(days),
+        bars_by_day=bars,
+    )
+    assert run.measured_b0 is not None
+    assert run.measured_b0.claimable is True
+    assert run.measured_b0.walk_forward.protocol == "purged_walk_forward"
+    verdict = finalize_b0_verdict(run, requested_verdict="accept")
+    assert verdict.verdict == "inconclusive"
+    assert verdict.claimable is False
+    assert verdict.blocked is True
+    assert verdict.reason == REASON_PROTOCOL_READY_EDGE_UNMET
 
 
 def test_b0_ready_coverage_without_paper_still_scaffold() -> None:

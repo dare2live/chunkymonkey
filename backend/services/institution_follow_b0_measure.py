@@ -261,26 +261,30 @@ def plan_walk_forward(
             one_touch_holdout=True,
         )
 
-    # Longer windows: three expanding purged folds (no Optuna).
+    # Three expanding purged folds; last cut leaves embargo + eval inside body.
     holdout = days[-holdout_n:]
     body = days[:-holdout_n]
     body_n = len(body)
+    eval_len = max(horizon, 1)
+    last_train_end = body_n - embargo - eval_len
     folds: list[WalkForwardFold] = []
-    for i, train_end in enumerate(
-        (
-            max(body_n // 3, horizon + 2),
-            max(2 * body_n // 3, horizon + 2),
-            body_n - embargo,
-        )
+    seen_train_ends: set[int] = set()
+    for train_end in (
+        max(body_n // 3, horizon + 2),
+        max(2 * body_n // 3, horizon + 2),
+        last_train_end,
     ):
-        train_end = min(max(train_end, horizon + 2), body_n - embargo)
+        train_end = min(max(train_end, horizon + 2), last_train_end)
+        if train_end in seen_train_ends or train_end < horizon + 2:
+            continue
+        seen_train_ends.add(train_end)
         train = body[:train_end]
         emb = body[train_end : train_end + embargo]
-        eval_dates = body[train_end + embargo : train_end + embargo + max(horizon, 1)]
+        eval_dates = body[train_end + embargo : train_end + embargo + eval_len]
         if train and eval_dates:
             folds.append(
                 WalkForwardFold(
-                    fold_id=f"purged_fold_{i}",
+                    fold_id=f"purged_fold_{len(folds)}",
                     train_dates=tuple(train),
                     embargo_dates=tuple(emb),
                     eval_dates=tuple(eval_dates),
@@ -719,6 +723,19 @@ def measure_b0_paper(
     )
 
 
+_BAR_KEYS = (
+    "ts_code",
+    "open",
+    "high",
+    "low",
+    "close",
+    "pre_close",
+    "pct_chg",
+    "vol",
+    "amount",
+)
+
+
 def load_nominal_bars_by_day(
     conn,
     trading_days: Sequence[str],
@@ -736,35 +753,16 @@ def load_nominal_bars_by_day(
          WHERE replace(CAST(trade_date AS VARCHAR), '-', '') IN ({placeholders})
          ORDER BY 1, ts_code
     """
-    rows = conn.execute(sql, days).fetchall()
     out: dict[str, list[dict[str, Any]]] = {d: [] for d in days}
-    for row in rows:
-        # duckdb may return tuple or mapping-like
+    for row in conn.execute(sql, days).fetchall():
         if hasattr(row, "keys"):
             d = _norm_day(row["d"])
-            item = {
-                "ts_code": str(row["ts_code"]),
-                "open": row["open"],
-                "high": row["high"],
-                "low": row["low"],
-                "close": row["close"],
-                "pre_close": row["pre_close"],
-                "pct_chg": row["pct_chg"],
-                "vol": row["vol"],
-                "amount": row["amount"],
-            }
+            item = {k: (str(row[k]) if k == "ts_code" else row[k]) for k in _BAR_KEYS}
         else:
             d = _norm_day(row[0])
             item = {
-                "ts_code": str(row[1]),
-                "open": row[2],
-                "high": row[3],
-                "low": row[4],
-                "close": row[5],
-                "pre_close": row[6],
-                "pct_chg": row[7],
-                "vol": row[8],
-                "amount": row[9],
+                k: (str(row[i + 1]) if k == "ts_code" else row[i + 1])
+                for i, k in enumerate(_BAR_KEYS)
             }
         out.setdefault(d, []).append(item)
     return out

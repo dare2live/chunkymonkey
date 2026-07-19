@@ -979,3 +979,28 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Residual for B1**: longer window or accepted power for claimable WF;
   then B1 stock-state block as separate slice. Org full-universe recent
   accept still out of scope.
+
+### 2026-07-19 — Phase E: 40d K/ST accept + measured B0 protocol power
+
+- **E PARTIAL** (protocol power ready; accept still refused).
+- Raised formal `daily`/`stock_st` authorized window allowlist
+  `AUTHORIZED_SECURITY_DAY_MAX_WINDOW_DAYS` 10→40; still refuse
+  `--backfill`/`--resume`/unbounded/mass years; drain inapplicable.
+- Accepted nominal OHLCV + ST for latest 40 trading days ending eligible
+  frontier `20260717`: window `20260522`–`20260717` (keeps prior
+  `20260708`–`20260717`). Missing 32 days published via formal
+  land→accept with legacy `raw_tushare_*` as row source (no provider
+  mass pull).
+- Fixed purged-WF last-fold cut so 40 days yields 3 eval folds
+  (prior cut left empty eval → false insufficient-power).
+- Live re-measure: protocol=`purged_walk_forward`, folds=3,
+  `measured.claimable=true` / `measured_b0_paper_short_window`;
+  metrics total_return≈-24.4%, max_dd≈33.5%, win_rate≈0.45,
+  payoff≈0.93, turnover≈1.45, n_trades=145; holdout n=5 /
+  ret≈+5.9%. Verdict `inconclusive` /
+  `measured_protocol_ready_edge_gates_unmet` / `claimable=false`
+  (edge thresholds not wired — no fake accept).
+- Tests: sync short-window 40-cap + institution_follow B0 / phase_e smoke.
+- **Did not**: Optuna, B-pit cutover, margin thaw, multi-year backfill.
+- **Residual**: wire accept edge gates (honest) and/or independent B1
+  stock-state scaffold (still cannot claim accept on this alone).

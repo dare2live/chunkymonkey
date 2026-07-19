@@ -6,7 +6,7 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + 短窗名义 K/ST accepted；eligible frontier=`20260717` READY；8 日窗 `20260708`–`20260717`；仍禁 mass backfill / 下一交易日未到）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false` — PIT 池 vs unfiltered 广度分歧为预期，禁切）。**E0 FIXED（gate+mirror off）**：三域 MATCH → `cutover_allowed=true`；formal writes=`formal_only`；provider-field 读 prefer canonical；canary `DatasetSnapshot` 已冻；feature_store 画像=typed enrichment PARTIAL（非 blanket legacy）。**E PARTIAL（bounded measured B0 paper）**：disclosure snapshot=`bounded_accepted_partitions` / `phase_e_ablation=bounded_scope_measured_b0_short_window`；8 日名义 K 上已跑 honest minimal WF + T+1 paper fills → `inconclusive` / `measured_short_window_insufficient_power` / `claimable=false`（禁假 accept）；**B1 仍禁**。Fable5 **REVISE** 已吸收。
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + ~40 交易日名义 K/ST accepted；eligible frontier=`20260717` READY；窗 `20260522`–`20260717`；仍禁 mass backfill / 下一交易日未到）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false` — PIT 池 vs unfiltered 广度分歧为预期，禁切）。**E0 FIXED（gate+mirror off）**：三域 MATCH → `cutover_allowed=true`；formal writes=`formal_only`；provider-field 读 prefer canonical；canary `DatasetSnapshot` 已冻；feature_store 画像=typed enrichment PARTIAL（非 blanket legacy）。**E PARTIAL（bounded measured B0 paper）**：disclosure snapshot=`bounded_accepted_partitions` / `phase_e_ablation=bounded_scope_measured_b0_short_window`；40 日名义 K 上已跑 purged WF（3 folds）+ T+1 paper fills → protocol power ready（`measured.claimable=true`）但 accept edge gates 未接线 → verdict `inconclusive` / `measured_protocol_ready_edge_gates_unmet` / `claimable=false`（禁假 accept）；**B1 仍禁直至独立切片**。Fable5 **REVISE** 已吸收。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -52,11 +52,11 @@
 - **A** A1–A5 **FIXED**。`live_readiness` 可评估。禁 mass fetch/切消费者。
   **A3 data-plane PARTIAL**：`trade_cal`/`daily`/`stock_st` =
   `authorized_manual_generation` + `sync_policy=on_demand`（禁 --all-due）。
-  Live accepted：SSE calendar generation + 短窗名义 K/ST
-  `20260708`–`20260717`（8 交易日；含 frontier；legacy raw 已有加速接受）。
+  Live accepted：SSE calendar generation + 名义 K/ST
+  `20260522`–`20260717`（40 交易日；含 frontier；缺省日自 legacy raw 经 formal land→accept）。
   例：`daily:20260717:…` 5522 行 / `stock_st:20260717:…` 211 行。
   Eligible frontier（日历+availability）=`20260717`。formal daily/stock_st CLI
-  现支持同日或 ≤10 交易日短窗（逐日 accept；禁 `--backfill`）。Default
+  现支持同日或 ≤40 交易日短窗（逐日 accept；禁 `--backfill`/无界/多年）。Default
   `evaluate_observation_population_readiness` → `READY`；doctor
   `population_readiness=PASS`。margin 仍冻结。下一刀：下一交易日 eligible
   单日（仍禁 mass backfill / margin 解冻 / pulse cutover）。
@@ -90,19 +90,19 @@
   **残余（不挡 smoke，挡全量消融）**：org 全市场 recent mass accept（禁）；
   enrichment 历史行仍依赖 legacy join。
 - **E PARTIAL（bounded measured B0 paper）** E0 FIXED 前置已满足。
-  `institution_follow_b0` + `institution_follow_b0_measure`：coverage ready（8 日
-  `20260708`–`20260717`）后跑 **honest minimal** purged WF（embargo=1、
-  one-touch in-window holdout=2；窗长 <40 ⇒ 非 claimable multi-fold WF）+
-  paper fills（T+1 名义 open→T+2 open、佣金/印花税/滑点 stub、涨停买/
-  跌停卖/停牌 stub、capacity=`unknown`）。Live 例：total_return≈-3.0%、
-  max_dd≈10.0%、win_rate≈0.45、payoff≈0.98、turnover≈1.0、n_trades=20；
-  holdout n=5。Verdict `inconclusive` /
-  `measured_short_window_insufficient_power` / `claimable=false`（禁假
-  accept；canary overclaim 仍抛错）。
+  `institution_follow_b0` + `institution_follow_b0_measure`：coverage ready（40 日
+  `20260522`–`20260717`）后跑 **purged WF**（embargo=1、one-touch
+  holdout=2、3 expanding folds）+ paper fills（T+1 名义 open→T+2 open、佣金/
+  印花税/滑点 stub、涨停买/跌停卖/停牌 stub、capacity=`unknown`）。Live 例：
+  total_return≈-24.4%、max_dd≈33.5%、win_rate≈0.45、payoff≈0.93、
+  turnover≈1.45、n_trades=145；holdout n=5 / ret≈+5.9%。Protocol power
+  `measured.claimable=true` / `measured_b0_paper_short_window`；verdict 仍
+  `inconclusive` / `measured_protocol_ready_edge_gates_unmet` /
+  `claimable=false`（禁假 accept；edge 阈值未接线）。
   `test_phase_e_smoke` + `test_institution_follow_b0` 绿。
   **禁** Optuna/全历史/付费搜索、B-pit mart cutover、mass disclosure
-  backfill、margin thaw。**残余**：加长窗至可 claimable WF 功率后重裁；
-  **B1** 股票状态块（独立切片）。**F** main_rally。**G** 公式+BestChoice。
+  backfill、margin thaw。**残余**：接线 accept edge gates（仍诚实）或独立
+  **B1** 股票状态块切片（不可借 B0 假 accept）。**F** main_rally。**G** 公式+BestChoice。
   **H** Release/名义价纸面。
 
 ## 边做边测
@@ -111,4 +111,4 @@
 
 ## Blocker / 禁止误报
 
-margin/pulse scope 错：禁 provider/live 写/cutover。交易所汇总≠沪深池。accepted=1823≠业务正确。continuity 告警未清除。函数存在/WARN/fixture 绿≠交付。Tier0=`BLOCKED`/`NOT_EVALUATED`。E0 FIXED + 短窗 measured paper ≠ claimable B0/accept；`measured_short_window_insufficient_power` / canary `canary_scope_only` ≠ 全量消融；feature_store field-level PARTIAL ≠ ACCEPTED。
+margin/pulse scope 错：禁 provider/live 写/cutover。交易所汇总≠沪深池。accepted=1823≠业务正确。continuity 告警未清除。函数存在/WARN/fixture 绿≠交付。Tier0=`BLOCKED`/`NOT_EVALUATED`。E0 FIXED + measured paper ≠ claimable B0/accept；protocol power ready ≠ accept（edge gates unmet）；canary `canary_scope_only` ≠ 全量消融；feature_store field-level PARTIAL ≠ ACCEPTED。

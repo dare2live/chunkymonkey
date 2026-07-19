@@ -55,6 +55,7 @@ BOUNDED_SCOPE = SCOPE_BOUNDED
 REASON_CANARY_SCOPE_ONLY = "canary_scope_only"
 REASON_MEASURED_COVERAGE_INSUFFICIENT = "measured_coverage_insufficient"
 REASON_MEASURED_SHORT_WINDOW = REASON_SHORT_WINDOW
+REASON_PROTOCOL_READY_EDGE_UNMET = "measured_protocol_ready_edge_gates_unmet"
 REASON_SCAFFOLD_NO_MEASURED_EDGE = "scaffold_no_measured_edge"
 # Bare-K needs a multi-day nominal window for any forward-return measurement.
 MIN_ACCEPTED_NOMINAL_DAYS_FOR_MEASURED_B0 = 5
@@ -637,12 +638,12 @@ def finalize_b0_verdict(
                     ),
                 },
             )
-        if measured.claimable and requested_verdict == "accept":
+        if measured.claimable:
             # Protocol power only — still require explicit positive edge gates
-            # before accept; without them remain inconclusive.
+            # before accept; never auto-accept on power alone.
             return ExperimentVerdict(
                 verdict="inconclusive",
-                reason="measured_protocol_ready_edge_gates_unmet",
+                reason=REASON_PROTOCOL_READY_EDGE_UNMET,
                 blocked=True,
                 experiment_id=run.experiment_id,
                 block=run.block,
@@ -651,6 +652,12 @@ def finalize_b0_verdict(
                     "requested_verdict": requested_verdict,
                     "metrics": measured.metrics.as_dict(),
                     "holdout_metrics": measured.holdout_metrics.as_dict(),
+                    "walk_forward": measured.walk_forward.as_dict(),
+                    "paper_fills": "measured",
+                    "surface_status": run.surface_status,
+                    "bare_k_coverage": coverage.as_dict() if coverage else None,
+                    "prereg": measured.prereg.as_dict(),
+                    "protocol_claimable": True,
                     "note": "protocol power ok but accept edge thresholds not wired",
                 },
             )
@@ -664,7 +671,7 @@ def finalize_b0_verdict(
                 if verdict_m == "inconclusive"
                 else "explicit"
             ),
-            blocked=not measured.claimable,
+            blocked=True,
             experiment_id=run.experiment_id,
             block=run.block,
             claimable=False,
@@ -677,6 +684,7 @@ def finalize_b0_verdict(
                 "surface_status": run.surface_status,
                 "bare_k_coverage": coverage.as_dict() if coverage else None,
                 "prereg": measured.prereg.as_dict(),
+                "protocol_claimable": False,
             },
         )
 
@@ -774,6 +782,7 @@ __all__ = [
     "REASON_CANARY_SCOPE_ONLY",
     "REASON_MEASURED_COVERAGE_INSUFFICIENT",
     "REASON_MEASURED_SHORT_WINDOW",
+    "REASON_PROTOCOL_READY_EDGE_UNMET",
     "REASON_SCAFFOLD_NO_MEASURED_EDGE",
     "REQUIRED_SURFACE_STATUS",
     "STRATEGY_PACKAGE",

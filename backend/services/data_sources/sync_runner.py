@@ -1703,9 +1703,10 @@ def _publish_trade_cal_accepted_generation(spec: dict[str, Any]) -> dict[str, An
 
 
 # Formal daily/stock_st: each accepted partition is still one trade_date.
-# CLI may pass an identical day or a short calendar window that expands to
-# trading days and publishes day-by-day. Refuse mass multi-year backfill.
-AUTHORIZED_SECURITY_DAY_MAX_WINDOW_DAYS = 10
+# CLI may pass an identical day or a bounded calendar window that expands to
+# trading days and publishes day-by-day. Refuse unbounded/--backfill/mass years.
+# Cap (~40 trading days) supports claimable-power B0 measurement only.
+AUTHORIZED_SECURITY_DAY_MAX_WINDOW_DAYS = 40
 
 
 def _require_authorized_short_trade_date_window(

@@ -21,11 +21,11 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；calendar + 短窗 K/ST accepted（`20260708`–`20260717`）；default readiness 评 eligible frontier（非 calendar-today）→ READY。残余=下一交易日；无 mass fetch / cutover |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；calendar + ~40 交易日 K/ST accepted（`20260522`–`20260717`）；default readiness 评 eligible frontier（非 calendar-today）→ READY。残余=下一交易日；无 mass fetch / cutover |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
 | T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 展示可用但 breadth/margin UNTRUSTED（B-ext）；分类/measurement/regime 耦合，暂不可直接做 PIT 特征；禁当项目池直至 B-pit |
-| T3 institution | `institution_profile.py` + `institution_follow_b0.py` + `institution_follow_b0_measure.py` + `disclosure_research_read.py` + `disclosure_enrichment_projection.py` + `disclosure_dataset_snapshot.py` + dual-write/shadow/boundaries + `*_acceptance.py` + router/tests | **首个正式策略包**；E0 FIXED；E PARTIAL：bounded measured B0 WF/paper → `inconclusive`/`measured_short_window_insufficient_power`/`claimable=false`；B1 仍禁 |
+| T3 institution | `institution_profile.py` + `institution_follow_b0.py` + `institution_follow_b0_measure.py` + `disclosure_research_read.py` + `disclosure_enrichment_projection.py` + `disclosure_dataset_snapshot.py` + dual-write/shadow/boundaries + `*_acceptance.py` + router/tests | **首个正式策略包**；E0 FIXED；E PARTIAL：40d purged WF/paper → protocol ready but `inconclusive`/`measured_protocol_ready_edge_gates_unmet`/`claimable=false`；B1 仍禁独立切片 |
 | T3 main rally | `rally_gt.py`, `rally_detect.py`, rally config/tests | GT 资产成熟；在机构首包之后接入同一 runtime |
 | T3 formulas | `bestchoice/FROZEN.md` + `evidence_manifest.json` | 冻结 challenger；Phase G 前不吸收 |
 | T4 decision/paper | `paper_portfolio.py`, frontend observation page | Legacy NONCONFORMING 观察账本；不是 paper execution |
@@ -34,7 +34,7 @@ AGENTS.md
 
 | Area | Role |
 |---|---|
-| `data/tushare_raw.duckdb` | TuShare legacy `raw_tushare_*` compatibility 表 + frozen margin evidence；accepted calendar generation + short-window `20260708`–`20260717` nominal OHLCV/ST landing/canonical/accepted_partition 已发表 |
+| `data/tushare_raw.duckdb` | TuShare legacy `raw_tushare_*` compatibility 表 + frozen margin evidence；accepted calendar generation + ~40d `20260522`–`20260717` nominal OHLCV/ST landing/canonical/accepted_partition 已发表 |
 | `data/market.duckdb` | K 线 serving/派生数据；qfq 不等于名义成交价真相 |
 | `data/reference.duckdb` | 交易日历、身份/reference 数据 |
 | `data/smartmoney.duckdb` | 当前 mart、profiles、ops/control evidence |
@@ -51,7 +51,7 @@ AGENTS.md
 |---|---|
 | Health | `scripts/chunkyctl doctor --fast` |
 | Manual full data update | `bash scripts/daily_update.sh --date YYYYMMDD`；on_demand formal domains 不进 all-due；margin 仍 scope_blocked |
-| Manual single-domain sync/canary/replay | `scripts/chunkyctl sync --domain DOMAIN`；`trade_cal` full generation；`daily`/`stock_st` 须相同 `--start/--end` 单日；`--drain` 对三域 inapplicable；其它 disabled/formal 仍 fail closed |
+| Manual single-domain sync/canary/replay | `scripts/chunkyctl sync --domain DOMAIN`；`trade_cal` full generation；`daily`/`stock_st` 须显式 `--start/--end`（同日或 ≤40 交易日）；`--drain` 对三域 inapplicable；其它 disabled/formal 仍 fail closed |
 | Shared tooling snapshot | `moth snapshot --repo .` |
 | Business/tool assertions | `moth assert --repo .` |
 | Coupling/deletion impact | `moth coupling --repo . --impact <name>` |
@@ -68,8 +68,8 @@ AGENTS.md
 
 | Priority | Defect | Consequence |
 |---:|---|---|
-| P0 | K/ST 短窗 8 日已接受（`20260708`–`20260717`）；下一交易日未到；禁 mass backfill | B-pit mart/cutover 仍禁；eligible frontier READY；B0 待 WF/paper |
-| P0 | E0 FIXED；B0 scaffold 仅 canary；enrichment 历史仍 field-level PARTIAL | E in progress；禁 claimable B0/全量消融；下一刀更广 snapshot + 名义 K 基线实测（非 mass backfill / 非 Optuna） |
+| P0 | K/ST ~40 日已接受（`20260522`–`20260717`）；下一交易日未到；禁 mass backfill | B-pit mart/cutover 仍禁；eligible frontier READY |
+| P0 | E0 FIXED；B0 measured protocol ready但 accept edge 未接线；enrichment 历史仍 field-level PARTIAL | E PARTIAL；禁假 accept/全量消融；下一刀 edge gates 或独立 B1（非 Optuna / 非 mass backfill） |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
 | P1 | formal `boundary_inventory` 仅为静态/测试资源，非 doctor readiness 证书（`formal_boundaries` 文案已澄清）；canary_pending 域无 countdown 出口 | 豁免不可见即永久；须在 goal/ledger 跟踪 canary 授权点 |
