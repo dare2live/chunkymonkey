@@ -691,3 +691,34 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   stk_holdertrade formal writers; retire all three direct writes; research
   consumer cutover off legacy tables; institution_follow remains blocked.
   Margin frozen; B-pit cutover separately blocked.
+
+### 2026-07-19 — CI offline contract hardening
+
+- GitHub CI now pins `requirements-ci.txt`, sets matrix `fail-fast: false`,
+  and runs `check_universe_filter --skip-live-readiness` so missing
+  `data/*.duckdb` cannot abort the static population gate.
+- Live continuity / population readiness remain local-only; CI expands a
+  modest offline services contract set, still excluding realdb/network.
+
+### 2026-07-19 — E0 slice3: org_holding + stk_holdertrade land→accept tracers
+
+- **PARTIAL / E0 in progress**：mirrored holders_top10 tracer for the remaining
+  two disclosure domains via shared `disclosure_event_partition` runtime.
+  - `org_holding`: `landing_miaoxiang_org_holding` →
+    `canonical_org_holding_detail_period`; partition=`available_date`;
+    forged deadline vs `disclosure_deadline_yyyymmdd(report_date)` →
+    `FORGED_AVAILABLE_DATE`; compatibility=`raw_org_holding_aif10`.
+  - `stk_holdertrade`: `landing_tushare_stk_holdertrade` →
+    `canonical_stk_holdertrade_announcement`; partition=`ann_date`;
+    registry grain reject-on-duplicate (`DUPLICATE_GRAIN`);
+    compatibility=`raw_tushare_stk_holdertrade`.
+- Handoff consumers registered for both domains; inventory runtime_state=
+  `formal_path_ready_legacy_direct_write` with declared writers. Direct writes
+  remain NONCONFORMING strangler (research UI unchanged). `DatasetSnapshot`
+  still blocked until direct-write retirement + research cutover.
+- Fixture/memory TDD only — no mass fetch, no institution_follow, no B-pit
+  cutover, margin frozen. Tests:
+  `test_org_holding_acceptance` / `test_stk_holdertrade_acceptance` (+ CI).
+- **Still blocks full E0 / DatasetSnapshot freeze**: retire three direct
+  writes; switch research reads off legacy tables; freeze DatasetSnapshot;
+  then E may start.

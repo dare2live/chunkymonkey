@@ -195,6 +195,31 @@ def _audit_formal_contracts(
     return len(formal_names), dict(sorted(scope_counts.items())), issues
 
 
+def _skipped_live_readiness_detail() -> dict[str, Any]:
+    return {
+        "status": "NOT_EVALUATED",
+        "reasons": ["live_readiness_skipped"],
+    }
+
+
+def _evaluate_live_readiness(policy_snapshot: UniversePolicy) -> dict[str, Any]:
+    """Evaluate live accepted-data readiness without killing the static gate.
+
+    Missing DuckDB / IO failures must surface as typed NOT_EVALUATED, never as a
+    bare IOException that aborts CI pytest or the contract checker.
+    """
+
+    try:
+        return evaluate_observation_population_readiness(policy_snapshot).as_dict()
+    except Exception as exc:  # noqa: BLE001 — offline hosts must fail closed typed
+        return {
+            "status": "NOT_EVALUATED",
+            "reasons": [
+                f"live_readiness_not_evaluated:{type(exc).__name__}:{str(exc)[:200]}"
+            ],
+        }
+
+
 def audit_repository(
     repo: Path = REPO_ROOT,
     *,
@@ -202,6 +227,7 @@ def audit_repository(
     include_tests: bool = False,
     source_mode: SourceMode = "worktree",
     policy_loader: Callable[[], UniversePolicy] | None = None,
+    skip_live_readiness: bool = False,
 ) -> dict[str, Any]:
     repo = Path(repo)
     sources, issues = source_inventory(
@@ -233,9 +259,11 @@ def audit_repository(
             registry, policy_snapshot=policy_snapshot
         )
         issues.extend(contract_issues)
-        readiness = evaluate_observation_population_readiness(policy_snapshot)
-        live_readiness = readiness.status
-        live_readiness_detail = readiness.as_dict()
+        if skip_live_readiness:
+            live_readiness_detail = _skipped_live_readiness_detail()
+        else:
+            live_readiness_detail = _evaluate_live_readiness(policy_snapshot)
+        live_readiness = str(live_readiness_detail.get("status") or "NOT_EVALUATED")
     except (OSError, TypeError, ValueError, UniverseDataError, yaml.YAMLError) as exc:
         issues.append(_issue("contract_inputs_unreadable", str(exc)))
 
@@ -275,11 +303,20 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--staged", action="store_true", help="audit Git-index snapshot")
     mode.add_argument("--all", action="store_true", help="audit live worktree snapshot")
     parser.add_argument("--include-tests", action="store_true")
+    parser.add_argument(
+        "--skip-live-readiness",
+        action="store_true",
+        help=(
+            "audit static population contracts only; leave live_readiness as "
+            "NOT_EVALUATED (CI/offline hosts without local DuckDB catalogs)"
+        ),
+    )
     parser.add_argument("--format", choices=("text", "json"), default="text")
     args = parser.parse_args(argv)
     report = audit_repository(
         include_tests=args.include_tests,
         source_mode="index" if args.staged else "worktree",
+        skip_live_readiness=args.skip_live_readiness,
     )
     if args.format == "json":
         print(json.dumps(report, ensure_ascii=False, sort_keys=True))

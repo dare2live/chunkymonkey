@@ -153,6 +153,73 @@ def test_exchange_aggregate_cannot_masquerade_as_project_security_scope(tmp_path
     assert "security_field must be 'ts_code'" in report["issues"][0]["message"]
 
 
+def test_skip_live_readiness_keeps_static_contract_offline(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """CI path: static population contract must not require live DuckDB."""
+
+    _git(tmp_path, "init", "-q")
+    _source(tmp_path, "example.py")
+    registry_path = _write_inputs(tmp_path, _live_margin_registry())
+
+    calls: list[str] = []
+
+    def _boom(_policy):
+        calls.append("evaluated")
+        raise OSError('Cannot open database "data/tushare_raw.duckdb"')
+
+    monkeypatch.setattr(gate, "evaluate_observation_population_readiness", _boom)
+    report = gate.audit_repository(
+        tmp_path, registry_path=registry_path, skip_live_readiness=True
+    )
+    assert report["verdict"] == "PASS"
+    assert report["live_readiness"] == "NOT_EVALUATED"
+    assert report["live_readiness_detail"]["reasons"] == ["live_readiness_skipped"]
+    assert calls == []
+
+
+def test_live_readiness_io_failure_is_typed_not_evaluated(tmp_path: Path, monkeypatch) -> None:
+    """Missing DB must not escape as bare IO / kill the static gate."""
+
+    _git(tmp_path, "init", "-q")
+    _source(tmp_path, "example.py")
+    registry_path = _write_inputs(tmp_path, _live_margin_registry())
+
+    def _boom(_policy):
+        raise OSError('Cannot open database "data/tushare_raw.duckdb"')
+
+    monkeypatch.setattr(gate, "evaluate_observation_population_readiness", _boom)
+    report = gate.audit_repository(tmp_path, registry_path=registry_path)
+    assert report["verdict"] == "PASS"
+    assert report["live_readiness"] == "NOT_EVALUATED"
+    assert any(
+        "live_readiness_not_evaluated" in reason
+        for reason in report["live_readiness_detail"]["reasons"]
+    )
+
+
+def test_main_skip_live_readiness_flag(monkeypatch, capsys) -> None:
+    seen: dict[str, object] = {}
+
+    def _capture(**kwargs):
+        seen.update(kwargs)
+        return {
+            "verdict": "PASS",
+            "source_mode": "worktree",
+            "source_count": 1,
+            "formal_dataset_count": 1,
+            "scope_counts": {},
+            "issues": [],
+            "live_readiness": "NOT_EVALUATED",
+            "live_readiness_detail": {"status": "NOT_EVALUATED", "reasons": ["live_readiness_skipped"]},
+        }
+
+    monkeypatch.setattr(gate, "audit_repository", _capture)
+    assert gate.main(["--format", "json", "--skip-live-readiness"]) == 0
+    assert seen.get("skip_live_readiness") is True
+    assert json.loads(capsys.readouterr().out)["live_readiness"] == "NOT_EVALUATED"
+
+
 def test_main_json_failure_is_nonzero(monkeypatch, capsys) -> None:
     report = {
         "verdict": "FAIL",

@@ -10,6 +10,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         # 项目代码用 datetime.UTC (Python 3.11+ 标准 API), 30+ 文件依赖, 不向下兼容 3.10
         python-version: ['3.11', '3.12']
@@ -22,29 +23,39 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
+          cache-dependency-path: requirements-ci.txt
 
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          # 离线控制面依赖。数据拉取使用本机受管 TinyShare payload，不在 CI 冒充 provider 验证。
-          pip install fastapi uvicorn duckdb numpy httpx pydantic pytest pytest-asyncio anyio pyyaml pytz pandas
+          # Offline control-plane only. Provider/continuity stays local (not CI).
+          pip install -r requirements-ci.txt
 
       - name: Lint (ruff)
         continue-on-error: true  # 不阻塞 (项目历史代码 lint warnings 多)
         run: |
-          pip install ruff
           ruff check backend/services backend/routers --output-format=concise || true
 
       - name: Run offline tests
         run: |
           cd backend
-          # 只跑不依赖网络/db 的地基测试；已退役策略/旧 provider 测试不冒充当前覆盖。
-          python -m pytest tests/test_utils.py \
+          # Offline-safe unit/contract surface: services fixtures + foundation tests.
+          # Markers realdb/network/perf/gcp/slow stay excluded via pytest.ini.
+          # Do not suddenly run live DuckDB or provider network.
+          python -m pytest \
+            tests/test_utils.py \
             tests/test_db.py tests/test_source_watermarks.py tests/scripts/test_db_compact.py \
             tests/test_primitives.py tests/test_universe.py tests/test_calendar_gate.py \
             tests/test_check_dead_references.py \
             tests/services/test_accepted_schema.py \
+            tests/services/test_availability.py \
+            tests/services/test_dataset_contracts.py \
+            tests/services/test_disclosure_boundaries.py \
+            tests/services/test_formal_boundaries.py \
+            tests/services/test_formal_execution.py \
+            tests/services/test_holders_top10_acceptance.py \
             tests/services/test_margin_acceptance.py \
+            tests/services/test_observation_population.py \
             tests/services/test_population_scope.py \
             tests/services/test_sync_execution_policy.py \
             tests/services/test_runtime_limits.py \
@@ -54,7 +65,9 @@ jobs:
 
       - name: Population and calendar static gates
         run: |
-          PYTHONPATH=backend python backend/scripts/check_universe_filter.py --format json
+          # Static contract only in CI — live readiness requires local DuckDB.
+          PYTHONPATH=backend python backend/scripts/check_universe_filter.py \
+            --skip-live-readiness --format json
           PYTHONPATH=backend python backend/scripts/check_calendar_usage.py --strict
 
       - name: Smoke import
