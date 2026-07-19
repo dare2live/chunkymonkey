@@ -26,6 +26,35 @@ class PipelinePreflightError(RuntimeError):
         super().__init__(f"pipeline preflight blocked: {reason}")
 
 
+def ensure_pipeline_sync_ready(ctx: PipelineContext) -> None:
+    """Preflight the exact all-due domain set before auth, DB, or provider work."""
+
+    if ctx.skip_sync:
+        ctx.log("--- Sync execution policy: SKIP (--skip-sync) ---")
+        return
+    from services.data_sources.sync_runner import (
+        ExecutionPolicyError,
+        PopulationScopeExecutionError,
+        automatic_domains,
+        load_registry,
+        preflight_execution_policies,
+        preflight_formal_population_scopes,
+    )
+
+    try:
+        registry = load_registry()
+        domains = automatic_domains(registry)
+        preflight_execution_policies(registry, domains)
+        preflight_formal_population_scopes(registry, domains)
+    except (ExecutionPolicyError, PopulationScopeExecutionError) as exc:
+        raise PipelinePreflightError(
+            f"sync_execution_blocked:{exc.domain}:{exc.reason}"
+        ) from exc
+    except (KeyError, TypeError, ValueError) as exc:
+        raise PipelinePreflightError("sync_registry_invalid") from exc
+    ctx.log(f"--- Sync execution policy: PASS domains={len(domains)} ---")
+
+
 def run_watermark_sla_check(ctx: PipelineContext, *, output_rel: str) -> int:
     """复用唯一 SLA 脚本生成指定时点证据；同日重跑前移除旧文件以 fail closed。"""
     import json
@@ -219,6 +248,7 @@ def ensure_calendar_ready(ctx: PipelineContext, *, allow_repair: bool = False) -
 
 
 def run_preflight(ctx: PipelineContext) -> None:
+    ensure_pipeline_sync_ready(ctx)
     # 日历是所有 eligible-end/gap 判断的真相源；先验伪本地地基，再调用外部 provider。
     ensure_calendar_ready(ctx, allow_repair=not ctx.dry and not ctx.skip_sync)
     ensure_tushare_authorized(ctx)

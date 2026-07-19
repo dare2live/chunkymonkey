@@ -159,10 +159,10 @@ def _require_execution_enabled(spec: Mapping[str, Any]) -> DomainExecutionPolicy
     return policy
 
 
-def _preflight_execution_policies(
+def preflight_execution_policies(
     registry: dict[str, Any], domains: list[str]
 ) -> None:
-    """Reject any disabled selected domain before calendar/lock/provider/DB."""
+    """Reject disabled selected domains before calendar/lock/provider/DB."""
 
     for domain in domains:
         _require_execution_enabled(domain_spec(registry, domain))
@@ -235,9 +235,11 @@ def _require_formal_population_execution(spec: Mapping[str, Any], contract) -> N
     )
 
 
-def _preflight_formal_population_scopes(
+def preflight_formal_population_scopes(
     registry: dict[str, Any], domains: list[str]
 ) -> None:
+    """Prove every selected formal population contract before side effects."""
+
     for domain in domains:
         spec = domain_spec(registry, domain)
         contract = _formal_dataset_contract_for_spec(spec)
@@ -1987,14 +1989,27 @@ def _selected_domains(
     args: argparse.Namespace, registry: dict[str, Any]
 ) -> list[str]:
     return (
-        [
-            domain
-            for domain, entry in registry["domains"].items()
-            if entry.get("sync_policy") != "on_demand"
-        ]
+        automatic_domains(registry)
         if args.all_due
         else ([args.domain] if args.domain else [])
     )
+
+
+def automatic_domains(registry: dict[str, Any]) -> list[str]:
+    """Return the exact domain set used by the legacy all-due pipeline."""
+
+    domains = registry.get("domains")
+    if not isinstance(domains, Mapping):
+        raise ValueError("sync_registry.yaml: domains must be a mapping")
+    selected: list[str] = []
+    for domain, entry in domains.items():
+        if not isinstance(entry, Mapping):
+            raise ValueError(
+                f"sync_registry.yaml: domain entry {domain!r} must be a mapping"
+            )
+        if entry.get("sync_policy") != "on_demand":
+            selected.append(str(domain))
+    return selected
 
 
 def _preflight_cli_request_shape(
@@ -2087,8 +2102,8 @@ def _main_unlocked(
 
     reg = registry if registry is not None else load_registry()
     selected = domains or _selected_domains(args, reg)
-    _preflight_execution_policies(reg, selected)
-    _preflight_formal_population_scopes(reg, selected)
+    preflight_execution_policies(reg, selected)
+    preflight_formal_population_scopes(reg, selected)
     if registry is None:
         _calendar_preflight(selected)
 
@@ -2176,8 +2191,8 @@ def main() -> int:
     reg = load_registry()
     domains = _selected_domains(args, reg)
     try:
-        _preflight_execution_policies(reg, domains)
-        _preflight_formal_population_scopes(reg, domains)
+        preflight_execution_policies(reg, domains)
+        preflight_formal_population_scopes(reg, domains)
         _preflight_cli_request_shape(args, reg, domains)
         _calendar_preflight(domains)
         _preflight_explicit_operation_windows(args, reg, domains)

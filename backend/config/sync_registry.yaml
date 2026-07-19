@@ -375,18 +375,38 @@ domains:
 
   # ── 基础: 交易日历去 akshare 单点 (用户决策: 能 tushare 就 tushare) ──
   trade_cal:
+    execution_policy:
+      mode: disabled
+      reason: accepted_generation_pending
+    # 交易日历回答“何时”，不消费 eligible-universe policy；它是 SSE 交易场所
+    # 定义的日级外部参考，不得与项目股票池人口口径混称。
+    population_scope:
+      kind: external_aggregate
+      venue_field: exchange
+      venue_ids: [SSE]
+      population_label: sse_trading_calendar
+      method: tushare_trade_cal
+      unit: calendar_day_status
+    # 只保存稳定政策；表名/schema/writer 由 calendar 代码契约拥有。
+    calendar_generation:
+      contract_version: "1"
+      coverage_start: "19901219"
+      required_through_rule: observed_year_end
+      timezone: Asia/Shanghai
+      availability_rule: response_completed
+      canonicalization_version: "1"
     source: tushare
     api: trade_cal
     target_table: raw_tushare_trade_cal
     grain: [exchange, cal_date]
-    batch_mode: full_refresh       # 小表全量刷
+    batch_mode: full_refresh       # legacy transport shape；新 writer 必须显式派生 start/end
     fixed_params: {exchange: SSE}
     page_limit: 6000               # 实测 offset 分页 6000+6000+尾页，避免单页截断
-    write_mode: replace_snapshot   # 静态全量镜像；原子替换以删除上游已撤销/修订行
+    write_mode: replace_snapshot   # 仅描述已禁用 legacy compatibility writer，非 formal publication
     freshness_date_column: cal_date
     pit_anchor: "cal_date; 静态日历, 年度扩展"
     available_after: "00:00"
-    data_start: "20200101"
+    data_start: "19901219"         # SSE source-full contract 起点；非从 open-only dim 反推
     freshness_sla_trading_days: 30 # 日历覆盖到未来, 滞后语义不同: 检查 max(cal_date) > today+30
     min_rows_per_batch: 8000       # 2026-07-09 全审计校准: 实测全表(=单次 full_refresh 批) 13162
                                     # 行, 8000≈0.6x; 原 100 对 3000 行级网关截断(本网关惯犯指纹)

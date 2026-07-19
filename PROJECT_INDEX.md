@@ -20,7 +20,7 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | `accepted_schema.py` 统一固定 batch/pointer DDL 与 catalog/schema 约束验证；当前唯一 formal 数据仍是冻结的错误-scope margin external aggregate。calendar/Kline/ST accepted truth、trusted loader 与生产 consumer 尚未建立，live readiness 保持 `NOT_EVALUATED` |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | `accepted_schema.py` 统一固定 batch/pointer 结构验证；calendar contract/schema/landing/acceptance/reader 仅是 `REVISE` 隔离原型，无 live 表、batch、pointer 或 consumer。Kline/ST accepted truth 仍未建立，live readiness 为 `NOT_EVALUATED` |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
 | T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 当前展示可用；分类解释、measurement、regime 和 persistence 耦合，暂不可直接做 PIT 特征 |
@@ -33,7 +33,7 @@ AGENTS.md
 
 | Area | Role |
 |---|---|
-| `data/tushare_raw.duckdb` | TuShare legacy `raw_tushare_*` compatibility 表，以及 formal margin 的 `ingest_batch`、provider landing、canonical 与 accepted pointer；其他域仍待 provider-preserving landing 迁移 |
+| `data/tushare_raw.duckdb` | TuShare legacy `raw_tushare_*` compatibility 表，以及 frozen margin evidence；calendar 原型尚未 bootstrap，live 无其 landing/canonical/batch/pointer |
 | `data/market.duckdb` | K 线 serving/派生数据；qfq 不等于名义成交价真相 |
 | `data/reference.duckdb` | 交易日历、身份/reference 数据 |
 | `data/smartmoney.duckdb` | 当前 mart、profiles、ops/control evidence |
@@ -49,7 +49,7 @@ AGENTS.md
 | Purpose | Active entrypoint |
 |---|---|
 | Health | `scripts/chunkyctl doctor --fast` |
-| Manual full data update | `bash scripts/daily_update.sh --date YYYYMMDD` |
+| Manual full data update | `bash scripts/daily_update.sh --date YYYYMMDD`；当前因 disabled formal domains 在 calendar/auth/provider/DB/write 前 fail closed |
 | Manual single-domain sync/canary/replay | `scripts/chunkyctl sync --domain DOMAIN [--drain --max-dates N]`；disabled/formal domains fail closed before provider/DB |
 | Shared tooling snapshot | `moth snapshot --repo .` |
 | Business/tool assertions | `moth assert --repo .` |
@@ -67,7 +67,7 @@ AGENTS.md
 
 | Priority | Defect | Consequence |
 |---:|---|---|
-| P0 | 共享 accepted-evidence schema 已抽出，但只有冻结 margin tracer 使用；calendar/Kline/ST 仍无正式 accepted generation | 其他 legacy sync 域仍把 source response、rejection、canonical publication 和运行水位混在旧边界，必须逐域迁移 |
+| P0 | calendar 隔离原型仍有 factory/typed availability、formal-vs-legacy topology、schema/semantic ownership 与 runtime DDL 阻断；Kline/ST 无 accepted generation | 原型不可运行或消费；其他 legacy 域仍混合 source response、rejection、publication 与水位，须逐域迁移 |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
 | P1 | Live DC snapshot/pulse tables predate namespace fix until manual rebuild | Code contract is fixed but stored rows still need controlled reconciliation |
@@ -110,6 +110,10 @@ accepted proof，`margin_legacy_reconcile.py`/`margin_reconcile.py` 负责纯比
 availability 或 consumer 语义。现有 `dim_trading_calendar` 仍是 open-day serve projection，不是 accepted
 immutable generation。
 
+calendar 原型按 `calendar_contract.py`、`calendar_schema.py`、`calendar_landing.py`、
+`calendar_acceptance.py`、`calendar_reader.py` 分责；当前仅供升级后继续整改。all-due execution/population
+preflight 已由 full pipeline、direct acquire 与独立 acquire stage 共用，disabled 域不得在后置失败。
+
 旧 margin history request/runtime/writer/CLI 已退役物删。冻结 v2 只由 `margin_evidence.py`、
 `margin_state.py`、reconcile/readiness/projection 读侧保留不可变审计证据；不存在受支持的继续写入旁路。
 共享 provider timeout 只由 `sync_registry.yaml` 配置并经 `runtime_limits.py` 在副作用前验证。
@@ -125,6 +129,8 @@ immutable generation。
 - never become a human-maintained architecture owner.
 
 When it disagrees with live code/DB, fix the generator or lifecycle registry, regenerate, and challenge the verifier before trusting the map.
+Current lineage discovery is conservative static evidence: literals in disabled compatibility contracts and adversarial tests may appear as
+`consume` edges; they do not override CodeGraph call paths or the no-production-fan-in Rule 10 verdict.
 
 ## 8. Repository boundaries
 

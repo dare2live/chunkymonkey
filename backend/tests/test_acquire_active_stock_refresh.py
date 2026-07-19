@@ -46,6 +46,10 @@ def test_run_acquire_wires_active_stock_refresh_step(monkeypatch):
     monkeypatch.setattr(acquire, "_build_trading_calendar", lambda: calls.append("calendar"))
     monkeypatch.setattr(acquire, "_refresh_active_a_stock_master", lambda: calls.append("active_stock"))
     monkeypatch.setattr(
+        "services.pipeline.preflight.ensure_pipeline_sync_ready",
+        lambda ctx: None,
+    )
+    monkeypatch.setattr(
         "services.pipeline.preflight.ensure_tushare_authorized",
         lambda ctx: calls.append("auth"),
     )

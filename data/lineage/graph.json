@@ -2791,6 +2791,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/calendar_schema.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/margin_reconcile_snapshot.py",
       "kind": "consume",
       "src": "table:tushare_raw.ingest_batch"
@@ -4015,6 +4021,18 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/calendar_contract.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_trade_cal"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/calendar_landing.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_trade_cal"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/lineage/query.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_trade_cal"
@@ -4022,6 +4040,24 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/pipeline/acquire.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_trade_cal"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_calendar_acceptance.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_trade_cal"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_calendar_contract.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_trade_cal"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_calendar_reader.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_trade_cal"
     },
@@ -4105,9 +4141,9 @@
     }
   ],
   "meta": {
-    "edge_count": 633,
-    "generated_at": "2026-07-18T23:09:46.992436+00:00",
-    "node_count": 279,
+    "edge_count": 639,
+    "generated_at": "2026-07-19T00:36:09.028784+00:00",
+    "node_count": 285,
     "version": 2
   },
   "nodes": [
@@ -4381,6 +4417,30 @@
         "path": "backend/services/data_sources/accepted_schema.py"
       },
       "id": "consumer:backend/services/data_sources/accepted_schema.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/calendar_contract.py"
+      },
+      "id": "consumer:backend/services/data_sources/calendar_contract.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/calendar_landing.py"
+      },
+      "id": "consumer:backend/services/data_sources/calendar_landing.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/calendar_schema.py"
+      },
+      "id": "consumer:backend/services/data_sources/calendar_schema.py",
       "kind": "consumer"
     },
     {
@@ -4773,6 +4833,30 @@
         "path": "backend/tests/services/test_accepted_schema.py"
       },
       "id": "consumer:backend/tests/services/test_accepted_schema.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_calendar_acceptance.py"
+      },
+      "id": "consumer:backend/tests/services/test_calendar_acceptance.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_calendar_contract.py"
+      },
+      "id": "consumer:backend/tests/services/test_calendar_contract.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_calendar_reader.py"
+      },
+      "id": "consumer:backend/tests/services/test_calendar_reader.py",
       "kind": "consumer"
     },
     {

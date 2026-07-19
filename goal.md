@@ -90,12 +90,21 @@ Tier0 未闭合前，不启动公式寻优、付费计算、生产候选或自�
 - legacy margin history writer/runtime/CLI 旁路已物删；`margin` 前台入口在任何 provider/DB 副作用前以
   `execution_blocked / scope_blocked` 退出，残留 acceptance mechanic 也按 live DB identity 物理拒写；
   旧 accepted generation 只保留审计读证据；
-- resolver 语义已固定为 accepted calendar + exact-date nominal Kline + same-day ST；未能证明 availability、
-  completeness 与 calendar generation 的初稿未进入检查点，避免把自洽 hash 冒充 accepted truth；
+- resolver 语义已固定为 accepted calendar + exact-date nominal Kline + same-day ST；calendar 初稿只允许
+  作为隔离的、不可消费的实现检查点，不能把自洽 hash 冒充 accepted truth；
 - 当前 static population contract PASS 只说明 1 个 formal external aggregate contract 合法，明确输出
   `live_readiness=NOT_EVALUATED`；Tier0 仍 BLOCKED，升级后从本节继续，不得抓数或切消费者。
-- 2026-07-19 保存的新增代码仅是 shared accepted-evidence schema 原语；calendar 错误契约原型已撤下，
-  不得据此声称 calendar generation、数据抓取或 live readiness 有任何进展。
+- 2026-07-19 保存了隔离的 calendar accepted-generation 原型；legacy `trade_cal` 已 disabled，landing/Tx-A/Tx-B/
+  reader 聚焦回归 `109 passed`，但无 provider、live DB、accepted pointer 或 consumer 进展。
+- Rule 10 证伪并闭合 full-pipeline 部分写：三入口现共用 all-due gate，在 calendar/auth/provider/DB/write 前
+  阻断；三条反例 red→green，联合回归 `264 passed`，完整 backend `1270 passed / 8 deselected`。
+- 独立复用/质量审查结论仍为 `REVISE`：formal contract 错绑 legacy topology，semantic/schema/config 多真相源，
+  availability 尚非 typed `axis/rule/at`，runtime writer 会先 DDL 后验输入，factory 可被 `replace()` 伪造，
+  population/schema/inventory/state mechanics 仍有重复。故该原型是可恢复源码，不是可运行或可验收能力；
+  Tier0 与 `live_readiness` 继续 `BLOCKED / NOT_EVALUATED`。
+- 恢复顺序固定为：先收敛 contract/schema 单一真相与 factory attestation，再把 bootstrap DDL 从 runtime
+  writer 拆出并复用 shared verifier/inventory，补 forged-contract、missing-schema-no-DDL、descending-page 红例；
+  之后重跑 Rule 10、post-fix、全量回归、Moth/CodeGraph。上述门全绿前不得抓数或写主库。
 
 ### Phase 1.1B — margin / market-pulse 首个迁移
 

@@ -368,3 +368,43 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   No provider call, live DB DDL/DML, automation change, consumer cutover or data publication occurred. Tier0
   remains `PARTIAL/BLOCKED_FOR_DATA_USE`, and the restart point is calendar accepted-generation writer/reader
   design rather than another wrapper around the old dim.
+
+### 2026-07-19 — system-upgrade checkpoint: isolated calendar generation prototype
+
+- A second, deliberately non-production checkpoint now preserves the first end-to-end calendar generation
+  prototype: typed contract parsing, fixed landing/canonical schema, fragment-preserving Tx-A, atomic Tx-B
+  acceptance and a fail-closed trusted reader. The old `trade_cal` execution path is explicitly disabled with
+  `accepted_generation_pending`; the legacy `raw_tushare_trade_cal`/open-only `dim_trading_calendar` remain
+  compatibility evidence and are not accepted predecessors or publication truth.
+- Read-only source and DB audits established the target semantics without promoting old data: SSE source evidence
+  currently contains 13,162 natural-day rows from `19901219` through `20261231` (8,797 open and 4,365 closed),
+  while the dim is only a 5,343-row open-day projection from `20050104`. No accepted calendar batch or pointer
+  exists. The new generation must therefore preserve open and closed days, bind complete pagination and the
+  pretrade chain, and be freshly fetched only after its writer and reader pass review.
+- The focused calendar/shared/execution-policy suite reached `109 passed`; service tests also exited successfully,
+  `py_compile` and `git diff --check` passed. No provider call, live DB DDL/DML, accepted publication, automation
+  change or consumer cutover occurred.
+- The first checkpoint review found a cross-entry false green: direct `run_domain("trade_cal")` blocked before side
+  effects, but full acquire could write holders/QFII/org-holding before its all-due child encountered a disabled
+  domain; calendar repair could also issue the account authorization probe first. The exact all-due selection,
+  execution-policy gate and formal-population gate are now shared public pure preflight helpers. Full preflight,
+  direct acquire and independent acquire stage invoke them before calendar repair, authorization, provider, DB or
+  writer work. Three adversarial fan-in tests failed before the fix and now pass; the combined calendar,
+  sync-runner and pipeline regression is `264 passed`, and the full backend suite is
+  `1270 passed / 8 deselected`. Final reader cleanup hardening separately reached `15 passed`: invalid dates no
+  longer fall through silently, cleanup failure blocks a normal return, and rollback failure adds evidence without
+  masking an in-flight `CalendarTruthUnavailable`, generic error or `BaseException` cancellation.
+- Independent reuse and quality reviews both returned `REVISE`. Blocking findings are: the formal contract still
+  binds legacy target/write-mode fields; physical schema and semantic contract hashes are conflated; availability
+  is not yet a typed `axis/rule/at` object; runtime writer entrypoints bootstrap DDL before validating input;
+  `dataclasses.replace()` can forge a nominal contract; population scope and fixed-schema/inventory verification
+  are duplicated; and the second accepted dataset has exposed reusable state/pointer mechanics that need a narrow,
+  non-universal boundary. This checkpoint is source preservation only and remains `BLOCKED_FOR_DATA_USE`.
+- Exact restart order: make the contract factory-owned and independently re-verifiable; split formal transport and
+  publication topology from disabled legacy compatibility fields; keep the schema hash physical and assemble one
+  normalized semantic payload from one registry snapshot; reuse `ExternalAggregateScope` and shared fixed-schema
+  inventory; move DDL to explicit bootstrap; add forged-contract, missing-schema-with-no-DDL and descending-page
+  red cases; then rerun Rule 10, post-fix audit, full backend, Moth and CodeGraph before any fresh provider canary.
+- Post-fix read-only residue verification found no calendar landing/canonical tables, no calendar ingest batches and
+  no accepted calendar pointers in live `tushare_raw.duckdb`; no calendar/sync pipeline process was running. No DB,
+  process, cache or consumer cleanup was therefore authorized or required for this source-only checkpoint.

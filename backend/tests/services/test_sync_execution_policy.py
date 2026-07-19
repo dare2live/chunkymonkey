@@ -89,6 +89,52 @@ def test_live_margin_v2_is_disabled_but_read_only_contract_still_loads():
     assert contract.contract_version == "2"
 
 
+def test_live_trade_calendar_legacy_writer_is_disabled_before_any_side_effect(
+    monkeypatch,
+):
+    registry = sr.load_registry()
+    spec = sr.domain_spec(registry, "trade_cal")
+
+    assert spec["execution_policy"] == {
+        "mode": "disabled",
+        "reason": "accepted_generation_pending",
+    }
+    assert spec["calendar_generation"] == {
+        "contract_version": "1",
+        "coverage_start": "19901219",
+        "required_through_rule": "observed_year_end",
+        "timezone": "Asia/Shanghai",
+        "availability_rule": "response_completed",
+        "canonicalization_version": "1",
+    }
+    assert spec["population_scope"] == {
+        "kind": "external_aggregate",
+        "venue_field": "exchange",
+        "venue_ids": ["SSE"],
+        "population_label": "sse_trading_calendar",
+        "method": "tushare_trade_cal",
+        "unit": "calendar_day_status",
+    }
+
+    for name in (
+        "eligible_end_date",
+        "trading_days",
+        "apply_fetch_socket_timeout",
+        "_adapter",
+        "_target_conn",
+        "_smartmoney_conn",
+    ):
+        monkeypatch.setattr(sr, name, _forbidden(name))
+
+    with pytest.raises(
+        sr.ExecutionPolicyError,
+        match="trade_cal.*accepted_generation_pending",
+    ) as caught:
+        sr.run_domain("trade_cal", registry=registry)
+
+    assert caught.value.reason == "accepted_generation_pending"
+
+
 @pytest.mark.parametrize(
     ("writer", "args"),
     [
@@ -176,6 +222,19 @@ def test_main_unlocked_cannot_bypass_execution_policy(monkeypatch):
 
     with pytest.raises(sr.ExecutionPolicyError, match="margin.*scope_blocked"):
         sr._main_unlocked(_args(), _registry(), ["margin"])
+
+
+def test_automatic_domain_inventory_matches_all_due_and_fails_closed():
+    registry = _registry()
+    registry["domains"]["manual_repair"] = {
+        "sync_policy": "on_demand",
+        "execution_policy": {"mode": "enabled", "reason": "manual_only"},
+    }
+    assert sr.automatic_domains(registry) == ["daily", "margin"]
+
+    registry["domains"]["broken"] = None
+    with pytest.raises(ValueError, match="domain entry.*broken.*mapping"):
+        sr.automatic_domains(registry)
 
 
 @pytest.mark.parametrize(

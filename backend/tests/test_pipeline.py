@@ -25,6 +25,23 @@ def _isolated_pipeline_runtime_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(context, "DEGRADED_FLAG", tmp_path / "pipeline-alert.flag")
 
 
+def _disabled_trade_calendar_registry():
+    return {
+        "defaults": {},
+        "domains": {
+            "healthy_domain": {
+                "execution_policy": {"mode": "enabled", "reason": "manual_only"},
+            },
+            "trade_cal": {
+                "execution_policy": {
+                    "mode": "disabled",
+                    "reason": "accepted_generation_pending",
+                },
+            },
+        },
+    }
+
+
 def test_pipeline_package_imports():
     """各阶段模块 + 入口可 import (catch port 笔误 / 死引用)。"""
     from services.pipeline import acquire, clean, context, preflight, process, run, store
@@ -172,6 +189,7 @@ def test_independent_acquire_authorization_block_is_exit_three(monkeypatch, tmp_
         ),
     )
     monkeypatch.setattr(preflight, "ensure_calendar_ready", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(preflight, "ensure_pipeline_sync_ready", lambda _ctx: None)
     monkeypatch.setitem(
         stage_runner.STAGES,
         "acquire",
@@ -262,6 +280,107 @@ def test_run_calendar_hard_block_skips_all_stages_and_exits_four(monkeypatch, tm
     assert "calendar_not_ready" in (tmp_path / "flag").read_text()
 
 
+def test_full_pipeline_execution_policy_blocks_before_calendar_auth_or_sla(
+    monkeypatch, tmp_path
+):
+    from services.data_sources import sync_runner
+    from services.pipeline import preflight
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(sync_runner, "load_registry", _disabled_trade_calendar_registry)
+    monkeypatch.setattr(
+        preflight,
+        "ensure_calendar_ready",
+        lambda *_a, **_k: pytest.fail("calendar probe/repair must not start"),
+    )
+    monkeypatch.setattr(
+        preflight,
+        "ensure_tushare_authorized",
+        lambda *_a, **_k: pytest.fail("provider auth must not start"),
+    )
+    monkeypatch.setattr(
+        preflight,
+        "run_watermark_sla_check",
+        lambda *_a, **_k: pytest.fail("SLA DB/report work must not start"),
+    )
+    ctx = PipelineContext(date="20260719", log_path=tmp_path / "pipeline.log")
+    try:
+        with pytest.raises(
+            preflight.PipelinePreflightError,
+            match="sync_execution_blocked:trade_cal:accepted_generation_pending",
+        ):
+            preflight.run_preflight(ctx)
+    finally:
+        ctx.close()
+    assert ctx.tushare_auth_status is None
+
+
+def test_direct_acquire_execution_policy_blocks_before_auth_or_write_steps(
+    monkeypatch, tmp_path
+):
+    from services.data_sources import sync_runner
+    from services.pipeline import acquire, preflight
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(sync_runner, "load_registry", _disabled_trade_calendar_registry)
+    monkeypatch.setattr(
+        preflight,
+        "ensure_tushare_authorized",
+        lambda *_a, **_k: pytest.fail("provider auth must not start"),
+    )
+    ctx = PipelineContext(date="20260719", log_path=tmp_path / "acquire.log")
+    monkeypatch.setattr(
+        ctx,
+        "step",
+        lambda *_a, **_k: pytest.fail("acquire writer step must not start"),
+    )
+    try:
+        with pytest.raises(
+            preflight.PipelinePreflightError,
+            match="sync_execution_blocked:trade_cal:accepted_generation_pending",
+        ):
+            acquire.run_acquire(ctx)
+    finally:
+        ctx.close()
+
+
+def test_independent_acquire_stage_policy_blocks_before_calendar_auth_and_stage(
+    monkeypatch, tmp_path
+):
+    from services import writer_lock as lock_mod
+    from services.data_sources import sync_runner
+    from services.pipeline import preflight, stage_runner
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setenv(lock_mod.WRITER_LOCK_PATH_ENV, str(tmp_path / "writer.lock"))
+    monkeypatch.setattr(sync_runner, "load_registry", _disabled_trade_calendar_registry)
+    monkeypatch.setattr(
+        stage_runner,
+        "PipelineContext",
+        lambda **kw: PipelineContext(**{**kw, "log_path": tmp_path / "stage.log"}),
+    )
+    monkeypatch.setattr(
+        preflight,
+        "ensure_calendar_ready",
+        lambda *_a, **_k: pytest.fail("calendar probe/repair must not start"),
+    )
+    monkeypatch.setattr(
+        preflight,
+        "ensure_tushare_authorized",
+        lambda *_a, **_k: pytest.fail("provider auth must not start"),
+    )
+    monkeypatch.setitem(
+        stage_runner.STAGES,
+        "acquire",
+        lambda _ctx: pytest.fail("acquire stage must not start"),
+    )
+
+    assert stage_runner.run_stage("acquire", dry=False, date="20260719") == 5
+    assert "sync_execution_blocked:trade_cal:accepted_generation_pending" in (
+        tmp_path / "stage.log"
+    ).read_text()
+
+
 def test_calendar_preflight_reuses_continuity_gate_and_fails_closed(monkeypatch, tmp_path):
     from services.pipeline import preflight
     from services.pipeline.context import PipelineContext
@@ -323,6 +442,7 @@ def test_independent_acquire_calendar_block_is_exit_five(monkeypatch, tmp_path):
             preflight.PipelinePreflightError("calendar_not_ready")
         ),
     )
+    monkeypatch.setattr(preflight, "ensure_pipeline_sync_ready", lambda _ctx: None)
     monkeypatch.setattr(
         preflight,
         "ensure_tushare_authorized",
@@ -584,6 +704,7 @@ def test_preflight_dry_run_still_probes_auth_and_caches_sanitized_status(monkeyp
             return status
 
     monkeypatch.setattr(preflight, "TuShareSource", FakeSource)
+    monkeypatch.setattr(preflight, "ensure_pipeline_sync_ready", lambda _ctx: None)
     monkeypatch.setattr(
         "subprocess.run",
         lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
@@ -805,6 +926,7 @@ def test_independent_acquire_dry_run_cannot_bypass_auth_probe(monkeypatch, tmp_p
             return status
 
     monkeypatch.setattr(preflight, "TuShareSource", FakeSource)
+    monkeypatch.setattr(preflight, "ensure_pipeline_sync_ready", lambda _ctx: None)
     ctx = PipelineContext(
         dry=True,
         date="20260101",

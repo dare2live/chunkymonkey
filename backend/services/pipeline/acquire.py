@@ -25,7 +25,8 @@ def run_acquire(ctx: PipelineContext) -> None:
             _assert_margin_shadow_parity(ctx)
         return
     # 独立 stage 入口也必须走与全链相同的授权硬门；全链已探针时复用 ctx 缓存。
-    from .preflight import ensure_tushare_authorized
+    from .preflight import ensure_pipeline_sync_ready, ensure_tushare_authorized
+    ensure_pipeline_sync_ready(ctx)
     ensure_tushare_authorized(ctx)
     ctx.log("=== ① 获取 ACQUIRE (纯采集 →L0, 不计算) ===")
     if ctx.dry:

@@ -103,8 +103,13 @@ def run_stage(
             try:
                 if stage == "acquire":
                     # 与全链 preflight 同一授权门；先于阶段状态记录，授权失败不伪装成已启动采集。
-                    from .preflight import ensure_calendar_ready, ensure_tushare_authorized
+                    from .preflight import (
+                        ensure_calendar_ready,
+                        ensure_pipeline_sync_ready,
+                        ensure_tushare_authorized,
+                    )
 
+                    ensure_pipeline_sync_ready(ctx)
                     ensure_calendar_ready(ctx, allow_repair=not dry and not skip_sync)
                     ensure_tushare_authorized(ctx)
                 passed = run_and_record(ctx, stage, STAGES[stage])  # 件2: 跑 + best-effort 记状态
