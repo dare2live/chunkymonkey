@@ -50,8 +50,8 @@
 控制面原语/margin 冻结/all-due 前阻断/doctor `NOT_EVALUATED` FAIL/calendar 隔离原型：见 ledger。≠业务就绪。
 
 - **A** A1–A5 **FIXED**。`live_readiness` 可评估（常见 BLOCKED=无 live accepted partition）。禁 mass fetch/切消费者。残余 data-plane：calendar/K/ST live partitions + 授权 canary（owner=下一聚焦 session 授权请求）。
-- **B-ext（进行中/PARTIAL）** `market_pulse_scope` 已标 legacy pulse 的 breadth/rzrqye 为 UNTRUSTED（raw_evidence / external_aggregate）；拒 project_universe_pit 冒充；**未**改 mart 数值、未 cutover。下一：shadow reconcile 报告 + API 旁路 trust 字段。
-- **B-pit（阻塞 A3 data-plane）** project_universe_pit 广度/resolver 消费者迁移；shadow 后切读面。未闭合 A3 residual 不得宣称 B 完成。
+- **B-ext（进行中/PARTIAL）** scope 认证 + shadow reconcile + sentiment API 旁路 trust 已落地；mart 数值未改、`cutover_allowed=false`。残余：读面/前端消费 trust 字段、live margin attach shadow（可选）、B-pit 前不切数值。
+- **B-pit（阻塞 A3 data-plane）** project_universe_pit 广度/resolver 消费者迁移；shadow 后切读面。未闭合 A3 data-plane residual 不得宣称 B 完成。
 - **C** Tier1/2 正式 lineage。**D** `DatasetSnapshot`→`ExperimentVerdict` + PIT 截断。
 - **E0（E 硬前置）** 披露域 formal 化：holders/org_holding/stk_holdertrade → adapter/landing/canonical + notice/`available_at` 契约。未完成则 **E=BLOCKED**。
 - **E** `institution_follow_v1`（首包；B0→B4）。**F** main_rally。**G** 公式+BestChoice。**H** Release/名义价纸面。

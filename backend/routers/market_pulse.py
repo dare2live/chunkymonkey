@@ -18,7 +18,9 @@
                                 响应带 breadcrumb。
   GET /api/v3/pulse/flow_stripe mini 温度条纹数据 (v3): 单板块近 N 日逐日净流入序列
   GET /api/v3/pulse/sentiment   情绪温度时序 (涨跌停/炸板率/涨跌比 + v2 连板天梯/晋级率/
-                                秒板/封单/两融/大盘PE换手/龙虎榜, mart_market_pulse_daily)
+                                秒板/封单/两融/大盘PE换手/龙虎榜, mart_market_pulse_daily);
+                                旁路 population_scope / cutover_allowed（B-ext UNTRUSTED;
+                                不改 days 数值）
   GET /api/v3/pulse/warnings    退潮预警 (跌出 RS top-N [v3 锁 L1] + 连续静默流出 >= 阈值)
   GET /api/v3/pulse/strongest   最强板块榜 (limit_cpt_list 引擎快照; 885xxx.TI 码独立卡禁跨链)
   GET /api/v3/pulse/members     板块成分下钻 (dc=dc_member 最新快照; sw=index_member_all 当前成分)
@@ -40,6 +42,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from services import market_pulse as mp
 from services.database_manifest import get_database_manifest
 from services.duck_adapter import connect as duck_connect
+from services.market_pulse_scope import attest_market_pulse_scope
 
 router = APIRouter()
 
@@ -532,12 +535,32 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
               conn=Depends(get_pulse_conn)):
     """全市场情绪温度时序 (最近 N 个入库日, 升序): 涨跌停家数/炸板率/涨跌比/大盘净流
     + v2 连板天梯/晋级率/秒板/封单/两融/大盘PE换手/龙虎榜。
-    缺源日字段 = null (不知道≠0, 引擎口径), 前端按缺口断线展示。"""
+    缺源日字段 = null (不知道≠0, 引擎口径), 前端按缺口断线展示。
+
+    B-ext: 旁路 ``population_scope`` 标 legacy breadth/margin 为 UNTRUSTED；
+    ``cutover_allowed`` 恒 false。``days`` 数值不改、不做 consumer cutover。
+    """
     rows = conn.execute(f"""
         SELECT {', '.join(_SENTIMENT_COLS)} FROM (
             SELECT * FROM {mp.MARKET_TABLE} ORDER BY trade_date DESC LIMIT ?)
         ORDER BY trade_date ASC""", [days]).fetchall()
-    return {"status": "ok", "days": [dict(zip(_SENTIMENT_COLS, r)) for r in rows]}
+    day_rows = [dict(zip(_SENTIMENT_COLS, r)) for r in rows]
+    latest = str(day_rows[-1]["trade_date"]) if day_rows else ""
+    if latest:
+        scope = attest_market_pulse_scope(latest).as_dict()
+    else:
+        scope = {
+            "trade_date": "",
+            "overall_status": "NOT_EVALUATED",
+            "fields": [],
+            "notes": ["no_sentiment_rows"],
+        }
+    return {
+        "status": "ok",
+        "days": day_rows,
+        "population_scope": scope,
+        "cutover_allowed": False,
+    }
 
 
 @router.get("/strongest")

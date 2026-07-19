@@ -257,7 +257,8 @@ def test_sentiment_v2_fields(client):
     """情绪时序 v2 字段: 天梯/晋级率/秒板/两融/估值/龙虎榜按日透出, 缺源日 null。"""
     r = client.get("/api/v3/pulse/sentiment?days=5")
     assert r.status_code == 200
-    days = {d["trade_date"]: d for d in r.json()["days"]}
+    body = r.json()
+    days = {d["trade_date"]: d for d in body["days"]}
     d0 = days[D[0]]
     assert d0["rzrqye"] == pytest.approx(150.0) and d0["rzrqye_chg"] is None
     assert d0["mkt_pe"] == pytest.approx(14.42) and d0["mkt_turnover"] == pytest.approx(3.0)
@@ -269,6 +270,14 @@ def test_sentiment_v2_fields(client):
     assert d3["limit_times_dist_json"] == '{"2":1}'
     assert d3["avg_fd_amount"] == pytest.approx(3000.0) and d3["open_times_total"] == 3
     assert d3["rzrqye"] is None and d3["lhb_count"] is None
+    # B-ext sidecar: trust markers without rewriting mart day values.
+    assert body["cutover_allowed"] is False
+    scope = body["population_scope"]
+    assert scope["overall_status"] == "UNTRUSTED"
+    assert scope["trade_date"] == D[4]
+    by_field = {f["field"]: f for f in scope["fields"]}
+    assert by_field["adv_dec_ratio"]["population_kind"] == "raw_evidence"
+    assert by_field["rzrqye"]["population_kind"] == "external_aggregate"
 
 
 def test_flow_board_regime_groups_and_stripe(client):

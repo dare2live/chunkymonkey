@@ -270,9 +270,25 @@ export interface SentimentPoint {
   lhb_inst_net: number | null; // 龙虎榜披露席位净买直和 (元; 源含游资营业部席位非纯机构)
 }
 
+/** B-ext sidecar: legacy breadth/margin trust; never READY for project_universe_pit. */
+export interface PulsePopulationScope {
+  trade_date: string;
+  overall_status: "UNTRUSTED" | "BLOCKED" | "NOT_EVALUATED" | "READY";
+  fields: Array<{
+    field: string;
+    status: string;
+    population_kind: string;
+    reason: string;
+    source_surface: string;
+  }>;
+  notes: string[];
+}
+
 export interface SentimentResp {
   status: string;
-  days: SentimentPoint[]; // 升序
+  days: SentimentPoint[]; // 升序；数值口径未切（仍可能含错误 scope）
+  population_scope: PulsePopulationScope;
+  cutover_allowed: false;
 }
 
 export function fetchSentiment(opts: { days?: number } = {}) {

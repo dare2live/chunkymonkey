@@ -74,7 +74,7 @@ AGENTS.md
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
 | P1 | formal `boundary_inventory` 仅为静态/测试资源，非 doctor readiness 证书（`formal_boundaries` 文案已澄清）；canary_pending 域无 countdown 出口 | 豁免不可见即永久；须在 goal/ledger 跟踪 canary 授权点 |
 | P1 | Live DC snapshot/pulse tables predate namespace fix until manual rebuild | Code contract is fixed but stored rows still need controlled reconciliation |
-| P1 | Market pulse mixes taxonomy, measurements, rolling/regime, write/read；仍读错误 scope raw | B-ext：`market_pulse_scope` 已标 UNTRUSTED；mart 数值未切；shadow/cutover 未做 |
+| P1 | Market pulse mixes taxonomy, measurements, rolling/regime, write/read；仍读错误 scope raw | B-ext：scope+shadow+API trust sidecar；mart 数值未切；cutover 禁 |
 | P1 | Stock state/market regime rows lack config/input version | Historical outputs cannot prove which definition produced them |
 | P1 | No shared dataset snapshot/experiment/release chain | Strategy evidence cannot reach decision/product safely |
 | P1 | Docs/CLI gates previously treated retired/warn as PASS；事实性断言（如“仅 TuShare”）不在 gate 覆盖 | Tooling green did not prove executable reality |

@@ -531,3 +531,15 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - 对抗测：`test_market_pulse_scope` 4 passed。不改 mart 列/router payload、无
   consumer cutover、无 provider fetch。下一刀：shadow reconcile + 读面旁路
   trust 字段（仍不切数值）。
+
+### 2026-07-19 — B-ext slice2: pulse shadow reconcile + API trust sidecar
+
+- **PARTIAL（B-ext 未宣称 FIXED）**：`market_pulse_shadow_reconcile` —
+  BSE 进 legacy sum → `SCOPE_MISMATCH`；SSE+SZSE-only →
+  `EXTERNAL_HONEST_SHADOW`；`cutover_allowed` 恒 false；永不因
+  `project_universe_available`  alone 放行。
+- `/api/v3/pulse/sentiment` 旁路 `population_scope` + `cutover_allowed=false`；
+  `days` 数值不变。
+- 对抗测：`test_market_pulse_shadow_reconcile` 5 +
+  `test_sentiment_v2_fields` trust 断言。无 mart rewrite、无 cutover、无
+  mass fetch。下一：前端/读面消费 trust；B-pit 等 A3 data-plane。
