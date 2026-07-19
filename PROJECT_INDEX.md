@@ -21,7 +21,7 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | `accepted_schema.py` 统一固定 batch/pointer 结构验证；`population_scope.py` + `formal_execution.py` 负责 formal `DatasetExecutionContract` bind/verify/consumer `is` 传播（A1 已闭合）；calendar contract/schema/landing/acceptance/reader 仍是 `REVISE` 隔离原型，无 live 表、batch、pointer 或 consumer。Kline/ST accepted truth 仍未建立，live readiness 为 `NOT_EVALUATED` |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1 contract 传播已闭合；A2 calendar accepted runtime live-capable：`calendar_runtime.publish_accepted_calendar_generation` + typed availability + formal landing/canonical（≠ legacy raw）；DDL 仅 explicit bootstrap；dim=`serve_projection`。无 live 发表/provider canary。Kline/ST accepted truth 仍未建立，`live_readiness=NOT_EVALUATED` |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
 | T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 当前展示可用；分类解释、measurement、regime 和 persistence 耦合，暂不可直接做 PIT 特征 |
@@ -34,7 +34,7 @@ AGENTS.md
 
 | Area | Role |
 |---|---|
-| `data/tushare_raw.duckdb` | TuShare legacy `raw_tushare_*` compatibility 表，以及 frozen margin evidence；calendar 原型尚未 bootstrap，live 无其 landing/canonical/batch/pointer |
+| `data/tushare_raw.duckdb` | TuShare legacy `raw_tushare_*` compatibility 表，以及 frozen margin evidence；calendar accepted landing/canonical 代码路径已就绪但 live 尚未 bootstrap/发表 |
 | `data/market.duckdb` | K 线 serving/派生数据；qfq 不等于名义成交价真相 |
 | `data/reference.duckdb` | 交易日历、身份/reference 数据 |
 | `data/smartmoney.duckdb` | 当前 mart、profiles、ops/control evidence |
@@ -68,7 +68,7 @@ AGENTS.md
 
 | Priority | Defect | Consequence |
 |---:|---|---|
-| P0 | calendar 隔离原型仍有 factory/typed availability、formal-vs-legacy topology、schema/semantic ownership 与 runtime DDL 阻断；Kline/ST 无 accepted generation | 原型不可运行或消费；其他 legacy 域仍混合 source response、rejection、publication 与水位，须逐域迁移 |
+| P0 | A2 calendar runtime 已闭合（typed availability / formal≠legacy / explicit bootstrap）；Kline/ST 仍无 accepted generation + `traded_on_observation_date` resolver（A3） | calendar 可测但未 live 发表；其他 legacy 域仍混合 source response、rejection、publication 与水位，须逐域迁移 |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
 | P1 | Live DC snapshot/pulse tables predate namespace fix until manual rebuild | Code contract is fixed but stored rows still need controlled reconciliation |
@@ -114,12 +114,14 @@ accepted proof，`margin_legacy_reconcile.py`/`margin_reconcile.py` 负责纯比
 
 共享 accepted evidence 的物理 owner 是 `backend/services/data_sources/accepted_schema.py`；它只拥有
 `ingest_batch` / `accepted_partition` 的固定 DDL 与结构验证，不拥有任何 domain completeness、writer、
-availability 或 consumer 语义。现有 `dim_trading_calendar` 仍是 open-day serve projection，不是 accepted
-immutable generation。
+availability 或 consumer 语义。现有 `dim_trading_calendar` 是 open-day serve projection
+（`DIM_ROLE=serve_projection_open_days_only`），不是 accepted immutable generation。
 
-calendar 原型按 `calendar_contract.py`、`calendar_schema.py`、`calendar_landing.py`、
-`calendar_acceptance.py`、`calendar_reader.py` 分责；当前仅供升级后继续整改。all-due execution/population
-preflight 已由 full pipeline、direct acquire 与独立 acquire stage 共用，disabled 域不得在后置失败。
+calendar 按 `calendar_contract.py`、`calendar_schema.py`、`calendar_landing.py`、
+`calendar_acceptance.py`、`calendar_reader.py`、`calendar_runtime.py` 分责；A2 发表入口是
+`publish_accepted_calendar_generation`，sync 禁 legacy raw 落穿，provider canary 仍
+`accepted_generation_pending`。all-due execution/population preflight 已由 full pipeline、
+direct acquire 与独立 acquire stage 共用，disabled 域不得在后置失败。
 
 旧 margin history request/runtime/writer/CLI 已退役物删。冻结 v2 只由 `margin_evidence.py`、
 `margin_state.py`、reconcile/readiness/projection 读侧保留不可变审计证据；不存在受支持的继续写入旁路。

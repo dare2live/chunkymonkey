@@ -45,7 +45,11 @@ def _spec() -> dict:
             "coverage_start": "19901219",
             "required_through_rule": "observed_year_end",
             "timezone": "Asia/Shanghai",
-            "availability_rule": "response_completed",
+            "availability": {
+                "axis": "provider_response",
+                "rule": "response_completed",
+                "at": "response_completed_at",
+            },
             "canonicalization_version": "1",
         },
     }
@@ -138,8 +142,40 @@ def test_contract_rejects_transport_and_population_drift(
         owner = owner[key]
     owner[path[-1]] = value
 
-    with pytest.raises(ValueError, match="calendar .* drift|page_limit"):
+    with pytest.raises(
+        ValueError,
+        match="calendar .* drift|page_limit|legacy compatibility drift",
+    ):
         calendar_contract_for_spec(spec)
+
+
+def test_naked_availability_rule_string_is_rejected() -> None:
+    spec = _spec()
+    spec["calendar_generation"]["availability"] = "response_completed"
+
+    with pytest.raises(ValueError, match="naked availability_rule|typed availability"):
+        calendar_contract_for_spec(spec)
+
+
+def test_publication_tables_are_formal_not_legacy_raw() -> None:
+    from services.data_sources.calendar_schema import (
+        CANONICAL_TABLE,
+        FRAGMENT_TABLE,
+        LANDING_TABLE,
+    )
+
+    contract = calendar_contract_for_spec(_spec())
+
+    assert contract.landing_table == LANDING_TABLE
+    assert contract.fragment_table == FRAGMENT_TABLE
+    assert contract.canonical_table == CANONICAL_TABLE
+    assert contract.legacy_target_table == "raw_tushare_trade_cal"
+    assert contract.landing_table != contract.legacy_target_table
+    assert contract.availability.payload() == {
+        "axis": "provider_response",
+        "rule": "response_completed",
+        "at": "response_completed_at",
+    }
 
 
 def test_hashes_change_when_adjustable_page_limit_changes() -> None:
@@ -182,17 +218,20 @@ def test_calendar_contract_cannot_be_constructed_without_factory() -> None:
             coverage_start="19901219",
             required_through_rule="observed_year_end",
             timezone="Asia/Shanghai",
-            availability_rule="response_completed",
+            availability=calendar_contract_for_spec(_spec()).availability,
             canonicalization_version="1",
             source="tushare",
             api="trade_cal",
             target_db="tushare_raw",
-            target_table="raw_tushare_trade_cal",
             batch_mode="full_refresh",
-            write_mode="replace_snapshot",
             grain=("exchange", "cal_date"),
             fixed_params=(("exchange", "SSE"),),
             page_limit=6000,
+            landing_table="landing_tushare_trade_cal",
+            fragment_table="landing_tushare_trade_cal_fragment",
+            canonical_table="canonical_sse_trading_calendar_generation",
+            legacy_target_table="raw_tushare_trade_cal",
+            legacy_write_mode="replace_snapshot",
             population_scope=calendar_contract_for_spec(_spec()).population_scope,
             config_hash="a" * 64,
             contract_hash="b" * 64,

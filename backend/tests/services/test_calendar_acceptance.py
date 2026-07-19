@@ -56,7 +56,11 @@ def _spec() -> dict:
             "coverage_start": "19901219",
             "required_through_rule": "observed_year_end",
             "timezone": "Asia/Shanghai",
-            "availability_rule": "response_completed",
+            "availability": {
+                "axis": "provider_response",
+                "rule": "response_completed",
+                "at": "response_completed_at",
+            },
             "canonicalization_version": "1",
         },
     }

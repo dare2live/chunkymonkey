@@ -1,27 +1,21 @@
-"""calendar_builder — raw_tushare_trade_cal → reference.dim_trading_calendar 增量传导.
+"""calendar_builder — open-day serve projection from legacy raw trade_cal.
+
+``dim_trading_calendar`` is NOT accepted calendar truth.  Accepted open+closed
+generations live under ``calendar_runtime`` / ``calendar_reader``
+(``landing_tushare_trade_cal`` → ``canonical_sse_trading_calendar_generation``).
+This module only maintains the open-day serve projection used by legacy ops
+consumers (horizon checks, scheduling helpers).  Prototype/content hashes from
+this table must never be treated as an accepted generation proof.
 
 R1 根因 3 修复（历史证据: analysis/data_foundation_root_causes_20260703.md；
 现行边界: docs/MASTER_TOPLEVEL_DESIGN.md）:
-dim_trading_calendar 唯一 writer 曾是一次性迁移脚本 migrate_reference_db.py (其源表
-sm.dim_trading_calendar 已在 §9 Stage E 物删 = 破坏性死路径, 已封存); raw 侧 trade_cal 域
-full_refresh 日刷正常 (max=20261231) 但零传导 → 日历 horizon 倒计时 (审计 2026-07-03 时点剩
-123 交易日, 耗尽后 sync end_d 钉死 20261231 = 静默停摆非响断)。本模块 = dim 的生产刷新契约:
-pipeline acquire 在 sync_registry drain (trade_cal 增量) 之后每日调 build_latest。
+dim 曾缺生产 writer；raw trade_cal full_refresh 正常但零传导 → horizon 倒计时。
+pipeline acquire 在 sync 后调 ``build_latest`` 只刷新 serve projection。
 
 语义裁决 (2026-07-03, 消费方实测 rg is_trading 全仓):
-- dim 现表 5343 行全 is_trading=1 (只存交易日)。全部生产消费方 (services/calendar.py /
-  sync_runner._trading_days / technical_states / rally_gt / data_audit /
-  data_health_snapshot / check_continuity_integrity.check_calendar_horizon) 均
-  WHERE is_trading=1 (或 truthy) 过滤, 零路径读非交易日行
-  → 保持"只存交易日"语义: 只插 raw is_open=1 行, is_trading 恒 1。
-- 增量 = 保持 dim 既有起点的幂等补洞 + 向未来延伸。raw 史回溯 19901219，而 dim 契约
-  起点是 2005-01-04，所以只从既有 MIN(dim.trade_date) 起做 ON CONFLICT DO NOTHING；既不
-  回填前史，也能修复 raw 已有、dim 漏传的中段交易日；raw 将某日从 open 修订为 closed 时
-  同一事务删除 dim 对应日，保证“只存交易日”双向收敛。dim 空表 (重建) → 全量拷贝 raw。
-- 只取 exchange='SSE' (raw 为多交易所行 SSE/SZSE/...; A 股统一上交所日历口径,
-  与 dim 现存 5343 行 = 迁移前 smartmoney 口径一致)。
-- 格式转换: raw cal_date compact YYYYMMDD (VARCHAR) → dim trade_date ISO YYYY-MM-DD
-  (VARCHAR, PRIMARY KEY); strptime 顺带校验日期合法性。
+- dim 只存交易日 (is_trading=1)。legacy 消费方 WHERE is_trading=1。
+- 增量 = 幂等补洞 + 向未来延伸；raw 修订 open→closed 时删除对应 dim 日。
+- 只取 exchange='SSE'；cal_date compact → trade_date ISO。
 """
 from __future__ import annotations
 
@@ -32,6 +26,9 @@ logger = logging.getLogger(__name__)
 
 RAW_TABLE = "raw_tushare_trade_cal"
 DIM_TABLE = "dim_trading_calendar"
+# Role marker for audits/gates: serve projection ≠ accepted generation.
+DIM_ROLE = "serve_projection_open_days_only"
+DIM_IS_ACCEPTED_TRUTH = False
 
 # dim 重建 DDL (与 reference 现表实测 schema 一致: trade_date VARCHAR PK + is_trading BIGINT);
 # 正常路径表已在, 仅 bootstrap (库重建) 时触发。

@@ -265,6 +265,8 @@ def _land_and_accept_real_generation(path: Path, monkeypatch) -> str:
     batch_id = "real-generation-1990"
     conn = connect(str(path))
     try:
+        # Explicit bootstrap: land/accept no longer create DDL implicitly.
+        ensure_calendar_acceptance_schema(conn)
         # Land and accept must share a frozen clock. Using wall-clock landed_at
         # on the same UTC day as FIRST_ACCEPTED makes time_chain fail after 10:00Z.
         landed_at = FIRST_ACCEPTED - timedelta(minutes=30)

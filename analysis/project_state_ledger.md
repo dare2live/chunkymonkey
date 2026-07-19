@@ -435,3 +435,19 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - margin 仍 `scope_blocked` / live-write frozen；未做 provider fetch、consumer cutover、calendar live accepted。
 - 对抗测：`test_formal_execution` + `test_population_scope` verify/identity + `test_sync_execution_policy`
   = `69 passed`。Tier0 仍 `BLOCKED` / `NOT_EVALUATED`；下一刀 A2。
+
+### 2026-07-19 — Phase A2 calendar accepted live-capable path
+
+- A2 **FIXED/complete**（代码路径；非 live 发表）：
+  - `CalendarAvailabilityPolicy` typed `axis/rule/at`；禁 naked `availability_rule` 字符串。
+  - config/contract hash 绑定 formal publication tables（landing/fragment/canonical），legacy
+    `target_table`/`write_mode` 仅 compatibility 字段、不进 publication identity。
+  - `land_calendar_batch`/`accept_calendar_batch` 不再隐式 DDL；input 校验先于 schema verify；
+    bootstrap 仅 `ensure_calendar_acceptance_schema` / `calendar_runtime.bootstrap_*`。
+  - 新增 `calendar_runtime.publish_accepted_calendar_generation`；`refuse_legacy_calendar_raw_write`；
+    sync_runner 即使翻 enabled 也禁 legacy raw 落穿。
+  - `dim_trading_calendar` 明确 `serve_projection_open_days_only`；dim+raw  alone → reader
+    `NOT_EVALUATED`，不得冒充 accepted generation。
+- 对抗测：`test_calendar_{contract,acceptance,runtime,reader,schema}` + `test_sync_execution_policy`
+  = `120 passed`。未做 provider fetch、live DDL、consumer cutover。Tier0 仍
+  `BLOCKED` / `live_readiness=NOT_EVALUATED`（缺 accepted K/ST）。下一刀 A3。

@@ -377,6 +377,8 @@ domains:
   trade_cal:
     execution_policy:
       mode: disabled
+      # Runtime land→accept 已就绪；禁 legacy raw 写与未授权 provider canary。
+      # 正式发表用 calendar_runtime.publish_accepted_calendar_generation。
       reason: accepted_generation_pending
     # 交易日历回答“何时”，不消费 eligible-universe policy；它是 SSE 交易场所
     # 定义的日级外部参考，不得与项目股票池人口口径混称。
@@ -387,22 +389,27 @@ domains:
       population_label: sse_trading_calendar
       method: tushare_trade_cal
       unit: calendar_day_status
-    # 只保存稳定政策；表名/schema/writer 由 calendar 代码契约拥有。
+    # 只保存稳定政策；landing/canonical/writer 由 calendar 代码契约拥有。
     calendar_generation:
       contract_version: "1"
       coverage_start: "19901219"
       required_through_rule: observed_year_end
       timezone: Asia/Shanghai
-      availability_rule: response_completed
+      availability:
+        axis: provider_response
+        rule: response_completed
+        at: response_completed_at
       canonicalization_version: "1"
     source: tushare
     api: trade_cal
+    target_db: tushare_raw
+    # legacy compatibility only — not accepted publication identity
     target_table: raw_tushare_trade_cal
     grain: [exchange, cal_date]
-    batch_mode: full_refresh       # legacy transport shape；新 writer 必须显式派生 start/end
+    batch_mode: full_refresh       # provider request shape；正式 writer 派生 start/end
     fixed_params: {exchange: SSE}
     page_limit: 6000               # 实测 offset 分页 6000+6000+尾页，避免单页截断
-    write_mode: replace_snapshot   # 仅描述已禁用 legacy compatibility writer，非 formal publication
+    write_mode: replace_snapshot   # 已禁用 legacy raw writer；≠ formal publication
     freshness_date_column: cal_date
     pit_anchor: "cal_date; 静态日历, 年度扩展"
     available_after: "00:00"

@@ -59,6 +59,7 @@ def latest_completed_trade_date(
     if (now_local.hour, now_local.minute) < (close_hour, close_minute):
         anchor_date -= timedelta(days=1)
 
+    # Serve projection only — not accepted calendar truth (see calendar_runtime).
     # §9 拆库: dim_trading_calendar 迁 reference 库 (resolver.dim_read_conn auto-fallback: conn 有表用它[测试/过渡dual]否则 reference)
     from services.data_access import resolver
     c, own = resolver.dim_read_conn(conn, "dim_trading_calendar")

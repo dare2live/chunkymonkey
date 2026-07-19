@@ -5,6 +5,11 @@ does not load YAML, consult module globals for policy, or accept caller-supplied
 request dates.  Downstream land/accept/read paths must call
 :func:`verify_calendar_generation_contract` so ``dataclasses.replace`` or field
 tampering cannot forge a nominal contract with stale hashes.
+
+Legacy ``target_table`` / ``write_mode`` describe the disabled raw writer only;
+they are not publication identity and do not enter config/contract hashes.
+Publication topology is the fixed landing/canonical tables from
+``calendar_schema``.  Availability is a typed ``axis/rule/at`` object.
 """
 from __future__ import annotations
 
@@ -18,8 +23,11 @@ from zoneinfo import ZoneInfo
 
 from services.data_sources.calendar_schema import (
     CALENDAR_SCHEMA_HASH,
+    CANONICAL_TABLE,
     CONTRACT_VERSION,
     DATASET_ID,
+    FRAGMENT_TABLE,
+    LANDING_TABLE,
     WRITER_ID,
 )
 
@@ -30,10 +38,11 @@ _GENERATION_KEYS = frozenset(
         "coverage_start",
         "required_through_rule",
         "timezone",
-        "availability_rule",
+        "availability",
         "canonicalization_version",
     }
 )
+_AVAILABILITY_KEYS = frozenset({"axis", "rule", "at"})
 _SCOPE_KEYS = frozenset(
     {"kind", "venue_field", "venue_ids", "population_label", "method", "unit"}
 )
@@ -45,24 +54,36 @@ _EXPECTED_SCOPE = {
     "method": "tushare_trade_cal",
     "unit": "calendar_day_status",
 }
-_EXPECTED_TRANSPORT = {
+_EXPECTED_PROVIDER_TRANSPORT = {
     "domain": "trade_cal",
     "source": "tushare",
     "api": "trade_cal",
     "target_db": "tushare_raw",
-    "target_table": "raw_tushare_trade_cal",
     "grain": ["exchange", "cal_date"],
     "batch_mode": "full_refresh",
     "fixed_params": {"exchange": "SSE"},
+}
+_EXPECTED_LEGACY_COMPATIBILITY = {
+    "target_table": "raw_tushare_trade_cal",
     "write_mode": "replace_snapshot",
+}
+_EXPECTED_AVAILABILITY = {
+    "axis": "provider_response",
+    "rule": "response_completed",
+    "at": "response_completed_at",
 }
 _EXPECTED_GENERATION = {
     "contract_version": CONTRACT_VERSION,
     "coverage_start": "19901219",
     "required_through_rule": "observed_year_end",
     "timezone": "Asia/Shanghai",
-    "availability_rule": "response_completed",
     "canonicalization_version": "1",
+}
+_EXPECTED_PUBLICATION = {
+    "landing_table": LANDING_TABLE,
+    "fragment_table": FRAGMENT_TABLE,
+    "canonical_table": CANONICAL_TABLE,
+    "dataset_id": DATASET_ID,
 }
 
 
@@ -92,6 +113,18 @@ def _exact_keys(
         raise ValueError(
             f"trade_cal: unknown {field_name} keys: {', '.join(unknown)}"
         )
+
+
+@dataclass(frozen=True)
+class CalendarAvailabilityPolicy:
+    """Typed publication availability; naked t+1 / string tokens are rejected."""
+
+    axis: str
+    rule: str
+    at: str
+
+    def payload(self) -> dict[str, str]:
+        return {"axis": self.axis, "rule": self.rule, "at": self.at}
 
 
 @dataclass(frozen=True)
@@ -127,23 +160,32 @@ class CalendarGenerationContract:
     coverage_start: str
     required_through_rule: str
     timezone: str
-    availability_rule: str
+    availability: CalendarAvailabilityPolicy
     canonicalization_version: str
     source: str
     api: str
     target_db: str
-    target_table: str
     batch_mode: str
-    write_mode: str
     grain: tuple[str, ...]
     fixed_params: tuple[tuple[str, str], ...]
     page_limit: int
+    landing_table: str
+    fragment_table: str
+    canonical_table: str
+    legacy_target_table: str
+    legacy_write_mode: str
     population_scope: CalendarPopulationScope
     config_hash: str
     contract_hash: str
 
     def __new__(cls, *_args, **_kwargs):
         raise TypeError("use calendar_contract_for_spec()")
+
+    @property
+    def availability_rule(self) -> str:
+        """Compatibility alias for the typed availability rule token."""
+
+        return self.availability.rule
 
     def required_through(self, observed_at: datetime) -> date:
         """Return the last calendar date promised by this observed generation."""
@@ -172,20 +214,53 @@ class CalendarGenerationContract:
         }
 
 
+def _parse_availability(raw: Any) -> CalendarAvailabilityPolicy:
+    if isinstance(raw, str):
+        raise ValueError(
+            "trade_cal: naked availability_rule string is forbidden; "
+            "use typed availability {axis,rule,at}"
+        )
+    availability = _mapping(raw, "availability")
+    _exact_keys(availability, _AVAILABILITY_KEYS, "availability")
+    for key, expected in _EXPECTED_AVAILABILITY.items():
+        if availability[key] != expected:
+            raise ValueError(
+                f"trade_cal: availability drift for {key}: "
+                f"actual={availability[key]!r} expected={expected!r}"
+            )
+    return CalendarAvailabilityPolicy(
+        axis=str(availability["axis"]),
+        rule=str(availability["rule"]),
+        at=str(availability["at"]),
+    )
+
+
 def _expected_hashes(
     *,
     page_limit: int,
     generation: Mapping[str, Any],
+    availability: CalendarAvailabilityPolicy,
     scope: CalendarPopulationScope,
 ) -> tuple[str, str]:
     transport_payload = {
-        **_EXPECTED_TRANSPORT,
+        **_EXPECTED_PROVIDER_TRANSPORT,
         "page_limit": page_limit,
     }
-    policy_payload = {key: generation[key] for key in sorted(_GENERATION_KEYS)}
+    policy_payload = {
+        key: generation[key]
+        for key in (
+            "contract_version",
+            "coverage_start",
+            "required_through_rule",
+            "timezone",
+            "canonicalization_version",
+        )
+    }
+    policy_payload["availability"] = availability.payload()
     config_hash = _hash(
         {
-            "transport": transport_payload,
+            "provider_transport": transport_payload,
+            "publication": dict(_EXPECTED_PUBLICATION),
             "calendar_generation": policy_payload,
             "population_scope": scope.payload(),
         }
@@ -231,7 +306,6 @@ def verify_calendar_generation_contract(
         "coverage_start": contract.coverage_start,
         "required_through_rule": contract.required_through_rule,
         "timezone": contract.timezone,
-        "availability_rule": contract.availability_rule,
         "canonicalization_version": contract.canonicalization_version,
     }
     for key, expected in _EXPECTED_GENERATION.items():
@@ -239,17 +313,30 @@ def verify_calendar_generation_contract(
             raise ValueError(
                 f"trade_cal: calendar generation drift: {key} must be {expected}"
             )
+    if type(contract.availability) is not CalendarAvailabilityPolicy:
+        raise ValueError("trade_cal: availability must be CalendarAvailabilityPolicy")
+    if contract.availability.payload() != _EXPECTED_AVAILABILITY:
+        raise ValueError("trade_cal: factory-owned availability drift")
     if (
         contract.source != "tushare"
         or contract.api != "trade_cal"
         or contract.target_db != "tushare_raw"
-        or contract.target_table != "raw_tushare_trade_cal"
         or contract.batch_mode != "full_refresh"
-        or contract.write_mode != "replace_snapshot"
         or contract.grain != ("exchange", "cal_date")
         or contract.fixed_params != (("exchange", "SSE"),)
+        or contract.landing_table != LANDING_TABLE
+        or contract.fragment_table != FRAGMENT_TABLE
+        or contract.canonical_table != CANONICAL_TABLE
     ):
-        raise ValueError("trade_cal: factory-owned transport drift")
+        raise ValueError("trade_cal: factory-owned transport/publication drift")
+    if (
+        contract.legacy_target_table != _EXPECTED_LEGACY_COMPATIBILITY["target_table"]
+        or contract.legacy_write_mode != _EXPECTED_LEGACY_COMPATIBILITY["write_mode"]
+    ):
+        raise ValueError("trade_cal: factory-owned legacy compatibility drift")
+    # Publication identity must never collapse to the disabled legacy raw table.
+    if contract.landing_table == contract.legacy_target_table:
+        raise ValueError("trade_cal: publication table must not equal legacy raw table")
     scope = contract.population_scope
     if type(scope) is not CalendarPopulationScope:
         raise ValueError("trade_cal: population_scope must be CalendarPopulationScope")
@@ -266,6 +353,7 @@ def verify_calendar_generation_contract(
     config_hash, contract_hash = _expected_hashes(
         page_limit=contract.page_limit,
         generation=generation,
+        availability=contract.availability,
         scope=scope,
     )
     if contract.config_hash != config_hash:
@@ -281,12 +369,22 @@ def calendar_contract_for_spec(spec: Mapping[str, Any]) -> CalendarGenerationCon
     """Derive a frozen calendar contract from one caller-owned registry snapshot."""
 
     spec = _mapping(spec, "domain spec")
-    for key, expected in _EXPECTED_TRANSPORT.items():
+    for key, expected in _EXPECTED_PROVIDER_TRANSPORT.items():
         if key not in spec:
             raise ValueError(f"trade_cal: missing calendar transport field: {key}")
         if spec[key] != expected:
             raise ValueError(
                 f"trade_cal: calendar transport drift for {key}: "
+                f"actual={spec[key]!r} expected={expected!r}"
+            )
+    for key, expected in _EXPECTED_LEGACY_COMPATIBILITY.items():
+        if key not in spec:
+            raise ValueError(
+                f"trade_cal: missing legacy compatibility field: {key}"
+            )
+        if spec[key] != expected:
+            raise ValueError(
+                f"trade_cal: legacy compatibility drift for {key}: "
                 f"actual={spec[key]!r} expected={expected!r}"
             )
 
@@ -307,6 +405,12 @@ def calendar_contract_for_spec(spec: Mapping[str, Any]) -> CalendarGenerationCon
             raise ValueError(
                 f"trade_cal: calendar generation drift: {key} must be {expected}"
             )
+    if "availability_rule" in generation:
+        raise ValueError(
+            "trade_cal: naked availability_rule is forbidden; "
+            "use typed availability {axis,rule,at}"
+        )
+    availability = _parse_availability(generation["availability"])
 
     if "population_scope" not in spec:
         raise ValueError("trade_cal: missing population_scope")
@@ -330,6 +434,7 @@ def calendar_contract_for_spec(spec: Mapping[str, Any]) -> CalendarGenerationCon
     config_hash, contract_hash = _expected_hashes(
         page_limit=page_limit,
         generation=generation,
+        availability=availability,
         scope=scope,
     )
     bound = object.__new__(CalendarGenerationContract)
@@ -342,17 +447,20 @@ def calendar_contract_for_spec(spec: Mapping[str, Any]) -> CalendarGenerationCon
         ("coverage_start", str(generation["coverage_start"])),
         ("required_through_rule", str(generation["required_through_rule"])),
         ("timezone", str(generation["timezone"])),
-        ("availability_rule", str(generation["availability_rule"])),
+        ("availability", availability),
         ("canonicalization_version", str(generation["canonicalization_version"])),
         ("source", "tushare"),
         ("api", "trade_cal"),
         ("target_db", "tushare_raw"),
-        ("target_table", "raw_tushare_trade_cal"),
         ("batch_mode", "full_refresh"),
-        ("write_mode", "replace_snapshot"),
         ("grain", ("exchange", "cal_date")),
         ("fixed_params", (("exchange", "SSE"),)),
         ("page_limit", page_limit),
+        ("landing_table", LANDING_TABLE),
+        ("fragment_table", FRAGMENT_TABLE),
+        ("canonical_table", CANONICAL_TABLE),
+        ("legacy_target_table", str(spec["target_table"])),
+        ("legacy_write_mode", str(spec["write_mode"])),
         ("population_scope", scope),
         ("config_hash", config_hash),
         ("contract_hash", contract_hash),
@@ -362,6 +470,7 @@ def calendar_contract_for_spec(spec: Mapping[str, Any]) -> CalendarGenerationCon
 
 
 __all__ = [
+    "CalendarAvailabilityPolicy",
     "CalendarGenerationContract",
     "CalendarPopulationScope",
     "calendar_contract_for_spec",

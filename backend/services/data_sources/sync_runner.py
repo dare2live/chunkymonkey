@@ -282,6 +282,29 @@ def _refuse_formal_domain_runtime(domain: str, execution) -> dict[str, Any]:
     )
 
 
+def _refuse_legacy_trade_cal_raw_path(domain: str) -> None:
+    """trade_cal must never fall through to legacy raw replace_snapshot."""
+
+    if domain != "trade_cal":
+        return
+    from services.data_sources.calendar_runtime import (
+        CalendarRuntimeError,
+        refuse_legacy_calendar_raw_write,
+    )
+
+    try:
+        refuse_legacy_calendar_raw_write(
+            detail="sync_runner legacy path cannot publish accepted calendar"
+        )
+    except CalendarRuntimeError as exc:
+        raise ExecutionPolicyError(
+            domain,
+            mode="disabled",
+            reason="accepted_generation_pending",
+            detail=str(exc),
+        ) from exc
+
+
 def preflight_formal_population_scopes(
     registry: dict[str, Any], domains: list[str]
 ) -> None:
@@ -1473,6 +1496,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
     reg = registry if registry is not None else load_registry()
     spec = domain_spec(reg, domain)
     _require_execution_enabled(spec)
+    _refuse_legacy_trade_cal_raw_path(domain)
     formal_contract = _formal_dataset_contract_for_spec(spec)
     formal_execution = _require_formal_population_execution(spec, formal_contract)
     if formal_execution is not None:
@@ -1894,6 +1918,7 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     reg = registry if registry is not None else load_registry()
     spec = domain_spec(reg, domain)
     _require_execution_enabled(spec)
+    _refuse_legacy_trade_cal_raw_path(domain)
     formal_contract = _formal_dataset_contract_for_spec(spec)
     formal_execution = _require_formal_population_execution(spec, formal_contract)
     if formal_execution is not None:

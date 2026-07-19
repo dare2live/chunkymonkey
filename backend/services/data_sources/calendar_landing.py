@@ -22,7 +22,6 @@ from services.data_sources.calendar_schema import (
     FRAGMENT_TABLE,
     LANDING_TABLE,
     PROVIDER_FIELDS,
-    ensure_calendar_acceptance_schema,
     verify_calendar_acceptance_schema,
 )
 
@@ -338,11 +337,11 @@ def _rollback(conn, primary_error: BaseException) -> None:
         )
 
 
-def land_calendar_batch(conn, batch: CalendarLandingBatch, contract: Any) -> str:
-    """Tx-A: atomically preserve every captured fragment and raw provider row."""
+def _prepare_landed_fragments(
+    batch: CalendarLandingBatch,
+) -> tuple[str, datetime, list[_LandedFragment]]:
+    """Validate landing input shape before any schema DDL or DB I/O."""
 
-    contract = _contract(contract)
-    ensure_calendar_acceptance_schema(conn)
     batch_id = str(batch.batch_id or "").strip()
     if not batch_id:
         raise CalendarAcceptanceError("batch_id must be non-empty")
@@ -404,6 +403,19 @@ def land_calendar_batch(conn, batch: CalendarLandingBatch, contract: Any) -> str
             f"observed_at={observed_at.isoformat()} "
             f"completed_at={completed_boundary.isoformat()}"
         )
+    return batch_id, observed_at, fragments
+
+
+def land_calendar_batch(conn, batch: CalendarLandingBatch, contract: Any) -> str:
+    """Tx-A: atomically preserve every captured fragment and raw provider row.
+
+    Input validation runs before schema verification.  Writers never bootstrap
+    DDL; callers must use ``bootstrap_calendar_acceptance_schema`` / ensure.
+    """
+
+    contract = _contract(contract)
+    batch_id, observed_at, fragments = _prepare_landed_fragments(batch)
+    verify_calendar_acceptance_schema(conn)
 
     request_json, outcomes_json = _batch_summary(fragments)
     payload_hash = _sha256(

@@ -32,7 +32,6 @@ from services.data_sources.calendar_schema import (
     FRAGMENT_TABLE,
     LANDING_TABLE,
     PROVIDER_FIELDS,
-    ensure_calendar_acceptance_schema,
     verify_calendar_acceptance_schema,
 )
 
@@ -586,8 +585,10 @@ def accept_calendar_batch(
     """Tx-B: validate landing, then atomically append canonical and accepted facts."""
 
     contract = _contract(contract)
-    ensure_calendar_acceptance_schema(conn)
     batch_id = str(batch_id or "").strip()
+    if not batch_id:
+        raise CalendarAcceptanceError("batch_id must be non-empty")
+    verify_calendar_acceptance_schema(conn)
     effective_now = _aware_datetime(_now_utc(), "trusted_now")
     effective_accepted = effective_now
     conn.execute("BEGIN TRANSACTION")

@@ -104,7 +104,11 @@ def test_live_trade_calendar_legacy_writer_is_disabled_before_any_side_effect(
         "coverage_start": "19901219",
         "required_through_rule": "observed_year_end",
         "timezone": "Asia/Shanghai",
-        "availability_rule": "response_completed",
+        "availability": {
+            "axis": "provider_response",
+            "rule": "response_completed",
+            "at": "response_completed_at",
+        },
         "canonicalization_version": "1",
     }
     assert spec["population_scope"] == {
