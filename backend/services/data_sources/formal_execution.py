@@ -99,8 +99,58 @@ def receive_holders_top10_contract(contract: Any) -> Any:
     return contract
 
 
+def receive_org_holding_contract(contract: Any) -> Any:
+    """org_holding land/accept entry: same object + factory hash verify."""
+
+    from services.data_sources.org_holding_contract import (
+        OrgHoldingContract,
+        verify_org_holding_contract,
+    )
+
+    if not isinstance(contract, OrgHoldingContract):
+        raise FormalExecutionHandoffError(
+            "org_holding",
+            reason="formal_consumer_domain_mismatch",
+            detail="org_holding consumer requires OrgHoldingContract",
+        )
+    if contract.domain != "org_holding":
+        raise FormalExecutionHandoffError(
+            contract.domain,
+            reason="formal_consumer_domain_mismatch",
+            detail="org_holding consumer received a mismatched contract domain",
+        )
+    verify_org_holding_contract(contract)
+    return contract
+
+
+def receive_stk_holdertrade_contract(contract: Any) -> Any:
+    """stk_holdertrade land/accept entry: same object + factory hash verify."""
+
+    from services.data_sources.stk_holdertrade_contract import (
+        StkHoldertradeContract,
+        verify_stk_holdertrade_contract,
+    )
+
+    if not isinstance(contract, StkHoldertradeContract):
+        raise FormalExecutionHandoffError(
+            "stk_holdertrade",
+            reason="formal_consumer_domain_mismatch",
+            detail="stk_holdertrade consumer requires StkHoldertradeContract",
+        )
+    if contract.domain != "stk_holdertrade":
+        raise FormalExecutionHandoffError(
+            contract.domain,
+            reason="formal_consumer_domain_mismatch",
+            detail="stk_holdertrade consumer received a mismatched contract domain",
+        )
+    verify_stk_holdertrade_contract(contract)
+    return contract
+
+
 _DISCLOSURE_EXECUTION_CONSUMERS: dict[str, Callable[[Any], Any]] = {
     "holders_top10": receive_holders_top10_contract,
+    "org_holding": receive_org_holding_contract,
+    "stk_holdertrade": receive_stk_holdertrade_contract,
 }
 
 
@@ -147,4 +197,6 @@ __all__ = [
     "propagate_formal_execution_contract",
     "receive_holders_top10_contract",
     "receive_margin_execution_contract",
+    "receive_org_holding_contract",
+    "receive_stk_holdertrade_contract",
 ]

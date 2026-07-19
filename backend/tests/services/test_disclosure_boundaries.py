@@ -31,17 +31,28 @@ def test_inventory_declares_three_disclosure_domains() -> None:
     assert inventory["org_holding"]["adapter"] == "miaoxiang"
     assert inventory["org_holding"]["target_table"] == "raw_org_holding_aif10"
     assert inventory["org_holding"]["availability_axis"] == "available_date"
-    assert inventory["org_holding"]["landing_writer"] is None
-    assert inventory["org_holding"]["runtime_state"] == "direct_write_strangler"
+    assert inventory["org_holding"]["landing_writer"] is not None
+    assert inventory["org_holding"]["canonical_writer"] is not None
+    assert (
+        inventory["org_holding"]["runtime_state"]
+        == "formal_path_ready_legacy_direct_write"
+    )
     assert inventory["stk_holdertrade"]["adapter"] == "tushare"
     assert inventory["stk_holdertrade"]["target_table"] == "raw_tushare_stk_holdertrade"
     assert inventory["stk_holdertrade"]["availability_axis"] == "ann_date"
-    assert inventory["stk_holdertrade"]["landing_writer"] is None
-    assert inventory["stk_holdertrade"]["runtime_state"] == "direct_write_strangler"
+    assert inventory["stk_holdertrade"]["landing_writer"] is not None
+    assert inventory["stk_holdertrade"]["canonical_writer"] is not None
+    assert (
+        inventory["stk_holdertrade"]["runtime_state"]
+        == "formal_path_ready_legacy_direct_write"
+    )
     for item in inventory.values():
         assert item["conformity"] == "NONCONFORMING"
         assert item["population_kind"] == "raw_evidence"
         assert item["formal_write"] == "forbidden"
+        assert item["runtime_state"] == "formal_path_ready_legacy_direct_write"
+        assert item["landing_writer"] is not None
+        assert item["canonical_writer"] is not None
 
 
 def test_nonconforming_direct_write_is_authorized_with_explicit_label() -> None:
@@ -70,26 +81,15 @@ def test_formal_conformity_claim_fails_closed_without_accepted_path() -> None:
 
 
 def test_accepted_publication_claims_fail_closed() -> None:
-    # holders_top10 has formal writers: path claims allowed; DatasetSnapshot blocked.
-    for claim in ("accepted", "canonical", "landing", "accepted_partition"):
-        refuse_accepted_publication_claim("holders_top10", claim)
-    with pytest.raises(
-        DisclosureBoundaryError, match="dataset_snapshot"
-    ):
-        refuse_accepted_publication_claim("holders_top10", "DatasetSnapshot")
-    for claim in (
-        "accepted",
-        "canonical",
-        "landing",
-        "DatasetSnapshot",
-        "accepted_partition",
-    ):
-        with pytest.raises(
-            DisclosureBoundaryError,
-            match="accepted_claim_without_formal_path|dataset_snapshot",
-        ):
+    # All three domains have formal writers: path claims allowed; DatasetSnapshot blocked.
+    for domain in ("holders_top10", "org_holding", "stk_holdertrade"):
+        for claim in ("accepted", "canonical", "landing", "accepted_partition"):
+            refuse_accepted_publication_claim(domain, claim)
+        with pytest.raises(DisclosureBoundaryError, match="dataset_snapshot"):
+            refuse_accepted_publication_claim(domain, "DatasetSnapshot")
+        with pytest.raises(DisclosureBoundaryError, match="dataset_snapshot"):
             refuse_formal_disclosure_write_without_accepted_path(
-                "org_holding", publication_claim=claim
+                domain, publication_claim="DatasetSnapshot"
             )
 
 

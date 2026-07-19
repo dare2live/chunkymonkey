@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-19 21:48
+> Snapshot: 2026-07-19 22:00
 
 ## 1. 入口面
 
@@ -86,7 +86,7 @@
 
 ## 3. 产表 writer (单 writer 契约审查素材)
 
-统计: 表 34 张 | 单 writer 22 | 多 writer 12 | 动态表名写点 50 处 (17 文件)
+统计: 表 34 张 | 单 writer 22 | 多 writer 12 | 动态表名写点 56 处 (18 文件)
 
 口径免责: 静态正则扫描, 含历史/backfill 一次性脚本与字符串内 SQL 样例; **多 writer 计数 ≠ 违规待修清单** — 升级为问题需逐表人工确认运行时并发写。
 
@@ -103,6 +103,7 @@
 | backend/services/data_sources/calendar_acceptance.py | 2 |
 | backend/services/data_sources/calendar_landing.py | 3 |
 | backend/services/data_sources/calendar_schema.py | 3 |
+| backend/services/data_sources/disclosure_event_partition.py | 6 |
 | backend/services/data_sources/holders_top10_acceptance.py | 6 |
 | backend/services/data_sources/margin_acceptance.py | 4 |
 | backend/services/data_sources/margin_schema.py | 2 |
@@ -158,17 +159,17 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 5,772 | calls 边 6,802 | imports 边 1,651 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 5,967 | calls 边 7,083 | imports 边 1,822 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
-| services.duck_adapter | 41 |
+| services.duck_adapter | 43 |
 | services.data_sources | 26 |
+| services.data_sources.accepted_schema | 16 |
+| services.data_sources.security_day_partition | 16 |
 | services.data_sources.margin_schema | 14 |
-| services.data_sources.accepted_schema | 13 |
-| services.data_sources.security_day_partition | 13 |
 | services.database_manifest | 13 |
 | services.source_watermarks | 13 |
 | services.data_sources.calendar_schema | 12 |
@@ -184,16 +185,16 @@
 
 | 文件 | 调用方文件数 |
 |---|---|
-| backend/services/duck_adapter.py | 35 |
+| backend/services/duck_adapter.py | 37 |
 | backend/services/source_watermarks.py | 13 |
 | backend/services/database_manifest.py | 11 |
 | backend/services/universe.py | 11 |
 | backend/services/data_sources/contracts.py | 9 |
+| backend/services/data_sources/accepted_schema.py | 7 |
 | backend/services/data_sources/calendar_contract.py | 7 |
 | backend/services/data_sources/calendar_schema.py | 7 |
 | backend/services/data_sources/margin_evidence.py | 7 |
 | backend/services/pipeline/context.py | 7 |
-| backend/services/data_sources/accepted_schema.py | 6 |
 | backend/services/data_sources/margin_schema.py | 6 |
 | backend/services/data_sources/margin_state.py | 6 |
 

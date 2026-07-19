@@ -1,9 +1,9 @@
 """E0 disclosure-domain strangler: typed contracts + fail-closed formal claims.
 
-Transport/research boundary only.  ``holders_top10`` has a formal
-landing→validate→accept tracer; legacy research still reads
-``fact_top10_holder_period`` under ``NONCONFORMING`` until cutover.
-``org_holding`` / ``stk_holdertrade`` remain direct-write stranglers.
+Transport/research boundary only.  All three disclosure domains now declare
+formal landing→validate→accept writers; legacy research still reads
+compatibility tables under ``NONCONFORMING`` until cutover
+(``formal_path_ready_legacy_direct_write``).
 
 This module:
 
@@ -148,6 +148,13 @@ _DISCLOSURE_BOUNDARIES: dict[str, DisclosureDomainBoundary] = {
         target_table="raw_org_holding_aif10",
         availability_axis="available_date",
         availability_rule="disclosure_deadline_upper_bound",
+        runtime_state="formal_path_ready_legacy_direct_write",
+        landing_writer=(
+            "services.data_sources.org_holding_acceptance.land_org_holding_batch"
+        ),
+        canonical_writer=(
+            "services.data_sources.org_holding_acceptance.accept_org_holding_batch"
+        ),
     ),
     "stk_holdertrade": DisclosureDomainBoundary(
         domain="stk_holdertrade",
@@ -156,6 +163,13 @@ _DISCLOSURE_BOUNDARIES: dict[str, DisclosureDomainBoundary] = {
         target_table="raw_tushare_stk_holdertrade",
         availability_axis="ann_date",
         availability_rule="announcement_date_event_time",
+        runtime_state="formal_path_ready_legacy_direct_write",
+        landing_writer=(
+            "services.data_sources.stk_holdertrade_acceptance.land_stk_holdertrade_batch"
+        ),
+        canonical_writer=(
+            "services.data_sources.stk_holdertrade_acceptance.accept_stk_holdertrade_batch"
+        ),
     ),
 }
 
@@ -307,9 +321,10 @@ def attest_disclosure_research_surface() -> DisclosureResearchSurfaceReport:
         domains=domains,
         notes=(
             "e0_disclosure_formalization_in_progress",
-            "holders_top10_formal_path_ready_legacy_direct_write_strangler",
+            "three_domains_formal_path_ready_legacy_direct_write_strangler",
             "legacy_research_reads_allowed_with_nonconforming_label",
             "institution_follow_blocked_until_e0_closed",
+            "dataset_snapshot_blocked_until_direct_write_retirement",
             "b_pit_cutover_remains_blocked_separately",
         ),
     )

@@ -193,9 +193,13 @@ def test_publish_land_accept_roundtrip_fixture(conn) -> None:
     assert status == "ACCEPTED"
 
 
-def test_disclosure_handoff_requires_registered_consumer() -> None:
+def test_disclosure_handoff_rejects_wrong_contract_for_other_domain() -> None:
     contract = load_holders_top10_contract()
+    with pytest.raises(
+        FormalExecutionHandoffError, match="OrgHoldingContract|mismatched"
+    ):
+        propagate_disclosure_execution_contract("org_holding", contract)
     with pytest.raises(
         FormalExecutionHandoffError, match="no disclosure execution consumer"
     ):
-        propagate_disclosure_execution_contract("org_holding", contract)
+        propagate_disclosure_execution_contract("not_a_disclosure_domain", contract)

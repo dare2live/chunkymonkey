@@ -6,7 +6,7 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + 单日 K/ST canary；eligible frontier=`20260717` READY；缺连续历史覆盖/下一交易日）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false` — PIT 池 vs unfiltered 广度分歧为预期，禁切）。**E0 PARTIAL（holders_top10 land→accept tracer；另两域仍直写）**。Fable5 **REVISE** 已吸收。禁 institution_follow 生产至 E0 闭合。
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + 单日 K/ST canary；eligible frontier=`20260717` READY；缺连续历史覆盖/下一交易日）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false` — PIT 池 vs unfiltered 广度分歧为预期，禁切）。**E0 PARTIAL（三域 land→accept tracer 齐；研究仍读 legacy NONCONFORMING；直写未退役）**。Fable5 **REVISE** 已吸收。禁 institution_follow 生产至 E0 闭合。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -43,7 +43,7 @@
 - 白名单仅 `60/00/30/68`；多数域仅前缀过滤；margin v2/pulse 含 BSE 错误 scope。
 - universe/Moth 曾假绿；live ST 污染 breadth/龙虎榜/SW/DC。
 - margin accepted=1823 只证冻结自洽；`20260709/BSE` 出 scope。
-- **多源实况**：TuShare=正式 registry 域唯一 live adapter；东财妙想 aif10/`miaoxiang` 已是十大流通股东等披露域 live 主源。E0：`holders_top10` 已有 formal land→accept tracer（研究仍读 fact NONCONFORMING strangler）；org_holding/stk_holdertrade 仍直写。细节见 ledger。
+- **多源实况**：TuShare=正式 registry 域唯一 live adapter；东财妙想 aif10/`miaoxiang` 已是十大流通股东等披露域 live 主源。E0：三域均有 formal land→accept tracer；研究仍读 legacy tables（`formal_path_ready_legacy_direct_write`）。细节见 ledger。
 
 ## 执行计划（A→H）
 
@@ -69,16 +69,15 @@
 - **E0 PARTIAL（E 硬前置）** `disclosure_boundaries`：三域 inventory
   （holders_top10/org_holding/stk_holdertrade）+ `raw_evidence` + notice/
   available/ann 轴；直写仅 `NONCONFORMING` 许可；`/api/v3/inst/*` sidecar
-  标注且不改研究数值。**holders_top10 tracer FIXED**：schema-owned
-  land→validate→accept（`landing_miaoxiang_holders_top10` /
-  `canonical_top10_float_holders_period` + shared `accepted_schema`）、
-  `propagate_disclosure_execution_contract` 身份 handoff、forged/missing
-  `available_at`/`notice_date` fail-closed；runtime=
-  `formal_path_ready_legacy_direct_write`（研究仍读 fact 表 NONCONFORMING）。
-  sync_runner 裸 `_write_batch` 不得冒充 formal disclosure 发布。
-  **仍阻 E0 闭合 / DatasetSnapshot 冻结**：org_holding + stk_holdertrade
-  尚无 formal writers；三域直写未退役；研究面仍 NONCONFORMING；
-  `cutover_allowed=false`。未闭合则 **E=BLOCKED**。
+  标注且不改研究数值。**三域 land→accept tracer FIXED**：schema-owned
+  writers + shared `disclosure_event_partition` / `accepted_schema`、
+  `propagate_disclosure_execution_contract` 身份 handoff；forged/missing
+  `available_at` / axis dates fail-closed；runtime 均为
+  `formal_path_ready_legacy_direct_write`（研究仍读 compatibility 表
+  NONCONFORMING；未切读 canonical）。sync_runner 裸 `_write_batch` 不得冒充
+  formal disclosure 发布。**仍阻 E0 闭合 / DatasetSnapshot 冻结**：三域
+  直写未退役；研究面仍 NONCONFORMING；`cutover_allowed=false`。未闭合则
+  **E=BLOCKED**。
 - **E** `institution_follow_v1`（首包；B0→B4）。**F** main_rally。**G** 公式+BestChoice。**H** Release/名义价纸面。
 
 ## 边做边测
