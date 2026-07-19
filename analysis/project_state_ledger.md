@@ -1004,3 +1004,17 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Did not**: Optuna, B-pit cutover, margin thaw, multi-year backfill.
 - **Residual**: wire accept edge gates (honest) and/or independent B1
   stock-state scaffold (still cannot claim accept on this alone).
+
+### 2026-07-19 — Phase E: B1 stock-state scaffold (separate; non-claimable)
+
+- Added `services/institution_follow_b1.py`: declares
+  `stock_state_stage_pattern_v0` FeatureBlock on the same disclosure
+  snapshot / B0 context; no Optuna; no paper fills for B1 yet.
+- Verdict always `inconclusive` / `claimable=false` /
+  `b1_scaffold_stock_state_not_measured` (or inherits protocol-ready
+  edge-unmet); canary overclaim still raises.
+- Tests: `test_institution_follow_b1` (3).
+- **Did not**: Tier1 stock-state publish, measured B1 conditional edge,
+  accept, B-pit cutover, Optuna.
+- **Residual**: Tier1 definition/config/snapshot publish + PIT zero-diff
+  + B1 paper vs B0 under identical folds/costs.

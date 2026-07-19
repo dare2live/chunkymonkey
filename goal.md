@@ -6,7 +6,7 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + ~40 交易日名义 K/ST accepted；eligible frontier=`20260717` READY；窗 `20260522`–`20260717`；仍禁 mass backfill / 下一交易日未到）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false` — PIT 池 vs unfiltered 广度分歧为预期，禁切）。**E0 FIXED（gate+mirror off）**：三域 MATCH → `cutover_allowed=true`；formal writes=`formal_only`；provider-field 读 prefer canonical；canary `DatasetSnapshot` 已冻；feature_store 画像=typed enrichment PARTIAL（非 blanket legacy）。**E PARTIAL（bounded measured B0 paper）**：disclosure snapshot=`bounded_accepted_partitions` / `phase_e_ablation=bounded_scope_measured_b0_short_window`；40 日名义 K 上已跑 purged WF（3 folds）+ T+1 paper fills → protocol power ready（`measured.claimable=true`）但 accept edge gates 未接线 → verdict `inconclusive` / `measured_protocol_ready_edge_gates_unmet` / `claimable=false`（禁假 accept）；**B1 仍禁直至独立切片**。Fable5 **REVISE** 已吸收。
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + ~40 交易日名义 K/ST accepted；eligible frontier=`20260717` READY；窗 `20260522`–`20260717`；仍禁 mass backfill / 下一交易日未到）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false` — PIT 池 vs unfiltered 广度分歧为预期，禁切）。**E0 FIXED（gate+mirror off）**：三域 MATCH → `cutover_allowed=true`；formal writes=`formal_only`；provider-field 读 prefer canonical；canary `DatasetSnapshot` 已冻；feature_store 画像=typed enrichment PARTIAL（非 blanket legacy）。**E PARTIAL（bounded measured B0 paper）**：disclosure snapshot=`bounded_accepted_partitions` / `phase_e_ablation=bounded_scope_measured_b0_short_window`；40 日名义 K 上已跑 purged WF（3 folds）+ T+1 paper fills → protocol power ready（`measured.claimable=true`）但 accept edge gates 未接线 → verdict `inconclusive` / `measured_protocol_ready_edge_gates_unmet` / `claimable=false`（禁假 accept）；**B1 scaffold 已立**（独立切片；仍禁假 accept）。Fable5 **REVISE** 已吸收。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -101,9 +101,11 @@
   `claimable=false`（禁假 accept；edge 阈值未接线）。
   `test_phase_e_smoke` + `test_institution_follow_b0` 绿。
   **禁** Optuna/全历史/付费搜索、B-pit mart cutover、mass disclosure
-  backfill、margin thaw。**残余**：接线 accept edge gates（仍诚实）或独立
-  **B1** 股票状态块切片（不可借 B0 假 accept）。**F** main_rally。**G** 公式+BestChoice。
-  **H** Release/名义价纸面。
+  backfill、margin thaw。**B1 scaffold**（独立切片）：
+  `institution_follow_b1` 声明 stock-state FeatureBlock，仍
+  `inconclusive`/`claimable=false`（不可借 B0 protocol power 假 accept）。
+  **残余**：接线 accept edge gates；B1 Tier1 publish + 条件化 paper 实测。
+  **F** main_rally。**G** 公式+BestChoice。**H** Release/名义价纸面。
 
 ## 边做边测
 
