@@ -422,3 +422,16 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   Tier0 仍 `BLOCKED` / `NOT_EVALUATED`。
 - CI 根因（run 29667261457）：DuckDB timestamptz 需 `pytz`；dead-references 扫 `services.rally_gt` 时缺
   `pandas` 被误报为死引用。`.github/workflows/ci.yml` 离线依赖补 `pytz pandas`。
+  后续 push `0b40e07d` CI run `29686700408` = success。
+
+### 2026-07-19 — Phase A1 DatasetExecutionContract 传播闭合
+
+- A1 **complete**（非 PARTIAL）：`bind_execution_contract` 出口 `verify_execution_contract`；新增
+  `formal_execution.propagate_formal_execution_contract` + margin consumer
+  `receive_margin_execution_contract`；`require_same_execution_contract` 证明 consumer 收到同一对象（`is`）。
+- `sync_runner._require_formal_population_execution` 绑定后强制 handoff；成功则 `run_domain`/`drain_domain`
+  走 `_refuse_formal_domain_runtime`（margin=`formal_runtime_retired`），不再假墙
+  “bind 后永远 `execution_contract_not_propagated`”。无注册 consumer 的 formal 域仍该 reason。
+- margin 仍 `scope_blocked` / live-write frozen；未做 provider fetch、consumer cutover、calendar live accepted。
+- 对抗测：`test_formal_execution` + `test_population_scope` verify/identity + `test_sync_execution_policy`
+  = `69 passed`。Tier0 仍 `BLOCKED` / `NOT_EVALUATED`；下一刀 A2。

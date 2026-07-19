@@ -316,7 +316,7 @@ def test_enabled_margin_cannot_delete_contract_and_fall_into_legacy_runner(monke
     assert caught.value.reason == "invalid_dataset_contract"
 
 
-def test_parsed_scope_cannot_be_discarded_by_legacy_formal_runner(monkeypatch):
+def test_parsed_scope_propagates_then_refuses_retired_formal_runtime(monkeypatch):
     for name in ("eligible_end_date", "_adapter", "_target_conn", "_smartmoney_conn"):
         monkeypatch.setattr(sr, name, _forbidden(name))
     scope = {
@@ -330,12 +330,35 @@ def test_parsed_scope_cannot_be_discarded_by_legacy_formal_runner(monkeypatch):
 
     with pytest.raises(
         sr.PopulationScopeExecutionError,
-        match="DatasetExecutionContract is not propagated",
+        match="propagated to margin consumer",
     ) as caught:
         sr.run_domain(
             "margin",
             registry=_enabled_formal_margin_registry(population_scope=scope),
         )
+
+    assert caught.value.reason == "formal_runtime_retired"
+
+
+def test_formal_domain_without_consumer_still_blocks_as_not_propagated(monkeypatch):
+    spec = sr.domain_spec(sr.load_registry(), "margin")
+    spec["domain"] = "orphan_formal"
+    spec["execution_policy"] = {"mode": "enabled", "reason": "active"}
+    spec["dataset_contract"] = {
+        **spec["dataset_contract"],
+        "dataset_id": "tier0.market_data.orphan_formal_daily",
+        "schema_id": "tier0.market_data.orphan_formal_daily.canonical",
+        "canonical_table": "canonical_orphan_formal_daily",
+    }
+    registry = {"defaults": {}, "domains": {"orphan_formal": spec}}
+    for name in ("eligible_end_date", "_adapter", "_target_conn", "_smartmoney_conn"):
+        monkeypatch.setattr(sr, name, _forbidden(name))
+
+    with pytest.raises(
+        sr.PopulationScopeExecutionError,
+        match="no formal execution consumer is registered",
+    ) as caught:
+        sr.run_domain("orphan_formal", registry=registry)
 
     assert caught.value.reason == "execution_contract_not_propagated"
 

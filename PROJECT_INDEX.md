@@ -21,7 +21,7 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | `accepted_schema.py` 统一固定 batch/pointer 结构验证；calendar contract/schema/landing/acceptance/reader 仅是 `REVISE` 隔离原型，无 live 表、batch、pointer 或 consumer。Kline/ST accepted truth 仍未建立，live readiness 为 `NOT_EVALUATED` |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | `accepted_schema.py` 统一固定 batch/pointer 结构验证；`population_scope.py` + `formal_execution.py` 负责 formal `DatasetExecutionContract` bind/verify/consumer `is` 传播（A1 已闭合）；calendar contract/schema/landing/acceptance/reader 仍是 `REVISE` 隔离原型，无 live 表、batch、pointer 或 consumer。Kline/ST accepted truth 仍未建立，live readiness 为 `NOT_EVALUATED` |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
 | T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 当前展示可用；分类解释、measurement、regime 和 persistence 耦合，暂不可直接做 PIT 特征 |
@@ -101,6 +101,12 @@ ops/governance    jobs, alerts, projections and gates
 ```
 
 First establish `DatasetContract` and writer ownership around existing files. Move physical files only when a bounded-context migration has a passing shadow comparison.
+
+Formal 执行契约物理 owner：`population_scope.py`（factory bind + `verify_execution_contract`）、
+`formal_execution.py`（domain consumer 注册与 `propagate_formal_execution_contract` identity 门）、
+`sync_runner.py`（`_require_formal_population_execution` → 传播成功后 `_refuse_formal_domain_runtime`，
+禁止 legacy 落穿）。margin consumer 传播后 reason=`formal_runtime_retired`；无 consumer 仍
+`execution_contract_not_propagated`。margin 仍 `scope_blocked` / live-write frozen。
 
 当前 margin read path 的物理 owner：`margin_evidence.py` 负责固定查询快照，`margin_state.py` 负责
 accepted proof，`margin_legacy_reconcile.py`/`margin_reconcile.py` 负责纯比较与现场编排，

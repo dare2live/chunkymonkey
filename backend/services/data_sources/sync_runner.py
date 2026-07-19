@@ -199,18 +199,11 @@ def _formal_dataset_contract_for_spec(spec: Mapping[str, Any]):
     return contract
 
 
-def _require_formal_population_execution(spec: Mapping[str, Any], contract) -> None:
-    """Validate a formal scope, then block until that exact object is propagated.
-
-    The frozen margin v2 runner accepts only ``DatasetContract``.  Allowing a
-    successfully parsed population scope to be discarded here would recreate
-    the same false gate.  A future generation must pass the returned
-    ``DatasetExecutionContract`` through acceptance/state/audit before this
-    temporary terminal block can be removed.
-    """
+def _bind_formal_execution_contract(spec: Mapping[str, Any], contract):
+    """Bind + verify one DatasetExecutionContract; None when the domain is legacy."""
 
     if contract is None:
-        return
+        return None
     domain = str(spec.get("domain") or getattr(contract, "domain", "unknown"))
     from services.data_sources.population_scope import bind_execution_contract
 
@@ -221,17 +214,71 @@ def _require_formal_population_execution(spec: Mapping[str, Any], contract) -> N
 
         policy = load_universe_policy()
     try:
-        bind_execution_contract(contract, spec, policy)
+        return bind_execution_contract(contract, spec, policy)
     except (TypeError, ValueError) as exc:
         raise PopulationScopeExecutionError(
             domain,
             reason="invalid_population_scope",
             detail=f"population scope invalid: {exc}",
         ) from exc
+
+
+def _require_formal_population_execution(spec: Mapping[str, Any], contract):
+    """Bind a formal scope and prove the same object reaches its consumer.
+
+    Returns the attested ``DatasetExecutionContract`` for formal domains, or
+    ``None`` for legacy domains.  After a successful handoff the caller must
+    enter the formal runtime path and must not fall through to legacy sync.
+    """
+
+    execution = _bind_formal_execution_contract(spec, contract)
+    if execution is None:
+        return None
+    domain = str(spec.get("domain") or execution.dataset.domain)
+    from services.data_sources.formal_execution import (
+        FormalExecutionHandoffError,
+        propagate_formal_execution_contract,
+    )
+
+    try:
+        return propagate_formal_execution_contract(domain, execution)
+    except FormalExecutionHandoffError as exc:
+        raise PopulationScopeExecutionError(
+            exc.domain,
+            reason=exc.reason,
+            detail=exc.detail,
+        ) from exc
+
+
+def _refuse_formal_domain_runtime(domain: str, execution) -> dict[str, Any]:
+    """Formal domains with a propagated contract never enter the legacy runner."""
+
+    from services.data_sources.population_scope import verify_execution_contract
+
+    attested = verify_execution_contract(execution)
+    if attested.dataset.domain != domain:
+        raise PopulationScopeExecutionError(
+            domain,
+            reason="formal_consumer_domain_mismatch",
+            detail="execution contract domain does not match selected domain",
+        )
+    if domain == "margin":
+        raise PopulationScopeExecutionError(
+            domain,
+            reason="formal_runtime_retired",
+            detail=(
+                "DatasetExecutionContract propagated to margin consumer, but the "
+                "margin v2 live sync/writer runtime is retired; frozen evidence "
+                "remains read-only"
+            ),
+        )
     raise PopulationScopeExecutionError(
         domain,
-        reason="execution_contract_not_propagated",
-        detail="population scope parsed but DatasetExecutionContract is not propagated",
+        reason="formal_runtime_unregistered",
+        detail=(
+            "DatasetExecutionContract propagated but no formal sync runtime is "
+            "implemented for this domain"
+        ),
     )
 
 
@@ -243,7 +290,13 @@ def preflight_formal_population_scopes(
     for domain in domains:
         spec = domain_spec(registry, domain)
         contract = _formal_dataset_contract_for_spec(spec)
-        _require_formal_population_execution(spec, contract)
+        execution = _require_formal_population_execution(spec, contract)
+        if execution is not None:
+            # Preflight only attests handoff.  Enabled formal domains still cannot
+            # reach provider/DB here; run_domain refuses the retired runtime next.
+            from services.data_sources.population_scope import verify_execution_contract
+
+            verify_execution_contract(execution)
 
 
 def load_registry(path: Path | None = None) -> dict[str, Any]:
@@ -1421,7 +1474,9 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
     spec = domain_spec(reg, domain)
     _require_execution_enabled(spec)
     formal_contract = _formal_dataset_contract_for_spec(spec)
-    _require_formal_population_execution(spec, formal_contract)
+    formal_execution = _require_formal_population_execution(spec, formal_contract)
+    if formal_execution is not None:
+        return _refuse_formal_domain_runtime(domain, formal_execution)
     if max_dates is not None:
         raise SyncWindowError("--max-dates is only valid for --drain")
     batch_mode = str(spec["batch_mode"])
@@ -1840,7 +1895,9 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     spec = domain_spec(reg, domain)
     _require_execution_enabled(spec)
     formal_contract = _formal_dataset_contract_for_spec(spec)
-    _require_formal_population_execution(spec, formal_contract)
+    formal_execution = _require_formal_population_execution(spec, formal_contract)
+    if formal_execution is not None:
+        return _refuse_formal_domain_runtime(domain, formal_execution)
     if spec.get("batch_mode") != "by_trade_date":
         return {"domain": domain, "status": "unsupported", "batch_mode": spec.get("batch_mode")}
     if spec.get("allow_empty_batch") and not spec.get("cross_check_domain"):

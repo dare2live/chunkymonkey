@@ -14,6 +14,8 @@ from services.data_sources.population_scope import (
     ProjectUniversePitScope,
     RawEvidenceScope,
     bind_execution_contract,
+    require_same_execution_contract,
+    verify_execution_contract,
 )
 from services.universe import UniversePolicy, load_universe_policy
 
@@ -344,6 +346,25 @@ def test_execution_contract_cannot_be_constructed_without_binder():
             None,
             "fake",
         )
+
+
+def test_verify_rejects_tampered_execution_hash():
+    bound = bind_execution_contract(_dataset(), _external_spec(), None)
+    object.__setattr__(bound, "execution_hash", "0" * 64)
+
+    with pytest.raises(ValueError, match="execution_hash does not match"):
+        verify_execution_contract(bound)
+
+
+def test_require_same_execution_contract_proves_object_identity():
+    first = bind_execution_contract(_dataset(), _external_spec(), None)
+    second = bind_execution_contract(_dataset(), _external_spec(), None)
+
+    assert require_same_execution_contract(first, first) is first
+    with pytest.raises(ValueError, match="identity mismatch"):
+        require_same_execution_contract(first, second)
+    with pytest.raises(ValueError, match="not propagated"):
+        require_same_execution_contract(first, None)
 
 
 @pytest.mark.parametrize(

@@ -333,6 +333,80 @@ def _project_scope(
     return scope
 
 
+def _execution_hash_for(
+    dataset: DatasetContract,
+    landing_scope: RawEvidenceScope,
+    accepted_scope: PopulationScope,
+    policy: UniversePolicy | None,
+) -> str:
+    policy_binding = (
+        {
+            "policy_id": policy.policy_id,
+            "policy_version": policy.policy_version,
+            "policy_config_hash": policy.config_hash,
+        }
+        if policy is not None
+        else None
+    )
+    return _hash(
+        {
+            "dataset_contract_hash": dataset.contract_hash,
+            "dataset_config_hash": dataset.config_hash,
+            "landing_scope": landing_scope.payload(),
+            "accepted_scope": accepted_scope.payload(),
+            "universe_policy": policy_binding,
+        }
+    )
+
+
+def verify_execution_contract(
+    contract: DatasetExecutionContract,
+) -> DatasetExecutionContract:
+    """Recompute execution_hash so tampered/replaced contracts fail closed."""
+
+    if type(contract) is not DatasetExecutionContract:
+        raise ValueError("execution contract must be factory-owned")
+    if not isinstance(contract.dataset, DatasetContract):
+        raise ValueError("execution contract dataset must be a DatasetContract")
+    if type(contract.landing_scope) is not RawEvidenceScope:
+        raise ValueError("execution contract landing_scope must be RawEvidenceScope")
+    if _SHA256_HEX.fullmatch(contract.dataset.contract_hash) is None:
+        raise ValueError(
+            f"{contract.dataset.domain}: dataset contract_hash must be 64 lowercase hex"
+        )
+    if _SHA256_HEX.fullmatch(contract.dataset.config_hash) is None:
+        raise ValueError(
+            f"{contract.dataset.domain}: dataset config_hash must be 64 lowercase hex"
+        )
+    if contract.universe_policy is not None:
+        verify_universe_policy(contract.universe_policy)
+    expected = _execution_hash_for(
+        contract.dataset,
+        contract.landing_scope,
+        contract.accepted_scope,
+        contract.universe_policy,
+    )
+    if contract.execution_hash != expected:
+        raise ValueError(
+            f"{contract.dataset.domain}: execution_hash does not match "
+            "factory-owned payload"
+        )
+    return contract
+
+
+def require_same_execution_contract(
+    expected: DatasetExecutionContract,
+    received: DatasetExecutionContract | None,
+) -> DatasetExecutionContract:
+    """Prove one immutable execution contract object reached its consumer."""
+
+    if received is None:
+        raise ValueError("DatasetExecutionContract is not propagated")
+    if received is not expected:
+        raise ValueError("DatasetExecutionContract identity mismatch")
+    return verify_execution_contract(received)
+
+
 def bind_execution_contract(
     dataset: DatasetContract,
     spec: Mapping[str, Any],
@@ -371,23 +445,10 @@ def bind_execution_contract(
         raise ValueError(
             f"{dataset.domain}: dataset config_hash must be 64 lowercase hex"
         )
-    policy_binding = (
-        {
-            "policy_id": policy.policy_id,
-            "policy_version": policy.policy_version,
-            "policy_config_hash": policy.config_hash,
-        }
-        if policy is not None
-        else None
-    )
-    execution_hash = _hash(
-        {
-            "dataset_contract_hash": dataset.contract_hash,
-            "dataset_config_hash": dataset.config_hash,
-            "landing_scope": landing_scope.payload(),
-            "accepted_scope": accepted_scope.payload(),
-            "universe_policy": policy_binding,
-        }
+    if policy is not None:
+        verify_universe_policy(policy)
+    execution_hash = _execution_hash_for(
+        dataset, landing_scope, accepted_scope, policy
     )
     bound = object.__new__(DatasetExecutionContract)
     object.__setattr__(bound, "dataset", dataset)
@@ -395,7 +456,7 @@ def bind_execution_contract(
     object.__setattr__(bound, "accepted_scope", accepted_scope)
     object.__setattr__(bound, "universe_policy", policy)
     object.__setattr__(bound, "execution_hash", execution_hash)
-    return bound
+    return verify_execution_contract(bound)
 
 
 __all__ = [
@@ -406,4 +467,6 @@ __all__ = [
     "PopulationScope",
     "RawEvidenceScope",
     "bind_execution_contract",
+    "require_same_execution_contract",
+    "verify_execution_contract",
 ]
