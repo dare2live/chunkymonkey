@@ -168,9 +168,9 @@ def test_b0_scaffold_consumes_frozen_snapshot_and_surface_status() -> None:
         "nominal_execution_truth",
     }
     assert all(h.status.startswith("declared") for h in run.pit_hooks)
-    assert verdict.verdict == "inconclusive"
     assert verdict.claimable is False
     if is_canary_scope(frozen):
+        assert verdict.verdict == "inconclusive"
         assert verdict.blocked is True
         assert verdict.reason == REASON_CANARY_SCOPE_ONLY
         assert "canary_scope_blocks_claimable_verdict" in run.notes
@@ -184,8 +184,12 @@ def test_b0_scaffold_consumes_frozen_snapshot_and_surface_status() -> None:
             assert verdict.blocked is True
             assert verdict.claimable is False
             if run.measured_b0.claimable:
+                # Protocol power ok but edge gates fail on live short window.
+                assert verdict.verdict == "reject"
                 assert verdict.reason == REASON_PROTOCOL_READY_EDGE_UNMET
+                assert verdict.details["accept_edge_gates"]["passed"] is False
             else:
+                assert verdict.verdict == "inconclusive"
                 assert verdict.reason == REASON_MEASURED_SHORT_WINDOW
             assert run.bare_k_coverage.accepted_nominal_day_count >= (
                 MIN_ACCEPTED_NOMINAL_DAYS_FOR_MEASURED_B0
@@ -199,6 +203,7 @@ def test_b0_scaffold_consumes_frozen_snapshot_and_surface_status() -> None:
             assert metrics["capacity"] == UNKNOWN
             assert metrics["annualized_return"] == UNKNOWN
         else:
+            assert verdict.verdict == "inconclusive"
             assert verdict.blocked is True
             assert verdict.reason == REASON_MEASURED_COVERAGE_INSUFFICIENT
             assert run.bare_k_coverage.sufficient_for_measured_b0 is False
@@ -406,10 +411,71 @@ def test_measured_40d_protocol_ready_still_not_accept() -> None:
     assert run.measured_b0.claimable is True
     assert run.measured_b0.walk_forward.protocol == "purged_walk_forward"
     verdict = finalize_b0_verdict(run, requested_verdict="accept")
-    assert verdict.verdict == "inconclusive"
+    # Wired edge gates: synthetic momentum loses money / breaches DD → reject.
+    assert verdict.verdict == "reject"
     assert verdict.claimable is False
     assert verdict.blocked is True
     assert verdict.reason == REASON_PROTOCOL_READY_EDGE_UNMET
+    gates = verdict.details["accept_edge_gates"]
+    assert gates["passed"] is False
+    assert "holdout_ok" in gates["checks"]
+    assert "drawdown_ok" in gates["checks"]
+    assert "eval_ok" in gates["checks"]
+    assert "trades_ok" in gates["checks"]
+
+
+def test_accept_edge_gates_pass_only_when_all_thresholds_met() -> None:
+    from services.institution_follow_b0_measure import (
+        B0Prereg,
+        BareKPaperMetrics,
+        evaluate_accept_edge_gates,
+        plan_walk_forward,
+    )
+
+    days = _weekday_compact_days(MIN_DAYS_FULL_PURGED_WF)
+    plan = plan_walk_forward(days)
+    assert plan.claimable_protocol is True
+    good = BareKPaperMetrics(
+        total_return=0.05,
+        max_drawdown=0.10,
+        win_rate=0.55,
+        payoff_ratio=1.2,
+        turnover=1.0,
+        n_signals=30,
+        n_trades_completed=40,
+        n_unfilled=0,
+        n_incomplete_exit=0,
+    )
+    holdout = BareKPaperMetrics(
+        total_return=0.02,
+        max_drawdown=0.05,
+        win_rate=0.6,
+        payoff_ratio=1.1,
+        turnover=0.5,
+        n_signals=2,
+        n_trades_completed=5,
+        n_unfilled=0,
+        n_incomplete_exit=0,
+    )
+    edge = evaluate_accept_edge_gates(plan, good, holdout, prereg=B0Prereg())
+    assert edge.passed is True
+
+    bad_dd = BareKPaperMetrics(
+        total_return=0.05,
+        max_drawdown=0.40,
+        win_rate=0.55,
+        payoff_ratio=1.2,
+        turnover=1.0,
+        n_signals=30,
+        n_trades_completed=40,
+        n_unfilled=0,
+        n_incomplete_exit=0,
+    )
+    edge_bad = evaluate_accept_edge_gates(
+        plan, bad_dd, holdout, prereg=B0Prereg()
+    )
+    assert edge_bad.passed is False
+    assert edge_bad.checks["drawdown_ok"] is False
 
 
 def test_b0_ready_coverage_without_paper_still_scaffold() -> None:

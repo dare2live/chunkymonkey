@@ -1,19 +1,7 @@
 """institution_follow B0 bare-K research (Phase E).
 
-Consumes the frozen disclosure ``DatasetSnapshot`` and research
-``surface_status``. Builds an ``ExperimentRun`` with declared PIT / holdout
-hooks, measures accepted nominal-K coverage, then (when coverage is ready)
-runs an honest short-window walk-forward + paper-fill measurement.
-
-Honesty rules:
-- ``canary_accepted_partitions`` / ``blocked_canary_scope_only`` →
-  ``inconclusive`` + ``canary_scope_only`` (never accept).
-- ``bounded_accepted_partitions`` → measure overlapping eligible window;
-  if accepted K coverage is insufficient → ``inconclusive`` with
-  ``measured_coverage_insufficient`` (still never fake accept).
-- Short windows use ``honest_minimal_short_window`` WF + paper fills;
-  verdict stays ``inconclusive`` / non-claimable unless prereg power gates pass.
-- Optuna / B1+ remain residual.
+Frozen disclosure DatasetSnapshot + surface_status → coverage → paper WF.
+Canary never accepts; edge gates reject when protocol-ready but unmet.
 """
 from __future__ import annotations
 
@@ -44,6 +32,11 @@ from services.institution_follow_b0_measure import (
     load_nominal_bars_by_day,
     measure_b0_paper,
 )
+from services.institution_follow_edge_gates import (
+    REASON_EDGE_GATES_PASSED,
+    REASON_EDGE_GATES_UNMET,
+    evaluate_accept_edge_gates,
+)
 
 STRATEGY_PACKAGE = "institution_follow_v1"
 BLOCK_ID = "B0"
@@ -56,6 +49,8 @@ REASON_CANARY_SCOPE_ONLY = "canary_scope_only"
 REASON_MEASURED_COVERAGE_INSUFFICIENT = "measured_coverage_insufficient"
 REASON_MEASURED_SHORT_WINDOW = REASON_SHORT_WINDOW
 REASON_PROTOCOL_READY_EDGE_UNMET = "measured_protocol_ready_edge_gates_unmet"
+REASON_ACCEPT_EDGE_GATES_UNMET = REASON_EDGE_GATES_UNMET
+REASON_ACCEPT_EDGE_GATES_PASSED = REASON_EDGE_GATES_PASSED
 REASON_SCAFFOLD_NO_MEASURED_EDGE = "scaffold_no_measured_edge"
 # Bare-K needs a multi-day nominal window for any forward-return measurement.
 MIN_ACCEPTED_NOMINAL_DAYS_FOR_MEASURED_B0 = 5
@@ -588,10 +583,6 @@ def finalize_b0_verdict(
 
     coverage = run.bare_k_coverage
     if coverage is not None and not coverage.sufficient_for_measured_b0:
-        if wants_accept:
-            # Explicit overclaim on thin measured window — still refuse, but
-            # do not raise canary error; return honest inconclusive.
-            pass
         return ExperimentVerdict(
             verdict="inconclusive",
             reason=REASON_MEASURED_COVERAGE_INSUFFICIENT,
@@ -607,18 +598,30 @@ def finalize_b0_verdict(
                 "cutover_allowed": run.cutover_allowed,
                 "bare_k_coverage": coverage.as_dict(),
                 "metrics": "coverage_measured_insufficient",
-                "note": (
-                    "accepted nominal OHLCV window too thin for claimable "
-                    "bare-K edge; A3 daily canary may still be single-day"
-                ),
+                "note": "accepted nominal OHLCV window too thin for bare-K edge",
             },
         )
 
     measured = run.measured_b0
     if measured is not None:
-        # Measured short-window path: report metrics; claimable only if prereg
-        # power gates pass (8-day window does not).
-        if wants_accept and not measured.claimable:
+        edge = evaluate_accept_edge_gates(
+            measured.walk_forward,
+            measured.metrics,
+            measured.holdout_metrics,
+            prereg=measured.prereg,
+        )
+        base = {
+            "requested_verdict": requested_verdict,
+            "metrics": measured.metrics.as_dict(),
+            "holdout_metrics": measured.holdout_metrics.as_dict(),
+            "walk_forward": measured.walk_forward.as_dict(),
+            "accept_edge_gates": edge.as_dict(),
+            "bare_k_coverage": coverage.as_dict() if coverage else None,
+            "paper_fills": "measured",
+            "surface_status": run.surface_status,
+            "prereg": measured.prereg.as_dict(),
+        }
+        if not measured.claimable:
             return ExperimentVerdict(
                 verdict="inconclusive",
                 reason=REASON_MEASURED_SHORT_WINDOW,
@@ -626,69 +629,31 @@ def finalize_b0_verdict(
                 experiment_id=run.experiment_id,
                 block=run.block,
                 claimable=False,
-                details={
-                    "requested_verdict": requested_verdict,
-                    "metrics": measured.metrics.as_dict(),
-                    "holdout_metrics": measured.holdout_metrics.as_dict(),
-                    "walk_forward": measured.walk_forward.as_dict(),
-                    "bare_k_coverage": coverage.as_dict() if coverage else None,
-                    "note": (
-                        "paper metrics measured under honest minimal WF; "
-                        "prereg power gates not met — not claimable"
-                    ),
-                },
+                details={**base, "protocol_claimable": False,
+                         "note": "prereg power gates not met"},
             )
-        if measured.claimable:
-            # Protocol power only — still require explicit positive edge gates
-            # before accept; never auto-accept on power alone.
+        if edge.passed:
             return ExperimentVerdict(
-                verdict="inconclusive",
-                reason=REASON_PROTOCOL_READY_EDGE_UNMET,
-                blocked=True,
+                verdict="accept",
+                reason=REASON_ACCEPT_EDGE_GATES_PASSED,
+                blocked=False,
                 experiment_id=run.experiment_id,
                 block=run.block,
-                claimable=False,
-                details={
-                    "requested_verdict": requested_verdict,
-                    "metrics": measured.metrics.as_dict(),
-                    "holdout_metrics": measured.holdout_metrics.as_dict(),
-                    "walk_forward": measured.walk_forward.as_dict(),
-                    "paper_fills": "measured",
-                    "surface_status": run.surface_status,
-                    "bare_k_coverage": coverage.as_dict() if coverage else None,
-                    "prereg": measured.prereg.as_dict(),
-                    "protocol_claimable": True,
-                    "note": "protocol power ok but accept edge thresholds not wired",
-                },
+                claimable=True,
+                details={**base, "protocol_claimable": True,
+                         "note": "protocol power + accept edge gates passed"},
             )
-        verdict_m: VerdictKind = requested_verdict or "inconclusive"
-        if verdict_m == "accept":
-            verdict_m = "inconclusive"
         return ExperimentVerdict(
-            verdict=verdict_m,
-            reason=(
-                REASON_MEASURED_SHORT_WINDOW
-                if verdict_m == "inconclusive"
-                else "explicit"
-            ),
+            verdict="reject",
+            reason=REASON_PROTOCOL_READY_EDGE_UNMET,
             blocked=True,
             experiment_id=run.experiment_id,
             block=run.block,
             claimable=False,
-            details={
-                "requested_verdict": requested_verdict,
-                "metrics": measured.metrics.as_dict(),
-                "holdout_metrics": measured.holdout_metrics.as_dict(),
-                "walk_forward": measured.walk_forward.as_dict(),
-                "paper_fills": "measured",
-                "surface_status": run.surface_status,
-                "bare_k_coverage": coverage.as_dict() if coverage else None,
-                "prereg": measured.prereg.as_dict(),
-                "protocol_claimable": False,
-            },
+            details={**base, "protocol_claimable": True,
+                     "note": "accept edge gates unmet"},
         )
 
-    # Broader/ready coverage path still has no paper edge metrics here.
     verdict: VerdictKind = requested_verdict or "inconclusive"
     if verdict == "accept":
         return ExperimentVerdict(
@@ -702,13 +667,9 @@ def finalize_b0_verdict(
                 "requested_verdict": requested_verdict,
                 "metrics": "unknown",
                 "bare_k_coverage": coverage.as_dict() if coverage else None,
-                "note": (
-                    "B0 cannot accept without measured paper results "
-                    "(WF/paper residual)"
-                ),
+                "note": "B0 cannot accept without measured paper results",
             },
         )
-
     return ExperimentVerdict(
         verdict=verdict,
         reason=(
@@ -779,6 +740,8 @@ __all__ = [
     "InstitutionFollowB0Run",
     "MIN_ACCEPTED_NOMINAL_DAYS_FOR_MEASURED_B0",
     "PitHookSpec",
+    "REASON_ACCEPT_EDGE_GATES_PASSED",
+    "REASON_ACCEPT_EDGE_GATES_UNMET",
     "REASON_CANARY_SCOPE_ONLY",
     "REASON_MEASURED_COVERAGE_INSUFFICIENT",
     "REASON_MEASURED_SHORT_WINDOW",

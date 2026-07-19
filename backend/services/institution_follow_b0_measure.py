@@ -4,7 +4,18 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal, Mapping, Sequence
 
-from services.data_sources.nominal_ohlcv_schema import CANONICAL_TABLE
+from services.institution_follow_edge_gates import (
+    MAX_DRAWDOWN_ACCEPT,
+    MIN_HOLDOUT_NET_RETURN_ACCEPT,
+    REASON_EDGE_GATES_PASSED,
+    REASON_EDGE_GATES_UNMET,
+    REASON_SHORT_WINDOW,
+    REQUIRE_EVAL_TOTAL_RETURN_POSITIVE,
+    AcceptEdgeGateResult,
+    evaluate_accept_edge_gates,
+    evaluate_protocol_power,
+)
+from services.institution_follow_nominal_bars import load_nominal_bars_by_day
 from services.universe import ACTIVE_A_SHARE_PREFIXES
 
 ProtocolKind = Literal["purged_walk_forward", "honest_minimal_short_window"]
@@ -20,7 +31,6 @@ COMMISSION_RATE = 0.00025
 STAMP_TAX_RATE = 0.001
 SLIPPAGE_RATE = 0.0005
 BOARD_PREFIXES = tuple(ACTIVE_A_SHARE_PREFIXES)
-REASON_SHORT_WINDOW = "measured_short_window_insufficient_power"
 REASON_PAPER_MEASURED = "measured_b0_paper_short_window"
 
 
@@ -40,12 +50,24 @@ class B0Prereg:
     entry: str = "t1_nominal_open"
     exit: str = "t2_nominal_open"
     board_prefixes: tuple[str, ...] = BOARD_PREFIXES
+    min_holdout_net_return: float = MIN_HOLDOUT_NET_RETURN_ACCEPT
+    max_drawdown_accept: float = MAX_DRAWDOWN_ACCEPT
+    min_trades_accept: int = MIN_TRADES_CLAIMABLE
+    require_eval_total_return_positive: bool = REQUIRE_EVAL_TOTAL_RETURN_POSITIVE
 
     def as_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["board_prefixes"] = list(self.board_prefixes)
         d["capacity_model"] = UNKNOWN
         d["suspend_limit_model"] = "stub"
+        d["accept_edge_gates"] = {
+            "min_holdout_net_return_exclusive": self.min_holdout_net_return,
+            "max_drawdown_accept": self.max_drawdown_accept,
+            "min_trades_accept": self.min_trades_accept,
+            "require_eval_total_return_positive": (
+                self.require_eval_total_return_positive
+            ),
+        }
         return d
 
 
@@ -231,8 +253,6 @@ def plan_walk_forward(
         holdout = days[-holdout_n:]
         embargo_dates = days[-(holdout_n + embargo) : -holdout_n]
         train = days[: -(holdout_n + embargo)]
-        # Eval for the single fold = train signal dates that still have exit
-        # inside the non-holdout region (exit needs +2 trading days).
         eval_cut = len(train) - (horizon + 1)
         eval_dates = train[: max(eval_cut, 0)]
         fold = WalkForwardFold(
@@ -261,7 +281,6 @@ def plan_walk_forward(
             one_touch_holdout=True,
         )
 
-    # Three expanding purged folds; last cut leaves embargo + eval inside body.
     holdout = days[-holdout_n:]
     body = days[:-holdout_n]
     body_n = len(body)
@@ -320,17 +339,26 @@ def _bar_index(
     return out
 
 
+def _code6(ts_code: str) -> str:
+    return str(ts_code or "").split(".", 1)[0]
+
+
 def _select_top_k(
     day_bars: Mapping[str, Mapping[str, Any]],
     *,
     prereg: B0Prereg,
     st_codes: set[str],
+    eligible_codes: set[str] | None = None,
 ) -> list[str]:
     scored: list[tuple[float, str]] = []
     for code, bar in day_bars.items():
         if not _board_ok(code, prereg.board_prefixes):
             continue
-        if code in st_codes or code.split(".", 1)[0] in st_codes:
+        if code in st_codes or _code6(code) in st_codes:
+            continue
+        if eligible_codes is not None and (
+            code not in eligible_codes and _code6(code) not in eligible_codes
+        ):
             continue
         if is_suspended(bar):
             continue
@@ -349,24 +377,14 @@ def _signal_role(
     exit_date: str,
     plan: WalkForwardPlan,
 ) -> str | None:
-    """Return fold role for a completable signal, or None if purged/blocked."""
-
     holdout = set(plan.holdout_dates)
-    embargo = set()
-    for fold in plan.folds:
-        embargo.update(fold.embargo_dates)
-
-    # One-touch holdout: entry on a reserved holdout day. Signal may sit on
-    # the embargo boundary (features use only signal-day info); train labels
-    # must not overlap this entry.
+    embargo = {d for fold in plan.folds for d in fold.embargo_dates}
     if entry_date in holdout:
         if exit_date not in set(plan.trading_days):
             return None
         if entry_date in embargo or exit_date in embargo:
             return None
         return "one_touch_holdout"
-
-    # Eval path: full lifecycle stays before embargo/holdout (no leakage).
     if (
         signal_date in holdout
         or entry_date in holdout
@@ -543,8 +561,9 @@ def simulate_paper_fills(
     *,
     prereg: B0Prereg | None = None,
     st_codes: Sequence[str] | None = None,
+    eligible_by_day: Mapping[str, set[str]] | None = None,
 ) -> tuple[PaperFillRecord, ...]:
-    """T+1 nominal open entry, T+2 open exit, with cost + limit/suspend stubs."""
+    """T+1 nominal open → T+2 open; optional ``eligible_by_day`` for B1."""
 
     cfg = prereg or B0Prereg()
     days = list(plan.trading_days)
@@ -561,8 +580,16 @@ def simulate_paper_fills(
         role = _signal_role(signal_date, entry_date, exit_date, plan)
         if role is None:
             continue
+        eligible = (
+            set(eligible_by_day.get(signal_date) or ())
+            if eligible_by_day is not None
+            else None
+        )
         for code in _select_top_k(
-            by_day.get(signal_date) or {}, prereg=cfg, st_codes=st_set
+            by_day.get(signal_date) or {},
+            prereg=cfg,
+            st_codes=st_set,
+            eligible_codes=eligible,
         ):
             fills.append(
                 _simulate_one(
@@ -667,16 +694,9 @@ def evaluate_claimable(
     *,
     prereg: B0Prereg | None = None,
 ) -> tuple[bool, str]:
-    cfg = prereg or B0Prereg()
-    if not plan.claimable_protocol:
-        return False, REASON_SHORT_WINDOW
-    if metrics.n_trades_completed < cfg.min_trades_claimable:
-        return False, REASON_SHORT_WINDOW
-    if len(plan.folds) < cfg.min_folds_claimable:
-        return False, REASON_SHORT_WINDOW
-    # Positive thresholds for accept are intentionally not auto-passed here;
-    # claimable flag only means protocol power is sufficient to decide later.
-    return True, "protocol_power_sufficient"
+    """Protocol-power gate only — not accept. See ``evaluate_accept_edge_gates``."""
+
+    return evaluate_protocol_power(plan, metrics, prereg=prereg or B0Prereg())
 
 
 def measure_b0_paper(
@@ -685,6 +705,8 @@ def measure_b0_paper(
     *,
     prereg: B0Prereg | None = None,
     st_codes: Sequence[str] | None = None,
+    eligible_by_day: Mapping[str, set[str]] | None = None,
+    walk_forward: WalkForwardPlan | None = None,
 ) -> MeasuredB0Result:
     cfg = prereg or B0Prereg()
     days = (
@@ -692,9 +714,13 @@ def measure_b0_paper(
         if trading_days is not None
         else sorted({_norm_day(d) for d in bars_by_day})
     )
-    plan = plan_walk_forward(days, prereg=cfg)
+    plan = walk_forward or plan_walk_forward(days, prereg=cfg)
     fills = simulate_paper_fills(
-        bars_by_day, plan, prereg=cfg, st_codes=st_codes
+        bars_by_day,
+        plan,
+        prereg=cfg,
+        st_codes=st_codes,
+        eligible_by_day=eligible_by_day,
     )
     metrics = _metrics_from_fills(
         fills, trading_day_count=len(plan.trading_days), top_k=cfg.top_k
@@ -723,67 +749,28 @@ def measure_b0_paper(
     )
 
 
-_BAR_KEYS = (
-    "ts_code",
-    "open",
-    "high",
-    "low",
-    "close",
-    "pre_close",
-    "pct_chg",
-    "vol",
-    "amount",
-)
-
-
-def load_nominal_bars_by_day(
-    conn,
-    trading_days: Sequence[str],
-) -> dict[str, list[dict[str, Any]]]:
-    """Load accepted canonical nominal OHLCV for the measured window."""
-
-    days = sorted({_norm_day(d) for d in trading_days if len(_norm_day(d)) == 8})
-    if not days:
-        return {}
-    placeholders = ", ".join(["?"] * len(days))
-    sql = f"""
-        SELECT replace(CAST(trade_date AS VARCHAR), '-', '') AS d,
-               ts_code, open, high, low, close, pre_close, pct_chg, vol, amount
-          FROM {CANONICAL_TABLE}
-         WHERE replace(CAST(trade_date AS VARCHAR), '-', '') IN ({placeholders})
-         ORDER BY 1, ts_code
-    """
-    out: dict[str, list[dict[str, Any]]] = {d: [] for d in days}
-    for row in conn.execute(sql, days).fetchall():
-        if hasattr(row, "keys"):
-            d = _norm_day(row["d"])
-            item = {k: (str(row[k]) if k == "ts_code" else row[k]) for k in _BAR_KEYS}
-        else:
-            d = _norm_day(row[0])
-            item = {
-                k: (str(row[i + 1]) if k == "ts_code" else row[i + 1])
-                for i, k in enumerate(_BAR_KEYS)
-            }
-        out.setdefault(d, []).append(item)
-    return out
-
-
 __all__ = [
     "BOARD_PREFIXES",
     "B0Prereg",
+    "AcceptEdgeGateResult",
     "BareKPaperMetrics",
     "EMBARGO_DAYS",
     "LABEL_HORIZON_DAYS",
+    "MAX_DRAWDOWN_ACCEPT",
     "MIN_DAYS_FULL_PURGED_WF",
+    "MIN_HOLDOUT_NET_RETURN_ACCEPT",
     "MIN_TRADES_CLAIMABLE",
     "MeasuredB0Result",
     "PaperFillRecord",
+    "REASON_EDGE_GATES_PASSED",
+    "REASON_EDGE_GATES_UNMET",
     "REASON_PAPER_MEASURED",
     "REASON_SHORT_WINDOW",
     "TOP_K",
     "UNKNOWN",
     "WalkForwardFold",
     "WalkForwardPlan",
+    "evaluate_accept_edge_gates",
     "evaluate_claimable",
     "is_limit_down_open",
     "is_limit_up_open",

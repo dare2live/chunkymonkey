@@ -1018,3 +1018,35 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   accept, B-pit cutover, Optuna.
 - **Residual**: Tier1 definition/config/snapshot publish + PIT zero-diff
   + B1 paper vs B0 under identical folds/costs.
+
+### 2026-07-19 — Phase E: accept edge gates + measured B1 vs B0
+
+- **E PARTIAL** (gates wired; B0/B1 measured; neither claimable).
+- Prereg accept edge gates in `B0Prereg` /
+  `evaluate_accept_edge_gates`: holdout net return > 0 (after costs);
+  eval total_return > 0; max_drawdown ≤ 0.25; n_trades ≥ 30. Protocol
+  power alone never accepts. When protocol ready and gates fail →
+  verdict **`reject`** / `measured_protocol_ready_edge_gates_unmet` /
+  `claimable=false` (was inconclusive with unwired thresholds).
+- B1 measured path (`institution_follow_b1_measure.py`): load
+  `fact_stock_form_daily`; eligible = `axis_trend=up` ∨
+  `is_breakout_event`; identical WF plan/costs/paper as B0 via
+  `eligible_by_day` filter. Coverage gate:
+  day_coverage ≥ 0.90 and avg bar∩state overlap ≥ 0.50; else
+  `inconclusive` / `b1_stock_state_coverage_insufficient` (no fake
+  improve). Reports `delta_b1_minus_b0`.
+- Live 40d (`20260522`–`20260717`):
+  - B0: ret≈−24.4%, max_dd≈33.5%, win≈0.45, payoff≈0.93,
+    turnover≈1.45, n=145; holdout ret≈+5.9% / n=5. Gates:
+    holdout_ok/trades_ok; eval_ok=false; drawdown_ok=false → reject.
+  - B1: state day_cov=0.975 (missing `20260717`), overlap≈0.95 →
+    ready. ret≈−39.6%, max_dd≈41.9%, win≈0.39, n=145; holdout
+    ret≈+4.0%. Δ(B1−B0): ret≈−15.2pp, dd≈+8.5pp, win≈−6.2pp →
+    reject / claimable=false.
+- Tests: `test_institution_follow_b0` + `_b1` (+ phase_e smoke); CI
+  wires B1 tests.
+- **Did not**: Optuna, B-pit cutover, margin thaw, multi-year backfill,
+  B2/B4.
+- **Residual for B2/B4**: B2 market-sensing ablation under same
+  snapshot/folds/costs; B4 institution/event only after B2; refresh
+  form for frontier day; stronger Tier1 publish/PIT zero-diff contract.
