@@ -2,7 +2,8 @@
 
 > 状态：live navigation，非规则 owner
 > 更新：2026-07-19
-> 当前目标看 `goal.md`；架构看 `docs/MASTER_TOPLEVEL_DESIGN.md`；机器入口与 writer 清单看 `FEATURE_MAP.md` 和 CodeGraph。
+> 当前目标看 `goal.md`（Phase A→H；策略首包=机构跟随；多源=契约可换；边做边测）。
+> 架构看 `docs/MASTER_TOPLEVEL_DESIGN.md`；机器入口与 writer 清单看 `FEATURE_MAP.md` 和 CodeGraph。
 
 ## 1. Authority
 
@@ -24,9 +25,9 @@ AGENTS.md
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
 | T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 当前展示可用；分类解释、measurement、regime 和 persistence 耦合，暂不可直接做 PIT 特征 |
-| T3 institution | `institution_profile.py` + router/tests | 画像/episode 资产可复用；尚无统一实验与可执行跟随策略 |
-| T3 main rally | `rally_gt.py`, `rally_detect.py`, rally config/tests | ground truth/negative/strata/embargo 资产成熟；尚未完成 B0→B2 正式消融 |
-| T3 formulas | `bestchoice/FROZEN.md` + `evidence_manifest.json` | 五公式与两份全量历史机器证据仅作冻结 challenger，不能直接合并/转正 |
+| T3 institution | `institution_profile.py` + router/tests | **首个正式策略包目标**；现仅为 research evidence，待 Phase D/E |
+| T3 main rally | `rally_gt.py`, `rally_detect.py`, rally config/tests | GT 资产成熟；在机构首包之后接入同一 runtime |
+| T3 formulas | `bestchoice/FROZEN.md` + `evidence_manifest.json` | 冻结 challenger；Phase G 前不吸收 |
 | T4 decision/paper | `paper_portfolio.py`, frontend observation page | Legacy NONCONFORMING 观察账本；不是 paper execution |
 
 ## 3. Runtime and data layout

@@ -1,7 +1,6 @@
 """Adversarial tests for the SSE calendar landing/acceptance boundary."""
 from __future__ import annotations
 
-from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 import inspect
 
@@ -61,6 +60,14 @@ def _spec() -> dict:
             "canonicalization_version": "1",
         },
     }
+
+
+def _contract_with_page_limit(page_limit: int):
+    """Factory-owned contract; page_limit is the only adjustable policy field."""
+
+    spec = _spec()
+    spec["page_limit"] = page_limit
+    return calendar_contract_for_spec(spec)
 
 
 @pytest.fixture
@@ -204,7 +211,7 @@ def test_idempotent_ack_fails_closed_when_acceptance_time_evidence_diverges(
 
 
 def test_terminal_empty_fragment_is_valid_for_exact_page_multiple(conn, contract):
-    divisible = replace(contract, page_limit=13, config_hash="c" * 64, contract_hash="d" * 64)
+    divisible = _contract_with_page_limit(13)
     rows = _rows(divisible)
     fragments = []
     for ordinal, offset in enumerate(range(0, len(rows), divisible.page_limit)):
@@ -284,9 +291,7 @@ def test_zero_rows_and_missing_terminal_page_fail_closed(conn, contract):
     land_calendar_batch(conn, zero, contract)
     assert accept_calendar_batch(conn, "zero", contract).rejection_code == "ZERO_ROWS"
 
-    exact = replace(
-        contract, page_limit=13, config_hash="e" * 64, contract_hash="f" * 64
-    )
+    exact = _contract_with_page_limit(13)
     full_page = _rows(exact)
     land_calendar_batch(conn, _batch(exact, "no-terminal", rows=full_page), exact)
     assert (

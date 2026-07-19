@@ -115,9 +115,31 @@ PIT 截断测试是硬门：在 cutoff 后增加未来数据，cutoff 前的特�
 
 ## 8. 策略包边界
 
-### 8.1 主升浪猎手
+接入顺序（已裁决）：**机构跟随 → 主升浪 → 公式**。消融阶梯 B0–B5 不变；共享 snapshot/universe/成本/执行。Tier0 硬门与研究运行时未闭合前，任何策略包不得宣称正式有效。
 
-现有 rally ground truth、negative、strata、embargo 和 continuity 资产可以保留。第一条正式闭环为：
+### 8.1 机构跟随（第一条正式闭环）
+
+机构画像、episode 和历史表现是研究输入，不是“机构身份即买入”的证书。第一条正式闭环为 `institution_follow_v1`：
+
+1. 冻结披露类 `DatasetSnapshot`（含 notice/available 语义与沪深 PIT universe）；
+2. 跑 B0 裸 K 基线；
+3. 加 B1 股票状态、B2 市场感知（完整跟随策略所需；禁止跳过 Tier0/1/2 直接宣称 B4 有效）；
+4. 在 B4 独立消融机构/事件块；需要时再单独加 B3 资金活动证据；
+5. 区分机构自身历史表现与跟随者可实现收益；
+6. 通过纸面执行后才产生 `StrategyRelease(institution_follow_v1)`。
+
+硬约束：
+
+- 一个持仓/调研事实最早只能在真实 `notice_date/available_at` 之后使用；默认信号成交锚为披露后下一交易日 open，禁止回填 report/effective date；
+- 下一交易日若停牌、涨停买不到或数据 unknown，只能顺延到下一个真实可交易 open，并受版本化 `max_chase_days` 限制；过期记为未成交，不用未来价格选择“最佳”入场；
+- 机构评级、白名单和历史胜率只能用 decision time 之前已披露 episode 做 expanding-window 计算；禁止用全期结果筛选机构后回测早期信号；
+- 跟随者收益必须独立计入披露延迟、追价、未成交、容量和退出约束，不能复用机构自身持有期收益。
+
+大单/超大单、龙虎榜席位或 vendor “主力”字段不得自动映射成机构身份。
+
+### 8.2 主升浪猎手
+
+现有 rally ground truth、negative、strata、embargo 和 continuity 资产可以保留，在机构首包之后接入同一研究运行时：
 
 1. 冻结并复核 ground truth 定义和数据快照；
 2. 跑 B0 裸 K；
@@ -127,17 +149,6 @@ PIT 截断测试是硬门：在 cutoff 后增加未来数据，cutoff 前的特�
 6. 通过纸面执行后才产生 `StrategyRelease(main_rally_v1)`。
 
 标签表不能被候选生成器直接读取。
-
-### 8.2 机构跟随
-
-机构画像、episode 和历史表现是研究输入，不是“机构身份即买入”的证书。必须使用真实披露可用时间，区分机构自身历史表现与跟随者可实现收益，并在 B4 独立消融。
-
-- 一个持仓/调研事实最早只能在真实 `notice_date/available_at` 之后使用；默认信号成交锚为披露后下一交易日 open，禁止回填 report/effective date；
-- 下一交易日若停牌、涨停买不到或数据 unknown，只能顺延到下一个真实可交易 open，并受版本化 `max_chase_days` 限制；过期记为未成交，不用未来价格选择“最佳”入场；
-- 机构评级、白名单和历史胜率只能用 decision time 之前已披露 episode 做 expanding-window 计算；禁止用全期结果筛选机构后回测早期信号；
-- 跟随者收益必须独立计入披露延迟、追价、未成交、容量和退出约束，不能复用机构自身持有期收益。
-
-大单/超大单、龙虎榜席位或 vendor “主力”字段不得自动映射成机构身份。
 
 ### 8.3 选股公式 / BestChoice
 
@@ -174,4 +185,5 @@ BestChoice 保持冻结 challenger：
 - rally ground truth、technical state、market pulse、institution profile 是可复用资产，不是发布策略；
 - 现有 market pulse 缺 availability/method/config hash，暂只适合当前展示；
 - 现有 paper portfolio 缺正式 release、订单/成交约束，不能作为执行证据；
-- Tier 0 与分类契约闭合前，不启动大规模公式搜索或付费计算。
+- Tier 0 与分类契约闭合前，不启动机构全历史寻优、大规模公式搜索或付费计算；
+- 每一切片边做边测：坏例先红、窄回归、PIT/截断对抗例可变红，才允许扩大范围。

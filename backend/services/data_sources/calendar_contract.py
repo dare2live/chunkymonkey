@@ -2,7 +2,9 @@
 
 The factory consumes one already-merged registry snapshot.  It deliberately
 does not load YAML, consult module globals for policy, or accept caller-supplied
-request dates.
+request dates.  Downstream land/accept/read paths must call
+:func:`verify_calendar_generation_contract` so ``dataclasses.replace`` or field
+tampering cannot forge a nominal contract with stale hashes.
 """
 from __future__ import annotations
 
@@ -11,7 +13,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from hashlib import sha256
 import json
-from typing import Any
+from typing import Any, final
 from zoneinfo import ZoneInfo
 
 from services.data_sources.calendar_schema import (
@@ -71,21 +73,25 @@ def _hash(payload: Mapping[str, Any]) -> str:
     return sha256(blob).hexdigest()
 
 
-def _mapping(value: Any, field: str) -> Mapping[str, Any]:
+def _mapping(value: Any, field_name: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
-        raise ValueError(f"trade_cal: {field} must be a mapping")
+        raise ValueError(f"trade_cal: {field_name} must be a mapping")
     return value
 
 
 def _exact_keys(
-    value: Mapping[str, Any], expected: frozenset[str], field: str
+    value: Mapping[str, Any], expected: frozenset[str], field_name: str
 ) -> None:
     missing = sorted(expected - set(value))
     unknown = sorted(set(value) - expected)
     if missing:
-        raise ValueError(f"trade_cal: missing {field} keys: {', '.join(missing)}")
+        raise ValueError(
+            f"trade_cal: missing {field_name} keys: {', '.join(missing)}"
+        )
     if unknown:
-        raise ValueError(f"trade_cal: unknown {field} keys: {', '.join(unknown)}")
+        raise ValueError(
+            f"trade_cal: unknown {field_name} keys: {', '.join(unknown)}"
+        )
 
 
 @dataclass(frozen=True)
@@ -108,8 +114,11 @@ class CalendarPopulationScope:
         }
 
 
-@dataclass(frozen=True)
+@final
+@dataclass(frozen=True, init=False)
 class CalendarGenerationContract:
+    """One calendar generation contract bound by :func:`calendar_contract_for_spec` only."""
+
     domain: str
     dataset_id: str
     contract_version: str
@@ -132,6 +141,9 @@ class CalendarGenerationContract:
     population_scope: CalendarPopulationScope
     config_hash: str
     contract_hash: str
+
+    def __new__(cls, *_args, **_kwargs):
+        raise TypeError("use calendar_contract_for_spec()")
 
     def required_through(self, observed_at: datetime) -> date:
         """Return the last calendar date promised by this observed generation."""
@@ -158,6 +170,111 @@ class CalendarGenerationContract:
             "limit": self.page_limit,
             "offset": offset,
         }
+
+
+def _expected_hashes(
+    *,
+    page_limit: int,
+    generation: Mapping[str, Any],
+    scope: CalendarPopulationScope,
+) -> tuple[str, str]:
+    transport_payload = {
+        **_EXPECTED_TRANSPORT,
+        "page_limit": page_limit,
+    }
+    policy_payload = {key: generation[key] for key in sorted(_GENERATION_KEYS)}
+    config_hash = _hash(
+        {
+            "transport": transport_payload,
+            "calendar_generation": policy_payload,
+            "population_scope": scope.payload(),
+        }
+    )
+    contract_hash = _hash(
+        {
+            "dataset_id": DATASET_ID,
+            "contract_version": CONTRACT_VERSION,
+            "schema_hash": CALENDAR_SCHEMA_HASH,
+            "writer_id": WRITER_ID,
+            "config_hash": config_hash,
+        }
+    )
+    return config_hash, contract_hash
+
+
+def verify_calendar_generation_contract(
+    contract: CalendarGenerationContract,
+) -> CalendarGenerationContract:
+    """Recompute hashes so forged/replaced/tampered contracts fail closed."""
+
+    if type(contract) is not CalendarGenerationContract:
+        raise ValueError("calendar generation contract must be factory-owned")
+    if contract.domain != "trade_cal":
+        raise ValueError("trade_cal: factory-owned contract domain drift")
+    if contract.dataset_id != DATASET_ID:
+        raise ValueError("trade_cal: factory-owned contract dataset_id drift")
+    if contract.contract_version != CONTRACT_VERSION:
+        raise ValueError("trade_cal: factory-owned contract_version drift")
+    if contract.schema_hash != CALENDAR_SCHEMA_HASH:
+        raise ValueError("trade_cal: factory-owned schema_hash drift")
+    if contract.writer_id != WRITER_ID:
+        raise ValueError("trade_cal: factory-owned writer_id drift")
+    if (
+        isinstance(contract.page_limit, bool)
+        or not isinstance(contract.page_limit, int)
+        or contract.page_limit <= 0
+    ):
+        raise ValueError("trade_cal: page_limit must be a positive integer")
+
+    generation = {
+        "contract_version": contract.contract_version,
+        "coverage_start": contract.coverage_start,
+        "required_through_rule": contract.required_through_rule,
+        "timezone": contract.timezone,
+        "availability_rule": contract.availability_rule,
+        "canonicalization_version": contract.canonicalization_version,
+    }
+    for key, expected in _EXPECTED_GENERATION.items():
+        if generation[key] != expected:
+            raise ValueError(
+                f"trade_cal: calendar generation drift: {key} must be {expected}"
+            )
+    if (
+        contract.source != "tushare"
+        or contract.api != "trade_cal"
+        or contract.target_db != "tushare_raw"
+        or contract.target_table != "raw_tushare_trade_cal"
+        or contract.batch_mode != "full_refresh"
+        or contract.write_mode != "replace_snapshot"
+        or contract.grain != ("exchange", "cal_date")
+        or contract.fixed_params != (("exchange", "SSE"),)
+    ):
+        raise ValueError("trade_cal: factory-owned transport drift")
+    scope = contract.population_scope
+    if type(scope) is not CalendarPopulationScope:
+        raise ValueError("trade_cal: population_scope must be CalendarPopulationScope")
+    for key, expected in _EXPECTED_SCOPE.items():
+        actual = (
+            list(scope.venue_ids) if key == "venue_ids" else getattr(scope, key)
+        )
+        if actual != expected:
+            raise ValueError(
+                f"trade_cal: calendar population drift for {key}: "
+                f"actual={actual!r} expected={expected!r}"
+            )
+
+    config_hash, contract_hash = _expected_hashes(
+        page_limit=contract.page_limit,
+        generation=generation,
+        scope=scope,
+    )
+    if contract.config_hash != config_hash:
+        raise ValueError("trade_cal: config_hash does not match factory-owned payload")
+    if contract.contract_hash != contract_hash:
+        raise ValueError(
+            "trade_cal: contract_hash does not match factory-owned payload"
+        )
+    return contract
 
 
 def calendar_contract_for_spec(spec: Mapping[str, Any]) -> CalendarGenerationContract:
@@ -210,55 +327,43 @@ def calendar_contract_for_spec(spec: Mapping[str, Any]) -> CalendarGenerationCon
         method=str(scope_raw["method"]),
         unit=str(scope_raw["unit"]),
     )
-    transport_payload = {
-        **_EXPECTED_TRANSPORT,
-        "page_limit": page_limit,
-    }
-    policy_payload = {key: generation[key] for key in sorted(_GENERATION_KEYS)}
-    config_hash = _hash(
-        {
-            "transport": transport_payload,
-            "calendar_generation": policy_payload,
-            "population_scope": scope.payload(),
-        }
-    )
-    contract_hash = _hash(
-        {
-            "dataset_id": DATASET_ID,
-            "contract_version": CONTRACT_VERSION,
-            "schema_hash": CALENDAR_SCHEMA_HASH,
-            "writer_id": WRITER_ID,
-            "config_hash": config_hash,
-        }
-    )
-    return CalendarGenerationContract(
-        domain="trade_cal",
-        dataset_id=DATASET_ID,
-        contract_version=CONTRACT_VERSION,
-        schema_hash=CALENDAR_SCHEMA_HASH,
-        writer_id=WRITER_ID,
-        coverage_start=str(generation["coverage_start"]),
-        required_through_rule=str(generation["required_through_rule"]),
-        timezone=str(generation["timezone"]),
-        availability_rule=str(generation["availability_rule"]),
-        canonicalization_version=str(generation["canonicalization_version"]),
-        source="tushare",
-        api="trade_cal",
-        target_db="tushare_raw",
-        target_table="raw_tushare_trade_cal",
-        batch_mode="full_refresh",
-        write_mode="replace_snapshot",
-        grain=("exchange", "cal_date"),
-        fixed_params=(("exchange", "SSE"),),
+    config_hash, contract_hash = _expected_hashes(
         page_limit=page_limit,
-        population_scope=scope,
-        config_hash=config_hash,
-        contract_hash=contract_hash,
+        generation=generation,
+        scope=scope,
     )
+    bound = object.__new__(CalendarGenerationContract)
+    for name, value in (
+        ("domain", "trade_cal"),
+        ("dataset_id", DATASET_ID),
+        ("contract_version", CONTRACT_VERSION),
+        ("schema_hash", CALENDAR_SCHEMA_HASH),
+        ("writer_id", WRITER_ID),
+        ("coverage_start", str(generation["coverage_start"])),
+        ("required_through_rule", str(generation["required_through_rule"])),
+        ("timezone", str(generation["timezone"])),
+        ("availability_rule", str(generation["availability_rule"])),
+        ("canonicalization_version", str(generation["canonicalization_version"])),
+        ("source", "tushare"),
+        ("api", "trade_cal"),
+        ("target_db", "tushare_raw"),
+        ("target_table", "raw_tushare_trade_cal"),
+        ("batch_mode", "full_refresh"),
+        ("write_mode", "replace_snapshot"),
+        ("grain", ("exchange", "cal_date")),
+        ("fixed_params", (("exchange", "SSE"),)),
+        ("page_limit", page_limit),
+        ("population_scope", scope),
+        ("config_hash", config_hash),
+        ("contract_hash", contract_hash),
+    ):
+        object.__setattr__(bound, name, value)
+    return verify_calendar_generation_contract(bound)
 
 
 __all__ = [
     "CalendarGenerationContract",
     "CalendarPopulationScope",
     "calendar_contract_for_spec",
+    "verify_calendar_generation_contract",
 ]

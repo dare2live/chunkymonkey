@@ -29,7 +29,7 @@ from services.data_sources.calendar_schema import (
     LANDING_TABLE,
     ensure_calendar_acceptance_schema,
 )
-from services.data_sources import calendar_acceptance, calendar_reader
+from services.data_sources import calendar_acceptance, calendar_landing, calendar_reader
 from services.data_sources.sync_runner import domain_spec, load_registry
 from services.duck_adapter import connect
 
@@ -265,6 +265,10 @@ def _land_and_accept_real_generation(path: Path, monkeypatch) -> str:
     batch_id = "real-generation-1990"
     conn = connect(str(path))
     try:
+        # Land and accept must share a frozen clock. Using wall-clock landed_at
+        # on the same UTC day as FIRST_ACCEPTED makes time_chain fail after 10:00Z.
+        landed_at = FIRST_ACCEPTED - timedelta(minutes=30)
+        monkeypatch.setattr(calendar_landing, "_now_utc", lambda: landed_at)
         monkeypatch.setattr(calendar_acceptance, "_now_utc", lambda: FIRST_ACCEPTED)
         land_calendar_batch(
             conn,

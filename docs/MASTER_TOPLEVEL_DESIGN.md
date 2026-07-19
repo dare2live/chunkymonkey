@@ -261,7 +261,9 @@ B5 + 单一公式或公式组合
 
 每步使用同一 universe、标签、fold、成本和执行模型，只改变一个 feature block。报告收益率、胜率、盈亏比、回撤、换手、容量以及按时间/行业/阶段的稳定性。没有增益和负增益都是正式结果。
 
-第一条业务闭环是 `main_rally_v1`：复用现有 rally ground truth，在 Tier0/Tier1/Tier2 契约闭合后跑 B0→B2；机构跟随和公式随后以独立 feature package 接入。BestChoice 只作为冻结 challenger 资产，经 lineage、PIT 和本项目纸面执行验证后才能讨论吸收，禁止直接并入主策略。
+第一条正式策略闭环是 `institution_follow_v1`：在 Tier0 硬门、Tier1/2 发布契约与研究运行时最小闭环之后，以披露 `available_at` 约束跑 B0→B1→B2→B4；跟随者可实现收益必须独立于机构自身持有收益。`main_rally` 与公式包随后接入同一 runtime。BestChoice 只作为冻结 challenger 资产，经 lineage、PIT 和本项目纸面执行验证后才能讨论吸收，禁止直接并入主策略。
+
+Provider 是可替换 adapter：业务真相在 accepted/canonical，不绑定单一供应商；当前仅接入 TuShare，第二源只加 adapter 与 landing 映射，不改 Tier1–4 读契约。不做双源 silent merge，不建通用插件框架。
 
 ## 10. Tier 4 决策与产品
 
@@ -280,17 +282,20 @@ ExperimentVerdict
 
 ## 11. 迁移顺序
 
+当前执行板以 `goal.md` 的 A→H 为准（下表为稳定架构映射）。每个子步边做边测：坏例先红 → 最小实现 → 绿 → 窄回归；工具绿不得洗绿 `live_readiness`。
+
 | Phase | 工作 | 退出条件 |
 |---:|---|---|
-| 0 | 收口文档、AGENTS、skills、Moth/CodeGraph 和真实命令面；冻结新增框架/表 | 活文档少且一致，文档门 0 WARN，退役命令不再假绿 |
-| 1 | 定义 `DatasetContract`、writer ownership、`IngestBatch/AcceptedPartition`；迁移一个交易数据域 | 唯一 writer、故障注入原子性和 landing 纯度通过；watermark/SLA/failure 只从 accepted state 投影；live canary 逐分区通过当前契约与 shadow parity。canary 覆盖不足时不切业务消费者、不做 raw+canonical 混读；满足完整历史地平线后才切换并删除 legacy |
-| 2 | 重建 K 线角色和 classification PIT 契约 | 名义/qfq/因子可追溯；分类版本、有效期、覆盖门通过 |
-| 3 | 发布版本化 `StockStateDaily/PatternEvent` | 截断不变、增量=全量、覆盖 reason 完整 |
-| 4 | 拆分 observation/context/display，修复市场感知口径 | availability、method、coverage 完整；跨 namespace 不混算 |
-| 5 | 建立冻结 snapshot、实验、裁决和策略发布契约 | B0→B2 主升浪消融可复现且 PIT/成本门通过 |
-| 6 | 逐个接入机构跟随和公式，再建决策/纸面交易/产品 | 每个 candidate 全链可追溯，未发布研究不能越界 |
+| A | Tier0 硬门：contract 传播与 attestation、calendar accepted generation、名义 K/ST resolver、landing 纯度、adapter 边界 | `traded_on_observation_date` 可证明；对抗坏例变红；`live_readiness` 可评估；未切错误 scope 消费者 |
+| B | 首个正确 population 迁移（external vs project-universe；pulse/breadth 脱离错误 raw） | shadow 对账或显式 reject；读面切换有证据 |
+| C | 版本化 `StockStateDaily`/`PatternEvent`/`MarketContextSnapshot` | 截断不变；definition/config/snapshot/universe/available_at 齐全 |
+| D | 研究运行时：`DatasetSnapshot` / `ExperimentRun` / `ExperimentVerdict` | PIT 截断门；一烟测闭环 |
+| E | **机构跟随 v1（第一条正式策略包）** | B0→B4 消融；披露时点与跟随者收益门通过；无 Release 不出正式候选 |
+| F | 主升浪 B0→B2 | 与 E 共享 runtime；状态/感知增量可复现 |
+| G | 公式包 + BestChoice 对决 | namespaced 重放；B5 单块；异常高指标先反证 |
+| H | 决策 / 名义价纸面 / 产品 | candidate 全链可追溯；NONCONFORMING 观察账本隔离或退役 |
 
-每个 Phase 都用 strangler 方式迁移：契约先行、旧新并跑、逐字段对账、消费者切换、最后删除旧 writer/表/config。
+每个 Phase 都用 strangler 方式迁移：契约先行、旧新并跑、逐字段对账、消费者切换、最后删除旧 writer/表/config。Phase 0/1 控制面原语已完成，证据在 ledger，不在本表重复充当业务就绪证明。
 
 ## 12. 明确不做
 

@@ -27,7 +27,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           # 离线控制面依赖。数据拉取使用本机受管 TinyShare payload，不在 CI 冒充 provider 验证。
-          pip install fastapi uvicorn duckdb numpy httpx pydantic pytest pytest-asyncio anyio pyyaml
+          pip install fastapi uvicorn duckdb numpy httpx pydantic pytest pytest-asyncio anyio pyyaml pytz pandas
 
       - name: Lint (ruff)
         continue-on-error: true  # 不阻塞 (项目历史代码 lint warnings 多)

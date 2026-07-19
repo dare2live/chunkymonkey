@@ -2,11 +2,16 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 from datetime import datetime, timezone
 
 import pytest
 
-from services.data_sources.calendar_contract import calendar_contract_for_spec
+from services.data_sources.calendar_contract import (
+    CalendarGenerationContract,
+    calendar_contract_for_spec,
+    verify_calendar_generation_contract,
+)
 from services.data_sources.calendar_schema import (
     CALENDAR_SCHEMA_HASH,
     CONTRACT_VERSION,
@@ -164,3 +169,52 @@ def test_request_rejects_invalid_offset(offset) -> None:
 
     with pytest.raises(ValueError, match="offset must be a non-negative integer"):
         contract.request_for_page(datetime.now(timezone.utc), offset)
+
+
+def test_calendar_contract_cannot_be_constructed_without_factory() -> None:
+    with pytest.raises(TypeError, match="calendar_contract_for_spec"):
+        CalendarGenerationContract(
+            domain="trade_cal",
+            dataset_id=DATASET_ID,
+            contract_version=CONTRACT_VERSION,
+            schema_hash=CALENDAR_SCHEMA_HASH,
+            writer_id=WRITER_ID,
+            coverage_start="19901219",
+            required_through_rule="observed_year_end",
+            timezone="Asia/Shanghai",
+            availability_rule="response_completed",
+            canonicalization_version="1",
+            source="tushare",
+            api="trade_cal",
+            target_db="tushare_raw",
+            target_table="raw_tushare_trade_cal",
+            batch_mode="full_refresh",
+            write_mode="replace_snapshot",
+            grain=("exchange", "cal_date"),
+            fixed_params=(("exchange", "SSE"),),
+            page_limit=6000,
+            population_scope=calendar_contract_for_spec(_spec()).population_scope,
+            config_hash="a" * 64,
+            contract_hash="b" * 64,
+        )
+
+
+def test_dataclasses_replace_cannot_forge_calendar_contract() -> None:
+    contract = calendar_contract_for_spec(_spec())
+
+    with pytest.raises(TypeError, match="calendar_contract_for_spec"):
+        replace(contract, page_limit=1)
+
+
+def test_verify_rejects_stale_hash_after_field_tamper() -> None:
+    contract = calendar_contract_for_spec(_spec())
+    object.__setattr__(contract, "page_limit", 1)
+
+    with pytest.raises(ValueError, match="factory-owned|config_hash|contract_hash"):
+        verify_calendar_generation_contract(contract)
+
+
+def test_verify_accepts_factory_owned_contract() -> None:
+    contract = calendar_contract_for_spec(_spec())
+
+    assert verify_calendar_generation_contract(contract) is contract

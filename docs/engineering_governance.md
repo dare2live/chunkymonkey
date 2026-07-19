@@ -78,7 +78,17 @@ Moth PASS 只有在 verifier 自身能红、没有 warning 被 regex 洗成 PASS
 
 复杂度扫描是线索，不是判决。只有在真实数据规模、调用路径和最小复现证明后才修改性能热点。
 
-## 5. 测试工具有效性
+## 5. 测试工具有效性与边做边测
+
+切片交付强制循环（与 `goal.md` 一致）：
+
+```text
+坏例先红 → 最小实现 → 红变绿 → 窄回归 → 挑战 verifier →（若动 PIT/schema/writer）stale 审计
+→ 标 FIXED | PARTIAL | BLOCKED
+```
+
+禁止：先实现再补自洽测；mock 掉被测的 calendar/universe/population 门让 pipeline 绿；把 Moth/doctor
+静态 PASS 或 grep 符号存在当成 Tier0 READY；绿了不做 shadow/stale 就切消费者。
 
 引用任何测试绿之前，记录：
 
@@ -96,6 +106,7 @@ Moth PASS 只有在 verifier 自身能红、没有 warning 被 regex 洗成 PASS
 身份/名称/cache，不是历史可交易性真相。
 
 先跑最窄测试，再按 blast radius 扩大。默认测试使用 DuckDB memory fixture；真实 DB 测试必须显式只读或串行写窗口。
+Phase 出口或提交前再放大到相关联合回归 / 全量 backend / `moth assert` / `codegraph sync`。
 
 ## 6. 数据与数据库纪律
 

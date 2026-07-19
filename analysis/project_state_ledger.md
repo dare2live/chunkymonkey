@@ -408,3 +408,17 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - Post-fix read-only residue verification found no calendar landing/canonical tables, no calendar ingest batches and
   no accepted calendar pointers in live `tushare_raw.duckdb`; no calendar/sync pipeline process was running. No DB,
   process, cache or consumer cleanup was therefore authorized or required for this source-only checkpoint.
+
+### 2026-07-19 — 整体方案立法 + Phase A1 calendar factory attestation
+
+- 业主拍板：多源=契约可换 adapter；首策略包=`institution_follow`；边做边测。权威文档已改：`goal.md` A→H、
+  `MASTER`/`strategy_validation_contract`/`engineering_governance`/`PROJECT_INDEX` 对齐；doc-governance PASS。
+- Phase A1（PARTIAL）：`CalendarGenerationContract` 改为 factory-only（禁 `__init__`/`dataclasses.replace`）；新增
+  `verify_calendar_generation_contract` 重算 hash；`calendar_landing._contract` 强制 attestation。对抗测：
+  直构/replace/字段篡改变红；`test_calendar_contract|acceptance|reader` = `78 passed`。
+- Reader 测试 `_land_and_accept_real_generation` 同步冻结 land/accept 时钟，避免与 fixture `FIRST_ACCEPTED`
+  同日墙钟导致 `time_chain` 假红。
+- 未做：`DatasetExecutionContract` 传播出口、calendar live accepted、resolver、landing 纯度迁移、provider/DB 写。
+  Tier0 仍 `BLOCKED` / `NOT_EVALUATED`。
+- CI 根因（run 29667261457）：DuckDB timestamptz 需 `pytz`；dead-references 扫 `services.rally_gt` 时缺
+  `pandas` 被误报为死引用。`.github/workflows/ci.yml` 离线依赖补 `pytz pandas`。

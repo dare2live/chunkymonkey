@@ -15,15 +15,13 @@ import json
 from typing import Any, Callable
 
 from services.data_sources.accepted_schema import ACCEPTED_TABLE, INGEST_BATCH_TABLE
+from services.data_sources.calendar_contract import verify_calendar_generation_contract
 from services.data_sources.calendar_schema import (
-    CALENDAR_SCHEMA_HASH,
     CANONICAL_TABLE,
-    CONTRACT_VERSION,
     DATASET_ID,
     FRAGMENT_TABLE,
     LANDING_TABLE,
     PROVIDER_FIELDS,
-    WRITER_ID,
     ensure_calendar_acceptance_schema,
     verify_calendar_acceptance_schema,
 )
@@ -218,52 +216,19 @@ def _calendar_date(value: Any, field_name: str, *, nullable: bool = False) -> da
 
 
 def _contract(contract: Any) -> Any:
-    expected = {
-        "dataset_id": DATASET_ID,
-        "contract_version": CONTRACT_VERSION,
-        "schema_hash": CALENDAR_SCHEMA_HASH,
-        "writer_id": WRITER_ID,
-        "domain": "trade_cal",
-        "source": "tushare",
-        "api": "trade_cal",
-        "target_db": "tushare_raw",
-        "target_table": "raw_tushare_trade_cal",
-        "batch_mode": "full_refresh",
-        "write_mode": "replace_snapshot",
-        "grain": ("exchange", "cal_date"),
-        "fixed_params": (("exchange", "SSE"),),
-        "coverage_start": "19901219",
-        "required_through_rule": "observed_year_end",
-        "timezone": "Asia/Shanghai",
-        "availability_rule": "response_completed",
-        "canonicalization_version": "1",
-    }
-    mismatched = {
-        key: (getattr(contract, key, None), value)
-        for key, value in expected.items()
-        if getattr(contract, key, None) != value
-    }
-    required = (
-        "contract_version",
-        "contract_hash",
-        "config_hash",
-        "coverage_start",
-        "page_limit",
-    )
-    missing = [name for name in required if getattr(contract, name, None) in (None, "")]
-    if mismatched or missing:
+    """Fail closed unless the contract is factory-owned and hash-attested."""
+
+    try:
+        verified = verify_calendar_generation_contract(contract)
+    except (TypeError, ValueError) as exc:
         raise CalendarAcceptanceError(
-            f"calendar contract wiring drift: mismatched={mismatched} missing={missing}"
-        )
-    if not callable(getattr(contract, "required_through", None)) or not callable(
-        getattr(contract, "request_for_page", None)
+            f"calendar contract wiring drift: {exc}"
+        ) from exc
+    if not callable(getattr(verified, "required_through", None)) or not callable(
+        getattr(verified, "request_for_page", None)
     ):
         raise CalendarAcceptanceError("calendar contract derivation methods are missing")
-    for field_name in ("contract_hash", "config_hash", "schema_hash"):
-        value = str(getattr(contract, field_name))
-        if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
-            raise CalendarAcceptanceError(f"calendar {field_name} must be lowercase sha256")
-    return contract
+    return verified
 
 
 def _normalise_outcome(fragment: CalendarFragmentCapture) -> tuple[str, str | None, str | None]:
