@@ -13,6 +13,7 @@ from services.data_sources.observation_population import (
 )
 from services.data_sources.project_universe_breadth import (
     ProjectUniverseBreadthUnavailable,
+    compare_legacy_vs_project_universe_breadth,
     compute_project_universe_breadth,
     refuse_legacy_raw_daily_as_project_universe_breadth,
 )
@@ -86,3 +87,39 @@ def test_empty_membership_blocked() -> None:
 def test_refuse_legacy_raw_daily_claim() -> None:
     with pytest.raises(RuntimeError, match="cannot_satisfy_project_universe"):
         refuse_legacy_raw_daily_as_project_universe_breadth("project_universe_pit")
+
+
+def test_shadow_compare_never_allows_cutover_even_on_match() -> None:
+    project = compute_project_universe_breadth(
+        _membership(("600000.SH", "000001.SZ")),
+        rows=(
+            {"ts_code": "600000.SH", "pct_chg": 1.0},
+            {"ts_code": "000001.SZ", "pct_chg": -1.0},
+        ),
+    )
+    report = compare_legacy_vs_project_universe_breadth(
+        trade_date="20240102",
+        legacy_adv_dec_ratio=1.0,
+        project=project,
+    )
+    assert report.ratios_match is True
+    assert report.cutover_allowed is False
+    assert "cutover_requires_accepted_live_partitions_and_gate" in report.issues
+
+
+def test_shadow_compare_flags_divergence() -> None:
+    project = compute_project_universe_breadth(
+        _membership(("600000.SH", "000001.SZ")),
+        rows=(
+            {"ts_code": "600000.SH", "pct_chg": 1.0},
+            {"ts_code": "000001.SZ", "pct_chg": -1.0},
+        ),
+    )
+    report = compare_legacy_vs_project_universe_breadth(
+        trade_date="20240102",
+        legacy_adv_dec_ratio=2.5,
+        project=project,
+    )
+    assert report.ratios_match is False
+    assert report.cutover_allowed is False
+    assert "legacy_raw_ratio_diverges_from_project_universe" in report.issues

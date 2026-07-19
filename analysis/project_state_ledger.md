@@ -570,3 +570,7 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   仅用 `ObservationMembership.ts_codes` + 显式 bar；缺席/重复 fail-closed；
   拒 raw daily 冒充 project_universe_pit。未接 mart、未 cutover。
 - 对抗：`test_project_universe_breadth`。阻塞：A3 live partitions / canary。
+
+### 2026-07-19 — B-pit slice2: breadth shadow compare (no cutover)
+
+- **PARTIAL**：`compare_legacy_vs_project_universe_breadth` — 比率一致也不放行 cutover；分歧记 issue。对抗 6 passed。

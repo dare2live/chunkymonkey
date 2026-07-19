@@ -146,9 +146,79 @@ def refuse_legacy_raw_daily_as_project_universe_breadth(
         )
 
 
+@dataclass(frozen=True)
+class BreadthShadowCompareReport:
+    """Read-only legacy vs project-universe breadth delta — never authorizes cutover."""
+
+    trade_date: str
+    legacy_adv_dec_ratio: float | None
+    project_adv_dec_ratio: float | None
+    ratio_delta: float | None
+    ratios_match: bool
+    cutover_allowed: bool
+    issues: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "trade_date": self.trade_date,
+            "legacy_adv_dec_ratio": self.legacy_adv_dec_ratio,
+            "project_adv_dec_ratio": self.project_adv_dec_ratio,
+            "ratio_delta": self.ratio_delta,
+            "ratios_match": self.ratios_match,
+            "cutover_allowed": self.cutover_allowed,
+            "issues": list(self.issues),
+        }
+
+
+def compare_legacy_vs_project_universe_breadth(
+    *,
+    trade_date: str,
+    legacy_adv_dec_ratio: float | None,
+    project: ProjectUniverseBreadthReport,
+) -> BreadthShadowCompareReport:
+    """Shadow-compare raw/legacy ratio to project-universe breadth.
+
+    Matching ratios alone never set ``cutover_allowed`` — serve cutover needs
+    accepted live partitions + explicit gate evidence beyond this helper.
+    """
+
+    day = str(trade_date or "").replace("-", "")
+    issues = [
+        "breadth_shadow_compare_only",
+        "cutover_requires_accepted_live_partitions_and_gate",
+    ]
+    proj = project.adv_dec_ratio
+    if legacy_adv_dec_ratio is None or proj is None:
+        issues.append("ratio_unavailable_for_compare")
+        return BreadthShadowCompareReport(
+            trade_date=day,
+            legacy_adv_dec_ratio=legacy_adv_dec_ratio,
+            project_adv_dec_ratio=proj,
+            ratio_delta=None,
+            ratios_match=False,
+            cutover_allowed=False,
+            issues=tuple(issues),
+        )
+    delta = float(legacy_adv_dec_ratio) - float(proj)
+    match = abs(delta) <= 1e-9
+    if not match:
+        issues.append("legacy_raw_ratio_diverges_from_project_universe")
+    return BreadthShadowCompareReport(
+        trade_date=day,
+        legacy_adv_dec_ratio=float(legacy_adv_dec_ratio),
+        project_adv_dec_ratio=float(proj),
+        ratio_delta=delta,
+        ratios_match=match,
+        cutover_allowed=False,
+        issues=tuple(issues),
+    )
+
+
 __all__ = [
+    "BreadthShadowCompareReport",
     "ProjectUniverseBreadthReport",
     "ProjectUniverseBreadthUnavailable",
+    "compare_legacy_vs_project_universe_breadth",
     "compute_project_universe_breadth",
     "refuse_legacy_raw_daily_as_project_universe_breadth",
 ]
