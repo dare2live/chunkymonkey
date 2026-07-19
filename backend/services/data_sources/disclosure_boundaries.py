@@ -1,13 +1,17 @@
 """E0 disclosure-domain strangler: typed contracts + fail-closed formal claims.
 
-Transport/research boundary only.  miaoxiang/aif10 holders and org_holding still
-write facts outside landing→accept; those paths are explicitly
-``NONCONFORMING`` until formal writers exist.  This module:
+Transport/research boundary only.  ``holders_top10`` has a formal
+landing→validate→accept tracer; legacy research still reads
+``fact_top10_holder_period`` under ``NONCONFORMING`` until cutover.
+``org_holding`` / ``stk_holdertrade`` remain direct-write stranglers.
+
+This module:
 
 - inventories the three disclosure domains named by goal E0;
-- authorizes legacy direct writes only when labeled ``NONCONFORMING``;
-- refuses any accepted/landing/canonical/DatasetSnapshot claim until
-  landing + canonical writers are declared;
+- authorizes legacy direct writes only when labeled ``NONCONFORMING`` and
+  runtime_state is still a strangler (not cutover);
+- refuses DatasetSnapshot freeze until E0 cutover; landing/accepted/canonical
+  claims require declared writers;
 - attests research surfaces as NONCONFORMING without rewriting payloads.
 
 Not a doctor readiness certificate.  Not permission to start institution_follow.
@@ -18,7 +22,10 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 Conformity = Literal["NONCONFORMING"]
-RuntimeState = Literal["direct_write_strangler"]
+RuntimeState = Literal[
+    "direct_write_strangler",
+    "formal_path_ready_legacy_direct_write",
+]
 TrustStatus = Literal["NONCONFORMING", "BLOCKED", "NOT_EVALUATED", "READY"]
 
 _ACCEPTED_CLAIMS = frozenset(
@@ -40,6 +47,14 @@ _FORMAL_CONFORMITY = frozenset(
         "landing",
         "canonical",
         "DatasetSnapshot",
+    }
+)
+_PATH_CLAIMS = frozenset({"accepted", "canonical", "landing", "accepted_partition", "formal", "ACCEPTED"})
+_SNAPSHOT_CLAIMS = frozenset({"DatasetSnapshot"})
+_STRANGLER_STATES = frozenset(
+    {
+        "direct_write_strangler",
+        "formal_path_ready_legacy_direct_write",
     }
 )
 
@@ -118,6 +133,13 @@ _DISCLOSURE_BOUNDARIES: dict[str, DisclosureDomainBoundary] = {
         target_table="fact_top10_holder_period",
         availability_axis="notice_date",
         availability_rule="event_time_notice_or_page_update",
+        runtime_state="formal_path_ready_legacy_direct_write",
+        landing_writer=(
+            "services.data_sources.holders_top10_acceptance.land_holders_top10_batch"
+        ),
+        canonical_writer=(
+            "services.data_sources.holders_top10_acceptance.accept_holders_top10_batch"
+        ),
     ),
     "org_holding": DisclosureDomainBoundary(
         domain="org_holding",
@@ -172,8 +194,9 @@ def authorize_nonconforming_direct_write(
 ) -> DisclosureWritePermit:
     """Permit legacy direct writes only when explicitly labeled NONCONFORMING.
 
-    Formal conformity labels fail closed until landing + canonical writers exist.
-    Once those writers are declared, direct writes are retired (fail closed).
+    Formal conformity labels fail closed.  Declaring land/accept writers alone
+    does not retire direct writes — cutover (runtime_state leave strangler)
+    does.  Formal publication must use the land→accept writers + handoff.
     """
 
     boundary = require_disclosure_boundary(domain)
@@ -186,16 +209,16 @@ def authorize_nonconforming_direct_write(
                 f"conformity={label!r} is not allowed for direct write; "
                 f"landing_writer={boundary.landing_writer!r} "
                 f"canonical_writer={boundary.canonical_writer!r}; "
-                "use NONCONFORMING until E0 landing→accept exists"
+                "use NONCONFORMING until E0 cutover retires direct writes"
             ),
         )
-    if boundary.landing_writer is not None and boundary.canonical_writer is not None:
+    if boundary.runtime_state not in _STRANGLER_STATES:
         raise DisclosureBoundaryError(
             boundary.domain,
             reason="direct_write_retired_after_formalization",
             detail=(
-                f"formal writers exist "
-                f"landing={boundary.landing_writer} "
+                f"runtime_state={boundary.runtime_state!r} is not a strangler; "
+                f"formal writers landing={boundary.landing_writer} "
                 f"canonical={boundary.canonical_writer}; "
                 "legacy direct write is forbidden"
             ),
@@ -214,22 +237,35 @@ def authorize_nonconforming_direct_write(
 
 
 def refuse_accepted_publication_claim(domain: str, claim: str) -> None:
-    """Hard wall: nonconforming disclosure tables cannot satisfy accepted truth."""
+    """Hard wall for publication claims that disclosure research cannot satisfy."""
 
     boundary = require_disclosure_boundary(domain)
     label = str(claim or "").strip()
     if label not in _ACCEPTED_CLAIMS:
         return
-    if boundary.landing_writer is None or boundary.canonical_writer is None:
+    if label in _SNAPSHOT_CLAIMS:
         raise DisclosureBoundaryError(
             boundary.domain,
-            reason="accepted_claim_without_formal_path",
+            reason="dataset_snapshot_blocked_until_e0_cutover",
             detail=(
-                f"claim={label!r} requires landing→validate→accept; "
-                f"current conformity={boundary.conformity} "
-                f"table={boundary.target_table} has no formal writers"
+                "DatasetSnapshot freeze requires full E0 cutover "
+                "(all disclosure domains formal + direct-write retirement); "
+                f"runtime_state={boundary.runtime_state} "
+                f"conformity={boundary.conformity}"
             ),
         )
+    if label in _PATH_CLAIMS:
+        if boundary.landing_writer is None or boundary.canonical_writer is None:
+            raise DisclosureBoundaryError(
+                boundary.domain,
+                reason="accepted_claim_without_formal_path",
+                detail=(
+                    f"claim={label!r} requires landing→validate→accept; "
+                    f"current conformity={boundary.conformity} "
+                    f"table={boundary.target_table} has no formal writers"
+                ),
+            )
+        return
 
 
 def refuse_formal_disclosure_write_without_accepted_path(
@@ -252,9 +288,14 @@ def attest_disclosure_research_surface() -> DisclosureResearchSurfaceReport:
             target_table=item.target_table,
             availability_axis=item.availability_axis,
             reason=(
-                "direct_writer_bypasses_landing_validate_accept; "
-                f"availability_axis={item.availability_axis}; "
-                "cannot freeze DatasetSnapshot or serve as accepted truth"
+                (
+                    "formal_land_accept_exists_but_research_still_reads_legacy_"
+                    "compatibility_table; "
+                    if item.landing_writer is not None
+                    else "direct_writer_bypasses_landing_validate_accept; "
+                )
+                + f"availability_axis={item.availability_axis}; "
+                + "cannot freeze DatasetSnapshot or serve as accepted truth"
             ),
         )
         for item in (_DISCLOSURE_BOUNDARIES[name] for name in disclosure_domains())
@@ -266,6 +307,7 @@ def attest_disclosure_research_surface() -> DisclosureResearchSurfaceReport:
         domains=domains,
         notes=(
             "e0_disclosure_formalization_in_progress",
+            "holders_top10_formal_path_ready_legacy_direct_write_strangler",
             "legacy_research_reads_allowed_with_nonconforming_label",
             "institution_follow_blocked_until_e0_closed",
             "b_pit_cutover_remains_blocked_separately",

@@ -665,3 +665,29 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   direct writes, freeze disclosure DatasetSnapshot, institution_follow.
 - B-pit cutover remains blocked (breadth mismatch). A3 frontier READY noted
   above. Margin frozen; no K/ST sync this weekend.
+
+### 2026-07-19 — E0 slice2: holders_top10 land→accept tracer (strangler; no cutover)
+
+- **PARTIAL / E0 in progress**：`holders_top10` formal path tracer —
+  `holders_top10_schema` / `holders_top10_contract` /
+  `holders_top10_acceptance` using shared `accepted_schema`
+  (`ingest_batch` + `accepted_partition`). Landing
+  `landing_miaoxiang_holders_top10` → validate → canonical
+  `canonical_top10_float_holders_period`. Partition=`notice_date`.
+- Handoff: `formal_execution.propagate_disclosure_execution_contract`
+  (object identity) required before land/accept; sync_runner
+  `_refuse_disclosure_formal_via_naked_write_batch` blocks formal claims on
+  naked `_write_batch`.
+- Fail-closed: missing `available_at`, forged `available_at` before
+  notice_date cutoff (`FORGED_AVAILABLE_AT`), missing row `notice_date`.
+  Fixture/memory only — no mass history fetch / no live provider canary.
+- Boundary: holders runtime_state=`formal_path_ready_legacy_direct_write`
+  with declared writers; legacy `fact_top10_holder_period` direct write still
+  `NONCONFORMING` strangler. `DatasetSnapshot` claims remain blocked until
+  full E0 cutover. Research attestation `cutover_allowed=false`.
+- Adversarial: `test_holders_top10_acceptance` + updated
+  `test_disclosure_boundaries`.
+- **Still blocks full E0 / DatasetSnapshot freeze**: org_holding +
+  stk_holdertrade formal writers; retire all three direct writes; research
+  consumer cutover off legacy tables; institution_follow remains blocked.
+  Margin frozen; B-pit cutover separately blocked.

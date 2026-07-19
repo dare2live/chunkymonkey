@@ -1077,6 +1077,63 @@ def _authorize_disclosure_legacy_raw_write(domain: str) -> None:
         ) from exc
 
 
+def _refuse_disclosure_formal_via_naked_write_batch(
+    domain: str, spec: Mapping[str, Any]
+) -> None:
+    """Formal disclosure land/accept must not go through naked ``_write_batch``.
+
+    Domains with a registered disclosure execution consumer publish only via
+    ``propagate_disclosure_execution_contract`` + land/accept writers.  This
+    path remains NONCONFORMING strangler (or refuse) — never accepted truth.
+    """
+
+    from services.data_sources.disclosure_boundaries import (
+        DisclosureBoundaryError,
+        disclosure_boundary,
+        refuse_accepted_publication_claim,
+    )
+    from services.data_sources.formal_execution import disclosure_consumer_domains
+
+    boundary = disclosure_boundary(domain)
+    if boundary is None:
+        return
+    claim = str(
+        spec.get("publication_claim") or spec.get("conformity") or ""
+    ).strip()
+    if claim and claim != "NONCONFORMING":
+        try:
+            refuse_accepted_publication_claim(domain, claim)
+        except DisclosureBoundaryError as exc:
+            raise ExecutionPolicyError(
+                domain,
+                mode="disabled",
+                reason=exc.reason,
+                detail=exc.detail,
+            ) from exc
+        if claim in {"accepted", "canonical", "landing", "ACCEPTED", "formal"}:
+            raise ExecutionPolicyError(
+                domain,
+                mode="disabled",
+                reason="disclosure_formal_requires_execution_handoff",
+                detail=(
+                    "naked _write_batch cannot claim formal disclosure publication; "
+                    "use propagate_disclosure_execution_contract + land/accept"
+                ),
+            )
+    if domain in disclosure_consumer_domains():
+        # holders_top10 tracer: registry raw write is never the formal path.
+        if claim in {"accepted", "canonical", "landing", "ACCEPTED", "formal", "DatasetSnapshot"}:
+            raise ExecutionPolicyError(
+                domain,
+                mode="disabled",
+                reason="disclosure_formal_requires_execution_handoff",
+                detail=(
+                    f"domain={domain} has disclosure execution consumer; "
+                    "formal writes require contract handoff, not _write_batch"
+                ),
+            )
+
+
 def _write_batch(
     conn,
     spec: dict[str, Any],
@@ -1086,7 +1143,9 @@ def _write_batch(
     expected_partition: dict[str, Any] | None = None,
 ) -> int:
     """验证后原子 MERGE on grain；失败批不改旧数据。"""
-    _authorize_disclosure_legacy_raw_write(str(spec.get("domain") or ""))
+    domain = str(spec.get("domain") or "")
+    _authorize_disclosure_legacy_raw_write(domain)
+    _refuse_disclosure_formal_via_naked_write_batch(domain, spec)
     write_mode = str(spec.get("write_mode") or "merge_grain")
     if write_mode not in {"merge_grain", "replace_snapshot", "replace_partition"}:
         raise ValueError(
