@@ -111,16 +111,26 @@ def test_b0_scaffold_consumes_frozen_snapshot_and_surface_status() -> None:
     assert all(h.status.startswith("declared") for h in run.pit_hooks)
     assert run.artifact_manifest["paper_fills"] == "not_run"
     assert verdict.verdict == "inconclusive"
-    assert verdict.blocked is True
     assert verdict.claimable is False
     if is_canary_scope(frozen):
+        assert verdict.blocked is True
         assert verdict.reason == REASON_CANARY_SCOPE_ONLY
         assert "canary_scope_blocks_claimable_verdict" in run.notes
     else:
         assert is_bounded_scope(frozen)
-        assert verdict.reason == REASON_MEASURED_COVERAGE_INSUFFICIENT
         assert run.bare_k_coverage is not None
-        assert run.bare_k_coverage.sufficient_for_measured_b0 is False
+        if run.bare_k_coverage.sufficient_for_measured_b0:
+            # Short accepted nominal window ready; still no WF/paper edge.
+            assert verdict.reason == "scaffold_no_measured_edge"
+            assert verdict.blocked is False
+            assert run.bare_k_coverage.accepted_nominal_day_count >= (
+                MIN_ACCEPTED_NOMINAL_DAYS_FOR_MEASURED_B0
+            )
+            assert run.artifact_manifest["metrics"] == "coverage_measured_ready"
+        else:
+            assert verdict.blocked is True
+            assert verdict.reason == REASON_MEASURED_COVERAGE_INSUFFICIENT
+            assert run.bare_k_coverage.sufficient_for_measured_b0 is False
 
 
 def test_b0_canary_default_verdict_never_accept() -> None:

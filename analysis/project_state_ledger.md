@@ -931,3 +931,29 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   days overlapping disclosure window; purged walk-forward + paper fills;
   then B1 stock-state block. Org full-universe `20260430` still out of
   scope (subset only).
+
+### 2026-07-19 — Phase E: short-window nominal K/ST + B0 coverage ready
+
+- **E PARTIAL** (coverage gate cleared; still not claimable B0).
+- **A3 short window** (no mass multi-year backfill): accepted calendar trading
+  days ending at eligible frontier `20260717`, window
+  `20260708`–`20260717` (8 days; legacy raw present for speed).
+  - `stock_st`: 8 partitions, 1688 rows total, publication
+    `accepted_security_day_short_window`
+  - `daily` nominal OHLCV: 8 partitions, 44178 rows total (per-day ~5518–5525)
+- **CLI ergonomics**: formal `daily`/`stock_st` now accept identical day **or**
+  inclusive short window ≤10 trading days; still refuse `--backfill` /
+  `--resume` / mass windows; each day uses formal single-day accept path.
+  Drain remains inapplicable (`authorized_short_window_only`).
+- **B0 re-measure** (live): `accepted_nominal_day_count=8`,
+  `sufficient_for_measured_b0=true`, reason `measured_nominal_window_ready`;
+  verdict `inconclusive` / `scaffold_no_measured_edge` / `claimable=false`
+  (left `measured_coverage_insufficient`). Disclosure DatasetSnapshot unchanged
+  (K is live accepted_partition input, not disclosure freeze).
+- Commands:
+  - `scripts/chunkyctl sync --domain stock_st --start 20260708 --end 20260717`
+  - `scripts/chunkyctl sync --domain daily --start 20260708 --end 20260717`
+- Tests: short-window sync integrity + institution_follow B0 live branch.
+- **Residual for WF/paper/B1**: purged walk-forward + embargo + one-touch
+  holdout + paper fills (T+1/costs/limits) on this bounded snapshot; then B1.
+  Org full-universe recent accept still out of scope.

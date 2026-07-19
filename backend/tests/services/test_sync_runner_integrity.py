@@ -893,8 +893,8 @@ def test_run_domain_records_database_write_failure(monkeypatch):
     assert recorded["ok"] is False and recorded["last_date"] is None
 
 
-def test_formal_daily_sync_requires_single_trade_date_before_provider_io(monkeypatch):
-    """Authorized daily canary refuses unbounded sync before provider I/O."""
+def test_formal_daily_sync_requires_explicit_bounds_before_provider_io(monkeypatch):
+    """Authorized daily short window refuses unbounded sync before provider I/O."""
 
     for name in (
         "_adapter",
@@ -908,7 +908,7 @@ def test_formal_daily_sync_requires_single_trade_date_before_provider_io(monkeyp
             name,
             lambda *a, _n=name, **k: (_ for _ in ()).throw(AssertionError(_n)),
         )
-    with pytest.raises(sr.SyncWindowError, match="identical --start/--end"):
+    with pytest.raises(sr.SyncWindowError, match="explicit --start/--end"):
         sr.run_domain("daily")
 
 
@@ -952,7 +952,78 @@ def test_formal_daily_authorized_single_day_uses_accepted_path(monkeypatch):
     assert result["failed_batches"] == 0
 
 
+def test_formal_daily_authorized_short_window_publishes_each_trading_day(monkeypatch):
+    """Short inclusive window expands via calendar and loops single-day accept."""
+
+    registry = sr.load_registry()
+    published: list[str] = []
+
+    def _fake_publish(domain, _spec, *, trade_date):
+        published.append(trade_date)
+        return {
+            "domain": domain,
+            "status": "ok",
+            "batches": 1,
+            "rows": 10,
+            "failed_batches": 0,
+            "publication": "accepted_nominal_ohlcv_partition",
+            "partition_value": trade_date,
+        }
+
+    monkeypatch.setattr(sr, "_publish_security_day_accepted_partition", _fake_publish)
+    monkeypatch.setattr(
+        sr,
+        "trading_days",
+        lambda start, end=None: [
+            d
+            for d in (
+                "20260713",
+                "20260714",
+                "20260715",
+                "20260716",
+                "20260717",
+            )
+            if start <= d <= (end or d)
+        ],
+    )
+    for name in ("_adapter", "_target_conn", "_write_batch", "_fetch_paged"):
+        monkeypatch.setattr(
+            sr,
+            name,
+            lambda *a, _n=name, **k: (_ for _ in ()).throw(AssertionError(_n)),
+        )
+
+    result = sr.run_domain(
+        "daily", start="20260713", end="20260717", registry=registry
+    )
+    assert published == [
+        "20260713",
+        "20260714",
+        "20260715",
+        "20260716",
+        "20260717",
+    ]
+    assert result["publication"] == "accepted_security_day_short_window"
+    assert result["window_days_completed"] == 5
+    assert result["rows"] == 50
+    assert result["failed_batches"] == 0
+
+
+def test_formal_daily_short_window_refuses_mass_backfill(monkeypatch):
+    days = [f"20260{i:03d}" for i in range(1, 16)]  # 15 synthetic days
+    monkeypatch.setattr(sr, "trading_days", lambda start, end=None: days)
+    with pytest.raises(sr.SyncWindowError, match="refuse mass backfill"):
+        sr._require_authorized_short_trade_date_window(
+            "daily",
+            backfill=False,
+            resume=False,
+            start="20260001",
+            end="20260015",
+            max_dates=None,
+        )
+
+
 def test_formal_stock_st_drain_is_inapplicable():
     result = sr.drain_domain("stock_st")
     assert result["status"] == "drain_inapplicable"
-    assert "single_day" in result["reason"]
+    assert "short_window" in result["reason"]

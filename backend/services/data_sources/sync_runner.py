@@ -1702,6 +1702,74 @@ def _publish_trade_cal_accepted_generation(spec: dict[str, Any]) -> dict[str, An
     }
 
 
+# Formal daily/stock_st: each accepted partition is still one trade_date.
+# CLI may pass an identical day or a short calendar window that expands to
+# trading days and publishes day-by-day. Refuse mass multi-year backfill.
+AUTHORIZED_SECURITY_DAY_MAX_WINDOW_DAYS = 10
+
+
+def _require_authorized_short_trade_date_window(
+    domain: str,
+    *,
+    backfill: bool,
+    resume: bool,
+    start: str | None,
+    end: str | None,
+    max_dates: int | None,
+    trading_day_values: list[str] | None = None,
+) -> list[str]:
+    """Resolve authorized formal daily/ST trade dates from --start/--end.
+
+    Returns 1..AUTHORIZED_SECURITY_DAY_MAX_WINDOW_DAYS trading days inclusive.
+    Each day is published via the single-day accepted path (no batch merge).
+    """
+
+    if max_dates is not None:
+        raise SyncWindowError("--max-dates is only valid for --drain")
+    if backfill or resume:
+        raise SyncWindowError(
+            f"domain={domain} accepted partitions are authorized short-window "
+            "single-day only; refuse --backfill/--resume"
+        )
+    if start is None or end is None:
+        raise SyncWindowError(
+            f"domain={domain} authorized short window requires explicit "
+            "--start/--end (same day or <= "
+            f"{AUTHORIZED_SECURITY_DAY_MAX_WINDOW_DAYS} trading days)"
+        )
+    start_c = str(start).replace("-", "")
+    end_c = str(end).replace("-", "")
+    for label, value in (("start", start_c), ("end", end_c)):
+        if len(value) != 8 or not value.isdigit():
+            raise SyncWindowError(
+                f"domain={domain} trade_date {label} must be YYYYMMDD; "
+                f"got {value!r}"
+            )
+    if start_c > end_c:
+        raise SyncWindowError(
+            f"domain={domain} start must be <= end; got start={start_c} end={end_c}"
+        )
+    if trading_day_values is not None:
+        days = [
+            d
+            for d in trading_day_values
+            if len(d) == 8 and d.isdigit() and start_c <= d <= end_c
+        ]
+    else:
+        days = trading_days(start_c, end_c)
+    if not days:
+        raise SyncWindowError(
+            f"domain={domain} no trading days in [{start_c},{end_c}]"
+        )
+    if len(days) > AUTHORIZED_SECURITY_DAY_MAX_WINDOW_DAYS:
+        raise SyncWindowError(
+            f"domain={domain} authorized short window max "
+            f"{AUTHORIZED_SECURITY_DAY_MAX_WINDOW_DAYS} trading days; "
+            f"got {len(days)} in [{start_c},{end_c}] — refuse mass backfill"
+        )
+    return days
+
+
 def _require_authorized_single_trade_date(
     domain: str,
     *,
@@ -1711,32 +1779,72 @@ def _require_authorized_single_trade_date(
     end: str | None,
     max_dates: int | None,
 ) -> str:
-    """Canary/manual formal daily+ST: one identical --start/--end trade_date."""
+    """Backward-compatible single-day resolver (start must equal end)."""
 
-    if max_dates is not None:
-        raise SyncWindowError("--max-dates is only valid for --drain")
-    if backfill or resume:
+    days = _require_authorized_short_trade_date_window(
+        domain,
+        backfill=backfill,
+        resume=resume,
+        start=start,
+        end=end,
+        max_dates=max_dates,
+    )
+    if len(days) != 1 or days[0] != str(start).replace("-", ""):
         raise SyncWindowError(
-            f"domain={domain} accepted partition is authorized single-day only; "
-            "refuse --backfill/--resume"
+            f"domain={domain} authorized single-day helper requires start==end; "
+            f"got start={start} end={end} days={days}"
         )
-    if start is None or end is None:
-        raise SyncWindowError(
-            f"domain={domain} authorized canary requires identical "
-            "--start/--end single trade_date"
+    return days[0]
+
+
+def _publish_security_day_short_window(
+    domain: str,
+    spec: dict[str, Any],
+    *,
+    trade_dates: list[str],
+) -> dict[str, Any]:
+    """Publish each authorized trade_date via the formal single-day path."""
+
+    day_results: list[dict[str, Any]] = []
+    total_rows = 0
+    total_batches = 0
+    failed = 0
+    last_ok: str | None = None
+    completed_ok = 0
+    for trade_date in trade_dates:
+        result = _publish_security_day_accepted_partition(
+            domain, spec, trade_date=trade_date
         )
-    start_c = str(start).replace("-", "")
-    end_c = str(end).replace("-", "")
-    if start_c != end_c:
-        raise SyncWindowError(
-            f"domain={domain} authorized canary requires start==end; "
-            f"got start={start_c} end={end_c}"
-        )
-    if len(start_c) != 8 or not start_c.isdigit():
-        raise SyncWindowError(
-            f"domain={domain} trade_date must be YYYYMMDD; got {start_c!r}"
-        )
-    return start_c
+        day_results.append(result)
+        total_rows += int(result.get("rows") or 0)
+        total_batches += int(result.get("batches") or 0)
+        day_failed = int(result.get("failed_batches") or 0)
+        failed += day_failed
+        if day_failed == 0:
+            last_ok = trade_date
+            completed_ok += 1
+        else:
+            # Fail closed: stop so a mid-window provider failure is visible.
+            break
+    publication = (
+        day_results[0].get("publication")
+        if len(day_results) == 1
+        else "accepted_security_day_short_window"
+    )
+    return {
+        "domain": domain,
+        "status": "ok" if failed == 0 else "partial",
+        "batches": total_batches,
+        "rows": total_rows,
+        "failed_batches": failed,
+        "publication": publication,
+        "partition_values": [str(r.get("partition_value") or "") for r in day_results if int(r.get("failed_batches") or 0) == 0],
+        "trade_dates": list(trade_dates),
+        "day_results": day_results,
+        "last_date": last_ok,
+        "window_days_requested": len(trade_dates),
+        "window_days_completed": completed_ok,
+    }
 
 
 def _publish_security_day_accepted_partition(
@@ -1860,7 +1968,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
             )
         return _publish_trade_cal_accepted_generation(spec)
     if domain in {"daily", "stock_st"}:
-        trade_date = _require_authorized_single_trade_date(
+        trade_dates = _require_authorized_short_trade_date_window(
             domain,
             backfill=backfill,
             resume=resume,
@@ -1868,8 +1976,12 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
             end=end,
             max_dates=max_dates,
         )
-        return _publish_security_day_accepted_partition(
-            domain, spec, trade_date=trade_date
+        if len(trade_dates) == 1:
+            return _publish_security_day_accepted_partition(
+                domain, spec, trade_date=trade_dates[0]
+            )
+        return _publish_security_day_short_window(
+            domain, spec, trade_dates=trade_dates
         )
     formal_contract = _formal_dataset_contract_for_spec(spec)
     formal_execution = _require_formal_population_execution(spec, formal_contract)
@@ -2304,7 +2416,7 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
         return {
             "domain": domain,
             "status": "drain_inapplicable",
-            "reason": "accepted_partition_is_authorized_single_day_only",
+            "reason": "accepted_partition_is_authorized_short_window_only",
         }
     formal_contract = _formal_dataset_contract_for_spec(spec)
     formal_execution = _require_formal_population_execution(spec, formal_contract)

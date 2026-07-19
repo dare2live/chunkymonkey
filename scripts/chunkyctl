@@ -21,6 +21,7 @@ Usage:
   scripts/chunkyctl doctor [--fast] [--skip-storage-payload]
   scripts/chunkyctl sync --domain DOMAIN [--drain] [--max-dates N]
   scripts/chunkyctl sync --domain DOMAIN --backfill --start YYYYMMDD --end YYYYMMDD
+  scripts/chunkyctl sync --domain daily|stock_st --start YYYYMMDD --end YYYYMMDD
   scripts/chunkyctl map [--check]
   scripts/chunkyctl pipeline acquire|clean|process|store [--force]
   scripts/chunkyctl lineage build | impact <table> | provenance <table> | dead | show <table>
@@ -28,10 +29,12 @@ Usage:
 Examples:
   scripts/chunkyctl doctor --fast
   scripts/chunkyctl sync --domain daily --backfill --start 20260715 --end 20260716
+  scripts/chunkyctl sync --domain daily --start 20260708 --end 20260717
 
 Notes:
   doctor     = project health snapshot, including manual-only automation residue enforcement.
   sync       = manual single-domain provider sync through the production runner and writer lock.
+               formal daily/stock_st: --start/--end same day or <=10 trading days (no --backfill).
   map        = regenerate FEATURE_MAP.md machine-derived feature map; --check = drift gate only.
   pipeline   = manually run one declared data stage; full manual chain remains daily_update.sh.
   lineage    = generated dependency projection; impact <table> audits fan-in before delete/migrate.
