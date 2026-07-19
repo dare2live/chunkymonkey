@@ -6,7 +6,7 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane residual=BLOCKED**（无 authorized canary + 无 live calendar/K accepted）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（广度计算器已有；接 mart/cutover 阻塞于 A3）。Fable5 **REVISE** 已吸收（见 ledger）。禁 E0/institution_follow 生产至 A/B 足够。
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（SSE calendar accepted generation 已 canary；缺 K/ST accepted partitions）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（广度/shadow 已有；接 mart/cutover 仍阻塞于 K/ST）。Fable5 **REVISE** 已吸收（见 ledger）。禁 E0/institution_follow 生产至 A/B 足够。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -49,17 +49,19 @@
 
 控制面原语/margin 冻结/all-due 前阻断/doctor `NOT_EVALUATED` FAIL/calendar 隔离原型：见 ledger。≠业务就绪。
 
-- **A** A1–A5 **FIXED**。`live_readiness` 可评估（常见 BLOCKED=无 live accepted partition）。禁 mass fetch/切消费者。
-  **A3 data-plane residual=BLOCKED（本 session 实测）**：`trade_cal`/`daily`/`stock_st`
-  `execution_policy.mode=disabled`（`accepted_generation_pending` /
-  `accepted_partition_pending`）；live `tushare_raw` 无 calendar/K accepted
-  landing·canonical 表；仅有 legacy `raw_tushare_stock_st` + margin accepted
-  （margin 仍 `scope_blocked`）。未授权 → **不跑** provider/manual canary。
-  下一授权点：窄 calendar generation canary（再 K/ST），禁 mass backfill / margin 解冻。
+- **A** A1–A5 **FIXED**。`live_readiness` 可评估。禁 mass fetch/切消费者。
+  **A3 data-plane PARTIAL**：`trade_cal` = `authorized_manual_generation` +
+  `sync_policy=on_demand`；live accepted SSE generation
+  `trade_cal:SSE:19901219_20261231:20260719T131257Z`（13162 行，open/closed 齐全；
+  trusted `calendar_reader` 可读）。`daily`/`stock_st` 仍
+  `execution_policy.disabled` / `accepted_partition_pending`；population
+  readiness=`NOT_EVALUATED`（缺 K/ST schema）。margin 仍冻结。
+  下一刀：窄 **K 或 ST 单日 accepted canary**（禁 mass backfill / margin 解冻 /
+  pulse cutover）。
 - **B-ext FIXED（诚实化）** scope + shadow + sentiment sidecar + 前端 UNTRUSTED 标注；
   mart 数值未改、`cutover_allowed=false`。残余=B-pit 数值切读。
-- **B-pit PARTIAL** `project_universe_breadth` 已落地（membership-only，fail-closed）；
-  **未**接 pulse mart / 未 cutover。完整 B 需 A3 live partitions + shadow 证据后再切读面。
+- **B-pit PARTIAL** 广度/shadow 已有；**未**接 pulse mart / 未 cutover。日历已
+  unblock reader；完整 B 仍需 K/ST accepted + shadow 后再切读面。
 - **C** Tier1/2 正式 lineage。**D** `DatasetSnapshot`→`ExperimentVerdict` + PIT 截断。
 - **E0（E 硬前置）** 披露域 formal 化：holders/org_holding/stk_holdertrade → adapter/landing/canonical + notice/`available_at` 契约。未完成则 **E=BLOCKED**。
 - **E** `institution_follow_v1`（首包；B0→B4）。**F** main_rally。**G** 公式+BestChoice。**H** Release/名义价纸面。

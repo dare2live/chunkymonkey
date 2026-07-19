@@ -574,3 +574,23 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 ### 2026-07-19 — B-pit slice2: breadth shadow compare (no cutover)
 
 - **PARTIAL**：`compare_legacy_vs_project_universe_breadth` — 比率一致也不放行 cutover；分歧记 issue。对抗 6 passed。
+
+### 2026-07-19 — A3 calendar generation canary (accepted)
+
+- **PARTIAL / calendar FIXED**：authorized smallest SSE calendar generation canary.
+  - Code: `calendar_runtime.capture_and_publish_authorized_calendar_generation` +
+    `sync_runner._publish_trade_cal_accepted_generation`; provider NaN
+    `pretrade_date` → null; never legacy raw.
+  - Registry: `trade_cal.execution_policy=enabled/authorized_manual_generation` +
+    `sync_policy=on_demand`（禁 --all-due 自动全量重发）。
+  - Command: `scripts/chunkyctl sync --domain trade_cal` →
+    `batch_id=trade_cal:SSE:19901219_20261231:20260719T131257Z`,
+    rows=13162, content_hash=`e409ad7c…af3b7b`, status=ACCEPTED.
+  - Live evidence: landing/canonical 13162 (open=8797, closed=4365,
+    1990-12-19..2026-12-31); `accepted_partition` pointer for
+    `tier0.reference.sse_trading_calendar_generation`;
+    `open_calendar_truth` reads generation. Doctor
+    `population_readiness`=`NOT_EVALUATED` now only for missing K/ST schemas
+    (calendar reason gone).
+- 未做：daily/stock_st canary、mass backfill、margin 解冻、pulse/B-pit cutover。
+  B-pit 数值切读仍阻塞于 K/ST accepted partitions。

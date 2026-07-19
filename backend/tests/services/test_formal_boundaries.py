@@ -51,25 +51,24 @@ def test_daily_and_stock_st_cannot_use_legacy_raw_writer() -> None:
         refuse_legacy_raw_write_for_formal_domain("stock_st")
 
 
-def test_enabled_trade_cal_still_blocked_by_formal_boundary(monkeypatch) -> None:
+def test_enabled_trade_cal_uses_formal_publish_not_legacy_raw(monkeypatch) -> None:
     registry = sr.load_registry()
-    registry = {
-        **registry,
-        "domains": {
-            **registry["domains"],
-            "trade_cal": {
-                **registry["domains"]["trade_cal"],
-                "execution_policy": {"mode": "enabled", "reason": "forced_for_test"},
-            },
+    monkeypatch.setattr(
+        sr,
+        "_publish_trade_cal_accepted_generation",
+        lambda _spec: {
+            "domain": "trade_cal",
+            "status": "ok",
+            "batches": 1,
+            "rows": 1,
+            "failed_batches": 0,
+            "publication": "accepted_calendar_generation",
         },
-    }
-    for name in ("_adapter", "_target_conn", "_write_batch"):
-        monkeypatch.setattr(
-            sr,
-            name,
-            lambda *a, _n=name, **k: (_ for _ in ()).throw(AssertionError(_n)),
-        )
-    with pytest.raises(sr.ExecutionPolicyError) as caught:
-        sr.run_domain("trade_cal", registry=registry)
-    message = str(caught.value).lower()
-    assert "formal boundary" in message or "legacy" in message
+    )
+    monkeypatch.setattr(
+        sr,
+        "_write_batch",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("_write_batch")),
+    )
+    result = sr.run_domain("trade_cal", registry=registry)
+    assert result["publication"] == "accepted_calendar_generation"

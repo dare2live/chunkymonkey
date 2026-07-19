@@ -68,7 +68,7 @@ AGENTS.md
 
 | Priority | Defect | Consequence |
 |---:|---|---|
-| P0 | calendar/K/ST live accepted partitions + 授权 canary 未 bootstrap（A3 data-plane residual） | B-pit / 真 universe 证明阻塞；缺库/无 schema 时 loader 诚实 NOT_EVALUATED，非 IOException |
+| P0 | K/ST live accepted partitions 未 canary（calendar accepted generation 已 bootstrap） | B-pit / 真 universe 证明仍阻塞；缺 K/ST schema 时 loader 诚实 NOT_EVALUATED |
 | P0 | 披露域 miaoxiang aif10 直写 fact（无 landing/accepted） | Phase E 冻结 DatasetSnapshot 不可满足；标 NONCONFORMING，归 E0 |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
@@ -121,9 +121,11 @@ availability 或 consumer 语义。现有 `dim_trading_calendar` 是 open-day se
 
 calendar 按 `calendar_contract.py`、`calendar_schema.py`、`calendar_landing.py`、
 `calendar_acceptance.py`、`calendar_reader.py`、`calendar_runtime.py` 分责；A2 发表入口是
-`publish_accepted_calendar_generation`，sync 禁 legacy raw 落穿，provider canary 仍
-`accepted_generation_pending`。all-due execution/population preflight 已由 full pipeline、
-direct acquire 与独立 acquire stage 共用，disabled 域不得在后置失败。
+`publish_accepted_calendar_generation` / authorized
+`capture_and_publish_authorized_calendar_generation`；`trade_cal` =
+`authorized_manual_generation` + `on_demand`（禁 all-due 自动重发）；sync 禁
+legacy raw。all-due execution/population preflight 仍由 full pipeline / acquire
+共用；`daily`/`stock_st`/margin disabled 继续阻断 all-due。
 
 旧 margin history request/runtime/writer/CLI 已退役物删。冻结 v2 只由 `margin_evidence.py`、
 `margin_state.py`、reconcile/readiness/projection 读侧保留不可变审计证据；不存在受支持的继续写入旁路。

@@ -20,6 +20,7 @@ from services.data_sources.calendar_runtime import (
     CalendarRuntimeError,
     DIM_TRADING_CALENDAR_ROLE,
     bootstrap_calendar_acceptance_schema,
+    capture_and_publish_authorized_calendar_generation,
     dim_is_accepted_calendar_truth,
     publish_accepted_calendar_generation,
     refuse_legacy_calendar_raw_write,
@@ -235,40 +236,92 @@ def test_refuse_legacy_raw_write_is_hard_wall() -> None:
         refuse_legacy_calendar_raw_write(detail="test")
 
 
-def test_enabled_trade_cal_still_cannot_use_legacy_raw_writer(monkeypatch) -> None:
+def test_enabled_trade_cal_uses_formal_publish_never_legacy_raw(monkeypatch) -> None:
     import services.data_sources.sync_runner as sr
 
     registry = sr.load_registry()
-    registry = {
-        **registry,
-        "domains": {
-            **registry["domains"],
-            "trade_cal": {
-                **registry["domains"]["trade_cal"],
-                "execution_policy": {"mode": "enabled", "reason": "forced_for_test"},
-            },
-        },
-    }
+    called = {"publish": 0}
 
-    for name in (
-        "eligible_end_date",
-        "trading_days",
-        "apply_fetch_socket_timeout",
-        "_adapter",
-        "_target_conn",
-        "_smartmoney_conn",
-        "_write_batch",
-    ):
+    def _fake_publish(spec):
+        called["publish"] += 1
+        assert spec["domain"] == "trade_cal"
+        return {
+            "domain": "trade_cal",
+            "status": "ok",
+            "batches": 1,
+            "rows": 12,
+            "failed_batches": 0,
+            "publication": "accepted_calendar_generation",
+        }
+
+    monkeypatch.setattr(sr, "_publish_trade_cal_accepted_generation", _fake_publish)
+    for name in ("_write_batch", "_smartmoney_conn"):
         monkeypatch.setattr(
             sr,
             name,
             lambda *a, _n=name, **k: (_ for _ in ()).throw(AssertionError(_n)),
         )
 
-    with pytest.raises(sr.ExecutionPolicyError) as caught:
-        sr.run_domain("trade_cal", registry=registry)
-    assert caught.value.reason == "accepted_generation_pending"
-    assert "legacy _write_batch/raw replace is forbidden" in str(caught.value)
+    result = sr.run_domain("trade_cal", registry=registry)
+    assert called["publish"] == 1
+    assert result["publication"] == "accepted_calendar_generation"
+    surface = runtime_surface()
+    assert surface["legacy_raw_write"] == "forbidden"
+    assert surface["provider_sync"] == "authorized_manual_generation"
+
+
+def test_provider_nan_pretrade_normalizes_to_null_before_landing() -> None:
+    from services.data_sources.calendar_runtime import _project_provider_row
+
+    projected = _project_provider_row(
+        {
+            "exchange": "SSE",
+            "cal_date": "19901219",
+            "is_open": 1,
+            "pretrade_date": float("nan"),
+            "extra": "drop-me",
+        }
+    )
+    assert projected == {
+        "exchange": "SSE",
+        "cal_date": "19901219",
+        "is_open": 1,
+        "pretrade_date": None,
+    }
+
+
+def test_capture_and_publish_authorized_generation_from_fetch_pages() -> None:
+    contract = _contract()
+    provider_rows = _rows(contract)
+    page = contract.page_limit
+    pages = [
+        provider_rows[index : index + page]
+        for index in range(0, len(provider_rows), page)
+    ]
+    if len(pages[-1]) == page:
+        pages.append([])
+    cursor = {"i": 0}
+
+    def fetch_page(request):
+        assert request["offset"] == cursor["i"] * page
+        chunk = pages[cursor["i"]]
+        cursor["i"] += 1
+        return chunk
+
+    conn = connect(":memory:")
+    try:
+        outcome = capture_and_publish_authorized_calendar_generation(
+            conn,
+            contract,
+            fetch_page=fetch_page,
+            observed_at=OBSERVED_AT,
+            bootstrap=True,
+        )
+        assert outcome.status == "ACCEPTED"
+        assert outcome.row_count == len(provider_rows)
+        assert outcome.batch_id.startswith("trade_cal:SSE:")
+    finally:
+        conn.close()
 
 
 def test_bootstrap_is_explicit_entrypoint() -> None:

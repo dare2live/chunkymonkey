@@ -89,15 +89,15 @@ def test_live_margin_v2_is_disabled_but_read_only_contract_still_loads():
     assert contract.contract_version == "2"
 
 
-def test_live_trade_calendar_legacy_writer_is_disabled_before_any_side_effect(
+def test_live_trade_calendar_authorized_manual_generation_uses_formal_path(
     monkeypatch,
 ):
     registry = sr.load_registry()
     spec = sr.domain_spec(registry, "trade_cal")
 
     assert spec["execution_policy"] == {
-        "mode": "disabled",
-        "reason": "accepted_generation_pending",
+        "mode": "enabled",
+        "reason": "authorized_manual_generation",
     }
     assert spec["calendar_generation"] == {
         "contract_version": "1",
@@ -120,23 +120,29 @@ def test_live_trade_calendar_legacy_writer_is_disabled_before_any_side_effect(
         "unit": "calendar_day_status",
     }
 
+    monkeypatch.setattr(
+        sr,
+        "_publish_trade_cal_accepted_generation",
+        lambda _spec: {
+            "domain": "trade_cal",
+            "status": "ok",
+            "batches": 1,
+            "rows": 1,
+            "failed_batches": 0,
+            "publication": "accepted_calendar_generation",
+        },
+    )
     for name in (
         "eligible_end_date",
         "trading_days",
-        "apply_fetch_socket_timeout",
-        "_adapter",
-        "_target_conn",
+        "_write_batch",
         "_smartmoney_conn",
     ):
         monkeypatch.setattr(sr, name, _forbidden(name))
 
-    with pytest.raises(
-        sr.ExecutionPolicyError,
-        match="trade_cal.*accepted_generation_pending",
-    ) as caught:
-        sr.run_domain("trade_cal", registry=registry)
-
-    assert caught.value.reason == "accepted_generation_pending"
+    result = sr.run_domain("trade_cal", registry=registry)
+    assert result["publication"] == "accepted_calendar_generation"
+    assert result["failed_batches"] == 0
 
 
 @pytest.mark.parametrize(

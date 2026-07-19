@@ -2803,6 +2803,24 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/calendar_builder.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_sse_trading_calendar_generation"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/calendar_schema.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_sse_trading_calendar_generation"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_calendar_contract.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_sse_trading_calendar_generation"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/database_manifest.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.ingest_batch"
@@ -2920,6 +2938,36 @@
       "dst": "consumer:backend/tests/services/test_margin_state.py",
       "kind": "consume",
       "src": "table:tushare_raw.landing_tushare_margin"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/calendar_builder.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_trade_cal"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/calendar_schema.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_trade_cal"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_calendar_contract.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_trade_cal"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/calendar_schema.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_trade_cal_fragment"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_calendar_contract.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_trade_cal_fragment"
     },
     {
       "attrs": {},
@@ -4225,9 +4273,9 @@
     }
   ],
   "meta": {
-    "edge_count": 653,
-    "generated_at": "2026-07-19T13:09:33.980438+00:00",
-    "node_count": 293,
+    "edge_count": 661,
+    "generated_at": "2026-07-19T13:16:13.144271+00:00",
+    "node_count": 296,
     "version": 2
   },
   "nodes": [
@@ -6336,6 +6384,16 @@
         "db": "tushare_raw",
         "layer": "untagged",
         "status": "active",
+        "table": "canonical_sse_trading_calendar_generation"
+      },
+      "id": "table:tushare_raw.canonical_sse_trading_calendar_generation",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "status": "active",
         "table": "ingest_batch"
       },
       "id": "table:tushare_raw.ingest_batch",
@@ -6349,6 +6407,26 @@
         "table": "landing_tushare_margin"
       },
       "id": "table:tushare_raw.landing_tushare_margin",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "status": "active",
+        "table": "landing_tushare_trade_cal"
+      },
+      "id": "table:tushare_raw.landing_tushare_trade_cal",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "status": "active",
+        "table": "landing_tushare_trade_cal_fragment"
+      },
+      "id": "table:tushare_raw.landing_tushare_trade_cal_fragment",
       "kind": "table"
     },
     {
