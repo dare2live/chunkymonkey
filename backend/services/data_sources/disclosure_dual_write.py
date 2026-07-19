@@ -1,10 +1,10 @@
-"""E0 strangler dual-write: formal land→accept then deprecated legacy mirror.
+"""E0 formal disclosure writes: land→accept; legacy mirror off by default.
 
-Production disclosure writers route here by default.  Legacy mirror remains
-active for one more slice (``legacy_mirror_deprecated``) so feature-store
-enrichment columns stay continuous; research provider-field reads prefer
-accepted canonical when shadow MATCH.  Naked NONCONFORMING direct writes are
-test-escape only.
+Production disclosure writers route here as ``formal_only``.  Legacy mirror
+runs only when ``enable_legacy_mirror=True`` or an explicit ``mirror`` callback
+is passed (test/emergency escape).  Holders enrichment columns are carried on
+canonical; research provider-field reads prefer accepted canonical when shadow
+MATCH.  Naked NONCONFORMING direct writes remain test-escape only.
 """
 from __future__ import annotations
 
@@ -78,6 +78,21 @@ def _require_accepted(domain: str, outcome: Any) -> None:
         )
 
 
+def _resolve_mirror(
+    *,
+    enable_legacy_mirror: bool,
+    mirror: Callable[[Any, list[dict[str, Any]]], int] | None,
+    default_mirror: Callable[[Any, list[dict[str, Any]]], int],
+) -> Callable[[Any, list[dict[str, Any]]], int] | None:
+    """None means formal-only (no legacy write)."""
+
+    if mirror is not None:
+        return mirror
+    if enable_legacy_mirror:
+        return default_mirror
+    return None
+
+
 def write_holders_top10_formal_then_mirror(
     conn,
     rows: Iterable[Mapping[str, Any]],
@@ -85,8 +100,9 @@ def write_holders_top10_formal_then_mirror(
     observed_at: datetime | str | None = None,
     available_at: datetime | str | None = None,
     mirror: Callable[[Any, list[dict[str, Any]]], int] | None = None,
+    enable_legacy_mirror: bool = False,
 ) -> DisclosureDualWriteOutcome:
-    """Publish by notice_date (stock-merge) then mirror full legacy rows."""
+    """Publish by notice_date (stock-merge); legacy mirror only if enabled."""
 
     from services.data_sources.holders_top10_acceptance import (
         HoldersTop10LandingBatch,
@@ -95,8 +111,8 @@ def write_holders_top10_formal_then_mirror(
     from services.data_sources.holders_top10_contract import load_holders_top10_contract
     from services.data_sources.holders_top10_schema import (
         API,
+        CANONICAL_ROW_FIELDS,
         CANONICAL_TABLE,
-        PROVIDER_FIELDS,
         SOURCE,
     )
 
@@ -120,9 +136,11 @@ def write_holders_top10_formal_then_mirror(
                 reason="missing_notice_date",
                 detail="formal path requires notice_date on every row",
             )
-        provider = _project(row, PROVIDER_FIELDS)
+        provider = _project(row, CANONICAL_ROW_FIELDS)
         provider["notice_date"] = partition
         provider["report_date"] = _compact_yyyymmdd(provider.get("report_date"))
+        if provider.get("holder_name_norm") in (None, ""):
+            provider["holder_name_norm"] = provider.get("holder_name")
         by_partition[partition].append(provider)
 
     stocks = {str(row.get("stock_code") or "").strip() for row in material}
@@ -138,14 +156,14 @@ def write_holders_top10_formal_then_mirror(
         try:
             existing = conn.execute(
                 f"""
-                SELECT {", ".join(PROVIDER_FIELDS)}
+                SELECT {", ".join(CANONICAL_ROW_FIELDS)}
                   FROM {CANONICAL_TABLE}
                  WHERE notice_date = ?
                 """,
                 [partition],
             ).fetchall()
             for existing_row in existing:
-                mapped = dict(zip(PROVIDER_FIELDS, existing_row, strict=True))
+                mapped = dict(zip(CANONICAL_ROW_FIELDS, existing_row, strict=True))
                 if str(mapped.get("stock_code") or "").strip() in stocks:
                     continue
                 others.append(mapped)
@@ -170,8 +188,12 @@ def write_holders_top10_formal_then_mirror(
         batch_ids.append(batch_id)
         canonical_total = max(canonical_total, int(outcome.row_count or 0))
 
-    mirror_fn = mirror or _default_holders_legacy_mirror
-    legacy_n = mirror_fn(conn, material)
+    mirror_fn = _resolve_mirror(
+        enable_legacy_mirror=enable_legacy_mirror,
+        mirror=mirror,
+        default_mirror=_default_holders_legacy_mirror,
+    )
+    legacy_n = mirror_fn(conn, material) if mirror_fn is not None else 0
     return DisclosureDualWriteOutcome(
         domain="holders_top10",
         status="ACCEPTED",
@@ -185,7 +207,7 @@ def write_holders_top10_formal_then_mirror(
 def _default_holders_legacy_mirror(conn, rows: list[dict[str, Any]]) -> int:
     from services.holders_aif10 import _write_legacy_direct
 
-    return _write_legacy_direct(conn, rows)
+    return _write_legacy_direct(conn, rows, as_mirror=True)
 
 
 def write_org_holding_formal_then_mirror(
@@ -195,8 +217,9 @@ def write_org_holding_formal_then_mirror(
     observed_at: datetime | str | None = None,
     available_at: datetime | str | None = None,
     mirror: Callable[[Any, list[dict[str, Any]]], int] | None = None,
+    enable_legacy_mirror: bool = False,
 ) -> DisclosureDualWriteOutcome:
-    """Publish by available_date then mirror full legacy rows (ISO dates)."""
+    """Publish by available_date; legacy mirror only if enabled (ISO dates)."""
 
     from services.data_sources.org_holding_acceptance import (
         OrgHoldingLandingBatch,
@@ -259,7 +282,7 @@ def write_org_holding_formal_then_mirror(
         batch_ids.append(batch_id)
         canonical_total += int(outcome.row_count or 0)
 
-    # Legacy store keeps ISO dates for research continuity.
+    # Legacy store keeps ISO dates when an explicit mirror escape is enabled.
     legacy_rows = []
     for row in material:
         mirrored = dict(row)
@@ -269,8 +292,12 @@ def write_org_holding_formal_then_mirror(
             mirrored["available_date"] = _iso_date(mirrored["available_date"])
         legacy_rows.append(mirrored)
 
-    mirror_fn = mirror or _default_org_holding_legacy_mirror
-    legacy_n = mirror_fn(conn, legacy_rows)
+    mirror_fn = _resolve_mirror(
+        enable_legacy_mirror=enable_legacy_mirror,
+        mirror=mirror,
+        default_mirror=_default_org_holding_legacy_mirror,
+    )
+    legacy_n = mirror_fn(conn, legacy_rows) if mirror_fn is not None else 0
     return DisclosureDualWriteOutcome(
         domain="org_holding",
         status="ACCEPTED",
@@ -284,7 +311,7 @@ def write_org_holding_formal_then_mirror(
 def _default_org_holding_legacy_mirror(conn, rows: list[dict[str, Any]]) -> int:
     from services.org_holding_aif10 import _upsert_rows_legacy_direct
 
-    return _upsert_rows_legacy_direct(conn, rows)
+    return _upsert_rows_legacy_direct(conn, rows, as_mirror=True)
 
 
 def write_stk_holdertrade_formal_then_mirror(
@@ -294,8 +321,9 @@ def write_stk_holdertrade_formal_then_mirror(
     observed_at: datetime | str | None = None,
     available_at: datetime | str | None = None,
     mirror: Callable[[Any, list[dict[str, Any]]], int] | None = None,
+    enable_legacy_mirror: bool = False,
 ) -> DisclosureDualWriteOutcome:
-    """Publish by ann_date then mirror provider fields to legacy raw table."""
+    """Publish by ann_date; legacy mirror only if enabled."""
 
     from services.data_sources.stk_holdertrade_acceptance import (
         StkHoldertradeLandingBatch,
@@ -365,7 +393,7 @@ def write_stk_holdertrade_formal_then_mirror(
             authorize_legacy_mirror_write,
         )
 
-        authorize_legacy_mirror_write("stk_holdertrade")
+        authorize_legacy_mirror_write("stk_holdertrade", allow_test_escape=True)
         cols = list(PROVIDER_FIELDS)
         placeholders = ", ".join("?" for _ in cols)
         col_sql = ", ".join(cols)
@@ -381,13 +409,17 @@ def write_stk_holdertrade_formal_then_mirror(
         )
         return len(legacy_rows)
 
-    mirror_fn = mirror or _default_mirror
+    mirror_fn = _resolve_mirror(
+        enable_legacy_mirror=enable_legacy_mirror,
+        mirror=mirror,
+        default_mirror=_default_mirror,
+    )
     projected = []
     for row in material:
         item = _project(row, PROVIDER_FIELDS)
         item["ann_date"] = _compact_yyyymmdd(item.get("ann_date"))
         projected.append(item)
-    legacy_n = mirror_fn(conn, projected)
+    legacy_n = mirror_fn(conn, projected) if mirror_fn is not None else 0
     return DisclosureDualWriteOutcome(
         domain="stk_holdertrade",
         status="ACCEPTED",
@@ -438,12 +470,12 @@ def accept_stk_holdertrade_partition_from_legacy(
     def _noop_mirror(_conn, material):
         return len(material)
 
+    if rewrite_legacy:
+        return write_stk_holdertrade_formal_then_mirror(
+            conn, rows, enable_legacy_mirror=True
+        )
     return write_stk_holdertrade_formal_then_mirror(
-        conn,
-        rows,
-        mirror=(
-            None if rewrite_legacy else _noop_mirror
-        ),
+        conn, rows, mirror=_noop_mirror
     )
 
 

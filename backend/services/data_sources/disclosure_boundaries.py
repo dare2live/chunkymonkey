@@ -1,18 +1,13 @@
 """E0 disclosure-domain strangler: typed contracts + fail-closed formal claims.
 
 Transport/research boundary.  All three disclosure domains declare formal
-landing→validate→accept writers.  Production new writes still dual-write with
-``formal_default_legacy_mirror`` (legacy mirror deprecated one more slice).
-Research provider-field reads prefer accepted canonical when shadow MATCH;
-feature-store profiles remain PARTIAL until enrichment columns cut over.
+landing→validate→accept writers.  Production new writes are ``formal_only``
+(no default legacy mirror).  Explicit test/emergency mirror remains via
+``authorize_legacy_mirror_write(..., allow_test_escape=True)``.
 
-This module:
-
-- inventories the three disclosure domains named by goal E0;
-- authorizes legacy-only direct writes only via explicit test escape;
-- authorizes legacy mirror writes only as post-accept dual-write companion;
-- allows DatasetSnapshot freeze when three-domain cutover_allowed;
-- attests research surfaces from the resolved read policy.
+Research provider-field reads prefer accepted canonical when shadow MATCH.
+Feature-store profiles use a canonical-spine + typed enrichment projection
+(field-level PARTIAL where historical canary lacks enrichment columns).
 """
 from __future__ import annotations
 
@@ -28,6 +23,7 @@ RuntimeState = Literal[
     "direct_write_strangler",
     "formal_path_ready_legacy_direct_write",
     "formal_default_legacy_mirror",
+    "formal_only",
 ]
 TrustStatus = Literal["NONCONFORMING", "BLOCKED", "NOT_EVALUATED", "READY", "PARTIAL"]
 
@@ -59,9 +55,12 @@ _STRANGLER_STATES = frozenset(
         "direct_write_strangler",
         "formal_path_ready_legacy_direct_write",
         "formal_default_legacy_mirror",
+        "formal_only",
     }
 )
+_FORMAL_WRITE_STATES = frozenset({"formal_only", "formal_default_legacy_mirror"})
 _TEST_ESCAPE_ENV = "DISCLOSURE_ALLOW_NONCONFORMING_ESCAPE"
+_MIRROR_ESCAPE_ENV = "DISCLOSURE_ALLOW_LEGACY_MIRROR"
 
 
 @dataclass(frozen=True)
@@ -79,6 +78,7 @@ class DisclosureDomainBoundary:
     canonical_writer: str | None = None
     formal_write: Literal["forbidden"] = "forbidden"
     legacy_mirror_deprecated: bool = True
+    legacy_mirror_default: bool = False
 
 
 @dataclass(frozen=True)
@@ -142,7 +142,7 @@ _DISCLOSURE_BOUNDARIES: dict[str, DisclosureDomainBoundary] = {
         target_table="fact_top10_holder_period",
         availability_axis="notice_date",
         availability_rule="event_time_notice_or_page_update",
-        runtime_state="formal_default_legacy_mirror",
+        runtime_state="formal_only",
         landing_writer=(
             "services.data_sources.holders_top10_acceptance.land_holders_top10_batch"
         ),
@@ -150,6 +150,7 @@ _DISCLOSURE_BOUNDARIES: dict[str, DisclosureDomainBoundary] = {
             "services.data_sources.holders_top10_acceptance.accept_holders_top10_batch"
         ),
         legacy_mirror_deprecated=True,
+        legacy_mirror_default=False,
     ),
     "org_holding": DisclosureDomainBoundary(
         domain="org_holding",
@@ -158,7 +159,7 @@ _DISCLOSURE_BOUNDARIES: dict[str, DisclosureDomainBoundary] = {
         target_table="raw_org_holding_aif10",
         availability_axis="available_date",
         availability_rule="disclosure_deadline_upper_bound",
-        runtime_state="formal_default_legacy_mirror",
+        runtime_state="formal_only",
         landing_writer=(
             "services.data_sources.org_holding_acceptance.land_org_holding_batch"
         ),
@@ -166,6 +167,7 @@ _DISCLOSURE_BOUNDARIES: dict[str, DisclosureDomainBoundary] = {
             "services.data_sources.org_holding_acceptance.accept_org_holding_batch"
         ),
         legacy_mirror_deprecated=True,
+        legacy_mirror_default=False,
     ),
     "stk_holdertrade": DisclosureDomainBoundary(
         domain="stk_holdertrade",
@@ -174,7 +176,7 @@ _DISCLOSURE_BOUNDARIES: dict[str, DisclosureDomainBoundary] = {
         target_table="raw_tushare_stk_holdertrade",
         availability_axis="ann_date",
         availability_rule="announcement_date_event_time",
-        runtime_state="formal_default_legacy_mirror",
+        runtime_state="formal_only",
         landing_writer=(
             "services.data_sources.stk_holdertrade_acceptance.land_stk_holdertrade_batch"
         ),
@@ -182,6 +184,7 @@ _DISCLOSURE_BOUNDARIES: dict[str, DisclosureDomainBoundary] = {
             "services.data_sources.stk_holdertrade_acceptance.accept_stk_holdertrade_batch"
         ),
         legacy_mirror_deprecated=True,
+        legacy_mirror_default=False,
     ),
 }
 
@@ -221,6 +224,19 @@ def _test_escape_enabled(allow_test_escape: bool) -> bool:
     return str(os.environ.get(_TEST_ESCAPE_ENV, "")).strip() in {"1", "true", "TRUE", "yes"}
 
 
+def _mirror_escape_enabled(allow_test_escape: bool) -> bool:
+    if allow_test_escape:
+        return True
+    if _test_escape_enabled(False):
+        return True
+    return str(os.environ.get(_MIRROR_ESCAPE_ENV, "")).strip() in {
+        "1",
+        "true",
+        "TRUE",
+        "yes",
+    }
+
+
 def authorize_nonconforming_direct_write(
     domain: str,
     *,
@@ -229,9 +245,8 @@ def authorize_nonconforming_direct_write(
 ) -> DisclosureWritePermit:
     """Permit naked legacy-only writes solely via explicit test/emergency escape.
 
-    Production writers must use ``disclosure_dual_write`` (formal land→accept,
-    optional deprecated legacy mirror).  Cutover (leaving strangler states)
-    retires this permit entirely.
+    Production writers must use formal land→accept (``disclosure_dual_write``
+    formal-only path).  Cutover (leaving strangler states) retires this permit.
     """
 
     boundary = require_disclosure_boundary(domain)
@@ -253,7 +268,7 @@ def authorize_nonconforming_direct_write(
             reason="naked_nonconforming_escape_retired_from_production",
             detail=(
                 "production paths must not call authorize_nonconforming_direct_write; "
-                "use disclosure_dual_write / authorize_legacy_mirror_write, or set "
+                "use formal land→accept, or set "
                 f"{_TEST_ESCAPE_ENV}=1 / allow_test_escape=True for tests"
             ),
         )
@@ -282,15 +297,34 @@ def authorize_nonconforming_direct_write(
     )
 
 
-def authorize_legacy_mirror_write(domain: str) -> DisclosureWritePermit:
-    """Permit deprecated legacy mirror after a formal accept in dual-write."""
+def authorize_legacy_mirror_write(
+    domain: str, *, allow_test_escape: bool = False
+) -> DisclosureWritePermit:
+    """Permit legacy mirror only via explicit test/emergency escape.
+
+    Default production runtime is ``formal_only`` — mirror is off unless escape
+    is set (``allow_test_escape`` / ``DISCLOSURE_ALLOW_LEGACY_MIRROR`` /
+    ``DISCLOSURE_ALLOW_NONCONFORMING_ESCAPE``).
+    """
 
     boundary = require_disclosure_boundary(domain)
-    if boundary.runtime_state != "formal_default_legacy_mirror":
+    if boundary.runtime_state not in _FORMAL_WRITE_STATES:
         raise DisclosureBoundaryError(
             boundary.domain,
             reason="legacy_mirror_not_in_runtime_state",
             detail=f"runtime_state={boundary.runtime_state!r}",
+        )
+    if boundary.runtime_state == "formal_only" and not _mirror_escape_enabled(
+        allow_test_escape
+    ):
+        raise DisclosureBoundaryError(
+            boundary.domain,
+            reason="legacy_mirror_retired_from_default_writes",
+            detail=(
+                "production formal writes are formal_only; pass "
+                "enable_legacy_mirror with allow_test_escape, or set "
+                f"{_MIRROR_ESCAPE_ENV}=1 / {_TEST_ESCAPE_ENV}=1"
+            ),
         )
     if boundary.landing_writer is None or boundary.canonical_writer is None:
         raise DisclosureBoundaryError(
@@ -364,6 +398,7 @@ def attest_disclosure_research_surface(
     """Read-only trust report for institution research UI."""
 
     if read_policy is not None and read_policy.cutover_allowed:
+        profile_status = read_policy.feature_store_profiles_status
         domains = tuple(
             DisclosureDomainAttestation(
                 domain=item.domain,
@@ -384,7 +419,7 @@ def attest_disclosure_research_surface(
                 ).availability_axis,
                 reason=(
                     f"source={item.source}; conformity={item.conformity}; "
-                    f"{item.reason}; feature_store_profiles=PARTIAL"
+                    f"{item.reason}; feature_store_profiles={profile_status}"
                 ),
             )
             for item in read_policy.domains
@@ -397,10 +432,10 @@ def attest_disclosure_research_surface(
             notes=(
                 "e0_disclosure_cutover_allowed_three_domain_match",
                 "research_provider_fields_prefer_canonical",
-                "feature_store_profiles_still_legacy_enrichment_partial",
-                "legacy_mirror_deprecated_but_active",
+                "formal_writes_formal_only_no_default_legacy_mirror",
+                "feature_store_profiles_typed_enrichment_projection",
                 "dataset_snapshot_canary_scope_freezable",
-                "institution_follow_ablation_still_blocked",
+                "phase_e_smoke_eligible_ablation_still_blocked",
                 "b_pit_cutover_remains_blocked_separately",
             ),
         )
@@ -414,13 +449,9 @@ def attest_disclosure_research_surface(
             target_table=item.target_table,
             availability_axis=item.availability_axis,
             reason=(
-                (
-                    "formal_default_legacy_mirror_active_research_fallback_legacy; "
-                    if item.runtime_state == "formal_default_legacy_mirror"
-                    else "research_reads_legacy_compatibility_table; "
-                )
-                + f"availability_axis={item.availability_axis}; "
-                + "cutover_blocked_until_three_domain_shadow_match"
+                "formal_only_writes_research_fallback_until_shadow_match; "
+                f"availability_axis={item.availability_axis}; "
+                "cutover_blocked_until_three_domain_shadow_match"
             ),
         )
         for item in (_DISCLOSURE_BOUNDARIES[name] for name in disclosure_domains())
@@ -432,8 +463,7 @@ def attest_disclosure_research_surface(
         domains=domains,
         notes=(
             "e0_disclosure_formalization_in_progress",
-            "three_domains_formal_default_legacy_mirror_deprecated",
-            "production_writes_formal_then_mirror_legacy",
+            "three_domains_formal_only_no_default_mirror",
             "legacy_research_fallback_with_nonconforming_label",
             "institution_follow_blocked_until_e0_gate",
             "dataset_snapshot_blocked_until_three_domain_match",
@@ -460,6 +490,7 @@ def disclosure_inventory() -> tuple[dict[str, Any], ...]:
             "canonical_writer": item.canonical_writer,
             "formal_write": item.formal_write,
             "legacy_mirror_deprecated": item.legacy_mirror_deprecated,
+            "legacy_mirror_default": item.legacy_mirror_default,
         }
         for item in (_DISCLOSURE_BOUNDARIES[name] for name in disclosure_domains())
     )

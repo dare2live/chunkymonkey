@@ -31,6 +31,7 @@ from services.data_sources.holders_top10_schema import (
     DATASET_ID,
     GRAIN,
     LANDING_TABLE,
+    ENRICHMENT_FIELDS,
     PROVIDER_FIELDS,
     SCHEMA_CONTRACT,
     SOURCE,
@@ -178,6 +179,7 @@ def ensure_holders_top10_acceptance_schema(conn) -> None:
         "row_hash",
     }
     expected_canonical = {str(field["name"]) for field in fields}
+    field_by_name = {str(field["name"]): field for field in fields}
     conn.execute("BEGIN TRANSACTION")
     try:
         for statement in ddl:
@@ -191,6 +193,19 @@ def ensure_holders_top10_acceptance_schema(conn) -> None:
                 f"{LANDING_TABLE} schema drift: "
                 f"missing={sorted(expected_landing - landing_cols)} "
                 f"extra={sorted(landing_cols - expected_landing)}"
+            )
+        canonical_cols = set(_columns(conn, CANONICAL_TABLE))
+        # Forward-migrate nullable enrichment columns onto pre-v2 canary tables.
+        for name in sorted(expected_canonical - canonical_cols):
+            field = field_by_name[name]
+            if not bool(field.get("nullable", True)):
+                raise HoldersTop10AcceptanceError(
+                    f"{CANONICAL_TABLE} missing non-null column {name!r}; "
+                    "refusing silent widen"
+                )
+            conn.execute(
+                f"ALTER TABLE {CANONICAL_TABLE} ADD COLUMN "
+                f"{name} {field['duckdb_type']}"
             )
         canonical_cols = set(_columns(conn, CANONICAL_TABLE))
         if canonical_cols != expected_canonical:
@@ -267,6 +282,30 @@ def _validate_provider_row(
         raise HoldersTop10ValidationError(
             "INVALID_EXIT_FLAG", "is_exit_row must be bool"
         )
+    enrichment: dict[str, Any] = {}
+    for name in ENRICHMENT_FIELDS:
+        value = row.get(name)
+        if value is None or (isinstance(value, str) and value.strip() == ""):
+            enrichment[name] = None
+            continue
+        if name == "shares_approx":
+            try:
+                enrichment[name] = int(value)
+            except (TypeError, ValueError) as exc:
+                raise HoldersTop10ValidationError(
+                    "INVALID_NUMERIC", f"shares_approx={value!r}"
+                ) from exc
+        elif name == "hold_change_num":
+            try:
+                enrichment[name] = float(value)
+            except (TypeError, ValueError) as exc:
+                raise HoldersTop10ValidationError(
+                    "INVALID_NUMERIC", f"hold_change_num={value!r}"
+                ) from exc
+        else:
+            enrichment[name] = str(value).strip()
+    if enrichment.get("holder_name_norm") is None:
+        enrichment["holder_name_norm"] = holder_name
     return {
         "stock_code": stock,
         "report_date": report,
@@ -277,6 +316,7 @@ def _validate_provider_row(
         "hold_ratio_float": ratio,
         "notice_date": notice_compact,
         "is_exit_row": is_exit,
+        **enrichment,
     }
 
 
@@ -715,9 +755,10 @@ def runtime_surface() -> dict[str, Any]:
         "landing_table": LANDING_TABLE,
         "canonical_table": CANONICAL_TABLE,
         "writer_id": WRITER_ID,
-        "production_write": "formal_default_legacy_mirror",
+        "production_write": "formal_only",
+        "legacy_mirror": "test_escape_only",
         "legacy_direct_write": "nonconforming_escape_hatch",
-        "dataset_snapshot": "blocked_until_e0_cutover",
+        "dataset_snapshot": "canary_scope_freezable_when_cutover_allowed",
         "provider_sync": "fixture_or_authorized_manual_only",
     }
 

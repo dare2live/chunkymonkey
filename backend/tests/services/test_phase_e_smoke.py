@@ -1,0 +1,85 @@
+"""Phase E smoke: DatasetSnapshot gate + research surface_status only.
+
+Does NOT run institution_follow ablation / B0–B4 search.
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from routers import institution_profile as inst_router
+from services.data_sources.disclosure_boundaries import (
+    attest_disclosure_research_surface,
+)
+from services.data_sources.disclosure_dataset_snapshot import (
+    DISCLOSURE_SNAPSHOT_RELPATH,
+    default_snapshot_path,
+)
+from services.data_sources.disclosure_research_read import (
+    build_disclosure_read_policy,
+)
+from services.data_sources.disclosure_shadow_compare import (
+    DisclosureDomainShadowReport,
+    DisclosureShadowCompareReport,
+)
+
+
+def _match_domain(name: str, partition: str) -> DisclosureDomainShadowReport:
+    return DisclosureDomainShadowReport(
+        domain=name,
+        partition=partition,
+        status="MATCH",
+        legacy_row_count=2,
+        canonical_row_count=2,
+        compared_fields=("stock_code",),
+        rows_match=True,
+        mismatch_count=0,
+        sample_mismatches=(),
+        issues=("phase_e_smoke",),
+    )
+
+
+def test_phase_e_smoke_dataset_snapshot_gate_and_surface_status() -> None:
+    root = Path(__file__).resolve().parents[3]
+    snap_path = root / DISCLOSURE_SNAPSHOT_RELPATH
+    assert snap_path == default_snapshot_path()
+    assert snap_path.is_file(), f"missing canary DatasetSnapshot at {snap_path}"
+    payload = json.loads(snap_path.read_text(encoding="utf-8"))
+    assert payload.get("cutover_allowed") is True
+    assert payload.get("scope") == "canary_accepted_partitions"
+    assert payload.get("phase_e_ablation") == "blocked_canary_scope_only"
+    assert set(payload.get("domains") or {}) >= {
+        "holders_top10",
+        "org_holding",
+        "stk_holdertrade",
+    }
+
+    shadow = DisclosureShadowCompareReport(
+        overall_status="MATCH",
+        cutover_allowed=True,
+        domains=(
+            _match_domain("holders_top10", "20260717"),
+            _match_domain("org_holding", "20190430"),
+            _match_domain("stk_holdertrade", "20260706"),
+        ),
+        notes=("phase_e_smoke",),
+    )
+    policy = build_disclosure_read_policy(shadow)
+    assert policy.cutover_allowed is True
+    assert policy.feature_store_field_status
+    report = attest_disclosure_research_surface(policy)
+    assert report.cutover_allowed is True
+    assert report.e0_phase == "gate_closed_canary"
+    assert "phase_e_smoke_eligible_ablation_still_blocked" in report.notes
+
+    envelope = {
+        "status": "ok",
+        "surface_status": inst_router.SURFACE_STATUS,
+        "disclosure_conformity": report.as_dict(),
+        "disclosure_read_policy": policy.as_dict(),
+        "cutover_allowed": True,
+    }
+    assert envelope["surface_status"] == "tier3_research_evidence_only"
+    assert envelope["cutover_allowed"] is True
+    # Ablation remains blocked at snapshot scope — smoke only.
+    assert payload["phase_e_ablation"] == "blocked_canary_scope_only"

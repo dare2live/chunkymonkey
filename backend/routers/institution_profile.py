@@ -8,8 +8,9 @@
 该端点不产生 CandidateSignal、StrategyRelease 或买卖建议。
 
 E0: disclosure provider-field reads prefer accepted canonical when shadow MATCH;
-``cutover_allowed`` is true only on three-domain MATCH.  Feature-store profile
-numbers remain PARTIAL (legacy enrichment).  ``disclosure_shadow`` sidecar stays.
+``cutover_allowed`` is true only on three-domain MATCH.  Feature-store profiles
+use typed enrichment projection (field-level PARTIAL where historical canary
+lacks enrichment).  ``disclosure_shadow`` sidecar stays.
 """
 from __future__ import annotations
 

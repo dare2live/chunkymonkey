@@ -58,6 +58,9 @@ jobs:
             tests/services/test_stk_holdertrade_acceptance.py \
             tests/services/test_disclosure_dual_write.py \
             tests/services/test_disclosure_shadow_compare.py \
+            tests/services/test_disclosure_research_read.py \
+            tests/services/test_disclosure_enrichment_projection.py \
+            tests/services/test_phase_e_smoke.py \
             tests/services/test_margin_acceptance.py \
             tests/services/test_observation_population.py \
             tests/services/test_population_scope.py \

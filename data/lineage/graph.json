@@ -1621,6 +1621,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_institution_profile.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
       "src": "table:smartmoney.dim_fee_schedule"
@@ -2234,12 +2240,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/holders_aif10.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/institution_profile.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_top10_holder_period"
     },
@@ -4712,7 +4712,7 @@
   ],
   "meta": {
     "edge_count": 734,
-    "generated_at": "2026-07-19T14:35:29.739103+00:00",
+    "generated_at": "2026-07-19T14:46:26.333785+00:00",
     "node_count": 325,
     "version": 2
   },

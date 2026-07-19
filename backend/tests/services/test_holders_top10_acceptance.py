@@ -68,7 +68,7 @@ def test_inventory_declares_holders_formal_writers_strangler() -> None:
     holders = inventory["holders_top10"]
     assert holders["landing_writer"] is not None
     assert holders["canonical_writer"] is not None
-    assert holders["runtime_state"] == "formal_default_legacy_mirror"
+    assert holders["runtime_state"] == "formal_only"
     assert holders["conformity"] == "NONCONFORMING"
     # Naked legacy direct write is test-escape only.
     permit = authorize_nonconforming_direct_write(

@@ -6,8 +6,8 @@ response.  Missing/diverging canonical coverage fails closed to legacy with an
 explicit NONCONFORMING or PARTIAL label.
 
 ``cutover_allowed`` is true only when all three inventory domains MATCH.
-Feature-store institution profiles remain PARTIAL (legacy enrichment columns
-still required for episode rebuild) until a later full cutover.
+Feature-store institution profiles use a canonical-spine + typed enrichment
+projection (field-level PARTIAL where historical canary lacks enrichment).
 """
 from __future__ import annotations
 
@@ -15,6 +15,9 @@ from dataclasses import dataclass
 from typing import Any, Literal, Mapping
 
 from services.data_sources.disclosure_boundaries import disclosure_domains
+from services.data_sources.disclosure_enrichment_projection import (
+    feature_store_profiles_attestation,
+)
 from services.data_sources.holders_top10_schema import (
     CANONICAL_TABLE as HOLDERS_CANONICAL,
     COMPATIBILITY_TABLE as HOLDERS_LEGACY,
@@ -30,7 +33,7 @@ from services.data_sources.stk_holdertrade_schema import (
 
 ReadSource = Literal["canonical", "legacy_fallback"]
 DomainConformity = Literal["ACCEPTED", "NONCONFORMING", "PARTIAL"]
-PolicyStatus = Literal["PARTIAL", "NONCONFORMING", "NOT_EVALUATED"]
+PolicyStatus = Literal["PARTIAL", "NONCONFORMING", "NOT_EVALUATED", "ACCEPTED"]
 
 _TABLES: dict[str, tuple[str, str]] = {
     "holders_top10": (HOLDERS_CANONICAL, HOLDERS_LEGACY),
@@ -68,8 +71,9 @@ class DisclosureReadPolicy:
     overall_status: PolicyStatus
     cutover_allowed: bool
     domains: tuple[DomainReadDecision, ...]
-    feature_store_profiles_status: Literal["PARTIAL"]
+    feature_store_profiles_status: PolicyStatus
     feature_store_profiles_reason: str
+    feature_store_field_status: tuple[dict[str, str], ...]
     notes: tuple[str, ...]
 
     def as_dict(self) -> dict[str, Any]:
@@ -79,6 +83,7 @@ class DisclosureReadPolicy:
             "domains": [item.as_dict() for item in self.domains],
             "feature_store_profiles_status": self.feature_store_profiles_status,
             "feature_store_profiles_reason": self.feature_store_profiles_reason,
+            "feature_store_field_status": list(self.feature_store_field_status),
             "notes": list(self.notes),
         }
 
@@ -171,38 +176,43 @@ def build_disclosure_read_policy(shadow: Any) -> DisclosureReadPolicy:
         for name in disclosure_domains()
     )
     allowed = cutover_allowed_from_shadow(payload)
+    profiles = feature_store_profiles_attestation()
+    profile_status: PolicyStatus = (
+        "PARTIAL" if profiles["status"] == "PARTIAL" else "ACCEPTED"
+    )
+    field_status = tuple(profiles["fields"])
+
     if allowed:
-        overall: PolicyStatus = "PARTIAL"
+        overall: PolicyStatus = "PARTIAL" if profile_status == "PARTIAL" else "ACCEPTED"
         notes = (
             "disclosure_provider_fields_prefer_canonical_on_match",
             "cutover_allowed_three_domain_match",
-            "feature_store_profiles_still_legacy_enrichment_partial",
-            "legacy_mirror_deprecated_but_active_one_more_slice",
+            "formal_writes_formal_only_no_default_legacy_mirror",
+            "feature_store_profiles_typed_enrichment_projection",
+            "phase_e_smoke_eligible_ablation_still_blocked",
         )
     elif any(item.source == "canonical" for item in decisions):
         overall = "PARTIAL"
         notes = (
             "partial_canonical_read_with_legacy_fallback",
             "cutover_blocked_until_three_domain_match",
-            "feature_store_profiles_still_legacy_enrichment_partial",
+            "feature_store_profiles_typed_enrichment_projection",
         )
     else:
         overall = "NONCONFORMING"
         notes = (
             "all_disclosure_domains_legacy_fallback",
             "cutover_blocked",
-            "feature_store_profiles_still_legacy_enrichment_partial",
+            "feature_store_profiles_typed_enrichment_projection",
         )
 
     return DisclosureReadPolicy(
         overall_status=overall,
         cutover_allowed=allowed,
         domains=decisions,
-        feature_store_profiles_status="PARTIAL",
-        feature_store_profiles_reason=(
-            "institution_profile_rebuild_requires_legacy_enrichment_columns_"
-            "absent_from_canonical_provider_projection"
-        ),
+        feature_store_profiles_status=profile_status,
+        feature_store_profiles_reason=str(profiles["reason"]),
+        feature_store_field_status=field_status,
         notes=notes,
     )
 

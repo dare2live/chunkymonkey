@@ -858,3 +858,30 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   **no** institution_follow B0→B4 ablation; no mass backfill; no B-pit/margin.
 - **Residual**: stop mirror; feature_store enrichment cutover; broaden accepted
   partitions beyond canary.
+
+### 2026-07-19 — E0 slice9: formal_only writes + typed enrichment projection
+
+- **E0 FIXED (gate+mirror off)** / **E smoke eligible**.
+- **Writes**: runtime_state `formal_default_legacy_mirror` → `formal_only` for
+  all three disclosure domains. Default formal path no longer mirrors to
+  legacy; `enable_legacy_mirror` / `authorize_legacy_mirror_write(allow_test_escape)`
+  / env escape remain for tests/emergency. Naked NONCONFORMING still
+  test-escape only. Holders/org/stk production writers return canonical row
+  counts; sync_runner stk route likewise.
+- **Canonical enrichment (holders)**: schema/contract v2 adds nullable
+  `ENRICHMENT_FIELDS` (holder_name_norm/share_class/shares_approx/
+  change_status/hold_change_num/holder_type). Shadow compare stays on
+  `PROVIDER_FIELDS` (canary MATCH preserved). `ensure_*` ALTER-adds missing
+  nullable columns onto pre-v2 canary tables.
+- **Feature-store**: `disclosure_enrichment_projection` — canonical spine +
+  LEFT JOIN legacy + legacy-only UNION; field-level attestation (not blanket
+  PARTIAL solely because rebuild touched legacy). `institution_profile`
+  rebuild SQL switched to the projection
+  (`HOLDERS_REBUILD_SOURCE=canonical_spine_legacy_enrichment_projection`).
+  Read policy exposes `feature_store_field_status`.
+- **Phase E smoke**: `test_phase_e_smoke` checks frozen DatasetSnapshot +
+  `surface_status` / cutover notes; CI includes research_read + enrichment +
+  smoke. **Still blocked**: institution_follow B0–B4 ablation, mass accept
+  beyond canary, B-pit cutover, margin thaw.
+- Dual-write tests updated: default `legacy_rows_written=0`; parity asserts
+  kept behind `enable_legacy_mirror=True`.

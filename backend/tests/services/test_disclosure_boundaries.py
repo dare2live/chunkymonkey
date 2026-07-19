@@ -6,6 +6,7 @@ import pytest
 from services.data_sources.disclosure_boundaries import (
     DisclosureBoundaryError,
     attest_disclosure_research_surface,
+    authorize_legacy_mirror_write,
     authorize_nonconforming_direct_write,
     disclosure_boundary,
     disclosure_domains,
@@ -24,33 +25,25 @@ def test_inventory_declares_three_disclosure_domains() -> None:
     assert inventory["holders_top10"]["availability_axis"] == "notice_date"
     assert inventory["holders_top10"]["landing_writer"] is not None
     assert inventory["holders_top10"]["canonical_writer"] is not None
-    assert (
-        inventory["holders_top10"]["runtime_state"]
-        == "formal_default_legacy_mirror"
-    )
+    assert inventory["holders_top10"]["runtime_state"] == "formal_only"
     assert inventory["org_holding"]["adapter"] == "miaoxiang"
     assert inventory["org_holding"]["target_table"] == "raw_org_holding_aif10"
     assert inventory["org_holding"]["availability_axis"] == "available_date"
     assert inventory["org_holding"]["landing_writer"] is not None
     assert inventory["org_holding"]["canonical_writer"] is not None
-    assert (
-        inventory["org_holding"]["runtime_state"]
-        == "formal_default_legacy_mirror"
-    )
+    assert inventory["org_holding"]["runtime_state"] == "formal_only"
     assert inventory["stk_holdertrade"]["adapter"] == "tushare"
     assert inventory["stk_holdertrade"]["target_table"] == "raw_tushare_stk_holdertrade"
     assert inventory["stk_holdertrade"]["availability_axis"] == "ann_date"
     assert inventory["stk_holdertrade"]["landing_writer"] is not None
     assert inventory["stk_holdertrade"]["canonical_writer"] is not None
-    assert (
-        inventory["stk_holdertrade"]["runtime_state"]
-        == "formal_default_legacy_mirror"
-    )
+    assert inventory["stk_holdertrade"]["runtime_state"] == "formal_only"
     for item in inventory.values():
         assert item["conformity"] == "NONCONFORMING"
         assert item["population_kind"] == "raw_evidence"
         assert item["formal_write"] == "forbidden"
-        assert item["runtime_state"] == "formal_default_legacy_mirror"
+        assert item["runtime_state"] == "formal_only"
+        assert item["legacy_mirror_default"] is False
         assert item["landing_writer"] is not None
         assert item["canonical_writer"] is not None
 
@@ -73,12 +66,14 @@ def test_nonconforming_direct_write_requires_test_escape() -> None:
     assert permit.publication == "nonconforming_direct_write"
 
 
-def test_legacy_mirror_write_authorized_for_dual_write() -> None:
-    from services.data_sources.disclosure_boundaries import (
-        authorize_legacy_mirror_write,
+def test_legacy_mirror_write_requires_test_escape() -> None:
+    with pytest.raises(
+        DisclosureBoundaryError, match="legacy_mirror_retired_from_default"
+    ):
+        authorize_legacy_mirror_write("holders_top10")
+    permit = authorize_legacy_mirror_write(
+        "holders_top10", allow_test_escape=True
     )
-
-    permit = authorize_legacy_mirror_write("holders_top10")
     assert permit.publication == "legacy_mirror_of_formal_accept"
     assert permit.target_table == "fact_top10_holder_period"
 
@@ -125,10 +120,10 @@ def test_research_attestation_is_nonconforming_never_ready() -> None:
         assert item.population_kind == "raw_evidence"
         assert (
             "legacy" in item.reason
-            or "landing" in item.reason
-            or "mirror" in item.reason
+            or "formal_only" in item.reason
+            or "cutover" in item.reason
         )
-    assert "formal_default_legacy_mirror" in " ".join(report.notes)
+    assert "formal_only" in " ".join(report.notes)
     payload = report.as_dict()
     assert payload["overall_status"] == "NONCONFORMING"
     assert payload["cutover_allowed"] is False

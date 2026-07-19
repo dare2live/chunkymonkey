@@ -6,7 +6,7 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + 单日 K/ST canary；eligible frontier=`20260717` READY；缺连续历史覆盖/下一交易日）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false` — PIT 池 vs unfiltered 广度分歧为预期，禁切）。**E0 FIXED（gate）**：三域 live shadow MATCH → `cutover_allowed=true`；provider-field 读 prefer canonical；canary `DatasetSnapshot` 已冻；**E 消融仍禁**（canary scope + feature_store PARTIAL）。Fable5 **REVISE** 已吸收。
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + 单日 K/ST canary；eligible frontier=`20260717` READY；缺连续历史覆盖/下一交易日）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false` — PIT 池 vs unfiltered 广度分歧为预期，禁切）。**E0 FIXED（gate+mirror off）**：三域 MATCH → `cutover_allowed=true`；formal writes=`formal_only`；provider-field 读 prefer canonical；canary `DatasetSnapshot` 已冻；feature_store 画像=typed enrichment PARTIAL（非 blanket legacy）。**E smoke 可开**；**E 全量消融仍禁**（canary scope）。Fable5 **REVISE** 已吸收。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -43,7 +43,7 @@
 - 白名单仅 `60/00/30/68`；多数域仅前缀过滤；margin v2/pulse 含 BSE 错误 scope。
 - universe/Moth 曾假绿；live ST 污染 breadth/龙虎榜/SW/DC。
 - margin accepted=1823 只证冻结自洽；`20260709/BSE` 出 scope。
-- **多源实况**：TuShare=正式 registry 域唯一 live adapter；东财妙想 aif10/`miaoxiang` 已是十大流通股东等披露域 live 主源。E0：三域写仍 `formal_default_legacy_mirror`（mirror **deprecated** 再留一刀）；研究 provider-field 读 prefer canonical（MATCH）；feature_store 画像仍 PARTIAL。细节见 ledger。
+- **多源实况**：TuShare=正式 registry 域唯一 live adapter；东财妙想 aif10/`miaoxiang` 已是十大流通股东等披露域 live 主源。E0：三域写=`formal_only`（默认停 legacy mirror；test/escape only）；研究 provider-field 读 prefer canonical（MATCH）；feature_store 画像 typed enrichment PARTIAL。细节见 ledger。
 
 ## 执行计划（A→H）
 
@@ -66,26 +66,28 @@
   `20260717` shadow：project adv/dec=386/4571 ratio≈0.0844 vs unfiltered
   proxy≈0.0964，`ratios_match=false`，`cutover_allowed=false`（默认禁切）。
 - **C** Tier1/2 正式 lineage。**D** `DatasetSnapshot`→`ExperimentVerdict` + PIT 截断。
-- **E0 FIXED（gate；E 硬前置）** 三域 inventory + land→accept + dual-write +
-  shadow sidecar + research read policy。
+- **E0 FIXED（gate+mirror off；E 硬前置）** 三域 inventory + land→accept +
+  shadow sidecar + research read policy + formal_only writes。
   **cutover 规则**：`cutover_allowed=true` **仅当** holders/org/stk 三域在
   serving partitions 上 shadow **MATCH**（live 已 MATCH）。
   **读路径**：`disclosure_research_read` 对 MATCH 域 prefer canonical；缺失/
   分歧 fail-closed → legacy + `NONCONFORMING`/`PARTIAL`；`/api/v3/inst` 暴露
-  `disclosure_read_policy`。feature_store 画像重建仍读 legacy enrichment →
-  **PARTIAL**（canonical 无 holder_name_norm/share_class/shares_approx…）。
-  **写路径**：legacy mirror **deprecated but active**（连续性）；naked
-  `NONCONFORMING` 已从生产撤出（仅 `allow_test_escape` /
-  `legacy_direct_only`）。
+  `disclosure_read_policy` + `feature_store_field_status`。
+  **画像**：`disclosure_enrichment_projection` = canonical spine + typed
+  legacy join；holders enrichment 列已进 canonical schema v2；历史 canary
+  缺口仍 field-level **PARTIAL**（非 blanket legacy-only）。
+  **写路径**：`formal_only`（默认**停** legacy mirror）；mirror /
+  naked `NONCONFORMING` 仅 `allow_test_escape` / env /
+  `legacy_direct_only` / `enable_legacy_mirror`。
   **DatasetSnapshot FIXED（canary）**：
   `data/lineage/disclosure_dataset_snapshot.json` →
   holders`20260717`/org`20190430`/stk`20260706` + config/content hashes；
   `phase_e_ablation=blocked_canary_scope_only`。
-  **残余（不挡 gate，挡全量消融）**：停 mirror；feature_store 切 enrichment；
-  非 canary 分区 mass accept（禁本刀）。
-- **E PARTIAL-unblocked（gate）** snapshot gate 绿 → 允许 **smoke / 契约接线**；
-  **禁** `institution_follow` B0→B4 策略消融直至更广 snapshot +
-  feature_store 非 PARTIAL。**F** main_rally。**G** 公式+BestChoice。**H** Release/名义价纸面。
+  **残余（不挡 smoke，挡全量消融）**：非 canary 分区 mass accept（禁本刀）；
+  enrichment 历史行仍依赖 legacy join。
+- **E PARTIAL-unblocked（smoke）** snapshot gate + `surface_status` smoke
+  **可开**（`test_phase_e_smoke`）；**禁** `institution_follow` B0→B4 策略
+  消融直至更广 snapshot。**F** main_rally。**G** 公式+BestChoice。**H** Release/名义价纸面。
 
 ## 边做边测
 
@@ -93,4 +95,4 @@
 
 ## Blocker / 禁止误报
 
-margin/pulse scope 错：禁 provider/live 写/cutover。交易所汇总≠沪深池。accepted=1823≠业务正确。continuity 告警未清除。函数存在/WARN/fixture 绿≠交付。Tier0=`BLOCKED`/`NOT_EVALUATED`。E0 canary snapshot 绿≠可跑 institution_follow 消融；feature_store PARTIAL≠ACCEPTED。
+margin/pulse scope 错：禁 provider/live 写/cutover。交易所汇总≠沪深池。accepted=1823≠业务正确。continuity 告警未清除。函数存在/WARN/fixture 绿≠交付。Tier0=`BLOCKED`/`NOT_EVALUATED`。E0 canary snapshot 绿 / Phase E smoke 绿 ≠ 可跑 institution_follow 全量消融；feature_store field-level PARTIAL ≠ ACCEPTED。

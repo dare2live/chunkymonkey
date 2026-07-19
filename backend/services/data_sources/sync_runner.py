@@ -1152,10 +1152,11 @@ def _route_disclosure_formal_dual_write(
     spec: Mapping[str, Any],
     rows: list[dict[str, Any]],
 ) -> int | None:
-    """E0: stk_holdertrade production writes go formal→legacy-mirror by default.
+    """E0: stk_holdertrade production writes go formal_only by default.
 
     Returns written count when routed; ``None`` leaves the naked merge path.
     Explicit ``legacy_direct_only`` keeps the NONCONFORMING escape hatch.
+    ``enable_legacy_mirror`` on the spec is test/emergency only.
     """
 
     from services.data_sources.disclosure_boundaries import disclosure_boundary
@@ -1163,7 +1164,10 @@ def _route_disclosure_formal_dual_write(
     boundary = disclosure_boundary(domain)
     if boundary is None:
         return None
-    if boundary.runtime_state != "formal_default_legacy_mirror":
+    if boundary.runtime_state not in {
+        "formal_only",
+        "formal_default_legacy_mirror",
+    }:
         return None
     if boundary.landing_writer is None or boundary.canonical_writer is None:
         return None
@@ -1176,8 +1180,12 @@ def _route_disclosure_formal_dual_write(
         write_stk_holdertrade_formal_then_mirror,
     )
 
-    outcome = write_stk_holdertrade_formal_then_mirror(conn, rows)
-    return int(outcome.legacy_rows_written)
+    outcome = write_stk_holdertrade_formal_then_mirror(
+        conn,
+        rows,
+        enable_legacy_mirror=bool(spec.get("enable_legacy_mirror")),
+    )
+    return int(outcome.canonical_rows)
 
 
 def _write_batch(
@@ -1207,7 +1215,7 @@ def _write_batch(
     )
     if df.empty:
         return 0
-    # After universe/grain prep: disclosure formal→mirror (keeps filter semantics).
+    # After universe/grain prep: disclosure formal_only (keeps filter semantics).
     prepared_rows = df.to_dict(orient="records")
     routed = _route_disclosure_formal_dual_write(
         conn, domain, spec, prepared_rows
@@ -1223,7 +1231,7 @@ def _write_batch(
             mode="disabled",
             reason="naked_disclosure_write_retired",
             detail=(
-                "disclosure domains default to formal dual-write; "
+                "disclosure domains default to formal_only land→accept; "
                 "set legacy_direct_only for test/emergency naked merge"
             ),
         )

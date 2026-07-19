@@ -1,4 +1,4 @@
-"""E0 strangler: formal land→accept then legacy mirror (parity; no API cutover)."""
+"""E0 strangler: formal_only land→accept; optional legacy mirror escape + parity."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -174,13 +174,14 @@ def conn():
     database.close()
 
 
-def test_inventory_runtime_state_is_formal_default_legacy_mirror() -> None:
+def test_inventory_runtime_state_is_formal_only() -> None:
     inventory = {item["domain"]: item for item in disclosure_inventory()}
     for domain in ("holders_top10", "org_holding", "stk_holdertrade"):
-        assert inventory[domain]["runtime_state"] == "formal_default_legacy_mirror"
+        assert inventory[domain]["runtime_state"] == "formal_only"
         assert inventory[domain]["conformity"] == "NONCONFORMING"
         assert inventory[domain]["legacy_mirror_deprecated"] is True
-        # Naked escape is test-only; production uses dual-write mirror permit.
+        assert inventory[domain]["legacy_mirror_default"] is False
+        # Naked escape is test-only; production is formal_only.
         with pytest.raises(
             DisclosureBoundaryError, match="naked_nonconforming_escape_retired"
         ):
@@ -327,13 +328,47 @@ def test_accept_stk_holdertrade_partition_from_legacy_noop_mirror(conn) -> None:
     )
 
 
-def test_holders_dual_write_formal_legacy_parity(conn) -> None:
+def test_holders_formal_only_skips_legacy_mirror_by_default(conn) -> None:
     rows = [
         _holders_row(holder_rank=1, holder_name="香港中央结算有限公司"),
         _holders_row(holder_rank=2, holder_name="中国证券金融股份有限公司"),
     ]
     outcome = write_holders_top10_formal_then_mirror(
         conn, rows, observed_at=OBSERVED_HOLDERS, available_at=OBSERVED_HOLDERS
+    )
+    assert outcome.status == "ACCEPTED"
+    assert outcome.legacy_rows_written == 0
+    assert outcome.canonical_rows == 2
+    assert (
+        conn.execute(
+            f"SELECT COUNT(*) FROM {HOLDERS_LEGACY} WHERE source = 'miaoxiang'"
+        ).fetchone()[0]
+        == 0
+    )
+    # Enrichment columns land on canonical without legacy mirror.
+    enrich = conn.execute(
+        f"""
+        SELECT holder_name_norm, share_class, shares_approx, change_status
+          FROM {HOLDERS_CANONICAL}
+         ORDER BY holder_rank
+        """
+    ).fetchall()
+    assert enrich[0][0] == "香港中央结算有限公司"
+    assert enrich[0][1] == "A"
+    assert enrich[0][2] == 100
+
+
+def test_holders_dual_write_formal_legacy_parity_with_escape(conn) -> None:
+    rows = [
+        _holders_row(holder_rank=1, holder_name="香港中央结算有限公司"),
+        _holders_row(holder_rank=2, holder_name="中国证券金融股份有限公司"),
+    ]
+    outcome = write_holders_top10_formal_then_mirror(
+        conn,
+        rows,
+        observed_at=OBSERVED_HOLDERS,
+        available_at=OBSERVED_HOLDERS,
+        enable_legacy_mirror=True,
     )
     assert outcome.status == "ACCEPTED"
     assert outcome.legacy_rows_written == 2
@@ -400,13 +435,31 @@ def _approx_row(row: tuple) -> tuple:
     return tuple(out)
 
 
-def test_org_holding_dual_write_formal_legacy_parity(conn) -> None:
+def test_org_holding_formal_only_skips_legacy_by_default(conn) -> None:
     rows = [
         _org_row(holder_code="10010626"),
         _org_row(holder_code="10020001", holder_name="某公募基金"),
     ]
     outcome = write_org_holding_formal_then_mirror(
         conn, rows, observed_at=OBSERVED_ORG, available_at=OBSERVED_ORG
+    )
+    assert outcome.status == "ACCEPTED"
+    assert outcome.legacy_rows_written == 0
+    assert outcome.canonical_rows == 2
+    assert conn.execute(f"SELECT COUNT(*) FROM {ORG_LEGACY}").fetchone()[0] == 0
+
+
+def test_org_holding_dual_write_formal_legacy_parity_with_escape(conn) -> None:
+    rows = [
+        _org_row(holder_code="10010626"),
+        _org_row(holder_code="10020001", holder_name="某公募基金"),
+    ]
+    outcome = write_org_holding_formal_then_mirror(
+        conn,
+        rows,
+        observed_at=OBSERVED_ORG,
+        available_at=OBSERVED_ORG,
+        enable_legacy_mirror=True,
     )
     assert outcome.status == "ACCEPTED"
     assert outcome.legacy_rows_written == 2
@@ -439,13 +492,31 @@ def test_org_holding_dual_write_formal_legacy_parity(conn) -> None:
     assert canon == legacy
 
 
-def test_stk_holdertrade_dual_write_formal_legacy_parity(conn) -> None:
+def test_stk_holdertrade_formal_only_skips_legacy_by_default(conn) -> None:
     rows = [
         _stk_row(holder_name="窦昕", in_de="IN"),
         _stk_row(holder_name="窦昕", in_de="DE", change_vol=5000.0),
     ]
     outcome = write_stk_holdertrade_formal_then_mirror(
         conn, rows, observed_at=OBSERVED_STK, available_at=OBSERVED_STK
+    )
+    assert outcome.status == "ACCEPTED"
+    assert outcome.legacy_rows_written == 0
+    assert outcome.canonical_rows == 2
+    assert conn.execute(f"SELECT COUNT(*) FROM {STK_LEGACY}").fetchone()[0] == 0
+
+
+def test_stk_holdertrade_dual_write_formal_legacy_parity_with_escape(conn) -> None:
+    rows = [
+        _stk_row(holder_name="窦昕", in_de="IN"),
+        _stk_row(holder_name="窦昕", in_de="DE", change_vol=5000.0),
+    ]
+    outcome = write_stk_holdertrade_formal_then_mirror(
+        conn,
+        rows,
+        observed_at=OBSERVED_STK,
+        available_at=OBSERVED_STK,
+        enable_legacy_mirror=True,
     )
     assert outcome.status == "ACCEPTED"
     assert outcome.legacy_rows_written == 2
@@ -492,7 +563,7 @@ def test_formal_rejection_does_not_mirror_legacy(conn) -> None:
     assert legacy_n == 0
 
 
-def test_sync_runner_routes_stk_after_prepare_respects_escape(conn) -> None:
+def test_sync_runner_routes_stk_formal_only_no_default_mirror(conn) -> None:
     from services.data_sources import sync_runner as sr
 
     assert (
@@ -514,4 +585,4 @@ def test_sync_runner_routes_stk_after_prepare_respects_escape(conn) -> None:
     assert (
         conn.execute(f"SELECT COUNT(*) FROM {STK_CANONICAL}").fetchone()[0] == 1
     )
-    assert conn.execute(f"SELECT COUNT(*) FROM {STK_LEGACY}").fetchone()[0] == 1
+    assert conn.execute(f"SELECT COUNT(*) FROM {STK_LEGACY}").fetchone()[0] == 0

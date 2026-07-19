@@ -173,6 +173,7 @@ def _seed_all_matched(conn) -> None:
         ],
         observed_at=OBSERVED_HOLDERS,
         available_at=OBSERVED_HOLDERS,
+        enable_legacy_mirror=True
     )
     write_org_holding_formal_then_mirror(
         conn,
@@ -182,6 +183,7 @@ def _seed_all_matched(conn) -> None:
         ],
         observed_at=OBSERVED_ORG,
         available_at=OBSERVED_ORG,
+        enable_legacy_mirror=True
     )
     write_stk_holdertrade_formal_then_mirror(
         conn,
@@ -191,6 +193,7 @@ def _seed_all_matched(conn) -> None:
         ],
         observed_at=OBSERVED_STK,
         available_at=OBSERVED_STK,
+        enable_legacy_mirror=True
     )
 
 
@@ -228,12 +231,14 @@ def test_shadow_domain_conns_routes_stk_to_secondary_db(conn) -> None:
         [_holders_row()],
         observed_at=OBSERVED_HOLDERS,
         available_at=OBSERVED_HOLDERS,
+        enable_legacy_mirror=True
     )
     write_org_holding_formal_then_mirror(
         conn,
         [_org_row()],
         observed_at=OBSERVED_ORG,
         available_at=OBSERVED_ORG,
+        enable_legacy_mirror=True
     )
     stk_db = connect(":memory:")
     try:
@@ -252,6 +257,7 @@ def test_shadow_domain_conns_routes_stk_to_secondary_db(conn) -> None:
             [_stk_row()],
             observed_at=OBSERVED_STK,
             available_at=OBSERVED_STK,
+        enable_legacy_mirror=True
         )
         report = compare_disclosure_research_shadow(
             conn,
@@ -337,7 +343,8 @@ def test_org_date_normalization_does_not_false_mismatch(conn) -> None:
     """Legacy ISO dates vs canonical YYYYMMDD must still MATCH after normalize."""
 
     write_org_holding_formal_then_mirror(
-        conn, [_org_row()], observed_at=OBSERVED_ORG, available_at=OBSERVED_ORG
+        conn, [_org_row()], observed_at=OBSERVED_ORG, available_at=OBSERVED_ORG,
+        enable_legacy_mirror=True
     )
     # Prove legacy still stores ISO while canonical is compact.
     legacy_avail = conn.execute(

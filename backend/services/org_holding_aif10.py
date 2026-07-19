@@ -282,7 +282,7 @@ def _upsert_rows_legacy_direct(
     )
 
     if as_mirror:
-        authorize_legacy_mirror_write("org_holding")
+        authorize_legacy_mirror_write("org_holding", allow_test_escape=True)
     else:
         authorize_nonconforming_direct_write(
             "org_holding",
@@ -305,17 +305,15 @@ def _upsert_rows_legacy_direct(
 
 
 def _upsert_rows(conn: Any, rows: list[dict]) -> int:
-    """E0 default: formal land→accept by available_date, then legacy upsert mirror."""
+    """E0 default: formal land→accept by available_date (formal_only)."""
     if not rows:
         return 0
     from services.data_sources.disclosure_dual_write import (
         write_org_holding_formal_then_mirror,
     )
 
-    outcome = write_org_holding_formal_then_mirror(
-        conn, rows, mirror=_upsert_rows_legacy_direct
-    )
-    return int(outcome.legacy_rows_written)
+    outcome = write_org_holding_formal_then_mirror(conn, rows)
+    return int(outcome.canonical_rows)
 
 
 def accept_org_holding_partition_from_legacy(
@@ -364,11 +362,14 @@ def accept_org_holding_partition_from_legacy(
     def _noop_mirror(_conn, material):
         return len(material)
 
-    return write_org_holding_formal_then_mirror(
-        conn,
-        rows,
-        mirror=_upsert_rows_legacy_direct if rewrite_legacy else _noop_mirror,
-    )
+    if rewrite_legacy:
+        return write_org_holding_formal_then_mirror(
+            conn,
+            rows,
+            mirror=_upsert_rows_legacy_direct,
+            enable_legacy_mirror=True,
+        )
+    return write_org_holding_formal_then_mirror(conn, rows, mirror=_noop_mirror)
 
 
 # ── 编排 ─────────────────────────────────────────────────────────────

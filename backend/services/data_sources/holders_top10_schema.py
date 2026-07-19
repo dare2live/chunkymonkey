@@ -1,8 +1,9 @@
 """Fixed schema for E0 holders_top10 formal land→accept tracer.
 
-Compatibility research table remains ``fact_top10_holder_period`` (NONCONFORMING
-direct-write strangler) until DatasetSnapshot cutover.  Accepted truth for this
-tracer is the landing/canonical pair below.
+Accepted truth is the landing/canonical pair.  Shadow compare uses
+``PROVIDER_FIELDS`` only.  Episode enrichment columns live on canonical as
+nullable ``ENRICHMENT_FIELDS`` so formal-only writes no longer depend on a
+legacy mirror for research rebuild.
 """
 from __future__ import annotations
 
@@ -16,9 +17,9 @@ DATASET_ID = "tier0.disclosure.top10_float_holders_period"
 LANDING_TABLE = "landing_miaoxiang_holders_top10"
 CANONICAL_TABLE = "canonical_top10_float_holders_period"
 SCHEMA_ID = "tier0.disclosure.top10_float_holders_period.canonical"
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 WRITER_ID = "services.data_sources.holders_top10_acceptance"
-CONTRACT_VERSION = "1"
+CONTRACT_VERSION = "2"
 SOURCE = "miaoxiang"
 API = "RPT_F10_EH_FREEHOLDERS"
 COMPATIBILITY_TABLE = "fact_top10_holder_period"
@@ -31,6 +32,7 @@ GRAIN = (
     "row_seq",
     "is_exit_row",
 )
+# Shadow / provider identity projection (stable compare surface).
 PROVIDER_FIELDS = (
     "stock_code",
     "report_date",
@@ -42,6 +44,16 @@ PROVIDER_FIELDS = (
     "notice_date",
     "is_exit_row",
 )
+# Episode rebuild columns carried on canonical (nullable for historical canary).
+ENRICHMENT_FIELDS = (
+    "holder_name_norm",
+    "share_class",
+    "shares_approx",
+    "change_status",
+    "hold_change_num",
+    "holder_type",
+)
+CANONICAL_ROW_FIELDS = PROVIDER_FIELDS + ENRICHMENT_FIELDS
 
 _SCHEMA_PAYLOAD: dict[str, Any] = {
     "schema_id": SCHEMA_ID,
@@ -125,6 +137,54 @@ _SCHEMA_PAYLOAD: dict[str, Any] = {
             "origin": "derived",
         },
         {
+            "name": "holder_name_norm",
+            "duckdb_type": "VARCHAR",
+            "nullable": True,
+            "unit": "holder_name_label",
+            "null_semantics": "enrichment_optional_historical_null",
+            "origin": "enrichment",
+        },
+        {
+            "name": "share_class",
+            "duckdb_type": "VARCHAR",
+            "nullable": True,
+            "unit": "share_class_label",
+            "null_semantics": "enrichment_optional_historical_null",
+            "origin": "enrichment",
+        },
+        {
+            "name": "shares_approx",
+            "duckdb_type": "BIGINT",
+            "nullable": True,
+            "unit": "share_count",
+            "null_semantics": "enrichment_optional_historical_null",
+            "origin": "enrichment",
+        },
+        {
+            "name": "change_status",
+            "duckdb_type": "VARCHAR",
+            "nullable": True,
+            "unit": "change_status_label",
+            "null_semantics": "enrichment_optional_historical_null",
+            "origin": "enrichment",
+        },
+        {
+            "name": "hold_change_num",
+            "duckdb_type": "DOUBLE",
+            "nullable": True,
+            "unit": "share_count_delta",
+            "null_semantics": "enrichment_optional_historical_null",
+            "origin": "enrichment",
+        },
+        {
+            "name": "holder_type",
+            "duckdb_type": "VARCHAR",
+            "nullable": True,
+            "unit": "holder_type_label",
+            "null_semantics": "enrichment_optional_historical_null",
+            "origin": "enrichment",
+        },
+        {
             "name": "available_at",
             "duckdb_type": "TIMESTAMP WITH TIME ZONE",
             "nullable": False,
@@ -186,10 +246,12 @@ def schema_contract_payload() -> dict[str, Any]:
 __all__ = [
     "ACCEPTED_TABLE",
     "API",
+    "CANONICAL_ROW_FIELDS",
     "CANONICAL_TABLE",
     "COMPATIBILITY_TABLE",
     "CONTRACT_VERSION",
     "DATASET_ID",
+    "ENRICHMENT_FIELDS",
     "GRAIN",
     "INGEST_BATCH_TABLE",
     "LANDING_TABLE",

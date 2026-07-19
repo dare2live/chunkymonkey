@@ -169,7 +169,8 @@ def conn():
 
 def test_freeze_requires_three_domain_shadow_match(conn, tmp_path: Path) -> None:
     write_holders_top10_formal_then_mirror(
-        conn, [_holders_row()], observed_at=OBSERVED_HOLDERS
+        conn, [_holders_row()], observed_at=OBSERVED_HOLDERS,
+        enable_legacy_mirror=True
     )
     # org + stk missing → cutover false → freeze blocked
     shadow = compare_disclosure_research_shadow(
@@ -187,13 +188,16 @@ def test_freeze_requires_three_domain_shadow_match(conn, tmp_path: Path) -> None
 
 def test_freeze_writes_minimal_snapshot_on_match(conn, tmp_path: Path) -> None:
     write_holders_top10_formal_then_mirror(
-        conn, [_holders_row()], observed_at=OBSERVED_HOLDERS
+        conn, [_holders_row()], observed_at=OBSERVED_HOLDERS,
+        enable_legacy_mirror=True
     )
     write_org_holding_formal_then_mirror(
-        conn, [_org_row()], observed_at=OBSERVED_ORG
+        conn, [_org_row()], observed_at=OBSERVED_ORG,
+        enable_legacy_mirror=True
     )
     write_stk_holdertrade_formal_then_mirror(
-        conn, [_stk_row()], observed_at=OBSERVED_STK
+        conn, [_stk_row()], observed_at=OBSERVED_STK,
+        enable_legacy_mirror=True
     )
     shadow = compare_disclosure_research_shadow(
         conn,

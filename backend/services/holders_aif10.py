@@ -267,7 +267,7 @@ def _write_legacy_direct(
     )
 
     if as_mirror:
-        authorize_legacy_mirror_write("holders_top10")
+        authorize_legacy_mirror_write("holders_top10", allow_test_escape=True)
     else:
         authorize_nonconforming_direct_write(
             "holders_top10",
@@ -291,11 +291,11 @@ def _write_legacy_direct(
 
 
 def _write(conn, rows: list[dict]) -> int:
-    """幂等写: formal land→accept by notice_date, then mirror legacy fact table.
+    """幂等写: formal land→accept by notice_date (formal_only; no default mirror).
 
-    单股全量重写语义保留在 legacy mirror (DELETE stock+source 再插). Formal
-    canonical merges per notice_date so other stocks on the same partition
-    are not wiped.
+    Canonical merges per notice_date so other stocks on the same partition are
+    not wiped.  Enrichment columns ride on canonical.  Explicit legacy mirror
+    remains test/emergency only via ``enable_legacy_mirror``.
     """
     if not rows:
         return 0
@@ -303,10 +303,8 @@ def _write(conn, rows: list[dict]) -> int:
         write_holders_top10_formal_then_mirror,
     )
 
-    outcome = write_holders_top10_formal_then_mirror(
-        conn, rows, mirror=_write_legacy_direct
-    )
-    return int(outcome.legacy_rows_written)
+    outcome = write_holders_top10_formal_then_mirror(conn, rows)
+    return int(outcome.canonical_rows)
 
 
 def accept_holders_top10_partition_from_legacy(
@@ -315,18 +313,18 @@ def accept_holders_top10_partition_from_legacy(
     """E0 canary: land→accept one notice_date from existing legacy rows.
 
     Default keeps legacy untouched (no stock-wide DELETE).  Production sync
-    still uses ``_write`` (formal + legacy mirror) when fetching from aif10.
+    uses ``_write`` (formal_only).
     """
     from services.data_sources.disclosure_dual_write import (
         write_holders_top10_formal_then_mirror,
     )
-    from services.data_sources.holders_top10_schema import PROVIDER_FIELDS
+    from services.data_sources.holders_top10_schema import CANONICAL_ROW_FIELDS
 
     digits = "".join(ch for ch in str(notice_date or "") if ch.isdigit())
     if len(digits) < 8:
         raise ValueError(f"notice_date must be YYYYMMDD, got {notice_date!r}")
     partition = digits[:8]
-    cols = ", ".join(PROVIDER_FIELDS)
+    cols = ", ".join(CANONICAL_ROW_FIELDS)
     raw = conn.execute(
         f"""
         SELECT {cols}
@@ -337,7 +335,7 @@ def accept_holders_top10_partition_from_legacy(
         """,
         [SOURCE, partition],
     ).fetchall()
-    rows = [dict(zip(PROVIDER_FIELDS, row, strict=True)) for row in raw]
+    rows = [dict(zip(CANONICAL_ROW_FIELDS, row, strict=True)) for row in raw]
     if not rows:
         raise ValueError(
             f"no legacy miaoxiang rows for notice_date={partition}"
@@ -346,11 +344,11 @@ def accept_holders_top10_partition_from_legacy(
     def _noop_mirror(_conn, material):
         return len(material)
 
-    return write_holders_top10_formal_then_mirror(
-        conn,
-        rows,
-        mirror=_write_legacy_direct if rewrite_legacy else _noop_mirror,
-    )
+    if rewrite_legacy:
+        return write_holders_top10_formal_then_mirror(
+            conn, rows, mirror=_write_legacy_direct, enable_legacy_mirror=True
+        )
+    return write_holders_top10_formal_then_mirror(conn, rows, mirror=_noop_mirror)
 
 
 def sync_holders_aif10(
