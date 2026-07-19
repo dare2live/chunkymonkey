@@ -252,9 +252,18 @@ def _has_availability_col(conn) -> bool:
 
 def _write(conn, rows: list[dict]) -> int:
     """幂等写: 单股全量重写 (rows 为同一股全期). 按 (stock, source) 一次性删旧再插,
-    避免 per-row DELETE (backfill 1.4M 次→5400 次)。build_rows 返该股全期, 故整体替换正确."""
+    避免 per-row DELETE (backfill 1.4M 次→5400 次)。build_rows 返该股全期, 故整体替换正确.
+
+    E0: direct fact write is NONCONFORMING (no landing→accept).  Formal/accepted
+    claims fail closed via authorize_nonconforming_direct_write.
+    """
     if not rows:
         return 0
+    from services.data_sources.disclosure_boundaries import (
+        authorize_nonconforming_direct_write,
+    )
+
+    authorize_nonconforming_direct_write("holders_top10", conformity="NONCONFORMING")
     stock = rows[0]["stock_code"]
     conn.execute(
         "DELETE FROM fact_top10_holder_period WHERE stock_code=? AND source=?",

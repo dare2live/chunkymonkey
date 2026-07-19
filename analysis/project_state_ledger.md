@@ -639,6 +639,29 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   `population_readiness=PASS`（tooling_gate 仍随 dirty worktree 变）。
 - B-pit shadow（仍禁 cutover）：`20260717` project breadth adv/dec=386/4571
   ratio≈0.08445；unfiltered accepted-canonical proxy≈0.09638；
-  `ratios_match=false`；`cutover_allowed=false`。
+  `ratios_match=false`；`cutover_allowed=false`（PIT 池 vs unfiltered 分歧为
+  预期；禁切）。
 - 未做：下一交易日单日 sync、mass backfill、margin 解冻、pulse mart cutover。
   Next：周一/下一 eligible 交易日授权单日 K+ST。
+
+### 2026-07-19 — E0 slice1: disclosure strangler boundary (no cutover / no mass fetch)
+
+- **PARTIAL / E0 in progress**：新增
+  `services.data_sources.disclosure_boundaries` —
+  inventory `holders_top10` / `org_holding` / `stk_holdertrade` with typed
+  `dataset_id`, `population_kind=raw_evidence`, availability axes
+  (`notice_date` / `available_date` / `ann_date`), `conformity=NONCONFORMING`,
+  `runtime_state=direct_write_strangler`, `landing_writer=canonical_writer=None`,
+  `formal_write=forbidden`.
+- Gates: `authorize_nonconforming_direct_write` permits only explicit
+  `NONCONFORMING` labels; formal conformity or accepted/landing/canonical/
+  DatasetSnapshot claims fail closed. Wired into `holders_aif10._write`,
+  `org_holding_aif10._upsert_rows`, and `sync_runner._write_batch` for
+  disclosure registry domains. Research API `/api/v3/inst/*` adds
+  `disclosure_conformity` sidecar (`cutover_allowed=false`); payload numbers
+  unchanged.
+- Adversarial: `test_disclosure_boundaries` + institution API envelope assert.
+- **Not done (full E0 closure)**: landing→validate→accept writers, retire
+  direct writes, freeze disclosure DatasetSnapshot, institution_follow.
+- B-pit cutover remains blocked (breadth mismatch). A3 frontier READY noted
+  above. Margin frozen; no K/ST sync this weekend.

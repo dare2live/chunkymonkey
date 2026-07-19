@@ -1055,6 +1055,28 @@ def _prepare_batch_df(
     return df
 
 
+def _authorize_disclosure_legacy_raw_write(domain: str) -> None:
+    """E0: disclosure registry domains may keep legacy raw writes only as NONCONFORMING."""
+
+    from services.data_sources.disclosure_boundaries import (
+        DisclosureBoundaryError,
+        authorize_nonconforming_direct_write,
+        disclosure_boundary,
+    )
+
+    if disclosure_boundary(domain) is None:
+        return
+    try:
+        authorize_nonconforming_direct_write(domain, conformity="NONCONFORMING")
+    except DisclosureBoundaryError as exc:
+        raise ExecutionPolicyError(
+            domain,
+            mode="disabled",
+            reason=exc.reason,
+            detail=exc.detail,
+        ) from exc
+
+
 def _write_batch(
     conn,
     spec: dict[str, Any],
@@ -1064,6 +1086,7 @@ def _write_batch(
     expected_partition: dict[str, Any] | None = None,
 ) -> int:
     """验证后原子 MERGE on grain；失败批不改旧数据。"""
+    _authorize_disclosure_legacy_raw_write(str(spec.get("domain") or ""))
     write_mode = str(spec.get("write_mode") or "merge_grain")
     if write_mode not in {"merge_grain", "replace_snapshot", "replace_partition"}:
         raise ValueError(

@@ -271,8 +271,14 @@ _INSERT_KEYS = [c.strip() for c in _INSERT_COLS.split(",")]
 
 
 def _upsert_rows(conn: Any, rows: list[dict]) -> int:
+    """E0: direct raw upsert is NONCONFORMING until landing→accept exists."""
     if not rows:
         return 0
+    from services.data_sources.disclosure_boundaries import (
+        authorize_nonconforming_direct_write,
+    )
+
+    authorize_nonconforming_direct_write("org_holding", conformity="NONCONFORMING")
     placeholders = ", ".join("?" for _ in _INSERT_KEYS)
     update_set = ", ".join(
         f"{k} = excluded.{k}" for k in _INSERT_KEYS

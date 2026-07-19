@@ -1,0 +1,313 @@
+"""E0 disclosure-domain strangler: typed contracts + fail-closed formal claims.
+
+Transport/research boundary only.  miaoxiang/aif10 holders and org_holding still
+write facts outside landing→accept; those paths are explicitly
+``NONCONFORMING`` until formal writers exist.  This module:
+
+- inventories the three disclosure domains named by goal E0;
+- authorizes legacy direct writes only when labeled ``NONCONFORMING``;
+- refuses any accepted/landing/canonical/DatasetSnapshot claim until
+  landing + canonical writers are declared;
+- attests research surfaces as NONCONFORMING without rewriting payloads.
+
+Not a doctor readiness certificate.  Not permission to start institution_follow.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Literal
+
+Conformity = Literal["NONCONFORMING"]
+RuntimeState = Literal["direct_write_strangler"]
+TrustStatus = Literal["NONCONFORMING", "BLOCKED", "NOT_EVALUATED", "READY"]
+
+_ACCEPTED_CLAIMS = frozenset(
+    {
+        "accepted",
+        "canonical",
+        "landing",
+        "DatasetSnapshot",
+        "accepted_partition",
+        "formal",
+        "ACCEPTED",
+    }
+)
+_FORMAL_CONFORMITY = frozenset(
+    {
+        "ACCEPTED",
+        "accepted",
+        "formal",
+        "landing",
+        "canonical",
+        "DatasetSnapshot",
+    }
+)
+
+
+@dataclass(frozen=True)
+class DisclosureDomainBoundary:
+    domain: str
+    dataset_id: str
+    adapter: str
+    target_table: str
+    availability_axis: str
+    availability_rule: str
+    population_kind: Literal["raw_evidence"] = "raw_evidence"
+    conformity: Conformity = "NONCONFORMING"
+    runtime_state: RuntimeState = "direct_write_strangler"
+    landing_writer: str | None = None
+    canonical_writer: str | None = None
+    formal_write: Literal["forbidden"] = "forbidden"
+
+
+@dataclass(frozen=True)
+class DisclosureWritePermit:
+    """Token proving a legacy direct write was explicitly nonconforming."""
+
+    domain: str
+    conformity: Conformity
+    target_table: str
+    publication: Literal["nonconforming_direct_write"] = "nonconforming_direct_write"
+
+
+@dataclass(frozen=True)
+class DisclosureDomainAttestation:
+    domain: str
+    status: TrustStatus
+    population_kind: str
+    adapter: str
+    target_table: str
+    availability_axis: str
+    reason: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            "domain": self.domain,
+            "status": self.status,
+            "population_kind": self.population_kind,
+            "adapter": self.adapter,
+            "target_table": self.target_table,
+            "availability_axis": self.availability_axis,
+            "reason": self.reason,
+        }
+
+
+@dataclass(frozen=True)
+class DisclosureResearchSurfaceReport:
+    overall_status: TrustStatus
+    cutover_allowed: bool
+    e0_phase: Literal["in_progress"]
+    domains: tuple[DisclosureDomainAttestation, ...]
+    notes: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "overall_status": self.overall_status,
+            "cutover_allowed": self.cutover_allowed,
+            "e0_phase": self.e0_phase,
+            "domains": [item.as_dict() for item in self.domains],
+            "notes": list(self.notes),
+        }
+
+
+_DISCLOSURE_BOUNDARIES: dict[str, DisclosureDomainBoundary] = {
+    "holders_top10": DisclosureDomainBoundary(
+        domain="holders_top10",
+        dataset_id="tier0.disclosure.top10_float_holders_period",
+        adapter="miaoxiang",
+        target_table="fact_top10_holder_period",
+        availability_axis="notice_date",
+        availability_rule="event_time_notice_or_page_update",
+    ),
+    "org_holding": DisclosureDomainBoundary(
+        domain="org_holding",
+        dataset_id="tier0.disclosure.org_holding_detail_period",
+        adapter="miaoxiang",
+        target_table="raw_org_holding_aif10",
+        availability_axis="available_date",
+        availability_rule="disclosure_deadline_upper_bound",
+    ),
+    "stk_holdertrade": DisclosureDomainBoundary(
+        domain="stk_holdertrade",
+        dataset_id="tier0.disclosure.stock_holder_trade_announcement",
+        adapter="tushare",
+        target_table="raw_tushare_stk_holdertrade",
+        availability_axis="ann_date",
+        availability_rule="announcement_date_event_time",
+    ),
+}
+
+
+class DisclosureBoundaryError(RuntimeError):
+    """A disclosure transport/research boundary was violated."""
+
+    def __init__(self, domain: str, *, reason: str, detail: str):
+        self.domain = domain
+        self.reason = reason
+        self.detail = detail
+        super().__init__(f"domain={domain} reason={reason} {detail}")
+
+
+def disclosure_boundary(domain: str) -> DisclosureDomainBoundary | None:
+    return _DISCLOSURE_BOUNDARIES.get(str(domain or "").strip())
+
+
+def disclosure_domains() -> tuple[str, ...]:
+    return tuple(sorted(_DISCLOSURE_BOUNDARIES))
+
+
+def require_disclosure_boundary(domain: str) -> DisclosureDomainBoundary:
+    boundary = disclosure_boundary(domain)
+    if boundary is None:
+        raise DisclosureBoundaryError(
+            str(domain or ""),
+            reason="unknown_disclosure_domain",
+            detail="domain is not in the E0 disclosure inventory",
+        )
+    return boundary
+
+
+def authorize_nonconforming_direct_write(
+    domain: str, *, conformity: str
+) -> DisclosureWritePermit:
+    """Permit legacy direct writes only when explicitly labeled NONCONFORMING.
+
+    Formal conformity labels fail closed until landing + canonical writers exist.
+    Once those writers are declared, direct writes are retired (fail closed).
+    """
+
+    boundary = require_disclosure_boundary(domain)
+    label = str(conformity or "").strip()
+    if label in _FORMAL_CONFORMITY or label != "NONCONFORMING":
+        raise DisclosureBoundaryError(
+            boundary.domain,
+            reason="formal_write_without_accepted_path",
+            detail=(
+                f"conformity={label!r} is not allowed for direct write; "
+                f"landing_writer={boundary.landing_writer!r} "
+                f"canonical_writer={boundary.canonical_writer!r}; "
+                "use NONCONFORMING until E0 landing→accept exists"
+            ),
+        )
+    if boundary.landing_writer is not None and boundary.canonical_writer is not None:
+        raise DisclosureBoundaryError(
+            boundary.domain,
+            reason="direct_write_retired_after_formalization",
+            detail=(
+                f"formal writers exist "
+                f"landing={boundary.landing_writer} "
+                f"canonical={boundary.canonical_writer}; "
+                "legacy direct write is forbidden"
+            ),
+        )
+    if boundary.formal_write != "forbidden":
+        raise DisclosureBoundaryError(
+            boundary.domain,
+            reason="invalid_boundary_declaration",
+            detail="formal_write must remain forbidden during strangler",
+        )
+    return DisclosureWritePermit(
+        domain=boundary.domain,
+        conformity="NONCONFORMING",
+        target_table=boundary.target_table,
+    )
+
+
+def refuse_accepted_publication_claim(domain: str, claim: str) -> None:
+    """Hard wall: nonconforming disclosure tables cannot satisfy accepted truth."""
+
+    boundary = require_disclosure_boundary(domain)
+    label = str(claim or "").strip()
+    if label not in _ACCEPTED_CLAIMS:
+        return
+    if boundary.landing_writer is None or boundary.canonical_writer is None:
+        raise DisclosureBoundaryError(
+            boundary.domain,
+            reason="accepted_claim_without_formal_path",
+            detail=(
+                f"claim={label!r} requires landing→validate→accept; "
+                f"current conformity={boundary.conformity} "
+                f"table={boundary.target_table} has no formal writers"
+            ),
+        )
+
+
+def refuse_formal_disclosure_write_without_accepted_path(
+    domain: str, *, publication_claim: str
+) -> None:
+    """Alias wall used by future DatasetSnapshot / formal publish entrypoints."""
+
+    refuse_accepted_publication_claim(domain, publication_claim)
+
+
+def attest_disclosure_research_surface() -> DisclosureResearchSurfaceReport:
+    """Read-only trust report for institution research UI (no payload rewrite)."""
+
+    domains = tuple(
+        DisclosureDomainAttestation(
+            domain=item.domain,
+            status="NONCONFORMING",
+            population_kind=item.population_kind,
+            adapter=item.adapter,
+            target_table=item.target_table,
+            availability_axis=item.availability_axis,
+            reason=(
+                "direct_writer_bypasses_landing_validate_accept; "
+                f"availability_axis={item.availability_axis}; "
+                "cannot freeze DatasetSnapshot or serve as accepted truth"
+            ),
+        )
+        for item in (_DISCLOSURE_BOUNDARIES[name] for name in disclosure_domains())
+    )
+    return DisclosureResearchSurfaceReport(
+        overall_status="NONCONFORMING",
+        cutover_allowed=False,
+        e0_phase="in_progress",
+        domains=domains,
+        notes=(
+            "e0_disclosure_formalization_in_progress",
+            "legacy_research_reads_allowed_with_nonconforming_label",
+            "institution_follow_blocked_until_e0_closed",
+            "b_pit_cutover_remains_blocked_separately",
+        ),
+    )
+
+
+def disclosure_inventory() -> tuple[dict[str, Any], ...]:
+    """Static inventory for audits/unit tests; not a readiness certificate."""
+
+    return tuple(
+        {
+            "domain": item.domain,
+            "dataset_id": item.dataset_id,
+            "adapter": item.adapter,
+            "target_table": item.target_table,
+            "population_kind": item.population_kind,
+            "availability_axis": item.availability_axis,
+            "availability_rule": item.availability_rule,
+            "conformity": item.conformity,
+            "runtime_state": item.runtime_state,
+            "landing_writer": item.landing_writer,
+            "canonical_writer": item.canonical_writer,
+            "formal_write": item.formal_write,
+        }
+        for item in (_DISCLOSURE_BOUNDARIES[name] for name in disclosure_domains())
+    )
+
+
+__all__ = [
+    "DisclosureBoundaryError",
+    "DisclosureDomainAttestation",
+    "DisclosureDomainBoundary",
+    "DisclosureResearchSurfaceReport",
+    "DisclosureWritePermit",
+    "TrustStatus",
+    "attest_disclosure_research_surface",
+    "authorize_nonconforming_direct_write",
+    "disclosure_boundary",
+    "disclosure_domains",
+    "disclosure_inventory",
+    "refuse_accepted_publication_claim",
+    "refuse_formal_disclosure_write_without_accepted_path",
+    "require_disclosure_boundary",
+]

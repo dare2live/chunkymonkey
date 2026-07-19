@@ -6,7 +6,7 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + 单日 K/ST canary；eligible frontier=`20260717` READY；缺连续历史覆盖/下一交易日）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；mart/cutover 仍未授权）。Fable5 **REVISE** 已吸收（见 ledger）。禁 E0/institution_follow 生产至 A/B 足够。
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + 单日 K/ST canary；eligible frontier=`20260717` READY；缺连续历史覆盖/下一交易日）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false` — PIT 池 vs unfiltered 广度分歧为预期，禁切）。**E0 PARTIAL（strangler 起步）**。Fable5 **REVISE** 已吸收。禁 institution_follow 生产至 E0 闭合。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -43,7 +43,7 @@
 - 白名单仅 `60/00/30/68`；多数域仅前缀过滤；margin v2/pulse 含 BSE 错误 scope。
 - universe/Moth 曾假绿；live ST 污染 breadth/龙虎榜/SW/DC。
 - margin accepted=1823 只证冻结自洽；`20260709/BSE` 出 scope。
-- **多源实况**：TuShare=正式 registry 域唯一 live adapter；东财妙想 aif10/`miaoxiang` 已是十大流通股东等披露域 live 主源（`holders_aif10` 直写 fact，无 landing/accepted）= **NONCONFORMING**，待 E0 formal 化。细节见 ledger。
+- **多源实况**：TuShare=正式 registry 域唯一 live adapter；东财妙想 aif10/`miaoxiang` 已是十大流通股东等披露域 live 主源（`holders_aif10` 直写 fact，无 landing/accepted）= **NONCONFORMING**。E0 已登记 typed inventory + 直写门 + 研究面 sidecar；尚未落地 landing→accept。细节见 ledger。
 
 ## 执行计划（A→H）
 
@@ -66,7 +66,12 @@
   `20260717` shadow：project adv/dec=386/4571 ratio≈0.0844 vs unfiltered
   proxy≈0.0964，`ratios_match=false`，`cutover_allowed=false`（默认禁切）。
 - **C** Tier1/2 正式 lineage。**D** `DatasetSnapshot`→`ExperimentVerdict` + PIT 截断。
-- **E0（E 硬前置）** 披露域 formal 化：holders/org_holding/stk_holdertrade → adapter/landing/canonical + notice/`available_at` 契约。未完成则 **E=BLOCKED**。
+- **E0 PARTIAL（E 硬前置）** `disclosure_boundaries`：三域 inventory
+  （holders_top10/org_holding/stk_holdertrade）+ `raw_evidence` + notice/
+  available/ann 轴；直写仅 `NONCONFORMING` 许可；accepted/landing/canonical/
+  DatasetSnapshot 声称 fail-closed；`/api/v3/inst/*` sidecar 标注且不改研究数值。
+  **未做**：landing→validate→accept writers、退役直写、冻结披露 DatasetSnapshot。
+  未闭合则 **E=BLOCKED**。
 - **E** `institution_follow_v1`（首包；B0→B4）。**F** main_rally。**G** 公式+BestChoice。**H** Release/名义价纸面。
 
 ## 边做边测

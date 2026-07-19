@@ -25,7 +25,7 @@ AGENTS.md
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
 | T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 展示可用但 breadth/margin UNTRUSTED（B-ext）；分类/measurement/regime 耦合，暂不可直接做 PIT 特征；禁当项目池直至 B-pit |
-| T3 institution | `institution_profile.py` + `holders_aif10.py` + router/tests | **首个正式策略包目标**；披露主源=miaoxiang aif10 **NONCONFORMING**（无 landing）；待 E0→D/E |
+| T3 institution | `institution_profile.py` + `holders_aif10.py` + `disclosure_boundaries.py` + router/tests | **首个正式策略包目标**；E0 strangler 已登记三域 NONCONFORMING + 直写门/研究 sidecar；缺 landing→accept → E 仍 BLOCKED |
 | T3 main rally | `rally_gt.py`, `rally_detect.py`, rally config/tests | GT 资产成熟；在机构首包之后接入同一 runtime |
 | T3 formulas | `bestchoice/FROZEN.md` + `evidence_manifest.json` | 冻结 challenger；Phase G 前不吸收 |
 | T4 decision/paper | `paper_portfolio.py`, frontend observation page | Legacy NONCONFORMING 观察账本；不是 paper execution |
@@ -69,7 +69,7 @@ AGENTS.md
 | Priority | Defect | Consequence |
 |---:|---|---|
 | P0 | K/ST 仅单日 canary（`20260717`）；无连续历史覆盖/下一交易日 | B-pit mart/cutover 仍禁；eligible frontier READY；扩窗须再授权 |
-| P0 | 披露域 miaoxiang aif10 直写 fact（无 landing/accepted） | Phase E 冻结 DatasetSnapshot 不可满足；标 NONCONFORMING，归 E0 |
+| P0 | 披露域 miaoxiang aif10 直写 fact（无 landing/accepted） | E0 strangler 已门禁/标注；冻结 DatasetSnapshot 仍不可满足直至 landing→accept |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
 | P1 | formal `boundary_inventory` 仅为静态/测试资源，非 doctor readiness 证书（`formal_boundaries` 文案已澄清）；canary_pending 域无 countdown 出口 | 豁免不可见即永久；须在 goal/ledger 跟踪 canary 授权点 |

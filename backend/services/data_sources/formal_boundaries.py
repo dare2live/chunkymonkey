@@ -5,8 +5,10 @@ Transport axis only.  Business tiers must not own these seams.
 ``LIVE_ADAPTER`` is the only adapter allowed for domains **registered in this
 inventory**.  That is not a claim that the whole repository has a single live
 provider: disclosure paths such as miaoxiang/aif10 currently write facts outside
-this inventory and are NONCONFORMING until E0 formalization.  Accepted truth for
-formal domains is always the landing/canonical pair, never the adapter response.
+this inventory and are NONCONFORMING until E0 formalization — see
+``disclosure_boundaries`` for the E0 strangler inventory and write gates.
+Accepted truth for formal domains is always the landing/canonical pair, never
+the adapter response.
 
 Domains registered here must never fall through to legacy ``_write_batch`` raw
 replace/merge.  ``runtime_state`` values (including former ``writers_pending``

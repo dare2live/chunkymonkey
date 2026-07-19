@@ -8,6 +8,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from conftest import duck_mem
+from routers import institution_profile as inst_router
 from services import institution_profile as ip
 
 
@@ -36,6 +37,23 @@ def mem(monkeypatch):
     c.close = lambda: None
     yield c
     c.close_real()
+
+
+def test_research_envelope_labels_disclosure_nonconforming(mem):
+    """E0: research UI keeps payload; sidecar marks disclosure NONCONFORMING."""
+    body = inst_router._research_envelope(profiles=[{"holder": "牛散A"}])
+    assert body["status"] == "ok"
+    assert body["surface_status"] == inst_router.SURFACE_STATUS
+    assert body["profiles"] == [{"holder": "牛散A"}]
+    conf = body["disclosure_conformity"]
+    assert conf["overall_status"] == "NONCONFORMING"
+    assert conf["cutover_allowed"] is False
+    assert conf["e0_phase"] == "in_progress"
+    assert {d["domain"] for d in conf["domains"]} == {
+        "holders_top10",
+        "org_holding",
+        "stk_holdertrade",
+    }
 
 
 def test_list_profiles_filters_low_sample(mem):
