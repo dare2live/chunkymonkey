@@ -878,10 +878,12 @@ def _prepare_batch_df(
     effective_min_rows: int | None = None,
     expected_partition: dict[str, Any] | None = None,
 ):
-    """先去重、过滤、验完整性，再把批次交给写事务。
+    """Dedup + validate, then hand the batch to the write transaction.
 
-    `min_rows_per_batch` 的业务口径是“最终会写入 raw 的行”，不能在 universe
-    filter 前用供应方原始行数判绿；否则 ETF/BJ 等被过滤行会把残缺 A 股批次垫过门。
+    Landing preserves the provider response.  ``universe_filter`` no longer
+    deletes rows before raw write; project-universe filtering belongs at
+    canonical/serve via ``universe_serve_filter`` with policy-hash evidence.
+    ``min_rows_per_batch`` is evaluated on post-dedup landing rows.
     """
     import pandas as pd
 
@@ -903,39 +905,28 @@ def _prepare_batch_df(
     if len(df) < _ndup:
         log.info("[dedup] %s 批内去重 %d 行 (同 grain 重复)", table, _ndup - len(df))
 
-    # universe 写入门 (2026-06-17 用户: 排除列表=交易日历级硬真相源, 排除股不入库):
-    # stock-level 域 (universe_filter=true) 写前丢非白名单前缀行 (北交所8x/9x/三板4x); index/concept
-    # 域 (sw_daily/dc_index/moneyflow_ind_dc/index_*) 不设此标不受影响。by_trade_date 域重拉全市场
-    # 时防排除股回潮 (与一次性 purge 配套, 让清理生效)。
+    # A4 landing purity: validate filter-column wiring, never drop provider rows here.
     if spec.get("universe_filter"):
-        from services.universe import ACTIVE_A_SHARE_PREFIXES
-        # 默认 A股个股白名单(60/00/30/68); 域可 universe_filter_prefixes 覆盖 (非个股 universe, 如 ETF
-        # =15/51/56/58 场内; config-driven 不 hardcode; ETF 是独立 universe 不进 services.universe 个股真相源)。
-        prefixes = set(spec.get("universe_filter_prefixes") or ACTIVE_A_SHARE_PREFIXES)
+        from services.data_sources.universe_serve_filter import (
+            validate_universe_filter_column,
+        )
+
         ucol = spec.get("universe_filter_col") or grain[0]
         if ucol in df.columns:
-            _n0 = len(df)
-            _df_orig = df
-            df = df[df[ucol].astype(str).str[:2].isin(prefixes)]
-            if len(df) < _n0:
-                log.info("[universe-filter] %s 丢 %d 非白名单前缀行 (keep prefixes=%s)", table, _n0 - len(df), sorted(prefixes))
-            # 静默失败门 (2026-06-28 谄媚死根治): universe_filter 丢光整个非空批 = 几乎必是 filter 列漏配
-            #   (如 top_list/top_inst 缺 universe_filter_col → 用 grain[0]=trade_date 过滤前缀'20'全丢)。
-            #   绝不静默 return 0 让 watermark 假进 — raise 让该批记 failure (诚实失败 > 谄媚成功)。
-            # 2026-07-03 假阳性根治 (share_float 两撞: 1 行批与 8 行批全为北交所公告, 行数阈值治标):
-            #   本质指纹 = 被丢行的值像不像股票代码 — 像 (6位数字+交易所后缀) = 合法北交所/三板过滤长尾;
-            #   不像 (如 '20260622' 日期样) = universe_filter_col 配错, 才是门要抓的 (top_list 反例)。
-            if df.empty and _n0 > 0:
-                _dropped_sample = _df_orig[ucol].astype(str).head(20)
-                if _dropped_sample.str.match(r"^\d{6}\.(SH|SZ|BJ|OC)$").all():
-                    log.warning("[universe-filter] %s 整批 %d 行全为非白名单市场股票 (北交所/三板类合法长尾), 记 0 行继续",
-                                table, _n0)
-                else:
-                    raise ValueError(
-                        f"universe_filter 把 {table} 整批 {_n0} 行全丢且值不像股票代码 (filter_col={ucol!r}, "
-                        f"样本={_dropped_sample.head(3).tolist()}); 几乎必是 universe_filter_col 漏配。"
-                        f"拒绝静默返0防谄媚死 — 修 sync_registry 该域 universe_filter_col 指向真股票代码列。"
-                    )
+            validate_universe_filter_column(
+                df[ucol].tolist(), filter_column=str(ucol), table=table
+            )
+            log.info(
+                "[universe-filter] %s landing preserves all %d provider rows; "
+                "project-universe filter deferred to canonical/serve "
+                "(universe_serve_filter + policy hash)",
+                table,
+                len(df),
+            )
+        else:
+            raise ValueError(
+                f"{table}: universe_filter_col={ucol!r} missing from provider columns"
+            )
 
     if str(spec.get("write_mode") or "merge_grain") == "replace_partition":
         partition_by = [str(column) for column in spec.get("partition_by") or []]

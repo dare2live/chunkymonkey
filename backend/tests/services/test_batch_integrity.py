@@ -34,7 +34,8 @@ def test_complete_batch_dates_counts_distinct_registry_grain():
     assert complete_batch_dates(conn, _spec()) == set()
 
 
-def test_complete_batch_dates_applies_registry_universe_filter():
+def test_complete_batch_dates_counts_full_landing_population_including_bj():
+    """A4: landing completeness ignores universe_filter; BJ residue counts."""
     conn = duck_mem()
     conn.execute("CREATE TABLE raw_probe (ts_code TEXT, trade_date TEXT, built_at TEXT)")
     conn.executemany(
@@ -42,7 +43,7 @@ def test_complete_batch_dates_applies_registry_universe_filter():
         [("600000.SH",), ("000001.SZ",), ("830001.BJ",)],
     )
 
-    assert complete_batch_dates(conn, _spec(universe_filter=True)) == set()
+    assert complete_batch_dates(conn, _spec(universe_filter=True)) == {"20260709"}
 
 
 def test_complete_batch_dates_normalizes_timestamp_and_frontier_metadata():

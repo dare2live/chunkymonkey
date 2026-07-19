@@ -8,8 +8,9 @@
 #   source         数据源 adapter 名 (services/data_sources registry)
 #   api            源 API 名 (tushare pro 接口名)
 #   target_db      database_manifest.yaml 里的库 alias (新域一律 tushare_raw, 与主库写锁解耦)
-#   target_table   legacy compatibility 表；声明 universe_filter 的域会在写前删行，
-#                  因而不是完整 provider landing，也不能作为正式 raw_evidence acceptance
+#   target_table   legacy compatibility / landing 表；universe_filter 只声明 serve
+#                  过滤意图，写前不再删行（A4 landing purity）。正式 project-universe
+#                  过滤在 canonical/serve 经 universe_serve_filter + policy hash 留证
 #   grain          MERGE 主键 (幂等重跑)
 #   batch_mode     by_trade_date (一次调用全市场一天) / by_ts_code / by_month / full_refresh
 #   pit_anchor     PIT 锚点列 + 可用时刻语义 (特征 JOIN 纪律的机器可读声明)

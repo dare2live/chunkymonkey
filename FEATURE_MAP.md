@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-19 20:32
+> Snapshot: 2026-07-19 20:37
 
 ## 1. 入口面
 
@@ -156,21 +156,21 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 5,226 | calls 边 6,338 | imports 边 1,332 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 5,243 | calls 边 6,351 | imports 边 1,344 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
-| services.duck_adapter | 38 |
-| services.data_sources | 24 |
+| services.duck_adapter | 39 |
+| services.data_sources | 25 |
 | services.data_sources.margin_schema | 14 |
 | services.database_manifest | 13 |
 | services.source_watermarks | 13 |
 | services.data_sources.calendar_schema | 12 |
 | services.data_sources.contracts | 11 |
+| services.universe | 11 |
 | services.data_sources.accepted_schema | 9 |
-| services.universe | 9 |
 | services.db | 8 |
 | services.data_sources.calendar_contract | 7 |
 | services.data_sources.margin_evidence | 7 |
@@ -182,11 +182,11 @@
 
 | 文件 | 调用方文件数 |
 |---|---|
-| backend/services/duck_adapter.py | 32 |
+| backend/services/duck_adapter.py | 33 |
 | backend/services/source_watermarks.py | 13 |
 | backend/services/database_manifest.py | 11 |
+| backend/services/universe.py | 10 |
 | backend/services/data_sources/contracts.py | 9 |
-| backend/services/universe.py | 8 |
 | backend/services/data_sources/calendar_contract.py | 7 |
 | backend/services/data_sources/calendar_schema.py | 7 |
 | backend/services/data_sources/margin_evidence.py | 7 |
@@ -199,7 +199,7 @@
 
 | 文件 | 行数 |
 |---|---|
-| backend/services/data_sources/sync_runner.py | 2363 |
+| backend/services/data_sources/sync_runner.py | 2354 |
 | backend/services/market_pulse.py | 1473 |
 | backend/scripts/check_continuity_integrity.py | 949 |
 | backend/services/universe.py | 755 |

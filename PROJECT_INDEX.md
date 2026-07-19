@@ -68,7 +68,7 @@ AGENTS.md
 
 | Priority | Defect | Consequence |
 |---:|---|---|
-| P0 | A3 resolver 已接线但名义 K/ST accepted writer 未建；A4 仍在 raw 写前 `universe_filter` | 日级项目池不能 live 证明；landing 纯度未达标；legacy 域仍混合 response/rejection/publication |
+| P0 | A3 resolver 已接线但名义 K/ST accepted writer 未建；A4 landing 已停止写前删行（serve=`universe_serve_filter`） | 日级项目池不能 live 证明；legacy 域仍缺 formal adapter→landing→canonical 三界（A5） |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
 | P1 | Live DC snapshot/pulse tables predate namespace fix until manual rebuild | Code contract is fixed but stored rows still need controlled reconciliation |

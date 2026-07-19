@@ -275,8 +275,8 @@ def test_calendar_gaps_treats_below_min_rows_day_as_missing_without_group_contra
         c.close()
 
 
-def test_calendar_gaps_applies_same_universe_filter_as_write_path():
-    """被写前门排除的 BJ/ETF residue 不能帮助连续性门跨过 min_rows。"""
+def test_calendar_gaps_counts_full_landing_population_for_min_rows():
+    """A4: landing gap gate counts BJ rows; serve filter is not a raw completeness gate."""
     day = "20260601"
     c = duck_mem()
     try:
@@ -297,7 +297,7 @@ def test_calendar_gaps_applies_same_universe_filter_as_write_path():
 
         result = cci.check_calendar_gaps(c, spec, [day], day)
 
-        assert result["status"] == "fail_stale_tail"
+        assert result["status"] == "pass"
     finally:
         c.close()
 

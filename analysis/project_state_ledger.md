@@ -468,3 +468,13 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   相关 = `84 passed`。
 - **BLOCKED residual（需后续或授权 canary，非本刀）**：名义 K / ST accepted partition
   writer+schema+live 发表未建；无 provider mass fetch。下一刀 A4 landing 纯度。
+
+### 2026-07-19 — Phase A4 landing purity (FIXED)
+
+- A4 **FIXED**：`sync_runner._prepare_batch_df` 写前不再按 `universe_filter` 删行；仅校验
+  filter_col 像证券代码（防配错列）。新增 `universe_serve_filter.apply_universe_serve_filter`
+  在 canonical/serve 过滤并记录 policy_id/version/hash + exclusion reasons。
+- `batch_integrity.complete_batch_dates` / continuity gap 口径改为全量 landing 人口
+  （BJ 计入 min_rows），与 serve 过滤解耦。
+- 对抗测：`test_universe_serve_filter` + batch/sync/continuity 相关更新绿。无 provider
+  fetch、无 consumer cutover。下一刀 A5。

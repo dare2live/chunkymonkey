@@ -116,13 +116,15 @@ def test_margin_bse_write_contract_uses_margin_business_start_and_is_atomic():
     ]
 
 
-def test_min_rows_is_evaluated_after_dedup_and_universe_filter():
-    """被去重或被 universe 排除的行不能帮助批次跨过 min_rows 门。"""
+def test_min_rows_is_evaluated_after_dedup_without_dropping_universe_rows():
+    """A4: min_rows 看 landing 去重后行数；BJ 不再被写前丢弃垫/挡门。"""
     conn = connect(":memory:")
     spec = _margin_spec(
-        min_rows_per_batch=2,
+        min_rows_per_batch=3,
         batch_completeness={},
-        target_table="raw_demo_post_filter",
+        target_table="raw_demo_landing",
+        universe_filter=True,
+        grain=["ts_code", "trade_date"],
     )
     rows = [
         {"ts_code": "600000.SH", "trade_date": "20260714", "rzye": 1.0},
@@ -130,13 +132,24 @@ def test_min_rows_is_evaluated_after_dedup_and_universe_filter():
         {"ts_code": "830001.BJ", "trade_date": "20260714", "rzye": 3.0},
     ]
 
-    with pytest.raises(sr.BatchCompletenessError, match="post_filter_rows=1 < min_rows=2"):
+    # dedup → 2 landing rows (SH + BJ) < min_rows=3
+    with pytest.raises(sr.BatchCompletenessError, match="post_filter_rows=2 < min_rows=3"):
         sr._write_batch(conn, spec, rows)
 
     exists = conn.execute(
-        "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='raw_demo_post_filter'"
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='raw_demo_landing'"
     ).fetchone()[0]
     assert exists == 0
+
+    # With min_rows=2, BJ is preserved in landing.
+    spec["min_rows_per_batch"] = 2
+    written = sr._write_batch(conn, spec, rows)
+    assert written == 2
+    codes = {
+        row[0]
+        for row in conn.execute("SELECT ts_code FROM raw_demo_landing").fetchall()
+    }
+    assert codes == {"600000.SH", "830001.BJ"}
 
 
 def test_run_domain_records_incomplete_batch_without_advancing_watermark(monkeypatch):

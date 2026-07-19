@@ -91,29 +91,10 @@ def _normalised_rows_cte(
     if invalid_count:
         raise ValueError(f"{table}: {invalid_count} invalid completeness date values")
 
+    # Landing completeness counts the full provider population.  Project-universe
+    # filtering is a serve-time concern (universe_serve_filter), not a raw gap gate.
     filters = [f"{date_sql} IS NOT NULL"]
     params: list[Any] = []
-    if spec.get("universe_filter"):
-        from services.universe import ACTIVE_A_SHARE_PREFIXES
-
-        universe_col = str(spec.get("universe_filter_col") or grain[0])
-        if universe_col not in columns:
-            raise ValueError(f"{table}: universe filter column missing: {universe_col!r}")
-        prefixes = sorted(
-            str(prefix)
-            for prefix in (
-                spec.get("universe_filter_prefixes") or ACTIVE_A_SHARE_PREFIXES
-            )
-        )
-        if prefixes:
-            placeholders = ", ".join("?" for _ in prefixes)
-            filters.append(
-                f"SUBSTR(CAST({_identifier(universe_col)} AS VARCHAR), 1, 2) "
-                f"IN ({placeholders})"
-            )
-            params.extend(prefixes)
-        else:
-            filters.append("FALSE")
 
     grain_sql = ", ".join(_identifier(column) for column in grain)
     built_at_sql = (

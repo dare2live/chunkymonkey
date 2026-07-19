@@ -48,7 +48,7 @@
 
 控制面原语/margin 冻结/all-due 前阻断/doctor `NOT_EVALUATED` FAIL/calendar 隔离原型：见 ledger。≠业务就绪。
 
-- **A（当前）** A1/A2 **complete**；A3 **PARTIAL**（`observation_population.resolve_traded_on_observation_date` + trusted loaders；policy v3 对齐 calendar dataset id；`live_readiness` 经 loader 评估非写死；K/ST accepted writer 仍缺 → residual `NOT_EVALUATED/BLOCKED`）。下一步 **A4** landing 纯度；A5 adapter 三界。出口：对抗测绿且 `live_readiness` 可评估；禁抓数/切消费者。
+- **A（当前）** A1/A2 **complete**；A3 **PARTIAL**（resolver+loaders；K/ST writer 仍缺）；A4 **complete**（写前不再 `universe_filter` 删行；`universe_serve_filter`+policy hash；landing completeness 计全量 provider 行）。下一步 **A5** adapter/landing/canonical 边界。出口：对抗测绿且 `live_readiness` 可评估；禁抓数/切消费者。
 - **B** external vs project-universe；pulse 脱离错误 raw；shadow 后切读面。
 - **C** Tier1/2 正式 lineage（definition/config/snapshot/universe/available_at）。
 - **D** `DatasetSnapshot`→`ExperimentVerdict` 最小链 + PIT 截断。
