@@ -957,3 +957,25 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Residual for WF/paper/B1**: purged walk-forward + embargo + one-touch
   holdout + paper fills (T+1/costs/limits) on this bounded snapshot; then B1.
   Org full-universe recent accept still out of scope.
+
+### 2026-07-19 — Phase E: measured B0 short-window WF + paper fills
+
+- **E PARTIAL** (measured paper done; not claimable).
+- Added `services/institution_follow_b0_measure.py`: prereg bare-K
+  cross-sectional 1d momentum top-K; honest minimal WF when window <40 days
+  (embargo=label horizon, one-touch in-window holdout=2, no multi-fold claim);
+  paper fills at T+1 nominal open → T+2 open with commission/stamp/slippage
+  stubs + 涨停买/跌停卖/停牌 stubs; capacity/annualized/sharpe/excess =
+  `unknown`.
+- Wired into `institution_follow_b0.build_b0_run` when coverage ready;
+  verdict `inconclusive` / `measured_short_window_insufficient_power` /
+  `claimable=false` (accept overclaim still refused).
+- Disclosure snapshot ablation → `bounded_scope_measured_b0_short_window`.
+- Live 8-day window (`20260708`–`20260717`) example metrics:
+  total_return≈-3.0%, max_dd≈10.0%, win_rate≈0.45, payoff≈0.98,
+  turnover≈1.0, n_trades=20; holdout n_trades=5.
+- Tests: `test_institution_follow_b0` (+ phase_e smoke / snapshot freeze).
+- **Did not**: Optuna, B1, B-pit cutover, margin thaw, mass backfill.
+- **Residual for B1**: longer window or accepted power for claimable WF;
+  then B1 stock-state block as separate slice. Org full-universe recent
+  accept still out of scope.

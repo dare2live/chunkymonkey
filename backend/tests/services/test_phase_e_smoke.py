@@ -53,6 +53,7 @@ def test_phase_e_smoke_dataset_snapshot_gate_and_surface_status() -> None:
     assert payload.get("phase_e_ablation") in {
         "blocked_canary_scope_only",
         "bounded_scope_wf_paper_still_blocked",
+        "bounded_scope_measured_b0_short_window",
     }
     domains = payload.get("domains") or {}
     assert set(domains) >= {
@@ -93,6 +94,11 @@ def test_phase_e_smoke_dataset_snapshot_gate_and_surface_status() -> None:
     }
     assert envelope["surface_status"] == "tier3_research_evidence_only"
     assert envelope["cutover_allowed"] is True
-    # Full B0→B4 ablation remains blocked; bounded scope only unlocks measured B0 attempt.
-    assert "ablation" in payload["phase_e_ablation"] or "blocked" in payload["phase_e_ablation"]
-    assert payload["phase_e_ablation"] != "eligible_full_b0_b4"
+    # Full B0→B4 ablation remains blocked; bounded scope unlocks measured B0 only.
+    ablation = payload["phase_e_ablation"]
+    assert ablation != "eligible_full_b0_b4"
+    assert (
+        "ablation" in ablation
+        or "blocked" in ablation
+        or ablation == "bounded_scope_measured_b0_short_window"
+    )

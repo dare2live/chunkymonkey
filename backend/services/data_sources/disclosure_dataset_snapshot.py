@@ -5,8 +5,8 @@ Supports:
 - bounded multi-partition freeze (``scope=bounded_accepted_partitions``)
   with explicit per-domain date sets + accepted hashes.
 
-Institution_follow full B0→B4 ablation stays blocked until WF/paper exist;
-measured B0 may attempt bare-K coverage under the bounded scope.
+Institution_follow full B0→B4 ablation stays blocked; bounded scope unlocks
+measured B0 coverage + short-window WF/paper (honest inconclusive).
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ DISCLOSURE_SNAPSHOT_RELPATH = "data/lineage/disclosure_dataset_snapshot.json"
 SCOPE_CANARY = "canary_accepted_partitions"
 SCOPE_BOUNDED = "bounded_accepted_partitions"
 ABLATION_CANARY = "blocked_canary_scope_only"
-ABLATION_BOUNDED = "bounded_scope_wf_paper_still_blocked"
+ABLATION_BOUNDED = "bounded_scope_measured_b0_short_window"
 
 _DATASET_BY_DOMAIN = {
     "holders_top10": HOLDERS_DATASET,
@@ -224,7 +224,8 @@ def freeze_disclosure_dataset_snapshot(
             "bounded_accepted_partitions_snapshot",
             "explicit_per_domain_date_sets",
             "institution_follow_full_ablation_still_blocked",
-            "wf_paper_b1_still_residual",
+            "measured_b0_short_window_wf_paper_done",
+            "b1_still_residual",
             "feature_store_profiles_not_included",
         ]
     else:

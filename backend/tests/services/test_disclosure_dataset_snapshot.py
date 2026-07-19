@@ -288,7 +288,7 @@ def test_freeze_bounded_partition_sets(conn, tmp_path: Path) -> None:
         extra_notes=("test_bounded",),
     )
     assert snap.scope == "bounded_accepted_partitions"
-    assert snap.phase_e_ablation == "bounded_scope_wf_paper_still_blocked"
+    assert snap.phase_e_ablation == "bounded_scope_measured_b0_short_window"
     assert snap.domains["stk_holdertrade"]["date_set"] == sorted(
         [PARTITION_STK, "20190103"]
     )

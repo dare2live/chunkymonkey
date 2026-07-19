@@ -2,8 +2,8 @@
 
 Consumes the frozen disclosure ``DatasetSnapshot`` and research
 ``surface_status``. Builds an ``ExperimentRun`` with declared PIT / holdout
-hooks, then attempts a **measured** bare-K coverage check against accepted
-nominal OHLCV.
+hooks, measures accepted nominal-K coverage, then (when coverage is ready)
+runs an honest short-window walk-forward + paper-fill measurement.
 
 Honesty rules:
 - ``canary_accepted_partitions`` / ``blocked_canary_scope_only`` →
@@ -11,7 +11,9 @@ Honesty rules:
 - ``bounded_accepted_partitions`` → measure overlapping eligible window;
   if accepted K coverage is insufficient → ``inconclusive`` with
   ``measured_coverage_insufficient`` (still never fake accept).
-- Full B0→B4 / Optuna / paper fills remain residual.
+- Short windows use ``honest_minimal_short_window`` WF + paper fills;
+  verdict stays ``inconclusive`` / non-claimable unless prereg power gates pass.
+- Optuna / B1+ remain residual.
 """
 from __future__ import annotations
 
@@ -36,6 +38,12 @@ from services.holdout_guard import (
     load_policy,
     training_cutoff_before_holdout,
 )
+from services.institution_follow_b0_measure import (
+    MeasuredB0Result,
+    REASON_SHORT_WINDOW,
+    load_nominal_bars_by_day,
+    measure_b0_paper,
+)
 
 STRATEGY_PACKAGE = "institution_follow_v1"
 BLOCK_ID = "B0"
@@ -46,6 +54,8 @@ CANARY_ABLATION = ABLATION_CANARY
 BOUNDED_SCOPE = SCOPE_BOUNDED
 REASON_CANARY_SCOPE_ONLY = "canary_scope_only"
 REASON_MEASURED_COVERAGE_INSUFFICIENT = "measured_coverage_insufficient"
+REASON_MEASURED_SHORT_WINDOW = REASON_SHORT_WINDOW
+REASON_SCAFFOLD_NO_MEASURED_EDGE = "scaffold_no_measured_edge"
 # Bare-K needs a multi-day nominal window for any forward-return measurement.
 MIN_ACCEPTED_NOMINAL_DAYS_FOR_MEASURED_B0 = 5
 
@@ -135,6 +145,7 @@ class InstitutionFollowB0Run:
     artifact_manifest: dict[str, Any]
     notes: tuple[str, ...]
     bare_k_coverage: BareKCoverageMeasurement | None = None
+    measured_b0: MeasuredB0Result | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -153,6 +164,9 @@ class InstitutionFollowB0Run:
             "notes": list(self.notes),
             "bare_k_coverage": (
                 self.bare_k_coverage.as_dict() if self.bare_k_coverage else None
+            ),
+            "measured_b0": (
+                self.measured_b0.as_dict() if self.measured_b0 else None
             ),
         }
 
@@ -363,6 +377,44 @@ def _default_pit_hooks(*, canary: bool, measured: bool) -> tuple[PitHookSpec, ..
     )
 
 
+def _run_measured_paper(
+    coverage: BareKCoverageMeasurement,
+    *,
+    nominal_conn=None,
+    bars_by_day: Mapping[str, Any] | None = None,
+) -> MeasuredB0Result | None:
+    """Run short-window WF + paper fills when coverage is ready.
+
+    Returns ``None`` only when coverage is insufficient. Load/measure failures
+    raise so the caller does not silently fall back to a scaffold verdict.
+    """
+
+    if not coverage.sufficient_for_measured_b0:
+        return None
+    days = list(coverage.accepted_nominal_partitions)
+    if not days:
+        return None
+
+    owned_conn = False
+    conn = nominal_conn
+    try:
+        if bars_by_day is None:
+            if conn is None:
+                from services.data_access.resolver import connect_ro
+
+                conn = connect_ro("tushare_raw")
+                owned_conn = True
+            bars = load_nominal_bars_by_day(conn, days)
+        else:
+            bars = {
+                str(k): list(v) for k, v in bars_by_day.items()  # type: ignore[arg-type]
+            }
+        return measure_b0_paper(bars, days)
+    finally:
+        if owned_conn and conn is not None:
+            conn.close()
+
+
 def build_b0_run(
     *,
     snapshot: Mapping[str, Any] | None = None,
@@ -371,12 +423,15 @@ def build_b0_run(
     data_end_date: str | None = None,
     cutover_allowed: bool | None = None,
     measure_coverage: bool = True,
+    measure_paper: bool = True,
     nominal_conn=None,
+    bars_by_day: Mapping[str, Any] | None = None,
 ) -> InstitutionFollowB0Run:
     """Build a B0 ExperimentRun bound to the disclosure snapshot.
 
-    Under bounded scope, measures accepted nominal-K coverage. Does not run
-    Optuna, full-history search, or paper fills.
+    Under bounded scope, measures accepted nominal-K coverage and, when the
+    window is ready, runs honest minimal WF + paper fills. Does not run
+    Optuna or full-history search.
     """
 
     payload = dict(snapshot) if snapshot is not None else load_frozen_disclosure_snapshot(
@@ -411,6 +466,17 @@ def build_b0_run(
     if measure_coverage and (bounded or not canary):
         coverage = measure_bare_k_coverage(payload, nominal_conn=nominal_conn)
 
+    measured: MeasuredB0Result | None = None
+    if (
+        measure_paper
+        and coverage is not None
+        and coverage.sufficient_for_measured_b0
+        and not canary
+    ):
+        measured = _run_measured_paper(
+            coverage, nominal_conn=nominal_conn, bars_by_day=bars_by_day
+        )
+
     notes = [
         "b0_bare_k",
         "no_optuna_no_full_history_search",
@@ -423,14 +489,22 @@ def build_b0_run(
         notes.append("bounded_scope_measured_coverage_attempted")
     if coverage is not None and not coverage.sufficient_for_measured_b0:
         notes.append("measured_coverage_insufficient_for_bare_k_edge")
+    if measured is not None:
+        notes.append("measured_wf_paper_attempted")
+        if not measured.claimable:
+            notes.append("short_window_protocol_not_claimable")
 
     metrics_label = "unknown"
+    paper_label = "not_run"
     if coverage is not None:
         metrics_label = (
             "coverage_measured_insufficient"
             if not coverage.sufficient_for_measured_b0
             else "coverage_measured_ready"
         )
+    if measured is not None:
+        metrics_label = "paper_metrics_measured"
+        paper_label = "measured"
 
     return InstitutionFollowB0Run(
         experiment_id=experiment_id,
@@ -455,11 +529,13 @@ def build_b0_run(
             "disclosure_snapshot": DISCLOSURE_SNAPSHOT_RELPATH,
             "domains": sorted((payload.get("domains") or {}).keys()),
             "metrics": metrics_label,
-            "paper_fills": "not_run",
+            "paper_fills": paper_label,
             "bare_k_coverage": coverage.as_dict() if coverage else None,
+            "measured_b0": measured.as_dict() if measured else None,
         },
         notes=tuple(notes),
         bare_k_coverage=coverage,
+        measured_b0=measured,
     )
 
 
@@ -537,6 +613,73 @@ def finalize_b0_verdict(
             },
         )
 
+    measured = run.measured_b0
+    if measured is not None:
+        # Measured short-window path: report metrics; claimable only if prereg
+        # power gates pass (8-day window does not).
+        if wants_accept and not measured.claimable:
+            return ExperimentVerdict(
+                verdict="inconclusive",
+                reason=REASON_MEASURED_SHORT_WINDOW,
+                blocked=True,
+                experiment_id=run.experiment_id,
+                block=run.block,
+                claimable=False,
+                details={
+                    "requested_verdict": requested_verdict,
+                    "metrics": measured.metrics.as_dict(),
+                    "holdout_metrics": measured.holdout_metrics.as_dict(),
+                    "walk_forward": measured.walk_forward.as_dict(),
+                    "bare_k_coverage": coverage.as_dict() if coverage else None,
+                    "note": (
+                        "paper metrics measured under honest minimal WF; "
+                        "prereg power gates not met — not claimable"
+                    ),
+                },
+            )
+        if measured.claimable and requested_verdict == "accept":
+            # Protocol power only — still require explicit positive edge gates
+            # before accept; without them remain inconclusive.
+            return ExperimentVerdict(
+                verdict="inconclusive",
+                reason="measured_protocol_ready_edge_gates_unmet",
+                blocked=True,
+                experiment_id=run.experiment_id,
+                block=run.block,
+                claimable=False,
+                details={
+                    "requested_verdict": requested_verdict,
+                    "metrics": measured.metrics.as_dict(),
+                    "holdout_metrics": measured.holdout_metrics.as_dict(),
+                    "note": "protocol power ok but accept edge thresholds not wired",
+                },
+            )
+        verdict_m: VerdictKind = requested_verdict or "inconclusive"
+        if verdict_m == "accept":
+            verdict_m = "inconclusive"
+        return ExperimentVerdict(
+            verdict=verdict_m,
+            reason=(
+                REASON_MEASURED_SHORT_WINDOW
+                if verdict_m == "inconclusive"
+                else "explicit"
+            ),
+            blocked=not measured.claimable,
+            experiment_id=run.experiment_id,
+            block=run.block,
+            claimable=False,
+            details={
+                "requested_verdict": requested_verdict,
+                "metrics": measured.metrics.as_dict(),
+                "holdout_metrics": measured.holdout_metrics.as_dict(),
+                "walk_forward": measured.walk_forward.as_dict(),
+                "paper_fills": "measured",
+                "surface_status": run.surface_status,
+                "bare_k_coverage": coverage.as_dict() if coverage else None,
+                "prereg": measured.prereg.as_dict(),
+            },
+        )
+
     # Broader/ready coverage path still has no paper edge metrics here.
     verdict: VerdictKind = requested_verdict or "inconclusive"
     if verdict == "accept":
@@ -560,7 +703,11 @@ def finalize_b0_verdict(
 
     return ExperimentVerdict(
         verdict=verdict,
-        reason="scaffold_no_measured_edge" if verdict == "inconclusive" else "explicit",
+        reason=(
+            REASON_SCAFFOLD_NO_MEASURED_EDGE
+            if verdict == "inconclusive"
+            else "explicit"
+        ),
         blocked=False,
         experiment_id=run.experiment_id,
         block=run.block,
@@ -583,7 +730,9 @@ def run_b0_scaffold(
     requested_verdict: VerdictKind | None = None,
     force_accept: bool = False,
     measure_coverage: bool = True,
+    measure_paper: bool = True,
     nominal_conn=None,
+    bars_by_day: Mapping[str, Any] | None = None,
 ) -> tuple[InstitutionFollowB0Run, ExperimentVerdict]:
     """Convenience: build run + finalize verdict."""
 
@@ -593,7 +742,9 @@ def run_b0_scaffold(
         surface_status=surface_status,
         data_end_date=data_end_date,
         measure_coverage=measure_coverage,
+        measure_paper=measure_paper,
         nominal_conn=nominal_conn,
+        bars_by_day=bars_by_day,
     )
     verdict = finalize_b0_verdict(
         run,
@@ -622,6 +773,8 @@ __all__ = [
     "PitHookSpec",
     "REASON_CANARY_SCOPE_ONLY",
     "REASON_MEASURED_COVERAGE_INSUFFICIENT",
+    "REASON_MEASURED_SHORT_WINDOW",
+    "REASON_SCAFFOLD_NO_MEASURED_EDGE",
     "REQUIRED_SURFACE_STATUS",
     "STRATEGY_PACKAGE",
     "build_b0_run",

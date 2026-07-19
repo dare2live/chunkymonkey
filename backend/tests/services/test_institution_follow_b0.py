@@ -1,4 +1,4 @@
-"""institution_follow B0 — canary overclaim block + measured coverage honesty."""
+"""institution_follow B0 — canary block + measured coverage + short-window paper."""
 from __future__ import annotations
 
 import pytest
@@ -14,6 +14,7 @@ from services.institution_follow_b0 import (
     MIN_ACCEPTED_NOMINAL_DAYS_FOR_MEASURED_B0,
     REASON_CANARY_SCOPE_ONLY,
     REASON_MEASURED_COVERAGE_INSUFFICIENT,
+    REASON_MEASURED_SHORT_WINDOW,
     REQUIRED_SURFACE_STATUS,
     STRATEGY_PACKAGE,
     build_b0_run,
@@ -23,6 +24,13 @@ from services.institution_follow_b0 import (
     load_frozen_disclosure_snapshot,
     measure_bare_k_coverage,
     run_b0_scaffold,
+)
+from services.institution_follow_b0_measure import (
+    MIN_DAYS_FULL_PURGED_WF,
+    UNKNOWN,
+    measure_b0_paper,
+    plan_walk_forward,
+    simulate_paper_fills,
 )
 
 
@@ -46,7 +54,7 @@ def _bounded_snapshot(**overrides):
     base = {
         "snapshot_id": "disclosure_bounded_test",
         "scope": BOUNDED_SCOPE,
-        "phase_e_ablation": "bounded_scope_wf_paper_still_blocked",
+        "phase_e_ablation": "bounded_scope_measured_b0_short_window",
         "cutover_allowed": True,
         "domains": {
             "holders_top10": {
@@ -87,6 +95,47 @@ class _FakeNominalConn:
         return None
 
 
+def _synthetic_window_bars(n_days: int = 8) -> dict[str, list[dict]]:
+    """Build a tiny tradable panel for paper-fill unit tests."""
+
+    # Eight calendar-like compact dates in July 2026.
+    days = [
+        "20260708",
+        "20260709",
+        "20260710",
+        "20260713",
+        "20260714",
+        "20260715",
+        "20260716",
+        "20260717",
+    ][:n_days]
+    codes = ["600000.SH", "000001.SZ", "300001.SZ", "688001.SH", "600519.SH"]
+    bars: dict[str, list[dict]] = {}
+    for i, day in enumerate(days):
+        rows = []
+        for j, code in enumerate(codes):
+            # Deterministic momentum ranks that flip across days.
+            pct = float((j + 1) * 0.5 - i * 0.1)
+            pre = 10.0 + j
+            close = pre * (1.0 + pct / 100.0)
+            open_px = pre * (1.0 + pct / 200.0)
+            rows.append(
+                {
+                    "ts_code": code,
+                    "open": open_px,
+                    "high": max(open_px, close),
+                    "low": min(open_px, close),
+                    "close": close,
+                    "pre_close": pre,
+                    "pct_chg": pct,
+                    "vol": 1_000_000.0,
+                    "amount": 1_000_000.0 * close,
+                }
+            )
+        bars[day] = rows
+    return bars
+
+
 def test_required_surface_status_matches_research_router() -> None:
     assert REQUIRED_SURFACE_STATUS == inst_router.SURFACE_STATUS
     assert REQUIRED_SURFACE_STATUS == "tier3_research_evidence_only"
@@ -109,24 +158,32 @@ def test_b0_scaffold_consumes_frozen_snapshot_and_surface_status() -> None:
         "nominal_execution_truth",
     }
     assert all(h.status.startswith("declared") for h in run.pit_hooks)
-    assert run.artifact_manifest["paper_fills"] == "not_run"
     assert verdict.verdict == "inconclusive"
     assert verdict.claimable is False
     if is_canary_scope(frozen):
         assert verdict.blocked is True
         assert verdict.reason == REASON_CANARY_SCOPE_ONLY
         assert "canary_scope_blocks_claimable_verdict" in run.notes
+        assert run.artifact_manifest["paper_fills"] == "not_run"
     else:
         assert is_bounded_scope(frozen)
         assert run.bare_k_coverage is not None
         if run.bare_k_coverage.sufficient_for_measured_b0:
-            # Short accepted nominal window ready; still no WF/paper edge.
-            assert verdict.reason == "scaffold_no_measured_edge"
-            assert verdict.blocked is False
+            assert run.measured_b0 is not None
+            assert run.artifact_manifest["paper_fills"] == "measured"
+            assert verdict.reason == REASON_MEASURED_SHORT_WINDOW
+            assert verdict.blocked is True
             assert run.bare_k_coverage.accepted_nominal_day_count >= (
                 MIN_ACCEPTED_NOMINAL_DAYS_FOR_MEASURED_B0
             )
-            assert run.artifact_manifest["metrics"] == "coverage_measured_ready"
+            metrics = verdict.details["metrics"]
+            assert "total_return" in metrics
+            assert "max_drawdown" in metrics
+            assert "win_rate" in metrics
+            assert "payoff_ratio" in metrics
+            assert "turnover" in metrics
+            assert metrics["capacity"] == UNKNOWN
+            assert metrics["annualized_return"] == UNKNOWN
         else:
             assert verdict.blocked is True
             assert verdict.reason == REASON_MEASURED_COVERAGE_INSUFFICIENT
@@ -195,6 +252,7 @@ def test_b0_bounded_thin_nominal_coverage_inconclusive_never_accept() -> None:
         run.bare_k_coverage.accepted_nominal_day_count
         < MIN_ACCEPTED_NOMINAL_DAYS_FOR_MEASURED_B0
     )
+    assert run.measured_b0 is None
 
     verdict = finalize_b0_verdict(run, requested_verdict="accept")
     assert verdict.verdict == "inconclusive"
@@ -215,12 +273,106 @@ def test_measure_bare_k_coverage_ready_when_enough_days() -> None:
     assert cov.reason == "measured_nominal_window_ready"
 
 
-def test_b0_ready_coverage_still_cannot_accept_without_paper() -> None:
+def test_short_window_uses_honest_minimal_wf_protocol() -> None:
+    days = [
+        "20260708",
+        "20260709",
+        "20260710",
+        "20260713",
+        "20260714",
+        "20260715",
+        "20260716",
+        "20260717",
+    ]
+    assert len(days) < MIN_DAYS_FULL_PURGED_WF
+    plan = plan_walk_forward(days)
+    assert plan.protocol == "honest_minimal_short_window"
+    assert plan.claimable_protocol is False
+    assert plan.one_touch_holdout is True
+    assert plan.embargo_days >= 1
+    assert len(plan.holdout_dates) == 2
+    assert plan.reason == REASON_MEASURED_SHORT_WINDOW
+
+
+def test_paper_fills_t1_nominal_with_costs_and_limit_stubs() -> None:
+    bars = _synthetic_window_bars(8)
+    # Force limit-up buy block on 600000 entry day after first signal.
+    entry_day = "20260709"
+    for row in bars[entry_day]:
+        if row["ts_code"] == "600000.SH":
+            row["pre_close"] = 10.0
+            row["open"] = 11.0  # +10% main-board limit-up open
+            row["vol"] = 1_000_000.0
+    # Suspend one name on an exit day.
+    for row in bars["20260710"]:
+        if row["ts_code"] == "000001.SZ":
+            row["vol"] = 0.0
+
+    plan = plan_walk_forward(sorted(bars))
+    fills = simulate_paper_fills(bars, plan)
+    assert fills
+    statuses = {f.status for f in fills}
+    assert "filled" in statuses or "unfilled" in statuses
+    assert any(f.reason == "limit_up_buy_blocked_stub" for f in fills)
+    assert any(
+        f.reason in {"suspended_exit_stub", "suspended_entry_stub"} for f in fills
+    )
+    completed = [f for f in fills if f.status == "filled"]
+    if completed:
+        assert all(f.entry_date > f.signal_date for f in completed)
+        assert all(f.net_return is not None for f in completed)
+        # Costs make net < gross when prices move.
+        assert all(
+            f.net_return is not None
+            and f.gross_return is not None
+            and f.net_return <= f.gross_return + 1e-12
+            for f in completed
+        )
+
+
+def test_metrics_report_unknowns_explicit() -> None:
+    bars = _synthetic_window_bars(8)
+    result = measure_b0_paper(bars)
+    assert result.claimable is False
+    assert result.reason == REASON_MEASURED_SHORT_WINDOW
+    m = result.metrics
+    assert m.capacity == UNKNOWN
+    assert m.annualized_return == UNKNOWN
+    assert m.sharpe == UNKNOWN
+    assert m.excess_return == UNKNOWN
+    assert "total_return" in m.as_dict()
+    assert "max_drawdown" in m.as_dict()
+    assert "win_rate" in m.as_dict()
+    assert "turnover" in m.as_dict()
+
+
+def test_measured_short_window_verdict_inconclusive_not_claimable() -> None:
+    days = sorted(_synthetic_window_bars(8))
+    fake = _FakeNominalConn(days)
+    bars = _synthetic_window_bars(8)
+    run = build_b0_run(
+        snapshot=_bounded_snapshot(),
+        nominal_conn=fake,
+        bars_by_day=bars,
+    )
+    assert run.measured_b0 is not None
+    assert run.artifact_manifest["paper_fills"] == "measured"
+    verdict = finalize_b0_verdict(run, requested_verdict="accept")
+    assert verdict.verdict == "inconclusive"
+    assert verdict.claimable is False
+    assert verdict.blocked is True
+    assert verdict.reason == REASON_MEASURED_SHORT_WINDOW
+    assert verdict.details["metrics"]["capacity"] == UNKNOWN
+
+
+def test_b0_ready_coverage_without_paper_still_scaffold() -> None:
     days = [f"202607{str(i).zfill(2)}" for i in range(1, 8)]
     run = build_b0_run(
         snapshot=_bounded_snapshot(),
         nominal_conn=_FakeNominalConn(days),
+        measure_paper=False,
     )
+    assert run.measured_b0 is None
     verdict = finalize_b0_verdict(run, requested_verdict="accept")
     assert verdict.verdict == "inconclusive"
     assert verdict.blocked is True
@@ -238,6 +390,7 @@ def test_b0_broader_scope_scaffold_still_cannot_accept_without_metrics() -> None
     run = build_b0_run(
         snapshot=snap,
         measure_coverage=False,
+        measure_paper=False,
     )
     verdict = finalize_b0_verdict(run, requested_verdict="accept")
     assert verdict.verdict == "inconclusive"
