@@ -399,9 +399,59 @@ def write_stk_holdertrade_formal_then_mirror(
     )
 
 
+def accept_stk_holdertrade_partition_from_legacy(
+    conn,
+    ann_date: str,
+    *,
+    rewrite_legacy: bool = False,
+) -> DisclosureDualWriteOutcome:
+    """E0 canary: land→accept one ann_date from existing legacy rows.
+
+    Default keeps legacy untouched (no-op mirror; avoids partition DELETE).
+    Target DB is the registry alias for ``raw_tushare_stk_holdertrade``
+    (normally ``tushare_raw``).
+    """
+    from services.data_sources.stk_holdertrade_schema import (
+        COMPATIBILITY_TABLE,
+        PROVIDER_FIELDS,
+    )
+
+    digits = "".join(ch for ch in str(ann_date or "") if ch.isdigit())
+    if len(digits) < 8:
+        raise ValueError(f"ann_date must be YYYYMMDD, got {ann_date!r}")
+    partition = digits[:8]
+    cols = ", ".join(PROVIDER_FIELDS)
+    raw = conn.execute(
+        f"""
+        SELECT {cols}
+          FROM {COMPATIBILITY_TABLE}
+         WHERE replace(CAST(ann_date AS VARCHAR), '-', '') = ?
+         ORDER BY ts_code, holder_name, in_de
+        """,
+        [partition],
+    ).fetchall()
+    rows = [dict(zip(PROVIDER_FIELDS, row, strict=True)) for row in raw]
+    if not rows:
+        raise ValueError(
+            f"no legacy stk_holdertrade rows for ann_date={partition}"
+        )
+
+    def _noop_mirror(_conn, material):
+        return len(material)
+
+    return write_stk_holdertrade_formal_then_mirror(
+        conn,
+        rows,
+        mirror=(
+            None if rewrite_legacy else _noop_mirror
+        ),
+    )
+
+
 __all__ = [
     "DisclosureDualWriteError",
     "DisclosureDualWriteOutcome",
+    "accept_stk_holdertrade_partition_from_legacy",
     "write_holders_top10_formal_then_mirror",
     "write_org_holding_formal_then_mirror",
     "write_stk_holdertrade_formal_then_mirror",

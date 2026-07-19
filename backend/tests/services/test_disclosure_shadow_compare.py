@@ -220,6 +220,56 @@ def test_shadow_match_never_allows_cutover(conn) -> None:
     assert "disclosure_shadow_compare_only" in payload["notes"]
 
 
+def test_shadow_domain_conns_routes_stk_to_secondary_db(conn) -> None:
+    """API sidecar pattern: holders/org on smartmoney, stk on tushare_raw."""
+
+    write_holders_top10_formal_then_mirror(
+        conn,
+        [_holders_row()],
+        observed_at=OBSERVED_HOLDERS,
+        available_at=OBSERVED_HOLDERS,
+    )
+    write_org_holding_formal_then_mirror(
+        conn,
+        [_org_row()],
+        observed_at=OBSERVED_ORG,
+        available_at=OBSERVED_ORG,
+    )
+    stk_db = connect(":memory:")
+    try:
+        stk_db.execute(
+            f"""
+            CREATE TABLE {STK_LEGACY} (
+                ts_code VARCHAR, ann_date VARCHAR, holder_name VARCHAR,
+                holder_type VARCHAR, in_de VARCHAR, change_vol DOUBLE,
+                change_ratio DOUBLE, after_share DOUBLE, after_ratio DOUBLE,
+                avg_price DOUBLE, total_share DOUBLE
+            )
+            """
+        )
+        write_stk_holdertrade_formal_then_mirror(
+            stk_db,
+            [_stk_row()],
+            observed_at=OBSERVED_STK,
+            available_at=OBSERVED_STK,
+        )
+        report = compare_disclosure_research_shadow(
+            conn,
+            partitions={
+                "holders_top10": PARTITION_HOLDERS,
+                "org_holding": PARTITION_ORG,
+                "stk_holdertrade": PARTITION_STK,
+            },
+            domain_conns={"stk_holdertrade": stk_db},
+        )
+        assert report.overall_status == "MATCH"
+        assert report.cutover_allowed is False
+        stk = next(d for d in report.domains if d.domain == "stk_holdertrade")
+        assert stk.status == "MATCH"
+    finally:
+        stk_db.close()
+
+
 def test_shadow_detects_intentional_legacy_drift(conn) -> None:
     _seed_all_matched(conn)
     # Research still reads legacy — mutate only the compatibility row.

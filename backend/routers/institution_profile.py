@@ -33,22 +33,42 @@ SURFACE_STATUS = "tier3_research_evidence_only"
 
 
 def _disclosure_shadow_sidecar() -> dict[str, Any]:
-    """Read-only bounded shadow; fail closed. Never rewrites research numbers."""
+    """Read-only bounded shadow; fail closed. Never rewrites research numbers.
 
+    holders_top10 / org_holding live on smartmoney; stk_holdertrade on
+    tushare_raw (sync_registry target_db). Route domain_conns accordingly.
+    """
+
+    sm = None
+    tr = None
     try:
-        path = str(get_database_manifest().path_for("smartmoney"))
-        con = duck_connect(path, read_only=True)
+        manifest = get_database_manifest()
+        sm = duck_connect(str(manifest.path_for("smartmoney")), read_only=True)
     except Exception:  # noqa: BLE001 — missing/locked DB must not invent MATCH
         return empty_disclosure_shadow(reason="smartmoney_not_attached").as_dict()
     try:
-        return compare_disclosure_research_shadow(con, max_rows_per_domain=50).as_dict()
+        try:
+            tr = duck_connect(
+                str(manifest.path_for("tushare_raw")), read_only=True
+            )
+        except Exception:  # noqa: BLE001 — stk domain becomes UNAVAILABLE
+            tr = None
+        domain_conns = {"stk_holdertrade": tr} if tr is not None else None
+        return compare_disclosure_research_shadow(
+            sm,
+            max_rows_per_domain=50,
+            domain_conns=domain_conns,
+        ).as_dict()
     except Exception:  # noqa: BLE001 — shadow is observational only
         return empty_disclosure_shadow(reason="disclosure_shadow_probe_failed").as_dict()
     finally:
-        try:
-            con.close()
-        except Exception:  # noqa: BLE001
-            pass
+        for handle in (tr, sm):
+            if handle is None:
+                continue
+            try:
+                handle.close()
+            except Exception:  # noqa: BLE001
+                pass
 
 
 def _research_envelope(**payload):

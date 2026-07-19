@@ -230,6 +230,93 @@ def test_accept_holders_partition_from_legacy_noop_mirror(conn) -> None:
     assert canon == 2
 
 
+def test_accept_org_holding_partition_from_legacy_noop_mirror(conn) -> None:
+    from services.org_holding_aif10 import (
+        accept_org_holding_partition_from_legacy,
+        _upsert_rows_legacy_direct,
+        ensure_tables,
+    )
+
+    ensure_tables(conn)
+    _upsert_rows_legacy_direct(
+        conn,
+        [
+            _org_row(holder_code="10010626"),
+            _org_row(holder_code="10020001", holder_name="某公募基金"),
+            _org_row(
+                available_date="2019-04-30",
+                report_date="2019-03-31",
+                holder_code="10010626",
+                stock_code="000001",
+            ),
+        ],
+    )
+    outcome = accept_org_holding_partition_from_legacy(
+        conn, PARTITION_ORG, rewrite_legacy=False
+    )
+    assert outcome.status == "ACCEPTED"
+    assert outcome.partitions == (PARTITION_ORG,)
+    assert outcome.canonical_rows == 2
+    other = conn.execute(
+        f"""
+        SELECT COUNT(*) FROM {ORG_LEGACY}
+         WHERE stock_code = '000001'
+           AND replace(CAST(available_date AS VARCHAR), '-', '') = '20190430'
+        """
+    ).fetchone()[0]
+    assert other == 1
+
+
+def test_accept_stk_holdertrade_partition_from_legacy_noop_mirror(conn) -> None:
+    from services.data_sources.disclosure_boundaries import (
+        authorize_nonconforming_direct_write,
+    )
+    from services.data_sources.disclosure_dual_write import (
+        accept_stk_holdertrade_partition_from_legacy,
+    )
+    from services.data_sources.stk_holdertrade_schema import PROVIDER_FIELDS
+
+    authorize_nonconforming_direct_write(
+        "stk_holdertrade", conformity="NONCONFORMING"
+    )
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {STK_LEGACY} (
+            ts_code VARCHAR, ann_date VARCHAR, holder_name VARCHAR, in_de VARCHAR,
+            holder_type VARCHAR, change_vol DOUBLE, change_ratio DOUBLE,
+            after_share DOUBLE, after_ratio DOUBLE, avg_price DOUBLE,
+            total_share DOUBLE
+        )
+        """
+    )
+    seed = [_stk_row(holder_name="窦昕", in_de="IN"), _stk_row(holder_name="乙", in_de="DE")]
+    cols = ", ".join(PROVIDER_FIELDS)
+    placeholders = ", ".join("?" for _ in PROVIDER_FIELDS)
+    conn.executemany(
+        f"INSERT INTO {STK_LEGACY} ({cols}) VALUES ({placeholders})",
+        [tuple(row.get(name) for name in PROVIDER_FIELDS) for row in seed],
+    )
+    # Other partition must survive no-op mirror.
+    other = dict(_stk_row(ann_date="20190103", holder_name="其它日"))
+    conn.execute(
+        f"INSERT INTO {STK_LEGACY} ({cols}) VALUES ({placeholders})",
+        tuple(other.get(name) for name in PROVIDER_FIELDS),
+    )
+
+    outcome = accept_stk_holdertrade_partition_from_legacy(
+        conn, PARTITION_STK, rewrite_legacy=False
+    )
+    assert outcome.status == "ACCEPTED"
+    assert outcome.partitions == (PARTITION_STK,)
+    assert outcome.canonical_rows == 2
+    assert (
+        conn.execute(
+            f"SELECT COUNT(*) FROM {STK_LEGACY} WHERE ann_date = '20190103'"
+        ).fetchone()[0]
+        == 1
+    )
+
+
 def test_holders_dual_write_formal_legacy_parity(conn) -> None:
     rows = [
         _holders_row(holder_rank=1, holder_name="香港中央结算有限公司"),

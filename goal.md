@@ -6,7 +6,7 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + 单日 K/ST canary；eligible frontier=`20260717` READY；缺连续历史覆盖/下一交易日）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false` — PIT 池 vs unfiltered 广度分歧为预期，禁切）。**E0 PARTIAL（三域 formal→legacy-mirror 写；`/api/v3/inst` 有 `disclosure_shadow` sidecar；研究数值仍读 legacy；`cutover_allowed=false`）**。Fable5 **REVISE** 已吸收。禁 institution_follow 生产至 E0 闭合。
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + 单日 K/ST canary；eligible frontier=`20260717` READY；缺连续历史覆盖/下一交易日）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false` — PIT 池 vs unfiltered 广度分歧为预期，禁切）。**E0 PARTIAL（三域 formal→legacy-mirror 写；live canary shadow overall MATCH；`/api/v3/inst` 仍读 legacy；`cutover_allowed=false`）**。Fable5 **REVISE** 已吸收。禁 institution_follow 生产至 E0 闭合。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -71,17 +71,18 @@
   available/ann 轴；`/api/v3/inst/*` 带 `disclosure_conformity` +
   `disclosure_shadow` sidecar，**不改**研究数值。
   **三域 land→accept + dual-write FIXED**：`formal_default_legacy_mirror`。
-  **读侧 shadow FIXED**：`disclosure_shadow_compare`；`cutover_allowed` 恒
-  false。**live holders canary FIXED**：`data/smartmoney.duckdb`
-  `notice_date=20260717` → accepted
-  `holders_top10:20260717:3cbe897f7736`（73 行）+ shadow **MATCH**；
-  research overall **PARTIAL**（org/stk 仍 `canonical_table_unavailable` /
-  `both_tables_unavailable`）。根因=dual-write 已接线但合并后未跑生产 sync，
-  非错 DB。**仍阻 E0 闭合 / DatasetSnapshot 冻结**：
-  1) org_holding + stk_holdertrade 各至少一 accepted partition + live MATCH；
-  2) 研究读路径切 canonical（`/api/v3/inst` + institution_profile 上游）；
-  3) 停 legacy mirror + 撤 NONCONFORMING escape hatch；
-  4) 再冻 DatasetSnapshot。未闭合则 **E=BLOCKED**。
+  **读侧 shadow FIXED**：`disclosure_shadow_compare`（smartmoney +
+  tushare_raw `domain_conns`）；`cutover_allowed` 恒 false。
+  **live 三域 canary MATCH FIXED**（API sidecar overall **MATCH**；仍禁切）：
+  - holders `notice_date=20260717` → `holders_top10:20260717:3cbe897f7736`（73）
+  - org `available_date=20190430`（较小全分区 43697；跳过 292k/`20260430`）→
+    `org_holding:20190430:7de391f74f7e`
+  - stk `ann_date=20260706`（9）→ `stk_holdertrade:20260706:837beb755ca5`
+    （tushare_raw）
+  **仍阻 E0 闭合 / DatasetSnapshot 冻结**：
+  1) 研究读路径切 canonical（`/api/v3/inst` + institution_profile 上游）；
+  2) 停 legacy mirror + 撤 NONCONFORMING escape hatch；
+  3) 再冻 DatasetSnapshot。未闭合则 **E=BLOCKED**。
 - **E** `institution_follow_v1`（首包；B0→B4）。**F** main_rally。**G** 公式+BestChoice。**H** Release/名义价纸面。
 
 ## 边做边测

@@ -465,18 +465,23 @@ def compare_disclosure_research_shadow(
     partitions: Mapping[str, str] | None = None,
     max_rows_per_domain: int = 200,
     domains: tuple[str, ...] | None = None,
+    domain_conns: Mapping[str, Any] | None = None,
 ) -> DisclosureShadowCompareReport:
     """Shadow-compare all E0 disclosure domains for research cutover evidence.
 
     Matching projections alone never set ``cutover_allowed`` — serve cutover
     needs consumer switch evidence + DatasetSnapshot gate beyond this helper.
+
+    ``domain_conns`` routes a domain to a different DuckDB connection when
+    legacy/canonical live outside the default DB (stk_holdertrade → tushare_raw).
     """
 
     selected = domains or disclosure_domains()
     part_map = {str(k): str(v) for k, v in (partitions or {}).items()}
+    conn_map = {str(k): v for k, v in (domain_conns or {}).items()}
     domain_reports = tuple(
         compare_disclosure_domain_shadow(
-            conn,
+            conn_map.get(name, conn),
             name,
             partition=part_map.get(name),
             max_rows=max_rows_per_domain,

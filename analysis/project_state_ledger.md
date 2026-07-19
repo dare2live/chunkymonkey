@@ -802,3 +802,31 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   3. stop legacy mirror + retire NONCONFORMING escape hatch;
   4. freeze DatasetSnapshot / unblock E.
 - No institution_follow, no B-pit mart cutover, no margin thaw.
+
+### 2026-07-19 — E0 slice7: org_holding + stk_holdertrade live canaries (3-domain MATCH)
+
+- **PARTIAL / E0 in progress**：narrow formal land→accept canaries for remaining
+  disclosure domains; API shadow now multi-DB.
+- **org_holding** (`data/smartmoney.duckdb`): chose smaller full
+  `available_date=20190430` (43697 rows / report_date=20190331) over
+  `20260430` (~292k). Legacy replay via
+  `accept_org_holding_partition_from_legacy` +
+  `ingest_org_holding_aif10.py --accept-legacy-partition` (no-op mirror).
+  Optional `--stock-codes` subset documented but unused. Outcome:
+  `batch_id=org_holding:20190430:7de391f74f7e`, landing=canonical=43697;
+  shadow sample MATCH (bounded max_rows; full accept row_count proven).
+- **stk_holdertrade** (`data/tushare_raw.duckdb`):
+  `ann_date=20260706` (9 rows) via
+  `accept_stk_holdertrade_partition_from_legacy` +
+  `ingest_stk_holdertrade_canary.py`. Outcome:
+  `batch_id=stk_holdertrade:20260706:837beb755ca5`, landing=canonical=9;
+  shadow MATCH.
+- **API fix**: `_disclosure_shadow_sidecar` routes `stk_holdertrade` through
+  `domain_conns` → tushare_raw (was always UNAVAILABLE on smartmoney-only).
+- Live evidence: research shadow overall **MATCH**, `cutover_allowed=false`;
+  holders/org/stk domain status all MATCH on canary partitions.
+- `/api/v3/inst` numbers still legacy; no institution_follow; no B-pit/margin.
+- **Residual before cutover / DatasetSnapshot**:
+  1. switch research/API reads to canonical;
+  2. stop legacy mirror + retire NONCONFORMING escape hatch;
+  3. freeze DatasetSnapshot / unblock E.

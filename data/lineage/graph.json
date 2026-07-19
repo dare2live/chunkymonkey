@@ -1593,6 +1593,18 @@
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
+      "src": "table:smartmoney.canonical_org_holding_detail_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/org_holding_schema.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_org_holding_detail_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
     },
     {
@@ -2367,6 +2379,18 @@
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
+      "src": "table:smartmoney.landing_miaoxiang_org_holding"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/org_holding_schema.py",
+      "kind": "consume",
+      "src": "table:smartmoney.landing_miaoxiang_org_holding"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
       "src": "table:smartmoney.mart_data_deletion_record"
     },
     {
@@ -3133,6 +3157,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/stk_holdertrade_schema.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_stk_holdertrade_announcement"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/stock_st_schema.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_stock_st_daily"
@@ -3268,6 +3298,12 @@
       "dst": "consumer:backend/tests/services/test_margin_state.py",
       "kind": "consume",
       "src": "table:tushare_raw.landing_tushare_margin"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/stk_holdertrade_schema.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_stk_holdertrade"
     },
     {
       "attrs": {},
@@ -4213,6 +4249,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/disclosure_dual_write.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_stk_holdertrade"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/stk_holdertrade_acceptance.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stk_holdertrade"
@@ -4645,9 +4687,9 @@
     }
   ],
   "meta": {
-    "edge_count": 723,
-    "generated_at": "2026-07-19T14:20:11.381726+00:00",
-    "node_count": 319,
+    "edge_count": 730,
+    "generated_at": "2026-07-19T14:27:18.725486+00:00",
+    "node_count": 323,
     "version": 2
   },
   "nodes": [
@@ -6522,6 +6564,16 @@
         "db": "smartmoney",
         "layer": "L1_foundation",
         "status": "active",
+        "table": "canonical_org_holding_detail_period"
+      },
+      "id": "table:smartmoney.canonical_org_holding_detail_period",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "smartmoney",
+        "layer": "L1_foundation",
+        "status": "active",
         "table": "canonical_top10_float_holders_period"
       },
       "id": "table:smartmoney.canonical_top10_float_holders_period",
@@ -6699,6 +6751,16 @@
         "table": "landing_miaoxiang_holders_top10"
       },
       "id": "table:smartmoney.landing_miaoxiang_holders_top10",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "smartmoney",
+        "layer": "L0_source",
+        "status": "active",
+        "table": "landing_miaoxiang_org_holding"
+      },
+      "id": "table:smartmoney.landing_miaoxiang_org_holding",
       "kind": "table"
     },
     {
@@ -6936,6 +6998,16 @@
         "db": "tushare_raw",
         "layer": "untagged",
         "status": "active",
+        "table": "canonical_stk_holdertrade_announcement"
+      },
+      "id": "table:tushare_raw.canonical_stk_holdertrade_announcement",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "status": "active",
         "table": "canonical_stock_st_daily"
       },
       "id": "table:tushare_raw.canonical_stock_st_daily",
@@ -6969,6 +7041,16 @@
         "table": "landing_tushare_margin"
       },
       "id": "table:tushare_raw.landing_tushare_margin",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "status": "active",
+        "table": "landing_tushare_stk_holdertrade"
+      },
+      "id": "table:tushare_raw.landing_tushare_stk_holdertrade",
       "kind": "table"
     },
     {

@@ -308,6 +308,59 @@ def _upsert_rows(conn: Any, rows: list[dict]) -> int:
     return int(outcome.legacy_rows_written)
 
 
+def accept_org_holding_partition_from_legacy(
+    conn: Any,
+    available_date: str,
+    *,
+    rewrite_legacy: bool = False,
+    stock_codes: Optional[list[str]] = None,
+):
+    """E0 canary: land→accept one available_date from existing legacy rows.
+
+    Default keeps legacy untouched (no-op mirror).  ``stock_codes`` optionally
+    narrows to a documented stock subset when a full partition is too large;
+    shadow MATCH then requires the same stock filter (see ledger).
+    """
+    from services.data_sources.disclosure_dual_write import (
+        write_org_holding_formal_then_mirror,
+    )
+    from services.data_sources.org_holding_schema import PROVIDER_FIELDS
+
+    digits = "".join(ch for ch in str(available_date or "") if ch.isdigit())
+    if len(digits) < 8:
+        raise ValueError(f"available_date must be YYYYMMDD, got {available_date!r}")
+    partition = digits[:8]
+    cols = ", ".join(PROVIDER_FIELDS)
+    sql = f"""
+        SELECT {cols}
+          FROM raw_org_holding_aif10
+         WHERE replace(CAST(available_date AS VARCHAR), '-', '') = ?
+    """
+    params: list[Any] = [partition]
+    codes = [c.strip() for c in (stock_codes or []) if c and str(c).strip()]
+    if codes:
+        placeholders = ", ".join("?" for _ in codes)
+        sql += f" AND stock_code IN ({placeholders})"
+        params.extend(codes)
+    sql += " ORDER BY stock_code, holder_code, fund_derivecode, report_date"
+    raw = conn.execute(sql, params).fetchall()
+    rows = [dict(zip(PROVIDER_FIELDS, row, strict=True)) for row in raw]
+    if not rows:
+        raise ValueError(
+            f"no legacy org_holding rows for available_date={partition}"
+            + (f" stock_codes={codes}" if codes else "")
+        )
+
+    def _noop_mirror(_conn, material):
+        return len(material)
+
+    return write_org_holding_formal_then_mirror(
+        conn,
+        rows,
+        mirror=_upsert_rows_legacy_direct if rewrite_legacy else _noop_mirror,
+    )
+
+
 # ── 编排 ─────────────────────────────────────────────────────────────
 def sync_period(conn: Any, report_date: str) -> dict:
     """同步单报告期 (获取→清洗→存储). report_date 形如 '2026-03-31'."""
