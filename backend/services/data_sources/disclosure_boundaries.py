@@ -334,7 +334,7 @@ def attest_disclosure_research_surface() -> DisclosureResearchSurfaceReport:
             "legacy_research_reads_allowed_with_nonconforming_label",
             "institution_follow_blocked_until_e0_closed",
             "dataset_snapshot_blocked_until_research_cutover",
-            "api_v3_inst_not_cut_to_canonical_until_shadow_parity",
+            "api_v3_inst_shadow_sidecar_active_cutover_still_blocked",
             "b_pit_cutover_remains_blocked_separately",
         ),
     )

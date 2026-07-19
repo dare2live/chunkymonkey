@@ -745,3 +745,28 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   escape hatch → freeze DatasetSnapshot → unblock E.
 - No institution_follow ablation, no B-pit mart cutover, no margin thaw, no
   mass fetch.
+
+### 2026-07-19 — E0 slice5: read-side disclosure shadow sidecar (no cutover)
+
+- **PARTIAL / E0 in progress**：`disclosure_shadow_compare` compares legacy
+  compatibility vs accepted canonical **provider-field projections** for
+  holders_top10 / org_holding / stk_holdertrade (date normalize + float
+  round). Matching never sets `cutover_allowed`.
+- API: `/api/v3/inst/*` envelope adds `disclosure_shadow` + top-level
+  `cutover_allowed=false` (pulse UNTRUSTED pattern). Research payload numbers
+  unchanged; still read marts/legacy.
+- TDD: `test_disclosure_shadow_compare` — fixture MATCH after dual-write;
+  intentional legacy drift → MISMATCH; org ISO↔compact no false mismatch;
+  empty/fail-closed UNAVAILABLE. API envelope tests mock sidecar.
+- Optional live read-only sample (smartmoney, max 20 rows/domain): legacy
+  holders/org present; **canonical tables absent** →
+  `overall_status=UNAVAILABLE` / `canonical_table_unavailable` (honest; not
+  MATCH). stk legacy table also absent locally. No mass fetch / no write.
+- CI includes `test_disclosure_shadow_compare.py`.
+- **Still required before research cutover + DatasetSnapshot freeze**:
+  1. production dual-write produces accepted canonical partitions (3 domains);
+  2. live/bounded shadow three-domain `MATCH` (not fixture-only);
+  3. switch `/api/v3/inst` + institution_profile upstream reads to canonical;
+  4. stop legacy mirror + retire NONCONFORMING escape hatch;
+  5. then freeze DatasetSnapshot / unblock E (`institution_follow`).
+- No institution_follow, no B-pit mart cutover, no margin thaw.

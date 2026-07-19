@@ -7,10 +7,13 @@
 数据经 services.institution_profile 读侧 (数据模块成员 owns feature_store 画像表);
 该端点不产生 CandidateSignal、StrategyRelease 或买卖建议。
 
-E0: payload numbers unchanged; ``disclosure_conformity`` sidecar marks
-underlying holder tables NONCONFORMING until landing→accept exists.
+E0: payload numbers unchanged; ``disclosure_conformity`` + ``disclosure_shadow``
+sidecars mark NONCONFORMING / shadow parity.  ``cutover_allowed`` stays false;
+research numbers are not switched to canonical.
 """
 from __future__ import annotations
+
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -18,17 +21,45 @@ from services import institution_profile as ip
 from services.data_sources.disclosure_boundaries import (
     attest_disclosure_research_surface,
 )
+from services.data_sources.disclosure_shadow_compare import (
+    compare_disclosure_research_shadow,
+    empty_disclosure_shadow,
+)
+from services.database_manifest import get_database_manifest
+from services.duck_adapter import connect as duck_connect
 
 router = APIRouter()
 SURFACE_STATUS = "tier3_research_evidence_only"
 
 
+def _disclosure_shadow_sidecar() -> dict[str, Any]:
+    """Read-only bounded shadow; fail closed. Never rewrites research numbers."""
+
+    try:
+        path = str(get_database_manifest().path_for("smartmoney"))
+        con = duck_connect(path, read_only=True)
+    except Exception:  # noqa: BLE001 — missing/locked DB must not invent MATCH
+        return empty_disclosure_shadow(reason="smartmoney_not_attached").as_dict()
+    try:
+        return compare_disclosure_research_shadow(con, max_rows_per_domain=50).as_dict()
+    except Exception:  # noqa: BLE001 — shadow is observational only
+        return empty_disclosure_shadow(reason="disclosure_shadow_probe_failed").as_dict()
+    finally:
+        try:
+            con.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def _research_envelope(**payload):
     report = attest_disclosure_research_surface()
+    shadow = _disclosure_shadow_sidecar()
     return {
         "status": "ok",
         "surface_status": SURFACE_STATUS,
         "disclosure_conformity": report.as_dict(),
+        "disclosure_shadow": shadow,
+        "cutover_allowed": False,
         **payload,
     }
 

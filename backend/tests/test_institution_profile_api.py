@@ -39,12 +39,20 @@ def mem(monkeypatch):
     c.close_real()
 
 
-def test_research_envelope_labels_disclosure_nonconforming(mem):
-    """E0: research UI keeps payload; sidecar marks disclosure NONCONFORMING."""
+def test_research_envelope_labels_disclosure_nonconforming(mem, monkeypatch):
+    """E0: research UI keeps payload; conformity + shadow sidecars; no cutover."""
+    from services.data_sources.disclosure_shadow_compare import empty_disclosure_shadow
+
+    monkeypatch.setattr(
+        inst_router,
+        "_disclosure_shadow_sidecar",
+        lambda: empty_disclosure_shadow(reason="unit_test_fixture").as_dict(),
+    )
     body = inst_router._research_envelope(profiles=[{"holder": "牛散A"}])
     assert body["status"] == "ok"
     assert body["surface_status"] == inst_router.SURFACE_STATUS
     assert body["profiles"] == [{"holder": "牛散A"}]
+    assert body["cutover_allowed"] is False
     conf = body["disclosure_conformity"]
     assert conf["overall_status"] == "NONCONFORMING"
     assert conf["cutover_allowed"] is False
@@ -54,6 +62,50 @@ def test_research_envelope_labels_disclosure_nonconforming(mem):
         "org_holding",
         "stk_holdertrade",
     }
+    shadow = body["disclosure_shadow"]
+    assert shadow["cutover_allowed"] is False
+    assert shadow["overall_status"] == "UNAVAILABLE"
+    assert {d["domain"] for d in shadow["domains"]} == {
+        "holders_top10",
+        "org_holding",
+        "stk_holdertrade",
+    }
+
+
+def test_research_envelope_surfaces_shadow_match_without_cutover(mem, monkeypatch):
+    """Shadow MATCH still keeps research numbers on legacy and cutover=false."""
+    from services.data_sources.disclosure_shadow_compare import (
+        DisclosureDomainShadowReport,
+        DisclosureShadowCompareReport,
+    )
+
+    matched = DisclosureShadowCompareReport(
+        overall_status="MATCH",
+        cutover_allowed=False,
+        domains=(
+            DisclosureDomainShadowReport(
+                domain="holders_top10",
+                partition="20260429",
+                status="MATCH",
+                legacy_row_count=2,
+                canonical_row_count=2,
+                compared_fields=("stock_code", "hold_ratio_float"),
+                rows_match=True,
+                mismatch_count=0,
+                sample_mismatches=(),
+                issues=("disclosure_shadow_compare_only",),
+            ),
+        ),
+        notes=("disclosure_shadow_compare_only", "cutover_allowed_false"),
+    )
+    monkeypatch.setattr(
+        inst_router, "_disclosure_shadow_sidecar", lambda: matched.as_dict()
+    )
+    body = inst_router._research_envelope(profiles=[{"holder": "牛散A", "n_closed": 50}])
+    assert body["profiles"] == [{"holder": "牛散A", "n_closed": 50}]
+    assert body["cutover_allowed"] is False
+    assert body["disclosure_shadow"]["overall_status"] == "MATCH"
+    assert body["disclosure_shadow"]["cutover_allowed"] is False
 
 
 def test_list_profiles_filters_low_sample(mem):

@@ -6,7 +6,7 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + 单日 K/ST canary；eligible frontier=`20260717` READY；缺连续历史覆盖/下一交易日）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false` — PIT 池 vs unfiltered 广度分歧为预期，禁切）。**E0 PARTIAL（三域 formal→legacy-mirror 默认写路径；研究仍读 legacy NONCONFORMING；未切 `/api/v3/inst`）**。Fable5 **REVISE** 已吸收。禁 institution_follow 生产至 E0 闭合。
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + 单日 K/ST canary；eligible frontier=`20260717` READY；缺连续历史覆盖/下一交易日）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false` — PIT 池 vs unfiltered 广度分歧为预期，禁切）。**E0 PARTIAL（三域 formal→legacy-mirror 写；`/api/v3/inst` 有 `disclosure_shadow` sidecar；研究数值仍读 legacy；`cutover_allowed=false`）**。Fable5 **REVISE** 已吸收。禁 institution_follow 生产至 E0 闭合。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -68,16 +68,19 @@
 - **C** Tier1/2 正式 lineage。**D** `DatasetSnapshot`→`ExperimentVerdict` + PIT 截断。
 - **E0 PARTIAL（E 硬前置）** `disclosure_boundaries`：三域 inventory
   （holders_top10/org_holding/stk_holdertrade）+ `raw_evidence` + notice/
-  available/ann 轴；`/api/v3/inst/*` sidecar 标注且不改研究数值。
-  **三域 land→accept + dual-write FIXED**：schema-owned writers +
-  `disclosure_dual_write`；runtime=`formal_default_legacy_mirror`（生产
-  `holders_aif10`/`org_holding_aif10`/`sync_runner` stk 默认 formal 后
-  mirror legacy；legacy-only 仅 NONCONFORMING 逃生舱）。fixture 证明
-  formal↔legacy provider 字段 parity。**仍阻 E0 闭合 / DatasetSnapshot
-  冻结**：研究面仍读 legacy NONCONFORMING；未做 live shadow 读比对后
-  切 `/api/v3/inst`；`cutover_allowed=false`。退役计划：shadow 比对绿 →
-  研究切 canonical → 停 mirror → 撤 escape hatch → 冻 DatasetSnapshot。
-  未闭合则 **E=BLOCKED**。
+  available/ann 轴；`/api/v3/inst/*` 带 `disclosure_conformity` +
+  `disclosure_shadow` sidecar，**不改**研究数值。
+  **三域 land→accept + dual-write FIXED**：`formal_default_legacy_mirror`。
+  **读侧 shadow FIXED（fixture）**：`disclosure_shadow_compare` 比对 legacy
+  compatibility vs accepted canonical 的 provider 字段投影；MATCH 与故意
+  drift 均可测；`cutover_allowed` 恒 false（含 MATCH）。live smartmoney 抽样：
+  legacy 有行、canonical 表尚未落库 → `overall_status=UNAVAILABLE`（诚实；
+  非 MATCH）。**仍阻 E0 闭合 / DatasetSnapshot 冻结**（证据清单）：
+  1) 生产 dual-write 跑出 accepted canonical partitions（三域）；
+  2) live/bounded shadow 三域 `MATCH`（非仅 fixture）；
+  3) 研究读路径切 canonical（`/api/v3/inst` + institution_profile 上游）；
+  4) 停 legacy mirror + 撤 NONCONFORMING escape hatch；
+  5) 再冻 DatasetSnapshot。未闭合则 **E=BLOCKED**。
 - **E** `institution_follow_v1`（首包；B0→B4）。**F** main_rally。**G** 公式+BestChoice。**H** Release/名义价纸面。
 
 ## 边做边测

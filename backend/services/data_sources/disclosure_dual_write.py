@@ -3,7 +3,7 @@
 Production disclosure writers route here by default.  Legacy-only direct writes
 remain available only via ``authorize_nonconforming_direct_write`` escape hatch
 (tests/emergency).  Research still reads compatibility tables; DatasetSnapshot
-and ``/api/v3/inst`` cutover stay blocked until shadow parity + consumer switch.
+and ``/api/v3/inst`` cutover stay blocked until live shadow MATCH + consumer switch.
 """
 from __future__ import annotations
 

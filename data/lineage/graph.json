@@ -2059,6 +2059,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/disclosure_shadow_compare.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_top10_holder_period"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/formal_execution.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_top10_holder_period"
@@ -4423,9 +4429,9 @@
     }
   ],
   "meta": {
-    "edge_count": 686,
-    "generated_at": "2026-07-19T14:08:37.097383+00:00",
-    "node_count": 314,
+    "edge_count": 687,
+    "generated_at": "2026-07-19T14:14:22.011673+00:00",
+    "node_count": 315,
     "version": 2
   },
   "nodes": [
@@ -4755,6 +4761,14 @@
         "path": "backend/services/data_sources/disclosure_event_partition.py"
       },
       "id": "consumer:backend/services/data_sources/disclosure_event_partition.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/disclosure_shadow_compare.py"
+      },
+      "id": "consumer:backend/services/data_sources/disclosure_shadow_compare.py",
       "kind": "consumer"
     },
     {
