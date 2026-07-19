@@ -594,3 +594,33 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
     (calendar reason gone).
 - 未做：daily/stock_st canary、mass backfill、margin 解冻、pulse/B-pit cutover。
   B-pit 数值切读仍阻塞于 K/ST accepted partitions。
+
+### 2026-07-19 — A3 nominal OHLCV + stock_st single-day canary (accepted)
+
+- **PARTIAL / K+ST canary FIXED**：authorized smallest single-trade_date accepted
+  publication for `daily` + `stock_st` (never legacy raw; never --all-due/--drain).
+  - Code: `security_day_capture.capture_security_day_provider_rows` +
+    `nominal_ohlcv_runtime` / `stock_st_runtime`
+    `capture_and_publish_authorized_*_partition` +
+    `sync_runner._publish_security_day_accepted_partition` (requires
+    identical `--start/--end`; refuses backfill/resume/drain).
+  - Registry: both domains `execution_policy=enabled/authorized_manual_generation`
+    + `sync_policy=on_demand`.
+  - Commands (eligible frontier `20260717`):
+    - `scripts/chunkyctl sync --domain stock_st --start 20260717 --end 20260717`
+      → `batch_id=stock_st:20260717:20260719T132222Z`, rows=211,
+      content_hash=`bdba9c39…a96dce`, publication=`accepted_stock_st_partition`.
+    - `scripts/chunkyctl sync --domain daily --start 20260717 --end 20260717`
+      → `batch_id=daily:20260717:20260719T132225Z`, rows=5522,
+      content_hash=`77475568…e6d62b`, publication=`accepted_nominal_ohlcv_partition`.
+  - Live evidence: landing/canonical parity; `accepted_partition` pointers for
+    `tier0.market_data.nominal_ohlcv_daily` +
+    `tier0.security_identity.stock_st_daily`.
+  - Consumer proof: `evaluate_observation_population_readiness(
+    observation_date=2026-07-17)=READY`；
+    `resolve_traded_on_observation_date` → population=4989
+    (ex_st=209, ex_board=324). Doctor default (today=20260719) still
+    `NOT_EVALUATED` with explicit missing-partition reasons (honest frontier).
+  - Doctor now surfaces `live_readiness_detail.reasons` instead of a generic stub.
+- 未做：mass backfill、margin 解冻、pulse/B-pit mart cutover、连续多日覆盖。
+  Next：受控扩窗/今日 eligible 单日；B-pit shadow 可对 canary 日读 accepted 源。

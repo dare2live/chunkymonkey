@@ -21,7 +21,7 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整（含名义 K/ST accepted writers）；`live_readiness` 可评估（多为 BLOCKED=无 live partition）。残余=live partitions + 授权 canary；无 mass fetch / cutover |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；calendar + 单日 K/ST accepted canary（`20260717`）已落地；doctor 当日 frontier 仍可 NOT_EVALUATED。残余=连续覆盖；无 mass fetch / cutover |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
 | T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 展示可用但 breadth/margin UNTRUSTED（B-ext）；分类/measurement/regime 耦合，暂不可直接做 PIT 特征；禁当项目池直至 B-pit |
@@ -34,7 +34,7 @@ AGENTS.md
 
 | Area | Role |
 |---|---|
-| `data/tushare_raw.duckdb` | TuShare legacy `raw_tushare_*` compatibility 表，以及 frozen margin evidence；calendar accepted landing/canonical 代码路径已就绪但 live 尚未 bootstrap/发表 |
+| `data/tushare_raw.duckdb` | TuShare legacy `raw_tushare_*` compatibility 表 + frozen margin evidence；accepted calendar generation + canary `20260717` nominal OHLCV/ST landing/canonical/accepted_partition 已发表 |
 | `data/market.duckdb` | K 线 serving/派生数据；qfq 不等于名义成交价真相 |
 | `data/reference.duckdb` | 交易日历、身份/reference 数据 |
 | `data/smartmoney.duckdb` | 当前 mart、profiles、ops/control evidence |
@@ -50,8 +50,8 @@ AGENTS.md
 | Purpose | Active entrypoint |
 |---|---|
 | Health | `scripts/chunkyctl doctor --fast` |
-| Manual full data update | `bash scripts/daily_update.sh --date YYYYMMDD`；当前因 disabled formal domains 在 calendar/auth/provider/DB/write 前 fail closed |
-| Manual single-domain sync/canary/replay | `scripts/chunkyctl sync --domain DOMAIN [--drain --max-dates N]`；disabled/formal domains fail closed before provider/DB |
+| Manual full data update | `bash scripts/daily_update.sh --date YYYYMMDD`；on_demand formal domains 不进 all-due；margin 仍 scope_blocked |
+| Manual single-domain sync/canary/replay | `scripts/chunkyctl sync --domain DOMAIN`；`trade_cal` full generation；`daily`/`stock_st` 须相同 `--start/--end` 单日；`--drain` 对三域 inapplicable；其它 disabled/formal 仍 fail closed |
 | Shared tooling snapshot | `moth snapshot --repo .` |
 | Business/tool assertions | `moth assert --repo .` |
 | Coupling/deletion impact | `moth coupling --repo . --impact <name>` |
@@ -68,7 +68,7 @@ AGENTS.md
 
 | Priority | Defect | Consequence |
 |---:|---|---|
-| P0 | K/ST live accepted partitions 未 canary（calendar accepted generation 已 bootstrap） | B-pit / 真 universe 证明仍阻塞；缺 K/ST schema 时 loader 诚实 NOT_EVALUATED |
+| P0 | K/ST 仅单日 canary（`20260717`）；无连续覆盖/今日 frontier | B-pit mart/cutover 仍禁；doctor 当日 NOT_EVALUATED 诚实；扩窗须再授权 |
 | P0 | 披露域 miaoxiang aif10 直写 fact（无 landing/accepted） | Phase E 冻结 DatasetSnapshot 不可满足；标 NONCONFORMING，归 E0 |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
@@ -122,10 +122,12 @@ availability 或 consumer 语义。现有 `dim_trading_calendar` 是 open-day se
 calendar 按 `calendar_contract.py`、`calendar_schema.py`、`calendar_landing.py`、
 `calendar_acceptance.py`、`calendar_reader.py`、`calendar_runtime.py` 分责；A2 发表入口是
 `publish_accepted_calendar_generation` / authorized
-`capture_and_publish_authorized_calendar_generation`；`trade_cal` =
-`authorized_manual_generation` + `on_demand`（禁 all-due 自动重发）；sync 禁
-legacy raw。all-due execution/population preflight 仍由 full pipeline / acquire
-共用；`daily`/`stock_st`/margin disabled 继续阻断 all-due。
+`capture_and_publish_authorized_calendar_generation`。名义 K/ST 按
+`nominal_ohlcv_*` / `stock_st_*` + 共享 `security_day_partition.py` /
+`security_day_capture.py` 分责；authorized 单日入口
+`capture_and_publish_authorized_*_partition`。`trade_cal`/`daily`/`stock_st` =
+`authorized_manual_generation` + `on_demand`（禁 all-due；K/ST 禁 drain）；
+sync 禁 legacy raw。margin 仍 scope_blocked / frozen。
 
 旧 margin history request/runtime/writer/CLI 已退役物删。冻结 v2 只由 `margin_evidence.py`、
 `margin_state.py`、reconcile/readiness/projection 读侧保留不可变审计证据；不存在受支持的继续写入旁路。

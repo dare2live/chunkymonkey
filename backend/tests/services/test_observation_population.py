@@ -69,19 +69,32 @@ def test_policy_truth_sources_align_with_accepted_dataset_ids() -> None:
     assert policy.st_membership_source == ST_MEMBERSHIP_DATASET_ID
 
 
-def test_live_kline_and_st_loaders_fail_closed_without_live_partitions() -> None:
-    """Writers exist; live DB without accepted partitions still fail closed."""
+def test_live_kline_and_st_loaders_fail_closed_before_partition_visibility() -> None:
+    """Live loaders stay fail-closed when decision_time precedes accepted visibility.
+
+    After the authorized 20260717 canary, partitions may exist but must remain
+    invisible to an earlier decision_time (PIT). Offline/CI without the canary
+    still fail closed on missing partitions.
+    """
 
     policy = _policy()
     with pytest.raises(ObservationPopulationUnavailable) as kline:
         load_accepted_nominal_kline_membership(OPEN_DAY, DECISION, policy)
     assert kline.value.status in {"NOT_EVALUATED", "BLOCKED"}
-    assert "nominal_ohlcv" in kline.value.reason or "no_accepted" in kline.value.reason
+    assert (
+        "nominal_ohlcv" in kline.value.reason
+        or "no_accepted" in kline.value.reason
+        or "not_visible_at_decision_time" in kline.value.reason
+    )
 
     with pytest.raises(ObservationPopulationUnavailable) as st:
         load_accepted_st_membership(OPEN_DAY, DECISION, policy)
     assert st.value.status in {"NOT_EVALUATED", "BLOCKED"}
-    assert "stock_st" in st.value.reason or "no_accepted" in st.value.reason
+    assert (
+        "stock_st" in st.value.reason
+        or "no_accepted" in st.value.reason
+        or "not_visible_at_decision_time" in st.value.reason
+    )
 
 
 def test_missing_tushare_raw_db_is_not_evaluated(monkeypatch) -> None:
@@ -329,8 +342,18 @@ def test_evaluate_readiness_runs_loaders_and_stays_not_evaluated_live() -> None:
         ),
     )
     assert readiness.status == "NOT_EVALUATED"
-    assert any("nominal_ohlcv" in reason for reason in readiness.reasons)
-    assert any("stock_st" in reason for reason in readiness.reasons)
+    assert any(
+        "nominal_ohlcv" in reason
+        or "no_accepted_partition" in reason
+        or "not_visible_at_decision_time" in reason
+        for reason in readiness.reasons
+    )
+    assert any(
+        "stock_st" in reason
+        or "no_accepted_partition" in reason
+        or "not_visible_at_decision_time" in reason
+        for reason in readiness.reasons
+    )
     assert any("calendar" in reason for reason in readiness.reasons)
 
 

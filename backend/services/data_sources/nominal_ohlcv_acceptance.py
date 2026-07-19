@@ -71,7 +71,7 @@ def runtime_surface() -> dict[str, Any]:
         "canonical_table": DOMAIN.canonical_table,
         "writer_id": DOMAIN.writer_id,
         "legacy_raw_write": "forbidden",
-        "provider_sync": "disabled_until_authorized_canary",
+        "provider_sync": "authorized_manual_generation",
     }
 
 

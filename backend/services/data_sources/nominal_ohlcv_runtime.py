@@ -1,5 +1,15 @@
-"""Public publication boundary for accepted nominal OHLCV partitions."""
+"""Public publication boundary for accepted nominal OHLCV partitions.
+
+Authorized manual sync (``execution_policy.mode=enabled`` + identical
+``--start/--end``) captures one provider trade_date through
+:func:`capture_and_publish_authorized_nominal_ohlcv_partition`.  It never
+writes ``raw_tushare_daily``.
+"""
 from __future__ import annotations
+
+from collections.abc import Callable, Mapping, Sequence
+from datetime import datetime, timezone
+from typing import Any
 
 from services.data_sources.nominal_ohlcv_acceptance import (
     NominalOhlcvAcceptanceOutcome,
@@ -11,7 +21,18 @@ from services.data_sources.nominal_ohlcv_contract import (
     NominalOhlcvContract,
     verify_nominal_ohlcv_contract,
 )
-from services.data_sources.security_day_partition import SecurityDayLandingBatch
+from services.data_sources.nominal_ohlcv_schema import (
+    CANONICAL_TABLE,
+    DOMAIN,
+    LANDING_TABLE,
+)
+from services.data_sources.security_day_capture import (
+    capture_security_day_provider_rows,
+)
+from services.data_sources.security_day_partition import (
+    SecurityDayError,
+    SecurityDayLandingBatch,
+)
 
 
 class NominalOhlcvRuntimeError(RuntimeError):
@@ -36,8 +57,58 @@ def publish_accepted_nominal_ohlcv_partition(
     return accept_nominal_ohlcv_batch(conn, str(batch.batch_id), contract)
 
 
+def capture_and_publish_authorized_nominal_ohlcv_partition(
+    conn,
+    contract: NominalOhlcvContract,
+    *,
+    trade_date: str,
+    fetch_rows: Callable[[Mapping[str, Any]], Sequence[Mapping[str, Any]] | None],
+    observed_at: datetime | None = None,
+    bootstrap: bool = True,
+) -> NominalOhlcvAcceptanceOutcome:
+    """Authorized canary/manual path: fetch → land → accept one trade_date."""
+
+    contract = verify_nominal_ohlcv_contract(contract)
+    observed = observed_at or datetime.now(timezone.utc)
+    try:
+        batch = capture_security_day_provider_rows(
+            DOMAIN,
+            trade_date=trade_date,
+            fetch_rows=fetch_rows,
+            observed_at=observed,
+        )
+    except SecurityDayError as exc:
+        raise NominalOhlcvRuntimeError(str(exc)) from exc
+    return publish_accepted_nominal_ohlcv_partition(
+        conn, batch, contract, bootstrap=bootstrap
+    )
+
+
+def refuse_legacy_nominal_ohlcv_raw_write(*, detail: str = "") -> None:
+    suffix = f": {detail}" if detail else ""
+    raise NominalOhlcvRuntimeError(
+        "legacy_nominal_ohlcv_raw_write_forbidden"
+        f"{suffix}; use publish_accepted_nominal_ohlcv_partition "
+        f"for {LANDING_TABLE}/{CANONICAL_TABLE}"
+    )
+
+
+def runtime_surface() -> dict[str, Any]:
+    return {
+        "dataset_id": DOMAIN.dataset_id,
+        "landing_table": LANDING_TABLE,
+        "canonical_table": CANONICAL_TABLE,
+        "writer_id": DOMAIN.writer_id,
+        "legacy_raw_write": "forbidden",
+        "provider_sync": "authorized_manual_generation",
+    }
+
+
 __all__ = [
     "NominalOhlcvRuntimeError",
     "bootstrap_nominal_ohlcv_acceptance_schema",
+    "capture_and_publish_authorized_nominal_ohlcv_partition",
     "publish_accepted_nominal_ohlcv_partition",
+    "refuse_legacy_nominal_ohlcv_raw_write",
+    "runtime_surface",
 ]

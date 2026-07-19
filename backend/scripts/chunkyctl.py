@@ -142,22 +142,32 @@ def _population_sections(result: dict[str, Any]) -> tuple[dict[str, Any], dict[s
         contract["error"] = "population contract report/exit is invalid"
 
     readiness = None if report is None else report.get("live_readiness")
+    detail = None if report is None else report.get("live_readiness_detail")
+    detail_reasons: list[str] = []
+    if isinstance(detail, dict):
+        raw_reasons = detail.get("reasons") or ()
+        if isinstance(raw_reasons, (list, tuple)):
+            detail_reasons = [str(item) for item in raw_reasons if str(item).strip()]
     readiness_verdict = {
         "READY": "PASS",
         "DEGRADED": "WARN",
         "BLOCKED": "FAIL",
         "NOT_EVALUATED": "FAIL",
     }.get(readiness, "FAIL")
+    if detail_reasons:
+        reason = "; ".join(detail_reasons)
+    elif readiness == "NOT_EVALUATED":
+        reason = (
+            "accepted calendar/nominal-Kline/ST evidence and production consumer "
+            "wiring are not yet proved"
+        )
+    else:
+        reason = None
     population_readiness = {
         "name": "population_readiness",
         "verdict": readiness_verdict,
         "status": readiness or "INVALID",
-        "reason": (
-            "accepted calendar/nominal-Kline/ST evidence and production consumer "
-            "wiring are not yet proved"
-            if readiness == "NOT_EVALUATED"
-            else None
-        ),
+        "reason": reason,
     }
     return contract, population_readiness
 

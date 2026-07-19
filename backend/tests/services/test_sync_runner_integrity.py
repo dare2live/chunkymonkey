@@ -893,15 +893,66 @@ def test_run_domain_records_database_write_failure(monkeypatch):
     assert recorded["ok"] is False and recorded["last_date"] is None
 
 
-def test_formal_daily_sync_is_disabled_before_provider_io(monkeypatch):
-    """Live daily accepted writers exist; sync remains canary-gated."""
+def test_formal_daily_sync_requires_single_trade_date_before_provider_io(monkeypatch):
+    """Authorized daily canary refuses unbounded sync before provider I/O."""
 
+    for name in (
+        "_adapter",
+        "_target_conn",
+        "_write_batch",
+        "_fetch_paged",
+        "_publish_security_day_accepted_partition",
+    ):
+        monkeypatch.setattr(
+            sr,
+            name,
+            lambda *a, _n=name, **k: (_ for _ in ()).throw(AssertionError(_n)),
+        )
+    with pytest.raises(sr.SyncWindowError, match="identical --start/--end"):
+        sr.run_domain("daily")
+
+
+def test_formal_daily_authorized_single_day_uses_accepted_path(monkeypatch):
+    registry = sr.load_registry()
+    spec = sr.domain_spec(registry, "daily")
+    assert spec["execution_policy"] == {
+        "mode": "enabled",
+        "reason": "authorized_manual_generation",
+    }
+    assert spec["sync_policy"] == "on_demand"
+
+    called = {}
+
+    def _fake_publish(domain, _spec, *, trade_date):
+        called["domain"] = domain
+        called["trade_date"] = trade_date
+        return {
+            "domain": domain,
+            "status": "ok",
+            "batches": 1,
+            "rows": 1,
+            "failed_batches": 0,
+            "publication": "accepted_nominal_ohlcv_partition",
+            "partition_value": trade_date,
+        }
+
+    monkeypatch.setattr(sr, "_publish_security_day_accepted_partition", _fake_publish)
     for name in ("_adapter", "_target_conn", "_write_batch", "_fetch_paged"):
         monkeypatch.setattr(
             sr,
             name,
             lambda *a, _n=name, **k: (_ for _ in ()).throw(AssertionError(_n)),
         )
-    with pytest.raises(sr.ExecutionPolicyError) as caught:
-        sr.run_domain("daily")
-    assert caught.value.reason == "accepted_partition_pending"
+
+    result = sr.run_domain(
+        "daily", start="20260717", end="20260717", registry=registry
+    )
+    assert called == {"domain": "daily", "trade_date": "20260717"}
+    assert result["publication"] == "accepted_nominal_ohlcv_partition"
+    assert result["failed_batches"] == 0
+
+
+def test_formal_stock_st_drain_is_inapplicable():
+    result = sr.drain_domain("stock_st")
+    assert result["status"] == "drain_inapplicable"
+    assert "single_day" in result["reason"]

@@ -147,10 +147,13 @@ domains:
 
   stock_st:
     execution_policy:
-      mode: disabled
-      # Runtime land→accept 已就绪；禁 legacy raw 写与未授权 provider canary。
-      # 正式发表用 stock_st_runtime.publish_accepted_stock_st_partition。
-      reason: accepted_partition_pending
+      mode: enabled
+      # Authorized manual single-day only:
+      #   chunkyctl sync --domain stock_st --start YYYYMMDD --end YYYYMMDD
+      # publishes one accepted ST partition via stock_st_runtime (never legacy raw).
+      reason: authorized_manual_generation
+    # One partition is manual; never enter --all-due / --drain mass replay.
+    sync_policy: on_demand
     population_scope:
       kind: raw_evidence
       population_label: provider_response
@@ -812,10 +815,14 @@ domains:
   # gap drain 会自动补老缺口 (日历 gap 扫描天然支持向前扩窗)。
   daily:
     execution_policy:
-      mode: disabled
-      # Runtime land→accept 已就绪；禁 legacy raw 写与未授权 provider canary。
-      # 正式发表用 nominal_ohlcv_runtime.publish_accepted_nominal_ohlcv_partition。
-      reason: accepted_partition_pending
+      mode: enabled
+      # Authorized manual single-day only:
+      #   chunkyctl sync --domain daily --start YYYYMMDD --end YYYYMMDD
+      # publishes one accepted nominal OHLCV partition via nominal_ohlcv_runtime
+      # (never legacy raw).
+      reason: authorized_manual_generation
+    # One partition is manual; never enter --all-due / --drain mass replay.
+    sync_policy: on_demand
     population_scope:
       kind: raw_evidence
       population_label: provider_response

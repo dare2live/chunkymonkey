@@ -14,7 +14,9 @@ from services.data_sources.nominal_ohlcv_reader import (
     load_accepted_nominal_ohlcv_membership_from_conn,
 )
 from services.data_sources.nominal_ohlcv_runtime import (
+    capture_and_publish_authorized_nominal_ohlcv_partition,
     publish_accepted_nominal_ohlcv_partition,
+    runtime_surface as ohlcv_runtime_surface,
 )
 from services.data_sources.nominal_ohlcv_schema import DATASET_ID, SCHEMA_HASH
 from services.data_sources.observation_population import (
@@ -27,7 +29,11 @@ from services.data_sources.stock_st_contract import load_stock_st_contract
 from services.data_sources.stock_st_reader import (
     load_accepted_stock_st_membership_from_conn,
 )
-from services.data_sources.stock_st_runtime import publish_accepted_stock_st_partition
+from services.data_sources.stock_st_runtime import (
+    capture_and_publish_authorized_stock_st_partition,
+    publish_accepted_stock_st_partition,
+    runtime_surface as st_runtime_surface,
+)
 from services.data_sources.stock_st_schema import DATASET_ID as ST_DATASET_ID
 from services.duck_adapter import connect
 from services.universe import load_universe_policy
@@ -108,6 +114,59 @@ def test_contract_factory_binds_schema_hash() -> None:
         "rule": "same_day_at",
         "at": "18:00",
     }
+
+
+def test_provider_nan_normalizes_before_landing() -> None:
+    from services.data_sources.nominal_ohlcv_schema import DOMAIN as OHLCV_DOMAIN
+    from services.data_sources.security_day_capture import (
+        project_security_day_provider_row,
+    )
+
+    row = dict(_daily_rows(PARTITION, include_bj=False)[0])
+    row["change"] = float("nan")
+    projected = project_security_day_provider_row(OHLCV_DOMAIN, row)
+    assert projected["change"] is None
+
+
+def test_capture_and_publish_authorized_paths_from_fetch(conn) -> None:
+    ohlcv_contract = load_nominal_ohlcv_contract()
+    st_contract = load_stock_st_contract()
+    daily_rows = _daily_rows(PARTITION, include_bj=False)
+    st_rows = _st_rows()
+
+    def fetch_daily(request):
+        assert request["trade_date"] == PARTITION
+        return daily_rows
+
+    def fetch_st(request):
+        assert request["trade_date"] == ST_PARTITION
+        return st_rows
+
+    ohlcv_outcome = capture_and_publish_authorized_nominal_ohlcv_partition(
+        conn,
+        ohlcv_contract,
+        trade_date=PARTITION,
+        fetch_rows=fetch_daily,
+        observed_at=OBSERVED,
+        bootstrap=True,
+    )
+    assert ohlcv_outcome.status == "ACCEPTED"
+    assert ohlcv_outcome.row_count == len(daily_rows)
+    assert ohlcv_outcome.batch_id.startswith(f"daily:{PARTITION}:")
+
+    st_outcome = capture_and_publish_authorized_stock_st_partition(
+        conn,
+        st_contract,
+        trade_date=ST_PARTITION,
+        fetch_rows=fetch_st,
+        observed_at=ST_OBSERVED,
+        bootstrap=True,
+    )
+    assert st_outcome.status == "ACCEPTED"
+    assert st_outcome.row_count == len(st_rows)
+    assert st_outcome.batch_id.startswith(f"stock_st:{ST_PARTITION}:")
+    assert ohlcv_runtime_surface()["provider_sync"] == "authorized_manual_generation"
+    assert st_runtime_surface()["provider_sync"] == "authorized_manual_generation"
 
 
 def test_publish_accepts_partition_and_reader_returns_membership(conn) -> None:

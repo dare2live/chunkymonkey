@@ -1543,6 +1543,143 @@ def _publish_trade_cal_accepted_generation(spec: dict[str, Any]) -> dict[str, An
     }
 
 
+def _require_authorized_single_trade_date(
+    domain: str,
+    *,
+    backfill: bool,
+    resume: bool,
+    start: str | None,
+    end: str | None,
+    max_dates: int | None,
+) -> str:
+    """Canary/manual formal daily+ST: one identical --start/--end trade_date."""
+
+    if max_dates is not None:
+        raise SyncWindowError("--max-dates is only valid for --drain")
+    if backfill or resume:
+        raise SyncWindowError(
+            f"domain={domain} accepted partition is authorized single-day only; "
+            "refuse --backfill/--resume"
+        )
+    if start is None or end is None:
+        raise SyncWindowError(
+            f"domain={domain} authorized canary requires identical "
+            "--start/--end single trade_date"
+        )
+    start_c = str(start).replace("-", "")
+    end_c = str(end).replace("-", "")
+    if start_c != end_c:
+        raise SyncWindowError(
+            f"domain={domain} authorized canary requires start==end; "
+            f"got start={start_c} end={end_c}"
+        )
+    if len(start_c) != 8 or not start_c.isdigit():
+        raise SyncWindowError(
+            f"domain={domain} trade_date must be YYYYMMDD; got {start_c!r}"
+        )
+    return start_c
+
+
+def _publish_security_day_accepted_partition(
+    domain: str,
+    spec: dict[str, Any],
+    *,
+    trade_date: str,
+) -> dict[str, Any]:
+    """Fetch one trade_date and publish accepted nominal OHLCV or ST truth."""
+
+    from services.data_sources.security_day_partition import SecurityDayError
+
+    eligibility = eligible_end_date(spec)
+    operation_window = resolve_operation_window(
+        eligibility,
+        requested_start=trade_date,
+        requested_end=trade_date,
+    )
+    partition = operation_window.effective_end or trade_date
+    apply_fetch_socket_timeout(spec)
+    adapter = _adapter(str(spec["source"]))
+
+    def _fetch_rows(params: Mapping[str, Any]):
+        request = {"trade_date": str(params.get("trade_date") or partition)}
+        return _fetch_with_retry(adapter, spec, request)
+
+    from services.data_sources.nominal_ohlcv_runtime import NominalOhlcvRuntimeError
+    from services.data_sources.stock_st_runtime import StockStRuntimeError
+
+    if domain == "daily":
+        from services.data_sources.nominal_ohlcv_contract import (
+            nominal_ohlcv_contract_for_spec,
+        )
+        from services.data_sources.nominal_ohlcv_runtime import (
+            capture_and_publish_authorized_nominal_ohlcv_partition,
+        )
+
+        publication = "accepted_nominal_ohlcv_partition"
+        publish = lambda conn: capture_and_publish_authorized_nominal_ohlcv_partition(
+            conn,
+            nominal_ohlcv_contract_for_spec(spec),
+            trade_date=partition,
+            fetch_rows=_fetch_rows,
+            bootstrap=True,
+        )
+    elif domain == "stock_st":
+        from services.data_sources.stock_st_contract import stock_st_contract_for_spec
+        from services.data_sources.stock_st_runtime import (
+            capture_and_publish_authorized_stock_st_partition,
+        )
+
+        publication = "accepted_stock_st_partition"
+        publish = lambda conn: capture_and_publish_authorized_stock_st_partition(
+            conn,
+            stock_st_contract_for_spec(spec),
+            trade_date=partition,
+            fetch_rows=_fetch_rows,
+            bootstrap=True,
+        )
+    else:
+        raise SyncWindowError(
+            f"domain={domain} is not a security-day accepted publication"
+        )
+
+    conn = _target_conn(spec)
+    try:
+        try:
+            outcome = publish(conn)
+        except (
+            SecurityDayError,
+            NominalOhlcvRuntimeError,
+            StockStRuntimeError,
+        ) as exc:
+            return {
+                "domain": domain,
+                "status": "error",
+                "batches": 0,
+                "rows": 0,
+                "failed_batches": 1,
+                "error": str(exc)[:500],
+                "publication": publication,
+            }
+    finally:
+        conn.close()
+
+    accepted = outcome.status == "ACCEPTED"
+    return {
+        "domain": domain,
+        "status": "ok" if accepted else str(outcome.status).lower(),
+        "batches": 1,
+        "rows": int(outcome.row_count or 0),
+        "failed_batches": 0 if accepted else 1,
+        "batch_id": outcome.batch_id,
+        "partition_value": outcome.partition_value,
+        "content_hash": outcome.content_hash,
+        "rejection_code": outcome.rejection_code,
+        "publication": publication,
+        "eligible_end": eligibility.eligible_end,
+        "eligibility_reason": eligibility.reason,
+    }
+
+
 def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
                end: str | None = None, resume: bool = False,
                max_dates: int | None = None,
@@ -1563,6 +1700,18 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
                 "refuse --backfill/--resume/--start/--end"
             )
         return _publish_trade_cal_accepted_generation(spec)
+    if domain in {"daily", "stock_st"}:
+        trade_date = _require_authorized_single_trade_date(
+            domain,
+            backfill=backfill,
+            resume=resume,
+            start=start,
+            end=end,
+            max_dates=max_dates,
+        )
+        return _publish_security_day_accepted_partition(
+            domain, spec, trade_date=trade_date
+        )
     formal_contract = _formal_dataset_contract_for_spec(spec)
     formal_execution = _require_formal_population_execution(spec, formal_contract)
     if formal_execution is not None:
@@ -1991,6 +2140,12 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
             "domain": domain,
             "status": "drain_inapplicable",
             "reason": "accepted_calendar_generation_is_full_refresh_only",
+        }
+    if domain in {"daily", "stock_st"}:
+        return {
+            "domain": domain,
+            "status": "drain_inapplicable",
+            "reason": "accepted_partition_is_authorized_single_day_only",
         }
     formal_contract = _formal_dataset_contract_for_spec(spec)
     formal_execution = _require_formal_population_execution(spec, formal_contract)
