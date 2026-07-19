@@ -3523,6 +3523,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/routers/market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/margin_acceptance.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_margin"
@@ -4213,8 +4219,8 @@
     }
   ],
   "meta": {
-    "edge_count": 651,
-    "generated_at": "2026-07-19T13:03:42.377692+00:00",
+    "edge_count": 652,
+    "generated_at": "2026-07-19T13:06:20.700789+00:00",
     "node_count": 292,
     "version": 2
   },

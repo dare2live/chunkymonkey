@@ -284,10 +284,25 @@ export interface PulsePopulationScope {
   notes: string[];
 }
 
+/** B-ext read-only shadow; never authorizes cutover alone. */
+export interface PulseShadowReconcile {
+  trade_date: string;
+  verdict: "SCOPE_MISMATCH" | "EXTERNAL_HONEST_SHADOW" | "BLOCKED" | "PARITY";
+  legacy_rzrqye: number | null;
+  honest_external_rzrqye: number | null;
+  bse_rzrqye: number | null;
+  delta_legacy_minus_honest: number | null;
+  venues_present: string[];
+  cutover_allowed: false;
+  issues: string[];
+  scope: PulsePopulationScope;
+}
+
 export interface SentimentResp {
   status: string;
   days: SentimentPoint[]; // 升序；数值口径未切（仍可能含错误 scope）
   population_scope: PulsePopulationScope;
+  shadow_reconcile: PulseShadowReconcile;
   cutover_allowed: false;
 }
 

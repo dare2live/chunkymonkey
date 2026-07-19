@@ -485,12 +485,20 @@ function PulseBand() {
         const prev = d.days.length > 1 ? d.days[d.days.length - 2] : null;
         const diff = (cur: number | null, pre: number | null | undefined) =>
           cur != null && pre != null ? cur - pre : null;
+        const trust = d.population_scope?.overall_status ?? "NOT_EVALUATED";
+        const trustNote =
+          trust === "UNTRUSTED" || trust === "BLOCKED"
+            ? ` · 广度/两融 ${trust}（非项目池；未 cutover）`
+            : "";
         return (
           <>
-            <div className="section-label">市场脉搏 · {fmtDate(last.trade_date)} (环比前一交易日)</div>
+            <div className="section-label">
+              市场脉搏 · {fmtDate(last.trade_date)} (环比前一交易日)
+              {trustNote}
+            </div>
             <div className="pulse-band">
               <PulseKpi
-                label="涨跌比 (涨/跌家数)"
+                label="涨跌比 (涨/跌家数·raw)"
                 value={fmtNum(last.adv_dec_ratio, 2)}
                 valueCls={
                   last.adv_dec_ratio == null ? "" : last.adv_dec_ratio >= 1 ? "pos" : "neg"
@@ -519,7 +527,7 @@ function PulseBand() {
                 fmtDelta={(x) => `${(x * 100).toFixed(1)}pp`}
               />
               <PulseKpi
-                label="两融余额"
+                label="两融余额·交易所汇总"
                 value={fmtAmountCn(last.rzrqye)}
                 delta={last.rzrqye_chg}
                 fmtDelta={(x) => fmtAmountCn(x)}
@@ -1244,9 +1252,15 @@ function SentimentCard() {
   const [days, setDays] = useState<number>(120);
   const state = useFetch(() => fetchSentiment({ days }), [days]);
   const last = state.data?.days.length ? state.data.days[state.data.days.length - 1] : null;
+  const trust = state.data?.population_scope?.overall_status;
+  const shadowVerdict = state.data?.shadow_reconcile?.verdict;
+  const trustSuffix =
+    trust === "UNTRUSTED" || trust === "BLOCKED"
+      ? ` · breadth/margin ${trust}${shadowVerdict ? ` / shadow=${shadowVerdict}` : ""} · cutover=false`
+      : "";
   return (
     <Card
-      title="情绪温度 (limit_list_d 官方口径, 不含 ST; 每日一格: 涨停 / 跌停 / 炸板率 三条光谱带)"
+      title={`情绪温度 (limit_list_d 官方口径, 不含 ST; 每日一格: 涨停 / 跌停 / 炸板率 三条光谱带)${trustSuffix}`}
       extra={
         <div className="tab-group">
           {SENTIMENT_DAYS.map((d) => (
@@ -1270,7 +1284,7 @@ function SentimentCard() {
                   大盘净流入<b>{fmtAmountCn(last.mkt_net_amount, true)}</b>
                 </span>
                 <span>
-                  两融日增
+                  两融日增·交易所汇总
                   <b className={signClass(last.rzrqye_chg)}>{fmtAmountCn(last.rzrqye_chg, true)}</b>
                 </span>
                 <span>

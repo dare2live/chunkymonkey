@@ -24,7 +24,7 @@ AGENTS.md
 | T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整（含名义 K/ST accepted writers）；`live_readiness` 可评估（多为 BLOCKED=无 live partition）。残余=live partitions + 授权 canary；无 mass fetch / cutover |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
-| T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 当前展示可用；分类解释、measurement、regime 和 persistence 耦合，暂不可直接做 PIT 特征；B-ext 前勿当项目池 |
+| T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 展示可用但 breadth/margin UNTRUSTED（B-ext）；分类/measurement/regime 耦合，暂不可直接做 PIT 特征；禁当项目池直至 B-pit |
 | T3 institution | `institution_profile.py` + `holders_aif10.py` + router/tests | **首个正式策略包目标**；披露主源=miaoxiang aif10 **NONCONFORMING**（无 landing）；待 E0→D/E |
 | T3 main rally | `rally_gt.py`, `rally_detect.py`, rally config/tests | GT 资产成熟；在机构首包之后接入同一 runtime |
 | T3 formulas | `bestchoice/FROZEN.md` + `evidence_manifest.json` | 冻结 challenger；Phase G 前不吸收 |
@@ -74,7 +74,7 @@ AGENTS.md
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
 | P1 | formal `boundary_inventory` 仅为静态/测试资源，非 doctor readiness 证书（`formal_boundaries` 文案已澄清）；canary_pending 域无 countdown 出口 | 豁免不可见即永久；须在 goal/ledger 跟踪 canary 授权点 |
 | P1 | Live DC snapshot/pulse tables predate namespace fix until manual rebuild | Code contract is fixed but stored rows still need controlled reconciliation |
-| P1 | Market pulse mixes taxonomy, measurements, rolling/regime, write/read；仍读错误 scope raw | B-ext：scope+shadow+API trust sidecar；mart 数值未切；cutover 禁 |
+| P1 | Market pulse mixes taxonomy, measurements, rolling/regime, write/read；仍读错误 scope raw | B-ext：scope+shadow+API/FE trust；mart 数值未切；cutover 禁 |
 | P1 | Stock state/market regime rows lack config/input version | Historical outputs cannot prove which definition produced them |
 | P1 | No shared dataset snapshot/experiment/release chain | Strategy evidence cannot reach decision/product safely |
 | P1 | Docs/CLI gates previously treated retired/warn as PASS；事实性断言（如“仅 TuShare”）不在 gate 覆盖 | Tooling green did not prove executable reality |

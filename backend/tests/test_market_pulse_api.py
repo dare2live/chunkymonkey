@@ -278,6 +278,12 @@ def test_sentiment_v2_fields(client):
     by_field = {f["field"]: f for f in scope["fields"]}
     assert by_field["adv_dec_ratio"]["population_kind"] == "raw_evidence"
     assert by_field["rzrqye"]["population_kind"] == "external_aggregate"
+    # Latest fixture day has no margin rows → shadow fail-closed, not PARITY/cutover.
+    shadow = body["shadow_reconcile"]
+    assert shadow["cutover_allowed"] is False
+    assert shadow["verdict"] == "BLOCKED"
+    assert "margin_core_venues_incomplete" in shadow["issues"]
+    assert "legacy_pulse_untrusted_pending_consumer_cutover" in shadow["issues"]
 
 
 def test_flow_board_regime_groups_and_stripe(client):

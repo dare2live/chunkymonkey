@@ -6,7 +6,7 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；data-plane 残余=live accepted partitions / 授权 canary（无 mass fetch、无 cutover）。下一刀 **B-ext**（external_aggregate 诚实化）。**B-pit** 阻塞于 A3 data-plane residual。Fable5 **REVISE** 已吸收（见 ledger）。
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane residual=BLOCKED**（无 authorized canary + 无 live calendar/K accepted）。**B-ext PARTIAL**（trust/shadow/FE 已落地，无数值 cutover）。**B-pit** 仍阻塞于 A3。Fable5 **REVISE** 已吸收（见 ledger）。禁 E0/institution_follow 生产至 A/B 足够。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -49,8 +49,17 @@
 
 控制面原语/margin 冻结/all-due 前阻断/doctor `NOT_EVALUATED` FAIL/calendar 隔离原型：见 ledger。≠业务就绪。
 
-- **A** A1–A5 **FIXED**。`live_readiness` 可评估（常见 BLOCKED=无 live accepted partition）。禁 mass fetch/切消费者。残余 data-plane：calendar/K/ST live partitions + 授权 canary（owner=下一聚焦 session 授权请求）。
-- **B-ext（进行中/PARTIAL）** scope 认证 + shadow reconcile + sentiment API 旁路 trust 已落地；mart 数值未改、`cutover_allowed=false`。残余：读面/前端消费 trust 字段、live margin attach shadow（可选）、B-pit 前不切数值。
+- **A** A1–A5 **FIXED**。`live_readiness` 可评估（常见 BLOCKED=无 live accepted partition）。禁 mass fetch/切消费者。
+  **A3 data-plane residual=BLOCKED（本 session 实测）**：`trade_cal`/`daily`/`stock_st`
+  `execution_policy.mode=disabled`（`accepted_generation_pending` /
+  `accepted_partition_pending`）；live `tushare_raw` 无 calendar/K accepted
+  landing·canonical 表；仅有 legacy `raw_tushare_stock_st` + margin accepted
+  （margin 仍 `scope_blocked`）。未授权 → **不跑** provider/manual canary。
+  下一授权点：窄 calendar generation canary（再 K/ST），禁 mass backfill / margin 解冻。
+- **B-ext（PARTIAL，代码面可收）** scope + shadow + sentiment
+  `population_scope`/`shadow_reconcile`/`cutover_allowed=false` + 前端 trust 标注；
+  live margin attach 尽力（失败 `margin_raw_not_attached` fail-closed）。mart 数值未改、无 cutover。
+  残余仅 B-pit 数值切读（需 A3）。
 - **B-pit（阻塞 A3 data-plane）** project_universe_pit 广度/resolver 消费者迁移；shadow 后切读面。未闭合 A3 data-plane residual 不得宣称 B 完成。
 - **C** Tier1/2 正式 lineage。**D** `DatasetSnapshot`→`ExperimentVerdict` + PIT 截断。
 - **E0（E 硬前置）** 披露域 formal 化：holders/org_holding/stk_holdertrade → adapter/landing/canonical + notice/`available_at` 契约。未完成则 **E=BLOCKED**。

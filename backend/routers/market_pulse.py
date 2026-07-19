@@ -19,8 +19,8 @@
   GET /api/v3/pulse/flow_stripe mini 温度条纹数据 (v3): 单板块近 N 日逐日净流入序列
   GET /api/v3/pulse/sentiment   情绪温度时序 (涨跌停/炸板率/涨跌比 + v2 连板天梯/晋级率/
                                 秒板/封单/两融/大盘PE换手/龙虎榜, mart_market_pulse_daily);
-                                旁路 population_scope / cutover_allowed（B-ext UNTRUSTED;
-                                不改 days 数值）
+                                旁路 population_scope / shadow_reconcile / cutover_allowed
+                                （B-ext UNTRUSTED; 不改 days 数值）
   GET /api/v3/pulse/warnings    退潮预警 (跌出 RS top-N [v3 锁 L1] + 连续静默流出 >= 阈值)
   GET /api/v3/pulse/strongest   最强板块榜 (limit_cpt_list 引擎快照; 885xxx.TI 码独立卡禁跨链)
   GET /api/v3/pulse/members     板块成分下钻 (dc=dc_member 最新快照; sw=index_member_all 当前成分)
@@ -43,8 +43,56 @@ from services import market_pulse as mp
 from services.database_manifest import get_database_manifest
 from services.duck_adapter import connect as duck_connect
 from services.market_pulse_scope import attest_market_pulse_scope
+from services.market_pulse_shadow_reconcile import reconcile_market_pulse_shadow
 
 router = APIRouter()
+
+
+def _load_margin_rows_for_shadow(conn, day: str) -> tuple[list[dict[str, Any]], str | None]:
+    """Return (rows, issue). issue set when raw margin cannot be read."""
+
+    def _query() -> list[dict[str, Any]]:
+        rows = conn.execute(
+            """
+            SELECT exchange_id, rzrqye
+            FROM tr.raw_tushare_margin
+            WHERE trade_date = ?
+            """,
+            [day],
+        ).fetchall()
+        return [{"exchange_id": r[0], "rzrqye": r[1]} for r in rows]
+
+    try:
+        return _query(), None
+    except Exception:  # noqa: BLE001 — missing tr schema is expected on pulse-only conn
+        pass  # rule-compliance: ok evidence=B-ext shadow fail-closed probe, not business threshold
+    # Production pulse conn is smartmoney-only; best-effort READ_ONLY attach.
+    try:
+        raw_path = str(get_database_manifest().path_for("tushare_raw")).replace("'", "''")
+        conn.execute(f"ATTACH IF NOT EXISTS '{raw_path}' AS tr (READ_ONLY)")
+        return _query(), None
+    except Exception:  # noqa: BLE001 — attach/lock/missing DB must not invent shadow READY
+        # rule-compliance: ok evidence=B-ext shadow fail-closed attach, not business threshold
+        return [], "margin_raw_not_attached"
+
+
+def _shadow_reconcile_for_day(conn, trade_date: str) -> dict[str, Any]:
+    """Read-only shadow for one day; fail-closed if margin raw is unavailable.
+
+    Never rewrites mart numbers; ``cutover_allowed`` stays false.
+    """
+    day = str(trade_date or "").replace("-", "")
+    if len(day) != 8 or not day.isdigit():
+        return reconcile_market_pulse_shadow(str(trade_date)).as_dict()
+    margin_rows, issue = _load_margin_rows_for_shadow(conn, day)
+    report = reconcile_market_pulse_shadow(day, margin_rows=margin_rows)
+    payload = report.as_dict()
+    if issue:
+        issues = list(payload["issues"])
+        if issue not in issues:
+            issues.append(issue)
+        payload["issues"] = issues
+    return payload
 
 
 def get_pulse_conn():
@@ -537,8 +585,8 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
     + v2 连板天梯/晋级率/秒板/封单/两融/大盘PE换手/龙虎榜。
     缺源日字段 = null (不知道≠0, 引擎口径), 前端按缺口断线展示。
 
-    B-ext: 旁路 ``population_scope`` 标 legacy breadth/margin 为 UNTRUSTED；
-    ``cutover_allowed`` 恒 false。``days`` 数值不改、不做 consumer cutover。
+    B-ext: 旁路 ``population_scope`` + ``shadow_reconcile`` 标 legacy breadth/margin
+    为 UNTRUSTED；``cutover_allowed`` 恒 false。``days`` 数值不改、不做 consumer cutover。
     """
     rows = conn.execute(f"""
         SELECT {', '.join(_SENTIMENT_COLS)} FROM (
@@ -548,6 +596,7 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
     latest = str(day_rows[-1]["trade_date"]) if day_rows else ""
     if latest:
         scope = attest_market_pulse_scope(latest).as_dict()
+        shadow = _shadow_reconcile_for_day(conn, latest)
     else:
         scope = {
             "trade_date": "",
@@ -555,10 +604,13 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
             "fields": [],
             "notes": ["no_sentiment_rows"],
         }
+        shadow = reconcile_market_pulse_shadow("").as_dict()
+        shadow["issues"] = list(shadow.get("issues") or []) + ["no_sentiment_rows"]
     return {
         "status": "ok",
         "days": day_rows,
         "population_scope": scope,
+        "shadow_reconcile": shadow,
         "cutover_allowed": False,
     }
 
