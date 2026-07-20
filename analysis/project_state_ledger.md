@@ -2104,3 +2104,54 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   mass backfill; cutover flip.
 - **Residual / cannot claim**: no B1/B2 yet; no StrategyRelease; no
   full-episode 250d validation; claimable accept false; F2/F3 next.
+
+### 2026-07-20 — Phase F F2 main_rally B1 (+stock state, same B0 snapshot/folds/costs)
+
+- **FIXED** (protocol): `main_rally_b1.py` + `main_rally_b1_measure.py` add
+  one named FeatureBlock (`stock_state_stage_pattern_v1`) on top of frozen
+  F1 B0 — intersects B0's pivot-confirmed-setup eligibles with Tier1 stock
+  state (`axis_trend=up` or `is_breakout_event`) at signal_date; reuses
+  B0's identical `WalkForwardPlan` (same folds/embargo/holdout/costs/paper),
+  never re-derives them. State load: `load_stock_state_by_day` →
+  `resolve_tier12_production_read` (cutover gate; consumer yaml still
+  `cutover_allowed=false` → legacy `fact_stock_form_daily` scaffold path
+  used live). Candidate/state modules never import `rally_gt` or read
+  `fact_rally_ground_truth`/`fact_rally_negative` (AST-checked in tests).
+  `main_rally_b0_measure.measure_main_rally_b0_paper` gained optional
+  `walk_forward=`/`eligible_by_day=` params so B1 (and future B2+) can
+  reuse B0's exact protocol object instead of re-planning folds.
+- **Stability gate ported from B2/B4**: B1 accept requires accept edge
+  gates **and** `evaluate_holdout_lift_vs_b0` (`REQUIRE_HOLDOUT_LIFT_VS_B0`)
+  — equal/worse holdout return vs B0 is not independent lift → `reject`
+  (`holdout_lift_vs_b0_unmet`), never a fake accept. institution_follow B1
+  (E-track) does not have this gate yet; main_rally B1 (F-track) ships with
+  it per this task's explicit requirement.
+- Persist: extended `backend/scripts/persist_phase_f_experiment_verdicts.py`
+  to also run/measure/write `b1.json`; manifest `slices_complete` now
+  `["F0","F1","F2"]`, `ladder` has both blocks, `protocol.b1_feature_block`
+  + `protocol.require_holdout_lift_vs_b0=true` recorded.
+- Live verdict on the same 121d accepted window (`20260116`→`20260720`):
+  B1 stock-state coverage `day_coverage=1.0`, `avg_bar_state_overlap≈0.94`
+  (sufficient). B1 numerically improves eval `total_return` vs B0
+  (≈-9.2% vs B0's ≈-16.4%, `n_trades=144` vs `162`) but eval is still
+  negative → accept edge gates unmet → **`reject`** / **`claimable=false`**
+  / `measured_protocol_ready_edge_gates_unmet`. B1 holdout return is
+  numerically **identical** to B0's (single holdout signal unaffected by
+  state conditioning) → `holdout_lift_stability.passed=false` /
+  `holdout_lift_vs_b0_unmet` is recorded in details either way (informational
+  when edge already unmet). Honest reject, not an improve claim.
+- Tests: `backend/tests/services/test_main_rally_b1.py` 9 passed (feature
+  block declare, state-row eligibility, GT-table-isolation AST on both new
+  modules, coverage-insufficient→inconclusive, eligible-intersection never
+  widens B0, measured delta vs B0, scaffold-without-measure never accepts,
+  canary overclaim raises, holdout-lift-gate unit test). Full backend suite
+  1709 passed / 8 pre-existing unrelated failures (tinyshare module missing,
+  sync_runner_integrity kwarg drift, org_holding_aif10 DuckDB fixture —
+  none touch Phase F files, present before this change).
+- **Did not**: Optuna; StrategyRelease; E-gate loosen; cutover flip; GT
+  read in generator; F3 B2 (deferred — F2 result is reject, no green to
+  build on; capacity/priority favors stopping at an honest F2 reject).
+- **Residual / cannot claim**: no B2 (market sensing) yet; no
+  StrategyRelease; no full-episode 250d validation; claimable accept
+  false for both B0 and B1; F3 next if a future window/definition changes
+  the picture.

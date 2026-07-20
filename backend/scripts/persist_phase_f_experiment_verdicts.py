@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Persist Phase F F0+F1 artifacts (main_rally snapshot + B0 verdict).
+"""Persist Phase F F0+F1+F2 artifacts (main_rally snapshot + B0/B1 verdicts).
 
 Writes:
   data/lineage/main_rally_dataset_snapshot/snapshot.json  (F0, if missing or --freeze)
-  data/lineage/phase_f_experiment_verdicts/{b0.json,manifest.json}
+  data/lineage/phase_f_experiment_verdicts/{b0.json,b1.json,manifest.json}
+
+B1 = B0 + Tier1 stock-state FeatureBlock (same snapshot/folds/costs/paper as
+B0). B1 claimable=true requires accept edge gates AND a strict holdout
+return lift vs B0 (REQUIRE_HOLDOUT_LIFT_VS_B0) — never a fake improve.
 
 Does not loosen gates, promote StrategyRelease, rebuild GT, or flip cutover.
 
@@ -25,6 +29,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from services.main_rally_b0 import run_b0_scaffold  # noqa: E402
+from services.main_rally_b1 import run_b1_scaffold  # noqa: E402
 from services.main_rally_dataset_snapshot import (  # noqa: E402
     MAIN_RALLY_SNAPSHOT_RELPATH,
     default_snapshot_path,
@@ -36,7 +41,7 @@ REPO = Path(__file__).resolve().parents[2]
 OUT_DIR_REL = "data/lineage/phase_f_experiment_verdicts"
 OUT_DIR = REPO / OUT_DIR_REL
 MANIFEST_NAME = "manifest.json"
-BLOCKS = ("b0",)
+BLOCKS = ("b0", "b1")
 
 
 def _sha256_file(path: Path) -> str:
@@ -58,9 +63,19 @@ def _metrics_summary(details: dict[str, Any]) -> dict[str, Any]:
         "holdout_metrics": h if isinstance(h, dict) else h,
         "accept_edge_gates": edge if isinstance(edge, dict) else edge,
     }
-    cov = details.get("setup_coverage") or details.get("bare_k_coverage")
+    cov = (
+        details.get("setup_coverage")
+        or details.get("bare_k_coverage")
+        or details.get("stock_state_coverage")
+    )
     if cov is not None:
         out["coverage"] = cov
+    stability = details.get("holdout_lift_stability")
+    if stability is not None:
+        out["holdout_lift_stability"] = stability
+    delta = details.get("delta_b1_minus_b0")
+    if delta is not None:
+        out["delta_b1_minus_b0"] = delta
     return out
 
 
@@ -117,7 +132,7 @@ def persist(*, force: bool = False, freeze: bool = False) -> dict[str, Any]:
     if (
         not force
         and manifest_path.is_file()
-        and (OUT_DIR / "b0.json").is_file()
+        and all((OUT_DIR / f"{b}.json").is_file() for b in BLOCKS)
     ):
         existing = json.loads(manifest_path.read_text(encoding="utf-8"))
         if existing.get("snapshot_hash") == snapshot_hash:
@@ -130,8 +145,10 @@ def persist(*, force: bool = False, freeze: bool = False) -> dict[str, Any]:
 
     print("[persist] running F1 main_rally B0 measured scaffold…", file=sys.stderr)
     b0_run, b0_verdict = run_b0_scaffold(snapshot=snapshot)
+    print("[persist] running F2 main_rally B1 stock-state measured scaffold…", file=sys.stderr)
+    b1_run, b1_verdict = run_b1_scaffold(snapshot=snapshot, b0_run=b0_run)
 
-    pairs = {"b0": (b0_run, b0_verdict)}
+    pairs = {"b0": (b0_run, b0_verdict), "b1": (b1_run, b1_verdict)}
     block_rels: dict[str, str] = {}
     ladder: list[dict[str, Any]] = []
     for name, (run, verdict) in pairs.items():
@@ -196,7 +213,7 @@ def persist(*, force: bool = False, freeze: bool = False) -> dict[str, Any]:
         "snapshot_scope": snapshot_scope,
         "phase_f_ablation": phase_f_ablation,
         "strategy_package": "main_rally_v1",
-        "slices_complete": ["F0", "F1"],
+        "slices_complete": ["F0", "F1", "F2"],
         "window": {
             "label": f"bounded_{n_days}d_nominal_k_setup_entry",
             "start": window_start,
@@ -213,6 +230,10 @@ def persist(*, force: bool = False, freeze: bool = False) -> dict[str, Any]:
             "accept_edge_gates": True,
             "claimable_protocol": bool(wf.get("claimable_protocol")),
             "signal": "rally_setup_pivot_confirmed_base_days",
+            "b1_feature_block": getattr(
+                b1_run.feature_block, "block_id", None
+            ),
+            "require_holdout_lift_vs_b0": True,
         },
         "overall": {
             "status": overall_status,
@@ -220,9 +241,12 @@ def persist(*, force: bool = False, freeze: bool = False) -> dict[str, Any]:
             "strategy_release": False,
             "cutover_unchanged": True,
             "note": (
-                "F0+F1 setup-entry short-horizon ablation on accepted nominal "
-                "window; reject/inconclusive claimable=false is an honest "
-                "deliverable. Full-episode deferred. No Optuna / StrategyRelease."
+                "F0+F1+F2 setup-entry short-horizon ablation (B0 bare setup, "
+                "B1 + Tier1 stock state) on accepted nominal window; "
+                "reject/inconclusive claimable=false is an honest deliverable. "
+                "B1 accept requires accept edge gates AND strict holdout lift "
+                "vs B0 (REQUIRE_HOLDOUT_LIFT_VS_B0). Full-episode deferred. "
+                "No Optuna / StrategyRelease."
             ),
         },
         "ladder": ladder,

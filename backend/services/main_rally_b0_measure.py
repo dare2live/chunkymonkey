@@ -18,6 +18,7 @@ from services.institution_follow_b0_measure import (
     MeasuredB0Result,
     REASON_PAPER_MEASURED,
     REASON_SHORT_WINDOW,
+    WalkForwardPlan,
     evaluate_claimable,
     plan_walk_forward,
 )
@@ -205,8 +206,16 @@ def measure_main_rally_b0_paper(
     prereg: B0Prereg | None = None,
     st_codes: Sequence[str] | None = None,
     thresholds: Mapping[str, Any] | None = None,
+    walk_forward: WalkForwardPlan | None = None,
+    eligible_by_day: Mapping[str, Any] | None = None,
 ) -> MeasuredB0Result:
-    """Purged WF + paper fills restricted to pivot-confirmed setup eligibles."""
+    """Purged WF + paper fills restricted to pivot-confirmed setup eligibles.
+
+    ``walk_forward`` lets a downstream block (e.g. B1) reuse the identical
+    folds/holdout as a prior measured run. ``eligible_by_day`` lets a
+    downstream block further condition B0's setup eligibles (e.g. intersect
+    with Tier1 stock state) without re-deriving folds/costs.
+    """
 
     cfg = prereg or default_main_rally_b0_prereg()
     days = (
@@ -214,8 +223,12 @@ def measure_main_rally_b0_paper(
         if trading_days is not None
         else sorted({_norm_day(d) for d in bars_by_day})
     )
-    plan = plan_walk_forward(days, prereg=cfg)
-    eligible = eligible_codes_by_signal_day(bars_by_day, thresholds=thresholds)
+    plan = walk_forward or plan_walk_forward(days, prereg=cfg)
+    eligible = (
+        {str(k): set(v) for k, v in eligible_by_day.items()}
+        if eligible_by_day is not None
+        else eligible_codes_by_signal_day(bars_by_day, thresholds=thresholds)
+    )
     fills = simulate_paper_fills(
         bars_by_day,
         plan,
@@ -250,6 +263,7 @@ def measure_main_rally_b0_paper(
 
 __all__ = [
     "SetupSignal",
+    "WalkForwardPlan",
     "default_main_rally_b0_prereg",
     "detect_setup_signals",
     "eligible_codes_by_signal_day",

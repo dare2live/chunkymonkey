@@ -2,7 +2,7 @@
   "block": "b0",
   "blocked": true,
   "claimable": false,
-  "experiment_id": "main_rally_v1:B0:main_rally_bounded_20260116_20260720_n121_gtv2_20260702:3ce57845e2aa",
+  "experiment_id": "main_rally_v1:B0:main_rally_bounded_20260116_20260720_n121_gtv2_20260702:226120efafd0",
   "kind": "phase_f_experiment_verdict",
   "metrics_summary": {
     "accept_edge_gates": {
@@ -152,7 +152,7 @@
       ],
       "details": {
         "full_episode_not_attempted": true,
-        "measured_at": "2026-07-20T13:39:01.579800+00:00",
+        "measured_at": "2026-07-20T13:54:37.080908+00:00",
         "measurement_kind": "setup_entry_short_horizon",
         "min_required_nominal_days": 5
       },
@@ -3205,7 +3205,7 @@
         ],
         "details": {
           "full_episode_not_attempted": true,
-          "measured_at": "2026-07-20T13:39:01.579800+00:00",
+          "measured_at": "2026-07-20T13:54:37.080908+00:00",
           "measurement_kind": "setup_entry_short_horizon",
           "min_required_nominal_days": 5
         },
@@ -3218,7 +3218,7 @@
     "block": "B0",
     "cutover_allowed": true,
     "data_end_date": "20250531",
-    "experiment_id": "main_rally_v1:B0:main_rally_bounded_20260116_20260720_n121_gtv2_20260702:3ce57845e2aa",
+    "experiment_id": "main_rally_v1:B0:main_rally_bounded_20260116_20260720_n121_gtv2_20260702:226120efafd0",
     "holdout": {
       "holdout_start": "20250601",
       "status": "exercised",
@@ -6193,7 +6193,7 @@
       ],
       "details": {
         "full_episode_not_attempted": true,
-        "measured_at": "2026-07-20T13:39:01.579800+00:00",
+        "measured_at": "2026-07-20T13:54:37.080908+00:00",
         "measurement_kind": "setup_entry_short_horizon",
         "min_required_nominal_days": 5
       },
@@ -6366,7 +6366,7 @@
         ],
         "details": {
           "full_episode_not_attempted": true,
-          "measured_at": "2026-07-20T13:39:01.579800+00:00",
+          "measured_at": "2026-07-20T13:54:37.080908+00:00",
           "measurement_kind": "setup_entry_short_horizon",
           "min_required_nominal_days": 5
         },
@@ -6587,7 +6587,7 @@
         ],
         "details": {
           "full_episode_not_attempted": true,
-          "measured_at": "2026-07-20T13:39:01.579800+00:00",
+          "measured_at": "2026-07-20T13:54:37.080908+00:00",
           "measurement_kind": "setup_entry_short_horizon",
           "min_required_nominal_days": 5
         },
@@ -7006,7 +7006,7 @@
         ]
       }
     },
-    "experiment_id": "main_rally_v1:B0:main_rally_bounded_20260116_20260720_n121_gtv2_20260702:3ce57845e2aa",
+    "experiment_id": "main_rally_v1:B0:main_rally_bounded_20260116_20260720_n121_gtv2_20260702:226120efafd0",
     "reason": "measured_protocol_ready_edge_gates_unmet",
     "verdict": "reject"
   }

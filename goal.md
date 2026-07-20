@@ -1,7 +1,7 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-20（Phase F F0+F1 main_rally B0）
+> 更新：2026-07-20（Phase F F2 main_rally B1 +stock state）
 > 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改）。
 > 完成证据追加到 `analysis/project_state_ledger.md`。
 > **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
@@ -17,12 +17,13 @@
 - Delivery-OS：eng_gov **§15**（并行 subagent、异步 CI、L1 docs skip CI）
 - Tier1 accept **form enrich v1**：`stock_state_stage_pattern_v1` + exact-day `fact_stock_form_daily`；re-accept `20260717` (4989) + `20260720` (4991)；cutover yaml 未回翻
 - Phase F **F0+F1 FIXED**：`main_rally_v1` DatasetSnapshot freeze + B0 setup-entry short-horizon measured → `reject` / `claimable=false`（非 full-episode；禁 Optuna / StrategyRelease）
+- Phase F **F2 FIXED**：B1 = B0 + Tier1 stock-state FeatureBlock（同 B0 snapshot/folds/costs/paper，经 `resolve_tier12_production_read`/`load_stock_state_by_day`）→ 同窗口 measured **`reject`** / **`claimable=false`**（edge gates unmet；holdout vs B0 无 strict lift，`REQUIRE_HOLDOUT_LIFT_VS_B0` 生效）。F2 非 green，暂停 F3 B2（无绿可叠加）。
 
 启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。
 
 ## 下一步（给下一账号优先）
 
-1. **A→H 下一业务刀**：F2/F3 `main_rally` B1(+stock state) → B2(+market sensing) on same snapshot/folds/costs；或 E 在更长窗/新 accept 上复测（勿松门）
+1. **A→H 下一业务刀**：F3 `main_rally` B2(+market sensing) on same snapshot/folds/costs（B1 reject 后仍可尝试独立 ablation，非叠加 B1）；或重新评估更长窗/新 accept 上复测（勿松门）
 2. Accept Tier1/2 for days after `20260720` when builders/calendar allow
 3. Dual-track 退役残余：补查任何仍绕过 resolver 的旁路（见 `data/lineage/legacy_retire_notes.md`）
 4. Agent-OS WP6：影子期满检查单后再删旧 boot 仪式（owner-gated）
