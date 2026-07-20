@@ -1354,3 +1354,37 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   ≠ Phase C complete.
 - **Next**: full-universe Tier1/2 accept **or** next eligible daily
   single-day (≥18:00 CST for `20260720`) **or** stop.
+
+### 2026-07-20 — Phase C full-universe Tier1/2 accept (live)
+
+- Scope TDD first (`115b21ac`): `publish_scope=canary|project_universe`,
+  `tier12_project_universe` loader from
+  `resolve_traded_on_observation_date`, coverage parity gate, cutover
+  detector recognizes non-canary notes/`publish_scope` while canary
+  notes still win; CI green.
+- Live run `persist_tier12_full_universe_accept.py --decision-date
+  20260717` (wall-clock ~10:33 CST; daily `20260720` still ineligible):
+  - membership size=`4989` (`project_universe_pit` /
+    `traded_on_observation_date`; excluded_st=209, excluded_board=324
+    at resolve time)
+  - written/accepted stock_row_count=`4989`; coverage_excluded_count=`0`
+  - status=`ACCEPTED` / published=true / accept-side
+    cutover_allowed=false / publish_scope=`project_universe`
+  - content_hash=
+    `5c4673893b854a467d0156f39e5b20fad61e106fbbfe413237e7eb4f68c03c8f`
+  - stock config_hash=
+    `6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c`
+  - market breadth on same inputs: adv=386 / dec=4571 / flat=32 /
+    skipped_off_board=0 / trust=READY / b_pit_cutover_allowed=false
+  - artifacts:
+    `data/lineage/tier12_publish_batches/{batch,accepted,coverage_full_universe,full_universe_accept}_20260717.json`
+    (prior canary smoke retained as contrast)
+- Default `consumer_cutover.cutover_allowed=false` → resolver
+  `LEGACY` / `config_cutover_allowed_false` even with full-universe
+  accept present. No production consumers wired; yaml not flipped.
+- **Did not**: claim Phase C complete; StrategyRelease; Optuna; E gate
+  loosen; B-pit mart cutover; margin thaw; mass backfill; daily
+  `20260720` sync (needs ≥18:00 CST). Continuity still BLOCKED
+  (honest; code/accept ≠ Tier0 READY).
+- **Next**: next eligible daily single-day **or** wire production
+  readers behind resolver with cutover still false **or** stop.
