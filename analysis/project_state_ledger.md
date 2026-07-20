@@ -1245,3 +1245,27 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Did not**: DB schema migration, accepted_partition writer, consumer
   cutover, B-pit mart switch, claim Phase C publish-complete.
 - **Next**: wire writer + PIT truncation proof, or stop.
+
+### 2026-07-20 — Phase C writer + PIT truncation proof (TDD)
+
+- Added `backend/services/tier12_publish_writer.py` + typed
+  `backend/config/tier12_publish.yaml` + TDD
+  `test_tier12_publish_writer.py` (6/6; contract 6/6 → 12/12):
+  - `TimedInput` requires `available_at`; blank → fail closed.
+  - `pit_truncate_inputs`: drop `available_at` calendar day > decision
+    date D (and trade_date > D).
+  - PIT invariance: adding future-available bars that would flip trend /
+    breadth yields **0 field diff** on D outputs; `pit_excluded_count`
+    matches future count.
+  - Writer stamps `definition_version` / `config_hash` /
+    `input_snapshot_id` / `eligible_universe_id` / `available_at`;
+    attest → `PUBLISHABLE_SCAFFOLD` with `published=false`.
+  - Status always `WRITTEN_UNPUBLISHED`; config `allow_published=true`
+    is ignored (`allow_published_ignored_hard_gate`).
+- Live check: daily eligible frontier still `20260717`
+  (`canonical_nominal_ohlcv_daily` max=`2026-07-17`; raw daily max
+  `20260716`); **no** `20260720` sync this slice.
+- **Did not**: accepted_partition, consumer cutover, B-pit mart switch,
+  Optuna, E gate loosen, StrategyRelease, claim publish-complete.
+- **Next**: live nominal bars → writer smoke **or** next eligible daily
+  single-day sync **or** stop.

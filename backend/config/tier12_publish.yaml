@@ -1,0 +1,42 @@
+# tier12_publish.yaml — Phase C Tier1/2 publish writer typed policy
+#
+# Owner: docs/MASTER_TOPLEVEL_DESIGN.md §7–8 + docs/strategy_validation_contract.md §4
+# Scope: lineage-bearing StockStateDaily / MarketContextPublishEnvelope emission
+#        with PIT truncation (available_at <= decision_date).
+# Hard gates:
+#   - allow_published stays false until accepted_partition path exists
+#   - missing lineage / missing available_at fail closed
+#   - not StrategyRelease; not B-pit mart cutover; not Optuna
+
+meta:
+  version: 1
+  phase: C
+  notes: "writer emits WRITTEN_UNPUBLISHED only; published=false always"
+
+stock_state:
+  definition_version: stock_state_stage_pattern_v0
+  eligible_universe_id: traded_on_observation_date:v1
+  axes: [trend]
+  # Minimal deterministic trend from PIT-truncated closes (scaffold writer;
+  # full technical_states classify remains the form table path).
+  trend_lookback_bars: 5
+  availability_policy:
+    axis: available_at
+    rule: calendar_date_le_decision_date
+    at: eod
+
+market_context:
+  definition_version: market_sensing_project_breadth_v0
+  eligible_universe_id: project_board_prefixes:v1
+  method: board_filtered_nominal_breadth
+  min_adv_dec_ratio: 1.0
+  board_prefixes: ["60", "00", "30", "68"]
+  availability_policy:
+    axis: available_at
+    rule: calendar_date_le_decision_date
+    at: eod
+
+publish:
+  # Scaffold/writer hard gate — flipping this must NOT publish.
+  allow_published: false
+  artifact_dir: data/lineage/tier12_publish_batches
