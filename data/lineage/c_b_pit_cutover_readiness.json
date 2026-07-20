@@ -1,0 +1,95 @@
+{
+  "cutover_allowed": false,
+  "cutover_flipped": false,
+  "evidence": {
+    "b_pit_shadow": {
+      "artifact": "data/lineage/b_pit_breadth_shadow/summary.json",
+      "artifact_cutover_allowed": false,
+      "day_count": 120,
+      "diverge_day_count": 0,
+      "frontier_day": "20260717",
+      "manifest_day_count": 120,
+      "manifest_match_count": 120,
+      "match_baseline_kind": "membership_restricted_proxy",
+      "match_day_count": 120,
+      "ratios_match_all": true,
+      "window_end": "20260717",
+      "window_start": "20260116"
+    },
+    "consumer_wires_present": {
+      "b_pit_b2": "backend/services/institution_follow_b2.py",
+      "b_pit_pulse": "backend/services/market_pulse_b_pit_read.py",
+      "b_pit_router": "backend/routers/market_pulse.py#b_pit_mart_production_read",
+      "tier12_b1": "backend/services/institution_follow_b1_measure.py#load_stock_state_by_day",
+      "tier12_pulse": "backend/services/market_pulse_tier12_read.py",
+      "tier12_router": "backend/routers/market_pulse.py#/api/v3/pulse/sentiment"
+    },
+    "resolvers_default_yaml": {
+      "b_pit_mart_production_read": {
+        "cutover_allowed": false,
+        "reasons": [
+          "config_cutover_allowed_false"
+        ],
+        "source": "legacy_mart",
+        "status": "LEGACY",
+        "trade_date": "20260717"
+      },
+      "pulse_tier12_attest": {
+        "cutover_allowed": false,
+        "reasons": [
+          "config_cutover_allowed_false"
+        ],
+        "status": "LEGACY",
+        "uses_legacy": true
+      },
+      "tier12_production_read": {
+        "accepted_payload_is_none": true,
+        "cutover_allowed": false,
+        "decision_date": "20260717",
+        "reasons": [
+          "config_cutover_allowed_false"
+        ],
+        "source": "legacy_scaffold",
+        "status": "LEGACY"
+      }
+    },
+    "tier12_full_universe_accept": {
+      "accept_cutover_allowed": false,
+      "artifact": "data/lineage/tier12_publish_batches/full_universe_accept_20260717.json",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "consumer_cutover_default_status": "LEGACY",
+      "content_hash": "5c4673893b854a467d0156f39e5b20fad61e106fbbfe413237e7eb4f68c03c8f",
+      "decision_date": "20260717",
+      "publish_scope": "project_universe",
+      "published": true,
+      "status": "ACCEPTED",
+      "stock_row_count": 4989,
+      "universe_membership_size": 4989
+    },
+    "yaml_gates": {
+      "b_pit_mart_cutover.yaml#mart_cutover.cutover_allowed": false,
+      "tier12_publish.yaml#consumer_cutover.cutover_allowed": false
+    }
+  },
+  "generated_at": "2026-07-20T11:52:30Z",
+  "kind": "c_b_pit_cutover_readiness_attestation",
+  "not_claims": [
+    "not_cutover",
+    "not_strategy_release",
+    "not_optuna",
+    "not_e_gate_loosen",
+    "match_or_accept_alone_insufficient"
+  ],
+  "observed_at_head": "d4cc33d0",
+  "owner_opt_in_requires": [
+    "explicit yaml cutover_allowed=true (separate owner action)",
+    "B-pit: shadow MATCH + hashes/window already filled; still needs yaml flip",
+    "C: full-universe accept + expected_config_hash already filled; still needs yaml flip"
+  ],
+  "phase_d_status": "FIXED",
+  "residual_non_blockers": [
+    "daily 20260720 provider zero_rows (accepted frontier still 20260717) — does not block opt-in readiness on canary window",
+    "continuity live readiness may remain BLOCKED/DEGRADED — code/accept ≠ Tier0 READY"
+  ],
+  "verdict": "READY_FOR_OWNER_OPT_IN"
+}
