@@ -3,7 +3,8 @@
 Transport strangler surfaces (independent):
 - :func:`capture_and_land_authorized_nominal_ohlcv_partition` — S1 land-only
 - :func:`accept_nominal_ohlcv_from_landing` — S2 accept-from-landing (zero fetch)
-- :func:`capture_and_publish_authorized_nominal_ohlcv_partition` — legacy fused path
+- :func:`capture_and_publish_authorized_nominal_ohlcv_partition` — deprecated fused
+  helper retained for unit tests only (production sync is caller-only S1→S2)
 
 It never writes ``raw_tushare_daily``.
 """
@@ -111,9 +112,10 @@ def capture_and_publish_authorized_nominal_ohlcv_partition(
     observed_at: datetime | None = None,
     bootstrap: bool = True,
 ) -> NominalOhlcvAcceptanceOutcome:
-    """Authorized fused path: fetch → land → accept one trade_date.
+    """Deprecated fused path: fetch → land → accept one trade_date.
 
-    Prefer S1+S2 composition for new callers; kept for sync_runner until S3.
+    Production sync must call S1 then S2 (or ``land_then_accept_*``). Kept for
+    unit-test fixtures that exercise the fused helper directly.
     """
 
     batch = capture_and_land_authorized_nominal_ohlcv_partition(

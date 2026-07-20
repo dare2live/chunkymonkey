@@ -4,10 +4,11 @@ This is the only sync-facing entry for publishing one SSE calendar generation.
 It never writes ``raw_tushare_trade_cal`` or ``dim_trading_calendar``.  Dim remains
 an open-day serve projection and is not accepted truth.
 
-Authorized manual sync (``execution_policy.mode=enabled``) captures provider
-fragments through :func:`capture_and_publish_authorized_calendar_generation`.
-Tests may still publish already-captured fragments via
-:func:`publish_accepted_calendar_generation`.
+Authorized manual sync (``execution_policy.mode=enabled``) is caller-only
+S1→S2 (``capture_and_land_*`` then ``accept_calendar_from_landing``).
+:func:`capture_and_publish_authorized_calendar_generation` is a deprecated fused
+helper retained for unit tests only. Tests may also publish already-captured
+fragments via :func:`publish_accepted_calendar_generation`.
 """
 from __future__ import annotations
 
@@ -279,7 +280,10 @@ def capture_and_publish_authorized_calendar_generation(
     observed_at: datetime | None = None,
     bootstrap: bool = True,
 ) -> CalendarAcceptanceOutcome:
-    """Authorized fused path: fetch → land → accept one generation."""
+    """Deprecated fused path: fetch → land → accept one generation.
+
+    Production sync must call S1 then S2. Kept for unit-test fixtures.
+    """
 
     batch = capture_and_land_authorized_calendar_generation(
         conn,

@@ -6,7 +6,8 @@ Strangler surfaces (caller-only composition; not a second dragon):
 - ``land_then_accept_*`` = S1 then S2 in the caller
 - local legacy-raw materializer = explicit acquire→landing with lineage
 
-Does not own sync_runner fused path; S3 will make sync call these instead.
+Production ``sync_runner`` default path calls :func:`land_then_accept_authorized_security_day`
+(caller-only). Deprecated fused ``capture_and_publish_*`` helpers remain test-only.
 """
 from __future__ import annotations
 

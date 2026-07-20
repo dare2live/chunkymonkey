@@ -327,3 +327,12 @@ Live 焊点（evidence pack §2.7 复核）：
 - S1/S2 运营入口已落地（见 `goal.md` + modularity gap §8 + ledger）；live
   local-raw proof 扩 accepted daily/ST min→`20260115`。
 - **S3 仍为近端唯一 blocking residual**（default sync fused）。
+
+### Amend 2026-07-21 — S3 caller-only sync FIXED
+
+- Default `run_domain` daily/stock_st/trade_cal = S1→S2 composition
+  (`land_then_accept_authorized_security_day` / calendar land+accept)。
+- `capture_and_publish_*` 降为 test-only helpers；`moth coupling --impact
+  capture_and_publish` 生产代码 fan-in **不含** `sync_runner.py`。
+- TDD：`test_s3_default_*_is_caller_only_not_fused` + source ban。
+- Residual：chunked local-raw 扩窗；S4–S6；S7 legacy raw 面；E0。

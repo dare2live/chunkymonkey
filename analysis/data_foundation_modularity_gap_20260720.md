@@ -127,15 +127,15 @@ chunkyctl sync / daily_update → sync_runner.run_domain(daily|stock_st)
 
 ## 8. Label
 
-**PARTIAL**（2026-07-21）— S1 land-only + S2 accept-from-landing **运营入口已 shipped**（CLI + runtime + TDD）；S3 caller-only sync **仍 NOT SHIPPED**（default sync 仍走 `capture_and_publish_*`）。
+**FIXED**（2026-07-21）— S1–S3 transport strangler **运营路径 shipped**（CLI + default sync caller-only + TDD + moth）。
 
 | 切片 | 状态 | 证据 |
 |---|---|---|
 | S1 | **FIXED** | `capture_and_land_*`；`--land-only`；红测不写 canonical |
 | S2 | **FIXED** | `accept_*_from_landing`；`--accept-from-landing`；零 `_adapter`/auth |
 | local-raw acquire→landing | **FIXED** | `--from-local-raw` + `materialize_security_day_landing_from_legacy_raw_rows`；live `20260115` |
-| thin land→accept | **FIXED**（可选路径） | `--land-then-accept` / `land_then_accept_authorized_security_day` |
-| S3 sync caller-only | **NOT SHIPPED** | default `run_domain` 仍 fused |
+| thin land→accept | **FIXED** | `--land-then-accept` / `land_then_accept_authorized_security_day` |
+| S3 sync caller-only | **FIXED** | default `_publish_*` → land→accept；`sync_runner` 无 `capture_and_publish_*`；moth fan-in = runtime defs + tests only |
 
-Residual owner：S3（再 S4–S6）。
-Next verification：moth 证 `capture_and_publish_*` 非 sync 生产 fan-in；parity 测 fused vs S1→S2。
+Residual owner：S4–S6 按需；S7 legacy `raw_tushare_*`；chunked backward local-raw 扩窗（≤40d）。
+Next verification：chunked expand accepted min toward `2025`/holdout；S4 adapter swap.

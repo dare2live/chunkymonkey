@@ -2337,3 +2337,21 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Residual**：S3 — default `run_domain` 仍 fused `capture_and_publish_*`；chunked
   backward local-raw windows（≤40d）可继续扩 accepted 但不在本刀一次扫完。
 - **Status**: **PARTIAL**（S1+S2 FIXED；S3 NOT SHIPPED）。
+
+### 2026-07-21 — Transport strangler S3 caller-only sync (FIXED)
+
+- Wall-clock: Tue 2026-07-21 ~07:40 Asia/Shanghai (in-session).
+- **S3 FIXED**：default `_publish_security_day_accepted_partition` /
+  `_publish_trade_cal_accepted_generation` = caller-only S1→S2
+  (`land_then_accept_authorized_security_day` / calendar land+accept)；返回
+  `transport=land_then_accept`。
+- **Fused path demoted**：`capture_and_publish_*` docstring = test-only；
+  `sync_runner.py` 零 `capture_and_publish_authorized_*` 引用。
+- **Evidence**：TDD `test_s3_default_*_is_caller_only_not_fused` + source ban；
+  `moth coupling --impact capture_and_publish` 生产 `.py` fan-in = runtime
+  定义文件 only（无 sync_runner）；codegraph callers of fused nominal = tests。
+- **Did not**：S4 adapter swap；mass dump；Optuna / StrategyRelease / cutover 翻；
+  第二 DB / plugin bus；`SELECT raw INSERT canonical`。
+- **Residual**：chunked `--land-then-accept --from-local-raw` 向后扩 accepted
+  （≤40d；prefer `2025`/holdout）；S4–S6；S7 legacy raw；E0。
+- **Status**: **FIXED**（S1–S3 transport）。

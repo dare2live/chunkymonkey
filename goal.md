@@ -1,7 +1,7 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-21（**S1+S2 PARTIAL shipped**；S3 residual；accepted daily/ST 扩至 `20260115`）
+> 更新：2026-07-21（**S1–S3 transport FIXED**；accepted daily/ST 扩窗进行中；min=`20260115`）
 > 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改）。
 > 完成证据追加到 `analysis/project_state_ledger.md`。
 > **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
@@ -12,7 +12,7 @@
 
 ## 当前 objective
 
-**轨道 = transport strangler S1–S3**（owner 2026-07-20 第一原理重评）。模块化诉求（acquire≠accept≠derive≠serve；sync=caller-only）**VALID 但未 shipped**——见重评文 §2–§3。A→H 骨架保留为**后置研究地图**；近端主线不是 E/F remeasure。Agent-OS WP0–WP4 已闭合；WP6 仪式影子期仍开放。
+**轨道 = transport strangler S1–S3**（owner 2026-07-20 第一原理重评）。模块化诉求（acquire≠accept≠derive≠serve；sync=caller-only）**S1–S3 FIXED**——见重评文 §2–§3 / modularity gap §8。A→H 骨架保留为**后置研究地图**；近端可开 S4–S6 按需 + chunked local-raw 扩窗；不是 E/F remeasure。Agent-OS WP0–WP4 已闭合；WP6 仪式影子期仍开放。
 
 已落地硬事实（勿回滚）：
 - C + B-pit **`cutover_allowed=true`**（commit `b38e9ac5`）→ resolver `ACCEPTED_CUTOVER` / `MART_CUTOVER`
@@ -37,10 +37,9 @@
 顺序：**S1 → S2 → S3**（land-only / accept-from-landing / sync caller-only）→ **S4–S6 按需** → **R0 E0** → **R1 E/F 复测** → G/H；**H only after accept**。  
 旧 `forward_program_efgh` P1 remeasure **superseded**；P0 自然 sync 护栏仍并行。
 
-- **S1 land-only + S2 accept-from-landing（PARTIAL FIXED）**：CLI/runtime shipped — `--land-only` / `--accept-from-landing` / `--land-then-accept` + `--from-local-raw`；calendar runtime 同缝；TDD 16/16；live proof `20260115` local-raw→landing→accept 扩 accepted daily+ST 至 `20260115`→`20260720`（122d）。**default `chunkyctl sync` 仍 fused**（S3 residual）
-- **S3（当前 focus）**：`sync_runner` formal daily/ST/calendar = caller-only S1→S2；`capture_and_publish_*` 退出生产 fan-in（moth 可证）；legacy `raw_tushare_*` 并行面 **不在 S3 范围**
-- **S4–S6**：S3 绿后再开；换源/派生/serve 巩固
-- **研究轨（后置）**：E0 披露 formal；E/F 同 protocol（窗扩可用 chunked local-raw≤40d，禁 mass dump）；不开 G/H/Release 抢跑
+- **S1–S3 transport FIXED**：default `chunkyctl sync` daily/stock_st/trade_cal = caller-only S1→S2（`land_then_accept` / land+accept）；`capture_and_publish_*` **非** sync 生产 fan-in（moth：仅 runtime 定义 + 单测）；CLI `--land-only` / `--accept-from-landing` / `--land-then-accept` + `--from-local-raw` 仍可用；TDD 含 S3 红→绿
+- **近端 focus**：chunked `--land-then-accept --from-local-raw`（≤40d）向后扩 accepted daily+ST（prefer holdout/`2025`）；**S4–S6 按需**；legacy `raw_tushare_*` 并行面 **不在 S3 范围**（S7）
+- **研究轨（后置）**：E0 披露 formal；E/F 同 protocol（窗扩后）；不开 G/H/Release 抢跑
 - **护栏**：frontier=`20260720`；dual-track=NONE；PIT+≤40d+禁 mass backfill/第二 DB/plugin bus
 
 A→H 降为地图；细节以重评文 §4、§9 为准。

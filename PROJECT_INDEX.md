@@ -22,7 +22,7 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；名义 K + ST accepted `20260115`→`20260720`（122d；`20260115` via local-raw→landing→accept）；**S1/S2 transport PARTIAL**：`--land-only` / `--accept-from-landing` / `--land-then-accept` + `--from-local-raw`；default sync 仍 fused 至 S3；manual sync `trigger_mode` 已拆；form/qfq/segments/pulse 分析面经 canonical∪raw 已追到 `20260720`（legacy raw daily 仍停 `20260716`，formal 不写 raw）；margin 仍 frozen；无 mass fetch / cutover |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；名义 K + ST accepted `20260115`→`20260720`（122d；可 chunked local-raw 续扩）；**S1–S3 transport FIXED**：default sync = caller-only land→accept；CLI `--land-only` / `--accept-from-landing` / `--land-then-accept` + `--from-local-raw`；fused `capture_and_publish_*` test-only；manual sync `trigger_mode` 已拆；form/qfq/segments/pulse 分析面经 canonical∪raw 已追到 `20260720`（legacy raw daily 仍停 `20260716`，formal 不写 raw）；margin 仍 frozen；无 mass fetch / cutover |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `technical_states/`, `segments.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `market_pulse_tier12_read.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py` | 多轴状态可复用；C accept 分 `publish_scope=canary|project_universe`；`resolve_tier12_production_read` + B1/pulse 接线；**cutover yaml=true** → ACCEPTED_CUTOVER；**form enrich v1**（`stock_state_stage_pattern_v1`，exact-day `fact_stock_form_daily` → `form_name`/`axis_pos`；writer `axis_trend` 不覆盖）；re-accept `20260717`=4989 + `20260720`=4991；无 accept 日仍 fail-closed→LEGACY/`fact_stock_form_daily`；persist 可在 cutover-ON 下重跑（不回翻 yaml） |
 | T2 market sensing | `market_pulse.py`, `market_pulse_tier12_read.py`, `market_pulse_b_pit_read.py`, `b_pit_mart_cutover.py`, `project_universe_breadth.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py`, API/frontend | 展示可用但 breadth/margin UNTRUSTED（B-ext）；sentiment 旁路 `tier12_production_read` + `b_pit_mart_production_read`；B-pit shadow MATCH 120/120；**mart cutover=true（owner opt-in 2026-07-20）→ MART_CUTOVER（project_universe_pit）**；C envelope 可 project_universe scope；窗外/无 shadow 日仍 fail-closed→legacy；drill form 单轨 production-read（无 legacy JOIN+accepted 双写） |
@@ -126,16 +126,17 @@ availability 或 consumer 语义。现有 `dim_trading_calendar` 是 open-day se
 
 calendar 按 `calendar_contract.py`、`calendar_schema.py`、`calendar_landing.py`、
 `calendar_acceptance.py`、`calendar_reader.py`、`calendar_runtime.py` 分责；A2 发表入口是
-`publish_accepted_calendar_generation` / authorized
-`capture_and_publish_authorized_calendar_generation`；另有 S1/S2
-`capture_and_land_authorized_calendar_generation` /
-`accept_calendar_from_landing`。名义 K/ST 按
+`publish_accepted_calendar_generation`；生产 sync = S1
+`capture_and_land_authorized_calendar_generation` → S2
+`accept_calendar_from_landing`（caller-only）；fused
+`capture_and_publish_authorized_calendar_generation` **test-only**。名义 K/ST 按
 `nominal_ohlcv_*` / `stock_st_*` + 共享 `security_day_partition.py` /
 `security_day_capture.py` + 薄编排 `security_day_transport.py` 分责；
-S1 `capture_and_land_authorized_*` / S2 `accept_*_from_landing` 可独立调用；
-fused `capture_and_publish_authorized_*_partition` 仍为 default sync 生产 fan-in
-（S3 前）。CLI：`chunkyctl sync --domain daily|stock_st --land-only|--accept-from-landing|--land-then-accept`
-（可选 `--from-local-raw`；accept 路径跳过 provider auth）。
+default sync → `land_then_accept_authorized_security_day`；fused
+`capture_and_publish_authorized_*_partition` **test-only**。CLI：
+`chunkyctl sync --domain daily|stock_st`（default land→accept）以及
+`--land-only|--accept-from-landing|--land-then-accept`（可选 `--from-local-raw`；
+accept 路径跳过 provider auth）。
 `observation_population.py` 的 default
 readiness 经 `resolve_eligible_observation_date`（accepted calendar ∩ K/ST
 `availability_policy`）评 frontier，不索要周末/节假 calendar-today 分区。

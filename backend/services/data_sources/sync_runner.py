@@ -1649,12 +1649,13 @@ def _calendar_days(start: str, end: str) -> list[str]:
 
 
 def _publish_trade_cal_accepted_generation(spec: dict[str, Any]) -> dict[str, Any]:
-    """Fetch one provider generation and publish accepted calendar truth."""
+    """Caller-only S1→S2: land calendar generation, then accept (no fused publish)."""
 
     from services.data_sources.calendar_contract import calendar_contract_for_spec
     from services.data_sources.calendar_runtime import (
         CalendarRuntimeError,
-        capture_and_publish_authorized_calendar_generation,
+        accept_calendar_from_landing,
+        capture_and_land_authorized_calendar_generation,
     )
 
     contract = calendar_contract_for_spec(spec)
@@ -1670,11 +1671,14 @@ def _publish_trade_cal_accepted_generation(spec: dict[str, Any]) -> dict[str, An
     conn = _target_conn(spec)
     try:
         try:
-            outcome = capture_and_publish_authorized_calendar_generation(
+            batch = capture_and_land_authorized_calendar_generation(
                 conn,
                 contract,
                 fetch_page=_fetch_page,
                 bootstrap=True,
+            )
+            outcome = accept_calendar_from_landing(
+                conn, str(batch.batch_id), contract, bootstrap=False
             )
         except (CalendarRuntimeError, CalendarAcceptanceError, CalendarSchemaError) as exc:
             return {
@@ -1684,6 +1688,7 @@ def _publish_trade_cal_accepted_generation(spec: dict[str, Any]) -> dict[str, An
                 "rows": 0,
                 "failed_batches": 1,
                 "error": str(exc)[:500],
+                "transport": "land_then_accept",
             }
     finally:
         conn.close()
@@ -1700,6 +1705,7 @@ def _publish_trade_cal_accepted_generation(spec: dict[str, Any]) -> dict[str, An
         "content_hash": outcome.content_hash,
         "rejection_code": outcome.rejection_code,
         "publication": "accepted_calendar_generation",
+        "transport": "land_then_accept",
     }
 
 
@@ -1860,9 +1866,12 @@ def _publish_security_day_accepted_partition(
     trade_date: str,
     trigger_mode: TriggerMode | str = "manual",
 ) -> dict[str, Any]:
-    """Fetch one trade_date and publish accepted nominal OHLCV or ST truth."""
+    """Caller-only S1→S2: land then accept one trade_date (no fused publish)."""
 
     from services.data_sources.security_day_partition import SecurityDayError
+    from services.data_sources.security_day_transport import (
+        land_then_accept_authorized_security_day,
+    )
 
     eligibility = eligible_end_date(spec, trigger_mode=trigger_mode)
     operation_window = resolve_operation_window(
@@ -1885,28 +1894,26 @@ def _publish_security_day_accepted_partition(
         from services.data_sources.nominal_ohlcv_contract import (
             nominal_ohlcv_contract_for_spec,
         )
-        from services.data_sources.nominal_ohlcv_runtime import (
-            capture_and_publish_authorized_nominal_ohlcv_partition,
-        )
 
         publication = "accepted_nominal_ohlcv_partition"
-        publish = lambda conn: capture_and_publish_authorized_nominal_ohlcv_partition(
+        contract = nominal_ohlcv_contract_for_spec(spec)
+        publish = lambda conn: land_then_accept_authorized_security_day(
+            "daily",
             conn,
-            nominal_ohlcv_contract_for_spec(spec),
+            contract,
             trade_date=partition,
             fetch_rows=_fetch_rows,
             bootstrap=True,
         )
     elif domain == "stock_st":
         from services.data_sources.stock_st_contract import stock_st_contract_for_spec
-        from services.data_sources.stock_st_runtime import (
-            capture_and_publish_authorized_stock_st_partition,
-        )
 
         publication = "accepted_stock_st_partition"
-        publish = lambda conn: capture_and_publish_authorized_stock_st_partition(
+        contract = stock_st_contract_for_spec(spec)
+        publish = lambda conn: land_then_accept_authorized_security_day(
+            "stock_st",
             conn,
-            stock_st_contract_for_spec(spec),
+            contract,
             trade_date=partition,
             fetch_rows=_fetch_rows,
             bootstrap=True,
@@ -1933,6 +1940,7 @@ def _publish_security_day_accepted_partition(
                 "failed_batches": 1,
                 "error": str(exc)[:500],
                 "publication": publication,
+                "transport": "land_then_accept",
             }
     finally:
         conn.close()
@@ -1949,6 +1957,7 @@ def _publish_security_day_accepted_partition(
         "content_hash": outcome.content_hash,
         "rejection_code": outcome.rejection_code,
         "publication": publication,
+        "transport": "land_then_accept",
         "eligible_end": eligibility.eligible_end,
         "eligibility_reason": eligibility.reason,
     }

@@ -272,3 +272,166 @@ def test_sync_runner_accept_from_landing_skips_adapter(monkeypatch) -> None:
     # Shape-level: the accept helper must be importable without adapter.
     assert callable(sr.accept_security_day_from_landing_batch)
     assert adapter_calls == []
+
+
+def test_s3_default_security_day_publish_is_caller_only_not_fused(monkeypatch) -> None:
+    """S3: default sync land→accept composition; fused capture_and_publish is not fan-in."""
+
+    from types import SimpleNamespace
+
+    from services.data_sources import nominal_ohlcv_runtime as nr
+    from services.data_sources import security_day_transport as sdt
+    from services.data_sources import sync_runner as sr
+
+    fused_calls: list[str] = []
+
+    def boom_fused(*_a, **_k):
+        fused_calls.append("nominal")
+        raise AssertionError(
+            "capture_and_publish_* must not be production sync fan-in (S3)"
+        )
+
+    land_then_calls: list[dict] = []
+
+    def fake_land_then(
+        domain,
+        _conn,
+        _contract,
+        *,
+        trade_date,
+        fetch_rows,
+        observed_at=None,
+        bootstrap=True,
+    ):
+        rows = list(fetch_rows({"trade_date": trade_date}) or [])
+        land_then_calls.append(
+            {"domain": domain, "trade_date": trade_date, "rows": len(rows)}
+        )
+        return SimpleNamespace(
+            status="ACCEPTED",
+            row_count=len(rows),
+            batch_id=f"{domain}:{trade_date}:s3test",
+            partition_value=trade_date,
+            content_hash="s3hash",
+            rejection_code=None,
+        )
+
+    monkeypatch.setattr(
+        nr, "capture_and_publish_authorized_nominal_ohlcv_partition", boom_fused
+    )
+    monkeypatch.setattr(sdt, "land_then_accept_authorized_security_day", fake_land_then)
+    monkeypatch.setattr(
+        sr,
+        "eligible_end_date",
+        lambda _spec, trigger_mode="manual": SimpleNamespace(
+            eligible_end="20260717", reason="test"
+        ),
+    )
+    monkeypatch.setattr(
+        sr,
+        "resolve_operation_window",
+        lambda _elig, requested_start, requested_end: SimpleNamespace(
+            effective_end=requested_end
+        ),
+    )
+    monkeypatch.setattr(sr, "apply_fetch_socket_timeout", lambda _spec: None)
+    monkeypatch.setattr(sr, "_adapter", lambda _source: object())
+    monkeypatch.setattr(
+        sr,
+        "_fetch_with_retry",
+        lambda _adapter, _spec, request: [{"ts_code": "000001.SZ", **request}],
+    )
+
+    class _FakeConn:
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(sr, "_target_conn", lambda _spec: _FakeConn())
+
+    registry = sr.load_registry()
+    spec = sr.domain_spec(registry, "daily")
+    result = sr._publish_security_day_accepted_partition(
+        "daily", spec, trade_date="20260717", trigger_mode="manual"
+    )
+    assert fused_calls == []
+    assert land_then_calls == [
+        {"domain": "daily", "trade_date": "20260717", "rows": 1}
+    ]
+    assert result["status"] == "ok"
+    assert result["transport"] == "land_then_accept"
+    assert result["publication"] == "accepted_nominal_ohlcv_partition"
+
+
+def test_s3_default_trade_cal_publish_is_caller_only_not_fused(monkeypatch) -> None:
+    """S3: trade_cal sync uses land then accept; fused capture_and_publish is not fan-in."""
+
+    from types import SimpleNamespace
+
+    from services.data_sources import calendar_runtime as cr
+    from services.data_sources import sync_runner as sr
+
+    fused_calls: list[str] = []
+    land_calls: list[str] = []
+    accept_calls: list[str] = []
+
+    def boom_fused(*_a, **_k):
+        fused_calls.append("calendar")
+        raise AssertionError(
+            "capture_and_publish_* must not be production sync fan-in (S3)"
+        )
+
+    def fake_land(_conn, _contract, *, fetch_page, observed_at=None, bootstrap=True):
+        land_calls.append("land")
+        _ = fetch_page({"offset": 0})
+        return SimpleNamespace(batch_id="trade_cal:SSE:s3test")
+
+    def fake_accept(_conn, batch_id, _contract, *, bootstrap=False):
+        accept_calls.append(str(batch_id))
+        return SimpleNamespace(
+            status="ACCEPTED",
+            row_count=3,
+            batch_id=batch_id,
+            generation_id="gen-s3",
+            content_hash="calhash",
+            rejection_code=None,
+        )
+
+    monkeypatch.setattr(
+        cr, "capture_and_publish_authorized_calendar_generation", boom_fused
+    )
+    monkeypatch.setattr(cr, "capture_and_land_authorized_calendar_generation", fake_land)
+    monkeypatch.setattr(cr, "accept_calendar_from_landing", fake_accept)
+    monkeypatch.setattr(sr, "apply_fetch_socket_timeout", lambda _spec: None)
+    monkeypatch.setattr(sr, "_adapter", lambda _source: object())
+    monkeypatch.setattr(
+        sr, "_fetch_with_retry", lambda *_a, **_k: [{"cal_date": "20260717"}]
+    )
+
+    class _FakeConn:
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(sr, "_target_conn", lambda _spec: _FakeConn())
+
+    registry = sr.load_registry()
+    spec = sr.domain_spec(registry, "trade_cal")
+    result = sr._publish_trade_cal_accepted_generation(spec)
+    assert fused_calls == []
+    assert land_calls == ["land"]
+    assert accept_calls == ["trade_cal:SSE:s3test"]
+    assert result["status"] == "ok"
+    assert result["transport"] == "land_then_accept"
+
+
+def test_s3_sync_runner_source_has_no_fused_publish_calls() -> None:
+    """Static proof: sync_runner production source must not call capture_and_publish_*."""
+
+    from pathlib import Path
+
+    from services.data_sources import sync_runner as sr
+
+    src_path = Path(sr.__file__)
+    src = src_path.read_text(encoding="utf-8")
+    assert "capture_and_publish_authorized_" not in src, (
+        f"{src_path} still references fused capture_and_publish_* (S3 residual)"
+    )
