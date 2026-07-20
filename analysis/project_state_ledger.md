@@ -2312,3 +2312,28 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   确认=FIXED/current，F 更长窗=**BLOCKED**——按 owner 指示第 5 步诚实 stop
   条件已满足：dual-track residual=NONE，accept frontier=current，下一步需
   owner，本刀在此诚实停止，未强行制造绿）。
+
+### 2026-07-21 — Transport strangler S1+S2 + local-raw one-day proof (PARTIAL)
+
+- Wall-clock: Tue 2026-07-21 ~07:30 Asia/Shanghai (in-session).
+- **S1 land-only FIXED**：`capture_and_land_authorized_{nominal_ohlcv,stock_st}_partition`
+  + calendar `capture_and_land_authorized_calendar_generation`；CLI
+  `chunkyctl sync --domain daily|stock_st --land-only --start/--end`；红测证明
+  不写 canonical / `accepted_partition`。
+- **S2 accept-from-landing FIXED**：`accept_*_from_landing`；CLI
+  `--accept-from-landing --batch-id`（或单日 `--start/--end` 解析最新 LANDED）；
+  路径跳过 `_authorization_preflight` / `_adapter`；红测零 fetch。
+- **Thin orchestration**：`--land-then-accept` +
+  `security_day_transport.land_then_accept_authorized_security_day`（caller-only
+  组合，非新龙）；≤40d 窗仍经 `_require_authorized_short_trade_date_window`。
+- **Local-first proof**：`--from-local-raw` materialize landing from
+  `raw_tushare_daily` / `raw_tushare_stock_st`（`acquire_mode=local_legacy_raw_materialize`，
+  `available_at`=publication cutoff）；live
+  `20260115` daily 5170 + ST 175 → ACCEPTED；accepted window
+  **`20260115`→`20260720`（122d）**（此前 min=`20260116`）。
+- Commit：`c4e3efd96`（machinery + tests + PROJECT_INDEX/FEATURE_MAP/lineage/CI surface）。
+- **Did not**：S3 default-sync cutover；mass multi-year dump；Optuna / StrategyRelease /
+  cutover 翻；第二 DB / plugin bus；`SELECT raw INSERT canonical`。
+- **Residual**：S3 — default `run_domain` 仍 fused `capture_and_publish_*`；chunked
+  backward local-raw windows（≤40d）可继续扩 accepted 但不在本刀一次扫完。
+- **Status**: **PARTIAL**（S1+S2 FIXED；S3 NOT SHIPPED）。

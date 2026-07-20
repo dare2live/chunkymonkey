@@ -127,7 +127,15 @@ chunkyctl sync / daily_update → sync_runner.run_domain(daily|stock_st)
 
 ## 8. Label
 
-**NOT SHIPPED** — 模块化编排需求（独立 acquire / accept / derive / serve + caller-only 编排器）。
-旁注：formal accept 正确性 = 另账 PARTIAL，**不计入**本需求交付。
-Residual owner：Tier0 transport strangler S1–S4。
-Next verification：S1 land-only 不写 canonical；S2 accept-from-landing 不调 `_adapter`；S3 sync 仅顺序调用二者。
+**PARTIAL**（2026-07-21）— S1 land-only + S2 accept-from-landing **运营入口已 shipped**（CLI + runtime + TDD）；S3 caller-only sync **仍 NOT SHIPPED**（default sync 仍走 `capture_and_publish_*`）。
+
+| 切片 | 状态 | 证据 |
+|---|---|---|
+| S1 | **FIXED** | `capture_and_land_*`；`--land-only`；红测不写 canonical |
+| S2 | **FIXED** | `accept_*_from_landing`；`--accept-from-landing`；零 `_adapter`/auth |
+| local-raw acquire→landing | **FIXED** | `--from-local-raw` + `materialize_security_day_landing_from_legacy_raw_rows`；live `20260115` |
+| thin land→accept | **FIXED**（可选路径） | `--land-then-accept` / `land_then_accept_authorized_security_day` |
+| S3 sync caller-only | **NOT SHIPPED** | default `run_domain` 仍 fused |
+
+Residual owner：S3（再 S4–S6）。
+Next verification：moth 证 `capture_and_publish_*` 非 sync 生产 fan-in；parity 测 fused vs S1→S2。

@@ -1,7 +1,7 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-20（**sequencing authority** → transport strangler S1–S3；A→H 策略轨后置）
+> 更新：2026-07-21（**S1+S2 PARTIAL shipped**；S3 residual；accepted daily/ST 扩至 `20260115`）
 > 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改）。
 > 完成证据追加到 `analysis/project_state_ledger.md`。
 > **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
@@ -37,9 +37,10 @@
 顺序：**S1 → S2 → S3**（land-only / accept-from-landing / sync caller-only）→ **S4–S6 按需** → **R0 E0** → **R1 E/F 复测** → G/H；**H only after accept**。  
 旧 `forward_program_efgh` P1 remeasure **superseded**；P0 自然 sync 护栏仍并行。
 
-- **S1–S3（当前 focus）**：重评文 §5–§11 + evidence pack §2.7。scope = formal **daily + stock_st + calendar**；`capture_and_publish_*` 生产 fan-in → **NOT SHIPPED**；legacy `raw_tushare_*` 并行面 **不在 S3 范围**
+- **S1 land-only + S2 accept-from-landing（PARTIAL FIXED）**：CLI/runtime shipped — `--land-only` / `--accept-from-landing` / `--land-then-accept` + `--from-local-raw`；calendar runtime 同缝；TDD 16/16；live proof `20260115` local-raw→landing→accept 扩 accepted daily+ST 至 `20260115`→`20260720`（122d）。**default `chunkyctl sync` 仍 fused**（S3 residual）
+- **S3（当前 focus）**：`sync_runner` formal daily/ST/calendar = caller-only S1→S2；`capture_and_publish_*` 退出生产 fan-in（moth 可证）；legacy `raw_tushare_*` 并行面 **不在 S3 范围**
 - **S4–S6**：S3 绿后再开；换源/派生/serve 巩固
-- **研究轨（后置）**：E0 披露 formal；E/F 同 protocol（窗扩仍 BLOCKED）；不开 G/H/Release 抢跑
+- **研究轨（后置）**：E0 披露 formal；E/F 同 protocol（窗扩可用 chunked local-raw≤40d，禁 mass dump）；不开 G/H/Release 抢跑
 - **护栏**：frontier=`20260720`；dual-track=NONE；PIT+≤40d+禁 mass backfill/第二 DB/plugin bus
 
 A→H 降为地图；细节以重评文 §4、§9 为准。

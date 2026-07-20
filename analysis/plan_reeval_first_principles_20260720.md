@@ -321,3 +321,9 @@ Live 焊点（evidence pack §2.7 复核）：
 | `goal.md` | 执行板；**本文件 = sequencing authority** |
 
 **Label**：`REPOSITIONED` — formal transport strangler S1–S3 优先；A→H 后置；legacy raw 面与 E0 PARTIAL 单列 residual。
+
+### Amend 2026-07-21 — S1+S2 shipped (PARTIAL)
+
+- S1/S2 运营入口已落地（见 `goal.md` + modularity gap §8 + ledger）；live
+  local-raw proof 扩 accepted daily/ST min→`20260115`。
+- **S3 仍为近端唯一 blocking residual**（default sync fused）。
