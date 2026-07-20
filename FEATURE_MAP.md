@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-20 22:27
+> Snapshot: 2026-07-20 22:29
 
 ## 1. 入口面
 
@@ -161,7 +161,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 7,806 | calls 边 9,304 | imports 边 2,736 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 7,882 | calls 边 9,411 | imports 边 2,829 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -170,12 +170,12 @@
 | services.duck_adapter | 49 |
 | services.data_sources | 26 |
 | services.data_sources.accepted_schema | 18 |
+| services.institution_follow_b0_measure | 18 |
+| services.institution_follow_edge_gates | 17 |
 | services.data_sources.security_day_partition | 16 |
-| services.institution_follow_b0_measure | 16 |
 | services.universe | 16 |
 | services.database_manifest | 15 |
 | services.data_sources.margin_schema | 14 |
-| services.institution_follow_edge_gates | 14 |
 | services.data_sources.holders_top10_schema | 13 |
 | services.source_watermarks | 13 |
 | services.data_sources.calendar_schema | 12 |
@@ -188,17 +188,17 @@
 | 文件 | 调用方文件数 |
 |---|---|
 | backend/services/duck_adapter.py | 27 |
-| backend/services/institution_follow_edge_gates.py | 14 |
+| backend/services/institution_follow_edge_gates.py | 17 |
 | backend/services/database_manifest.py | 13 |
 | backend/services/source_watermarks.py | 13 |
 | backend/services/universe.py | 13 |
 | backend/services/data_sources/disclosure_boundaries.py | 11 |
 | backend/services/data_sources/contracts.py | 9 |
 | backend/services/tier12_publish_writer.py | 9 |
+| backend/services/institution_follow_b0_measure.py | 8 |
 | backend/services/tier12_consumer_cutover.py | 8 |
 | backend/services/data_sources/accepted_schema.py | 7 |
 | backend/services/data_sources/calendar_contract.py | 7 |
-| backend/services/data_sources/calendar_schema.py | 7 |
 
 ### LOC top 10 (God module 候选)
 

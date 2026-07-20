@@ -667,6 +667,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_main_rally_b2.py",
+      "kind": "consume",
+      "src": "table:feature_store.fact_rally_ground_truth"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_rally_gt.py",
       "kind": "consume",
       "src": "table:feature_store.fact_rally_ground_truth"
@@ -715,6 +721,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_main_rally_b2.py",
+      "kind": "consume",
+      "src": "table:feature_store.fact_rally_negative"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_rally_gt.py",
       "kind": "consume",
       "src": "table:feature_store.fact_rally_negative"
@@ -758,6 +770,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_main_rally_b1.py",
+      "kind": "consume",
+      "src": "table:feature_store.fact_rally_strata"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_main_rally_b2.py",
       "kind": "consume",
       "src": "table:feature_store.fact_rally_strata"
     },
@@ -5071,9 +5089,9 @@
     }
   ],
   "meta": {
-    "edge_count": 794,
-    "generated_at": "2026-07-20T14:27:14.822826+00:00",
-    "node_count": 353,
+    "edge_count": 797,
+    "generated_at": "2026-07-20T14:30:57.814235+00:00",
+    "node_count": 354,
     "version": 2
   },
   "nodes": [
@@ -6195,6 +6213,14 @@
         "path": "backend/tests/services/test_main_rally_b1.py"
       },
       "id": "consumer:backend/tests/services/test_main_rally_b1.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_main_rally_b2.py"
+      },
+      "id": "consumer:backend/tests/services/test_main_rally_b2.py",
       "kind": "consumer"
     },
     {

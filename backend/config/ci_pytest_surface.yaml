@@ -71,6 +71,7 @@ paths:
 - tests/scripts/test_build_price_kline_qfq_tushare.py
 - tests/services/test_main_rally_b0.py
 - tests/services/test_main_rally_b1.py
+- tests/services/test_main_rally_b2.py
 - tests/scripts/test_ci_pytest_surface_drift.py
 - tests/scripts/test_run_ci_pytest.py
 ci_test_optional:
