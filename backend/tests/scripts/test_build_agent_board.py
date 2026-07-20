@@ -42,6 +42,20 @@ def test_c_accept_row_parity() -> None:
     assert acc["published"] is True
 
 
+def test_phase_d_run_projected() -> None:
+    data = board.collect(REPO)
+    summary = data["phase_d"]["summary"]
+    assert summary["claimable"] is False
+    assert summary["strategy_release"] is False
+    assert summary["fold_protocol"] == "purged_walk_forward"
+    assert summary["n_folds"] == 3
+    assert summary["fold_ids"] == [
+        "purged_fold_0",
+        "purged_fold_1",
+        "purged_fold_2",
+    ]
+
+
 def test_render_marks_generated_and_non_enforcement() -> None:
     md = board.render_md(board.collect(REPO))
     assert "勿手改" in md

@@ -2,7 +2,7 @@
 
 > 由 `backend/scripts/build_agent_board.py` 重生成，**勿手改**。
 > **Projection only** — not an enforcement input. Cutover / readiness / PIT gates still resolve from yaml + code resolvers + accepted partitions.
-> Snapshot: 2026-07-20T11:12:29Z
+> Snapshot: 2026-07-20T11:18:52Z
 
 ## Track
 
@@ -15,6 +15,11 @@
 
 - B-pit mart `cutover_allowed=False` (shadow match=120/diverge=0; frontier=20260717)
 - C consumer `cutover_allowed=False` (accept 20260717: 4989/4989 scope=project_universe published=True)
+
+## Phase D runtime (lineage projection)
+
+- b0_bound: verdict=`inconclusive` claimable=False protocol=`purged_walk_forward` folds=3 holdout_start=20260716
+- artifact: `data/lineage/phase_d_experiment_runs/manifest.json`
 
 ## Phase E verdicts (lineage projection)
 
@@ -49,4 +54,5 @@
 - `data/lineage/b_pit_breadth_shadow/summary.json`
 - `data/lineage/tier12_publish_batches/full_universe_accept_20260717.json`
 - `data/lineage/phase_e_experiment_verdicts/manifest.json`
+- `data/lineage/phase_d_experiment_runs/manifest.json`
 - `goal.md (hand excerpt only)`

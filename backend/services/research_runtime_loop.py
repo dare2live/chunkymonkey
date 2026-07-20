@@ -58,6 +58,70 @@ def default_fold_embargo_hooks(
     )
 
 
+_WF_PROTOCOLS = frozenset(
+    {"purged_walk_forward", "honest_minimal_short_window", "undeclared_stub"}
+)
+
+
+def fold_embargo_from_walk_forward_plan(
+    plan: Mapping[str, Any] | Any,
+) -> FoldEmbargoHooks:
+    """Bind a measured WalkForwardPlan (mapping or ``as_dict``-able) into typed
+    FoldEmbargoHooks — real protocol/folds, not the default stub. Fail closed on
+    missing or invalid plan fields; never invents fold ids.
+    """
+
+    raw = plan.as_dict() if hasattr(plan, "as_dict") else plan
+    if not isinstance(raw, Mapping):
+        raise ResearchRuntimeError(
+            f"walk_forward plan must be a mapping or as_dict()-able; got {type(plan).__name__}"
+        )
+    protocol = str(raw.get("protocol") or "")
+    if protocol not in _WF_PROTOCOLS:
+        raise ResearchRuntimeError(
+            f"walk_forward plan protocol invalid: {protocol!r} "
+            f"(expected one of {sorted(_WF_PROTOCOLS)})"
+        )
+    folds = raw.get("folds")
+    if not isinstance(folds, Sequence) or isinstance(folds, (str, bytes)):
+        raise ResearchRuntimeError("walk_forward plan folds must be a sequence")
+    fold_ids: list[str] = []
+    for fold in folds:
+        fid = str((fold or {}).get("fold_id") or "") if isinstance(fold, Mapping) else ""
+        if not fid:
+            raise ResearchRuntimeError("walk_forward plan fold missing fold_id")
+        fold_ids.append(fid)
+    if protocol == "purged_walk_forward" and not fold_ids:
+        raise ResearchRuntimeError(
+            "purged_walk_forward plan must declare at least one fold"
+        )
+    try:
+        embargo_days = int(raw["embargo_days"])
+        label_horizon_days = int(raw["label_horizon_days"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ResearchRuntimeError(
+            f"walk_forward plan embargo/horizon invalid: {exc}"
+        ) from exc
+    holdout_dates = [
+        _compact_day(d) for d in (raw.get("holdout_dates") or ()) if _compact_day(d)
+    ]
+    return FoldEmbargoHooks(
+        protocol=protocol,  # type: ignore[arg-type]  # validated against _WF_PROTOCOLS
+        n_folds=len(fold_ids),
+        embargo_days=embargo_days,
+        label_horizon_days=label_horizon_days,
+        one_touch_holdout=bool(raw.get("one_touch_holdout", True)),
+        fold_ids=tuple(fold_ids),
+        holdout_start=min(holdout_dates) if holdout_dates else "",
+        notes=(
+            "bound_from_measured_walk_forward_plan",
+            f"plan_reason={raw.get('reason')}",
+            f"plan_claimable_protocol={bool(raw.get('claimable_protocol'))}",
+            "no_optuna",
+        ),
+    )
+
+
 def build_experiment_prereg(
     snapshot: DatasetSnapshot,
     *,
@@ -400,11 +464,14 @@ def run_offline_b0_bound_loop(
     disclosure_snapshot: Mapping[str, Any] | None = None,
     *,
     snapshot_path: str | None = None,
+    walk_forward_plan: Mapping[str, Any] | None = None,
 ) -> tuple[ExperimentRun, ExperimentVerdict]:
     """Reuse E B0 harness offline under Phase D prereg + snapshot binding.
 
     Lazy-imports B0 to avoid import cycles. Coverage/paper measure stay off so
     the path is offline-deterministic; verdict remains ``claimable=false``.
+    ``walk_forward_plan`` (a measured WalkForwardPlan mapping) binds the real
+    purged-WF fold plan into prereg instead of the default stub hooks.
     """
 
     # Lazy import: institution_follow_b0 → research_runtime (owner).
@@ -420,16 +487,21 @@ def run_offline_b0_bound_loop(
         else load_frozen_disclosure_snapshot(snapshot_path)
     )
     runtime_snap = dataset_snapshot_from_disclosure(payload)
+    fold_embargo = (
+        fold_embargo_from_walk_forward_plan(walk_forward_plan)
+        if walk_forward_plan is not None
+        else default_fold_embargo_hooks(
+            n_folds=3,
+            embargo_days=1,
+            label_horizon_days=1,
+        )
+    )
     prereg = build_experiment_prereg(
         runtime_snap,
         strategy_package="institution_follow",
         block="B0",
         hypothesis="b0_bare_k_offline_bound_to_research_runtime",
-        fold_embargo=default_fold_embargo_hooks(
-            n_folds=3,
-            embargo_days=1,
-            label_horizon_days=1,
-        ),
+        fold_embargo=fold_embargo,
     )
     assert_snapshot_binding(runtime_snap, prereg=prereg)
 

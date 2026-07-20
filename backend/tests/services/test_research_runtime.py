@@ -33,12 +33,33 @@ from services.research_runtime import (
     build_experiment_prereg,
     dataset_snapshot_from_disclosure,
     default_fold_embargo_hooks,
+    fold_embargo_from_walk_forward_plan,
     pit_truncate_observations,
     prove_pit_truncation_invariance,
     run_offline_b0_bound_loop,
     run_offline_minimal_loop,
     run_smoke_closed_loop,
 )
+
+
+def _measured_wf_plan() -> dict:
+    """Shape of a measured WalkForwardPlan.as_dict() (institution_follow_paper)."""
+
+    return {
+        "protocol": "purged_walk_forward",
+        "claimable_protocol": True,
+        "reason": "purged_walk_forward_ready",
+        "trading_days": ["20260116", "20260119", "20260716", "20260717"],
+        "folds": [
+            {"fold_id": "purged_fold_0", "role": "purged_eval"},
+            {"fold_id": "purged_fold_1", "role": "purged_eval"},
+            {"fold_id": "purged_fold_2", "role": "purged_eval"},
+        ],
+        "holdout_dates": ["20260716", "20260717"],
+        "embargo_days": 1,
+        "label_horizon_days": 1,
+        "one_touch_holdout": True,
+    }
 
 
 def _obs(
@@ -386,5 +407,58 @@ def test_offline_b0_bound_loop_reuses_harness_claimable_false() -> None:
     assert isinstance(verdict, ExperimentVerdict)
     assert verdict.claimable is False
     assert verdict.details.get("phase_d_bound") is True
+    assert verdict.details.get("claimable_forced_false_by_research_runtime") is True
+    assert verdict.details.get("strategy_release") is False
+
+
+def test_fold_embargo_from_measured_plan_binds_real_folds() -> None:
+    hooks = fold_embargo_from_walk_forward_plan(_measured_wf_plan())
+    assert hooks.protocol == "purged_walk_forward"
+    assert hooks.n_folds == 3
+    assert hooks.fold_ids == ("purged_fold_0", "purged_fold_1", "purged_fold_2")
+    assert hooks.embargo_days == 1
+    assert hooks.label_horizon_days == 1
+    assert hooks.one_touch_holdout is True
+    assert hooks.holdout_start == "20260716"
+    assert "bound_from_measured_walk_forward_plan" in hooks.notes
+    # It must not be mistakable for the default stub (fold_0/fold_1/...).
+    assert hooks.fold_ids != default_fold_embargo_hooks(n_folds=3).fold_ids
+
+
+def test_fold_embargo_from_plan_fails_closed() -> None:
+    with pytest.raises(ResearchRuntimeError, match="mapping"):
+        fold_embargo_from_walk_forward_plan("not_a_plan")
+
+    bad_protocol = _measured_wf_plan()
+    bad_protocol["protocol"] = "latest_snapshot_backtest"
+    with pytest.raises(ResearchRuntimeError, match="protocol"):
+        fold_embargo_from_walk_forward_plan(bad_protocol)
+
+    missing_fold_id = _measured_wf_plan()
+    missing_fold_id["folds"] = [{"role": "purged_eval"}]
+    with pytest.raises(ResearchRuntimeError, match="fold_id"):
+        fold_embargo_from_walk_forward_plan(missing_fold_id)
+
+    purged_no_folds = _measured_wf_plan()
+    purged_no_folds["folds"] = []
+    with pytest.raises(ResearchRuntimeError, match="at least one fold"):
+        fold_embargo_from_walk_forward_plan(purged_no_folds)
+
+    bad_embargo = _measured_wf_plan()
+    del bad_embargo["embargo_days"]
+    with pytest.raises(ResearchRuntimeError, match="embargo"):
+        fold_embargo_from_walk_forward_plan(bad_embargo)
+
+
+def test_offline_b0_bound_loop_binds_real_plan_into_prereg() -> None:
+    run, verdict = run_offline_b0_bound_loop(walk_forward_plan=_measured_wf_plan())
+    assert run.prereg is not None
+    fe = run.prereg.fold_embargo
+    assert fe.protocol == "purged_walk_forward"
+    assert fe.fold_ids == ("purged_fold_0", "purged_fold_1", "purged_fold_2")
+    assert fe.holdout_start == "20260716"
+    assert "bound_from_measured_walk_forward_plan" in fe.notes
+    # Real fold bind never upgrades the claim: still forced claimable=false.
+    assert verdict.claimable is False
     assert verdict.details.get("claimable_forced_false_by_research_runtime") is True
     assert verdict.details.get("strategy_release") is False

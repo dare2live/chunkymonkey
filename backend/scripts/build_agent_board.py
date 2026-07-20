@@ -77,6 +77,9 @@ def collect(repo: Path = REPO) -> dict[str, Any]:
     e_manifest = _load_json(
         repo / "data" / "lineage" / "phase_e_experiment_verdicts" / "manifest.json"
     )
+    d_manifest = _load_json(
+        repo / "data" / "lineage" / "phase_d_experiment_runs" / "manifest.json"
+    )
     b_shadow = _load_json(
         repo / "data" / "lineage" / "b_pit_breadth_shadow" / "summary.json"
     )
@@ -154,6 +157,10 @@ def collect(repo: Path = REPO) -> dict[str, Any]:
                 },
             },
         },
+        "phase_d": {
+            "summary": (d_manifest or {}).get("summary"),
+            "artifact": "data/lineage/phase_d_experiment_runs/manifest.json",
+        },
         "phase_e": {
             "overall_status": e_overall.get("status"),
             "any_claimable": e_overall.get("any_claimable"),
@@ -176,6 +183,7 @@ def collect(repo: Path = REPO) -> dict[str, Any]:
             "data/lineage/b_pit_breadth_shadow/summary.json",
             "data/lineage/tier12_publish_batches/full_universe_accept_20260717.json",
             "data/lineage/phase_e_experiment_verdicts/manifest.json",
+            "data/lineage/phase_d_experiment_runs/manifest.json",
             "goal.md (hand excerpt only)",
         ],
     }
@@ -223,6 +231,20 @@ def render_md(d: dict[str, Any]) -> str:
         f"{acc.get('stock_row_count')}/{acc.get('universe_membership_size')} "
         f"scope={acc.get('publish_scope')} published={acc.get('published')})"
     )
+    add("")
+    add("## Phase D runtime (lineage projection)")
+    add("")
+    d_data = d.get("phase_d") or {}
+    pd = d_data.get("summary") or {}
+    if pd:
+        add(
+            f"- b0_bound: verdict=`{pd.get('verdict')}` claimable={pd.get('claimable')} "
+            f"protocol=`{pd.get('fold_protocol')}` folds={pd.get('n_folds')} "
+            f"holdout_start={pd.get('holdout_start')}"
+        )
+    else:
+        add("- no persisted Phase D ExperimentRun artifact")
+    add(f"- artifact: `{d_data.get('artifact')}`")
     add("")
     add("## Phase E verdicts (lineage projection)")
     add("")

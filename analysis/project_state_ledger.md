@@ -1822,3 +1822,39 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   E gate loosen; StrategyRelease; margin thaw; mass backfill.
 - **Status**: data ops FIXED; next knife = D persist ExperimentRun +
   real fold bind.
+
+### 2026-07-20 — A→H knife: D persist ExperimentRun + real fold bind
+
+- Wall-clock: Mon 2026-07-20 ~19:20 Asia/Shanghai (in-session).
+- Red-first: adapter fail-closed cases (non-mapping, invalid protocol,
+  missing fold_id, purged plan without folds, missing embargo) written
+  before implementation.
+- Delivered:
+  - `fold_embargo_from_walk_forward_plan` (research_runtime_loop,
+    re-exported from research_runtime): binds a **measured**
+    WalkForwardPlan mapping into typed FoldEmbargoHooks — real
+    `purged_fold_*` ids, embargo/horizon from plan, holdout_start from
+    plan holdout dates; fail-closed, never invents folds, never touches
+    claimable.
+  - `run_offline_b0_bound_loop(walk_forward_plan=…)`: prereg binds the
+    real purged-WF plan instead of the n_folds=3 stub; claimable still
+    forced false at D boundary.
+  - `backend/scripts/persist_phase_d_experiment_runs.py`: immutable
+    Phase D ExperimentRun artifact + manifest under
+    `data/lineage/phase_d_experiment_runs/` (b0_bound.json), idempotent
+    on (disclosure snapshot hash, phase-E b0 artifact hash); plan read
+    from persisted measured b0 artifact (accepted evidence); rejects
+    non-purged plans; asserts persisted verdict not claimable.
+  - Lineage consumer: `build_agent_board.py` projects the Phase D
+    manifest (BOARD "Phase D runtime" section + sources); regenerated.
+- Live artifact: protocol=purged_walk_forward folds=3
+  (purged_fold_0..2) embargo=1 horizon=1 holdout_start=20260716
+  verdict=inconclusive claimable=false strategy_release=false.
+- Tests: test_research_runtime 17, test_persist_phase_d_experiment_runs 4
+  (incl. committed-artifact drift check), board 8, boot 14, phase_e smoke —
+  46 passed scoped. CI wires new test file.
+- **Did not**: StrategyRelease; Optuna; E gate loosen; flip B-pit/C
+  `cutover_allowed`; margin thaw; mass backfill.
+- **Residual to D-complete**: one measured offline path that is not
+  strategy-package-owned (stub measure still returns unknown returns).
+- **Status**: D PARTIAL→deepened (persist + real fold bind FIXED).

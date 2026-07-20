@@ -13,7 +13,7 @@ Agent-OS 影子期照常开放（WP6 仪式 flip 仍 owner-gated，与 A→H 无
 
 ## 下一步（A→H 残余刀）
 
-1. D 残余：persist 不可变 ExperimentRun artifact（含 lineage 消费方）+ 真 purged-WF fold 绑定共享 runtime
+1. D 剩余到 D-complete：一条 measured（非 stub、非 strategy-package-owned）offline 路径
 2. C/B-pit 残余观察（不 flip `cutover_allowed`；默认 false）
 3. Agent-OS 影子期残余（非本轨道）：影子期满检查单、T0 墙钟实测、真实 L2 路径证据
 

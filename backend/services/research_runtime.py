@@ -572,6 +572,7 @@ _LOOP_EXPORTS = frozenset(
         "assert_snapshot_binding",
         "build_experiment_prereg",
         "default_fold_embargo_hooks",
+        "fold_embargo_from_walk_forward_plan",
         "measure_observations_stub",
         "run_offline_b0_bound_loop",
         "run_offline_minimal_loop",

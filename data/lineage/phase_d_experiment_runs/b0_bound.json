@@ -1,0 +1,219 @@
+{
+  "b0_artifact_hash": "630d2ad404a20459f44acdc86ce11317a4eb5443676d15e71abc961ee4ad2955",
+  "b0_artifact_relpath": "data/lineage/phase_e_experiment_verdicts/b0.json",
+  "fold_embargo_bound": {
+    "embargo_days": 1,
+    "fold_ids": [
+      "purged_fold_0",
+      "purged_fold_1",
+      "purged_fold_2"
+    ],
+    "holdout_start": "20260716",
+    "label_horizon_days": 1,
+    "n_folds": 3,
+    "notes": [
+      "bound_from_measured_walk_forward_plan",
+      "plan_reason=purged_walk_forward_ready",
+      "plan_claimable_protocol=True",
+      "no_optuna"
+    ],
+    "one_touch_holdout": true,
+    "protocol": "purged_walk_forward"
+  },
+  "kind": "phase_d_experiment_run",
+  "optuna": false,
+  "run": {
+    "artifact_manifest": {
+      "b0_artifact_manifest": {
+        "bare_k_coverage": null,
+        "disclosure_snapshot": "data/lineage/disclosure_dataset_snapshot.json",
+        "domains": [
+          "holders_top10",
+          "org_holding",
+          "stk_holdertrade"
+        ],
+        "kind": "institution_follow_b0",
+        "measured_b0": null,
+        "metrics": "unknown",
+        "paper_fills": "not_run",
+        "research_runtime_snapshot": {
+          "available_at_lower": "20190430",
+          "available_at_upper": "20260717",
+          "config_hash": "a0d67e2ddda16936cc6fd88f32e5a17a4884d623b1feff3cf716d4187ed10d7f",
+          "content_hash": "5296cf27b11043b82ab7e659eddf292f442a0589a54f4a90ef75f4d7039edb61",
+          "snapshot_id": "disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713",
+          "source_kind": "disclosure_freeze",
+          "universe_id": "traded_on_observation_date"
+        }
+      },
+      "kind": "phase_d_offline_b0_bound",
+      "optuna": false,
+      "prereg": {
+        "available_at_lower": "20190430",
+        "available_at_upper": "20260717",
+        "block": "B0",
+        "claimable_target": false,
+        "config_hash": "a0d67e2ddda16936cc6fd88f32e5a17a4884d623b1feff3cf716d4187ed10d7f",
+        "fold_embargo": {
+          "embargo_days": 1,
+          "fold_ids": [
+            "purged_fold_0",
+            "purged_fold_1",
+            "purged_fold_2"
+          ],
+          "holdout_start": "20260716",
+          "label_horizon_days": 1,
+          "n_folds": 3,
+          "notes": [
+            "bound_from_measured_walk_forward_plan",
+            "plan_reason=purged_walk_forward_ready",
+            "plan_claimable_protocol=True",
+            "no_optuna"
+          ],
+          "one_touch_holdout": true,
+          "protocol": "purged_walk_forward"
+        },
+        "hypothesis": "b0_bare_k_offline_bound_to_research_runtime",
+        "primary_metric": "holdout_net_return",
+        "random_seed": 0,
+        "search_space": [],
+        "snapshot_content_hash": "5296cf27b11043b82ab7e659eddf292f442a0589a54f4a90ef75f4d7039edb61",
+        "snapshot_id": "disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713",
+        "stop_conditions": [
+          "no_strategy_release",
+          "claimable_target_false",
+          "empty_search_space"
+        ],
+        "strategy_package": "institution_follow",
+        "universe_id": "traded_on_observation_date"
+      },
+      "research_runtime_snapshot": {
+        "available_at_lower": "20190430",
+        "available_at_upper": "20260717",
+        "config_hash": "a0d67e2ddda16936cc6fd88f32e5a17a4884d623b1feff3cf716d4187ed10d7f",
+        "content_hash": "5296cf27b11043b82ab7e659eddf292f442a0589a54f4a90ef75f4d7039edb61",
+        "snapshot_id": "disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713",
+        "source_kind": "disclosure_freeze",
+        "universe_id": "traded_on_observation_date"
+      },
+      "strategy_release": false
+    },
+    "block": "B0",
+    "config_hash": "a0d67e2ddda16936cc6fd88f32e5a17a4884d623b1feff3cf716d4187ed10d7f",
+    "decision_date": "20260717",
+    "experiment_id": "institution_follow_v1:B0:disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713:4b43529b8c80",
+    "kept_observation_count": 0,
+    "notes": [
+      "phase_d_offline_b0_bound",
+      "reuses_institution_follow_b0",
+      "measure_coverage_false",
+      "measure_paper_false",
+      "no_strategy_release",
+      "no_optuna"
+    ],
+    "pit_ok": true,
+    "prereg": {
+      "available_at_lower": "20190430",
+      "available_at_upper": "20260717",
+      "block": "B0",
+      "claimable_target": false,
+      "config_hash": "a0d67e2ddda16936cc6fd88f32e5a17a4884d623b1feff3cf716d4187ed10d7f",
+      "fold_embargo": {
+        "embargo_days": 1,
+        "fold_ids": [
+          "purged_fold_0",
+          "purged_fold_1",
+          "purged_fold_2"
+        ],
+        "holdout_start": "20260716",
+        "label_horizon_days": 1,
+        "n_folds": 3,
+        "notes": [
+          "bound_from_measured_walk_forward_plan",
+          "plan_reason=purged_walk_forward_ready",
+          "plan_claimable_protocol=True",
+          "no_optuna"
+        ],
+        "one_touch_holdout": true,
+        "protocol": "purged_walk_forward"
+      },
+      "hypothesis": "b0_bare_k_offline_bound_to_research_runtime",
+      "primary_metric": "holdout_net_return",
+      "random_seed": 0,
+      "search_space": [],
+      "snapshot_content_hash": "5296cf27b11043b82ab7e659eddf292f442a0589a54f4a90ef75f4d7039edb61",
+      "snapshot_id": "disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713",
+      "stop_conditions": [
+        "no_strategy_release",
+        "claimable_target_false",
+        "empty_search_space"
+      ],
+      "strategy_package": "institution_follow",
+      "universe_id": "traded_on_observation_date"
+    },
+    "snapshot_content_hash": "5296cf27b11043b82ab7e659eddf292f442a0589a54f4a90ef75f4d7039edb61",
+    "snapshot_id": "disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713",
+    "strategy_package": "institution_follow_v1",
+    "universe_id": "traded_on_observation_date"
+  },
+  "schema_version": 1,
+  "snapshot_hash": "0f4aec1ca7669397e38d2811ebb6e3edcbabf9125d9ecd7bde6ce501f829d11e",
+  "snapshot_relpath": "data/lineage/disclosure_dataset_snapshot.json",
+  "strategy_release": false,
+  "verdict": {
+    "block": "B0",
+    "blocked": false,
+    "claimable": false,
+    "details": {
+      "bare_k_coverage": null,
+      "claimable_forced_false_by_research_runtime": true,
+      "metrics": "unknown",
+      "phase_d_bound": true,
+      "prereg": {
+        "available_at_lower": "20190430",
+        "available_at_upper": "20260717",
+        "block": "B0",
+        "claimable_target": false,
+        "config_hash": "a0d67e2ddda16936cc6fd88f32e5a17a4884d623b1feff3cf716d4187ed10d7f",
+        "fold_embargo": {
+          "embargo_days": 1,
+          "fold_ids": [
+            "purged_fold_0",
+            "purged_fold_1",
+            "purged_fold_2"
+          ],
+          "holdout_start": "20260716",
+          "label_horizon_days": 1,
+          "n_folds": 3,
+          "notes": [
+            "bound_from_measured_walk_forward_plan",
+            "plan_reason=purged_walk_forward_ready",
+            "plan_claimable_protocol=True",
+            "no_optuna"
+          ],
+          "one_touch_holdout": true,
+          "protocol": "purged_walk_forward"
+        },
+        "hypothesis": "b0_bare_k_offline_bound_to_research_runtime",
+        "primary_metric": "holdout_net_return",
+        "random_seed": 0,
+        "search_space": [],
+        "snapshot_content_hash": "5296cf27b11043b82ab7e659eddf292f442a0589a54f4a90ef75f4d7039edb61",
+        "snapshot_id": "disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713",
+        "stop_conditions": [
+          "no_strategy_release",
+          "claimable_target_false",
+          "empty_search_space"
+        ],
+        "strategy_package": "institution_follow",
+        "universe_id": "traded_on_observation_date"
+      },
+      "requested_verdict": null,
+      "strategy_release": false,
+      "surface_status": "tier3_research_evidence_only"
+    },
+    "experiment_id": "institution_follow_v1:B0:disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713:4b43529b8c80",
+    "reason": "scaffold_no_measured_edge",
+    "verdict": "inconclusive"
+  }
+}
