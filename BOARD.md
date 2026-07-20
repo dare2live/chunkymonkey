@@ -2,13 +2,13 @@
 
 > 由 `backend/scripts/build_agent_board.py` 重生成，**勿手改**。
 > **Projection only** — not an enforcement input. Cutover / readiness / PIT gates still resolve from yaml + code resolvers + accepted partitions.
-> Snapshot: 2026-07-20T09:25:22Z
+> Snapshot: 2026-07-20T09:53:23Z
 
 ## Track
 
 - track: `agent-os-redesign`
 - A→H: `suspended_at_d8b69090`
-- WP1: `FIXED` | WP2: `FIXED`
+- WP1: `FIXED` | WP2: `FIXED` | WP3: `FIXED` | WP4: `FIXED`
 
 ## Cutovers (yaml projection)
 

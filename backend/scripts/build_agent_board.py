@@ -116,6 +116,8 @@ def collect(repo: Path = REPO) -> dict[str, Any]:
             "a_to_h": "suspended_at_d8b69090",
             "wp1": "FIXED",
             "wp2": "FIXED",
+            "wp3": "FIXED",
+            "wp4": "FIXED",
         },
         "cutovers": {
             "b_pit_mart": {
@@ -188,7 +190,10 @@ def render_md(d: dict[str, Any]) -> str:
     t = d["track"]
     add(f"- track: `{t['name']}`")
     add(f"- A→H: `{t['a_to_h']}`")
-    add(f"- WP1: `{t['wp1']}` | WP2: `{t['wp2']}`")
+    wp_status = " | ".join(
+        f"{key.upper()}: `{t[key]}`" for key in sorted(t) if key.startswith("wp")
+    )
+    add(f"- {wp_status}")
     add("")
     add("## Cutovers (yaml projection)")
     add("")

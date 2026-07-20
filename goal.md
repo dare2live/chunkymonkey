@@ -7,14 +7,14 @@
 
 ## 当前 objective
 
-**轨道 = Agent-OS 重设计（先于 A→H）**：Truth OS 机器门不动。WP0+WP1 FIXED。
-**WP2** = 生成板（本刀）。余力 WP3 agent-boot / WP4 AGENTS 瘦身。
-**A→H 挂起于 `d8b69090`**。状态细节只读 `BOARD.md`。
+**轨道 = Agent-OS 重设计（先于 A→H）**：Truth OS 机器门不动。
+WP0–WP4 FIXED（板生成 / tiered commit / `chunkyctl agent-boot` / AGENTS 瘦身）。
+**A→H 挂起于 `d8b69090`**。状态细节只读 `BOARD.md`；启动用 `scripts/chunkyctl agent-boot`。
 
-## 下一步
+## 下一步（agent-OS 残余检查单）
 
-1. 完成 WP2（BOARD 漂移门绿）→（余力）WP3/WP4
-2. agent-OS 检查单全绿后才恢复 A→H
+1. （可选）WP5 fixture pack stub；WP6 ceremony cutover 需 owner 明确批准范围
+2. 核心 agent-OS 交付（boot/board/tiers/AGENTS）已闭合；owner 裁决后可恢复 A→H
 3. 手动数据运维：`20260720` provider 有行后 sync+accept（非 A→H 刀）
 
 ## 禁令

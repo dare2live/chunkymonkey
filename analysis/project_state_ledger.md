@@ -1723,3 +1723,45 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   agent-boot (WP3).
 - **Status**: WP2 FIXED. Residual agent-OS: WP3 boot, WP4 AGENTS slim,
   WP5 fixture optional, WP6 ceremony cutover. A→H still frozen.
+### 2026-07-20 — Agent-OS WP3 chunkyctl agent-boot (FIXED)
+
+- Wall-clock: Mon 2026-07-20 ~17:55 Asia/Shanghai (in-session).
+- Delivered one-page boot context `scripts/chunkyctl agent-boot`
+  (`backend/scripts/agent_boot.py`, wrapper case + usage):
+  git status summary + moth snapshot summary (status/warnings/assertion
+  counts, not the full snapshot) + codegraph index status + generated
+  board (`data/board/agent_context.json`) → text/JSON. Read-only,
+  projection only, not an enforcement input; missing/malformed tool
+  output reports `unavailable`/`error` fail-closed (exit 1 on error).
+- Tests: `test_agent_boot` 14 (red cases: malformed moth JSON, git
+  failure, missing board) + wrapper delegation + feature-map scan
+  (120 passed scoped). CI wires test file; run 29732767213 green.
+- Docs: engineering_governance §1 boot order + §11 entrypoint;
+  PROJECT_INDEX entrypoint row; FEATURE_MAP regenerated (6 commands).
+- Commit `5b4c6cb2` (pushed, CI green).
+- **Did not**: touch data/cutovers; A→H knives; automation install.
+- **Status**: WP3 FIXED. Next = WP4 AGENTS slim.
+
+### 2026-07-20 — Agent-OS WP4 AGENTS.md slim (FIXED)
+
+- Wall-clock: Mon 2026-07-20 ~18:00 Asia/Shanghai (in-session).
+- AGENTS.md compressed 292→161 lines: boot section now enters via
+  `scripts/chunkyctl agent-boot`; skill table, test-validity checklist,
+  entrypoint detail and startup command ceremony now point to their
+  owner sections (engineering_governance §1/§2/§5/§11,
+  MASTER_TOPLEVEL_DESIGN). All hard truth rules retained in compressed
+  form: transport/business axes, Tier0 blocking rules (typed scope,
+  immutable contract, atomic publish, fail-closed outcomes, future
+  partition reject, trigger_mode), taxonomy/sensing/state/strategy
+  law, manual_only, deletion protocol, TinyShare .pyc guard, commit
+  discipline, DoD. No rule deleted without a live owner elsewhere.
+- Board builder track extended wp3/wp4 FIXED; goal.md 下一步 rewritten
+  to residual checklist (WP5 fixture optional, WP6 ceremony cutover
+  owner-gated); BOARD/agent_context regenerated.
+- Evidence: doc-governance fails=0 warns=0; doc-drift PASS; board
+  --check fresh; scoped tests green.
+- **Did not**: cutover flips; Optuna; E loosen; StrategyRelease;
+  margin thaw; A→H resume.
+- **Status**: WP4 FIXED. Agent-OS core (WP0–WP4) closed; residual =
+  optional WP5 fixture pack, WP6 ceremony cutover (owner decision).
+  A→H still frozen at `d8b69090`.
