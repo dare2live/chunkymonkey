@@ -40,6 +40,7 @@ def test_l2_tests_and_routers() -> None:
     )
     assert result["tier"] == "L2"
     assert "rule10" in result["gates"]
+    assert "ci_pytest" in result["gates"]
     assert "grain_uniqueness" not in result["gates"]
     assert "continuity" not in result["gates"]
     assert "population_contract" in result["gates"]

@@ -317,9 +317,11 @@ accept/PIT/calendar/fail-closed/cutover/E 门语义**。
   provider 采集 job；git stage/commit/push 窗口；Rule 10 verdict 与最终验收
   （controller-owned）。机器话：两把刀的 `git diff --name-only` 预期集合相交，
   或任一方触本清单 → 串行。
-- **异步 CI（pipelining，不是放松）**：push 后不守 `gh run watch`，直接开下一刀；
-  刀收口（`FIXED/CLOSED` 判定）前必须回读该刀全部 CI verdict，红 = fix-forward
-  最高优先并暂停派新刀。同步等待只保留给改 CI/gate 机械本身的切片。
+- **异步 CI（pipelining，不是放松）**：L2/L3 本地先绿同一 pytest 面
+  （`backend/config/ci_pytest_surface.yaml` via `run_ci_pytest.py`，亦是
+  `safe_commit` `ci_pytest` 门）再 push；push 后**不**守 `gh run watch`，
+  可开下一刀。刀收口前回读该刀 CI verdict（或上一刀已结束 run）；红 =
+  fix-forward 最高优先并暂停派新刀。同步等待只保留给改 CI/gate 机械本身的切片。
 - **Rule 10 节奏**：独立审查按**刀（逻辑单元）**一次，覆盖该刀合并 diff；不按
   micro-commit 重复开审。审查仍 blocking（L2/L3 trailer 语义不变），只是粒度
   归刀。

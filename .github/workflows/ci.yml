@@ -63,50 +63,13 @@ jobs:
 
       - name: Run offline tests
         run: |
-          cd backend
-          # Offline-safe unit/contract surface: services fixtures + foundation tests.
+          # Single source of truth: backend/config/ci_pytest_surface.yaml
+          # via backend/scripts/run_ci_pytest.py. Identical surface is also the
+          # L2/L3 safe_commit gate — do not reintroduce a hand-copied path list.
           # Markers realdb/network/perf/gcp/slow stay excluded via pytest.ini.
           # Do not suddenly run live DuckDB or provider network.
-          python -m pytest \
-            tests/test_utils.py \
-            tests/test_db.py tests/test_source_watermarks.py tests/scripts/test_db_compact.py \
-            tests/test_primitives.py tests/test_universe.py tests/test_calendar_gate.py \
-            tests/test_check_dead_references.py \
-            tests/services/test_accepted_schema.py \
-            tests/services/test_availability.py \
-            tests/services/test_dataset_contracts.py \
-            tests/services/test_disclosure_boundaries.py \
-            tests/services/test_formal_boundaries.py \
-            tests/services/test_formal_execution.py \
-            tests/services/test_holders_top10_acceptance.py \
-            tests/services/test_org_holding_acceptance.py \
-            tests/services/test_stk_holdertrade_acceptance.py \
-            tests/services/test_disclosure_dual_write.py \
-            tests/services/test_disclosure_shadow_compare.py \
-            tests/services/test_disclosure_research_read.py \
-            tests/services/test_disclosure_enrichment_projection.py \
-            tests/services/test_phase_e_smoke.py \
-            tests/services/test_research_runtime.py \
-            tests/services/test_institution_follow_b0.py \
-            tests/services/test_institution_follow_b1.py \
-            tests/services/test_institution_follow_b2.py \
-            tests/services/test_institution_follow_b4.py \
-            tests/services/test_margin_acceptance.py \
-            tests/services/test_observation_population.py \
-            tests/services/test_project_universe_breadth.py \
-            tests/services/test_population_scope.py \
-            tests/services/test_sync_execution_policy.py \
-            tests/services/test_runtime_limits.py \
-            tests/scripts/test_check_universe_filter.py \
-            tests/scripts/test_check_calendar_usage.py \
-            tests/scripts/test_ci_paths_policy.py \
-            tests/scripts/test_classify_commit_tier.py \
-            tests/scripts/test_check_codex_review.py \
-            tests/scripts/test_build_agent_board.py \
-            tests/scripts/test_agent_boot.py \
-            tests/scripts/test_persist_phase_d_experiment_runs.py \
-            tests/scripts/test_build_price_kline_qfq_tushare.py \
-            -p no:cacheprovider --tb=short -q || exit 1
+          PYTHONPATH=backend python backend/scripts/run_ci_pytest.py \
+            -p no:cacheprovider --tb=short -q
 
       - name: Population and calendar static gates
         run: |

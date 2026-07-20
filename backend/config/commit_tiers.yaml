@@ -47,7 +47,7 @@ content_scan_exempt_prefixes:
 
 # tier → safe_commit 门集。名称与 scripts/safe_commit.sh 的 gate 标签一一对应。
 # L3 必须是字面量 "all" (全门, 现行为)。代码侧硬校验: L1 必含 doc 门,
-# L2 必含 rule10, 两者都必须是已知门名子集。
+# L2 必含 rule10 与 ci_pytest, 两者都必须是已知门名子集。
 tier_gates:
   L1:
     - project_index_sync
@@ -62,6 +62,7 @@ tier_gates:
     - agent_board
     - moth
     - rule_compliance
+    - ci_pytest
     - sandbox_isolation
     - serve_read_layer
     - calendar_usage

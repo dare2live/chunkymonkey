@@ -76,7 +76,7 @@ done
 echo
 echo "=== Step 1.5: commit tier classification ==="
 COMMIT_TIER="L3"
-COMMIT_TIER_GATES="project_index_sync feature_map agent_board moth rule_compliance sandbox_isolation serve_read_layer calendar_usage population_contract lineage_drift dead_references grain_uniqueness continuity config_refs doc_drift doc_governance commit_msg rule10"
+COMMIT_TIER_GATES="project_index_sync feature_map agent_board moth rule_compliance ci_pytest sandbox_isolation serve_read_layer calendar_usage population_contract lineage_drift dead_references grain_uniqueness continuity config_refs doc_drift doc_governance commit_msg rule10"
 if [[ -f "backend/scripts/classify_commit_tier.py" && -f "backend/config/commit_tiers.yaml" ]]; then
     if COMMIT_TIER_JSON=$(PYTHONPATH=backend "$PY" backend/scripts/classify_commit_tier.py 2>/tmp/cm_tier_err.out); then
         if parsed=$("$PY" -c '
@@ -227,6 +227,41 @@ if ! PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_rule_comp
 fi
 else
     echo "[commit-tier] skip rule_compliance (tier=$COMMIT_TIER)"
+fi
+
+# 3.4 Offline CI pytest surface (L2/L3 only; same list as public CI).
+# Owner: backend/config/ci_pytest_surface.yaml + backend/scripts/run_ci_pytest.py.
+# Binding finding (2026-07-20): safe_commit previously ran zero pytest locally, so
+# stale assertions only exploded on public CI. This gate closes that gap without
+# changing accept/PIT/cutover semantics. L1 docs commits skip (no code surface).
+echo
+echo "=== Step 3.4: CI pytest surface (L2/L3) ==="
+if gate_enabled ci_pytest; then
+if [[ ! -f "$STAGED_BACKEND/scripts/run_ci_pytest.py" ]]; then
+    echo "ERROR: staged snapshot 缺 run_ci_pytest.py；L2/L3 不得跳过 CI 同面 pytest。"
+    exit 3
+fi
+if [[ ! -f "$STAGED_BACKEND/config/ci_pytest_surface.yaml" ]]; then
+    echo "ERROR: staged snapshot 缺 ci_pytest_surface.yaml；L2/L3 不得跳过 CI 同面 pytest。"
+    exit 3
+fi
+# Run against the live worktree (tests need repo pytest.ini + fixtures). Paths
+# come only from the staged SSOT yaml via the staged runner — never a hand list.
+if ! (
+    CHUNKYMONKEY_REPO="$(pwd)" \
+    CI_PYTEST_SURFACE="$STAGED_BACKEND/config/ci_pytest_surface.yaml" \
+    PYTHONPATH=backend "$PY" "$STAGED_BACKEND/scripts/run_ci_pytest.py" \
+        -p no:cacheprovider --tb=line -q
+); then
+    echo
+    echo "ERROR: CI pytest surface 红 — 本地 L2/L3 必须与 public CI 同面绿。"
+    echo "正解: 修失败测试, 或把路径从 ci_pytest_surface.yaml paths 移到 ci_test_optional(带 reason)。"
+    echo "勿 --no-verify 绕; 勿改 accept/PIT/cutover 门去洗绿。"
+    exit 3
+fi
+echo "[ci-pytest] PASS (same surface as .github/workflows/ci.yml)"
+else
+    echo "[commit-tier] skip ci_pytest (tier=$COMMIT_TIER)"
 fi
 
 # (Step 3.5 旧 leakage audit gate 已删 2026-07-02: 触发实体与 verifier 同时退役。

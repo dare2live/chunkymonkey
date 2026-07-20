@@ -37,6 +37,7 @@ KNOWN_GATES = frozenset({
     "agent_board",
     "moth",
     "rule_compliance",
+    "ci_pytest",
     "sandbox_isolation",
     "serve_read_layer",
     "calendar_usage",
@@ -58,6 +59,7 @@ ALL_GATES_ORDERED = (
     "agent_board",
     "moth",
     "rule_compliance",
+    "ci_pytest",
     "sandbox_isolation",
     "serve_read_layer",
     "calendar_usage",
@@ -150,6 +152,10 @@ def validate_policy(policy: dict[str, Any]) -> None:
         raise PolicyError("L1 must include doc_drift and doc_governance")
     if "rule10" not in gates["L2"]:
         raise PolicyError("L2 must include rule10")
+    if "ci_pytest" not in gates["L2"]:
+        # 2026-07-20 Fable5 CI-tax fix: L2 code changes must run the same offline
+        # pytest surface as public CI locally, not just at push time.
+        raise PolicyError("L2 must include ci_pytest")
 
 
 def staged_name_status() -> list[tuple[str, str]]:
