@@ -22,7 +22,7 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；名义 K + ST accepted `20260115`→`20260720`（122d；可 chunked local-raw 续扩）；**S1–S3 transport FIXED**：default sync = caller-only land→accept；CLI `--land-only` / `--accept-from-landing` / `--land-then-accept` + `--from-local-raw`；fused `capture_and_publish_*` test-only；manual sync `trigger_mode` 已拆；form/qfq/segments/pulse 分析面经 canonical∪raw 已追到 `20260720`（legacy raw daily 仍停 `20260716`，formal 不写 raw）；margin 仍 frozen；无 mass fetch / cutover |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；名义 K + ST accepted `20241121`→`20260720`（402d；7×≤40d local-raw land→accept）；**S1–S3 transport FIXED**：default sync = caller-only land→accept；CLI `--land-only` / `--accept-from-landing` / `--land-then-accept` + `--from-local-raw`；fused `capture_and_publish_*` test-only；manual sync `trigger_mode` 已拆；form/qfq/segments/pulse 分析面经 canonical∪raw 已追到 `20260720`（legacy raw daily 仍停 `20260716`，formal 不写 raw）；margin 仍 frozen；无 mass fetch / cutover |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `technical_states/`, `segments.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `market_pulse_tier12_read.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py` | 多轴状态可复用；C accept 分 `publish_scope=canary|project_universe`；`resolve_tier12_production_read` + B1/pulse 接线；**cutover yaml=true** → ACCEPTED_CUTOVER；**form enrich v1**（`stock_state_stage_pattern_v1`，exact-day `fact_stock_form_daily` → `form_name`/`axis_pos`；writer `axis_trend` 不覆盖）；re-accept `20260717`=4989 + `20260720`=4991；无 accept 日仍 fail-closed→LEGACY/`fact_stock_form_daily`；persist 可在 cutover-ON 下重跑（不回翻 yaml） |
 | T2 market sensing | `market_pulse.py`, `market_pulse_tier12_read.py`, `market_pulse_b_pit_read.py`, `b_pit_mart_cutover.py`, `project_universe_breadth.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py`, API/frontend | 展示可用但 breadth/margin UNTRUSTED（B-ext）；sentiment 旁路 `tier12_production_read` + `b_pit_mart_production_read`；B-pit shadow MATCH 120/120；**mart cutover=true（owner opt-in 2026-07-20）→ MART_CUTOVER（project_universe_pit）**；C envelope 可 project_universe scope；窗外/无 shadow 日仍 fail-closed→legacy；drill form 单轨 production-read（无 legacy JOIN+accepted 双写） |
@@ -35,7 +35,7 @@ AGENTS.md
 
 | Area | Role |
 |---|---|
-| `data/tushare_raw.duckdb` | TuShare legacy `raw_tushare_*` compatibility 表 + frozen margin evidence；accepted calendar generation + nominal OHLCV/ST landing/canonical/accepted_partition `20260115`→`20260720`；legacy `raw_tushare_daily` 仍停 `20260716`（formal 不写；local-raw materialize → landing 另路径） |
+| `data/tushare_raw.duckdb` | TuShare legacy `raw_tushare_*` compatibility 表 + frozen margin evidence；accepted calendar generation + nominal OHLCV/ST landing/canonical/accepted_partition `20241121`→`20260720`（402d）；legacy `raw_tushare_daily` 仍停 `20260716`（formal 不写；local-raw materialize → landing 另路径） |
 | `data/market.duckdb` | K 线 serving/派生数据；qfq=`canonical∪raw`×adj 分析面（max `2026-07-20`），不等于名义成交价真相 |
 | `data/reference.duckdb` | 交易日历、身份/reference 数据 |
 | `data/smartmoney.duckdb` | 当前 mart、profiles、ops/control evidence |

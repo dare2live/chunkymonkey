@@ -137,5 +137,6 @@ chunkyctl sync / daily_update → sync_runner.run_domain(daily|stock_st)
 | thin land→accept | **FIXED** | `--land-then-accept` / `land_then_accept_authorized_security_day` |
 | S3 sync caller-only | **FIXED** | default `_publish_*` → land→accept；`sync_runner` 无 `capture_and_publish_*`；moth fan-in = runtime defs + tests only |
 
-Residual owner：S4–S6 按需；S7 legacy `raw_tushare_*`；chunked backward local-raw 扩窗（≤40d）。
-Next verification：chunked expand accepted min toward `2025`/holdout；S4 adapter swap.
+Residual owner：S4–S6 按需；S7 legacy `raw_tushare_*`；optional further chunked expand（raw ST≥`20220104`）。
+Live expand evidence（2026-07-21）：accepted daily+ST min→`20241121`（402d；7×≤40d local-raw）。
+Next verification：S4 adapter swap；E/F same-protocol remeasure on expanded window.

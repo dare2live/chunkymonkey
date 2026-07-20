@@ -336,3 +336,11 @@ Live 焊点（evidence pack §2.7 复核）：
   capture_and_publish` 生产代码 fan-in **不含** `sync_runner.py`。
 - TDD：`test_s3_default_*_is_caller_only_not_fused` + source ban。
 - Residual：chunked local-raw 扩窗；S4–S6；S7 legacy raw 面；E0。
+
+### Amend 2026-07-21 — chunked local-raw expand (PARTIAL continue)
+
+- 7×≤40d `--land-then-accept --from-local-raw` for daily+ST：accepted
+  **`20241121`→`20260720`（402d）**（from prior min `20260115`）。
+- Covers full calendar-`2025` trading days in-window + late-`2024` flank；
+  no provider fetch；no mass dump；stop was session pacing not a hard blocker
+  (raw still supports further back).

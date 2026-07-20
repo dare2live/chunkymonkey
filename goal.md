@@ -1,7 +1,7 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-21（**S1–S3 transport FIXED**；accepted daily/ST 扩窗进行中；min=`20260115`）
+> 更新：2026-07-21（**S1–S3 transport FIXED**；accepted daily/ST **`20241121`→`20260720`**（402d））
 > 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改）。
 > 完成证据追加到 `analysis/project_state_ledger.md`。
 > **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
@@ -25,7 +25,7 @@
 - Phase F **F3 FIXED**：B2 = B0 + Tier2 market-sensing FeatureBlock（`MarketContextSnapshot` project-board breadth risk-on gate，mirrors `institution_follow_b2`；legacy `market_pulse` mart 遇 UNTRUSTED 拒绝、缺 `available_at` fail-closed；独立 ablate on B0，非叠加 B1）→ 同窗口 measured **`reject`** / **`claimable=false`**（coverage sufficient 121/121d, risk_on 53/121d；edge gates unmet + holdout lift vs B0 unmet）。**F0–F3 ladder 可 checkpoint**（三个 ablation 均诚实 reject，非叠加寻优）。
 - **Dual-track 复核（2026-07-20 续作）**：`rg`+人工复查 `routers`/`services`/`scripts`/前端 API，residual **NONE**——无新旁路可删/退役；既有 resolver 边界（`resolve_tier12_production_read`、`resolve_b_pit_mart_production_read`）仍是唯一读路径。证据见 `data/lineage/legacy_retire_notes.md`「2026-07-20 re-audit」。
 - **Accept frontier 复核（2026-07-20 续作）**：实测 `chunkyctl sync --domain daily|stock_st --start 20260721 --end 20260721` 均 `operation_window_blocked`（`wall_clock_preflight`，`eligible horizon=20260720`）——frontier 已 **current**，非落后；`20260721` 是交易日但尚未收盘（系统时钟仍 `2026-07-20`），无新数据可 accept。
-- **F 更长窗 remeasure（2026-07-20 续作）**：**BLOCKED**（非代码可解）——accepted nominal 窗口本身就是 `20260116`→`20260720`（121d，与 F0 冻结窗口一致），往前扩窗=backfill（禁），往后扩窗=只能随自然交易日推进（无法加速）；250d full-episode 同理需数月自然日历。交给 owner：授权例外 backfill，或接受自然节奏。
+- **F 更长窗**：accepted daily/ST 已经 chunked local-raw 扩至 `20241121`→`20260720`（402d）；E/F **同 protocol remeasure** 可排期（仍禁 Optuna/松门/Release）；原「121d 窗=自然推进 only」blocker 已部分解除（local→accepted 路径，非 mass dump）。
 
 启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。
 
@@ -38,8 +38,8 @@
 旧 `forward_program_efgh` P1 remeasure **superseded**；P0 自然 sync 护栏仍并行。
 
 - **S1–S3 transport FIXED**：default `chunkyctl sync` daily/stock_st/trade_cal = caller-only S1→S2（`land_then_accept` / land+accept）；`capture_and_publish_*` **非** sync 生产 fan-in（moth：仅 runtime 定义 + 单测）；CLI `--land-only` / `--accept-from-landing` / `--land-then-accept` + `--from-local-raw` 仍可用；TDD 含 S3 红→绿
-- **近端 focus**：chunked `--land-then-accept --from-local-raw`（≤40d）向后扩 accepted daily+ST（prefer holdout/`2025`）；**S4–S6 按需**；legacy `raw_tushare_*` 并行面 **不在 S3 范围**（S7）
-- **研究轨（后置）**：E0 披露 formal；E/F 同 protocol（窗扩后）；不开 G/H/Release 抢跑
+- **Accepted window（local-raw chunked）**：daily+ST **`20241121`→`20260720`（402d）** — 7×≤40d `--land-then-accept --from-local-raw` from prior min `20260115`；covers full `2025` + late-`2024` holdout flank；raw still supports further back (ST from `20220104`)
+- **近端 focus**：**S4–S6 按需**；optional further chunked expand；legacy `raw_tushare_*` 并行面 = S7；**研究轨** E0 → E/F 同 protocol remeasure（窗已扩）；不开 G/H/Release 抢跑
 - **护栏**：frontier=`20260720`；dual-track=NONE；PIT+≤40d+禁 mass backfill/第二 DB/plugin bus
 
 A→H 降为地图；细节以重评文 §4、§9 为准。

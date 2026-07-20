@@ -2355,3 +2355,22 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Residual**：chunked `--land-then-accept --from-local-raw` 向后扩 accepted
   （≤40d；prefer `2025`/holdout）；S4–S6；S7 legacy raw；E0。
 - **Status**: **FIXED**（S1–S3 transport）。
+
+### 2026-07-21 — Chunked local-raw backward expand accepted daily+ST
+
+- Wall-clock: Tue 2026-07-21 ~07:45–08:00 Asia/Shanghai (in-session).
+- **Method**：7 windows × ≤40 trading days；
+  `chunkyctl sync --domain daily|stock_st --land-then-accept --from-local-raw
+  --start/--end`（S1 materialize from `raw_tushare_*` → S2 accept；零 provider）。
+- **Windows**（each 40/40 completed, failed_batches=0）：
+  `20251118–20260114`, `20250915–20251117`, `20250721–20250912`,
+  `20250523–20250718`, `20250324–20250522`, `20250117–20250321`,
+  `20241121–20250116`。
+- **Result**：accepted `tier0.market_data.nominal_ohlcv_daily` +
+  `tier0.security_identity.stock_st_daily` =
+  **min=`20241121` max=`20260720` n=402**（prior min=`20260115` n=122）。
+- **Did not**：mass multi-year dump；provider re-fetch；Optuna/Release/cutover 翻；
+  SELECT raw INSERT canonical。
+- **Residual**：optional further expand (raw ST from `20220104`)；S4–S6；E0；
+  E/F same-protocol remeasure now unblocked on window length.
+- **Status**: **FIXED**（expand slice；S3 already FIXED same session）。
