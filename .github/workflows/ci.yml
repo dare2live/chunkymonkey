@@ -74,6 +74,8 @@ jobs:
             tests/services/test_runtime_limits.py \
             tests/scripts/test_check_universe_filter.py \
             tests/scripts/test_check_calendar_usage.py \
+            tests/scripts/test_classify_commit_tier.py \
+            tests/scripts/test_check_codex_review.py \
             -p no:cacheprovider --tb=short -q || exit 1
 
       - name: Population and calendar static gates

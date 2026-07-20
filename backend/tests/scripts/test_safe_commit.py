@@ -72,7 +72,22 @@ def _make_repo_with_staged_python(tmp_path: Path) -> Path:
     (repo / "scripts").mkdir(parents=True)
     shutil.copy2(SAFE_COMMIT, repo / "scripts" / "safe_commit.sh")
     (repo / "backend" / "scripts").mkdir(parents=True)
+    (repo / "backend" / "config").mkdir(parents=True)
     shutil.copy2(CODEX_REVIEW_GATE, repo / "backend" / "scripts" / "check_codex_review.py")
+    # WP1: fixture without classifier → safe_commit fail-closes to L3 full gates
+    # (explicit stub keeps classify import path available for Rule 10 L1 checks).
+    _write(
+        repo / "backend" / "scripts" / "classify_commit_tier.py",
+        "import json,sys\n"
+        "print(json.dumps({'tier':'L3','gates':["
+        "'project_index_sync','feature_map','moth','rule_compliance',"
+        "'sandbox_isolation','serve_read_layer','calendar_usage',"
+        "'population_contract','lineage_drift','dead_references',"
+        "'grain_uniqueness','continuity','config_refs','doc_drift',"
+        "'doc_governance','commit_msg','rule10'],"
+        "'reasons':['fixture_l3'],'paths':[]}))\n",
+    )
+    _write(repo / "backend" / "config" / "commit_tiers.yaml", "version: 1\n")
     _write(repo / "backend" / "scripts" / "check_project_index_sync.py", "raise SystemExit(0)\n")
     _write(repo / "backend" / "scripts" / "check_rule_compliance.py", "raise SystemExit(0)\n")
     _write(repo / "backend" / "scripts" / "build_feature_map.py", "raise SystemExit(0)\n")

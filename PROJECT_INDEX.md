@@ -60,7 +60,7 @@ AGENTS.md
 | Doc governance | `PYTHONPATH=backend python backend/scripts/check_doc_governance.py` |
 | Doc drift | `PYTHONPATH=backend python backend/scripts/check_doc_drift.py --check` |
 | Live continuity | `PYTHONPATH=backend python backend/scripts/check_continuity_integrity.py` (`FAIL` 直接非零) |
-| Local reviewed commit | `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "<message>"` |
+| Local reviewed commit | `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "<message>"`（WP1：staged 路径机器分级 L1/L2/L3；政策=`backend/config/commit_tiers.yaml`） |
 | Tier1/2 full-universe accept (manual) | `PYTHONPATH=backend python backend/scripts/persist_tier12_full_universe_accept.py --decision-date YYYYMMDD`；默认不翻 `consumer_cutover` |
 
 已移除的 ChunkyCtl 子命令不是工作流，调用必须返回非零；不要在活文档或生成地图中把任何 retired lifecycle 重新列为 active。

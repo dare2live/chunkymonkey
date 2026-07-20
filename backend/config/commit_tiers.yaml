@@ -1,0 +1,70 @@
+# Commit tier policy (WP1 tiered safe_commit; owner = docs/engineering_governance.md §13).
+#
+# safe_commit.sh 与 commit-msg hook 通过 backend/scripts/classify_commit_tier.py
+# 消费本政策。语义:
+#   - L1 = docs/board/analysis/sandbox only  → 轻门 (doc gates + index sync + sandbox C2)
+#   - L2 = 非 writer 代码 (tests/routers/frontend) → 除 live-DB readiness 门外全门 + Rule 10
+#   - L3 = writer/PIT/schema/config-gate/deletion/其余一切 → 现行全门不变
+# fail-closed 铁律 (代码侧强制, 本文件不可放宽):
+#   - 未匹配任何 allowlist 的路径 → L3
+#   - 任何 deletion/rename/typechange → L3
+#   - 分类器缺失/报错/输出不可解析/政策校验失败 → L3 全门
+#   - agent 不可自降级: 不存在降 tier 的 env/flag
+# 门只按 tier 剪枝, 永不删除; grain/continuity 是 live 数据 readiness 投影
+# (代码提交本身无法改变 live DB 状态), 因此仅在 L3 评估; 任何 tier 的提交都
+# 不产生 Tier0 readiness 声明。
+version: 1
+
+# L1: 目录前缀 (必须以 / 结尾) 与精确文件。FEATURE_MAP.md 故意不在此列 —
+# 生成投影单独手改必须走 L3 全门 (feature-map drift 门在 L1 被剪枝)。
+l1_prefixes:
+  - docs/
+  - analysis/
+  - sandbox/
+l1_files:
+  - goal.md
+  - PROJECT_INDEX.md
+  - README.md
+
+# L2: 非 writer 代码面。backend/services/ 整体保守留在 L3 (Tier0/PIT/writer
+# 机制全在其中); 扩大 L2 面必须改本 typed 政策 (其自身是 L3 + Rule 10)。
+l2_prefixes:
+  - backend/tests/
+  - backend/routers/
+  - frontend/
+l2_files:
+  - backend/main.py
+
+# L2 候选中的这些前缀豁免 SQL-mutation 内容扫描 (测试 fixture 合法含 DDL);
+# 其余 L2 候选 (routers/main.py) 的 staged blob 若含写表语句 → 升 L3。
+content_scan_exempt_prefixes:
+  - backend/tests/
+  - frontend/
+
+# tier → safe_commit 门集。名称与 scripts/safe_commit.sh 的 gate 标签一一对应。
+# L3 必须是字面量 "all" (全门, 现行为)。代码侧硬校验: L1 必含 doc 门,
+# L2 必含 rule10, 两者都必须是已知门名子集。
+tier_gates:
+  L1:
+    - project_index_sync
+    - sandbox_isolation
+    - doc_drift
+    - doc_governance
+    - commit_msg
+  L2:
+    - project_index_sync
+    - feature_map
+    - moth
+    - rule_compliance
+    - sandbox_isolation
+    - serve_read_layer
+    - calendar_usage
+    - population_contract
+    - lineage_drift
+    - dead_references
+    - config_refs
+    - doc_drift
+    - doc_governance
+    - commit_msg
+    - rule10
+  L3: all

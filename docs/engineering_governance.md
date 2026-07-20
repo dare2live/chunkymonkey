@@ -262,4 +262,11 @@ PYTHONPATH=backend python backend/scripts/check_doc_drift.py --check
 SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "<message>"
 ```
 
+`safe_commit.sh` machine-classifies staged paths into L1/L2/L3
+(`backend/scripts/classify_commit_tier.py` + `backend/config/commit_tiers.yaml`).
+Agents cannot self-downgrade; unknown/deletion/bad policy → L3 full gates.
+L1 = docs/analysis/sandbox light gates; L2 = tests/routers/frontend + Rule 10;
+L3 = writer/PIT/schema/config/deletion = current full gate set. Grain/continuity
+live-DB readiness projections run on L3 only; no commit upgrades Tier0 readiness.
+
 不 `--no-verify` 绕门，不 amend 已 push commit，不在未授权时 push。交付报告必须区分 `FIXED/PARTIAL/BLOCKED`，列 residual、验收命令和 owner。

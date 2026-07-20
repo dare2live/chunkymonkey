@@ -49,11 +49,12 @@ def test_request_changes_cannot_be_overridden_by_skip_text(tmp_path, monkeypatch
 
 
 def test_skip_reason_does_not_bypass(tmp_path, monkeypatch) -> None:
+    # L3 config path — skip text must not satisfy Rule 10.
     assert _run(
         tmp_path,
         monkeypatch,
         "codex-review: skipped reason=docs-only cleanup\n",
-        ["docs/README.md"],
+        ["backend/config/x.yaml"],
     ) == 1
 
 
@@ -63,6 +64,20 @@ def test_generic_codex_or_agent_reference_does_not_bypass(tmp_path, monkeypatch)
 
 def test_non_risky_text_change_does_not_require_review(tmp_path, monkeypatch) -> None:
     assert _run(tmp_path, monkeypatch, "notes only\n", ["notes.txt"]) == 0
+
+
+def test_l1_docs_skip_rule10_without_approval(tmp_path, monkeypatch) -> None:
+    """WP1: machine L1 (docs/analysis only) does not require Codex-Reviewed."""
+    assert _run(tmp_path, monkeypatch, "docs board update evidence\n", ["goal.md", "docs/README.md"]) == 0
+
+
+def test_l1_mixed_with_service_still_requires_review(tmp_path, monkeypatch) -> None:
+    assert _run(
+        tmp_path,
+        monkeypatch,
+        "mixed slice evidence\n",
+        ["goal.md", "backend/services/calendar.py"],
+    ) == 1
 
 
 def test_risky_set_matches_safe_commit_contract() -> None:

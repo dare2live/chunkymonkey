@@ -6,16 +6,13 @@
 
 ## 当前 objective
 
-**当前轨道 = Agent-OS 重设计（业主已批，先于 A→H 恢复）**：Truth OS 机器门
-（population/calendar/lineage/grain/PIT/cutover fail-closed）一个不动；仪式层压缩：
-WP0 triage（勘察完：树净、`d8b69090` 已入账）→ WP1 tiered safe_commit（L1
-docs/generated/sandbox 轻门 / L2 非 writer 代码窄门 / L3 writer/PIT/schema/config/
-删除全门不变；机器分类 fail-closed，未知→L3，禁自降级）→ WP2 生成板（goal 状态段
-改为 accepted 事实/gate 只读投影，板非执法输入）→（余力）WP3 agent-boot / WP4
-AGENTS 瘦身。冻结期禁：新 A→H 刀 / B-pit·C `cutover_allowed=true` / Optuna /
-E 松门 / StrategyRelease / margin thaw / mass backfill / plugin bus / 第二 DB。
-手动数据运维（`20260720` 有行后 sync+accept）非 A→H 刀，照旧 fail-closed 允许。
-**A→H 挂起点（于 `d8b69090` 后原样冻结）**：按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + **120** 交易日名义 K accepted `20260116`–`20260717`；ST 同窗 + 额外 `20260720`；**manual sync 已拆时钟门**——`trigger_mode=manual` 开市可拉今日，consumer/`available_at` 仍 `same_day_at 18:00`；live `20260720` manual 已越过 window，provider `zero_rows` fail-closed，尚未 accepted；仍禁 mass backfill）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（120d shadow：MATCH baseline=membership_restricted_proxy **120/120 MATCH**；unfiltered 仅作 semantic delta；**mart cutover 显式门 FIXED（默认 false）**：`b_pit_mart_cutover` + `resolve_b_pit_mart_production_read`；pulse/B2 已接线；MATCH 亦不放行；**未** mart 切读）。**E0 FIXED（gate+mirror off）**。**E = measured reject / no-gain（120d checkpointed）**：窗 `20260116`–`20260717` purged WF（3 folds）B0−38%/B1−51%/B2−2.2% 全 `reject`；B4 `inconclusive`（event_days=11 但 fraction≈9%<25%）；均 `claimable=false`；artifacts=`data/lineage/phase_e_experiment_verdicts/`；**无 StrategyRelease**。**Phase C PARTIAL（writer+PIT+full-universe accept；未 cutover / 未 complete）**：
+**当前轨道 = Agent-OS 重设计（业主已批，先于 A→H）**：Truth OS 机器门不动。
+WP0 FIXED。**WP1** = tiered safe_commit（L1 docs 轻门 / L2 非 writer+Rule10 /
+L3 全门；`classify_commit_tier` fail-closed，禁自降级）。下一刀 **WP2** 生成板
+（状态段→accepted 投影，板非执法）。余力 WP3 boot / WP4 AGENTS 瘦身。冻结：
+新 A→H 刀 / B-pit·C `cutover_allowed=true` / Optuna / E 松门 / Release /
+margin thaw / mass backfill / plugin bus / 第二 DB。手动 sync+accept 照旧。
+**A→H 挂起点（`d8b69090` 后冻结）**：按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + **120** 交易日名义 K accepted `20260116`–`20260717`；ST 同窗 + 额外 `20260720`；**manual sync 已拆时钟门**——`trigger_mode=manual` 开市可拉今日，consumer/`available_at` 仍 `same_day_at 18:00`；live `20260720` manual 已越过 window，provider `zero_rows` fail-closed，尚未 accepted；仍禁 mass backfill）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（120d shadow：MATCH baseline=membership_restricted_proxy **120/120 MATCH**；unfiltered 仅作 semantic delta；**mart cutover 显式门 FIXED（默认 false）**：`b_pit_mart_cutover` + `resolve_b_pit_mart_production_read`；pulse/B2 已接线；MATCH 亦不放行；**未** mart 切读）。**E0 FIXED（gate+mirror off）**。**E = measured reject / no-gain（120d checkpointed）**：窗 `20260116`–`20260717` purged WF（3 folds）B0−38%/B1−51%/B2−2.2% 全 `reject`；B4 `inconclusive`（event_days=11 但 fraction≈9%<25%）；均 `claimable=false`；artifacts=`data/lineage/phase_e_experiment_verdicts/`；**无 StrategyRelease**。**Phase C PARTIAL（writer+PIT+full-universe accept；未 cutover / 未 complete）**：
   `tier12_publish_contract` + `tier12_publish_writer` +
   `tier12_publish_accept` + `tier12_project_universe` + typed
   `config/tier12_publish.yaml` + `tier12_nominal_canary`。Writer：PIT 截断 →

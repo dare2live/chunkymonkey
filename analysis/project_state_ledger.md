@@ -1684,3 +1684,22 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   thaw; mass backfill; plugin bus; second DB. Manual data ops
   (`20260720` sync+accept when provider has rows) stay allowed fail-closed.
 - **Status**: WP0 FIXED. Next = WP1 tiered safe_commit (L1/L2/L3).
+
+### 2026-07-20 — Agent-OS WP1 tiered safe_commit (FIXED)
+
+- Wall-clock: Mon 2026-07-20 ~17:30 Asia/Shanghai (in-session).
+- Delivered machine L1/L2/L3 DoD for `scripts/safe_commit.sh`:
+  - policy: `backend/config/commit_tiers.yaml` (typed; L3 must be `all`)
+  - classifier: `backend/scripts/classify_commit_tier.py` (fail-closed;
+    unknown/deletion/bad policy → L3; no FORCE_TIER / downgrade env)
+  - Rule 10 (`check_codex_review.py`) skips only machine L1; REQUEST_CHANGES
+    still always blocks; mixed docs+service → L3
+  - L1: docs/analysis/sandbox light gates; L2: tests/routers/frontend +
+    Rule 10 (no grain/continuity); L3: full current gate set unchanged
+- Tests: `test_classify_commit_tier` + updated `test_check_codex_review` +
+  `test_safe_commit` (53 passed scoped); CI wires classifier + codex review
+  unit tests.
+- Docs: engineering_governance §13 + goal objective + PROJECT_INDEX entry.
+- **Did not**: flip B-pit/C cutover; A→H knives; Optuna; AGENTS slim; board gen
+  (WP2 next).
+- **Status**: WP1 FIXED. Next = WP2 generated board.

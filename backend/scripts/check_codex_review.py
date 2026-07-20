@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Blocking Rule 10 commit-msg gate (owner: AGENTS.md + engineering governance).
 
 Any risky staged file must carry the canonical independent-review verdict
@@ -6,6 +5,9 @@ Any risky staged file must carry the canonical independent-review verdict
 hex IDs and ``codex-review: skipped`` are not review evidence. An explicit
 ``REQUEST_CHANGES`` always blocks. This mirrors ``scripts/safe_commit.sh`` so a
 direct ``git commit`` cannot bypass the reviewed delivery path.
+
+WP1: L1 commits (docs/analysis/sandbox only, machine-classified) skip Rule 10.
+Classification is fail-closed — unknown/missing policy → L3 → review required.
 """
 from __future__ import annotations
 
@@ -52,6 +54,23 @@ def needs_codex_review(staged: list[str]) -> bool:
     return False
 
 
+def commit_tier_for_staged(staged: list[str]) -> str:
+    """Return L1/L2/L3 for staged paths; any classifier failure → L3."""
+    try:
+        from scripts.classify_commit_tier import classify
+    except ImportError:
+        try:
+            from classify_commit_tier import classify  # type: ignore
+        except ImportError:
+            return "L3"
+    try:
+        result = classify(staged, scan_content=True)
+        tier = result.get("tier")
+        return tier if tier in {"L1", "L2", "L3"} else "L3"
+    except Exception:  # noqa: BLE001 — fail closed
+        return "L3"
+
+
 def has_approved_codex_review(body: str) -> bool:
     """Return true only for the canonical Rule 10 approval trailer."""
     return APPROVED_CODEX_REVIEW_RE.search(body) is not None
@@ -70,8 +89,6 @@ def main(msg_path: str) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         print("Rule 10 cannot prove the staged scope; refusing the commit.", file=sys.stderr)
         return 2
-    if not needs_codex_review(staged):
-        return 0
 
     if has_rejected_codex_review(body):
         print("=" * 80, file=sys.stderr)
@@ -79,6 +96,13 @@ def main(msg_path: str) -> int:
         print("修法: 先消除 review objections, 再提交 APPROVE / APPROVE_WITH_NOTES。", file=sys.stderr)
         print("=" * 80, file=sys.stderr)
         return 1
+
+    # L1 (docs/analysis/sandbox) skips Rule 10; REQUEST_CHANGES already blocked above.
+    if commit_tier_for_staged(staged) == "L1":
+        return 0
+
+    if not needs_codex_review(staged):
+        return 0
 
     # ignore comment lines
     body_lines = [ln for ln in body.splitlines() if not ln.lstrip().startswith("#")]
