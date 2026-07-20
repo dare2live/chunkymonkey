@@ -20,8 +20,8 @@
   GET /api/v3/pulse/sentiment   情绪温度时序 (涨跌停/炸板率/涨跌比 + v2 连板天梯/晋级率/
                                 秒板/封单/两融/大盘PE换手/龙虎榜, mart_market_pulse_daily);
                                 旁路 population_scope / shadow_reconcile / cutover_allowed
-                                + tier12_production_read（B-ext UNTRUSTED; Phase C 读边界;
-                                不改 days 数值）
+                                + tier12_production_read（Phase C）+ b_pit_mart_production_read
+                                （B-pit mart 门；默认 LEGACY；不改 days 数值）
   GET /api/v3/pulse/warnings    退潮预警 (跌出 RS top-N [v3 锁 L1] + 连续静默流出 >= 阈值)
   GET /api/v3/pulse/strongest   最强板块榜 (limit_cpt_list 引擎快照; 885xxx.TI 码独立卡禁跨链)
   GET /api/v3/pulse/members     板块成分下钻 (dc=dc_member 最新快照; sw=index_member_all 当前成分)
@@ -45,6 +45,7 @@ from services.database_manifest import get_database_manifest
 from services.duck_adapter import connect as duck_connect
 from services.market_pulse_scope import attest_market_pulse_scope
 from services.market_pulse_shadow_reconcile import reconcile_market_pulse_shadow
+from services.market_pulse_b_pit_read import attest_pulse_b_pit_mart_production_read
 from services.market_pulse_tier12_read import (
     attest_pulse_tier12_production_read,
     overlay_pulse_form_from_production_read,
@@ -56,6 +57,9 @@ router = APIRouter()
 _TIER12_ARTIFACT_ROOT = None
 _TIER12_CUTOVER_CONFIG = None
 _TIER12_CONFIG_PATH = None
+_B_PIT_ARTIFACT_ROOT = None
+_B_PIT_CUTOVER_CONFIG = None
+_B_PIT_CONFIG_PATH = None
 
 
 def _load_margin_rows_for_shadow(conn, day: str) -> tuple[list[dict[str, Any]], str | None]:
@@ -609,7 +613,8 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
     B-ext: 旁路 ``population_scope`` + ``shadow_reconcile`` 标 legacy breadth/margin
     为 UNTRUSTED。Phase C: ``tier12_production_read`` 经
     ``resolve_tier12_production_read``；default yaml → LEGACY / cutover false。
-    ``days`` 数值不改、不做 consumer cutover / 不把 accepted JSON 当 pulse 真相。
+    B-pit: ``b_pit_mart_production_read`` 经 ``resolve_b_pit_mart_production_read``；
+    default yaml → LEGACY mart（MATCH 亦不翻）。``days`` 数值不改。
     """
     rows = conn.execute(f"""
         SELECT {', '.join(_SENTIMENT_COLS)} FROM (
@@ -635,6 +640,12 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
         artifact_root=_TIER12_ARTIFACT_ROOT,
         config_path=_TIER12_CONFIG_PATH,
     )
+    b_pit = attest_pulse_b_pit_mart_production_read(
+        latest,
+        config=_B_PIT_CUTOVER_CONFIG,
+        artifact_root=_B_PIT_ARTIFACT_ROOT,
+        config_path=_B_PIT_CONFIG_PATH,
+    )
     return {
         "status": "ok",
         "days": day_rows,
@@ -642,6 +653,8 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
         "shadow_reconcile": shadow,
         "cutover_allowed": bool(tier12.get("cutover_allowed", False)),
         "tier12_production_read": tier12,
+        "b_pit_mart_cutover_allowed": bool(b_pit.get("cutover_allowed", False)),
+        "b_pit_mart_production_read": b_pit,
     }
 
 

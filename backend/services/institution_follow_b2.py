@@ -33,6 +33,7 @@ from services.institution_follow_edge_gates import (
     evaluate_accept_edge_gates,
     evaluate_holdout_lift_vs_b0,
 )
+from services.b_pit_mart_cutover import resolve_b_pit_mart_cutover
 from services.institution_follow_b2_measure import (
     DEFINITION_VERSION,
     METHOD_ID,
@@ -92,7 +93,9 @@ class MarketSensingFeatureBlock:
             "definition_version": self.definition_version,
             "method": METHOD_ID,
             "population_kind": POPULATION_KIND,
-            "b_pit_cutover_allowed": False,
+            "b_pit_cutover_allowed": bool(
+                resolve_b_pit_mart_cutover("20260717").cutover_allowed
+            ),
         }
 
 
@@ -395,7 +398,9 @@ def finalize_b2_verdict(
         ),
         "method": METHOD_ID,
         "population_kind": POPULATION_KIND,
-        "b_pit_cutover_allowed": False,
+        "b_pit_cutover_allowed": bool(
+            resolve_b_pit_mart_cutover("20260717").cutover_allowed
+        ),
     }
 
     if not measured.claimable:

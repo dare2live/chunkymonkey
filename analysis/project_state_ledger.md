@@ -1595,3 +1595,39 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Status**: B-pit PARTIAL (shadow MATCH proven; mart cutover still
   blocked). **Did not**: B-pit/C cutover; StrategyRelease; Optuna; E
   loosen; margin thaw; mass backfill.
+
+### 2026-07-20 — B-pit mart cutover gate (TDD; default false)
+
+- Wall-clock: Mon 2026-07-20 ~15:20 Asia/Shanghai (in-session).
+- Added `backend/services/b_pit_mart_cutover.py` + typed
+  `backend/config/b_pit_mart_cutover.yaml` + pulse attestation
+  `market_pulse_b_pit_read.py` + TDD `test_b_pit_mart_cutover.py`
+  (15/15; related suites 59/59).
+- Semantics (fail-closed; mirrors C `tier12_consumer_cutover`):
+  default `cutover_allowed=false` → `LEGACY` / `legacy_mart` even when
+  e86410d0 shadow MATCH 120/120 artifact is present; opt-in requires
+  shadow MATCH attestation (`ratios_match_all` + diverge=0), matching
+  `definition_version` + `universe_policy_hash` +
+  `match_baseline_kind=membership_restricted_proxy` + declared window,
+  and explicit yaml opt-in. Missing shadow / diverge / hash mismatch /
+  day outside window → `BLOCKED`.
+- Single resolver API: `resolve_b_pit_mart_cutover` /
+  `resolve_b_pit_mart_production_read`;
+  `load_project_universe_breadth_as_mart_truth` refuses silent promotion.
+- Wired read boundaries (still LEGACY under default yaml):
+  - pulse `/api/v3/pulse/sentiment` → `b_pit_mart_production_read` +
+    `b_pit_mart_cutover_allowed`
+  - B2 measure/feature/verdict consult resolver for
+    `b_pit_cutover_allowed`
+- Live proof: `mart_cutover.cutover_allowed=false` in yaml;
+  `resolve_b_pit_mart_production_read("20260717")` → LEGACY /
+  `config_cutover_allowed_false` / shadow_payload=None while live
+  MATCH artifact remains 120/120.
+- `expected_universe_policy_hash` filled from live policy /
+  e86410d0 shadow (`448b589a…`) for opt-in readiness; **not** flipped.
+- **Did not**: set `cutover_allowed=true`; rewrite pulse mart numbers;
+  StrategyRelease; Optuna; E gate loosen; C cutover flip; margin thaw;
+  mass backfill. Optional daily `20260720` left as prior zero_rows.
+- **Status**: B-pit PARTIAL (MATCH proven + mart cutover gate present;
+  still not cut over). **Next**: provider-ready `20260720` sync+accept
+  **or** explicit opt-in B-pit/C cutover with strong evidence **or** stop.

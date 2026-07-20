@@ -1,0 +1,28 @@
+# b_pit_mart_cutover.yaml — B-pit project_universe_pit mart cutover gate
+#
+# Owner: docs/MASTER_TOPLEVEL_DESIGN.md (Tier2 population) + goal.md B-pit
+# Pulse/mart consumers must call resolve_b_pit_mart_production_read before
+# treating project_universe_pit breadth as production mart truth.
+#
+# Hard gates:
+#   - cutover_allowed stays false until explicit opt-in
+#   - MATCH alone (even 120/120) never silent-flips this flag
+#   - enabling requires shadow MATCH attestation + matching hashes + opt-in
+#   - not StrategyRelease; not Phase C consumer cutover; not Optuna
+
+meta:
+  version: 1
+  phase: B-pit
+  notes: "mart cutover gate; default false; MATCH alone insufficient"
+
+mart_cutover:
+  cutover_allowed: false
+  expected_definition_version: market_sensing_project_breadth_v0
+  # Live universe policy hash (same as b_pit_breadth_shadow remeasure e86410d0).
+  # Filled for opt-in readiness; cutover_allowed stays false until explicit flip.
+  expected_universe_policy_hash: "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+  expected_match_baseline_kind: membership_restricted_proxy
+  expected_window_start: "20260116"
+  expected_window_end: "20260717"
+  require_ratios_match_all: true
+  shadow_artifact_dir: data/lineage/b_pit_breadth_shadow

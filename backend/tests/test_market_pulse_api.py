@@ -290,6 +290,15 @@ def test_sentiment_v2_fields(client):
     assert t12["cutover_allowed"] is False
     assert t12["status"] == "LEGACY"
     assert "pulse_ui_attestation" in t12["notes"]
+    # B-pit mart cutover gate (default → LEGACY; MATCH alone insufficient).
+    assert body["b_pit_mart_cutover_allowed"] is False
+    bpit = body["b_pit_mart_production_read"]
+    assert bpit["uses_legacy"] is True
+    assert bpit["cutover_allowed"] is False
+    assert bpit["status"] == "LEGACY"
+    assert bpit["source"] == "legacy_mart"
+    assert "config_cutover_allowed_false" in bpit["reasons"]
+    assert "pulse_ui_attestation" in bpit["notes"]
 
 
 def test_flow_board_regime_groups_and_stripe(client):
