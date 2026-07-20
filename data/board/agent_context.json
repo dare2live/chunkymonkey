@@ -37,7 +37,7 @@
     }
   },
   "enforcement": "projection_only_not_truth",
-  "generated_at": "2026-07-20T09:26:58Z",
+  "generated_at": "2026-07-20T09:29:19Z",
   "generated_from": "backend/scripts/build_agent_board.py",
   "goal_hand_excerpt": "## 当前 objective\n\n**轨道 = Agent-OS 重设计（先于 A→H）**：Truth OS 机器门不动。WP0+WP1 FIXED。\n**WP2** = 生成板（本刀）。余力 WP3 agent-boot / WP4 AGENTS 瘦身。\n**A→H 挂起于 `d8b69090`**。状态细节只读 `BOARD.md`。\n\n## 下一步\n\n1. 完成 WP2（BOARD 漂移门绿）→（余力）WP3/WP4\n2. agent-OS 检查单全绿后才恢复 A→H\n3. 手动数据运维：`20260720` provider 有行后 sync+accept（非 A→H 刀）\n\n## 禁令\n\n- 新 A→H 刀；B-pit/C `cutover_allowed=true`；Optuna；E 松门；StrategyRelease\n- margin thaw；mass backfill；plugin bus；第二 DB；agent 自降 commit tier\n\n## 已裁决（稳定）\n\n| 层 | 目的 | 首个正式输出 |\n|---|---|---|\n| Tier 0A 市场数据 | 日历、身份、名义 K、公司行动、复权 | accepted canonical partition |\n| Tier 0B 分类 | 版本化树/概念/成员/crosswalk | taxonomy node + membership |\n| Tier 1 股票状态 | 阶段/形态/事件，不预测 | stock state + pattern event |\n| Tier 2 市场感知 | 活跃度/不平衡代理/广度/价格响应 | market context snapshot |\n| Tier 3 研究/策略 | B0→B5 消融 | experiment verdict + strategy spec |\n| Tier 4 决策/产品 | 只消费已发布策略 | strategy release + decision batch |\n\n依赖只向下。Ops 观察但不拥有业务事实。多源=契约可换 adapter（目标态）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。\n\n架构硬决定摘要：积木=`module+data+config+contract+evidence`；landing 保留供应商响应；日历与 universe 同级硬门；名义 OHLCV=成交真相；一数据集一 writer；`manual_only`；静态 PASS≠`live_readiness`。完整条文见 `docs/MASTER_TOPLEVEL_DESIGN.md`。\n\n## 边做边测\n\n坏例先红 → 最小实现 → 绿 …",
   "next_knives_frozen": [

@@ -108,7 +108,7 @@ def collect(repo: Path = REPO) -> dict[str, Any]:
     goal_text = goal_path.read_text(encoding="utf-8") if goal_path.is_file() else ""
 
     return {
-        "generated_at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),  # Phase ψ.5 allowlist: 文档元数据时间戳非 trade_date
         "generated_from": "backend/scripts/build_agent_board.py",
         "enforcement": "projection_only_not_truth",
         "track": {
