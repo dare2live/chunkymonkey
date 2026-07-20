@@ -38,6 +38,8 @@
 - **P1** E/F 处置：在自然扩大的 accepted nominal 窗上、不改阈值、同 protocol 复测；更长窗 remeasure 当前 **BLOCKED**（禁 mass backfill；需日历推进或 owner 书面例外）
 - **D1 及以后**：见程序文件；触发前不开 G、不开 H、不 StrategyRelease
 
+**Current focus 旁路（地基模块化债，非策略）**：owner 诊断成立——daily/ST 生产入口仍是 TuShare `capture_and_publish` 一条龙；库内 land/accept 缝已有但不可调度；「源可换 / 获取·加工·计算互不影响」=契约目标态未落地。证据与有序 strangler 切片见 `analysis/data_foundation_modularity_gap_20260720.md`（S0 本文；实现从 S1 land-only / S2 accept-from-landing 起，禁 greenfield）。
+
 旧「owner choose」菜单项已并入上列；细节与硬退出条件以程序文件为准。
 
 ## 禁令
