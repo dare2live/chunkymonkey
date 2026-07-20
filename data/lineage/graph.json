@@ -2179,6 +2179,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/tier12_publish_contract.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_form_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_check_grain_uniqueness.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_form_daily"
@@ -4819,9 +4825,9 @@
     }
   ],
   "meta": {
-    "edge_count": 752,
-    "generated_at": "2026-07-19T16:04:08.047884+00:00",
-    "node_count": 337,
+    "edge_count": 753,
+    "generated_at": "2026-07-20T01:56:20.584673+00:00",
+    "node_count": 338,
     "version": 2
   },
   "nodes": [
@@ -5679,6 +5685,14 @@
         "path": "backend/services/technical_states/limits.py"
       },
       "id": "consumer:backend/services/technical_states/limits.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/tier12_publish_contract.py"
+      },
+      "id": "consumer:backend/services/tier12_publish_contract.py",
       "kind": "consumer"
     },
     {

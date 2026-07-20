@@ -1230,3 +1230,18 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Did not**: Optuna, gate loosening, B-pit cutover, margin thaw,
   StrategyRelease, mass backfill.
 - **Next**: Phase C scaffolding OR stop until new eligible daily/evidence.
+
+### 2026-07-20 — Phase C scaffold: Tier1/2 publish lineage contract
+
+- Added `backend/services/tier12_publish_contract.py` + TDD
+  `test_tier12_publish_contract.py` (6/6):
+  - `StockStateDaily` / `MarketContextPublishEnvelope` require
+    definition_version, config_hash, input_snapshot_id,
+    eligible_universe_id, available_at.
+  - Missing lineage → `NOT_PUBLISHABLE`; complete →
+    `PUBLISHABLE_SCAFFOLD` with `published=false` always.
+  - Legacy `fact_stock_form_daily` bridge does **not** invent lineage.
+  - `config_hash_for` stable/order-independent SHA-256.
+- **Did not**: DB schema migration, accepted_partition writer, consumer
+  cutover, B-pit mart switch, claim Phase C publish-complete.
+- **Next**: wire writer + PIT truncation proof, or stop.

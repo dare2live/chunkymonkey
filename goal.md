@@ -6,7 +6,11 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + **120** 交易日名义 K accepted `20260116`–`20260717`；ST 同窗 + 额外 `20260720`；daily eligible frontier 仍=`20260717` READY/`pending_publish` 挡 `20260720`；仍禁 mass backfill）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false`）。**E0 FIXED（gate+mirror off）**。**E = measured reject / no-gain（120d checkpointed）**：窗 `20260116`–`20260717` purged WF（3 folds）B0−38%/B1−51%/B2−2.2% 全 `reject`；B4 `inconclusive`（event_days=11 但 fraction≈9%<25%）；均 `claimable=false`；artifacts=`data/lineage/phase_e_experiment_verdicts/`；**无 StrategyRelease**。下一刀=**Phase C** 脚手架 **或** stop；禁 Optuna / gate-loosening / B-pit cutover / margin thaw / mass backfill。
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + **120** 交易日名义 K accepted `20260116`–`20260717`；ST 同窗 + 额外 `20260720`；daily eligible frontier 仍=`20260717` READY/`pending_publish` 挡 `20260720`；仍禁 mass backfill）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false`）。**E0 FIXED（gate+mirror off）**。**E = measured reject / no-gain（120d checkpointed）**：窗 `20260116`–`20260717` purged WF（3 folds）B0−38%/B1−51%/B2−2.2% 全 `reject`；B4 `inconclusive`（event_days=11 但 fraction≈9%<25%）；均 `claimable=false`；artifacts=`data/lineage/phase_e_experiment_verdicts/`；**无 StrategyRelease**。**Phase C PARTIAL（scaffold only）**：`tier12_publish_contract` 要求
+  definition_version/config_hash/available_at 等齐全才 `PUBLISHABLE_SCAFFOLD`；
+  legacy form bridge 仍 `NOT_PUBLISHABLE`；**未** accepted publish / 未 cutover。
+  下一刀=C 接 writer/PIT 截断证明 **或** stop；禁 Optuna / gate-loosening /
+  B-pit cutover / margin thaw / mass backfill。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -58,12 +62,15 @@
   `pending_publish`）。form/qfq 仍 max=`20260716`（builder 无法超 raw/adj）。
   `evaluate_observation_population_readiness` → `READY`；doctor
   `population_readiness=PASS`。margin 仍冻结。下一刀：daily 下一 eligible
-  单日 + 120d E 重测（仍禁 mass backfill / margin 解冻 / pulse cutover）。
+  单日（仍禁 mass backfill / margin 解冻 / pulse cutover）。
 - **B-ext FIXED（诚实化）** scope + shadow + sentiment sidecar + 前端 UNTRUSTED；
   mart 数值未改、`cutover_allowed=false`。残余=B-pit 数值切读。
 - **B-pit PARTIAL** 广度/shadow 已有；**未**接 pulse mart / 未 cutover。Canary 日
   `20260717`：PIT vs unfiltered 分歧 → `cutover_allowed=false`。
-- **C** Tier1/2 正式 lineage。**D** `DatasetSnapshot`→`ExperimentVerdict` + PIT 截断。
+- **C PARTIAL（scaffold）** `backend/services/tier12_publish_contract.py`：
+  `StockStateDaily` / `MarketContextPublishEnvelope` + fail-closed attest；
+  `published=false` 恒成立直至 writer/accepted 路径落地。**未** publish-complete。
+  **D** `DatasetSnapshot`→`ExperimentVerdict` + PIT 截断（E 已部分消费）。
 - **E0 FIXED（gate+mirror off；E 硬前置）** 三域 MATCH → `cutover_allowed=true`；
   formal writes=`formal_only`；research read prefer canonical；
   `data/lineage/disclosure_dataset_snapshot.json` →
