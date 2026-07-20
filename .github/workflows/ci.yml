@@ -1,10 +1,35 @@
 name: CI
 
+# paths-ignore mirrors the L1 (docs/board-only) surface of
+# backend/config/commit_tiers.yaml. Policy owner = commit_tiers.yaml; this list
+# is a projection and MUST stay a subset of L1 — enforced by
+# backend/tests/scripts/test_ci_paths_policy.py (drift toward skipping a risky
+# path turns CI red on the next code push). No CI job consumes these paths:
+# pytest list, universe/calendar static gates, smoke import and dead-references
+# all scan backend code/config only, never markdown/board artifacts.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'analysis/**'
+      - 'sandbox/**'
+      - 'data/board/**'
+      - 'goal.md'
+      - 'PROJECT_INDEX.md'
+      - 'README.md'
+      - 'BOARD.md'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'analysis/**'
+      - 'sandbox/**'
+      - 'data/board/**'
+      - 'goal.md'
+      - 'PROJECT_INDEX.md'
+      - 'README.md'
+      - 'BOARD.md'
 
 jobs:
   test:
@@ -74,6 +99,7 @@ jobs:
             tests/services/test_runtime_limits.py \
             tests/scripts/test_check_universe_filter.py \
             tests/scripts/test_check_calendar_usage.py \
+            tests/scripts/test_ci_paths_policy.py \
             tests/scripts/test_classify_commit_tier.py \
             tests/scripts/test_check_codex_review.py \
             tests/scripts/test_build_agent_board.py \
