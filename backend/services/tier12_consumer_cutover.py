@@ -35,6 +35,13 @@ _CANARY_NOTES = frozenset(
         "canary_or_fixture_scale_ok",
     }
 )
+_PROJECT_UNIVERSE_NOTES = frozenset(
+    {
+        "project_universe_scope",
+        "full_universe_attested",
+        "full_universe_attested_fixture",
+    }
+)
 
 
 class Tier12ConsumerCutoverError(ValueError):
@@ -178,14 +185,20 @@ def _load_accepted_for_day(
 
 def _is_canary_accept(payload: Mapping[str, Any]) -> bool:
     notes = {str(n) for n in (payload.get("notes") or ())}
+    # Canary notes always win — forged project_universe scope cannot clear them.
     if notes & _CANARY_NOTES:
+        return True
+    scope = str(payload.get("publish_scope") or "").strip()
+    if scope == "project_universe" or notes & _PROJECT_UNIVERSE_NOTES:
+        return False
+    if scope == "canary":
         return True
     # Defensive: tiny row counts without full-universe attestation stay canary.
     try:
         rows = int(payload.get("stock_row_count") or 0)
     except (TypeError, ValueError):
         rows = 0
-    if rows > 0 and rows < 100 and "full_universe_attested_fixture" not in notes:
+    if rows > 0 and rows < 100:
         return True
     return False
 

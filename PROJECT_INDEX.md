@@ -23,8 +23,8 @@ AGENTS.md
 |---|---|---|
 | T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；calendar + **120** 交易日名义 K accepted（`20260116`–`20260717`）；ST 同窗+`20260720`；daily frontier 仍 `20260717` READY。残余=daily 下一 eligible 日 + form/qfq lag；无 mass fetch / cutover |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
-| T1 stock state | `technical_states/`, `segments.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `tier12_nominal_canary.py` | 多轴状态可复用；C canary `20260717` writer→accept（`accepted_*.json`/`published=true`；`accepted_at`=ingest stamp≠trade end_date）；`tier12_consumer_cutover` 显式门默认 false（resolver 唯一生产读；未接线消费者）；legacy form bridge=NOT_PUBLISHABLE；未全市场 |
-| T2 market sensing | `market_pulse.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `tier12_nominal_canary.py`, API/frontend | 展示可用但 breadth/margin UNTRUSTED（B-ext）；C accept envelope 同 canary；consumer cutover 门已落地仍默认 false；禁 mart cutover 直至 B-pit |
+| T1 stock state | `technical_states/`, `segments.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py` | 多轴状态可复用；C accept 分 `publish_scope=canary|project_universe`（后者需 membership/coverage 证）；`tier12_consumer_cutover` 默认 false；legacy form bridge=NOT_PUBLISHABLE；live full-universe accept 证据见 lineage（cutover 仍 false） |
+| T2 market sensing | `market_pulse.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py`, API/frontend | 展示可用但 breadth/margin UNTRUSTED（B-ext）；C envelope 可 project_universe scope；consumer cutover 默认 false；禁 mart cutover 直至 B-pit |
 | T3 institution | `institution_profile.py` + `institution_follow_b0/b1/b2/b4` (+ `_measure`) + `institution_follow_edge_gates.py` + `disclosure_research_read.py` + `disclosure_enrichment_projection.py` + `disclosure_dataset_snapshot.py` + dual-write/shadow/boundaries + `*_acceptance.py` + router/tests | **首个正式策略包**；E0 FIXED；E PARTIAL：120d B0/B1/B2 reject；B4 inconclusive（coverage fraction）；均 ≠ StrategyRelease |
 | T3 main rally | `rally_gt.py`, `rally_detect.py`, rally config/tests | GT 资产成熟；在机构首包之后接入同一 runtime |
 | T3 formulas | `bestchoice/FROZEN.md` + `evidence_manifest.json` | 冻结 challenger；Phase G 前不吸收 |
@@ -61,6 +61,7 @@ AGENTS.md
 | Doc drift | `PYTHONPATH=backend python backend/scripts/check_doc_drift.py --check` |
 | Live continuity | `PYTHONPATH=backend python backend/scripts/check_continuity_integrity.py` (`FAIL` 直接非零) |
 | Local reviewed commit | `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "<message>"` |
+| Tier1/2 full-universe accept (manual) | `PYTHONPATH=backend python backend/scripts/persist_tier12_full_universe_accept.py --decision-date YYYYMMDD`；默认不翻 `consumer_cutover` |
 
 已移除的 ChunkyCtl 子命令不是工作流，调用必须返回非零；不要在活文档或生成地图中把任何 retired lifecycle 重新列为 active。
 
@@ -69,7 +70,7 @@ AGENTS.md
 | Priority | Defect | Consequence |
 |---:|---|---|
 | P0 | K 120 日已接受（`20260116`–`20260717`）；daily `20260720` 未 eligible；禁 mass backfill | B-pit mart/cutover 仍禁；eligible frontier READY |
-| P0 | E 120d checkpointed measured reject/no-gain；C writer+PIT+live smoke 已有但未 publish-complete（`WRITTEN_UNPUBLISHED`）；enrichment 历史仍 field-level PARTIAL | 下一刀 C accepted publish 路径 / daily 下一 eligible **或** stop（非 Optuna / 非松门 / 非 mass backfill / 非 B-pit cutover / 非 StrategyRelease） |
+| P0 | E 120d checkpointed measured reject/no-gain；C accept 路径+scope 门已有（canary/project_universe）；consumer cutover 默认 false；enrichment 历史仍 field-level PARTIAL | 下一刀 live full-universe accept 证据 / daily 下一 eligible **或** stop（非 Optuna / 非松门 / 非 mass backfill / 非 B-pit cutover / 非 StrategyRelease） |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
 | P1 | formal `boundary_inventory` 仅为静态/测试资源，非 doctor readiness 证书（`formal_boundaries` 文案已澄清）；canary_pending 域无 countdown 出口 | 豁免不可见即永久；须在 goal/ledger 跟踪 canary 授权点 |

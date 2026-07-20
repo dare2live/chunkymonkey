@@ -400,6 +400,11 @@ def assert_tier12_smoke_batch(batch: Any, *, decision_date: str) -> dict[str, An
     }
 
 
+# Shared helpers for full-universe loaders (same accepted-partition + lookback).
+require_accepted_nominal_partition = _require_accepted_partition
+lookback_trading_days = _lookback_trading_days
+
+
 __all__ = [
     "CONTRACTUAL_AVAILABLE_AT_POLICY",
     "RAW_ROW_AVAILABLE_AT_NOTE",
@@ -407,5 +412,7 @@ __all__ = [
     "assert_tier12_smoke_batch",
     "contractual_nominal_available_at",
     "load_accepted_nominal_canary",
+    "lookback_trading_days",
+    "require_accepted_nominal_partition",
     "timed_inputs_from_nominal_rows",
 ]

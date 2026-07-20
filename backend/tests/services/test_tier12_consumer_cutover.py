@@ -73,12 +73,18 @@ def _full_universe_accepted_dict(canary) -> dict:
     ]
     notes.extend(
         [
+            "project_universe_scope",
+            "full_universe_attested",
             "full_universe_attested_fixture",
             "consumer_cutover_gate_fixture",
         ]
     )
     payload["notes"] = notes
+    payload["publish_scope"] = "project_universe"
+    payload["population_kind"] = "project_universe_pit"
     payload["stock_row_count"] = 5000
+    payload["universe_membership_size"] = 5000
+    payload["coverage_excluded_count"] = 0
     return payload
 
 

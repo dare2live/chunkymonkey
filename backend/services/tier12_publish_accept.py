@@ -20,7 +20,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 
 from services.tier12_publish_contract import (
     MarketContextPublishEnvelope,
@@ -33,6 +33,8 @@ DATASET_ID_STOCK = "tier12_stock_state"
 DATASET_ID_MARKET = "tier12_market_context"
 CONTRACT_VERSION = "tier12_accepted_publish_v0"
 WRITER_ID = "tier12_publish_accept"
+PublishScope = Literal["canary", "project_universe"]
+_VALID_PUBLISH_SCOPES = frozenset({"canary", "project_universe"})
 
 
 class Tier12AcceptError(ValueError):
@@ -318,6 +320,11 @@ class Tier12AcceptedPublish:
     market_context: MarketContextPublishEnvelope
     notes: tuple[str, ...]
     source_writer_status: str
+    publish_scope: PublishScope = "canary"
+    population_kind: str | None = None
+    universe_membership_size: int | None = None
+    universe_policy_hash: str | None = None
+    coverage_excluded_count: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -326,6 +333,11 @@ class Tier12AcceptedPublish:
             "status": self.status,
             "published": self.published,
             "cutover_allowed": self.cutover_allowed,
+            "publish_scope": self.publish_scope,
+            "population_kind": self.population_kind,
+            "universe_membership_size": self.universe_membership_size,
+            "universe_policy_hash": self.universe_policy_hash,
+            "coverage_excluded_count": self.coverage_excluded_count,
             "batch_id": self.batch_id,
             "dataset_ids": list(self.dataset_ids),
             "contract_version": self.contract_version,
@@ -357,6 +369,91 @@ class Tier12AcceptedPublish:
         }
 
 
+def _resolve_scope_attestation(
+    publish_scope: PublishScope,
+    *,
+    stock_row_count: int,
+    universe_attestation: Mapping[str, Any] | None,
+) -> tuple[str | None, int | None, str | None, int, tuple[str, ...]]:
+    """Return population_kind, membership_size, policy_hash, excluded, notes."""
+
+    if publish_scope not in _VALID_PUBLISH_SCOPES:
+        raise Tier12AcceptError(
+            f"invalid_publish_scope={publish_scope!r}; "
+            f"expected one of {sorted(_VALID_PUBLISH_SCOPES)}"
+        )
+
+    base = (
+        "phase_c_accepted_publish",
+        "accepted_partition_equivalent",
+        "not_consumer_cutover",
+        "not_strategy_release",
+        "not_pulse_mart_cutover",
+    )
+    if publish_scope == "canary":
+        if universe_attestation:
+            raise Tier12AcceptError(
+                "canary_scope_forbids_universe_attestation"
+            )
+        return (
+            None,
+            None,
+            None,
+            0,
+            base + ("not_full_universe", "canary_or_fixture_scale_ok"),
+        )
+
+    if not isinstance(universe_attestation, Mapping):
+        raise Tier12AcceptError(
+            "project_universe_scope_requires_universe_attestation"
+        )
+    population_kind = str(universe_attestation.get("population_kind") or "").strip()
+    if population_kind != "project_universe_pit":
+        raise Tier12AcceptError(
+            "project_universe_scope_requires_population_kind=project_universe_pit "
+            f"got={population_kind!r}"
+        )
+    try:
+        membership_size = int(universe_attestation.get("membership_size"))
+    except (TypeError, ValueError) as exc:
+        raise Tier12AcceptError(
+            "project_universe_scope_requires_membership_size"
+        ) from exc
+    if membership_size < 100:
+        raise Tier12AcceptError(
+            f"project_universe_membership_too_small size={membership_size}"
+        )
+    policy_hash = str(universe_attestation.get("universe_policy_hash") or "").strip()
+    if not policy_hash:
+        raise Tier12AcceptError(
+            "project_universe_scope_requires_universe_policy_hash"
+        )
+    try:
+        excluded = int(universe_attestation.get("coverage_excluded_count") or 0)
+    except (TypeError, ValueError) as exc:
+        raise Tier12AcceptError(
+            "project_universe_scope_invalid_coverage_excluded_count"
+        ) from exc
+    if excluded < 0:
+        raise Tier12AcceptError("coverage_excluded_count_negative")
+    if stock_row_count + excluded != membership_size:
+        raise Tier12AcceptError(
+            "project_universe_coverage_parity_failed "
+            f"written={stock_row_count} excluded={excluded} "
+            f"membership={membership_size}"
+        )
+    if stock_row_count <= 0:
+        raise Tier12AcceptError("project_universe_zero_written_rows")
+
+    notes = base + (
+        "project_universe_scope",
+        "population_kind=project_universe_pit",
+        "full_universe_attested",
+        "not_canary_scale",
+    )
+    return population_kind, membership_size, policy_hash, excluded, notes
+
+
 def accept_tier12_batch(
     batch: Tier12WriteBatch | Mapping[str, Any],
     *,
@@ -364,12 +461,18 @@ def accept_tier12_batch(
     emit_artifact: bool = False,
     artifact_root: Path | None = None,
     accepted_at: str | None = None,
+    publish_scope: PublishScope = "canary",
+    universe_attestation: Mapping[str, Any] | None = None,
 ) -> Tier12AcceptedPublish:
     """Atomically accept a writer batch into a Tier1/2 accepted attestation.
 
     Requires ``WRITTEN_UNPUBLISHED`` + ``PUBLISHABLE_SCAFFOLD``. Sets
     ``published=True`` only on success. ``cutover_allowed`` remains false
     even when ``allow_consumer_cutover`` is requested (Phase C hard gate).
+
+    ``publish_scope='canary'`` (default) attests fixture/canary scale and must
+    not claim project-universe. ``publish_scope='project_universe'`` requires a
+    membership attestation and coverage parity (written + excluded = membership).
     """
 
     write_batch = _require_write_batch(batch)
@@ -378,6 +481,18 @@ def accept_tier12_batch(
     day = _compact_day(write_batch.decision_date)
     market = write_batch.market_context
     assert market is not None  # validated
+    stock_row_count = len(write_batch.stock_states)
+    (
+        population_kind,
+        membership_size,
+        policy_hash,
+        coverage_excluded,
+        notes,
+    ) = _resolve_scope_attestation(
+        publish_scope,
+        stock_row_count=stock_row_count,
+        universe_attestation=universe_attestation,
+    )
 
     body = {
         "decision_date": day,
@@ -385,6 +500,11 @@ def accept_tier12_batch(
         "market_context": market.as_dict(),
         "pit_excluded_count": write_batch.pit_excluded_count,
         "contract_version": CONTRACT_VERSION,
+        "publish_scope": publish_scope,
+        "population_kind": population_kind,
+        "universe_membership_size": membership_size,
+        "universe_policy_hash": policy_hash,
+        "coverage_excluded_count": coverage_excluded,
     }
     content_hash = _sha256_canonical(body)
     contract_hash = _sha256_canonical(
@@ -401,15 +521,6 @@ def accept_tier12_batch(
     # Wall-clock ingest/accept stamp only (not a trade_date / end_date).
     ts = accepted_at or datetime.now(timezone.utc).isoformat(timespec="seconds")
 
-    notes = (
-        "phase_c_accepted_publish",
-        "accepted_partition_equivalent",
-        "not_consumer_cutover",
-        "not_strategy_release",
-        "not_pulse_mart_cutover",
-        "not_full_universe",
-        "canary_or_fixture_scale_ok",
-    )
     if allow_consumer_cutover:
         notes = notes + ("allow_consumer_cutover_ignored_hard_gate",)
 
@@ -427,12 +538,17 @@ def accept_tier12_batch(
         input_snapshot_id=str(first.input_snapshot_id),
         available_at=str(first.available_at),
         accepted_at=ts,
-        stock_row_count=len(write_batch.stock_states),
+        stock_row_count=stock_row_count,
         content_hash=content_hash,
         stock_states=write_batch.stock_states,
         market_context=market,
         notes=notes,
         source_writer_status=write_batch.status,
+        publish_scope=publish_scope,
+        population_kind=population_kind,
+        universe_membership_size=membership_size,
+        universe_policy_hash=policy_hash,
+        coverage_excluded_count=coverage_excluded,
     )
 
     if emit_artifact:
@@ -455,6 +571,7 @@ __all__ = [
     "CONTRACT_VERSION",
     "DATASET_ID_MARKET",
     "DATASET_ID_STOCK",
+    "PublishScope",
     "Tier12AcceptError",
     "Tier12AcceptedPublish",
     "accept_tier12_batch",
