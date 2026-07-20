@@ -2155,3 +2155,96 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   StrategyRelease; no full-episode 250d validation; claimable accept
   false for both B0 and B1; F3 next if a future window/definition changes
   the picture.
+
+### 2026-07-20 — Phase F F3 main_rally B2 (+market sensing, same B0 snapshot/folds/costs)
+
+- **Correction**: F2 B1 `reject`/`claimable=false` is protocol-complete for
+  F2, not a stop condition — resumed F3 per explicit owner instruction (the
+  prior entry's "F3 deferred" framing conflated an honest reject with a
+  blocker; corrected here).
+- **FIXED** (protocol): `main_rally_b2.py` + `main_rally_b2_measure.py` add
+  one named FeatureBlock (`market_sensing_project_breadth_v0`) on top of
+  frozen F1 B0 — gates B0's pivot-confirmed-setup eligibles on EOD
+  project-board breadth risk-on (`MarketContextSnapshot`, `adv_dec_ratio≥1.0`)
+  per signal day; risk-off/untrusted/missing-`available_at` days trade
+  nothing that day. Reuses the canonical Tier2 sensing primitives from
+  `institution_follow_b2_measure` (`MarketContextSnapshot`,
+  `build_market_context_from_nominal_bars`, `refuse_pulse_mart_as_market_context`,
+  `build_context_by_day`, `measure_market_context_coverage`) instead of a
+  second implementation — one writer for the sensing block across strategy
+  packages. Legacy `market_pulse` mart source (`SOURCE_PULSE_MART`) is
+  refused `UNTRUSTED` (fail closed, `b2_pulse_mart_untrusted_fail_closed`);
+  missing `available_at` also fails closed. B2 ablates independently on B0
+  (`ablation_parent=B0`), **not stacked on B1** — mirrors
+  `institution_follow_b2` and this task's explicit instruction; never
+  widens B0's setup eligibles, only narrows by trading day. Reuses B0's
+  exact `WalkForwardPlan` (same folds/embargo/holdout/costs/paper) via
+  `main_rally_b0_measure.measure_main_rally_b0_paper`'s existing
+  `walk_forward=`/`eligible_by_day=` params (no re-planning). Candidate/
+  measure modules never import `rally_gt` or read
+  `fact_rally_ground_truth`/`fact_rally_negative` (AST-checked in tests).
+- **Stability gate** (same posture as B1): B2 accept requires accept edge
+  gates **and** `evaluate_holdout_lift_vs_b0` (`REQUIRE_HOLDOUT_LIFT_VS_B0`)
+  — equal/worse/undefined holdout return vs B0 is not independent lift →
+  `reject`, never a fake accept.
+- Persist: extended `backend/scripts/persist_phase_f_experiment_verdicts.py`
+  to also run/measure/write `b2.json` (B2 ablates on `b0_run`, independent
+  of `b1_run`); manifest `slices_complete` now `["F0","F1","F2","F3"]`,
+  `ladder` has all three blocks, `protocol.b2_feature_block` +
+  `protocol.b2_ablation_parent="B0"` recorded. Re-running the persist script
+  only refreshed `b0.json`/`b1.json` run-id/timestamp cosmetics (verdicts/
+  metrics unchanged, confirmed via diff) while adding `b2.json`.
+- Live verdict on the same 121d accepted window (`20260116`→`20260720`):
+  MarketContextSnapshot coverage `day_coverage=1.0` (121/121 days ready,
+  0 untrusted, 0 missing `available_at`); `risk_on_days=53/121`. B2's
+  risk-on gate collapses `n_trades_completed` from B0's 162 to 62
+  (`eval_total_return≈-9.66%` vs B0's ≈-16.4%; numerically less negative but
+  still negative) → accept edge gates unmet (`eval_ok=false`). Holdout day
+  fell on a risk-off day → B2 holdout has **zero** completed fills
+  (`total_return=null`) vs B0's single holdout signal (≈-5.5%) →
+  `evaluate_holdout_lift_vs_b0` reports `lift=null`/`passed=false`
+  (`holdout_lift_vs_b0_unmet`) — undefined lift is correctly treated as not
+  independent evidence, not silently passed. Result: **`reject`** /
+  **`claimable=false`** / `measured_protocol_ready_edge_gates_unmet`. Honest
+  reject, not an improve claim; `claimable=false` is the expected/correct
+  outcome per this task's brief.
+- Tests: `backend/tests/services/test_main_rally_b2.py` 12 passed (feature
+  block declare, pulse-mart-refused fail-closed, nominal-breadth risk-on,
+  GT-table-isolation AST on both new modules, coverage-insufficient→
+  inconclusive, pulse-source→inconclusive not silent fallback,
+  eligible-intersection never widens B0's setup eligibles, risk-off
+  collapses to empty, measured delta vs B0, scaffold-without-measure never
+  accepts, canary overclaim raises, holdout-lift-gate unit test).
+  `test_main_rally_b0.py` (10) + `test_main_rally_b1.py` (9) +
+  `test_institution_follow_b2.py` (8) re-run green alongside — no
+  regressions from reusing institution_follow_b2_measure primitives.
+- **Did not**: Optuna; StrategyRelease; E-gate loosen; cutover flip; GT
+  read in generator; stack B2 on B1; loosen any edge gate to force accept.
+- **Residual / cannot claim**: no StrategyRelease; no full-episode 250d
+  validation; claimable accept false for B0/B1/B2 all three. **F0–F3 ladder
+  is checkpoint-able**: three independent one-block ablations on B0, all
+  honestly measured and rejected under identical protocol — next business
+  cut is a new window/definition/accept, or a new ablation block with an
+  explicit hypothesis, not further pressure on this window's edge gates.
+
+### 2026-07-20 — Product 系统 + Agent-OS owner 裁决：strangler + 聚焦（非 greenfield，针对 Fable5 提案）
+
+- **裁决（owner，持久化进 goal.md 已裁决/禁令）**：Product 系统与 Agent-OS 后续演进 =
+  **strangler + 聚焦**，明确禁止 greenfield 重写——本次 Agent-OS WP0–WP6 落地方式
+  即为先例，不是可推倒重来的例外；后续任何"重写"提案（含 Fable5 或其他 agent）默认
+  按此裁决审查，不给"看着乱/技术债重"单独开绿灯。
+- 绝不可随手重写：accepted canonical、日历契约、PIT/availability、
+  `stage→validate→publish`、cutover 证据链——这些只能按 strangler 步骤（契约先行→
+  旧新并跑→逐字段对账→consumer 切换→最后删旧 writer/表/config，`MASTER_TOPLEVEL_
+  DESIGN.md` §11 已定基调）演进，不接受整体推倒。
+- 仅三把杠杆认可为合法演进路径：(1) 单一读 SSOT 经 resolver，禁止旁路直读；
+  (2) 本地 L2/L3 pytest 结果 = CI test-list 的唯一 SSOT（本地绿=CI 绿，不另建/不
+  分叉并行清单）；(3) god-seam strangler——按 blast radius 从窄到宽分步收编，一次
+  只动一个缝，不整体推倒。
+- 明确禁止：第二个 DB；plugin bus；dual-write 迁移窗口（旧新同时写造成双真相、
+  回滚不确定）；把「残破感」（代码丑/耦合重/历史包袱的主观感受）当 greenfield 重写
+  的许可证——技术债认领走 strangler 分步，不走推倒重来。
+- **Did not**：未触发任何具体重写/删除动作；不影响 A→H 数据面（cutover/PIT/accept）
+  现状；不新增执行任务，仅把 owner 边界裁决落成 goal.md 常驻真相，供后续任何
+  Product/Agent-OS 提案对照审查。
+- **Status**: FIXED（裁决持久化，无代码/数据变更）。
