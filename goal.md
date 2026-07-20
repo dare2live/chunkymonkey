@@ -13,7 +13,11 @@ Agent-OS 影子期照常开放（WP6 仪式 flip 仍 owner-gated，与 A→H 无
 
 ## 下一步（A→H 残余刀）
 
-1. C/B-pit 残余观察（不 flip `cutover_allowed`；默认 false）
+1. C/B-pit cutover readiness = **READY_FOR_OWNER_OPT_IN**（观察入账；
+   `cutover_allowed` 仍 false，不 flip）。证据：B-pit shadow MATCH 120/120；
+   C full-universe accept 4989；default yaml → resolver LEGACY；consumer wires 已在。
+   认证：`data/lineage/c_b_pit_cutover_readiness.json`（L1 投影孪生
+   `data/board/c_b_pit_cutover_readiness.json`）。owner 显式 yaml opt-in 另刀。
 2. Agent-OS 影子期残余（非本轨道）：影子期满检查单、真实 L2 路径证据
    （T0 墙钟已实测入账 2026-07-20 见 ledger；编排/墙钟政策 = eng_gov §15：
     并行 subagents、异步 CI、Rule 10 按刀、L1 docs push 不起 CI）
@@ -21,7 +25,8 @@ Agent-OS 影子期照常开放（WP6 仪式 flip 仍 owner-gated，与 A→H 无
 
 ## 禁令
 
-- B-pit/C `cutover_allowed=true`（无本 session 证据+goal 明确排程不 flip）；Optuna；E 松门；StrategyRelease
+- B-pit/C `cutover_allowed=true`（READY_FOR_OWNER_OPT_IN ≠ 已切读；无 owner
+  显式 yaml flip 不静默 cutover）；Optuna；E 松门；StrategyRelease
 - margin thaw；mass backfill；plugin bus；第二 DB；agent 自降 commit tier；静默 cutover
 
 ## 已裁决（稳定）

@@ -1929,3 +1929,30 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Status**: D PARTIAL→FIXED (MASTER exit: PIT gate + closed measured loop).
 - **Next knife**: C/B-pit cutover observation (keep false) or stop / agent-OS
   shadow residuals.
+
+### 2026-07-20 — C/B-pit cutover readiness observe (no flip)
+
+- Wall-clock: Mon 2026-07-20 ~19:50+ Asia/Shanghai (in-session).
+- Head: `d4cc33d0` (D FIXED). Observe-only; eng_gov §15 (no sync `gh run watch`).
+- Live evidence (re-read, not claimed from board alone):
+  - B-pit shadow `data/lineage/b_pit_breadth_shadow/`: MATCH **120/120**,
+    diverge=0, `ratios_match_all=true`, baseline=`membership_restricted_proxy`,
+    window `20260116`–`20260717`, artifact `cutover_allowed=false`
+  - C full-universe accept `20260717`: status=ACCEPTED published=true
+    stock_row_count=**4989**=universe_membership_size, scope=`project_universe`
+  - Default yaml resolvers: `resolve_b_pit_mart_production_read("20260717")`
+    → LEGACY / `config_cutover_allowed_false`;
+    `resolve_tier12_production_read("20260717")` → LEGACY /
+    `legacy_scaffold` / accepted_payload=None; pulse attest LEGACY
+  - Consumer wires present: B1 `load_stock_state_by_day`, pulse/UI
+    `market_pulse_tier12_read` + router sentiment; B-pit pulse
+    `market_pulse_b_pit_read` + B2 resolver consult; yaml both
+    `cutover_allowed=false`
+- **Verdict**: `READY_FOR_OWNER_OPT_IN` (not cut over). Attestation:
+  `data/lineage/c_b_pit_cutover_readiness.json` + L1 twin
+  `data/board/c_b_pit_cutover_readiness.json` (lineage path classifies L3;
+  L1 commit carries board twin; lineage twin on disk for promote).
+- **Did not**: flip B-pit/C `cutover_allowed`; Optuna; E gate loosen;
+  StrategyRelease; margin thaw; mass backfill; silent cutover.
+- **Next**: owner explicit yaml opt-in **or** stop / agent-OS shadow
+  residuals.

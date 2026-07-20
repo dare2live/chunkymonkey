@@ -73,7 +73,7 @@ AGENTS.md
 | Priority | Defect | Consequence |
 |---:|---|---|
 | P0 | K accepted 至 `20260720`（daily 5524 行 + ST 209 行）；form/qfq 分析面仍卡 `20260716`（raw/adj wall + margin frozen）；禁 mass backfill | B-pit mart/cutover 仍禁；分析读面滞后 accepted frontier |
-| P0 | E 120d checkpointed measured reject/no-gain；C full-universe accept `20260717`（4989=4989；cutover 默认 false）；D FIXED（runtime-owned measured offline + persist）；B-pit 120d shadow **120/120 MATCH** + mart cutover gate FIXED（默认 false；pulse/B2 已接线；未切读）；enrichment 历史仍 field-level PARTIAL | 下一刀显式 opt-in C/B-pit cutover（强证据；仍 false）**或** stop（非 Optuna / 非松门 / 非 mass backfill / 非擅翻 cutover / 非 StrategyRelease） |
+| P0 | E 120d checkpointed measured reject/no-gain；C full-universe accept `20260717`（4989=4989；cutover 默认 false）；D FIXED（runtime-owned measured offline + persist）；B-pit 120d shadow **120/120 MATCH** + mart cutover gate FIXED（默认 false；pulse/B2 已接线；未切读）；C/B-pit readiness **READY_FOR_OWNER_OPT_IN**（`cutover_allowed` 仍 false；认证 `data/lineage/c_b_pit_cutover_readiness.json`）；enrichment 历史仍 field-level PARTIAL | 下一刀 owner 显式 yaml opt-in C/B-pit cutover **或** stop（非 Optuna / 非松门 / 非 mass backfill / 非擅翻 cutover / 非 StrategyRelease） |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
 | P1 | formal `boundary_inventory` 仅为静态/测试资源，非 doctor readiness 证书（`formal_boundaries` 文案已澄清）；canary_pending 域无 countdown 出口 | 豁免不可见即永久；须在 goal/ledger 跟踪 canary 授权点 |
