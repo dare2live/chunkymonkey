@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""Persist Phase F F0+F1+F2 artifacts (main_rally snapshot + B0/B1 verdicts).
+"""Persist Phase F F0+F1+F2+F3 artifacts (main_rally snapshot + B0/B1/B2).
 
 Writes:
   data/lineage/main_rally_dataset_snapshot/snapshot.json  (F0, if missing or --freeze)
-  data/lineage/phase_f_experiment_verdicts/{b0.json,b1.json,manifest.json}
+  data/lineage/phase_f_experiment_verdicts/{b0.json,b1.json,b2.json,manifest.json}
 
 B1 = B0 + Tier1 stock-state FeatureBlock (same snapshot/folds/costs/paper as
-B0). B1 claimable=true requires accept edge gates AND a strict holdout
-return lift vs B0 (REQUIRE_HOLDOUT_LIFT_VS_B0) — never a fake improve.
+B0). B2 = B0 + Tier2 market-sensing FeatureBlock (MarketContextSnapshot
+project-board breadth risk-on gate; mirrors institution_follow_b2; refuses
+UNTRUSTED pulse mart; fails closed on missing available_at) — independent
+one-block ablation on B0, not stacked on B1. Both B1 and B2 claimable=true
+require accept edge gates AND a strict holdout return lift vs B0
+(REQUIRE_HOLDOUT_LIFT_VS_B0) — never a fake improve.
 
 Does not loosen gates, promote StrategyRelease, rebuild GT, or flip cutover.
 
@@ -30,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from services.main_rally_b0 import run_b0_scaffold  # noqa: E402
 from services.main_rally_b1 import run_b1_scaffold  # noqa: E402
+from services.main_rally_b2 import run_b2_scaffold  # noqa: E402
 from services.main_rally_dataset_snapshot import (  # noqa: E402
     MAIN_RALLY_SNAPSHOT_RELPATH,
     default_snapshot_path,
@@ -41,7 +46,7 @@ REPO = Path(__file__).resolve().parents[2]
 OUT_DIR_REL = "data/lineage/phase_f_experiment_verdicts"
 OUT_DIR = REPO / OUT_DIR_REL
 MANIFEST_NAME = "manifest.json"
-BLOCKS = ("b0", "b1")
+BLOCKS = ("b0", "b1", "b2")
 
 
 def _sha256_file(path: Path) -> str:
@@ -67,15 +72,17 @@ def _metrics_summary(details: dict[str, Any]) -> dict[str, Any]:
         details.get("setup_coverage")
         or details.get("bare_k_coverage")
         or details.get("stock_state_coverage")
+        or details.get("market_context_coverage")
     )
     if cov is not None:
         out["coverage"] = cov
     stability = details.get("holdout_lift_stability")
     if stability is not None:
         out["holdout_lift_stability"] = stability
-    delta = details.get("delta_b1_minus_b0")
-    if delta is not None:
-        out["delta_b1_minus_b0"] = delta
+    if details.get("delta_b1_minus_b0") is not None:
+        out["delta_b1_minus_b0"] = details["delta_b1_minus_b0"]
+    if details.get("delta_b2_minus_b0") is not None:
+        out["delta_b2_minus_b0"] = details["delta_b2_minus_b0"]
     return out
 
 
@@ -147,8 +154,17 @@ def persist(*, force: bool = False, freeze: bool = False) -> dict[str, Any]:
     b0_run, b0_verdict = run_b0_scaffold(snapshot=snapshot)
     print("[persist] running F2 main_rally B1 stock-state measured scaffold…", file=sys.stderr)
     b1_run, b1_verdict = run_b1_scaffold(snapshot=snapshot, b0_run=b0_run)
+    print("[persist] running F3 main_rally B2 market-sensing measured scaffold…", file=sys.stderr)
+    # B2 ablates independently on B0 (not stacked on B1) — matches
+    # institution_follow_b2's ablation_parent=B0 and goal.md's explicit
+    # non-stacking decision for F3.
+    b2_run, b2_verdict = run_b2_scaffold(snapshot=snapshot, b0_run=b0_run)
 
-    pairs = {"b0": (b0_run, b0_verdict), "b1": (b1_run, b1_verdict)}
+    pairs = {
+        "b0": (b0_run, b0_verdict),
+        "b1": (b1_run, b1_verdict),
+        "b2": (b2_run, b2_verdict),
+    }
     block_rels: dict[str, str] = {}
     ladder: list[dict[str, Any]] = []
     for name, (run, verdict) in pairs.items():
@@ -213,7 +229,7 @@ def persist(*, force: bool = False, freeze: bool = False) -> dict[str, Any]:
         "snapshot_scope": snapshot_scope,
         "phase_f_ablation": phase_f_ablation,
         "strategy_package": "main_rally_v1",
-        "slices_complete": ["F0", "F1", "F2"],
+        "slices_complete": ["F0", "F1", "F2", "F3"],
         "window": {
             "label": f"bounded_{n_days}d_nominal_k_setup_entry",
             "start": window_start,
@@ -233,6 +249,10 @@ def persist(*, force: bool = False, freeze: bool = False) -> dict[str, Any]:
             "b1_feature_block": getattr(
                 b1_run.feature_block, "block_id", None
             ),
+            "b2_feature_block": getattr(
+                b2_run.feature_block, "block_id", None
+            ),
+            "b2_ablation_parent": "B0",
             "require_holdout_lift_vs_b0": True,
         },
         "overall": {
@@ -241,12 +261,14 @@ def persist(*, force: bool = False, freeze: bool = False) -> dict[str, Any]:
             "strategy_release": False,
             "cutover_unchanged": True,
             "note": (
-                "F0+F1+F2 setup-entry short-horizon ablation (B0 bare setup, "
-                "B1 + Tier1 stock state) on accepted nominal window; "
-                "reject/inconclusive claimable=false is an honest deliverable. "
-                "B1 accept requires accept edge gates AND strict holdout lift "
-                "vs B0 (REQUIRE_HOLDOUT_LIFT_VS_B0). Full-episode deferred. "
-                "No Optuna / StrategyRelease."
+                "F0+F1+F2+F3 setup-entry short-horizon ablation (B0 bare "
+                "setup, B1 + Tier1 stock state, B2 + Tier2 market-sensing "
+                "project-board breadth gate) on accepted nominal window; "
+                "B2 ablates independently on B0 (not stacked on B1) per "
+                "goal.md; reject/inconclusive claimable=false is an honest "
+                "deliverable. B1/B2 accept require accept edge gates AND "
+                "strict holdout lift vs B0 (REQUIRE_HOLDOUT_LIFT_VS_B0). "
+                "Full-episode deferred. No Optuna / StrategyRelease."
             ),
         },
         "ladder": ladder,
