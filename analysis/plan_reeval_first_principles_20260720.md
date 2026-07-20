@@ -1,8 +1,9 @@
 # 整体优化方案第一原理重评（2026-07-20）
 
 > **生命周期**：evidence-only / sequencing authority（由 `goal.md` 指针授权近端排序；不拥有架构立法——仍以 `docs/README.md` owners 为准；`BOARD.md` 为生成投影非执法输入）  
-> **方法**：Mio 代理义务（steel-man + 挑战盲点 + 奥卡姆 strangler）+ `gap_analysis_audit_3cdd0f6e` + live 证据  
-> **证据**：`analysis/data_foundation_modularity_gap_20260720.md`；`goal.md` 已落地事实；`sync_runner`/`capture_and_publish_*`；`forward_program_efgh_20260720.md`；plan §3–5  
+> **证据包（事实，无裁决）**：`analysis/plan_reeval_evidence_pack_20260720.md`（commit `33d3a345f`）  
+> **缺口诊断**：`analysis/data_foundation_modularity_gap_20260720.md`  
+> **A→H 原文**：`~/.cursor/plans/gap_analysis_audit_3cdd0f6e.plan.md` §3–5  
 > **不写**：Optuna / StrategyRelease / cutover 翻 / 第二 DB / plugin bus
 
 ---
@@ -11,7 +12,7 @@
 
 **业主的「水龙头→raw+路由→加工→展示 API；一键 sync=编排器」在语义上正确，且与 MASTER transport 轴同构——但 daily/ST 运营路径仍未 shipped（`capture_and_publish_*` 焊死 fetch→land→accept）。**
 
-**A→H 保留为后置研究地图与出口门清单，不再是近端主线。** 近端唯一合法序列 = **transport strangler S1→S3（必做）→ S4–S6（按需）→ 再开 E0/E/F 复测或 P2 换假设**。继续把 E/F remeasure 或 G/H 当「下一刀」= 在已闭合 protocol 上重复测量，不修复 owner 指出的模块化债。
+**A→H 保留为后置研究地图与出口门清单，不再是近端主线。** 近端唯一合法序列 = **transport strangler S1→S3（必做，daily+ST+calendar 同焊点）→ S4–S6（按需）→ 再开 E0 闭合 / E/F 复测或 P2 换假设**。继续把 E/F remeasure 或 G/H 当「下一刀」= 在已闭合 protocol 上重复测量，且不触及 evidence pack §2.2 所述 **legacy `raw_tushare_*` 并行面**。
 
 ---
 
@@ -30,24 +31,26 @@ ChunkyMonkey 不是「多源 ETL 平台」也不是「策略工厂」。第一�
 
 ## 2. Steel-man：业主的模块化叙事（最强版本）
 
-| 业主说法 | 最强解读（不稀释） | 与 MASTER 对齐 |
+| 业主说法 | 最强解读（不稀释） | 仓库已有近义（evidence pack §1） |
 |---|---|---|
-| 数据源 = 水龙头 | ProviderAdapter 只负责 request/response→landing schema；不在 landing 做 universe 业务过滤 | §3.1 transport；§9 adapter 目标态 |
-| raw store + routing/lineage | landing 表 + batch_id + observed_at + contract hash；canonical 单独 writer | landing ≠ canonical ≠ serve |
-| 变量加工 | Tier1/2 compute + qfq/form 派生；只读 accepted（+ 授权 legacy 日落） | 业务轴 Tier1→2；qfq=派生非成交真相 |
-| 展示 API | resolver / serve read model；禁止页面内第二套口径 | dual-track residual=NONE 方向 |
-| 一键 sync = 编排器 | `chunkyctl sync` / `daily_update` **只**按序调用独立模块；每步可单独重跑 | §6.1 stage→validate→accept 原子链 |
+| 数据源 = 水龙头 | ProviderAdapter 只负责 request/response→landing schema；不在 landing 做 universe 业务过滤 | `data_access.yaml` L18–20「源=水龙头, entity=桶, SERVE=分水中转」；**但 formal daily sync 不经 entity 声明链** |
+| raw store + routing/lineage | landing 表 + batch_id + observed_at + contract hash；canonical 单独 writer | 7 组 formal land/canonical（§2.1）；`services/lineage/` + `mart_lineage`；**无字面「路由表」** |
+| 变量加工 | Tier1/2 compute + qfq/form 派生；只读 accepted（+ 授权 legacy 日落） | `pipeline/` 四阶段 docstring（获取/清洗/加工/存储）；L2 panel **wiped_20260628** |
+| 展示 API | resolver / serve read model；禁止页面内第二套口径 | routers：`market_pulse`/`institution_profile`/`paper_portfolio`/`ops_manual_run`；dual-track residual=NONE |
+| 一键 sync = 编排器 | `chunkyctl sync` / `daily_update` **只**按序调用独立模块；每步可单独重跑 | `pipeline/run.py` 已有 stage 编排；**formal daily/ST 绕开它**，直进 `sync_runner` 融合龙 |
 
-**业主澄清后的验收标准（唯一）**：运营级 **可独立调用的 acquire（→LANDED）与 accept（from-landing）**；编排器 **caller-only**。函数文件已拆开 **≠** shipped——见 `data_foundation_modularity_gap` §0–§3。
+**与历史「四地基」的关系（不等同、不否定）**：evidence pack §1.1 — repo 有「四地基 / 数据四地基 / M1–M3 采集·清洗·界面」审计措辞（20260703/20260708），**未见**「四大模块」正式枚举。业主本次 acquire/process/compute/display **语义上**覆盖 pipeline 四阶段 + MASTER transport，**不是**把 20260708 `READY_WITH_FIXES` 审计结论直接当作「编排已 shipped」。那次审计证的是 **floor（正确性/连续性）**，不是 **ceiling（运营可编排）**。
+
+**业主澄清后的验收标准（唯一）**：运营级 **可独立调用的 acquire（→LANDED）与 accept（from-landing）**；编排器 **caller-only**。库内 `land_*`/`accept_*`/`publish_accepted_*` 可测 **≠** shipped——evidence pack §2.7；modularity gap §0–§3。
 
 **已交付且不应回滚的 partial（勿与编排混淆）**：
 
-- C + B-pit `cutover_allowed=true`；frontier `20260720` current
-- formal land/accept 函数与表分离（库内可测）
-- D research_runtime FIXED；F0–F3 诚实 reject
+- A/B-ext/B-pit/C 主路径 FIXED；`cutover_allowed=true`；frontier `20260720` current（evidence pack §3）
+- formal land/canonical/`accepted_partition` 七域表名已存在（§2.1）；daily/ST **刻意不写** `raw_tushare_*` 镜像（§2.2）
+- D FIXED；E measured reject；F0–F3 protocol-complete reject；E0 **PARTIAL**（§3 表）
 - resolver 读面 dual-track residual=NONE
 
-这些是 **正确性基建**，不是 **可编排模块化**。
+这些是 **正确性 + 研究 protocol 基建**，不是 **运营可编排模块化**，也不是 **legacy raw 面退役**。
 
 ---
 
@@ -95,13 +98,34 @@ plan 已拍板「契约可换 adapter」，但：
 | 策略先行：E/F remeasure 当地基 | **已发生**——121d 窗全员 reject；不修复 transport 只重复测量 |
 | 正确折中 | **S1–S3 闭合 transport 编排债** → 自然 sync 继续养窗 → **同一 protocol** 复测 E/F（不松门） |
 
-** falsifiable consumer**：S3 完成后，应用「from-landing 重 accept 不改 fetch 结果」的对抗测证明模块化 **有 consumer**（continuity doctor + contract tests），不是架构 PPT。
+**可证伪 consumer**：S3 完成后，用「from-landing 重 accept 不改 fetch 结果」对抗测 + `moth coupling` 证明 sync 生产 fan-in 不再经 `capture_and_publish_*`。
 
-### 3.7 「四大模块」命名陷阱
+### 3.7 命名陷阱：「四大模块 / 四地基」≠ 新 Phase
 
-业主口语：acquire / process / compute / display ≈ MASTER 的 transport + Tier1/2 + serve。**不要**再发明平行产品名或新总线——那是 duplicate MASTER §3 两轴，且诱发 plugin/DAG 冲动（plan §10 明确不做）。
+evidence pack §1.1：**未找到**「四大模块」正式命名；「四地基」散见于 202607 审计与 purge 注释（M1 采集 / M2 清洗 / M2→M3 界面）。业主口语 acquire/process/compute/display ≈ pipeline 四阶段 + MASTER 两轴。**不要**再发明平行产品名或新总线——duplicate MASTER §3，且诱发 plugin/DAG（plan §10）。
 
-**奥卡姆表述**：沿用已有 seam——`capture_security_day_provider_rows` → `land_*` → `accept_*`；`sync_runner` 瘦身为 caller。
+**奥卡姆表述**：沿用已有 seam——`capture_security_day_provider_rows` → `land_*` → `accept_*`；`sync_runner` 瘦身为 caller。`pipeline/run.py` 继续管 derive 链；**不要**假意合并成第五套「四地基产品层」。
+
+### 3.8 双平面 ingestion（evidence pack §2.2 — 业主常忽略）
+
+| 平面 | 写入 | 消费者 |
+|---|---|---|
+| **Formal** | `landing_tushare_*` → `canonical_*` → `accepted_partition` | cutover resolver；qfq **部分**读 canonical |
+| **Legacy** | `sync_registry` → `raw_tushare_*`（大量域） | 旧 mart / qfq UNION / 部分 pulse 路径 |
+
+S1–S3 只解 **formal daily/ST/calendar** 融合龙（§2.7）。**不等于**「整个 repo 已模块化」。若 owner 期望一键 sync 管全部域 → **范围膨胀**，须显式拒绝或另开 residual 清单（margin 已 formal；披露 mix formal+NONCONFORMING）。
+
+### 3.9 「水龙头」config 与 formal sync 脱节
+
+`data_access.yaml` 声明「换源三步：新 adapter → 对账 → 改 db/table 指针；消费方零改动」。**实况**：formal daily `_adapter()` 硬绑 `LIVE_ADAPTER=tushare`；多源 registry 已物删（20260707）。**结论**：水龙头隐喻在 SERVE 声明链里 partial 成立，在 **Tier0 formal acquire** 里 **未 shipped**。S4 才是把它接上 landing 的正确位置——不是重写 `data_access` 指针 alone。
+
+### 3.10 `daily_update` pipeline 已分层，但被 bypass
+
+`pipeline/__init__.py`：preflight → acquire → clean → process → store（evidence pack §1.2）。**挑战**：这不是 greenfield——**缺的是 formal Tier0 域接入已有 stage 边界**，而非再写一套「四模块」。S3 应让 `sync_runner` daily/ST **调用** land/accept 模块；derive 继续走 `pipeline/clean.py` 等，避免第二个编排器。
+
+### 3.11 BOARD 投影滞后（勿误读）
+
+evidence pack §3：`BOARD.md` / `agent_context.json` 仍投影 `A→H next: F main_rally…` 等，与 `goal.md` 手写 **冲突**。**执法输入 = goal + 本文件**；BOARD 须 regenerate，不可当排序真相源。
 
 ---
 
@@ -117,15 +141,17 @@ plan 已拍板「契约可换 adapter」，但：
 | Phase 出口门表（§5.3） | E0 披露 formal、H 仅 post-Release 仍有效 |
 | 明确不做（§10 / MASTER §12） | 硬禁令来源 |
 
-### 4.2 过度延伸或顺序错误（challenge）
+### 4.2 过度延伸或顺序错误（challenge + evidence pack §3）
 
 | 项 | 问题 | 处置 |
 |---|---|---|
-| A→H 作为 **近端执行序** | A/B/C/D 大量 **FIXED**；plan §8 差异表多处 stale（G2 resolver 已通、D runtime 已有） | 降为 **历史地图 + 未闭合 residual 索引** |
-| 「机构跟随提前」作主线动力 | E/F 已测完 → reject；**不**产生 Release；不是 transport 债的解 | 保留 E 为首包 **架构叙事**，执行序 **后置** |
-| forward_program P1「E/F remeasure 为唯一合法研究动作」 | 与 owner 2026-07-20 重评冲突；扩窗 BLOCKED（禁 mass backfill） | **降级附录**；见 `forward_program_efgh_20260720.md` 生命周期 |
-| Phase A「当前唯一开工合法区」 | 过时；A 主路径已 cutover | 仅列 **A residual**（若有）并行 S1–S3，不阻塞 |
-| 把 campaign protocol-complete 混为 product complete | forward_program §0 已分清 | 继续强制区分 |
+| A→H 作为 **近端执行序** | A–D **FIXED**；E0 **PARTIAL**；E/F reject；G/H 未开（§3 表） | 降为 **Phase 地图 + residual 索引** |
+| plan §8 差异表 | G2/G4 等多处 stale vs 现仓 | 以 evidence pack §3 + goal 硬事实为准 |
+| 「机构跟随提前」作主线动力 | E `measured_reject_no_gain`；B4 inconclusive（§3） | 架构首包叙事保留；**执行后置** |
+| forward_program P1 remeasure | 121d 窗 BLOCKED；与 S1–S3 竞争注意力 | **superseded** |
+| 20260708 `READY_WITH_FIXES` / 四地基审计 | 证 floor 非 ceiling；**不含** land-only CLI | 不得用来洗绿 NOT SHIPPED |
+| Phase A「唯一开工区」 | A 主 cutover 已闭合 | S1–S3 = A 内 transport strangler，并行不阻塞 |
+| campaign vs product complete | forward_program §0 | 继续强制区分 |
 
 ### 4.3 Cargo-cult 相（警惕）
 
@@ -138,16 +164,17 @@ plan 已拍板「契约可换 adapter」，但：
 
 ## 5. 奥卡姆修订程序（strangler，非 greenfield）
 
-**不新建「四大模块」产品层。** 在现有 formal daily/ST 路径上收编三条 seam：
+**不新建「四大模块」产品层。** 在 evidence pack §2.7 已证实的 fusion 域上收编 seam（**daily + stock_st + calendar** 均 `capture_and_publish_*`）：
 
 ```text
-S1  land-only     : capture → LANDING (≤40d / contract / eligibility)
-S2  accept-only   : landing batch → validate → accepted_partition (禁止 _adapter)
-S3  sync 瘦身     : sync_runner / daily_update = S1 → S2 → (现有 derive 调用)
---- 以下为按需，不阻塞 S3 验收 ---
-S4  adapter 可换  : 本地 raw / mock / 第二源 → 同一 landing 投影
-S5  derive 入口   : qfq / form enrich 独立 CLI，只读 accepted
-S6  serve 巩固    : API/router 仅 resolver；失败不回写 landing
+S1  land-only     : capture → LANDING only (≤40d / contract / eligibility)
+S2  accept-only   : landing batch → validate → accepted_partition (零 _adapter)
+S3  sync 瘦身     : sync_runner formal 域 = S1 → S2 → 既有 pipeline derive
+--- S3 绿后再开 ---
+S4  adapter 可换  : mock/本地 raw → 同一 landing 投影（接 data_access 水龙头语义）
+S5  derive 入口   : qfq/form 独立 CLI；只读 accepted（legacy UNION 日落另账）
+S6  serve 巩固    : lineage T2 已限 acquire+consume；router 仅 resolver
+S7  legacy 清单   : raw_tushare_* 域逐项 formal 化或显式 sunset（**不在 S3 范围**）
 ```
 
 **研究轨（后置，门不变）**：
@@ -186,7 +213,7 @@ flowchart LR
 |---:|---|---|
 | **S1** | CLI/API：`land-only` daily\|stock_st 单日；**不写** canonical；LANDED batch 可查询；≤40d / forged contract / future partition 仍 fail-closed | 第二 DB；plugin bus |
 | **S2** | CLI：`accept-from-landing --batch-id`；代码路径 **零** `_adapter`/`fetch_rows`；kill-point：accept 中断不触发 fetch | accept 内调 provider |
-| **S3** | `chunkyctl sync` 实现 = 顺序调用 S1→S2（+ 既有 derive）；`capture_and_publish_*` **不再是** sync 生产 fan-in；一键 UX 保留 | sync_runner 内新焊龙 |
+| **S3** | daily\|stock_st\|calendar：`chunkyctl sync` = S1→S2（+ derive）；`capture_and_publish_*` **非** sync 生产 fan-in（moth 可证） | sync_runner 内新焊龙 |
 | **S4** | 假 adapter / fixture raw 喂 landing → S2 accept → canonical **不变**读契约 | 复活旧 fallback 框架 |
 | **S5** | qfq/form 可 `--from-accepted` 重跑；不嵌入 accept 事务 | qfq 当成交价 |
 | **S6** | dual-track residual 仍 NONE；新 router 审计 | 展示层回写 Tier0 |
@@ -213,17 +240,21 @@ flowchart LR
 
 ---
 
-## 8. 与现有 artifact 的对账
+## 8. 与 evidence pack / artifact 对账
 
-| 声称 | 判定 |
-|---|---|
-| 「模块化编排已部分交付」 | **REJECT** — land/accept 函数存在 ≠ 运营编排（gap §0） |
-| 「A 未完成不能动 anything」 | **REVISE** — A 主 cutover 已闭合；S1–S3 是 A 内 **transport strangler**，非新 Phase |
-| 「F reject → 该开 G」 | **REJECT** — forward_program §1.4；无 claimable |
-| 「E/F remeasure 是唯一研究动作」 | **SUPERSEDED** — 本文件为 sequencing authority |
-| 「dual-track 已 NONE」 | **KEEP** — S6 仅防回归 |
+| 声称 | 判定 | 证据 |
+|---|---|---|
+| 「模块化编排已部分交付」 | **REJECT** | §2.7；无 land-only/accept-from-landing CLI |
+| 「四地基 202607 已 READY → 编排 OK」 | **REJECT** | §1.2 A 段；审计 floor ≠ orchestration ceiling |
+| 「水龙头 config = 换源已通」 | **REVISE** | §1.2 D + §3.9；formal `_adapter` 单源 |
+| 「A 未完成不能动」 | **REVISE** | §3 表 A–C FIXED |
+| 「F reject → 开 G」 | **REJECT** | §3 F/G/H 行 |
+| 「E/F remeasure = 下一刀」 | **SUPERSEDED** | 本文件 |
+| 「dual-track NONE」 | **KEEP** | goal 20260720 re-audit |
+| 「披露已 land/canonical」 | **PARTIAL** | §2.1 三表存在；E0 ledger PARTIAL；miaoxiang 研究读面仍 NONCONFORMING |
+| 「qfq 只读 canonical」 | **REJECT** | §2.2 UNION legacy raw |
 
-Live 焊点（复核）：
+Live 焊点（evidence pack §2.7 复核）：
 
 ```1863:1898:backend/services/data_sources/sync_runner.py
     """Fetch one trade_date and publish accepted nominal OHLCV or ST truth."""
@@ -257,31 +288,36 @@ Live 焊点（复核）：
 
 ---
 
-## 10. Owner 盲点 Top 5（专家义务）
+## 10. Owner 盲点 Top 7（专家义务 — 非迎合）
 
-1. **把「表已分开」当成「模块已交付」** — 生产 fan-in 仍是 `capture_and_publish_*`；验收看 **sync 是否 caller-only**。
-2. **把 landing 当 business SSOT** — landing 是证据；accepted + population scope 才是项目真相。
-3. **低估 accept-from-landing 的运营价值** — 重验收不重拉、换源不重写龙、kill-point 隔离；这比「换 TuShare」更急。
-4. **用 A→H Phase 字母当进度条** — D/F protocol-complete ≠ 边缘成功 ≠ transport shipped；121d 全员 reject 下继续 remeasure 是 **重复测量**，不是 **地基修复**。
-5. **模块化 vs PIT 误对立** — 拆 seam 不削弱 `available_at`；融合龙才方便「先写库再补门」式泄漏。
+1. **表分开 ≠ 模块 shipped** — §2.7 fusion 龙；验收 = sync caller-only + moth fan-in。
+2. **landing ≠ business SSOT** — §2.1–2.3；accepted + population scope 才是项目真相。
+3. **低估 accept-from-landing** — 重验收不重拉；比「换 TuShare」更急。
+4. **A→H 字母 ≠ 进度** — §3 表：E/F reject 不是开 G 信号；D/F protocol-complete ≠ 边缘成功。
+5. **模块化 vs PIT 误对立** — §3.3；拆 seam 强化而非削弱 `available_at`。
+6. **忽略 legacy `raw_tushare_*` 并行面** — §2.2 / §3.8；S3 绿只解 formal 三域，不自动「全 repo 模块化」。
+7. **把 pipeline 四阶段当作「已编排」** — §3.10；formal daily **绕过** `pipeline/run.py` 直进 fusion——问题在 **接线** 不在 **缺模块**。
 
 ---
 
 ## 11. 近端 3 个 strangler 切片（立即顺序）
 
-1. **S1 — land-only CLI**（daily + stock_st）：`capture_security_day_provider_rows` + `land_*` 公开入口；红例：land-only 不写 canonical；forged contract / future partition 仍红。
-2. **S2 — accept-from-landing CLI**：`publish_accepted_*` / `accept_*` 仅吃 batch_id；红例：grep/`moth coupling` 证明 accept 路径无 `_adapter`；accept 失败不触发 fetch。
-3. **S3 — sync_runner 瘦身**：`_publish_security_day_accepted_partition` 改为 S1→S2 顺序调用；deprecate 生产路径对 `capture_and_publish_*` 的 fan-in；红例：一键 sync 行为 parity + 逐步可单独重跑 land/accept。
+1. **S1 — land-only CLI**（daily + stock_st + **calendar**）：公开 `capture`+`land_*`；红例：不写 canonical；≤40d/forged contract 仍 fail-closed。
+2. **S2 — accept-from-landing CLI**：`publish_accepted_*` 仅 `batch_id`；红例：accept 路径零 `_adapter`（evidence pack §2.7）。
+3. **S3 — sync_runner 瘦身**：formal 三域改为 S1→S2；`capture_and_publish_*` 降为非生产或测试-only fan-in；parity 测 + moth coupling。
 
-**S4–S6 不在 S3 前开工**（除非 S3 被 BLOCKED 且根因证明必须先 S4——当前无此证据）。
+**S4–S6 / S7 不在 S3 前**（S7 = legacy `raw_tushare_*` 域清单，须单域 strangler，禁一锅端 greenfield）。
 
 ---
 
 ## 12. 文档指针
 
-- 模块化缺口细节：`analysis/data_foundation_modularity_gap_20260720.md`
-- A→H 原文：`~/.cursor/plans/gap_analysis_audit_3cdd0f6e.plan.md`
-- 旧 forward 附录：`analysis/forward_program_efgh_20260720.md`
-- 执行板：`goal.md`（本文件为 **sequencing authority**）
+| 文档 | 角色 |
+|---|---|
+| `analysis/plan_reeval_evidence_pack_20260720.md` | 事实包（无裁决） |
+| `analysis/data_foundation_modularity_gap_20260720.md` | NOT SHIPPED 验收语义 |
+| `analysis/forward_program_efgh_20260720.md` | 历史附录（P1 superseded） |
+| `~/.cursor/plans/gap_analysis_audit_3cdd0f6e.plan.md` | A→H 产品法 + Phase 门 |
+| `goal.md` | 执行板；**本文件 = sequencing authority** |
 
-**Label**：`REPOSITIONED` — 地基 modular strangler 优先；A→H 后置；E/F reject baseline 保留。
+**Label**：`REPOSITIONED` — formal transport strangler S1–S3 优先；A→H 后置；legacy raw 面与 E0 PARTIAL 单列 residual。

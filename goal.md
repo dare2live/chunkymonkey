@@ -6,6 +6,7 @@
 > 完成证据追加到 `analysis/project_state_ledger.md`。
 > **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
 > **现行排序权威（第一原理重评 → S1–S3 → 再策略）**：`analysis/plan_reeval_first_principles_20260720.md`
+> **重评事实包（无裁决）**：`analysis/plan_reeval_evidence_pack_20260720.md`
 > **模块化缺口证据**：`analysis/data_foundation_modularity_gap_20260720.md`
 > **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`
 
@@ -36,7 +37,7 @@
 顺序：**S1 → S2 → S3**（land-only / accept-from-landing / sync caller-only）→ **S4–S6 按需** → **R0 E0** → **R1 E/F 复测** → G/H；**H only after accept**。  
 旧 `forward_program_efgh` P1 remeasure **superseded**；P0 自然 sync 护栏仍并行。
 
-- **S1–S3（当前 focus）**：见重评文 §5–§11、`data_foundation_modularity_gap_20260720.md`。现状 = `capture_and_publish_*` 生产 fan-in → **NOT SHIPPED**
+- **S1–S3（当前 focus）**：重评文 §5–§11 + evidence pack §2.7。scope = formal **daily + stock_st + calendar**；`capture_and_publish_*` 生产 fan-in → **NOT SHIPPED**；legacy `raw_tushare_*` 并行面 **不在 S3 范围**
 - **S4–S6**：S3 绿后再开；换源/派生/serve 巩固
 - **研究轨（后置）**：E0 披露 formal；E/F 同 protocol（窗扩仍 BLOCKED）；不开 G/H/Release 抢跑
 - **护栏**：frontier=`20260720`；dual-track=NONE；PIT+≤40d+禁 mass backfill/第二 DB/plugin bus
