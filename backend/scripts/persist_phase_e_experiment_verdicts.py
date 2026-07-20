@@ -202,6 +202,41 @@ def persist(*, force: bool = False) -> dict[str, Any]:
         )
 
     any_claimable = any(row["claimable"] for row in ladder)
+    # Derive window from live measured B0 trading days (not a hardcoded label).
+    b0_details = dict((b0_verdict.as_dict() or {}).get("details") or {})
+    wf = dict(b0_details.get("walk_forward") or {})
+    trading_days = [
+        str(d).replace("-", "")[:8]
+        for d in (wf.get("trading_days") or [])
+        if str(d).replace("-", "")[:8].isdigit()
+    ]
+    if not trading_days:
+        cov = dict(b0_details.get("bare_k_coverage") or {})
+        trading_days = [
+            str(d).replace("-", "")[:8]
+            for d in (cov.get("accepted_nominal_partitions") or [])
+            if str(d).replace("-", "")[:8].isdigit()
+        ]
+    trading_days = sorted(set(trading_days))
+    window_start = trading_days[0] if trading_days else None
+    window_end = trading_days[-1] if trading_days else None
+    n_days = len(trading_days)
+    window_label = f"bounded_{n_days}d_nominal_k" if n_days else "bounded_nominal_k"
+    protocol_name = str(wf.get("protocol") or "unknown")
+    n_folds = len(wf.get("folds") or [])
+    overall_status = (
+        "measured_accept_claimable"
+        if any_claimable
+        else "measured_reject_no_gain"
+    )
+    next_note = (
+        "First-class failed/no-gain experiment on bounded window; "
+        "do not loosen gates; next=Phase C scaffolding OR stop until "
+        "new eligible daily frontier / new evidence."
+        if not any_claimable
+        else "Claimable block present — still not StrategyRelease; "
+        "hold for release gate review."
+    )
     manifest = {
         "schema_version": 1,
         "kind": "phase_e_experiment_verdict_manifest",
@@ -212,36 +247,35 @@ def persist(*, force: bool = False) -> dict[str, Any]:
         "snapshot_scope": snapshot_scope,
         "phase_e_ablation": phase_e_ablation,
         "window": {
-            "label": "bounded_40d_nominal_k",
-            "start": "20260522",
-            "end": "20260717",
+            "label": window_label,
+            "start": window_start,
+            "end": window_end,
+            "trading_day_count": n_days,
         },
         "protocol": {
-            "folds": 3,
+            "name": protocol_name,
+            "folds": n_folds,
             "embargo": 1,
             "holdout_days": 2,
             "execution": "t+1_paper_nominal",
             "accept_edge_gates": True,
             "holdout_lift_vs_b0": True,
+            "claimable_protocol": bool(wf.get("claimable_protocol")),
         },
         "overall": {
-            "status": "measured_reject_no_gain",
+            "status": overall_status,
             "any_claimable": any_claimable,
             "strategy_release": False,
-            "note": (
-                "First-class failed/no-gain experiment on bounded window; "
-                "do not loosen gates; next=longer-window stability OR stop "
-                "until new data."
-            ),
+            "note": next_note,
         },
         "ladder": ladder,
         "blocks": block_rels,
         "form_qfq_frontier": {
-            "requested": "20260717",
+            "requested": window_end,
             "status": "still_blocked",
             "note": (
                 "raw_tushare_daily/adj_factor and qfq/form max remain "
-                "20260716; nominal accepted K exists for 20260717."
+                "20260716; nominal accepted K exists through window end."
             ),
         },
     }

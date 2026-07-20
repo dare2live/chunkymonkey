@@ -1203,3 +1203,30 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   (was stale ≤10).
 - **Did not**: mass backfill, margin thaw, B-pit cutover, E verdict rewrite
   (120d B0–B4 remeasure = next slice).
+
+### 2026-07-20 — Phase E: 120d stability remeasure (reject / no-gain)
+
+- Remeasured B0–B4 on accepted nominal window `20260116`–`20260717`
+  (120 trading days; purged WF 3 folds; claimable_protocol=true;
+  same accept edge gates + holdout_lift_vs_b0). No threshold changes.
+- Persist script now derives `window.{start,end,trading_day_count,label}`
+  from measured B0 trading_days (no hardcoded 40d label).
+- Ladder (all `claimable=false`, `strategy_release=false`):
+
+  | block | ret | max_dd | n | holdout | verdict | reason |
+  |---|---:|---:|---:|---:|---|---|
+  | B0 | −38.2% | 51.7% | 532 | +5.9% | reject | edge unmet |
+  | B1 | −51.1% | 53.1% | 534 | +4.0% | reject | edge unmet |
+  | B2 | −2.2% | 19.8% | 237 | +5.9% | reject | edge unmet |
+  | B4 | — | — | — | — | inconclusive | event_days=11 but frac≈9%<25% |
+
+- B2 short-window micro-positive (~+0.3%) **does not** survive 120d.
+- B4: did **not** loosen `MIN_EVENT_DAY_FRACTION`; did **not** mass-expand
+  holders; honest inconclusive on diluted coverage.
+- Artifacts regenerated:
+  `data/lineage/phase_e_experiment_verdicts/{manifest,b0,b1,b2,b4}.json`
+  (snapshot_hash unchanged `0f4aec1c…`).
+- Tests: 44/44 phase_e + institution_follow B0–B4.
+- **Did not**: Optuna, gate loosening, B-pit cutover, margin thaw,
+  StrategyRelease, mass backfill.
+- **Next**: Phase C scaffolding OR stop until new eligible daily/evidence.

@@ -105,7 +105,7 @@ def test_phase_e_smoke_dataset_snapshot_gate_and_surface_status() -> None:
 
 
 def test_phase_e_checkpoint_verdict_artifacts_reject_no_gain() -> None:
-    """Committed Phase E ladder artifacts: all reject / claimable=false."""
+    """Committed Phase E ladder artifacts: no claimable / no StrategyRelease."""
 
     root = Path(__file__).resolve().parents[3]
     manifest_path = root / "data/lineage/phase_e_experiment_verdicts/manifest.json"
@@ -124,10 +124,19 @@ def test_phase_e_checkpoint_verdict_artifacts_reject_no_gain() -> None:
         rel = blocks.get(name)
         assert rel, f"manifest missing block {name}"
         payload = json.loads((root / rel).read_text(encoding="utf-8"))
-        assert payload.get("verdict") == "reject"
+        # reject = edge/lift unmet; inconclusive = coverage too thin (e.g. B4
+        # event-day fraction on longer windows). Never claimable / release.
+        assert payload.get("verdict") in {"reject", "inconclusive"}
         assert payload.get("claimable") is False
         assert payload.get("strategy_release") is False
         assert payload.get("snapshot_hash") == expected_hash
-    # B2 short-window accept was withdrawn — holdout lift gate records unmet.
+    b0 = json.loads((root / blocks["b0"]).read_text(encoding="utf-8"))
+    assert b0.get("verdict") == "reject"
     b2 = json.loads((root / blocks["b2"]).read_text(encoding="utf-8"))
-    assert b2.get("reason") == "holdout_lift_vs_b0_unmet"
+    assert b2.get("verdict") == "reject"
+    b4 = json.loads((root / blocks["b4"]).read_text(encoding="utf-8"))
+    assert b4.get("claimable") is False
+    manifest_window = manifest.get("window") or {}
+    assert int(manifest_window.get("trading_day_count") or 0) >= 100
+    assert manifest_window.get("start") == "20260116"
+    assert manifest_window.get("end") == "20260717"

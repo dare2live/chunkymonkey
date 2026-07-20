@@ -25,7 +25,7 @@ AGENTS.md
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
 | T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 展示可用但 breadth/margin UNTRUSTED（B-ext）；分类/measurement/regime 耦合，暂不可直接做 PIT 特征；禁当项目池直至 B-pit |
-| T3 institution | `institution_profile.py` + `institution_follow_b0/b1/b2/b4` (+ `_measure`) + `institution_follow_edge_gates.py` + `disclosure_research_read.py` + `disclosure_enrichment_projection.py` + `disclosure_dataset_snapshot.py` + dual-write/shadow/boundaries + `*_acceptance.py` + router/tests | **首个正式策略包**；E0 FIXED；E PARTIAL：40d B0/B1/B2/B4 均 reject（B2 holdout-lift；B4 覆盖够后 edge unmet）；均 ≠ StrategyRelease |
+| T3 institution | `institution_profile.py` + `institution_follow_b0/b1/b2/b4` (+ `_measure`) + `institution_follow_edge_gates.py` + `disclosure_research_read.py` + `disclosure_enrichment_projection.py` + `disclosure_dataset_snapshot.py` + dual-write/shadow/boundaries + `*_acceptance.py` + router/tests | **首个正式策略包**；E0 FIXED；E PARTIAL：120d B0/B1/B2 reject；B4 inconclusive（coverage fraction）；均 ≠ StrategyRelease |
 | T3 main rally | `rally_gt.py`, `rally_detect.py`, rally config/tests | GT 资产成熟；在机构首包之后接入同一 runtime |
 | T3 formulas | `bestchoice/FROZEN.md` + `evidence_manifest.json` | 冻结 challenger；Phase G 前不吸收 |
 | T4 decision/paper | `paper_portfolio.py`, frontend observation page | Legacy NONCONFORMING 观察账本；不是 paper execution |
@@ -69,7 +69,7 @@ AGENTS.md
 | Priority | Defect | Consequence |
 |---:|---|---|
 | P0 | K 120 日已接受（`20260116`–`20260717`）；daily `20260720` 未 eligible；禁 mass backfill | B-pit mart/cutover 仍禁；eligible frontier READY |
-| P0 | E checkpointed measured reject/no-gain（B0–B4 claimable=false；artifacts under `data/lineage/phase_e_experiment_verdicts/`）；enrichment 历史仍 field-level PARTIAL | 下一刀更长窗稳定性 **或** stop until new data（非 Optuna / 非松门 / 非 mass backfill / 非 B-pit cutover / 非 StrategyRelease） |
+| P0 | E 120d checkpointed measured reject/no-gain（B0–B2 reject；B4 inconclusive；claimable=false；artifacts under `data/lineage/phase_e_experiment_verdicts/`）；enrichment 历史仍 field-level PARTIAL | 下一刀 Phase C **或** stop（非 Optuna / 非松门 / 非 mass backfill / 非 B-pit cutover / 非 StrategyRelease） |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
 | P1 | formal `boundary_inventory` 仅为静态/测试资源，非 doctor readiness 证书（`formal_boundaries` 文案已澄清）；canary_pending 域无 countdown 出口 | 豁免不可见即永久；须在 goal/ledger 跟踪 canary 授权点 |

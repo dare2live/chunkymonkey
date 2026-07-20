@@ -6,7 +6,7 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + **120** 交易日名义 K accepted `20260116`–`20260717`；ST 同窗 + 额外 `20260720`；daily eligible frontier 仍=`20260717` READY/`pending_publish` 挡 `20260720`；仍禁 mass backfill）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false`）。**E0 FIXED（gate+mirror off）**。**E = measured reject / no-gain（checkpointed on 40d；120d remeasure in flight）**：40 日窗 B0–B4 全 `reject` / `claimable=false`；artifacts=`data/lineage/phase_e_experiment_verdicts/`；**无 StrategyRelease**。下一刀=**120d 稳定性重测**后停或进 C；禁 Optuna / gate-loosening / B-pit cutover / margin thaw / mass backfill。
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + **120** 交易日名义 K accepted `20260116`–`20260717`；ST 同窗 + 额外 `20260720`；daily eligible frontier 仍=`20260717` READY/`pending_publish` 挡 `20260720`；仍禁 mass backfill）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false`）。**E0 FIXED（gate+mirror off）**。**E = measured reject / no-gain（120d checkpointed）**：窗 `20260116`–`20260717` purged WF（3 folds）B0−38%/B1−51%/B2−2.2% 全 `reject`；B4 `inconclusive`（event_days=11 但 fraction≈9%<25%）；均 `claimable=false`；artifacts=`data/lineage/phase_e_experiment_verdicts/`；**无 StrategyRelease**。下一刀=**Phase C** 脚手架 **或** stop；禁 Optuna / gate-loosening / B-pit cutover / margin thaw / mass backfill。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -71,19 +71,19 @@
   `phase_e_ablation=bounded_scope_measured_b0_short_window`；
   holders date_set=11；org/stk canary+small sets。Serving shadow MATCH。
   残余：org 全市场 mass（禁）；enrichment 历史仍 field-level PARTIAL。
-- **E checkpointed = measured reject / no-gain（非松门理由）**
-  Protocol：40 日 `20260522`–`20260717` purged WF（3 folds）+ T+1 paper；
-  accept edge gates + `holdout_lift_vs_b0`。Live ladder（全 `claimable=false`）：
-  B0 ret≈−24.4% → `reject`；B1≈−39.6% → `reject`；
-  B2≈+0.34% edge 过但 holdout=B0 → `reject`/`holdout_lift_vs_b0_unmet`
-  （**撤回**短窗 accept 声称）；B4 覆盖够（event_days=11/40）仍 eval≈−6.1% →
-  `reject`/`accept_edge_gates_unmet`。Artifacts：
+- **E checkpointed = measured reject / no-gain（120d；非松门理由）**
+  Protocol：120 日 `20260116`–`20260717` purged WF（3 folds, claimable_protocol）
+  + T+1 paper；accept edge gates + `holdout_lift_vs_b0`。Live ladder
+  （全 `claimable=false`）：B0 ret≈−38.2% → `reject`；B1≈−51.1% → `reject`；
+  B2≈−2.2% → `reject`/`accept_edge_gates_unmet`（短窗 B2 微正已不复现）；
+  B4 event_days=11 但 fraction≈9%<25% → `inconclusive`（不松 coverage 门、
+  不假 accept）。Artifacts：
   `data/lineage/phase_e_experiment_verdicts/{manifest,b0,b1,b2,b4}.json`
-  （`persist_phase_e_experiment_verdicts.py` 幂等 regenerate）。
-  form/qfq `20260717` **still blocked**（raw/qfq/form max=`20260716`）。
-  **Next**：更长窗稳定性 **或** stop until new data。**禁** Optuna /
-  gate-loosening / B-pit cutover / margin thaw / mass backfill / StrategyRelease。
-  **F** main_rally。**G** 公式+BestChoice。**H** Release/名义价纸面。
+  （`persist_phase_e_experiment_verdicts.py` 幂等 regenerate；window 从实测
+  trading_days 派生）。form/qfq `20260717` **still blocked**（max=`20260716`）。
+  **Next**：Phase C 脚手架 **或** stop until new eligible daily / evidence。
+  **禁** Optuna / gate-loosening / B-pit cutover / margin thaw / mass backfill /
+  StrategyRelease。**F** main_rally。**G** 公式+BestChoice。**H** Release。
 
 ## 边做边测
 
