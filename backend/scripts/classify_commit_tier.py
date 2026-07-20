@@ -34,6 +34,7 @@ DEFAULT_POLICY = REPO / "backend" / "config" / "commit_tiers.yaml"
 KNOWN_GATES = frozenset({
     "project_index_sync",
     "feature_map",
+    "agent_board",
     "moth",
     "rule_compliance",
     "sandbox_isolation",
@@ -54,6 +55,7 @@ KNOWN_GATES = frozenset({
 ALL_GATES_ORDERED = (
     "project_index_sync",
     "feature_map",
+    "agent_board",
     "moth",
     "rule_compliance",
     "sandbox_isolation",

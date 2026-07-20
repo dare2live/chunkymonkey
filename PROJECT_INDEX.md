@@ -2,8 +2,9 @@
 
 > 状态：live navigation，非规则 owner
 > 更新：2026-07-19
-> 当前目标看 `goal.md`（A→H；B-ext/B-pit；E0 披露 formal；策略首包=机构跟随；多源=契约可换目标态；边做边测）。
+> 当前目标看 `goal.md`（Agent-OS 轨道；A→H 挂起；状态投影 `BOARD.md`）。
 > 架构看 `docs/MASTER_TOPLEVEL_DESIGN.md`；机器入口与 writer 清单看 `FEATURE_MAP.md` 和 CodeGraph。
+> 生成状态板：`PYTHONPATH=backend python backend/scripts/build_agent_board.py`（勿手改 BOARD.md）。
 
 ## 1. Authority
 

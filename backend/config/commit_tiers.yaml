@@ -17,14 +17,18 @@ version: 1
 
 # L1: 目录前缀 (必须以 / 结尾) 与精确文件。FEATURE_MAP.md 故意不在此列 —
 # 生成投影单独手改必须走 L3 全门 (feature-map drift 门在 L1 被剪枝)。
+# BOARD.md is generated but listed so a pure board/docs commit can stay L1
+# while still running the agent_board drift gate.
 l1_prefixes:
   - docs/
   - analysis/
   - sandbox/
+  - data/board/
 l1_files:
   - goal.md
   - PROJECT_INDEX.md
   - README.md
+  - BOARD.md
 
 # L2: 非 writer 代码面。backend/services/ 整体保守留在 L3 (Tier0/PIT/writer
 # 机制全在其中); 扩大 L2 面必须改本 typed 政策 (其自身是 L3 + Rule 10)。
@@ -48,12 +52,14 @@ tier_gates:
   L1:
     - project_index_sync
     - sandbox_isolation
+    - agent_board
     - doc_drift
     - doc_governance
     - commit_msg
   L2:
     - project_index_sync
     - feature_map
+    - agent_board
     - moth
     - rule_compliance
     - sandbox_isolation

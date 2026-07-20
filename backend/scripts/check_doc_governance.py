@@ -65,8 +65,8 @@ _SCRIPT_REF_RE = re.compile(
 )  # C6: 常见命令式脚本名；全路径引用另由 check_doc_drift 覆盖
 _CHUNKYCTL_COMMAND_RE = re.compile(r"\b(?:scripts/)?chunkyctl\s+([a-z][\w-]*)\b")
 _FEATURE_MAP_COMMAND_RE = re.compile(r"^\|\s*`([a-z][\w-]*)`\s*\|")
+_GENERATED_DOCS = ("FEATURE_MAP.md", "BOARD.md")
 _ROOT_ACTIVE_DOCS = ("AGENTS.md", "goal.md", "PROJECT_INDEX.md")
-_GENERATED_DOCS = ("FEATURE_MAP.md",)
 
 
 def active_doc_paths(root: Path) -> list[Path]:

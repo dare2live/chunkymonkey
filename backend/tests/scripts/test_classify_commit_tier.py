@@ -76,6 +76,12 @@ def test_unknown_path_fail_closed_l3() -> None:
     assert result["tier"] == "L3"
 
 
+def test_board_md_is_l1() -> None:
+    result = clas.classify(["BOARD.md", "data/board/agent_context.json"], scan_content=False)
+    assert result["tier"] == "L1"
+    assert "agent_board" in result["gates"]
+
+
 def test_feature_map_alone_is_l3() -> None:
     """FEATURE_MAP is generated; hand edits must not take the L1 light path."""
     result = clas.classify(["FEATURE_MAP.md"], scan_content=False)

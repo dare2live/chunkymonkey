@@ -1703,3 +1703,23 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Did not**: flip B-pit/C cutover; A→H knives; Optuna; AGENTS slim; board gen
   (WP2 next).
 - **Status**: WP1 FIXED. Next = WP2 generated board.
+
+### 2026-07-20 — Agent-OS WP2 generated status board (FIXED)
+
+- Wall-clock: Mon 2026-07-20 ~17:45 Asia/Shanghai (in-session).
+- Delivered generated projection (not parallel truth / not enforcement):
+  - writer: `backend/scripts/build_agent_board.py`
+  - outputs: `BOARD.md` + `data/board/agent_context.json`
+  - sources: cutover yaml, B-pit shadow summary, tier12 accept artifact,
+    Phase E verdict manifest, goal hand excerpt
+  - drift gate `agent_board` wired into safe_commit L1/L2/L3
+  - goal.md slimmed to hand-written objective/裁决/禁令/下一步 (~46 lines);
+    dense A→H status dump replaced by pointer to BOARD.md
+- Tests: `test_build_agent_board` + classify/codex/safe_commit regression
+  (61 passed scoped). CI wires board unit test.
+- Live projection: b_pit/C `cutover_allowed=false`; E measured_reject_no_gain;
+  C accept 4989/4989; B-pit shadow 120/0 MATCH.
+- **Did not**: flip cutovers; A→H knives; Optuna; AGENTS slim (WP4);
+  agent-boot (WP3).
+- **Status**: WP2 FIXED. Residual agent-OS: WP3 boot, WP4 AGENTS slim,
+  WP5 fixture optional, WP6 ceremony cutover. A→H still frozen.

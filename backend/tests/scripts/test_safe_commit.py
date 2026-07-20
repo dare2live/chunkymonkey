@@ -78,15 +78,21 @@ def _make_repo_with_staged_python(tmp_path: Path) -> Path:
     # (explicit stub keeps classify import path available for Rule 10 L1 checks).
     _write(
         repo / "backend" / "scripts" / "classify_commit_tier.py",
-        "import json,sys\n"
+        "import json\n"
         "print(json.dumps({'tier':'L3','gates':["
-        "'project_index_sync','feature_map','moth','rule_compliance',"
+        "'project_index_sync','feature_map','agent_board','moth','rule_compliance',"
         "'sandbox_isolation','serve_read_layer','calendar_usage',"
         "'population_contract','lineage_drift','dead_references',"
         "'grain_uniqueness','continuity','config_refs','doc_drift',"
         "'doc_governance','commit_msg','rule10'],"
         "'reasons':['fixture_l3'],'paths':[]}))\n",
     )
+    _write(
+        repo / "backend" / "scripts" / "build_agent_board.py",
+        "raise SystemExit(0)\n",
+    )
+    _write(repo / "BOARD.md", "generated board fixture\n")
+    _write(repo / "data" / "board" / "agent_context.json", "{}\n")
     _write(repo / "backend" / "config" / "commit_tiers.yaml", "version: 1\n")
     _write(repo / "backend" / "scripts" / "check_project_index_sync.py", "raise SystemExit(0)\n")
     _write(repo / "backend" / "scripts" / "check_rule_compliance.py", "raise SystemExit(0)\n")

@@ -1,0 +1,105 @@
+{
+  "bans": [
+    "new A→H knives while agent-OS track open",
+    "B-pit/C cutover_allowed=true without strong evidence + explicit yaml",
+    "Optuna / E gate loosen / StrategyRelease / margin thaw",
+    "mass backfill / plugin bus / second DB",
+    "--no-verify / agent self-downgrade of commit tier"
+  ],
+  "cutovers": {
+    "b_pit_mart": {
+      "cutover_allowed": false,
+      "shadow": {
+        "diverge_day_count": 0,
+        "frontier_day": "20260717",
+        "match_baseline_kind": "membership_restricted_proxy",
+        "match_day_count": 120,
+        "ratios_match_all": true
+      },
+      "source": "backend/config/b_pit_mart_cutover.yaml",
+      "window": {
+        "end": "20260717",
+        "start": "20260116"
+      }
+    },
+    "tier12_consumer": {
+      "accept": {
+        "content_hash": "5c4673893b854a467d0156f39e5b20fad61e106fbbfe413237e7eb4f68c03c8f",
+        "decision_date": "20260717",
+        "publish_scope": "project_universe",
+        "published": true,
+        "status": "ACCEPTED",
+        "stock_row_count": 4989,
+        "universe_membership_size": 4989
+      },
+      "cutover_allowed": false,
+      "source": "backend/config/tier12_publish.yaml#consumer_cutover"
+    }
+  },
+  "enforcement": "projection_only_not_truth",
+  "generated_at": "2026-07-20T09:26:58Z",
+  "generated_from": "backend/scripts/build_agent_board.py",
+  "goal_hand_excerpt": "## 当前 objective\n\n**轨道 = Agent-OS 重设计（先于 A→H）**：Truth OS 机器门不动。WP0+WP1 FIXED。\n**WP2** = 生成板（本刀）。余力 WP3 agent-boot / WP4 AGENTS 瘦身。\n**A→H 挂起于 `d8b69090`**。状态细节只读 `BOARD.md`。\n\n## 下一步\n\n1. 完成 WP2（BOARD 漂移门绿）→（余力）WP3/WP4\n2. agent-OS 检查单全绿后才恢复 A→H\n3. 手动数据运维：`20260720` provider 有行后 sync+accept（非 A→H 刀）\n\n## 禁令\n\n- 新 A→H 刀；B-pit/C `cutover_allowed=true`；Optuna；E 松门；StrategyRelease\n- margin thaw；mass backfill；plugin bus；第二 DB；agent 自降 commit tier\n\n## 已裁决（稳定）\n\n| 层 | 目的 | 首个正式输出 |\n|---|---|---|\n| Tier 0A 市场数据 | 日历、身份、名义 K、公司行动、复权 | accepted canonical partition |\n| Tier 0B 分类 | 版本化树/概念/成员/crosswalk | taxonomy node + membership |\n| Tier 1 股票状态 | 阶段/形态/事件，不预测 | stock state + pattern event |\n| Tier 2 市场感知 | 活跃度/不平衡代理/广度/价格响应 | market context snapshot |\n| Tier 3 研究/策略 | B0→B5 消融 | experiment verdict + strategy spec |\n| Tier 4 决策/产品 | 只消费已发布策略 | strategy release + decision batch |\n\n依赖只向下。Ops 观察但不拥有业务事实。多源=契约可换 adapter（目标态）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。\n\n架构硬决定摘要：积木=`module+data+config+contract+evidence`；landing 保留供应商响应；日历与 universe 同级硬门；名义 OHLCV=成交真相；一数据集一 writer；`manual_only`；静态 PASS≠`live_readiness`。完整条文见 `docs/MASTER_TOPLEVEL_DESIGN.md`。\n\n## 边做边测\n\n坏例先红 → 最小实现 → 绿 …",
+  "next_knives_frozen": [
+    "20260720 provider-ready daily sync+accept (manual data ops OK)",
+    "opt-in C/B-pit cutover only with strong evidence (yaml still false)",
+    "D persist ExperimentRun / real fold bind",
+    "or stop"
+  ],
+  "phase_e": {
+    "any_claimable": false,
+    "artifact": "data/lineage/phase_e_experiment_verdicts/manifest.json",
+    "ladder": [
+      {
+        "block": "b0",
+        "claimable": false,
+        "reason": "measured_protocol_ready_edge_gates_unmet",
+        "strategy_release": false,
+        "verdict": "reject"
+      },
+      {
+        "block": "b1",
+        "claimable": false,
+        "reason": "measured_protocol_ready_edge_gates_unmet",
+        "strategy_release": false,
+        "verdict": "reject"
+      },
+      {
+        "block": "b2",
+        "claimable": false,
+        "reason": "measured_protocol_ready_edge_gates_unmet",
+        "strategy_release": false,
+        "verdict": "reject"
+      },
+      {
+        "block": "b4",
+        "claimable": false,
+        "reason": "b4_disclosure_event_coverage_insufficient",
+        "strategy_release": false,
+        "verdict": "inconclusive"
+      }
+    ],
+    "overall_status": "measured_reject_no_gain",
+    "strategy_release": false,
+    "window": {
+      "end": "20260717",
+      "label": "bounded_120d_nominal_k",
+      "start": "20260116",
+      "trading_day_count": 120
+    }
+  },
+  "sources": [
+    "backend/config/b_pit_mart_cutover.yaml",
+    "backend/config/tier12_publish.yaml",
+    "data/lineage/b_pit_breadth_shadow/summary.json",
+    "data/lineage/tier12_publish_batches/full_universe_accept_20260717.json",
+    "data/lineage/phase_e_experiment_verdicts/manifest.json",
+    "goal.md (hand excerpt only)"
+  ],
+  "track": {
+    "a_to_h": "suspended_at_d8b69090",
+    "name": "agent-os-redesign",
+    "wp1": "FIXED",
+    "wp2": "FIXED"
+  }
+}
