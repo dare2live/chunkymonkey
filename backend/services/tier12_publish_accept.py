@@ -398,7 +398,8 @@ def accept_tier12_batch(
     # retained inside market_context for consumers that need them.
     first = write_batch.stock_states[0]
     batch_id = f"tier12_accept:{day}:{content_hash[:16]}"
-    ts = accepted_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # Wall-clock ingest/accept stamp only (not a trade_date / end_date).
+    ts = accepted_at or datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     notes = (
         "phase_c_accepted_publish",
