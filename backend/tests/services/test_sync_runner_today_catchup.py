@@ -36,6 +36,7 @@ def test_domain_eligibility_uses_domain_publish_time_not_global_close_cutoff():
         {"available_after": "18:00", "data_start": "20200101"},
         now=_at_july_15(17, 59),
         trading_day_values=days,
+        trigger_mode="automatic",
     )
     assert before.eligible_end == "20260714" and before.pending_today is True
 
@@ -43,8 +44,45 @@ def test_domain_eligibility_uses_domain_publish_time_not_global_close_cutoff():
         {"available_after": "09:20", "data_start": "20200101"},
         now=_at_july_15(9, 21),
         trading_day_values=days,
+        trigger_mode="automatic",
     )
     assert morning.eligible_end == "20260715" and morning.pending_today is False
+
+
+def test_manual_typed_same_day_at_allows_today_before_clock():
+    days = ["20260717", "20260720"]
+    now = datetime(2026, 7, 20, 14, 19, tzinfo=ZoneInfo("Asia/Shanghai"))
+    spec = {
+        "domain": "daily",
+        "data_start": "20200101",
+        "availability_policy": {
+            "axis": "trading_day",
+            "rule": "same_day_at",
+            "at": "18:00",
+        },
+    }
+    manual = sr.eligible_end_date(
+        spec, now=now, trading_day_values=days, trigger_mode="manual"
+    )
+    automatic = sr.eligible_end_date(
+        spec, now=now, trading_day_values=days, trigger_mode="automatic"
+    )
+    assert manual.eligible_end == "20260720"
+    assert manual.reason == "manual_calendar_eligible"
+    assert automatic.eligible_end == "20260717"
+    assert automatic.reason == "pending_publish"
+
+
+def test_manual_legacy_hhmm_allows_today_before_clock():
+    days = ["20260714", "20260715"]
+    result = sr.eligible_end_date(
+        {"available_after": "18:00", "data_start": "20200101"},
+        now=_at_july_15(14, 0),
+        trading_day_values=days,
+        trigger_mode="manual",
+    )
+    assert result.eligible_end == "20260715"
+    assert result.reason == "manual_calendar_eligible"
 
 
 def test_t_plus_one_domain_never_targets_current_trade_date():
@@ -180,7 +218,9 @@ def test_run_domain_passes_domain_eligible_end_to_calendar(monkeypatch):
     monkeypatch.setattr(
         sr,
         "eligible_end_date",
-        lambda spec: sr.DomainEligibility("20260715", False, "published"),
+        lambda spec, **_kwargs: sr.DomainEligibility(
+            "20260715", False, "published"
+        ),
     )
     monkeypatch.setattr(
         sr,
@@ -225,7 +265,7 @@ def test_nonformal_future_end_is_rejected_before_provider_adapter(monkeypatch):
     monkeypatch.setattr(
         sr,
         "eligible_end_date",
-        lambda _spec: sr.DomainEligibility("20260716", False, "published"),
+        lambda _spec, **_kwargs: sr.DomainEligibility("20260716", False, "published"),
     )
     monkeypatch.setattr(
         sr,
@@ -510,7 +550,7 @@ def test_by_code_list_explicit_start_and_end_reach_provider(monkeypatch):
     monkeypatch.setattr(
         sr,
         "eligible_end_date",
-        lambda _spec: sr.DomainEligibility("20260716", False, "published"),
+        lambda _spec, **_kwargs: sr.DomainEligibility("20260716", False, "published"),
     )
     monkeypatch.setattr(sr, "_adapter", lambda _source: _Adapter())
     monkeypatch.setattr(sr, "_target_conn", lambda _spec: _Conn())
@@ -546,14 +586,14 @@ def test_drain_main_supported_domain_never_double_fetches_today(monkeypatch):
     monkeypatch.setattr(sr, "_available_after_passed", lambda spec, now=None: True, raising=False)
     drain_calls = []
 
-    def _fake_drain(d, registry=None, max_dates=None):
+    def _fake_drain(d, registry=None, max_dates=None, **_kwargs):
         drain_calls.append(d)
         return {"domain": d, "status": "clean"}
 
     monkeypatch.setattr(sr, "drain_domain", _fake_drain)
     run_domain_calls = []
 
-    def _fake_run_domain(d, registry=None):
+    def _fake_run_domain(d, registry=None, **_kwargs):
         run_domain_calls.append(d)
         return {"domain": d, "batches": 1, "rows": 5194, "failed_batches": 0, "ok": True}
 
@@ -581,10 +621,20 @@ def test_drain_main_uses_only_drain_before_publish(monkeypatch):
     }
     monkeypatch.setattr(sr, "load_registry", lambda: reg)
     monkeypatch.setattr(sr, "_available_after_passed", lambda spec, now=None: False, raising=False)
-    monkeypatch.setattr(sr, "drain_domain",
-                        lambda d, registry=None, max_dates=None: {"domain": d, "status": "clean"})
+    monkeypatch.setattr(
+        sr,
+        "drain_domain",
+        lambda d, registry=None, max_dates=None, **_kwargs: {
+            "domain": d,
+            "status": "clean",
+        },
+    )
     catchup_calls = []
-    monkeypatch.setattr(sr, "run_domain", lambda d, registry=None: catchup_calls.append(d))
+    monkeypatch.setattr(
+        sr,
+        "run_domain",
+        lambda d, registry=None, **_kwargs: catchup_calls.append(d),
+    )
     monkeypatch.setattr(sys, "argv", ["sync_runner.py", "--all-due", "--drain"])
     rc = sr.main()
     assert catchup_calls == [], "main 不得维护第二套发布时间补抓分支"
@@ -604,11 +654,21 @@ def test_drain_main_propagates_supported_domain_failure_without_second_fetch(mon
     }
     monkeypatch.setattr(sr, "load_registry", lambda: reg)
     monkeypatch.setattr(sr, "_available_after_passed", lambda spec, now=None: True, raising=False)
-    monkeypatch.setattr(sr, "drain_domain",
-                        lambda d, registry=None, max_dates=None:
-                            {"domain": d, "status": "partial", "still_failed": ["20260717"]})
+    monkeypatch.setattr(
+        sr,
+        "drain_domain",
+        lambda d, registry=None, max_dates=None, **_kwargs: {
+            "domain": d,
+            "status": "partial",
+            "still_failed": ["20260717"],
+        },
+    )
     run_domain_calls = []
-    monkeypatch.setattr(sr, "run_domain", lambda d, registry=None: run_domain_calls.append(d))
+    monkeypatch.setattr(
+        sr,
+        "run_domain",
+        lambda d, registry=None, **_kwargs: run_domain_calls.append(d),
+    )
     monkeypatch.setattr(sys, "argv", ["sync_runner.py", "--all-due", "--drain"])
     rc = sr.main()
     assert run_domain_calls == []
@@ -633,12 +693,18 @@ def test_drain_main_fallback_incremental_domain_not_double_called(monkeypatch):
     }
     monkeypatch.setattr(sr, "load_registry", lambda: reg)
     monkeypatch.setattr(sr, "_available_after_passed", lambda spec, now=None: True, raising=False)
-    monkeypatch.setattr(sr, "drain_domain",
-                        lambda d, registry=None, max_dates=None:
-                            {"domain": d, "status": "drain_inapplicable", "reason": "allow_empty 域走增量"})
+    monkeypatch.setattr(
+        sr,
+        "drain_domain",
+        lambda d, registry=None, max_dates=None, **_kwargs: {
+            "domain": d,
+            "status": "drain_inapplicable",
+            "reason": "allow_empty 域走增量",
+        },
+    )
     run_domain_calls = []
 
-    def _fake_run_domain(d, registry=None):
+    def _fake_run_domain(d, registry=None, **_kwargs):
         run_domain_calls.append(d)
         return {"domain": d, "batches": 1, "rows": 0, "failed_batches": 0, "ok": True}
 

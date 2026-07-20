@@ -79,7 +79,7 @@ def test_drain_uses_the_domain_eligibility_owner_for_expected_days(monkeypatch):
     monkeypatch.setattr(
         sr,
         "eligible_end_date",
-        lambda _spec: sr.DomainEligibility(
+        lambda _spec, **_kwargs: sr.DomainEligibility(
             "20200101", True, "t_plus_one_awaiting_next_trading_day"
         ),
     )

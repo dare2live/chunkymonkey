@@ -20,6 +20,10 @@ AvailabilityRule = Literal[
     "next_trading_session_at",
     "next_calendar_day_at",
 ]
+# Transport/sync authorization mode.  Consumer ``available_at`` / publication
+# frontiers stay clocked via ``resolve_availability_frontier``; only sync
+# eligibility may use ``manual`` to skip a same_day_at wall-clock wait.
+TriggerMode = Literal["manual", "automatic"]
 
 _POLICY_KEYS = frozenset({"axis", "rule", "at"})
 _ALLOWED_COMBINATIONS = frozenset(
@@ -166,7 +170,11 @@ def resolve_availability_frontier(
     now: datetime,
     trading_day_values: Sequence[str] = (),
 ) -> DomainEligibility:
-    """Resolve a typed publication frontier without inspecting batch mode."""
+    """Resolve a typed consumer publication frontier without inspecting batch mode.
+
+    This is the clocked ``available_at`` / continuity frontier.  Manual sync
+    authorization uses :func:`resolve_sync_eligibility_frontier` instead.
+    """
 
     passed = now.time().replace(tzinfo=None) >= policy.at
     if policy.axis == "calendar_day":
@@ -221,6 +229,56 @@ def resolve_availability_frontier(
         True,
         reason,
     )
+
+
+def resolve_sync_eligibility_frontier(
+    policy: AvailabilityPolicy,
+    *,
+    now: datetime,
+    trading_day_values: Sequence[str] = (),
+    trigger_mode: TriggerMode = "automatic",
+) -> DomainEligibility:
+    """Resolve transport/sync eligibility for one trigger mode.
+
+    ``automatic`` keeps the consumer clock gate (``same_day_at`` pending until
+    ``policy.at``).  ``manual`` (chunkyctl / UI click) may fetch a calendar-
+    eligible open trading day before that clock; weekends/holidays and
+    non-``same_day_at`` session gates still bind.  Consumer ``available_at``
+    projections must keep calling :func:`resolve_availability_frontier`.
+    """
+
+    mode = str(trigger_mode or "").strip()
+    if mode not in {"manual", "automatic"}:
+        raise SyncWindowError(
+            f"trigger_mode must be 'manual' or 'automatic', got {trigger_mode!r}"
+        )
+    if mode == "automatic" or policy.rule != "same_day_at":
+        return resolve_availability_frontier(
+            policy,
+            now=now,
+            trading_day_values=trading_day_values,
+        )
+
+    if policy.axis == "calendar_day":
+        return DomainEligibility(
+            _calendar_date(now, 0),
+            False,
+            "manual_calendar_eligible",
+        )
+
+    today = now.strftime("%Y%m%d")
+    days = sorted(
+        {
+            str(value).replace("-", "")
+            for value in trading_day_values
+            if str(value).replace("-", "") <= today
+        }
+    )
+    if not days:
+        return DomainEligibility(None, False, "calendar_empty")
+    if days[-1] == today:
+        return DomainEligibility(today, False, "manual_calendar_eligible")
+    return DomainEligibility(days[-1], False, "latest_prior_trading_day")
 
 
 def publication_cutoff(
@@ -313,9 +371,11 @@ __all__ = [
     "OperationWindow",
     "SyncWindowError",
     "TradingSessionIndex",
+    "TriggerMode",
     "availability_policy_from_mapping",
     "prepare_trading_session_index",
     "publication_cutoff",
     "resolve_availability_frontier",
     "resolve_operation_window",
+    "resolve_sync_eligibility_frontier",
 ]

@@ -21,7 +21,7 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；calendar + **120** 交易日名义 K accepted（`20260116`–`20260717`）；ST 同窗+`20260720`；daily frontier 仍 `20260717` READY。残余=daily 下一 eligible 日 + form/qfq lag；无 mass fetch / cutover |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；calendar + **120** 交易日名义 K accepted（`20260116`–`20260717`）；ST 同窗+`20260720`；manual sync `trigger_mode` 已拆：开市可拉今日，consumer/`available_at` 仍 `same_day_at 18:00`；`20260720` 尚未 accepted（provider zero_rows）。残余=provider-ready re-sync + form/qfq lag；无 mass fetch / cutover |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `technical_states/`, `segments.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `market_pulse_tier12_read.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py` | 多轴状态可复用；C accept 分 `publish_scope=canary|project_universe`；`resolve_tier12_production_read` + B1/pulse 接线（默认 LEGACY→`fact_stock_form_daily`）；`expected_config_hash` 已填；cutover yaml 仍 false；legacy form bridge=NOT_PUBLISHABLE |
 | T2 market sensing | `market_pulse.py`, `market_pulse_tier12_read.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py`, API/frontend | 展示可用但 breadth/margin UNTRUSTED（B-ext）；sentiment 旁路 `tier12_production_read`；C envelope 可 project_universe scope；consumer cutover 默认 false；禁 mart cutover 直至 B-pit |
@@ -69,8 +69,8 @@ AGENTS.md
 
 | Priority | Defect | Consequence |
 |---:|---|---|
-| P0 | K 120 日已接受（`20260116`–`20260717`）；daily `20260720` 未 eligible；禁 mass backfill | B-pit mart/cutover 仍禁；eligible frontier READY |
-| P0 | E 120d checkpointed measured reject/no-gain；C full-universe accept `20260717`（4989=4989；cutover 默认 false）；enrichment 历史仍 field-level PARTIAL | 下一刀 daily 下一 eligible / 生产读接线仍默认 false **或** stop（非 Optuna / 非松门 / 非 mass backfill / 非 B-pit cutover / 非 StrategyRelease） |
+| P0 | K 120 日已接受（`20260116`–`20260717`）；manual 可拉 `20260720` 但 provider 仍 empty；禁 mass backfill | B-pit mart/cutover 仍禁；consumer frontier 仍时钟门 READY |
+| P0 | E 120d checkpointed measured reject/no-gain；C full-universe accept `20260717`（4989=4989；cutover 默认 false）；enrichment 历史仍 field-level PARTIAL | 下一刀 provider-ready daily accept / Phase D scaffold / B-pit remeasure / 生产读仍默认 false **或** stop（非 Optuna / 非松门 / 非 mass backfill / 非 B-pit cutover / 非 StrategyRelease） |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
 | P1 | formal `boundary_inventory` 仅为静态/测试资源，非 doctor readiness 证书（`formal_boundaries` 文案已澄清）；canary_pending 域无 countdown 出口 | 豁免不可见即永久；须在 goal/ledger 跟踪 canary 授权点 |
@@ -129,6 +129,8 @@ calendar 按 `calendar_contract.py`、`calendar_schema.py`、`calendar_landing.p
 `capture_and_publish_authorized_*_partition`。`observation_population.py` 的 default
 readiness 经 `resolve_eligible_observation_date`（accepted calendar ∩ K/ST
 `availability_policy`）评 frontier，不索要周末/节假 calendar-today 分区。
+Sync transport 用 `trigger_mode=manual|automatic`（`resolve_sync_eligibility_frontier`）；
+consumer/`available_at`/continuity 仍走时钟门 `resolve_availability_frontier`。
 `trade_cal`/`daily`/`stock_st` = `authorized_manual_generation` + `on_demand`
 （禁 all-due；K/ST 禁 drain）；sync 禁 legacy raw。margin 仍 scope_blocked / frozen。
 

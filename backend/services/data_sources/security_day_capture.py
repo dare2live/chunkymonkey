@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from math import isinf, isnan
 from typing import Any
 
+from services.data_sources.availability import SyncWindowError, publication_cutoff
 from services.data_sources.security_day_partition import (
     SecurityDayDomain,
     SecurityDayError,
@@ -82,11 +83,25 @@ def build_security_day_landing_batch(
                 f"{domain.domain}_partition_mismatch "
                 f"row_trade_date={compact} expected={partition}"
             )
+    # Consumer publication stays event-timed: available_at never precedes the
+    # typed cutoff even when manual sync observes the provider earlier.
+    observed_utc = observed_at.astimezone(timezone.utc)
+    try:
+        cutoff_utc = publication_cutoff(
+            domain.availability_policy,
+            partition_value=partition,
+            trading_day_values=(partition,),
+        ).astimezone(timezone.utc)
+    except SyncWindowError as exc:
+        raise SecurityDayError(
+            f"{domain.domain}_publication_cutoff_unproven partition={partition}: {exc}"
+        ) from exc
+    available_at = max(observed_utc, cutoff_utc)
     return SecurityDayLandingBatch(
         batch_id=batch_id,
         partition_value=partition,
         observed_at=observed_at,
-        available_at=observed_at,
+        available_at=available_at,
         rows=projected,
         request={"api": domain.api, "trade_date": partition},
         source=domain.source,

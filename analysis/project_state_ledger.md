@@ -1486,3 +1486,35 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - Docs: `goal.md` language corrected to this evidence.
 - **Did not**: flip cutover; StrategyRelease; Optuna; E loosen;
   B-pit cutover; margin thaw; mass backfill; claim READY by commit.
+
+### 2026-07-20 — Manual vs automatic sync eligibility split (owner policy)
+
+- Wall-clock: Mon 2026-07-20 ~14:37 Asia/Shanghai (in-session).
+- Design: transport `trigger_mode=manual|automatic` separated from
+  consumer publication frontier.
+  - `resolve_availability_frontier` / continuity / consumer
+    `available_at` stay clocked (`daily` `same_day_at 18:00`).
+  - `resolve_sync_eligibility_frontier` + `eligible_end_date(...,
+    trigger_mode=)` authorize sync; chunkyctl/UI default `manual`.
+  - Manual `same_day_at`: open trading day →
+    `manual_calendar_eligible` (no clock wait); weekend →
+    `latest_prior_trading_day` for both modes; `next_trading_session_at`
+    unchanged for all modes.
+  - Early security-day capture stamps
+    `available_at = max(observed_at, publication_cutoff)` so research
+    does not see incomplete bars as published before 18:00.
+- Tests: availability + sync_runner + nominal early-accept green
+  (manual allows today; automatic blocked; weekend blocked; T+1 not
+  bypassed; premature forged available_at still REJECTED).
+- Live:
+  - `chunkyctl sync --domain daily --start 20260720 --end 20260720`
+    (default manual) → **not** `operation_window_blocked`; provider
+    `zero_rows` / `daily_provider_fetch_failed` fail-closed.
+  - same with `--trigger-mode automatic` →
+    `operation_window_blocked` /
+    `exceeds eligible horizon=20260717 (pending_publish)`.
+- Accepted daily still ends `20260717`; form/qfq not refreshed
+  (no successful accept). Docs: MASTER §5.1 + `goal.md` + chunkyctl
+  help updated for the split.
+- **Did not**: flip cutover; StrategyRelease; Optuna; E loosen;
+  B-pit cutover; margin thaw; mass backfill.

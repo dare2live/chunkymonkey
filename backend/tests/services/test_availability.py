@@ -14,6 +14,7 @@ from services.data_sources.availability import (
     publication_cutoff,
     resolve_availability_frontier,
     resolve_operation_window,
+    resolve_sync_eligibility_frontier,
 )
 
 
@@ -135,6 +136,74 @@ def test_historical_operation_cap_keeps_real_domain_frontier():
     )
     assert window.effective_end == "20260715"
     assert window.eligibility == eligibility
+
+
+def test_manual_same_day_at_allows_open_trading_day_before_clock():
+    """Click/chunkyctl sync may fetch today's session; 18:00 is not a manual gate."""
+
+    days = ["20260716", "20260717", "20260720"]
+    now = datetime(2026, 7, 20, 14, 19, tzinfo=TZ)
+    policy = _policy("trading_day", "same_day_at", "18:00")
+    consumer = resolve_availability_frontier(
+        policy, now=now, trading_day_values=days
+    )
+    manual = resolve_sync_eligibility_frontier(
+        policy, now=now, trading_day_values=days, trigger_mode="manual"
+    )
+    automatic = resolve_sync_eligibility_frontier(
+        policy, now=now, trading_day_values=days, trigger_mode="automatic"
+    )
+    assert (consumer.eligible_end, consumer.reason) == (
+        "20260717",
+        "pending_publish",
+    )
+    assert (manual.eligible_end, manual.reason) == (
+        "20260720",
+        "manual_calendar_eligible",
+    )
+    assert (automatic.eligible_end, automatic.reason) == (
+        "20260717",
+        "pending_publish",
+    )
+    window = resolve_operation_window(
+        manual, requested_start="20260720", requested_end="20260720"
+    )
+    assert window.effective_end == "20260720"
+    with pytest.raises(SyncWindowError, match="pending_publish"):
+        resolve_operation_window(
+            automatic, requested_start="20260720", requested_end="20260720"
+        )
+
+
+def test_manual_and_automatic_both_refuse_weekend_same_day_at():
+    days = ["20260716", "20260717"]
+    now = datetime(2026, 7, 18, 14, 0, tzinfo=TZ)
+    policy = _policy("trading_day", "same_day_at", "18:00")
+    for mode in ("manual", "automatic"):
+        result = resolve_sync_eligibility_frontier(
+            policy, now=now, trading_day_values=days, trigger_mode=mode
+        )
+        assert result.eligible_end == "20260717"
+        assert result.reason == "latest_prior_trading_day"
+        with pytest.raises(SyncWindowError):
+            resolve_operation_window(
+                result, requested_start="20260718", requested_end="20260718"
+            )
+
+
+def test_manual_does_not_bypass_next_trading_session_gate():
+    """T+1 / next-session policies stay clocked for every trigger mode."""
+
+    result = resolve_sync_eligibility_frontier(
+        _policy("trading_day", "next_trading_session_at", "09:00"),
+        now=datetime(2026, 7, 20, 8, 59, tzinfo=TZ),
+        trading_day_values=["20260716", "20260717", "20260720"],
+        trigger_mode="manual",
+    )
+    assert (result.eligible_end, result.reason) == (
+        "20260716",
+        "next_trading_session_pending",
+    )
 
 
 @pytest.mark.parametrize(

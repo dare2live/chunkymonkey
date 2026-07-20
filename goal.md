@@ -6,7 +6,7 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + **120** 交易日名义 K accepted `20260116`–`20260717`；ST 同窗 + 额外 `20260720`；daily eligible frontier 仍=`20260717` READY/`pending_publish` 挡 `20260720`；仍禁 mass backfill）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false`）。**E0 FIXED（gate+mirror off）**。**E = measured reject / no-gain（120d checkpointed）**：窗 `20260116`–`20260717` purged WF（3 folds）B0−38%/B1−51%/B2−2.2% 全 `reject`；B4 `inconclusive`（event_days=11 但 fraction≈9%<25%）；均 `claimable=false`；artifacts=`data/lineage/phase_e_experiment_verdicts/`；**无 StrategyRelease**。**Phase C PARTIAL（writer+PIT+full-universe accept；未 cutover / 未 complete）**：
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + **120** 交易日名义 K accepted `20260116`–`20260717`；ST 同窗 + 额外 `20260720`；**manual sync 已拆时钟门**——`trigger_mode=manual` 开市可拉今日，consumer/`available_at` 仍 `same_day_at 18:00`；live `20260720` manual 已越过 window，provider `zero_rows` fail-closed，尚未 accepted；仍禁 mass backfill）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false`）。**E0 FIXED（gate+mirror off）**。**E = measured reject / no-gain（120d checkpointed）**：窗 `20260116`–`20260717` purged WF（3 folds）B0−38%/B1−51%/B2−2.2% 全 `reject`；B4 `inconclusive`（event_days=11 但 fraction≈9%<25%）；均 `claimable=false`；artifacts=`data/lineage/phase_e_experiment_verdicts/`；**无 StrategyRelease**。**Phase C PARTIAL（writer+PIT+full-universe accept；未 cutover / 未 complete）**：
   `tier12_publish_contract` + `tier12_publish_writer` +
   `tier12_publish_accept` + `tier12_project_universe` + typed
   `config/tier12_publish.yaml` + `tier12_nominal_canary`。Writer：PIT 截断 →
@@ -25,13 +25,11 @@
   sentiment `tier12_production_read` 旁路 + drill form overlay；仍走
   `fact_stock_form_daily`/mart）。`expected_config_hash` 已填 live
   `20260717` stock hash（opt-in 就绪）；**未** `cutover_allowed=true` /
-  **未** StrategyRelease / **未** claim Phase C complete。下一刀=显式
-  opt-in cutover（翻 `cutover_allowed`；需强证据+残余说明）**或** daily
-  下一 eligible 单日（live frontier=`20260717` 已 accepted；`20260720`
-  仍被 typed `same_day_at 18:00` → `pending_publish` 挡，**非** cron/auto
-  等点；manual_only）**或** B-pit shadow remeasure / Phase D scaffold
-  **或** stop；禁 Optuna / gate-loosening / B-pit cutover / margin thaw /
-  mass backfill。
+  **未** StrategyRelease / **未** claim Phase C complete。下一刀=
+  daily `20260720` 在 provider 有行后重试 manual sync+accept **或**
+  Phase D scaffold / B-pit shadow remeasure **或** 显式 opt-in cutover
+  （需强证据；禁擅自翻 true）**或** stop；禁 Optuna / gate-loosening /
+  B-pit cutover / margin thaw / mass backfill。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -78,11 +76,13 @@
   **A3 data-plane PARTIAL**：`trade_cal`/`daily`/`stock_st` =
   `authorized_manual_generation` + `sync_policy=on_demand`（禁 --all-due）。
   Live accepted：SSE calendar + 名义 K `20260116`–`20260717`（**120** 交易日）；
-  ST 同窗 + `20260720`。**Eligibility 实锤（~14:19 CST）**：`manual_only`；
-  daily 与 manual sync 共用 `same_day_at 18:00` → frontier=`20260717`
-  `pending_publish`；`20260720`=`operation_window_blocked`；`20260717`
-  re-accept ok（已齐）。非“等系统 18:00 自动跑”。细节见 ledger。form/qfq
-  max=`20260716`。population READY；margin 冻结。禁 mass backfill/解冻/擅自 cutover。
+  ST 同窗 + `20260720`。**Eligibility 拆分 FIXED（~14:37 CST）**：`manual_only`；
+  `trigger_mode=manual`（chunkyctl 默认）开市日历日可拉今日，不再被
+  `same_day_at 18:00` → `pending_publish` 挡；`automatic` 与 consumer
+  frontier 仍时钟门（live auto 仍挡 `20260720`）。Live manual
+  `20260720` → 越过 window 后 provider `zero_rows` fail-closed（非
+  `pending_publish`）。细节见 ledger。form/qfq max=`20260716`。
+  population READY；margin 冻结。禁 mass backfill/解冻/擅自 cutover。
 - **B-ext FIXED（诚实化）** scope + shadow + sentiment sidecar + 前端 UNTRUSTED；
   mart 数值未改、`cutover_allowed=false`。残余=B-pit 数值切读。
 - **B-pit PARTIAL** 广度/shadow 已有；**未**接 pulse mart / 未 cutover。Canary 日
@@ -115,11 +115,11 @@
   `data/lineage/phase_e_experiment_verdicts/{manifest,b0,b1,b2,b4}.json`
   （`persist_phase_e_experiment_verdicts.py` 幂等 regenerate；window 从实测
   trading_days 派生）。form/qfq `20260717` **still blocked**（max=`20260716`）。
-  **Next**：daily 下一 eligible 单日（frontier=`20260717` 已齐；开市中
-  `20260720`=`pending_publish`，typed `same_day_at 18:00`，非 auto job）
-  **或** 显式 opt-in cutover **或** B-pit remeasure / D scaffold **或** stop。
-  B1/pulse 读边界已落地；cutover false。**禁** Optuna / 松门 / B-pit cutover /
-  margin thaw / mass backfill / StrategyRelease。**F–H** 见 MASTER。
+  **Next**：daily `20260720` provider 有行后 manual re-sync+accept（consumer
+  `available_at` 仍 18:00）**或** Phase D scaffold / B-pit remeasure **或**
+  显式 opt-in cutover **或** stop。B1/pulse 读边界已落地；cutover false。
+  **禁** Optuna / 松门 / B-pit cutover / margin thaw / mass backfill /
+  StrategyRelease。**F–H** 见 MASTER。
 
 ## 边做边测
 

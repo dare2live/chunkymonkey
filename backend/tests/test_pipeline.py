@@ -598,7 +598,7 @@ def test_margin_pipeline_gate_consumes_one_typed_readiness_verdict(
     monkeypatch.setattr(
         sync_runner,
         "eligible_end_date",
-        lambda _spec: SimpleNamespace(eligible_end="20260716", reason="t_plus_one"),
+        lambda _spec, **_kwargs: SimpleNamespace(eligible_end="20260716", reason="t_plus_one"),
     )
     monkeypatch.setattr(
         sync_runner,
@@ -653,7 +653,7 @@ def test_margin_pipeline_gate_blocks_typed_readiness_failure(monkeypatch, tmp_pa
     monkeypatch.setattr(
         sync_runner,
         "eligible_end_date",
-        lambda _spec: SimpleNamespace(eligible_end="20260716", reason="t_plus_one"),
+        lambda _spec, **_kwargs: SimpleNamespace(eligible_end="20260716", reason="t_plus_one"),
     )
     monkeypatch.setattr(
         sync_runner,

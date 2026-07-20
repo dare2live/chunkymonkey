@@ -124,6 +124,19 @@ runner、writer、read model、projection、pipeline 与 audit 必须透传该�
 周期 group 集合必须在运行副作用前证明与合同兼容；重复、非规范或缺失分片不能先集合化后洗掉。
 裸 `t+1` 没有说明交易日/日历日/公告日等轴，只能作为未迁移 legacy 提示，不能跨域推广。
 
+**Transport sync authorization ≠ consumer publication.** Typed `same_day_at`
+(e.g. daily 18:00) remains the consumer/`available_at`/continuity clock.
+Sync paths take an explicit `trigger_mode`:
+
+- `manual` (chunkyctl / UI click / human-triggered): on an open calendar trading
+  day, may fetch without waiting for `policy.at`; weekends/holidays and
+  non-`same_day_at` session gates still bind; early capture stamps
+  `available_at = max(observed_at, publication_cutoff)` so research consumers
+  do not treat incomplete intraday bars as published before the contractual
+  clock.
+- `automatic` (future scheduled / no-human path): keeps the `same_day_at`
+  clock gate unchanged.
+
 population scope 与 availability 是正交的两条硬轴：交易日历回答“何时可用”，eligible universe
 回答“哪些证券/市场可进入该发布对象”。landing 保存已请求的供应商原始响应，不执行业务过滤；
 canonical/serve 必须消费一次加载的 immutable universe policy snapshot，并把 accepted/excluded 行数、

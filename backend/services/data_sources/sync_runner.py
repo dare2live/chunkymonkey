@@ -42,9 +42,10 @@ from services.data_sources.availability import (
     DomainEligibility,
     OperationWindow,
     SyncWindowError,
+    TriggerMode,
     availability_policy_from_mapping,
-    resolve_availability_frontier,
     resolve_operation_window,
+    resolve_sync_eligibility_frontier,
 )
 from services.data_sources.batch_integrity import (
     BatchCompletenessError,
@@ -1803,6 +1804,7 @@ def _publish_security_day_short_window(
     spec: dict[str, Any],
     *,
     trade_dates: list[str],
+    trigger_mode: TriggerMode | str = "manual",
 ) -> dict[str, Any]:
     """Publish each authorized trade_date via the formal single-day path."""
 
@@ -1814,7 +1816,10 @@ def _publish_security_day_short_window(
     completed_ok = 0
     for trade_date in trade_dates:
         result = _publish_security_day_accepted_partition(
-            domain, spec, trade_date=trade_date
+            domain,
+            spec,
+            trade_date=trade_date,
+            trigger_mode=trigger_mode,
         )
         day_results.append(result)
         total_rows += int(result.get("rows") or 0)
@@ -1853,12 +1858,13 @@ def _publish_security_day_accepted_partition(
     spec: dict[str, Any],
     *,
     trade_date: str,
+    trigger_mode: TriggerMode | str = "manual",
 ) -> dict[str, Any]:
     """Fetch one trade_date and publish accepted nominal OHLCV or ST truth."""
 
     from services.data_sources.security_day_partition import SecurityDayError
 
-    eligibility = eligible_end_date(spec)
+    eligibility = eligible_end_date(spec, trigger_mode=trigger_mode)
     operation_window = resolve_operation_window(
         eligibility,
         requested_start=trade_date,
@@ -1951,11 +1957,15 @@ def _publish_security_day_accepted_partition(
 def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
                end: str | None = None, resume: bool = False,
                max_dates: int | None = None,
-               registry: dict[str, Any] | None = None) -> dict[str, Any]:
+               registry: dict[str, Any] | None = None,
+               trigger_mode: TriggerMode | str = "manual") -> dict[str, Any]:
     """同步单个数据域. 返回 {domain, batches, rows, failed_batches}.
 
     resume: by_ts_code 域跳过 target 表已有数据的 ts_code (full-history 单股拉断点续拉, 省重拉)。
+    trigger_mode: ``manual`` (default; chunkyctl/UI) skips same_day_at clock wait;
+    ``automatic`` keeps the consumer publication clock for future scheduled paths.
     """
+    mode = _normalize_trigger_mode(trigger_mode)
     reg = registry if registry is not None else load_registry()
     spec = domain_spec(reg, domain)
     _require_execution_enabled(spec)
@@ -1979,10 +1989,16 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         )
         if len(trade_dates) == 1:
             return _publish_security_day_accepted_partition(
-                domain, spec, trade_date=trade_dates[0]
+                domain,
+                spec,
+                trade_date=trade_dates[0],
+                trigger_mode=mode,
             )
         return _publish_security_day_short_window(
-            domain, spec, trade_dates=trade_dates
+            domain,
+            spec,
+            trade_dates=trade_dates,
+            trigger_mode=mode,
         )
     formal_contract = _formal_dataset_contract_for_spec(spec)
     formal_execution = _require_formal_population_execution(spec, formal_contract)
@@ -2009,7 +2025,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
     operation_window: OperationWindow | None = None
     replaying_open_failure = False
     if batch_mode != "full_refresh":
-        eligibility = eligible_end_date(spec)
+        eligibility = eligible_end_date(spec, trigger_mode=mode)
         fixed_bounds = dict(spec.get("fixed_params") or {})
         planned_start = start
         planned_end = end
@@ -2324,21 +2340,38 @@ def _parse_available_after(spec: dict[str, Any]) -> tuple[int, int] | str | None
     return hh, mm
 
 
+def _normalize_trigger_mode(trigger_mode: TriggerMode | str | None) -> TriggerMode:
+    mode = str(trigger_mode or "automatic").strip()
+    if mode not in {"manual", "automatic"}:
+        raise SyncWindowError(
+            f"trigger_mode must be 'manual' or 'automatic', got {trigger_mode!r}"
+        )
+    return mode  # type: ignore[return-value]
+
+
 def eligible_end_date(
     spec: dict[str, Any],
     *,
     now: Any = None,
     trading_day_values: list[str] | None = None,
+    trigger_mode: TriggerMode | str = "automatic",
 ) -> DomainEligibility:
-    """Resolve one live frontier; formal policy never derives from batch mode.
+    """Resolve one sync or consumer frontier; formal policy never derives from batch mode.
 
     ``availability_policy`` is the typed owner for formal datasets.  Entries
     without it retain the legacy ``available_after`` interpretation until each
     domain has provider timing evidence; this prevents a margin migration from
     silently redefining announcement, report-period, or row-field domains.
+
+    Default ``trigger_mode=automatic`` preserves the clocked consumer /
+    continuity frontier (``same_day_at`` pending until ``policy.at``).  Human
+    sync paths (chunkyctl / UI) pass ``trigger_mode=manual`` so an open trading
+    day is calendar-eligible without waiting for that clock; consumer
+    ``available_at`` projections must keep the automatic frontier.
     """
     from zoneinfo import ZoneInfo
 
+    mode = _normalize_trigger_mode(trigger_mode)
     now_local = now or datetime.now(ZoneInfo("Asia/Shanghai"))
     if getattr(now_local, "tzinfo", None) is not None:
         now_local = now_local.astimezone(ZoneInfo("Asia/Shanghai"))
@@ -2365,10 +2398,11 @@ def eligible_end_date(
     else:
         days = []
     if policy is not None:
-        return resolve_availability_frontier(
+        return resolve_sync_eligibility_frontier(
             policy,
             now=now_local,
             trading_day_values=days,
+            trigger_mode=mode,
         )
     if not days:
         return DomainEligibility(None, False, "calendar_empty")
@@ -2385,6 +2419,8 @@ def eligible_end_date(
             True,
             "t_plus_one_legacy",
         )
+    if mode == "manual" and isinstance(availability, tuple):
+        return DomainEligibility(today, False, "manual_calendar_eligible")
     if isinstance(availability, tuple) and (now_local.hour, now_local.minute) >= availability:
         return DomainEligibility(today, False, "published")
     reason = "pending_publish" if isinstance(availability, tuple) else "invalid_available_after"
@@ -2393,7 +2429,8 @@ def eligible_end_date(
 
 def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
                  conn=None, adapter=None, expected_trading_days: list[str] | None = None,
-                 max_dates: int | None = None, record: bool = True) -> dict[str, Any]:
+                 max_dates: int | None = None, record: bool = True,
+                 trigger_mode: TriggerMode | str = "manual") -> dict[str, Any]:
     """日历 gap 重放；仅用于仍受支持的 legacy by-trade-date 域。
 
     真相源 = 交易日历 + target_table 本身 (宪法第 1 条), 不依赖 failure_queue 中间
@@ -2404,6 +2441,7 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     unsupported, 不静默跳过。allow_empty_batch 域的"重查确认空"与终败分开报。
     conn/adapter/trading_days/record 可注入 (单测); 生产路径全走真相源。
     """
+    mode = _normalize_trigger_mode(trigger_mode)
     reg = registry if registry is not None else load_registry()
     spec = domain_spec(reg, domain)
     _require_execution_enabled(spec)
@@ -2434,7 +2472,7 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     if expected_trading_days is not None:
         expected = list(expected_trading_days)
     else:
-        eligibility = eligible_end_date(spec)
+        eligibility = eligible_end_date(spec, trigger_mode=mode)
         expected = (
             trading_days(
                 str(spec["data_start"]).replace("-", ""),
@@ -2565,6 +2603,16 @@ def _parse_cli_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="drain 的单次日期上限",
     )
+    parser.add_argument(
+        "--trigger-mode",
+        choices=("manual", "automatic"),
+        default="manual",
+        help=(
+            "sync authorization mode: manual (default; UI/chunkyctl) skips "
+            "same_day_at clock wait on open trading days; automatic keeps "
+            "the consumer publication clock for scheduled paths"
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -2659,6 +2707,7 @@ def _preflight_explicit_operation_windows(
 
     if args.start is None and args.end is None:
         return
+    mode = _normalize_trigger_mode(getattr(args, "trigger_mode", "manual"))
     for domain in domains:
         spec = domain_spec(registry, domain)
         fixed = dict(spec.get("fixed_params") or {})
@@ -2669,7 +2718,7 @@ def _preflight_explicit_operation_windows(
             planned_start = planned_start or fixed.get("start_date")
             planned_end = planned_end or fixed.get("end_date")
         resolve_operation_window(
-            eligible_end_date(spec),
+            eligible_end_date(spec, trigger_mode=mode),
             requested_start=planned_start,
             requested_end=planned_end,
         )
@@ -2690,13 +2739,19 @@ def _main_unlocked(
     if registry is None:
         _calendar_preflight(selected)
 
+    trigger_mode = _normalize_trigger_mode(getattr(args, "trigger_mode", "manual"))
     if args.drain:
         from services.data_sources.sources.tushare import TuShareAuthorizationError
 
         results = []
         for d in selected:
             try:
-                res = drain_domain(d, registry=reg, max_dates=args.max_dates)
+                res = drain_domain(
+                    d,
+                    registry=reg,
+                    max_dates=args.max_dates,
+                    trigger_mode=trigger_mode,
+                )
                 # by_report_period 域 (十大股东/财报 by_ts_code): 不再"归专门调度"漏掉 — 走增量 run_domain,
                 # _by_ts_code_batches 按交易日历最新应披露期跳过已最新股, 只抓缺新期的股 (修谄媚死: 日常流停更财报/股东)。
                 ts_code_incremental = (
@@ -2716,7 +2771,7 @@ def _main_unlocked(
                     # 非按日域 + allow_empty 域无 gap 语义 → 增量 run_domain (watermark/报告期 起点)。
                     # 复审 HIGH: drain-only 接线下这些域否则零自动同步 = 静默停更同型复发。
                     # by_ts_code 无 increment_mode (如 stk_factor_pro 日频全市场) 仍 unsupported, 归专门调度。
-                    res = run_domain(d, registry=reg)
+                    res = run_domain(d, registry=reg, trigger_mode=trigger_mode)
                     res["mode"] = "incremental_fallback"
                 results.append(res)
             except QuotaExhaustedError as exc:
@@ -2749,6 +2804,7 @@ def _main_unlocked(
                 "end": args.end,
                 "resume": args.resume,
                 "registry": reg,
+                "trigger_mode": trigger_mode,
             }
             if args.max_dates is not None:
                 run_kwargs["max_dates"] = args.max_dates

@@ -62,7 +62,7 @@ OHLCV_ON_ST_DAY = datetime(
 ).astimezone(timezone.utc)
 # Decision time must be >= accepted_at (wall-clock at publish).  Historical
 # partition dates remain the event grain; visibility is acceptance/PIT time.
-DECISION = datetime(2026, 7, 19, 20, 0, tzinfo=timezone.utc)
+DECISION = datetime(2027, 12, 31, 20, 0, tzinfo=timezone.utc)
 
 
 @pytest.fixture
@@ -216,6 +216,39 @@ def test_premature_publication_is_rejected(conn) -> None:
     )
     assert outcome.status == "REJECTED"
     assert outcome.rejection_code == "PREMATURE_PUBLICATION"
+
+
+def test_early_capture_stamps_contractual_available_at_and_accepts(conn) -> None:
+    """Manual intraday fetch may land/accept; consumers still see available_at=18:00."""
+
+    from services.data_sources.availability import publication_cutoff
+    from services.data_sources.nominal_ohlcv_schema import DOMAIN
+    from services.data_sources.security_day_capture import (
+        build_security_day_landing_batch,
+    )
+
+    early = datetime(2023, 1, 3, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+    cutoff = publication_cutoff(
+        DOMAIN.availability_policy,
+        partition_value=PARTITION,
+        trading_day_values=(PARTITION,),
+    ).astimezone(timezone.utc)
+    batch = build_security_day_landing_batch(
+        DOMAIN,
+        trade_date=PARTITION,
+        rows=_daily_rows(PARTITION, include_bj=False),
+        observed_at=early,
+        batch_id="daily-early-contractual",
+    )
+    assert batch.observed_at == early
+    assert batch.available_at == cutoff
+    outcome = publish_accepted_nominal_ohlcv_partition(
+        conn,
+        batch,
+        load_nominal_ohlcv_contract(),
+        bootstrap=True,
+    )
+    assert outcome.status == "ACCEPTED"
 
 
 def test_kill_point_after_canonical_delete_rolls_back(conn) -> None:

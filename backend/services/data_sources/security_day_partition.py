@@ -360,10 +360,11 @@ def land_security_day_batch(
         )
     observed_at = _aware(batch.observed_at, "observed_at")
     available_at = _aware(batch.available_at, "available_at")
-    if observed_at != available_at:
+    if available_at < observed_at:
         raise SecurityDayError(
-            "available_at must equal observed_at when provider publication "
-            "time is unavailable"
+            "available_at cannot precede observed_at "
+            f"(available_at={available_at.isoformat()} "
+            f"observed_at={observed_at.isoformat()})"
         )
     rows = list(batch.rows)
     if not rows:

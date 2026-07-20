@@ -20,6 +20,7 @@ def _args(**overrides) -> argparse.Namespace:
         "end": None,
         "drain": False,
         "max_dates": None,
+        "trigger_mode": "manual",
     }
     values.update(overrides)
     return argparse.Namespace(**values)

@@ -19,7 +19,7 @@ usage() {
   cat <<'EOF'
 Usage:
   scripts/chunkyctl doctor [--fast] [--skip-storage-payload]
-  scripts/chunkyctl sync --domain DOMAIN [--drain] [--max-dates N]
+  scripts/chunkyctl sync --domain DOMAIN [--drain] [--max-dates N] [--trigger-mode manual|automatic]
   scripts/chunkyctl sync --domain DOMAIN --backfill --start YYYYMMDD --end YYYYMMDD
   scripts/chunkyctl sync --domain daily|stock_st --start YYYYMMDD --end YYYYMMDD
   scripts/chunkyctl map [--check]
@@ -35,6 +35,9 @@ Notes:
   doctor     = project health snapshot, including manual-only automation residue enforcement.
   sync       = manual single-domain provider sync through the production runner and writer lock.
                formal daily/stock_st: --start/--end same day or <=40 trading days (no --backfill).
+               default --trigger-mode=manual skips same_day_at clock wait on open trading days;
+               --trigger-mode=automatic keeps the consumer publication clock (e.g. daily 18:00).
+               Calendar weekends/holidays still bind both modes.
   map        = regenerate FEATURE_MAP.md machine-derived feature map; --check = drift gate only.
   pipeline   = manually run one declared data stage; full manual chain remains daily_update.sh.
   lineage    = generated dependency projection; impact <table> audits fan-in before delete/migrate.

@@ -80,7 +80,7 @@ def env(monkeypatch):
     monkeypatch.setattr(
         sr,
         "eligible_end_date",
-        lambda _spec: sr.DomainEligibility(END, False, "historical_test_window"),
+        lambda _spec, **_kwargs: sr.DomainEligibility(END, False, "historical_test_window"),
     )
     monkeypatch.setattr(sr, "_RATE_LIMITER", None)
     monkeypatch.setattr(sr, "_RATE_LIMITER_INIT", False)

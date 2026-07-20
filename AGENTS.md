@@ -99,8 +99,12 @@ Rules:
   atomic boundary;
 - transport/batch mode never defines publication availability. A formal
   dataset declares a typed `axis/rule/at` policy in its versioned contract and
-  config hash; default sync, explicit replay and drain must consume one
-  eligibility resolver;
+  config hash; consumer/`available_at`/continuity frontiers stay clocked.
+  Sync authorization takes `trigger_mode=manual|automatic`: manual
+  (chunkyctl/UI) may fetch a calendar-eligible open trading day without waiting
+  for `same_day_at` clock; automatic keeps that clock. Calendar
+  weekends/holidays bind both. Early capture stamps
+  `available_at=max(observed_at, publication_cutoff)`;
 - reject an explicit or injected future partition before adapter, database or
   writer I/O. A historical replay cap must not replace the live eligibility
   frontier in status or projections;

@@ -361,7 +361,7 @@ def test_by_ann_date_failure_does_not_advance_frontier_past_gap(monkeypatch):
     monkeypatch.setattr(
         sr,
         "eligible_end_date",
-        lambda _spec: sr.DomainEligibility("20260711", False, "test"),
+        lambda _spec, **_kwargs: sr.DomainEligibility("20260711", False, "test"),
     )
     monkeypatch.setattr(
         sr,
@@ -413,7 +413,7 @@ def test_open_non_drain_failure_is_replayed_and_resolved(monkeypatch):
     monkeypatch.setattr(
         sr,
         "eligible_end_date",
-        lambda _spec: sr.DomainEligibility("20260711", False, "test"),
+        lambda _spec, **_kwargs: sr.DomainEligibility("20260711", False, "test"),
     )
     calls = []
 
@@ -475,7 +475,7 @@ def test_future_pending_failure_is_not_resolved_before_eligible_end(monkeypatch)
     monkeypatch.setattr(
         sr,
         "eligible_end_date",
-        lambda _spec: sr.DomainEligibility("20260714", True, "pending_publish"),
+        lambda _spec, **_kwargs: sr.DomainEligibility("20260714", True, "pending_publish"),
     )
     monkeypatch.setattr(
         sr,
@@ -534,7 +534,7 @@ def test_quota_halt_does_not_overwrite_pending_batch_date(monkeypatch):
     monkeypatch.setattr(
         sr,
         "eligible_end_date",
-        lambda _spec: sr.DomainEligibility("20260714", False, "test"),
+        lambda _spec, **_kwargs: sr.DomainEligibility("20260714", False, "test"),
     )
     monkeypatch.setattr(
         sr,
@@ -666,7 +666,7 @@ def test_by_period_failure_keeps_frontier_before_first_failed_period(monkeypatch
     monkeypatch.setattr(
         sr,
         "eligible_end_date",
-        lambda _spec: sr.DomainEligibility("20260630", False, "test"),
+        lambda _spec, **_kwargs: sr.DomainEligibility("20260630", False, "test"),
     )
     monkeypatch.setattr(
         sr,
@@ -716,7 +716,7 @@ def test_by_period_open_failure_replays_and_resolves(monkeypatch):
     monkeypatch.setattr(
         sr,
         "eligible_end_date",
-        lambda _spec: sr.DomainEligibility("20260630", False, "test"),
+        lambda _spec, **_kwargs: sr.DomainEligibility("20260630", False, "test"),
     )
     periods = []
 
@@ -777,7 +777,7 @@ def test_by_period_future_pending_waits_for_eligibility_then_resolves(monkeypatc
     monkeypatch.setattr(
         sr,
         "eligible_end_date",
-        lambda _spec: sr.DomainEligibility(eligible[0], False, "test"),
+        lambda _spec, **_kwargs: sr.DomainEligibility(eligible[0], False, "test"),
     )
     monkeypatch.setattr(
         sr,
