@@ -102,6 +102,10 @@ def _stock_from_mapping(raw: Mapping[str, Any]) -> StockStateDaily:
         axis_trend=(
             str(raw["axis_trend"]) if raw.get("axis_trend") is not None else None
         ),
+        axis_pos=(str(raw["axis_pos"]) if raw.get("axis_pos") is not None else None),
+        form_name=(
+            str(raw["form_name"]) if raw.get("form_name") is not None else None
+        ),
         is_breakout_event=(
             bool(raw["is_breakout_event"])
             if raw.get("is_breakout_event") is not None

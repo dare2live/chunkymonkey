@@ -8,8 +8,10 @@ maps contractual-available_at nominal bars, runs ``write_tier12_batch``, then
 Hard gates:
   - membership unavailable → fail closed
   - coverage exclusions recorded (never silent pad)
-  - accept cutover_allowed stays false
-  - consumer_cutover.cutover_allowed config is not flipped
+  - accept artifact cutover_allowed stays false (accept path hard gate)
+  - never flips consumer_cutover.cutover_allowed yaml
+  - cutover-aware post-check: when yaml cutover is ON, resolver must
+    reach ACCEPTED_CUTOVER for the newly accepted day; when OFF, stay LEGACY
 
 Usage:
   PYTHONPATH=backend python backend/scripts/persist_tier12_full_universe_accept.py
@@ -37,6 +39,7 @@ from services.tier12_publish_accept import (  # noqa: E402
     accept_tier12_batch,
 )
 from services.tier12_publish_writer import (  # noqa: E402
+    load_form_rows_exact_day,
     load_tier12_publish_config,
     write_tier12_batch,
 )
@@ -58,6 +61,27 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     )
 
 
+def assert_post_accept_cutover_gate(*, cut_cfg: Any, cut_decision: Any) -> None:
+    """Cutover-aware post-accept check (never flips yaml cutover)."""
+
+    if bool(getattr(cut_cfg, "cutover_allowed", False)):
+        if (
+            str(getattr(cut_decision, "status", "") or "") != "ACCEPTED_CUTOVER"
+            or not bool(getattr(cut_decision, "cutover_allowed", False))
+        ):
+            raise ValueError(
+                "cutover_on_but_resolver_not_accepted "
+                f"status={getattr(cut_decision, 'status', None)} "
+                f"reasons={list(getattr(cut_decision, 'reasons', ()) or ())}"
+            )
+        return
+    if bool(getattr(cut_decision, "cutover_allowed", False)):
+        raise ValueError(
+            "consumer_cutover_must_remain_false_under_default_config "
+            f"status={getattr(cut_decision, 'status', None)}"
+        )
+
+
 def run_full_universe_accept(
     *,
     decision_date: str,
@@ -66,23 +90,26 @@ def run_full_universe_accept(
 ) -> dict[str, Any]:
     cfg = load_tier12_publish_config()
     cut_cfg = load_tier12_consumer_cutover_config()
-    if cut_cfg.cutover_allowed:
-        raise ValueError(
-            "refuse_run_while_consumer_cutover_enabled; "
-            "keep consumer_cutover.cutover_allowed=false for this slice"
-        )
+    # Cutover-ON is allowed: re-accept under production cutover must work.
+    # This script never flips consumer_cutover.cutover_allowed.
 
     load = load_accepted_nominal_project_universe(
         decision_date,
         lookback_trading_days=lookback_trading_days,
     )
     inputs = timed_inputs_for_project_universe(load)
+    form_by_code: dict[str, dict[str, Any]] = {}
+    if cfg.form_source:
+        form_by_code = load_form_rows_exact_day(
+            load.decision_date, table=cfg.form_source
+        )
     batch = write_tier12_batch(
         decision_date=load.decision_date,
         inputs=inputs,
         config=cfg,
         emit_artifact=True,
         artifact_root=artifact_root,
+        form_by_code=form_by_code,
     )
     smoke = assert_tier12_smoke_batch(batch, decision_date=load.decision_date)
 
@@ -132,17 +159,12 @@ def run_full_universe_accept(
     if accepted.publish_scope != "project_universe":
         raise ValueError("accept_publish_scope_not_project_universe")
 
-    # Prove default cutover resolver stays legacy even with full-universe accept.
     cut_decision = resolve_tier12_consumer_cutover(
         accepted.decision_date,
         accepted=accepted,
         artifact_root=artifact_root,
     )
-    if cut_decision.cutover_allowed is not False:
-        raise ValueError(
-            "consumer_cutover_must_remain_false_under_default_config "
-            f"status={cut_decision.status}"
-        )
+    assert_post_accept_cutover_gate(cut_cfg=cut_cfg, cut_decision=cut_decision)
 
     day = accepted.decision_date
     coverage = {

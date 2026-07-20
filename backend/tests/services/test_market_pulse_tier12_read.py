@@ -38,6 +38,7 @@ def _accepted_canary(tmp_path: Path):
             _bar("000001", "20260717", close=9.0, pct_chg=-1.0),
         ],
         config=cfg,
+        form_by_code={},
     )
     return accept_tier12_batch(batch, emit_artifact=True, artifact_root=tmp_path)
 

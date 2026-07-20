@@ -4,6 +4,11 @@ Emits lineage-bearing ``StockStateDaily`` / ``MarketContextPublishEnvelope``
 rows from timed inputs. Inputs with ``available_at`` after the decision date
 are excluded. Missing ``available_at`` or typed lineage config fails closed.
 
+When ``stock_state.form_source`` is set (``fact_stock_form_daily``), enrich
+``form_name`` / ``axis_pos`` / ``is_breakout_event`` via exact-day join.
+Form frontier behind the decision date fails closed; missing exact-day rows
+stay null (no as-of pad). Writer ``axis_trend`` is never overwritten by form.
+
 This writer never marks ``published=True`` / accepted_partition / StrategyRelease
 — even if config ``allow_published`` is flipped. Status stays
 ``WRITTEN_UNPUBLISHED``; use ``tier12_publish_accept.accept_tier12_batch`` for
@@ -18,6 +23,7 @@ from typing import Any, Mapping, Sequence
 
 import yaml
 
+from services.data_access.resolver import connect_ro
 from services.tier12_publish_contract import (
     MarketContextPublishEnvelope,
     PublishLineageReport,
@@ -70,6 +76,7 @@ class Tier12PublishConfig:
     stock_eligible_universe_id: str
     stock_axes: tuple[str, ...]
     trend_lookback_bars: int
+    form_source: str
     stock_availability_policy: Mapping[str, Any]
     market_definition_version: str
     market_eligible_universe_id: str
@@ -106,11 +113,13 @@ class Tier12PublishConfig:
         prefixes = tuple(
             str(p) for p in (market.get("board_prefixes") or ("60", "00", "30", "68"))
         )
+        form_source = str(stock.get("form_source") or "").strip()
         return cls(
             stock_definition_version=def_v,
             stock_eligible_universe_id=univ,
             stock_axes=axes,
             trend_lookback_bars=int(stock.get("trend_lookback_bars") or 5),
+            form_source=form_source,
             stock_availability_policy=dict(stock.get("availability_policy") or {}),
             market_definition_version=m_def,
             market_eligible_universe_id=m_univ,
@@ -131,6 +140,7 @@ class Tier12PublishConfig:
             "eligible_universe_id": self.stock_eligible_universe_id,
             "axes": list(self.stock_axes),
             "trend_lookback_bars": self.trend_lookback_bars,
+            "form_source": self.form_source,
             "availability_policy": dict(self.stock_availability_policy),
         }
 
@@ -215,10 +225,78 @@ def _input_snapshot_id(kind: str, decision_date: str, n_kept: int) -> str:
     return f"{kind}:{day}:n{n_kept}"
 
 
+def _code6(value: Any) -> str:
+    return str(value or "").split(".", 1)[0].strip()
+
+
+def load_form_rows_exact_day(
+    decision_date: str,
+    *,
+    table: str = "fact_stock_form_daily",
+    conn=None,
+) -> dict[str, dict[str, Any]]:
+    """Exact-day form rows keyed by code6. Frontier < day fails closed.
+
+    No as-of pad: only ``trade_date == decision_date`` rows are returned.
+    """
+
+    day = _compact_day(decision_date)
+    if len(day) != 8:
+        raise ValueError(f"invalid decision_date: {decision_date!r}")
+    if table != "fact_stock_form_daily":
+        raise ValueError(f"unsupported_form_source_table={table!r}")
+
+    own = conn is None
+    db = conn or connect_ro("smartmoney")
+    try:
+        frontier = db.execute(f"SELECT MAX(trade_date) FROM {table}").fetchone()
+        frontier_day = _compact_day(frontier[0] if frontier else "")
+        if not frontier_day or frontier_day < day:
+            raise ValueError(
+                f"form_frontier_behind_decision frontier={frontier_day or 'none'} "
+                f"decision_date={day} table={table}"
+            )
+        fetched = db.execute(
+            f"""
+            SELECT stock_code, form_name, axis_pos, axis_trend, is_breakout_event
+              FROM {table}
+             WHERE trade_date = ?
+            """,
+            [day],
+        ).fetchall()
+    finally:
+        if own:
+            db.close()
+
+    out: dict[str, dict[str, Any]] = {}
+    for row in fetched:
+        if hasattr(row, "keys"):
+            code = _code6(row["stock_code"])
+            item = {
+                "form_name": row["form_name"],
+                "axis_pos": row["axis_pos"],
+                "axis_trend": row["axis_trend"],
+                "is_breakout_event": row["is_breakout_event"],
+            }
+        else:
+            code = _code6(row[0])
+            item = {
+                "form_name": row[1],
+                "axis_pos": row[2],
+                "axis_trend": row[3],
+                "is_breakout_event": row[4],
+            }
+        if code:
+            out[code] = item
+    return out
+
+
 def _build_stock_states(
     decision_date: str,
     kept: Sequence[TimedInput],
     config: Tier12PublishConfig,
+    *,
+    form_by_code: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[StockStateDaily]:
     day = _compact_day(decision_date)
     by_code: dict[str, list[TimedInput]] = {}
@@ -230,6 +308,7 @@ def _build_stock_states(
     cfg_hash = config_hash_for(config.stock_config_for_hash())
     snapshot = _input_snapshot_id("nominal_ohlcv_pit", day, len(kept))
     avail = _eod_available_at(day)
+    form_map = dict(form_by_code or {})
     out: list[StockStateDaily] = []
     lookback = max(2, int(config.trend_lookback_bars))
     for code in sorted(by_code):
@@ -251,25 +330,41 @@ def _build_stock_states(
         has_decision_bar = any(_compact_day(r.trade_date) == day for r in rows)
         if not has_decision_bar:
             continue
+        form = form_map.get(_code6(code)) or {}
+        form_name = (
+            str(form["form_name"]) if form.get("form_name") is not None else None
+        )
+        axis_pos = str(form["axis_pos"]) if form.get("axis_pos") is not None else None
+        if form.get("is_breakout_event") is not None:
+            is_breakout = bool(form["is_breakout_event"])
+        else:
+            is_breakout = False
+        details: dict[str, Any] = {
+            "writer": "tier12_publish_writer",
+            "trend_lookback_bars": lookback,
+            "bars_used": len(window),
+            "coverage_reason": (
+                None if len(window) >= 2 else "insufficient_history"
+            ),
+        }
+        if config.form_source:
+            details["form_source"] = config.form_source
+            details["form_join"] = "exact_day" if form else "exact_day_miss"
         out.append(
             StockStateDaily(
                 stock_code=code,
                 trade_date=day,
+                # Writer nominal-close trend — never overlay form axis_trend.
                 axis_trend=_axis_trend_from_closes(window),
-                is_breakout_event=False,
+                axis_pos=axis_pos,
+                form_name=form_name,
+                is_breakout_event=is_breakout,
                 definition_version=config.stock_definition_version,
                 config_hash=cfg_hash,
                 input_snapshot_id=snapshot,
                 eligible_universe_id=config.stock_eligible_universe_id,
                 available_at=avail,
-                details={
-                    "writer": "tier12_publish_writer",
-                    "trend_lookback_bars": lookback,
-                    "bars_used": len(window),
-                    "coverage_reason": (
-                        None if len(window) >= 2 else "insufficient_history"
-                    ),
-                },
+                details=details,
             )
         )
     return out
@@ -373,11 +468,16 @@ def write_tier12_batch(
     config: Tier12PublishConfig | None = None,
     emit_artifact: bool = False,
     artifact_root: Path | None = None,
+    form_by_code: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> Tier12WriteBatch:
     """Build lineage-bearing Tier1/2 outputs under PIT truncation.
 
     Always returns ``published=False`` and status ``WRITTEN_UNPUBLISHED``.
     Config ``allow_published`` cannot override this hard gate.
+
+    When ``form_source`` is configured, callers (e.g. full-universe persist)
+    should pass ``form_by_code`` from ``load_form_rows_exact_day``. Missing
+    map with form_source set fails closed (no silent scaffold under enrich).
     """
 
     cfg = config or load_tier12_publish_config()
@@ -389,7 +489,16 @@ def write_tier12_batch(
     kept = pit_truncate_inputs(normalized, day)
     excluded = len(normalized) - len(kept)
 
-    stocks = tuple(_build_stock_states(day, kept, cfg))
+    if cfg.form_source and form_by_code is None:
+        raise ValueError(
+            "form_source_requires_form_by_code; "
+            "call load_form_rows_exact_day and pass form_by_code "
+            f"(form_source={cfg.form_source!r})"
+        )
+
+    stocks = tuple(
+        _build_stock_states(day, kept, cfg, form_by_code=form_by_code)
+    )
     market = _build_market_context(day, kept, cfg)
     stock_atts = tuple(attest_stock_state_publishable(r) for r in stocks)
     market_att = attest_market_context_publishable(market)
@@ -402,6 +511,8 @@ def write_tier12_batch(
         "not_pulse_mart_cutover",
         "pit_available_at_le_decision_date",
     )
+    if cfg.form_source:
+        notes = notes + ("form_enrich_exact_day", f"form_source={cfg.form_source}")
     if cfg.allow_published:
         notes = notes + ("allow_published_ignored_hard_gate",)
 
@@ -441,6 +552,7 @@ __all__ = [
     "TimedInput",
     "Tier12PublishConfig",
     "Tier12WriteBatch",
+    "load_form_rows_exact_day",
     "load_tier12_publish_config",
     "pit_truncate_inputs",
     "write_tier12_batch",

@@ -2185,6 +2185,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/tier12_publish.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_form_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/routers/market_pulse.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_form_daily"
@@ -2239,6 +2245,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/tier12_publish_writer.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_form_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_check_grain_uniqueness.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_form_daily"
@@ -2246,6 +2258,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_tier12_consumer_cutover.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_form_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_tier12_form_enrich.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_form_daily"
     },
@@ -4975,9 +4993,9 @@
     }
   ],
   "meta": {
-    "edge_count": 778,
-    "generated_at": "2026-07-20T12:07:39.691094+00:00",
-    "node_count": 346,
+    "edge_count": 781,
+    "generated_at": "2026-07-20T13:28:44.917096+00:00",
+    "node_count": 348,
     "version": 2
   },
   "nodes": [
@@ -5083,6 +5101,14 @@
         "path": "backend/config/technical_states.yaml"
       },
       "id": "consumer:backend/config/technical_states.yaml",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "config",
+        "path": "backend/config/tier12_publish.yaml"
+      },
+      "id": "consumer:backend/config/tier12_publish.yaml",
       "kind": "consumer"
     },
     {
@@ -6171,6 +6197,14 @@
         "path": "backend/tests/services/test_tier12_consumer_cutover.py"
       },
       "id": "consumer:backend/tests/services/test_tier12_consumer_cutover.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_tier12_form_enrich.py"
+      },
+      "id": "consumer:backend/tests/services/test_tier12_form_enrich.py",
       "kind": "consumer"
     },
     {

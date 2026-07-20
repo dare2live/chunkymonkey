@@ -1,7 +1,7 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-20（账号切换交接）
+> 更新：2026-07-20（Tier1 accept form enrich）
 > 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改）。
 > 完成证据追加到 `analysis/project_state_ledger.md`。
 > **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
@@ -15,16 +15,16 @@
 - daily+ST+form/qfq/pulse 前沿 **`20260720`**
 - Phase D research_runtime **FIXED**（persist + fold + measured offline）
 - Delivery-OS：eng_gov **§15**（并行 subagent、异步 CI、L1 docs skip CI）
+- Tier1 accept **form enrich v1**：`stock_state_stage_pattern_v1` + exact-day `fact_stock_form_daily`；re-accept `20260717` (4989) + `20260720` (4991)；cutover yaml 未回翻
 
 启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。
 
 ## 下一步（给下一账号优先）
 
-1. **完成 dual-track 退役收尾**（若本提交已含 pulse drill 单轨：验证 + 补删任何仍绕过 resolver 的旁路；见 `data/lineage/legacy_retire_notes.md`）
-2. **Enrich Tier1 accept**：`20260717` accepted stock_states 仍为 scaffold（`form_name`/`axis_pos` null）— 富形态仍在 `fact_stock_form_daily`；cutover-ON 日暴露 scaffold 是诚实而非回退
-3. **Accept Tier1/2 for `20260720`**（及之后 eligible 日）— 今日缺 accept → fail-closed LEGACY
-4. **A→H 下一业务刀**：F 主升浪 B0–B2 挂共享 `research_runtime`（禁 Optuna / StrategyRelease）；或 E 在更长窗/新 accept 上复测（勿松门）
-5. Agent-OS WP6：影子期满检查单后再删旧 boot 仪式（owner-gated）
+1. **A→H 下一业务刀**：F 主升浪 B0–B2 挂共享 `research_runtime`（禁 Optuna / StrategyRelease）；或 E 在更长窗/新 accept 上复测（勿松门）
+2. Accept Tier1/2 for days after `20260720` when builders/calendar allow
+3. Dual-track 退役残余：补查任何仍绕过 resolver 的旁路（见 `data/lineage/legacy_retire_notes.md`）
+4. Agent-OS WP6：影子期满检查单后再删旧 boot 仪式（owner-gated）
 
 ## 禁令
 

@@ -23,7 +23,7 @@
     },
     "tier12_consumer": {
       "accept": {
-        "content_hash": "5c4673893b854a467d0156f39e5b20fad61e106fbbfe413237e7eb4f68c03c8f",
+        "content_hash": "81f2b3eb716582d5cf638106bee418ea9f4ad7812a5257e13d0715f130fc4b9b",
         "decision_date": "20260717",
         "publish_scope": "project_universe",
         "published": true,
@@ -36,14 +36,13 @@
     }
   },
   "enforcement": "projection_only_not_truth",
-  "generated_at": "2026-07-20T12:52:52Z",
+  "generated_at": "2026-07-20T13:27:24Z",
   "generated_from": "backend/scripts/build_agent_board.py",
-  "goal_hand_excerpt": "## 当前 objective\n\n**轨道 = A→H 恢复中**（owner 2026-07-20）。Agent-OS 核心 WP0–WP4 已闭合；WP6 仪式影子期仍开放（与数据 cutover 无关）。\n\n已落地硬事实（勿回滚）：\n- C + B-pit **`cutover_allowed=true`**（commit `b38e9ac5`）→ resolver `ACCEPTED_CUTOVER` / `MART_CUTOVER`\n- daily+ST+form/qfq/pulse 前沿 **`20260720`**\n- Phase D research_runtime **FIXED**（persist + fold + measured offline）\n- Delivery-OS：eng_gov **§15**（并行 subagent、异步 CI、L1 docs skip CI）\n\n启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。\n\n## 下一步（给下一账号优先）\n\n1. **完成 dual-track 退役收尾**（若本提交已含 pulse drill 单轨：验证 + 补删任何仍绕过 resolver 的旁路；见 `data/lineage/legacy_retire_notes.md`）\n2. **Enrich Tier1 accept**：`20260717` accepted stock_states 仍为 scaffold（`form_name`/`axis_pos` null）— 富形态仍在 `fact_stock_form_daily`；cutover-ON 日暴露 scaffold 是诚实而非回退\n3. **Accept Tier1/2 for `20260720`**（及之后 eligible 日）— 今日缺 accept → fail-closed LEGACY\n4. **A→H 下一业务刀**：F 主升浪 B0–B2 挂共享 `research_runtime`（禁 Optuna / StrategyRelease）；或 E 在更长窗/新 accept 上复测（勿松门）\n5. Agent-OS WP6：影子期满检查单后再删旧 boot 仪式（owner-gated）\n\n## 禁令\n\n- 静默 cutover / 无证据回翻 `cutover_allowed=false`；Optuna；E 松门；StrategyRelease\n- margin thaw；mass backfill；plugin bus；第二 DB；agent 自降 commit tier\n- 后台 subagent 若再出现「仅 2 行 transcript、tool 无 result」：改用本会话直接…",
+  "goal_hand_excerpt": "## 当前 objective\n\n**轨道 = A→H 恢复中**（owner 2026-07-20）。Agent-OS 核心 WP0–WP4 已闭合；WP6 仪式影子期仍开放（与数据 cutover 无关）。\n\n已落地硬事实（勿回滚）：\n- C + B-pit **`cutover_allowed=true`**（commit `b38e9ac5`）→ resolver `ACCEPTED_CUTOVER` / `MART_CUTOVER`\n- daily+ST+form/qfq/pulse 前沿 **`20260720`**\n- Phase D research_runtime **FIXED**（persist + fold + measured offline）\n- Delivery-OS：eng_gov **§15**（并行 subagent、异步 CI、L1 docs skip CI）\n- Tier1 accept **form enrich v1**：`stock_state_stage_pattern_v1` + exact-day `fact_stock_form_daily`；re-accept `20260717` (4989) + `20260720` (4991)；cutover yaml 未回翻\n\n启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。\n\n## 下一步（给下一账号优先）\n\n1. **A→H 下一业务刀**：F 主升浪 B0–B2 挂共享 `research_runtime`（禁 Optuna / StrategyRelease）；或 E 在更长窗/新 accept 上复测（勿松门）\n2. Accept Tier1/2 for days after `20260720` when builders/calendar allow\n3. Dual-track 退役残余：补查任何仍绕过 resolver 的旁路（见 `data/lineage/legacy_retire_notes.md`）\n4. Agent-OS WP6：影子期满检查单后再删旧 boot 仪式（owner-gated）\n\n## 禁令\n\n- 静默 cutover / 无证据回翻 `cutover_allowed=false`；Optuna；E 松门；StrategyRelease\n- margin thaw；mass backfill；plugin bus；第二 DB；agent 自降 commit tier\n- 后台 subagent 若再出现「仅 2 行 transcript、tool 无 result」：改用本会话直接做或 `shell` 子代理（见交接文档）\n\n## 已裁决（稳定）\n\n| 层 | 目的 |…",
   "next_knives_frozen": [
-    "enrich Tier1 accept payloads (scaffold stock_states → rich form fields)",
-    "accept Tier1/2 partitions for days after 20260717 (e.g. 20260720)",
-    "agent-OS WP6 ceremony flip after shadow checklist (owner-gated)",
     "A→H next: F main_rally B0–B2 on shared research_runtime (no Optuna/Release)",
+    "accept Tier1/2 partitions for days after 20260720 when eligible",
+    "agent-OS WP6 ceremony flip after shadow checklist (owner-gated)",
     "or stop"
   ],
   "phase_d": {

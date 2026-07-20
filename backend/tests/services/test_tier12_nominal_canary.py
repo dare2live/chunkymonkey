@@ -63,9 +63,14 @@ def test_fixture_canary_through_writer_stays_unpublished_with_lineage() -> None:
         for r in fx["poison_future"]
     ]
     cfg = load_tier12_publish_config(_CFG)
-    base = write_tier12_batch(decision_date=decision, inputs=inputs, config=cfg)
+    base = write_tier12_batch(
+        decision_date=decision, inputs=inputs, config=cfg, form_by_code={}
+    )
     long = write_tier12_batch(
-        decision_date=decision, inputs=inputs + poison, config=cfg
+        decision_date=decision,
+        inputs=inputs + poison,
+        config=cfg,
+        form_by_code={},
     )
 
     assert long.pit_excluded_count == len(poison)
@@ -100,6 +105,7 @@ def test_smoke_gate_rejects_future_output_available_at() -> None:
             ]
         ),
         config=cfg,
+        form_by_code={},
     )
     # Tamper: simulate a bad writer stamping future availability.
     bad_stocks = []
@@ -143,6 +149,7 @@ def test_smoke_gate_rejects_published_true() -> None:
             ]
         ),
         config=cfg,
+        form_by_code={},
     )
     tampered = type(batch)(
         decision_date=batch.decision_date,

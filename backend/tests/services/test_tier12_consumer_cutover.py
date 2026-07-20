@@ -26,7 +26,7 @@ from services.tier12_publish_writer import (
 )
 
 _CFG_PATH = Path(__file__).resolve().parents[2] / "config" / "tier12_publish.yaml"
-_DEF_V = "stock_state_stage_pattern_v0"
+_DEF_V = "stock_state_stage_pattern_v1"
 
 
 def _bar(
@@ -55,6 +55,7 @@ def _accepted_canary(tmp_path: Path):
             _bar("000001", "20260717", close=9.0, pct_chg=-1.0),
         ],
         config=cfg,
+        form_by_code={},
     )
     return accept_tier12_batch(
         batch, emit_artifact=True, artifact_root=tmp_path
@@ -103,22 +104,29 @@ def test_default_config_cutover_true_owner_opt_in() -> None:
 
 
 def test_default_yaml_resolves_live_partition_to_accepted_cutover() -> None:
-    """On-disk default yaml + live 20260717 accept → ACCEPTED_CUTOVER (not LEGACY)."""
+    """On-disk default yaml + live accepts → ACCEPTED_CUTOVER (not LEGACY)."""
 
-    decision = resolve_tier12_consumer_cutover("20260717")
-    assert isinstance(decision, Tier12ConsumerCutoverDecision)
-    assert decision.cutover_allowed is True
-    assert decision.source == "accepted_partition"
-    assert decision.status == "ACCEPTED_CUTOVER"
-    assert decision.claim_project_universe is True
-    assert decision.accepted_payload is not None
-    assert "gates_passed" in decision.reasons
+    for day in ("20260717", "20260720"):
+        decision = resolve_tier12_consumer_cutover(day)
+        assert isinstance(decision, Tier12ConsumerCutoverDecision)
+        assert decision.cutover_allowed is True
+        assert decision.source == "accepted_partition"
+        assert decision.status == "ACCEPTED_CUTOVER"
+        assert decision.claim_project_universe is True
+        assert decision.accepted_payload is not None
+        assert "gates_passed" in decision.reasons
+        # Enriched form fields present on cutover-ON days.
+        states = decision.accepted_payload.get("stock_states") or []
+        assert states
+        nn = sum(1 for r in states if r.get("form_name") is not None)
+        assert nn / len(states) > 0.95
 
 
 def test_default_yaml_day_without_accept_fails_closed_to_legacy() -> None:
     """Cutover ON, but a day with no accepted partition still fails closed."""
 
-    decision = resolve_tier12_consumer_cutover("20260720")
+    # 20260720 now has a live accept; pick a trading day with none.
+    decision = resolve_tier12_consumer_cutover("20260721")
     assert decision.cutover_allowed is False
     assert decision.source == "legacy_scaffold"
     assert decision.status == "BLOCKED"

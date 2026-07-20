@@ -116,9 +116,14 @@ def test_writer_pit_invariance_stock_state_and_market_context() -> None:
     ]
 
     cfg = _cfg()
-    short = write_tier12_batch(decision_date=decision, inputs=base, config=cfg)
+    short = write_tier12_batch(
+        decision_date=decision, inputs=base, config=cfg, form_by_code={}
+    )
     long = write_tier12_batch(
-        decision_date=decision, inputs=base + future, config=cfg
+        decision_date=decision,
+        inputs=base + future,
+        config=cfg,
+        form_by_code={},
     )
 
     assert short.pit_excluded_count == 0
@@ -144,6 +149,7 @@ def test_writer_stamps_lineage_and_stays_unpublished() -> None:
             _bar("000001", "20260717", close=9.0, pct_chg=-1.0),
         ],
         config=cfg,
+        form_by_code={},
     )
     assert isinstance(batch, Tier12WriteBatch)
     assert batch.published is False
@@ -177,6 +183,7 @@ def test_writer_never_marks_published_even_if_config_asks() -> None:
         decision_date="20260717",
         inputs=[_bar("600000", "20260717", close=10.0, pct_chg=1.0)],
         config=cfg,
+        form_by_code={},
     )
     # Hard gate: scaffold writer cannot become StrategyRelease / accepted publish.
     assert batch.published is False

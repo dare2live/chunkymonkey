@@ -42,11 +42,13 @@ def config_hash_for(config: Mapping[str, Any]) -> str:
 
 @dataclass(frozen=True)
 class StockStateDaily:
-    """Tier1 stock-state row with optional Phase C lineage (scaffold)."""
+    """Tier1 stock-state row with optional Phase C lineage (+ form enrich)."""
 
     stock_code: str
     trade_date: str
     axis_trend: str | None = None
+    axis_pos: str | None = None
+    form_name: str | None = None
     is_breakout_event: bool | None = None
     definition_version: str | None = None
     config_hash: str | None = None
@@ -60,6 +62,8 @@ class StockStateDaily:
             "stock_code": self.stock_code,
             "trade_date": self.trade_date,
             "axis_trend": self.axis_trend,
+            "axis_pos": self.axis_pos,
+            "form_name": self.form_name,
             "is_breakout_event": self.is_breakout_event,
             "definition_version": self.definition_version,
             "config_hash": self.config_hash,
@@ -191,6 +195,10 @@ def stock_state_from_form_row(row: Mapping[str, Any]) -> StockStateDaily:
         ],
         axis_trend=(
             str(row["axis_trend"]) if row.get("axis_trend") is not None else None
+        ),
+        axis_pos=(str(row["axis_pos"]) if row.get("axis_pos") is not None else None),
+        form_name=(
+            str(row["form_name"]) if row.get("form_name") is not None else None
         ),
         is_breakout_event=(
             bool(row["is_breakout_event"])

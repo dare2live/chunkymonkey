@@ -1,11 +1,11 @@
 {
   "artifacts": {
-    "accepted": "data/lineage/tier12_publish_batches/accepted_20260717.json",
-    "batch": "data/lineage/tier12_publish_batches/batch_20260717.json",
-    "coverage": "data/lineage/tier12_publish_batches/coverage_full_universe_20260717.json",
-    "summary": "data/lineage/tier12_publish_batches/full_universe_accept_20260717.json"
+    "accepted": "data/lineage/tier12_publish_batches/accepted_20260720.json",
+    "batch": "data/lineage/tier12_publish_batches/batch_20260720.json",
+    "coverage": "data/lineage/tier12_publish_batches/coverage_full_universe_20260720.json",
+    "summary": "data/lineage/tier12_publish_batches/full_universe_accept_20260720.json"
   },
-  "available_at": "20260717T160000+0800",
+  "available_at": "20260720T160000+0800",
   "config_hash": "184d82ed71a15d61768ce001250b8de86efa1aa0e5ae742bfdf5619d5c24fdd4",
   "consumer_cutover_default": {
     "cutover_allowed": true,
@@ -14,22 +14,22 @@
     ],
     "status": "ACCEPTED_CUTOVER"
   },
-  "content_hash": "81f2b3eb716582d5cf638106bee418ea9f4ad7812a5257e13d0715f130fc4b9b",
+  "content_hash": "d7ef33ae980330eb9ddac0420d49ca7a2ebe947c33f12b5469c42d0ccd423c7f",
   "coverage_excluded_count": 0,
   "cutover_allowed": false,
-  "decision_date": "20260717",
+  "decision_date": "20260720",
   "definition_version": "stock_state_stage_pattern_v1",
-  "generated_at": "2026-07-20T13:25:45.236561+00:00",
-  "input_snapshot_id": "nominal_ohlcv_pit:20260717:n24935",
+  "generated_at": "2026-07-20T13:25:49.649106+00:00",
+  "input_snapshot_id": "nominal_ohlcv_pit:20260720:n24948",
   "kind": "tier12_full_universe_accept_summary",
   "market_details": {
-    "adv_n": 386,
+    "adv_n": 1688,
     "b_pit_cutover_allowed": false,
-    "dec_n": 4571,
-    "flat_n": 32,
+    "dec_n": 3233,
+    "flat_n": 70,
     "method": "board_filtered_nominal_breadth",
     "not_pulse_mart": true,
-    "row_count_used": 4989,
+    "row_count_used": 4991,
     "skipped_off_board": 0,
     "writer": "tier12_publish_writer"
   },
@@ -45,6 +45,6 @@
   "publish_scope": "project_universe",
   "published": true,
   "status": "ACCEPTED",
-  "stock_row_count": 4989,
-  "universe_membership_size": 4989
+  "stock_row_count": 4991,
+  "universe_membership_size": 4991
 }

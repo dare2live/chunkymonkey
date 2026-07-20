@@ -57,6 +57,7 @@ def _good_batch() -> Tier12WriteBatch:
             _bar("000001", "20260717", close=9.0, pct_chg=-1.0),
         ],
         config=cfg,
+        form_by_code={},
     )
 
 

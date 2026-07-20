@@ -7,23 +7,27 @@
 #   - writer allow_published stays false (writer never publishes)
 #   - accept path sets published=true only after WRITTEN_UNPUBLISHED +
 #     PUBLISHABLE_SCAFFOLD gates; smoke summaries cannot be upgraded
-#   - allow_consumer_cutover / consumer_cutover.cutover_allowed stay false
-#     (explicit resolver gate; research/UI must not silent-read accepted_*.json)
+#   - consumer_cutover.cutover_allowed is owner-opt-in (never flipped by
+#     persist); research/UI must not silent-read accepted_*.json
+#   - form enrich = exact-day fact_stock_form_daily join (frontier fail-closed;
+#     no as-of pad; never overlays form axis_trend onto writer axis_trend)
 #   - missing lineage / missing available_at / PIT poison fail closed
 #   - not StrategyRelease; not B-pit mart cutover; not Optuna
 
 meta:
   version: 1
   phase: C
-  notes: "writer=WRITTEN_UNPUBLISHED; accept=ACCEPTED published=true; consumer_cutover=false"
+  notes: "writer=WRITTEN_UNPUBLISHED+form_enrich_v1; accept=ACCEPTED published=true; consumer_cutover=owner_opt_in"
 
 stock_state:
-  definition_version: stock_state_stage_pattern_v0
+  definition_version: stock_state_stage_pattern_v1
   eligible_universe_id: traded_on_observation_date:v1
-  axes: [trend]
-  # Minimal deterministic trend from PIT-truncated closes (scaffold writer;
-  # full technical_states classify remains the form table path).
+  axes: [trend, pos]
+  # Writer axis_trend from PIT-truncated nominal closes; form_name/axis_pos/
+  # is_breakout_event from exact-day fact_stock_form_daily join (no as-of pad;
+  # form axis_trend is never overlaid onto writer axis_trend).
   trend_lookback_bars: 5
+  form_source: fact_stock_form_daily
   availability_policy:
     axis: available_at
     rule: calendar_date_le_decision_date
@@ -57,10 +61,10 @@ publish:
 # acknowledge_canary_scope which forbids project-universe).
 consumer_cutover:
   cutover_allowed: true
-  expected_definition_version: stock_state_stage_pattern_v0
-  # Live full-universe accept 20260717 stock config_hash (non-canary,
-  # full_universe_attested). Must match publish typed policy hash.
-  expected_config_hash: "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c"
+  expected_definition_version: stock_state_stage_pattern_v1
+  # Live full-universe accept stock config_hash after form enrich v1
+  # (form_source=fact_stock_form_daily). Must match publish typed policy hash.
+  expected_config_hash: "184d82ed71a15d61768ce001250b8de86efa1aa0e5ae742bfdf5619d5c24fdd4"
   acknowledge_canary_scope: false
   # Live accept is genuine full project-universe (universe_membership_size ==
   # stock_row_count == 4989); consumers may claim project-universe scope.

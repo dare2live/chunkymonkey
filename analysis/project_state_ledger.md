@@ -2056,3 +2056,26 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - Keep fail-closed LEGACY + `fact_stock_form_daily` table (moth fan-in).
 - Ops note: background subagents repeatedly hung at 2-line/no tool_result; prefer parent session or shell.
 - Bans unchanged: Optuna / E loosen / StrategyRelease / margin thaw / silent cutover rollback.
+
+### 2026-07-20 — Tier1 accept form enrich v1 (A→H knife)
+
+- **FIXED**: accepted `stock_states` carry rich form fields from exact-day
+  `fact_stock_form_daily` join (`form_name` / `axis_pos`; prefer form
+  `is_breakout_event`). Writer `axis_trend` stays nominal-close scaffold and
+  is **never** overlaid by form `axis_trend`.
+- Contract/config: `stock_state_stage_pattern_v1`, yaml `form_source`,
+  `expected_config_hash=184d82ed…`, `cutover_allowed` stayed **true**
+  (persist gates rewritten cutover-aware; never flip yaml false).
+- Re-accept: `20260717` membership/rows=4989; `20260720` membership/rows=4991
+  (universe grew; both ACCEPTED_CUTOVER under live resolver).
+- Non-null rates (accepted partition):
+  - 20260717: form_name/axis_pos 4908/4989 = **98.38%** (exact-day miss → null, no as-of pad)
+  - 20260720: form_name/axis_pos 4911/4991 = **98.40%**
+  - is_breakout_event True = 0 both days (matches form table that day)
+- Frontier fail-closed: `load_form_rows_exact_day` rejects decision_date >
+  MAX(trade_date). Tests: `test_tier12_form_enrich` +
+  `test_persist_tier12_cutover_aware` + tier12 suite 66 passed.
+- **Did not**: Optuna; E loosen; StrategyRelease; margin thaw; mass backfill;
+  cutover yaml false.
+- **Residual**: ~1.6% exact-day form miss stays null (honest); days after
+  20260720 without accept still LEGACY/BLOCKED; WP6 ceremony still owner-gated.
