@@ -1388,3 +1388,32 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   (honest; code/accept ≠ Tier0 READY).
 - **Next**: next eligible daily single-day **or** wire production
   readers behind resolver with cutover still false **or** stop.
+
+### 2026-07-20 — Phase C production-read boundary + B1 wire (cutover false)
+
+- Added `resolve_tier12_production_read` /
+  `Tier12ProductionRead` /
+  `stock_states_from_accepted_payload` on
+  `tier12_consumer_cutover` (always calls cutover resolver first).
+  LEGACY/BLOCKED → `accepted_payload=None`; CANARY_SCOPED → accepted
+  only with `claim_project_universe=false`; ACCEPTED_CUTOVER → may
+  expose accepted partition.
+- Wired real consumer: B1
+  `institution_follow_b1_measure.load_stock_state_by_day` routes each
+  day through the boundary; default yaml → legacy
+  `fact_stock_form_daily` SQL unchanged.
+- TDD: LEGACY under default; silent
+  `load_accepted_partition_as_production_truth` refused; ACCEPTED_CUTOVER
+  fixture loads accepted stock_states without legacy SQL; canary
+  scoped forbids universe claim. tier12 suite 49/49; B1 tests green.
+- Live proof: `cutover_allowed=false` in
+  `backend/config/tier12_publish.yaml`;
+  `resolve_tier12_production_read("20260717")` → LEGACY /
+  `legacy_scaffold` / payload=None (full-universe accept present).
+- **Did not**: flip `cutover_allowed=true`; fill
+  `expected_config_hash` for opt-in; StrategyRelease; Optuna; E
+  loosen; B-pit cutover; margin thaw; daily `20260720` (wall-clock
+  ~10:37 CST < 18:00). Continuity still BLOCKED honest.
+- **Next**: explicit opt-in cutover (fill hash) **or** wire
+  pulse/UI readers **or** daily `20260720` after 18:00 CST **or**
+  stop.

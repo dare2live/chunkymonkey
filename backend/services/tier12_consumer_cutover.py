@@ -1,8 +1,9 @@
 """Phase C Tier1/2 explicit consumer cutover gate (fail-closed).
 
-Research/UI must call ``resolve_tier12_consumer_cutover`` before treating an
-accepted partition as production truth. Default config keeps
-``cutover_allowed=false`` so consumers stay on the legacy/scaffold path.
+Research/UI must call ``resolve_tier12_production_read`` (which always invokes
+``resolve_tier12_consumer_cutover``) before treating an accepted partition as
+production truth. Default config keeps ``cutover_allowed=false`` so consumers
+stay on the legacy/scaffold path.
 
 Enabling cutover requires all of:
 - typed config explicit opt-in (``consumer_cutover.cutover_allowed=true``);
@@ -12,6 +13,7 @@ Enabling cutover requires all of:
   claiming project-universe.
 
 Silent reads of ``accepted_*.json`` as production truth are rejected.
+Wired consumer: ``institution_follow_b1_measure.load_stock_state_by_day``.
 """
 from __future__ import annotations
 
@@ -367,26 +369,167 @@ def load_accepted_partition_as_production_truth(
     call sites.
     """
 
-    decision = resolve_tier12_consumer_cutover(
+    read = resolve_tier12_production_read(
         decision_date,
         config=config,
         artifact_root=artifact_root,
         config_path=config_path,
     )
-    if not decision.cutover_allowed or decision.accepted_payload is None:
+    if read.uses_legacy or read.accepted_payload is None:
         raise Tier12ConsumerCutoverError(
             "refused_silent_accepted_file_read_as_production_truth; "
-            "call resolve_tier12_consumer_cutover gate first "
-            f"(status={decision.status} reasons={list(decision.reasons)})"
+            "call resolve_tier12_consumer_cutover / "
+            "resolve_tier12_production_read gate first "
+            f"(status={read.status} reasons={list(read.reasons)})"
         )
-    return dict(decision.accepted_payload)
+    return dict(read.accepted_payload)
+
+
+@dataclass(frozen=True)
+class Tier12ProductionRead:
+    """Single production-read boundary result for Tier1/2 consumers.
+
+    Callers must use this (or ``load_accepted_partition_as_production_truth``)
+    instead of silently ``json.load``-ing ``accepted_*.json``.
+    """
+
+    decision_date: str
+    status: CutoverStatus
+    source: CutoverSource
+    claim_project_universe: bool
+    reasons: tuple[str, ...]
+    notes: tuple[str, ...]
+    accepted_payload: Mapping[str, Any] | None
+    cutover_decision: Tier12ConsumerCutoverDecision
+
+    @property
+    def uses_legacy(self) -> bool:
+        return self.source == "legacy_scaffold" or not self.cutover_decision.cutover_allowed
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "kind": "tier12_production_read",
+            "decision_date": self.decision_date,
+            "status": self.status,
+            "source": self.source,
+            "claim_project_universe": self.claim_project_universe,
+            "reasons": list(self.reasons),
+            "notes": list(self.notes),
+            "uses_legacy": self.uses_legacy,
+            "accepted_payload": (
+                dict(self.accepted_payload) if self.accepted_payload is not None else None
+            ),
+            "cutover_decision": self.cutover_decision.as_dict(),
+        }
+
+
+def _code6(value: Any) -> str:
+    return str(value or "").split(".", 1)[0].strip()
+
+
+def stock_states_from_accepted_payload(
+    payload: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Project accepted partition stock_states → code6 → B1-shaped fields."""
+
+    out: dict[str, dict[str, Any]] = {}
+    for row in payload.get("stock_states") or ():
+        if not isinstance(row, Mapping):
+            continue
+        code = _code6(row.get("stock_code") or row.get("entity_id"))
+        if not code:
+            continue
+        details = row.get("details") if isinstance(row.get("details"), Mapping) else {}
+        out[code] = {
+            "axis_trend": row.get("axis_trend"),
+            "axis_pos": row.get("axis_pos"),
+            "form_name": row.get("form_name")
+            if row.get("form_name") is not None
+            else details.get("form_name"),
+            "is_breakout_event": row.get("is_breakout_event"),
+            "source": "accepted_partition",
+        }
+    return out
+
+
+def resolve_tier12_production_read(
+    decision_date: str,
+    *,
+    config: Tier12ConsumerCutoverConfig | Mapping[str, Any] | None = None,
+    accepted: Tier12AcceptedPublish | Mapping[str, Any] | Path | str | None = None,
+    artifact_root: Path | None = None,
+    config_path: str | Path | None = None,
+) -> Tier12ProductionRead:
+    """Single read boundary: always resolve cutover before Tier1/2 truth.
+
+    - ``LEGACY`` / ``BLOCKED`` → legacy scaffold path; ``accepted_payload=None``
+      (never treat accepted JSON as production truth).
+    - ``CANARY_SCOPED`` → accepted payload allowed only as canary; never
+      ``claim_project_universe``.
+    - ``ACCEPTED_CUTOVER`` → may expose accepted partition (yaml still false).
+    """
+
+    decision = resolve_tier12_consumer_cutover(
+        decision_date,
+        config=config,
+        accepted=accepted,
+        artifact_root=artifact_root,
+        config_path=config_path,
+    )
+
+    if (
+        decision.status in ("LEGACY", "BLOCKED")
+        or not decision.cutover_allowed
+        or decision.accepted_payload is None
+    ):
+        return Tier12ProductionRead(
+            decision_date=decision.decision_date,
+            status=decision.status,
+            source="legacy_scaffold",
+            claim_project_universe=False,
+            reasons=decision.reasons,
+            notes=tuple(decision.notes)
+            + ("production_read_boundary_legacy", "accepted_json_not_production_truth"),
+            accepted_payload=None,
+            cutover_decision=decision,
+        )
+
+    if decision.status == "CANARY_SCOPED":
+        return Tier12ProductionRead(
+            decision_date=decision.decision_date,
+            status="CANARY_SCOPED",
+            source="accepted_partition",
+            claim_project_universe=False,
+            reasons=decision.reasons,
+            notes=tuple(decision.notes)
+            + (
+                "production_read_boundary_canary_scoped",
+                "forbids_project_universe_claim",
+            ),
+            accepted_payload=dict(decision.accepted_payload),
+            cutover_decision=decision,
+        )
+
+    return Tier12ProductionRead(
+        decision_date=decision.decision_date,
+        status="ACCEPTED_CUTOVER",
+        source="accepted_partition",
+        claim_project_universe=bool(decision.claim_project_universe),
+        reasons=decision.reasons,
+        notes=tuple(decision.notes) + ("production_read_boundary_accepted_cutover",),
+        accepted_payload=dict(decision.accepted_payload),
+        cutover_decision=decision,
+    )
 
 
 __all__ = [
     "Tier12ConsumerCutoverConfig",
     "Tier12ConsumerCutoverDecision",
     "Tier12ConsumerCutoverError",
+    "Tier12ProductionRead",
     "load_accepted_partition_as_production_truth",
     "load_tier12_consumer_cutover_config",
     "resolve_tier12_consumer_cutover",
+    "resolve_tier12_production_read",
+    "stock_states_from_accepted_payload",
 ]

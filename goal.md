@@ -18,12 +18,15 @@
   `publish_scope=project_universe`；content_hash=
   `5c4673893b854a467d0156f39e5b20fad61e106fbbfe413237e7eb4f68c03c8f`；
   artifacts=`{batch,accepted,coverage_full_universe,full_universe_accept}_20260717.json`
-  （smoke canary 仍保留作对照）。**Consumer cutover 显式门 FIXED（默认 false）**：
-  `tier12_consumer_cutover`；resolver 对 default config → LEGACY；**未**接线
-  生产消费者 / **未** StrategyRelease / **未** claim Phase C complete。
-  下一刀=opt-in cutover 前接线生产读（仍默认 false）**或** daily 下一 eligible
-  单日（`20260720` 需 ≥18:00 CST）**或** stop；禁 Optuna / gate-loosening /
-  B-pit cutover / margin thaw / mass backfill。
+  （smoke canary 仍保留作对照）。  **Consumer cutover 显式门 FIXED（默认 false）**：
+  `tier12_consumer_cutover` + 生产读边界
+  `resolve_tier12_production_read`；default → LEGACY；已接线 B1
+  `load_stock_state_by_day`（仍走 `fact_stock_form_daily`）。**未**
+  `cutover_allowed=true` / **未** StrategyRelease / **未** claim Phase C
+  complete。下一刀=显式 opt-in cutover（填 expected_config_hash）**或**
+  接线更多读侧（pulse/UI）**或** daily 下一 eligible 单日（`20260720` 需
+  ≥18:00 CST）**或** stop；禁 Optuna / gate-loosening / B-pit cutover /
+  margin thaw / mass backfill。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -80,14 +83,15 @@
   mart 数值未改、`cutover_allowed=false`。残余=B-pit 数值切读。
 - **B-pit PARTIAL** 广度/shadow 已有；**未**接 pulse mart / 未 cutover。Canary 日
   `20260717`：PIT vs unfiltered 分歧 → `cutover_allowed=false`。
-- **C PARTIAL（full-universe accept + consumer gate default false）**
+- **C PARTIAL（full-universe accept + consumer gate + B1 read wire；cutover false）**
   contract/writer/accept/yaml + canary + project_universe loader +
   `persist_tier12_{writer_smoke,accepted_publish,full_universe_accept}.py` +
-  **`tier12_consumer_cutover`（默认 false；未接线生产消费者）**：
+  **`tier12_consumer_cutover` + `resolve_tier12_production_read`（默认 false）** +
+  B1 `load_stock_state_by_day` 经生产读边界：
   live `20260717` full-universe → `accepted_20260717.json`
   （`publish_scope=project_universe`；membership=written=4989；
-  accept-side `cutover_allowed=false`；resolver LEGACY）。**未** claim Phase C
-  complete / **未** StrategyRelease。
+  accept-side / consumer `cutover_allowed=false`；resolver+read → LEGACY）。
+  **未** claim Phase C complete / **未** StrategyRelease / **未** yaml opt-in。
   **D** `DatasetSnapshot`→`ExperimentVerdict` + PIT 截断（E 已部分消费）。
 - **E0 FIXED（gate+mirror off；E 硬前置）** 三域 MATCH → `cutover_allowed=true`；
   formal writes=`formal_only`；research read prefer canonical；
@@ -108,8 +112,8 @@
   trading_days 派生）。form/qfq `20260717` **still blocked**（max=`20260716`）。
   **Next**：daily 下一 eligible 单日（frontier 仍=`20260717`；`20260720`
   午前仍 `pending_publish`/operation_window_blocked；需 ≥18:00 CST）**或**
-  生产消费者接线但保持 `cutover_allowed=false` 直至显式 opt-in **或** stop。
-  Full-universe accept 已落地；Consumer cutover 默认 false；生产消费者未接线。
+  显式 opt-in cutover（填 hash；仍禁擅自翻 true）**或** 接线 pulse/UI 读侧
+  **或** stop。Full-universe accept + B1 生产读边界已落地；cutover 仍 false。
   **禁** Optuna / gate-loosening / B-pit cutover / margin thaw / mass backfill /
   StrategyRelease。**F** main_rally。**G** 公式+BestChoice。**H** Release。
 

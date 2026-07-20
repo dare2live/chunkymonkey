@@ -10,8 +10,12 @@ from services.tier12_consumer_cutover import (
     Tier12ConsumerCutoverConfig,
     Tier12ConsumerCutoverDecision,
     Tier12ConsumerCutoverError,
+    Tier12ProductionRead,
+    load_accepted_partition_as_production_truth,
     load_tier12_consumer_cutover_config,
     resolve_tier12_consumer_cutover,
+    resolve_tier12_production_read,
+    stock_states_from_accepted_payload,
 )
 from services.tier12_publish_accept import accept_tier12_batch
 from services.tier12_publish_contract import config_hash_for
@@ -251,14 +255,158 @@ def test_silent_accepted_file_read_without_gate_raises(tmp_path: Path) -> None:
     """Research/UI must not treat accepted JSON as production without resolver."""
 
     _accepted_canary(tmp_path)
-    with pytest.raises(Tier12ConsumerCutoverError, match="resolver|gate"):
-        from services.tier12_consumer_cutover import (
-            load_accepted_partition_as_production_truth,
-        )
-
+    with pytest.raises(Tier12ConsumerCutoverError, match="resolver|gate|production"):
         load_accepted_partition_as_production_truth(
             "20260717", artifact_root=tmp_path
         )
+
+
+def test_production_read_boundary_defaults_to_legacy(tmp_path: Path) -> None:
+    """Default yaml → LEGACY; accepted JSON must not surface as production truth."""
+
+    accepted = _accepted_canary(tmp_path)
+    read = resolve_tier12_production_read(
+        "20260717",
+        accepted=accepted,
+        artifact_root=tmp_path,
+    )
+    assert isinstance(read, Tier12ProductionRead)
+    assert read.status == "LEGACY"
+    assert read.source == "legacy_scaffold"
+    assert read.uses_legacy is True
+    assert read.claim_project_universe is False
+    assert read.accepted_payload is None
+    assert "accepted_json_not_production_truth" in read.notes
+    assert "config_cutover_allowed_false" in read.reasons
+
+
+def test_production_read_canary_scoped_forbids_universe_claim(tmp_path: Path) -> None:
+    accepted = _accepted_canary(tmp_path)
+    cfg = Tier12ConsumerCutoverConfig(
+        cutover_allowed=True,
+        expected_definition_version=accepted.definition_version,
+        expected_config_hash=accepted.config_hash,
+        acknowledge_canary_scope=True,
+        claim_project_universe=False,
+    )
+    read = resolve_tier12_production_read(
+        "20260717",
+        config=cfg,
+        accepted=accepted,
+        artifact_root=tmp_path,
+    )
+    assert read.status == "CANARY_SCOPED"
+    assert read.source == "accepted_partition"
+    assert read.uses_legacy is False
+    assert read.claim_project_universe is False
+    assert read.accepted_payload is not None
+    assert "forbids_project_universe_claim" in read.notes
+
+
+def test_production_read_accepted_cutover_when_gates_pass(tmp_path: Path) -> None:
+    canary = _accepted_canary(tmp_path)
+    full = _full_universe_accepted_dict(canary)
+    (tmp_path / "accepted_20260717.json").write_text(
+        json.dumps(full, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    cfg = Tier12ConsumerCutoverConfig(
+        cutover_allowed=True,
+        expected_definition_version=full["definition_version"],
+        expected_config_hash=full["config_hash"],
+        acknowledge_canary_scope=False,
+        claim_project_universe=True,
+    )
+    read = resolve_tier12_production_read(
+        "20260717",
+        config=cfg,
+        artifact_root=tmp_path,
+    )
+    assert read.status == "ACCEPTED_CUTOVER"
+    assert read.source == "accepted_partition"
+    assert read.uses_legacy is False
+    assert read.claim_project_universe is True
+    assert read.accepted_payload is not None
+    projected = stock_states_from_accepted_payload(read.accepted_payload)
+    assert projected  # fixture canary rows survive full-universe note rewrite
+    assert "production_read_boundary_accepted_cutover" in read.notes
+
+    loaded = load_accepted_partition_as_production_truth(
+        "20260717",
+        config=cfg,
+        artifact_root=tmp_path,
+    )
+    assert loaded["status"] == "ACCEPTED"
+    assert loaded["publish_scope"] == "project_universe"
+
+
+def test_b1_loader_stays_on_legacy_under_default_cutover(tmp_path: Path) -> None:
+    """Wired B1 consumer: default config must not switch off fact_stock_form_daily."""
+
+    from services.institution_follow_b1_measure import load_stock_state_by_day
+
+    _accepted_canary(tmp_path)
+
+    class _Conn:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, list[str]]] = []
+
+        def execute(self, sql: str, params=None):  # noqa: ANN001
+            self.calls.append((sql, list(params or [])))
+
+            class _R:
+                def fetchall(self_inner):
+                    return [
+                        ("20260717", "600000", "up", "mid", "form_a", 0),
+                    ]
+
+            return _R()
+
+    conn = _Conn()
+    out = load_stock_state_by_day(
+        conn,
+        ["20260717"],
+        artifact_root=tmp_path,
+    )
+    assert conn.calls, "LEGACY path must still hit fact_stock_form_daily"
+    assert "fact_stock_form_daily" in conn.calls[0][0]
+    assert out["20260717"]["600000"]["axis_trend"] == "up"
+    assert out["20260717"]["600000"].get("source") != "accepted_partition"
+
+
+def test_b1_loader_uses_accepted_only_when_cutover_gates_pass(tmp_path: Path) -> None:
+    """ACCEPTED_CUTOVER fixture: B1 reads accepted stock_states, skips legacy SQL."""
+
+    from services.institution_follow_b1_measure import load_stock_state_by_day
+
+    canary = _accepted_canary(tmp_path)
+    full = _full_universe_accepted_dict(canary)
+    # Keep real stock_states from canary writer inside the full-universe envelope.
+    (tmp_path / "accepted_20260717.json").write_text(
+        json.dumps(full, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    cfg = Tier12ConsumerCutoverConfig(
+        cutover_allowed=True,
+        expected_definition_version=full["definition_version"],
+        expected_config_hash=full["config_hash"],
+        claim_project_universe=True,
+    )
+
+    class _Conn:
+        def execute(self, sql: str, params=None):  # noqa: ANN001
+            raise AssertionError("legacy SQL must not run under ACCEPTED_CUTOVER")
+
+    out = load_stock_state_by_day(
+        _Conn(),
+        ["20260717"],
+        cutover_config=cfg,
+        artifact_root=tmp_path,
+    )
+    assert out["20260717"]
+    sample = next(iter(out["20260717"].values()))
+    assert sample["source"] == "accepted_partition"
+    assert "axis_trend" in sample
 
 
 def test_expected_hashes_align_with_publish_config() -> None:
