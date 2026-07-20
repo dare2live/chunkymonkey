@@ -643,7 +643,19 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/main_rally_dataset_snapshot.py",
+      "kind": "consume",
+      "src": "table:feature_store.fact_rally_ground_truth"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/rally_gt.py",
+      "kind": "consume",
+      "src": "table:feature_store.fact_rally_ground_truth"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_main_rally_b0.py",
       "kind": "consume",
       "src": "table:feature_store.fact_rally_ground_truth"
     },
@@ -673,7 +685,19 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/main_rally_dataset_snapshot.py",
+      "kind": "consume",
+      "src": "table:feature_store.fact_rally_negative"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/rally_gt.py",
+      "kind": "consume",
+      "src": "table:feature_store.fact_rally_negative"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_main_rally_b0.py",
       "kind": "consume",
       "src": "table:feature_store.fact_rally_negative"
     },
@@ -703,7 +727,19 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/main_rally_dataset_snapshot.py",
+      "kind": "consume",
+      "src": "table:feature_store.fact_rally_strata"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/rally_gt.py",
+      "kind": "consume",
+      "src": "table:feature_store.fact_rally_strata"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_main_rally_b0.py",
       "kind": "consume",
       "src": "table:feature_store.fact_rally_strata"
     },
@@ -4993,9 +5029,9 @@
     }
   ],
   "meta": {
-    "edge_count": 781,
-    "generated_at": "2026-07-20T13:28:44.917096+00:00",
-    "node_count": 348,
+    "edge_count": 787,
+    "generated_at": "2026-07-20T13:43:59.114846+00:00",
+    "node_count": 350,
     "version": 2
   },
   "nodes": [
@@ -5642,6 +5678,14 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/main_rally_dataset_snapshot.py"
+      },
+      "id": "consumer:backend/services/main_rally_dataset_snapshot.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/market_pulse.py"
       },
       "id": "consumer:backend/services/market_pulse.py",
@@ -6077,6 +6121,14 @@
         "path": "backend/tests/services/test_lineage.py"
       },
       "id": "consumer:backend/tests/services/test_lineage.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_main_rally_b0.py"
+      },
+      "id": "consumer:backend/tests/services/test_main_rally_b0.py",
       "kind": "consumer"
     },
     {

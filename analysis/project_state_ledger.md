@@ -2079,3 +2079,28 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   cutover yaml false.
 - **Residual**: ~1.6% exact-day form miss stays null (honest); days after
   20260720 without accept still LEGACY/BLOCKED; WP6 ceremony still owner-gated.
+
+### 2026-07-20 — Phase F F0+F1 main_rally B0 (setup-entry short-horizon)
+
+- **FIXED** (protocol): package `main_rally_v1` on shared `research_runtime`.
+  - F0 freeze: `data/lineage/main_rally_dataset_snapshot/snapshot.json`
+    (accepted nominal 121d `20260116`→`20260720`, GT hashes
+    `taxonomy_version=v2_20260702`, tier12 accepted `20260717`/`20260720`,
+    `cutover_allowed` echo true; cutover yaml **unchanged**).
+  - F1 B0: pivot-confirmed setup (`available_at` = bottom+20 bars) +
+    `base_days≥40` from **accepted nominal K only**; never reads
+    `fact_rally_ground_truth` / `fact_rally_negative`; paper via reused
+    `plan_walk_forward` / `simulate_paper_fills` / edge gates (T+1/T+2
+    nominal, not qfq, not full-episode).
+  - Persist: `data/lineage/phase_f_experiment_verdicts/{b0,manifest}.json`
+  - Live verdict: **`reject`** / **`claimable=false`** /
+    `measured_protocol_ready_edge_gates_unmet` (eval_total_return≈-16.4%,
+    holdout_net_return≈-5.5%, n_trades=162, purged WF 3 folds,
+    claimable_protocol=true but edge unmet). Honest deliverable on window
+    mismatch (GT episodes pre-holdout vs 120d accepted nominal).
+- Tests: `backend/tests/services/test_main_rally_b0.py` 10 passed
+  (pivot-lag PIT, GT isolation AST, canary overclaim, binding, live freeze).
+- **Did not**: Optuna; StrategyRelease; E-gate loosen; qfq fills; GT rebuild;
+  mass backfill; cutover flip.
+- **Residual / cannot claim**: no B1/B2 yet; no StrategyRelease; no
+  full-episode 250d validation; claimable accept false; F2/F3 next.
