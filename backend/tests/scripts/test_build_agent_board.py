@@ -10,8 +10,37 @@ from scripts import build_agent_board as board
 REPO = Path(__file__).resolve().parents[3]
 
 
-def test_collect_cutovers_default_false() -> None:
+def test_collect_cutovers_reflects_live_yaml() -> None:
+    """collect() must mirror the live yaml gates exactly (no silent
+    override in either direction) — owner opt-in 2026-07-20 flipped both
+    gates true; this must not hardcode a stale false expectation."""
     data = board.collect(REPO)
+    assert data["enforcement"] == "projection_only_not_truth"
+    b_pit_yaml = board._load_yaml(REPO / "backend" / "config" / "b_pit_mart_cutover.yaml")
+    tier12_yaml = board._load_yaml(REPO / "backend" / "config" / "tier12_publish.yaml")
+    expected_b_pit = bool((b_pit_yaml.get("mart_cutover") or {}).get("cutover_allowed", False))
+    expected_tier12 = bool((tier12_yaml.get("consumer_cutover") or {}).get("cutover_allowed", False))
+    assert data["cutovers"]["b_pit_mart"]["cutover_allowed"] == expected_b_pit
+    assert data["cutovers"]["tier12_consumer"]["cutover_allowed"] == expected_tier12
+
+
+def _write_legacy_false_repo(tmp_path: Path) -> Path:
+    """Minimal fixture repo with both cutover gates explicit false — pins
+    the LEGACY (pre-opt-in) path independent of live repo cutover state."""
+    cfg = tmp_path / "backend" / "config"
+    cfg.mkdir(parents=True)
+    (cfg / "b_pit_mart_cutover.yaml").write_text(
+        "mart_cutover:\n  cutover_allowed: false\n", encoding="utf-8"
+    )
+    (cfg / "tier12_publish.yaml").write_text(
+        "consumer_cutover:\n  cutover_allowed: false\n", encoding="utf-8"
+    )
+    return tmp_path
+
+
+def test_collect_cutovers_legacy_false_fixture(tmp_path: Path) -> None:
+    fixture_repo = _write_legacy_false_repo(tmp_path)
+    data = board.collect(fixture_repo)
     assert data["enforcement"] == "projection_only_not_truth"
     assert data["cutovers"]["b_pit_mart"]["cutover_allowed"] is False
     assert data["cutovers"]["tier12_consumer"]["cutover_allowed"] is False
@@ -60,6 +89,13 @@ def test_render_marks_generated_and_non_enforcement() -> None:
     md = board.render_md(board.collect(REPO))
     assert "勿手改" in md
     assert "Projection only" in md
+
+
+def test_render_marks_legacy_false_fixture(tmp_path: Path) -> None:
+    """render_md must faithfully print whatever collect() resolved — pinned
+    via the LEGACY false fixture so this is independent of live cutover state."""
+    fixture_repo = _write_legacy_false_repo(tmp_path)
+    md = board.render_md(board.collect(fixture_repo))
     assert "cutover_allowed=False" in md or "cutover_allowed=false" in md
 
 
