@@ -1543,3 +1543,27 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Status**: D PARTIAL (scaffold). **Did not**: claim D complete;
   StrategyRelease; Optuna; E gate loosen; cutover_allowed=true;
   B-pit mart cutover; margin thaw; mass backfill.
+
+### 2026-07-20 — B-pit shadow window remeasure (honesty, no cutover)
+
+- Wall-clock: Mon 2026-07-20 ~15:04 Asia/Shanghai (in-session).
+- Code: `measure_breadth_shadow_day` + `aggregate_breadth_shadow_window` +
+  `unfiltered_breadth_from_rows` in `project_universe_breadth`;
+  persist `backend/scripts/persist_b_pit_breadth_shadow.py`;
+  CI adds `test_project_universe_breadth.py`.
+- Live window (K∩ST accepted intersection `20260116`–`20260717`, 120d):
+  - match_day_count=**0** / diverge_day_count=**120** / error_day_count=0
+  - `ratios_match_all=false`
+  - mean_abs_ratio_delta≈0.0709；max_abs_ratio_delta≈1.878
+  - frontier `20260717`: project adv/dec=386/4571 ratio≈0.08445；
+    unfiltered accepted-canonical proxy≈0.09638；`ratios_match=false`
+  - `cutover_allowed=false` (shadow never enables mart cutover; MATCH
+    alone also insufficient)
+- Artifacts: `data/lineage/b_pit_breadth_shadow/{manifest,summary}.json`
+- Optional one-shot: `chunkyctl sync --domain daily --start 20260720
+  --end 20260720` → still provider `zero_rows` /
+  `daily_provider_fetch_failed` fail-closed; accepted daily max still
+  `20260717`.
+- **Status**: B-pit PARTIAL (remeasured; still diverge). **Did not**:
+  flip B-pit/C cutover; StrategyRelease; Optuna; E gate loosen; margin
+  thaw; mass backfill.

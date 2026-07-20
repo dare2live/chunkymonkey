@@ -13,9 +13,12 @@ from services.data_sources.observation_population import (
 )
 from services.data_sources.project_universe_breadth import (
     ProjectUniverseBreadthUnavailable,
+    aggregate_breadth_shadow_window,
     compare_legacy_vs_project_universe_breadth,
     compute_project_universe_breadth,
+    measure_breadth_shadow_day,
     refuse_legacy_raw_daily_as_project_universe_breadth,
+    unfiltered_breadth_from_rows,
 )
 
 
@@ -123,3 +126,89 @@ def test_shadow_compare_flags_divergence() -> None:
     assert report.ratios_match is False
     assert report.cutover_allowed is False
     assert "legacy_raw_ratio_diverges_from_project_universe" in report.issues
+
+
+def test_unfiltered_counts_ignore_missing_pct() -> None:
+    counts = unfiltered_breadth_from_rows(
+        (
+            {"ts_code": "600000.SH", "pct_chg": 1.0},
+            {"ts_code": "000001.SZ", "pct_chg": -1.0},
+            {"ts_code": "300001.SZ", "pct_chg": None},
+            {"ts_code": "830001.BJ", "pct_chg": 2.0},
+        )
+    )
+    assert counts.adv_n == 2
+    assert counts.dec_n == 1
+    assert counts.row_count_used == 3
+    assert counts.adv_dec_ratio == pytest.approx(2.0)
+
+
+def test_measure_day_shadow_diverges_when_off_universe_rows_move_ratio() -> None:
+    measure = measure_breadth_shadow_day(
+        _membership(("600000.SH", "000001.SZ")),
+        rows=(
+            {"ts_code": "600000.SH", "pct_chg": 1.0},
+            {"ts_code": "000001.SZ", "pct_chg": -1.0},
+            {"ts_code": "830001.BJ", "pct_chg": 5.0},
+            {"ts_code": "830002.BJ", "pct_chg": 5.0},
+        ),
+    )
+    assert measure.project.adv_dec_ratio == pytest.approx(1.0)
+    assert measure.unfiltered.adv_dec_ratio == pytest.approx(3.0)
+    assert measure.compare.ratios_match is False
+    assert measure.compare.cutover_allowed is False
+
+
+def test_window_aggregate_never_allows_cutover_even_when_all_match() -> None:
+    m1 = measure_breadth_shadow_day(
+        _membership(("600000.SH", "000001.SZ")),
+        rows=(
+            {"ts_code": "600000.SH", "pct_chg": 1.0},
+            {"ts_code": "000001.SZ", "pct_chg": -1.0},
+        ),
+    )
+    # Force a second identical membership day via compare path: rebuild with
+    # same codes so unfiltered==project → match.
+    m2 = measure_breadth_shadow_day(
+        _membership(("600000.SH", "000001.SZ")),
+        rows=(
+            {"ts_code": "600000.SH", "pct_chg": 2.0},
+            {"ts_code": "000001.SZ", "pct_chg": -0.5},
+        ),
+    )
+    # Rewrite trade_date labels by reconstructing through compare-only path:
+    # aggregate uses measure.trade_date from project.observation_date (same day).
+    window = aggregate_breadth_shadow_window((m1, m2))
+    assert window.match_day_count == 2
+    assert window.diverge_day_count == 0
+    assert window.ratios_match_all is True
+    assert window.cutover_allowed is False
+    assert "match_alone_insufficient_for_cutover" in window.issues
+
+
+def test_window_aggregate_flags_divergence_and_keeps_cutover_false() -> None:
+    match = measure_breadth_shadow_day(
+        _membership(("600000.SH", "000001.SZ")),
+        rows=(
+            {"ts_code": "600000.SH", "pct_chg": 1.0},
+            {"ts_code": "000001.SZ", "pct_chg": -1.0},
+        ),
+    )
+    diverge = measure_breadth_shadow_day(
+        _membership(("600000.SH", "000001.SZ")),
+        rows=(
+            {"ts_code": "600000.SH", "pct_chg": 1.0},
+            {"ts_code": "000001.SZ", "pct_chg": -1.0},
+            {"ts_code": "830001.BJ", "pct_chg": 9.0},
+        ),
+    )
+    window = aggregate_breadth_shadow_window(
+        (match, diverge),
+        errors=({"trade_date": "20240103", "error": "incomplete_membership_bars"},),
+    )
+    assert window.match_day_count == 1
+    assert window.diverge_day_count == 1
+    assert window.error_day_count == 1
+    assert window.ratios_match_all is False
+    assert window.cutover_allowed is False
+    assert "window_ratios_diverge_or_errors" in window.issues

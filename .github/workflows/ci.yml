@@ -68,6 +68,7 @@ jobs:
             tests/services/test_institution_follow_b4.py \
             tests/services/test_margin_acceptance.py \
             tests/services/test_observation_population.py \
+            tests/services/test_project_universe_breadth.py \
             tests/services/test_population_scope.py \
             tests/services/test_sync_execution_policy.py \
             tests/services/test_runtime_limits.py \

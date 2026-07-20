@@ -1,0 +1,40 @@
+{
+  "artifact": "data/lineage/b_pit_breadth_shadow/manifest.json",
+  "cutover_allowed": false,
+  "frontier_compare": {
+    "cutover_allowed": false,
+    "issues": [
+      "breadth_shadow_compare_only",
+      "cutover_requires_accepted_live_partitions_and_gate",
+      "legacy_raw_ratio_diverges_from_project_universe"
+    ],
+    "legacy_adv_dec_ratio": 0.09638072385522896,
+    "project_adv_dec_ratio": 0.08444541675782105,
+    "ratio_delta": 0.011935307097407907,
+    "ratios_match": false,
+    "trade_date": "20260717"
+  },
+  "frontier_day": "20260717",
+  "generated_at": "2026-07-20T07:04:04.049376+00:00",
+  "kind": "b_pit_breadth_shadow_remeasure",
+  "window": {
+    "cutover_allowed": false,
+    "day_count": 120,
+    "diverge_day_count": 120,
+    "error_day_count": 0,
+    "frontier_day": "20260717",
+    "issues": [
+      "breadth_shadow_window_remeasure_only",
+      "cutover_requires_accepted_live_partitions_and_gate",
+      "match_alone_insufficient_for_cutover",
+      "window_ratios_diverge_or_errors"
+    ],
+    "kind": "b_pit_breadth_shadow_window",
+    "match_day_count": 0,
+    "max_abs_ratio_delta": 1.8779466396487656,
+    "mean_abs_ratio_delta": 0.0708921613600321,
+    "ratios_match_all": false,
+    "window_end": "20260717",
+    "window_start": "20260116"
+  }
+}

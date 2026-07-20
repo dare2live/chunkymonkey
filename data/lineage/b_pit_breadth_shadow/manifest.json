@@ -1,0 +1,4395 @@
+{
+  "cutover_allowed": false,
+  "cutover_note": "shadow remeasure never enables mart cutover; requires MATCH + separate explicit gate evidence",
+  "days": [
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.7975109317188026,
+        "project_adv_dec_ratio": 0.7970642201834862,
+        "ratio_delta": 0.00044671153531639085,
+        "ratios_match": false,
+        "trade_date": "20260116"
+      },
+      "project": {
+        "adv_dec_ratio": 0.7970642201834862,
+        "adv_n": 2172,
+        "dec_n": 2725,
+        "flat_n": 100,
+        "ignored_outside_membership": 463,
+        "nominal_kline_content_hash": "5081c7a5fe06bf8d1debce9ea311aca61427293c33c1327189c63782a6251835",
+        "observation_date": "20260116",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4997,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260116",
+      "unfiltered": {
+        "adv_dec_ratio": 0.7975109317188026,
+        "adv_n": 2371,
+        "dec_n": 2973,
+        "flat_n": 116,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5460
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.9294310722100656,
+        "project_adv_dec_ratio": 2.0751408891671885,
+        "ratio_delta": -0.14570981695712293,
+        "ratios_match": false,
+        "trade_date": "20260119"
+      },
+      "project": {
+        "adv_dec_ratio": 2.0751408891671885,
+        "adv_n": 3314,
+        "dec_n": 1597,
+        "flat_n": 88,
+        "ignored_outside_membership": 462,
+        "nominal_kline_content_hash": "cf0bec002694b14d789b517891d0b2389c72f4c7c12435932a68b3401a3ac909",
+        "observation_date": "20260119",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4999,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260119",
+      "unfiltered": {
+        "adv_dec_ratio": 1.9294310722100656,
+        "adv_n": 3527,
+        "dec_n": 1828,
+        "flat_n": 106,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5461
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.7198581560283688,
+        "project_adv_dec_ratio": 0.7352732434350603,
+        "ratio_delta": -0.015415087406691508,
+        "ratios_match": false,
+        "trade_date": "20260120"
+      },
+      "project": {
+        "adv_dec_ratio": 0.7352732434350603,
+        "adv_n": 2072,
+        "dec_n": 2818,
+        "flat_n": 113,
+        "ignored_outside_membership": 464,
+        "nominal_kline_content_hash": "de53c2d39ae66ee7e5cac8ff341a72c22bf09e01562d522348477f2ae651982b",
+        "observation_date": "20260120",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5003,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260120",
+      "unfiltered": {
+        "adv_dec_ratio": 0.7198581560283688,
+        "adv_n": 2233,
+        "dec_n": 3102,
+        "flat_n": 132,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5467
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.409194355939918,
+        "project_adv_dec_ratio": 1.4521518987341773,
+        "ratio_delta": -0.04295754279425923,
+        "ratios_match": false,
+        "trade_date": "20260121"
+      },
+      "project": {
+        "adv_dec_ratio": 1.4521518987341773,
+        "adv_n": 2868,
+        "dec_n": 1975,
+        "flat_n": 158,
+        "ignored_outside_membership": 464,
+        "nominal_kline_content_hash": "929dcc5a17e6c70785b00f91db6915ac83faddb14c89c89d16e8e15af8ab8b21",
+        "observation_date": "20260121",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5001,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260121",
+      "unfiltered": {
+        "adv_dec_ratio": 1.409194355939918,
+        "adv_n": 3096,
+        "dec_n": 2197,
+        "flat_n": 172,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5465
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 2.0129431626336522,
+        "project_adv_dec_ratio": 1.9637023593466425,
+        "ratio_delta": 0.04924080328700975,
+        "ratios_match": false,
+        "trade_date": "20260122"
+      },
+      "project": {
+        "adv_dec_ratio": 1.9637023593466425,
+        "adv_n": 3246,
+        "dec_n": 1653,
+        "flat_n": 101,
+        "ignored_outside_membership": 466,
+        "nominal_kline_content_hash": "5659d78e8bdf18b59db37a972d30ad5e3a04d54828a337d305b78a28d317af0f",
+        "observation_date": "20260122",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5000,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260122",
+      "unfiltered": {
+        "adv_dec_ratio": 2.0129431626336522,
+        "adv_n": 3577,
+        "dec_n": 1777,
+        "flat_n": 112,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5466
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 2.835251798561151,
+        "project_adv_dec_ratio": 2.8064012490241996,
+        "ratio_delta": 0.02885054953695132,
+        "ratios_match": false,
+        "trade_date": "20260123"
+      },
+      "project": {
+        "adv_dec_ratio": 2.8064012490241996,
+        "adv_n": 3595,
+        "dec_n": 1281,
+        "flat_n": 125,
+        "ignored_outside_membership": 466,
+        "nominal_kline_content_hash": "5eebff661fabe209f155a2f0598f4d010d7ee9f8933bd3168711395e84d7335d",
+        "observation_date": "20260123",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5001,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260123",
+      "unfiltered": {
+        "adv_dec_ratio": 2.835251798561151,
+        "adv_n": 3941,
+        "dec_n": 1390,
+        "flat_n": 136,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5467
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.4253513656854946,
+        "project_adv_dec_ratio": 0.4247608002319513,
+        "ratio_delta": 0.0005905654535433014,
+        "ratios_match": false,
+        "trade_date": "20260126"
+      },
+      "project": {
+        "adv_dec_ratio": 0.4247608002319513,
+        "adv_n": 1465,
+        "dec_n": 3449,
+        "flat_n": 84,
+        "ignored_outside_membership": 465,
+        "nominal_kline_content_hash": "82d60ecfbee2fe2a93789a5e68958f57e21c6145bfa6cf9c911b0a6b9574feff",
+        "observation_date": "20260126",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4998,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260126",
+      "unfiltered": {
+        "adv_dec_ratio": 0.4253513656854946,
+        "adv_n": 1604,
+        "dec_n": 3771,
+        "flat_n": 88,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5463
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.5581933989577301,
+        "project_adv_dec_ratio": 0.5723411050782498,
+        "ratio_delta": -0.014147706120519632,
+        "ratios_match": false,
+        "trade_date": "20260127"
+      },
+      "project": {
+        "adv_dec_ratio": 0.5723411050782498,
+        "adv_n": 1792,
+        "dec_n": 3131,
+        "flat_n": 75,
+        "ignored_outside_membership": 465,
+        "nominal_kline_content_hash": "f3ea2430e7e4335e8021e0491481a09c93fe2a06bb43f13a197a5f465463a86a",
+        "observation_date": "20260127",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4998,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260127",
+      "unfiltered": {
+        "adv_dec_ratio": 0.5581933989577301,
+        "adv_n": 1928,
+        "dec_n": 3454,
+        "flat_n": 81,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5463
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.47774725274725277,
+        "project_adv_dec_ratio": 0.48118036735922914,
+        "ratio_delta": -0.0034331146119763734,
+        "ratios_match": false,
+        "trade_date": "20260128"
+      },
+      "project": {
+        "adv_dec_ratio": 0.48118036735922914,
+        "adv_n": 1598,
+        "dec_n": 3321,
+        "flat_n": 79,
+        "ignored_outside_membership": 466,
+        "nominal_kline_content_hash": "d5595db737d22b90ea4973ec4e75a3c493c947a34e6ae190dd5d7e4c0e5696e7",
+        "observation_date": "20260128",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4998,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260128",
+      "unfiltered": {
+        "adv_dec_ratio": 0.47774725274725277,
+        "adv_n": 1739,
+        "dec_n": 3640,
+        "flat_n": 85,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5464
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.5056085249579361,
+        "project_adv_dec_ratio": 0.5173160173160173,
+        "ratio_delta": -0.011707492358081217,
+        "ratios_match": false,
+        "trade_date": "20260129"
+      },
+      "project": {
+        "adv_dec_ratio": 0.5173160173160173,
+        "adv_n": 1673,
+        "dec_n": 3234,
+        "flat_n": 92,
+        "ignored_outside_membership": 466,
+        "nominal_kline_content_hash": "5f9efa097971dc1524fa81d8dce46d119c335c223fa3235b264beb76a57b4dd1",
+        "observation_date": "20260129",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4999,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260129",
+      "unfiltered": {
+        "adv_dec_ratio": 0.5056085249579361,
+        "adv_n": 1803,
+        "dec_n": 3566,
+        "flat_n": 96,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5465
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.8470303867403315,
+        "project_adv_dec_ratio": 0.8616495629038389,
+        "ratio_delta": -0.014619176163507386,
+        "ratios_match": false,
+        "trade_date": "20260130"
+      },
+      "project": {
+        "adv_dec_ratio": 0.8616495629038389,
+        "adv_n": 2267,
+        "dec_n": 2631,
+        "flat_n": 100,
+        "ignored_outside_membership": 464,
+        "nominal_kline_content_hash": "ca51f9219f063258172541f21e36145a1039deb6bfc76bf63a7cd1358b1576f7",
+        "observation_date": "20260130",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4998,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260130",
+      "unfiltered": {
+        "adv_dec_ratio": 0.8470303867403315,
+        "adv_n": 2453,
+        "dec_n": 2896,
+        "flat_n": 113,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5462
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.16573516766981944,
+        "project_adv_dec_ratio": 0.16129032258064516,
+        "ratio_delta": 0.004444845089174282,
+        "ratios_match": false,
+        "trade_date": "20260202"
+      },
+      "project": {
+        "adv_dec_ratio": 0.16129032258064516,
+        "adv_n": 690,
+        "dec_n": 4278,
+        "flat_n": 32,
+        "ignored_outside_membership": 464,
+        "nominal_kline_content_hash": "88d11d79f3df200feb451c1875daaace4859fb12a0d94cb85b9c29eb4fdaa7c7",
+        "observation_date": "20260202",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5000,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260202",
+      "unfiltered": {
+        "adv_dec_ratio": 0.16573516766981944,
+        "adv_n": 771,
+        "dec_n": 4652,
+        "flat_n": 41,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5464
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 9.12781954887218,
+        "project_adv_dec_ratio": 9.745098039215685,
+        "ratio_delta": -0.6172784903435051,
+        "ratios_match": false,
+        "trade_date": "20260203"
+      },
+      "project": {
+        "adv_dec_ratio": 9.745098039215685,
+        "adv_n": 4473,
+        "dec_n": 459,
+        "flat_n": 69,
+        "ignored_outside_membership": 464,
+        "nominal_kline_content_hash": "3c56a8c3e67794236a25c41cfb4b5a6c193b3eb74f321958f9e64a0e6535588a",
+        "observation_date": "20260203",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5001,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260203",
+      "unfiltered": {
+        "adv_dec_ratio": 9.12781954887218,
+        "adv_n": 4856,
+        "dec_n": 532,
+        "flat_n": 77,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5465
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.5276995305164318,
+        "project_adv_dec_ratio": 1.6102591221575886,
+        "ratio_delta": -0.08255959164115678,
+        "ratios_match": false,
+        "trade_date": "20260204"
+      },
+      "project": {
+        "adv_dec_ratio": 1.6102591221575886,
+        "adv_n": 3045,
+        "dec_n": 1891,
+        "flat_n": 67,
+        "ignored_outside_membership": 465,
+        "nominal_kline_content_hash": "05321842e379ff3ff91ad15c6dc9c7633addf81e8e3d0a39ac1194dbc030fc4d",
+        "observation_date": "20260204",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5003,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260204",
+      "unfiltered": {
+        "adv_dec_ratio": 1.5276995305164318,
+        "adv_n": 3254,
+        "dec_n": 2130,
+        "flat_n": 84,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5468
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.43506318902930896,
+        "project_adv_dec_ratio": 0.4465501924785312,
+        "ratio_delta": -0.011487003449222266,
+        "ratios_match": false,
+        "trade_date": "20260205"
+      },
+      "project": {
+        "adv_dec_ratio": 0.4465501924785312,
+        "adv_n": 1508,
+        "dec_n": 3377,
+        "flat_n": 118,
+        "ignored_outside_membership": 464,
+        "nominal_kline_content_hash": "500313d66faf92f399d1ae97befda0d033b345015f2eef3b89187e3b68181880",
+        "observation_date": "20260205",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5003,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260205",
+      "unfiltered": {
+        "adv_dec_ratio": 0.43506318902930896,
+        "adv_n": 1618,
+        "dec_n": 3719,
+        "flat_n": 130,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5467
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.0780392156862746,
+        "project_adv_dec_ratio": 1.0485027414592998,
+        "ratio_delta": 0.029536474226974807,
+        "ratios_match": false,
+        "trade_date": "20260206"
+      },
+      "project": {
+        "adv_dec_ratio": 1.0485027414592998,
+        "adv_n": 2486,
+        "dec_n": 2371,
+        "flat_n": 145,
+        "ignored_outside_membership": 464,
+        "nominal_kline_content_hash": "581def54cca96dbc4b858348071fee61ac3685b7836bca57b6ce02b744256984",
+        "observation_date": "20260206",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5002,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260206",
+      "unfiltered": {
+        "adv_dec_ratio": 1.0780392156862746,
+        "adv_n": 2749,
+        "dec_n": 2550,
+        "flat_n": 167,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5466
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 6.076416337285902,
+        "project_adv_dec_ratio": 6.431372549019608,
+        "ratio_delta": -0.35495621173370573,
+        "ratios_match": false,
+        "trade_date": "20260209"
+      },
+      "project": {
+        "adv_dec_ratio": 6.431372549019608,
+        "adv_n": 4264,
+        "dec_n": 663,
+        "flat_n": 74,
+        "ignored_outside_membership": 464,
+        "nominal_kline_content_hash": "5aa89cf61660ae30db6c826fbf8ffb1bac79bca1391bbae71e4e665e1dc464da",
+        "observation_date": "20260209",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5001,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260209",
+      "unfiltered": {
+        "adv_dec_ratio": 6.076416337285902,
+        "adv_n": 4612,
+        "dec_n": 759,
+        "flat_n": 94,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5465
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.7017263427109974,
+        "project_adv_dec_ratio": 0.7465091299677766,
+        "ratio_delta": -0.0447827872567792,
+        "ratios_match": false,
+        "trade_date": "20260210"
+      },
+      "project": {
+        "adv_dec_ratio": 0.7465091299677766,
+        "adv_n": 2085,
+        "dec_n": 2793,
+        "flat_n": 127,
+        "ignored_outside_membership": 465,
+        "nominal_kline_content_hash": "0fc08f35a4e071dfe04367f143b181fb5bb10293c6a3433627cfa67ea16dfa68",
+        "observation_date": "20260210",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5005,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260210",
+      "unfiltered": {
+        "adv_dec_ratio": 0.7017263427109974,
+        "adv_n": 2195,
+        "dec_n": 3128,
+        "flat_n": 147,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5470
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.6325208269052761,
+        "project_adv_dec_ratio": 0.6480978260869565,
+        "ratio_delta": -0.015576999181680429,
+        "ratios_match": false,
+        "trade_date": "20260211"
+      },
+      "project": {
+        "adv_dec_ratio": 0.6480978260869565,
+        "adv_n": 1908,
+        "dec_n": 2944,
+        "flat_n": 154,
+        "ignored_outside_membership": 464,
+        "nominal_kline_content_hash": "3901b7b2450012ac909984774f47eb54529b41f18bb81a36bebb43322f46336f",
+        "observation_date": "20260211",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5006,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260211",
+      "unfiltered": {
+        "adv_dec_ratio": 0.6325208269052761,
+        "adv_n": 2050,
+        "dec_n": 3241,
+        "flat_n": 179,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5470
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.6426829268292683,
+        "project_adv_dec_ratio": 0.6552649228705567,
+        "ratio_delta": -0.012581996041288401,
+        "ratios_match": false,
+        "trade_date": "20260212"
+      },
+      "project": {
+        "adv_dec_ratio": 0.6552649228705567,
+        "adv_n": 1954,
+        "dec_n": 2982,
+        "flat_n": 71,
+        "ignored_outside_membership": 469,
+        "nominal_kline_content_hash": "cdd04b9d185682e29aa12ae1177681499ffd8333a714a0461b4e620f05c5bfd3",
+        "observation_date": "20260212",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5007,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260212",
+      "unfiltered": {
+        "adv_dec_ratio": 0.6426829268292683,
+        "adv_n": 2108,
+        "dec_n": 3280,
+        "flat_n": 88,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5476
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.40219378427787933,
+        "project_adv_dec_ratio": 0.37374301675977656,
+        "ratio_delta": 0.02845076751810277,
+        "ratios_match": false,
+        "trade_date": "20260213"
+      },
+      "project": {
+        "adv_dec_ratio": 0.37374301675977656,
+        "adv_n": 1338,
+        "dec_n": 3580,
+        "flat_n": 87,
+        "ignored_outside_membership": 469,
+        "nominal_kline_content_hash": "6af0979e3962575362fcf95dfeb1f053994ffba7b0aff6435cd2f693bdf4d667",
+        "observation_date": "20260213",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5005,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260213",
+      "unfiltered": {
+        "adv_dec_ratio": 0.40219378427787933,
+        "adv_n": 1540,
+        "dec_n": 3829,
+        "flat_n": 105,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5474
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 2.8778735632183907,
+        "project_adv_dec_ratio": 2.8168469860896446,
+        "ratio_delta": 0.06102657712874615,
+        "ratios_match": false,
+        "trade_date": "20260224"
+      },
+      "project": {
+        "adv_dec_ratio": 2.8168469860896446,
+        "adv_n": 3645,
+        "dec_n": 1294,
+        "flat_n": 67,
+        "ignored_outside_membership": 468,
+        "nominal_kline_content_hash": "f0967eb789affcc767f11577918dbff885ba02e21d68f41d22c0633d642d2c8d",
+        "observation_date": "20260224",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5006,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260224",
+      "unfiltered": {
+        "adv_dec_ratio": 2.8778735632183907,
+        "adv_n": 4006,
+        "dec_n": 1392,
+        "flat_n": 76,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5474
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 2.329397141081417,
+        "project_adv_dec_ratio": 2.263157894736842,
+        "ratio_delta": 0.0662392463445749,
+        "ratios_match": false,
+        "trade_date": "20260225"
+      },
+      "project": {
+        "adv_dec_ratio": 2.263157894736842,
+        "adv_n": 3397,
+        "dec_n": 1501,
+        "flat_n": 105,
+        "ignored_outside_membership": 468,
+        "nominal_kline_content_hash": "fffdb137b4a4f907c0fe3484070e20126114fd31e7a176e6277974cb67b6f971",
+        "observation_date": "20260225",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5003,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260225",
+      "unfiltered": {
+        "adv_dec_ratio": 2.329397141081417,
+        "adv_n": 3748,
+        "dec_n": 1609,
+        "flat_n": 114,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5471
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.8658536585365854,
+        "project_adv_dec_ratio": 0.8962446767324816,
+        "ratio_delta": -0.03039101819589629,
+        "ratios_match": false,
+        "trade_date": "20260226"
+      },
+      "project": {
+        "adv_dec_ratio": 0.8962446767324816,
+        "adv_n": 2315,
+        "dec_n": 2583,
+        "flat_n": 105,
+        "ignored_outside_membership": 468,
+        "nominal_kline_content_hash": "178399984d535f1dab013cbc290b620eef452ae9f6f12e01eb74f780c6984843",
+        "observation_date": "20260226",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5003,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260226",
+      "unfiltered": {
+        "adv_dec_ratio": 0.8658536585365854,
+        "adv_n": 2485,
+        "dec_n": 2870,
+        "flat_n": 116,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5471
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.5817214700193423,
+        "project_adv_dec_ratio": 1.655247417074497,
+        "ratio_delta": -0.0735259470551548,
+        "ratios_match": false,
+        "trade_date": "20260227"
+      },
+      "project": {
+        "adv_dec_ratio": 1.655247417074497,
+        "adv_n": 3044,
+        "dec_n": 1839,
+        "flat_n": 122,
+        "ignored_outside_membership": 466,
+        "nominal_kline_content_hash": "0155b4ce5747476ebee78c9ea2a9ad224551b99bcda59763368817f5e0a57d09",
+        "observation_date": "20260227",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5005,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260227",
+      "unfiltered": {
+        "adv_dec_ratio": 1.5817214700193423,
+        "adv_n": 3271,
+        "dec_n": 2068,
+        "flat_n": 132,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5471
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.2666978047641289,
+        "project_adv_dec_ratio": 0.2744795682343871,
+        "ratio_delta": -0.007781763470258163,
+        "ratios_match": false,
+        "trade_date": "20260302"
+      },
+      "project": {
+        "adv_dec_ratio": 0.2744795682343871,
+        "adv_n": 1068,
+        "dec_n": 3891,
+        "flat_n": 44,
+        "ignored_outside_membership": 467,
+        "nominal_kline_content_hash": "fd1ef38d71c4905a7a81009fe9fd23109b9df708f6c2d31d5910f1fbf0971aed",
+        "observation_date": "20260302",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5003,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260302",
+      "unfiltered": {
+        "adv_dec_ratio": 0.2666978047641289,
+        "adv_n": 1142,
+        "dec_n": 4282,
+        "flat_n": 46,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5470
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.133763261909715,
+        "project_adv_dec_ratio": 0.12072841726618705,
+        "ratio_delta": 0.013034844643527943,
+        "ratios_match": false,
+        "trade_date": "20260303"
+      },
+      "project": {
+        "adv_dec_ratio": 0.12072841726618705,
+        "adv_n": 537,
+        "dec_n": 4448,
+        "flat_n": 19,
+        "ignored_outside_membership": 468,
+        "nominal_kline_content_hash": "7e85e1220c07a86378c50829761e867b4ab46158feb87259789d2db9b6f8fb6e",
+        "observation_date": "20260303",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5004,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260303",
+      "unfiltered": {
+        "adv_dec_ratio": 0.133763261909715,
+        "adv_n": 643,
+        "dec_n": 4807,
+        "flat_n": 22,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5472
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.4793956043956044,
+        "project_adv_dec_ratio": 0.45869114598756294,
+        "ratio_delta": 0.02070445840804147,
+        "ratios_match": false,
+        "trade_date": "20260304"
+      },
+      "project": {
+        "adv_dec_ratio": 0.45869114598756294,
+        "adv_n": 1549,
+        "dec_n": 3377,
+        "flat_n": 78,
+        "ignored_outside_membership": 470,
+        "nominal_kline_content_hash": "5a8c7d034d1b178d76fb83e15f98014cd4a2580eaea6ef7a3f98054b95a96cb1",
+        "observation_date": "20260304",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5004,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260304",
+      "unfiltered": {
+        "adv_dec_ratio": 0.4793956043956044,
+        "adv_n": 1745,
+        "dec_n": 3640,
+        "flat_n": 89,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5474
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 3.1232771822358347,
+        "project_adv_dec_ratio": 3.1119465329991645,
+        "ratio_delta": 0.011330649236670265,
+        "ratios_match": false,
+        "trade_date": "20260305"
+      },
+      "project": {
+        "adv_dec_ratio": 3.1119465329991645,
+        "adv_n": 3725,
+        "dec_n": 1197,
+        "flat_n": 83,
+        "ignored_outside_membership": 471,
+        "nominal_kline_content_hash": "7737a7c876e6f0181ed20d069faf4fd91826c139cf7395fd833ab3c1e067701e",
+        "observation_date": "20260305",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5005,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260305",
+      "unfiltered": {
+        "adv_dec_ratio": 3.1232771822358347,
+        "adv_n": 4079,
+        "dec_n": 1306,
+        "flat_n": 91,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5476
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 3.6915077989601386,
+        "project_adv_dec_ratio": 3.8692232055063913,
+        "ratio_delta": -0.17771540654625273,
+        "ratios_match": false,
+        "trade_date": "20260306"
+      },
+      "project": {
+        "adv_dec_ratio": 3.8692232055063913,
+        "adv_n": 3935,
+        "dec_n": 1017,
+        "flat_n": 54,
+        "ignored_outside_membership": 471,
+        "nominal_kline_content_hash": "3928465384834444257da79841624aa2066a55919bbd820c52e566c011992be7",
+        "observation_date": "20260306",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5006,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260306",
+      "unfiltered": {
+        "adv_dec_ratio": 3.6915077989601386,
+        "adv_n": 4260,
+        "dec_n": 1154,
+        "flat_n": 63,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5477
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.3589808274470232,
+        "project_adv_dec_ratio": 0.3668425437378506,
+        "ratio_delta": -0.00786171629082738,
+        "ratios_match": false,
+        "trade_date": "20260309"
+      },
+      "project": {
+        "adv_dec_ratio": 0.3668425437378506,
+        "adv_n": 1321,
+        "dec_n": 3601,
+        "flat_n": 87,
+        "ignored_outside_membership": 472,
+        "nominal_kline_content_hash": "78cec65243fc8c623e052a16f5debc31126d0de91f22319e7746f3605cb7687e",
+        "observation_date": "20260309",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5009,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260309",
+      "unfiltered": {
+        "adv_dec_ratio": 0.3589808274470232,
+        "adv_n": 1423,
+        "dec_n": 3964,
+        "flat_n": 94,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5481
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 5.3364705882352945,
+        "project_adv_dec_ratio": 5.45740498034076,
+        "ratio_delta": -0.12093439210546553,
+        "ratios_match": false,
+        "trade_date": "20260310"
+      },
+      "project": {
+        "adv_dec_ratio": 5.45740498034076,
+        "adv_n": 4164,
+        "dec_n": 763,
+        "flat_n": 81,
+        "ignored_outside_membership": 471,
+        "nominal_kline_content_hash": "6ec2984c469a444e6f1cfd0e9df119ea13eedf9dcab5716db6edcdeda2681271",
+        "observation_date": "20260310",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5008,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260310",
+      "unfiltered": {
+        "adv_dec_ratio": 5.3364705882352945,
+        "adv_n": 4536,
+        "dec_n": 850,
+        "flat_n": 93,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5479
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.6272838002436053,
+        "project_adv_dec_ratio": 0.599803664921466,
+        "ratio_delta": 0.027480135322139332,
+        "ratios_match": false,
+        "trade_date": "20260311"
+      },
+      "project": {
+        "adv_dec_ratio": 0.599803664921466,
+        "adv_n": 1833,
+        "dec_n": 3056,
+        "flat_n": 121,
+        "ignored_outside_membership": 472,
+        "nominal_kline_content_hash": "2289a6f05f4c5d4d12d9bab41b0a86f999e9ff5f071dc2338c7f0a4866626841",
+        "observation_date": "20260311",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5010,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260311",
+      "unfiltered": {
+        "adv_dec_ratio": 0.6272838002436053,
+        "adv_n": 2060,
+        "dec_n": 3284,
+        "flat_n": 138,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5482
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.38376573336758285,
+        "project_adv_dec_ratio": 0.40250855188141393,
+        "ratio_delta": -0.018742818513831083,
+        "ratios_match": false,
+        "trade_date": "20260312"
+      },
+      "project": {
+        "adv_dec_ratio": 0.40250855188141393,
+        "adv_n": 1412,
+        "dec_n": 3508,
+        "flat_n": 90,
+        "ignored_outside_membership": 472,
+        "nominal_kline_content_hash": "301dce0261c1ab38582676f808b09515bac2fb51d3070e8ecb52360074e0bd68",
+        "observation_date": "20260312",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5010,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260312",
+      "unfiltered": {
+        "adv_dec_ratio": 0.38376573336758285,
+        "adv_n": 1494,
+        "dec_n": 3893,
+        "flat_n": 95,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5482
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.39237199582027166,
+        "project_adv_dec_ratio": 0.3905359179019384,
+        "ratio_delta": 0.0018360779183332343,
+        "ratios_match": false,
+        "trade_date": "20260313"
+      },
+      "project": {
+        "adv_dec_ratio": 0.3905359179019384,
+        "adv_n": 1370,
+        "dec_n": 3508,
+        "flat_n": 132,
+        "ignored_outside_membership": 471,
+        "nominal_kline_content_hash": "126839803ccf0336ba95c83a84c223dc3b9818910da01d089b8c6b682e07f28f",
+        "observation_date": "20260313",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5010,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260313",
+      "unfiltered": {
+        "adv_dec_ratio": 0.39237199582027166,
+        "adv_n": 1502,
+        "dec_n": 3828,
+        "flat_n": 151,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5481
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.1399358460304732,
+        "project_adv_dec_ratio": 1.193620844564241,
+        "ratio_delta": -0.053684998533767736,
+        "ratios_match": false,
+        "trade_date": "20260316"
+      },
+      "project": {
+        "adv_dec_ratio": 1.193620844564241,
+        "adv_n": 2657,
+        "dec_n": 2226,
+        "flat_n": 127,
+        "ignored_outside_membership": 470,
+        "nominal_kline_content_hash": "fbe325743a9b5fa6372bfc8bbcd550960ac4da0482df3d3e8f3670e23f7d5437",
+        "observation_date": "20260316",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5010,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260316",
+      "unfiltered": {
+        "adv_dec_ratio": 1.1399358460304732,
+        "adv_n": 2843,
+        "dec_n": 2494,
+        "flat_n": 143,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5480
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.19092710856639505,
+        "project_adv_dec_ratio": 0.18659942363112392,
+        "ratio_delta": 0.004327684935271137,
+        "ratios_match": false,
+        "trade_date": "20260317"
+      },
+      "project": {
+        "adv_dec_ratio": 0.18659942363112392,
+        "adv_n": 777,
+        "dec_n": 4164,
+        "flat_n": 67,
+        "ignored_outside_membership": 470,
+        "nominal_kline_content_hash": "a0ef0b62814fb466d8b24e4c293474e49b5a3142572b9eb20e963f7d1ccc2e53",
+        "observation_date": "20260317",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5008,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260317",
+      "unfiltered": {
+        "adv_dec_ratio": 0.19092710856639505,
+        "adv_n": 867,
+        "dec_n": 4541,
+        "flat_n": 70,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5478
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.9410158383397051,
+        "project_adv_dec_ratio": 2.095537397862979,
+        "ratio_delta": -0.15452155952327407,
+        "ratios_match": false,
+        "trade_date": "20260318"
+      },
+      "project": {
+        "adv_dec_ratio": 2.095537397862979,
+        "adv_n": 3334,
+        "dec_n": 1591,
+        "flat_n": 83,
+        "ignored_outside_membership": 471,
+        "nominal_kline_content_hash": "4985e3369ae2109f63dcfce400ab2f99b5ddf2e613fb971e3c77b7e58281003e",
+        "observation_date": "20260318",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5008,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260318",
+      "unfiltered": {
+        "adv_dec_ratio": 1.9410158383397051,
+        "adv_n": 3554,
+        "dec_n": 1831,
+        "flat_n": 94,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5479
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.10191725529767912,
+        "project_adv_dec_ratio": 0.10154525386313466,
+        "ratio_delta": 0.0003720014345444528,
+        "ratios_match": false,
+        "trade_date": "20260319"
+      },
+      "project": {
+        "adv_dec_ratio": 0.10154525386313466,
+        "adv_n": 460,
+        "dec_n": 4530,
+        "flat_n": 18,
+        "ignored_outside_membership": 471,
+        "nominal_kline_content_hash": "79aa078c5f6c134d976e9edb1529092af1e291ddb9e0426b2d39f3cad3a55c4f",
+        "observation_date": "20260319",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5008,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260319",
+      "unfiltered": {
+        "adv_dec_ratio": 0.10191725529767912,
+        "adv_n": 505,
+        "dec_n": 4955,
+        "flat_n": 19,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5479
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.13832010029251984,
+        "project_adv_dec_ratio": 0.1329243353783231,
+        "ratio_delta": 0.005395764914196743,
+        "ratios_match": false,
+        "trade_date": "20260320"
+      },
+      "project": {
+        "adv_dec_ratio": 0.1329243353783231,
+        "adv_n": 585,
+        "dec_n": 4401,
+        "flat_n": 23,
+        "ignored_outside_membership": 472,
+        "nominal_kline_content_hash": "0c77c9d5681b02e9a06829a39dee4bead04d95c561fdbebeda6f51922bf1df8a",
+        "observation_date": "20260320",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5009,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260320",
+      "unfiltered": {
+        "adv_dec_ratio": 0.13832010029251984,
+        "adv_n": 662,
+        "dec_n": 4786,
+        "flat_n": 33,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5481
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.05897138437741686,
+        "project_adv_dec_ratio": 0.05815182913935293,
+        "ratio_delta": 0.0008195552380639362,
+        "ratios_match": false,
+        "trade_date": "20260323"
+      },
+      "project": {
+        "adv_dec_ratio": 0.05815182913935293,
+        "adv_n": 275,
+        "dec_n": 4729,
+        "flat_n": 6,
+        "ignored_outside_membership": 473,
+        "nominal_kline_content_hash": "9bc461803a88474cf40657c7895368939fabc381cd1a113ca6e4535bf40d15cf",
+        "observation_date": "20260323",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5010,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260323",
+      "unfiltered": {
+        "adv_dec_ratio": 0.05897138437741686,
+        "adv_n": 305,
+        "dec_n": 5172,
+        "flat_n": 6,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5483
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 15.610942249240122,
+        "project_adv_dec_ratio": 17.488888888888887,
+        "ratio_delta": -1.8779466396487656,
+        "ratios_match": false,
+        "trade_date": "20260324"
+      },
+      "project": {
+        "adv_dec_ratio": 17.488888888888887,
+        "adv_n": 4722,
+        "dec_n": 270,
+        "flat_n": 15,
+        "ignored_outside_membership": 474,
+        "nominal_kline_content_hash": "7cad3497ee8044ba7f96dc3e4fdc53d645a90d716c1a02256e1dbcdba46fdf7f",
+        "observation_date": "20260324",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5007,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260324",
+      "unfiltered": {
+        "adv_dec_ratio": 15.610942249240122,
+        "adv_n": 5136,
+        "dec_n": 329,
+        "flat_n": 16,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5481
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 8.70357142857143,
+        "project_adv_dec_ratio": 8.991951710261569,
+        "ratio_delta": -0.28838028169013974,
+        "ratios_match": false,
+        "trade_date": "20260325"
+      },
+      "project": {
+        "adv_dec_ratio": 8.991951710261569,
+        "adv_n": 4469,
+        "dec_n": 497,
+        "flat_n": 43,
+        "ignored_outside_membership": 473,
+        "nominal_kline_content_hash": "2c6177ff3e0eef973e70a45db75a70091c5f90c74fbaae3323fd01c7ff25c4d4",
+        "observation_date": "20260325",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5009,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260325",
+      "unfiltered": {
+        "adv_dec_ratio": 8.70357142857143,
+        "adv_n": 4874,
+        "dec_n": 560,
+        "flat_n": 48,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5482
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.20387269085243712,
+        "project_adv_dec_ratio": 0.19902912621359223,
+        "ratio_delta": 0.004843564638844888,
+        "ratios_match": false,
+        "trade_date": "20260326"
+      },
+      "project": {
+        "adv_dec_ratio": 0.19902912621359223,
+        "adv_n": 820,
+        "dec_n": 4120,
+        "flat_n": 67,
+        "ignored_outside_membership": 474,
+        "nominal_kline_content_hash": "00772509af306293847962af92e5a0a2e8e336ca5e20f9eca7d63a29b32d7c08",
+        "observation_date": "20260326",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5007,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260326",
+      "unfiltered": {
+        "adv_dec_ratio": 0.20387269085243712,
+        "adv_n": 916,
+        "dec_n": 4493,
+        "flat_n": 72,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5481
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 4.041938490214353,
+        "project_adv_dec_ratio": 4.38411316648531,
+        "ratio_delta": -0.34217467627095743,
+        "ratios_match": false,
+        "trade_date": "20260327"
+      },
+      "project": {
+        "adv_dec_ratio": 4.38411316648531,
+        "adv_n": 4029,
+        "dec_n": 919,
+        "flat_n": 56,
+        "ignored_outside_membership": 474,
+        "nominal_kline_content_hash": "7c787875ab7e6bfb6bcf7f20afd604566b79e44e8816820ab485ba290c57405c",
+        "observation_date": "20260327",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5004,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260327",
+      "unfiltered": {
+        "adv_dec_ratio": 4.041938490214353,
+        "adv_n": 4337,
+        "dec_n": 1073,
+        "flat_n": 68,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5478
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.1639610389610389,
+        "project_adv_dec_ratio": 1.259619842373667,
+        "ratio_delta": -0.09565880341262822,
+        "ratios_match": false,
+        "trade_date": "20260330"
+      },
+      "project": {
+        "adv_dec_ratio": 1.259619842373667,
+        "adv_n": 2717,
+        "dec_n": 2157,
+        "flat_n": 128,
+        "ignored_outside_membership": 474,
+        "nominal_kline_content_hash": "b8eb91fd46491da45d8143406b045571a1ef4be9857ab81d18daa0c8f42202b3",
+        "observation_date": "20260330",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5002,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260330",
+      "unfiltered": {
+        "adv_dec_ratio": 1.1639610389610389,
+        "adv_n": 2868,
+        "dec_n": 2464,
+        "flat_n": 144,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5476
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.23092736409319323,
+        "project_adv_dec_ratio": 0.21349421324796847,
+        "ratio_delta": 0.01743315084522476,
+        "ratios_match": false,
+        "trade_date": "20260331"
+      },
+      "project": {
+        "adv_dec_ratio": 0.21349421324796847,
+        "adv_n": 867,
+        "dec_n": 4061,
+        "flat_n": 78,
+        "ignored_outside_membership": 476,
+        "nominal_kline_content_hash": "2a1442b67151ebb92040d163621f963fbeefc0bd23bbbc1039a62c4c60713ae3",
+        "observation_date": "20260331",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5006,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260331",
+      "unfiltered": {
+        "adv_dec_ratio": 0.23092736409319323,
+        "adv_n": 1011,
+        "dec_n": 4378,
+        "flat_n": 93,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5482
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 5.067643742953777,
+        "project_adv_dec_ratio": 5.147684605757196,
+        "ratio_delta": -0.08004086280341927,
+        "ratios_match": false,
+        "trade_date": "20260401"
+      },
+      "project": {
+        "adv_dec_ratio": 5.147684605757196,
+        "adv_n": 4113,
+        "dec_n": 799,
+        "flat_n": 96,
+        "ignored_outside_membership": 477,
+        "nominal_kline_content_hash": "4c3f5178edea0e983c7ff8e33417d1cc89648ec81531686fcd926ec525f0885f",
+        "observation_date": "20260401",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5008,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260401",
+      "unfiltered": {
+        "adv_dec_ratio": 5.067643742953777,
+        "adv_n": 4495,
+        "dec_n": 887,
+        "flat_n": 103,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5485
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.24029237094563727,
+        "project_adv_dec_ratio": 0.21044921875,
+        "ratio_delta": 0.029843152195637268,
+        "ratios_match": false,
+        "trade_date": "20260402"
+      },
+      "project": {
+        "adv_dec_ratio": 0.21044921875,
+        "adv_n": 862,
+        "dec_n": 4096,
+        "flat_n": 50,
+        "ignored_outside_membership": 477,
+        "nominal_kline_content_hash": "45a512eea66589de778da7620b4413f0510aa4c65458c5692b1992551cabceda",
+        "observation_date": "20260402",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5008,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260402",
+      "unfiltered": {
+        "adv_dec_ratio": 0.24029237094563727,
+        "adv_n": 1052,
+        "dec_n": 4378,
+        "flat_n": 55,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5485
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.15086388537715972,
+        "project_adv_dec_ratio": 0.15520037062775074,
+        "ratio_delta": -0.004336485250591021,
+        "ratios_match": false,
+        "trade_date": "20260403"
+      },
+      "project": {
+        "adv_dec_ratio": 0.15520037062775074,
+        "adv_n": 670,
+        "dec_n": 4317,
+        "flat_n": 21,
+        "ignored_outside_membership": 478,
+        "nominal_kline_content_hash": "8b218234c97eaa03933a4dafb7c239b1a02b14432d31a48062a0896dd46627f7",
+        "observation_date": "20260403",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5008,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260403",
+      "unfiltered": {
+        "adv_dec_ratio": 0.15086388537715972,
+        "adv_n": 716,
+        "dec_n": 4746,
+        "flat_n": 24,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5486
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 2.7889200561009817,
+        "project_adv_dec_ratio": 3.010551948051948,
+        "ratio_delta": -0.22163189195096633,
+        "ratios_match": false,
+        "trade_date": "20260407"
+      },
+      "project": {
+        "adv_dec_ratio": 3.010551948051948,
+        "adv_n": 3709,
+        "dec_n": 1232,
+        "flat_n": 66,
+        "ignored_outside_membership": 477,
+        "nominal_kline_content_hash": "9319490aaf56215cb7fd2d3745a1acef0f99703efcf5234822a4e771a8ba6755",
+        "observation_date": "20260407",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5007,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260407",
+      "unfiltered": {
+        "adv_dec_ratio": 2.7889200561009817,
+        "adv_n": 3977,
+        "dec_n": 1426,
+        "flat_n": 81,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5484
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 17.18936877076412,
+        "project_adv_dec_ratio": 17.711610486891384,
+        "ratio_delta": -0.5222417161272652,
+        "ratios_match": false,
+        "trade_date": "20260408"
+      },
+      "project": {
+        "adv_dec_ratio": 17.711610486891384,
+        "adv_n": 4729,
+        "dec_n": 267,
+        "flat_n": 14,
+        "ignored_outside_membership": 480,
+        "nominal_kline_content_hash": "eded07ec10df7da9ab9d4e05d4d7442f2d944a09c3bac5808e674a6b95da68fb",
+        "observation_date": "20260408",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5010,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260408",
+      "unfiltered": {
+        "adv_dec_ratio": 17.18936877076412,
+        "adv_n": 5174,
+        "dec_n": 301,
+        "flat_n": 15,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5490
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.26517794836008374,
+        "project_adv_dec_ratio": 0.2686414708886619,
+        "ratio_delta": -0.003463522528578178,
+        "ratios_match": false,
+        "trade_date": "20260409"
+      },
+      "project": {
+        "adv_dec_ratio": 0.2686414708886619,
+        "adv_n": 1052,
+        "dec_n": 3916,
+        "flat_n": 43,
+        "ignored_outside_membership": 480,
+        "nominal_kline_content_hash": "c3d258f09589301e04d2732cd2300cea2321e5eb92bb7228be7633f879e5186d",
+        "observation_date": "20260409",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5011,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260409",
+      "unfiltered": {
+        "adv_dec_ratio": 0.26517794836008374,
+        "adv_n": 1140,
+        "dec_n": 4299,
+        "flat_n": 52,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5491
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 2.8468146027201144,
+        "project_adv_dec_ratio": 2.722095671981777,
+        "ratio_delta": 0.12471893073833762,
+        "ratios_match": false,
+        "trade_date": "20260410"
+      },
+      "project": {
+        "adv_dec_ratio": 2.722095671981777,
+        "adv_n": 3585,
+        "dec_n": 1317,
+        "flat_n": 112,
+        "ignored_outside_membership": 481,
+        "nominal_kline_content_hash": "aa402a7a4853557c4e3e2ce5c73e34826455ad56c057b9c990696585650a0442",
+        "observation_date": "20260410",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5014,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260410",
+      "unfiltered": {
+        "adv_dec_ratio": 2.8468146027201144,
+        "adv_n": 3977,
+        "dec_n": 1397,
+        "flat_n": 121,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5495
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.8033783783783783,
+        "project_adv_dec_ratio": 0.8181478715459298,
+        "ratio_delta": -0.014769493167551495,
+        "ratios_match": false,
+        "trade_date": "20260413"
+      },
+      "project": {
+        "adv_dec_ratio": 0.8181478715459298,
+        "adv_n": 2191,
+        "dec_n": 2678,
+        "flat_n": 144,
+        "ignored_outside_membership": 481,
+        "nominal_kline_content_hash": "04c1a78e9dfdd0e256bd8aa279c963c2114cad7562f0d0e7d2ed4f77fbe7b919",
+        "observation_date": "20260413",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5013,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260413",
+      "unfiltered": {
+        "adv_dec_ratio": 0.8033783783783783,
+        "adv_n": 2378,
+        "dec_n": 2960,
+        "flat_n": 156,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5494
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 2.335633626097867,
+        "project_adv_dec_ratio": 2.377345378735233,
+        "ratio_delta": -0.04171175263736604,
+        "ratios_match": false,
+        "trade_date": "20260414"
+      },
+      "project": {
+        "adv_dec_ratio": 2.377345378735233,
+        "adv_n": 3421,
+        "dec_n": 1439,
+        "flat_n": 154,
+        "ignored_outside_membership": 482,
+        "nominal_kline_content_hash": "e82d0d285b028d6bb33b798ee1f44aaeddc9bc5bbb5d3d7897aac1d61e5250c1",
+        "observation_date": "20260414",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5014,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260414",
+      "unfiltered": {
+        "adv_dec_ratio": 2.335633626097867,
+        "adv_n": 3723,
+        "dec_n": 1594,
+        "flat_n": 179,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5496
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.519909630048009,
+        "project_adv_dec_ratio": 0.49695863746958635,
+        "ratio_delta": 0.022950992578422702,
+        "ratios_match": false,
+        "trade_date": "20260415"
+      },
+      "project": {
+        "adv_dec_ratio": 0.49695863746958635,
+        "adv_n": 1634,
+        "dec_n": 3288,
+        "flat_n": 91,
+        "ignored_outside_membership": 481,
+        "nominal_kline_content_hash": "1e325af0ec3d9f440399a831d10cb4eee21f19e7067266ea9777221f5caf23aa",
+        "observation_date": "20260415",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5013,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260415",
+      "unfiltered": {
+        "adv_dec_ratio": 0.519909630048009,
+        "adv_n": 1841,
+        "dec_n": 3541,
+        "flat_n": 112,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5494
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 4.004664179104478,
+        "project_adv_dec_ratio": 4.1210855949895615,
+        "ratio_delta": -0.11642141588508359,
+        "ratios_match": false,
+        "trade_date": "20260416"
+      },
+      "project": {
+        "adv_dec_ratio": 4.1210855949895615,
+        "adv_n": 3948,
+        "dec_n": 958,
+        "flat_n": 110,
+        "ignored_outside_membership": 482,
+        "nominal_kline_content_hash": "6ecbaa645e9eceb0c17b3ff8d47128e55f97fd269f6dde525deec4afac183fae",
+        "observation_date": "20260416",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5016,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260416",
+      "unfiltered": {
+        "adv_dec_ratio": 4.004664179104478,
+        "adv_n": 4293,
+        "dec_n": 1072,
+        "flat_n": 133,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5498
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.8024112525117214,
+        "project_adv_dec_ratio": 0.698961937716263,
+        "ratio_delta": 0.10344931479545838,
+        "ratios_match": false,
+        "trade_date": "20260417"
+      },
+      "project": {
+        "adv_dec_ratio": 0.698961937716263,
+        "adv_n": 2020,
+        "dec_n": 2890,
+        "flat_n": 108,
+        "ignored_outside_membership": 479,
+        "nominal_kline_content_hash": "4c0c6f2b270389836fd6a070bbd08ab353769546f8fb28b3f47d0ab8d1481836",
+        "observation_date": "20260417",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5018,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260417",
+      "unfiltered": {
+        "adv_dec_ratio": 0.8024112525117214,
+        "adv_n": 2396,
+        "dec_n": 2986,
+        "flat_n": 115,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5497
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.804004214963119,
+        "project_adv_dec_ratio": 1.7892016082711086,
+        "ratio_delta": 0.01480260669201039,
+        "ratios_match": false,
+        "trade_date": "20260420"
+      },
+      "project": {
+        "adv_dec_ratio": 1.7892016082711086,
+        "adv_n": 3115,
+        "dec_n": 1741,
+        "flat_n": 159,
+        "ignored_outside_membership": 478,
+        "nominal_kline_content_hash": "923565025262cb0d714f67cb8d8f827b00ff4d5e12d3b9678be613ea29a3379c",
+        "observation_date": "20260420",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5015,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260420",
+      "unfiltered": {
+        "adv_dec_ratio": 1.804004214963119,
+        "adv_n": 3424,
+        "dec_n": 1898,
+        "flat_n": 171,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5493
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.5678904428904429,
+        "project_adv_dec_ratio": 0.6026771139405811,
+        "ratio_delta": -0.03478667105013822,
+        "ratios_match": false,
+        "trade_date": "20260421"
+      },
+      "project": {
+        "adv_dec_ratio": 0.6026771139405811,
+        "adv_n": 1846,
+        "dec_n": 3063,
+        "flat_n": 109,
+        "ignored_outside_membership": 480,
+        "nominal_kline_content_hash": "ba0202fd37ec2b4ddfe6804aebc8993b01a0569d8c3190f38858a5e0c82fe707",
+        "observation_date": "20260421",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5018,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260421",
+      "unfiltered": {
+        "adv_dec_ratio": 0.5678904428904429,
+        "adv_n": 1949,
+        "dec_n": 3432,
+        "flat_n": 117,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5498
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.200164406083025,
+        "project_adv_dec_ratio": 1.1368006993006994,
+        "ratio_delta": 0.06336370678232561,
+        "ratios_match": false,
+        "trade_date": "20260422"
+      },
+      "project": {
+        "adv_dec_ratio": 1.1368006993006994,
+        "adv_n": 2601,
+        "dec_n": 2288,
+        "flat_n": 125,
+        "ignored_outside_membership": 483,
+        "nominal_kline_content_hash": "b1476cfe8ae60f2fbbadc5cc74f333b87dc20cbfbc450f61277f78eb170012de",
+        "observation_date": "20260422",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5014,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260422",
+      "unfiltered": {
+        "adv_dec_ratio": 1.200164406083025,
+        "adv_n": 2920,
+        "dec_n": 2433,
+        "flat_n": 144,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5497
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.3261402648357038,
+        "project_adv_dec_ratio": 0.34397163120567376,
+        "ratio_delta": -0.01783136636996996,
+        "ratios_match": false,
+        "trade_date": "20260423"
+      },
+      "project": {
+        "adv_dec_ratio": 0.34397163120567376,
+        "adv_n": 1261,
+        "dec_n": 3666,
+        "flat_n": 83,
+        "ignored_outside_membership": 484,
+        "nominal_kline_content_hash": "df25c2b5ed0b7c9d43fc628c001259065f828839ac98573347b37eb76d5bf44b",
+        "observation_date": "20260423",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5010,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260423",
+      "unfiltered": {
+        "adv_dec_ratio": 0.3261402648357038,
+        "adv_n": 1330,
+        "dec_n": 4078,
+        "flat_n": 86,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5494
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.6073985680190931,
+        "project_adv_dec_ratio": 0.635,
+        "ratio_delta": -0.02760143198090692,
+        "ratios_match": false,
+        "trade_date": "20260424"
+      },
+      "project": {
+        "adv_dec_ratio": 0.635,
+        "adv_n": 1905,
+        "dec_n": 3000,
+        "flat_n": 103,
+        "ignored_outside_membership": 488,
+        "nominal_kline_content_hash": "44eed4ecb6c9e58028ca040dc051b4d9f3f55975b789b9e5e34db769646b8218",
+        "observation_date": "20260424",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5008,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260424",
+      "unfiltered": {
+        "adv_dec_ratio": 0.6073985680190931,
+        "adv_n": 2036,
+        "dec_n": 3352,
+        "flat_n": 108,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5496
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.5600950118764845,
+        "project_adv_dec_ratio": 1.7050716648291069,
+        "ratio_delta": -0.1449766529526224,
+        "ratios_match": false,
+        "trade_date": "20260427"
+      },
+      "project": {
+        "adv_dec_ratio": 1.7050716648291069,
+        "adv_n": 3093,
+        "dec_n": 1814,
+        "flat_n": 94,
+        "ignored_outside_membership": 494,
+        "nominal_kline_content_hash": "e5041aba020ab53ea53f5dfef136f978111a71dc9634b0f87566f4fe85f7e772",
+        "observation_date": "20260427",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 5001,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260427",
+      "unfiltered": {
+        "adv_dec_ratio": 1.5600950118764845,
+        "adv_n": 3284,
+        "dec_n": 2105,
+        "flat_n": 106,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5495
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.46116241173275396,
+        "project_adv_dec_ratio": 0.48314606741573035,
+        "ratio_delta": -0.02198365568297639,
+        "ratios_match": false,
+        "trade_date": "20260428"
+      },
+      "project": {
+        "adv_dec_ratio": 0.48314606741573035,
+        "adv_n": 1591,
+        "dec_n": 3293,
+        "flat_n": 107,
+        "ignored_outside_membership": 497,
+        "nominal_kline_content_hash": "a4001b425a44646d2405b81dd2e7d335418ab33248edea0f9ee0a5ed4cf1641c",
+        "observation_date": "20260428",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4991,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260428",
+      "unfiltered": {
+        "adv_dec_ratio": 0.46116241173275396,
+        "adv_n": 1698,
+        "dec_n": 3682,
+        "flat_n": 108,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5488
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 2.8317890235210266,
+        "project_adv_dec_ratio": 2.8892430278884462,
+        "ratio_delta": -0.05745400436741965,
+        "ratios_match": false,
+        "trade_date": "20260429"
+      },
+      "project": {
+        "adv_dec_ratio": 2.8892430278884462,
+        "adv_n": 3626,
+        "dec_n": 1255,
+        "flat_n": 79,
+        "ignored_outside_membership": 502,
+        "nominal_kline_content_hash": "c29f2771683bdcb30859e71adc2bac027461f776f6685d62557df93313dc0713",
+        "observation_date": "20260429",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4960,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260429",
+      "unfiltered": {
+        "adv_dec_ratio": 2.8317890235210266,
+        "adv_n": 3973,
+        "dec_n": 1403,
+        "flat_n": 86,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5462
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.169443315725315,
+        "project_adv_dec_ratio": 1.1489077128845298,
+        "ratio_delta": 0.02053560284078526,
+        "ratios_match": false,
+        "trade_date": "20260430"
+      },
+      "project": {
+        "adv_dec_ratio": 1.1489077128845298,
+        "adv_n": 2577,
+        "dec_n": 2243,
+        "flat_n": 113,
+        "ignored_outside_membership": 527,
+        "nominal_kline_content_hash": "39f131f72d1ea0224c53adae97bdf877e62ca4f272338f32738861179baeea0d",
+        "observation_date": "20260430",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4933,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260430",
+      "unfiltered": {
+        "adv_dec_ratio": 1.169443315725315,
+        "adv_n": 2878,
+        "dec_n": 2461,
+        "flat_n": 121,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5460
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 2.6241565452091766,
+        "project_adv_dec_ratio": 2.829635499207607,
+        "ratio_delta": -0.2054789539984303,
+        "ratios_match": false,
+        "trade_date": "20260506"
+      },
+      "project": {
+        "adv_dec_ratio": 2.829635499207607,
+        "adv_n": 3571,
+        "dec_n": 1262,
+        "flat_n": 99,
+        "ignored_outside_membership": 558,
+        "nominal_kline_content_hash": "e4a96580d4bc6ce6842cf89e01c734833a810b8430f95e9aaf97df45ef4b544c",
+        "observation_date": "20260506",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4932,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260506",
+      "unfiltered": {
+        "adv_dec_ratio": 2.6241565452091766,
+        "adv_n": 3889,
+        "dec_n": 1482,
+        "flat_n": 119,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5490
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.9213973799126638,
+        "project_adv_dec_ratio": 1.8726076555023923,
+        "ratio_delta": 0.04878972441027152,
+        "ratios_match": false,
+        "trade_date": "20260507"
+      },
+      "project": {
+        "adv_dec_ratio": 1.8726076555023923,
+        "adv_n": 3131,
+        "dec_n": 1672,
+        "flat_n": 131,
+        "ignored_outside_membership": 559,
+        "nominal_kline_content_hash": "ff7de26e1153072b1e1292fab5030ef490b30b6e25e02975712a165cc1748a24",
+        "observation_date": "20260507",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4934,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260507",
+      "unfiltered": {
+        "adv_dec_ratio": 1.9213973799126638,
+        "adv_n": 3520,
+        "dec_n": 1832,
+        "flat_n": 141,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5493
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 2.1047453703703702,
+        "project_adv_dec_ratio": 1.9802102659245517,
+        "ratio_delta": 0.1245351044458185,
+        "ratios_match": false,
+        "trade_date": "20260508"
+      },
+      "project": {
+        "adv_dec_ratio": 1.9802102659245517,
+        "adv_n": 3202,
+        "dec_n": 1617,
+        "flat_n": 115,
+        "ignored_outside_membership": 557,
+        "nominal_kline_content_hash": "2259ea89d20465c8c211a6796484d4a536c63a92d2a27de418b8f2902cc54e74",
+        "observation_date": "20260508",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4934,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260508",
+      "unfiltered": {
+        "adv_dec_ratio": 2.1047453703703702,
+        "adv_n": 3637,
+        "dec_n": 1728,
+        "flat_n": 126,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5491
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.3939258597588209,
+        "project_adv_dec_ratio": 1.5241090146750524,
+        "ratio_delta": -0.13018315491623156,
+        "ratios_match": false,
+        "trade_date": "20260511"
+      },
+      "project": {
+        "adv_dec_ratio": 1.5241090146750524,
+        "adv_n": 2908,
+        "dec_n": 1908,
+        "flat_n": 118,
+        "ignored_outside_membership": 557,
+        "nominal_kline_content_hash": "c95f97c3bb4521995762df88e21f478c09d1df9dd82c791557258c775a8995fe",
+        "observation_date": "20260511",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4934,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260511",
+      "unfiltered": {
+        "adv_dec_ratio": 1.3939258597588209,
+        "adv_n": 3121,
+        "dec_n": 2239,
+        "flat_n": 131,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5491
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.3406620553359684,
+        "project_adv_dec_ratio": 0.31244958322129607,
+        "ratio_delta": 0.028212472114672316,
+        "ratios_match": false,
+        "trade_date": "20260512"
+      },
+      "project": {
+        "adv_dec_ratio": 0.31244958322129607,
+        "adv_n": 1162,
+        "dec_n": 3719,
+        "flat_n": 52,
+        "ignored_outside_membership": 557,
+        "nominal_kline_content_hash": "379d1422dbafc980f405bd974e75e1739c7b9ec755968e88ba5335e48cf0fdfe",
+        "observation_date": "20260512",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4933,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260512",
+      "unfiltered": {
+        "adv_dec_ratio": 0.3406620553359684,
+        "adv_n": 1379,
+        "dec_n": 4048,
+        "flat_n": 63,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5490
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.506560449859419,
+        "project_adv_dec_ratio": 1.5254593175853017,
+        "ratio_delta": -0.018898867725882784,
+        "ratios_match": false,
+        "trade_date": "20260513"
+      },
+      "project": {
+        "adv_dec_ratio": 1.5254593175853017,
+        "adv_n": 2906,
+        "dec_n": 1905,
+        "flat_n": 127,
+        "ignored_outside_membership": 555,
+        "nominal_kline_content_hash": "48c059df42aa9b17e6c61a605137af4d048743be04046ff9960f7ed8af916edb",
+        "observation_date": "20260513",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4938,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260513",
+      "unfiltered": {
+        "adv_dec_ratio": 1.506560449859419,
+        "adv_n": 3215,
+        "dec_n": 2134,
+        "flat_n": 144,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5493
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.23865967631638932,
+        "project_adv_dec_ratio": 0.23465521596362718,
+        "ratio_delta": 0.00400446035276214,
+        "ratios_match": false,
+        "trade_date": "20260514"
+      },
+      "project": {
+        "adv_dec_ratio": 0.23465521596362718,
+        "adv_n": 929,
+        "dec_n": 3959,
+        "flat_n": 50,
+        "ignored_outside_membership": 555,
+        "nominal_kline_content_hash": "97f43e8cf7002e15ea1787539e2bacebb1f892d5aee9423973d9480e370e17ef",
+        "observation_date": "20260514",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4938,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260514",
+      "unfiltered": {
+        "adv_dec_ratio": 0.23865967631638932,
+        "adv_n": 1047,
+        "dec_n": 4387,
+        "flat_n": 59,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5493
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.5066964285714286,
+        "project_adv_dec_ratio": 0.48743872549019607,
+        "ratio_delta": 0.019257703081232536,
+        "ratios_match": false,
+        "trade_date": "20260515"
+      },
+      "project": {
+        "adv_dec_ratio": 0.48743872549019607,
+        "adv_n": 1591,
+        "dec_n": 3264,
+        "flat_n": 85,
+        "ignored_outside_membership": 555,
+        "nominal_kline_content_hash": "51279f5dd12caf7d9b5a4c62f10e2dc5dba2983ca6f180e3d7f2baf4495ff4a0",
+        "observation_date": "20260515",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4940,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260515",
+      "unfiltered": {
+        "adv_dec_ratio": 0.5066964285714286,
+        "adv_n": 1816,
+        "dec_n": 3584,
+        "flat_n": 95,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5495
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.7908757908757909,
+        "project_adv_dec_ratio": 0.8613785136696188,
+        "ratio_delta": -0.07050272279382797,
+        "ratios_match": false,
+        "trade_date": "20260518"
+      },
+      "project": {
+        "adv_dec_ratio": 0.8613785136696188,
+        "adv_n": 2237,
+        "dec_n": 2597,
+        "flat_n": 109,
+        "ignored_outside_membership": 556,
+        "nominal_kline_content_hash": "be3a12a730989c0e83778e6d55cfb14711f3f9fc71409e8ce4fd07dbb746e8c8",
+        "observation_date": "20260518",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4943,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260518",
+      "unfiltered": {
+        "adv_dec_ratio": 0.7908757908757909,
+        "adv_n": 2375,
+        "dec_n": 3003,
+        "flat_n": 121,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5499
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 2.0338218714768885,
+        "project_adv_dec_ratio": 1.949390243902439,
+        "ratio_delta": 0.08443162757444944,
+        "ratios_match": false,
+        "trade_date": "20260519"
+      },
+      "project": {
+        "adv_dec_ratio": 1.949390243902439,
+        "adv_n": 3197,
+        "dec_n": 1640,
+        "flat_n": 106,
+        "ignored_outside_membership": 551,
+        "nominal_kline_content_hash": "3e62deac7166ed9ac91e904cb78be3dffd4773e30218678571402415293e6d81",
+        "observation_date": "20260519",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4943,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260519",
+      "unfiltered": {
+        "adv_dec_ratio": 2.0338218714768885,
+        "adv_n": 3608,
+        "dec_n": 1774,
+        "flat_n": 112,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5494
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.4305993690851735,
+        "project_adv_dec_ratio": 0.4485511531638084,
+        "ratio_delta": -0.017951784078634903,
+        "ratios_match": false,
+        "trade_date": "20260520"
+      },
+      "project": {
+        "adv_dec_ratio": 0.4485511531638084,
+        "adv_n": 1517,
+        "dec_n": 3382,
+        "flat_n": 49,
+        "ignored_outside_membership": 550,
+        "nominal_kline_content_hash": "793c45a74aa5bea3e0f91940aaffaca149a04462746c486e34ee60ebfdbbc28f",
+        "observation_date": "20260520",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4948,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260520",
+      "unfiltered": {
+        "adv_dec_ratio": 0.4305993690851735,
+        "adv_n": 1638,
+        "dec_n": 3804,
+        "flat_n": 56,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5498
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.14561072700607583,
+        "project_adv_dec_ratio": 0.14922933208780945,
+        "ratio_delta": -0.003618605081733617,
+        "ratios_match": false,
+        "trade_date": "20260521"
+      },
+      "project": {
+        "adv_dec_ratio": 0.14922933208780945,
+        "adv_n": 639,
+        "dec_n": 4282,
+        "flat_n": 30,
+        "ignored_outside_membership": 550,
+        "nominal_kline_content_hash": "d7a3e9e5ad994833af7490de6feb39f41d5dbf7c3dfbe17e1ef33d7677ded21a",
+        "observation_date": "20260521",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4951,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260521",
+      "unfiltered": {
+        "adv_dec_ratio": 0.14561072700607583,
+        "adv_n": 695,
+        "dec_n": 4773,
+        "flat_n": 33,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5501
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 2.788805970149254,
+        "project_adv_dec_ratio": 2.809897879025923,
+        "ratio_delta": -0.02109190887666923,
+        "ratios_match": false,
+        "trade_date": "20260522"
+      },
+      "project": {
+        "adv_dec_ratio": 2.809897879025923,
+        "adv_n": 3577,
+        "dec_n": 1273,
+        "flat_n": 104,
+        "ignored_outside_membership": 237,
+        "nominal_kline_content_hash": "6f6fa00296d62ccc110cc5212757c5f8250f3fd30f1ad2fe1455ec8bf12b8674",
+        "observation_date": "20260522",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4954,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260522",
+      "unfiltered": {
+        "adv_dec_ratio": 2.788805970149254,
+        "adv_n": 3737,
+        "dec_n": 1340,
+        "flat_n": 114,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5191
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.7127016129032258,
+        "project_adv_dec_ratio": 0.7160493827160493,
+        "ratio_delta": -0.0033477698128235867,
+        "ratios_match": false,
+        "trade_date": "20260525"
+      },
+      "project": {
+        "adv_dec_ratio": 0.7160493827160493,
+        "adv_n": 2030,
+        "dec_n": 2835,
+        "flat_n": 89,
+        "ignored_outside_membership": 237,
+        "nominal_kline_content_hash": "547c039c76661bdc8d7ebbdd81622ef003208fc38c369ff0c213a5a67930fa59",
+        "observation_date": "20260525",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4954,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260525",
+      "unfiltered": {
+        "adv_dec_ratio": 0.7127016129032258,
+        "adv_n": 2121,
+        "dec_n": 2976,
+        "flat_n": 94,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5191
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.34479139333508263,
+        "project_adv_dec_ratio": 0.3430296377607025,
+        "ratio_delta": 0.0017617555743801305,
+        "ratios_match": false,
+        "trade_date": "20260526"
+      },
+      "project": {
+        "adv_dec_ratio": 0.3430296377607025,
+        "adv_n": 1250,
+        "dec_n": 3644,
+        "flat_n": 60,
+        "ignored_outside_membership": 237,
+        "nominal_kline_content_hash": "aff775ba5eaa28b693590dd7d3a59362ba71f84667c6e41fa7b7a93f7f36319a",
+        "observation_date": "20260526",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4954,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260526",
+      "unfiltered": {
+        "adv_dec_ratio": 0.34479139333508263,
+        "adv_n": 1314,
+        "dec_n": 3811,
+        "flat_n": 66,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5191
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.22193211488250653,
+        "project_adv_dec_ratio": 0.21476178721303382,
+        "ratio_delta": 0.007170327669472704,
+        "ratios_match": false,
+        "trade_date": "20260527"
+      },
+      "project": {
+        "adv_dec_ratio": 0.21476178721303382,
+        "adv_n": 870,
+        "dec_n": 4051,
+        "flat_n": 34,
+        "ignored_outside_membership": 236,
+        "nominal_kline_content_hash": "ec52aa04d5fc32ac084bfbd3fa82e0aa224bbc5b82ed487175f14a942b8acad8",
+        "observation_date": "20260527",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4955,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260527",
+      "unfiltered": {
+        "adv_dec_ratio": 0.22193211488250653,
+        "adv_n": 935,
+        "dec_n": 4213,
+        "flat_n": 43,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5191
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.1839724256785868,
+        "project_adv_dec_ratio": 1.1414677276746241,
+        "ratio_delta": 0.042504698003962726,
+        "ratios_match": false,
+        "trade_date": "20260528"
+      },
+      "project": {
+        "adv_dec_ratio": 1.1414677276746241,
+        "adv_n": 2582,
+        "dec_n": 2262,
+        "flat_n": 111,
+        "ignored_outside_membership": 236,
+        "nominal_kline_content_hash": "6d0392ac14f3b76deb60c277ea19b8af9c1c77a08ed87874521b4d4e6d12ae2f",
+        "observation_date": "20260528",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4955,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260528",
+      "unfiltered": {
+        "adv_dec_ratio": 1.1839724256785868,
+        "adv_n": 2748,
+        "dec_n": 2321,
+        "flat_n": 122,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5191
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.3937908496732026,
+        "project_adv_dec_ratio": 0.3827683615819209,
+        "ratio_delta": 0.011022488091281701,
+        "ratios_match": false,
+        "trade_date": "20260529"
+      },
+      "project": {
+        "adv_dec_ratio": 0.3827683615819209,
+        "adv_n": 1355,
+        "dec_n": 3540,
+        "flat_n": 60,
+        "ignored_outside_membership": 235,
+        "nominal_kline_content_hash": "1ac327768c080401d892e5b2c2b7ebed4aac04d28c173454c4cf7b21f7f6d658",
+        "observation_date": "20260529",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4955,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260529",
+      "unfiltered": {
+        "adv_dec_ratio": 0.3937908496732026,
+        "adv_n": 1446,
+        "dec_n": 3672,
+        "flat_n": 72,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5190
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 2.1565377532228363,
+        "project_adv_dec_ratio": 2.0963476070528966,
+        "ratio_delta": 0.06019014616993967,
+        "ratios_match": false,
+        "trade_date": "20260601"
+      },
+      "project": {
+        "adv_dec_ratio": 2.0963476070528966,
+        "adv_n": 3329,
+        "dec_n": 1588,
+        "flat_n": 42,
+        "ignored_outside_membership": 233,
+        "nominal_kline_content_hash": "5577cb774e98bb574d0d93ba22f3d9924e45b61f577cf11a5b0884dc1eef13e0",
+        "observation_date": "20260601",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4959,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260601",
+      "unfiltered": {
+        "adv_dec_ratio": 2.1565377532228363,
+        "adv_n": 3513,
+        "dec_n": 1629,
+        "flat_n": 50,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5192
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.3669160876536611,
+        "project_adv_dec_ratio": 0.3441273326015368,
+        "ratio_delta": 0.022788755052124354,
+        "ratios_match": false,
+        "trade_date": "20260602"
+      },
+      "project": {
+        "adv_dec_ratio": 0.3441273326015368,
+        "adv_n": 1254,
+        "dec_n": 3644,
+        "flat_n": 64,
+        "ignored_outside_membership": 229,
+        "nominal_kline_content_hash": "7a70f08e388c8fa9ea49dd503eef406fabc6e4d7ef0fce76937a4aef99155104",
+        "observation_date": "20260602",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4962,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260602",
+      "unfiltered": {
+        "adv_dec_ratio": 0.3669160876536611,
+        "adv_n": 1373,
+        "dec_n": 3742,
+        "flat_n": 76,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5191
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.4718714121699196,
+        "project_adv_dec_ratio": 0.48439866707058465,
+        "ratio_delta": -0.01252725490066503,
+        "ratios_match": false,
+        "trade_date": "20260603"
+      },
+      "project": {
+        "adv_dec_ratio": 0.48439866707058465,
+        "adv_n": 1599,
+        "dec_n": 3301,
+        "flat_n": 66,
+        "ignored_outside_membership": 229,
+        "nominal_kline_content_hash": "a9727d4f368c101d18fccf4ba7f23b72f855089e49b50eaa080264b174746036",
+        "observation_date": "20260603",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4966,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260603",
+      "unfiltered": {
+        "adv_dec_ratio": 0.4718714121699196,
+        "adv_n": 1644,
+        "dec_n": 3484,
+        "flat_n": 67,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5195
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.33566796368352786,
+        "project_adv_dec_ratio": 0.3432469304229195,
+        "ratio_delta": -0.007578966739391624,
+        "ratios_match": false,
+        "trade_date": "20260604"
+      },
+      "project": {
+        "adv_dec_ratio": 0.3432469304229195,
+        "adv_n": 1258,
+        "dec_n": 3665,
+        "flat_n": 43,
+        "ignored_outside_membership": 229,
+        "nominal_kline_content_hash": "f52882161e6fe77ac716d2a8267c4c6cc318851b5f945d3f8e02dda9c8129176",
+        "observation_date": "20260604",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4966,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260604",
+      "unfiltered": {
+        "adv_dec_ratio": 0.33566796368352786,
+        "adv_n": 1294,
+        "dec_n": 3855,
+        "flat_n": 46,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5195
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.4261119081779052,
+        "project_adv_dec_ratio": 1.456016177957533,
+        "ratio_delta": -0.02990426977962768,
+        "ratios_match": false,
+        "trade_date": "20260605"
+      },
+      "project": {
+        "adv_dec_ratio": 1.456016177957533,
+        "adv_n": 2880,
+        "dec_n": 1978,
+        "flat_n": 110,
+        "ignored_outside_membership": 229,
+        "nominal_kline_content_hash": "f4eed62bf01fe281b8f5aa7c96337514761a72c3f6f47b28ad017b23fefb487d",
+        "observation_date": "20260605",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4968,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260605",
+      "unfiltered": {
+        "adv_dec_ratio": 1.4261119081779052,
+        "adv_n": 2982,
+        "dec_n": 2091,
+        "flat_n": 124,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5197
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.14735209395080878,
+        "project_adv_dec_ratio": 0.1433518005540166,
+        "ratio_delta": 0.0040002933967921706,
+        "ratios_match": false,
+        "trade_date": "20260608"
+      },
+      "project": {
+        "adv_dec_ratio": 0.1433518005540166,
+        "adv_n": 621,
+        "dec_n": 4332,
+        "flat_n": 17,
+        "ignored_outside_membership": 228,
+        "nominal_kline_content_hash": "d2c1e29a9b979b86b576750ad55781849b1ee84564ecc48b24a654494d3da8e6",
+        "observation_date": "20260608",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4970,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260608",
+      "unfiltered": {
+        "adv_dec_ratio": 0.14735209395080878,
+        "adv_n": 665,
+        "dec_n": 4513,
+        "flat_n": 20,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5198
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.745928338762215,
+        "project_adv_dec_ratio": 1.8069565217391304,
+        "ratio_delta": -0.06102818297691526,
+        "ratios_match": false,
+        "trade_date": "20260609"
+      },
+      "project": {
+        "adv_dec_ratio": 1.8069565217391304,
+        "adv_n": 3117,
+        "dec_n": 1725,
+        "flat_n": 127,
+        "ignored_outside_membership": 229,
+        "nominal_kline_content_hash": "96999f81db4c1abac75c927e536de5558e0fee4675eb0e019021287ac2180d8b",
+        "observation_date": "20260609",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4969,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260609",
+      "unfiltered": {
+        "adv_dec_ratio": 1.745928338762215,
+        "adv_n": 3216,
+        "dec_n": 1842,
+        "flat_n": 140,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5198
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.42171016102165465,
+        "project_adv_dec_ratio": 0.43438781487990624,
+        "ratio_delta": -0.012677653858251592,
+        "ratios_match": false,
+        "trade_date": "20260610"
+      },
+      "project": {
+        "adv_dec_ratio": 0.43438781487990624,
+        "adv_n": 1483,
+        "dec_n": 3414,
+        "flat_n": 71,
+        "ignored_outside_membership": 227,
+        "nominal_kline_content_hash": "d3731810ae18276c324bccc8fe92b004387cf7f162ff635907061e795cf5c749",
+        "observation_date": "20260610",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4968,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260610",
+      "unfiltered": {
+        "adv_dec_ratio": 0.42171016102165465,
+        "adv_n": 1519,
+        "dec_n": 3602,
+        "flat_n": 74,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5195
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.35727537768354095,
+        "project_adv_dec_ratio": 0.35827098919368244,
+        "ratio_delta": -0.000995611510141492,
+        "ratios_match": false,
+        "trade_date": "20260611"
+      },
+      "project": {
+        "adv_dec_ratio": 0.35827098919368244,
+        "adv_n": 1293,
+        "dec_n": 3609,
+        "flat_n": 67,
+        "ignored_outside_membership": 224,
+        "nominal_kline_content_hash": "d6ad77212b41b381d794c7626e12da526aafb59cfcf08515d5f26bcfb27f55a7",
+        "observation_date": "20260611",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4969,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260611",
+      "unfiltered": {
+        "adv_dec_ratio": 0.35727537768354095,
+        "adv_n": 1348,
+        "dec_n": 3773,
+        "flat_n": 72,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5193
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 2.624203821656051,
+        "project_adv_dec_ratio": 2.6567386448250185,
+        "ratio_delta": -0.03253482316896772,
+        "ratios_match": false,
+        "trade_date": "20260612"
+      },
+      "project": {
+        "adv_dec_ratio": 2.6567386448250185,
+        "adv_n": 3568,
+        "dec_n": 1343,
+        "flat_n": 60,
+        "ignored_outside_membership": 223,
+        "nominal_kline_content_hash": "5526597e09477c19bf66c50aa98923c8a6f967aba2bb2b87182624e4598116fb",
+        "observation_date": "20260612",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4971,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260612",
+      "unfiltered": {
+        "adv_dec_ratio": 2.624203821656051,
+        "adv_n": 3708,
+        "dec_n": 1413,
+        "flat_n": 73,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5194
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 2.6181299072091364,
+        "project_adv_dec_ratio": 2.6656626506024095,
+        "ratio_delta": -0.04753274339327307,
+        "ratios_match": false,
+        "trade_date": "20260615"
+      },
+      "project": {
+        "adv_dec_ratio": 2.6656626506024095,
+        "adv_n": 3540,
+        "dec_n": 1328,
+        "flat_n": 104,
+        "ignored_outside_membership": 217,
+        "nominal_kline_content_hash": "6b940d491bcb844845ac7f417be08edd70152b3bfbeaccd0f5f67f5eb3bca6c1",
+        "observation_date": "20260615",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4972,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260615",
+      "unfiltered": {
+        "adv_dec_ratio": 2.6181299072091364,
+        "adv_n": 3668,
+        "dec_n": 1401,
+        "flat_n": 120,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5189
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.0640194489465153,
+        "project_adv_dec_ratio": 1.0464824120603016,
+        "ratio_delta": 0.017537036886213775,
+        "ratios_match": false,
+        "trade_date": "20260616"
+      },
+      "project": {
+        "adv_dec_ratio": 1.0464824120603016,
+        "adv_n": 2499,
+        "dec_n": 2388,
+        "flat_n": 89,
+        "ignored_outside_membership": 218,
+        "nominal_kline_content_hash": "de842ef8ce02d47f182bf6d71abc9537967f0aa809cd6ac4c52f0fb20e4d8369",
+        "observation_date": "20260616",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4976,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260616",
+      "unfiltered": {
+        "adv_dec_ratio": 1.0640194489465153,
+        "adv_n": 2626,
+        "dec_n": 2468,
+        "flat_n": 100,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5194
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.4495774647887324,
+        "project_adv_dec_ratio": 0.4591715976331361,
+        "ratio_delta": -0.009594132844403691,
+        "ratios_match": false,
+        "trade_date": "20260617"
+      },
+      "project": {
+        "adv_dec_ratio": 0.4591715976331361,
+        "adv_n": 1552,
+        "dec_n": 3380,
+        "flat_n": 41,
+        "ignored_outside_membership": 217,
+        "nominal_kline_content_hash": "f818ac9092fd1969e84ee68594a785adcffddf502d1433e33412d1dcbb0663b1",
+        "observation_date": "20260617",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4973,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260617",
+      "unfiltered": {
+        "adv_dec_ratio": 0.4495774647887324,
+        "adv_n": 1596,
+        "dec_n": 3550,
+        "flat_n": 44,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5190
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.624124761298536,
+        "project_adv_dec_ratio": 0.638767994643455,
+        "ratio_delta": -0.014643233344919016,
+        "ratios_match": false,
+        "trade_date": "20260618"
+      },
+      "project": {
+        "adv_dec_ratio": 0.638767994643455,
+        "adv_n": 1908,
+        "dec_n": 2987,
+        "flat_n": 81,
+        "ignored_outside_membership": 212,
+        "nominal_kline_content_hash": "05e004f6d0e4b137143c7cb9f925cc329c80715526bfb54ec7c6ecc6a2f8e7ce",
+        "observation_date": "20260618",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4976,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260618",
+      "unfiltered": {
+        "adv_dec_ratio": 0.624124761298536,
+        "adv_n": 1961,
+        "dec_n": 3142,
+        "flat_n": 85,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5188
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.1325757575757576,
+        "project_adv_dec_ratio": 1.19170049616599,
+        "ratio_delta": -0.059124738590232484,
+        "ratios_match": false,
+        "trade_date": "20260622"
+      },
+      "project": {
+        "adv_dec_ratio": 1.19170049616599,
+        "adv_n": 2642,
+        "dec_n": 2217,
+        "flat_n": 120,
+        "ignored_outside_membership": 212,
+        "nominal_kline_content_hash": "c5a5eda9cde8db642b50a38a74bc18740b1e32815e2ccd580cb25ee78050643f",
+        "observation_date": "20260622",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4979,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260622",
+      "unfiltered": {
+        "adv_dec_ratio": 1.1325757575757576,
+        "adv_n": 2691,
+        "dec_n": 2376,
+        "flat_n": 124,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5191
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.000392464678179,
+        "project_adv_dec_ratio": 0.9741935483870968,
+        "ratio_delta": 0.026198916291082175,
+        "ratios_match": false,
+        "trade_date": "20260623"
+      },
+      "project": {
+        "adv_dec_ratio": 0.9741935483870968,
+        "adv_n": 2416,
+        "dec_n": 2480,
+        "flat_n": 85,
+        "ignored_outside_membership": 212,
+        "nominal_kline_content_hash": "36b813e6a81e01b0389df1bb1793cfeaafba3aeb261d17a5b846d0935895fb37",
+        "observation_date": "20260623",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4981,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260623",
+      "unfiltered": {
+        "adv_dec_ratio": 1.000392464678179,
+        "adv_n": 2549,
+        "dec_n": 2548,
+        "flat_n": 96,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5193
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.3667728237791932,
+        "project_adv_dec_ratio": 0.3749652294853964,
+        "ratio_delta": -0.00819240570620322,
+        "ratios_match": false,
+        "trade_date": "20260624"
+      },
+      "project": {
+        "adv_dec_ratio": 0.3749652294853964,
+        "adv_n": 1348,
+        "dec_n": 3595,
+        "flat_n": 38,
+        "ignored_outside_membership": 211,
+        "nominal_kline_content_hash": "00b315966775c317c768820bae8c42aad334a929c852500b4709f6930709c725",
+        "observation_date": "20260624",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4981,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260624",
+      "unfiltered": {
+        "adv_dec_ratio": 0.3667728237791932,
+        "adv_n": 1382,
+        "dec_n": 3768,
+        "flat_n": 42,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5192
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.30431472081218275,
+        "project_adv_dec_ratio": 0.3134487350199734,
+        "ratio_delta": -0.009134014207790642,
+        "ratios_match": false,
+        "trade_date": "20260625"
+      },
+      "project": {
+        "adv_dec_ratio": 0.3134487350199734,
+        "adv_n": 1177,
+        "dec_n": 3755,
+        "flat_n": 50,
+        "ignored_outside_membership": 209,
+        "nominal_kline_content_hash": "c6b1eae2077b08a404b884430bf886604bc04f09ff9cef7b4f4865451302e464",
+        "observation_date": "20260625",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4982,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260625",
+      "unfiltered": {
+        "adv_dec_ratio": 0.30431472081218275,
+        "adv_n": 1199,
+        "dec_n": 3940,
+        "flat_n": 52,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5191
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.17205279927173417,
+        "project_adv_dec_ratio": 0.15843669553007256,
+        "ratio_delta": 0.013616103741661612,
+        "ratios_match": false,
+        "trade_date": "20260626"
+      },
+      "project": {
+        "adv_dec_ratio": 0.15843669553007256,
+        "adv_n": 677,
+        "dec_n": 4273,
+        "flat_n": 35,
+        "ignored_outside_membership": 208,
+        "nominal_kline_content_hash": "7ec29e6920e3755215787834a4e11d1831cd66c707cda17a01b9cd58179cab83",
+        "observation_date": "20260626",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4985,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260626",
+      "unfiltered": {
+        "adv_dec_ratio": 0.17205279927173417,
+        "adv_n": 756,
+        "dec_n": 4394,
+        "flat_n": 43,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5193
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.8899219040535515,
+        "project_adv_dec_ratio": 0.909197651663405,
+        "ratio_delta": -0.01927574760985351,
+        "ratios_match": false,
+        "trade_date": "20260629"
+      },
+      "project": {
+        "adv_dec_ratio": 0.909197651663405,
+        "adv_n": 2323,
+        "dec_n": 2555,
+        "flat_n": 103,
+        "ignored_outside_membership": 208,
+        "nominal_kline_content_hash": "522cd89f5241deab8202bc09e258753ef95c5ae74c35e1acc91f5b6972b93438",
+        "observation_date": "20260629",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4981,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260629",
+      "unfiltered": {
+        "adv_dec_ratio": 0.8899219040535515,
+        "adv_n": 2393,
+        "dec_n": 2689,
+        "flat_n": 107,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5189
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.319090909090909,
+        "project_adv_dec_ratio": 1.3124115148655027,
+        "ratio_delta": 0.006679394225406421,
+        "ratios_match": false,
+        "trade_date": "20260630"
+      },
+      "project": {
+        "adv_dec_ratio": 1.3124115148655027,
+        "adv_n": 2781,
+        "dec_n": 2119,
+        "flat_n": 78,
+        "ignored_outside_membership": 208,
+        "nominal_kline_content_hash": "5726ba3c979b87c0783da63a64c56d887f1cd64539cd10ea25f026f64673969e",
+        "observation_date": "20260630",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4978,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260630",
+      "unfiltered": {
+        "adv_dec_ratio": 1.319090909090909,
+        "adv_n": 2902,
+        "dec_n": 2200,
+        "flat_n": 84,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5186
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 3.642342342342342,
+        "project_adv_dec_ratio": 3.5772432932469935,
+        "ratio_delta": 0.0650990490953487,
+        "ratios_match": false,
+        "trade_date": "20260701"
+      },
+      "project": {
+        "adv_dec_ratio": 3.5772432932469935,
+        "adv_n": 3867,
+        "dec_n": 1081,
+        "flat_n": 35,
+        "ignored_outside_membership": 206,
+        "nominal_kline_content_hash": "fdacdd8ccf6ffc17feac24f65b9bd2532ec2e2c3fc80f77ae55a9490aa6f73d4",
+        "observation_date": "20260701",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4983,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260701",
+      "unfiltered": {
+        "adv_dec_ratio": 3.642342342342342,
+        "adv_n": 4043,
+        "dec_n": 1110,
+        "flat_n": 36,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5189
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.7150592216582065,
+        "project_adv_dec_ratio": 0.670442842430484,
+        "ratio_delta": 0.044616379227722436,
+        "ratios_match": false,
+        "trade_date": "20260702"
+      },
+      "project": {
+        "adv_dec_ratio": 0.670442842430484,
+        "adv_n": 1953,
+        "dec_n": 2913,
+        "flat_n": 122,
+        "ignored_outside_membership": 206,
+        "nominal_kline_content_hash": "81d9f85b8491aa7c535d9ee8e3f5a180a872b6ef40ed5694e6f53804cc9b675c",
+        "observation_date": "20260702",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4988,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260702",
+      "unfiltered": {
+        "adv_dec_ratio": 0.7150592216582065,
+        "adv_n": 2113,
+        "dec_n": 2955,
+        "flat_n": 126,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5194
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 2.226641414141414,
+        "project_adv_dec_ratio": 2.1752910737386806,
+        "ratio_delta": 0.05135034040273334,
+        "ratios_match": false,
+        "trade_date": "20260703"
+      },
+      "project": {
+        "adv_dec_ratio": 2.1752910737386806,
+        "adv_n": 3363,
+        "dec_n": 1546,
+        "flat_n": 79,
+        "ignored_outside_membership": 205,
+        "nominal_kline_content_hash": "31661558aa99c318ea7b20b6ac0f99343bdb2f98bcea2737bdc594eed229446a",
+        "observation_date": "20260703",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4988,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260703",
+      "unfiltered": {
+        "adv_dec_ratio": 2.226641414141414,
+        "adv_n": 3527,
+        "dec_n": 1584,
+        "flat_n": 82,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5193
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.5543014032946919,
+        "project_adv_dec_ratio": 0.5605481198215424,
+        "ratio_delta": -0.006246716526850493,
+        "ratios_match": false,
+        "trade_date": "20260706"
+      },
+      "project": {
+        "adv_dec_ratio": 0.5605481198215424,
+        "adv_n": 1759,
+        "dec_n": 3138,
+        "flat_n": 92,
+        "ignored_outside_membership": 205,
+        "nominal_kline_content_hash": "5160a0d92526b82b9b496b7acc7f31c66d786e77a2bad665acf3f1ec13c74cc5",
+        "observation_date": "20260706",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4989,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260706",
+      "unfiltered": {
+        "adv_dec_ratio": 0.5543014032946919,
+        "adv_n": 1817,
+        "dec_n": 3278,
+        "flat_n": 99,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5194
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.14090407938257993,
+        "project_adv_dec_ratio": 0.14229885057471264,
+        "ratio_delta": -0.0013947711921327155,
+        "ratios_match": false,
+        "trade_date": "20260707"
+      },
+      "project": {
+        "adv_dec_ratio": 0.14229885057471264,
+        "adv_n": 619,
+        "dec_n": 4350,
+        "flat_n": 18,
+        "ignored_outside_membership": 207,
+        "nominal_kline_content_hash": "c7c4625204027a2de09851c1e82da59a480b181450f3ef7db0ce677a0df8dfa5",
+        "observation_date": "20260707",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4987,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260707",
+      "unfiltered": {
+        "adv_dec_ratio": 0.14090407938257993,
+        "adv_n": 639,
+        "dec_n": 4535,
+        "flat_n": 20,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5194
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.4203166226912929,
+        "project_adv_dec_ratio": 0.4002877697841727,
+        "ratio_delta": 0.020028852907120198,
+        "ratios_match": false,
+        "trade_date": "20260708"
+      },
+      "project": {
+        "adv_dec_ratio": 0.4002877697841727,
+        "adv_n": 1391,
+        "dec_n": 3475,
+        "flat_n": 121,
+        "ignored_outside_membership": 531,
+        "nominal_kline_content_hash": "5d21ef0b3446112aeacc6700b1763e460d58ddba77449468407a88636e09c73c",
+        "observation_date": "20260708",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4987,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260708",
+      "unfiltered": {
+        "adv_dec_ratio": 0.4203166226912929,
+        "adv_n": 1593,
+        "dec_n": 3790,
+        "flat_n": 135,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5518
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.860803324099723,
+        "project_adv_dec_ratio": 0.8981264637002342,
+        "ratio_delta": -0.037323139600511146,
+        "ratios_match": false,
+        "trade_date": "20260709"
+      },
+      "project": {
+        "adv_dec_ratio": 0.8981264637002342,
+        "adv_n": 2301,
+        "dec_n": 2562,
+        "flat_n": 124,
+        "ignored_outside_membership": 533,
+        "nominal_kline_content_hash": "96c6e2ea083f0230c7341361f04581deee59eeafac2504a3328448bcc1aa4de2",
+        "observation_date": "20260709",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4987,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260709",
+      "unfiltered": {
+        "adv_dec_ratio": 0.860803324099723,
+        "adv_n": 2486,
+        "dec_n": 2888,
+        "flat_n": 146,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5520
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 2.2479141835518472,
+        "project_adv_dec_ratio": 2.1801162040025823,
+        "ratio_delta": 0.06779797954926492,
+        "ratios_match": false,
+        "trade_date": "20260710"
+      },
+      "project": {
+        "adv_dec_ratio": 2.1801162040025823,
+        "adv_n": 3377,
+        "dec_n": 1549,
+        "flat_n": 60,
+        "ignored_outside_membership": 535,
+        "nominal_kline_content_hash": "8a6b1184ea711eb08684ad8290d86b1295908bc6cdfc7e28f7680d15ec68ad66",
+        "observation_date": "20260710",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4986,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260710",
+      "unfiltered": {
+        "adv_dec_ratio": 2.2479141835518472,
+        "adv_n": 3772,
+        "dec_n": 1678,
+        "flat_n": 71,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5521
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.17104420243433696,
+        "project_adv_dec_ratio": 0.17691759677036334,
+        "ratio_delta": -0.005873394336026377,
+        "ratios_match": false,
+        "trade_date": "20260713"
+      },
+      "project": {
+        "adv_dec_ratio": 0.17691759677036334,
+        "adv_n": 745,
+        "dec_n": 4211,
+        "flat_n": 34,
+        "ignored_outside_membership": 534,
+        "nominal_kline_content_hash": "8374b006d2e4f5eb8141c3f8bcffe6d05b985c8783df23380c0ae9d47c3612a9",
+        "observation_date": "20260713",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4990,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260713",
+      "unfiltered": {
+        "adv_dec_ratio": 0.17104420243433696,
+        "adv_n": 801,
+        "dec_n": 4683,
+        "flat_n": 40,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5524
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 3.376904570970329,
+        "project_adv_dec_ratio": 3.297909407665505,
+        "ratio_delta": 0.07899516330482381,
+        "ratios_match": false,
+        "trade_date": "20260714"
+      },
+      "project": {
+        "adv_dec_ratio": 3.297909407665505,
+        "adv_n": 3786,
+        "dec_n": 1148,
+        "flat_n": 56,
+        "ignored_outside_membership": 534,
+        "nominal_kline_content_hash": "f9f986fb86f91b215efedbc7707c5604b0acb25d66941571c3c28df884b54453",
+        "observation_date": "20260714",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4990,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260714",
+      "unfiltered": {
+        "adv_dec_ratio": 3.376904570970329,
+        "adv_n": 4211,
+        "dec_n": 1247,
+        "flat_n": 66,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5524
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 1.5972354623450906,
+        "project_adv_dec_ratio": 1.6758957654723128,
+        "ratio_delta": -0.07866030312722216,
+        "ratios_match": false,
+        "trade_date": "20260715"
+      },
+      "project": {
+        "adv_dec_ratio": 1.6758957654723128,
+        "adv_n": 3087,
+        "dec_n": 1842,
+        "flat_n": 61,
+        "ignored_outside_membership": 535,
+        "nominal_kline_content_hash": "8c8032376daff6c5e902cbb12b43bc3f60a8f1e0a666b3d9382cc4750ae02ff8",
+        "observation_date": "20260715",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4990,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260715",
+      "unfiltered": {
+        "adv_dec_ratio": 1.5972354623450906,
+        "adv_n": 3351,
+        "dec_n": 2098,
+        "flat_n": 76,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5525
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.8734708144005593,
+        "project_adv_dec_ratio": 0.856104094910065,
+        "ratio_delta": 0.017366719490494287,
+        "ratios_match": false,
+        "trade_date": "20260716"
+      },
+      "project": {
+        "adv_dec_ratio": 0.856104094910065,
+        "adv_n": 2237,
+        "dec_n": 2613,
+        "flat_n": 139,
+        "ignored_outside_membership": 535,
+        "nominal_kline_content_hash": "4a23dde936abd585335895e317e3be2559137e363add822c3d2ebfdbcc00dd16",
+        "observation_date": "20260716",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4989,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260716",
+      "unfiltered": {
+        "adv_dec_ratio": 0.8734708144005593,
+        "adv_n": 2499,
+        "dec_n": 2861,
+        "flat_n": 164,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5524
+      }
+    },
+    {
+      "compare": {
+        "cutover_allowed": false,
+        "issues": [
+          "breadth_shadow_compare_only",
+          "cutover_requires_accepted_live_partitions_and_gate",
+          "legacy_raw_ratio_diverges_from_project_universe"
+        ],
+        "legacy_adv_dec_ratio": 0.09638072385522896,
+        "project_adv_dec_ratio": 0.08444541675782105,
+        "ratio_delta": 0.011935307097407907,
+        "ratios_match": false,
+        "trade_date": "20260717"
+      },
+      "project": {
+        "adv_dec_ratio": 0.08444541675782105,
+        "adv_n": 386,
+        "dec_n": 4571,
+        "flat_n": 32,
+        "ignored_outside_membership": 533,
+        "nominal_kline_content_hash": "7747556835fdb201bf261c394e0bda087b94337d54221d81a8454f1d4ae6d62b",
+        "observation_date": "20260717",
+        "population_kind": "project_universe_pit",
+        "row_count_used": 4989,
+        "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+      },
+      "trade_date": "20260717",
+      "unfiltered": {
+        "adv_dec_ratio": 0.09638072385522896,
+        "adv_n": 482,
+        "dec_n": 5001,
+        "flat_n": 39,
+        "population_kind": "accepted_canonical_unfiltered_proxy",
+        "row_count_used": 5522
+      }
+    }
+  ],
+  "eligible_day_count_requested": 120,
+  "frontier": {
+    "compare": {
+      "cutover_allowed": false,
+      "issues": [
+        "breadth_shadow_compare_only",
+        "cutover_requires_accepted_live_partitions_and_gate",
+        "legacy_raw_ratio_diverges_from_project_universe"
+      ],
+      "legacy_adv_dec_ratio": 0.09638072385522896,
+      "project_adv_dec_ratio": 0.08444541675782105,
+      "ratio_delta": 0.011935307097407907,
+      "ratios_match": false,
+      "trade_date": "20260717"
+    },
+    "project": {
+      "adv_dec_ratio": 0.08444541675782105,
+      "adv_n": 386,
+      "dec_n": 4571,
+      "flat_n": 32,
+      "ignored_outside_membership": 533,
+      "nominal_kline_content_hash": "7747556835fdb201bf261c394e0bda087b94337d54221d81a8454f1d4ae6d62b",
+      "observation_date": "20260717",
+      "population_kind": "project_universe_pit",
+      "row_count_used": 4989,
+      "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+    },
+    "trade_date": "20260717",
+    "unfiltered": {
+      "adv_dec_ratio": 0.09638072385522896,
+      "adv_n": 482,
+      "dec_n": 5001,
+      "flat_n": 39,
+      "population_kind": "accepted_canonical_unfiltered_proxy",
+      "row_count_used": 5522
+    }
+  },
+  "frontier_day": "20260717",
+  "generated_at": "2026-07-20T07:04:04.049376+00:00",
+  "kind": "b_pit_breadth_shadow_remeasure",
+  "legacy_proxy_kind": "accepted_canonical_unfiltered",
+  "notes": [
+    "B-pit PARTIAL until cutover gate with MATCH+strong evidence",
+    "pulse mart not required for this shadow path",
+    "ST-only day 20260720 excluded (no K partition)"
+  ],
+  "population_kind_formal": "project_universe_pit",
+  "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd",
+  "universe_policy_id": "active_a_share_trading_universe",
+  "window": {
+    "cutover_allowed": false,
+    "day_count": 120,
+    "diverge_day_count": 120,
+    "error_day_count": 0,
+    "frontier_day": "20260717",
+    "issues": [
+      "breadth_shadow_window_remeasure_only",
+      "cutover_requires_accepted_live_partitions_and_gate",
+      "match_alone_insufficient_for_cutover",
+      "window_ratios_diverge_or_errors"
+    ],
+    "kind": "b_pit_breadth_shadow_window",
+    "match_day_count": 0,
+    "max_abs_ratio_delta": 1.8779466396487656,
+    "mean_abs_ratio_delta": 0.0708921613600321,
+    "ratios_match_all": false,
+    "window_end": "20260717",
+    "window_start": "20260116"
+  }
+}

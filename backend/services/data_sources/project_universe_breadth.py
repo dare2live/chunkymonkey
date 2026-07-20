@@ -214,11 +214,213 @@ def compare_legacy_vs_project_universe_breadth(
     )
 
 
+@dataclass(frozen=True)
+class UnfilteredBreadthCounts:
+    """Accepted-canonical unfiltered proxy (not project_universe_pit)."""
+
+    adv_n: int
+    dec_n: int
+    flat_n: int
+    row_count_used: int
+    adv_dec_ratio: float | None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "population_kind": "accepted_canonical_unfiltered_proxy",
+            "adv_n": self.adv_n,
+            "dec_n": self.dec_n,
+            "flat_n": self.flat_n,
+            "row_count_used": self.row_count_used,
+            "adv_dec_ratio": self.adv_dec_ratio,
+        }
+
+
+def unfiltered_breadth_from_rows(
+    rows: Sequence[Mapping[str, Any]],
+) -> UnfilteredBreadthCounts:
+    """Count adv/dec over all rows with usable pct — no universe filter."""
+
+    adv = dec = flat = used = 0
+    for row in rows:
+        pct = _pct(row)
+        if pct is None:
+            continue
+        used += 1
+        if pct > 0:
+            adv += 1
+        elif pct < 0:
+            dec += 1
+        else:
+            flat += 1
+    ratio = (float(adv) / float(dec)) if dec else None
+    return UnfilteredBreadthCounts(
+        adv_n=adv,
+        dec_n=dec,
+        flat_n=flat,
+        row_count_used=used,
+        adv_dec_ratio=ratio,
+    )
+
+
+@dataclass(frozen=True)
+class BreadthShadowDayMeasure:
+    trade_date: str
+    project: ProjectUniverseBreadthReport
+    unfiltered: UnfilteredBreadthCounts
+    compare: BreadthShadowCompareReport
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "trade_date": self.trade_date,
+            "project": self.project.as_dict(),
+            "unfiltered": self.unfiltered.as_dict(),
+            "compare": self.compare.as_dict(),
+        }
+
+
+def measure_breadth_shadow_day(
+    membership: ObservationMembership,
+    *,
+    rows: Sequence[Mapping[str, Any]],
+) -> BreadthShadowDayMeasure:
+    """One-day PIT vs unfiltered accepted-canonical shadow (cutover stays false)."""
+
+    project = compute_project_universe_breadth(membership, rows=rows)
+    unfiltered = unfiltered_breadth_from_rows(rows)
+    compare = compare_legacy_vs_project_universe_breadth(
+        trade_date=project.observation_date,
+        legacy_adv_dec_ratio=unfiltered.adv_dec_ratio,
+        project=project,
+    )
+    return BreadthShadowDayMeasure(
+        trade_date=project.observation_date,
+        project=project,
+        unfiltered=unfiltered,
+        compare=compare,
+    )
+
+
+@dataclass(frozen=True)
+class BreadthShadowWindowReport:
+    """Window aggregate — never authorizes mart cutover from shadow alone."""
+
+    window_start: str
+    window_end: str
+    day_count: int
+    match_day_count: int
+    diverge_day_count: int
+    error_day_count: int
+    ratios_match_all: bool
+    cutover_allowed: bool
+    mean_abs_ratio_delta: float | None
+    max_abs_ratio_delta: float | None
+    frontier_day: str | None
+    issues: tuple[str, ...]
+    days: tuple[dict[str, Any], ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "kind": "b_pit_breadth_shadow_window",
+            "window_start": self.window_start,
+            "window_end": self.window_end,
+            "day_count": self.day_count,
+            "match_day_count": self.match_day_count,
+            "diverge_day_count": self.diverge_day_count,
+            "error_day_count": self.error_day_count,
+            "ratios_match_all": self.ratios_match_all,
+            "cutover_allowed": self.cutover_allowed,
+            "mean_abs_ratio_delta": self.mean_abs_ratio_delta,
+            "max_abs_ratio_delta": self.max_abs_ratio_delta,
+            "frontier_day": self.frontier_day,
+            "issues": list(self.issues),
+            "days": list(self.days),
+        }
+
+
+def aggregate_breadth_shadow_window(
+    measures: Sequence[BreadthShadowDayMeasure],
+    *,
+    errors: Sequence[Mapping[str, Any]] = (),
+) -> BreadthShadowWindowReport:
+    """Aggregate day measures; ``cutover_allowed`` stays false even on full MATCH."""
+
+    issues = [
+        "breadth_shadow_window_remeasure_only",
+        "cutover_requires_accepted_live_partitions_and_gate",
+        "match_alone_insufficient_for_cutover",
+    ]
+    err_list = tuple(dict(e) for e in errors)
+    if not measures and not err_list:
+        issues.append("empty_window")
+        return BreadthShadowWindowReport(
+            window_start="",
+            window_end="",
+            day_count=0,
+            match_day_count=0,
+            diverge_day_count=0,
+            error_day_count=0,
+            ratios_match_all=False,
+            cutover_allowed=False,
+            mean_abs_ratio_delta=None,
+            max_abs_ratio_delta=None,
+            frontier_day=None,
+            issues=tuple(issues),
+            days=(),
+        )
+
+    match_n = sum(1 for m in measures if m.compare.ratios_match)
+    diverge_n = sum(1 for m in measures if not m.compare.ratios_match)
+    deltas = [
+        abs(float(m.compare.ratio_delta))
+        for m in measures
+        if m.compare.ratio_delta is not None
+    ]
+    days_sorted = sorted(measures, key=lambda m: m.trade_date)
+    start = days_sorted[0].trade_date if days_sorted else ""
+    end = days_sorted[-1].trade_date if days_sorted else ""
+    if err_list:
+        err_days = sorted(
+            str(e.get("trade_date") or "") for e in err_list if e.get("trade_date")
+        )
+        if err_days:
+            start = min(x for x in (start, err_days[0]) if x) if start else err_days[0]
+            end = max(x for x in (end, err_days[-1]) if x) if end else err_days[-1]
+    ratios_match_all = bool(measures) and diverge_n == 0 and not err_list
+    if not ratios_match_all:
+        issues.append("window_ratios_diverge_or_errors")
+    day_dicts: list[dict[str, Any]] = [m.as_dict() for m in days_sorted]
+    day_dicts.extend(dict(e) for e in err_list)
+    day_dicts.sort(key=lambda d: str(d.get("trade_date") or ""))
+    return BreadthShadowWindowReport(
+        window_start=start,
+        window_end=end,
+        day_count=len(measures) + len(err_list),
+        match_day_count=match_n,
+        diverge_day_count=diverge_n,
+        error_day_count=len(err_list),
+        ratios_match_all=ratios_match_all,
+        cutover_allowed=False,
+        mean_abs_ratio_delta=(
+            (sum(deltas) / float(len(deltas))) if deltas else None
+        ),
+        max_abs_ratio_delta=max(deltas) if deltas else None,
+        frontier_day=end or None,
+        issues=tuple(issues),
+        days=tuple(day_dicts),
+    )
+
+
 __all__ = [
     "BreadthShadowCompareReport",
+    "BreadthShadowDayMeasure",
+    "BreadthShadowWindowReport",
     "ProjectUniverseBreadthReport",
     "ProjectUniverseBreadthUnavailable",
+    "UnfilteredBreadthCounts",
+    "aggregate_breadth_shadow_window",
     "compare_legacy_vs_project_universe_breadth",
     "compute_project_universe_breadth",
+    "measure_breadth_shadow_day",
     "refuse_legacy_raw_daily_as_project_universe_breadth",
+    "unfiltered_breadth_from_rows",
 ]
