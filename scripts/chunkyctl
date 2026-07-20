@@ -23,6 +23,10 @@ Usage:
   scripts/chunkyctl sync --domain DOMAIN [--drain] [--max-dates N] [--trigger-mode manual|automatic]
   scripts/chunkyctl sync --domain DOMAIN --backfill --start YYYYMMDD --end YYYYMMDD
   scripts/chunkyctl sync --domain daily|stock_st --start YYYYMMDD --end YYYYMMDD
+  scripts/chunkyctl sync --domain daily|stock_st --land-only --start YYYYMMDD --end YYYYMMDD
+  scripts/chunkyctl sync --domain daily|stock_st --land-only --from-local-raw --start YYYYMMDD --end YYYYMMDD
+  scripts/chunkyctl sync --domain daily|stock_st --accept-from-landing --batch-id BATCH
+  scripts/chunkyctl sync --domain daily|stock_st --land-then-accept [--from-local-raw] --start YYYYMMDD --end YYYYMMDD
   scripts/chunkyctl map [--check]
   scripts/chunkyctl pipeline acquire|clean|process|store [--force]
   scripts/chunkyctl lineage build | impact <table> | provenance <table> | dead | show <table>
@@ -31,6 +35,8 @@ Examples:
   scripts/chunkyctl doctor --fast
   scripts/chunkyctl sync --domain daily --backfill --start 20260715 --end 20260716
   scripts/chunkyctl sync --domain daily --start 20260708 --end 20260717
+  scripts/chunkyctl sync --domain daily --land-only --from-local-raw --start 20260115 --end 20260115
+  scripts/chunkyctl sync --domain daily --accept-from-landing --batch-id 'daily:20260115:...'
 
 Notes:
   agent-boot  = one-page session-start context: git + moth summary + codegraph status + generated board; read-only projection.
@@ -40,6 +46,9 @@ Notes:
                 default --trigger-mode=manual skips same_day_at clock wait on open trading days;
                 --trigger-mode=automatic keeps the consumer publication clock (e.g. daily 18:00).
                 Calendar weekends/holidays still bind both modes.
+                S1 --land-only / S2 --accept-from-landing / thin --land-then-accept are independent
+                of the legacy fused fetch→accept path; --from-local-raw materializes landing from
+                local raw_tushare_* (never SELECT raw INSERT canonical). Accept path skips provider auth.
   map         = regenerate FEATURE_MAP.md machine-derived feature map; --check = drift gate only.
   pipeline    = manually run one declared data stage; full manual chain remains daily_update.sh.
   lineage     = generated dependency projection; impact <table> audits fan-in before delete/migrate.

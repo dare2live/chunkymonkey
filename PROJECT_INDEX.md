@@ -22,7 +22,7 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；名义 K + ST accepted 至 `20260720`；manual sync `trigger_mode` 已拆：开市可拉今日，consumer/`available_at` 仍 `same_day_at 18:00`；form/qfq/segments/pulse 分析面经 canonical∪raw 已追到 `20260720`（legacy raw daily 仍停 `20260716`，formal 不写 raw）；margin 仍 frozen；无 mass fetch / cutover |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；名义 K + ST accepted `20260115`→`20260720`（122d；`20260115` via local-raw→landing→accept）；**S1/S2 transport PARTIAL**：`--land-only` / `--accept-from-landing` / `--land-then-accept` + `--from-local-raw`；default sync 仍 fused 至 S3；manual sync `trigger_mode` 已拆；form/qfq/segments/pulse 分析面经 canonical∪raw 已追到 `20260720`（legacy raw daily 仍停 `20260716`，formal 不写 raw）；margin 仍 frozen；无 mass fetch / cutover |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `technical_states/`, `segments.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `market_pulse_tier12_read.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py` | 多轴状态可复用；C accept 分 `publish_scope=canary|project_universe`；`resolve_tier12_production_read` + B1/pulse 接线；**cutover yaml=true** → ACCEPTED_CUTOVER；**form enrich v1**（`stock_state_stage_pattern_v1`，exact-day `fact_stock_form_daily` → `form_name`/`axis_pos`；writer `axis_trend` 不覆盖）；re-accept `20260717`=4989 + `20260720`=4991；无 accept 日仍 fail-closed→LEGACY/`fact_stock_form_daily`；persist 可在 cutover-ON 下重跑（不回翻 yaml） |
 | T2 market sensing | `market_pulse.py`, `market_pulse_tier12_read.py`, `market_pulse_b_pit_read.py`, `b_pit_mart_cutover.py`, `project_universe_breadth.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py`, API/frontend | 展示可用但 breadth/margin UNTRUSTED（B-ext）；sentiment 旁路 `tier12_production_read` + `b_pit_mart_production_read`；B-pit shadow MATCH 120/120；**mart cutover=true（owner opt-in 2026-07-20）→ MART_CUTOVER（project_universe_pit）**；C envelope 可 project_universe scope；窗外/无 shadow 日仍 fail-closed→legacy；drill form 单轨 production-read（无 legacy JOIN+accepted 双写） |
@@ -35,7 +35,7 @@ AGENTS.md
 
 | Area | Role |
 |---|---|
-| `data/tushare_raw.duckdb` | TuShare legacy `raw_tushare_*` compatibility 表 + frozen margin evidence；accepted calendar generation + nominal OHLCV/ST landing/canonical/accepted_partition 至 `20260720`；legacy `raw_tushare_daily` 仍停 `20260716`（formal 不写） |
+| `data/tushare_raw.duckdb` | TuShare legacy `raw_tushare_*` compatibility 表 + frozen margin evidence；accepted calendar generation + nominal OHLCV/ST landing/canonical/accepted_partition `20260115`→`20260720`；legacy `raw_tushare_daily` 仍停 `20260716`（formal 不写；local-raw materialize → landing 另路径） |
 | `data/market.duckdb` | K 线 serving/派生数据；qfq=`canonical∪raw`×adj 分析面（max `2026-07-20`），不等于名义成交价真相 |
 | `data/reference.duckdb` | 交易日历、身份/reference 数据 |
 | `data/smartmoney.duckdb` | 当前 mart、profiles、ops/control evidence |
@@ -127,16 +127,22 @@ availability 或 consumer 语义。现有 `dim_trading_calendar` 是 open-day se
 calendar 按 `calendar_contract.py`、`calendar_schema.py`、`calendar_landing.py`、
 `calendar_acceptance.py`、`calendar_reader.py`、`calendar_runtime.py` 分责；A2 发表入口是
 `publish_accepted_calendar_generation` / authorized
-`capture_and_publish_authorized_calendar_generation`。名义 K/ST 按
+`capture_and_publish_authorized_calendar_generation`；另有 S1/S2
+`capture_and_land_authorized_calendar_generation` /
+`accept_calendar_from_landing`。名义 K/ST 按
 `nominal_ohlcv_*` / `stock_st_*` + 共享 `security_day_partition.py` /
-`security_day_capture.py` 分责；authorized 单日入口
-`capture_and_publish_authorized_*_partition`。`observation_population.py` 的 default
+`security_day_capture.py` + 薄编排 `security_day_transport.py` 分责；
+S1 `capture_and_land_authorized_*` / S2 `accept_*_from_landing` 可独立调用；
+fused `capture_and_publish_authorized_*_partition` 仍为 default sync 生产 fan-in
+（S3 前）。CLI：`chunkyctl sync --domain daily|stock_st --land-only|--accept-from-landing|--land-then-accept`
+（可选 `--from-local-raw`；accept 路径跳过 provider auth）。
+`observation_population.py` 的 default
 readiness 经 `resolve_eligible_observation_date`（accepted calendar ∩ K/ST
 `availability_policy`）评 frontier，不索要周末/节假 calendar-today 分区。
 Sync transport 用 `trigger_mode=manual|automatic`（`resolve_sync_eligibility_frontier`）；
 consumer/`available_at`/continuity 仍走时钟门 `resolve_availability_frontier`。
 `trade_cal`/`daily`/`stock_st` = `authorized_manual_generation` + `on_demand`
-（禁 all-due；K/ST 禁 drain）；sync 禁 legacy raw。margin 仍 scope_blocked / frozen。
+（禁 all-due；K/ST 禁 drain）；sync 禁 legacy raw 直写 canonical。margin 仍 scope_blocked / frozen。
 
 旧 margin history request/runtime/writer/CLI 已退役物删。冻结 v2 只由 `margin_evidence.py`、
 `margin_state.py`、reconcile/readiness/projection 读侧保留不可变审计证据；不存在受支持的继续写入旁路。

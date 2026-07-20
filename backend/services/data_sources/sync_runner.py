@@ -1954,6 +1954,387 @@ def _publish_security_day_accepted_partition(
     }
 
 
+def accept_security_day_from_landing_batch(
+    domain: str,
+    *,
+    batch_id: str,
+    registry: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """S2 CLI surface: accept one LANDED batch. Zero ``_adapter`` / provider fetch."""
+
+    if domain not in {"daily", "stock_st"}:
+        raise SyncWindowError(
+            f"accept-from-landing supports daily|stock_st only; got domain={domain}"
+        )
+    batch_id = str(batch_id or "").strip()
+    if not batch_id:
+        raise SyncWindowError("--accept-from-landing requires --batch-id")
+    reg = registry if registry is not None else load_registry()
+    spec = domain_spec(reg, domain)
+    _require_execution_enabled(spec)
+    conn = _target_conn(spec)
+    try:
+        if domain == "daily":
+            from services.data_sources.nominal_ohlcv_contract import (
+                nominal_ohlcv_contract_for_spec,
+            )
+            from services.data_sources.nominal_ohlcv_runtime import (
+                accept_nominal_ohlcv_from_landing,
+            )
+
+            outcome = accept_nominal_ohlcv_from_landing(
+                conn,
+                batch_id,
+                nominal_ohlcv_contract_for_spec(spec),
+                bootstrap=True,
+            )
+            publication = "accepted_nominal_ohlcv_from_landing"
+        else:
+            from services.data_sources.stock_st_contract import stock_st_contract_for_spec
+            from services.data_sources.stock_st_runtime import (
+                accept_stock_st_from_landing,
+            )
+
+            outcome = accept_stock_st_from_landing(
+                conn,
+                batch_id,
+                stock_st_contract_for_spec(spec),
+                bootstrap=True,
+            )
+            publication = "accepted_stock_st_from_landing"
+    finally:
+        conn.close()
+
+    accepted = outcome.status == "ACCEPTED"
+    return {
+        "domain": domain,
+        "status": "ok" if accepted else str(outcome.status).lower(),
+        "batches": 1,
+        "rows": int(outcome.row_count or 0),
+        "failed_batches": 0 if accepted else 1,
+        "batch_id": outcome.batch_id,
+        "partition_value": outcome.partition_value,
+        "content_hash": outcome.content_hash,
+        "rejection_code": outcome.rejection_code,
+        "publication": publication,
+        "transport": "accept_from_landing",
+    }
+
+
+def _land_security_day_partition(
+    domain: str,
+    spec: dict[str, Any],
+    *,
+    trade_date: str,
+    trigger_mode: TriggerMode | str = "manual",
+    from_local_raw: bool = False,
+) -> dict[str, Any]:
+    """S1: land one trade_date. Optional local raw materialize (no provider)."""
+
+    from services.data_sources.security_day_partition import SecurityDayError
+
+    eligibility = eligible_end_date(spec, trigger_mode=trigger_mode)
+    operation_window = resolve_operation_window(
+        eligibility,
+        requested_start=trade_date,
+        requested_end=trade_date,
+    )
+    partition = operation_window.effective_end or trade_date
+    conn = _target_conn(spec)
+    try:
+        if from_local_raw:
+            from services.data_sources.security_day_transport import (
+                materialize_security_day_landing_from_legacy_raw_rows,
+            )
+
+            if domain == "daily":
+                from services.data_sources.nominal_ohlcv_contract import (
+                    nominal_ohlcv_contract_for_spec,
+                )
+                from services.data_sources.nominal_ohlcv_schema import DOMAIN as OHLCV_DOMAIN
+
+                contract = nominal_ohlcv_contract_for_spec(spec)
+                raw_table = OHLCV_DOMAIN.compatibility_table
+                provider_fields = OHLCV_DOMAIN.provider_fields
+            elif domain == "stock_st":
+                from services.data_sources.stock_st_contract import stock_st_contract_for_spec
+                from services.data_sources.stock_st_schema import DOMAIN as ST_DOMAIN
+
+                contract = stock_st_contract_for_spec(spec)
+                raw_table = ST_DOMAIN.compatibility_table
+                provider_fields = ST_DOMAIN.provider_fields
+            else:
+                raise SyncWindowError(
+                    f"from-local-raw unsupported domain={domain}"
+                )
+            cols = ", ".join(provider_fields)
+            raw_rows = [
+                dict(zip(provider_fields, row, strict=True))
+                for row in conn.execute(
+                    f"SELECT {cols} FROM {raw_table} WHERE trade_date = ?",
+                    [partition],
+                ).fetchall()
+            ]
+            if not raw_rows:
+                return {
+                    "domain": domain,
+                    "status": "error",
+                    "batches": 0,
+                    "rows": 0,
+                    "failed_batches": 1,
+                    "error": f"local_raw_empty trade_date={partition} table={raw_table}",
+                    "publication": "land_only_from_local_raw",
+                    "transport": "land_only",
+                }
+            observed = datetime.now(timezone.utc)
+            try:
+                batch = materialize_security_day_landing_from_legacy_raw_rows(
+                    domain,
+                    conn,
+                    contract,
+                    trade_date=partition,
+                    raw_rows=raw_rows,
+                    observed_at=observed,
+                    bootstrap=True,
+                    lineage_note=f"cli_from_local_raw:{raw_table}",
+                )
+            except SecurityDayError as exc:
+                return {
+                    "domain": domain,
+                    "status": "error",
+                    "batches": 0,
+                    "rows": 0,
+                    "failed_batches": 1,
+                    "error": str(exc)[:500],
+                    "publication": "land_only_from_local_raw",
+                    "transport": "land_only",
+                }
+            return {
+                "domain": domain,
+                "status": "ok",
+                "batches": 1,
+                "rows": len(raw_rows),
+                "failed_batches": 0,
+                "batch_id": batch.batch_id,
+                "partition_value": batch.partition_value,
+                "publication": "land_only_from_local_raw",
+                "transport": "land_only",
+                "eligible_end": eligibility.eligible_end,
+                "eligibility_reason": eligibility.reason,
+            }
+
+        apply_fetch_socket_timeout(spec)
+        adapter = _adapter(str(spec["source"]))
+
+        def _fetch_rows(params: Mapping[str, Any]):
+            request = {"trade_date": str(params.get("trade_date") or partition)}
+            return _fetch_with_retry(adapter, spec, request)
+
+        from services.data_sources.nominal_ohlcv_runtime import NominalOhlcvRuntimeError
+        from services.data_sources.stock_st_runtime import StockStRuntimeError
+
+        try:
+            if domain == "daily":
+                from services.data_sources.nominal_ohlcv_contract import (
+                    nominal_ohlcv_contract_for_spec,
+                )
+                from services.data_sources.nominal_ohlcv_runtime import (
+                    capture_and_land_authorized_nominal_ohlcv_partition,
+                )
+
+                batch = capture_and_land_authorized_nominal_ohlcv_partition(
+                    conn,
+                    nominal_ohlcv_contract_for_spec(spec),
+                    trade_date=partition,
+                    fetch_rows=_fetch_rows,
+                    bootstrap=True,
+                )
+                publication = "land_only_nominal_ohlcv"
+            elif domain == "stock_st":
+                from services.data_sources.stock_st_contract import stock_st_contract_for_spec
+                from services.data_sources.stock_st_runtime import (
+                    capture_and_land_authorized_stock_st_partition,
+                )
+
+                batch = capture_and_land_authorized_stock_st_partition(
+                    conn,
+                    stock_st_contract_for_spec(spec),
+                    trade_date=partition,
+                    fetch_rows=_fetch_rows,
+                    bootstrap=True,
+                )
+                publication = "land_only_stock_st"
+            else:
+                raise SyncWindowError(
+                    f"domain={domain} is not a security-day land-only publication"
+                )
+        except (
+            SecurityDayError,
+            NominalOhlcvRuntimeError,
+            StockStRuntimeError,
+        ) as exc:
+            return {
+                "domain": domain,
+                "status": "error",
+                "batches": 0,
+                "rows": 0,
+                "failed_batches": 1,
+                "error": str(exc)[:500],
+                "publication": "land_only",
+                "transport": "land_only",
+            }
+    finally:
+        conn.close()
+
+    return {
+        "domain": domain,
+        "status": "ok",
+        "batches": 1,
+        "rows": len(tuple(batch.rows)),
+        "failed_batches": 0,
+        "batch_id": batch.batch_id,
+        "partition_value": batch.partition_value,
+        "publication": publication,
+        "transport": "land_only",
+        "eligible_end": eligibility.eligible_end,
+        "eligibility_reason": eligibility.reason,
+    }
+
+
+def _run_security_day_transport_window(
+    domain: str,
+    *,
+    transport: str,
+    start: str | None,
+    end: str | None,
+    batch_id: str | None = None,
+    from_local_raw: bool = False,
+    registry: dict[str, Any] | None = None,
+    trigger_mode: TriggerMode | str = "manual",
+) -> dict[str, Any]:
+    """Thin land / accept / land-then-accept window runner (≤40d)."""
+
+    reg = registry if registry is not None else load_registry()
+    spec = domain_spec(reg, domain)
+    _require_execution_enabled(spec)
+    mode = _normalize_trigger_mode(trigger_mode)
+
+    if transport == "accept_from_landing":
+        if batch_id:
+            return accept_security_day_from_landing_batch(
+                domain, batch_id=batch_id, registry=reg
+            )
+        trade_dates = _require_authorized_short_trade_date_window(
+            domain,
+            backfill=False,
+            resume=False,
+            start=start,
+            end=end,
+            max_dates=None,
+        )
+        if len(trade_dates) != 1:
+            raise SyncWindowError(
+                "accept-from-landing without --batch-id requires a single-day "
+                "--start/--end window to resolve the LANDED batch"
+            )
+        conn = _target_conn(spec)
+        try:
+            if domain == "daily":
+                from services.data_sources.nominal_ohlcv_schema import DATASET_ID
+            else:
+                from services.data_sources.stock_st_schema import DATASET_ID
+            row = conn.execute(
+                """
+                SELECT batch_id FROM ingest_batch
+                 WHERE dataset_id = ? AND partition_value = ? AND status = 'LANDED'
+                 ORDER BY landed_at DESC
+                 LIMIT 1
+                """,
+                [DATASET_ID, trade_dates[0]],
+            ).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            raise SyncWindowError(
+                f"no LANDED batch for domain={domain} partition={trade_dates[0]}"
+            )
+        return accept_security_day_from_landing_batch(
+            domain, batch_id=str(row[0]), registry=reg
+        )
+
+    trade_dates = _require_authorized_short_trade_date_window(
+        domain,
+        backfill=False,
+        resume=False,
+        start=start,
+        end=end,
+        max_dates=None,
+    )
+    day_results: list[dict[str, Any]] = []
+    total_rows = 0
+    failed = 0
+    last_ok: str | None = None
+    completed_ok = 0
+    for trade_date in trade_dates:
+        if transport == "land_only":
+            result = _land_security_day_partition(
+                domain,
+                spec,
+                trade_date=trade_date,
+                trigger_mode=mode,
+                from_local_raw=from_local_raw,
+            )
+        elif transport == "land_then_accept":
+            land_result = _land_security_day_partition(
+                domain,
+                spec,
+                trade_date=trade_date,
+                trigger_mode=mode,
+                from_local_raw=from_local_raw,
+            )
+            if int(land_result.get("failed_batches") or 0) != 0:
+                result = land_result
+                result["transport"] = "land_then_accept"
+            else:
+                result = accept_security_day_from_landing_batch(
+                    domain,
+                    batch_id=str(land_result["batch_id"]),
+                    registry=reg,
+                )
+                result["transport"] = "land_then_accept"
+                result["land_batch_id"] = land_result["batch_id"]
+        else:
+            raise SyncWindowError(f"unknown security-day transport={transport!r}")
+        day_results.append(result)
+        total_rows += int(result.get("rows") or 0)
+        day_failed = int(result.get("failed_batches") or 0)
+        failed += day_failed
+        if day_failed == 0:
+            last_ok = trade_date
+            completed_ok += 1
+        else:
+            break
+    return {
+        "domain": domain,
+        "status": "ok" if failed == 0 else "partial",
+        "batches": len(day_results),
+        "rows": total_rows,
+        "failed_batches": failed,
+        "publication": f"security_day_{transport}",
+        "transport": transport,
+        "partition_values": [
+            str(r.get("partition_value") or "")
+            for r in day_results
+            if int(r.get("failed_batches") or 0) == 0
+        ],
+        "trade_dates": list(trade_dates),
+        "day_results": day_results,
+        "last_date": last_ok,
+        "window_days_requested": len(trade_dates),
+        "window_days_completed": completed_ok,
+    }
+
+
 def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
                end: str | None = None, resume: bool = False,
                max_dates: int | None = None,
@@ -2613,7 +2994,59 @@ def _parse_cli_args(argv: list[str] | None = None) -> argparse.Namespace:
             "the consumer publication clock for scheduled paths"
         ),
     )
+    transport = parser.add_mutually_exclusive_group(required=False)
+    transport.add_argument(
+        "--land-only",
+        action="store_true",
+        help="S1: daily|stock_st capture→LANDING only (no canonical/accept)",
+    )
+    transport.add_argument(
+        "--accept-from-landing",
+        action="store_true",
+        help="S2: accept from LANDED batch_id (zero provider fetch)",
+    )
+    transport.add_argument(
+        "--land-then-accept",
+        action="store_true",
+        help="Thin caller-only S1→S2 composition (not the default fused sync)",
+    )
+    parser.add_argument(
+        "--batch-id",
+        default=None,
+        help="Required for --accept-from-landing unless single-day --start/--end",
+    )
+    parser.add_argument(
+        "--from-local-raw",
+        action="store_true",
+        help=(
+            "With --land-only/--land-then-accept: materialize landing from "
+            "local raw_tushare_* (explicit acquire→landing; never raw→canonical)"
+        ),
+    )
     return parser.parse_args(argv)
+
+
+def _cli_transport_mode(args: argparse.Namespace) -> str | None:
+    if getattr(args, "land_only", False):
+        return "land_only"
+    if getattr(args, "accept_from_landing", False):
+        return "accept_from_landing"
+    if getattr(args, "land_then_accept", False):
+        return "land_then_accept"
+    return None
+
+
+def _cli_skips_provider_authorization(args: argparse.Namespace) -> bool:
+    """Accept-from-landing and local-raw land paths must not probe TuShare."""
+
+    transport = _cli_transport_mode(args)
+    if transport == "accept_from_landing":
+        return True
+    if transport in {"land_only", "land_then_accept"} and getattr(
+        args, "from_local_raw", False
+    ):
+        return True
+    return False
 
 
 def _selected_domains(
@@ -2652,6 +3085,36 @@ def _preflight_cli_request_shape(
 ) -> None:
     """Reject impossible explicit requests before locks, adapters or DB probes."""
 
+    transport = _cli_transport_mode(args)
+    if transport is not None:
+        if args.drain or args.backfill or args.resume or args.all_due:
+            raise SyncWindowError(
+                f"--{transport.replace('_', '-')} cannot combine with "
+                "--drain/--backfill/--resume/--all-due"
+            )
+        if len(domains) != 1 or domains[0] not in {"daily", "stock_st"}:
+            raise SyncWindowError(
+                f"--{transport.replace('_', '-')} requires exactly one "
+                "--domain daily|stock_st"
+            )
+        if getattr(args, "from_local_raw", False) and transport not in {
+            "land_only",
+            "land_then_accept",
+        }:
+            raise SyncWindowError(
+                "--from-local-raw only valid with --land-only or --land-then-accept"
+            )
+        if transport == "accept_from_landing":
+            if not args.batch_id and (args.start is None or args.end is None):
+                raise SyncWindowError(
+                    "--accept-from-landing requires --batch-id or single-day "
+                    "--start/--end"
+                )
+        elif args.start is None or args.end is None:
+            raise SyncWindowError(
+                f"--{transport.replace('_', '-')} requires --start and --end"
+            )
+
     if args.drain and (
         args.start is not None
         or args.end is not None
@@ -2671,6 +3134,7 @@ def _preflight_cli_request_shape(
             ) from exc
         if (
             not args.drain
+            and transport is None
             and str(spec.get("batch_mode")) == "by_ts_code"
             and spec.get("sync_policy") == "on_demand"
             and (args.start is None or args.end is None)
@@ -2795,9 +3259,26 @@ def _main_unlocked(
         )
         return 1 if bad else 0
 
+    transport = _cli_transport_mode(args)
     results = []
     for d in selected:
         try:
+            if transport is not None:
+                results.append(
+                    _run_security_day_transport_window(
+                        d,
+                        transport=transport,
+                        start=args.start,
+                        end=args.end,
+                        batch_id=getattr(args, "batch_id", None),
+                        from_local_raw=bool(
+                            getattr(args, "from_local_raw", False)
+                        ),
+                        registry=reg,
+                        trigger_mode=trigger_mode,
+                    )
+                )
+                continue
             run_kwargs = {
                 "backfill": args.backfill,
                 "start": args.start,
@@ -2813,6 +3294,17 @@ def _main_unlocked(
             log.error("配额熔断停链: %s — 剩 %d 域不跑", exc, len(selected) - selected.index(d) - 1)
             halt = {"domain": d, "status": "quota_halt", "error": str(exc)[:200]}
             results.append(halt)
+            break
+        except SyncWindowError as exc:
+            results.append(
+                {
+                    "domain": d,
+                    "status": "error",
+                    "failed_batches": 1,
+                    "error": str(exc)[:500],
+                    "transport": transport,
+                }
+            )
             break
     print(json.dumps(results, ensure_ascii=False, indent=1))
     if any(r.get("status") == "quota_halt" for r in results):
@@ -2867,7 +3359,8 @@ def main() -> int:
     try:
         with writer_lock(owner="sync_runner") as lease:
             try:
-                _authorization_preflight(lease, registry=reg)
+                if not _cli_skips_provider_authorization(args):
+                    _authorization_preflight(lease, registry=reg)
                 return _main_unlocked(args, reg, domains)
             except TuShareAuthorizationError as exc:
                 payload = {

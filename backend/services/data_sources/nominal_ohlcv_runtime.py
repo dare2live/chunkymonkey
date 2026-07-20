@@ -1,9 +1,11 @@
 """Public publication boundary for accepted nominal OHLCV partitions.
 
-Authorized manual sync (``execution_policy.mode=enabled`` + identical
-``--start/--end``) captures one provider trade_date through
-:func:`capture_and_publish_authorized_nominal_ohlcv_partition`.  It never
-writes ``raw_tushare_daily``.
+Transport strangler surfaces (independent):
+- :func:`capture_and_land_authorized_nominal_ohlcv_partition` — S1 land-only
+- :func:`accept_nominal_ohlcv_from_landing` — S2 accept-from-landing (zero fetch)
+- :func:`capture_and_publish_authorized_nominal_ohlcv_partition` — legacy fused path
+
+It never writes ``raw_tushare_daily``.
 """
 from __future__ import annotations
 
@@ -57,7 +59,7 @@ def publish_accepted_nominal_ohlcv_partition(
     return accept_nominal_ohlcv_batch(conn, str(batch.batch_id), contract)
 
 
-def capture_and_publish_authorized_nominal_ohlcv_partition(
+def capture_and_land_authorized_nominal_ohlcv_partition(
     conn,
     contract: NominalOhlcvContract,
     *,
@@ -65,8 +67,8 @@ def capture_and_publish_authorized_nominal_ohlcv_partition(
     fetch_rows: Callable[[Mapping[str, Any]], Sequence[Mapping[str, Any]] | None],
     observed_at: datetime | None = None,
     bootstrap: bool = True,
-) -> NominalOhlcvAcceptanceOutcome:
-    """Authorized canary/manual path: fetch → land → accept one trade_date."""
+) -> SecurityDayLandingBatch:
+    """S1: fetch → LANDING only. Does not write canonical / accepted_partition."""
 
     contract = verify_nominal_ohlcv_contract(contract)
     observed = observed_at or datetime.now(timezone.utc)
@@ -79,8 +81,51 @@ def capture_and_publish_authorized_nominal_ohlcv_partition(
         )
     except SecurityDayError as exc:
         raise NominalOhlcvRuntimeError(str(exc)) from exc
-    return publish_accepted_nominal_ohlcv_partition(
-        conn, batch, contract, bootstrap=bootstrap
+    if bootstrap:
+        bootstrap_nominal_ohlcv_acceptance_schema(conn)
+    land_nominal_ohlcv_batch(conn, batch, contract)
+    return batch
+
+
+def accept_nominal_ohlcv_from_landing(
+    conn,
+    batch_id: str,
+    contract: NominalOhlcvContract,
+    *,
+    bootstrap: bool = False,
+) -> NominalOhlcvAcceptanceOutcome:
+    """S2: publish accepted from an existing LANDED batch. Zero provider fetch."""
+
+    contract = verify_nominal_ohlcv_contract(contract)
+    if bootstrap:
+        bootstrap_nominal_ohlcv_acceptance_schema(conn)
+    return accept_nominal_ohlcv_batch(conn, str(batch_id), contract)
+
+
+def capture_and_publish_authorized_nominal_ohlcv_partition(
+    conn,
+    contract: NominalOhlcvContract,
+    *,
+    trade_date: str,
+    fetch_rows: Callable[[Mapping[str, Any]], Sequence[Mapping[str, Any]] | None],
+    observed_at: datetime | None = None,
+    bootstrap: bool = True,
+) -> NominalOhlcvAcceptanceOutcome:
+    """Authorized fused path: fetch → land → accept one trade_date.
+
+    Prefer S1+S2 composition for new callers; kept for sync_runner until S3.
+    """
+
+    batch = capture_and_land_authorized_nominal_ohlcv_partition(
+        conn,
+        contract,
+        trade_date=trade_date,
+        fetch_rows=fetch_rows,
+        observed_at=observed_at,
+        bootstrap=bootstrap,
+    )
+    return accept_nominal_ohlcv_from_landing(
+        conn, str(batch.batch_id), contract, bootstrap=False
     )
 
 
@@ -106,7 +151,9 @@ def runtime_surface() -> dict[str, Any]:
 
 __all__ = [
     "NominalOhlcvRuntimeError",
+    "accept_nominal_ohlcv_from_landing",
     "bootstrap_nominal_ohlcv_acceptance_schema",
+    "capture_and_land_authorized_nominal_ohlcv_partition",
     "capture_and_publish_authorized_nominal_ohlcv_partition",
     "publish_accepted_nominal_ohlcv_partition",
     "refuse_legacy_nominal_ohlcv_raw_write",

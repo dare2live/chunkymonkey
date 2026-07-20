@@ -70,6 +70,36 @@ def publish_accepted_calendar_generation(
     return accept_calendar_batch(conn, str(batch.batch_id), contract)
 
 
+def land_authorized_calendar_generation(
+    conn,
+    batch: CalendarLandingBatch,
+    contract: CalendarGenerationContract,
+    *,
+    bootstrap: bool = False,
+) -> str:
+    """S1: land calendar evidence only. Does not accept / write canonical."""
+
+    contract = verify_calendar_generation_contract(contract)
+    if bootstrap:
+        bootstrap_calendar_acceptance_schema(conn)
+    return land_calendar_batch(conn, batch, contract)
+
+
+def accept_calendar_from_landing(
+    conn,
+    batch_id: str,
+    contract: CalendarGenerationContract,
+    *,
+    bootstrap: bool = False,
+) -> CalendarAcceptanceOutcome:
+    """S2: accept from an existing LANDED calendar batch. Zero provider fetch."""
+
+    contract = verify_calendar_generation_contract(contract)
+    if bootstrap:
+        bootstrap_calendar_acceptance_schema(conn)
+    return accept_calendar_batch(conn, str(batch_id), contract)
+
+
 def refuse_legacy_calendar_raw_write(*, detail: str = "") -> None:
     """Hard wall: formal calendar publication must not use legacy raw replace."""
 
@@ -214,15 +244,15 @@ def capture_calendar_provider_pages(
     )
 
 
-def capture_and_publish_authorized_calendar_generation(
+def capture_and_land_authorized_calendar_generation(
     conn,
     contract: CalendarGenerationContract,
     *,
     fetch_page: Callable[[Mapping[str, Any]], Sequence[Mapping[str, Any]] | None],
     observed_at: datetime | None = None,
     bootstrap: bool = True,
-) -> CalendarAcceptanceOutcome:
-    """Authorized canary/manual path: fetch → land → accept one generation."""
+) -> CalendarLandingBatch:
+    """S1: fetch → LANDING only for one calendar generation."""
 
     contract = verify_calendar_generation_contract(contract)
     observed = observed_at or datetime.now(timezone.utc)
@@ -235,8 +265,31 @@ def capture_and_publish_authorized_calendar_generation(
         observed_at=observed,
         batch_id=batch_id,
     )
-    return publish_accepted_calendar_generation(
+    land_authorized_calendar_generation(
         conn, batch, contract, bootstrap=bootstrap
+    )
+    return batch
+
+
+def capture_and_publish_authorized_calendar_generation(
+    conn,
+    contract: CalendarGenerationContract,
+    *,
+    fetch_page: Callable[[Mapping[str, Any]], Sequence[Mapping[str, Any]] | None],
+    observed_at: datetime | None = None,
+    bootstrap: bool = True,
+) -> CalendarAcceptanceOutcome:
+    """Authorized fused path: fetch → land → accept one generation."""
+
+    batch = capture_and_land_authorized_calendar_generation(
+        conn,
+        contract,
+        fetch_page=fetch_page,
+        observed_at=observed_at,
+        bootstrap=bootstrap,
+    )
+    return accept_calendar_from_landing(
+        conn, str(batch.batch_id), contract, bootstrap=False
     )
 
 
@@ -244,11 +297,14 @@ __all__ = [
     "ACCEPTED_PUBLICATION_TABLES",
     "CalendarRuntimeError",
     "DIM_TRADING_CALENDAR_ROLE",
+    "accept_calendar_from_landing",
     "bootstrap_calendar_acceptance_schema",
     "build_calendar_landing_batch",
+    "capture_and_land_authorized_calendar_generation",
     "capture_and_publish_authorized_calendar_generation",
     "capture_calendar_provider_pages",
     "dim_is_accepted_calendar_truth",
+    "land_authorized_calendar_generation",
     "publish_accepted_calendar_generation",
     "refuse_legacy_calendar_raw_write",
     "runtime_surface",
