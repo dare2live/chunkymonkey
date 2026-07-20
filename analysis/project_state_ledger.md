@@ -1269,3 +1269,36 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   Optuna, E gate loosen, StrategyRelease, claim publish-complete.
 - **Next**: live nominal bars → writer smoke **or** next eligible daily
   single-day sync **or** stop.
+
+### 2026-07-20 — Phase C live nominal → writer smoke
+
+- Added `backend/services/tier12_nominal_canary.py` +
+  `backend/scripts/persist_tier12_writer_smoke.py` + offline fixture
+  `backend/tests/fixtures/tier12_nominal_canary.json` +
+  `test_tier12_nominal_canary.py` (5/5; writer 6/6 → 11/11 with prior).
+- **PIT honesty**: live `canonical_nominal_ohlcv_daily.available_at` is
+  retrospective accept/ingest (`2026-07-19…` for the authorized short-window
+  sync). Smoke stamps **contractual** `same_day_at 18:00` from DOMAIN
+  (`contractual_same_day_at_1800`); raw-row timestamps are not used as the
+  PIT axis (would false-exclude every bar at D=`20260717`).
+- Live smoke `decision_date=20260717`, max_codes=20, lookback
+  `20260713`–`20260717` (99 input rows; accepted partition row_count=5522):
+  - status=`WRITTEN_UNPUBLISHED`, published=false
+  - stock_state_count=20; pit_excluded_count=1 (future poison)
+  - definition_version=`stock_state_stage_pattern_v0`
+  - stock config_hash=`6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c`
+  - market config_hash=`8c6b68d4b42fb2385e29fffe87b04c6cb4ee3f730a704c53294937c48fb5c215`
+  - available_at outputs=`20260717T160000+0800` (≤ D); attest
+    `PUBLISHABLE_SCAFFOLD`
+  - artifacts:
+    `data/lineage/tier12_publish_batches/{batch,smoke}_20260717.json`
+- Fail-closed smoke gate rejects missing lineage / future output
+  available_at / published=true.
+- Daily frontier still max accepted=`20260717`; `20260720` not accepted
+  (wall-clock before same_day 18:00 → no single-day sync this slice).
+- **Did not**: accepted_partition for Tier1/2, consumer cutover, B-pit
+  mart switch, Optuna, E gate loosen, StrategyRelease, mass backfill,
+  claim publish-complete. Live readiness note on artifact: code commit
+  does not upgrade continuity non-READY → READY.
+- **Next**: accepted publish path for Tier1/2 **or** next eligible daily
+  single-day sync **or** stop.

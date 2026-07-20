@@ -1,0 +1,40 @@
+{
+  "kind": "tier12_nominal_canary_fixture",
+  "decision_date": "20260717",
+  "available_at_policy": "contractual_same_day_at_1800",
+  "notes": [
+    "offline_reproducible",
+    "shape_matches_canonical_nominal_ohlcv_daily",
+    "not_live_db",
+    "canary_scope_not_full_universe"
+  ],
+  "rows": [
+    {"ts_code": "600000.SH", "trade_date": "20260713", "open": 10.0, "high": 10.2, "low": 9.9, "close": 10.0, "pct_chg": 0.0, "vol": 1000, "amount": 10000},
+    {"ts_code": "600000.SH", "trade_date": "20260714", "open": 10.0, "high": 10.5, "low": 10.0, "close": 10.4, "pct_chg": 4.0, "vol": 1100, "amount": 11000},
+    {"ts_code": "600000.SH", "trade_date": "20260715", "open": 10.4, "high": 10.8, "low": 10.3, "close": 10.7, "pct_chg": 2.88, "vol": 1200, "amount": 12000},
+    {"ts_code": "600000.SH", "trade_date": "20260716", "open": 10.7, "high": 11.0, "low": 10.6, "close": 10.9, "pct_chg": 1.87, "vol": 1300, "amount": 13000},
+    {"ts_code": "600000.SH", "trade_date": "20260717", "open": 10.9, "high": 11.3, "low": 10.8, "close": 11.2, "pct_chg": 2.75, "vol": 1400, "amount": 14000},
+    {"ts_code": "000001.SZ", "trade_date": "20260713", "open": 9.0, "high": 9.1, "low": 8.9, "close": 9.0, "pct_chg": 0.0, "vol": 2000, "amount": 18000},
+    {"ts_code": "000001.SZ", "trade_date": "20260714", "open": 9.0, "high": 9.2, "low": 8.8, "close": 8.9, "pct_chg": -1.11, "vol": 2100, "amount": 18500},
+    {"ts_code": "000001.SZ", "trade_date": "20260715", "open": 8.9, "high": 9.0, "low": 8.7, "close": 8.8, "pct_chg": -1.12, "vol": 2200, "amount": 19000},
+    {"ts_code": "000001.SZ", "trade_date": "20260716", "open": 8.8, "high": 8.9, "low": 8.6, "close": 8.7, "pct_chg": -1.14, "vol": 2300, "amount": 19500},
+    {"ts_code": "000001.SZ", "trade_date": "20260717", "open": 8.7, "high": 8.8, "low": 8.5, "close": 8.6, "pct_chg": -1.15, "vol": 2400, "amount": 20000},
+    {"ts_code": "300001.SZ", "trade_date": "20260717", "open": 20.0, "high": 20.5, "low": 19.8, "close": 20.4, "pct_chg": 2.0, "vol": 900, "amount": 18000},
+    {"ts_code": "688001.SH", "trade_date": "20260717", "open": 30.0, "high": 30.2, "low": 29.5, "close": 29.7, "pct_chg": -1.0, "vol": 800, "amount": 24000}
+  ],
+  "poison_future": [
+    {
+      "ts_code": "600000.SH",
+      "trade_date": "20260717",
+      "open": 1.0,
+      "high": 1.0,
+      "low": 1.0,
+      "close": 1.0,
+      "pct_chg": -90.0,
+      "vol": 1,
+      "amount": 1,
+      "available_at": "20260720T180000+0800",
+      "note": "future_available_must_be_pit_excluded"
+    }
+  ]
+}

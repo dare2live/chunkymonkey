@@ -1,0 +1,610 @@
+{
+  "decision_date": "20260717",
+  "market_attestation": {
+    "missing_fields": [],
+    "notes": [
+      "phase_c_scaffold_only",
+      "not_accepted_partition",
+      "not_pulse_mart_cutover"
+    ],
+    "publishable": true,
+    "published": false,
+    "status": "PUBLISHABLE_SCAFFOLD"
+  },
+  "market_context": {
+    "available_at": "20260717T160000+0800",
+    "config_hash": "8c6b68d4b42fb2385e29fffe87b04c6cb4ee3f730a704c53294937c48fb5c215",
+    "decision_time": "20260717",
+    "definition_version": "market_sensing_project_breadth_v0",
+    "details": {
+      "adv_n": 2,
+      "b_pit_cutover_allowed": false,
+      "dec_n": 18,
+      "flat_n": 0,
+      "method": "board_filtered_nominal_breadth",
+      "not_pulse_mart": true,
+      "row_count_used": 20,
+      "skipped_off_board": 0,
+      "writer": "tier12_publish_writer"
+    },
+    "eligible_universe_id": "project_board_prefixes:v1",
+    "input_snapshot_id": "nominal_breadth_pit:20260717:n20",
+    "risk_on": false,
+    "trust_status": "READY"
+  },
+  "notes": [
+    "phase_c_writer",
+    "written_unpublished",
+    "not_accepted_partition",
+    "not_strategy_release",
+    "not_pulse_mart_cutover",
+    "pit_available_at_le_decision_date"
+  ],
+  "pit_excluded_count": 1,
+  "published": false,
+  "status": "WRITTEN_UNPUBLISHED",
+  "stock_attestations": [
+    {
+      "missing_fields": [],
+      "notes": [
+        "phase_c_scaffold_only",
+        "not_accepted_partition",
+        "not_consumer_cutover"
+      ],
+      "publishable": true,
+      "published": false,
+      "status": "PUBLISHABLE_SCAFFOLD"
+    },
+    {
+      "missing_fields": [],
+      "notes": [
+        "phase_c_scaffold_only",
+        "not_accepted_partition",
+        "not_consumer_cutover"
+      ],
+      "publishable": true,
+      "published": false,
+      "status": "PUBLISHABLE_SCAFFOLD"
+    },
+    {
+      "missing_fields": [],
+      "notes": [
+        "phase_c_scaffold_only",
+        "not_accepted_partition",
+        "not_consumer_cutover"
+      ],
+      "publishable": true,
+      "published": false,
+      "status": "PUBLISHABLE_SCAFFOLD"
+    },
+    {
+      "missing_fields": [],
+      "notes": [
+        "phase_c_scaffold_only",
+        "not_accepted_partition",
+        "not_consumer_cutover"
+      ],
+      "publishable": true,
+      "published": false,
+      "status": "PUBLISHABLE_SCAFFOLD"
+    },
+    {
+      "missing_fields": [],
+      "notes": [
+        "phase_c_scaffold_only",
+        "not_accepted_partition",
+        "not_consumer_cutover"
+      ],
+      "publishable": true,
+      "published": false,
+      "status": "PUBLISHABLE_SCAFFOLD"
+    },
+    {
+      "missing_fields": [],
+      "notes": [
+        "phase_c_scaffold_only",
+        "not_accepted_partition",
+        "not_consumer_cutover"
+      ],
+      "publishable": true,
+      "published": false,
+      "status": "PUBLISHABLE_SCAFFOLD"
+    },
+    {
+      "missing_fields": [],
+      "notes": [
+        "phase_c_scaffold_only",
+        "not_accepted_partition",
+        "not_consumer_cutover"
+      ],
+      "publishable": true,
+      "published": false,
+      "status": "PUBLISHABLE_SCAFFOLD"
+    },
+    {
+      "missing_fields": [],
+      "notes": [
+        "phase_c_scaffold_only",
+        "not_accepted_partition",
+        "not_consumer_cutover"
+      ],
+      "publishable": true,
+      "published": false,
+      "status": "PUBLISHABLE_SCAFFOLD"
+    },
+    {
+      "missing_fields": [],
+      "notes": [
+        "phase_c_scaffold_only",
+        "not_accepted_partition",
+        "not_consumer_cutover"
+      ],
+      "publishable": true,
+      "published": false,
+      "status": "PUBLISHABLE_SCAFFOLD"
+    },
+    {
+      "missing_fields": [],
+      "notes": [
+        "phase_c_scaffold_only",
+        "not_accepted_partition",
+        "not_consumer_cutover"
+      ],
+      "publishable": true,
+      "published": false,
+      "status": "PUBLISHABLE_SCAFFOLD"
+    },
+    {
+      "missing_fields": [],
+      "notes": [
+        "phase_c_scaffold_only",
+        "not_accepted_partition",
+        "not_consumer_cutover"
+      ],
+      "publishable": true,
+      "published": false,
+      "status": "PUBLISHABLE_SCAFFOLD"
+    },
+    {
+      "missing_fields": [],
+      "notes": [
+        "phase_c_scaffold_only",
+        "not_accepted_partition",
+        "not_consumer_cutover"
+      ],
+      "publishable": true,
+      "published": false,
+      "status": "PUBLISHABLE_SCAFFOLD"
+    },
+    {
+      "missing_fields": [],
+      "notes": [
+        "phase_c_scaffold_only",
+        "not_accepted_partition",
+        "not_consumer_cutover"
+      ],
+      "publishable": true,
+      "published": false,
+      "status": "PUBLISHABLE_SCAFFOLD"
+    },
+    {
+      "missing_fields": [],
+      "notes": [
+        "phase_c_scaffold_only",
+        "not_accepted_partition",
+        "not_consumer_cutover"
+      ],
+      "publishable": true,
+      "published": false,
+      "status": "PUBLISHABLE_SCAFFOLD"
+    },
+    {
+      "missing_fields": [],
+      "notes": [
+        "phase_c_scaffold_only",
+        "not_accepted_partition",
+        "not_consumer_cutover"
+      ],
+      "publishable": true,
+      "published": false,
+      "status": "PUBLISHABLE_SCAFFOLD"
+    },
+    {
+      "missing_fields": [],
+      "notes": [
+        "phase_c_scaffold_only",
+        "not_accepted_partition",
+        "not_consumer_cutover"
+      ],
+      "publishable": true,
+      "published": false,
+      "status": "PUBLISHABLE_SCAFFOLD"
+    },
+    {
+      "missing_fields": [],
+      "notes": [
+        "phase_c_scaffold_only",
+        "not_accepted_partition",
+        "not_consumer_cutover"
+      ],
+      "publishable": true,
+      "published": false,
+      "status": "PUBLISHABLE_SCAFFOLD"
+    },
+    {
+      "missing_fields": [],
+      "notes": [
+        "phase_c_scaffold_only",
+        "not_accepted_partition",
+        "not_consumer_cutover"
+      ],
+      "publishable": true,
+      "published": false,
+      "status": "PUBLISHABLE_SCAFFOLD"
+    },
+    {
+      "missing_fields": [],
+      "notes": [
+        "phase_c_scaffold_only",
+        "not_accepted_partition",
+        "not_consumer_cutover"
+      ],
+      "publishable": true,
+      "published": false,
+      "status": "PUBLISHABLE_SCAFFOLD"
+    },
+    {
+      "missing_fields": [],
+      "notes": [
+        "phase_c_scaffold_only",
+        "not_accepted_partition",
+        "not_consumer_cutover"
+      ],
+      "publishable": true,
+      "published": false,
+      "status": "PUBLISHABLE_SCAFFOLD"
+    }
+  ],
+  "stock_states": [
+    {
+      "available_at": "20260717T160000+0800",
+      "axis_trend": "up",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "definition_version": "stock_state_stage_pattern_v0",
+      "details": {
+        "bars_used": 5,
+        "coverage_reason": null,
+        "trend_lookback_bars": 5,
+        "writer": "tier12_publish_writer"
+      },
+      "eligible_universe_id": "traded_on_observation_date:v1",
+      "input_snapshot_id": "nominal_ohlcv_pit:20260717:n99",
+      "is_breakout_event": false,
+      "stock_code": "000001",
+      "trade_date": "20260717"
+    },
+    {
+      "available_at": "20260717T160000+0800",
+      "axis_trend": "up",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "definition_version": "stock_state_stage_pattern_v0",
+      "details": {
+        "bars_used": 5,
+        "coverage_reason": null,
+        "trend_lookback_bars": 5,
+        "writer": "tier12_publish_writer"
+      },
+      "eligible_universe_id": "traded_on_observation_date:v1",
+      "input_snapshot_id": "nominal_ohlcv_pit:20260717:n99",
+      "is_breakout_event": false,
+      "stock_code": "000002",
+      "trade_date": "20260717"
+    },
+    {
+      "available_at": "20260717T160000+0800",
+      "axis_trend": "down",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "definition_version": "stock_state_stage_pattern_v0",
+      "details": {
+        "bars_used": 5,
+        "coverage_reason": null,
+        "trend_lookback_bars": 5,
+        "writer": "tier12_publish_writer"
+      },
+      "eligible_universe_id": "traded_on_observation_date:v1",
+      "input_snapshot_id": "nominal_ohlcv_pit:20260717:n99",
+      "is_breakout_event": false,
+      "stock_code": "000006",
+      "trade_date": "20260717"
+    },
+    {
+      "available_at": "20260717T160000+0800",
+      "axis_trend": "down",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "definition_version": "stock_state_stage_pattern_v0",
+      "details": {
+        "bars_used": 5,
+        "coverage_reason": null,
+        "trend_lookback_bars": 5,
+        "writer": "tier12_publish_writer"
+      },
+      "eligible_universe_id": "traded_on_observation_date:v1",
+      "input_snapshot_id": "nominal_ohlcv_pit:20260717:n99",
+      "is_breakout_event": false,
+      "stock_code": "000007",
+      "trade_date": "20260717"
+    },
+    {
+      "available_at": "20260717T160000+0800",
+      "axis_trend": "down",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "definition_version": "stock_state_stage_pattern_v0",
+      "details": {
+        "bars_used": 4,
+        "coverage_reason": null,
+        "trend_lookback_bars": 5,
+        "writer": "tier12_publish_writer"
+      },
+      "eligible_universe_id": "traded_on_observation_date:v1",
+      "input_snapshot_id": "nominal_ohlcv_pit:20260717:n99",
+      "is_breakout_event": false,
+      "stock_code": "000008",
+      "trade_date": "20260717"
+    },
+    {
+      "available_at": "20260717T160000+0800",
+      "axis_trend": "up",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "definition_version": "stock_state_stage_pattern_v0",
+      "details": {
+        "bars_used": 5,
+        "coverage_reason": null,
+        "trend_lookback_bars": 5,
+        "writer": "tier12_publish_writer"
+      },
+      "eligible_universe_id": "traded_on_observation_date:v1",
+      "input_snapshot_id": "nominal_ohlcv_pit:20260717:n99",
+      "is_breakout_event": false,
+      "stock_code": "000009",
+      "trade_date": "20260717"
+    },
+    {
+      "available_at": "20260717T160000+0800",
+      "axis_trend": "down",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "definition_version": "stock_state_stage_pattern_v0",
+      "details": {
+        "bars_used": 5,
+        "coverage_reason": null,
+        "trend_lookback_bars": 5,
+        "writer": "tier12_publish_writer"
+      },
+      "eligible_universe_id": "traded_on_observation_date:v1",
+      "input_snapshot_id": "nominal_ohlcv_pit:20260717:n99",
+      "is_breakout_event": false,
+      "stock_code": "000010",
+      "trade_date": "20260717"
+    },
+    {
+      "available_at": "20260717T160000+0800",
+      "axis_trend": "up",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "definition_version": "stock_state_stage_pattern_v0",
+      "details": {
+        "bars_used": 5,
+        "coverage_reason": null,
+        "trend_lookback_bars": 5,
+        "writer": "tier12_publish_writer"
+      },
+      "eligible_universe_id": "traded_on_observation_date:v1",
+      "input_snapshot_id": "nominal_ohlcv_pit:20260717:n99",
+      "is_breakout_event": false,
+      "stock_code": "000011",
+      "trade_date": "20260717"
+    },
+    {
+      "available_at": "20260717T160000+0800",
+      "axis_trend": "down",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "definition_version": "stock_state_stage_pattern_v0",
+      "details": {
+        "bars_used": 5,
+        "coverage_reason": null,
+        "trend_lookback_bars": 5,
+        "writer": "tier12_publish_writer"
+      },
+      "eligible_universe_id": "traded_on_observation_date:v1",
+      "input_snapshot_id": "nominal_ohlcv_pit:20260717:n99",
+      "is_breakout_event": false,
+      "stock_code": "000012",
+      "trade_date": "20260717"
+    },
+    {
+      "available_at": "20260717T160000+0800",
+      "axis_trend": "up",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "definition_version": "stock_state_stage_pattern_v0",
+      "details": {
+        "bars_used": 5,
+        "coverage_reason": null,
+        "trend_lookback_bars": 5,
+        "writer": "tier12_publish_writer"
+      },
+      "eligible_universe_id": "traded_on_observation_date:v1",
+      "input_snapshot_id": "nominal_ohlcv_pit:20260717:n99",
+      "is_breakout_event": false,
+      "stock_code": "000014",
+      "trade_date": "20260717"
+    },
+    {
+      "available_at": "20260717T160000+0800",
+      "axis_trend": "up",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "definition_version": "stock_state_stage_pattern_v0",
+      "details": {
+        "bars_used": 5,
+        "coverage_reason": null,
+        "trend_lookback_bars": 5,
+        "writer": "tier12_publish_writer"
+      },
+      "eligible_universe_id": "traded_on_observation_date:v1",
+      "input_snapshot_id": "nominal_ohlcv_pit:20260717:n99",
+      "is_breakout_event": false,
+      "stock_code": "000016",
+      "trade_date": "20260717"
+    },
+    {
+      "available_at": "20260717T160000+0800",
+      "axis_trend": "down",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "definition_version": "stock_state_stage_pattern_v0",
+      "details": {
+        "bars_used": 5,
+        "coverage_reason": null,
+        "trend_lookback_bars": 5,
+        "writer": "tier12_publish_writer"
+      },
+      "eligible_universe_id": "traded_on_observation_date:v1",
+      "input_snapshot_id": "nominal_ohlcv_pit:20260717:n99",
+      "is_breakout_event": false,
+      "stock_code": "000017",
+      "trade_date": "20260717"
+    },
+    {
+      "available_at": "20260717T160000+0800",
+      "axis_trend": "up",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "definition_version": "stock_state_stage_pattern_v0",
+      "details": {
+        "bars_used": 5,
+        "coverage_reason": null,
+        "trend_lookback_bars": 5,
+        "writer": "tier12_publish_writer"
+      },
+      "eligible_universe_id": "traded_on_observation_date:v1",
+      "input_snapshot_id": "nominal_ohlcv_pit:20260717:n99",
+      "is_breakout_event": false,
+      "stock_code": "000019",
+      "trade_date": "20260717"
+    },
+    {
+      "available_at": "20260717T160000+0800",
+      "axis_trend": "down",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "definition_version": "stock_state_stage_pattern_v0",
+      "details": {
+        "bars_used": 5,
+        "coverage_reason": null,
+        "trend_lookback_bars": 5,
+        "writer": "tier12_publish_writer"
+      },
+      "eligible_universe_id": "traded_on_observation_date:v1",
+      "input_snapshot_id": "nominal_ohlcv_pit:20260717:n99",
+      "is_breakout_event": false,
+      "stock_code": "000020",
+      "trade_date": "20260717"
+    },
+    {
+      "available_at": "20260717T160000+0800",
+      "axis_trend": "down",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "definition_version": "stock_state_stage_pattern_v0",
+      "details": {
+        "bars_used": 5,
+        "coverage_reason": null,
+        "trend_lookback_bars": 5,
+        "writer": "tier12_publish_writer"
+      },
+      "eligible_universe_id": "traded_on_observation_date:v1",
+      "input_snapshot_id": "nominal_ohlcv_pit:20260717:n99",
+      "is_breakout_event": false,
+      "stock_code": "000021",
+      "trade_date": "20260717"
+    },
+    {
+      "available_at": "20260717T160000+0800",
+      "axis_trend": "up",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "definition_version": "stock_state_stage_pattern_v0",
+      "details": {
+        "bars_used": 5,
+        "coverage_reason": null,
+        "trend_lookback_bars": 5,
+        "writer": "tier12_publish_writer"
+      },
+      "eligible_universe_id": "traded_on_observation_date:v1",
+      "input_snapshot_id": "nominal_ohlcv_pit:20260717:n99",
+      "is_breakout_event": false,
+      "stock_code": "000025",
+      "trade_date": "20260717"
+    },
+    {
+      "available_at": "20260717T160000+0800",
+      "axis_trend": "down",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "definition_version": "stock_state_stage_pattern_v0",
+      "details": {
+        "bars_used": 5,
+        "coverage_reason": null,
+        "trend_lookback_bars": 5,
+        "writer": "tier12_publish_writer"
+      },
+      "eligible_universe_id": "traded_on_observation_date:v1",
+      "input_snapshot_id": "nominal_ohlcv_pit:20260717:n99",
+      "is_breakout_event": false,
+      "stock_code": "000026",
+      "trade_date": "20260717"
+    },
+    {
+      "available_at": "20260717T160000+0800",
+      "axis_trend": "up",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "definition_version": "stock_state_stage_pattern_v0",
+      "details": {
+        "bars_used": 5,
+        "coverage_reason": null,
+        "trend_lookback_bars": 5,
+        "writer": "tier12_publish_writer"
+      },
+      "eligible_universe_id": "traded_on_observation_date:v1",
+      "input_snapshot_id": "nominal_ohlcv_pit:20260717:n99",
+      "is_breakout_event": false,
+      "stock_code": "000027",
+      "trade_date": "20260717"
+    },
+    {
+      "available_at": "20260717T160000+0800",
+      "axis_trend": "up",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "definition_version": "stock_state_stage_pattern_v0",
+      "details": {
+        "bars_used": 5,
+        "coverage_reason": null,
+        "trend_lookback_bars": 5,
+        "writer": "tier12_publish_writer"
+      },
+      "eligible_universe_id": "traded_on_observation_date:v1",
+      "input_snapshot_id": "nominal_ohlcv_pit:20260717:n99",
+      "is_breakout_event": false,
+      "stock_code": "000028",
+      "trade_date": "20260717"
+    },
+    {
+      "available_at": "20260717T160000+0800",
+      "axis_trend": "down",
+      "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+      "definition_version": "stock_state_stage_pattern_v0",
+      "details": {
+        "bars_used": 5,
+        "coverage_reason": null,
+        "trend_lookback_bars": 5,
+        "writer": "tier12_publish_writer"
+      },
+      "eligible_universe_id": "traded_on_observation_date:v1",
+      "input_snapshot_id": "nominal_ohlcv_pit:20260717:n99",
+      "is_breakout_event": false,
+      "stock_code": "000029",
+      "trade_date": "20260717"
+    }
+  ]
+}

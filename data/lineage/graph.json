@@ -1531,6 +1531,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/tier12_nominal_canary.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/tier12_publish_writer.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -3151,6 +3157,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/tier12_nominal_canary.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/tier12_publish_writer.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
@@ -3290,6 +3302,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_sources/nominal_ohlcv_schema.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_nominal_ohlcv_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/tier12_nominal_canary.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_nominal_ohlcv_daily"
     },
@@ -4849,9 +4867,9 @@
     }
   ],
   "meta": {
-    "edge_count": 757,
-    "generated_at": "2026-07-20T02:01:26.495759+00:00",
-    "node_count": 340,
+    "edge_count": 760,
+    "generated_at": "2026-07-20T02:08:54.456482+00:00",
+    "node_count": 341,
     "version": 2
   },
   "nodes": [
@@ -5717,6 +5735,14 @@
         "path": "backend/services/technical_states/limits.py"
       },
       "id": "consumer:backend/services/technical_states/limits.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/tier12_nominal_canary.py"
+      },
+      "id": "consumer:backend/services/tier12_nominal_canary.py",
       "kind": "consumer"
     },
     {

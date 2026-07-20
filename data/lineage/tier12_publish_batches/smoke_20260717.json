@@ -1,0 +1,110 @@
+{
+  "artifact_paths": {
+    "batch": "data/lineage/tier12_publish_batches/batch_20260717.json",
+    "smoke": "data/lineage/tier12_publish_batches/smoke_20260717.json"
+  },
+  "canary": {
+    "accepted_row_count": 5522,
+    "available_at_mode": "contractual",
+    "available_at_policy": "contractual_same_day_at_1800",
+    "canonical_table": "canonical_nominal_ohlcv_daily",
+    "codes": [
+      "000001.SZ",
+      "000002.SZ",
+      "000006.SZ",
+      "000007.SZ",
+      "000008.SZ",
+      "000009.SZ",
+      "000010.SZ",
+      "000011.SZ",
+      "000012.SZ",
+      "000014.SZ",
+      "000016.SZ",
+      "000017.SZ",
+      "000019.SZ",
+      "000020.SZ",
+      "000021.SZ",
+      "000025.SZ",
+      "000026.SZ",
+      "000027.SZ",
+      "000028.SZ",
+      "000029.SZ"
+    ],
+    "dataset_id": "tier0.market_data.nominal_ohlcv_daily",
+    "decision_date": "20260717",
+    "lookback_days": [
+      "20260713",
+      "20260714",
+      "20260715",
+      "20260716",
+      "20260717"
+    ],
+    "notes": [
+      "phase_c_nominal_canary",
+      "not_accepted_tier12_publish",
+      "not_strategy_release",
+      "canary_scope_not_full_universe",
+      "live_canonical_available_at_is_retrospective_accept_timestamp"
+    ],
+    "row_count": 99
+  },
+  "dataset_id": "tier0.market_data.nominal_ohlcv_daily",
+  "decision_date": "20260717",
+  "generated_at": "2026-07-20T02:07:22.270772+00:00",
+  "input_count": 100,
+  "kind": "tier12_writer_smoke_summary",
+  "live_readiness_note": "smoke used live read-only DuckDB; code commit does not upgrade Tier0 continuity BLOCKED/DEGRADED/UNVERIFIED → READY",
+  "market_attestation_status": "PUBLISHABLE_SCAFFOLD",
+  "market_available_at": "20260717T160000+0800",
+  "market_config_hash": "8c6b68d4b42fb2385e29fffe87b04c6cb4ee3f730a704c53294937c48fb5c215",
+  "market_definition_version": "market_sensing_project_breadth_v0",
+  "market_details": {
+    "adv_n": 2,
+    "b_pit_cutover_allowed": false,
+    "dec_n": 18,
+    "flat_n": 0,
+    "method": "board_filtered_nominal_breadth",
+    "row_count_used": 20,
+    "skipped_off_board": 0
+  },
+  "market_risk_on": false,
+  "market_trust_status": "READY",
+  "not_claims": [
+    "not_accepted_partition",
+    "not_strategy_release",
+    "not_publish_complete",
+    "not_b_pit_cutover",
+    "canary_scope_not_full_universe"
+  ],
+  "notes": [
+    "phase_c_writer",
+    "written_unpublished",
+    "not_accepted_partition",
+    "not_strategy_release",
+    "not_pulse_mart_cutover",
+    "pit_available_at_le_decision_date"
+  ],
+  "pit_excluded_count": 1,
+  "poison_injected": 1,
+  "published": false,
+  "smoke_gate": {
+    "available_at": "20260717T160000+0800",
+    "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+    "decision_date": "20260717",
+    "definition_version": "stock_state_stage_pattern_v0",
+    "market_attestation_status": "PUBLISHABLE_SCAFFOLD",
+    "market_available_at": "20260717T160000+0800",
+    "market_config_hash": "8c6b68d4b42fb2385e29fffe87b04c6cb4ee3f730a704c53294937c48fb5c215",
+    "market_definition_version": "market_sensing_project_breadth_v0",
+    "ok": true,
+    "pit_excluded_count": 1,
+    "published": false,
+    "status": "WRITTEN_UNPUBLISHED",
+    "stock_state_count": 20
+  },
+  "status": "WRITTEN_UNPUBLISHED",
+  "stock_available_at": "20260717T160000+0800",
+  "stock_config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
+  "stock_definition_version": "stock_state_stage_pattern_v0",
+  "stock_state_count": 20
+}

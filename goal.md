@@ -6,15 +6,18 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + **120** 交易日名义 K accepted `20260116`–`20260717`；ST 同窗 + 额外 `20260720`；daily eligible frontier 仍=`20260717` READY/`pending_publish` 挡 `20260720`；仍禁 mass backfill）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false`）。**E0 FIXED（gate+mirror off）**。**E = measured reject / no-gain（120d checkpointed）**：窗 `20260116`–`20260717` purged WF（3 folds）B0−38%/B1−51%/B2−2.2% 全 `reject`；B4 `inconclusive`（event_days=11 但 fraction≈9%<25%）；均 `claimable=false`；artifacts=`data/lineage/phase_e_experiment_verdicts/`；**无 StrategyRelease**。**Phase C PARTIAL（writer+PIT；未 publish-complete）**：
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + **120** 交易日名义 K accepted `20260116`–`20260717`；ST 同窗 + 额外 `20260720`；daily eligible frontier 仍=`20260717` READY/`pending_publish` 挡 `20260720`；仍禁 mass backfill）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false`）。**E0 FIXED（gate+mirror off）**。**E = measured reject / no-gain（120d checkpointed）**：窗 `20260116`–`20260717` purged WF（3 folds）B0−38%/B1−51%/B2−2.2% 全 `reject`；B4 `inconclusive`（event_days=11 但 fraction≈9%<25%）；均 `claimable=false`；artifacts=`data/lineage/phase_e_experiment_verdicts/`；**无 StrategyRelease**。**Phase C PARTIAL（writer+PIT+live smoke；未 publish-complete）**：
   `tier12_publish_contract` + `tier12_publish_writer` + typed
-  `config/tier12_publish.yaml`。Writer 对 `available_at` 做 PIT 截断
-  （`<= decision_date`；缺 available_at fail-closed）；输出
-  `WRITTEN_UNPUBLISHED` / `published=false` 硬门（config
-  `allow_published` 不可覆盖）。Lineage 齐全 → attest
-  `PUBLISHABLE_SCAFFOLD`；legacy form bridge 仍 `NOT_PUBLISHABLE`。
+  `config/tier12_publish.yaml` + `tier12_nominal_canary`。Writer 对
+  `available_at` 做 PIT 截断（`<= decision_date`；缺 available_at
+  fail-closed）；输出 `WRITTEN_UNPUBLISHED` / `published=false` 硬门。
+  Live 烟测 `20260717` canary（20 codes × 5d；契约 available_at=
+  `same_day_at 18:00`，**不用** retrospective accept 时间戳）→
+  lineage `data/lineage/tier12_publish_batches/{batch,smoke}_20260717.json`
+  （stock_state_count=20；pit_excluded=1 poison；attest
+  `PUBLISHABLE_SCAFFOLD`）。Offline fixture 回归已挂。
   **未** accepted_partition / **未** cutover / **未** StrategyRelease。
-  下一刀=接 live nominal bars→writer 烟测 **或** accepted publish 路径；
+  下一刀=accepted publish 路径 **或** daily 下一 eligible 单日；
   禁 Optuna / gate-loosening / B-pit cutover / margin thaw / mass backfill。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
@@ -72,11 +75,11 @@
   mart 数值未改、`cutover_allowed=false`。残余=B-pit 数值切读。
 - **B-pit PARTIAL** 广度/shadow 已有；**未**接 pulse mart / 未 cutover。Canary 日
   `20260717`：PIT vs unfiltered 分歧 → `cutover_allowed=false`。
-- **C PARTIAL（writer+PIT）** `tier12_publish_contract` +
-  `tier12_publish_writer` + `config/tier12_publish.yaml`：
-  TimedInput PIT 截断证明（未来 available_at 0-diff）；lineage 齐全 →
-  `PUBLISHABLE_SCAFFOLD`；writer 恒 `WRITTEN_UNPUBLISHED`/
-  `published=false`。**未** accepted publish / **未** consumer cutover。
+- **C PARTIAL（writer+PIT+live smoke）** contract/writer/yaml +
+  `tier12_nominal_canary` + `persist_tier12_writer_smoke.py`：
+  TimedInput PIT 截断；live `20260717` canary smoke 已落 lineage
+  （`WRITTEN_UNPUBLISHED`/`published=false`/`PUBLISHABLE_SCAFFOLD`）。
+  **未** accepted publish / **未** consumer cutover。
   **D** `DatasetSnapshot`→`ExperimentVerdict` + PIT 截断（E 已部分消费）。
 - **E0 FIXED（gate+mirror off；E 硬前置）** 三域 MATCH → `cutover_allowed=true`；
   formal writes=`formal_only`；research read prefer canonical；
@@ -95,8 +98,9 @@
   `data/lineage/phase_e_experiment_verdicts/{manifest,b0,b1,b2,b4}.json`
   （`persist_phase_e_experiment_verdicts.py` 幂等 regenerate；window 从实测
   trading_days 派生）。form/qfq `20260717` **still blocked**（max=`20260716`）。
-  **Next**：C live bars→writer 烟测 **或** daily 下一 eligible 单日
-  （frontier 仍=`20260717`；`20260720` 未 eligible）**或** stop。
+  **Next**：C accepted publish 路径 **或** daily 下一 eligible 单日
+  （frontier 仍=`20260717`；`20260720` 未 accepted / 午前仍 pending_publish）
+  **或** stop。
   **禁** Optuna / gate-loosening / B-pit cutover / margin thaw / mass backfill /
   StrategyRelease。**F** main_rally。**G** 公式+BestChoice。**H** Release。
 
