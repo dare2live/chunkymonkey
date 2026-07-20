@@ -1444,3 +1444,45 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Next**: daily `20260720` after 18:00 CST **or** explicit opt-in
   cutover (strong evidence + residual note) **or** B-pit shadow
   remeasure / Phase D scaffold **or** stop.
+
+### 2026-07-20 — Daily eligibility live proof (calendar/horizon vs 18:00)
+
+- Wall-clock: Mon 2026-07-20 ~14:19 Asia/Shanghai (in-session).
+- `scripts/chunkyctl doctor --fast` → verdict PASS;
+  `population_readiness=READY` /
+  `accepted_calendar_kline_st_sources_visible`;
+  `automation_surface=manual_only` (no cron/launchd).
+- Live formal daily policy (registry +
+  `nominal_ohlcv_schema.DOMAIN`): `availability_policy=
+  {axis:trading_day, rule:same_day_at, at:18:00}`. Manual
+  `chunkyctl sync` uses the **same**
+  `eligible_end_date` → `resolve_availability_frontier` →
+  `resolve_operation_window` path (no manual clock bypass in code).
+- Projection at 14:19 CST: daily
+  `eligible_end=20260717`, `pending_today=True`,
+  `reason=pending_publish`. stock_st (`same_day_at 09:20`)
+  `eligible_end=20260720`, `reason=published`.
+- Counterfactual: Mon 17:59 → still `20260717`/`pending_publish`;
+  Mon 18:00 → `20260720`/`published`; Sat/Sun afternoon →
+  `20260717`/`latest_prior_trading_day` (calendar axis, not clock).
+- Live sync:
+  - `chunkyctl sync --domain daily --start 20260720 --end 20260720`
+    → `{"status":"operation_window_blocked","reason":"requested end=20260720 exceeds eligible horizon=20260717 (pending_publish)"}`
+  - same for `20260718` (weekend) → horizon deny (same reason string)
+  - `... --start 20260717 --end 20260717` → ok / re-accepted
+    5522 rows; `eligible_end=20260717`,
+    `eligibility_reason=pending_publish`
+- Accepted state already had
+  `tier0.market_data.nominal_ohlcv_daily` through `20260717`;
+  ST also has `20260720`. No frontier repair needed.
+- **Correction vs prior board language**: do **not** invent
+  “wait for system ≥18:00 auto policy” — updates are
+  `manual_only`. However **18:00 is not a false residual in live
+  code**: typed `same_day_at 18:00` still sets the manual sync
+  horizon on an open trading day (`pending_publish`). Owner claim
+  that manual no longer waits on 18:00 is **not** reflected in
+  current contract/code; report honestly, do not remove policy
+  without an explicit change knife.
+- Docs: `goal.md` language corrected to this evidence.
+- **Did not**: flip cutover; StrategyRelease; Optuna; E loosen;
+  B-pit cutover; margin thaw; mass backfill; claim READY by commit.
