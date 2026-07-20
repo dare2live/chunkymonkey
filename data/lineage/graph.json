@@ -1525,6 +1525,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/tier12_consumer_cutover.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/tier12_nominal_canary.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -1604,6 +1610,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_nominal_ohlcv_acceptance.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_tier12_consumer_cutover.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
     },
@@ -3145,6 +3157,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/tier12_consumer_cutover.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/tier12_nominal_canary.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
@@ -3224,6 +3242,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_nominal_ohlcv_acceptance.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_tier12_consumer_cutover.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
     },
@@ -4855,9 +4879,9 @@
     }
   ],
   "meta": {
-    "edge_count": 758,
-    "generated_at": "2026-07-20T02:16:34.061601+00:00",
-    "node_count": 340,
+    "edge_count": 762,
+    "generated_at": "2026-07-20T02:24:59.677756+00:00",
+    "node_count": 342,
     "version": 2
   },
   "nodes": [
@@ -5720,6 +5744,14 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/tier12_consumer_cutover.py"
+      },
+      "id": "consumer:backend/services/tier12_consumer_cutover.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/tier12_nominal_canary.py"
       },
       "id": "consumer:backend/services/tier12_nominal_canary.py",
@@ -6003,6 +6035,14 @@
         "path": "backend/tests/services/test_sync_runner_watermark_decouple.py"
       },
       "id": "consumer:backend/tests/services/test_sync_runner_watermark_decouple.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_tier12_consumer_cutover.py"
+      },
+      "id": "consumer:backend/tests/services/test_tier12_consumer_cutover.py",
       "kind": "consumer"
     },
     {

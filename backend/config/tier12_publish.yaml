@@ -7,14 +7,15 @@
 #   - writer allow_published stays false (writer never publishes)
 #   - accept path sets published=true only after WRITTEN_UNPUBLISHED +
 #     PUBLISHABLE_SCAFFOLD gates; smoke summaries cannot be upgraded
-#   - allow_consumer_cutover stays false (hard gate; consumers do not cut over)
+#   - allow_consumer_cutover / consumer_cutover.cutover_allowed stay false
+#     (explicit resolver gate; research/UI must not silent-read accepted_*.json)
 #   - missing lineage / missing available_at / PIT poison fail closed
 #   - not StrategyRelease; not B-pit mart cutover; not Optuna
 
 meta:
   version: 1
   phase: C
-  notes: "writer=WRITTEN_UNPUBLISHED; accept=ACCEPTED published=true cutover=false"
+  notes: "writer=WRITTEN_UNPUBLISHED; accept=ACCEPTED published=true; consumer_cutover=false"
 
 stock_state:
   definition_version: stock_state_stage_pattern_v0
@@ -44,4 +45,18 @@ publish:
   allow_published: false
   # Accept path hard gate — flipping this must NOT cut over consumers.
   allow_consumer_cutover: false
+  artifact_dir: data/lineage/tier12_publish_batches
+
+# Explicit consumer cutover gate (tier12_consumer_cutover.resolve_*).
+# Default false: consumers stay on legacy/scaffold. Enabling requires accepted
+# publish for the day, matching definition_version+config_hash, and either a
+# non-canary accept or acknowledge_canary_scope (which forbids project-universe).
+consumer_cutover:
+  cutover_allowed: false
+  expected_definition_version: stock_state_stage_pattern_v0
+  # Empty until an operator fills the live stock config_hash for the accept
+  # they intend to cut over; missing hash fails closed on opt-in.
+  expected_config_hash: ""
+  acknowledge_canary_scope: false
+  claim_project_universe: false
   artifact_dir: data/lineage/tier12_publish_batches

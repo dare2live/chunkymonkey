@@ -15,9 +15,11 @@
   成功后才 `published=true`；`cutover_allowed=false` 硬门（禁 smoke 静默升级）。
   Live canary `20260717`（20 codes）：
   `{batch,smoke,accepted}_20260717.json`（stock_row_count=20；
-  content_hash 已落）。**未** consumer cutover / **未** full-universe /
-  **未** StrategyRelease。下一刀=consumer cutover 显式门（仍默认 false）
-  **或** full-universe accept **或** daily 下一 eligible 单日；
+  content_hash 已落）。**Consumer cutover 显式门 FIXED（默认 false）**：
+  `tier12_consumer_cutover` + yaml `consumer_cutover`；resolver 唯一生产读入口；
+  canary≠全市场（需 ack 且禁 project-universe claim）。**未**接线生产消费者 /
+  **未** full-universe accept / **未** StrategyRelease。下一刀=full-universe
+  accept **或** daily 下一 eligible 单日（`20260720` 需 ≥18:00 CST）；
   禁 Optuna / gate-loosening / B-pit cutover / margin thaw / mass backfill。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
@@ -75,11 +77,12 @@
   mart 数值未改、`cutover_allowed=false`。残余=B-pit 数值切读。
 - **B-pit PARTIAL** 广度/shadow 已有；**未**接 pulse mart / 未 cutover。Canary 日
   `20260717`：PIT vs unfiltered 分歧 → `cutover_allowed=false`。
-- **C PARTIAL（accepted publish canary）** contract/writer/accept/yaml +
-  canary + `persist_tier12_{writer_smoke,accepted_publish}.py`：
+- **C PARTIAL（accepted publish canary + consumer gate）** contract/writer/
+  accept/yaml + canary + `persist_tier12_{writer_smoke,accepted_publish}.py` +
+  **`tier12_consumer_cutover`（默认 false；未接线生产消费者）**：
   live `20260717` → `accepted_20260717.json`（`ACCEPTED`/`published=true`/
-  `cutover_allowed=false`；canary scale）。**未** consumer cutover /
-  **未** full-universe publish-complete。
+  accept-side `cutover_allowed=false`；canary scale）。**未** full-universe
+  publish-complete / **未** claim Phase C complete。
   **D** `DatasetSnapshot`→`ExperimentVerdict` + PIT 截断（E 已部分消费）。
 - **E0 FIXED（gate+mirror off；E 硬前置）** 三域 MATCH → `cutover_allowed=true`；
   formal writes=`formal_only`；research read prefer canonical；
@@ -98,9 +101,10 @@
   `data/lineage/phase_e_experiment_verdicts/{manifest,b0,b1,b2,b4}.json`
   （`persist_phase_e_experiment_verdicts.py` 幂等 regenerate；window 从实测
   trading_days 派生）。form/qfq `20260717` **still blocked**（max=`20260716`）。
-  **Next**：C consumer cutover 显式门（默认 false）**或** full-universe
-  Tier1/2 accept **或** daily 下一 eligible 单日（frontier 仍=`20260717`；
-  `20260720` 午前仍 `pending_publish`/operation_window_blocked）**或** stop。
+  **Next**：full-universe Tier1/2 accept **或** daily 下一 eligible 单日
+  （frontier 仍=`20260717`；`20260720` 午前仍 `pending_publish`/
+  operation_window_blocked；需 ≥18:00 CST）**或** stop。Consumer cutover 门
+  已落地（默认 false；生产消费者未接线）。
   **禁** Optuna / gate-loosening / B-pit cutover / margin thaw / mass backfill /
   StrategyRelease。**F** main_rally。**G** 公式+BestChoice。**H** Release。
 

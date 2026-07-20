@@ -1331,3 +1331,26 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Next**: explicit consumer cutover gate (default false) **or**
   full-universe Tier1/2 accept **or** next eligible daily single-day
   **or** stop.
+
+### 2026-07-20 — Phase C consumer cutover gate (TDD)
+
+- Added `backend/services/tier12_consumer_cutover.py` + typed
+  `consumer_cutover` section in `backend/config/tier12_publish.yaml` +
+  TDD `test_tier12_consumer_cutover.py` (10/10; tier12 suite 30/30).
+- Semantics (fail-closed): default `cutover_allowed=false` →
+  `LEGACY` / `legacy_scaffold` even when accepted JSON exists;
+  opt-in requires accepted `ACCEPTED`+`published=true`, matching
+  `definition_version`+`config_hash`, and non-canary accept **or**
+  `acknowledge_canary_scope=true` (which forces
+  `claim_project_universe=false`). Missing accept / hash mismatch /
+  `published=false` / canary-as-full-universe → `BLOCKED`.
+- Single resolver API: `resolve_tier12_consumer_cutover`;
+  `load_accepted_partition_as_production_truth` refuses silent file
+  reads when the gate does not allow cutover.
+- **Did not**: wire research/UI production consumers to cutover=true;
+  full-universe accept; flip live yaml opt-in; daily `20260720`
+  (wall-clock still before 18:00 CST); B-pit mart cutover; Optuna;
+  E gate loosen; StrategyRelease; margin thaw. Canary accept still
+  ≠ Phase C complete.
+- **Next**: full-universe Tier1/2 accept **or** next eligible daily
+  single-day (≥18:00 CST for `20260720`) **or** stop.
