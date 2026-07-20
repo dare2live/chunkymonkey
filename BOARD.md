@@ -2,14 +2,14 @@
 
 > 由 `backend/scripts/build_agent_board.py` 重生成，**勿手改**。
 > **Projection only** — not an enforcement input. Cutover / readiness / PIT gates still resolve from yaml + code resolvers + accepted partitions.
-> Snapshot: 2026-07-20T11:02:00Z
+> Snapshot: 2026-07-20T11:12:29Z
 
 ## Track
 
-- track: `agent-os-redesign` status=`shadow_period_open_not_closed`
-- A→H: `suspended_at_d8b69090`
+- track: `a_to_h_resumed` status=`a_to_h_resumed_owner_20260720`
+- A→H: `resumed_20260720_from_d8b69090`
 - WP1: `FIXED` | WP2: `FIXED` | WP3: `FIXED` | WP4: `FIXED` | WP5: `SKIPPED_occam` | WP6: `POLICY_FIXED_shadow_open`
-- shadow: start=`be8efc6f/2026-07-20` deadline=`10_sessions_or_14d_first` (ceremony flip only; B-pit/C data cutover unrelated)
+- agent-OS: `shadow_period_open_not_closed` shadow start=`be8efc6f/2026-07-20` deadline=`10_sessions_or_14d_first` (ceremony flip only; B-pit/C data cutover unrelated)
 
 ## Cutovers (yaml projection)
 
@@ -30,17 +30,16 @@
 
 ## Bans
 
-- new A→H knives while agent-OS track open
 - B-pit/C cutover_allowed=true without strong evidence + explicit yaml
 - Optuna / E gate loosen / StrategyRelease / margin thaw
-- mass backfill / plugin bus / second DB
+- mass backfill / plugin bus / second DB / silent cutover
 - --no-verify / agent self-downgrade of commit tier
 
 ## Next (frozen menu)
 
-- 20260720 provider-ready daily sync+accept (manual data ops OK)
-- opt-in C/B-pit cutover only with strong evidence (yaml still false)
 - D persist ExperimentRun / real fold bind
+- opt-in C/B-pit cutover only with strong evidence (yaml still false)
+- agent-OS shadow residuals (ceremony flip owner-gated)
 - or stop
 
 ## Sources

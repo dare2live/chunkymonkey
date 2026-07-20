@@ -273,8 +273,9 @@ WP5 shared DuckDB memory fixture pack：**Occam 跳过**——无 WP1 基线证�
 是显著耗时热点；需要时再开，不预建。
 
 轨道关闭（agent-OS track CLOSED）仍要求停机检查单全绿（见 ledger / goal 残余），
-含：影子期结束 + 旧仪式真删 + T0 墙钟实测入账 + 一次真实 L2/T2 路径证据。关闭前
-A→H 不开新刀；手动 `20260720` sync+accept 仍允许。
+含：影子期结束 + 旧仪式真删 + T0 墙钟实测入账 + 一次真实 L2/T2 路径证据。
+A→H 冻结已由 owner 于 2026-07-20 解除（核心 WP0–WP4 闭合即恢复 A→H 刀；
+影子期/仪式 cutover 残余照常，与 A→H 互不阻塞）。
 
 ## 14. Rule 10 与交付
 

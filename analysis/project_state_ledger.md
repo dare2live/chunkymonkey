@@ -1795,3 +1795,30 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   objective切回 A→H.
 - **Did not**: flip B-pit/C; Optuna; E loosen; StrategyRelease; A→H resume;
   build fixture pack; delete old boot paths early.
+
+### 2026-07-20 — A→H resume (owner) + 20260720 daily/ST sync+accept
+
+- Wall-clock: Mon 2026-07-20 ~19:00 Asia/Shanghai (in-session).
+- Owner sequencing: agent-OS core WP0–WP4 CLOSED → resume A→H knives.
+  Agent-OS shadow period (WP6 ceremony flip) stays open and owner-gated;
+  unrelated to A→H.
+- Manual formal sync (`trigger_mode=manual`, calendar-eligible Monday):
+  - `daily 20260720`: status=ok rows=5524 →
+    `accepted_nominal_ohlcv_partition`, content_hash `4a3dd266…`;
+    canonical_nominal_ohlcv_daily max=2026-07-20 (5524 rows verified
+    read-only).
+  - `stock_st 20260720`: status=ok rows=209 →
+    `accepted_stock_st_partition`, content_hash `80b9b11a…`;
+    canonical_stock_st_daily 20260720 = 209 rows verified.
+- form/qfq frontier refresh: **still blocked** — `raw_tushare_daily`/
+  `adj_factor` max=`20260716` (legacy analysis landing fed only by full
+  pipeline; pipeline acquire fails closed on formal margin readiness,
+  margin domain `mode=disabled scope_blocked` = frozen, thaw banned).
+  qfq max=`2026-07-16`. Documented, fail-closed, no workaround.
+- goal.md objective flipped to A→H resumed; BOARD/agent_context
+  regenerated (track `a_to_h_resumed`, agent-OS shadow projected;
+  "new A→H knives" ban dropped per owner; silent-cutover ban kept).
+- **Did not**: flip B-pit/C `cutover_allowed` (both still false); Optuna;
+  E gate loosen; StrategyRelease; margin thaw; mass backfill.
+- **Status**: data ops FIXED; next knife = D persist ExperimentRun +
+  real fold bind.

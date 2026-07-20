@@ -29,10 +29,9 @@ ENFORCEMENT_BANNER = (
 )
 
 BANS = [
-    "new A→H knives while agent-OS track open",
     "B-pit/C cutover_allowed=true without strong evidence + explicit yaml",
     "Optuna / E gate loosen / StrategyRelease / margin thaw",
-    "mass backfill / plugin bus / second DB",
+    "mass backfill / plugin bus / second DB / silent cutover",
     "--no-verify / agent self-downgrade of commit tier",
 ]
 
@@ -112,9 +111,10 @@ def collect(repo: Path = REPO) -> dict[str, Any]:
         "generated_from": "backend/scripts/build_agent_board.py",
         "enforcement": "projection_only_not_truth",
         "track": {
-            "name": "agent-os-redesign",
-            "status": "shadow_period_open_not_closed",
-            "a_to_h": "suspended_at_d8b69090",
+            "name": "a_to_h_resumed",
+            "status": "a_to_h_resumed_owner_20260720",
+            "agent_os": "shadow_period_open_not_closed",
+            "a_to_h": "resumed_20260720_from_d8b69090",
             "wp1": "FIXED",
             "wp2": "FIXED",
             "wp3": "FIXED",
@@ -164,9 +164,9 @@ def collect(repo: Path = REPO) -> dict[str, Any]:
         },
         "bans": list(BANS),
         "next_knives_frozen": [
-            "20260720 provider-ready daily sync+accept (manual data ops OK)",
-            "opt-in C/B-pit cutover only with strong evidence (yaml still false)",
             "D persist ExperimentRun / real fold bind",
+            "opt-in C/B-pit cutover only with strong evidence (yaml still false)",
+            "agent-OS shadow residuals (ceremony flip owner-gated)",
             "or stop",
         ],
         "goal_hand_excerpt": _goal_hand_excerpt(goal_text),
@@ -201,7 +201,7 @@ def render_md(d: dict[str, Any]) -> str:
     add(f"- {wp_status}")
     if t.get("shadow_started"):
         add(
-            f"- shadow: start=`{t['shadow_started']}` "
+            f"- agent-OS: `{t.get('agent_os')}` shadow start=`{t['shadow_started']}` "
             f"deadline=`{t.get('shadow_deadline')}` "
             "(ceremony flip only; B-pit/C data cutover unrelated)"
         )

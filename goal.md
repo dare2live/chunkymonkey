@@ -7,21 +7,20 @@
 
 ## 当前 objective
 
-**轨道 = Agent-OS（影子期，先于 A→H）**：WP0–WP4 FIXED；WP5 SKIPPED（Occam）；
-WP6 政策已立（影子期自 `be8efc6f`/2026-07-20 起算）。轨道尚未 CLOSED。
-**A→H 挂起于 `d8b69090`**。启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。
+**轨道 = A→H 恢复（owner 裁决 2026-07-20：agent-OS 核心 WP0–WP4 闭合后恢复）**。
+Agent-OS 影子期照常开放（WP6 仪式 flip 仍 owner-gated，与 A→H 无关）。
+`20260720` daily+ST 已 sync+accept。启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。
 
-## 下一步（CLOSED 前残余）
+## 下一步（A→H 残余刀）
 
-1. 影子期满（10 session 或 14 天先到）且无真相回归 → 真删旧 boot 仪式
-2. 补 T0 墙钟实测入 ledger（基线 vs tiered；unmeasured=unknown）；一次真实 L2 路径证据
-3. 手动数据运维：`20260720` provider 有行后 sync+accept（非 A→H 刀）
-4. 停机检查单全绿后 goal objective 切回 A→H（见 eng_gov §13 / ledger）
+1. D 残余：persist 不可变 ExperimentRun artifact（含 lineage 消费方）+ 真 purged-WF fold 绑定共享 runtime
+2. C/B-pit 残余观察（不 flip `cutover_allowed`；默认 false）
+3. Agent-OS 影子期残余（非本轨道）：影子期满检查单、T0 墙钟实测、真实 L2 路径证据
 
 ## 禁令
 
-- 新 A→H 刀；B-pit/C `cutover_allowed=true`；Optuna；E 松门；StrategyRelease
-- margin thaw；mass backfill；plugin bus；第二 DB；agent 自降 commit tier
+- B-pit/C `cutover_allowed=true`（无本 session 证据+goal 明确排程不 flip）；Optuna；E 松门；StrategyRelease
+- margin thaw；mass backfill；plugin bus；第二 DB；agent 自降 commit tier；静默 cutover
 
 ## 已裁决（稳定）
 
