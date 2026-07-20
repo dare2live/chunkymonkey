@@ -113,11 +113,16 @@ def collect(repo: Path = REPO) -> dict[str, Any]:
         "enforcement": "projection_only_not_truth",
         "track": {
             "name": "agent-os-redesign",
+            "status": "shadow_period_open_not_closed",
             "a_to_h": "suspended_at_d8b69090",
             "wp1": "FIXED",
             "wp2": "FIXED",
             "wp3": "FIXED",
             "wp4": "FIXED",
+            "wp5": "SKIPPED_occam",
+            "wp6": "POLICY_FIXED_shadow_open",
+            "shadow_started": "be8efc6f/2026-07-20",
+            "shadow_deadline": "10_sessions_or_14d_first",
         },
         "cutovers": {
             "b_pit_mart": {
@@ -188,12 +193,18 @@ def render_md(d: dict[str, Any]) -> str:
     add("## Track")
     add("")
     t = d["track"]
-    add(f"- track: `{t['name']}`")
+    add(f"- track: `{t['name']}` status=`{t.get('status', 'unknown')}`")
     add(f"- A→H: `{t['a_to_h']}`")
     wp_status = " | ".join(
         f"{key.upper()}: `{t[key]}`" for key in sorted(t) if key.startswith("wp")
     )
     add(f"- {wp_status}")
+    if t.get("shadow_started"):
+        add(
+            f"- shadow: start=`{t['shadow_started']}` "
+            f"deadline=`{t.get('shadow_deadline')}` "
+            "(ceremony flip only; B-pit/C data cutover unrelated)"
+        )
     add("")
     add("## Cutovers (yaml projection)")
     add("")

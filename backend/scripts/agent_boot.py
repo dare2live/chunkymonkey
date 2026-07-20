@@ -104,9 +104,10 @@ def moth_summary(run: Runner) -> dict[str, Any]:
         if isinstance(pack, dict):
             packs.append({k: pack.get(k) for k in ("name", "pass", "fail", "error")})
     dirty = snap.get("dirty_worktree")
+    # moth FAIL/WARN are reported facts (warn); only parse/tool failure is error.
     return {
         "name": "moth",
-        "status": {"PASS": "ok", "WARN": "warn", "FAIL": "error"}[moth_status],
+        "status": {"PASS": "ok", "WARN": "warn", "FAIL": "warn"}[moth_status],
         "moth_status": moth_status,
         "warnings": [str(w) for w in snap.get("warnings") or []][:5],
         "issues": [str(i) for i in snap.get("issues") or []][:5],
@@ -210,7 +211,7 @@ def render_text(d: dict[str, Any]) -> str:
     add("")
     add("## moth")
     if m["status"] in ("error", "unavailable"):
-        add(f"- {m['status'].upper()}: {m.get('error') or m.get('note')}")
+        add(f"- {m['status'].upper()}: {m.get('error') or m.get('note') or 'unknown'}")
     else:
         add(f"- status={m['moth_status']}")
         for pack in m.get("assertion_packs") or []:

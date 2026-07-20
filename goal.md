@@ -7,15 +7,16 @@
 
 ## 当前 objective
 
-**轨道 = Agent-OS 重设计（先于 A→H）**：Truth OS 机器门不动。
-WP0–WP4 FIXED（板生成 / tiered commit / `chunkyctl agent-boot` / AGENTS 瘦身）。
-**A→H 挂起于 `d8b69090`**。状态细节只读 `BOARD.md`；启动用 `scripts/chunkyctl agent-boot`。
+**轨道 = Agent-OS（影子期，先于 A→H）**：WP0–WP4 FIXED；WP5 SKIPPED（Occam）；
+WP6 政策已立（影子期自 `be8efc6f`/2026-07-20 起算）。轨道尚未 CLOSED。
+**A→H 挂起于 `d8b69090`**。启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。
 
-## 下一步（agent-OS 残余检查单）
+## 下一步（CLOSED 前残余）
 
-1. （可选）WP5 fixture pack stub；WP6 ceremony cutover 需 owner 明确批准范围
-2. 核心 agent-OS 交付（boot/board/tiers/AGENTS）已闭合；owner 裁决后可恢复 A→H
+1. 影子期满（10 session 或 14 天先到）且无真相回归 → 真删旧 boot 仪式
+2. 补 T0 墙钟实测入 ledger（基线 vs tiered；unmeasured=unknown）；一次真实 L2 路径证据
 3. 手动数据运维：`20260720` provider 有行后 sync+accept（非 A→H 刀）
+4. 停机检查单全绿后 goal objective 切回 A→H（见 eng_gov §13 / ledger）
 
 ## 禁令
 

@@ -2,7 +2,7 @@
 
 > 状态：live navigation，非规则 owner
 > 更新：2026-07-20
-> 当前目标看 `goal.md`（Agent-OS 轨道；A→H 挂起；状态投影 `BOARD.md`；会话启动 `scripts/chunkyctl agent-boot`）。
+> 当前目标看 `goal.md`（Agent-OS 影子期未 CLOSED；A→H 挂起；`BOARD.md`；启动 `scripts/chunkyctl agent-boot`）。
 > 架构看 `docs/MASTER_TOPLEVEL_DESIGN.md`；机器入口与 writer 清单看 `FEATURE_MAP.md` 和 CodeGraph。
 > 生成状态板：`PYTHONPATH=backend python backend/scripts/build_agent_board.py`（勿手改 BOARD.md；snapshot 时间戳非 trade_date）。
 

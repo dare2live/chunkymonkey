@@ -2,13 +2,14 @@
 
 > 由 `backend/scripts/build_agent_board.py` 重生成，**勿手改**。
 > **Projection only** — not an enforcement input. Cutover / readiness / PIT gates still resolve from yaml + code resolvers + accepted partitions.
-> Snapshot: 2026-07-20T09:53:23Z
+> Snapshot: 2026-07-20T11:02:00Z
 
 ## Track
 
-- track: `agent-os-redesign`
+- track: `agent-os-redesign` status=`shadow_period_open_not_closed`
 - A→H: `suspended_at_d8b69090`
-- WP1: `FIXED` | WP2: `FIXED` | WP3: `FIXED` | WP4: `FIXED`
+- WP1: `FIXED` | WP2: `FIXED` | WP3: `FIXED` | WP4: `FIXED` | WP5: `SKIPPED_occam` | WP6: `POLICY_FIXED_shadow_open`
+- shadow: start=`be8efc6f/2026-07-20` deadline=`10_sessions_or_14d_first` (ceremony flip only; B-pit/C data cutover unrelated)
 
 ## Cutovers (yaml projection)
 

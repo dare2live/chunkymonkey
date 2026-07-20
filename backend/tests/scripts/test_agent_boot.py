@@ -94,6 +94,27 @@ def test_moth_summary_compresses_snapshot():
     assert section["warnings"] == ["complexity hotspots: 80 findings"]
 
 
+def test_moth_fail_is_reported_warn_not_tool_error(tmp_path):
+    """moth status=FAIL is a snapshot fact; boot must not render ERROR: None."""
+    payload = json.loads(MOTH_WARN)
+    payload["status"] = "FAIL"
+    payload["issues"] = ["assertion error: example"]
+    section = agent_boot.moth_summary(_runner({"moth": {"out": json.dumps(payload)}}))
+    assert section["status"] == "warn"
+    assert section["moth_status"] == "FAIL"
+    _write_board(tmp_path)
+    data = agent_boot.collect(tmp_path, run=_runner({
+        "git": {"out": GIT_CLEAN},
+        "moth": {"out": json.dumps(payload)},
+        "codegraph": {"out": "Index is up to date"},
+    }))
+    assert data["overall"] == "warn"  # FAIL fact → warn, not tool error
+    text = agent_boot.render_text(data)
+    assert "status=FAIL" in text
+    assert "ERROR: None" not in text
+    assert "assertion error: example" in text
+
+
 @pytest.mark.parametrize(
     "result",
     [

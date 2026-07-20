@@ -1765,3 +1765,33 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Status**: WP4 FIXED. Agent-OS core (WP0–WP4) closed; residual =
   optional WP5 fixture pack, WP6 ceremony cutover (owner decision).
   A→H still frozen at `d8b69090`.
+### 2026-07-20 — Agent-OS WP5 SKIPPED + WP6 policy + boot moth FAIL fix
+
+- Wall-clock: Mon 2026-07-20 ~19:05 Asia/Shanghai (in-session).
+- Live verify: WP3 `5b4c6cb2` + WP4 `be8efc6f` already on main, CI green;
+  A→H still `suspended_at_d8b69090`; B-pit/C `cutover_allowed=false`.
+- **WP5 fixture pack: SKIPPED (Occam)**. Fable5 spec: shared DuckDB memory
+  fixture only when WP1 baseline proves test-DB setup is a measured hotspot.
+  No such measured hotspot recorded → do not pre-build.
+- **WP6 dual-track ceremony policy: FIXED (shadow open, flip NOT executed)**.
+  Owner: `docs/engineering_governance.md` §13. Shadow start = WP4 land
+  `be8efc6f` / 2026-07-20; deadline = 10 work sessions or 14 days (first).
+  Ceremony flip (delete old boot ritual / goal status dump) only after gate
+  coverage parity empty AND no truth regression. **Data-plane B-pit/C cutover
+  remains frozen and unrelated.**
+- Gate coverage parity smoke (classifier): L1→6 gates, L2→16, L3→18 (`all`);
+  grain/continuity stay L3-only by policy (live-DB readiness projections).
+  No gate removed; no threshold loosened.
+- AGENTS further compressed 161→99 lines (stop-checklist ≤100 met); hard
+  rules retained; doc-governance fails=0 warns=0.
+- Boot fix: moth snapshot `status=FAIL` is a reported fact → section `warn`
+  (was mapped to tool `error` and rendered `ERROR: None`). Tool/parse failure
+  remains `error`/exit 1. Test added; live boot overall=warn exit=0.
+- Board track: `shadow_period_open_not_closed`; wp5=SKIPPED_occam;
+  wp6=POLICY_FIXED_shadow_open.
+- **Track NOT CLOSED**. Residual before CLOSED: shadow expiry + true delete
+  old ceremony; T0 wall-clock measured ≥50% vs baseline into ledger
+  (currently unmeasured=unknown); one real L2 path evidence; then goal
+  objective切回 A→H.
+- **Did not**: flip B-pit/C; Optuna; E loosen; StrategyRelease; A→H resume;
+  build fixture pack; delete old boot paths early.

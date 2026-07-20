@@ -253,7 +253,30 @@ PYTHONPATH=backend python backend/scripts/check_doc_governance.py
 PYTHONPATH=backend python backend/scripts/check_doc_drift.py --check
 ```
 
-## 13. Rule 10 与交付
+## 13. Agent-OS 双轨政策与仪式影子期（WP6）
+
+Agent-OS 核心面（WP0–WP4）已落地：tiered `safe_commit`、生成板、
+`chunkyctl agent-boot`、AGENTS 瘦身。旧仪式与新表面**影子并行**，切换是真相
+裁决，不是 DX 快捷键。
+
+| 项 | 政策 |
+|---|---|
+| 影子期起点 | WP4 land = `be8efc6f` / 2026-07-20 |
+| 影子期长度 | **10 个工作 session 或 14 天（先到者）** |
+| 新表面（现行） | `agent-boot`；`BOARD.md`/`agent_context.json`；L1/L2/L3 tiers；AGENTS ≤100 |
+| 旧路径（影子保留） | 手拼 `git`+`moth snapshot`+`codegraph status` boot；手抄 goal 状态段 |
+| 仪式 cutover 条件 | 门覆盖 parity 机器 diff 为空（每门在其触发面仍可红）**且**影子期无真相回归 |
+| 任一回归 | 影子期重置；必要时回退 L3 全门 |
+| **不在本政策内** | B-pit/C **数据面** `cutover_allowed`（继续冻结；与仪式切换无关） |
+
+WP5 shared DuckDB memory fixture pack：**Occam 跳过**——无 WP1 基线证明测试建库
+是显著耗时热点；需要时再开，不预建。
+
+轨道关闭（agent-OS track CLOSED）仍要求停机检查单全绿（见 ledger / goal 残余），
+含：影子期结束 + 旧仪式真删 + T0 墙钟实测入账 + 一次真实 L2/T2 路径证据。关闭前
+A→H 不开新刀；手动 `20260720` sync+accept 仍允许。
+
+## 14. Rule 10 与交付
 
 `.py/.yaml/.sql` 或高风险文档/删除切片完成后：
 

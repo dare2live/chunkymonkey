@@ -37,9 +37,9 @@
     }
   },
   "enforcement": "projection_only_not_truth",
-  "generated_at": "2026-07-20T09:53:23Z",
+  "generated_at": "2026-07-20T11:02:00Z",
   "generated_from": "backend/scripts/build_agent_board.py",
-  "goal_hand_excerpt": "## 当前 objective\n\n**轨道 = Agent-OS 重设计（先于 A→H）**：Truth OS 机器门不动。\nWP0–WP4 FIXED（板生成 / tiered commit / `chunkyctl agent-boot` / AGENTS 瘦身）。\n**A→H 挂起于 `d8b69090`**。状态细节只读 `BOARD.md`；启动用 `scripts/chunkyctl agent-boot`。\n\n## 下一步（agent-OS 残余检查单）\n\n1. （可选）WP5 fixture pack stub；WP6 ceremony cutover 需 owner 明确批准范围\n2. 核心 agent-OS 交付（boot/board/tiers/AGENTS）已闭合；owner 裁决后可恢复 A→H\n3. 手动数据运维：`20260720` provider 有行后 sync+accept（非 A→H 刀）\n\n## 禁令\n\n- 新 A→H 刀；B-pit/C `cutover_allowed=true`；Optuna；E 松门；StrategyRelease\n- margin thaw；mass backfill；plugin bus；第二 DB；agent 自降 commit tier\n\n## 已裁决（稳定）\n\n| 层 | 目的 | 首个正式输出 |\n|---|---|---|\n| Tier 0A 市场数据 | 日历、身份、名义 K、公司行动、复权 | accepted canonical partition |\n| Tier 0B 分类 | 版本化树/概念/成员/crosswalk | taxonomy node + membership |\n| Tier 1 股票状态 | 阶段/形态/事件，不预测 | stock state + pattern event |\n| Tier 2 市场感知 | 活跃度/不平衡代理/广度/价格响应 | market context snapshot |\n| Tier 3 研究/策略 | B0→B5 消融 | experiment verdict + strategy spec |\n| Tier 4 决策/产品 | 只消费已发布策略 | strategy release + decision batch |\n\n依赖只向下。Ops 观察但不拥有业务事实。多源=契约可换 adapter（目标态）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。\n\n架构硬决定摘要：积木=`module+data+config+contract+evidence`；landing 保留供应商响应；日历与 universe 同级硬门；名义 OHLC…",
+  "goal_hand_excerpt": "## 当前 objective\n\n**轨道 = Agent-OS（影子期，先于 A→H）**：WP0–WP4 FIXED；WP5 SKIPPED（Occam）；\nWP6 政策已立（影子期自 `be8efc6f`/2026-07-20 起算）。轨道尚未 CLOSED。\n**A→H 挂起于 `d8b69090`**。启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。\n\n## 下一步（CLOSED 前残余）\n\n1. 影子期满（10 session 或 14 天先到）且无真相回归 → 真删旧 boot 仪式\n2. 补 T0 墙钟实测入 ledger（基线 vs tiered；unmeasured=unknown）；一次真实 L2 路径证据\n3. 手动数据运维：`20260720` provider 有行后 sync+accept（非 A→H 刀）\n4. 停机检查单全绿后 goal objective 切回 A→H（见 eng_gov §13 / ledger）\n\n## 禁令\n\n- 新 A→H 刀；B-pit/C `cutover_allowed=true`；Optuna；E 松门；StrategyRelease\n- margin thaw；mass backfill；plugin bus；第二 DB；agent 自降 commit tier\n\n## 已裁决（稳定）\n\n| 层 | 目的 | 首个正式输出 |\n|---|---|---|\n| Tier 0A 市场数据 | 日历、身份、名义 K、公司行动、复权 | accepted canonical partition |\n| Tier 0B 分类 | 版本化树/概念/成员/crosswalk | taxonomy node + membership |\n| Tier 1 股票状态 | 阶段/形态/事件，不预测 | stock state + pattern event |\n| Tier 2 市场感知 | 活跃度/不平衡代理/广度/价格响应 | market context snapshot |\n| Tier 3 研究/策略 | B0→B5 消融 | experiment verdict + strategy spec |\n| Tier 4 决策/产品 | 只消费已发布策略 | strategy release + decision batch |\n\n依赖只向下。Ops 观察但不拥有业务事实。多源=契约可换 adapter（目标态）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。\n\n架构硬决定摘要：积木=`module+data+config+contract+evidence`；landin…",
   "next_knives_frozen": [
     "20260720 provider-ready daily sync+accept (manual data ops OK)",
     "opt-in C/B-pit cutover only with strong evidence (yaml still false)",
@@ -99,9 +99,14 @@
   "track": {
     "a_to_h": "suspended_at_d8b69090",
     "name": "agent-os-redesign",
+    "shadow_deadline": "10_sessions_or_14d_first",
+    "shadow_started": "be8efc6f/2026-07-20",
+    "status": "shadow_period_open_not_closed",
     "wp1": "FIXED",
     "wp2": "FIXED",
     "wp3": "FIXED",
-    "wp4": "FIXED"
+    "wp4": "FIXED",
+    "wp5": "SKIPPED_occam",
+    "wp6": "POLICY_FIXED_shadow_open"
   }
 }

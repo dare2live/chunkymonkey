@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Machine-classify staged paths into safe_commit tiers L1/L2/L3.
 
-Owner: docs/engineering_governance.md §13 + backend/config/commit_tiers.yaml.
+Owner: docs/engineering_governance.md §14 + backend/config/commit_tiers.yaml.
 
 Fail-closed rules (not overridable by env/agent):
   - unknown / unmatched path → L3
