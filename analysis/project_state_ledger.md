@@ -1858,3 +1858,50 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Residual to D-complete**: one measured offline path that is not
   strategy-package-owned (stub measure still returns unknown returns).
 - **Status**: D PARTIAL→deepened (persist + real fold bind FIXED).
+
+### 2026-07-20 — Delivery-tax knife: T0 墙钟实测 + 编排/墙钟政策（eng_gov §15）
+
+- Wall-clock: Mon 2026-07-20 ~19:40 Asia/Shanghai (in-session).
+- Dialectic (Architect / Integrity-skeptic / DX / Occam) on delivery /
+  orchestration tax only; truth gates (accept/PIT/calendar/fail-closed/
+  cutover/E/StrategyRelease) explicitly out of scope, untouched.
+- **T0 measured (isolated worktree, SAFE_COMMIT_DRY_RUN, this machine —
+  closes WP6 "T0 墙钟实测" residual)**:
+  - L1 safe_commit 1.6s; L2 17.0s (moth assert 7.3s + staged-snapshot
+    cold `codegraph init+sync` 3.8s); L3 27.1s (full gates incl.
+    continuity/grain live-DB reads).
+  - `agent-boot` 11.6s (moth snapshot ≈7s); incremental
+    `codegraph sync .` 0.6s; `moth coupling` 0.07s.
+  - CI run ≈0.9–1.4 min (20-run sample 2026-07-20); terminals folder
+    showed agents blocking in `gh run watch` per slice = behavioral
+    evidence of push+wait tax.
+- **Diagnosis**: mechanical gates are NOT the bottleneck (worst 27s);
+  wall-clock loss = per-micro-commit Rule 10 ceremony, synchronous CI
+  wait per slice, serial parent→one-subagent orchestration.
+- **Delivered**:
+  - `ci.yml` paths-ignore for L1 docs/board-only pushes, mirrored from
+    `commit_tiers.yaml` L1 surface (policy owner); subset relation
+    machine-guarded by `backend/tests/scripts/test_ci_paths_policy.py`
+    (3 passed; red case proven: `backend/**` in paths-ignore fails).
+    Commit c473f5b4.
+  - eng_gov §15 orchestration/wall-clock policy: parallel subagents by
+    default (disjoint write-sets), shared-truth serialize list, async
+    CI (verdict required before knife CLOSED; red = fix-forward first),
+    Rule 10 once per knife over combined diff, owner-doc read once per
+    task.
+- **Occam-rejected (measured, not vibes)**: `agent-boot --fast` (~7s
+  saving; moth status is the point of boot); L2 gate-set surgery (17s
+  not the pain; `commit_tiers.yaml` edit = L3 + review + shadow-parity
+  risk for ~11s/commit); CI concurrency/cancel machinery; permanent T0
+  auto-hook (this entry is the measurement of record; re-measure by
+  hand when suspicion arises).
+- **Did not**: loosen any truth gate; touch `commit_tiers.yaml` /
+  safe_commit gate sets; flip cutovers; touch `research_runtime*.py`
+  (peer D-knife territory).
+- **Residual**: shadow-period expiry checklist + real L2 path evidence
+  (unchanged, WP6); L2 moth/feature_map pruning = only if a future
+  measured session shows commit-gate time dominating (evidence bar:
+  gate time > review+CI time in a session sample).
+- **Status**: delivery-tax knife FIXED (CI skip live + policy owned);
+  next verification = first L1 docs push produces no CI run (this
+  commit itself is the probe).

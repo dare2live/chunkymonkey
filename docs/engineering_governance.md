@@ -300,3 +300,35 @@ L3 = writer/PIT/schema/config/deletion = current full gate set. Grain/continuity
 live-DB readiness projections run on L3 only; no commit upgrades Tier0 readiness.
 
 不 `--no-verify` 绕门，不 amend 已 push commit，不在未授权时 push。交付报告必须区分 `FIXED/PARTIAL/BLOCKED`，列 residual、验收命令和 owner。
+
+## 15. 编排与墙钟政策（delivery tax；不触碰真相门）
+
+T0 基线（2026-07-20 实测，非估算；证据=ledger 同日条目）：L1 commit 门 1.6s、
+L2 17.0s（moth assert 7.3s + staged-snapshot cold codegraph 3.8s）、L3 27.1s、
+`agent-boot` 11.6s（moth snapshot ≈7s）、CI 单次 ≈1min。结论：机械门不是墙钟
+瓶颈；瓶颈在编排仪式（每 slice 同步等 CI、每 micro-commit 一次 Rule 10、
+父 agent 串行单 worker）。本节只裁编排节奏，**不放宽任何
+accept/PIT/calendar/fail-closed/cutover/E 门语义**。
+
+- **并行 subagents（默认并行，例外才串行）**：写集不相交且不碰共享真相文件的
+  刀一次性并行派发；父 agent 等 worker 期间不空等。**必须串行的共享面**：
+  `goal.md`/`BOARD.md`/ledger/`PROJECT_INDEX.md`/`AGENTS.md`/docs owner 三文档/
+  `.moth/`/`commit_tiers.yaml`/`safe_commit.sh`/`ci.yml`；同一 DuckDB 的写；
+  provider 采集 job；git stage/commit/push 窗口；Rule 10 verdict 与最终验收
+  （controller-owned）。机器话：两把刀的 `git diff --name-only` 预期集合相交，
+  或任一方触本清单 → 串行。
+- **异步 CI（pipelining，不是放松）**：push 后不守 `gh run watch`，直接开下一刀；
+  刀收口（`FIXED/CLOSED` 判定）前必须回读该刀全部 CI verdict，红 = fix-forward
+  最高优先并暂停派新刀。同步等待只保留给改 CI/gate 机械本身的切片。
+- **Rule 10 节奏**：独立审查按**刀（逻辑单元）**一次，覆盖该刀合并 diff；不按
+  micro-commit 重复开审。审查仍 blocking（L2/L3 trailer 语义不变），只是粒度
+  归刀。
+- **owner 文档读取**：每任务读一次 `docs/README.md` 指到的 owner 文档；同任务
+  内后续刀不重读 MASTER 全文，引用具体条款即可。
+- **显式不做（Occam，有测量背书）**：`agent-boot --fast`（只省 ~7s/session，
+  moth 状态是 boot 的价值本体）；L2 门集手术（17s 非痛点，动 `commit_tiers.yaml`
+  = L3+审查+影子期 parity 风险）；CI concurrency/cancel 机械；T0 自动测量 hook
+  （一次 ledger 实测入账即闭合 WP6 该残余，复测按需手跑）。
+- CI 对 L1 docs/board-only push 不再起跑：`ci.yml` `paths-ignore` 镜像
+  `commit_tiers.yaml` L1 面（policy owner），子集关系由
+  `backend/tests/scripts/test_ci_paths_policy.py` 机器守护。
