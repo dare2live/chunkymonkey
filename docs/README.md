@@ -22,7 +22,7 @@
 | `../BOARD.md` | 机器生成的 agent 状态投影（cutover/E/accepted）；可重建，不手改，非执法输入 |
 | `../analysis/project_state_ledger.md` | 唯一历史账本；按关键词查询，不作为启动全文 |
 
-`CLAUDE.md` 是 legacy compatibility pointer，Codex 默认不读。旧 session handoff / workflow checkpoint 体系已经退役；新会话从 git、Moth、CodeGraph 和 live data 重建状态。
+`CLAUDE.md` 是 legacy compatibility pointer，Codex 默认不读。旧 session handoff / workflow checkpoint 体系已经退役；新会话从 git、Moth、CodeGraph 和 live data 重建状态。跨 Cursor 账号续作时另读 owner 明示的 `../analysis/account_switch_handoff_20260720.md`（入 git，非旧 checkpoint 体系）。
 
 ## 文档生命周期
 

@@ -21,7 +21,7 @@ mart_cutover:
   cutover_allowed: true
   expected_definition_version: market_sensing_project_breadth_v0
   # Live universe policy hash (same as b_pit_breadth_shadow remeasure e86410d0).
-  # Filled for opt-in readiness; cutover_allowed stays false until explicit flip.
+  # Owner opt-in 2026-07-20 (cutover_allowed=true above); hash from e86410d0 remeasure.
   expected_universe_policy_hash: "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
   expected_match_baseline_kind: membership_restricted_proxy
   expected_window_start: "20260116"

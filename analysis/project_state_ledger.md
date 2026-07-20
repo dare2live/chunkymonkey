@@ -2044,3 +2044,15 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   owner of that test.
 - **Status**: FIXED (C/B-pit READ cutover ON, proven ACCEPTED_CUTOVER /
   MART_CUTOVER; fail-closed preserved).
+
+### 2026-07-20 — Account-switch handoff (cutover ON + dual-track retire partial)
+
+- Owner ordered commit/push + full doc update for Cursor account switch.
+- Durable handoff: `analysis/account_switch_handoff_20260720.md` (also pointed from `goal.md`).
+- C/B-pit cutover already ON at `b38e9ac5` (do not re-litigate).
+- This slice: retire pulse drill dual-track (resolve once: LEGACY SQL vs ACCEPTED overlay);
+  `legacy_retire_notes.md`; BOARD next-menu now projects from live yaml (not stale "yaml still false");
+  goal rewritten for next-account knives (enrich accept / 20260720 Tier1-2 accept / F main_rally).
+- Keep fail-closed LEGACY + `fact_stock_form_daily` table (moth fan-in).
+- Ops note: background subagents repeatedly hung at 2-line/no tool_result; prefer parent session or shell.
+- Bans unchanged: Optuna / E loosen / StrategyRelease / margin thaw / silent cutover rollback.

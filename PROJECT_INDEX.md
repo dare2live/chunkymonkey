@@ -4,7 +4,7 @@
 > 更新：2026-07-20
 > 当前目标看 `goal.md`（A→H 已恢复；C/B-pit cutover ON；`BOARD.md`；启动 `scripts/chunkyctl agent-boot`）。
 > 架构看 `docs/MASTER_TOPLEVEL_DESIGN.md`；机器入口与 writer 清单看 `FEATURE_MAP.md` 和 CodeGraph。
-> 生成状态板：`PYTHONPATH=backend python backend/scripts/build_agent_board.py`（勿手改 BOARD.md；snapshot 时间戳非 trade_date）。
+> 生成状态板：`PYTHONPATH=backend python backend/scripts/build_agent_board.py`（勿手改 BOARD.md；snapshot 时间戳非 trade_date；Next 菜单随 cutover yaml 投影）。
 
 ## 1. Authority
 

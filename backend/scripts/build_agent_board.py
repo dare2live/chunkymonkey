@@ -36,6 +36,23 @@ BANS = [
 ]
 
 
+def _next_knives(*, b_on: bool, c_on: bool) -> list[str]:
+    """Project next-knife menu from live cutover yaml (not a frozen false)."""
+    if b_on and c_on:
+        return [
+            "enrich Tier1 accept payloads (scaffold stock_states → rich form fields)",
+            "accept Tier1/2 partitions for days after 20260717 (e.g. 20260720)",
+            "agent-OS WP6 ceremony flip after shadow checklist (owner-gated)",
+            "A→H next: F main_rally B0–B2 on shared research_runtime (no Optuna/Release)",
+            "or stop",
+        ]
+    return [
+        "opt-in C/B-pit cutover only with strong evidence (yaml still false)",
+        "agent-OS shadow residuals (ceremony flip owner-gated)",
+        "or stop",
+    ]
+
+
 def _load_yaml(path: Path) -> dict[str, Any]:
     if not path.is_file():
         return {}
@@ -170,11 +187,10 @@ def collect(repo: Path = REPO) -> dict[str, Any]:
             "artifact": "data/lineage/phase_e_experiment_verdicts/manifest.json",
         },
         "bans": list(BANS),
-        "next_knives_frozen": [
-            "opt-in C/B-pit cutover only with strong evidence (yaml still false)",
-            "agent-OS shadow residuals (ceremony flip owner-gated)",
-            "or stop",
-        ],
+        "next_knives_frozen": _next_knives(
+            b_on=bool(b_pit_gate.get("cutover_allowed", False)),
+            c_on=bool(c_gate.get("cutover_allowed", False)),
+        ),
         "goal_hand_excerpt": _goal_hand_excerpt(goal_text),
         "sources": [
             "backend/config/b_pit_mart_cutover.yaml",
