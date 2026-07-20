@@ -13,7 +13,9 @@ Enabling cutover requires all of:
   claiming project-universe.
 
 Silent reads of ``accepted_*.json`` as production truth are rejected.
-Wired consumer: ``institution_follow_b1_measure.load_stock_state_by_day``.
+Wired consumers:
+- ``institution_follow_b1_measure.load_stock_state_by_day``
+- pulse/UI via ``market_pulse_tier12_read`` (sentiment attestation + drill form)
 """
 from __future__ import annotations
 

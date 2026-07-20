@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-20 10:32
+> Snapshot: 2026-07-20 14:11
 
 ## 1. 入口面
 
@@ -160,7 +160,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 7,027 | calls 边 8,254 | imports 边 2,412 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 7,077 | calls 边 8,313 | imports 边 2,439 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -179,8 +179,8 @@
 | services.institution_follow_b0_measure | 12 |
 | services.data_sources.contracts | 11 |
 | services.data_sources.disclosure_boundaries | 11 |
+| services.tier12_publish_writer | 11 |
 | services.data_sources.nominal_ohlcv_schema | 10 |
-| services.institution_follow_edge_gates | 10 |
 
 ### 跨文件 fan-in 最高的文件 (近似口径: 唯一定义名 + caller 实际 import 目标模块双过滤)
 
@@ -194,10 +194,10 @@
 | backend/services/institution_follow_edge_gates.py | 10 |
 | backend/services/data_sources/contracts.py | 9 |
 | backend/services/institution_follow_b0.py | 8 |
+| backend/services/tier12_publish_writer.py | 8 |
 | backend/services/data_sources/accepted_schema.py | 7 |
 | backend/services/data_sources/calendar_contract.py | 7 |
 | backend/services/data_sources/calendar_schema.py | 7 |
-| backend/services/data_sources/margin_evidence.py | 7 |
 
 ### LOC top 10 (God module 候选)
 
@@ -211,8 +211,8 @@
 | backend/services/institution_follow_b0.py | 762 |
 | backend/services/universe.py | 755 |
 | backend/scripts/data_health_snapshot.py | 731 |
+| backend/routers/market_pulse.py | 729 |
 | backend/services/data_sources/calendar_acceptance.py | 728 |
-| backend/services/data_sources/margin_acceptance.py | 714 |
 
 ## 5. 概览
 

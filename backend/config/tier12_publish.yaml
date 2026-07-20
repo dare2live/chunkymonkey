@@ -54,9 +54,9 @@ publish:
 consumer_cutover:
   cutover_allowed: false
   expected_definition_version: stock_state_stage_pattern_v0
-  # Empty until an operator fills the live stock config_hash for the accept
-  # they intend to cut over; missing hash fails closed on opt-in.
-  expected_config_hash: ""
+  # Filled from live full-universe accept 20260717 stock config_hash for
+  # opt-in readiness. cutover_allowed stays false until explicit flip.
+  expected_config_hash: "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c"
   acknowledge_canary_scope: false
   claim_project_universe: false
   artifact_dir: data/lineage/tier12_publish_batches

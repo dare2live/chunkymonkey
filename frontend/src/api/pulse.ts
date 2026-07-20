@@ -298,12 +298,26 @@ export interface PulseShadowReconcile {
   scope: PulsePopulationScope;
 }
 
+/** Phase C: pulse UI crosses resolve_tier12_production_read (default LEGACY). */
+export interface PulseTier12ProductionRead {
+  kind: "tier12_production_read";
+  decision_date: string;
+  status: "LEGACY" | "BLOCKED" | "CANARY_SCOPED" | "ACCEPTED_CUTOVER";
+  source: "legacy_scaffold" | "accepted_partition";
+  uses_legacy: boolean;
+  cutover_allowed: boolean;
+  claim_project_universe: boolean;
+  reasons: string[];
+  notes: string[];
+}
+
 export interface SentimentResp {
   status: string;
   days: SentimentPoint[]; // 升序；数值口径未切（仍可能含错误 scope）
   population_scope: PulsePopulationScope;
   shadow_reconcile: PulseShadowReconcile;
   cutover_allowed: false;
+  tier12_production_read: PulseTier12ProductionRead;
 }
 
 export function fetchSentiment(opts: { days?: number } = {}) {

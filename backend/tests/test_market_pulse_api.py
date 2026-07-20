@@ -284,6 +284,12 @@ def test_sentiment_v2_fields(client):
     assert shadow["verdict"] == "BLOCKED"
     assert "margin_core_venues_incomplete" in shadow["issues"]
     assert "legacy_pulse_untrusted_pending_consumer_cutover" in shadow["issues"]
+    # Phase C: production-read boundary attestation (default → LEGACY).
+    t12 = body["tier12_production_read"]
+    assert t12["uses_legacy"] is True
+    assert t12["cutover_allowed"] is False
+    assert t12["status"] == "LEGACY"
+    assert "pulse_ui_attestation" in t12["notes"]
 
 
 def test_flow_board_regime_groups_and_stripe(client):

@@ -1417,3 +1417,30 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Next**: explicit opt-in cutover (fill hash) **or** wire
   pulse/UI readers **or** daily `20260720` after 18:00 CST **or**
   stop.
+
+### 2026-07-20 — Phase C pulse/UI production-read wire + hash fill (cutover false)
+
+- Added `backend/services/market_pulse_tier12_read.py`:
+  `attest_pulse_tier12_production_read` +
+  `overlay_pulse_form_from_production_read` always call
+  `resolve_tier12_production_read` first.
+- Wired pulse UI: `/api/v3/pulse/sentiment` exposes
+  `tier12_production_read` attestation; `/drill` leaf form overlay
+  gated by the same boundary. Default yaml → LEGACY; mart /
+  `fact_stock_form_daily` numbers unchanged.
+- Filled `consumer_cutover.expected_config_hash` with live
+  full-universe accept `20260717` stock hash
+  `6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c`
+  (matches `config_hash_for(stock_config_for_hash)`).
+  `cutover_allowed` remains **false**.
+- Frontend `SentimentResp` typed with `PulseTier12ProductionRead`.
+- TDD: pulse attest LEGACY; form overlay leaves legacy rows; ACCEPTED
+  overlay fixture skips legacy form; sentiment API asserts
+  `tier12_production_read`; pulse API + cutover suites green (39).
+- **Did not**: flip `cutover_allowed=true`; claim Phase C complete;
+  StrategyRelease; Optuna; E loosen; B-pit mart cutover; margin thaw;
+  daily `20260720` (wall-clock ~14:00 CST < 18:00). Continuity still
+  BLOCKED honest.
+- **Next**: daily `20260720` after 18:00 CST **or** explicit opt-in
+  cutover (strong evidence + residual note) **or** B-pit shadow
+  remeasure / Phase D scaffold **or** stop.
