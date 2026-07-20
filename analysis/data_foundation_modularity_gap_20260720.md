@@ -1,136 +1,133 @@
 # 数据地基模块化缺口诊断（2026-07-20）
 
-> 状态：evidence-only / owner diagnosis  
-> 范围：daily + stock_st formal path；对照 transport 契约 vs 已交付实现  
-> 禁令遵守：不写 Optuna/StrategyRelease/cutover 翻转；不启动 pipeline rewrite
+> 状态：evidence-only / owner diagnosis（含 2026-07-20 业主二次澄清）
+> 范围：daily + stock_st formal path；对照「模块边界 + 编排器」需求 vs 已交付实现
+> 禁令：不写 Optuna/StrategyRelease/cutover 翻转；本笔记不启动 pipeline rewrite
 
-## 1. Verdict
+## 0. 一句话裁决（业主澄清后，不稀释）
 
-**业主判断：substantially right（对已交付实现）；contract intent 已立法、尚未可操作落地。**
+### 模块化编排需求是否已 shipped？
+
+**NO。**
+
+近期 daily/ST 路径**没有**交付「独立模块 + 编排器依次触发」；交付的是 **fetch 焊死在 accept 上的一条龙函数**（`capture_and_publish_*`），由 `sync_runner` 直接调用。一键 sync **可以**作为系统级编排存在，但现状不是编排——是融合实现。
+
+库内 `land_*` / `accept_*` 函数缝、landing≠canonical 表 = **正确性基建 partial**，**不算**该需求 shipped。业主「近期从未真正实现」——**确认（confirm）**。
+
+---
+
+## 1. 业主澄清后的需求（唯一验收语义）
+
+| 要 | 不要 |
+|---|---|
+| 数据管理**模块化**：acquire / process（派生）/ compute / display（serve）**各自边界**，互不焊死 | 把这些 concern **融进一个函数/流水线**，fetch 焊 accept，无法单独跑、无法换源 |
+| **一键 / 智能 sync 最新数据 OK**——但是 **系统级编排**：只 *触发* 独立模块按序执行 | 编排器内部再实现一整条「拉数+验收」龙，模块无法被单独调用 |
+| 本地 raw / 替代源可进 **acquire→landing**，不必重写整条龙 | 换源 = 改整条 sync_runner 龙 / 改 canonical 读契约 |
+
+对照 MASTER 散文（§3.1 transport、§6.1 stage→validate→accept、§9 adapter 目标态）与上表一致；**验收以「可独立调用的模块边界」为准，不以「文档写了分层 / 函数文件拆开了」为准。**
+
+## 2. Verdict（contract vs shipped）
 
 | 轴 | 结论 |
 |---|---|
-| **Contract intent** | `docs/MASTER_TOPLEVEL_DESIGN.md` §3.1 / §6.1 / §9 已写清：landing→validate→accepted canonical→serve；名义/因子/qfq 三分；Provider=可替换 adapter，业务真相在 accepted；「契约可换」显式标为**目标态** |
-| **Shipped implementation** | daily/ST 的唯一活入口 `chunkyctl sync --domain daily|stock_st` 走 `capture_and_publish_*`：**fetch→land→accept 一条龙**；无 land-only / accept-from-landing / from-raw CLI；live adapter 硬编码 TuShare；landing 表名仍带 `tushare` |
-| **业主原话对齐** | 「节点没分开」「数据源可换 / 获取·加工·计算互不影响 没实现」「该先做数据地基模块化」——对 **operable boundaries** 成立；对「库内完全没有 land/accept 函数」则过强（函数缝已在，入口未切开） |
+| **Contract intent** | 分层 lifecycle + 可换 adapter（目标态）已立法 |
+| **Shipped（daily/ST）** | `chunkyctl sync --domain daily\|stock_st` → `run_domain` → `_publish_security_day_accepted_partition` → **`capture_and_publish_*`（fetch→land→accept 单调用）** |
+| **与业主验收语义** | **未实现**。一键入口存在，但是 **fused pipeline**，不是 orchestrator-of-modules |
+| **勿稀释的 partial** | land/accept **函数**与表已分——仅测试/库内可调；**无**运营级独立节点；**无** from-landing / 本地 raw 喂 landing 的正式路径 |
 
-标签：**PARTIAL landed library seams + BLOCKED operable modularity**（非「设计错了」，也非「已做完」）。
+标签：**REQUIREMENT NOT SHIPPED**（operable modular orchestration）。旁注：formal accept **正确性**切片已落地 ≠ 本需求。
 
-## 2. Coupling map（daily / ST）
+## 3. Coupling map（daily / ST）— `sync_runner` 接线证据
 
-### 2.1 胶合点（fetch 粘在 land/accept）
+### 3.1 胶合点（编排器假装模块，实为焊死）
 
 ```text
-chunkyctl sync --domain daily|stock_st
-  → sync_runner.run_domain
-  → _publish_security_day_accepted_partition   # docstring: "Fetch one trade_date and publish…"
-       adapter = _adapter(spec["source"])     # 仅 TuShare 单例
-       fetch_rows = adapter.fetch_raw(...)
-       → capture_and_publish_authorized_*_partition
-            → capture_security_day_provider_rows(fetch_rows=…)
-            → publish_accepted_*_partition
+chunkyctl sync / daily_update → sync_runner.run_domain(daily|stock_st)
+  → _publish_security_day_accepted_partition
+       # docstring: "Fetch one trade_date and publish accepted …"
+       adapter = _adapter(spec["source"])          # LIVE_ADAPTER=tushare only
+       def _fetch_rows(...): adapter.fetch_raw(...)
+       → capture_and_publish_authorized_*_partition(fetch_rows=_fetch_rows)
+            → capture_security_day_provider_rows(...)   # acquire
+            → publish_accepted_*_partition(...)         # land + accept 同调用栈
                  → land_*_batch
                  → accept_*_batch
 ```
 
-证据：
+硬证据：
 
-- `backend/services/data_sources/sync_runner.py` `_publish_security_day_accepted_partition`（~1856–1954）：唯一生产路径，内联 `_fetch_rows` 后调用 `capture_and_publish_*`。
-- `nominal_ohlcv_runtime.py` / `stock_st_runtime.py`：`capture_and_publish_*` docstring =「fetch → land → accept one trade_date」。
-- `moth coupling --impact capture_and_publish_authorized_nominal_ohlcv_partition`：fan-in = `sync_runner` + runtime 自身 + 测试；**无**独立 CLI/脚本消费 `publish_accepted_*`。
-- `publish_accepted_nominal_ohlcv_partition` 生产 fan-in **仅** runtime 内部（被 capture_and_publish 调用）；测试可直接 land→accept，但运营入口不能。
+1. `sync_runner.py` `_publish_security_day_accepted_partition`：生产路径内联 `_fetch_rows` 后**只**调 `capture_and_publish_*`，不调独立 `publish_accepted_*` / `accept_*`。
+2. `nominal_ohlcv_runtime.py` / `stock_st_runtime.py`：`capture_and_publish_*` docstring =「fetch → land → accept one trade_date」——**融合动词是公开 API**。
+3. `moth coupling`：`capture_and_publish_authorized_nominal_ohlcv_partition` 生产 fan-in = `sync_runner`；`publish_accepted_nominal_ohlcv_partition` 生产 fan-in **仅**被前者调用（外加测试）。
+4. `_adapter()`：多源 registry 已于 2026-07-07 物删；`require_live_adapter` 仅 `tushare`。
+5. CLI：无 `--land-only` / `--accept-batch` / `--from-landing` / 本地 raw 注入。
 
-### 2.2 已分开（库内 / 契约层）
+**因此**：`chunkyctl sync` 今日 = **融合实现的入口**，不是「只触发独立 acquire / accept 模块的编排器」。
 
-| 缝 | 证据 | 备注 |
+### 3.2 已有（勿夸大成需求已交付）
+
+| 缝 | 证据 | 相对业主需求 |
 |---|---|---|
-| landing 表 ≠ canonical 表 | `landing_tushare_daily` / `canonical_nominal_ohlcv_daily`；ST 同理 `landing_tushare_stock_st` / `canonical_stock_st_daily` | 物理分表已有；**命名仍绑定供应商** |
-| land vs accept 函数 | `land_*_batch` / `accept_*_batch`；`security_day_partition.accept_security_day_batch` 从 landing 读回再 validate→canonical | 可单测；无运营节点 |
-| capture shaping 模块 | `security_day_capture.py` 注释：「Kept separate from land→accept mechanics」 | 仅 helper，非入口 |
-| formal inventory | `formal_boundaries.py` 为 daily/ST 分别登记 `landing_writer` / `canonical_writer` | 审计清单 ≠ 可调度阶段 |
-| 禁止 legacy raw 写 | formal daily/ST `legacy_raw_write=forbidden`；runtime `refuse_legacy_*_raw_write` | 正确硬墙 |
-| qfq = 派生 | `pipeline/clean.py` + `build_price_kline_qfq_tushare.py`：名义 preferred=canonical ∪ legacy raw fill；× `raw_tushare_adj_factor` | 已在 clean，非 accept 原子链内 |
-| pipeline 阶段标签 | `acquire / clean / process / store`（`stage_status.STAGE_ORDER`） | **标签存在**；acquire 对 formal daily 仍等于一条龙 sync |
-| ≤40d / 禁 mass backfill | `AUTHORIZED_SECURITY_DAY_MAX_WINDOW_DAYS = 40`；拒 `--backfill` | 硬约束已落地 |
-| 名义 vs qfq | MASTER §6.1 + source_policy analysis_relation | 语义分轨成立 |
+| landing ≠ canonical 表 | `landing_tushare_daily` / `canonical_nominal_ohlcv_daily`（ST 同理） | 存储分了；**调用未分**；表名仍绑供应商 |
+| `land_*` / `accept_*` 函数 | `*_acceptance.py`、`security_day_partition.accept_security_day_batch` | 库内可测；**无编排入口** |
+| `security_day_capture` 独立文件 | 注释称与 land→accept 分开 | helper，非可调度模块 |
+| qfq 在 clean | `pipeline/clean.py` → `build_price_kline_qfq_tushare.py` | 派生阶段标签存在；日更仍常与 sync 一把跑 |
+| `acquire/clean/process/store` 标签 | `stage_status.STAGE_ORDER` | **标签 ≠ 边界**；formal daily 的 acquire 仍=一条龙 sync |
+| ≤40d / 禁 mass backfill | `AUTHORIZED_SECURITY_DAY_MAX_WINDOW_DAYS = 40` | 硬门已落地，保留 |
 
-### 2.3 未分开 / 未实现
+### 3.3 明确未实现
 
-| 缺口 | 证据 |
-|---|---|
-| **无 from-landing / from-raw 再 accept 运营入口** | sync CLI 只有 domain+window；无 `--land-only` / `--accept-batch` / replay-from-landing |
-| **无 accept-time 可插拔 source adapter** | `_adapter()` 注释：多源 registry 2026-07-07 物删；`require_live_adapter` 仅允许 `tushare`（`formal_boundaries.LIVE_ADAPTER`） |
-| **landing 身份仍供应商品牌** | 表名 `landing_tushare_*`；换源会迫使改 schema 身份或再叠映射层 |
-| **「获取/加工/计算互不影响」未成边界** | 换源必须改 acquire+registry+（可能）landing 名；qfq/form 仍偶合「日更一把跑」；不能独立「只重 accept」「只重派生」而不触 provider |
-| **第二源路径** | `sources/` 仅 `tushare.py`；aif10 披露仍 NONCONFORMING（绕 transport） |
+- 可单独运行的 acquire（只到 LANDED）
+- 可单独运行的 publish/accept（只吃 landing / 已造型 batch）
+- 编排器只做顺序触发（sync = caller-only）
+- 本地 raw / 替代源 → landing，而不重写 dragon
+- display/serve 与 acquire 解耦（读契约已有 resolver 方向，但本条不洗绿「模块化编排已交付」）
 
-## 3. 先前需求是否落地失败？诚实对照
+## 4. 先前需求是否落地？诚实结论
 
-### 设计散文承诺（intent）
+- **设计散文**：承诺了分层与可换 adapter（目标态）。
+- **近期工程**：交付了 formal landing/canonical/accepted_partition + PIT/≤40d 墙——**正确性**；同时把运营路径做成 `capture_and_publish`，并删掉未用的多源 registry。
+- **相对业主本次澄清的验收标准**：**从未实现（NOT SHIPPED）**。
+  「函数文件拆开了」≠「模块边界可编排」。不稀释：partial 正确性 **不能**改写为「需求已部分交付为编排」——编排维度是 **零**。
 
-1. **MASTER §3.1**：每个外部域同一生命周期 `provider → landing → validate → accepted canonical → serve`；landing=供应商事实，canonical=项目接受事实。
-2. **MASTER §6.1**：最小原子链 `stage → validate → canonical → accepted_partition`；watermark 从 AcceptedPartition 投影。
-3. **MASTER §9**：「Provider 是可替换 adapter：业务真相在 accepted/canonical，不绑定单一供应商。……契约可换……是**目标态**，不是……现状声明。」
-4. **goal.md 已裁决**：多源=契约可换 adapter（目标态）；积木=`module+data+config+contract+evidence`；landing 保留供应商响应；演进=strangler 非 greenfield。
+## 5. Forward program：「数据地基做好」（strangler）
 
-### 代码实际交付（implementation）
+目标态：**模块各有边界与入口；`chunkyctl sync` / `daily_update` = 编排器（caller-only），按序触发；本地 raw/替代源只进 acquire→landing；accepted 为项目真相；派生/计算/展示不回写 acquire。**
 
-- Phase A 交付了 **formal land/accept 机制 + accepted partitions + ≤40d 门 + legacy raw 墙**——这是地基**正确性**切片，不是地基**可组合性**切片。
-- 运营与控制面仍把「同步」定义为 **capture_and_publish** 单动词；节点在文档/函数层切开，在 **CLI/调度/可替换 acquire** 层未切开。
-- 2026-07-07 `analysis/data_sources_registry_retirement_20260707.md`：**主动删除**未使用的多源 registry/fallback——当时正确（0 消费方），副作用是「可换 adapter」连死框架都没了，只剩 TuShare 直连。这不是 silent 背叛契约，而是 **目标态被诚实降级为单源，且未另开 strangler 把「acquire 边界可换」做成最小活缝**。
-
-**结论**：需求没有「写错」；**部分落地（表/函数/证据链）+ 关键部分未落地（可调度节点分离 + acquire 可换）**。业主感知「只能 TuShare 一条龙到 accepted」与生产入口证据一致。
-
-## 4. 「数据地基做好」应指的程序（strangler，非 greenfield）
-
-目标态一句话：**证据可换源获取；项目真相只在 accepted；派生与计算只读 accepted（或显式兼容 fill），互不改对方 writer。**
-
-有序切片（只动 transport/派生边界；不动策略/Optuna/Release）：
-
-| Slice | 做什么 | 退出条件（窄） | 明确不做 |
+| # | 切片 | 退出条件 | 禁做 |
 |---:|---|---|---|
-| **S0** | 立法冻结本笔记 + goal 指针；盘点 daily/ST 入口与 fan-in | 本文入 git；goal 有 current-focus 指针 | 不改 runner |
-| **S1 Acquire/Evidence** | 把「只 capture→landing（LANDED）」做成可调用入口（同 contract、同 ≤40d、同 eligibility）；landing 行保留 provider 原样 | CLI/API：`land` 成功且不写 canonical；坏例：空页/超窗/未来日红 | 不引入第二 DB；不做 plugin bus |
-| **S2 Validate/Accept（publication）** | `accept` 只消费已 LANDED batch（from-landing）；失败不碰 provider | 可对已落地 batch 重 accept；duplicate/min_rows/hash 门保持 | 禁止 accept 时再 fetch |
-| **S3 解耦运营动词** | sync 拆成显式阶段或保留 `sync=land+accept` 但允许 `--from-landing`；文档与 chunkyctl 一致 | 日更可「源挂了仍能对昨日 landing 重试 accept」 | 不 bulk backfill |
-| **S4 Acquire 可换（边界内）** | 第二 adapter **只**实现 `fetch_raw`→同一 `SecurityDayLandingBatch` 投影；registry/source 字段复活为**最小**映射（非旧 fallback 框架） | 契约测试：假 adapter 能 land；canonical 字段/读契约不变 | 不改 Tier1–4 读面；landing 表逐步去供应商品牌（兼容视图可暂留） |
-| **S5 Derived process** | qfq/form 只挂 accepted（+ 书面授权的 legacy fill 日落条款）；clean 可独立于 acquire 重跑 | 无新 accepted 时重跑 qfq 不触 TuShare | 不把 qfq 塞进 accept 事务 |
-| **S6 Compute/serve** | Tier1/2/研究读面只经 resolver / accepted；process 失败不回写 landing | 既有 dual-track residual=NONE 保持 | 不开策略寻优 |
+| **S0** | 本笔记 + goal 指针（立法） | 已入 git | 不改 runner |
+| **S1** | **Acquire/evidence 模块**：只 capture→LANDED；同 contract/≤40d/eligibility | 可单独 land；不写 canonical | 第二 DB / plugin bus |
+| **S2** | **Publish/accept 模块**：只 from-landing（或已造型 batch） | 可单独 accept；失败不 fetch | accept 时调 provider |
+| **S3** | **编排器瘦身**：`sync` / `daily_update` = 依次调用 S1→S2（→派生）；保留一键 UX | 一键仍可用；每步可单独重跑 | 在 sync_runner 内再焊新龙 |
+| **S4** | **Acquire 可换源**：本地 raw / 假 adapter / 第二源 → 同一 landing 投影 | 不改 canonical 读契约即可喂 landing | 复活旧 fallback 框架；改 Tier1–4 |
+| **S5** | **Derive（process）**：qfq/form 独立入口，只读 accepted（+ 授权 legacy fill 日落） | 无新 provider 可重跑派生 | qfq 进 accept 事务 |
+| **S6** | **Compute / display（serve）**：只读 resolver/accepted；失败不回写 landing | dual-track residual 保持 NONE | Optuna / Release / cutover 翻 |
 
-程序原则：每片坏例先红→最小绿→窄回归；`live_readiness` 不因代码缝切开而升级。
+硬约束（全程）：PIT / landing purity / ≤40d / 无授权禁 mass backfill / 无第二 DB / 无 plugin bus / strangler 非 greenfield / 不翻转 cutover。
 
-## 5. Hard constraints（不可破）
+## 6. 与 A→H 关系
 
-- **PIT / availability**：`available_at`、typed `same_day_at`、manual vs automatic trigger 语义不变。
-- **Landing purity**：landing 前不按 universe 丢行；供应商响应当证据。
-- **≤40 trading days** 授权窗；无 owner 书面授权禁止 mass backfill。
-- **无第二 DB / 无 plugin bus / 无万能 DAG**（MASTER §12）。
-- **Strangler**：旧入口可暂留为 `land+accept` 别名；禁止 greenfield 重写 transport。
-- **单一 writer / 一数据集一 contract snapshot**；formal 域禁止回流 legacy `_write_batch`。
-- **不翻转** cutover yaml；本程序不含 Optuna / StrategyRelease / E 松门。
+- 本债 = Tier0 **可编排模块化**，正交于 frontier current / F reject / 自然 sync 币值。
+- 升为地基优先时：插在 forward program **P0 旁路（S1–S3）**，先于 D1/G/H；**不**洗绿策略轨。
 
-## 6. 与当前 A→H / forward program 的关系
-
-- 本缺口是 **Tier0 transport 可组合性债**，与「frontier current / F0–F3 reject / P0 自然 sync」正交。
-- 不阻塞「收盘后 sync 一日」的币值动作；但阻塞「换源 / 只重放落地证据 / 获取与派生解耦」类需求——业主把后者升为地基优先时，应插入 forward program 的 **P0 旁路地基切片（S0–S2）**，仍先于 D1/G/H。
-- 披露域 E0（aif10 NONCONFORMING）是平行债：同一 transport 立法，勿 silent merge。
-
-## 7. Evidence index（路径）
+## 7. Evidence index
 
 | 项 | 路径 |
 |---|---|
-| Transport vs tiers | `docs/MASTER_TOPLEVEL_DESIGN.md` §3, §6.1, §9, §12 |
-| Sync glue | `backend/services/data_sources/sync_runner.py` |
-| Capture+publish | `nominal_ohlcv_runtime.py`, `stock_st_runtime.py` |
-| Land/accept mechanics | `security_day_partition.py`, `security_day_capture.py`, `*_acceptance.py` |
-| Formal walls | `formal_boundaries.py` |
-| Registry 单源收口 | `analysis/data_sources_registry_retirement_20260707.md` |
-| Registry YAML | `backend/config/sync_registry.yaml` (`daily`, `stock_st`) |
-| qfq derived | `backend/services/pipeline/clean.py`, `backend/scripts/build_price_kline_qfq_tushare.py` |
-| Pipeline stages | `backend/services/pipeline/stage_status.py` |
+| Sync 焊点 | `backend/services/data_sources/sync_runner.py` (`_publish_security_day_accepted_partition`, `run_domain`) |
+| 融合 API | `nominal_ohlcv_runtime.py`, `stock_st_runtime.py` (`capture_and_publish_*`) |
+| 库内分缝（非编排） | `security_day_partition.py`, `*_acceptance.py`, `security_day_capture.py` |
+| 单源硬墙 | `formal_boundaries.py` (`LIVE_ADAPTER`) |
+| 多源收口史 | `analysis/data_sources_registry_retirement_20260707.md` |
+| Registry | `backend/config/sync_registry.yaml` (`daily`, `stock_st`) |
+| 派生 | `backend/services/pipeline/clean.py`, `build_price_kline_qfq_tushare.py` |
+| 阶段标签 | `backend/services/pipeline/stage_status.py` |
+| 契约 intent | `docs/MASTER_TOPLEVEL_DESIGN.md` §3.1, §6.1, §9, §12 |
 
 ## 8. Label
 
-**PARTIAL** — 正确性向 formal accept 已落地；模块化（可调度节点 + acquire 可换）未落地。  
-Residual owner：Tier0 transport strangler（S1–S4）。  
-Next verification：S1 最小 CLI/测试 —— land-only 不写 canonical；accept-from-landing 不调 `_adapter`。
+**NOT SHIPPED** — 模块化编排需求（独立 acquire / accept / derive / serve + caller-only 编排器）。
+旁注：formal accept 正确性 = 另账 PARTIAL，**不计入**本需求交付。
+Residual owner：Tier0 transport strangler S1–S4。
+Next verification：S1 land-only 不写 canonical；S2 accept-from-landing 不调 `_adapter`；S3 sync 仅顺序调用二者。
