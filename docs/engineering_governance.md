@@ -10,11 +10,13 @@
 
 1. `AGENTS.md`；
 2. `goal.md`；
-3. `git status --short --branch`；
-4. `moth snapshot --repo .`；
-5. `codegraph status .`；
-6. 按任务读取本目录中的唯一 owner 文档；
-7. 用只读 DB/API/命令验证易漂移事实。
+3. `scripts/chunkyctl agent-boot`（一页聚合 git status + Moth 摘要 + CodeGraph 状态 +
+   生成板 `BOARD.md`/`data/board/agent_context.json`；只读投影，非执法输入）；
+4. 按任务读取本目录中的唯一 owner 文档；
+5. 用只读 DB/API/命令验证易漂移事实。
+
+需要完整工具证据时仍可单独跑 `git status --short --branch`、`moth snapshot --repo .`、
+`codegraph status .`；agent-boot 只是聚合入口，不替代任何 gate 的原始输出。
 
 `analysis/project_state_ledger.md` 只用 `rg`/`tail` 查询历史。旧 session handoff / workflow checkpoint 体系已退役；恢复状态必须重新读取 git、Moth、CodeGraph 和 live data。`CLAUDE.md` 是 legacy Claude 文件，Codex 默认不读。
 
@@ -188,11 +190,15 @@ rg -n "<name>" backend scripts docs analysis .moth
 ChunkyMonkey 数据更新模式为 `manual_only`。禁止安装或保留项目数据 cron/launchd/隐藏后台触发器。受支持入口：
 
 ```bash
+scripts/chunkyctl agent-boot
 scripts/chunkyctl doctor --fast
 scripts/chunkyctl sync --domain DOMAIN [--drain --max-dates N]
 scripts/chunkyctl sync --domain DOMAIN --backfill --start YYYYMMDD --end YYYYMMDD
 bash scripts/daily_update.sh --date YYYYMMDD
 ```
+
+`agent-boot` 是只读会话启动聚合（git/Moth/CodeGraph/生成板一页），不触碰数据、
+不安装调度，也不产生任何 readiness 声明。
 
 单域修洞、回放和 canary 只走 `chunkyctl sync`；它加载项目 provider 环境并复用生产
 runner 的授权、交易日历和 writer lock，不是第二套采集逻辑，也不会安装调度。全链验证仍走

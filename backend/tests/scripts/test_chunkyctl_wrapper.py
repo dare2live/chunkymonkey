@@ -106,6 +106,19 @@ def test_sync_rejects_any_non_single_domain_invocation(
     assert "single-domain" in result.stdout
 
 
+def test_agent_boot_delegates_to_agent_boot_script(tmp_path: Path) -> None:
+    repo = _make_fake_repo(tmp_path)
+    _write(
+        repo / "backend" / "scripts" / "agent_boot.py",
+        "import sys\nprint('agent_boot:' + ' '.join(sys.argv[1:]))\n",
+    )
+
+    result = _run_wrapper(repo, "agent-boot", "--format", "json")
+
+    assert result.returncode == 0
+    assert "agent_boot:--format json" in result.stdout
+
+
 def test_sync_help_is_the_wrapper_contract_not_runner_all_due(tmp_path: Path) -> None:
     repo = _make_fake_repo(tmp_path)
 
@@ -125,5 +138,5 @@ def test_feature_map_does_not_publish_retired_commands() -> None:
 
     commands = {name for name, _help in module.scan_chunkyctl(REPO_ROOT)}
 
-    assert {"doctor", "sync", "map", "pipeline", "lineage"} <= commands
+    assert {"agent-boot", "doctor", "sync", "map", "pipeline", "lineage"} <= commands
     assert commands.isdisjoint(RETIRED_COMMANDS)
