@@ -21,7 +21,7 @@
                                 秒板/封单/两融/大盘PE换手/龙虎榜, mart_market_pulse_daily);
                                 旁路 population_scope / shadow_reconcile / cutover_allowed
                                 + tier12_production_read（Phase C）+ b_pit_mart_production_read
-                                （B-pit mart 门；默认 LEGACY；不改 days 数值）
+                                （B-pit mart 门；cutover ON→MART_CUTOVER，窗外/缺影 fail-closed→LEGACY；不改 days 数值）
   GET /api/v3/pulse/warnings    退潮预警 (跌出 RS top-N [v3 锁 L1] + 连续静默流出 >= 阈值)
   GET /api/v3/pulse/strongest   最强板块榜 (limit_cpt_list 引擎快照; 885xxx.TI 码独立卡禁跨链)
   GET /api/v3/pulse/members     板块成分下钻 (dc=dc_member 最新快照; sw=index_member_all 当前成分)
@@ -50,6 +50,7 @@ from services.market_pulse_tier12_read import (
     attest_pulse_tier12_production_read,
     overlay_pulse_form_from_production_read,
 )
+from services.tier12_consumer_cutover import resolve_tier12_production_read
 
 router = APIRouter()
 
@@ -93,7 +94,7 @@ def _load_margin_rows_for_shadow(conn, day: str) -> tuple[list[dict[str, Any]], 
 def _shadow_reconcile_for_day(conn, trade_date: str) -> dict[str, Any]:
     """Read-only shadow for one day; fail-closed if margin raw is unavailable.
 
-    Never rewrites mart numbers; ``cutover_allowed`` stays false.
+    Never rewrites mart numbers; attestation-only (does not flip mart cutover).
     """
     day = str(trade_date or "").replace("-", "")
     if len(day) != 8 or not day.isdigit():
@@ -446,43 +447,72 @@ def _drill_leaf_rows(conn, cfg: dict[str, Any], mem_sql: str, mem_params: list[A
                      flow_sql: str, as_of: str) -> list[dict[str, Any]]:
     """成分股叶子层 (v3.2 最后一层, 选股落点): 每股带 近 cum_window 个有流数据交易日累计净流入 /
     实时 flow_regime (与引擎共用 _flow_annotate_sql, 零双实现) / form_name+is_breakout_event
-    (fact_stock_form_daily 每股 as-of 最新行) / limit_times (该股最新流日的涨停行, 当日无='—' →
+    (Tier1 production-read: ACCEPTED_CUTOVER→accepted stock_states; LEGACY/BLOCKED→
+    fact_stock_form_daily as-of) / limit_times (该股最新流日的涨停行, 当日无='—' →
     NULL; 陈旧连板行会误导不取) / 当日净流+涨跌。
     mem_sql 产出 (ts_code, name); flow_sql 产出 ({{mem}} 内) (ts_code, trade_date,
-    net_amount[元], pct_change) — 两链各自传 vendor 自洽的流源。"""
+    net_amount[元], pct_change) — 两链各自传 vendor 自洽的流源。
+
+    Dual-track retired: resolve once; never SQL-join legacy form then overwrite
+    from accepted on the same request.
+    """
     ann = mp._flow_annotate_sql(cfg, flow_sql, "ts_code")
     lt = mp._clean_num("lim.limit_times")
+    day = "".join(ch for ch in str(as_of) if ch.isdigit())[:8]
+    use_legacy_form = True
+    if len(day) == 8 and day != "99999999":
+        read = resolve_tier12_production_read(
+            day,
+            config=_TIER12_CUTOVER_CONFIG,
+            artifact_root=_TIER12_ARTIFACT_ROOT,
+            config_path=_TIER12_CONFIG_PATH,
+        )
+        use_legacy_form = bool(read.uses_legacy)
+    if use_legacy_form:
+        form_cte = """
+        form AS (
+            SELECT stock_code, form_name, is_breakout_event FROM fact_stock_form_daily
+            WHERE stock_code IN (SELECT substr(ts_code, 1, 6) FROM mem) AND trade_date <= ?
+            QUALIFY ROW_NUMBER() OVER (PARTITION BY stock_code ORDER BY trade_date DESC) = 1
+        )"""
+        form_select = "f.form_name, f.is_breakout_event"
+        form_join = "LEFT JOIN form f ON f.stock_code = substr(m.ts_code, 1, 6)"
+        sql_params = [*mem_params, as_of]
+    else:
+        form_cte = (
+            "form AS (SELECT NULL::VARCHAR AS stock_code, NULL::VARCHAR AS form_name, "
+            "NULL::BOOLEAN AS is_breakout_event WHERE FALSE)"
+        )
+        form_select = (
+            "CAST(NULL AS VARCHAR) AS form_name, CAST(NULL AS BOOLEAN) AS is_breakout_event"
+        )
+        form_join = ""
+        sql_params = list(mem_params)
     rows = conn.execute(f"""
         WITH mem AS ({mem_sql}),
         latest AS (
             SELECT * FROM ({ann})
             QUALIFY ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) = 1
         ),
-        form AS (
-            SELECT stock_code, form_name, is_breakout_event FROM fact_stock_form_daily
-            WHERE stock_code IN (SELECT substr(ts_code, 1, 6) FROM mem) AND trade_date <= ?
-            QUALIFY ROW_NUMBER() OVER (PARTITION BY stock_code ORDER BY trade_date DESC) = 1
-        )
+        {form_cte}
         SELECT m.ts_code, substr(m.ts_code, 1, 6) AS stock_code, m.name,
                l.trade_date, l.net_amount, l._cum_net AS cum_net,
                l.flow_z, l.flow_streak, l.flow_regime,
-               f.form_name, f.is_breakout_event,
+               {form_select},
                TRY_CAST({lt} AS INTEGER) AS limit_times,
                l.pct_change
         FROM mem m
         LEFT JOIN latest l ON l.ts_code = m.ts_code
-        LEFT JOIN form f ON f.stock_code = substr(m.ts_code, 1, 6)
+        {form_join}
         LEFT JOIN tr.raw_tushare_limit_list_d lim
           ON lim.ts_code = m.ts_code AND lim.trade_date = l.trade_date AND lim."limit" = 'U'
         ORDER BY (l._cum_net IS NULL), l._cum_net DESC, m.ts_code""",
-        [*mem_params, as_of]).fetchall()
+        sql_params).fetchall()
     rows = [dict(zip(_LEAF_COLS, r)) for r in rows]
-    # Tier1 form via production-read boundary (default → legacy join unchanged).
-    overlay_day = as_of if len("".join(ch for ch in str(as_of) if ch.isdigit())[:8]) == 8 else None
-    if overlay_day and overlay_day != "99999999":
+    if len(day) == 8 and day != "99999999" and not use_legacy_form:
         rows, _ = overlay_pulse_form_from_production_read(
             rows,
-            overlay_day,
+            day,
             config=_TIER12_CUTOVER_CONFIG,
             artifact_root=_TIER12_ARTIFACT_ROOT,
             config_path=_TIER12_CONFIG_PATH,
@@ -612,9 +642,10 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
 
     B-ext: 旁路 ``population_scope`` + ``shadow_reconcile`` 标 legacy breadth/margin
     为 UNTRUSTED。Phase C: ``tier12_production_read`` 经
-    ``resolve_tier12_production_read``；default yaml → LEGACY / cutover false。
-    B-pit: ``b_pit_mart_production_read`` 经 ``resolve_b_pit_mart_production_read``；
-    default yaml → LEGACY mart（MATCH 亦不翻）。``days`` 数值不改。
+    ``resolve_tier12_production_read``；cutover ON → ACCEPTED_CUTOVER，缺 accept
+    fail-closed → LEGACY。B-pit: ``b_pit_mart_production_read`` 经
+    ``resolve_b_pit_mart_production_read``；cutover ON → MART_CUTOVER，窗外/缺影
+    fail-closed → LEGACY mart。``days`` 数值不改。
     """
     rows = conn.execute(f"""
         SELECT {', '.join(_SENTIMENT_COLS)} FROM (

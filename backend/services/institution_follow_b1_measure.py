@@ -288,8 +288,9 @@ def load_stock_state_by_day(
 ) -> dict[str, dict[str, dict[str, Any]]]:
     """Load Tier1 state for the window via the Tier1/2 production-read boundary.
 
-    Always calls ``resolve_tier12_production_read`` per day. Under default
-    ``cutover_allowed=false`` every day stays on ``fact_stock_form_daily``.
+    Always calls ``resolve_tier12_production_read`` per day. ACCEPTED_CUTOVER
+    days use accepted stock_states; LEGACY/BLOCKED days stay on
+    ``fact_stock_form_daily`` (fail-closed fallback — not a dual bypass).
     """
 
     days = sorted({_norm_day(d) for d in trading_days if len(_norm_day(d)) == 8})

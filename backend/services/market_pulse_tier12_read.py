@@ -1,9 +1,10 @@
 """Pulse/UI Tier1 form + attestation via Phase C production-read boundary.
 
-Default ``consumer_cutover.cutover_allowed=false`` keeps pulse on legacy
-``fact_stock_form_daily`` / mart numbers. Callers must invoke
-``resolve_tier12_production_read`` before treating accepted partitions as
-production truth — silent ``accepted_*.json`` reads are forbidden.
+Owner-opted cutover ON resolves to ACCEPTED_CUTOVER when accept matches;
+missing accept / blocked gates fail closed to ``fact_stock_form_daily``.
+Callers must invoke ``resolve_tier12_production_read`` before treating
+accepted partitions as production truth — silent ``accepted_*.json`` reads
+are forbidden. Drill must not dual-read legacy SQL then overwrite accepted.
 """
 from __future__ import annotations
 
