@@ -2248,3 +2248,67 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   现状；不新增执行任务，仅把 owner 边界裁决落成 goal.md 常驻真相，供后续任何
   Product/Agent-OS 提案对照审查。
 - **Status**: FIXED（裁决持久化，无代码/数据变更）。
+
+### 2026-07-20 — Dual-track re-audit + accept-frontier check + F longer-window BLOCKED（本次续作）
+
+- **任务**：owner 指示按序执行 (1) dual-track 旁路复查+退役 (2) 20260720 后新
+  eligible 日 Tier1/2 accept (3) 若有余量则 F 更长窗 remeasure，否则记录 BLOCKED
+  (4) 每刀更新 goal/BOARD/ledger (5) 达到诚实 stop 条件即停，标 FIXED|PARTIAL|BLOCKED。
+- **(1) Dual-track 旁路复查 — 结论：residual = NONE**（非 FIXED 因为无需改代码，
+  是复核确认，非新退役动作）：`rg` 扫描 `backend/routers`、`backend/services`、
+  `backend/scripts`、`frontend/src/api` 中所有 `fact_stock_form_daily` /
+  `accepted_partition` 直读点，逐个人工确认调用链：
+  - `routers/market_pulse.py::_drill_leaf_rows` 仍单次 `resolve_tier12_production_read`
+    后二选一（legacy SQL join 或 accepted overlay），无同请求双读；已接
+    `overlay_pulse_form_from_production_read` / `attest_pulse_b_pit_mart_production_read`，
+    非死代码。
+  - `services/b_pit_mart_cutover.py` / `market_pulse_b_pit_read.py`：B-pit mart
+    仍是 `project_universe_pit` breadth 唯一读路径，无旁路直读 mart 表。
+  - `routers/institution_profile.py`：读 typed `read_policy.cutover_allowed`，非
+    裸表 join。`paper_portfolio.py` / `ops_manual_run.py`：不触碰 Tier1/2/B-pit 表。
+  - `frontend/src/api/*`：仅 HTTP client，无直连 DB，非并行旁路面。
+  - 其余 `accepted_partition`/`fact_stock_form_daily` 引用
+    （`main_rally_dataset_snapshot.py`、`institution_follow_b0.py`、
+    `institution_follow_b2_measure.py`、`tier12_nominal_canary.py`、
+    `persist_b_pit_breadth_shadow.py`）均为 Tier3 研究 dataset-snapshot 枚举/
+    measure 模块，或显式只读、从不授权 cutover 的
+    `market_pulse_shadow_reconcile.py` 审计工具——与既有 `legacy_retire_notes.md`
+    记录同类，非新增生产旁路。详细证据已写入
+    `data/lineage/legacy_retire_notes.md`「2026-07-20 re-audit」节。
+  - **无代码改动**（未发现可删/可退役的真旁路）；本刀仅落证据到
+    `legacy_retire_notes.md`。
+- **(2) Tier1/2 accept for days after 20260720 — 结论：accept frontier 已是
+  current，无新 eligible 日**：
+  - `accepted_partition` 显示 `tier0.market_data.nominal_ohlcv_daily` /
+    `tier0.security_identity.stock_st_daily` 均已接受至 `20260720`（121 个
+    交易日，`20260116`→`20260720`）；`tier12_publish_batches/` 已有
+    `accepted_20260717.json` + `accepted_20260720.json`。
+  - 交易日历确认 `20260721` 是交易日（`is_open=True`），但系统实际时钟仍在
+    `2026-07-20 22:40 CST`（`date -u` 验证），当日收盘/次日数据尚未产生。
+  - 实测 `scripts/chunkyctl sync --domain daily --start 20260721 --end 20260721
+    --trigger-mode manual` 与 `--domain stock_st` 同参数，均返回
+    `{"status": "operation_window_blocked", "reason": "requested end=20260721
+    exceeds eligible horizon=20260720 (wall_clock_preflight)"}`——生产 sync
+    runner 的 fail-closed 时钟前置检查正确拒绝未来日，不是 watermark 落后。
+  - **无新数据可 accept**；frontier 已 current，非 blocker，非需要 owner 决策。
+- **(3) F 更长窗 remeasure — 结论：BLOCKED（非松门可解）**：
+  `accepted_partition` 里 `nominal_ohlcv_daily` 的可用窗口本身就是
+  `20260116`→`20260720`（121 天，与 F0 DatasetSnapshot 冻结窗口完全一致）——
+  没有更早已接受的名义行情可回溯扩窗，也没有更晚（未来）交易日可扩窗（见 (2)）。
+  扩大窗口只有两条路：往前=需要新的历史 backfill（本任务明令禁止 mass
+  backfill）；往后=只能随真实交易日自然推进（每个自然交易日 +1 天，无法人为
+  加速）。250 天 full-episode 验证同理需要数月自然日历推进才能积累够天数。
+  **本刀不触发任何 backfill/松门**；记录为需要 owner 决策（是否授权例外
+  backfill，或接受"随自然日历推进逐日扩窗"的既定节奏）+ 自然日历推进（无 agent
+  可加速）两条路径之一，不是代码/协议可解的 blocker。
+- Updated `goal.md`（下一步/已裁决 反映本次复核结论）；regenerated
+  `BOARD.md`（`backend/scripts/build_agent_board.py`，机器生成投影，未手改）。
+- **Did not**：Optuna；E/F gate 松动；StrategyRelease；margin thaw；mass
+  backfill；greenfield 重写；cutover 回翻或伪造 true；触碰未来交易日数据。
+- **Residual / 交给 owner**：F0–F3 ladder 保持三消融诚实 reject/checkpoint 状态
+  不变；下一步（更长窗 remeasure、B3+ 新消融、WP6 仪式 flip、full-episode
+  backfill 例外）均需 owner 决策，非 agent 可单方面推进。
+- **Status**: **PARTIAL**（dual-track 复核=FIXED/NONE，accept frontier
+  确认=FIXED/current，F 更长窗=**BLOCKED**——按 owner 指示第 5 步诚实 stop
+  条件已满足：dual-track residual=NONE，accept frontier=current，下一步需
+  owner，本刀在此诚实停止，未强行制造绿）。

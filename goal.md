@@ -1,10 +1,11 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-20（Phase F F3 main_rally B2 +market sensing；F0–F3 checkpoint）
+> 更新：2026-07-20（forward program pointer → P0+P1；dual-track residual NONE；frontier current）
 > 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改）。
 > 完成证据追加到 `analysis/project_state_ledger.md`。
 > **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
+> **一体化前向程序（单一路径）**：`analysis/forward_program_efgh_20260720.md`（P0→P1→D1→P2/P3；WP6 旁路；H only after accept）
 
 ## 当前 objective
 
@@ -19,15 +20,25 @@
 - Phase F **F0+F1 FIXED**：`main_rally_v1` DatasetSnapshot freeze + B0 setup-entry short-horizon measured → `reject` / `claimable=false`（非 full-episode；禁 Optuna / StrategyRelease）
 - Phase F **F2 FIXED**：B1 = B0 + Tier1 stock-state FeatureBlock（同 B0 snapshot/folds/costs/paper，经 `resolve_tier12_production_read`/`load_stock_state_by_day`）→ 同窗口 measured **`reject`** / **`claimable=false`**（edge gates unmet；holdout vs B0 无 strict lift，`REQUIRE_HOLDOUT_LIFT_VS_B0` 生效）。F2 reject/`claimable=false` 为 protocol-complete 交付，非 stop。
 - Phase F **F3 FIXED**：B2 = B0 + Tier2 market-sensing FeatureBlock（`MarketContextSnapshot` project-board breadth risk-on gate，mirrors `institution_follow_b2`；legacy `market_pulse` mart 遇 UNTRUSTED 拒绝、缺 `available_at` fail-closed；独立 ablate on B0，非叠加 B1）→ 同窗口 measured **`reject`** / **`claimable=false`**（coverage sufficient 121/121d, risk_on 53/121d；edge gates unmet + holdout lift vs B0 unmet）。**F0–F3 ladder 可 checkpoint**（三个 ablation 均诚实 reject，非叠加寻优）。
+- **Dual-track 复核（2026-07-20 续作）**：`rg`+人工复查 `routers`/`services`/`scripts`/前端 API，residual **NONE**——无新旁路可删/退役；既有 resolver 边界（`resolve_tier12_production_read`、`resolve_b_pit_mart_production_read`）仍是唯一读路径。证据见 `data/lineage/legacy_retire_notes.md`「2026-07-20 re-audit」。
+- **Accept frontier 复核（2026-07-20 续作）**：实测 `chunkyctl sync --domain daily|stock_st --start 20260721 --end 20260721` 均 `operation_window_blocked`（`wall_clock_preflight`，`eligible horizon=20260720`）——frontier 已 **current**，非落后；`20260721` 是交易日但尚未收盘（系统时钟仍 `2026-07-20`），无新数据可 accept。
+- **F 更长窗 remeasure（2026-07-20 续作）**：**BLOCKED**（非代码可解）——accepted nominal 窗口本身就是 `20260116`→`20260720`（121d，与 F0 冻结窗口一致），往前扩窗=backfill（禁），往后扩窗=只能随自然交易日推进（无法加速）；250d full-episode 同理需数月自然日历。交给 owner：授权例外 backfill，或接受自然节奏。
 
 启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。
 
-## 下一步（给下一账号优先）
+## 下一步
 
-1. **A→H 下一业务刀**：F0–F3 main_rally ladder（B0/B1/B2）均诚实 reject/`claimable=false`，已 checkpoint；下一步为重新评估更长窗/新 accept 上复测（勿松门），或另起新 strategy_package/ablation（B3+ 需先证明必要性，勿无绿叠加寻优）
-2. Accept Tier1/2 for days after `20260720` when builders/calendar allow
-3. Dual-track 退役残余：补查任何仍绕过 resolver 的旁路（见 `data/lineage/legacy_retire_notes.md`）
-4. Agent-OS WP6：影子期满检查单后再删旧 boot 仪式（owner-gated）
+**Integrated forward program（单一路径，非菜单）** =
+`analysis/forward_program_efgh_20260720.md`
+
+顺序：**P0 → P1 → D1 → P2/P3**；**WP6 旁路**（不洗绿 A→H）；**H only after accept**。  
+当前程序指针：**P0 + P1**（未到 D1；不开 G/H/Release）。
+
+- **P0** 数据币值：自然交易日收盘后 eligible 才 `sync` + Tier1/2 accept；frontier=`20260720` 已 current；dual-track residual=NONE（仅新增旁路时复扫）
+- **P1** E/F 处置：在自然扩大的 accepted nominal 窗上、不改阈值、同 protocol 复测；更长窗 remeasure 当前 **BLOCKED**（禁 mass backfill；需日历推进或 owner 书面例外）
+- **D1 及以后**：见程序文件；触发前不开 G、不开 H、不 StrategyRelease
+
+旧「owner choose」菜单项已并入上列；细节与硬退出条件以程序文件为准。
 
 ## 禁令
 
