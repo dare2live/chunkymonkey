@@ -36,11 +36,10 @@
     }
   },
   "enforcement": "projection_only_not_truth",
-  "generated_at": "2026-07-20T11:39:57Z",
+  "generated_at": "2026-07-20T11:46:27Z",
   "generated_from": "backend/scripts/build_agent_board.py",
-  "goal_hand_excerpt": "## 当前 objective\n\n**轨道 = A→H 恢复（owner 裁决 2026-07-20：agent-OS 核心 WP0–WP4 闭合后恢复）**。\nAgent-OS 影子期照常开放（WP6 仪式 flip 仍 owner-gated，与 A→H 无关）。\n`20260720` daily+ST 已 sync+accept。启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。\n\n## 下一步（A→H 残余刀）\n\n1. D 剩余到 D-complete：一条 measured（非 stub、非 strategy-package-owned）offline 路径\n2. C/B-pit 残余观察（不 flip `cutover_allowed`；默认 false）\n3. Agent-OS 影子期残余（非本轨道）：影子期满检查单、真实 L2 路径证据\n   （T0 墙钟已实测入账 2026-07-20 见 ledger；编排/墙钟政策 = eng_gov §15：\n   并行 subagents、异步 CI、Rule 10 按刀、L1 docs push 不起 CI）\n\n## 禁令\n\n- B-pit/C `cutover_allowed=true`（无本 session 证据+goal 明确排程不 flip）；Optuna；E 松门；StrategyRelease\n- margin thaw；mass backfill；plugin bus；第二 DB；agent 自降 commit tier；静默 cutover\n\n## 已裁决（稳定）\n\n| 层 | 目的 | 首个正式输出 |\n|---|---|---|\n| Tier 0A 市场数据 | 日历、身份、名义 K、公司行动、复权 | accepted canonical partition |\n| Tier 0B 分类 | 版本化树/概念/成员/crosswalk | taxonomy node + membership |\n| Tier 1 股票状态 | 阶段/形态/事件，不预测 | stock state + pattern event |\n| Tier 2 市场感知 | 活跃度/不平衡代理/广度/价格响应 | market context snapshot |\n| Tier 3 研究/策略 | B0→B5 消融 | experiment verdict + strategy spec |\n| Tier 4 决策/产品 | 只消费已发布策略 | strategy release + decision batch |\n\n依赖只向下。Ops 观察但不拥有业务事实。多源=契约可换 adapter（目标态）；首策略包=`institution_follow`；边做…",
+  "goal_hand_excerpt": "## 当前 objective\n\n**轨道 = A→H 恢复（owner 裁决 2026-07-20：agent-OS 核心 WP0–WP4 闭合后恢复）**。\nAgent-OS 影子期照常开放（WP6 仪式 flip 仍 owner-gated，与 A→H 无关）。\n`20260720` daily+ST 已 sync+accept。启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。\n\n## 下一步（A→H 残余刀）\n\n1. C/B-pit 残余观察（不 flip `cutover_allowed`；默认 false）\n2. Agent-OS 影子期残余（非本轨道）：影子期满检查单、真实 L2 路径证据\n   （T0 墙钟已实测入账 2026-07-20 见 ledger；编排/墙钟政策 = eng_gov §15：\n    并行 subagents、异步 CI、Rule 10 按刀、L1 docs push 不起 CI）\n3. 或 stop（D measured offline runtime-owned 路径已闭合；禁 Optuna / E 松门 / StrategyRelease）\n\n## 禁令\n\n- B-pit/C `cutover_allowed=true`（无本 session 证据+goal 明确排程不 flip）；Optuna；E 松门；StrategyRelease\n- margin thaw；mass backfill；plugin bus；第二 DB；agent 自降 commit tier；静默 cutover\n\n## 已裁决（稳定）\n\n| 层 | 目的 | 首个正式输出 |\n|---|---|---|\n| Tier 0A 市场数据 | 日历、身份、名义 K、公司行动、复权 | accepted canonical partition |\n| Tier 0B 分类 | 版本化树/概念/成员/crosswalk | taxonomy node + membership |\n| Tier 1 股票状态 | 阶段/形态/事件，不预测 | stock state + pattern event |\n| Tier 2 市场感知 | 活跃度/不平衡代理/广度/价格响应 | market context snapshot |\n| Tier 3 研究/策略 | B0→B5 消融 | experiment verdict + strategy spec |\n| Tier 4 决策/产品 | 只消费已发布策略 | strategy release + decision batch |\n\n依赖只向下。Ops 观察但不拥有业务事实。多源=契约可换 adapter（目标态）；首策略包=`institution_…",
   "next_knives_frozen": [
-    "D persist ExperimentRun / real fold bind",
     "opt-in C/B-pit cutover only with strong evidence (yaml still false)",
     "agent-OS shadow residuals (ceremony flip owner-gated)",
     "or stop"
@@ -51,7 +50,7 @@
       "block": "B0",
       "claimable": false,
       "embargo_days": 1,
-      "experiment_id": "institution_follow_v1:B0:disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713:4b43529b8c80",
+      "experiment_id": "institution_follow_v1:B0:disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713:952c4a628887",
       "fold_ids": [
         "purged_fold_0",
         "purged_fold_1",
@@ -60,6 +59,17 @@
       "fold_protocol": "purged_walk_forward",
       "holdout_start": "20260716",
       "label_horizon_days": 1,
+      "measured_offline": {
+        "claimable": false,
+        "experiment_id": "phase_d_offline:B0:disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713:meas:1dd301f98b58",
+        "measure_status": "measured",
+        "n_trades_completed": 2,
+        "paper_fills": "measured",
+        "reason": "phase_d_offline_measured_inconclusive",
+        "strategy_package": "phase_d_offline",
+        "total_return": -0.005388016169986187,
+        "verdict": "inconclusive"
+      },
       "n_folds": 3,
       "reason": "scaffold_no_measured_edge",
       "snapshot_id": "disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713",

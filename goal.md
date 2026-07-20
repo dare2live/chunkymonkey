@@ -13,11 +13,11 @@ Agent-OS 影子期照常开放（WP6 仪式 flip 仍 owner-gated，与 A→H 无
 
 ## 下一步（A→H 残余刀）
 
-1. D 剩余到 D-complete：一条 measured（非 stub、非 strategy-package-owned）offline 路径
-2. C/B-pit 残余观察（不 flip `cutover_allowed`；默认 false）
-3. Agent-OS 影子期残余（非本轨道）：影子期满检查单、真实 L2 路径证据
+1. C/B-pit 残余观察（不 flip `cutover_allowed`；默认 false）
+2. Agent-OS 影子期残余（非本轨道）：影子期满检查单、真实 L2 路径证据
    （T0 墙钟已实测入账 2026-07-20 见 ledger；编排/墙钟政策 = eng_gov §15：
-   并行 subagents、异步 CI、Rule 10 按刀、L1 docs push 不起 CI）
+    并行 subagents、异步 CI、Rule 10 按刀、L1 docs push 不起 CI）
+3. 或 stop（D measured offline runtime-owned 路径已闭合；禁 Optuna / E 松门 / StrategyRelease）
 
 ## 禁令
 

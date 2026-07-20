@@ -101,7 +101,7 @@
     "block": "B0",
     "config_hash": "a0d67e2ddda16936cc6fd88f32e5a17a4884d623b1feff3cf716d4187ed10d7f",
     "decision_date": "20260717",
-    "experiment_id": "institution_follow_v1:B0:disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713:4b43529b8c80",
+    "experiment_id": "institution_follow_v1:B0:disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713:952c4a628887",
     "kept_observation_count": 0,
     "notes": [
       "phase_d_offline_b0_bound",
@@ -212,7 +212,7 @@
       "strategy_release": false,
       "surface_status": "tier3_research_evidence_only"
     },
-    "experiment_id": "institution_follow_v1:B0:disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713:4b43529b8c80",
+    "experiment_id": "institution_follow_v1:B0:disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713:952c4a628887",
     "reason": "scaffold_no_measured_edge",
     "verdict": "inconclusive"
   }

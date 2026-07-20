@@ -64,7 +64,7 @@ AGENTS.md
 | Live continuity | `PYTHONPATH=backend python backend/scripts/check_continuity_integrity.py` (`FAIL` 直接非零) |
 | Local reviewed commit | `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "<message>"`（WP1：staged 路径机器分级 L1/L2/L3；政策=`backend/config/commit_tiers.yaml`） |
 | Tier1/2 full-universe accept (manual) | `PYTHONPATH=backend python backend/scripts/persist_tier12_full_universe_accept.py --decision-date YYYYMMDD`；默认不翻 `consumer_cutover` |
-| Phase D ExperimentRun persist (idempotent) | `PYTHONPATH=backend python backend/scripts/persist_phase_d_experiment_runs.py [--force]`；真 purged-WF fold 绑定；claimable 恒 false |
+| Phase D ExperimentRun persist (idempotent) | `PYTHONPATH=backend python backend/scripts/persist_phase_d_experiment_runs.py [--force]`；b0_bound + runtime-owned measured_offline；claimable 恒 false |
 
 已移除的 ChunkyCtl 子命令不是工作流，调用必须返回非零；不要在活文档或生成地图中把任何 retired lifecycle 重新列为 active。
 
@@ -73,14 +73,14 @@ AGENTS.md
 | Priority | Defect | Consequence |
 |---:|---|---|
 | P0 | K accepted 至 `20260720`（daily 5524 行 + ST 209 行）；form/qfq 分析面仍卡 `20260716`（raw/adj wall + margin frozen）；禁 mass backfill | B-pit mart/cutover 仍禁；分析读面滞后 accepted frontier |
-| P0 | E 120d checkpointed measured reject/no-gain；C full-universe accept `20260717`（4989=4989；cutover 默认 false）；D PARTIAL（prereg+binding+offline loop+persisted ExperimentRun+真 fold bind；未 complete）；B-pit 120d shadow **120/120 MATCH** + mart cutover gate FIXED（默认 false；pulse/B2 已接线；未切读）；enrichment 历史仍 field-level PARTIAL | 下一刀 D measured 非 strategy-package 路径 / 显式 opt-in C/B-pit cutover（强证据；仍 false）**或** stop（非 Optuna / 非松门 / 非 mass backfill / 非擅翻 cutover / 非 StrategyRelease / 非 claim D complete） |
+| P0 | E 120d checkpointed measured reject/no-gain；C full-universe accept `20260717`（4989=4989；cutover 默认 false）；D FIXED（runtime-owned measured offline + persist）；B-pit 120d shadow **120/120 MATCH** + mart cutover gate FIXED（默认 false；pulse/B2 已接线；未切读）；enrichment 历史仍 field-level PARTIAL | 下一刀显式 opt-in C/B-pit cutover（强证据；仍 false）**或** stop（非 Optuna / 非松门 / 非 mass backfill / 非擅翻 cutover / 非 StrategyRelease） |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
 | P1 | formal `boundary_inventory` 仅为静态/测试资源，非 doctor readiness 证书（`formal_boundaries` 文案已澄清）；canary_pending 域无 countdown 出口 | 豁免不可见即永久；须在 goal/ledger 跟踪 canary 授权点 |
 | P1 | Live DC snapshot/pulse tables predate namespace fix until manual rebuild | Code contract is fixed but stored rows still need controlled reconciliation |
 | P1 | Market pulse mixes taxonomy, measurements, rolling/regime, write/read；仍读错误 scope raw | B-ext FIXED；B-pit shadow MATCH 120/120（membership proxy）；mart cutover gate 默认 false；数值未切 |
 | P1 | Stock state/market regime rows lack config/input version | Historical outputs cannot prove which definition produced them |
-| P1 | Phase D PARTIAL — persisted ExperimentRun (`data/lineage/phase_d_experiment_runs/`) + real purged-WF fold bind done；余 measured 非 strategy-package 路径 / StrategyRelease 仍禁 | Strategy evidence still cannot reach decision/product safely |
+| P1 | Phase D FIXED — runtime-owned measured offline (`research_runtime_measure`) + lineage `measured_offline.json`；StrategyRelease 仍禁 | Strategy evidence still cannot reach decision/product safely |
 | P1 | Docs/CLI gates previously treated retired/warn as PASS；事实性断言（如“仅 TuShare”）不在 gate 覆盖 | Tooling green did not prove executable reality |
 
 The current migration and blockers are maintained only in `goal.md`.

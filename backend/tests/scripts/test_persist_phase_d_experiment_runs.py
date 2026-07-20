@@ -43,6 +43,21 @@ def test_persist_writes_immutable_run_and_manifest(tmp_path: Path) -> None:
     ]
     assert "bound_from_measured_walk_forward_plan" in prereg["fold_embargo"]["notes"]
 
+    measured_path = tmp_path / manifest["runs"]["measured_offline"]
+    measured = json.loads(measured_path.read_text(encoding="utf-8"))
+    assert measured["path"] == "runtime_owned_measured_offline"
+    assert measured["verdict"]["claimable"] is False
+    assert measured["run"]["strategy_package"] == "phase_d_offline"
+    assert measured["run"]["strategy_package"] != "institution_follow"
+    m_measure = measured["run"]["artifact_manifest"]["measure"]
+    assert m_measure["status"] == "measured"
+    assert m_measure["paper_fills"] == "measured"
+    assert isinstance(m_measure["total_return"], float)
+    mo = summary["measured_offline"]
+    assert mo["claimable"] is False
+    assert mo["measure_status"] == "measured"
+    assert mo["n_trades_completed"] == 2
+
 
 def test_persist_idempotent_on_same_hashes(tmp_path: Path) -> None:
     first = mod.persist(repo=tmp_path)

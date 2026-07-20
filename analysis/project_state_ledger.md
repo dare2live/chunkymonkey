@@ -1905,3 +1905,27 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Status**: delivery-tax knife FIXED (CI skip live + policy owned);
   next verification = first L1 docs push produces no CI run (this
   commit itself is the probe).
+
+### 2026-07-20 — Phase D measured offline runtime-owned path (FIXED)
+
+- Wall-clock: Mon 2026-07-20 ~19:50 Asia/Shanghai (in-session).
+- Closed residual to D-complete: one measured offline path not owned by a
+  strategy package (stub measure previously returned unknown returns).
+- **Delivered**:
+  - `backend/services/research_runtime_measure.py`: PIT-truncate → nominal
+    open-to-open fills from observation payloads (`entry_px`/`exit_px`) with
+    runtime-owned cost model; `run_offline_measured_loop` → ExperimentVerdict
+    always `claimable=false`; no strategy-package imports.
+  - Extended `OfflineMeasureResult` with `measured` status + numeric
+    total_return/max_drawdown/paper_fills (stub path still unknown).
+  - Persist: `data/lineage/phase_d_experiment_runs/measured_offline.json` +
+    manifest summary; board projects measured_offline line.
+  - Tests: research_runtime measured loop + ownership AST check; persist
+    asserts package=`phase_d_offline`, status=measured, claimable=false.
+- Live artifact: measured_offline trades=2 paper_fills=measured
+  verdict=inconclusive claimable=false strategy_release=false.
+- **Did not**: StrategyRelease; Optuna; E gate loosen; flip B-pit/C
+  `cutover_allowed`; margin thaw; mass backfill.
+- **Status**: D PARTIAL→FIXED (MASTER exit: PIT gate + closed measured loop).
+- **Next knife**: C/B-pit cutover observation (keep false) or stop / agent-OS
+  shadow residuals.

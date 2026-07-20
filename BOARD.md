@@ -2,7 +2,7 @@
 
 > 由 `backend/scripts/build_agent_board.py` 重生成，**勿手改**。
 > **Projection only** — not an enforcement input. Cutover / readiness / PIT gates still resolve from yaml + code resolvers + accepted partitions.
-> Snapshot: 2026-07-20T11:18:52Z
+> Snapshot: 2026-07-20T11:46:07Z
 
 ## Track
 
@@ -19,6 +19,7 @@
 ## Phase D runtime (lineage projection)
 
 - b0_bound: verdict=`inconclusive` claimable=False protocol=`purged_walk_forward` folds=3 holdout_start=20260716
+- measured_offline: verdict=`inconclusive` claimable=False package=`phase_d_offline` trades=2 status=`measured`
 - artifact: `data/lineage/phase_d_experiment_runs/manifest.json`
 
 ## Phase E verdicts (lineage projection)
@@ -42,7 +43,6 @@
 
 ## Next (frozen menu)
 
-- D persist ExperimentRun / real fold bind
 - opt-in C/B-pit cutover only with strong evidence (yaml still false)
 - agent-OS shadow residuals (ceremony flip owner-gated)
 - or stop

@@ -4,10 +4,11 @@
   "consumers": [
     "backend/scripts/build_agent_board.py"
   ],
-  "frozen_at": "2026-07-20T11:17:46.475341+00:00",
+  "frozen_at": "2026-07-20T11:46:07.882900+00:00",
   "kind": "phase_d_experiment_run_manifest",
   "runs": {
-    "b0_bound": "data/lineage/phase_d_experiment_runs/b0_bound.json"
+    "b0_bound": "data/lineage/phase_d_experiment_runs/b0_bound.json",
+    "measured_offline": "data/lineage/phase_d_experiment_runs/measured_offline.json"
   },
   "schema_version": 1,
   "snapshot_hash": "0f4aec1ca7669397e38d2811ebb6e3edcbabf9125d9ecd7bde6ce501f829d11e",
@@ -16,7 +17,7 @@
     "block": "B0",
     "claimable": false,
     "embargo_days": 1,
-    "experiment_id": "institution_follow_v1:B0:disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713:4b43529b8c80",
+    "experiment_id": "institution_follow_v1:B0:disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713:952c4a628887",
     "fold_ids": [
       "purged_fold_0",
       "purged_fold_1",
@@ -25,6 +26,17 @@
     "fold_protocol": "purged_walk_forward",
     "holdout_start": "20260716",
     "label_horizon_days": 1,
+    "measured_offline": {
+      "claimable": false,
+      "experiment_id": "phase_d_offline:B0:disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713:meas:1dd301f98b58",
+      "measure_status": "measured",
+      "n_trades_completed": 2,
+      "paper_fills": "measured",
+      "reason": "phase_d_offline_measured_inconclusive",
+      "strategy_package": "phase_d_offline",
+      "total_return": -0.005388016169986187,
+      "verdict": "inconclusive"
+    },
     "n_folds": 3,
     "reason": "scaffold_no_measured_edge",
     "snapshot_id": "disclosure_bounded_holders_top10:20260508,20260616,20260618,20260619,20260623,20260703,20260709,20260710,20260713,20260714,20260717-org_holding:20190430,20260430-stk_holdertrade:20260518,20260608,20260706,20260713",

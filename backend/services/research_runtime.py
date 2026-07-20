@@ -8,8 +8,9 @@ E already partially consumes the boundary via frozen disclosure snapshots and
 ``ExperimentVerdict``; ``dataset_snapshot_from_disclosure`` + B0 artifact
 manifest wiring make that reuse explicit.
 
-Deepened (still PARTIAL): immutable ``ExperimentPrereg`` + fold/embargo hooks,
-mid-run snapshot binding fail-closed, and offline measure stub / B0-bound loop.
+Deepened: immutable ``ExperimentPrereg`` + fold/embargo hooks, mid-run snapshot
+binding fail-closed, offline measure stub / measured path / B0-bound loop.
+Measured offline path is owned here (not a strategy package).
 """
 from __future__ import annotations
 
@@ -30,6 +31,7 @@ _VALID_VERDICTS = frozenset({"accept", "reject", "inconclusive"})
 
 REASON_PHASE_D_SCAFFOLD_SMOKE = "phase_d_scaffold_smoke_inconclusive"
 REASON_PHASE_D_OFFLINE_MEASURE_STUB = "phase_d_offline_measure_stub_inconclusive"
+REASON_PHASE_D_OFFLINE_MEASURED = "phase_d_offline_measured_inconclusive"
 REASON_PIT_LEAK_OR_EMPTY = "phase_d_pit_leak_or_empty_after_truncation"
 REASON_PIT_FUTURE_AVAILABLE_AT = "phase_d_future_available_at"
 REASON_SNAPSHOT_BINDING_VIOLATED = "phase_d_snapshot_binding_violated"
@@ -248,24 +250,43 @@ class ExperimentPrereg:
 
 @dataclass(frozen=True)
 class OfflineMeasureResult:
-    """Offline measure stub output (unknown returns; not a paper edge)."""
+    """Offline measure output.
 
-    status: Literal["measured_stub", "empty_after_pit", "binding_rejected"]
+    Stub status keeps returns unknown. ``measured`` status carries nominal
+    T+1/T+2 open-to-open net returns (costs applied); never claimable by itself.
+    """
+
+    status: Literal["measured_stub", "measured", "empty_after_pit", "binding_rejected"]
     decision_date: str
     kept_observation_count: int
     input_observation_count: int
     details: dict[str, Any]
+    total_return: float | None | Literal["unknown"] = "unknown"
+    max_drawdown: float | None | Literal["unknown"] = "unknown"
+    paper_fills: Literal["not_run", "measured"] = "not_run"
+    n_trades_completed: int = 0
+    n_unfilled: int = 0
 
     def as_dict(self) -> dict[str, Any]:
+        if self.status == "measured":
+            total: Any = self.total_return
+            dd: Any = self.max_drawdown
+            fills = self.paper_fills
+        else:
+            total = "unknown"
+            dd = "unknown"
+            fills = "not_run"
         return {
             "status": self.status,
             "decision_date": self.decision_date,
             "kept_observation_count": self.kept_observation_count,
             "input_observation_count": self.input_observation_count,
             "details": dict(self.details),
-            "total_return": "unknown",
-            "max_drawdown": "unknown",
-            "paper_fills": "not_run",
+            "total_return": total,
+            "max_drawdown": dd,
+            "paper_fills": fills,
+            "n_trades_completed": self.n_trades_completed,
+            "n_unfilled": self.n_unfilled,
         }
 
 
@@ -565,8 +586,8 @@ def dataset_snapshot_from_disclosure(
     )
 
 
-# Offline loop helpers live in research_runtime_loop (god-file ratchet).
-# Public boundary re-exports via __getattr__ so importers stay stable.
+# Offline helpers live in research_runtime_loop / research_runtime_measure
+# (god-file ratchet). Public boundary re-exports via __getattr__.
 _LOOP_EXPORTS = frozenset(
     {
         "assert_snapshot_binding",
@@ -578,6 +599,12 @@ _LOOP_EXPORTS = frozenset(
         "run_offline_minimal_loop",
     }
 )
+_MEASURE_EXPORTS = frozenset(
+    {
+        "measure_observations_offline",
+        "run_offline_measured_loop",
+    }
+)
 
 
 def __getattr__(name: str) -> Any:
@@ -585,6 +612,10 @@ def __getattr__(name: str) -> Any:
         from services import research_runtime_loop as _loop  # noqa: PLC0415
 
         return getattr(_loop, name)
+    if name in _MEASURE_EXPORTS:
+        from services import research_runtime_measure as _measure  # noqa: PLC0415
+
+        return getattr(_measure, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

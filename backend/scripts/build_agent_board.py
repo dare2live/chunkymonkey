@@ -171,7 +171,6 @@ def collect(repo: Path = REPO) -> dict[str, Any]:
         },
         "bans": list(BANS),
         "next_knives_frozen": [
-            "D persist ExperimentRun / real fold bind",
             "opt-in C/B-pit cutover only with strong evidence (yaml still false)",
             "agent-OS shadow residuals (ceremony flip owner-gated)",
             "or stop",
@@ -242,6 +241,15 @@ def render_md(d: dict[str, Any]) -> str:
             f"protocol=`{pd.get('fold_protocol')}` folds={pd.get('n_folds')} "
             f"holdout_start={pd.get('holdout_start')}"
         )
+        mo = pd.get("measured_offline") or {}
+        if mo:
+            add(
+                f"- measured_offline: verdict=`{mo.get('verdict')}` "
+                f"claimable={mo.get('claimable')} "
+                f"package=`{mo.get('strategy_package')}` "
+                f"trades={mo.get('n_trades_completed')} "
+                f"status=`{mo.get('measure_status')}`"
+            )
     else:
         add("- no persisted Phase D ExperimentRun artifact")
     add(f"- artifact: `{d_data.get('artifact')}`")

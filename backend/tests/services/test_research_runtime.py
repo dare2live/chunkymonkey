@@ -37,6 +37,7 @@ from services.research_runtime import (
     pit_truncate_observations,
     prove_pit_truncation_invariance,
     run_offline_b0_bound_loop,
+    run_offline_measured_loop,
     run_offline_minimal_loop,
     run_smoke_closed_loop,
 )
@@ -462,3 +463,158 @@ def test_offline_b0_bound_loop_binds_real_plan_into_prereg() -> None:
     assert verdict.claimable is False
     assert verdict.details.get("claimable_forced_false_by_research_runtime") is True
     assert verdict.details.get("strategy_release") is False
+
+
+def _trade_obs(
+    entity: str,
+    event_date: str,
+    *,
+    available_at: str,
+    entry_px: float,
+    exit_px: float,
+    fold_role: str = "one_touch_holdout",
+) -> ResearchObservation:
+    """Observation with explicit T+1/T+2 nominal open legs (runtime-owned measure)."""
+
+    return ResearchObservation(
+        entity_id=entity,
+        event_date=event_date,
+        available_at=available_at,
+        payload={
+            "entry_px": entry_px,
+            "exit_px": exit_px,
+            "entry_date": event_date,  # synthetic: treat event as entry day
+            "fold_role": fold_role,
+        },
+    )
+
+
+def test_offline_measured_loop_emits_measured_returns_claimable_false() -> None:
+    """D residual: measured offline path owned by research_runtime, not a strategy package."""
+
+    snap = _synthetic_snapshot()
+    obs = (
+        _trade_obs(
+            "600000.SH",
+            "20260716",
+            available_at="20260716",
+            entry_px=10.0,
+            exit_px=10.5,
+        ),
+        _trade_obs(
+            "600001.SH",
+            "20260717",
+            available_at="20260717",
+            entry_px=20.0,
+            exit_px=19.0,
+            fold_role="purged_eval",
+        ),
+    )
+    run, verdict = run_offline_measured_loop(
+        snap,
+        obs,
+        decision_date="20260717",
+        fold_embargo=default_fold_embargo_hooks(n_folds=3),
+    )
+    assert run.prereg is not None
+    assert run.prereg.strategy_package == "phase_d_offline"
+    assert run.prereg.strategy_package != "institution_follow"
+    assert run.prereg.claimable_target is False
+    assert run.artifact_manifest.get("kind") == "phase_d_offline_measured"
+    assert run.artifact_manifest.get("strategy_release") is False
+    measure = run.artifact_manifest.get("measure") or {}
+    assert measure.get("status") == "measured"
+    assert measure.get("paper_fills") == "measured"
+    assert isinstance(measure.get("total_return"), float)
+    assert isinstance(measure.get("max_drawdown"), float)
+    assert measure.get("total_return") != "unknown"
+    assert measure.get("n_trades_completed") == 2
+    assert isinstance(verdict, ExperimentVerdict)
+    assert verdict.claimable is False
+    assert verdict.verdict == "inconclusive"
+    assert "offline_measured" in verdict.reason
+    assert "stub" not in verdict.reason
+    assert verdict.details.get("strategy_release") is False
+    assert verdict.details.get("optuna") is False
+
+
+def test_offline_measured_loop_pit_drops_future_and_marks_unknown_prices() -> None:
+    snap = _synthetic_snapshot()
+    obs = (
+        _trade_obs(
+            "600000.SH",
+            "20260716",
+            available_at="20260716",
+            entry_px=10.0,
+            exit_px=11.0,
+        ),
+        # Future availability — must be PIT-dropped, not filled.
+        _trade_obs(
+            "600099.SH",
+            "20260717",
+            available_at="20260718",
+            entry_px=10.0,
+            exit_px=12.0,
+        ),
+        # Missing prices → unfilled; does not invent 0 returns.
+        ResearchObservation(
+            entity_id="600002.SH",
+            event_date="20260717",
+            available_at="20260717",
+            payload={"fold_role": "purged_eval"},
+        ),
+    )
+    run, verdict = run_offline_measured_loop(
+        snap, obs, decision_date="20260717", require_kept_rows=True
+    )
+    measure = run.artifact_manifest.get("measure") or {}
+    assert run.kept_observation_count == 2  # future row dropped
+    assert measure.get("n_trades_completed") == 1
+    assert measure.get("n_unfilled") == 1
+    assert verdict.claimable is False
+    assert measure.get("paper_fills") == "measured"
+
+
+def test_offline_measured_loop_rejects_binding_violation_claimable_false() -> None:
+    snap = _synthetic_snapshot()
+    obs = (
+        _trade_obs(
+            "600000.SH",
+            "20260717",
+            available_at="20260717",
+            entry_px=10.0,
+            exit_px=10.1,
+        ),
+    )
+    run, verdict = run_offline_measured_loop(
+        snap,
+        obs,
+        decision_date="20260717",
+        observed_universe_id="wrong_universe",
+    )
+    assert verdict.verdict == "reject"
+    assert verdict.claimable is False
+    assert verdict.blocked is True
+    assert "binding" in verdict.reason
+    assert run.pit_ok is False
+
+
+def test_offline_measured_path_module_does_not_import_strategy_package() -> None:
+    """Ownership: measured module must not import strategy-package harnesses."""
+
+    import ast
+
+    import services.research_runtime_measure as measure_mod
+
+    tree = ast.parse(Path(measure_mod.__file__).read_text(encoding="utf-8"))
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module)
+    assert not any("institution_follow" in name for name in imported)
+    src = Path(measure_mod.__file__).read_text(encoding="utf-8")
+    assert "build_b0_run" not in src
+    assert "measure_b0_paper" not in src
+    assert "finalize_b0_verdict" not in src
