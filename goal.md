@@ -1,15 +1,17 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-20（forward program pointer → P0+P1；dual-track residual NONE；frontier current）
+> 更新：2026-07-20（**sequencing authority** → transport strangler S1–S3；A→H 策略轨后置）
 > 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改）。
 > 完成证据追加到 `analysis/project_state_ledger.md`。
 > **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
-> **一体化前向程序（单一路径）**：`analysis/forward_program_efgh_20260720.md`（P0→P1→D1→P2/P3；WP6 旁路；H only after accept）
+> **现行排序权威（第一原理重评 → S1–S3 → 再策略）**：`analysis/plan_reeval_first_principles_20260720.md`
+> **模块化缺口证据**：`analysis/data_foundation_modularity_gap_20260720.md`
+> **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`
 
 ## 当前 objective
 
-**轨道 = A→H 恢复中**（owner 2026-07-20）。Agent-OS 核心 WP0–WP4 已闭合；WP6 仪式影子期仍开放（与数据 cutover 无关）。
+**轨道 = transport strangler S1–S3**（owner 2026-07-20 第一原理重评）。模块化诉求（acquire≠accept≠derive≠serve；sync=caller-only）**VALID 但未 shipped**——见重评文 §2–§3。A→H 骨架保留为**后置研究地图**；近端主线不是 E/F remeasure。Agent-OS WP0–WP4 已闭合；WP6 仪式影子期仍开放。
 
 已落地硬事实（勿回滚）：
 - C + B-pit **`cutover_allowed=true`**（commit `b38e9ac5`）→ resolver `ACCEPTED_CUTOVER` / `MART_CUTOVER`
@@ -28,19 +30,18 @@
 
 ## 下一步
 
-**Integrated forward program（单一路径，非菜单）** =
-`analysis/forward_program_efgh_20260720.md`
+**现行单一路径（排序权威）** =
+`analysis/plan_reeval_first_principles_20260720.md`
 
-顺序：**P0 → P1 → D1 → P2/P3**；**WP6 旁路**（不洗绿 A→H）；**H only after accept**。  
-当前程序指针：**P0 + P1**（未到 D1；不开 G/H/Release）。
+顺序：**S1 → S2 → S3**（land-only / accept-from-landing / sync caller-only）→ **S4–S6 按需** → **R0 E0** → **R1 E/F 复测** → G/H；**H only after accept**。  
+旧 `forward_program_efgh` P1 remeasure **superseded**；P0 自然 sync 护栏仍并行。
 
-- **P0** 数据币值：自然交易日收盘后 eligible 才 `sync` + Tier1/2 accept；frontier=`20260720` 已 current；dual-track residual=NONE（仅新增旁路时复扫）
-- **P1** E/F 处置：在自然扩大的 accepted nominal 窗上、不改阈值、同 protocol 复测；更长窗 remeasure 当前 **BLOCKED**（禁 mass backfill；需日历推进或 owner 书面例外）
-- **D1 及以后**：见程序文件；触发前不开 G、不开 H、不 StrategyRelease
+- **S1–S3（当前 focus）**：见重评文 §5–§11、`data_foundation_modularity_gap_20260720.md`。现状 = `capture_and_publish_*` 生产 fan-in → **NOT SHIPPED**
+- **S4–S6**：S3 绿后再开；换源/派生/serve 巩固
+- **研究轨（后置）**：E0 披露 formal；E/F 同 protocol（窗扩仍 BLOCKED）；不开 G/H/Release 抢跑
+- **护栏**：frontier=`20260720`；dual-track=NONE；PIT+≤40d+禁 mass backfill/第二 DB/plugin bus
 
-**Current focus 旁路（地基模块化 — NOT SHIPPED）**：业主验收语义已澄清——acquire / process / compute / display 须**独立模块边界**；一键 sync **仅允许作编排器**（依次触发模块），**禁止** fetch 焊 accept 的融合龙。daily/ST 现状 = `sync_runner`→`capture_and_publish_*`（**NO，需求未交付**；库内 land/accept 函数缝不算 shipped）。前向：S1 acquire→landing / S2 accept-from-landing / S3 sync=caller-only / S4 本地 raw·换源进 acquire；PIT+≤40d+禁 mass backfill+禁 greenfield。证据：`analysis/data_foundation_modularity_gap_20260720.md`。
-
-旧「owner choose」菜单项已并入上列；细节与硬退出条件以程序文件为准。
+A→H 降为地图；细节以重评文 §4、§9 为准。
 
 ## 禁令
 
