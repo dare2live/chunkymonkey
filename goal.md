@@ -13,11 +13,16 @@ Agent-OS 影子期照常开放（WP6 仪式 flip 仍 owner-gated，与 A→H 无
 
 ## 下一步（A→H 残余刀）
 
-1. C/B-pit cutover readiness = **READY_FOR_OWNER_OPT_IN**（观察入账；
-   `cutover_allowed` 仍 false，不 flip）。证据：B-pit shadow MATCH 120/120；
-   C full-universe accept 4989；default yaml → resolver LEGACY；consumer wires 已在。
-   认证：`data/lineage/c_b_pit_cutover_readiness.json`（L1 投影孪生
-   `data/board/c_b_pit_cutover_readiness.json`）。owner 显式 yaml opt-in 另刀。
+1. C/B-pit cutover = **OWNER_OPTED_IN_CUTOVER_ON**（owner 显式裁决 2026-07-20 flip）。
+   `tier12_publish.yaml#consumer_cutover.cutover_allowed=true` +
+   `b_pit_mart_cutover.yaml#mart_cutover.cutover_allowed=true`。default yaml →
+   resolver **ACCEPTED_CUTOVER**（C，accepted_partition 4989，claim_project_universe）
+   / **MART_CUTOVER**（B-pit，project_universe_pit）。无 accept/窗外日仍 fail-closed
+   →legacy（20260720 missing_accept、20251201 outside_window 实证）。证据：B-pit
+   shadow MATCH 120/120；C full-universe accept 4989。认证：
+   `data/lineage/c_b_pit_cutover_readiness.json`（L1 孪生 `data/board/`）。
+   残余：accepted stock_states 为 scaffold（axis_pos/form_name null）— 富 form 仍在
+   `fact_stock_form_daily`。
 2. Agent-OS 影子期残余（非本轨道）：影子期满检查单、真实 L2 路径证据
    （T0 墙钟已实测入账 2026-07-20 见 ledger；编排/墙钟政策 = eng_gov §15：
     并行 subagents、异步 CI、Rule 10 按刀、L1 docs push 不起 CI）
@@ -25,9 +30,9 @@ Agent-OS 影子期照常开放（WP6 仪式 flip 仍 owner-gated，与 A→H 无
 
 ## 禁令
 
-- B-pit/C `cutover_allowed=true`（READY_FOR_OWNER_OPT_IN ≠ 已切读；无 owner
-  显式 yaml flip 不静默 cutover）；Optuna；E 松门；StrategyRelease
-- margin thaw；mass backfill；plugin bus；第二 DB；agent 自降 commit tier；静默 cutover
+- **静默** cutover（无 owner 显式 yaml flip 不切读）；B-pit/C 已由 owner 显式 opt-in
+  2026-07-20 flip 为 true（非静默，合规）；Optuna；E 松门；StrategyRelease
+- margin thaw；mass backfill；plugin bus；第二 DB；agent 自降 commit tier
 
 ## 已裁决（稳定）
 

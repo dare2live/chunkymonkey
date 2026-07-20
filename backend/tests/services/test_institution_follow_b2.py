@@ -161,7 +161,8 @@ def test_b2_declares_market_sensing_feature_block() -> None:
     assert run.feature_block.status == "declared_scaffold"
     assert run.surface_status == REQUIRED_SURFACE_STATUS
     assert "b2_market_sensing_block" in run.notes
-    assert run.feature_block.as_dict()["b_pit_cutover_allowed"] is False
+    # Owner opt-in 2026-07-20: B-pit mart cutover ON (reported status flag).
+    assert run.feature_block.as_dict()["b_pit_cutover_allowed"] is True
 
 
 def test_pulse_mart_refused_fail_closed() -> None:
@@ -281,7 +282,9 @@ def test_b2_measured_vs_b0_reports_delta_and_rejects_on_edge_gates() -> None:
         assert verdict.verdict == "reject"
         assert verdict.reason == REASON_PROTOCOL_READY_EDGE_UNMET
     assert verdict.details["delta_b2_minus_b0"] is not None
-    assert verdict.details["b_pit_cutover_allowed"] is False
+    # Owner opt-in 2026-07-20: B-pit mart cutover ON (reported status flag;
+    # measurement still uses project-board breadth, not pulse mart).
+    assert verdict.details["b_pit_cutover_allowed"] is True
 
 
 def test_holdout_lift_stability_rejects_equal_b0_holdout() -> None:

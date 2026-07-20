@@ -7,7 +7,7 @@
   ],
   "cutovers": {
     "b_pit_mart": {
-      "cutover_allowed": false,
+      "cutover_allowed": true,
       "shadow": {
         "diverge_day_count": 0,
         "frontier_day": "20260717",
@@ -31,14 +31,14 @@
         "stock_row_count": 4989,
         "universe_membership_size": 4989
       },
-      "cutover_allowed": false,
+      "cutover_allowed": true,
       "source": "backend/config/tier12_publish.yaml#consumer_cutover"
     }
   },
   "enforcement": "projection_only_not_truth",
-  "generated_at": "2026-07-20T11:52:50Z",
+  "generated_at": "2026-07-20T12:35:39Z",
   "generated_from": "backend/scripts/build_agent_board.py",
-  "goal_hand_excerpt": "## 当前 objective\n\n**轨道 = A→H 恢复（owner 裁决 2026-07-20：agent-OS 核心 WP0–WP4 闭合后恢复）**。\nAgent-OS 影子期照常开放（WP6 仪式 flip 仍 owner-gated，与 A→H 无关）。\n`20260720` daily+ST 已 sync+accept。启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。\n\n## 下一步（A→H 残余刀）\n\n1. C/B-pit cutover readiness = **READY_FOR_OWNER_OPT_IN**（观察入账；\n   `cutover_allowed` 仍 false，不 flip）。证据：B-pit shadow MATCH 120/120；\n   C full-universe accept 4989；default yaml → resolver LEGACY；consumer wires 已在。\n   认证：`data/lineage/c_b_pit_cutover_readiness.json`（L1 投影孪生\n   `data/board/c_b_pit_cutover_readiness.json`）。owner 显式 yaml opt-in 另刀。\n2. Agent-OS 影子期残余（非本轨道）：影子期满检查单、真实 L2 路径证据\n   （T0 墙钟已实测入账 2026-07-20 见 ledger；编排/墙钟政策 = eng_gov §15：\n    并行 subagents、异步 CI、Rule 10 按刀、L1 docs push 不起 CI）\n3. 或 stop（D measured offline runtime-owned 路径已闭合；禁 Optuna / E 松门 / StrategyRelease）\n\n## 禁令\n\n- B-pit/C `cutover_allowed=true`（READY_FOR_OWNER_OPT_IN ≠ 已切读；无 owner\n  显式 yaml flip 不静默 cutover）；Optuna；E 松门；StrategyRelease\n- margin thaw；mass backfill；plugin bus；第二 DB；agent 自降 commit tier；静默 cutover\n\n## 已裁决（稳定）\n\n| 层 | 目的 | 首个正式输出 |\n|---|---|---|\n| Tier 0A 市场数据 | 日历、身份、名义 K、公司行动、复权 | accepted canonical partition |\n| Tier 0B 分类 | 版本化树/概念/成员/crosswalk | taxonomy node…",
+  "goal_hand_excerpt": "## 当前 objective\n\n**轨道 = A→H 恢复（owner 裁决 2026-07-20：agent-OS 核心 WP0–WP4 闭合后恢复）**。\nAgent-OS 影子期照常开放（WP6 仪式 flip 仍 owner-gated，与 A→H 无关）。\n`20260720` daily+ST 已 sync+accept。启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。\n\n## 下一步（A→H 残余刀）\n\n1. C/B-pit cutover = **OWNER_OPTED_IN_CUTOVER_ON**（owner 显式裁决 2026-07-20 flip）。\n   `tier12_publish.yaml#consumer_cutover.cutover_allowed=true` +\n   `b_pit_mart_cutover.yaml#mart_cutover.cutover_allowed=true`。default yaml →\n   resolver **ACCEPTED_CUTOVER**（C，accepted_partition 4989，claim_project_universe）\n   / **MART_CUTOVER**（B-pit，project_universe_pit）。无 accept/窗外日仍 fail-closed\n   →legacy（20260720 missing_accept、20251201 outside_window 实证）。证据：B-pit\n   shadow MATCH 120/120；C full-universe accept 4989。认证：\n   `data/lineage/c_b_pit_cutover_readiness.json`（L1 孪生 `data/board/`）。\n   残余：accepted stock_states 为 scaffold（axis_pos/form_name null）— 富 form 仍在\n   `fact_stock_form_daily`。\n2. Agent-OS 影子期残余（非本轨道）：影子期满检查单、真实 L2 路径证据\n   （T0 墙钟已实测入账 2026-07-20 见 ledger；编排/墙钟政策 = eng_gov §15：\n    并行 subagents、异步 CI、Rule 10 按刀、L1 docs push 不起 CI）\n3. 或 stop（D measured offline runtime-owned 路径已闭合；禁 Optuna / E 松门 / StrategyRelease）\n\n## 禁令\n\n- **静默** cutover（无 owner 显式 yaml…",
   "next_knives_frozen": [
     "opt-in C/B-pit cutover only with strong evidence (yaml still false)",
     "agent-OS shadow residuals (ceremony flip owner-gated)",

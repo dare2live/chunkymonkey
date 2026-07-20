@@ -71,7 +71,9 @@ def _full_universe_accepted_dict(canary) -> dict:
     return payload
 
 
-def test_pulse_attest_default_stays_legacy(tmp_path: Path) -> None:
+def test_pulse_attest_default_canary_accept_fails_closed(tmp_path: Path) -> None:
+    """Default yaml (ON, claim project-universe) refuses a canary accept."""
+
     _accepted_canary(tmp_path)
     att = attest_pulse_tier12_production_read(
         "20260717",
@@ -79,9 +81,21 @@ def test_pulse_attest_default_stays_legacy(tmp_path: Path) -> None:
     )
     assert att["uses_legacy"] is True
     assert att["cutover_allowed"] is False
-    assert att["status"] == "LEGACY"
+    assert att["status"] == "BLOCKED"
     assert att["source"] == "legacy_scaffold"
-    assert "config_cutover_allowed_false" in att["reasons"]
+    assert any("canary" in r for r in att["reasons"])
+    assert "pulse_ui_attestation" in att["notes"]
+
+
+def test_pulse_attest_default_live_partition_accepted_cutover() -> None:
+    """Default on-disk yaml + live 20260717 accept → ACCEPTED_CUTOVER attestation."""
+
+    att = attest_pulse_tier12_production_read("20260717")
+    assert att["uses_legacy"] is False
+    assert att["cutover_allowed"] is True
+    assert att["status"] == "ACCEPTED_CUTOVER"
+    assert att["source"] == "accepted_partition"
+    assert att["claim_project_universe"] is True
     assert "pulse_ui_attestation" in att["notes"]
 
 
@@ -147,7 +161,7 @@ def test_default_yaml_expected_hash_matches_publish_when_filled() -> None:
     pub = load_tier12_publish_config(_CFG_PATH)
     cut = load_tier12_consumer_cutover_config(_CFG_PATH)
     expected = config_hash_for(pub.stock_config_for_hash())
-    assert cut.cutover_allowed is False
+    assert cut.cutover_allowed is True
     assert cut.expected_definition_version == pub.stock_definition_version
     # Hash may be pre-filled for opt-in readiness; must match live publish policy.
     if cut.expected_config_hash:

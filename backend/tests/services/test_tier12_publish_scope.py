@@ -136,7 +136,7 @@ def test_canary_accept_still_blocked_from_project_universe_cutover() -> None:
 
 
 def test_full_universe_accept_can_reach_cutover_when_opted_in() -> None:
-    """Opt-in cutover path for non-canary accept; default config stays false."""
+    """Opt-in cutover path for non-canary accept; explicit-disabled stays false."""
 
     batch = _batch_n(3)
     written = len(batch.stock_states)
@@ -157,9 +157,13 @@ def test_full_universe_accept_can_reach_cutover_when_opted_in() -> None:
     payload = accepted.as_dict()
     assert payload["publish_scope"] == "project_universe"
 
-    default = resolve_tier12_consumer_cutover("20260717", accepted=accepted)
-    assert default.cutover_allowed is False
-    assert "config_cutover_allowed_false" in default.reasons
+    disabled = resolve_tier12_consumer_cutover(
+        "20260717",
+        config=Tier12ConsumerCutoverConfig(cutover_allowed=False),
+        accepted=accepted,
+    )
+    assert disabled.cutover_allowed is False
+    assert "config_cutover_allowed_false" in disabled.reasons
 
     cfg = Tier12ConsumerCutoverConfig(
         cutover_allowed=True,

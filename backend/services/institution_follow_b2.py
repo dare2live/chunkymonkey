@@ -225,7 +225,6 @@ def build_b2_run(
         "b2_market_sensing_block",
         "one_block_ablation_on_b0",
         "project_board_breadth_not_pulse_mart",
-        "b_pit_cutover_allowed_false",
         "no_optuna_no_accept_without_edge_gates",
     ]
     if is_canary_scope(payload):

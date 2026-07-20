@@ -5,18 +5,20 @@
 # treating project_universe_pit breadth as production mart truth.
 #
 # Hard gates:
-#   - cutover_allowed stays false until explicit opt-in
-#   - MATCH alone (even 120/120) never silent-flips this flag
-#   - enabling requires shadow MATCH attestation + matching hashes + opt-in
+#   - OWNER OPT-IN 2026-07-20: cutover_allowed=true (shadow MATCH 120/120,
+#     zero diverge, matching universe_policy_hash + window attested)
+#   - MATCH alone (even 120/120) never silent-flips this flag — the flip is an
+#     explicit owner action recorded here; days outside the attested window or
+#     without a matching shadow remeasure still fail closed to legacy mart
 #   - not StrategyRelease; not Phase C consumer cutover; not Optuna
 
 meta:
   version: 1
   phase: B-pit
-  notes: "mart cutover gate; default false; MATCH alone insufficient"
+  notes: "mart cutover gate; owner opt-in true 2026-07-20; MATCH+attest required"
 
 mart_cutover:
-  cutover_allowed: false
+  cutover_allowed: true
   expected_definition_version: market_sensing_project_breadth_v0
   # Live universe policy hash (same as b_pit_breadth_shadow remeasure e86410d0).
   # Filled for opt-in readiness; cutover_allowed stays false until explicit flip.

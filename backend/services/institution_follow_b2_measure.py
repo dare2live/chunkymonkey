@@ -244,8 +244,10 @@ def refuse_pulse_mart_as_market_context(
                 else REASON_B2_PULSE_NO_AVAILABLE_AT
             ),
             "note": (
-                "B-pit mart cutover gate consulted; default false keeps pulse "
-                "breadth/margin UNTRUSTED; use project-universe shadow breadth"
+                "legacy pulse mart refused as historical B2 market context "
+                "regardless of B-pit mart cutover state; use project-universe "
+                "shadow breadth (b_pit cutover governs the pulse router mart, "
+                "not this feature source)"
             ),
         },
     )

@@ -92,17 +92,49 @@ def _full_universe_accepted_dict(canary) -> dict:
     return payload
 
 
-def test_default_config_cutover_false() -> None:
+def test_default_config_cutover_true_owner_opt_in() -> None:
+    """Owner opt-in 2026-07-20: on-disk yaml flips consumer cutover ON."""
+
     cfg = load_tier12_consumer_cutover_config(_CFG_PATH)
-    assert cfg.cutover_allowed is False
+    assert cfg.cutover_allowed is True
     assert cfg.acknowledge_canary_scope is False
-    assert cfg.claim_project_universe is False
+    # Live accept is genuine full project-universe → consumers claim it.
+    assert cfg.claim_project_universe is True
 
 
-def test_resolver_defaults_to_legacy_even_with_accepted(tmp_path: Path) -> None:
+def test_default_yaml_resolves_live_partition_to_accepted_cutover() -> None:
+    """On-disk default yaml + live 20260717 accept → ACCEPTED_CUTOVER (not LEGACY)."""
+
+    decision = resolve_tier12_consumer_cutover("20260717")
+    assert isinstance(decision, Tier12ConsumerCutoverDecision)
+    assert decision.cutover_allowed is True
+    assert decision.source == "accepted_partition"
+    assert decision.status == "ACCEPTED_CUTOVER"
+    assert decision.claim_project_universe is True
+    assert decision.accepted_payload is not None
+    assert "gates_passed" in decision.reasons
+
+
+def test_default_yaml_day_without_accept_fails_closed_to_legacy() -> None:
+    """Cutover ON, but a day with no accepted partition still fails closed."""
+
+    decision = resolve_tier12_consumer_cutover("20260720")
+    assert decision.cutover_allowed is False
+    assert decision.source == "legacy_scaffold"
+    assert decision.status == "BLOCKED"
+    assert any("missing_accept" in r for r in decision.reasons)
+    assert decision.accepted_payload is None
+
+
+def test_explicit_disabled_config_stays_legacy_even_with_accepted(
+    tmp_path: Path,
+) -> None:
+    """Fail-closed still enforced when a config explicitly disables cutover."""
+
     accepted = _accepted_canary(tmp_path)
     decision = resolve_tier12_consumer_cutover(
         "20260717",
+        config=Tier12ConsumerCutoverConfig(cutover_allowed=False),
         accepted=accepted,
         artifact_root=tmp_path,
     )
@@ -261,12 +293,15 @@ def test_silent_accepted_file_read_without_gate_raises(tmp_path: Path) -> None:
         )
 
 
-def test_production_read_boundary_defaults_to_legacy(tmp_path: Path) -> None:
-    """Default yaml → LEGACY; accepted JSON must not surface as production truth."""
+def test_production_read_boundary_explicit_disable_stays_legacy(
+    tmp_path: Path,
+) -> None:
+    """Explicit disabled config → LEGACY; accepted JSON not production truth."""
 
     accepted = _accepted_canary(tmp_path)
     read = resolve_tier12_production_read(
         "20260717",
+        config=Tier12ConsumerCutoverConfig(cutover_allowed=False),
         accepted=accepted,
         artifact_root=tmp_path,
     )

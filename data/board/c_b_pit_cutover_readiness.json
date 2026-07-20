@@ -1,7 +1,7 @@
 {
   "canonical_lineage_path": "data/lineage/c_b_pit_cutover_readiness.json",
-  "cutover_allowed": false,
-  "cutover_flipped": false,
+  "cutover_allowed": true,
+  "cutover_flipped": true,
   "evidence": {
     "b_pit_shadow": {
       "artifact": "data/lineage/b_pit_breadth_shadow/summary.json",
@@ -25,40 +25,45 @@
       "tier12_pulse": "backend/services/market_pulse_tier12_read.py",
       "tier12_router": "backend/routers/market_pulse.py#/api/v3/pulse/sentiment"
     },
+    "fail_closed_still_enforced": {
+      "b_pit_day_outside_window_20251201": "BLOCKED (trade_date_outside_shadow_window)",
+      "tier12_day_without_accept_20260720": "BLOCKED (missing_accept)"
+    },
     "resolvers_default_yaml": {
       "b_pit_mart_production_read": {
-        "cutover_allowed": false,
+        "cutover_allowed": true,
         "reasons": [
-          "config_cutover_allowed_false"
+          "gates_passed"
         ],
-        "source": "legacy_mart",
-        "status": "LEGACY",
+        "source": "project_universe_pit",
+        "status": "MART_CUTOVER",
         "trade_date": "20260717"
       },
       "pulse_tier12_attest": {
-        "cutover_allowed": false,
+        "cutover_allowed": true,
         "reasons": [
-          "config_cutover_allowed_false"
+          "gates_passed"
         ],
-        "status": "LEGACY",
-        "uses_legacy": true
+        "status": "ACCEPTED_CUTOVER",
+        "uses_legacy": false
       },
       "tier12_production_read": {
-        "accepted_payload_is_none": true,
-        "cutover_allowed": false,
+        "accepted_payload_is_none": false,
+        "claim_project_universe": true,
+        "cutover_allowed": true,
         "decision_date": "20260717",
         "reasons": [
-          "config_cutover_allowed_false"
+          "gates_passed"
         ],
-        "source": "legacy_scaffold",
-        "status": "LEGACY"
+        "source": "accepted_partition",
+        "status": "ACCEPTED_CUTOVER"
       }
     },
     "tier12_full_universe_accept": {
       "accept_cutover_allowed": false,
       "artifact": "data/lineage/tier12_publish_batches/full_universe_accept_20260717.json",
       "config_hash": "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c",
-      "consumer_cutover_default_status": "LEGACY",
+      "consumer_cutover_default_status": "ACCEPTED_CUTOVER",
       "content_hash": "5c4673893b854a467d0156f39e5b20fad61e106fbbfe413237e7eb4f68c03c8f",
       "decision_date": "20260717",
       "publish_scope": "project_universe",
@@ -68,31 +73,31 @@
       "universe_membership_size": 4989
     },
     "yaml_gates": {
-      "b_pit_mart_cutover.yaml#mart_cutover.cutover_allowed": false,
-      "tier12_publish.yaml#consumer_cutover.cutover_allowed": false
+      "b_pit_mart_cutover.yaml#mart_cutover.cutover_allowed": true,
+      "tier12_publish.yaml#consumer_cutover.cutover_allowed": true
     }
   },
-  "generated_at": "2026-07-20T11:52:30Z",
-  "kind": "c_b_pit_cutover_readiness_attestation",
+  "generated_at": "2026-07-20T12:23:17Z",
+  "kind": "c_b_pit_cutover_flip_attestation",
   "l1_commit_surface": "data/board/c_b_pit_cutover_readiness.json",
   "not_claims": [
-    "not_cutover",
     "not_strategy_release",
     "not_optuna",
     "not_e_gate_loosen",
-    "match_or_accept_alone_insufficient"
+    "not_margin_thaw",
+    "not_mass_backfill"
   ],
-  "note": "Identical readiness attestation; data/board twin is the L1 commit surface. Canonical path remains data/lineage/c_b_pit_cutover_readiness.json (stage with next L3 knife or owner-requested promote).",
-  "observed_at_head": "d4cc33d0",
-  "owner_opt_in_requires": [
-    "explicit yaml cutover_allowed=true (separate owner action)",
-    "B-pit: shadow MATCH + hashes/window already filled; still needs yaml flip",
-    "C: full-universe accept + expected_config_hash already filled; still needs yaml flip"
+  "note": "Owner opted in 2026-07-20: cutover gates flipped true. data/board twin is the L1 commit surface; canonical path remains data/lineage/c_b_pit_cutover_readiness.json.",
+  "owner_opt_in": [
+    "explicit owner order 2026-07-20: flip C tier12 consumer_cutover + B-pit mart_cutover cutover_allowed=true",
+    "B-pit: shadow MATCH 120/120 zero-diverge + universe_policy_hash + window attested",
+    "C: full-universe accept 4989 non-canary + config_hash matched; claim_project_universe=true"
   ],
   "phase_d_status": "FIXED",
   "residual_non_blockers": [
-    "daily 20260720 provider zero_rows (accepted frontier still 20260717) — does not block opt-in readiness on canary window",
-    "continuity live readiness may remain BLOCKED/DEGRADED — code/accept ≠ Tier0 READY"
+    "accepted partition stock_states are scaffold-grade (axis_pos/form_name null, is_breakout_event all false); full technical_states classify still lives in fact_stock_form_daily",
+    "accepted frontier still 20260717; later days fail closed to legacy/scaffold until a matching accepted partition exists",
+    "continuity live readiness may remain BLOCKED/DEGRADED — code/accept != Tier0 READY"
   ],
-  "verdict": "READY_FOR_OWNER_OPT_IN"
+  "verdict": "OWNER_OPTED_IN_CUTOVER_ON"
 }

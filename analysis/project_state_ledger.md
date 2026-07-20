@@ -1996,3 +1996,51 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Status**: FIXED for form/qfq/segments/pulse through accepted daily
   frontier `20260720`. Residual: `index_dailybasic` sync min_rows gate;
   margin frozen → pulse rzrqye NULL on new days (honest unknown).
+
+### 2026-07-20 — Owner opt-in: C + B-pit cutover flip ON (READ cutover)
+
+- Wall-clock: Mon 2026-07-20 ~20:25 Asia/Shanghai (in-session).
+- Owner order (explicit, this session): flip C
+  `tier12_publish.yaml#consumer_cutover.cutover_allowed` and B-pit
+  `b_pit_mart_cutover.yaml#mart_cutover.cutover_allowed` `false→true`;
+  "cutovers ON is intentional now". This is an explicit owner yaml opt-in, not
+  a silent cutover.
+- Config flips:
+  - C: `consumer_cutover.cutover_allowed: true`,
+    `claim_project_universe: true` (live accept is genuine full
+    project-universe: `universe_membership_size == stock_row_count == 4989`,
+    non-canary, `full_universe_attested`). `expected_config_hash` unchanged
+    (`6ffb…e3c`, matches publish typed policy).
+  - B-pit: `mart_cutover.cutover_allowed: true` (shadow MATCH 120/120,
+    zero diverge, `universe_policy_hash 448b…f4dd`, window 20260116–20260717).
+- Resolver proof (default on-disk yaml, live artifacts):
+  - `resolve_tier12_production_read('20260717')` → **ACCEPTED_CUTOVER**,
+    source=accepted_partition, uses_legacy=False, claim_project_universe=True,
+    4989 rows, reasons=[gates_passed].
+  - `resolve_b_pit_mart_production_read('20260717')` → **MART_CUTOVER**,
+    source=project_universe_pit, uses_legacy=False, reasons=[gates_passed].
+  - Fail-closed intact: tier12 `20260720` → BLOCKED (missing_accept);
+    b_pit `20251201` → BLOCKED (trade_date_outside_shadow_window). Days
+    without a matching accept/shadow still fall back to legacy/scaffold.
+- **Substrate honesty (residual)**: accepted 20260717 `stock_states` are
+  scaffold-grade — `axis_trend`/`is_breakout_event` present (5-bar trend,
+  all breakout False), but `axis_pos`/`form_name` all NULL. Rich technical
+  form still only in `fact_stock_form_daily`. Consumers reading the accepted
+  partition for 20260717 (B1 `load_stock_state_by_day`, pulse drill form
+  overlay) therefore get scaffold trend, not rich form — known limitation,
+  not a leak (PIT-truncated `available_at <= decision_date`).
+- Tests: obsolete "default→LEGACY" contract tests rewritten to the cutover-ON
+  reality; fail-closed coverage preserved via explicit `cutover_allowed=False`
+  config fixtures. Stale hardcoded note `b_pit_cutover_allowed_false` removed
+  from `institution_follow_b2.py`; b2/b2_measure notes made accurate. Suites
+  green: tier12/b_pit cutover + pulse read + b2 + publish_scope + pulse_api
+  (75 passed); broad services sweep 897 passed.
+- **Did not**: Optuna; E loosen; StrategyRelease; margin thaw; mass backfill;
+  rewrite frozen `phase_e_experiment_verdicts/b2.json` (historical evidence).
+- **Pre-existing (not this knife)**: `test_sync_runner_integrity.py`
+  `_fake_publish() got unexpected kwarg 'trigger_mode'` (2 tests) fails at
+  HEAD `64c6b4b7` with cutover yaml stashed; test-fake signature drift vs
+  `_publish_security_day_accepted_partition`; not in CI list; flagged for the
+  owner of that test.
+- **Status**: FIXED (C/B-pit READ cutover ON, proven ACCEPTED_CUTOVER /
+  MART_CUTOVER; fail-closed preserved).

@@ -2,7 +2,7 @@
 
 > 由 `backend/scripts/build_agent_board.py` 重生成，**勿手改**。
 > **Projection only** — not an enforcement input. Cutover / readiness / PIT gates still resolve from yaml + code resolvers + accepted partitions.
-> Snapshot: 2026-07-20T11:46:07Z
+> Snapshot: 2026-07-20T12:35:39Z
 
 ## Track
 
@@ -13,8 +13,8 @@
 
 ## Cutovers (yaml projection)
 
-- B-pit mart `cutover_allowed=False` (shadow match=120/diverge=0; frontier=20260717)
-- C consumer `cutover_allowed=False` (accept 20260717: 4989/4989 scope=project_universe published=True)
+- B-pit mart `cutover_allowed=True` (shadow match=120/diverge=0; frontier=20260717)
+- C consumer `cutover_allowed=True` (accept 20260717: 4989/4989 scope=project_universe published=True)
 
 ## Phase D runtime (lineage projection)
 

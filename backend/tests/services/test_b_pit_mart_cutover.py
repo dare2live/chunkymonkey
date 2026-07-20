@@ -100,9 +100,11 @@ def _opt_in_cfg(artifact_root: Path, **overrides: object) -> BPitMartCutoverConf
     return BPitMartCutoverConfig.from_mapping({"mart_cutover": raw})
 
 
-def test_default_config_cutover_false() -> None:
+def test_default_config_cutover_true_owner_opt_in() -> None:
+    """Owner opt-in 2026-07-20: on-disk yaml flips B-pit mart cutover ON."""
+
     cfg = load_b_pit_mart_cutover_config(_CFG_PATH)
-    assert cfg.cutover_allowed is False
+    assert cfg.cutover_allowed is True
     assert cfg.expected_definition_version == _DEF_V
     assert cfg.expected_universe_policy_hash == _POLICY_HASH
     assert cfg.expected_match_baseline_kind == "membership_restricted_proxy"
@@ -110,8 +112,8 @@ def test_default_config_cutover_false() -> None:
     assert cfg.expected_window_end == "20260717"
 
 
-def test_resolver_defaults_to_legacy_even_with_live_match_artifact() -> None:
-    """MATCH proven at e86410d0 must not authorize mart cutover under default yaml."""
+def test_default_yaml_with_live_match_artifact_mart_cutover() -> None:
+    """Default yaml (ON) + live MATCH remeasure → MART_CUTOVER (not LEGACY)."""
 
     assert _LIVE_SHADOW.joinpath("manifest.json").is_file()
     decision = resolve_b_pit_mart_cutover(
@@ -119,6 +121,24 @@ def test_resolver_defaults_to_legacy_even_with_live_match_artifact() -> None:
         artifact_root=_LIVE_SHADOW,
     )
     assert isinstance(decision, BPitMartCutoverDecision)
+    assert decision.cutover_allowed is True
+    assert decision.source == "project_universe_pit"
+    assert decision.status == "MART_CUTOVER"
+    assert "gates_passed" in decision.reasons
+    assert decision.shadow_payload is not None
+
+
+def test_explicit_disabled_config_stays_legacy_even_with_live_match() -> None:
+    """Fail-closed still enforced when a config explicitly disables cutover."""
+
+    cfg = BPitMartCutoverConfig.from_mapping(
+        {"mart_cutover": {"cutover_allowed": False}}
+    )
+    decision = resolve_b_pit_mart_cutover(
+        "20260717",
+        config=cfg,
+        artifact_root=_LIVE_SHADOW,
+    )
     assert decision.cutover_allowed is False
     assert decision.source == "legacy_mart"
     assert decision.status == "LEGACY"
@@ -126,19 +146,18 @@ def test_resolver_defaults_to_legacy_even_with_live_match_artifact() -> None:
     assert decision.shadow_payload is None
 
 
-def test_production_read_boundary_defaults_to_legacy() -> None:
+def test_production_read_boundary_default_yaml_mart_cutover() -> None:
     read = resolve_b_pit_mart_production_read(
         "20260717",
         artifact_root=_LIVE_SHADOW,
     )
     assert isinstance(read, BPitMartProductionRead)
-    assert read.status == "LEGACY"
-    assert read.source == "legacy_mart"
-    assert read.uses_legacy is True
-    assert read.cutover_allowed is False
-    assert read.shadow_payload is None
-    assert "config_cutover_allowed_false" in read.reasons
-    assert "project_universe_pit_not_mart_truth" in read.notes
+    assert read.status == "MART_CUTOVER"
+    assert read.source == "project_universe_pit"
+    assert read.uses_legacy is False
+    assert read.cutover_allowed is True
+    assert read.shadow_payload is not None
+    assert "production_read_boundary_mart_cutover" in read.notes
 
 
 def test_reject_enable_without_shadow_artifact(tmp_path: Path) -> None:
@@ -247,15 +266,20 @@ def test_production_read_mart_cutover_exposes_shadow(tmp_path: Path) -> None:
     assert loaded["window"]["ratios_match_all"] is True
 
 
-def test_silent_mart_truth_read_without_gate_raises() -> None:
+def test_silent_mart_truth_read_refused_when_gate_disabled() -> None:
+    """Explicit disabled config must refuse silent project-universe mart truth."""
+
+    cfg = BPitMartCutoverConfig.from_mapping(
+        {"mart_cutover": {"cutover_allowed": False}}
+    )
     with pytest.raises(BPitMartCutoverError, match="resolver|gate|mart"):
         load_project_universe_breadth_as_mart_truth(
-            "20260717", artifact_root=_LIVE_SHADOW
+            "20260717", config=cfg, artifact_root=_LIVE_SHADOW
         )
 
 
-def test_live_e86410d0_artifact_is_match_but_gate_stays_false() -> None:
-    """Reuse live remeasure: MATCH 120/120, cutover yaml still false."""
+def test_live_e86410d0_artifact_match_and_gate_now_true() -> None:
+    """Live remeasure MATCH 120/120; owner opt-in yaml now true → MART_CUTOVER."""
 
     manifest = json.loads(
         (_LIVE_SHADOW / "manifest.json").read_text(encoding="utf-8")
@@ -265,14 +289,13 @@ def test_live_e86410d0_artifact_is_match_but_gate_stays_false() -> None:
     assert manifest["window"]["diverge_day_count"] == 0
     assert manifest["match_baseline_kind"] == "membership_restricted_proxy"
     assert manifest["universe_policy_hash"] == _POLICY_HASH
-    assert manifest["cutover_allowed"] is False
 
     cfg = load_b_pit_mart_cutover_config(_CFG_PATH)
-    assert cfg.cutover_allowed is False
+    assert cfg.cutover_allowed is True
     read = resolve_b_pit_mart_production_read("20260717")
-    assert read.uses_legacy is True
-    assert read.cutover_allowed is False
-    assert read.status == "LEGACY"
+    assert read.uses_legacy is False
+    assert read.cutover_allowed is True
+    assert read.status == "MART_CUTOVER"
 
 
 def test_live_opt_in_fixture_passes_with_copied_e86410d0_artifact(
@@ -286,18 +309,18 @@ def test_live_opt_in_fixture_passes_with_copied_e86410d0_artifact(
     decision = resolve_b_pit_mart_cutover("20260717", config=cfg, artifact_root=root)
     assert decision.cutover_allowed is True
     assert decision.status == "MART_CUTOVER"
-    # Prove default on-disk yaml was not flipped by this fixture path.
+    # Owner opt-in flipped the on-disk yaml to true (2026-07-20).
     on_disk = yaml.safe_load(_CFG_PATH.read_text(encoding="utf-8"))
-    assert on_disk["mart_cutover"]["cutover_allowed"] is False
+    assert on_disk["mart_cutover"]["cutover_allowed"] is True
 
 
-def test_pulse_attest_default_stays_legacy() -> None:
+def test_pulse_attest_default_now_mart_cutover() -> None:
     from services.market_pulse_b_pit_read import attest_pulse_b_pit_mart_production_read
 
     att = attest_pulse_b_pit_mart_production_read("20260717")
-    assert att["uses_legacy"] is True
-    assert att["cutover_allowed"] is False
-    assert att["status"] == "LEGACY"
-    assert att["source"] == "legacy_mart"
-    assert "config_cutover_allowed_false" in att["reasons"]
+    assert att["uses_legacy"] is False
+    assert att["cutover_allowed"] is True
+    assert att["status"] == "MART_CUTOVER"
+    assert att["source"] == "project_universe_pit"
+    assert "gates_passed" in att["reasons"]
     assert "pulse_ui_attestation" in att["notes"]

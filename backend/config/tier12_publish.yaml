@@ -48,15 +48,21 @@ publish:
   artifact_dir: data/lineage/tier12_publish_batches
 
 # Explicit consumer cutover gate (tier12_consumer_cutover.resolve_*).
-# Default false: consumers stay on legacy/scaffold. Enabling requires accepted
-# publish for the day, matching definition_version+config_hash, and either a
-# non-canary accept or acknowledge_canary_scope (which forbids project-universe).
+# OWNER OPT-IN 2026-07-20: cutover_allowed=true. Consumers read the accepted
+# full-universe partition (project_universe scope, 4989 rows, non-canary) as
+# Tier1/2 production truth for days with a matching accepted partition; days
+# without one still fail closed to legacy/scaffold via the resolver.
+# Enabling requires accepted publish for the day, matching
+# definition_version+config_hash, and (non-canary accept OR
+# acknowledge_canary_scope which forbids project-universe).
 consumer_cutover:
-  cutover_allowed: false
+  cutover_allowed: true
   expected_definition_version: stock_state_stage_pattern_v0
-  # Filled from live full-universe accept 20260717 stock config_hash for
-  # opt-in readiness. cutover_allowed stays false until explicit flip.
+  # Live full-universe accept 20260717 stock config_hash (non-canary,
+  # full_universe_attested). Must match publish typed policy hash.
   expected_config_hash: "6ffb32650fb344df9de46783af7c8d40ec79263c1d0a49c315146f9877047e3c"
   acknowledge_canary_scope: false
-  claim_project_universe: false
+  # Live accept is genuine full project-universe (universe_membership_size ==
+  # stock_row_count == 4989); consumers may claim project-universe scope.
+  claim_project_universe: true
   artifact_dir: data/lineage/tier12_publish_batches

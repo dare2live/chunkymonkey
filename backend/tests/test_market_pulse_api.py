@@ -284,20 +284,23 @@ def test_sentiment_v2_fields(client):
     assert shadow["verdict"] == "BLOCKED"
     assert "margin_core_venues_incomplete" in shadow["issues"]
     assert "legacy_pulse_untrusted_pending_consumer_cutover" in shadow["issues"]
-    # Phase C: production-read boundary attestation (default → LEGACY).
+    # Phase C: cutover ON (owner opt-in), but this fixture day (20240108) has no
+    # accepted partition → resolver fails closed to legacy scaffold (BLOCKED).
     t12 = body["tier12_production_read"]
     assert t12["uses_legacy"] is True
     assert t12["cutover_allowed"] is False
-    assert t12["status"] == "LEGACY"
+    assert t12["status"] == "BLOCKED"
+    assert any("missing_accept" in r for r in t12["reasons"])
     assert "pulse_ui_attestation" in t12["notes"]
-    # B-pit mart cutover gate (default → LEGACY; MATCH alone insufficient).
+    # B-pit mart cutover ON, but fixture day is outside the attested shadow
+    # window [20260116, 20260717] → fail closed to legacy mart (BLOCKED).
     assert body["b_pit_mart_cutover_allowed"] is False
     bpit = body["b_pit_mart_production_read"]
     assert bpit["uses_legacy"] is True
     assert bpit["cutover_allowed"] is False
-    assert bpit["status"] == "LEGACY"
+    assert bpit["status"] == "BLOCKED"
     assert bpit["source"] == "legacy_mart"
-    assert "config_cutover_allowed_false" in bpit["reasons"]
+    assert any("trade_date_outside_shadow_window" in r for r in bpit["reasons"])
     assert "pulse_ui_attestation" in bpit["notes"]
 
 
