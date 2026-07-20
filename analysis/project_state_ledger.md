@@ -1665,3 +1665,22 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   shared runtime; prove one measured offline path that is not
   strategy-package-owned; still no StrategyRelease.
 - **Status**: D PARTIAL (runtime deepen).
+
+### 2026-07-20 — Track switch: Agent-OS redesign before A→H resume (WP0)
+
+- Wall-clock: Mon 2026-07-20 ~16:20 Asia/Shanghai (in-session).
+- Owner approved sequencing: finish Agent-OS redesign (Fable5 spec, agent
+  `4b3dc5f0`) before resuming A→H. Spec reconstructed from transcript and
+  verified against live repo.
+- WP0 triage evidence: worktree clean, no stash, `main == origin/main`,
+  HEAD = `d8b69090` (Phase D research_runtime deepen — A→H work, already
+  committed/pushed with CI green; unrelated to agent-OS). No agent-OS WIP
+  artifacts exist (no classifier/board/boot). Nothing to discard.
+- goal.md objective rewritten to agent-OS track; A→H suspended at
+  `d8b69090` with next-knife menu preserved verbatim; doc gates
+  fails=0 warns=0 at 132 lines.
+- Frozen while agent-OS track open: new A→H knives; B-pit/C data-plane
+  `cutover_allowed=true`; Optuna; E gate loosen; StrategyRelease; margin
+  thaw; mass backfill; plugin bus; second DB. Manual data ops
+  (`20260720` sync+accept when provider has rows) stay allowed fail-closed.
+- **Status**: WP0 FIXED. Next = WP1 tiered safe_commit (L1/L2/L3).
