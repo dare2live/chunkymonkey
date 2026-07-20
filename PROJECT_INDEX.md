@@ -21,7 +21,7 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；calendar + ~40 交易日 K/ST accepted（`20260522`–`20260717`）；default readiness 评 eligible frontier（非 calendar-today）→ READY。残余=下一交易日；无 mass fetch / cutover |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；calendar + **120** 交易日名义 K accepted（`20260116`–`20260717`）；ST 同窗+`20260720`；daily frontier 仍 `20260717` READY。残余=daily 下一 eligible 日 + form/qfq lag；无 mass fetch / cutover |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `backend/services/technical_states/`, `segments.py` | 多轴状态可复用；缺 definition/config/snapshot 版本与正式 pattern event 发布 |
 | T2 market sensing | `backend/services/market_pulse.py`, API/frontend | 展示可用但 breadth/margin UNTRUSTED（B-ext）；分类/measurement/regime 耦合，暂不可直接做 PIT 特征；禁当项目池直至 B-pit |
@@ -34,7 +34,7 @@ AGENTS.md
 
 | Area | Role |
 |---|---|
-| `data/tushare_raw.duckdb` | TuShare legacy `raw_tushare_*` compatibility 表 + frozen margin evidence；accepted calendar generation + ~40d `20260522`–`20260717` nominal OHLCV/ST landing/canonical/accepted_partition 已发表 |
+| `data/tushare_raw.duckdb` | TuShare legacy `raw_tushare_*` compatibility 表 + frozen margin evidence；accepted calendar generation + **120d** `20260116`–`20260717` nominal OHLCV + ST（ST 另含 `20260720`）landing/canonical/accepted_partition 已发表 |
 | `data/market.duckdb` | K 线 serving/派生数据；qfq 不等于名义成交价真相 |
 | `data/reference.duckdb` | 交易日历、身份/reference 数据 |
 | `data/smartmoney.duckdb` | 当前 mart、profiles、ops/control evidence |
@@ -68,7 +68,7 @@ AGENTS.md
 
 | Priority | Defect | Consequence |
 |---:|---|---|
-| P0 | K/ST ~40 日已接受（`20260522`–`20260717`）；下一交易日未到；禁 mass backfill | B-pit mart/cutover 仍禁；eligible frontier READY |
+| P0 | K 120 日已接受（`20260116`–`20260717`）；daily `20260720` 未 eligible；禁 mass backfill | B-pit mart/cutover 仍禁；eligible frontier READY |
 | P0 | E checkpointed measured reject/no-gain（B0–B4 claimable=false；artifacts under `data/lineage/phase_e_experiment_verdicts/`）；enrichment 历史仍 field-level PARTIAL | 下一刀更长窗稳定性 **或** stop until new data（非 Optuna / 非松门 / 非 mass backfill / 非 B-pit cutover / 非 StrategyRelease） |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |

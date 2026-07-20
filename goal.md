@@ -6,7 +6,7 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + ~40 交易日名义 K/ST accepted；eligible frontier=`20260717` READY；窗 `20260522`–`20260717`；仍禁 mass backfill / 下一交易日未到）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false`）。**E0 FIXED（gate+mirror off）**。**E = measured reject / no-gain（checkpointed）**：40 日窗 B0–B4 全 `reject` / `claimable=false`（B0−24%、B1−40%、B2+0.3% 但 holdout_lift unmet、B4−6% 覆盖够仍 edge unmet）；artifacts=`data/lineage/phase_e_experiment_verdicts/`；**无 StrategyRelease**。这是一等公民失败实验，**不**因此松门。下一刀=更长窗稳定性 **或** 停到有新数据；禁 Optuna / gate-loosening / B-pit cutover / margin thaw / mass backfill。
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + **120** 交易日名义 K accepted `20260116`–`20260717`；ST 同窗 + 额外 `20260720`；daily eligible frontier 仍=`20260717` READY/`pending_publish` 挡 `20260720`；仍禁 mass backfill）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（canary shadow 已有且 divergence；`cutover_allowed=false`）。**E0 FIXED（gate+mirror off）**。**E = measured reject / no-gain（checkpointed on 40d；120d remeasure in flight）**：40 日窗 B0–B4 全 `reject` / `claimable=false`；artifacts=`data/lineage/phase_e_experiment_verdicts/`；**无 StrategyRelease**。下一刀=**120d 稳定性重测**后停或进 C；禁 Optuna / gate-loosening / B-pit cutover / margin thaw / mass backfill。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -52,11 +52,13 @@
 - **A** A1–A5 **FIXED**。`live_readiness` 可评估。禁 mass fetch/切消费者。
   **A3 data-plane PARTIAL**：`trade_cal`/`daily`/`stock_st` =
   `authorized_manual_generation` + `sync_policy=on_demand`（禁 --all-due）。
-  Live accepted：SSE calendar + 名义 K/ST `20260522`–`20260717`（40 交易日；含 frontier）。
-  Eligible frontier=`20260717`。formal daily/stock_st 支持同日或 ≤40 交易日短窗。
+  Live accepted：SSE calendar + 名义 K `20260116`–`20260717`（**120** 交易日；
+  两段 ≤40d 短窗同步，禁 years backfill）；ST 同窗 + `20260720`。
+  Daily eligible frontier=`20260717`（`20260720` = `operation_window_blocked` /
+  `pending_publish`）。form/qfq 仍 max=`20260716`（builder 无法超 raw/adj）。
   `evaluate_observation_population_readiness` → `READY`；doctor
-  `population_readiness=PASS`。margin 仍冻结。下一刀：下一交易日 eligible
-  单日（仍禁 mass backfill / margin 解冻 / pulse cutover）。
+  `population_readiness=PASS`。margin 仍冻结。下一刀：daily 下一 eligible
+  单日 + 120d E 重测（仍禁 mass backfill / margin 解冻 / pulse cutover）。
 - **B-ext FIXED（诚实化）** scope + shadow + sentiment sidecar + 前端 UNTRUSTED；
   mart 数值未改、`cutover_allowed=false`。残余=B-pit 数值切读。
 - **B-pit PARTIAL** 广度/shadow 已有；**未**接 pulse mart / 未 cutover。Canary 日

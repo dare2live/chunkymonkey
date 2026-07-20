@@ -1184,3 +1184,22 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Did not**: Optuna, gate threshold changes, B-pit cutover, margin thaw,
   mass backfill, StrategyRelease.
 - **Next**: longer-window stability **or** stop until new data.
+
+### 2026-07-20 — A3 data-plane: expand nominal K/ST to 120 trading days
+
+- Synced formal `daily` + `stock_st` in two authorized ≤40d chunks
+  (no `--backfill`, no multi-year mass):
+  - `20260116`–`20260320` (40d)
+  - `20260323`–`20260521` (40d)
+  Prior accepted `20260522`–`20260717` retained → **120** nominal OHLCV
+  partitions `20260116`–`20260717`.
+- ST same 120d + additional accepted `20260720` (ST eligible=`published`).
+- Daily `20260720` refused: `operation_window_blocked` /
+  `requested end exceeds eligible horizon=20260717 (pending_publish)`.
+- form/qfq refresh attempted: `technical_states.build_latest` added_days=0;
+  qfq rebuild max still `2026-07-16` (raw/adj wall). Analysis lag remains.
+- doctor `--fast`: population_readiness READY / PASS.
+- chunkyctl help text corrected: formal daily/stock_st ≤40 trading days
+  (was stale ≤10).
+- **Did not**: mass backfill, margin thaw, B-pit cutover, E verdict rewrite
+  (120d B0–B4 remeasure = next slice).

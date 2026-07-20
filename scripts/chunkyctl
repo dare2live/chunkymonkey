@@ -34,7 +34,7 @@ Examples:
 Notes:
   doctor     = project health snapshot, including manual-only automation residue enforcement.
   sync       = manual single-domain provider sync through the production runner and writer lock.
-               formal daily/stock_st: --start/--end same day or <=10 trading days (no --backfill).
+               formal daily/stock_st: --start/--end same day or <=40 trading days (no --backfill).
   map        = regenerate FEATURE_MAP.md machine-derived feature map; --check = drift gate only.
   pipeline   = manually run one declared data stage; full manual chain remains daily_update.sh.
   lineage    = generated dependency projection; impact <table> audits fan-in before delete/migrate.
