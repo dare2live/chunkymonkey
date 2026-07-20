@@ -26,12 +26,15 @@
   `fact_stock_form_daily`/mart）。`expected_config_hash` 已填 live
   `20260717` stock hash（opt-in 就绪）；**未** `cutover_allowed=true` /
   **未** StrategyRelease / **未** claim Phase C complete。
-  **D PARTIAL（scaffold）**：`research_runtime` DatasetSnapshot→PIT→
-  ExperimentVerdict；E 复用；**未** D complete / Release / Optuna。
-  下一刀= `20260720` provider 有行后 sync+accept **或** 显式 opt-in
-  C consumer cutover（强证据）**或** 显式 opt-in B-pit mart cutover
-  （MATCH+gate 已齐，yaml 仍 false）**或** stop；禁 Optuna/松门/擅翻
-  cutover/margin thaw/mass backfill。
+  **D PARTIAL（runtime 加深）**：`research_runtime` 已有
+  DatasetSnapshot→PIT→ExperimentVerdict scaffold；本刀加 immutable
+  `ExperimentPrereg`+fold/embargo hooks、mid-run snapshot binding
+  fail-closed、offline measure stub loop + B0-bound offline path
+  （均 `claimable=false`）；E 仍复用；**未** D complete / Release /
+  Optuna。下一刀= `20260720` provider 有行后 sync+accept **或** 显式
+  opt-in C/B-pit cutover（强证据；yaml 仍 false）**或** D 再加深
+  （persist ExperimentRun artifact / real fold plan bind）**或** stop；
+  禁 Optuna/松门/擅翻 cutover/margin thaw/mass backfill。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -98,15 +101,16 @@
 - **C PARTIAL** full-universe accept `20260717`（4989=4989）+ consumer gate
   + B1/pulse read wire；`cutover_allowed=false`；opt-in hash 已填未翻。
   **未** claim complete / Release。细节见 ledger。
-- **D PARTIAL（scaffold）** `research_runtime`；E 已消费；**未** complete。
+- **D PARTIAL（runtime 加深）** `ExperimentPrereg` + fold/embargo hooks +
+  binding fail-closed + offline stub/B0-bound loop；E 已消费；**未**
+  complete / Release。
 - **E0 FIXED** 三域 MATCH/`formal_only`；research prefer canonical。残余：
   org mass 禁；enrichment field-level PARTIAL。
 - **E checkpointed = measured reject / no-gain（120d）** B0/B1/B2 `reject`；
   B4 `inconclusive`；均 `claimable=false`；artifacts=
   `data/lineage/phase_e_experiment_verdicts/`。form/qfq max=`20260716`。
-  **Next**：`20260720` provider 有行后 sync+accept **或** opt-in C cutover
-  （强证据）**或** opt-in B-pit mart cutover（gate 已齐，yaml 仍 false）
-  **或** stop。
+  **Next**：`20260720` provider 有行后 sync+accept **或** opt-in C/B-pit
+  cutover（强证据；仍 false）**或** D persist/real-fold bind **或** stop。
   **禁** Optuna/松门/擅翻 cutover/margin thaw/mass backfill/Release。
   **F–H** 见 MASTER。
 

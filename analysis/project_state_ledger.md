@@ -1631,3 +1631,37 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Status**: B-pit PARTIAL (MATCH proven + mart cutover gate present;
   still not cut over). **Next**: provider-ready `20260720` sync+accept
   **or** explicit opt-in B-pit/C cutover with strong evidence **or** stop.
+
+### 2026-07-20 — Phase D research_runtime deepen (PARTIAL)
+
+- Wall-clock: Mon 2026-07-20 ~15:30 Asia/Shanghai (in-session).
+- Deepened `backend/services/research_runtime.py` toward minimal research
+  runtime loop (still not D-complete):
+  - immutable `ExperimentPrereg` bound to `DatasetSnapshot` (hypothesis,
+    primary_metric, stop_conditions, empty `search_space`,
+    `claimable_target=false` hard);
+  - typed `FoldEmbargoHooks` stubs (`n_folds`/`embargo_days`/
+    `label_horizon_days`/`one_touch_holdout`);
+  - `assert_snapshot_binding` fail-closed on content_hash / config_hash /
+    universe_id / available_at bounds / observed universe drift;
+  - `run_offline_minimal_loop`: prereg → bind → measure stub →
+    `ExperimentVerdict(inconclusive, claimable=false)`;
+  - `run_offline_b0_bound_loop`: reuses E `build_b0_run`/
+    `finalize_b0_verdict` offline (`measure_*=false`) under D prereg +
+    mid-run binding; forces `claimable=false` at D boundary;
+  - `ExperimentRun` gains `universe_id` + `prereg`;
+  - offline loop body in `research_runtime_loop.py` (re-exported from
+    `research_runtime`) to keep god-file ratchet `<=3` files >800 LOC.
+- Tests: `test_research_runtime.py` 14 passed; related E/B0 smoke green.
+  CI already wires `test_research_runtime.py`.
+- Optional one-shot: `chunkyctl sync --domain daily --start 20260720
+  --end 20260720` → still provider `zero_rows` /
+  `daily_provider_fetch_failed` fail-closed; accepted daily max still
+  `20260717`.
+- **Did not**: claim D complete; StrategyRelease; Optuna; E gate loosen;
+  flip C/B-pit `cutover_allowed`; margin thaw; mass backfill.
+- **Residual to D-complete**: persist immutable ExperimentRun artifacts
+  with lineage consumer; bind real purged-WF plan (not just hooks) to
+  shared runtime; prove one measured offline path that is not
+  strategy-package-owned; still no StrategyRelease.
+- **Status**: D PARTIAL (runtime deepen).

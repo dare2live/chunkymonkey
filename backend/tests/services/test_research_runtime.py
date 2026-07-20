@@ -1,9 +1,11 @@
-"""Phase D research runtime scaffold — DatasetSnapshot → ExperimentVerdict + PIT.
+"""Phase D research runtime — DatasetSnapshot → ExperimentVerdict + PIT.
 
+Deepens scaffold toward offline minimal loop (prereg, binding, measure stub).
 Does NOT claim D complete, StrategyRelease, Optuna, or E gate loosening.
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 
@@ -21,13 +23,20 @@ from services.institution_follow_b0 import (
 )
 from services.research_runtime import (
     DatasetSnapshot,
+    ExperimentPrereg,
     ExperimentVerdict,
     ResearchObservation,
+    ResearchRuntimeError,
     SnapshotInputRef,
     assert_no_future_available_at,
+    assert_snapshot_binding,
+    build_experiment_prereg,
     dataset_snapshot_from_disclosure,
+    default_fold_embargo_hooks,
     pit_truncate_observations,
     prove_pit_truncation_invariance,
+    run_offline_b0_bound_loop,
+    run_offline_minimal_loop,
     run_smoke_closed_loop,
 )
 
@@ -256,3 +265,126 @@ def test_phase_e_b0_consumes_research_runtime_boundary() -> None:
     assert EExperimentVerdict is ExperimentVerdict
     assert verdict.claimable is False
     assert verdict.details.get("strategy_release") is not True
+
+
+def test_experiment_prereg_binds_snapshot_and_forbids_claimable_target() -> None:
+    snap = _synthetic_snapshot()
+    hooks = default_fold_embargo_hooks(n_folds=3, embargo_days=1)
+    assert hooks.protocol == "purged_walk_forward"
+    assert hooks.fold_ids == ("fold_0", "fold_1", "fold_2")
+    prereg = build_experiment_prereg(
+        snap,
+        strategy_package="phase_d_offline",
+        block="B0",
+        hypothesis="stub_no_edge",
+        fold_embargo=hooks,
+    )
+    assert isinstance(prereg, ExperimentPrereg)
+    assert prereg.snapshot_content_hash == snap.content_hash
+    assert prereg.universe_id == snap.universe_id
+    assert prereg.search_space == ()
+    assert prereg.claimable_target is False
+    with pytest.raises(ValueError, match="claimable_target"):
+        ExperimentPrereg(
+            hypothesis="x",
+            primary_metric="holdout_net_return",
+            stop_conditions=(),
+            search_space=(),
+            fold_embargo=hooks,
+            strategy_package="phase_d_offline",
+            block="B0",
+            snapshot_id=snap.snapshot_id,
+            snapshot_content_hash=snap.content_hash,
+            universe_id=snap.universe_id,
+            config_hash=snap.config_hash,
+            available_at_lower=snap.available_at_lower,
+            available_at_upper=snap.available_at_upper,
+            random_seed=0,
+            claimable_target=True,
+        )
+
+
+def test_assert_snapshot_binding_fails_on_hash_universe_or_bounds() -> None:
+    snap = _synthetic_snapshot()
+    prereg = build_experiment_prereg(
+        snap,
+        strategy_package="phase_d_offline",
+        block="B0",
+        hypothesis="binding",
+    )
+    assert_snapshot_binding(snap, prereg=prereg, decision_date="20260717")
+
+    drifted = dataclasses.replace(snap, content_hash="tampered_hash")
+    with pytest.raises(ResearchRuntimeError, match="content_hash"):
+        assert_snapshot_binding(drifted, prereg=prereg)
+
+    wrong_u = dataclasses.replace(snap, universe_id="other_universe")
+    with pytest.raises(ResearchRuntimeError, match="universe_id"):
+        assert_snapshot_binding(wrong_u, prereg=prereg)
+
+    with pytest.raises(ResearchRuntimeError, match="outside snapshot"):
+        assert_snapshot_binding(snap, prereg=prereg, decision_date="20260718")
+
+    with pytest.raises(ResearchRuntimeError, match="observed universe"):
+        assert_snapshot_binding(
+            snap,
+            prereg=prereg,
+            decision_date="20260717",
+            observed_universe_id="not_the_snapshot_universe",
+        )
+
+
+def test_offline_minimal_loop_emits_inconclusive_claimable_false() -> None:
+    snap = _synthetic_snapshot()
+    obs = (
+        _obs("600000", "20260716", available_at="20260716"),
+        _obs("600000", "20260717", available_at="20260717"),
+    )
+    run, verdict = run_offline_minimal_loop(
+        snap,
+        obs,
+        decision_date="20260717",
+        fold_embargo=default_fold_embargo_hooks(n_folds=3),
+    )
+    assert run.prereg is not None
+    assert run.prereg.snapshot_content_hash == snap.content_hash
+    assert run.universe_id == snap.universe_id
+    assert run.kept_observation_count == 2
+    assert run.artifact_manifest.get("strategy_release") is False
+    assert run.artifact_manifest.get("prereg", {}).get("search_space") == []
+    assert verdict.verdict == "inconclusive"
+    assert verdict.claimable is False
+    assert verdict.details.get("strategy_release") is False
+    assert "offline_measure_stub" in verdict.reason
+
+
+def test_offline_minimal_loop_rejects_mid_run_binding_violation() -> None:
+    snap = _synthetic_snapshot()
+    obs = (_obs("600000", "20260717", available_at="20260717"),)
+    run, verdict = run_offline_minimal_loop(
+        snap,
+        obs,
+        decision_date="20260717",
+        observed_universe_id="wrong_universe",
+    )
+    assert verdict.verdict == "reject"
+    assert verdict.claimable is False
+    assert verdict.blocked is True
+    assert "binding" in verdict.reason
+    assert run.pit_ok is False
+    assert run.prereg is not None
+
+
+def test_offline_b0_bound_loop_reuses_harness_claimable_false() -> None:
+    run, verdict = run_offline_b0_bound_loop()
+    assert run.prereg is not None
+    assert run.prereg.strategy_package == "institution_follow"
+    assert run.prereg.block == "B0"
+    assert run.prereg.fold_embargo.n_folds == 3
+    assert run.artifact_manifest.get("kind") == "phase_d_offline_b0_bound"
+    assert run.artifact_manifest.get("strategy_release") is False
+    assert isinstance(verdict, ExperimentVerdict)
+    assert verdict.claimable is False
+    assert verdict.details.get("phase_d_bound") is True
+    assert verdict.details.get("claimable_forced_false_by_research_runtime") is True
+    assert verdict.details.get("strategy_release") is False

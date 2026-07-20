@@ -70,14 +70,14 @@ AGENTS.md
 | Priority | Defect | Consequence |
 |---:|---|---|
 | P0 | K 120 日已接受（`20260116`–`20260717`）；manual 可拉 `20260720` 但 provider 仍 empty；禁 mass backfill | B-pit mart/cutover 仍禁；consumer frontier 仍时钟门 READY |
-| P0 | E 120d checkpointed measured reject/no-gain；C full-universe accept `20260717`（4989=4989；cutover 默认 false）；D scaffold PARTIAL（`research_runtime`）；B-pit 120d shadow **120/120 MATCH** + mart cutover gate FIXED（默认 false；pulse/B2 已接线；未切读）；enrichment 历史仍 field-level PARTIAL | 下一刀 provider-ready daily accept / 显式 opt-in C cutover（强证据）/ 显式 opt-in B-pit mart cutover（gate 已齐）/ 生产读仍默认 false **或** stop（非 Optuna / 非松门 / 非 mass backfill / 非擅翻 cutover / 非 StrategyRelease / 非 claim D complete） |
+| P0 | E 120d checkpointed measured reject/no-gain；C full-universe accept `20260717`（4989=4989；cutover 默认 false）；D PARTIAL（`research_runtime` prereg+binding+offline loop；未 complete）；B-pit 120d shadow **120/120 MATCH** + mart cutover gate FIXED（默认 false；pulse/B2 已接线；未切读）；enrichment 历史仍 field-level PARTIAL | 下一刀 provider-ready daily accept / 显式 opt-in C/B-pit cutover（强证据；仍 false）/ D persist or real-fold bind **或** stop（非 Optuna / 非松门 / 非 mass backfill / 非擅翻 cutover / 非 StrategyRelease / 非 claim D complete） |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
 | P1 | formal `boundary_inventory` 仅为静态/测试资源，非 doctor readiness 证书（`formal_boundaries` 文案已澄清）；canary_pending 域无 countdown 出口 | 豁免不可见即永久；须在 goal/ledger 跟踪 canary 授权点 |
 | P1 | Live DC snapshot/pulse tables predate namespace fix until manual rebuild | Code contract is fixed but stored rows still need controlled reconciliation |
 | P1 | Market pulse mixes taxonomy, measurements, rolling/regime, write/read；仍读错误 scope raw | B-ext FIXED；B-pit shadow MATCH 120/120（membership proxy）；mart cutover gate 默认 false；数值未切 |
 | P1 | Stock state/market regime rows lack config/input version | Historical outputs cannot prove which definition produced them |
-| P1 | Phase D scaffold only — shared `DatasetSnapshot`/`ExperimentVerdict`+PIT smoke; no full ExperimentRun/release chain | Strategy evidence still cannot reach decision/product safely |
+| P1 | Phase D PARTIAL — prereg+binding+offline loop; no persisted ExperimentRun artifact / real fold engine / StrategyRelease | Strategy evidence still cannot reach decision/product safely |
 | P1 | Docs/CLI gates previously treated retired/warn as PASS；事实性断言（如“仅 TuShare”）不在 gate 覆盖 | Tooling green did not prove executable reality |
 
 The current migration and blockers are maintained only in `goal.md`.

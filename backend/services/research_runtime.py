@@ -7,6 +7,9 @@ accept gates.
 E already partially consumes the boundary via frozen disclosure snapshots and
 ``ExperimentVerdict``; ``dataset_snapshot_from_disclosure`` + B0 artifact
 manifest wiring make that reuse explicit.
+
+Deepened (still PARTIAL): immutable ``ExperimentPrereg`` + fold/embargo hooks,
+mid-run snapshot binding fail-closed, and offline measure stub / B0-bound loop.
 """
 from __future__ import annotations
 
@@ -18,11 +21,18 @@ from typing import Any, Literal, Mapping, Sequence
 from uuid import uuid4
 
 VerdictKind = Literal["accept", "reject", "inconclusive"]
+ProtocolKind = Literal[
+    "purged_walk_forward",
+    "honest_minimal_short_window",
+    "undeclared_stub",
+]
 _VALID_VERDICTS = frozenset({"accept", "reject", "inconclusive"})
 
 REASON_PHASE_D_SCAFFOLD_SMOKE = "phase_d_scaffold_smoke_inconclusive"
+REASON_PHASE_D_OFFLINE_MEASURE_STUB = "phase_d_offline_measure_stub_inconclusive"
 REASON_PIT_LEAK_OR_EMPTY = "phase_d_pit_leak_or_empty_after_truncation"
 REASON_PIT_FUTURE_AVAILABLE_AT = "phase_d_future_available_at"
+REASON_SNAPSHOT_BINDING_VIOLATED = "phase_d_snapshot_binding_violated"
 
 
 class ResearchRuntimeError(RuntimeError):
@@ -116,6 +126,150 @@ class DatasetSnapshot:
 
 
 @dataclass(frozen=True)
+class FoldEmbargoHooks:
+    """Typed fold / embargo declaration hooks (stubs ok; not a WF engine)."""
+
+    protocol: ProtocolKind
+    n_folds: int
+    embargo_days: int
+    label_horizon_days: int
+    one_touch_holdout: bool
+    fold_ids: tuple[str, ...]
+    holdout_start: str
+    notes: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if self.n_folds < 0:
+            raise ValueError("n_folds must be >= 0")
+        if self.embargo_days < 0:
+            raise ValueError("embargo_days must be >= 0")
+        if self.label_horizon_days < 0:
+            raise ValueError("label_horizon_days must be >= 0")
+        if self.n_folds and len(self.fold_ids) not in (0, self.n_folds):
+            raise ValueError(
+                f"fold_ids length ({len(self.fold_ids)}) must be 0 or n_folds "
+                f"({self.n_folds})"
+            )
+        holdout = _compact_day(self.holdout_start) if self.holdout_start else ""
+        if self.holdout_start and len(holdout) != 8:
+            raise ValueError(
+                f"holdout_start must be YYYYMMDD or empty; got {self.holdout_start!r}"
+            )
+        object.__setattr__(self, "holdout_start", holdout)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "protocol": self.protocol,
+            "n_folds": self.n_folds,
+            "embargo_days": self.embargo_days,
+            "label_horizon_days": self.label_horizon_days,
+            "one_touch_holdout": self.one_touch_holdout,
+            "fold_ids": list(self.fold_ids),
+            "holdout_start": self.holdout_start,
+            "notes": list(self.notes),
+        }
+
+
+@dataclass(frozen=True)
+class ExperimentPrereg:
+    """Immutable prereg record bound to a DatasetSnapshot before measure.
+
+    Contract §5: freeze hypothesis, search space, primary metric, stop
+    conditions and holdout/fold hooks before results. Empty search_space
+    means no Optuna / no parameter search.
+    """
+
+    hypothesis: str
+    primary_metric: str
+    stop_conditions: tuple[str, ...]
+    search_space: tuple[str, ...]
+    fold_embargo: FoldEmbargoHooks
+    strategy_package: str
+    block: str
+    snapshot_id: str
+    snapshot_content_hash: str
+    universe_id: str
+    config_hash: str
+    available_at_lower: str
+    available_at_upper: str
+    random_seed: int
+    claimable_target: bool
+
+    def __post_init__(self) -> None:
+        if not str(self.hypothesis or "").strip():
+            raise ValueError("hypothesis is required")
+        if not str(self.primary_metric or "").strip():
+            raise ValueError("primary_metric is required")
+        if not str(self.strategy_package or "").strip():
+            raise ValueError("strategy_package is required")
+        if not str(self.block or "").strip():
+            raise ValueError("block is required")
+        if not str(self.snapshot_id or "").strip():
+            raise ValueError("snapshot_id is required")
+        if not str(self.snapshot_content_hash or "").strip():
+            raise ValueError("snapshot_content_hash is required")
+        if not str(self.universe_id or "").strip():
+            raise ValueError("universe_id is required")
+        if not str(self.config_hash or "").strip():
+            raise ValueError("config_hash is required")
+        lower = _compact_day(self.available_at_lower)
+        upper = _compact_day(self.available_at_upper)
+        if len(lower) != 8 or len(upper) != 8:
+            raise ValueError("prereg available_at bounds must be YYYYMMDD")
+        if lower > upper:
+            raise ValueError("prereg available_at_lower must be <= available_at_upper")
+        object.__setattr__(self, "available_at_lower", lower)
+        object.__setattr__(self, "available_at_upper", upper)
+        if self.claimable_target:
+            raise ValueError(
+                "Phase D prereg claimable_target must be false "
+                "(no StrategyRelease / no claimable accept via runtime)"
+            )
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "hypothesis": self.hypothesis,
+            "primary_metric": self.primary_metric,
+            "stop_conditions": list(self.stop_conditions),
+            "search_space": list(self.search_space),
+            "fold_embargo": self.fold_embargo.as_dict(),
+            "strategy_package": self.strategy_package,
+            "block": self.block,
+            "snapshot_id": self.snapshot_id,
+            "snapshot_content_hash": self.snapshot_content_hash,
+            "universe_id": self.universe_id,
+            "config_hash": self.config_hash,
+            "available_at_lower": self.available_at_lower,
+            "available_at_upper": self.available_at_upper,
+            "random_seed": self.random_seed,
+            "claimable_target": self.claimable_target,
+        }
+
+
+@dataclass(frozen=True)
+class OfflineMeasureResult:
+    """Offline measure stub output (unknown returns; not a paper edge)."""
+
+    status: Literal["measured_stub", "empty_after_pit", "binding_rejected"]
+    decision_date: str
+    kept_observation_count: int
+    input_observation_count: int
+    details: dict[str, Any]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "decision_date": self.decision_date,
+            "kept_observation_count": self.kept_observation_count,
+            "input_observation_count": self.input_observation_count,
+            "details": dict(self.details),
+            "total_return": "unknown",
+            "max_drawdown": "unknown",
+            "paper_fills": "not_run",
+        }
+
+
+@dataclass(frozen=True)
 class ResearchObservation:
     """One research feature/event row with explicit availability."""
 
@@ -135,7 +289,7 @@ class ResearchObservation:
 
 @dataclass(frozen=True)
 class ExperimentRun:
-    """Minimal ExperimentRun skeleton for the Phase D smoke loop."""
+    """Immutable ExperimentRun record (prereg + snapshot binding + artifacts)."""
 
     experiment_id: str
     strategy_package: str
@@ -143,9 +297,11 @@ class ExperimentRun:
     snapshot_id: str
     snapshot_content_hash: str
     config_hash: str
+    universe_id: str
     decision_date: str
     kept_observation_count: int
     pit_ok: bool
+    prereg: ExperimentPrereg | None
     artifact_manifest: dict[str, Any]
     notes: tuple[str, ...]
 
@@ -157,9 +313,11 @@ class ExperimentRun:
             "snapshot_id": self.snapshot_id,
             "snapshot_content_hash": self.snapshot_content_hash,
             "config_hash": self.config_hash,
+            "universe_id": self.universe_id,
             "decision_date": self.decision_date,
             "kept_observation_count": self.kept_observation_count,
             "pit_ok": self.pit_ok,
+            "prereg": self.prereg.as_dict() if self.prereg is not None else None,
             "artifact_manifest": dict(self.artifact_manifest),
             "notes": list(self.notes),
         }
@@ -407,6 +565,28 @@ def dataset_snapshot_from_disclosure(
     )
 
 
+# Offline loop helpers live in research_runtime_loop (god-file ratchet).
+# Public boundary re-exports via __getattr__ so importers stay stable.
+_LOOP_EXPORTS = frozenset(
+    {
+        "assert_snapshot_binding",
+        "build_experiment_prereg",
+        "default_fold_embargo_hooks",
+        "measure_observations_stub",
+        "run_offline_b0_bound_loop",
+        "run_offline_minimal_loop",
+    }
+)
+
+
+def __getattr__(name: str) -> Any:
+    if name in _LOOP_EXPORTS:
+        from services import research_runtime_loop as _loop  # noqa: PLC0415
+
+        return getattr(_loop, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 def run_smoke_closed_loop(
     snapshot: DatasetSnapshot,
     observations: Sequence[ResearchObservation],
@@ -433,9 +613,11 @@ def run_smoke_closed_loop(
             snapshot_id=snapshot.snapshot_id,
             snapshot_content_hash=snapshot.content_hash,
             config_hash=snapshot.config_hash,
+            universe_id=snapshot.universe_id,
             decision_date=day,
             kept_observation_count=0,
             pit_ok=False,
+            prereg=None,
             artifact_manifest={
                 "kind": "phase_d_smoke",
                 "research_runtime_snapshot": snapshot.boundary_dict(),
@@ -483,9 +665,11 @@ def run_smoke_closed_loop(
             snapshot_id=snapshot.snapshot_id,
             snapshot_content_hash=snapshot.content_hash,
             config_hash=snapshot.config_hash,
+            universe_id=snapshot.universe_id,
             decision_date=day,
             kept_observation_count=0,
             pit_ok=False,
+            prereg=None,
             artifact_manifest={
                 "kind": "phase_d_smoke",
                 "research_runtime_snapshot": snapshot.boundary_dict(),
@@ -515,9 +699,11 @@ def run_smoke_closed_loop(
         snapshot_id=snapshot.snapshot_id,
         snapshot_content_hash=snapshot.content_hash,
         config_hash=snapshot.config_hash,
+        universe_id=snapshot.universe_id,
         decision_date=day,
         kept_observation_count=len(kept),
         pit_ok=pit_ok,
+        prereg=None,
         artifact_manifest={
             "kind": "phase_d_smoke",
             "research_runtime_snapshot": snapshot.boundary_dict(),
