@@ -25,11 +25,12 @@
   sentiment `tier12_production_read` 旁路 + drill form overlay；仍走
   `fact_stock_form_daily`/mart）。`expected_config_hash` 已填 live
   `20260717` stock hash（opt-in 就绪）；**未** `cutover_allowed=true` /
-  **未** StrategyRelease / **未** claim Phase C complete。下一刀=
-  daily `20260720` 在 provider 有行后重试 manual sync+accept **或**
-  Phase D scaffold / B-pit shadow remeasure **或** 显式 opt-in cutover
-  （需强证据；禁擅自翻 true）**或** stop；禁 Optuna / gate-loosening /
-  B-pit cutover / margin thaw / mass backfill。
+  **未** StrategyRelease / **未** claim Phase C complete。
+  **D PARTIAL（scaffold）**：`research_runtime` DatasetSnapshot→PIT→
+  ExperimentVerdict；E 复用；**未** D complete / Release / Optuna。
+  下一刀= `20260720` provider 有行后 sync+accept **或** B-pit remeasure
+  **或** 显式 opt-in cutover **或** stop；禁 Optuna/松门/B-pit cutover/
+  margin thaw/mass backfill。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -97,7 +98,8 @@
   accept-side / consumer `cutover_allowed=false`；resolver+read → LEGACY；
   `expected_config_hash`=live stock hash 已填，opt-in 未翻）。
   **未** claim Phase C complete / **未** StrategyRelease / **未** cutover true。
-  **D** `DatasetSnapshot`→`ExperimentVerdict` + PIT 截断（E 已部分消费）。
+  **D PARTIAL（scaffold）** `research_runtime` DatasetSnapshot→PIT→
+  ExperimentVerdict；E 已消费；**未** complete / 无 Release。
 - **E0 FIXED（gate+mirror off；E 硬前置）** 三域 MATCH → `cutover_allowed=true`；
   formal writes=`formal_only`；research read prefer canonical；
   `data/lineage/disclosure_dataset_snapshot.json` →
@@ -115,11 +117,10 @@
   `data/lineage/phase_e_experiment_verdicts/{manifest,b0,b1,b2,b4}.json`
   （`persist_phase_e_experiment_verdicts.py` 幂等 regenerate；window 从实测
   trading_days 派生）。form/qfq `20260717` **still blocked**（max=`20260716`）。
-  **Next**：daily `20260720` provider 有行后 manual re-sync+accept（consumer
-  `available_at` 仍 18:00）**或** Phase D scaffold / B-pit remeasure **或**
-  显式 opt-in cutover **或** stop。B1/pulse 读边界已落地；cutover false。
-  **禁** Optuna / 松门 / B-pit cutover / margin thaw / mass backfill /
-  StrategyRelease。**F–H** 见 MASTER。
+  **Next**：`20260720` provider 有行后 sync+accept **或** B-pit remeasure
+  **或** opt-in cutover **或** stop。D scaffold 非 complete；cutover false。
+  **禁** Optuna/松门/B-pit cutover/margin thaw/mass backfill/Release。
+  **F–H** 见 MASTER。
 
 ## 边做边测
 

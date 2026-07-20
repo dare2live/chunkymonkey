@@ -1518,3 +1518,28 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   help updated for the split.
 - **Did not**: flip cutover; StrategyRelease; Optuna; E loosen;
   B-pit cutover; margin thaw; mass backfill.
+
+### 2026-07-20 — Phase D research_runtime scaffold (PARTIAL)
+
+- Wall-clock: Mon 2026-07-20 ~14:56 Asia/Shanghai (in-session).
+- Delivered minimal Tier-3 closed loop owner
+  `backend/services/research_runtime.py`:
+  - immutable `DatasetSnapshot` (inputs, universe_id, config_hash,
+    available_at_lower/upper, content_hash);
+  - `pit_truncate_observations` + `assert_no_future_available_at` +
+    `prove_pit_truncation_invariance` (fail-closed; missing/future
+    `available_at` rejected);
+  - `run_smoke_closed_loop` → `ExperimentRun` + `ExperimentVerdict`
+    (`inconclusive` / `claimable=false` / `strategy_release=false`);
+  - `dataset_snapshot_from_disclosure` adapts E frozen disclosure JSON.
+- E reuse: `ExperimentVerdict` moved to research_runtime; B0–B4 import
+  via `institution_follow_b0` re-export; `build_b0_run` writes
+  `artifact_manifest.research_runtime_snapshot` boundary fields.
+- Tests: `test_research_runtime.py` + E B0–B4 / phase_e smoke green;
+  CI wired.
+- Live retry: `chunkyctl sync --domain daily --start 20260720 --end
+  20260720` → still provider `zero_rows` / `daily_provider_fetch_failed`
+  fail-closed; accepted daily still ends `20260717`.
+- **Status**: D PARTIAL (scaffold). **Did not**: claim D complete;
+  StrategyRelease; Optuna; E gate loosen; cutover_allowed=true;
+  B-pit mart cutover; margin thaw; mass backfill.

@@ -9,7 +9,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal, Mapping
+from typing import Any, Mapping
 from uuid import uuid4
 
 from services.data_sources.disclosure_dataset_snapshot import (
@@ -37,6 +37,11 @@ from services.institution_follow_edge_gates import (
     REASON_EDGE_GATES_UNMET,
     evaluate_accept_edge_gates,
 )
+from services.research_runtime import (
+    ExperimentVerdict,
+    VerdictKind,
+    dataset_snapshot_from_disclosure,
+)
 
 STRATEGY_PACKAGE = "institution_follow_v1"
 BLOCK_ID = "B0"
@@ -55,8 +60,16 @@ REASON_SCAFFOLD_NO_MEASURED_EDGE = "scaffold_no_measured_edge"
 # Bare-K needs a multi-day nominal window for any forward-return measurement.
 MIN_ACCEPTED_NOMINAL_DAYS_FOR_MEASURED_B0 = 5
 
-VerdictKind = Literal["accept", "reject", "inconclusive"]
 _VALID_VERDICTS = frozenset({"accept", "reject", "inconclusive"})
+
+# Re-export for Phase E callers; owner is research_runtime (Phase D).
+__all__ = (
+    "ExperimentVerdict",
+    "VerdictKind",
+    "InstitutionFollowB0Run",
+    "InstitutionFollowB0Error",
+    "CanaryScopeOverclaimError",
+)
 
 
 class InstitutionFollowB0Error(RuntimeError):
@@ -164,28 +177,6 @@ class InstitutionFollowB0Run:
             "measured_b0": (
                 self.measured_b0.as_dict() if self.measured_b0 else None
             ),
-        }
-
-
-@dataclass(frozen=True)
-class ExperimentVerdict:
-    verdict: VerdictKind
-    reason: str
-    blocked: bool
-    experiment_id: str
-    block: str
-    claimable: bool
-    details: dict[str, Any]
-
-    def as_dict(self) -> dict[str, Any]:
-        return {
-            "verdict": self.verdict,
-            "reason": self.reason,
-            "blocked": self.blocked,
-            "experiment_id": self.experiment_id,
-            "block": self.block,
-            "claimable": self.claimable,
-            "details": dict(self.details),
         }
 
 
@@ -450,6 +441,9 @@ def build_b0_run(
     if not snap_id:
         raise InstitutionFollowB0Error("snapshot_id required on DatasetSnapshot")
 
+    # Phase D boundary: adapt disclosure freeze into DatasetSnapshot (E consumes D).
+    runtime_snap = dataset_snapshot_from_disclosure(payload)
+
     allowed = (
         bool(cutover_allowed)
         if cutover_allowed is not None
@@ -478,6 +472,7 @@ def build_b0_run(
         "no_optuna_no_full_history_search",
         "pit_hooks_declared_not_full_ablation",
         f"disclosure_snapshot_relpath={DISCLOSURE_SNAPSHOT_RELPATH}",
+        "research_runtime_dataset_snapshot_bound",
     ]
     if canary:
         notes.append("canary_scope_blocks_claimable_verdict")
@@ -523,6 +518,7 @@ def build_b0_run(
         artifact_manifest={
             "kind": "institution_follow_b0",
             "disclosure_snapshot": DISCLOSURE_SNAPSHOT_RELPATH,
+            "research_runtime_snapshot": runtime_snap.boundary_dict(),
             "domains": sorted((payload.get("domains") or {}).keys()),
             "metrics": metrics_label,
             "paper_fills": paper_label,
